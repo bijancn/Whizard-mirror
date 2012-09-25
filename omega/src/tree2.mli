@@ -1,4 +1,4 @@
-(* $Id: tree2.mli 3930 2012-09-09 18:48:11Z jr_reuter $
+(* $Id: tree2.mli 3975 2012-09-25 06:19:40Z kilian $
 
    Copyright (C) 1999-2012 by
 
