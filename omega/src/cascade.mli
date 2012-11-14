@@ -39,9 +39,17 @@ module type T =
 (* Don't throw anything away: *)
     val no_cascades : selectors
 
-(* [select_wf s is_timelike f p ps] returns [true] iff either the flavor [f] and
-    momentum [p] match or \emph{all} combinations of the momenta in [ps]
-    are compatible, i.\,e.~$\pm\sum p_i\leq q$ *)
+(* [select_wf s is_timelike f p ps] returns [true] iff either
+   \begin{itemize}
+     \item the flavor [f] and momentum [p] match the selection [s] or
+     \item \emph{all} combinations of the momenta in [ps]
+       are compatible, i.\,e.~$\pm\sum p_i\leq q$.
+    \end{itemize}
+    The latter test is only required in theories with quartic
+    or higher vertices, where [ps] will be the list of all
+    incoming momenta in a fusion.  [is_timelike] is required
+    to determine, whether particles and anti-particles should
+    be distinct. *)
     val select_wf : selectors -> (p -> bool) -> flavor -> p -> p list -> bool
 
 (* [select_p s p ps] same as [select_wf s f p ps], but ignores the flavor [f] *)

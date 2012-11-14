@@ -1,4 +1,4 @@
-(* $Id: fusion.ml 3670 2012-01-21 19:33:07Z jr_reuter $
+(* $Id: fusion.ml 3990 2012-10-08 17:40:02Z jr_reuter $
 
    Copyright (C) 1999-2012 by
 
@@ -22,8 +22,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Fusion" ["General Fusions"]
-    { RCS.revision = "$Revision: 3670 $";
-      RCS.date = "$Date: 2012-01-21 20:33:07 +0100 (Sat, 21 Jan 2012) $";
+    { RCS.revision = "$Revision: 3990 $";
+      RCS.date = "$Date: 2012-10-08 19:40:02 +0200 (Mon, 08 Oct 2012) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/fusion.ml $" }
@@ -1596,8 +1596,8 @@ module Tagged_Binary (T : Tagger) =
 
 module Stat_Majorana (M : Model.T) : (Stat with type flavor = M.flavor) =
   struct 
-    let rcs = RCS.rename rcs_file "Fusion.Stat_Dirac()"
-        [ "Fermi statistics for Dirac fermions"]
+    let rcs = RCS.rename rcs_file "Fusion.Stat_Majorana()"
+        [ "Fermi statistics with fermion number violation"]
 
     type flavor = M.flavor
 
