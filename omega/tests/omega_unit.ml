@@ -116,19 +116,36 @@ module ThoList_Unit_Tests =
 
   end
 
+module IListSet =
+  Set.Make (struct type t = int list let compare = compare end)
+
+let list_elements_unique l =
+  let rec list_elements_unique' set = function
+    | [] -> true
+    | x :: rest ->
+      if IListSet.mem x set then
+	false
+      else
+	list_elements_unique' (IListSet.add x set) rest in
+  list_elements_unique' IListSet.empty l
+
+let ilistset_test =
+  "IListSet" >::
+    (fun () ->
+      assert_bool "true" (list_elements_unique [[1];[2]]);
+      assert_bool "false" (not (list_elements_unique [[1];[1]])))
+
 module Combinatorics_Unit_Tests =
   struct
 
     let permute =
       "permute" >::
 	(fun () ->
-	  let n = 6 in
+	  let n = 7 in
 	  let l = ThoList.range 1 n in
 	  let result = Combinatorics.permute l in
-	  let sorted = List.sort compare result in
-	  assert_equal
-	    (Combinatorics.factorial n)
-	    (List.length (ThoList.uniq sorted)))
+	  assert_equal (Combinatorics.factorial n) (List.length result);
+	  assert_bool "unique" (list_elements_unique result))
 
     let suite =
       "Combinatorics" >:::
@@ -136,9 +153,14 @@ module Combinatorics_Unit_Tests =
 
   end
 
+let selftest_suite =
+  "testsuite" >:::
+    [trivial_test;
+     ilistset_test]
+
 let suite = 
   "omega" >:::
-    [trivial_test;
+    [selftest_suite;
      ThoList_Unit_Tests.suite; 
      Combinatorics_Unit_Tests.suite]
 
