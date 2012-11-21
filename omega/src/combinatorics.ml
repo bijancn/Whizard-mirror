@@ -327,10 +327,11 @@ let ordered_multi_choose n size l =
 
 let rec insert x = function
   | [] -> [[x]]
-  | h :: t as l -> (x :: l) :: List.map (fun l' -> h :: l') (insert x t)
+  | h :: t as l ->
+      (x :: l) :: List.rev_map (fun l' -> h :: l') (insert x t)
 
 let permute l =
-  List.fold_left (fun acc x -> ThoList.flatmap (insert x) acc) [[]] l
+  List.fold_left (fun acc x -> ThoList.rev_flatmap (insert x) acc) [[]] l
 
 (* \thocwmodulesubsection{Graded Permutations} *)
 

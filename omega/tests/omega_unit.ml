@@ -141,15 +141,25 @@ module Combinatorics_Unit_Tests =
     let permute =
       "permute" >::
 	(fun () ->
-	  let n = 7 in
+	  let n = 8 in
 	  let l = ThoList.range 1 n in
 	  let result = Combinatorics.permute l in
 	  assert_equal (Combinatorics.factorial n) (List.length result);
 	  assert_bool "unique" (list_elements_unique result))
 
+    let permute_no_stack_overflow =
+      "permute_no_stack_overflow" >::
+	(fun () ->
+	  skip_if !unattended "memory limits not suitable for unattended tests";
+	  let n = 10 in (* n = 10 needs 1 GB, n = 11 needs 7.3 GB *)
+	  let l = ThoList.range 1 n in
+	  let result = Combinatorics.permute l in
+	  assert_equal (Combinatorics.factorial n) (List.length result))
+
     let suite =
       "Combinatorics" >:::
-	[permute]
+	[permute;
+	 permute_no_stack_overflow]
 
   end
 
