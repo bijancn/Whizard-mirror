@@ -1,4 +1,4 @@
-(* $Id: thoList.ml 3670 2012-01-21 19:33:07Z jr_reuter $
+(* $Id: thoList.ml 4004 2012-11-21 14:13:35Z ohl $
 
    Copyright (C) 1999-2012 by
 
@@ -102,9 +102,17 @@ let enumerate ?(stride=1) n l =
       (n, []) l in
   List.rev l_rev
 
+(* This is \emph{not} tail recursive! *)
 let rec flatmap f = function
   | [] -> []
   | x :: rest -> f x @ flatmap f rest
+
+(* This is! *)
+let rev_flatmap f l =
+  let rec rev_flatmap' acc f = function
+    | [] -> acc
+    | x :: rest -> rev_flatmap' (List.rev_append (f x) acc) f rest in
+  rev_flatmap' [] f l
 
 let fold_left2 f acc lists =
   List.fold_left (List.fold_left f) acc lists

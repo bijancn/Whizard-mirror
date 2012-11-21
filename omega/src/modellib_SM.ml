@@ -1,4 +1,4 @@
-(* $Id: modellib_SM.ml 3832 2012-05-04 02:12:59Z jr_reuter $
+(* $Id: modellib_SM.ml 3999 2012-11-13 13:48:40Z jr_reuter $
 
    Copyright (C) 1999-2012 by
 
@@ -23,8 +23,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
-    { RCS.revision = "$Revision: 3832 $";
-      RCS.date = "$Date: 2012-05-04 04:12:59 +0200 (Fri, 04 May 2012) $";
+    { RCS.revision = "$Revision: 3999 $";
+      RCS.date = "$Date: 2012-11-13 14:48:40 +0100 (Tue, 13 Nov 2012) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_SM.ml $" }
@@ -1511,10 +1511,9 @@ i*)
         (O H, G Ga, G Z), Dim5_Scalar_Gauge2 1, G_HGaZ_anom;
         (O H, G Z, G Z), Dim5_Scalar_Gauge2 1, G_HZZ_anom;
         (O H, G Wp, G Wm), Dim5_Scalar_Gauge2 1, G_HWW_anom;
-        (O H, G Ga, G Z), Dim5_Scalar_Vector_Vector_U 1, G_HGaZ_u;
+        (O H, G Ga, G Z), Dim5_Scalar_Vector_Vector_TU 1, G_HGaZ_u;
         (O H, G Z, G Z), Dim5_Scalar_Vector_Vector_U 1, G_HZZ_u;
-        (O H, G Wp, G Wm), Dim5_Scalar_Vector_Vector_U 1, G_HWW_u;
-        (O H, G Wm, G Wp), Dim5_Scalar_Vector_Vector_U 1, G_HWW_u
+        (O H, G Wp, G Wm), Dim5_Scalar_Vector_Vector_U 1, G_HWW_u
       ]
 
     let anomalous_gauge_higgs4 =

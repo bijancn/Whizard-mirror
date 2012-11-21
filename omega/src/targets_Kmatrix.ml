@@ -1,4 +1,4 @@
-(* $Id: targets_Kmatrix.ml 3670 2012-01-21 19:33:07Z jr_reuter $
+(* $Id: targets_Kmatrix.ml 3996 2012-11-07 15:11:01Z jr_reuter $
 
    Copyright (C) 1999-2012 by
 
@@ -22,8 +22,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets_Kmatrix" ["K-Matrix Support routines"]
-    { RCS.revision = "$Revision: 3670 $";
-      RCS.date = "$Date: 2012-01-21 20:33:07 +0100 (Sat, 21 Jan 2012) $";
+    { RCS.revision = "$Revision: 3996 $";
+      RCS.date = "$Date: 2012-11-07 16:11:01 +0100 (Wed, 07 Nov 2012) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/targets_Kmatrix.ml $" }
@@ -67,7 +67,7 @@ module Fortran =
       printf "            case (4) !!! Tensor isosinglet"; nl ();
       printf "              w = g**2/320./PI * m**3/vev**2"; nl ();
       printf "            case (5) !!! Tensor isoquintet"; nl ();
-      printf "              w = 3.*g**2/1920./PI * m**3/vev**2"; nl ();
+      printf "              w = g**2/1920./PI * m**3/vev**2"; nl ();
       printf "            case default"; nl ();
       printf "              w = 0"; nl ();
       printf "          end select"; nl ();

@@ -1,4 +1,4 @@
-(* $Id: thoList.mli 3670 2012-01-21 19:33:07Z jr_reuter $
+(* $Id: thoList.mli 4004 2012-11-21 14:13:35Z ohl $
 
    Copyright (C) 1999-2012 by
 
@@ -69,10 +69,18 @@ val classify : 'a list -> (int * 'a) list
 (* Collect the second factors with a common first factor in lists. *)
 val factorize : ('a * 'b) list -> ('a * 'b list) list
 
-(* [flatmap f] is equivalent to $\ocwlowerid{List.flatten} \circ
-   (\ocwlowerid{List.map}\;\ocwlowerid{f})$, but more efficient,
-   because no intermediate lists are built. *)
+(* [flatmap f] is equivalent to $\ocwlowerid{flatten} \circ
+   (\ocwlowerid{map}\;\ocwlowerid{f})$, but more efficient,
+   because no intermediate lists are built.  Unfortunately, it is
+   not tail recursive. *)
 val flatmap : ('a -> 'b list) -> 'a list -> 'b list
+
+(* [rev_flatmap f] is equivalent to $\ocwlowerid{flatten} \circ
+   (\ocwlowerid{rev\_map}\;(\ocwlowerid{rev}\circ\ocwlowerid{f}))
+   = \ocwlowerid{rev}\circ(\ocwlowerid{flatmap}\;\ocwlowerid{f})$,
+   but more efficient, because no intermediate lists are built.
+   It is tail recursive. *)
+val rev_flatmap : ('a -> 'b list) -> 'a list -> 'b list
 
 val clone : int -> 'a -> 'a list
 val multiply : int -> 'a list -> 'a list

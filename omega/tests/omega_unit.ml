@@ -23,6 +23,11 @@
 
 open OUnit
 
+let unattended = ref true
+
+let skip_if_unattended () =
+  skip_if !unattended "not suitable for unattended tests"
+
 let trivial_test =
   "trivial" >::
     (bracket
@@ -30,43 +35,119 @@ let trivial_test =
        (fun b -> assert_bool "always true" b)
        (fun b -> ()))
 
-let random_list n =
+let short_random_list n =
   let l = ref [] in
   for i = 1 to n do
     l := Random.int 1024 :: !l
   done;
   !l
 
-let flatmap_test =
-  "flatmap" >::
-    (fun () ->
-      let inner_list = random_list 20 in
-      let f n = List.map ((+) n) inner_list
-      and outer_list = random_list 30 in
-      let my = ThoList.flatmap f outer_list
-      and std = List.concat (List.map f outer_list) in
-      assert_equal my std)
+let allowed_recursion_depth () =
+  let rec allowed_recursion_depth' n =
+    try
+      allowed_recursion_depth' (succ n)
+    with
+    | Stack_overflow -> n in
+  allowed_recursion_depth' 0
 
-let flatmap'_test =
-  "flatmap'" >::
-    (fun () ->
-      let inner_list = random_list 20 in
-      let f n = List.map ((+) n) inner_list
-      and f' n = List.rev_map ((+) n) inner_list
-      and outer_list = random_list 30 in
-      let my = ThoList.flatmap f outer_list
-      and std = List.rev (List.concat (List.rev_map f' outer_list)) in
-      assert_equal my std)
+let long_random_list factor =
+  let n = factor * allowed_recursion_depth () in
+  let l = ref [] in
+  for i = 1 to n do
+    l := Random.int n :: !l
+  done;
+  !l
 
-let tholist_suite =
-  "ThoList" >:::
-    [flatmap_test;
-     flatmap'_test]
+module Integer = 
+  struct 
+    type t = int
+    let compare = compare
+    let pp_printer = Format.pp_print_int
+    let pp_print_sep = OUnitDiff.pp_comma_separator
+  end
+
+module Integer_List = OUnitDiff.ListSimpleMake(Integer)
+
+module ThoList_Unit_Tests =
+  struct
+
+    let inner_list = ThoList.range 1 5
+    let outer_list = List.map (( * ) 10) (ThoList.range 1 4)
+    let f n = List.map ((+) n) inner_list
+      
+    let flatmap =
+      "flatmap" >::
+	(fun () ->
+	  let result = ThoList.flatmap f outer_list
+	  and expected = List.flatten (List.map f outer_list) in
+	  assert_equal expected result)
+
+    let rev_flatmap =
+      "rev_flatmap" >::
+	(fun () ->
+	  let result = ThoList.rev_flatmap f outer_list
+	  and expected = List.rev (ThoList.flatmap f outer_list) in
+	  Integer_List.assert_equal expected result)
+
+    let flatmap_stack_overflow =
+      "flatmap_stack_overflow" >::
+	(fun () ->
+	  skip_if !unattended "memory limits not suitable for unattended tests";
+	  let l = long_random_list 2 in
+	  let f n = List.map ((+) n) (short_random_list 2) in
+	  assert_raises Stack_overflow
+	    (fun () -> ThoList.flatmap f l))
+
+    let rev_flatmap_no_stack_overflow =
+      "rev_flatmap_no_stack_overflow" >::
+	(fun () ->
+	  skip_if !unattended "memory limits not suitable for unattended tests";
+	  let l = long_random_list 10 in
+	  let f n = List.map ((+) n) (short_random_list 10) in
+	  ignore (ThoList.rev_flatmap f l);
+	  assert_bool "always true" true)
+
+    let suite =
+      "ThoList" >:::
+	[flatmap;
+	 flatmap_stack_overflow;
+	 rev_flatmap;
+	 rev_flatmap_no_stack_overflow ]
+
+  end
+
+module Combinatorics_Unit_Tests =
+  struct
+
+    let permute =
+      "permute" >::
+	(fun () ->
+	  let n = 6 in
+	  let l = ThoList.range 1 n in
+	  let result = Combinatorics.permute l in
+	  let sorted = List.sort compare result in
+	  assert_equal
+	    (Combinatorics.factorial n)
+	    (List.length (ThoList.uniq sorted)))
+
+    let suite =
+      "Combinatorics" >:::
+	[permute]
+
+  end
 
 let suite = 
-  "O'Mega Unit Tests" >:::
+  "omega" >:::
     [trivial_test;
-     tholist_suite]
+     ThoList_Unit_Tests.suite; 
+     Combinatorics_Unit_Tests.suite]
 
-let _ = 
-  run_test_tt_main suite
+let _ =
+  ignore
+    (run_test_tt_main
+       ~arg_specs:[("-attended", Arg.Clear unattended,
+		    "      run tests that depend on the environment");
+		   ("-unattended", Arg.Set unattended,
+		    "    don't run tests depend on the environment")]
+       suite);
+  exit 0

@@ -1,4 +1,4 @@
-(* $Id: colorize.ml 3832 2012-05-04 02:12:59Z jr_reuter $
+(* $Id: colorize.ml 4004 2012-11-21 14:13:35Z ohl $
 
    Copyright (C) 1999-2012 by
 
@@ -22,9 +22,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Colorize" ["Colorizing Monochrome Models"]
-    { RCS.revision = "$Revision: 3832 $";
-      RCS.date = "$Date: 2012-05-04 04:12:59 +0200 (Fri, 04 May 2012) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 4004 $";
+      RCS.date = "$Date: 2012-11-21 15:13:35 +0100 (Wed, 21 Nov 2012) $";
+      RCS.author = "$Author: ohl $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/colorize.ml $" }
 
@@ -331,6 +331,8 @@ module It (M : Model.T) =
           Dim5_Scalar_Vector_Vector_T (x * c)
       | Dim5_Scalar_Vector_Vector_U c ->
           Dim5_Scalar_Vector_Vector_U (x * c)
+      | Dim5_Scalar_Vector_Vector_TU c ->
+          Dim5_Scalar_Vector_Vector_TU (x * c)
       | Dim6_Vector_Vector_Vector_T c ->
           Dim6_Vector_Vector_Vector_T (x * c)
       | Tensor_2_Vector_Vector c ->
@@ -1264,7 +1266,7 @@ module It (M : Model.T) =
         []
       else
         let color_strings = ThoList.range 1 n_in in
-        List.map
+        List.rev_map
           (fun permutation -> (color_strings, permutation))
           (Combinatorics.permute color_strings)
 
@@ -1353,7 +1355,7 @@ module It (M : Model.T) =
       colorize_crossed_amplitude1 ghosts [] f_list (ecf_in, ecf_out)
 
     let colorize_crossed_amplitude f_list =
-      ThoList.flatmap
+      ThoList.rev_flatmap
         (colorize_crossed_amplitude1 (external_ghosts f_list) f_list)
         (external_color_flows f_list)
 

@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 3975 2012-09-25 06:19:40Z kilian $
+# $Id: Makefile.am 4003 2012-11-20 22:03:43Z ohl $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -59,10 +59,54 @@ endif
 
 ########################################################################
 
-TESTS = test_omega95 test_omega95_bispinors
+TESTS =
 XFAIL_TESTS =
-EXTRA_PROGRAMS = test_omega95 test_omega95_bispinors
+EXTRA_PROGRAMS =
 EXTRA_DIST = 
+
+########################################################################
+
+include $(top_srcdir)/src/Makefile.ocaml
+
+if OCAML_AVAILABLE 
+
+OCAMLFLAGS += -I $(top_builddir)/src
+OMEGA_CORE = $(top_builddir)/src/omega_core.cmxa
+
+TESTS += omega_unit
+EXTRA_PROGRAMS += omega_unit
+
+omega_unit: $(OMEGA_CORE) oUnit.cmx oUnitDiff.cmx omega_unit.cmx
+	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -o omega_unit \
+		unix.cmxa $(OMEGA_CORE) \
+		oUnit.cmx oUnitDiff.cmx omega_unit.cmx
+
+omega_unit.cmx: omega_unit.ml
+	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -c -o $@ $<
+
+oUnit.cmi: oUnit.mli
+	$(OCAMLC) $(OCAMLFLAGS) -c -o $@ $<
+
+oUnit.cmx: oUnit.ml
+	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -c -o $@ $<
+
+oUnitDiff.cmi: oUnitDiff.mli
+	$(OCAMLC) $(OCAMLFLAGS) -c -o $@ $<
+
+oUnitDiff.cmx: oUnitDiff.ml
+	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -c -o $@ $<
+
+ocaml_unit.cmx oUnit.cmx oUnitDiff.cmx: oUnit.cmi
+ocaml_unit.cmx oUnitDiff.cmx: oUnitDiff.cmi
+
+omega_unit.cmx: $(OMEGA_CORE)
+
+endif
+
+########################################################################
+
+TESTS += test_omega95 test_omega95_bispinors
+EXTRA_PROGRAMS += test_omega95 test_omega95_bispinors
 
 test_omega95_SOURCES = test_omega95.f90 omega_testtools.f90
 test_omega95_LDADD = $(top_builddir)/src/libomega_core.la
