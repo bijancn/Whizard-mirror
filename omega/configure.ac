@@ -5,11 +5,11 @@ dnl Process this file with autoconf to produce a configure script.
 dnl
 dnl ************************************************************************
 dnl 
-dnl Copyright (C) 1999-2012 by 
+dnl Copyright (C) 1999-2013 by 
 dnl     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 dnl     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 dnl     Juergen Reuter <juergen.reuter@desy.de>
-dnl	Christian Speckner <christian.speckner@physik.uni-freiburg.de>
+dnl	Christian Speckner <cnspeckn@googlemail.com>
 dnl     and others
 dnl 
 dnl WHIZARD is free software; you can redistribute it and/or modify it
@@ -34,7 +34,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl 
 dnl *********************************************************************** 
 
-AC_INIT([omega],[2.1.2])
+AC_INIT([omega],[2.2.0])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 
@@ -47,7 +47,7 @@ AM_MAKE_INCLUDE
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Oct 21 2012"
+PACKAGE_DATE="Apr 08 2013"
 PACKAGE_STATUS="release"
 
 AC_SUBST(PACKAGE_DATE)

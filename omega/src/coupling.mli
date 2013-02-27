@@ -1,11 +1,11 @@
-(* $Id: coupling.mli 3999 2012-11-13 13:48:40Z jr_reuter $
+(* $Id: coupling.mli 4048 2013-02-01 10:07:17Z fbach $
 
-   Copyright (C) 1999-2012 by
+   Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
-       Christian Speckner <christian.speckner@physik.uni-freiburg.de>
+       Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -142,7 +142,7 @@ type 'a propagator =
   | Prop_Col_Scalar | Prop_Col_Feynman | Prop_Col_Majorana 
   | Prop_Col_Unitarity 
   | Aux_Scalar | Aux_Vector | Aux_Tensor_1
-  | Aux_Col_Vector | Aux_Col_Tensor_1
+  | Aux_Col_Scalar | Aux_Col_Vector | Aux_Col_Tensor_1
   | Aux_Spinor | Aux_ConjSpinor | Aux_Majorana
   | Only_Insertion
 

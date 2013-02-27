@@ -1,12 +1,12 @@
-! $Id: test_openmp.f90 3975 2012-09-25 06:19:40Z kilian $
+! $Id: test_openmp.f90 4073 2013-02-12 13:42:18Z fbach $
 ! driver.f90 -- O'Mega self test driver
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-! Copyright (C) 1999-2012 by 
+! Copyright (C) 1999-2013 by 
 !     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 !     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 !     Juergen Reuter <juergen.reuter@desy.de>
-!      Christian Speckner <christian.speckner@physik.uni-freiburg.de>
+!      Christian Speckner <cnspeckn@googlemail.com>
 !
 ! WHIZARD is free software; you can redistribute it and/or modify it
 ! under the terms of the GNU General Public License as published by 

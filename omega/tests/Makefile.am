@@ -1,15 +1,15 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 4003 2012-11-20 22:03:43Z ohl $
+# $Id: Makefile.am 4073 2013-02-12 13:42:18Z fbach $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
 ########################################################################
 #
-# Copyright (C) 1999-2012 by 
+# Copyright (C) 1999-2013 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
-#     Christian Speckner <christian.speckner@physik.uni-freiburg.de>
+#     Christian Speckner <cnspeckn@googlemail.com>
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by 
@@ -76,6 +76,9 @@ OMEGA_CORE = $(top_builddir)/src/omega_core.cmxa
 TESTS += omega_unit
 EXTRA_PROGRAMS += omega_unit
 
+omega_unit_SOURCES = omega_unit.ml 
+omega_unit_SOURCES += oUnit.mli oUnit.ml oUnitDiff.mli oUnitDiff.ml
+
 omega_unit: $(OMEGA_CORE) oUnit.cmx oUnitDiff.cmx omega_unit.cmx
 	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -o omega_unit \
 		unix.cmxa $(OMEGA_CORE) \
@@ -99,7 +102,10 @@ oUnitDiff.cmx: oUnitDiff.ml
 ocaml_unit.cmx oUnit.cmx oUnitDiff.cmx: oUnit.cmi
 ocaml_unit.cmx oUnitDiff.cmx: oUnitDiff.cmi
 
-omega_unit.cmx: $(OMEGA_CORE)
+# oUnit.cmi oUnit.cmx omega_unit.cmi oUnitDiff.cmi oUnitDiff.cmx omega_unit.cmx
+
+oUnitDiff.cmx: oUnit.cmx
+omega_unit.cmx: $(OMEGA_CORE) oUnitDiff.cmx oUnit.cmx 
 
 endif
 
@@ -358,7 +364,8 @@ clean-macosx:
 .PHONY: clean-macosx
 
 clean-local: clean-macosx
-	rm -f a.out gmon.out $(OMEGA_CACHES) *.$(FC_MODULE_EXT) *.o amplitude_*.f90 \
+	rm -f a.out gmon.out $(OMEGA_CACHES) *.$(FC_MODULE_EXT) \
+	  *.o *.cmi *.cmo *.cmx amplitude_*.f90 \
 	  $(EXTRA_PROGRAMS) ects.f90 ward.f90 compare_split_*.f90 \
 	  omega_testtools.f90 test_omega95*.f90
 

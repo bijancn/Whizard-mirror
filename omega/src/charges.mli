@@ -1,6 +1,6 @@
-(* $Id: charges.mli 3975 2012-09-25 06:19:40Z kilian $
+(* $Id: charges.mli 4073 2013-02-12 13:42:18Z fbach $
 
-   Copyright (C) 1999-2012 by
+   Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>

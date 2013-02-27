@@ -1,11 +1,11 @@
-(* $Id: modellib_SM.ml 3999 2012-11-13 13:48:40Z jr_reuter $
+(* $Id: modellib_SM.ml 4073 2013-02-12 13:42:18Z fbach $
 
-   Copyright (C) 1999-2012 by
+   Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
-       Christian Speckner <christian.speckner@physik.uni-freiburg.de>
+       Christian Speckner <cnspeckn@googlemail.com>
        Fabian Bach <fabian.bach@cern.ch> (only parts of this file)
 
    WHIZARD is free software; you can redistribute it and/or modify it
@@ -23,9 +23,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
-    { RCS.revision = "$Revision: 3999 $";
-      RCS.date = "$Date: 2012-11-13 14:48:40 +0100 (Tue, 13 Nov 2012) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 4073 $";
+      RCS.date = "$Date: 2013-02-12 15:42:18 +0200 (Tue, 12 Feb 2013) $";
+      RCS.author = "$Author: fbach $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_SM.ml $" }
 
@@ -630,7 +630,8 @@ module SM (Flags : SM_flags) =
         "use vanishing width"]
 
     type f_aux_top = TTGG | TBWA | TBWZ | TTWW | BBWW |   (*i top auxiliary field "flavors" *)
-                     QGUG | QBUB | QW | DL | DR
+                     QGUG | QBUB | QW | DL | DR |
+                     QUQD1L | QUQD1R | QUQD8L | QUQD8R
 
     type matter_field = L of int | N of int | U of int | D of int
     type gauge_boson = Ga | Wp | Wm | Z | Gl
@@ -678,7 +679,8 @@ module SM (Flags : SM_flags) =
       ( ThoList.flatmap snd (external_flavors ()) )
       ( ThoList.flatmap aux_top_flavors
          [ (TTGG,2,1,1); (TBWA,2,0,2); (TBWZ,2,0,2); (TTWW,2,0,1); (BBWW,2,0,1);
-           (QGUG,1,1,1); (QBUB,1,0,1); (QW,1,0,3); (DL,0,0,3); (DR,0,0,3) ] )
+           (QGUG,1,1,1); (QBUB,1,0,1); (QW,1,0,3); (DL,0,0,3); (DR,0,0,3);
+           (QUQD1L,0,0,3); (QUQD1R,0,0,3); (QUQD8L,0,1,3); (QUQD8R,0,1,3) ] )
 
     let spinor n =
       if n >= 0 then
@@ -881,6 +883,8 @@ module SM (Flags : SM_flags) =
       | G_VLR_qBuB_u | G_VLR_qBuB_d | G_VLR_qBuB_e | G_VL_qBuB_n
       | G_VL_qW | G_VL_qW_u | G_VL_qW_d
       | G_SL_DttR | G_SR_DttR | G_SL_DttL | G_SLR_DbtR | G_SL_DbtL
+      | C_quqd1R_bt | C_quqd1R_tb | C_quqd1L_bt | C_quqd1L_tb
+      | C_quqd8R_bt | C_quqd8R_tb | C_quqd8L_bt | C_quqd8L_tb
       | I_Q_W | I_G_ZWW
       | G_WWWW | G_ZZWW | G_AZWW | G_AAWW
       | I_G1_AWW | I_G1_ZWW
@@ -1805,6 +1809,44 @@ effective operators:
       else
         []
 
+    let anomalous_top_quqd1_tq =
+      [ ((M (D (-3)), O (Aux_top (0,0,-1,true,QUQD1R)), M (U 3)), FBF (1, Psibar, SR, Psi), C_quqd1R_bt);
+        ((M (U (-3)), O (Aux_top (0,0, 1,true,QUQD1R)), M (D 3)), FBF (1, Psibar, SL, Psi), C_quqd1R_tb);
+        ((M (D (-3)), O (Aux_top (0,0,-1,true,QUQD1L)), M (U 3)), FBF (1, Psibar, SL, Psi), C_quqd1L_bt);
+        ((M (U (-3)), O (Aux_top (0,0, 1,true,QUQD1L)), M (D 3)), FBF (1, Psibar, SR, Psi), C_quqd1L_tb) ]
+
+    let anomalous_top_quqd1_ff n =
+      List.map mom
+        [ ((U (-n), Aux_top (0,0, 1,false,QUQD1R), D n), FBF (1, Psibar, SR, Psi), Half);
+          ((D (-n), Aux_top (0,0,-1,false,QUQD1R), U n), FBF (1, Psibar, SL, Psi), Half);
+          ((U (-n), Aux_top (0,0, 1,false,QUQD1L), D n), FBF (1, Psibar, SL, Psi), Half);
+          ((D (-n), Aux_top (0,0,-1,false,QUQD1L), U n), FBF (1, Psibar, SR, Psi), Half) ]
+
+    let anomalous_top_quqd1 =
+      if Flags.top_anom_4f then
+        anomalous_top_quqd1_tq @ ThoList.flatmap anomalous_top_quqd1_ff [1;2;3]
+      else
+        []
+
+    let anomalous_top_quqd8_tq =
+      [ ((M (D (-3)), O (Aux_top (0,1,-1,true,QUQD8R)), M (U 3)), FBF (1, Psibar, SR, Psi), C_quqd8R_bt);
+        ((M (U (-3)), O (Aux_top (0,1, 1,true,QUQD8R)), M (D 3)), FBF (1, Psibar, SL, Psi), C_quqd8R_tb);
+        ((M (D (-3)), O (Aux_top (0,1,-1,true,QUQD8L)), M (U 3)), FBF (1, Psibar, SL, Psi), C_quqd8L_bt);
+        ((M (U (-3)), O (Aux_top (0,1, 1,true,QUQD8L)), M (D 3)), FBF (1, Psibar, SR, Psi), C_quqd8L_tb) ]
+
+    let anomalous_top_quqd8_ff n =
+      List.map mom
+        [ ((U (-n), Aux_top (0,1, 1,false,QUQD8R), D n), FBF (1, Psibar, SR, Psi), Half);
+          ((D (-n), Aux_top (0,1,-1,false,QUQD8R), U n), FBF (1, Psibar, SL, Psi), Half);
+          ((U (-n), Aux_top (0,1, 1,false,QUQD8L), D n), FBF (1, Psibar, SL, Psi), Half);
+          ((D (-n), Aux_top (0,1,-1,false,QUQD8L), U n), FBF (1, Psibar, SR, Psi), Half) ]
+
+    let anomalous_top_quqd8 =
+      if Flags.top_anom_4f then
+        anomalous_top_quqd8_tq @ ThoList.flatmap anomalous_top_quqd8_ff [1;2;3]
+      else
+        []
+
     let vertices3 =
       (ThoList.flatmap electromagnetic_currents [1;2;3] @
        ThoList.flatmap color_currents [1;2;3] @
@@ -1823,7 +1865,8 @@ effective operators:
        anomalous_ttG @ anomalous_ttGG @
        anomalous_ttH @
        anomalous_top_qGuG @ anomalous_top_qBuB @
-       anomalous_top_qW @ anomalous_top_DuDd)
+       anomalous_top_qW @ anomalous_top_DuDd @
+       anomalous_top_quqd1 @ anomalous_top_quqd8)
 
     let vertices4 =
       quartic_gauge @ gauge_higgs4 @ higgs4
@@ -1874,6 +1917,14 @@ effective operators:
       | "Aux_t_dR0"   -> O (Aux_top (0,0, 0,true,DR))   | "Aux_dR0"   -> O (Aux_top (0,0, 0,false,DR))
       | "Aux_t_dR+"   -> O (Aux_top (0,0, 1,true,DR))   | "Aux_dR+"   -> O (Aux_top (0,0, 1,false,DR))
       | "Aux_t_dR-"   -> O (Aux_top (0,0,-1,true,DR))   | "Aux_dR-"   -> O (Aux_top (0,0,-1,false,DR))
+      | "Aux_t_quqd1L+" -> O (Aux_top (0,0, 1,true,QUQD1L)) | "Aux_quqd1L+" -> O (Aux_top (0,0, 1,false,QUQD1L))
+      | "Aux_t_quqd1L-" -> O (Aux_top (0,0,-1,true,QUQD1L)) | "Aux_quqd1L-" -> O (Aux_top (0,0,-1,false,QUQD1L))
+      | "Aux_t_quqd1R+" -> O (Aux_top (0,0, 1,true,QUQD1R)) | "Aux_quqd1R+" -> O (Aux_top (0,0, 1,false,QUQD1R))
+      | "Aux_t_quqd1R-" -> O (Aux_top (0,0,-1,true,QUQD1R)) | "Aux_quqd1R-" -> O (Aux_top (0,0,-1,false,QUQD1R))
+      | "Aux_t_quqd8L+" -> O (Aux_top (0,1, 1,true,QUQD8L)) | "Aux_quqd8L+" -> O (Aux_top (0,1, 1,false,QUQD8L))
+      | "Aux_t_quqd8L-" -> O (Aux_top (0,1,-1,true,QUQD8L)) | "Aux_quqd8L-" -> O (Aux_top (0,1,-1,false,QUQD8L))
+      | "Aux_t_quqd8R+" -> O (Aux_top (0,1, 1,true,QUQD8R)) | "Aux_quqd8R+" -> O (Aux_top (0,1, 1,false,QUQD8R))
+      | "Aux_t_quqd8R-" -> O (Aux_top (0,1,-1,true,QUQD8R)) | "Aux_quqd8R-" -> O (Aux_top (0,1,-1,false,QUQD8R))
       | _ -> invalid_arg "Modellib.SM.flavor_of_string"
 
     let flavor_to_string = function
@@ -1916,6 +1967,8 @@ effective operators:
               | TTWW -> "ttWW" | BBWW -> "bbWW"
               | QGUG -> "qGuG" | QBUB -> "qBuB"
               | QW   -> "qW"   | DL   -> "dL"   | DR   -> "dR"
+              | QUQD1L -> "quqd1L" | QUQD1R -> "quqd1R"
+              | QUQD8L -> "quqd8L" | QUQD8R -> "quqd8R"
               end ) ^ ( if ch > 0 then "+" else if ch < 0 then "-" else "0" )
           end
 
@@ -1959,6 +2012,8 @@ effective operators:
               | TTWW -> "ttWW" | BBWW -> "bbWW"
               | QGUG -> "qGuG" | QBUB -> "qBuB"
               | QW   -> "qW"   | DL   -> "dL"   | DR   -> "dR"
+              | QUQD1L -> "quqd1L" | QUQD1R -> "quqd1R"
+              | QUQD8L -> "quqd8L" | QUQD8R -> "quqd8R"
               end ) ^ ( if ch > 0 then "^+" else if ch < 0 then "^-" else "^0" ) ^ "}"
           end
 
@@ -1990,6 +2045,8 @@ effective operators:
               | TTWW -> "ttww" | BBWW -> "bbww"
               | QGUG -> "qgug" | QBUB -> "qbub"
               | QW   -> "qw"   | DL   -> "dl"   | DR   -> "dr"
+              | QUQD1L -> "quqd1l" | QUQD1R -> "quqd1r"
+              | QUQD8L -> "quqd8l" | QUQD8R -> "quqd8r"
               end ) ^ "_" ^ ( if ch > 0 then "p" else if ch < 0 then "m" else "0" )
           end
 
@@ -2015,7 +2072,14 @@ effective operators:
           begin match f with
           | Phip | Phim -> 27 | Phi0 -> 26
           | H -> 25
-          | Aux_top (_,_,_,_,_) -> 81
+          | Aux_top (_,_,ch,t,f) -> let n =
+            begin match f with
+            | QW -> 0
+            | QUQD1R -> 1 | QUQD1L -> 2
+            | QUQD8R -> 3 | QUQD8L -> 4
+            | _ -> 5
+            end
+            in (602 + 3*n - ch) * ( if t then (1) else (-1) )
           end
 
     let mass_symbol f = 
@@ -2049,6 +2113,10 @@ effective operators:
       | G_VL_qW_u -> "gvl_qw_u" | G_VL_qW_d -> "gvl_qw_d"
       | G_SL_DttR -> "gsl_dttr" | G_SR_DttR -> "gsr_dttr" | G_SL_DttL -> "gsl_dttl"
       | G_SLR_DbtR -> "gslr_dbtr" | G_SL_DbtL -> "gsl_dbtl"
+      | C_quqd1R_bt -> "c_quqd1_1" | C_quqd1R_tb -> "conjg(c_quqd1_1)"
+      | C_quqd1L_bt -> "conjg(c_quqd1_2)" | C_quqd1L_tb -> "c_quqd1_2"
+      | C_quqd8R_bt -> "c_quqd8_1" | C_quqd8R_tb -> "conjg(c_quqd8_1)"
+      | C_quqd8L_bt -> "conjg(c_quqd8_2)" | C_quqd8L_tb -> "c_quqd8_2"
       | G_CC -> "gcc"
       | G_CCQ (n1,n2) -> "gccq" ^ string_of_int n1 ^ string_of_int n2
       | I_Q_W -> "iqw" | I_G_ZWW -> "igzww" 

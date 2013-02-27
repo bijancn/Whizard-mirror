@@ -1,11 +1,11 @@
-(* $Id: targets.ml 3999 2012-11-13 13:48:40Z jr_reuter $
+(* $Id: targets.ml 4048 2013-02-01 10:07:17Z fbach $
 
-   Copyright (C) 1999-2012 by
+   Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
-       Juergen Reuter <juergen.reuter@physik.uni-freiburg.de>
-       Christian Speckner <christian.speckner@physik.uni-freiburg.de>
+       Juergen Reuter <juergen.reuter@desy.de>
+       Christian Speckner <cnspeckn@googlemail.com>
        Fabian Bach <fabian.bach@cern.ch> (only parts of this file)
 
    WHIZARD is free software; you can redistribute it and/or modify it
@@ -23,9 +23,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 3999 $";
-      RCS.date = "$Date: 2012-11-13 14:48:40 +0100 (Tue, 13 Nov 2012) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 4048 $";
+      RCS.date = "$Date: 2013-02-01 12:07:17 +0200 (Fri, 01 Feb 2013) $";
+      RCS.author = "$Author: fbach $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/targets.ml $" }
 
@@ -1571,7 +1571,7 @@ i*)
           printf "pr_grav(%s,%s,%s," p m w
       | Aux_Scalar | Aux_Spinor | Aux_ConjSpinor | Aux_Majorana
       | Aux_Vector | Aux_Tensor_1 -> printf "("
-      | Aux_Col_Vector | Aux_Col_Tensor_1 -> printf "%s * (" minus_third
+      | Aux_Col_Scalar | Aux_Col_Vector | Aux_Col_Tensor_1 -> printf "%s * (" minus_third
       | Only_Insertion -> printf "("
 
     let print_projector f p m gamma =
@@ -1607,7 +1607,7 @@ i*)
           printf "pj_tensor(%s,%s,%s," p m gamma
       | Aux_Scalar | Aux_Spinor | Aux_ConjSpinor | Aux_Majorana
       | Aux_Vector | Aux_Tensor_1 -> printf "("
-      | Aux_Col_Vector | Aux_Col_Tensor_1 -> printf "%s * (" minus_third
+      | Aux_Col_Scalar | Aux_Col_Vector | Aux_Col_Tensor_1 -> printf "%s * (" minus_third
       | Only_Insertion -> printf "("
 
     let print_gauss f p m gamma =

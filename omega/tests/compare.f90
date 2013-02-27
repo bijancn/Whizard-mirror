@@ -1,12 +1,12 @@
-! $Id: compare.f90 3975 2012-09-25 06:19:40Z kilian $
+! $Id: compare.f90 4073 2013-02-12 13:42:18Z fbach $
 ! compare.f90 -- compare amplitudes created by two versions of O'Mega 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-! Copyright (C) 1999-2012 by 
+! Copyright (C) 1999-2013 by 
 !     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 !     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 !     Juergen Reuter <juergen.reuter@desy.de>
-!     Christian Speckner <christian.speckner@physik.uni-freiburg.de>
+!     Christian Speckner <cnspeckn@googlemail.com>
 !
 ! WHIZARD is free software; you can redistribute it and/or modify it
 ! under the terms of the GNU General Public License as published by 

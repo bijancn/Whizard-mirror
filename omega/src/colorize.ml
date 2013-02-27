@@ -1,11 +1,11 @@
-(* $Id: colorize.ml 4004 2012-11-21 14:13:35Z ohl $
+(* $Id: colorize.ml 4048 2013-02-01 10:07:17Z fbach $
 
-   Copyright (C) 1999-2012 by
+   Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
-       Christian Speckner <christian.speckner@physik.uni-freiburg.de>
+       Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -22,9 +22,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Colorize" ["Colorizing Monochrome Models"]
-    { RCS.revision = "$Revision: 4004 $";
-      RCS.date = "$Date: 2012-11-21 15:13:35 +0100 (Wed, 21 Nov 2012) $";
-      RCS.author = "$Author: ohl $";
+    { RCS.revision = "$Revision: 4048 $";
+      RCS.date = "$Date: 2013-02-01 12:07:17 +0200 (Fri, 01 Feb 2013) $";
+      RCS.author = "$Author: fbach $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/colorize.ml $" }
 
@@ -110,11 +110,12 @@ module It (M : Model.T) =
       | Prop_Majorana -> Prop_Col_Majorana   (* Spin 1/2 octets. *)
       | Prop_Feynman -> Prop_Col_Feynman   (* Spin 1 states, massless. *)
       | Prop_Unitarity -> Prop_Col_Unitarity   (* Spin 1 states, massive. *)
+      | Aux_Scalar -> Aux_Col_Scalar  (* constant colored scalar propagator *)
       | Aux_Vector -> Aux_Col_Vector  (* constant colored vector propagator *)
       | Aux_Tensor_1 -> Aux_Col_Tensor_1  (* constant colored tensor propagator *)
       | Prop_Col_Scalar | Prop_Col_Feynman
       | Prop_Col_Majorana | Prop_Col_Unitarity
-      | Aux_Col_Vector | Aux_Col_Tensor_1
+      | Aux_Col_Scalar | Aux_Col_Vector | Aux_Col_Tensor_1
         -> failwith ("Colorize.It().colorize_propagator: already colored particle!")
       | _ -> failwith ("Colorize.It().colorize_propagator: impossible!")
 
