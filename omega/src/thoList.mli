@@ -114,7 +114,7 @@ exception Out_of_bounds
 
 (* [ariadne_sort cmp list] sorts [list] according to [cmp]
    (default [Pervasives.compare]) keeping track of the original order
-   by a 0-based list of infices. *)
+   by a 0-based list of indices. *)
 val ariadne_sort : ?cmp:('a -> 'a -> int) -> 'a list -> 'a list * int list
 
 (* [ariadne_unsort (ariadne_sort cmp list)] returns [list]. *)
