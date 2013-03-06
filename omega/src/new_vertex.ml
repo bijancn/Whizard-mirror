@@ -303,11 +303,11 @@ module Permutation_Test (Permutation : Permutation) : Test =
     let repeat repetitions size =
       let id = ThoList.range 0 size in
       let p = of_list (shuffle id)
-      and l = shuffle id in
+      and l = shuffle (List.map string_of_int id) in
       print_time (Printf.sprintf "reps=%d, len=%d" repetitions size)
 	(fun () ->
 	  for i = 1 to repetitions do
-	    Permutation.list p l
+	    ignore (Permutation.list p l)
 	  done)
 	()
       
@@ -321,44 +321,110 @@ module Permutation_Test (Permutation : Permutation) : Test =
 
   end
 
-type index = int
+module type Vertex = 
+  sig
+    type index
+    type t
+    val example : unit -> unit
+    val test_suite : OUnit.test
+  end
 
-type momentum = index
-type gamma = index * index
+module Vertex (* : Vertex *) =
+  struct
 
-type vector =
-| Momentum of momentum
-| Gamma of gamma
-| Gamma5 of gamma
+    type index = int
 
-type factor =
-| Integer of int
-| Contraction of vector * vector
+    type momentum = index
+    type gamma = index * index
 
-type lorentz_tensor = factor * vector list
+    type vector =
+    | Momentum of momentum
+    | Gamma of gamma
+    | Gamma5 of gamma
 
-type color =
-| Fundamental of index
-| Conjugate of index
-| Adjoint of index
+    type factor =
+    | Integer of int
+    | Contraction of vector * vector
 
-type color_primitive =
-| Unit
-| Delta of index * index
-| T of index * index * index
-| F of index * index * index
+    type lorentz_tensor = factor * vector list
 
-type color_tensor = int * color_primitive list
+    type color =
+    | Fundamental of index
+    | Conjugate of index
+    | Adjoint of index
 
-type vertex =
-  { fields: Coupling.lorentz array;
-    lorentz : lorentz_tensor list;
-    color : color_tensor list }
+    type color_primitive =
+    | Unit
+    | Delta of index * index
+    | T of index * index * index
+    | F of index * index * index
 
-let vector_current =
-  { fields = [| Coupling.ConjSpinor; Coupling.Vector; Coupling.Spinor |];
-    lorentz = [ (Integer 1, [Gamma (0, 2)]) ];
-    color = [ (1, [T (1, 0, 2)])] }
+    type color_tensor = int * color_primitive list
+
+    type t =
+      { fields: Coupling.lorentz array;
+	lorentz : lorentz_tensor list;
+	color : color_tensor list }
+
+    let vector_current =
+      { fields = [| Coupling.ConjSpinor; Coupling.Vector; Coupling.Spinor |];
+	lorentz = [ (Integer 1, [Gamma (0, 2)]) ];
+	color = [ (1, [T (1, 0, 2)])] }
+
+    let vector_current_out_of_bounds =
+      { fields = [| Coupling.ConjSpinor; Coupling.Vector; Coupling.Spinor |];
+	lorentz = [ (Integer 1, [Gamma (3, 2)]) ];
+	color = [ (1, [T (1, 0, 2)])] }
+
+    let lorentz_indices0 = function
+      | Momentum i -> [i]
+      | Gamma (i, j) -> [i; j]
+      | Gamma5 (i, j) -> [i; j]
+
+    let lorentz_indices l =
+      ThoList.flatmap (fun (_, t) -> ThoList.flatmap lorentz_indices0 t) l
+
+    let color_indices0 = function
+      | Unit -> []
+      | Delta (i, j) -> [i; j]
+      | T (a, i, j) -> [a; i; j]
+      | F (a, b, c) -> [a; b; c]
+
+    let color_indices l =
+      ThoList.flatmap (fun (_, t) -> ThoList.flatmap color_indices0 t) l
+
+    let consistent v =
+      let arity = Array.length v.fields in
+      List.for_all (fun i -> i >= 0 && i < arity)
+	(lorentz_indices v.lorentz @ color_indices v.color)
+
+    exception Inconsistent_vertex
+
+    let example () =
+      if not (consistent vector_current) then begin
+	raise Inconsistent_vertex
+      end;
+      ()
+
+    open OUnit
+
+    let vertex_indices_ok =
+      "indices/ok" >::
+	(fun () ->
+	  assert_bool "vector_current" (consistent vector_current))
+		
+    let vertex_indices_broken =
+      "indices/broken" >::
+	(fun () ->
+	  assert_bool "out of bounds"
+	    (not (consistent vector_current_out_of_bounds)))
+		
+    let test_suite =
+      "Vertex" >:::
+	[vertex_indices_ok;
+	 vertex_indices_broken]
+      
+  end
 
 module Permutation_List_Test = Permutation_Test (Permutation_List)
 module Permutation_Array_Test = Permutation_Test (Permutation_Array)
@@ -380,7 +446,8 @@ let () =
       OUnit.(>:::) "All" 
 	[Partial_Test.suite;
 	 Permutation_List_Test.suite;
-	 Permutation_Array_Test.suite] in
+	 Permutation_Array_Test.suite;
+	 Vertex.test_suite] in
     ignore (OUnit.run_test_tt ~verbose:!verbose suite)
   end;
   if !timing then begin
@@ -390,4 +457,5 @@ let () =
     print_endline "Array based:";
     Permutation_Array_Test.time ()
   end;
+  Vertex.example ();
   ()
