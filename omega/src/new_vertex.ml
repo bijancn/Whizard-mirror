@@ -448,6 +448,15 @@ module Vertex (* : Vertex *) =
 	lorentz : lorentz_tensor list;
 	color : color_tensor list }
 
+    module PM = Partial (struct type t = int let compare = compare end)
+
+    let permute p v =
+      let id = ThoList.range 0 (Array.length v) in
+      let pm = PM.of_lists id p in
+      { fields = Permutation.apply (Permutation.of_list p) v.fields;
+	lorentz = v.lorentz;
+	color = v.color }
+            
     let write_fusions v =
       ()
 
