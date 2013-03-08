@@ -450,15 +450,26 @@ module Vertex (* : Vertex *) =
 
     module PM = Partial (struct type t = int let compare = compare end)
 
-    let permute p v =
+    let permute v p =
       let id = ThoList.range 0 (Array.length v.fields - 1) in
-      let pm = PM.apply (PM.of_lists id p) in
+      let permute_indices = PM.apply (PM.of_lists id p) in
       { fields = Permutation.array (Permutation.of_list p) v.fields;
- 	lorentz = List.map (map_lorentz_tensor pm) v.lorentz;
-	color = List.map (map_color_tensor pm) v.color }
+ 	lorentz = List.map (map_lorentz_tensor permute_indices) v.lorentz;
+	color = List.map (map_color_tensor permute_indices) v.color }
+
+    let permutations v =
+      List.map (permute v)
+	(Combinatorics.permute (ThoList.range 0 (Array.length v.fields - 1)))
             
+    let write_fusion v =
+      match List.map SM.flavor_to_string (Array.to_list v.fields) with
+      | lhs :: rhs ->
+	Printf.printf "! FUSION: %s <- %s\n" lhs (String.concat " + " rhs);
+	()
+      | [] -> ()
+
     let write_fusions v =
-      ()
+      List.iter write_fusion (permutations v)
 
 (* Testing: *)
 
@@ -499,11 +510,9 @@ module Vertex (* : Vertex *) =
       "indices/ok" >::
 	(fun () ->
 	  List.iter
-	    (fun p ->
-	      assert_bool "vector_current"
-		(vertex_ok (permute p vector_current)))
-	    (Combinatorics.permute
-	       (ThoList.range 0 (Array.length vector_current.fields - 1))))
+	    (fun v ->
+	      assert_bool "vector_current" (vertex_ok v))
+	    (permutations vector_current))
 		
     let vertex_indices_broken =
       "indices/broken" >::
