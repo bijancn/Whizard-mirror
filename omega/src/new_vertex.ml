@@ -349,6 +349,11 @@ module Vertex (* : Vertex *) =
     | Gamma of gamma
     | Gamma5 of gamma
 
+    let map_lorentz_primitive f = function
+      | Momentum i -> Momentum (f i)
+      | Gamma (i, j) -> Gamma (f i, f j)
+      | Gamma5 (i, j) -> Gamma5 (f i, f j)
+
     let lorentz_primitive_ok context =
       let index_in_bounds i = 0 <= i && i < context.arity in
       function
@@ -367,12 +372,20 @@ module Vertex (* : Vertex *) =
     | Integer of int
     | Contraction of lorentz_primitive * lorentz_primitive
 
+    let map_factor f = function
+      | Integer _ as i -> i
+      | Contraction (p1, p2) ->
+	Contraction (map_lorentz_primitive f p1, map_lorentz_primitive f p2)
+
     let factor_ok context = function
       | Integer _ -> true
       | Contraction (p1, p2) ->
 	lorentz_primitive_ok context p1 && lorentz_primitive_ok context p2
 
     type lorentz_tensor = factor * lorentz_primitive list
+
+    let map_lorentz_tensor f (factor, primitives) =
+      (map_factor f factor, List.map (map_lorentz_primitive f) primitives)
 
     let lorentz_tensor_ok context (factor, primitives) =
       factor_ok context factor &&
@@ -389,6 +402,12 @@ module Vertex (* : Vertex *) =
     | T of index * index * index
     | F of index * index * index
 
+    let map_color_primitive f = function
+      | Unit -> Unit
+      | Delta (i, j) -> Delta (f i, f j)
+      | T (a, i, j) -> T (f a, f i, f j)
+      | F (a, b, c) -> F (f a, f b, f c)
+      
     let color_primitive_ok context =
       let index_ok i = 0 <= i && i < context.arity in
       function
@@ -399,7 +418,7 @@ module Vertex (* : Vertex *) =
 	  | Color.SUN (n1), Color.SUN (n2) ->
 	    n1 = - n2 && n2 > 0
 	  | _, _ -> false)
-      | T (a, i, j) | F (a, i, j) ->
+      | T (a, i, j) ->
 	i <> j && a <> i && a <> j &&
 	  index_ok a && index_ok i && index_ok j &&
 	  (match context.color_reps.(a),
@@ -407,8 +426,19 @@ module Vertex (* : Vertex *) =
 	  | Color.AdjSUN(n1), Color.SUN (n2), Color.SUN (n3) ->
 	    n1 = n3 && n2 = - n3 && n3 > 0
 	  | _, _, _ -> false)
+      | F (a, b, c) ->
+	a <> b && a <> b && b <> c &&
+	  index_ok a && index_ok b && index_ok c &&
+	  (match context.color_reps.(a),
+	    context.color_reps.(b), context.color_reps.(c) with
+	  | Color.AdjSUN(n1), Color.AdjSUN (n2), Color.AdjSUN (n3) ->
+	    n1 = n2 && n2 = n3 && n1 > 0
+	  | _, _, _ -> false)
 
     type color_tensor = int * color_primitive list
+
+    let map_color_tensor f (factor, primitives) =
+      (factor, List.map (map_color_primitive f) primitives)
 
     let color_tensor_ok context (_, primitives) =
       List.for_all (color_primitive_ok context) primitives
@@ -417,6 +447,11 @@ module Vertex (* : Vertex *) =
       { fields : SM.flavor array;
 	lorentz : lorentz_tensor list;
 	color : color_tensor list }
+
+    let write_fusions v =
+      ()
+
+(* Testing: *)
 
     let vector_current =
       { fields = Array.map SM.flavor_of_string [| "tbar"; "gl"; "t" |];
@@ -447,7 +482,7 @@ module Vertex (* : Vertex *) =
       if not (vertex_ok vector_current) then begin
 	raise Inconsistent_vertex
       end;
-      ()
+      write_fusions vector_current
 
     open OUnit
 
