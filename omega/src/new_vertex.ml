@@ -451,11 +451,11 @@ module Vertex (* : Vertex *) =
     module PM = Partial (struct type t = int let compare = compare end)
 
     let permute p v =
-      let id = ThoList.range 0 (Array.length v) in
-      let pm = PM.of_lists id p in
-      { fields = Permutation.apply (Permutation.of_list p) v.fields;
-	lorentz = v.lorentz;
-	color = v.color }
+      let id = ThoList.range 0 (Array.length v.fields - 1) in
+      let pm = PM.apply (PM.of_lists id p) in
+      { fields = Permutation.array (Permutation.of_list p) v.fields;
+ 	lorentz = List.map (map_lorentz_tensor pm) v.lorentz;
+	color = List.map (map_color_tensor pm) v.color }
             
     let write_fusions v =
       ()
@@ -498,7 +498,12 @@ module Vertex (* : Vertex *) =
     let vertex_indices_ok =
       "indices/ok" >::
 	(fun () ->
-	  assert_bool "vector_current" (vertex_ok vector_current))
+	  List.iter
+	    (fun p ->
+	      assert_bool "vector_current"
+		(vertex_ok (permute p vector_current)))
+	    (Combinatorics.permute
+	       (ThoList.range 0 (Array.length vector_current.fields - 1))))
 		
     let vertex_indices_broken =
       "indices/broken" >::
