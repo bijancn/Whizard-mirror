@@ -332,21 +332,51 @@ module type Vertex =
 module Vertex (* : Vertex *) =
   struct
 
+    module SM = Modellib_SM.SM(Modellib_SM.SM_no_anomalous)
+
+    type context =
+      { arity : int;
+	lorentz_reps : Coupling.lorentz array;
+	color_reps : Color.t array }
+
     type index = int
 
     type momentum = index
     type gamma = index * index
 
-    type vector =
+    type lorentz_primitive =
     | Momentum of momentum
     | Gamma of gamma
     | Gamma5 of gamma
 
+    let lorentz_primitive_ok context =
+      let index_in_bounds i = 0 <= i && i < context.arity in
+      function
+      | Momentum i -> index_in_bounds i
+      | Gamma (i, j) | Gamma5 (i, j) ->
+	i <> j && index_in_bounds i && index_in_bounds j &&
+	  (match context.lorentz_reps.(i), context.lorentz_reps.(j) with
+	  | Coupling.ConjSpinor, Coupling.Spinor -> true
+	  | (Coupling.Vectorspinor|Coupling.Majorana), _ ->
+	    failwith "lorentz_primitive_ok: incomplete"
+	  | _, (Coupling.Vectorspinor|Coupling.Majorana) ->
+	    failwith "lorentz_primitive_ok: incomplete"
+	  | _, _ -> false)
+
     type factor =
     | Integer of int
-    | Contraction of vector * vector
+    | Contraction of lorentz_primitive * lorentz_primitive
 
-    type lorentz_tensor = factor * vector list
+    let factor_ok context = function
+      | Integer _ -> true
+      | Contraction (p1, p2) ->
+	lorentz_primitive_ok context p1 && lorentz_primitive_ok context p2
+
+    type lorentz_tensor = factor * lorentz_primitive list
+
+    let lorentz_tensor_ok context (factor, primitives) =
+      factor_ok context factor &&
+	List.for_all (lorentz_primitive_ok context) primitives
 
     type color =
     | Fundamental of index
@@ -359,49 +389,62 @@ module Vertex (* : Vertex *) =
     | T of index * index * index
     | F of index * index * index
 
+    let color_primitive_ok context =
+      let index_ok i = 0 <= i && i < context.arity in
+      function
+      | Unit -> true
+      | Delta (i, j) ->
+	i <> j &&  index_ok i && index_ok j &&
+	  (match context.color_reps.(i), context.color_reps.(j) with
+	  | Color.SUN (n1), Color.SUN (n2) ->
+	    n1 = - n2 && n2 > 0
+	  | _, _ -> false)
+      | T (a, i, j) | F (a, i, j) ->
+	i <> j && a <> i && a <> j &&
+	  index_ok a && index_ok i && index_ok j &&
+	  (match context.color_reps.(a),
+	    context.color_reps.(i), context.color_reps.(j) with
+	  | Color.AdjSUN(n1), Color.SUN (n2), Color.SUN (n3) ->
+	    n1 = n3 && n2 = - n3 && n3 > 0
+	  | _, _, _ -> false)
+
     type color_tensor = int * color_primitive list
 
+    let color_tensor_ok context (_, primitives) =
+      List.for_all (color_primitive_ok context) primitives
+
     type t =
-      { fields: Coupling.lorentz array;
+      { fields : SM.flavor array;
 	lorentz : lorentz_tensor list;
 	color : color_tensor list }
 
     let vector_current =
-      { fields = [| Coupling.ConjSpinor; Coupling.Vector; Coupling.Spinor |];
+      { fields = Array.map SM.flavor_of_string [| "tbar"; "gl"; "t" |];
 	lorentz = [ (Integer 1, [Gamma (0, 2)]) ];
 	color = [ (1, [T (1, 0, 2)])] }
 
     let vector_current_out_of_bounds =
-      { fields = [| Coupling.ConjSpinor; Coupling.Vector; Coupling.Spinor |];
+      { fields = Array.map SM.flavor_of_string [| "tbar"; "gl"; "t" |];
 	lorentz = [ (Integer 1, [Gamma (3, 2)]) ];
 	color = [ (1, [T (1, 0, 2)])] }
 
-    let lorentz_indices0 = function
-      | Momentum i -> [i]
-      | Gamma (i, j) -> [i; j]
-      | Gamma5 (i, j) -> [i; j]
+    let vector_current_color_mismatch =
+      { fields = Array.map SM.flavor_of_string [| "t"; "gl"; "t" |];
+	lorentz = [ (Integer 1, [Gamma (3, 2)]) ];
+	color = [ (1, [T (1, 0, 2)])] }
 
-    let lorentz_indices l =
-      ThoList.flatmap (fun (_, t) -> ThoList.flatmap lorentz_indices0 t) l
-
-    let color_indices0 = function
-      | Unit -> []
-      | Delta (i, j) -> [i; j]
-      | T (a, i, j) -> [a; i; j]
-      | F (a, b, c) -> [a; b; c]
-
-    let color_indices l =
-      ThoList.flatmap (fun (_, t) -> ThoList.flatmap color_indices0 t) l
-
-    let consistent v =
-      let arity = Array.length v.fields in
-      List.for_all (fun i -> i >= 0 && i < arity)
-	(lorentz_indices v.lorentz @ color_indices v.color)
+    let vertex_ok v =
+      let context =
+	{ arity = Array.length v.fields;
+	  lorentz_reps = Array.map SM.lorentz v.fields;
+	  color_reps = Array.map SM.color v.fields } in
+      List.for_all (lorentz_tensor_ok context) v.lorentz &&
+	List.for_all (color_tensor_ok context) v.color
 
     exception Inconsistent_vertex
 
     let example () =
-      if not (consistent vector_current) then begin
+      if not (vertex_ok vector_current) then begin
 	raise Inconsistent_vertex
       end;
       ()
@@ -411,13 +454,15 @@ module Vertex (* : Vertex *) =
     let vertex_indices_ok =
       "indices/ok" >::
 	(fun () ->
-	  assert_bool "vector_current" (consistent vector_current))
+	  assert_bool "vector_current" (vertex_ok vector_current))
 		
     let vertex_indices_broken =
       "indices/broken" >::
 	(fun () ->
 	  assert_bool "out of bounds"
-	    (not (consistent vector_current_out_of_bounds)))
+	    (not (vertex_ok vector_current_out_of_bounds));
+	  assert_bool "color mismatch"
+	    (not (vertex_ok vector_current_color_mismatch)))
 		
     let test_suite =
       "Vertex" >:::
