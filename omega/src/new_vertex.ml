@@ -339,123 +339,165 @@ module Vertex (* : Vertex *) =
 	lorentz_reps : Coupling.lorentz array;
 	color_reps : Color.t array }
 
-    type index = int
+    type field = int
 
-    type momentum = index
-    type gamma = index * index
+    module type Lorentz =
+      sig
+      end
 
-    type lorentz_primitive =
-    | Momentum of momentum
-    | Gamma of gamma
-    | Gamma5 of gamma
+    module Lorentz (* : Lorentz *) =
+      struct
 
-    let map_lorentz_primitive f = function
-      | Momentum i -> Momentum (f i)
-      | Gamma (i, j) -> Gamma (f i, f j)
-      | Gamma5 (i, j) -> Gamma5 (f i, f j)
+	type index = int
 
-    let lorentz_primitive_ok context =
-      let index_in_bounds i = 0 <= i && i < context.arity in
-      function
-      | Momentum i -> index_in_bounds i
-      | Gamma (i, j) | Gamma5 (i, j) ->
-	i <> j && index_in_bounds i && index_in_bounds j &&
-	  (match context.lorentz_reps.(i), context.lorentz_reps.(j) with
-	  | Coupling.ConjSpinor, Coupling.Spinor -> true
-	  | (Coupling.Vectorspinor|Coupling.Majorana), _ ->
-	    failwith "lorentz_primitive_ok: incomplete"
-	  | _, (Coupling.Vectorspinor|Coupling.Majorana) ->
-	    failwith "lorentz_primitive_ok: incomplete"
-	  | _, _ -> false)
+	type primitive =
+	| G of index * index
+	| E of index * index * index * index
+	| K of index * field
+	| S of field * field
+	| V of index * field * field
+	| T of index * index * field * field
+	| A of index * field * field
+	| P of field * field
 
-    type factor =
-    | Integer of int
-    | Contraction of lorentz_primitive * lorentz_primitive
+	let map_primitive fi ff = function
+	  | G (mu, nu) -> G (fi mu, fi nu)
+	  | E (mu, nu, rho, sigma) -> E (fi mu, fi nu, fi rho, fi sigma)
+	  | K (mu, i) -> K (fi mu, ff i)
+	  | S (i, j) -> S (ff i, ff j)
+	  | V (mu, i, j) -> V (fi mu, ff i, ff j)
+	  | T (mu, nu, i, j) -> T (fi mu, fi nu, ff i, ff j)
+	  | A (mu, i, j) -> A (fi mu, ff i, ff j)
+	  | P (i, j) -> P (ff i, ff j)
 
-    let map_factor f = function
-      | Integer _ as i -> i
-      | Contraction (p1, p2) ->
-	Contraction (map_lorentz_primitive f p1, map_lorentz_primitive f p2)
+	let primitive_ok context =
+	  let field_in_bounds i = 0 <= i && i < context.arity in
+	  function
+	  | G (_, _) | E (_, _, _, _) -> true
+	  | K (_, i) -> field_in_bounds i
+	  | S (i, j) | V (_, i, j)
+	  | T (_, _, i, j)
+	  | A (_, i, j) | P (i, j) ->
+	    i <> j && field_in_bounds i && field_in_bounds j &&
+	      (match context.lorentz_reps.(i), context.lorentz_reps.(j) with
+	      | Coupling.ConjSpinor, Coupling.Spinor -> true
+	      | (Coupling.Vectorspinor|Coupling.Majorana), _ ->
+		failwith "Lorentz.primitive_ok: incomplete"
+	      | _, (Coupling.Vectorspinor|Coupling.Majorana) ->
+		failwith "Lorentz.primitive_ok: incomplete"
+	      | _, _ -> false)
 
-    let factor_ok context = function
-      | Integer _ -> true
-      | Contraction (p1, p2) ->
-	lorentz_primitive_ok context p1 && lorentz_primitive_ok context p2
+	type factor =
+	| Integer of int
+	| Contraction of primitive * primitive
 
-    type lorentz_tensor = factor * lorentz_primitive list
+	let map_factor fi ff = function
+	  | Integer _ as i -> i
+	  | Contraction (p1, p2) ->
+	    Contraction (map_primitive fi ff p1,
+			 map_primitive fi ff p2)
 
-    let map_lorentz_tensor f (factor, primitives) =
-      (map_factor f factor, List.map (map_lorentz_primitive f) primitives)
+	let factor_ok context = function
+	  | Integer _ -> true
+	  | Contraction (p1, p2) ->
+	    primitive_ok context p1 && primitive_ok context p2
 
-    let lorentz_tensor_ok context (factor, primitives) =
-      factor_ok context factor &&
-	List.for_all (lorentz_primitive_ok context) primitives
+	type tensor = factor * primitive list
 
-    type color =
-    | Fundamental of index
-    | Conjugate of index
-    | Adjoint of index
+	let map_tensor fi ff (factor, primitives) =
+	  (map_factor fi ff factor,
+	   List.map (map_primitive fi ff) primitives)
 
-    type color_primitive =
-    | Unit
-    | Delta of index * index
-    | T of index * index * index
-    | F of index * index * index
+	let tensor_ok context (factor, primitives) =
+	  factor_ok context factor &&
+	    List.for_all (primitive_ok context) primitives
 
-    let map_color_primitive f = function
-      | Unit -> Unit
-      | Delta (i, j) -> Delta (f i, f j)
-      | T (a, i, j) -> T (f a, f i, f j)
-      | F (a, b, c) -> F (f a, f b, f c)
+      end
+
+    module type Color =
+      sig
+      end
+
+    module Color (* : Color *) = 
+      struct
+
+	type color =
+	| Fundamental of field
+	| Conjugate of field
+	| Adjoint of field
+
+	type primitive =
+	| D of field * field
+	| E of field * field * field  (* $SU(3)$ *)
+	| T of field * field * field
+	| F of field * field * field
+
+	let map_primitive f = function
+	  | D (i, j) -> D (f i, f j)
+	  | E (i, j, k) -> E (f i, f j, f k)
+	  | T (a, i, j) -> T (f a, f i, f j)
+	  | F (a, b, c) -> F (f a, f b, f c)
       
-    let color_primitive_ok context =
-      let index_ok i = 0 <= i && i < context.arity in
-      function
-      | Unit -> true
-      | Delta (i, j) ->
-	i <> j &&  index_ok i && index_ok j &&
-	  (match context.color_reps.(i), context.color_reps.(j) with
-	  | Color.SUN (n1), Color.SUN (n2) ->
-	    n1 = - n2 && n2 > 0
-	  | _, _ -> false)
-      | T (a, i, j) ->
-	i <> j && a <> i && a <> j &&
-	  index_ok a && index_ok i && index_ok j &&
-	  (match context.color_reps.(a),
-	    context.color_reps.(i), context.color_reps.(j) with
-	  | Color.AdjSUN(n1), Color.SUN (n2), Color.SUN (n3) ->
-	    n1 = n3 && n2 = - n3 && n3 > 0
-	  | _, _, _ -> false)
-      | F (a, b, c) ->
-	a <> b && a <> b && b <> c &&
-	  index_ok a && index_ok b && index_ok c &&
-	  (match context.color_reps.(a),
-	    context.color_reps.(b), context.color_reps.(c) with
-	  | Color.AdjSUN(n1), Color.AdjSUN (n2), Color.AdjSUN (n3) ->
-	    n1 = n2 && n2 = n3 && n1 > 0
-	  | _, _, _ -> false)
+	let primitive_ok context =
+	  let field_in_bounds i = 0 <= i && i < context.arity in
+	  function
+	  | D (i, j) ->
+	    i <> j &&  field_in_bounds i && field_in_bounds j &&
+	      (match context.color_reps.(i), context.color_reps.(j) with
+	      | Color.SUN (n1), Color.SUN (n2) ->
+		n1 = - n2 && n2 > 0
+	      | _, _ -> false)
+	  | E (i, j, k) ->
+	    i <> j &&  i <> k &&  k <> k &&
+	      field_in_bounds i && field_in_bounds j &&field_in_bounds k &&
+	      (match context.color_reps.(i),
+		context.color_reps.(j), context.color_reps.(k) with
+	      | Color.SUN (n1), Color.SUN (n2), Color.SUN (n3) ->
+		n1 = 3 && n2 = 3 && n3 = 3 ||
+		  n1 = -3 && n2 = -3 && n3 = -3
+	      | _, _, _ -> false)
+	  | T (a, i, j) ->
+	    i <> j && a <> i && a <> j &&
+	      field_in_bounds a && field_in_bounds i && field_in_bounds j &&
+	      (match context.color_reps.(a),
+		context.color_reps.(i), context.color_reps.(j) with
+		| Color.AdjSUN(n1), Color.SUN (n2), Color.SUN (n3) ->
+		  n1 = n3 && n2 = - n3 && n3 > 0
+		| _, _, _ -> false)
+	  | F (a, b, c) ->
+	    a <> b && a <> b && b <> c &&
+	      field_in_bounds a && field_in_bounds b && field_in_bounds c &&
+	      (match context.color_reps.(a),
+		context.color_reps.(b), context.color_reps.(c) with
+		| Color.AdjSUN(n1), Color.AdjSUN (n2), Color.AdjSUN (n3) ->
+		  n1 = n2 && n2 = n3 && n1 > 0
+		| _, _, _ -> false)
 
-    type color_tensor = int * color_primitive list
+	type tensor = int * primitive list
 
-    let map_color_tensor f (factor, primitives) =
-      (factor, List.map (map_color_primitive f) primitives)
+	let map_tensor f (factor, primitives) =
+	  (factor, List.map (map_primitive f) primitives)
 
-    let color_tensor_ok context (_, primitives) =
-      List.for_all (color_primitive_ok context) primitives
+	let tensor_ok context (_, primitives) =
+	  List.for_all (primitive_ok context) primitives
+
+      end
 
     type t =
       { fields : SM.flavor array;
-	lorentz : lorentz_tensor list;
-	color : color_tensor list }
+	lorentz : Lorentz.tensor list;
+	color : Color.tensor list }
 
     module PM = Partial (struct type t = int let compare = compare end)
 
+    let id x = x
+
     let permute v p =
-      let id = ThoList.range 0 (Array.length v.fields - 1) in
-      let permute_indices = PM.apply (PM.of_lists id p) in
+      let sorted = ThoList.range 0 (Array.length v.fields - 1) in
+      let permute_fields = PM.apply (PM.of_lists sorted p) in
       { fields = Permutation.array (Permutation.of_list p) v.fields;
- 	lorentz = List.map (map_lorentz_tensor permute_indices) v.lorentz;
-	color = List.map (map_color_tensor permute_indices) v.color }
+ 	lorentz = List.map (Lorentz.map_tensor id permute_fields) v.lorentz;
+	color = List.map (Color.map_tensor permute_fields) v.color }
 
     let permutations v =
       List.map (permute v)
@@ -473,28 +515,30 @@ module Vertex (* : Vertex *) =
 
 (* Testing: *)
 
+    let mu = 0
+
     let vector_current =
       { fields = Array.map SM.flavor_of_string [| "tbar"; "gl"; "t" |];
-	lorentz = [ (Integer 1, [Gamma (0, 2)]) ];
-	color = [ (1, [T (1, 0, 2)])] }
+	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, 0, 2)]) ];
+	color = [ (1, [Color.T (1, 0, 2)])] }
 
     let vector_current_out_of_bounds =
       { fields = Array.map SM.flavor_of_string [| "tbar"; "gl"; "t" |];
-	lorentz = [ (Integer 1, [Gamma (3, 2)]) ];
-	color = [ (1, [T (1, 0, 2)])] }
+	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, 3, 2)]) ];
+	color = [ (1, [Color.T (1, 0, 2)])] }
 
     let vector_current_color_mismatch =
       { fields = Array.map SM.flavor_of_string [| "t"; "gl"; "t" |];
-	lorentz = [ (Integer 1, [Gamma (3, 2)]) ];
-	color = [ (1, [T (1, 0, 2)])] }
+	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, 3, 2)]) ];
+	color = [ (1, [Color.T (1, 0, 2)])] }
 
     let vertex_ok v =
       let context =
 	{ arity = Array.length v.fields;
 	  lorentz_reps = Array.map SM.lorentz v.fields;
 	  color_reps = Array.map SM.color v.fields } in
-      List.for_all (lorentz_tensor_ok context) v.lorentz &&
-	List.for_all (color_tensor_ok context) v.color
+      List.for_all (Lorentz.tensor_ok context) v.lorentz &&
+	List.for_all (Color.tensor_ok context) v.color
 
     exception Inconsistent_vertex
 
