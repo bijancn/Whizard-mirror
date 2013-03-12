@@ -44,7 +44,7 @@ module Field : Index =
     let to_int i = i
   end
 
-type field = int (* Field.t *)
+type field = Field.t
 
 module type Lorentz =
   sig
@@ -60,7 +60,7 @@ module Lorentz (* : Lorentz *) =
         let to_int i = i
       end
 
-    type index = int (* Index.t *)
+    type index = Index.t
 
     type primitive =
       | G of index * index
@@ -83,7 +83,9 @@ module Lorentz (* : Lorentz *) =
       | P (i, j) -> P (ff i, ff j)
 
     let primitive_ok context =
-      let field_in_bounds i = 0 <= i && i < context.arity in
+      let field_in_bounds i =
+        let i' = Field.to_int i in
+        0 <= i' && i' < context.arity in
       function
 	| G (_, _) | E (_, _, _, _) -> true
 	| K (_, i) -> field_in_bounds i
@@ -91,7 +93,8 @@ module Lorentz (* : Lorentz *) =
 	| T (_, _, i, j)
 	| A (_, i, j) | P (i, j) ->
 	    i <> j && field_in_bounds i && field_in_bounds j &&
-	    (match context.lorentz_reps.(i), context.lorentz_reps.(j) with
+	    (match context.lorentz_reps.(Field.to_int i),
+              context.lorentz_reps.(Field.to_int j) with
 	    | Coupling.ConjSpinor, Coupling.Spinor -> true
 	    | (Coupling.Vectorspinor|Coupling.Majorana), _ ->
 		failwith "Lorentz.primitive_ok: incomplete"
@@ -153,7 +156,7 @@ module Color (* : Color *) =
         let to_int i = i
       end
 
-    type index = int (* Index.t *)
+    type index = Index.t
 
     type color =
       | Fundamental of field
@@ -173,19 +176,23 @@ module Color (* : Color *) =
       | F (a, b, c) -> F (f a, f b, f c)
       
     let primitive_ok context =
-      let field_in_bounds i = 0 <= i && i < context.arity in
+      let field_in_bounds i =
+        let i' = Field.to_int i in
+        0 <= i' && i' < context.arity in
       function
 	| D (i, j) ->
 	    i <> j &&  field_in_bounds i && field_in_bounds j &&
-	    (match context.color_reps.(i), context.color_reps.(j) with
+	    (match context.color_reps.(Field.to_int i),
+              context.color_reps.(Field.to_int j) with
 	    | Color.SUN (n1), Color.SUN (n2) ->
 		n1 = - n2 && n2 > 0
 	    | _, _ -> false)
 	| E (i, j, k) ->
 	    i <> j &&  i <> k &&  k <> k &&
 	    field_in_bounds i && field_in_bounds j &&field_in_bounds k &&
-	    (match context.color_reps.(i),
-	      context.color_reps.(j), context.color_reps.(k) with
+	    (match context.color_reps.(Field.to_int i),
+	      context.color_reps.(Field.to_int j),
+              context.color_reps.(Field.to_int k) with
 	    | Color.SUN (n1), Color.SUN (n2), Color.SUN (n3) ->
 		n1 = 3 && n2 = 3 && n3 = 3 ||
 		n1 = -3 && n2 = -3 && n3 = -3
@@ -193,16 +200,18 @@ module Color (* : Color *) =
 	| T (a, i, j) ->
 	    i <> j && a <> i && a <> j &&
 	    field_in_bounds a && field_in_bounds i && field_in_bounds j &&
-	    (match context.color_reps.(a),
-	      context.color_reps.(i), context.color_reps.(j) with
+	    (match context.color_reps.(Field.to_int a),
+	      context.color_reps.(Field.to_int i),
+              context.color_reps.(Field.to_int j) with
 	    | Color.AdjSUN(n1), Color.SUN (n2), Color.SUN (n3) ->
 		n1 = n3 && n2 = - n3 && n3 > 0
 	    | _, _, _ -> false)
 	| F (a, b, c) ->
 	    a <> b && a <> b && b <> c &&
 	    field_in_bounds a && field_in_bounds b && field_in_bounds c &&
-	    (match context.color_reps.(a),
-	      context.color_reps.(b), context.color_reps.(c) with
+	    (match context.color_reps.(Field.to_int a),
+	      context.color_reps.(Field.to_int b),
+              context.color_reps.(Field.to_int c) with
 	    | Color.AdjSUN(n1), Color.AdjSUN (n2), Color.AdjSUN (n3) ->
 		n1 = n2 && n2 = n3 && n1 > 0
 	    | _, _, _ -> false)
@@ -225,7 +234,9 @@ module Color (* : Color *) =
       print_endline
 	(String.concat ", "
 	   (List.map
-	      (fun (n, i) -> string_of_int n ^ " * " ^ string_of_int i)
+	      (fun (n, i) ->
+                string_of_int n ^ " * " ^
+                string_of_int (Field.to_int i))
 	      c));
       flush stdout;
       res
@@ -276,13 +287,16 @@ module Test (M : Model.T) :
       List.for_all (Lorentz.tensor_ok context) v.lorentz &&
 	List.for_all (Color.tensor_ok context) v.color
 
-    module PM = Partial.Make (struct type t = int let compare = compare end)
+    module PM =
+      Partial.Make (struct type t = Field.t let compare = compare end)
 
     let id x = x
 
     let permute v p =
-      let sorted = ThoList.range 0 (Array.length v.fields - 1) in
-      let permute_fields = PM.apply (PM.of_lists sorted p) in
+      let sorted =
+        List.map Field.of_int (ThoList.range 0 (Array.length v.fields - 1)) in
+      let permute_fields =
+        PM.apply (PM.of_lists sorted (List.map Field.of_int p)) in
       { fields = Permutation.array (Permutation.of_list p) v.fields;
  	lorentz = List.map (Lorentz.map_tensor id permute_fields) v.lorentz;
 	color = List.map (Color.map_tensor permute_fields) v.color }
@@ -305,25 +319,33 @@ module Test (M : Model.T) :
 
     let mu = 0
 
+    let i0 = Field.of_int 0
+    and i1 = Field.of_int 1
+    and i2 = Field.of_int 2
+    and i3 = Field.of_int 3
+
+    let mu = Lorentz.Index.of_int 0
+    and nu = Lorentz.Index.of_int 1
+
     let vector_current =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, 0, 2)]) ];
-	color = [ (Color.Integer 1, [Color.T (1, 0, 2)])] }
+	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, i0, i2)]) ];
+	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
 
     let vector_current_out_of_bounds =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, 3, 2)]) ];
-	color = [ (Color.Integer 1, [Color.T (1, 0, 2)])] }
+	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, i3, i2)]) ];
+	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
 
     let vector_current_color_mismatch =
       { fields = [| "t"; "gl"; "t" |];
-	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, 3, 2)]) ];
-	color = [ (Color.Integer 1, [Color.T (1, 0, 2)])] }
+	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, i3, i2)]) ];
+	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
 
     let anomalous_couplings =
       { fields = [| "W+"; "W-"; "Z"; "Z" |];
-	lorentz = [ (Lorentz.Integer 1, [ Lorentz.P (1, 0);
-					  Lorentz.P (1, 1) ]) ];
+	lorentz = [ (Lorentz.Integer 1, [ Lorentz.P (i1, i0);
+					  Lorentz.P (i1, i1) ]) ];
 	color = [ ] }
       
     exception Inconsistent_vertex
