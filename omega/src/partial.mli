@@ -33,3 +33,4 @@ module type T =
   end
 
 module Make (D : Map.OrderedType) : T with type domain = D.t
+module Test : sig val suite : OUnit.test end

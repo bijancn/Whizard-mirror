@@ -40,7 +40,6 @@
 
 module type Test = sig val suite : OUnit.test val time : unit -> unit end
 
-module Partial_Test : Test
 module Permutation_Test : functor (Permutation : Permutation.T) -> Test
 
 module type Vertex =

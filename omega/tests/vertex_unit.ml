@@ -44,14 +44,14 @@ let _ =
   if !test then begin
     let suite =
       OUnit.(>:::) "All" 
-	[Vertex.Partial_Test.suite;
+	[Partial.Test.suite;
 	 Permutation_List_Test.suite;
 	 Permutation_Array_Test.suite;
 	 Vertex_Test.test_suite] in
     ignore (OUnit.run_test_tt ~verbose:!verbose suite)
   end;
   if !timing then begin
-    Vertex.Partial_Test.time ();
+    Partial.Test.time ();
     print_endline "List based:";
     Permutation_List_Test.time ();
     print_endline "Array based:";

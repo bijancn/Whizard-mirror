@@ -52,3 +52,31 @@ module Make (D : Map.OrderedType) : T with type domain = D.t =
     let apply partial d = M.find d partial
 
   end
+
+module Test : sig val suite : OUnit.test end =
+  struct
+
+    open OUnit
+
+    module P = Make (struct type t = int let compare = compare end)
+
+    let apply_ok =
+      "apply/ok" >::
+	(fun () ->
+	  let p = P.of_list [ (0,"a"); (1,"b"); (2,"c") ]
+	  and l = [ 0; 1; 2 ] in
+	  assert_equal [ "a"; "b"; "c" ] (List.map (P.apply p) l))
+	
+    let suite_apply =
+      "apply" >:::
+	[apply_ok]
+
+    let suite =
+      "Partial" >:::
+	[suite_apply]
+
+    let time () =
+      ()
+
+  end
+

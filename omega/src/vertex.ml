@@ -38,33 +38,6 @@ let print_time msg f x =
   Printf.printf "%s took %10.2f ms\n" msg (seconds *. 1000.);
   f_x
   
-module Partial_Test : Test=
-  struct
-
-    open OUnit
-
-    module P = Partial.Make (struct type t = int let compare = compare end)
-
-    let apply_ok =
-      "apply/ok" >::
-	(fun () ->
-	  let p = P.of_list [ (0,"a"); (1,"b"); (2,"c") ]
-	  and l = [ 0; 1; 2 ] in
-	  assert_equal [ "a"; "b"; "c" ] (List.map (P.apply p) l))
-	
-    let suite_apply =
-      "apply" >:::
-	[apply_ok]
-
-    let suite =
-      "Partial" >:::
-	[suite_apply]
-
-    let time () =
-      ()
-
-  end
-
 (* To shuffle an array a of n elements (indices 0..n-1):
 
      for i from n − 1 downto 1 do
