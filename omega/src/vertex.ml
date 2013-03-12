@@ -26,6 +26,16 @@ type context =
       lorentz_reps : Coupling.lorentz array;
       color_reps : Color.t array }
 
+let distinct2 i j =
+  i <> j
+
+let distinct3 i j k =
+  i <> j && j <> k && k <> i
+
+let distinct ilist =
+  List.length (ThoList.uniq (List.sort compare ilist)) =
+  List.length ilist
+
 (* An abstract type that allows us to distinguish offsets
    in the field array, from color and Lorentz indices in
    different representations. *)
@@ -60,6 +70,7 @@ module Lorentz (* : Lorentz *) =
         let to_int i = i
       end
 
+    (* $\mu_0,\mu_1,\ldots$, not $0,1,2,3$ *)
     type index = Index.t
 
     type primitive =
@@ -92,7 +103,7 @@ module Lorentz (* : Lorentz *) =
 	| S (i, j) | V (_, i, j)
 	| T (_, _, i, j)
 	| A (_, i, j) | P (i, j) ->
-	    i <> j && field_in_bounds i && field_in_bounds j &&
+	    distinct2 i j && field_in_bounds i && field_in_bounds j &&
 	    (match context.lorentz_reps.(Field.to_int i),
               context.lorentz_reps.(Field.to_int j) with
 	    | Coupling.ConjSpinor, Coupling.Spinor -> true
@@ -156,6 +167,7 @@ module Color (* : Color *) =
         let to_int i = i
       end
 
+    (* $a_0,a_1,\ldots$, not $0,1,\ldots$ *)
     type index = Index.t
 
     type color =
@@ -181,14 +193,14 @@ module Color (* : Color *) =
         0 <= i' && i' < context.arity in
       function
 	| D (i, j) ->
-	    i <> j &&  field_in_bounds i && field_in_bounds j &&
+	    distinct2 i j &&  field_in_bounds i && field_in_bounds j &&
 	    (match context.color_reps.(Field.to_int i),
               context.color_reps.(Field.to_int j) with
 	    | Color.SUN (n1), Color.SUN (n2) ->
 		n1 = - n2 && n2 > 0
 	    | _, _ -> false)
 	| E (i, j, k) ->
-	    i <> j &&  i <> k &&  k <> k &&
+	    distinct3 i j k &&
 	    field_in_bounds i && field_in_bounds j &&field_in_bounds k &&
 	    (match context.color_reps.(Field.to_int i),
 	      context.color_reps.(Field.to_int j),
@@ -198,7 +210,7 @@ module Color (* : Color *) =
 		n1 = -3 && n2 = -3 && n3 = -3
 	      | _, _, _ -> false)
 	| T (a, i, j) ->
-	    i <> j && a <> i && a <> j &&
+	    distinct3 a i j &&
 	    field_in_bounds a && field_in_bounds i && field_in_bounds j &&
 	    (match context.color_reps.(Field.to_int a),
 	      context.color_reps.(Field.to_int i),
@@ -207,7 +219,7 @@ module Color (* : Color *) =
 		n1 = n3 && n2 = - n3 && n3 > 0
 	    | _, _, _ -> false)
 	| F (a, b, c) ->
-	    a <> b && a <> b && b <> c &&
+	    distinct3 a b c &&
 	    field_in_bounds a && field_in_bounds b && field_in_bounds c &&
 	    (match context.color_reps.(Field.to_int a),
 	      context.color_reps.(Field.to_int b),
@@ -344,8 +356,8 @@ module Test (M : Model.T) :
 
     let anomalous_couplings =
       { fields = [| "W+"; "W-"; "Z"; "Z" |];
-	lorentz = [ (Lorentz.Integer 1, [ Lorentz.P (i1, i0);
-					  Lorentz.P (i1, i1) ]) ];
+	lorentz = [ (Lorentz.Integer 1, [ Lorentz.K (mu, i0);
+					  Lorentz.K (mu, i1) ]) ];
 	color = [ ] }
       
     exception Inconsistent_vertex
@@ -401,13 +413,13 @@ let parse text =
                      msg  (String.sub text i (j - i + 1)))
   | Parsing.Parse_error -> invalid_arg ("parse error: " ^ text)
 
-(*i
+(*
 let tgv = parse
     "(k1.e3 - k2.e3)*e1.e2 + (k2.e1 - k3.e1)*e2.e3 + (k3.e2 - k1.e2)*e3.e1"
 
 let tgv = parse
     "(k1 - k2).e3*e1.e2 + (k2 - k3).e1*e2.e3 + (k3 - k1).e2*e3.e1"
-i*)
+ *)
 
 type wf =
     { lorentz : Coupling.lorentz;
@@ -496,7 +508,7 @@ module Fortran =
       must be passed too, unless the outgoing momentum is passed itself.
    \end{dubious} *)
 
-(*i module IMap = Map.Make (struct type t = int let compare = compare end) i*)
+(* module IMap = Map.Make (struct type t = int let compare = compare end) *)
 
 let insert_scalars order wfs = 
   let rec insert_scalars' n order = function
@@ -561,10 +573,10 @@ let process_vertex coupling =
       printf "FAILURE: %s!!!\n" s;
       printf "************************************************************************\n"
 
-(*i
+(*
 let _ =
   process_vertex (parse (read_line ()))
-i*)
+ *)
 
 (* \thocwmodulesection{Code Generation}
    \begin{dubious}
