@@ -32,5 +32,5 @@ module type T =
     val apply : 'a t -> domain -> 'a
   end
 
-module Make (D : Map.OrderedType) : T with type domain = D.t
+module Make : functor (D : Map.OrderedType) -> T with type domain = D.t
 module Test : sig val suite : OUnit.test end

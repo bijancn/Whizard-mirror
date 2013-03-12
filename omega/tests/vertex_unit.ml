@@ -21,22 +21,18 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-(* open Vertex *)
-
-module Permutation_List_Test = Vertex.Permutation_Test (Permutation.Using_Lists)
-module Permutation_Array_Test = Vertex.Permutation_Test (Permutation.Using_Arrays)
-
-module Vertex_Test =
-  Vertex.Make_Vertex_Test (Modellib_SM.SM(Modellib_SM.SM_no_anomalous))
+module List_Test = Permutation.Test (Permutation.Using_Lists)
+module Array_Test = Permutation.Test (Permutation.Using_Arrays)
+module Vertex_Test = Vertex.Test (Modellib_SM.SM(Modellib_SM.SM_no_anomalous))
 
 let _ =
   let my_name = Sys.argv.(0) in
-  let test = ref false
+  let test = ref true
   and timing = ref false
   and verbose = ref false
   and usage = "usage: " ^ my_name ^ " ..." in
   Arg.parse
-    [ ("-test", Arg.Set test, "");
+    [ ("-notest", Arg.Clear test, "");
       ("-timing", Arg.Set timing, "");
       ("-verbose", Arg.Set verbose, "") ]
     (fun s -> raise (Arg.Bad s))
@@ -45,17 +41,16 @@ let _ =
     let suite =
       OUnit.(>:::) "All" 
 	[Partial.Test.suite;
-	 Permutation_List_Test.suite;
-	 Permutation_Array_Test.suite;
-	 Vertex_Test.test_suite] in
+	 List_Test.suite;
+	 Array_Test.suite;
+	 Vertex_Test.suite] in
     ignore (OUnit.run_test_tt ~verbose:!verbose suite)
   end;
   if !timing then begin
-    Partial.Test.time ();
     print_endline "List based:";
-    Permutation_List_Test.time ();
+    List_Test.time ();
     print_endline "Array based:";
-    Permutation_Array_Test.time ()
+    Array_Test.time ()
   end;
   Vertex_Test.example ();
   exit 0

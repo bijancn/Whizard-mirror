@@ -36,3 +36,6 @@ module Using_Lists : T
 module Using_Arrays : T
 
 module Default : T
+
+module Test : functor (P : T) ->
+  sig val suite : OUnit.test val time : unit -> unit end

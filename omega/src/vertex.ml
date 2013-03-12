@@ -21,387 +21,217 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-module type Test =
+type context =
+    { arity : int;
+      lorentz_reps : Coupling.lorentz array;
+      color_reps : Color.t array }
+
+type field = int
+
+module type Lorentz =
   sig
-    val suite : OUnit.test
-    val time : unit -> unit
   end
 
-let time f x =
-  let start = Sys.time () in
-  let f_x = f x in
-  let stop = Sys.time () in
-  (f_x, stop -. start)
-  
-let print_time msg f x =
-  let f_x, seconds = time f x in
-  Printf.printf "%s took %10.2f ms\n" msg (seconds *. 1000.);
-  f_x
-  
-(* To shuffle an array a of n elements (indices 0..n-1):
-
-     for i from n − 1 downto 1 do
-          j ← random integer with 0 ≤ j ≤ i
-          exchange a[j] and a[i]
-
-   To initialize an array a of n elements to a randomly shuffled copy
-   of source, both 0-based: 
-
-     a[0] ← source[0]
-     for i from 1 to n − 1 do
-         j ← random integer with 0 ≤ j ≤ i
-         a[i] ← a[j]
-         a[j] ← source[i] *)
-
-let shuffle l =
-  let a = Array.of_list l in
-  for n = Array.length a - 1 downto 1 do
-    let k = Random.int (succ n) in
-    if k <> n then
-      let tmp  = Array.get a n in
-      Array.set a n (Array.get a k);
-      Array.set a k tmp
-  done;
-  Array.to_list a
-
-module Permutation_Test (Permutation : Permutation.T) : Test =
+module Lorentz (* : Lorentz *) =
   struct
 
-    open OUnit
-    module P = Permutation
-    open P
+    type index = int
 
-    let of_list_overlap =
-      "overlap" >::
-	(fun () ->
-	  assert_raises (Invalid_argument "Permutation.of_list")
-	    (fun () ->
-	      of_list [0;1;2;2]))
-	
-    let of_list_gap =
-      "gap" >::
-	(fun () ->
-	  assert_raises (Invalid_argument "Permutation.of_list")
-	    (fun () ->
-	      of_list [0;1;2;4;5]))
+    type primitive =
+      | G of index * index
+      | E of index * index * index * index
+      | K of index * field
+      | S of field * field
+      | V of index * field * field
+      | T of index * index * field * field
+      | A of index * field * field
+      | P of field * field
 
-    let of_list_ok =
-      "ok" >::
-	(fun () ->
-	  let l = ThoList.range 0 10 in
-	  assert_equal (of_list l) (of_list l))
+    let map_primitive fi ff = function
+      | G (mu, nu) -> G (fi mu, fi nu)
+      | E (mu, nu, rho, sigma) -> E (fi mu, fi nu, fi rho, fi sigma)
+      | K (mu, i) -> K (fi mu, ff i)
+      | S (i, j) -> S (ff i, ff j)
+      | V (mu, i, j) -> V (fi mu, ff i, ff j)
+      | T (mu, nu, i, j) -> T (fi mu, fi nu, ff i, ff j)
+      | A (mu, i, j) -> A (fi mu, ff i, ff j)
+      | P (i, j) -> P (ff i, ff j)
 
-    let suite_of_list =
-      "of_list" >:::
-	[of_list_overlap;
-	 of_list_gap;
-	 of_list_ok]
-
-    let apply_invalid_lengths =
-      "invalid/lengths" >::
-	(fun () ->
-	  assert_raises
-	    (Invalid_argument "Permutation.list: length mismatch")
-	    (fun () ->
-	      list (of_list [0;1;2;3;4]) [0;1;2;3]))
-
-    let apply_ok =
-      "ok" >::
-	(fun () ->
-	  assert_equal [2;0;1;3;5;4]
-	    (list (of_list [1;2;0;3;5;4]) [0;1;2;3;4;5]))
-
-    let suite_apply =
-      "apply" >:::
-	[apply_invalid_lengths;
-	 apply_ok]
-
-    let inverse_ok =
-      "ok" >::
-	(fun () ->
-	  let l = shuffle (ThoList.range 0 1000) in
-	  let p = of_list (shuffle l) in
-	  assert_equal l (list (inverse p) (list p l)))
-
-    let suite_inverse =
-      "inverse" >:::
-	[inverse_ok]
-
-    let compose_ok =
-      "ok" >::
-	(fun () ->
-	  let id = ThoList.range 0 1000 in
-	  let p = of_list (shuffle id)
-	  and q = of_list (shuffle id)
-	  and l = id in
-	  assert_equal (list p (list q l)) (list (compose p q) l))
-		
-    let compose_inverse_ok =
-      "inverse/ok" >::
-	(fun () ->
-	  let id = ThoList.range 0 1000 in
-	  let p = of_list (shuffle id)
-	  and q = of_list (shuffle id) in
-	  assert_equal
-	    (compose (inverse p) (inverse q))
-	    (inverse (compose q p)))
-		
-    let suite_compose =
-      "compose" >:::
-	[compose_ok;
-	 compose_inverse_ok]
-
-    let suite =
-      "Permutations" >:::
-	[suite_of_list;
-	 suite_apply;
-	 suite_inverse;
-	 suite_compose]
-
-    let repeat repetitions size =
-      let id = ThoList.range 0 size in
-      let p = of_list (shuffle id)
-      and l = shuffle (List.map string_of_int id) in
-      print_time (Printf.sprintf "reps=%d, len=%d" repetitions size)
-	(fun () ->
-	  for i = 1 to repetitions do
-	    ignore (Permutation.list p l)
-	  done)
-	()
-      
-    let time () =
-      repeat 100000 10;
-      repeat 10000 100;
-      repeat 1000 1000;
-      repeat 100 10000;
-      repeat 10 100000;
-      ()
-
-  end
-
-module type Vertex = 
-  sig
-    val example : unit -> unit
-    val test_suite : OUnit.test
-  end
-
-module Vertex (* : Vertex *) =
-  struct
-
-    type context =
-      { arity : int;
-	lorentz_reps : Coupling.lorentz array;
-	color_reps : Color.t array }
-
-    type field = int
-
-    module type Lorentz =
-      sig
-      end
-
-    module Lorentz (* : Lorentz *) =
-      struct
-
-	type index = int
-
-	type primitive =
-	| G of index * index
-	| E of index * index * index * index
-	| K of index * field
-	| S of field * field
-	| V of index * field * field
-	| T of index * index * field * field
-	| A of index * field * field
-	| P of field * field
-
-	let map_primitive fi ff = function
-	  | G (mu, nu) -> G (fi mu, fi nu)
-	  | E (mu, nu, rho, sigma) -> E (fi mu, fi nu, fi rho, fi sigma)
-	  | K (mu, i) -> K (fi mu, ff i)
-	  | S (i, j) -> S (ff i, ff j)
-	  | V (mu, i, j) -> V (fi mu, ff i, ff j)
-	  | T (mu, nu, i, j) -> T (fi mu, fi nu, ff i, ff j)
-	  | A (mu, i, j) -> A (fi mu, ff i, ff j)
-	  | P (i, j) -> P (ff i, ff j)
-
-	let primitive_ok context =
-	  let field_in_bounds i = 0 <= i && i < context.arity in
-	  function
-	  | G (_, _) | E (_, _, _, _) -> true
-	  | K (_, i) -> field_in_bounds i
-	  | S (i, j) | V (_, i, j)
-	  | T (_, _, i, j)
-	  | A (_, i, j) | P (i, j) ->
+    let primitive_ok context =
+      let field_in_bounds i = 0 <= i && i < context.arity in
+      function
+	| G (_, _) | E (_, _, _, _) -> true
+	| K (_, i) -> field_in_bounds i
+	| S (i, j) | V (_, i, j)
+	| T (_, _, i, j)
+	| A (_, i, j) | P (i, j) ->
 	    i <> j && field_in_bounds i && field_in_bounds j &&
-	      (match context.lorentz_reps.(i), context.lorentz_reps.(j) with
-	      | Coupling.ConjSpinor, Coupling.Spinor -> true
-	      | (Coupling.Vectorspinor|Coupling.Majorana), _ ->
+	    (match context.lorentz_reps.(i), context.lorentz_reps.(j) with
+	    | Coupling.ConjSpinor, Coupling.Spinor -> true
+	    | (Coupling.Vectorspinor|Coupling.Majorana), _ ->
 		failwith "Lorentz.primitive_ok: incomplete"
-	      | _, (Coupling.Vectorspinor|Coupling.Majorana) ->
+	    | _, (Coupling.Vectorspinor|Coupling.Majorana) ->
 		failwith "Lorentz.primitive_ok: incomplete"
-	      | _, _ -> false)
+	    | _, _ -> false)
 
-	let primitive_indices = function
-	  | G (mu, nu) | T (mu, nu, _, _) -> [mu; nu]
-	  | E (mu, nu, rho, sigma) -> [mu; nu; rho; sigma]
-	  | K (mu, _) | V (mu, _, _) | A (mu, _, _) -> [mu]
-	  | S (_, _) | P (_, _) -> []
+    let primitive_indices = function
+      | G (mu, nu) | T (mu, nu, _, _) -> [mu; nu]
+      | E (mu, nu, rho, sigma) -> [mu; nu; rho; sigma]
+      | K (mu, _) | V (mu, _, _) | A (mu, _, _) -> [mu]
+      | S (_, _) | P (_, _) -> []
 
-	let indices p =
-	  ThoList.flatmap primitive_indices p
+    let indices p =
+      ThoList.flatmap primitive_indices p
 
-	let contraction_ok p =
-	  List.for_all
-	    (fun (n, _) -> n = 2)
-	    (ThoList.classify (indices p))
+    let contraction_ok p =
+      List.for_all
+	(fun (n, _) -> n = 2)
+	(ThoList.classify (indices p))
 
-	type factor =
-	| Integer of int
-	| Contraction of primitive list
+    type factor =
+      | Integer of int
+      | Contraction of primitive list
 
-	let map_factor fi ff = function
-	  | Integer _ as i -> i
-	  | Contraction p ->
-	    Contraction (List.map (map_primitive fi ff) p)
+    let map_factor fi ff = function
+      | Integer _ as i -> i
+      | Contraction p ->
+	  Contraction (List.map (map_primitive fi ff) p)
 
-	let factor_ok context = function
-	  | Integer _ -> true
-	  | Contraction p ->
-	    List.for_all (primitive_ok context) p && contraction_ok p
+    let factor_ok context = function
+      | Integer _ -> true
+      | Contraction p ->
+	  List.for_all (primitive_ok context) p && contraction_ok p
 
-	type tensor = factor * primitive list
+    type tensor = factor * primitive list
 
-	let map_tensor fi ff (factor, primitives) =
-	  (map_factor fi ff factor,
-	   List.map (map_primitive fi ff) primitives)
+    let map_tensor fi ff (factor, primitives) =
+      (map_factor fi ff factor,
+       List.map (map_primitive fi ff) primitives)
 
-	let tensor_ok context (factor, primitives) =
-	  factor_ok context factor &&
-	    List.for_all (primitive_ok context) primitives
-
-      end
-
-    module type Color =
-      sig
-      end
-
-    module Color (* : Color *) = 
-      struct
-
-	type color =
-	| Fundamental of field
-	| Conjugate of field
-	| Adjoint of field
-
-	type primitive =
-	| D of field * field
-	| E of field * field * field  (* $SU(3)$ *)
-	| T of field * field * field
-	| F of field * field * field
-
-	let map_primitive f = function
-	  | D (i, j) -> D (f i, f j)
-	  | E (i, j, k) -> E (f i, f j, f k)
-	  | T (a, i, j) -> T (f a, f i, f j)
-	  | F (a, b, c) -> F (f a, f b, f c)
-      
-	let primitive_ok context =
-	  let field_in_bounds i = 0 <= i && i < context.arity in
-	  function
-	  | D (i, j) ->
-	    i <> j &&  field_in_bounds i && field_in_bounds j &&
-	      (match context.color_reps.(i), context.color_reps.(j) with
-	      | Color.SUN (n1), Color.SUN (n2) ->
-		n1 = - n2 && n2 > 0
-	      | _, _ -> false)
-	  | E (i, j, k) ->
-	    i <> j &&  i <> k &&  k <> k &&
-	      field_in_bounds i && field_in_bounds j &&field_in_bounds k &&
-	      (match context.color_reps.(i),
-		context.color_reps.(j), context.color_reps.(k) with
-	      | Color.SUN (n1), Color.SUN (n2), Color.SUN (n3) ->
-		n1 = 3 && n2 = 3 && n3 = 3 ||
-		  n1 = -3 && n2 = -3 && n3 = -3
-	      | _, _, _ -> false)
-	  | T (a, i, j) ->
-	    i <> j && a <> i && a <> j &&
-	      field_in_bounds a && field_in_bounds i && field_in_bounds j &&
-	      (match context.color_reps.(a),
-		context.color_reps.(i), context.color_reps.(j) with
-		| Color.AdjSUN(n1), Color.SUN (n2), Color.SUN (n3) ->
-		  n1 = n3 && n2 = - n3 && n3 > 0
-		| _, _, _ -> false)
-	  | F (a, b, c) ->
-	    a <> b && a <> b && b <> c &&
-	      field_in_bounds a && field_in_bounds b && field_in_bounds c &&
-	      (match context.color_reps.(a),
-		context.color_reps.(b), context.color_reps.(c) with
-		| Color.AdjSUN(n1), Color.AdjSUN (n2), Color.AdjSUN (n3) ->
-		  n1 = n2 && n2 = n3 && n1 > 0
-		| _, _, _ -> false)
-
-	let primitive_indices = function
-	  | D (_, _) -> []
-	  | E (_, _, _) -> []
-	  | T (a, _, _) -> [a]
-	  | F (a, b, c) -> [a; b; c]
-
-	let indices p =
-	  ThoList.flatmap primitive_indices p
-
-	let contraction_ok p =
-	  let c = ThoList.classify (indices p) in
-	  let res = List.for_all
-	    (fun (n, _) -> n = 2)
-	    (c)
-	  in
-	  print_endline
-	    (String.concat ", "
-	       (List.map
-		  (fun (n, i) -> string_of_int n ^ " * " ^ string_of_int i)
-		  c));
-	  flush stdout;
-	  res
-
-	type factor =
-	| Integer of int
-	| Contraction of primitive list
-
-	let map_factor f = function
-	  | Integer _ as i -> i
-	  | Contraction p ->
-	    Contraction (List.map (map_primitive f) p)
-
-	let factor_ok context = function
-	  | Integer _ -> true
-	  | Contraction p ->
-	    List.for_all (primitive_ok context) p &&
-	      contraction_ok p
-
-	type tensor = factor * primitive list
-
-	let map_tensor f (factor, primitives) =
-	  (map_factor f factor, List.map (map_primitive f) primitives)
-
-	let tensor_ok context (factor, primitives) =
-	  factor_ok context factor &&
-	    List.for_all (primitive_ok context) primitives
-
-      end
-
-    type t =
-      { fields : string array;
-	lorentz : Lorentz.tensor list;
-	color : Color.tensor list }
+    let tensor_ok context (factor, primitives) =
+      factor_ok context factor &&
+      List.for_all (primitive_ok context) primitives
 
   end
 
-module Permutation = Permutation.Default
+module type Color =
+  sig
+  end
 
-module Make_Vertex_Test (M : Model.T) = 
+module Color (* : Color *) = 
   struct
 
-    open Vertex
+    type color =
+      | Fundamental of field
+      | Conjugate of field
+      | Adjoint of field
+
+    type primitive =
+      | D of field * field
+      | E of field * field * field  (* $SU(3)$ *)
+      | T of field * field * field
+      | F of field * field * field
+
+    let map_primitive f = function
+      | D (i, j) -> D (f i, f j)
+      | E (i, j, k) -> E (f i, f j, f k)
+      | T (a, i, j) -> T (f a, f i, f j)
+      | F (a, b, c) -> F (f a, f b, f c)
+      
+    let primitive_ok context =
+      let field_in_bounds i = 0 <= i && i < context.arity in
+      function
+	| D (i, j) ->
+	    i <> j &&  field_in_bounds i && field_in_bounds j &&
+	    (match context.color_reps.(i), context.color_reps.(j) with
+	    | Color.SUN (n1), Color.SUN (n2) ->
+		n1 = - n2 && n2 > 0
+	    | _, _ -> false)
+	| E (i, j, k) ->
+	    i <> j &&  i <> k &&  k <> k &&
+	    field_in_bounds i && field_in_bounds j &&field_in_bounds k &&
+	    (match context.color_reps.(i),
+	      context.color_reps.(j), context.color_reps.(k) with
+	    | Color.SUN (n1), Color.SUN (n2), Color.SUN (n3) ->
+		n1 = 3 && n2 = 3 && n3 = 3 ||
+		n1 = -3 && n2 = -3 && n3 = -3
+	      | _, _, _ -> false)
+	| T (a, i, j) ->
+	    i <> j && a <> i && a <> j &&
+	    field_in_bounds a && field_in_bounds i && field_in_bounds j &&
+	    (match context.color_reps.(a),
+	      context.color_reps.(i), context.color_reps.(j) with
+	    | Color.AdjSUN(n1), Color.SUN (n2), Color.SUN (n3) ->
+		n1 = n3 && n2 = - n3 && n3 > 0
+	    | _, _, _ -> false)
+	| F (a, b, c) ->
+	    a <> b && a <> b && b <> c &&
+	    field_in_bounds a && field_in_bounds b && field_in_bounds c &&
+	    (match context.color_reps.(a),
+	      context.color_reps.(b), context.color_reps.(c) with
+	    | Color.AdjSUN(n1), Color.AdjSUN (n2), Color.AdjSUN (n3) ->
+		n1 = n2 && n2 = n3 && n1 > 0
+	    | _, _, _ -> false)
+
+    let primitive_indices = function
+      | D (_, _) -> []
+      | E (_, _, _) -> []
+      | T (a, _, _) -> [a]
+      | F (a, b, c) -> [a; b; c]
+
+    let indices p =
+      ThoList.flatmap primitive_indices p
+
+    let contraction_ok p =
+      let c = ThoList.classify (indices p) in
+      let res = List.for_all
+	  (fun (n, _) -> n = 2)
+	  (c)
+      in
+      print_endline
+	(String.concat ", "
+	   (List.map
+	      (fun (n, i) -> string_of_int n ^ " * " ^ string_of_int i)
+	      c));
+      flush stdout;
+      res
+
+    type factor =
+      | Integer of int
+      | Contraction of primitive list
+
+    let map_factor f = function
+      | Integer _ as i -> i
+      | Contraction p ->
+	  Contraction (List.map (map_primitive f) p)
+
+    let factor_ok context = function
+      | Integer _ -> true
+      | Contraction p ->
+	  List.for_all (primitive_ok context) p &&
+	  contraction_ok p
+
+    type tensor = factor * primitive list
+
+    let map_tensor f (factor, primitives) =
+      (map_factor f factor, List.map (map_primitive f) primitives)
+
+    let tensor_ok context (factor, primitives) =
+      factor_ok context factor &&
+      List.for_all (primitive_ok context) primitives
+
+  end
+
+type t =
+    { fields : string array;
+      lorentz : Lorentz.tensor list;
+      color : Color.tensor list }
+
+module Test (M : Model.T) :
+    sig val example : unit -> unit val suite : OUnit.test end =
+  struct
+
+    module Permutation = Permutation.Default
 
     let ok v =
       let fields = Array.map M.flavor_of_string v.fields in
@@ -494,7 +324,7 @@ module Make_Vertex_Test (M : Model.T) =
 	  assert_bool "anomalous couplings"
 	    (ok anomalous_couplings))
 		
-    let test_suite =
+    let suite =
       "Vertex" >:::
 	[vertex_indices_ok;
 	 vertex_indices_broken;
