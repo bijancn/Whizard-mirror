@@ -27,17 +27,17 @@ module Vertex_Test = Vertex.Test (Modellib_SM.SM(Modellib_SM.SM_no_anomalous))
 
 let _ =
   let my_name = Sys.argv.(0) in
-  let test = ref true
+  let skip_tests = ref false
   and timing = ref false
   and verbose = ref false
   and usage = "usage: " ^ my_name ^ " ..." in
   Arg.parse
-    [ ("-notest", Arg.Clear test, "");
+    [ ("-skip-tests", Arg.Clear skip_tests, "");
       ("-timing", Arg.Set timing, "");
       ("-verbose", Arg.Set verbose, "") ]
     (fun s -> raise (Arg.Bad s))
     usage;
-  if !test then begin
+  if not !skip_tests then begin
     let suite =
       OUnit.(>:::) "All" 
 	[Partial.Test.suite;
