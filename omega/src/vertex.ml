@@ -1,4 +1,4 @@
-(* $Id: vertex.ml 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: vertex.ml 4105 2013-03-12 16:53:22Z ohl $
 
    Copyright (C) 1999-2013 by
 
@@ -26,7 +26,21 @@ type context =
       lorentz_reps : Coupling.lorentz array;
       color_reps : Color.t array }
 
-type field = int
+module type Field =
+  sig
+    type t
+    val of_int : int -> t
+    val to_int : t -> int
+  end
+
+module Field : Field =
+  struct
+    type t = int
+    let of_int i = i
+    let to_int i = i
+  end
+
+type field = int (* Field.t *)
 
 module type Lorentz =
   sig
