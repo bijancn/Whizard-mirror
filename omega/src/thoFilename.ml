@@ -1,4 +1,4 @@
-(* $Id: thoFilename.ml 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: thoFilename.ml 4090 2013-03-01 13:54:06Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -40,11 +40,3 @@ let expand_home path =
   | ("~" | "$HOME" | "${HOME}") :: rest ->
       join ((try Sys.getenv "HOME" with Not_found -> "/tmp") :: rest)
   | _ -> path
-
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  End:
-i*)
