@@ -38,44 +38,12 @@ let print_time msg f x =
   Printf.printf "%s took %10.2f ms\n" msg (seconds *. 1000.);
   f_x
   
-module type Partial =
-  sig
-    type domain
-    type 'a t
-    val of_list : (domain * 'a) list -> 'a t
-    val of_lists : domain list -> 'a list -> 'a t
-    val apply : 'a t -> domain -> 'a
-  end
-
-module Partial (D : Map.OrderedType) : Partial with type domain = D.t =
-  struct
-
-    module M = Map.Make (D)
-
-    type domain = D.t
-    type 'a t = 'a M.t
-
-    let of_list l =
-      List.fold_left (fun m (d, v) -> M.add d v m) M.empty l
-
-    let of_lists domain values =
-      of_list
-	(try
-	   List.rev_map2 (fun d v -> (d, v)) domain values
-	 with
-	    | Invalid_argument "List.rev_map2" ->
-	      invalid_arg "Partial.of_lists: length mismatch")
-
-    let apply partial d = M.find d partial
-
-  end
-
 module Partial_Test : Test=
   struct
 
     open OUnit
 
-    module P = Partial (struct type t = int let compare = compare end)
+    module P = Partial.Make (struct type t = int let compare = compare end)
 
     let apply_ok =
       "apply/ok" >::
@@ -96,112 +64,6 @@ module Partial_Test : Test=
       ()
 
   end
-
-module type Permutation =
-  sig
-    type t
-    val of_list : int list -> t
-    val of_array : int array -> t
-    val inverse : t -> t
-    val compose : t -> t -> t
-    val list : t -> 'a list -> 'a list
-    val array : t -> 'a array -> 'a array
-  end
-
-module Permutation_List : Permutation =
-  struct
-
-    type t = int list
-
-    let of_list p =
-      if List.sort compare p <> (ThoList.range 0 (List.length p - 1)) then
-	invalid_arg "Permutation.of_list"
-      else
-	p
-
-    let of_array p =
-      try
-	of_list (Array.to_list p)
-      with 
-      | Invalid_argument "Permutation.of_list" ->
-	invalid_arg "Permutation.of_array"
-
-    let inverse p = snd (ThoList.ariadne_sort p)
-
-    let list p l =
-      List.map snd
-	(List.sort compare
-	   (try
-	      List.rev_map2 (fun i x -> (i, x)) p l
-	    with
-	    | Invalid_argument "List.rev_map2" ->
-	      invalid_arg "Permutation.list: length mismatch"))
-
-    let array p a =
-      try
-	Array.of_list (list p (Array.to_list a))
-      with 
-      | Invalid_argument "Permutation.list: length mismatch" ->
-	invalid_arg "Permutation.array: length mismatch"
-
-(* Probably not optimal (or really inefficient), but correct by
-   associativity. *)
-
-    let compose p q =
-      list (inverse q) p
-
-  end
-
-module Permutation_Array : Permutation =
-  struct
-
-    type t = int array
-
-    let of_list p =
-      if List.sort compare p <> (ThoList.range 0 (List.length p - 1)) then
-	invalid_arg "Permutation.of_list"
-      else
-	Array.of_list p
-
-    let of_array p =
-      try
-	of_list (Array.to_list p)
-      with 
-      | Invalid_argument "Permutation.of_list" ->
-	invalid_arg "Permutation.of_array"
-      
-      let inverse p =
-      let len_p = Array.length p in
-      let p' = Array.make len_p p.(0) in
-      for i = 0 to pred len_p do
-	p'.(p.(i)) <- i
-      done;
-      p'
-
-    let array p a =
-      let len_a = Array.length a
-      and len_p = Array.length p in
-      if len_a <> len_p then
-	invalid_arg "Permutation.array: length mismatch";
-      let a' = Array.make len_a a.(0) in
-      for i = 0 to pred len_a do
-	a'.(p.(i)) <- a.(i)
-      done;
-      a'
-
-    let list p l =
-      try
-	Array.to_list (array p (Array.of_list l))
-      with 
-      | Invalid_argument "Permutation.array: length mismatch" ->
-	invalid_arg "Permutation.list: length mismatch"
-
-    let compose p q =
-      array (inverse q) p
-
-  end
-
-module Permutation = Permutation_Array
 
 (* To shuffle an array a of n elements (indices 0..n-1):
 
@@ -229,7 +91,7 @@ let shuffle l =
   done;
   Array.to_list a
 
-module Permutation_Test (Permutation : Permutation) : Test =
+module Permutation_Test (Permutation : Permutation.T) : Test =
   struct
 
     open OUnit
@@ -561,6 +423,8 @@ module Vertex (* : Vertex *) =
 
   end
 
+module Permutation = Permutation.Default
+
 module Make_Vertex_Test (M : Model.T) = 
   struct
 
@@ -575,7 +439,7 @@ module Make_Vertex_Test (M : Model.T) =
       List.for_all (Lorentz.tensor_ok context) v.lorentz &&
 	List.for_all (Color.tensor_ok context) v.color
 
-    module PM = Partial (struct type t = int let compare = compare end)
+    module PM = Partial.Make (struct type t = int let compare = compare end)
 
     let id x = x
 

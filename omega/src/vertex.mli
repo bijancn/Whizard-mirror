@@ -41,23 +41,7 @@
 module type Test = sig val suite : OUnit.test val time : unit -> unit end
 
 module Partial_Test : Test
-
-module type Permutation =
-  sig
-    type t
-    val of_list : int list -> t
-    val of_array : int array -> t
-    val inverse : t -> t
-    val compose : t -> t -> t
-    val list : t -> 'a list -> 'a list
-    val array : t -> 'a array -> 'a array
-  end
-
-module Permutation_List : Permutation
-module Permutation_Array : Permutation
-module Permutation : Permutation
-
-module Permutation_Test : functor (Permutation : Permutation) -> Test
+module Permutation_Test : functor (Permutation : Permutation.T) -> Test
 
 module type Vertex =
   sig
