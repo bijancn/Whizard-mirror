@@ -287,8 +287,30 @@ else
    AM_CONDITIONAL([OCAMLDEP_AVAILABLE],[false])
 fi
 
-comment_model_file=""
-comment_model_file="#"
+###---------------------------------------------------------------------
+### Model files
+
+AC_ARG_ENABLE([model-files],
+  [AS_HELP_STRING([--enable-model-files],
+    [build the development code for model files (developers only) [[no]]])])
+
+AC_CACHE_CHECK([whether we want to build the development code for model files], 
+[wo_cv_model_files],
+[dnl
+if test "$enable_model_files" = "yes"; then
+  wo_cv_model_files=yes
+else
+  wo_cv_model_files=no
+fi])
+
+AM_CONDITIONAL([MODEL_FILES],
+  [test "$enable_model_files" = "yes"])
+
+if test "$enable_model_files" = "yes"; then
+  comment_model_file=""
+else
+  comment_model_file="#"
+fi
 AC_SUBST([comment_model_file])
 
 ########################################################################

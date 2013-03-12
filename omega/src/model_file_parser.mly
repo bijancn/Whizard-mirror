@@ -1,4 +1,4 @@
-/* $Id: model_parser.mly 4015 2013-01-03 16:04:18Z jr_reuter $
+/* $Id: model_file_parser.mly -1   $
 
    Copyright (C) 1999-2013 by
 
@@ -23,7 +23,7 @@
 
 %{
 let parse_error msg =
-  raise (Model_syntax.Syntax_Error (msg, symbol_start (), symbol_end ()))
+  raise (Model_file_syntax.Syntax_Error (msg, symbol_start (), symbol_end ()))
 %}
 
 %token < string > STRING EXPR
@@ -33,7 +33,7 @@ let parse_error msg =
 %token END
 
 %start file
-%type < Model_syntax.file > file
+%type < Model_file_syntax.file > file
 
 %%
 
@@ -42,24 +42,24 @@ file:
 ;
 
 declarations:
-                               { Model_syntax.empty () }
+                               { Model_file_syntax.empty () }
   | declarations particle_declaration
-                               { Model_syntax.add_particle $2 $1 }
+                               { Model_file_syntax.add_particle $2 $1 }
   | declarations vertex_declaration
-                               { Model_syntax.add_vertex $2 $1 }
+                               { Model_file_syntax.add_vertex $2 $1 }
   | declarations coupling_declaration
-                               { Model_syntax.add_coupling $2 $1 }
-  | declarations AUTHOR EXPR   { Model_syntax.add_author $3 $1 }
-  | declarations VERSION EXPR  { Model_syntax.add_version $3 $1 }
-  | declarations CREATED EXPR  { Model_syntax.add_created $3 $1 }
-  | declarations REVISED EXPR  { Model_syntax.add_revised $3 $1 }
+                               { Model_file_syntax.add_coupling $2 $1 }
+  | declarations AUTHOR EXPR   { Model_file_syntax.add_author $3 $1 }
+  | declarations VERSION EXPR  { Model_file_syntax.add_version $3 $1 }
+  | declarations CREATED EXPR  { Model_file_syntax.add_created $3 $1 }
+  | declarations REVISED EXPR  { Model_file_syntax.add_revised $3 $1 }
 ;
 
 particle_declaration:
     PARTICLE STRING attrib_list
-                               { Model_syntax.neutral $2 $3 }
+                               { Model_file_syntax.neutral $2 $3 }
   | PARTICLE STRING opt_comma STRING attrib_list
-                               { Model_syntax.charged $2 $4 $5 }
+                               { Model_file_syntax.charged $2 $4 $5 }
 ;
 
 attrib_list:
@@ -79,12 +79,12 @@ attrib:
 ;
 
 coupling_declaration:
-    COUPLING STRING            { Model_syntax.coupling $2 }
+    COUPLING STRING            { Model_file_syntax.coupling $2 }
 ;
 
 vertex_declaration:
     VERTEX particle_list COLON EXPR
-                               { Model_syntax.vertex $2 $4 }
+                               { Model_file_syntax.vertex $2 $4 }
 ;
 
 particle_list:

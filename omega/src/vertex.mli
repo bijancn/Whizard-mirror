@@ -38,6 +38,38 @@
    built from tensors contrated with external polarization vectors.  We can then
    check at runtime that the expression is linear in these polarization vectors. *)
 
+module type Test = sig val suite : OUnit.test val time : unit -> unit end
+
+module Partial_Test : Test
+
+module type Permutation =
+  sig
+    type t
+    val of_list : int list -> t
+    val of_array : int array -> t
+    val inverse : t -> t
+    val compose : t -> t -> t
+    val list : t -> 'a list -> 'a list
+    val array : t -> 'a array -> 'a array
+  end
+
+module Permutation_List : Permutation
+module Permutation_Array : Permutation
+module Permutation : Permutation
+
+module Permutation_Test : functor (Permutation : Permutation) -> Test
+
+module type Vertex =
+  sig
+    val example : unit -> unit
+    val test_suite : OUnit.test
+  end
+
+module Make_Vertex_Test : functor (M : Model.T) -> Vertex
+
+
+(*i 
+
 (* \thocwmodulesection{Code Generation}
    \begin{dubious}
      Most of this will be moved to [Targets].
@@ -46,6 +78,8 @@
 val parse : string -> Vertex_syntax.scalar
 
 val process_vertex : Vertex_syntax.scalar -> unit
+
+i*)
 
 (*i
  *  Local Variables:

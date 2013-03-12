@@ -72,40 +72,21 @@ if OCAML_AVAILABLE
 
 OCAMLFLAGS += -I $(top_builddir)/src
 OMEGA_CORE = $(top_builddir)/src/omega_core.cmxa
+OMEGA_MODELS = $(top_builddir)/src/omega_models.cmxa
 
 TESTS += omega_unit
 EXTRA_PROGRAMS += omega_unit
 
 omega_unit_SOURCES = omega_unit.ml 
-omega_unit_SOURCES += oUnit.mli oUnit.ml oUnitDiff.mli oUnitDiff.ml
 
-omega_unit: $(OMEGA_CORE) oUnit.cmx oUnitDiff.cmx omega_unit.cmx
+omega_unit: $(OMEGA_CORE) omega_unit.cmx
 	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -o omega_unit \
-		unix.cmxa $(OMEGA_CORE) \
-		oUnit.cmx oUnitDiff.cmx omega_unit.cmx
+		unix.cmxa $(OMEGA_CORE) omega_unit.cmx
 
 omega_unit.cmx: omega_unit.ml
 	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -c -o $@ $<
 
-oUnit.cmi: oUnit.mli
-	$(OCAMLC) $(OCAMLFLAGS) -c -o $@ $<
-
-oUnit.cmx: oUnit.ml
-	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -c -o $@ $<
-
-oUnitDiff.cmi: oUnitDiff.mli
-	$(OCAMLC) $(OCAMLFLAGS) -c -o $@ $<
-
-oUnitDiff.cmx: oUnitDiff.ml
-	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -c -o $@ $<
-
-ocaml_unit.cmx oUnit.cmx oUnitDiff.cmx: oUnit.cmi
-ocaml_unit.cmx oUnitDiff.cmx: oUnitDiff.cmi
-
-# oUnit.cmi oUnit.cmx omega_unit.cmi oUnitDiff.cmi oUnitDiff.cmx omega_unit.cmx
-
-oUnitDiff.cmx: oUnit.cmx
-omega_unit.cmx: $(OMEGA_CORE) oUnitDiff.cmx oUnit.cmx 
+omega_unit.cmx: $(OMEGA_CORE)
 
 endif
 
@@ -342,6 +323,26 @@ benchmark.o: \
 benchmark.o: parameters_QCD.o
 amplitude_benchmark_v1.o amplitude_benchmark_v2.o \
     amplitude_benchmark_v3.o amplitude_benchmark_v4.o: parameters_QCD.o
+
+########################################################################
+
+if OCAML_AVAILABLE 
+
+TESTS += @comment_model_file@ vertex_unit
+@comment_model_file@ EXTRA_PROGRAMS += vertex_unit
+
+@comment_model_file@ vertex_unit_SOURCES = vertex_unit.ml 
+
+vertex_unit: $(OMEGA_CORE) vertex_unit.cmx
+	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -o vertex_unit \
+		unix.cmxa $(OMEGA_CORE) $(OMEGA_MODELS) vertex_unit.cmx
+
+vertex_unit.cmx: vertex_unit.ml
+	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -c -o $@ $<
+
+vertex_unit.cmx: $(OMEGA_CORE) $(OMEGA_MODELS)
+
+endif
 
 ########################################################################
 

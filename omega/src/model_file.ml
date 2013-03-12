@@ -30,9 +30,9 @@ open Printf
 
 let model_of_channel channel =
   try
-    Model_parser.file Model_lexer.token (Lexing.from_channel channel)
+    Model_file_parser.file Model_file_lexer.token (Lexing.from_channel channel)
   with
-  | Model_syntax.Syntax_Error (msg, i, j) ->
+  | Model_file_syntax.Syntax_Error (msg, i, j) ->
       invalid_arg (sprintf "syntax error (%s) at: [%d,%d]" msg i j)
 
 let model_of_file = function
@@ -117,10 +117,10 @@ let extract_created ?(v = false) ?pfx rev_created =
 
 let extract_metadata ?v name file =
   { name = name;
-    authors = extract_authors ?v ~pfx:name file.Model_syntax.authors;
-    version = extract_version ?v ~pfx:name file.Model_syntax.version;
-    created = extract_created ?v ~pfx:name file.Model_syntax.created;
-    revised = List.rev file.Model_syntax.revised }
+    authors = extract_authors ?v ~pfx:name file.Model_file_syntax.authors;
+    version = extract_version ?v ~pfx:name file.Model_file_syntax.version;
+    created = extract_created ?v ~pfx:name file.Model_file_syntax.created;
+    revised = List.rev file.Model_file_syntax.revised }
 
 (* \thocwmodulesubsection{Particles} *)
 
@@ -328,21 +328,23 @@ let scan_particle_attribs ?v ?pfx attribs =
   List.iter (scan_particle_attrib ?v ?pfx) attribs
 
 let add_particle ?v ?pfx raw_particle map =
-  scan_particle_attribs ?v ?pfx raw_particle.Model_syntax.attribs;
-  match raw_particle.Model_syntax.name with
-  | Model_syntax.Neutral name ->
+  scan_particle_attribs ?v ?pfx raw_particle.Model_file_syntax.attribs;
+  match raw_particle.Model_file_syntax.name with
+  | Model_file_syntax.Neutral name ->
       add_neutral name (particle_of_attribs ?v ?pfx name
-                          raw_particle.Model_syntax.attribs) map
-  | Model_syntax.Charged (name, anti) ->
+                          raw_particle.Model_file_syntax.attribs) map
+  | Model_file_syntax.Charged (name, anti) ->
       add_charged
         name (particle_of_attribs ?v ?pfx name
-                raw_particle.Model_syntax.attribs)
+                raw_particle.Model_file_syntax.attribs)
         anti (anti_particle_of_attribs ?v ?pfx anti
-                raw_particle.Model_syntax.attribs)
+                raw_particle.Model_file_syntax.attribs)
         map
 
 let extract_particles ?v name file =
-  List.fold_right (add_particle ?v ~pfx:name) file.Model_syntax.particles SMap.empty
+  List.fold_right
+    (add_particle ?v ~pfx:name)
+    file.Model_file_syntax.particles SMap.empty
 
 (* \thocwmodulesection{Test Program} *)
 
@@ -351,10 +353,10 @@ let _ =
   let model = model_of_file file in
   let metadata = extract_metadata ~v:true file model in
   let particles = extract_particles ~v:true file model in
-  let vertices = model.Model_syntax.vertices in
+  let vertices = model.Model_file_syntax.vertices in
   print_metadata metadata;
   SMap.iter (fun name p -> print_particle p) particles;
-  List.iter (fun v -> Vertex.process_vertex v.Model_syntax.expr) vertices
+  List.iter (fun v -> Vertex.process_vertex v.Model_file_syntax.expr) vertices
 
 (*i
  *  Local Variables:

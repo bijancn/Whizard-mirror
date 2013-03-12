@@ -21,8 +21,8 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-val model_of_channel : in_channel -> Model_syntax.file
-val model_of_file : string -> Model_syntax.file
+val model_of_channel : in_channel -> Model_file_syntax.file
+val model_of_file : string -> Model_file_syntax.file
 
 (*i
  *  Local Variables:

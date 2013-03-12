@@ -1,4 +1,4 @@
-(* $Id: model_lexer.mll 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: model_file_lexer.mll -1   $
 
    Copyright (C) 1999-2013 by
 
@@ -22,7 +22,7 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 {
-open Model_parser
+open Model_file_parser
 let unquote s =
   String.sub s 1 (String.length s - 2)
 }

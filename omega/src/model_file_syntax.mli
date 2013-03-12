@@ -1,4 +1,4 @@
-(* $Id: model_syntax.mli 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: model_file_syntax.mli -1   $
 
    Copyright (C) 1999-2013 by
 
