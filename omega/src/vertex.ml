@@ -26,14 +26,18 @@ type context =
       lorentz_reps : Coupling.lorentz array;
       color_reps : Color.t array }
 
-module type Field =
+(* An abstract type that allows us to distinguish offsets
+   in the field array, from color and Lorentz indices in
+   different representations. *)
+
+module type Index =
   sig
     type t
     val of_int : int -> t
     val to_int : t -> int
   end
 
-module Field : Field =
+module Field : Index =
   struct
     type t = int
     let of_int i = i
@@ -49,7 +53,14 @@ module type Lorentz =
 module Lorentz (* : Lorentz *) =
   struct
 
-    type index = int
+    module Index : Index =
+      struct
+        type t = int
+        let of_int i = i
+        let to_int i = i
+      end
+
+    type index = int (* Index.t *)
 
     type primitive =
       | G of index * index
@@ -134,6 +145,15 @@ module type Color =
 
 module Color (* : Color *) = 
   struct
+
+    module Index : Index =
+      struct
+        type t = int
+        let of_int i = i
+        let to_int i = i
+      end
+
+    type index = int (* Index.t *)
 
     type color =
       | Fundamental of field
