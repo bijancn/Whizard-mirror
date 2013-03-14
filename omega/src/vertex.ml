@@ -66,17 +66,25 @@ module Lorentz (* : Lorentz *) =
       | I of int
       | F of field
 
+    let map_vector fi ff = function
+      | I i -> I (fi i)
+      | F i -> F (ff i)
+
     type spinor =
       | SI of int
       | SF of field
+
+    let map_spinor fi ff = function
+      | SI i -> SI (fi i)
+      | SF i -> SF (ff i)
 
     type conjspinor =
       | CI of int
       | CF of field
 
-    let map_vector fi ff = function
-      | I i -> I (fi i)
-      | F i -> F (ff i)
+    let map_conjspinor fi ff = function
+      | CI i -> CI (fi i)
+      | CF i -> CF (ff i)
 
     (* This is not yet consistent, because the indices
        play a double role as summation indices and
@@ -89,13 +97,13 @@ module Lorentz (* : Lorentz *) =
       | G of vector * vector
       | E of vector * vector * vector * vector
       | K of vector * field
-      | S of field * field
-      | V of vector * field * field
-      | T of vector * vector * field * field
-      | A of vector * field * field
-      | P of field * field
+      | S of conjspinor * spinor
+      | V of vector * conjspinor * spinor
+      | T of vector * vector * conjspinor * spinor
+      | A of vector * conjspinor * spinor
+      | P of conjspinor * spinor
 
-    let map_primitive fi ff = function
+    let map_primitive fi ff fsi fsf fci fcf = function
       | G (mu, nu) ->
           G (map_vector fi ff mu, map_vector fi ff nu)
       | E (mu, nu, rho, sigma) ->
@@ -106,15 +114,22 @@ module Lorentz (* : Lorentz *) =
       | K (mu, i) ->
           K (map_vector fi ff mu, ff i)
       | S (i, j) ->
-          S (ff i, ff j)
+          S (map_conjspinor fci fcf i, map_spinor fsi fsf j)
       | V (mu, i, j) ->
-          V (map_vector fi ff mu, ff i, ff j)
+          V (map_vector fi ff mu,
+             map_conjspinor fci fcf i,
+             map_spinor fsi fsf j)
       | T (mu, nu, i, j) ->
-          T (map_vector fi ff mu, map_vector fi ff nu, ff i, ff j)
+          T (map_vector fi ff mu,
+             map_vector fi ff nu,
+             map_conjspinor fci fcf i,
+             map_spinor fsi fsf j)
       | A (mu, i, j) ->
-          A (map_vector fi ff mu, ff i, ff j)
+          A (map_vector fi ff mu,
+             map_conjspinor fci fcf i,
+             map_spinor fsi fsf j)
       | P (i, j) ->
-          P (ff i, ff j)
+          P (map_conjspinor fci fcf i, map_spinor fsi fsf j)
 
     let fields = function
       | I _ -> []
@@ -141,21 +156,29 @@ module Lorentz (* : Lorentz *) =
             | _ -> false
           end
       
-    let spinor_ok context i =
-      field_in_bounds context i &&
-      match context.lorentz_reps.(i) with
-      | Coupling.Spinor -> true
-      | Coupling.Vectorspinor | Coupling.Majorana ->
-	  failwith "Lorentz.spinor_ok: incomplete"
-      | _ -> false
+    let spinor_ok context = function
+      | SI _ -> true
+      | SF i ->
+          begin
+            field_in_bounds context i &&
+            match context.lorentz_reps.(i) with
+            | Coupling.Spinor -> true
+            | Coupling.Vectorspinor | Coupling.Majorana ->
+	        failwith "Lorentz.spinor_ok: incomplete"
+            | _ -> false
+          end
 
-    let conjspinor_ok context i =
-      field_in_bounds context i &&
-      match context.lorentz_reps.(i) with
-      | Coupling.ConjSpinor -> true
-      | Coupling.Vectorspinor | Coupling.Majorana ->
-	  failwith "Lorentz.conjspinor_ok: incomplete"
-      | _ -> false
+    let conjspinor_ok context = function
+      | CI _ -> true
+      | CF i ->
+          begin
+            field_in_bounds context i &&
+            match context.lorentz_reps.(i) with
+            | Coupling.ConjSpinor -> true
+            | Coupling.Vectorspinor | Coupling.Majorana ->
+	        failwith "Lorentz.conjspinor_ok: incomplete"
+            | _ -> false
+          end
 
     let spinor_sandwitch_ok context i j =
       conjspinor_ok context i && spinor_ok context j
@@ -210,8 +233,8 @@ module Lorentz (* : Lorentz *) =
 
     type tensor = int * primitive list
 
-    let map_tensor fi ff (factor, primitives) =
-      (factor, List.map (map_primitive fi ff) primitives)
+    let map_tensor fi ff fsi fsf fci fcf (factor, primitives) =
+      (factor, List.map (map_primitive fi ff fsi fsf fci fcf ) primitives)
 
     let tensor_ok context (_, primitives) =
       List.for_all (primitive_ok context) primitives &&
@@ -341,10 +364,11 @@ module Test (M : Model.T) :
 
     let permute v p =
       let sorted = ThoList.range 0 (Array.length v.fields - 1) in
-      let permute_fields = PM.apply (PM.of_lists sorted p) in
+      let permute = PM.apply (PM.of_lists sorted p) in
       { fields = Permutation.array (Permutation.of_list p) v.fields;
- 	lorentz = List.map (Lorentz.map_tensor id permute_fields) v.lorentz;
-	color = List.map (Color.map_tensor permute_fields) v.color }
+ 	lorentz = List.map
+          (Lorentz.map_tensor id permute id permute id permute) v.lorentz;
+	color = List.map (Color.map_tensor permute) v.color }
 
     let permutations v =
       List.map (permute v)
@@ -367,32 +391,44 @@ module Test (M : Model.T) :
 
     let vector_current_ok =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (1, [Lorentz.V (Lorentz.F 1, 0, 2)]) ];
+	lorentz = [ (1, [Lorentz.V (Lorentz.F 1,
+                                    Lorentz.CF 0,
+                                    Lorentz.SF 2)]) ];
 	color = [ (1, [Color.T (1, 0, 2)])] }
 
     let vector_current_vector_misplaced =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (1, [Lorentz.V (Lorentz.F 2, 0, 2)]) ];
+	lorentz = [ (1, [Lorentz.V (Lorentz.F 2,
+                                    Lorentz.CF 0,
+                                    Lorentz.SF 2)]) ];
 	color = [ (1, [Color.T (1, 0, 2)])] }
 
     let vector_current_spinor_misplaced =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (1, [Lorentz.V (Lorentz.F 1, 0, 1)]) ];
+	lorentz = [ (1, [Lorentz.V (Lorentz.F 1,
+                                    Lorentz.CF 0,
+                                    Lorentz.SF 1)]) ];
 	color = [ (1, [Color.T (1, 0, 2)])] }
 
     let vector_current_conjspinor_misplaced =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (1, [Lorentz.V (Lorentz.F 1, 1, 2)]) ];
+	lorentz = [ (1, [Lorentz.V (Lorentz.F 1,
+                                    Lorentz.CF 1,
+                                    Lorentz.SF 2)]) ];
 	color = [ (1, [Color.T (1, 0, 2)])] }
 
     let vector_current_out_of_bounds =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (1, [Lorentz.V (mu, 3, 2)]) ];
+	lorentz = [ (1, [Lorentz.V (mu,
+                                    Lorentz.CF 3,
+                                    Lorentz.SF 2)]) ];
 	color = [ (1, [Color.T (1, 0, 2)])] }
 
     let vector_current_color_mismatch =
       { fields = [| "t"; "gl"; "t" |];
-	lorentz = [ (1, [Lorentz.V (mu, 3, 2)]) ];
+	lorentz = [ (1, [Lorentz.V (mu,
+                                    Lorentz.CF 3,
+                                    Lorentz.SF 2)]) ];
 	color = [ (1, [Color.T (1, 0, 2)])] }
 
     let anomalous_couplings =
