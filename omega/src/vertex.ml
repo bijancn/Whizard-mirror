@@ -215,33 +215,29 @@ module Lorentz (* : Lorentz *) =
       ThoList.flatmap primitive_indices p
 
     let contraction_ok p =
+      let c = ThoList.classify (indices p) in
+      print_endline
+        (String.concat ", "
+           (List.map
+              (fun (n, i) -> string_of_int n ^ " * " ^ string_of_int i)
+              c));
+      flush stdout;
+      let res = List.for_all (fun (n, _) -> n = 2) c in
+      res
+
+    let contraction_ok p =
       List.for_all
 	(fun (n, _) -> n = 2)
 	(ThoList.classify (indices p))
 
-    type factor =
-      | Integer of int
-      | Contraction of primitive list
-
-    let map_factor fi ff = function
-      | Integer _ as i -> i
-      | Contraction p ->
-	  Contraction (List.map (map_primitive fi ff) p)
-
-    let factor_ok context = function
-      | Integer _ -> true
-      | Contraction p ->
-	  List.for_all (primitive_ok context) p && contraction_ok p
-
-    type tensor = factor * primitive list
+    type tensor = int * primitive list
 
     let map_tensor fi ff (factor, primitives) =
-      (map_factor fi ff factor,
-       List.map (map_primitive fi ff) primitives)
+      (factor, List.map (map_primitive fi ff) primitives)
 
-    let tensor_ok context (factor, primitives) =
-      factor_ok context factor &&
-      List.for_all (primitive_ok context) primitives
+    let tensor_ok context (_, primitives) =
+      List.for_all (primitive_ok context) primitives &&
+      contraction_ok primitives
 
   end
 
@@ -334,28 +330,12 @@ module Color (* : Color *) =
 	(fun (n, _) -> n = 2)
 	(ThoList.classify (indices p))
 
-    type factor =
-      | Integer of int
-      | Contraction of primitive list
-
-    let map_factor f = function
-      | Integer _ as i -> i
-      | Contraction p ->
-	  Contraction (List.map (map_primitive f) p)
-
-    let factor_ok context = function
-      | Integer _ -> true
-      | Contraction p ->
-	  List.for_all (primitive_ok context) p &&
-	  contraction_ok p
-
-    type tensor = factor * primitive list
+    type tensor = int * primitive list
 
     let map_tensor f (factor, primitives) =
-      (map_factor f factor, List.map (map_primitive f) primitives)
+      (factor, List.map (map_primitive f) primitives)
 
-    let tensor_ok context (factor, primitives) =
-      factor_ok context factor &&
+    let tensor_ok context (_, primitives) =
       List.for_all (primitive_ok context) primitives
 
   end
@@ -420,38 +400,44 @@ module Test (M : Model.T) :
 
     let vector_current_ok =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (Lorentz.F i1, i0, i2)]) ];
-	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
+	lorentz = [ (1, [Lorentz.V (Lorentz.F i1, i0, i2)]) ];
+	color = [ (1, [Color.T (i1, i0, i2)])] }
 
     let vector_current_vector_misplaced =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (Lorentz.F i2, i0, i2)]) ];
-	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
+	lorentz = [ (1, [Lorentz.V (Lorentz.F i2, i0, i2)]) ];
+	color = [ (1, [Color.T (i1, i0, i2)])] }
 
     let vector_current_spinor_misplaced =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (Lorentz.F i1, i0, i1)]) ];
-	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
+	lorentz = [ (1, [Lorentz.V (Lorentz.F i1, i0, i1)]) ];
+	color = [ (1, [Color.T (i1, i0, i2)])] }
 
     let vector_current_conjspinor_misplaced =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (Lorentz.F i1, i1, i2)]) ];
-	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
+	lorentz = [ (1, [Lorentz.V (Lorentz.F i1, i1, i2)]) ];
+	color = [ (1, [Color.T (i1, i0, i2)])] }
 
     let vector_current_out_of_bounds =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, i3, i2)]) ];
-	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
+	lorentz = [ (1, [Lorentz.V (mu, i3, i2)]) ];
+	color = [ (1, [Color.T (i1, i0, i2)])] }
 
     let vector_current_color_mismatch =
       { fields = [| "t"; "gl"; "t" |];
-	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, i3, i2)]) ];
-	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
+	lorentz = [ (1, [Lorentz.V (mu, i3, i2)]) ];
+	color = [ (1, [Color.T (i1, i0, i2)])] }
 
     let anomalous_couplings =
       { fields = [| "W+"; "W-"; "Z"; "Z" |];
-	lorentz = [ (Lorentz.Integer 1, [ Lorentz.K (mu, i0);
+	lorentz = [ (1, [ Lorentz.K (mu, i0);
 					  Lorentz.K (mu, i1) ]) ];
+	color = [ ] }
+      
+    let anomalous_couplings_index_mismatch =
+      { fields = [| "W+"; "W-"; "Z"; "Z" |];
+	lorentz = [ (1, [ Lorentz.K (mu, i0);
+					  Lorentz.K (nu, i1) ]) ];
 	color = [ ] }
       
     exception Inconsistent_vertex
@@ -492,11 +478,18 @@ module Test (M : Model.T) :
 	  assert_bool "anomalous couplings"
 	    (ok anomalous_couplings))
 		
+    let anomalous_couplings_broken =
+      "anomalous_couplings/broken" >::
+	(fun () ->
+	  assert_bool "anomalous couplings"
+	    (not (ok anomalous_couplings_index_mismatch)))
+		
     let suite =
       "Vertex" >:::
 	[vertex_indices_ok;
 	 vertex_indices_broken;
-	 anomalous_couplings_ok]
+	 anomalous_couplings_ok;
+         anomalous_couplings_broken]
       
   end
 
