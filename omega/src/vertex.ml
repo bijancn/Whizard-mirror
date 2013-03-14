@@ -37,7 +37,7 @@ let distinct ilist =
   List.length ilist
 
 (* An abstract type that allows us to distinguish offsets
-   in the field array, from color and Lorentz indices in
+   in the field array from color and Lorentz indices in
    different representations. *)
 
 module type Index =
@@ -56,6 +56,11 @@ module Field : Index =
 
 type field = Field.t
 
+let field_in_bounds context i =
+  let i' = Field.to_int i in
+  0 <= i' && i' < context.arity
+
+
 module type Lorentz =
   sig
   end
@@ -70,53 +75,140 @@ module Lorentz (* : Lorentz *) =
         let to_int i = i
       end
 
+    module Spinor : Index =
+      struct
+        type t = int
+        let of_int i = i
+        let to_int i = i
+      end
+
+    module ConjSpinor : Index =
+      struct
+        type t = int
+        let of_int i = i
+        let to_int i = i
+      end
+
     (* $\mu_0,\mu_1,\ldots$, not $0,1,2,3$ *)
-    type index = Index.t
+    (* type vector = Index.t *)
+
+    type vector =
+      | I of int
+      | F of field
+
+    let map_vector fi ff = function
+      | I i -> I (fi i)
+      | F i -> F (ff i)
+
+    (* This is not yet consistent, because the indices
+       play a double role as summation indices and
+       polarizations for external vectors.  *)
+
+    (* Similarly: do we want to allow products
+       of Dirac matrices and not only tensor products? *)
 
     type primitive =
-      | G of index * index
-      | E of index * index * index * index
-      | K of index * field
+      | G of vector * vector
+      | E of vector * vector * vector * vector
+      | K of vector * field
       | S of field * field
-      | V of index * field * field
-      | T of index * index * field * field
-      | A of index * field * field
+      | V of vector * field * field
+      | T of vector * vector * field * field
+      | A of vector * field * field
       | P of field * field
 
     let map_primitive fi ff = function
-      | G (mu, nu) -> G (fi mu, fi nu)
-      | E (mu, nu, rho, sigma) -> E (fi mu, fi nu, fi rho, fi sigma)
-      | K (mu, i) -> K (fi mu, ff i)
-      | S (i, j) -> S (ff i, ff j)
-      | V (mu, i, j) -> V (fi mu, ff i, ff j)
-      | T (mu, nu, i, j) -> T (fi mu, fi nu, ff i, ff j)
-      | A (mu, i, j) -> A (fi mu, ff i, ff j)
-      | P (i, j) -> P (ff i, ff j)
+      | G (mu, nu) ->
+          G (map_vector fi ff mu, map_vector fi ff nu)
+      | E (mu, nu, rho, sigma) ->
+          E (map_vector fi ff mu,
+             map_vector fi ff nu,
+             map_vector fi ff rho,
+             map_vector fi ff sigma)
+      | K (mu, i) ->
+          K (map_vector fi ff mu, ff i)
+      | S (i, j) ->
+          S (ff i, ff j)
+      | V (mu, i, j) ->
+          V (map_vector fi ff mu, ff i, ff j)
+      | T (mu, nu, i, j) ->
+          T (map_vector fi ff mu, map_vector fi ff nu, ff i, ff j)
+      | A (mu, i, j) ->
+          A (map_vector fi ff mu, ff i, ff j)
+      | P (i, j) ->
+          P (ff i, ff j)
+
+    let fields = function
+      | I _ -> []
+      | F i -> [i]
+
+    let fields2 mu nu =
+      fields mu @ fields nu
+
+    let fields4 mu nu rho sigma =
+      fields mu @ fields nu @ fields rho @ fields sigma
+
+    let fields_in_bounds context f =
+      List.for_all (field_in_bounds context) f
+
+    let vector_ok context = function
+      | I _ -> true
+      | F i ->
+          begin
+            field_in_bounds context i &&
+            match context.lorentz_reps.(Field.to_int i) with
+            | Coupling.Vector -> true
+            | Coupling.Vectorspinor ->
+	        failwith "Lorentz.vector_ok: incomplete"
+            | _ -> false
+          end
+      
+    let spinor_ok context i =
+      field_in_bounds context i &&
+      match context.lorentz_reps.(Field.to_int i) with
+      | Coupling.Spinor -> true
+      | Coupling.Vectorspinor | Coupling.Majorana ->
+	  failwith "Lorentz.spinor_ok: incomplete"
+      | _ -> false
+
+    let conjspinor_ok context i =
+      field_in_bounds context i &&
+      match context.lorentz_reps.(Field.to_int i) with
+      | Coupling.ConjSpinor -> true
+      | Coupling.Vectorspinor | Coupling.Majorana ->
+	  failwith "Lorentz.conjspinor_ok: incomplete"
+      | _ -> false
+
+    let spinor_sandwitch_ok context i j =
+      conjspinor_ok context i && spinor_ok context j
+      (* [distinct2 i j] is guaranteed *)
 
     let primitive_ok context =
-      let field_in_bounds i =
-        let i' = Field.to_int i in
-        0 <= i' && i' < context.arity in
       function
-	| G (_, _) | E (_, _, _, _) -> true
-	| K (_, i) -> field_in_bounds i
-	| S (i, j) | V (_, i, j)
-	| T (_, _, i, j)
-	| A (_, i, j) | P (i, j) ->
-	    distinct2 i j && field_in_bounds i && field_in_bounds j &&
-	    (match context.lorentz_reps.(Field.to_int i),
-              context.lorentz_reps.(Field.to_int j) with
-	    | Coupling.ConjSpinor, Coupling.Spinor -> true
-	    | (Coupling.Vectorspinor|Coupling.Majorana), _ ->
-		failwith "Lorentz.primitive_ok: incomplete"
-	    | _, (Coupling.Vectorspinor|Coupling.Majorana) ->
-		failwith "Lorentz.primitive_ok: incomplete"
-	    | _, _ -> false)
+	| G (mu, nu) ->
+            distinct2 mu nu &&
+            vector_ok context mu && vector_ok context nu
+        | E (mu, nu, rho, sigma) ->
+            let i = [mu; nu; rho; sigma] in
+            distinct i && List.for_all (vector_ok context) i
+	| K (mu, i) ->
+            vector_ok context mu && field_in_bounds context i
+	| S (i, j) | P (i, j) ->
+            spinor_sandwitch_ok context i j
+        | V (mu, i, j) | A (mu, i, j) ->
+            vector_ok context mu && spinor_sandwitch_ok context i j
+	| T (mu, nu, i, j) ->
+            vector_ok context mu && vector_ok context nu &&
+            spinor_sandwitch_ok context i j
+
+    let idx = function
+      | I i -> [i]
+      | F _ -> []
 
     let primitive_indices = function
-      | G (mu, nu) | T (mu, nu, _, _) -> [mu; nu]
-      | E (mu, nu, rho, sigma) -> [mu; nu; rho; sigma]
-      | K (mu, _) | V (mu, _, _) | A (mu, _, _) -> [mu]
+      | G (mu, nu) | T (mu, nu, _, _) -> idx mu @ idx nu
+      | E (mu, nu, rho, sigma) -> idx mu @ idx nu @ idx rho @ idx sigma
+      | K (mu, _) | V (mu, _, _) | A (mu, _, _) -> idx mu
       | S (_, _) | P (_, _) -> []
 
     let indices p =
@@ -186,44 +278,44 @@ module Color (* : Color *) =
       | E (i, j, k) -> E (f i, f j, f k)
       | T (a, i, j) -> T (f a, f i, f j)
       | F (a, b, c) -> F (f a, f b, f c)
-      
-    let primitive_ok context =
-      let field_in_bounds i =
-        let i' = Field.to_int i in
-        0 <= i' && i' < context.arity in
+
+    let primitive_ok ctx =
       function
 	| D (i, j) ->
-	    distinct2 i j &&  field_in_bounds i && field_in_bounds j &&
-	    (match context.color_reps.(Field.to_int i),
-              context.color_reps.(Field.to_int j) with
+	    distinct2 i j && field_in_bounds ctx i && field_in_bounds ctx j &&
+	    (match ctx.color_reps.(Field.to_int i),
+              ctx.color_reps.(Field.to_int j) with
 	    | Color.SUN (n1), Color.SUN (n2) ->
 		n1 = - n2 && n2 > 0
 	    | _, _ -> false)
 	| E (i, j, k) ->
 	    distinct3 i j k &&
-	    field_in_bounds i && field_in_bounds j &&field_in_bounds k &&
-	    (match context.color_reps.(Field.to_int i),
-	      context.color_reps.(Field.to_int j),
-              context.color_reps.(Field.to_int k) with
+	    field_in_bounds ctx i && field_in_bounds ctx j &&
+            field_in_bounds ctx k &&
+	    (match ctx.color_reps.(Field.to_int i),
+	      ctx.color_reps.(Field.to_int j),
+              ctx.color_reps.(Field.to_int k) with
 	    | Color.SUN (n1), Color.SUN (n2), Color.SUN (n3) ->
 		n1 = 3 && n2 = 3 && n3 = 3 ||
 		n1 = -3 && n2 = -3 && n3 = -3
 	      | _, _, _ -> false)
 	| T (a, i, j) ->
 	    distinct3 a i j &&
-	    field_in_bounds a && field_in_bounds i && field_in_bounds j &&
-	    (match context.color_reps.(Field.to_int a),
-	      context.color_reps.(Field.to_int i),
-              context.color_reps.(Field.to_int j) with
+	    field_in_bounds ctx a && field_in_bounds ctx i &&
+            field_in_bounds ctx j &&
+	    (match ctx.color_reps.(Field.to_int a),
+	      ctx.color_reps.(Field.to_int i),
+              ctx.color_reps.(Field.to_int j) with
 	    | Color.AdjSUN(n1), Color.SUN (n2), Color.SUN (n3) ->
 		n1 = n3 && n2 = - n3 && n3 > 0
 	    | _, _, _ -> false)
 	| F (a, b, c) ->
 	    distinct3 a b c &&
-	    field_in_bounds a && field_in_bounds b && field_in_bounds c &&
-	    (match context.color_reps.(Field.to_int a),
-	      context.color_reps.(Field.to_int b),
-              context.color_reps.(Field.to_int c) with
+	    field_in_bounds ctx a && field_in_bounds ctx b &&
+            field_in_bounds ctx c &&
+	    (match ctx.color_reps.(Field.to_int a),
+	      ctx.color_reps.(Field.to_int b),
+              ctx.color_reps.(Field.to_int c) with
 	    | Color.AdjSUN(n1), Color.AdjSUN (n2), Color.AdjSUN (n3) ->
 		n1 = n2 && n2 = n3 && n1 > 0
 	    | _, _, _ -> false)
@@ -238,20 +330,9 @@ module Color (* : Color *) =
       ThoList.flatmap primitive_indices p
 
     let contraction_ok p =
-      let c = ThoList.classify (indices p) in
-      let res = List.for_all
-	  (fun (n, _) -> n = 2)
-	  (c)
-      in
-      print_endline
-	(String.concat ", "
-	   (List.map
-	      (fun (n, i) ->
-                string_of_int n ^ " * " ^
-                string_of_int (Field.to_int i))
-	      c));
-      flush stdout;
-      res
+      List.for_all
+	(fun (n, _) -> n = 2)
+	(ThoList.classify (indices p))
 
     type factor =
       | Integer of int
@@ -329,19 +410,32 @@ module Test (M : Model.T) :
 
 (* Testing: *)
 
-    let mu = 0
-
     let i0 = Field.of_int 0
     and i1 = Field.of_int 1
     and i2 = Field.of_int 2
     and i3 = Field.of_int 3
 
-    let mu = Lorentz.Index.of_int 0
-    and nu = Lorentz.Index.of_int 1
+    let mu = Lorentz.I 0
+    and nu = Lorentz.I 1
 
-    let vector_current =
+    let vector_current_ok =
       { fields = [| "tbar"; "gl"; "t" |];
-	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (mu, i0, i2)]) ];
+	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (Lorentz.F i1, i0, i2)]) ];
+	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
+
+    let vector_current_vector_misplaced =
+      { fields = [| "tbar"; "gl"; "t" |];
+	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (Lorentz.F i2, i0, i2)]) ];
+	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
+
+    let vector_current_spinor_misplaced =
+      { fields = [| "tbar"; "gl"; "t" |];
+	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (Lorentz.F i1, i0, i1)]) ];
+	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
+
+    let vector_current_conjspinor_misplaced =
+      { fields = [| "tbar"; "gl"; "t" |];
+	lorentz = [ (Lorentz.Integer 1, [Lorentz.V (Lorentz.F i1, i1, i2)]) ];
 	color = [ (Color.Integer 1, [Color.T (i1, i0, i2)])] }
 
     let vector_current_out_of_bounds =
@@ -363,10 +457,10 @@ module Test (M : Model.T) :
     exception Inconsistent_vertex
 
     let example () =
-      if not (ok vector_current) then begin
+      if not (ok vector_current_ok) then begin
 	raise Inconsistent_vertex
       end;
-      write_fusions vector_current
+      write_fusions vector_current_ok
 
     open OUnit
 
@@ -376,11 +470,17 @@ module Test (M : Model.T) :
 	  List.iter
 	    (fun v ->
 	      assert_bool "vector_current" (ok v))
-	    (permutations vector_current))
+	    (permutations vector_current_ok))
 		
     let vertex_indices_broken =
       "indices/broken" >::
 	(fun () ->
+	  assert_bool "vector misplaced"
+	    (not (ok vector_current_vector_misplaced));
+	  assert_bool "conjugate spinor misplaced"
+	    (not (ok vector_current_spinor_misplaced));
+	  assert_bool "conjugate spinor misplaced"
+	    (not (ok vector_current_conjspinor_misplaced));
 	  assert_bool "out of bounds"
 	    (not (ok vector_current_out_of_bounds));
 	  assert_bool "color mismatch"
