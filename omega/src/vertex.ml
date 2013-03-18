@@ -87,6 +87,12 @@ module Lorentz (* : Lorentz *) =
       | I i -> I (fi i)
       | F i -> F (ff i)
 
+    let indices = function
+      | I i -> [i]
+      | F _ -> []
+
+    (* Is the following level of type checks useful or redundant? *)
+
     type vector = Vector of index
     type spinor = Spinor of index
     type conjspinor = ConjSpinor of index
@@ -188,22 +194,39 @@ module Lorentz (* : Lorentz *) =
             vector_ok context mu && vector_ok context nu &&
             spinor_sandwitch_ok context i j
 
-    let idx (Vector v) =
-      match v with
-      | I i -> [i]
-      | F _ -> []
-
-    let primitive_indices = function
-      | G (mu, nu) | T (mu, nu, _, _) -> idx mu @ idx nu
-      | E (mu, nu, rho, sigma) -> idx mu @ idx nu @ idx rho @ idx sigma
-      | K (mu, _) | V (mu, _, _) | A (mu, _, _) -> idx mu
+    let primitive_vector_indices = function
+      | G (Vector mu, Vector nu) | T (Vector mu, Vector nu, _, _) ->
+          indices mu @ indices nu
+      | E (Vector mu, Vector nu, Vector rho, Vector sigma) ->
+          indices mu @ indices nu @ indices rho @ indices sigma
+      | K (Vector mu, _)
+      | V (Vector mu, _, _)
+      | A (Vector mu, _, _) -> indices mu
       | S (_, _) | P (_, _) -> []
 
-    let indices p =
-      ThoList.flatmap primitive_indices p
+    let vector_indices p =
+      ThoList.flatmap primitive_vector_indices p
 
-    let contraction_ok p =
-      let c = ThoList.classify (indices p) in
+    let primitive_spinor_indices = function
+      | G (_, _) | E (_, _, _, _) | K (_, _) -> []
+      | S (_, Spinor alpha) | V (_, _, Spinor alpha)
+      | T (_, _, _, Spinor alpha)
+      | A (_, _, Spinor alpha) | P (_, Spinor alpha) -> indices alpha
+
+    let spinor_indices p =
+      ThoList.flatmap primitive_spinor_indices p
+
+    let primitive_conjspinor_indices = function
+      | G (_, _) | E (_, _, _, _) | K (_, _) -> []
+      | S (ConjSpinor alpha, _) | V (_, ConjSpinor alpha, _)
+      | T (_, _, ConjSpinor alpha, _)
+      | A (_, ConjSpinor alpha, _) | P (ConjSpinor alpha, _) -> indices alpha
+
+    let conjspinor_indices p =
+      ThoList.flatmap primitive_conjspinor_indices p
+
+    let vector_contraction_ok p =
+      let c = ThoList.classify (vector_indices p) in
       print_endline
         (String.concat ", "
            (List.map
@@ -213,10 +236,24 @@ module Lorentz (* : Lorentz *) =
       let res = List.for_all (fun (n, _) -> n = 2) c in
       res
 
-    let contraction_ok p =
+    let vector_contraction_ok p =
       List.for_all
 	(fun (n, _) -> n = 2)
-	(ThoList.classify (indices p))
+	(ThoList.classify (vector_indices p))
+
+    let spinor_contraction_ok p =
+      List.for_all
+	(fun (n, _) -> n = 2)
+	(ThoList.classify (spinor_indices p))
+
+    let conjspinor_contraction_ok p =
+      List.for_all
+	(fun (n, _) -> n = 2)
+	(ThoList.classify (conjspinor_indices p))
+
+    let contraction_ok p =
+      vector_contraction_ok p &&
+      spinor_contraction_ok p && conjspinor_contraction_ok p
 
     type tensor = int * primitive list
 
@@ -366,12 +403,50 @@ module Test (M : Model.T) :
     let permutations v =
       List.map (permute v)
 	(Combinatorics.permute (ThoList.range 0 (Array.length v.fields - 1)))
-            
+
+    let wf_declaration flavor =
+      match M.lorentz (M.flavor_of_string flavor) with
+      | Coupling.Vector -> "vector"
+      | Coupling.Spinor -> "spinor"
+      | Coupling.ConjSpinor -> "conjspinor"
+      | _ -> failwith "wf_declaration: incomplete"
+
     let write_fusion v =
       match Array.to_list v.fields with
       | lhs :: rhs ->
-	Printf.printf "! FUSION: %s <- %s\n" lhs (String.concat " + " rhs);
-	()
+          let name = lhs ^ "_of_" ^ String.concat "_" rhs in
+          let momenta = List.map (fun n -> "k_" ^ n) rhs in
+	  Printf.printf "pure function %s (%s) result (%s)\n"
+            name (String.concat ", "
+                    (List.flatten
+                       (List.map2 (fun wf p -> [wf; p]) rhs momenta)))
+            lhs;
+          Printf.printf "  type(%s) :: %s\n" (wf_declaration lhs) lhs;
+          List.iter
+            (fun wf ->
+              Printf.printf "  type(%s), intent(in) :: %s\n"
+                (wf_declaration wf) wf)
+            rhs;
+          List.iter
+            (Printf.printf "  type(momentum), intent(in) :: %s\n")
+            momenta;
+          begin match M.lorentz (M.flavor_of_string lhs) with
+          | Coupling.Vector ->
+              begin
+                for i = 0 to 3 do
+                  Printf.printf "  %s(%d) = ...\n" lhs i
+                done
+              end;
+          | Coupling.Spinor | Coupling.ConjSpinor ->
+              begin
+                for i = 1 to 4 do
+                  Printf.printf "  %s(%d) = ...\n" lhs i
+                done
+              end;
+          | _ -> failwith "write_fusion: incomplete"
+          end;
+	  Printf.printf "end function %s\n" name;
+	  ()
       | [] -> ()
 
     let write_fusions v =
