@@ -264,6 +264,173 @@ module Lorentz (* : Lorentz *) =
       List.for_all (primitive_ok context) primitives &&
       contraction_ok primitives
 
+    module C =
+      struct
+        type entry =
+          | Zero
+          | One
+          | Minus_One
+          | I
+          | Minus_I
+      end
+
+    module type Dirac =
+      sig
+        val scalar : int -> int -> C.entry
+        val vector : int -> int -> int -> C.entry
+        val tensor : int -> int -> int -> int -> C.entry
+        val axial : int -> int -> int -> C.entry
+        val pseudo : int -> int -> C.entry
+      end
+
+    module type Dirac_Matrices =
+      sig
+        val scalar : (int * int * C.entry) list
+        val vector : (int * int * int * C.entry) list
+        val tensor : (int * int * int * int * C.entry) list
+        val axial : (int * int * int * C.entry) list
+        val pseudo : (int * int * C.entry) list
+      end
+
+    module Chiral : Dirac_Matrices =
+      struct
+
+        open C
+
+        let scalar =
+          [ (1, 1, One);
+            (2, 2, One);
+            (3, 3, One);
+            (4, 4, One) ]
+
+        let vector =
+          [ (0, 1, 4, One);
+            (0, 4, 1, One);
+            (0, 2, 3, Minus_One);
+            (0, 3, 2, Minus_One);
+            (1, 1, 3, One);
+            (1, 3, 1, One);
+            (1, 2, 4, Minus_One);
+            (1, 4, 2, Minus_One);
+            (2, 1, 3, I);
+            (2, 3, 1, I);
+            (2, 2, 4, I);
+            (2, 4, 2, I);
+            (3, 1, 4, Minus_One);
+            (3, 4, 1, Minus_One);
+            (3, 2, 3, Minus_One);
+            (3, 3, 2, Minus_One) ]
+
+        let tensor =
+          []
+
+        let axial =
+          [ (0, 1, 4, Minus_One);
+            (0, 4, 1, One);
+            (0, 2, 3, One);
+            (0, 3, 2, Minus_One);
+            (1, 1, 3, Minus_One);
+            (1, 3, 1, One);
+            (1, 2, 4, One);
+            (1, 4, 2, Minus_One);
+            (2, 1, 3, Minus_I);
+            (2, 3, 1, I);
+            (2, 2, 4, Minus_I);
+            (2, 4, 2, I);
+            (3, 1, 4, One);
+            (3, 4, 1, Minus_One);
+            (3, 2, 3, One);
+            (3, 3, 2, Minus_One) ]
+
+        let pseudo =
+          [ (1, 1, Minus_One);
+            (2, 2, Minus_One);
+            (3, 3, One);
+            (4, 4, One) ]
+
+      end
+
+    module Dirac (M : Dirac_Matrices) : Dirac =
+      struct
+
+        module Map2 =
+          Map.Make
+            (struct
+              type t = int * int
+              let compare = Pervasives.compare
+            end)
+            
+        let init2 triples =
+          List.fold_left
+            (fun acc (i, j, e) -> Map2.add (i, j) e acc)
+            Map2.empty triples
+
+        let bounds_check2 i j =
+          if i < 1 or i > 4 or j < 0 or j > 4 then
+            invalid_arg "Chiral.bounds_check2"
+
+        let lookup2 map i j =
+          bounds_check2 i j;
+          try Map2.find (i, j) map with Not_found -> C.Zero
+
+        module Map3 =
+          Map.Make
+            (struct
+              type t = int * int * int
+              let compare = Pervasives.compare
+            end)
+            
+        let init3 quadruples =
+          List.fold_left
+            (fun acc (mu, i, j, e) -> Map3.add (mu, i, j) e acc)
+            Map3.empty quadruples
+
+        let bounds_check3 mu i j =
+          bounds_check2 i j;
+          if mu < 0 or mu > 3 then
+            invalid_arg "Chiral.bounds_check3"
+
+        let lookup3 map mu i j =
+          bounds_check3 mu i j;
+          try Map3.find (mu, i, j) map with Not_found -> C.Zero
+
+        module Map4 =
+          Map.Make
+            (struct
+              type t = int * int * int * int
+              let compare = Pervasives.compare
+            end)
+            
+        let init4 quadruples =
+          List.fold_left
+            (fun acc (mu, nu, i, j, e) -> Map4.add (mu, nu, i, j) e acc)
+            Map4.empty quadruples
+
+        let bounds_check4 mu nu i j =
+          bounds_check3 nu i j;
+          if mu < 0 or mu > 3 then
+            invalid_arg "Chiral.bounds_check4"
+
+        let lookup4 map mu nu i j =
+          bounds_check4 mu nu i j;
+          try Map4.find (mu, nu, i, j) map with Not_found -> C.Zero
+
+        let scalar_map = init2 M.scalar
+        let vector_map = init3 M.vector
+        let tensor_map = init4 M.tensor
+        let axial_map = init3 M.axial
+        let pseudo_map = init2 M.pseudo
+
+        let scalar = lookup2 scalar_map
+        let vector = lookup3 vector_map
+        let tensor mu nu i j =
+          failwith "tensor: incomplete";
+          lookup4 tensor_map mu nu i j
+        let axial = lookup3 axial_map
+        let pseudo = lookup2 pseudo_map
+
+      end
+
   end
 
 module type Color =
