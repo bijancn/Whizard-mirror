@@ -264,89 +264,82 @@ module Lorentz (* : Lorentz *) =
       List.for_all (primitive_ok context) primitives &&
       contraction_ok primitives
 
-    module C =
+    module Complex =
       struct
-        type entry =
-          | Zero
-          | One
-          | Minus_One
-          | I
-          | Minus_I
+        type t = int * int
       end
 
     module type Dirac =
       sig
-        val scalar : int -> int -> C.entry
-        val vector : int -> int -> int -> C.entry
-        val tensor : int -> int -> int -> int -> C.entry
-        val axial : int -> int -> int -> C.entry
-        val pseudo : int -> int -> C.entry
+        val scalar : int -> int -> Complex.t
+        val vector : int -> int -> int -> Complex.t
+        val tensor : int -> int -> int -> int -> Complex.t
+        val axial : int -> int -> int -> Complex.t
+        val pseudo : int -> int -> Complex.t
       end
 
     module type Dirac_Matrices =
       sig
-        val scalar : (int * int * C.entry) list
-        val vector : (int * int * int * C.entry) list
-        val tensor : (int * int * int * int * C.entry) list
-        val axial : (int * int * int * C.entry) list
-        val pseudo : (int * int * C.entry) list
+        val scalar : (int * int * Complex.t) list
+        val vector : (int * int * int * Complex.t) list
+        val tensor : (int * int * int * int * Complex.t) list
+        val axial : (int * int * int * Complex.t) list
+        val pseudo : (int * int * Complex.t) list
       end
 
     module Chiral : Dirac_Matrices =
       struct
 
-        open C
-
         let scalar =
-          [ (1, 1, One);
-            (2, 2, One);
-            (3, 3, One);
-            (4, 4, One) ]
+          [ (1, 1, ( 1,  0));
+            (2, 2, ( 1,  0));
+            (3, 3, ( 1,  0));
+            (4, 4, ( 1,  0)) ]
 
         let vector =
-          [ (0, 1, 4, One);
-            (0, 4, 1, One);
-            (0, 2, 3, Minus_One);
-            (0, 3, 2, Minus_One);
-            (1, 1, 3, One);
-            (1, 3, 1, One);
-            (1, 2, 4, Minus_One);
-            (1, 4, 2, Minus_One);
-            (2, 1, 3, I);
-            (2, 3, 1, I);
-            (2, 2, 4, I);
-            (2, 4, 2, I);
-            (3, 1, 4, Minus_One);
-            (3, 4, 1, Minus_One);
-            (3, 2, 3, Minus_One);
-            (3, 3, 2, Minus_One) ]
+          [ (0, 1, 4, ( 1,  0));
+            (0, 4, 1, ( 1,  0));
+            (0, 2, 3, (-1,  0));
+            (0, 3, 2, (-1,  0));
+            (1, 1, 3, ( 1,  0));
+            (1, 3, 1, ( 1,  0));
+            (1, 2, 4, (-1,  0));
+            (1, 4, 2, (-1,  0));
+            (2, 1, 3, ( 0,  1));
+            (2, 3, 1, ( 0,  1));
+            (2, 2, 4, ( 0,  1));
+            (2, 4, 2, ( 0,  1));
+            (3, 1, 4, (-1,  0));
+            (3, 4, 1, (-1,  0));
+            (3, 2, 3, (-1,  0));
+            (3, 3, 2, (-1,  0)) ]
 
         let tensor =
           []
 
         let axial =
-          [ (0, 1, 4, Minus_One);
-            (0, 4, 1, One);
-            (0, 2, 3, One);
-            (0, 3, 2, Minus_One);
-            (1, 1, 3, Minus_One);
-            (1, 3, 1, One);
-            (1, 2, 4, One);
-            (1, 4, 2, Minus_One);
-            (2, 1, 3, Minus_I);
-            (2, 3, 1, I);
-            (2, 2, 4, Minus_I);
-            (2, 4, 2, I);
-            (3, 1, 4, One);
-            (3, 4, 1, Minus_One);
-            (3, 2, 3, One);
-            (3, 3, 2, Minus_One) ]
+          [ (0, 1, 4, (-1,  0));
+            (0, 4, 1, ( 1,  0));
+            (0, 2, 3, ( 1,  0));
+            (0, 3, 2, (-1,  0));
+            (1, 1, 3, (-1,  0));
+            (1, 3, 1, ( 1,  0));
+            (1, 2, 4, ( 1,  0));
+            (1, 4, 2, (-1,  0));
+            (2, 1, 3, ( 0, -1));
+            (2, 3, 1, ( 0,  1));
+            (2, 2, 4, ( 0, -1));
+            (2, 4, 2, ( 0,  1));
+            (3, 1, 4, ( 1,  0));
+            (3, 4, 1, (-1,  0));
+            (3, 2, 3, ( 1,  0));
+            (3, 3, 2, (-1,  0)) ]
 
         let pseudo =
-          [ (1, 1, Minus_One);
-            (2, 2, Minus_One);
-            (3, 3, One);
-            (4, 4, One) ]
+          [ (1, 1, (-1,  0));
+            (2, 2, (-1,  0));
+            (3, 3, ( 1,  0));
+            (4, 4, ( 1,  0)) ]
 
       end
 
@@ -371,7 +364,7 @@ module Lorentz (* : Lorentz *) =
 
         let lookup2 map i j =
           bounds_check2 i j;
-          try Map2.find (i, j) map with Not_found -> C.Zero
+          try Map2.find (i, j) map with Not_found -> (0, 0)
 
         module Map3 =
           Map.Make
@@ -392,7 +385,7 @@ module Lorentz (* : Lorentz *) =
 
         let lookup3 map mu i j =
           bounds_check3 mu i j;
-          try Map3.find (mu, i, j) map with Not_found -> C.Zero
+          try Map3.find (mu, i, j) map with Not_found -> (0, 0)
 
         module Map4 =
           Map.Make
@@ -413,7 +406,7 @@ module Lorentz (* : Lorentz *) =
 
         let lookup4 map mu nu i j =
           bounds_check4 mu nu i j;
-          try Map4.find (mu, nu, i, j) map with Not_found -> C.Zero
+          try Map4.find (mu, nu, i, j) map with Not_found -> (0, 0)
 
         let scalar_map = init2 M.scalar
         let vector_map = init3 M.vector
@@ -578,6 +571,8 @@ module Test (M : Model.T) :
       | Coupling.ConjSpinor -> "conjspinor"
       | _ -> failwith "wf_declaration: incomplete"
 
+    module Chiral = Lorentz.Dirac(Lorentz.Chiral)
+
     let write_fusion v =
       match Array.to_list v.fields with
       | lhs :: rhs ->
@@ -600,8 +595,19 @@ module Test (M : Model.T) :
           begin match M.lorentz (M.flavor_of_string lhs) with
           | Coupling.Vector ->
               begin
-                for i = 0 to 3 do
-                  Printf.printf "  %s(%d) = ...\n" lhs i
+                let [rhs1; rhs2] = rhs in
+                for mu = 0 to 3 do
+                  Printf.printf "  %s(%d) =" lhs mu;
+                  for i = 1 to 4 do
+                    for j = 1 to 4 do
+                      match Chiral.vector mu i j with
+                      | 0, 0 -> ()
+                      | re, im ->
+                          Printf.printf " + (%d,%d)*%s(%d)*%s(%d)"
+                            re im rhs1 i rhs2 j
+                    done
+                  done;
+                  Printf.printf "\n"
                 done
               end;
           | Coupling.Spinor | Coupling.ConjSpinor ->
