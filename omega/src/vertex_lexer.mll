@@ -25,6 +25,8 @@
 open Vertex_parser
 let string_tail s =
   String.sub s 1 (String.length s - 1)
+let string_trunc s =
+  String.sub s 1 (String.length s - 2)
 }
 
 let digit = ['0'-'9']
@@ -35,35 +37,33 @@ let white = [' ' '\t' '\n']
 
 rule token = parse
     white      { token lexbuf }     (* skip blanks *)
-  | '%' [^'\n']* '\n'
+  | '#' [^'\n']* '\n'
                { token lexbuf }     (* skip comments *)
   | '.'        { DOT }
-  | '^'        { POWER }
+  | '^'        { SUPER }
+  | '_'        { SUB }
   | '*'        { TIMES }
   | '/'        { DIV }
   | '+'        { PLUS }
   | '-'        { MINUS }
   | '('        { LPAREN }
-  | ','        { COMMA }
   | ')'        { RPAREN }
-  | '<'        { BRA }
+  | '{'        { LBRACE }
+  | '}'        { RBRACE }
+  | '['        { LBRACKET }
+  | ']'        { RBRACKET }
+  | '<'        { LANGLE }
+  | '>'        { RANGLE }
+  | ','        { COMMA }
   | '|'        { VERT }
-  | '>'        { KET }
-  | '['        { LEXT }
-  | ']'        { REXT }
   | digit+     { INT (int_of_string (Lexing.lexeme lexbuf)) }
-  | 'e' digit+ { POLARIZATION (int_of_string (string_tail (Lexing.lexeme lexbuf))) }
-  | 'k' digit+ { MOMENTUM (int_of_string (string_tail (Lexing.lexeme lexbuf))) }
   | 'i'        { I }
-  | 'S'        { S }
-  | 'P'        { P }
-  | 'V'        { V }
-  | 'A'        { A }
-  | 'T'        { T }
-  | "eps"      { EPSILON }
   | char (char|digit)*
                { NAME (Lexing.lexeme lexbuf) }
-  | _          { failwith ("invalid character at `" ^ Lexing.lexeme lexbuf ^ "'") }
+  | '"' [^'"']* '"'
+               { NAME (string_trunc (Lexing.lexeme lexbuf)) }
+  | _          { failwith ("invalid character at `" ^
+			      Lexing.lexeme lexbuf ^ "'") }
   | eof        { END }
 
 
