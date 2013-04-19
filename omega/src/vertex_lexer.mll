@@ -39,6 +39,7 @@ rule token = parse
     white      { token lexbuf }     (* skip blanks *)
   | '#' [^'\n']* '\n'
                { token lexbuf }     (* skip comments *)
+  | '~'        { TILDE }
   | '.'        { DOT }
   | '^'        { SUPER }
   | '_'        { SUB }
@@ -57,7 +58,7 @@ rule token = parse
   | ','        { COMMA }
   | '|'        { VERT }
   | digit+     { INT (int_of_string (Lexing.lexeme lexbuf)) }
-  | 'i'        { I }
+  | 'I'        { I }
   | char (char|digit)*
                { NAME (Lexing.lexeme lexbuf) }
   | '"' [^'"']* '"'

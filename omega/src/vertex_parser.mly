@@ -35,11 +35,11 @@ let parse_error msg =
 %token I
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE LANGLE RANGLE
 %token SUPER SUB COMMA VERT
-%token PLUS MINUS TIMES DIV DOT
+%token PLUS MINUS TIMES DIV DOT TILDE
 %token END
 
 %left PLUS MINUS
-%nonassoc NEG UPLUS
+%nonassoc NEG UPLUS TILDE
 %left TIMES
 %left DIV
 %left DOT
@@ -50,33 +50,59 @@ let parse_error msg =
 %%
 
 vertex:
- | factor                      { Vertex_syntax.null }
- | factor vertex               { Vertex_syntax.null }
- | END                         { Vertex_syntax.null }
+ | term                      { Vertex_syntax.null }
+ | vertex PLUS term          { Vertex_syntax.null }
+ | vertex MINUS term         { Vertex_syntax.null }
+ | END                       { Vertex_syntax.null }
+;
+
+term:
+ | factor                    { Vertex_syntax.null }
+ | factor term               { Vertex_syntax.null }
 ;
 
 factor:
- | spinor_current              { () }
- | vector                      { () }
+ | coeff                     { () }
+/* | tensor                    { () } */
+/* | momentum                  { () } */
+ | field                     { () }
 ;
 
-spinor_current:
- | LANGLE conjspinor VERT dirac VERT spinor RANGLE
-                               { () }
+coeff:
+ | INT                       { () }
+ | coeff TIMES coeff         { () }
+ | coeff DIV coeff           { () }
 ;
 
-vector:
- | NAME LBRACKET NAME RBRACKET { () }
+/*
+tensor:
+ | NAME                       { () }
+ | NAME LBRACE indices RBRACE { () }
+;
+*/
+
+/*
+momentum:
+ | NAME                       { () }
+ | NAME LBRACE index RBRACE   { () }
+;
+*/
+
+field:
+ | flavor                       { () }
+ | flavor LBRACE indices RBRACE { () }
 ;
 
-spinor:
- | NAME                        { () }
+flavor:
+ | NAME                       { () }
+ | TILDE NAME                 { () }
 ;
 
-conjspinor:
- | NAME                        { () }
+indices:
+ | index                      { () }
+ | indices COMMA index        { () }
 ;
 
-dirac:
- | NAME LBRACKET NAME RBRACKET { () }
+index:
+ | NAME                       { () }
 ;

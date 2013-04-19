@@ -266,7 +266,25 @@ module Lorentz (* : Lorentz *) =
 
     module Complex =
       struct
+
         type t = int * int
+
+	type t' = 
+	| Z
+	| O
+	| M
+	| I
+	| J
+	| C of int * int
+
+	let to_fortran = function
+	| Z -> "(0,0)"
+	| O -> "(1,0)"
+	| M -> "(-1,0)"
+	| I -> "(0,1)"
+	| J -> "(0,-1)"
+	| C (r, i) -> "(" ^ string_of_int r ^ "," ^ string_of_int i ^ ")"
+
       end
 
     module type Dirac =

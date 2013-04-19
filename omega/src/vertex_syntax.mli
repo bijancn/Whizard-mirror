@@ -23,7 +23,23 @@
 
 (* \thocwmodulesection{Abstract Syntax} *)
 
-type t
+type coeff = int
+type name = string
+type momentum = int
+type index = name
+
+type field =
+  { flavor : name;
+    conjugate : bool;
+    indices : index list }
+
+type t =
+| Empty
+| Field of field
+| Momentum of momentum * index
+| Tensor of index list
+| Product of t list
+| Sum of (coeff * t) list
 
 val null : t
 
