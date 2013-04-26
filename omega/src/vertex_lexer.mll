@@ -62,7 +62,11 @@ rule token names = parse
   | '@' digit+ { let tail = string_tail (Lexing.lexeme lexbuf) in
                  MOMENTUM (int_of_string tail) }
   | char (char|digit)*
-               { NAME (Lexing.lexeme lexbuf) }
+               { let s = Lexing.lexeme lexbuf in
+                 match names.Vertex_syntax.identifier s with
+                 | Vertex_syntax.Id_Color -> COLOR s
+                 | Vertex_syntax.Id_Lorentz -> LORENTZ s
+                 | _ -> NAME s }
   | '"' [^'"']* '"'
                { NAME (string_trunc (Lexing.lexeme lexbuf)) }
   | _          { failwith ("invalid character at `" ^

@@ -817,17 +817,22 @@ module Parser_Test (M : Model.T) : Test =
 
     open OUnit
 
+    (* Hacked ... *)
+
     let names = function
       | "G" | "g" -> Vertex_syntax.Id_Lorentz
       | "F" | "T" -> Vertex_syntax.Id_Color
-      | s -> 
+      | s ->
 	begin
 	  try
 	    ignore (M.flavor_of_string s);
 	    Vertex_syntax.Id_Flavor
 	  with
-	  | e -> raise e
+	  | Invalid_argument _ -> Vertex_syntax.Id_Index
 	end
+
+    let lexer_state =
+      { Vertex_syntax.identifier = names }
 
     module S = Vertex_syntax
 
@@ -845,12 +850,16 @@ module Parser_Test (M : Model.T) : Test =
     let bbar =
       "bbar" >::
 	(fun () ->
-	  assert_equal bbar_vertex (parse names "~b{al} G{mu,al,be} b{be}"))
+	  assert_equal
+	    bbar_vertex
+	    (parse lexer_state "~b{al} G{mu,al,be} b{be}"))
 
     let empty =
       "empty" >::
 	(fun () ->
-	  assert_equal Vertex_syntax.Empty (parse names ""))
+	  assert_equal
+	    Vertex_syntax.Empty
+	    (parse lexer_state ""))
 
     let suite =
       "Vertex_Parser" >:::
