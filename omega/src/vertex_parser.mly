@@ -31,7 +31,7 @@ let parse_error msg =
 %token < string > NAME
 %token < string > LORENTZ
 %token < string > COLOR
-%token < int option > MOMENTUM
+%token < int > MOMENTUM
 %token EPSILON
 %token S V T A P
 %token I
@@ -52,30 +52,35 @@ let parse_error msg =
 %%
 
 vertex:
- | term                      { S.null }
- | vertex PLUS term          { S.null }
- | vertex MINUS term         { S.null }
- | END                       { S.null }
+ | term              { $1 }
+ | vertex PLUS term  { let t = match $1 with S.Sum s -> s | t -> [(1, t)] in
+		       S.Sum (t @ [( 1, $3)]) }
+ | vertex MINUS term { let t = match $1 with S.Sum s -> s | t -> [(1, t)] in
+		       S.Sum (t @ [(-1, $3)]) }
+ | vertex END        { $1 }
+ | END               { S.null }
 ;
 
 term:
- | factor                    { S.null }
- | factor term               { S.null }
+ | factor       { $1 }
+ | factor term  { let t = match $2 with S.Product p -> p | t -> [t] in
+		  S.Product ($1 :: t) }
 ;
 
 factor:
- | coeff                     { () }
- | lorentz                   { () }
- | color                     { () }
- | momentum                  { () }
- | field                     { () }
+ | lorentz                   { $1 }
+ | color                     { $1 }
+ | momentum                  { $1 }
+ | field                     { $1 }
 ;
 
+/*
 coeff:
  | INT                       { $1 }
  | coeff TIMES coeff         { $1 * $3 }
  | coeff DIV coeff           { $1 / $3 }
 ;
+*/
 
 lorentz:
  | LORENTZ                       { S.Lorentz { S.t_name = $1;
@@ -92,8 +97,16 @@ color:
 ;
 
 momentum:
- | MOMENTUM                       { () }
- | MOMENTUM LBRACE index RBRACE   { () }
+ | momentum_sum LBRACE index RBRACE   { S.Momentum ($1, $3) }
+;
+
+momentum_sum:
+ | MOMENTUM                      { [$1] }
+ | MOMENTUM PLUS momentum_sum    { $1 :: $3 }
+ /* Right recursion is more convenient for constructing
+    the value.  Since the lists will always be short,
+    there is no performace or stack size reason for
+    prefering left recursion. */
 ;
 
 field:

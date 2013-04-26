@@ -40,7 +40,7 @@ type tensor =
 type t =
 | Empty
 | Field of field
-| Momentum of momentum * index
+| Momentum of momentum list * index
 | Lorentz of tensor
 | Color of tensor
 | Product of t list

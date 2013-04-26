@@ -59,9 +59,8 @@ rule token names = parse
   | '|'        { VERT }
   | digit+     { INT (int_of_string (Lexing.lexeme lexbuf)) }
   | 'I'        { I }
-  | '@'        { MOMENTUM None }
   | '@' digit+ { let tail = string_tail (Lexing.lexeme lexbuf) in
-                 MOMENTUM (Some (int_of_string tail)) }
+                 MOMENTUM (int_of_string tail) }
   | char (char|digit)*
                { NAME (Lexing.lexeme lexbuf) }
   | '"' [^'"']* '"'
