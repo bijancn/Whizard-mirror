@@ -21,9 +21,11 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
+module M = Modellib_SM.SM(Modellib_SM.SM_no_anomalous)
 module List_Test = Permutation.Test (Permutation.Using_Lists)
 module Array_Test = Permutation.Test (Permutation.Using_Arrays)
-module Vertex_Test = Vertex.Test (Modellib_SM.SM(Modellib_SM.SM_no_anomalous))
+module Vertex_Test = Vertex.Test (M)
+module Parser_Test = Vertex.Parser_Test (M)
 
 let _ =
   let my_name = Sys.argv.(0) in
@@ -45,7 +47,8 @@ let _ =
 	[Partial.Test.suite;
 	 List_Test.suite;
 	 Array_Test.suite;
-	 Vertex_Test.suite] in
+	 Vertex_Test.suite;
+	 Parser_Test.suite] in
     ignore (OUnit.run_test_tt ~verbose:!verbose suite)
   end;
   if !timing then begin
@@ -55,6 +58,7 @@ let _ =
     Array_Test.time ()
   end;
   if not !skip_example then begin
-    Vertex_Test.example ()
+    Vertex_Test.example ();
+    Parser_Test.example ()
   end;
   exit 0

@@ -31,6 +31,8 @@ module type Test =
 
 module Test (M : Model.T) : Test
 
+module Parser_Test (M : Model.T) : Test
+
 
 (*i
  *  Local Variables:

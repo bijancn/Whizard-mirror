@@ -52,13 +52,16 @@ let parse_error msg =
 %%
 
 vertex:
- | term              { $1 }
- | vertex PLUS term  { let t = match $1 with S.Sum s -> s | t -> [(1, t)] in
-		       S.Sum (t @ [( 1, $3)]) }
- | vertex MINUS term { let t = match $1 with S.Sum s -> s | t -> [(1, t)] in
-		       S.Sum (t @ [(-1, $3)]) }
- | vertex END        { $1 }
- | END               { S.null }
+ | terms END        { $1 }
+ | END              { S.null }
+;
+
+terms:
+ | term             { $1 }
+ | terms PLUS term  { let t = match $1 with S.Sum s -> s | t -> [(1, t)] in
+		      S.Sum (t @ [( 1, $3)]) }
+ | terms MINUS term { let t = match $1 with S.Sum s -> s | t -> [(1, t)] in
+		      S.Sum (t @ [(-1, $3)]) }
 ;
 
 term:
@@ -68,10 +71,10 @@ term:
 ;
 
 factor:
- | lorentz                   { $1 }
- | color                     { $1 }
+ | lorentz                   { S.Lorentz $1 }
+ | color                     { S.Color $1 }
  | momentum                  { $1 }
- | field                     { $1 }
+ | field                     { S.Field $1 }
 ;
 
 /*
@@ -83,17 +86,13 @@ coeff:
 */
 
 lorentz:
- | LORENTZ                       { S.Lorentz { S.t_name = $1;
-					       S.t_indices = [] } }
- | LORENTZ LBRACE indices RBRACE { S.Lorentz { S.t_name = $1;
-					       S.t_indices = $3 } }
+ | LORENTZ                       { { S.t_name = $1; S.t_indices = [] } }
+ | LORENTZ LBRACE indices RBRACE { { S.t_name = $1; S.t_indices = $3 } }
 ;
 
 color:
- | COLOR                         { S.Color { S.t_name = $1;
-					     S.t_indices = [] } }
- | COLOR LBRACE indices RBRACE   { S.Color { S.t_name = $1;
-					     S.t_indices = $3 } }
+ | COLOR                         { { S.t_name = $1; S.t_indices = [] } }
+ | COLOR LBRACE indices RBRACE   { { S.t_name = $1; S.t_indices = $3 } }
 ;
 
 momentum:
@@ -110,12 +109,12 @@ momentum_sum:
 ;
 
 field:
- | flavor                       { S.Field { S.flavor = fst $1;
-					    S.conjugate = snd $1;
-					    S.f_indices = [] } }
- | flavor LBRACE indices RBRACE { S.Field { S.flavor = fst $1;
-					    S.conjugate = snd $1;
-					    S.f_indices = $3 } }
+ | flavor                       { { S.flavor = fst $1;
+				    S.conjugate = snd $1;
+				    S.f_indices = [] } }
+ | flavor LBRACE indices RBRACE { { S.flavor = fst $1;
+				    S.conjugate = snd $1;
+				    S.f_indices = $3 } }
 ;
 
 flavor:
