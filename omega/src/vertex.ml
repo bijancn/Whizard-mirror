@@ -799,9 +799,9 @@ module Test (M : Model.T) : Test =
       
   end
 
-let parse text =
+let parse names text =
   try
-    Vertex_parser.vertex Vertex_lexer.token (Lexing.from_string text)
+    Vertex_parser.vertex (Vertex_lexer.token names) (Lexing.from_string text)
   with
   | Vertex_syntax.Syntax_Error (msg, i, j) ->
       invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"

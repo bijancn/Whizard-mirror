@@ -35,10 +35,10 @@ let lower = ['a'-'z']
 let char = upper | lower
 let white = [' ' '\t' '\n']
 
-rule token = parse
-    white      { token lexbuf }     (* skip blanks *)
+rule token names = parse
+    white      { token names lexbuf }     (* skip blanks *)
   | '#' [^'\n']* '\n'
-               { token lexbuf }     (* skip comments *)
+               { token names lexbuf }     (* skip comments *)
   | '~'        { TILDE }
   | '.'        { DOT }
   | '^'        { SUPER }
@@ -59,6 +59,9 @@ rule token = parse
   | '|'        { VERT }
   | digit+     { INT (int_of_string (Lexing.lexeme lexbuf)) }
   | 'I'        { I }
+  | '@'        { MOMENTUM None }
+  | '@' digit+ { let tail = string_tail (Lexing.lexeme lexbuf) in
+                 MOMENTUM (Some (int_of_string tail)) }
   | char (char|digit)*
                { NAME (Lexing.lexeme lexbuf) }
   | '"' [^'"']* '"'

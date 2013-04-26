@@ -21,6 +21,8 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
+val parse : Vertex_syntax.lexer_state -> string -> Vertex_syntax.t
+
 module type Test =
   sig
     val example : unit -> unit
@@ -29,7 +31,6 @@ module type Test =
 
 module Test (M : Model.T) : Test
 
-val parse : string -> Vertex_syntax.t
 
 (*i
  *  Local Variables:
