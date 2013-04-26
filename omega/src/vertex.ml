@@ -828,11 +828,24 @@ module Parser_Test (M : Model.T) : Test =
 	  with
 	  | e -> raise e
 	end
+
+    module S = Vertex_syntax
+
+    let bbar_vertex =
+      S.Product
+	[ S.Field { S.flavor = "b";
+		    S.conjugate = true;
+		    S.f_indices = ["al"] };
+	  S.Lorentz { S.t_name = "G";
+		      S.t_indices = ["mu"; "al"; "be" ] };
+	  S.Field { S.flavor = "b";
+		    S.conjugate = false;
+		    S.f_indices = ["be"] } ]
       
     let bbar =
       "bbar" >::
 	(fun () ->
-	  assert_equal () (ignore (parse names "~b{al} G{mu,al,be} b{be}")))
+	  assert_equal bbar_vertex (parse names "~b{al} G{mu,al,be} b{be}"))
 
     let empty =
       "empty" >::

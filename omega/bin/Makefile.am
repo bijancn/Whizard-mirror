@@ -46,6 +46,9 @@ OCAMLFLAGS += -I $(top_builddir)/src
 $(OMEGA_APPLICATIONS_NATIVE): $(OMEGA_CMXA)
 $(OMEGA_APPLICATIONS_BYTECODE): $(OMEGA_CMA)
 
+omegatop: $(OMEGA_CMA)
+	$(OCAMLMKTOP) $(OCAMLFLAGS) -o $@ unix.cma $(OMEGA_CMA)
+
 ########################################################################
 
 SUFFIXES += $(OCAML_NATIVE_EXT) .$(OMEGA_CACHE_SUFFIX) .$(OMEGA_CACHE_SUFFIX_COLORED)
