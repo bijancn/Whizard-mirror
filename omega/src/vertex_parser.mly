@@ -72,7 +72,7 @@ scripted_token:
  | token SUPER token SUB token
      { S.Scripted { S.token = $1; S.super = S.plug $3; S.sub = S.plug $5 } }
  | token SUB token SUPER token
-     { S.Scripted { S.token = $1; S.super = S.plug $3; S.sub = S.plug $5 } }
+     { S.Scripted { S.token = $1; S.super = S.plug $5; S.sub = S.plug $3 } }
 ;
 
 token:

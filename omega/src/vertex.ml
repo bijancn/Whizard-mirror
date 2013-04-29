@@ -827,9 +827,9 @@ module Parser_Test (M : Model.T) : Test =
 	  assert_equal
 	    (S.List
 	       [ S.Scripted { S.token = S.Name "a";
-			      S.super = [];
+			      S.super = [S.Digit 2];
 			      S.sub = [S.Digit 1] } ] )
-	    (parse "{a}_{1}"))
+	    (parse "{a}_{1}^{2}"))
 
     let empty =
       "empty" >::
