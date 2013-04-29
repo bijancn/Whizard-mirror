@@ -51,13 +51,28 @@ let null = Empty
 exception Syntax_Error of string * int * int
 
 type identifier =
-  | Id_Flavor
-  | Id_Momentum
-  | Id_Lorentz
-  | Id_Color
-  | Id_Index
+| Id_Flavor
+| Id_Momentum
+| Id_Lorentz
+| Id_Color
+| Id_Index
 
+type token =
+| Digit of int
+| Name of string
+| Scripted of scripted
+| List of token list
+and scripted = 
+  { token : token;
+    super : token list;
+    sub : token list }
+
+let plug = function
+  | Digit _ as t -> [t]
+  | Name _ as t -> [t]
+  | Scripted _ as t -> [t]
+  | List tl -> tl
 
 type lexer_state =
-    { identifier : string -> identifier }
+  { identifier : string -> identifier }
 

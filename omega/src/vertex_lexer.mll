@@ -23,10 +23,6 @@
 
 {
 open Vertex_parser
-let string_tail s =
-  String.sub s 1 (String.length s - 1)
-let string_trunc s =
-  String.sub s 1 (String.length s - 2)
 }
 
 let digit = ['0'-'9']
@@ -35,10 +31,12 @@ let lower = ['a'-'z']
 let char = upper | lower
 let white = [' ' '\t' '\n']
 
-rule token names = parse
-    white      { token names lexbuf }     (* skip blanks *)
-  | '#' [^'\n']* '\n'
-               { token names lexbuf }     (* skip comments *)
+rule token = parse
+    white      { token lexbuf }     (* skip blanks *)
+  | '\\' [','';']
+               { token lexbuf }     (* skip LaTeX white space *)
+  | '%' [^'\n']* '\n'
+               { token lexbuf }     (* skip comments *)
   | '~'        { TILDE }
   | '.'        { DOT }
   | '^'        { SUPER }
@@ -53,22 +51,12 @@ rule token names = parse
   | '}'        { RBRACE }
   | '['        { LBRACKET }
   | ']'        { RBRACKET }
-  | '<'        { LANGLE }
-  | '>'        { RANGLE }
   | ','        { COMMA }
   | '|'        { VERT }
-  | digit+     { INT (int_of_string (Lexing.lexeme lexbuf)) }
+  | digit      { DIGIT (int_of_string (Lexing.lexeme lexbuf)) }
   | 'I'        { I }
-  | '@' digit+ { let tail = string_tail (Lexing.lexeme lexbuf) in
-                 MOMENTUM (int_of_string tail) }
-  | char (char|digit)*
-               { let s = Lexing.lexeme lexbuf in
-                 match names.Vertex_syntax.identifier s with
-                 | Vertex_syntax.Id_Color -> COLOR s
-                 | Vertex_syntax.Id_Lorentz -> LORENTZ s
-                 | _ -> NAME s }
-  | '"' [^'"']* '"'
-               { NAME (string_trunc (Lexing.lexeme lexbuf)) }
+  | char       { NAME (Lexing.lexeme lexbuf) }
+  | '\\' char+ { NAME (Lexing.lexeme lexbuf) }
   | _          { failwith ("invalid character at `" ^
 			      Lexing.lexeme lexbuf ^ "'") }
   | eof        { END }

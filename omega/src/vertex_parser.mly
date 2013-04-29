@@ -27,11 +27,8 @@ let parse_error msg =
   raise (S.Syntax_Error (msg, symbol_start (), symbol_end ()))
 %}
 
-%token < int > INT
+%token < int > DIGIT
 %token < string > NAME
-%token < string > LORENTZ
-%token < string > COLOR
-%token < int > MOMENTUM
 %token EPSILON
 %token S V T A P
 %token I
@@ -47,90 +44,48 @@ let parse_error msg =
 %left DOT
 
 %start vertex
-%type < Vertex_syntax.t > vertex
+%type < Vertex_syntax.token > vertex
 
 %%
 
 vertex:
- | terms END        { $1 }
- | END              { S.null }
+ | token_list END  { S.List $1 }
+ | END             { S.List [] }
 ;
 
-terms:
- | term             { $1 }
- | terms PLUS term  { let t = match $1 with S.Sum s -> s | t -> [(1, t)] in
-		      S.Sum (t @ [( 1, $3)]) }
- | terms MINUS term { let t = match $1 with S.Sum s -> s | t -> [(1, t)] in
-		      S.Sum (t @ [(-1, $3)]) }
-;
-
-term:
- | factor       { $1 }
- | factor term  { let t = match $2 with S.Product p -> p | t -> [t] in
-		  S.Product ($1 :: t) }
-;
-
-factor:
- | lorentz                   { S.Lorentz $1 }
- | color                     { S.Color $1 }
- | momentum                  { $1 }
- | field                     { S.Field $1 }
-;
-
-/*
-coeff:
- | INT                       { $1 }
- | coeff TIMES coeff         { $1 * $3 }
- | coeff DIV coeff           { $1 / $3 }
-;
-*/
-
-lorentz:
- | LORENTZ                       { { S.t_name = $1; S.t_indices = [] } }
- | LORENTZ LBRACE indices RBRACE { { S.t_name = $1; S.t_indices = $3 } }
-;
-
-color:
- | COLOR                         { { S.t_name = $1; S.t_indices = [] } }
- | COLOR LBRACE indices RBRACE   { { S.t_name = $1; S.t_indices = $3 } }
-;
-
-momentum:
- | momentum_sum LBRACE index RBRACE   { S.Momentum ($1, $3) }
-;
-
-momentum_sum:
- | MOMENTUM                      { [$1] }
- | MOMENTUM PLUS momentum_sum    { $1 :: $3 }
+token_list:
+ | scripted_token            { [$1] }
+ | scripted_token token_list { $1 :: $2 }
  /* Right recursion is more convenient for constructing
     the value.  Since the lists will always be short,
     there is no performace or stack size reason for
     prefering left recursion. */
 ;
 
-field:
- | flavor                       { { S.flavor = fst $1;
-				    S.conjugate = snd $1;
-				    S.f_indices = [] } }
- | flavor LBRACE indices RBRACE { { S.flavor = fst $1;
-				    S.conjugate = snd $1;
-				    S.f_indices = $3 } }
+scripted_token:
+ | token
+     { S.Scripted { S.token = $1; S.super = []; S.sub = [] } }
+ | token SUPER token
+     { S.Scripted { S.token = $1; S.super = S.plug $3; S.sub = [] } }
+ | token SUB token
+     { S.Scripted { S.token = $1; S.super = []; S.sub = S.plug $3 } }
+ | token SUPER token SUB token
+     { S.Scripted { S.token = $1; S.super = S.plug $3; S.sub = S.plug $5 } }
+ | token SUB token SUPER token
+     { S.Scripted { S.token = $1; S.super = S.plug $3; S.sub = S.plug $5 } }
 ;
 
-flavor:
- | NAME       { ($1, false) }
- | TILDE NAME { ($2, true) }
+token:
+ | bare_token
+     { $1 }
+ | LBRACE token RBRACE
+     { $2 }
+ | LBRACE token token_list RBRACE
+     { S.List ($2 :: $3) }
 ;
 
-indices:
- | index                      { [$1] }
- | index COMMA indices        { $1 :: $3 }
- /* Right recursion is more convenient for constructing
-    the value.  Since the lists will always be short,
-    there is no performace or stack size reason for
-    prefering left recursion. */
+bare_token:
+ | DIGIT { S.Digit $1 }
+ | NAME  { S.Name $1 }
 ;
 
-index:
- | NAME                       { $1 }
-;

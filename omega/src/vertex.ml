@@ -799,9 +799,9 @@ module Test (M : Model.T) : Test =
       
   end
 
-let parse names text =
+let parse text =
   try
-    Vertex_parser.vertex (Vertex_lexer.token names) (Lexing.from_string text)
+    Vertex_parser.vertex Vertex_lexer.token (Lexing.from_string text)
   with
   | Vertex_syntax.Syntax_Error (msg, i, j) ->
       invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
@@ -819,51 +819,26 @@ module Parser_Test (M : Model.T) : Test =
 
     (* Hacked ... *)
 
-    let names = function
-      | "G" | "g" -> Vertex_syntax.Id_Lorentz
-      | "F" | "T" -> Vertex_syntax.Id_Color
-      | s ->
-	begin
-	  try
-	    ignore (M.flavor_of_string s);
-	    Vertex_syntax.Id_Flavor
-	  with
-	  | Invalid_argument _ -> Vertex_syntax.Id_Index
-	end
-
-    let lexer_state =
-      { Vertex_syntax.identifier = names }
-
     module S = Vertex_syntax
 
-    let bbar_vertex =
-      S.Product
-	[ S.Field { S.flavor = "b";
-		    S.conjugate = true;
-		    S.f_indices = ["al"] };
-	  S.Lorentz { S.t_name = "G";
-		      S.t_indices = ["mu"; "al"; "be" ] };
-	  S.Field { S.flavor = "b";
-		    S.conjugate = false;
-		    S.f_indices = ["be"] } ]
-      
-    let bbar =
-      "bbar" >::
+    let index =
+      "index" >::
 	(fun () ->
 	  assert_equal
-	    bbar_vertex
-	    (parse lexer_state "~b{al} G{mu,al,be} b{be}"))
+	    (S.List
+	       [ S.Scripted { S.token = S.Name "a";
+			      S.super = [];
+			      S.sub = [S.Digit 1] } ] )
+	    (parse "{a}_{1}"))
 
     let empty =
       "empty" >::
 	(fun () ->
-	  assert_equal
-	    Vertex_syntax.Empty
-	    (parse lexer_state ""))
+	  assert_equal (S.List []) (parse ""))
 
     let suite =
       "Vertex_Parser" >:::
 	[empty;
-	 bbar]
+	 index]
 
   end
