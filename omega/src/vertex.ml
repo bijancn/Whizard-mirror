@@ -801,7 +801,7 @@ module Test (M : Model.T) : Test =
 
 let parse text =
   try
-    Vertex_parser.vertex Vertex_lexer.token (Lexing.from_string text)
+    Vertex_parser.model Vertex_lexer.token (Lexing.from_string text)
   with
   | Vertex_syntax.Syntax_Error (msg, i, j) ->
       invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
@@ -819,26 +819,37 @@ module Parser_Test (M : Model.T) : Test =
 
     (* Hacked ... *)
 
-    module S = Vertex_syntax
+    module V = Vertex_syntax
+    module E = Vertex_syntax.Expr
+
+    let expr =
+      "expr" >::
+	(fun () ->
+	  assert_equal
+	    (E.Integer 42,
+	     V.List [])
+	    (parse "2 * (17 + 4) << >>"))
 
     let index =
       "index" >::
 	(fun () ->
 	  assert_equal
-	    (S.List
-	       [ S.Scripted { S.token = S.Name "a";
-			      S.super = [S.Digit 2];
-			      S.sub = [S.Digit 1] } ] )
-	    (parse "{a}_{1}^{2}"))
+	    (E.Integer 1,
+	     V.List
+	       [ V.Scripted { V.token = V.Name "a";
+			      V.super = [V.Digit 2];
+			      V.sub = [V.Digit 1] } ] )
+	    (parse "<< {a}_{1}^{2} >>"))
 
     let empty =
       "empty" >::
 	(fun () ->
-	  assert_equal (S.List []) (parse ""))
+	  assert_equal (E.Integer 1, V.List []) (parse ""))
 
     let suite =
       "Vertex_Parser" >:::
 	[empty;
-	 index]
+	 index;
+	 expr]
 
   end

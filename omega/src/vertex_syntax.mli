@@ -57,6 +57,26 @@ type identifier =
 | Id_Color
 | Id_Index
 
+module Expr :
+  sig
+
+    type t =
+    | Integer of int
+    | Sum of t list
+    | Diff of t * t
+    | Product of t list
+    | Ratio of t * t
+    | Function of string * t list
+
+    val integer : int -> t
+    val add : t -> t -> t
+    val sub : t -> t -> t
+    val mult : t -> t -> t
+    val div : t -> t -> t
+    val apply : string -> t list -> t
+
+  end
+
 type token =
 | Digit of int
 | Name of string

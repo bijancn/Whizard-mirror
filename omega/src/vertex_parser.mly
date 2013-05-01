@@ -22,20 +22,22 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 %{
-module S = Vertex_syntax
+module V = Vertex_syntax
+module E = Vertex_syntax.Expr
 let parse_error msg =
-  raise (S.Syntax_Error (msg, symbol_start (), symbol_end ()))
+  raise (V.Syntax_Error (msg, symbol_start (), symbol_end ()))
 %}
 
 %token < int > DIGIT
 %token < string > NAME
-%token EPSILON
-%token S V T A P
+%token < string > BEGIN_ENV END_ENV
 %token I
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE LANGLE RANGLE
-%token SUPER SUB COMMA VERT
+%token SUPER SUB COMMA VERT EQUAL
 %token PLUS MINUS TIMES DIV DOT TILDE
 %token END
+
+%token START STOP
 
 %left PLUS MINUS
 %nonassoc NEG UPLUS TILDE
@@ -43,14 +45,37 @@ let parse_error msg =
 %left DIV
 %left DOT
 
-%start vertex
-%type < Vertex_syntax.token > vertex
+%start model
+%type < Vertex_syntax.Expr.t * Vertex_syntax.token > model
 
 %%
 
+model:
+ | expr vertex END { ($1, $2) }
+ | vertex END      { (E.integer 1, $1) }
+ | END             { (E.integer 1, V.List []) }
+;
+
+expr:
+ | integer                 { E.integer $1 }
+ | LPAREN expr RPAREN      { $2 }
+ | expr PLUS expr          { E.add $1 $3 }
+ | expr MINUS expr         { E.sub $1 $3 }
+ | expr TIMES expr         { E.mult $1 $3 }
+ | expr DIV expr           { E.div $1 $3 }
+ | NAME LBRACE expr RBRACE { E.apply $1 [$3] }
+ | NAME LBRACE expr RBRACE
+        LBRACE expr RBRACE { E.apply $1 [$3; $6] }
+;
+
+integer:
+ | DIGIT           { $1 }
+ | integer DIGIT   { 10 * $1 + $2 }
+;
+
 vertex:
- | token_list END  { S.List $1 }
- | END             { S.List [] }
+ | START STOP                { V.List [] }
+ | START token_list STOP     { V.List $2 }
 ;
 
 token_list:
@@ -64,15 +89,15 @@ token_list:
 
 scripted_token:
  | token
-     { S.Scripted { S.token = $1; S.super = []; S.sub = [] } }
+     { V.Scripted { V.token = $1; V.super = []; V.sub = [] } }
  | token SUPER token
-     { S.Scripted { S.token = $1; S.super = S.plug $3; S.sub = [] } }
+     { V.Scripted { V.token = $1; V.super = V.plug $3; V.sub = [] } }
  | token SUB token
-     { S.Scripted { S.token = $1; S.super = []; S.sub = S.plug $3 } }
+     { V.Scripted { V.token = $1; V.super = []; V.sub = V.plug $3 } }
  | token SUPER token SUB token
-     { S.Scripted { S.token = $1; S.super = S.plug $3; S.sub = S.plug $5 } }
+     { V.Scripted { V.token = $1; V.super = V.plug $3; V.sub = V.plug $5 } }
  | token SUB token SUPER token
-     { S.Scripted { S.token = $1; S.super = S.plug $5; S.sub = S.plug $3 } }
+     { V.Scripted { V.token = $1; V.super = V.plug $5; V.sub = V.plug $3 } }
 ;
 
 token:
@@ -81,11 +106,11 @@ token:
  | LBRACE token RBRACE
      { $2 }
  | LBRACE token token_list RBRACE
-     { S.List ($2 :: $3) }
+     { V.List ($2 :: $3) }
 ;
 
 bare_token:
- | DIGIT { S.Digit $1 }
- | NAME  { S.Name $1 }
+ | DIGIT { V.Digit $1 }
+ | NAME  { V.Name $1 }
 ;
 

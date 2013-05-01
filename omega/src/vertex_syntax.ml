@@ -57,6 +57,59 @@ type identifier =
 | Id_Color
 | Id_Index
 
+module Expr =
+  struct
+
+    type t =
+    | Integer of int
+    | Sum of t list
+    | Diff of t * t
+    | Product of t list
+    | Ratio of t * t
+    | Function of string * t list
+
+    let integer i = Integer i
+
+    let rec add a b =
+      match a, b with
+      | Integer a, Integer b -> Integer (a + b)
+      | Sum a, Sum b -> Sum (a @ b)
+      | Sum a, b -> Sum (a @ [b])
+      | a, Sum b -> Sum (a :: b)
+      | a, b -> Sum ([a; b])
+
+    (* (a1 - a2) - (b1 - b2) = (a1 + b2) - (a2 + b1) *)
+    (* (a1 - a2) - b = a1 - (a2 + b) *)
+    (* a - (b1 - b2) = (a + b2) - b1 *)
+
+    and sub a b =
+      match a, b with
+      | Integer a, Integer b -> Integer (a - b)
+      | Diff (a1, a2), Diff (b1, b2) -> Diff (add a1 b2, add a2 b1)
+      | Diff (a1, a2), b -> Diff (a1, add a2 b)
+      | a, Diff (b1, b2) -> Diff (add a b2, b1)	
+      | a, b -> Diff (a, b)	
+
+    and mult a b =
+      match a, b with
+      | Integer a, Integer b -> Integer (a * b)
+      | Product a, Product b -> Product (a @ b)
+      | Product a, b -> Product (a @ [b])
+      | a, Product b -> Product (a :: b)
+      | a, b -> Product ([a; b])
+
+    and div a b =
+      match a, b with
+      | Ratio (a1, a2), Ratio (b1, b2) -> Ratio (mult a1 b2, mult a2 b1)
+      | Ratio (a1, a2), b -> Ratio (a1, mult a2 b)
+      | a, Ratio (b1, b2) -> Ratio (mult a b2, b1)	
+      | a, b -> Ratio (a, b)	
+
+    let apply f args =
+      Function (f, args)
+
+  end
+
 type token =
 | Digit of int
 | Name of string

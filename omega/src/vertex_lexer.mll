@@ -23,6 +23,8 @@
 
 {
 open Vertex_parser
+let strip_string i1 i2 s =
+  String.sub s i1 (String.length s - i1 - i2)
 }
 
 let digit = ['0'-'9']
@@ -37,6 +39,7 @@ rule token = parse
                { token lexbuf }     (* skip LaTeX white space *)
   | '%' [^'\n']* '\n'
                { token lexbuf }     (* skip comments *)
+  | '='        { EQUAL }
   | '~'        { TILDE }
   | '.'        { DOT }
   | '^'        { SUPER }
@@ -53,9 +56,16 @@ rule token = parse
   | ']'        { RBRACKET }
   | ','        { COMMA }
   | '|'        { VERT }
+  | "<<"       { START }
+  | ">>"       { STOP }
+  | "\\begin{" char+ '}'
+               { BEGIN_ENV (strip_string 7 1 (Lexing.lexeme lexbuf)) }
+  | "\\end{" char+ '}'
+               { END_ENV (strip_string 5 1 (Lexing.lexeme lexbuf)) }
   | digit      { DIGIT (int_of_string (Lexing.lexeme lexbuf)) }
   | 'I'        { I }
   | char       { NAME (Lexing.lexeme lexbuf) }
+  | '\\' _     { NAME (Lexing.lexeme lexbuf) }
   | '\\' char+ { NAME (Lexing.lexeme lexbuf) }
   | _          { failwith ("invalid character at `" ^
 			      Lexing.lexeme lexbuf ^ "'") }
