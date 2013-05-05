@@ -60,6 +60,9 @@ type identifier =
 module Expr :
   sig
 
+    (* Values (a.k.a. variables) are just functions with
+       an empty argument list. *)
+
     type t =
     | Integer of int
     | Sum of t list
@@ -82,6 +85,7 @@ type token =
 | Name of string
 | Scripted of scripted
 | List of token list
+
 and scripted = 
   { token : token;
     super : token list;

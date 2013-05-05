@@ -822,13 +822,26 @@ module Parser_Test (M : Model.T) : Test =
     module V = Vertex_syntax
     module E = Vertex_syntax.Expr
 
-    let expr =
-      "expr" >::
+    let expr_42 =
+      "42" >::
 	(fun () ->
 	  assert_equal
 	    (E.Integer 42,
 	     V.List [])
 	    (parse "2 * (17 + 4) << >>"))
+
+    let expr_38 =
+      "38" >::
+	(fun () ->
+	  assert_equal
+	    (E.Integer 38,
+	     V.List [])
+	    (parse "2 * 17 + 4 << >>"))
+
+    let expr =
+      "expr" >:::
+	[expr_42;
+	 expr_38]
 
     let index =
       "index" >::

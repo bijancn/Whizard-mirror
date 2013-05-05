@@ -23,8 +23,8 @@
 
 {
 open Vertex_parser
-let strip_string i1 i2 s =
-  String.sub s i1 (String.length s - i1 - i2)
+let string_of_char c = String.make 1 c
+let int_of_char c = int_of_string (string_of_char c)
 }
 
 let digit = ['0'-'9']
@@ -56,19 +56,17 @@ rule token = parse
   | ']'        { RBRACKET }
   | ','        { COMMA }
   | '|'        { VERT }
-  | "<<"       { START }
+  | "<<"       { START } (* that's a hack that should go away! *)
   | ">>"       { STOP }
-  | "\\begin{" char+ '}'
-               { BEGIN_ENV (strip_string 7 1 (Lexing.lexeme lexbuf)) }
-  | "\\end{" char+ '}'
-               { END_ENV (strip_string 5 1 (Lexing.lexeme lexbuf)) }
-  | digit      { DIGIT (int_of_string (Lexing.lexeme lexbuf)) }
-  | 'I'        { I }
-  | char       { NAME (Lexing.lexeme lexbuf) }
-  | '\\' _     { NAME (Lexing.lexeme lexbuf) }
-  | '\\' char+ { NAME (Lexing.lexeme lexbuf) }
-  | _          { failwith ("invalid character at `" ^
-			      Lexing.lexeme lexbuf ^ "'") }
+  | "\\\\"     { SEP }
+  | "\\begin{" (char+ as env) '}'
+               { BEGIN_ENV env }
+  | "\\end{" (char+ as env) '}'
+               { END_ENV env }
+  | digit as i { DIGIT (int_of_char i) }
+  | (char | '\\' (_ | char+))  as name
+               { NAME name }
+  | _ as c     { failwith ("invalid character at `" ^ string_of_char c ^ "'") }
   | eof        { END }
 
 

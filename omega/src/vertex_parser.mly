@@ -31,13 +31,12 @@ let parse_error msg =
 %token < int > DIGIT
 %token < string > NAME
 %token < string > BEGIN_ENV END_ENV
-%token I
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE LANGLE RANGLE
 %token SUPER SUB COMMA VERT EQUAL
 %token PLUS MINUS TIMES DIV DOT TILDE
-%token END
+%token SEP END
 
-%token START STOP
+%token START STOP LATEX
 
 %left PLUS MINUS
 %nonassoc NEG UPLUS TILDE
@@ -51,9 +50,15 @@ let parse_error msg =
 %%
 
 model:
- | expr vertex END { ($1, $2) }
- | vertex END      { (E.integer 1, $1) }
+ | declaration END { $1 }
  | END             { (E.integer 1, V.List []) }
+;
+
+declaration:
+ | LATEX LBRACE token_list RBRACE
+                   { (E.integer 1, V.List []) }
+ | expr vertex     { ($1, $2) }
+ | vertex          { (E.integer 1, $1) }
 ;
 
 expr:
@@ -63,10 +68,18 @@ expr:
  | expr MINUS expr         { E.sub $1 $3 }
  | expr TIMES expr         { E.mult $1 $3 }
  | expr DIV expr           { E.div $1 $3 }
- | NAME LBRACE expr RBRACE { E.apply $1 [$3] }
- | NAME LBRACE expr RBRACE
-        LBRACE expr RBRACE { E.apply $1 [$3; $6] }
+ | NAME arg_list           { E.apply $1 $2 }
 ;
+
+arg_list:
+ |                         { [] }
+ | arg arg_list            { $1 :: $2 }
+;
+
+arg:
+ | LBRACE expr RBRACE      { $2 }
+;
+
 
 integer:
  | DIGIT           { $1 }
