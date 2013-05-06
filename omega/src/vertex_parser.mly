@@ -24,6 +24,7 @@
 %{
 module V = Vertex_syntax
 module E = Vertex_syntax.Expr
+module M = Vertex_syntax.Model
 let parse_error msg =
   raise (V.Syntax_Error (msg, symbol_start (), symbol_end ()))
 %}
@@ -36,7 +37,8 @@ let parse_error msg =
 %token PLUS MINUS TIMES DIV DOT TILDE
 %token SEP END
 
-%token START STOP LATEX
+%token PARTICLE PARAMETER LAGRANGIAN
+%token START STOP TEX
 
 %left PLUS MINUS
 %nonassoc NEG UPLUS TILDE
@@ -45,20 +47,38 @@ let parse_error msg =
 %left DOT
 
 %start model
-%type < Vertex_syntax.Expr.t * Vertex_syntax.token > model
+%type < Vertex_syntax.Model.t > model
 
 %%
 
 model:
- | declaration END { $1 }
- | END             { (E.integer 1, V.List []) }
+ | declarations END { $1 }
 ;
 
-declaration:
- | LATEX LBRACE token_list RBRACE
-                   { (E.integer 1, V.List []) }
- | expr vertex     { ($1, $2) }
- | vertex          { (E.integer 1, $1) }
+declarations:
+ |                                 { M.empty }
+ | particle declarations           { $2 }
+ | parameter declarations          { $2 }
+ | set_lagrangian declarations     { M.l $1 }
+ | augment_lagrangian declarations { M.l $1 }
+;
+
+particle:
+ | PARTICLE TEX LBRACE token_list RBRACE  { M.l (E.integer 1, V.List []) }
+;
+
+parameter:
+ | PARAMETER TEX LBRACE token_list RBRACE { M.l (E.integer 1, V.List []) }
+;
+
+set_lagrangian:
+ | LAGRANGIAN EQUAL expr vertex     { ($3, $4) }
+ | LAGRANGIAN EQUAL vertex          { (E.integer 1, $3) }
+;
+
+augment_lagrangian:
+ | LAGRANGIAN PLUS EQUAL expr vertex     { ($4, $5) }
+ | LAGRANGIAN PLUS EQUAL vertex          { (E.integer 1, $4) }
 ;
 
 expr:
@@ -69,61 +89,61 @@ expr:
  | expr TIMES expr         { E.mult $1 $3 }
  | expr DIV expr           { E.div $1 $3 }
  | NAME arg_list           { E.apply $1 $2 }
-;
+     ;
 
-arg_list:
+     arg_list:
  |                         { [] }
  | arg arg_list            { $1 :: $2 }
-;
+     ;
 
-arg:
+     arg:
  | LBRACE expr RBRACE      { $2 }
-;
+     ;
 
 
-integer:
+     integer:
  | DIGIT           { $1 }
  | integer DIGIT   { 10 * $1 + $2 }
-;
+     ;
 
-vertex:
+     vertex:
  | START STOP                { V.List [] }
  | START token_list STOP     { V.List $2 }
-;
+     ;
 
-token_list:
+     token_list:
  | scripted_token            { [$1] }
  | scripted_token token_list { $1 :: $2 }
- /* Right recursion is more convenient for constructing
-    the value.  Since the lists will always be short,
-    there is no performace or stack size reason for
-    prefering left recursion. */
-;
+   /* Right recursion is more convenient for constructing
+       the value.  Since the lists will always be short,
+     there is no performace or stack size reason for
+	 prefering left recursion. */
+       ;
 
-scripted_token:
- | token
-     { V.Scripted { V.token = $1; V.super = []; V.sub = [] } }
- | token SUPER token
-     { V.Scripted { V.token = $1; V.super = V.plug $3; V.sub = [] } }
- | token SUB token
-     { V.Scripted { V.token = $1; V.super = []; V.sub = V.plug $3 } }
- | token SUPER token SUB token
-     { V.Scripted { V.token = $1; V.super = V.plug $3; V.sub = V.plug $5 } }
- | token SUB token SUPER token
-     { V.Scripted { V.token = $1; V.super = V.plug $5; V.sub = V.plug $3 } }
-;
+       scripted_token:
+       | token
+	   { V.Scripted { V.token = $1; V.super = []; V.sub = [] } }
+       | token SUPER token
+	   { V.Scripted { V.token = $1; V.super = V.plug $3; V.sub = [] } }
+       | token SUB token
+	   { V.Scripted { V.token = $1; V.super = []; V.sub = V.plug $3 } }
+       | token SUPER token SUB token
+	   { V.Scripted { V.token = $1; V.super = V.plug $3; V.sub = V.plug $5 } }
+       | token SUB token SUPER token
+	   { V.Scripted { V.token = $1; V.super = V.plug $5; V.sub = V.plug $3 } }
+       ;
 
-token:
- | bare_token
-     { $1 }
- | LBRACE token RBRACE
-     { $2 }
- | LBRACE token token_list RBRACE
-     { V.List ($2 :: $3) }
-;
+       token:
+       | bare_token
+	   { $1 }
+       | LBRACE token RBRACE
+	   { $2 }
+       | LBRACE token token_list RBRACE
+	   { V.List ($2 :: $3) }
+       ;
 
-bare_token:
- | DIGIT { V.Digit $1 }
- | NAME  { V.Name $1 }
-;
+       bare_token:
+       | DIGIT { V.Digit $1 }
+       | NAME  { V.Name $1 }
+       ;
 

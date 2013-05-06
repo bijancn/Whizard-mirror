@@ -127,6 +127,38 @@ let plug = function
   | Scripted _ as t -> [t]
   | List tl -> tl
 
-type lexer_state =
-  { identifier : string -> identifier }
+module Particle =
+  struct
 
+    type t =
+      { name : string;
+	tex : string option }
+
+  end
+
+module Parameter =
+  struct
+
+    type t =
+      { name : string;
+	derived : Expr.t option;
+	tex : string option }
+
+  end
+
+module Model =
+  struct
+
+    type t =
+      { particles : Particle.t list;
+	parameters : Parameter.t list;
+	lagrangian : (Expr.t * token) list }
+
+    let empty =
+      { particles = [];
+	parameters = [];
+	lagrangian = [] }
+
+    let l et = { empty with lagrangian = [et] }
+
+  end

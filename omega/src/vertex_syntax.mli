@@ -92,7 +92,35 @@ and scripted =
     sub : token list }
 
 val plug : token -> token list
-    
-type lexer_state =
-    { identifier : string -> identifier }
 
+module Particle :
+  sig
+
+    type t =
+      { name : string;
+	tex : string option }
+
+  end
+
+module Parameter :
+  sig
+
+    type t =
+      { name : string;
+	derived : Expr.t option;
+	tex : string option }
+
+  end
+
+module Model :
+  sig
+
+    type t =
+      { particles : Particle.t list;
+	parameters : Parameter.t list;
+	lagrangian : (Expr.t * token) list }
+
+    val empty : t
+    val l : Expr.t * token -> t
+
+  end

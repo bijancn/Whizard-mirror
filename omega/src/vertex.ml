@@ -821,22 +821,21 @@ module Parser_Test (M : Model.T) : Test =
 
     module V = Vertex_syntax
     module E = Vertex_syntax.Expr
+    module M = Vertex_syntax.Model
 
     let expr_42 =
       "42" >::
 	(fun () ->
 	  assert_equal
-	    (E.Integer 42,
-	     V.List [])
-	    (parse "2 * (17 + 4) << >>"))
+	    (M.l (E.Integer 42, V.List []))
+	    (parse "\\lagrangian = 2 * (17 + 4) << >>"))
 
     let expr_38 =
       "38" >::
 	(fun () ->
 	  assert_equal
-	    (E.Integer 38,
-	     V.List [])
-	    (parse "2 * 17 + 4 << >>"))
+	    (M.l (E.Integer 38, V.List []))
+	    (parse "\\lagrangian = 2 * 17 + 4 << >>"))
 
     let expr =
       "expr" >:::
@@ -847,17 +846,17 @@ module Parser_Test (M : Model.T) : Test =
       "index" >::
 	(fun () ->
 	  assert_equal
-	    (E.Integer 1,
-	     V.List
-	       [ V.Scripted { V.token = V.Name "a";
-			      V.super = [V.Digit 2];
-			      V.sub = [V.Digit 1] } ] )
-	    (parse "<< {a}_{1}^{2} >>"))
+	    (M.l (E.Integer 1,
+		  V.List
+		    [ V.Scripted { V.token = V.Name "a";
+				   V.super = [V.Digit 2];
+				   V.sub = [V.Digit 1] } ] ))
+	    (parse "\\lagrangian = << {a}_{1}^{2} >>"))
 
     let empty =
       "empty" >::
 	(fun () ->
-	  assert_equal (E.Integer 1, V.List []) (parse ""))
+	  assert_equal M.empty (parse ""))
 
     let suite =
       "Vertex_Parser" >:::

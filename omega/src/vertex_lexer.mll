@@ -58,6 +58,9 @@ rule token = parse
   | '|'        { VERT }
   | "<<"       { START } (* that's a hack that should go away! *)
   | ">>"       { STOP }
+  | "\\TeX"    { TEX }
+  | "\\lagrangian"
+               { LAGRANGIAN }
   | "\\\\"     { SEP }
   | "\\begin{" (char+ as env) '}'
                { BEGIN_ENV env }
