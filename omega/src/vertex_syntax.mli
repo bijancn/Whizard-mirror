@@ -121,6 +121,6 @@ module Model :
 	lagrangian : (Expr.t * token) list }
 
     val empty : t
-    val l : Expr.t * token -> t
+    val l : Expr.t * token -> t -> t
 
   end

@@ -159,6 +159,6 @@ module Model =
 	parameters = [];
 	lagrangian = [] }
 
-    let l et = { empty with lagrangian = [et] }
+    let l et lagrangian = { lagrangian with lagrangian = [et] }
 
   end

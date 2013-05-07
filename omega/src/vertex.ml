@@ -827,14 +827,14 @@ module Parser_Test (M : Model.T) : Test =
       "42" >::
 	(fun () ->
 	  assert_equal
-	    (M.l (E.Integer 42, V.List []))
+	    (M.l (E.Integer 42, V.List []) M.empty) 
 	    (parse "\\lagrangian = 2 * (17 + 4) << >>"))
 
     let expr_38 =
       "38" >::
 	(fun () ->
 	  assert_equal
-	    (M.l (E.Integer 38, V.List []))
+	    (M.l (E.Integer 38, V.List []) M.empty)
 	    (parse "\\lagrangian = 2 * 17 + 4 << >>"))
 
     let expr =
@@ -846,11 +846,13 @@ module Parser_Test (M : Model.T) : Test =
       "index" >::
 	(fun () ->
 	  assert_equal
-	    (M.l (E.Integer 1,
-		  V.List
-		    [ V.Scripted { V.token = V.Name "a";
-				   V.super = [V.Digit 2];
-				   V.sub = [V.Digit 1] } ] ))
+	    (M.l
+	       (E.Integer 1,
+		V.List
+		  [ V.Scripted { V.token = V.Name "a";
+				 V.super = [V.Digit 2];
+				 V.sub = [V.Digit 1] } ] )
+	       M.empty)
 	    (parse "\\lagrangian = << {a}_{1}^{2} >>"))
 
     let empty =

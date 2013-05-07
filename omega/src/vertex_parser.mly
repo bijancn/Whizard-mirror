@@ -59,16 +59,16 @@ declarations:
  |                                 { M.empty }
  | particle declarations           { $2 }
  | parameter declarations          { $2 }
- | set_lagrangian declarations     { M.l $1 }
- | augment_lagrangian declarations { M.l $1 }
+ | set_lagrangian declarations     { M.l $1 $2 }
+ | augment_lagrangian declarations { M.l $1 $2 }
 ;
 
 particle:
- | PARTICLE TEX LBRACE token_list RBRACE  { M.l (E.integer 1, V.List []) }
+ | PARTICLE TEX LBRACE token_list RBRACE  { M.empty }
 ;
 
 parameter:
- | PARAMETER TEX LBRACE token_list RBRACE { M.l (E.integer 1, V.List []) }
+ | PARAMETER TEX LBRACE token_list RBRACE { M.empty }
 ;
 
 set_lagrangian:

@@ -95,8 +95,6 @@ comphep_lexer.mli: comphep_lexer.ml comphep_parser.cmi
 vertex_lexer.mli: vertex_lexer.ml vertex_parser.cmi
 	$(OCAMLC) -i $< | $(GREP) 'val token' >$@
 
-model_file_lexer.mli: model_file_lexer.ml model_file_parser.cmi
-	$(OCAMLC) -i $< | $(GREP) 'val token' >$@
 endif
 
 MYPRECIOUS = $(OMEGA_DERIVED_CAML)
@@ -160,7 +158,7 @@ if OCAML_AVAILABLE
 
 @am__include@ @am__quote@Makefile.depend_ocaml@am__quote@
 
-PARSERS = cascade comphep vertex model_file
+PARSERS = cascade comphep vertex
 
 Makefile.depend_ocaml: $(OMEGA_CAML_PRIMARY)
 	@rm -f $@
