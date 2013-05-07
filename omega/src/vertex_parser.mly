@@ -35,10 +35,13 @@ let parse_error msg =
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE LANGLE RANGLE
 %token SUPER SUB COMMA VERT EQUAL
 %token PLUS MINUS TIMES DIV DOT TILDE
-%token SEP END
+%token END
 
-%token PARTICLE PARAMETER LAGRANGIAN
-%token START STOP TEX
+%token NEUTRAL CHARGED
+%token ANTI ALIAS TEX FORTRAN SPIN CHARGE MASS WIDTH
+%token INPUT DERIVED
+%token LAGRANGIAN
+%token STAR
 
 %left PLUS MINUS
 %nonassoc NEG UPLUS TILDE
@@ -57,28 +60,68 @@ model:
 
 declarations:
  |                                 { M.empty }
- | particle declarations           { $2 }
- | parameter declarations          { $2 }
- | set_lagrangian declarations     { M.l $1 $2 }
- | augment_lagrangian declarations { M.l $1 $2 }
+ | declarations particle           { $1 }
+ | declarations parameter          { $1 }
+ | declarations set_lagrangian     { M.l $2 M.empty }
+ | declarations augment_lagrangian { M.l $2 $1 }
 ;
 
 particle:
- | PARTICLE TEX LBRACE token_list RBRACE  { M.empty }
+ | NEUTRAL token_list_arg particle_attributes      { M.empty }
+ | CHARGED token_list_arg_pair particle_attributes { M.empty }
+;
+
+token_list_arg:
+ | LBRACE token_list RBRACE { $2 }
+;
+
+token_list_arg_pair:
+ | token_list_arg token_list_arg { ($1, $2) }
+;
+
+particle_attributes:
+ | particle_attribute                     { [ $1 ] }
+ | particle_attribute particle_attributes { $1 :: $2 }
+;
+
+particle_attribute:
+ |      ALIAS   token_list_arg           { () }
+ | ANTI ALIAS   token_list_arg           { () }
+ |      TEX     token_list_arg           { () }
+ | ANTI TEX     token_list_arg           { () }
+ |      FORTRAN token_list_arg           { () }
+ | ANTI FORTRAN token_list_arg           { () }
+ |      SPIN    arg                      { () }
+ |      CHARGE  arg                      { () }
+ |      MASS    token_list_arg           { () }
+ |      WIDTH   token_list_arg           { () }
 ;
 
 parameter:
- | PARAMETER TEX LBRACE token_list RBRACE { M.empty }
+ | INPUT   token_list_arg arg parameter_attributes { M.empty }
+ | DERIVED token_list_arg arg parameter_attributes { M.empty }
+;
+
+parameter_attributes:
+ | parameter_attribute                      { [ $1 ] }
+ | parameter_attribute parameter_attributes { $1 :: $2 }
+;
+
+parameter_attribute:
+ |      ALIAS   token_list_arg            { () }
+ |      TEX     token_list_arg            { () }
+ |      FORTRAN token_list_arg            { () }
 ;
 
 set_lagrangian:
- | LAGRANGIAN EQUAL expr vertex     { ($3, $4) }
- | LAGRANGIAN EQUAL vertex          { (E.integer 1, $3) }
+ | LAGRANGIAN EQUAL vertex                { (E.integer 1, $3) }
+ | LAGRANGIAN EQUAL expr vertex           { ($3, $4) }
+ | LAGRANGIAN EQUAL expr                  { ($3, V.List []) }
 ;
 
 augment_lagrangian:
- | LAGRANGIAN PLUS EQUAL expr vertex     { ($4, $5) }
- | LAGRANGIAN PLUS EQUAL vertex          { (E.integer 1, $4) }
+ | LAGRANGIAN PLUS EQUAL expr vertex      { ($4, $5) }
+ | LAGRANGIAN PLUS EQUAL vertex           { (E.integer 1, $4) }
 ;
 
 expr:
@@ -100,15 +143,14 @@ arg:
  | LBRACE expr RBRACE      { $2 }
 ;
 
-
 integer:
  | DIGIT           { $1 }
  | integer DIGIT   { 10 * $1 + $2 }
 ;
 
 vertex:
- | START STOP                { V.List [] }
- | START token_list STOP     { V.List $2 }
+ | STAR                { V.List [] }
+ | STAR token_list     { V.List $2 }
 ;
 
 token_list:

@@ -34,42 +34,36 @@ let char = upper | lower
 let white = [' ' '\t' '\n']
 
 rule token = parse
-    white      { token lexbuf }     (* skip blanks *)
+    white       { token lexbuf }     (* skip blanks *)
   | '\\' [','';']
-               { token lexbuf }     (* skip LaTeX white space *)
+                { token lexbuf }     (* skip LaTeX white space *)
   | '%' [^'\n']* '\n'
-               { token lexbuf }     (* skip comments *)
-  | '='        { EQUAL }
-  | '~'        { TILDE }
-  | '.'        { DOT }
-  | '^'        { SUPER }
-  | '_'        { SUB }
-  | '*'        { TIMES }
-  | '/'        { DIV }
-  | '+'        { PLUS }
-  | '-'        { MINUS }
-  | '('        { LPAREN }
-  | ')'        { RPAREN }
-  | '{'        { LBRACE }
-  | '}'        { RBRACE }
-  | '['        { LBRACKET }
-  | ']'        { RBRACKET }
-  | ','        { COMMA }
-  | '|'        { VERT }
-  | "<<"       { START } (* that's a hack that should go away! *)
-  | ">>"       { STOP }
-  | "\\TeX"    { TEX }
+               	{ token lexbuf }     (* skip comments *)
+  | '='        	{ EQUAL }
+  | '^'        	{ SUPER }
+  | '_'        	{ SUB }
+  | '*'        	{ TIMES }
+  | '/'        	{ DIV }
+  | '+'        	{ PLUS }
+  | '-'        	{ MINUS }
+  | '('        	{ LPAREN }
+  | ')'        	{ RPAREN }
+  | '{'        	{ LBRACE }
+  | '}'        	{ RBRACE }
+  | "\\*"      	{ STAR }
+  | "\\charged" { CHARGED }
+  | "\\neutral" { NEUTRAL }
+  | "\\TeX"     { TEX }
   | "\\lagrangian"
-               { LAGRANGIAN }
-  | "\\\\"     { SEP }
+               	{ LAGRANGIAN }
   | "\\begin{" (char+ as env) '}'
-               { BEGIN_ENV env }
+                { BEGIN_ENV env }
   | "\\end{" (char+ as env) '}'
-               { END_ENV env }
-  | digit as i { DIGIT (int_of_char i) }
+                { END_ENV env }
+  | digit as i  { DIGIT (int_of_char i) }
   | (char | '\\' (_ | char+))  as name
-               { NAME name }
-  | _ as c     { failwith ("invalid character at `" ^ string_of_char c ^ "'") }
-  | eof        { END }
+                { NAME name }
+  | _ as c      { failwith ("invalid character at `" ^ string_of_char c ^ "'") }
+  | eof         { END }
 
 
