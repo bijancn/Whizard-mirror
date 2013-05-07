@@ -113,15 +113,16 @@ parameter_attribute:
  |      FORTRAN token_list_arg            { () }
 ;
 
-set_lagrangian:
- | LAGRANGIAN EQUAL vertex                { (E.integer 1, $3) }
- | LAGRANGIAN EQUAL expr vertex           { ($3, $4) }
- | LAGRANGIAN EQUAL expr                  { ($3, V.List []) }
+set_lagrangian: /* We'd like to avoid the STAR in the first clause. */
+ | LAGRANGIAN EQUAL STAR vertex                { (E.integer 1, $4) }
+ | LAGRANGIAN EQUAL expr STAR vertex           { ($3, $5) }
+ | LAGRANGIAN EQUAL expr                       { ($3, V.List []) }
 ;
 
-augment_lagrangian:
- | LAGRANGIAN PLUS EQUAL expr vertex      { ($4, $5) }
- | LAGRANGIAN PLUS EQUAL vertex           { (E.integer 1, $4) }
+augment_lagrangian: /* We'd like to avoid the STAR in the first clause. */
+ | LAGRANGIAN PLUS EQUAL STAR vertex           { (E.integer 1, $5) }
+ | LAGRANGIAN PLUS EQUAL expr STAR vertex      { ($4, $6) }
+ | LAGRANGIAN PLUS EQUAL expr                  { ($4, V.List []) }
 ;
 
 expr:
@@ -149,8 +150,7 @@ integer:
 ;
 
 vertex:
- | STAR                { V.List [] }
- | STAR token_list     { V.List $2 }
+ | token_list      { V.List $1 }
 ;
 
 token_list:
