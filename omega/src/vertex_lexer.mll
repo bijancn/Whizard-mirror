@@ -46,6 +46,7 @@ rule token = parse
   | '/'        	{ DIV }
   | '+'        	{ PLUS }
   | '-'        	{ MINUS }
+  | ','        	{ COMMA }
   | '('        	{ LPAREN }
   | ')'        	{ RPAREN }
   | '{'        	{ LBRACE }
@@ -53,13 +54,13 @@ rule token = parse
   | "\\*"      	{ STAR }
   | "\\charged" { CHARGED }
   | "\\neutral" { NEUTRAL }
+  | "\\anti"    { ANTI }
   | "\\TeX"     { TEX }
+  | "\\fortran" { FORTRAN }
+  | "\\spin"    { SPIN }
+  | "\\charge"  { CHARGE }
   | "\\lagrangian"
                	{ LAGRANGIAN }
-  | "\\begin{" (char+ as env) '}'
-                { BEGIN_ENV env }
-  | "\\end{" (char+ as env) '}'
-                { END_ENV env }
   | digit as i  { DIGIT (int_of_char i) }
   | (char | '\\' (_ | char+))  as name
                 { NAME name }

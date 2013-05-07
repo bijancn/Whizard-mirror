@@ -31,10 +31,10 @@ let parse_error msg =
 
 %token < int > DIGIT
 %token < string > NAME
-%token < string > BEGIN_ENV END_ENV
-%token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE LANGLE RANGLE
-%token SUPER SUB COMMA VERT EQUAL
-%token PLUS MINUS TIMES DIV DOT TILDE
+%token SUPER SUB LBRACE RBRACE
+%token LPAREN RPAREN
+%token COMMA
+%token PLUS MINUS TIMES DIV EQUAL
 %token END
 
 %token NEUTRAL CHARGED
@@ -44,10 +44,8 @@ let parse_error msg =
 %token STAR
 
 %left PLUS MINUS
-%nonassoc NEG UPLUS TILDE
-%left TIMES
-%left DIV
-%left DOT
+%nonassoc NEG UPLUS
+%left TIMES DIV
 
 %start model
 %type < Vertex_syntax.Model.t > model
@@ -71,6 +69,10 @@ particle:
  | CHARGED token_list_arg_pair particle_attributes { M.empty }
 ;
 
+fortran_token_list_arg:
+ | LBRACE fortran_token_list RBRACE { $2 }
+;
+
 token_list_arg:
  | LBRACE token_list RBRACE { $2 }
 ;
@@ -89,17 +91,17 @@ particle_attribute:
  | ANTI ALIAS   token_list_arg           { () }
  |      TEX     token_list_arg           { () }
  | ANTI TEX     token_list_arg           { () }
- |      FORTRAN token_list_arg           { () }
- | ANTI FORTRAN token_list_arg           { () }
+ |      FORTRAN fortran_token_list_arg   { () }
+ | ANTI FORTRAN fortran_token_list_arg   { () }
  |      SPIN    arg                      { () }
  |      CHARGE  arg                      { () }
- |      MASS    token_list_arg           { () }
- |      WIDTH   token_list_arg           { () }
+ |      MASS    fortran_token_list_arg   { () }
+ |      WIDTH   fortran_token_list_arg   { () }
 ;
 
 parameter:
- | INPUT   token_list_arg arg parameter_attributes { M.empty }
- | DERIVED token_list_arg arg parameter_attributes { M.empty }
+ | INPUT   fortran_token_list_arg arg parameter_attributes { M.empty }
+ | DERIVED fortran_token_list_arg arg parameter_attributes { M.empty }
 ;
 
 parameter_attributes:
@@ -185,7 +187,28 @@ token:
 ;
 
 bare_token:
- | DIGIT { V.Digit $1 }
- | NAME  { V.Name $1 }
+ | DIGIT  { V.Digit $1 }
+ | NAME   { V.Name $1 }
+ | PLUS   { V.Name "+" }
+ | MINUS  { V.Name "-" }
+ | TIMES  { V.Name "*" }
+ | DIV    { V.Name "/" }
+ | COMMA  { V.Name "," }
+ | LPAREN { V.Name "(" }
+ | RPAREN { V.Name ")" }
 ;
 
+fortran_token_list:
+ | fortran_token                    { [$1] }
+ | fortran_token fortran_token_list { $1 :: $2 }
+   /* Right recursion is more convenient for constructing
+      the value.  Since the lists will always be short,
+      there is no performace or stack size reason for
+      prefering left recursion. */
+;
+
+fortran_token:
+ | DIGIT  { V.Digit $1 }
+ | NAME   { V.Name $1 }
+ | SUB    { V.Name "_" }
+;
