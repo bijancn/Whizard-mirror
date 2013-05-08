@@ -851,41 +851,25 @@ module Parser_Test (M : Model.T) : Test =
     module F = Vertex_syntax.File
     module M = Vertex_syntax.Model
 
-    let expr_42 =
-      "42" >::
-	(fun () ->
-	  assert_equal
-	    [F.Lagrangian (E.Integer 42, T.List [])]
-	    (parse_string "\\lagrangian[2 * (17 + 4)]{}"))
+    let compare s_out s_in () =
+      assert_equal [s_out] (F.to_strings (parse_string s_in))
 
-    let expr_38 =
-      "38" >::
-	(fun () ->
-	  assert_equal
-	    [F.Lagrangian (E.Integer 38, T.List [])]
-	    (parse_string "\\lagrangian[2 * 17 + 4]{}"))
+    let compare_lagrangian s_out s_in () =
+      let pfx = "\\lagrangian" in
+      compare (pfx ^ s_out) (pfx ^ s_in) ()
 
     let expr =
       "expr" >:::
-	[expr_42;
-	 expr_38]
+	["42" >:: compare_lagrangian "[42]{{}}" "[2 * (17 + 4)]{}";
+	 "38" >:: compare_lagrangian "[38]{{}}" "[2 * 17 + 4]{}"]
 
     let index =
-      "index" >::
-	(fun () ->
-	  assert_equal
-	    [F.Lagrangian
-	       (E.Integer 1,
-		T.List
-		  [ T.Scripted { T.token = T.Token "a";
-				 T.super = [T.Digit 2];
-				 T.sub = [T.Digit 1] } ])]
-	    (parse_string "\\lagrangian{{a}_{1}^{2}}"))
+      "index" >:::
+	["1" >:: compare_lagrangian "[1]{{a^2_1}}" "{{a}_{1}^{2}}"]
 
     let empty =
       "empty" >::
-	(fun () ->
-	  assert_equal [] (parse_string ""))
+	(fun () -> assert_equal [] (parse_string ""))
 
     let electron =
       "electron" >::
