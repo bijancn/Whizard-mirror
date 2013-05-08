@@ -73,6 +73,9 @@ module Token :
 
     val plug : t -> t list
 
+    val to_string : t -> string
+    val scripted_to_string : scripted -> string
+
   end
 
 module Expr :
@@ -95,6 +98,8 @@ module Expr :
     val mult : t -> t -> t
     val div : t -> t -> t
     val apply : Token.t -> t list -> t
+
+    val to_string : t -> string
 
   end
 
@@ -170,6 +175,8 @@ module File :
     val empty : t
 
     val expand_includes : (string -> File_Tree.t) -> File_Tree.t -> t
+
+    val to_strings : t -> string list
 
   end
 

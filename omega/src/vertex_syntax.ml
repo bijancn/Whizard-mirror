@@ -77,6 +77,23 @@ module Token =
       | Scripted _ as t -> [t]
       | List tl -> tl
 
+    let rec to_string = function
+      | Digit i -> string_of_int i
+      | Token s -> s
+      | Scripted t -> scripted_to_string t
+      | List ts -> "{" ^ String.concat "" (List.map to_string ts) ^ "}"
+
+    and scripted_to_string t =
+      let super =
+	match t.super with
+	| [] -> ""
+	| tokens -> "^" ^ String.concat "" (List.map to_string tokens)
+      and sub =
+	match t.sub with
+	| [] -> ""
+	| tokens -> "_" ^ String.concat "" (List.map to_string tokens) in
+      to_string t.token ^ super ^ sub
+
   end
 
 module Expr =
@@ -129,6 +146,17 @@ module Expr =
 
     let apply f args =
       Function (f, args)
+
+    let rec to_string = function
+      | Integer i -> string_of_int i
+      | Sum ts -> String.concat "+" (List.map to_string ts)
+      | Diff (t1, t2) -> to_string t1 ^ "-" ^ to_string t2
+      | Product ts -> String.concat "*" (List.map to_string ts)
+      | Ratio (t1, t2) -> to_string t1 ^ "/" ^ to_string t2
+      | Function (f, args) ->
+	Token.to_string f ^
+	  String.concat ""
+	  (List.map (fun arg -> "{" ^ to_string arg ^ "}") args)
 
   end
 
@@ -214,6 +242,16 @@ module File =
 	    expand_includes' (parser f) decls)
 	  unexpanded expanded in
       expand_includes' unexpanded []
+
+    let to_strings decls =
+      List.map
+	(function
+	| Particle _ -> "\\particle ..."
+	| Parameter _ -> "\\parameter ..."
+	| Lagrangian (e, t) ->
+	  "\\lagrangian[" ^ Expr.to_string e ^ "]{" ^
+	    Token.to_string t ^ "}")
+	decls
 
   end
 
