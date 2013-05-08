@@ -176,7 +176,7 @@ module Parameter =
 
   end
 
-module File =
+module File_Tree =
   struct
 
     type declaration =
@@ -188,6 +188,32 @@ module File =
     type t = declaration list
 
     let empty = []
+
+  end
+
+module File =
+  struct
+
+    type declaration =
+    | Particle of Particle.t
+    | Parameter of Parameter.t
+    | Lagrangian of Expr.t * Token.t
+
+    type t = declaration list
+
+    let empty = []
+
+    let expand_includes parser unexpanded =
+      let rec expand_includes' unexpanded expanded =
+	List.fold_right (fun decl decls ->
+	  match decl with
+	  | File_Tree.Particle p -> Particle p :: decls
+	  | File_Tree.Parameter p -> Parameter p :: decls
+	  | File_Tree.Lagrangian (e, v) -> Lagrangian (e, v) :: decls
+	  | File_Tree.Include f ->
+	    expand_includes' (parser f) decls)
+	  unexpanded expanded in
+      expand_includes' unexpanded []
 
   end
 

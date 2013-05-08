@@ -31,7 +31,7 @@ module T = Vertex_syntax.Token
 module E = Vertex_syntax.Expr
 module P = Vertex_syntax.Particle
 module V = Vertex_syntax.Parameter
-module F = Vertex_syntax.File
+module F = Vertex_syntax.File_Tree
 module M = Vertex_syntax.Model
 let parse_error msg =
   raise (Vertex_syntax.Syntax_Error (msg, symbol_start (), symbol_end ()))
@@ -58,7 +58,7 @@ let parse_error msg =
 %left TIMES DIV
 
 %start file
-%type < Vertex_syntax.File.t > file
+%type < Vertex_syntax.File_Tree.t > file
 
 %%
 

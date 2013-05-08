@@ -142,7 +142,7 @@ module Parameter :
 
   end
 
-module File :
+module File_Tree :
   sig
 
     type declaration =
@@ -154,6 +154,22 @@ module File :
     type t = declaration list
 
     val empty : t
+
+  end
+
+module File :
+  sig
+
+    type declaration =
+    | Particle of Particle.t
+    | Parameter of Parameter.t
+    | Lagrangian of Expr.t * Token.t
+
+    type t = declaration list
+
+    val empty : t
+
+    val expand_includes : (string -> File_Tree.t) -> File_Tree.t -> t
 
   end
 

@@ -799,15 +799,40 @@ module Test (M : Model.T) : Test =
       
   end
 
-let parse text =
-  try
-    Vertex_parser.file Vertex_lexer.token (Lexing.from_string text)
-  with
-  | Vertex_syntax.Syntax_Error (msg, i, j) ->
-      invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
-                     msg  (String.sub text i (j - i + 1)))
-  | Parsing.Parse_error ->
-      invalid_arg ("parse error: " ^ text)
+let parse_string text =
+  Vertex_syntax.File.expand_includes
+    (fun _ -> invalid_arg "parse_string: found include")
+    (try
+       Vertex_parser.file Vertex_lexer.token (Lexing.from_string text)
+     with
+     | Vertex_syntax.Syntax_Error (msg, i, j) ->
+       invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
+                      msg  (String.sub text i (j - i + 1)))
+     | Parsing.Parse_error ->
+       invalid_arg ("parse error: " ^ text))
+
+let parse_file name =
+  let parse_file_tree name =
+    let ic = open_in name in
+    let file_tree =
+      begin try
+	Vertex_parser.file Vertex_lexer.token (Lexing.from_channel ic)
+      with
+      | Vertex_syntax.Syntax_Error (msg, i, j) ->
+	begin
+	  close_in ic;
+	  invalid_arg (Printf.sprintf "syntax error (%s) in `%s'"
+			 msg name)
+	end
+      | Parsing.Parse_error ->
+	begin
+	  close_in ic;
+	  invalid_arg ("parse error: " ^ name)
+	end
+      end in
+    close_in ic;
+    file_tree in
+  Vertex_syntax.File.expand_includes parse_file_tree (parse_file_tree name)
 
 module Parser_Test (M : Model.T) : Test =
   struct
@@ -821,6 +846,8 @@ module Parser_Test (M : Model.T) : Test =
 
     module T = Vertex_syntax.Token
     module E = Vertex_syntax.Expr
+    module P = Vertex_syntax.Particle
+    module V = Vertex_syntax.Parameter
     module F = Vertex_syntax.File
     module M = Vertex_syntax.Model
 
@@ -829,14 +856,14 @@ module Parser_Test (M : Model.T) : Test =
 	(fun () ->
 	  assert_equal
 	    [F.Lagrangian (E.Integer 42, T.List [])]
-	    (parse "\\lagrangian[2 * (17 + 4)]{}"))
+	    (parse_string "\\lagrangian[2 * (17 + 4)]{}"))
 
     let expr_38 =
       "38" >::
 	(fun () ->
 	  assert_equal
 	    [F.Lagrangian (E.Integer 38, T.List [])]
-	    (parse "\\lagrangian[2 * 17 + 4]{}"))
+	    (parse_string "\\lagrangian[2 * 17 + 4]{}"))
 
     let expr =
       "expr" >:::
@@ -853,17 +880,55 @@ module Parser_Test (M : Model.T) : Test =
 		  [ T.Scripted { T.token = T.Token "a";
 				 T.super = [T.Digit 2];
 				 T.sub = [T.Digit 1] } ])]
-	    (parse "\\lagrangian{{a}_{1}^{2}}"))
+	    (parse_string "\\lagrangian{{a}_{1}^{2}}"))
 
     let empty =
       "empty" >::
 	(fun () ->
-	  assert_equal [] (parse ""))
+	  assert_equal [] (parse_string ""))
+
+    let electron =
+      "electron" >::
+	(fun () ->
+	  assert_equal
+	    [F.Particle
+		{ P.name =
+		    P.Charged
+		      ([T.Scripted { T.token = T.Token "e";
+				     T.super = [T.Token "+"];
+				     T.sub = [] }],
+		       [T.Scripted { T.token = T.Token "e";
+				     T.super = [T.Token "-"];
+				     T.sub = [] }]);
+		  P.attr = [P.Fortran [T.Token "e";
+				       T.Token "l";
+				       T.Token "e"];
+			    P.Fortran_Anti [T.Token "p";
+					    T.Token "o";
+					    T.Token "s"]] }]
+	    (parse_string "\\charged{e^+}{e^-}
+                           \\fortran{ele}
+                           \\anti\\fortran{pos}"))
+
+    let particles =
+      "particles" >:::
+	[electron]
+
+    let parameters =
+      "parameters" >:::
+	[]
+
+    let lagrangian =
+      "lagrangian" >:::
+	[]
 
     let suite =
       "Vertex_Parser" >:::
 	[empty;
 	 index;
-	 expr]
+	 expr;
+	 particles;
+	 parameters;
+	 lagrangian]
 
   end
