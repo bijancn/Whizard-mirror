@@ -801,7 +801,7 @@ module Test (M : Model.T) : Test =
 
 let parse text =
   try
-    Vertex_parser.model Vertex_lexer.token (Lexing.from_string text)
+    Vertex_parser.file Vertex_lexer.token (Lexing.from_string text)
   with
   | Vertex_syntax.Syntax_Error (msg, i, j) ->
       invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
@@ -819,23 +819,24 @@ module Parser_Test (M : Model.T) : Test =
 
     (* Hacked ... *)
 
-    module V = Vertex_syntax
+    module T = Vertex_syntax.Token
     module E = Vertex_syntax.Expr
+    module F = Vertex_syntax.File
     module M = Vertex_syntax.Model
 
     let expr_42 =
       "42" >::
 	(fun () ->
 	  assert_equal
-	    (M.l (E.Integer 42, V.List []) M.empty) 
-	    (parse "\\lagrangian = 2 * (17 + 4)"))
+	    [F.Lagrangian (E.Integer 42, T.List [])]
+	    (parse "\\lagrangian[2 * (17 + 4)]{}"))
 
     let expr_38 =
       "38" >::
 	(fun () ->
 	  assert_equal
-	    (M.l (E.Integer 38, V.List []) M.empty)
-	    (parse "\\lagrangian = 2 * 17 + 4"))
+	    [F.Lagrangian (E.Integer 38, T.List [])]
+	    (parse "\\lagrangian[2 * 17 + 4]{}"))
 
     let expr =
       "expr" >:::
@@ -846,19 +847,18 @@ module Parser_Test (M : Model.T) : Test =
       "index" >::
 	(fun () ->
 	  assert_equal
-	    (M.l
+	    [F.Lagrangian
 	       (E.Integer 1,
-		V.List
-		  [ V.Scripted { V.token = V.Name "a";
-				 V.super = [V.Digit 2];
-				 V.sub = [V.Digit 1] } ] )
-	       M.empty)
-	    (parse "\\lagrangian = \\* {a}_{1}^{2}"))
+		T.List
+		  [ T.Scripted { T.token = T.Token "a";
+				 T.super = [T.Digit 2];
+				 T.sub = [T.Digit 1] } ])]
+	    (parse "\\lagrangian{{a}_{1}^{2}}"))
 
     let empty =
       "empty" >::
 	(fun () ->
-	  assert_equal M.empty (parse ""))
+	  assert_equal [] (parse ""))
 
     let suite =
       "Vertex_Parser" >:::

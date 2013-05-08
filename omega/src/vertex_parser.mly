@@ -21,20 +21,30 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
+/* Right recursion is more convenient for constructing
+   the value.  Since the lists will always be short,
+   there is no performace or stack size reason for
+   prefering left recursion. */
+
 %{
-module V = Vertex_syntax
+module T = Vertex_syntax.Token
 module E = Vertex_syntax.Expr
+module P = Vertex_syntax.Particle
+module V = Vertex_syntax.Parameter
+module F = Vertex_syntax.File
 module M = Vertex_syntax.Model
 let parse_error msg =
-  raise (V.Syntax_Error (msg, symbol_start (), symbol_end ()))
+  raise (Vertex_syntax.Syntax_Error (msg, symbol_start (), symbol_end ()))
 %}
 
 %token < int > DIGIT
-%token < string > NAME
-%token SUPER SUB LBRACE RBRACE
+%token < string > TOKEN
+%token SUPER SUB LBRACE RBRACE LBRACKET RBRACKET
 %token LPAREN RPAREN
 %token COMMA
 %token PLUS MINUS TIMES DIV EQUAL
+
+%token < string > INCLUDE
 %token END
 
 %token NEUTRAL CHARGED
@@ -47,30 +57,42 @@ let parse_error msg =
 %nonassoc NEG UPLUS
 %left TIMES DIV
 
-%start model
-%type < Vertex_syntax.Model.t > model
+%start file
+%type < Vertex_syntax.File.t > file
 
 %%
 
-model:
+file:
  | declarations END { $1 }
 ;
 
 declarations:
- |                                 { M.empty }
- | declarations particle           { $1 }
- | declarations parameter          { $1 }
- | declarations set_lagrangian     { M.l $2 M.empty }
- | declarations augment_lagrangian { M.l $2 $1 }
+ |                                 { [] }
+ | declaration declarations        { $1 :: $2 }
+;
+
+declaration:
+ | particle           { F.Particle $1 }
+ | parameter          { F.Parameter $1 }
+ | lagrangian         { let e, t = $1 in
+			F.Lagrangian (e, t) }
+ | INCLUDE            { F.Include $1 }
 ;
 
 particle:
- | NEUTRAL token_list_arg particle_attributes      { M.empty }
- | CHARGED token_list_arg_pair particle_attributes { M.empty }
+ | NEUTRAL token_list_arg particle_attributes
+     { { P.name = P.Neutral $2; P.attr = $3 } }
+ | CHARGED token_list_arg_pair particle_attributes
+     { let p, ap = $2 in
+       { P.name = P.Charged (p, ap); P.attr = $3 } }
 ;
 
 fortran_token_list_arg:
  | LBRACE fortran_token_list RBRACE { $2 }
+;
+
+expr_arg:
+ | LBRACKET expr RBRACKET             { $2 }
 ;
 
 token_list_arg:
@@ -82,59 +104,55 @@ token_list_arg_pair:
 ;
 
 particle_attributes:
- | particle_attribute                     { [ $1 ] }
+ |                                        { [ ] }
  | particle_attribute particle_attributes { $1 :: $2 }
 ;
 
 particle_attribute:
- |      ALIAS   token_list_arg           { () }
- | ANTI ALIAS   token_list_arg           { () }
- |      TEX     token_list_arg           { () }
- | ANTI TEX     token_list_arg           { () }
- |      FORTRAN fortran_token_list_arg   { () }
- | ANTI FORTRAN fortran_token_list_arg   { () }
- |      SPIN    arg                      { () }
- |      CHARGE  arg                      { () }
- |      MASS    fortran_token_list_arg   { () }
- |      WIDTH   fortran_token_list_arg   { () }
+ |      ALIAS   token_list_arg           { P.Alias $2 }
+ | ANTI ALIAS   token_list_arg           { P.Alias_Anti $3 }
+ |      TEX     token_list_arg           { P.TeX $2 }
+ | ANTI TEX     token_list_arg           { P.TeX_Anti $3 }
+ |      FORTRAN fortran_token_list_arg   { P.Fortran $2 }
+ | ANTI FORTRAN fortran_token_list_arg   { P.Fortran_Anti $3 }
+ |      SPIN    arg                      { P.Spin $2 }
+ |      CHARGE  arg                      { P.Charge $2 }
+ |      MASS    fortran_token_list_arg   { P.Mass $2 }
+ |      WIDTH   fortran_token_list_arg   { P.Width $2 }
 ;
 
 parameter:
- | INPUT   fortran_token_list_arg arg parameter_attributes { M.empty }
- | DERIVED fortran_token_list_arg arg parameter_attributes { M.empty }
+ | INPUT   fortran_token_list_arg arg parameter_attributes
+     { V.Input { V.name = $2; V.value = $3; V.attr = $4 } }
+ | DERIVED fortran_token_list_arg arg parameter_attributes
+     { V.Derived { V.name = $2; V.value = $3; V.attr = $4 } }
 ;
 
 parameter_attributes:
- | parameter_attribute                      { [ $1 ] }
+ |                                          { [ ] }
  | parameter_attribute parameter_attributes { $1 :: $2 }
 ;
 
 parameter_attribute:
- |      ALIAS   token_list_arg            { () }
- |      TEX     token_list_arg            { () }
- |      FORTRAN token_list_arg            { () }
+ | ALIAS   token_list_arg { V.Alias $2 }
+ | TEX     token_list_arg { V.TeX $2 }
+ | FORTRAN token_list_arg { V.Fortran $2 }
 ;
 
-set_lagrangian: /* We'd like to avoid the STAR in the first clause. */
- | LAGRANGIAN EQUAL STAR vertex                { (E.integer 1, $4) }
- | LAGRANGIAN EQUAL expr STAR vertex           { ($3, $5) }
- | LAGRANGIAN EQUAL expr                       { ($3, V.List []) }
-;
-
-augment_lagrangian: /* We'd like to avoid the STAR in the first clause. */
- | LAGRANGIAN PLUS EQUAL STAR vertex           { (E.integer 1, $5) }
- | LAGRANGIAN PLUS EQUAL expr STAR vertex      { ($4, $6) }
- | LAGRANGIAN PLUS EQUAL expr                  { ($4, V.List []) }
+lagrangian:
+ | LAGRANGIAN token_list_arg          { (E.integer 1, T.List $2) }
+ | LAGRANGIAN expr_arg token_list_arg { ($2, T.List $3) }
+ | LAGRANGIAN expr_arg LBRACE RBRACE  { ($2, T.List []) }
 ;
 
 expr:
- | integer                 { E.integer $1 }
- | LPAREN expr RPAREN      { $2 }
- | expr PLUS expr          { E.add $1 $3 }
- | expr MINUS expr         { E.sub $1 $3 }
- | expr TIMES expr         { E.mult $1 $3 }
- | expr DIV expr           { E.div $1 $3 }
- | NAME arg_list           { E.apply $1 $2 }
+ | integer                 	{ E.integer $1 }
+ | LPAREN expr RPAREN      	{ $2 }
+ | expr PLUS expr          	{ E.add $1 $3 }
+ | expr MINUS expr         	{ E.sub $1 $3 }
+ | expr TIMES expr         	{ E.mult $1 $3 }
+ | expr DIV expr           	{ E.div $1 $3 }
+ | bare_scripted_token arg_list { E.apply $1 $2 }
 ;
 
 arg_list:
@@ -151,30 +169,35 @@ integer:
  | integer DIGIT   { 10 * $1 + $2 }
 ;
 
-vertex:
- | token_list      { V.List $1 }
-;
-
 token_list:
  | scripted_token            { [$1] }
  | scripted_token token_list { $1 :: $2 }
-   /* Right recursion is more convenient for constructing
-      the value.  Since the lists will always be short,
-      there is no performace or stack size reason for
-      prefering left recursion. */
 ;
 
 scripted_token:
  | token
-     { V.Scripted { V.token = $1; V.super = []; V.sub = [] } }
+     { T.Scripted { T.token = $1; T.super = []; T.sub = [] } }
  | token SUPER token
-     { V.Scripted { V.token = $1; V.super = V.plug $3; V.sub = [] } }
+     { T.Scripted { T.token = $1; T.super = T.plug $3; T.sub = [] } }
  | token SUB token
-     { V.Scripted { V.token = $1; V.super = []; V.sub = V.plug $3 } }
+     { T.Scripted { T.token = $1; T.super = []; T.sub = T.plug $3 } }
  | token SUPER token SUB token
-     { V.Scripted { V.token = $1; V.super = V.plug $3; V.sub = V.plug $5 } }
+     { T.Scripted { T.token = $1; T.super = T.plug $3; T.sub = T.plug $5 } }
  | token SUB token SUPER token
-     { V.Scripted { V.token = $1; V.super = V.plug $5; V.sub = V.plug $3 } }
+     { T.Scripted { T.token = $1; T.super = T.plug $5; T.sub = T.plug $3 } }
+;
+
+bare_scripted_token:
+ | TOKEN
+     { T.Scripted { T.token = T.Token $1; T.super = []; T.sub = [] } }
+ | TOKEN SUPER token
+     { T.Scripted { T.token = T.Token $1; T.super = T.plug $3; T.sub = [] } }
+ | TOKEN SUB token
+     { T.Scripted { T.token = T.Token $1; T.super = []; T.sub = T.plug $3 } }
+ | TOKEN SUPER token SUB token
+     { T.Scripted { T.token = T.Token $1; T.super = T.plug $3; T.sub = T.plug $5 } }
+ | TOKEN SUB token SUPER token
+     { T.Scripted { T.token = T.Token $1; T.super = T.plug $5; T.sub = T.plug $3 } }
 ;
 
 token:
@@ -183,32 +206,30 @@ token:
  | LBRACE token RBRACE
      { $2 }
  | LBRACE token token_list RBRACE
-     { V.List ($2 :: $3) }
+     { T.List ($2 :: $3) }
 ;
 
 bare_token:
- | DIGIT  { V.Digit $1 }
- | NAME   { V.Name $1 }
- | PLUS   { V.Name "+" }
- | MINUS  { V.Name "-" }
- | TIMES  { V.Name "*" }
- | DIV    { V.Name "/" }
- | COMMA  { V.Name "," }
- | LPAREN { V.Name "(" }
- | RPAREN { V.Name ")" }
+ | DIGIT    { T.Digit $1 }
+ | TOKEN    { T.Token $1 }
+ | PLUS     { T.Token "+" }
+ | MINUS    { T.Token "-" }
+ | TIMES    { T.Token "*" }
+ | DIV      { T.Token "/" }
+ | COMMA    { T.Token "," }
+ | LPAREN   { T.Token "(" }
+ | RPAREN   { T.Token ")" }
+ | LBRACKET { T.Token "[" }
+ | RBRACKET { T.Token "]" }
 ;
 
 fortran_token_list:
  | fortran_token                    { [$1] }
  | fortran_token fortran_token_list { $1 :: $2 }
-   /* Right recursion is more convenient for constructing
-      the value.  Since the lists will always be short,
-      there is no performace or stack size reason for
-      prefering left recursion. */
 ;
 
 fortran_token:
- | DIGIT  { V.Digit $1 }
- | NAME   { V.Name $1 }
- | SUB    { V.Name "_" }
+ | DIGIT  { T.Digit $1 }
+ | TOKEN  { T.Token $1 }
+ | SUB    { T.Token "_" }
 ;

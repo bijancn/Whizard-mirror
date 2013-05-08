@@ -32,39 +32,43 @@ let upper = ['A'-'Z']
 let lower = ['a'-'z']
 let char = upper | lower
 let white = [' ' '\t' '\n']
+let pfx = '\\'
 
 rule token = parse
-    white       { token lexbuf }     (* skip blanks *)
+    white            { token lexbuf }     (* skip blanks *)
   | '\\' [','';']
-                { token lexbuf }     (* skip LaTeX white space *)
+                     { token lexbuf }     (* skip LaTeX white space *)
   | '%' [^'\n']* '\n'
-               	{ token lexbuf }     (* skip comments *)
-  | '='        	{ EQUAL }
-  | '^'        	{ SUPER }
-  | '_'        	{ SUB }
-  | '*'        	{ TIMES }
-  | '/'        	{ DIV }
-  | '+'        	{ PLUS }
-  | '-'        	{ MINUS }
-  | ','        	{ COMMA }
-  | '('        	{ LPAREN }
-  | ')'        	{ RPAREN }
-  | '{'        	{ LBRACE }
-  | '}'        	{ RBRACE }
-  | "\\*"      	{ STAR }
-  | "\\charged" { CHARGED }
-  | "\\neutral" { NEUTRAL }
-  | "\\anti"    { ANTI }
-  | "\\TeX"     { TEX }
-  | "\\fortran" { FORTRAN }
-  | "\\spin"    { SPIN }
-  | "\\charge"  { CHARGE }
-  | "\\lagrangian"
-               	{ LAGRANGIAN }
-  | digit as i  { DIGIT (int_of_char i) }
+               	     { token lexbuf }     (* skip comments *)
+  | '='        	     { EQUAL }
+  | '^'        	     { SUPER }
+  | '_'        	     { SUB }
+  | '*'        	     { TIMES }
+  | '/'        	     { DIV }
+  | '+'        	     { PLUS }
+  | '-'        	     { MINUS }
+  | ','        	     { COMMA }
+  | '('        	     { LPAREN }
+  | ')'        	     { RPAREN }
+  | '{'        	     { LBRACE }
+  | '}'        	     { RBRACE }
+  | '['        	     { LBRACKET }
+  | ']'        	     { RBRACKET }
+  | pfx "include{" white* ([^'}']+ as name) white* "}"
+                     { INCLUDE name }
+  | pfx "charged"    { CHARGED }
+  | pfx "neutral"    { NEUTRAL }
+  | pfx "anti"       { ANTI }
+  | pfx "TeX"        { TEX }
+  | pfx "fortran"    { FORTRAN }
+  | pfx "spin"       { SPIN }
+  | pfx "charge"     { CHARGE }
+  | pfx "lagrangian" { LAGRANGIAN }
+  | digit as i       { DIGIT (int_of_char i) }
   | (char | '\\' (_ | char+))  as name
-                { NAME name }
-  | _ as c      { failwith ("invalid character at `" ^ string_of_char c ^ "'") }
-  | eof         { END }
+                     { TOKEN name }
+  | _ as c           { failwith ("invalid character at `" ^
+				    string_of_char c ^ "'") }
+  | eof              { END }
 
 

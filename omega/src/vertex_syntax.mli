@@ -57,6 +57,24 @@ type identifier =
 | Id_Color
 | Id_Index
 
+module Token :
+  sig
+
+    type t =
+    | Digit of int
+    | Token of string
+    | Scripted of scripted
+    | List of t list
+
+    and scripted = 
+      { token : t;
+	super : t list;
+	sub : t list }
+
+    val plug : t -> t list
+
+  end
+
 module Expr :
   sig
 
@@ -69,46 +87,73 @@ module Expr :
     | Diff of t * t
     | Product of t list
     | Ratio of t * t
-    | Function of string * t list
+    | Function of Token.t * t list
 
     val integer : int -> t
     val add : t -> t -> t
     val sub : t -> t -> t
     val mult : t -> t -> t
     val div : t -> t -> t
-    val apply : string -> t list -> t
+    val apply : Token.t -> t list -> t
 
   end
-
-type token =
-| Digit of int
-| Name of string
-| Scripted of scripted
-| List of token list
-
-and scripted = 
-  { token : token;
-    super : token list;
-    sub : token list }
-
-val plug : token -> token list
 
 module Particle :
   sig
 
+    type name =
+    | Neutral of Token.t list
+    | Charged of Token.t list * Token.t list
+
+    type attr =
+    | TeX of Token.t list
+    | TeX_Anti of Token.t list
+    | Alias of Token.t list
+    | Alias_Anti of Token.t list
+    | Fortran of Token.t list
+    | Fortran_Anti of Token.t list
+    | Spin of Expr.t
+    | Charge of Expr.t
+    | Mass of Token.t list
+    | Width of Token.t list
+
     type t =
-      { name : string;
-	tex : string option }
+      { name : name;
+	attr : attr list }
 
   end
 
 module Parameter :
   sig
 
+    type attr =
+    | TeX of Token.t list
+    | Alias of Token.t list
+    | Fortran of Token.t list
+
+    type t' =
+      { name : Token.t list;
+	value : Expr.t;
+	attr : attr list}
+
     type t =
-      { name : string;
-	derived : Expr.t option;
-	tex : string option }
+    | Input of t'
+    | Derived of t'
+
+  end
+
+module File :
+  sig
+
+    type declaration =
+    | Particle of Particle.t
+    | Parameter of Parameter.t
+    | Lagrangian of Expr.t * Token.t
+    | Include of string
+
+    type t = declaration list
+
+    val empty : t
 
   end
 
@@ -118,9 +163,8 @@ module Model :
     type t =
       { particles : Particle.t list;
 	parameters : Parameter.t list;
-	lagrangian : (Expr.t * token) list }
+	lagrangian : (Expr.t * Token.t) list }
 
     val empty : t
-    val l : Expr.t * token -> t -> t
 
   end
