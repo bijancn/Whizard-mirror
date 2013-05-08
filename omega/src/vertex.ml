@@ -801,7 +801,7 @@ module Test (M : Model.T) : Test =
 
 let parse_string text =
   Vertex_syntax.File.expand_includes
-    (fun _ -> invalid_arg "parse_string: found include")
+    (fun file -> invalid_arg ("parse_string: found include `" ^ file ^ "'"))
     (try
        Vertex_parser.file Vertex_lexer.token (Lexing.from_string text)
      with

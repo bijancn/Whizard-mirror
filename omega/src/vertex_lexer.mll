@@ -54,7 +54,7 @@ rule token = parse
   | '}'        	     { RBRACE }
   | '['        	     { LBRACKET }
   | ']'        	     { RBRACKET }
-  | pfx "include{" white* ([^'}']+ as name) white* "}"
+  | pfx "include{" ([^'}']+ as name) "}"
                      { INCLUDE name }
   | pfx "charged"    { CHARGED }
   | pfx "neutral"    { NEUTRAL }
