@@ -807,7 +807,7 @@ let parse_string text =
      with
      | Vertex_syntax.Syntax_Error (msg, i, j) ->
        invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
-                      msg  (String.sub text i (j - i + 1)))
+                      msg  (String.sub text i (j - i)))
      | Parsing.Parse_error ->
        invalid_arg ("parse error: " ^ text))
 
@@ -881,23 +881,33 @@ module Parser_Test (M : Model.T) : Test =
     let index =
       "index" >:::
 	List.map (compare2 ~pfx:"\\lagrangian")
-	[("{{a}_{1}^{2}}", "[1]{{a^2_1}}")]
+	[("{{a}_{1}^{2}}", "[1]{{a^2_1}}");
+	 ("{a_{11}^2}",    "[1]{{a^2_{11}}}")]
 
-    let electron =
-      "electron" >:::
+    let electron1 =
+      "electron1" >:::
 	List.map compare1
-	["\\charged{e^-}{e^+}";
-	 "\\charged{e^-}{e^+}\\fortran{ele}";
-	 "\\charged{e^-}{e^+}\\fortran{ele}\\anti\\fortran{pos}"]
+	["\\charged{e^-}{e^+}"]
+
+    let electron2 =
+      "electron2" >:::
+	List.map compare2
+	[("\\charged{e^-}{e^+}\\fortran{ele}",
+	  "\\charged{e^-}{e^+}\\fortran{{ele}}");
+	 ("\\charged{e^-}{e^+}\\fortran{ele}\\anti\\fortran{pos}",
+	  "\\charged{e^-}{e^+}\\fortran{{ele}}\\anti\\fortran{{pos}}")]
 
     let particles =
       "particles" >:::
-	[electron]
+	[electron1;
+	 electron2]
 
     let parameters =
       "parameters" >:::
-	List.map compare1
-	["\\input{\\alpha}{1/137}"]
+	List.map compare2
+	[("\\input{alpha}{1/137}", "\\input{{alpha}}{1/137}");
+	 ("\\derived{alpha_s}{1}", "\\derived{{alpha_s}}{1}") (*;
+ 	 "\\derived{alpha_s}{1/\\ln{\\frac{\\mu}{\\Lambda}}" *)]
 
     let lagrangian =
       "lagrangian" >:::

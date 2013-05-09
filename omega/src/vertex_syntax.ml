@@ -83,18 +83,20 @@ module Token =
       | Scripted t -> scripted_to_string t
       | List tl -> "{" ^ list_to_string tl ^ "}"
 
-    and list_to_string tl =
-      String.concat "" (List.map to_string tl)
+    and list_to_string = function
+      | [] -> ""
+      | [t] -> to_string t
+      | tl -> "{" ^ String.concat "" (List.map to_string tl) ^ "}"
 
     and scripted_to_string t =
       let super =
 	match t.super with
 	| [] -> ""
-	| tokens -> "^" ^ String.concat "" (List.map to_string tokens)
+	| tl -> "^" ^ list_to_string tl
       and sub =
 	match t.sub with
 	| [] -> ""
-	| tokens -> "_" ^ String.concat "" (List.map to_string tokens) in
+	| tl -> "_" ^ list_to_string tl in
       to_string t.token ^ super ^ sub
 
   end

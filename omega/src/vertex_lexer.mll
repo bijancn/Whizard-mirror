@@ -67,8 +67,9 @@ rule token = parse
   | pfx "input"      { INPUT }
   | pfx "derived"    { DERIVED }
   | digit as i       { DIGIT (int_of_char i) }
-  | (char | '\\' (_ | char+))  as name
-                     { TOKEN name }
+  | char as c        { CHAR (string_of_char c) }
+  | ('\\' (_ | char+)) as s
+                     { TOKEN s }
   | _ as c           { failwith ("invalid character at `" ^
 				    string_of_char c ^ "'") }
   | eof              { END }

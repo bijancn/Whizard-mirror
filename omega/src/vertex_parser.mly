@@ -38,7 +38,7 @@ let parse_error msg =
 %}
 
 %token < int > DIGIT
-%token < string > TOKEN
+%token < string > TOKEN CHAR
 %token SUPER SUB LBRACE RBRACE LBRACKET RBRACKET
 %token LPAREN RPAREN
 %token COMMA
@@ -174,6 +174,8 @@ token_list:
  | scripted_token token_list { $1 :: $2 }
 ;
 
+/* We should allow scripted_tokens as super-/subscripts. */
+
 scripted_token:
  | token
      { T.Scripted { T.token = $1; T.super = []; T.sub = [] } }
@@ -188,16 +190,16 @@ scripted_token:
 ;
 
 bare_scripted_token:
- | TOKEN
-     { T.Scripted { T.token = T.Token $1; T.super = []; T.sub = [] } }
- | TOKEN SUPER token
-     { T.Scripted { T.token = T.Token $1; T.super = T.plug $3; T.sub = [] } }
- | TOKEN SUB token
-     { T.Scripted { T.token = T.Token $1; T.super = []; T.sub = T.plug $3 } }
- | TOKEN SUPER token SUB token
-     { T.Scripted { T.token = T.Token $1; T.super = T.plug $3; T.sub = T.plug $5 } }
- | TOKEN SUB token SUPER token
-     { T.Scripted { T.token = T.Token $1; T.super = T.plug $5; T.sub = T.plug $3 } }
+ | char_or_name
+     { T.Scripted { T.token = $1; T.super = []; T.sub = [] } }
+ | char_or_name SUPER token
+     { T.Scripted { T.token = $1; T.super = T.plug $3; T.sub = [] } }
+ | char_or_name SUB token
+     { T.Scripted { T.token = $1; T.super = []; T.sub = T.plug $3 } }
+ | char_or_name SUPER token SUB token
+     { T.Scripted { T.token = $1; T.super = T.plug $3; T.sub = T.plug $5 } }
+ | char_or_name SUB token SUPER token
+     { T.Scripted { T.token = $1; T.super = T.plug $5; T.sub = T.plug $3 } }
 ;
 
 token:
@@ -209,8 +211,14 @@ token:
      { T.List ($2 :: $3) }
 ;
 
+char_or_name:
+ | CHAR     { T.Token $1 }
+ | TOKEN    { T.Token $1 }
+;
+
 bare_token:
  | DIGIT    { T.Digit $1 }
+ | CHAR     { T.Token $1 }
  | TOKEN    { T.Token $1 }
  | PLUS     { T.Token "+" }
  | MINUS    { T.Token "-" }
@@ -228,8 +236,11 @@ fortran_token_list:
  | fortran_token fortran_token_list { $1 :: $2 }
 ;
 
+/* This must be different from token and bare token, b/c we
+   don't interpret '_' as subscript. */
+
 fortran_token:
  | DIGIT  { T.Digit $1 }
- | TOKEN  { T.Token $1 }  /* This also accepts TeX command sequences ... */
+ | CHAR   { T.Token $1 }
  | SUB    { T.Token "_" }
 ;
