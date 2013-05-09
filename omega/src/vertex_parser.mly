@@ -205,9 +205,9 @@ bare_scripted_token:
 token:
  | bare_token
      { $1 }
- | LBRACE token RBRACE
+ | LBRACE scripted_token RBRACE
      { $2 }
- | LBRACE token token_list RBRACE
+ | LBRACE scripted_token token_list RBRACE
      { T.List ($2 :: $3) }
 ;
 

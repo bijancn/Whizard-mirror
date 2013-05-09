@@ -876,7 +876,7 @@ module Parser_Test (M : Model.T) : Test =
 	List.map (compare2 ~pfx:"\\lagrangian")
 	[("{{a}_{1}^{2}}", "[1]{{a^2_1}}");
 	 ("{a_{11}^2}",    "[1]{{a^2_{11}}}");
-	 ("{a_{1_1}^2}",   "[1]{{a^2_{11}}}")]
+	 ("{a_{1_1}^2}",   "[1]{{a^2_{1_1}}}")]
 
     let index =
       "index" >:::

@@ -85,6 +85,8 @@ module Token =
 
     and list_to_string = function
       | [] -> ""
+(*    | [Scripted { token = t; super = []; sub = [] }] -> to_string t
+      | [Scripted _ as t] -> "{" ^ to_string t ^ "}" *)
       | [t] -> to_string t
       | tl -> "{" ^ String.concat "" (List.map to_string tl) ^ "}"
 
