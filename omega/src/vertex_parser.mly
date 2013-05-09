@@ -230,6 +230,6 @@ fortran_token_list:
 
 fortran_token:
  | DIGIT  { T.Digit $1 }
- | TOKEN  { T.Token $1 }
+ | TOKEN  { T.Token $1 }  /* This also accepts TeX command sequences ... */
  | SUB    { T.Token "_" }
 ;

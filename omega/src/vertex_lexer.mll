@@ -64,6 +64,8 @@ rule token = parse
   | pfx "spin"       { SPIN }
   | pfx "charge"     { CHARGE }
   | pfx "lagrangian" { LAGRANGIAN }
+  | pfx "input"      { INPUT }
+  | pfx "derived"    { DERIVED }
   | digit as i       { DIGIT (int_of_char i) }
   | (char | '\\' (_ | char+))  as name
                      { TOKEN name }

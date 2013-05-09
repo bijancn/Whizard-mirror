@@ -75,6 +75,7 @@ module Token :
 
     val to_string : t -> string
     val scripted_to_string : scripted -> string
+    val list_to_string : t list -> string
 
   end
 
@@ -126,6 +127,8 @@ module Particle :
       { name : name;
 	attr : attr list }
 
+    val to_string : t -> string
+
   end
 
 module Parameter :
@@ -144,6 +147,8 @@ module Parameter :
     type t =
     | Input of t'
     | Derived of t'
+
+    val to_string : t -> string
 
   end
 

@@ -81,7 +81,10 @@ module Token =
       | Digit i -> string_of_int i
       | Token s -> s
       | Scripted t -> scripted_to_string t
-      | List ts -> "{" ^ String.concat "" (List.map to_string ts) ^ "}"
+      | List tl -> "{" ^ list_to_string tl ^ "}"
+
+    and list_to_string tl =
+      String.concat "" (List.map to_string tl)
 
     and scripted_to_string t =
       let super =
@@ -183,6 +186,29 @@ module Particle =
       { name : name;
 	attr : attr list }
 
+    let name_to_string = function
+      | Neutral p ->
+	"\\neutral{" ^ Token.list_to_string p ^ "}"
+      | Charged (p, ap) ->
+	"\\charged{" ^ Token.list_to_string p ^
+	  "}{" ^ Token.list_to_string ap ^ "}"
+
+    let attr_to_string = function
+      | TeX tl -> "\\TeX{" ^ Token.list_to_string tl ^ "}"
+      | TeX_Anti tl -> "\\anti\\TeX{" ^ Token.list_to_string tl ^ "}"
+      | Alias tl -> "\\alias{" ^ Token.list_to_string tl ^ "}"
+      | Alias_Anti tl -> "\\anti\\alias{" ^ Token.list_to_string tl ^ "}"
+      | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
+      | Fortran_Anti tl -> "\\anti\\fortran{" ^ Token.list_to_string tl ^ "}"
+      | Spin e -> "\\spin{" ^ Expr.to_string e ^ "}"
+      | Charge e -> "\\charge{" ^ Expr.to_string e ^ "}"
+      | Mass tl -> "\\mass{" ^ Token.list_to_string tl ^ "}"
+      | Width tl -> "\\width{" ^ Token.list_to_string tl ^ "}"
+
+    let to_string p =
+      name_to_string p.name ^
+	String.concat "" (List.map attr_to_string p.attr)
+	
   end
 
 module Parameter =
@@ -201,6 +227,20 @@ module Parameter =
     type t =
     | Input of t'
     | Derived of t'
+
+    let attr_to_string = function
+      | TeX tl -> "\\TeX{" ^ Token.list_to_string tl ^ "}"
+      | Alias tl -> "\\alias{" ^ Token.list_to_string tl ^ "}"
+      | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
+
+    let to_string' p =
+      "{" ^ Token.list_to_string p.name ^ "}{" ^
+	Expr.to_string p.value ^ "}" ^
+	String.concat "" (List.map attr_to_string p.attr)
+
+    let to_string = function
+      | Input p -> "\\input" ^ to_string' p
+      | Derived p -> "\\derived" ^ to_string' p
 
   end
 
@@ -246,8 +286,8 @@ module File =
     let to_strings decls =
       List.map
 	(function
-	| Particle _ -> "\\particle ..."
-	| Parameter _ -> "\\parameter ..."
+	| Particle p -> Particle.to_string p
+	| Parameter p -> Parameter.to_string p
 	| Lagrangian (e, t) ->
 	  "\\lagrangian[" ^ Expr.to_string e ^ "]{" ^
 	    Token.to_string t ^ "}")

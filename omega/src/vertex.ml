@@ -851,48 +851,44 @@ module Parser_Test (M : Model.T) : Test =
     module F = Vertex_syntax.File
     module M = Vertex_syntax.Model
 
-    let compare s_out s_in () =
-      assert_equal [s_out] (F.to_strings (parse_string s_in))
+    let compare ?(pfx="") s_out s_in () =
+      assert_equal ~printer:(String.concat " ")
+	[pfx ^ s_out] (F.to_strings (parse_string (pfx ^ s_in)))
 
-    let compare_lagrangian s_out s_in () =
-      let pfx = "\\lagrangian" in
-      compare (pfx ^ s_out) (pfx ^ s_in) ()
+    let compare2 ?pfx (s_in, s_out) =
+      " " ^ s_in >:: compare ?pfx s_out s_in
 
-    let expr =
-      "expr" >:::
-	["42" >:: compare_lagrangian "[42]{{}}" "[2 * (17 + 4)]{}";
-	 "38" >:: compare_lagrangian "[38]{{}}" "[2 * 17 + 4]{}"]
-
-    let index =
-      "index" >:::
-	["1" >:: compare_lagrangian "[1]{{a^2_1}}" "{{a}_{1}^{2}}"]
+    let compare1 ?pfx s =
+      compare2 ?pfx (s, s)
 
     let empty =
       "empty" >::
 	(fun () -> assert_equal [] (parse_string ""))
 
+    let expr =
+      "expr" >:::
+	List.map (compare2 ~pfx:"\\lagrangian")
+	[("[2 * (17 + 4)]{}", "[42]{{}}");
+	 ("[2 * 17 + 4]{}",   "[38]{{}}")]
+
+    let index =
+      "index" >:::
+	List.map (compare2 ~pfx:"\\lagrangian")
+	[("{{a}_{1}^{2}}", "[1]{{a^2_1}}");
+	 ("{a_{11}^2}",    "[1]{{a^2_{11}}}");
+	 ("{a_{1_1}^2}",   "[1]{{a^2_{11}}}")]
+
+    let index =
+      "index" >:::
+	List.map (compare2 ~pfx:"\\lagrangian")
+	[("{{a}_{1}^{2}}", "[1]{{a^2_1}}")]
+
     let electron =
-      "electron" >::
-	(fun () ->
-	  assert_equal
-	    [F.Particle
-		{ P.name =
-		    P.Charged
-		      ([T.Scripted { T.token = T.Token "e";
-				     T.super = [T.Token "+"];
-				     T.sub = [] }],
-		       [T.Scripted { T.token = T.Token "e";
-				     T.super = [T.Token "-"];
-				     T.sub = [] }]);
-		  P.attr = [P.Fortran [T.Token "e";
-				       T.Token "l";
-				       T.Token "e"];
-			    P.Fortran_Anti [T.Token "p";
-					    T.Token "o";
-					    T.Token "s"]] }]
-	    (parse_string "\\charged{e^+}{e^-}
-                           \\fortran{ele}
-                           \\anti\\fortran{pos}"))
+      "electron" >:::
+	List.map compare1
+	["\\charged{e^-}{e^+}";
+	 "\\charged{e^-}{e^+}\\fortran{ele}";
+	 "\\charged{e^-}{e^+}\\fortran{ele}\\anti\\fortran{pos}"]
 
     let particles =
       "particles" >:::
@@ -900,7 +896,8 @@ module Parser_Test (M : Model.T) : Test =
 
     let parameters =
       "parameters" >:::
-	[]
+	List.map compare1
+	["\\input{\\alpha}{1/137}"]
 
     let lagrangian =
       "lagrangian" >:::
