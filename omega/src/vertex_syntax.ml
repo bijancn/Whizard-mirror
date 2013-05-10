@@ -85,8 +85,8 @@ module Token =
 
     and list_to_string = function
       | [] -> ""
-(*    | [Scripted { token = t; super = []; sub = [] }] -> to_string t
-      | [Scripted _ as t] -> "{" ^ to_string t ^ "}" *)
+      | [Scripted { token = t; super = []; sub = [] }] -> to_string t
+      | [Scripted _ as t] -> "{" ^ to_string t ^ "}"
       | [t] -> to_string t
       | tl -> "{" ^ String.concat "" (List.map to_string tl) ^ "}"
 
@@ -254,7 +254,7 @@ module File_Tree =
     type declaration =
     | Particle of Particle.t
     | Parameter of Parameter.t
-    | Lagrangian of Expr.t * Token.t
+    | Vertex of Expr.t * Token.t
     | Include of string
 
     type t = declaration list
@@ -269,7 +269,7 @@ module File =
     type declaration =
     | Particle of Particle.t
     | Parameter of Parameter.t
-    | Lagrangian of Expr.t * Token.t
+    | Vertex of Expr.t * Token.t
 
     type t = declaration list
 
@@ -281,7 +281,7 @@ module File =
 	  match decl with
 	  | File_Tree.Particle p -> Particle p :: decls
 	  | File_Tree.Parameter p -> Parameter p :: decls
-	  | File_Tree.Lagrangian (e, v) -> Lagrangian (e, v) :: decls
+	  | File_Tree.Vertex (e, v) -> Vertex (e, v) :: decls
 	  | File_Tree.Include f ->
 	    expand_includes' (parser f) decls)
 	  unexpanded expanded in
@@ -292,8 +292,8 @@ module File =
 	(function
 	| Particle p -> Particle.to_string p
 	| Parameter p -> Parameter.to_string p
-	| Lagrangian (e, t) ->
-	  "\\lagrangian[" ^ Expr.to_string e ^ "]{" ^
+	| Vertex (e, t) ->
+	  "\\vertex[" ^ Expr.to_string e ^ "]{" ^
 	    Token.to_string t ^ "}")
 	decls
 
@@ -305,13 +305,11 @@ module Model =
     type t =
       { particles : Particle.t list;
 	parameters : Parameter.t list;
-	lagrangian : (Expr.t * Token.t) list }
+	vertex : (Expr.t * Token.t) list }
 
     let empty =
       { particles = [];
 	parameters = [];
-	lagrangian = [] }
-
-    let l et lagrangian = { lagrangian with lagrangian = [et] }
+	vertex = [] }
 
   end

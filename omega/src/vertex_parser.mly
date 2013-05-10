@@ -50,7 +50,7 @@ let parse_error msg =
 %token NEUTRAL CHARGED
 %token ANTI ALIAS TEX FORTRAN SPIN CHARGE MASS WIDTH
 %token INPUT DERIVED
-%token LAGRANGIAN
+%token VERTEX
 %token STAR
 
 %left PLUS MINUS
@@ -74,8 +74,8 @@ declarations:
 declaration:
  | particle           { F.Particle $1 }
  | parameter          { F.Parameter $1 }
- | lagrangian         { let e, t = $1 in
-			F.Lagrangian (e, t) }
+ | vertex             { let e, t = $1 in
+			F.Vertex (e, t) }
  | INCLUDE            { F.Include $1 }
 ;
 
@@ -139,10 +139,10 @@ parameter_attribute:
  | FORTRAN token_list_arg { V.Fortran $2 }
 ;
 
-lagrangian:
- | LAGRANGIAN token_list_arg          { (E.integer 1, T.List $2) }
- | LAGRANGIAN expr_arg token_list_arg { ($2, T.List $3) }
- | LAGRANGIAN expr_arg LBRACE RBRACE  { ($2, T.List []) }
+vertex:
+ | VERTEX token_list_arg          { (E.integer 1, T.List $2) }
+ | VERTEX expr_arg token_list_arg { ($2, T.List $3) }
+ | VERTEX expr_arg LBRACE RBRACE  { ($2, T.List []) }
 ;
 
 expr:

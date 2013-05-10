@@ -63,7 +63,7 @@ rule token = parse
   | pfx "fortran"    { FORTRAN }
   | pfx "spin"       { SPIN }
   | pfx "charge"     { CHARGE }
-  | pfx "lagrangian" { LAGRANGIAN }
+  | pfx "vertex"     { VERTEX }
   | pfx "input"      { INPUT }
   | pfx "derived"    { DERIVED }
   | digit as i       { DIGIT (int_of_char i) }

@@ -158,7 +158,7 @@ module File_Tree :
     type declaration =
     | Particle of Particle.t
     | Parameter of Parameter.t
-    | Lagrangian of Expr.t * Token.t
+    | Vertex of Expr.t * Token.t
     | Include of string
 
     type t = declaration list
@@ -173,7 +173,7 @@ module File :
     type declaration =
     | Particle of Particle.t
     | Parameter of Parameter.t
-    | Lagrangian of Expr.t * Token.t
+    | Vertex of Expr.t * Token.t
 
     type t = declaration list
 
@@ -191,7 +191,7 @@ module Model :
     type t =
       { particles : Particle.t list;
 	parameters : Parameter.t list;
-	lagrangian : (Expr.t * Token.t) list }
+	vertex : (Expr.t * Token.t) list }
 
     val empty : t
 
