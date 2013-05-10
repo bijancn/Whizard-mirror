@@ -62,6 +62,7 @@ rule token = parse
   | pfx "TeX"        { TEX }
   | pfx "fortran"    { FORTRAN }
   | pfx "spin"       { SPIN }
+  | pfx "color"      { COLOR }
   | pfx "charge"     { CHARGE }
   | pfx "vertex"     { VERTEX }
   | pfx "input"      { INPUT }

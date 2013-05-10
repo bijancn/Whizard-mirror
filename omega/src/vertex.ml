@@ -842,8 +842,6 @@ module Parser_Test (M : Model.T) : Test =
 
     open OUnit
 
-    (* Hacked ... *)
-
     module T = Vertex_syntax.Token
     module E = Vertex_syntax.Expr
     module P = Vertex_syntax.Particle
@@ -855,11 +853,20 @@ module Parser_Test (M : Model.T) : Test =
       assert_equal ~printer:(String.concat " ")
 	[s_out] (F.to_strings (parse_string s_in))
 
+    let syntax_error (msg, error) s () =
+      assert_raises
+	(Invalid_argument
+	  (Printf.sprintf "syntax error (%s) at: `%s'" msg error))
+	(fun () -> parse_string s)
+
     let (=>) s_in s_out =
       " " ^ s_in >:: compare s_out s_in
 
-    let (?=>) s =
+    let (?>) s =
       s => s
+
+    let (=>!) s error =
+      " " ^ s >:: syntax_error error s
 
     let empty =
       "empty" >::
@@ -895,9 +902,11 @@ module Parser_Test (M : Model.T) : Test =
 
     let parameters =
       "parameters" >:::
-	["\\input{alpha}{1/137}" => "\\input{{alpha}}{1/137}";
-	 "\\derived{alpha_s}{1}" => "\\derived{{alpha_s}}{1}" (*;
- 	 "\\derived{alpha_s}{1/\\ln{\\frac{\\mu}{\\Lambda}}" *)]
+	[ "\\input{alpha}{1/137}" => "\\input{{alpha}}{1/137}";
+ 	  "\\derived{alpha_s}{1/\\ln{\\frac{\\mu}{\\Lambda}}}" =>
+	  "\\derived{{alpha_s}}{1/\\ln{\\frac{\\mu}{\\Lambda}}}";
+	  "\\input{alpha}{1/137}\\anti\\fortran{alpha}" =>!
+	  ("invalid parameter attribute", "\\anti") ]
 
     let vertex =
       "vertex" >:::

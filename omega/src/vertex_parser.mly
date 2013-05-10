@@ -33,8 +33,13 @@ module P = Vertex_syntax.Particle
 module V = Vertex_syntax.Parameter
 module F = Vertex_syntax.File_Tree
 module M = Vertex_syntax.Model
+
 let parse_error msg =
   raise (Vertex_syntax.Syntax_Error (msg, symbol_start (), symbol_end ()))
+
+let invalid_parameter_attr () =
+  parse_error "invalid parameter attribute"
+
 %}
 
 %token < int > DIGIT
@@ -48,7 +53,7 @@ let parse_error msg =
 %token END
 
 %token NEUTRAL CHARGED
-%token ANTI ALIAS TEX FORTRAN SPIN CHARGE MASS WIDTH
+%token ANTI ALIAS TEX FORTRAN SPIN COLOR CHARGE MASS WIDTH
 %token INPUT DERIVED
 %token VERTEX
 %token STAR
@@ -116,6 +121,7 @@ particle_attribute:
  |      FORTRAN fortran_token_list_arg   { P.Fortran $2 }
  | ANTI FORTRAN fortran_token_list_arg   { P.Fortran_Anti $3 }
  |      SPIN    arg                      { P.Spin $2 }
+ |      COLOR   token_list_arg           { P.Color $2 }
  |      CHARGE  arg                      { P.Charge $2 }
  |      MASS    fortran_token_list_arg   { P.Mass $2 }
  |      WIDTH   fortran_token_list_arg   { P.Width $2 }
@@ -137,6 +143,12 @@ parameter_attribute:
  | ALIAS   token_list_arg { V.Alias $2 }
  | TEX     token_list_arg { V.TeX $2 }
  | FORTRAN token_list_arg { V.Fortran $2 }
+ | ANTI                   { invalid_parameter_attr () }
+ | SPIN                   { invalid_parameter_attr () }
+ | COLOR                  { invalid_parameter_attr () }
+ | CHARGE                 { invalid_parameter_attr () }
+ | MASS                   { invalid_parameter_attr () }
+ | WIDTH                  { invalid_parameter_attr () }
 ;
 
 vertex:

@@ -182,6 +182,7 @@ module Particle =
     | Fortran of Token.t list
     | Fortran_Anti of Token.t list
     | Spin of Expr.t
+    | Color of Token.t list
     | Charge of Expr.t
     | Mass of Token.t list
     | Width of Token.t list
