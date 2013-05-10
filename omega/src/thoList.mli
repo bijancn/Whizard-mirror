@@ -104,6 +104,16 @@ val iteri2 : (int -> int -> 'a -> unit) -> int -> int -> 'a list list -> unit
 (* Transpose a \emph{rectangular} list of lists like a matrix.  *)
 val transpose : 'a list list -> 'a list list
 
+(* [interleave f list] walks through [list] and inserts the result
+   of [f] applied to the reversed list of elements before and the
+   list of elements after.  The empty lists at the beginning and
+   end are included! *)
+val interleave : ('a list -> 'a list -> 'a list) -> 'a list -> 'a list
+
+(* [interleave_nearest f list] is like [interleave f list], but
+   [f] looks only at the nearest neighbors. *)
+val interleave_nearest : ('a -> 'a -> 'a list) -> 'a list -> 'a list
+
 (* [partitioned_sort cmp index_sets list] sorts the sublists of [list] specified
    by the [index_sets] and the complement of their union.  \textbf{NB:} the sorting
    follows to order in the lists in [index_sets].  \textbf{NB:} the indices are

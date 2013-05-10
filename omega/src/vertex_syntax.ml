@@ -77,6 +77,24 @@ module Token =
       | Scripted _ as t -> [t]
       | List tl -> tl
 
+    let ascii_A = Char.code 'A'
+    let ascii_Z = Char.code 'Z'
+    let ascii_a = Char.code 'a'
+    let ascii_z = Char.code 'z'
+
+    let is_char c =
+      let a = Char.code c in
+      (ascii_A <= a && a <= ascii_Z) || (ascii_a <= a && a <= ascii_z)
+
+    let is_backslash c =
+      c = '\\'
+
+    let first_char s =
+      s.[0]
+
+    let last_char s =
+      s.[String.length s - 1]
+
     let rec to_string = function
       | Digit i -> string_of_int i
       | Token s -> s
@@ -88,7 +106,7 @@ module Token =
       | [Scripted { token = t; super = []; sub = [] }] -> to_string t
       | [Scripted _ as t] -> "{" ^ to_string t ^ "}"
       | [t] -> to_string t
-      | tl -> "{" ^ String.concat "" (List.map to_string tl) ^ "}"
+      | tl -> "{" ^ concat_tokens tl ^ "}"
 
     and scripted_to_string t =
       let super =
@@ -101,6 +119,28 @@ module Token =
 	| tl -> "_" ^ list_to_string tl in
       to_string t.token ^ super ^ sub
 
+    and required_space t1 t2 =
+      let required_space' s1 s2 =
+	if is_backslash (first_char s2) then
+	  []
+	else if is_backslash (first_char s1) && is_char (last_char s1) then
+	  [Token " "]
+	else
+	  [] in
+      match t1, t2 with
+      | Token s1, Token s2 -> required_space' s1 s2
+      | Scripted s1, Token s2 -> required_space' (scripted_to_string s1) s2
+      | Token s1, Scripted s2 -> required_space' s1 (scripted_to_string s2)
+      | Scripted s1, Scripted s2 ->
+	required_space' (scripted_to_string s1) (scripted_to_string s2)
+      | List _, _ | _, List _ | _, Digit _ | Digit _, _ -> []
+
+    and interleave_spaces tl =
+      ThoList.interleave_nearest required_space tl
+
+    and concat_tokens tl =
+      String.concat "" (List.map to_string (interleave_spaces tl)) 
+	
   end
 
 module Expr =
@@ -206,6 +246,7 @@ module Particle =
       | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
       | Fortran_Anti tl -> "\\anti\\fortran{" ^ Token.list_to_string tl ^ "}"
       | Spin e -> "\\spin{" ^ Expr.to_string e ^ "}"
+      | Color tl -> "\\color{" ^ Token.list_to_string tl ^ "}"
       | Charge e -> "\\charge{" ^ Expr.to_string e ^ "}"
       | Mass tl -> "\\mass{" ^ Token.list_to_string tl ^ "}"
       | Width tl -> "\\width{" ^ Token.list_to_string tl ^ "}"

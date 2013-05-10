@@ -435,8 +435,9 @@ module Lorentz (* : Lorentz *) =
         let scalar = lookup2 scalar_map
         let vector = lookup3 vector_map
         let tensor mu nu i j =
-          failwith "tensor: incomplete";
           lookup4 tensor_map mu nu i j
+        let tensor mu nu i j =
+          failwith "tensor: incomplete"
         let axial = lookup3 axial_map
         let pseudo = lookup2 pseudo_map
 
@@ -910,7 +911,8 @@ module Parser_Test (M : Model.T) : Test =
 
     let vertex =
       "vertex" >:::
-	[]
+	[ "\\vertex{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}" =>
+	    "\\vertex[1]{{{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}}}"]
 
     let suite =
       "Vertex_Parser" >:::

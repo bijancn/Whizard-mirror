@@ -219,6 +219,23 @@ let rec clone n x =
   else
     x :: clone (pred n) x
 
+let interleave f list =
+  let rec interleave' rev_head tail =
+    let rev_head' = List.rev_append (f rev_head tail) rev_head in
+    match tail with
+    | [] -> List.rev rev_head'
+    | x :: tail' -> interleave' (x :: rev_head') tail'
+  in
+  interleave' [] list
+
+let interleave_nearest f list =
+  interleave
+    (fun head tail ->
+      match head, tail with
+      | h :: _, t :: _ -> f h t
+      | _ -> [])
+    list
+
 let rec rev_multiply n rl l =
   if n < 0 then
     invalid_arg "ThoList.multiply"
@@ -276,16 +293,3 @@ let ariadne_unsort (sorted, indices) =
     (List.sort
        (fun (n1, a1) (n2, a2) -> Pervasives.compare n1 n2)
        (List.map2 (fun n a -> (n, a)) indices sorted))
-
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  End:
-i*)
-
-
-
-
-
