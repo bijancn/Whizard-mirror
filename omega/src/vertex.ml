@@ -880,9 +880,9 @@ module Parser_Test (M : Model.T) : Test =
 
     let index =
       "index" >:::
-	[ "\\vertex{{a}_{1}^{2}}" => "\\vertex[1]{{{a^2_1}}}";
-	  "\\vertex{a_{11}^2}"    => "\\vertex[1]{{{a^2_{11}}}}";
-	  "\\vertex{a_{1_1}^2}"   => "\\vertex[1]{{{a^2_{1_1}}}}" ]
+	[ "\\vertex{{a}_{1}^{2}}" => "\\vertex{{{a^2_1}}}";
+	  "\\vertex{a_{11}^2}"    => "\\vertex{{{a^2_{11}}}}";
+	  "\\vertex{a_{1_1}^2}"   => "\\vertex{{{a^2_{1_1}}}}" ]
 
     let electron1 =
       "electron1" >:::
@@ -912,7 +912,7 @@ module Parser_Test (M : Model.T) : Test =
     let vertex =
       "vertex" >:::
 	[ "\\vertex{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}" =>
-	    "\\vertex[1]{{{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}}}"]
+	  "\\vertex{{{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}}}"]
 
     let suite =
       "Vertex_Parser" >:::

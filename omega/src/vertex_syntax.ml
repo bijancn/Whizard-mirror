@@ -334,6 +334,8 @@ module File =
 	(function
 	| Particle p -> Particle.to_string p
 	| Parameter p -> Parameter.to_string p
+	| Vertex (Expr.Integer 1, t) ->
+	  "\\vertex{" ^ Token.to_string t ^ "}"
 	| Vertex (e, t) ->
 	  "\\vertex[" ^ Expr.to_string e ^ "]{" ^
 	    Token.to_string t ^ "}")
