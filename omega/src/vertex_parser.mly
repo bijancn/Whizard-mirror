@@ -55,6 +55,7 @@ let invalid_parameter_attr () =
 %token NEUTRAL CHARGED
 %token ANTI ALIAS TEX FORTRAN SPIN COLOR CHARGE MASS WIDTH
 %token INPUT DERIVED
+%token INDEX
 %token VERTEX
 %token STAR
 
@@ -79,6 +80,7 @@ declarations:
 declaration:
  | particle           { F.Particle $1 }
  | parameter          { F.Parameter $1 }
+ | index              { F.Index $1 }
  | vertex             { let e, t = $1 in
 			F.Vertex (e, t) }
  | INCLUDE            { F.Include $1 }
@@ -149,6 +151,10 @@ parameter_attribute:
  | CHARGE                 { invalid_parameter_attr () }
  | MASS                   { invalid_parameter_attr () }
  | WIDTH                  { invalid_parameter_attr () }
+;
+
+index:
+ | INDEX token_list_arg           { $2 }
 ;
 
 vertex:

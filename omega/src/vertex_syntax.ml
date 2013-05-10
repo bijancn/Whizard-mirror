@@ -296,6 +296,7 @@ module File_Tree =
     type declaration =
     | Particle of Particle.t
     | Parameter of Parameter.t
+    | Index of Token.t list
     | Vertex of Expr.t * Token.t
     | Include of string
 
@@ -311,6 +312,7 @@ module File =
     type declaration =
     | Particle of Particle.t
     | Parameter of Parameter.t
+    | Index of Token.t list
     | Vertex of Expr.t * Token.t
 
     type t = declaration list
@@ -323,6 +325,7 @@ module File =
 	  match decl with
 	  | File_Tree.Particle p -> Particle p :: decls
 	  | File_Tree.Parameter p -> Parameter p :: decls
+	  | File_Tree.Index i -> Index i :: decls
 	  | File_Tree.Vertex (e, v) -> Vertex (e, v) :: decls
 	  | File_Tree.Include f ->
 	    expand_includes' (parser f) decls)
@@ -334,6 +337,7 @@ module File =
 	(function
 	| Particle p -> Particle.to_string p
 	| Parameter p -> Parameter.to_string p
+	| Index i -> "\\index" ^ Token.list_to_string i
 	| Vertex (Expr.Integer 1, t) ->
 	  "\\vertex{" ^ Token.to_string t ^ "}"
 	| Vertex (e, t) ->

@@ -65,6 +65,7 @@ rule token = parse
   | pfx "color"      { COLOR }
   | pfx "charge"     { CHARGE }
   | pfx "vertex"     { VERTEX }
+  | pfx "index"      { INDEX }
   | pfx "input"      { INPUT }
   | pfx "derived"    { DERIVED }
   | digit as i       { DIGIT (int_of_char i) }

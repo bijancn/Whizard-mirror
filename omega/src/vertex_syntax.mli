@@ -159,6 +159,7 @@ module File_Tree :
     type declaration =
     | Particle of Particle.t
     | Parameter of Parameter.t
+    | Index of Token.t list
     | Vertex of Expr.t * Token.t
     | Include of string
 
@@ -174,6 +175,7 @@ module File :
     type declaration =
     | Particle of Particle.t
     | Parameter of Parameter.t
+    | Index of Token.t list
     | Vertex of Expr.t * Token.t
 
     type t = declaration list
