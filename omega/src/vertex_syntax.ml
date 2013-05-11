@@ -285,9 +285,31 @@ module Parameter =
 	String.concat "" (List.map attr_to_string p.attr)
 
     let to_string = function
-      | Input p -> "\\input" ^ to_string' p
+      | Input p -> "\\parameter" ^ to_string' p
       | Derived p -> "\\derived" ^ to_string' p
 
+  end
+
+module Index =
+  struct
+
+    type attr =
+    | Color of Token.t list
+    | Flavor of Token.t list
+    | Lorentz of Token.t list
+
+    type t =
+      { name : Token.t list;
+	attr : attr list }
+
+    let attr_to_string = function
+      | Color tl -> "\\color{" ^ Token.list_to_string tl ^ "}"
+      | Flavor tl -> "\\flavor{" ^ Token.list_to_string tl ^ "}"
+      | Lorentz tl -> "\\lorentz{" ^ Token.list_to_string tl ^ "}"
+
+    let to_string i =
+      "\\index{" ^ Token.list_to_string i.name ^ "}" ^
+	String.concat "" (List.map attr_to_string i.attr)
   end
 
 module File_Tree =
@@ -296,7 +318,7 @@ module File_Tree =
     type declaration =
     | Particle of Particle.t
     | Parameter of Parameter.t
-    | Index of Token.t list
+    | Index of Index.t
     | Vertex of Expr.t * Token.t
     | Include of string
 
@@ -312,7 +334,7 @@ module File =
     type declaration =
     | Particle of Particle.t
     | Parameter of Parameter.t
-    | Index of Token.t list
+    | Index of Index.t
     | Vertex of Expr.t * Token.t
 
     type t = declaration list
@@ -337,7 +359,7 @@ module File =
 	(function
 	| Particle p -> Particle.to_string p
 	| Parameter p -> Parameter.to_string p
-	| Index i -> "\\index" ^ Token.list_to_string i
+	| Index i -> Index.to_string i
 	| Vertex (Expr.Integer 1, t) ->
 	  "\\vertex{" ^ Token.to_string t ^ "}"
 	| Vertex (e, t) ->

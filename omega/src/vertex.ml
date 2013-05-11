@@ -903,16 +903,20 @@ module Parser_Test (M : Model.T) : Test =
 
     let parameters =
       "parameters" >:::
-	[ "\\input{alpha}{1/137}" => "\\input{{alpha}}{1/137}";
- 	  "\\derived{alpha_s}{1/\\ln{\\frac{\\mu}{\\Lambda}}}" =>
-	  "\\derived{{alpha_s}}{1/\\ln{\\frac{\\mu}{\\Lambda}}}";
-	  "\\input{alpha}{1/137}\\anti\\fortran{alpha}" =>!
+	[ "\\parameter{alpha}{1/137}" => "\\parameter{{alpha}}{1/137}";
+ 	  "\\derived{alpha\\_s}{1/\\ln{\\frac{\\mu}{\\Lambda}}}" =>
+	  "\\derived{{alpha\\_s}}{1/\\ln{\\frac{\\mu}{\\Lambda}}}";
+	  "\\parameter{alpha}{1/137}\\anti\\fortran{alpha}" =>!
 	  ("invalid parameter attribute", "\\anti") ]
+
+    let indices =
+      "indices" >:::
+	[ ?> "\\index{\\mu}"]
 
     let vertex =
       "vertex" >:::
 	[ "\\vertex{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}" =>
-	  "\\vertex{{{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}}}"]
+	  "\\vertex{{{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}}}" ]
 
     let suite =
       "Vertex_Parser" >:::
@@ -921,6 +925,7 @@ module Parser_Test (M : Model.T) : Test =
 	 expr;
 	 particles;
 	 parameters;
+	 indices;
 	 vertex]
 
   end

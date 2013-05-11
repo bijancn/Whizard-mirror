@@ -35,45 +35,48 @@ let white = [' ' '\t' '\n']
 let pfx = '\\'
 
 rule token = parse
-    white            { token lexbuf }     (* skip blanks *)
-  | '\\' [','';']
-                     { token lexbuf }     (* skip LaTeX white space *)
-  | '%' [^'\n']* '\n'
-               	     { token lexbuf }     (* skip comments *)
-  | '='        	     { EQUAL }
-  | '^'        	     { SUPER }
-  | '_'        	     { SUB }
-  | '*'        	     { TIMES }
-  | '/'        	     { DIV }
-  | '+'        	     { PLUS }
-  | '-'        	     { MINUS }
-  | ','        	     { COMMA }
-  | '('        	     { LPAREN }
-  | ')'        	     { RPAREN }
-  | '{'        	     { LBRACE }
-  | '}'        	     { RBRACE }
-  | '['        	     { LBRACKET }
-  | ']'        	     { RBRACKET }
+    white             { token lexbuf }     (* skip blanks *)
+  | '%' [^'\n']* '\n' { token lexbuf }     (* skip comments *)
+  | '\\' ( [','';'] | 'q'? "quad" )
+                      { token lexbuf }     (* skip LaTeX white space *)
+  | "\\\\"            { token lexbuf }     (* skip table line breaks *)
+  | '&'               { token lexbuf }     (* skip tabulators *)
+  | '='        	      { EQUAL }
+  | '^'        	      { SUPER }
+  | '_'        	      { SUB }
+  | '*'        	      { TIMES }
+  | '/'        	      { DIV }
+  | '+'        	      { PLUS }
+  | '-'        	      { MINUS }
+  | ','        	      { COMMA }
+  | '('        	      { LPAREN }
+  | ')'        	      { RPAREN }
+  | '{'        	      { LBRACE }
+  | '}'        	      { RBRACE }
+  | '['        	      { LBRACKET }
+  | ']'        	      { RBRACKET }
   | pfx "include{" ([^'}']+ as name) "}"
-                     { INCLUDE name }
-  | pfx "charged"    { CHARGED }
-  | pfx "neutral"    { NEUTRAL }
-  | pfx "anti"       { ANTI }
-  | pfx "TeX"        { TEX }
-  | pfx "fortran"    { FORTRAN }
-  | pfx "spin"       { SPIN }
-  | pfx "color"      { COLOR }
-  | pfx "charge"     { CHARGE }
-  | pfx "vertex"     { VERTEX }
-  | pfx "index"      { INDEX }
-  | pfx "input"      { INPUT }
-  | pfx "derived"    { DERIVED }
-  | digit as i       { DIGIT (int_of_char i) }
-  | char as c        { CHAR (string_of_char c) }
+                      { INCLUDE name }
+  | pfx "charged"     { CHARGED }
+  | pfx "neutral"     { NEUTRAL }
+  | pfx "anti"        { ANTI }
+  | pfx "TeX"         { TEX }
+  | pfx "fortran"     { FORTRAN }
+  | pfx "spin"        { SPIN }
+  | pfx "color"       { COLOR }
+  | pfx "charge"      { CHARGE }
+  | pfx "vertex"      { VERTEX }
+  | pfx "index"       { INDEX }
+  | pfx "lorentz"     { LORENTZ }
+  | pfx "flavor"      { FLAVOR }
+  | pfx "parameter"   { INPUT }
+  | pfx "derived"     { DERIVED }
+  | digit as i        { DIGIT (int_of_char i) }
+  | char as c         { CHAR (string_of_char c) }
   | ('\\' (_ | char+)) as s
-                     { TOKEN s }
-  | _ as c           { failwith ("invalid character at `" ^
-				    string_of_char c ^ "'") }
-  | eof              { END }
+                      { TOKEN s }
+  | _ as c            { failwith ("invalid character at `" ^
+				     string_of_char c ^ "'") }
+  | eof               { END }
 
 

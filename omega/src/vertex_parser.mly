@@ -31,6 +31,7 @@ module T = Vertex_syntax.Token
 module E = Vertex_syntax.Expr
 module P = Vertex_syntax.Particle
 module V = Vertex_syntax.Parameter
+module I = Vertex_syntax.Index
 module F = Vertex_syntax.File_Tree
 module M = Vertex_syntax.Model
 
@@ -55,7 +56,7 @@ let invalid_parameter_attr () =
 %token NEUTRAL CHARGED
 %token ANTI ALIAS TEX FORTRAN SPIN COLOR CHARGE MASS WIDTH
 %token INPUT DERIVED
-%token INDEX
+%token INDEX FLAVOR LORENTZ
 %token VERTEX
 %token STAR
 
@@ -94,10 +95,6 @@ particle:
        { P.name = P.Charged (p, ap); P.attr = $3 } }
 ;
 
-fortran_token_list_arg:
- | LBRACE fortran_token_list RBRACE { $2 }
-;
-
 expr_arg:
  | LBRACKET expr RBRACKET             { $2 }
 ;
@@ -116,23 +113,23 @@ particle_attributes:
 ;
 
 particle_attribute:
- |      ALIAS   token_list_arg           { P.Alias $2 }
- | ANTI ALIAS   token_list_arg           { P.Alias_Anti $3 }
- |      TEX     token_list_arg           { P.TeX $2 }
- | ANTI TEX     token_list_arg           { P.TeX_Anti $3 }
- |      FORTRAN fortran_token_list_arg   { P.Fortran $2 }
- | ANTI FORTRAN fortran_token_list_arg   { P.Fortran_Anti $3 }
- |      SPIN    arg                      { P.Spin $2 }
- |      COLOR   token_list_arg           { P.Color $2 }
- |      CHARGE  arg                      { P.Charge $2 }
- |      MASS    fortran_token_list_arg   { P.Mass $2 }
- |      WIDTH   fortran_token_list_arg   { P.Width $2 }
+ |      ALIAS   token_list_arg   { P.Alias $2 }
+ | ANTI ALIAS   token_list_arg   { P.Alias_Anti $3 }
+ |      TEX     token_list_arg   { P.TeX $2 }
+ | ANTI TEX     token_list_arg   { P.TeX_Anti $3 }
+ |      FORTRAN token_list_arg   { P.Fortran $2 }
+ | ANTI FORTRAN token_list_arg   { P.Fortran_Anti $3 }
+ |      SPIN    arg              { P.Spin $2 }
+ |      COLOR   token_list_arg   { P.Color $2 }
+ |      CHARGE  arg              { P.Charge $2 }
+ |      MASS    token_list_arg   { P.Mass $2 }
+ |      WIDTH   token_list_arg   { P.Width $2 }
 ;
 
 parameter:
- | INPUT   fortran_token_list_arg arg parameter_attributes
+ | INPUT   token_list_arg arg parameter_attributes
      { V.Input { V.name = $2; V.value = $3; V.attr = $4 } }
- | DERIVED fortran_token_list_arg arg parameter_attributes
+ | DERIVED token_list_arg arg parameter_attributes
      { V.Derived { V.name = $2; V.value = $3; V.attr = $4 } }
 ;
 
@@ -154,7 +151,18 @@ parameter_attribute:
 ;
 
 index:
- | INDEX token_list_arg           { $2 }
+ | INDEX token_list_arg index_attributes { { I.name = $2; I.attr = $3 } }
+;
+
+index_attributes:
+ |                                  { [ ] }
+ | index_attribute index_attributes { $1 :: $2 }
+;
+
+index_attribute:
+ | COLOR   token_list_arg           { I.Color $2 }
+ | FLAVOR  token_list_arg           { I.Flavor $2 }
+ | LORENTZ token_list_arg           { I.Lorentz $2 }
 ;
 
 vertex:
@@ -191,8 +199,6 @@ token_list:
  | scripted_token            { [$1] }
  | scripted_token token_list { $1 :: $2 }
 ;
-
-/* We should allow scripted_tokens as super-/subscripts. */
 
 scripted_token:
  | token
@@ -247,18 +253,4 @@ bare_token:
  | RPAREN   { T.Token ")" }
  | LBRACKET { T.Token "[" }
  | RBRACKET { T.Token "]" }
-;
-
-fortran_token_list:
- | fortran_token                    { [$1] }
- | fortran_token fortran_token_list { $1 :: $2 }
-;
-
-/* This must be different from token and bare token, b/c we
-   don't interpret '_' as subscript. */
-
-fortran_token:
- | DIGIT  { T.Digit $1 }
- | CHAR   { T.Token $1 }
- | SUB    { T.Token "_" }
 ;
