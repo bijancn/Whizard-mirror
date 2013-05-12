@@ -913,7 +913,11 @@ module Parser_Test (M : Model.T) : Test =
       "indices" >:::
 	[ ?> "\\index{\\mu}"]
 
-    let vertex =
+    let tensors =
+      "tensors" >:::
+	[ "\\tensor{T}\\color{SU(3)}" => "\\tensor{T}\\color{{SU(3)}}"]
+
+    let vertices =
       "vertex" >:::
 	[ "\\vertex{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}" =>
 	  "\\vertex{{{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}}}" ]
@@ -926,6 +930,7 @@ module Parser_Test (M : Model.T) : Test =
 	 particles;
 	 parameters;
 	 indices;
-	 vertex]
+	 tensors;
+	 vertices]
 
   end

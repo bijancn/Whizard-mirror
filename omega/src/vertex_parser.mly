@@ -168,8 +168,7 @@ index_attribute:
 ;
 
 tensor:
- | TENSOR token_list_arg tensor_attributes
-     { { X.name = $2; X.attr = $3 } }
+ | TENSOR token_list_arg tensor_attributes { { X.name = $2; X.attr = $3 } }
 ;
 
 tensor_attributes:
