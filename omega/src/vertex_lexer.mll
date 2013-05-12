@@ -67,6 +67,7 @@ rule token = parse
   | pfx "charge"      { CHARGE }
   | pfx "vertex"      { VERTEX }
   | pfx "index"       { INDEX }
+  | pfx "tensor"      { TENSOR }
   | pfx "lorentz"     { LORENTZ }
   | pfx "flavor"      { FLAVOR }
   | pfx "parameter"   { INPUT }

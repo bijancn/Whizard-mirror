@@ -312,6 +312,28 @@ module Index =
 	String.concat "" (List.map attr_to_string i.attr)
   end
 
+module Tensor =
+  struct
+
+    type attr =
+    | Color of Token.t list
+    | Flavor of Token.t list
+    | Lorentz of Token.t list
+
+    type t =
+      { name : Token.t list;
+	attr : attr list }
+
+    let attr_to_string = function
+      | Color tl -> "\\color{" ^ Token.list_to_string tl ^ "}"
+      | Flavor tl -> "\\flavor{" ^ Token.list_to_string tl ^ "}"
+      | Lorentz tl -> "\\lorentz{" ^ Token.list_to_string tl ^ "}"
+
+    let to_string i =
+      "\\tensor{" ^ Token.list_to_string i.name ^ "}" ^
+	String.concat "" (List.map attr_to_string i.attr)
+  end
+
 module File_Tree =
   struct
 
@@ -319,6 +341,7 @@ module File_Tree =
     | Particle of Particle.t
     | Parameter of Parameter.t
     | Index of Index.t
+    | Tensor of Tensor.t
     | Vertex of Expr.t * Token.t
     | Include of string
 
@@ -335,6 +358,7 @@ module File =
     | Particle of Particle.t
     | Parameter of Parameter.t
     | Index of Index.t
+    | Tensor of Tensor.t
     | Vertex of Expr.t * Token.t
 
     type t = declaration list
@@ -348,6 +372,7 @@ module File =
 	  | File_Tree.Particle p -> Particle p :: decls
 	  | File_Tree.Parameter p -> Parameter p :: decls
 	  | File_Tree.Index i -> Index i :: decls
+	  | File_Tree.Tensor t -> Tensor t :: decls
 	  | File_Tree.Vertex (e, v) -> Vertex (e, v) :: decls
 	  | File_Tree.Include f ->
 	    expand_includes' (parser f) decls)
@@ -360,7 +385,8 @@ module File =
 	| Particle p -> Particle.to_string p
 	| Parameter p -> Parameter.to_string p
 	| Index i -> Index.to_string i
-	| Vertex (Expr.Integer 1, t) ->
+	| Tensor t -> Tensor.to_string t
+	| Vertex (Expr.Integer 1, t) -> 
 	  "\\vertex{" ^ Token.to_string t ^ "}"
 	| Vertex (e, t) ->
 	  "\\vertex[" ^ Expr.to_string e ^ "]{" ^

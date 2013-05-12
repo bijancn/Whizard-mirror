@@ -169,6 +169,22 @@ module Index :
 
   end
 
+module Tensor :
+  sig
+
+    type attr =
+    | Color of Token.t list
+    | Flavor of Token.t list
+    | Lorentz of Token.t list
+
+    type t =
+      { name : Token.t list;
+	attr : attr list }
+
+    val to_string : t -> string
+
+  end
+
 module File_Tree :
   sig
 
@@ -176,6 +192,7 @@ module File_Tree :
     | Particle of Particle.t
     | Parameter of Parameter.t
     | Index of Index.t
+    | Tensor of Tensor.t
     | Vertex of Expr.t * Token.t
     | Include of string
 
@@ -192,6 +209,7 @@ module File :
     | Particle of Particle.t
     | Parameter of Parameter.t
     | Index of Index.t
+    | Tensor of Tensor.t
     | Vertex of Expr.t * Token.t
 
     type t = declaration list

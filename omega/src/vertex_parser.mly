@@ -32,6 +32,7 @@ module E = Vertex_syntax.Expr
 module P = Vertex_syntax.Particle
 module V = Vertex_syntax.Parameter
 module I = Vertex_syntax.Index
+module X = Vertex_syntax.Tensor
 module F = Vertex_syntax.File_Tree
 module M = Vertex_syntax.Model
 
@@ -56,7 +57,7 @@ let invalid_parameter_attr () =
 %token NEUTRAL CHARGED
 %token ANTI ALIAS TEX FORTRAN SPIN COLOR CHARGE MASS WIDTH
 %token INPUT DERIVED
-%token INDEX FLAVOR LORENTZ
+%token TENSOR INDEX FLAVOR LORENTZ
 %token VERTEX
 %token STAR
 
@@ -82,6 +83,7 @@ declaration:
  | particle           { F.Particle $1 }
  | parameter          { F.Parameter $1 }
  | index              { F.Index $1 }
+ | tensor             { F.Tensor $1 }
  | vertex             { let e, t = $1 in
 			F.Vertex (e, t) }
  | INCLUDE            { F.Include $1 }
@@ -163,6 +165,22 @@ index_attribute:
  | COLOR   token_list_arg           { I.Color $2 }
  | FLAVOR  token_list_arg           { I.Flavor $2 }
  | LORENTZ token_list_arg           { I.Lorentz $2 }
+;
+
+tensor:
+ | TENSOR token_list_arg tensor_attributes
+     { { X.name = $2; X.attr = $3 } }
+;
+
+tensor_attributes:
+ |                                    { [ ] }
+ | tensor_attribute tensor_attributes { $1 :: $2 }
+;
+
+tensor_attribute:
+ | COLOR   token_list_arg           { X.Color $2 }
+ | FLAVOR  token_list_arg           { X.Flavor $2 }
+ | LORENTZ token_list_arg           { X.Lorentz $2 }
 ;
 
 vertex:
