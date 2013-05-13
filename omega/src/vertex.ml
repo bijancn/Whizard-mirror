@@ -916,6 +916,31 @@ module Parser_Test : Test =
 	[ "\\vertex{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}" =>
 	  "\\vertex{{{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}}}" ]
 
+    module T = Vertex_syntax.Token
+
+    let parse_token s =
+      match parse_string ("\\vertex{" ^ s ^ "}") with
+      | [Vertex_syntax.File.Vertex (_, v)] -> T.strip v
+      | _ -> invalid_arg "only_vertex"
+
+    let print_token pfx t =
+      print_endline (pfx ^ ": " ^ T.to_string t)
+
+    let tokens =
+      "tokens" >:::
+	[ "\\vertex{a'}" => "\\vertex{{{a^\\prime}}}";
+	  "\\vertex{a''}" => "\\vertex{{{a^{\\prime\\prime}}}}";
+	  "stem1" >::
+	    (fun () ->
+	      assert_equal 
+		(parse_token "\\psi")
+		(T.stem (parse_token "\\bar\\psi_{i,\\alpha}")));
+	  "stem2" >::
+	    (fun () ->
+	      assert_equal 
+		(parse_token "\\phi")
+		(T.stem (parse_token "\\phi^\\dagger_{i'}"))) ]
+
     let suite =
       "Vertex_Parser" >:::
 	[empty;
@@ -925,12 +950,72 @@ module Parser_Test : Test =
 	 parameters;
 	 indices;
 	 tensors;
-	 vertices]
+	 vertices;
+	 tokens ]
+
+  end
+
+module Particle =
+  struct
+
+    type t = unit
+
+  end
+
+module Index =
+  struct
+
+    type color = unit
+    type vector = unit
+    type flavor = unit
+
+    type t =
+    | Color of color
+    | Vector of vector
+    | Flavor of flavor
+
+  end
+
+module Tensor =
+  struct
+
+    type color = unit
+    type vector = unit
+    type flavor = unit
+
+    type t =
+    | Color of color
+    | Vector of vector
+    | Flavor of flavor
+
+  end
+
+module Symbol =
+  struct
+
+    type t =
+    | Particle
+    | Parameter
+    | Index
+    | Tensor
+
+  end
+
+module Symbol_Table =
+  Map.Make
+    (struct
+      type t = Vertex_syntax.Token.t
+      let compare = Vertex_syntax.Token.compare
+     end)
+
+module Vertex =
+  struct
 
   end
 
 module Model =
   struct
+
   end
 
 module Model_Test =

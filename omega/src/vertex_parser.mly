@@ -46,7 +46,7 @@ let invalid_parameter_attr () =
 
 %token < int > DIGIT
 %token < string > TOKEN CHAR
-%token SUPER SUB LBRACE RBRACE LBRACKET RBRACKET
+%token SUPER SUB PRIME LBRACE RBRACE LBRACKET RBRACKET
 %token LPAREN RPAREN
 %token COMMA
 %token PLUS MINUS TIMES DIV EQUAL
@@ -228,6 +228,17 @@ scripted_token:
      { T.Scripted { T.token = $1; T.super = T.plug $3; T.sub = T.plug $5 } }
  | token SUB token SUPER token
      { T.Scripted { T.token = $1; T.super = T.plug $5; T.sub = T.plug $3 } }
+ | token primes
+     { T.Scripted { T.token = $1; T.super = $2; T.sub = [] } }
+ | token primes SUB token
+     { T.Scripted { T.token = $1; T.super = $2; T.sub = T.plug $4 } }
+ | token SUB token primes 
+     { T.Scripted { T.token = $1; T.super = $4; T.sub = T.plug $3 } }
+;
+
+primes:
+ | PRIME        { [T.Token "\\prime"] }
+ | PRIME primes { T.Token "\\prime" :: $2 }
 ;
 
 bare_scripted_token:

@@ -71,11 +71,23 @@ module Token :
 	super : t list;
 	sub : t list }
 
+    (* Strip superfluous [List] and [Scripted] constructors. *)
+    (* TODO: this would be unnecessary, if we used smart constructors. *)
+    val strip : t -> t
+
+    (* Recursively strip all the super- and subscripts and
+       return only the LAST item in a list.
+       I.e. [stem "\\bar\\psi_i"] yields "\\psi"] *)
+    val stem : t -> t
+
+    (* If it's a [List], return the list, otherwise a singleton. *)
     val plug : t -> t list
 
     val to_string : t -> string
     val scripted_to_string : scripted -> string
     val list_to_string : t list -> string
+
+    val compare : t -> t -> int
 
   end
 

@@ -71,6 +71,28 @@ module Token =
 	super : t list;
 	sub : t list }
 
+    let rec stem = function
+      | Digit _ as t -> t
+      | Token _ as t -> t
+      | Scripted { token = t } -> stem t
+      | List tl ->
+	begin match List.rev tl with
+	| [] -> List []
+	| t :: _ -> stem t
+	end
+
+    let rec strip = function
+      | Digit _ as t -> t
+      | Token _ as t -> t
+      | Scripted { token = t; super = []; sub = [] } -> strip t
+      | Scripted { token = t; super = super; sub = sub } ->
+	Scripted { token = strip t;
+		   super = List.map strip super;
+		   sub = List.map strip sub }
+      | List [] as t -> t
+      | List [t] -> strip t
+      | List tl -> List (List.map strip tl)
+
     let plug = function
       | Digit _ as t -> [t]
       | Token _ as t -> [t]
@@ -140,7 +162,13 @@ module Token =
 
     and concat_tokens tl =
       String.concat "" (List.map to_string (interleave_spaces tl)) 
-	
+
+    let	compare t1 t2 =
+      Pervasives.compare t1 t2
+
+    let	compare t1 t2 =
+      Pervasives.compare t1 t2
+
   end
 
 module Expr =

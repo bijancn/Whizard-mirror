@@ -44,6 +44,7 @@ rule token = parse
   | '='        	      { EQUAL }
   | '^'        	      { SUPER }
   | '_'        	      { SUB }
+  | '\''      	      { PRIME }
   | '*'        	      { TIMES }
   | '/'        	      { DIV }
   | '+'        	      { PLUS }
