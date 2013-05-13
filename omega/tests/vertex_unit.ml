@@ -25,7 +25,8 @@ module M = Modellib_SM.SM(Modellib_SM.SM_no_anomalous)
 module List_Test = Permutation.Test (Permutation.Using_Lists)
 module Array_Test = Permutation.Test (Permutation.Using_Arrays)
 module Vertex_Test = Vertex.Test (M)
-module Parser_Test = Vertex.Parser_Test (M)
+module Parser_Test = Vertex.Parser_Test
+module Model_Test = Vertex.Model_Test
 
 let _ =
   let my_name = Sys.argv.(0) in
@@ -48,7 +49,8 @@ let _ =
 	 List_Test.suite;
 	 Array_Test.suite;
 	 Vertex_Test.suite;
-	 Parser_Test.suite] in
+	 Parser_Test.suite;
+	 Model_Test.suite] in
     ignore (OUnit.run_test_tt ~verbose:!verbose suite)
   end;
   if !timing then begin
@@ -59,6 +61,7 @@ let _ =
   end;
   if not !skip_example then begin
     Vertex_Test.example ();
-    Parser_Test.example ()
+    Parser_Test.example ();
+    Model_Test.example ()
   end;
   exit 0

@@ -32,7 +32,8 @@ module type Test =
 
 module Test (M : Model.T) : Test
 
-module Parser_Test (M : Model.T) : Test
+module Parser_Test : Test
+module Model_Test : Test
 
 
 (*i

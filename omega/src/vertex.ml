@@ -835,7 +835,7 @@ let parse_file name =
     file_tree in
   Vertex_syntax.File.expand_includes parse_file_tree (parse_file_tree name)
 
-module Parser_Test (M : Model.T) : Test =
+module Parser_Test : Test =
   struct
 
     let example () =
@@ -843,16 +843,10 @@ module Parser_Test (M : Model.T) : Test =
 
     open OUnit
 
-    module T = Vertex_syntax.Token
-    module E = Vertex_syntax.Expr
-    module P = Vertex_syntax.Particle
-    module V = Vertex_syntax.Parameter
-    module F = Vertex_syntax.File
-    module M = Vertex_syntax.Model
 
     let compare s_out s_in () =
       assert_equal ~printer:(String.concat " ")
-	[s_out] (F.to_strings (parse_string s_in))
+	[s_out] (Vertex_syntax.File.to_strings (parse_string s_in))
 
     let syntax_error (msg, error) s () =
       assert_raises
@@ -934,3 +928,22 @@ module Parser_Test (M : Model.T) : Test =
 	 vertices]
 
   end
+
+module Model =
+  struct
+  end
+
+module Model_Test =
+  struct
+
+    let example () =
+      ()
+
+    open OUnit
+
+    let suite =
+      "Model_Test" >:::
+	[]
+
+  end
+
