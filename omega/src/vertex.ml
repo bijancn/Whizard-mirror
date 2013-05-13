@@ -934,7 +934,7 @@ module Parser_Test : Test =
 	    (fun () ->
 	      assert_equal 
 		(parse_token "\\psi")
-		(T.stem (parse_token "\\bar\\psi_{i,\\alpha}")));
+		(T.stem (parse_token "\\bar\\psi''_{i,\\alpha}")));
 	  "stem2" >::
 	    (fun () ->
 	      assert_equal 
@@ -990,23 +990,75 @@ module Tensor =
 
   end
 
-module Symbol =
-  struct
+module type Symbol =
+  sig
 
-    type t =
+    type kind =
     | Particle
     | Parameter
     | Index
     | Tensor
 
+    type table
+
+    val load : Vertex_syntax.File.t -> table
+    val kind : table -> Vertex_syntax.Token.t list -> kind option
+
   end
 
-module Symbol_Table =
-  Map.Make
-    (struct
-      type t = Vertex_syntax.Token.t
-      let compare = Vertex_syntax.Token.compare
-     end)
+module Symbol (* : Symbol *) =
+  struct
+
+    module T = Vertex_syntax.Token
+    module F = Vertex_syntax.File
+    module P = Vertex_syntax.Particle
+    module I = Vertex_syntax.Index
+    module Q = Vertex_syntax.Parameter
+    module X = Vertex_syntax.Tensor
+
+    type kind =
+    | Particle
+    | Parameter
+    | Index
+    | Tensor
+
+    module ST =
+      Map.Make
+	(struct
+	  type t = T.t list
+	  let compare = T.compare
+	 end)
+
+    type table = kind ST.t
+
+    let empty = ST.empty
+
+    let add table token kind =
+      ST.add (List.map (fun t -> (T.strip (T.stem t))) token) kind table
+
+    let insert table = function
+      | F.Particle p ->
+	begin match p.P.name with
+	| P.Neutral name -> add table name Particle
+	| P.Charged (name, anti) ->
+	  add (add table name Particle) anti Particle
+	end
+      | F.Index i -> add table i.I.name Index
+      | F.Tensor t -> add table t.X.name Tensor
+      | F.Parameter p ->
+	begin match p with
+	| Q.Input name -> add table name.Q.name Parameter
+	| Q.Derived name -> add table name.Q.name Parameter
+	end
+      | F.Vertex _ -> table
+
+    let load decls =
+      List.fold_left insert empty decls
+
+    let kind table token =
+      try Some (ST.find token table) with Not_found -> None
+
+  end
 
 module Vertex =
   struct

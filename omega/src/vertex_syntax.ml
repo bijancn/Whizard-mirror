@@ -166,9 +166,6 @@ module Token =
     let	compare t1 t2 =
       Pervasives.compare t1 t2
 
-    let	compare t1 t2 =
-      Pervasives.compare t1 t2
-
   end
 
 module Expr =

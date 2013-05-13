@@ -87,7 +87,7 @@ module Token :
     val scripted_to_string : scripted -> string
     val list_to_string : t list -> string
 
-    val compare : t -> t -> int
+    val compare : t list -> t list -> int
 
   end
 
