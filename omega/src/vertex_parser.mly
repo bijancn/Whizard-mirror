@@ -252,6 +252,12 @@ bare_scripted_token:
      { T.Scripted { T.token = $1; T.super = T.plug $3; T.sub = T.plug $5 } }
  | char_or_name SUB token SUPER token
      { T.Scripted { T.token = $1; T.super = T.plug $5; T.sub = T.plug $3 } }
+ | char_or_name primes
+     { T.Scripted { T.token = $1; T.super = $2; T.sub = [] } }
+ | char_or_name primes SUB token
+     { T.Scripted { T.token = $1; T.super = $2; T.sub = T.plug $4 } }
+ | char_or_name SUB token primes 
+     { T.Scripted { T.token = $1; T.super = $4; T.sub = T.plug $3 } }
 ;
 
 token:
