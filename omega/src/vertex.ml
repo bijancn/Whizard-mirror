@@ -1063,6 +1063,15 @@ module Symbol (* : Symbol *) =
 module Vertex =
   struct
 
+    type attr =
+    | Bar
+    | Dagger
+    | Star
+
+    type field =
+      { stem : Vertex_syntax.Token.t list;
+	attr : attr list }
+
   end
 
 module Model =

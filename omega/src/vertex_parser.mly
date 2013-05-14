@@ -45,7 +45,8 @@ let invalid_parameter_attr () =
 %}
 
 %token < int > DIGIT
-%token < string > TOKEN CHAR
+%token < string > CHAR
+%token < string > PREFIX TOKEN
 %token SUPER SUB PRIME LBRACE RBRACE LBRACKET RBRACKET
 %token LPAREN RPAREN
 %token COMMA
@@ -212,54 +213,6 @@ integer:
  | integer DIGIT   { 10 * $1 + $2 }
 ;
 
-token_list:
- | scripted_token            { [$1] }
- | scripted_token token_list { $1 :: $2 }
-;
-
-scripted_token:
- | token
-     { T.Scripted { T.token = $1; T.super = []; T.sub = [] } }
- | token SUPER token
-     { T.Scripted { T.token = $1; T.super = T.plug $3; T.sub = [] } }
- | token SUB token
-     { T.Scripted { T.token = $1; T.super = []; T.sub = T.plug $3 } }
- | token SUPER token SUB token
-     { T.Scripted { T.token = $1; T.super = T.plug $3; T.sub = T.plug $5 } }
- | token SUB token SUPER token
-     { T.Scripted { T.token = $1; T.super = T.plug $5; T.sub = T.plug $3 } }
- | token primes
-     { T.Scripted { T.token = $1; T.super = $2; T.sub = [] } }
- | token primes SUB token
-     { T.Scripted { T.token = $1; T.super = $2; T.sub = T.plug $4 } }
- | token SUB token primes 
-     { T.Scripted { T.token = $1; T.super = $4; T.sub = T.plug $3 } }
-;
-
-primes:
- | PRIME        { [T.Token "\\prime"] }
- | PRIME primes { T.Token "\\prime" :: $2 }
-;
-
-bare_scripted_token:
- | char_or_name
-     { T.Scripted { T.token = $1; T.super = []; T.sub = [] } }
- | char_or_name SUPER token
-     { T.Scripted { T.token = $1; T.super = T.plug $3; T.sub = [] } }
- | char_or_name SUB token
-     { T.Scripted { T.token = $1; T.super = []; T.sub = T.plug $3 } }
- | char_or_name SUPER token SUB token
-     { T.Scripted { T.token = $1; T.super = T.plug $3; T.sub = T.plug $5 } }
- | char_or_name SUB token SUPER token
-     { T.Scripted { T.token = $1; T.super = T.plug $5; T.sub = T.plug $3 } }
- | char_or_name primes
-     { T.Scripted { T.token = $1; T.super = $2; T.sub = [] } }
- | char_or_name primes SUB token
-     { T.Scripted { T.token = $1; T.super = $2; T.sub = T.plug $4 } }
- | char_or_name SUB token primes 
-     { T.Scripted { T.token = $1; T.super = $4; T.sub = T.plug $3 } }
-;
-
 token:
  | bare_token
      { $1 }
@@ -269,7 +222,48 @@ token:
      { T.List ($2 :: $3) }
 ;
 
-char_or_name:
+token_list:
+ | scripted_token            { [$1] }
+ | scripted_token token_list { $1 :: $2 }
+;
+
+scripted_token:
+ | pfxs token                       { T.scripted $1 $2 () }
+ | pfxs token SUPER token           { T.scripted $1 $2 ~super:$4 () }
+ | pfxs token SUB token             { T.scripted $1 $2 ~sub:$4 () }
+ | pfxs token SUPER token SUB token { T.scripted $1 $2 ~super:$4 ~sub:$6 () }
+ | pfxs token SUB token SUPER token { T.scripted $1 $2 ~sub:$4 ~super:$6 () }
+ | pfxs token primes                { T.scripted $1 $2 ~super:$3 () }
+ | pfxs token primes SUB token      { T.scripted $1 $2 ~super:$3 ~sub:$5 () }
+ | pfxs token SUB token primes      { T.scripted $1 $2 ~sub:$4 ~super:$5 () }
+;
+
+bare_scripted_token:
+ | pfxs name                        { T.scripted $1 $2 () }
+ | pfxs name SUPER token            { T.scripted $1 $2 ~super:$4 () }
+ | pfxs name SUB token              { T.scripted $1 $2 ~sub:$4 () }
+ | pfxs name SUPER token SUB token  { T.scripted $1 $2 ~super:$4 ~sub:$6 () }
+ | pfxs name SUB token SUPER token  { T.scripted $1 $2 ~sub:$4 ~super:$6 () }
+ | pfxs name primes                 { T.scripted $1 $2 ~super:$3 () }
+ | pfxs name primes SUB token       { T.scripted $1 $2 ~super:$3 ~sub:$5 () }
+ | pfxs name SUB token primes       { T.scripted $1 $2 ~sub:$4 ~super:$5 () }
+;
+
+pfxs:
+ |              { [] }
+ | PREFIX pfxs  { $1 :: $2 }
+;
+
+primes:
+ | prime_list   { T.List $1 }
+;
+
+prime_list:
+ | PRIME            { [T.Token "\\prime"] }
+ | PRIME prime_list { T.Token "\\prime" :: $2 }
+;
+
+name:
  | CHAR     { T.Token $1 }
  | TOKEN    { T.Token $1 }
 ;

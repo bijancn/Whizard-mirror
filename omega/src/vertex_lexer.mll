@@ -45,6 +45,8 @@ rule token = parse
   | '^'        	      { SUPER }
   | '_'        	      { SUB }
   | '\''      	      { PRIME }
+  | '\\' ( "bar" | "overline" | "wide"? "hat" | "wide"? "tilde") as pfx
+                      { PREFIX pfx }
   | '*'        	      { TIMES }
   | '/'        	      { DIV }
   | '+'        	      { PLUS }

@@ -68,9 +68,28 @@ module Token =
 
     and scripted = 
       { token : t;
+	prefix : string list;
 	super : t list;
 	sub : t list }
 
+    let plug = function
+      | Digit _ as t -> [t]
+      | Token _ as t -> [t]
+      | Scripted _ as t -> [t]
+      | List tl -> tl
+
+    let null = List []
+
+    let optional = function
+      | None -> []
+      | Some t -> plug t
+
+    let scripted prefix token ?super ?sub () =
+      Scripted { token = token;
+		 prefix = prefix;
+		 super = optional super;
+		 sub = optional sub }
+      
     let rec stem = function
       | Digit _ as t -> t
       | Token _ as t -> t
@@ -84,20 +103,15 @@ module Token =
     let rec strip = function
       | Digit _ as t -> t
       | Token _ as t -> t
-      | Scripted { token = t; super = []; sub = [] } -> strip t
-      | Scripted { token = t; super = super; sub = sub } ->
+      | Scripted { token = t; prefix = []; super = []; sub = [] } -> strip t
+      | Scripted { token = t; prefix = prefix; super = super; sub = sub } ->
 	Scripted { token = strip t;
+		   prefix = prefix;
 		   super = List.map strip super;
 		   sub = List.map strip sub }
       | List [] as t -> t
       | List [t] -> strip t
       | List tl -> List (List.map strip tl)
-
-    let plug = function
-      | Digit _ as t -> [t]
-      | Token _ as t -> [t]
-      | Scripted _ as t -> [t]
-      | List tl -> tl
 
     let ascii_A = Char.code 'A'
     let ascii_Z = Char.code 'Z'
@@ -139,7 +153,7 @@ module Token =
 	match t.sub with
 	| [] -> ""
 	| tl -> "_" ^ list_to_string tl in
-      to_string t.token ^ super ^ sub
+      String.concat "" t.prefix ^ to_string t.token ^ super ^ sub
 
     and required_space t1 t2 =
       let required_space' s1 s2 =

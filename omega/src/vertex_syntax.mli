@@ -68,8 +68,12 @@ module Token :
 
     and scripted = 
       { token : t;
+	prefix : string list;
 	super : t list;
 	sub : t list }
+
+    val null : t
+    val scripted : string list ->t -> ?super:t -> ?sub:t -> unit -> t
 
     (* Strip superfluous [List] and [Scripted] constructors. *)
     (* TODO: this would be unnecessary, if we used smart constructors. *)
