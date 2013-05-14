@@ -1,4 +1,4 @@
-(* $Id: vertex_syntax.ml 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: vertex_syntax.ml 4276 2013-05-14 14:58:35Z ohl $
 
    Copyright (C) 1999-2013 by
 
@@ -76,7 +76,16 @@ module Token =
       | List tl -> tl
       | _ as t -> [t]
 
-    let null = List []
+    let digit i =
+      Digit i
+
+    let token s =
+      Token s
+
+    let list = function
+      | [] -> List []
+      | [t] -> t
+      | tl ->  List tl
 
     let optional = function
       | None -> []
@@ -87,7 +96,20 @@ module Token =
 		 prefix = prefix;
 		 super = optional super;
 		 sub = optional sub }
-      
+	
+    let scripted prefix token ?super ?sub () =
+      match token with
+      | Digit _ | Token _ | List _ as t ->
+	Scripted { token = t;
+		   prefix = prefix;
+		   super = optional super;
+		   sub = optional sub }
+      | Scripted st ->
+	Scripted { token = st.token;
+		   prefix = prefix @ st.prefix;
+		     super = st.super @ optional super;
+		     sub = st.sub @ optional sub }
+
     let rec stem = function
       | Digit _ | Token _ as t -> t
       | Scripted { token = t } -> stem t
@@ -96,6 +118,9 @@ module Token =
 	| [] -> List []
 	| t :: _ -> stem t
 	end
+
+    (* Strip superfluous [List] and [Scripted] constructors. *)
+    (* NB: This might be unnecessary, if we used smart constructors. *)
 
     let rec strip = function
       | Digit _ | Token _ as t -> t
@@ -111,6 +136,9 @@ module Token =
 	| [t] -> t
 	| tl ->  List tl
 	end
+
+    (* Recursively merge nested [List] and [Scripted] constructors. *)
+    (* NB: This might be unnecessary, if we used smart constructors. *)
 
     let rec flatten = function
       | Digit _ | Token _ as t -> t

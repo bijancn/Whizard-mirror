@@ -1,4 +1,4 @@
-(* $Id: vertex.mli 4105 2013-03-12 16:53:22Z ohl $
+(* $Id: vertex.mli 4276 2013-05-14 14:58:35Z ohl $
 
    Copyright (C) 1999-2013 by
 

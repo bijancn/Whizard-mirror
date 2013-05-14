@@ -1,4 +1,4 @@
-(* $Id: vertex_syntax.mli 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: vertex_syntax.mli 4276 2013-05-14 14:58:35Z ohl $
 
    Copyright (C) 1999-2013 by
 
@@ -72,16 +72,14 @@ module Token :
 	super : t list;
 	sub : t list }
 
-    val null : t
+    val digit : int -> t
+    val token : string -> t
     val scripted : string list ->t -> ?super:t -> ?sub:t -> unit -> t
+    val list : t list -> t
 
     (* Strip superfluous [List] and [Scripted] constructors. *)
-    (* NB: This might be unnecessary, if we used smart constructors. *)
+    (* NB: This should be unnecessary, if we use smart constructors. *)
     val strip : t -> t
-
-    (* Recursively merge nested [List] and [Scripted] constructors. *)
-    (* NB: This might be unnecessary, if we used smart constructors. *)
-    val flatten : t -> t
 
     (* Recursively strip all the super- and subscripts and
        return only the LAST item in a list.

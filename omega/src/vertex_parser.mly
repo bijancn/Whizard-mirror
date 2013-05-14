@@ -1,4 +1,4 @@
-/* $Id: vertex_parser.mly 4015 2013-01-03 16:04:18Z jr_reuter $
+/* $Id: vertex_parser.mly 4276 2013-05-14 14:58:35Z ohl $
 
    Copyright (C) 1999-2013 by
 
@@ -184,9 +184,9 @@ tensor_attribute:
 ;
 
 vertex:
- | VERTEX token_list_arg          { (E.integer 1, T.List $2) }
- | VERTEX expr_arg token_list_arg { ($2, T.List $3) }
- | VERTEX expr_arg LBRACE RBRACE  { ($2, T.List []) }
+ | VERTEX token_list_arg          { (E.integer 1, T.list $2) }
+ | VERTEX expr_arg token_list_arg { ($2, T.list $3) }
+ | VERTEX expr_arg LBRACE RBRACE  { ($2, T.list []) }
 ;
 
 expr:
@@ -219,7 +219,7 @@ token:
  | LBRACE scripted_token RBRACE
      { $2 }
  | LBRACE scripted_token token_list RBRACE
-     { T.List ($2 :: $3) }
+     { T.list ($2 :: $3) }
 ;
 
 token_list:
@@ -255,30 +255,30 @@ pfxs:
 ;
 
 primes:
- | prime_list   { T.List $1 }
+ | prime_list   { T.list $1 }
 ;
 
 prime_list:
- | PRIME            { [T.Token "\\prime"] }
- | PRIME prime_list { T.Token "\\prime" :: $2 }
+ | PRIME            { [T.token "\\prime"] }
+ | PRIME prime_list { T.token "\\prime" :: $2 }
 ;
 
 name:
- | CHAR     { T.Token $1 }
- | TOKEN    { T.Token $1 }
+ | CHAR     { T.token $1 }
+ | TOKEN    { T.token $1 }
 ;
 
 bare_token:
- | DIGIT    { T.Digit $1 }
- | CHAR     { T.Token $1 }
- | TOKEN    { T.Token $1 }
- | PLUS     { T.Token "+" }
- | MINUS    { T.Token "-" }
- | TIMES    { T.Token "*" }
- | DIV      { T.Token "/" }
- | COMMA    { T.Token "," }
- | LPAREN   { T.Token "(" }
- | RPAREN   { T.Token ")" }
- | LBRACKET { T.Token "[" }
- | RBRACKET { T.Token "]" }
+ | DIGIT    { T.digit $1 }
+ | CHAR     { T.token $1 }
+ | TOKEN    { T.token $1 }
+ | PLUS     { T.token "+" }
+ | MINUS    { T.token "-" }
+ | TIMES    { T.token "*" }
+ | DIV      { T.token "/" }
+ | COMMA    { T.token "," }
+ | LPAREN   { T.token "(" }
+ | RPAREN   { T.token ")" }
+ | LBRACKET { T.token "[" }
+ | RBRACKET { T.token "]" }
 ;

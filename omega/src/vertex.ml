@@ -1,4 +1,4 @@
-(* $Id: vertex.ml 4105 2013-03-12 16:53:22Z ohl $
+(* $Id: vertex.ml 4276 2013-05-14 14:58:35Z ohl $
 
    Copyright (C) 1999-2013 by
 
@@ -874,14 +874,14 @@ module Parser_Test : Test =
 
     let index =
       "index" >:::
-	[ "\\vertex{{a}_{1}^{2}}" => "\\vertex{{{a^2_1}}}";
-	  "\\vertex{a_{11}^2}"    => "\\vertex{{{a^2_{11}}}}";
-	  "\\vertex{a_{1_1}^2}"   => "\\vertex{{{a^2_{1_1}}}}" ]
+	[ "\\vertex{{a}_{1}^{2}}" => "\\vertex{a^2_1}";
+	  "\\vertex{a_{11}^2}"    => "\\vertex{a^2_{11}}";
+	  "\\vertex{a_{1_1}^2}"   => "\\vertex{a^2_{1_1}}" ]
 
     let electron1 =
       "electron1" >:::
 	[ "\\charged{e^-}{e^+}" => "\\charged{{e^-}}{{e^+}}";
-	  "\\charged{{e^-}}{{e^+}}" => "\\charged{e^-}{e^+}" ]
+	  ?> "\\charged{{e^-}}{{e^+}}" ]
 
     let electron2 =
       "electron2" >:::
@@ -934,29 +934,21 @@ module Parser_Test : Test =
     let (=>>) s_in s_out =
       "stem " ^ s_in >:: test_stem s_out s_in
 
-    let test_flatten s_out s_in () =
-      assert_equal ~printer:T.to_string
-	(parse_token s_out)
-	(T.flatten (parse_token s_in))
-
-    let (==>) s_in s_out =
-      "flatten " ^ s_in >:: test_flatten s_out s_in
-
     let tokens =
       "tokens" >:::
-	[ "\\vertex{a'}" => "\\vertex{{{a^\\prime}}}";
-	  "\\vertex{a''}" => "\\vertex{{{a^{\\prime\\prime}}}}";
+	[ "\\vertex{a'}" => "\\vertex{a^\\prime}";
+	  "\\vertex{a''}" => "\\vertex{a^{\\prime\\prime}}";
 	  "\\bar\\psi''_{i,\\alpha}" =>> "\\psi";
 	  "\\phi^\\dagger_{i'}" =>> "\\phi";
-	  "\\phi" ==> "\\phi";
-	  "\\phi_1" ==> "\\phi_1";
-	  "{{\\phi}'}" ==> "\\phi'";
-	  "\\hat{\\bar\\psi}_1" ==> "\\hat\\bar\\psi_1";
-	  "{\\phi_1}_2" ==> "\\phi_{12}";
-	  "{\\phi_{12}}_{34}" ==> "\\phi_{1234}";
-	  "{\\phi_{12}}^{34}" ==> "\\phi^{34}_{12}";
-	  "\\bar{\\psi_{\\mathrm{e}}}_\\alpha\\gamma_{\\alpha\\beta}^\\mu{\\psi_{\\mathrm{e}}}_\\beta" ==>
-          "\\bar\\psi_{\\mathrm{e}\\alpha}\\gamma^\\mu_{\\alpha\\beta}\\psi_{\\mathrm{e}\\beta}" ]
+	  "\\vertex{\\phi}" => "\\vertex{\\phi}";
+	  "\\vertex{\\phi_1}" => "\\vertex{\\phi_1}";
+	  "\\vertex{{{\\phi}'}}" => "\\vertex{\\phi^\\prime}";
+	  "\\vertex{\\hat{\\bar\\psi}_1}" => "\\vertex{\\hat\\bar\\psi_1}";
+	  "\\vertex{{\\phi_1}_2}" => "\\vertex{\\phi_{12}}";
+	  "\\vertex{{\\phi_{12}}_{34}}" => "\\vertex{\\phi_{1234}}";
+	  "\\vertex{{\\phi_{12}}^{34}}" => "\\vertex{\\phi^{34}_{12}}";
+	  "\\vertex{\\bar{\\psi_{\\mathrm{e}}}_\\alpha\\gamma_{\\alpha\\beta}^\\mu{\\psi_{\\mathrm{e}}}_\\beta}" =>
+          "\\vertex{{{\\bar\\psi_{\\mathrm e\\alpha}\\gamma^\\mu_{\\alpha\\beta}\\psi_{\\mathrm e\\beta}}}}"]
 
     let suite =
       "Vertex_Parser" >:::
