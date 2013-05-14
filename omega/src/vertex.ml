@@ -926,20 +926,37 @@ module Parser_Test : Test =
     let print_token pfx t =
       print_endline (pfx ^ ": " ^ T.to_string t)
 
+    let test_stem s_out s_in () =
+      assert_equal ~printer:T.to_string
+	(parse_token s_out)
+	(T.stem (parse_token s_in))
+
+    let (=>>) s_in s_out =
+      "stem " ^ s_in >:: test_stem s_out s_in
+
+    let test_flatten s_out s_in () =
+      assert_equal ~printer:T.to_string
+	(parse_token s_out)
+	(T.flatten (parse_token s_in))
+
+    let (==>) s_in s_out =
+      "flatten " ^ s_in >:: test_flatten s_out s_in
+
     let tokens =
       "tokens" >:::
 	[ "\\vertex{a'}" => "\\vertex{{{a^\\prime}}}";
 	  "\\vertex{a''}" => "\\vertex{{{a^{\\prime\\prime}}}}";
-	  "stem1" >::
-	    (fun () ->
-	      assert_equal 
-		(parse_token "\\psi")
-		(T.stem (parse_token "\\bar\\psi''_{i,\\alpha}")));
-	  "stem2" >::
-	    (fun () ->
-	      assert_equal 
-		(parse_token "\\phi")
-		(T.stem (parse_token "\\phi^\\dagger_{i'}"))) ]
+	  "\\bar\\psi''_{i,\\alpha}" =>> "\\psi";
+	  "\\phi^\\dagger_{i'}" =>> "\\phi";
+	  "\\phi" ==> "\\phi";
+	  "\\phi_1" ==> "\\phi_1";
+	  "{{\\phi}'}" ==> "\\phi'";
+	  "\\hat{\\bar\\psi}_1" ==> "\\hat\\bar\\psi_1";
+	  "{\\phi_1}_2" ==> "\\phi_{12}";
+	  "{\\phi_{12}}_{34}" ==> "\\phi_{1234}";
+	  "{\\phi_{12}}^{34}" ==> "\\phi^{34}_{12}";
+	  "\\bar{\\psi_{\\mathrm{e}}}_\\alpha\\gamma_{\\alpha\\beta}^\\mu{\\psi_{\\mathrm{e}}}_\\beta" ==>
+          "\\bar\\psi_{\\mathrm{e}\\alpha}\\gamma^\\mu_{\\alpha\\beta}\\psi_{\\mathrm{e}\\beta}" ]
 
     let suite =
       "Vertex_Parser" >:::

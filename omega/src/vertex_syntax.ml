@@ -73,10 +73,8 @@ module Token =
 	sub : t list }
 
     let plug = function
-      | Digit _ as t -> [t]
-      | Token _ as t -> [t]
-      | Scripted _ as t -> [t]
       | List tl -> tl
+      | _ as t -> [t]
 
     let null = List []
 
@@ -91,8 +89,7 @@ module Token =
 		 sub = optional sub }
       
     let rec stem = function
-      | Digit _ as t -> t
-      | Token _ as t -> t
+      | Digit _ | Token _ as t -> t
       | Scripted { token = t } -> stem t
       | List tl ->
 	begin match List.rev tl with
@@ -101,17 +98,48 @@ module Token =
 	end
 
     let rec strip = function
-      | Digit _ as t -> t
-      | Token _ as t -> t
+      | Digit _ | Token _ as t -> t
       | Scripted { token = t; prefix = []; super = []; sub = [] } -> strip t
       | Scripted { token = t; prefix = prefix; super = super; sub = sub } ->
 	Scripted { token = strip t;
 		   prefix = prefix;
 		   super = List.map strip super;
 		   sub = List.map strip sub }
-      | List [] as t -> t
-      | List [t] -> strip t
-      | List tl -> List (List.map strip tl)
+      | List tl ->
+	begin match List.map strip tl with
+	| [] -> List []
+	| [t] -> t
+	| tl ->  List tl
+	end
+
+    let rec flatten = function
+      | Digit _ | Token _ as t -> t
+      | List tl -> flatten_list tl
+      | Scripted st -> flatten_scripted st
+
+    and flatten_list tl =
+      match List.map flatten tl with
+      | [] -> List []
+      | [t] -> t
+      | tl ->  List tl
+
+    and flatten_scripted = function
+      | { token = t; prefix = []; super = []; sub = [] } -> t
+      | { token = t; prefix = prefix; super = super; sub = sub } ->
+	let super = List.map flatten super
+	and sub = List.map flatten sub in
+	begin match flatten t with
+	| Digit _ | Token _ | List _ as t ->
+	  Scripted { token = t;
+		     prefix = prefix;
+		     super = super;
+		     sub = sub }
+	| Scripted st ->
+	  Scripted { token = st.token;
+		     prefix = prefix @ st.prefix;
+		     super = st.super @ super;
+		     sub = st.sub @ sub }
+	end
 
     let ascii_A = Char.code 'A'
     let ascii_Z = Char.code 'Z'

@@ -76,8 +76,12 @@ module Token :
     val scripted : string list ->t -> ?super:t -> ?sub:t -> unit -> t
 
     (* Strip superfluous [List] and [Scripted] constructors. *)
-    (* TODO: this would be unnecessary, if we used smart constructors. *)
+    (* NB: This might be unnecessary, if we used smart constructors. *)
     val strip : t -> t
+
+    (* Recursively merge nested [List] and [Scripted] constructors. *)
+    (* NB: This might be unnecessary, if we used smart constructors. *)
+    val flatten : t -> t
 
     (* Recursively strip all the super- and subscripts and
        return only the LAST item in a list.
