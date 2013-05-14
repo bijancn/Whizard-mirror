@@ -1,4 +1,4 @@
-(* $Id: comphep.ml 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: comphep.ml 4193 2013-04-20 09:46:00Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -22,8 +22,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Comphep" ["Plagiarizing CompHEP models ..."]
-    { RCS.revision = "$Revision: 4015 $";
-      RCS.date = "$Date: 2013-01-03 17:04:18 +0100 (Thu, 03 Jan 2013) $";
+    { RCS.revision = "$Revision: 4193 $";
+      RCS.date = "$Date: 2013-04-20 11:46:00 +0200 (Sat, 20 Apr 2013) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/comphep.ml $" }
@@ -182,10 +182,12 @@ module Model =
     type flavor = int
     type constant = string
     type gauge = unit
+    type orders = unit
 
     module M = Modeltools.Mutable
-        (struct type f = flavor type g = gauge type c = constant end)
+        (struct type f = flavor type g = gauge type c = constant type o = orders end)
 
+    let orders = M.orders
     let flavors = M.flavors
     let external_flavors = M.external_flavors
     let lorentz = M.lorentz

@@ -1,4 +1,4 @@
-(* $Id: omega.ml 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: omega.ml 4210 2013-04-28 22:07:58Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -118,7 +118,8 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
     let main () =
       let usage =
         "usage: " ^ Sys.argv.(0) ^
-        " [options] [" ^ String.concat "|" (List.map M.flavor_to_string (M.flavors ())) ^ "]"
+        " [options] [" ^ String.concat "|" (List.map M.flavor_to_string 
+					      (ThoList.flatmap snd (M.external_flavors ()))) ^ "]"
       and rev_scatterings = ref []
       and rev_decays = ref []
       and cascades = ref []

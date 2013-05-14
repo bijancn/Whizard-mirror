@@ -1,4 +1,4 @@
-(* $Id: omega_SYM.ml 4073 2013-02-12 13:42:18Z fbach $
+(* $Id: omega_SYM.ml 4193 2013-04-20 09:46:00Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -24,9 +24,9 @@
 
 let rcs_file = RCS.parse "omega_SYM"
     ["Super Yang-Mills (incomplete, just for stress-testing Colorize.It())"]
-    { RCS.revision = "$Revision: 4073 $";
-      RCS.date = "$Date: 2013-02-12 15:42:18 +0200 (Tue, 12 Feb 2013) $";
-      RCS.author = "$Author: fbach $";
+    { RCS.revision = "$Revision: 4193 $";
+      RCS.date = "$Date: 2013-04-20 11:46:00 +0200 (Sat, 20 Apr 2013) $";
+      RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/omega_SYM.ml $" }
 
@@ -85,6 +85,10 @@ module SYM =
       | G3 of int * int * int
       | I_G3 of int * int * int
       | G4 of int * int * int * int
+
+    type orders = unit
+    let orders = function
+      | _ -> ()
 
     let lorentz = function
       | Q i ->

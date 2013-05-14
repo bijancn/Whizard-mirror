@@ -1,4 +1,4 @@
-(* $Id: modellib_MSSM.ml 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: modellib_MSSM.ml 4193 2013-04-20 09:46:00Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -21,11 +21,11 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-(* $Id: modellib_MSSM.ml 4015 2013-01-03 16:04:18Z jr_reuter $ *)
+(* $Id: modellib_MSSM.ml 4193 2013-04-20 09:46:00Z jr_reuter $ *)
 
 let rcs_file = RCS.parse "Modellib_MSSM" ["MSSM"]
-    { RCS.revision = "$Revision: 4015 $";
-      RCS.date = "$Date: 2013-01-03 17:04:18 +0100 (Thu, 03 Jan 2013) $";
+    { RCS.revision = "$Revision: 4193 $";
+      RCS.date = "$Date: 2013-04-20 11:46:00 +0200 (Sat, 20 Apr 2013) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_MSSM.ml $" }
@@ -531,6 +531,13 @@ module MSSM (Flags : MSSM_flags) =
       | G_Gr4_Z_H1 of neu | G_Gr4_Z_H2 of neu | G_Gr4_Z_H3 of neu
       | G_Gr4_W_H of neu | G_Gr4_W_Hc of neu | G_Gr4_H_A of char
       | G_Gr4_H_Z of char
+
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | _ -> (0,0)
 
     let ferm_of_sff = function
       | SL, g -> (L g) | SN, g -> (N g) 

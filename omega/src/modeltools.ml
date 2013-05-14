@@ -1,4 +1,4 @@
-(* $Id: modeltools.ml 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: modeltools.ml 4193 2013-04-20 09:46:00Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -22,8 +22,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modeltools" ["Lagragians"]
-    { RCS.revision = "$Revision: 4015 $";
-      RCS.date = "$Date: 2013-01-03 17:04:18 +0100 (Thu, 03 Jan 2013) $";
+    { RCS.revision = "$Revision: 4193 $";
+      RCS.date = "$Date: 2013-04-20 11:46:00 +0200 (Sat, 20 Apr 2013) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modeltools.ml $" }
@@ -243,11 +243,12 @@ module Fusions (F : Flavor) : Fusions with type f = F.f and type c = F.c =
 
 (* \thocwmodulesection{Mutable Models} *)
 
-module Mutable (FGC : sig type f and g and c end) =
+module Mutable (FGC : sig type f and g and c and o end) =
   struct
     type flavor = FGC.f
     type gauge = FGC.g
     type constant = FGC.c
+    type orders = FGC.o
 
     let options = Options.empty
 
@@ -269,6 +270,8 @@ module Mutable (FGC : sig type f and g and c end) =
       and lookup arg = !reference arg in
       (update, lookup)
 
+    let set_orders, orders =
+      declare (fun f -> unitialized "orders")
     let set_color, color =
       declare (fun f -> unitialized "color")
     let set_pdg, pdg =

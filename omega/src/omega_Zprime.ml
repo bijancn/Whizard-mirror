@@ -1,4 +1,4 @@
-(* $Id: omega_Zprime.ml 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: omega_Zprime.ml 4193 2013-04-20 09:46:00Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -22,8 +22,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "omega_Zprime" ["Standard Model with Additional Vectors"]
-    { RCS.revision = "$Revision: 4015 $";
-      RCS.date = "$Date: 2013-01-03 17:04:18 +0100 (Thu, 03 Jan 2013) $";
+    { RCS.revision = "$Revision: 4193 $";
+      RCS.date = "$Date: 2013-04-20 11:46:00 +0200 (Sat, 20 Apr 2013) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$Source: /home/sources/ohl/ml/omega/src/omega_Zprime.ml,v $" }
@@ -279,6 +279,13 @@ module Zprime (Flags : SM_flags) =
       | G_Htt | G_Hbb | G_Hcc | G_Htautau | G_H3 | G_H4
       | Gs | I_Gs | G2 
       | Mass of flavor | Width of flavor
+
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | _ -> (0,0)
 
     let input_parameters =
       []

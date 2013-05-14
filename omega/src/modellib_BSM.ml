@@ -1,4 +1,4 @@
-(* $Id: modellib_BSM.ml 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: modellib_BSM.ml 4193 2013-04-20 09:46:00Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -21,8 +21,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_BSM" ["BSM Models"]
-    { RCS.revision = "$Revision: 4015 $";
-      RCS.date = "$Date: 2013-01-03 17:04:18 +0100 (Thu, 03 Jan 2013) $";
+    { RCS.revision = "$Revision: 4193 $";
+      RCS.date = "$Date: 2013-04-20 11:46:00 +0200 (Sat, 20 Apr 2013) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_BSM.ml $" }
@@ -356,6 +356,13 @@ module Littlest (Flags : BSM_flags) =
       | Gs | I_Gs | G2
       | G_HWHW | G_HWHWH | G_HAHAH | G_HZHZ | G_HZHAH | G_HAHZ
       | Mass of flavor | Width of flavor
+
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | _ -> (0,0)
 
     let input_parameters =
       []
@@ -1455,6 +1462,13 @@ module Littlest_Tpar (Flags : BSM_flags) =
       | G_HWHW | G_HWHWH | G_HAHAH | G_HZHZ | G_HZHAH | G_HAHZ
       | Mass of flavor | Width of flavor
 
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | _ -> (0,0)
+
     let input_parameters =
       []
 
@@ -2490,6 +2504,13 @@ module Simplest (Flags : BSM_flags) =
       | G_HGaGa | G_HGaZ | G_EGaGa | G_EGaZ | G_EGlGl 
       | Mass of flavor | Width of flavor
 
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | _ -> (0,0)
+
 (* \begin{dubious}
      The current abstract syntax for parameter dependencies is admittedly
      tedious. Later, there will be a parser for a convenient concrete syntax
@@ -3258,6 +3279,13 @@ module Xdim (Flags : BSM_flags) =
       | G_HGaZ | G_HGaGa | G_Hgg | G_Grav
       | Mass of flavor | Width of flavor
 
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | _ -> (0,0)
+
     let input_parameters =
       []
 
@@ -3912,6 +3940,13 @@ module UED (Flags : BSM_flags) =
       | G_HGaZ | G_HGaGa | G_Hgg
       | Gs | I_Gs | I_GsRt2 | G2 | G22 | G_Grav
       | Mass of flavor | Width of flavor
+
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | _ -> (0,0)
 
     let input_parameters =
       []
@@ -4798,6 +4833,13 @@ module GravTest (Flags : BSM_flags) =
       | G_strong | G_Grav
       | Mass of flavor | Width of flavor
 
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | _ -> (0,0)
+
     let input_parameters =
       []
 
@@ -5373,6 +5415,13 @@ module Template (Flags : BSM_flags) =
       | G_HGaZ | G_HGaGa | G_Hgg
       | Gs | I_Gs | G2
       | Mass of flavor | Width of flavor
+
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | _ -> (0,0)
 
     let input_parameters = []
 
@@ -5995,6 +6044,13 @@ module Threeshl (Module_options: Threeshl_options) =
          | G_s
          | IG_s
          | G_s2
+
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | _ -> (0,0)
 
       (* Functions for the construction of constants from indices *)
       let g_a_quark x = G_a_quark x

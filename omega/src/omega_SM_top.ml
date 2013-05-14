@@ -280,6 +280,13 @@ module Anomtop (Flags : SM_flags) =
       | Gs | I_Gs | G2 
       | Mass of flavor | Width of flavor
 
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | _ -> (0,0)
+
     let input_parameters =
       []
 

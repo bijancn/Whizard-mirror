@@ -1,4 +1,4 @@
-(* $Id: model.mli 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: model.mli 4193 2013-04-20 09:46:00Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -69,7 +69,8 @@ module type T =
      It can support an arbitrary numer of color lines.  But we have to test
      whether it is efficient enough.
    \end{dubious} *)
-    type constant
+    type constant 
+    type orders
     val max_degree : unit -> int
     val vertices : unit ->
       ((((flavor * flavor * flavor) * constant Coupling.vertex3 * constant) list)
@@ -78,6 +79,7 @@ module type T =
     val fuse2 : flavor -> flavor -> (flavor * constant Coupling.t) list
     val fuse3 : flavor -> flavor -> flavor -> (flavor * constant Coupling.t) list
     val fuse : flavor list -> (flavor * constant Coupling.t) list
+    val orders : constant -> orders
 
 (* The list of all known flavors. *)
     val flavors : unit -> flavor list

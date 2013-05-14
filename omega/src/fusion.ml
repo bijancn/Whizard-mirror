@@ -1,4 +1,4 @@
-(* $Id: fusion.ml 4015 2013-01-03 16:04:18Z jr_reuter $
+(* $Id: fusion.ml 4210 2013-04-28 22:07:58Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -22,8 +22,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Fusion" ["General Fusions"]
-    { RCS.revision = "$Revision: 4015 $";
-      RCS.date = "$Date: 2013-01-03 17:04:18 +0100 (Thu, 03 Jan 2013) $";
+    { RCS.revision = "$Revision: 4210 $";
+      RCS.date = "$Date: 2013-04-29 00:07:58 +0200 (Mon, 29 Apr 2013) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/fusion.ml $" }
@@ -280,12 +280,37 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
 
     type cache_mode = Cache_Use | Cache_Ignore | Cache_Overwrite
     let cache_option = ref Cache_Use
+    type qcd_order = 
+      | QCD_order of int
+    type ew_order = 
+      | EW_order of int
+    let qcd_order = ref (QCD_order 99)
+    let ew_order = ref (EW_order 99)
 
     let options = Options.create
         [ "ignore-cache", Arg.Unit (fun () -> cache_option := Cache_Ignore),
           "ignore cached model tables";
           "overwrite-cache", Arg.Unit (fun () -> cache_option := Cache_Overwrite),
-          "overwrite cached model tables" ]
+          "overwrite cached model tables";
+	  "qcd", Arg.Int (fun n -> qcd_order := QCD_order n), 
+	  "set QCD order n [>= 0, default = 99]";
+	  "ew", Arg.Int (fun n -> ew_order := EW_order n), 
+	  "set QCD order n [>=0, default = 99]"]
+
+    exception Negative_QCD_order
+    exception Negative_EW_order
+    exception Vanishing_couplings      
+    exception Negative_QCD_EW_orders
+
+    let int_orders = 
+      match !qcd_order, !ew_order with
+	| QCD_order n, EW_order n' when n < 0 &&  n' >= 0 -> 
+	    raise Negative_QCD_order
+	| QCD_order n, EW_order n' when n >= 0 &&  n' < 0 -> 
+	    raise Negative_EW_order
+	| QCD_order n, EW_order n' when n < 0 && n' < 0 -> 
+	    raise Negative_QCD_EW_orders
+	| QCD_order n, EW_order n' -> (n, n')
 
     open Coupling
 
@@ -367,6 +392,7 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
         val momentum : wf -> p
         val momentum_list : wf -> int list
         val wf_tag : wf -> string option
+	val wf_tag_raw : wf -> Tags.wf
         val order_wf : wf -> wf -> int
         val external_wfs : int -> (flavor * int) list -> wf list
 
@@ -768,6 +794,16 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
           end
       | _ -> true
 
+(* Counting QCD and EW orders. *)
+
+    let qcd_ew_check orders = 
+      if fst (orders) <= fst (int_orders) &&
+	 snd (orders) <= snd (int_orders) then
+	true
+      else
+	false
+
+
 (* Match a set of flavors to a set of momenta.  Form the direct product for
    the lists of momenta two and three with the list of couplings and flavors
    two and three.  *)
@@ -833,8 +869,9 @@ i*)
           let wfs, ss = PT.split wfss in
           let flavors = PT.map A.flavor wfs
           and momenta = PT.map A.momentum wfs
-          (* not yet: [and wf_tags = PT.map wf_tag_raw wfs] *) in
+          and wf_tags = PT.map A.wf_tag_raw wfs in
           let p = PT.fold_left_internal P.add momenta in
+(*i	  let wft = PT.fold_left Tags.fuse wf_tags in i*)
           List.fold_left
             (fun acc (f, c) ->
               if select_wf f p (PT.to_list momenta) && kmatrix_cuts c momenta then
@@ -1586,7 +1623,7 @@ i*)
 
   end
 
-module Make = Tagged(No_Tags)
+module Make = Tagged(Loop_Tags)
 
 module Binary = Make(Tuple.Binary)(Stat_Dirac)(Topology.Binary)
 module Tagged_Binary (T : Tagger) =

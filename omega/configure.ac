@@ -47,7 +47,7 @@ AM_MAKE_INCLUDE
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Apr 17 2013"
+PACKAGE_DATE="May 13 2013"
 PACKAGE_STATUS="release"
 
 AC_SUBST(PACKAGE_DATE)

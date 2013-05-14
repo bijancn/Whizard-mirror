@@ -1,4 +1,4 @@
-(* $Id: modellib_SM.ml 4073 2013-02-12 13:42:18Z fbach $
+(* $Id: modellib_SM.ml 4194 2013-04-22 07:14:02Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -23,9 +23,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
-    { RCS.revision = "$Revision: 4073 $";
-      RCS.date = "$Date: 2013-02-12 15:42:18 +0200 (Tue, 12 Feb 2013) $";
-      RCS.author = "$Author: fbach $";
+    { RCS.revision = "$Revision: 4194 $";
+      RCS.date = "$Date: 2013-04-22 09:14:02 +0200 (Mon, 22 Apr 2013) $";
+      RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_SM.ml $" }
 
@@ -46,6 +46,10 @@ module Phi3 =
 
     type gauge = unit
     type constant = G
+
+    type orders = unit
+    let orders = function 
+      | _ -> ()
 
     let lorentz _ = Scalar
     let color _ = Color.Singlet
@@ -110,6 +114,10 @@ module Phi4 =
 
     type gauge = unit
     type constant = G3 | G4
+
+    type orders = unit
+    let orders = function 
+      | _ -> ()
 
     let lorentz _ = Scalar
     let color _ = Color.Singlet
@@ -188,6 +196,10 @@ module QED =
 
     type gauge = unit
     type constant = Q
+
+    type orders = unit
+    let orders = function
+      | _ -> ()
 
     let lorentz = function
       | Electron | Muon | Tau -> Spinor
@@ -317,6 +329,10 @@ module QCD =
 
     type gauge = unit
     type constant = Gs | G2 | I_Gs
+
+    type orders = unit
+    let orders = function 
+      | _ -> ()
 
     let lorentz = function
       | U | D | C | S | T | B -> Spinor
@@ -914,6 +930,53 @@ module SM (Flags : SM_flags) =
       | Gs | I_Gs | G2
       | Mass of flavor | Width of flavor
       | K_Matrix_Coeff of int | K_Matrix_Pole of int
+	  
+(* Two integer counters for the QCD and EW order of the couplings. *)
+
+    type orders = int * int
+
+    let orders = function 
+      | Q_lepton | Q_up | Q_down | G_NC_lepton | G_NC_neutrino 
+      | G_NC_up | G_NC_down | G_CC | G_CCQ _ | G_Htt | G_H3
+      | G_Hbb | G_Hcc | G_Htautau | G_Hmm | I_Q_W 
+      | I_G_ZWW | I_G1_AWW | I_G1_ZWW | I_G_weak
+      | G_HWW | G_HZZ | G_HWW_u | G_HZZ_u | G_HGaZ_u
+      | G_HWW_anom | G_HZZ_anom | G_HGaZ | G_HGaGa | G_HGaZ_anom
+      | G_HGaGa_anom | Half | Unit 
+      | I_G1_plus_kappa_plus_G4_AWW 
+      | I_G1_plus_kappa_plus_G4_ZWW 
+      | I_G1_minus_kappa_plus_G4_AWW 
+      | I_G1_minus_kappa_plus_G4_ZWW 
+      | I_G1_plus_kappa_minus_G4_AWW 
+      | I_G1_plus_kappa_minus_G4_ZWW
+      | I_G1_minus_kappa_minus_G4_AWW 
+      | I_G1_minus_kappa_minus_G4_ZWW | I_kappa5_AWW 
+      | I_kappa5_ZWW | G5_AWW | G5_ZWW 
+      | I_lambda_AWW | I_lambda_ZWW | I_lambda5_AWW 
+      | I_lambda5_ZWW | G_TVA_ttA | G_TVA_bbA 
+      | G_VLR_ttZ | G_TVA_ttZ | G_TVA_bbZ 
+      | G_VLR_btW | G_VLR_tbW | G_TLR_btW | G_TRL_tbW
+      | G_TLR_btWA | G_TRL_tbWA | G_TLR_btWZ | G_TRL_tbWZ	
+      | G_VLR_qBuB | G_VLR_qBuB_u | G_VLR_qBuB_d
+      | G_VLR_qBuB_e | G_VL_qBuB_n | G_VL_qW | G_VL_qW_u | G_VL_qW_d
+      | G_SL_DttR | G_SR_DttR  | G_SL_DttL | G_SLR_DbtR | G_SL_DbtL
+      | G_TVA_ttWW | G_TVA_bbWW | G_SP_ttH -> (0,1)
+      | G_HHWW | G_HHZZ | G_H4
+      | G_WWWW | G_ZZWW | G_AZWW | G_AAWW  
+      |	Alpha_WWWW0 | Alpha_WWWW2 | Alpha_ZZWW0 
+      | Alpha_ZZWW1 | Alpha_ZZZZ 
+      | D_Alpha_WWWW0_S | D_Alpha_WWWW0_T | D_Alpha_WWWW0_U
+      | D_Alpha_WWWW2_S | D_Alpha_WWWW2_T | D_Alpha_ZZWW0_S 
+      | D_Alpha_ZZWW0_T | D_Alpha_ZZWW1_S | D_Alpha_ZZWW1_T
+      | D_Alpha_ZZWW1_U | D_Alpha_ZZZZ_S | D_Alpha_ZZZZ_T -> (0,2)
+      | Gs | I_Gs | G_TVA_ttG | G_TVA_ttGG | G_VLR_qGuG 
+      | C_quqd1R_bt | C_quqd1R_tb | C_quqd1L_bt | C_quqd1L_tb
+      | C_quqd8R_bt | C_quqd8R_tb | C_quqd8L_bt | C_quqd8L_tb -> (1,0)
+      | G2 | G_Hgg -> (2,0)
+	(* These constants are not used, hence initialized to zero. *)
+      | Sinthw | Sin2thw | Costhw | Pi 
+      | Alpha_QED | G_weak | K_Matrix_Coeff _ 
+      | K_Matrix_Pole _ | Mass _ | Width _ | Vev | E -> (0,0)
 
 (* \begin{dubious}
      The current abstract syntax for parameter dependencies is admittedly
@@ -2193,7 +2256,9 @@ module SM_Rxi =
     type flavor = SM.flavor
     let flavors = SM.flavors
     let external_flavors = SM.external_flavors
+    type orders = SM.orders
     type constant = SM.constant
+    let orders = SM.orders
     let lorentz = SM.lorentz
     let color = SM.color
     let goldstone = SM.goldstone
@@ -2481,6 +2546,10 @@ module SM_QCD =
       | I_Q_W | G_Htt | G_Hbb | G_Hcc | G_Hmm | G_Htautau
       | Gs | I_Gs | G2
       | Mass of flavor | Width of flavor
+
+    type orders = unit
+    let orders = function
+      | _ -> ()
 
 (* \begin{dubious}
      The current abstract syntax for parameter dependencies is admittedly
@@ -2862,9 +2931,11 @@ module Groves (M : Model.Gauge) : Model.Gauge with module Ch = M.Ch =
     let flavor_symbol f = M.flavor_symbol (project f)
 
     type constant = M.constant
+    type orders = M.orders
     let constant_symbol = M.constant_symbol
     let max_degree = M.max_degree
     let parameters = M.parameters
+    let orders = M.orders
 
     let conjugate = function
       | M (_, g) as f -> inject g (M.conjugate (project f))

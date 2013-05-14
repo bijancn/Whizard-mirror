@@ -1,4 +1,4 @@
-(* $Id: colorize.ml 4048 2013-02-01 10:07:17Z fbach $
+(* $Id: colorize.ml 4193 2013-04-20 09:46:00Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -22,9 +22,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Colorize" ["Colorizing Monochrome Models"]
-    { RCS.revision = "$Revision: 4048 $";
-      RCS.date = "$Date: 2013-02-01 12:07:17 +0200 (Fri, 01 Feb 2013) $";
-      RCS.author = "$Author: fbach $";
+    { RCS.revision = "$Revision: 4193 $";
+      RCS.date = "$Date: 2013-04-20 11:46:00 +0200 (Sat, 20 Apr 2013) $";
+      RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/colorize.ml $" }
 
@@ -93,11 +93,13 @@ module It (M : Model.T) =
 
     type gauge = M.gauge
     type constant = M.constant
+    type orders = M.orders
     let options = M.options
 
     let color = pullback M.color
     let pdg = pullback M.pdg
     let lorentz = pullback M.lorentz
+    let orders = M.orders
 
     module Ch = M.Ch
     let charges = pullback M.charges
@@ -1402,7 +1404,9 @@ module Gauge (M : Model.Gauge) =
     type flavor_sans_color = CM.flavor_sans_color
     type gauge = CM.gauge
     type constant = CM.constant
+    type orders = CM.orders
     module Ch = CM.Ch
+    let orders = CM.orders
     let charges = CM.charges
     let flavor_sans_color = CM.flavor_sans_color
     let color = CM.color
