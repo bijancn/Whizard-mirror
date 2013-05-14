@@ -84,6 +84,7 @@ module Token =
 
     let list = function
       | [] -> List []
+      | [Scripted {token = t; prefix = []; super = []; sub = []}] -> t
       | [t] -> t
       | tl ->  List tl
 
@@ -92,23 +93,18 @@ module Token =
       | Some t -> plug t
 
     let scripted prefix token ?super ?sub () =
-      Scripted { token = token;
-		 prefix = prefix;
-		 super = optional super;
-		 sub = optional sub }
-	
-    let scripted prefix token ?super ?sub () =
-      match token with
-      | Digit _ | Token _ | List _ as t ->
+      match token, prefix, super, sub with
+      | _, [], None, None -> token
+      | (Digit _ | Token _ | List _) as t, _, _, _ ->
 	Scripted { token = t;
 		   prefix = prefix;
 		   super = optional super;
 		   sub = optional sub }
-      | Scripted st ->
+      | Scripted st, _, _, _ ->
 	Scripted { token = st.token;
 		   prefix = prefix @ st.prefix;
-		     super = st.super @ optional super;
-		     sub = st.sub @ optional sub }
+		   super = st.super @ optional super;
+		   sub = st.sub @ optional sub }
 
     let rec stem = function
       | Digit _ | Token _ as t -> t

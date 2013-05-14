@@ -77,10 +77,6 @@ module Token :
     val scripted : string list ->t -> ?super:t -> ?sub:t -> unit -> t
     val list : t list -> t
 
-    (* Strip superfluous [List] and [Scripted] constructors. *)
-    (* NB: This should be unnecessary, if we use smart constructors. *)
-    val strip : t -> t
-
     (* Recursively strip all the super- and subscripts and
        return only the LAST item in a list.
        I.e. [stem "\\bar\\psi_i"] yields "\\psi"] *)

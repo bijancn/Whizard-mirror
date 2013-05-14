@@ -920,7 +920,7 @@ module Parser_Test : Test =
 
     let parse_token s =
       match parse_string ("\\vertex{" ^ s ^ "}") with
-      | [Vertex_syntax.File.Vertex (_, v)] -> T.strip v
+      | [Vertex_syntax.File.Vertex (_, v)] -> v
       | _ -> invalid_arg "only_vertex"
 
     let print_token pfx t =
@@ -944,6 +944,7 @@ module Parser_Test : Test =
 	  "\\vertex{\\phi_1}" => "\\vertex{\\phi_1}";
 	  "\\vertex{{{\\phi}'}}" => "\\vertex{\\phi^\\prime}";
 	  "\\vertex{\\hat{\\bar\\psi}_1}" => "\\vertex{\\hat\\bar\\psi_1}";
+	  "\\vertex{{a_b}_{cd}}" => "\\vertex{a_{bcd}}";
 	  "\\vertex{{\\phi_1}_2}" => "\\vertex{\\phi_{12}}";
 	  "\\vertex{{\\phi_{12}}_{34}}" => "\\vertex{\\phi_{1234}}";
 	  "\\vertex{{\\phi_{12}}^{34}}" => "\\vertex{\\phi^{34}_{12}}";
@@ -1043,7 +1044,7 @@ module Symbol (* : Symbol *) =
     let empty = ST.empty
 
     let add table token kind =
-      ST.add (List.map (fun t -> (T.strip (T.stem t))) token) kind table
+      ST.add (List.map T.stem token) kind table
 
     let insert table = function
       | F.Particle p ->
