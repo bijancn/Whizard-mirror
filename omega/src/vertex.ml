@@ -843,7 +843,6 @@ module Parser_Test : Test =
 
     open OUnit
 
-
     let compare s_out s_in () =
       assert_equal ~printer:(String.concat " ")
 	[s_out] (Vertex_syntax.File.to_strings (parse_string s_in))
@@ -1026,16 +1025,21 @@ module Symbol (* : Symbol *) =
     module Q = Vertex_syntax.Parameter
     module X = Vertex_syntax.Tensor
 
+    type space =
+    | Color
+    | Lorentz
+    | Flavor
+	
     type kind =
     | Particle
     | Parameter
-    | Index
-    | Tensor
+    | Index of space
+    | Tensor of space
 
     module ST =
       Map.Make
 	(struct
-	  type t = T.t list
+	  type t = T.t
 	  let compare = T.compare
 	 end)
 
@@ -1044,7 +1048,7 @@ module Symbol (* : Symbol *) =
     let empty = ST.empty
 
     let add table token kind =
-      ST.add (List.map T.stem token) kind table
+      ST.add (T.stem (T.list token)) kind table
 
     let insert table = function
       | F.Particle p ->
@@ -1053,8 +1057,8 @@ module Symbol (* : Symbol *) =
 	| P.Charged (name, anti) ->
 	  add (add table name Particle) anti Particle
 	end
-      | F.Index i -> add table i.I.name Index
-      | F.Tensor t -> add table t.X.name Tensor
+      | F.Index i -> add table i.I.name (Index Color)
+      | F.Tensor t -> add table t.X.name (Tensor Color)
       | F.Parameter p ->
 	begin match p with
 	| Q.Input name -> add table name.Q.name Parameter
@@ -1073,6 +1077,7 @@ module Symbol (* : Symbol *) =
 module Vertex =
   struct
 
+    module S = Symbol
     module T = Vertex_syntax.Token
 
     type attr =
@@ -1083,16 +1088,35 @@ module Vertex =
     type factor =
       { stem : T.t;
 	prefix : string list;
+	particle : T.t list;
 	color : T.t list;
 	lorentz : T.t list;
-	flavor : T.t list}
+	flavor : T.t list;
+	other : T.t list }
 
     let factor_stem token =
       { stem = token.T.stem;
 	prefix = token.T.prefix;
+	particle = [];
 	color = [];
 	lorentz = [];
-	flavor = [] }
+	flavor = [];
+	other = [] }
+
+    let rev factor =
+      { stem = factor.stem;
+	prefix = List.rev factor.prefix;
+	particle = List.rev factor.particle;
+	color = List.rev factor.color;
+	lorentz = List.rev factor.lorentz;
+	flavor = List.rev factor.flavor;
+	other = List.rev factor.other }
+
+    let factor_add_prefix factor token =
+      { factor with prefix = token :: factor.prefix }
+
+    let factor_add_particle factor token =
+      { factor with particle = token :: factor.particle }
 
     let factor_add_color_index factor token =
       { factor with color = token :: factor.color }
@@ -1103,10 +1127,32 @@ module Vertex =
     let factor_add_flavor_index factor token =
       { factor with flavor = token :: factor.flavor }
 
-    let factor_add_color symbol_table factor token =
-      match Symbol.kind symbol_table [token] with
-      | Some Symbol.Particle ->
-	factor_add_flavor_index factor token
+    let factor_add_other_index factor token =
+      { factor with other = token :: factor.other }
+
+    let factor_add_index symbol_table factor = function
+      | T.Token "," -> factor
+      | T.Token ("*" | "\\ast" as star) ->
+	factor_add_prefix factor star
+      | token ->
+	begin match S.kind symbol_table token with
+	| Some kind ->
+	  begin match kind with
+	  | S.Particle -> factor_add_particle factor token
+	  | S.Index S.Color -> factor_add_color_index factor token
+	  | S.Index S.Lorentz -> factor_add_lorentz_index factor token
+	  | S.Index S.Flavor -> factor_add_flavor_index factor token
+	  | S.Tensor _ -> invalid_arg "factor_add_index: \\tensor"
+	  | S.Parameter -> invalid_arg "factor_add_index: \\parameter"
+	  end
+	| None -> factor_add_other_index factor token
+	end
+
+    let factor_of_token symbol_table token =
+      rev (List.fold_left
+	     (factor_add_index symbol_table)
+	     (factor_stem token)
+	     (token.T.super @ token.T.sub))
 
     type field =
       { name : T.t list }

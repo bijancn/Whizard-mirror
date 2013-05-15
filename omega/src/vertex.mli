@@ -35,12 +35,27 @@ module Test (M : Model.T) : Test
 module Parser_Test : Test
 module Model_Test : Test
 
+(*
+module Symbol :
+  sig
+    type table
+    val load : Vertex_syntax.File.t -> table
+  end
 
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  compile-command:"ocamlc -o vertex thoList.ml{i,} pmap.ml{i,} vertex.ml"
- *  End:
-i*)
+module Vertex :
+  sig
+
+    type factor =
+      { stem : Vertex_syntax.Token.t;
+	prefix : string list;
+	particle : Vertex_syntax.Token.t list;
+	color : Vertex_syntax.Token.t list;
+	lorentz : Vertex_syntax.Token.t list;
+	flavor : Vertex_syntax.Token.t list;
+	other : Vertex_syntax.Token.t list }
+
+    val factor_of_token : Symbol.table -> Vertex_syntax.Token.scripted -> factor
+
+  end
+*)
+
