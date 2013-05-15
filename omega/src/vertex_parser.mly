@@ -230,30 +230,27 @@ token_list:
 ;
 
 scripted_token:
- | pfxs token                       { T.scripted $1 $2 None None }
- | pfxs token SUPER token           { T.scripted $1 $2 (Some $4) None }
- | pfxs token SUB token             { T.scripted $1 $2 None (Some $4) }
- | pfxs token SUPER token SUB token { T.scripted $1 $2 (Some $4) (Some $6) }
- | pfxs token SUB token SUPER token { T.scripted $1 $2 (Some $6) (Some $4) }
- | pfxs token primes                { T.scripted $1 $2 (Some $3) None }
- | pfxs token primes SUB token      { T.scripted $1 $2 (Some $3) (Some $5) }
- | pfxs token SUB token primes      { T.scripted $1 $2 (Some $5) (Some $4) }
+ | prefixes token optional_scripts { T.scripted $1 $2 $3 }
 ;
 
 bare_scripted_token:
- | pfxs name                        { T.scripted $1 $2 None None }
- | pfxs name SUPER token            { T.scripted $1 $2 (Some $4) None }
- | pfxs name SUB token              { T.scripted $1 $2 None (Some $4) }
- | pfxs name SUPER token SUB token  { T.scripted $1 $2 (Some $4) (Some $6) }
- | pfxs name SUB token SUPER token  { T.scripted $1 $2 (Some $6) (Some $4) }
- | pfxs name primes                 { T.scripted $1 $2 (Some $3) None }
- | pfxs name primes SUB token       { T.scripted $1 $2 (Some $3) (Some $5) }
- | pfxs name SUB token primes       { T.scripted $1 $2 (Some $5) (Some $4) }
+ | prefixes name optional_scripts  { T.scripted $1 $2 $3 }
 ;
 
-pfxs:
- |              { [] }
- | PREFIX pfxs  { $1 :: $2 }
+optional_scripts:
+ |                        { (None, None) }
+ | SUPER token            { (Some $2, None) }
+ | SUB token              { (None, Some $2) }
+ | SUPER token SUB token  { (Some $2, Some $4) }
+ | SUB token SUPER token  { (Some $4, Some $2) }
+ | primes                 { (Some $1, None) }
+ | primes SUB token       { (Some $1, Some $3) }
+ | SUB token primes       { (Some $3, Some $2) }
+;
+
+prefixes:
+ |                  { [] }
+ | PREFIX prefixes  { $1 :: $2 }
 ;
 
 primes:

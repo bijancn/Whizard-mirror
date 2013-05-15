@@ -74,7 +74,7 @@ module Token :
 
     val digit : int -> t
     val token : string -> t
-    val scripted : string list ->t -> t option -> t option -> t
+    val scripted : string list ->t -> t option * t option -> t
     val list : t list -> t
 
     (* Recursively strip all prefixes, super- and subscripts and
