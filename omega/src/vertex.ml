@@ -1096,7 +1096,7 @@ module Symbol (* : Symbol *) =
       List.fold_left insert empty decls
 
     let kind table token =
-      try Some (ST.find token table) with Not_found -> None
+      try Some (ST.find (T.stem token) table) with Not_found -> None
 
   end
 
@@ -1189,7 +1189,7 @@ module Vertex =
        "[" ^ T.to_string factor.stem ^
 	 (match factor.prefix with
 	 | [] -> ""
-	 | l -> "; prefix = " ^ String.concat ", " l) ^
+	 | l -> "; prefix=" ^ String.concat ", " l) ^
 	 list_to_string "particle" factor.particle ^
 	 list_to_string "color" factor.color ^
 	 list_to_string "lorentz" factor.lorentz ^
@@ -1234,7 +1234,7 @@ module Model_Test =
 	[ "1" >::
 	    (fun () ->
 	      assert_equal ~printer:(fun s -> s)
-		"[\\psi; prefix = \\bar; particle=e; color=a; lorentz=\\alpha_1]; [\\gamma; lorentz=\\mu,\\alpha_1,\\alpha_2]; [\\psi; particle=e; color=a; lorentz=\\alpha_2]; [A; lorentz=\\mu]"
+		"[\\psi; prefix=\\bar; particle=e; color=a; lorentz=\\alpha_1]; [\\gamma; lorentz=\\mu,\\alpha_1,\\alpha_2]; [\\psi; particle=e; color=a; lorentz=\\alpha_2]; [A; lorentz=\\mu]"
 		(Vertex.vertices'
 		   "\\charged{e^-}{e^+}
                     \\index{a}\\color{SU(3)}
