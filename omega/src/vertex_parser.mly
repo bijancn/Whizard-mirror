@@ -238,14 +238,24 @@ bare_scripted_token:
 ;
 
 optional_scripts:
- |                        { (None, None) }
- | SUPER token            { (Some $2, None) }
- | SUB token              { (None, Some $2) }
- | SUPER token SUB token  { (Some $2, Some $4) }
- | SUB token SUPER token  { (Some $4, Some $2) }
- | primes                 { (Some $1, None) }
- | primes SUB token       { (Some $1, Some $3) }
- | SUB token primes       { (Some $3, Some $2) }
+ |                { (None, None) }
+ | super          { ($1, None) }
+ | sub            { (None, $1) }
+ | super sub      { ($1, $2) }
+ | sub super      { ($2, $1) }
+ | primes         { ($1, None) }
+ | primes sub     { ($1, $2) }
+ | sub primes     { ($2, $1) }
+;
+
+super:
+ | SUPER token  { Some $2 }
+ | SUPER RBRACE { parse_error "superscript can't start with `}'" }
+;
+
+sub:
+ | SUB token    { Some $2 }
+ | SUB RBRACE   { parse_error "superscript can't start with `}'" }
 ;
 
 prefixes:
@@ -254,7 +264,7 @@ prefixes:
 ;
 
 primes:
- | prime_list   { T.list $1 }
+ | prime_list   { Some (T.list $1) }
 ;
 
 prime_list:
