@@ -106,6 +106,10 @@ module Token =
 		   super = st.super @ optional super;
 		   sub = st.sub @ optional sub }
 
+    let wrap_scripted = function
+      | Scripted st -> st
+      | t ->  { stem = t; prefix = []; super = []; sub = [] }
+
     let rec stem = function
       | Digit _ | Token _ as t -> t
       | Scripted { stem = t } -> stem t

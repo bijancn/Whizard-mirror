@@ -77,6 +77,8 @@ module Token :
     val scripted : string list -> t -> t option * t option -> t
     val list : t list -> t
 
+    val wrap_scripted : t -> scripted
+
     (* Recursively strip all prefixes, super- and subscripts and
        return only the LAST token in a list.
        I.e. [stem "\\bar\\psi_i"] yields "\\psi"] *)

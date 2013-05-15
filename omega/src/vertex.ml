@@ -1050,6 +1050,32 @@ module Symbol (* : Symbol *) =
     let add table token kind =
       ST.add (T.stem (T.list token)) kind table
 
+    let index_space index =
+      let spaces =
+	List.fold_left
+	  (fun acc -> function
+	  | I.Color _ -> Color :: acc
+	  | I.Lorentz _ -> Lorentz :: acc
+	  | I.Flavor _ -> Flavor :: acc)
+	  [] index.I.attr in
+      match ThoList.uniq (List.sort compare spaces) with
+      | [space] -> space
+      | [] -> invalid_arg "index not declared as color, flavor or index"
+      | _ -> invalid_arg "conflicting index declarations"
+
+    let tensor_space tensor =
+      let spaces =
+	List.fold_left
+	  (fun acc -> function
+	  | X.Color _ -> Color :: acc
+	  | X.Lorentz _ -> Lorentz :: acc
+	  | X.Flavor _ -> Flavor :: acc)
+	  [] tensor.X.attr in
+      match ThoList.uniq (List.sort compare spaces) with
+      | [space] -> space
+      | [] -> invalid_arg "tensor not declared as color, flavor or index"
+      | _ -> invalid_arg "conflicting tensor declarations"
+
     let insert table = function
       | F.Particle p ->
 	begin match p.P.name with
@@ -1057,8 +1083,8 @@ module Symbol (* : Symbol *) =
 	| P.Charged (name, anti) ->
 	  add (add table name Particle) anti Particle
 	end
-      | F.Index i -> add table i.I.name (Index Color)
-      | F.Tensor t -> add table t.X.name (Tensor Color)
+      | F.Index i -> add table i.I.name (Index (index_space i))
+      | F.Tensor t -> add table t.X.name (Tensor (tensor_space t))
       | F.Parameter p ->
 	begin match p with
 	| Q.Input name -> add table name.Q.name Parameter
@@ -1149,10 +1175,41 @@ module Vertex =
 	end
 
     let factor_of_token symbol_table token =
+      let token = T.wrap_scripted token in
       rev (List.fold_left
 	     (factor_add_index symbol_table)
 	     (factor_stem token)
 	     (token.T.super @ token.T.sub))
+
+    let list_to_string tag = function
+      | [] -> ""
+      | l -> "; " ^ tag ^ "=" ^ String.concat "," (List.map T.to_string l)
+
+    let factor_to_string factor =
+       "[" ^ T.to_string factor.stem ^
+	 (match factor.prefix with
+	 | [] -> ""
+	 | l -> "; prefix = " ^ String.concat ", " l) ^
+	 list_to_string "particle" factor.particle ^
+	 list_to_string "color" factor.color ^
+	 list_to_string "lorentz" factor.lorentz ^
+	 list_to_string "flavor" factor.flavor ^
+	 list_to_string "other" factor.other ^ "]"
+
+    let vertices s =
+      let decls = parse_string s in
+      let symbol_table = Symbol.load decls in
+      let tokens =
+	List.fold_left
+	  (fun acc -> function
+	  | Vertex_syntax.File.Vertex (_, v) -> T.plug v @ acc
+	  | _ -> acc)
+	  [] decls in
+      List.map (factor_of_token symbol_table) tokens
+
+    let vertices' s =
+      String.concat "; "
+	(List.map factor_to_string (vertices s))
 
     type field =
       { name : T.t list }
@@ -1174,7 +1231,18 @@ module Model_Test =
 
     let suite =
       "Model_Test" >:::
-	[]
+	[ "1" >::
+	    (fun () ->
+	      assert_equal ~printer:(fun s -> s)
+		"[\\psi; prefix = \\bar; particle=e; color=a; lorentz=\\alpha_1]; [\\gamma; lorentz=\\mu,\\alpha_1,\\alpha_2]; [\\psi; particle=e; color=a; lorentz=\\alpha_2]; [A; lorentz=\\mu]"
+		(Vertex.vertices'
+		   "\\charged{e^-}{e^+}
+                    \\index{a}\\color{SU(3)}
+                    \\index{\\mu}\\lorentz{X}
+                    \\index{\\alpha}\\lorentz{X}
+                    \\vertex{\\bar{\\psi_e}_{a,\\alpha_1}
+                             \\gamma^\\mu_{\\alpha_1\\alpha_2}
+                             {\\psi_e}_{a,\\alpha_2}A_\\mu}")) ]
 
   end
 
