@@ -67,14 +67,14 @@ module Token :
     | List of t list
 
     and scripted = private
-      { token : t;
+      { stem : t;
 	prefix : string list;
 	super : t list;
 	sub : t list }
 
     val digit : int -> t
     val token : string -> t
-    val scripted : string list ->t -> t option * t option -> t
+    val scripted : string list -> t -> t option * t option -> t
     val list : t list -> t
 
     (* Recursively strip all prefixes, super- and subscripts and

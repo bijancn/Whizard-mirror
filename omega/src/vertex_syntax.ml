@@ -67,7 +67,7 @@ module Token =
     | List of t list
 
     and scripted = 
-      { token : t;
+      { stem : t;
 	prefix : string list;
 	super : t list;
 	sub : t list }
@@ -84,7 +84,7 @@ module Token =
 
     let list = function
       | [] -> List []
-      | [Scripted {token = t; prefix = []; super = []; sub = []}] -> t
+      | [Scripted {stem = t; prefix = []; super = []; sub = []}] -> t
       | [t] -> t
       | tl ->  List tl
 
@@ -96,19 +96,19 @@ module Token =
       match token, prefix, super, sub with
       | _, [], None, None -> token
       | (Digit _ | Token _ | List _) as t, _, _, _ ->
-	Scripted { token = t;
+	Scripted { stem = t;
 		   prefix = prefix;
 		   super = optional super;
 		   sub = optional sub }
       | Scripted st, _, _, _ ->
-	Scripted { token = st.token;
+	Scripted { stem = st.stem;
 		   prefix = prefix @ st.prefix;
 		   super = st.super @ optional super;
 		   sub = st.sub @ optional sub }
 
     let rec stem = function
       | Digit _ | Token _ as t -> t
-      | Scripted { token = t } -> stem t
+      | Scripted { stem = t } -> stem t
       | List tl ->
 	begin match List.rev tl with
 	| [] -> List []
@@ -120,9 +120,9 @@ module Token =
 
     let rec strip = function
       | Digit _ | Token _ as t -> t
-      | Scripted { token = t; prefix = []; super = []; sub = [] } -> strip t
-      | Scripted { token = t; prefix = prefix; super = super; sub = sub } ->
-	Scripted { token = strip t;
+      | Scripted { stem = t; prefix = []; super = []; sub = [] } -> strip t
+      | Scripted { stem = t; prefix = prefix; super = super; sub = sub } ->
+	Scripted { stem = strip t;
 		   prefix = prefix;
 		   super = List.map strip super;
 		   sub = List.map strip sub }
@@ -148,18 +148,18 @@ module Token =
       | tl ->  List tl
 
     and flatten_scripted = function
-      | { token = t; prefix = []; super = []; sub = [] } -> t
-      | { token = t; prefix = prefix; super = super; sub = sub } ->
+      | { stem = t; prefix = []; super = []; sub = [] } -> t
+      | { stem = t; prefix = prefix; super = super; sub = sub } ->
 	let super = List.map flatten super
 	and sub = List.map flatten sub in
 	begin match flatten t with
 	| Digit _ | Token _ | List _ as t ->
-	  Scripted { token = t;
+	  Scripted { stem = t;
 		     prefix = prefix;
 		     super = super;
 		     sub = sub }
 	| Scripted st ->
-	  Scripted { token = st.token;
+	  Scripted { stem = st.stem;
 		     prefix = prefix @ st.prefix;
 		     super = st.super @ super;
 		     sub = st.sub @ sub }
@@ -191,7 +191,7 @@ module Token =
 
     and list_to_string = function
       | [] -> ""
-      | [Scripted { token = t; super = []; sub = [] }] -> to_string t
+      | [Scripted { stem = t; super = []; sub = [] }] -> to_string t
       | [Scripted _ as t] -> "{" ^ to_string t ^ "}"
       | [t] -> to_string t
       | tl -> "{" ^ concat_tokens tl ^ "}"
@@ -205,7 +205,7 @@ module Token =
 	match t.sub with
 	| [] -> ""
 	| tl -> "_" ^ list_to_string tl in
-      String.concat "" t.prefix ^ to_string t.token ^ super ^ sub
+      String.concat "" t.prefix ^ to_string t.stem ^ super ^ sub
 
     and required_space t1 t2 =
       let required_space' s1 s2 =

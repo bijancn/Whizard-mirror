@@ -41,6 +41,8 @@ rule token = parse
                       { token lexbuf }     (* skip LaTeX white space *)
   | "\\\\"            { token lexbuf }     (* skip table line breaks *)
   | '&'               { token lexbuf }     (* skip tabulators *)
+  | '\\' ( "left" | "right" | ['B''b'] "ig" 'g'? ['l''r'] )
+                      { token lexbuf }     (* skip parenthesis hints *)
   | '='        	      { EQUAL }
   | '^'        	      { SUPER }
   | '_'        	      { SUB }

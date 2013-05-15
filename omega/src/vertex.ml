@@ -1073,14 +1073,43 @@ module Symbol (* : Symbol *) =
 module Vertex =
   struct
 
+    module T = Vertex_syntax.Token
+
     type attr =
     | Bar
     | Dagger
     | Star
 
+    type factor =
+      { stem : T.t;
+	prefix : string list;
+	color : T.t list;
+	lorentz : T.t list;
+	flavor : T.t list}
+
+    let factor_stem token =
+      { stem = token.T.stem;
+	prefix = token.T.prefix;
+	color = [];
+	lorentz = [];
+	flavor = [] }
+
+    let factor_add_color_index factor token =
+      { factor with color = token :: factor.color }
+
+    let factor_add_lorentz_index factor token =
+      { factor with lorentz = token :: factor.lorentz }
+
+    let factor_add_flavor_index factor token =
+      { factor with flavor = token :: factor.flavor }
+
+    let factor_add_color symbol_table factor token =
+      match Symbol.kind symbol_table [token] with
+      | Some Symbol.Particle ->
+	factor_add_flavor_index factor token
+
     type field =
-      { stem : Vertex_syntax.Token.t list;
-	attr : attr list }
+      { name : T.t list }
 
   end
 
