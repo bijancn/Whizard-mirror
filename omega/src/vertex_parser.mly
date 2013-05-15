@@ -34,7 +34,6 @@ module V = Vertex_syntax.Parameter
 module I = Vertex_syntax.Index
 module X = Vertex_syntax.Tensor
 module F = Vertex_syntax.File_Tree
-module M = Vertex_syntax.Model
 
 let parse_error msg =
   raise (Vertex_syntax.Syntax_Error (msg, symbol_start (), symbol_end ()))
@@ -60,7 +59,6 @@ let invalid_parameter_attr () =
 %token INPUT DERIVED
 %token TENSOR INDEX FLAVOR LORENTZ
 %token VERTEX
-%token STAR
 
 %left PLUS MINUS
 %nonassoc NEG UPLUS
@@ -99,11 +97,13 @@ particle:
 ;
 
 expr_arg:
- | LBRACKET expr RBRACKET             { $2 }
+ | LBRACKET expr RBRACKET { $2 }
+ | LBRACKET expr END      { parse_error "missing `]'" }
 ;
 
 token_list_arg:
  | LBRACE token_list RBRACE { $2 }
+ | LBRACE token_list END    { parse_error "missing `}'" }
 ;
 
 token_list_arg_pair:
@@ -187,11 +187,13 @@ vertex:
  | VERTEX token_list_arg          { (E.integer 1, T.list $2) }
  | VERTEX expr_arg token_list_arg { ($2, T.list $3) }
  | VERTEX expr_arg LBRACE RBRACE  { ($2, T.list []) }
+ | VERTEX expr_arg LBRACE END     { parse_error "missing `}'" }
 ;
 
 expr:
  | integer                 	{ E.integer $1 }
  | LPAREN expr RPAREN      	{ $2 }
+ | LPAREN expr END      	{ parse_error "missing `)'" }
  | expr PLUS expr          	{ E.add $1 $3 }
  | expr MINUS expr         	{ E.sub $1 $3 }
  | expr TIMES expr         	{ E.mult $1 $3 }
@@ -205,7 +207,8 @@ arg_list:
 ;
 
 arg:
- | LBRACE expr RBRACE      { $2 }
+ | LBRACE expr RBRACE { $2 }
+ | LBRACE expr END    { parse_error "missing `}'" }
 ;
 
 integer:
@@ -214,12 +217,11 @@ integer:
 ;
 
 token:
- | bare_token
-     { $1 }
- | LBRACE scripted_token RBRACE
-     { $2 }
- | LBRACE scripted_token token_list RBRACE
-     { T.list ($2 :: $3) }
+ | bare_token                              { $1 }
+ | LBRACE scripted_token RBRACE            { $2 }
+ | LBRACE scripted_token END               { parse_error "missing `}'" }
+ | LBRACE scripted_token token_list RBRACE { T.list ($2 :: $3) }
+ | LBRACE scripted_token token_list END    { parse_error "missing `}'" }
 ;
 
 token_list:
@@ -228,25 +230,25 @@ token_list:
 ;
 
 scripted_token:
- | pfxs token                       { T.scripted $1 $2 () }
- | pfxs token SUPER token           { T.scripted $1 $2 ~super:$4 () }
- | pfxs token SUB token             { T.scripted $1 $2 ~sub:$4 () }
- | pfxs token SUPER token SUB token { T.scripted $1 $2 ~super:$4 ~sub:$6 () }
- | pfxs token SUB token SUPER token { T.scripted $1 $2 ~sub:$4 ~super:$6 () }
- | pfxs token primes                { T.scripted $1 $2 ~super:$3 () }
- | pfxs token primes SUB token      { T.scripted $1 $2 ~super:$3 ~sub:$5 () }
- | pfxs token SUB token primes      { T.scripted $1 $2 ~sub:$4 ~super:$5 () }
+ | pfxs token                       { T.scripted $1 $2 None None }
+ | pfxs token SUPER token           { T.scripted $1 $2 (Some $4) None }
+ | pfxs token SUB token             { T.scripted $1 $2 None (Some $4) }
+ | pfxs token SUPER token SUB token { T.scripted $1 $2 (Some $4) (Some $6) }
+ | pfxs token SUB token SUPER token { T.scripted $1 $2 (Some $6) (Some $4) }
+ | pfxs token primes                { T.scripted $1 $2 (Some $3) None }
+ | pfxs token primes SUB token      { T.scripted $1 $2 (Some $3) (Some $5) }
+ | pfxs token SUB token primes      { T.scripted $1 $2 (Some $5) (Some $4) }
 ;
 
 bare_scripted_token:
- | pfxs name                        { T.scripted $1 $2 () }
- | pfxs name SUPER token            { T.scripted $1 $2 ~super:$4 () }
- | pfxs name SUB token              { T.scripted $1 $2 ~sub:$4 () }
- | pfxs name SUPER token SUB token  { T.scripted $1 $2 ~super:$4 ~sub:$6 () }
- | pfxs name SUB token SUPER token  { T.scripted $1 $2 ~sub:$4 ~super:$6 () }
- | pfxs name primes                 { T.scripted $1 $2 ~super:$3 () }
- | pfxs name primes SUB token       { T.scripted $1 $2 ~super:$3 ~sub:$5 () }
- | pfxs name SUB token primes       { T.scripted $1 $2 ~sub:$4 ~super:$5 () }
+ | pfxs name                        { T.scripted $1 $2 None None }
+ | pfxs name SUPER token            { T.scripted $1 $2 (Some $4) None }
+ | pfxs name SUB token              { T.scripted $1 $2 None (Some $4) }
+ | pfxs name SUPER token SUB token  { T.scripted $1 $2 (Some $4) (Some $6) }
+ | pfxs name SUB token SUPER token  { T.scripted $1 $2 (Some $6) (Some $4) }
+ | pfxs name primes                 { T.scripted $1 $2 (Some $3) None }
+ | pfxs name primes SUB token       { T.scripted $1 $2 (Some $3) (Some $5) }
+ | pfxs name SUB token primes       { T.scripted $1 $2 (Some $5) (Some $4) }
 ;
 
 pfxs:

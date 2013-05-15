@@ -60,13 +60,13 @@ type identifier =
 module Token :
   sig
 
-    type t =
+    type t = private
     | Digit of int
     | Token of string
     | Scripted of scripted
     | List of t list
 
-    and scripted = 
+    and scripted = private
       { token : t;
 	prefix : string list;
 	super : t list;
@@ -74,11 +74,11 @@ module Token :
 
     val digit : int -> t
     val token : string -> t
-    val scripted : string list ->t -> ?super:t -> ?sub:t -> unit -> t
+    val scripted : string list ->t -> t option -> t option -> t
     val list : t list -> t
 
-    (* Recursively strip all the super- and subscripts and
-       return only the LAST item in a list.
+    (* Recursively strip all prefixes, super- and subscripts and
+       return only the LAST token in a list.
        I.e. [stem "\\bar\\psi_i"] yields "\\psi"] *)
     val stem : t -> t
 
@@ -236,14 +236,3 @@ module File :
 
   end
 
-module Model :
-  sig
-
-    type t =
-      { particles : Particle.t list;
-	parameters : Parameter.t list;
-	vertex : (Expr.t * Token.t) list }
-
-    val empty : t
-
-  end

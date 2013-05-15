@@ -92,7 +92,7 @@ module Token =
       | None -> []
       | Some t -> plug t
 
-    let scripted prefix token ?super ?sub () =
+    let scripted prefix token super sub =
       match token, prefix, super, sub with
       | _, [], None, None -> token
       | (Digit _ | Token _ | List _) as t, _, _, _ ->
@@ -483,20 +483,5 @@ module File =
 	  "\\vertex[" ^ Expr.to_string e ^ "]{" ^
 	    Token.to_string t ^ "}")
 	decls
-
-  end
-
-module Model =
-  struct
-
-    type t =
-      { particles : Particle.t list;
-	parameters : Parameter.t list;
-	vertex : (Expr.t * Token.t) list }
-
-    let empty =
-      { particles = [];
-	parameters = [];
-	vertex = [] }
 
   end
