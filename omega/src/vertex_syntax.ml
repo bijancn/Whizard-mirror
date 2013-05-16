@@ -385,6 +385,34 @@ module Parameter =
 
   end
 
+module Color =
+  struct
+
+    type t =
+    | U of int
+    | SU of int
+    | O of int
+    | SO of int
+    | Sp of int
+    | E6 | E7 | E8
+    | F4 | G2
+      
+    type r = int
+
+  end
+
+module Lorentz =
+  struct
+
+    type t =
+    | Vector
+    | Dirac
+    | ConjDirac
+    | Weyl
+    | ConjWeyl
+
+  end
+
 module Index =
   struct
 

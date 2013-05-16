@@ -169,6 +169,41 @@ module Parameter :
 
   end
 
+module Color :
+  sig
+
+    (* This list is not realistic.  In practice, we will
+       concentrate on SU(n) for now. *)
+
+    type t =
+    | U of int
+    | SU of int
+    | O of int
+    | SO of int
+    | Sp of int
+    | E6 | E7 | E8
+    | F4 | G2
+
+    (* Labelling the representation by their dimension, or
+       their negative dimension, is of course not general enough,
+       but will do for the moment. *)
+
+    type r = int
+
+  end
+
+module Lorentz :
+  sig
+
+    type t =
+    | Vector
+    | Dirac
+    | ConjDirac
+    | Weyl
+    | ConjWeyl
+
+  end
+
 module Index :
   sig
 
