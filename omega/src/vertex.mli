@@ -35,7 +35,7 @@ module Test (M : Model.T) : Test
 module Parser_Test : Test
 module Model_Test : Test
 
-(*
+(*i
 module Symbol :
   sig
     type table
@@ -57,5 +57,5 @@ module Vertex :
     val factor_of_token : Symbol.table -> Vertex_syntax.Token.scripted -> factor
 
   end
-*)
+i*)
 

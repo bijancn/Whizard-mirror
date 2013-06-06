@@ -60,32 +60,44 @@ type identifier =
 module Token :
   sig
 
+    (* Tokenization follows \TeX's rules.  Since \verb+a_12+
+       is interpretated by \TeX{} as \verb+{a_1}2+, we can not
+       use the lexer to construct integers, but interpret them
+       as lists of digits.  Below, in [Expr], the parser can
+       interpret then as integers.  *)
     type t = private
     | Digit of int
     | Token of string
     | Scripted of scripted
     | List of t list
 
+    (* In addition to super- and subscripts, there are prefixes
+       such as \verb+\bar+, \verb+\hat+, etc.  *)
     and scripted = private
       { stem : t;
 	prefix : string list;
 	super : t list;
 	sub : t list }
 
+    (* Smart constructors that avoid redundant nestings of lists
+       and scripted tokens with empty scripts. *)
     val digit : int -> t
     val token : string -> t
     val scripted : string list -> t -> t option * t option -> t
     val list : t list -> t
 
+    (* If it's [Scripted], return unchanged, else as a scripted
+       token with empty prefix, super- and subscripts. *)
     val wrap_scripted : t -> scripted
+
+    (* If it's a [List], return the list, otherwise a singleton. *)
+    val wrap_list : t -> t list
 
     (* Recursively strip all prefixes, super- and subscripts and
        return only the LAST token in a list.
-       I.e. [stem "\\bar\\psi_i"] yields "\\psi"] *)
+       I.e. [stem "\\bar\\psi_i"] and [stem "\\bar{\\phi\\psi}'"]
+       both yield ["\\psi"]. *)
     val stem : t -> t
-
-    (* If it's a [List], return the list, otherwise a singleton. *)
-    val plug : t -> t list
 
     val to_string : t -> string
     val scripted_to_string : scripted -> string

@@ -939,6 +939,7 @@ module Parser_Test : Test =
 	  "\\vertex{a''}" => "\\vertex{a^{\\prime\\prime}}";
 	  "\\bar\\psi''_{i,\\alpha}" =>> "\\psi";
 	  "\\phi^\\dagger_{i'}" =>> "\\phi";
+	  "\\bar{\\phi\\psi}''_{i,\\alpha}" =>> "\\psi";
 	  "\\vertex{\\phi}" => "\\vertex{\\phi}";
 	  "\\vertex{\\phi_1}" => "\\vertex{\\phi_1}";
 	  "\\vertex{{{\\phi}'}}" => "\\vertex{\\phi^\\prime}";
@@ -1202,7 +1203,7 @@ module Vertex =
       let tokens =
 	List.fold_left
 	  (fun acc -> function
-	  | Vertex_syntax.File.Vertex (_, v) -> T.plug v @ acc
+	  | Vertex_syntax.File.Vertex (_, v) -> T.wrap_list v @ acc
 	  | _ -> acc)
 	  [] decls in
       List.map (factor_of_token symbol_table) tokens

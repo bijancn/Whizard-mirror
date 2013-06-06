@@ -1,4 +1,4 @@
-(* $Id: targets.ml 4048 2013-02-01 10:07:17Z fbach $
+(* $Id: targets.ml 4283 2013-05-15 09:22:26Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -6,7 +6,7 @@
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
        Christian Speckner <cnspeckn@googlemail.com>
-       Fabian Bach <fabian.bach@cern.ch> (only parts of this file)
+       Fabian Bach <fabian.bach@desy.de> (only parts of this file)
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -23,9 +23,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 4048 $";
-      RCS.date = "$Date: 2013-02-01 12:07:17 +0200 (Fri, 01 Feb 2013) $";
-      RCS.author = "$Author: fbach $";
+    { RCS.revision = "$Revision: 4283 $";
+      RCS.date = "$Date: 2013-05-15 11:22:26 +0200 (Wed, 15 May 2013) $";
+      RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/targets.ml $" }
 

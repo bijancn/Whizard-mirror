@@ -1,4 +1,4 @@
-(* $Id: fusion.ml 4210 2013-04-28 22:07:58Z jr_reuter $
+(* $Id: fusion.ml 4284 2013-05-16 04:32:48Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
@@ -22,8 +22,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Fusion" ["General Fusions"]
-    { RCS.revision = "$Revision: 4210 $";
-      RCS.date = "$Date: 2013-04-29 00:07:58 +0200 (Mon, 29 Apr 2013) $";
+    { RCS.revision = "$Revision: 4284 $";
+      RCS.date = "$Date: 2013-05-16 06:32:48 +0200 (Thu, 16 May 2013) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/fusion.ml $" }
@@ -258,6 +258,18 @@ module No_Tags (PT : Tuple.Poly) =
    \end{dubious} *)
 
 module Loop_Tags (PT : Tuple.Poly) =
+  struct
+    type wf = int
+    type coupling = int
+    type 'a children = 'a PT.t
+    let null_wf = 0
+    let null_coupling = 0
+    let fuse c wfs = PT.fold_left (+) c wfs
+    let wf_to_string n = Some (string_of_int n)
+    let coupling_to_string n = Some (string_of_int n)
+  end
+
+module Order_Tags (PT : Tuple.Poly) =
   struct
     type wf = int
     type coupling = int
@@ -1623,7 +1635,7 @@ i*)
 
   end
 
-module Make = Tagged(Loop_Tags)
+module Make = Tagged(Order_Tags)
 
 module Binary = Make(Tuple.Binary)(Stat_Dirac)(Topology.Binary)
 module Tagged_Binary (T : Tagger) =

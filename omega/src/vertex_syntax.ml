@@ -72,12 +72,19 @@ module Token =
 	super : t list;
 	sub : t list }
 
-    let plug = function
+    let wrap_scripted = function
+      | Scripted st -> st
+      | t ->  { stem = t; prefix = []; super = []; sub = [] }
+
+    let wrap_list = function
       | List tl -> tl
       | _ as t -> [t]
 
-    let digit i =
-      Digit i
+    let digit i = 
+      if i >= 0 && i <= 9 then
+	Digit i
+      else
+	invalid_arg ("digit: " ^ string_of_int i)
 
     let token s =
       Token s
@@ -90,7 +97,7 @@ module Token =
 
     let optional = function
       | None -> []
-      | Some t -> plug t
+      | Some t -> wrap_list t
 
     let scripted prefix token (super, sub) =
       match token, prefix, super, sub with
@@ -105,10 +112,6 @@ module Token =
 		   prefix = prefix @ st.prefix;
 		   super = st.super @ optional super;
 		   sub = st.sub @ optional sub }
-
-    let wrap_scripted = function
-      | Scripted st -> st
-      | t ->  { stem = t; prefix = []; super = []; sub = [] }
 
     let rec stem = function
       | Digit _ | Token _ as t -> t
