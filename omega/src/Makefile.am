@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 4276 2013-05-14 14:58:35Z ohl $
+# $Id: Makefile.am 4469 2013-07-18 21:50:49Z jr_reuter $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -110,9 +110,9 @@ SUFFIXES += .lo .$(FC_MODULE_EXT)
 
 DISTCLEANFILES =
 
-$(OMEGALIB_DERIVED_F90): omegalib.stamp
-
 if NOWEB_AVAILABLE
+
+$(OMEGALIB_DERIVED_F90): omegalib.stamp
 
 omegalib.stamp: $(srcdir)/omegalib.nw
 	@rm -f omegalib.tmp
@@ -122,13 +122,15 @@ omegalib.stamp: $(srcdir)/omegalib.nw
 	done
 	@mv -f omegalib.tmp omegalib.stamp
 
+## Recover from the removal of $@
+	@if test -f $@; then :; else \
+	  rm -f omegalib.stamp; \
+	  $(MAKE) $(AM_MAKEFLAGS) omegalib.stamp; \
+	fi
+
 DISTCLEANFILES += $(OMEGALIB_DERIVED_F90)
 
-else !NOWEB_AVAILABLE
-
-omegalib.stamp:
-
-endif !NOWEB_AVAILABLE
+endif NOWEB_AVAILABLE
 
 MYPRECIOUS += $(OMEGALIB_DERIVED_F90)
 
@@ -139,7 +141,7 @@ MYPRECIOUS += $(OMEGALIB_DERIVED_F90)
 ########################################################################
 @am__include@ @am__quote@Makefile.depend_fortran@am__quote@
 
-Makefile.depend_fortran: $(OMEGALIB_F90)
+Makefile.depend_fortran: $(libomega_core_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \

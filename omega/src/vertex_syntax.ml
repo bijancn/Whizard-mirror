@@ -1,10 +1,11 @@
-(* $Id: vertex_syntax.ml 4276 2013-05-14 14:58:35Z ohl $
+(* $Id: vertex_syntax.ml 4538 2013-08-23 16:09:06Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
@@ -337,8 +338,8 @@ module Particle =
 	  "}{" ^ Token.list_to_string ap ^ "}"
 
     let attr_to_string = function
-      | TeX tl -> "\\TeX{" ^ Token.list_to_string tl ^ "}"
-      | TeX_Anti tl -> "\\anti\\TeX{" ^ Token.list_to_string tl ^ "}"
+      | TeX tl -> "\\tex{" ^ Token.list_to_string tl ^ "}"
+      | TeX_Anti tl -> "\\anti\\tex{" ^ Token.list_to_string tl ^ "}"
       | Alias tl -> "\\alias{" ^ Token.list_to_string tl ^ "}"
       | Alias_Anti tl -> "\\anti\\alias{" ^ Token.list_to_string tl ^ "}"
       | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
@@ -373,7 +374,7 @@ module Parameter =
     | Derived of t'
 
     let attr_to_string = function
-      | TeX tl -> "\\TeX{" ^ Token.list_to_string tl ^ "}"
+      | TeX tl -> "\\tex{" ^ Token.list_to_string tl ^ "}"
       | Alias tl -> "\\alias{" ^ Token.list_to_string tl ^ "}"
       | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
 

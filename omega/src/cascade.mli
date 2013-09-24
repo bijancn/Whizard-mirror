@@ -1,10 +1,11 @@
-(* $Id: cascade.mli 4105 2013-03-12 16:53:22Z ohl $
+(* $Id: cascade.mli 4538 2013-08-23 16:09:06Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it

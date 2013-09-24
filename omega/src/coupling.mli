@@ -1,10 +1,11 @@
-(* $Id: coupling.mli 4048 2013-02-01 10:07:17Z fbach $
+(* $Id: coupling.mli 4663 2013-09-23 13:51:54Z msekulla $
 
    Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
@@ -246,6 +247,8 @@ type 'a vertex3 =
        \ii\overleftrightarrow{\partial_\mu}(\ii\partial_\rho V_3^\nu))$ *)
   | Tensor_2_Vector_Vector of int (* %
       $T^{\mu\nu} (V_{1,\mu}V_{2,\nu} + V_{1,\nu}V_{2,\mu})$ *)
+  | Tensor_2_Vector_Vector_1 of int (* % 
+      $T^{\mu\nu} (V_{1,\mu}V_{2,\nu} + V_{1,\nu}V_{2,\mu} - g_{\mu,\nu}V_1^\rho V_{2,\rho} )$ *) 
   | Dim5_Tensor_2_Vector_Vector_1 of int (* %
       $T^{\alpha\beta} (V_1^\mu
          \ii\overleftrightarrow\partial_\alpha

@@ -1,10 +1,11 @@
-(* $Id: vertex_syntax.mli 4276 2013-05-14 14:58:35Z ohl $
+(* $Id: vertex_syntax.mli 4538 2013-08-23 16:09:06Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it

@@ -26,7 +26,7 @@ AC_ARG_ENABLE([ocaml],
      AC_CHECK_TOOL([OCAMLC],[ocamlc],[no])
 	
      if test "$OCAMLC" != "no"; then
-        OCAMLVERSION=`$OCAMLC -v | sed -n -e 's|.*version* *\(.*\)$|\1|p'`
+        OCAMLVERSION=`$OCAMLC -v | $SED -n -e 's|.*version* *\(.*\)$|\1|p'`
         #####
         # JR inserted this ocamlintegerversion for version checking
         # [tho] made it rubust for OCaml 4.00
@@ -58,7 +58,7 @@ AC_ARG_ENABLE([ocaml],
         if test "$OCAMLOPT" = "no"; then
    	AC_MSG_WARN([Cannot find ocamlopt; bytecode compilation only.])
         else
-   	TMPVERSION=`$OCAMLOPT -v | sed -n -e 's|.*version* *\(.*\)$|\1|p' `
+   	TMPVERSION=`$OCAMLOPT -v | $SED -n -e 's|.*version* *\(.*\)$|\1|p' `
    	if test "$TMPVERSION" != "$OCAMLVERSION" ; then
    	    AC_MSG_RESULT([versions differs from ocamlc; ocamlopt discarded.])
    	    OCAMLOPT=no
@@ -72,7 +72,7 @@ AC_ARG_ENABLE([ocaml],
         # checking for ocamlc.opt
         AC_CHECK_TOOL([OCAMLCDOTOPT],[ocamlc.opt],[no])
         if test "$OCAMLCDOTOPT" != "no"; then
-   	TMPVERSION=`$OCAMLCDOTOPT -v | sed -n -e 's|.*version* *\(.*\)$|\1|p' `
+   	TMPVERSION=`$OCAMLCDOTOPT -v | $SED -n -e 's|.*version* *\(.*\)$|\1|p' `
    	if test "$TMPVERSION" != "$OCAMLVERSION" ; then
    	    AC_MSG_RESULT([versions differs from ocamlc; ocamlc.opt discarded.])
    	else
@@ -84,7 +84,7 @@ AC_ARG_ENABLE([ocaml],
         if test "$OCAMLOPT" != "no" ; then
    	AC_CHECK_TOOL([OCAMLOPTDOTOPT],[ocamlopt.opt],[no])
    	if test "$OCAMLOPTDOTOPT" != "no"; then
-   	   TMPVERSION=`$OCAMLOPTDOTOPT -v | sed -n -e 's|.*version* *\(.*\)$|\1|p' `
+   	   TMPVERSION=`$OCAMLOPTDOTOPT -v | $SED -n -e 's|.*version* *\(.*\)$|\1|p' `
    	   if test "$TMPVERSION" != "$OCAMLVERSION" ; then
    	      AC_MSG_RESULT([version differs from ocamlc; ocamlopt.opt discarded.])
    	   else
@@ -153,7 +153,7 @@ AC_DEFUN([AC_PROG_CAMLP4],
   # checking for camlp4
   AC_CHECK_TOOL([CAMLP4],[camlp4],[no])
   if test "$CAMLP4" != "no"; then
-     TMPVERSION=`$CAMLP4 -v 2>&1| sed -n -e 's|.*version *\(.*\)$|\1|p'`
+     TMPVERSION=`$CAMLP4 -v 2>&1| $SED -n -e 's|.*version *\(.*\)$|\1|p'`
      if test "$TMPVERSION" != "$OCAMLVERSION" ; then
 	AC_MSG_RESULT([versions differs from ocamlc])
         CAMLP4=no
@@ -265,7 +265,7 @@ AC_DEFUN([AC_PROG_OCAMLWEB],
   AC_CHECK_TOOL([OCAMLWEB],[ocamlweb],[no])
   AC_SUBST([OCAMLWEB])
   if test "$OCAMLWEB" != "no"; then
-     OCAMLWEBVERSION=`$OCAMLWEB --version | sed -n -e 's|.*version* *\(.*\)$|\1|p'`
+     OCAMLWEBVERSION=`$OCAMLWEB --version | $SED -n -e 's|.*version* *\(.*\)$|\1|p'`
      AC_CACHE_VAL([wo_ocamlweb_cv_integer_version],
        [wo_ocamlweb_cv_integer_version="`$OCAMLWEB --version | \
          $AWK 'NR==1 && [$]5 ~ /version/ {

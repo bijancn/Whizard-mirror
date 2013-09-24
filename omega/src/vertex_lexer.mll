@@ -1,10 +1,11 @@
-(* $Id: vertex_lexer.mll 4276 2013-05-14 14:58:35Z ohl $
+(* $Id: vertex_lexer.mll 4538 2013-08-23 16:09:06Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
@@ -34,11 +35,21 @@ let char = upper | lower
 let white = [' ' '\t' '\n']
 let pfx = '\\'
 
+let env_arg0 = "align" | "center"
+let env_arg1 = "tabular"
+
 rule token = parse
     white             { token lexbuf }     (* skip blanks *)
   | '%' [^'\n']* '\n' { token lexbuf }     (* skip comments *)
   | '\\' ( [','';'] | 'q'? "quad" )
                       { token lexbuf }     (* skip LaTeX white space *)
+  | "\\endinput"      { token lexbuf }     (* continue reading *)
+  | '\\' ( "chapter" | "sub"* "section" ) '*'? '{' [^'}']* '}'
+                      { token lexbuf }     (* skip sectioning FIXME!!! *)
+  | '\\' ( "begin" | "end" ) '{' env_arg0 '*'? '}'
+  | "\\begin" '{' env_arg1 '*'? '}' '{' [^'}']* '}'
+  | "\\end" '{' env_arg1 '*'? '}'
+                      { token lexbuf }     (* skip environment delimiters *)
   | "\\\\"            { token lexbuf }     (* skip table line breaks *)
   | '&'               { token lexbuf }     (* skip tabulators *)
   | '\\' ( "left" | "right" | ['B''b'] "ig" 'g'? ['l''r'] )
@@ -65,7 +76,7 @@ rule token = parse
   | pfx "charged"     { CHARGED }
   | pfx "neutral"     { NEUTRAL }
   | pfx "anti"        { ANTI }
-  | pfx "TeX"         { TEX }
+  | pfx "tex"         { TEX }
   | pfx "fortran"     { FORTRAN }
   | pfx "spin"        { SPIN }
   | pfx "color"       { COLOR }

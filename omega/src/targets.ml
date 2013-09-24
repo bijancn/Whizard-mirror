@@ -1,10 +1,11 @@
-(* $Id: targets.ml 4283 2013-05-15 09:22:26Z jr_reuter $
+(* $Id: targets.ml 4662 2013-09-23 13:21:34Z msekulla $
 
    Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
        Fabian Bach <fabian.bach@desy.de> (only parts of this file)
 
@@ -23,9 +24,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 4283 $";
-      RCS.date = "$Date: 2013-05-15 11:22:26 +0200 (Wed, 15 May 2013) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 4662 $";
+      RCS.date = "$Date: 2013-09-23 15:21:34 +0200 (Mon, 23 Sep 2013) $";
+      RCS.author = "$Author: msekulla $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/targets.ml $" }
 
@@ -363,7 +364,7 @@ module Make_Fortran (Fermions : Fermions)
         "maximum # of continuation lines";
         "module", Arg.String (fun s -> module_name := s), "module name";
         "single_function", Arg.Unit (fun () -> output_mode := Single_Function),
-        "compute the matrix element(s) in a monolithis function";
+        "compute the matrix element(s) in a monolithic function";
         "split_function", Arg.Int (fun n -> output_mode := Single_Module n),
         "split the matrix element(s) into small functions [default, size = 10]";
         "split_module", Arg.Int (fun n -> output_mode := Single_File n),
@@ -1388,6 +1389,14 @@ i*)
               | (F12|F13) -> printf "v_t2v(%s,%s,%s)" c wf1 wf2
               | (F21|F31) -> printf "v_t2v(%s,%s,%s)" c wf2 wf1
               end
+
+          | Tensor_2_Vector_Vector_1 coeff -> 
+	      let c = format_coupling coeff c in 
+	      begin match fusion with 
+	      | (F23|F32) -> printf "t2_vv_1(%s,%s,%s)" c wf1 wf2 
+	      | (F12|F13) -> printf "v_t2v_1(%s,%s,%s)" c wf1 wf2 
+	      | (F21|F31) -> printf "v_t2v_1(%s,%s,%s)" c wf2 wf1 
+	      end
 
           | Dim5_Tensor_2_Vector_Vector_1 coeff ->
               let c = format_coupling coeff c in

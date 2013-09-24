@@ -1,10 +1,11 @@
-(* $Id: vertex.ml 4276 2013-05-14 14:58:35Z ohl $
+(* $Id: vertex.ml 4538 2013-08-23 16:09:06Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
@@ -20,6 +21,10 @@
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
+
+(* Start of version 1 of the new implementation.  The syntax
+   will not be used in the real implementation, but the library
+   for dealing with indices and permutations will remail important. *)
 
 type context =
     { arity : int;
@@ -800,6 +805,10 @@ module Test (M : Model.T) : Test =
       
   end
 
+(* End of version 1 of the new implementation. *)
+
+(* Start of the new implementation. *)
+
 let parse_string text =
   Vertex_syntax.File.expand_includes
     (fun file -> invalid_arg ("parse_string: found include `" ^ file ^ "'"))
@@ -1243,7 +1252,10 @@ module Model_Test =
                     \\index{\\alpha}\\lorentz{X}
                     \\vertex{\\bar{\\psi_e}_{a,\\alpha_1}
                              \\gamma^\\mu_{\\alpha_1\\alpha_2}
-                             {\\psi_e}_{a,\\alpha_2}A_\\mu}")) ]
+                             {\\psi_e}_{a,\\alpha_2}A_\\mu}"));
+	  "QCD.omf" >::
+	    (fun () ->
+	      ignore (parse_file "QCD.omf")) ]
 
   end
 

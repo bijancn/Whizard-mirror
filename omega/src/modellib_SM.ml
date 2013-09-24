@@ -1,10 +1,11 @@
-(* $Id: modellib_SM.ml 4283 2013-05-15 09:22:26Z jr_reuter $
+(* $Id: modellib_SM.ml 4538 2013-08-23 16:09:06Z jr_reuter $
 
    Copyright (C) 1999-2013 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
        Fabian Bach <fabian.bach@desy.de> (only parts of this file)
 
@@ -23,8 +24,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
-    { RCS.revision = "$Revision: 4283 $";
-      RCS.date = "$Date: 2013-05-15 11:22:26 +0200 (Wed, 15 May 2013) $";
+    { RCS.revision = "$Revision: 4538 $";
+      RCS.date = "$Date: 2013-08-23 18:09:06 +0200 (Fri, 23 Aug 2013) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_SM.ml $" }

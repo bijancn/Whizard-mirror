@@ -196,10 +196,32 @@ AC_SUBST(MAKEINDEX)
 
 dnl Checking for Metapost
 
-AC_DEFUN([AC_PROG_MPOST], [dnl
-AC_CHECK_PROGS(MPOST,[mpost metapost],no)
+AC_DEFUN([AC_PROG_MPOST], 
+[dnl
+  AC_CHECK_PROGS([MPOST],[mpost metapost],[no])
+  if test "$MPOST" != "no"; then        
+        MPOSTVERSIONSTR=`$MPOST -version | $GREP -i 'MetaPost' | head -1` 
+	MPOSTVERSION=[`echo $MPOSTVERSIONSTR | $SED -e 's/.*MetaPost \([0-9]*\.[0-9][0-9][0-9]*\).*/\1/'`]
+        AC_CACHE_VAL([wo_mpost_cv_integer_version],
+          [wo_mpost_cv_integer_version="`echo "$MPOSTVERSION" | \
+            $AWK 'NR==1 {
+              changequote(<<,>>)dnl
+                split (<<$>>1, version, "[.+]+");
+                printf ("%d%03d", version[1], version[2])}'`"
+              changequote([,])])
+        MPOSTINTEGERVERSION=$wo_mpost_cv_integer_version
+        AC_MSG_RESULT([MetaPost version is $MPOSTVERSION])
+	if test $MPOSTINTEGERVERSION -ge 1750; then
+           MPOSTFLAG="--math=scaled"
+	else
+	   MPOSTFLAG=""
+        fi
+  fi	
+AC_SUBST([MPOSTVERSION])
+AC_SUBST([MPOSTINTEGERVERSION])
 AM_CONDITIONAL([MPOST_AVAILABLE], [test "$MPOST" != "no"])
 AC_SUBST(MPOST)
+AC_SUBST(MPOSTFLAG)
 ])
 
 dnl Putting the above together, check possibilities for online event analysis
