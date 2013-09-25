@@ -35,7 +35,7 @@ let char = upper | lower
 let white = [' ' '\t' '\n']
 let pfx = '\\'
 
-let env_arg0 = "align" | "center"
+let env_arg0 = "align" | "center" | "omftable"
 let env_arg1 = "tabular"
 
 rule token = parse
