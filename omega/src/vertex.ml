@@ -906,6 +906,10 @@ module Parser_Test : Test =
       "electron2" >:::
 	[ "\\charged{e^-}{e^+}\\fortran{ele}" =>
 	  "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}";
+	  "\\charged{e^-}{e^+}\\fortran{electron}\\fortran{ele}" =>
+	  "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}";
+	  "\\charged{e^-}{e^+}\\alias{e2}\\alias{e1}" =>
+	  "\\charged{{e^-}}{{e^+}}\\alias{{e1}}\\alias{{e2}}";
 	  "\\charged{e^-}{e^+}\\fortran{ele}\\anti\\fortran{pos}" =>
 	  "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}\\anti\\fortran{{pos}}" ]
 

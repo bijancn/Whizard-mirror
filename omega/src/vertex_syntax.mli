@@ -133,6 +133,8 @@ module Expr :
 
   end
 
+module TLSet : Set.S with type elt = Token.t list
+
 module Particle :
   sig
 
@@ -143,8 +145,8 @@ module Particle :
     type attr =
     | TeX of Token.t list
     | TeX_Anti of Token.t list
-    | Alias of Token.t list
-    | Alias_Anti of Token.t list
+    | Aliases of TLSet.t
+    | Aliases_Anti of TLSet.t
     | Fortran of Token.t list
     | Fortran_Anti of Token.t list
     | Spin of Expr.t
@@ -157,6 +159,7 @@ module Particle :
       { name : name;
 	attr : attr list }
 
+    val cons_attr : attr -> attr list -> attr list
     val to_string : t -> string
 
   end
@@ -166,7 +169,7 @@ module Parameter :
 
     type attr =
     | TeX of Token.t list
-    | Alias of Token.t list
+    | Aliases of TLSet.t
     | Fortran of Token.t list
 
     type t' =
@@ -178,6 +181,7 @@ module Parameter :
     | Input of t'
     | Derived of t'
 
+    val cons_attr : attr -> attr list -> attr list
     val to_string : t -> string
 
   end
