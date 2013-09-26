@@ -78,9 +78,12 @@ rule token = parse
   | pfx "anti"        { ANTI }
   | pfx "tex"         { TEX }
   | pfx "fortran"     { FORTRAN }
+  | pfx "alias"       { ALIAS }
   | pfx "spin"        { SPIN }
   | pfx "color"       { COLOR }
   | pfx "charge"      { CHARGE }
+  | pfx "mass"        { MASS }
+  | pfx "width"       { WIDTH }
   | pfx "vertex"      { VERTEX }
   | pfx "index"       { INDEX }
   | pfx "tensor"      { TENSOR }
