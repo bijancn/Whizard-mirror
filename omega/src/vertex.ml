@@ -107,7 +107,9 @@ module Lorentz (* : Lorentz *) =
     let map_conjspinor fi ff (ConjSpinor i) = ConjSpinor (map_index fi ff i)
 
     let vector_ok context = function
-      | Vector (I _) -> true
+      | Vector (I _) ->
+	(* we could perfrom additional checks! *)
+	true
       | Vector (F i) ->
           begin
             match Field.get context.lorentz_reps i with
@@ -118,7 +120,9 @@ module Lorentz (* : Lorentz *) =
           end
       
     let spinor_ok context = function
-      | Spinor (I _) -> true
+      | Spinor (I _) ->
+	(* we could perfrom additional checks! *)
+	true
       | Spinor (F i) ->
           begin
             match Field.get context.lorentz_reps i with
@@ -129,7 +133,9 @@ module Lorentz (* : Lorentz *) =
           end
 
     let conjspinor_ok context = function
-      | ConjSpinor (I _) -> true
+      | ConjSpinor (I _) ->
+	(* we could perfrom additional checks! *)
+	true
       | ConjSpinor (F i) ->
           begin
             match Field.get context.lorentz_reps i with
@@ -275,11 +281,11 @@ module Lorentz (* : Lorentz *) =
         type t = int * int
 
 	type t' = 
-	| Z
-	| O
-	| M
-	| I
-	| J
+	| Z (* 0 *)
+	| O (* 1 *)
+	| M (* -1 *)
+	| I (* i *)
+	| J (* -i *)
 	| C of int * int
 
 	let to_fortran = function
@@ -844,6 +850,11 @@ let parse_file name =
     file_tree in
   Vertex_syntax.File.expand_includes parse_file_tree (parse_file_tree name)
 
+let dump_file pfx f =
+  List.iter
+    (fun s -> print_endline (pfx ^ ": " ^ s))
+    (Vertex_syntax.File.to_strings f)
+
 module Parser_Test : Test =
   struct
 
@@ -1255,7 +1266,10 @@ module Model_Test =
                              {\\psi_e}_{a,\\alpha_2}A_\\mu}"));
 	  "QCD.omf" >::
 	    (fun () ->
-	      ignore (parse_file "QCD.omf")) ]
+	      dump_file "QCD" (parse_file "QCD.omf"));
+	  "SM.omf" >::
+	    (fun () ->
+	      dump_file "SM" (parse_file "SM.omf")) ]
 
   end
 
