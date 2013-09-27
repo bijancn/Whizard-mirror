@@ -306,7 +306,7 @@ module Expr =
 
   end
 
-module TLSet = Set.Make (struct type t = Token.t list let compare = compare end)
+(*i module TLSet = Set.Make (struct type t = Token.t list let compare = compare end) i*)
 
 module Particle =
   struct
@@ -318,8 +318,8 @@ module Particle =
     type attr =
     | TeX of Token.t list
     | TeX_Anti of Token.t list
-    | Aliases of TLSet.t
-    | Aliases_Anti of TLSet.t
+    | Alias of Token.t list
+    | Alias_Anti of Token.t list
     | Fortran of Token.t list
     | Fortran_Anti of Token.t list
     | Spin of Expr.t
@@ -328,6 +328,7 @@ module Particle =
     | Mass of Token.t list
     | Width of Token.t list
 
+(*i
     (* Combine the sets of aliases and use the
        rightmost version of the other attributes.  *)
     let rec cons_attr a = function
@@ -348,6 +349,7 @@ module Particle =
 	| Mass tl, Mass tl' -> a' :: alist
 	| Width tl, Width tl' -> a' :: alist
 	| _, _ -> a' :: cons_attr a alist
+i*)
 
     type t =
       { name : name;
@@ -363,16 +365,8 @@ module Particle =
     let attr_to_string = function
       | TeX tl -> "\\tex{" ^ Token.list_to_string tl ^ "}"
       | TeX_Anti tl -> "\\anti\\tex{" ^ Token.list_to_string tl ^ "}"
-      | Aliases al ->
-	String.concat ""
-	  (List.map
-	     (fun tl -> "\\alias{" ^ Token.list_to_string tl ^ "}")
-	     (TLSet.elements al))
-      | Aliases_Anti al ->
-	String.concat ""
-	  (List.map
-	     (fun tl -> "\\anti\\alias{" ^ Token.list_to_string tl ^ "}")
-	     (TLSet.elements al))
+      | Alias tl -> "\\alias{" ^ Token.list_to_string tl ^ "}"
+      | Alias_Anti tl -> "\\anti\\alias{" ^ Token.list_to_string tl ^ "}"
       | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
       | Fortran_Anti tl -> "\\anti\\fortran{" ^ Token.list_to_string tl ^ "}"
       | Spin e -> "\\spin{" ^ Expr.to_string e ^ "}"
@@ -392,7 +386,7 @@ module Parameter =
 
     type attr =
     | TeX of Token.t list
-    | Aliases of TLSet.t
+    | Alias of Token.t list
     | Fortran of Token.t list
 
     type t' =
@@ -400,6 +394,7 @@ module Parameter =
 	value : Expr.t;
 	attr : attr list}
 
+(*i
     let rec cons_attr a = function
       | [] -> [a]
       | a' :: alist ->
@@ -409,6 +404,7 @@ module Parameter =
 	  Aliases (TLSet.union tl tl') :: alist
 	| Fortran tl, Fortran tl' -> a' :: alist
 	| _, _ -> a' :: cons_attr a alist
+i*)
 
     type t =
     | Input of t'
@@ -416,11 +412,7 @@ module Parameter =
 
     let attr_to_string = function
       | TeX tl -> "\\tex{" ^ Token.list_to_string tl ^ "}"
-      | Aliases al ->
-	String.concat ""
-	  (List.map
-	     (fun tl ->  "\\alias{" ^ Token.list_to_string tl ^ "}")
-	     (TLSet.elements al))
+      | Alias tl -> "\\alias{" ^ Token.list_to_string tl ^ "}"
       | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
 
     let to_string' p =

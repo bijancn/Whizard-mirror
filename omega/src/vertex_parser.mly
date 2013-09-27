@@ -29,7 +29,6 @@
 
 %{
 module T = Vertex_syntax.Token
-module S = Vertex_syntax.TLSet
 module E = Vertex_syntax.Expr
 module P = Vertex_syntax.Particle
 module V = Vertex_syntax.Parameter
@@ -114,12 +113,12 @@ token_list_arg_pair:
 
 particle_attributes:
  |                                        { [ ] }
- | particle_attribute particle_attributes { P.cons_attr $1 $2 }
+ | particle_attribute particle_attributes { $1 :: $2 }
 ;
 
 particle_attribute:
- |      ALIAS   token_list_arg   { P.Aliases (S.singleton $2) }
- | ANTI ALIAS   token_list_arg   { P.Aliases_Anti (S.singleton $3) }
+ |      ALIAS   token_list_arg   { P.Alias $2 }
+ | ANTI ALIAS   token_list_arg   { P.Alias $3 }
  |      TEX     token_list_arg   { P.TeX $2 }
  | ANTI TEX     token_list_arg   { P.TeX_Anti $3 }
  |      FORTRAN token_list_arg   { P.Fortran $2 }
@@ -140,11 +139,11 @@ parameter:
 
 parameter_attributes:
  |                                          { [ ] }
- | parameter_attribute parameter_attributes { V.cons_attr $1 $2 }
+ | parameter_attribute parameter_attributes { $1 :: $2 }
 ;
 
 parameter_attribute:
- | ALIAS   token_list_arg { V.Aliases (S.singleton $2) }
+ | ALIAS   token_list_arg { V.Alias $2 }
  | TEX     token_list_arg { V.TeX $2 }
  | FORTRAN token_list_arg { V.Fortran $2 }
  | ANTI                   { invalid_parameter_attr () }
