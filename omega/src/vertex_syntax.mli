@@ -253,6 +253,10 @@ module Tensor :
 
   end
 
+(* The representation of a file, immediately after lexical
+   and syntactical analysis and before any type checking
+   or semantic analysis. *)
+
 module File_Tree :
   sig
 
@@ -269,6 +273,9 @@ module File_Tree :
     val empty : t
 
   end
+
+(* A linear file, just like [File_Tree], but with all
+   the \verb+\include+ statements expanded. *)
 
 module File :
   sig
