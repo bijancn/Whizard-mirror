@@ -1,6 +1,6 @@
 (* $Id: omega_SM_QCD.ml 2948 2010-12-24 03:25:57Z jr_reuter $
 
-   Copyright (C) 1999-2013 by
+   Copyright (C) 1999-2014 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>

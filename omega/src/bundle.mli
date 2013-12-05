@@ -1,6 +1,6 @@
-(* $Id: bundle.mli 4073 2013-02-12 13:42:18Z fbach $
+(* $Id: bundle.mli 4926 2013-12-04 12:35:06Z jr_reuter $
 
-   Copyright (C) 1999-2013 by
+   Copyright (C) 1999-2014 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>

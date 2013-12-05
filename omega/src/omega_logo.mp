@@ -1,6 +1,6 @@
-% $Id: omega_logo.mp 4015 2013-01-03 16:04:18Z jr_reuter $
+% $Id: omega_logo.mp 4926 2013-12-04 12:35:06Z jr_reuter $
 %
-%  Copyright (C) 1999-2013 by 
+%  Copyright (C) 1999-2014 by 
 %
 %      Wolfgang Kilian <kilian@physik.uni-siegen.de>
 %      Thorsten Ohl <ohl@physik.uni-wuerzburg.de>

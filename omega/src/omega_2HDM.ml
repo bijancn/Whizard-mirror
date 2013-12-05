@@ -1,6 +1,6 @@
-(* $Id: omega_2HDM.ml 4561 2013-08-29 12:37:37Z jr_reuter $
+(* $Id: omega_2HDM.ml 4926 2013-12-04 12:35:06Z jr_reuter $
 
-   Copyright (C) 1999-2013 by
+   Copyright (C) 1999-2014 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>

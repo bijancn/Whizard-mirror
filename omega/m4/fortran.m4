@@ -120,21 +120,13 @@ esac
 FC_VERSION="$wo_cv_fc_version"
 AC_SUBST([FC_VERSION])
 
-### Catch insufficient object-orientation in gfortran 4.5.x
-if test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.5.0" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.5.1" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.5.2" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.5.3" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.5.4"; then
-FC_IS_GFORTRAN_45="yes"  
+### Catch insufficient object-orientation in gfortran 4.5/4.6
+if test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.5.0" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.5.1" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.5.2" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.5.3" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.5.4" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.6.0" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.6.1" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.6.2" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.6.3" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.6.4"; then
+FC_IS_GFORTRAN_456="yes"  
   else
-FC_IS_GFORTRAN_45="no"
+FC_IS_GFORTRAN_456="no"
 fi
-AC_SUBST([FC_IS_GFORTRAN_45])
-
-### Catch buggy object-orientation in gfortran 4.6.0,1,2
-if test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.6.0" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.6.1" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.6.2"; then
-FC_IS_GFORTRAN_46012="yes"  
-  else
-FC_IS_GFORTRAN_46012="no"
-fi
-AC_SUBST([FC_IS_GFORTRAN_46012])
+AC_SUBST([FC_IS_GFORTRAN_456])
 
 AC_CACHE_CHECK([the major version],
 [wo_cv_fc_major_version],
@@ -145,21 +137,11 @@ AC_SUBST([FC_MAJOR_VERSION])
 ])
 ### end WO_FC_GET_VENDOR_AND_VERSION
 
-AC_DEFUN([WO_FC_VETO_GFORTRAN_45],
+AC_DEFUN([WO_FC_VETO_GFORTRAN_456],
 [dnl
-if test "$FC_IS_GFORTRAN_45" = "yes"; then
+if test "$FC_IS_GFORTRAN_456" = "yes"; then
 AC_MSG_NOTICE([error: ***************************************************************])
-AC_MSG_NOTICE([error: gfortran 4.5.x object orientation support insufficient.])
-AC_MSG_ERROR([***************************************************************])
-fi 
-])
-
-AC_DEFUN([WO_FC_VETO_GFORTRAN_46012],
-[dnl
-if test "$FC_IS_GFORTRAN_46012" = "yes"; then
-AC_MSG_NOTICE([error: ***************************************************************])
-AC_MSG_NOTICE([error: gfortran 4.6.{0,1,2} are too buggy, we don't support them.     ])
-AC_MSG_NOTICE([error: Please upgrade to at least 4.6.3 or a newer release series.    ])
+AC_MSG_NOTICE([error: gfortran 4.5/4.6 object orientation support insufficient.])
 AC_MSG_ERROR([***************************************************************])
 fi 
 ])

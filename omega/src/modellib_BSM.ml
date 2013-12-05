@@ -1,6 +1,6 @@
-(* $Id: modellib_BSM.ml 4666 2013-09-23 15:29:20Z ohl $
+(* $Id: modellib_BSM.ml 4926 2013-12-04 12:35:06Z jr_reuter $
 
-   Copyright (C) 1999-2013 by
+   Copyright (C) 1999-2014 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -25,9 +25,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_BSM" ["BSM Models"]
-    { RCS.revision = "$Revision: 4666 $";
-      RCS.date = "$Date: 2013-09-23 17:29:20 +0200 (Mon, 23 Sep 2013) $";
-      RCS.author = "$Author: ohl $";
+    { RCS.revision = "$Revision: 4926 $";
+      RCS.date = "$Date: 2013-12-04 13:35:06 +0100 (Wed, 04 Dec 2013) $";
+      RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_BSM.ml $" }
 
@@ -7433,6 +7433,8 @@ module VBS (Flags : VBS_flags) =
         "3rd Generation", ThoList.flatmap family [3; -3];
         "Gauge Bosons", List.map gauge_boson [Ga; Z; Wp; Wm; Gl];
         "Higgs", List.map other [H];
+	"Scalar Resonances", List.map other [Rsigma; Rphin; Rphip; Rphim; Rphipp; Rphimm];
+	"Tensor Resonances", List.map other [Rf; Rtn; Rtp; Rtm; Rtpp; Rtmm];
         "Goldstone Bosons", List.map other [Phip; Phim; Phi0] ]
 
     let flavors () = List.append

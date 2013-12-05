@@ -1,6 +1,6 @@
-(* $Id: ogiga.ml 4538 2013-08-23 16:09:06Z jr_reuter $
+(* $Id: ogiga.ml 4926 2013-12-04 12:35:06Z jr_reuter $
 
-   Copyright (C) 1999-2013 by
+   Copyright (C) 1999-2014 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -32,8 +32,8 @@
    \end{dubious} *)
 
 let rcs = RCS.parse "Ogiga" ["Graphical User Interface"]
-    { RCS.revision = "$Revision: 4538 $";
-      RCS.date = "$Date: 2013-08-23 18:09:06 +0200 (Fri, 23 Aug 2013) $";
+    { RCS.revision = "$Revision: 4926 $";
+      RCS.date = "$Date: 2013-12-04 13:35:06 +0100 (Wed, 04 Dec 2013) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/ogiga.ml $" }

@@ -1,6 +1,6 @@
-(* $Id: modellib_PSSSM.ml 4193 2013-04-20 09:46:00Z jr_reuter $
+(* $Id: modellib_PSSSM.ml 4926 2013-12-04 12:35:06Z jr_reuter $
 
-   Copyright (C) 1999-2013 by
+   Copyright (C) 1999-2014 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -22,8 +22,8 @@
 
 
 let rcs_file = RCS.parse "Modellib_PSSSM" ["Extended SUSY models"]
-    { RCS.revision = "$Revision: 4193 $";
-      RCS.date = "$Date: 2013-04-20 11:46:00 +0200 (Sat, 20 Apr 2013) $";
+    { RCS.revision = "$Revision: 4926 $";
+      RCS.date = "$Date: 2013-12-04 13:35:06 +0100 (Wed, 04 Dec 2013) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_PSSSM.ml $" }

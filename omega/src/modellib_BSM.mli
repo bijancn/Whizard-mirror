@@ -1,6 +1,6 @@
-(* $Id: modellib_BSM.mli 4662 2013-09-23 13:21:34Z msekulla $
+(* $Id: modellib_BSM.mli 4926 2013-12-04 12:35:06Z jr_reuter $
 
-   Copyright (C) 1999-2013 by
+   Copyright (C) 1999-2014 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>

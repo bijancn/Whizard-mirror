@@ -5,7 +5,7 @@ dnl Process this file with autoconf to produce a configure script.
 dnl
 dnl ************************************************************************
 dnl 
-dnl Copyright (C) 1999-2013 by 
+dnl Copyright (C) 1999-2014 by 
 dnl     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 dnl     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 dnl     Juergen Reuter <juergen.reuter@desy.de>
@@ -35,7 +35,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl 
 dnl *********************************************************************** 
 
-AC_INIT([omega],[2.2.0_alpha-2])
+AC_INIT([omega],[2.2.0_beta])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 
@@ -48,8 +48,8 @@ AM_MAKE_INCLUDE
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Oct 02 2013"
-PACKAGE_STATUS="alpha"
+PACKAGE_DATE="Jan 15 2014"
+PACKAGE_STATUS="beta"
 
 AC_SUBST(PACKAGE_DATE)
 AC_SUBST(PACKAGE_STATUS)
