@@ -300,29 +300,28 @@ i*)
                 (F.forest (List.hd (F.externals amplitude)) amplitude))
             (CF.processes amplitudes);
 
-(*i HACK: DIAGNOSTICS TEMPORARYLY DISABLED!!!
         begin match !feynmf with
         | Some name ->
             let fmf wf =
               { Tree.style =
-                begin match M.propagator (F.flavor wf) with
+                begin match M.propagator (F.flavor_sans_color wf) with
                 | Coupling.Prop_Feynman
-                | Coupling.Prop_Gauge _ -> Some "photon"
+                | Coupling.Prop_Gauge _ -> Some ("photon", "")
                 | Coupling.Prop_Unitarity
-                | Coupling.Prop_Rxi _ -> Some "double"
+                | Coupling.Prop_Rxi _ -> Some ("double", "")
                 | Coupling.Prop_Spinor
-                | Coupling.Prop_ConjSpinor -> Some "fermion"
+                | Coupling.Prop_ConjSpinor -> Some ("fermion", "")
                 | _ -> None
                 end;
                 Tree.rev =
-                begin match M.propagator (F.flavor wf) with
+                begin match M.propagator (F.flavor_sans_color wf) with
                 | Coupling.Prop_Spinor -> false
                 | Coupling.Prop_ConjSpinor -> true
                 | _ -> false
                 end;
                 Tree.label = None;
                 Tree.tension = None } in
-            let a = CF.processes amplitudes in
+            let a = List.hd (CF.processes amplitudes) in
             let wf1 = List.hd (F.externals a)
             and wf2 = List.hd (List.tl (F.externals a)) 
             in
@@ -331,11 +330,12 @@ i*)
                  (F.forest wf1 a))
         | None -> ()
         end;
-HACK: DIAGNOSTICS TEMPORARYLY DISABLED!!! i*)
+
         begin match !output_file with
         | None -> ()
         | Some name -> close_out output_channel
         end;
+
         exit 0
 
       end
