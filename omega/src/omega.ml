@@ -321,13 +321,15 @@ i*)
                 end;
                 Tree.label = None;
                 Tree.tension = None } in
-            let a = List.hd (CF.processes amplitudes) in
-            let wf1 = List.hd (F.externals a)
-            and wf2 = List.hd (List.tl (F.externals a)) 
-            in
-            Tree.to_feynmf feynmf_tex name variable' wf2
-              (List.map (Tree.map (fun (n, _) -> fmf n) (fun l -> l))
-                 (F.forest wf1 a))
+            List.iter
+              (fun a ->
+                match F.externals a with
+                | wf1 :: wf2 :: _ ->
+                    Tree.to_feynmf feynmf_tex name variable' wf2
+                      (List.map (Tree.map (fun (n, _) -> fmf n) (fun l -> l))
+                         (F.forest wf1 a))
+                | _ -> ())
+              (CF.processes amplitudes)
         | None -> ()
         end;
 

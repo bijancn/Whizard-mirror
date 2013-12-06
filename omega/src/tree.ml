@@ -393,14 +393,13 @@ let to_feynmf_channel tex to_string i2 t =
 let to_feynmf latex file to_string i2 t =
   if !latex then
     let tex = open_out (file ^ ".tex") in
-    fprintf tex "\\documentclass[10pt]{article} \n";
-    fprintf tex "\\usepackage{feynmp} \n\n";
-    fprintf tex "\\textwidth 18.5cm\n";
-    fprintf tex "\\evensidemargin -1.5cm \n";
-    fprintf tex "\\oddsidemargin -1.5cm \n\n";
-    fprintf tex "\\setlength{\\unitlength}{1mm} \n\n";
-    fprintf tex "\\begin{document} \n";
-    fprintf tex "\\begin{fmffile}{%s.fmf} \n\n" file;
+    fprintf tex "\\documentclass[10pt]{article}\n";
+    fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
+    fprintf tex "\\usepackage{feynmp}\n";
+    fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
+    fprintf tex "\\setlength{\\unitlength}{1mm}\n";
+    fprintf tex "\\begin{document}\n";
+    fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
     List.iter (to_feynmf_channel tex to_string i2) t;
     fprintf tex "\n";   
     fprintf tex "\\end{fmffile} \n";
