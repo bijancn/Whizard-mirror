@@ -246,9 +246,12 @@ let species prop = fst (style prop)
 let tex_lbl prop = snd (style prop)
 
 let leaf_label tex io leaf lab = function
-  | None -> fprintf tex "    \\fmflabel{$%s$}{%s%s}\n" lab io leaf 
+  | None -> fprintf tex "    \\fmflabel{${%s}$}{%s%s}\n" lab io leaf 
   | Some s ->
-      fprintf tex "    \\fmflabel{$%s{}^{(%s)}$}{%s%s}\n" s lab io leaf
+      fprintf tex "    \\fmflabel{${%s{}^{(%s)}}$}{%s%s}\n" s lab io leaf
+
+let leaf_label tex io leaf lab label =
+  ()
 
 (* We try to draw diagrams more symmetrically by reducing the tension
    on the outgoing external lines.
@@ -275,11 +278,11 @@ let rec leaf_node tex to_string i2 n prop leaf =
 and int_node tex to_string i2 n n' prop t =
   if prop.rev then
     fprintf tex 
-      "    \\fmf{%s,label=\\begin{scriptsize}$%s$\\end{scriptsize}}{v%d,v%d}\n" 
+      "    \\fmf{%s,label=\\begin{scriptsize}${%s}$\\end{scriptsize}}{v%d,v%d}\n" 
       (species prop) (tex_lbl prop) n' n
   else
     fprintf tex 
-      "    \\fmf{%s,label=\\begin{scriptsize}$%s$\\end{scriptsize}}{v%d,v%d}\n" 
+      "    \\fmf{%s,label=\\begin{scriptsize}${%s}$\\end{scriptsize}}{v%d,v%d}\n" 
       (species prop) (tex_lbl prop) n n';
   fprintf tex "    \\fmfdot{v%d,v%d}\n" n n';
   edges_feynmf' tex to_string i2 n' t
@@ -315,13 +318,13 @@ let to_feynmf_channel tex to_string i2 t =
   let out = List.map to_string (List.filter (fun a -> i2 <> a) (leafs t')) in
   fprintf tex "\\fmfframe(6,7)(6,6){%%\n";
   fprintf tex "  \\begin{fmfgraph*}(35,30)\n";
-  fprintf tex "   \\fmfpen{.1pt}\n";
+  fprintf tex "   \\fmfpen{thin}\n";
   fprintf tex "   \\fmfset{arrow_len}{2mm}\n";
   fprintf tex "    \\fmfleft{i1,i%s}\n" (to_string i2);
   fprintf tex "    \\fmfright{o%s}\n" (String.concat ",o" out);
-  List.iter (fun s -> fprintf tex "    \\fmflabel{$%s$}{i%s}\n" s s)
+  List.iter (fun s -> fprintf tex "    \\fmflabel{${%s}$}{i%s}\n" s s)
     ["1"; (to_string i2)];
-  List.iter (fun s -> fprintf tex "    \\fmflabel{$%s$}{o%s}\n" s s) out;
+  List.iter (fun s -> fprintf tex "    \\fmflabel{${%s}$}{o%s}\n" s s) out;
   edges_feynmf tex to_string i2 t';
   fprintf tex "  \\end{fmfgraph*}}\n"
 

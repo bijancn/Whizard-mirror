@@ -306,9 +306,9 @@ i*)
               { Tree.style =
                 begin match M.propagator (F.flavor_sans_color wf) with
                 | Coupling.Prop_Feynman
-                | Coupling.Prop_Gauge _ -> Some ("photon", "")
+                | Coupling.Prop_Gauge _ -> Some ("boson", "")
                 | Coupling.Prop_Unitarity
-                | Coupling.Prop_Rxi _ -> Some ("double", "")
+                | Coupling.Prop_Rxi _ -> Some ("dbl_wiggly", "")
                 | Coupling.Prop_Spinor
                 | Coupling.Prop_ConjSpinor -> Some ("fermion", "")
                 | _ -> None
