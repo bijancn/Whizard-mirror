@@ -227,18 +227,51 @@ module type T =
    enlarged by all nodes in [dag] reachable from [n].  *)
     val harvest : t -> node -> t -> t
 
-(* [size dag] returns the number of nodes in the DAG [dag]. *)
-    val size : t -> int
-
-(* [eval f mul_edge mul_nodes add null unit root dag] *)
-    val eval : (node -> 'a) -> (node -> edge -> 'b -> 'c) ->
-      ('a -> 'b -> 'b) -> ('c -> 'a -> 'a) -> 'a -> 'b -> node -> t -> 'a
-    val eval_memoized : (node -> 'a) -> (node -> edge -> 'b -> 'c) ->
-      ('a -> 'b -> 'b) -> ('c -> 'a -> 'a) -> 'a -> 'b -> node -> t -> 'a
-
 (* [harvest_list dag nlist] returns the part of the DAG [dag]
    that is reachable from the nodes in [nlist]. *)
     val harvest_list : t -> node list -> t
+
+(* [size dag] returns the number of nodes in the DAG [dag]. *)
+    val size : t -> int
+
+(* [eval f mul_edge mul_nodes add null unit root dag]
+   interprets the part of [dag] beneath [root] as an algebraic
+   expression:
+   \begin{itemize}
+     \item each node is evaluated by [f: node -> 'a]
+     \item each set of children is evaluated by iterating the
+       binary
+       [mul_nodes: 'a -> 'c -> 'c] on the values of the nodes,
+       starting from [unit: 'c]
+     \item each offspring relation $(node, (edge, children))$
+       is evaluated by applying
+       [mul_edge: node -> edge -> 'c -> 'd] to [node], [edge]
+       and the evaluation of [children].
+     \item all offspring relations of a [node] are combined by
+       iterating the binary 
+       [add: 'd -> 'a -> 'a] starting from [null: 'a]
+   \end{itemize}
+   In our applications, we will always have ['a = 'c = 'd], but
+   the more general type is useful for documenting the relationships.
+   The memoizing variant
+   [eval_memoized f mul_edge mul_nodes add null unit root dag] 
+   requires some overhead, but can be more efficient for
+   complex operations. *)
+    val eval : (node -> 'a) -> (node -> edge -> 'c -> 'd) ->
+      ('a -> 'c -> 'c) -> ('d -> 'a -> 'a) -> 'a -> 'c -> node -> t -> 'a
+    val eval_memoized : (node -> 'a) -> (node -> edge -> 'c -> 'd) ->
+      ('a -> 'c -> 'c) -> ('d -> 'a -> 'a) -> 'a -> 'c -> node -> t -> 'a
+
+(* [forest root dag] expands the [dag] beneath [root] into the
+   equivalent list of trees [Tree.t].  [children] are represented
+   as list of nodes.
+   \begin{dubious}
+     A sterile node~[n] is represented as [Tree.Leaf ((n, None), n)],
+     cf.~page~\pageref{Tree.Leaf}.  There might be a better way, but
+     we need to change the interface and semantics of [Tree] for this.
+   \end{dubious} *)
+    val forest : node -> t -> (node * edge option, node) Tree.t list
+    val forest_memoized : node -> t -> (node * edge option, node) Tree.t list
 
 (* [count_trees n dag] returns the number of trees with root [n] encoded
     in the DAG [dag], i.\,e.~$|T(n,D)|$.  NB: the current
@@ -246,10 +279,6 @@ module type T =
     time for moderately sized DAGs that encode a large set of
     trees. *)
     val count_trees : node -> t -> int
-
-(* [forest root dag] *)
-    val forest : node -> t -> (node * edge option, node) Tree.t list
-    val forest_memoized : node -> t -> (node * edge option, node) Tree.t list
 
     val rcs : RCS.t
    end

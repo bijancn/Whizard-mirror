@@ -71,15 +71,15 @@ module type T =
     val lists : t -> (node * (edge * children) list) list
     val dependencies : t -> node -> (node, edge) Tree2.t
     val harvest : t -> node -> t -> t
-    val size : t -> int
-    val eval : (node -> 'a) -> (node -> edge -> 'b -> 'c) ->
-      ('a -> 'b -> 'b) -> ('c -> 'a -> 'a) -> 'a -> 'b -> node -> t -> 'a
-    val eval_memoized : (node -> 'a) -> (node -> edge -> 'b -> 'c) ->
-      ('a -> 'b -> 'b) -> ('c -> 'a -> 'a) -> 'a -> 'b -> node -> t -> 'a
     val harvest_list : t -> node list -> t
-    val count_trees : node -> t -> int
+    val size : t -> int
+    val eval : (node -> 'a) -> (node -> edge -> 'c -> 'd) ->
+      ('a -> 'c -> 'c) -> ('d -> 'a -> 'a) -> 'a -> 'c -> node -> t -> 'a
+    val eval_memoized : (node -> 'a) -> (node -> edge -> 'c -> 'd) ->
+      ('a -> 'c -> 'c) -> ('d -> 'a -> 'a) -> 'a -> 'c -> node -> t -> 'a
     val forest : node -> t -> (node * edge option, node) Tree.t list
     val forest_memoized : node -> t -> (node * edge option, node) Tree.t list
+    val count_trees : node -> t -> int
     val rcs : RCS.t
    end
 

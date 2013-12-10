@@ -28,20 +28,31 @@
 (* \thocwmodulesection{Abstract Data Type} *)
 type ('n, 'l) t
 
-(* [leaf n l] returns a tree consisting of a single leaf of type [n]
-   connected to [l]. *)
+(* [leaf n l] returns a tree consisting of a single leaf node
+   of type [n] with a label [l]. *)
 val leaf : 'n -> 'l -> ('n, 'l) t
 
 (* [cons n ch] returns a tree node. *)
 val cons : 'n -> ('n, 'l) t list -> ('n, 'l) t
 
+(* Note that [cons node []] constructs a terminal node, but
+   \emph{not} a leaf, since the latter \emph{must} have a label!
+   \begin{dubious}
+     \label{Tree.Leaf}
+     This approach was probably tailored to Feynman diagrams,
+     where we have external propagators as nodes with additional
+     labels (cf.~the function [to_feynmf] on page~\pageref{Tree.to_feynmf}
+     below). I'm not so sure anymore that this was a good choice.
+   \end{dubious} *)
+
 (* [node t] returns the top node of the tree [t]. *)
 val node : ('n, 'l) t -> 'n
 
-(* [leafs t] returns a list of all leafs \textit{in order}. *)
+(* [leafs t] returns a list of all leaf labels \textit{in order}. *)
 val leafs : ('n, 'l) t -> 'l list
 
-(* [nodes t] returns a list of all nodes in post-order. This guarantees
+(* [nodes t] returns a list of all nodes that are not leafs
+   in post-order. This guarantees
    that the root node can be stripped from the result by [List.tl]. *)
 val nodes :  ('n, 'l) t -> 'n list
 
@@ -83,6 +94,7 @@ val sty : (string * string) * bool * string -> feynmf
    list~[t] to the file named~[file].  The leaf~[i2] is used as
    the second incoming particle and~[to_string] is use to convert
    leaf labels to \LaTeX-strings. *)
+(* \label{Tree.to_feynmf} *)
 val to_feynmf : bool ref -> string -> ('l -> string) -> 'l -> (feynmf, 'l) t list -> unit
 
 (* \thocwmodulesubsection{Least Squares Layout} *)
