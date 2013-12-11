@@ -1,4 +1,4 @@
-(* $Id: dAG.ml 4926 2013-12-04 12:35:06Z jr_reuter $
+(* $Id: dAG.ml 4983 2013-12-11 16:46:32Z ohl $
 
    Copyright (C) 1999-2014 by
 
@@ -23,9 +23,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "DAG" ["Directed Acyclical Graph"]
-    { RCS.revision = "$Revision: 4926 $";
-      RCS.date = "$Date: 2013-12-04 13:35:06 +0100 (Wed, 04 Dec 2013) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 4983 $";
+      RCS.date = "$Date: 2013-12-11 17:46:32 +0100 (Wed, 11 Dec 2013) $";
+      RCS.author = "$Author: ohl $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/dAG.ml $" }
 
