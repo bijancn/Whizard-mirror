@@ -402,6 +402,8 @@ let to_feynmf latex file to_string sets =
     fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
     fprintf tex "\\setlength{\\unitlength}{1mm}\n";
     fprintf tex "\\setlength{\\parindent}{0pt}\n";
+    fprintf tex
+      "\\renewcommand{\\mathstrut}{\\protect\\vphantom{\\hat{0123456789}}}\n";
     fprintf tex "\\begin{document}\n";
     fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
     List.iter

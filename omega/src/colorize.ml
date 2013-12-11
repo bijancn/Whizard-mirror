@@ -248,13 +248,15 @@ module It (M : Model.T) =
       | White f ->
           M.flavor_to_TeX f
       | CF_in (f, c) ->
-          "{" ^ M.flavor_to_TeX f ^ "}_c" ^ string_of_int c
+          "{" ^ M.flavor_to_TeX f ^ "}_{\\mathstrut " ^ string_of_int c ^ "}"
       | CF_out (f, c) ->
-          "{" ^ M.flavor_to_TeX f ^ "}_a" ^ string_of_int c
+          "{" ^ M.flavor_to_TeX f ^ "}_{\\mathstrut\\overline{" ^
+          string_of_int c ^ "}}"
       | CF_io (f, c1, c2) ->
-          "{" ^ M.flavor_to_TeX f ^ "}_c" ^ string_of_int c1 ^ string_of_int c2
+          "{" ^ M.flavor_to_TeX f ^ "}_{\\mathstrut " ^
+          string_of_int c1 ^ "\\overline{" ^ string_of_int c2 ^ "}}"
       | CF_aux f ->
-          "{" ^ M.flavor_to_TeX f ^ "}_0"
+          "{" ^ M.flavor_to_TeX f ^ "}_{\\mathstrut 0}"
 
     let flavor_symbol = function
       | White f ->

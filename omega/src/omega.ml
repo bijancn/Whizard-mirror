@@ -318,14 +318,23 @@ i*)
                 Tree.label = None;
                 Tree.tension = None } in
             Tree.to_feynmf feynmf_tex name variable'
-              (List.map
-                 (fun a ->
+              (List.fold_left
+                 (fun acc a ->
                    match F.externals a with
-                   | wf1 :: wf2 :: _ ->
-                       ("???", wf1, wf2,
+                   | wf1 :: wf2 :: wfs ->
+                       ("$ " ^
+                        CM.flavor_to_TeX (F.flavor wf1) ^ " " ^
+                        CM.flavor_to_TeX (F.flavor wf2) ^ " \\to " ^
+                        String.concat " "
+                          (List.map
+                             (fun wf -> CM.flavor_to_TeX (F.flavor wf))
+                             wfs) ^
+                        " $",
+                        wf1, wf2,
                         (List.map (Tree.map (fun (n, _) -> fmf n) (fun l -> l))
-                           (F.forest wf1 a))))
-                 (CF.processes amplitudes))
+                           (F.forest wf1 a))) :: acc
+                   | _ -> acc)
+                 [] (CF.processes amplitudes))
         | None -> ()
         end;
 
