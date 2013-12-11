@@ -343,6 +343,8 @@ module It (M : Model.T) =
           Dim6_Vector_Vector_Vector_T (x * c)
       | Tensor_2_Vector_Vector c ->
           Tensor_2_Vector_Vector (x * c)
+      | Tensor_2_Vector_Vector_1 c ->
+          Tensor_2_Vector_Vector_1 (x * c)
       | Dim5_Tensor_2_Vector_Vector_1 c ->
           Dim5_Tensor_2_Vector_Vector_1 (x * c)
       | Dim5_Tensor_2_Vector_Vector_2 c ->

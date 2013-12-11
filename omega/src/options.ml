@@ -37,6 +37,9 @@ let extend old options =
 
 let create = extend empty
 
+let merge o1 o2 =
+  extend o1 o2.raw
+
 exception Invalid of string * string
 
 let parse options (name, value) =

@@ -22,6 +22,9 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
+let (<<) f g x = f (g x)
+let (>>) f g x = g (f x)
+
 module P = Momentum.Default
 module P_Whizard = Momentum.DefaultW
 
@@ -327,7 +330,7 @@ i*)
                         CM.flavor_to_TeX (F.flavor wf2) ^ " \\to " ^
                         String.concat " "
                           (List.map
-                             (fun wf -> CM.flavor_to_TeX (F.flavor wf))
+                             (CM.flavor_to_TeX << CM.conjugate << F.flavor)
                              wfs) ^
                         " $",
                         [wf1; wf2],

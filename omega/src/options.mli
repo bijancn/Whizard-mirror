@@ -24,6 +24,7 @@
 
 type t
 val empty : t
+val merge : t -> t -> t
 val extend : t -> (string * Arg.spec * string) list -> t
 val create : (string * Arg.spec * string) list -> t
 val parse : t -> string * string -> unit

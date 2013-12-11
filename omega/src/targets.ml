@@ -169,8 +169,8 @@ module Fortran_Fermions : Fermions =
           let func_name = (String.sub s 0 offset) and
 	      tail =
 	    (String.sub s (succ offset) (String.length s - offset - 2)) in 
-          if (String.contains func_name ')') or 
-	    (String.contains tail '(') or 
+          if (String.contains func_name ')') ||
+	    (String.contains tail '(') || 
             (String.contains tail ')') then
             failwith "fastener: wrong usage of parentheses"
           else      
@@ -450,7 +450,7 @@ module Make_Fortran (Fermions : Fermions)
     let openmp_tld = "tld"
 
     let flavors_symbol ?(decl = false) flavors =
-      (if !openmp & not decl then openmp_tld ^ "%" else "" ) ^
+      (if !openmp && not decl then openmp_tld ^ "%" else "" ) ^
       "oks_" ^ String.concat "" (List.map CM.flavor_symbol flavors)
 
     let p2s p =
@@ -481,7 +481,7 @@ module Make_Fortran (Fermions : Fermions)
       | Some tag -> name ^ "_" ^ tag
 
     let variable ?(decl = false) wf =
-      (if !openmp & not decl then openmp_tld ^ "%" else "")
+      (if !openmp && not decl then openmp_tld ^ "%" else "")
       ^ add_tag wf ("owf_" ^ CM.flavor_symbol (F.flavor wf) ^ "_" ^ format_p wf)
 
     let momentum wf = "p" ^ format_p wf
@@ -2270,7 +2270,7 @@ i*)
       | None -> "F"
 
     let print_flavor_color_table_old abbrev n_flv n_cflow table =
-      if n_flv <= 0 or n_cflow <= 0 then begin
+      if n_flv <= 0 || n_cflow <= 0 then begin
         printf "  @[<2>logical, dimension(n_flv, n_cflow) ::";
         printf "@ flv_col_is_allowed"; nl ()
       end else begin
@@ -3234,8 +3234,8 @@ module Fortran_Majorana_Fermions : Fermions =
           let func_name = (String.sub s 0 offset) and
 	      tail =
 	    (String.sub s (succ offset) (String.length s - offset - 2)) in 
-          if (String.contains func_name ')') or 
-	    (String.contains tail '(') or 
+          if (String.contains func_name ')') || 
+	    (String.contains tail '(') ||
             (String.contains tail ')') then
             failwith "fastener: wrong usage of parentheses"
           else      

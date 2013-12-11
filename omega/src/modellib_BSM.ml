@@ -6065,7 +6065,7 @@ module Threeshl (Module_options: Threeshl_options) =
       let g_wwz kk1 kk2 = G_wwz (kk1, kk2)
       let g_wwzz kk1 kk2 = G_wwzz (kk1, kk2)
       let g_wwza kk1 kk2 = G_wwza (kk1, kk2)
-      let g_wwww nhw = if (nhw >= 0) & (nhw <= 4) then G_wwww nhw
+      let g_wwww nhw = if (nhw >= 0) && (nhw <= 4) then G_wwww nhw
             else failwith (modname ^ ".g_wwww: invalid integer, very bad")
 
       (* Build a list of the different constants *)
@@ -6441,7 +6441,7 @@ module Threeshl (Module_options: Threeshl_options) =
             (fspec_of_kk2 kk2) ^ ")"
          | G_wwza (kk1, kk2) -> "g_wwza(" ^(fspec_of_kk2 kk1) ^ c ^
             (fspec_of_kkmode kk2) ^ ")"
-         | G_wwww nhw -> if (0 <= nhw) & (nhw <= 4) then
+         | G_wwww nhw -> if (0 <= nhw) && (nhw <= 4) then
             "g_wwww(" ^ (string_of_int nhw) ^ ")"
             else failwith "Modules4.Threeshl.constant_symbol: invalid int for G_wwww; very bad"
 

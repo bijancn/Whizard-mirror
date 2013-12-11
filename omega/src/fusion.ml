@@ -226,7 +226,7 @@ module type Tags =
     val fuse : coupling -> wf children -> wf
     val wf_to_string : wf -> string option
     val coupling_to_string : coupling -> string option
-  end
+   end
 
 module type Tagger =
     functor (PT : Tuple.Poly) -> Tags with type 'a children = 'a PT.t
