@@ -38,10 +38,6 @@ module type T =
 module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Model.T) =
   struct
 
-(* \begin{dubious}
-     [max_lines = 8] is plenty, since amplitudes with 8 gluons still take
-     several \emph{days} to construct.
-   \end{dubious} *)
     module CM = Colorize.It(M)
 
     type flavor = M.flavor
@@ -321,15 +317,15 @@ i*)
                 end;
                 Tree.label = None;
                 Tree.tension = None } in
-            List.iter
-              (fun a ->
-                match F.externals a with
-                | wf1 :: wf2 :: _ ->
-                    Tree.to_feynmf feynmf_tex name variable' wf2
-                      (List.map (Tree.map (fun (n, _) -> fmf n) (fun l -> l))
-                         (F.forest wf1 a))
-                | _ -> ())
-              (CF.processes amplitudes)
+            Tree.to_feynmf feynmf_tex name variable'
+              (List.map
+                 (fun a ->
+                   match F.externals a with
+                   | wf1 :: wf2 :: _ ->
+                       ("???", wf1, wf2,
+                        (List.map (Tree.map (fun (n, _) -> fmf n) (fun l -> l))
+                           (F.forest wf1 a))))
+                 (CF.processes amplitudes))
         | None -> ()
         end;
 

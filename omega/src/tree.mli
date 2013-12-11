@@ -95,7 +95,8 @@ val sty : (string * string) * bool * string -> feynmf
    the second incoming particle and~[to_string] is use to convert
    leaf labels to \LaTeX-strings. *)
 (* \label{Tree.to_feynmf} *)
-val to_feynmf : bool ref -> string -> ('l -> string) -> 'l -> (feynmf, 'l) t list -> unit
+val to_feynmf : bool ref -> string -> ('l -> string) ->
+  (string * 'l * 'l * (feynmf, 'l) t list) list -> unit
 
 (* \thocwmodulesubsection{Least Squares Layout} *)
 

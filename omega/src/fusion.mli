@@ -261,7 +261,7 @@ module type Multi =
     (* The list of all valid helicity combinations. *)
     val helicities : amplitudes -> (int list * int list) list
 
-    (* The list of all amlitudes. *)
+    (* The list of all amplitudes. *)
     val processes : amplitudes -> amplitude list
 
     (* [(process_table a).(f).(c)] returns the amplitude for the [f]th

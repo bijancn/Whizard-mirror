@@ -393,7 +393,7 @@ let to_feynmf_channel tex to_string i2 t =
        Note that this is subtly different \ldots}
    \end{figure} *)
 
-let to_feynmf latex file to_string i2 t =
+let to_feynmf latex file to_string sets =
   if !latex then
     let tex = open_out (file ^ ".tex") in
     fprintf tex "\\documentclass[10pt]{article}\n";
@@ -401,16 +401,25 @@ let to_feynmf latex file to_string i2 t =
     fprintf tex "\\usepackage{feynmp}\n";
     fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
     fprintf tex "\\setlength{\\unitlength}{1mm}\n";
+    fprintf tex "\\setlength{\\parindent}{0pt}\n";
     fprintf tex "\\begin{document}\n";
     fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
-    List.iter (to_feynmf_channel tex to_string i2) t;
+    List.iter
+      (fun (header, i1, i2, trees) ->
+        fprintf tex "\\section{%s}\n" header;
+        List.iter (to_feynmf_channel tex to_string i2) trees)
+      sets;
     fprintf tex "\n";   
     fprintf tex "\\end{fmffile} \n";
     fprintf tex "\\end{document} \n";
     close_out tex
   else
     let tex = open_out file in
-    List.iter (to_feynmf_channel tex to_string i2) t;
+    List.iter
+      (fun (header, i1, i2, trees) ->
+        fprintf tex "%%%%%% \\section{%s}\n" header;
+        List.iter (to_feynmf_channel tex to_string i2) trees)
+      sets;
     close_out tex
 
 let vanilla = { style = None; rev = false; label = None; tension = None }
