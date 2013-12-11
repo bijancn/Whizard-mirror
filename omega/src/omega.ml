@@ -83,7 +83,7 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
       String.concat "" (List.map p2s (F.momentum_list wf))
 
     let variable wf = M.flavor_to_string (F.flavor_sans_color wf) ^ "[" ^ format_p wf ^ "]"
-    let variable' wf = M.flavor_symbol (F.flavor_sans_color wf) ^ "[" ^ format_p wf ^ "]"
+    let variable' wf = CM.flavor_to_TeX (F.flavor wf) ^ "(" ^ format_p wf ^ ")"
 
     let read_lines_rev file =
       let ic = open_in file in
@@ -317,7 +317,7 @@ i*)
                 end;
                 Tree.label = None;
                 Tree.tension = None } in
-            Tree.to_feynmf feynmf_tex name variable'
+            Tree.to_feynmf feynmf_tex name variable' format_p
               (List.fold_left
                  (fun acc a ->
                    match F.externals a with
@@ -330,7 +330,7 @@ i*)
                              (fun wf -> CM.flavor_to_TeX (F.flavor wf))
                              wfs) ^
                         " $",
-                        wf1, wf2,
+                        [wf1; wf2],
                         (List.map (Tree.map (fun (n, _) -> fmf n) (fun l -> l))
                            (F.forest wf1 a))) :: acc
                    | _ -> acc)

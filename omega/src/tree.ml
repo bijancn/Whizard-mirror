@@ -260,22 +260,22 @@ let leaf_label tex io leaf lab label =
       This is insufficient for asymmetrical cascade decays.
    \end{dubious} *)
 
-let rec leaf_node tex to_string i2 n prop leaf =
+let rec leaf_node tex to_label i2 n prop leaf =
   let io, tension, rev =
     if leaf = i2 then
       ("i", "", not prop.rev)
     else
       ("o", ",tension=0.5", prop.rev) in
-  leaf_label tex io (to_string leaf) (tex_lbl prop) prop.label ;
+  leaf_label tex io (to_label leaf) (tex_lbl prop) prop.label ;
   fprintf tex "    \\fmfdot{v%d}\n"  n;
   if rev then 
     fprintf tex "    \\fmf{%s%s}{%s%s,v%d}\n"
-      (species prop) tension io (to_string leaf) n
+      (species prop) tension io (to_label leaf) n
   else
     fprintf tex "    \\fmf{%s%s}{v%d,%s%s}\n"
-      (species prop) tension n io (to_string leaf)
+      (species prop) tension n io (to_label leaf)
 
-and int_node tex to_string i2 n n' prop t =
+and int_node tex to_label i2 n n' prop t =
   if prop.rev then
     fprintf tex 
       "    \\fmf{%s,label=\\begin{scriptsize}${%s}$\\end{scriptsize}}{v%d,v%d}\n" 
@@ -285,48 +285,59 @@ and int_node tex to_string i2 n n' prop t =
       "    \\fmf{%s,label=\\begin{scriptsize}${%s}$\\end{scriptsize}}{v%d,v%d}\n" 
       (species prop) (tex_lbl prop) n n';
   fprintf tex "    \\fmfdot{v%d,v%d}\n" n n';
-  edges_feynmf' tex to_string i2 n' t
+  edges_feynmf' tex to_label i2 n' t
 
-and leaf_or_int_node tex to_string i2 n n' = function
-  | Leaf (prop, l) -> leaf_node tex to_string i2 n prop l
-  | Node (prop, _) as t -> int_node tex to_string i2 n n' prop t
+and leaf_or_int_node tex to_label i2 n n' = function
+  | Leaf (prop, l) -> leaf_node tex to_label i2 n prop l
+  | Node (prop, _) as t -> int_node tex to_label i2 n n' prop t
 
-and edges_feynmf' tex to_string i2 n = function
-  | Leaf (prop, l) -> leaf_node tex to_string i2 n prop l
+and edges_feynmf' tex to_label i2 n = function
+  | Leaf (prop, l) -> leaf_node tex to_label i2 n prop l
   | Node (_, ch) ->
       ignore (List.fold_right
                 (fun t' n' ->
-                  leaf_or_int_node tex to_string i2 n n' t';
+                  leaf_or_int_node tex to_label i2 n n' t';
                   succ n') ch (4*n))
 
-let edges_feynmf tex to_string i2 t =
+let edges_feynmf tex to_label i1 i2 t =
   let n = 1 in
   begin match t with
   | Leaf _ -> ()
   | Node (prop, _) ->
       leaf_label tex "i" "1" (tex_lbl prop) prop.label;
       if prop.rev then
-        fprintf tex "    \\fmf{%s}{i1,v%d}\n" (species prop) n
+        fprintf tex "    \\fmf{%s}{i%s,v%d}\n" (species prop) (to_label i1) n
       else
-        fprintf tex "    \\fmf{%s}{v%d,i1}\n" (species prop) n
+        fprintf tex "    \\fmf{%s}{v%d,i%s}\n" (species prop) n (to_label i1)
   end;
   fprintf tex "    \\fmfdot{v%d}\n" n;
-  edges_feynmf' tex to_string i2 n t
+  edges_feynmf' tex to_label i2 n t
 
-let to_feynmf_channel tex to_string i2 t =
-  let t' = sort_2i (<=) i2 t in
-  let out = List.map to_string (List.filter (fun a -> i2 <> a) (leafs t')) in
-  fprintf tex "\\fmfframe(6,7)(6,6){%%\n";
-  fprintf tex "  \\begin{fmfgraph*}(35,30)\n";
-  fprintf tex "   \\fmfpen{thin}\n";
-  fprintf tex "   \\fmfset{arrow_len}{2mm}\n";
-  fprintf tex "    \\fmfleft{i1,i%s}\n" (to_string i2);
-  fprintf tex "    \\fmfright{o%s}\n" (String.concat ",o" out);
-  List.iter (fun s -> fprintf tex "    \\fmflabel{${%s}$}{i%s}\n" s s)
-    ["1"; (to_string i2)];
-  List.iter (fun s -> fprintf tex "    \\fmflabel{${%s}$}{o%s}\n" s s) out;
-  edges_feynmf tex to_string i2 t';
-  fprintf tex "  \\end{fmfgraph*}}\n"
+let to_feynmf_channel tex to_TeX to_label incoming t =
+  match incoming with
+  | i1 :: i2 :: _ ->
+      let t' = sort_2i (<=) i2 t in
+      let out = List.filter (fun a -> i2 <> a) (leafs t') in
+      fprintf tex "\\fmfframe(8,7)(8,6){%%\n";
+      fprintf tex "  \\begin{fmfgraph*}(35,30)\n";
+      fprintf tex "   \\fmfpen{thin}\n";
+      fprintf tex "   \\fmfset{arrow_len}{2mm}\n";
+      fprintf tex "    \\fmfleft{i%s,i%s}\n" (to_label i1) (to_label i2);
+      fprintf tex "    \\fmfright{o%s}\n"
+        (String.concat ",o" (List.map to_label out));
+      List.iter
+        (fun s ->
+          fprintf tex "    \\fmflabel{${%s}$}{i%s}\n"
+            (to_TeX s) (to_label s))
+        [i1; i2];
+      List.iter
+        (fun s ->
+          fprintf tex "    \\fmflabel{${%s}$}{o%s}\n"
+            (to_TeX s) (to_label s))
+        out;
+      edges_feynmf tex to_label i1 i2 t';
+      fprintf tex "  \\end{fmfgraph*}}\\hfil\\allowbreak\n"
+  | _ -> ()
 
 (* \begin{figure}
    \fmfframe(3,5)(3,5){%
@@ -393,7 +404,7 @@ let to_feynmf_channel tex to_string i2 t =
        Note that this is subtly different \ldots}
    \end{figure} *)
 
-let to_feynmf latex file to_string sets =
+let to_feynmf latex file to_TeX to_label sets =
   if !latex then
     let tex = open_out (file ^ ".tex") in
     fprintf tex "\\documentclass[10pt]{article}\n";
@@ -407,9 +418,9 @@ let to_feynmf latex file to_string sets =
     fprintf tex "\\begin{document}\n";
     fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
     List.iter
-      (fun (header, i1, i2, trees) ->
+      (fun (header, incoming, trees) ->
         fprintf tex "\\section{%s}\n" header;
-        List.iter (to_feynmf_channel tex to_string i2) trees)
+        List.iter (to_feynmf_channel tex to_TeX to_label incoming) trees)
       sets;
     fprintf tex "\n";   
     fprintf tex "\\end{fmffile} \n";
@@ -418,9 +429,9 @@ let to_feynmf latex file to_string sets =
   else
     let tex = open_out file in
     List.iter
-      (fun (header, i1, i2, trees) ->
+      (fun (header, incoming, trees) ->
         fprintf tex "%%%%%% \\section{%s}\n" header;
-        List.iter (to_feynmf_channel tex to_string i2) trees)
+        List.iter (to_feynmf_channel tex to_TeX to_label incoming) trees)
       sets;
     close_out tex
 

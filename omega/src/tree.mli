@@ -90,13 +90,13 @@ type feynmf =
 val vanilla : feynmf
 val sty : (string * string) * bool * string -> feynmf
 
-(* [to_feynmf file to_string i2 t] write the trees in the
-   list~[t] to the file named~[file].  The leaf~[i2] is used as
-   the second incoming particle and~[to_string] is use to convert
+(* [to_feynmf file to_string incoming t] write the trees in the
+   list~[t] to the file named~[file].  The leaves~[incoming] are
+   used as incoming particles and~[to_string] is use to convert
    leaf labels to \LaTeX-strings. *)
 (* \label{Tree.to_feynmf} *)
-val to_feynmf : bool ref -> string -> ('l -> string) ->
-  (string * 'l * 'l * (feynmf, 'l) t list) list -> unit
+val to_feynmf : bool ref -> string -> ('l -> string) -> ('l -> string) ->
+  (string * 'l list * (feynmf, 'l) t list) list -> unit
 
 (* \thocwmodulesubsection{Least Squares Layout} *)
 
