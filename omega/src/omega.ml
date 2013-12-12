@@ -1,4 +1,4 @@
-(* $Id: omega.ml 4983 2013-12-11 16:46:32Z ohl $
+(* $Id: omega.ml 4991 2013-12-12 17:35:14Z ohl $
 
    Copyright (C) 1999-2014 by
 
@@ -344,7 +344,7 @@ i*)
                               (fun (n, _) ->
                                 let n' = fmf n in
                                 if List.mem n [wf1; wf2] then
-                                  { n' with rev = not n'.rev }
+                                  { n' with Tree.rev = not n'.Tree.rev }
                                 else
                                   n')
                               (fun l ->
