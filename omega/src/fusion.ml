@@ -33,6 +33,7 @@ module type T =
   sig
     val options : Options.t
     type wf
+    val conjugate : wf -> wf
     type flavor
     type flavor_sans_color
     val flavor : wf -> flavor
@@ -1433,6 +1434,7 @@ i*)
     type flavor_sans_color = A.flavor
     type p = A.p
     type wf = CA.wf
+    let conjugate = CA.conjugate
     let flavor = CA.flavor
     let flavor_sans_color wf = CM.flavor_sans_color (CA.flavor wf)
     let momentum = CA.momentum
@@ -1505,11 +1507,6 @@ i*)
 
     exception Impossible
         
-(* \begin{dubious}
-     We still need to perform the appropriate charge conjugations so that we
-     get the correct flavors for the external tree representation.
-   \end{dubious} *)
-
     let forest' a =
       let below wf = CA.D.forest_memoized wf a.CA.fusion_dag in
       ThoList.flatmap

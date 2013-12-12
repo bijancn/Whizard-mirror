@@ -303,7 +303,7 @@ i*)
         | Some name ->
             let fmf wf =
               { Tree.style =
-                begin match M.propagator (F.flavor_sans_color wf) with
+                begin match CM.propagator (F.flavor wf) with
                 | Coupling.Prop_Feynman
                 | Coupling.Prop_Gauge _ -> Some ("boson", "")
                 | Coupling.Prop_Unitarity
@@ -313,9 +313,9 @@ i*)
                 | _ -> None
                 end;
                 Tree.rev =
-                begin match M.propagator (F.flavor_sans_color wf) with
-                | Coupling.Prop_Spinor -> false
-                | Coupling.Prop_ConjSpinor -> true
+                begin match CM.propagator (F.flavor wf) with
+                | Coupling.Prop_Spinor -> true
+                | Coupling.Prop_ConjSpinor -> false
                 | _ -> false
                 end;
                 Tree.label = None;
@@ -334,7 +334,14 @@ i*)
                              wfs) ^
                         " $",
                         [wf1; wf2],
-                        (List.map (Tree.map (fun (n, _) -> fmf n) (fun l -> l))
+                        (List.map
+                           (Tree.map
+                              (fun (n, _) -> fmf n)
+                              (fun l ->
+                                if List.mem l [wf1; wf2] then
+                                  l
+                                else
+                                  F.conjugate l))
                            (F.forest wf1 a))) :: acc
                    | _ -> acc)
                  [] (CF.processes amplitudes))

@@ -30,6 +30,7 @@ module type T =
 (* Wavefunctions are an abstract data type, containing a momentum~[p]
    and additional quantum numbers, collected in~[flavor]. *)
     type wf
+    val conjugate : wf -> wf
 
 (* Obviously, [flavor] is not restricted to the physical notion of
    flavor, but can carry spin, color, etc. *)
