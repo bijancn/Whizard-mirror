@@ -1,4 +1,4 @@
-(* $Id: fusion.mli 4983 2013-12-11 16:46:32Z ohl $
+(* $Id: fusion.mli 4991 2013-12-12 17:35:14Z ohl $
 
    Copyright (C) 1999-2014 by
 
