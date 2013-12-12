@@ -306,9 +306,9 @@ let edges_feynmf tex to_label i1 i2 t =
   | Node (prop, _) ->
       leaf_label tex "i" "1" (tex_lbl prop) prop.label;
       if prop.rev then
-        fprintf tex "    \\fmf{%s}{i%s,v%d}\n" (species prop) (to_label i1) n
-      else
         fprintf tex "    \\fmf{%s}{v%d,i%s}\n" (species prop) n (to_label i1)
+      else
+        fprintf tex "    \\fmf{%s}{i%s,v%d}\n" (species prop) (to_label i1) n
   end;
   fprintf tex "    \\fmfdot{v%d}\n" n;
   edges_feynmf' tex to_label i2 n t

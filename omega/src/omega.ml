@@ -305,7 +305,12 @@ i*)
               { Tree.style =
                 begin match CM.propagator (F.flavor wf) with
                 | Coupling.Prop_Feynman
-                | Coupling.Prop_Gauge _ -> Some ("boson", "")
+                | Coupling.Prop_Gauge _ ->
+                    begin match CM.color (F.flavor wf) with
+                    | Color.AdjSUN _ -> Some ("gluon", "")
+                    | _ -> Some ("boson", "")
+                    end
+                | Coupling.Prop_Col_Feynman -> Some ("gluon", "")
                 | Coupling.Prop_Unitarity
                 | Coupling.Prop_Rxi _ -> Some ("dbl_wiggly", "")
                 | Coupling.Prop_Spinor
@@ -336,7 +341,12 @@ i*)
                         [wf1; wf2],
                         (List.map
                            (Tree.map
-                              (fun (n, _) -> fmf n)
+                              (fun (n, _) ->
+                                let n' = fmf n in
+                                if List.mem n [wf1; wf2] then
+                                  { n' with rev = not n'.rev }
+                                else
+                                  n')
                               (fun l ->
                                 if List.mem l [wf1; wf2] then
                                   l
