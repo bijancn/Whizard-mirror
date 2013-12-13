@@ -1339,7 +1339,9 @@ i*)
               (List.filter match_flavor (fuse_c_wf c_children)))
           (PT.product (PT.map find_colored children)) in
       let bundle =
-        List.fold_right (fun (c_wf, _) -> CWFBundle.add c_wf) fusions fibered_dag.bundle in
+        List.fold_right
+          (fun (c_wf, _) -> CWFBundle.add c_wf)
+          fusions fibered_dag.bundle in
       (fusions, bundle)
 
     let colorize_braket1 (wf, (coupling, children)) fibered_dag =
@@ -1355,20 +1357,39 @@ i*)
             acc (fuse_c_wf ket))
         (find_colored wf) (PT.product (PT.map find_colored children)) []
 
-    module CWFMap = Map.Make (struct type t = CA.wf let compare = CA.order_wf end)
-    module CKetSet = Set.Make (struct type t = CA.rhs let compare = compare end)
+    module CWFMap =
+      Map.Make (struct type t = CA.wf let compare = CA.order_wf end)
+
+    module CKetSet =
+      Set.Make (struct type t = CA.rhs let compare = compare end)
+
+    (* Find a set of kets in [map] that belong to [bra].
+       Return the empty set, if nothing is found. *)
+
+    let lookup_ketset bra map =
+      try CWFMap.find bra map with Not_found -> CKetSet.empty
+
+    (* Return the set of kets belonging to [bra] in [map],
+       augmented by [ket]. *)
+
+    let addto_ketset bra ket map =
+      CKetSet.add ket (lookup_ketset bra map)
+
+    (* Augment or update [map] with a new [(bra, ket)] relation. *)
+
+    let addto_ketset_map map (bra, ket) =
+      CWFMap.add bra (addto_ketset bra ket map) map
+
+    (* Take a list of [(bra, ket)] pairs and group the [ket]s
+       according to [bra].  This is very similar to
+       [ThoList.factorize] on page~\pageref{ThoList.factorize},
+       but the latter keeps duplicate copies, while we keep
+       only one, with equality determined by [CA.order_wf]. *)
 
     let factorize_brakets brakets =
       CWFMap.fold
-        (fun bra ket acc ->
-          (bra, CKetSet.elements ket) :: acc)
-        (List.fold_left
-           (fun map (bra, ket) ->
-             CWFMap.add
-               bra
-               (CKetSet.add ket (try CWFMap.find bra map with Not_found -> CKetSet.empty))
-               map)
-           CWFMap.empty brakets)
+        (fun bra ket acc -> (bra, CKetSet.elements ket) :: acc)
+        (List.fold_left addto_ketset_map CWFMap.empty brakets)
         []
 
     let colorize_braket (wf, rhs_list) fibered_dag =

@@ -67,7 +67,8 @@ val compare : ?cmp:('a -> 'a -> int) -> 'a list -> 'a list -> int
    in the worst case.  *)
 val classify : 'a list -> (int * 'a) list
 
-(* Collect the second factors with a common first factor in lists. *)
+(* Collect the second factors with a common first factor in lists.
+   \label{ThoList.factorize} *)
 val factorize : ('a * 'b) list -> ('a * 'b list) list
 
 (* [flatmap f] is equivalent to $\ocwlowerid{flatten} \circ
