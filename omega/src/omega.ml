@@ -1,4 +1,4 @@
-(* $Id: omega.ml 4993 2013-12-12 20:39:04Z ohl $
+(* $Id: omega.ml 4997 2013-12-13 13:22:56Z ohl $
 
    Copyright (C) 1999-2014 by
 
@@ -65,9 +65,9 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
 
     let debug (str, descr, opt, var) =
       [ "-warning:" ^ str, Arg.Unit (fun () -> var := (opt, false):: !var),
-        "check " ^ descr ^ " and print warning on error";
+        "         check " ^ descr ^ " and print warning on error";
         "-error:" ^ str, Arg.Unit (fun () -> var := (opt, true):: !var),
-        "check " ^ descr ^ " and terminate on error" ]
+        "           check " ^ descr ^ " and terminate on error" ]
 
     let rec include_goldstones = function
       | [] -> false
@@ -140,39 +140,52 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
          Options.cmdline "-model:" M.options @
          Options.cmdline "-fusion:" CF.options @
          ThoList.flatmap debug
-           ["", "arguments", T.All, checks;
-            "a", "# of input arguments", T.Arguments, checks;
+           ["a", "arguments", T.All, checks;
+            "n", "# of input arguments", T.Arguments, checks;
             "m", "input momenta", T.Momenta, checks;
             "g", "internal Ward identities", T.Gauge, checks] @
          [("-o", Arg.String (fun s -> output_file := Some s),
-           "write to given file instead of /dev/stdout");
-          ("-scatter", Arg.String (fun s -> rev_scatterings := s :: !rev_scatterings),
-           "in1 in2 -> out1 out2 ...");
+           "file             write to given file instead of /dev/stdout");
+          ("-scatter",
+           Arg.String (fun s -> rev_scatterings := s :: !rev_scatterings),
+           "expr       in1 in2 -> out1 out2 ...");
           ("-scatter_file",
            Arg.String (fun s -> rev_scatterings := read_lines_rev s @ !rev_scatterings),
-           "in1 in2 -> out1 out2 ...");
+           "name  each line: in1 in2 -> out1 out2 ...");
           ("-decay", Arg.String (fun s -> rev_decays := s :: !rev_decays),
-           "in -> out1 out2 ...");
-          ("-decay_file", Arg.String (fun s -> rev_decays := read_lines_rev s @ !rev_decays),
-           "in -> out1 out2 ...");
-           ("-cascade", Arg.String (fun s -> cascades := s :: !cascades),
-            "select diagrams");
-          ("-initialize", Arg.String (fun s -> cache_option := Cache_Initialize s),
-           "precompute large lookup table(s) and store them in the directory");
+           "expr         in -> out1 out2 ...");
+          ("-decay_file",
+           Arg.String (fun s -> rev_decays := read_lines_rev s @ !rev_decays),
+           "name    each line: in -> out1 out2 ...");
+          ("-cascade", Arg.String (fun s -> cascades := s :: !cascades),
+           "expr       select diagrams");
+          ("-initialize",
+           Arg.String (fun s -> cache_option := Cache_Initialize s),
+           "dir     precompute lookup tables and store them in directory");
           ("-unphysical", Arg.Int (fun i -> unphysical_polarization := Some i),
-           "select unphysical polarization state for one particle to test Ward Identities");
+           "n       use unphysical polarization for n-th particle / test WIs");
           ("-template", Arg.Set template,
-           "write a template for using handwritten amplitudes with WHIZARD");
-          ("-forest", Arg.Set print_forest, "Diagrammatic expansion");
-          ("-feynmf", Arg.String (fun s -> feynmf := Some s), "print feynmf/mp output");
-          ("-feynmf_tex", Arg.Set feynmf_tex, "print feynmf/mp/LaTeX output");
-          ("-revision", Arg.Unit version, "print revision control information");
-          ("-quiet", Arg.Set quiet, "don't print a summary");
-          ("-summary", Arg.Clear write, "print only a summary");
-          ("-params", Arg.Set params, "print the model parameters");
-          ("-poles", Arg.Set poles, "print the Monte Carlo poles");
-          ("-dag", Arg.String (fun s -> dag_out := Some s), "print minimal DAG");
-          ("-full_dag", Arg.String (fun s -> dag0_out := Some s), "print complete DAG")])
+           "          write a template for handwritten amplitudes");
+          ("-forest", Arg.Set print_forest,
+           "            Diagrammatic expansion");
+          ("-feynmf", Arg.String (fun s -> feynmf := Some s),
+           "file        print FeynMF/MP output");
+          ("-feynmf_tex", Arg.Set feynmf_tex,
+           "        enclose FeynMP output in LaTeX wrapper");
+          ("-revision", Arg.Unit version,
+           "          print revision control information");
+          ("-quiet", Arg.Set quiet,
+           "             don't print a summary");
+          ("-summary", Arg.Clear write,
+           "           print only a summary");
+          ("-params", Arg.Set params,
+           "            print the model parameters");
+          ("-poles", Arg.Set poles,
+           "             print the Monte Carlo poles");
+          ("-dag", Arg.String (fun s -> dag_out := Some s),
+           "               print minimal DAG");
+          ("-full_dag", Arg.String (fun s -> dag0_out := Some s),
+           "          print complete DAG")])
 (*i       ("-T", Arg.Int Topology.Binary.debug_triplet, "");
           ("-P", Arg.Int Topology.Binary.debug_partition, "")])
 i*)
@@ -298,6 +311,65 @@ i*)
                      (Tree.map (fun (wf, _) -> variable wf) (fun _ -> "") t)))
                 (F.forest (List.hd (F.externals amplitude)) amplitude))
             (CF.processes amplitudes);
+
+        begin match !feynmf with
+        | Some name ->
+            let fmf wf =
+              { Tree.style =
+                begin match CM.propagator (F.flavor wf) with
+                | Coupling.Prop_Feynman
+                | Coupling.Prop_Gauge _ ->
+                    begin match CM.color (F.flavor wf) with
+                    | Color.AdjSUN _ -> Some ("gluon", "")
+                    | _ -> Some ("boson", "")
+                    end
+                | Coupling.Prop_Col_Feynman -> Some ("gluon", "")
+                | Coupling.Prop_Unitarity
+                | Coupling.Prop_Rxi _ -> Some ("dbl_wiggly", "")
+                | Coupling.Prop_Spinor
+                | Coupling.Prop_ConjSpinor -> Some ("fermion", "")
+                | _ -> None
+                end;
+                Tree.rev =
+                begin match CM.propagator (F.flavor wf) with
+                | Coupling.Prop_Spinor -> true
+                | Coupling.Prop_ConjSpinor -> false
+                | _ -> false
+                end;
+                Tree.label = None;
+                Tree.tension = None } in
+            Tree.to_feynmf feynmf_tex name variable' format_p
+              (List.fold_left
+                 (fun acc a ->
+                   match F.externals a with
+                   | wf1 :: wf2 :: wfs ->
+                       ("$ " ^
+                        CM.flavor_to_TeX (F.flavor wf1) ^ " " ^
+                        CM.flavor_to_TeX (F.flavor wf2) ^ " \\to " ^
+                        String.concat " "
+                          (List.map
+                             (CM.flavor_to_TeX << CM.conjugate << F.flavor)
+                             wfs) ^
+                        " $",
+                        [wf1; wf2],
+                        (List.map
+                           (Tree.map
+                              (fun (n, _) ->
+                                let n' = fmf n in
+                                if List.mem n [wf1; wf2] then
+                                  { n' with Tree.rev = not n'.Tree.rev }
+                                else
+                                  n')
+                              (fun l ->
+                                if List.mem l [wf1; wf2] then
+                                  l
+                                else
+                                  F.conjugate l))
+                           (F.forest wf1 a))) :: acc
+                   | _ -> acc)
+                 [] (CF.processes amplitudes))
+        | None -> ()
+        end;
 
         begin match !feynmf with
         | Some name ->
