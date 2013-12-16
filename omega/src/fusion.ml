@@ -1407,10 +1407,13 @@ i*)
       let wf_bundle = CWFBundle.of_list external_wfs  in
 
       let fibered_dag =
-        colorize_dag colorize_fusion colorize_external a.A.fusion_dag wf_bundle in
+        colorize_dag
+          colorize_fusion colorize_external a.A.fusion_dag wf_bundle in
 
       let brakets =
-        ThoList.flatmap (fun braket -> colorize_braket braket fibered_dag) a.A.brakets in
+        ThoList.flatmap
+          (fun braket -> colorize_braket braket fibered_dag)
+          a.A.brakets in
 
       let dag = CA.D.harvest_list fibered_dag.dag (CA.wavefunctions brakets) in
 
@@ -1418,7 +1421,9 @@ i*)
         List.filter (function (_, []) -> false | _ -> true) (CA.D.lists dag) in
 
       let dependencies_map =
-        CA.D.fold (fun wf _ -> CWFMap.add wf (CA.D.dependencies dag wf)) dag CWFMap.empty in
+        CA.D.fold
+          (fun wf _ -> CWFMap.add wf (CA.D.dependencies dag wf))
+          dag CWFMap.empty in
 
       { CA.fusions = fusions;
         CA.brakets = brakets;
@@ -1527,7 +1532,7 @@ i*)
         0 a.CA.brakets
 
     exception Impossible
-        
+
     let forest' a =
       let below wf = CA.D.forest_memoized wf a.CA.fusion_dag in
       ThoList.flatmap
@@ -1551,6 +1556,37 @@ i*)
       
     let forest wf a =
       List.map (fuse_trees wf) (forest' a)
+
+(*i
+(* \begin{dubious}
+     The following duplication should be replaced by polymorphism
+     or a functor.
+   \end{dubious} *)
+
+    let forest_uncolored' a =
+      let below wf = A.D.forest_memoized wf a.A.fusion_dag in
+      ThoList.flatmap
+        (fun (bra, ket) ->
+          (Product.list2 (fun bra' ket' -> bra' :: ket')
+             (below bra)
+             (ThoList.flatmap
+                (fun (_, wfs) ->
+                  Product.list (fun w -> w) (PT.to_list (PT.map below wfs)))
+                ket)))
+        a.A.brakets
+
+    let cross_uncolored wf =
+      { A.flavor = M.conjugate wf.A.flavor;
+        A.momentum = P.neg wf.A.momentum;
+        A.wf_tag = wf.A.wf_tag }
+
+    let fuse_trees_uncolored wf ts =
+      Tree.fuse (fun (wf', e) -> (cross_uncolored wf', e))
+        wf (fun t -> List.mem wf (Tree.leafs t)) ts
+      
+    let forest_sans_color wf a =
+      List.map (fuse_trees_uncolored wf) (forest_uncolored' a)
+i*)
 
     let poles_beneath wf dag =
       CA.D.eval_memoized (fun wf' -> [[]])

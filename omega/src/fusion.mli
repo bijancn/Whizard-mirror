@@ -35,8 +35,8 @@ module type T =
 (* Obviously, [flavor] is not restricted to the physical notion of
    flavor, but can carry spin, color, etc. *)
     type flavor
-    type flavor_sans_color
     val flavor : wf -> flavor
+    type flavor_sans_color
     val flavor_sans_color : wf -> flavor_sans_color
 
 (* Momenta are represented by an abstract datatype (defined
