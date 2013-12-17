@@ -72,18 +72,17 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
 
     module Sheaf = Bundle.Make (Tree_Projection)
 
-    let wf_sans_color wf =
-      (F.flavor_sans_color wf, F.momentum_list wf)
-
 (* \begin{dubious}
-     We need to normalize different fusion orders, because
-     they would otherwise lead to inequivalent diagrams.
-     Unfortunately, this stuff packaged deep in
-     [Fusion.Tagged_Coupling].  Dropping the coupling alltogether
-     is an option, but we might want to distiguish different
-     couplings later on.
+     If we plan to distiguish different couplings later on,
+     we can no long map all instances of [coupling option]
+     in the tree to [None].  In this case, we will need
+     to normalize different fusion orders [Coupling.fuse2],
+     [Coupling.fuse3] or [Coupling.fusen], because they would
+     otherwise lead to inequivalent diagrams. Unfortunately, this
+     stuff packaged deep in [Fusion.Tagged_Coupling].
    \end{dubious} *)
 
+(*i
     let strip_fuse' = function
       | Coupling.V3 (v, f, c) -> Coupling.V3 (v, Coupling.F12, c)
       | Coupling.V4 (v, f, c) -> Coupling.V4 (v, Coupling.F123, c)
@@ -92,20 +91,24 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
     let strip_fuse = function
       | Some c -> Some (strip_fuse' c)
       | None -> None
+i*)
 
 (* \begin{dubious}
-     [Tree.canonicalize] should be necessary below to remove
+     The [Tree.canonicalize] below should be necessary to remove
      topologically equivalent duplicates.
    \end{dubious} *)
 
     let forest1 a =
+      let wf_sans_color wf =
+	(F.flavor_sans_color wf, F.momentum_list wf) in
       let wf1 = List.hd (F.externals a)
       and externals = List.map wf_sans_color (F.externals a) in
       List.map
 	(fun t ->
 	  (externals,
 	   Tree.canonicalize
-	     (Tree.map (fun (wf, c) -> (wf_sans_color wf, c)) wf_sans_color t)))
+	     (Tree.map
+		(fun (wf, c) -> (wf_sans_color wf, None)) wf_sans_color t)))
 	(F.forest wf1 a)
 
     let forest amplitudes =
