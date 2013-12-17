@@ -55,6 +55,7 @@
      \caption{\label{fig:bundle}
        The bundle structure implemented by [Bundle.T]}
    \end{figure}
+   \label{Bundle}
 
    See figure~\ref{fig:bundle} for the geometric intuition behind the bundle structure.
 

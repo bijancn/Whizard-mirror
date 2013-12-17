@@ -1386,6 +1386,10 @@ i*)
        but the latter keeps duplicate copies, while we keep
        only one, with equality determined by [CA.order_wf]. *)
 
+    (* \begin{dubious}
+         Isn't [Bundle]~\ref{Bundle} the correct framework for this?
+       \end{dubious} *)
+
     let factorize_brakets brakets =
       CWFMap.fold
         (fun bra ket acc -> (bra, CKetSet.elements ket) :: acc)

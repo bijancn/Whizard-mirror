@@ -59,6 +59,37 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
     module W = Whizard.Make(Fusion_Maker)(P)(P_Whizard)(M)
     module C = Cascade.Make(M)(P)
 
+    module Tree_Projection =
+      struct
+	type wf = flavor * int list
+	type base = wf list
+	type elt = wf list * (wf * F.coupling option, wf) Tree.t
+	let compare_elt = compare
+	let compare_base = compare
+	let pi (externals, tree) =
+	  externals
+      end
+
+    module Sheaf = Bundle.Make (Tree_Projection)
+
+    let wf_sans_color wf =
+      (F.flavor_sans_color wf, F.momentum_list wf)
+
+    let forest1 a =
+      let wf1 = List.hd (F.externals a)
+      and externals = List.map wf_sans_color (F.externals a) in
+      List.map
+	(fun t ->
+	  (externals,
+	   Tree.map (fun (wf, c) -> (wf_sans_color wf, c)) wf_sans_color t))
+	(F.forest wf1 a)
+
+    let forest amplitudes =
+      ThoList.flatmap forest1 (CF.processes amplitudes)
+
+    let sheaf a =
+      Sheaf.fibers (Sheaf.of_list (forest a))
+
     let version () =
       List.iter (fun s -> prerr_endline ("RCS: " ^ s))
         (ThoList.flatmap RCS.summary (CM.rcs :: T.rcs_list @ F.rcs_list))
@@ -118,8 +149,10 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
     let main () =
       let usage =
         "usage: " ^ Sys.argv.(0) ^
-        " [options] [" ^ String.concat "|" (List.map M.flavor_to_string 
-					      (ThoList.flatmap snd (M.external_flavors ()))) ^ "]"
+        " [options] [" ^
+	  String.concat "|" (List.map M.flavor_to_string 
+			       (ThoList.flatmap snd
+				  (M.external_flavors ()))) ^ "]"
       and rev_scatterings = ref []
       and rev_decays = ref []
       and cascades = ref []
@@ -171,10 +204,10 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
            "            Diagrammatic expansion");
           ("-feynmf", Arg.String (fun s -> feynmf := Some s),
            "file        print FeynMF/MP output");
-          ("-feynmf_tex", Arg.Set feynmf_tex,
-           "        enclose FeynMP output in LaTeX wrapper");
           ("-feynmf_colored", Arg.Set feynmf_colored,
            "    draw Feynman diagrams for individual color flows");
+          ("-feynmf_tex", Arg.Set feynmf_tex,
+           "        enclose FeynMP output in LaTeX wrapper");
           ("-revision", Arg.Unit version,
            "          print revision control information");
           ("-quiet", Arg.Set quiet,
@@ -372,8 +405,6 @@ i*)
                  | _ -> acc)
                [] (CF.processes amplitudes))
         | Some name, false ->
-	  let wf_sans_color wf =
-	    (F.flavor_sans_color wf, F.momentum_list wf) in
 	  let momentum_to_TeX (_, p) =
 	    String.concat "" (List.map p2s p) in
 	  let wf_to_TeX (f, _ as wf) =
@@ -403,35 +434,36 @@ i*)
               Tree.label = None;
               Tree.tension = None } in
           Tree.to_feynmf feynmf_tex name wf_to_TeX momentum_to_TeX
-            (List.fold_left
-               (fun acc a ->
-                 match F.externals a with
-                 | wf1 :: wf2 :: wfs ->
+            (List.map
+	       (fun (externals, trees) ->
+		 begin match externals with
+		 | wf1 :: wf2 :: wfs ->
                    ("$ " ^
-                       M.flavor_to_TeX (F.flavor_sans_color wf1) ^ " " ^
-                       M.flavor_to_TeX (F.flavor_sans_color wf2) ^ " \\to " ^
-                       String.concat " "
-                       (List.map
-                          (M.flavor_to_TeX << M.conjugate << F.flavor_sans_color)
-                          wfs) ^
-                       " $",
-                    List.map wf_sans_color [wf1; wf2],
+		    M.flavor_to_TeX (fst wf1) ^ " " ^
+		    M.flavor_to_TeX (fst wf2) ^ " \\to " ^
+		    String.concat " "
+		    (List.map (M.flavor_to_TeX << M.conjugate << fst) wfs) ^
+		    " $",
+                    [wf1; wf2],
                     (List.map
-                       (Tree.map
-                          (fun (n, _) ->
-                            let n' = fmf (wf_sans_color n) in
-                            if List.mem n [wf1; wf2] then
-                              { n' with Tree.rev = not n'.Tree.rev }
-                            else
-                              n')
-                          (fun l ->
-                            if List.mem l [wf1; wf2] then
-                              wf_sans_color l
-                            else
-                              wf_sans_color (F.conjugate l)))
-                       (F.forest wf1 a))) :: acc
-                 | _ -> acc)
-               [] (CF.processes amplitudes))
+		       (fun (_, tree) ->
+			 (Tree.map
+                            (fun (n, c) ->
+                              let n' = fmf n in
+                              if List.mem n [wf1; wf2] then
+				{ n' with Tree.rev = not n'.Tree.rev }
+                              else
+				n')
+                            (fun (f, p) ->
+                              if List.mem (f, p) [wf1; wf2] then
+				(f, p)
+                              else
+				(M.conjugate f, p))
+			    tree))
+		       trees))
+		 | _ -> failwith "less than two eternal particles"
+		 end)
+	       (sheaf amplitudes))
         | None, _ -> ()
         end;
 
