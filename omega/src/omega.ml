@@ -25,6 +25,17 @@
 let (<<) f g x = f (g x)
 let (>>) f g x = g (f x)
 
+let opt_array_to_list a =
+  let rec opt_array_to_list' acc i a =
+    if i < 0 then
+      acc
+    else
+      begin match a.(i) with
+      | None -> opt_array_to_list' acc (pred i) a
+      | Some x -> opt_array_to_list' (x :: acc) (pred i) a
+      end in
+  opt_array_to_list' [] (Array.length a - 1) a
+  
 module P = Momentum.Default
 module P_Whizard = Momentum.DefaultW
 
@@ -114,8 +125,145 @@ i*)
     let forest amplitudes =
       ThoList.flatmap forest1 (CF.processes amplitudes)
 
-    let sheaf a =
-      Sheaf.fibers (Sheaf.of_list (forest a))
+    let sheaf amplitudes =
+      Sheaf.fibers (Sheaf.of_list (forest amplitudes))
+
+    let amplitudes_by_flavor amplitudes =
+      List.map opt_array_to_list (Array.to_list (CF.process_table amplitudes))
+
+    let p2s p =
+      if p >= 0 && p <= 9 then
+        string_of_int p
+      else if p <= 36 then
+        String.make 1 (Char.chr (Char.code 'A' + p - 10))
+      else
+        "_"
+
+    let format_p wf =
+      String.concat "" (List.map p2s (F.momentum_list wf))
+
+    let variable wf =
+      M.flavor_to_string (F.flavor_sans_color wf) ^ "[" ^ format_p wf ^ "]"
+
+    let variable' wf =
+      CM.flavor_to_TeX (F.flavor wf) ^ "(" ^ format_p wf ^ ")"
+
+    let amplitudes_to_feynmf latex name amplitudes =
+      let fmf wf =
+	{ Tree.style =
+            begin match CM.propagator (F.flavor wf) with
+            | Coupling.Prop_Feynman
+            | Coupling.Prop_Gauge _ ->
+              begin match CM.color (F.flavor wf) with
+              | Color.AdjSUN _ -> Some ("gluon", "")
+              | _ -> Some ("boson", "")
+              end
+            | Coupling.Prop_Col_Feynman -> Some ("gluon", "")
+            | Coupling.Prop_Unitarity
+            | Coupling.Prop_Rxi _ -> Some ("dbl_wiggly", "")
+            | Coupling.Prop_Spinor
+            | Coupling.Prop_ConjSpinor -> Some ("fermion", "")
+            | _ -> None
+            end;
+          Tree.rev =
+            begin match CM.propagator (F.flavor wf) with
+            | Coupling.Prop_Spinor -> true
+            | Coupling.Prop_ConjSpinor -> false
+            | _ -> false
+            end;
+          Tree.label = None;
+          Tree.tension = None } in
+      Tree.to_feynmf latex name variable' format_p
+	(List.fold_left
+           (fun acc a ->
+             match F.externals a with
+             | wf1 :: wf2 :: wfs ->
+               ("$ " ^
+                   CM.flavor_to_TeX (F.flavor wf1) ^ " " ^
+                   CM.flavor_to_TeX (F.flavor wf2) ^ " \\to " ^
+                   String.concat " "
+                   (List.map
+                      (CM.flavor_to_TeX << CM.conjugate << F.flavor)
+                      wfs) ^
+                   " $",
+		[wf1; wf2],
+		(List.map
+                   (Tree.map
+                      (fun (n, _) ->
+			let n' = fmf n in
+			if List.mem n [wf1; wf2] then
+                          { n' with Tree.rev = not n'.Tree.rev }
+			else
+                          n')
+                      (fun l ->
+			if List.mem l [wf1; wf2] then
+                          l
+			else
+                          F.conjugate l))
+                   (F.forest wf1 a))) :: acc
+             | _ -> acc)
+           [] (CF.processes amplitudes))
+	
+    let amplitudes_sans_color_to_feynmf latex name amplitudes =
+      let momentum_to_TeX (_, p) =
+	String.concat "" (List.map p2s p) in
+      let wf_to_TeX (f, _ as wf) =
+	M.flavor_to_TeX f ^ "(" ^ momentum_to_TeX wf ^ ")" in
+      let fmf (f, p) =
+	{ Tree.style =
+            begin match M.propagator f with
+            | Coupling.Prop_Feynman
+            | Coupling.Prop_Gauge _ ->
+              begin match M.color f with
+              | Color.AdjSUN _ -> Some ("gluon", "")
+              | _ -> Some ("boson", "")
+              end
+            | Coupling.Prop_Col_Feynman -> Some ("gluon", "")
+            | Coupling.Prop_Unitarity
+            | Coupling.Prop_Rxi _ -> Some ("dbl_wiggly", "")
+            | Coupling.Prop_Spinor
+            | Coupling.Prop_ConjSpinor -> Some ("fermion", "")
+            | _ -> None
+            end;
+          Tree.rev =
+            begin match M.propagator f with
+            | Coupling.Prop_Spinor -> true
+            | Coupling.Prop_ConjSpinor -> false
+            | _ -> false
+            end;
+          Tree.label = None;
+          Tree.tension = None } in
+      Tree.to_feynmf latex name wf_to_TeX momentum_to_TeX
+	(List.map
+	   (fun (externals, trees) ->
+	     begin match externals with
+	     | wf1 :: wf2 :: wfs ->
+               ("$ " ^
+		   M.flavor_to_TeX (fst wf1) ^ " " ^
+		   M.flavor_to_TeX (fst wf2) ^ " \\to " ^
+		   String.concat " "
+		   (List.map (M.flavor_to_TeX << M.conjugate << fst) wfs) ^
+		   " $",
+		[wf1; wf2],
+		(List.map
+		   (fun (_, tree) ->
+		     (Tree.map
+			(fun (n, c) ->
+                          let n' = fmf n in
+                          if List.mem n [wf1; wf2] then
+			    { n' with Tree.rev = not n'.Tree.rev }
+                          else
+			    n')
+			(fun (f, p) ->
+                          if List.mem (f, p) [wf1; wf2] then
+			    (f, p)
+                          else
+			    (M.conjugate f, p))
+			tree))
+		   trees))
+	     | _ -> failwith "less than two eternal particles"
+	     end)
+	   (sheaf amplitudes))
 
     let version () =
       List.iter (fun s -> prerr_endline ("RCS: " ^ s))
@@ -132,20 +280,6 @@ i*)
       | (T.Gauge, _) :: _ -> true
       | _ :: rest -> include_goldstones rest
       
-    let p2s p =
-      if p >= 0 && p <= 9 then
-        string_of_int p
-      else if p <= 36 then
-        String.make 1 (Char.chr (Char.code 'A' + p - 10))
-      else
-        "_"
-
-    let format_p wf =
-      String.concat "" (List.map p2s (F.momentum_list wf))
-
-    let variable wf = M.flavor_to_string (F.flavor_sans_color wf) ^ "[" ^ format_p wf ^ "]"
-    let variable' wf = CM.flavor_to_TeX (F.flavor wf) ^ "(" ^ format_p wf ^ ")"
-
     let read_lines_rev file =
       let ic = open_in file in
       let rev_lines = ref [] in
@@ -377,120 +511,9 @@ i*)
 
         begin match !feynmf, !feynmf_colored with
         | Some name, true ->
-          let fmf wf =
-            { Tree.style =
-                begin match CM.propagator (F.flavor wf) with
-                | Coupling.Prop_Feynman
-                | Coupling.Prop_Gauge _ ->
-                  begin match CM.color (F.flavor wf) with
-                  | Color.AdjSUN _ -> Some ("gluon", "")
-                  | _ -> Some ("boson", "")
-                  end
-                | Coupling.Prop_Col_Feynman -> Some ("gluon", "")
-                | Coupling.Prop_Unitarity
-                | Coupling.Prop_Rxi _ -> Some ("dbl_wiggly", "")
-                | Coupling.Prop_Spinor
-                | Coupling.Prop_ConjSpinor -> Some ("fermion", "")
-                | _ -> None
-                end;
-              Tree.rev =
-                begin match CM.propagator (F.flavor wf) with
-                | Coupling.Prop_Spinor -> true
-                | Coupling.Prop_ConjSpinor -> false
-                | _ -> false
-                end;
-              Tree.label = None;
-              Tree.tension = None } in
-          Tree.to_feynmf feynmf_tex name variable' format_p
-            (List.fold_left
-               (fun acc a ->
-                 match F.externals a with
-                 | wf1 :: wf2 :: wfs ->
-                   ("$ " ^
-                       CM.flavor_to_TeX (F.flavor wf1) ^ " " ^
-                       CM.flavor_to_TeX (F.flavor wf2) ^ " \\to " ^
-                       String.concat " "
-                       (List.map
-                          (CM.flavor_to_TeX << CM.conjugate << F.flavor)
-                          wfs) ^
-                       " $",
-                    [wf1; wf2],
-                    (List.map
-                       (Tree.map
-                          (fun (n, _) ->
-                            let n' = fmf n in
-                            if List.mem n [wf1; wf2] then
-                              { n' with Tree.rev = not n'.Tree.rev }
-                            else
-                              n')
-                          (fun l ->
-                            if List.mem l [wf1; wf2] then
-                              l
-                            else
-                              F.conjugate l))
-                       (F.forest wf1 a))) :: acc
-                 | _ -> acc)
-               [] (CF.processes amplitudes))
+	  amplitudes_to_feynmf feynmf_tex name amplitudes
         | Some name, false ->
-	  let momentum_to_TeX (_, p) =
-	    String.concat "" (List.map p2s p) in
-	  let wf_to_TeX (f, _ as wf) =
-	    M.flavor_to_TeX f ^ "(" ^ momentum_to_TeX wf ^ ")" in
-          let fmf (f, p) =
-            { Tree.style =
-                begin match M.propagator f with
-                | Coupling.Prop_Feynman
-                | Coupling.Prop_Gauge _ ->
-                    begin match M.color f with
-                    | Color.AdjSUN _ -> Some ("gluon", "")
-                    | _ -> Some ("boson", "")
-                    end
-                | Coupling.Prop_Col_Feynman -> Some ("gluon", "")
-                | Coupling.Prop_Unitarity
-                | Coupling.Prop_Rxi _ -> Some ("dbl_wiggly", "")
-                | Coupling.Prop_Spinor
-                | Coupling.Prop_ConjSpinor -> Some ("fermion", "")
-                | _ -> None
-                end;
-              Tree.rev =
-                begin match M.propagator f with
-                | Coupling.Prop_Spinor -> true
-                | Coupling.Prop_ConjSpinor -> false
-                | _ -> false
-                end;
-              Tree.label = None;
-              Tree.tension = None } in
-          Tree.to_feynmf feynmf_tex name wf_to_TeX momentum_to_TeX
-            (List.map
-	       (fun (externals, trees) ->
-		 begin match externals with
-		 | wf1 :: wf2 :: wfs ->
-                   ("$ " ^
-		    M.flavor_to_TeX (fst wf1) ^ " " ^
-		    M.flavor_to_TeX (fst wf2) ^ " \\to " ^
-		    String.concat " "
-		    (List.map (M.flavor_to_TeX << M.conjugate << fst) wfs) ^
-		    " $",
-                    [wf1; wf2],
-                    (List.map
-		       (fun (_, tree) ->
-			 (Tree.map
-                            (fun (n, c) ->
-                              let n' = fmf n in
-                              if List.mem n [wf1; wf2] then
-				{ n' with Tree.rev = not n'.Tree.rev }
-                              else
-				n')
-                            (fun (f, p) ->
-                              if List.mem (f, p) [wf1; wf2] then
-				(f, p)
-                              else
-				(M.conjugate f, p))
-			    tree))
-		       trees))
-		 | _ -> failwith "less than two eternal particles"
-		 end)
-	       (sheaf amplitudes))
+	  amplitudes_sans_color_to_feynmf feynmf_tex name amplitudes
         | None, _ -> ()
         end;
 
