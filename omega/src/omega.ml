@@ -75,13 +75,37 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
     let wf_sans_color wf =
       (F.flavor_sans_color wf, F.momentum_list wf)
 
+(* \begin{dubious}
+     We need to normalize different fusion orders, because
+     they would otherwise lead to inequivalent diagrams.
+     Unfortunately, this stuff packaged deep in
+     [Fusion.Tagged_Coupling].  Dropping the coupling alltogether
+     is an option, but we might want to distiguish different
+     couplings later on.
+   \end{dubious} *)
+
+    let strip_fuse' = function
+      | Coupling.V3 (v, f, c) -> Coupling.V3 (v, Coupling.F12, c)
+      | Coupling.V4 (v, f, c) -> Coupling.V4 (v, Coupling.F123, c)
+      | Coupling.Vn (v, f, c) -> Coupling.Vn (v, [], c)
+
+    let strip_fuse = function
+      | Some c -> Some (strip_fuse' c)
+      | None -> None
+
+(* \begin{dubious}
+     [Tree.canonicalize] should be necessary below to remove
+     topologically equivalent duplicates.
+   \end{dubious} *)
+
     let forest1 a =
       let wf1 = List.hd (F.externals a)
       and externals = List.map wf_sans_color (F.externals a) in
       List.map
 	(fun t ->
 	  (externals,
-	   Tree.map (fun (wf, c) -> (wf_sans_color wf, c)) wf_sans_color t))
+	   Tree.canonicalize
+	     (Tree.map (fun (wf, c) -> (wf_sans_color wf, c)) wf_sans_color t)))
 	(F.forest wf1 a)
 
     let forest amplitudes =

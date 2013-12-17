@@ -67,6 +67,7 @@ val fuse : ('n -> 'n) -> 'l -> (('n, 'l) t -> bool) -> ('n, 'l) t list -> ('n, '
    labels are ignored and nodes are according to the supremum of the
    leaf labels in the corresponding subtree. *)
 val sort : ('l -> 'l -> bool) -> ('n, 'l) t -> ('n, 'l) t
+val canonicalize : ('n, 'l) t -> ('n, 'l) t
 
 (* \thocwmodulesection{Homomorphisms} *)
 val map : ('n1 -> 'n2) -> ('l1 -> 'l2) -> ('n1, 'l1) t -> ('n2, 'l2) t

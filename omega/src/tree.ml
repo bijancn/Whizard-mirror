@@ -160,6 +160,11 @@ let rec sort' lesseq = function
 
 let sort lesseq t = (sort' lesseq t).data
 
+let rec canonicalize = function
+  | Leaf (_, _) as l -> l
+  | Node (n, ch) ->
+    Node (n, List.sort compare (List.map canonicalize ch))
+
 (* \thocwmodulesection{Homomorphisms} *)
 
 (* Isomophisms are simple: *)
