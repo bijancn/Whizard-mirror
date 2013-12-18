@@ -410,7 +410,7 @@ let to_feynmf_channel tex to_TeX to_label incoming t =
    \end{figure} *)
 
 let to_feynmf latex file to_TeX to_label sets =
-  if !latex then
+  if latex then
     let tex = open_out (file ^ ".tex") in
     fprintf tex "\\documentclass[10pt]{article}\n";
     fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
@@ -444,6 +444,57 @@ let vanilla = { style = None; rev = false; label = None; tension = None }
 
 let sty (s, r, l) = { vanilla with style = Some s; rev = r; label = Some l }
 
+type 'l feynmf_set =
+  { header : string;
+    incoming : 'l list;
+    diagrams : (feynmf, 'l) t list }
+
+type 'l feynmf_levels =
+  { this : 'l feynmf_set;
+    lower : 'l feynmf_levels list }
+
+let latex_section = function
+  | level when level < 0 -> "part"
+  | 0 -> "chapter"
+  | 1 -> "section"
+  | 2 -> "subsection"
+  | 3 -> "subsubsection"
+  | 4 -> "paragraph"
+  | _ -> "subparagraph"
+
+let rec feynmf_levels tex sections level to_TeX to_label set =
+  fprintf tex "%s\\%s{%s}\n"
+    (if sections then "" else "%%% ")
+    (latex_section level)
+    set.this.header;
+  List.iter
+    (to_feynmf_channel tex to_TeX to_label set.this.incoming)
+    set.this.diagrams;
+  List.iter (feynmf_levels tex sections (succ level) to_TeX to_label) set.lower
+
+let feynmf_levels_plain file sections level to_TeX to_label sets =
+    let tex = open_out (file ^ ".tex") in
+    List.iter (feynmf_levels tex sections level to_TeX to_label) sets;
+    close_out tex
+
+let feynmf_levels_wrapped file to_TeX to_label sets =
+    let tex = open_out (file ^ ".tex") in
+    fprintf tex "\\documentclass[10pt]{article}\n";
+    fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
+    fprintf tex "\\usepackage{feynmp}\n";
+    fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
+    fprintf tex "\\setlength{\\unitlength}{1mm}\n";
+    fprintf tex "\\setlength{\\parindent}{0pt}\n";
+    fprintf tex
+      "\\renewcommand{\\mathstrut}{\\protect\\vphantom{\\hat{0123456789}}}\n";
+    fprintf tex "\\begin{document}\n";
+    fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
+    List.iter (feynmf_levels tex true 1 to_TeX to_label) sets;
+    fprintf tex "\n";   
+    fprintf tex "\\end{fmffile} \n";
+    fprintf tex "\\end{document} \n";
+    close_out tex
+    
 (* \thocwmodulesection{Least Squares Layout}
    \begin{equation}
      L = \frac{1}{2} \sum_{i\not=i'} T_{ii'} \left(x_i-x_{i'}\right)^2

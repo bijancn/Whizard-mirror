@@ -96,8 +96,23 @@ val sty : (string * string) * bool * string -> feynmf
    used as incoming particles and~[to_string] is use to convert
    leaf labels to \LaTeX-strings. *)
 (* \label{Tree.to_feynmf} *)
-val to_feynmf : bool ref -> string -> ('l -> string) -> ('l -> string) ->
+val to_feynmf : bool -> string -> ('l -> string) -> ('l -> string) ->
   (string * 'l list * (feynmf, 'l) t list) list -> unit
+
+type 'l feynmf_set =
+  { header : string;
+    incoming : 'l list;
+    diagrams : (feynmf, 'l) t list }
+
+type 'l feynmf_levels =
+  { this : 'l feynmf_set;
+    lower : 'l feynmf_levels list }
+
+val feynmf_levels_plain : string -> bool -> int ->
+  ('l -> string) -> ('l -> string) -> 'l feynmf_levels list -> unit
+
+val feynmf_levels_wrapped : string ->
+  ('l -> string) -> ('l -> string) -> 'l feynmf_levels list -> unit
 
 (* \thocwmodulesubsection{Least Squares Layout} *)
 
