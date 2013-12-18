@@ -104,9 +104,21 @@ type 'l feynmf_set =
     incoming : 'l list;
     diagrams : (feynmf, 'l) t list }
 
+type ('l, 'm) feynmf_sets =
+  { outer : 'l feynmf_set;
+    inner : 'm feynmf_set list }
+
 type 'l feynmf_levels =
   { this : 'l feynmf_set;
     lower : 'l feynmf_levels list }
+
+val feynmf_sets_plain : string -> bool -> int ->
+  ('l -> string) -> ('l -> string) ->
+  ('m -> string) -> ('m -> string) -> ('l, 'm) feynmf_sets list -> unit
+
+val feynmf_sets_wrapped : string ->
+  ('l -> string) -> ('l -> string) ->
+  ('m -> string) -> ('m -> string) -> ('l, 'm) feynmf_sets list -> unit
 
 val feynmf_levels_plain : string -> bool -> int ->
   ('l -> string) -> ('l -> string) -> 'l feynmf_levels list -> unit

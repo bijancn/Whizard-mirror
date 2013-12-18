@@ -239,7 +239,7 @@ i*)
 		     Tree.diagrams =
 		       List.map (diagram incoming) (F.forest wf1 a) };
 		 Tree.lower = [] }
-	     | _ -> failwith "less than two eternal particles")
+	     | _ -> failwith "less than two external particles")
            (CF.processes amplitudes))
 
     let amplitudes_sans_color_to_feynmf latex name amplitudes =
@@ -259,9 +259,31 @@ i*)
 		     Tree.diagrams =
 		       List.map (diagram_sans_color incoming) trees };
 		 Tree.lower = [] }
-	     | _ -> failwith "less than two eternal particles"
+	     | _ -> failwith "less than two external particles"
 	     end)
 	   (sheaf amplitudes))
+
+    let feynmf_set amplitude =
+      match F.externals amplitude with
+      | wf1 :: wf2 :: wfs ->
+	let incoming = [wf1; wf2] in
+    	{ Tree.header = header incoming wfs;
+	  Tree.incoming = incoming;
+	  Tree.diagrams =
+	    List.map (diagram incoming) (F.forest wf1 amplitude) }
+      | _ -> failwith "less than two external particles"
+
+    let lowest_level amplitude =
+      { Tree.this = feynmf_set amplitude;
+	Tree.lower = [] }
+	
+    let upper_level amplitudes =
+      { Tree.this = feynmf_set (List.hd amplitudes);
+	Tree.lower = List.map lowest_level amplitudes }
+	
+    let amplitudes_to_feynmf_nested latex name amplitudes =
+      Tree.feynmf_levels_wrapped name variable' format_p
+	(List.map upper_level (amplitudes_by_flavor amplitudes))
 
     let version () =
       List.iter (fun s -> prerr_endline ("RCS: " ^ s))
@@ -509,7 +531,8 @@ i*)
 
         begin match !feynmf, !feynmf_colored with
         | Some name, true ->
-	  amplitudes_to_feynmf !feynmf_tex name amplitudes
+	  (* [amplitudes_to_feynmf !feynmf_tex name amplitudes] *)
+	  amplitudes_to_feynmf_nested !feynmf_tex name amplitudes
         | Some name, false ->
 	  amplitudes_sans_color_to_feynmf !feynmf_tex name amplitudes
         | None, _ -> ()

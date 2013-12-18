@@ -449,6 +449,10 @@ type 'l feynmf_set =
     incoming : 'l list;
     diagrams : (feynmf, 'l) t list }
 
+type ('l, 'm) feynmf_sets =
+  { outer : 'l feynmf_set;
+    inner : 'm feynmf_set list }
+
 type 'l feynmf_levels =
   { this : 'l feynmf_set;
     lower : 'l feynmf_levels list }
@@ -462,6 +466,53 @@ let latex_section = function
   | 4 -> "paragraph"
   | _ -> "subparagraph"
 
+let rec feynmf_set tex sections level to_TeX to_label set =
+  fprintf tex "%s\\%s{%s}\n"
+    (if sections then "" else "%%% ")
+    (latex_section level)
+    set.header;
+  List.iter
+    (to_feynmf_channel tex to_TeX to_label set.incoming)
+    set.diagrams
+
+let feynmf_sets tex sections level
+    to_TeX_outer to_label_outer to_TeX_inner to_label_inner set =
+  feynmf_set tex sections level to_TeX_outer to_label_outer set.outer;
+  List.iter
+    (feynmf_set tex sections (succ level) to_TeX_inner to_label_inner)
+    set.inner
+
+let feynmf_sets_plain file sections level
+    to_TeX_outer to_label_outer to_TeX_inner to_label_inner sets =
+  let tex = open_out (file ^ ".tex") in
+  List.iter
+    (feynmf_sets tex sections level
+       to_TeX_outer to_label_outer to_TeX_inner to_label_inner)
+    sets;
+  close_out tex
+
+let feynmf_sets_wrapped file 
+    to_TeX_outer to_label_outer to_TeX_inner to_label_inner sets =
+  let tex = open_out (file ^ ".tex") in
+  fprintf tex "\\documentclass[10pt]{article}\n";
+  fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
+  fprintf tex "\\usepackage{feynmp}\n";
+  fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
+  fprintf tex "\\setlength{\\unitlength}{1mm}\n";
+  fprintf tex "\\setlength{\\parindent}{0pt}\n";
+  fprintf tex
+    "\\renewcommand{\\mathstrut}{\\protect\\vphantom{\\hat{0123456789}}}\n";
+  fprintf tex "\\begin{document}\n";
+  fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
+  List.iter
+    (feynmf_sets tex true 1
+       to_TeX_outer to_label_outer to_TeX_inner to_label_inner)
+    sets;
+  fprintf tex "\n";   
+  fprintf tex "\\end{fmffile} \n";
+  fprintf tex "\\end{document} \n";
+  close_out tex
+
 let rec feynmf_levels tex sections level to_TeX to_label set =
   fprintf tex "%s\\%s{%s}\n"
     (if sections then "" else "%%% ")
@@ -473,27 +524,27 @@ let rec feynmf_levels tex sections level to_TeX to_label set =
   List.iter (feynmf_levels tex sections (succ level) to_TeX to_label) set.lower
 
 let feynmf_levels_plain file sections level to_TeX to_label sets =
-    let tex = open_out (file ^ ".tex") in
-    List.iter (feynmf_levels tex sections level to_TeX to_label) sets;
-    close_out tex
-
+  let tex = open_out (file ^ ".tex") in
+  List.iter (feynmf_levels tex sections level to_TeX to_label) sets;
+  close_out tex
+    
 let feynmf_levels_wrapped file to_TeX to_label sets =
-    let tex = open_out (file ^ ".tex") in
-    fprintf tex "\\documentclass[10pt]{article}\n";
-    fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
-    fprintf tex "\\usepackage{feynmp}\n";
-    fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
-    fprintf tex "\\setlength{\\unitlength}{1mm}\n";
-    fprintf tex "\\setlength{\\parindent}{0pt}\n";
-    fprintf tex
-      "\\renewcommand{\\mathstrut}{\\protect\\vphantom{\\hat{0123456789}}}\n";
-    fprintf tex "\\begin{document}\n";
-    fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
-    List.iter (feynmf_levels tex true 1 to_TeX to_label) sets;
-    fprintf tex "\n";   
-    fprintf tex "\\end{fmffile} \n";
-    fprintf tex "\\end{document} \n";
-    close_out tex
+  let tex = open_out (file ^ ".tex") in
+  fprintf tex "\\documentclass[10pt]{article}\n";
+  fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
+  fprintf tex "\\usepackage{feynmp}\n";
+  fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
+  fprintf tex "\\setlength{\\unitlength}{1mm}\n";
+  fprintf tex "\\setlength{\\parindent}{0pt}\n";
+  fprintf tex
+    "\\renewcommand{\\mathstrut}{\\protect\\vphantom{\\hat{0123456789}}}\n";
+  fprintf tex "\\begin{document}\n";
+  fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
+  List.iter (feynmf_levels tex true 1 to_TeX to_label) sets;
+  fprintf tex "\n";   
+  fprintf tex "\\end{fmffile} \n";
+  fprintf tex "\\end{document} \n";
+  close_out tex
     
 (* \thocwmodulesection{Least Squares Layout}
    \begin{equation}
