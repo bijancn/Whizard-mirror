@@ -252,22 +252,23 @@ i*)
 	  Tree.diagrams = [] }
       | _ -> failwith "less than two external particles"
 
+    let single_fiber amplitudes =
+      match
+	Sheaf.fibers (Sheaf.of_list (ThoList.flatmap forest1 amplitudes))
+      with
+      | [fiber] -> fiber
+      | _ -> failwith "expected a single fiber!"
+
     let uncolored_colored amplitudes =
-      let fiber :: _ = 
-	Sheaf.fibers (Sheaf.of_list (ThoList.flatmap forest1 amplitudes)) in
-      { Tree.outer = feynmf_set_sans_color fiber;
+      { Tree.outer = feynmf_set_sans_color (single_fiber amplitudes);
 	Tree.inner = List.map feynmf_set amplitudes }
 
     let uncolored_only amplitudes =
-      let fiber :: _ = 
-	Sheaf.fibers (Sheaf.of_list (ThoList.flatmap forest1 amplitudes)) in
-      { Tree.outer = feynmf_set_sans_color fiber;
+      { Tree.outer = feynmf_set_sans_color (single_fiber amplitudes);
 	Tree.inner = [] }
 
     let colored_only amplitudes =
-      let fiber :: _ = 
-	Sheaf.fibers (Sheaf.of_list (ThoList.flatmap forest1 amplitudes)) in
-      { Tree.outer = feynmf_set_sans_color_empty fiber;
+      { Tree.outer = feynmf_set_sans_color_empty (single_fiber amplitudes);
 	Tree.inner = List.map feynmf_set amplitudes }
 
     let momentum_to_TeX (_, p) =
