@@ -226,43 +226,6 @@ i*)
 	    (M.conjugate f, p))
 	tree
 
-    let amplitudes_to_feynmf latex name amplitudes =
-      Tree.feynmf_levels_wrapped name variable' format_p
-	(List.map
-           (fun a ->
-             match F.externals a with
-             | wf1 :: wf2 :: wfs ->
-	       let incoming = [wf1; wf2] in
-               { Tree.this =
-		   { Tree.header = header incoming wfs;
-		     Tree.incoming = incoming;
-		     Tree.diagrams =
-		       List.map (diagram incoming) (F.forest wf1 a) };
-		 Tree.lower = [] }
-	     | _ -> failwith "less than two external particles")
-           (CF.processes amplitudes))
-
-    let amplitudes_sans_color_to_feynmf latex name amplitudes =
-      let momentum_to_TeX (_, p) =
-	String.concat "" (List.map p2s p) in
-      let wf_to_TeX (f, _ as wf) =
-	M.flavor_to_TeX f ^ "(" ^ momentum_to_TeX wf ^ ")" in
-      Tree.feynmf_levels_wrapped name wf_to_TeX momentum_to_TeX
-	(List.map
-	   (fun (externals, trees) ->
-	     begin match externals with
-	     | wf1 :: wf2 :: wfs ->
-	       let incoming = [wf1; wf2] in
-               { Tree.this =
-		   { Tree.header = header_sans_color incoming wfs;
-		     Tree.incoming = incoming;
-		     Tree.diagrams =
-		       List.map (diagram_sans_color incoming) trees };
-		 Tree.lower = [] }
-	     | _ -> failwith "less than two external particles"
-	     end)
-	   (sheaf amplitudes))
-
     let feynmf_set amplitude =
       match F.externals amplitude with
       | wf1 :: wf2 :: wfs ->
@@ -273,10 +236,36 @@ i*)
 	    List.map (diagram incoming) (F.forest wf1 amplitude) }
       | _ -> failwith "less than two external particles"
 
+    let feynmf_set_sans_color (externals, trees) =
+      match externals with
+      | wf1 :: wf2 :: wfs ->
+	let incoming = [wf1; wf2] in
+	{ Tree.header = header_sans_color incoming wfs;
+	  Tree.incoming = incoming;
+	  Tree.diagrams =
+	    List.map (diagram_sans_color incoming) trees }
+      | _ -> failwith "less than two external particles"
+
     let lowest_level amplitude =
       { Tree.this = feynmf_set amplitude;
 	Tree.lower = [] }
 	
+    let lowest_level_sans_color amplitude =
+      { Tree.this = feynmf_set_sans_color amplitude;
+	Tree.lower = [] }
+	
+    let amplitudes_to_feynmf latex name amplitudes =
+      Tree.feynmf_levels_wrapped name variable' format_p
+	(List.map lowest_level (CF.processes amplitudes))
+
+    let amplitudes_sans_color_to_feynmf latex name amplitudes =
+      let momentum_to_TeX (_, p) =
+	String.concat "" (List.map p2s p) in
+      let wf_to_TeX (f, _ as wf) =
+	M.flavor_to_TeX f ^ "(" ^ momentum_to_TeX wf ^ ")" in
+      Tree.feynmf_levels_wrapped name wf_to_TeX momentum_to_TeX
+	(List.map lowest_level_sans_color (sheaf amplitudes))
+
     let upper_level amplitudes =
       { Tree.this = feynmf_set (List.hd amplitudes);
 	Tree.lower = List.map lowest_level amplitudes }
@@ -284,6 +273,21 @@ i*)
     let amplitudes_to_feynmf_nested latex name amplitudes =
       Tree.feynmf_levels_wrapped name variable' format_p
 	(List.map upper_level (amplitudes_by_flavor amplitudes))
+
+    let uncolored_colored amplitudes =
+      let fiber :: _ = 
+	Sheaf.fibers (Sheaf.of_list (ThoList.flatmap forest1 amplitudes)) in
+      { Tree.outer = feynmf_set_sans_color fiber;
+	Tree.inner = List.map feynmf_set amplitudes }
+
+    let amplitudes_to_feynmf_nested latex name amplitudes =
+      let momentum_to_TeX (_, p) =
+	String.concat "" (List.map p2s p) in
+      let wf_to_TeX (f, _ as wf) =
+	M.flavor_to_TeX f ^ "(" ^ momentum_to_TeX wf ^ ")" in
+      Tree.feynmf_sets_wrapped name
+	wf_to_TeX momentum_to_TeX variable' format_p
+	(List.map uncolored_colored (amplitudes_by_flavor amplitudes))
 
     let version () =
       List.iter (fun s -> prerr_endline ("RCS: " ^ s))

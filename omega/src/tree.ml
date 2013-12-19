@@ -495,6 +495,7 @@ let feynmf_sets_wrapped file
     to_TeX_outer to_label_outer to_TeX_inner to_label_inner sets =
   let tex = open_out (file ^ ".tex") in
   fprintf tex "\\documentclass[10pt]{article}\n";
+  fprintf tex "\\usepackage[colorlinks]{hyperref}\n";
   fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
   fprintf tex "\\usepackage{feynmp}\n";
   fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
@@ -503,6 +504,7 @@ let feynmf_sets_wrapped file
   fprintf tex
     "\\renewcommand{\\mathstrut}{\\protect\\vphantom{\\hat{0123456789}}}\n";
   fprintf tex "\\begin{document}\n";
+  fprintf tex "\\tableofcontents\n";
   fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
   List.iter
     (feynmf_sets tex true 1
@@ -531,6 +533,7 @@ let feynmf_levels_plain file sections level to_TeX to_label sets =
 let feynmf_levels_wrapped file to_TeX to_label sets =
   let tex = open_out (file ^ ".tex") in
   fprintf tex "\\documentclass[10pt]{article}\n";
+  fprintf tex "\\usepackage[colorlinks]{hyperref}\n";
   fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
   fprintf tex "\\usepackage{feynmp}\n";
   fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
@@ -539,6 +542,7 @@ let feynmf_levels_wrapped file to_TeX to_label sets =
   fprintf tex
     "\\renewcommand{\\mathstrut}{\\protect\\vphantom{\\hat{0123456789}}}\n";
   fprintf tex "\\begin{document}\n";
+  fprintf tex "\\tableofcontents\n";
   fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
   List.iter (feynmf_levels tex true 1 to_TeX to_label) sets;
   fprintf tex "\n";   
