@@ -96,8 +96,6 @@ val sty : (string * string) * bool * string -> feynmf
    used as incoming particles and~[to_string] is use to convert
    leaf labels to \LaTeX-strings. *)
 (* \label{Tree.to_feynmf} *)
-val to_feynmf : bool -> string -> ('l -> string) -> ('l -> string) ->
-  (string * 'l list * (feynmf, 'l) t list) list -> unit
 
 type 'l feynmf_set =
   { header : string;
@@ -108,11 +106,7 @@ type ('l, 'm) feynmf_sets =
   { outer : 'l feynmf_set;
     inner : 'm feynmf_set list }
 
-type 'l feynmf_levels =
-  { this : 'l feynmf_set;
-    lower : 'l feynmf_levels list }
-
-val feynmf_sets_plain : string -> bool -> int ->
+val feynmf_sets_plain : bool -> int -> string ->
   ('l -> string) -> ('l -> string) ->
   ('m -> string) -> ('m -> string) -> ('l, 'm) feynmf_sets list -> unit
 
@@ -120,8 +114,21 @@ val feynmf_sets_wrapped : string ->
   ('l -> string) -> ('l -> string) ->
   ('m -> string) -> ('m -> string) -> ('l, 'm) feynmf_sets list -> unit
 
-val feynmf_levels_plain : string -> bool -> int ->
+(* If the diagrams at all levels are of the same type,
+   we can recurse to arbitrary depth. *)
+
+type 'l feynmf_levels =
+  { this : 'l feynmf_set;
+    lower : 'l feynmf_levels list }
+
+(* [to_feynmf_levels_plain sections level file wf_to_TeX p_to_TeX levels]
+   \ldots *)
+
+val feynmf_levels_plain : bool -> int -> string ->
   ('l -> string) -> ('l -> string) -> 'l feynmf_levels list -> unit
+
+(* [to_feynmf_levels_wrapped file wf_to_TeX p_to_TeX levels]
+   \ldots *)
 
 val feynmf_levels_wrapped : string ->
   ('l -> string) -> ('l -> string) -> 'l feynmf_levels list -> unit

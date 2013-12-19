@@ -409,37 +409,6 @@ let to_feynmf_channel tex to_TeX to_label incoming t =
        Note that this is subtly different \ldots}
    \end{figure} *)
 
-let to_feynmf latex file to_TeX to_label sets =
-  if latex then
-    let tex = open_out (file ^ ".tex") in
-    fprintf tex "\\documentclass[10pt]{article}\n";
-    fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
-    fprintf tex "\\usepackage{feynmp}\n";
-    fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
-    fprintf tex "\\setlength{\\unitlength}{1mm}\n";
-    fprintf tex "\\setlength{\\parindent}{0pt}\n";
-    fprintf tex
-      "\\renewcommand{\\mathstrut}{\\protect\\vphantom{\\hat{0123456789}}}\n";
-    fprintf tex "\\begin{document}\n";
-    fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
-    List.iter
-      (fun (header, incoming, trees) ->
-        fprintf tex "\\section{%s}\n" header;
-        List.iter (to_feynmf_channel tex to_TeX to_label incoming) trees)
-      sets;
-    fprintf tex "\n";   
-    fprintf tex "\\end{fmffile} \n";
-    fprintf tex "\\end{document} \n";
-    close_out tex
-  else
-    let tex = open_out file in
-    List.iter
-      (fun (header, incoming, trees) ->
-        fprintf tex "%%%%%% \\section{%s}\n" header;
-        List.iter (to_feynmf_channel tex to_TeX to_label incoming) trees)
-      sets;
-    close_out tex
-
 let vanilla = { style = None; rev = false; label = None; tension = None }
 
 let sty (s, r, l) = { vanilla with style = Some s; rev = r; label = Some l }
@@ -482,7 +451,7 @@ let feynmf_sets tex sections level
     (feynmf_set tex sections (succ level) to_TeX_inner to_label_inner)
     set.inner
 
-let feynmf_sets_plain file sections level
+let feynmf_sets_plain sections level file
     to_TeX_outer to_label_outer to_TeX_inner to_label_inner sets =
   let tex = open_out (file ^ ".tex") in
   List.iter
@@ -491,9 +460,7 @@ let feynmf_sets_plain file sections level
     sets;
   close_out tex
 
-let feynmf_sets_wrapped file 
-    to_TeX_outer to_label_outer to_TeX_inner to_label_inner sets =
-  let tex = open_out (file ^ ".tex") in
+let feynmf_header tex file =
   fprintf tex "\\documentclass[10pt]{article}\n";
   fprintf tex "\\usepackage[colorlinks]{hyperref}\n";
   fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
@@ -505,14 +472,22 @@ let feynmf_sets_wrapped file
     "\\renewcommand{\\mathstrut}{\\protect\\vphantom{\\hat{0123456789}}}\n";
   fprintf tex "\\begin{document}\n";
   fprintf tex "\\tableofcontents\n";
-  fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
+  fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file
+
+let feynmf_footer tex =
+  fprintf tex "\n";   
+  fprintf tex "\\end{fmffile} \n";
+  fprintf tex "\\end{document} \n"
+
+let feynmf_sets_wrapped file 
+    to_TeX_outer to_label_outer to_TeX_inner to_label_inner sets =
+  let tex = open_out (file ^ ".tex") in
+  feynmf_header tex file;
   List.iter
     (feynmf_sets tex true 1
        to_TeX_outer to_label_outer to_TeX_inner to_label_inner)
     sets;
-  fprintf tex "\n";   
-  fprintf tex "\\end{fmffile} \n";
-  fprintf tex "\\end{document} \n";
+  feynmf_footer tex;
   close_out tex
 
 let rec feynmf_levels tex sections level to_TeX to_label set =
@@ -525,29 +500,16 @@ let rec feynmf_levels tex sections level to_TeX to_label set =
     set.this.diagrams;
   List.iter (feynmf_levels tex sections (succ level) to_TeX to_label) set.lower
 
-let feynmf_levels_plain file sections level to_TeX to_label sets =
+let feynmf_levels_plain sections level file to_TeX to_label sets =
   let tex = open_out (file ^ ".tex") in
   List.iter (feynmf_levels tex sections level to_TeX to_label) sets;
   close_out tex
     
 let feynmf_levels_wrapped file to_TeX to_label sets =
   let tex = open_out (file ^ ".tex") in
-  fprintf tex "\\documentclass[10pt]{article}\n";
-  fprintf tex "\\usepackage[colorlinks]{hyperref}\n";
-  fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
-  fprintf tex "\\usepackage{feynmp}\n";
-  fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
-  fprintf tex "\\setlength{\\unitlength}{1mm}\n";
-  fprintf tex "\\setlength{\\parindent}{0pt}\n";
-  fprintf tex
-    "\\renewcommand{\\mathstrut}{\\protect\\vphantom{\\hat{0123456789}}}\n";
-  fprintf tex "\\begin{document}\n";
-  fprintf tex "\\tableofcontents\n";
-  fprintf tex "\\begin{fmffile}{%s-fmf}\n\n" file;
+  feynmf_header tex file;
   List.iter (feynmf_levels tex true 1 to_TeX to_label) sets;
-  fprintf tex "\n";   
-  fprintf tex "\\end{fmffile} \n";
-  fprintf tex "\\end{document} \n";
+  feynmf_footer tex;
   close_out tex
     
 (* \thocwmodulesection{Least Squares Layout}
