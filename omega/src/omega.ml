@@ -243,6 +243,15 @@ i*)
 	    List.map (diagram_sans_color incoming) trees }
       | _ -> failwith "less than two external particles"
 
+    let feynmf_set_sans_color_empty (externals, trees) =
+      match externals with
+      | wf1 :: wf2 :: wfs ->
+	let incoming = [wf1; wf2] in
+	{ Tree.header = header_sans_color incoming wfs;
+	  Tree.incoming = incoming;
+	  Tree.diagrams = [] }
+      | _ -> failwith "less than two external particles"
+
     let uncolored_colored amplitudes =
       let fiber :: _ = 
 	Sheaf.fibers (Sheaf.of_list (ThoList.flatmap forest1 amplitudes)) in
@@ -254,6 +263,12 @@ i*)
 	Sheaf.fibers (Sheaf.of_list (ThoList.flatmap forest1 amplitudes)) in
       { Tree.outer = feynmf_set_sans_color fiber;
 	Tree.inner = [] }
+
+    let colored_only amplitudes =
+      let fiber :: _ = 
+	Sheaf.fibers (Sheaf.of_list (ThoList.flatmap forest1 amplitudes)) in
+      { Tree.outer = feynmf_set_sans_color_empty fiber;
+	Tree.inner = List.map feynmf_set amplitudes }
 
     let momentum_to_TeX (_, p) =
       String.concat "" (List.map p2s p)
@@ -270,6 +285,11 @@ i*)
       Tree.feynmf_sets_wrapped name
 	wf_to_TeX momentum_to_TeX variable' format_p
 	(List.map uncolored_only (amplitudes_by_flavor amplitudes))
+
+    let amplitudes_to_feynmf_color_only latex name amplitudes =
+      Tree.feynmf_sets_wrapped name
+	wf_to_TeX momentum_to_TeX variable' format_p
+	(List.map colored_only (amplitudes_by_flavor amplitudes))
 
     let version () =
       List.iter (fun s -> prerr_endline ("RCS: " ^ s))
@@ -327,9 +347,10 @@ i*)
       and output_file = ref None
       and print_forest = ref false
       and template = ref false
-      and feynmf = ref None
-      and feynmf_tex = ref false
-      and feynmf_colored = ref false
+      and diagrams_all = ref None
+      and diagrams_sans_color = ref None
+      and diagrams_color_only = ref None
+      and diagrams_LaTeX = ref false
       and quiet = ref false
       and write = ref true
       and params = ref false
@@ -369,12 +390,14 @@ i*)
            "          write a template for handwritten amplitudes");
           ("-forest", Arg.Set print_forest,
            "            Diagrammatic expansion");
-          ("-feynmf", Arg.String (fun s -> feynmf := Some s),
-           "file        print FeynMF/MP output");
-          ("-feynmf_colored", Arg.Set feynmf_colored,
-           "    draw Feynman diagrams for individual color flows");
-          ("-feynmf_tex", Arg.Set feynmf_tex,
-           "        enclose FeynMP output in LaTeX wrapper");
+          ("-diagrams", Arg.String (fun s -> diagrams_sans_color := Some s),
+           "file      produce FeynMP output for Feynman diagrams");
+          ("-diagrams:c", Arg.String (fun s -> diagrams_color_only := Some s),
+           "file    produce FeynMP output for color flow diagrams");
+          ("-diagrams:C", Arg.String (fun s -> diagrams_all := Some s),
+           "file    produce FeynMP output for Feynman and color flow diagrams");
+          ("-diagrams_LaTeX", Arg.Set diagrams_LaTeX,
+           "    enclose FeynMP output in LaTeX wrapper");
           ("-revision", Arg.Unit version,
            "          print revision control information");
           ("-quiet", Arg.Set quiet,
@@ -515,12 +538,22 @@ i*)
                 (F.forest (List.hd (F.externals amplitude)) amplitude))
             (CF.processes amplitudes);
 
-        begin match !feynmf, !feynmf_colored with
-        | Some name, true ->
-	  amplitudes_to_feynmf !feynmf_tex name amplitudes
-        | Some name, false ->
-	  amplitudes_to_feynmf_sans_color !feynmf_tex name amplitudes
-        | None, _ -> ()
+        begin match !diagrams_all with
+        | Some name ->
+	  amplitudes_to_feynmf !diagrams_LaTeX name amplitudes
+        | None -> ()
+        end;
+
+        begin match !diagrams_sans_color with
+        | Some name ->
+	  amplitudes_to_feynmf_sans_color !diagrams_LaTeX name amplitudes
+        | None -> ()
+        end;
+
+        begin match !diagrams_color_only with
+        | Some name ->
+	  amplitudes_to_feynmf_color_only !diagrams_LaTeX name amplitudes
+        | None -> ()
         end;
 
         begin match !output_file with
