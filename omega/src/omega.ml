@@ -25,17 +25,6 @@
 let (<<) f g x = f (g x)
 let (>>) f g x = g (f x)
 
-let opt_array_to_list a =
-  let rec opt_array_to_list' acc i a =
-    if i < 0 then
-      acc
-    else
-      begin match a.(i) with
-      | None -> opt_array_to_list' acc (pred i) a
-      | Some x -> opt_array_to_list' (x :: acc) (pred i) a
-      end in
-  opt_array_to_list' [] (Array.length a - 1) a
-  
 module P = Momentum.Default
 module P_Whizard = Momentum.DefaultW
 
@@ -70,18 +59,25 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
     module W = Whizard.Make(Fusion_Maker)(P)(P_Whizard)(M)
     module C = Cascade.Make(M)(P)
 
-    module Tree_Projection =
-      struct
-	type wf = flavor * int list
-	type base = wf list
-	type elt = wf list * (wf * F.coupling option, wf) Tree.t
-	let compare_elt = compare
-	let compare_base = compare
-	let pi (externals, tree) =
-	  externals
-      end
+(* Form a ['a list] from a ['a option array], containing
+   the elements that are not [None] in order. *)
 
-    module Sheaf = Bundle.Make (Tree_Projection)
+    let opt_array_to_list a =
+      let rec opt_array_to_list' acc i a =
+	if i < 0 then
+	  acc
+	else
+	  begin match a.(i) with
+	  | None -> opt_array_to_list' acc (pred i) a
+	  | Some x -> opt_array_to_list' (x :: acc) (pred i) a
+	  end in
+      opt_array_to_list' [] (Array.length a - 1) a
+  
+(* Return a list of [CF.amplitude list]s, corresponig to the diagrams
+   for a specific color flow for each flavor combination. *)
+
+    let amplitudes_by_flavor amplitudes =
+      List.map opt_array_to_list (Array.to_list (CF.process_table amplitudes))
 
 (* \begin{dubious}
      If we plan to distiguish different couplings later on,
@@ -109,6 +105,42 @@ i*)
      topologically equivalent duplicates.
    \end{dubious} *)
 
+(* Take a [CF.amplitude list] assumed to correspond to the same
+   external states after stripping the color and return a
+   pair of the list of external particles and the corresponding
+   Feynman diagrams without color. *)
+
+    let forest_sans_color = function
+      | a :: _ as amplitudes ->
+	begin match F.externals a with
+	| wf1 :: _ as externals ->
+	  let prune_color wf =
+	    (F.flavor_sans_color wf, F.momentum_list wf) in
+	  let prune_color_and_couplings (wf, c) =
+	    (prune_color wf, None) in
+	  (List.map prune_color externals,
+	   List.map
+	     (fun t ->
+	       Tree.canonicalize
+		 (Tree.map prune_color_and_couplings prune_color t))
+	     (ThoList.flatmap (F.forest wf1) amplitudes))
+	| [] -> failwith "Omega.forest_sans_color: no external particles"
+	end
+      | [] -> ([], [])
+
+    module Tree_Projection =
+      struct
+	type wf = flavor * int list
+	type base = wf list
+	type elt = wf list * (wf * F.coupling option, wf) Tree.t
+	let compare_elt = compare
+	let compare_base = compare
+	let pi (externals, tree) =
+          externals
+      end
+
+    module Sheaf = Bundle.Make (Tree_Projection)
+
     let forest1 a =
       let wf_sans_color wf =
 	(F.flavor_sans_color wf, F.momentum_list wf) in
@@ -116,17 +148,21 @@ i*)
       and externals = List.map wf_sans_color (F.externals a) in
       List.map
 	(fun t ->
-	  (externals,
-	   Tree.canonicalize
-	     (Tree.map
+          (externals,
+           Tree.canonicalize
+             (Tree.map
 		(fun (wf, c) -> (wf_sans_color wf, None)) wf_sans_color t)))
 	(F.forest wf1 a)
-
+	
     let forest amplitudes =
       ThoList.flatmap forest1 (CF.processes amplitudes)
 
-    let amplitudes_by_flavor amplitudes =
-      List.map opt_array_to_list (Array.to_list (CF.process_table amplitudes))
+    let single_fiber amplitudes =
+      match
+	Sheaf.fibers (Sheaf.of_list (ThoList.flatmap forest1 amplitudes))
+      with
+      | [fiber] -> fiber
+      | _ -> failwith "expected a single fiber!"
 
     let p2s p =
       if p >= 0 && p <= 9 then
@@ -251,13 +287,6 @@ i*)
 	  Tree.incoming = incoming;
 	  Tree.diagrams = [] }
       | _ -> failwith "less than two external particles"
-
-    let single_fiber amplitudes =
-      match
-	Sheaf.fibers (Sheaf.of_list (ThoList.flatmap forest1 amplitudes))
-      with
-      | [fiber] -> fiber
-      | _ -> failwith "expected a single fiber!"
 
     let uncolored_colored amplitudes =
       { Tree.outer = feynmf_set_sans_color (single_fiber amplitudes);
