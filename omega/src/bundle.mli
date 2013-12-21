@@ -1,4 +1,4 @@
-(* $Id: bundle.mli 4926 2013-12-04 12:35:06Z jr_reuter $
+(* $Id: bundle.mli 5023 2013-12-20 12:03:39Z ohl $
 
    Copyright (C) 1999-2014 by
 

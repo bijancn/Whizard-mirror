@@ -1,4 +1,4 @@
-(* $Id: omega.ml 4997 2013-12-13 13:22:56Z ohl $
+(* $Id: omega.ml 5023 2013-12-20 12:03:39Z ohl $
 
    Copyright (C) 1999-2014 by
 
@@ -110,59 +110,29 @@ i*)
    pair of the list of external particles and the corresponding
    Feynman diagrams without color. *)
 
+    let wf1 amplitude = 
+      match F.externals amplitude with
+      | wf :: _ -> wf
+      | [] -> failwith "Omega.forest_sans_color: no external particles"
+
+    let uniq l =
+      ThoList.uniq (List.sort compare l)
+
     let forest_sans_color = function
-      | a :: _ as amplitudes ->
-	begin match F.externals a with
-	| wf1 :: _ as externals ->
-	  let prune_color wf =
-	    (F.flavor_sans_color wf, F.momentum_list wf) in
-	  let prune_color_and_couplings (wf, c) =
-	    (prune_color wf, None) in
-	  (List.map prune_color externals,
-	   List.map
-	     (fun t ->
-	       Tree.canonicalize
-		 (Tree.map prune_color_and_couplings prune_color t))
-	     (ThoList.flatmap (F.forest wf1) amplitudes))
-	| [] -> failwith "Omega.forest_sans_color: no external particles"
-	end
+      | amplitude :: _ as amplitudes ->
+	let externals = F.externals amplitude in
+	let prune_color wf =
+	  (F.flavor_sans_color wf, F.momentum_list wf) in
+	let prune_color_and_couplings (wf, c) =
+	  (prune_color wf, None) in
+	(List.map prune_color externals,
+	 uniq
+	   (List.map
+	      (fun t ->
+		Tree.canonicalize
+		  (Tree.map prune_color_and_couplings prune_color t))
+	      (ThoList.flatmap (fun a -> F.forest (wf1 a) a) amplitudes)))
       | [] -> ([], [])
-
-    module Tree_Projection =
-      struct
-	type wf = flavor * int list
-	type base = wf list
-	type elt = wf list * (wf * F.coupling option, wf) Tree.t
-	let compare_elt = compare
-	let compare_base = compare
-	let pi (externals, tree) =
-          externals
-      end
-
-    module Sheaf = Bundle.Make (Tree_Projection)
-
-    let forest1 a =
-      let wf_sans_color wf =
-	(F.flavor_sans_color wf, F.momentum_list wf) in
-      let wf1 = List.hd (F.externals a)
-      and externals = List.map wf_sans_color (F.externals a) in
-      List.map
-	(fun t ->
-          (externals,
-           Tree.canonicalize
-             (Tree.map
-		(fun (wf, c) -> (wf_sans_color wf, None)) wf_sans_color t)))
-	(F.forest wf1 a)
-	
-    let forest amplitudes =
-      ThoList.flatmap forest1 (CF.processes amplitudes)
-
-    let single_fiber amplitudes =
-      match
-	Sheaf.fibers (Sheaf.of_list (ThoList.flatmap forest1 amplitudes))
-      with
-      | [fiber] -> fiber
-      | _ -> failwith "expected a single fiber!"
 
     let p2s p =
       if p >= 0 && p <= 9 then
@@ -242,7 +212,7 @@ i*)
             F.conjugate l)
 	tree
 
-    let diagram_sans_color incoming (_, tree) =
+    let diagram_sans_color incoming (tree) =
       let fmf (f, p) =
 	feynmf_style (M.propagator f) (M.color f) in
       Tree.map
@@ -289,15 +259,15 @@ i*)
       | _ -> failwith "less than two external particles"
 
     let uncolored_colored amplitudes =
-      { Tree.outer = feynmf_set_sans_color (single_fiber amplitudes);
+      { Tree.outer = feynmf_set_sans_color (forest_sans_color amplitudes);
 	Tree.inner = List.map feynmf_set amplitudes }
 
     let uncolored_only amplitudes =
-      { Tree.outer = feynmf_set_sans_color (single_fiber amplitudes);
+      { Tree.outer = feynmf_set_sans_color (forest_sans_color amplitudes);
 	Tree.inner = [] }
 
     let colored_only amplitudes =
-      { Tree.outer = feynmf_set_sans_color_empty (single_fiber amplitudes);
+      { Tree.outer = feynmf_set_sans_color_empty (forest_sans_color amplitudes);
 	Tree.inner = List.map feynmf_set amplitudes }
 
     let momentum_to_TeX (_, p) =

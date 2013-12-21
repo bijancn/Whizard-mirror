@@ -1,4 +1,4 @@
-(* $Id: fusion.ml 4991 2013-12-12 17:35:14Z ohl $
+(* $Id: fusion.ml 5023 2013-12-20 12:03:39Z ohl $
 
    Copyright (C) 1999-2014 by
 
@@ -23,8 +23,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Fusion" ["General Fusions"]
-    { RCS.revision = "$Revision: 4991 $";
-      RCS.date = "$Date: 2013-12-12 18:35:14 +0100 (Thu, 12 Dec 2013) $";
+    { RCS.revision = "$Revision: 5023 $";
+      RCS.date = "$Date: 2013-12-20 13:03:39 +0100 (Fri, 20 Dec 2013) $";
       RCS.author = "$Author: ohl $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/fusion.ml $" }
