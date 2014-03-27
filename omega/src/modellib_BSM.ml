@@ -1,4 +1,4 @@
-(* $Id: modellib_BSM.ml 4926 2013-12-04 12:35:06Z jr_reuter $
+(* $Id: modellib_BSM.ml 5351 2014-02-22 11:50:48Z msekulla $
 
    Copyright (C) 1999-2014 by
 
@@ -8,7 +8,7 @@
        with contributions from
        David Gordo Gomez
        Christian Speckner
-       Marco Sekulla
+       Marco Sekulla <sekulla@physik.uni-siegen.de>
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -25,9 +25,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_BSM" ["BSM Models"]
-    { RCS.revision = "$Revision: 4926 $";
-      RCS.date = "$Date: 2013-12-04 13:35:06 +0100 (Wed, 04 Dec 2013) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 5351 $";
+      RCS.date = "$Date: 2014-02-22 12:50:48 +0100 (Sat, 22 Feb 2014) $";
+      RCS.author = "$Author: msekulla $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_BSM.ml $" }
 
@@ -7339,7 +7339,7 @@ module TwoHiggsDoublet (Flags : THDM_flags) =
 
   end
 
-module type VBS_flags =
+module type SSC_flags =
   sig
     val higgs_triangle : bool (* $H\gamma\gamma$, $Hg\gamma$ and $Hgg$ couplings *)
     val higgs_hmm : bool    
@@ -7352,7 +7352,7 @@ module type VBS_flags =
     val top_anom_4f : bool
   end
 
-module VBS_kmatrix: VBS_flags =
+module SSC_kmatrix: SSC_flags =
   struct
     let higgs_triangle = false
     let higgs_hmm = false
@@ -7368,9 +7368,9 @@ module VBS_kmatrix: VBS_flags =
 
 (* \thocwmodulesection{Complete Minimal Standard Model including additional Resonances} *)
 
-module VBS (Flags : VBS_flags) =
+module SSC (Flags : SSC_flags) =
   struct
-    let rcs = RCS.rename rcs_file "Modellib_BSM.VBS"
+    let rcs = RCS.rename rcs_file "Modellib_BSM.SSC"
         [ "minimal electroweak standard model in unitarity gauge with additional Vectorboson Resonances"]
 
     open Coupling
@@ -7416,7 +7416,7 @@ module VBS (Flags : VBS_flags) =
     type gauge = unit
 
     let gauge_symbol () =
-      failwith "Modellib_BSM.VBS.gauge_symbol: internal error"
+      failwith "Modellib_BSM.SSC.gauge_symbol: internal error"
 
     let family n = List.map matter_field [ L n; N n; U n; D n ]
 
@@ -7677,9 +7677,9 @@ module VBS (Flags : VBS_flags) =
       | D_Alpha_WWWW0_T | D_Alpha_WWWW0_U | D_Alpha_WWWW2_S
       | D_Alpha_WWWW2_T | D_Alpha_ZZZZ_S | D_Alpha_ZZZZ_T
       | G_HWW | G_HHWW | G_HZZ | G_HHZZ
-      | G_SWW | G_SSWW | G_SZZ | G_SSZZ
+      | G_SWW | G_SWW_T | G_SSWW | G_SZZ | G_SZZ_T | G_SSZZ      
       | G_PNWW | G_PNZZ | G_PWZ | G_PWW
-      | G_FWW | G_FZZ
+      | G_FWW | G_FZZ | G_FWW_T | G_FZZ_T
       | G_TNWW | G_TNZZ | G_TWZ | G_TWW
       | G_Htt | G_Hbb | G_Hcc | G_Hmm | G_Htautau | G_H3 | G_H4
       | G_HGaZ | G_HGaGa | G_Hgg
@@ -8354,7 +8354,7 @@ i*)
   \begin{dubious}
     There is an extra minus in the Lagrangian to have the same sign as
     HWW or HZZ vertex. 
-    Effectivly this doesn't matter for VBS, because $(-1)^2=1$.
+    Effectivly this doesn't matter for SSC, because $(-1)^2=1$.
     This is only for completeness.
   \end{dubious}
   \begin{subequations}
@@ -8381,6 +8381,10 @@ i*)
     let rsigma3 =
       [ ((O Rsigma, G Wp, G Wm), Scalar_Vector_Vector 1, G_SWW);
         ((O Rsigma, G Z, G Z), Scalar_Vector_Vector 1, G_SZZ) ]
+
+    let rsigma3t =
+      [ ((O Rsigma, G Wp, G Wm), Scalar_Vector_Vector_t 1, G_SWW_T);
+        ((O Rsigma, G Z, G Z), Scalar_Vector_Vector_t 1, G_SZZ_T) ]
 
     let rsigma4 =
       [ (O Rsigma, O Rsigma, G Wp, G Wm), Scalar2_Vector2 1, G_SSWW;
@@ -8409,6 +8413,10 @@ i*)
     let rf3 =
       [ ((O Rf, G Wp, G Wm), Tensor_2_Vector_Vector_1 1, G_FWW);
         ((O Rf, G Z, G Z), Tensor_2_Vector_Vector_1 1, G_FZZ) ]
+
+    let rf3t =
+      [ ((O Rf, G Wp, G Wm), Tensor_2_Vector_Vector_t 1, G_FWW_T);
+        ((O Rf, G Z, G Z), Tensor_2_Vector_Vector_t 1, G_FZZ_T) ]
 
 (* Tensor Isotensor
   \begin{subequations}
@@ -8678,7 +8686,7 @@ effective operators:
        yukawa @ triple_gauge @
        gauge_higgs @ higgs @ higgs_triangle_vertices 
        @ goldstone_vertices @
-       rsigma3 @ rphi3 @ rf3 @ rt3 @
+       rsigma3 @ rsigma3t @ rphi3 @ rf3 @ rf3t @ rt3 @
        anomalous_ttA @ anomalous_bbA @
        anomalous_ttZ @ anomalous_bbZ @
        anomalous_tbW @ anomalous_tbWA @ anomalous_tbWZ @
@@ -8744,7 +8752,7 @@ effective operators:
       | "Aux_t_dR0"   -> O (Aux_top (0,0, 0,true,DR))   | "Aux_dR0"   -> O (Aux_top (0,0, 0,false,DR))
       | "Aux_t_dR+"   -> O (Aux_top (0,0, 1,true,DR))   | "Aux_dR+"   -> O (Aux_top (0,0, 1,false,DR))
       | "Aux_t_dR-"   -> O (Aux_top (0,0,-1,true,DR))   | "Aux_dR-"   -> O (Aux_top (0,0,-1,false,DR))
-      | _ -> invalid_arg "Modellib_BSM.VBS.flavor_of_string"
+      | _ -> invalid_arg "Modellib_BSM.SSC.flavor_of_string"
 
     let flavor_to_string = function
       | M f ->
@@ -8753,22 +8761,22 @@ effective operators:
           | L 2 -> "mu-" | L (-2) -> "mu+"
           | L 3 -> "tau-" | L (-3) -> "tau+"
           | L _ -> invalid_arg
-                "Modellib_BSM.VBS.flavor_to_string: invalid lepton"
+                "Modellib_BSM.SSC.flavor_to_string: invalid lepton"
           | N 1 -> "nue" | N (-1) -> "nuebar"
           | N 2 -> "numu" | N (-2) -> "numubar"
           | N 3 -> "nutau" | N (-3) -> "nutaubar"
           | N _ -> invalid_arg
-                "Modellib_BSM.VBS.flavor_to_string: invalid neutrino"
+                "Modellib_BSM.SSC.flavor_to_string: invalid neutrino"
           | U 1 -> "u" | U (-1) -> "ubar"
           | U 2 -> "c" | U (-2) -> "cbar"
           | U 3 -> "t" | U (-3) -> "tbar"
           | U _ -> invalid_arg
-                "Modellib_BSM.VBS.flavor_to_string: invalid up type quark"
+                "Modellib_BSM.SSC.flavor_to_string: invalid up type quark"
           | D 1 -> "d" | D (-1) -> "dbar"
           | D 2 -> "s" | D (-2) -> "sbar"
           | D 3 -> "b" | D (-3) -> "bbar"
           | D _ -> invalid_arg
-                "Modellib_BSM.VBS.flavor_to_string: invalid down type quark"
+                "Modellib_BSM.SSC.flavor_to_string: invalid down type quark"
           end
       | G f ->
           begin match f with
@@ -8801,22 +8809,22 @@ effective operators:
           | L 2 -> "\\mu^-" | L (-2) -> "\\mu^+"
           | L 3 -> "\\tau^-" | L (-3) -> "\\tau^+"
           | L _ -> invalid_arg
-                "Modellib_BSM.VBS.flavor_to_TeX: invalid lepton"
+                "Modellib_BSM.SSC.flavor_to_TeX: invalid lepton"
           | N 1 -> "\\nu_e" | N (-1) -> "\\bar{\\nu}_e"
           | N 2 -> "\\nu_\\mu" | N (-2) -> "\\bar{\\nu}_\\mu"
           | N 3 -> "\\nu_\\tau" | N (-3) -> "\\bar{\\nu}_\\tau"
           | N _ -> invalid_arg
-                "Modellib_BSM.VBS.flavor_to_TeX: invalid neutrino"
+                "Modellib_BSM.SSC.flavor_to_TeX: invalid neutrino"
           | U 1 -> "u" | U (-1) -> "\\bar{u}"
           | U 2 -> "c" | U (-2) -> "\\bar{c}"
           | U 3 -> "t" | U (-3) -> "\\bar{t}"
           | U _ -> invalid_arg
-                "Modellib_BSM.VBS.flavor_to_TeX: invalid up type quark"
+                "Modellib_BSM.SSC.flavor_to_TeX: invalid up type quark"
           | D 1 -> "d" | D (-1) -> "\\bar{d}"
           | D 2 -> "s" | D (-2) -> "\\bar{s}"
           | D 3 -> "b" | D (-3) -> "\\bar{b}"
           | D _ -> invalid_arg
-                "Modellib_BSM.VBS.flavor_to_TeX: invalid down type quark"
+                "Modellib_BSM.SSC.flavor_to_TeX: invalid down type quark"
           end
       | G f ->
           begin match f with
@@ -8980,9 +8988,11 @@ effective operators:
       | G_HWW -> "ghww" | G_HZZ -> "ghzz"
       | G_HHWW -> "ghhww" | G_HHZZ -> "ghhzz"
       | G_SWW -> "gsww" | G_SZZ -> "gszz"
+      | G_SWW_T -> "gswwt" | G_SZZ_T -> "gszzt"
       | G_PNWW -> "gpnww" | G_PNZZ -> "gpnzz"
       | G_PWZ -> "gpwz" | G_PWW -> "gpww"
       | G_FWW -> "gfww" | G_FZZ -> "gfzz"
+      | G_FWW_T -> "gfwwt" | G_FZZ_T -> "gfzzt"
       | G_TNWW -> "gtnww" | G_TNZZ -> "gtnzz"
       | G_TWZ -> "gtwz" | G_TWW -> "gtww"
       | G_SSWW -> "gssww" | G_SSZZ -> "gsszz"

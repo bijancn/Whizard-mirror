@@ -1,4 +1,4 @@
-(* $Id: tree.mli 5023 2013-12-20 12:03:39Z ohl $
+(* $Id: tree.mli 5170 2014-01-26 13:57:26Z jr_reuter $
 
    Copyright (C) 1999-2014 by
 
@@ -110,7 +110,7 @@ val feynmf_sets_plain : bool -> int -> string ->
   ('l -> string) -> ('l -> string) ->
   ('m -> string) -> ('m -> string) -> ('l, 'm) feynmf_sets list -> unit
 
-val feynmf_sets_wrapped : string ->
+val feynmf_sets_wrapped : bool -> string ->
   ('l -> string) -> ('l -> string) ->
   ('m -> string) -> ('m -> string) -> ('l, 'm) feynmf_sets list -> unit
 

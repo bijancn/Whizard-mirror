@@ -1,4 +1,4 @@
-(* $Id: tree.ml 5023 2013-12-20 12:03:39Z ohl $
+(* $Id: tree.ml 5170 2014-01-26 13:57:26Z jr_reuter $
 
    Copyright (C) 1999-2014 by
 
@@ -462,10 +462,15 @@ let feynmf_sets_plain sections level file
 
 let feynmf_header tex file =
   fprintf tex "\\documentclass[10pt]{article}\n";
+  fprintf tex "\\usepackage{ifpdf}\n";
   fprintf tex "\\usepackage[colorlinks]{hyperref}\n";
   fprintf tex "\\usepackage[a4paper,margin=1cm]{geometry}\n";
   fprintf tex "\\usepackage{feynmp}\n";
-  fprintf tex "\\DeclareGraphicsRule{*}{mps}{*}{}\n";
+  fprintf tex "\\ifpdf\n";
+  fprintf tex "   \\DeclareGraphicsRule{*}{mps}{*}{}\n";
+  fprintf tex "\\else\n";
+  fprintf tex "   \\DeclareGraphicsRule{*}{eps}{*}{}\n";
+  fprintf tex "\\fi\n";
   fprintf tex "\\setlength{\\unitlength}{1mm}\n";
   fprintf tex "\\setlength{\\parindent}{0pt}\n";
   fprintf tex
@@ -479,15 +484,15 @@ let feynmf_footer tex =
   fprintf tex "\\end{fmffile} \n";
   fprintf tex "\\end{document} \n"
 
-let feynmf_sets_wrapped file 
+let feynmf_sets_wrapped latex file 
     to_TeX_outer to_label_outer to_TeX_inner to_label_inner sets =
   let tex = open_out (file ^ ".tex") in
-  feynmf_header tex file;
+  if latex then feynmf_header tex file;
   List.iter
-    (feynmf_sets tex true 1
+    (feynmf_sets tex latex 1
        to_TeX_outer to_label_outer to_TeX_inner to_label_inner)
     sets;
-  feynmf_footer tex;
+  if latex then feynmf_footer tex;
   close_out tex
 
 let rec feynmf_levels tex sections level to_TeX to_label set =

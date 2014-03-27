@@ -1,4 +1,4 @@
-(* $Id: omega_SM_QCD.ml 2948 2010-12-24 03:25:57Z jr_reuter $
+(* $Id: omega_SM_rx.ml 5351 2014-02-22 11:50:48Z msekulla $
 
    Copyright (C) 1999-2014 by
 
@@ -6,6 +6,7 @@
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
        with contributions from
+       Marco Sekulla <sekulla@physik.uni-siegen.de>
        Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
@@ -22,7 +23,8 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-module O = Omega.Make(Fusion.Binary)(Targets.Fortran)(Modellib_SM.SM_QCD)
+module O = Omega.Make(Fusion.Mixed23)(Targets.Fortran)
+    (Modellib_SM.SM(Modellib_SM.SM_k_matrix))
 let _ = O.main ()
 
 (*i

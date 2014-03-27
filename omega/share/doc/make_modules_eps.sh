@@ -1,5 +1,5 @@
 #! /bin/sh
-# $Id: make_modules_eps.sh 2290 2010-04-11 19:49:44Z ohl $
+# $Id: make_modules_eps.sh 5342 2014-02-21 11:04:47Z msekulla $
 
 root=`pwd`
 
@@ -14,6 +14,7 @@ modules="bundle.ml bundle.mli cache.ml
   coupling.mli dAG.ml dAG.mli fusion.ml fusion.mli linalg.ml
   linalg.mli model.mli modellib_BSM.ml modellib_BSM.mli
   modellib_MSSM.ml modellib_MSSM.mli modellib_SM.ml modellib_SM.mli
+  modellib_NoH.ml modellib_NoH.mli
   modeltools.ml modeltools.mli momentum.ml momentum.mli omega.ml
   omega.mli omega_MSSM.ml omega_Littlest.ml omega_QED.ml omega_SM.ml
   options.ml options.mli partition.ml partition.mli pmap.ml pmap.mli

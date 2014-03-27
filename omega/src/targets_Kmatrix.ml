@@ -1,4 +1,4 @@
-(* $Id: targets_Kmatrix.ml 4966 2013-12-08 19:18:54Z msekulla $
+(* $Id: targets_Kmatrix.ml 5361 2014-02-24 10:49:03Z msekulla $
 
    Copyright (C) 1999-2014 by
 
@@ -24,8 +24,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets_Kmatrix" ["K-Matrix Support routines"]
-    { RCS.revision = "$Revision: 4966 $";
-      RCS.date = "$Date: 2013-12-08 20:18:54 +0100 (Sun, 08 Dec 2013) $";
+    { RCS.revision = "$Revision: 5361 $";
+      RCS.date = "$Date: 2014-02-24 11:49:03 +0100 (Mon, 24 Feb 2014) $";
       RCS.author = "$Author: msekulla $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/targets_Kmatrix.ml $" }
@@ -170,7 +170,7 @@ module Fortran =
       nl ();
       printf "  %sfunction da00 (cc, s, m) result (amp_00)" pure; nl ();
       printf "      real(kind=default), intent(in) :: s"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: a00_0, a00_1, a00_a, a00_f"; nl ();
       printf "      complex(kind=default), dimension(1:7) :: a00"; nl ();
@@ -178,10 +178,10 @@ module Fortran =
       printf "      real(kind=default) :: kappal, kappam, kappat"; nl ();
       printf "      ii = cmplx(0.0,1.0/32.0/Pi,default)"; nl ();
       printf "      jj = s**2/vev**4*ii"; nl ();
-      printf "      kappal = cc(8)*((mass(23)**2+mass(24)**2)/m(4)**2-2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
-      printf "      kappam = cc(8)*((mass(23)**4+mass(24)**4)/m(4)**2/(mass(23)**2+mass(24)**2) &"; nl (); 
+      printf "      kappal = cc(12)*((mass(23)**2+mass(24)**2)/m(4)**2-2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
+      printf "      kappam = cc(12)*((mass(23)**4+mass(24)**4)/m(4)**2/(mass(23)**2+mass(24)**2) &"; nl (); 
       printf "                 - 2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
-      printf "      kappat = cc(8)*mass(23)**2*mass(24)**2/m(4)**4"; nl ();
+      printf "      kappat = cc(12)*mass(23)**2*mass(24)**2/m(4)**4"; nl ();
       printf "      !!! Longitudinal"; nl ();
       printf "      !!! Scalar isosinglet"; nl ();
       printf "      a00(1) = -2.0 * cc(1)**2/vev**2 * s0stu(s,m(1)) "; nl ();
@@ -198,28 +198,28 @@ module Fortran =
       printf "              - 2*kappal*s0stu(s,m(4)))"; nl ();
       printf "      if ( (cc(4) /= 0).and.(kappal /= 0)) then"; nl ();
       printf "        a00(4) = a00(4) - cc(4)**2/vev**2*kappal * &"; nl (); 
-      printf "                 s**2/cmplx(s-m(4)**2,m(4)*10*kappal* width_res(w_res,4,wkm(4),m(4),cc(4)),default)"; nl ();
+      printf "                 s**2/cmplx(s-m(4)**2,m(4) * width_res(w_res,4,wkm(4),m(4),cc(4)),default)"; nl ();
       printf "      end if"; nl ();
       printf "      !!! Tensor isoquintet"; nl ();
       printf "      a00(5) = -5.0*cc(5)**2/vev**2*(d0stu(s,m(5)) &"; nl ();
       printf "              /3.0)/6.0"; nl ();
       printf "      !!! Transversal"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
-      printf "      a00(6) = - cc(6)**2/Pi/vev**6*mass(23)**2*mass(24)**2/4* s**2 &"; nl ();
+      printf "      a00(6) = - cc(9)**2/Pi/vev**6*mass(23)**2*mass(24)**2/4* s**2 &"; nl ();
       printf "                * ((2-2*s/m(4)**2+s**2/m(4)**4)+kappat/2 )"; nl ();
       printf "      if (a00(6) /= 0) then"; nl ();
-      printf "        a00(6) = a00(6)/cmplx(s-m(4)**2, - w_res/32/Pi * realpart(a00(6)),default) "; nl ();
+      printf "        a00(6) = a00(6)/cmplx(s-m(4)**2, - w_res/32/Pi * real(a00(6),default),default) "; nl ();
       printf "      end if"; nl ();
-      printf "      a00(6) = a00(6) - cc(6)**2/Pi/vev**6*mass(23)**2*mass(24)**2/12 * (s0stu(s,m(4)) &"; nl ();
+      printf "      a00(6) = a00(6) - cc(9)**2/Pi/vev**6*mass(23)**2*mass(24)**2/12 * (s0stu(s,m(4)) &"; nl ();
       printf "               * (3*(1+2*s/m(4)**2+2*s**2/m(4)**4)+kappat ))"; nl ();
       printf "      !!! Mixed"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
-      printf "      a00(7) = - cc(7)*cc(6)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/4 * s**2 &"; nl (); 
+      printf "      a00(7) = - cc(11)*cc(9)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/4 * s**2 &"; nl (); 
       printf "               *  ((1-4*s/m(4)**2+2*s**2/m(4)**4)+kappam )"; nl ();
       printf "      if (a00(7) /= 0) then"; nl ();
-      printf "        a00(7) = a00(7)/cmplx(s-m(4)**2, - w_res/32/Pi * realpart(a00(7)),default) "; nl ();
+      printf "        a00(7) = a00(7)/cmplx(s-m(4)**2, - w_res/32/Pi * real(a00(7),default),default) "; nl ();
       printf "      end if"; nl ();
-      printf "      a00(7) = a00(7) - cc(7)*cc(6)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/12 * (s0stu(s,m(4)) &"; nl ();
+      printf "      a00(7) = a00(7) - cc(11)*cc(9)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/12 * (s0stu(s,m(4)) &"; nl ();
       printf "              * (12*s/m(4)**2+12*s**2/m(4)**4+2*kappam ))"; nl ();
       printf "      !!! Fudge-Higgs"; nl ();
       printf "      a00_f = 2.*fudge_higgs*s/vev**2"; nl ();
@@ -232,17 +232,17 @@ module Fortran =
       printf "      if (fudge_km /= 0) then"; nl ();
       printf "        amp_00 = sum(a00)+a00_f+a00_a"; nl();
       printf "        if (amp_00 /= 0) then"; nl ();
-      printf "          amp_00 = - a00_a - a00_f - part_r * (sum(a00) - a00(3)) + 1/(realpart(1/amp_00)-ii)"; nl();
+      printf "          amp_00 = - a00_a - a00_f - part_r * (sum(a00) - a00(3)) + 1/(real(1/amp_00,default)-ii)"; nl();
       printf "        end if"; nl ();
       printf "      else"; nl ();
-      printf "        amp_00 = (1-part_r) * sum(a00) + part_r * a00(3) + a00_f"; nl ();
+      printf "        amp_00 = (1-part_r) * sum(a00) + part_r * a00(3)"; nl ();
       printf "      end if"; nl ();
       printf "      amp_00 = vev**4/s**2 * amp_00"; nl ();
       printf "  end function da00"; nl();
       nl ();
       printf "  %sfunction da02 (cc, s, m) result (amp_02)" pure; nl ();
       printf "      real(kind=default), intent(in) :: s"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: a02_0, a02_1, a02_a"; nl ();
       printf "      complex(kind=default), dimension(1:7) :: a02"; nl ();
@@ -250,10 +250,10 @@ module Fortran =
       printf "      real(kind=default) :: kappal, kappam, kappat"; nl ();
       printf "      ii = cmplx(0.0,1.0/32.0/Pi,default)"; nl ();
       printf "      jj = s**2/vev**4*ii"; nl ();
-      printf "      kappal = cc(8)*((mass(23)**2+mass(24)**2)/m(4)**2-2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
-      printf "      kappam = cc(8)*((mass(23)**4+mass(24)**4)/m(4)**2/(mass(23)**2+mass(24)**2) &"; nl (); 
+      printf "      kappal = cc(12)*((mass(23)**2+mass(24)**2)/m(4)**2-2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
+      printf "      kappam = cc(12)*((mass(23)**4+mass(24)**4)/m(4)**2/(mass(23)**2+mass(24)**2) &"; nl (); 
       printf "           - 2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
-      printf "      kappat = cc(8)*mass(23)**2*mass(24)**2/m(4)**4"; nl ();
+      printf "      kappat = cc(12)*mass(23)**2*mass(24)**2/m(4)**4"; nl ();
       printf "      !!! Longitudinal"; nl ();
       printf "      !!! Scalar  isosinglet"; nl ();
       printf "      a02(1) = -2.0*cc(1)**2/vev**2 * s2stu(s,m(1))"; nl ();
@@ -274,20 +274,20 @@ module Fortran =
       printf "               )/6.0"; nl ();
       printf "      !!! Transversal"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
-      printf "      a02(6) = - cc(6)**2/Pi/vev**6*mass(23)**2*mass(24)**2/40* s**2"; nl ();
+      printf "      a02(6) = - cc(9)**2/Pi/vev**6*mass(23)**2*mass(24)**2/40* s**2"; nl ();
       printf "      if (a02(6) /= 0) then"; nl ();
-      printf "        a02(6) = a02(6)/cmplx(s-m(4)**2, - w_res/32/Pi * realpart(a02(6)),default) "; nl ();
+      printf "        a02(6) = a02(6)/cmplx(s-m(4)**2, - w_res/32/Pi * real(a02(6),default),default) "; nl ();
       printf "      end if"; nl ();
-      printf "      a02(6) = a02(6) - cc(6)**2/Pi/vev**6*mass(23)**2*mass(24)**2/12 * (s2stu(s,m(4)) &"; nl ();
+      printf "      a02(6) = a02(6) - cc(9)**2/Pi/vev**6*mass(23)**2*mass(24)**2/12 * (s2stu(s,m(4)) &"; nl ();
       printf "             * (3*(1+2*s/m(4)**2+2*s**2/m(4)**4)+kappat ))"; nl ();
       printf "      !!! Mixed"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
-      printf "      a02(7) = - cc(7)*cc(6)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/20 &"; nl (); 
+      printf "      a02(7) = - cc(11)*cc(9)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/20 &"; nl (); 
       printf "               * s**2"; nl ();
       printf "      if (a02(7) /= 0) then"; nl ();
-      printf "        a02(7) = a02(7)/cmplx(s-m(4)**2, - w_res/32/Pi * realpart(a02(7)),default) "; nl ();
+      printf "        a02(7) = a02(7)/cmplx(s-m(4)**2, - w_res/32/Pi * real(a02(7),default),default) "; nl ();
       printf "      end if"; nl ();
-      printf "      a02(7) = a02(7) - cc(7)*cc(6)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/12 * (s2stu(s,m(4)) &"; nl ();
+      printf "      a02(7) = a02(7) - cc(11)*cc(9)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/12 * (s2stu(s,m(4)) &"; nl ();
       printf "              * (12*s/m(4)**2+12*s**2/m(4)**4+2*kappam ))"; nl ();
       printf "      !!! Low energy theory alphas"; nl ();
       printf "      a02_0 = (8.*(2.*a4 + a5)/15.) *  s**2/vev**4"; nl ();
@@ -297,7 +297,7 @@ module Fortran =
       printf "      if (fudge_km /= 0) then"; nl ();
       printf "        amp_02 = sum(a02)+a02_a"; nl();
       printf "        if (amp_02 /= 0) then"; nl ();
-      printf "          amp_02 = - a02_a - part_r * (sum(a02) - a02(3)) + 1/(realpart(1/amp_02)-ii)"; nl();
+      printf "          amp_02 = - a02_a - part_r * (sum(a02) - a02(3)) + 1/(real(1/amp_02,default)-ii)"; nl();
       printf "        end if"; nl ();
       printf "      else"; nl ();
       printf "        amp_02 = (1-part_r) * sum(a02) + part_r * a02(3)"; nl ();
@@ -307,7 +307,7 @@ module Fortran =
       nl ();
       printf "  %sfunction da11 (cc, s, m) result (amp_11)" pure; nl ();
       printf "      real(kind=default), intent(in) :: s"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: a11_0, a11_1, a11_a, a11_f"; nl ();
       printf "      complex(kind=default), dimension(1:7) :: a11"; nl ();
@@ -315,10 +315,10 @@ module Fortran =
       printf "      real(kind=default) :: kappal, kappam, kappat"; nl ();
       printf "      ii = cmplx(0.0,1.0/32.0/Pi,default)"; nl ();
       printf "      jj = s**2/vev**4*ii"; nl ();
-      printf "      kappal = cc(8)*((mass(23)**2+mass(24)**2)/m(4)**2-2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
-      printf "      kappam = cc(8)*((mass(23)**4+mass(24)**4)/m(4)**2/(mass(23)**2+mass(24)**2) &"; nl (); 
+      printf "      kappal = cc(12)*((mass(23)**2+mass(24)**2)/m(4)**2-2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
+      printf "      kappam = cc(12)*((mass(23)**4+mass(24)**4)/m(4)**2/(mass(23)**2+mass(24)**2) &"; nl (); 
       printf "               - 2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
-      printf "      kappat = cc(8)*mass(23)**2*mass(24)**2/m(4)**4"; nl ();
+      printf "      kappat = cc(12)*mass(23)**2*mass(24)**2/m(4)**4"; nl ();
       printf "      !!! Longitudinal"; nl ();
       printf "      !!! Scalar isosinglet"; nl ();
       printf "      a11(1) = - 2.0*cc(1)**2/vev**2 * s1stu(s,m(1))"; nl ();
@@ -339,11 +339,11 @@ module Fortran =
       printf "               )/36.0"; nl ();
       printf "      !!! Transversal"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
-      printf "      a11(6) = -cc(6)**2/Pi/vev**6*mass(23)**2*mass(24)**2/12 * (s1stu(s,m(4)) * &"; nl ();
+      printf "      a11(6) = -cc(9)**2/Pi/vev**6*mass(23)**2*mass(24)**2/12 * (s1stu(s,m(4)) * &"; nl ();
       printf "             (3*(1+2*s/m(4)**2+2*s**2/m(4)**4)+kappat ) - (s/m(4)**2+s**2/m(4)**4)*s)"; nl ();
       printf "      !!! Mixed"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
-      printf "      a11(7) = -cc(7)*cc(6)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/12 * (s1stu(s,m(4)) &"; nl ();
+      printf "      a11(7) = -cc(11)*cc(9)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/12 * (s1stu(s,m(4)) &"; nl ();
       printf "               * (12*s/m(4)**2+12*s**2/m(4)**4+2*kappam ) - 2*(s/m(4)**2+s**2/m(4)**4)*s)"; nl ();
       printf "      !!! Fudge-Higgs"; nl ();
       printf "      a11_f = fudge_higgs*s/3./vev**2"; nl ();
@@ -355,17 +355,17 @@ module Fortran =
       printf "      if (fudge_km /= 0) then"; nl ();
       printf "        amp_11 = sum(a11)+a11_f+a11_a"; nl();
       printf "        if (amp_11 /= 0) then"; nl ();
-      printf "          amp_11 = - a11_a - part_r * (sum(a11) - a11(3)) + 1/(realpart(1/amp_11)-ii)"; nl();
+      printf "          amp_11 = - a11_a - part_r * (sum(a11) - a11(3)) + 1/(real(1/amp_11,default)-ii)"; nl();
       printf "        end if"; nl ();
       printf "      else"; nl ();
-      printf "        amp_11 = (1-part_r) * sum(a11) + part_r * a11(3) + a11_f"; nl ();
+      printf "        amp_11 = (1-part_r) * sum(a11) + part_r * a11(3)"; nl ();
       printf "      end if"; nl ();
       printf "     amp_11 = vev**4/s**2 * amp_11"; nl ();
       printf "  end function da11"; nl(); 
       nl ();
       printf "  %sfunction da20 (cc, s, m) result (amp_20)" pure; nl ();
       printf "      real(kind=default), intent(in) :: s"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: a20_0, a20_1, a20_a, a20_f"; nl ();
       printf "      complex(kind=default), dimension(1:7) :: a20"; nl ();
@@ -374,10 +374,10 @@ module Fortran =
       printf "      ii = cmplx(0.0,1.0/32.0/Pi,default)"; nl ();
       printf "      jj = s**2/vev**4*ii"; nl ();
       printf "      !!! Scalar isosinglet"; nl ();
-      printf "      kappal = cc(8)*((mass(23)**2+mass(24)**2)/m(4)**2-2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
-      printf "      kappam = cc(8)*((mass(23)**4+mass(24)**4)/m(4)**2/(mass(23)**2+mass(24)**2) &"; nl (); 
+      printf "      kappal = cc(12)*((mass(23)**2+mass(24)**2)/m(4)**2-2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
+      printf "      kappam = cc(12)*((mass(23)**4+mass(24)**4)/m(4)**2/(mass(23)**2+mass(24)**2) &"; nl (); 
       printf "               - 2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
-      printf "      kappat = cc(8)*mass(23)**2*mass(24)**2/m(4)**4"; nl ();
+      printf "      kappat = cc(12)*mass(23)**2*mass(24)**2/m(4)**4"; nl ();
       printf "      !!! Longitudinal"; nl ();
       printf "      a20(1) = -2.0*cc(1)**2/vev**2 * s0stu(s,m(1))"; nl ();
       printf "      !!! Scalar isoquintet"; nl ();
@@ -396,11 +396,11 @@ module Fortran =
       printf "                )/36.0"; nl ();
       printf "      !!! Transversal"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
-      printf "      a20(6) = -cc(6)**2/Pi/vev**6*mass(23)**2*mass(24)**2/12 * (s0stu(s,m(4)) &"; nl ();
+      printf "      a20(6) = -cc(9)**2/Pi/vev**6*mass(23)**2*mass(24)**2/12 * (s0stu(s,m(4)) &"; nl ();
       printf "             * (3*(1+2*s/m(4)**2+2*s**2/m(4)**4)+kappat ) - 3*(s/m(4)**2-s**2/m(4)**4)*s)"; nl ();
       printf "      !!! Mixed"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
-      printf "      a20(7) = -cc(7)*cc(6)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/12 * (s0stu(s,m(4)) &"; nl ();
+      printf "      a20(7) = -cc(11)*cc(9)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/12 * (s0stu(s,m(4)) &"; nl ();
       printf "               * (12*s/m(4)**2+12*s**2/m(4)**4+2*kappam ) - 6*(s/m(4)**2-s**2/m(4)**4)*s)"; nl ();
       printf "      !!! Fudge-Higgs"; nl ();
       printf "      a20_f = - fudge_higgs*s/vev**2"; nl ();
@@ -413,17 +413,17 @@ module Fortran =
       printf "      if (fudge_km /= 0) then"; nl ();
       printf "        amp_20 = sum(a20)+a20_f+a20_a"; nl();
       printf "        if (amp_20 /= 0) then"; nl ();
-      printf "          amp_20 = - a20_a - a20_f - part_r * (sum(a20) - a20(3)) + 1/(realpart(1/amp_20)-ii)"; nl();
+      printf "          amp_20 = - a20_a - a20_f - part_r * (sum(a20) - a20(3)) + 1/(real(1/amp_20,default)-ii)"; nl();
       printf "        end if"; nl ();
       printf "      else"; nl ();
-      printf "        amp_20 = (1-part_r) * sum(a20) + part_r * a20(3) + a20_f"; nl ();
+      printf "        amp_20 = (1-part_r) * sum(a20) + part_r * a20(3)"; nl ();
       printf "      end if"; nl ();
       printf "     amp_20 = vev**4/s**2 * amp_20"; nl ();
       printf "  end function da20"; nl(); 
       nl ();
       printf "  %sfunction da22 (cc, s, m) result (amp_22)" pure; nl ();
       printf "      real(kind=default), intent(in) :: s"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: a22_0, a22_1, a22_a, a22_r"; nl ();
       printf "      complex(kind=default), dimension(1:7) :: a22"; nl ();
@@ -431,10 +431,10 @@ module Fortran =
       printf "      real(kind=default) :: kappal, kappam, kappat"; nl ();
       printf "      ii = cmplx(0.0,1.0/32.0/Pi,default)"; nl ();
       printf "      jj = s**2/vev**4*ii"; nl ();
-      printf "      kappal = cc(8)*((mass(23)**2+mass(24)**2)/m(4)**2-2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
-      printf "      kappam = cc(8)*((mass(23)**4+mass(24)**4)/m(4)**2/(mass(23)**2+mass(24)**2) &"; nl (); 
+      printf "      kappal = cc(12)*((mass(23)**2+mass(24)**2)/m(4)**2-2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
+      printf "      kappam = cc(12)*((mass(23)**4+mass(24)**4)/m(4)**2/(mass(23)**2+mass(24)**2) &"; nl (); 
       printf "                 - 2*mass(23)**2*mass(24)**2/m(4)**4)"; nl ();
-      printf "      kappat = cc(8)*mass(23)**2*mass(24)**2/m(4)**4"; nl ();
+      printf "      kappat = cc(12)*mass(23)**2*mass(24)**2/m(4)**4"; nl ();
       printf "      !!! Longitudinal"; nl ();
       printf "      !!! Scalar isosinglet"; nl ();
       printf "      a22(1) = - 2.0*cc(1)**2/vev**2 * s2stu(s,m(1))"; nl ();
@@ -455,11 +455,11 @@ module Fortran =
       printf "      end if"; nl ();
       printf "      !!! Transversal"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
-      printf "      a22(6) = -cc(6)**2/Pi/vev**6*mass(23)**2*mass(24)**2/12 * (s2stu(s,m(4)) &"; nl ();
+      printf "      a22(6) = -cc(9)**2/Pi/vev**6*mass(23)**2*mass(24)**2/12 * (s2stu(s,m(4)) &"; nl ();
       printf "              * (3*(1+2*s/m(4)**2+2*s**2/m(4)**4)+kappat ))"; nl ();
       printf "      !!! Mixed"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
-      printf "      a22(7) = -cc(7)*cc(6)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/12 * (s2stu(s,m(4)) &"; nl ();
+      printf "      a22(7) = -cc(11)*cc(9)*cc(4)/Pi/vev**4*(mass(23)**2+mass(24)**2)/12 * (s2stu(s,m(4)) &"; nl ();
       printf "              * (12*s/m(4)**2+12*s**2/m(4)**4+2*kappam ))"; nl ();
       printf "      !!! Low energy theory alphas"; nl ();
       printf "      a22_0 = 4*(a4 + 2*a5)/15*s**2/vev**4 "; nl ();
@@ -469,7 +469,7 @@ module Fortran =
       printf "      if (fudge_km /= 0) then"; nl ();
       printf "        amp_22 = sum(a22)+a22_a"; nl();
       printf "        if (amp_22 /= 0) then"; nl ();
-      printf "          amp_22 = - a22_a - part_r * (sum(a22) - a22(3)) + 1/(realpart(1/amp_22)-ii)"; nl();
+      printf "          amp_22 = - a22_a - part_r * (sum(a22) - a22(3)) + 1/(real(1/amp_22,default)-ii)"; nl();
       printf "        end if"; nl ();
       printf "      else"; nl ();
       printf "        amp_22 = (1-part_r) * sum(a22) + part_r * a22(3)"; nl ();
@@ -479,7 +479,7 @@ module Fortran =
       nl ();
       printf "  %sfunction dalzz0_s (cc,m,k) result (alzz0_s)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alzz0_s"; nl ();
       printf "      real(kind=default) :: s"; nl ();
@@ -491,7 +491,7 @@ module Fortran =
       nl ();
       printf "  %sfunction dalzz0_t (cc,m,k) result (alzz0_t)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alzz0_t"; nl ();
       printf "      real(kind=default) :: s"; nl ();
@@ -502,7 +502,7 @@ module Fortran =
       nl ();
       printf "  %sfunction dalzz1_s (cc,m,k) result (alzz1_s)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alzz1_s"; nl ();
       printf "      real(kind=default) :: s"; nl ();
@@ -513,7 +513,7 @@ module Fortran =
       nl ();  
       printf "  %sfunction dalzz1_t (cc,m,k) result (alzz1_t)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alzz1_t"; nl ();
       printf "      real(kind=default) :: s"; nl ();
@@ -524,7 +524,7 @@ module Fortran =
       nl ();  
       printf "  %sfunction dalzz1_u (cc,m,k) result (alzz1_u)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alzz1_u"; nl ();
       printf "      real(kind=default) :: s"; nl ();
@@ -535,7 +535,7 @@ module Fortran =
       nl ();  
       printf "  %sfunction dalww0_s (cc,m,k) result (alww0_s)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alww0_s"; nl ();
       printf "      real(kind=default) :: s"; nl ();
@@ -546,7 +546,7 @@ module Fortran =
       nl ();  
       printf "  %sfunction dalww0_t (cc,m,k) result (alww0_t)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alww0_t"; nl ();
       printf "      real(kind=default) :: s"; nl ();
@@ -557,7 +557,7 @@ module Fortran =
       nl ();  
       printf "  %sfunction dalww0_u (cc,m,k) result (alww0_u)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alww0_u"; nl ();
       printf "      real(kind=default) :: s"; nl ();
@@ -568,7 +568,7 @@ module Fortran =
       nl ();
       printf "  %sfunction dalww2_s (cc,m,k) result (alww2_s)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alww2_s"; nl ();
       printf "      real(kind=default) :: s"; nl ();
@@ -578,7 +578,7 @@ module Fortran =
       nl ();
       printf "  %sfunction dalww2_t (cc,m,k) result (alww2_t)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alww2_t"; nl ();
       printf "      real(kind=default) :: s"; nl ();
@@ -588,7 +588,7 @@ module Fortran =
       nl ();
       printf "  %sfunction dalz4_s (cc,m,k) result (alz4_s)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alz4_s"; nl ();
       printf "      real(kind=default) :: s"; nl ();
@@ -601,7 +601,7 @@ module Fortran =
       printf "  @[<5>"; 
       printf "  %sfunction dalz4_t (cc,m,k) result (alz4_t)" pure; nl ();
       printf "      type(momentum), intent(in) :: k"; nl ();
-      printf "      real(kind=default), dimension(1:8), intent(in) :: cc"; nl ();
+      printf "      real(kind=default), dimension(1:12), intent(in) :: cc"; nl ();
       printf "      real(kind=default), dimension(1:5), intent(in) :: m"; nl ();
       printf "      complex(kind=default) :: alz4_t"; nl ();
       printf "      real(kind=default) :: s"; nl ();

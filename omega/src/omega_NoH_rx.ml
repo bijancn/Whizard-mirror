@@ -1,12 +1,13 @@
-(* $Id: omega_VBS.ml 3670 2013-09-23 14:07:07Z msekulla $
+(* $Id: omega_NoH_rx.ml 4926 2014-03-21 12:35:06 msekulla $
 
-   Copyright (C) 1999-2013 by
+   Copyright (C) 1999-2014 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
-       Juergen Reuter <juergen.reuter@physik.uni-freiburg.de>
+       Juergen Reuter <juergen.reuter@desy.de>
        with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
+       Marco Sekulla <sekulla@physik.uni-siegen.de>
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -23,7 +24,7 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 module O = Omega.Make(Fusion.Mixed23)(Targets.Fortran)
-    (Modellib_BSM.VBS(Modellib_BSM.VBS_kmatrix))
+    (Modellib_NoH.NoH(Modellib_NoH.NoH_k_matrix))
 let _ = O.main ()
 
 (*i

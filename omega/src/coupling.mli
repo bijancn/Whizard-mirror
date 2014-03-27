@@ -1,4 +1,4 @@
-(* $Id: coupling.mli 4926 2013-12-04 12:35:06Z jr_reuter $
+(* $Id: coupling.mli 5147 2014-01-23 14:22:34Z msekulla $
 
    Copyright (C) 1999-2014 by
 
@@ -242,6 +242,8 @@ type 'a vertex3 =
       $(\ii\partial_\nu\phi) (\ii\partial_\mu V_1^\nu) V_2^\mu$ *)
   | Dim5_Scalar_Vector_Vector_U of int (* %
       $(\ii\partial_\nu\phi) (\ii\partial_\mu V^\nu) V^\mu$ *)
+  | Scalar_Vector_Vector_t of int (* %
+      $ ( \partial_\mu V_\nu-\partial_\nu V_\mu )^2 $ *)
   | Dim6_Vector_Vector_Vector_T of int (* %
       $V_1^\mu ((\ii\partial_\nu V_2^\rho)%
        \ii\overleftrightarrow{\partial_\mu}(\ii\partial_\rho V_3^\nu))$ *)
@@ -249,6 +251,8 @@ type 'a vertex3 =
       $T^{\mu\nu} (V_{1,\mu}V_{2,\nu} + V_{1,\nu}V_{2,\mu})$ *)
   | Tensor_2_Vector_Vector_1 of int (* % 
       $T^{\mu\nu} (V_{1,\mu}V_{2,\nu} + V_{1,\nu}V_{2,\mu} - g_{\mu,\nu}V_1^\rho V_{2,\rho} )$ *) 
+  | Tensor_2_Vector_Vector_t of int (* %
+    $T^{\mu\nu} (V_{1,\mu}V_{2,\nu} + V_{1,\nu}V_{2,\mu} - g_{\mu,\nu}V_1^\rho V_{2,\rho} )$ *) 
   | Dim5_Tensor_2_Vector_Vector_1 of int (* %
       $T^{\alpha\beta} (V_1^\mu
          \ii\overleftrightarrow\partial_\alpha

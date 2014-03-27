@@ -1,4 +1,4 @@
-(* $Id: colorize.ml 4983 2013-12-11 16:46:32Z ohl $
+(* $Id: colorize.ml 5147 2014-01-23 14:22:34Z msekulla $
 
    Copyright (C) 1999-2014 by
 
@@ -23,9 +23,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Colorize" ["Colorizing Monochrome Models"]
-    { RCS.revision = "$Revision: 4983 $";
-      RCS.date = "$Date: 2013-12-11 17:46:32 +0100 (Wed, 11 Dec 2013) $";
-      RCS.author = "$Author: ohl $";
+    { RCS.revision = "$Revision: 5147 $";
+      RCS.date = "$Date: 2014-01-23 15:22:34 +0100 (Thu, 23 Jan 2014) $";
+      RCS.author = "$Author: msekulla $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/colorize.ml $" }
 
@@ -339,12 +339,16 @@ module It (M : Model.T) =
           Dim5_Scalar_Vector_Vector_U (x * c)
       | Dim5_Scalar_Vector_Vector_TU c ->
           Dim5_Scalar_Vector_Vector_TU (x * c)
+      | Scalar_Vector_Vector_t c ->
+          Scalar_Vector_Vector_t (x * c)
       | Dim6_Vector_Vector_Vector_T c ->
           Dim6_Vector_Vector_Vector_T (x * c)
       | Tensor_2_Vector_Vector c ->
           Tensor_2_Vector_Vector (x * c)
       | Tensor_2_Vector_Vector_1 c ->
           Tensor_2_Vector_Vector_1 (x * c)
+      | Tensor_2_Vector_Vector_t c ->
+          Tensor_2_Vector_Vector_t (x * c)
       | Dim5_Tensor_2_Vector_Vector_1 c ->
           Dim5_Tensor_2_Vector_Vector_1 (x * c)
       | Dim5_Tensor_2_Vector_Vector_2 c ->

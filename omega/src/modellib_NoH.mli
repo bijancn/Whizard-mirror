@@ -1,11 +1,13 @@
-(* $Id: modellib_SM.mli 5344 2014-02-21 11:24:08Z msekulla $
+(* $Id: modellib_NoH.mli 5045 2014-03-21 17:09:34Z msekulla $
 
    Copyright (C) 1999-2014 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
+       Marco Sekulla <sekulla@physik.uni-siegen.de>
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -23,38 +25,20 @@
 
 (* \thocwmodulesection{Hardcoded Models} *)
 
-module Phi3 : Model.T with module Ch = Charges.Null
-module Phi4 : Model.T with module Ch = Charges.Null
-module QED : Model.T with module Ch = Charges.ZZ
-module QCD : Model.T with module Ch = Charges.ZZ
-
-module type SM_flags =
+module type NoH_flags =
   sig
-    val higgs_triangle : bool (* $H\gamma\gamma$, $Hg\gamma$ and $Hgg couplings *)
-    val higgs_hmm : bool    
     val triple_anom : bool
     val quartic_anom : bool
-    val higgs_anom : bool
     val k_matrix : bool
     val ckm_present : bool
     val top_anom : bool
     val top_anom_4f : bool
   end
 
-module SM_no_anomalous : SM_flags
-module SM_anomalous : SM_flags
-module SM_k_matrix : SM_flags
-module SM_no_anomalous_ckm : SM_flags
-module SM_anomalous_ckm : SM_flags
-module SM_Higgs : SM_flags
-module SM_anomalous_top : SM_flags
+module NoH_k_matrix : NoH_flags
 
-module SM : functor (F : SM_flags) -> Model.Gauge with module Ch = Charges.QQ
-
-module SM_Rxi : Model.T with module Ch = Charges.QQ
-
-module Groves : functor (M : Model.Gauge) -> Model.Gauge with module Ch = M.Ch
-module SM_clones : Model.Gauge with module Ch = Charges.QQ
+module NoH : functor (F : NoH_flags) -> Model.Gauge with module Ch = Charges.QQ
+module AltH: functor (F : NoH_flags) -> Model.Gauge with module Ch = Charges.QQ
 
 (*i
  *  Local Variables:

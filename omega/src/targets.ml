@@ -1,4 +1,4 @@
-(* $Id: targets.ml 4926 2013-12-04 12:35:06Z jr_reuter $
+(* $Id: targets.ml 5147 2014-01-23 14:22:34Z msekulla $
 
    Copyright (C) 1999-2014 by
 
@@ -8,6 +8,7 @@
        with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
        Fabian Bach <fabian.bach@desy.de> (only parts of this file)
+       Marco Sekulla <sekulla@physik.uni-siegen.de> (only parts of this file)
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -24,9 +25,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 4926 $";
-      RCS.date = "$Date: 2013-12-04 13:35:06 +0100 (Wed, 04 Dec 2013) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 5147 $";
+      RCS.date = "$Date: 2014-01-23 15:22:34 +0100 (Thu, 23 Jan 2014) $";
+      RCS.author = "$Author: msekulla $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/targets.ml $" }
 
@@ -1371,6 +1372,14 @@ i*)
                     c wf2 p1 p2 wf1 p2 p1 p2 p2 wf1
               end                
 
+          | Scalar_Vector_Vector_t coeff ->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "s_vv_t(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F12|F13) -> printf "v_sv_t(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F21|F31) -> printf "v_sv_t(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
+              end
+
           | Dim6_Vector_Vector_Vector_T coeff ->
               let c = format_coupling coeff c in
               begin match fusion with
@@ -1404,6 +1413,14 @@ i*)
               | (F23|F32) -> printf "t2_vv_d5_1(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
               | (F12|F13) -> printf "v_t2v_d5_1(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
               | (F21|F31) -> printf "v_t2v_d5_1(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
+              end
+
+         | Tensor_2_Vector_Vector_t coeff ->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "t2_vv_t(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F12|F13) -> printf "v_t2v_t(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F21|F31) -> printf "v_t2v_t(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
               end
 
           | Dim5_Tensor_2_Vector_Vector_2 coeff ->

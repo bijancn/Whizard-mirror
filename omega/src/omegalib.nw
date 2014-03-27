@@ -1,4 +1,4 @@
-%  $Id: omegalib.nw 4966 2013-12-08 19:18:54Z msekulla $
+%  $Id: omegalib.nw 5434 2014-03-06 18:17:45Z msekulla $
 %
 %  Copyright (C) 1999-2014 by 
 %      Wolfgang Kilian <kilian@physik.uni-siegen.de>
@@ -2659,6 +2659,37 @@ pure function s_vs (g, v1, k1, phi2, k2) result (phi)
   complex(kind=default) :: phi
   phi = g * ((k1 + 2*k2) * v1) * phi2
 end function s_vs
+@ \subsection{Transversal Scalar-Vector Coupling}
+<<Declaration of couplings>>=
+public :: s_vv_t, v_sv_t
+@
+\begin{equation}
+  phi(k_1+k_2) = g((V_1(k_1) V_2(k_2))(k_1 k_2)
+                 - (V_1(k_1) k_2)(V_2(k_2) k_1))
+\end{equation}
+<<Implementation of couplings>>=
+pure function s_vv_t (g, v1, k1, v2, k2) result (phi)
+  complex(kind=default), intent(in) :: g
+  type(vector), intent(in) :: v1, v2
+  type(momentum), intent(in) :: k1, k2
+  complex(kind=default) :: phi
+  phi = g * ((v1*v2) * (k1*k2) - (v1*k2) * (v2*k1))
+end function s_vv_t
+@
+\begin{equation}
+  V_1^\mu(k_\phi+k_V) = g phi(((k_\phi+k_V)k_V)V_2^\mu-
+                               (k_\phi+k_V)V_2)k_V^\mu )
+\end{equation}
+<<Implementation of couplings>>=
+pure function v_sv_t (g, phi, kphi,v, kv) result (vout)
+  complex(kind=default), intent(in) :: g, phi
+  type(vector), intent(in) :: v
+  type(momentum), intent(in) :: kv, kphi
+  type(momentum) :: kout
+  type(vector)  :: vout
+  kout = - (kv + kphi)
+  vout = g * phi * ((kout*kv) * v - (v * kout) * kv)
+end function v_sv_t
 @ \subsection{Triple Vector Couplings}
 <<Declaration of couplings>>=
 public :: tkv_vv, lkv_vv, tv_kvv, lv_kvv, kg_kgkg
@@ -2959,7 +2990,7 @@ pure function grav_vv (g, m, k1, k2, v1, v2) result (t)
 end function grav_vv
 @ \section{Tensor Couplings}
 <<Declaration of couplings>>=
-public :: t2_vv, v_t2v, t2_vv_1, v_t2v_1
+public :: t2_vv, v_t2v, t2_vv_1, v_t2v_1, t2_vv_t, v_t2v_t
 @ \section{Scalar-Vector Dim-5 Couplings}
 <<Declaration of couplings>>=
 public :: phi_vv, v_phiv, phi_u_vv, v_u_phiv
@@ -3053,7 +3084,50 @@ pure function v_t2v_1 (g, t, v) result (tv)
   tmp%t = t%t + transpose (t%t)
   tv = g * (tmp * v - tmp_tv)
 end function v_t2v_1
-@ 
+@
+<<Implementation of couplings>>=
+pure function t2_vv_t (g, v1, k1, v2, k2) result (t)
+  complex(kind=default), intent(in) :: g
+  complex(kind=default) :: tmp_s
+  type(vector), intent(in) :: v1, v2
+  type(momentum), intent(in) :: k1, k2
+  type(tensor) :: tmp, tmp_v1k2, tmp_v2k1, tmp_k1k2, tmp2
+  type(tensor) :: t_metric, t 
+  t_metric%t = 0
+  t_metric%t(0,0) =   1.0_default
+  t_metric%t(1,1) = - 1.0_default
+  t_metric%t(2,2) = - 1.0_default
+  t_metric%t(3,3) = - 1.0_default
+  tmp = v1.tprod.v2
+  tmp_s = v1 * v2
+  tmp_v1k2 = (v2 * k1) * (v1.tprod.k2)
+  tmp_v2k1 = (v1 * k2) * (v2.tprod.k1)
+  tmp_k1k2 = tmp_s * (k1.tprod.k2)
+  tmp2%t = tmp_v1k2%t + tmp_v2k1%t - tmp_k1k2%t
+  t%t = g * ( (k1*k2) * (tmp%t + transpose (tmp%t) - tmp_s * t_metric%t ) &
+       + ((v1 * k2) * (v2 * k1)) * t_metric%t &
+       - tmp2%t - transpose(tmp2%t))
+end function t2_vv_t
+@
+<<Implementation of couplings>>=
+pure function v_t2v_t (g, t, kt, v, kv) result (tv)
+  complex(kind=default), intent(in) :: g
+  type(tensor), intent(in) :: t
+  type(vector), intent(in) :: v
+  type(momentum), intent(in) :: kt, kv
+  type(momentum) :: kout
+  type(vector) :: tv, tmp_tv
+  type(tensor) :: tmp
+  kout = - (kt + kv)
+  tmp_tv =  ( t%t(0,0)-t%t(1,1)-t%t(2,2)-t%t(3,3) ) * v
+  tmp%t = t%t + transpose (t%t)
+  tv = g * ( (tmp * v - tmp_tv) * (kv * kout )&
+       + ( t%t(0,0)-t%t(1,1)-t%t(2,2)-t%t(3,3) ) * (kout * v ) * kv &
+       - (kout * v) * ( tmp * kv) &
+       - (v* (t * kout) + kout * (t * v)) * kv &
+       + (kout* (t * kv) + kv * (t * kout)) * v) 
+end function v_t2v_t
+@
 <<Declaration of couplings>>=
 public :: t2_vv_d5_1, v_t2v_d5_1
 @ 
@@ -10069,7 +10143,7 @@ case (OVM_FUSE_PSIBAR_PSIBAR_VECTOR)
         f_fv (sign*env%gc(coupl), vm%psibar(rhs(1)), vm%v(rhs(2)))
 @ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 <<Copyleft>>=
-!  $Id: omegalib.nw 4966 2013-12-08 19:18:54Z msekulla $
+!  $Id: omegalib.nw 5434 2014-03-06 18:17:45Z msekulla $
 !
 !  Copyright (C) 1999-2009 by 
 !      Wolfgang Kilian <kilian@physik.uni-siegen.de>

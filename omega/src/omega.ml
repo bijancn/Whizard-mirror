@@ -1,4 +1,4 @@
-(* $Id: omega.ml 5023 2013-12-20 12:03:39Z ohl $
+(* $Id: omega.ml 5170 2014-01-26 13:57:26Z jr_reuter $
 
    Copyright (C) 1999-2014 by
 
@@ -277,19 +277,19 @@ i*)
       M.flavor_to_TeX f ^ "(" ^ momentum_to_TeX wf ^ ")"
 
     let amplitudes_to_feynmf latex name amplitudes =
-      Tree.feynmf_sets_wrapped name
-	wf_to_TeX momentum_to_TeX variable' format_p
-	(List.map uncolored_colored (amplitudes_by_flavor amplitudes))
-
+	Tree.feynmf_sets_wrapped latex name
+	  wf_to_TeX momentum_to_TeX variable' format_p
+	  (List.map uncolored_colored (amplitudes_by_flavor amplitudes))
+	
     let amplitudes_to_feynmf_sans_color latex name amplitudes =
-      Tree.feynmf_sets_wrapped name
-	wf_to_TeX momentum_to_TeX variable' format_p
-	(List.map uncolored_only (amplitudes_by_flavor amplitudes))
+	Tree.feynmf_sets_wrapped latex name
+	  wf_to_TeX momentum_to_TeX variable' format_p
+	  (List.map uncolored_only (amplitudes_by_flavor amplitudes))
 
     let amplitudes_to_feynmf_color_only latex name amplitudes =
-      Tree.feynmf_sets_wrapped name
-	wf_to_TeX momentum_to_TeX variable' format_p
-	(List.map colored_only (amplitudes_by_flavor amplitudes))
+	Tree.feynmf_sets_wrapped latex name
+	  wf_to_TeX momentum_to_TeX variable' format_p
+	  (List.map colored_only (amplitudes_by_flavor amplitudes))
 
     let version () =
       List.iter (fun s -> prerr_endline ("RCS: " ^ s))

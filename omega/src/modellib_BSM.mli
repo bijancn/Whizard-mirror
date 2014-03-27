@@ -1,4 +1,4 @@
-(* $Id: modellib_BSM.mli 4926 2013-12-04 12:35:06Z jr_reuter $
+(* $Id: modellib_BSM.mli 5351 2014-02-22 11:50:48Z msekulla $
 
    Copyright (C) 1999-2014 by
 
@@ -64,7 +64,7 @@ module Threeshl_diet: Threeshl_options
 module Threeshl: functor (Module_options: Threeshl_options) ->
   Model.T with module Ch = Charges.QQ
 
-module type VBS_flags =
+module type SSC_flags =
   sig
     val higgs_triangle : bool (* $H\gamma\gamma$, $Hg\gamma$ and $Hgg$ couplings *)
     val higgs_hmm : bool    
@@ -77,9 +77,9 @@ module type VBS_flags =
     val top_anom_4f : bool
   end
 
-module VBS_kmatrix: VBS_flags
+module SSC_kmatrix: SSC_flags
 
-module VBS: functor (F : VBS_flags) -> Model.Gauge with module Ch = Charges.QQ
+module SSC: functor (F : SSC_flags) -> Model.Gauge with module Ch = Charges.QQ
 
 
 (*i
