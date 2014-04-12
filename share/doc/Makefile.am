@@ -1,0 +1,183 @@
+## Makefile.am -- Makefile for WHIZARD
+##
+## Process this file with automake to produce Makefile.in
+#
+# Copyright (C) 1999-2014 by 
+#     Wolfgang Kilian <kilian@physik.uni-siegen.de>
+#     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
+#     Juergen Reuter <juergen.reuter@desy.de>
+#     Christian Speckner <cnspeckn@googlemail.com>
+#
+# WHIZARD is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by 
+# the Free Software Foundation; either version 2, or (at your option)
+# any later version.
+#
+# WHIZARD is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+#
+########################################################################
+
+## The manual source has to be distributed
+dist_noinst_DATA = manual.tex $(PACKAGE).tex shower.tex \
+	book.hva custom.hva fancysection.hva 
+
+## The primary targets
+if DISTRIBUTION
+if NOWEB_AVAILABLE
+dist_pdf_DATA = manual.pdf $(PACKAGE).pdf gamelan_manual.pdf
+else
+dist_pdf_DATA = manual.pdf gamelan_manual.pdf
+endif
+else 
+dist_pdf_DATA = 
+endif
+
+ps-local: manual.ps $(PACKAGE).ps gamelan_manual.ps
+pdf-local: manual.pdf $(PACKAGE).pdf gamelan_manual.pdf
+
+if DISTRIBUTION
+if HEVEA_AVAILABLE
+html_DATA = manual.html index.html
+endif HEVEA_AVAILABLE
+endif DISTRIBUTION
+
+LATEX_STYLES = \
+    noweb.sty thophys.sty gamelan.sty hevea.sty
+
+TEX_FLAGS = "$$TEXINPUTS:$(top_srcdir)/share/doc"
+
+EXTRA_DIST = $(LATEX_STYLES)
+
+## don't try to run the files in parallel (TeXLive 2009 doesn't like it)
+manual.ps: $(PACKAGE).ps
+manual.pdf: $(PACKAGE).pdf
+$(PACKAGE).ps: gamelan_manual.ps 
+$(PACKAGE).pdf: gamelan_manual.pdf 
+gamelan_manual.pdf: gamelan.sty
+
+## Rules for creating PS
+.tex.dvi:
+	-TEXINPUTS=$(TEX_FLAGS) $(LATEX) $<; \
+	while grep 'Rerun to get cross-references right\.' $<.log; \
+	do TEXINPUTS=$(TEX_FLAGS) $(LATEX) $<; \
+	done
+	TEXINPUTS=$(TEX_FLAGS) $(LATEX) $<
+.dvi.ps:
+	$(DVIPS) -o $@ $<
+
+SUFFIXES: .tex .dvi .ps .pdf
+
+## Rules for creating PDF
+if DISTRIBUTION
+if PDFLATEX_AVAILABLE 
+.tex.pdf: 
+	-TEXINPUTS=$(TEX_FLAGS) $(PDFLATEX) $<; \
+	while grep 'Rerun to get cross-references right\.' $<.log; \
+	do TEXINPUTS=$(TEX_FLAGS) $(PDFLATEX) $<; \
+	done
+	TEXINPUTS=$(TEX_FLAGS) $(PDFLATEX) $<
+else 
+if PS2PDF_AVAILABLE
+ps.pdf: 
+	$(PS2PDF) $<.ps
+else
+	@echo "Neither pdflatex nor ps2pdf available. The PDF manual cannot be made"
+endif !PS2PDF_AVAILABLE		
+endif !PDFLATEX_AVAILABLE
+endif DISTRIBUTION
+
+## Rules for creating HTML
+if HEVEA_AVAILABLE
+HEVEAOPTS = -exec xxdate.exe -I $(top_srcdir)/share/doc \
+	book.hva fancysection.hva custom.hva
+HACHAOPTS = -tocbis
+
+if DISTRIBUTION
+index.html: manual.html
+	$(HACHA) $(HACHAOPTS) -o index.html manual.html
+
+manual.html: manual.tex
+	$(HEVEA) -fix $(HEVEAOPTS) manual.tex
+### There are no pics at the moment inside the manual.
+#	$(IMAGEN) manual
+### There are no Feynman diagrams at the moment inside the manual.
+#	$(MPOST) manualpics.mp
+#	$(HEVEA) -fix $(HEVEAOPTS) manual.tex
+else	
+	@echo "HEVEA not available. The HTML manual cannot be made"
+endif !DISTRIBUTION
+endif HEVEA_AVAILABLE
+
+if NOWEB_AVAILABLE
+shower.tex: $(top_srcdir)/src/shower/shower.nw
+	$(NOWEAVE) -delay $< | $(CPIF) $@
+
+$(PACKAGE).tex: shower.tex
+$(PACKAGE).tex: $(top_srcdir)/src/whizard-core/$(PACKAGE).nw 	
+	-rm -f $@
+	$(NOWEAVE) -delay $< | $(CPIF) $@
+
+gamelan.sty: $(top_srcdir)/src/gamelan/gamelan.nw
+	$(NOTANGLE) -R$@ $< | $(CPIF) $@
+endif NOWEB_AVAILABLE
+
+## Cleanup tasks
+mostlyclean-latex:
+	-rm -f *.aux *.log *.dvi *.toc *.idx *.out \
+	manual.ps manual.pdf
+clean-latex:
+maintainer-clean-latex:
+	-rm manual.ps manual.pdf
+if NOWEB_AVAILABLE
+mostlyclean-whizard:
+	-rm -f $(PACKAGE).tex $(PACKAGE).ps $(PACKAGE).pdf shower.tex
+maintainer-clean-whizard:
+else
+mostlyclean-whizard:
+maintainer-clean-whizard:
+endif
+.PHONY: mostlyclean-latex clean-latex maintainer-clean-latex
+.PHONY: mostlyclean-whizard maintainer-clean-whizard
+
+mostlyclean-html:
+	-rm -f *.haux *.htoc *.css index.html contents_motif.gif \
+	next_motif.gif previous_motif.gif manual*.html 
+clean-html:
+maintainer-clean-html:
+	-rm -f manual*.html index.html contents_motif.gif \
+	next_motif.gif previous_motif.gif
+.PHONY: mostlyclean-html clean-html maintainer-clean-html
+
+## Remove backup files
+maintainer-clean-backup:
+	-rm -f *~
+.PHONY: maintainer-clean-backup
+
+## Register additional clean targets
+mostlyclean-local: mostlyclean-latex mostlyclean-html mostlyclean-whizard
+clean-local: clean-latex clean-html
+maintainer-clean-local: maintainer-clean-latex maintainer-clean-html \
+	maintainer-clean-whizard maintainer-clean-backup
+
+if !DISTRIBUTION
+install-data-hook: 
+	-$(INSTALL) -m 644 manual.pdf $(DESTDIR)$(datarootdir)/doc/whizard
+	-$(INSTALL) -m 644 $(PACKAGE).pdf $(DESTDIR)$(datarootdir)/doc/whizard
+	-$(INSTALL) -m 644 gamelan_manual.pdf $(DESTDIR)$(datarootdir)/doc/whizard
+
+uninstall-hook: 
+	-rm -f $(DESTDIR)/$(datarootdir)/doc/whizard/manual.pdf 
+	-rm -f $(DESTDIR)/$(datarootdir)/doc/whizard/$(PACKAGE).pdf 
+	-rm -f $(DESTDIR)/$(datarootdir)/doc/whizard/gamelan_manual.pdf
+endif
+
+########################################################################
+## The End.
+########################################################################

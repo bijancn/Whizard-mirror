@@ -1,0 +1,299 @@
+(* $Id: vertex_syntax.mli 4997 2013-12-13 13:22:56Z ohl $
+
+   Copyright (C) 1999-2014 by
+
+       Wolfgang Kilian <kilian@physik.uni-siegen.de>
+       Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
+       Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
+       Christian Speckner <cnspeckn@googlemail.com>
+
+   WHIZARD is free software; you can redistribute it and/or modify it
+   under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 2, or (at your option)
+   any later version.
+
+   WHIZARD is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
+
+(* \thocwmodulesection{Abstract Syntax} *)
+
+type coeff = int
+type name = string
+type momentum = int
+type index = name
+
+type field =
+  { flavor : name;
+    conjugate : bool;
+    f_indices : index list }
+
+type tensor =
+  { t_name : name;
+    t_indices : index list }
+
+type t =
+| Empty
+| Field of field
+| Momentum of momentum list * index
+| Lorentz of tensor
+| Color of tensor
+| Product of t list
+| Sum of (coeff * t) list
+
+val null : t
+
+exception Syntax_Error of string * int * int
+
+type identifier =
+| Id_Flavor
+| Id_Momentum
+| Id_Lorentz
+| Id_Color
+| Id_Index
+
+module Token :
+  sig
+
+    (* Tokenization follows \TeX's rules.  Since \verb+a_12+
+       is interpretated by \TeX{} as \verb+{a_1}2+, we can not
+       use the lexer to construct integers, but interpret them
+       as lists of digits.  Below, in [Expr], the parser can
+       interpret then as integers.  *)
+    type t = private
+    | Digit of int
+    | Token of string
+    | Scripted of scripted
+    | List of t list
+
+    (* In addition to super- and subscripts, there are prefixes
+       such as \verb+\bar+, \verb+\hat+, etc.  *)
+    and scripted = private
+      { stem : t;
+	prefix : string list;
+	super : t list;
+	sub : t list }
+
+    (* Smart constructors that avoid redundant nestings of lists
+       and scripted tokens with empty scripts. *)
+    val digit : int -> t
+    val token : string -> t
+    val scripted : string list -> t -> t option * t option -> t
+    val list : t list -> t
+
+    (* If it's [Scripted], return unchanged, else as a scripted
+       token with empty prefix, super- and subscripts. *)
+    val wrap_scripted : t -> scripted
+
+    (* If it's a [List], return the list, otherwise a singleton. *)
+    val wrap_list : t -> t list
+
+    (* Recursively strip all prefixes, super- and subscripts and
+       return only the LAST token in a list.
+       I.e. [stem "\\bar\\psi_i"] and [stem "\\bar{\\phi\\psi}'"]
+       both yield ["\\psi"]. *)
+    val stem : t -> t
+
+    val to_string : t -> string
+    val scripted_to_string : scripted -> string
+    val list_to_string : t list -> string
+
+    val compare : t -> t -> int
+
+  end
+
+module Expr :
+  sig
+
+    (* Values (a.k.a. variables) are just functions with
+       an empty argument list. *)
+
+    type t =
+    | Integer of int
+    | Sum of t list
+    | Diff of t * t
+    | Product of t list
+    | Ratio of t * t
+    | Function of Token.t * t list
+
+    val integer : int -> t
+    val add : t -> t -> t
+    val sub : t -> t -> t
+    val mult : t -> t -> t
+    val div : t -> t -> t
+    val apply : Token.t -> t list -> t
+
+    val to_string : t -> string
+
+  end
+
+(*i module TLSet : Set.S with type elt = Token.t list i*)
+
+module Particle :
+  sig
+
+    type name =
+    | Neutral of Token.t list
+    | Charged of Token.t list * Token.t list
+
+    type attr =
+    | TeX of Token.t list
+    | TeX_Anti of Token.t list
+    | Alias of Token.t list
+    | Alias_Anti of Token.t list
+    | Fortran of Token.t list
+    | Fortran_Anti of Token.t list
+    | Spin of Expr.t
+    | Color of Token.t list
+    | Charge of Expr.t
+    | Mass of Token.t list
+    | Width of Token.t list
+
+    type t =
+      { name : name;
+	attr : attr list }
+
+    (*i val cons_attr : attr -> attr list -> attr list i*)
+    val to_string : t -> string
+
+  end
+
+module Parameter :
+  sig
+
+    type attr =
+    | TeX of Token.t list
+    | Alias of Token.t list
+    | Fortran of Token.t list
+
+    type t' =
+      { name : Token.t list;
+	value : Expr.t;
+	attr : attr list}
+
+    type t =
+    | Input of t'
+    | Derived of t'
+
+    (*i val cons_attr : attr -> attr list -> attr list i*)
+    val to_string : t -> string
+
+  end
+
+module Color :
+  sig
+
+    (* This list is not realistic.  In practice, we will
+       concentrate on SU(n) for now. *)
+
+    type t =
+    | U of int
+    | SU of int
+    | O of int
+    | SO of int
+    | Sp of int
+    | E6 | E7 | E8
+    | F4 | G2
+
+    (* Labelling the representation by their dimension, or
+       their negative dimension, is of course not general enough,
+       but will do for the moment. *)
+
+    type r = int
+
+  end
+
+module Lorentz :
+  sig
+
+    type t =
+    | Vector
+    | Dirac
+    | ConjDirac
+    | Weyl
+    | ConjWeyl
+
+  end
+
+module Index :
+  sig
+
+    type attr =
+    | Color of Token.t list
+    | Flavor of Token.t list
+    | Lorentz of Token.t list
+
+    type t =
+      { name : Token.t list;
+	attr : attr list }
+
+    val to_string : t -> string
+
+  end
+
+module Tensor :
+  sig
+
+    type attr =
+    | Color of Token.t list
+    | Flavor of Token.t list
+    | Lorentz of Token.t list
+
+    type t =
+      { name : Token.t list;
+	attr : attr list }
+
+    val to_string : t -> string
+
+  end
+
+(* The representation of a file, immediately after lexical
+   and syntactical analysis and before any type checking
+   or semantic analysis. *)
+
+module File_Tree :
+  sig
+
+    type declaration =
+    | Particle of Particle.t
+    | Parameter of Parameter.t
+    | Index of Index.t
+    | Tensor of Tensor.t
+    | Vertex of Expr.t * Token.t
+    | Include of string
+
+    type t = declaration list
+
+    val empty : t
+
+  end
+
+(* A linear file, just like [File_Tree], but with all
+   the \verb+\include+ statements expanded. *)
+
+module File :
+  sig
+
+    type declaration =
+    | Particle of Particle.t
+    | Parameter of Parameter.t
+    | Index of Index.t
+    | Tensor of Tensor.t
+    | Vertex of Expr.t * Token.t
+
+    type t = declaration list
+
+    val empty : t
+
+    val expand_includes : (string -> File_Tree.t) -> File_Tree.t -> t
+
+    val to_strings : t -> string list
+
+  end
+

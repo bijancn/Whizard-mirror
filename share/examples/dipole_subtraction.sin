@@ -1,0 +1,135 @@
+# $Id$
+# Use WHIZARD's initial and final state polarization facilities to
+# examine the angular distributions for all 36 helicity combinations
+# in e+, e- -> W+, W-
+########################################################################
+#
+# Copyright (C) 1999-2014 by 
+#     Wolfgang Kilian <kilian@physik.uni-siegen.de>
+#     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
+#     Juergen Reuter <juergen.reuter@desy.de>
+#     Christian Speckner <cnspeckn@googlemail.com>
+#
+# WHIZARD is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by 
+# the Free Software Foundation; either version 2, or (at your option)
+# any later version.
+#
+# WHIZARD is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+#
+########################################################################
+
+! This is an example of how to use the --- not yet fully functional --- WHIZARD
+! implementation of dipole subtraction.
+
+model = SM
+
+! We setup a variable for easy access to the mass regulators.
+real mreg = 1 GeV
+alias pr = u:ubar:d:dbar
+
+! The born process
+process born = pr, pr => "e+", "e-"
+
+! The integrated QED dipole --- I, K and P operators in one
+process dipole_integrated_qed = pr, pr => "e+", "e-" {
+   $method = "dipole_integrated_qed"
+   ! NLO parameters for the process can be directly set upon process definition.
+   ! The QED dipoles currently use mass regularisation, this sets up the mass
+   ! regulator (which has to match the value used in the virtual corrections).
+   soft_mass_regulator = mreg
+   ! The collinear divergencies are also mass regulated. This sets up the
+   ! regulator fermion masses. If not specified, the mass values from the
+   ! model are used as regulators. A value must be present for all particles in
+   ! the process, even if they are not charged (in this case, the value is
+   ! ignored).
+   collinear_mass_regulators = mreg, mreg, mreg, mreg
+}
+
+! The real emission process, prepared for photon recombination
+process real_emission = pr, pr => "e+", "e-", A {
+   $method = "photon_recombination"
+   ! The recombination mode for mapping the 2 -> 3 final state to an effective
+   ! 2 -> 2 one. "ignore" will simply ignore the photon.
+   $recombination_mode = "ignore"
+   ! In case recombination happens only in a part of the available phasespace,
+   ! the integral of the real emision over the complement must be added to the
+   ! recombined and subtracted piece. Setting the following parameter to true
+   ! will resolve the photon (the original 2 -> 3 final state) and enforce the
+   ! necessary complement to the recombination cut.
+   ?recombination_complement = false
+}
+
+! The subtraction term for the real emission. The additional photon is implicit
+! and must _not_ be spelled out in the definition.
+process dipole_real_qed = pr, pr => "e+", "e-" {
+   $method = "dipole_real_qed"
+}
+
+! The actual subtracted process.
+process_sum subtracted = dipole_real_qed + real_emission {
+   ! The process in a process_sum inherit their NLO config from the process
+   ! sum. This enforces a matching setup, but requires the setup to be applied
+   ! to the sum instead of the separate processes.
+   $recombination_mode = "ignore"
+}
+
+sqrts = 7 TeV
+scale = mW
+iterations = 10:10000:"g", 10:10000:"gw", 10:10000:""
+
+! As there is no canonical cross-model way to get alpha, we have to explicitly
+! define it. This is not a regular assignment, but a statement similar to
+! "scale = ..." which can also facilitate running alpha (not supported yet).
+alpha_qed = 1 / alpha_em_i
+
+beams = p, p => pdf_builtin
+
+! As we will first integrate IR / collinear safe quantities, those are
+! sufficient to render the CS finite.
+cuts = all Pt > 25 GeV ["e+":"e-"] and
+   all abs (Rap) < 2.5 ["e+":"e-"]
+
+! Integrals over born, I/K/P and the subtracted real emission process.
+integrate (born, dipole_integrated_qed, subtracted)
+
+! We are now going to resolve the photon, and additional cuts are required to
+! keep the CS finite.
+cuts = all Pt > 25 GeV ["e+":"e-":A] and
+   all abs (Rap) < 2.5 ["e+":"e-":A] and
+   all M > 25 GeV [combine ["e+":"e-", A]]
+
+! The nlo_setup statement can be used to modify the NLO setup of a process after
+! it's definition.
+nlo_setup dipole_real_qed {
+   ! This flag will cause resolve the additional emission in a real dipole,
+   ! yielding a 2 -> 3 final state in our example. When set to false (the
+   ! default), the additional photon is evicted from the final state, making it
+   ! impossible to tamper with it in any way that could spoil the cancellation
+   ! between the phase space integral over real - sub and I/K/P.
+   ?dipole_resolve_emission = true
+}
+integrate (dipole_real_qed)
+
+nlo_setup dipole_real_qed {
+   ! The mask can be used to restrict the set of dipole components. The first
+   ! index is the emitter, the second the spectator. The same works with
+   ! integrated dipoles.
+   mask = 1:2, 2:3
+}
+integrate (dipole_real_qed)
+
+nlo_setup dipole_real_qed {
+   ! The command clear_mask is available for removing a previously declared
+   ! mask.
+   clear_mask
+}
+integrate (dipole_real_qed)
+

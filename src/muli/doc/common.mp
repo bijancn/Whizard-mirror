@@ -1,0 +1,11 @@
+outputtemplate := "%j-%c.mps";
+input TEX;
+TEXPRE("%&latex" & char(10) & "\documentclass{article}\begin{document}");
+TEXPOST("\end{document}");
+unit=10;
+xu=unit;
+yu=unit;
+numeric ahangle, ahlength, diag;
+ahangle=30;
+ahlength=10;
+diag=1.4142135623730951;

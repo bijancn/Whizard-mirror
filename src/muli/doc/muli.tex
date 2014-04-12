@@ -1,0 +1,1306 @@
+\Module{muli}
+\begin{figure}
+  \centering{\includegraphics{uml-module-tree-7.mps}}
+  \caption{\label{fig:\ThisModule:Types}Klassendiagramm des Moduls \ThisModule}
+\end{figure}
+Dieses Modul dient als Interface für den Interleaved Algorithmus. Es stellt dem Algorithmus Methoden zur Initialisierung und zum Garbage-Collecting, Methoden zur Generierung von $\pperp^{(n+1)}$, und zur Generierung einer vollständigen Wechselwirkung, Methoden zum Austauschen von aktiven Partonen, sowie Methoden zu den Remnant-Strukturfunktionen zur Verfügung.
+
+Alle Parameter des MulI-Algorithmus sowie der komplette aktuelle Zusatand der Remnants, einschließlich der aktiven Shower-Partonen, sind als Komponenten des erweiterten Types \TypeRef{muli\_type} definiert. Der Interleaved-Algorithmus muss also lediglich eine Instanz der Klasse \TypeRef{muli\_type} definieren und deren public Type-Bound-Procedures aufrufen.
+
+\wip{Auf lange Sicht ist es geplant, die Strukturfunktionen in den WHIZARD-Core aufzunehmen. Dann sollte der Core die Funktionalität dieses Moduls weitgehend übernehmen. Zum einen wird dieses Modul dann obsolet, zum anderen müssen die Interfaces des Cores erweitert werden. Der Hauptgrund, warum das noch nicht geschehen ist, ist aber, dass der Core noch nicht Objekt-Orientiert ist. Es kann also keine Instanz von muli\_type an sf\_initialize übergeben werden. Es muss also entweder die Konfiguration dieses Moduls in Form von Modulkomponenten bereitgestellt werden, oder der Core muss lernen, eine Instanzen einer abstrakten PDF-Klasse entgegenzunehmen. Im letzteren Fall muss muli\_type nur diese abstrakte Klasse erweitern.}
+\section{Abhängigkeiten}
+\use{muli\_dsigma}
+\use{muli\_mcint}
+\use{muli\_remnant}
+\section{Parameter}
+Für Diagnose, Testzwecke und Konsistenzprüfungen können die Remnants deaktiviert werden. Wenn auf .false. gesetzt, läuft der Algorithmus trotz Mehrfachwechselwirkungen immer mit den original Proton-PDFs
+\begin{Verbatim}
+logical,parameter::muli_default_modify_pdfs=.true.\MC{muli\_default\_modify\_pdfs}
+\end{Verbatim}
+Da MulI noch nicht in den Core eingebunden ist, hat MulI keinen Zugriff auf die PDF Eigenschaften, so wie sie in den Sindarin-Files eingestellt werden können. Deswegen müssen die Proton-PDFs noch per Hand als Parameter festgelegt werden.
+\begin{Verbatim}
+integer,parameter::muli_default_lhapdf_member=0\MC{muli\_default\_lhapdf\_member}
+character(*),parameter::muli_default_lhapdf_file=&
+"cteq6ll.LHpdf"\MC{muli\_default\_lhapdf\_file}
+\end{Verbatim}
+
+\section{Derived Types}
+\TypeDef{qcd\_2\_2\_type}
+Dieser Datentyp abstrahiert die interne Darstellung einer QCD-$2\rightarrow 2$ Wechselwirkungen und stellt Methoden mit traditionellen Namen zur Verfügung. Da verschiedene Module auf die Eigenschaften der Wechselwirkung zugreifen müssen, aber nur in dem Modul muli alle notwendigen Daten zur Verfügung stehen, ist in dem Modul \ModuleRef{muli\_momentum} eine abstrakte \TypeRef{qcd\_2\_2\_class} definiert, die allen Modulen zur verfügung steht. qcd\_2\_2\_type erweitert diese Klasse und implementiert die vorgeschriebenen Methoden.
+\begin{Verbatim}
+type,\Extends{qcd\_2\_2\_class}::qcd_2_2_type
+\end{Verbatim}
+\paragraph{Komponenten}
+\begin{Verbatim}
+private
+\end{Verbatim}
+Alle gültigen Kombinationen der vier Partonflavor sind in der Modulkomponente\linebreak \CompRef{muli\_interactions}{valid\_processes} durchnummeriert. process\_id gibt diese Nummer wieder und legt damit alle Flavor fest.
+\begin{Verbatim}
+integer::\TC{process\_id}=-1
+\end{Verbatim}
+Alle Kombinationen aus Gluon, Seequark, Valenz-Up-Quark und Valenz-Down-Quark der beiden Partonen im Eingangszustand sind in der Modulkomponente \CompRef{muli\_interactions}{double\_pdf\_kinds} des Moduls \ModuleRef{muli\_interactions} durchnummeriert. integrand\_id gibt diese Nummer wieder und legt damit fest, ob z.B. ein Up-Quark im Eingangszustand ein Seequark oder ein Valenzquark ist. Diese Nummer ist gleichzeitig die Ordnungsnummer des Integrationsstratums $\{\alpha,\beta\}$ für die Generierung der Wechselwirkungsskala in \TbpRef{muli\_type}{generate\_next\_scale}.
+\begin{Verbatim}
+integer::\TC{integrand\_id}=-1
+\end{Verbatim}
+Jedes Parton, dass an einer Wechselwirkung teilnimmt, bekommt eine eindeutige Nummer. Das schließt die Partonen des ISR-Algorithmus mit ein. Diese Nummern sind wichtig, wenn der ISR-Algorithmus ein Teilchen aus der Liste der Teilchen im Eingangszustand (aka aktive Partonen) entfernt, das MulI vorher in diese Liste aufgenommen hat. Über die Parton IDs können diese zugeordnet und in \TbpRef{muli\_type}{replace\_parton} konsistent eliminiert werden. parton\_ids enthält die Nummern der beiden Teilchen im direkten Eingangszustand der MPI Wechselwirkung, also ohne Showerbranchings.
+\begin{Verbatim}
+integer,dimension(2)::\TC{parton\_ids}=[0,0]
+\end{Verbatim}
+Farbflüsse werden intern als Permutation dargestellt, die die Enden von Farblinien auf deren Angfänge abbildet. Eine 2 an dritter Stelle in flow bedeutet, dass eine Farbflusslinie in der zweiten Position beginnt und in der dritten Position endet. Die Positionen 1,2,3,4 entsprechen den Flavorindizes a,b,c,d in \ref{fig:nomen:had}. In \TbpRef{muli\_type}{generate\_flow} werden diese Farbflüsse generiert.
+\begin{Verbatim}
+integer,dimension(4)::\TC{flow}=[0,0,0,0]
+\end{Verbatim}
+momentum\_fractions enthält die dynamischen Impulsvariablen $[\xi_1,\xi_2,\pperp]$, die die Kinematik einer Wechselwirkungen beschreiben, in kartesischen Koordinaten. hyperbolic\_fractions enthält dieselben Impulsvariablen in hyperbolischen Koordinaten $[h_1,h_2,h_3]$. Die Koordinatentransformation ist in \eqref{eq:all:imp:trafo} angegeben.
+\begin{Verbatim}
+real(kind=double),dimension(3)::\TC{momentum\_fractions}=[-1D0,-1D0,-1D0]
+real(kind=double),dimension(3)::\TC{hyperbolic\_fractions}=[-1D0,-1D0,-1D0]
+\end{Verbatim}
+\paragraph{Methoden}
+\begin{Verbatim}
+     \OverridesDeclaration{serializable\_class}
+     procedure,public::\TbpDec{write\_to\_marker}{qcd\_2\_2\_write\_to\_marker}
+     procedure,public::\TbpDec{read\_from\_marker}{qcd\_2\_2\_read\_from\_marker}
+     procedure,public::\TbpDec{print\_to\_unit}{qcd\_2\_2\_print\_to\_unit}
+     procedure,public,nopass::\TbpDec{get\_type}{qcd\_2\_2\_get\_type}
+     \OverridesDeclaration{qcd\_2\_2\_class}
+     procedure,public::\TbpDec{get\_process\_id}{qcd\_2\_2\_get\_process\_id}
+     procedure,public::\TbpDec{get\_integrand\_id}{qcd\_2\_2\_get\_integrand\_id}
+     procedure,public::\TbpDec{get\_diagram\_kind}{qcd\_2\_2\_get\_diagram\_kind}
+     procedure,public::\TbpDec{get\_lha\_flavors}{qcd\_2\_2\_get\_lha\_flavors}
+     procedure,public::\TbpDec{get\_pdg\_flavors}{qcd\_2\_2\_get\_pdg\_flavors}
+     procedure,public::\TbpDec{get\_parton\_id}{qcd\_2\_2\_get\_parton\_id}
+     procedure,public::\TbpDec{get\_parton\_kinds}{qcd\_2\_2\_get\_parton\_kinds}
+     procedure,public::\TbpDec{get\_pdf\_int\_kinds}{qcd\_2\_2\_get\_pdf\_int\_kinds}
+     procedure,public::\TbpDec{get\_momentum\_boost}{qcd\_2\_2\_get\_momentum\_boost}
+     procedure,public::\TbpDec{get\_remnant\_momentum\_fractions}{qcd\_2\_2\_get\_remnant\_momentum\_fractions}
+     procedure,public::\TbpDec{get\_total\_momentum\_fractions}{qcd\_2\_2\_get\_total\_momentum\_fractions}
+     \OriginalDeclaration
+     procedure,public::\TbpDec{get\_color\_flow}{qcd\_2\_2\_get\_color\_flow}
+     procedure,public::\TbpDec{get\_diagram\_color\_kind}{qcd\_2\_2\_get\_diagram\_color\_kind}
+     procedure,public::\TbpDec{get\_io\_kind}{qcd\_2\_2\_get\_io\_kind}
+     procedure,public::\TbpDec{get\_hyperbolic\_fractions}{qcd\_2\_2\_get\_hyperbolic\_fractions}
+     procedure,public::\TbpDec{get\_color\_correlations}{qcd\_2\_2\_get\_color\_correlations}
+     procedure,public::\TbpDecS{qcd\_2\_2\_initialize}
+     generic,public::\TbpDec{initialize}{qcd\_2\_2\_initialize}
+\end{Verbatim}
+\TypeDef{muli\_type}
+Der Datentyp muli\_type ist eine Sammlung von allen Daten, die für Generierung von mehrfachen Wechselwirkungen relevant sind. Da Instanzen von muli\_type keine Zeiger enthalten, mit Ausnahme von Zeigen auf Komponenten von sich selbst, und nicht auf dynamische Modulkomponenten zugreifen, können beliebig viele Instanzen von muli\_type erzeugt und parallel verwendet werden. Bloß kann LHAPDF nicht parallel aufgerufen werden.
+
+muli\_type erweitert \TypeRef{qcd\_2\_2\_type}, damit \emph{ist} eine Instanz von muli\_type die aktuelle Wechselwirkung. Die aktuellen Zustände der Remnants sind hingegen Komponenten von muli\_type, sodass andere Varianten von Remnants umgesetzt werden können, ohne diese Modul (entsprechend später den WHIZARD-Core) verändern zu müssen
+
+\wip{Neben den aktuellen Zuständen der Wechselwirkung und der Remnants enthält muli\_type auch einen Importance-Sampler für die Impulsanteile $[\xi_1,\xi_2]$. Dieser ist derzeit nicht auf dem Stand der Dissertation, wo ein gemeinsames Sampling für alle Strati beschrieben wird. Dieses gemeinsame Sampling wäre dann so generisch, dass es nicht mehr eine Komponente von muli\_type sein sollte. Dann könnten mehrere Instancen von muli\_type dasselbe Sampling verwenden. Derzeit ist das Sampling zweifach redundant, nämlich wird für jedes Stratum für jede Instanz von muli\_type ein eigener Sampler allociert. Bei dem aktuellen Stand ist deswegen davon abzuraten, MulI zu parallelisieren.}
+
+
+\begin{Verbatim}
+     type,\Extends{qcd\_2\_2\_type}::muli_type
+\end{Verbatim}
+\paragraph{Komponenten}
+\begin{Verbatim}
+  private
+     \IC{Untere Grenze für die Wechselwirkungsskala}
+     real(kind=double)::\TC{GeV2\_scale\_cutoff}
+     \IC{Sollen die Strukturfunktionen im Laufe des Algorithmus verändert werden?}
+     logical::\TC{modify\_pdfs}=muli_default_modify_pdfs
+     \IC{Lag die letzte Wechselwirkungsskala unter GeV2_scale_cutoff?}
+     logical::\TC{finished}=.false.
+     \IC{Wieviel Zeit haben die einzelnen Teile des Algorithmus benötigt?}
+     real(kind=double)::\TC{init\_time}=0D0
+     real(kind=double)::\TC{pt\_time}=0D0
+     real(kind=double)::\TC{partons\_time}=0D0
+     real(kind=double)::\TC{confirm\_time}=0D0
+     \IC{Sind die Monte-Carlo-Generatoren bereit zur Generierung von MPI?}
+     logical::\TC{initialized}=.false.
+     \IC{Wurde eine härteste Wechselwirkung vorgegeben?}
+     logical::\TC{initial\_interaction\_given}=.false.
+     \IC{Der Mittelwert des hadronischen Wirkungsquerschnitts bei der aktuellen Skala.}
+     \IC{Der Monte-Carlo-Generator für [x_1,x_2] verwendet ein vielfaches dieses Werts}
+     \IC{als obere Schranke für den Wirkungsquerschnitt.}
+     real(kind=double)::\TC{mean}=1D0
+     \IC{Die integrierten Wirkungsquerschnitte aller Strati bei der aktuellen Skala.}
+     \IC{Der Monte-Carlo-Generator für die nächste Skala verwendet diese Integrale anstelle}
+     \IC{der Skala als Startwerte.}
+     real(kind=double),dimension(0:16)::\TC{start\_integrals}=&
+          [0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0]
+     \IC{Der Zufallsgenerator für diese Instanz.}
+     type(tao_random_state)::\TC{tao\_rnd}
+     \IC{Die Wirkungsquerschnitte und deren Stammfunktionen aller Strati\CompDef{muli\_type}{dsigma}}
+     type(\TypeRef{muli\_trapezium\_tree\_type})::\TC{dsigma}
+     \IC{Importance-Sampler für alle Strati.\CompDef{muli\_type}{samples}}
+     type(\TypeRef{sample\_inclusive\_type})::\TC{samples}
+     \IC{Die Remnants der beiden Protonen.}
+     type(\TypeRef{pp\_remnant\_type})::\TC{beam}
+     \IC{Ein interner Zeiger auf ein Segment der Stammfunktion dsigma, dass die}
+     \IC{aktuelle Skala umfasst.}
+     class(\TypeRef{muli\_trapezium\_node\_class}),pointer::\TC{node}=>null()
+     end type muli_type
+\end{Verbatim}
+\paragraph{Methoden}
+\begin{Verbatim}
+   contains
+     \OverridesDeclaration{serializable\_class}
+     procedure,public::\TbpDec{write\_to\_marker}{muli\_write\_to\_marker}
+     procedure,public::\TbpDec{read\_from\_marker}{muli\_read\_from\_marker}
+     procedure,public::\TbpDec{print\_to\_unit}{muli\_print\_to\_unit}
+     procedure,public,nopass::\TbpDec{get\_type}{muli\_get\_type}
+     \OriginalDeclaration
+     ! init / final
+     procedure,public::muli_initialize
+     procedure,public::\TbpDec{apply\_initial\_interaction}{muli\_apply\_initial\_interaction}
+     procedure,public::\TbpDec{finalize}{muli\_finalize}
+     procedure,public::\TbpDec{stop\_trainer}{muli\_stop\_trainer}
+     procedure,public::\TbpDec{reset\_timer}{muli\_reset\_timer}
+     procedure,public::\TbpDec{restart}{muli\_restart}
+     generic,public::  \TbpDec{initialize}{muli\_initialize}
+     ! status query
+     procedure,public::\TbpDec{is\_initialized}{muli\_is\_initialized}
+     procedure,public::\TbpDec{is\_initial\_interaction\_given}{muli\_is\_initial\_interaction\_given}
+     procedure,public::\TbpDec{is\_finished}{muli\_is\_finished}
+     ! user interface
+     procedure,public::\TbpDec{enable\_remnant\_pdf}{muli\_enable\_remnant\_pdf}
+     procedure,public::\TbpDec{disable\_remnant\_pdf}{muli\_disable\_remnant\_pdf}
+     procedure,public::\TbpDec{generate\_gev2\_pt2}{muli\_generate\_gev2\_pt2}
+     procedure,public::\TbpDec{generate\_partons}{muli\_generate\_partons}
+     procedure,public::\TbpDec{generate\_flow}{muli\_generate\_flow}
+     procedure,public::\TbpDec{replace\_parton}{muli\_replace\_parton}
+     procedure,public::\TbpDec{get\_parton\_pdf}{muli\_get\_parton\_pdf}
+     procedure,public::\TbpDec{get\_momentum\_pdf}{muli\_get\_momentum\_pdf}
+     procedure,public::\TbpDec{print\_timer}{muli\_print\_timer}
+     procedure,public::\TbpDec{generate\_samples}{muli\_generate\_samples}
+     ! beam test
+     procedure,public::\TbpDec{fake\_interaction}{muli\_fake\_interaction}
+     ! private procedures
+     procedure,private::\TbpDec{generate\_next\_scale}{muli\_generate\_next\_scale}
+     procedure,private::\TbpDec{confirm}{muli\_confirm}
+   \end{Verbatim}
+\Methods
+\MethodsFor{qcd\_2\_2\_type}
+\OverridesSection{serializable\_class}
+\TbpImp{qcd\_2\_2\_write\_to\_marker}
+\begin{Verbatim}
+subroutine qcd_2_2_write_to_marker(this,marker,status)
+    class(qcd_2_2_type),intent(in)::this
+    class(marker_type),intent(inout)::marker
+    integer(kind=dik),intent(out)::status
+    call marker%mark_begin("qcd_2_2_type")
+    call transversal_momentum_write_to_marker(this,marker,status)
+    call marker%mark("process_id",this%process_id)
+    call marker%mark("integrand_id",this%integrand_id)
+    call marker%mark("momentum_fractions",this%momentum_fractions)
+    call marker%mark("hyperbolic_fractions",this%hyperbolic_fractions)
+    call marker%mark_end("qcd_2_2_type")
+  end subroutine qcd_2_2_write_to_marker
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_read\_from\_marker}
+\begin{Verbatim}
+  subroutine qcd_2_2_read_from_marker(this,marker,status)
+    class(qcd_2_2_type),intent(out)::this
+    class(marker_type),intent(inout)::marker
+    integer(kind=dik),intent(out)::status
+    call marker%pick_begin("qcd_2_2_type",status=status)
+    call transversal_momentum_read_from_marker(this,marker,status)
+    call marker%pick("process_id",this%process_id,status)
+    call marker%pick("integrand_id",this%integrand_id,status)
+    call marker%pick("momentum_fractions",this%momentum_fractions,status)
+    call marker%pick("hyperbolic_fractions",this%hyperbolic_fractions,status)
+    call marker%pick_end("qcd_2_2_type",status=status)
+  end subroutine qcd_2_2_read_from_marker
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_print\_to\_unit}
+\begin{Verbatim}
+  subroutine qcd_2_2_print_to_unit(this,unit,parents,components,peers)
+    class(qcd_2_2_type),intent(in)::this
+    integer,intent(in)::unit
+    integer(kind=dik),intent(in)::parents,components,peers
+    integer,dimension(2,4)::flow
+    integer::index
+    if(parents>zero)&
+    call transversal_momentum_print_to_unit(this,unit,parents-1,components,peers)
+    write(unit,'("Components of qcd_2_2_type:")')
+    write(unit,'("Process id is:       ",I3)')this%get_process_id()
+    write(unit,'("Integrand id is:     ",I3)')this%get_integrand_id()
+    if(this%get_integrand_id()>0)then
+       write(unit,'("LHA Flavors are:     ",4(I3))')this%get_lha_flavors()
+       write(unit,'("PDG Flavors are:     ",4(I3))')this%get_pdg_flavors()
+       write(unit,'("Parton kinds are:    ",2(I3))')this%get_parton_kinds()
+       write(unit,'("PDF int kinds are:   ",2(I3))')this%get_pdf_int_kinds()
+       write(unit,'("Diagram kind is:     ",2(I3))')this%get_diagram_kind()
+    end if
+    call this%get_color_correlations(1,index,flow)
+    write(unit,'("Color Permutations:  ",4(I0))')this%flow
+    write(unit,'("Color Connections:")')
+    write(unit,'("(",I0,",",I0,")+(",I0,",",I0,")->(",I0,",",I0,")+(",I0,",",I0,")")')flow
+    write(unit,'("Evolution scale is:  ",E14.7)')this%get_unit2_scale()
+    write(unit,'("Momentum boost is:   ",E14.7)')this%get_momentum_boost()
+    write(unit,'("Remant momentum fractions are: ",2(E14.7))')&
+    this%get_remnant_momentum_fractions()
+    write(unit,'("Total momentum fractions are:  ",2(E14.7))')&
+    this%get_total_momentum_fractions()
+  end subroutine qcd_2_2_print_to_unit
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_type}
+\begin{Verbatim}
+  pure subroutine qcd_2_2_get_type(type)
+    character(:),allocatable,intent(out)::type
+    allocate(type,source="qcd_2_2_type")
+  end subroutine qcd_2_2_get_type
+\end{Verbatim}
+
+\OverridesSection{qcd\_2\_2\_class}
+\TbpImp{qcd\_2\_2\_get\_process\_id}
+\begin{Verbatim}
+  elemental function qcd_2_2_get_process_id(this) result(id)
+    class(qcd_2_2_type),intent(in)::this
+    integer::id
+    id=this%process_id
+  end function qcd_2_2_get_process_id
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_integrand\_id}
+\begin{Verbatim}
+  elemental function qcd_2_2_get_integrand_id(this) result(id)
+    class(qcd_2_2_type),intent(in)::this
+    integer::id
+    id=this%integrand_id
+  end function qcd_2_2_get_integrand_id
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_lha\_flavors}
+\begin{Verbatim}
+  pure function qcd_2_2_get_lha_flavors(this) result(lha)
+    class(qcd_2_2_type),intent(in)::this
+    integer,dimension(4)::lha
+    lha=valid_processes(1:4,this%process_id)
+  end function qcd_2_2_get_lha_flavors
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_pdg\_flavors}
+\begin{Verbatim}
+  pure function qcd_2_2_get_pdg_flavors(this) result(pdg)
+    class(qcd_2_2_type),intent(in)::this
+    integer,dimension(4)::pdg
+    pdg=this%get_lha_flavors()
+    where(pdg==0) pdg=21
+  end function qcd_2_2_get_pdg_flavors
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_pdf\_int\_kinds}
+\begin{Verbatim}
+  pure function qcd_2_2_get_pdf_int_kinds(this) result(kinds)
+    class(qcd_2_2_type),intent(in)::this
+    integer,dimension(2)::kinds
+    kinds=double_pdf_kinds(1:2,this%integrand_id)
+  end function qcd_2_2_get_pdf_int_kinds
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_parton\_id}
+\begin{Verbatim}
+  elemental function qcd_2_2_get_parton_id(this,n) result(id)
+    class(qcd_2_2_type),intent(in)::this
+    integer,intent(in)::n
+    integer::id
+    id=this%parton_ids(n)
+  end function qcd_2_2_get_parton_id
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_parton\_kinds}
+\begin{Verbatim}
+  pure function qcd_2_2_get_parton_kinds(this) result(kinds)
+    class(qcd_2_2_type),intent(in)::this
+    integer,dimension(2)::kinds
+    kinds=this%get_pdf_int_kinds()
+    kinds(1)=parton_kind_of_int_kind(kinds(1))
+    kinds(2)=parton_kind_of_int_kind(kinds(2))
+  end function qcd_2_2_get_parton_kinds
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_io\_kind}
+\begin{Verbatim}
+  elemental function qcd_2_2_get_io_kind(this) result(kind)
+    class(qcd_2_2_type),intent(in)::this
+    integer::kind
+    kind=valid_processes(5,this%process_id)
+  end function qcd_2_2_get_io_kind
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_diagram\_kind}
+\begin{Verbatim}
+  elemental function qcd_2_2_get_diagram_kind(this) result(kind)
+    class(qcd_2_2_type),intent(in)::this
+    integer::kind
+    kind=valid_processes(6,this%process_id)
+  end function qcd_2_2_get_diagram_kind
+\end{Verbatim}
+\OriginalSection{qcd\_2\_2\_type}
+\TbpImp{qcd\_2\_2\_get\_diagram\_color\_kind}
+
+\wa{This is one more hack. Before merging into the interleaved algorithm, muli has only cared for 
+    summed cross sections, but not for specific color flows. So two different diagrams with equal 
+    cross sections were summed up to diagram kind 1.
+ 
+    Now muli also generates color flows, so we must devide diagram kind 1 into diagram color kind 0
+    and diagram color kind 1.
+}
+
+\begin{Verbatim}
+  elemental function qcd_2_2_get_diagram_color_kind(this) result(kind)
+    class(qcd_2_2_type),intent(in)::this
+    integer::kind
+    kind=valid_processes(6,this%process_id)
+    if(kind==1)then
+       if(product(valid_processes(1:2,this%process_id))>0)then
+          kind=0
+       end if
+    end if
+  end function qcd_2_2_get_diagram_color_kind
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_momentum\_boost}
+\wip{Noch nicht implementiert}
+
+\begin{Verbatim}
+  elemental function qcd_2_2_get_momentum_boost(this) result(boost)
+    class(qcd_2_2_type),intent(in)::this
+    real(kind=double)::boost
+    boost=-1D0
+  end function qcd_2_2_get_momentum_boost
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_hyperbolic\_fractions}
+\begin{Verbatim}
+  pure function qcd_2_2_get_hyperbolic_fractions(this) result(fractions)
+    class(qcd_2_2_type),intent(in)::this
+    real(kind=double),dimension(3)::fractions
+    fractions=this%hyperbolic_fractions
+  end function qcd_2_2_get_hyperbolic_fractions
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_remnant\_momentum\_fractions}
+\begin{Verbatim}
+  pure function qcd_2_2_get_remnant_momentum_fractions(this) result(fractions)
+    class(qcd_2_2_type),intent(in)::this
+    real(kind=double),dimension(2)::fractions
+    fractions=this%momentum_fractions(1:2)
+  end function qcd_2_2_get_remnant_momentum_fractions
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_total\_momentum\_fractions}
+\wip{Noch nicht implementiert}
+
+\begin{Verbatim}
+  pure function qcd_2_2_get_total_momentum_fractions(this) result(fractions)
+    class(qcd_2_2_type),intent(in)::this
+    real(kind=double),dimension(2)::fractions
+    fractions=[-1D0,-1D0]
+  end function qcd_2_2_get_total_momentum_fractions
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_color\_flow}
+\begin{Verbatim}
+  pure function qcd_2_2_get_color_flow(this) result(flow)
+    class(qcd_2_2_type),intent(in)::this
+    integer,dimension(4)::flow
+    flow=this%flow
+  end function qcd_2_2_get_color_flow
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_get\_color\_correlations}
+Diese Methode generiert Farbflussdiagramme aus der internen Darstellung mittels Permutationen, wie sie in \TbpRef{muli\_type}{generate\_flow} generiert werden. Der Interleaved Algorithmus numeriert alle Farbflüsse, deswegen nehmen wir die aktuelle Anzahl von Farbflüssen mit start\_index entgegen und liefern die neue Anzahl mit final\_index zurück. Die Ordnungszahlen der neu generierten Farblinien laufen dann von start\_index+1 bis einschließlich final\_index.
+
+flow liefert schießlich das Farbflussdiagramm selbst zurück. Das Format von flow sieht vor, dass der zweite Index die Position des Partons im Diagramm wie in \ref{fig:nomen:had} mit $[1,2,3,4]\rightarrow [a,b,c,d]$ beschreibt. Die beiden Stellen flow[:,a] beinhalten die Ordnungszahlen für eine eventuelle Farblinie bzw. eine eventuelle Antifarblinie oder 0 für keine Farblinie.
+\begin{center}
+\parbox{4cm}{\includegraphics{diagrams-3.mps}}\parbox{3cm}{$=\ [4,0,1,2]\ \rightarrow$}\parbox{2cm}{$\left[\begin{matrix}[3,4]\\ [5,0]\\ [3,0]\\ [5,4]\end{matrix}\right]$}
+\end{center}
+Die eingekreisten Zahlen sind die Positionen in flow, die nicht eingekreisten Zahlen sind die Inizes der Farblinien.
+\begin{Verbatim}
+  subroutine qcd_2_2_get_color_correlations(this,start_index,final_index,flow)
+    class(qcd_2_2_type),intent(in)::this
+    integer,intent(in)::start_index
+    integer,intent(out)::final_index
+    integer,dimension(2,4),intent(out)::flow
+    integer::pos,f_end,f_beginning
+    final_index=start_index
+    \IC{we set all flows to zero. zero means no connection.}
+    flow=reshape([0,0,0,0,0,0,0,0],[2,4])
+    \IC{look at all four possible ends of color lines.}
+    do f_end=1,4
+       \IC{the beginning of this potential line is stored in flow. zero means no line.}
+       f_beginning=this%flow(f_end)
+       \IC{is there a line beginning at f\_beginning and ending at f\_end?}
+       if(f_beginning>0)then
+          \IC{yes it is. we get a new number for this new line}
+          final_index=final_index+1
+          \IC{is this line beginning in the initial state?}
+          if(f_beginning<3)then
+             \IC{yes it is. lets connect the color entry of f\_begin.}         
+             flow(1,f_beginning)=final_index
+          else
+             \IC{no, it's the final state. lets connect the anticolor entry of f\_begin.}
+             flow(2,f_beginning)=final_index
+          end if
+          \IC{is this line ending in the final state?}
+          if(f_end>2)then
+             \IC{yes it is. lets connect the color entry of f\_end.}
+             flow(1,f_end)=final_index
+          else
+             \IC{no, it's the initial state. lets connect the anticolor entry of f\_end.}
+             flow(2,f_end)=final_index
+          end if
+       end if
+    end do
+  end subroutine qcd_2_2_get_color_correlations
+\end{Verbatim}
+
+\TbpImp{qcd\_2\_2\_initialize}
+Gewöhnliche Initialisierung aller Komponenten.
+\begin{Verbatim}
+  subroutine qcd_2_2_initialize(this,gev2_s,process_id,integrand_id,parton_ids,flow,hyp,cart)
+    class(qcd_2_2_type),intent(out)::this
+    real(kind=double),intent(in)::gev2_s
+    integer,intent(in)::process_id,integrand_id
+    integer,dimension(2),intent(in)::parton_ids
+    integer,dimension(4),intent(in)::flow
+    real(kind=double),dimension(3),intent(in)::hyp
+    real(kind=double),dimension(3),intent(in),optional::cart
+    \IC{Generischer Aufruf von transversal\_momentum\_initialize(this,gev2\_s).}
+    call this%initialize(gev2_s)
+    this%process_id=process_id
+    this%integrand_id=integrand_id
+    this%parton_ids=parton_ids
+    this%flow=flow
+    this%hyperbolic_fractions=hyp
+    if(present(cart))then
+       this%momentum_fractions=cart
+    else
+       this%momentum_fractions=h_to_c_param(hyp)
+    end if
+  end subroutine qcd_2_2_initialize
+\end{Verbatim}
+\subsection{Methoden für muli\_type}
+\OverridesSection{serializable\_class}
+\TbpImp{muli\_write\_to\_marker}
+\begin{Verbatim}
+  subroutine muli_write_to_marker(this,marker,status)
+    class(muli_type),intent(in) :: this
+    class(marker_type),intent(inout)::marker
+    integer(kind=dik),intent(out)::status
+    call marker%mark_begin("muli_type")
+    call qcd_2_2_write_to_marker(this,marker,status)
+    call marker%mark("modify_pdfs",this%modify_pdfs)
+    call marker%mark("initialized",this%initialized)
+    call marker%mark("initial_interaction_given",this%initial_interaction_given)
+    call marker%mark("finished",this%finished)
+    call marker%mark("init_time",this%init_time)
+    call marker%mark("pt_time",this%pt_time)
+    call marker%mark("partons_time",this%partons_time)
+    call marker%mark("confirm_time",this%confirm_time)
+    call marker%mark_instance(this%dsigma,"dsigma")
+    call marker%mark_instance(this%samples,"samples")
+    call marker%mark_instance(this%beam,"beam")
+    call marker%mark_end("muli_type")
+  end subroutine muli_write_to_marker
+\end{Verbatim}
+
+\TbpImp{muli\_read\_from\_marker}
+\begin{Verbatim}
+  subroutine muli_read_from_marker(this,marker,status)
+    class(muli_type),intent(out) :: this
+    class(marker_type),intent(inout)::marker
+    integer(kind=dik),intent(out)::status
+    call marker%pick_begin("muli_type",status=status)
+    call qcd_2_2_read_from_marker(this,marker,status)
+    call marker%pick("modify_pdfs",this%modify_pdfs,status)
+    call marker%pick("initialized",this%initialized,status)
+    call marker%pick("initial_interaction_given",this%initial_interaction_given,status)
+    call marker%pick("finished",this%finished,status)
+    call marker%pick("init_time",this%init_time,status)
+    call marker%pick("pt_time",this%pt_time,status)
+    call marker%pick("partons_time",this%partons_time,status)
+    call marker%pick("confirm_time",this%confirm_time,status)
+    call marker%pick_instance("dsigma",this%dsigma,status=status)
+    call marker%pick_instance("samples",this%samples,status=status)
+    call marker%pick_instance("beam",this%beam,status=status)
+    call marker%pick_end("muli_type",status)
+  end subroutine muli_read_from_marker
+\end{Verbatim}
+
+\TbpImp{muli\_print\_to\_unit}
+\begin{Verbatim}
+  subroutine muli_print_to_unit(this,unit,parents,components,peers)
+    class(muli_type),intent(in)::this
+    integer,intent(in)::unit
+    integer(kind=dik),intent(in)::parents,components,peers
+    if(parents>0)call qcd_2_2_print_to_unit(this,unit,parents-1,components,peers)
+    write(unit,fmt="(a)")"Components of muli_type :"
+    write(unit,'("Model Parameters:")')
+    write(unit,'("GeV2_scale_cutoff : ",E20.10)')this%GeV2_scale_cutoff
+    write(unit,'("Modify PDF        : ",L1)')this%modify_pdfs
+    write(unit,'("PT Chain Status:")')
+    write(unit,'("Initialized       : ",L1)')this%initialized
+    write(unit,'("initial_interaction_given: ",L1)')this%initial_interaction_given
+    write(unit,'("Finished          : ",L1)')this%finished
+    write(unit,'("Exceeded          : ",L1)')this%exceeded
+    write(unit,'("Generator Internals:")')
+    write(unit,'("Mean Value        : ",E20.10)')this%mean
+    if(components>zero)then
+       write(unit,'("Start Integrals   : ",16(E20.10))')this%start_integrals(1:16)
+       write(unit,'("dsigma Component:")')
+       call this%dsigma%print_to_unit(unit,parents,components-1,peers)
+       write(unit,'("samples Component:")')
+       call this%samples%print_to_unit(unit,parents,components-1,peers)
+       write(unit,'("beam Component:")')
+       call this%beam%print_to_unit(unit,parents,components-1,peers)
+    else
+       write(unit,'("Skipping Derived-Type Components.")')
+    end if
+  end subroutine muli_print_to_unit
+\end{Verbatim}
+
+\TbpImp{muli\_get\_type}
+\begin{Verbatim}
+  pure subroutine muli_get_type(type)
+    character(:),allocatable,intent(out)::type
+    allocate(type,source="muli_type")
+  end subroutine muli_get_type
+\end{Verbatim}
+
+\OriginalSection{muli\_type}
+\TbpImp{muli\_apply\_initial\_interaction}
+MulI kann die härteste Wechselwirkung selbst generieren oder eine bereits generiete Wechselwirkung auf die Remnants übertragen. Mit dieser Methode wird eine extern (üblicherweise durch WHIZARD) generierte Wechselwirkung übertragen.
+
+Vor jedem Aufruf dieser Methode muss *this* durch muli\_initialize initialisiert werden. Es sollten zwischen der Initialisierung und diesem Aufruf keine Wechselwirkungen generiert werden.
+
+\begin{tabular}{rl}
+  gev2\_s&invariante Masse des hadronischen Systems vor der Wechselwirkung in GeV$^2$\\
+  x1&longitudinaler Impulsanteil des ersten Partons\\
+  x2&longitudinaler Impulsanteil des zweiten Partons\\
+  pdg\_f1&Flavor des ersten Partons im PDG-Schema\\
+  pdg\_f2&Flavor des zweiten Partons im PDG-Schema\\
+  n1&Ordnungszahl des ersten Partons\\
+  n2&Ordnungszahl des zweiten Partons
+\end{tabular}
+\begin{Verbatim}
+  subroutine muli_apply_initial_interaction(this,&
+       gev2_s,&
+       x1,&
+       x2,&
+       pdg_f1,&
+       pdg_f2,&
+       n1,&
+       n2)
+    class(muli_type),intent(inout)::this
+    real(kind=double),intent(in)::Gev2_s,x1,x2
+    integer,intent(in)::pdg_f1,pdg_f2,n1,n2
+    real(kind=double)::rnd1,rnd2,time
+    if(this%initialized)then
+       \IC{Timer Start für Benchmarkzwecke.}
+       call cpu_time(time)
+       this%init_time=this%init_time-time
+       \IC{Einige Informationen für Debuggingzwecke.}
+       print *,"muli_apply_initial_interaction:"
+       print *,"gev2_s=",gev2_s
+       print *,"x1=",x1
+       print *,"x2=",x2
+       print *,"pdg_f1=",pdg_f1
+       print *,"pdg_f2=",pdg_f2
+       print *,"n1=",n1
+       print *,"n2=",n2
+\IC{Aufgrund eines Bugs in gfortran 4.6 konnte ich die tao\_state variable nicht an}
+\IC{andere Module weitergeben und habe stattdessen vorgenerierte Zufallszahlen weitergegeben.}
+       call tao_random_number(this%tao_rnd,rnd1)
+       call tao_random_number(this%tao_rnd,rnd2)
+       \IC{Timer Stop für Benchmarkzwecke.}
+       call cpu_time(time)
+       this%init_time=this%init_time+time
+       \IC{Die nächste Zeile ist der eigentliche Aufruf für das Anpassen der Remnants.}
+       \IC{Alles andere in dieser Methode ist Wrapper-Overhead.}
+\end{Verbatim}
+\hack{Muli hat $\pperp$ als Ordnungsparameter, WHIZARD generiert diese Valiable aber nicht. $\pperp$ lässt sich auch nicht eindeutig aus den generierten Variablen ermitteln. Es ließe sich bestenfalls eine Verteilung von $\pperp$ in Abhängigkeit der bekannten Variablen angeben. Hier verwenden wir einen einfacheren Weg und setzen die Obere Schranke $\pperp\leq \hat{s}/4=s x_1 x_2 /4$ für $\pperp$ ein.}
+
+\begin{Verbatim}
+       call this%beam%apply_initial_interaction(sqrt(gev2_s),x1,x2,pdg_f1,pdg_f2,n1,n2,&
+            sqrt(gev2_s)*x1*x2/2D0,&
+            rnd1,rnd2)
+       this%initial_interaction_given=.true.
+       \IC{Das Program wir sofort beendet, wenn diese Methode uninitialisiert aufgerufen}
+       \IC{wird. Das kann kein Bug sein, sondern muss eine falsche Verwendung dieser}
+       \IC{Schnittstelle sein.}
+    else
+       print *,"muli_apply_initial_interaction: call muli_initialize first. STOP"
+       STOP
+    end if
+  end subroutine muli_apply_initial_interaction
+\end{Verbatim}
+
+\TbpImp{muli\_initialize}
+Diese Methode initialisiert eine Instanz vom Typ muli\_type.
+
+\begin{tabular}{rl}
+  GeV2\_scale\_cutoff&Skala in GeV$^2$, bei der der Algorithmus beendet wird.\\
+  GeV2\_s&invariante Masse des hadronischen Systems in GeV$^2$\\
+  muli\_dir&vollständiger Unix-Pfad zu dem Verzeichnis, in dem MulI-Daten liegen.\\
+  random\_seed&
+\end{tabular}
+
+\mip{Diese Methode sollte für jede Instanz nur einmal aufgerufen werden. Der Hauptzweck ist, den Monte-Carlo-Generator zu initialisieren, nicht etwa die Remnants zu initialisieren. Da hierfür einige Zeiger allociert werden. ist es ratsam, die Instanz mit muli\_finalize aufzuräumen, wenn man sie nicht mehr benötigt.}
+\begin{Verbatim}
+  subroutine muli_initialize(this,&
+       GeV2_scale_cutoff,&
+       gev2_s,&              
+       muli_dir,&
+       random_seed)
+    class(muli_type),intent(out)::this
+    real(kind=double),intent(in)::gev2_s,GeV2_scale_cutoff
+    character(*),intent(in)::muli_dir
+    integer,intent(in),optional::random_seed
+    real(kind=double)::time
+    logical::exist
+    type(muli_dsigma_type)::dsigma_aq
+    character(3)::lhapdf_member_c
+    \IC{Timer Start für Benchmarkzwecke.}
+    call cpu_time(time)
+    this%init_time=this%init_time-time
+    \IC{Einige Informationen für Debuggingzwecke.}
+    print *,"muli_initialize: The MULI modules are still not fully populated, so MULI might &
+         &generate some dummy values instead of real Monte Carlo generated interactions."
+    print *,"Given Parameters:"
+    print *,"GeV2_scale_cutoff=",GeV2_scale_cutoff
+    print *,"muli_dir=",muli_dir
+    print *,"lhapdf_dir=",""
+    print *,"lhapdf_file=",muli_default_lhapdf_file
+    print *,"lhapdf_member=",muli_default_lhapdf_member
+    print *,""
+    \IC{\(\pperp\) wird auf die invariante Masse normiert.}
+    call transversal_momentum_initialize(this,gev2_s)
+    \IC{Die Remnants werden initialisiert.}
+    call this%beam%initialize(&
+         muli_dir,&
+         lhapdf_dir="",&
+         lhapdf_file=muli_default_lhapdf_file,&
+         lhapdf_member=muli_default_lhapdf_member)
+    this%GeV2_scale_cutoff=GeV2_scale_cutoff
+    if(present(random_seed))then
+       call tao_random_create(this%tao_rnd,random_seed)
+    else
+       call tao_random_create(this%tao_rnd,1)
+    end if
+\IC{Wir durchsuchen muli\_dir nach vorgenerierten hadronischen Wirkungsquerschnitten.}
+\IC{Dafür wird eine Zeichenkette generiert, die den Namen der LHAPDF-Datei enthält.}
+\IC{Zusätzlich wird aus der lhapdf_member Variable eine Zeichenkette lhapdf_member_c}
+\IC{generiert, denn in jeder xml-Datei können mehrere Wirkungsquerschnitte für}
+\IC{verschiedene lhapdf_member liegen.}
+\end{Verbatim}
+\wip{Ich habe noch nie mehrere Member in einer Datei verwendet. Höchstwahrscheinlich funktioniert es dann auch nicht.}
+
+\begin{Verbatim}
+    print *,"looking for previously generated root function..."
+    call integer_with_leading_zeros(muli_default_lhapdf_member,3,lhapdf_member_c)
+    inquire(file=muli_dir//"/dsigma_"//muli_default_lhapdf_file//".xml",exist=exist)
+    if(exist)then
+\IC{Wir haben eine xml Datei zu der richtigen LHAPDF-Datei gefunden. Jetzt}
+\IC{deserialisieren wir die Wirkungsquerschnitte zu dem gewünschten lhapdf_member.}
+       print *,"found. Starting deserialization..."
+       call this%dsigma%deserialize(&
+            name="dsigma_"//muli_default_lhapdf_file//"_"//lhapdf_member_c,&
+            file=muli_dir//"/dsigma_"//muli_default_lhapdf_file//".xml")
+       print *,"done. Starting generation of plots..."
+\IC{Einige Plots für Debuggingzwecke.}
+       call this%dsigma%gnuplot(muli_dir)
+       print *,"done."
+    else
+\IC{Es wurden keine passenden hadronischen Wirkungsquerschnitte gefunden. Es werden}
+\IC{welche generiert und in muli_dir geschrieben. dsigma_aq ist nur für die Generierung}
+\IC{der Wirkungsquerschnitte relevant, aber nicht für die Generierung der Ereignisse.}
+\IC{dsigma_aq wird nur zu Debugging-Zwecken in muli_dir geschrieben. Die Serialisierung}
+\IC{von dsigma_aq kann also jederzeit gefahrlos herausgenommen werden.}
+       print *,"No root function found. Starting generation of root function..."
+       call dsigma_aq%generate(GeV2_scale_cutoff,gev2_s,this%dsigma)
+       print *,"done. Starting serialization of root function..."
+       call this%dsigma%serialize(& 
+            name="dsigma_"//muli_default_lhapdf_file//"_"//lhapdf_member_c,&
+            file=muli_dir//"/dsigma_"//muli_default_lhapdf_file//".xml")
+       print *,"done. Starting serialization of generator..."
+       call dsigma_aq%serialize(&
+            name="dsigma_aq_"//muli_default_lhapdf_file//"_"//lhapdf_member_c,&
+            file=muli_dir//"/dsigma_aq_"//muli_default_lhapdf_file//".xml")
+       print *,"done. Starting generation of plots..."
+       call this%dsigma%gnuplot(muli_dir)
+       print *,"done."
+    end if
+\IC{Es wird noch nach Daten für das Importance-Sampling gesucht. Ohne diese kann MulI}
+\IC{in seltenen Fällen unendlich langsam werden, wörtlich!}
+    print *,""
+    print *,"looking for previously generated samples..."
+    inquire(file=muli_dir//"/samples.xml",exist=exist)
+    if(exist)then
+       print *,"found. Starting deserialization..."
+       call this%samples%deserialize("samples",muli_dir//"/samples.xml")
+    else
+       print *,"No samples found. Starting with default initialization."
+       call this%samples%initialize(4,int_sizes_all,int_all,1D-2)
+    end if
+    \IC{Jetzt wird MulI startklar gemacht.}
+    call this%restart()
+    this%initialized=.true.
+    \IC{Timer Stopp für Benchmarkzwecke.}
+    call cpu_time(time)
+    this%init_time=this%init_time+time
+  end subroutine muli_initialize
+\end{Verbatim}
+
+\TbpImp{muli\_finalize}
+\begin{Verbatim}
+  subroutine muli_finalize(this)
+    class(muli_type),intent(inout)::this
+    print *,"muli_finalize"
+    nullify(this%node)
+    call this%dsigma%finalize()
+    call this%samples%finalize()
+    call this%beam%finalize()
+  end subroutine muli_finalize
+\end{Verbatim}
+
+\TbpImp{muli\_stop\_trainer}
+Trainer ist ein Bertiebsmodus von MulI, in dem das Importance-Sampling in jedem Schritt verfeinert wird. Das Sampling ist darauf optimiert, dass es schnell (also mit wenigen Ereignissen) den MCG beschleunigt, aber nicht darauf optimiert, bei vielen Daten den MCG perfekt zu beschleunigen. Deshalb konvergiert die Geschwindigkeit des MCG gegen eine Grenze und der Trainer-Modus kann abgestellt werden.
+
+\wip{Das hat in der NAG Variante von MulI bereits funktioniert, allerdings musste ich für die gcc-Kompatiblität so tief in den Sampler eingreifen, dass ich ihn komplett neu geschrieben habe. Den Nicht-Trainer-Modus habe ich in der gcc-Version noch nicht umgesetzt, entsprechend ist diese Methode nur ein Dummy für ein nicht-vorhandenes Feature.}
+
+\begin{Verbatim}
+  subroutine muli_stop_trainer(this)
+    class(muli_type),intent(inout)::this
+    print *,"muli_stop_trainer: DUMMY!"
+  end subroutine muli_stop_trainer
+\end{Verbatim}
+
+\TbpImp{muli\_reset\_timer}
+\begin{Verbatim}
+  subroutine muli_reset_timer(this)
+    class(muli_type),intent(inout)::this
+    this%init_time=0D0
+    this%pt_time=0D0
+    this%partons_time=0D0
+    this%confirm_time=0D0
+  end subroutine muli_reset_timer
+\end{Verbatim}
+
+\TbpImp{muli\_restart}
+Wenn mehrere Ereignisse (Ein Ereignis ist eine Hadron-Hadron-Streuung inklusive ISR und MPI) in einem Programmaufruf generiert werden sollen, dann ist diese Methode und eventuell\linebreak muli\_apply\_initial\_interaction vor jedem neuen Ereignis aufzurufen, aber nicht muli\_initialize.
+\begin{Verbatim}
+  subroutine muli_restart(this)
+    class(muli_type),intent(inout)::this
+\IC{this%node wird auf das letzte Blatt aus der Binärbaumdarstellung für die hadronischen}
+\IC{Wirkungsquerschnitte gesetzt. Es enthält dann die Wirkungsquerschnitte bei der Startskala}
+\IC{für \(\pperp\).}
+call this%dsigma%get_rightmost(this%node)
+\IC{Die Remnants werden zurückgesetzt.}
+    call this%beam%reset()
+\end{Verbatim}
+Offensichtlich ist der $\pperp$-Generator jetzt noch nicht fertig, es können also weitere Werte für $\pperp$ generiert werden. Alle anderen Komponenten werden auf ungültige Werte gesetzt, damit das Programm tendentiell eher abstürtzt als mit willkürlichen Zahlen zu rechnen, falls etwas schiefgeht, wie z.B. eine Nachfrage nach der aktuellen Wechselwirkung, obwohl noch keine generiert wurde. start\_integrals ist widerum eine gültige Initialisierung, denn die Integrale von der aktuellen (= der maximalen) Skala bis zur maximalen Skala sind offensichtlich gleich Null.
+\begin{Verbatim}
+    this%finished=.false.
+    this%process_id=-1
+    this%integrand_id=-1
+    this%momentum_fractions=[-1D0,-1D0,1D0]
+    this%hyperbolic_fractions=[-1D0,-1D0,1D0]
+    this%start_integrals=&
+    [0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0]
+  end subroutine muli_restart
+\end{Verbatim}
+
+\TbpImp{muli\_is\_initialized}
+\begin{Verbatim}
+  elemental function muli_is_initialized(this) result(res)
+    logical::res
+    class(muli_type),intent(in) :: this
+    res=this%initialized
+  end function muli_is_initialized
+\end{Verbatim}
+
+\TbpImp{muli\_is\_initial\_interaction\_given}
+\begin{Verbatim}
+  elemental function muli_is_initial_interaction_given(this) result(res)
+    logical::res
+    class(muli_type),intent(in) :: this
+    res=this%initial_interaction_given
+  end function muli_is_initial_interaction_given
+\end{Verbatim}
+
+\TbpImp{muli\_is\_finished}
+\begin{Verbatim}
+  elemental function muli_is_finished(this) result(res)
+    logical::res
+    class(muli_type),intent(in) :: this
+    res=this%finished
+  end function muli_is_finished
+\end{Verbatim}
+
+\TbpImp{muli\_enable\_remnant\_pdf}
+Nur für Debugging-Zwecke
+\begin{Verbatim}
+  subroutine muli_enable_remnant_pdf(this)
+    class(muli_type),intent(inout)::this
+    this%modify_pdfs=.true.
+  end subroutine muli_enable_remnant_pdf
+\end{Verbatim}
+
+\TbpImp{muli\_disable\_remnant\_pdf}
+Nur für Debugging-Zwecke
+\begin{Verbatim}
+  subroutine muli_disable_remnant_pdf(this)
+    class(muli_type),intent(inout)::this
+    this%modify_pdfs=.false.
+  end subroutine muli_disable_remnant_pdf
+\end{Verbatim}
+
+\TbpImp{muli\_generate\_gev2\_pt2}
+Wrapper für die Generierung der nächsten Skala $\pperp$, die eigentliche Arbeit wird in \TbpRef{muli\_type}{generate\_next\_scale} gemacht. Diese Wrapper-Methode nimmt eine beliebige Start-Skala für $\pperp$ entgegen, liefert einen Kandidaten für $\pperp$ zurück und misst die Zeit, die die CPU dafür benötigt hat.
+\begin{Verbatim}
+  subroutine muli_generate_gev2_pt2(this,gev2_start_scale,gev2_new_scale)
+    class(muli_type),intent(inout)::this
+    real(kind=double),intent(in)::gev2_start_scale
+    real(kind=double),intent(out)::gev2_new_scale
+    real(kind=double)::time
+    \IC{Timer Start für Benchmark-Zwecke}
+    call cpu_time(time)
+    this%pt_time=this%pt_time-time
+    \IC{Die aktuelle Skala wird auf den angegebenen Wert gesetzt}
+    call this%set_gev2_scale(gev2_start_scale)
+    \IC{Mit \TbpRef{muli\_trapezium\_type}{approx\_integral} wird die Stammfunktionen \(\mathcal{S}_{\alpha\beta}\) an}
+    \IC{dieser Skala ausgewertet.}
+    this%start_integrals=this%node%approx_integral(this%get_unit_scale())
+    \IC{Eine neue Wechselwirkungsskala wird MC-generiert.}
+    call this%generate_next_scale()
+    \IC{Die neue Skala wird zurückgegeben.}
+    gev2_new_scale=this%get_gev2_scale()
+    \IC{Timer Stopp}
+    call cpu_time(time)
+    this%pt_time=this%pt_time+time
+  end subroutine muli_generate_gev2_pt2
+\end{Verbatim}
+  
+\TbpImp{muli\_generate\_flow}
+Generierung einer internen Darstellung eines Farbflussdiagramms für das aktuelle Feynman\-dia\-gramm.
+\begin{Verbatim}
+  subroutine muli_generate_flow(this)
+    class(muli_type),intent(inout)::this
+    integer::rnd
+    integer::m,n
+    logical,dimension(3)::t
+    integer,dimension(4)::tmp_flow
+    \IC{we initialize with zeros. a zero means no line ends here.}
+    this%flow=[0,0,0,0]
+    \IC{we randomly pick a color flow}
+    call tao_random_number(this%tao_rnd,rnd)
+    \IC{the third position of muli_flow_stats is the sum of all flow wheights of}
+    \IC{stratum diagram_kind. so we generate a random number 0 <= m < sum(weights)}
+    m=modulo(rnd,muli_flow_stats(3,this%get_diagram_color_kind()))
+    \IC{lets visit all color flows of stratum diagram_kind.}
+    \IC{the first and second position of muli_flow_stats}
+    \IC{tell us the index of the first and the last valid color flow.}
+    do n=muli_flow_stats(1,this%get_diagram_color_kind()),&
+    muli_flow_stats(2,this%get_diagram_color_kind())
+       \IC{now we remove the weight of flow n from our random number.}
+       m=m-muli_flows(0,n)
+       \IC{this is how we pick a flow.}
+       if(m<0)then
+          \IC{the actual flow}
+          this%flow=muli_flows(1:4,n)
+          exit
+       end if
+    end do
+    \IC{the diagram kind contains a primitive diagram and all diagramms which can}
+    \IC{be deriven by}
+    \IC{(1) global charge conjugation}
+    \IC{(2) permutation of the initial state particles}
+    \IC{(3) permutation of the final state particles}
+    \IC{lets see, what transformations we have got in our actual interaction.}
+    t=muli_get_state_transformations(this%get_diagram_color_kind(),this%get_lha_flavors())
+    \IC{now we have to apply these transformations to our flow.}
+    \IC{(1) means: swap beginning and end of a line. flow is a permutation that maps}
+    \IC{ends to their beginnings, so we apply flow to itself:}
+    if(t(1))then
+       tmp_flow=this%flow
+       this%flow=[0,0,0,0]
+       do n=1,4
+          if(tmp_flow(n)>0)this%flow(tmp_flow(n))=n
+       end do
+    end if
+    if(t(2))then
+       \IC{we swap the particles 1 and 2}
+       tmp_flow(1)=this%flow(2)
+       tmp_flow(2)=this%flow(1)
+       tmp_flow(3:4)=this%flow(3:4)
+       \IC{we swap the beginnings assigned to particle 1 and 2}
+       where(tmp_flow==1)
+          this%flow=2
+       elsewhere(tmp_flow==2)
+          this%flow=1
+       elsewhere
+          this%flow=tmp_flow
+       end where
+    end if
+    if(t(3))then
+       \IC{we swap the particles 3 and 4}
+       tmp_flow(1:2)=this%flow(1:2)
+       tmp_flow(3)=this%flow(4)
+       tmp_flow(4)=this%flow(3)
+       \IC{we swap the beginnings assigned to particle 3 and 4}
+       where(tmp_flow==3)
+          this%flow=4
+       elsewhere(tmp_flow==4)
+          this%flow=3
+       elsewhere
+          this%flow=tmp_flow
+       end where
+    end if
+  end subroutine muli_generate_flow
+\end{Verbatim}
+
+\TbpImp{muli\_generate\_partons}
+Generierung der Partonimpulsanteile $[\xi_1, \xi_2]$ sowie der Partonflavor $[a,b,c,d]$, siehe Abschnitt \ref{sec:all:alg:imp}.
+
+Im Wesentlichen ist dies ein Wrapper für \TbpRef{sample\_inclusive\_type}{mcgenerate\_hit} und \TbpRef{muli\_type}{generate\_flow}
+
+n1, n2: Identifikationsnummern der Partonen. Das shower\_interface kümmert sich um die Durchnummerierung der Partonen, deswegen nimmt muli\_generate\_partons diese Nummern entgegen, statt sie zu erzeugen.
+
+x\_proton\_1,x\_proton\_2: Longitudinale Impulsanteile der Partonen, bezogen auf die ursprünglichen Protonimpulse, nicht auf die aktuellen Remnantimpulse.
+
+pdg\_f1,pdg\_f2,pdg\_f3,pdg\_f4: Die Flavor a,b,c,d der Partonen im PDG-Schema.
+\begin{Verbatim}
+  subroutine muli_generate_partons(this,n1,n2,x_proton_1,x_proton_2,pdg_f1,pdg_f2,pdg_f3,pdg_f4)
+    class(muli_type),intent(inout)::this
+    integer,intent(in)::n1,n2
+    real(kind=double),intent(out)::x_proton_1,x_proton_2
+    integer,intent(out)::pdg_f1,pdg_f2,pdg_f3,pdg_f4
+    integer,dimension(4)::pdg_f
+    real(kind=double)::time
+    !print *,"muli_generate_partons: n1=",n1," n2=",n2
+    this%parton_ids(1)=n1
+    this%parton_ids(2)=n2
+    call cpu_time(time)
+    this%partons_time=this%partons_time-time
+\end{Verbatim}
+Mittels \TbpRef{muli\_trapezium\_type}{approx\_value\_n} wird der Mittelwert $\overline{S}_{\alpha\beta}$ ausgewertet. Anschließend werden mittels \TbpRef{sample\_inclusive\_type}{mcgenerate\_hit} die Nummer \emph{process\_id} des Feymandiagramms und die Impulsanteile \emph{momentum\_fractions} der Partonen generiert.
+\begin{Verbatim}
+    this%mean=this%node%approx_value_n(this%get_unit_scale(),this%integrand_id)
+    call sample_inclusive_mcgenerate_hit(&
+         this%samples,&
+         this%get_unit2_scale(),&
+         this%mean,&
+         this%integrand_id,&
+         this%tao_rnd,&
+         this%process_id,&
+         this%momentum_fractions)
+\end{Verbatim}
+Mittels \TbpRef{muli\_type}{generate\_flow} wird ein Farbflussdiagramm generiert.
+\begin{Verbatim}
+    call this%generate_flow()
+\end{Verbatim}
+Üblichwerweise (Wenn ich nicht debugge) werden die Remnante mittels \TbpRef{pp\_remnant\_type}{apply\_interaction} die Remnants über die neue Wechselwirkung in Kenntnis gesetzt.
+\begin{Verbatim}
+    if(this%modify_pdfs)then
+       call cpu_time(time)
+       this%partons_time=this%partons_time+time
+       this%confirm_time=this%confirm_time-time
+       call this%beam%apply_interaction(this)
+       call cpu_time(time)
+       this%confirm_time=this%confirm_time+time
+       this%partons_time=this%partons_time-time
+    end if
+    x_proton_1=this%momentum_fractions(1)
+    x_proton_2=this%momentum_fractions(2)
+    pdg_f=this%get_pdg_flavors()
+    pdg_f1=pdg_f(1)
+    pdg_f2=pdg_f(2)
+    pdg_f3=pdg_f(3)
+    pdg_f4=pdg_f(4)
+    call cpu_time(time)
+    this%partons_time=this%partons_time-time
+    call qcd_2_2_print_to_unit(this,output_unit,100_dik,100_dik,100_dik)
+  end subroutine muli_generate_partons
+\end{Verbatim}
+
+\TbpImp{muli\_replace\_parton}
+Wrapper für die eigentliche Routine \TbpRef{pp\_remnant\_type}{replace\_parton}
+\begin{Verbatim}
+  subroutine muli_replace_parton(this,proton_id,old_id,new_id,pdg_f,x_proton,gev_scale)
+    class(muli_type),intent(inout)::this
+    integer,intent(in)::proton_id,old_id,new_id,pdg_f
+    real(kind=double),intent(in)::x_proton,gev_scale
+    !print *,"muli_replace_parton(",proton_id,old_id,new_id,pdg_f,x_proton,gev_scale,")"
+    if(proton_id==1.or.proton_id==2)then
+       call this%beam%replace_parton(proton_id,old_id,new_id,pdg_f,x_proton,gev_scale)
+    else
+       print *,"muli_replace_parton: proton_id must be 1 or 2, but ",proton_id," was given."
+       STOP
+    end if
+  end subroutine muli_replace_parton
+\end{Verbatim}
+\TbpImp{muli\_get\_momentum\_pdf}
+Wrapper für die eigentliche Routine \TbpRef{pp\_remnant\_type}{momentum\_pdf}
+\begin{Verbatim}
+  function muli_get_momentum_pdf(this,x_proton,gev2_scale,n,pdg_f) result(pdf)
+    real(kind=double)::pdf
+    class(muli_type),intent(in)::this
+    real(kind=double),intent(in)::x_proton,gev2_scale
+    integer,intent(in)::n,pdg_f
+    call this%beam%momentum_pdf(x_proton,gev2_scale,n,pdg_f,pdf)
+  end function muli_get_momentum_pdf
+\end{Verbatim}
+\TbpImp{muli\_get\_parton\_pdf}
+Wrapper für die eigentliche Routine \TbpRef{pp\_remnant\_type}{parton\_pdf}
+\begin{Verbatim}
+  function muli_get_parton_pdf(this,x_proton,gev2_scale,n,pdg_f) result(pdf)
+    real(kind=double)::pdf
+    class(muli_type),intent(in)::this
+    real(kind=double),intent(in)::x_proton,gev2_scale
+    integer,intent(in)::n,pdg_f
+    call this%beam%parton_pdf(x_proton,gev2_scale,n,pdg_f,pdf)
+  end function muli_get_parton_pdf
+\end{Verbatim}
+
+\TbpImp{muli\_print\_timer}
+\begin{Verbatim}
+  subroutine muli_print_timer(this)
+    class(muli_type),intent(in) :: this
+    print('("Init time:    ",E20.10)'),this%init_time
+    print('("PT gen time:  ",E20.10)'),this%pt_time
+    print('("Partons time: ",E20.10)'),this%partons_time
+    print('("Confirm time: ",E20.10)'),this%confirm_time
+    print('("Overall time: ",E20.10)'),&
+    this%init_time+this%pt_time+this%partons_time+this%confirm_time
+  end subroutine muli_print_timer
+\end{Verbatim}
+
+\TbpImp{muli\_generate\_next\_scale}
+Hier wird die nächste Wechselwirkungsskala $h_3^{(n+1)}$ generiert. Für jedes Stratum $\{\alpha,\beta\}$ wird die Unterfunktion generate\_single\_pts aufgerufen, um einen Wert $h_{3\alpha\beta}^{(n+1)}$ zu generieren. muli\_generate\_next\_scale setzt dann $h_3^{(n+1)}=\max(h_{3\alpha\beta}^{(n+1)})$. Intern werden normierte Skalen $h_3=\frac{4\pperp}{s}$=pts (pt normiert auf s) verwendet.
+\begin{Verbatim}
+  subroutine muli_generate_next_scale(this,integrand_kind)
+    class(muli_type),intent(inout)::this
+    integer,intent(in),optional::integrand_kind
+    real(kind=double)::pts,tmp_pts,rnd
+    integer::tmp_int_kind
+    class(\TypeRef{muli\_trapezium\_node\_class}),pointer::tmp_node
+      pts=-1D0
+\end{Verbatim}
+Das optionale Argument integrand\_kind wird nur für interne Testzwecke verwendet, man sollte es gefahrlos samt der nachfolgenden Konstruktion entfernen können. integrand\_kind ist ein Stratum $\{\alpha,\beta\}$, das vorgegeben werden kann.
+\begin{Verbatim}
+      if(present(integrand_kind))then
+         call tao_random_number(this%tao_rnd,rnd)
+         call generate_single_pts(&
+              integrand_kind,&
+              this%start_integrals(integrand_kind),&
+              this%beam%get_pdf_int_weights(double_pdf_kinds(1:2,integrand_kind)),&
+              rnd,&
+              this%dsigma,&
+              pts,&
+              this%node)
+      else
+\end{Verbatim}
+Das ist der vorgesehene Weg, hier werden alle Strati mit tmp\_int\_kind durchlaufen. mit\linebreak \TbpRef{pp\_remnant\_type}{get\_pdf\_int\_weights} werden die Wichtungsfaktoren $[W_\alpha,W_\beta]$ angefordert. in \CompRef{muli\_interactions}{double\_pdf\_kinds} ist eine Abbildung $[1..16]\rightarrow\{\alpha,\beta\}$ definiert.
+
+Nach jedem Aufruf von generate\_single\_pts wird überprüft, ob tmp\_pts=$h_{3\alpha\beta}^{(n+1)}$ größer als der bisher größte Wert ist. Wenn ja, wird $h_3^{(n+1)}=h_{3\alpha\beta}^{(n+1)}$ gesetzt.
+
+generate\_single\_pts liefert $h_{3\alpha\beta}=-1$ zurück, wenn $p_{\perp\alpha\beta}<\pperp^{\min}$. Es reicht am Schluss also aus, wenn wir nachsehen, ob $h_3>0$. Wenn nicht, dann ist die Skala $\pperp$ am unteren Ende angekommen und es werden keine weiteren MPI generiert.
+
+tmp\_node zeigt auf das Blatt der approximierten Wirkungsquerschnitte \CompRef{muli\_type}{dsigma}, das $p_{\perp\alpha\beta}$ enthält. Dieses Blatt wird später noch benötigt, wenn aus dem hier generierten Kandidaten eine tatsächliche Wechselwirkung generiert wird.
+\begin{Verbatim}
+         do tmp_int_kind=1,16
+            call tao_random_number(this%tao_rnd,rnd)
+            call generate_single_pts(&
+                 tmp_int_kind,&
+                 this%start_integrals(tmp_int_kind),&
+                 this%beam%get_pdf_int_weights(double_pdf_kinds(1:2,tmp_int_kind)),&
+                 rnd,&
+                 this%dsigma,&
+                 tmp_pts,&
+                 tmp_node)
+            if(tmp_pts>pts)then
+               pts=tmp_pts
+               this%integrand_id=tmp_int_kind
+               this%node=>tmp_node
+            end if
+         end do
+      end if
+      if(pts>0)then
+         call this%set_unit_scale(pts)
+      else
+         this%finished=.true.
+      end if
+  contains
+\end{Verbatim}
+Siehe Abschnitt \ref{sec:all:alg:stra}, \eqref{eq:all:genpt-a}-\eqref{eq:all:genpt-c} mit weight $\rightarrow W_{\alpha}W_{\beta}$,  rnd $\rightarrow z$ und arg $\rightarrow \zeta$. 
+Wenn $W_{\alpha}W_{\beta}=0$, dann wird keine Skala generiert, weil mindestens einer der beiden beteiligte
+n Beiträge zur Strukturfunktion gleich Null ist.
+
+Mit \TbpRef{muli\_trapezium\_tree\_type}{find\_decreasing} wird \CompRef{muli\_type}{dsigma} nach dem Blatt durchsucht, dessen Bildmenge von $\mathcal{S}_{\alpha\beta}$ den Wert $\zeta$ enthält. Wenn der Funktionswert l\_integral von $\mathcal{S}_{\alpha\beta}$ an der unteren Intervallgrenze kleiner als $\zeta$ ist, dann liegt $\zeta$ tatsächlich nicht in der Bildmenge von $\mathcal{S}_{\alpha\beta}$. Damit ist klar, dass der gesuchte Wert von $\pperp<\pperp^{\min}$ ist und das Ergebnis wird auf den Wert -1 gesetzt. Andernfalls wird mittels \TbpRef{muli\_trapezium\_type}{approx\_position\_by\_integral} die Umkehrfunktion $\mathcal{S}_{\alpha\beta}^{-1}$ ausgewertet.
+\begin{Verbatim}
+    subroutine generate_single_pts(int_kind,start_int,weight,rnd,int_tree,pts,node)
+      integer,intent(in)::int_kind
+      real(kind=double),intent(in)::start_int,weight,rnd
+      type(muli_trapezium_tree_type),intent(in)::int_tree
+      real(kind=double),intent(out)::pts
+      class(muli_trapezium_node_class),pointer,intent(out)::node
+      real(kind=double)::arg
+      if(weight>0D0)then
+         arg=start_int-log(rnd)/weight
+         call int_tree%find_decreasing(arg,int_kind,node)
+         if(node%get_l_integral(int_kind)>arg)then
+            pts=node%approx_position_by_integral(int_kind,arg)
+         else
+            pts=-1D0
+         end if
+      else
+         pts=-1D0
+      end if
+    end subroutine generate_single_pts
+  end subroutine muli_generate_next_scale
+\end{Verbatim}
+\TbpImp{muli\_confirm}
+Wird nur für Debuggingzwecke in Zusammenhang mit \TbpRef{muli\_type}{generate\_samples} verwendet.
+\begin{Verbatim}
+  subroutine muli_confirm(this)
+    class(muli_type),intent(inout) :: this
+    this%mean=this%node%approx_value_n(this%get_unit_scale(),this%integrand_id)
+    this%start_integrals=this%node%approx_integral(this%get_unit_scale())
+  end subroutine muli_confirm
+\end{Verbatim}
+
+\TbpImp{muli\_generate\_samples}
+Ein Generator für die Zerlegung des $\{h_1,h_2,h_3\}$-Einheitsquaders, siehe Abschnitt \ref{sec:all:alg:imp}. Diese Methode wird nur für Debugginzwecke verwendet.
+\begin{Verbatim}
+  subroutine muli_generate_samples(this,n_total,n_print,integrand_kind,muli_dir,analyse)
+    class(muli_type),intent(inout)::this
+    integer(kind=dik),intent(in)::n_total,n_print
+    integer,intent(in)::integrand_kind
+    character(*),intent(in)::muli_dir
+    logical,intent(in)::analyse
+    integer(kind=dik)::n_inner
+
+    class(muli_trapezium_node_class),pointer::start_node=>null()
+    class(muli_trapezium_node_class),pointer,save::s_node=>null()
+    class(muli_trapezium_node_class),pointer,save::node=>null()   
+
+    character(2)::prefix
+    integer,save::t_slice,t_region,t_proc,t_subproc,t_max_n=0
+    integer(kind=dik)::n_t,n_p,n_m
+    integer::n,m,u,unit=0
+    integer(kind=dik)::n_tries=0
+    integer(kind=dik)::n_hits=0
+    integer(kind=dik)::n_over=0
+    integer(kind=dik)::n_miss=0
+    real(kind=double),save,dimension(3)::cart_hit
+    integer,save,dimension(4)::t_i_rnd
+    real(kind=double),dimension(16)::d_rnd
+    real(kind=double),save::t_area,t_dddsigma,t_rnd,t_weight,t_arg
+    real(kind=double)::mean=0D0
+    real(kind=double)::time=0D0
+    real(kind=double)::timepa=0D0
+    real(kind=double)::timept=0D0
+    real(kind=double)::timet=0D0
+    real(kind=double)::pts,s_pts=1D0
+    real(kind=double)::pts2=1D0
+    real(kind=double)::rnd
+    logical::running
+    character(3)::num
+    integer::success=-1
+    integer::chain_length=0
+    integer::int_kind
+    integer::process_id
+    real(kind=double),dimension(0:16)::integral
+    call this%print_parents()
+    n_tries=one
+    n_inner=n_total/n_print
+    n_t=zero
+    print:do while(n_t<n_total)
+       call cpu_time(time)
+       timet=-time
+       n_p=zero
+       inner:do while(n_p<n_print)
+          chain_length=0
+          call this%restart()
+          this%integrand_id=integrand_kind
+          call cpu_time(time)
+          timept=timept-time
+          call this%generate_next_scale(integrand_kind)
+          call cpu_time(time)
+          timept=timept+time
+          chain:do while(.not.this%is_finished())
+             chain_length=chain_length+1
+             n_p=n_p+1
+             call this%confirm()
+             call cpu_time(time)
+             timepa=timepa-time
+             !             print *,this%get_unit2_scale()
+             call sample_inclusive_mcgenerate_hit(&
+                  this%samples,&
+                  this%get_unit2_scale(),&
+                  this%mean,&
+                  this%integrand_id,&
+                  this%tao_rnd,&
+                  this%process_id,&
+                  this%momentum_fractions)
+             call cpu_time(time)
+             timepa=timepa+time
+             timept=timept-time
+             call this%generate_next_scale(integrand_kind)
+             call cpu_time(time)
+             timept=timept+time
+          end do chain
+       end do inner
+       n_t=n_t+n_p
+       call this%samples%sum_up()
+       call cpu_time(time)
+       timet=timet+time
+       print *,n_t,"/",n_total
+       print *,"time: ",timet
+       print *,"pt time: ",timept
+       print *,"pa time: ",timepa       
+       print *,this%samples%n_tries_sum,this%samples%n_hits_sum,this%samples%n_over_sum
+       if(this%samples%n_hits_sum>0)then
+          print *,(this%samples%n_hits_sum*10000)/this%samples%n_tries_sum,&
+               (this%samples%n_over_sum*10000)/this%samples%n_hits_sum
+       else
+          print *,"no hits"
+       end if
+    end do print
+    call integer_with_leading_zeros(integrand_kind,2,prefix)
+    if(analyse)then
+       call this%samples%int_kinds(integrand_kind)%analyse(muli_dir,prefix//"_")
+       call this%samples%int_kinds(integrand_kind)%serialize(&
+            "sample_int_kind_"//prefix,&
+            muli_dir//"/sample_int_kind/"//prefix//".xml")
+    end if
+    call this%samples%int_kinds(integrand_kind)%serialize(&
+         "sample_int_kind_"//prefix,&
+         muli_dir//"/sample_int_kind/"//prefix//".xml")
+  end subroutine muli_generate_samples
+\end{Verbatim}
+
+\TbpImp{muli\_fake\_interaction}
+Wird ebenfalls zu Debuggingzwecken verwendet. So können Wechselwirkungen ohne Verwendung von WHIZARD oder das shower\_interface auf die Remnants übertragen werden.
+\begin{Verbatim}
+  subroutine muli_fake_interaction(this,GeV2_scale,x1,x2,process_id,integrand_id,n1,n2,flow)
+    class(muli_type),intent(inout)::this
+    real(kind=double),intent(in)::Gev2_scale,x1,x2
+    integer,intent(in)::process_id,integrand_id,n1,n2
+    integer,dimension(4),intent(in),optional::flow
+    call this%set_gev2_scale(Gev2_scale)
+    this%process_id=process_id
+    this%integrand_id=integrand_id
+    this%parton_ids=[n1,n2]
+    if(present(flow))then
+       this%flow=flow
+    else
+       this%flow=[0,0,0,0]
+    end if
+    this%momentum_fractions=[x1,x2,this%get_unit2_scale()]
+    call this%beam%apply_interaction(this)
+    call this%beam%print_all()
+  end subroutine muli_fake_interaction
+
+end module muli
+
+\end{Verbatim}

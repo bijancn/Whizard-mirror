@@ -1,0 +1,187 @@
+\Module{muli\_dsigma}
+%\begin{figure}
+%  \centering{\includegraphics{uml-module-tree-4.mps}}
+%  \caption{\label{fig:\ThisModule:types}Klassendiagramm des Moduls \ThisModule}
+%\end{figure}
+Hier wird eine Approximation der Stammstrati $\mathcal{S}(\pperp)$ aus \eqref{eq:all:strati_root_def} bereitgestellt. Die Integrationen in \eqref{eq:imp:double_strati_int} werden mit der externen Bibliothek libcuba ausgewertet, die verbleibende Integration in \eqref{eq:all:strati_root_def} wird mit dem muli-eigenen Modul \ModuleRef{muli\_aq} ausgewertet.
+
+Zu Beginn hatte ich mit verschiedenen Darstellungen der Wirkungsquerschnitte und mit verschiedenen Integrationsparametern und verschiedenen Einteilungen in Strati experimentiert. Um Codevervielfältigung zu vermeiden hatte ich dann den Code für die Integration von den Wirkungsquerschnitten getrennt. Da die Wirkungsquerschnitte auf Parameter zugreifen müssen, die nicht fur alle Darstellungen gleich sind, konnte ich die Integraden nicht als Funktion an \TypeRef{aq\_class} übergeben. Stattdessen habe ich mich entschieden, die verschiedenen Varianten durch Überladen der Methode evaluate zu erzeugen. So konnten die Erweiterung von \TypeRef{aq\_class} komplett verschiedene Methoden zur Auswertung von \eqref{eq:imp:double_strati_int}, und dennoch dieselbe Quadratur für \eqref{eq:all:strati_root_def} verwenden. Heute ist nur noch eine einzige Erweiterung übrig, nämlich \TypeRef{muli\_dsigma\_type} in diesem Modul. Deswegen ist der Sinn zwischen der Aufteilung der Module \ModuleRef{muli\_aq} und \ModuleRef{muli\_dsigma} nicht mehr offensichtlich.
+\section{Abhängigkeiten}
+\use{muli\_momentum}
+\use{muli\_interactions}
+\use{muli\_cuba}
+\use{muli\_aq}
+\section{Parameter}
+\begin{Verbatim}
+  \IC{Die Anzahl der Strati plus 1, für die Summe aller Strati.}
+  integer,parameter,private::\MC{dim\_f}=17
+\end{Verbatim}
+\section{Derived Types}
+\TypeDef{muli\_dsigma\_type}
+Der Zweck von muli\_dsigma\_type liegt darin, die abstrakte Methode evaluate von \TypeRef{aq\_class} zu implementieren und so einen Integradem für die nummerische Integration bereitzustellen. Weiterhin stellt aq\_class die Methode \TbpRef{muli\_dsigma\_type}{generate} zur Verfügung, um die Integration zu starten.
+
+Für das setzten der Faktorisierungsskala wird eine eigene Instanz \CompRef{muli\_dsigma\_type}{pt} des Datentyps \TypeRef{transversal\_momentum\_type} verwendet. Eigen bedeutet, dass \CompRef{muli\_dsigma\_type}{pt} nicht mit der muli-Skala synchronisiert ist, denn diese Integration findet vor der Eventgenerierung mit MULI statt.
+
+\begin{Verbatim}
+  type,public,\Extends{aq\_class} :: muli_dsigma_type
+     private
+     type(\TypeRef{transversal\_momentum\_type})::pt\TC{pt}
+     type(\TypeRef{cuba\_divonne\_type}) :: cuba_int\TC{cuba\_int}
+   contains
+     \OverridesDeclaration{serializable\_class}
+     procedure::\TbpDec{write\_to\_marker}{muli\_dsigma\_write\_to\_marker}
+     procedure::\TbpDec{read\_from\_marker}{muli\_dsigma\_read\_from\_marker}
+     procedure::\TbpDec{print\_to\_unit}{muli\_dsigma\_print\_to\_unit}
+     procedure,nopass::\TbpDec{get\_type}{muli\_dsigma\_get\_type}
+     \OriginalDeclaration
+     procedure :: \TbpDec{generate}{muli\_dsigma\_generate}
+     procedure :: \TbpDec{evaluate}{muli\_dsigma\_evaluate}
+     procedure :: muli_dsigma_initialize
+     generic   :: \TbpDec{initialize}{muli\_dsigma\_initialize}
+  end type muli_dsigma_type
+\end{Verbatim}
+\Methods
+\MethodsFor{muli\_dsigma\_type}
+\TbpImp{muli\_dsigma\_write\_to\_marker}
+\begin{Verbatim}
+  subroutine muli_dsigma_write_to_marker(this,marker,status)
+    class(muli_dsigma_type), intent(in) :: this
+    class(marker_type),intent(inout)::marker
+    integer(kind=dik), intent(out) :: status
+    ! local variables
+    class(serializable_class),pointer::ser
+    call marker%mark_begin("muli_dsigma_type")
+    call aq_write_to_marker(this,marker,status)
+    call this%cuba_int%serialize(marker,"cuba_int")
+    call marker%mark_end("muli_dsigma_type")
+  end subroutine muli_dsigma_write_to_marker
+\end{Verbatim}
+
+\TbpImp{muli\_dsigma\_read\_from\_marker}
+\begin{Verbatim}
+  subroutine muli_dsigma_read_from_marker(this,marker,status)
+    class(muli_dsigma_type), intent(out) :: this
+    class(marker_type),intent(inout)::marker
+    integer(kind=dik), intent(out) :: status
+    ! local variables
+    call marker%pick_begin("muli_dsigma_type",status=status)
+    call aq_read_from_marker(this,marker,status)
+    call this%cuba_int%deserialize("cuba_int",marker)
+    call marker%pick_end("muli_dsigma_type",status)
+  end subroutine muli_dsigma_read_from_marker
+\end{Verbatim}
+
+\TbpImp{muli\_dsigma\_print\_to\_unit}
+\begin{Verbatim}
+  subroutine muli_dsigma_print_to_unit(this,unit,parents,components,peers)
+    class(muli_dsigma_type),intent(in)::this
+    integer,intent(in)::unit
+    integer(kind=dik),intent(in)::parents,components,peers
+    integer::ite
+    if(parents>0)call aq_print_to_unit(this,unit,parents-1,components,peers)
+    write(unit,'("Components of muli_dsigma_type")')
+    if(components>0)then
+       write(unit,fmt=*)"Printing components of cuba_int:"
+       call this%cuba_int%print_to_unit(unit,parents,components-1,peers)
+    else
+       write(unit,fmt=*)"Skipping components of cuba_int:"
+    end if
+  end subroutine muli_dsigma_print_to_unit
+\end{Verbatim}
+\TbpImp{muli\_dsigma\_get\_type}
+\begin{Verbatim}
+  pure subroutine muli_dsigma_get_type(type)
+    character(:),allocatable,intent(out)::type
+    allocate(type,source="muli_dsigma_type")
+  end subroutine muli_dsigma_get_type
+\end{Verbatim}
+\TbpImp{muli\_dsigma\_generate}
+Initialisierung und Generierung der Stammstrati $\mathcal{S}$.
+
+
+Man kann eine Start-Segmentierung des Integrationsbereichs angeben. Dadurch kann die Integration erheblich beschleunigt werden. Wir wählen eine Segmentierung in \emph{initial\_values} so, dass $\mu_j=\mu_0\exp(j)$, solange $\mu_j<\sqrt{s}/2$ und nehmen als letzten Wert $\sqrt{s}/2$ hinzu.
+\begin{Verbatim}
+  subroutine muli_dsigma_generate(this,gev2_scale_cutoff,gev2_s,int_tree)
+    class(muli_dsigma_type),intent(inout)::this
+    real(kind=drk),intent(in)::gev2_scale_cutoff,gev2_s
+    type(muli_trapezium_tree_type),intent(out)::int_tree
+    real(kind=drk),dimension(ceiling(log(gev2_s/gev2_scale_cutoff)/2D0))::initial_values
+    integer::n
+    \IC{Debugging}
+    print *,gev2_s/gev2_scale_cutoff,ceiling(log(gev2_s/gev2_scale_cutoff)/2D0)
+    \IC{Setzen der Start-Segmentierung}
+    initial_values(1)=sqrt(gev2_scale_cutoff/gev2_s)*2D0
+    do n=2,size(initial_values)-1
+       initial_values(n)=initial_values(n-1)*euler
+    end do
+    initial_values(n)=1D0
+    \IC{Debugging}
+    print *,initial_values
+    \IC{Wir geben dieser Instanz einen Namen und die Nummer 1.}
+    call identified_initialize(this,one,"dsigma")
+    \IC{Die Skala wird initialisiert.}
+    call this%pt%initialize(gev2_s)
+    \IC{Die Genauigkeit der Stammfunktion \eqref{eq:all:strati_root_def}}
+    this%abs_error_goal = 0D0
+    this%rel_error_goal=scale(1D0,-12)!-12
+    this%max_nodes=1000
+    \IC{Dimension und Genauigkeit der Integration \eqref{eq:imp:double_strati_int}}
+    call this%cuba_int%set_common(&
+         &dim_f=dim_f,&
+         &dim_x=2,&
+         &eps_rel=scale(this%rel_error_goal,-8),&!-8
+         &flags = 0)
+    \IC{Die ungefähre Position der Maxima des Integranden}
+    call this%cuba_int%set_deferred&
+      (xgiven_flat=[1D-2,5D-1+epsilon(1D0),1D-2,5D-1-epsilon(1D0)])
+    print *,"muli_dsigma_generate:"
+    print *,"Overall Error Goal: ",this%rel_error_goal
+    \IC{Wir initialisieren die Integration mit der Start-Segmentierung}
+    call this%init_error_tree(dim_f,initial_values)
+    \IC{Die eigentliche Integration}
+    call this%run()
+    \IC{Konvertierung der internen Darstellung mittels \TypeRef{fibonacci\_root\_type}}
+    \IC{in ein bessere Darstellung mittels \TypeRef{muli\_trapezium\_tree\_type}.}
+    call this%integrate(int_tree)
+    \IC{Aufräumen}
+    call this%err_tree%deallocate_all()
+    deallocate(this%err_tree)
+    nullify(this%int_list)
+  end subroutine muli_dsigma_generate
+\end{Verbatim}
+\TbpImp{muli\_dsigma\_evaluate}
+Die Wahl der Integrationsroutine und der Darstellung der Wirkungsquerschnitte.
+\begin{Verbatim}
+  subroutine muli_dsigma_evaluate(this,x,y)
+    class(muli_dsigma_type),intent(inout) :: this
+    real(kind=double), intent(in) :: x
+    real(kind=double), intent(out),dimension(:):: y
+    call this%pt%set_unit_scale(x)
+    call this%cuba_int%integrate_userdata(&
+         interactions_proton_proton_integrand_param_17_reg,this%pt)
+    call this%cuba_int%get_integral_array(y)
+  end subroutine muli_dsigma_evaluate
+\end{Verbatim}
+\TbpImp{muli\_dsigma\_initialize}
+\begin{Verbatim}
+    subroutine muli_dsigma_initialize(this,id,name,goal,max_nodes,dim,cuba_goal)
+      class(muli_dsigma_type),intent(inout) :: this
+      integer(kind=dik),intent(in)::id,max_nodes
+      integer,intent(in)::dim
+      character(*),intent(in)::name
+      real(kind=double),intent(in)::goal,cuba_goal
+      call identified_initialize(this,id,name)
+      this%rel_error_goal = goal!1d-4
+      this%max_nodes=max_nodes
+      call this%cuba_int%set_common(&
+           &dim_f=dim,&
+           &dim_x=2,&
+           &eps_rel=cuba_goal,&!1d-6
+           &flags = 0)
+      call this%cuba_int%set_deferred&
+        (xgiven_flat=[1D-2,5D-1+epsilon(1D0),1D-2,5D-1-epsilon(1D0)])
+      call this%init_error_tree(dim,(/8D-1/7D3,2D-3,1D-2,1D-1,1D0/))
+      this%is_deferred_initialised = .true.
+    end subroutine muli_dsigma_initialize
+\end{Verbatim}
+
