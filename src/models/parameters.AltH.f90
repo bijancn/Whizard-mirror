@@ -267,6 +267,35 @@ contains
     g = e / sinthw
     w_res = par%wres
     vev = par%v
+    do i=1,5
+      if (w_res == 1 .and. wkm(i) == 0) then
+        select case (i)
+          case (1) !!! Scalar isosinglet
+            wkm(1) = 3.*gkm(1)**2/32./Pi * mkm(1)**3/vev**2
+            width(45) = wkm(1)
+!!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_s =", wkm(1)
+          case (2) !!! Scalar isoquintet
+            wkm(2) = gkm(2)**2/64./Pi * mkm(2)**3/vev**2
+            width(46) = wkm(2)
+            width(47) = wkm(2)
+            width(48) = wkm(2)
+!!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_p =", wkm(2)
+          case (3) !!! Vector isotriplet
+            wkm(3) = gkm(3)**2/48./Pi * mkm(3)
+!!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_r =", wkm(3)
+          case (4) !!! Tensor isosinglet
+            wkm(4) = gkm(4)**2/320./Pi * mkm(4)**3/vev**2
+            width(52) = wkm(4)
+ !!           write (*, "(1x,A,ES19.12)")  "Setting width: wkm_f =", wkm(4)
+          case (5) !!! Tensor isoquintet
+            wkm(5) = gkm(5)**2/1920./Pi * mkm(5)**3/vev**2
+            width(53) = wkm(5)
+            width(54) = wkm(5)
+            width(55) = wkm(5)
+!!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_t =", wkm(5)
+        end select
+      end if
+    end do
     gcc = - g / 2 / sqrt (2.0_default)
     gncneu(1) = - g / 2 / costhw * ( + 0.5_default)
     gnclep(1) = - g / 2 / costhw * ( - 0.5_default - 2 * qelep * sin2thw)

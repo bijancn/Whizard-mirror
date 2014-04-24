@@ -302,6 +302,27 @@ contains
     ghvva = 0
     fudge_km = par%fkm
     w_res = par%wres
+    do i=1,5
+      if (w_res == 1 .and. wkm(i) == 0) then
+        select case (i)
+          case (1) !!! Scalar isosinglet
+            wkm(1) = 3.*gkm(1)**2/32./Pi * mkm(1)**3/vev**2
+!!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_s =", wkm(1)
+          case (2) !!! Scalar isoquintet
+            wkm(2) = gkm(2)**2/64./Pi * mkm(2)**3/vev**2
+!!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_p =", wkm(2)
+          case (3) !!! Vector isotriplet
+            wkm(3) = gkm(3)**2/48./Pi * mkm(3)
+!!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_r =", wkm(3)
+          case (4) !!! Tensor isosinglet
+            wkm(4) = gkm(4)**2/320./Pi * mkm(4)**3/vev**2
+ !!           write (*, "(1x,A,ES19.12)")  "Setting width: wkm_f =", wkm(4)
+          case (5) !!! Tensor isoquintet
+            wkm(5) = gkm(5)**2/1920./Pi * mkm(5)**3/vev**2
+!!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_t =", wkm(5)
+        end select
+      end if
+    end do
     ig1a = iqw * par%g1a
     ig1z = igzww * par%g1z
     ig1pkpg4a = iqw   * (par%g1a + par%ka + par%g4a) / 2

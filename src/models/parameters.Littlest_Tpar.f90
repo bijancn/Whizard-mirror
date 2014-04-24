@@ -97,7 +97,7 @@ module parameters_littlest_tpar
        n0 = 5, nloop = 2 
     real(default), dimension(38), public :: mass, width
     real(default) :: as
-    complex(default) :: gs, igs
+    complex(default), public :: gs, igs
     real(default), public :: e, g, gp, sinthw, costhw, sin2thw, tanthw, e_em
     real(default), public :: qelep, qeup, qedwn, vev, vevp
     real(default), public :: ttop, tbot, tch, ttau, tw

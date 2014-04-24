@@ -481,10 +481,10 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/show_2.ref \
     ref-output/show_3.ref \
     ref-output/show_4.ref \
-    ref-output/multi_comp_1.ref \
     ref-output/circe1_2.ref \
     ref-output/circe1_errors_1.ref \
     ref-output/circe2_1.ref \
+    ref-output/ewa_4.ref \
     ref-output/beam_events_1.ref \
     ref-output/energy_scan_1.ref
 
@@ -501,10 +501,14 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/defaultcuts.ref \
     ref-output-double/parton_shower_2.ref \
     ref-output-double/helicity.ref \
+    ref-output-double/multi_comp_1.ref \
+    ref-output-double/multi_comp_2.ref \
+    ref-output-double/multi_comp_3.ref \
     ref-output-double/pdf_builtin.ref \
     ref-output-double/lhapdf.ref \
     ref-output-double/ep_1.ref \
     ref-output-double/ep_2.ref \
+    ref-output-double/ep_3.ref \
     ref-output-double/circe1_1.ref \
     ref-output-double/circe1_3.ref \
     ref-output-double/circe1_4.ref \
@@ -518,6 +522,9 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/circe1_photons_3.ref \
     ref-output-double/circe1_photons_4.ref \
     ref-output-double/circe1_photons_5.ref \
+    ref-output-double/ewa_1.ref \
+    ref-output-double/ewa_2.ref \
+    ref-output-double/ewa_3.ref \
     ref-output-double/ilc.ref \
     ref-output-double/beam_events_2.ref \
     ref-output-double/beam_events_3.ref
@@ -534,10 +541,14 @@ REF_OUTPUT_FILES_QUAD = \
     ref-output-quad/defaultcuts.ref \
     ref-output-quad/parton_shower_2.ref \
     ref-output-quad/helicity.ref \
+    ref-output-quad/multi_comp_1.ref \
+    ref-output-quad/multi_comp_2.ref \
+    ref-output-quad/multi_comp_3.ref \
     ref-output-quad/pdf_builtin.ref \
     ref-output-quad/lhapdf.ref \
     ref-output-quad/ep_1.ref \
     ref-output-quad/ep_2.ref \
+    ref-output-quad/ep_3.ref \
     ref-output-quad/circe1_1.ref \
     ref-output-quad/circe1_3.ref \
     ref-output-quad/circe1_4.ref \
@@ -551,6 +562,9 @@ REF_OUTPUT_FILES_QUAD = \
     ref-output-quad/circe1_photons_3.ref \
     ref-output-quad/circe1_photons_4.ref \
     ref-output-quad/circe1_photons_5.ref \
+    ref-output-quad/ewa_1.ref \
+    ref-output-quad/ewa_2.ref \
+    ref-output-quad/ewa_3.ref \
     ref-output-quad/ilc.ref \
     ref-output-quad/beam_events_2.ref \
     ref-output-quad/beam_events_3.ref
@@ -759,10 +773,13 @@ MISC_TESTS_SIN = \
     show_3.sin \
     show_4.sin \
     multi_comp_1.sin \
+    multi_comp_2.sin \
+    multi_comp_3.sin \
     pdf_builtin.sin \
     lhapdf.sin \
     ep_1.sin \
     ep_2.sin \
+    ep_3.sin \
     circe1_1.sin \
     circe1_2.sin \
     circe1_3.sin \
@@ -779,6 +796,10 @@ MISC_TESTS_SIN = \
     circe1_photons_5.sin \
     circe1_errors_1.sin \
     circe2_1.sin \
+    ewa_1.sin \
+    ewa_2.sin \
+    ewa_3.sin \
+    ewa_4.sin \
     ilc.sin \
     beam_events_1.sin \
     beam_events_2.sin \

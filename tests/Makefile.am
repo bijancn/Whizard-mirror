@@ -223,9 +223,12 @@ TESTS_REQ_OCAML = \
     show_3.run \
     show_4.run \
     multi_comp_1.run \
+    multi_comp_2.run \
+    multi_comp_3.run \
     pdf_builtin.run \
     ep_1.run \
     ep_2.run \
+    ep_3.run \
     circe1_1.run \
     circe1_2.run \
     circe1_3.run \
@@ -242,6 +245,10 @@ TESTS_REQ_OCAML = \
     circe1_photons_5.run \
     circe1_errors_1.run \
     circe2_1.run \
+    ewa_1.run \
+    ewa_2.run \
+    ewa_3.run \
+    ewa_4.run \
     ilc.run \
     beam_events_1.run \
     beam_events_2.run \
@@ -253,7 +260,8 @@ TESTS_REQ_OCAML = \
     # user_cuts.run \
     # $(TESTS_USER_STRFUN) 
 XFAIL_TESTS_REQ_OCAML = \
-    colors_hgg.run
+    colors_hgg.run \
+    ewa_4.run 
 
 TESTS_REQ_HEPMC = \
     hepmc.run \

@@ -26,7 +26,7 @@
 
 ## The manual source has to be distributed
 dist_noinst_DATA = manual.tex $(PACKAGE).tex shower.tex \
-	book.hva custom.hva fancysection.hva 
+	book.hva custom.hva fancysection.hva Whizard-Logo.jpg
 
 ## The primary targets
 if DISTRIBUTION

@@ -92,7 +92,8 @@ module parameters_littlest_eta
       gahtht, ghthth, &
       gpsi0tt, gpsi0bb, gpsi0cc, gpsi0tautau, &
       gpsipl3, gpsi0tth, gpsi1tth, gpsipbth, &
-      ghhtt, ghhthth 
+      ghhtt, ghhthth, gpsi1tt, gpsi1bb, gpsi1cc, &
+      gpsi1tautau
   integer, parameter, public :: &
        n0 = 5, nloop = 2   
   real(default), dimension(38), public :: mass, width
@@ -605,10 +606,10 @@ contains
     gpsi0bb = - mass(5)/sqrt(two)/vev * (vev/f_vev - sqrt(two) * spsi0)
     gpsi0cc = - mass(4)/sqrt(two)/vev * (vev/f_vev - sqrt(two) * spsi0)
     gpsi0tautau = -mass(15)/sqrt(two)/vev * (vev/f_vev - sqrt(two) * spsi0)
-    gpsi0tt = imago * mass(6)/sqrt(two)/vev * (vev/f_vev - sqrt(two) * spsi1)
-    gpsi0bb = - imago * mass(5)/sqrt(two)/vev * (vev/f_vev - sqrt(two) * spsi1)
-    gpsi0cc = imago * mass(4)/sqrt(two)/vev * (vev/f_vev - sqrt(two) * spsi1)
-    gpsi0tautau = - imago * mass(15)/sqrt(two)/vev * (vev/f_vev - sqrt(two) * spsi1)
+    gpsi1tt = imago * mass(6)/sqrt(two)/vev * (vev/f_vev - sqrt(two) * spsi1)
+    gpsi1bb = - imago * mass(5)/sqrt(two)/vev * (vev/f_vev - sqrt(two) * spsi1)
+    gpsi1cc = imago * mass(4)/sqrt(two)/vev * (vev/f_vev - sqrt(two) * spsi1)
+    gpsi1tautau = - imago * mass(15)/sqrt(two)/vev * (vev/f_vev - sqrt(two) * spsi1)
     gpsipq2(1) = - mass(6)/sqrt(two)/vev * (vev/f_vev - two * spsip) 
     gpsipq2(2) = - mass(5)/sqrt(two)/vev * (vev/f_vev - two * spsip) 
     gpsipq3(1) = - mass(4)/sqrt(two)/vev * (vev/f_vev - two * spsip) 
