@@ -171,7 +171,7 @@ clean-noweb:
 	-rm -f $(GML_TEX_EXAMPLES_MP) $(GML_TEX_TEST_MP)
 else !NOWEB_AVAILABLE
 clean-noweb:
-	test "$(srcdir)" != "." && rm -f *.sty *.tex *.mp *.dat || true
+	test "$(srcdir)" != "." && rm -f *.sty *.tex *.mp *.dat *.eps || true
 endif
 .PHONY: clean-noweb
 
