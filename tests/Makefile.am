@@ -130,6 +130,7 @@ TESTS_DEFAULT = \
     structure_5.run \
     structure_6.run \
     structure_7.run \
+    structure_8.run \
     vars.run \
     extpar.run \
     testproc_1.run \
@@ -225,6 +226,7 @@ TESTS_REQ_OCAML = \
     multi_comp_1.run \
     multi_comp_2.run \
     multi_comp_3.run \
+    multi_comp_4.run \
     pdf_builtin.run \
     ep_1.run \
     ep_2.run \
@@ -245,6 +247,7 @@ TESTS_REQ_OCAML = \
     circe1_photons_5.run \
     circe1_errors_1.run \
     circe2_1.run \
+    circe2_2.run \
     ewa_1.run \
     ewa_2.run \
     ewa_3.run \
@@ -255,13 +258,13 @@ TESTS_REQ_OCAML = \
     beam_events_3.run \
     energy_scan_1.run \
     restrictions.run \
-    process_log.run 
-### Not yet working
-    # user_cuts.run \
-    # $(TESTS_USER_STRFUN) 
+    process_log.run \
+    user_cuts.run \
+    $(TESTS_USER_STRFUN) 
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
-    ewa_4.run 
+    user_cuts.run \
+    $(TESTS_USER_STRFUN)
 
 TESTS_REQ_HEPMC = \
     hepmc.run \

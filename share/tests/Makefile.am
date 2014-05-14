@@ -130,10 +130,12 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/sf_epa_2.ref \
     ref-output/sf_epa_3.ref \
     ref-output/sf_epa_4.ref \
+    ref-output/sf_epa_5.ref \
     ref-output/sf_ewa_1.ref \
     ref-output/sf_ewa_2.ref \
     ref-output/sf_ewa_3.ref \
     ref-output/sf_ewa_4.ref \
+    ref-output/sf_ewa_5.ref \
     ref-output/sf_circe1_1.ref \
     ref-output/sf_circe1_2.ref \
     ref-output/sf_circe1_3.ref \
@@ -390,6 +392,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/structure_5.ref \
     ref-output/structure_6.ref \
     ref-output/structure_7.ref \
+    ref-output/structure_8.ref \
     ref-output/vars.ref \
     ref-output/extpar.ref \
     ref-output/testproc_1.ref \
@@ -413,6 +416,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/fatal.ref \
     ref-output/model_test.ref \
     ref-output/cuts.ref \
+    ref-output/user_cuts.ref \
     ref-output/qedtest_1.ref \
     ref-output/qedtest_2.ref \
     ref-output/qedtest_5.ref \
@@ -481,12 +485,15 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/show_2.ref \
     ref-output/show_3.ref \
     ref-output/show_4.ref \
+    ref-output/multi_comp_4.ref \
     ref-output/circe1_2.ref \
     ref-output/circe1_errors_1.ref \
     ref-output/circe2_1.ref \
+    ref-output/circe2_2.ref \
     ref-output/ewa_4.ref \
     ref-output/beam_events_1.ref \
-    ref-output/energy_scan_1.ref
+    ref-output/energy_scan_1.ref \
+    ref-output/user_strfun.ref
 
 # Reference files that depend on the numerical precision
 REF_OUTPUT_FILES_DOUBLE = \
@@ -677,6 +684,7 @@ MISC_TESTS_SIN = \
     structure_5.sin \
     structure_6.sin \
     structure_7.sin \
+    structure_8.sin \
     vars.sin \
     extpar.sin \
     testproc_1.sin \
@@ -775,6 +783,7 @@ MISC_TESTS_SIN = \
     multi_comp_1.sin \
     multi_comp_2.sin \
     multi_comp_3.sin \
+    multi_comp_4.sin \
     pdf_builtin.sin \
     lhapdf.sin \
     ep_1.sin \
@@ -796,6 +805,7 @@ MISC_TESTS_SIN = \
     circe1_photons_5.sin \
     circe1_errors_1.sin \
     circe2_1.sin \
+    circe2_2.sin \
     ewa_1.sin \
     ewa_2.sin \
     ewa_3.sin \
@@ -810,9 +820,9 @@ MISC_TESTS_SIN = \
     helicity.sin \
     process_log.sin \
     static_1.sin \
-    static_1.exe.sin
-### Tests not yet working ###
-#     user_cuts.sin user_strfun.sin \
+    static_1.exe.sin \
+    user_cuts.sin \
+    user_strfun.sin
 ### Extended self tests
 #     sm_ext.sin
 

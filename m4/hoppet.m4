@@ -5,7 +5,9 @@ include([aux.m4])
 
 ### Determine paths to HOPPET components
 ### If successful, set the conditional HOPPET_AVAILABLE
-### Also: HOPPET_VERSION HOPPET_INCLUDES LDFLAGS_HOPPET
+### Also: HOPPET_INCLUDES LDFLAGS_HOPPET
+###  relies on HOPPET v1.1.3 or newer 
+###      (having a hoppet-config script)
 AC_DEFUN([WO_PROG_HOPPET],
 [dnl
 AC_REQUIRE([AC_PROG_FC])
@@ -16,27 +18,48 @@ AC_ARG_ENABLE([hoppet],
   [], [enable_hoppet="no"])
 
 if test "$enable_hoppet" = "yes"; then
-
-  # Guessing the most likely paths
-  wo_hoppet_path="/usr/local/lib:/usr/lib:/opt/local/lib"
-
-  WO_PATH_LIB(HOPPET, hoppet_v1, libhoppet_v1.a, $wo_hoppet_path:$HOPPET_DIR)
-
-  if test "$HOPPET_DIR" = ""; then
-    enable_hoppet="no"
-  else
-    wo_hoppet_includes="-I$HOPPET_DIR/../include/hoppet"
-  fi
-
-  if test "$enable_hoppet" = "yes"; then
-    wo_hoppet_libdir="-L$HOPPET_DIR"
-    AC_LANG([Fortran])
-    HOPPET_INCLUDES=$wo_hoppet_includes
-    LDFLAGS_HOPPET="$wo_hoppet_libdir -lhoppet_v1"
-
-  else
+  if test "$enable_lhapdf" = "no"; then
+    AC_MSG_WARN([HOPPET works only with LHAPDF which is currently disabled.])
+    AC_MSG_WARN([Disabling HOPPET as well.])
     AC_MSG_CHECKING([for HOPPET])
     AC_MSG_RESULT([(disabled)])
+  else		
+    if test -n "$HOPPET_DIR"; then 
+      wo_hoppet_config_path=$HOPPET_DIR/bin:$PATH
+    else
+      wo_hoppet_config_path=$PATH
+    fi 
+    AC_PATH_PROG([HOPPET_CONFIG], [hoppet-config], [no], 
+      [$wo_hoppet_config_path])
+    wo_hoppet_path="/usr/local/lib:/usr/lib:/opt/local/lib"
+ 
+    if test "$HOPPET_CONFIG" != "no"; then
+      HOPPET_ROOT=`$HOPPET_CONFIG --prefix`
+    else  
+      enable_hoppet="no"
+    fi
+
+    if test "$enable_hoppet" = "yes"; then
+      wo_hoppet_includes="-I$HOPPET_ROOT/include/hoppet"
+      wo_hoppet_libdir="-L$HOPPET_ROOT/lib"
+      AC_LANG([Fortran])
+      AC_CHECK_LIB([hoppet_v1],[hoppetAssign],
+        [LDFLAGS_HOPPET="$wo_hoppet_libdir -lhoppet_v1"],
+        [dnl
+      AC_MSG_NOTICE([warning:  ********************************************************])
+      AC_MSG_NOTICE([warning:  It seems your HOPPET was not compiled properly or       ])
+      AC_MSG_NOTICE([warning:  compiled with a different FORTRAN compiler and you      ])
+      AC_MSG_NOTICE([warning:  forgot to add the proper runtime to                     ])
+      AC_MSG_NOTICE([warning:  LIBS / LD_LIBRARY_PATH. Disabling HOPPET support...     ])
+      AC_MSG_NOTICE([warning:  ********************************************************])
+      enable_hoppet=no],[$wo_hoppet_libdir])
+      if test "$enable_hoppet" = "yes"; then
+        HOPPET_INCLUDES=$wo_hoppet_includes      
+      fi
+    else
+      AC_MSG_CHECKING([for HOPPET])
+      AC_MSG_RESULT([(disabled)])
+    fi
   fi
 
 else

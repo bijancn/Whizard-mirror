@@ -48,7 +48,7 @@ AC_MSG_NOTICE([**************************************************************])
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Mar 03 2014"
+PACKAGE_DATE="May 17 2014"
 PACKAGE_STATUS="release"
 
 AC_SUBST(PACKAGE_DATE)
