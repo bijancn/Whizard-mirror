@@ -26,7 +26,12 @@
 
 ## The manual source has to be distributed
 dist_noinst_DATA = manual.tex $(PACKAGE).tex shower.tex \
-	book.hva custom.hva fancysection.hva Whizard-Logo.jpg
+	book.hva custom.hva fancysection.hva Whizard-Logo.jpg \
+	$(MANUAL_PICS)
+
+MANUAL_PICS = \
+   proc_4f-history.eps proc_4f-history.pdf \
+   whizstruct.eps whizstruct.pdf
 
 ## The primary targets
 if DISTRIBUTION
@@ -56,8 +61,8 @@ TEX_FLAGS = "$$TEXINPUTS:$(top_srcdir)/share/doc"
 EXTRA_DIST = $(LATEX_STYLES)
 
 ## don't try to run the files in parallel (TeXLive 2009 doesn't like it)
-manual.ps: $(PACKAGE).ps
-manual.pdf: $(PACKAGE).pdf
+manual.ps: $(PACKAGE).ps 
+manual.pdf: $(PACKAGE).pdf 
 $(PACKAGE).ps: gamelan_manual.ps 
 $(PACKAGE).pdf: gamelan_manual.pdf 
 gamelan_manual.pdf: gamelan.sty
@@ -103,13 +108,12 @@ if DISTRIBUTION
 index.html: manual.html
 	$(HACHA) $(HACHAOPTS) -o index.html manual.html
 
-manual.html: manual.tex
-	$(HEVEA) -fix $(HEVEAOPTS) manual.tex
-### There are no pics at the moment inside the manual.
-#	$(IMAGEN) manual
+manual.html: manual.tex $(MANUAL_PICS)
+	TEXINPUTS=$(TEX_FLAGS) $(HEVEA) -fix $(HEVEAOPTS) manual.tex
+	TEXINPUTS=$(TEX_FLAGS) $(IMAGEN) manual
 ### There are no Feynman diagrams at the moment inside the manual.
 #	$(MPOST) manualpics.mp
-#	$(HEVEA) -fix $(HEVEAOPTS) manual.tex
+	TEXINPUTS=$(TEX_FLAGS) $(HEVEA) -fix $(HEVEAOPTS) manual.tex
 else	
 	@echo "HEVEA not available. The HTML manual cannot be made"
 endif !DISTRIBUTION
@@ -148,11 +152,12 @@ endif
 
 mostlyclean-html:
 	-rm -f *.haux *.htoc *.css index.html contents_motif.gif \
-	next_motif.gif previous_motif.gif manual*.html 
+	next_motif.gif previous_motif.gif manual*.html  manual*.png \
+	manual.image.tex
 clean-html:
 maintainer-clean-html:
 	-rm -f manual*.html index.html contents_motif.gif \
-	next_motif.gif previous_motif.gif
+	next_motif.gif previous_motif.gif 
 .PHONY: mostlyclean-html clean-html maintainer-clean-html
 
 ## Remove backup files

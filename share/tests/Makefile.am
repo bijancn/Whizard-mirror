@@ -486,6 +486,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/show_3.ref \
     ref-output/show_4.ref \
     ref-output/multi_comp_4.ref \
+    ref-output/flvsum_1.ref \
     ref-output/circe1_2.ref \
     ref-output/circe1_errors_1.ref \
     ref-output/circe2_1.ref \
@@ -784,6 +785,7 @@ MISC_TESTS_SIN = \
     multi_comp_2.sin \
     multi_comp_3.sin \
     multi_comp_4.sin \
+    flvsum_1.sin \
     pdf_builtin.sin \
     lhapdf.sin \
     ep_1.sin \

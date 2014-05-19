@@ -9,15 +9,15 @@ NEW_YEAR2="Copyright (C) 2001-2014";
 OLD_ADDRESS="Fabian Bach <fabian.bach@cern.ch>"
 NEW_ADDRESS="Fabian Bach <fabian.bach@desy.de>"
 
-OLD_DATE="Feb 03 2014"
-NEW_DATE="Mar 03 2014"
-OLD_VERSION="2.2.0_beta"
-NEW_VERSION="2.2.0"
+OLD_DATE="May 18 2014"
+NEW_DATE="Jun 01 2014"
+OLD_VERSION="2.2.0"
+NEW_VERSION="2.2.1"
 #OLD_STATUS="PACKAGE_STATUS=\"alpha\""
 #NEW_STATUS="PACKAGE_STATUS=\"beta\""
-OLD_STATUS="PACKAGE_STATUS=\"beta\""
+OLD_STATUS="PACKAGE_STATUS=\"release\""
 #NEW_STATUS="PACKAGE_STATUS=\"rc1\""
-NEW_STATUS="PACKAGE_STATUS=\"release\""
+NEW_STATUS="PACKAGE_STATUS=\"alpha\""
 
 ## We should add an option to add an author here.
 
@@ -27,7 +27,7 @@ NEW_STATUS="PACKAGE_STATUS=\"release\""
 
 MAIN_FILES="AUTHORS BUGS Makefile.am README update tests/Makefile.am"
 CONFIGURE_FILES="configure.ac src/circe1/configure.ac src/circe2/configure.ac src/omega/configure.ac src/vamp/configure.ac libtool-config/configure.ac"
-VERSION_FILES="NEWS"
+VERSION_FILES="NEWS src/omega/NEWS"
 SCRIPTS_FILES="scripts/Makefile.am scripts/whizard-config.in scripts/whizard-setup.csh.in scripts/whizard-setup.sh.in scripts/libtool-config.sh.in scripts/libtool-relocate.sh.in scripts/whizard-relocate.sh.in"
 SHARE_FILES="share/Makefile.am share/doc/Makefile.am share/examples/HERA_DIS.sin share/examples/LEP_cc10.sin share/examples/LEP_higgs.sin share/examples/W-endpoint.sin share/examples/Z-lineshape.sin share/examples/Zprime.sin share/examples/casc_dec.sin share/examples/eeww_polarized.sin share/examples/DrellYanMatchingP.sin share/examples/DrellYanMatchingW.sin share/examples/DrellYanNoMatchingP.sin share/examples/DrellYanNoMatchingW.sin share/examples/EEMatching2P.sin share/examples/EEMatching2W.sin share/examples/EEMatching3P.sin share/examples/EEMatching3W.sin share/examples/EEMatching4P.sin share/examples/EEMatching4W.sin share/examples/EEMatching5P.sin share/examples/EEMatching5W.sin share/examples/EENoMatchingP.sin share/examples/EENoMatchingW.sin share/tests/Makefile.am share/interfaces/Makefile.am"
 SRC_FILES="src/Makefile.am src/feynmf/Makefile.am src/hepmc/Makefile.am src/hepmc/HepMCWrap_dummy.f90 src/lhapdf/Makefile.am src/pdf_builtin/Makefile.am src/pdf_builtin/pdf_builtin.f90 src/pythia/Makefile.am src/stdhep/Makefile.am src/whizard-core/Makefile.am src/whizard-core/whizard.nw"

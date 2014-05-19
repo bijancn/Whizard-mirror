@@ -227,6 +227,7 @@ TESTS_REQ_OCAML = \
     multi_comp_2.run \
     multi_comp_3.run \
     multi_comp_4.run \
+    flvsum_1.run \
     pdf_builtin.run \
     ep_1.run \
     ep_2.run \
