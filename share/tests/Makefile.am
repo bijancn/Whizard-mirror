@@ -41,6 +41,12 @@ REF_OUTPUT_FILES = \
 
 REF_OUTPUT_FILES_BASE = \
     ref-output/analysis_1.ref \
+    ref-output/jets_1.ref \
+    ref-output/pdg_arrays_1.ref \
+    ref-output/pdg_arrays_2.ref \
+    ref-output/pdg_arrays_3.ref \
+    ref-output/pdg_arrays_4.ref \
+    ref-output/pdg_arrays_5.ref \
     ref-output/expressions_1.ref \
     ref-output/expressions_2.ref \
     ref-output/expressions_3.ref \
@@ -76,7 +82,9 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/models_2.ref \
     ref-output/models_3.ref \
     ref-output/models_4.ref \
-    ref-output/models_5.ref \
+    ref-output/auto_components_1.ref \
+    ref-output/auto_components_2.ref \
+    ref-output/auto_components_3.ref \
     ref-output/particles_1.ref \
     ref-output/particles_2.ref \
     ref-output/beam_structures_1.ref \
@@ -119,9 +127,12 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/sf_pdf_builtin_1.ref \
     ref-output/sf_pdf_builtin_2.ref \
     ref-output/sf_pdf_builtin_3.ref \
-    ref-output/sf_lhapdf_1.ref \
-    ref-output/sf_lhapdf_2.ref \
-    ref-output/sf_lhapdf_3.ref \
+    ref-output/sf_lhapdf5_1.ref \
+    ref-output/sf_lhapdf5_2.ref \
+    ref-output/sf_lhapdf5_3.ref \
+    ref-output/sf_lhapdf6_1.ref \
+    ref-output/sf_lhapdf6_2.ref \
+    ref-output/sf_lhapdf6_3.ref \
     ref-output/sf_isr_1.ref \
     ref-output/sf_isr_2.ref \
     ref-output/sf_isr_3.ref \
@@ -413,6 +424,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/libraries_2.ref \
     ref-output/libraries_4.ref \
     ref-output/rebuild_2.ref \
+    ref-output/rebuild_3.ref \
     ref-output/fatal.ref \
     ref-output/model_test.ref \
     ref-output/cuts.ref \
@@ -444,6 +456,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/analyze_1.ref \
     ref-output/analyze_2.ref \
     ref-output/analyze_3.ref \
+    ref-output/analyze_4.ref \
     ref-output/colors.ref \
     ref-output/colors_hgg.ref \
     ref-output/alphas.ref \
@@ -457,6 +470,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/hepmc_2.ref \
     ref-output/hepmc_3.ref \
     ref-output/hepmc_4.ref \
+    ref-output/hepmc_5.ref \
     ref-output/lhef_1.ref \
     ref-output/lhef_2.ref \
     ref-output/lhef_3.ref \
@@ -509,11 +523,13 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/defaultcuts.ref \
     ref-output-double/parton_shower_2.ref \
     ref-output-double/helicity.ref \
+    ref-output-double/lhef_7.ref \
     ref-output-double/multi_comp_1.ref \
     ref-output-double/multi_comp_2.ref \
     ref-output-double/multi_comp_3.ref \
     ref-output-double/pdf_builtin.ref \
-    ref-output-double/lhapdf.ref \
+    ref-output-double/lhapdf5.ref \
+    ref-output-double/lhapdf6.ref \
     ref-output-double/ep_1.ref \
     ref-output-double/ep_2.ref \
     ref-output-double/ep_3.ref \
@@ -549,11 +565,13 @@ REF_OUTPUT_FILES_QUAD = \
     ref-output-quad/defaultcuts.ref \
     ref-output-quad/parton_shower_2.ref \
     ref-output-quad/helicity.ref \
+    ref-output-quad/lhef_7.ref \
     ref-output-quad/multi_comp_1.ref \
     ref-output-quad/multi_comp_2.ref \
     ref-output-quad/multi_comp_3.ref \
     ref-output-quad/pdf_builtin.ref \
-    ref-output-quad/lhapdf.ref \
+    ref-output-quad/lhapdf5.ref \
+    ref-output-quad/lhapdf6.ref \
     ref-output-quad/ep_1.ref \
     ref-output-quad/ep_2.ref \
     ref-output-quad/ep_3.ref \
@@ -592,6 +610,8 @@ MISC_TESTS_M4 =
 
 UNIT_TESTS_SIN = \
     analysis.sin \
+    jets.sin \
+    pdg_arrays.sin \
     expressions.sin \
     beams.sin \
     polarizations.sin \
@@ -609,13 +629,15 @@ UNIT_TESTS_SIN = \
     xml.sin \
     sm_qcd.sin \
     models.sin \
+    auto_components.sin \
     particles.sin \
     beam_structures.sin \
     sf_aux.sin \
     sf_mappings.sin \
     sf_base.sin \
     sf_pdf_builtin.sin \
-    sf_lhapdf.sin \
+    sf_lhapdf5.sin \
+    sf_lhapdf6.sin \
     sf_isr.sin \
     sf_epa.sin \
     sf_ewa.sin \
@@ -704,6 +726,7 @@ MISC_TESTS_SIN = \
     libraries_4.sin \
     rebuild_1.sin \
     rebuild_2.sin \
+    rebuild_3.sin \
     qedtest_1.sin \
     qedtest_2.sin \
     qedtest_3.sin \
@@ -736,6 +759,7 @@ MISC_TESTS_SIN = \
     analyze_1.sin \
     analyze_2.sin \
     analyze_3.sin \
+    analyze_4.sin \
     colors.sin \
     colors_hgg.sin \
     alphas.sin \
@@ -746,6 +770,8 @@ MISC_TESTS_SIN = \
     lhef_4.sin \
     lhef_5.sin \
     lhef_6.sin \
+    lhef_7.sin \
+    lhef_8.sin \
     parton_shower_1.sin \
     parton_shower_2.sin \
     parton_shower_3.sin \
@@ -757,6 +783,7 @@ MISC_TESTS_SIN = \
     hepmc_2.sin \
     hepmc_3.sin \
     hepmc_4.sin \
+    hepmc_5.sin \
     stdhep_1.sin \
     stdhep_2.sin \
     stdhep_3.sin \
@@ -787,7 +814,8 @@ MISC_TESTS_SIN = \
     multi_comp_4.sin \
     flvsum_1.sin \
     pdf_builtin.sin \
-    lhapdf.sin \
+    lhapdf5.sin \
+    lhapdf6.sin \
     ep_1.sin \
     ep_2.sin \
     ep_3.sin \

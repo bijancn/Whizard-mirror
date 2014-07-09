@@ -34,7 +34,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl 
 dnl *********************************************************************** 
 dnl Start configuration
-AC_INIT([WHIZARD],[2.2.1])
+AC_INIT([WHIZARD],[2.2.3])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AC_PREREQ([2.65])
 
@@ -48,7 +48,7 @@ AC_MSG_NOTICE([**************************************************************])
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="June 1 2014"
+PACKAGE_DATE="Aug 15 2014"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
@@ -388,7 +388,7 @@ WO_CONFIGURE_SECTION([Objective Caml checks])
 ### Check for ocamlc and its relatives
 AC_PROG_OCAML()
 if test "$enable_ocaml" != "no"; then
-   AC_OCAML_VERSION_CHECK(310000)
+   AC_OCAML_VERSION_CHECK(312000)
    AC_PROG_OCAMLLEX()
    AC_PROG_OCAMLYACC()
    AC_PROG_OCAMLCP()
@@ -401,6 +401,13 @@ else
    AC_MSG_NOTICE([WARNING: O'Caml and O'Mega matrix elements disabled by request!])
    AM_CONDITIONAL([OCAMLWEB_AVAILABLE],[false])
 fi
+
+
+###---------------------------------------------------------------------
+### C++
+
+WO_CONFIGURE_SECTION([C++ compiler checks])
+AC_PROG_CXX()
 
 ########################################################################
 ### Libraries
@@ -417,13 +424,11 @@ WO_PROG_LHAPDF()
 
 WO_CONFIGURE_SECTION([HepMC])
 
-AC_PROG_CXX()
 WO_PROG_HEPMC()
 
 ###---------------------------------------------------------------------
 ### STDHEP
 
-AC_PROG_FC()
 WO_CONFIGURE_SECTION([STDHEP])
 
 WO_PROG_STDHEP()
@@ -438,16 +443,30 @@ WO_PROG_QCD()
 ###---------------------------------------------------------------------
 ### HOPPET
 
-AC_PROG_FC()
 WO_CONFIGURE_SECTION([HOPPET])
 
 WO_PROG_HOPPET()
 
 ###---------------------------------------------------------------------
+### FASTJET
+
+WO_CONFIGURE_SECTION([FASTJET])
+
+WO_PROG_FASTJET()
+
+###---------------------------------------------------------------------
+### GoSam
+
+WO_CONFIGURE_SECTION([GOSAM])
+
+WO_PROG_GOSAM()
+
+###---------------------------------------------------------------------
 ### Extra flags for helping the linker finding libraries
 
-LDFLAGS_STATIC="$wo_ldflags_stdcpp"
-AC_SUBST([LDFLAGS_STATIC])
+WO_CONFIGURE_SECTION([Handle linking with C++ libraries])
+
+WO_PROG_STDCPP()
 
 ########################################################################
 ### Miscellaneous
@@ -541,9 +560,9 @@ AC_CONFIG_FILES([src/Makefile])
 AC_CONFIG_FILES([src/hepmc/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/pythia: WHIZARD's PYTHIA version
+### Subdirectory pythia: WHIZARD's PYTHIA version
 
-AC_CONFIG_FILES([src/pythia/Makefile])
+AC_CONFIG_FILES([pythia/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/muli: multiple interactions
@@ -551,7 +570,12 @@ AC_CONFIG_FILES([src/pythia/Makefile])
 AC_CONFIG_FILES([src/muli/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/lhapdf: dummy library as LHAPDF replacement
+### Subdirectory src/lhapdf5: dummy library as LHAPDF5 replacement
+
+AC_CONFIG_FILES([src/lhapdf5/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/lhapdf: LHAPDF v6
 
 AC_CONFIG_FILES([src/lhapdf/Makefile])
 
@@ -571,10 +595,35 @@ AC_CONFIG_FILES([src/stdhep/Makefile])
 AC_CONFIG_FILES([src/hoppet/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/fastjet
+
+AC_CONFIG_FILES([src/fastjet/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory src/shower: shower and all that
 
 AC_CONFIG_FILES([src/shower/Makefile])
 
+
+###---------------------------------------------------------------------
+### Subpackage omega
+
+AC_CONFIG_SUBDIRS([omega])
+
+###---------------------------------------------------------------------
+### Subpackage vamp
+
+AC_CONFIG_SUBDIRS([vamp])
+
+###---------------------------------------------------------------------
+### Subpackage circe1
+
+AC_CONFIG_SUBDIRS([circe1])
+
+###---------------------------------------------------------------------
+### Subdirectory circe2
+
+AC_CONFIG_SUBDIRS([circe2])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/misc: numeric kinds, strings
@@ -605,11 +654,6 @@ AC_CONFIG_FILES([src/models/Makefile])
 AC_CONFIG_FILES([src/models/threeshl_bundle/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/vamp
-
-AC_CONFIG_SUBDIRS([src/vamp])
-
-###---------------------------------------------------------------------
 ### Subdirectory src/whizard-core
 
 AC_CONFIG_FILES([src/whizard-core/Makefile])
@@ -620,24 +664,9 @@ AC_CONFIG_FILES([src/whizard-core/Makefile])
 AC_CONFIG_FILES([src/prebuilt/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/omega
-
-AC_CONFIG_SUBDIRS([src/omega])
-
-###---------------------------------------------------------------------
 ### Subdirectory src/feynmf
 
 AC_CONFIG_FILES([src/feynmf/Makefile])
-
-###---------------------------------------------------------------------
-### Subdirectory src/circe1
-
-AC_CONFIG_SUBDIRS([src/circe1])
-
-###---------------------------------------------------------------------
-### Subdirectory src/circe2
-
-AC_CONFIG_SUBDIRS([src/circe2])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/gamelan: WHIZARD graphics package

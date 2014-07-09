@@ -29,7 +29,8 @@
 ACLOCAL_AMFLAGS = -I m4
 
 ## Subdirectories to configure
-SUBDIRS = src share tests scripts libtool-config
+SUBDIRS = circe1 circe2 omega vamp pythia src share \
+   tests scripts libtool-config 
 if !OCAML_AVAILABLE
 dist-hook:
 	rm -rf $(distdir)
