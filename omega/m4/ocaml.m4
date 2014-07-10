@@ -321,6 +321,9 @@ AC_MSG_CHECKING([for OCaml version $1])
 if test $OCAMLINTEGERVERSION -ge "$1"; then
    AC_MSG_RESULT([ok])
 else
-   AC_MSG_ERROR([found version $OCAMLVERSION, too old!])
+   AC_MSG_RESULT([<= 3.12.0])	
+   AC_MSG_NOTICE([error: *************************************])
+   AC_MSG_NOTICE([error: found version $OCAMLVERSION, too old!])
+   AC_MSG_ERROR([*************************************])
 fi])
 

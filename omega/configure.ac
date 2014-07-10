@@ -35,7 +35,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl 
 dnl *********************************************************************** 
 
-AC_INIT([omega],[2.2.0])
+AC_INIT([omega],[2.2.3])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 
@@ -48,8 +48,8 @@ AM_MAKE_INCLUDE
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Mar 03 2014"
-PACKAGE_STATUS="release"
+PACKAGE_DATE="Aug 15 2014"
+PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
 AC_SUBST(PACKAGE_STATUS)
@@ -270,7 +270,7 @@ WO_CONFIGURE_SECTION([Objective Caml checks])
 AC_PROG_OCAML
 if test "$enable_ocaml" != "no"; then
    ### O'Caml is required to be newer than v3.10
-   AC_OCAML_VERSION_CHECK(310000)
+   AC_OCAML_VERSION_CHECK(312000)
    AC_PROG_OCAMLLEX
    AC_PROG_OCAMLYACC
    AC_PROG_OCAMLCP

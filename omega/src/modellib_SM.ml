@@ -1,4 +1,4 @@
-(* $Id: modellib_SM.ml 5344 2014-02-21 11:24:08Z msekulla $
+(* $Id: modellib_SM.ml 5864 2014-06-02 13:12:47Z ohl $
 
    Copyright (C) 1999-2014 by
 
@@ -24,11 +24,11 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
-    { RCS.revision = "$Revision: 5344 $";
-      RCS.date = "$Date: 2014-02-21 12:24:08 +0100 (Fri, 21 Feb 2014) $";
-      RCS.author = "$Author: msekulla $";
+    { RCS.revision = "$Revision: 5864 $";
+      RCS.date = "$Date: 2014-06-02 15:12:47 +0200 (Mon, 02 Jun 2014) $";
+      RCS.author = "$Author: ohl $";
       RCS.source
-        = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_SM.ml $" }
+        = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_SM.ml $" }
 
 (* \thocwmodulesection{$\phi^3$} *)
 
@@ -646,14 +646,14 @@ module SM (Flags : SM_flags) =
         "cancel_widths", Arg.Unit (fun () -> default_width := Vanishing),
         "use vanishing width"]
 
-    type f_aux_top = TTGG | TBWA | TBWZ | TTWW | BBWW |   (*i top auxiliary field "flavors" *)
+    type f_aux_top = TTGG | TBWA | TBWZ | TTWW | BBWW |   (*i top auxiliary field "flavors" i*)
                      QGUG | QBUB | QW | DL | DR |
                      QUQD1L | QUQD1R | QUQD8L | QUQD8R
 
     type matter_field = L of int | N of int | U of int | D of int
     type gauge_boson = Ga | Wp | Wm | Z | Gl
     type other = Phip | Phim | Phi0 | H
-                 | Aux_top of int*int*int*bool*f_aux_top    (*i lorentz*color*charge*top-side*flavor *)
+                 | Aux_top of int*int*int*bool*f_aux_top    (*i lorentz*color*charge*top-side*flavor i*)
     type flavor = M of matter_field | G of gauge_boson | O of other
 
     let matter_field f = M f
@@ -2257,9 +2257,9 @@ module SM_Rxi =
     type flavor = SM.flavor
     let flavors = SM.flavors
     let external_flavors = SM.external_flavors
-    type orders = SM.orders
+    (* Later: [type orders = SM.orders] *)
     type constant = SM.constant
-    let orders = SM.orders
+    (* Later: [let orders = SM.orders] *)
     let lorentz = SM.lorentz
     let color = SM.color
     let goldstone = SM.goldstone
@@ -2370,11 +2370,11 @@ module Groves (M : Model.Gauge) : Model.Gauge with module Ch = M.Ch =
     let flavor_symbol f = M.flavor_symbol (project f)
 
     type constant = M.constant
-    type orders = M.orders
+    (* Later: [type orders = M.orders] *)
     let constant_symbol = M.constant_symbol
     let max_degree = M.max_degree
     let parameters = M.parameters
-    let orders = M.orders
+    (* Later: [let orders = M.orders] *)
 
     let conjugate = function
       | M (_, g) as f -> inject g (M.conjugate (project f))
