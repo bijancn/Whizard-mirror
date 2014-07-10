@@ -1,4 +1,4 @@
-(* $Id: targets_Kmatrix.ml 5361 2014-02-24 10:49:03Z msekulla $
+(* $Id: targets_Kmatrix.ml 5697 2014-04-17 11:01:21Z msekulla $
 
    Copyright (C) 1999-2014 by
 
@@ -24,8 +24,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets_Kmatrix" ["K-Matrix Support routines"]
-    { RCS.revision = "$Revision: 5361 $";
-      RCS.date = "$Date: 2014-02-24 11:49:03 +0100 (Mon, 24 Feb 2014) $";
+    { RCS.revision = "$Revision: 5697 $";
+      RCS.date = "$Date: 2014-04-17 13:01:21 +0200 (Thu, 17 Apr 2014) $";
       RCS.author = "$Author: msekulla $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/targets_Kmatrix.ml $" }
@@ -187,7 +187,7 @@ module Fortran =
       printf "      a00(1) = -2.0 * cc(1)**2/vev**2 * s0stu(s,m(1)) "; nl ();
       printf "      if (cc(1) /= 0) then"; nl ();
       printf "        a00(1) = a00(1) - 3.0*cc(1)**2/vev**2 * &"; nl (); 
-      printf "                  s**2/cmplx(s-m(1)**2,m(1)*width_res(w_res,1,wkm(1),m(1),cc(1)),default) "; nl ();
+      printf "                  s**2/cmplx(s-m(1)**2,m(1)*wkm(1),default) "; nl ();
       printf "      end if"; nl ();
       printf "      !!! Scalar isoquintet"; nl ();
       printf "      a00(2) = -5.0*cc(2)**2/vev**2 * s0stu(s,m(2)) / 3.0"; nl ();
@@ -198,7 +198,7 @@ module Fortran =
       printf "              - 2*kappal*s0stu(s,m(4)))"; nl ();
       printf "      if ( (cc(4) /= 0).and.(kappal /= 0)) then"; nl ();
       printf "        a00(4) = a00(4) - cc(4)**2/vev**2*kappal * &"; nl (); 
-      printf "                 s**2/cmplx(s-m(4)**2,m(4) * width_res(w_res,4,wkm(4),m(4),cc(4)),default)"; nl ();
+      printf "                 s**2/cmplx(s-m(4)**2,m(4) * wkm(4),default)"; nl ();
       printf "      end if"; nl ();
       printf "      !!! Tensor isoquintet"; nl ();
       printf "      a00(5) = -5.0*cc(5)**2/vev**2*(d0stu(s,m(5)) &"; nl ();
@@ -266,7 +266,7 @@ module Fortran =
       printf "                  ((1.+6.*s/m(4)**2+6.*s**2/m(4)**4)-2*kappal) * s2stu(s,m(4))"; nl ();
       printf "      if (cc(4) /= 0) then"; nl ();
       printf "        a02(4) = a02(4) - cc(4)**2/vev**2/10. &"; nl (); 
-      printf "                  * s**2/cmplx(s-m(4)**2,m(4)*width_res(w_res,4,wkm(4),m(4),cc(4)),default)"; nl ();
+      printf "                  * s**2/cmplx(s-m(4)**2,m(4)*wkm(4),default)"; nl ();
       printf "      end if"; nl ();
       printf "      !!! Tensor isoquintet"; nl ();
       printf "      a02(5) = -cc(5)**2/vev**2*(5.0*(1.0+6.0* &"; nl ();
@@ -329,7 +329,7 @@ module Fortran =
       printf "                 (s/m(3)**2 + 2. * p1stu(s,m(3)))"; nl ();
       printf "      if (cc(3) /= 0) then"; nl ();
       printf "        a11(3) = a11(3) -2./3. * cc(3)**2 * &"; nl (); 
-      printf "                 s/cmplx(s-m(3)**2,m(3)*width_res(w_res,3,wkm(3),m(3),cc(3)),default) "; nl ();
+      printf "                 s/cmplx(s-m(3)**2,m(3)*wkm(3),default) "; nl ();
       printf "      end if"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
       printf "      a11(4) = - cc(4)**2/vev**2*(d1stu(s,m(4)-2*kappal*s1stu(s,m(4))) &"; nl ();
@@ -384,7 +384,7 @@ module Fortran =
       printf "      a20(2) = - cc(2)**2/vev**2/6. * s0stu(s,m(2))"; nl ();
       printf "      if (cc(2) /= 0) then"; nl ();
       printf "        a20(2) = a20(2) - cc(2)**2/vev**2/2. *&"; nl (); 
-      printf "                 s**2/cmplx(s-m(2)**2,m(2)*width_res(w_res,2,wkm(2),m(2),cc(2)),default)"; nl ();
+      printf "                 s**2/cmplx(s-m(2)**2,m(2)*wkm(2),default)"; nl ();
       printf "      end if"; nl ();
       printf "      !!! Vector isotriplet"; nl ();
       printf "      a20(3) = cc(3)**2*(2.0*p0stu(s,m(3)) + 3.0*s/m(3)**2)"; nl ();
@@ -451,7 +451,7 @@ module Fortran =
       printf "                 * s2stu(s,m(5)))"; nl ();
       printf "      if (cc(5) /= 0) then"; nl ();
       printf "        a22(5) = a22(5) - cc(5)**2/vev**2/60 * &"; nl (); 
-      printf "               s**2/cmplx(s-m(5)**2,m(5)*width_res(w_res,5,wkm(5),m(5),cc(5)),default)"; nl ();
+      printf "               s**2/cmplx(s-m(5)**2,m(5)*wkm(5),default)"; nl ();
       printf "      end if"; nl ();
       printf "      !!! Transversal"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();

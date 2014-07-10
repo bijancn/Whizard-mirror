@@ -1,4 +1,4 @@
-(* $Id: modellib_BSM.ml 5351 2014-02-22 11:50:48Z msekulla $
+(* $Id: modellib_BSM.ml 5727 2014-04-22 15:16:24Z jr_reuter $
 
    Copyright (C) 1999-2014 by
 
@@ -25,9 +25,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_BSM" ["BSM Models"]
-    { RCS.revision = "$Revision: 5351 $";
-      RCS.date = "$Date: 2014-02-22 12:50:48 +0100 (Sat, 22 Feb 2014) $";
-      RCS.author = "$Author: msekulla $";
+    { RCS.revision = "$Revision: 5727 $";
+      RCS.date = "$Date: 2014-04-22 17:16:24 +0200 (Tue, 22 Apr 2014) $";
+      RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_BSM.ml $" }
 
@@ -956,7 +956,7 @@ module Littlest (Flags : BSM_flags) =
       | "s" -> M (D 2) | "sbar" -> M (D (-2))
       | "b" -> M (D 3) | "bbar" -> M (D (-3))
       | "th" -> M TopH  | "thbar" -> M TopHb
-      | "g" -> G Gl
+      | "g" | "gl" -> G Gl
       | "A" -> G Ga | "Z" | "Z0" -> G Z
       | "AH" | "AH0" | "Ah" | "Ah0" -> G AH
       | "ZH" | "ZH0" | "Zh" | "Zh0" -> G ZH

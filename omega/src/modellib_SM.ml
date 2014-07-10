@@ -1,4 +1,4 @@
-(* $Id: modellib_SM.ml 5344 2014-02-21 11:24:08Z msekulla $
+(* $Id: modellib_SM.ml 5636 2014-04-02 11:30:19Z msekulla $
 
    Copyright (C) 1999-2014 by
 
@@ -24,8 +24,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
-    { RCS.revision = "$Revision: 5344 $";
-      RCS.date = "$Date: 2014-02-21 12:24:08 +0100 (Fri, 21 Feb 2014) $";
+    { RCS.revision = "$Revision: 5636 $";
+      RCS.date = "$Date: 2014-04-02 13:30:19 +0200 (Wed, 02 Apr 2014) $";
       RCS.author = "$Author: msekulla $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/modellib_SM.ml $" }
@@ -646,14 +646,14 @@ module SM (Flags : SM_flags) =
         "cancel_widths", Arg.Unit (fun () -> default_width := Vanishing),
         "use vanishing width"]
 
-    type f_aux_top = TTGG | TBWA | TBWZ | TTWW | BBWW |   (*i top auxiliary field "flavors" *)
+    type f_aux_top = TTGG | TBWA | TBWZ | TTWW | BBWW |   (*i top auxiliary field "flavors" i*)
                      QGUG | QBUB | QW | DL | DR |
                      QUQD1L | QUQD1R | QUQD8L | QUQD8R
 
     type matter_field = L of int | N of int | U of int | D of int
     type gauge_boson = Ga | Wp | Wm | Z | Gl
     type other = Phip | Phim | Phi0 | H
-                 | Aux_top of int*int*int*bool*f_aux_top    (*i lorentz*color*charge*top-side*flavor *)
+                 | Aux_top of int*int*int*bool*f_aux_top    (*i lorentz*color*charge*top-side*flavor i*)
     type flavor = M of matter_field | G of gauge_boson | O of other
 
     let matter_field f = M f
