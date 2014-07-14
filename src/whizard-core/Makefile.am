@@ -53,8 +53,9 @@ libwhizard_core_la_SOURCES = \
   sf_escan.f90 sf_beam_events.f90 sf_user.f90 \
   process_constants.f90 \
   phs_base.f90 phs_single.f90 \
-  mappings.f90 phs_trees.f90 phs_forests.f90 cascades.f90 phs_wood.f90 \
-  rng_base.f90 rng_tao.f90 selectors.f90 \
+  mappings.f90 phs_trees.f90 phs_forests.f90 cascades.f90 \
+  phs_wood.f90 fks_calculation.f90 fks_regions.f90 phs_fks.f90 \
+  radiation_generator.f90 rng_base.f90 rng_tao.f90 selectors.f90 \
   mci_base.f90 mci_midpoint.f90 mci_vamp.f90 \
   prclib_interfaces.f90 \
   prc_core_def.f90 particle_specifiers.f90 \
@@ -64,7 +65,7 @@ libwhizard_core_la_SOURCES = \
   prc_core.f90 subevt_expr.f90 parton_states.f90 \
   processes.f90 process_stacks.f90 \
   event_transforms.f90 decays.f90 shower.f90 \
-  events.f90 prc_omega.f90 prc_template_me.f90 \
+  events.f90 prc_omega.f90 prc_template_me.f90 prc_gosam.f90 \
   hep_common.f90 hep_events.f90 hepmc_interface.f90 \
   hoppet_interface.f90 \
   eio_data.f90 eio_base.f90 eio_raw.f90 eio_checkpoints.f90 \

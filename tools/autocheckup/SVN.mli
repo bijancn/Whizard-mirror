@@ -1,4 +1,4 @@
-(* $Id: SVN.mli 4073 2013-02-12 13:42:18Z fbach $ *)
+(* $Id: SVN.mli 6004 2014-07-09 15:46:54Z cweiss $ *)
 
 type pure_or_mixed = Pure of int | Mixed of int * int
 type version =

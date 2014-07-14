@@ -29,7 +29,7 @@
 SUBDIRS = \
   hepmc misc lhapdf lhapdf5 stdhep pdf_builtin \
   fastjet hoppet shower muli \
-  whizard-core prebuilt models 
+  whizard-core prebuilt models
 if MPOST_AVAILABLE
 SUBDIRS += gamelan feynmf
 endif

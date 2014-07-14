@@ -674,7 +674,6 @@ AC_CONFIG_FILES([src/feynmf/Makefile])
 AC_CONFIG_FILES([src/gamelan/Makefile])
 
 AC_CONFIG_FILES([src/gamelan/gml], [chmod u+x src/gamelan/gml])
-
 ###---------------------------------------------------------------------
 ### Subdirectory share
 
