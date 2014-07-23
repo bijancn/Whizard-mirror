@@ -167,9 +167,9 @@ fi
 ### are further issues with gfortran 4.7
 AC_DEFUN([WO_FC_WARN_GFORTRAN_47],
 [dnl
-if test "$FC_IS_GFORTRAN_47" = "yes" -a "$FC_PRECISION" = "quadruple"; then
+if test "$FC_IS_GFORTRAN_47" = "yes" -a "$FC_PRECISION" = "extended"; then
 AC_MSG_NOTICE([WARNING: ***************************************************************])
-AC_MSG_NOTICE([WARNING: gfortran 4.7 scanning with quadruple precision might fail.])
+AC_MSG_NOTICE([WARNING: gfortran 4.7 scanning with extended precision might fail.])
 AC_MSG_WARN([***************************************************************])
 fi 
 ])
@@ -750,11 +750,11 @@ AM_CONDITIONAL([FC_IMPURE],
 ])
 ### end WO_FC_OMEGA_IMPURE
 
-### Check for quadruple precision support (real and complex!)
-AC_DEFUN([WO_FC_CHECK_QUADRUPLE],
+### Check for extended precision support (real and complex!)
+AC_DEFUN([WO_FC_CHECK_EXTENDED],
 [dnl
-AC_CACHE_CHECK([whether $FC permits quadruple real and complex],
-  [wo_cv_fc_quadruple],
+AC_CACHE_CHECK([whether $FC permits extended real and complex],
+  [wo_cv_fc_extended],
   [dnl
 AC_REQUIRE([AC_PROG_FC])
 AC_LANG([Fortran])
@@ -766,19 +766,19 @@ AC_COMPILE_IFELSE([dnl
      complex(kind=q) :: z
   end program conftest
   ], 
-  [wo_cv_fc_quadruple="yes"],
-  [wo_cv_fc_quadruple="no"])
+  [wo_cv_fc_extended="yes"],
+  [wo_cv_fc_extended="no"])
 ])
-FC_SUPPORTS_QUADRUPLE="$wo_cv_fc_quadruple"
-AC_SUBST([FC_SUPPORTS_QUADRUPLE])
+FC_SUPPORTS_EXTENDED="$wo_cv_fc_extended"
+AC_SUBST([FC_SUPPORTS_EXTENDED])
 ])
-### end WO_FC_CHECK_QUADRUPLE
+### end WO_FC_CHECK_EXTENDED
 
-### Check for C quadruple precision support (real and complex!)
-AC_DEFUN([WO_FC_CHECK_QUADRUPLE_C],
+### Check for C extended precision support (real and complex!)
+AC_DEFUN([WO_FC_CHECK_EXTENDED_C],
 [dnl
-AC_CACHE_CHECK([whether $FC permits quadruple-precision C types],
-  [wo_cv_fc_quadruple_c],
+AC_CACHE_CHECK([whether $FC permits extended-precision C types],
+  [wo_cv_fc_extended_c],
   [dnl
 AC_REQUIRE([AC_PROG_FC])
 AC_LANG([Fortran])
@@ -789,34 +789,34 @@ AC_COMPILE_IFELSE([dnl
      complex(c_long_double_complex) :: z
   end program conftest
   ], 
-  [wo_cv_fc_quadruple_c="yes"],
-  [wo_cv_fc_quadruple_c="no"])
+  [wo_cv_fc_extended_c="yes"],
+  [wo_cv_fc_extended_c="no"])
 ])
-FC_SUPPORTS_QUADRUPLE_C="$wo_cv_fc_quadruple_c"
-AC_SUBST([FC_SUPPORTS_QUADRUPLE_C])
+FC_SUPPORTS_EXTENDED_C="$wo_cv_fc_extended_c"
+AC_SUBST([FC_SUPPORTS_EXTENDED_C])
 ])
-### end WO_FC_CHECK_QUADRUPLE_C
+### end WO_FC_CHECK_EXTENDED_C
 
 
-### Enable/disable quadruple precision and set default precision
+### Enable/disable extended precision and set default precision
 AC_DEFUN([WO_FC_SET_PRECISION],
 [dnl
-AC_REQUIRE([WO_FC_CHECK_QUADRUPLE])
-AC_ARG_ENABLE([fc_quadruple],
-  [AS_HELP_STRING([--enable-fc-quadruple],
-    [use quadruple precision in Fortran code [[no]]])])
-if test "$enable_fc_quadruple" = "yes"; then
-  FC_QUAD_OR_SINGLE="quadruple"
+AC_REQUIRE([WO_FC_CHECK_EXTENDED])
+AC_ARG_ENABLE([fc_extended],
+  [AS_HELP_STRING([--enable-fc-extended],
+    [use extended precision in Fortran code [[no]]])])
+if test "$enable_fc_extended" = "yes"; then
+  FC_EXT_OR_SINGLE="extended"
 else
-  FC_QUAD_OR_SINGLE="single"
+  FC_EXT_OR_SINGLE="single"
 fi
-AC_SUBST([FC_QUAD_OR_SINGLE])
+AC_SUBST([FC_EXT_OR_SINGLE])
 AC_CACHE_CHECK([the default numeric precision], [wo_cv_fc_precision],
 [dnl
-if test "$FC_SUPPORTS_QUADRUPLE" = "yes" \
-  -a "$FC_SUPPORTS_QUADRUPLE_C" = "yes" \
-  -a "$enable_fc_quadruple" = "yes"; then
-  wo_cv_fc_precision="quadruple"
+if test "$FC_SUPPORTS_EXTENDED" = "yes" \
+  -a "$FC_SUPPORTS_EXTENDED_C" = "yes" \
+  -a "$enable_fc_extended" = "yes"; then
+  wo_cv_fc_precision="extended"
   wo_cv_fc_precision_c="c_long_double"
 else
   wo_cv_fc_precision="double"
@@ -827,8 +827,8 @@ FC_PRECISION="$wo_cv_fc_precision"
 FC_PRECISION_C="$wo_cv_fc_precision_c"
 AC_SUBST(FC_PRECISION)
 AC_SUBST(FC_PRECISION_C)
-AM_CONDITIONAL([FC_QUAD],
-     [test "$FC_PRECISION" = "quadruple"])
+AM_CONDITIONAL([FC_EXT],
+     [test "$FC_PRECISION" = "extended"])
 ])
 ### end WO_FC_SET_PRECISION
 
