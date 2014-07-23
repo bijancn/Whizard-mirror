@@ -43,12 +43,14 @@ contains
     yorn = (x /= x)
   end function ieee_is_nan
 
-  subroutine check (v1, v2, roots, threshold, n, failures, attempts, seed)
+  subroutine check (v1, v2, roots, threshold, n, &
+                    failures, attempts, seed, abs_threshold)
     type(omega_procedures), intent(in) :: v1, v2
     real(kind=default), intent(in) :: roots, threshold
     integer, intent(in) :: n
     integer, intent(out) :: failures, attempts
     integer, intent(in), optional :: seed
+    real(kind=default), intent(in), optional :: abs_threshold
     logical :: match, passed
     integer :: n_out, n_flv, n_hel, n_col
     integer :: i, i_flv, i_hel, i_col
@@ -95,7 +97,8 @@ contains
                      i, i_flv, i_col, i_hel
                 passed = .true.
                 call expect (a1, a2, trim(msg), passed, &
-                             quiet=.true., threshold = threshold)
+                             quiet=.true., threshold = threshold, &
+                             abs_threshold = abs_threshold)
                 if (.not.passed) then
                    failures = failures + 1
                 end if
