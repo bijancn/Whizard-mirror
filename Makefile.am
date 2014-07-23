@@ -54,7 +54,7 @@ EXTRA_DISTCHECK_CONFIGURE_FLAGS = \
     "--disable-noweb-force --disable-static" \
     "--disable-shower" \
     "--enable-shower --enable-mpi" \
-    "--enable-fc-quadruple --enable-fc-openmp"
+    "--enable-fc-extended --enable-fc-openmp"
 
 extra-distcheck:
 	@echo "================================================="  >$@.log

@@ -37,7 +37,7 @@ TESTSUITE_MACROS = testsuite.m4
 
 REF_OUTPUT_FILES = \
     $(REF_OUTPUT_FILES_BASE) $(REF_OUTPUT_FILES_DOUBLE) \
-    $(REF_OUTPUT_FILES_QUAD)
+    $(REF_OUTPUT_FILES_EXT)
 
 REF_OUTPUT_FILES_BASE = \
     ref-output/analysis_1.ref \
@@ -553,47 +553,47 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/beam_events_2.ref \
     ref-output-double/beam_events_3.ref
 
-REF_OUTPUT_FILES_QUAD = \
-    ref-output-quad/sf_isr_5.ref \
-    ref-output-quad/qedtest_3.ref \
-    ref-output-quad/qedtest_4.ref \
-    ref-output-quad/qcdtest_1.ref \
-    ref-output-quad/qcdtest_2.ref \
-    ref-output-quad/qcdtest_3.ref \
-    ref-output-quad/smtest_2.ref \
-    ref-output-quad/smtest_8.ref \
-    ref-output-quad/defaultcuts.ref \
-    ref-output-quad/parton_shower_2.ref \
-    ref-output-quad/helicity.ref \
-    ref-output-quad/lhef_7.ref \
-    ref-output-quad/multi_comp_1.ref \
-    ref-output-quad/multi_comp_2.ref \
-    ref-output-quad/multi_comp_3.ref \
-    ref-output-quad/pdf_builtin.ref \
-    ref-output-quad/lhapdf5.ref \
-    ref-output-quad/lhapdf6.ref \
-    ref-output-quad/ep_1.ref \
-    ref-output-quad/ep_2.ref \
-    ref-output-quad/ep_3.ref \
-    ref-output-quad/circe1_1.ref \
-    ref-output-quad/circe1_3.ref \
-    ref-output-quad/circe1_4.ref \
-    ref-output-quad/circe1_5.ref \
-    ref-output-quad/circe1_6.ref \
-    ref-output-quad/circe1_7.ref \
-    ref-output-quad/circe1_8.ref \
-    ref-output-quad/circe1_9.ref \
-    ref-output-quad/circe1_photons_1.ref \
-    ref-output-quad/circe1_photons_2.ref \
-    ref-output-quad/circe1_photons_3.ref \
-    ref-output-quad/circe1_photons_4.ref \
-    ref-output-quad/circe1_photons_5.ref \
-    ref-output-quad/ewa_1.ref \
-    ref-output-quad/ewa_2.ref \
-    ref-output-quad/ewa_3.ref \
-    ref-output-quad/ilc.ref \
-    ref-output-quad/beam_events_2.ref \
-    ref-output-quad/beam_events_3.ref
+REF_OUTPUT_FILES_EXT = \
+    ref-output-ext/sf_isr_5.ref \
+    ref-output-ext/qedtest_3.ref \
+    ref-output-ext/qedtest_4.ref \
+    ref-output-ext/qcdtest_1.ref \
+    ref-output-ext/qcdtest_2.ref \
+    ref-output-ext/qcdtest_3.ref \
+    ref-output-ext/smtest_2.ref \
+    ref-output-ext/smtest_8.ref \
+    ref-output-ext/defaultcuts.ref \
+    ref-output-ext/parton_shower_2.ref \
+    ref-output-ext/helicity.ref \
+    ref-output-ext/lhef_7.ref \
+    ref-output-ext/multi_comp_1.ref \
+    ref-output-ext/multi_comp_2.ref \
+    ref-output-ext/multi_comp_3.ref \
+    ref-output-ext/pdf_builtin.ref \
+    ref-output-ext/lhapdf5.ref \
+    ref-output-ext/lhapdf6.ref \
+    ref-output-ext/ep_1.ref \
+    ref-output-ext/ep_2.ref \
+    ref-output-ext/ep_3.ref \
+    ref-output-ext/circe1_1.ref \
+    ref-output-ext/circe1_3.ref \
+    ref-output-ext/circe1_4.ref \
+    ref-output-ext/circe1_5.ref \
+    ref-output-ext/circe1_6.ref \
+    ref-output-ext/circe1_7.ref \
+    ref-output-ext/circe1_8.ref \
+    ref-output-ext/circe1_9.ref \
+    ref-output-ext/circe1_photons_1.ref \
+    ref-output-ext/circe1_photons_2.ref \
+    ref-output-ext/circe1_photons_3.ref \
+    ref-output-ext/circe1_photons_4.ref \
+    ref-output-ext/circe1_photons_5.ref \
+    ref-output-ext/ewa_1.ref \
+    ref-output-ext/ewa_2.ref \
+    ref-output-ext/ewa_3.ref \
+    ref-output-ext/ilc.ref \
+    ref-output-ext/beam_events_2.ref \
+    ref-output-ext/beam_events_3.ref
 
 TESTSUITES_M4 = \
     $(MISC_TESTS_M4) \

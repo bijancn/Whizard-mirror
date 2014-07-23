@@ -147,7 +147,7 @@ contains
     class(lhapdf_pdf_t), intent(out) :: pdf
     character(*), intent(in) :: setname
     integer, intent(in) :: imem
-    character(len=1, kind=c_char), dimension(len(setname)) :: pdf_setname
+    character(len=1, kind=c_char), dimension(len(setname)+1) :: pdf_setname
     integer(c_int) :: pdf_imem
     integer :: i, strlen
     strlen = len(setname)

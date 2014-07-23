@@ -355,13 +355,13 @@ WO_FC_CHECK_FLUSH()
 ### Check for iso_fortran_env
 WO_FC_CHECK_ISO_FORTRAN_ENV()
 
-### Check for quadruple precision support
-WO_FC_CHECK_QUADRUPLE()
+### Check for extended precision support
+WO_FC_CHECK_EXTENDED()
 
-### Check for quadruple precision support in the C interface
-WO_FC_CHECK_QUADRUPLE_C()
+### Check for extended precision support in the C interface
+WO_FC_CHECK_EXTENDED_C()
 
-### Quadruple precision enforced upon request
+### Extended precision enforced upon request
 WO_FC_SET_PRECISION()
 
 ### Warn about gfortran 4.7 (currently not necessary)

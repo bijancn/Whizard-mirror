@@ -614,11 +614,11 @@ if STATIC_AVAILABLE
 endif
 
 # The reference output files are in the source directory.  Copy them here.
-if FC_QUAD
+if FC_EXT
 ref-output: $(top_srcdir)/share/tests/ref-output 
 	mkdir -p ref-output
 	for f in $</*.ref; do cp $$f $@; done
-	for f in $</../ref-output-quad/*.ref; do cp $$f $@; done
+	for f in $</../ref-output-ext/*.ref; do cp $$f $@; done
 else
 ref-output: $(top_srcdir)/share/tests/ref-output 
 	mkdir -p ref-output
