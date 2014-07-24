@@ -26,8 +26,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 6034 $";
-      RCS.date = "$Date: 2014-01-23 15:22:34 +0100 (Do, 23 Jan 2014) $";
+    { RCS.revision = "$Revision: 6042 $";
+      RCS.date = "$Date: 2014-07-24 15:22:34 +0100 (Do, 24 Jul 2014) $";
       RCS.author = "$Author: bchokoufe $";
       RCS.source
         = "$URL: http://whizard.hepforge.org/svn/trunk/omega/src/targets.ml $" }
@@ -81,7 +81,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let (@@) fn x = fn x
 
 (* Integers encode the opcodes (operation codes). *)
-    let ovm_LOAD_SCAL = 10
+    let ovm_LOAD_SCALAR = 10
     let ovm_LOAD_SPINOR_INC = 11
     let ovm_LOAD_SPINOR_OUT = 12
     let ovm_LOAD_CONJSPINOR_INC = 13
@@ -94,7 +94,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let ovm_LOAD_VECTORSPINOR_OUT = 20
     let ovm_LOAD_TENSOR2_INC = 21
     let ovm_LOAD_TENSOR2_OUT = 22
-    let ovm_LOAD_BRS_SCAL = 30
+    let ovm_LOAD_BRS_SCALAR = 30
     let ovm_LOAD_BRS_SPINOR_INC = 31
     let ovm_LOAD_BRS_SPINOR_OUT = 32
     let ovm_LOAD_BRS_CONJSPINOR_INC = 33
@@ -128,7 +128,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let ovm_FUSE_VECTOR_CONJSPINOR_SPINOR = -1
     let ovm_FUSE_SPINOR_VECTOR_SPINOR = -2
     let ovm_FUSE_CONJSPINOR_CONJSPINOR_VECTOR = -3
-    let ovm_FUSE_GLU_GLU_GLU = -4
+    let ovm_FUSE_GAUGE_GAUGE_GAUGE = -4
     let ovm_FUSE_WFS_V4 = -5
 
     let inst_length = 8
@@ -144,7 +144,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
     let print_str_lst lst = nl (); lst |> List.iter (printf "%s ")
 
-    let break i = printi ~lhs:i ~rhs1:i i
+    let break () = printi ~lhs:0 ~rhs1:0 0
 
 (* Copied from below. Needed for header. *)
 (* \begin{dubious}
@@ -232,7 +232,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
    instructions. *)
 
 (* \begin{dubious}
-      Using the Momentum module might give better performance.
+      Using the Momentum module might give better performance than integer lists?
    \end{dubious} *)
     let rec int_lst_compare (e1 : int list) (e2 : int list) =
       match e1,e2 with
@@ -429,13 +429,13 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         "N_massive_vectors";
         "N_tensors_1";
         "N_tensors_2";
-        "N_brs_scalars";
-        "N_brs_spinors";
-        "N_brs_conjspinors";
-        "N_brs_realspinors";
-        "N_brs_vectorspinors";
-        "N_brs_vectors";
-        "N_brs_massive_vectors" ]
+        "N_BRS_scalars";
+        "N_BRS_spinors";
+        "N_BRS_conjspinors";
+        "N_BRS_realspinors";
+        "N_BRS_vectorspinors";
+        "N_BRS_vectors";
+        "N_BRS_massive_vectors" ]
 
     let num_particles_in amp =
       match CF.flavors amp with
@@ -519,7 +519,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
     let print_header lookups wfset = print_header' (num_lst lookups wfset)
 
-    let print_zero_header =
+    let print_zero_header () =
       let rec zero_list' j =
         if j < 1 then []
         else 0 :: zero_list' (j - 1) in
@@ -725,7 +725,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let add_all_mom lookups pset =
       let add_all' level p =
         let level' = List.length p in
-        if (level' > level && level' > 3) then break 0;
+        if (level' > level && level' > 3) then break ();
         add_mom p lookups.pmap; level'
       in
       ignore (pset |> ISet.elements |> List.fold_left add_all' 1)
@@ -737,9 +737,9 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
     let rec expand_pset p =
       let momlst = ISet.elements p in
-      let pset_of_lst lst = List.fold_left (fun s x -> ISet.add x s) ISet.empty
+      let pset_of lst = List.fold_left (fun s x -> ISet.add x s) ISet.empty
         lst in
-      let sets = List.map (fun x -> pset_of_lst (chop_in_3 x) ) momlst in
+      let sets = List.map (fun x -> pset_of (chop_in_3 x) ) momlst in
       let bigset = List.fold_left ISet.union ISet.empty sets in
       let biggerset = ISet.union bigset p in
       if (List.length momlst < List.length (ISet.elements biggerset) ) then
@@ -758,7 +758,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       try
         wf, dict amplitude wf
       with
-      | Not_found -> wf, 0
+        | Not_found -> wf, 0
 
 (* Build the union of all [wf]s of all amplitudes and a map of the amplitudes. *)
 
@@ -769,19 +769,17 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       let wfset_amp amp =
         let f = mult_wf dict amp in
         let lst = List.map f ((F.externals amp) @ (F.variables amp)) in
-          List.fold_left (fun s x -> WFSet.add x s) WFSet.empty lst
-      in
-        let list_of_sets = List.map wfset_amp (CF.processes amplitudes) in
-          (List.fold_left WFSet.union WFSet.empty list_of_sets, amap)
+        lst |> List.fold_left (fun s x -> WFSet.add x s) WFSet.empty in
+      let list_of_sets = amplitudes |> CF.processes |> List.map wfset_amp in
+        List.fold_left WFSet.union WFSet.empty list_of_sets, amap
+
+(* To obtain the Fortran index, we substract the number of precedent wave
+   functions. *)
 
     let wf_index wfmap num_lst (wf, i) =
       let wf_ID = WFMap.find (wf, i) wfmap
       and sum lst = List.fold_left (fun x y -> x+y) 0 lst in
-        match CM.lorentz (F.flavor wf) with
-        | Spinor -> wf_ID
-        | ConjSpinor -> wf_ID - sum (ThoList.hdn 1 num_lst)
-        | Vector -> wf_ID - sum (ThoList.hdn 2 num_lst)
-        | _ -> failwith "targets.wf_index not implemented"
+        wf_ID - sum (ThoList.hdn (lorentz_ordering wf) num_lst)
 
     let print_ext lookups amp_ID inc (wf, i) =
       let mom = (F.momentum_list wf) in
@@ -791,8 +789,8 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       let pdg = CM.pdg f
       and wf_code =
         match CM.lorentz f with
-        | Scalar -> ovm_LOAD_SCAL
-        | BRS Scalar -> ovm_LOAD_BRS_SCAL
+        | Scalar -> ovm_LOAD_SCALAR
+        | BRS Scalar -> ovm_LOAD_BRS_SCALAR
         | Spinor ->
             if inc then ovm_LOAD_SPINOR_INC else ovm_LOAD_SPINOR_OUT
         | BRS Spinor ->
@@ -829,8 +827,9 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       let incoming = (List.map (fun _ -> true) (F.incoming amplitude) @
                       List.map (fun _ -> false) (F.outgoing amplitude))
       and amp_ID = get_ID' amp_compare lookups.amap amplitude in
-        List.iter2 (fun inc wf -> print_ext lookups amp_ID inc
-        (mult_wf lookups.dict amplitude wf) ) incoming (F.externals amplitude)
+      let wf_tpl wf = mult_wf lookups.dict amplitude wf in
+      let print_ext_wf inc wf = wf |> wf_tpl |> print_ext lookups amp_ID inc in
+        List.iter2 print_ext_wf incoming (F.externals amplitude)
 
     let print_ext_amps lookups =
       List.iter (print_ext_amp lookups) (CF.processes lookups.amplitudes)
@@ -871,15 +870,15 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         (*| coeff, Psibar, SL, Psi -> print_fermion_current coeff "sl"*)
         (*| coeff, Psibar, SR, Psi -> print_fermion_current coeff "sr"*)
         (*| coeff, Psibar, SLR, Psi -> print_fermion_current2 coeff "slr"*)
-        (*| coeff, Psibar, _, Psi -> invalid_arg*)
-          (*"Targets.Fortran_Fermions: no superpotential here"*)
-        (*| _, Chibar, _, _ | _, _, _, Chi -> invalid_arg*)
-          (*"Targets.Fortran_Fermions: Majorana spinors not handled"*)
-        (*| _, Gravbar, _, _ | _, _, _, Grav -> invalid_arg*)
-          (*"Targets.Fortran_Fermions: Gravitinos not handled"*)
+        | coeff, Psibar, _, Psi -> invalid_arg
+          "Targets.Fortran.VM: no superpotential here"
+        | _, Chibar, _, _ | _, _, _, Chi -> invalid_arg
+          "Targets.Fortran.VM: Majorana spinors not handled"
+        | _, Gravbar, _, _ | _, _, _, Grav -> invalid_arg
+          "Targets.Fortran.VM: Gravitinos not handled"
         i*)
         | _, _, _, _ -> invalid_arg
-          "Targets.Fortran_OVM: Only QCD/QED."
+          "Targets.Fortran.VM: Not implemented."
 
     let children2 rhs =
       match F.children rhs with
@@ -891,9 +890,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       | [wf1; wf2; wf3] -> (wf1, wf2, wf3)
       | _ -> invalid_arg "Targets.children3: can't happen"
 
-(*i TODO: (bcn 2014-05-20) Think: Is this only needed for vector particles? i*)
-
-    let fuse_3_to_1 c lhs wf1 wf2 wf3 fusion (coeff, contraction) =
+    let print_vector4 c lhs wf1 wf2 wf3 fusion (coeff, contraction) =
       let printc r1 r2 r3 = printi ovm_FUSE_WFS_V4 ~lhs:lhs ~coupl:c
         ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3 in
       match contraction, fusion with
@@ -921,8 +918,6 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           and p2 = mom_ID lookups.pmap ch2
           and const_ID = get_ID lookups.cmap constant in
           let c = if (F.sign rhs) < 0 then - const_ID else const_ID in
-          let printc_ggg coeff r1 r2 r3 r4 = printi ovm_FUSE_GLU_GLU_GLU ~lhs:lhs
-            ~coupl:c ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3 ~rhs4:r4 in
           begin match vertex with
           | FBF (coeff, fb, b, f) ->
               begin match coeff, fb, b, f with
@@ -942,6 +937,9 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
               failwith "print_current: V3: not implemented"
 
           | Gauge_Gauge_Gauge coeff ->
+              let printc_ggg coeff r1 r2 r3 r4 = printi ovm_FUSE_GAUGE_GAUGE_GAUGE
+                ~lhs:lhs ~coupl:c ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3
+                ~rhs4:r4 in
               begin match fusion with
               | (F23|F31|F12) -> printc_ggg coeff wf1 p1 wf2 p2
               | (F32|F13|F21) -> printc_ggg coeff wf2 p2 wf1 p1
@@ -1037,7 +1035,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           let wf1 = wf_index lookups.wfmap lookups.n_wfs (f ch1)
           and wf2 = wf_index lookups.wfmap lookups.n_wfs (f ch2)
           and wf3 = wf_index lookups.wfmap lookups.n_wfs (f ch3)
-          (*i I guess we will need these later on
+          (*i
           (*and p1 = mom_ID lookups.pmap ch1*)
           (*and p2 = mom_ID lookups.pmap ch2*)
           (*and p3 = mom_ID lookups.pmap ch2*)
@@ -1050,7 +1048,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           | Scalar2_Vector2 coeff ->
               failwith "print_current: V4: not implemented"
           | Vector4 contractions ->
-              List.iter (fuse_3_to_1 c lhs wf1 wf2 wf3 fusion) contractions
+              List.iter (print_vector4 c lhs wf1 wf2 wf3 fusion) contractions
           | Vector4_K_Matrix_tho (disc, poles) ->
               failwith "print_current: V4: not implemented"
 
@@ -1124,8 +1122,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           failwith "print_fusion: Prop_Gauge not implemented!"
       | Prop_Rxi _ ->
           failwith "print_fusion: Prop_Rxi not implemented!"
-      end
-      ;
+      end;
 
 (* Since the OVM knows that we want to propagate a wf, we can send the
    necessary fusions now. *)
@@ -1139,7 +1136,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         let wf = F.lhs f in
         let lhs_momID = mom_ID lookups.pmap wf in
         let level' = List.length (F.momentum_list wf) in
-        if (level' > level && level' > 2) then break 0;
+        if (level' > level && level' > 2) then break ();
         print_fusion lookups lhs_momID f amplitude;
         level')
       1 (FSet.elements fset) )
@@ -1167,7 +1164,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       let sign = if n mod 2 = 0 then -1 else 1
       and sym = F.symmetry amplitude in
       printi ovm_CALC_BRAKET ~lhs:i ~rhs1:sym ~coupl:sign;
-      List.iter (print_braket lookups amplitude) (F.brakets amplitude)
+      amplitude |> F.brakets |> List.iter (print_braket lookups amplitude)
 
 (* Fortran arrays/OCaml lists start on 1/0. The amplitude list is sorted by
    [amp_compare] according to their color flows. In this way the amp array
@@ -1175,7 +1172,10 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
     let print_all_brakets lookups =
       let g i elt = print_brakets lookups (elt, i+1) in
-      ThoList.iteri g 0 (List.sort amp_compare (CF.processes lookups.amplitudes))
+      lookups.amplitudes |> CF.processes |> List.sort amp_compare
+                         |> ThoList.iteri g 0
+
+(* \thocwmodulesubsection{Couplings} *)
 
       let strip_array_tag = function
         | Real_Array x -> x
@@ -1207,23 +1207,23 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
     let is_arr x = List.mem x arr_constants
 
-(* \thocwmodulesubsection{Output calls} *)
-
-    let constmap =
-      let first = fun (x,y,z) -> x in
-      let second = fun (x,y,z) -> y in
-      let third = fun (x,y,z) -> z in
+    let constants_map =
+      let first = fun (x, _, _) -> x in
+      let second = fun (_, y, _) -> y in
+      let third = fun (_, _, z) -> z in
       let v3 = List.map third (first (M.vertices () ))
       and v4 = List.map third (second (M.vertices () )) in
       let set = List.fold_left (fun s x -> CSet.add x s) CSet.empty (v3 @ v4) in
         map_of_list (CSet.elements set)
+
+(* \thocwmodulesubsection{Output calls} *)
 
     let amplitudes_to_channel (cmdline : string) (oc : out_channel)
       (diagnostics : (diagnostic * bool) list ) (amplitudes : CF.amplitudes) =
 
       if (num_particles amplitudes = 0) then begin
         print_description cmdline;
-        print_zero_header;
+        print_zero_header ();
         nl ()
       end else begin
         let (wfset, amap) = wfset_amps amplitudes in
@@ -1231,18 +1231,12 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         and n_wfs = num_wfs wfset in
         let wfmap = wf_map_of_list (WFSet.elements wfset)
         and pmap = map_of_list (ISet.elements pset)
-        and cmap = constmap in
+        and cmap = constants_map in
 
         let lookups = {pmap = pmap; wfmap = wfmap; cmap = cmap; amap = amap;
           n_wfs = n_wfs; amplitudes = amplitudes;
           dict = CF.dictionary amplitudes} in
 
-        (*i
-        (*I can also access params in the scattering but it seems to be rather*)
-        (*outdated compared to the used parameters.SM.f90 of whizard*)
-        (*declare_default_parameters "real" params.input;*)
-    (*List.iter (fun x -> printf "%s " x;nl ()) arr_constants;*)
-        i*)
         print_description cmdline;
         print_header lookups wfset;
         print_spin_table amplitudes;
@@ -1250,55 +1244,42 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         print_color_tables amplitudes;
         printf "@\n%s%s" "OVM instructions for momenta addition,"
         " fusions and brakets start here: ";
-        break 0;
+        break ();
         add_all_mom lookups pset;
         print_ext_amps lookups;
-        break 0;
+        break ();
         print_all_fusions lookups;
-        break 0;
+        break ();
         print_all_brakets lookups;
-
-(* Two zero lines were necessary for some stupid old gfortran compiler *)
-
-        break 0; break 0
+        break (); nl ()
       end
 
-    let set_ovm_coupl cmap = IMap.iter (fun key elt ->
-      printf "    coupl(%4d) = %s" key (M.constant_symbol elt); nl () ) cmap
+(* Still under heavy construction. *)
 
     let parameters_to_fortran oc params =
-      (*i
-      (*setup_fortran_formatter !line_length oc;*)
-      (*let declarations = classify_parameters params in*)
-      (*let singles = coupl_singles params.derived in   *)
-      (*List.iter (fun x -> printf "%s " (CM.constant_symbol x);nl ()) singles;*)
-      i*)
+      let set_ovm_coupl cmap = IMap.iter (fun key elt ->
+        printf "    coupl(%d) = %s" key (M.constant_symbol elt); nl () ) cmap in
+      (*i the -params options is not really up to date to the used
+       * parameters.SM.f90 in Whizard. I can still use it as wrapper between OVM
+       * and Whizard. Most trouble comes from the distinction between array and
+       * scalar couplings.. i*)
       printf "module %s" !parameter_module; nl ();
       printf "  use kinds !NODEP!"; nl ();
       printf "  use constants !NODEP!"; nl ();
       printf "  use %s" !parameter_module_whz; nl ();
       printf "  implicit none"; nl ();
       printf "  public :: setup_couplings"; nl ();
-      (*i
-      (*declare_default_parameters "real" params.input;*)
-      (*declare_parameters "real" (schisma 69 declarations.real_singles);*)
-      (*List.iter (declare_parameter_array "real") declarations.real_arrays;*)
-      (*declare_parameters "complex" (schisma 69
-       * declarations.complex_singles);*)
-      (*List.iter (declare_parameter_array "complex")
-       * declarations.complex_arrays;*)
-      i*)
       printf "contains"; nl ();
-      printf "  subroutine setup_parameters (coupl)"; nl ();
+      printf "  subroutine setup_couplings (coupl)"; nl ();
       printf "    complex(%s), dimension(:), allocatable, intent(out) :: coupl"
         !kind; nl ();
-      printf "    allocate(coupl(%4d))" (largest_key constmap); nl ();
-      set_ovm_coupl constmap;
-      printf "  end subroutine setup_parameters"; nl ();
+      printf "    allocate(coupl(%d))" (largest_key constants_map); nl ();
+      set_ovm_coupl constants_map;
+      printf "  end subroutine setup_couplings"; nl ();
       printf "end module %s" !parameter_module; nl ();
       printf "! O'Mega revision control information:"; nl ();
-      List.iter (fun s -> printf "!    %s" s; nl ())
-        (ThoList.flatmap RCS.summary (M.rcs :: rcs_list))
+      ThoList.flatmap RCS.summary (M.rcs :: rcs_list) |>
+        List.iter (fun s -> printf "!    %s" s; nl ())
 
     let parameters_to_channel oc =
       parameters_to_fortran oc (CM.parameters ())
@@ -4151,7 +4132,7 @@ i*)
       print_amplitude_table amplitudes;
       print_helicity_selection_table ()
 
-    let print_interface _ =
+    let print_interface () =
       print_md5sum_functions !md5sum;
       print_maintenance_functions;
       List.iter print_numeric_inquiry_functions
@@ -4238,7 +4219,7 @@ i*)
         print_constants amplitudes
 
       and print_implementations () =
-        print_interface amplitudes;
+        print_interface ();
         print_calculate_amplitudes
           (fun () -> print_variable_declarations amplitudes)
           (fun () ->
@@ -4269,7 +4250,7 @@ i*)
         print_variable_declarations amplitudes
 
       and print_implementations () =
-        print_interface amplitudes in
+        print_interface () in
 
       let chopped_fusions, chopped_brakets =
         chop_amplitudes size amplitudes in
@@ -4384,7 +4365,7 @@ i*)
         List.map brakets_module chopped_brakets in
 
       let print_implementations () =
-        print_interface amplitudes;
+        print_interface ();
         print_calculate_amplitudes
           (fun () -> ())
           (print_compute_chops chopped_fusions chopped_brakets)
