@@ -3312,7 +3312,7 @@ i*)
             nl (); succ i) 1 tuples)
 
     let print_flavor_tables amplitudes =
-      (*let n = num_particles amplitudes in*)
+      (* [let n = num_particles amplitudes in] *)
       (* [print_flavor_table_old n "f" "states_old"
         (List.map (fun (fin, fout) -> fin @ fout) (CF.flavors amplitudes));] *)
       print_flavor_table "states"
@@ -3633,7 +3633,7 @@ i*)
 
 (* \thocwmodulesubsection{Maintenance \&\ Inquiry Functions} *)
 
-    let print_maintenance_functions =
+    let print_maintenance_functions () =
       if !whizard then begin
         printf "  subroutine init (par)"; nl ();
         printf "    real(kind=%s), dimension(*), intent(in) :: par" !kind; nl ();
@@ -4134,7 +4134,7 @@ i*)
 
     let print_interface () =
       print_md5sum_functions !md5sum;
-      print_maintenance_functions;
+      print_maintenance_functions ();
       List.iter print_numeric_inquiry_functions
         [("number_particles_in", "n_in");
          ("number_particles_out", "n_out")];
