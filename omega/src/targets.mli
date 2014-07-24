@@ -27,9 +27,9 @@ module Dummy : Target.Maker
 (* \thocwmodulesection{Supported Targets} *)
 module Fortran : Target.Maker
 module Fortran_Majorana : Target.Maker
+module VM : Target.Maker
 
 (* \thocwmodulesection{Potential Targets} *)
-module VM : Target.Maker
 module Fortran77 : Target.Maker
 module C : Target.Maker
 module Cpp : Target.Maker

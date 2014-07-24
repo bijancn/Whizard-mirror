@@ -9,6 +9,7 @@
        Christian Speckner <cnspeckn@googlemail.com>
        Fabian Bach <fabian.bach@desy.de> (only parts of this file)
        Marco Sekulla <sekulla@physik.uni-siegen.de> (only parts of this file)
+       Bijan Chokoufe Nejad <bijan.chokoufe@desy.de> (only parts of this file)
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -25,9 +26,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 5147 $";
+    { RCS.revision = "$Revision: 6034 $";
       RCS.date = "$Date: 2014-01-23 15:22:34 +0100 (Do, 23 Jan 2014) $";
-      RCS.author = "$Author: msekulla $";
+      RCS.author = "$Author: bchokoufe $";
       RCS.source
         = "$URL: http://whizard.hepforge.org/svn/trunk/omega/src/targets.ml $" }
 
@@ -37,8 +38,1272 @@ module Dummy (F : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     type amplitudes = Fusion.Multi(F)(P)(M).amplitudes
     type diagnostic = All | Arguments | Momenta | Gauge
     let options = Options.empty
-    let amplitudes_to_channel cmdline oc amplitudes = failwith "Targets.Dummy"
-    let parameters_to_channel oc = failwith "Targets.Dummy"
+    let amplitudes_to_channel _ _ _ = failwith "Targets.Dummy"
+    let parameters_to_channel _ = failwith "Targets.Dummy"
+  end
+
+(* \thocwmodulesection{O'Mega Virtual Machine with \texttt{Fortran\;90/95}} *)
+
+(* \thocwmodulesubsection{Preliminaries} *)
+
+module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
+  struct
+    let rcs_list =
+      [RCS.rename rcs_file "Targets.VM"
+                  ["First version with Whizard interface"]]
+
+    open Coupling
+    open Format
+
+    module CM = Colorize.It(M)
+    module F = Fusion_Maker(P)(M)
+    module CF = Fusion.Multi(Fusion_Maker)(P)(M)
+    module CFlow = Color.Flow
+    type amplitudes = CF.amplitudes
+
+(* Options. *)
+    (*i TODO: (bcn 2014-07-21) Not handled yet i*)
+    type diagnostic = All | Arguments | Momenta | Gauge
+
+    (*i TODO: (bcn 2014-07-21) More sensible options i*)
+    let parameter_module = ref "ovm_parameter_wrapper"
+    let parameter_module_whz = ref "some_whizard_module_with_model_info"
+    let kind = ref "default"
+
+    let options = Options.create
+      [ "parameter_module", Arg.String (fun s -> parameter_module := s),
+        "parameter_module";
+        "parameter_module_whz", Arg.String (fun s -> parameter_module_whz := s),
+        "parameter_module_whz" ]
+
+(* This is part of OCaml 4.01. *)
+    let (|>) fn x = x fn
+    let (@@) fn x = fn x
+
+(* Integers encode the opcodes (operation codes). *)
+    let ovm_LOAD_SCAL = 10
+    let ovm_LOAD_U = 11
+    let ovm_LOAD_UBAR = 12
+    let ovm_LOAD_V = 13
+    let ovm_LOAD_VBAR = 14
+    let ovm_LOAD_VEC_INC = 17
+    let ovm_LOAD_VEC_OUT = 18
+    let ovm_LOAD_VEC_SPIN_INC = 19
+    let ovm_LOAD_VEC_SPIN_OUT = 20
+    let ovm_LOAD_T2_INC = 21
+    let ovm_LOAD_T2_OUT = 22
+    let ovm_LOAD_BRS_SCAL = 30
+    let ovm_LOAD_BRS_U = 31
+    let ovm_LOAD_BRS_UBAR = 32
+    let ovm_LOAD_BRS_V = 33
+    let ovm_LOAD_BRS_VBAR = 34
+    let ovm_LOAD_BRS_VEC_INC = 37
+    let ovm_LOAD_BRS_VEC_OUT = 38
+    (*i
+    TODO: (bcn 2014-07-21) Majorana support will come some day maybe
+    let ovm_LOAD_MAJ_INC = 15
+    let ovm_LOAD_MAJ_OUT = 16
+    let ovm_LOAD_MAJ_GHOST_INC = 23
+    let ovm_LOAD_MAJ_GHOST_OUT = 24
+    let ovm_LOAD_BRS_MAJ_INC = 35
+    let ovm_LOAD_BRS_MAJ_OUT = 36
+    i*)
+
+    let ovm_ADD_MOMENTA = 1
+    let ovm_CALC_BRAKET = 2
+
+    let ovm_PROPAGATE_PSI = 31
+    let ovm_PROPAGATE_PSIBAR = 32
+    let ovm_PROPAGATE_UNITARITY = 33
+    let ovm_PROPAGATE_FEYNMAN = 34
+    let ovm_PROPAGATE_COL_FEYNMAN = 35
+
+    let ovm_FUSE_VEC_PSIBAR_PSI = -1
+    let ovm_FUSE_PSI_VEC_PSI = -2
+    let ovm_FUSE_PSIBAR_PSIBAR_VEC = -3
+    let ovm_FUSE_GLU_GLU_GLU = -4
+    let ovm_FUSE_WFS_V4 = -5
+
+    let inst_length = 8
+
+(* Some helper functions. *)
+    let printi ~lhs:l ~rhs1:r1 ?coupl:(cp = 0) ?coeff:(co = 0)
+               ?rhs2:(r2 = 0) ?rhs3:(r3 = 0) ?rhs4:(r4 = 0) code =
+      printf "@\n%d %d %d %d %d %d %d %d" code cp co l r1 r2 r3 r4
+
+    let nl () = printf "@\n"
+
+    let print_int_lst lst = nl (); lst |> List.iter (printf "%d   ")
+
+    let print_str_lst lst = nl (); lst |> List.iter (printf "%s ")
+
+    let break i = printi ~lhs:i ~rhs1:i i
+
+(* Copied from below. Needed for header. *)
+(* \begin{dubious}
+     Could be fused with [lorentz_ordering].
+   \end{dubious} *)
+    type declarations =
+      { scalars : F.wf list;
+        spinors : F.wf list;
+        conjspinors : F.wf list;
+        realspinors : F.wf list;
+        ghostspinors : F.wf list;
+        vectorspinors : F.wf list;
+        vectors : F.wf list;
+        ward_vectors : F.wf list;
+        massive_vectors : F.wf list;
+        tensors_1 : F.wf list;
+        tensors_2 : F.wf list;
+        brs_scalars : F.wf list;
+        brs_spinors : F.wf list;
+        brs_conjspinors : F.wf list;
+        brs_realspinors : F.wf list;
+        brs_vectorspinors : F.wf list;
+        brs_vectors : F.wf list;
+        brs_massive_vectors : F.wf list }
+
+    let rec classify_wfs' acc = function
+      | [] -> acc
+      | wf :: rest ->
+          classify_wfs'
+            (match CM.lorentz (F.flavor wf) with
+            | Scalar -> {acc with scalars = wf :: acc.scalars}
+            | Spinor -> {acc with spinors = wf :: acc.spinors}
+            | ConjSpinor -> {acc with conjspinors = wf :: acc.conjspinors}
+            | Majorana -> invalid_arg "classify_wfs': not implemented"
+            | Maj_Ghost -> {acc with ghostspinors = wf :: acc.ghostspinors}
+            | Vectorspinor ->
+                {acc with vectorspinors = wf :: acc.vectorspinors}
+            | Vector -> {acc with vectors = wf :: acc.vectors}
+            | Massive_Vector ->
+                {acc with massive_vectors = wf :: acc.massive_vectors}
+            | Tensor_1 -> {acc with tensors_1 = wf :: acc.tensors_1}
+            | Tensor_2 -> {acc with tensors_2 = wf :: acc.tensors_2}
+            | BRS Scalar -> {acc with brs_scalars = wf :: acc.brs_scalars}
+            | BRS Spinor -> {acc with brs_spinors = wf :: acc.brs_spinors}
+            | BRS ConjSpinor -> {acc with brs_conjspinors =
+                                 wf :: acc.brs_conjspinors}
+            | BRS Majorana -> {acc with brs_realspinors =
+                               wf :: acc.brs_realspinors}
+            | BRS Vectorspinor -> {acc with brs_vectorspinors =
+                                   wf :: acc.brs_vectorspinors}
+            | BRS Vector -> {acc with brs_vectors = wf :: acc.brs_vectors}
+            | BRS Massive_Vector -> {acc with brs_massive_vectors =
+                                     wf :: acc.brs_massive_vectors}
+            | BRS _ -> invalid_arg "Targets.classify_wfs': not needed here")
+            rest
+
+    let classify_wfs wfs = classify_wfs'
+      { scalars = [];
+        spinors = [];
+        conjspinors = [];
+        realspinors = [];
+        ghostspinors = [];
+        vectorspinors = [];
+        vectors = [];
+        ward_vectors = [];
+        massive_vectors = [];
+        tensors_1 = [];
+        tensors_2 = [];
+        brs_scalars = [];
+        brs_spinors = [];
+        brs_conjspinors = [];
+        brs_realspinors = [];
+        brs_vectorspinors = [];
+        brs_vectors = [];
+        brs_massive_vectors = [] } wfs
+
+(* \thocwmodulesubsection{Sets and maps} *)
+
+(* The OVM identifies all objects via integers. Therefore, we need maps
+   which assign the abstract object a unique ID. *)
+
+(* I want [int list]s with less elements to come first. Used in conjunction
+   with the int list representation of momenta, this will set the outer
+   particles at first position and allows the OVM to set them without further
+   instructions. *)
+
+(* \begin{dubious}
+      Using the Momentum module might give better performance.
+   \end{dubious} *)
+    let rec int_lst_compare (e1 : int list) (e2 : int list) =
+      match e1,e2 with
+      | [], []  -> 0
+      | _, [] -> +1
+      | [], _ -> -1
+      | [_;_], [_] -> +1
+      | [_], [_;_] -> -1
+      | hd1 :: tl1, hd2 :: tl2 ->
+          let c = compare hd1 hd2 in
+          if (c != 0 && List.length tl1 = List.length tl2) then
+            c
+          else
+            int_lst_compare tl1 tl2
+
+(* In order to be able to translate the [wf_ID] in [wf_index] into an array
+   index for Fortran, we need a canonical ordering for the different types
+   of wfs. Copied, and slightly modified to order [wf]s, from
+   \texttt{fusion.ml}. *)
+
+    let lorentz_ordering wf =
+      match CM.lorentz (F.flavor wf) with
+      | Scalar -> 0
+      | Spinor -> 1
+      | ConjSpinor -> 2
+      | Majorana -> invalid_arg "lorentz_ordering: not implemented"
+      | Vector -> 4
+      | Massive_Vector -> 5
+      | Tensor_2 -> 6
+      | Tensor_1 -> 7
+      | Vectorspinor -> 8
+      | BRS Scalar -> 9
+      | BRS Spinor -> 10
+      | BRS ConjSpinor -> 11
+      | BRS Majorana -> invalid_arg "lorentz_ordering: not implemented"
+      | BRS Vector -> 13
+      | BRS Massive_Vector -> 14
+      | BRS Tensor_2 -> 15
+      | BRS Tensor_1 -> 16
+      | BRS Vectorspinor -> 17
+      | Maj_Ghost -> invalid_arg "lorentz_ordering: not implemented"
+      | BRS _ -> invalid_arg "lorentz_ordering: not needed"
+
+    let wf_compare (wf1, mult1) (wf2, mult2) =
+      let c1 = compare (lorentz_ordering wf1) (lorentz_ordering wf2) in
+      if c1 <> 0 then
+        c1
+      else
+        let c2 = compare wf1 wf2 in
+        if c2 <> 0 then
+          c2
+        else
+          compare mult1 mult2
+
+    let amp_compare amp1 amp2 =
+      let cflow a = CM.flow (F.incoming a) (F.outgoing a) in
+      compare (cflow amp1) (cflow amp2)
+
+    let level_compare (f1, amp1) (f2, amp2) =
+      let p1 = F.momentum_list (F.lhs f1)
+      and p2 = F.momentum_list (F.lhs f2) in
+      let c1 = int_lst_compare p1 p2 in
+      if c1 <> 0 then
+        c1
+      else
+        let c2 = compare f1 f2 in
+        if c2 <> 0 then
+          c2
+        else
+          amp_compare amp1 amp2
+
+    module ISet = Set.Make (struct type t = int list
+                            let compare = int_lst_compare end)
+
+    module WFSet = Set.Make (struct type t = CF.wf * int
+                             let compare = wf_compare end)
+
+    module CSet = Set.Make (struct type t = CM.constant
+                            let compare = compare end)
+
+    module FSet = Set.Make (struct type t = F.fusion * F.amplitude
+                            let compare = level_compare end)
+
+(* \begin{dubious}
+     It might be preferable to use a [PMap] which maps mom to int, instead of
+     this way. More standard functions like [mem] could be used. Also, [get_ID]
+     would be faster, $\mathcal{O}(\log N)$ instead of $\mathcal{O}(N)$, and
+     simpler.  For 8 gluons: N=127 momenta. Minor performance issue.
+   \end{dubious} *)
+
+    module IMap = Map.Make (struct type t = int let compare = compare end)
+
+(* For [wf]s it is crucial for the performance to use a different type of
+   [Map]s. *)
+
+    module WFMap = Map.Make (struct type t = CF.wf * int
+                             let compare = wf_compare end)
+
+    type lookups = { pmap : int list IMap.t;
+                     wfmap : int WFMap.t;
+                     cmap : CM.constant IMap.t;
+                     amap : F.amplitude IMap.t;
+                     n_wfs : int list;
+                     amplitudes : CF.amplitudes;
+                     dict : F.amplitude -> F.wf -> int }
+
+    let largest_key imap =
+      if (IMap.is_empty imap) then
+        failwith "largest_key: Map is empty!"
+      else
+        fst (IMap.max_binding imap)
+
+(* OCaml's [compare] from pervasives cannot compare functional types, e.g.
+   for type [amplitude], if no specific equality function is given ("equal:
+   functional value"). Therefore, we allow to specify the ordering. *)
+
+    let get_ID' comp map elt : int =
+      let smallmap = IMap.filter (fun _ x -> (comp x elt) = 0 ) map in
+      if IMap.is_empty smallmap then
+        failwith "get_ID': Element not in map!"
+      else
+        fst (IMap.min_binding smallmap)
+
+(* \begin{dubious}
+     Trying to curry [map] here leads to type errors of the
+     polymorphic function [get_ID]?
+   \end{dubious} *)
+
+    let get_ID map = get_ID' compare map
+
+(* Creating an integer map of a list with an optional argument that
+   indicates where the map should start counting. *)
+
+    let map_of_list ?start:(st=1) lst =
+      let g (ind, map) wf = (succ ind, IMap.add ind wf map) in
+      lst |> List.fold_left g (st, IMap.empty) |> snd
+
+    let wf_map_of_list ?start:(st=1) lst =
+      let g (ind, map) wf = (succ ind, WFMap.add wf ind map) in
+      lst |> List.fold_left g (st, WFMap.empty) |> snd
+
+(* \thocwmodulesubsection{Header} *)
+
+(* \begin{dubious}
+     It would be nice to safe the creation date as comment. However, the Unix
+     module doesn't seem to be loaded on default.
+   \end{dubious} *)
+
+    let print_description cmdline  =
+      let version_string x = RCS.name x ^ "-rev" ^ RCS.revision x ^ "\n" in
+      rcs_list @ [M.rcs] |> List.map version_string
+                         |> List.iter (printf "%s");
+
+      printf "@\nBytecode file generated automatically by O'Mega for OVM";
+      printf "@\nDo not delete any lines. You called O'Mega with";
+      printf "@\n  %s" cmdline;
+      (*i
+      let t = Unix.localtime (Unix.time() ) in
+        printf "@\n %s %5d %5d %5d" "on " (succ t.Unix.tm_mon) t.Unix.tm_mday
+               t.Unix.tm_year
+      i*)
+      printf "@\n"
+
+    let num_classified_wfs wfs =
+      let wfs' = classify_wfs wfs in
+      List.map List.length [ wfs'.scalars;
+                             wfs'.spinors;
+                             wfs'.conjspinors;
+                             wfs'.realspinors;
+                             wfs'.ghostspinors;
+                             wfs'.vectorspinors;
+                             wfs'.vectors;
+                             wfs'.ward_vectors;
+                             wfs'.massive_vectors;
+                             wfs'.tensors_1;
+                             wfs'.tensors_2;
+                             wfs'.brs_scalars;
+                             wfs'.brs_spinors;
+                             wfs'.brs_conjspinors;
+                             wfs'.brs_realspinors;
+                             wfs'.brs_vectorspinors;
+                             wfs'.brs_vectors;
+                             wfs'.brs_massive_vectors ]
+
+    let description_classified_wfs =
+      [ "N_scalars";
+        "N_spinors";
+        "N_conjspinors";
+        "N_realspinors";
+        "N_ghostspinors";
+        "N_vectorspinors";
+        "N_vectors";
+        "N_ward_vectors";
+        "N_massive_vectors";
+        "N_tensors_1";
+        "N_tensors_2";
+        "N_brs_scalars";
+        "N_brs_spinors";
+        "N_brs_conjspinors";
+        "N_brs_realspinors";
+        "N_brs_vectorspinors";
+        "N_brs_vectors";
+        "N_brs_massive_vectors" ]
+
+    let num_particles_in amp =
+      match CF.flavors amp with
+      | [] -> 0
+      | (fin, _) :: _ -> List.length fin
+
+    let num_particles_out amp =
+      match CF.flavors amp with
+      | [] -> 0
+      | (_, fout) :: _ -> List.length fout
+
+    let num_particles amp =
+      match CF.flavors amp with
+      | [] -> 0
+      | (fin, fout) :: _ -> List.length fin + List.length fout
+
+    let num_color_indices_default = 2 (* Standard model and non-color-exotica *)
+
+    let num_color_indices amp =
+      try CFlow.rank (List.hd (CF.color_flows amp)) with
+      _ -> num_color_indices_default
+
+    let num_color_factors amp =
+      let table = CF.color_factors amp in
+      let n_cflow = Array.length table
+      and n_cfactors = ref 0 in
+      for c1 = 0 to pred n_cflow do
+        for c2 = 0 to pred n_cflow do
+          if c1 <= c2 then begin
+            match table.(c1).(c2) with
+            | [] -> ()
+            | _ -> incr n_cfactors
+          end
+        done
+      done;
+      !n_cfactors
+
+    let num_helicities amp = amp |> CF.helicities |> List.length
+
+    let num_flavors amp = amp |> CF.flavors |> List.length
+
+    let num_ks amp = amp |> CF.processes |> List.length
+
+    let num_color_flows amp = amp |> CF.color_flows |> List.length
+
+(* Use [fst] since [WFSet.t = F.wf * int]. *)
+    let num_wfs wfset = wfset |> WFSet.elements |> List.map fst
+                              |> num_classified_wfs
+
+(* [largest_key] gives the number of momenta if applied to [pmap]. *)
+
+    let num_lst lookups wfset =
+      [ largest_key lookups.pmap;
+        num_particles lookups.amplitudes;
+        num_particles_in lookups.amplitudes;
+        num_particles_out lookups.amplitudes;
+        num_ks lookups.amplitudes;
+        num_helicities lookups.amplitudes;
+        num_color_flows lookups.amplitudes;
+        num_color_indices lookups.amplitudes;
+        num_flavors lookups.amplitudes;
+        num_color_factors lookups.amplitudes ] @ num_wfs wfset
+
+    let description_lst =
+      [ "N_momenta";
+        "N_particles";
+        "N_prt_in";
+        "N_prt_out";
+        "N_amplitudes";
+        "N_helicites";
+        "N_col_flows";
+        "N_col_indices";
+        "N_flavors";
+        "N_col_factors" ] @ description_classified_wfs
+
+    let print_header' numbers =
+      let chopped_num_lst = ThoList.chopn inst_length numbers
+      and chopped_desc_lst = ThoList.chopn inst_length description_lst
+      and printer a b = print_str_lst a; print_int_lst b in
+      List.iter2 printer chopped_desc_lst chopped_num_lst
+
+    let print_header lookups wfset = print_header' (num_lst lookups wfset)
+
+    let print_zero_header n =
+      let rec zero_list' j =
+        if j < 1 then []
+        else 0 :: zero_list' (j - 1) in
+      let zero_list i = zero_list' (i + 1) in
+      description_lst |> List.length |> zero_list |> print_header'
+
+(* \thocwmodulesubsection{Tables} *)
+
+    let print_spin_table' tuples =
+      match tuples with
+      | [] -> ()
+      | _ -> tuples |> List.iter ( fun (tuple1, tuple2) ->
+          tuple1 @ tuple2 |> List.map (Printf.sprintf "%d ")
+                          |> String.concat "" |> printf "@\n%s" )
+
+    let print_spin_table amplitudes =
+      printf "@\nSpin states table";
+      print_spin_table' @@ CF.helicities amplitudes
+
+    let print_flavor_table tuples =
+      match tuples with
+      | [] -> ()
+      | _ -> List.iter ( fun tuple -> tuple
+                        |> List.map (fun f -> Printf.sprintf "%d " @@ M.pdg f)
+                        |> String.concat "" |> printf "@\n%s"
+                       ) tuples
+
+    let print_flavor_tables amplitudes =
+      printf "@\nFlavor states table";
+      print_flavor_table @@ List.map (fun (fin, fout) -> fin @ fout)
+                         @@ CF.flavors amplitudes
+
+    let print_color_flows_table' tuple =
+        match CFlow.to_lists tuple with
+        | [] -> ()
+        | cfs -> printf "@\n%s" @@ String.concat "" @@ List.map
+                  ( fun cf -> cf |> List.map (Printf.sprintf "%d ")
+                                 |> String.concat ""
+                  ) cfs
+
+    let print_color_flows_table tuples =
+      match tuples with
+      | [] -> ()
+      | _ -> List.iter print_color_flows_table' tuples
+
+    let print_ghost_flags_table tuples =
+      match tuples with
+      | [] -> ()
+      | _ ->
+        List.iter (fun tuple ->
+        match CFlow.ghost_flags tuple with
+            | [] -> ()
+            | gfs -> printf "@\n"; List.iter (fun gf -> printf "%s "
+              (if gf then "1" else "0") ) gfs
+        ) tuples
+
+    let format_power
+      { CFlow.num = num; CFlow.den = den; CFlow.power = pwr } =
+      match num, den, pwr with
+      | _, 0, _ -> invalid_arg "targets.format_power: zero denominator"
+      | n, d, p -> [n; d; p]
+
+    let format_powers = function
+      | [] -> [0]
+      | powers -> List.flatten (List.map format_power powers)
+
+    (*i
+    (* We go through the array line by line and collect all colorfactors which
+     * are nonzero because their corresponding color flows match.
+     * With the gained intset, we would be able to print only the necessary
+     * coefficients of the symmetric matrix and indicate from where the OVM
+     * can copy the rest. However, this approach gets really slow for many
+     * gluons and we can save at most 3 numbers per line.*)
+
+    let print_color_factor_table_funct table =
+      let n_cflow = Array.length table in
+      let (intset, _, _ ) =
+        let rec fold_array (set, cf1, cf2) =
+          if cf1 > pred n_cflow then (set, 0, 0)
+          else
+              let returnset =
+              match table.(cf1).(cf2) with
+                  | [] -> set
+                  | cf ->
+                      ISet.add ([succ cf1; succ cf2] @ (format_powers cf)) set
+              in
+              if cf2 < pred n_cflow then
+                fold_array (returnset, cf1, succ cf2) else
+                fold_array (returnset, succ cf1, 0)
+        in
+        fold_array (ISet.empty, 0, 0)
+      in
+      let map = map_of_list (ISet.elements intset) in
+      List.iter (fun x -> printf "@\n"; let xth = List.nth x in
+      if (xth 0 <= xth 1) then List.iter (printf "%d ") x
+      else printf "%d %d" 0 (get_ID map x))
+        (ISet.elements intset)
+
+    let print_color_factor_table_old table =
+      let n_cflow = Array.length table in
+      let (intlsts, _, _ ) =
+        let rec fold_array (lsts, cf1, cf2) =
+          if cf1 > pred n_cflow then (lsts, 0, 0)
+          else
+              let returnlsts =
+              match table.(cf1).(cf2) with
+                  | [] -> lsts
+                  | cf -> ([succ cf1; succ cf2] @ (format_powers cf)) :: lsts
+              in
+              if cf2 < pred n_cflow then
+                fold_array (returnlsts, cf1, succ cf2) else
+                fold_array (returnlsts, succ cf1, 0)
+        in
+        fold_array ([], 0, 0)
+      in
+      let intlsts = List.rev intlsts in
+      List.iter (fun x -> printf "@\n"; List.iter (printf "%d ") x ) intlsts
+      i*)
+
+(* Straightforward iteration gives a great speedup compared to the fancier
+   approach which only collects nonzero colorfactors.*)
+
+    let print_color_factor_table table =
+      let n_cflow = Array.length table in
+      if n_cflow > 0 then begin
+        for c1 = 0 to pred n_cflow do
+          for c2 = 0 to pred n_cflow do
+            if c1 <= c2 then begin
+              match table.(c1).(c2) with
+              | [] -> ()
+              | cf -> printf "@\n"; List.iter (printf "%d ")
+                ([succ c1; succ c2] @ (format_powers cf));
+            end
+          done
+        done
+      end
+
+    let option_to_binary = function
+      | Some _ -> "1"
+      | None -> "0"
+
+    let print_flavor_color_table n_flv n_cflow table =
+      if n_flv > 0 then begin
+        for c = 0 to pred n_cflow do
+          printf "@\n";
+          for f = 0 to pred n_flv do
+            printf "%s " (option_to_binary table.(f).(c))
+          done;
+        done;
+      end
+
+    let print_color_tables amplitudes =
+      let cflows =  CF.color_flows amplitudes
+      and cfactors = CF.color_factors amplitudes in
+      printf "@\nColor flows table: [ (i, j) (k, l) -> (m, n) ...]";
+      print_color_flows_table cflows;
+      printf "@\nColor ghost flags table:";
+      print_ghost_flags_table cflows;
+      printf "@\nColor factors table: [ i, j: num den power], %s"
+        "i, j are indexed color flows";
+      print_color_factor_table cfactors;
+      printf "@\nFlavor color combination is allowed:";
+      print_flavor_color_table (num_flavors amplitudes) (List.length
+        (CF.color_flows amplitudes)) (CF.process_table amplitudes)
+
+(* \thocwmodulesubsection{Momenta} *)
+
+(* Add the momenta of a WFSet to a Iset. For now, we are throwing away the
+   information to which amplitude the momentum belongs. This results in less
+   instructions while producing only a small overhead for the calculation
+   of a random color flow assuming that most momenta contribute to all color
+   flows of a process. *)
+
+    let momenta_set wfset = List.fold_left (fun s x -> s |> ISet.add x) ISet.empty
+      (List.map (fun wf -> wf |> fst |> F.momentum_list )
+      (WFSet.elements wfset) )
+
+    let print_mom lhs rhs1 rhs2 rhs3 = if (rhs1!= 0) then
+      printi ~lhs:lhs ~rhs1:rhs1 ~rhs2:rhs2 ~rhs3:rhs3 ovm_ADD_MOMENTA
+
+    let chop_in_3 lst =
+      let ceil_div i j = if (i mod j = 0) then i/j else i/j + 1 in
+      ThoList.chopn (ceil_div (List.length lst) 3) lst
+
+(* Assign momenta via instruction code. External momenta [[_]] are already
+   set by the OVM. To avoid unnecessary look-ups of IDs we seperate two cases.
+   If we have more, we split up in two or three parts. *)
+
+    let add_mom p pmap =
+      let get_p_ID = get_ID pmap in
+      match p with
+      | [] | [_] -> print_mom 0 0 0 0
+      | [rhs1;rhs2] -> print_mom (get_p_ID [rhs1;rhs2]) rhs1 rhs2 0
+      | [rhs1;rhs2;rhs3] -> print_mom (get_p_ID [rhs1;rhs2;rhs3]) rhs1 rhs2 rhs3
+      | more ->
+          let id's = List.map get_p_ID (chop_in_3 more) in
+          if (List.length id's = 3) then
+            print_mom (get_p_ID more) (List.nth id's 0) (List.nth id's 1)
+              (List.nth id's 2)
+          else
+            print_mom (get_p_ID more) (List.nth id's 0) (List.nth id's 1) 0
+
+(* Hand through the current level and print breaks if necessary.*)
+
+    let add_all_mom lookups pset =
+      let g level p =
+        let level' = List.length p in
+        if (level' > level && level' > 3) then break 0;
+        add_mom p lookups.pmap; level'
+      in
+      ignore ( List.fold_left g 1 (ISet.elements pset) )
+
+(* Expand a set of momenta to contain all needed momenta for the computation
+   in the OVM. For this, we create a list of sets which contains the chopped
+   momenta and unify them afterwards. If the set has become larger, we
+   expand again. *)
+
+    let rec expand_pset p =
+      let momlst = ISet.elements p in
+      let pset_of_lst lst = List.fold_left (fun s x -> ISet.add x s) ISet.empty
+        lst in
+      let sets = List.map (fun x -> pset_of_lst (chop_in_3 x) ) momlst in
+      let bigset = List.fold_left ISet.union ISet.empty sets in
+      let biggerset = ISet.union bigset p in
+      if (List.length momlst < List.length (ISet.elements biggerset) ) then
+        expand_pset biggerset
+      else
+        biggerset
+
+    let mom_ID pmap wf = get_ID pmap (F.momentum_list wf)
+
+(* \thocwmodulesubsection{Wavefunctions and externals} *)
+
+(* [mult_wf] is needed because the [wf] with same combination of flavor and
+   momentum can have different dependencies and content. *)
+
+    let mult_wf dict amplitude wf =
+      try
+        wf, dict amplitude wf
+      with
+      | Not_found -> wf, 0
+
+(* Build the union of all [wf]s of all amplitudes and a map of the amplitudes. *)
+
+    let wfset_amps amplitudes =
+      let amap = map_of_list (List.sort amp_compare (CF.processes amplitudes))
+      and dict = CF.dictionary amplitudes in
+      let wfset_amp amp =
+        let f = mult_wf dict amp in
+        let lst = List.map f ((F.externals amp) @ (F.variables amp)) in
+          List.fold_left (fun s x -> WFSet.add x s) WFSet.empty lst
+      in
+        let list_of_sets = List.map wfset_amp (CF.processes amplitudes) in
+          (List.fold_left WFSet.union WFSet.empty list_of_sets, amap)
+
+    let wf_index wfmap num_lst (wf, i) =
+      let wf_ID = WFMap.find (wf, i) wfmap
+      and sum lst = List.fold_left (fun x y -> x+y) 0 lst in
+        match CM.lorentz (F.flavor wf) with
+        | Spinor -> wf_ID
+        | ConjSpinor -> wf_ID - sum (ThoList.hdn 1 num_lst)
+        | Vector -> wf_ID - sum (ThoList.hdn 2 num_lst)
+        | _ -> failwith "targets.wf_index has only QCD/QED implemented"
+
+    let print_ext lookups amp_ID inc (wf, i) =
+      let mom = (F.momentum_list wf) in
+      let outer_index = if List.length mom = 1 then List.hd mom else
+        failwith "targets.print_ext: called with non-external particle"
+      and f = F.flavor wf in
+      let pdg = CM.pdg f
+      and wf_code =
+        match CM.lorentz f with
+        | Scalar -> ovm_LOAD_SCAL
+        | Spinor ->
+            if inc then ovm_LOAD_U else ovm_LOAD_V
+        | ConjSpinor ->
+            if inc then ovm_LOAD_VBAR else ovm_LOAD_UBAR
+        | Vector | Massive_Vector ->
+            if inc then ovm_LOAD_VEC_INC else ovm_LOAD_VEC_OUT
+        | Tensor_1 ->
+            invalid_arg "targets.print_ext: Tensor_1 only internal"
+        | Tensor_2 ->
+            if inc then ovm_LOAD_T2_INC else ovm_LOAD_T2_OUT
+        | BRS Scalar -> ovm_LOAD_BRS_SCAL
+        | BRS Spinor ->
+            if inc then ovm_LOAD_BRS_U else ovm_LOAD_BRS_V
+        | BRS ConjSpinor ->
+            if inc then ovm_LOAD_BRS_VBAR else ovm_LOAD_BRS_UBAR
+        | BRS Vector | BRS Massive_Vector ->
+            if inc then ovm_LOAD_BRS_VEC_INC else ovm_LOAD_BRS_VEC_OUT
+        | _ -> invalid_arg
+          "targets.print_ext: not implemented as external wave function in ovm"
+        (*i
+        (*| Majorana -> if inc then ovm_LOAD_MAJ_INC else ovm_LOAD_MAJ_OUT*)
+        (*| Vectorspinor | BRS Vectorspinor -> *)
+            (*if inc then ovm_LOAD_VEC_SPIN_INC else ovm_LOAD_VEC_SPIN_OUT*)
+        (*| Maj_Ghost -> if inc then ovm_LOAD_BRS_MAJ_INC else
+          ovm_LOAD_BRS_MAJ_OUT*)
+        (*| BRS Majorana -> if inc then ovm_LOAD_BRS_MAJ_INC else
+          * ovm_LOAD_BRS_MAJ_OUT*)
+        i*)
+      and wf_ind = wf_index lookups.wfmap lookups.n_wfs (wf, i)
+      in
+        printi wf_code ~lhs:wf_ind ~coupl:pdg ~rhs1:outer_index ~rhs4:amp_ID
+
+        (*i
+      (*| BRS Spinor ->*)
+          (*printf "%s (%s, - %s, %s)" Fermions.brs_psi_incoming m p s*)
+      (*| BRS Spinor ->*)
+          (*printf "%s (%s, %s, %s)" Fermions.brs_psi_outgoing m p s*)
+      (*| BRS ConjSpinor ->*)
+          (*printf "%s (%s, - %s, %s)" Fermions.brs_psibar_incoming m p s*)
+      (*| Majorana ->*)
+          (*printf "%s (%s, - %s, %s)" Fermions.chi_incoming m p s*)
+      (*| Maj_Ghost -> printf "ghost (%s, - %s, %s)" m p s*)
+      (*| BRS Majorana ->*)
+          (*printf "%s (%s, - %s, %s)" Fermions.brs_chi_incoming m p s*)
+      (*| BRS Vector | BRS Massive_Vector -> printf *)
+            (*"(0,1) * (%s * %s - %s**2) * eps (%s, -%s, %s)" p p m m p s *)
+      (*| Vectorspinor | BRS Vectorspinor -> *)
+          (*printf "%s (%s, - %s, %s)" Fermions.grav_incoming m p s*)
+
+    (*let print_outgoing wf =*)
+      (*| ConjSpinor ->*)
+          (*printf "%s (%s, %s, %s)" Fermions.psibar_outgoing m p s*)
+      (*| BRS ConjSpinor ->*)
+          (*printf "%s (%s, %s, %s)" Fermions.brs_psibar_outgoing m p s*)
+      (*| Majorana ->*)
+          (*printf "%s (%s, %s, %s)" Fermions.chi_outgoing m p s*)
+      (*| BRS Majorana ->*)
+          (*printf "%s (%s, %s, %s)" Fermions.brs_chi_outgoing m p s*)
+      (*| Maj_Ghost -> printf "ghost (%s, %s, %s)" m p s *)
+      (*| Vector | Massive_Vector -> *)
+          (*printf "conjg (eps (%s, %s, %s))" m p s*)
+      (*| BRS Vector | BRS Massive_Vector -> printf *)
+            (*"(0,1) * (%s*%s-%s**2) * (conjg (eps (%s, %s, %s)))" p p m m p s
+             (** *)*)
+      (*| Vectorspinor | BRS Vectorspinor -> *)
+          (*printf "%s (%s, %s, %s)" Fermions.grav_incoming m p s*)
+        i*)
+
+    let print_ext_amp lookups amplitude =
+      let incoming = (List.map (fun _ -> true) (F.incoming amplitude) @
+                      List.map (fun _ -> false) (F.outgoing amplitude))
+      and amp_ID = get_ID' amp_compare lookups.amap amplitude in
+        List.iter2 (fun inc wf -> print_ext lookups amp_ID inc
+        (mult_wf lookups.dict amplitude wf) ) incoming (F.externals amplitude)
+
+    let print_ext_amps lookups =
+      List.iter (print_ext_amp lookups) (CF.processes lookups.amplitudes)
+
+(* \thocwmodulesubsection{Currents} *)
+
+(* Parallelization issues: All fusions have to be completed before the
+   propagation takes place. Preferably each fusion and propagation is done
+   by one thread.  Solution: All fusions are child instructions, i.e. if
+   they are read by the main loop they are skipped. If a propagation
+   occurs, all fusions have to be computed first. The additional control
+   bit is the sign of the first int of an instruction. *)
+
+    let print_fermion_vector_current coeff lhs c wf1 wf2 fusion =
+      let printc code r1 r2 = printi code ~lhs:lhs ~coupl:c ~coeff:coeff
+        ~rhs1:r1 ~rhs2:r2 in
+      match fusion with
+      | F13 -> printc ovm_FUSE_VEC_PSIBAR_PSI wf1 wf2
+      | F31 -> printc ovm_FUSE_VEC_PSIBAR_PSI wf2 wf1
+      | F23 -> printc ovm_FUSE_PSI_VEC_PSI wf1 wf2
+      | F32 -> printc ovm_FUSE_PSI_VEC_PSI wf2 wf1
+      | F12 -> printc ovm_FUSE_PSIBAR_PSIBAR_VEC wf1 wf2
+      | F21 -> printc ovm_FUSE_PSIBAR_PSIBAR_VEC wf2 wf1
+
+      let ferm_print_current = function
+        | coeff, Psibar, V, Psi -> print_fermion_vector_current coeff
+        (*i
+        (*| coeff, Psibar, VA, Psi -> print_fermion_current2 coeff "va"*)
+        (*| coeff, Psibar, VA2, Psi -> print_fermion_current coeff "va2"*)
+        (*| coeff, Psibar, A, Psi -> print_fermion_current coeff "a"*)
+        (*| coeff, Psibar, VL, Psi -> print_fermion_current coeff "vl"*)
+        (*| coeff, Psibar, VR, Psi -> print_fermion_current coeff "vr"*)
+        (*| coeff, Psibar, VLR, Psi -> print_fermion_current2 coeff "vlr"*)
+        (*| coeff, Psibar, SP, Psi -> print_fermion_current2 coeff "sp"*)
+        (*| coeff, Psibar, S, Psi -> print_fermion_current coeff "s"*)
+        (*| coeff, Psibar, P, Psi -> print_fermion_current coeff "p"*)
+        (*| coeff, Psibar, SL, Psi -> print_fermion_current coeff "sl"*)
+        (*| coeff, Psibar, SR, Psi -> print_fermion_current coeff "sr"*)
+        (*| coeff, Psibar, SLR, Psi -> print_fermion_current2 coeff "slr"*)
+        (*| coeff, Psibar, _, Psi -> invalid_arg*)
+          (*"Targets.Fortran_Fermions: no superpotential here"*)
+        (*| _, Chibar, _, _ | _, _, _, Chi -> invalid_arg*)
+          (*"Targets.Fortran_Fermions: Majorana spinors not handled"*)
+        (*| _, Gravbar, _, _ | _, _, _, Grav -> invalid_arg*)
+          (*"Targets.Fortran_Fermions: Gravitinos not handled"*)
+        i*)
+        | _, _, _, _ -> invalid_arg
+          "Targets.Fortran_OVM: Only QCD/QED."
+
+    let children2 rhs =
+      match F.children rhs with
+      | [wf1; wf2] -> (wf1, wf2)
+      | _ -> failwith "Targets.children2: can't happen"
+
+    let children3 rhs =
+      match F.children rhs with
+      | [wf1; wf2; wf3] -> (wf1, wf2, wf3)
+      | _ -> invalid_arg "Targets.children3: can't happen"
+
+(*i TODO: (bcn 2014-05-20) Think: Is this only needed for vector particles? i*)
+
+    let fuse_3_to_1 c lhs wf1 wf2 wf3 fusion (coeff, contraction) =
+      let printc r1 r2 r3 = printi ovm_FUSE_WFS_V4 ~lhs:lhs ~coupl:c
+        ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3 in
+      match contraction, fusion with
+      | C_12_34, (F341|F431|F342|F432|F123|F213|F124|F214)
+      | C_13_42, (F241|F421|F243|F423|F132|F312|F134|F314)
+      | C_14_23, (F231|F321|F234|F324|F142|F412|F143|F413) ->
+          printc wf1 wf2 wf3
+      | C_12_34, (F134|F143|F234|F243|F312|F321|F412|F421)
+      | C_13_42, (F124|F142|F324|F342|F213|F231|F413|F431)
+      | C_14_23, (F123|F132|F423|F432|F214|F241|F314|F341) ->
+          printc wf2 wf3 wf1
+      | C_12_34, (F314|F413|F324|F423|F132|F231|F142|F241)
+      | C_13_42, (F214|F412|F234|F432|F123|F321|F143|F341)
+      | C_14_23, (F213|F312|F243|F342|F124|F421|F134|F431) ->
+          printc wf1 wf3 wf2
+
+    let print_current lookups lhs amplitude rhs =
+      let f = mult_wf lookups.dict amplitude in
+      match F.coupling rhs with
+      | V3 (vertex, fusion, constant) ->
+          let ch1, ch2 = children2 rhs in
+          let wf1 = wf_index lookups.wfmap lookups.n_wfs (f ch1)
+          and wf2 = wf_index lookups.wfmap lookups.n_wfs (f ch2)
+          and p1 = mom_ID lookups.pmap ch1
+          and p2 = mom_ID lookups.pmap ch2
+          and const_ID = get_ID lookups.cmap constant in
+          let c = if (F.sign rhs) < 0 then - const_ID else const_ID in
+          let printc_ggg coeff r1 r2 r3 r4 = printi ovm_FUSE_GLU_GLU_GLU ~lhs:lhs
+            ~coupl:c ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3 ~rhs4:r4 in
+          begin match vertex with
+          | FBF (coeff, fb, b, f) ->
+              begin match coeff, fb, b, f with
+              | _, Psibar, VLRM, Psi | _, Psibar, SPM, Psi
+              | _, Psibar, TVA, Psi | _, Psibar, TVAM, Psi
+              | _, Psibar, TLR, Psi | _, Psibar, TLRM, Psi
+              | _, Psibar, TRL, Psi | _, Psibar, TRLM, Psi ->
+                  failwith "print_current: V3: only QCD"
+              | _, _, _, _ ->
+                  ferm_print_current (coeff, fb, b, f) lhs c wf1 wf2 fusion
+              end
+          | PBP (coeff, f1, b, f2) -> failwith "print_current: V3: only QCD"
+          | BBB (coeff, fb1, b, fb2) -> failwith "print_current: V3: only QCD"
+          | GBG (coeff, fb, b, f) -> failwith "print_current: V3: only QCD"
+
+          | Gauge_Gauge_Gauge coeff ->
+              begin match fusion with
+              | (F23|F31|F12) -> printc_ggg coeff wf1 p1 wf2 p2
+              | (F32|F13|F21) -> printc_ggg coeff wf2 p2 wf1 p1
+              end
+
+          | Aux_Gauge_Gauge coeff ->  failwith "print_current: V3: only QCD"
+
+          | Scalar_Vector_Vector coeff -> failwith "print_current: V3: only QCD"
+
+          | Aux_Vector_Vector coeff -> failwith "print_current: V3: only QCD"
+
+          | Scalar_Scalar_Scalar coeff -> failwith "print_current: V3: only QCD"
+
+          | Aux_Scalar_Scalar coeff -> failwith "print_current: V3: only QCD"
+
+          | Aux_Scalar_Vector coeff -> failwith "print_current: V3: only QCD"
+
+          | Vector_Scalar_Scalar coeff -> failwith "print_current: V3: only QCD"
+
+          | Graviton_Scalar_Scalar coeff -> failwith "print_current: V3: only QCD"
+
+          | Graviton_Vector_Vector coeff -> failwith "print_current: V3: only QCD"
+
+          | Graviton_Spinor_Spinor coeff -> failwith "print_current: V3: only QCD"
+
+          | Dim4_Vector_Vector_Vector_T coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | Dim4_Vector_Vector_Vector_L coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | Dim6_Gauge_Gauge_Gauge coeff -> failwith "print_current: V3: only QCD"
+
+          | Dim4_Vector_Vector_Vector_T5 coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | Dim4_Vector_Vector_Vector_L5 coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | Dim6_Gauge_Gauge_Gauge_5 coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | Aux_DScalar_DScalar coeff -> failwith "print_current: V3: only QCD"
+
+          | Aux_Vector_DScalar coeff -> failwith "print_current: V3: only QCD"
+
+          | Dim5_Scalar_Gauge2 coeff -> failwith "print_current: V3: only QCD"
+
+          | Dim5_Scalar_Gauge2_Skew coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | Dim5_Scalar_Vector_Vector_T coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | Dim5_Scalar_Vector_Vector_U coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | Dim6_Vector_Vector_Vector_T coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | Tensor_2_Vector_Vector coeff -> failwith "print_current: V3: only QCD"
+
+          | Dim5_Tensor_2_Vector_Vector_1 coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | Dim5_Tensor_2_Vector_Vector_2 coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | Dim7_Tensor_2_Vector_Vector_T coeff ->
+              failwith "print_current: V3: only QCD"
+
+          | _ ->
+              failwith "print_current: V3: only QCD"
+
+          end
+
+(* Flip the sign to account for the~$\mathrm{i}^2$ relative to diagrams
+   with only cubic couplings.  *)
+      | V4 (vertex, fusion, constant) ->
+          let ch1, ch2, ch3 = children3 rhs in
+          let wf1 = wf_index lookups.wfmap lookups.n_wfs (f ch1)
+          and wf2 = wf_index lookups.wfmap lookups.n_wfs (f ch2)
+          and wf3 = wf_index lookups.wfmap lookups.n_wfs (f ch3)
+          (*i I guess we will need these later on
+          (*and p1 = mom_ID lookups.pmap ch1*)
+          (*and p2 = mom_ID lookups.pmap ch2*)
+          (*and p3 = mom_ID lookups.pmap ch2*)
+          i*)
+          and const_ID = get_ID lookups.cmap constant in
+          let c =
+            if (F.sign rhs) < 0 then const_ID else - const_ID in
+          begin match vertex with
+          | Scalar4 coeff -> failwith "print_current: V4: only QCD"
+          | Scalar2_Vector2 coeff -> failwith "print_current: V4: only QCD"
+          | Vector4 contractions ->
+            List.iter (fuse_3_to_1 c lhs wf1 wf2 wf3 fusion) contractions
+          | Vector4_K_Matrix_tho (disc, poles) ->
+              failwith "print_current: V4: only QCD"
+
+          | Vector4_K_Matrix_jr (disc, contractions) ->
+              failwith "print_current: V4: only QCD"
+
+          | GBBG (coeff, fb, b, f) ->  failwith "print_current: V4: only QCD"
+
+          | DScalar4 contractions -> failwith "print_current: V4: only QCD"
+
+          | DScalar2_Vector2 contractions ->
+              failwith "print_current: V4: only QCD"
+          end
+
+      | Vn (_, _, _) -> invalid_arg "Targets.print_current: n-ary fusion."
+
+(* \thocwmodulesubsection{Fusions} *)
+
+    let print_fusion lookups lhs_momID fusion amplitude =
+      let lhs_wf = mult_wf lookups.dict amplitude (F.lhs fusion) in
+      let lhs_wfID = wf_index lookups.wfmap lookups.n_wfs lhs_wf in
+      let f = F.flavor (F.lhs fusion) in
+      let pdg = CM.pdg f in
+      let w =
+        begin match CM.width f with
+        | Vanishing | Fudged -> 0
+        | Constant -> 1
+        | Timelike -> 2
+        | Running -> failwith "Targets.Fortran: running width not yet available"
+        | Custom f -> 3
+        end
+      in
+      let propagate code = printi code ~lhs:lhs_wfID ~rhs1:lhs_momID
+        ~coupl:pdg ~coeff:w ~rhs4:(get_ID' amp_compare lookups.amap amplitude)
+      in
+      begin match CM.propagator f with
+      | Prop_Scalar ->
+          failwith "print_fusion: Prop_Scalar not implemented yet!"
+      | Prop_Col_Scalar ->
+          failwith "print_fusion: Prop_Col_Scalar not implemented yet!"
+      | Prop_Ghost ->
+          failwith "print_fusion: Prop_Ghost not implemented yet!"
+      | Prop_Spinor -> propagate ovm_PROPAGATE_PSI
+      | Prop_ConjSpinor -> propagate ovm_PROPAGATE_PSIBAR
+      | Prop_Majorana | Prop_Col_Majorana ->
+          failwith "print_fusion: Prop_Majorana not implemented yet!"
+      | Prop_Unitarity -> propagate ovm_PROPAGATE_UNITARITY
+      | Prop_Col_Unitarity ->
+          failwith "print_fusion: Prop_Col_Unitarity not implemented yet!"
+      | Prop_Feynman -> propagate ovm_PROPAGATE_FEYNMAN
+      | Prop_Col_Feynman -> propagate ovm_PROPAGATE_COL_FEYNMAN
+      | Prop_Gauge xi ->
+          failwith "print_fusion: Prop_Gauge not implemented yet!"
+      | Prop_Rxi xi ->
+          failwith "print_fusion: Prop_Rxi not implemented yet!"
+      | Prop_Vectorspinor ->
+          failwith "print_fusion: Prop_Vectorspinor not implemented yet!"
+      | Prop_Tensor_2 ->
+          failwith "print_fusion: Prop_Tensor_2 not implemented yet!"
+      | Aux_Scalar | Aux_Spinor | Aux_ConjSpinor | Aux_Majorana
+      | Aux_Vector | Aux_Tensor_1 | Aux_Col_Tensor_1 | Aux_Col_Vector
+      | Aux_Col_Scalar -> ()
+      | Only_Insertion -> ()
+      end
+      ;
+
+(* Since the OVM knows that we want to propagate a wf, we can send the
+   necessary fusions now. *)
+
+      List.iter (print_current lookups lhs_wfID amplitude) (F.rhs fusion)
+
+    let print_all_fusions lookups =
+      let fusions = CF.fusions lookups.amplitudes in
+      let fset = List.fold_left (fun s x -> FSet.add x s) FSet.empty fusions in
+      ignore (List.fold_left (fun level (f, amplitude) ->
+        let wf = F.lhs f in
+        let lhs_momID = mom_ID lookups.pmap wf in
+        let level' = List.length (F.momentum_list wf) in
+        if (level' > level && level' > 2) then break 0;
+        print_fusion lookups lhs_momID f amplitude;
+        level')
+      1 (FSet.elements fset) )
+
+(* \thocwmodulesubsection{Brakets} *)
+
+    let print_braket lookups amplitude braket =
+      let bra = F.bra braket
+      and ket = F.ket braket in
+      let braID = wf_index lookups.wfmap lookups.n_wfs
+        (mult_wf lookups.dict amplitude bra) in
+      List.iter (print_current lookups braID amplitude) ket
+
+(* \begin{equation}
+   \ii T = \ii^{\#\text{vertices}}\ii^{\#\text{propagators}} \cdots
+         = \ii^{n-2}\ii^{n-3} \cdots
+         = -\ii(-1)^n \cdots
+   \end{equation} *)
+
+(* All brakets for one cflow amplitude should be calculated by one
+   thread to avoid multiple access on the same memory (amplitude).*)
+
+    let print_brakets lookups (amplitude, i) =
+      let n = List.length (F.externals amplitude) in
+      let sign = if n mod 2 = 0 then -1 else 1
+      and sym = F.symmetry amplitude in
+      printi ovm_CALC_BRAKET ~lhs:i ~rhs1:sym ~coupl:sign;
+      List.iter (print_braket lookups amplitude) (F.brakets amplitude)
+
+(* Fortran arrays/OCaml lists start on 1/0. The amplitude list is sorted by
+   [amp_compare] according to their color flows. In this way the amp array
+   is sorted in the same way as [table_color_factors]. *)
+
+    let print_all_brakets lookups =
+      let g i elt = print_brakets lookups (elt, i+1) in
+      ThoList.iteri g 0 (List.sort amp_compare (CF.processes lookups.amplitudes))
+
+      let strip_array_tag = function
+        | Real_Array x -> x
+        | Complex_Array x -> x
+
+      let strip_single_tag = function
+        | Real x -> x
+        | Complex x -> x
+
+      let coupl_singles lst =
+        List.map (fun (lhs, rhs) -> strip_single_tag lhs) lst
+
+      let coupl_arrays lst =
+        List.map (fun (lhs, rhs) -> strip_array_tag lhs) lst
+
+    let default_parameter (x, v) =
+      printf " %s = %g_%s" (CM.constant_symbol x) v !kind; nl ()
+
+    let declare_default_parameters t = function
+      | [] -> ()
+      | plist ->
+          List.iter (fun p' -> printf "  %s(%s), public, save ::" t !kind;
+                     default_parameter p';) plist
+
+    let arr_constants =
+      let params = M.parameters()
+      and strip_to_constant (lhs, rhs) = strip_array_tag lhs in
+        List.map strip_to_constant params.derived_arrays
+
+    let is_arr x = List.mem x arr_constants
+
+(* \thocwmodulesubsection{Output calls} *)
+
+    let constmap =
+      let first = fun (x,y,z) -> x in
+      let second = fun (x,y,z) -> y in
+      let third = fun (x,y,z) -> z in
+      let v3 = List.map third (first (M.vertices () ))
+      and v4 = List.map third (second (M.vertices () )) in
+      let set = List.fold_left (fun s x -> CSet.add x s) CSet.empty (v3 @ v4) in
+        map_of_list (CSet.elements set)
+
+    let amplitudes_to_channel (cmdline : string) (oc : out_channel)
+      (diagnostics : (diagnostic * bool) list ) (amplitudes : CF.amplitudes) =
+
+      if (num_particles amplitudes = 0) then begin
+        print_description cmdline;
+        print_zero_header inst_length
+      end else begin
+        let (wfset, amap) = wfset_amps amplitudes in
+        let pset = expand_pset (momenta_set wfset)
+        and n_wfs = num_wfs wfset in
+        let wfmap = wf_map_of_list (WFSet.elements wfset)
+        and pmap = map_of_list (ISet.elements pset)
+        and cmap = constmap in
+
+        let lookups = {pmap = pmap; wfmap = wfmap; cmap = cmap; amap = amap;
+          n_wfs = n_wfs; amplitudes = amplitudes;
+          dict = CF.dictionary amplitudes} in
+
+        (*i
+        (*I can also access params in the scattering but it seems to be rather*)
+        (*outdated compared to the used parameters.SM.f90 of whizard*)
+        (*declare_default_parameters "real" params.input;*)
+    (*List.iter (fun x -> printf "%s " x;nl ()) arr_constants;*)
+        i*)
+        print_description cmdline;
+        print_header lookups wfset;
+        print_spin_table amplitudes;
+        print_flavor_tables amplitudes;
+        print_color_tables amplitudes;
+        printf "@\n%s%s" "OVM instructions for momenta addition,"
+        " fusions and brakets start here: ";
+        break 0;
+        add_all_mom lookups pset;
+        print_ext_amps lookups;
+        break 0;
+        print_all_fusions lookups;
+        break 0;
+        print_all_brakets lookups;
+
+(* Two zero lines were necessary for some stupid old gfortran compiler *)
+
+        break 0; break 0
+      end
+
+    let set_ovm_coupl cmap = IMap.iter (fun key elt ->
+      printf "    coupl(%4d) = %s" key (M.constant_symbol elt); nl () ) cmap
+
+    let parameters_to_fortran oc params =
+      (*i
+      (*setup_fortran_formatter !line_length oc;*)
+      (*let declarations = classify_parameters params in*)
+      (*let singles = coupl_singles params.derived in   *)
+      (*List.iter (fun x -> printf "%s " (CM.constant_symbol x);nl ()) singles;*)
+      i*)
+      printf "module %s" !parameter_module; nl ();
+      printf "  use kinds !NODEP!"; nl ();
+      printf "  use constants !NODEP!"; nl ();
+      printf "  use %s" !parameter_module_whz; nl ();
+      printf "  implicit none"; nl ();
+      printf "  public :: setup_couplings"; nl ();
+      (*i
+      (*declare_default_parameters "real" params.input;*)
+      (*declare_parameters "real" (schisma 69 declarations.real_singles);*)
+      (*List.iter (declare_parameter_array "real") declarations.real_arrays;*)
+      (*declare_parameters "complex" (schisma 69
+       * declarations.complex_singles);*)
+      (*List.iter (declare_parameter_array "complex")
+       * declarations.complex_arrays;*)
+      i*)
+      printf "contains"; nl ();
+      printf "  subroutine setup_parameters (coupl)"; nl ();
+      printf "    complex(%s), dimension(:), allocatable, intent(out) :: coupl"
+        !kind; nl ();
+      printf "    allocate(coupl(%4d))" (largest_key constmap); nl ();
+      set_ovm_coupl constmap;
+      printf "  end subroutine setup_parameters"; nl ();
+      printf "end module %s" !parameter_module; nl ();
+      printf "! O'Mega revision control information:"; nl ();
+      List.iter (fun s -> printf "!    %s" s; nl ())
+        (ThoList.flatmap RCS.summary (M.rcs :: rcs_list))
+
+    let parameters_to_channel oc =
+      parameters_to_fortran oc (CM.parameters ())
+
   end
 
 (* \thocwmodulesection{\texttt{Fortran\,90/95}} *)
@@ -46,7 +1311,7 @@ module Dummy (F : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 (* \thocwmodulesubsection{Dirac Fermions}
    We factor out the code for fermions so that we can use the simpler
    implementation for Dirac fermions if the model contains no Majorana
-   fermions. *) 
+   fermions. *)
 
 module type Fermions =
   sig
@@ -65,9 +1330,9 @@ module type Fermions =
     val psi_outgoing : string
     val brs_psi_outgoing : string
     val psibar_outgoing : string
-    val brs_psibar_outgoing : string 
+    val brs_psibar_outgoing : string
     val chi_outgoing : string
-    val brs_chi_outgoing : string 
+    val brs_chi_outgoing : string
     val grav_outgoing : string
     val psi_propagator : string
     val psibar_propagator : string
@@ -84,14 +1349,14 @@ module type Fermions =
     val print_current : int * fermionbar * boson * fermion ->
       string -> string -> string -> fuse2 -> unit
     val print_current_mom : int * fermionbar * boson * fermion ->
-      string -> string -> string -> string -> string -> string 
+      string -> string -> string -> string -> string -> string
       -> fuse2 -> unit
     val print_current_p : int * fermion * boson * fermion ->
       string -> string -> string -> fuse2 -> unit
     val print_current_b : int * fermionbar * boson * fermionbar ->
       string -> string -> string -> fuse2 -> unit
     val print_current_g : int * fermionbar * boson * fermion ->
-      string -> string -> string -> string -> string -> string 
+      string -> string -> string -> string -> string -> string
       -> fuse2 -> unit
     val print_current_g4 : int * fermionbar * boson2 * fermion ->
       string -> string -> string -> string -> fuse3 -> unit
@@ -115,7 +1380,7 @@ module Fortran_Fermions : Fermions =
     let chi_type = "???"
     let grav_type = "???"
 
-    let psi_incoming = "u"            
+    let psi_incoming = "u"
     let brs_psi_incoming = "brs_u"
     let psibar_incoming = "vbar"
     let brs_psibar_incoming = "brs_vbar"
@@ -151,8 +1416,8 @@ module Fortran_Fermions : Fermions =
       | -1 -> "(-" ^ c ^")"
       | coeff -> string_of_int coeff ^ "*" ^ c
 
-    let format_coupling_2 coeff c = 
-      match coeff with 
+    let format_coupling_2 coeff c =
+      match coeff with
       | 1 -> c
       | -1 -> "-" ^ c
       | coeff -> string_of_int coeff ^ "*" ^ c
@@ -161,25 +1426,25 @@ module Fortran_Fermions : Fermions =
      JR's coupling constant HACK, necessitated by tho's bad design descition.
    \end{dubious} *)
 
-    let fastener s i ?p () = 
-      try 
+    let fastener s i ?p () =
+      try
         let offset = (String.index s '(') in
         if ((String.get s (String.length s - 1)) != ')') then
           failwith "fastener: wrong usage of parentheses"
         else
           let func_name = (String.sub s 0 offset) and
-	      tail =
-	    (String.sub s (succ offset) (String.length s - offset - 2)) in 
+              tail =
+            (String.sub s (succ offset) (String.length s - offset - 2)) in
           if (String.contains func_name ')') ||
-	    (String.contains tail '(') || 
-            (String.contains tail ')') then
+             (String.contains tail '(') ||
+             (String.contains tail ')') then
             failwith "fastener: wrong usage of parentheses"
-          else      
+          else
             func_name ^ "(" ^ string_of_int i ^ "," ^ tail ^ ")"
       with
-      | Not_found ->  
+      | Not_found ->
           if (String.contains s ')') then
-	    failwith "fastener: wrong usage of parentheses"
+            failwith "fastener: wrong usage of parentheses"
           else
             match p with
             | None -> s ^ "(" ^ string_of_int i ^ ")"
@@ -202,7 +1467,7 @@ module Fortran_Fermions : Fermions =
      of two separate variables.  For this [Model.constant_symbol] has to be
      generalized.
    \end{dubious} *)
-      
+
 (* \begin{dubious}
      NB: passing the array instead of two separate constants would be a
      \emph{bad} idea, because the support for Majorana spinors below will
@@ -212,7 +1477,7 @@ module Fortran_Fermions : Fermions =
     let print_fermion_current2 coeff f c wf1 wf2 fusion =
       let c = format_coupling_2 coeff c in
       let c1 = fastener c 1 ()
-      and c2 = fastener c 2 () in 
+      and c2 = fastener c 2 () in
       match fusion with
       | F13 -> printf "%s_ff(%s,%s,%s,%s)" f c1 c2 wf1 wf2
       | F31 -> printf "%s_ff(%s,%s,%s,%s)" f c1 c2 wf2 wf1
@@ -224,7 +1489,7 @@ module Fortran_Fermions : Fermions =
     let print_fermion_current_mom1 coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       match fusion with
       | F13 -> printf "%s_ff(%s,%s,%s,%s)" f (c1 ~p:p12 ()) (c2 ~p:p12 ()) wf1 wf2
       | F31 -> printf "%s_ff(%s,%s,%s,%s)" f (c1 ~p:p12 ()) (c2 ~p:p12 ()) wf2 wf1
@@ -236,15 +1501,15 @@ module Fortran_Fermions : Fermions =
     let print_fermion_current_mom2 coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       match fusion with
-      | F13 -> printf "%s_ff(%s,%s,@,%s,%s,%s)" f (c1 ~p:p12 ()) (c2 ~p:p12 ()) wf1 wf2 p12 
+      | F13 -> printf "%s_ff(%s,%s,@,%s,%s,%s)" f (c1 ~p:p12 ()) (c2 ~p:p12 ()) wf1 wf2 p12
       | F31 -> printf "%s_ff(%s,%s,@,%s,%s,%s)" f (c1 ~p:p12 ()) (c2 ~p:p12 ()) wf2 wf1 p12
       | F23 -> printf "f_%sf(%s,%s,@,%s,%s,%s)" f (c1 ~p:p1 ()) (c2 ~p:p1 ()) wf1 wf2 p1
       | F32 -> printf "f_%sf(%s,%s,@,%s,%s,%s)" f (c1 ~p:p2 ()) (c2 ~p:p2 ()) wf2 wf1 p2
       | F12 -> printf "f_f%s(%s,%s,@,%s,%s,%s)" f (c1 ~p:p2 ()) (c2 ~p:p2 ()) wf1 wf2 p2
       | F21 -> printf "f_f%s(%s,%s,@,%s,%s,%s)" f (c1 ~p:p1 ()) (c2 ~p:p1 ()) wf2 wf1 p1
-  
+
     let print_current = function
       | coeff, Psibar, VA, Psi -> print_fermion_current2 coeff "va"
       | coeff, Psibar, VA2, Psi -> print_fermion_current coeff "va2"
@@ -306,7 +1571,7 @@ module Fortran_Fermions : Fermions =
     let require_library =
       ["omega_spinors_2010_01_A"; "omega_spinor_cpls_2010_01_A"]
   end
-      
+
 (* \thocwmodulesubsection{Main Functor} *)
 
 module Make_Fortran (Fermions : Fermions)
@@ -316,14 +1581,14 @@ module Make_Fortran (Fermions : Fermions)
       [ RCS.rename rcs_file "Targets.Make_Fortran()"
           [ "Interface for Whizard 2.X";
             "NB: non-gauge vector couplings are not available yet" ];
-        Fermions.rcs ] 
+        Fermions.rcs ]
 
     let require_library =
       Fermions.require_library @
       [ "omega_vectors_2010_01_A"; "omega_polarizations_2010_01_A";
         "omega_couplings_2010_01_A"; "omega_color_2010_01_A";
         "omega_utils_2010_01_A" ]
-        
+
     module CM = Colorize.It(M)
     module F = Fusion_Maker(P)(M)
     type amplitude = F.amplitude
@@ -350,7 +1615,7 @@ module Make_Fortran (Fermions : Fermions)
     let whizard = ref false
     let parameter_module = ref ""
     let md5sum = ref None
-    let no_write = ref false        
+    let no_write = ref false
     let km_write = ref false
     let km_pure = ref false
     let openmp = ref false
@@ -421,7 +1686,7 @@ module Make_Fortran (Fermions : Fermions)
         end
       end;
       display_newline oc ()
-      
+
     let nl () =
       current_continuation_line := 0;
       print_newline ();
@@ -436,7 +1701,7 @@ module Make_Fortran (Fermions : Fermions)
         ~spaces:(display_blanks oc);
       set_margin (width - 2)
 
-    let print_list = function 
+    let print_list = function
       | [] -> ()
       | a :: rest ->
           print_string a;
@@ -535,7 +1800,7 @@ module Make_Fortran (Fermions : Fermions)
           brs_scalars : F.wf list;
           brs_spinors : F.wf list;
           brs_conjspinors : F.wf list;
-          brs_realspinors : F.wf list; 
+          brs_realspinors : F.wf list;
           brs_vectorspinors : F.wf list;
           brs_vectors : F.wf list;
           brs_massive_vectors : F.wf list }
@@ -543,27 +1808,27 @@ module Make_Fortran (Fermions : Fermions)
     let rec classify_wfs' acc = function
       | [] -> acc
       | wf :: rest ->
-          classify_wfs' 
+          classify_wfs'
             (match CM.lorentz (F.flavor wf) with
             | Scalar -> {acc with scalars = wf :: acc.scalars}
             | Spinor -> {acc with spinors = wf :: acc.spinors}
             | ConjSpinor -> {acc with conjspinors = wf :: acc.conjspinors}
             | Majorana -> {acc with realspinors = wf :: acc.realspinors}
             | Maj_Ghost -> {acc with ghostspinors = wf :: acc.ghostspinors}
-            | Vectorspinor -> 
+            | Vectorspinor ->
                 {acc with vectorspinors = wf :: acc.vectorspinors}
             | Vector -> {acc with vectors = wf :: acc.vectors}
 (*i            | Ward_Vector -> {acc with ward_vectors = wf :: acc.ward_vectors}
-i*)  
+i*)
             | Massive_Vector ->
                 {acc with massive_vectors = wf :: acc.massive_vectors}
             | Tensor_1 -> {acc with tensors_1 = wf :: acc.tensors_1}
-            | Tensor_2 -> {acc with tensors_2 = wf :: acc.tensors_2}  
-            | BRS Scalar -> {acc with brs_scalars = wf :: acc.brs_scalars} 
+            | Tensor_2 -> {acc with tensors_2 = wf :: acc.tensors_2}
+            | BRS Scalar -> {acc with brs_scalars = wf :: acc.brs_scalars}
             | BRS Spinor -> {acc with brs_spinors = wf :: acc.brs_spinors}
-            | BRS ConjSpinor -> {acc with brs_conjspinors = 
-                                 wf :: acc.brs_conjspinors}  
-            | BRS Majorana -> {acc with brs_realspinors = 
+            | BRS ConjSpinor -> {acc with brs_conjspinors =
+                                 wf :: acc.brs_conjspinors}
+            | BRS Majorana -> {acc with brs_realspinors =
                                wf :: acc.brs_realspinors}
             | BRS Vectorspinor -> {acc with brs_vectorspinors =
                                    wf :: acc.brs_vectorspinors}
@@ -575,10 +1840,10 @@ i*)
 
     let classify_wfs wfs = classify_wfs'
         { scalars = []; spinors = []; conjspinors = []; realspinors = [];
-          ghostspinors = []; vectorspinors = []; vectors = []; 
+          ghostspinors = []; vectorspinors = []; vectors = [];
           ward_vectors = [];
-          massive_vectors = []; tensors_1 = []; tensors_2 = []; 
-          brs_scalars = [] ; brs_spinors = []; brs_conjspinors = []; 
+          massive_vectors = []; tensors_1 = []; tensors_2 = [];
+          brs_scalars = [] ; brs_spinors = []; brs_conjspinors = [];
           brs_realspinors = []; brs_vectorspinors = [];
           brs_vectors = []; brs_massive_vectors = []}
         wfs
@@ -620,28 +1885,28 @@ i*)
      Unify this with the other code using [ThoList.chopn].
    \end{dubious} *)
 
-    let rec schisma n l = 
+    let rec schisma n l =
       if List.length l <= n then
         [l]
       else
         let a, b = ThoList.splitn n l in
         [a] @ (schisma n b)
 
-    let rec schisma_num i n l = 
+    let rec schisma_num i n l =
       if List.length l <= n then
         [(i,l)]
       else
         let a, b = ThoList.splitn n l in
         [(i,a)] @ (schisma_num (i+1) n b)
 
-    let declare_parameters' t = function        
+    let declare_parameters' t = function
       | [] -> ()
-      | plist -> 
+      | plist ->
           printf "  @[<2>%s(kind=%s), public, save :: " t !kind;
           print_list (List.map CM.constant_symbol plist); nl ()
 
-    let declare_parameters t plist = 
-      List.iter (declare_parameters' t) plist 
+    let declare_parameters t plist =
+      List.iter (declare_parameters' t) plist
 
     let declare_parameter_array t (p, n) =
       printf "  @[<2>%s(kind=%s), dimension(%d), public, save :: %s"
@@ -658,7 +1923,7 @@ i*)
           List.iter (fun p' -> printf ","; default_parameter p') plist;
           nl ()
 
-    let rec format_constant = function
+    let format_constant = function
       | I -> sprintf "cmplx (0.0_%s, 1.0_%s)" !kind !kind
       | Const c when c < 0 -> sprintf "(%d.0_%s)" c !kind
       | Const c -> sprintf "%d.0_%s" c !kind
@@ -713,10 +1978,10 @@ i*)
       let x = CM.constant_symbol (strip_single_tag lhs) in
       printf "    @[<2>%s = " x; eval_parameter' rhs; nl ()
 
-    let eval_para_list n l = 
-      printf " subroutine setup_parameters%s ()" (string_of_int n); nl();
+    let eval_para_list n l =
+      printf " subroutine setup_parameters%s ()" (string_of_int n); nl ();
       List.iter eval_parameter l;
-      printf " end subroutine setup_parameters%s" (string_of_int n); nl()
+      printf " end subroutine setup_parameters%s" (string_of_int n); nl ()
 
     let eval_parameter_pair (lhs, rhs) =
       let x = CM.constant_symbol (strip_array_tag lhs) in
@@ -726,15 +1991,15 @@ i*)
       ()
 
     let eval_para_pair_list n l =
-      printf " subroutine setup_parameters%s ()" (string_of_int n); nl();
+      printf " subroutine setup_parameters%s ()" (string_of_int n); nl ();
       List.iter eval_parameter_pair l;
-      printf " end subroutine setup_parameters%s" (string_of_int n); nl()
+      printf " end subroutine setup_parameters%s" (string_of_int n); nl ()
 
     let print_echo fmt p =
       let s = CM.constant_symbol p in
       printf "    write (unit = *, fmt = fmt_%s) \"%s\", %s"
         fmt s s; nl ()
-        
+
     let print_echo_array fmt (p, n) =
       let s = CM.constant_symbol p in
       for i = 1 to n do
@@ -751,11 +2016,11 @@ i*)
       printf "  implicit none"; nl ();
       printf "  private"; nl ();
       printf "  @[<2>public :: setup_parameters";
-      if !no_write then begin 
-        printf "! No print_parameters"; nl();
-      end else begin 
+      if !no_write then begin
+        printf "! No print_parameters"; nl ();
+      end else begin
         printf "@,, print_parameters"; nl ();
-      end;  
+      end;
       declare_default_parameters "real" params.input;
       declare_parameters "real" (schisma 69 declarations.real_singles);
       List.iter (declare_parameter_array "real") declarations.real_arrays;
@@ -763,26 +2028,26 @@ i*)
       List.iter (declare_parameter_array "complex") declarations.complex_arrays;
       printf "contains"; nl ();
       printf "    ! derived parameters:"; nl ();
-      let shredded = schisma_num 1 120 params.derived in 
-      let shredded_arrays = schisma_num 1 120 params.derived_arrays in 
-         let num_sub = List.length shredded in 
-         let num_sub_arrays = List.length shredded_arrays in 
-      printf "     !length: %s" (string_of_int (List.length params.derived)); 
-         nl(); 
-      printf "     !Num_Sub: %s" (string_of_int num_sub); nl();
+      let shredded = schisma_num 1 120 params.derived in
+      let shredded_arrays = schisma_num 1 120 params.derived_arrays in
+         let num_sub = List.length shredded in
+         let num_sub_arrays = List.length shredded_arrays in
+      printf "     !length: %s" (string_of_int (List.length params.derived));
+         nl ();
+      printf "     !Num_Sub: %s" (string_of_int num_sub); nl ();
       List.iter (fun (i,l) -> eval_para_list i l) shredded;
-      List.iter (fun (i,l) -> eval_para_pair_list (num_sub + i) l) 
-        shredded_arrays; 
-      printf "  subroutine setup_parameters ()"; nl();
+      List.iter (fun (i,l) -> eval_para_pair_list (num_sub + i) l)
+        shredded_arrays;
+      printf "  subroutine setup_parameters ()"; nl ();
       let sum_sub = num_sub + num_sub_arrays in
       for i = 1 to sum_sub do
-        printf "    call setup_parameters%s" (string_of_int i); nl();
+        printf "    call setup_parameters%s" (string_of_int i); nl ();
       done;
-      printf "  end subroutine setup_parameters"; nl();
+      printf "  end subroutine setup_parameters"; nl ();
       if !no_write then begin
-        printf "! No print_parameters"; nl();
+        printf "! No print_parameters"; nl ();
       end else begin
-        printf "  subroutine print_parameters ()"; nl();
+        printf "  subroutine print_parameters ()"; nl ();
         printf "    @[<2>character(len=*), parameter ::";
         printf "@ fmt_real = \"(A12,4X,' = ',E25.18)\",";
         printf "@ fmt_complex = \"(A12,4X,' = ',E25.18,' + i*',E25.18)\",";
@@ -798,17 +2063,17 @@ i*)
         List.iter (print_echo "complex") declarations.complex_singles;
         List.iter (print_echo_array "real") declarations.real_arrays;
         List.iter (print_echo_array "complex") declarations.complex_arrays;
-        printf "  end subroutine print_parameters"; nl();
-      end;  
+        printf "  end subroutine print_parameters"; nl ();
+      end;
       printf "end module %s" !parameter_module; nl ();
       printf "! O'Mega revision control information:"; nl ();
       List.iter (fun s -> printf "!    %s" s; nl ())
         (ThoList.flatmap RCS.summary (M.rcs :: rcs_list));
-      printf "!!! program test_parameters"; nl();
-      printf "!!!   use %s" !parameter_module; nl();
-      printf "!!!   call setup_parameters ()"; nl();
-      printf "!!!   call print_parameters ()"; nl();
-      printf "!!! end program test_parameters"; nl()
+      printf "!!! program test_parameters"; nl ();
+      printf "!!!   use %s" !parameter_module; nl ();
+      printf "!!!   call setup_parameters ()"; nl ();
+      printf "!!!   call print_parameters ()"; nl ();
+      printf "!!! end program test_parameters"; nl ()
 
 (* \thocwmodulesubsection{Run-Time Diagnostics} *)
 
@@ -876,13 +2141,13 @@ i*)
 
     let declare_wavefunctions multiplicity wfs =
       let wfs' = classify_wfs wfs in
-      declare_list multiplicity ("complex(kind=" ^ !kind ^ ")") 
+      declare_list multiplicity ("complex(kind=" ^ !kind ^ ")")
         (wfs'.scalars @ wfs'.brs_scalars);
       declare_list multiplicity ("type(" ^ Fermions.psi_type ^ ")")
         (wfs'.spinors @ wfs'.brs_spinors);
-      declare_list multiplicity ("type(" ^ Fermions.psibar_type ^ ")") 
+      declare_list multiplicity ("type(" ^ Fermions.psibar_type ^ ")")
         (wfs'.conjspinors @ wfs'.brs_conjspinors);
-      declare_list multiplicity ("type(" ^ Fermions.chi_type ^ ")") 
+      declare_list multiplicity ("type(" ^ Fermions.chi_type ^ ")")
         (wfs'.realspinors @ wfs'.brs_realspinors @ wfs'.ghostspinors);
       declare_list multiplicity ("type(" ^ Fermions.grav_type ^ ")") wfs'.vectorspinors;
       declare_list multiplicity "type(vector)" (wfs'.vectors @ wfs'.massive_vectors @
@@ -967,7 +2232,7 @@ i*)
    \begin{dubious}
      This could be part of \verb+omegalib+ as well \ldots
    \end{dubious} *)
-        
+
     let format_coeff = function
       | 1 -> ""
       | -1 -> "-"
@@ -1007,17 +2272,17 @@ i*)
       | C_12_34, (F341|F431|F342|F432|F123|F213|F124|F214)
       | C_13_42, (F241|F421|F243|F423|F132|F312|F134|F314)
       | C_14_23, (F231|F321|F234|F324|F142|F412|F143|F413) ->
-          printf "((%s%s%s+%s))*(%s*%s))*%s" 
+          printf "((%s%s%s+%s))*(%s*%s))*%s"
             (format_coeff coeff) c pa pb wf1 wf2 wf3
       | C_12_34, (F134|F143|F234|F243|F312|F321|F412|F421)
       | C_13_42, (F124|F142|F324|F342|F213|F231|F413|F431)
       | C_14_23, (F123|F132|F423|F432|F214|F241|F314|F341) ->
-          printf "((%s%s%s+%s))*(%s*%s))*%s" 
+          printf "((%s%s%s+%s))*(%s*%s))*%s"
             (format_coeff coeff) c pa pb wf2 wf3 wf1
       | C_12_34, (F314|F413|F324|F423|F132|F231|F142|F241)
       | C_13_42, (F214|F412|F234|F432|F123|F321|F143|F341)
       | C_14_23, (F213|F312|F243|F342|F124|F421|F134|F431) ->
-          printf "((%s%s%s+%s))*(%s*%s))*%s" 
+          printf "((%s%s%s+%s))*(%s*%s))*%s"
             (format_coeff coeff) c pa pb wf1 wf3 wf2
 
     let print_add_vector4_km c pa pb wf1 wf2 wf3 fusion (coeff, contraction) =
@@ -1086,7 +2351,7 @@ i*)
           let wf1 = multiple_variable amplitude dictionary ch1
           and wf2 = multiple_variable amplitude dictionary ch2
           and p1 = momentum ch1
-          and p2 = momentum ch2 
+          and p2 = momentum ch2
           and m1 = CM.mass_symbol (F.flavor ch1)
           and m2 = CM.mass_symbol (F.flavor ch2) in
           let c = CM.constant_symbol constant in
@@ -1100,22 +2365,22 @@ i*)
           | FBF (coeff, fb, b, f) ->
               begin match coeff, fb, b, f with
               | _, Psibar, VLRM, Psi | _, Psibar, SPM, Psi
-              | _, Psibar, TVA, Psi | _, Psibar, TVAM, Psi 
+              | _, Psibar, TVA, Psi | _, Psibar, TVAM, Psi
               | _, Psibar, TLR, Psi | _, Psibar, TLRM, Psi
               | _, Psibar, TRL, Psi | _, Psibar, TRLM, Psi ->
                   let p12 = Printf.sprintf "(-%s-%s)" p1 p2 in
-                  Fermions.print_current_mom (coeff, fb, b, f) c wf1 wf2 p1 p2 
+                  Fermions.print_current_mom (coeff, fb, b, f) c wf1 wf2 p1 p2
                       p12 fusion
               | _, _, _, _ ->
                   Fermions.print_current (coeff, fb, b, f) c wf1 wf2 fusion
               end
           | PBP (coeff, f1, b, f2) ->
               Fermions.print_current_p (coeff, f1, b, f2) c wf1 wf2 fusion
-          | BBB (coeff, fb1, b, fb2) -> 
+          | BBB (coeff, fb1, b, fb2) ->
               Fermions.print_current_b (coeff, fb1, b, fb2) c wf1 wf2 fusion
           | GBG (coeff, fb, b, f) ->  let p12 =
               Printf.sprintf "(-%s-%s)" p1 p2 in
-              Fermions.print_current_g (coeff, fb, b, f) c wf1 wf2 p1 p2 
+              Fermions.print_current_g (coeff, fb, b, f) c wf1 wf2 p1 p2
                    p12 fusion
 
 (* Table~\ref{tab:dim4-bosons} is a bit misleading, since if includes
@@ -1201,25 +2466,25 @@ i*)
               | F31 -> printf "(-1)*s_vs(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
               end
 
-          | Graviton_Scalar_Scalar coeff -> 
+          | Graviton_Scalar_Scalar coeff ->
               let c = format_coupling coeff c in
               begin match fusion with
-              | F12 -> printf "s_gravs(%s,%s,-(%s+%s),%s,%s,%s)" c m2 p1 p2 p2 wf1 wf2 
-              | F21 -> printf "s_gravs(%s,%s,-(%s+%s),%s,%s,%s)" c m1 p1 p2 p1 wf2 wf1 
-              | F13 -> printf "s_gravs(%s,%s,%s,-(%s+%s),%s,%s)" c m2 p2 p1 p2 wf1 wf2 
-              | F31 -> printf "s_gravs(%s,%s,%s,-(%s+%s),%s,%s)" c m1 p1 p1 p2 wf2 wf1 
-              | F23 -> printf "grav_ss(%s,%s,%s,%s,%s,%s)" c m1 p1 p2 wf1 wf2 
+              | F12 -> printf "s_gravs(%s,%s,-(%s+%s),%s,%s,%s)" c m2 p1 p2 p2 wf1 wf2
+              | F21 -> printf "s_gravs(%s,%s,-(%s+%s),%s,%s,%s)" c m1 p1 p2 p1 wf2 wf1
+              | F13 -> printf "s_gravs(%s,%s,%s,-(%s+%s),%s,%s)" c m2 p2 p1 p2 wf1 wf2
+              | F31 -> printf "s_gravs(%s,%s,%s,-(%s+%s),%s,%s)" c m1 p1 p1 p2 wf2 wf1
+              | F23 -> printf "grav_ss(%s,%s,%s,%s,%s,%s)" c m1 p1 p2 wf1 wf2
               | F32 -> printf "grav_ss(%s,%s,%s,%s,%s,%s)" c m1 p2 p1 wf2 wf1
               end
 
-(* In producing a vector in the fusion we always contract the rightmost index with the 
-   vector wavefunction from [rhs]. So the first momentum is always the one of the 
-   vector boson produced in the fusion, while the second one is that from the [rhs]. 
+(* In producing a vector in the fusion we always contract the rightmost index with the
+   vector wavefunction from [rhs]. So the first momentum is always the one of the
+   vector boson produced in the fusion, while the second one is that from the [rhs].
    This makes the cases [F12] and [F13] as well as [F21] and [F31] equal. In principle,
    we could have already done this for the [Graviton_Scalar_Scalar] case. *)
 
 
-          | Graviton_Vector_Vector coeff -> 
+          | Graviton_Vector_Vector coeff ->
               let c = format_coupling coeff c in
               begin match fusion with
               | (F12|F13) -> printf "v_gravv(%s,%s,-(%s+%s),%s,%s,%s)" c m2 p1 p2 p2 wf1 wf2
@@ -1228,7 +2493,7 @@ i*)
               | F32 -> printf "grav_vv(%s,%s,%s,%s,%s,%s)" c m1 p2 p1 wf2 wf1
               end
 
-          | Graviton_Spinor_Spinor coeff -> 
+          | Graviton_Spinor_Spinor coeff ->
               let c = format_coupling coeff c in
               begin match fusion with
               | F23 -> printf "f_gravf(%s,%s,-(%s+%s),(-%s),%s,%s)" c m2 p1 p2 p2 wf1 wf2
@@ -1323,15 +2588,15 @@ i*)
           | Dim5_Scalar_Gauge2 coeff ->
               let c = format_coupling coeff c in
               begin match fusion with
-              | (F23|F32) -> printf "(%s)*((%s*%s)*(%s*%s) - (%s*%s)*(%s*%s))" 
-                    c p1 wf2 p2 wf1 p1 p2 wf2 wf1 
-              | (F12|F13) -> printf "(%s)*%s*((-((%s+%s)*%s))*%s - ((-(%s+%s)*%s))*%s)" 
+              | (F23|F32) -> printf "(%s)*((%s*%s)*(%s*%s) - (%s*%s)*(%s*%s))"
+                    c p1 wf2 p2 wf1 p1 p2 wf2 wf1
+              | (F12|F13) -> printf "(%s)*%s*((-((%s+%s)*%s))*%s - ((-(%s+%s)*%s))*%s)"
                     c wf1 p1 p2 wf2 p2 p1 p2 p2 wf2
-              | (F21|F31) -> printf "(%s)*%s*((-((%s+%s)*%s))*%s - ((-(%s+%s)*%s))*%s)" 
+              | (F21|F31) -> printf "(%s)*%s*((-((%s+%s)*%s))*%s - ((-(%s+%s)*%s))*%s)"
                     c wf2 p2 p1 wf1 p1 p1 p2 p1 wf1
               end
 
-          | Dim5_Scalar_Gauge2_Skew coeff -> 
+          | Dim5_Scalar_Gauge2_Skew coeff ->
               let c = format_coupling coeff c in
               begin match fusion with
               | (F23|F32) -> printf "(- phi_vv (%s, %s, %s, %s, %s))" c p1 p2 wf1 wf2
@@ -1351,7 +2616,7 @@ i*)
               let c = format_coupling coeff c in
               begin match fusion with
               | (F23|F32) -> printf "phi_u_vv (%s, %s, %s, %s, %s)" c p1 p2 wf1 wf2
-              | (F12|F13) -> printf "v_u_phiv (%s, %s, %s, %s, %s)" c wf1 p1 p2 wf2 
+              | (F12|F13) -> printf "v_u_phiv (%s, %s, %s, %s, %s)" c wf1 p1 p2 wf2
               | (F21|F31) -> printf "v_u_phiv (%s, %s, %s, %s, %s)" c wf2 p2 p1 wf1
               end
 
@@ -1363,14 +2628,14 @@ i*)
               | F32 -> printf "(%s)*((%s*%s)*(-(%s+%s)*%s) - (-(%s+%s)*%s)*(%s*%s))"
                     c p2 wf1 p1 p2 wf2 p1 p2 p2 wf1 wf2
               | F12 -> printf "(%s)*%s*((%s*%s)*%s - (%s*%s)*%s)"
-                    c wf1 p1 wf2 p2 p1 p2 wf2 
+                    c wf1 p1 wf2 p2 p1 p2 wf2
               | F21 -> printf "(%s)*%s*((%s*%s)*%s - (%s*%s)*%s)"
-                    c wf2 p2 wf1 p1 p1 p2 wf1  
+                    c wf2 p2 wf1 p1 p1 p2 wf1
               | F13 -> printf "(%s)*%s*((-(%s+%s)*%s)*%s - (-(%s+%s)*%s)*%s)"
                     c wf1 p1 p2 wf2 p1 p1 p2 p1 wf2
               | F31 -> printf "(%s)*%s*((-(%s+%s)*%s)*%s - (-(%s+%s)*%s)*%s)"
                     c wf2 p1 p2 wf1 p2 p1 p2 p2 wf1
-              end                
+              end
 
           | Scalar_Vector_Vector_t coeff ->
               let c = format_coupling coeff c in
@@ -1399,13 +2664,13 @@ i*)
               | (F21|F31) -> printf "v_t2v(%s,%s,%s)" c wf2 wf1
               end
 
-          | Tensor_2_Vector_Vector_1 coeff -> 
-	      let c = format_coupling coeff c in 
-	      begin match fusion with 
-	      | (F23|F32) -> printf "t2_vv_1(%s,%s,%s)" c wf1 wf2 
-	      | (F12|F13) -> printf "v_t2v_1(%s,%s,%s)" c wf1 wf2 
-	      | (F21|F31) -> printf "v_t2v_1(%s,%s,%s)" c wf2 wf1 
-	      end
+          | Tensor_2_Vector_Vector_1 coeff ->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "t2_vv_1(%s,%s,%s)" c wf1 wf2
+              | (F12|F13) -> printf "v_t2v_1(%s,%s,%s)" c wf1 wf2
+              | (F21|F31) -> printf "v_t2v_1(%s,%s,%s)" c wf2 wf1
+              end
 
           | Dim5_Tensor_2_Vector_Vector_1 coeff ->
               let c = format_coupling coeff c in
@@ -1485,7 +2750,7 @@ i*)
                   printf ")"
               end
           | Vector4_K_Matrix_tho (disc, poles) ->
-              let pa, pb = 
+              let pa, pb =
                 begin match fusion with
                 | (F341|F431|F342|F432|F123|F213|F124|F214) -> (p1, p2)
                 | (F134|F143|F234|F243|F312|F321|F412|F421) -> (p2, p3)
@@ -1500,7 +2765,7 @@ i*)
                 poles;
               printf ")*(-%s-%s-%s))" p1 p2 p3
           | Vector4_K_Matrix_jr (disc, contractions) ->
-              let pa, pb = 
+              let pa, pb =
                 begin match disc, fusion with
                 | 3, (F143|F413|F142|F412|F321|F231|F324|F234) -> (p1, p2)
                 | 3, (F314|F341|F214|F241|F132|F123|F432|F423) -> (p2, p3)
@@ -1514,12 +2779,12 @@ i*)
               | head :: tail ->
                   printf "(";
                   print_vector4_km c pa pb wf1 wf2 wf3 fusion head;
-                  List.iter (print_add_vector4_km c pa pb wf1 wf2 wf3 fusion) 
+                  List.iter (print_add_vector4_km c pa pb wf1 wf2 wf3 fusion)
                     tail;
                   printf ")"
               end
-          | GBBG (coeff, fb, b, f) -> 
-              Fermions.print_current_g4 (coeff, fb, b, f) c wf1 wf2 wf3 
+          | GBBG (coeff, fb, b, f) ->
+              Fermions.print_current_g4 (coeff, fb, b, f) c wf1 wf2 wf3
                    fusion
 
 (* \begin{dubious}
@@ -1568,7 +2833,7 @@ i*)
       match CM.propagator f with
       | Prop_Scalar ->
           printf "pr_phi(%s,%s,%s," p m w
-      | Prop_Col_Scalar -> 
+      | Prop_Col_Scalar ->
           printf "%s * pr_phi(%s,%s,%s," minus_third p m w
       | Prop_Ghost -> printf "(0,1) * pr_phi(%s, %s, %s," p m w
       | Prop_Spinor ->
@@ -1578,14 +2843,14 @@ i*)
       | Prop_Majorana ->
           printf "%s(%s,%s,%s," Fermions.chi_propagator p m w
       | Prop_Col_Majorana ->
-          printf "%s * %s(%s,%s,%s," minus_third Fermions.chi_propagator p m w 
+          printf "%s * %s(%s,%s,%s," minus_third Fermions.chi_propagator p m w
       | Prop_Unitarity ->
           printf "pr_unitarity(%s,%s,%s," p m w
-      | Prop_Col_Unitarity -> 
+      | Prop_Col_Unitarity ->
           printf "%s * pr_unitarity(%s,%s,%s," minus_third p m w
       | Prop_Feynman ->
           printf "pr_feynman(%s," p
-      | Prop_Col_Feynman -> 
+      | Prop_Col_Feynman ->
           printf "%s * pr_feynman(%s," minus_third p
       | Prop_Gauge xi ->
           printf "pr_gauge(%s,%s," p (CM.gauge_symbol xi)
@@ -1605,7 +2870,7 @@ i*)
       match CM.propagator f with
       | Prop_Scalar ->
           printf "pj_phi(%s,%s," m gamma
-      | Prop_Col_Scalar -> 
+      | Prop_Col_Scalar ->
           printf "%s * pj_phi(%s,%s," minus_third m gamma
       | Prop_Ghost ->
           printf "(0,1) * pj_phi(%s,%s," m gamma
@@ -1619,10 +2884,10 @@ i*)
           printf "%s * %s(%s,%s,%s," minus_third Fermions.chi_projector p m gamma
       | Prop_Unitarity ->
           printf "pj_unitarity(%s,%s,%s," p m gamma
-      | Prop_Col_Unitarity -> 
+      | Prop_Col_Unitarity ->
           printf "%s * pj_unitarity(%s,%s,%s," minus_third p m gamma
-      | Prop_Feynman | Prop_Col_Feynman -> 
-          invalid_arg "no on-shell Feynman propagator!" 
+      | Prop_Feynman | Prop_Col_Feynman ->
+          invalid_arg "no on-shell Feynman propagator!"
       | Prop_Gauge xi ->
           invalid_arg "no on-shell massless gauge propagator!"
       | Prop_Rxi xi ->
@@ -1653,8 +2918,8 @@ i*)
           printf "%s * %s(%s,%s,%s," minus_third Fermions.chi_projector p m gamma
       | Prop_Unitarity ->
           printf "pg_unitarity(%s,%s,%s," p m gamma
-      | Prop_Feynman | Prop_Col_Feynman -> 
-          invalid_arg "no on-shell Feynman propagator!" 
+      | Prop_Feynman | Prop_Col_Feynman ->
+          invalid_arg "no on-shell Feynman propagator!"
       | Prop_Gauge xi ->
           invalid_arg "no on-shell massless gauge propagator!"
       | Prop_Rxi xi ->
@@ -1677,7 +2942,7 @@ i*)
         | Prop_Gauge _ | Prop_Feynman
         | Prop_Rxi _ | Prop_Unitarity ->
             printf "      @[<2>%s =" v;
-            List.iter (print_current amplitude dictionary) (F.rhs fusion); nl();
+            List.iter (print_current amplitude dictionary) (F.rhs fusion); nl ();
             begin match CM.goldstone f with
             | None ->
                 printf "      call omega_ward_%s(\"%s\",%s,%s,%s)"
@@ -1699,12 +2964,12 @@ i*)
       if F.on_shell amplitude lhs then
         print_projector f (momentum lhs)
           (CM.mass_symbol f) (CM.width_symbol f)
-      else 
+      else
         if F.is_gauss amplitude lhs then
           print_gauss f (momentum lhs)
             (CM.mass_symbol f) (CM.width_symbol f)
         else
-          print_propagator f (momentum lhs) 
+          print_propagator f (momentum lhs)
             (CM.mass_symbol f) (CM.width_symbol f);
       List.iter (print_current amplitude dictionary) (F.rhs fusion);
       printf ")"; nl ()
@@ -1724,11 +2989,11 @@ i*)
 
     let print_fusions dictionary fusions =
       List.iter
-        (fun (f, amplitude) -> 
+        (fun (f, amplitude) ->
           print_fusion_diagnostics amplitude dictionary f;
           print_fusion amplitude dictionary f)
         fusions
-        
+
     let print_braket amplitude dictionary name braket =
       let bra = F.bra braket
       and ket = F.ket braket in
@@ -1781,7 +3046,7 @@ i*)
       let m = CM.mass_symbol f in
       match CM.lorentz f with
       | Scalar -> printf "1"
-      | BRS Scalar -> printf "(0,-1) * (%s * %s - %s**2)" p p m 
+      | BRS Scalar -> printf "(0,-1) * (%s * %s - %s**2)" p p m
       | Spinor ->
           printf "%s (%s, - %s, %s)" Fermions.psi_incoming m p s
       | BRS Spinor ->
@@ -1795,12 +3060,12 @@ i*)
       | Maj_Ghost -> printf "ghost (%s, - %s, %s)" m p s
       | BRS Majorana ->
           printf "%s (%s, - %s, %s)" Fermions.brs_chi_incoming m p s
-      | Vector | Massive_Vector -> 
+      | Vector | Massive_Vector ->
           printf "eps (%s, - %s, %s)" m p s
 (*i   | Ward_Vector -> printf "%s" p   i*)
-      | BRS Vector | BRS Massive_Vector -> printf 
-            "(0,1) * (%s * %s - %s**2) * eps (%s, -%s, %s)" p p m m p s 
-      | Vectorspinor | BRS Vectorspinor -> 
+      | BRS Vector | BRS Massive_Vector -> printf
+            "(0,1) * (%s * %s - %s**2) * eps (%s, -%s, %s)" p p m m p s
+      | Vectorspinor | BRS Vectorspinor ->
           printf "%s (%s, - %s, %s)" Fermions.grav_incoming m p s
       | Tensor_1 -> invalid_arg "Tensor_1 only internal"
       | Tensor_2 -> printf "eps2 (%s, - %s, %s)" m p s
@@ -1813,7 +3078,7 @@ i*)
       let m = CM.mass_symbol f in
       match CM.lorentz f with
       | Scalar -> printf "1"
-      | BRS Scalar -> printf "(0,-1) * (%s * %s - %s**2)" p p m 
+      | BRS Scalar -> printf "(0,-1) * (%s * %s - %s**2)" p p m
       | Spinor ->
           printf "%s (%s, %s, %s)" Fermions.psi_outgoing m p s
       | BRS Spinor ->
@@ -1826,13 +3091,13 @@ i*)
           printf "%s (%s, %s, %s)" Fermions.chi_outgoing m p s
       | BRS Majorana ->
           printf "%s (%s, %s, %s)" Fermions.brs_chi_outgoing m p s
-      | Maj_Ghost -> printf "ghost (%s, %s, %s)" m p s 
-      | Vector | Massive_Vector -> 
+      | Maj_Ghost -> printf "ghost (%s, %s, %s)" m p s
+      | Vector | Massive_Vector ->
           printf "conjg (eps (%s, %s, %s))" m p s
 (*i   | Ward_Vector -> printf "%s" p   i*)
-      | BRS Vector | BRS Massive_Vector -> printf 
-            "(0,1) * (%s*%s-%s**2) * (conjg (eps (%s, %s, %s)))" p p m m p s 
-      | Vectorspinor | BRS Vectorspinor -> 
+      | BRS Vector | BRS Massive_Vector -> printf
+            "(0,1) * (%s*%s-%s**2) * (conjg (eps (%s, %s, %s)))" p p m m p s
+      | Vectorspinor | BRS Vectorspinor ->
           printf "%s (%s, %s, %s)" Fermions.grav_incoming m p s
       | Tensor_1 -> invalid_arg "Tensor_1 only internal"
       | Tensor_2 -> printf "conjg (eps2 (%s, %s, %s))" m p s
@@ -1841,11 +3106,11 @@ i*)
     let twice_spin wf =
       match CM.lorentz (F.flavor wf) with
       | Scalar | BRS Scalar -> "0"
-      | Spinor | ConjSpinor | Majorana | Maj_Ghost | Vectorspinor 
+      | Spinor | ConjSpinor | Majorana | Maj_Ghost | Vectorspinor
       | BRS Spinor | BRS ConjSpinor | BRS Majorana | BRS Vectorspinor -> "1"
       | Vector | BRS Vector | Massive_Vector | BRS Massive_Vector -> "2"
       | Tensor_1 -> "2"
-      | Tensor_2 -> "4" 
+      | Tensor_2 -> "4"
       | BRS _ -> invalid_arg "Targets.twice_spin: no such BRST transformation"
 
     let print_argument_diagnostics amplitude =
@@ -1917,7 +3182,7 @@ i*)
             printf "        @[<2>%s = %s@ * (%s*%s - %s**2)"
               name name p p m;
             printf "@ / cmplx (%s*%s - %s**2, %s*%s, kind=%s)"
-              p p m m w !kind; nl();
+              p p m m w !kind; nl ();
             printf "      end if"; nl ()
         | _ -> ()) (F.s_channel amplitude)
 
@@ -1932,7 +3197,7 @@ i*)
    \emph{constant} arrays. *)
 
 (* \begin{dubious}
-     We used to have a more elegent design with a sentinel~0 added to each
+     We used to have a more elegant design with a sentinel~0 added to each
      initializer, but some revisions of the Compaq/Digital Compiler have a
      bug that causes it to reject this variant.
    \end{dubious} *)
@@ -2008,7 +3273,7 @@ i*)
 
     let print_spin_table name tuples =
       printf "  @[<2>integer, dimension(n_prt,n_hel), save%s :: table_spin_%s"
-        protected name; nl();
+        protected name; nl ();
       match tuples with
       | [] -> ()
       | _ ->
@@ -2045,7 +3310,7 @@ i*)
 
     let print_flavor_table n name tuples =
       printf "  @[<2>integer, dimension(n_prt,n_flv), save%s :: table_flavor_%s"
-        protected name; nl();
+        protected name; nl ();
       match tuples with
       | [] -> ()
       | _ ->
@@ -2227,7 +3492,7 @@ i*)
           for c2 = 0 to pred n_cflow do
             match table.(c1).(c2) with
             | [] -> ()
-            | cf -> 
+            | cf ->
                 printf "%s@ %s(%d,%d,%s)" !comma omega_color_factor_abbrev
                   (succ c1) (succ c2) (format_powers_of nc_parameter cf);
                 comma := ","
@@ -2260,7 +3525,7 @@ i*)
           for c2 = 0 to pred n_cflow do
             match table.(c1).(c2) with
             | [] -> ()
-            | cf -> 
+            | cf ->
                 printf "  @[<2>real(kind=%s), parameter, private :: color_factor_%06d = %s"
                   !kind !i (format_powers_of nc_parameter cf);
                 nl ();
@@ -2339,7 +3604,7 @@ i*)
 
     let print_helicity_selection_table () =
       printf "  @[<2>logical, dimension(n_hel), save :: ";
-      printf "hel_is_allowed = T"; nl();
+      printf "hel_is_allowed = T"; nl ();
       printf "  @[<2>real(kind=%s), dimension(n_hel), save :: " !kind;
       printf "hel_max_abs = 0"; nl ();
       printf "  @[<2>real(kind=%s), save :: " !kind;
@@ -2363,7 +3628,7 @@ i*)
           printf "function md5sum ()"; nl ();
           printf "    character(len=32) :: md5sum"; nl ();
           printf "    ! DON'T EVEN THINK of modifying the following line!"; nl ();
-          printf "    md5sum = \"%s\"" s; nl (); 
+          printf "    md5sum = \"%s\"" s; nl ();
           printf "  end function md5sum"; nl ();
           nl ()
       | None -> ()
@@ -2398,8 +3663,8 @@ i*)
     let print_inquiry_function_declarations name =
       printf "  @[<2>public :: number_%s,@ %s" name name;
       nl ()
-      
-    let print_numeric_inquiry_functions () = 
+
+    let print_numeric_inquiry_functions () =
       printf "  @[<5>"; if !fortran95 then printf "pure ";
       printf "function number_particles_in () result (n)"; nl ();
       printf "    integer :: n"; nl ();
@@ -2413,7 +3678,7 @@ i*)
       printf "  end function number_particles_out"; nl ();
       nl ()
 
-    let print_numeric_inquiry_functions (f, v) = 
+    let print_numeric_inquiry_functions (f, v) =
       printf "  @[<5>"; if !fortran95 then printf "pure ";
       printf "function %s () result (n)" f; nl ();
       printf "    integer :: n"; nl ();
@@ -2498,7 +3763,7 @@ i*)
       printf "          end if"; nl ();
       printf "        end do"; nl ();
       printf "      end if"; nl ();
-      printf "    end if"; nl();
+      printf "    end if"; nl ();
       printf "  end subroutine new_event"; nl ();
       nl ();
       printf "  @[<5>";
@@ -2576,10 +3841,10 @@ i*)
       | powers -> String.concat " " (List.map format_power_of_nc powers)
 
     let print_description cmdline amplitudes () =
-      printf "! File generated automatically by O'Mega"; nl();
-      printf "!"; nl();
-      printf "!   %s" cmdline; nl();
-      printf "!"; nl();
+      printf "! File generated automatically by O'Mega"; nl ();
+      printf "!"; nl ();
+      printf "!   %s" cmdline; nl ();
+      printf "!"; nl ();
       printf "! with all scattering amplitudes for the process(es)"; nl ();
       printf "!"; nl ();
       printf "!   flavor combinations:"; nl ();
@@ -2684,7 +3949,7 @@ i*)
           print_used_symbol used_symbol;
           List.iter (fun s -> printf ", "; print_used_symbol s) used_symbols;
           nl ()
-          
+
     type fortran_module =
         { module_name : string;
           default_accessibility : accessibility;
@@ -2692,13 +3957,15 @@ i*)
           public_symbols : string list;
           print_declarations : (unit -> unit) list;
           print_implementations : (unit -> unit) list }
-          
+
     let print_public = function
       | name1 :: names ->
           printf "  @[<2>public :: %s" name1;
           List.iter (fun n -> printf ",@ %s" n) names; nl ()
       | [] -> ()
 
+    (*i TODO: (bcn 2014-03-09) print_public_interface not used?! *)
+    (*
     let print_public_interface generic procedures =
       printf "  public :: %s" generic; nl ();
       begin match procedures with
@@ -2710,6 +3977,7 @@ i*)
           print_public procedures
       | [] -> ()
       end
+    i*)
 
     let print_module m =
       printf "module %s" m.module_name; nl ();
@@ -2733,7 +4001,7 @@ i*)
     let print_modules modules =
       List.iter print_module modules;
       print_version ();
-      print_flush () 
+      print_flush ()
 
     let module_to_file line_length oc prelude m =
       output_string oc (m.module_name ^ "\n");
@@ -2759,7 +4027,7 @@ i*)
         List.fold_left
           (fun sum process -> sum + List.length (F.brakets process))
           0 (CF.processes amplitudes)
-      and count_processes = 
+      and count_processes =
         List.length (CF.processes amplitudes) in
       if count_brakets > 0 then
         let num_brakets =
@@ -2782,7 +4050,7 @@ i*)
       end;
       print_fusions dictionary fusions;
       printf "  end subroutine compute_fusions_%04d" n; nl ()
-        
+
     and print_compute_brakets1 dictionary (n, processes) =
       if !openmp then begin
         printf "  subroutine compute_brakets_%04d (%s)" n openmp_tld; nl ();
@@ -2792,7 +4060,7 @@ i*)
       end;
       List.iter (print_brakets dictionary) processes;
       printf "  end subroutine compute_brakets_%04d" n; nl ()
-      
+
 (* \thocwmodulesubsection{Common Stuff} *)
 
     let omega_public_symbols =
@@ -2803,7 +4071,7 @@ i*)
       ThoList.flatmap
         (fun n -> ["number_" ^ n; n])
         ["spin_states"; "flavor_states"; "color_flows"; "color_factors"]
-      
+
     let whizard_public_symbols md5sum =
       ["init"; "final"; "update_alpha_s"] @
       (match md5sum with Some _ -> ["md5sum"] | None -> [])
@@ -2832,13 +4100,13 @@ i*)
         (List.length require_library);
       printf "require =@ (/ @[";
       print_list require_library;
-      printf " /)"; nl(); nl ();
-        
+      printf " /)"; nl (); nl ();
+
       (* Using these parameters makes sense for documentation, but in
          practice, there is no need to ever change them. *)
       List.iter
         (function name, value -> print_integer_parameter name (value amplitudes))
-        [ ("n_prt", num_particles); 
+        [ ("n_prt", num_particles);
           ("n_in", num_particles_in);
           ("n_out", num_particles_out);
           ("n_cflow", num_color_flows); (* Number of different color amplitudes. *)
@@ -2848,7 +4116,8 @@ i*)
       nl ();
 
       (* Abbreviations.  *)
-      printf "  ! NB: you MUST NOT change the value of %s here!!!" nc_parameter; nl();
+      printf "  ! NB: you MUST NOT change the value of %s here!!!" nc_parameter;
+      nl ();
       printf "  !     It is defined here for convenience only and must be"; nl ();
       printf "  !     compatible with hardcoded values in the amplitude!"; nl ();
       print_real_parameter nc_parameter (CM.nc ()); (* $N_C$ *)
@@ -2874,11 +4143,11 @@ i*)
       print_color_flows ();
       print_color_factors ();
       print_dispatch_functions ();
-      nl();
+      nl ();
       current_continuation_line := 0;
       if !km_write || !km_pure then (Targets_Kmatrix.Fortran.print !km_pure);
       current_continuation_line := 1;
-      nl()
+      nl ()
 
     let print_calculate_amplitudes declarations computations amplitudes =
       printf "  @[<5>subroutine calculate_amplitudes (amp, k, mask)"; nl ();
@@ -2897,14 +4166,14 @@ i*)
       if num_helicities amplitudes > 0 then begin
         printf "    if (hel_finite == 0) return"; nl ();
         if !openmp then begin
-          printf "!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(s, h, %s) SCHEDULE(STATIC)" openmp_tld; nl();
+          printf "!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(s, h, %s) SCHEDULE(STATIC)" openmp_tld; nl ();
         end;
         printf "    do hi = 1, hel_finite"; nl ();
         printf "      h = hel_map(hi)"; nl ();
         printf "      s = table_spin_states(:,h)"; nl ();
         ignore (List.fold_left print_externals WFSet.empty (CF.processes amplitudes));
         computations ();
-        List.iter print_fudge_factor (CF.processes amplitudes); 
+        List.iter print_fudge_factor (CF.processes amplitudes);
         (* This sorting should slightly improve cache locality. *)
         let triple_snd = fun (_,  x, _) -> x
         in let triple_fst = fun (x, _, _) -> x
@@ -2916,7 +4185,7 @@ i*)
           | flv :: tl -> (builder1 flvi 1 flv) @ (builder2 (flvi + 1) tl)
           | [] -> []
         in let unsorted = builder2 1 (List.map Array.to_list (Array.to_list (CF.process_table amplitudes)))
-        in let sorted = List.sort (fun a b -> 
+        in let sorted = List.sort (fun a b ->
             if (triple_snd a != triple_snd b) then triple_snd a - triple_snd b else (triple_fst a - triple_fst b))
           unsorted
         in List.iter (fun (flvi, flowi, flv) ->
@@ -2959,7 +4228,7 @@ i*)
               (CF.processes amplitudes))
           amplitudes in
 
-      let fortran_module = 
+      let fortran_module =
         { module_name = !module_name;
           used_modules = used_modules ();
           default_accessibility = Private;
@@ -2984,7 +4253,7 @@ i*)
 
       let chopped_fusions, chopped_brakets =
         chop_amplitudes size amplitudes in
-      
+
       let dictionary = CF.dictionary amplitudes in
 
       let print_compute_amplitudes () =
@@ -2998,8 +4267,8 @@ i*)
 
       and print_compute_brakets () =
         List.iter (print_compute_brakets1 dictionary) chopped_brakets in
-        
-      let fortran_module = 
+
+      let fortran_module =
         { module_name = !module_name;
           used_modules = used_modules ();
           default_accessibility = Private;
@@ -3025,7 +4294,7 @@ i*)
       and print_variables () =
         print_variable_declarations amplitudes in
 
-      let constants_module = 
+      let constants_module =
         { module_name = name ^ "_constants";
           used_modules = used_modules ();
           default_accessibility = Public;
@@ -3033,7 +4302,7 @@ i*)
           print_declarations = [print_declarations];
           print_implementations = [] } in
 
-      let variables_module = 
+      let variables_module =
         { module_name = name ^ "_variables";
           used_modules = used_modules ();
           default_accessibility = Public;
@@ -3052,7 +4321,7 @@ i*)
         end;
         print_fusions dictionary fusions;
         printf "  end subroutine compute_fusions_%04d" n; nl () in
-        
+
       let print_compute_brakets (n, processes) () =
         if !openmp then begin
           printf "  subroutine compute_brakets_%04d (%s)" n openmp_tld; nl ();
@@ -3062,8 +4331,8 @@ i*)
         end;
         List.iter (print_brakets dictionary) processes;
         printf "  end subroutine compute_brakets_%04d" n; nl () in
-        
-      let fusions_module (n, _ as fusions) = 
+
+      let fusions_module (n, _ as fusions) =
         let tag = Printf.sprintf "_fusions_%04d" n in
         { module_name = name ^ tag;
           used_modules = (used_modules () @
@@ -3074,7 +4343,7 @@ i*)
           print_declarations = [];
           print_implementations = [print_compute_fusions fusions] } in
 
-      let brakets_module (n, _ as processes) = 
+      let brakets_module (n, _ as processes) =
         let tag = Printf.sprintf "_brakets_%04d" n in
         { module_name = name ^ tag;
           used_modules = (used_modules () @
@@ -3088,10 +4357,10 @@ i*)
       let chopped_fusions, chopped_brakets =
         chop_amplitudes size amplitudes in
 
-      let fusions_modules = 
+      let fusions_modules =
         List.map fusions_module chopped_fusions in
 
-      let brakets_modules = 
+      let brakets_modules =
         List.map brakets_module chopped_brakets in
 
       let print_implementations () =
@@ -3101,7 +4370,7 @@ i*)
           (print_compute_chops chopped_fusions chopped_brakets)
           amplitudes in
 
-      let public_module = 
+      let public_module =
         { module_name = name;
            used_modules = (used_modules () @
                            [Full constants_module.module_name;
@@ -3156,22 +4425,22 @@ module Fortran = Make_Fortran(Fortran_Fermions)
 (* \thocwmodulesubsection{Majorana Fermions} *)
 
 (* \begin{JR}
-   For this function we need a different approach due to our aim of 
+   For this function we need a different approach due to our aim of
    implementing the fermion vertices with the right line as ingoing (in a
    calculational sense) and the left line in a fusion as outgoing. In
    defining all external lines and the fermionic wavefunctions built out of
    them as ingoing we have to invert the left lines to make them outgoing.
-   This happens by multiplying them with the inverse charge conjugation 
-   matrix in an appropriate representation and then transposing it. We must 
+   This happens by multiplying them with the inverse charge conjugation
+   matrix in an appropriate representation and then transposing it. We must
    distinguish whether the direction of calculation and the physical direction
-   of the fermion number flow are parallel or antiparallel. In the first case 
-   we can use the "normal" Feynman rules for Dirac particles, while in the 
-   second, according to the paper of Denner et al., we have to reverse the 
-   sign of the vector and antisymmetric bilinears of the Dirac spinors, cf. 
-   the [Coupling] module. 
+   of the fermion number flow are parallel or antiparallel. In the first case
+   we can use the "normal" Feynman rules for Dirac particles, while in the
+   second, according to the paper of Denner et al., we have to reverse the
+   sign of the vector and antisymmetric bilinears of the Dirac spinors, cf.
+   the [Coupling] module.
 
-   Note the subtlety for the left- and righthanded couplings: Only the vector 
-   part of these couplings changes in the appropriate cases its sign, 
+   Note the subtlety for the left- and righthanded couplings: Only the vector
+   part of these couplings changes in the appropriate cases its sign,
    changing the chirality to the negative of the opposite.
    \end{JR} *)
 
@@ -3194,7 +4463,7 @@ module Fortran_Majorana_Fermions : Fermions =
    a [u] spinor and all outgoing fermions a [v] spinor, no matter whether they
    are Dirac fermions, antifermions or Majorana fermions.
    \end{JR} *)
-        
+
     let psi_incoming = "u"
     let brs_psi_incoming = "brs_u"
     let psibar_incoming = "u"
@@ -3204,7 +4473,7 @@ module Fortran_Majorana_Fermions : Fermions =
     let grav_incoming = "ueps"
 
     let psi_outgoing = "v"
-    let brs_psi_outgoing = "brs_v"    
+    let brs_psi_outgoing = "brs_v"
     let psibar_outgoing = "v"
     let brs_psibar_outgoing = "brs_v"
     let chi_outgoing = "v"
@@ -3232,8 +4501,8 @@ module Fortran_Majorana_Fermions : Fermions =
       | -1 -> "(-" ^ c ^")"
       | coeff -> string_of_int coeff ^ "*" ^ c
 
-    let format_coupling_2 coeff c = 
-      match coeff with 
+    let format_coupling_2 coeff c =
+      match coeff with
       | 1 -> c
       | -1 -> "-" ^ c
       | coeff -> string_of_int coeff ^ "*" ^ c
@@ -3242,27 +4511,27 @@ module Fortran_Majorana_Fermions : Fermions =
      JR's coupling constant HACK, necessitated by tho's bad design descition.
    \end{dubious} *)
 
-    let fastener s i = 
-      try 
+    let fastener s i =
+      try
         let offset = (String.index s '(') in
         if ((String.get s (String.length s - 1)) != ')') then
           failwith "fastener: wrong usage of parentheses"
         else
           let func_name = (String.sub s 0 offset) and
-	      tail =
-	    (String.sub s (succ offset) (String.length s - offset - 2)) in 
-          if (String.contains func_name ')') || 
-	    (String.contains tail '(') ||
-            (String.contains tail ')') then
+              tail =
+                (String.sub s (succ offset) (String.length s - offset - 2)) in
+          if (String.contains func_name ')') ||
+             (String.contains tail '(') ||
+             (String.contains tail ')') then
             failwith "fastener: wrong usage of parentheses"
-          else      
+          else
             func_name ^ "(" ^ string_of_int i ^ "," ^ tail ^ ")"
       with
-      | Not_found ->  
+      | Not_found ->
           if (String.contains s ')') then
-	    failwith "fastener: wrong usage of parentheses"
+            failwith "fastener: wrong usage of parentheses"
           else
-	    s ^ "(" ^ string_of_int i ^ ")"
+            s ^ "(" ^ string_of_int i ^ ")"
 
     let print_fermion_current coeff f c wf1 wf2 fusion =
       let c = format_coupling coeff c in
@@ -3274,7 +4543,7 @@ module Fortran_Majorana_Fermions : Fermions =
     let print_fermion_current2 coeff f c wf1 wf2 fusion =
       let c = format_coupling_2 coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       match fusion with
       | F13 | F31 -> printf "%s_ff(%s,%s,%s,%s)" f c1 c2 wf1 wf2
       | F23 | F21 -> printf "f_%sf(%s,%s,%s,%s)" f c1 c2 wf1 wf2
@@ -3293,14 +4562,14 @@ module Fortran_Majorana_Fermions : Fermions =
     let print_fermion_current2_vector coeff f c wf1 wf2 fusion =
       let c  = format_coupling_2 coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       match fusion with
       | F13 -> printf "%s_ff(%s,%s,%s,%s)" f c1 c2 wf1 wf2
       | F31 -> printf "%s_ff(-(%s),%s,%s,%s)" f c1 c2 wf1 wf2
-      | F23 -> printf "f_%sf(%s,%s,%s,%s)" f c1 c2 wf1 wf2 
-      | F32 -> printf "f_%sf(%s,%s,%s,%s)" f c1 c2 wf2 wf1 
-      | F12 -> printf "f_%sf(-(%s),%s,%s,%s)" f c1 c2 wf2 wf1 
-      | F21 -> printf "f_%sf(-(%s),%s,%s,%s)" f c1 c2 wf1 wf2 
+      | F23 -> printf "f_%sf(%s,%s,%s,%s)" f c1 c2 wf1 wf2
+      | F32 -> printf "f_%sf(%s,%s,%s,%s)" f c1 c2 wf2 wf1
+      | F12 -> printf "f_%sf(-(%s),%s,%s,%s)" f c1 c2 wf2 wf1
+      | F21 -> printf "f_%sf(-(%s),%s,%s,%s)" f c1 c2 wf1 wf2
 
     let print_fermion_current_chiral coeff f1 f2 c wf1 wf2 fusion =
       let c = format_coupling coeff c in
@@ -3315,14 +4584,14 @@ module Fortran_Majorana_Fermions : Fermions =
     let print_fermion_current2_chiral coeff f c wf1 wf2 fusion =
       let c = format_coupling_2 coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in  
+          c2 = fastener c 2 in
       match fusion with
       | F13 -> printf "%s_ff(%s,%s,%s,%s)" f c1 c2 wf1 wf2
       | F31 -> printf "%s_ff(-(%s),-(%s),%s,%s)" f c2 c1 wf1 wf2
-      | F23 -> printf "f_%sf(%s,%s,%s,%s)" f c1 c2 wf1 wf2 
-      | F32 -> printf "f_%sf(%s,%s,%s,%s)" f c1 c2 wf2 wf1 
-      | F12 -> printf "f_%sf(-(%s),-(%s),%s,%s)" f c2 c1 wf2 wf1 
-      | F21 -> printf "f_%sf(-(%s),-(%s),%s,%s)" f c2 c1 wf1 wf2 
+      | F23 -> printf "f_%sf(%s,%s,%s,%s)" f c1 c2 wf1 wf2
+      | F32 -> printf "f_%sf(%s,%s,%s,%s)" f c1 c2 wf2 wf1
+      | F12 -> printf "f_%sf(-(%s),-(%s),%s,%s)" f c2 c1 wf2 wf1
+      | F21 -> printf "f_%sf(-(%s),-(%s),%s,%s)" f c2 c1 wf1 wf2
 
     let print_current = function
       | coeff, _, VA, _ -> print_fermion_current2_vector coeff "va"
@@ -3338,45 +4607,45 @@ module Fortran_Majorana_Fermions : Fermions =
       | coeff, _, SR, _ -> print_fermion_current coeff "sr"
       | coeff, _, SLR, _ -> print_fermion_current2 coeff "slr"
       | coeff, _, POT, _ -> print_fermion_current_vector coeff "pot"
-      | coeff, _, _, _ -> invalid_arg 
+      | _, _, _, _ -> invalid_arg
             "Targets.Fortran_Majorana_Fermions: Not needed in the models"
 
     let print_current_p = function
-      | coeff, Psi, SL, Psi -> print_fermion_current coeff "sl"   
-      | coeff, Psi, SR, Psi -> print_fermion_current coeff "sr"   
-      | coeff, Psi, SLR, Psi -> print_fermion_current2 coeff "slr"       
-      | coeff, _, _, _ -> invalid_arg 
+      | coeff, Psi, SL, Psi -> print_fermion_current coeff "sl"
+      | coeff, Psi, SR, Psi -> print_fermion_current coeff "sr"
+      | coeff, Psi, SLR, Psi -> print_fermion_current2 coeff "slr"
+      | _, _, _, _ -> invalid_arg
             "Targets.Fortran_Majorana_Fermions: Not needed in the used models"
 
     let print_current_b = function
       | coeff, Psibar, SL, Psibar -> print_fermion_current coeff "sl"
       | coeff, Psibar, SR, Psibar -> print_fermion_current coeff "sr"
       | coeff, Psibar, SLR, Psibar -> print_fermion_current2 coeff "slr"
-      | coeff, _, _, _  -> invalid_arg 
+      | _, _, _, _  -> invalid_arg
             "Targets.Fortran_Majorana_Fermions: Not needed in the used models"
 
 (* This function is for the vertices with three particles including two
    fermions but also a momentum, therefore with a dimensionful coupling
    constant, e.g. the gravitino vertices. One has to dinstinguish between
-   the two kinds of canonical orders in the string of gamma matrices. Of 
+   the two kinds of canonical orders in the string of gamma matrices. Of
    course, the direction of the string of gamma matrices is reversed if one
-   goes from the [Gravbar, _, Psi] to the [Psibar, _, Grav] vertices, and 
+   goes from the [Gravbar, _, Psi] to the [Psibar, _, Grav] vertices, and
    the same is true for the couplings of the gravitino to the Majorana
-   fermions. For more details see the tables in the [coupling] 
+   fermions. For more details see the tables in the [coupling]
    implementation. *)
 
 (* We now have to fix the directions of the momenta. For making the compiler
-   happy and because we don't want to make constructions of infinite 
-   complexity we list the momentum including vertices without gravitinos 
+   happy and because we don't want to make constructions of infinite
+   complexity we list the momentum including vertices without gravitinos
    here; the pattern matching says that's better. Perhaps we have to find a
-   better name now.  
+   better name now.
 
-   For the cases of $MOM$, $MOM5$, $MOML$ and $MOMR$ which arise only in 
-   BRST transformations we take the mass as a coupling constant. For 
+   For the cases of $MOM$, $MOM5$, $MOML$ and $MOMR$ which arise only in
+   BRST transformations we take the mass as a coupling constant. For
    $VMOM$ we don't need a mass either. These vertices are like kinetic terms
    and so need not have a coupling constant. By this we avoid a strange and
-   awful construction with a new variable. But be careful with a 
-   generalization if you want to use these vertices for other purposes. 
+   awful construction with a new variable. But be careful with a
+   generalization if you want to use these vertices for other purposes.
 *)
 
     let format_coupling_mom coeff c =
@@ -3385,9 +4654,9 @@ module Fortran_Majorana_Fermions : Fermions =
       | -1 -> "(-" ^ c ^")"
       | coeff -> string_of_int coeff ^ "*" ^ c
 
-    let commute_proj f = 
-      match f with 
-      | "moml" -> "lmom" 
+    let commute_proj f =
+      match f with
+      | "moml" -> "lmom"
       | "momr" -> "rmom"
       | "lmom" -> "moml"
       | "rmom" -> "momr"
@@ -3402,46 +4671,49 @@ module Fortran_Majorana_Fermions : Fermions =
     let print_fermion_current_mom coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling_mom coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       match fusion with
-      | F13 -> printf "%s_ff(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p12 
+      | F13 -> printf "%s_ff(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p12
       | F31 -> printf "%s_ff(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p12
       | F23 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p1
-      | F32 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf2 wf1 p2 
+      | F32 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf2 wf1 p2
       | F12 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf2 wf1 p2
       | F21 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p1
 
+(*i TODO: (bcn 2014-03-09) print_fermion_current_mom_vector Not used?! *)
+      (*
     let print_fermion_current_mom_vector coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling_mom coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       match fusion with
-      | F13 -> printf "%s_ff(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p12 
+      | F13 -> printf "%s_ff(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p12
       | F31 -> printf "%s_ff(-%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p12
       | F23 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p1
-      | F32 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf2 wf1 p2 
+      | F32 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf2 wf1 p2
       | F12 -> printf "f_%sf(-%s,%s,%s,%s,%s)" f c1 c2 wf2 wf1 p2
       | F21 -> printf "f_%sf(-%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p1
+      i*)
 
     let print_fermion_current_mom_sign coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling_mom coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       match fusion with
-      | F13 -> printf "%s_ff(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p12 
+      | F13 -> printf "%s_ff(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p12
       | F31 -> printf "%s_ff(%s,%s,%s,%s,-(%s))" f c1 c2 wf1 wf2 p12
       | F23 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p1
-      | F32 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf2 wf1 p2 
+      | F32 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf2 wf1 p2
       | F12 -> printf "f_%sf(%s,%s,%s,%s,-(%s))" f c1 c2 wf2 wf1 p2
       | F21 -> printf "f_%sf(%s,%s,%s,%s,-(%s))" f c1 c2 wf1 wf2 p1
 
     let print_fermion_current_mom_sign_1 coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling coeff c in
       match fusion with
-      | F13 -> printf "%s_ff(%s,%s,%s,%s)" f c wf1 wf2 p12 
+      | F13 -> printf "%s_ff(%s,%s,%s,%s)" f c wf1 wf2 p12
       | F31 -> printf "%s_ff(%s,%s,%s,-(%s))" f c wf1 wf2 p12
       | F23 -> printf "f_%sf(%s,%s,%s,%s)" f c wf1 wf2 p1
-      | F32 -> printf "f_%sf(%s,%s,%s,%s)" f c wf2 wf1 p2 
+      | F32 -> printf "f_%sf(%s,%s,%s,%s)" f c wf2 wf1 p2
       | F12 -> printf "f_%sf(%s,%s,%s,-(%s))" f c wf2 wf1 p2
       | F21 -> printf "f_%sf(%s,%s,%s,-(%s))" f c wf1 wf2 p1
 
@@ -3449,56 +4721,56 @@ module Fortran_Majorana_Fermions : Fermions =
       let c  = format_coupling_mom coeff c and
           cf = commute_proj f in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
-      match fusion with 
+          c2 = fastener c 2 in
+      match fusion with
       | F13 -> printf "%s_ff(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p12
       | F31 -> printf "%s_ff(%s,%s,%s, %s,-(%s))" cf c1 c2 wf1 wf2 p12
       | F23 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p1
-      | F32 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf2 wf1 p2 
+      | F32 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf2 wf1 p2
       | F12 -> printf "f_%sf(%s,%s,%s,%s,-(%s))" cf c1 c2 wf2 wf1 p2
       | F21 -> printf "f_%sf(%s,%s,%s,%s,-(%s))" cf c1 c2 wf1 wf2 p1
 
     let print_fermion_g_current coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling coeff c in
       match fusion with
-      | F13 -> printf "%s_grf(%s,%s,%s,%s)" f c wf1 wf2 p12 
+      | F13 -> printf "%s_grf(%s,%s,%s,%s)" f c wf1 wf2 p12
       | F31 -> printf "%s_fgr(%s,%s,%s,%s)" f c wf1 wf2 p12
       | F23 -> printf "gr_%sf(%s,%s,%s,%s)" f c wf1 wf2 p1
-      | F32 -> printf "gr_%sf(%s,%s,%s,%s)" f c wf2 wf1 p2 
+      | F32 -> printf "gr_%sf(%s,%s,%s,%s)" f c wf2 wf1 p2
       | F12 -> printf "f_%sgr(%s,%s,%s,%s)" f c wf2 wf1 p2
       | F21 -> printf "f_%sgr(%s,%s,%s,%s)" f c wf1 wf2 p1
 
     let print_fermion_g_2_current coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling coeff c in
       match fusion with
-      | F13 -> printf "%s_grf(%s(1),%s(2),%s,%s,%s)" f c c wf1 wf2 p12 
+      | F13 -> printf "%s_grf(%s(1),%s(2),%s,%s,%s)" f c c wf1 wf2 p12
       | F31 -> printf "%s_fgr(%s(1),%s(2),%s,%s,%s)" f c c wf1 wf2 p12
       | F23 -> printf "gr_%sf(%s(1),%s(2),%s,%s,%s)" f c c wf1 wf2 p1
-      | F32 -> printf "gr_%sf(%s(1),%s(2),%s,%s,%s)" f c c wf2 wf1 p2 
+      | F32 -> printf "gr_%sf(%s(1),%s(2),%s,%s,%s)" f c c wf2 wf1 p2
       | F12 -> printf "f_%sgr(%s(1),%s(2),%s,%s,%s)" f c c wf2 wf1 p2
       | F21 -> printf "f_%sgr(%s(1),%s(2),%s,%s,%s)" f c c wf1 wf2 p1
 
     let print_fermion_g_current_rev coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling coeff c in
       match fusion with
-      | F13 -> printf "%s_fgr(%s,%s,%s,%s)" f c wf1 wf2 p12 
+      | F13 -> printf "%s_fgr(%s,%s,%s,%s)" f c wf1 wf2 p12
       | F31 -> printf "%s_grf(%s,%s,%s,%s)" f c wf1 wf2 p12
       | F23 -> printf "f_%sgr(%s,%s,%s,%s)" f c wf1 wf2 p1
-      | F32 -> printf "f_%sgr(%s,%s,%s,%s)" f c wf2 wf1 p2 
+      | F32 -> printf "f_%sgr(%s,%s,%s,%s)" f c wf2 wf1 p2
       | F12 -> printf "gr_%sf(%s,%s,%s,%s)" f c wf2 wf1 p2
       | F21 -> printf "gr_%sf(%s,%s,%s,%s)" f c wf1 wf2 p1
 
     let print_fermion_g_2_current_rev coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling coeff c in
       match fusion with
-      | F13 -> printf "%s_fgr(%s(1),%s(2),%s,%s,%s)" f c c wf1 wf2 p12 
+      | F13 -> printf "%s_fgr(%s(1),%s(2),%s,%s,%s)" f c c wf1 wf2 p12
       | F31 -> printf "%s_grf(%s(1),%s(2),%s,%s,%s)" f c c wf1 wf2 p12
       | F23 -> printf "f_%sgr(%s(1),%s(2),%s,%s,%s)" f c c wf1 wf2 p1
-      | F32 -> printf "f_%sgr(%s(1),%s(2),%s,%s,%s)" f c c wf2 wf1 p2 
+      | F32 -> printf "f_%sgr(%s(1),%s(2),%s,%s,%s)" f c c wf2 wf1 p2
       | F12 -> printf "gr_%sf(%s(1),%s(2),%s,%s,%s)" f c c wf2 wf1 p2
       | F21 -> printf "gr_%sf(%s(1),%s(2),%s,%s,%s)" f c c wf1 wf2 p1
 
-    let print_fermion_g_current_vector coeff f c wf1 wf2 p1 p2 p12 fusion =
+    let print_fermion_g_current_vector coeff f c wf1 wf2 _ _ _ fusion =
       let c = format_coupling coeff c in
       match fusion with
       | F13 -> printf "%s_grf(%s,%s,%s)" f c wf1 wf2
@@ -3508,7 +4780,7 @@ module Fortran_Majorana_Fermions : Fermions =
       | F12 -> printf "f_%sgr(-%s,%s,%s)" f c wf2 wf1
       | F21 -> printf "f_%sgr(-%s,%s,%s)" f c wf1 wf2
 
-    let print_fermion_g_current_vector_rev coeff f c wf1 wf2 p1 p2 p12 fusion =
+    let print_fermion_g_current_vector_rev coeff f c wf1 wf2 _ _ _ fusion =
       let c = format_coupling coeff c in
       match fusion with
       | F13 -> printf "%s_fgr(%s,%s,%s)" f c wf1 wf2
@@ -3531,8 +4803,8 @@ module Fortran_Majorana_Fermions : Fermions =
       | coeff, Gravbar, SR, _ -> print_fermion_g_current coeff "sr"
       | coeff, Gravbar, SLR, _ -> print_fermion_g_2_current coeff "slr"
       | coeff, Gravbar, P, _ -> print_fermion_g_current coeff "p"
-      | coeff, Gravbar, V, _ -> print_fermion_g_current coeff "v"   
-      | coeff, Gravbar, VLR, _ -> print_fermion_g_2_current coeff "vlr"   
+      | coeff, Gravbar, V, _ -> print_fermion_g_current coeff "v"
+      | coeff, Gravbar, VLR, _ -> print_fermion_g_2_current coeff "vlr"
       | coeff, Gravbar, POT, _ -> print_fermion_g_current_vector coeff "pot"
       | coeff, _, S, Grav -> print_fermion_g_current_rev coeff "s"
       | coeff, _, SL, Grav -> print_fermion_g_current_rev coeff "sl"
@@ -3542,24 +4814,24 @@ module Fortran_Majorana_Fermions : Fermions =
       | coeff, _, V, Grav -> print_fermion_g_current_rev coeff "v"
       | coeff, _, VLR, Grav -> print_fermion_g_2_current_rev coeff "vlr"
       | coeff, _, POT, Grav -> print_fermion_g_current_vector_rev coeff "pot"
-      | coeff, _, _, _ -> invalid_arg
+      | _, _, _, _ -> invalid_arg
           "Targets.Fortran_Majorana_Fermions: not used in the models"
 
     let print_current_mom = function
-      | coeff, _, _, _ -> invalid_arg
+      | _, _, _, _ -> invalid_arg
             "Targets.Fortran_Majorana_Fermions: Not needed in the models"
 
-(* We need support for dimension-5 vertices with two fermions and two 
+(* We need support for dimension-5 vertices with two fermions and two
    bosons, appearing in theories of supergravity and also together with in
-   insertions of the supersymmetric current. There is a canonical order 
-   [fermionbar], [boson_1], [boson_2], [fermion], so what one has to do is a 
-   mapping from the fusions [F123] etc. to the order of the three wave 
+   insertions of the supersymmetric current. There is a canonical order
+   [fermionbar], [boson_1], [boson_2], [fermion], so what one has to do is a
+   mapping from the fusions [F123] etc. to the order of the three wave
    functions [wf1], [wf2] and [wf3]. *)
 
 (* The function [d_p] (for distinct the particle) distinguishes which particle
    (scalar or vector) must be fused to in the special functions. *)
 
-    let d_p = function 
+    let d_p = function
       | 1, ("sv"|"pv"|"svl"|"svr"|"slrv") -> "1"
       | 1, _ -> ""
       | 2, ("sv"|"pv"|"svl"|"svr"|"slrv") -> "2"
@@ -3567,7 +4839,7 @@ module Fortran_Majorana_Fermions : Fermions =
       | _, _ -> invalid_arg "Targets.Fortran_Majorana_Fermions: not used"
 
     let wf_of_f wf1 wf2 wf3 f =
-      match f with 
+      match f with
       | (F123|F423) -> [wf2; wf3; wf1]
       | (F213|F243|F143|F142|F413|F412) -> [wf1; wf3; wf2]
       | (F132|F432) -> [wf3; wf2; wf1]
@@ -3575,13 +4847,13 @@ module Fortran_Majorana_Fermions : Fermions =
       | (F312|F342) -> [wf3; wf1; wf2]
       | (F321|F324|F314|F214|F341|F241) -> [wf2; wf1; wf3]
 
-    let print_fermion_g4_brs_vector_current coeff f c wf1 wf2 wf3 fusion = 
+    let print_fermion_g4_brs_vector_current coeff f c wf1 wf2 wf3 fusion =
       let cf = commute_proj f and
           cp = format_coupling coeff c and
           cm = if f = "pv" then
-            format_coupling coeff c 
+            format_coupling coeff c
           else
-            format_coupling (-coeff) c 
+            format_coupling (-coeff) c
       and
           d1 = d_p (1,f) and
           d2 = d_p (2,f) and
@@ -3589,16 +4861,16 @@ module Fortran_Majorana_Fermions : Fermions =
           f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
           f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
-          printf "f_%sf(%s,%s,%s,%s)" cf cm f1 f2 f3 
-      | (F423|F243|F432|F234|F342|F324) -> 
-          printf "f_%sf(%s,%s,%s,%s)" f cp f1 f2 f3       
-      | (F134|F143|F314) -> printf "%s%s_ff(%s,%s,%s,%s)" f d1 cp f1 f2 f3 
-      | (F124|F142|F214) -> printf "%s%s_ff(%s,%s,%s,%s)" f d2 cp f1 f2 f3 
-      | (F413|F431|F341) -> printf "%s%s_ff(%s,%s,%s,%s)" cf d1 cm f1 f2 f3 
-      | (F241|F412|F421) -> printf "%s%s_ff(%s,%s,%s,%s)" cf d2 cm f1 f2 f3 
+      | (F123|F213|F132|F231|F312|F321) ->
+          printf "f_%sf(%s,%s,%s,%s)" cf cm f1 f2 f3
+      | (F423|F243|F432|F234|F342|F324) ->
+          printf "f_%sf(%s,%s,%s,%s)" f cp f1 f2 f3
+      | (F134|F143|F314) -> printf "%s%s_ff(%s,%s,%s,%s)" f d1 cp f1 f2 f3
+      | (F124|F142|F214) -> printf "%s%s_ff(%s,%s,%s,%s)" f d2 cp f1 f2 f3
+      | (F413|F431|F341) -> printf "%s%s_ff(%s,%s,%s,%s)" cf d1 cm f1 f2 f3
+      | (F241|F412|F421) -> printf "%s%s_ff(%s,%s,%s,%s)" cf d2 cm f1 f2 f3
 
-    let print_fermion_g4_svlr_current coeff f c wf1 wf2 wf3 fusion = 
+    let print_fermion_g4_svlr_current coeff _ c wf1 wf2 wf3 fusion =
       let c = format_coupling_2 coeff c and
           f1 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 0) and
           f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
@@ -3606,66 +4878,45 @@ module Fortran_Majorana_Fermions : Fermions =
       let c1 = fastener c 1 and
           c2 = fastener c 2 in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
-          printf "f_svlrf(-(%s),-(%s),%s,%s,%s)" c2 c1 f1 f2 f3 
-      | (F423|F243|F432|F234|F342|F324) -> 
-          printf "f_svlrf(%s,%s,%s,%s,%s)" c1 c2 f1 f2 f3       
-      | (F134|F143|F314) -> 
-          printf "svlr2_ff(%s,%s,%s,%s,%s)" c1 c2 f1 f2 f3 
-      | (F124|F142|F214) -> 
-          printf "svlr1_ff(%s,%s,%s,%s,%s)" c1 c2 f1 f2 f3 
-      | (F413|F431|F341) -> 
-          printf "svlr2_ff(-(%s),-(%s),%s,%s,%s)" c2 c1 f1 f2 f3 
-      | (F241|F412|F421) -> 
-          printf "svlr1_ff(-(%s),-(%s),%s,%s,%s)" c2 c1 f1 f2 f3 
+      | (F123|F213|F132|F231|F312|F321) ->
+          printf "f_svlrf(-(%s),-(%s),%s,%s,%s)" c2 c1 f1 f2 f3
+      | (F423|F243|F432|F234|F342|F324) ->
+          printf "f_svlrf(%s,%s,%s,%s,%s)" c1 c2 f1 f2 f3
+      | (F134|F143|F314) ->
+          printf "svlr2_ff(%s,%s,%s,%s,%s)" c1 c2 f1 f2 f3
+      | (F124|F142|F214) ->
+          printf "svlr1_ff(%s,%s,%s,%s,%s)" c1 c2 f1 f2 f3
+      | (F413|F431|F341) ->
+          printf "svlr2_ff(-(%s),-(%s),%s,%s,%s)" c2 c1 f1 f2 f3
+      | (F241|F412|F421) ->
+          printf "svlr1_ff(-(%s),-(%s),%s,%s,%s)" c2 c1 f1 f2 f3
 
-    let print_fermion_s2_current coeff f c wf1 wf2 wf3 fusion = 
+    let print_fermion_s2_current coeff f c wf1 wf2 wf3 fusion =
       let cp = format_coupling coeff c and
-          cm = if f = "p" then 
-            format_coupling (-coeff) c 
+          cm = if f = "p" then
+            format_coupling (-coeff) c
           else
             format_coupling coeff c
       and
-          cf = commute_proj f and          
+          cf = commute_proj f and
           f1 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 0) and
           f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
           f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
-          printf "%s * f_%sf(%s,%s,%s)" f1 cf cm f2 f3 
-      | (F423|F243|F432|F234|F342|F324) -> 
-          printf "%s * f_%sf(%s,%s,%s)" f1 f cp f2 f3       
-      | (F134|F143|F314) -> 
-          printf "%s * %s_ff(%s,%s,%s)" f2 f cp f1 f3 
-      | (F124|F142|F214) ->                
-          printf "%s * %s_ff(%s,%s,%s)" f2 f cp f1 f3 
-      | (F413|F431|F341) ->                
-          printf "%s * %s_ff(%s,%s,%s)" f2 cf cm f1 f3 
-      | (F241|F412|F421) ->                
-          printf "%s * %s_ff(%s,%s,%s)" f2 cf cm f1 f3 
+      | (F123|F213|F132|F231|F312|F321) ->
+          printf "%s * f_%sf(%s,%s,%s)" f1 cf cm f2 f3
+      | (F423|F243|F432|F234|F342|F324) ->
+          printf "%s * f_%sf(%s,%s,%s)" f1 f cp f2 f3
+      | (F134|F143|F314) ->
+          printf "%s * %s_ff(%s,%s,%s)" f2 f cp f1 f3
+      | (F124|F142|F214) ->
+          printf "%s * %s_ff(%s,%s,%s)" f2 f cp f1 f3
+      | (F413|F431|F341) ->
+          printf "%s * %s_ff(%s,%s,%s)" f2 cf cm f1 f3
+      | (F241|F412|F421) ->
+          printf "%s * %s_ff(%s,%s,%s)" f2 cf cm f1 f3
 
-    let print_fermion_s2p_current coeff f c wf1 wf2 wf3 fusion = 
-      let c = format_coupling_2 coeff c and
-          f1 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 0) and
-          f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
-          f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
-      let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
-      match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
-          printf "%s * f_%sf(%s,-(%s),%s,%s)" f1 f c1 c2 f2 f3 
-      | (F423|F243|F432|F234|F342|F324) -> 
-          printf "%s * f_%sf(%s,%s,%s,%s)" f1 f c1 c2 f2 f3       
-      | (F134|F143|F314) -> 
-          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c1 c2 f1 f3 
-      | (F124|F142|F214) ->                
-          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c1 c2 f1 f3 
-      | (F413|F431|F341) ->                
-          printf "%s * %s_ff(%s,-(%s),%s,%s)" f2 f c1 c2 f1 f3 
-      | (F241|F412|F421) ->                
-          printf "%s * %s_ff(%s,-(%s),%s,%s)" f2 f c1 c2 f1 f3 
-
-    let print_fermion_s2lr_current coeff f c wf1 wf2 wf3 fusion = 
+    let print_fermion_s2p_current coeff f c wf1 wf2 wf3 fusion =
       let c = format_coupling_2 coeff c and
           f1 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 0) and
           f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
@@ -3673,18 +4924,39 @@ module Fortran_Majorana_Fermions : Fermions =
       let c1 = fastener c 1 and
           c2 = fastener c 2 in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
-          printf "%s * f_%sf(%s,%s,%s,%s)" f1 f c2 c1 f2 f3 
-      | (F423|F243|F432|F234|F342|F324) -> 
-          printf "%s * f_%sf(%s,%s,%s,%s)" f1 f c1 c2 f2 f3       
-      | (F134|F143|F314) -> 
-          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c1 c2 f1 f3 
-      | (F124|F142|F214) ->                
-          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c1 c2 f1 f3 
-      | (F413|F431|F341) ->                
-          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c2 c1 f1 f3 
-      | (F241|F412|F421) ->                
-          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c2 c1 f1 f3 
+      | (F123|F213|F132|F231|F312|F321) ->
+          printf "%s * f_%sf(%s,-(%s),%s,%s)" f1 f c1 c2 f2 f3
+      | (F423|F243|F432|F234|F342|F324) ->
+          printf "%s * f_%sf(%s,%s,%s,%s)" f1 f c1 c2 f2 f3
+      | (F134|F143|F314) ->
+          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c1 c2 f1 f3
+      | (F124|F142|F214) ->
+          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c1 c2 f1 f3
+      | (F413|F431|F341) ->
+          printf "%s * %s_ff(%s,-(%s),%s,%s)" f2 f c1 c2 f1 f3
+      | (F241|F412|F421) ->
+          printf "%s * %s_ff(%s,-(%s),%s,%s)" f2 f c1 c2 f1 f3
+
+    let print_fermion_s2lr_current coeff f c wf1 wf2 wf3 fusion =
+      let c = format_coupling_2 coeff c and
+          f1 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 0) and
+          f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
+          f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
+      let c1 = fastener c 1 and
+          c2 = fastener c 2 in
+      match fusion with
+      | (F123|F213|F132|F231|F312|F321) ->
+          printf "%s * f_%sf(%s,%s,%s,%s)" f1 f c2 c1 f2 f3
+      | (F423|F243|F432|F234|F342|F324) ->
+          printf "%s * f_%sf(%s,%s,%s,%s)" f1 f c1 c2 f2 f3
+      | (F134|F143|F314) ->
+          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c1 c2 f1 f3
+      | (F124|F142|F214) ->
+          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c1 c2 f1 f3
+      | (F413|F431|F341) ->
+          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c2 c1 f1 f3
+      | (F241|F412|F421) ->
+          printf "%s * %s_ff(%s,%s,%s,%s)" f2 f c2 c1 f1 f3
 
     let print_fermion_g4_current coeff f c wf1 wf2 wf3 fusion =
       let c = format_coupling coeff c and
@@ -3692,14 +4964,14 @@ module Fortran_Majorana_Fermions : Fermions =
           f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
           f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
+      | (F123|F213|F132|F231|F312|F321) ->
           printf "f_%sgr(-%s,%s,%s,%s)" f c f1 f2 f3
       | (F423|F243|F432|F234|F342|F324) ->
           printf "gr_%sf(%s,%s,%s,%s)" f c f1 f2 f3
       | (F134|F143|F314|F124|F142|F214) ->
           printf "%s_grf(%s,%s,%s,%s)" f c f1 f2 f3
-      | (F413|F431|F341|F241|F412|F421) -> 
-          printf "%s_fgr(-%s,%s,%s,%s)" f c f1 f2 f3 
+      | (F413|F431|F341|F241|F412|F421) ->
+          printf "%s_fgr(-%s,%s,%s,%s)" f c f1 f2 f3
 
     let print_fermion_2_g4_current coeff f c wf1 wf2 wf3 fusion =
       let f1 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 0) and
@@ -3707,16 +4979,16 @@ module Fortran_Majorana_Fermions : Fermions =
           f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
       let c = format_coupling_2 coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
+      | (F123|F213|F132|F231|F312|F321) ->
           printf "f_%sgr(-(%s),-(%s),%s,%s,%s)" f c2 c1 f1 f2 f3
       | (F423|F243|F432|F234|F342|F324) ->
           printf "gr_%sf(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3
       | (F134|F143|F314|F124|F142|F214) ->
           printf "%s_grf(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3
-      | (F413|F431|F341|F241|F412|F421) -> 
-          printf "%s_fgr(-(%s),-(%s),%s,%s,%s)" f c2 c1 f1 f2 f3 
+      | (F413|F431|F341|F241|F412|F421) ->
+          printf "%s_fgr(-(%s),-(%s),%s,%s,%s)" f c2 c1 f1 f2 f3
 
     let print_fermion_2_g4_current coeff f c wf1 wf2 wf3 fusion =
       let f1 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 0) and
@@ -3724,16 +4996,16 @@ module Fortran_Majorana_Fermions : Fermions =
           f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
       let c = format_coupling_2 coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
+      | (F123|F213|F132|F231|F312|F321) ->
           printf "f_%sgr(-(%s),-(%s),%s,%s,%s)" f c2 c1 f1 f2 f3
       | (F423|F243|F432|F234|F342|F324) ->
           printf "gr_%sf(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3
       | (F134|F143|F314|F124|F142|F214) ->
           printf "%s_grf(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3
-      | (F413|F431|F341|F241|F412|F421) -> 
-          printf "%s_fgr(-(%s),-(%s),%s,%s,%s)" f c2 c1 f1 f2 f3 
+      | (F413|F431|F341|F241|F412|F421) ->
+          printf "%s_fgr(-(%s),-(%s),%s,%s,%s)" f c2 c1 f1 f2 f3
 
 
     let print_fermion_g4_current_rev coeff f c wf1 wf2 wf3 fusion =
@@ -3742,19 +5014,19 @@ module Fortran_Majorana_Fermions : Fermions =
           f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
           f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
-          printf "f_%sgr(%s,%s,%s,%s)" f c f1 f2 f3 
-      | (F423|F243|F432|F234|F342|F324) -> 
-          printf "gr_%sf(-%s,%s,%s,%s)" f c f1 f2 f3 
-      | (F134|F143|F314|F124|F142|F214) -> 
-          printf "%s_grf(-%s,%s,%s,%s)" f c f1 f2 f3 
-      | (F413|F431|F341|F241|F412|F421) -> 
-          printf "%s_fgr(%s,%s,%s,%s)" f c f1 f2 f3 
+      | (F123|F213|F132|F231|F312|F321) ->
+          printf "f_%sgr(%s,%s,%s,%s)" f c f1 f2 f3
+      | (F423|F243|F432|F234|F342|F324) ->
+          printf "gr_%sf(-%s,%s,%s,%s)" f c f1 f2 f3
+      | (F134|F143|F314|F124|F142|F214) ->
+          printf "%s_grf(-%s,%s,%s,%s)" f c f1 f2 f3
+      | (F413|F431|F341|F241|F412|F421) ->
+          printf "%s_fgr(%s,%s,%s,%s)" f c f1 f2 f3
 
 (* Here we have to distinguish which of the two bosons is produced in the
    fusion of three particles which include both fermions. *)
 
-    let print_fermion_g4_vector_current coeff f c wf1 wf2 wf3 fusion = 
+    let print_fermion_g4_vector_current coeff f c wf1 wf2 wf3 fusion =
       let c = format_coupling coeff c and
           d1 = d_p (1,f) and
           d2 = d_p (2,f) and
@@ -3762,16 +5034,16 @@ module Fortran_Majorana_Fermions : Fermions =
           f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
           f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
-          printf "f_%sgr(%s,%s,%s,%s)" f c f1 f2 f3 
-      | (F423|F243|F432|F234|F342|F324) -> 
-          printf "gr_%sf(%s,%s,%s,%s)" f c f1 f2 f3       
-      | (F134|F143|F314) -> printf "%s%s_grf(%s,%s,%s,%s)" f d1 c f1 f2 f3 
-      | (F124|F142|F214) -> printf "%s%s_grf(%s,%s,%s,%s)" f d2 c f1 f2 f3 
-      | (F413|F431|F341) -> printf "%s%s_fgr(%s,%s,%s,%s)" f d1 c f1 f2 f3 
-      | (F241|F412|F421) -> printf "%s%s_fgr(%s,%s,%s,%s)" f d2 c f1 f2 f3 
+      | (F123|F213|F132|F231|F312|F321) ->
+          printf "f_%sgr(%s,%s,%s,%s)" f c f1 f2 f3
+      | (F423|F243|F432|F234|F342|F324) ->
+          printf "gr_%sf(%s,%s,%s,%s)" f c f1 f2 f3
+      | (F134|F143|F314) -> printf "%s%s_grf(%s,%s,%s,%s)" f d1 c f1 f2 f3
+      | (F124|F142|F214) -> printf "%s%s_grf(%s,%s,%s,%s)" f d2 c f1 f2 f3
+      | (F413|F431|F341) -> printf "%s%s_fgr(%s,%s,%s,%s)" f d1 c f1 f2 f3
+      | (F241|F412|F421) -> printf "%s%s_fgr(%s,%s,%s,%s)" f d2 c f1 f2 f3
 
-    let print_fermion_2_g4_vector_current coeff f c wf1 wf2 wf3 fusion = 
+    let print_fermion_2_g4_vector_current coeff f c wf1 wf2 wf3 fusion =
       let d1 = d_p (1,f) and
           d2 = d_p (2,f) and
           f1 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 0) and
@@ -3779,18 +5051,18 @@ module Fortran_Majorana_Fermions : Fermions =
           f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
       let c = format_coupling_2 coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
-          printf "f_%sgr(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3 
-      | (F423|F243|F432|F234|F342|F324) -> 
-          printf "gr_%sf(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3       
-      | (F134|F143|F314) -> printf "%s%s_grf(%s,%s,%s,%s,%s)" f d1 c1 c2 f1 f2 f3 
-      | (F124|F142|F214) -> printf "%s%s_grf(%s,%s,%s,%s,%s)" f d2 c1 c2 f1 f2 f3 
-      | (F413|F431|F341) -> printf "%s%s_fgr(%s,%s,%s,%s,%s)" f d1 c1 c2 f1 f2 f3 
-      | (F241|F412|F421) -> printf "%s%s_fgr(%s,%s,%s,%s,%s)" f d2 c1 c2 f1 f2 f3 
+      | (F123|F213|F132|F231|F312|F321) ->
+          printf "f_%sgr(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3
+      | (F423|F243|F432|F234|F342|F324) ->
+          printf "gr_%sf(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3
+      | (F134|F143|F314) -> printf "%s%s_grf(%s,%s,%s,%s,%s)" f d1 c1 c2 f1 f2 f3
+      | (F124|F142|F214) -> printf "%s%s_grf(%s,%s,%s,%s,%s)" f d2 c1 c2 f1 f2 f3
+      | (F413|F431|F341) -> printf "%s%s_fgr(%s,%s,%s,%s,%s)" f d1 c1 c2 f1 f2 f3
+      | (F241|F412|F421) -> printf "%s%s_fgr(%s,%s,%s,%s,%s)" f d2 c1 c2 f1 f2 f3
 
-    let print_fermion_g4_vector_current_rev coeff f c wf1 wf2 wf3 fusion = 
+    let print_fermion_g4_vector_current_rev coeff f c wf1 wf2 wf3 fusion =
       let c = format_coupling coeff c and
           d1 = d_p (1,f) and
           d2 = d_p (2,f) and
@@ -3798,14 +5070,14 @@ module Fortran_Majorana_Fermions : Fermions =
           f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
           f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
+      | (F123|F213|F132|F231|F312|F321) ->
           printf "gr_%sf(%s,%s,%s,%s)" f c f1 f2 f3
-      | (F423|F243|F432|F234|F342|F324) -> 
+      | (F423|F243|F432|F234|F342|F324) ->
           printf "f_%sgr(%s,%s,%s,%s)" f c f1 f2 f3
-      | (F134|F143|F314) -> printf "%s%s_fgr(%s,%s,%s,%s)" f d1 c f1 f2 f3 
-      | (F124|F142|F214) -> printf "%s%s_fgr(%s,%s,%s,%s)" f d2 c f1 f2 f3 
+      | (F134|F143|F314) -> printf "%s%s_fgr(%s,%s,%s,%s)" f d1 c f1 f2 f3
+      | (F124|F142|F214) -> printf "%s%s_fgr(%s,%s,%s,%s)" f d2 c f1 f2 f3
       | (F413|F431|F341) -> printf "%s%s_grf(%s,%s,%s,%s)" f d1 c f1 f2 f3
-      | (F241|F412|F421) -> printf "%s%s_grf(%s,%s,%s,%s)" f d2 c f1 f2 f3 
+      | (F241|F412|F421) -> printf "%s%s_grf(%s,%s,%s,%s)" f d2 c f1 f2 f3
 
     let print_fermion_2_g4_current_rev coeff f c wf1 wf2 wf3 fusion =
       let c = format_coupling_2 coeff c in
@@ -3817,59 +5089,59 @@ module Fortran_Majorana_Fermions : Fermions =
           f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
           f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
+      | (F123|F213|F132|F231|F312|F321) ->
           printf "gr_%sf(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3
       | (F423|F243|F432|F234|F342|F324) ->
           printf "f_%sgr(-(%s),-(%s),%s,%s,%s)" f c1 c2 f1 f2 f3
       | (F134|F143|F314) ->
-          printf "%s%s_fgr(-(%s),-(%s),%s,%s,%s)" f d1 c1 c2 f1 f2 f3 
+          printf "%s%s_fgr(-(%s),-(%s),%s,%s,%s)" f d1 c1 c2 f1 f2 f3
       | (F124|F142|F214) ->
-          printf "%s%s_fgr(-(%s),-(%s),%s,%s,%s)" f d2 c1 c2 f1 f2 f3 
+          printf "%s%s_fgr(-(%s),-(%s),%s,%s,%s)" f d2 c1 c2 f1 f2 f3
       | (F413|F431|F341) ->
-          printf "%s%s_grf(%s,%s,%s,%s,%s)" f d1 c1 c2 f1 f2 f3 
+          printf "%s%s_grf(%s,%s,%s,%s,%s)" f d1 c1 c2 f1 f2 f3
       | (F241|F412|F421) ->
-          printf "%s%s_grf(%s,%s,%s,%s,%s)" f d2 c1 c2 f1 f2 f3 
+          printf "%s%s_grf(%s,%s,%s,%s,%s)" f d2 c1 c2 f1 f2 f3
 
-    let print_fermion_2_g4_vector_current_rev coeff f c wf1 wf2 wf3 fusion = 
+    let print_fermion_2_g4_vector_current_rev coeff f c wf1 wf2 wf3 fusion =
       (* Here we put in the extra minus sign from the coeff. *)
       let c = format_coupling coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       let d1 = d_p (1,f) and
           d2 = d_p (2,f) and
           f1 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 0) and
           f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
           f3 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 2) in
       match fusion with
-      | (F123|F213|F132|F231|F312|F321) -> 
+      | (F123|F213|F132|F231|F312|F321) ->
           printf "gr_%sf(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3
-      | (F423|F243|F432|F234|F342|F324) -> 
+      | (F423|F243|F432|F234|F342|F324) ->
           printf "f_%sgr(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3
-      | (F134|F143|F314) -> printf "%s%s_fgr(%s,%s,%s,%s,%s)" f d1 c1 c2 f1 f2 f3 
-      | (F124|F142|F214) -> printf "%s%s_fgr(%s,%s,%s,%s,%s)" f d2 c1 c2 f1 f2 f3 
+      | (F134|F143|F314) -> printf "%s%s_fgr(%s,%s,%s,%s,%s)" f d1 c1 c2 f1 f2 f3
+      | (F124|F142|F214) -> printf "%s%s_fgr(%s,%s,%s,%s,%s)" f d2 c1 c2 f1 f2 f3
       | (F413|F431|F341) -> printf "%s%s_grf(%s,%s,%s,%s,%s)" f d1 c1 c2 f1 f2 f3
-      | (F241|F412|F421) -> printf "%s%s_grf(%s,%s,%s,%s,%s)" f d2 c1 c2 f1 f2 f3 
+      | (F241|F412|F421) -> printf "%s%s_grf(%s,%s,%s,%s,%s)" f d2 c1 c2 f1 f2 f3
 
 
     let print_current_g4 = function
-      | coeff, Gravbar, S2, _ -> print_fermion_g4_current coeff "s2" 
-      | coeff, Gravbar, SV, _ -> print_fermion_g4_vector_current coeff "sv" 
-      | coeff, Gravbar, SLV, _ -> print_fermion_g4_vector_current coeff "slv" 
-      | coeff, Gravbar, SRV, _ -> print_fermion_g4_vector_current coeff "srv" 
-      | coeff, Gravbar, SLRV, _ -> print_fermion_2_g4_vector_current coeff "slrv" 
+      | coeff, Gravbar, S2, _ -> print_fermion_g4_current coeff "s2"
+      | coeff, Gravbar, SV, _ -> print_fermion_g4_vector_current coeff "sv"
+      | coeff, Gravbar, SLV, _ -> print_fermion_g4_vector_current coeff "slv"
+      | coeff, Gravbar, SRV, _ -> print_fermion_g4_vector_current coeff "srv"
+      | coeff, Gravbar, SLRV, _ -> print_fermion_2_g4_vector_current coeff "slrv"
       | coeff, Gravbar, PV, _ -> print_fermion_g4_vector_current coeff "pv"
       | coeff, Gravbar, V2, _ -> print_fermion_g4_current coeff "v2"
       | coeff, Gravbar, V2LR, _ -> print_fermion_2_g4_current coeff "v2lr"
-      | coeff, Gravbar, _, _ -> invalid_arg "print_current_g4: not implemented"
-      | coeff, _, S2, Grav -> print_fermion_g4_current_rev coeff "s2" 
+      | _, Gravbar, _, _ -> invalid_arg "print_current_g4: not implemented"
+      | coeff, _, S2, Grav -> print_fermion_g4_current_rev coeff "s2"
       | coeff, _, SV, Grav -> print_fermion_g4_vector_current_rev (-coeff) "sv"
       | coeff, _, SLV, Grav -> print_fermion_g4_vector_current_rev (-coeff) "slv"
       | coeff, _, SRV, Grav -> print_fermion_g4_vector_current_rev (-coeff) "srv"
       | coeff, _, SLRV, Grav -> print_fermion_2_g4_vector_current_rev coeff "slrv"
-      | coeff, _, PV, Grav -> print_fermion_g4_vector_current_rev coeff "pv" 
-      | coeff, _, V2, Grav -> print_fermion_g4_vector_current_rev coeff "v2" 
+      | coeff, _, PV, Grav -> print_fermion_g4_vector_current_rev coeff "pv"
+      | coeff, _, V2, Grav -> print_fermion_g4_vector_current_rev coeff "v2"
       | coeff, _, V2LR, Grav -> print_fermion_2_g4_current_rev coeff "v2lr"
-      | coeff, _, _, Grav -> invalid_arg "print_current_g4: not implemented"
+      | _, _, _, Grav -> invalid_arg "print_current_g4: not implemented"
       | coeff, _, S2, _ -> print_fermion_s2_current coeff "s"
       | coeff, _, P2, _ -> print_fermion_s2_current coeff "p"
       | coeff, _, S2P, _ -> print_fermion_s2p_current coeff "sp"
@@ -3882,7 +5154,7 @@ module Fortran_Majorana_Fermions : Fermions =
       | coeff, _, SLV, _ -> print_fermion_g4_brs_vector_current coeff "svl"
       | coeff, _, SRV, _ -> print_fermion_g4_brs_vector_current coeff "svr"
       | coeff, _, SLRV, _ -> print_fermion_g4_svlr_current coeff "svlr"
-      | coeff, _, V2LR, _ -> invalid_arg "Targets.print_current: not available"
+      | _, _, V2LR, _ -> invalid_arg "Targets.print_current: not available"
 
     let reverse_braket _ = false
 
@@ -3896,10 +5168,6 @@ module Fortran_Majorana = Make_Fortran(Fortran_Majorana_Fermions)
 (* \thocwmodulesubsection{\texttt{FORTRAN\,77}} *)
 
 module Fortran77 = Dummy
-
-(* \thocwmodulesection{O'Mega Virtual Machine} *)
-
-module VM = Dummy
 
 (* \thocwmodulesection{\texttt{C}} *)
 
@@ -3920,197 +5188,6 @@ module Ocaml = Dummy
 (* \thocwmodulesection{\LaTeX} *)
 
 module LaTeX = Dummy
-
-(*i
-module VM_old (F : Fusion.T) (Make_MF : Fusion.MultiMaker)
-    (M : Model.T with type flavor = F.flavor and type constant = F.constant) =
-  struct
-    let rcs_list =
-      [ RCS.rename rcs_file "Targets.VM()"
-          [ "Bytecode for the O'Mega Virtual Machine" ] ]
-
-    module MF = Make_MF(F)
-    type amplitude = F.amplitude
-    type amplitudes = MF.amplitudes
-    type diagnostic = All | Arguments | Momenta | Gauge
-    let options = Options.empty
-
-    let flavors_to_string flavors =
-      String.concat " " (List.map M.flavor_to_string flavors)
-
-    let format_process amplitude =
-      flavors_to_string (F.incoming amplitude) ^ " -> " ^
-      flavors_to_string (F.outgoing amplitude)
-
-    open Format
-    open Coupling
-
-    let ovm_LOAD_SCALAR = 1
-    let ovm_LOAD_U = 2
-    let ovm_LOAD_UBAR = 3
-    let ovm_LOAD_V = 4
-    let ovm_LOAD_VBAR = 5
-    let ovm_LOAD_VECTOR = 6
-
-    let ovm_ADD_MOMENTA = 10
-
-    let ovm_PROPAGATE_SCALAR = 11
-    let ovm_PROPAGATE_SPINOR = 12
-    let ovm_PROPAGATE_CONJSPINOR = 13
-    let ovm_PROPAGATE_UNITARITY = 14
-    let ovm_PROPAGATE_FEYNMAN = 15
-    let ovm_PROPAGATE_TENSOR2 = 16
-
-    let ovm_FUSE_VECTOR_PSIBAR_PSI = 21
-    let ovm_FUSE_PSI_VECTOR_PSI = 22
-    let ovm_FUSE_PSIBAR_PSIBAR_VECTOR = 23
-
-    type instruction = 
-        { code : int; sign : int; coupl : int;
-          lhs : int; rhs1 : int; rhs2 : int }
-
-    let printi i =
-      printf "@\n%3d %3d %3d %3d %3d %3d"
-        i.code i.sign i.coupl i.lhs i.rhs1 i.rhs2
-
-    let load lhs f rhs =
-      let code =
-        match M.lorentz f with
-        | Scalar -> ovm_LOAD_SCALAR
-        | Spinor -> ovm_LOAD_U
-        | ConjSpinor -> ovm_LOAD_UBAR
-        | Majorana -> failwith "load: Majoranas not implemented yet"
-        | Maj_Ghost -> failwith "load: SUSY ghosts not implemented yet"
-        | Vector | Massive_Vector -> ovm_LOAD_VECTOR
-        | Vectorspinor -> invalid_arg "external spin must be <=1"
-        | Tensor_1 -> invalid_arg "Tensor_1 only internal"
-        | Tensor_2 -> invalid_arg "external spin must be <= 1"
-        | BRS _ -> invalid_arg "no BRST"
- in
-      { code = code; sign = 0; coupl = M.pdg f;
-        lhs = lhs; rhs1 = rhs; rhs2 = rhs }
-      
-    let print_external count flavor =
-      printi (load count (F.flavor flavor) count);
-      succ count
-
-    let print_externals amplitude =
-      printf "@\n@[<2>BEGIN EXTERNALS";
-      ignore (List.fold_left print_external 1 (F.externals amplitude));
-      printf "@]@\nEND EXTERNALS"
-
-    let print_current rhs =
-      match F.coupling rhs with
-      | V3 (vertex, fusion, constant) -> printf "@\nV3"
-      | V4 (vertex, fusion, constant) -> printf "@\nV4"
-      | Vn (_, _, _) -> printf "@\nVn"
-
-    let p2s p =
-      if p >= 0 && p <= 9 then
-        string_of_int p
-      else if p <= 36 then
-        String.make 1 (Char.chr (Char.code 'A' + p - 10))
-      else
-        "_"
-
-    let format_p wf =
-      String.concat "" (List.map p2s (F.momentum_list wf))
-
-    let print_fusion fusion =
-      let lhs = F.lhs fusion in
-      let f = F.flavor lhs in
-      (*i let momentum = format_p lhs in i*)
-      List.iter print_current (F.rhs fusion);
-      let propagate code =
-        printi { code = code; sign = 0; coupl = 0;
-                 lhs = int_of_string (format_p lhs);
-                 rhs1 = abs (M.pdg f); rhs2 = abs (M.pdg f) } in
-      match M.propagator f with
-      | Prop_Scalar -> propagate ovm_PROPAGATE_SCALAR
-      | Prop_Col_Scalar -> 
-          failwith "print_fusion: Prop_Col_Scalar not implemented yet!" 
-      | Prop_Ghost -> 
-          failwith "print_fusion: Prop_Ghost not implemented yet!" 
-      | Prop_Spinor -> propagate ovm_PROPAGATE_SPINOR
-      | Prop_ConjSpinor -> propagate ovm_PROPAGATE_CONJSPINOR
-      | Prop_Majorana | Prop_Col_Majorana ->
-          failwith "print_fusion: Prop_Majorana not implemented yet!"
-      | Prop_Unitarity -> propagate ovm_PROPAGATE_UNITARITY
-      | Prop_Col_Unitarity -> 
-          failwith "print_fusion: Prop_Col_Unitarity not implemented yet!" 
-      | Prop_Feynman -> propagate ovm_PROPAGATE_FEYNMAN
-      | Prop_Col_Feynman -> 
-          failwith "print_fusion: Prop_Col_Feynman not implemented yet!"
-      | Prop_Gauge xi ->
-          failwith "print_fusion: Prop_Gauge not implemented yet!"
-      | Prop_Rxi xi ->
-          failwith "print_fusion: Prop_Rxi not implemented yet!"
-      | Prop_Vectorspinor -> 
-          failwith "print_fusion: Prop_Vectorspinor not implemented yet!"
-      | Prop_Tensor_2 -> propagate ovm_PROPAGATE_TENSOR2
-      | Aux_Scalar | Aux_Spinor | Aux_ConjSpinor | Aux_Majorana
-      | Aux_Vector | Aux_Tensor_1 -> ()
-      | Only_Insertion -> ()
-
-    module P = Set.Make (struct type t = int list let compare = compare end)
-
-    let rec add_momenta lhs = function
-      | [] | [_] -> invalid_arg "add_momenta"
-      | [rhs1; rhs2] ->
-          printi { code = ovm_ADD_MOMENTA; sign = 0; coupl = 0;
-                   lhs = int_of_string (format_p lhs);
-                   rhs1 = int_of_string (format_p rhs1);
-                   rhs2 = int_of_string (format_p rhs2) }
-      | rhs1 :: rhs ->
-          add_momenta lhs rhs;
-          add_momenta lhs [lhs; rhs1]
-
-    let print_fusions amplitude =
-      printf "@\n@[<2>BEGIN FUSIONS";
-      let momenta =
-        List.fold_left (fun seen f ->
-          let wf = F.lhs f in
-          let p = F.momentum_list wf in
-          let momentum = format_p wf in
-          if not (P.mem p seen) then
-            add_momenta wf (F.children (List.hd (F.rhs f)));
-          print_fusion f;
-          P.add p seen) P.empty (F.fusions amplitude)
-      in
-      printf "@]@\nEND FUSIONS"
-
-    let print_brakets amplitude =
-      printf "@\n@[<2>BEGIN BRAKETS";
-      printf "@\n!!! not implemented yet !!!";
-      printf "@]@\nEND BRAKETS"
-
-    let print_fudge_factor amplitude = 
-      printf "@\n@[<2>BEGIN FUDGE";
-      printf "@\n!!! not implemented yet !!!";
-      printf "@]@\nEND FUDGE"
-
-    let amplitude_to_channel oc diagnostics amplitude =
-      set_formatter_out_channel oc;
-      printf "@\n@[<2>BEGIN AMPLITUDE %s" (format_process amplitude);
-      print_externals amplitude;
-      print_fusions amplitude;
-      print_brakets amplitude;
-      print_fudge_factor amplitude;
-      printf "@]@\nEND AMPLITUDE"
-
-    let amplitudes_to_channel oc diagnostics amplitudes =
-      List.iter (amplitude_to_channel oc diagnostics) (MF.allowed amplitudes)
-
-    let parameters_to_channel oc =
-      set_formatter_out_channel oc;
-      (*i let params = M.parameters () in i*)
-      printf "@[<2>BEGIN PARAMETERS@\n";
-      printf "!!! not implemented yet !!!@]@\n";
-      printf "END PARAMETERS@\n"
-
-  end
-
-i*)
 
 (*i
  *  Local Variables:
