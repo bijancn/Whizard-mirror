@@ -50,7 +50,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
   struct
     let rcs_list =
       [RCS.rename rcs_file "Targets.VM"
-                  ["First version with Whizard interface"]]
+                  ["First version"]]
 
     open Coupling
     open Format
@@ -65,7 +65,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     (*i TODO: (bcn 2014-07-21) Not handled yet i*)
     type diagnostic = All | Arguments | Momenta | Gauge
 
-    (*i TODO: (bcn 2014-07-21) More sensible options i*)
+    (*i TODO: (bcn 2014-07-21) Add some sensible options i*)
     let parameter_module = ref "ovm_parameter_wrapper"
     let parameter_module_whz = ref "some_whizard_module_with_model_info"
     let kind = ref "default"
@@ -82,45 +82,52 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
 (* Integers encode the opcodes (operation codes). *)
     let ovm_LOAD_SCAL = 10
-    let ovm_LOAD_U = 11
-    let ovm_LOAD_UBAR = 12
-    let ovm_LOAD_V = 13
-    let ovm_LOAD_VBAR = 14
-    let ovm_LOAD_VEC_INC = 17
-    let ovm_LOAD_VEC_OUT = 18
-    let ovm_LOAD_VEC_SPIN_INC = 19
-    let ovm_LOAD_VEC_SPIN_OUT = 20
-    let ovm_LOAD_T2_INC = 21
-    let ovm_LOAD_T2_OUT = 22
+    let ovm_LOAD_SPINOR_INC = 11
+    let ovm_LOAD_SPINOR_OUT = 12
+    let ovm_LOAD_CONJSPINOR_INC = 13
+    let ovm_LOAD_CONJSPINOR_OUT = 14
+    let ovm_LOAD_MAJORANA_INC = 15
+    let ovm_LOAD_MAJORANA_OUT = 16
+    let ovm_LOAD_VECTOR_INC = 17
+    let ovm_LOAD_VECTOR_OUT = 18
+    let ovm_LOAD_VECTORSPINOR_INC = 19
+    let ovm_LOAD_VECTORSPINOR_OUT = 20
+    let ovm_LOAD_TENSOR2_INC = 21
+    let ovm_LOAD_TENSOR2_OUT = 22
     let ovm_LOAD_BRS_SCAL = 30
-    let ovm_LOAD_BRS_U = 31
-    let ovm_LOAD_BRS_UBAR = 32
-    let ovm_LOAD_BRS_V = 33
-    let ovm_LOAD_BRS_VBAR = 34
-    let ovm_LOAD_BRS_VEC_INC = 37
-    let ovm_LOAD_BRS_VEC_OUT = 38
-    (*i
-    TODO: (bcn 2014-07-21) Majorana support will come some day maybe
-    let ovm_LOAD_MAJ_INC = 15
-    let ovm_LOAD_MAJ_OUT = 16
-    let ovm_LOAD_MAJ_GHOST_INC = 23
-    let ovm_LOAD_MAJ_GHOST_OUT = 24
-    let ovm_LOAD_BRS_MAJ_INC = 35
-    let ovm_LOAD_BRS_MAJ_OUT = 36
-    i*)
+    let ovm_LOAD_BRS_SPINOR_INC = 31
+    let ovm_LOAD_BRS_SPINOR_OUT = 32
+    let ovm_LOAD_BRS_CONJSPINOR_INC = 33
+    let ovm_LOAD_BRS_CONJSPINOR_OUT = 34
+    let ovm_LOAD_BRS_VECTOR_INC = 37
+    let ovm_LOAD_BRS_VECTOR_OUT = 38
+    let ovm_LOAD_MAJORANA_GHOST_INC = 23
+    let ovm_LOAD_MAJORANA_GHOST_OUT = 24
+    let ovm_LOAD_BRS_MAJORANA_INC = 35
+    let ovm_LOAD_BRS_MAJORANA_OUT = 36
 
     let ovm_ADD_MOMENTA = 1
     let ovm_CALC_BRAKET = 2
 
-    let ovm_PROPAGATE_PSI = 31
-    let ovm_PROPAGATE_PSIBAR = 32
-    let ovm_PROPAGATE_UNITARITY = 33
-    let ovm_PROPAGATE_FEYNMAN = 34
-    let ovm_PROPAGATE_COL_FEYNMAN = 35
+    let ovm_PROPAGATE_SCALAR = 31
+    let ovm_PROPAGATE_COL_SCALAR = 32
+    let ovm_PROPAGATE_GHOST = 33
+    let ovm_PROPAGATE_SPINOR = 34
+    let ovm_PROPAGATE_CONJSPINOR = 35
+    let ovm_PROPAGATE_MAJORANA = 36
+    let ovm_PROPAGATE_COL_MAJORANA = 37
+    let ovm_PROPAGATE_UNITARITY = 38
+    let ovm_PROPAGATE_COL_UNITARITY = 39
+    let ovm_PROPAGATE_FEYNMAN = 40
+    let ovm_PROPAGATE_COL_FEYNMAN = 41
+    let ovm_PROPAGATE_VECTORSPINOR = 42
+    let ovm_PROPAGATE_TENSOR2 = 43
+    let ovm_PROPAGATE_NONE = 44
+    let ovm_PROPAGATE_COL_NONE = 45
 
-    let ovm_FUSE_VEC_PSIBAR_PSI = -1
-    let ovm_FUSE_PSI_VEC_PSI = -2
-    let ovm_FUSE_PSIBAR_PSIBAR_VEC = -3
+    let ovm_FUSE_VECTOR_CONJSPINOR_SPINOR = -1
+    let ovm_FUSE_SPINOR_VECTOR_SPINOR = -2
+    let ovm_FUSE_CONJSPINOR_CONJSPINOR_VECTOR = -3
     let ovm_FUSE_GLU_GLU_GLU = -4
     let ovm_FUSE_WFS_V4 = -5
 
@@ -251,7 +258,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       | Scalar -> 0
       | Spinor -> 1
       | ConjSpinor -> 2
-      | Majorana -> invalid_arg "lorentz_ordering: not implemented"
+      | Majorana -> 3
       | Vector -> 4
       | Massive_Vector -> 5
       | Tensor_2 -> 6
@@ -260,7 +267,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       | BRS Scalar -> 9
       | BRS Spinor -> 10
       | BRS ConjSpinor -> 11
-      | BRS Majorana -> invalid_arg "lorentz_ordering: not implemented"
+      | BRS Majorana -> 12
       | BRS Vector -> 13
       | BRS Massive_Vector -> 14
       | BRS Tensor_2 -> 15
@@ -512,7 +519,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
     let print_header lookups wfset = print_header' (num_lst lookups wfset)
 
-    let print_zero_header n =
+    let print_zero_header =
       let rec zero_list' j =
         if j < 1 then []
         else 0 :: zero_list' (j - 1) in
@@ -633,7 +640,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       i*)
 
 (* Straightforward iteration gives a great speedup compared to the fancier
-   approach which only collects nonzero colorfactors.*)
+   approach which only collects nonzero colorfactors. *)
 
     let print_color_factor_table table =
       let n_cflow = Array.length table in
@@ -681,17 +688,13 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 (* \thocwmodulesubsection{Momenta} *)
 
 (* Add the momenta of a WFSet to a Iset. For now, we are throwing away the
-   information to which amplitude the momentum belongs. This results in less
-   instructions while producing only a small overhead for the calculation
-   of a random color flow assuming that most momenta contribute to all color
-   flows of a process. *)
+   information to which amplitude the momentum belongs. This could be optimized
+   for random color flow computations. *)
 
-    let momenta_set wfset = List.fold_left (fun s x -> s |> ISet.add x) ISet.empty
-      (List.map (fun wf -> wf |> fst |> F.momentum_list )
-      (WFSet.elements wfset) )
-
-    let print_mom lhs rhs1 rhs2 rhs3 = if (rhs1!= 0) then
-      printi ~lhs:lhs ~rhs1:rhs1 ~rhs2:rhs2 ~rhs3:rhs3 ovm_ADD_MOMENTA
+    let momenta_set wfset =
+      let get_mom wf = wf |> fst |> F.momentum_list in
+      let momenta = List.map get_mom (WFSet.elements wfset) in
+      momenta |> List.fold_left (fun set x -> set |> ISet.add x) ISet.empty
 
     let chop_in_3 lst =
       let ceil_div i j = if (i mod j = 0) then i/j else i/j + 1 in
@@ -702,28 +705,30 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
    If we have more, we split up in two or three parts. *)
 
     let add_mom p pmap =
+      let print_mom lhs rhs1 rhs2 rhs3 = if (rhs1!= 0) then
+        printi ~lhs:lhs ~rhs1:rhs1 ~rhs2:rhs2 ~rhs3:rhs3 ovm_ADD_MOMENTA in
       let get_p_ID = get_ID pmap in
       match p with
       | [] | [_] -> print_mom 0 0 0 0
       | [rhs1;rhs2] -> print_mom (get_p_ID [rhs1;rhs2]) rhs1 rhs2 0
       | [rhs1;rhs2;rhs3] -> print_mom (get_p_ID [rhs1;rhs2;rhs3]) rhs1 rhs2 rhs3
       | more ->
-          let id's = List.map get_p_ID (chop_in_3 more) in
-          if (List.length id's = 3) then
-            print_mom (get_p_ID more) (List.nth id's 0) (List.nth id's 1)
-              (List.nth id's 2)
+          let ids = List.map get_p_ID (chop_in_3 more) in
+          if (List.length ids = 3) then
+            print_mom (get_p_ID more) (List.nth ids 0) (List.nth ids 1)
+              (List.nth ids 2)
           else
-            print_mom (get_p_ID more) (List.nth id's 0) (List.nth id's 1) 0
+            print_mom (get_p_ID more) (List.nth ids 0) (List.nth ids 1) 0
 
-(* Hand through the current level and print breaks if necessary.*)
+(* Hand through the current level and print level seperators if necessary. *)
 
     let add_all_mom lookups pset =
-      let g level p =
+      let add_all' level p =
         let level' = List.length p in
         if (level' > level && level' > 3) then break 0;
         add_mom p lookups.pmap; level'
       in
-      ignore ( List.fold_left g 1 (ISet.elements pset) )
+      ignore (pset |> ISet.elements |> List.fold_left add_all' 1)
 
 (* Expand a set of momenta to contain all needed momenta for the computation
    in the OVM. For this, we create a list of sets which contains the chopped
@@ -758,7 +763,8 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 (* Build the union of all [wf]s of all amplitudes and a map of the amplitudes. *)
 
     let wfset_amps amplitudes =
-      let amap = map_of_list (List.sort amp_compare (CF.processes amplitudes))
+      let amap = amplitudes |> CF.processes |> List.sort amp_compare
+                            |> map_of_list
       and dict = CF.dictionary amplitudes in
       let wfset_amp amp =
         let f = mult_wf dict amp in
@@ -775,7 +781,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         | Spinor -> wf_ID
         | ConjSpinor -> wf_ID - sum (ThoList.hdn 1 num_lst)
         | Vector -> wf_ID - sum (ThoList.hdn 2 num_lst)
-        | _ -> failwith "targets.wf_index has only QCD/QED implemented"
+        | _ -> failwith "targets.wf_index not implemented"
 
     let print_ext lookups amp_ID inc (wf, i) =
       let mom = (F.momentum_list wf) in
@@ -786,73 +792,38 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       and wf_code =
         match CM.lorentz f with
         | Scalar -> ovm_LOAD_SCAL
+        | BRS Scalar -> ovm_LOAD_BRS_SCAL
         | Spinor ->
-            if inc then ovm_LOAD_U else ovm_LOAD_V
+            if inc then ovm_LOAD_SPINOR_INC else ovm_LOAD_SPINOR_OUT
+        | BRS Spinor ->
+            if inc then ovm_LOAD_BRS_SPINOR_INC else ovm_LOAD_BRS_SPINOR_OUT
         | ConjSpinor ->
-            if inc then ovm_LOAD_VBAR else ovm_LOAD_UBAR
+            if inc then ovm_LOAD_CONJSPINOR_INC else ovm_LOAD_CONJSPINOR_OUT
+        | BRS ConjSpinor ->
+            if inc then ovm_LOAD_BRS_CONJSPINOR_INC
+            else ovm_LOAD_BRS_CONJSPINOR_OUT
         | Vector | Massive_Vector ->
-            if inc then ovm_LOAD_VEC_INC else ovm_LOAD_VEC_OUT
+            if inc then ovm_LOAD_VECTOR_INC else ovm_LOAD_VECTOR_OUT
+        | BRS Vector | BRS Massive_Vector ->
+            if inc then ovm_LOAD_BRS_VECTOR_INC else ovm_LOAD_BRS_VECTOR_OUT
+        | Tensor_2 ->
+            if inc then ovm_LOAD_TENSOR2_INC else ovm_LOAD_TENSOR2_OUT
+        | Vectorspinor | BRS Vectorspinor ->
+            if inc then ovm_LOAD_VECTORSPINOR_INC else ovm_LOAD_VECTORSPINOR_OUT
+        | Majorana ->
+            if inc then ovm_LOAD_MAJORANA_INC else ovm_LOAD_MAJORANA_OUT
+        | BRS Majorana ->
+            if inc then ovm_LOAD_BRS_MAJORANA_INC else ovm_LOAD_BRS_MAJORANA_OUT
+        | Maj_Ghost ->
+            if inc then ovm_LOAD_MAJORANA_GHOST_INC
+            else ovm_LOAD_MAJORANA_GHOST_OUT
         | Tensor_1 ->
             invalid_arg "targets.print_ext: Tensor_1 only internal"
-        | Tensor_2 ->
-            if inc then ovm_LOAD_T2_INC else ovm_LOAD_T2_OUT
-        | BRS Scalar -> ovm_LOAD_BRS_SCAL
-        | BRS Spinor ->
-            if inc then ovm_LOAD_BRS_U else ovm_LOAD_BRS_V
-        | BRS ConjSpinor ->
-            if inc then ovm_LOAD_BRS_VBAR else ovm_LOAD_BRS_UBAR
-        | BRS Vector | BRS Massive_Vector ->
-            if inc then ovm_LOAD_BRS_VEC_INC else ovm_LOAD_BRS_VEC_OUT
-        | _ -> invalid_arg
-          "targets.print_ext: not implemented as external wave function in ovm"
-        (*i
-        (*| Majorana -> if inc then ovm_LOAD_MAJ_INC else ovm_LOAD_MAJ_OUT*)
-        (*| Vectorspinor | BRS Vectorspinor -> *)
-            (*if inc then ovm_LOAD_VEC_SPIN_INC else ovm_LOAD_VEC_SPIN_OUT*)
-        (*| Maj_Ghost -> if inc then ovm_LOAD_BRS_MAJ_INC else
-          ovm_LOAD_BRS_MAJ_OUT*)
-        (*| BRS Majorana -> if inc then ovm_LOAD_BRS_MAJ_INC else
-          * ovm_LOAD_BRS_MAJ_OUT*)
-        i*)
+        | BRS _ ->
+            failwith "targets.print_ext: Not implemented"
       and wf_ind = wf_index lookups.wfmap lookups.n_wfs (wf, i)
       in
         printi wf_code ~lhs:wf_ind ~coupl:pdg ~rhs1:outer_index ~rhs4:amp_ID
-
-        (*i
-      (*| BRS Spinor ->*)
-          (*printf "%s (%s, - %s, %s)" Fermions.brs_psi_incoming m p s*)
-      (*| BRS Spinor ->*)
-          (*printf "%s (%s, %s, %s)" Fermions.brs_psi_outgoing m p s*)
-      (*| BRS ConjSpinor ->*)
-          (*printf "%s (%s, - %s, %s)" Fermions.brs_psibar_incoming m p s*)
-      (*| Majorana ->*)
-          (*printf "%s (%s, - %s, %s)" Fermions.chi_incoming m p s*)
-      (*| Maj_Ghost -> printf "ghost (%s, - %s, %s)" m p s*)
-      (*| BRS Majorana ->*)
-          (*printf "%s (%s, - %s, %s)" Fermions.brs_chi_incoming m p s*)
-      (*| BRS Vector | BRS Massive_Vector -> printf *)
-            (*"(0,1) * (%s * %s - %s**2) * eps (%s, -%s, %s)" p p m m p s *)
-      (*| Vectorspinor | BRS Vectorspinor -> *)
-          (*printf "%s (%s, - %s, %s)" Fermions.grav_incoming m p s*)
-
-    (*let print_outgoing wf =*)
-      (*| ConjSpinor ->*)
-          (*printf "%s (%s, %s, %s)" Fermions.psibar_outgoing m p s*)
-      (*| BRS ConjSpinor ->*)
-          (*printf "%s (%s, %s, %s)" Fermions.brs_psibar_outgoing m p s*)
-      (*| Majorana ->*)
-          (*printf "%s (%s, %s, %s)" Fermions.chi_outgoing m p s*)
-      (*| BRS Majorana ->*)
-          (*printf "%s (%s, %s, %s)" Fermions.brs_chi_outgoing m p s*)
-      (*| Maj_Ghost -> printf "ghost (%s, %s, %s)" m p s *)
-      (*| Vector | Massive_Vector -> *)
-          (*printf "conjg (eps (%s, %s, %s))" m p s*)
-      (*| BRS Vector | BRS Massive_Vector -> printf *)
-            (*"(0,1) * (%s*%s-%s**2) * (conjg (eps (%s, %s, %s)))" p p m m p s
-             (** *)*)
-      (*| Vectorspinor | BRS Vectorspinor -> *)
-          (*printf "%s (%s, %s, %s)" Fermions.grav_incoming m p s*)
-        i*)
 
     let print_ext_amp lookups amplitude =
       let incoming = (List.map (fun _ -> true) (F.incoming amplitude) @
@@ -873,16 +844,17 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
    occurs, all fusions have to be computed first. The additional control
    bit is the sign of the first int of an instruction. *)
 
+    (*i TODO: (bcn 2014-07-21) Majorana support will come some day maybe i*)
     let print_fermion_vector_current coeff lhs c wf1 wf2 fusion =
       let printc code r1 r2 = printi code ~lhs:lhs ~coupl:c ~coeff:coeff
         ~rhs1:r1 ~rhs2:r2 in
       match fusion with
-      | F13 -> printc ovm_FUSE_VEC_PSIBAR_PSI wf1 wf2
-      | F31 -> printc ovm_FUSE_VEC_PSIBAR_PSI wf2 wf1
-      | F23 -> printc ovm_FUSE_PSI_VEC_PSI wf1 wf2
-      | F32 -> printc ovm_FUSE_PSI_VEC_PSI wf2 wf1
-      | F12 -> printc ovm_FUSE_PSIBAR_PSIBAR_VEC wf1 wf2
-      | F21 -> printc ovm_FUSE_PSIBAR_PSIBAR_VEC wf2 wf1
+      | F13 -> printc ovm_FUSE_VECTOR_CONJSPINOR_SPINOR wf1 wf2
+      | F31 -> printc ovm_FUSE_VECTOR_CONJSPINOR_SPINOR wf2 wf1
+      | F23 -> printc ovm_FUSE_SPINOR_VECTOR_SPINOR wf1 wf2
+      | F32 -> printc ovm_FUSE_SPINOR_VECTOR_SPINOR wf2 wf1
+      | F12 -> printc ovm_FUSE_CONJSPINOR_CONJSPINOR_VECTOR wf1 wf2
+      | F21 -> printc ovm_FUSE_CONJSPINOR_CONJSPINOR_VECTOR wf2 wf1
 
       let ferm_print_current = function
         | coeff, Psibar, V, Psi -> print_fermion_vector_current coeff
@@ -958,13 +930,16 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
               | _, Psibar, TVA, Psi | _, Psibar, TVAM, Psi
               | _, Psibar, TLR, Psi | _, Psibar, TLRM, Psi
               | _, Psibar, TRL, Psi | _, Psibar, TRLM, Psi ->
-                  failwith "print_current: V3: only QCD"
+                  failwith "print_current: V3: not implemented"
               | _, _, _, _ ->
                   ferm_print_current (coeff, fb, b, f) lhs c wf1 wf2 fusion
               end
-          | PBP (coeff, f1, b, f2) -> failwith "print_current: V3: only QCD"
-          | BBB (coeff, fb1, b, fb2) -> failwith "print_current: V3: only QCD"
-          | GBG (coeff, fb, b, f) -> failwith "print_current: V3: only QCD"
+          | PBP (coeff, f1, b, f2) ->
+              failwith "print_current: V3: not implemented"
+          | BBB (coeff, fb1, b, fb2) ->
+              failwith "print_current: V3: not implemented"
+          | GBG (coeff, fb, b, f) ->
+              failwith "print_current: V3: not implemented"
 
           | Gauge_Gauge_Gauge coeff ->
               begin match fusion with
@@ -972,74 +947,86 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
               | (F32|F13|F21) -> printc_ggg coeff wf2 p2 wf1 p1
               end
 
-          | Aux_Gauge_Gauge coeff ->  failwith "print_current: V3: only QCD"
+          | Aux_Gauge_Gauge coeff ->
+              failwith "print_current: V3: not implemented"
 
-          | Scalar_Vector_Vector coeff -> failwith "print_current: V3: only QCD"
+          | Scalar_Vector_Vector coeff ->
+              failwith "print_current: V3: not implemented"
 
-          | Aux_Vector_Vector coeff -> failwith "print_current: V3: only QCD"
+          | Aux_Vector_Vector coeff ->
+              failwith "print_current: V3: not implemented"
 
-          | Scalar_Scalar_Scalar coeff -> failwith "print_current: V3: only QCD"
+          | Scalar_Scalar_Scalar coeff ->
+              failwith "print_current: V3: not implemented"
 
-          | Aux_Scalar_Scalar coeff -> failwith "print_current: V3: only QCD"
+          | Aux_Scalar_Scalar coeff ->
+              failwith "print_current: V3: not implemented"
 
-          | Aux_Scalar_Vector coeff -> failwith "print_current: V3: only QCD"
+          | Aux_Scalar_Vector coeff ->
+              failwith "print_current: V3: not implemented"
 
-          | Vector_Scalar_Scalar coeff -> failwith "print_current: V3: only QCD"
+          | Vector_Scalar_Scalar coeff ->
+              failwith "print_current: V3: not implemented"
 
-          | Graviton_Scalar_Scalar coeff -> failwith "print_current: V3: only QCD"
+          | Graviton_Scalar_Scalar coeff ->
+              failwith "print_current: V3: not implemented"
 
-          | Graviton_Vector_Vector coeff -> failwith "print_current: V3: only QCD"
+          | Graviton_Vector_Vector coeff ->
+              failwith "print_current: V3: not implemented"
 
-          | Graviton_Spinor_Spinor coeff -> failwith "print_current: V3: only QCD"
+          | Graviton_Spinor_Spinor coeff ->
+              failwith "print_current: V3: not implemented"
 
           | Dim4_Vector_Vector_Vector_T coeff ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
           | Dim4_Vector_Vector_Vector_L coeff ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
-          | Dim6_Gauge_Gauge_Gauge coeff -> failwith "print_current: V3: only QCD"
+          | Dim6_Gauge_Gauge_Gauge coeff ->
+              failwith "print_current: V3: not implemented"
 
           | Dim4_Vector_Vector_Vector_T5 coeff ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
           | Dim4_Vector_Vector_Vector_L5 coeff ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
           | Dim6_Gauge_Gauge_Gauge_5 coeff ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
-          | Aux_DScalar_DScalar coeff -> failwith "print_current: V3: only QCD"
+          | Aux_DScalar_DScalar coeff ->
+              failwith "print_current: V3: not implemented"
 
-          | Aux_Vector_DScalar coeff -> failwith "print_current: V3: only QCD"
+          | Aux_Vector_DScalar coeff ->
+              failwith "print_current: V3: not implemented"
 
-          | Dim5_Scalar_Gauge2 coeff -> failwith "print_current: V3: only QCD"
+          | Dim5_Scalar_Gauge2 coeff ->
+              failwith "print_current: V3: not implemented"
 
           | Dim5_Scalar_Gauge2_Skew coeff ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
           | Dim5_Scalar_Vector_Vector_T coeff ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
           | Dim5_Scalar_Vector_Vector_U coeff ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
           | Dim6_Vector_Vector_Vector_T coeff ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
-          | Tensor_2_Vector_Vector coeff -> failwith "print_current: V3: only QCD"
+          | Tensor_2_Vector_Vector coeff ->
+              failwith "print_current: V3: not implemented"
 
           | Dim5_Tensor_2_Vector_Vector_1 coeff ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
           | Dim5_Tensor_2_Vector_Vector_2 coeff ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
           | Dim7_Tensor_2_Vector_Vector_T coeff ->
-              failwith "print_current: V3: only QCD"
-
-          | _ ->
-              failwith "print_current: V3: only QCD"
+              failwith "print_current: V3: not implemented"
 
           end
 
@@ -1059,22 +1046,25 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           let c =
             if (F.sign rhs) < 0 then const_ID else - const_ID in
           begin match vertex with
-          | Scalar4 coeff -> failwith "print_current: V4: only QCD"
-          | Scalar2_Vector2 coeff -> failwith "print_current: V4: only QCD"
+          | Scalar4 coeff -> failwith "print_current: V4: not implemented"
+          | Scalar2_Vector2 coeff ->
+              failwith "print_current: V4: not implemented"
           | Vector4 contractions ->
-            List.iter (fuse_3_to_1 c lhs wf1 wf2 wf3 fusion) contractions
+              List.iter (fuse_3_to_1 c lhs wf1 wf2 wf3 fusion) contractions
           | Vector4_K_Matrix_tho (disc, poles) ->
-              failwith "print_current: V4: only QCD"
+              failwith "print_current: V4: not implemented"
 
           | Vector4_K_Matrix_jr (disc, contractions) ->
-              failwith "print_current: V4: only QCD"
+              failwith "print_current: V4: not implemented"
 
-          | GBBG (coeff, fb, b, f) ->  failwith "print_current: V4: only QCD"
+          | GBBG (coeff, fb, b, f) ->
+              failwith "print_current: V4: not implemented"
 
-          | DScalar4 contractions -> failwith "print_current: V4: only QCD"
+          | DScalar4 contractions ->
+              failwith "print_current: V4: not implemented"
 
           | DScalar2_Vector2 contractions ->
-              failwith "print_current: V4: only QCD"
+              failwith "print_current: V4: not implemented"
           end
 
       | Vn (_, _, _) -> invalid_arg "Targets.print_current: n-ary fusion."
@@ -1091,7 +1081,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         | Vanishing | Fudged -> 0
         | Constant -> 1
         | Timelike -> 2
-        | Running -> failwith "Targets.Fortran: running width not yet available"
+        | Running -> failwith "Targets.VM: running width not available"
         | Custom f -> 3
         end
       in
@@ -1100,32 +1090,40 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       in
       begin match CM.propagator f with
       | Prop_Scalar ->
-          failwith "print_fusion: Prop_Scalar not implemented yet!"
+          propagate ovm_PROPAGATE_SCALAR
       | Prop_Col_Scalar ->
-          failwith "print_fusion: Prop_Col_Scalar not implemented yet!"
+          propagate ovm_PROPAGATE_COL_SCALAR
       | Prop_Ghost ->
-          failwith "print_fusion: Prop_Ghost not implemented yet!"
-      | Prop_Spinor -> propagate ovm_PROPAGATE_PSI
-      | Prop_ConjSpinor -> propagate ovm_PROPAGATE_PSIBAR
-      | Prop_Majorana | Prop_Col_Majorana ->
-          failwith "print_fusion: Prop_Majorana not implemented yet!"
-      | Prop_Unitarity -> propagate ovm_PROPAGATE_UNITARITY
+          propagate ovm_PROPAGATE_GHOST
+      | Prop_Spinor ->
+          propagate ovm_PROPAGATE_SPINOR
+      | Prop_ConjSpinor ->
+          propagate ovm_PROPAGATE_CONJSPINOR
+      | Prop_Majorana ->
+          propagate ovm_PROPAGATE_MAJORANA
+      | Prop_Col_Majorana ->
+          propagate ovm_PROPAGATE_COL_MAJORANA
+      | Prop_Unitarity ->
+          propagate ovm_PROPAGATE_UNITARITY
       | Prop_Col_Unitarity ->
-          failwith "print_fusion: Prop_Col_Unitarity not implemented yet!"
-      | Prop_Feynman -> propagate ovm_PROPAGATE_FEYNMAN
-      | Prop_Col_Feynman -> propagate ovm_PROPAGATE_COL_FEYNMAN
-      | Prop_Gauge xi ->
-          failwith "print_fusion: Prop_Gauge not implemented yet!"
-      | Prop_Rxi xi ->
-          failwith "print_fusion: Prop_Rxi not implemented yet!"
+          propagate ovm_PROPAGATE_COL_UNITARITY
+      | Prop_Feynman ->
+          propagate ovm_PROPAGATE_FEYNMAN
+      | Prop_Col_Feynman ->
+          propagate ovm_PROPAGATE_COL_FEYNMAN
       | Prop_Vectorspinor ->
-          failwith "print_fusion: Prop_Vectorspinor not implemented yet!"
+          propagate ovm_PROPAGATE_VECTORSPINOR
       | Prop_Tensor_2 ->
-          failwith "print_fusion: Prop_Tensor_2 not implemented yet!"
-      | Aux_Scalar | Aux_Spinor | Aux_ConjSpinor | Aux_Majorana
-      | Aux_Vector | Aux_Tensor_1 | Aux_Col_Tensor_1 | Aux_Col_Vector
-      | Aux_Col_Scalar -> ()
-      | Only_Insertion -> ()
+          propagate ovm_PROPAGATE_TENSOR2
+      | Aux_Col_Scalar | Aux_Col_Vector | Aux_Col_Tensor_1 ->
+          propagate ovm_PROPAGATE_COL_NONE
+      | Aux_Vector | Aux_Tensor_1 | Aux_Scalar | Aux_Spinor | Aux_ConjSpinor
+      | Aux_Majorana | Only_Insertion ->
+          propagate ovm_PROPAGATE_NONE
+      | Prop_Gauge _ ->
+          failwith "print_fusion: Prop_Gauge not implemented!"
+      | Prop_Rxi _ ->
+          failwith "print_fusion: Prop_Rxi not implemented!"
       end
       ;
 
@@ -1225,7 +1223,8 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
       if (num_particles amplitudes = 0) then begin
         print_description cmdline;
-        print_zero_header inst_length
+        print_zero_header;
+        nl ()
       end else begin
         let (wfset, amap) = wfset_amps amplitudes in
         let pset = expand_pset (momenta_set wfset)
@@ -1524,7 +1523,7 @@ module Fortran_Fermions : Fermions =
       | coeff, Psibar, SL, Psi -> print_fermion_current coeff "sl"
       | coeff, Psibar, SR, Psi -> print_fermion_current coeff "sr"
       | coeff, Psibar, SLR, Psi -> print_fermion_current2 coeff "slr"
-      | coeff, Psibar, _, Psi -> invalid_arg
+      | _, Psibar, _, Psi -> invalid_arg
             "Targets.Fortran_Fermions: no superpotential here"
       | _, Chibar, _, _ | _, _, _, Chi -> invalid_arg
             "Targets.Fortran_Fermions: Majorana spinors not handled"
@@ -1540,7 +1539,7 @@ module Fortran_Fermions : Fermions =
       | coeff, Psibar, TLRM, Psi -> print_fermion_current_mom2 coeff "tlrm"
       | coeff, Psibar, TRL, Psi -> print_fermion_current_mom1 coeff "trl"
       | coeff, Psibar, TRLM, Psi -> print_fermion_current_mom2 coeff "trlm"
-      | coeff, Psibar, _, Psi -> invalid_arg
+      | _, Psibar, _, Psi -> invalid_arg
             "Targets.Fortran_Fermions: only sigma tensor coupling here"
       | _, Chibar, _, _ | _, _, _, Chi -> invalid_arg
             "Targets.Fortran_Fermions: Majorana spinors not handled"
@@ -1591,7 +1590,6 @@ module Make_Fortran (Fermions : Fermions)
 
     module CM = Colorize.It(M)
     module F = Fusion_Maker(P)(M)
-    type amplitude = F.amplitude
 
     module CF = Fusion.Multi(Fusion_Maker)(P)(M)
     type amplitudes = CF.amplitudes
@@ -2749,7 +2747,7 @@ i*)
                   List.iter (print_add_vector4 c wf1 wf2 wf3 fusion) tail;
                   printf ")"
               end
-          | Vector4_K_Matrix_tho (disc, poles) ->
+          | Vector4_K_Matrix_tho (_, poles) ->
               let pa, pb =
                 begin match fusion with
                 | (F341|F431|F342|F432|F123|F213|F124|F214) -> (p1, p2)
@@ -2888,9 +2886,9 @@ i*)
           printf "%s * pj_unitarity(%s,%s,%s," minus_third p m gamma
       | Prop_Feynman | Prop_Col_Feynman ->
           invalid_arg "no on-shell Feynman propagator!"
-      | Prop_Gauge xi ->
+      | Prop_Gauge _ ->
           invalid_arg "no on-shell massless gauge propagator!"
-      | Prop_Rxi xi ->
+      | Prop_Rxi _ ->
           invalid_arg "no on-shell Rxi propagator!"
       | Prop_Vectorspinor ->
           printf "pj_grav(%s,%s,%s," p m gamma
@@ -2920,9 +2918,9 @@ i*)
           printf "pg_unitarity(%s,%s,%s," p m gamma
       | Prop_Feynman | Prop_Col_Feynman ->
           invalid_arg "no on-shell Feynman propagator!"
-      | Prop_Gauge xi ->
+      | Prop_Gauge _ ->
           invalid_arg "no on-shell massless gauge propagator!"
-      | Prop_Rxi xi ->
+      | Prop_Rxi _ ->
           invalid_arg "no on-shell Rxi propagator!"
       | Prop_Tensor_2 ->
           printf "pg_tensor(%s,%s,%s," p m gamma
@@ -3103,6 +3101,7 @@ i*)
       | Tensor_2 -> printf "conjg (eps2 (%s, %s, %s))" m p s
       | BRS _ -> invalid_arg "no such BRST transformations"
 
+    (*i unused value
     let twice_spin wf =
       match CM.lorentz (F.flavor wf) with
       | Scalar | BRS Scalar -> "0"
@@ -3112,7 +3111,9 @@ i*)
       | Tensor_1 -> "2"
       | Tensor_2 -> "4"
       | BRS _ -> invalid_arg "Targets.twice_spin: no such BRST transformation"
+     i*)
 
+    (*i unused value
     let print_argument_diagnostics amplitude =
       let externals = (F.externals amplitude) in
       let n = List.length externals
@@ -3127,6 +3128,7 @@ i*)
         print_list masses;
         printf " /), k)"; nl ()
       end
+     i*)
 
     let print_external_momenta amplitude =
       let externals =
@@ -3155,12 +3157,16 @@ i*)
         end;
         WFSet.add wf seen) seen_wfs externals
 
+    (*i unused value
     let flavors_to_string flavors =
       String.concat " " (List.map CM.flavor_to_string flavors)
+    i*)
 
+    (*i unused value
     let process_to_string amplitude =
       flavors_to_string (F.incoming amplitude) ^ " -> " ^
       flavors_to_string (F.outgoing amplitude)
+    i*)
 
     let flavors_sans_color_to_string flavors =
       String.concat " " (List.map M.flavor_to_string flavors)
@@ -3250,9 +3256,9 @@ i*)
       String.concat " " (List.map color_to_string (CFlow.in_to_lists cflow)) ^ " -> " ^
       String.concat " " (List.map color_to_string (CFlow.out_to_lists cflow))
 
-    let protected = ""
     let protected = ", protected" (* Fortran 2003! *)
 
+    (*i unused value
     let print_spin_table_old abbrev name = function
       | [] ->
           printf "  @[<2>integer, dimension(n_prt,0) ::";
@@ -3270,6 +3276,7 @@ i*)
           ignore (List.fold_left (fun i tuple ->
             printf ",@ %s%04d" abbrev i; succ i) 2 tuples');
           printf "@ /), (/ n_prt, n_hel /) )"; nl ()
+    i*)
 
     let print_spin_table name tuples =
       printf "  @[<2>integer, dimension(n_prt,n_hel), save%s :: table_spin_%s"
@@ -3287,6 +3294,7 @@ i*)
       print_spin_table "states" (CF.helicities amplitudes);
       nl ()
 
+    (*i unused value
     let print_flavor_table_old n abbrev name = function
       | [] ->
           printf "  @[<2>integer, dimension(n_prt,0) ::";
@@ -3307,8 +3315,9 @@ i*)
           ignore (List.fold_left (fun i tuple ->
             printf ",@ %s%04d" abbrev i; succ i) 2 tuples');
           printf "@ /), (/ n_prt, n_flv /) )"; nl ()
+    i*)
 
-    let print_flavor_table n name tuples =
+    let print_flavor_table name tuples =
       printf "  @[<2>integer, dimension(n_prt,n_flv), save%s :: table_flavor_%s"
         protected name; nl ();
       match tuples with
@@ -3322,16 +3331,17 @@ i*)
             nl (); succ i) 1 tuples)
 
     let print_flavor_tables amplitudes =
-      let n = num_particles amplitudes in
+      (*let n = num_particles amplitudes in*)
       (* [print_flavor_table_old n "f" "states_old"
         (List.map (fun (fin, fout) -> fin @ fout) (CF.flavors amplitudes));] *)
-      print_flavor_table n "states"
+      print_flavor_table "states"
         (List.map (fun (fin, fout) -> fin @ fout) (CF.flavors amplitudes));
       nl ()
 
     let num_flavors amplitudes =
       List.length (CF.flavors amplitudes)
 
+    (*i unused value
     let print_color_flows_table_old abbrev = function
       | [] ->
           printf "  @[<2>integer, dimension(n_cindex, n_prt, n_cflow) ::";
@@ -3357,7 +3367,9 @@ i*)
           ignore (List.fold_left (fun i tuple ->
             printf ",@ %s%04d" abbrev i; succ i) 2 tuples');
           printf "@ /),@ (/ n_cindex, n_prt, n_cflow /) )"; nl ()
+    i*)
 
+    (*i unused value
     let print_ghost_flags_table_old abbrev = function
       | [] ->
           printf "  @[<2>logical, dimension(n_prt, n_cflow) ::";
@@ -3382,6 +3394,7 @@ i*)
           ignore (List.fold_left (fun i tuple ->
             printf ",@ %s%04d" abbrev i; succ i) 2 tuples');
           printf "@ /),@ (/ n_prt, n_cflow /) )"; nl ()
+    i*)
 
     let print_color_flows_table tuples =
       printf
@@ -3389,7 +3402,7 @@ i*)
         protected; nl ();
       match tuples with
       | [] -> ()
-      | _ :: tuples' as tuples ->
+      | _ :: _ as tuples ->
           ignore (List.fold_left (fun i tuple ->
             begin match CFlow.to_lists tuple with
             | [] -> ()
@@ -3467,6 +3480,7 @@ i*)
       | [] -> "zero"
       | powers -> String.concat "" (List.map (format_power_of x) powers)
 
+    (*i unused value
     let print_color_factor_table_old table =
       let n_cflow = Array.length table in
       let n_cfactors = ref 0 in
@@ -3500,6 +3514,7 @@ i*)
         done;
         printf "@ /)"; nl ()
       end
+    i*)
 
 (* \begin{dubious}
      We can optimize the following slightly by reusing common color factor [parameter]s.
@@ -3551,6 +3566,7 @@ i*)
       | Some _ -> "T"
       | None -> "F"
 
+    (*i unused value
     let print_flavor_color_table_old abbrev n_flv n_cflow table =
       if n_flv <= 0 || n_cflow <= 0 then begin
         printf "  @[<2>logical, dimension(n_flv, n_cflow) ::";
@@ -3573,6 +3589,7 @@ i*)
         done;
         printf "@ /),@ (/ n_flv, n_cflow /) )"; nl ()
       end
+    i*)
 
     let print_flavor_color_table n_flv n_cflow table =
       printf
@@ -3635,7 +3652,7 @@ i*)
 
 (* \thocwmodulesubsection{Maintenance \&\ Inquiry Functions} *)
 
-    let print_maintenance_functions amplitudes =
+    let print_maintenance_functions =
       if !whizard then begin
         printf "  subroutine init (par)"; nl ();
         printf "    real(kind=%s), dimension(*), intent(in) :: par" !kind; nl ();
@@ -3660,10 +3677,13 @@ i*)
       nl ()
     end
 
+    (*i unused value
     let print_inquiry_function_declarations name =
       printf "  @[<2>public :: number_%s,@ %s" name name;
       nl ()
+    i*)
 
+    (*i unused value
     let print_numeric_inquiry_functions () =
       printf "  @[<5>"; if !fortran95 then printf "pure ";
       printf "function number_particles_in () result (n)"; nl ();
@@ -3677,6 +3697,7 @@ i*)
       printf "    n = n_out"; nl ();
       printf "  end function number_particles_out"; nl ();
       nl ()
+    i*)
 
     let print_numeric_inquiry_functions (f, v) =
       printf "  @[<5>"; if !fortran95 then printf "pure ";
@@ -3964,8 +3985,7 @@ i*)
           List.iter (fun n -> printf ",@ %s" n) names; nl ()
       | [] -> ()
 
-    (*i TODO: (bcn 2014-03-09) print_public_interface not used?! *)
-    (*
+    (*i unused value
     let print_public_interface generic procedures =
       printf "  public :: %s" generic; nl ();
       begin match procedures with
@@ -4131,9 +4151,9 @@ i*)
       print_amplitude_table amplitudes;
       print_helicity_selection_table ()
 
-    let print_interface amplitudes =
+    let print_interface _ =
       print_md5sum_functions !md5sum;
-      print_maintenance_functions amplitudes;
+      print_maintenance_functions;
       List.iter print_numeric_inquiry_functions
         [("number_particles_in", "n_in");
          ("number_particles_out", "n_out")];
@@ -4285,7 +4305,7 @@ i*)
 
 (* \thocwmodulesubsection{Multiple Modules} *)
 
-    let modules_of_amplitudes cmdline oc size amplitudes =
+    let modules_of_amplitudes _ _ size amplitudes =
 
       let name = !module_name in
 
@@ -4680,8 +4700,7 @@ module Fortran_Majorana_Fermions : Fermions =
       | F12 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf2 wf1 p2
       | F21 -> printf "f_%sf(%s,%s,%s,%s,%s)" f c1 c2 wf1 wf2 p1
 
-(*i TODO: (bcn 2014-03-09) print_fermion_current_mom_vector Not used?! *)
-      (*
+    (*i unused value
     let print_fermion_current_mom_vector coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling_mom coeff c in
       let c1 = fastener c 1 and
@@ -4973,6 +4992,7 @@ module Fortran_Majorana_Fermions : Fermions =
       | (F413|F431|F341|F241|F412|F421) ->
           printf "%s_fgr(-%s,%s,%s,%s)" f c f1 f2 f3
 
+    (*i unused value
     let print_fermion_2_g4_current coeff f c wf1 wf2 wf3 fusion =
       let f1 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 0) and
           f2 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 1) and
@@ -4989,6 +5009,7 @@ module Fortran_Majorana_Fermions : Fermions =
           printf "%s_grf(%s,%s,%s,%s,%s)" f c1 c2 f1 f2 f3
       | (F413|F431|F341|F241|F412|F421) ->
           printf "%s_fgr(-(%s),-(%s),%s,%s,%s)" f c2 c1 f1 f2 f3
+    i*)
 
     let print_fermion_2_g4_current coeff f c wf1 wf2 wf3 fusion =
       let f1 = (List.nth (wf_of_f wf1 wf2 wf3 fusion) 0) and
