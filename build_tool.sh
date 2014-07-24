@@ -1,4 +1,4 @@
-if $mighty ; then
+if [ $mighty ]; then
   whiz="$HOME/trunk"
 else
   whiz="/scratch/bcho/private-whizard-trunk"
@@ -46,7 +46,7 @@ for b in $builds; do
   if [ $conf > 0 ]; then
     case $b in
       ifort)
-        $whiz/omega/configure --prefix=$whiz/install/$b FC=ifort FCFLAGS='-O2 -warn all' > /dev/null
+        $whiz/omega/configure --prefix=$whiz/install/$b OCAMLFLAGS='-w +a-4' FC=ifort FCFLAGS=-O2 > /dev/null
         ;;
 
       doc)
@@ -56,7 +56,7 @@ for b in $builds; do
 
       debug)
         $whiz/configure --prefix=$whiz/install/$b FC=gfortran \
-          FCLAGS="$DEBUG_FCFLAGS" --disable-static > /dev/null
+          FCFLAGS="$DEBUG" --disable-static > /dev/null
         ;;
 
       def)

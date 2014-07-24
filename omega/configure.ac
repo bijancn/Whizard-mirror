@@ -32,6 +32,7 @@ dnl
 dnl Environment variables that can be set by the user:
 dnl   FC		Fortran compiler
 dnl   FCFLAGS		Fortran compiler flags
+dnl   OCAMLFLAGS	OCaml compiler flags
 dnl 
 dnl *********************************************************************** 
 
