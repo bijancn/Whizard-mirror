@@ -1,4 +1,4 @@
-if [ $mighty ]; then
+if [ $mighty = "true" ]; then
   whiz="$HOME/trunk"
 else
   whiz="/scratch/bcho/private-whizard-trunk"
