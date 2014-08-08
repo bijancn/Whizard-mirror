@@ -293,6 +293,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/eio_lhef_5.ref \
     ref-output/eio_lhef_6.ref \
     ref-output/eio_hepmc_1.ref \
+    ref-output/eio_hepmc_2.ref \
     ref-output/eio_stdhep_1.ref \
     ref-output/eio_stdhep_2.ref \
     ref-output/eio_ascii_1.ref \

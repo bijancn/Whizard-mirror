@@ -1,4 +1,4 @@
-%  $Id: omegalib.nw 6041 2014-07-23 16:09:30Z bchokoufe $
+%  $Id: omegalib.nw 6058 2014-08-04 10:31:06Z bchokoufe $
 %
 %  Copyright (C) 1999-2014 by 
 %      Wolfgang Kilian <kilian@physik.uni-siegen.de>
@@ -56,6 +56,10 @@ intrinsic :: conjg
 <<[[intrinsic :: abs]]>>=
 @
 <<[[intrinsic :: conjg]]>>=
+@
+To reenable the pure functions that have been removed for OpenMP, one
+should set this chunk to [[pure &]]
+<<[[pure]] unless OpenMP>>=
 @
 \subsection{Inner Product}
 <<Declaration of operations for spinors>>=
@@ -8108,25 +8112,63 @@ end module omega_color
 public :: omega_color_factor
 type omega_color_factor
    integer :: i1, i2
-   complex(kind=default) :: factor
+   real(kind=default) :: factor
 end type omega_color_factor
 @
 <<Declaration of color functions>>=
 public :: omega_color_sum
-@ 
+@
+The [[!$omp]] instruction will result in parallel code if compiled with
+support for OpenMP otherwise it is ignored.
+@
 <<Implementation of color functions>>=
-pure function omega_color_sum (flv, hel, amp, cf) result (amp2)
+<<[[pure]] unless OpenMP>>
+function omega_color_sum (flv, hel, amp, cf) result (amp2)
   complex(kind=default) :: amp2
   integer, intent(in) :: flv, hel
   complex(kind=default), dimension(:,:,:), intent(in) :: amp
   type(omega_color_factor), dimension(:), intent(in) :: cf
   integer :: n
   amp2 = 0
+  !$omp parallel do reduction(+:amp2)
   do n = 1, size (cf)
-     amp2 = amp2 &
-          + cf(n)%factor * amp(flv,cf(n)%i1,hel) * conjg (amp(flv,cf(n)%i2,hel))
+     amp2 = amp2 + cf(n)%factor * &
+                   amp(flv,cf(n)%i1,hel) * conjg (amp(flv,cf(n)%i2,hel))
   end do
+  !$omp end parallel do
 end function omega_color_sum
+@
+In the bytecode for the OVM, we only save the symmetric part of the
+color factor table. This almost halves the size of $n$ gluon amplitudes
+for $n>6$. For $2\,\to\,(5,6)\,g$ the reduced color factor table still
+amounts for $\sim(75,93)\%$ of the bytecode, making it desirable to
+omit it completely by computing it dynamically to reduce memory
+requirements. Note that
+$2\text{Re}(A_{i_1}A_{i_2}^*)=A_{i_1}A_{i_2}^*+A_{i_2}A_{i_1}^*$.
+<<Declaration of color functions>>=
+public :: ovm_color_sum
+@
+<<Implementation of color functions>>=
+<<[[pure]] unless OpenMP>>
+function ovm_color_sum (flv, hel, amp, cf) result (amp2)
+  real(kind=default) :: amp2
+  integer, intent(in) :: flv, hel
+  complex(kind=default), dimension(:,:,:), intent(in) :: amp
+  type(omega_color_factor), dimension(:), intent(in) :: cf
+  integer :: n
+  amp2 = 0
+  !$omp parallel do reduction(+:amp2)
+  do n = 1, size (cf)
+     if (cf(n)%i1 == cf(n)%i2) then
+        amp2 = amp2 + cf(n)%factor * &
+               real(amp(cf(n)%i1,hel,flv) * conjg(amp(cf(n)%i1,hel,flv)))
+     else
+        amp2 = amp2 + cf(n)%factor * 2 * &
+               real(amp(cf(n)%i1,hel,flv) * conjg(amp(cf(n)%i2,hel,flv)))
+     end if
+  end do
+  !$omp end parallel do
+end function ovm_color_sum
 @ \section{Utilities}
 <<[[omega_utils.f90]]>>=
 <<Copyleft>>
@@ -8145,7 +8187,7 @@ end module omega_utils
 @ \subsection{Helicity Selection Rule Heuristics}
 <<Declaration of utility functions>>=
 public :: omega_update_helicity_selection
-@ 
+@
 <<Implementation of utility functions>>=
 pure subroutine omega_update_helicity_selection &
              (count, amp, max_abs, sum_abs, mask, threshold, cutoff, mask_dirty)
@@ -10151,7 +10193,7 @@ case (OVM_FUSE_PSIBAR_PSIBAR_VECTOR)
         f_fv (sign*env%gc(coupl), vm%psibar(rhs(1)), vm%v(rhs(2)))
 @ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 <<Copyleft>>=
-!  $Id: omegalib.nw 6041 2014-07-23 16:09:30Z bchokoufe $
+!  $Id: omegalib.nw 6058 2014-08-04 10:31:06Z bchokoufe $
 !
 !  Copyright (C) 1999-2009 by 
 !      Wolfgang Kilian <kilian@physik.uni-siegen.de>

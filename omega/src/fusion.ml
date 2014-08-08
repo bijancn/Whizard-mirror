@@ -24,10 +24,10 @@
 
 let rcs_file = RCS.parse "Fusion" ["General Fusions"]
     { RCS.revision = "$Revision: 5023 $";
-      RCS.date = "$Date: 2013-12-20 13:03:39 +0100 (Fr, 20 Dez 2013) $";
+      RCS.date = "$Date: 2013-12-20 13:03:39 +0100 (Fri, 20 Dec 2013) $";
       RCS.author = "$Author: ohl $";
       RCS.source
-        = "$URL: http://whizard.hepforge.org/svn/trunk/omega/src/fusion.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/fusion.ml $" }
 
 module type T =
   sig

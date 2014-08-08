@@ -25,10 +25,10 @@
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
     { RCS.revision = "$Revision: 5864 $";
-      RCS.date = "$Date: 2014-06-02 15:12:47 +0200 (Mo, 02 Jun 2014) $";
+      RCS.date = "$Date: 2014-06-02 15:12:47 +0200 (Mon, 02 Jun 2014) $";
       RCS.author = "$Author: ohl $";
       RCS.source
-        = "$URL: http://whizard.hepforge.org/svn/trunk/omega/src/modellib_SM.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_SM.ml $" }
 
 (* \thocwmodulesection{$\phi^3$} *)
 

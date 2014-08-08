@@ -1,4 +1,4 @@
-! $Id: omega_interface.f90 6004 2014-07-09 15:46:54Z cweiss $
+! $Id: omega_interface.f90 6058 2014-08-04 10:31:06Z bchokoufe $
 ! omega_interface.f90 -- package the O'Mega interface functions
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -98,7 +98,9 @@ module omega_interface
        type(omega_color_factor), dimension(:), intent(out) :: cf
      end subroutine color_factors
 
-     pure function color_sum (flv, hel) result (amp2)
+     !pure unless OpenMP
+     !pure function color_sum (flv, hel) result (amp2)
+     function color_sum (flv, hel) result (amp2)
        use kinds
        integer, intent(in) :: flv, hel
        real(kind=default) :: amp2

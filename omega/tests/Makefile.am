@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 6004 2014-07-09 15:46:54Z cweiss $
+# $Id: Makefile.am 6059 2014-08-04 15:39:25Z bchokoufe $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -300,7 +300,10 @@ if FC_USE_OPENMP
 TESTS += test_openmp
 EXTRA_PROGRAMS += test_openmp
 
-test_openmp_SOURCES = test_openmp.f90 parameters_QCD.f90
+TESTOPENMP_SUPPORT_F90 = $(WARD_SUPPORT_F90)
+TESTOPENMP_SUPPORT_O = $(WARD_SUPPORT_O)
+
+test_openmp_SOURCES = test_openmp.f90 $(TESTOPENMP_SUPPORT_F90)
 nodist_test_openmp_SOURCES = amplitude_openmp.f90
 test_openmp_LDADD = $(top_builddir)/src/libomega_core.la
 
@@ -309,7 +312,7 @@ amplitude_openmp.f90: $(OMEGA_QCD) $(OMEGA_QCD_CACHE) Makefile
 	  -scatter "gl gl -> gl gl gl" > $@
 
 test_openmp.o: amplitude_openmp.o
-test_openmp.o: parameters_QCD.o
+test_openmp.o: $(TESTOPENMP_SUPPORT_O)
 amplitude_openmp.o: parameters_QCD.o
 
 endif

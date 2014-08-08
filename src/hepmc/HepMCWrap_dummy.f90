@@ -434,6 +434,14 @@
        status = 0
      end function gen_particle_status
 
+! extern "C" int gen_particle_is_beam( void* prt )
+     function gen_particle_is_beam (prt_obj) result (is_beam) bind(C)
+       use iso_c_binding
+       logical(c_bool) :: is_beam
+       type(c_ptr), value :: prt_obj
+       is_beam = .false.
+     end function gen_particle_is_beam
+
 ! extern "C" void* gen_particle_production_vertex( void* prt )
      type(c_ptr) function gen_particle_production_vertex (prt_obj) bind(C)
        use iso_c_binding

@@ -1,4 +1,4 @@
-(* $Id: targets.ml 5147 2014-01-23 14:22:34Z msekulla $
+(* $Id: targets.ml 6058 2014-08-04 10:31:06Z bchokoufe $
 
    Copyright (C) 1999-2014 by
 
@@ -26,11 +26,11 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 6042 $";
-      RCS.date = "$Date: 2014-07-24 15:22:34 +0100 (Do, 24 Jul 2014) $";
+    { RCS.revision = "$Revision: 6058 $";
+      RCS.date = "$Date: 2014-08-04 12:31:06 +0200 (Mon, 04 Aug 2014) $";
       RCS.author = "$Author: bchokoufe $";
       RCS.source
-        = "$URL: http://whizard.hepforge.org/svn/trunk/omega/src/targets.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets.ml $" }
 
 module Dummy (F : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
   struct
@@ -81,6 +81,9 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let (@@) fn x = fn x
 
 (* Integers encode the opcodes (operation codes). *)
+    let ovm_ADD_MOMENTA = 1
+    let ovm_CALC_BRAKET = 2
+
     let ovm_LOAD_SCALAR = 10
     let ovm_LOAD_SPINOR_INC = 11
     let ovm_LOAD_SPINOR_OUT = 12
@@ -106,24 +109,21 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let ovm_LOAD_BRS_MAJORANA_INC = 35
     let ovm_LOAD_BRS_MAJORANA_OUT = 36
 
-    let ovm_ADD_MOMENTA = 1
-    let ovm_CALC_BRAKET = 2
-
-    let ovm_PROPAGATE_SCALAR = 31
-    let ovm_PROPAGATE_COL_SCALAR = 32
-    let ovm_PROPAGATE_GHOST = 33
-    let ovm_PROPAGATE_SPINOR = 34
-    let ovm_PROPAGATE_CONJSPINOR = 35
-    let ovm_PROPAGATE_MAJORANA = 36
-    let ovm_PROPAGATE_COL_MAJORANA = 37
-    let ovm_PROPAGATE_UNITARITY = 38
-    let ovm_PROPAGATE_COL_UNITARITY = 39
-    let ovm_PROPAGATE_FEYNMAN = 40
-    let ovm_PROPAGATE_COL_FEYNMAN = 41
-    let ovm_PROPAGATE_VECTORSPINOR = 42
-    let ovm_PROPAGATE_TENSOR2 = 43
-    let ovm_PROPAGATE_NONE = 44
-    let ovm_PROPAGATE_COL_NONE = 45
+    let ovm_PROPAGATE_SCALAR = 51
+    let ovm_PROPAGATE_COL_SCALAR = 52
+    let ovm_PROPAGATE_GHOST = 53
+    let ovm_PROPAGATE_SPINOR = 54
+    let ovm_PROPAGATE_CONJSPINOR = 55
+    let ovm_PROPAGATE_MAJORANA = 56
+    let ovm_PROPAGATE_COL_MAJORANA = 57
+    let ovm_PROPAGATE_UNITARITY = 58
+    let ovm_PROPAGATE_COL_UNITARITY = 59
+    let ovm_PROPAGATE_FEYNMAN = 60
+    let ovm_PROPAGATE_COL_FEYNMAN = 61
+    let ovm_PROPAGATE_VECTORSPINOR = 62
+    let ovm_PROPAGATE_TENSOR2 = 63
+    let ovm_PROPAGATE_NONE = 64
+    let ovm_PROPAGATE_COL_NONE = 65
 
     let ovm_FUSE_VECTOR_CONJSPINOR_SPINOR = -1
     let ovm_FUSE_SPINOR_VECTOR_SPINOR = -2
@@ -178,7 +178,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
             | Scalar -> {acc with scalars = wf :: acc.scalars}
             | Spinor -> {acc with spinors = wf :: acc.spinors}
             | ConjSpinor -> {acc with conjspinors = wf :: acc.conjspinors}
-            | Majorana -> invalid_arg "classify_wfs': not implemented"
+            | Majorana -> {acc with realspinors = wf :: acc.realspinors}
             | Maj_Ghost -> {acc with ghostspinors = wf :: acc.ghostspinors}
             | Vectorspinor ->
                 {acc with vectorspinors = wf :: acc.vectorspinors}
@@ -248,8 +248,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           else
             int_lst_compare tl1 tl2
 
-(* In order to be able to translate the [wf_ID] in [wf_index] into an array
-   index for Fortran, we need a canonical ordering for the different types
+(* We need a canonical ordering for the different types
    of wfs. Copied, and slightly modified to order [wf]s, from
    \texttt{fusion.ml}. *)
 
@@ -289,7 +288,14 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
     let amp_compare amp1 amp2 =
       let cflow a = CM.flow (F.incoming a) (F.outgoing a) in
-      compare (cflow amp1) (cflow amp2)
+      let c1 = compare (cflow amp1) (cflow amp2) in
+      if c1 <> 0 then
+        c1
+      else
+        let process_sans_color a =
+          (List.map CM.flavor_sans_color (F.incoming a),
+           List.map CM.flavor_sans_color (F.outgoing a)) in
+        compare (process_sans_color amp1) (process_sans_color amp2)
 
     let level_compare (f1, amp1) (f2, amp2) =
       let p1 = F.momentum_list (F.lhs f1)
@@ -398,44 +404,26 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
     let num_classified_wfs wfs =
       let wfs' = classify_wfs wfs in
-      List.map List.length [ wfs'.scalars;
-                             wfs'.spinors;
-                             wfs'.conjspinors;
-                             wfs'.realspinors;
-                             wfs'.ghostspinors;
-                             wfs'.vectorspinors;
-                             wfs'.vectors;
-                             wfs'.ward_vectors;
-                             wfs'.massive_vectors;
-                             wfs'.tensors_1;
-                             wfs'.tensors_2;
-                             wfs'.brs_scalars;
-                             wfs'.brs_spinors;
-                             wfs'.brs_conjspinors;
-                             wfs'.brs_realspinors;
-                             wfs'.brs_vectorspinors;
-                             wfs'.brs_vectors;
-                             wfs'.brs_massive_vectors ]
+      List.map List.length
+        [ wfs'.scalars @ wfs'.brs_scalars;
+          wfs'.spinors @ wfs'.brs_spinors;
+          wfs'.conjspinors @ wfs'.brs_conjspinors;
+          wfs'.realspinors @ wfs'.brs_realspinors @ wfs'.ghostspinors;
+          wfs'.vectors @ wfs'.massive_vectors @ wfs'.brs_vectors
+            @ wfs'.brs_massive_vectors @ wfs'.ward_vectors;
+          wfs'.tensors_2;
+          wfs'.tensors_1;
+          wfs'.vectorspinors ]
 
     let description_classified_wfs =
       [ "N_scalars";
         "N_spinors";
         "N_conjspinors";
-        "N_realspinors";
-        "N_ghostspinors";
-        "N_vectorspinors";
+        "N_bispinors";
         "N_vectors";
-        "N_ward_vectors";
-        "N_massive_vectors";
-        "N_tensors_1";
         "N_tensors_2";
-        "N_BRS_scalars";
-        "N_BRS_spinors";
-        "N_BRS_conjspinors";
-        "N_BRS_realspinors";
-        "N_BRS_vectorspinors";
-        "N_BRS_vectors";
-        "N_BRS_massive_vectors" ]
+        "N_tensors_1";
+        "N_vectorspinors" ]
 
     let num_particles_in amp =
       match CF.flavors amp with
@@ -505,7 +493,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         "N_prt_in";
         "N_prt_out";
         "N_amplitudes";
-        "N_helicites";
+        "N_helicities";
         "N_col_flows";
         "N_col_indices";
         "N_flavors";
@@ -776,10 +764,23 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 (* To obtain the Fortran index, we substract the number of precedent wave
    functions. *)
 
+    let lorentz_ordering_reduced wf =
+      match CM.lorentz (F.flavor wf) with
+      | Scalar | BRS Scalar -> 0
+      | Spinor | BRS Spinor -> 1
+      | ConjSpinor | BRS ConjSpinor -> 2
+      | Majorana | BRS Majorana -> 3
+      | Vector | BRS Vector | Massive_Vector | BRS Massive_Vector -> 4
+      | Tensor_2 | BRS Tensor_2 -> 5
+      | Tensor_1 | BRS Tensor_1 -> 6
+      | Vectorspinor | BRS Vectorspinor -> 7
+      | Maj_Ghost -> invalid_arg "lorentz_ordering: not implemented"
+      | BRS _ -> invalid_arg "lorentz_ordering: not needed"
+
     let wf_index wfmap num_lst (wf, i) =
       let wf_ID = WFMap.find (wf, i) wfmap
       and sum lst = List.fold_left (fun x y -> x+y) 0 lst in
-        wf_ID - sum (ThoList.hdn (lorentz_ordering wf) num_lst)
+        wf_ID - sum (ThoList.hdn (lorentz_ordering_reduced wf) num_lst)
 
     let print_ext lookups amp_ID inc (wf, i) =
       let mom = (F.momentum_list wf) in
@@ -1598,6 +1599,7 @@ module Make_Fortran (Fermions : Fermions)
     let km_write = ref false
     let km_pure = ref false
     let openmp = ref false
+    let pure_unless_openmp = false
 
     let options = Options.create
       [ "90", Arg.Clear fortran95,
@@ -3738,7 +3740,7 @@ i*)
       printf "    cf = table_color_factors"; nl ();
       printf "  end subroutine color_factors"; nl ();
       nl ();
-      printf "  @[<5>"; if !fortran95 then printf "pure ";
+      printf "  @[<5>"; if !fortran95 && pure_unless_openmp then printf "pure ";
       printf "function color_sum (flv, hel) result (amp2)"; nl ();
       printf "    integer, intent(in) :: flv, hel"; nl ();
       printf "    real(kind=%s) :: amp2" !kind; nl ();

@@ -26,10 +26,10 @@
 let rcs_file = RCS.parse "omega_SYM"
     ["Super Yang-Mills (incomplete, just for stress-testing Colorize.It())"]
     { RCS.revision = "$Revision: 6004 $";
-      RCS.date = "$Date: 2014-07-09 17:46:54 +0200 (Mi, 09 Jul 2014) $";
+      RCS.date = "$Date: 2014-07-09 17:46:54 +0200 (Wed, 09 Jul 2014) $";
       RCS.author = "$Author: cweiss $";
       RCS.source
-        = "$URL: http://whizard.hepforge.org/svn/trunk/omega/src/omega_SYM.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/omega_SYM.ml $" }
 
 module SYM = 
   struct

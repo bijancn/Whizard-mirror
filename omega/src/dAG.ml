@@ -24,10 +24,10 @@
 
 let rcs_file = RCS.parse "DAG" ["Directed Acyclical Graph"]
     { RCS.revision = "$Revision: 4983 $";
-      RCS.date = "$Date: 2013-12-11 17:46:32 +0100 (Mi, 11 Dez 2013) $";
+      RCS.date = "$Date: 2013-12-11 17:46:32 +0100 (Wed, 11 Dec 2013) $";
       RCS.author = "$Author: ohl $";
       RCS.source
-        = "$URL: http://whizard.hepforge.org/svn/trunk/omega/src/dAG.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/dAG.ml $" }
 
 module type Ord =
   sig
