@@ -60,6 +60,7 @@ dist_models_DATA = \
   models/SM.mdl \
   models/SM_Higgs.mdl \
   models/SM_hadrons.mdl \
+  models/SM_rad.mdl \
   models/SSC.mdl \
   models/Template.mdl \
   models/UED.mdl \

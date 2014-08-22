@@ -1,4 +1,4 @@
-(* $Id: targets.ml 6058 2014-08-04 10:31:06Z bchokoufe $
+(* $Id: targets.ml 6071 2014-08-20 17:04:16Z bchokoufe $
 
    Copyright (C) 1999-2014 by
 
@@ -26,8 +26,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 6058 $";
-      RCS.date = "$Date: 2014-08-04 12:31:06 +0200 (Mon, 04 Aug 2014) $";
+    { RCS.revision = "$Revision: 6071 $";
+      RCS.date = "$Date: 2014-08-20 19:04:16 +0200 (Mi, 20 Aug 2014) $";
       RCS.author = "$Author: bchokoufe $";
       RCS.source
         = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets.ml $" }
@@ -122,14 +122,63 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let ovm_PROPAGATE_COL_FEYNMAN = 61
     let ovm_PROPAGATE_VECTORSPINOR = 62
     let ovm_PROPAGATE_TENSOR2 = 63
-    let ovm_PROPAGATE_NONE = 64
-    let ovm_PROPAGATE_COL_NONE = 65
 
-    let ovm_FUSE_VECTOR_CONJSPINOR_SPINOR = -1
-    let ovm_FUSE_SPINOR_VECTOR_SPINOR = -2
-    let ovm_FUSE_CONJSPINOR_CONJSPINOR_VECTOR = -3
-    let ovm_FUSE_GAUGE_GAUGE_GAUGE = -4
-    let ovm_FUSE_WFS_V4 = -5
+(* \begin{dubious}
+    [ovm_PROPAGATE_NONE] has to be split up to different types to work
+    in conjunction with color MC \dots
+   \end{dubious} *)
+    let ovm_PROPAGATE_NONE = 64
+
+    let ovm_FUSE_V_FF = -1
+    let ovm_FUSE_F_VF = -2
+    let ovm_FUSE_F_FV = -3
+    let ovm_FUSE_VA_FF = -4
+    let ovm_FUSE_F_VAF = -5
+    let ovm_FUSE_F_FVA = -6
+    let ovm_FUSE_VA2_FF = -7
+    let ovm_FUSE_F_VA2F = -8
+    let ovm_FUSE_F_FVA2 = -9
+    let ovm_FUSE_A_FF = -10
+    let ovm_FUSE_F_AF = -11
+    let ovm_FUSE_F_FA = -12
+    let ovm_FUSE_VL_FF = -13
+    let ovm_FUSE_F_VLF = -14
+    let ovm_FUSE_F_FVL = -15
+    let ovm_FUSE_VR_FF = -16
+    let ovm_FUSE_F_VRF = -17
+    let ovm_FUSE_F_FVR = -18
+    let ovm_FUSE_VLR_FF = -19
+    let ovm_FUSE_F_VLRF = -20
+    let ovm_FUSE_F_FVLR = -21
+    let ovm_FUSE_SP_FF = -22
+    let ovm_FUSE_F_SPF = -23
+    let ovm_FUSE_F_FSP = -24
+    let ovm_FUSE_S_FF = -25
+    let ovm_FUSE_F_SF = -26
+    let ovm_FUSE_F_FS = -27
+    let ovm_FUSE_P_FF = -28
+    let ovm_FUSE_F_PF = -29
+    let ovm_FUSE_F_FP = -30
+    let ovm_FUSE_SL_FF = -31
+    let ovm_FUSE_F_SLF = -32
+    let ovm_FUSE_F_FSL = -33
+    let ovm_FUSE_SR_FF = -34
+    let ovm_FUSE_F_SRF = -35
+    let ovm_FUSE_F_FSR = -36
+    let ovm_FUSE_SLR_FF = -37
+    let ovm_FUSE_F_SLRF = -38
+    let ovm_FUSE_F_FSLR = -39
+
+    let ovm_FUSE_G_GG = -40
+    let ovm_FUSE_V_SS = -41
+    let ovm_FUSE_S_VV = -42
+    let ovm_FUSE_S_VS = -43
+    let ovm_FUSE_V_SV = -44
+    let ovm_FUSE_S_SS = -45
+    let ovm_FUSE_S_SVV = -46
+    let ovm_FUSE_V_SSV = -47
+    let ovm_FUSE_S_SSS = -48
+    let ovm_FUSE_V_VVV = -49
 
     let inst_length = 8
 
@@ -339,7 +388,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
     type lookups = { pmap : int list IMap.t;
                      wfmap : int WFMap.t;
-                     cmap : CM.constant IMap.t;
+                     cmap : CM.constant IMap.t * CM.constant IMap.t;
                      amap : F.amplitude IMap.t;
                      n_wfs : int list;
                      amplitudes : CF.amplitudes;
@@ -358,7 +407,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let get_ID' comp map elt : int =
       let smallmap = IMap.filter (fun _ x -> (comp x elt) = 0 ) map in
       if IMap.is_empty smallmap then
-        failwith "get_ID': Element not in map!"
+        raise Not_found
       else
         fst (IMap.min_binding smallmap)
 
@@ -367,7 +416,13 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
      polymorphic function [get_ID]?
    \end{dubious} *)
 
-    let get_ID map = get_ID' compare map
+    let get_ID map = match map with
+      | map -> get_ID' compare map
+
+    let get_const_ID map x = match map with
+      | (map1, map2) -> try get_ID' compare map1 x with
+                       _ -> try get_ID' compare map2 x with
+                       _ -> failwith "Impossible"
 
 (* Creating an integer map of a list with an optional argument that
    indicates where the map should start counting. *)
@@ -387,10 +442,11 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
      module doesn't seem to be loaded on default.
    \end{dubious} *)
 
+    let version_string x = RCS.name x ^ "-rev" ^ RCS.revision x
+
     let print_description cmdline  =
-      let version_string x = RCS.name x ^ "-rev" ^ RCS.revision x ^ "\n" in
       rcs_list @ [M.rcs] |> List.map version_string
-                         |> List.iter (printf "%s");
+                         |> List.iter (printf "%s\n");
 
       printf "@\nBytecode file generated automatically by O'Mega for OVM";
       printf "@\nDo not delete any lines. You called O'Mega with";
@@ -793,26 +849,35 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         | Scalar -> ovm_LOAD_SCALAR
         | BRS Scalar -> ovm_LOAD_BRS_SCALAR
         | Spinor ->
-            if inc then ovm_LOAD_SPINOR_INC else ovm_LOAD_SPINOR_OUT
+            if inc then ovm_LOAD_SPINOR_INC
+            else ovm_LOAD_SPINOR_OUT
         | BRS Spinor ->
-            if inc then ovm_LOAD_BRS_SPINOR_INC else ovm_LOAD_BRS_SPINOR_OUT
+            if inc then ovm_LOAD_BRS_SPINOR_INC
+            else ovm_LOAD_BRS_SPINOR_OUT
         | ConjSpinor ->
-            if inc then ovm_LOAD_CONJSPINOR_INC else ovm_LOAD_CONJSPINOR_OUT
+            if inc then ovm_LOAD_CONJSPINOR_INC
+            else ovm_LOAD_CONJSPINOR_OUT
         | BRS ConjSpinor ->
             if inc then ovm_LOAD_BRS_CONJSPINOR_INC
             else ovm_LOAD_BRS_CONJSPINOR_OUT
         | Vector | Massive_Vector ->
-            if inc then ovm_LOAD_VECTOR_INC else ovm_LOAD_VECTOR_OUT
+            if inc then ovm_LOAD_VECTOR_INC
+            else ovm_LOAD_VECTOR_OUT
         | BRS Vector | BRS Massive_Vector ->
-            if inc then ovm_LOAD_BRS_VECTOR_INC else ovm_LOAD_BRS_VECTOR_OUT
+            if inc then ovm_LOAD_BRS_VECTOR_INC
+            else ovm_LOAD_BRS_VECTOR_OUT
         | Tensor_2 ->
-            if inc then ovm_LOAD_TENSOR2_INC else ovm_LOAD_TENSOR2_OUT
+            if inc then ovm_LOAD_TENSOR2_INC
+            else ovm_LOAD_TENSOR2_OUT
         | Vectorspinor | BRS Vectorspinor ->
-            if inc then ovm_LOAD_VECTORSPINOR_INC else ovm_LOAD_VECTORSPINOR_OUT
+            if inc then ovm_LOAD_VECTORSPINOR_INC
+            else ovm_LOAD_VECTORSPINOR_OUT
         | Majorana ->
-            if inc then ovm_LOAD_MAJORANA_INC else ovm_LOAD_MAJORANA_OUT
+            if inc then ovm_LOAD_MAJORANA_INC
+            else ovm_LOAD_MAJORANA_OUT
         | BRS Majorana ->
-            if inc then ovm_LOAD_BRS_MAJORANA_INC else ovm_LOAD_BRS_MAJORANA_OUT
+            if inc then ovm_LOAD_BRS_MAJORANA_INC
+            else ovm_LOAD_BRS_MAJORANA_OUT
         | Maj_Ghost ->
             if inc then ovm_LOAD_MAJORANA_GHOST_INC
             else ovm_LOAD_MAJORANA_GHOST_OUT
@@ -839,47 +904,56 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
 (* Parallelization issues: All fusions have to be completed before the
    propagation takes place. Preferably each fusion and propagation is done
-   by one thread.  Solution: All fusions are child instructions, i.e. if
+   by one thread.  Solution: All fusions are subinstructions, i.e. if
    they are read by the main loop they are skipped. If a propagation
    occurs, all fusions have to be computed first. The additional control
    bit is the sign of the first int of an instruction. *)
 
     (*i TODO: (bcn 2014-07-21) Majorana support will come some day maybe i*)
-    let print_fermion_vector_current coeff lhs c wf1 wf2 fusion =
+    let print_fermion_current code_a code_b code_c coeff lhs c wf1 wf2 fusion =
       let printc code r1 r2 = printi code ~lhs:lhs ~coupl:c ~coeff:coeff
         ~rhs1:r1 ~rhs2:r2 in
       match fusion with
-      | F13 -> printc ovm_FUSE_VECTOR_CONJSPINOR_SPINOR wf1 wf2
-      | F31 -> printc ovm_FUSE_VECTOR_CONJSPINOR_SPINOR wf2 wf1
-      | F23 -> printc ovm_FUSE_SPINOR_VECTOR_SPINOR wf1 wf2
-      | F32 -> printc ovm_FUSE_SPINOR_VECTOR_SPINOR wf2 wf1
-      | F12 -> printc ovm_FUSE_CONJSPINOR_CONJSPINOR_VECTOR wf1 wf2
-      | F21 -> printc ovm_FUSE_CONJSPINOR_CONJSPINOR_VECTOR wf2 wf1
+      | F13 -> printc code_a wf1 wf2
+      | F31 -> printc code_a wf2 wf1
+      | F23 -> printc code_b wf1 wf2
+      | F32 -> printc code_b wf2 wf1
+      | F12 -> printc code_c wf1 wf2
+      | F21 -> printc code_c wf2 wf1
 
       let ferm_print_current = function
-        | coeff, Psibar, V, Psi -> print_fermion_vector_current coeff
-        (*i
-        (*| coeff, Psibar, VA, Psi -> print_fermion_current2 coeff "va"*)
-        (*| coeff, Psibar, VA2, Psi -> print_fermion_current coeff "va2"*)
-        (*| coeff, Psibar, A, Psi -> print_fermion_current coeff "a"*)
-        (*| coeff, Psibar, VL, Psi -> print_fermion_current coeff "vl"*)
-        (*| coeff, Psibar, VR, Psi -> print_fermion_current coeff "vr"*)
-        (*| coeff, Psibar, VLR, Psi -> print_fermion_current2 coeff "vlr"*)
-        (*| coeff, Psibar, SP, Psi -> print_fermion_current2 coeff "sp"*)
-        (*| coeff, Psibar, S, Psi -> print_fermion_current coeff "s"*)
-        (*| coeff, Psibar, P, Psi -> print_fermion_current coeff "p"*)
-        (*| coeff, Psibar, SL, Psi -> print_fermion_current coeff "sl"*)
-        (*| coeff, Psibar, SR, Psi -> print_fermion_current coeff "sr"*)
-        (*| coeff, Psibar, SLR, Psi -> print_fermion_current2 coeff "slr"*)
-        | coeff, Psibar, _, Psi -> invalid_arg
+        | coeff, Psibar, V, Psi -> print_fermion_current
+          ovm_FUSE_V_FF ovm_FUSE_F_VF ovm_FUSE_F_FV coeff
+        | coeff, Psibar, VA, Psi -> print_fermion_current
+          ovm_FUSE_VA_FF ovm_FUSE_F_VAF ovm_FUSE_F_FVA coeff
+        | coeff, Psibar, VA2, Psi -> print_fermion_current
+          ovm_FUSE_VA2_FF ovm_FUSE_F_VA2F ovm_FUSE_F_FVA2 coeff
+        | coeff, Psibar, A, Psi -> print_fermion_current
+          ovm_FUSE_A_FF ovm_FUSE_F_AF ovm_FUSE_F_FA coeff
+        | coeff, Psibar, VL, Psi -> print_fermion_current
+          ovm_FUSE_VL_FF ovm_FUSE_F_VLF ovm_FUSE_F_FVL coeff
+        | coeff, Psibar, VR, Psi -> print_fermion_current
+          ovm_FUSE_VR_FF ovm_FUSE_F_VRF ovm_FUSE_F_FVR coeff
+        | coeff, Psibar, VLR, Psi -> print_fermion_current
+          ovm_FUSE_VLR_FF ovm_FUSE_F_VLRF ovm_FUSE_F_FVLR coeff
+        | coeff, Psibar, SP, Psi -> print_fermion_current
+          ovm_FUSE_SP_FF ovm_FUSE_F_SPF ovm_FUSE_F_FSP coeff
+        | coeff, Psibar, S, Psi -> print_fermion_current
+          ovm_FUSE_S_FF ovm_FUSE_F_SF ovm_FUSE_F_FS coeff
+        | coeff, Psibar, P, Psi -> print_fermion_current
+          ovm_FUSE_P_FF ovm_FUSE_F_PF ovm_FUSE_F_FP coeff
+        | coeff, Psibar, SL, Psi -> print_fermion_current
+          ovm_FUSE_SL_FF ovm_FUSE_F_SLF ovm_FUSE_F_FSL coeff
+        | coeff, Psibar, SR, Psi -> print_fermion_current
+          ovm_FUSE_SR_FF ovm_FUSE_F_SRF ovm_FUSE_F_FSR coeff
+        | coeff, Psibar, SLR, Psi -> print_fermion_current
+          ovm_FUSE_SLR_FF ovm_FUSE_F_SLRF ovm_FUSE_F_FSLR coeff
+        | _, Psibar, _, Psi -> invalid_arg
           "Targets.Fortran.VM: no superpotential here"
         | _, Chibar, _, _ | _, _, _, Chi -> invalid_arg
           "Targets.Fortran.VM: Majorana spinors not handled"
         | _, Gravbar, _, _ | _, _, _, Grav -> invalid_arg
           "Targets.Fortran.VM: Gravitinos not handled"
-        i*)
-        | _, _, _, _ -> invalid_arg
-          "Targets.Fortran.VM: Not implemented."
 
     let children2 rhs =
       match F.children rhs with
@@ -892,7 +966,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       | _ -> invalid_arg "Targets.children3: can't happen"
 
     let print_vector4 c lhs wf1 wf2 wf3 fusion (coeff, contraction) =
-      let printc r1 r2 r3 = printi ovm_FUSE_WFS_V4 ~lhs:lhs ~coupl:c
+      let printc r1 r2 r3 = printi ovm_FUSE_V_VVV ~lhs:lhs ~coupl:c
         ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3 in
       match contraction, fusion with
       | C_12_34, (F341|F431|F342|F432|F123|F213|F124|F214)
@@ -917,7 +991,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           and wf2 = wf_index lookups.wfmap lookups.n_wfs (f ch2)
           and p1 = mom_ID lookups.pmap ch1
           and p2 = mom_ID lookups.pmap ch2
-          and const_ID = get_ID lookups.cmap constant in
+          and const_ID = get_const_ID lookups.cmap constant in
           let c = if (F.sign rhs) < 0 then - const_ID else const_ID in
           begin match vertex with
           | FBF (coeff, fb, b, f) ->
@@ -925,112 +999,141 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
               | _, Psibar, VLRM, Psi | _, Psibar, SPM, Psi
               | _, Psibar, TVA, Psi | _, Psibar, TVAM, Psi
               | _, Psibar, TLR, Psi | _, Psibar, TLRM, Psi
-              | _, Psibar, TRL, Psi | _, Psibar, TRLM, Psi ->
-                  failwith "print_current: V3: not implemented"
+              | _, Psibar, TRL, Psi | _, Psibar, TRLM, Psi -> failwith
+       "print_current: V3: Momentum dependent fermion couplings not implemented"
+
               | _, _, _, _ ->
                   ferm_print_current (coeff, fb, b, f) lhs c wf1 wf2 fusion
               end
-          | PBP (coeff, f1, b, f2) ->
-              failwith "print_current: V3: not implemented"
-          | BBB (coeff, fb1, b, fb2) ->
-              failwith "print_current: V3: not implemented"
-          | GBG (coeff, fb, b, f) ->
-              failwith "print_current: V3: not implemented"
+          | PBP (_, _, _, _) ->
+              failwith "print_current: V3: PBP not implemented"
+          | BBB (_, _, _, _) ->
+              failwith "print_current: V3: BBB not implemented"
+          | GBG (_, _, _, _) ->
+              failwith "print_current: V3: GBG not implemented"
 
           | Gauge_Gauge_Gauge coeff ->
-              let printc_ggg coeff r1 r2 r3 r4 = printi ovm_FUSE_GAUGE_GAUGE_GAUGE
+              let printc r1 r2 r3 r4 = printi ovm_FUSE_G_GG
                 ~lhs:lhs ~coupl:c ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3
                 ~rhs4:r4 in
               begin match fusion with
-              | (F23|F31|F12) -> printc_ggg coeff wf1 p1 wf2 p2
-              | (F32|F13|F21) -> printc_ggg coeff wf2 p2 wf1 p1
+              | (F23|F31|F12) -> printc wf1 p1 wf2 p2
+              | (F32|F13|F21) -> printc wf2 p2 wf1 p1
               end
 
-          | Aux_Gauge_Gauge coeff ->
+          | Aux_Gauge_Gauge _ ->
               failwith "print_current: V3: not implemented"
 
           | Scalar_Vector_Vector coeff ->
-              failwith "print_current: V3: not implemented"
-
-          | Aux_Vector_Vector coeff ->
-              failwith "print_current: V3: not implemented"
+              let printc code r1 r2 = printi code
+                ~lhs:lhs ~coupl:c ~coeff:coeff ~rhs1:r1 ~rhs2:r2 in
+              begin match fusion with
+              | (F23|F32) -> printc ovm_FUSE_S_VV wf1 wf2
+              | (F12|F13) -> printc ovm_FUSE_V_SV wf1 wf2
+              | (F21|F31) -> printc ovm_FUSE_V_SV wf2 wf1
+              end
 
           | Scalar_Scalar_Scalar coeff ->
-              failwith "print_current: V3: not implemented"
-
-          | Aux_Scalar_Scalar coeff ->
-              failwith "print_current: V3: not implemented"
-
-          | Aux_Scalar_Vector coeff ->
-              failwith "print_current: V3: not implemented"
+              printi ovm_FUSE_S_SS ~lhs:lhs ~coupl:c ~coeff:coeff ~rhs1:wf1 ~rhs2:wf2
 
           | Vector_Scalar_Scalar coeff ->
+              let printc code ?flip:(f = 1) r1 r2 r3 r4 = printi code
+                ~lhs:lhs ~coupl:(c*f) ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3
+                ~rhs4:r4 in
+              begin match fusion with
+              | F23 -> printc ovm_FUSE_V_SS wf1 p1 wf2 p2
+              | F32 -> printc ovm_FUSE_V_SS wf2 p2 wf1 p1
+              | F12 -> printc ovm_FUSE_S_VS wf1 p1 wf2 p2
+              | F21 -> printc ovm_FUSE_S_VS wf2 p2 wf1 p1
+              | F13 -> printc ovm_FUSE_S_VS wf1 p1 wf2 p2 ~flip:(-1)
+              | F31 -> printc ovm_FUSE_S_VS wf2 p2 wf1 p1 ~flip:(-1)
+              end
+
+          | Aux_Vector_Vector _ ->
               failwith "print_current: V3: not implemented"
 
-          | Graviton_Scalar_Scalar coeff ->
+          | Aux_Scalar_Scalar _ ->
               failwith "print_current: V3: not implemented"
 
-          | Graviton_Vector_Vector coeff ->
+          | Aux_Scalar_Vector _ ->
               failwith "print_current: V3: not implemented"
 
-          | Graviton_Spinor_Spinor coeff ->
+          | Graviton_Scalar_Scalar _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim4_Vector_Vector_Vector_T coeff ->
+          | Graviton_Vector_Vector _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim4_Vector_Vector_Vector_L coeff ->
+          | Graviton_Spinor_Spinor _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim6_Gauge_Gauge_Gauge coeff ->
+          | Dim4_Vector_Vector_Vector_T _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim4_Vector_Vector_Vector_T5 coeff ->
+          | Dim4_Vector_Vector_Vector_L _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim4_Vector_Vector_Vector_L5 coeff ->
+          | Dim6_Gauge_Gauge_Gauge _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim6_Gauge_Gauge_Gauge_5 coeff ->
+          | Dim4_Vector_Vector_Vector_T5 _ ->
               failwith "print_current: V3: not implemented"
 
-          | Aux_DScalar_DScalar coeff ->
+          | Dim4_Vector_Vector_Vector_L5 _ ->
               failwith "print_current: V3: not implemented"
 
-          | Aux_Vector_DScalar coeff ->
+          | Dim6_Gauge_Gauge_Gauge_5 _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim5_Scalar_Gauge2 coeff ->
+          | Aux_DScalar_DScalar _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim5_Scalar_Gauge2_Skew coeff ->
+          | Aux_Vector_DScalar _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim5_Scalar_Vector_Vector_T coeff ->
+          | Dim5_Scalar_Gauge2 _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim5_Scalar_Vector_Vector_U coeff ->
+          | Dim5_Scalar_Gauge2_Skew _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim6_Vector_Vector_Vector_T coeff ->
+          | Dim5_Scalar_Vector_Vector_T _ ->
               failwith "print_current: V3: not implemented"
 
-          | Tensor_2_Vector_Vector coeff ->
+          | Dim5_Scalar_Vector_Vector_U _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim5_Tensor_2_Vector_Vector_1 coeff ->
+          | Dim6_Vector_Vector_Vector_T _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim5_Tensor_2_Vector_Vector_2 coeff ->
+          | Tensor_2_Vector_Vector _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim7_Tensor_2_Vector_Vector_T coeff ->
+          | Dim5_Tensor_2_Vector_Vector_1 _ ->
+              failwith "print_current: V3: not implemented"
+
+          | Dim5_Tensor_2_Vector_Vector_2 _ ->
+              failwith "print_current: V3: not implemented"
+
+          | Dim7_Tensor_2_Vector_Vector_T _ ->
+              failwith "print_current: V3: not implemented"
+
+          | Dim5_Scalar_Vector_Vector_TU _ ->
+              failwith "print_current: V3: not implemented"
+
+          | Scalar_Vector_Vector_t _ ->
+              failwith "print_current: V3: not implemented"
+
+          | Tensor_2_Vector_Vector_1 _ ->
+              failwith "print_current: V3: not implemented"
+
+          | Tensor_2_Vector_Vector_t _ ->
               failwith "print_current: V3: not implemented"
 
           end
 
-(* Flip the sign to account for the~$\mathrm{i}^2$ relative to diagrams
-   with only cubic couplings.  *)
+(* Flip the sign in [c] to account for the~$\mathrm{i}^2$ relative to diagrams
+   with only cubic couplings. *)
       | V4 (vertex, fusion, constant) ->
           let ch1, ch2, ch3 = children3 rhs in
           let wf1 = wf_index lookups.wfmap lookups.n_wfs (f ch1)
@@ -1041,29 +1144,44 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           (*and p2 = mom_ID lookups.pmap ch2*)
           (*and p3 = mom_ID lookups.pmap ch2*)
           i*)
-          and const_ID = get_ID lookups.cmap constant in
+          and const_ID = get_const_ID lookups.cmap constant in
           let c =
             if (F.sign rhs) < 0 then const_ID else - const_ID in
           begin match vertex with
-          | Scalar4 coeff -> failwith "print_current: V4: not implemented"
+          | Scalar4 coeff ->
+              printi ovm_FUSE_S_SSS ~lhs:lhs ~coupl:c ~coeff:coeff ~rhs1:wf1
+                ~rhs2:wf2 ~rhs3:wf3
           | Scalar2_Vector2 coeff ->
-              failwith "print_current: V4: not implemented"
+              let printc code r1 r2 r3 = printi code
+                ~lhs:lhs ~coupl:c ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3 in
+              begin match fusion with
+              | F134 | F143 | F234 | F243 ->
+                  printc ovm_FUSE_S_SVV wf1 wf2 wf3
+              | F314 | F413 | F324 | F423 ->
+                  printc ovm_FUSE_S_SVV wf2 wf1 wf3
+              | F341 | F431 | F342 | F432 ->
+                  printc ovm_FUSE_S_SVV wf3 wf1 wf2
+              | F312 | F321 | F412 | F421 ->
+                  printc ovm_FUSE_V_SSV wf2 wf3 wf1
+              | F231 | F132 | F241 | F142 ->
+                  printc ovm_FUSE_V_SSV wf1 wf3 wf2
+              | F123 | F213 | F124 | F214 ->
+                  printc ovm_FUSE_V_SSV wf1 wf2 wf3
+              end
+
           | Vector4 contractions ->
               List.iter (print_vector4 c lhs wf1 wf2 wf3 fusion) contractions
-          | Vector4_K_Matrix_tho (disc, poles) ->
-              failwith "print_current: V4: not implemented"
 
-          | Vector4_K_Matrix_jr (disc, contractions) ->
-              failwith "print_current: V4: not implemented"
+          | Vector4_K_Matrix_tho _
+          | Vector4_K_Matrix_jr _ ->
+              failwith "print_current: V4: K_Matrix not implemented"
 
-          | GBBG (coeff, fb, b, f) ->
-              failwith "print_current: V4: not implemented"
+          | GBBG _ ->
+              failwith "print_current: V4: GBBG not implemented"
 
-          | DScalar4 contractions ->
-              failwith "print_current: V4: not implemented"
-
-          | DScalar2_Vector2 contractions ->
-              failwith "print_current: V4: not implemented"
+          | DScalar4 _
+          | DScalar2_Vector2 _ ->
+              failwith "print_current: V4: DScalars not implemented"
           end
 
       | Vn (_, _, _) -> invalid_arg "Targets.print_current: n-ary fusion."
@@ -1071,6 +1189,10 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 (* \thocwmodulesubsection{Fusions} *)
 
     let print_fusion lookups lhs_momID fusion amplitude =
+      if F.on_shell amplitude (F.lhs fusion) then
+        failwith "print_fusion: on_shell projectors not implemented!";
+      if F.is_gauss amplitude (F.lhs fusion) then
+        failwith "print_fusion: gauss amplitudes not implemented!";
       let lhs_wf = mult_wf lookups.dict amplitude (F.lhs fusion) in
       let lhs_wfID = wf_index lookups.wfmap lookups.n_wfs lhs_wf in
       let f = F.flavor (F.lhs fusion) in
@@ -1081,7 +1203,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         | Constant -> 1
         | Timelike -> 2
         | Running -> failwith "Targets.VM: running width not available"
-        | Custom f -> 3
+        | Custom _ -> failwith "Targets.VM: custom width not available"
         end
       in
       let propagate code = printi code ~lhs:lhs_wfID ~rhs1:lhs_momID
@@ -1115,7 +1237,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       | Prop_Tensor_2 ->
           propagate ovm_PROPAGATE_TENSOR2
       | Aux_Col_Scalar | Aux_Col_Vector | Aux_Col_Tensor_1 ->
-          propagate ovm_PROPAGATE_COL_NONE
+          failwith "print_fusion: Aux_Col_* not implemented!"
       | Aux_Vector | Aux_Tensor_1 | Aux_Scalar | Aux_Spinor | Aux_ConjSpinor
       | Aux_Majorana | Only_Insertion ->
           propagate ovm_PROPAGATE_NONE
@@ -1178,35 +1300,20 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
 (* \thocwmodulesubsection{Couplings} *)
 
-      let strip_array_tag = function
-        | Real_Array x -> x
-        | Complex_Array x -> x
+(* For now we only care to catch the arrays [gncneu], [gnclep], [gncup] and
+   [gncdown] of the SM. This will need an overhaul when it is clear how we store
+   the type information of coupling constants. *)
 
-      let strip_single_tag = function
-        | Real x -> x
-        | Complex x -> x
+    let strip_array_tag = function
+      | Real_Array x -> x
+      | Complex_Array x -> x
 
-      let coupl_singles lst =
-        List.map (fun (lhs, rhs) -> strip_single_tag lhs) lst
-
-      let coupl_arrays lst =
-        List.map (fun (lhs, rhs) -> strip_array_tag lhs) lst
-
-    let default_parameter (x, v) =
-      printf " %s = %g_%s" (CM.constant_symbol x) v !kind; nl ()
-
-    let declare_default_parameters t = function
-      | [] -> ()
-      | plist ->
-          List.iter (fun p' -> printf "  %s(%s), public, save ::" t !kind;
-                     default_parameter p';) plist
-
-    let arr_constants =
+    let array_constants_list =
       let params = M.parameters()
-      and strip_to_constant (lhs, rhs) = strip_array_tag lhs in
+      and strip_to_constant (lhs, _) = strip_array_tag lhs in
         List.map strip_to_constant params.derived_arrays
 
-    let is_arr x = List.mem x arr_constants
+    let is_array x = List.mem x array_constants_list
 
     let constants_map =
       let first = fun (x, _, _) -> x in
@@ -1215,7 +1322,9 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       let v3 = List.map third (first (M.vertices () ))
       and v4 = List.map third (second (M.vertices () )) in
       let set = List.fold_left (fun s x -> CSet.add x s) CSet.empty (v3 @ v4) in
-        map_of_list (CSet.elements set)
+      let (arrays, singles) = CSet.partition is_array set in
+        (singles |> CSet.elements |> map_of_list,
+         arrays  |> CSet.elements |> map_of_list)
 
 (* \thocwmodulesubsection{Output calls} *)
 
@@ -1224,8 +1333,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
       if (num_particles amplitudes = 0) then begin
         print_description cmdline;
-        print_zero_header ();
-        nl ()
+        print_zero_header (); nl ()
       end else begin
         let (wfset, amap) = wfset_amps amplitudes in
         let pset = expand_pset (momenta_set wfset)
@@ -1243,8 +1351,8 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         print_spin_table amplitudes;
         print_flavor_tables amplitudes;
         print_color_tables amplitudes;
-        printf "@\n%s%s" "OVM instructions for momenta addition,"
-        " fusions and brakets start here: ";
+        printf "@\n%s" ("OVM instructions for momenta addition," ^
+                        " fusions and brakets start here: ");
         break ();
         add_all_mom lookups pset;
         print_ext_amps lookups;
@@ -1257,28 +1365,57 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
 (* Still under heavy construction. *)
 
-    let parameters_to_fortran oc params =
-      let set_ovm_coupl cmap = IMap.iter (fun key elt ->
-        printf "    coupl(%d) = %s" key (M.constant_symbol elt); nl () ) cmap in
-      (*i the -params options is not really up to date to the used
-       * parameters.SM.f90 in Whizard. I can still use it as wrapper between OVM
-       * and Whizard. Most trouble comes from the distinction between array and
-       * scalar couplings.. i*)
-      printf "module %s" !parameter_module; nl ();
-      printf "  use kinds !NODEP!"; nl ();
-      printf "  use constants !NODEP!"; nl ();
-      printf "  use %s" !parameter_module_whz; nl ();
-      printf "  implicit none"; nl ();
-      printf "  public :: setup_couplings"; nl ();
-      printf "contains"; nl ();
-      printf "  subroutine setup_couplings (coupl)"; nl ();
-      printf "    complex(%s), dimension(:), allocatable, intent(out) :: coupl"
-        !kind; nl ();
-      printf "    allocate(coupl(%d))" (largest_key constants_map); nl ();
-      set_ovm_coupl constants_map;
-      printf "  end subroutine setup_couplings"; nl ();
-      printf "end module %s" !parameter_module; nl ();
-      printf "! O'Mega revision control information:"; nl ();
+    let parameters_to_fortran _ _ =
+     (*i The -params options is not really up to date to the used
+       * parameters.SM.f90 in Whizard and even to the used vertices in the
+       * models. I can still use it as wrapper between OVM and Whizard. Most
+       * trouble for the OVM comes from the array dimensionalities of couplings
+       * but O'Mega should also know whether a constant is real or complex.
+       * Hopefully all will be clearer with the fully general Lorentz structures
+       * and UFO support. For now, we stick with this brute-force solution. i*)
+      let arrays_to_set = not (IMap.is_empty (snd constants_map)) in
+      let set_coupl ty dim cmap = IMap.iter (fun key elt ->
+        printf "    %s(%s%d) = %s" ty dim key (M.constant_symbol elt);
+        nl () ) cmap in
+      let declarations () =
+        printf "  complex(%s), dimension(%d), intent(out) :: coupl_cmplx"
+          !kind (constants_map |> fst |> largest_key); nl ();
+        if arrays_to_set then
+          printf "  complex(%s), dimension(%d, 2), intent(out) :: coupl_cmplx2"
+            !kind (constants_map |> snd |> largest_key); nl () in
+      let print_line str = printf "%s" str; nl() in
+      let str = (version_string M.rcs) in
+      let str_model = String.sub str 0 (String.length str - 1) in
+
+      print_line ("module " ^ !parameter_module);
+      print_line ("  use " ^ !parameter_module_whz);
+      print_line "  use iso_varying_string, string_t => varying_string";
+      print_line "  use vm";
+      print_line "  implicit none";
+      declarations ();
+      print_line "contains";
+
+      print_line "  subroutine setup_couplings ()";
+      set_coupl "coupl_cmplx" "" (fst constants_map);
+      if arrays_to_set then
+        set_coupl "coupl_cmplx2" ":," (snd constants_map);
+      print_line "  end subroutine setup_couplings";
+      print_line "  subroutine initialize_vm (vm, bytecode_file, openmp_threads)";
+      print_line "    class(vm_t), intent(out) :: vm";
+      print_line "    type(string_t), intent(in) :: bytecode_file";
+      print_line "    integer, intent(in) :: openmp_threads";
+      print_line "    type(string_t) :: model";
+      print_line ("    model = '" ^ str_model ^ "'");
+      print_line "    call vm%init (bytecode_file, model, verbose=.False., &";
+      print_line "      coupl_cmplx=coupl_cmplx, &";
+      if arrays_to_set then
+        print_line "      coupl_cmplx2=coupl_cmplx2, &";
+      print_line "      mass=mass, width=width, &";
+      print_line "      openmp_threads=openmp_threads) ";
+      print_line "  end subroutine initialize_vm";
+
+      print_line ("end module " ^ !parameter_module);
+      print_line "! O'Mega revision control information:";
       ThoList.flatmap RCS.summary (M.rcs :: rcs_list) |>
         List.iter (fun s -> printf "!    %s" s; nl ())
 
