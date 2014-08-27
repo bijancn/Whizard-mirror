@@ -1,4 +1,4 @@
-(* $Id: targets.ml 6071 2014-08-20 17:04:16Z bchokoufe $
+(* $Id: targets.ml 6082 2014-08-26 19:17:37Z jr_reuter $
 
    Copyright (C) 1999-2014 by
 
@@ -26,9 +26,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 6071 $";
-      RCS.date = "$Date: 2014-08-20 19:04:16 +0200 (Mi, 20 Aug 2014) $";
-      RCS.author = "$Author: bchokoufe $";
+    { RCS.revision = "$Revision: 6082 $";
+      RCS.date = "$Date: 2014-08-26 21:17:37 +0200 (Di, 26 Aug 2014) $";
+      RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets.ml $" }
 
@@ -67,14 +67,15 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
     (*i TODO: (bcn 2014-07-21) Add some sensible options i*)
     let parameter_module = ref "ovm_parameter_wrapper"
-    let parameter_module_whz = ref "some_whizard_module_with_model_info"
+    let parameter_module_external = ref "some_external_module_with_model_info"
     let kind = ref "default"
 
     let options = Options.create
       [ "parameter_module", Arg.String (fun s -> parameter_module := s),
         "parameter_module";
-        "parameter_module_whz", Arg.String (fun s -> parameter_module_whz := s),
-        "parameter_module_whz" ]
+        "parameter_module_external", Arg.String (fun s ->
+          parameter_module_external := s),
+        "parameter_module_external" ]
 
 (* This is part of OCaml 4.01. *)
     let (|>) fn x = x fn
@@ -887,7 +888,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
             failwith "targets.print_ext: Not implemented"
       and wf_ind = wf_index lookups.wfmap lookups.n_wfs (wf, i)
       in
-        printi wf_code ~lhs:wf_ind ~coupl:pdg ~rhs1:outer_index ~rhs4:amp_ID
+        printi wf_code ~lhs:wf_ind ~coupl:(abs(pdg)) ~rhs1:outer_index ~rhs4:amp_ID
 
     let print_ext_amp lookups amplitude =
       let incoming = (List.map (fun _ -> true) (F.incoming amplitude) @
@@ -897,8 +898,35 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       let print_ext_wf inc wf = wf |> wf_tpl |> print_ext lookups amp_ID inc in
         List.iter2 print_ext_wf incoming (F.externals amplitude)
 
+    let print_externals lookups seen_wfs amplitude =
+      let externals =
+        List.combine
+          (F.externals amplitude)
+          (List.map (fun _ -> true) (F.incoming amplitude) @
+           List.map (fun _ -> false) (F.outgoing amplitude)) in
+      List.fold_left (fun seen (wf, incoming) ->
+        let amp_ID = get_ID' amp_compare lookups.amap amplitude in
+        let wf_tpl = mult_wf lookups.dict amplitude wf in
+        if not (WFSet.mem wf_tpl seen) then begin
+          wf_tpl |> print_ext lookups amp_ID incoming
+        end;
+        WFSet.add wf_tpl seen) seen_wfs externals
+
+(* [print_externals] and [print_ext_amp] do in principle the same thing but
+   [print_externals] filters out dublicate external wave functions. Even with
+   [print_externals] the same (numerically) external wave function will be
+   loaded if it belongs to a different color flow, just as in the native Fortran
+   code.  For color MC, [print_ext_amp] has to be used (redundant instructions
+   but only one flow is computed) and the filtering of duplicate fusions has to
+   be disabled. *)
+
     let print_ext_amps lookups =
-      List.iter (print_ext_amp lookups) (CF.processes lookups.amplitudes)
+      let print_external_amp s x = print_externals lookups s x in
+      ignore (
+        List.fold_left print_external_amp WFSet.empty
+          (CF.processes lookups.amplitudes)
+        )
+      (*i List.iter (print_ext_amp lookups) (CF.processes lookups.amplitudes) i*)
 
 (* \thocwmodulesubsection{Currents} *)
 
@@ -1207,7 +1235,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         end
       in
       let propagate code = printi code ~lhs:lhs_wfID ~rhs1:lhs_momID
-        ~coupl:pdg ~coeff:w ~rhs4:(get_ID' amp_compare lookups.amap amplitude)
+        ~coupl:(abs(pdg)) ~coeff:w ~rhs4:(get_ID' amp_compare lookups.amap amplitude)
       in
       begin match CM.propagator f with
       | Prop_Scalar ->
@@ -1378,40 +1406,40 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         printf "    %s(%s%d) = %s" ty dim key (M.constant_symbol elt);
         nl () ) cmap in
       let declarations () =
-        printf "  complex(%s), dimension(%d), intent(out) :: coupl_cmplx"
+        printf "  complex(%s), dimension(%d) :: ovm_coupl_cmplx"
           !kind (constants_map |> fst |> largest_key); nl ();
         if arrays_to_set then
-          printf "  complex(%s), dimension(%d, 2), intent(out) :: coupl_cmplx2"
+          printf "  complex(%s), dimension(2, %d) :: ovm_coupl_cmplx2"
             !kind (constants_map |> snd |> largest_key); nl () in
       let print_line str = printf "%s" str; nl() in
       let str = (version_string M.rcs) in
       let str_model = String.sub str 0 (String.length str - 1) in
 
       print_line ("module " ^ !parameter_module);
-      print_line ("  use " ^ !parameter_module_whz);
+      print_line ("  use " ^ !parameter_module_external);
       print_line "  use iso_varying_string, string_t => varying_string";
-      print_line "  use vm";
+      print_line "  use kinds";
+      print_line "  use omegavm95";
       print_line "  implicit none";
       declarations ();
       print_line "contains";
 
       print_line "  subroutine setup_couplings ()";
-      set_coupl "coupl_cmplx" "" (fst constants_map);
+      set_coupl "ovm_coupl_cmplx" "" (fst constants_map);
       if arrays_to_set then
-        set_coupl "coupl_cmplx2" ":," (snd constants_map);
+        set_coupl "ovm_coupl_cmplx2" ":," (snd constants_map);
       print_line "  end subroutine setup_couplings";
-      print_line "  subroutine initialize_vm (vm, bytecode_file, openmp_threads)";
+      print_line "  subroutine initialize_vm (vm, bytecode_file)";
       print_line "    class(vm_t), intent(out) :: vm";
       print_line "    type(string_t), intent(in) :: bytecode_file";
-      print_line "    integer, intent(in) :: openmp_threads";
       print_line "    type(string_t) :: model";
       print_line ("    model = '" ^ str_model ^ "'");
+      print_line "    call setup_couplings ()";
       print_line "    call vm%init (bytecode_file, model, verbose=.False., &";
-      print_line "      coupl_cmplx=coupl_cmplx, &";
+      print_line "      coupl_cmplx=ovm_coupl_cmplx, &";
       if arrays_to_set then
-        print_line "      coupl_cmplx2=coupl_cmplx2, &";
-      print_line "      mass=mass, width=width, &";
-      print_line "      openmp_threads=openmp_threads) ";
+        print_line "      coupl_cmplx2=ovm_coupl_cmplx2, &";
+      print_line "      mass=mass, width=width) ";
       print_line "  end subroutine initialize_vm";
 
       print_line ("end module " ^ !parameter_module);

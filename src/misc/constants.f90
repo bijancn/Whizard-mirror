@@ -38,6 +38,8 @@ module constants
        one = 1.0_default, two = 2.0_default, three = 3.0_default, &
        four = 4.0_default, five = 5.0_default
 
+  real(default), parameter, public :: sqrt2 = sqrt (two)
+
   real(default), parameter, public :: &
        pi = 3.1415926535897932384626433832795028841972_default
 

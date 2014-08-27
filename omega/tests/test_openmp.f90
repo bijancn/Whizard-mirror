@@ -1,4 +1,4 @@
-! $Id: test_openmp.f90 6060 2014-08-04 17:06:10Z jr_reuter $
+! $Id: test_openmp.f90 6081 2014-08-26 18:16:22Z bchokoufe $
 ! driver.f90 -- O'Mega self test driver
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -70,7 +70,7 @@ program test_openmp
   end do
 
   call expect (minval(amp2), maxval(amp2), "test_openmp", passed, &
-       quiet=.false., threshold = 0.99_default)
+       quiet=.false., threshold = 0.60_default)
 
   if (passed) then
      stop 0

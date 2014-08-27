@@ -1,21 +1,21 @@
-! $Id: compare_lib.f90 6040 2014-07-23 15:17:31Z bchokoufe $
+! $Id: compare_lib.f90 6081 2014-08-26 18:16:22Z bchokoufe $
 ! compare_lib.f90 -- compare two O'Mega versions
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-! Copyright (C) 1999-2014 by 
+! Copyright (C) 1999-2014 by
 !     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 !     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 !     Juergen Reuter <juergen.reuter@desy.de>
 !     Christian Speckner <cnspeckn@googlemail.com>
 !
 ! WHIZARD is free software; you can redistribute it and/or modify it
-! under the terms of the GNU General Public License as published by 
+! under the terms of the GNU General Public License as published by
 ! the Free Software Foundation; either version 2, or (at your option)
 ! any later version.
 !
 ! WHIZARD is distributed in the hope that it will be useful, but
 ! WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ! GNU General Public License for more details.
 !
 ! You should have received a copy of the GNU General Public License
@@ -56,11 +56,10 @@ contains
     integer :: i, i_flv, i_hel, i_col
     real(kind=default), dimension(:,:), allocatable :: p
     complex(kind=default) :: a1, a2
+    real(kind=default) :: asq1, asq2
     character(len=80) :: msg
     complex(kind=default) :: wi
-    real(kind=default) :: r, phi, tolerance
     integer :: size
-    integer, dimension(:), allocatable :: seeds
     failures = 0
     attempts = 0
     call quantum_numbers (v1, v2, n_out, n_flv, n_hel, n_col, match)
@@ -80,9 +79,10 @@ contains
        call v1%new_event (p)
        call v2%new_event (p)
        do i_flv = 1, n_flv
-          do i_col = 1, n_col
-             do i_hel = 1, n_hel
-                attempts = attempts + 1
+          do i_hel = 1, n_hel
+             attempts = attempts + 1
+             passed = .true.
+             do i_col = 1, n_col
                 a1 = v1%get_amplitude (i_flv, i_hel, i_col)
                 a2 = v2%get_amplitude (i_flv, i_hel, i_col)
                 if (ieee_is_nan (real (a1)) .or. ieee_is_nan (aimag (a1))) then
@@ -95,14 +95,20 @@ contains
                 end if
                 write (msg, "(1X,'evt=',I5,', flv=',I3,', col=',I3,', hel=',I3)") &
                      i, i_flv, i_col, i_hel
-                passed = .true.
                 call expect (a1, a2, trim(msg), passed, &
-                             quiet=.true., threshold = threshold, &
-                             abs_threshold = abs_threshold)
-                if (.not.passed) then
-                   failures = failures + 1
-                end if
+                             quiet=.true., threshold=threshold, &
+                             abs_threshold=abs_threshold)
              end do
+             write (msg, "(1X,'evt=',I5,', flv=',I3,', hel=',I3)") &
+                  i, i_flv, i_hel
+             asq1 = v1%color_sum (i_flv, i_hel)
+             asq2 = v2%color_sum (i_flv, i_hel)
+             call expect (asq1, asq2, trim(msg), passed, &
+                          quiet=.true., threshold=threshold, &
+                          abs_threshold=abs_threshold)
+             if (.not.passed) then
+                failures = failures + 1
+             end if
           end do
        end do
     end do
@@ -133,48 +139,49 @@ contains
     n_cfs = v1%number_color_factors ()
     match = .true.
     if (v2%number_particles_in () .ne. n_in) then
-       print *, "#particles_in don't match!"
+       print *, "number_particles_in don't match!"
        match = .false.
     end if
     if (v2%number_particles_out () .ne. n_out) then
-       print *, "#particles_out don't match!"
+       print *, "number_particles_out don't match!"
        match = .false.
     end if
     if (v2%number_flavor_states () .ne. n_flv) then
-       print *, "#flavor_states don't match!"
+       print *, "number_flavor_states don't match!"
        match = .false.
     end if
     if (v2%number_spin_states () .ne. n_hel) then
-       print *, "#spin_states don't match!"
+       print *, "number_spin_states don't match!"
        match = .false.
     end if
     if (v2%number_color_indices () .ne. n_cix) then
-       print *, "#color_indices don't match!"
+       print *, "number_color_indices don't match!"
        match = .false.
     end if
     if (v2%number_color_flows () .ne. n_col) then
-       print *, "#color_flows don't match!"
+       print *, "number_color_flows don't match!"
        match = .false.
     end if
-    if (v2%number_color_factors () .ne. n_cfs) then
-       print *, "#color_factors don't match!"
-       match = .false.
-    end if
+    ! We save only the symmetric part in the OVM
+    !if (v2%number_color_factors () .ne. n_cfs) then
+       !print *, "number_color_factors don't match!"
+       !match = .false.
+    !end if
     if (match) then
        allocate (v1_flavor_states(n_prt,n_flv), v2_flavor_states(n_prt,n_flv))
        allocate (v1_spin_states(n_prt,n_hel), v2_spin_states(n_prt,n_hel))
        allocate (v1_color_flows(n_cix,n_prt,n_col), &
                  v2_color_flows(n_cix,n_prt,n_col))
        allocate (v1_ghost_flags(n_prt,n_col), v2_ghost_flags(n_prt,n_col))
-       allocate (v1_color_factors(n_cfs), v2_color_factors(n_cfs))
+       !allocate (v1_color_factors(n_cfs), v2_color_factors(n_cfs))
        call v1%flavor_states (v1_flavor_states)
        call v2%flavor_states (v2_flavor_states)
        call v1%spin_states (v1_spin_states)
        call v2%spin_states (v2_spin_states)
        call v1%color_flows (v1_color_flows, v1_ghost_flags)
        call v2%color_flows (v2_color_flows, v2_ghost_flags)
-       call v1%color_factors (v1_color_factors)
-       call v2%color_factors (v2_color_factors)
+       !call v1%color_factors (v1_color_factors)
+       !call v2%color_factors (v2_color_factors)
        if (any (v1_flavor_states .ne. v2_flavor_states)) then
           print *, "flavor states don't match!"
           print *, "CAVEAT: this might be due to simple reordering!"
@@ -195,17 +202,17 @@ contains
           print *, "CAVEAT: this might be due to simple reordering!"
           match = .false.
        end if
-       if (any (.not. color_factors_equal (v1_color_factors, &
-                                           v2_color_factors))) then
-          print *, "color_factors don't match!"
-          print *, "CAVEAT: this might be due to simple reordering!"
-          match = .false.
-       end if
+       !if (any (.not. color_factors_equal (v1_color_factors, &
+                                           !v2_color_factors))) then
+          !print *, "color_factors don't match!"
+          !print *, "CAVEAT: this might be due to simple reordering!"
+          !match = .false.
+       !end if
        deallocate (v1_flavor_states, v2_flavor_states)
        deallocate (v1_spin_states, v2_spin_states)
        deallocate (v1_color_flows, v2_color_flows)
        deallocate (v1_ghost_flags, v2_ghost_flags)
-       deallocate (v1_color_factors, v2_color_factors)
+       !deallocate (v1_color_factors, v2_color_factors)
     end if
   end subroutine quantum_numbers
 
@@ -261,7 +268,7 @@ contains
        c = 2*ran(3)-1
        f = 2*PI*ran(4)
        s = sqrt(1-c*c)
-       q(2,k) = q(0,k)*s*sin(f)  
+       q(2,k) = q(0,k)*s*sin(f)
        q(3,k) = q(0,k)*s*cos(f)
        q(1,k) = q(0,k)*c
     enddo

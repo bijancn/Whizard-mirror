@@ -71,10 +71,10 @@ contains
     ! mass(11)    = 0.000510997_default  ! electron mass
     mass(13)    = 0.105658389_default  ! muon mass
     mass(15)    = 1.77705_default      ! tau-lepton mas
-    ! mass(23)    = 91.1882_default      ! Z-boson mass
-    ! width(23)   = 2.443_default        ! Z-boson width
-    ! mass(24)    = 80.419_default       ! W-boson mass
-    ! width(24)   = 2.049_default        ! W-boson width
+    mass(23)    = 91.1882_default      ! Z-boson mass
+    width(23)   = 2.443_default        ! Z-boson width
+    mass(24)    = 80.419_default       ! W-boson mass
+    width(24)   = 2.049_default        ! W-boson width
     mass(25)    = 200._default          ! Higgs mass
     width(25)   = 1.419_default        ! Higgs width
 
