@@ -1,4 +1,4 @@
-(* $Id: targets.ml 6082 2014-08-26 19:17:37Z jr_reuter $
+(* $Id: targets.ml 6086 2014-08-28 10:16:08Z bchokoufe $
 
    Copyright (C) 1999-2014 by
 
@@ -26,9 +26,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 6082 $";
-      RCS.date = "$Date: 2014-08-26 21:17:37 +0200 (Di, 26 Aug 2014) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 6086 $";
+      RCS.date = "$Date: 2014-08-28 12:16:08 +0200 (Do, 28 Aug 2014) $";
+      RCS.author = "$Author: bchokoufe $";
       RCS.source
         = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets.ml $" }
 
@@ -1412,8 +1412,9 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           printf "  complex(%s), dimension(2, %d) :: ovm_coupl_cmplx2"
             !kind (constants_map |> snd |> largest_key); nl () in
       let print_line str = printf "%s" str; nl() in
-      let str = (version_string M.rcs) in
-      let str_model = String.sub str 0 (String.length str - 1) in
+      let rcs_str s = String.sub s 0 (String.length s - 1) in
+      let rcs_tags = rcs_list @ [M.rcs] |> List.map version_string
+                                        |> List.map rcs_str in
 
       print_line ("module " ^ !parameter_module);
       print_line ("  use " ^ !parameter_module_external);
@@ -1432,10 +1433,12 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       print_line "  subroutine initialize_vm (vm, bytecode_file)";
       print_line "    class(vm_t), intent(out) :: vm";
       print_line "    type(string_t), intent(in) :: bytecode_file";
+      print_line "    type(string_t) :: version";
       print_line "    type(string_t) :: model";
-      print_line ("    model = '" ^ str_model ^ "'");
+      print_line ("   version = '" ^ List.nth rcs_tags 0 ^ "'");
+      print_line ("   model = '" ^ List.nth rcs_tags 1 ^ "'");
       print_line "    call setup_couplings ()";
-      print_line "    call vm%init (bytecode_file, model, verbose=.False., &";
+      print_line "    call vm%init (bytecode_file, version, model, verbose=.False., &";
       print_line "      coupl_cmplx=ovm_coupl_cmplx, &";
       if arrays_to_set then
         print_line "      coupl_cmplx2=ovm_coupl_cmplx2, &";

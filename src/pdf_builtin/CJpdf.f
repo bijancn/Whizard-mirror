@@ -43,7 +43,7 @@ c  This will produce a table of PDFs for a specified value of ISET
 c
 
       module CJ12
-      use file_utils
+      use io_units
 
       contains
 

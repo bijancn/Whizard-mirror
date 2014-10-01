@@ -525,18 +525,11 @@ fi])
 
 ### Check for iso_fortran_env
 AC_DEFUN([WO_FC_CHECK_ISO_FORTRAN_ENV],
-  [AC_ARG_ENABLE([iso_fortran_env],
-    [AC_HELP_STRING([--disable-iso_fortran_env],
-      [disable use of iso_fortran_env, even if the compiler supports it]
-    )],
-    [], [enable_iso_fortran_env=yes]
-  )
-  if test "$enable_iso_fortran_env" = yes; then
-    AC_CACHE_CHECK([whether $FC supports iso_fortran_env (F2003)],
-      [wo_cv_fc_iso_fortran_env],
-       AC_REQUIRE([AC_PROG_FC])
-       AC_LANG([Fortran])
-      [AC_LINK_IFELSE(
+  [AC_CACHE_CHECK([whether $FC supports iso_fortran_env (F2003)],
+    [wo_cv_fc_iso_fortran_env],
+     AC_REQUIRE([AC_PROG_FC])
+     AC_LANG([Fortran])
+     [AC_LINK_IFELSE(
         [dnl
         program conftest
         use iso_fortran_env
@@ -551,12 +544,12 @@ AC_DEFUN([WO_FC_CHECK_ISO_FORTRAN_ENV],
         ], [wo_cv_fc_iso_fortran_env=yes], [wo_cv_fc_iso_fortran_env=no]
       )]
     )
-    test "$wo_cv_fc_iso_fortran_env" = no && iso_fortran_env_stub=yes
-  else
-    AC_CHECKING([whether $FC supports iso_fortran_env (F2003)... disabled])
-    iso_fortran_env_stub=yes
-  fi
-  AM_CONDITIONAL([ISO_FORTRAN_ENV_STUB], [test -n "$iso_fortran_env_stub"])
+#    test "$wo_cv_fc_iso_fortran_env" = no && iso_fortran_env_stub=yes
+   if test "$wo_cv_fc_iso_fortran_env" = "no"; then
+     AC_MSG_NOTICE([error: ***************************************************************************])
+     AC_MSG_NOTICE([error: Fortran compiler does not support iso_fortran_env; configure aborted.])
+     AC_MSG_ERROR([***************************************************************************])
+   fi
   ]
 )
 
@@ -596,7 +589,7 @@ case $FC_VENDOR in
 gfortran)
   wo_cv_fc_openmp="yes"
   wo_cv_fcflags_openmp="-fopenmp"
-  wo_cv_fc_openmp_header="use omp_lib"
+  wo_cv_fc_openmp_header="use, intrinsic :: omp_lib"
   ;;
 NAG)
   wo_cv_fc_openmp="no"
@@ -604,7 +597,7 @@ NAG)
 Intel)
   wo_cv_fc_openmp="yes"
   wo_cv_fcflags_openmp="-openmp"
-  wo_cv_fc_openmp_header="use omp_lib"
+  wo_cv_fc_openmp_header="use, intrinsic :: omp_lib"
   ;;
 PGI)
   wo_cv_fc_openmp="yes"

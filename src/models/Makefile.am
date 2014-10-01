@@ -266,25 +266,30 @@ parameters_zprime.$(FC_MODULE_EXT): parameters.Zprime.lo
 ########################################################################
 ## Dependency on O'Mega modules
 
-auxdir = $(top_builddir)/src/misc
+basicsdir = $(top_builddir)/src/basics
+utilitiesdir = $(top_builddir)/src/utilities
+systemdir = $(top_builddir)/src/system
+physicsdir = $(top_builddir)/src/physics
 
 KINDS_MOD = kinds.$(FC_MODULE_EXT)
 CONSTANTS_MOD = constants.$(FC_MODULE_EXT)
+PHYSICS_DEFS_MOD = physics_defs.$(FC_MODULE_EXT)
+FORMAT_DEFS_MOD = format_defs.$(FC_MODULE_EXT)
 DIAGNOSTICS_MOD = diagnostics.$(FC_MODULE_EXT)
 SMPHYSICS_MOD = sm_physics.$(FC_MODULE_EXT)
-FILEUTILS_MOD = file_utils.$(FC_MODULE_EXT)
 
 ### To be changed when moved in an external physics library
 $(libmodels_la_OBJECTS) $(external_Threeshl_la_OBJECTS): \
-  $(auxdir)/$(KINDS_MOD) \
-  $(auxdir)/$(CONSTANTS_MOD) \
-  $(auxdir)/$(SMPHYSICS_MOD) \
-  $(auxdir)/$(DIAGNOSTICS_MOD) \
-  $(auxdir)/$(FILEUTILS_MOD) \
+  $(basicsdir)/$(KINDS_MOD) \
+  $(basicsdir)/$(CONSTANTS_MOD) \
+  $(utilitiesdir)/$(FORMAT_DEFS_MOD) \
+  $(systemdir)/$(DIAGNOSTICS_MOD) \
+  $(physicsdir)/$(PHYSICS_DEFS_MOD) \
+  $(physicsdir)/$(SMPHYSICS_MOD) \
   threeshl_bundle/threeshl.$(FC_MODULE_EXT) \
   threeshl_bundle/tglue.$(FC_MODULE_EXT)
 
-AM_FCFLAGS = -I$(auxdir) -Ithreeshl_bundle
+AM_FCFLAGS = -I$(basicsdir) -I$(utilitiesdir) -I$(systemdir) -I$(physicsdir) -Ithreeshl_bundle
 
 ########################################################################
 ## Default Fortran compiler options

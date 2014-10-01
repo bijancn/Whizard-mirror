@@ -13,7 +13,7 @@ models="QED QCD SM"
 modules=""
 
 ########################################################################
-while read module threshold abs_threshold n roots model mode process; do
+while read module n roots model mode process; do
 
   case $module in
 
@@ -26,8 +26,6 @@ while read module threshold abs_threshold n roots model mode process; do
     *)
       ########################################################################
       modules="$modules $module"
-      eval threshold_$module=$threshold
-      eval abs_threshold_$module=$abs_threshold
       eval n_$module=$n
       eval roots_$module=$roots
       eval process_$module="'$process'"
@@ -249,8 +247,8 @@ cat <<EOF
   implicit none
   integer, parameter :: SEED = 42
   real(double) :: time1, time2
-  print *, '#All times in ms/phasespacepoint. All colors and helicities computed.'
-  print *, '#Process   Fortran   VM'
+  write(*, "(A)") '#All times in ms/phasespacepoint. All colors and helicities computed.'
+  write(*, "(A)") '#Process      Fortran                 VM         VM/Fortran'
 EOF
 
 for model in $models; do
@@ -263,15 +261,13 @@ for module in $modules; do
 
 eval process="\${process_$module}"
 eval n="\${n_$module}"
-eval threshold="\${threshold_$module}"
-eval abs_threshold="\${abs_threshold_$module}"
 eval roots="\${roots_$module}"
 
 cat <<EOF
   call benchmark (time1, time2, load_v1_$module (), load_v2_$module (), &
               roots = real ($roots, kind=default), &
               n = $n, seed = SEED)
-  print *, "$module", time1, time2
+              write(*, "(A,F19.5,F19.5,F19.5)") "$module", time1, time2, time2 / time1
 EOF
 done
 

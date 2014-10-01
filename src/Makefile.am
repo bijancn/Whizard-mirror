@@ -27,8 +27,19 @@
 
 ## Subdirectories to configure
 SUBDIRS = \
-  hepmc misc lhapdf lhapdf5 stdhep pdf_builtin \
-  fastjet hoppet shower muli \
+  noweb-frame \
+  basics \
+  utilities \
+  testing \
+  system \
+  combinatorics parsing physics qft \
+  fastjet \
+  types \
+  matrix_elements \
+  hepmc particles \
+  beams \
+  lhapdf lhapdf5 stdhep pdf_builtin \
+  hoppet shower muli \
   whizard-core prebuilt models
 if MPOST_AVAILABLE
 SUBDIRS += gamelan feynmf
@@ -52,15 +63,29 @@ libwhizard_la_LIBADD = \
   ../vamp/src/libvamp.la \
   ../circe1/src/libcirce1.la \
   ../circe2/src/libcirce2.la \
-  misc/libaux.la \
-  pdf_builtin/libpdf_builtin.la
+  pdf_builtin/libpdf_builtin.la \
+  beams/libbeams.la \
+  particles/libparticles.la \
+  matrix_elements/libmatrix_elements.la \
+  types/libtypes.la \
+  qft/libqft.la \
+  physics/libphysics.la \
+  parsing/libparsing.la \
+  combinatorics/libcombinatorics.la \
+  system/libsystem.la \
+  testing/libtesting.la \
+  utilities/libutilities.la \
+  basics/libbasics.la
+
 if SHOWER_AVAILABLE
 libwhizard_la_LIBADD += \
   shower/libshower.la 
 else 
 libwhizard_la_LIBADD += \
   shower/libshower_dummy.la
+
 endif 
+
 if MPI_AVAILABLE
 libwhizard_la_LIBADD += \
   muli/libmuli.la 
@@ -157,3 +182,9 @@ endif
 ## Remove backup files
 maintainer-clean-local:
 	-rm -f *~
+
+## Remove Module lists only after final subdir cleanup
+distclean-local:
+	for d in $(SUBDIRS); do \
+	  rm -f $$d/Modules; \
+	done

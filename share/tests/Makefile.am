@@ -255,6 +255,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/process_stacks_1.ref \
     ref-output/process_stacks_2.ref \
     ref-output/process_stacks_3.ref \
+    ref-output/process_stacks_4.ref \
     ref-output/slha_1.ref \
     ref-output/event_transforms_1.ref \
     ref-output/decays_1.ref \
@@ -426,6 +427,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/libraries_4.ref \
     ref-output/rebuild_2.ref \
     ref-output/rebuild_3.ref \
+    ref-output/rebuild_4.ref \
     ref-output/fatal.ref \
     ref-output/model_test.ref \
     ref-output/cuts.ref \
@@ -472,6 +474,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/hepmc_3.ref \
     ref-output/hepmc_4.ref \
     ref-output/hepmc_5.ref \
+    ref-output/hepmc_6.ref \
     ref-output/lhef_1.ref \
     ref-output/lhef_2.ref \
     ref-output/lhef_3.ref \
@@ -495,6 +498,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/smtest_13.ref \
     ref-output/smtest_14.ref \
     ref-output/smtest_15.ref \
+    ref-output/smtest_16.ref \
     ref-output/mssmtest.ref \
     ref-output/show_1.ref \
     ref-output/show_2.ref \
@@ -503,6 +507,9 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/multi_comp_4.ref \
     ref-output/flvsum_1.ref \
     ref-output/circe1_2.ref \
+    ref-output/circe1_3.ref \
+    ref-output/circe1_6.ref \
+    ref-output/circe1_9.ref \
     ref-output/circe1_errors_1.ref \
     ref-output/circe2_1.ref \
     ref-output/circe2_2.ref \
@@ -535,13 +542,10 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/ep_2.ref \
     ref-output-double/ep_3.ref \
     ref-output-double/circe1_1.ref \
-    ref-output-double/circe1_3.ref \
     ref-output-double/circe1_4.ref \
     ref-output-double/circe1_5.ref \
-    ref-output-double/circe1_6.ref \
     ref-output-double/circe1_7.ref \
     ref-output-double/circe1_8.ref \
-    ref-output-double/circe1_9.ref \
     ref-output-double/circe1_photons_1.ref \
     ref-output-double/circe1_photons_2.ref \
     ref-output-double/circe1_photons_3.ref \
@@ -577,13 +581,10 @@ REF_OUTPUT_FILES_EXT = \
     ref-output-ext/ep_2.ref \
     ref-output-ext/ep_3.ref \
     ref-output-ext/circe1_1.ref \
-    ref-output-ext/circe1_3.ref \
     ref-output-ext/circe1_4.ref \
     ref-output-ext/circe1_5.ref \
-    ref-output-ext/circe1_6.ref \
     ref-output-ext/circe1_7.ref \
     ref-output-ext/circe1_8.ref \
-    ref-output-ext/circe1_9.ref \
     ref-output-ext/circe1_photons_1.ref \
     ref-output-ext/circe1_photons_2.ref \
     ref-output-ext/circe1_photons_3.ref \
@@ -728,6 +729,7 @@ MISC_TESTS_SIN = \
     rebuild_1.sin \
     rebuild_2.sin \
     rebuild_3.sin \
+    rebuild_4.sin \
     qedtest_1.sin \
     qedtest_2.sin \
     qedtest_3.sin \
@@ -785,6 +787,7 @@ MISC_TESTS_SIN = \
     hepmc_3.sin \
     hepmc_4.sin \
     hepmc_5.sin \
+    hepmc_6.sin \
     stdhep_1.sin \
     stdhep_2.sin \
     stdhep_3.sin \
@@ -804,6 +807,7 @@ MISC_TESTS_SIN = \
     smtest_13.sin \
     smtest_14.sin \
     smtest_15.sin \
+    smtest_16.sin \
     mssmtest.sin \
     show_1.sin \
     show_2.sin \

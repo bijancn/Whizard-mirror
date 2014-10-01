@@ -29,6 +29,10 @@ dist_noinst_DATA = manual.tex $(PACKAGE).tex shower.tex \
 	book.hva custom.hva fancysection.hva Whizard-Logo.jpg \
 	$(MANUAL_PICS)
 
+## The WHIZARD documented source is assembled from various directories
+w_srcdir = $(top_srcdir)/src
+VPATH = $(srcdir):$(w_srcdir)/noweb-frame:$(w_srcdir)/utilities:$(w_srcdir)/whizard-core
+
 MANUAL_PICS = \
    proc_4f-history.eps proc_4f-history.pdf \
    whizstruct.eps whizstruct.pdf cc10_1.eps cc10_1.pdf \
@@ -128,10 +132,16 @@ if NOWEB_AVAILABLE
 shower.tex: $(top_srcdir)/src/shower/shower.nw
 	$(NOWEAVE) -delay $< | $(CPIF) $@
 
+WHIZARD_NOWEB_SRC = \
+  whizard-prelude.nw \
+  utilities.nw \
+  whizard.nw \
+  whizard-postlude.nw
+
 $(PACKAGE).tex: shower.tex
-$(PACKAGE).tex: $(top_srcdir)/src/whizard-core/$(PACKAGE).nw 	
+$(PACKAGE).tex: $(WHIZARD_NOWEB_SRC)
 	-rm -f $@
-	$(NOWEAVE) -delay $< | $(CPIF) $@
+	$(NOWEAVE) -delay $^ | $(CPIF) $@
 
 gamelan.sty: $(top_srcdir)/src/gamelan/gamelan.nw
 	$(NOTANGLE) -R$@ $< | $(CPIF) $@

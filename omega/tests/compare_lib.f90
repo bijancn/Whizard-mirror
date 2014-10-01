@@ -1,4 +1,4 @@
-! $Id: compare_lib.f90 6081 2014-08-26 18:16:22Z bchokoufe $
+! $Id: compare_lib.f90 6107 2014-09-11 12:02:16Z bchokoufe $
 ! compare_lib.f90 -- compare two O'Mega versions
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -58,10 +58,12 @@ contains
     complex(kind=default) :: a1, a2
     real(kind=default) :: asq1, asq2
     character(len=80) :: msg
-    complex(kind=default) :: wi
-    integer :: size
     failures = 0
     attempts = 0
+    a1 = 0
+    a2 = 0
+    asq1 = 0
+    asq2 = 0
     call quantum_numbers (v1, v2, n_out, n_flv, n_hel, n_col, match)
     if (.not.match) then
        failures = 1
@@ -75,7 +77,12 @@ contains
     allocate (p(0:3,2+n_out))
     call beams (ROOTS, 0.0_default, 0.0_default, p(:,1), p(:,2))
     do i = 1, N
-       call massless_isotropic_decay (ROOTS, p(:,3:))
+       if (n_out > 1) then
+          call massless_isotropic_decay (ROOTS, p(:,3:))
+       end if
+       if (n_out == 1) then
+          p(:,3) = p(:,1) + p(:,2)
+       end if
        call v1%new_event (p)
        call v2%new_event (p)
        do i_flv = 1, n_flv
@@ -112,6 +119,9 @@ contains
           end do
        end do
     end do
+    print *, 'Last results: '
+    print *, 'a1, a2 =    ', a1, a2
+    print *, 'asq1, asq2 =    ', asq1, asq2
     deallocate (p)
   end subroutine check
 
@@ -227,12 +237,6 @@ contains
     real(kind=default) :: pq
     pq = p(0)*q(0) - dot_product (p(1:), q(1:))
   end function dot
-
-  pure function mass2 (p) result (m2)
-    real(kind=default), dimension(0:), intent(in) :: p
-    real(kind=default) :: m2
-    m2 = p(0)*p(0) - p(1)*p(1) - p(2)*p(2) - p(3)*p(3)
-  end function mass2
 
   pure subroutine beams (roots, m1, m2, p1, p2)
     real(kind=default), intent(in) :: roots, m1, m2

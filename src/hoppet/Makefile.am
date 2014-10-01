@@ -52,13 +52,15 @@ endif
 ########################################################################
 ## Explicit dependencies
 
-libhoppet.lo: ../misc/system_dependencies.$(FC_MODULE_EXT) \
-	../pdf_builtin/pdf_builtin.$(FC_MODULE_EXT) \
-	../lhapdf/lhapdf.$(FC_MODULE_EXT)
+libhoppet.lo: \
+  ../system/system_dependencies.$(FC_MODULE_EXT) \
+  ../pdf_builtin/pdf_builtin.$(FC_MODULE_EXT) \
+  ../lhapdf/lhapdf.$(FC_MODULE_EXT)
 
-libhoppet_dummy.lo: ../lhapdf/lhapdf.$(FC_MODULE_EXT)
+libhoppet_dummy.lo: \
+  ../lhapdf/lhapdf.$(FC_MODULE_EXT)
 
-AM_FCFLAGS += -I../misc -I../pdf_builtin -I../lhapdf
+AM_FCFLAGS += -I../basics -I../system -I../pdf_builtin -I../lhapdf
 
 MODULES= \
    hoppet.$(FC_MODULE_EXT)

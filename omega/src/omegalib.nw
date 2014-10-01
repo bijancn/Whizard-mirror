@@ -1,4 +1,4 @@
-%  $Id: omegalib.nw 6082 2014-08-26 19:17:37Z jr_reuter $
+%  $Id: omegalib.nw 6107 2014-09-11 12:02:16Z bchokoufe $
 %
 %  Copyright (C) 1999-2014 by
 %      Wolfgang Kilian <kilian@physik.uni-siegen.de>
@@ -10090,7 +10090,6 @@ subroutine find_free_unit (u, iostat)
   end if
   u = -1
 end subroutine find_free_unit
-
 @ These abstract data types would ideally be the interface to
 communicate quantum numbers between O'Mega and Whizard. This gives full
 flexibility to change the representation at any time
@@ -10180,12 +10179,9 @@ end subroutine flavor_write
 
 @
 \subsection{Memory Layout}
-Some internal parameters. It would be nice to sync this to
-[[targets.ml]] automatically, especially the revision number, but I
-don't see how
+Some internal parameters
 <<OVM Data Declarations>>=
 integer, parameter :: len_instructions = 8
-character(*), parameter :: vm_version = 'Targets.VM-rev6082'
 integer, parameter :: N_version_lines = 2
 ! Comment lines including the first header description line
 integer, parameter :: N_comments = 6
@@ -10257,6 +10253,7 @@ end type
 <<OVM Data Declarations>>=
 type, public, extends (basic_vm_t) :: vm_t
    private
+   type(string_t) :: version
    type(string_t) :: model
    integer :: N_momenta, N_particles, N_prt_in, N_prt_out, N_amplitudes
    ! helicities = helicity combinations
@@ -10286,7 +10283,9 @@ type, public, extends (basic_vm_t) :: vm_t
    complex(default), dimension(:, :, :), allocatable :: table_amplitudes
    class(flavor_t), dimension(:), allocatable :: flavor
    class(color_t), dimension(:), allocatable :: color
-   class(helicity_t), dimension(:), pointer :: helicity => null()
+   ! gfortran 4.7
+   !class(helicity_t), dimension(:), pointer :: helicity => null()
+   integer, dimension(:), allocatable :: helicity
 
    type(vm_scalar), dimension(:), allocatable :: scalars
    type(vm_spinor), dimension(:), allocatable :: spinors
@@ -10324,6 +10323,7 @@ subroutine alloc_arrays (vm)
   allocate (vm%amplitudes(vm%N_amplitudes))
   allocate (vm%table_amplitudes(vm%N_flavors, vm%N_col_flows, &
                                 vm%N_helicities))
+  vm%table_amplitudes = zero
   allocate (vm%scalars(vm%N_scalars))
   allocate (vm%spinors(vm%N_spinors))
   allocate (vm%conjspinors(vm%N_conjspinors))
@@ -10347,17 +10347,18 @@ These type-bound procedures steer the VM
 <<VM: TBP>>=
   procedure :: init => vm_init
   procedure :: write => vm_write
+  procedure :: reset => vm_reset
   procedure :: run => vm_run
   procedure :: final => vm_final
-@ The [[init]] completely sets the environment for the OVM. It might be
-useful though to have a [[update]] function of the external parameters
-without reloading the bytecode (thinking of parameter scans)
+@ The [[init]] completely sets the environment for the OVM. Parameters
+can be changed with [[reset]] without reloading the bytecode.
 <<OVM Procedure Implementations>>=
-subroutine vm_init (vm, bytecode_file, model, &
+subroutine vm_init (vm, bytecode_file, version, model, &
     coupl_real, coupl_real2, coupl_cmplx, coupl_cmplx2, &
     mass, width, verbose, out_fh)
   class(vm_t), intent(out) :: vm
   type(string_t), intent(in) :: bytecode_file
+  type(string_t), intent(in) :: version
   type(string_t), intent(in) :: model
   real(default), dimension(:), optional, intent(in) :: coupl_real
   real(default), dimension(:, :), optional, intent(in) :: coupl_real2
@@ -10368,6 +10369,7 @@ subroutine vm_init (vm, bytecode_file, model, &
   logical, optional, intent(in) :: verbose
   integer, optional, intent(in) :: out_fh
   vm%bytecode_file = bytecode_file
+  vm%version = version
   vm%model = model
   if (present (coupl_real)) then
      allocate (vm%coupl_real (size (coupl_real)), source=coupl_real)
@@ -10388,8 +10390,49 @@ subroutine vm_init (vm, bytecode_file, model, &
   if (present (width)) then
      allocate (vm%width(size (width)), source=width)
   end if
+
   call basic_init (vm, verbose, out_fh)
 end subroutine vm_init
+
+@
+<<OVM Procedure Implementations>>=
+subroutine vm_reset (vm, &
+    coupl_real, coupl_real2, coupl_cmplx, coupl_cmplx2, &
+    mass, width, verbose, out_fh)
+  class(vm_t), intent(inout) :: vm
+  real(default), dimension(:), optional, intent(in) :: coupl_real
+  real(default), dimension(:, :), optional, intent(in) :: coupl_real2
+  complex(default), dimension(:), optional, intent(in) :: coupl_cmplx
+  complex(default), dimension(:, :), optional, intent(in) :: coupl_cmplx2
+  real(default), dimension(:), optional, intent(in) :: mass
+  real(default), dimension(:), optional, intent(in) :: width
+  logical, optional, intent(in) :: verbose
+  integer, optional, intent(in) :: out_fh
+  if (present (coupl_real)) then
+     vm%coupl_real = coupl_real
+  end if
+  if (present (coupl_real2)) then
+     vm%coupl_real2 = coupl_real2
+  end if
+  if (present (coupl_cmplx)) then
+     vm%coupl_cmplx = coupl_cmplx
+  end if
+  if (present (coupl_cmplx2)) then
+     vm%coupl_cmplx2 = coupl_cmplx2
+  end if
+  if (present (mass)) then
+     vm%mass = mass
+  end if
+  if (present (width)) then
+     vm%width = width
+  end if
+  if (present (verbose)) then
+     vm%verbose = verbose
+  end if
+  if (present (out_fh)) then
+     vm%out_fh = out_fh
+  end if
+end subroutine vm_reset
 
 @ Mainly for debugging
 <<OVM Procedure Implementations>>=
@@ -10404,10 +10447,18 @@ subroutine vm_write (vm)
   write(vm%out_fh, *) 'table_color_factors       = ', vm%table_color_factors
   write(vm%out_fh, *) 'table_flv_col_is_allowed  = ', &
                     vm%table_flv_col_is_allowed
-  write(vm%out_fh, *) 'coupl_real          = ', vm%coupl_real
-  write(vm%out_fh, *) 'coupl_real2         = ', vm%coupl_real2
-  write(vm%out_fh, *) 'coupl_cmplx         = ', vm%coupl_cmplx
-  write(vm%out_fh, *) 'coupl_cmplx2        = ', vm%coupl_cmplx2
+  if (allocated(vm%coupl_real)) then
+     write(vm%out_fh, *) 'coupl_real          = ', vm%coupl_real
+  end if
+  if (allocated(vm%coupl_real2)) then
+     write(vm%out_fh, *) 'coupl_real2         = ', vm%coupl_real2
+  end if
+  if (allocated(vm%coupl_cmplx)) then
+     write(vm%out_fh, *) 'coupl_cmplx         = ', vm%coupl_cmplx
+  end if
+  if (allocated(vm%coupl_cmplx2)) then
+     write(vm%out_fh, *) 'coupl_cmplx2        = ', vm%coupl_cmplx2
+  end if
   write(vm%out_fh, *) 'mass                = ', vm%mass
   write(vm%out_fh, *) 'width               = ', vm%width
   write(vm%out_fh, *) 'momenta             = ', vm%momenta
@@ -10417,9 +10468,11 @@ subroutine vm_write (vm)
   do i = 1, size(vm%color)
      call vm%color(i)%write (vm%out_fh)
   end do
-  do i = 1, size(vm%helicity)
-     call vm%helicity(i)%write (vm%out_fh)
-  end do
+  ! gfortran 4.7
+  !do i = 1, size(vm%helicity)
+     !call vm%helicity(i)%write (vm%out_fh)
+  !end do
+  write(vm%out_fh, *) 'helicity            = ', vm%helicity
   write(vm%out_fh, *) 'amplitudes       = ', vm%amplitudes
   do i = 1, vm%N_flavors
      do j = 1, vm%N_col_flows
@@ -10505,16 +10558,19 @@ end subroutine vm_final
 @ Handing over the polymorph object helicity didn't work out as planned.
 A work-around is the use of [[pointer]]s. [[flavor]] and [[color]] are
 not yet used but would have to be changed to [[pointer]]s as well. At
-least this avoids copying
+least this potentially avoids copying. Actually, neither the allocatable
+nor the pointer version works in [[gfortran 4.7]] due to the broken
+[[select type]]. Back to Stone Age, i.e. integers.
 <<OVM Procedure Implementations>>=
 subroutine vm_run (vm, mom, flavor, color, helicity)
   class(vm_t), intent(inout) :: vm
   real(default), dimension(0:3, *), intent(in) :: mom
   class(flavor_t), dimension(:), optional, intent(in) :: flavor
   class(color_t), dimension(:), optional, intent(in) :: color
-  class(helicity_t), dimension(:), optional, target, intent(in) :: helicity
+  ! gfortran 4.7
+  !class(helicity_t), dimension(:), optional, target, intent(in) :: helicity
+  integer, dimension(:), optional, intent(in) :: helicity
   integer :: i, h, hi
-  <<Work around [[gfortran 4.7 Bug 56731]] Declarations>>
   do i = 1, vm%N_momenta
     if (i <= vm%N_prt_in) then
       vm%momenta(i) = - mom(:, i)          ! incoming, crossing symmetry
@@ -10522,38 +10578,46 @@ subroutine vm_run (vm, mom, flavor, color, helicity)
       vm%momenta(i) = mom(:, i)            ! outgoing
     end if
   end do
-  !if (present (flavor)) then
-     !allocate(vm%flavor(size(flavor)), source=flavor)
-  !else
-     !if (.not. (allocated (vm%flavor))) then
-        !allocate(flv_discrete::vm%flavor(vm%N_particles))
-     !end if
-  !end if
-  !if (present (color)) then
-     !allocate(vm%color(size(color)), source=color)
-  !else
-     !if (.not. (allocated (vm%color))) then
-        !allocate(col_discrete::vm%color(vm%N_col_flows))
-     !end if
-  !end if
+  if (present (flavor)) then
+     allocate(vm%flavor(size(flavor)), source=flavor)
+  else
+     if (.not. (allocated (vm%flavor))) then
+        allocate(flv_discrete::vm%flavor(vm%N_particles))
+     end if
+  end if
+  if (present (color)) then
+     allocate(vm%color(size(color)), source=color)
+  else
+     if (.not. (allocated (vm%color))) then
+        allocate(col_discrete::vm%color(vm%N_col_flows))
+     end if
+  end if
+  ! gfortran 4.7
   if (present (helicity)) then
-     vm%helicity => helicity
+     !vm%helicity => helicity
+     vm%helicity = helicity
      call vm_run_one_helicity (vm, 1)
   else
-    if (.not. (associated (vm%helicity))) then
-       allocate(hel_discrete::vm%helicity(vm%N_particles))
+    !if (.not. (associated (vm%helicity))) then
+       !allocate(hel_discrete::vm%helicity(vm%N_particles))
+    !end if
+    if (.not. (allocated (vm%helicity))) then
+       allocate(vm%helicity(vm%N_particles))
     end if
     if (vm%hel_finite == 0) return
     do hi = 1, vm%hel_finite
        h = vm%hel_map(hi)
        !<Work around [[gfortran 4.7 Bug 56731]] Implementation>>
-       <<Original version>>
+       vm%helicity = vm%table_spin(:,h)
        call vm_run_one_helicity (vm, h)
     end do
   end if
 end subroutine vm_run
 
 @
+This only removes the [[ICE]] but still leads to a segmentation fault in
+[[gfortran 4.7]]. I am running out of ideas how to make this compiler
+work with arrays of polymorph datatypes.
 <<Work around [[gfortran 4.7 Bug 56731]] Declarations>>=
 integer :: hj
 <<Work around [[gfortran 4.7 Bug 56731]] Implementation>>=
@@ -10574,13 +10638,19 @@ end select
 subroutine vm_run_one_helicity (vm, h)
   class(vm_t), intent(inout) :: vm
   integer, intent(in) :: h
-  integer :: f, c
+  integer :: f, c, i
   vm%amplitudes = zero
-  call null_all_wfs (vm)
-  call iterate_instructions (vm)
+  if (vm%N_levels > 0) then
+     call null_all_wfs (vm)
+     call iterate_instructions (vm)
+  end if
+  i = 1
   do c = 1, vm%N_col_flows
      do f = 1, vm%N_flavors
-        vm%table_amplitudes(f,c,h) = vm%amplitudes(f + (c-1) * vm%N_flavors)
+        if (vm%table_flv_col_is_allowed(f,c)) then
+           vm%table_amplitudes(f,c,h) = vm%amplitudes(i)
+           i = i + 1
+        end if
      end do
   end do
 end subroutine
@@ -10633,7 +10703,11 @@ subroutine load_header (vm, IO)
   vm%N_amplitudes = line(5)
   vm%N_helicities = line(6)
   vm%N_col_flows = line(7)
-  vm%N_col_indices = line(8)
+  if (vm%N_momenta == 0) then
+     vm%N_col_indices = 2
+  else
+     vm%N_col_indices = line(8)
+  end if
   read(vm%bytecode_fh, fmt = *, iostat = IO)
   read(vm%bytecode_fh, fmt = *, iostat = IO) line
   vm%N_flavors = line(1)
@@ -10704,7 +10778,8 @@ subroutine extended_version_check (vm, IO)
   character(256) :: buffer
   read(vm%bytecode_fh, fmt = *, iostat = IO) buffer
   if (vm%model /= buffer) then
-    stop "Bytecode has been generated for another version of OVM."
+    print *, "Bytecode has been generated for another/older model."
+    stop 1
   else
     if (vm%verbose) then
        write (vm%out_fh, fmt = *) "Using the model: "
@@ -10731,14 +10806,17 @@ subroutine basic_init (vm, verbose, out_fh)
   end if
   call set_stream (vm)
   call alloc_and_count (vm)
-  call read_bytecode (vm)
-  call sanity_check (vm)
+  if (vm%N_levels > 0) then
+     call read_bytecode (vm)
+     call sanity_check (vm)
+  end if
+  close (vm%bytecode_fh)
 end subroutine basic_init
 
 subroutine basic_write (vm)
   type(vm_t), intent(in) :: vm
   integer :: i
-  write (vm%out_fh, *) '=====> VM ', vm_version, ' <====='
+  write (vm%out_fh, *) '=====> VM ', char(vm%version), ' <====='
   write (vm%out_fh, *) 'verbose          =    ', vm%verbose
   write (vm%out_fh, *) 'bytecode_file    =    ', char (vm%bytecode_file)
   write (vm%out_fh, *) 'N_instructions   =    ', vm%N_instructions
@@ -10756,8 +10834,9 @@ subroutine alloc_and_count (vm)
   character(256) :: buffer
   integer :: i, IO
   read(vm%bytecode_fh, fmt = *, iostat = IO) buffer
-  if (vm_version /= buffer) then
-    stop "Bytecode has been generated for another VM."
+  if (vm%version /= buffer) then
+    print *, "Bytecode has been generated with another Omega.Targets."
+    stop 1
   else
     if (vm%verbose) then
        write (vm%out_fh, fmt = *) "Bytecode version fits."
@@ -10772,24 +10851,27 @@ subroutine alloc_and_count (vm)
   end do
   call load_header (vm, IO)
   call alloc_arrays (vm)
-  do i = 1, vm%N_table_lines + 1
-    read(vm%bytecode_fh, fmt = *, iostat = IO)
-  end do
-  vm%N_instructions = 0
-  vm%N_levels = 0
-  do
-    read(vm%bytecode_fh, fmt = *, end = 42) line
-    if (line(1) /= 0) then
-      vm%N_instructions = vm%N_instructions + 1
-    else
-      vm%N_levels = vm%N_levels + 1
-    end if
-  end do
-  42 rewind(vm%bytecode_fh, iostat = IO)
-  allocate (vm%instructions(len_instructions, vm%N_instructions))
-  allocate (vm%levels(vm%N_levels))
-  if (IO /= 0) then
-    stop "Error: vm.alloc : Couldn't load bytecode!"
+  if (vm%N_momenta /= 0) then
+     do i = 1, vm%N_table_lines + 1
+       read(vm%bytecode_fh, fmt = *, iostat = IO)
+     end do
+     vm%N_instructions = 0
+     vm%N_levels = 0
+     do
+       read(vm%bytecode_fh, fmt = *, end = 42) line
+       if (line(1) /= 0) then
+         vm%N_instructions = vm%N_instructions + 1
+       else
+         vm%N_levels = vm%N_levels + 1
+       end if
+     end do
+     42 rewind(vm%bytecode_fh, iostat = IO)
+     allocate (vm%instructions(len_instructions, vm%N_instructions))
+     allocate (vm%levels(vm%N_levels))
+     if (IO /= 0) then
+       print *, "Error: vm.alloc : Couldn't load bytecode!"
+       stop 1
+     end if
   end if
 end subroutine alloc_and_count
 
@@ -10812,14 +10894,16 @@ subroutine read_bytecode (vm)
         j = j + 1
         vm%levels(j) = i                 ! last index of a level is saved
       else
-        stop 'Error: vm.read_bytecode: File has more levels than anticipated!'
+        print *, 'Error: vm.read_bytecode: File has more levels than anticipated!'
+        stop 1
       end if
     else
       if (i <= vm%N_instructions) then
         i = i + 1                        ! A valid instruction line
         vm%instructions(:, i) = line
       else
-        stop 'Error: vm.read_bytecode: File is larger than anticipated!'
+        print *, 'Error: vm.read_bytecode: File is larger than anticipated!'
+        stop 1
       end if
     end if
   end do
@@ -10828,17 +10912,15 @@ end subroutine read_bytecode
 subroutine iterate_instructions (vm)
   type(vm_t), intent(inout) :: vm
   integer :: i, j
+  !$omp parallel
   do j = 1, vm%N_levels - 1
-     !!$omp parallel do
-     !$omp parallel
      !$omp do schedule (static)
      do i = vm%levels (j) + 1, vm%levels (j + 1)
          call decode (vm, i)
      end do
      !$omp end do
-     !$omp end parallel
-     !!$omp end parallel do
   end do
+  !$omp end parallel
 end subroutine iterate_instructions
 
 subroutine set_stream (vm)
@@ -10849,17 +10931,21 @@ subroutine set_stream (vm)
     access = 'sequential', status = 'old', position = 'rewind', iostat = IO, &
     action = 'read')
   if (IO /= 0) then
-    stop "Error: vm.set_stream: Bytecode file not found!"
+    print *, "Error: vm.set_stream: Bytecode file '", char(vm%bytecode_file), &
+             "' not found!"
+    stop 1
   end if
 end subroutine set_stream
 
 subroutine sanity_check (vm)
   type(vm_t), intent(in) :: vm
   if (vm%levels(1) /= 0) then
-    stop "Error: vm.vm_init: levels(1) != 0"
+     print *, "Error: vm.vm_init: levels(1) != 0"
+     stop 1
   end if
   if (vm%levels(vm%N_levels) /= vm%N_instructions) then
-    stop "Error: vm.vm_init: levels(N_levels) != N_instructions"
+     print *, "Error: vm.vm_init: levels(N_levels) != N_instructions"
+     stop 1
   end if
   if (vm%verbose) then
     write(vm%out_fh, *) "vm passed sanity check. Starting calculation."
@@ -10886,11 +10972,11 @@ This is the heart of the OVM
     case (0)
       print *, 'Error: Levelbreak put in decode! Line:', &
                instruction_index
-      stop
+      stop 1
     case default
       print *, "Error: Decode has case not catched! Line: ", &
                instruction_index
-      stop
+      stop 1
     end select
   end subroutine decode
 
@@ -10938,106 +11024,112 @@ integer, parameter :: ovm_LOAD_BRS_MAJORANA_OUT = 36
 
 @
 <<[[case]]s of [[decode]]>>=
-!case (ovm_LOAD_SCALAR)
-  !vm%scalars(i(4))%v = one
-  !vm%scalars(i(4))%c = .True.
+case (ovm_LOAD_SCALAR)
+  vm%scalars(i(4))%v = one
+  vm%scalars(i(4))%c = .True.
 
-!case (ovm_LOAD_SPINOR_INC)
-   !call load_spinor(vm%spinors(i(4)), - vm%momenta(i(5)), vm%mass(i(2)), &
-                    !vm%helicity(i(5)), ovm_LOAD_SPINOR_INC)
+case (ovm_LOAD_SPINOR_INC)
+   call load_spinor(vm%spinors(i(4)), - vm%momenta(i(5)), vm%mass(i(2)), &
+                    vm%helicity(i(5)), ovm_LOAD_SPINOR_INC)
 
-!case (ovm_LOAD_SPINOR_OUT)
-   !call load_spinor(vm%spinors(i(4)), vm%momenta(i(5)), vm%mass(i(2)), &
-                    !vm%helicity(i(5)), ovm_LOAD_SPINOR_OUT)
+case (ovm_LOAD_SPINOR_OUT)
+   call load_spinor(vm%spinors(i(4)), vm%momenta(i(5)), vm%mass(i(2)), &
+                    vm%helicity(i(5)), ovm_LOAD_SPINOR_OUT)
 
-!case (ovm_LOAD_CONJSPINOR_INC)
-   !call load_conjspinor(vm%conjspinors(i(4)), - vm%momenta(i(5)), &
-     !vm%mass(i(2)), vm%helicity(i(5)), ovm_LOAD_CONJSPINOR_INC)
+case (ovm_LOAD_CONJSPINOR_INC)
+   call load_conjspinor(vm%conjspinors(i(4)), - vm%momenta(i(5)), &
+     vm%mass(i(2)), vm%helicity(i(5)), ovm_LOAD_CONJSPINOR_INC)
 
-!case (ovm_LOAD_CONJSPINOR_OUT)
-   !call load_conjspinor(vm%conjspinors(i(4)), vm%momenta(i(5)), &
-     !vm%mass(i(2)), vm%helicity(i(5)), ovm_LOAD_CONJSPINOR_OUT)
+case (ovm_LOAD_CONJSPINOR_OUT)
+   call load_conjspinor(vm%conjspinors(i(4)), vm%momenta(i(5)), &
+     vm%mass(i(2)), vm%helicity(i(5)), ovm_LOAD_CONJSPINOR_OUT)
 
-!case (ovm_LOAD_MAJORANA_INC)
-   !call load_bispinor(vm%bispinors(i(4)), - vm%momenta(i(5)), &
-     !vm%mass(i(2)), vm%helicity(i(5)), ovm_LOAD_MAJORANA_INC)
+case (ovm_LOAD_MAJORANA_INC)
+   call load_bispinor(vm%bispinors(i(4)), - vm%momenta(i(5)), &
+     vm%mass(i(2)), vm%helicity(i(5)), ovm_LOAD_MAJORANA_INC)
 
-!case (ovm_LOAD_MAJORANA_OUT)
-   !call load_bispinor(vm%bispinors(i(4)), vm%momenta(i(5)), vm%mass(i(2)), &
-                    !vm%helicity(i(5)), ovm_LOAD_MAJORANA_OUT)
+case (ovm_LOAD_MAJORANA_OUT)
+   call load_bispinor(vm%bispinors(i(4)), vm%momenta(i(5)), vm%mass(i(2)), &
+                    vm%helicity(i(5)), ovm_LOAD_MAJORANA_OUT)
 
 case (ovm_LOAD_VECTOR_INC)
-   select type (h => vm%helicity(i(5)))
-   type is (hel_discrete)
-   vm%vectors(i(4))%v = eps (vm%mass(i(2)), - vm%momenta(i(5)), h%i)
-   end select
-   !call load_vector(vm%vectors(i(4)), - vm%momenta(i(5)), vm%mass(i(2)), &
-                    !vm%helicity(i(5)), ovm_LOAD_VECTOR_INC)
+   call load_vector(vm%vectors(i(4)), - vm%momenta(i(5)), vm%mass(i(2)), &
+                    vm%helicity(i(5)), ovm_LOAD_VECTOR_INC)
 
 case (ovm_LOAD_VECTOR_OUT)
-   select type (h => vm%helicity(i(5)))
-   type is (hel_discrete)
-   vm%vectors(i(4))%v = conjg(eps (vm%mass(i(2)), vm%momenta(i(5)), h%i))
-   end select
-   !call load_vector(vm%vectors(i(4)), vm%momenta(i(5)), vm%mass(i(2)), &
-                    !vm%helicity(i(5)), ovm_LOAD_VECTOR_OUT)
+   call load_vector(vm%vectors(i(4)), vm%momenta(i(5)), vm%mass(i(2)), &
+                    vm%helicity(i(5)), ovm_LOAD_VECTOR_OUT)
 
-!case (ovm_LOAD_VECTORSPINOR_INC)
+case (ovm_LOAD_VECTORSPINOR_INC)
   !select type (h => vm%helicity(i(5)))
   !type is (hel_discrete)
-     !!vm%vectorspinors(i(4))%v = veps(vm%mass(i(2)), - vm%momenta(i(5)), &
-                                     !!h%i)
+     !vm%vectorspinors(i(4))%v = veps(vm%mass(i(2)), - vm%momenta(i(5)), &
+                                     !h%i)
   !end select
-  !vm%vectorspinors(i(4))%c = .True.
+  vm%vectorspinors(i(4))%v = veps(vm%mass(i(2)), - vm%momenta(i(5)), &
+                                  vm%helicity(i(5)))
+  vm%vectorspinors(i(4))%c = .True.
 
-!case (ovm_LOAD_VECTORSPINOR_OUT)
+case (ovm_LOAD_VECTORSPINOR_OUT)
   !select type (h => vm%helicity(i(5)))
   !type is (hel_discrete)
-     !!vm%vectorspinors(i(4))%v = veps(vm%mass(i(2)), vm%momenta(i(5)), &
-                                     !!h%i)
+     !vm%vectorspinors(i(4))%v = veps(vm%mass(i(2)), vm%momenta(i(5)), &
+                                     !h%i)
   !end select
-  !vm%vectorspinors(i(4))%c = .True.
+  vm%vectorspinors(i(4))%v = veps(vm%mass(i(2)), vm%momenta(i(5)), &
+                                  vm%helicity(i(5)))
+  vm%vectorspinors(i(4))%c = .True.
 
-!case (ovm_LOAD_TENSOR2_INC)
+case (ovm_LOAD_TENSOR2_INC)
   !select type (h => vm%helicity(i(5)))
   !type is (hel_discrete)
-     !!vm%tensors_2(i(4))%v = eps2(vm%mass(i(2)), - vm%momenta(i(5)), &
-                                 !!h%i)
+     !vm%tensors_2(i(4))%v = eps2(vm%mass(i(2)), - vm%momenta(i(5)), &
+                                 !h%i)
   !end select
-  !vm%tensors_2(i(4))%c = .True.
+  vm%tensors_2(i(4))%c = .True.
 
-!case (ovm_LOAD_TENSOR2_OUT)
+case (ovm_LOAD_TENSOR2_OUT)
   !select type (h => vm%helicity(i(5)))
   !type is (hel_discrete)
-     !!vm%tensors_2(i(4))%v = eps2(vm%mass(i(2)), vm%momenta(i(5)), h%i)
+     !vm%tensors_2(i(4))%v = eps2(vm%mass(i(2)), vm%momenta(i(5)), h%i)
   !end select
-  !vm%tensors_2(i(4))%c = .True.
+  vm%tensors_2(i(4))%c = .True.
 
-!case (ovm_LOAD_BRS_SCALAR)
-  !vm%scalars(i(4))%v = (0, -1) * (vm%momenta(i(5)) * vm%momenta(i(5)) - &
-                                  !vm%mass(i(2))**2)
-  !vm%scalars(i(4))%c = .True.
+case (ovm_LOAD_BRS_SCALAR)
+  vm%scalars(i(4))%v = (0, -1) * (vm%momenta(i(5)) * vm%momenta(i(5)) - &
+                                  vm%mass(i(2))**2)
+  vm%scalars(i(4))%c = .True.
 
-!case (ovm_LOAD_BRS_SPINOR_INC)
-  !stop 'not implemented'
-!case (ovm_LOAD_BRS_SPINOR_OUT)
-  !stop 'not implemented'
-!case (ovm_LOAD_BRS_CONJSPINOR_INC)
-  !stop 'not implemented'
-!case (ovm_LOAD_BRS_CONJSPINOR_OUT)
-  !stop 'not implemented'
-!case (ovm_LOAD_BRS_VECTOR_INC)
-  !stop 'not implemented'
-!case (ovm_LOAD_BRS_VECTOR_OUT)
-  !stop 'not implemented'
-!case (ovm_LOAD_MAJORANA_GHOST_INC)
-  !stop 'not implemented'
-!case (ovm_LOAD_MAJORANA_GHOST_OUT)
-  !stop 'not implemented'
-!case (ovm_LOAD_BRS_MAJORANA_INC)
-  !stop 'not implemented'
-!case (ovm_LOAD_BRS_MAJORANA_OUT)
-  !stop 'not implemented'
+case (ovm_LOAD_BRS_SPINOR_INC)
+  print *, 'not implemented'
+  stop 1
+case (ovm_LOAD_BRS_SPINOR_OUT)
+  print *, 'not implemented'
+  stop 1
+case (ovm_LOAD_BRS_CONJSPINOR_INC)
+  print *, 'not implemented'
+  stop 1
+case (ovm_LOAD_BRS_CONJSPINOR_OUT)
+  print *, 'not implemented'
+  stop 1
+case (ovm_LOAD_BRS_VECTOR_INC)
+  print *, 'not implemented'
+  stop 1
+case (ovm_LOAD_BRS_VECTOR_OUT)
+  print *, 'not implemented'
+  stop 1
+case (ovm_LOAD_MAJORANA_GHOST_INC)
+  print *, 'not implemented'
+  stop 1
+case (ovm_LOAD_MAJORANA_GHOST_OUT)
+  print *, 'not implemented'
+  stop 1
+case (ovm_LOAD_BRS_MAJORANA_INC)
+  print *, 'not implemented'
+  stop 1
+case (ovm_LOAD_BRS_MAJORANA_OUT)
+  print *, 'not implemented'
+  stop 1
 
 @
 \subsubsection{Brakets and Fusions}
@@ -11114,39 +11206,65 @@ case (ovm_CALC_BRAKET)
      curr = vm%instructions(:, tmp)
      if (curr(1) >= 0) exit                        ! End of fusions
      select case (curr(1))
-     !case (ovm_FUSE_V_FF, ovm_FUSE_VL_FF, ovm_FUSE_VR_FF)
-       !braket = vm%vectors(curr(4))%v * vec_ff(vm, curr)
+     case (ovm_FUSE_V_FF, ovm_FUSE_VL_FF, ovm_FUSE_VR_FF)
+       braket = vm%vectors(curr(4))%v * vec_ff(vm, curr)
 
-     !case (ovm_FUSE_F_VF, ovm_FUSE_F_VLF, ovm_FUSE_F_VRF)
-       !braket = vm%conjspinors(curr(4))%v * ferm_vf(vm, curr)
+     case (ovm_FUSE_F_VF, ovm_FUSE_F_VLF, ovm_FUSE_F_VRF)
+       braket = vm%conjspinors(curr(4))%v * ferm_vf(vm, curr)
 
-     !case (ovm_FUSE_F_FV, ovm_FUSE_F_FVL, ovm_FUSE_F_FVR)
-       !braket = ferm_fv(vm, curr) * vm%spinors(curr(4))%v
+     case (ovm_FUSE_F_FV, ovm_FUSE_F_FVL, ovm_FUSE_F_FVR)
+       braket = ferm_fv(vm, curr) * vm%spinors(curr(4))%v
 
-     !case (ovm_FUSE_VA_FF)
-       !braket = vm%vectors(curr(4))%v * &
-         !va_ff(sgn_coupl_cmplx2(vm, curr(2), 1), &
-               !sgn_coupl_cmplx2(vm, curr(2), 2), &
-               !vm%conjspinors(curr(5))%v, vm%spinors(curr(6))%v)
+     case (ovm_FUSE_VA_FF)
+       braket = vm%vectors(curr(4))%v * vec_ff2(vm, curr)
 
-     !case (ovm_FUSE_F_VAF)
-       !braket = vm%conjspinors(curr(4))%v * &
-         !f_vaf(sgn_coupl_cmplx2(vm, curr(2), 1), &
-               !sgn_coupl_cmplx2(vm, curr(2), 2), &
-               !vm%vectors(curr(5))%v, vm%spinors(curr(6))%v)
+     case (ovm_FUSE_F_VAF)
+       braket = vm%conjspinors(curr(4))%v * ferm_vf2(vm, curr)
 
-     !case (ovm_FUSE_F_FVA)
-       !braket = &
-         !f_fva(sgn_coupl_cmplx2(vm, curr(2), 1), &
-               !sgn_coupl_cmplx2(vm, curr(2), 2), &
-               !vm%conjspinors(curr(5))%v, vm%vectors(curr(6))%v) * &
-         !vm%spinors(curr(4))%v
+     case (ovm_FUSE_F_FVA)
+       braket = ferm_fv2(vm, curr) * vm%spinors(curr(4))%v
 
      case (ovm_FUSE_G_GG)
        braket = vm%vectors(curr(4))%v * &
          g_gg(sgn_coupl_cmplx(vm, curr(2)), &
               vm%vectors(curr(5))%v, vm%momenta(curr(6)), &
               vm%vectors(curr(7))%v, vm%momenta(curr(8)))
+
+     case (ovm_FUSE_S_VV)
+       braket = vm%scalars(curr(4))%v * sgn_coupl_cmplx(vm, curr(2)) * &
+                (vm%vectors(curr(5))%v * vm%vectors(curr(6))%v)
+
+     case (ovm_FUSE_S_VS)
+       braket = vm%scalars(curr(4))%v * &
+         s_vs(sgn_coupl_cmplx(vm, curr(2)), &
+              vm%vectors(curr(5))%v, vm%momenta(curr(6)), &
+              vm%scalars(curr(7))%v, vm%momenta(curr(8)))
+
+     case (ovm_FUSE_V_SV)
+       braket = (vm%vectors(curr(4))%v * vm%vectors(curr(6))%v) * &
+                (sgn_coupl_cmplx(vm, curr(2)) * vm%scalars(curr(5))%v)
+
+     case (ovm_FUSE_S_SS)
+       braket = vm%scalars(curr(4))%v * &
+         sgn_coupl_cmplx(vm, curr(2)) * &
+         (vm%scalars(curr(5))%v * vm%scalars(curr(6))%v)
+
+     case (ovm_FUSE_S_SSS)
+       braket = vm%scalars(curr(4))%v * &
+         sgn_coupl_cmplx(vm, curr(2)) * &
+         (vm%scalars(curr(5))%v * vm%scalars(curr(6))%v * &
+          vm%scalars(curr(7))%v)
+
+     case (ovm_FUSE_S_SVV)
+       braket = vm%scalars(curr(4))%v * &
+         sgn_coupl_cmplx(vm, curr(2)) * &
+         vm%scalars(curr(5))%v * (vm%vectors(curr(6))%v * &
+                                  vm%vectors(curr(7))%v)
+
+     case (ovm_FUSE_V_SSV)
+       braket = vm%vectors(curr(4))%v * &
+         (sgn_coupl_cmplx(vm, curr(2)) * vm%scalars(curr(5))%v * &
+          vm%scalars(curr(6))%v) * vm%vectors(curr(7))%v
 
      case (ovm_FUSE_V_VVV)
        braket = sgn_coupl_cmplx(vm, curr(2)) * &
@@ -11155,7 +11273,7 @@ case (ovm_CALC_BRAKET)
 
      case default
        print *, 'Braket', curr(1), 'not implemented'
-       stop
+       stop 1
 
      end select
      vm%amplitudes(i(4)) = vm%amplitudes(i(4)) + curr(3) * braket
@@ -11209,29 +11327,73 @@ case (ovm_PROPAGATE_SCALAR : ovm_PROPAGATE_NONE)
      curr = vm%instructions(:,tmp)
      if (curr(1) >= 0) exit                        ! End of fusions
      select case (curr(1))
-     !case (ovm_FUSE_V_FF, ovm_FUSE_VL_FF, ovm_FUSE_VR_FF)
-       !vm%vectors(curr(4))%v = vm%vectors(curr(4))%v + curr(3) * &
-         !vec_ff(vm, curr)
+     case (ovm_FUSE_V_FF, ovm_FUSE_VL_FF, ovm_FUSE_VR_FF)
+       vm%vectors(curr(4))%v = vm%vectors(curr(4))%v + curr(3) * &
+                               vec_ff(vm, curr)
 
-     !case (ovm_FUSE_F_VF, ovm_FUSE_F_VLF, ovm_FUSE_F_VRF)
-       !vm%spinors(curr(4))%v = vm%spinors(curr(4))%v + curr(3) * &
-         !ferm_vf(vm, curr)
+     case (ovm_FUSE_F_VF, ovm_FUSE_F_VLF, ovm_FUSE_F_VRF)
+       vm%spinors(curr(4))%v = vm%spinors(curr(4))%v + curr(3) * &
+                               ferm_vf(vm, curr)
 
-     !case (ovm_FUSE_F_FV, ovm_FUSE_F_FVL, ovm_FUSE_F_FVR)
-       !vm%conjspinors(curr(4))%v = vm%conjspinors(curr(4))%v + curr(3) * &
-         !ferm_fv(vm, curr)
+     case (ovm_FUSE_F_FV, ovm_FUSE_F_FVL, ovm_FUSE_F_FVR)
+       vm%conjspinors(curr(4))%v = vm%conjspinors(curr(4))%v + curr(3) * &
+                                   ferm_fv(vm, curr)
 
-     !case (ovm_FUSE_VA_FF)
-       !vm%vectors(curr(4))%v = vm%vectors(curr(4))%v + curr(3) * &
-         !va_ff(sgn_coupl_cmplx2(vm, curr(2), 1), &
-               !sgn_coupl_cmplx2(vm, curr(2), 2), &
-               !vm%conjspinors(curr(5))%v, vm%spinors(curr(6))%v)
+     case (ovm_FUSE_VA_FF)
+       vm%vectors(curr(4))%v = vm%vectors(curr(4))%v + curr(3) * &
+                               vec_ff2(vm, curr)
+
+     case (ovm_FUSE_F_VAF)
+       vm%spinors(curr(4))%v = vm%spinors(curr(4))%v + curr(3) * &
+                               ferm_vf2(vm, curr)
+
+     case (ovm_FUSE_F_FVA)
+       vm%conjspinors(curr(4))%v = vm%conjspinors(curr(4))%v + curr(3) * &
+                                   ferm_fv2(vm, curr)
 
      case (ovm_FUSE_G_GG)
        vm%vectors(curr(4))%v = vm%vectors(curr(4))%v + &
          g_gg(sgn_coupl_cmplx(vm, curr(2)), vm%vectors(curr(5))%v, &
               vm%momenta(curr(6)), vm%vectors(curr(7))%v, &
               vm%momenta(curr(8))) * curr(3)
+
+     case (ovm_FUSE_S_VV)
+       vm%scalars(curr(4))%v = vm%scalars(curr(4))%v + &
+         sgn_coupl_cmplx(vm, curr(2)) * &
+         (vm%vectors(curr(5))%v * vm%vectors(curr(6))%v) * curr(3)
+
+     case (ovm_FUSE_S_VS)
+       vm%scalars(curr(4))%v = vm%scalars(curr(4))%v + &
+         s_vs(sgn_coupl_cmplx(vm, curr(2)), &
+              vm%vectors(curr(5))%v, vm%momenta(curr(6)), &
+              vm%scalars(curr(7))%v, vm%momenta(curr(8))) * curr(3)
+
+     case (ovm_FUSE_V_SV)
+       vm%vectors(curr(4))%v = vm%vectors(curr(4))%v + &
+         vm%vectors(curr(6))%v * &
+         (sgn_coupl_cmplx(vm, curr(2)) * vm%scalars(curr(5))%v * curr(3))
+
+     case (ovm_FUSE_S_SS)
+       vm%scalars(curr(4))%v = vm%scalars(curr(4))%v + &
+         sgn_coupl_cmplx(vm, curr(2)) * &
+         (vm%scalars(curr(5))%v * vm%scalars(curr(6))%v) * curr(3)
+
+     case (ovm_FUSE_S_SSS)
+       vm%scalars(curr(4))%v = vm%scalars(curr(4))%v + &
+         sgn_coupl_cmplx(vm, curr(2)) * &
+         (vm%scalars(curr(5))%v * vm%scalars(curr(6))%v * &
+          vm%scalars(curr(7))%v) * curr(3)
+
+     case (ovm_FUSE_S_SVV)
+       vm%scalars(curr(4))%v = vm%scalars(curr(4))%v + &
+         sgn_coupl_cmplx(vm, curr(2)) * &
+         vm%scalars(curr(5))%v * (vm%vectors(curr(6))%v * &
+                                  vm%vectors(curr(7))%v) * curr(3)
+
+     case (ovm_FUSE_V_SSV)
+       vm%vectors(curr(4))%v = vm%vectors(curr(4))%v + &
+         (sgn_coupl_cmplx(vm, curr(2)) * vm%scalars(curr(5))%v * &
+          vm%scalars(curr(6))%v) * vm%vectors(curr(7))%v * curr(3)
 
      case (ovm_FUSE_V_VVV)
        vm%vectors(curr(4))%v = vm%vectors(curr(4))%v + &
@@ -11240,26 +11402,27 @@ case (ovm_PROPAGATE_SCALAR : ovm_PROPAGATE_NONE)
 
      case default
        print *, 'Fusion', curr(1), 'not implemented'
-       stop
+       stop 1
 
      end select
      tmp = tmp + 1
    end do
 
-   !select case (i(3))
-   !case (0)
-     !w = zero
+   select case (i(3))
+   case (0)
+     w = zero
 
-   !case (1)
-     !w = vm%width(i(2))
+   case (1)
+     w = vm%width(i(2))
 
-   !case (2)
-     !w = wd_tl(vm%momenta(i(5)), vm%width(i(2)))
+   case (2)
+     w = wd_tl(vm%momenta(i(5)), vm%width(i(2)))
 
-   !case default
-     !stop 'Not implemented'
+   case default
+      print *, 'not implemented'
+      stop 1
 
-   !end select
+   end select
 
    select case (i(1))
    <<propagator [[case]]s in [[decode]]>>
@@ -11267,72 +11430,72 @@ case (ovm_PROPAGATE_SCALAR : ovm_PROPAGATE_NONE)
 
 @
 <<propagator [[case]]s in [[decode]]>>=
-!case (ovm_PROPAGATE_SCALAR)
-  !vm%scalars(i(4))%v = pr_phi(vm%momenta(i(5)), vm%mass(i(2)), &
-                              !w, vm%scalars(i(4))%v)
-  !vm%scalars(i(4))%c = .True.
+case (ovm_PROPAGATE_SCALAR)
+  vm%scalars(i(4))%v = pr_phi(vm%momenta(i(5)), vm%mass(i(2)), &
+                              w, vm%scalars(i(4))%v)
+  vm%scalars(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_COL_SCALAR)
-  !vm%scalars(i(4))%v = - one / N_ * pr_phi(vm%momenta(i(5)), &
-                       !vm%mass(i(2)), w, vm%scalars(i(4))%v)
-  !vm%scalars(i(4))%c = .True.
+case (ovm_PROPAGATE_COL_SCALAR)
+  vm%scalars(i(4))%v = - one / N_ * pr_phi(vm%momenta(i(5)), &
+                       vm%mass(i(2)), w, vm%scalars(i(4))%v)
+  vm%scalars(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_GHOST)
-  !vm%scalars(i(4))%v = imago * pr_phi(vm%momenta(i(5)), vm%mass(i(2)), &
-                                      !w, vm%scalars(i(4))%v)
-  !vm%scalars(i(4))%c = .True.
+case (ovm_PROPAGATE_GHOST)
+  vm%scalars(i(4))%v = imago * pr_phi(vm%momenta(i(5)), vm%mass(i(2)), &
+                                      w, vm%scalars(i(4))%v)
+  vm%scalars(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_SPINOR)
-  !vm%spinors(i(4))%v = pr_psi(vm%momenta(i(5)), vm%mass(i(2)), &
-                              !w, vm%spinors(i(4))%v)
-  !vm%spinors(i(4))%c = .True.
+case (ovm_PROPAGATE_SPINOR)
+  vm%spinors(i(4))%v = pr_psi(vm%momenta(i(5)), vm%mass(i(2)), &
+                              w, vm%spinors(i(4))%v)
+  vm%spinors(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_CONJSPINOR)
-  !vm%conjspinors(i(4))%v = pr_psibar(vm%momenta(i(5)), vm%mass(i(2)), &
-                                 !w, vm%conjspinors(i(4))%v)
-  !vm%conjspinors(i(4))%c = .True.
+case (ovm_PROPAGATE_CONJSPINOR)
+  vm%conjspinors(i(4))%v = pr_psibar(vm%momenta(i(5)), vm%mass(i(2)), &
+                                 w, vm%conjspinors(i(4))%v)
+  vm%conjspinors(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_MAJORANA)
-  !vm%bispinors(i(4))%v = bi_pr_psi(vm%momenta(i(5)), vm%mass(i(2)), &
-                                !w, vm%bispinors(i(4))%v)
-  !vm%bispinors(i(4))%c = .True.
+case (ovm_PROPAGATE_MAJORANA)
+  vm%bispinors(i(4))%v = bi_pr_psi(vm%momenta(i(5)), vm%mass(i(2)), &
+                                w, vm%bispinors(i(4))%v)
+  vm%bispinors(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_COL_MAJORANA)
-  !vm%bispinors(i(4))%v = (- one / N_) * &
-                         !bi_pr_psi(vm%momenta(i(5)), vm%mass(i(2)), &
-                                !w, vm%bispinors(i(4))%v)
-  !vm%bispinors(i(4))%c = .True.
+case (ovm_PROPAGATE_COL_MAJORANA)
+  vm%bispinors(i(4))%v = (- one / N_) * &
+                         bi_pr_psi(vm%momenta(i(5)), vm%mass(i(2)), &
+                                w, vm%bispinors(i(4))%v)
+  vm%bispinors(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_UNITARITY)
-  !vm%vectors(i(4))%v = pr_unitarity(vm%momenta(i(5)), vm%mass(i(2)), &
-                                    !w, vm%vectors(i(4))%v)
-  !vm%vectors(i(4))%c = .True.
+case (ovm_PROPAGATE_UNITARITY)
+  vm%vectors(i(4))%v = pr_unitarity(vm%momenta(i(5)), vm%mass(i(2)), &
+                                    w, vm%vectors(i(4))%v)
+  vm%vectors(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_COL_UNITARITY)
-  !vm%vectors(i(4))%v = - one / N_ * pr_unitarity(vm%momenta(i(5)), &
-                       !vm%mass(i(2)), w, vm%vectors(i(4))%v)
-  !vm%vectors(i(4))%c = .True.
+case (ovm_PROPAGATE_COL_UNITARITY)
+  vm%vectors(i(4))%v = - one / N_ * pr_unitarity(vm%momenta(i(5)), &
+                       vm%mass(i(2)), w, vm%vectors(i(4))%v)
+  vm%vectors(i(4))%c = .True.
 
 case (ovm_PROPAGATE_FEYNMAN)
   vm%vectors(i(4))%v = pr_feynman(vm%momenta(i(5)), vm%vectors(i(4))%v)
   vm%vectors(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_COL_FEYNMAN)
-  !vm%vectors(i(4))%v = - one / N_ * &
-                       !pr_feynman(vm%momenta(i(5)), vm%vectors(i(4))%v)
-  !vm%vectors(i(4))%c = .True.
+case (ovm_PROPAGATE_COL_FEYNMAN)
+  vm%vectors(i(4))%v = - one / N_ * &
+                       pr_feynman(vm%momenta(i(5)), vm%vectors(i(4))%v)
+  vm%vectors(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_VECTORSPINOR)
-  !vm%vectorspinors(i(4))%v = pr_grav(vm%momenta(i(5)), vm%mass(i(2)), &
-                                !w, vm%vectorspinors(i(4))%v)
-  !vm%vectorspinors(i(4))%c = .True.
+case (ovm_PROPAGATE_VECTORSPINOR)
+  vm%vectorspinors(i(4))%v = pr_grav(vm%momenta(i(5)), vm%mass(i(2)), &
+                                w, vm%vectorspinors(i(4))%v)
+  vm%vectorspinors(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_TENSOR2)
-  !vm%tensors_2(i(4))%v = pr_tensor(vm%momenta(i(5)), vm%mass(i(2)), &
-                                   !w, vm%tensors_2(i(4))%v)
-  !vm%tensors_2(i(4))%c = .True.
+case (ovm_PROPAGATE_TENSOR2)
+  vm%tensors_2(i(4))%v = pr_tensor(vm%momenta(i(5)), vm%mass(i(2)), &
+                                   w, vm%tensors_2(i(4))%v)
+  vm%tensors_2(i(4))%c = .True.
 
-!case (ovm_PROPAGATE_NONE)
+case (ovm_PROPAGATE_NONE)
 ! This will not work with color MC. Appropriate type%c has to be set to
 ! .True.
 
@@ -11345,20 +11508,21 @@ preprocessor macros, we could maintain this factorized form (and factor
 out even more since types don't have to match), in case we would decide
 to allow this
 <<load outer wave function>>=
-select type (h)
-type is (hel_trigonometric)
-   wf%v = (cos (h%theta) * load_wf (m, p, + 1) + &
-           sin (h%theta) * load_wf (m, p, - 1)) * sqrt2
-type is (hel_exponential)
-   wf%v = exp (+ imago * h%phi) * load_wf (m, p, + 1) + &
-          exp (- imago * h%phi) * load_wf (m, p, - 1)
-type is (hel_spherical)
-   wf%v = (exp (+ imago * h%phi) * cos (h%theta) * load_wf (m, p, + 1) + &
-           exp (- imago * h%phi) * sin (h%theta) * load_wf (m, p, - 1)) * &
-          sqrt2
-type is(hel_discrete)
-     wf%v = load_wf (m, p, h%i)
-end select
+!select type (h)
+!type is (hel_trigonometric)
+   !wf%v = (cos (h%theta) * load_wf (m, p, + 1) + &
+           !sin (h%theta) * load_wf (m, p, - 1)) * sqrt2
+!type is (hel_exponential)
+   !wf%v = exp (+ imago * h%phi) * load_wf (m, p, + 1) + &
+          !exp (- imago * h%phi) * load_wf (m, p, - 1)
+!type is (hel_spherical)
+   !wf%v = (exp (+ imago * h%phi) * cos (h%theta) * load_wf (m, p, + 1) + &
+           !exp (- imago * h%phi) * sin (h%theta) * load_wf (m, p, - 1)) * &
+          !sqrt2
+!type is(hel_discrete)
+     !wf%v = load_wf (m, p, h%i)
+!end select
+wf%v = load_wf (m, p, h)
 wf%c = .True.
 @
 Caveat: Helicity MC not tested with Majorana particles but should be
@@ -11375,7 +11539,8 @@ subroutine load_bispinor(wf, p, m, h, opcode)
   type(vm_bispinor), intent(out) :: wf
   type(momentum), intent(in) :: p
   real(default), intent(in) :: m
-  class(helicity_t), intent(in) :: h
+  !class(helicity_t), intent(in) :: h
+  integer, intent(in) :: h
   integer, intent(in) :: opcode
   procedure(bi_u), pointer :: load_wf
   <<check for matching color and flavor amplitude>>
@@ -11394,7 +11559,8 @@ subroutine load_spinor(wf, p, m, h, opcode)
   type(vm_spinor), intent(out) :: wf
   type(momentum), intent(in) :: p
   real(default), intent(in) :: m
-  class(helicity_t), intent(in) :: h
+  !class(helicity_t), intent(in) :: h
+  integer, intent(in) :: h
   integer, intent(in) :: opcode
   procedure(u), pointer :: load_wf
   <<check for matching color and flavor amplitude>>
@@ -11413,7 +11579,8 @@ subroutine load_conjspinor(wf, p, m, h, opcode)
   type(vm_conjspinor), intent(out) :: wf
   type(momentum), intent(in) :: p
   real(default), intent(in) :: m
-  class(helicity_t), intent(in) :: h
+  !class(helicity_t), intent(in) :: h
+  integer, intent(in) :: h
   integer, intent(in) :: opcode
   procedure(ubar), pointer :: load_wf
   <<check for matching color and flavor amplitude>>
@@ -11432,7 +11599,8 @@ subroutine load_vector(wf, p, m, h, opcode)
   type(vm_vector), intent(out) :: wf
   type(momentum), intent(in) :: p
   real(default), intent(in) :: m
-  class(helicity_t), intent(in) :: h
+  !class(helicity_t), intent(in) :: h
+  integer, intent(in) :: h
   integer, intent(in) :: opcode
   procedure(eps), pointer :: load_wf
   <<check for matching color and flavor amplitude>>
@@ -11461,8 +11629,24 @@ function vec_ff(vm, curr) result (x)
      load_wf => null()
   end select
   x = load_wf(sgn_coupl_cmplx(vm, curr(2)), &
-      vm%conjspinors(curr(5))%v, vm%spinors(curr(6))%v)
+              vm%conjspinors(curr(5))%v, vm%spinors(curr(6))%v)
 end function vec_ff
+
+function vec_ff2(vm, curr) result (x)
+  type(vector) :: x
+  class(vm_t), intent(in) :: vm
+  integer, dimension(:), intent(in) :: curr
+  procedure(va_ff), pointer :: load_wf
+  select case (curr(1))
+  case (ovm_FUSE_VA_FF)
+     load_wf => va_ff
+  case default
+     load_wf => null()
+  end select
+  x = load_wf(sgn_coupl_cmplx2(vm, curr(2), 1), &
+              sgn_coupl_cmplx2(vm, curr(2), 2), &
+              vm%conjspinors(curr(5))%v, vm%spinors(curr(6))%v)
+end function vec_ff2
 
 function ferm_vf(vm, curr) result (x)
   type(spinor) :: x
@@ -11480,8 +11664,24 @@ function ferm_vf(vm, curr) result (x)
      load_wf => null()
   end select
   x = load_wf(sgn_coupl_cmplx(vm, curr(2)), &
-      vm%vectors(curr(5))%v, vm%spinors(curr(6))%v)
+              vm%vectors(curr(5))%v, vm%spinors(curr(6))%v)
 end function ferm_vf
+
+function ferm_vf2(vm, curr) result (x)
+  type(spinor) :: x
+  class(vm_t), intent(in) :: vm
+  integer, dimension(:), intent(in) :: curr
+  procedure(f_vaf), pointer :: load_wf
+  select case (curr(1))
+  case (ovm_FUSE_F_VAF)
+     load_wf => f_vaf
+  case default
+     load_wf => null()
+  end select
+  x = f_vaf(sgn_coupl_cmplx2(vm, curr(2), 1), &
+            sgn_coupl_cmplx2(vm, curr(2), 2), &
+            vm%vectors(curr(5))%v, vm%spinors(curr(6))%v)
+end function ferm_vf2
 
 function ferm_fv(vm, curr) result (x)
   type(conjspinor) :: x
@@ -11499,8 +11699,24 @@ function ferm_fv(vm, curr) result (x)
      load_wf => null()
   end select
   x = load_wf(sgn_coupl_cmplx(vm, curr(2)), &
-      vm%conjspinors(curr(5))%v, vm%vectors(curr(6))%v)
+              vm%conjspinors(curr(5))%v, vm%vectors(curr(6))%v)
 end function ferm_fv
+
+function ferm_fv2(vm, curr) result (x)
+  type(conjspinor) :: x
+  class(vm_t), intent(in) :: vm
+  integer, dimension(:), intent(in) :: curr
+  procedure(f_fva), pointer :: load_wf
+  select case (curr(1))
+  case (ovm_FUSE_F_FVA)
+     load_wf => f_fva
+  case default
+     load_wf => null()
+  end select
+  x = f_fva(sgn_coupl_cmplx2(vm, curr(2), 1), &
+            sgn_coupl_cmplx2(vm, curr(2), 2), &
+            vm%conjspinors(curr(5))%v, vm%vectors(curr(6))%v)
+end function ferm_fv2
 
 @ Some really tiny ones that hopefully get inlined by the compiler
 <<OVM Procedure Implementations>>=
@@ -11516,9 +11732,9 @@ elemental function sgn_coupl_cmplx2(vm, j, i) result (s)
   integer, intent(in) :: j, i
   complex(default) :: s
   if (i == 1) then
-     s = isign(1, j) * vm%coupl_cmplx2(abs(i), j)
+     s = isign(1, j) * vm%coupl_cmplx2(i, abs(j))
    else
-     s = vm%coupl_cmplx2(abs(i), j)
+     s = isign(1, j) * vm%coupl_cmplx2(i, abs(j))
   end if
 end function sgn_coupl_cmplx2
 
@@ -11695,7 +11911,7 @@ end function vm_get_amplitude
 @
 @ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 <<Copyleft>>=
-!  $Id: omegalib.nw 6082 2014-08-26 19:17:37Z jr_reuter $
+!  $Id: omegalib.nw 6107 2014-09-11 12:02:16Z bchokoufe $
 !
 !  Copyright (C) 1999-2009 by
 !      Wolfgang Kilian <kilian@physik.uni-siegen.de>

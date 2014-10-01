@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 6081 2014-08-26 18:16:22Z bchokoufe $
+# $Id: Makefile.am 6087 2014-08-28 12:55:55Z jr_reuter $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -358,11 +358,12 @@ endif
 ########################################################################
 
 EXTRA_PROGRAMS += benchmark_VM_vs_Fortran
+EXTRA_DIST += benchmark_VM_vs_Fortran_driver.sh
 
 BENCHMARK_LIB_F90 = benchmark_lib.f90 $(WARD_SUPPORT_F90)
 BENCHMARK_LIB_O = $(BENCHMARK_LIB_F90:.f90=.o)
 
-benchmark_VM_vs_Fortran.f90: benchmark_VM_vs_Fortran.list
+benchmark_VM_vs_Fortran.f90: benchmark_processes.list
 	$(SHELL) $(srcdir)/benchmark_VM_vs_Fortran_driver.sh \
 	"$(OMEGA_XXX) " "$(OMEGA_XXX_VM) " "$(OMEGA_XXX_VM_PARAMS_OPTS)" < $< > $@
 
@@ -377,6 +378,31 @@ nodist_benchmark_VM_vs_Fortran_SOURCES = benchmark_VM_vs_Fortran.f90
 benchmark_VM_vs_Fortran_LDADD = $(top_builddir)/src/libomega_core.la
 
 benchmark_VM_vs_Fortran.o: $(BENCHMARK_LIB_O)
+
+########################################################################
+
+# TODO: (bcn 2014-10-01) Doesnt activate with ifort 
+#if FC_USE_OPENMP
+
+EXTRA_PROGRAMS += benchmark_amp_parallel
+
+benchmark_amp_parallel.f90: benchmark_processes.list
+	$(SHELL) $(srcdir)/benchmark_amp_parallel_driver.sh \
+	"$(OMEGA_XXX) " "$(OMEGA_XXX_VM) " "$(OMEGA_XXX_VM_PARAMS_OPTS)" < $< > $@
+
+# Explicitly state dependence on model files
+benchmark_amp_parallel.f90: benchmark_amp_parallel_driver.sh \
+	$(OMEGA_QED) $(OMEGA_QED_VM) $(OMEGA_QED_CACHE) \
+	$(OMEGA_QCD) $(OMEGA_QCD_VM) $(OMEGA_QCD_CACHE) \
+	$(OMEGA_SM)  $(OMEGA_SM_VM)  $(OMEGA_SM_CACHE)
+
+benchmark_amp_parallel_SOURCES = $(BENCHMARK_LIB_F90)
+nodist_benchmark_amp_parallel_SOURCES = benchmark_amp_parallel.f90
+benchmark_amp_parallel_LDADD = $(top_builddir)/src/libomega_core.la
+
+benchmark_amp_parallel.o: $(BENCHMARK_LIB_O)
+
+#endif
 
 ########################################################################
 
@@ -462,7 +488,7 @@ clean-local: clean-macosx
 	rm -f a.out gmon.out *.$(FC_MODULE_EXT) \
 		*.o *.cmi *.cmo *.cmx amplitude_*.f90 *.$(OMEGA_CACHE_SUFFIX) \
 		$(EXTRA_PROGRAMS) ects.f90 ward.f90 compare_*.f90 \
-		omega_testtools.f90 test_omega95*.f90 benchmark_VM_vs_Fortran.f90 .hbc
+		omega_testtools.f90 test_omega95*.f90 benchmark*.f90 *.hbc
 
 ########################################################################
 ## The End.

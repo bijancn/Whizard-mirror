@@ -54,9 +54,9 @@ endif
 ########################################################################
 ## Explicit dependencies
 
-lhapdf.lo: ../misc/kinds.$(FC_MODULE_EXT)
+lhapdf.lo: ../basics/kinds.$(FC_MODULE_EXT)
 
-AM_FCFLAGS += -I../misc
+AM_FCFLAGS += -I../basics
 
 MODULES= \
   lhapdf.$(FC_MODULE_EXT)

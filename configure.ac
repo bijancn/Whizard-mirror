@@ -626,11 +626,31 @@ AC_CONFIG_SUBDIRS([circe1])
 AC_CONFIG_SUBDIRS([circe2])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/misc: numeric kinds, strings
+### Subdirectory src/noweb-frame: frame for whizard Noweb sources
 
-AC_CONFIG_FILES([src/misc/Makefile] [src/misc/kinds.f90])
+AC_CONFIG_FILES([src/noweb-frame/Makefile])
 
-AC_CONFIG_FILES([src/misc/system_dependencies.f90], [
+###---------------------------------------------------------------------
+### Subdirectory src/basics: numeric kinds, strings
+
+AC_CONFIG_FILES([src/basics/Makefile] [src/basics/kinds.f90])
+
+###---------------------------------------------------------------------
+### Subdirectory src/utilities: simple utilities
+
+AC_CONFIG_FILES([src/utilities/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/testing: unit-test support
+
+AC_CONFIG_FILES([src/testing/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/system: modules related to local setup and OS issues
+
+AC_CONFIG_FILES([src/system/Makefile])
+
+AC_CONFIG_FILES([src/system/system_dependencies.f90], [
    maxlen=70
    i=1
    pat=""
@@ -638,10 +658,50 @@ AC_CONFIG_FILES([src/misc/system_dependencies.f90], [
    pat=${pat}[[^\"]]
    pat="/^       \"${pat}/ s/${pat}/&\&\\
        \&/g"
-   $SED "${pat}" < src/misc/system_dependencies.f90 > \
-      src/misc/system_dependencies.tmp
-   mv -f src/misc/system_dependencies.tmp src/misc/system_dependencies.f90
+   $SED "${pat}" < src/system/system_dependencies.f90 > \
+      src/system/system_dependencies.tmp
+   mv -f src/system/system_dependencies.tmp src/system/system_dependencies.f90
 ])
+
+###---------------------------------------------------------------------
+### Subdirectory src/combinatorics: standard algorithms
+
+AC_CONFIG_FILES([src/combinatorics/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/parsing: text-handling and parsing
+
+AC_CONFIG_FILES([src/parsing/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/physics: particle-physics related functions
+
+AC_CONFIG_FILES([src/physics/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/qft: quantum (field) theory concepts as data types
+
+AC_CONFIG_FILES([src/qft/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/types: HEP and other types for common use
+
+AC_CONFIG_FILES([src/types/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/matrix_elements: process code and libraries
+
+AC_CONFIG_FILES([src/matrix_elements/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/particles: particle objects
+
+AC_CONFIG_FILES([src/particles/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/beams: beams and beam structure
+
+AC_CONFIG_FILES([src/beams/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/models

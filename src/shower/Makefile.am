@@ -74,14 +74,14 @@ Makefile.depend: $(libshower_la_SOURCES)
 
 DISTCLEANFILES = Makefile.depend 
 
-## Dependency libaux (kinds, strings)
+## Dependency libbasics / libaux (kinds, strings)
 ## (tao_random_numbers will be removed when switching to rng_factory)
 $(libshower_la_OBJECTS): \
-../misc/kinds.$(FC_MODULE_EXT) \
-../misc/constants.$(FC_MODULE_EXT) \
-../misc/file_utils.$(FC_MODULE_EXT) \
-../misc/diagnostics.$(FC_MODULE_EXT) \
-../misc/lorentz.$(FC_MODULE_EXT) \
+../basics/kinds.$(FC_MODULE_EXT) \
+../basics/io_units.$(FC_MODULE_EXT) \
+../basics/constants.$(FC_MODULE_EXT) \
+../system/diagnostics.$(FC_MODULE_EXT) \
+../physics/lorentz.$(FC_MODULE_EXT) \
 ../../vamp/src/tao_random_numbers.$(FC_MODULE_EXT)
 
 libshower_la_LIBADD = ../../pythia/libpythia_wo.la
@@ -92,7 +92,7 @@ SUFFIXES = .lo .$(FC_MODULE_EXT)
         @:
 #       touch $@
 
-AM_FCFLAGS += -I../misc -I../../vamp/src/ -I../../pythia
+AM_FCFLAGS += -I../basics -I../utilities -I../system -I../physics -I../../vamp/src/ -I../../pythia
 
 ########################################################################
 ## Default Fortran compiler options

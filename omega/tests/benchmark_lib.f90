@@ -1,5 +1,4 @@
-! $Id: compare_lib.f90 6081 2014-08-26 18:16:22Z bchokoufe $
-! compare_lib.f90 -- compare two O'Mega versions
+! benchmark_lib.f90 -- benchmark two O'Mega versions
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 ! Copyright (C) 1999-2014 by
@@ -34,7 +33,7 @@ module benchmark_lib
   use omega_testtools
   implicit none
   private
-  public :: benchmark
+  public :: benchmark, beams, massless_isotropic_decay
 
 contains
 

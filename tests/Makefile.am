@@ -10,6 +10,7 @@
 #     Juergen Reuter <juergen.reuter@desy.de>
 #     with contributions from
 #     Christian Speckner <cnspeckn@googlemail.com>
+#     Christian Weiss <christian.weiss@desy.de>
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by 
@@ -25,6 +26,15 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 #
+########################################################################
+
+# Export some environment variables to the test scripts
+AM_TESTS_ENVIRONMENT = \
+  FC_VENDOR=$(FC_VENDOR); \
+  FC_MAJOR_VERSION=$(FC_MAJOR_VERSION); \
+  FC_VERSION=$(FC_VERSION); \
+  export FC_VENDOR FC_MAJOR_VERSION FC_VERSION;
+
 ########################################################################
 
 WHIZARD_DRIVER = run_whizard.sh
@@ -152,6 +162,7 @@ TESTS_DEFAULT = \
     testproc_9.run \
     testproc_10.run \
     rebuild_1.run \
+    rebuild_4.run \
     susyhit.run \
     helicity.run \
     libraries_4.run
@@ -229,6 +240,7 @@ TESTS_REQ_OCAML = \
     smtest_13.run \
     smtest_14.run \
     smtest_15.run \
+    smtest_16.run \
     mssmtest.run \
     show_1.run \
     show_2.run \
@@ -284,7 +296,8 @@ TESTS_REQ_HEPMC = \
     hepmc_2.run \
     hepmc_3.run \
     hepmc_4.run \
-    hepmc_5.run
+    hepmc_5.run \
+    hepmc_6.run
 
 UNIT_TESTS_REQ_LHAPDF5 = \
     sf_lhapdf5.run 
@@ -358,6 +371,7 @@ TEST_DRIVERS_SH = $(TEST_DRIVERS_RUN:.run=.sh)
 
 TESTS = 
 XFAIL_TESTS =
+TESTS_SRC =
 
 UNIT_TESTS += $(UNIT_TESTS_REQ_GAMELAN)
 UNIT_TESTS += $(UNIT_TESTS_REQ_FASTJET)
@@ -452,7 +466,8 @@ EXTENDED_NMSSM_TEST_DRIVERS_SH = $(EXTENDED_NMSSM_TEST_DRIVERS:.run=.sh)
 
 EXTRA_DIST = $(TEST_DRIVERS_SH) \
     $(EXTENDED_MSSM_TEST_DRIVERS_SH) \
-    $(EXTENDED_NMSSM_TEST_DRIVERS_SH)
+    $(EXTENDED_NMSSM_TEST_DRIVERS_SH) \
+    $(TESTS_SRC)
 
 ########################################################################
 
@@ -537,6 +552,15 @@ gamelan.sty: $(top_builddir)/src/gamelan/gamelan.sty
 
 $(top_builddir)/src/gamelan/gamelan.sty:
 	$(MAKE) -C $(top_builddir)/src/gamelan gamelan.sty
+endif
+
+if HEPMC_AVAILABLE
+TESTS_SRC += $(hepmc_6_rd_SOURCES)
+noinst_PROGRAMS = hepmc_6_rd
+hepmc_6_rd_SOURCES = hepmc_6_rd.cpp
+hepmc_6_rd_CXXFLAGS = $(HEPMC_INCLUDES) $(AM_CXXFLAGS)
+hepmc_6_rd_LDADD = $(LDFLAGS_HEPMC)
+hepmc_6.run: hepmc_6_rd
 endif
 
 susyhit.in: $(top_builddir)/share/tests/susyhit.in
