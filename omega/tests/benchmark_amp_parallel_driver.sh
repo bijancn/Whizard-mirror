@@ -1,5 +1,5 @@
 #! /bin/sh
-# benchmark_amp_parallel.sh - Compare between amplitude
+# benchmark_amp_parallel_driver.sh - Compare between amplitude
 # parallelization and phase space parallelization
 ########################################################################
 
