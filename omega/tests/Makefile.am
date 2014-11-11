@@ -381,8 +381,7 @@ benchmark_VM_vs_Fortran.o: $(BENCHMARK_LIB_O)
 
 ########################################################################
 
-# TODO: (bcn 2014-10-01) Doesnt activate with ifort 
-#if FC_USE_OPENMP
+if FC_USE_OPENMP
 
 EXTRA_PROGRAMS += benchmark_amp_parallel
 
@@ -402,7 +401,7 @@ benchmark_amp_parallel_LDADD = $(top_builddir)/src/libomega_core.la
 
 benchmark_amp_parallel.o: $(BENCHMARK_LIB_O)
 
-#endif
+endif
 
 ########################################################################
 
