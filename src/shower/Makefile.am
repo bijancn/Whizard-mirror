@@ -7,6 +7,7 @@
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
 #     with contributions from
+#     Bijan Chokoufe <bijan.chokoufe@desy.de>
 #     Christian Speckner <cnspeckn@googlemail.com>
 #     Sebastian Schmidt, Daniel Wiesler
 #
@@ -44,9 +45,14 @@ AM_FCFLAGS += -dcfuns -w
 endif
 
 libshower_la_SOURCES = \
-pythia_up.f shower_base.f90 shower_partons.f90 \
-shower_core.f90 shower_topythia.f90 mlm_matching.f90 \
-ckkw_pseudo_weights.f90 ckkw_matching.f90
+   pythia_up.f \
+   shower_base.f90 \
+   shower_partons.f90 \
+   shower_core.f90 \
+   shower_topythia.f90 \
+   mlm_matching.f90 \
+   ckkw_pseudo_weights.f90 \
+   ckkw_matching.f90
 
 libshower_dummy_la_SOURCES = shower_dummy.f90
 
@@ -114,15 +120,18 @@ endif
 ## (Re)create F90 sources from NOWEB source.
 if NOWEB_AVAILABLE
 
-SHOWER_SRC = $(libshower_la_SOURCES) $(libshower_dummy_la_SOURCES) 
+PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
+POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 
-shower.stamp: $(srcdir)/shower.nw
+shower.stamp: $(PRELUDE) $(srcdir)/shower.nw $(POSTLUDE)
 	@rm -f shower.tmp
 	@touch shower.tmp
 	for src in $(SHOWER_SRC); do \
-	   $(NOTANGLE) -R[[$$src]] $< | $(CPIF) $$src; \
-	done
+	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
+        done
 	@mv -f shower.tmp shower.stamp
+
+SHOWER_SRC = $(libshower_la_SOURCES) $(libshower_dummy_la_SOURCES) 
 
 $(SHOWER_SRC): shower.stamp
 ## Recover from the removal of $@

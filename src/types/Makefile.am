@@ -36,7 +36,9 @@ libtypes_la_SOURCES = \
   analysis.f90 \
   pdg_arrays.f90 \
   jets.f90 \
-  subevents.f90
+  subevents.f90 \
+  variables.f90 \
+  expr_base.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = types.nw

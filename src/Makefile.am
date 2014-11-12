@@ -32,12 +32,14 @@ SUBDIRS = \
   utilities \
   testing \
   system \
-  combinatorics parsing physics qft \
+  combinatorics parsing rng physics qft \
   fastjet \
   types \
   matrix_elements \
-  hepmc particles \
+  hepmc lcio particles \
   beams \
+  phase_space \
+  mci \
   lhapdf lhapdf5 stdhep pdf_builtin \
   hoppet shower muli \
   whizard-core prebuilt models
@@ -64,12 +66,15 @@ libwhizard_la_LIBADD = \
   ../circe1/src/libcirce1.la \
   ../circe2/src/libcirce2.la \
   pdf_builtin/libpdf_builtin.la \
+  mci/libmci.la \
+  phase_space/libphase_space.la \
   beams/libbeams.la \
   particles/libparticles.la \
   matrix_elements/libmatrix_elements.la \
   types/libtypes.la \
   qft/libqft.la \
   physics/libphysics.la \
+  rng/librng.la \
   parsing/libparsing.la \
   combinatorics/libcombinatorics.la \
   system/libsystem.la \

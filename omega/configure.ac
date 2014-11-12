@@ -50,7 +50,7 @@ WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
 PACKAGE_DATE="Aug 15 2014"
-PACKAGE_STATUS="alpha"
+PACKAGE_STATUS="beta"
 
 AC_SUBST(PACKAGE_DATE)
 AC_SUBST(PACKAGE_STATUS)

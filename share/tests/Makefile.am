@@ -509,7 +509,6 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/circe1_2.ref \
     ref-output/circe1_3.ref \
     ref-output/circe1_6.ref \
-    ref-output/circe1_9.ref \
     ref-output/circe1_errors_1.ref \
     ref-output/circe2_1.ref \
     ref-output/circe2_2.ref \
@@ -546,6 +545,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/circe1_5.ref \
     ref-output-double/circe1_7.ref \
     ref-output-double/circe1_8.ref \
+    ref-output-double/circe1_9.ref \
     ref-output-double/circe1_photons_1.ref \
     ref-output-double/circe1_photons_2.ref \
     ref-output-double/circe1_photons_3.ref \
@@ -585,6 +585,7 @@ REF_OUTPUT_FILES_EXT = \
     ref-output-ext/circe1_5.ref \
     ref-output-ext/circe1_7.ref \
     ref-output-ext/circe1_8.ref \
+    ref-output-ext/circe1_9.ref \
     ref-output-ext/circe1_photons_1.ref \
     ref-output-ext/circe1_photons_2.ref \
     ref-output-ext/circe1_photons_3.ref \

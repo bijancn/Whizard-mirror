@@ -104,7 +104,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../physics -I../fastjet -I../qft -I../types -I../particles -I../beams
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../physics -I../fastjet -I../qft -I../types -I../particles
 
 
 ########################################################################

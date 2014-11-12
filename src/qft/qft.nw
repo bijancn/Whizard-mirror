@@ -1609,7 +1609,39 @@ not allocate memory.
   end function model_data_get_name
   
 @ %def model_data_get_name
-@ Return the MD5 sum.  This is just a placeholder, to be overwritten
+@ Retrieve a MD5 sum for the current model parameter values and
+decay/polarization settings.  This is
+done by writing them to a temporary file, using a standard format.
+<<Model data: model data: TBP>>=
+  procedure :: get_parameters_md5sum => model_data_get_parameters_md5sum
+<<Model data: procedures>>=
+  function model_data_get_parameters_md5sum (model) result (par_md5sum)
+    character(32) :: par_md5sum
+    class(model_data_t), intent(in) :: model
+    real(default), dimension(:), allocatable :: par
+    type(field_data_t), pointer :: field
+    integer :: unit, i
+    allocate (par (model%get_n_real ()))
+    call model%real_parameters_to_array (par)
+    unit = free_unit ()
+    open (unit, status="scratch", action="readwrite")
+    write (unit, "(" // FMT_19 // ")")  par
+    do i = 1, model%get_n_field ()
+       field => model%get_field_ptr_by_index (i)
+       if (.not. field%is_stable (.false.) .or. .not. field%is_stable (.true.) &
+            .or. field%is_polarized (.false.) .or. field%is_polarized (.true.))&
+            then
+          write (unit, "(3x,A)") char (field%get_longname ())
+          call field%write_decays (unit)
+       end if
+    end do
+    rewind (unit)
+    par_md5sum = md5sum (unit)
+    close (unit)
+  end function model_data_get_parameters_md5sum
+
+@ %def model_get_parameters_md5sum
+@ Return the MD5 sum.  This is a placeholder, to be overwritten
 for the complete model definition.
 <<Model data: model data: TBP>>=
   procedure :: get_md5sum => model_data_get_md5sum
@@ -1617,8 +1649,7 @@ for the complete model definition.
   function model_data_get_md5sum (model) result (md5sum)
     class(model_data_t), intent(in) :: model
     character(32) :: md5sum
-    md5sum = "N/A: MD5 sum for basic model data type:" &
-         // char (model%get_name ())
+    md5sum = model%get_parameters_md5sum ()
   end function model_data_get_md5sum
   
 @ %def model_data_get_md5sum
@@ -1801,6 +1832,31 @@ directly by index.
   
 @ %def model_data_get_real
 @ %def model_data_get_complex
+@ Modify a real or complex parameter.
+<<Model data: model data: TBP>>=
+  generic :: set_par => model_data_set_par_real, model_data_set_par_complex
+  procedure, private :: model_data_set_par_real
+  procedure, private :: model_data_set_par_complex
+<<Model data: procedures>>=
+  subroutine model_data_set_par_real (model, name, value)
+    class(model_data_t), intent(inout) :: model
+    type(string_t), intent(in) :: name
+    real(default), intent(in) :: value
+    class(modelpar_data_t), pointer :: par
+    par => model%get_par_data_ptr (name)
+    par = value
+  end subroutine model_data_set_par_real
+  
+  subroutine model_data_set_par_complex (model, name, value)
+    class(model_data_t), intent(inout) :: model
+    type(string_t), intent(in) :: name
+    complex(default), intent(in) :: value
+    class(modelpar_data_t), pointer :: par
+    par => model%get_par_data_ptr (name)
+    par = value
+  end subroutine model_data_set_par_complex
+  
+@ %def model_data_set_par_real model_data_set_par_complex
 @ List all fields in the model.
 <<Model data: model data: TBP>>=
   procedure :: write_fields => model_data_write_fields
@@ -2132,25 +2188,77 @@ This is a stripped-down version of the (already trivial) model 'Test'.
   subroutine model_data_init_test (model)
     class(model_data_t), intent(out) :: model
     type(field_data_t), pointer :: field
-    integer, parameter :: n_real = 1
-    integer, parameter :: n_field = 1
-     integer :: i
+    integer, parameter :: n_real = 4
+    integer, parameter :: n_field = 2
+    integer, parameter :: n_vertex = 2
+    integer :: i
     call model%init (var_str ("Test"), &
-         n_real, 0, n_field, 0)
+         n_real, 0, n_field, n_vertex)
     i = 0
     i = i + 1
+    call model%init_par (i, var_str ("gy"), 1._default)
+    i = i + 1
     call model%init_par (i, var_str ("ms"), 125._default)
+    i = i + 1
+    call model%init_par (i, var_str ("ff"), 1.5_default)
+    i = i + 1
+    call model%init_par (i, var_str ("mf"), 1.5_default * 125._default)
     i = 0
     i = i + 1
     field => model%get_field_ptr_by_index (i)
     call field%init (var_str ("SCALAR"), 25)
     call field%set (spin_type=1) 
-    call field%set (mass_data=model%get_par_real_ptr (1))
+    call field%set (mass_data=model%get_par_real_ptr (2))
     call field%set (name = [var_str ("s")])
+    i = i + 1
+    field => model%get_field_ptr_by_index (i)
+    call field%init (var_str ("FERMION"), 6)
+    call field%set (spin_type=2) 
+    call field%set (mass_data=model%get_par_real_ptr (4))
+    call field%set (name = [var_str ("f")], anti = [var_str ("fbar")])
     call model%freeze_fields ()
+    i = 0
+    i = i + 1
+    call model%set_vertex (i, [var_str ("fbar"), var_str ("f"), var_str ("s")])
+    i = i + 1
+    call model%set_vertex (i, [var_str ("s"), var_str ("s"), var_str ("s")])
+    call model%freeze_vertices ()
   end subroutine model_data_init_test
   
 @ %def model_data_init_test
+@
+This procedure prepares a subset of QED for testing purposes.
+<<Model data: model data: TBP>>=
+  procedure :: init_qed_test => model_data_init_qed_test
+<<Model data: procedures>>=
+  subroutine model_data_init_qed_test (model)
+    class(model_data_t), intent(out) :: model
+    type(field_data_t), pointer :: field
+    integer, parameter :: n_real = 1
+    integer, parameter :: n_field = 2
+    integer :: i
+    call model%init (var_str ("QED_test"), &
+         n_real, 0, n_field, 0)
+    i = 0
+    i = i + 1
+    call model%init_par (i, var_str ("me"), 0.000510997_default)
+    i = 0
+    i = i + 1
+    field => model%get_field_ptr_by_index (i)
+    call field%init (var_str ("E_LEPTON"), 11)
+    call field%set (spin_type=2, charge_type=-4)
+    call field%set (mass_data=model%get_par_real_ptr (1))
+    call field%set (name = [var_str ("e-")], anti = [var_str ("e+")])
+    i = i + 1
+    field => model%get_field_ptr_by_index (i)
+    call field%init (var_str ("PHOTON"), 22)
+    call field%set (spin_type=3)
+    call field%set (name = [var_str ("A")])
+    call model%freeze_fields ()
+    call model%freeze_vertices ()
+  end subroutine model_data_init_qed_test
+  
+@ %def model_data_init_qed_test
 @
 This procedure prepares a subset of the Standard Model for testing purposes.
 We can thus avoid dependencies on model I/O, which is not defined here.
@@ -2160,11 +2268,12 @@ We can thus avoid dependencies on model I/O, which is not defined here.
   subroutine model_data_init_sm_test (model)
     class(model_data_t), intent(out) :: model
     type(field_data_t), pointer :: field
-    integer, parameter :: n_real = 6
-    integer, parameter :: n_field = 12
-     integer :: i
+    integer, parameter :: n_real = 11
+    integer, parameter :: n_field = 18
+    integer, parameter :: n_vtx = 9
+    integer :: i
     call model%init (var_str ("SM_test"), &
-         n_real, 0, n_field, 0)
+         n_real, 0, n_field, n_vtx)
     i = 0
     i = i + 1
     call model%init_par (i, var_str ("mZ"), 91.1882_default)
@@ -2178,27 +2287,47 @@ We can thus avoid dependencies on model I/O, which is not defined here.
     call model%init_par (i, var_str ("mb"), 4.2_default)
     i = i + 1
     call model%init_par (i, var_str ("mtop"), 173.1_default)
+    i = i + 1
+    call model%init_par (i, var_str ("wZ"), 2.443_default)
+    i = i + 1
+    call model%init_par (i, var_str ("wW"), 2.049_default)
+    i = i + 1
+    call model%init_par (i, var_str ("ee"), 0.3079561542961_default)
+    i = i + 1
+    call model%init_par (i, var_str ("cw"), 8.819013863636E-01_default)
+    i = i + 1
+    call model%init_par (i, var_str ("sw"), 4.714339240339E-01_default)
     i = 0
     i = i + 1
     field => model%get_field_ptr_by_index (i)
     call field%init (var_str ("D_QUARK"), 1)
-    call field%set (spin_type=2, color_type=3)
+    call field%set (spin_type=2, color_type=3, charge_type=-2, isospin_type=-2)
     call field%set (name = [var_str ("d")], anti = [var_str ("dbar")])
     i = i + 1
     field => model%get_field_ptr_by_index (i)
     call field%init (var_str ("U_QUARK"), 2)
-    call field%set (spin_type=2, color_type=3)
+    call field%set (spin_type=2, color_type=3, charge_type=3, isospin_type=2)
     call field%set (name = [var_str ("u")], anti = [var_str ("ubar")])
     i = i + 1
     field => model%get_field_ptr_by_index (i)
+    call field%init (var_str ("S_QUARK"), 3)
+    call field%set (spin_type=2, color_type=3, charge_type=-2, isospin_type=-2)
+    call field%set (name = [var_str ("s")], anti = [var_str ("sbar")])
+    i = i + 1
+    field => model%get_field_ptr_by_index (i)
+    call field%init (var_str ("C_QUARK"), 4)
+    call field%set (spin_type=2, color_type=3, charge_type=3, isospin_type=2)
+    call field%set (name = [var_str ("c")], anti = [var_str ("cbar")])
+    i = i + 1
+    field => model%get_field_ptr_by_index (i)
     call field%init (var_str ("B_QUARK"), 5)
-    call field%set (spin_type=2, color_type=3)
+    call field%set (spin_type=2, color_type=3, charge_type=-2, isospin_type=-2)
     call field%set (mass_data=model%get_par_real_ptr (5))
     call field%set (name = [var_str ("b")], anti = [var_str ("bbar")])
     i = i + 1
     field => model%get_field_ptr_by_index (i)
     call field%init (var_str ("T_QUARK"), 6)
-    call field%set (spin_type=2, color_type=3)
+    call field%set (spin_type=2, color_type=3, charge_type=3, isospin_type=2)
     call field%set (mass_data=model%get_par_real_ptr (6))
     call field%set (name = [var_str ("t")], anti = [var_str ("tbar")])
     i = i + 1
@@ -2227,25 +2356,67 @@ We can thus avoid dependencies on model I/O, which is not defined here.
     field => model%get_field_ptr_by_index (i)
     call field%init (var_str ("GLUON"), 21)
     call field%set (spin_type=3, color_type=8)
-    call field%set (name = [var_str ("g")])
+    call field%set (name = [var_str ("gl")])
+    i = i + 1
+    field => model%get_field_ptr_by_index (i)
+    call field%init (var_str ("PHOTON"), 22)
+    call field%set (spin_type=3)
+    call field%set (name = [var_str ("A")])
     i = i + 1
     field => model%get_field_ptr_by_index (i)
     call field%init (var_str ("Z_BOSON"), 23)
     call field%set (spin_type=3)
     call field%set (mass_data=model%get_par_real_ptr (1))
+    call field%set (width_data=model%get_par_real_ptr (7))
     call field%set (name = [var_str ("Z")])
     i = i + 1
     field => model%get_field_ptr_by_index (i)
     call field%init (var_str ("W_BOSON"), 24)
     call field%set (spin_type=3)
     call field%set (mass_data=model%get_par_real_ptr (2))
+    call field%set (width_data=model%get_par_real_ptr (8))
     call field%set (name = [var_str ("W+")], anti = [var_str ("W-")])
     i = i + 1
     field => model%get_field_ptr_by_index (i)
     call field%init (var_str ("PROTON"), 2212)
     call field%set (spin_type=2)
     call field%set (name = [var_str ("p")], anti = [var_str ("pbar")])
+    i = i + 1
+    field => model%get_field_ptr_by_index (i)
+    call field%init (var_str ("HADRON_REMNANT_SINGLET"), 91)
+    call field%set (color_type=1)
+    call field%set (name = [var_str ("hr1")])
+    i = i + 1
+    field => model%get_field_ptr_by_index (i)
+    call field%init (var_str ("HADRON_REMNANT_TRIPLET"), 92)
+    call field%set (color_type=3)
+    call field%set (name = [var_str ("hr3")], anti = [var_str ("hr3bar")])
+    i = i + 1
+    field => model%get_field_ptr_by_index (i)
+    call field%init (var_str ("HADRON_REMNANT_OCTET"), 93)
+    call field%set (color_type=8)
+    call field%set (name = [var_str ("hr8")])
     call model%freeze_fields ()
+    i = 0
+    i = i + 1
+    call model%set_vertex (i, [var_str ("dbar"), var_str ("d"), var_str ("A")])
+    i = i + 1
+    call model%set_vertex (i, [var_str ("ubar"), var_str ("u"), var_str ("A")])
+    i = i + 1
+    call model%set_vertex (i, [var_str ("gl"), var_str ("gl"), var_str ("gl")])
+    i = i + 1
+    call model%set_vertex (i, [var_str ("dbar"), var_str ("d"), var_str ("gl")])
+    i = i + 1
+    call model%set_vertex (i, [var_str ("ubar"), var_str ("u"), var_str ("gl")])
+    i = i + 1
+    call model%set_vertex (i, [var_str ("dbar"), var_str ("d"), var_str ("Z")])
+    i = i + 1
+    call model%set_vertex (i, [var_str ("ubar"), var_str ("u"), var_str ("Z")])
+    i = i + 1
+    call model%set_vertex (i, [var_str ("ubar"), var_str ("d"), var_str ("W+")])
+    i = i + 1
+    call model%set_vertex (i, [var_str ("dbar"), var_str ("u"), var_str ("W-")])
+    call model%freeze_vertices ()
   end subroutine model_data_init_sm_test
   
 @ %def model_data_init_sm_test

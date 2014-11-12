@@ -32,20 +32,19 @@
 noinst_LTLIBRARIES = libwhizard_core.la
 
 libwhizard_core_la_SOURCES = \
-  limits.f90 \
   user_files.f90 \
   user_code_interface.f90 \
-  variables.f90 expressions.f90 \
+  eval_trees.f90 \
   models.f90 auto_components.f90 \
   sf_pdf_builtin.f90 sf_lhapdf.f90 sf_circe1.f90 \
   sf_circe2.f90 sf_isr.f90 sf_epa.f90 sf_ewa.f90 \
   sf_escan.f90 sf_beam_events.f90 sf_user.f90 \
-  phs_base.f90 phs_single.f90 \
-  mappings.f90 phs_trees.f90 phs_forests.f90 cascades.f90 \
-  phs_wood.f90 fks_calculation.f90 fks_regions.f90 phs_fks.f90 \
-  radiation_generator.f90 rng_base.f90 rng_tao.f90 selectors.f90 \
-  mci_base.f90 mci_midpoint.f90 mci_vamp.f90 \
-  integration_results.f90 \
+  phs_single.f90 \
+  mappings.f90 phs_trees.f90 phs_forests.f90 cascades.f90 phs_wood.f90\
+  fks_calculation.f90 fks_regions.f90 phs_fks.f90 \
+  radiation_generator.f90 \
+  rng_tao.f90 \
+  mci_midpoint.f90 mci_vamp.f90 \
   prc_core.f90 subevt_expr.f90 parton_states.f90 \
   processes.f90 process_stacks.f90 \
   event_transforms.f90 decays.f90 shower.f90 \
@@ -56,11 +55,12 @@ libwhizard_core_la_SOURCES = \
   eio_data.f90 eio_base.f90 eio_raw.f90 eio_checkpoints.f90 \
   eio_lhef.f90 \
   eio_hepmc.f90 eio_ascii.f90 eio_stdhep.f90 eio_weights.f90 \
-  iterations.f90 rt_data.f90  \
+  rt_data.f90  \
   blha_config.f90 blha_interface.f90 blha_driver.f90 \
   slha_interface.f90 dispatch.f90 \
   process_configurations.f90 compilations.f90 integrations.f90 \
   event_streams.f90 simulations.f90 \
+  expr_tests.f90 \
   commands.f90 \
   whizard.f90
 ### Old NLO files
@@ -88,12 +88,15 @@ module_lists = \
   ../system/Modules \
   ../combinatorics/Modules \
   ../parsing/Modules \
+  ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
   ../types/Modules \
   ../matrix_elements/Modules \
   ../particles/Modules \
-  ../beams/Modules
+  ../beams/Modules \
+  ../phase_space/Modules \
+  ../mci/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -152,7 +155,7 @@ SUFFIXES = .lo .$(FC_MODULE_EXT)
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../matrix_elements -I../types -I../particles -I../beams -I../../vamp/src -I../shower -I../pdf_builtin -I../muli -I../../circe1/src -I../../circe2/src -I../lhapdf -I../fastjet
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../matrix_elements -I../types -I../particles -I../beams -I../phase_space -I../mci -I../../vamp/src -I../shower -I../pdf_builtin -I../muli -I../../circe1/src -I../../circe2/src -I../lhapdf -I../fastjet
 
 ########################################################################
 ## Default Fortran compiler options

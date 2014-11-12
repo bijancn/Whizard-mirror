@@ -1,5 +1,5 @@
 ## Makefile.am -- Makefile for WHIZARD
-# $Id: Makefile.am 6141 2014-09-18 08:52:03Z kilian $
+# $Id: Makefile.am 6231 2014-10-16 18:18:17Z jr_reuter $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -9,6 +9,7 @@
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
+#     with contributions from
 #     Christian Speckner <cnspeckn@googlemail.com>
 #
 # WHIZARD is free software; you can redistribute it and/or modify it

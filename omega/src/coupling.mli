@@ -1,4 +1,4 @@
-(* $Id: coupling.mli 5147 2014-01-23 14:22:34Z msekulla $
+(* $Id: coupling.mli 6222 2014-10-13 08:40:53Z ohl $
 
    Copyright (C) 1999-2014 by
 
@@ -52,7 +52,7 @@ type lorentz =
        \begin{tabular}{|r|l|l|}\hline
                     & only Dirac fermions & incl.~Majorana fermions \\\hline
            [Prop_Scalar]
-         & \multicolumn{2}{l|}{%
+         & \multicolumn{2}{ l |}{%
              $\displaystyle\phi(p)\leftarrow
               \frac{\ii}{p^2-m^2+\ii m\Gamma}\phi(p)$} \\\hline
            [Prop_Spinor]
@@ -66,25 +66,25 @@ type lorentz =
          & $\displaystyle\psi(p)\leftarrow
             \frac{\ii(-\fmslash{p}+m)}{p^2-m^2+\ii m\Gamma}\psi(p)$ \\\hline
            [Prop_Majorana]
-         & \multicolumn{1}{c|}{N/A}
+         & \multicolumn{1}{ c |}{N/A}
          & $\displaystyle\chi(p)\leftarrow
             \frac{\ii(-\fmslash{p}+m)}{p^2-m^2+\ii m\Gamma}\chi(p)$ \\\hline
            [Prop_Unitarity]
-         & \multicolumn{2}{l|}{%
+         & \multicolumn{2}{ l |}{%
              $\displaystyle\epsilon_\mu(p)\leftarrow
               \frac{\ii}{p^2-m^2+\ii m\Gamma}
               \left(-g_{\mu\nu}+\frac{p_\mu p_\nu}{m^2}\right)\epsilon^\nu(p)$} \\\hline
            [Prop_Feynman]
-         & \multicolumn{2}{l|}{%
+         & \multicolumn{2}{ l |}{%
              $\displaystyle\epsilon^\nu(p)\leftarrow
               \frac{-\ii}{p^2-m^2+\ii m\Gamma}\epsilon^\nu(p)$} \\\hline
            [Prop_Gauge]
-         & \multicolumn{2}{l|}{%
+         & \multicolumn{2}{ l |}{%
              $\displaystyle\epsilon_\mu(p)\leftarrow
               \frac{\ii}{p^2}
               \left(-g_{\mu\nu}+(1-\xi)\frac{p_\mu p_\nu}{p^2}\right)\epsilon^\nu(p)$} \\\hline
            [Prop_Rxi]
-         & \multicolumn{2}{l|}{%
+         & \multicolumn{2}{ l |}{%
              $\displaystyle\epsilon_\mu(p)\leftarrow
               \frac{\ii}{p^2-m^2+\ii m\Gamma}
               \left(-g_{\mu\nu}+(1-\xi)\frac{p_\mu p_\nu}{p^2-\xi m^2}\right)
@@ -112,7 +112,7 @@ type lorentz =
            [Aux_Tensor_1]
          & $\displaystyle T^{\mu\nu}(p)\leftarrow\ii T^{\mu\nu}(p)$ \\\hline
            [Only_Insertion]
-         & \multicolumn{1}{c|}{N/A} \\\hline
+         & \multicolumn{1}{ c |}{N/A} \\\hline
        \end{tabular}
      \end{center}
      \caption{\label{tab:aux-propagators} Auxiliary and non propagating fields}

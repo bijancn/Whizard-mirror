@@ -49,7 +49,7 @@ WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
 PACKAGE_DATE="Aug 15 2014"
-PACKAGE_STATUS="alpha"
+PACKAGE_STATUS="beta"
 
 AC_SUBST(PACKAGE_DATE)
 AC_SUBST(PACKAGE_STATUS)
@@ -303,9 +303,9 @@ AC_PROG_F77([$FC])
 ### Determine compiler vendor and version
 WO_FC_GET_VENDOR_AND_VERSION()
 
-### Veto against gfortran 4.5/4.6/4.7.0
+### Veto against gfortran 4.5/4.6/4.7.[0123]
 WO_FC_VETO_GFORTRAN_456()
-WO_FC_VETO_GFORTRAN_470()
+WO_FC_VETO_GFORTRAN_470123()
 
 ### Work around the `-g' vs. `-g90' confusion at NAG:
 ### (NB: apparently `echo -n' is not portable (OSX).
@@ -434,6 +434,13 @@ WO_CONFIGURE_SECTION([STDHEP])
 WO_PROG_STDHEP()
 
 ###---------------------------------------------------------------------
+### LCIO
+
+WO_CONFIGURE_SECTION([LCIO])
+
+WO_PROG_LCIO()
+
+###---------------------------------------------------------------------
 ### PYTHIA
 
 WO_CONFIGURE_SECTION([SHOWERS PYTHIA MPI])
@@ -560,6 +567,11 @@ AC_CONFIG_FILES([src/Makefile])
 AC_CONFIG_FILES([src/hepmc/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/lcio
+
+AC_CONFIG_FILES([src/lcio/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory pythia: WHIZARD's PYTHIA version
 
 AC_CONFIG_FILES([pythia/Makefile])
@@ -674,6 +686,11 @@ AC_CONFIG_FILES([src/combinatorics/Makefile])
 AC_CONFIG_FILES([src/parsing/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/rng: random-number generation
+
+AC_CONFIG_FILES([src/rng/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory src/physics: particle-physics related functions
 
 AC_CONFIG_FILES([src/physics/Makefile])
@@ -702,6 +719,16 @@ AC_CONFIG_FILES([src/particles/Makefile])
 ### Subdirectory src/beams: beams and beam structure
 
 AC_CONFIG_FILES([src/beams/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/mci: multi-channel integration and event generation
+
+AC_CONFIG_FILES([src/mci/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/phase_space: parameterization and evaluation
+
+AC_CONFIG_FILES([src/phase_space/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/models

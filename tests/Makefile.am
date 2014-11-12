@@ -28,15 +28,6 @@
 #
 ########################################################################
 
-# Export some environment variables to the test scripts
-AM_TESTS_ENVIRONMENT = \
-  FC_VENDOR=$(FC_VENDOR); \
-  FC_MAJOR_VERSION=$(FC_MAJOR_VERSION); \
-  FC_VERSION=$(FC_VERSION); \
-  export FC_VENDOR FC_MAJOR_VERSION FC_VERSION;
-
-########################################################################
-
 WHIZARD_DRIVER = run_whizard.sh
 
 UNIT_TESTS = \

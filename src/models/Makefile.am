@@ -6,6 +6,7 @@
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
+#     with contributions from
 #     Christian Speckner <cnspeckn@googlemail.com>
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
@@ -38,6 +39,7 @@ libmodels_la_SOURCES = \
   parameters.2HDM_CKM.f90 \
   parameters.AltH.f90 \
   parameters.GravTest.f90 \
+  parameters.HSExt.f90 \
   parameters.Littlest.f90 \
   parameters.Littlest_Eta.f90 \
   parameters.Littlest_Tpar.f90 \
@@ -79,6 +81,7 @@ nodist_execmod_HEADERS = \
   parameters_2hdm_ckm.$(FC_MODULE_EXT) \
   parameters_alth.$(FC_MODULE_EXT) \
   parameters_gravtest.$(FC_MODULE_EXT) \
+  parameters_hsext.$(FC_MODULE_EXT) \
   parameters_littlest.$(FC_MODULE_EXT) \
   parameters_littlest_eta.$(FC_MODULE_EXT) \
   parameters_littlest_tpar.$(FC_MODULE_EXT) \
@@ -162,6 +165,9 @@ parameters_alth.$(FC_MODULE_EXT): parameters.2HDM_CKM.lo
 	@:
 
 parameters_gravtest.$(FC_MODULE_EXT): parameters.GravTest.lo
+	@:
+
+parameters_hsext.$(FC_MODULE_EXT): parameters.HSExt.lo
 	@:
 
 parameters_littlest.$(FC_MODULE_EXT): parameters.Littlest.lo

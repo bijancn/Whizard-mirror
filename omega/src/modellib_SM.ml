@@ -1,4 +1,4 @@
-(* $Id: modellib_SM.ml 5864 2014-06-02 13:12:47Z ohl $
+(* $Id: modellib_SM.ml 6222 2014-10-13 08:40:53Z ohl $
 
    Copyright (C) 1999-2014 by
 
@@ -24,8 +24,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
-    { RCS.revision = "$Revision: 5864 $";
-      RCS.date = "$Date: 2014-06-02 15:12:47 +0200 (Mon, 02 Jun 2014) $";
+    { RCS.revision = "$Revision: 6222 $";
+      RCS.date = "$Date: 2014-10-13 10:40:53 +0200 (Mo, 13 Okt 2014) $";
       RCS.author = "$Author: ohl $";
       RCS.source
         = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_SM.ml $" }
@@ -1378,8 +1378,8 @@ module SM (Flags : SM_flags) =
      Trivial proof:
      \begin{equation}
        -1 = \textrm{Im}\left(\frac{1}{a_\chi(s)}\right)
-          = \frac{\textrm{Im}(a_\chi^*(s))}{|a_\chi(s)|^2}
-          = - \frac{\textrm{Im}(a_\chi(s))}{|a_\chi(s)|^2}
+          = \frac{\textrm{Im}(a_\chi^*(s))}{ |a_\chi(s)|^2 }
+          = - \frac{\textrm{Im}(a_\chi(s))}{ |a_\chi(s)|^2 }
      \end{equation}
      i.\,e.~$\textrm{Im}(a_\chi(s)) = |a_\chi(s)|^2$.}
    \begin{equation}

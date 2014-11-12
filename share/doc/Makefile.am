@@ -31,7 +31,7 @@ dist_noinst_DATA = manual.tex $(PACKAGE).tex shower.tex \
 
 ## The WHIZARD documented source is assembled from various directories
 w_srcdir = $(top_srcdir)/src
-VPATH = $(srcdir):$(w_srcdir)/noweb-frame:$(w_srcdir)/utilities:$(w_srcdir)/whizard-core
+VPATH = $(srcdir):$(w_srcdir)/noweb-frame:$(w_srcdir)/utilities:$(w_srcdir)/testing:$(w_srcdir)/system:$(w_srcdir)/combinatorics:$(w_srcdir)/parsing:$(w_srcdir)/rng:$(w_srcdir)/physics:$(w_srcdir)/qft:$(w_srcdir)/types:$(w_srcdir)/matrix_elements:$(w_srcdir)/particles:$(w_srcdir)/beams:$(w_srcdir)/phase_space:$(w_srcdir)/mci:$(w_srcdir)/whizard-core
 
 MANUAL_PICS = \
    proc_4f-history.eps proc_4f-history.pdf \
@@ -135,6 +135,16 @@ shower.tex: $(top_srcdir)/src/shower/shower.nw
 WHIZARD_NOWEB_SRC = \
   whizard-prelude.nw \
   utilities.nw \
+  testing.nw \
+  system.nw \
+  combinatorics.nw \
+  parsing.nw rng.nw physics.nw qft.nw \
+  types.nw \
+  matrix_elements.nw \
+  particles.nw \
+  beams.nw \
+  phase_space.nw \
+  mci.nw \
   whizard.nw \
   whizard-postlude.nw
 

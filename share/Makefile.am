@@ -35,6 +35,7 @@ dist_models_DATA = \
   models/2HDM_CKM.mdl \
   models/AltH.mdl \
   models/GravTest.mdl \
+  models/HSExt.mdl \
   models/Littlest_Eta.mdl \
   models/Littlest_Tpar.mdl \
   models/Littlest.mdl \
