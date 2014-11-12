@@ -129,12 +129,12 @@ fi
 AC_SUBST([FC_IS_GFORTRAN_456])
 
 ### Catch compiler bug for static builds in gfortran 4.7
-if test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.7.0"; then
-FC_IS_GFORTRAN_470="yes"  
+if test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.7.0" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.7.1" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.7.2" || test "$wo_cv_fc_vendor" = "gfortran" -a "$wo_cv_fc_version" = "4.7.3" ; then
+FC_IS_GFORTRAN_470123="yes"  
   else
-FC_IS_GFORTRAN_470="no"
+FC_IS_GFORTRAN_470123="no"
 fi
-AC_SUBST([FC_IS_GFORTRAN_470])
+AC_SUBST([FC_IS_GFORTRAN_470123])
 
 AC_CACHE_CHECK([the major version],
 [wo_cv_fc_major_version],
@@ -154,12 +154,12 @@ AC_MSG_ERROR([***************************************************************])
 fi 
 ])
 
-AC_DEFUN([WO_FC_VETO_GFORTRAN_470],
+AC_DEFUN([WO_FC_VETO_GFORTRAN_470123],
 [dnl
-if test "$FC_IS_GFORTRAN_470" = "yes"; then
-AC_MSG_NOTICE([error: ***************************************************************])
-AC_MSG_NOTICE([error: gfortran 4.7.0 due to a major bug for static builds disabled .])
-AC_MSG_ERROR([***************************************************************])
+if test "$FC_IS_GFORTRAN_470123" = "yes"; then
+AC_MSG_NOTICE([error: *************************************************************])
+AC_MSG_NOTICE([error: gfortran 4.7.[[0-3]] due to a major bugs in object-orientation.])
+AC_MSG_ERROR([*************************************************************])
 fi 
 ])
 
@@ -589,7 +589,7 @@ case $FC_VENDOR in
 gfortran)
   wo_cv_fc_openmp="yes"
   wo_cv_fcflags_openmp="-fopenmp"
-  wo_cv_fc_openmp_header="use, intrinsic :: omp_lib"
+  wo_cv_fc_openmp_header="use omp_lib"
   ;;
 NAG)
   wo_cv_fc_openmp="no"
@@ -597,7 +597,7 @@ NAG)
 Intel)
   wo_cv_fc_openmp="yes"
   wo_cv_fcflags_openmp="-openmp"
-  wo_cv_fc_openmp_header="use, intrinsic :: omp_lib"
+  wo_cv_fc_openmp_header="use omp_lib"
   ;;
 PGI)
   wo_cv_fc_openmp="yes"
