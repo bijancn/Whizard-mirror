@@ -1,11 +1,10 @@
 (* $Id: omega_unit.ml 4015 2013-01-03 16:04:18Z jr_reuter $
 
-   Copyright (C) 1999-2013 by
+   Copyright (C) 1999-2014 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
-       Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -22,9 +21,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 module M = Modellib_SM.SM(Modellib_SM.SM_no_anomalous)
-module List_Test = Permutation.Test (Permutation.Using_Lists)
-module Array_Test = Permutation.Test (Permutation.Using_Arrays)
-module Vertex_Test = Vertex.Test (M)
+module List_Test = Permutation.Test(Permutation.Using_Lists)
+module Array_Test = Permutation.Test(Permutation.Using_Arrays)
+module Vertex_Test = Vertex.Test(M)
 module Parser_Test = Vertex.Parser_Test
 module Model_Test = Vertex.Model_Test
 
