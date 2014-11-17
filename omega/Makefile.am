@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 4926 2013-12-04 12:35:06Z jr_reuter $
+# $Id: Makefile.am 5981 2014-07-04 09:46:14Z jr_reuter $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -27,7 +27,7 @@
 #
 ########################################################################
 
-## we do our own dependency checking for fortran and and ocaml:
+## we do our own dependency checking for FORTRAN and OCaml:
 AUTOMAKE_OPTIONS = no-dependencies
 
 ## Use the m4 directory for local Autoconf macros

@@ -1,4 +1,4 @@
-(* $Id: comphep.ml 4926 2013-12-04 12:35:06Z jr_reuter $
+(* $Id: comphep.ml 6222 2014-10-13 08:40:53Z ohl $
 
    Copyright (C) 1999-2014 by
 
@@ -23,11 +23,11 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Comphep" ["Plagiarizing CompHEP models ..."]
-    { RCS.revision = "$Revision: 4926 $";
-      RCS.date = "$Date: 2013-12-04 13:35:06 +0100 (Wed, 04 Dec 2013) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 6222 $";
+      RCS.date = "$Date: 2014-10-13 10:40:53 +0200 (Mon, 13 Oct 2014) $";
+      RCS.author = "$Author: ohl $";
       RCS.source
-        = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/src/omega/src/comphep.ml $" }
+        = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/comphep.ml $" }
 
 (* A friendlier [String.sub] that returns an empty string instead of
    raising an exception.  Instead of the length, the second argument
@@ -183,12 +183,10 @@ module Model =
     type flavor = int
     type constant = string
     type gauge = unit
-    type orders = unit
 
     module M = Modeltools.Mutable
-        (struct type f = flavor type g = gauge type c = constant type o = orders end)
+        (struct type f = flavor type g = gauge type c = constant end)
 
-    let orders = M.orders
     let flavors = M.flavors
     let external_flavors = M.external_flavors
     let lorentz = M.lorentz
@@ -380,7 +378,7 @@ module Model =
        input_lagrangian (dir ^ "/lgrng" ^ idx ^ ".mdl"))
 
     let flavors_of_particles particles =
-      let flavors = Array.create (count_flavors particles) dummy_flavor in
+      let flavors = Array.make (count_flavors particles) dummy_flavor in
       ignore (List.fold_left (fun n p ->
         match p.p_symbol with
         | Selfconjugate f ->
