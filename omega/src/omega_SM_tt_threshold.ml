@@ -1,12 +1,12 @@
-(* $Id: targets.mli 6044 2014-07-24 18:33:19Z bchokoufe $
+(* $Id: omega_SM_tt_threshold.ml 1340 2009-12-02 23:45:04Z ohl $
 
-   Copyright (C) 1999-2014 by
+   Copyright (C) 1999-2012 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
-       Juergen Reuter <juergen.reuter@desy.de>
-       with contributions from
-       Christian Speckner <cnspeckn@googlemail.com>
+       Juergen Reuter <juergen.reuter@physik.uni-freiburg.de>
+       Christian Speckner <christian.speckner@physik.uni-freiburg.de>
+       Fabian Bach <fabian.bach@cern.ch> (only this file)
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -22,20 +22,9 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-module Dummy : Target.Maker
-
-(* \thocwmodulesection{Supported Targets} *)
-module Fortran : Target.Maker
-module Fortran_Majorana : Target.Maker
-module VM : Target.Maker
-
-(* \thocwmodulesection{Potential Targets} *)
-module Fortran77 : Target.Maker
-module C : Target.Maker
-module Cpp : Target.Maker
-module Java : Target.Maker
-module Ocaml : Target.Maker
-module LaTeX : Target.Maker
+module O = Omega.Make(Fusion.Mixed23)(Targets.Fortran)
+    (Modellib_SM.SM(Modellib_SM.SM_tt_threshold))
+let _ = O.main ()
 
 (*i
  *  Local Variables:

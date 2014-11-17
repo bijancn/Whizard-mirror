@@ -1,4 +1,4 @@
-(* $Id: modellib_SM.mli 5344 2014-02-21 11:24:08Z msekulla $
+(* $Id: modellib_SM.mli 6264 2014-11-14 15:40:49Z fbach $
 
    Copyright (C) 1999-2014 by
 
@@ -39,6 +39,7 @@ module type SM_flags =
     val ckm_present : bool
     val top_anom : bool
     val top_anom_4f : bool
+    val tt_threshold : bool
   end
 
 module SM_no_anomalous : SM_flags
@@ -48,6 +49,7 @@ module SM_no_anomalous_ckm : SM_flags
 module SM_anomalous_ckm : SM_flags
 module SM_Higgs : SM_flags
 module SM_anomalous_top : SM_flags
+module SM_tt_threshold : SM_flags
 
 module SM : functor (F : SM_flags) -> Model.Gauge with module Ch = Charges.QQ
 

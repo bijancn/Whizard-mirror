@@ -1,4 +1,4 @@
-(* $Id: targets.mli 6044 2014-07-24 18:33:19Z bchokoufe $
+(* $Id: omega_HSExt.ml 4926 2013-12-04 12:35:06Z jr_reuter $
 
    Copyright (C) 1999-2014 by
 
@@ -22,20 +22,9 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-module Dummy : Target.Maker
-
-(* \thocwmodulesection{Supported Targets} *)
-module Fortran : Target.Maker
-module Fortran_Majorana : Target.Maker
-module VM : Target.Maker
-
-(* \thocwmodulesection{Potential Targets} *)
-module Fortran77 : Target.Maker
-module C : Target.Maker
-module Cpp : Target.Maker
-module Java : Target.Maker
-module Ocaml : Target.Maker
-module LaTeX : Target.Maker
+module O = Omega.Make(Fusion.Mixed23)(Targets.Fortran_Majorana)
+    (Modellib_BSM.HSExt(Modellib_BSM.BSM_bsm))
+let _ = O.main ()
 
 (*i
  *  Local Variables:

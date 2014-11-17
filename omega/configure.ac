@@ -32,6 +32,7 @@ dnl
 dnl Environment variables that can be set by the user:
 dnl   FC		Fortran compiler
 dnl   FCFLAGS		Fortran compiler flags
+dnl   OCAMLFLAGS	OCaml compiler flags
 dnl 
 dnl *********************************************************************** 
 
@@ -49,7 +50,7 @@ WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
 PACKAGE_DATE="Aug 15 2014"
-PACKAGE_STATUS="alpha"
+PACKAGE_STATUS="beta"
 
 AC_SUBST(PACKAGE_DATE)
 AC_SUBST(PACKAGE_STATUS)
@@ -254,8 +255,8 @@ WO_FC_CHECK_F95
 dnl WO_FC_CHECK_TR15581
 dnl WO_FC_CHECK_ALLOCATABLE_SCALARS
 WO_FC_MODULE_FILE([FC_MODULE_NAME], [FC_MODULE_EXT], [$FC], [f90])
-WO_FC_CHECK_QUADRUPLE
-WO_FC_CHECK_QUADRUPLE_C
+WO_FC_CHECK_EXTENDED
+WO_FC_CHECK_EXTENDED_C
 WO_FC_SET_PRECISION
 WO_FC_SET_OPENMP
 WO_FC_SET_PROFILING
