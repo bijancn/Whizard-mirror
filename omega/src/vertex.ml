@@ -27,7 +27,7 @@
    for dealing with indices and permutations will remail important. *)
 
 type context =
-    { arity : int;
+    { arity : int; (* [arity = Array.length lorentz_reps = Array.length color_reps] *)
       lorentz_reps : Coupling.lorentz array;
       color_reps : Color.t array }
 
@@ -98,6 +98,8 @@ module Lorentz (* : Lorentz *) =
 
     (* Is the following level of type checks useful or redundant? *)
 
+    (* TODO: should we also support a [tensor] like $F_{\mu_1\mu_2}$ *)
+
     type vector = Vector of index
     type spinor = Spinor of index
     type conjspinor = ConjSpinor of index
@@ -108,7 +110,7 @@ module Lorentz (* : Lorentz *) =
 
     let vector_ok context = function
       | Vector (I _) ->
-	(* we could perfrom additional checks! *)
+	(* we could perform additional checks! *)
 	true
       | Vector (F i) ->
           begin
@@ -134,7 +136,7 @@ module Lorentz (* : Lorentz *) =
 
     let conjspinor_ok context = function
       | ConjSpinor (I _) ->
-	(* we could perfrom additional checks! *)
+	(* we could perform additional checks! *)
 	true
       | ConjSpinor (F i) ->
           begin
@@ -146,18 +148,19 @@ module Lorentz (* : Lorentz *) =
           end
 
     let spinor_sandwitch_ok context i j =
-      (* [distinct2 i j] only guaranteed for Dirac spinors! *)
+      (* TODO: I don't understand the following comment anymore \ldots:
+         [distinct2 i j] only guaranteed for Dirac spinors! *)
       conjspinor_ok context i && spinor_ok context j
 
     type primitive =
-      | G of vector * vector
-      | E of vector * vector * vector * vector
-      | K of vector * field
-      | S of conjspinor * spinor
-      | V of vector * conjspinor * spinor
-      | T of vector * vector * conjspinor * spinor
-      | A of vector * conjspinor * spinor
-      | P of conjspinor * spinor
+      | G of vector * vector                       (* $g_{\mu_1\mu_2}$ *)
+      | E of vector * vector * vector * vector     (* $\epsilon_{\mu_1\mu_2\mu_3\mu_4}$ *)
+      | K of vector * field                        (* $k_{2}^{\mu_1}$ *)
+      | S of conjspinor * spinor                   (* $\bar\psi_1\psi_2$ *)
+      | V of vector * conjspinor * spinor          (* $\bar\psi_1\gamma_{\mu_2}\psi_3$ *)
+      | T of vector * vector * conjspinor * spinor (* $\bar\psi_1\sigma_{\mu_2\mu_3}\psi_4$ *)
+      | A of vector * conjspinor * spinor          (* $\bar\psi_1\gamma_{\mu_2}\gamma_5\psi_3$ *)
+      | P of conjspinor * spinor                   (* $\bar\psi_1\gamma_5\psi_2$ *)
 
     let map_primitive fvi fvf fsi fsf fci fcf = function
       | G (mu, nu) ->
