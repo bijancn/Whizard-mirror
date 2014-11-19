@@ -26,10 +26,10 @@ module type T =
     type 'a t
     val of_list : (domain * 'a) list -> 'a t
     val of_lists : domain list -> 'a list -> 'a t
-    val auto : domain t -> domain -> domain
     exception Undefined of domain
     val apply : 'a t -> domain -> 'a
-    val apply_with_default : (domain -> 'a) -> 'a t -> domain -> 'a
+    val apply_with_fallback : (domain -> 'a) -> 'a t -> domain -> 'a
+    val auto : domain t -> domain -> domain
   end
 
 module Make (D : Map.OrderedType) : T with type domain = D.t =
@@ -65,11 +65,11 @@ module Make (D : Map.OrderedType) : T with type domain = D.t =
       with
       | Not_found -> raise (Undefined d)
 
-    let apply_with_default default partial d =
+    let apply_with_fallback fallback partial d =
       try
 	M.find d partial
       with
-      | Not_found -> default d
+      | Not_found -> fallback d
 
   end
 
@@ -134,23 +134,23 @@ module Test : sig val suite : OUnit.test end =
       "auto" >:::
 	[auto_ok]
 
-    let apply_with_default_ok =
-      "apply_with_default/ok" >::
+    let apply_with_fallback_ok =
+      "apply_with_fallback/ok" >::
 	(fun () ->
 	  let p = P.of_list [ (0,10); (1,11)]
 	  and l = [ 0; 1; 2 ] in
 	  assert_equal
-	    [ 10; 11; -2 ] (List.map (P.apply_with_default (fun n -> - n) p) l))
+	    [ 10; 11; -2 ] (List.map (P.apply_with_fallback (fun n -> - n) p) l))
 	
-    let suite_apply_with_default =
-      "apply_with_default" >:::
-	[apply_with_default_ok]
+    let suite_apply_with_fallback =
+      "apply_with_fallback" >:::
+	[apply_with_fallback_ok]
 
     let suite =
       "Partial" >:::
 	[suite_apply;
 	 suite_auto;
-	 suite_apply_with_default]
+	 suite_apply_with_fallback]
 
     let time () =
       ()

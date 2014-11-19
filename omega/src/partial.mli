@@ -42,15 +42,15 @@ module type T =
        later value takes precedence. *)
     val of_lists : domain list -> 'a list -> 'a t
 
-    (* Iff domain and codomain agree, we can default to
-       the identity. *)
-    val auto : domain t -> domain -> domain
-
     (* If domain and codomain disagree, we must raise an exception
-       of provide an default. *)
+       or provide a fallback. *)
     exception Undefined of domain
     val apply : 'a t -> domain -> 'a
-    val apply_with_default : (domain -> 'a) -> 'a t -> domain -> 'a
+    val apply_with_fallback : (domain -> 'a) -> 'a t -> domain -> 'a
+
+    (* Iff domain and codomain of the map agree, we can
+       fall back to the identity map. *)
+    val auto : domain t -> domain -> domain
 
   end
 
