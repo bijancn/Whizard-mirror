@@ -73,6 +73,8 @@ module Make (D : Map.OrderedType) : T with type domain = D.t =
 
   end
 
+(* \thocwmodulesection{Unit Tests} *)
+
 module Test : sig val suite : OUnit.test end =
   struct
 
