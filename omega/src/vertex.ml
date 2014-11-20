@@ -22,12 +22,20 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-(* Start of version 1 of the new implementation.  The syntax
+(* Start of version 1 of the new implementation.  The old syntax
    will not be used in the real implementation, but the library
    for dealing with indices and permutations will remail important. *)
 
+(* Note that [arity = length lorentz_reps = length color_reps].  Do we
+   need to enforce this by an abstract type constructor?
+
+   A cleaner approach would be
+   [type context = (Coupling.lorentz, Color.t) array], but it would also
+   require more tedious deconstruction of the pairs.  Well, an abstract
+   type with accessors might be the way to go after all \ldots *)
+
 type context =
-    { arity : int; (* [arity = Array.length lorentz_reps = Array.length color_reps] *)
+    { arity : int;
       lorentz_reps : Coupling.lorentz array;
       color_reps : Color.t array }
 
@@ -51,6 +59,10 @@ module type Index =
     val of_int : int -> t
     val to_int : t -> int
   end
+
+(* While the number of allowed indices is unlimited, the
+   allowed offsets into the field arrays are of course
+   restricted to the fields in the current [context]. *)
 
 module type Field =
   sig
@@ -78,9 +90,92 @@ type field = Field.t
 
 module type Lorentz =
   sig
+
+    type index = I of int | F of field
+
+    type vector = Vector of index
+
+    type spinor = Spinor of index
+
+    type conjspinor = ConjSpinor of index
+
+    type primitive =
+      | G of vector * vector                       (* $g_{\mu_1\mu_2}$ *)
+      | E of vector * vector * vector * vector     (* $\epsilon_{\mu_1\mu_2\mu_3\mu_4}$ *)
+      | K of vector * field                        (* $k_{2}^{\mu_1}$ *)
+      | S of conjspinor * spinor                   (* $\bar\psi_1\psi_2$ *)
+      | V of vector * conjspinor * spinor          (* $\bar\psi_1\gamma_{\mu_2}\psi_3$ *)
+      | T of vector * vector * conjspinor * spinor (* $\bar\psi_1\sigma_{\mu_2\mu_3}\psi_4$ *)
+      | A of vector * conjspinor * spinor          (* $\bar\psi_1\gamma_{\mu_2}\gamma_5\psi_3$ *)
+      | P of conjspinor * spinor                   (* $\bar\psi_1\gamma_5\psi_2$ *)
+
+    type tensor = int * primitive list
+
+(* Below, we will need to permute fields.  For this purpose, we
+   introduce the function
+   [map_primitive v_idx v_fld s_idx s_fld c_idx c_fld tensor]
+   that returns a structurally identical tensor, with
+   [v_idx : int -> int] applied to all vector indices,
+   [v_fld : field -> field] to all vector fields,
+   [s_idx] and [c_idx] to all (conj)spinor indices and
+   [s_fld] and [c_fld] to all (conj)spinor fields.
+
+   Note we must treat spinors and vectors differently,
+   even for simple permuations, in order to handle the
+   statistics properly.  *)
+
+    val map_tensor :
+      (int -> int) -> (field -> field) -> (int -> int) -> (field -> field) ->
+      (int -> int) -> (field -> field) -> tensor -> tensor
+
+(* Check whether the [tensor] is well formed in the [context]. *)
+
+    val tensor_ok : context -> tensor -> bool
+
+(* The lattice $\mathbf{N}+\mathrm{i}\mathbf{N}\subset\mathbf{C}$, which
+   suffices for representing the matrix elements of Dirac matrices.
+   We hope to be able to avoid the lattice
+   $\mathbf{Q}+\mathrm{i}\mathbf{Q}\subset\mathbf{C}$ or
+   $\mathbf{C}$ itself down the road. *)
+
+    module Complex :
+      sig
+        type t = int * int
+        type t' =
+	  | Z (* $0$ *)
+	  | O (* $1$ *)
+	  | M (* $-1$ *)
+	  | I (* $\mathrm{i}$ *)
+	  | J (* $-\mathrm{i}$ *)
+	  | C of int * int (* $x+\mathrm{i}y$ *)
+        val to_fortran : t' -> string
+      end
+
+    module type Dirac =
+      sig
+        val scalar : int -> int -> Complex.t
+        val vector : int -> int -> int -> Complex.t
+        val tensor : int -> int -> int -> int -> Complex.t
+        val axial : int -> int -> int -> Complex.t
+        val pseudo : int -> int -> Complex.t
+      end
+
+    module type Dirac_Matrices =
+      sig
+        val scalar : (int * int * Complex.t) list
+        val vector : (int * int * int * Complex.t) list
+        val tensor : (int * int * int * int * Complex.t) list
+        val axial : (int * int * int * Complex.t) list
+        val pseudo : (int * int * Complex.t) list
+      end
+
+    module Chiral : Dirac_Matrices
+
+    module Dirac : functor (M : Dirac_Matrices) -> Dirac
+
   end
 
-module Lorentz (* : Lorentz *) =
+module Lorentz : Lorentz =
   struct
 
     
@@ -98,7 +193,7 @@ module Lorentz (* : Lorentz *) =
 
     (* Is the following level of type checks useful or redundant? *)
 
-    (* TODO: should we also support a [tensor] like $F_{\mu_1\mu_2}$ *)
+    (* TODO: should we also support a [tensor] like $F_{\mu_1\mu_2}$? *)
 
     type vector = Vector of index
     type spinor = Spinor of index
@@ -147,20 +242,17 @@ module Lorentz (* : Lorentz *) =
             | _ -> false
           end
 
+    (* Note that [distinct2 i j] is automatically guaranteed
+       for Dirac spinors, because the $\bar\psi$ and $\psi$ can
+       not appear in the same slot.  This is however not the
+       case for Weyl and Majorana spinors. *)
+
     let spinor_sandwitch_ok context i j =
-      (* TODO: I don't understand the following comment anymore \ldots:
-         [distinct2 i j] only guaranteed for Dirac spinors! *)
       conjspinor_ok context i && spinor_ok context j
 
-    type primitive =
-      | G of vector * vector                       (* $g_{\mu_1\mu_2}$ *)
-      | E of vector * vector * vector * vector     (* $\epsilon_{\mu_1\mu_2\mu_3\mu_4}$ *)
-      | K of vector * field                        (* $k_{2}^{\mu_1}$ *)
-      | S of conjspinor * spinor                   (* $\bar\psi_1\psi_2$ *)
-      | V of vector * conjspinor * spinor          (* $\bar\psi_1\gamma_{\mu_2}\psi_3$ *)
-      | T of vector * vector * conjspinor * spinor (* $\bar\psi_1\sigma_{\mu_2\mu_3}\psi_4$ *)
-      | A of vector * conjspinor * spinor          (* $\bar\psi_1\gamma_{\mu_2}\gamma_5\psi_3$ *)
-      | P of conjspinor * spinor                   (* $\bar\psi_1\gamma_5\psi_2$ *)
+    (* These are all the primitive ways to construct Lorentz tensors,
+       a.\,k.\,a.~objects with Lorentz indices, from momenta, other
+       Lorentz tensors and Dirac spinors: *)
 
     let map_primitive fvi fvf fsi fsf fci fcf = function
       | G (mu, nu) ->
@@ -269,6 +361,16 @@ module Lorentz (* : Lorentz *) =
       vector_contraction_ok p &&
       spinor_contraction_ok p && conjspinor_contraction_ok p
 
+    type primitive =
+        G of vector * vector
+      | E of vector * vector * vector * vector
+      | K of vector * field
+      | S of conjspinor * spinor
+      | V of vector * conjspinor * spinor
+      | T of vector * vector * conjspinor * spinor
+      | A of vector * conjspinor * spinor
+      | P of conjspinor * spinor
+
     type tensor = int * primitive list
 
     let map_tensor fvi fvf fsi fsf fci fcf (factor, primitives) =
@@ -283,21 +385,15 @@ module Lorentz (* : Lorentz *) =
 
         type t = int * int
 
-	type t' = 
-	| Z (* 0 *)
-	| O (* 1 *)
-	| M (* -1 *)
-	| I (* i *)
-	| J (* -i *)
-	| C of int * int
+	type t' = Z | O | M | I | J | C of int * int
 
 	let to_fortran = function
-	| Z -> "(0,0)"
-	| O -> "(1,0)"
-	| M -> "(-1,0)"
-	| I -> "(0,1)"
-	| J -> "(0,-1)"
-	| C (r, i) -> "(" ^ string_of_int r ^ "," ^ string_of_int i ^ ")"
+	  | Z -> "(0,0)"
+	  | O -> "(1,0)"
+	  | M -> "(-1,0)"
+	  | I -> "(0,1)"
+	  | J -> "(0,-1)"
+	  | C (r, i) -> "(" ^ string_of_int r ^ "," ^ string_of_int i ^ ")"
 
       end
 
@@ -391,7 +487,7 @@ module Lorentz (* : Lorentz *) =
             Map2.empty triples
 
         let bounds_check2 i j =
-          if i < 1 or i > 4 or j < 0 or j > 4 then
+          if i < 1 || i > 4 || j < 0 || j > 4 then
             invalid_arg "Chiral.bounds_check2"
 
         let lookup2 map i j =
@@ -412,7 +508,7 @@ module Lorentz (* : Lorentz *) =
 
         let bounds_check3 mu i j =
           bounds_check2 i j;
-          if mu < 0 or mu > 3 then
+          if mu < 0 || mu > 3 then
             invalid_arg "Chiral.bounds_check3"
 
         let lookup3 map mu i j =
@@ -433,7 +529,7 @@ module Lorentz (* : Lorentz *) =
 
         let bounds_check4 mu nu i j =
           bounds_check3 nu i j;
-          if mu < 0 or mu > 3 then
+          if mu < 0 || mu > 3 then
             invalid_arg "Chiral.bounds_check4"
 
         let lookup4 map mu nu i j =
@@ -459,11 +555,28 @@ module Lorentz (* : Lorentz *) =
 
   end
 
+(* TODO: make this signature much smaller!!! *)
+
 module type Color =
   sig
+    module Index : Index
+    type index = Index.t
+    type color_rep = F of field | C of field | A of field
+    type primitive =
+        D of field * field
+      | E of field * field * field
+      | T of field * field * field
+      | F of field * field * field
+    val map_primitive : (field -> field) -> primitive -> primitive
+    val primitive_indices : primitive -> field list
+    val indices : primitive list -> field list
+    type tensor = int * primitive list
+    val map_tensor :
+      (field -> field) -> 'a * primitive list -> 'a * primitive list
+    val tensor_ok : context -> 'a * primitive list -> bool
   end
 
-module Color (* : Color *) = 
+module Color : Color = 
   struct
 
     module Index : Index =
