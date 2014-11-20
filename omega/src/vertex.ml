@@ -157,11 +157,11 @@ module type Lorentz =
 
     module type Dirac =
       sig
-        val scalar : int -> int -> Complex.t
-        val vector : int -> int -> int -> Complex.t
-        val tensor : int -> int -> int -> int -> Complex.t
-        val axial : int -> int -> int -> Complex.t
-        val pseudo : int -> int -> Complex.t
+        val scalar : int -> int -> Complex.t'
+        val vector : int -> int -> int -> Complex.t'
+        val tensor : int -> int -> int -> int -> Complex.t'
+        val axial : int -> int -> int -> Complex.t'
+        val pseudo : int -> int -> Complex.t'
       end
 
     (* Dirac matrices as tables of nonzero entries.  There will
@@ -169,7 +169,7 @@ module type Lorentz =
 
     module type Dirac_Matrices =
       sig
-	type t = (int * int * Complex.t) list
+	type t = (int * int * Complex.t') list
         val scalar : t
         val vector : (int * t) list
         val tensor : (int * int * t) list
@@ -412,16 +412,16 @@ module Lorentz : Lorentz =
 
     module type Dirac =
       sig
-        val scalar : int -> int -> Complex.t
-        val vector : int -> int -> int -> Complex.t
-        val tensor : int -> int -> int -> int -> Complex.t
-        val axial : int -> int -> int -> Complex.t
-        val pseudo : int -> int -> Complex.t
+        val scalar : int -> int -> Complex.t'
+        val vector : int -> int -> int -> Complex.t'
+        val tensor : int -> int -> int -> int -> Complex.t'
+        val axial : int -> int -> int -> Complex.t'
+        val pseudo : int -> int -> Complex.t'
       end
 
     module type Dirac_Matrices =
       sig
-	type t = (int * int * Complex.t) list
+	type t = (int * int * Complex.t') list
         val scalar : t
         val vector : (int * t) list
         val tensor : (int * int * t) list
@@ -432,58 +432,58 @@ module Lorentz : Lorentz =
     module Chiral : Dirac_Matrices =
       struct
 
-	type t = (int * int * Complex.t) list
+	type t = (int * int * Complex.t') list
 
         let scalar =
-          [ (1, 1, ( 1,  0));
-            (2, 2, ( 1,  0));
-            (3, 3, ( 1,  0));
-            (4, 4, ( 1,  0)) ]
+          [ (1, 1, Complex.O);
+            (2, 2, Complex.O);
+            (3, 3, Complex.O);
+            (4, 4, Complex.O) ]
 
         let vector =
-          [ (0, [ (1, 4, ( 1,  0));
-		  (4, 1, ( 1,  0));
-		  (2, 3, (-1,  0));
-		  (3, 2, (-1,  0)) ]);
-            (1, [ (1, 3, ( 1,  0));
-		  (3, 1, ( 1,  0));
-		  (2, 4, (-1,  0));
-		  (4, 2, (-1,  0)) ]);
-            (2, [ (1, 3, ( 0,  1));
-		  (3, 1, ( 0,  1));
-		  (2, 4, ( 0,  1));
-		  (4, 2, ( 0,  1)) ]);
-            (3, [ (1, 4, (-1,  0));
-		  (4, 1, (-1,  0));
-		  (2, 3, (-1,  0));
-		  (3, 2, (-1,  0)) ]) ]
+          [ (0, [ (1, 4, Complex.O);
+		  (4, 1, Complex.O);
+		  (2, 3, Complex.M);
+		  (3, 2, Complex.M) ]);
+            (1, [ (1, 3, Complex.O);
+		  (3, 1, Complex.O);
+		  (2, 4, Complex.M);
+		  (4, 2, Complex.M) ]);
+            (2, [ (1, 3, Complex.I);
+		  (3, 1, Complex.I);
+		  (2, 4, Complex.I);
+		  (4, 2, Complex.I) ]);
+            (3, [ (1, 4, Complex.M);
+		  (4, 1, Complex.M);
+		  (2, 3, Complex.M);
+		  (3, 2, Complex.M) ]) ]
 
         let tensor =
           [ (* TODO!!! *) ]
 
         let axial =
-          [ (0, [ (1, 4, (-1,  0));
-		  (4, 1, ( 1,  0));
-		  (2, 3, ( 1,  0));
-		  (3, 2, (-1,  0)) ]);
-            (1, [ (1, 3, (-1,  0));
-		  (3, 1, ( 1,  0));
-		  (2, 4, ( 1,  0));
-		  (4, 2, (-1,  0)) ]);
-            (2, [ (1, 3, ( 0, -1));
-		  (3, 1, ( 0,  1));
-		  (2, 4, ( 0, -1));
-		  (4, 2, ( 0,  1)) ]);
-	    (3, [ (1, 4, ( 1,  0));
-		  (4, 1, (-1,  0));
-		  (2, 3, ( 1,  0));
-		  (3, 2, (-1,  0)) ]) ]
+          [ (0, [ (1, 4, Complex.M);
+		  (4, 1, Complex.O);
+		  (2, 3, Complex.O);
+		  (3, 2, Complex.M) ]);
+            (1, [ (1, 3, Complex.M);
+		  (3, 1, Complex.O);
+		  (2, 4, Complex.O);
+		  (4, 2, Complex.M) ]);
+            (2, [ (1, 3, Complex.J);
+		  (3, 1, Complex.I);
+		  (2, 4, Complex.J);
+		  (4, 2, Complex.I) ]);
+	    (3, [ (1, 4, Complex.O);
+		  (4, 1, Complex.M);
+		  (2, 3, Complex.O);
+		  (3, 2, Complex.M) ]) ]
 
         let pseudo =
-          [ (1, 1, (-1,  0));
-            (2, 2, (-1,  0));
-            (3, 3, ( 1,  0));
-            (4, 4, ( 1,  0)) ]
+          [ (1, 1, Complex.M);
+            (2, 2, Complex.M);
+            (3, 3, Complex.O);
+            (4, 4, Complex.O) ]
 
       end
 
@@ -508,7 +508,7 @@ module Lorentz : Lorentz =
 
         let lookup2 map i j =
           bounds_check2 i j;
-          try Map2.find (i, j) map with Not_found -> (0, 0)
+          try Map2.find (i, j) map with Not_found -> Complex.Z
 
         module Map3 =
           Map.Make
@@ -532,7 +532,7 @@ module Lorentz : Lorentz =
 
         let lookup3 map mu i j =
           bounds_check3 mu i j;
-          try Map3.find (mu, (i, j)) map with Not_found -> (0, 0)
+          try Map3.find (mu, (i, j)) map with Not_found -> Complex.Z
 
         module Map4 =
           Map.Make
@@ -556,7 +556,7 @@ module Lorentz : Lorentz =
 
         let lookup4 map mu nu i j =
           bounds_check4 mu nu i j;
-          try Map4.find (mu, nu, (i, j)) map with Not_found -> (0, 0)
+          try Map4.find (mu, nu, (i, j)) map with Not_found -> Complex.Z
 
         let scalar_map = init2 M.scalar
         let vector_map = init3 M.vector
@@ -774,10 +774,10 @@ module Test (M : Model.T) : Test =
                   for i = 1 to 4 do
                     for j = 1 to 4 do
                       match Chiral.vector mu i j with
-                      | 0, 0 -> ()
-                      | re, im ->
-                          Printf.printf " + (%d,%d)*%s(%d)*%s(%d)"
-                            re im rhs1 i rhs2 j
+                      | Lorentz.Complex.Z -> ()
+                      | c ->
+                          Printf.printf " + %s*%s(%d)*%s(%d)"
+                            (Lorentz.Complex.to_fortran c) rhs1 i rhs2 j
                     done
                   done;
                   Printf.printf "\n"
@@ -790,10 +790,10 @@ module Test (M : Model.T) : Test =
                   for mu = 0 to 3 do
                     for j = 1 to 4 do
                       match Chiral.vector mu i j with
-                      | 0, 0 -> ()
-                      | re, im ->
-                          Printf.printf " + (%d,%d)*%s(%d)*%s(%d)"
-                            re im rhs1 mu rhs2 j
+                      | Lorentz.Complex.Z -> ()
+                      | c ->
+                          Printf.printf " + %s*%s(%d)*%s(%d)"
+                            (Lorentz.Complex.to_fortran c) rhs1 mu rhs2 j
                     done
                   done;
                   Printf.printf "\n"
