@@ -151,6 +151,10 @@ module type Lorentz =
         val to_fortran : t' -> string
       end
 
+    (* Dirac matrices as maps from Lorentz and Spinor indices
+       to complex numbers.  This is supposed to be independent of
+       the representation. *)
+
     module type Dirac =
       sig
         val scalar : int -> int -> Complex.t
@@ -160,16 +164,25 @@ module type Lorentz =
         val pseudo : int -> int -> Complex.t
       end
 
+    (* Dirac matrices as tables of nonzero entries.  There will
+       be one concrete Module per realization. *)
+
     module type Dirac_Matrices =
       sig
-        val scalar : (int * int * Complex.t) list
-        val vector : (int * int * int * Complex.t) list
-        val tensor : (int * int * int * int * Complex.t) list
-        val axial : (int * int * int * Complex.t) list
-        val pseudo : (int * int * Complex.t) list
+	type t = (int * int * Complex.t) list
+        val scalar : t
+        val vector : (int * t) list
+        val tensor : (int * int * t) list
+        val axial : (int * t) list
+        val pseudo : t
       end
 
+    (* E.\,g.~the chiral representation: *)
+
     module Chiral : Dirac_Matrices
+
+    (* Here's the functor to create the maps corresponding to
+       a given realization. *)
 
     module Dirac : functor (M : Dirac_Matrices) -> Dirac
 
@@ -253,6 +266,16 @@ module Lorentz : Lorentz =
     (* These are all the primitive ways to construct Lorentz tensors,
        a.\,k.\,a.~objects with Lorentz indices, from momenta, other
        Lorentz tensors and Dirac spinors: *)
+
+    type primitive =
+      | G of vector * vector
+      | E of vector * vector * vector * vector
+      | K of vector * field
+      | S of conjspinor * spinor
+      | V of vector * conjspinor * spinor
+      | T of vector * vector * conjspinor * spinor
+      | A of vector * conjspinor * spinor
+      | P of conjspinor * spinor
 
     let map_primitive fvi fvf fsi fsf fci fcf = function
       | G (mu, nu) ->
@@ -361,16 +384,6 @@ module Lorentz : Lorentz =
       vector_contraction_ok p &&
       spinor_contraction_ok p && conjspinor_contraction_ok p
 
-    type primitive =
-        G of vector * vector
-      | E of vector * vector * vector * vector
-      | K of vector * field
-      | S of conjspinor * spinor
-      | V of vector * conjspinor * spinor
-      | T of vector * vector * conjspinor * spinor
-      | A of vector * conjspinor * spinor
-      | P of conjspinor * spinor
-
     type tensor = int * primitive list
 
     let map_tensor fvi fvf fsi fsf fci fcf (factor, primitives) =
@@ -408,15 +421,18 @@ module Lorentz : Lorentz =
 
     module type Dirac_Matrices =
       sig
-        val scalar : (int * int * Complex.t) list
-        val vector : (int * int * int * Complex.t) list
-        val tensor : (int * int * int * int * Complex.t) list
-        val axial : (int * int * int * Complex.t) list
-        val pseudo : (int * int * Complex.t) list
+	type t = (int * int * Complex.t) list
+        val scalar : t
+        val vector : (int * t) list
+        val tensor : (int * int * t) list
+        val axial : (int * t) list
+        val pseudo : t
       end
 
     module Chiral : Dirac_Matrices =
       struct
+
+	type t = (int * int * Complex.t) list
 
         let scalar =
           [ (1, 1, ( 1,  0));
@@ -425,43 +441,43 @@ module Lorentz : Lorentz =
             (4, 4, ( 1,  0)) ]
 
         let vector =
-          [ (0, 1, 4, ( 1,  0));
-            (0, 4, 1, ( 1,  0));
-            (0, 2, 3, (-1,  0));
-            (0, 3, 2, (-1,  0));
-            (1, 1, 3, ( 1,  0));
-            (1, 3, 1, ( 1,  0));
-            (1, 2, 4, (-1,  0));
-            (1, 4, 2, (-1,  0));
-            (2, 1, 3, ( 0,  1));
-            (2, 3, 1, ( 0,  1));
-            (2, 2, 4, ( 0,  1));
-            (2, 4, 2, ( 0,  1));
-            (3, 1, 4, (-1,  0));
-            (3, 4, 1, (-1,  0));
-            (3, 2, 3, (-1,  0));
-            (3, 3, 2, (-1,  0)) ]
+          [ (0, [ (1, 4, ( 1,  0));
+		  (4, 1, ( 1,  0));
+		  (2, 3, (-1,  0));
+		  (3, 2, (-1,  0)) ]);
+            (1, [ (1, 3, ( 1,  0));
+		  (3, 1, ( 1,  0));
+		  (2, 4, (-1,  0));
+		  (4, 2, (-1,  0)) ]);
+            (2, [ (1, 3, ( 0,  1));
+		  (3, 1, ( 0,  1));
+		  (2, 4, ( 0,  1));
+		  (4, 2, ( 0,  1)) ]);
+            (3, [ (1, 4, (-1,  0));
+		  (4, 1, (-1,  0));
+		  (2, 3, (-1,  0));
+		  (3, 2, (-1,  0)) ]) ]
 
         let tensor =
-          []
+          [ (* TODO!!! *) ]
 
         let axial =
-          [ (0, 1, 4, (-1,  0));
-            (0, 4, 1, ( 1,  0));
-            (0, 2, 3, ( 1,  0));
-            (0, 3, 2, (-1,  0));
-            (1, 1, 3, (-1,  0));
-            (1, 3, 1, ( 1,  0));
-            (1, 2, 4, ( 1,  0));
-            (1, 4, 2, (-1,  0));
-            (2, 1, 3, ( 0, -1));
-            (2, 3, 1, ( 0,  1));
-            (2, 2, 4, ( 0, -1));
-            (2, 4, 2, ( 0,  1));
-            (3, 1, 4, ( 1,  0));
-            (3, 4, 1, (-1,  0));
-            (3, 2, 3, ( 1,  0));
-            (3, 3, 2, (-1,  0)) ]
+          [ (0, [ (1, 4, (-1,  0));
+		  (4, 1, ( 1,  0));
+		  (2, 3, ( 1,  0));
+		  (3, 2, (-1,  0)) ]);
+            (1, [ (1, 3, (-1,  0));
+		  (3, 1, ( 1,  0));
+		  (2, 4, ( 1,  0));
+		  (4, 2, (-1,  0)) ]);
+            (2, [ (1, 3, ( 0, -1));
+		  (3, 1, ( 0,  1));
+		  (2, 4, ( 0, -1));
+		  (4, 2, ( 0,  1)) ]);
+	    (3, [ (1, 4, ( 1,  0));
+		  (4, 1, (-1,  0));
+		  (2, 3, ( 1,  0));
+		  (3, 2, (-1,  0)) ]) ]
 
         let pseudo =
           [ (1, 1, (-1,  0));
@@ -497,13 +513,16 @@ module Lorentz : Lorentz =
         module Map3 =
           Map.Make
             (struct
-              type t = int * int * int
+              type t = int * (int * int)
               let compare = Pervasives.compare
             end)
             
         let init3 quadruples =
           List.fold_left
-            (fun acc (mu, i, j, e) -> Map3.add (mu, i, j) e acc)
+            (fun acc (mu, gamma) ->
+	     List.fold_right
+	       (fun (i, j, e) -> Map3.add (mu, (i, j)) e)
+	       gamma acc)
             Map3.empty quadruples
 
         let bounds_check3 mu i j =
@@ -513,18 +532,21 @@ module Lorentz : Lorentz =
 
         let lookup3 map mu i j =
           bounds_check3 mu i j;
-          try Map3.find (mu, i, j) map with Not_found -> (0, 0)
+          try Map3.find (mu, (i, j)) map with Not_found -> (0, 0)
 
         module Map4 =
           Map.Make
             (struct
-              type t = int * int * int * int
+              type t = int * int * (int * int)
               let compare = Pervasives.compare
             end)
             
         let init4 quadruples =
           List.fold_left
-            (fun acc (mu, nu, i, j, e) -> Map4.add (mu, nu, i, j) e acc)
+            (fun acc (mu, nu, gamma) ->
+	     List.fold_right
+	       (fun (i, j, e) -> Map4.add (mu, nu, (i, j)) e)
+	       gamma acc)
             Map4.empty quadruples
 
         let bounds_check4 mu nu i j =
@@ -534,7 +556,7 @@ module Lorentz : Lorentz =
 
         let lookup4 map mu nu i j =
           bounds_check4 mu nu i j;
-          try Map4.find (mu, nu, i, j) map with Not_found -> (0, 0)
+          try Map4.find (mu, nu, (i, j)) map with Not_found -> (0, 0)
 
         let scalar_map = init2 M.scalar
         let vector_map = init3 M.vector
