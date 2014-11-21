@@ -91,6 +91,10 @@ type field = Field.t
 module type Lorentz =
   sig
 
+    (* We combine indices~[I] and offsets~[F] into the field array
+       into a single type so that we can unify vectors with vector
+       components.  *)
+
     type index = I of int | F of field
 
     type vector = Vector of index
@@ -98,6 +102,10 @@ module type Lorentz =
     type spinor = Spinor of index
 
     type conjspinor = ConjSpinor of index
+
+    (* These are all the primitive ways to construct Lorentz tensors,
+       a.\,k.\,a.~objects with Lorentz indices, from momenta, other
+       Lorentz tensors and Dirac spinors: *)
 
     type primitive =
       | G of vector * vector                       (* $g_{\mu_1\mu_2}$ *)
@@ -262,10 +270,6 @@ module Lorentz : Lorentz =
 
     let spinor_sandwitch_ok context i j =
       conjspinor_ok context i && spinor_ok context j
-
-    (* These are all the primitive ways to construct Lorentz tensors,
-       a.\,k.\,a.~objects with Lorentz indices, from momenta, other
-       Lorentz tensors and Dirac spinors: *)
 
     type primitive =
       | G of vector * vector
