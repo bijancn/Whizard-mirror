@@ -53,8 +53,8 @@ libwhizard_core_la_SOURCES = \
   hep_common.f90 hep_events.f90 \
   hoppet_interface.f90 \
   eio_data.f90 eio_base.f90 eio_raw.f90 eio_checkpoints.f90 \
-  eio_lhef.f90 \
-  eio_hepmc.f90 eio_ascii.f90 eio_stdhep.f90 eio_weights.f90 \
+  eio_lhef.f90 eio_hepmc.f90 eio_ascii.f90 \
+  eio_lcio.f90 eio_stdhep.f90 eio_weights.f90 \
   rt_data.f90  \
   blha_config.f90 blha_interface.f90 blha_driver.f90 \
   slha_interface.f90 dispatch.f90 \
@@ -96,7 +96,8 @@ module_lists = \
   ../particles/Modules \
   ../beams/Modules \
   ../phase_space/Modules \
-  ../mci/Modules
+  ../mci/Modules \
+  ../shower/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -143,9 +144,6 @@ $(libwhizard_core_la_OBJECTS): \
   ../../circe2/src/circe2.$(FC_MODULE_EXT)
 ## Dependency libshower (kinds, constants, strings) and VAMP
 #$(libwhizard_core_la_OBJECTS): \
-  ../shower/shower_module.$(FC_MODULE_EXT) \
-  ../shower/shower_particle.$(FC_MODULE_EXT) \
-  ../shower/shower_basics.$(FC_MODULE_EXT) \
   ../pdf_builtin/pdf_builtin.$(FC_MODULE_EXT) \
   ../muli/muli.$(FC_MODULE_EXT)
 

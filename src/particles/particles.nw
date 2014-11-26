@@ -18,6 +18,9 @@ flavor, color, and a single-particle density matrix for polarization.
 \item[hepmc\_interface]
   Access particle objects of the HepMC package.  Functional only if this
   package is linked.
+\item[lcio\_interface]
+  Access objects of the LCIO package.  Functional only if this
+  package is linked.  
 \item[particles]
   Particle objects and particle lists, as the base of event records.
 \end{description}
@@ -3625,6 +3628,237 @@ object can be correctly initialized.
 @ %def hepmc_interface_1
 @ 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{LCIO events}
+This section provides the interface to the LCIO C++ library for handling
+Monte-Carlo events.
+
+Each C++ class of LCIO that we use is mirrored by a Fortran type,
+which contains as its only component the C pointer to the C++ object.
+
+Each C++ method of LCIO that we use has a C wrapper function.  This
+function takes a pointer to the host object as its first argument.
+Further arguments are either C pointers, or in the case of simple
+types (integer, real), interoperable C/Fortran objects.
+
+The C wrapper functions have explicit interfaces in the Fortran
+module.  They are called by Fortran wrapper procedures.  These are
+treated as methods of the corresponding Fortran type.
+<<[[lcio_interface.f90]]>>=
+<<File header>>
+
+module lcio_interface
+
+  use, intrinsic :: iso_c_binding !NODEP!
+  
+<<Use kinds>>
+<<Use strings>>
+  use io_units
+!!  use constants
+  use lorentz
+!!  use unit_tests
+!!  use model_data
+!!  use flavors
+  use colors
+!!  use helicities
+!!  use quantum_numbers
+!!  use polarizations
+
+<<Standard module head>>
+
+<<LCIO interface: public>>
+
+<<LCIO interface: types>>
+
+<<LCIO interface: interfaces>>
+
+contains
+
+<<LCIO interface: procedures>>
+
+<<LCIO interface: tests>>
+
+end module lcio_interface
+@ %def lcio_interface
+@ 
+\subsection{Interface check}
+This function can be called in order to verify that we are using the
+actual LCIO library, and not the dummy version.
+<<LCIO interface: interfaces>>=
+  interface
+     logical(c_bool) function lcio_available () bind(C)
+       import
+     end function lcio_available
+  end interface
+<<LCIO interface: public>>=
+  public :: lcio_is_available
+<<LCIO interface: procedures>>=
+  function lcio_is_available () result (flag)
+    logical :: flag
+    flag = lcio_available ()
+  end function lcio_is_available
+
+@ %def lcio_is_available
+@ 
+\subsection{LCIO Event}
+The main object of LCIO is a LCEventImpl.  The object is filled by
+MCParticle objects, which are set as LCCollection.
+<<LCIO interface: public>>=
+  public :: lcio_event_t
+<<LCIO interface: types>>=
+  type :: lcio_event_t
+     private
+     type(c_ptr) :: obj
+  end type lcio_event_t
+
+@ %def lcio_event_t 
+@ Constructor.  Arguments are process ID (integer) and event ID
+(integer).
+
+The Fortran version has initializer form.
+<<LCIO interface: interfaces>>=
+  interface
+     type(c_ptr) function new_lcevent (proc_id, event_id) bind(C)
+       import
+       integer(c_int), value :: proc_id, event_id
+     end function new_lcevent
+  end interface
+@ %def new_lcevent
+<<LCIO interface: public>>=
+  public :: lcio_event_init
+<<LCIO interface: procedures>>=
+  subroutine lcio_event_init (evt, proc_id, event_id)
+    type(lcio_event_t), intent(out) :: evt
+    integer, intent(in), optional :: proc_id, event_id
+    integer(c_int) :: pid, eid
+    pid = 0;  if (present (proc_id))  pid = proc_id
+    eid = 0;  if (present (event_id)) eid = event_id
+    evt%obj = new_lcevent (pid, eid)
+  end subroutine lcio_event_init
+
+@ %def lcio_event_init
+@ Destructor.
+<<LCIO interface: interfaces>>=
+  interface
+     subroutine lcevent_delete (evt_obj) bind(C)
+       import
+       type(c_ptr), value :: evt_obj
+     end subroutine lcevent_delete
+  end interface
+@ %def lcevent_delete
+<<LCIO interface: public>>=
+  public :: lcio_event_final
+<<LCIO interface: procedures>>=
+  subroutine lcio_event_final (evt)
+    type(lcio_event_t), intent(inout) :: evt
+    call lcevent_delete (evt%obj)
+  end subroutine lcio_event_final
+
+@ %def lcio_event_final
+\subsection{LCIO Particle}
+Particle objects have the obvious meaning.
+<<LCIO interface: public>>=
+  public :: lcio_particle_t
+<<LCIO interface: types>>=
+  type :: lcio_particle_t
+     private
+     type(c_ptr) :: obj
+  end type lcio_particle_t
+
+@ %def lcio_particle_t
+@ Constructor. Do we need a destructor?
+<<LCIO interface: interfaces>>=
+  interface
+     type(c_ptr) function new_lcio_particle (mom, pdg_id, mass, status) bind(C)
+       import
+       integer(c_int), value :: pdg_id, status
+       real(c_double), value :: mass
+       real(c_double), dimension(3) :: mom
+     end function new_lcio_particle
+  end interface
+@ %def new_lcio_particle
+<<LCIO interface: public>>=
+  public :: lcio_particle_init
+<<LCIO interface: procedures>>=
+  subroutine lcio_particle_init (prt, p, pdg, status, mass)
+    type(lcio_particle_t), intent(out) :: prt
+    type(vector4_t), intent(in) :: p
+    real(default), intent(in) :: mass
+    real(default) :: px, py, pz
+    integer, intent(in) :: pdg, status
+    px = vector4_get_component (p, 1)
+    py = vector4_get_component (p, 2)
+    pz = vector4_get_component (p, 3)
+    prt%obj = new_lcio_particle ([real (px, c_double), real (py, c_double), &
+         real (pz, c_double)], int (pdg, c_int), &
+         real (mass, c_double), int (status, c_int))
+  end subroutine lcio_particle_init
+
+@ %def lcio_particle_init
+@ Set the particle color flow.
+<<LCIO interface: interfaces>>=
+  interface
+     subroutine lcio_set_color_flow (prt_obj, col) bind(C)
+       import
+       type(c_ptr), intent(inout) :: prt_obj
+       integer(c_int), dimension(2), intent(in) :: col
+     end subroutine lcio_set_color_flow
+  end interface
+@ %def lcio_set_color_flow
+@ Set the particle color.  Either from a [[color_t]] object or
+directly from a pair of integers.
+<<LCIO interface: interfaces>>=
+  interface lcio_particle_set_color
+     module procedure lcio_particle_set_color_col
+     module procedure lcio_particle_set_color_int
+  end interface lcio_particle_set_color
+<<LCIO interface: public>>=
+  public :: lcio_particle_set_color
+<<LCIO interface: procedures>>=
+  subroutine lcio_particle_set_color_col (prt, col)
+    type(lcio_particle_t), intent(inout) :: prt
+    type(color_t), intent(in) :: col
+    integer(c_int), dimension(2) :: c
+    c(1) = color_get_col (col)
+    c(2) = color_get_acl (col)    
+    if (c(1) /= 0 .and. c(2) /= 0)  then
+       call lcio_set_color_flow (prt%obj, c)
+    end  if
+  end subroutine lcio_particle_set_color_col
+
+  subroutine lcio_particle_set_color_int (prt, col)
+    type(lcio_particle_t), intent(inout) :: prt
+    integer, dimension(2), intent(in) :: col
+    integer(c_int), dimension(2) :: c
+    c = col
+    if (c(1) /= 0 .and. c(2) /= 0) then
+       call lcio_set_color_flow (prt%obj, c)
+    end if
+  end subroutine lcio_particle_set_color_int
+
+@ %def lcio_particle_set_color
+@
+@ Return the particle color as a two-dimensional array (color, anticolor).
+<<LCIO interface: interfaces>>=
+  interface
+     subroutine lcio_particle_get_flow (prt_obj, flow) bind(C)
+       import
+       type(c_ptr), intent(in), value :: prt_obj
+       integer(c_int), dimension(2), intent(out) :: flow
+     end subroutine lcio_particle_get_flow
+  end interface
+@ %def lcio_particle_get_flow
+<<LCIO interface: public>>=
+  public :: lcio_particle_get_color
+<<LCIO interface: procedures>>=
+  function lcio_particle_get_color (prt) result (col)
+    integer, dimension(2) :: col
+    type(lcio_particle_t), intent(in) :: prt
+    call lcio_particle_get_flow (prt%obj, col)
+  end function lcio_particle_get_color
+
+@ %def lcio_particle_get_color
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 \section{Particles}
 This module defines the [[particle_t]] object type, and the methods
 and operations that deal with it.

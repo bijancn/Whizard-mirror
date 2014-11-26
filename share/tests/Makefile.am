@@ -499,6 +499,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/smtest_14.ref \
     ref-output/smtest_15.ref \
     ref-output/smtest_16.ref \
+    ref-output/smtest_17.ref \
     ref-output/mssmtest.ref \
     ref-output/show_1.ref \
     ref-output/show_2.ref \
@@ -809,6 +810,7 @@ MISC_TESTS_SIN = \
     smtest_14.sin \
     smtest_15.sin \
     smtest_16.sin \
+    smtest_17.sin \
     mssmtest.sin \
     show_1.sin \
     show_2.sin \

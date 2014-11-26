@@ -1,4 +1,4 @@
-(* $Id: coupling.mli 6222 2014-10-13 08:40:53Z ohl $
+(* $Id: coupling.mli 6264 2014-11-14 15:40:49Z fbach $
 
    Copyright (C) 1999-2014 by
 
@@ -190,9 +190,9 @@ type width =
 type fermion = Psi | Chi | Grav 
 type fermionbar = Psibar | Chibar | Gravbar 
 type boson =
-  | SP | SPM | S | P | SL | SR | SLR | VA | V | A | VL | VR | VLR | VLRM
+  | SP | SPM | S | P | SL | SR | SLR | VA | V | A | VL | VR | VLR | VLRM | VAM
   | TVA | TLR | TRL | TVAM | TLRM | TRLM
-  | POT | MOM | MOM5 | MOML | MOMR | LMOM | RMOM | VMOM | VA2
+  | POT | MOM | MOM5 | MOML | MOMR | LMOM | RMOM | VMOM | VA2 | VA3 | VA3M
 type boson2 = S2 | P2 | S2P | S2L | S2R | S2LR 
   | SV | PV | SLV | SRV | SLRV | V2 | V2LR
 

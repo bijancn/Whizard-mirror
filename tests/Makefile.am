@@ -232,6 +232,7 @@ TESTS_REQ_OCAML = \
     smtest_14.run \
     smtest_15.run \
     smtest_16.run \
+    smtest_17.run \
     mssmtest.run \
     show_1.run \
     show_2.run \
@@ -663,7 +664,7 @@ clean-local:
 	rm -f *.makefile
 	rm -rf err-output
 	rm -rf ref-output
-	rm -f *.sin
+	rm -f *.sin *.hbc
 	rm -f *.phs *.vg *.vgb *.evt *.evx *.lhe *.hepmc *.dat *.debug 
 	rm -f *.tmp *.hepevt *.hepevt.verb *.lha *.lha.verb
 	rm -f prc_omega_diags_1_p_i1_diags.out prc_omega_diags_1_p_i1_diags.toc

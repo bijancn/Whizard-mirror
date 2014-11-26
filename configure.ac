@@ -736,6 +736,11 @@ AC_CONFIG_FILES([src/phase_space/Makefile])
 AC_CONFIG_FILES([src/models/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/models/SM_tt_threshold_bundle
+
+AC_CONFIG_FILES([src/models/SM_tt_threshold_bundle/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory src/models/threeshl_bundle
 
 AC_CONFIG_FILES([src/models/threeshl_bundle/Makefile])

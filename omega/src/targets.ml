@@ -1,4 +1,4 @@
-(* $Id: targets.ml 6086 2014-08-28 10:16:08Z bchokoufe $
+(* $Id: targets.ml 6295 2014-11-21 18:58:53Z bchokoufe $
 
    Copyright (C) 1999-2014 by
 
@@ -26,8 +26,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 6086 $";
-      RCS.date = "$Date: 2014-08-28 12:16:08 +0200 (Do, 28 Aug 2014) $";
+    { RCS.revision = "$Revision: 6295 $";
+      RCS.date = "$Date: 2014-11-21 19:58:53 +0100 (Fri, 21 Nov 2014) $";
       RCS.author = "$Author: bchokoufe $";
       RCS.source
         = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets.ml $" }
@@ -50,7 +50,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
   struct
     let rcs_list =
       [RCS.rename rcs_file "Targets.VM"
-                  ["First version"]]
+                  ["Virtual Machine able to compute amplitudes from byte code"]]
 
     open Coupling
     open Format
@@ -65,17 +65,27 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     (*i TODO: (bcn 2014-07-21) Not handled yet i*)
     type diagnostic = All | Arguments | Momenta | Gauge
 
-    (*i TODO: (bcn 2014-07-21) Add some sensible options i*)
-    let parameter_module = ref "ovm_parameter_wrapper"
+    let wrapper_module = ref "ovm_wrapper"
     let parameter_module_external = ref "some_external_module_with_model_info"
+    let bytecode_file = ref "bytecode.hbc"
+    let md5sum = ref None
+    let openmp = ref false
     let kind = ref "default"
+    let whizard = ref false
 
     let options = Options.create
-      [ "parameter_module", Arg.String (fun s -> parameter_module := s),
-        "parameter_module";
+      [ "wrapper_module", Arg.String (fun s -> wrapper_module := s),
+          "name of wrapper module";
+        "bytecode_file", Arg.String (fun s -> bytecode_file := s),
+          "bytecode file to be used in wrapper";
         "parameter_module_external", Arg.String (fun s ->
-          parameter_module_external := s),
-        "parameter_module_external" ]
+                                     parameter_module_external := s),
+          "external parameter module to be used in wrapper";
+        "md5sum", Arg.String (fun s -> md5sum := Some s),
+          "transfer MD5 checksum in wrapper";
+        "whizard", Arg.Set whizard, "include WHIZARD interface in wrapper";
+        "openmp", Arg.Set openmp,
+          "activate parallel computation of amplitude with OpenMP"]
 
 (* This is part of OCaml 4.01. *)
     let (|>) fn x = x fn
@@ -180,6 +190,13 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let ovm_FUSE_V_SSV = -47
     let ovm_FUSE_S_SSS = -48
     let ovm_FUSE_V_VVV = -49
+
+    let ovm_FUSE_S_G2 = -50
+    let ovm_FUSE_G_SG = -51
+    let ovm_FUSE_G_GS = -52
+    let ovm_FUSE_S_G2_SKEW = -53
+    let ovm_FUSE_G_SG_SKEW = -54
+    let ovm_FUSE_G_GS_SKEW = -55
 
     let inst_length = 8
 
@@ -454,9 +471,9 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       printf "@\n  %s" cmdline;
       (*i
       let t = Unix.localtime (Unix.time() ) in
-        printf "@\n %s %5d %5d %5d" "on " (succ t.Unix.tm_mon) t.Unix.tm_mday
-               t.Unix.tm_year
-      i*)
+        printf "@\n on %5d %5d %5d" (succ t.Unix.tm_mon) t.Unix.tm_mday
+               t.Unix.tm_year;
+       i*)
       printf "@\n"
 
     let num_classified_wfs wfs =
@@ -695,7 +712,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
             if c1 <= c2 then begin
               match table.(c1).(c2) with
               | [] -> ()
-              | cf -> printf "@\n"; List.iter (printf "%d ")
+              | cf -> printf "@\n"; List.iter (printf "%9d")
                 ([succ c1; succ c2] @ (format_powers cf));
             end
           done
@@ -926,7 +943,9 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         List.fold_left print_external_amp WFSet.empty
           (CF.processes lookups.amplitudes)
         )
-      (*i List.iter (print_ext_amp lookups) (CF.processes lookups.amplitudes) i*)
+      (*i
+      List.iter (print_ext_amp lookups) (CF.processes lookups.amplitudes)
+      i*)
 
 (* \thocwmodulesubsection{Currents} *)
 
@@ -1119,11 +1138,26 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           | Aux_Vector_DScalar _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim5_Scalar_Gauge2 _ ->
-              failwith "print_current: V3: not implemented"
+          | Dim5_Scalar_Gauge2 coeff ->
+              let printc code r1 r2 r3 r4 =  printi code
+                ~lhs:lhs ~coupl:c ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3
+                ~rhs4:r4  in
+              begin match fusion with
+              | (F23|F32) -> printc ovm_FUSE_S_G2 wf1 p1 wf2 p2
+              | (F12|F13) -> printc ovm_FUSE_G_SG wf1 p1 wf2 p2
+              | (F21|F31) -> printc ovm_FUSE_G_GS wf2 p2 wf1 p1
+              end
 
-          | Dim5_Scalar_Gauge2_Skew _ ->
-              failwith "print_current: V3: not implemented"
+          | Dim5_Scalar_Gauge2_Skew coeff ->
+              let printc code ?flip:(f = 1) r1 r2 r3 r4 =  printi code
+                ~lhs:lhs ~coupl:(c*f) ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3
+                ~rhs4:r4  in
+              begin match fusion with
+              | (F23|F32) -> printc ovm_FUSE_S_G2_SKEW wf1 p1 wf2 p2
+              | (F12|F13) -> printc ovm_FUSE_G_SG_SKEW wf1 p1 wf2 p2
+              | (F21|F31) -> printc ovm_FUSE_G_GS_SKEW wf2 p1 wf1 p2 ~flip:(-1)
+              end
+
 
           | Dim5_Scalar_Vector_Vector_T _ ->
               failwith "print_current: V3: not implemented"
@@ -1359,6 +1393,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let amplitudes_to_channel (cmdline : string) (oc : out_channel)
       (diagnostics : (diagnostic * bool) list ) (amplitudes : CF.amplitudes) =
 
+      set_formatter_out_channel oc;
       if (num_particles amplitudes = 0) then begin
         print_description cmdline;
         print_zero_header (); nl ()
@@ -1388,19 +1423,17 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         print_all_fusions lookups;
         break ();
         print_all_brakets lookups;
-        break (); nl ()
+        break (); nl ();
+        print_flush ()
       end
 
-(* Still under heavy construction. *)
-
-    let parameters_to_fortran _ _ =
-     (*i The -params options is not really up to date to the used
-       * parameters.SM.f90 in Whizard and even to the used vertices in the
-       * models. I can still use it as wrapper between OVM and Whizard. Most
+    let parameters_to_fortran oc _ =
+     (*i The -params options is used as wrapper between OVM and Whizard. Most
        * trouble for the OVM comes from the array dimensionalities of couplings
        * but O'Mega should also know whether a constant is real or complex.
        * Hopefully all will be clearer with the fully general Lorentz structures
        * and UFO support. For now, we stick with this brute-force solution. i*)
+      set_formatter_out_channel oc;
       let arrays_to_set = not (IMap.is_empty (snd constants_map)) in
       let set_coupl ty dim cmap = IMap.iter (fun key elt ->
         printf "    %s(%s%d) = %s" ty dim key (M.constant_symbol elt);
@@ -1412,16 +1445,172 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           printf "  complex(%s), dimension(2, %d) :: ovm_coupl_cmplx2"
             !kind (constants_map |> snd |> largest_key); nl () in
       let print_line str = printf "%s" str; nl() in
+      let print_md5sum = function
+          | Some s ->
+            print_line "  function md5sum ()";
+            print_line "    character(len=32) :: md5sum";
+            print_line ("    bytecode_file = '" ^ !bytecode_file ^ "'");
+            print_line "    call initialize_vm (vm, bytecode_file)";
+            print_line "    ! DON'T EVEN THINK of modifying the following line!";
+            print_line ("    md5sum = '" ^ s ^ "'");
+            print_line "  end function md5sum";
+          | None -> ()
+      in
+      let print_inquiry_function_openmp () = begin
+        print_line "  pure function openmp_supported () result (status)";
+        print_line "    logical :: status";
+        print_line ("    status = " ^ (if !openmp then ".true." else ".false."));
+        print_line "  end function openmp_supported";
+        nl ()
+      end in
+      let print_interface whizard =
+      if whizard then begin
+        print_line "  subroutine init (par)";
+        print_line "    real(kind=default), dimension(*), intent(in) :: par";
+        print_line ("     bytecode_file = '" ^ !bytecode_file ^ "'");
+        print_line "    call import_from_whizard (par)";
+        print_line "    call initialize_vm (vm, bytecode_file)";
+        print_line "  end subroutine init";
+        nl ();
+        print_line "  subroutine final ()";
+        print_line "    call vm%final ()";
+        print_line "  end subroutine final";
+        nl ();
+        print_line "  subroutine update_alpha_s (alpha_s)";
+        print_line ("    real(kind=" ^ !kind ^ "), intent(in) :: alpha_s");
+        print_line "    call model_update_alpha_s (alpha_s)";
+        print_line "  end subroutine update_alpha_s";
+        nl ()
+      end
+      else begin
+        print_line "  subroutine init ()";
+        print_line ("     bytecode_file = '" ^ !bytecode_file ^ "'");
+        print_line "     call init_parameters ()";
+        print_line "     call initialize_vm (vm, bytecode_file)";
+        print_line "  end subroutine"
+      end in
+      let print_lookup_functions () = begin
+        print_line "  pure function number_particles_in () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_particles_in ()";
+        print_line "  end function number_particles_in";
+        nl();
+        print_line "  pure function number_particles_out () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_particles_out ()";
+        print_line "  end function number_particles_out";
+        nl();
+        print_line "  pure function number_spin_states () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_spin_states ()";
+        print_line "  end function number_spin_states";
+        nl();
+        print_line "  pure subroutine spin_states (a)";
+        print_line "    integer, dimension(:,:), intent(out) :: a";
+        print_line "    call vm%spin_states (a)";
+        print_line "  end subroutine spin_states";
+        nl();
+        print_line "  pure function number_flavor_states () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_flavor_states ()";
+        print_line "  end function number_flavor_states";
+        nl();
+        print_line "  pure subroutine flavor_states (a)";
+        print_line "    integer, dimension(:,:), intent(out) :: a";
+        print_line "    call vm%flavor_states (a)";
+        print_line "  end subroutine flavor_states";
+        nl();
+        print_line "  pure function number_color_indices () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_color_indices ()";
+        print_line "  end function number_color_indices";
+        nl();
+        print_line "  pure function number_color_flows () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_color_flows ()";
+        print_line "  end function number_color_flows";
+        nl();
+        print_line "  pure subroutine color_flows (a, g)";
+        print_line "    integer, dimension(:,:,:), intent(out) :: a";
+        print_line "    logical, dimension(:,:), intent(out) :: g";
+        print_line "    call vm%color_flows (a, g)";
+        print_line "  end subroutine color_flows";
+        nl();
+        print_line "  pure function number_color_factors () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_color_factors ()";
+        print_line "  end function number_color_factors";
+        nl();
+        print_line "  pure subroutine color_factors (cf)";
+        print_line "    use omega_color";
+        print_line "    type(omega_color_factor), dimension(:), intent(out) :: cf";
+        print_line "    call vm%color_factors (cf)";
+        print_line "  end subroutine color_factors";
+        nl();
+        print_line "  !pure unless OpenMP";
+        print_line "  !pure function color_sum (flv, hel) result (amp2)";
+        print_line "  function color_sum (flv, hel) result (amp2)";
+        print_line "    use kinds";
+        print_line "    integer, intent(in) :: flv, hel";
+        print_line "    real(kind=default) :: amp2";
+        print_line "    amp2 = vm%color_sum (flv, hel)";
+        print_line "  end function color_sum";
+        nl();
+        print_line "  subroutine new_event (p)";
+        print_line "    use kinds";
+        print_line "    real(kind=default), dimension(0:3,*), intent(in) :: p";
+        print_line "    call vm%new_event (p)";
+        print_line "  end subroutine new_event";
+        nl();
+        print_line "  subroutine reset_helicity_selection (threshold, cutoff)";
+        print_line "    use kinds";
+        print_line "    real(kind=default), intent(in) :: threshold";
+        print_line "    integer, intent(in) :: cutoff";
+        print_line "    call vm%reset_helicity_selection (threshold, cutoff)";
+        print_line "  end subroutine reset_helicity_selection";
+        nl();
+        print_line "  pure function is_allowed (flv, hel, col) result (yorn)";
+        print_line "    logical :: yorn";
+        print_line "    integer, intent(in) :: flv, hel, col";
+        print_line "    yorn = vm%is_allowed (flv, hel, col)";
+        print_line "  end function is_allowed";
+        nl();
+        print_line "  pure function get_amplitude (flv, hel, col) result (amp_result)";
+        print_line "    use kinds";
+        print_line "    complex(kind=default) :: amp_result";
+        print_line "    integer, intent(in) :: flv, hel, col";
+        print_line "    amp_result = vm%get_amplitude(flv, hel, col)";
+        print_line "  end function get_amplitude";
+        nl();
+      end in
       let rcs_str s = String.sub s 0 (String.length s - 1) in
       let rcs_tags = rcs_list @ [M.rcs] |> List.map version_string
                                         |> List.map rcs_str in
 
-      print_line ("module " ^ !parameter_module);
+      print_line ("module " ^ !wrapper_module);
       print_line ("  use " ^ !parameter_module_external);
       print_line "  use iso_varying_string, string_t => varying_string";
       print_line "  use kinds";
       print_line "  use omegavm95";
       print_line "  implicit none";
+      print_line "  private";
+      print_line "  type(vm_t) :: vm";
+      print_line "  type(string_t) :: bytecode_file";
+      print_line ("  public :: number_particles_in, number_particles_out," ^
+          " number_spin_states, &");
+      print_line ("    spin_states, number_flavor_states, flavor_states," ^
+          " number_color_indices, &");
+      print_line ("    number_color_flows, color_flows," ^
+          " number_color_factors, color_factors, &");
+      print_line ("    color_sum, new_event, reset_helicity_selection," ^
+          " is_allowed, get_amplitude, &");
+      print_line ("    init, " ^ 
+          (match !md5sum with Some _ -> "md5sum, "
+                            | None -> "") ^ "openmp_supported");
+      if !whizard then
+        print_line ("  public :: final, update_alpha_s")
+      else
+        print_line ("  public :: initialize_vm");
       declarations ();
       print_line "contains";
 
@@ -1435,17 +1624,23 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       print_line "    type(string_t), intent(in) :: bytecode_file";
       print_line "    type(string_t) :: version";
       print_line "    type(string_t) :: model";
-      print_line ("   version = '" ^ List.nth rcs_tags 0 ^ "'");
-      print_line ("   model = '" ^ List.nth rcs_tags 1 ^ "'");
+      print_line ("    version = '" ^ List.nth rcs_tags 0 ^ "'");
+      print_line ("    model = '" ^ List.nth rcs_tags 1 ^ "'");
       print_line "    call setup_couplings ()";
       print_line "    call vm%init (bytecode_file, version, model, verbose=.False., &";
       print_line "      coupl_cmplx=ovm_coupl_cmplx, &";
       if arrays_to_set then
         print_line "      coupl_cmplx2=ovm_coupl_cmplx2, &";
-      print_line "      mass=mass, width=width) ";
+      print_line ("      mass=mass, width=width, openmp=" ^ (if !openmp then
+        ".true." else ".false.") ^ ")");
       print_line "  end subroutine initialize_vm";
+      nl();
+      print_md5sum !md5sum;
+      print_inquiry_function_openmp ();
+      print_interface !whizard;
+      print_lookup_functions ();
 
-      print_line ("end module " ^ !parameter_module);
+      print_line ("end module " ^ !wrapper_module);
       print_line "! O'Mega revision control information:";
       ThoList.flatmap RCS.summary (M.rcs :: rcs_list) |>
         List.iter (fun s -> printf "!    %s" s; nl ())
@@ -1575,7 +1770,7 @@ module Fortran_Fermions : Fermions =
      JR's coupling constant HACK, necessitated by tho's bad design descition.
    \end{dubious} *)
 
-    let fastener s i ?p () =
+    let fastener s i ?p ?q () =
       try
         let offset = (String.index s '(') in
         if ((String.get s (String.length s - 1)) != ')') then
@@ -1596,8 +1791,11 @@ module Fortran_Fermions : Fermions =
             failwith "fastener: wrong usage of parentheses"
           else
             match p with
-            | None -> s ^ "(" ^ string_of_int i ^ ")"
-            | Some p -> s ^ "(" ^ p ^ "*" ^ p ^ "," ^ string_of_int i ^ ")"
+            | None   -> s ^ "(" ^ string_of_int i ^ ")"
+            | Some p ->
+              match q with
+              | None   -> s ^ "(" ^ p ^ "*" ^ p ^ "," ^ string_of_int i ^ ")"
+              | Some q -> s ^ "(" ^ p ^ "," ^ q ^ "," ^ string_of_int i ^ ")"
 
     let print_fermion_current coeff f c wf1 wf2 fusion =
       let c = format_coupling coeff c in
@@ -1635,7 +1833,7 @@ module Fortran_Fermions : Fermions =
       | F12 -> printf "f_f%s(%s,%s,%s,%s)" f c1 c2 wf1 wf2
       | F21 -> printf "f_f%s(%s,%s,%s,%s)" f c1 c2 wf2 wf1
 
-    let print_fermion_current_mom1 coeff f c wf1 wf2 p1 p2 p12 fusion =
+    let print_fermion_current_mom_v1 coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling coeff c in
       let c1 = fastener c 1 and
           c2 = fastener c 2 in
@@ -1647,7 +1845,7 @@ module Fortran_Fermions : Fermions =
       | F12 -> printf "f_f%s(%s,%s,%s,%s)" f (c1 ~p:p2 ()) (c2 ~p:p2 ()) wf1 wf2
       | F21 -> printf "f_f%s(%s,%s,%s,%s)" f (c1 ~p:p1 ()) (c2 ~p:p1 ()) wf2 wf1
 
-    let print_fermion_current_mom2 coeff f c wf1 wf2 p1 p2 p12 fusion =
+    let print_fermion_current_mom_v2 coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling coeff c in
       let c1 = fastener c 1 and
           c2 = fastener c 2 in
@@ -1659,9 +1857,22 @@ module Fortran_Fermions : Fermions =
       | F12 -> printf "f_f%s(%s,%s,@,%s,%s,%s)" f (c1 ~p:p2 ()) (c2 ~p:p2 ()) wf1 wf2 p2
       | F21 -> printf "f_f%s(%s,%s,@,%s,%s,%s)" f (c1 ~p:p1 ()) (c2 ~p:p1 ()) wf2 wf1 p1
 
+    let print_fermion_current_mom_ff coeff f c wf1 wf2 p1 p2 p12 fusion =
+      let c = format_coupling coeff c in
+      let c1 = fastener c 1 and
+          c2 = fastener c 2 in
+      match fusion with
+      | F13 -> printf "%s_ff(%s,%s,%s,%s)" f (c1 ~p:p1 ~q:p2 ()) (c2 ~p:p1 ~q:p2 ()) wf1 wf2
+      | F31 -> printf "%s_ff(%s,%s,%s,%s)" f (c1 ~p:p1 ~q:p2 ()) (c2 ~p:p1 ~q:p2 ()) wf2 wf1
+      | F23 -> printf "f_%sf(%s,%s,%s,%s)" f (c1 ~p:p12 ~q:p2 ()) (c2 ~p:p12 ~q:p2 ()) wf1 wf2
+      | F32 -> printf "f_%sf(%s,%s,%s,%s)" f (c1 ~p:p12 ~q:p1 ()) (c2 ~p:p12 ~q:p1 ()) wf2 wf1
+      | F12 -> printf "f_f%s(%s,%s,%s,%s)" f (c1 ~p:p12 ~q:p1 ()) (c2 ~p:p12 ~q:p1 ()) wf1 wf2
+      | F21 -> printf "f_f%s(%s,%s,%s,%s)" f (c1 ~p:p12 ~q:p2 ()) (c2 ~p:p12 ~q:p2 ()) wf2 wf1
+
     let print_current = function
       | coeff, Psibar, VA, Psi -> print_fermion_current2 coeff "va"
       | coeff, Psibar, VA2, Psi -> print_fermion_current coeff "va2"
+      | coeff, Psibar, VA3, Psi -> print_fermion_current coeff "va3"
       | coeff, Psibar, V, Psi -> print_fermion_current coeff "v"
       | coeff, Psibar, A, Psi -> print_fermion_current coeff "a"
       | coeff, Psibar, VL, Psi -> print_fermion_current coeff "vl"
@@ -1681,14 +1892,16 @@ module Fortran_Fermions : Fermions =
             "Targets.Fortran_Fermions: Gravitinos not handled"
 
     let print_current_mom = function
-      | coeff, Psibar, VLRM, Psi -> print_fermion_current_mom1 coeff "vlr"
-      | coeff, Psibar, SPM, Psi -> print_fermion_current_mom1 coeff "sp"
-      | coeff, Psibar, TVA, Psi -> print_fermion_current_mom1 coeff "tva"
-      | coeff, Psibar, TVAM, Psi -> print_fermion_current_mom2 coeff "tvam"
-      | coeff, Psibar, TLR, Psi -> print_fermion_current_mom1 coeff "tlr"
-      | coeff, Psibar, TLRM, Psi -> print_fermion_current_mom2 coeff "tlrm"
-      | coeff, Psibar, TRL, Psi -> print_fermion_current_mom1 coeff "trl"
-      | coeff, Psibar, TRLM, Psi -> print_fermion_current_mom2 coeff "trlm"
+      | coeff, Psibar, VLRM, Psi -> print_fermion_current_mom_v1 coeff "vlr"
+      | coeff, Psibar, VAM, Psi -> print_fermion_current_mom_ff coeff "va"
+      | coeff, Psibar, VA3M, Psi -> print_fermion_current_mom_ff coeff "va3"
+      | coeff, Psibar, SPM, Psi -> print_fermion_current_mom_v1 coeff "sp"
+      | coeff, Psibar, TVA, Psi -> print_fermion_current_mom_v1 coeff "tva"
+      | coeff, Psibar, TVAM, Psi -> print_fermion_current_mom_v2 coeff "tvam"
+      | coeff, Psibar, TLR, Psi -> print_fermion_current_mom_v1 coeff "tlr"
+      | coeff, Psibar, TLRM, Psi -> print_fermion_current_mom_v2 coeff "tlrm"
+      | coeff, Psibar, TRL, Psi -> print_fermion_current_mom_v1 coeff "trl"
+      | coeff, Psibar, TRLM, Psi -> print_fermion_current_mom_v2 coeff "trlm"
       | _, Psibar, _, Psi -> invalid_arg
             "Targets.Fortran_Fermions: only sigma tensor coupling here"
       | _, Chibar, _, _ | _, _, _, Chi -> invalid_arg
@@ -2514,6 +2727,7 @@ i*)
           | FBF (coeff, fb, b, f) ->
               begin match coeff, fb, b, f with
               | _, Psibar, VLRM, Psi | _, Psibar, SPM, Psi
+              | _, Psibar, VAM, Psi | _, Psibar, VA3M, Psi
               | _, Psibar, TVA, Psi | _, Psibar, TVAM, Psi
               | _, Psibar, TLR, Psi | _, Psibar, TLRM, Psi
               | _, Psibar, TRL, Psi | _, Psibar, TRLM, Psi ->

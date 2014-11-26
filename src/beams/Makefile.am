@@ -25,9 +25,6 @@
 #
 ########################################################################
 
-## The files in this directory implement quantum field theory concepts
-## such as model representation and quantum numbers.
-
 ## We create a library which is still to be combined with auxiliary libs.
 noinst_LTLIBRARIES = libbeams.la
 
@@ -80,7 +77,6 @@ Module_dependencies.sed: $(module_lists)
 
 DISTCLEANFILES = Module_dependencies.sed
 
-
 # The following line just says
 #    include Makefile.depend
 # but in a portable fashion (depending on automake's AM_MAKE_INCLUDE
@@ -120,7 +116,6 @@ if FC_USE_OPENMP
 AM_FCFLAGS += $(FCFLAGS_OPENMP)
 endif
 
-
 ########################################################################
 ## Non-standard targets and dependencies
 
@@ -150,7 +145,6 @@ $(libbeams_la_SOURCES): beams.stamp
 	fi
 
 endif
-
 
 ########################################################################
 ## Non-standard cleanup tasks

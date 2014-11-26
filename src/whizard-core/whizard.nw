@@ -31498,7 +31498,8 @@ end module radiation_generator
     type(pdg_array_t) :: pdg_gluon, pdg_photon
     type(pdg_array_t) :: pdg_add, pdg_tmp
     integer :: i_skip
-
+    i_skip = -1
+    
     n_constraints = 1 + count([set_n_loop, set_mass_sum, &
          set_selected_particles, set_required_particles])
     associate (constraints => generator%constraints)
@@ -31711,8 +31712,16 @@ end module radiation_generator
   subroutine radiation_generator_save_born_raw (generator, pdg_in, pdg_out)
     class(radiation_generator_t), intent(inout) :: generator
     type(pdg_array_t), dimension(:), allocatable, intent(in) :: pdg_in, pdg_out
-    generator%pdg_in_born = pdg_in
-    generator%pdg_out_born = pdg_out
+    integer :: i
+    !!! !!! !!! Explicit allocation due to gfortran 4.7.4 
+    allocate (generator%pdg_in_born (size (pdg_in)))
+    do i = 1, size (pdg_in)
+       generator%pdg_in_born(i) = pdg_in(i)
+    end do
+    allocate (generator%pdg_out_born (size (pdg_out)))
+    do i = 1, size (pdg_out)
+       generator%pdg_out_born(i) = pdg_out(i)
+    end do
   end subroutine radiation_generator_save_born_raw
 
 @ %def radiation_generator_save_born_raw
@@ -53751,8 +53760,6 @@ Fill two process stack, linked to each other.
 @ %def process_stacks_4
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\include{shower}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Events}
 
 With a process object and the associated methods at hand, we can
@@ -53770,10 +53777,9 @@ We have the following modules:
   thus transform the elementary event into a decayed event, still at
   the parton level.
 \item[showers]
-  (not re-activated yet) Create QED/QCD showers out of the partons
-  that are emitted by elementary processes.  This should be
-  interleaved with showering of radiated particles (structure
-  functions) and multiple interactions.
+  Create QED/QCD showers out of the partons that are emitted by
+  elementary processes.  This should be interleaved with showering of
+  radiated particles (structure functions) and multiple interactions.
 \item[hadrons]
   (not implemented yet) Apply hadronization to the partonic events,
   interleaved with hadron decays.  (The current setup relies on
@@ -57220,7 +57226,7 @@ from WHIZARD.
     logical, intent(inout) :: valid
     logical, intent(inout) :: vetoed
     real(kind=double) :: pdftest
-    logical, parameter :: debug = .false., to_file = .false.
+    logical, parameter :: debug = .true., to_file = .false.
 
     type(mlm_matching_data_t) :: mlm_matching_data
     logical, save :: matching_disabled=.false.
@@ -57287,7 +57293,8 @@ from WHIZARD.
           call PYGIVE ('MSTU(13)=1')
        end if
     end if
-    if (debug)  print *, "Shower: beam checks"
+
+    if (debug)  print *, "Shower: beam checks for mlm_matching"
 
     if (.not. matching_disabled) then
        !!! Check if the beams are hadrons
@@ -57309,6 +57316,8 @@ from WHIZARD.
        end if
     end if
     
+    if (debug)  print *, "Shower: apply shower"
+
     !!! SHOWER
     if (shower_settings%ps_use_PYTHIA_shower .or. &
          (.not. shower_settings%ps_fsr_active .and. &
@@ -57322,11 +57331,11 @@ from WHIZARD.
        call apply_WHIZARDshower_particle_set (particle_set, &
             shower_settings, mlm_matching_data%P_ME, model, model_hadrons, &
             os_data, pdf_func, pdf_set, valid, vetoed)
-            if (vetoed) return
+       if (vetoed) return
     end if
     if (debug) then
-       call particle_set_write (particle_set)
        print *, " after SHOWER"
+       call particle_set_write (particle_set)
     end if
        
     if (shower_settings%mlm_matching .and. &
@@ -57355,7 +57364,7 @@ from WHIZARD.
 
     call mlm_matching_data_final (mlm_matching_data)
 
-    if (debug)  print *, "SHOWER+HAD+MATCHING finished"
+    if (debug)  print *, "SHOWER+HADRONIZATION+MATCHING finished"
 
   contains
 
@@ -57498,8 +57507,8 @@ from WHIZARD.
             call PYGIVE ("MSTP(63)=2")
          end if
          if (shower_settings%mlm_matching) then
-            CALL PYGIVE ('MSTP(62)=2')
-            CALL PYGIVE ('MSTP(67)=0')
+            CALL PYGIVE ("MSTP(62)=2")
+            CALL PYGIVE ("MSTP(67)=0")
          end if
          if (debug)  print *, "calling pyinit"
          call PYINIT ("USER", "", "", 0D0)
@@ -57604,7 +57613,7 @@ from WHIZARD.
 
       if (signal_is_pending ()) return          
       
-      ! transfer settings from shower_settings to shower
+      if (debug) print *, "Transfer settings from shower_settings to shower"
       call shower_set_D_Min_t (shower_settings%ps_mass_cutoff**2)
       call shower_set_D_Lambda_fsr (shower_settings%ps_fsr_lambda)
       call shower_set_D_Lambda_isr (shower_settings%ps_isr_lambda)
@@ -57631,7 +57640,7 @@ from WHIZARD.
       call shower_set_pdf_set (pdf_set)
       call shower_set_pdf_func (pdf_func)
 
-      if (.not.msg_written) then
+      if (.not. msg_written) then
          call msg_message ("Using WHIZARD's internal showering")
          msg_written = .true.
       end if
@@ -57669,7 +57678,7 @@ from WHIZARD.
 
          j=0
          if (n_hadrons > 0) then
-            ! Transfer hadrons
+            if (debug) print *, "Transfer hadrons from particle_set to hadrons"
             do i = 1, particle_set_get_n_tot (particle_set)
                if (particle_get_status (particle_set_get_particle &
                     (particle_set, i)) == PRT_BEAM) then
@@ -57692,8 +57701,8 @@ from WHIZARD.
             end do
          end if
 
-         ! transfer incoming partons
          j = 0
+         if (debug) print *, "Transfer incoming partons from particle_set to partons"
          do i = 1, particle_set_get_n_tot (particle_set)
             if (particle_get_status (particle_set_get_particle &
                  (particle_set, i)) == PRT_INCOMING) then
@@ -57724,7 +57733,7 @@ from WHIZARD.
             end if
          end do
          if (signal_is_pending ()) return             
-         !!! transfer outgoing partons
+         if (debug) print *, "Transfer outgoing partons from particle_set to partons"
          do i = 1, particle_set_get_n_tot (particle_set)
             if (particle_get_status (particle_set_get_particle &
                  (particle_set, i)) == PRT_OUTGOING) then
@@ -57748,28 +57757,18 @@ from WHIZARD.
 
          deallocate (connections)
 
-         ! insert these partons in shower
+         if (debug) print *, "Insert partons in shower"
          call shower%set_next_color_nr (1 + max_color_nr)
          call shower%add_interaction_2ton_CKKW &
               (parton_pointers, shower_settings%ckkw_weights)
 
          if (signal_is_pending ()) return             
          if (shower_settings%muli_active) then
+            if (debug) print *, "Activate multiple interactions"
             !!! Initialize muli pdf sets, unless initialized
             if (mi%is_initialized ()) then
                call mi%restart ()
             else
-               if (debug) then
-                  ! call shower%write ()
-                  ! print *, "---------------"
-                  ! call interaction_write (shower%interactions(i)%i)
-                  ! print *, "---------------"
-                  ! call vector4_write &
-                  !    (shower%interactions(1)%i%partons(1)%p%momentum)
-                  ! call vector4_write &
-                  !    (shower%interactions(1)%i%partons(2)%p%momentum)
-                  ! print *, "---------------"
-               end if
                call mi%initialize (&
                     GeV2_scale_cutoff=D_Min_t, &
                     GeV2_s=shower_interaction_get_s &
@@ -57791,7 +57790,7 @@ from WHIZARD.
          if (signal_is_pending ()) return             
          
          if (shower_settings%ckkw_matching) then
-            ! CKKW Matching
+            if (debug) print *, "Apply CKKW matching"
             call ckkw_matching_apply (shower, &
                  shower_settings%ckkw_settings, &
                  shower_settings%ckkw_weights, vetoed)
@@ -57864,8 +57863,8 @@ from WHIZARD.
                        shower%interactions(1)%i%partons(2)%p%initial)
                   partons(1)%belongstoFSR = .false.
                   partons(2)%belongstoFSR = .false.
-                  !!! calculate color connections
-		  call mi%get_color_correlations &
+                  !!! calculate color connection
+                  call mi%get_color_correlations &
                       (shower%get_next_color_nr (), &
                       max_color_nr,color_corr)
                   call shower%set_next_color_nr (max_color_nr)
@@ -57913,12 +57912,10 @@ from WHIZARD.
                           temppp%p%type, temppp%p%x, ps_scale)
                   end if
 
-                  if (debug)  call shower%write ()
                end if
             end do BRANCHINGS
                
             call shower%generate_fsr_for_isr_partons ()
-            if (debug)  call shower%write ()
          else
             if (signal_is_pending ()) return                
             call shower%simulate_no_isr_shower ()
@@ -57942,8 +57939,8 @@ from WHIZARD.
             call shower%simulate_no_fsr_shower ()
          end if
          if (debug) then
+            write (*, "(A)")  "SHOWER_FINISHED: "
             call shower%write ()
-            write (*, "(A)")  "SHOWER_FINISHED"
          end if
             
          if (shower_settings%mlm_matching) then
@@ -57982,6 +57979,7 @@ from WHIZARD.
          end if
          deallocate (partons)
          deallocate (parton_pointers)
+         print *, 'n_loop =    ', n_loop   !!! Debugging
          exit TRY_SHOWER
       end do TRY_SHOWER
       if (debug) then
@@ -58812,7 +58810,7 @@ from the matrix element generation is available.
     type(ckkw_pseudo_shower_weights_t), intent(inout) :: &
          ckkw_pseudo_shower_weights
     type(particle_set_t), intent(in) :: particle_set
-    integer :: i, j, k
+    integer :: i, j
     integer :: n
     type(vector4_t) :: momentum
 
@@ -62536,6 +62534,10 @@ The standard method for process computation with \whizard\ is the
 This section implements the interface to the code generator (via
 the makefile) and the driver for the features provided by the \oMega\
 matrix element.
+
+There are actually two different methods steered by this interface, the
+traditional one which delivers compiled Fortran code, while the \oMega\ 
+virtual machine (OVM) produces bytecode with look-up tables.
 <<[[prc_omega.f90]]>>=
 <<File header>>
 
@@ -62587,21 +62589,52 @@ For the process definition we implement an extension of the
 <<Omega interface: public>>=
   public :: omega_def_t
 <<Omega interface: types>>=
-  type, extends (prc_core_def_t) :: omega_def_t
+  type, abstract, extends (prc_core_def_t) :: omega_def_t
    contains
    <<Omega interface: omega def: TBP>>
   end type omega_def_t
   
 @ %def omega_def_t
-<<Omega interface: omega def: TBP>>=
-  procedure, nopass :: type_string => omega_def_type_string
+@
+<<Omega interface: public>>=
+  public :: omega_omega_def_t
+<<Omega interface: types>>=
+  type, extends (omega_def_t) :: omega_omega_def_t
+   contains
+   <<Omega interface: omega omega def: TBP>>
+  end type omega_omega_def_t
+  
+@ %def omega_omega_def_t  
+@
+<<Omega interface: public>>=
+  public :: omega_ovm_def_t
+<<Omega interface: types>>=
+  type, extends (omega_def_t) :: omega_ovm_def_t
+   contains
+   <<Omega interface: omega ovm def: TBP>>
+  end type omega_ovm_def_t
+  
+@ %def omega_ovm_def_t  
+@ 
+<<Omega interface: omega omega def: TBP>>=
+  procedure, nopass :: type_string => omega_omega_def_type_string
 <<Omega interface: procedures>>=
-  function omega_def_type_string () result (string)
+  function omega_omega_def_type_string () result (string)
     type(string_t) :: string
     string = "omega"
-  end function omega_def_type_string
+  end function omega_omega_def_type_string
 
-@ %def omega_def_type_string
+@ %def omega_omega_def_type_string
+@ 
+<<Omega interface: omega ovm def: TBP>>=
+  procedure, nopass :: type_string => omega_ovm_def_type_string
+<<Omega interface: procedures>>=
+  function omega_ovm_def_type_string () result (string)
+    type(string_t) :: string
+    string = "ovm"
+  end function omega_ovm_def_type_string
+
+@ %def omega_ovm_def_type_string
 @ Initialization: allocate the writer for the \oMega\ matrix element.
 Also set any data for this process that the writer needs.
 <<Omega interface: omega def: TBP>>=
@@ -62619,12 +62652,23 @@ Also set any data for this process that the writer needs.
     logical, intent(in), optional :: report_progress
     logical, intent(in), optional :: diags, diags_color
     type(string_t), intent(in), optional :: extra_options
-    allocate (omega_writer_t :: object%writer)
-    select type (writer => object%writer)
-    type is (omega_writer_t)
-       call writer%init (model_name, prt_in, prt_out, &
-            restrictions, openmp_support, report_progress, &
-            extra_options, diags, diags_color)
+    select type (object)
+    type is (omega_omega_def_t)
+       allocate (omega_omega_writer_t :: object%writer)
+       select type (writer => object%writer)
+       type is (omega_omega_writer_t)
+          call writer%init (model_name, prt_in, prt_out, &
+               restrictions, openmp_support, report_progress, &
+               extra_options, diags, diags_color)
+       end select
+    type is (omega_ovm_def_t)
+       allocate (omega_ovm_writer_t :: object%writer)
+       select type (writer => object%writer)
+       type is (omega_ovm_writer_t)
+          call writer%init (model_name, prt_in, prt_out, &
+               restrictions, openmp_support, report_progress, &
+               extra_options, diags, diags_color)
+       end select       
     end select
   end subroutine omega_def_init
 
@@ -62637,7 +62681,9 @@ Also set any data for this process that the writer needs.
     class(omega_def_t), intent(in) :: object
     integer, intent(in) :: unit
     select type (writer => object%writer)
-    type is (omega_writer_t)
+    type is (omega_omega_writer_t)
+       call writer%write (unit)
+    type is (omega_ovm_writer_t)
        call writer%write (unit)
     end select
   end subroutine omega_def_write
@@ -62784,7 +62830,7 @@ The \oMega\ writer is responsible for inserting the appropriate lines
 in the makefile that call \oMega, and for writing interfaces and
 wrappers.
 <<Omega interface: types>>=
-  type, extends (prc_writer_f_module_t) :: omega_writer_t
+  type, extends (prc_writer_f_module_t), abstract :: omega_writer_t
      type(string_t) :: model_name
      type(string_t) :: process_mode
      type(string_t) :: process_string
@@ -62799,16 +62845,42 @@ wrappers.
   end type omega_writer_t
 
 @ %def omega_writer_t
-@ The reported type is the same as for the [[omega_def_t]] type.
-<<Omega interface: omega writer: TBP>>=
-  procedure, nopass :: type_name => omega_writer_type_name
+@ 
+<<Omega interface: types>>=
+  type, extends (omega_writer_t) :: omega_omega_writer_t
+   contains
+   <<Omega interface: omega omega writer: TBP>>
+  end type omega_omega_writer_t
+
+@ %def omega_omega_writer_t 
+@ 
+<<Omega interface: types>>=
+  type, extends (omega_writer_t) :: omega_ovm_writer_t
+   contains
+   <<Omega interface: omega ovm writer: TBP>>
+  end type omega_ovm_writer_t
+
+@ %def omega_ovm_writer_t 
+<<Omega interface: omega omega writer: TBP>>=
+  procedure, nopass :: type_name => omega_omega_writer_type_name
 <<Omega interface: procedures>>=
-  function omega_writer_type_name () result (string)
+  function omega_omega_writer_type_name () result (string)
     type(string_t) :: string
     string = "omega"
-  end function omega_writer_type_name
+  end function omega_omega_writer_type_name
 
-@ %def omega_writer_type_name
+@ %def omega_omega_writer_type_name
+@
+<<Omega interface: omega ovm writer: TBP>>=
+  procedure, nopass :: type_name => omega_ovm_writer_type_name
+<<Omega interface: procedures>>=
+  function omega_ovm_writer_type_name () result (string)
+    type(string_t) :: string
+    string = "ovm"
+  end function omega_ovm_writer_type_name
+
+@ %def omega_ovm_writer_type_name
+@
 @ Taking into account the prefix for \oMega\ module names.
 <<Omega interface: omega writer: TBP>>=
   procedure, nopass :: get_module_name => omega_writer_get_module_name
@@ -62916,7 +62988,19 @@ diagrams, at least in the testsuite.
     logical :: escape_hyperref
     escape_hyperref = .false.
     if (present (testflag))  escape_hyperref = testflag
-    omega_binary = "omega_" // writer%model_name // ".opt"
+    select type (writer)
+    type is (omega_omega_writer_t)       
+       omega_binary = "omega_" // writer%model_name // ".opt"
+    type is (omega_ovm_writer_t)
+       select case (char (writer%model_name))
+       case ("SM", "SM_CKM", "SM_Higgs", "2HDM", "2HDM_CKM", &
+             "HSExt", "QED", "QCD", "Zprime")
+       case default
+          call msg_fatal ("The model " // char (writer%model_name) &
+               // " is not available for the O'Mega VM.")
+       end select
+       omega_binary = "omega_" // writer%model_name // "_VM.opt"
+    end select
     omega_path = os_data%whizard_omega_binpath // "/" // omega_binary
     if (writer%restrictions /= "") then
        restrictions_string = " -cascade '" // writer%restrictions // "'"
@@ -62956,6 +63040,10 @@ diagrams, at least in the testsuite.
        kmatrix_string = ""
     end select
     write (unit, "(5A)")  "SOURCES += ", char (id), ".f90"
+    select type (writer)
+    type is (omega_ovm_writer_t)
+       write (unit, "(5A)")  "SOURCES += ", char (id), ".hbc"
+    end select
     if (writer%diags .or. writer%diags_color) then
        write (unit, "(5A)")  "TEX_SOURCES += ", char (id), "_diags.tex"    
        if (os_data%event_analysis_pdf) then
@@ -62964,20 +63052,41 @@ diagrams, at least in the testsuite.
           write (unit, "(5A)")  "TEX_OBJECTS += ", char (id), "_diags.ps"
        end if
     end if
-    write (unit, "(5A)")  "OBJECTS += ", char (id), ".lo"
-    write (unit, "(5A)")  char (id), ".f90:"
-    write (unit, "(99A)")  TAB, char (omega_path), &
-         " -o ", char (id), ".f90", &
-         " -target:whizard", &
-         " -target:parameter_module parameters_", char (writer%model_name), &
-         " -target:module opr_", char (id), &
-         " -target:md5sum '", writer%md5sum, "'", &
-         char (openmp_string), &
-         char (progress_string), &
-         char (kmatrix_string), &
-         char (writer%process_mode), char (writer%process_string), &
-         char (restrictions_string), char (diagrams_string), &
-         char (writer%extra_options)
+    write (unit, "(5A)")  "OBJECTS += ", char (id), ".lo"    
+    select type (writer)
+    type is (omega_omega_writer_t)       
+       write (unit, "(5A)")  char (id), ".f90:"       
+       write (unit, "(99A)")  TAB, char (omega_path), &
+            " -o ", char (id), ".f90", &
+            " -target:whizard", &
+            " -target:parameter_module parameters_", char (writer%model_name), &
+            " -target:module opr_", char (id), &
+            " -target:md5sum '", writer%md5sum, "'", &
+            char (openmp_string), &
+            char (progress_string), &
+            char (kmatrix_string), &
+            char (writer%process_mode), char (writer%process_string), &
+            char (restrictions_string), char (diagrams_string), &
+            char (writer%extra_options)
+    type is (omega_ovm_writer_t)
+       write (unit, "(5A)")  char (id), ".hbc:"
+       write (unit, "(99A)")  TAB, char (omega_path), &
+            " -o ", char (id), ".hbc", &
+            char (progress_string), &
+            char (writer%process_mode), char (writer%process_string), &
+            char (restrictions_string), char (diagrams_string), &
+            char (writer%extra_options)
+       write (unit, "(5A)")  char (id), ".f90:"
+       write (unit, "(99A)")  TAB, char (omega_path), &
+            " -o ", char (id), ".f90 -params", &
+            " -target:whizard ", &
+            " -target:bytecode_file ", char (id), ".hbc", &
+            " -target:wrapper_module opr_", char (id), &
+            " -target:parameter_module_external parameters_", &           
+            char (writer%model_name), &
+            " -target:md5sum '", writer%md5sum, "'", &
+            char (openmp_string)
+    end select
     if (writer%diags .or. writer%diags_color) &
        write (unit, "(5A)")  char (id), "_diags.tex: ", char (id), ".f90"
     write (unit, "(5A)")  "clean-", char (id), ":"
@@ -62985,6 +63094,10 @@ diagrams, at least in the testsuite.
     write (unit, "(5A)")  TAB, "rm -f opr_", char (id), ".mod"
     write (unit, "(5A)")  TAB, "rm -f ", char (id), ".lo"
     write (unit, "(5A)")  "CLEAN_SOURCES += ", char (id), ".f90"    
+    select type (writer)
+    type is (omega_ovm_writer_t)
+       write (unit, "(5A)")  "CLEAN_SOURCES += ", char (id), ".hbc"
+    end select
     if (writer%diags .or. writer%diags_color) then
        write (unit, "(5A)")  "CLEAN_SOURCES += ", char (id), "_diags.tex"
     end if
@@ -63285,9 +63398,9 @@ cause a segfault.
     logical, intent(in), optional :: diags, diags_color
     type(string_t), intent(in), optional :: extra_options
     class(prc_core_def_t), allocatable :: def
-    allocate (omega_def_t :: def)
+    allocate (omega_omega_def_t :: def)
     select type (def)
-    type is (omega_def_t)
+    type is (omega_omega_def_t)
        call def%init (model_name, prt_in, prt_out, &
             restrictions, openmp_support, report_progress, &
             extra_options, diags, diags_color)
@@ -63773,9 +63886,9 @@ parallel make.
     prt_in = [var_str ("e+"), var_str ("e-")]
     prt_out = [var_str ("m+"), var_str ("m-")]
     
-    allocate (omega_def_t :: def)
+    allocate (omega_omega_def_t :: def)
     select type (def)
-    type is (omega_def_t)
+    type is (omega_omega_def_t)
        call def%init (model_name, prt_in, prt_out)
     end select
     allocate (entry)
@@ -64389,9 +64502,9 @@ parallel make.
     prt_in = [var_str ("u"), var_str ("ubar")]
     prt_out = [var_str ("d"), var_str ("dbar")]
     
-    allocate (omega_def_t :: def)
+    allocate (omega_omega_def_t :: def)
     select type (def)
-    type is (omega_def_t)
+    type is (omega_omega_def_t)
        call def%init (model_name, prt_in, prt_out)
     end select
     allocate (entry)
@@ -64534,9 +64647,9 @@ method [[compute_amplitude]].
     prt_in = [var_str ("u"), var_str ("ubar")]
     prt_out = [var_str ("d"), var_str ("dbar")]
     
-    allocate (omega_def_t :: def)
+    allocate (omega_omega_def_t :: def)
     select type (def)
-    type is (omega_def_t)
+    type is (omega_omega_def_t)
        call def%init (model_name, prt_in, prt_out)
     end select
     allocate (entry)
@@ -64676,9 +64789,9 @@ possible.
     prt_in = [var_str ("u"), var_str ("ubar")]
     prt_out = [var_str ("d"), var_str ("dbar")]
     
-    allocate (omega_def_t :: def)
+    allocate (omega_omega_def_t :: def)
     select type (def)
-    type is (omega_def_t)
+    type is (omega_omega_def_t)
        call def%init (model_name, prt_in, prt_out, &
             diags = .true., diags_color = .true.)
     end select
@@ -72299,6 +72412,648 @@ We test the implementation of all I/O methods.
   
 @ %def eio_hepmc_2
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{LCIO Output}
+The LCIO event record is standardized for the use with Linear $e^+e^-$
+colliders. It is a binary event format.  We try our best at using it
+for both input and output. 
+<<[[eio_lcio.f90]]>>=
+<<File header>>
+
+module eio_lcio
+  
+  use kinds
+  use io_units
+<<Use strings>>
+  use unit_tests
+  use diagnostics
+  use os_interface
+  use lorentz
+  use models
+  use particles
+  use subevents
+  use beams
+  use processes
+  use events
+  use hep_events
+  use eio_data
+  use eio_base
+  use lcio_interface
+
+<<Standard module head>>
+
+<<EIO LCIO: public>>
+
+<<EIO LCIO: types>>
+
+<<EIO LCIO: interfaces>>
+
+contains
+  
+<<EIO LCIO: procedures>>
+
+<<EIO LCIO: tests>>
+
+end module eio_lcio
+@ %def eio_lcio
+@
+\subsection{Type}
+A type [[lcio_event]] is introduced as container to store LCIO event
+data, particularly for splitting the reading into read out of the process
+index and the proper event data.
+<<EIO LCIO: public>>=
+  public :: eio_lcio_t
+<<EIO LCIO: types>>=
+  type, extends (eio_t) :: eio_lcio_t
+     logical :: writing = .false.
+     logical :: reading = .false.
+     logical :: keep_beams = .false.
+     logical :: recover_beams = .false.
+     type(lcio_event_t) :: lcio_event
+     integer, dimension(:), allocatable :: proc_num_id
+   contains
+   <<EIO LCIO: eio lcio: TBP>>
+  end type eio_lcio_t
+  
+@ %def eio_lcio_t
+@
+\subsection{Specific Methods}
+Set parameters that are specifically used with LCIO.
+<<EIO LCIO: eio lcio: TBP>>=
+  procedure :: set_parameters => eio_lcio_set_parameters
+<<EIO LCIO: procedures>>=
+  subroutine eio_lcio_set_parameters (eio, keep_beams, &
+       recover_beams, extension)
+    class(eio_lcio_t), intent(inout) :: eio
+    logical, intent(in), optional :: keep_beams
+    logical, intent(in), optional :: recover_beams 
+    type(string_t), intent(in), optional :: extension    
+    if (present (keep_beams))  eio%keep_beams = keep_beams
+    if (present (recover_beams))  eio%recover_beams = recover_beams
+    if (present (extension)) then
+       eio%extension = extension
+    else
+       eio%extension = "slcio"
+    end if
+  end subroutine eio_lcio_set_parameters
+  
+@ %def eio_lcio_set_parameters
+@
+\subsection{Common Methods}
+Output.  This is not the actual event format, but a readable account
+of the current object status.
+<<EIO LCIO: eio lcio: TBP>>=
+  procedure :: write => eio_lcio_write
+<<EIO LCIO: procedures>>=
+  subroutine eio_lcio_write (object, unit)
+    class(eio_lcio_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u, i
+    u = given_output_unit (unit)
+    write (u, "(1x,A)")  "LCIO event stream:"
+    if (object%writing) then
+       write (u, "(3x,A,A)")  "Writing to file   = ", char (object%filename)
+    else if (object%reading) then
+       write (u, "(3x,A,A)")  "Reading from file = ", char (object%filename)
+    else
+       write (u, "(3x,A)")  "[closed]"
+    end if
+    write (u, "(3x,A,L1)")    "Keep beams        = ", object%keep_beams
+    write (u, "(3x,A,L1)")    "Recover beams     = ", object%recover_beams
+    write (u, "(3x,A,A,A)")     "File extension    = '", &
+         char (object%extension), "'"
+    if (allocated (object%proc_num_id)) then
+       write (u, "(3x,A)")  "Numerical process IDs:"
+       do i = 1, size (object%proc_num_id)
+          write (u, "(5x,I0,': ',I0)")  i, object%proc_num_id(i)
+       end do
+    end if    
+  end subroutine eio_lcio_write
+  
+@ %def eio_lcio_write
+@ Finalizer: close any open file.
+<<EIO LCIO: eio lcio: TBP>>=
+  procedure :: final => eio_lcio_final
+<<EIO LCIO: procedures>>=
+  subroutine eio_lcio_final (object)
+    class(eio_lcio_t), intent(inout) :: object
+    if (allocated (object%proc_num_id))  deallocate (object%proc_num_id)
+    if (object%writing) then
+       write (msg_buffer, "(A,A,A)")  "Events: closing LCIO file '", &
+            char (object%filename), "'"
+       call msg_message ()
+       !! call hepmc_iostream_close (object%iostream)
+       object%writing = .false.
+    else if (object%reading) then
+       write (msg_buffer, "(A,A,A)")  "Events: closing LCIO file '", &
+            char (object%filename), "'"
+       call msg_message ()
+       !! call hepmc_iostream_close (object%iostream)
+       object%reading = .false.
+    end if
+  end subroutine eio_lcio_final
+  
+@ %def eio_lcio_final
+@ Split event file: increment the counter, close the current file, open a new
+one.  If the file needs a header, repeat it for the new file.
+<<EIO LCIO: eio lcio: TBP>>=
+  procedure :: split_out => eio_lcio_split_out
+<<EIO LCIO: procedures>>=
+  subroutine eio_lcio_split_out (eio)
+    class(eio_lcio_t), intent(inout) :: eio
+    if (eio%split) then
+       eio%split_index = eio%split_index + 1
+       call eio%set_filename ()
+       write (msg_buffer, "(A,A,A)")  "Events: writing to LCIO file '", &
+            char (eio%filename), "'"
+       call msg_message ()
+       !! call hepmc_iostream_close (eio%iostream)
+       !! call hepmc_iostream_open_out (eio%iostream, eio%filename)
+    end if
+  end subroutine eio_lcio_split_out
+  
+@ %def eio_lcio_split_out
+@ Common initialization for input and output.
+<<EIO LCIO: eio lcio: TBP>>=
+  procedure :: common_init => eio_lcio_common_init
+<<EIO LCIO: procedures>>=
+  subroutine eio_lcio_common_init (eio, sample, data, extension)
+    class(eio_lcio_t), intent(inout) :: eio
+    type(string_t), intent(in) :: sample
+    type(string_t), intent(in), optional :: extension
+    type(event_sample_data_t), intent(in), optional :: data
+    if (.not. present (data)) &
+         call msg_bug ("LCIO initialization: missing data")
+    !!! Is this really true?
+    if (data%n_beam /= 2) &
+         call msg_fatal ("LCIO: defined for scattering processes only")    
+    if (data%unweighted) then
+       !!! Check for this !
+       select case (data%norm_mode)
+       case (NORM_UNIT)
+       case default; call msg_fatal &
+            ("LCIO: normalization for unweighted events must be '1'")
+       end select
+    else
+       !!! Check for this
+       call msg_fatal ("LCIO: events must be unweighted")    
+    end if
+    eio%sample = sample    
+    if (present (extension)) then
+       eio%extension = extension
+    end if
+    call eio%set_filename ()
+    allocate (eio%proc_num_id (data%n_proc), source = data%proc_num_id)
+  end subroutine eio_lcio_common_init
+  
+@ %def eio_lcio_common_init
+@ Initialize event writing.
+<<EIO LCIO: eio lcio: TBP>>=
+  procedure :: init_out => eio_lcio_init_out
+<<EIO LCIO: procedures>>=
+  subroutine eio_lcio_init_out &
+       (eio, sample, process_ptr, data, success, extension)
+    class(eio_lcio_t), intent(inout) :: eio
+    type(string_t), intent(in) :: sample
+    type(string_t), intent(in), optional :: extension
+    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
+    type(event_sample_data_t), intent(in), optional :: data
+    logical, intent(out), optional :: success
+    call eio%set_splitting (data)    
+    call eio%common_init (sample, data, extension)
+    write (msg_buffer, "(A,A,A)")  "Events: writing to LCIO file '", &
+         char (eio%filename), "'"
+    call msg_message ()
+    eio%writing = .true.
+    !!! call hepmc_iostream_open_out (eio%iostream, eio%filename)
+    if (present (success))  success = .true.
+  end subroutine eio_lcio_init_out
+    
+@ %def eio_lcio_init_out
+@ Initialize event reading. For input, we do not (yet) support split
+event files. 
+<<EIO LCIO: eio lcio: TBP>>=
+  procedure :: init_in => eio_lcio_init_in
+<<EIO LCIO: procedures>>=
+  subroutine eio_lcio_init_in & 
+       (eio, sample, process_ptr, data, success, extension)
+    class(eio_lcio_t), intent(inout) :: eio
+    type(string_t), intent(in) :: sample
+    type(string_t), intent(in), optional :: extension
+    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
+    type(event_sample_data_t), intent(inout), optional :: data
+    logical, intent(out), optional :: success
+    logical :: exist
+    eio%split = .false.
+    call eio%common_init (sample, data, extension)
+    write (msg_buffer, "(A,A,A)")  "Events: reading from LCIO file '", &
+         char (eio%filename), "'"
+    call msg_message ()
+    inquire (file = char (eio%filename), exist = exist)
+    if (.not. exist)  call msg_fatal ("Events: LCIO file not found.")
+    eio%reading = .true.
+    !!! call hepmc_iostream_open_in (eio%iostream, eio%filename)
+    if (present (success))  success = .true.
+  end subroutine eio_lcio_init_in
+    
+@ %def eio_lcio_init_in
+@ Switch from input to output: reopen the file for reading.
+<<EIO LCIO: eio lcio: TBP>>=
+  procedure :: switch_inout => eio_lcio_switch_inout
+<<EIO LCIO: procedures>>=
+  subroutine eio_lcio_switch_inout (eio, success)
+    class(eio_lcio_t), intent(inout) :: eio
+    logical, intent(out), optional :: success
+    call msg_bug ("LCIO: in-out switch not supported")
+    if (present (success))  success = .false.
+  end subroutine eio_lcio_switch_inout
+  
+@ %def eio_lcio_switch_inout
+@ Output an event to the allocated HepMC output stream.
+<<EIO LCIO: eio lcio: TBP>>=
+  procedure :: output => eio_lcio_output
+<<EIO LCIO: procedures>>=
+  subroutine eio_lcio_output (eio, event, i_prc, reading)
+    class(eio_lcio_t), intent(inout) :: eio
+    type(event_t), intent(in), target :: event
+    integer, intent(in) :: i_prc
+    logical, intent(in), optional :: reading
+    type(particle_set_t), pointer :: pset_ptr
+    if (eio%writing) then
+       pset_ptr => event%get_particle_set_ptr ()
+       call lcio_event_init (eio%lcio_event, &
+             proc_id = eio%proc_num_id (i_prc), &
+             event_id = event%expr%index)
+       !!! call hepmc_event_from_particle_set (eio%hepmc_event, pset_ptr)
+       !!! call hepmc_event_set_scale (eio%hepmc_event, event%get_fac_scale ())
+       !!! call hepmc_event_set_alpha_qcd (eio%hepmc_event, event%get_alpha_s ())
+       !!! call hepmc_iostream_write_event (eio%iostream, eio%hepmc_event)
+       call lcio_event_final (eio%lcio_event)
+    else
+       call eio%write ()
+       call msg_fatal ("LCIO file is not open for writing")
+    end if
+  end subroutine eio_lcio_output
+
+@ %def eio_lcio_output
+@ Input an event.
+<<EIO LCIO: eio lcio: TBP>>=
+  procedure :: input_i_prc => eio_lcio_input_i_prc
+  procedure :: input_event => eio_lcio_input_event
+<<EIO LCIO: procedures>>=
+  subroutine eio_lcio_input_i_prc (eio, i_prc, iostat)
+    class(eio_lcio_t), intent(inout) :: eio
+    integer, intent(out) :: i_prc
+    integer, intent(out) :: iostat
+    logical :: ok
+    integer :: i, proc_num_id
+    iostat = 0
+    call lcio_event_init (eio%lcio_event)
+    !!! call hepmc_iostream_read_event (eio%iostream, eio%hepmc_event, ok)
+    !!! proc_num_id = hepmc_event_get_process_id (eio%hepmc_event)
+    if (.not. ok) then 
+       iostat = -1 
+       return
+    end if
+    i_prc = 0
+    FIND_I_PRC: do i = 1, size (eio%proc_num_id)
+       if (eio%proc_num_id(i) == proc_num_id) then
+          i_prc = i
+          exit FIND_I_PRC
+       end if
+    end do FIND_I_PRC
+    if (i_prc == 0)  call err_index
+  contains
+    subroutine err_index
+      call msg_error ("LCIO: reading events: undefined process ID " &
+           // char (str (proc_num_id)) // ", aborting read")
+      iostat = 1
+    end subroutine err_index
+  end subroutine eio_lcio_input_i_prc
+
+  subroutine eio_lcio_input_event (eio, event, iostat)
+    class(eio_lcio_t), intent(inout) :: eio
+    type(event_t), intent(inout), target :: event
+    integer, intent(out) :: iostat
+    type(particle_set_t), pointer :: pset
+    logical :: ok    
+    iostat = 0
+    call event%reset ()
+    call event%select (1, 1, 1)
+    !!! call hepmc_to_event (event, eio%hepmc_event, eio%fallback_model, &
+    !!!     recover_beams = eio%recover_beams) 
+    ! if (associated (event%process)) then
+    !    pset => event%get_particle_set_ptr ()
+    !    call particle_set_set_model (pset, event%process%get_model_ptr ())
+    ! end if    
+    call lcio_event_final (eio%lcio_event)
+  end subroutine eio_lcio_input_event
+
+@ %def eio_lcio_input_i_prc
+@ %def eio_lcio_input_event
+@
+@
+\subsection{Auxiliary}
+Create a string from a number.  We use fixed format for the reals
+and variable format for integers.
+<<EIO LCIO: interfaces>>=
+  interface str
+     module procedure str_int, str_real
+  end interface
+<<EIO LCIO: procedures>>=
+  function str_int (i) result (s)
+    integer, intent(in) :: i
+    type(string_t) :: s
+    character(32) :: buffer
+    write (buffer, "(I0)")  i
+    s = var_str (trim (buffer))
+  end function str_int
+  
+  function str_real (x) result (s)
+    real(default), intent(in) :: x
+    type(string_t) :: s
+    character(32) :: buffer
+    write (buffer, "(ES17.10)")  x
+    s = var_str (trim (adjustl (buffer)))
+  end function str_real
+  
+@ %def str
+@
+\subsection{Unit tests}
+<<EIO LCIO: public>>=
+  public :: eio_lcio_test
+<<EIO LCIO: tests>>=
+  subroutine eio_lcio_test (u, results)
+    integer, intent(in) :: u
+    type(test_results_t), intent(inout) :: results
+  <<EIO LCIO: execute tests>>
+  end subroutine eio_lcio_test
+  
+@ %def eio_lcio_test 
+@
+\subsubsection{Test I/O methods}
+We test the implementation of all I/O methods.
+<<EIO LCIO: execute tests>>=
+  call test (eio_lcio_1, "eio_lcio_1", &
+       "write event contents", &
+       u, results)
+<<EIO LCIO: tests>>=
+  subroutine eio_lcio_1 (u)
+    integer, intent(in) :: u
+    type(model_list_t) :: model_list
+    type(event_t), allocatable, target :: event
+    type(process_t), allocatable, target :: process
+    type(process_ptr_t) :: process_ptr
+    type(process_instance_t), allocatable, target :: process_instance
+    type(event_sample_data_t) :: data
+    class(eio_t), allocatable :: eio
+    type(string_t) :: sample
+    integer :: u_file, iostat
+    character(116) :: buffer
+
+    write (u, "(A)")  "* Test output: eio_lcio_1"
+    write (u, "(A)")  "*   Purpose: write a LCIO file"
+    write (u, "(A)")
+
+    call syntax_model_file_init ()
+
+    write (u, "(A)")  "* Initialize test process"
+ 
+    allocate (process)
+    process_ptr%ptr => process
+    allocate (process_instance)        
+    call prepare_test_process (process, process_instance, model_list)
+    call process_instance%setup_event_data ()
+    
+    allocate (event)
+    call event%basic_init ()
+    call event%connect (process_instance, process%get_model_ptr ())
+    
+    call data%init (1)
+    data%n_beam = 2
+    data%unweighted = .true.
+    data%norm_mode = NORM_UNIT
+    data%pdg_beam = 25
+    data%energy_beam = 500
+    data%proc_num_id = [42]
+    data%cross_section(1) = 100
+    data%error(1) = 1
+    data%total_cross_section = sum (data%cross_section)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Generate and write an event"
+    write (u, "(A)")
+ 
+    sample = "eio_lcio_1"
+ 
+    allocate (eio_lcio_t :: eio)
+    select type (eio)
+    type is (eio_lcio_t)
+       call eio%set_parameters ()
+    end select
+    
+    call eio%init_out (sample, [process_ptr], data)
+    call event%generate (1, [0._default, 0._default])
+
+    call eio%output (event, i_prc = 1)
+    call eio%write (u)
+    call eio%final ()
+
+    !!! write (u, "(A)")
+    !!! write (u, "(A)")  "* File contents (blanking out last two digits):"
+    !!! write (u, "(A)")
+    !!! 
+    !!! u_file = free_unit ()
+    !!! open (u_file, file = char (sample // ".hepmc"), &
+    !!!      action = "read", status = "old")
+    !!! do
+    !!!    read (u_file, "(A)", iostat = iostat)  buffer
+    !!!    if (iostat /= 0)  exit
+    !!!    if (trim (buffer) == "")  cycle
+    !!!    if (buffer(1:14) == "HepMC::Version")  cycle
+    !!!    if (buffer(1:10) == "P 10001 25") &
+    !!!         call buffer_blanker (buffer, 32, 55, 78)
+    !!!    if (buffer(1:10) == "P 10002 25") &
+    !!!         call buffer_blanker (buffer, 33, 56, 79)
+    !!!    if (buffer(1:10) == "P 10003 25") &
+    !!!         call buffer_blanker (buffer, 29, 53, 78, 101)
+    !!!    if (buffer(1:10) == "P 10004 25") &
+    !!!         call buffer_blanker (buffer, 28, 51, 76, 99)       
+    !!!    write (u, "(A)") trim (buffer)
+    !!! end do
+    !!! close (u_file)
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Reset data"
+    write (u, "(A)")
+ 
+    deallocate (eio)
+    allocate (eio_lcio_t :: eio)
+    
+    select type (eio)
+    type is (eio_lcio_t)
+       call eio%set_parameters (keep_beams = .true.)
+    end select
+    call eio%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+ 
+    call event%final ()
+    deallocate (event)
+ 
+    call cleanup_test_process (process, process_instance)
+    deallocate (process_instance)
+    deallocate (process)
+    
+    call model_list%final ()
+    call syntax_model_file_final ()
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: eio_lcio_1"
+
+  end subroutine eio_lcio_1
+  
+@ %def eio_lcio_1
+@ Test also the reading of LCIO events.
+<<EIO LCIO: execute tests>>=
+  call test (eio_lcio_2, "eio_lcio_2", &
+       "read event contents", &
+       u, results)
+<<EIO LCIO: tests>>=
+  subroutine eio_lcio_2 (u)
+    integer, intent(in) :: u
+    type(model_list_t) :: model_list
+    type(model_t), pointer :: fallback_model
+    type(os_data_t) :: os_data
+    type(event_t), allocatable, target :: event
+    type(process_t), allocatable, target :: process
+    type(process_ptr_t) :: process_ptr
+    type(process_instance_t), allocatable, target :: process_instance
+    type(event_sample_data_t) :: data
+    class(eio_t), allocatable :: eio
+    type(string_t) :: sample
+    integer :: u_file, iostat, i_prc
+
+    write (u, "(A)")  "* Test output: eio_lcio_2"
+    write (u, "(A)")  "*   Purpose: read a LCIO event"
+    write (u, "(A)")
+
+    write (u, "(A)")  "* Write a LCIO data file"
+    write (u, "(A)")
+    
+    u_file = free_unit ()
+    sample = "eio_lcio_2"
+    open (u_file, file = char (sample // ".slcio"), &
+         status = "replace", action = "readwrite")
+    
+    !!! write (u_file, "(A)")  "HepMC::Version 2.06.09"
+    !!! write (u_file, "(A)")  "HepMC::IO_GenEvent-START_EVENT_LISTING"
+    !!! write (u_file, "(A)")  "E 0 -1 -1.0000000000000000e+00 &
+    !!!      &-1.0000000000000000e+00 &
+    !!!      &-1.0000000000000000e+00 42 0 1 10001 10002 0 0"
+    !!! write (u_file, "(A)")  "U GEV MM"
+    !!! write (u_file, "(A)")  "V -1 0 0 0 0 0 2 2 0"
+    !!! write (u_file, "(A)")  "P 10001 25 0 0 4.8412291827592713e+02 &
+    !!!      &5.0000000000000000e+02 &
+    !!!      &1.2499999999999989e+02 3 0 0 -1 0"
+    !!! write (u_file, "(A)")  "P 10002 25 0 0 -4.8412291827592713e+02 &
+    !!!      &5.0000000000000000e+02 &
+    !!!      &1.2499999999999989e+02 3 0 0 -1 0"
+    !!! write (u_file, "(A)")  "P 10003 25 -1.4960220911365536e+02 &
+    !!!      &-4.6042825611414656e+02 &
+    !!!      &0 5.0000000000000000e+02 1.2500000000000000e+02 1 0 0 0 0"
+    !!! write (u_file, "(A)")  "P 10004 25 1.4960220911365536e+02 &
+    !!!      &4.6042825611414656e+02 &
+    !!!      &0 5.0000000000000000e+02 1.2500000000000000e+02 1 0 0 0 0"
+    !!! write (u_file, "(A)")  "HepMC::IO_GenEvent-END_EVENT_LISTING"
+    !!! close (u_file)
+
+    
+    write (u, "(A)")  "* Initialize test process" 
+    write (u, "(A)")
+    
+    call syntax_model_file_init ()    
+    call os_data_init (os_data)
+    call model_list%read_model (var_str ("SM_hadrons"), &
+         var_str ("SM_hadrons.mdl"), os_data, fallback_model)
+
+    allocate (process)
+    process_ptr%ptr => process
+    allocate (process_instance)
+    call prepare_test_process (process, process_instance, model_list)
+    call process_instance%setup_event_data ()
+    
+    allocate (event)
+    call event%basic_init ()
+    call event%connect (process_instance, process%get_model_ptr ())
+ 
+    allocate (eio_lcio_t :: eio)
+    select type (eio)
+    type is (eio_lcio_t)
+       call eio%set_parameters (recover_beams = .false.)
+    end select            
+    call eio%set_fallback_model (fallback_model)
+    
+    call data%init (1)
+    data%n_beam = 2
+    data%unweighted = .true.
+    data%norm_mode = NORM_UNIT
+    data%pdg_beam = 25
+    data%energy_beam = 500
+    data%proc_num_id = [42]
+    call data%write (u)
+
+    write (u, "(A)")    
+    write (u, "(A)")  "* Initialize"
+    write (u, "(A)")
+             
+    call eio%init_in (sample, [process_ptr], data)
+    call eio%write (u)    
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Read event"
+    write (u, "(A)")
+ 
+    call eio%input_i_prc (i_prc, iostat)
+
+    select type (eio)
+    type is (eio_lcio_t)
+       write (u, "(A,I0,A,I0)")  "Found process #", i_prc, &
+            " with ID = ", eio%proc_num_id(i_prc)
+    end select
+    
+    call eio%input_event (event, iostat)
+    
+    call event%write (u)
+        
+    write (u, "(A)")
+    write (u, "(A)")  "* Read closing"
+    write (u, "(A)")
+    
+    call eio%input_i_prc (i_prc, iostat)
+    write (u, "(A,I0)")  "iostat = ", iostat
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+
+    call eio%final ()
+    call event%final ()
+    deallocate (event)
+ 
+    call cleanup_test_process (process, process_instance)
+    deallocate (process_instance)
+    deallocate (process)
+    
+    call model_list%final ()
+    call syntax_model_file_final ()
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: eio_lcio_2"
+    
+  end subroutine eio_lcio_2
+  
+@ %def eio_lcio_2
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{ASCII File Formats}
 Here, we implement several ASCII file formats. It is possible to
 switch between them using flags.
@@ -79550,6 +80305,9 @@ so the latter is always available (and kept global).
          (global%var_list, var_str ("$extension_hepmc"), var_str ("hepmc"), &
           intrinsic=.true.)
     call var_list_append_string &
+         (global%var_list, var_str ("$extension_lcio"), var_str ("slcio"), &
+          intrinsic=.true.)    
+    call var_list_append_string &
          (global%var_list, var_str ("$extension_stdhep"), var_str ("hep"), &
           intrinsic=.true.)
     call var_list_append_string &
@@ -81192,6 +81950,7 @@ module dispatch
   use eio_checkpoints
   use eio_lhef
   use eio_hepmc
+  use eio_lcio
   use eio_stdhep
   use eio_ascii
   use eio_weights
@@ -81274,26 +82033,46 @@ intent(out).
               var_str ("?report_progress"))
          extra_options = var_list_get_sval (var_list, &
               var_str ("$omega_flags"))
-         allocate (omega_def_t :: core_def)
+         allocate (omega_omega_def_t :: core_def)
          select type (core_def)
-         type is (omega_def_t)
+         type is (omega_omega_def_t)
             call core_def%init (model_name, prt_in, prt_out, &
                  restrictions, openmp_support, report_progress, &
                  extra_options, diags, diags_color)
          end select
+      case ("ovm")
+         diags = var_list_get_lval (var_list, &
+              var_str ("?diags"))
+         diags_color = var_list_get_lval (var_list, &
+              var_str ("?diags_color"))         
+         restrictions = var_list_get_sval (var_list, &
+              var_str ("$restrictions"))
+         openmp_support = var_list_get_lval (var_list, &
+              var_str ("?omega_openmp"))
+         report_progress = var_list_get_lval (var_list, &
+              var_str ("?report_progress"))
+         extra_options = var_list_get_sval (var_list, &
+              var_str ("$omega_flags"))
+         allocate (omega_ovm_def_t :: core_def)
+         select type (core_def)
+         type is (omega_ovm_def_t)
+            call core_def%init (model_name, prt_in, prt_out, &
+                 restrictions, openmp_support, report_progress, &
+                 extra_options, diags, diags_color)
+         end select         
       case ("gosam")
         allocate (gosam_def_t :: core_def)
         select type (core_def)
         type is (gosam_def_t)
           if (present (id)) then
-!            call core_def%init (id, prt_in, prt_out, &
-!                     global%os_data, global%model)
-            call core_def%init (id)
+             ! call core_def%init (id, prt_in, prt_out, &
+             !          global%os_data, global%model)
+             call core_def%init (id)
           else
-!            call core_def%init (var_str ('undefined_process'), &
-!                     prt_in, prt_out, global%os_data, &
-!                     global%model)
-            call core_def%init (var_str ('undefined_process'))
+             ! call core_def%init (var_str ('undefined_process'), &
+             !          prt_in, prt_out, global%os_data, &
+             !          global%model)
+             call core_def%init (var_str ('undefined_process'))
           end if
         end select
       case default
@@ -81330,7 +82109,7 @@ grab it from the model.
        type is (prc_template_me_t)
           call core%set_parameters (model) 
        end select       
-    type is (omega_def_t)
+    class is (omega_def_t)
        if (.not. allocated (core)) allocate (prc_omega_t :: core)
        select type (core)
        type is (prc_omega_t)
@@ -82203,7 +82982,7 @@ structure-function chain.
        allocate (s_mapping (2), source = [1, 2])
     case ("circe1")
        if (circe1_generate) then
-          ! no mapping
+          !!! no mapping
        else if (circe1_map) then
           allocate (s_mapping (1), source = [1])
           endpoint_mapping = .true.
@@ -82404,7 +83183,7 @@ structure-function chain.
          extension_lha, extension_hepevt, extension_ascii_short, &
          extension_ascii_long, extension_athena, extension_mokka, &
          extension_stdhep, extension_stdhep_up, extension_raw, &
-         extension_hepevt_verb, extension_lha_verb
+         extension_hepevt_verb, extension_lha_verb, extension_lcio
     integer :: checkpoint
     logical :: show_process, show_transforms, show_decay, verbose, pacify
     select case (char (method))
@@ -82462,6 +83241,18 @@ structure-function chain.
                global%var_list, var_str ("$extension_hepmc"))          
           call eio%set_parameters (keep_beams, recover_beams, extension_hepmc)
        end select
+    case ("lcio")
+       allocate (eio_lcio_t :: eio)
+       select type (eio)
+       type is (eio_lcio_t)
+          keep_beams = &
+               var_list_get_lval (global%var_list, var_str ("?keep_beams"))
+          recover_beams = &
+               var_list_get_lval (global%var_list, var_str ("?recover_beams"))
+          extension_lcio = var_list_get_sval ( &
+               global%var_list, var_str ("$extension_lcio"))
+          call eio%set_parameters (keep_beams, recover_beams, extension_lcio)
+       end select       
     case ("stdhep")
        allocate (eio_stdhep_hepevt_t :: eio)
        select type (eio)
@@ -82860,7 +83651,7 @@ This is the master for calling self-test procedures.
          var_str ("omega"), is_known = .true.)
     call dispatch_core_def (core_def, prt_in, prt_out, global)
     select type (core_def)
-    type is (omega_def_t)
+    type is (omega_omega_def_t)
        call core_def%write (u)
     end select
     
@@ -92159,9 +92950,14 @@ not yet resolve the outgoing state, so we store just a single parse
 node. 
 
 This also includes the choice of method for the corresponding process:
-[[omega]] for \oMega\ matrix elements, [[test]] for special processes
-generated by \whizard, [[external]] for using an external matrix
-element and [[dipole]] for generating dipole subtraction terms.
+[[omega]] for \oMega\ matrix elements as Fortran code, [[ovm]] for
+\oMega\ matrix elements as a bytecode virtual machine, [[test]] for
+special processes, [[unit_test]] for internal test matrix elements
+generated by \whizard, [[template]] and [[template_unity]] for test
+matrix elements generated by \whizard\ as Fortran code similar to the 
+\oMega\ code. If the one-loop program (OLP) \gosam\ is linked, also
+matrix elements from there (at leading and next-to-leading order) can
+be generated via [[gosam]].
 <<Commands: types>>=
   type, extends (command_t) :: cmd_process_t
      private
@@ -92597,7 +93393,7 @@ particle-specifier expression which we can process further.
          exit
       end if
     end do   
-!    global%nlo_calculation = cmd%nlo_calc
+    ! global%nlo_calculation = cmd%nlo_calc
     global%nlo_calculation = cmd%active_component(2) &
                         .or. cmd%active_component(3)
     global%active_nlo_components = cmd%active_component
@@ -96827,7 +97623,7 @@ object and its associated methods.
     integer :: n_fmt
     type(string_t), dimension(:), allocatable :: sample_fmt
     type(string_t) :: input_format, input_ext, input_file
-    type(string_t) :: lhef_extension, extension_hepmc
+    type(string_t) :: lhef_extension, extension_hepmc, extension_lcio
     type(event_stream_array_t) :: es_array
     integer :: i, n_events
     if (allocated (cmd%local%pn%alt_setup)) then
@@ -96886,6 +97682,8 @@ object and its associated methods.
          var_list_get_sval (cmd%local%var_list, var_str ("$lhef_extension"))
     extension_hepmc = &
          var_list_get_sval (cmd%local%var_list, var_str ("$extension_hepmc"))
+    extension_lcio = &
+         var_list_get_sval (cmd%local%var_list, var_str ("$extension_lcio"))
     select case (char (input_format))
     case ("raw");  input_ext = "evx"
     case ("lhef"); input_ext = lhef_extension
@@ -101917,6 +102715,7 @@ module whizard
   use eio_checkpoints
   use eio_lhef
   use eio_hepmc
+  use eio_lcio
   use eio_stdhep
   use eio_ascii
   use eio_weights
@@ -102574,6 +103373,8 @@ This is for developers only, but needs a well-defined interface.
        call eio_lhef_test (u, results)
     case ("eio_hepmc")
        call eio_hepmc_test (u, results)
+    case ("eio_lcio")
+       call eio_lcio_test (u, results)
     case ("eio_stdhep")
        call eio_stdhep_test (u, results)
     case ("eio_ascii")
@@ -102674,6 +103475,7 @@ This is for developers only, but needs a well-defined interface.
        call eio_checkpoints_test (u, results)
        call eio_lhef_test (u, results)
        call eio_hepmc_test (u, results)
+       call eio_lcio_test (u, results)
        call eio_stdhep_test (u, results)
        call eio_ascii_test (u, results)
        call eio_weights_test (u, results)

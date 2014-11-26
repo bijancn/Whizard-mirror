@@ -25,13 +25,13 @@
 ########################################################################
 
 ## The manual source has to be distributed
-dist_noinst_DATA = manual.tex $(PACKAGE).tex shower.tex \
+dist_noinst_DATA = manual.tex $(PACKAGE).tex \
 	book.hva custom.hva fancysection.hva Whizard-Logo.jpg \
 	$(MANUAL_PICS)
 
 ## The WHIZARD documented source is assembled from various directories
 w_srcdir = $(top_srcdir)/src
-VPATH = $(srcdir):$(w_srcdir)/noweb-frame:$(w_srcdir)/utilities:$(w_srcdir)/testing:$(w_srcdir)/system:$(w_srcdir)/combinatorics:$(w_srcdir)/parsing:$(w_srcdir)/rng:$(w_srcdir)/physics:$(w_srcdir)/qft:$(w_srcdir)/types:$(w_srcdir)/matrix_elements:$(w_srcdir)/particles:$(w_srcdir)/beams:$(w_srcdir)/phase_space:$(w_srcdir)/mci:$(w_srcdir)/whizard-core
+VPATH = $(srcdir):$(w_srcdir)/noweb-frame:$(w_srcdir)/utilities:$(w_srcdir)/testing:$(w_srcdir)/system:$(w_srcdir)/combinatorics:$(w_srcdir)/parsing:$(w_srcdir)/rng:$(w_srcdir)/physics:$(w_srcdir)/qft:$(w_srcdir)/types:$(w_srcdir)/matrix_elements:$(w_srcdir)/particles:$(w_srcdir)/beams:$(w_srcdir)/phase_space:$(w_srcdir)/mci:$(w_srcdir)/shower:$(w_srcdir)/whizard-core
 
 MANUAL_PICS = \
    proc_4f-history.eps proc_4f-history.pdf \
@@ -129,9 +129,6 @@ endif !DISTRIBUTION
 endif HEVEA_AVAILABLE
 
 if NOWEB_AVAILABLE
-shower.tex: $(top_srcdir)/src/shower/shower.nw
-	$(NOWEAVE) -delay $< | $(CPIF) $@
-
 WHIZARD_NOWEB_SRC = \
   whizard-prelude.nw \
   utilities.nw \
@@ -145,10 +142,10 @@ WHIZARD_NOWEB_SRC = \
   beams.nw \
   phase_space.nw \
   mci.nw \
+	shower.nw \
   whizard.nw \
   whizard-postlude.nw
 
-$(PACKAGE).tex: shower.tex
 $(PACKAGE).tex: $(WHIZARD_NOWEB_SRC)
 	-rm -f $@
 	$(NOWEAVE) -delay $^ | $(CPIF) $@
@@ -166,7 +163,7 @@ maintainer-clean-latex:
 	-rm manual.ps manual.pdf
 if NOWEB_AVAILABLE
 mostlyclean-whizard:
-	-rm -f $(PACKAGE).tex $(PACKAGE).ps $(PACKAGE).pdf shower.tex
+	-rm -f $(PACKAGE).tex $(PACKAGE).ps $(PACKAGE).pdf
 maintainer-clean-whizard:
 else
 mostlyclean-whizard:

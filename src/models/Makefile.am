@@ -25,8 +25,9 @@
 #
 ########################################################################
 
-## Build the threeshl bundle required for the 3SHL models.
+## Build model-specific extra sources.
 SUBDIRS = \
+	SM_tt_threshold_bundle \
 	threeshl_bundle
 
 ## Build WHIZARD/O'Mega model interface library
@@ -62,6 +63,7 @@ libmodels_la_SOURCES = \
   parameters.SM_CKM.f90 \
   parameters.SM_top.f90 \
   parameters.SM_top_anom.f90 \
+  parameters.SM_tt_threshold.f90 \
   parameters.SM_Higgs.f90 \
   parameters.SM_rx.f90 \
   parameters.Template.f90 \
@@ -104,6 +106,7 @@ nodist_execmod_HEADERS = \
   parameters_sm_ckm.$(FC_MODULE_EXT) \
   parameters_sm_top.$(FC_MODULE_EXT) \
   parameters_sm_top_anom.$(FC_MODULE_EXT) \
+  parameters_sm_tt_threshold.$(FC_MODULE_EXT) \
   parameters_sm_higgs.$(FC_MODULE_EXT) \
   parameters_sm_rx.$(FC_MODULE_EXT) \
   parameters_template.$(FC_MODULE_EXT) \
@@ -121,9 +124,13 @@ nodist_execmod_HEADERS = \
 modellibdir = $(pkglibdir)/models
 
 modellib_LTLIBRARIES = \
+  external.SM_tt_threshold.la \
   external.Threeshl.la \
   external.Threeshl_nohf.la \
   external.Test.la
+
+external_SM_tt_threshold_la_SOURCES = external.SM_tt_threshold.f90
+external_SM_tt_threshold_la_LDFLAGS = -module
 
 external_Threeshl_la_SOURCES = external.Threeshl.f90
 external_Threeshl_la_LDFLAGS = -module
@@ -133,9 +140,13 @@ external_Threeshl_nohf_la_LDFLAGS = -module
 external_Test_la_SOURCES = external.Test.f90
 external_Test_la_LDFLAGS = -module
 
+## Collect the SM ttbar threshold code.
+external_SM_tt_threshold_la_LIBADD = SM_tt_threshold_bundle/libSM_tt_threshold_bundle.la
+libmodels_la_LIBADD = SM_tt_threshold_bundle/libSM_tt_threshold_bundle.la
+
 ## Collect the 3SHL code.
 external_Threeshl_la_LIBADD = threeshl_bundle/libthreeshl_bundle.la
-libmodels_la_LIBADD = threeshl_bundle/libthreeshl_bundle.la
+libmodels_la_LIBADD += threeshl_bundle/libthreeshl_bundle.la
 external_Threeshl_nohf_la_LIBADD = threeshl_bundle/libthreeshl_bundle.la
 
 ## Switch off optimization if requested
@@ -233,6 +244,9 @@ parameters_sm_top.$(FC_MODULE_EXT): parameters.SM_top.lo
 parameters_sm_top_anom.$(FC_MODULE_EXT): parameters.SM_top_anom.lo
 	@:
 
+parameters_sm_tt_threshold.$(FC_MODULE_EXT): parameters.SM_tt_threshold.lo
+	@:
+
 parameters_sm_higgs.$(FC_MODULE_EXT): parameters.SM_Higgs.lo
 	@:
 
@@ -276,6 +290,7 @@ basicsdir = $(top_builddir)/src/basics
 utilitiesdir = $(top_builddir)/src/utilities
 systemdir = $(top_builddir)/src/system
 physicsdir = $(top_builddir)/src/physics
+omegadir = $(top_builddir)/omega/src
 
 KINDS_MOD = kinds.$(FC_MODULE_EXT)
 CONSTANTS_MOD = constants.$(FC_MODULE_EXT)
@@ -283,19 +298,23 @@ PHYSICS_DEFS_MOD = physics_defs.$(FC_MODULE_EXT)
 FORMAT_DEFS_MOD = format_defs.$(FC_MODULE_EXT)
 DIAGNOSTICS_MOD = diagnostics.$(FC_MODULE_EXT)
 SMPHYSICS_MOD = sm_physics.$(FC_MODULE_EXT)
+OMEGAVECTORS_MOD = omega_vectors.$(FC_MODULE_EXT)
+TTV_FORMFACTORS_MOD = ttv_formfactors.$(FC_MODULE_EXT)
 
 ### To be changed when moved in an external physics library
-$(libmodels_la_OBJECTS) $(external_Threeshl_la_OBJECTS): \
+$(libmodels_la_OBJECTS) $(external_SM_tt_threshold_la_OBJECTS) $(external_Threeshl_la_OBJECTS): \
   $(basicsdir)/$(KINDS_MOD) \
   $(basicsdir)/$(CONSTANTS_MOD) \
   $(utilitiesdir)/$(FORMAT_DEFS_MOD) \
   $(systemdir)/$(DIAGNOSTICS_MOD) \
   $(physicsdir)/$(PHYSICS_DEFS_MOD) \
   $(physicsdir)/$(SMPHYSICS_MOD) \
+  $(omegadir)/$(OMEGAVECTORS_MOD) \
+  SM_tt_threshold_bundle/$(TTV_FORMFACTORS_MOD) \
   threeshl_bundle/threeshl.$(FC_MODULE_EXT) \
   threeshl_bundle/tglue.$(FC_MODULE_EXT)
 
-AM_FCFLAGS = -I$(basicsdir) -I$(utilitiesdir) -I$(systemdir) -I$(physicsdir) -Ithreeshl_bundle
+AM_FCFLAGS = -I$(basicsdir) -I$(utilitiesdir) -I$(systemdir) -I$(physicsdir) -I$(omegadir) -ISM_tt_threshold_bundle -Ithreeshl_bundle
 
 ########################################################################
 ## Default Fortran compiler options

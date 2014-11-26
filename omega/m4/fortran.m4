@@ -589,15 +589,17 @@ case $FC_VENDOR in
 gfortran)
   wo_cv_fc_openmp="yes"
   wo_cv_fcflags_openmp="-fopenmp"
-  wo_cv_fc_openmp_header="use omp_lib"
+  wo_cv_fc_openmp_header="use, intrinsic :: omp_lib"
   ;;
 NAG)
-  wo_cv_fc_openmp="no"
+  wo_cv_fc_openmp="yes"
+  wo_cv_fcflags_openmp="-openmp"
+  wo_cv_fc_openmp_header="use, intrinsic :: omp_lib"
   ;;
 Intel)
   wo_cv_fc_openmp="yes"
   wo_cv_fcflags_openmp="-openmp"
-  wo_cv_fc_openmp_header="use omp_lib"
+  wo_cv_fc_openmp_header="use :: omp_lib"
   ;;
 PGI)
   wo_cv_fc_openmp="yes"

@@ -28,20 +28,11 @@
 ########################################################################
 
 ## The files in this directory end up in an auxiliary libtool library.
+## If shower is enabled, pythia is enabled automatically
 if SHOWER_AVAILABLE
 noinst_LTLIBRARIES = libshower.la
 else
 noinst_LTLIBRARIES = libshower_dummy.la
-endif
-
-## If shower is enabled, pythia is enabled automatically
-
-AM_FFLAGS =
-AM_FCFLAGS =
-
-if FC_IS_NAG
-AM_FFLAGS += -dcfuns -w
-AM_FCFLAGS += -dcfuns -w
 endif
 
 libshower_la_SOURCES = \
@@ -53,18 +44,56 @@ libshower_la_SOURCES = \
    mlm_matching.f90 \
    ckkw_pseudo_weights.f90 \
    ckkw_matching.f90
-
 libshower_dummy_la_SOURCES = shower_dummy.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = shower.nw
 
+# Dump module names into file Modules
+libshower_Modules = ${libshower_la_SOURCES:.f90=}
+Modules: Makefile
+	@rm -f $@
+	for module in $(libbeams_Modules); do \
+          echo $$module >> $@; \
+        done
+
 ## Fortran module dependencies
+# Get module lists from other directories
+module_lists = \
+  ../basics/Modules \
+  ../utilities/Modules \
+  ../testing/Modules \
+  ../system/Modules \
+  ../combinatorics/Modules \
+  ../physics/Modules \
+  ../qft/Modules \
+  ../types/Modules \
+  ../particles/Modules
+
+$(module_lists):
+	$(MAKE) -C `dirname $@` Modules
+
+Module_dependencies.sed: $(module_lists)
+	@rm -f $@
+	echo 's/, *only:.*//' >> $@
+	echo 's/, *&//' >> $@
+	echo 's/, *.*=>.*//' >> $@
+	echo 's/$$/.lo/' >> $@
+	for list in $^; do \
+	  dir="`dirname $$list`"; \
+	  for mod in `cat $$list`; do \
+	    echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+	  done ; \
+	done
+
+DISTCLEANFILES = Module_dependencies.sed
+
 # The following line just says
 #    include Makefile.depend
 # but in a portable fashion (depending on automake's AM_MAKE_INCLUDE
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
+Makefile.depend: Module_dependencies.sed
 Makefile.depend: $(libshower_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
@@ -72,33 +101,25 @@ Makefile.depend: $(libshower_la_SOURCES)
 	  grep '^ *use ' $$src \
 	    | grep -v '!NODEP!' \
 	    | sed -e 's/^ *use */'$$module'.lo: /' \
-	          -e 's/, *only:.*//' \
-	          -e 's/, *&//' \
-	          -e 's/, *.*=>.*//' \
-	          -e 's/$$/.lo/' ; \
+	          -f Module_dependencies.sed; \
 	done > $@
 
-DISTCLEANFILES = Makefile.depend 
+DISTCLEANFILES += Makefile.depend 
 
 ## Dependency libbasics / libaux (kinds, strings)
 ## (tao_random_numbers will be removed when switching to rng_factory)
 $(libshower_la_OBJECTS): \
-../basics/kinds.$(FC_MODULE_EXT) \
-../basics/io_units.$(FC_MODULE_EXT) \
-../basics/constants.$(FC_MODULE_EXT) \
-../system/diagnostics.$(FC_MODULE_EXT) \
-../physics/lorentz.$(FC_MODULE_EXT) \
 ../../vamp/src/tao_random_numbers.$(FC_MODULE_EXT)
 
 libshower_la_LIBADD = ../../pythia/libpythia_wo.la
 
-SUFFIXES = .lo .$(FC_MODULE_EXT)
 # Fortran90 module files are generated at the same time as object files
 .lo.$(FC_MODULE_EXT):
-        @:
-#       touch $@
+	@:
+#	touch $@
 
-AM_FCFLAGS += -I../basics -I../utilities -I../system -I../physics -I../../vamp/src/ -I../../pythia
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../physics -I../fastjet -I../qft -I../types -I../particles -I../../vamp/src/ -I../../pythia
+AM_FFLAGS =
 
 ########################################################################
 ## Default Fortran compiler options

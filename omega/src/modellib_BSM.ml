@@ -1,4 +1,4 @@
-(* $Id: modellib_BSM.ml 6246 2014-11-02 16:44:42Z jr_reuter $
+(* $Id: modellib_BSM.ml 6295 2014-11-21 18:58:53Z bchokoufe $
 
    Copyright (C) 1999-2014 by
 
@@ -25,9 +25,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_BSM" ["BSM Models"]
-    { RCS.revision = "$Revision: 6246 $";
-      RCS.date = "$Date: 2014-11-02 17:44:42 +0100 (So, 02 Nov 2014) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 6295 $";
+      RCS.date = "$Date: 2014-11-21 19:58:53 +0100 (Fri, 21 Nov 2014) $";
+      RCS.author = "$Author: bchokoufe $";
       RCS.source
         = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_BSM.ml $" }
 
@@ -374,8 +374,25 @@ module Littlest (Flags : BSM_flags) =
     let derived_parameters =
       []
 
+    let g_over_2_costh =
+      Quot (Neg (Atom G_weak), Prod [Const 2; Atom Costhw])
+
+    let nc_coupling c t3 q =
+      (Real_Array c,
+       [Prod [g_over_2_costh; Diff (t3, Prod [Const 2; q; Atom Sin2thw])];
+        Prod [g_over_2_costh; t3]])
+
+    let half = Quot (Const 1, Const 2)
+
     let derived_parameter_arrays =
-      []
+      [ nc_coupling G_NC_neutrino half (Const 0);
+        nc_coupling G_NC_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_down (Neg half) (Quot (Const (-1), Const 3));
+        nc_coupling G_NC_h_neutrino half (Const 0);
+        nc_coupling G_NC_h_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_h_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_h_down (Neg half) (Quot (Const (-1), Const 3)) ]
 
     let parameters () =
       { input = input_parameters;
@@ -1479,8 +1496,25 @@ module Littlest_Tpar (Flags : BSM_flags) =
     let derived_parameters =
       []
 
+    let g_over_2_costh =
+      Quot (Neg (Atom G_weak), Prod [Const 2; Atom Costhw])
+
+    let nc_coupling c t3 q =
+      (Real_Array c,
+       [Prod [g_over_2_costh; Diff (t3, Prod [Const 2; q; Atom Sin2thw])];
+        Prod [g_over_2_costh; t3]])
+
+    let half = Quot (Const 1, Const 2)
+
     let derived_parameter_arrays =
-      []
+      [ nc_coupling G_NC_neutrino half (Const 0);
+        nc_coupling G_NC_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_down (Neg half) (Quot (Const (-1), Const 3));
+        nc_coupling G_NC_h_neutrino half (Const 0);
+        nc_coupling G_NC_h_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_h_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_h_down (Neg half) (Quot (Const (-1), Const 3)) ]
 
     let parameters () =
       { input = input_parameters;
@@ -2529,8 +2563,26 @@ module Simplest (Flags : BSM_flags) =
     let derived_parameters =
       [] 
 
+    let g_over_2_costh =
+      Quot (Neg (Atom G_weak), Prod [Const 2; Atom Costhw])
+
+    let nc_coupling c t3 q =
+      (Real_Array c,
+       [Prod [g_over_2_costh; Diff (t3, Prod [Const 2; q; Atom Sin2thw])];
+        Prod [g_over_2_costh; t3]])
+
+    let half = Quot (Const 1, Const 2)
+
     let derived_parameter_arrays =
-      []
+      [ nc_coupling G_NC_neutrino half (Const 0);
+        nc_coupling G_NC_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_down (Neg half) (Quot (Const (-1), Const 3));
+        nc_coupling G_NC_h_neutrino half (Const 0);
+        nc_coupling G_NC_h_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_h_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_h_down (Neg half) (Quot (Const (-1), Const 3)) ]
+
 
     let parameters () =
       { input = input_parameters;
@@ -3296,8 +3348,21 @@ module Xdim (Flags : BSM_flags) =
     let derived_parameters =
       []
 
+    let g_over_2_costh =
+      Quot (Neg (Atom G_weak), Prod [Const 2; Atom Costhw])
+
+    let nc_coupling c t3 q =
+      (Real_Array c,
+       [Prod [g_over_2_costh; Diff (t3, Prod [Const 2; q; Atom Sin2thw])];
+        Prod [g_over_2_costh; t3]])
+
+    let half = Quot (Const 1, Const 2)
+
     let derived_parameter_arrays =
-      []
+      [ nc_coupling G_NC_neutrino half (Const 0);
+        nc_coupling G_NC_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_down (Neg half) (Quot (Const (-1), Const 3)) ]
 
     let parameters () =
       { input = input_parameters;
@@ -3958,8 +4023,21 @@ module UED (Flags : BSM_flags) =
     let derived_parameters =
       []
 
+    let g_over_2_costh =
+      Quot (Neg (Atom G_weak), Prod [Const 2; Atom Costhw])
+
+    let nc_coupling c t3 q =
+      (Real_Array c,
+       [Prod [g_over_2_costh; Diff (t3, Prod [Const 2; q; Atom Sin2thw])];
+        Prod [g_over_2_costh; t3]])
+
+    let half = Quot (Const 1, Const 2)
+
     let derived_parameter_arrays =
-      []
+      [ nc_coupling G_NC_neutrino half (Const 0);
+        nc_coupling G_NC_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_down (Neg half) (Quot (Const (-1), Const 3)) ]
 
     let parameters () =
       { input = input_parameters;
@@ -4850,8 +4928,21 @@ module GravTest (Flags : BSM_flags) =
     let derived_parameters =
       []
 
+    let g_over_2_costh =
+      Quot (Neg (Atom G_weak), Prod [Const 2; Atom Costhw])
+
+    let nc_coupling c t3 q =
+      (Real_Array c,
+       [Prod [g_over_2_costh; Diff (t3, Prod [Const 2; q; Atom Sin2thw])];
+        Prod [g_over_2_costh; t3]])
+
+    let half = Quot (Const 1, Const 2)
+
     let derived_parameter_arrays =
-      []
+      [ nc_coupling G_NC_neutrino half (Const 0);
+        nc_coupling G_NC_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_down (Neg half) (Quot (Const (-1), Const 3)) ]
 
     let parameters () =
       { input = input_parameters;
@@ -5431,7 +5522,21 @@ module Template (Flags : BSM_flags) =
 
     let derived_parameters = [] 
 
-    let derived_parameter_arrays = []
+    let g_over_2_costh =
+      Quot (Neg (Atom G_weak), Prod [Const 2; Atom Costhw])
+
+    let nc_coupling c t3 q =
+      (Real_Array c,
+       [Prod [g_over_2_costh; Diff (t3, Prod [Const 2; q; Atom Sin2thw])];
+        Prod [g_over_2_costh; t3]])
+
+    let half = Quot (Const 1, Const 2)
+
+    let derived_parameter_arrays =
+      [ nc_coupling G_NC_neutrino half (Const 0);
+        nc_coupling G_NC_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_down (Neg half) (Quot (Const (-1), Const 3)) ]
 
     let parameters () =
       { input = input_parameters;
@@ -5954,7 +6059,21 @@ module HSExt (Flags : BSM_flags) =
 
     let derived_parameters = [] 
 
-    let derived_parameter_arrays = []
+    let g_over_2_costh =
+      Quot (Neg (Atom G_weak), Prod [Const 2; Atom Costhw])
+
+    let nc_coupling c t3 q =
+      (Real_Array c,
+       [Prod [g_over_2_costh; Diff (t3, Prod [Const 2; q; Atom Sin2thw])];
+        Prod [g_over_2_costh; t3]])
+
+    let half = Quot (Const 1, Const 2)
+
+    let derived_parameter_arrays =
+      [ nc_coupling G_NC_neutrino half (Const 0);
+        nc_coupling G_NC_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_down (Neg half) (Quot (Const (-1), Const 3)) ]
 
     let parameters () =
       { input = input_parameters;
@@ -7287,8 +7406,46 @@ module TwoHiggsDoublet (Flags : THDM_flags) =
     let orders = function 
       | _ -> (0,0)
 
+    let g_over_2_costh =
+      Quot (Neg (Atom G_weak), Prod [Const 2; Atom Costhw])
+
+    let nc_coupling c t3 q =
+      (Real_Array c,
+       [Prod [g_over_2_costh; Diff (t3, Prod [Const 2; q; Atom Sin2thw])];
+        Prod [g_over_2_costh; t3]])
+
+    let half = Quot (Const 1, Const 2)
+
+    let array_list = [G_h1uu; G_h2uu; G_h3uu; G_h1uc; G_h2uc; G_h3uc; G_h1ut;
+        G_h2ut; G_h3ut; G_h1cu; G_h2cu; G_h3cu; G_h1cc; G_h2cc;
+        G_h3cc; G_h1ct; G_h2ct; G_h3ct; G_h1tu; G_h2tu; G_h3tu;
+        G_h1tc; G_h2tc; G_h3tc; G_h1tt; G_h2tt; G_h3tt;
+        G_h1dd; G_h2dd; G_h3dd; G_h1ds; G_h2ds; G_h3ds; G_h1db;
+        G_h2db; G_h3db; G_h1sd; G_h2sd; G_h3sd; G_h1ss; G_h2ss;
+        G_h3ss; G_h1sb; G_h2sb; G_h3sb; G_h1bd; G_h2bd; G_h3bd;
+        G_h1bs; G_h2bs; G_h3bs; G_h1bb; G_h2bb; G_h3bb;
+        G_hud; G_hus; G_hub; G_hcd; G_hcs; G_hcb; G_htd; G_hts; G_htb;
+        G_hdu; G_hdc; G_hdt; G_hsu; G_hsc; G_hst; G_hbu; G_hbc; G_hbt;
+        G_he1n1; G_he1n2; G_he1n3; G_he2n1; G_he2n2; G_he2n3; G_he3n1;
+        G_he3n2; G_he3n3; G_hn1e1; G_hn1e2; G_hn1e3; G_hn2e1; G_hn2e2;
+        G_hn2e3; G_hn3e1; G_hn3e2; G_hn3e3;
+        G_h1e1e1; G_h2e1e1; G_h3e1e1; G_h1e1e2; G_h2e1e2; G_h3e1e2;
+        G_h1e1e3; G_h2e1e3; G_h3e1e3; G_h1e2e1; G_h2e2e1; G_h3e2e1;
+        G_h1e2e2; G_h2e2e2; G_h3e2e2; G_h1e2e3; G_h2e2e3; G_h3e2e3;
+        G_h1e3e1; G_h2e3e1; G_h3e3e1; G_h1e3e2; G_h2e3e2; G_h3e3e2;
+        G_h1e3e3; G_h2e3e3; G_h3e3e3]
+
+    let add_complex_array_tag c = (Complex_Array c, [Const 0; Const 0])
+
+    let derived_parameter_arrays =
+      [ nc_coupling G_NC_neutrino half (Const 0);
+        nc_coupling G_NC_lepton (Neg half) (Const (-1));
+        nc_coupling G_NC_up half (Quot (Const 2, Const 3));
+        nc_coupling G_NC_down (Neg half) (Quot (Const (-1), Const 3));
+       ] @ (List.map add_complex_array_tag array_list)
+
     let parameters () =
-      { input = []; derived = []; derived_arrays = [] }
+      { input = []; derived = []; derived_arrays = derived_parameter_arrays}
 
     module F = Modeltools.Fusions (struct
       type f = flavor

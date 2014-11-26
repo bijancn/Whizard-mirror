@@ -105,6 +105,12 @@ else
 libwhizard_la_LIBADD += hepmc/libHepMCWrap_dummy.la
 endif 
 
+if LCIO_AVAILABLE
+libwhizard_la_LIBADD += lcio/libLCIOWrap.la
+else
+libwhizard_la_LIBADD += lcio/libLCIOWrap_dummy.la
+endif 
+
 libomega_la_LIBADD = \
   ../omega/src/libomega_core.la \
   models/libmodels.la
@@ -163,6 +169,7 @@ whizard_LDADD += prebuilt/libwhizard_prebuilt.la
 whizard_LDADD += $(LDFLAGS_LHAPDF)
 whizard_LDADD += $(LDFLAGS_STDHEP)
 whizard_LDADD += $(LDFLAGS_HEPMC)
+whizard_LDADD += $(LDFLAGS_LCIO)
 whizard_LDADD += $(LDFLAGS_HOPPET)
 whizard_LDADD += $(FASTJET_LIBS)
 

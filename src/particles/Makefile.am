@@ -34,6 +34,7 @@ noinst_LTLIBRARIES = libparticles.la
 libparticles_la_SOURCES = \
   polarizations.f90 \
   hepmc_interface.f90 \
+  lcio_interface.f90 \
   particles.f90
 
 ## Omitting this would exclude it from the distribution

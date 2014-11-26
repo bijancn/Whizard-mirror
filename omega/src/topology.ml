@@ -24,7 +24,7 @@
 
 let rcs_file = RCS.parse "Topology" ["Topologies"]
     { RCS.revision = "$Revision: 6222 $";
-      RCS.date = "$Date: 2014-10-13 10:40:53 +0200 (Mo, 13 Okt 2014) $";
+      RCS.date = "$Date: 2014-10-13 10:40:53 +0200 (Mon, 13 Oct 2014) $";
       RCS.author = "$Author: ohl $";
       RCS.source
         = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/topology.ml $" }
