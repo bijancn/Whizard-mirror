@@ -24,39 +24,7 @@
 
 (* \thocwmodulesection{Abstract Syntax} *)
 
-type coeff = int
-type name = string
-type momentum = int
-type index = name
-
-type field =
-  { flavor : name;
-    conjugate : bool;
-    f_indices : index list }
-
-type tensor =
-  { t_name : name;
-    t_indices : index list }
-
-type t =
-| Empty
-| Field of field
-| Momentum of momentum list * index
-| Lorentz of tensor
-| Color of tensor
-| Product of t list
-| Sum of (coeff * t) list
-
-let null = Empty
-
 exception Syntax_Error of string * int * int
-
-type identifier =
-| Id_Flavor
-| Id_Momentum
-| Id_Lorentz
-| Id_Color
-| Id_Index
 
 module Token =
   struct
@@ -446,9 +414,11 @@ module Lorentz =
   struct
 
     type t =
+    | Scalar
     | Vector
     | Dirac
     | ConjDirac
+    | Majorana
     | Weyl
     | ConjWeyl
 

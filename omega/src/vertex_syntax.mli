@@ -22,47 +22,26 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
+(* The concrete syntax described below is modelled on \LaTeX{}
+   and correct model descriptions should be correct \LaTeX-input
+   (provided a few simple macros have been loaded. *)
+
+
 (* \thocwmodulesection{Abstract Syntax} *)
-
-type coeff = int
-type name = string
-type momentum = int
-type index = name
-
-type field =
-  { flavor : name;
-    conjugate : bool;
-    f_indices : index list }
-
-type tensor =
-  { t_name : name;
-    t_indices : index list }
-
-type t =
-| Empty
-| Field of field
-| Momentum of momentum list * index
-| Lorentz of tensor
-| Color of tensor
-| Product of t list
-| Sum of (coeff * t) list
-
-val null : t
 
 exception Syntax_Error of string * int * int
 
-type identifier =
-| Id_Flavor
-| Id_Momentum
-| Id_Lorentz
-| Id_Color
-| Id_Index
+(* \thocwmodulesubsection{Tokens} *)
 
+(* Tokenization follows \TeX's rules. *)
+       
 module Token :
   sig
 
-    (* Tokenization follows \TeX's rules.  Since \verb+a_12+
-       is interpretated by \TeX{} as \verb+{a_1}2+, we can not
+    (* Multi-character tokens like \verb+\psi+ are stored
+       including the leading \verb+\+.
+       Since \verb+a_12+
+       is interpreted by \TeX{} as \verb+{a_1}2+, we can not
        use the lexer to construct integers, but interpret them
        as lists of digits.  Below, in [Expr], the parser can
        interpret then as integers.  *)
@@ -91,7 +70,8 @@ module Token :
        token with empty prefix, super- and subscripts. *)
     val wrap_scripted : t -> scripted
 
-    (* If it's a [List], return the list, otherwise a singleton. *)
+    (* If it's a [List], return the list itself,
+       otherwise a singleton list. *)
     val wrap_list : t -> t list
 
     (* Recursively strip all prefixes, super- and subscripts and
@@ -100,6 +80,10 @@ module Token :
        both yield ["\\psi"]. *)
     val stem : t -> t
 
+    (* Unparse the abstract syntax.   Since the smart constructors
+       perform some normalization and minimize nested braces, the
+       result is not guaranteed to be identical to the string that
+       has been parsed, just equivalent. *)
     val to_string : t -> string
     val scripted_to_string : scripted -> string
     val list_to_string : t list -> string
@@ -108,11 +92,14 @@ module Token :
 
   end
 
+(* \thocwmodulesubsection{Expressions} *)
+
+(* A straightforward type for recursive expressions.  Note
+   that values (a.\,k.\,a.~variables) are represented as
+   functions with an empty argument list. *)
+
 module Expr :
   sig
-
-    (* Values (a.k.a. variables) are just functions with
-       an empty argument list. *)
 
     type t =
     | Integer of int
@@ -133,15 +120,19 @@ module Expr :
 
   end
 
-(*i module TLSet : Set.S with type elt = Token.t list i*)
+(* \thocwmodulesubsection{Particle Declarations} *)
 
 module Particle :
   sig
 
+    (* Particles have a name \ldots *)
     type name =
     | Neutral of Token.t list
     | Charged of Token.t list * Token.t list
 
+    (* \ldots{} and a list of attributes: external
+       representations for \LaTeX{} and Fortran, quantum
+       numbers and symbols for mass and width. *)
     type attr =
     | TeX of Token.t list
     | TeX_Anti of Token.t list
@@ -159,10 +150,12 @@ module Particle :
       { name : name;
 	attr : attr list }
 
-    (*i val cons_attr : attr -> attr list -> attr list i*)
+    (* Unparsing: *)
     val to_string : t -> string
 
   end
+
+(* \thocwmodulesubsection{Parameter Declarations} *)
 
 module Parameter :
   sig
@@ -185,6 +178,8 @@ module Parameter :
     val to_string : t -> string
 
   end
+
+(* \thocwmodulesubsection{Color Representations} *)
 
 module Color :
   sig
@@ -209,17 +204,23 @@ module Color :
 
   end
 
+(* \thocwmodulesubsection{Lorentz Representations} *)
+
 module Lorentz :
   sig
 
     type t =
+    | Scalar
     | Vector
     | Dirac
     | ConjDirac
+    | Majorana
     | Weyl
     | ConjWeyl
 
   end
+
+(* \thocwmodulesubsection{Indices} *)
 
 module Index :
   sig
@@ -237,6 +238,8 @@ module Index :
 
   end
 
+(* \thocwmodulesubsection{Tensors} *)
+
 module Tensor :
   sig
 
@@ -252,6 +255,8 @@ module Tensor :
     val to_string : t -> string
 
   end
+
+(* \thocwmodulesubsection{Files} *)
 
 (* The representation of a file, immediately after lexical
    and syntactical analysis and before any type checking
@@ -291,6 +296,9 @@ module File :
 
     val empty : t
 
+    (* [expand_includes parser file_tree] recursively
+       expands all include statemens in [file_tree], using
+       [parser] to map a filename to a [File_Tree.t]. *)
     val expand_includes : (string -> File_Tree.t) -> File_Tree.t -> t
 
     val to_strings : t -> string list
