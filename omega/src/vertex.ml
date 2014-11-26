@@ -159,7 +159,7 @@ module type Lorentz =
         val to_fortran : t' -> string
       end
 
-    (* Dirac matrices as maps from Lorentz and Spinor indices
+    (* Sparse Dirac matrices as maps from Lorentz and Spinor indices
        to complex numbers.  This is supposed to be independent of
        the representation. *)
 
@@ -369,20 +369,12 @@ module Lorentz : Lorentz =
       let res = List.for_all (fun (n, _) -> n = 2) c in
       res
 
-    let vector_contraction_ok p =
-      List.for_all
-	(fun (n, _) -> n = 2)
-	(ThoList.classify (vector_indices p))
+    let two_of_each indices p =
+      List.for_all (fun (n, _) -> n = 2) (ThoList.classify (indices p))
 
-    let spinor_contraction_ok p =
-      List.for_all
-	(fun (n, _) -> n = 2)
-	(ThoList.classify (spinor_indices p))
-
-    let conjspinor_contraction_ok p =
-      List.for_all
-	(fun (n, _) -> n = 2)
-	(ThoList.classify (conjspinor_indices p))
+    let vector_contraction_ok = two_of_each vector_indices
+    let spinor_contraction_ok = two_of_each spinor_indices
+    let conjspinor_contraction_ok = two_of_each conjspinor_indices
 
     let contraction_ok p =
       vector_contraction_ok p &&
@@ -581,16 +573,14 @@ module Lorentz : Lorentz =
 
   end
 
-(* TODO: make this signature much smaller!!! *)
-
 module type Color =
   sig
     module Index : Index
     type index = Index.t
     type color_rep = F of field | C of field | A of field
     type primitive =
-        D of field * field
-      | E of field * field * field
+      | D of field * field
+      | E of field * field * field  (* only for $SU(3)$ *)
       | T of field * field * field
       | F of field * field * field
     val map_primitive : (field -> field) -> primitive -> primitive
@@ -622,7 +612,7 @@ module Color : Color =
 
     type primitive =
       | D of field * field
-      | E of field * field * field  (* $SU(3)$ *)
+      | E of field * field * field
       | T of field * field * field
       | F of field * field * field
 
