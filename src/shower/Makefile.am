@@ -53,7 +53,7 @@ dist_noinst_DATA = shower.nw
 libshower_Modules = ${libshower_la_SOURCES:.f90=}
 Modules: Makefile
 	@rm -f $@
-	for module in $(libbeams_Modules); do \
+	for module in $(libshower_Modules); do \
           echo $$module >> $@; \
         done
 
