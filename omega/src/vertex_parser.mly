@@ -99,12 +99,14 @@ particle:
 
 expr_arg:
  | LBRACKET expr RBRACKET { $2 }
+ | LBRACKET expr RBRACE   { parse_error "expected `]', found `}'" }
  | LBRACKET expr END      { parse_error "missing `]'" }
 ;
 
 token_list_arg:
- | LBRACE token_list RBRACE { $2 }
- | LBRACE token_list END    { parse_error "missing `}'" }
+ | LBRACE token_list RBRACE   { $2 }
+ | LBRACE token_list RBRACKET { parse_error "expected `}', found `]'" }
+ | LBRACE token_list END      { parse_error "missing `}'" }
 ;
 
 token_list_arg_pair:
@@ -185,10 +187,11 @@ tensor_attribute:
 ;
 
 vertex:
- | VERTEX token_list_arg          { (E.integer 1, T.list $2) }
- | VERTEX expr_arg token_list_arg { ($2, T.list $3) }
- | VERTEX expr_arg LBRACE RBRACE  { ($2, T.list []) }
- | VERTEX expr_arg LBRACE END     { parse_error "missing `}'" }
+ | VERTEX token_list_arg           { (E.integer 1, T.list $2) }
+ | VERTEX expr_arg token_list_arg  { ($2, T.list $3) }
+ | VERTEX expr_arg LBRACE RBRACE   { ($2, T.list []) }
+ | VERTEX expr_arg LBRACE RBRACKET { parse_error "expected `}', found `]'" }
+ | VERTEX expr_arg LBRACE END      { parse_error "missing `}'" }
 ;
 
 expr:

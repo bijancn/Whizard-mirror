@@ -82,17 +82,20 @@ module Parser_Test : Test =
       assert_equal ~printer:(String.concat " ")
         [s_out] (Vertex_syntax.File.to_strings (parse_string s_in))
 
+    let parse_error error s () =
+      assert_raises (Invalid_argument error) (fun () -> parse_string s)
+
     let syntax_error (msg, error) s () =
-      assert_raises
-        (Invalid_argument
-          (Printf.sprintf "syntax error (%s) at: `%s'" msg error))
-        (fun () -> parse_string s)
+      parse_error ("syntax error (" ^ msg ^ ") at: `" ^ error ^ "'") s ()
 
     let (=>) s_in s_out =
       " " ^ s_in >:: compare s_out s_in
 
     let (?>) s =
       s => s
+
+    let (=>!!!) s error =
+      " " ^ s >:: parse_error error s
 
     let (=>!) s error =
       " " ^ s >:: syntax_error error s
@@ -104,7 +107,16 @@ module Parser_Test : Test =
     let expr =
       "expr" >:::
         [ "\\vertex[2 * (17 + 4)]{}" => "\\vertex[42]{{}}";
-          "\\vertex[2 * 17 + 4]{}"   => "\\vertex[38]{{}}" ]
+          "\\vertex[2 * 17 + 4]{}"   => "\\vertex[38]{{}}";
+	  "\\vertex[2" =>! ("missing `]'", "[2");
+	  "\\vertex]{}" =>!!! "index out of bounds"; (* TODO: where from? *)
+	  "\\vertex2]{}" =>!!! "index out of bounds"; (* TODO: where from? *)
+	  "\\vertex}{}" =>!!! "index out of bounds"; (* TODO: where from? *)
+	  "\\vertex2}{}" =>!!! "index out of bounds"; (* TODO: where from? *)
+	  "\\vertex{2]{}" =>! ("expected `}', found `]'", "{2]");
+	  "\\vertex[2}{}" =>! ("expected `]', found `}'", "[2}");
+	  "\\vertex[2{}" =>! ("syntax error", "2");
+	  "\\vertex[2*]{}" =>! ("syntax error", "2") ]
 
     let index =
       "index" >:::
