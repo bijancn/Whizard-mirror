@@ -22,6 +22,482 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
+module type Test =
+  sig
+    val example : unit -> unit
+    val suite : OUnit.test
+  end
+
+(* \thocwmodulesection{New Implementation: Next Version} *)
+
+let parse_string text =
+  Vertex_syntax.File.expand_includes
+    (fun file -> invalid_arg ("parse_string: found include `" ^ file ^ "'"))
+    (try
+       Vertex_parser.file Vertex_lexer.token (Lexing.from_string text)
+     with
+     | Vertex_syntax.Syntax_Error (msg, i, j) ->
+       invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
+                      msg  (String.sub text i (j - i)))
+     | Parsing.Parse_error ->
+       invalid_arg ("parse error: " ^ text))
+
+let parse_file name =
+  let parse_file_tree name =
+    let ic = open_in name in
+    let file_tree =
+      begin try
+        Vertex_parser.file Vertex_lexer.token (Lexing.from_channel ic)
+      with
+      | Vertex_syntax.Syntax_Error (msg, i, j) ->
+        begin
+          close_in ic;
+          invalid_arg (Printf.sprintf "syntax error (%s) in `%s'"
+                         msg name)
+        end
+      | Parsing.Parse_error ->
+        begin
+          close_in ic;
+          invalid_arg ("parse error: " ^ name)
+        end
+      end in
+    close_in ic;
+    file_tree in
+  Vertex_syntax.File.expand_includes parse_file_tree (parse_file_tree name)
+
+let dump_file pfx f =
+  List.iter
+    (fun s -> print_endline (pfx ^ ": " ^ s))
+    (Vertex_syntax.File.to_strings f)
+
+module Parser_Test : Test =
+  struct
+
+    let example () =
+      ()
+
+    open OUnit
+
+    let compare s_out s_in () =
+      assert_equal ~printer:(String.concat " ")
+        [s_out] (Vertex_syntax.File.to_strings (parse_string s_in))
+
+    let syntax_error (msg, error) s () =
+      assert_raises
+        (Invalid_argument
+          (Printf.sprintf "syntax error (%s) at: `%s'" msg error))
+        (fun () -> parse_string s)
+
+    let (=>) s_in s_out =
+      " " ^ s_in >:: compare s_out s_in
+
+    let (?>) s =
+      s => s
+
+    let (=>!) s error =
+      " " ^ s >:: syntax_error error s
+
+    let empty =
+      "empty" >::
+        (fun () -> assert_equal [] (parse_string ""))
+
+    let expr =
+      "expr" >:::
+        [ "\\vertex[2 * (17 + 4)]{}" => "\\vertex[42]{{}}";
+          "\\vertex[2 * 17 + 4]{}"   => "\\vertex[38]{{}}" ]
+
+    let index =
+      "index" >:::
+        [ "\\vertex{{a}_{1}^{2}}" => "\\vertex{a^2_1}";
+          "\\vertex{a_{11}^2}"    => "\\vertex{a^2_{11}}";
+          "\\vertex{a_{1_1}^2}"   => "\\vertex{a^2_{1_1}}" ]
+
+    let electron1 =
+      "electron1" >:::
+        [ "\\charged{e^-}{e^+}" => "\\charged{{e^-}}{{e^+}}";
+          ?> "\\charged{{e^-}}{{e^+}}" ]
+
+    let electron2 =
+      "electron2" >:::
+        [ "\\charged{e^-}{e^+}\\fortran{ele}" =>
+          "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}";
+          "\\charged{e^-}{e^+}\\fortran{electron}\\fortran{ele}" =>
+          "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}\\fortran{{electron}}";
+          "\\charged{e^-}{e^+}\\alias{e2}\\alias{e1}" =>
+          "\\charged{{e^-}}{{e^+}}\\alias{{e1}}\\alias{{e2}}";
+          "\\charged{e^-}{e^+}\\fortran{ele}\\anti\\fortran{pos}" =>
+          "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}\\anti\\fortran{{pos}}" ]
+
+    let particles =
+      "particles" >:::
+        [electron1;
+         electron2]
+
+    let parameters =
+      "parameters" >:::
+        [ "\\parameter{alpha}{1/137}" => "\\parameter{{alpha}}{1/137}";
+          "\\derived{alpha\\_s}{1/\\ln{\\frac{\\mu}{\\Lambda}}}" =>
+          "\\derived{{alpha\\_s}}{1/\\ln{\\frac{\\mu}{\\Lambda}}}";
+          "\\parameter{alpha}{1/137}\\anti\\fortran{alpha}" =>!
+          ("invalid parameter attribute", "\\anti") ]
+
+    let indices =
+      "indices" >:::
+        [ ?> "\\index{\\mu}"]
+
+    let tensors =
+      "tensors" >:::
+        [ "\\tensor{T}\\color{SU(3)}" => "\\tensor{T}\\color{{SU(3)}}"]
+
+    let vertices =
+      "vertex" >:::
+        [ "\\vertex{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}" =>
+          "\\vertex{{{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}}}" ]
+
+    module T = Vertex_syntax.Token
+
+    let parse_token s =
+      match parse_string ("\\vertex{" ^ s ^ "}") with
+      | [Vertex_syntax.File.Vertex (_, v)] -> v
+      | _ -> invalid_arg "only_vertex"
+
+    let print_token pfx t =
+      print_endline (pfx ^ ": " ^ T.to_string t)
+
+    let test_stem s_out s_in () =
+      assert_equal ~printer:T.to_string
+        (parse_token s_out)
+        (T.stem (parse_token s_in))
+
+    let (=>>) s_in s_out =
+      "stem " ^ s_in >:: test_stem s_out s_in
+
+    let tokens =
+      "tokens" >:::
+        [ "\\vertex{a'}" => "\\vertex{a^\\prime}";
+          "\\vertex{a''}" => "\\vertex{a^{\\prime\\prime}}";
+          "\\bar\\psi''_{i,\\alpha}" =>> "\\psi";
+          "\\phi^\\dagger_{i'}" =>> "\\phi";
+          "\\bar{\\phi\\psi}''_{i,\\alpha}" =>> "\\psi";
+          "\\vertex{\\phi}" => "\\vertex{\\phi}";
+          "\\vertex{\\phi_1}" => "\\vertex{\\phi_1}";
+          "\\vertex{{{\\phi}'}}" => "\\vertex{\\phi^\\prime}";
+          "\\vertex{\\hat{\\bar\\psi}_1}" => "\\vertex{\\hat\\bar\\psi_1}";
+          "\\vertex{{a_b}_{cd}}" => "\\vertex{a_{bcd}}";
+          "\\vertex{{\\phi_1}_2}" => "\\vertex{\\phi_{12}}";
+          "\\vertex{{\\phi_{12}}_{34}}" => "\\vertex{\\phi_{1234}}";
+          "\\vertex{{\\phi_{12}}^{34}}" => "\\vertex{\\phi^{34}_{12}}";
+          "\\vertex{\\bar{\\psi_{\\mathrm{e}}}_\\alpha\\gamma_{\\alpha\\beta}^\\mu{\\psi_{\\mathrm{e}}}_\\beta}" =>
+          "\\vertex{{{\\bar\\psi_{\\mathrm e\\alpha}\\gamma^\\mu_{\\alpha\\beta}\\psi_{\\mathrm e\\beta}}}}"]
+
+    let suite =
+      "Vertex_Parser" >:::
+        [empty;
+         index;
+         expr;
+         particles;
+         parameters;
+         indices;
+         tensors;
+         vertices;
+         tokens ]
+
+  end
+
+module Particle =
+  struct
+
+    type t = unit
+
+  end
+
+module Index =
+  struct
+
+    type color = unit
+    type vector = unit
+    type flavor = unit
+
+    type t =
+    | Color of color
+    | Vector of vector
+    | Flavor of flavor
+
+  end
+
+module Tensor =
+  struct
+
+    type color = unit
+    type vector = unit
+    type flavor = unit
+
+    type t =
+    | Color of color
+    | Vector of vector
+    | Flavor of flavor
+
+  end
+
+module type Symbol =
+  sig
+
+    type kind =
+    | Particle
+    | Parameter
+    | Index
+    | Tensor
+
+    type table
+
+    val load : Vertex_syntax.File.t -> table
+    val kind : table -> Vertex_syntax.Token.t list -> kind option
+
+  end
+
+module Symbol (* : Symbol *) =
+  struct
+
+    module T = Vertex_syntax.Token
+    module F = Vertex_syntax.File
+    module P = Vertex_syntax.Particle
+    module I = Vertex_syntax.Index
+    module Q = Vertex_syntax.Parameter
+    module X = Vertex_syntax.Tensor
+
+    type space =
+    | Color
+    | Lorentz
+    | Flavor
+        
+    type kind =
+    | Particle
+    | Parameter
+    | Index of space
+    | Tensor of space
+
+    module ST =
+      Map.Make
+        (struct
+          type t = T.t
+          let compare = T.compare
+         end)
+
+    type table = kind ST.t
+
+    let empty = ST.empty
+
+    let add table token kind =
+      ST.add (T.stem (T.list token)) kind table
+
+    let index_space index =
+      let spaces =
+        List.fold_left
+          (fun acc -> function
+          | I.Color _ -> Color :: acc
+          | I.Lorentz _ -> Lorentz :: acc
+          | I.Flavor _ -> Flavor :: acc)
+          [] index.I.attr in
+      match ThoList.uniq (List.sort compare spaces) with
+      | [space] -> space
+      | [] -> invalid_arg "index not declared as color, flavor or index"
+      | _ -> invalid_arg "conflicting index declarations"
+
+    let tensor_space tensor =
+      let spaces =
+        List.fold_left
+          (fun acc -> function
+          | X.Color _ -> Color :: acc
+          | X.Lorentz _ -> Lorentz :: acc
+          | X.Flavor _ -> Flavor :: acc)
+          [] tensor.X.attr in
+      match ThoList.uniq (List.sort compare spaces) with
+      | [space] -> space
+      | [] -> invalid_arg "tensor not declared as color, flavor or index"
+      | _ -> invalid_arg "conflicting tensor declarations"
+
+    let insert table = function
+      | F.Particle p ->
+        begin match p.P.name with
+        | P.Neutral name -> add table name Particle
+        | P.Charged (name, anti) ->
+          add (add table name Particle) anti Particle
+        end
+      | F.Index i -> add table i.I.name (Index (index_space i))
+      | F.Tensor t -> add table t.X.name (Tensor (tensor_space t))
+      | F.Parameter p ->
+        begin match p with
+        | Q.Input name -> add table name.Q.name Parameter
+        | Q.Derived name -> add table name.Q.name Parameter
+        end
+      | F.Vertex _ -> table
+
+    let load decls =
+      List.fold_left insert empty decls
+
+    let kind table token =
+      try Some (ST.find (T.stem token) table) with Not_found -> None
+
+  end
+
+module Vertex =
+  struct
+
+    module S = Symbol
+    module T = Vertex_syntax.Token
+
+    type attr =
+    | Bar
+    | Dagger
+    | Star
+
+    type factor =
+      { stem : T.t;
+        prefix : string list;
+        particle : T.t list;
+        color : T.t list;
+        lorentz : T.t list;
+        flavor : T.t list;
+        other : T.t list }
+
+    let factor_stem token =
+      { stem = token.T.stem;
+        prefix = token.T.prefix;
+        particle = [];
+        color = [];
+        lorentz = [];
+        flavor = [];
+        other = [] }
+
+    let rev factor =
+      { stem = factor.stem;
+        prefix = List.rev factor.prefix;
+        particle = List.rev factor.particle;
+        color = List.rev factor.color;
+        lorentz = List.rev factor.lorentz;
+        flavor = List.rev factor.flavor;
+        other = List.rev factor.other }
+
+    let factor_add_prefix factor token =
+      { factor with prefix = token :: factor.prefix }
+
+    let factor_add_particle factor token =
+      { factor with particle = token :: factor.particle }
+
+    let factor_add_color_index factor token =
+      { factor with color = token :: factor.color }
+
+    let factor_add_lorentz_index factor token =
+      { factor with lorentz = token :: factor.lorentz }
+
+    let factor_add_flavor_index factor token =
+      { factor with flavor = token :: factor.flavor }
+
+    let factor_add_other_index factor token =
+      { factor with other = token :: factor.other }
+
+    let factor_add_index symbol_table factor = function
+      | T.Token "," -> factor
+      | T.Token ("*" | "\\ast" as star) ->
+        factor_add_prefix factor star
+      | token ->
+        begin match S.kind symbol_table token with
+        | Some kind ->
+          begin match kind with
+          | S.Particle -> factor_add_particle factor token
+          | S.Index S.Color -> factor_add_color_index factor token
+          | S.Index S.Lorentz -> factor_add_lorentz_index factor token
+          | S.Index S.Flavor -> factor_add_flavor_index factor token
+          | S.Tensor _ -> invalid_arg "factor_add_index: \\tensor"
+          | S.Parameter -> invalid_arg "factor_add_index: \\parameter"
+          end
+        | None -> factor_add_other_index factor token
+        end
+
+    let factor_of_token symbol_table token =
+      let token = T.wrap_scripted token in
+      rev (List.fold_left
+             (factor_add_index symbol_table)
+             (factor_stem token)
+             (token.T.super @ token.T.sub))
+
+    let list_to_string tag = function
+      | [] -> ""
+      | l -> "; " ^ tag ^ "=" ^ String.concat "," (List.map T.to_string l)
+
+    let factor_to_string factor =
+       "[" ^ T.to_string factor.stem ^
+         (match factor.prefix with
+         | [] -> ""
+         | l -> "; prefix=" ^ String.concat ", " l) ^
+         list_to_string "particle" factor.particle ^
+         list_to_string "color" factor.color ^
+         list_to_string "lorentz" factor.lorentz ^
+         list_to_string "flavor" factor.flavor ^
+         list_to_string "other" factor.other ^ "]"
+
+    let vertices s =
+      let decls = parse_string s in
+      let symbol_table = Symbol.load decls in
+      let tokens =
+        List.fold_left
+          (fun acc -> function
+          | Vertex_syntax.File.Vertex (_, v) -> T.wrap_list v @ acc
+          | _ -> acc)
+          [] decls in
+      List.map (factor_of_token symbol_table) tokens
+
+    let vertices' s =
+      String.concat "; "
+        (List.map factor_to_string (vertices s))
+
+    type field =
+      { name : T.t list }
+
+  end
+
+module Modelfile =
+  struct
+
+  end
+
+module Modelfile_Test =
+  struct
+
+    let example () =
+      ()
+
+    open OUnit
+
+    let suite =
+      "Modelfile_Test" >:::
+        [ "1" >::
+            (fun () ->
+              assert_equal ~printer:(fun s -> s)
+                "[\\psi; prefix=\\bar; \
+                  particle=e; color=a; lorentz=\\alpha_1]; \
+                 [\\gamma; lorentz=\\mu,\\alpha_1,\\alpha_2]; \
+                 [\\psi; particle=e; color=a; lorentz=\\alpha_2]; \
+                 [A; lorentz=\\mu]"
+                (Vertex.vertices'
+                   "\\charged{e^-}{e^+}\
+                    \\index{a}\\color{SU(3)}\
+                    \\index{\\mu}\\lorentz{X}\
+                    \\index{\\alpha}\\lorentz{X}\
+                    \\vertex{\\bar{\\psi_e}_{a,\\alpha_1}\
+                             \\gamma^\\mu_{\\alpha_1\\alpha_2}\
+                             {\\psi_e}_{a,\\alpha_2}A_\\mu}"));
+          "QCD.omf" >::
+            (fun () ->
+              dump_file "QCD" (parse_file "QCD.omf"));
+          "SM.omf" >::
+            (fun () ->
+              dump_file "SM" (parse_file "SM.omf")) ]
+
+  end
+
+(* \thocwmodulesection{New Implementation: Obsolete Version~1} *)
+
 (* Start of version 1 of the new implementation.  The old syntax
    will not be used in the real implementation, but the library
    for dealing with indices and permutations will remail important. *)
@@ -150,12 +626,12 @@ module type Lorentz =
       sig
         type t = int * int
         type t' =
-	  | Z (* $0$ *)
-	  | O (* $1$ *)
-	  | M (* $-1$ *)
-	  | I (* $\mathrm{i}$ *)
-	  | J (* $-\mathrm{i}$ *)
-	  | C of int * int (* $x+\mathrm{i}y$ *)
+          | Z (* $0$ *)
+          | O (* $1$ *)
+          | M (* $-1$ *)
+          | I (* $\mathrm{i}$ *)
+          | J (* $-\mathrm{i}$ *)
+          | C of int * int (* $x+\mathrm{i}y$ *)
         val to_fortran : t' -> string
       end
 
@@ -177,7 +653,7 @@ module type Lorentz =
 
     module type Dirac_Matrices =
       sig
-	type t = (int * int * Complex.t') list
+        type t = (int * int * Complex.t') list
         val scalar : t
         val vector : (int * t) list
         val tensor : (int * int * t) list
@@ -226,40 +702,40 @@ module Lorentz : Lorentz =
 
     let vector_ok context = function
       | Vector (I _) ->
-	(* we could perform additional checks! *)
-	true
+        (* we could perform additional checks! *)
+        true
       | Vector (F i) ->
           begin
             match Field.get context.lorentz_reps i with
             | Coupling.Vector -> true
             | Coupling.Vectorspinor ->
-	        failwith "Lorentz.vector_ok: incomplete"
+                failwith "Lorentz.vector_ok: incomplete"
             | _ -> false
           end
       
     let spinor_ok context = function
       | Spinor (I _) ->
-	(* we could perfrom additional checks! *)
-	true
+        (* we could perfrom additional checks! *)
+        true
       | Spinor (F i) ->
           begin
             match Field.get context.lorentz_reps i with
             | Coupling.Spinor -> true
             | Coupling.Vectorspinor | Coupling.Majorana ->
-	        failwith "Lorentz.spinor_ok: incomplete"
+                failwith "Lorentz.spinor_ok: incomplete"
             | _ -> false
           end
 
     let conjspinor_ok context = function
       | ConjSpinor (I _) ->
-	(* we could perform additional checks! *)
-	true
+        (* we could perform additional checks! *)
+        true
       | ConjSpinor (F i) ->
           begin
             match Field.get context.lorentz_reps i with
             | Coupling.ConjSpinor -> true
             | Coupling.Vectorspinor | Coupling.Majorana ->
-	        failwith "Lorentz.conjspinor_ok: incomplete"
+                failwith "Lorentz.conjspinor_ok: incomplete"
             | _ -> false
           end
 
@@ -311,19 +787,19 @@ module Lorentz : Lorentz =
 
     let primitive_ok context =
       function
-	| G (mu, nu) ->
+        | G (mu, nu) ->
             distinct2 mu nu &&
             vector_ok context mu && vector_ok context nu
         | E (mu, nu, rho, sigma) ->
             let i = [mu; nu; rho; sigma] in
             distinct i && List.for_all (vector_ok context) i
-	| K (mu, i) ->
+        | K (mu, i) ->
             vector_ok context mu
-	| S (i, j) | P (i, j) ->
+        | S (i, j) | P (i, j) ->
             spinor_sandwitch_ok context i j
         | V (mu, i, j) | A (mu, i, j) ->
             vector_ok context mu && spinor_sandwitch_ok context i j
-	| T (mu, nu, i, j) ->
+        | T (mu, nu, i, j) ->
             vector_ok context mu && vector_ok context nu &&
             spinor_sandwitch_ok context i j
 
@@ -394,15 +870,15 @@ module Lorentz : Lorentz =
 
         type t = int * int
 
-	type t' = Z | O | M | I | J | C of int * int
+        type t' = Z | O | M | I | J | C of int * int
 
-	let to_fortran = function
-	  | Z -> "(0,0)"
-	  | O -> "(1,0)"
-	  | M -> "(-1,0)"
-	  | I -> "(0,1)"
-	  | J -> "(0,-1)"
-	  | C (r, i) -> "(" ^ string_of_int r ^ "," ^ string_of_int i ^ ")"
+        let to_fortran = function
+          | Z -> "(0,0)"
+          | O -> "(1,0)"
+          | M -> "(-1,0)"
+          | I -> "(0,1)"
+          | J -> "(0,-1)"
+          | C (r, i) -> "(" ^ string_of_int r ^ "," ^ string_of_int i ^ ")"
 
       end
 
@@ -417,7 +893,7 @@ module Lorentz : Lorentz =
 
     module type Dirac_Matrices =
       sig
-	type t = (int * int * Complex.t') list
+        type t = (int * int * Complex.t') list
         val scalar : t
         val vector : (int * t) list
         val tensor : (int * int * t) list
@@ -428,7 +904,7 @@ module Lorentz : Lorentz =
     module Chiral : Dirac_Matrices =
       struct
 
-	type t = (int * int * Complex.t') list
+        type t = (int * int * Complex.t') list
 
         let scalar =
           [ (1, 1, Complex.O);
@@ -438,42 +914,42 @@ module Lorentz : Lorentz =
 
         let vector =
           [ (0, [ (1, 4, Complex.O);
-		  (4, 1, Complex.O);
-		  (2, 3, Complex.M);
-		  (3, 2, Complex.M) ]);
+                  (4, 1, Complex.O);
+                  (2, 3, Complex.M);
+                  (3, 2, Complex.M) ]);
             (1, [ (1, 3, Complex.O);
-		  (3, 1, Complex.O);
-		  (2, 4, Complex.M);
-		  (4, 2, Complex.M) ]);
+                  (3, 1, Complex.O);
+                  (2, 4, Complex.M);
+                  (4, 2, Complex.M) ]);
             (2, [ (1, 3, Complex.I);
-		  (3, 1, Complex.I);
-		  (2, 4, Complex.I);
-		  (4, 2, Complex.I) ]);
+                  (3, 1, Complex.I);
+                  (2, 4, Complex.I);
+                  (4, 2, Complex.I) ]);
             (3, [ (1, 4, Complex.M);
-		  (4, 1, Complex.M);
-		  (2, 3, Complex.M);
-		  (3, 2, Complex.M) ]) ]
+                  (4, 1, Complex.M);
+                  (2, 3, Complex.M);
+                  (3, 2, Complex.M) ]) ]
 
         let tensor =
           [ (* TODO!!! *) ]
 
         let axial =
           [ (0, [ (1, 4, Complex.M);
-		  (4, 1, Complex.O);
-		  (2, 3, Complex.O);
-		  (3, 2, Complex.M) ]);
+                  (4, 1, Complex.O);
+                  (2, 3, Complex.O);
+                  (3, 2, Complex.M) ]);
             (1, [ (1, 3, Complex.M);
-		  (3, 1, Complex.O);
-		  (2, 4, Complex.O);
-		  (4, 2, Complex.M) ]);
+                  (3, 1, Complex.O);
+                  (2, 4, Complex.O);
+                  (4, 2, Complex.M) ]);
             (2, [ (1, 3, Complex.J);
-		  (3, 1, Complex.I);
-		  (2, 4, Complex.J);
-		  (4, 2, Complex.I) ]);
-	    (3, [ (1, 4, Complex.O);
-		  (4, 1, Complex.M);
-		  (2, 3, Complex.O);
-		  (3, 2, Complex.M) ]) ]
+                  (3, 1, Complex.I);
+                  (2, 4, Complex.J);
+                  (4, 2, Complex.I) ]);
+            (3, [ (1, 4, Complex.O);
+                  (4, 1, Complex.M);
+                  (2, 3, Complex.O);
+                  (3, 2, Complex.M) ]) ]
 
         let pseudo =
           [ (1, 1, Complex.M);
@@ -516,9 +992,9 @@ module Lorentz : Lorentz =
         let init3 quadruples =
           List.fold_left
             (fun acc (mu, gamma) ->
-	     List.fold_right
-	       (fun (i, j, e) -> Map3.add (mu, (i, j)) e)
-	       gamma acc)
+             List.fold_right
+               (fun (i, j, e) -> Map3.add (mu, (i, j)) e)
+               gamma acc)
             Map3.empty quadruples
 
         let bounds_check3 mu i j =
@@ -540,9 +1016,9 @@ module Lorentz : Lorentz =
         let init4 quadruples =
           List.fold_left
             (fun acc (mu, nu, gamma) ->
-	     List.fold_right
-	       (fun (i, j, e) -> Map4.add (mu, nu, (i, j)) e)
-	       gamma acc)
+             List.fold_right
+               (fun (i, j, e) -> Map4.add (mu, nu, (i, j)) e)
+               gamma acc)
             Map4.empty quadruples
 
         let bounds_check4 mu nu i j =
@@ -624,34 +1100,34 @@ module Color : Color =
 
     let primitive_ok ctx =
       function
-	| D (i, j) ->
-	    distinct2 i j &&
-	    (match Field.get ctx.color_reps i, Field.get ctx.color_reps j with
-	    | Color.SUN (n1), Color.SUN (n2) ->
-		n1 = - n2 && n2 > 0
-	    | _, _ -> false)
-	| E (i, j, k) ->
-	    distinct3 i j k &&
-	    (match Field.get ctx.color_reps i,
-	      Field.get ctx.color_reps j, Field.get ctx.color_reps k with
-	    | Color.SUN (n1), Color.SUN (n2), Color.SUN (n3) ->
-		n1 = 3 && n2 = 3 && n3 = 3 ||
-		n1 = -3 && n2 = -3 && n3 = -3
-	      | _, _, _ -> false)
-	| T (a, i, j) ->
-	    distinct3 a i j &&
-	    (match Field.get ctx.color_reps a,
-	      Field.get ctx.color_reps i, Field.get ctx.color_reps j with
-	    | Color.AdjSUN(n1), Color.SUN (n2), Color.SUN (n3) ->
-		n1 = n3 && n2 = - n3 && n3 > 0
-	    | _, _, _ -> false)
-	| F (a, b, c) ->
-	    distinct3 a b c &&
-	    (match Field.get ctx.color_reps a,
+        | D (i, j) ->
+            distinct2 i j &&
+            (match Field.get ctx.color_reps i, Field.get ctx.color_reps j with
+            | Color.SUN (n1), Color.SUN (n2) ->
+                n1 = - n2 && n2 > 0
+            | _, _ -> false)
+        | E (i, j, k) ->
+            distinct3 i j k &&
+            (match Field.get ctx.color_reps i,
+              Field.get ctx.color_reps j, Field.get ctx.color_reps k with
+            | Color.SUN (n1), Color.SUN (n2), Color.SUN (n3) ->
+                n1 = 3 && n2 = 3 && n3 = 3 ||
+                n1 = -3 && n2 = -3 && n3 = -3
+              | _, _, _ -> false)
+        | T (a, i, j) ->
+            distinct3 a i j &&
+            (match Field.get ctx.color_reps a,
+              Field.get ctx.color_reps i, Field.get ctx.color_reps j with
+            | Color.AdjSUN(n1), Color.SUN (n2), Color.SUN (n3) ->
+                n1 = n3 && n2 = - n3 && n3 > 0
+            | _, _, _ -> false)
+        | F (a, b, c) ->
+            distinct3 a b c &&
+            (match Field.get ctx.color_reps a,
               Field.get ctx.color_reps b, Field.get ctx.color_reps c with
-	    | Color.AdjSUN(n1), Color.AdjSUN (n2), Color.AdjSUN (n3) ->
-		n1 = n2 && n2 = n3 && n1 > 0
-	    | _, _, _ -> false)
+            | Color.AdjSUN(n1), Color.AdjSUN (n2), Color.AdjSUN (n3) ->
+                n1 = n2 && n2 = n3 && n1 > 0
+            | _, _, _ -> false)
 
     let primitive_indices = function
       | D (_, _) -> []
@@ -664,8 +1140,8 @@ module Color : Color =
 
     let contraction_ok p =
       List.for_all
-	(fun (n, _) -> n = 2)
-	(ThoList.classify (indices p))
+        (fun (n, _) -> n = 2)
+        (ThoList.classify (indices p))
 
     type tensor = int * primitive list
 
@@ -682,12 +1158,6 @@ type t =
       lorentz : Lorentz.tensor list;
       color : Color.tensor list }
 
-module type Test =
-  sig
-    val example : unit -> unit
-    val suite : OUnit.test
-  end
-
 module Test (M : Model.T) : Test =
   struct
 
@@ -695,8 +1165,8 @@ module Test (M : Model.T) : Test =
 
     let context_of_flavors flavors =
       { arity = Array.length flavors;
-	lorentz_reps = Array.map M.lorentz flavors;
-	color_reps = Array.map M.color flavors }
+        lorentz_reps = Array.map M.lorentz flavors;
+        color_reps = Array.map M.color flavors }
 
     let context_of_flavor_names names =
       context_of_flavors (Array.map M.flavor_of_string names)
@@ -707,7 +1177,7 @@ module Test (M : Model.T) : Test =
     let ok v =
       let context = context_of_vertex v in
       List.for_all (Lorentz.tensor_ok context) v.lorentz &&
-	List.for_all (Color.tensor_ok context) v.color
+        List.for_all (Color.tensor_ok context) v.color
 
     module PM =
       Partial.Make (struct type t = field let compare = compare end)
@@ -723,13 +1193,13 @@ module Test (M : Model.T) : Test =
       let permute =
         PM.apply (PM.of_lists sorted (List.map (Field.of_int context) p)) in
       { fields = Permutation.array (Permutation.of_list p) v.fields;
- 	lorentz = List.map
+        lorentz = List.map
           (Lorentz.map_tensor id permute id permute id permute) v.lorentz;
-	color = List.map (Color.map_tensor permute) v.color }
+        color = List.map (Color.map_tensor permute) v.color }
 
     let permutations v =
       List.map (permute v)
-	(Combinatorics.permute (ThoList.range 0 (Array.length v.fields - 1)))
+        (Combinatorics.permute (ThoList.range 0 (Array.length v.fields - 1)))
 
     let wf_declaration flavor =
       match M.lorentz (M.flavor_of_string flavor) with
@@ -745,7 +1215,7 @@ module Test (M : Model.T) : Test =
       | lhs :: rhs ->
           let name = lhs ^ "_of_" ^ String.concat "_" rhs in
           let momenta = List.map (fun n -> "k_" ^ n) rhs in
-	  Printf.printf "pure function %s (%s) result (%s)\n"
+          Printf.printf "pure function %s (%s) result (%s)\n"
             name (String.concat ", "
                     (List.flatten
                        (List.map2 (fun wf p -> [wf; p]) rhs momenta)))
@@ -795,8 +1265,8 @@ module Test (M : Model.T) : Test =
               end;
           | _ -> failwith "write_fusion: incomplete"
           end;
-	  Printf.printf "end function %s\n" name;
-	  ()
+          Printf.printf "end function %s\n" name;
+          ()
       | [] -> ()
 
     let write_fusions v =
@@ -821,46 +1291,46 @@ module Test (M : Model.T) : Test =
      
     let vector_current_ok =
       { fields = tbar_gl_t;
-	lorentz = [ (1, [Lorentz.V (vector_field context 1,
+        lorentz = [ (1, [Lorentz.V (vector_field context 1,
                                     conjspinor_field context 0,
                                     spinor_field context 2)]) ];
-	color = [ (1, [Color.T (Field.of_int context 1,
+        color = [ (1, [Color.T (Field.of_int context 1,
                                 Field.of_int context 0,
                                 Field.of_int context 2)])] }
 
     let vector_current_vector_misplaced =
       { fields = tbar_gl_t;
-	lorentz = [ (1, [Lorentz.V (vector_field context 2,
+        lorentz = [ (1, [Lorentz.V (vector_field context 2,
                                     conjspinor_field context 0,
                                     spinor_field context 2)]) ];
-	color = [ (1, [Color.T (Field.of_int context 1,
+        color = [ (1, [Color.T (Field.of_int context 1,
                                 Field.of_int context 0,
                                 Field.of_int context 2)])] }
 
     let vector_current_spinor_misplaced =
       { fields = tbar_gl_t;
-	lorentz = [ (1, [Lorentz.V (vector_field context 1,
+        lorentz = [ (1, [Lorentz.V (vector_field context 1,
                                     conjspinor_field context 0,
                                     spinor_field context 1)]) ];
-	color = [ (1, [Color.T (Field.of_int context 1,
+        color = [ (1, [Color.T (Field.of_int context 1,
                                 Field.of_int context 0,
                                 Field.of_int context 2)])] }
 
     let vector_current_conjspinor_misplaced =
       { fields = tbar_gl_t;
-	lorentz = [ (1, [Lorentz.V (vector_field context 1,
+        lorentz = [ (1, [Lorentz.V (vector_field context 1,
                                     conjspinor_field context 1,
                                     spinor_field context 2)]) ];
-	color = [ (1, [Color.T (Field.of_int context 1,
+        color = [ (1, [Color.T (Field.of_int context 1,
                                 Field.of_int context 0,
                                 Field.of_int context 2)])] }
 
     let vector_current_out_of_bounds () =
       { fields = tbar_gl_t;
-	lorentz = [ (1, [Lorentz.V (mu,
+        lorentz = [ (1, [Lorentz.V (mu,
                                     conjspinor_field context 3,
                                     spinor_field context 2)]) ];
-	color = [ (1, [Color.T (Field.of_int context 1,
+        color = [ (1, [Color.T (Field.of_int context 1,
                                 Field.of_int context 0,
                                 Field.of_int context 2)])] }
 
@@ -868,10 +1338,10 @@ module Test (M : Model.T) : Test =
       let names = [| "t"; "gl"; "t" |] in
       let context = context_of_flavor_names names in
       { fields = names;
-	lorentz = [ (1, [Lorentz.V (mu,
+        lorentz = [ (1, [Lorentz.V (mu,
                                     conjspinor_field context 0,
                                     spinor_field context 2)]) ];
-	color = [ (1, [Color.T (Field.of_int context 1,
+        color = [ (1, [Color.T (Field.of_int context 1,
                                 Field.of_int context 0,
                                 Field.of_int context 2)])] }
 
@@ -880,21 +1350,21 @@ module Test (M : Model.T) : Test =
 
     let anomalous_couplings =
       { fields = wwzz;
-	lorentz = [ (1, [ Lorentz.K (mu, Field.of_int context 0);
+        lorentz = [ (1, [ Lorentz.K (mu, Field.of_int context 0);
                           Lorentz.K (mu, Field.of_int context 1) ]) ];
-	color = [ ] }
+        color = [ ] }
       
     let anomalous_couplings_index_mismatch =
       { fields = wwzz;
-	lorentz = [ (1, [ Lorentz.K (mu, Field.of_int context 0);
+        lorentz = [ (1, [ Lorentz.K (mu, Field.of_int context 0);
                           Lorentz.K (nu, Field.of_int context 1) ]) ];
-	color = [ ] }
+        color = [ ] }
       
     exception Inconsistent_vertex
 
     let example () =
       if not (ok vector_current_ok) then begin
-	raise Inconsistent_vertex
+        raise Inconsistent_vertex
       end;
       write_fusions vector_current_ok
 
@@ -902,510 +1372,44 @@ module Test (M : Model.T) : Test =
 
     let vertex_indices_ok =
       "indices/ok" >::
-	(fun () ->
-	  List.iter
-	    (fun v ->
-	      assert_bool "vector_current" (ok v))
-	    (permutations vector_current_ok))
-		
+        (fun () ->
+          List.iter
+            (fun v ->
+              assert_bool "vector_current" (ok v))
+            (permutations vector_current_ok))
+                
     let vertex_indices_broken =
       "indices/broken" >::
-	(fun () ->
-	  assert_bool "vector misplaced"
-	    (not (ok vector_current_vector_misplaced));
-	  assert_bool "conjugate spinor misplaced"
-	    (not (ok vector_current_spinor_misplaced));
-	  assert_bool "conjugate spinor misplaced"
-	    (not (ok vector_current_conjspinor_misplaced));
+        (fun () ->
+          assert_bool "vector misplaced"
+            (not (ok vector_current_vector_misplaced));
+          assert_bool "conjugate spinor misplaced"
+            (not (ok vector_current_spinor_misplaced));
+          assert_bool "conjugate spinor misplaced"
+            (not (ok vector_current_conjspinor_misplaced));
           assert_raises (Field.Out_of_range 3)
-	    vector_current_out_of_bounds;
-	  assert_bool "color mismatch"
-	    (not (ok vector_current_color_mismatch)))
-		
+            vector_current_out_of_bounds;
+          assert_bool "color mismatch"
+            (not (ok vector_current_color_mismatch)))
+                
     let anomalous_couplings_ok =
       "anomalous_couplings/ok" >::
-	(fun () ->
-	  assert_bool "anomalous couplings"
-	    (ok anomalous_couplings))
-		
+        (fun () ->
+          assert_bool "anomalous couplings"
+            (ok anomalous_couplings))
+                
     let anomalous_couplings_broken =
       "anomalous_couplings/broken" >::
-	(fun () ->
-	  assert_bool "anomalous couplings"
-	    (not (ok anomalous_couplings_index_mismatch)))
-		
+        (fun () ->
+          assert_bool "anomalous couplings"
+            (not (ok anomalous_couplings_index_mismatch)))
+                
     let suite =
       "Vertex" >:::
-	[vertex_indices_ok;
-	 vertex_indices_broken;
-	 anomalous_couplings_ok;
+        [vertex_indices_ok;
+         vertex_indices_broken;
+         anomalous_couplings_ok;
          anomalous_couplings_broken]
       
-  end
-
-(* End of version 1 of the new implementation. *)
-
-(* Start of the new implementation. *)
-
-let parse_string text =
-  Vertex_syntax.File.expand_includes
-    (fun file -> invalid_arg ("parse_string: found include `" ^ file ^ "'"))
-    (try
-       Vertex_parser.file Vertex_lexer.token (Lexing.from_string text)
-     with
-     | Vertex_syntax.Syntax_Error (msg, i, j) ->
-       invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
-                      msg  (String.sub text i (j - i)))
-     | Parsing.Parse_error ->
-       invalid_arg ("parse error: " ^ text))
-
-let parse_file name =
-  let parse_file_tree name =
-    let ic = open_in name in
-    let file_tree =
-      begin try
-	Vertex_parser.file Vertex_lexer.token (Lexing.from_channel ic)
-      with
-      | Vertex_syntax.Syntax_Error (msg, i, j) ->
-	begin
-	  close_in ic;
-	  invalid_arg (Printf.sprintf "syntax error (%s) in `%s'"
-			 msg name)
-	end
-      | Parsing.Parse_error ->
-	begin
-	  close_in ic;
-	  invalid_arg ("parse error: " ^ name)
-	end
-      end in
-    close_in ic;
-    file_tree in
-  Vertex_syntax.File.expand_includes parse_file_tree (parse_file_tree name)
-
-let dump_file pfx f =
-  List.iter
-    (fun s -> print_endline (pfx ^ ": " ^ s))
-    (Vertex_syntax.File.to_strings f)
-
-module Parser_Test : Test =
-  struct
-
-    let example () =
-      ()
-
-    open OUnit
-
-    let compare s_out s_in () =
-      assert_equal ~printer:(String.concat " ")
-	[s_out] (Vertex_syntax.File.to_strings (parse_string s_in))
-
-    let syntax_error (msg, error) s () =
-      assert_raises
-	(Invalid_argument
-	  (Printf.sprintf "syntax error (%s) at: `%s'" msg error))
-	(fun () -> parse_string s)
-
-    let (=>) s_in s_out =
-      " " ^ s_in >:: compare s_out s_in
-
-    let (?>) s =
-      s => s
-
-    let (=>!) s error =
-      " " ^ s >:: syntax_error error s
-
-    let empty =
-      "empty" >::
-	(fun () -> assert_equal [] (parse_string ""))
-
-    let expr =
-      "expr" >:::
-	[ "\\vertex[2 * (17 + 4)]{}" => "\\vertex[42]{{}}";
-	  "\\vertex[2 * 17 + 4]{}"   => "\\vertex[38]{{}}" ]
-
-    let index =
-      "index" >:::
-	[ "\\vertex{{a}_{1}^{2}}" => "\\vertex{a^2_1}";
-	  "\\vertex{a_{11}^2}"    => "\\vertex{a^2_{11}}";
-	  "\\vertex{a_{1_1}^2}"   => "\\vertex{a^2_{1_1}}" ]
-
-    let electron1 =
-      "electron1" >:::
-	[ "\\charged{e^-}{e^+}" => "\\charged{{e^-}}{{e^+}}";
-	  ?> "\\charged{{e^-}}{{e^+}}" ]
-
-    let electron2 =
-      "electron2" >:::
-	[ "\\charged{e^-}{e^+}\\fortran{ele}" =>
-	  "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}";
-	  "\\charged{e^-}{e^+}\\fortran{electron}\\fortran{ele}" =>
-	  "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}\\fortran{{electron}}";
-	  "\\charged{e^-}{e^+}\\alias{e2}\\alias{e1}" =>
-	  "\\charged{{e^-}}{{e^+}}\\alias{{e1}}\\alias{{e2}}";
-	  "\\charged{e^-}{e^+}\\fortran{ele}\\anti\\fortran{pos}" =>
-	  "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}\\anti\\fortran{{pos}}" ]
-
-    let particles =
-      "particles" >:::
-	[electron1;
-	 electron2]
-
-    let parameters =
-      "parameters" >:::
-	[ "\\parameter{alpha}{1/137}" => "\\parameter{{alpha}}{1/137}";
- 	  "\\derived{alpha\\_s}{1/\\ln{\\frac{\\mu}{\\Lambda}}}" =>
-	  "\\derived{{alpha\\_s}}{1/\\ln{\\frac{\\mu}{\\Lambda}}}";
-	  "\\parameter{alpha}{1/137}\\anti\\fortran{alpha}" =>!
-	  ("invalid parameter attribute", "\\anti") ]
-
-    let indices =
-      "indices" >:::
-	[ ?> "\\index{\\mu}"]
-
-    let tensors =
-      "tensors" >:::
-	[ "\\tensor{T}\\color{SU(3)}" => "\\tensor{T}\\color{{SU(3)}}"]
-
-    let vertices =
-      "vertex" >:::
-	[ "\\vertex{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}" =>
-	  "\\vertex{{{\\bar\\psi\\gamma_\\mu\\psi A_\\mu}}}" ]
-
-    module T = Vertex_syntax.Token
-
-    let parse_token s =
-      match parse_string ("\\vertex{" ^ s ^ "}") with
-      | [Vertex_syntax.File.Vertex (_, v)] -> v
-      | _ -> invalid_arg "only_vertex"
-
-    let print_token pfx t =
-      print_endline (pfx ^ ": " ^ T.to_string t)
-
-    let test_stem s_out s_in () =
-      assert_equal ~printer:T.to_string
-	(parse_token s_out)
-	(T.stem (parse_token s_in))
-
-    let (=>>) s_in s_out =
-      "stem " ^ s_in >:: test_stem s_out s_in
-
-    let tokens =
-      "tokens" >:::
-	[ "\\vertex{a'}" => "\\vertex{a^\\prime}";
-	  "\\vertex{a''}" => "\\vertex{a^{\\prime\\prime}}";
-	  "\\bar\\psi''_{i,\\alpha}" =>> "\\psi";
-	  "\\phi^\\dagger_{i'}" =>> "\\phi";
-	  "\\bar{\\phi\\psi}''_{i,\\alpha}" =>> "\\psi";
-	  "\\vertex{\\phi}" => "\\vertex{\\phi}";
-	  "\\vertex{\\phi_1}" => "\\vertex{\\phi_1}";
-	  "\\vertex{{{\\phi}'}}" => "\\vertex{\\phi^\\prime}";
-	  "\\vertex{\\hat{\\bar\\psi}_1}" => "\\vertex{\\hat\\bar\\psi_1}";
-	  "\\vertex{{a_b}_{cd}}" => "\\vertex{a_{bcd}}";
-	  "\\vertex{{\\phi_1}_2}" => "\\vertex{\\phi_{12}}";
-	  "\\vertex{{\\phi_{12}}_{34}}" => "\\vertex{\\phi_{1234}}";
-	  "\\vertex{{\\phi_{12}}^{34}}" => "\\vertex{\\phi^{34}_{12}}";
-	  "\\vertex{\\bar{\\psi_{\\mathrm{e}}}_\\alpha\\gamma_{\\alpha\\beta}^\\mu{\\psi_{\\mathrm{e}}}_\\beta}" =>
-          "\\vertex{{{\\bar\\psi_{\\mathrm e\\alpha}\\gamma^\\mu_{\\alpha\\beta}\\psi_{\\mathrm e\\beta}}}}"]
-
-    let suite =
-      "Vertex_Parser" >:::
-	[empty;
-	 index;
-	 expr;
-	 particles;
-	 parameters;
-	 indices;
-	 tensors;
-	 vertices;
-	 tokens ]
-
-  end
-
-module Particle =
-  struct
-
-    type t = unit
-
-  end
-
-module Index =
-  struct
-
-    type color = unit
-    type vector = unit
-    type flavor = unit
-
-    type t =
-    | Color of color
-    | Vector of vector
-    | Flavor of flavor
-
-  end
-
-module Tensor =
-  struct
-
-    type color = unit
-    type vector = unit
-    type flavor = unit
-
-    type t =
-    | Color of color
-    | Vector of vector
-    | Flavor of flavor
-
-  end
-
-module type Symbol =
-  sig
-
-    type kind =
-    | Particle
-    | Parameter
-    | Index
-    | Tensor
-
-    type table
-
-    val load : Vertex_syntax.File.t -> table
-    val kind : table -> Vertex_syntax.Token.t list -> kind option
-
-  end
-
-module Symbol (* : Symbol *) =
-  struct
-
-    module T = Vertex_syntax.Token
-    module F = Vertex_syntax.File
-    module P = Vertex_syntax.Particle
-    module I = Vertex_syntax.Index
-    module Q = Vertex_syntax.Parameter
-    module X = Vertex_syntax.Tensor
-
-    type space =
-    | Color
-    | Lorentz
-    | Flavor
-	
-    type kind =
-    | Particle
-    | Parameter
-    | Index of space
-    | Tensor of space
-
-    module ST =
-      Map.Make
-	(struct
-	  type t = T.t
-	  let compare = T.compare
-	 end)
-
-    type table = kind ST.t
-
-    let empty = ST.empty
-
-    let add table token kind =
-      ST.add (T.stem (T.list token)) kind table
-
-    let index_space index =
-      let spaces =
-	List.fold_left
-	  (fun acc -> function
-	  | I.Color _ -> Color :: acc
-	  | I.Lorentz _ -> Lorentz :: acc
-	  | I.Flavor _ -> Flavor :: acc)
-	  [] index.I.attr in
-      match ThoList.uniq (List.sort compare spaces) with
-      | [space] -> space
-      | [] -> invalid_arg "index not declared as color, flavor or index"
-      | _ -> invalid_arg "conflicting index declarations"
-
-    let tensor_space tensor =
-      let spaces =
-	List.fold_left
-	  (fun acc -> function
-	  | X.Color _ -> Color :: acc
-	  | X.Lorentz _ -> Lorentz :: acc
-	  | X.Flavor _ -> Flavor :: acc)
-	  [] tensor.X.attr in
-      match ThoList.uniq (List.sort compare spaces) with
-      | [space] -> space
-      | [] -> invalid_arg "tensor not declared as color, flavor or index"
-      | _ -> invalid_arg "conflicting tensor declarations"
-
-    let insert table = function
-      | F.Particle p ->
-	begin match p.P.name with
-	| P.Neutral name -> add table name Particle
-	| P.Charged (name, anti) ->
-	  add (add table name Particle) anti Particle
-	end
-      | F.Index i -> add table i.I.name (Index (index_space i))
-      | F.Tensor t -> add table t.X.name (Tensor (tensor_space t))
-      | F.Parameter p ->
-	begin match p with
-	| Q.Input name -> add table name.Q.name Parameter
-	| Q.Derived name -> add table name.Q.name Parameter
-	end
-      | F.Vertex _ -> table
-
-    let load decls =
-      List.fold_left insert empty decls
-
-    let kind table token =
-      try Some (ST.find (T.stem token) table) with Not_found -> None
-
-  end
-
-module Vertex =
-  struct
-
-    module S = Symbol
-    module T = Vertex_syntax.Token
-
-    type attr =
-    | Bar
-    | Dagger
-    | Star
-
-    type factor =
-      { stem : T.t;
-	prefix : string list;
-	particle : T.t list;
-	color : T.t list;
-	lorentz : T.t list;
-	flavor : T.t list;
-	other : T.t list }
-
-    let factor_stem token =
-      { stem = token.T.stem;
-	prefix = token.T.prefix;
-	particle = [];
-	color = [];
-	lorentz = [];
-	flavor = [];
-	other = [] }
-
-    let rev factor =
-      { stem = factor.stem;
-	prefix = List.rev factor.prefix;
-	particle = List.rev factor.particle;
-	color = List.rev factor.color;
-	lorentz = List.rev factor.lorentz;
-	flavor = List.rev factor.flavor;
-	other = List.rev factor.other }
-
-    let factor_add_prefix factor token =
-      { factor with prefix = token :: factor.prefix }
-
-    let factor_add_particle factor token =
-      { factor with particle = token :: factor.particle }
-
-    let factor_add_color_index factor token =
-      { factor with color = token :: factor.color }
-
-    let factor_add_lorentz_index factor token =
-      { factor with lorentz = token :: factor.lorentz }
-
-    let factor_add_flavor_index factor token =
-      { factor with flavor = token :: factor.flavor }
-
-    let factor_add_other_index factor token =
-      { factor with other = token :: factor.other }
-
-    let factor_add_index symbol_table factor = function
-      | T.Token "," -> factor
-      | T.Token ("*" | "\\ast" as star) ->
-	factor_add_prefix factor star
-      | token ->
-	begin match S.kind symbol_table token with
-	| Some kind ->
-	  begin match kind with
-	  | S.Particle -> factor_add_particle factor token
-	  | S.Index S.Color -> factor_add_color_index factor token
-	  | S.Index S.Lorentz -> factor_add_lorentz_index factor token
-	  | S.Index S.Flavor -> factor_add_flavor_index factor token
-	  | S.Tensor _ -> invalid_arg "factor_add_index: \\tensor"
-	  | S.Parameter -> invalid_arg "factor_add_index: \\parameter"
-	  end
-	| None -> factor_add_other_index factor token
-	end
-
-    let factor_of_token symbol_table token =
-      let token = T.wrap_scripted token in
-      rev (List.fold_left
-	     (factor_add_index symbol_table)
-	     (factor_stem token)
-	     (token.T.super @ token.T.sub))
-
-    let list_to_string tag = function
-      | [] -> ""
-      | l -> "; " ^ tag ^ "=" ^ String.concat "," (List.map T.to_string l)
-
-    let factor_to_string factor =
-       "[" ^ T.to_string factor.stem ^
-	 (match factor.prefix with
-	 | [] -> ""
-	 | l -> "; prefix=" ^ String.concat ", " l) ^
-	 list_to_string "particle" factor.particle ^
-	 list_to_string "color" factor.color ^
-	 list_to_string "lorentz" factor.lorentz ^
-	 list_to_string "flavor" factor.flavor ^
-	 list_to_string "other" factor.other ^ "]"
-
-    let vertices s =
-      let decls = parse_string s in
-      let symbol_table = Symbol.load decls in
-      let tokens =
-	List.fold_left
-	  (fun acc -> function
-	  | Vertex_syntax.File.Vertex (_, v) -> T.wrap_list v @ acc
-	  | _ -> acc)
-	  [] decls in
-      List.map (factor_of_token symbol_table) tokens
-
-    let vertices' s =
-      String.concat "; "
-	(List.map factor_to_string (vertices s))
-
-    type field =
-      { name : T.t list }
-
-  end
-
-module Model =
-  struct
-
-  end
-
-module Model_Test =
-  struct
-
-    let example () =
-      ()
-
-    open OUnit
-
-    let suite =
-      "Model_Test" >:::
-	[ "1" >::
-	    (fun () ->
-	      assert_equal ~printer:(fun s -> s)
-		"[\\psi; prefix=\\bar; particle=e; color=a; lorentz=\\alpha_1]; [\\gamma; lorentz=\\mu,\\alpha_1,\\alpha_2]; [\\psi; particle=e; color=a; lorentz=\\alpha_2]; [A; lorentz=\\mu]"
-		(Vertex.vertices'
-		   "\\charged{e^-}{e^+}
-                    \\index{a}\\color{SU(3)}
-                    \\index{\\mu}\\lorentz{X}
-                    \\index{\\alpha}\\lorentz{X}
-                    \\vertex{\\bar{\\psi_e}_{a,\\alpha_1}
-                             \\gamma^\\mu_{\\alpha_1\\alpha_2}
-                             {\\psi_e}_{a,\\alpha_2}A_\\mu}"));
-	  "QCD.omf" >::
-	    (fun () ->
-	      dump_file "QCD" (parse_file "QCD.omf"));
-	  "SM.omf" >::
-	    (fun () ->
-	      dump_file "SM" (parse_file "SM.omf")) ]
-
   end
 

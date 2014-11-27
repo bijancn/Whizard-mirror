@@ -25,7 +25,7 @@ module List_Test = Permutation.Test(Permutation.Using_Lists)
 module Array_Test = Permutation.Test(Permutation.Using_Arrays)
 module Vertex_Test = Vertex.Test(M)
 module Parser_Test = Vertex.Parser_Test
-module Model_Test = Vertex.Model_Test
+module Model_Test = Vertex.Modelfile_Test
 
 let _ =
   let my_name = Sys.argv.(0) in

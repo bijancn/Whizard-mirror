@@ -215,10 +215,8 @@ module Expr =
 
     type t =
     | Integer of int
-    | Sum of t list
-    | Diff of t * t
-    | Product of t list
-    | Ratio of t * t
+    | Sum of t list | Diff of t * t
+    | Product of t list | Ratio of t * t
     | Function of Token.t * t list
 
     let integer i = Integer i
@@ -284,17 +282,11 @@ module Particle =
     | Charged of Token.t list * Token.t list
 
     type attr =
-    | TeX of Token.t list
-    | TeX_Anti of Token.t list
-    | Alias of Token.t list
-    | Alias_Anti of Token.t list
-    | Fortran of Token.t list
-    | Fortran_Anti of Token.t list
-    | Spin of Expr.t
-    | Color of Token.t list
-    | Charge of Expr.t
-    | Mass of Token.t list
-    | Width of Token.t list
+    | TeX of Token.t list | TeX_Anti of Token.t list
+    | Alias of Token.t list | Alias_Anti of Token.t list
+    | Fortran of Token.t list | Fortran_Anti of Token.t list
+    | Spin of Expr.t | Color of Token.t list | Charge of Expr.t
+    | Mass of Token.t list | Width of Token.t list
 
 (*i
     (* Combine the sets of aliases and use the
@@ -398,13 +390,10 @@ module Color =
   struct
 
     type t =
-    | U of int
-    | SU of int
-    | O of int
-    | SO of int
+    | SU of int | U of int
+    | SO of int | O of int
     | Sp of int
-    | E6 | E7 | E8
-    | F4 | G2
+    | E6 | E7 | E8 | F4 | G2
       
     type r = int
 
@@ -414,13 +403,9 @@ module Lorentz =
   struct
 
     type t =
-    | Scalar
-    | Vector
-    | Dirac
-    | ConjDirac
-    | Majorana
-    | Weyl
-    | ConjWeyl
+    | Scalar | Vector
+    | Dirac | ConjDirac | Majorana
+    | Weyl | ConjWeyl
 
   end
 
