@@ -199,6 +199,8 @@ vertex:
 expr:
  | integer                 	{ E.integer $1 }
  | LPAREN expr RPAREN      	{ $2 }
+ | LPAREN expr RBRACKET      	{ parse_error "expected `)', found `]'" }
+ | LPAREN expr RBRACE      	{ parse_error "expected `)', found `}'" }
  | LPAREN expr END      	{ parse_error "missing `)'" }
  | expr PLUS expr          	{ E.add $1 $3 }
  | expr MINUS expr         	{ E.sub $1 $3 }
@@ -213,8 +215,9 @@ arg_list:
 ;
 
 arg:
- | LBRACE expr RBRACE { $2 }
- | LBRACE expr END    { parse_error "missing `}'" }
+ | LBRACE expr RBRACE   { $2 }
+ | LBRACE expr RBRACKET { parse_error "expected `}', found `]'" }
+ | LBRACE expr END      { parse_error "missing `}'" }
 ;
 
 integer:
@@ -225,6 +228,8 @@ integer:
 token:
  | bare_token                              { $1 }
  | LBRACE scripted_token RBRACE            { $2 }
+/* This results in a shift/reduce conflict:\par
+\verb+| LBRACE scripted_token RBRACKET     { parse_error "expected `}', found `]'" }+ */
  | LBRACE scripted_token END               { parse_error "missing `}'" }
  | LBRACE scripted_token token_list RBRACE { T.list ($2 :: $3) }
  | LBRACE scripted_token token_list END    { parse_error "missing `}'" }
@@ -257,11 +262,15 @@ optional_scripts:
 super:
  | SUPER token  { Some $2 }
  | SUPER RBRACE { parse_error "superscript can't start with `}'" }
+/* This results in many reduce/reduce conflicts:\par
+\verb+| SUPER RBRACKET { parse_error "superscript can't start with `]'" }+ */
 ;
 
 sub:
  | SUB token    { Some $2 }
- | SUB RBRACE   { parse_error "superscript can't start with `}'" }
+ | SUB RBRACE   { parse_error "subscript can't start with `}'" }
+/* This results in many reduce/reduce conflicts:\par
+\verb+| SUB RBRACKET { parse_error "subscript can't start with `]'" }+ */
 ;
 
 prefixes:
