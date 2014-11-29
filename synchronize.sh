@@ -9,15 +9,15 @@ NEW_YEAR2="Copyright (C) 2001-2014";
 OLD_ADDRESS="Fabian Bach <fabian.bach@cern.ch>"
 NEW_ADDRESS="Fabian Bach <fabian.bach@desy.de>"
 
-OLD_DATE="July 6 2014"
-NEW_DATE="Aug 15 2014"
+OLD_DATE="Aug 15 2014"
+NEW_DATE="Nov 30 2014"
 OLD_VERSION="2.2.2"
 NEW_VERSION="2.2.3"
 #OLD_STATUS="PACKAGE_STATUS=\"alpha\""
 #NEW_STATUS="PACKAGE_STATUS=\"beta\""
-OLD_STATUS="PACKAGE_STATUS=\"alpha\""
+OLD_STATUS="PACKAGE_STATUS=\"beta\""
 #NEW_STATUS="PACKAGE_STATUS=\"rc1\""
-NEW_STATUS="PACKAGE_STATUS=\"beta\""
+NEW_STATUS="PACKAGE_STATUS=\"release\""
 
 ## We should add an option to add an author here.
 
@@ -30,7 +30,7 @@ CONFIGURE_FILES="configure.ac circe1/configure.ac circe2/configure.ac omega/conf
 VERSION_FILES="NEWS omega/NEWS"
 SCRIPTS_FILES="scripts/Makefile.am scripts/whizard-config.in scripts/whizard-setup.csh.in scripts/whizard-setup.sh.in scripts/libtool-config.sh.in scripts/libtool-relocate.sh.in scripts/whizard-relocate.sh.in"
 SHARE_FILES="share/Makefile.am share/doc/Makefile.am share/examples/HERA_DIS.sin share/examples/LEP_cc10.sin share/examples/LEP_higgs.sin share/examples/W-endpoint.sin share/examples/Z-lineshape.sin share/examples/Zprime.sin share/examples/casc_dec.sin share/examples/eeww_polarized.sin share/examples/DrellYanMatchingP.sin share/examples/DrellYanMatchingW.sin share/examples/DrellYanNoMatchingP.sin share/examples/DrellYanNoMatchingW.sin share/examples/EEMatching2P.sin share/examples/EEMatching2W.sin share/examples/EEMatching3P.sin share/examples/EEMatching3W.sin share/examples/EEMatching4P.sin share/examples/EEMatching4W.sin share/examples/EEMatching5P.sin share/examples/EEMatching5W.sin share/examples/EENoMatchingP.sin share/examples/EENoMatchingW.sin share/tests/Makefile.am share/interfaces/Makefile.am"
-SRC_FILES="src/Makefile.am src/feynmf/Makefile.am src/hepmc/Makefile.am src/hepmc/HepMCWrap_dummy.f90 src/lhapdf/Makefile.am src/lhapdf/lhapdf.f90 src/lhapdf5/Makefile.am src/pdf_builtin/Makefile.am src/pdf_builtin/pdf_builtin.f90 src/fastjet/Makefile.am src/fastjet/cpp_strings.f90 src/fastjet/Makefile.am src/hoppet/Makefile.am src/hoppet/hoppet.f90 pythia/Makefile.am src/stdhep/Makefile.am src/noweb-frame/Makefile.am src/noweb-frame/whizard-prelude.nw src/noweb-frame/whizard-postlude.nw src/utilities/Makefile.am src/matrix_elements/Makefile.am src/matrix_elements/matrix_elements.nw src/mci/Makefile.am src/mci/mci.nw src/utilities/utilities.nw src/testing/Makefile.am src/testing/testing.nw src/system/Makefile.am src/system/system.nw src/combinatorics/Makefile.am src/combinatorics/combinatorics.nw src/parsing/Makefile.am src/parsing/parsing.nw src/particles/Makefile.am src/particles/particles.nw src/phase_space/Makefile.am src/phase_space/phase_space.nw src/physics/Makefile.am src/physics/physics.nw src/beams/Makefile.am src/beams/beams.nw src/qft/Makefile.am src/qft/qft.nw src/rng/Makefile.am src/rng/rng.nw src/types/Makefile.am src/types/types.nw src/whizard-core/Makefile.am src/whizard-core/whizard.nw"
+SRC_FILES="src/Makefile.am src/feynmf/Makefile.am src/hepmc/Makefile.am src/hepmc/HepMCWrap_dummy.f90 src/lcio/Makefile.am src/lcio/LCIOWrap_dummy.f90 src/lhapdf/Makefile.am src/lhapdf/lhapdf.f90 src/lhapdf5/Makefile.am src/pdf_builtin/Makefile.am src/pdf_builtin/pdf_builtin.f90 src/fastjet/Makefile.am src/fastjet/cpp_strings.f90 src/fastjet/Makefile.am src/hoppet/Makefile.am src/hoppet/hoppet.f90 pythia/Makefile.am src/stdhep/Makefile.am src/noweb-frame/Makefile.am src/noweb-frame/whizard-prelude.nw src/noweb-frame/whizard-postlude.nw src/utilities/Makefile.am src/matrix_elements/Makefile.am src/matrix_elements/matrix_elements.nw src/mci/Makefile.am src/mci/mci.nw src/utilities/utilities.nw src/testing/Makefile.am src/testing/testing.nw src/system/Makefile.am src/system/system.nw src/combinatorics/Makefile.am src/combinatorics/combinatorics.nw src/parsing/Makefile.am src/parsing/parsing.nw src/particles/Makefile.am src/particles/particles.nw src/phase_space/Makefile.am src/phase_space/phase_space.nw src/physics/Makefile.am src/physics/physics.nw src/beams/Makefile.am src/beams/beams.nw src/qft/Makefile.am src/qft/qft.nw src/rng/Makefile.am src/rng/rng.nw src/types/Makefile.am src/types/types.nw src/whizard-core/Makefile.am src/whizard-core/whizard.nw"
 CIRCE1_FILES="circe1/AUTHORS circe1/Makefile.am circe1/update circe1/share/Makefile.am circe1/share/doc/Makefile.am circe1/src/Makefile.am circe1/src/circe1.nw circe1/minuit/Makefile.am circe1/src/kinds.f90.in circe1/src/minuit.nw circe1/tools/Makefile.am"
 CIRCE2_FILES="circe2/AUTHORS circe2/Makefile.am circe2/update circe2/share/Makefile.am circe2/share/doc/Makefile.am circe2/src/Makefile.am circe2/src/Makefile.ocaml circe2/src/circe2.nw circe2/src/Makefile.sources circe2/src/kinds.f90.in circe2/src/postlude.nw"
 SRC_GAMELAN_FILES="src/gamelan/Makefile.am src/gamelan/gml.in"

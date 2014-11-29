@@ -82,6 +82,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/models_2.ref \
     ref-output/models_3.ref \
     ref-output/models_4.ref \
+    ref-output/models_5.ref \
     ref-output/auto_components_1.ref \
     ref-output/auto_components_2.ref \
     ref-output/auto_components_3.ref \
@@ -319,6 +320,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/rt_data_6.ref \
     ref-output/rt_data_7.ref \
     ref-output/rt_data_8.ref \
+    ref-output/rt_data_9.ref \
     ref-output/dispatch_1.ref \
     ref-output/dispatch_2.ref \
     ref-output/dispatch_3.ref \
@@ -430,6 +432,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/rebuild_4.ref \
     ref-output/fatal.ref \
     ref-output/model_test.ref \
+    ref-output/model_change_1.ref \
     ref-output/cuts.ref \
     ref-output/user_cuts.ref \
     ref-output/qedtest_1.ref \
@@ -704,6 +707,7 @@ MISC_TESTS_SIN = \
     defaultcuts.sin \
     cuts.sin \
     model_test.sin \
+    model_change_1.sin \
     structure_1.sin \
     structure_2.sin \
     structure_3.sin \

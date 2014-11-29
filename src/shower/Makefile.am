@@ -65,6 +65,7 @@ module_lists = \
   ../testing/Modules \
   ../system/Modules \
   ../combinatorics/Modules \
+  ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
   ../types/Modules \
@@ -118,7 +119,7 @@ libshower_la_LIBADD = ../../pythia/libpythia_wo.la
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../physics -I../fastjet -I../qft -I../types -I../particles -I../../vamp/src/ -I../../pythia
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I ../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I../../vamp/src/ -I../../pythia
 AM_FFLAGS =
 
 ########################################################################

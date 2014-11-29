@@ -172,6 +172,7 @@ TESTS_REQ_OCAML = \
     defaultcuts.run \
     cuts.run \
     model_test.run \
+    model_change_1.run \
     qedtest_1.run \
     qedtest_2.run \
     qedtest_3.run \

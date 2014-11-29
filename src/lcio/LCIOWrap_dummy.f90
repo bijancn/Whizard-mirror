@@ -35,18 +35,18 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! LCEventImpl functions
 
-! extern "C" void* new_lcevent( int proc_id, int event_id ) {}
-     type(c_ptr) function new_lcevent (proc_id, event_id) bind(C)
+! extern "C" void* new_lcio_event( int proc_id, int event_id ) {}
+     type(c_ptr) function new_lcio_event (proc_id, event_id) bind(C)
        use iso_c_binding
        integer(c_int), value :: proc_id, event_id
-       new_lcevent = c_null_ptr
-     end function new_lcevent
+       new_lcio_event = c_null_ptr
+     end function new_lcio_event
 
-! extern "C" void lcevent_delete( void* evt) {}
-     subroutine lcevent_delete (evt_obj) bind(C)
+! extern "C" void lcio_event_delete( void* evt) {}
+     subroutine lcio_event_delete (evt_obj) bind(C)
        use iso_c_binding
        type(c_ptr), value :: evt_obj
-     end subroutine lcevent_delete
+     end subroutine lcio_event_delete
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! MCParticleImpl functions
@@ -74,6 +74,28 @@
        integer(c_int), dimension(2) :: cflow
      end subroutine lcio_particle_get_flow
 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! LCWriter functions
+
+! extern "C" LCWriter* open_lcio_writer_new 
+     type (c_ptr) function open_lcio_writer_new (filename) bind (C)
+       use iso_c_binding
+       character(c_char), dimension(*), intent(in) :: filename
+       open_lcio_writer_new = c_null_ptr
+     end function open_lcio_writer_new
+     
+! extern "C" LCWriter* lcio_writer_delete
+     subroutine lcio_writer_delete (io_obj) bind (C)
+       use iso_c_binding
+       type(c_ptr), value :: io_obj
+     end subroutine lcio_writer_delete
+
+! extern "C" LCWriter* lcio_write_event
+     subroutine lcio_write_event (io_obj, evt_obj) bind (C)
+       use iso_c_binding
+       type(c_ptr), value :: io_obj, evt_obj
+     end subroutine lcio_write_event
+     
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! LCRunHeader functions
 

@@ -1585,12 +1585,29 @@ not allocate memory.
   procedure :: copy_from => model_data_copy
 <<Model data: procedures>>=
   subroutine model_data_copy (model, src)
-    class(model_data_t), intent(inout) :: model
+    class(model_data_t), intent(inout), target :: model
     class(model_data_t), intent(in), target :: src
+    class(modelpar_data_t), pointer :: data, src_data
     integer :: i
     model%par_real = src%par_real
     model%par_complex = src%par_complex
-    model%field = src%field
+    do i = 1, size (src%field)
+       associate (field => model%field(i), src_field => src%field(i))
+         call field%init (src_field%get_longname (), src_field%get_pdg ())
+         call field%copy_from (src_field)
+         src_data => src_field%mass_data
+         if (associated (src_data)) then
+            data => model%get_par_data_ptr (src_data%get_name ())
+            call field%set (mass_data = data)
+         end if
+         src_data => src_field%width_data
+         if (associated (src_data)) then
+            data => model%get_par_data_ptr (src_data%get_name ())
+            call field%set (width_data = data)
+         end if
+         call field%set_multiplicity ()
+       end associate
+    end do
     do i = 1, size (src%vtx)
        call model%vtx(i)%copy_from (src%vtx(i), model)
     end do
@@ -2086,6 +2103,113 @@ Identify the particle via pdg.
     
 @ %def model_data_set_field_mass
 @ %def model_data_set_field_width
+@ Mark a particle as unstable and provide a list of names for its
+decay processes.  In contrast with the previous subroutine which is
+for internal use, we address the particle by its PDG code.  If the
+index is negative, we address the antiparticle.
+<<Model data: model data: TBP>>=
+  procedure :: set_unstable => model_data_set_unstable
+  procedure :: set_stable => model_data_set_stable
+<<Model data: procedures>>=
+  subroutine model_data_set_unstable (model, pdg, decay, isotropic, diagonal)
+    class(model_data_t), intent(inout), target :: model
+    integer, intent(in) :: pdg
+    type(string_t), dimension(:), intent(in) :: decay
+    logical, intent(in), optional :: isotropic, diagonal
+    type(field_data_t), pointer :: field
+    field => model%get_field_ptr (pdg)
+    if (pdg > 0) then
+       call field%set ( &
+            p_is_stable = .false., p_decay = decay, &
+            p_decays_isotropically = isotropic, &
+            p_decays_diagonal = diagonal)
+    else
+       call field%set ( &
+            a_is_stable = .false., a_decay = decay, &
+            a_decays_isotropically = isotropic, &
+            a_decays_diagonal = diagonal)
+    end if
+  end subroutine model_data_set_unstable
+       
+  subroutine model_data_set_stable (model, pdg)
+    class(model_data_t), intent(inout), target :: model
+    integer, intent(in) :: pdg
+    type(field_data_t), pointer :: field
+    field => model%get_field_ptr (pdg)
+    if (pdg > 0) then
+       call field%set (p_is_stable = .true.)
+    else
+       call field%set (a_is_stable = .true.)
+    end if
+  end subroutine model_data_set_stable
+       
+@ %def model_data_set_unstable
+@ %def model_data_set_stable
+@ Mark a particle as polarized.
+<<Model data: model data: TBP>>=
+  procedure :: set_polarized => model_data_set_polarized
+  procedure :: set_unpolarized => model_data_set_unpolarized
+<<Model data: procedures>>=
+  subroutine model_data_set_polarized (model, pdg)
+    class(model_data_t), intent(inout), target :: model
+    integer, intent(in) :: pdg
+    type(field_data_t), pointer :: field
+    field => model%get_field_ptr (pdg)
+    if (pdg > 0) then
+       call field%set (p_polarized = .true.)
+    else
+       call field%set (a_polarized = .true.)
+    end if
+  end subroutine model_data_set_polarized
+    
+  subroutine model_data_set_unpolarized (model, pdg)
+    class(model_data_t), intent(inout), target :: model
+    integer, intent(in) :: pdg
+    type(field_data_t), pointer :: field
+    field => model%get_field_ptr (pdg)
+    if (pdg > 0) then
+       call field%set (p_polarized = .false.)
+    else
+       call field%set (a_polarized = .false.)
+    end if
+  end subroutine model_data_set_unpolarized
+    
+@ %def model_data_set_polarized
+@ %def model_data_set_unpolarized
+@ Revert all polarized (unstable) particles to unpolarized (stable)
+status, respectively.
+<<Model data: model data: TBP>>=
+  procedure :: clear_unstable => model_clear_unstable
+  procedure :: clear_polarized => model_clear_polarized
+<<Model data: procedures>>=
+  subroutine model_clear_unstable (model)
+    class(model_data_t), intent(inout), target :: model
+    integer :: i
+    type(field_data_t), pointer :: field
+    do i = 1, model%get_n_field ()
+       field => model%get_field_ptr_by_index (i)
+       call field%set (p_is_stable = .true.)
+       if (field%has_antiparticle ()) then
+          call field%set (a_is_stable = .true.)
+       end if
+    end do
+  end subroutine model_clear_unstable
+  
+  subroutine model_clear_polarized (model)
+    class(model_data_t), intent(inout), target :: model
+    integer :: i
+    type(field_data_t), pointer :: field
+    do i = 1, model%get_n_field ()
+       field => model%get_field_ptr_by_index (i)
+       call field%set (p_polarized = .false.)
+       if (field%has_antiparticle ()) then
+          call field%set (a_polarized = .false.)
+       end if
+    end do
+  end subroutine model_clear_polarized
+  
+@ %def model_clear_unstable
+@ %def model_clear_polarized
 @ List all vertices, optionally also the hash table.
 <<Model data: model data: TBP>>=
   procedure :: write_vertices => model_data_write_vertices
@@ -2269,7 +2393,7 @@ We can thus avoid dependencies on model I/O, which is not defined here.
     class(model_data_t), intent(out) :: model
     type(field_data_t), pointer :: field
     integer, parameter :: n_real = 11
-    integer, parameter :: n_field = 18
+    integer, parameter :: n_field = 19
     integer, parameter :: n_vtx = 9
     integer :: i
     call model%init (var_str ("SM_test"), &
@@ -2376,6 +2500,13 @@ We can thus avoid dependencies on model I/O, which is not defined here.
     call field%set (mass_data=model%get_par_real_ptr (2))
     call field%set (width_data=model%get_par_real_ptr (8))
     call field%set (name = [var_str ("W+")], anti = [var_str ("W-")])
+    i = i + 1
+    field => model%get_field_ptr_by_index (i)
+    call field%init (var_str ("HIGGS"), 25)
+    call field%set (spin_type=1)
+!    call field%set (mass_data=model%get_par_real_ptr (2))
+!    call field%set (width_data=model%get_par_real_ptr (8))
+    call field%set (name = [var_str ("H")])
     i = i + 1
     field => model%get_field_ptr_by_index (i)
     call field%init (var_str ("PROTON"), 2212)

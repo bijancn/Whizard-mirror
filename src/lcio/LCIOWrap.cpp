@@ -8,6 +8,7 @@
 #include "IMPL/LCRunHeaderImpl.h"
 #include "IMPL/MCParticleImpl.h"
 #include "IMPL/LCCollectionVec.h"
+#include "IMPL/LCTOOLS.h"
 #include "UTIL/LCTime.h"
 
 using namespace std;
@@ -21,7 +22,7 @@ extern "C" bool lcio_available() {
 //////////////////////////////////////////////////////////////////////////
 // LCEventImpl functions
 
-extern "C" LCEventImpl* new_lcevent ( int proc_id, int event_id ) {
+extern "C" LCEventImpl* new_lcio_event ( int proc_id, int event_id ) {
   LCEventImpl* evt = new LCEventImpl();
   evt->setRunNumber ( proc_id );
   evt->setEventNumber ( event_id );
@@ -30,12 +31,18 @@ extern "C" LCEventImpl* new_lcevent ( int proc_id, int event_id ) {
   return evt;
 }
 
-extern "C" void lcevent_delete( LCEventImpl* evt) {
+extern "C" void lcio_event_delete( LCEventImpl* evt) {
   delete evt;
 }
 
 extern "C" void lcio_set_weight( LCEventImpl* evt, double wgt ) {
   evt->setWeight ( wgt );
+}
+
+// dump the event to the screen
+
+extern "C" void dump_lcio_event ( LCEventImpl* evt) {
+  LCTOOLS::dumpEvent ( evt );
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -69,18 +76,30 @@ extern "C" const int* lcio_particle_get_flow
 //////////////////////////////////////////////////////////////////////////
 // LCWriter functions
 
-extern "C" LCWriter* lcWrt () {
-  LCWriter* lcWrt = LCFactory::getInstance()->createLCWriter();
-}
-
-extern "C" LCWriter* open_lcio_file_new 
-( LCWriter* lcWrt, char* filename ) {
+extern "C" LCWriter* open_lcio_writer_new 
+( char* filename ) {
+  LCWriter* lcWrt = LCFactory::getInstance()->createLCWriter();  
   lcWrt->open( filename, LCIO::WRITE_NEW );
 }
 
-extern "C" LCWriter* open_lcio_file_append
-( LCWriter* lcWrt, char* filename ) {
+extern "C" LCWriter* open_lcio_writer_append
+( char* filename ) {
+  LCWriter* lcWrt = LCFactory::getInstance()->createLCWriter();    
   lcWrt->open( filename, LCIO::WRITE_APPEND );
+}
+
+// write the event
+
+extern "C" LCWriter* lcio_write_event
+( LCWriter* lcWrt, LCEventImpl* evt) {
+  lcWrt->writeEvent( evt );
+}
+
+// destructor
+
+extern "C" LCWriter* lcio_writer_delete ( LCWriter* lcWrt ) {
+  lcWrt->close();
+  delete lcWrt;
 }
 
 //////////////////////////////////////////////////////////////////////////
