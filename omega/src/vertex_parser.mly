@@ -37,7 +37,8 @@ module X = Vertex_syntax.Tensor
 module F = Vertex_syntax.File_Tree
 
 let parse_error msg =
-  raise (Vertex_syntax.Syntax_Error (msg, symbol_start (), symbol_end ()))
+  raise (Vertex_syntax.Syntax_Error
+	   (msg, symbol_start_pos (), symbol_end_pos ()))
 
 let invalid_parameter_attr () =
   parse_error "invalid parameter attribute"
@@ -57,7 +58,7 @@ let invalid_parameter_attr () =
 
 %token NEUTRAL CHARGED
 %token ANTI ALIAS TEX FORTRAN SPIN COLOR CHARGE MASS WIDTH
-%token INPUT DERIVED
+%token PARAMETER DERIVED
 %token TENSOR INDEX FLAVOR LORENTZ
 %token VERTEX
 
@@ -134,9 +135,9 @@ particle_attribute:
 ;
 
 parameter:
- | INPUT   token_list_arg arg parameter_attributes
-     { V.Input { V.name = $2; V.value = $3; V.attr = $4 } }
- | DERIVED token_list_arg arg parameter_attributes
+ | PARAMETER token_list_arg arg parameter_attributes
+     { V.Parameter { V.name = $2; V.value = $3; V.attr = $4 } }
+ | DERIVED   token_list_arg arg parameter_attributes
      { V.Derived { V.name = $2; V.value = $3; V.attr = $4 } }
 ;
 

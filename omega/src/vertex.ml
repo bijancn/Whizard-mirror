@@ -30,15 +30,31 @@ module type Test =
 
 (* \thocwmodulesection{New Implementation: Next Version} *)
 
+let error_in_string text start_pos end_pos =
+  let i = start_pos.Lexing.pos_cnum
+  and j = end_pos.Lexing.pos_cnum in
+  String.sub text i (j - i)
+
+let error_in_file name start_pos end_pos =
+  Printf.sprintf
+    "%s:%d.%d-%d.%d"
+    name
+    start_pos.Lexing.pos_lnum
+    (start_pos.Lexing.pos_cnum - start_pos.Lexing.pos_bol)
+    end_pos.Lexing.pos_lnum
+    (end_pos.Lexing.pos_cnum - end_pos.Lexing.pos_bol)
+
 let parse_string text =
   Vertex_syntax.File.expand_includes
     (fun file -> invalid_arg ("parse_string: found include `" ^ file ^ "'"))
     (try
-       Vertex_parser.file Vertex_lexer.token (Lexing.from_string text)
+       Vertex_parser.file
+	 Vertex_lexer.token
+	 (Vertex_lexer.init_position "" (Lexing.from_string text))
      with
-     | Vertex_syntax.Syntax_Error (msg, i, j) ->
+     | Vertex_syntax.Syntax_Error (msg, start_pos, end_pos) ->
        invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
-                      msg  (String.sub text i (j - i)))
+                      msg  (error_in_string text start_pos end_pos))
      | Parsing.Parse_error ->
        invalid_arg ("parse error: " ^ text))
 
@@ -47,13 +63,16 @@ let parse_file name =
     let ic = open_in name in
     let file_tree =
       begin try
-        Vertex_parser.file Vertex_lexer.token (Lexing.from_channel ic)
+        Vertex_parser.file
+	  Vertex_lexer.token
+	  (Vertex_lexer.init_position name (Lexing.from_channel ic))
       with
-      | Vertex_syntax.Syntax_Error (msg, i, j) ->
+      | Vertex_syntax.Syntax_Error (msg, start_pos, end_pos) ->
         begin
           close_in ic;
-          invalid_arg (Printf.sprintf "syntax error (%s) in `%s'"
-                         msg name)
+          invalid_arg (Printf.sprintf
+			 "%s: syntax error (%s)"
+			 (error_in_file name start_pos end_pos) msg)
         end
       | Parsing.Parse_error ->
         begin
@@ -81,9 +100,6 @@ module Parser_Test : Test =
     let compare s_out s_in () =
       assert_equal ~printer:(String.concat " ")
         [s_out] (Vertex_syntax.File.to_strings (parse_string s_in))
-
-    let parse_error error s () =
-      assert_raises (Invalid_argument error) (fun () -> parse_string s)
 
     let parse_error error s () =
       assert_raises (Invalid_argument error) (fun () -> parse_string s)
@@ -344,7 +360,7 @@ module Symbol (* : Symbol *) =
       | F.Tensor t -> add table t.X.name (Tensor (tensor_space t))
       | F.Parameter p ->
         begin match p with
-        | Q.Input name -> add table name.Q.name Parameter
+        | Q.Parameter name -> add table name.Q.name Parameter
         | Q.Derived name -> add table name.Q.name Parameter
         end
       | F.Vertex _ -> table
@@ -488,7 +504,7 @@ module Modelfile_Test =
 
     let suite =
       "Modelfile_Test" >:::
-        [ "1" >::
+        [ "ok" >::
             (fun () ->
               assert_equal ~printer:(fun s -> s)
                 "[\\psi; prefix=\\bar; \
@@ -509,7 +525,13 @@ module Modelfile_Test =
               dump_file "QCD" (parse_file "QCD.omf"));
           "SM.omf" >::
             (fun () ->
-              dump_file "SM" (parse_file "SM.omf")) ]
+              dump_file "SM" (parse_file "SM.omf"));
+          "SM-error.omf" >::
+            (fun () ->
+	     assert_raises
+	       (Invalid_argument
+		  "SM-error.omf:32.22-32.27: syntax error (syntax error)")
+	       (fun () -> parse_file "SM-error.omf")) ]
 
   end
 

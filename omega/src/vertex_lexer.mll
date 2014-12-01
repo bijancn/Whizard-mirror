@@ -23,16 +23,31 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 {
+open Lexing
 open Vertex_parser
-let string_of_char c = String.make 1 c
-let int_of_char c = int_of_string (string_of_char c)
+
+let string_of_char c =
+  String.make 1 c
+
+let int_of_char c =
+  int_of_string (string_of_char c)
+
+let init_position fname lexbuf =
+  let curr_p = lexbuf.lex_curr_p in
+  lexbuf.lex_curr_p <-
+    { curr_p with
+      pos_fname = fname;
+      pos_lnum = 1;
+      pos_bol = curr_p.pos_cnum };
+  lexbuf
+
 }
 
 let digit = ['0'-'9']
 let upper = ['A'-'Z']
 let lower = ['a'-'z']
 let char = upper | lower
-let white = [' ' '\t' '\n']
+let white = [' ' '\t']
 let pfx = '\\'
 
 let env_arg0 = "align" | "center" | "omftable"
@@ -40,7 +55,8 @@ let env_arg1 = "tabular"
 
 rule token = parse
     white             { token lexbuf }     (* skip blanks *)
-  | '%' [^'\n']* '\n' { token lexbuf }     (* skip comments *)
+  | '%' [^'\n']*      { token lexbuf }     (* skip comments *)
+  | '\n'              { new_line lexbuf; token lexbuf }
   | '\\' ( [','';'] | 'q'? "quad" )
                       { token lexbuf }     (* skip LaTeX white space *)
   | "\\endinput"      { token lexbuf }     (* continue reading *)
@@ -89,7 +105,7 @@ rule token = parse
   | pfx "tensor"      { TENSOR }
   | pfx "lorentz"     { LORENTZ }
   | pfx "flavor"      { FLAVOR }
-  | pfx "parameter"   { INPUT }
+  | pfx "parameter"   { PARAMETER }
   | pfx "derived"     { DERIVED }
   | digit as i        { DIGIT (int_of_char i) }
   | char as c         { CHAR (string_of_char c) }

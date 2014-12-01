@@ -29,7 +29,7 @@
 
 (* \thocwmodulesection{Abstract Syntax} *)
 
-exception Syntax_Error of string * int * int
+exception Syntax_Error of string * Lexing.position * Lexing.position
 
 (* \thocwmodulesubsection{Tokens} *)
 
@@ -163,7 +163,7 @@ module Parameter :
 	attr : attr list}
 
     type t =
-    | Input of t'
+    | Parameter of t'
     | Derived of t'
 
     (*i val cons_attr : attr -> attr list -> attr list i*)

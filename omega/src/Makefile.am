@@ -94,7 +94,7 @@ comphep_lexer.mli: comphep_lexer.ml comphep_parser.cmi
 	$(OCAMLC) -i $< | $(GREP) 'val token' >$@
 
 vertex_lexer.mli: vertex_lexer.ml vertex_parser.cmi
-	$(OCAMLC) -i $< | $(GREP) 'val token' >$@
+	$(OCAMLC) -i $< | $(EGREP) 'val (token|init_position)' >$@
 
 endif
 

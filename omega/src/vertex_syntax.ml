@@ -24,7 +24,7 @@
 
 (* \thocwmodulesection{Abstract Syntax} *)
 
-exception Syntax_Error of string * int * int
+exception Syntax_Error of string * Lexing.position * Lexing.position
 
 module Token =
   struct
@@ -367,7 +367,7 @@ module Parameter =
 i*)
 
     type t =
-    | Input of t'
+    | Parameter of t'
     | Derived of t'
 
     let attr_to_string = function
@@ -381,7 +381,7 @@ i*)
 	String.concat "" (List.map attr_to_string p.attr)
 
     let to_string = function
-      | Input p -> "\\parameter" ^ to_string' p
+      | Parameter p -> "\\parameter" ^ to_string' p
       | Derived p -> "\\derived" ^ to_string' p
 
   end
