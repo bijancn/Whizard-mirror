@@ -85,6 +85,9 @@ module Parser_Test : Test =
     let parse_error error s () =
       assert_raises (Invalid_argument error) (fun () -> parse_string s)
 
+    let parse_error error s () =
+      assert_raises (Invalid_argument error) (fun () -> parse_string s)
+
     let syntax_error (msg, error) s () =
       parse_error ("syntax error (" ^ msg ^ ") at: `" ^ error ^ "'") s ()
 
@@ -109,10 +112,10 @@ module Parser_Test : Test =
         [ "\\vertex[2 * (17 + 4)]{}" => "\\vertex[42]{{}}";
           "\\vertex[2 * 17 + 4]{}"   => "\\vertex[38]{{}}";
 	  "\\vertex[2" =>! ("missing `]'", "[2");
-	  "\\vertex]{}" =>!!! "index out of bounds"; (* TODO: where from? *)
-	  "\\vertex2]{}" =>!!! "index out of bounds"; (* TODO: where from? *)
-	  "\\vertex}{}" =>!!! "index out of bounds"; (* TODO: where from? *)
-	  "\\vertex2}{}" =>!!! "index out of bounds"; (* TODO: where from? *)
+	  "\\vertex]{}" =>! ("expected `[' or `{'", "\\vertex]");
+	  "\\vertex2]{}" =>! ("expected `[' or `{'", "\\vertex2");
+	  "\\vertex}{}" =>! ("expected `[' or `{'", "\\vertex}");
+	  "\\vertex2}{}" =>! ("expected `[' or `{'", "\\vertex2");
 	  "\\vertex[(2}{}" =>! ("expected `)', found `}'", "(2}");
 	  "\\vertex[(2]{}" =>! ("expected `)', found `]'", "(2]");
 	  "\\vertex{2]{}" =>! ("syntax error", "");

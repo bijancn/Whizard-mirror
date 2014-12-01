@@ -194,7 +194,7 @@ vertex:
 /* This results in a shift/reduce conflict:\par
 \verb+| VERTEX expr_arg LBRACE RBRACKET { parse_error "expected `}', found `]'" }+ */
  | VERTEX expr_arg LBRACE END      { parse_error "missing `}'" }
-;
+ | VERTEX not_arg_or_token_list    { parse_error "expected `[' or `{'" }
 
 expr:
  | integer                 	{ E.integer $1 }
@@ -228,7 +228,7 @@ integer:
 token:
  | bare_token                              { $1 }
  | LBRACE scripted_token RBRACE            { $2 }
-/* This results in a shift/reduce conflict:\par
+/* This results in a shift/reduce conflict because RBRACKET is a bare token:\par
 \verb+| LBRACE scripted_token RBRACKET     { parse_error "expected `}', found `]'" }+ */
  | LBRACE scripted_token END               { parse_error "missing `}'" }
  | LBRACE scripted_token token_list RBRACE { T.list ($2 :: $3) }
@@ -305,4 +305,18 @@ bare_token:
  | RPAREN   { T.token ")" }
  | LBRACKET { T.token "[" }
  | RBRACKET { T.token "]" }
+
+not_arg_or_token_list:
+ | DIGIT    { () }
+ | CHAR     { () }
+ | TOKEN    { () }
+ | PLUS     { () }
+ | MINUS    { () }
+ | TIMES    { () }
+ | DIV      { () }
+ | COMMA    { () }
+ | LPAREN   { () }
+ | RPAREN   { () }
+ | RBRACKET { () }
+ | RBRACE   { () }
 ;
