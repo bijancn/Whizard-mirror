@@ -106,9 +106,9 @@ expr_arg:
 
 token_list_arg:
  | LBRACE token_list RBRACE   { $2 }
-/* This results in a reduce/reduce conflict:\par
-\verb+| LBRACE token_list RBRACKET { parse_error "expected `}', found `]'" }+ */
  | LBRACE token_list END      { parse_error "missing `}'" }
+/* This results in a reduce/reduce conflict:\hfil\goodbreak
+\verb+ | LBRACE token_list RBRACKET { parse_error "expected `}', found `]'" }+ */
 ;
 
 token_list_arg_pair:
@@ -192,10 +192,11 @@ vertex:
  | VERTEX token_list_arg           { (E.integer 1, T.list $2) }
  | VERTEX expr_arg token_list_arg  { ($2, T.list $3) }
  | VERTEX expr_arg LBRACE RBRACE   { ($2, T.list []) }
-/* This results in a shift/reduce conflict:\par
-\verb+| VERTEX expr_arg LBRACE RBRACKET { parse_error "expected `}', found `]'" }+ */
  | VERTEX expr_arg LBRACE END      { parse_error "missing `}'" }
  | VERTEX not_arg_or_token_list    { parse_error "expected `[' or `{'" }
+/* This results in a shift/reduce conflict:\hfil\goodbreak
+\verb+ | VERTEX expr_arg LBRACE RBRACKET { parse_error "expected `}', found `]'" }+ */
+;
 
 expr:
  | integer                 	{ E.integer $1 }
@@ -208,6 +209,9 @@ expr:
  | expr TIMES expr         	{ E.mult $1 $3 }
  | expr DIV expr           	{ E.div $1 $3 }
  | bare_scripted_token arg_list { E.apply $1 $2 }
+/* Making `\verb+*+' optional introduces \emph{many}
+   shift/reduce and reduce/reduce conflicts:\hfil\goodbreak
+\verb+ | expr expr { E.mult $1 $2 }+ */
 ;
 
 arg_list:
@@ -229,11 +233,12 @@ integer:
 token:
  | bare_token                              { $1 }
  | LBRACE scripted_token RBRACE            { $2 }
-/* This results in a shift/reduce conflict because RBRACKET is a bare token:\par
-\verb+| LBRACE scripted_token RBRACKET     { parse_error "expected `}', found `]'" }+ */
  | LBRACE scripted_token END               { parse_error "missing `}'" }
  | LBRACE scripted_token token_list RBRACE { T.list ($2 :: $3) }
  | LBRACE scripted_token token_list END    { parse_error "missing `}'" }
+/* This results in a shift/reduce conflict because
+   RBRACKET is a bare token:\hfil\goodbreak
+\verb+ | LBRACE scripted_token RBRACKET     { parse_error "expected `}', found `]'" }+ */
 ;
 
 token_list:
@@ -263,15 +268,15 @@ optional_scripts:
 super:
  | SUPER token  { Some $2 }
  | SUPER RBRACE { parse_error "superscript can't start with `}'" }
-/* This results in many reduce/reduce conflicts:\par
-\verb+| SUPER RBRACKET { parse_error "superscript can't start with `]'" }+ */
+/* This results in many reduce/reduce conflicts:\hfil\goodbreak
+\verb+ | SUPER RBRACKET { parse_error "superscript can't start with `]'" }+ */
 ;
 
 sub:
  | SUB token    { Some $2 }
  | SUB RBRACE   { parse_error "subscript can't start with `}'" }
-/* This results in many reduce/reduce conflicts:\par
-\verb+| SUB RBRACKET { parse_error "subscript can't start with `]'" }+ */
+/* This results in many reduce/reduce conflicts:\hfil\goodbreak
+\verb+ | SUB RBRACKET { parse_error "subscript can't start with `]'" }+ */
 ;
 
 prefixes:

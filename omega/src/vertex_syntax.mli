@@ -38,8 +38,10 @@ exception Syntax_Error of string * Lexing.position * Lexing.position
 module Token :
   sig
 
-    (* Multi-character tokens like \verb+\psi+ are stored
-       including the leading \verb+\+.
+    (* Single-character tokens other than digits
+       are stored as one character strings.
+       Multi-character tokens like \verb+\psi+ are stored
+       as a string \emph{including} the leading \verb+\+.
        Since \verb+a_12+
        is interpreted by \TeX{} as \verb+{a_1}2+, we can not
        use the lexer to construct integers, but interpret them
@@ -123,12 +125,14 @@ module Expr :
 module Particle :
   sig
 
-    (* Particles have a name \ldots *)
+    (* Neutral particles are known by a single name,
+       charged particles also by the name of the
+       anti-particle,  \ldots *)
     type name =
     | Neutral of Token.t list
     | Charged of Token.t list * Token.t list
 
-    (* \ldots{} and a list of attributes: external
+    (* \ldots{} and a list of attributes: aliases, external
        representations for \LaTeX{} and Fortran, quantum
        numbers and symbols for mass and width. *)
     type attr =
@@ -243,9 +247,12 @@ module Tensor :
 
 (* \thocwmodulesubsection{Files} *)
 
-(* The representation of a file, immediately after lexical
+(* The abstract representation of a file, immediately after lexical
    and syntactical analysis and before any type checking
-   or semantic analysis. *)
+   or semantic analysis, is a list of declarations.  *)
+
+(* There is one version with unexpanded \verb+\include+
+   statements. *)
 
 module File_Tree :
   sig

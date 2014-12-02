@@ -112,7 +112,7 @@ rule token = parse
   | ('\\' (_ | char+)) as s
                       { TOKEN s }
   | _ as c            { failwith ("invalid character at `" ^
-				     string_of_char c ^ "'") }
+				    string_of_char c ^ "'") }
   | eof               { END }
 
 

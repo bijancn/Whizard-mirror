@@ -68,7 +68,7 @@ let parse_file name =
 	  (Vertex_lexer.init_position name (Lexing.from_channel ic))
       with
       | Vertex_syntax.Syntax_Error (msg, start_pos, end_pos) ->
-        begin
+         begin
           close_in ic;
           invalid_arg (Printf.sprintf
 			 "%s: syntax error (%s)"
@@ -531,7 +531,12 @@ module Modelfile_Test =
 	     assert_raises
 	       (Invalid_argument
 		  "SM-error.omf:32.22-32.27: syntax error (syntax error)")
-	       (fun () -> parse_file "SM-error.omf")) ]
+	       (fun () -> parse_file "SM-error.omf"));
+          "cyclic.omf" >::
+            (fun () ->
+	     assert_raises
+	       (Invalid_argument "cyclic \\include{cyclic.omf}")
+	       (fun () -> parse_file "cyclic.omf")) ]
 
   end
 

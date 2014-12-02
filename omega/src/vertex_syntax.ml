@@ -484,8 +484,14 @@ module File =
 
     let empty = []
 
+    (* We allow to include a file more than once, but we don't
+       optimize by memoization, because we assume that this will
+       be rare.  However to avoid infinite loops when including
+       a child, we make sure that it has not yet been included as
+       a parent.  *)
+
     let expand_includes parser unexpanded =
-      let rec expand_includes' unexpanded expanded =
+      let rec expand_includes' parents unexpanded expanded =
 	List.fold_right (fun decl decls ->
 	  match decl with
 	  | File_Tree.Particle p -> Particle p :: decls
@@ -494,9 +500,12 @@ module File =
 	  | File_Tree.Tensor t -> Tensor t :: decls
 	  | File_Tree.Vertex (e, v) -> Vertex (e, v) :: decls
 	  | File_Tree.Include f ->
-	    expand_includes' (parser f) decls)
+	     if List.mem f parents then
+	       invalid_arg ("cyclic \\include{" ^ f ^ "}")
+	     else
+	       expand_includes' (f:: parents) (parser f) decls)
 	  unexpanded expanded in
-      expand_includes' unexpanded []
+      expand_includes' [] unexpanded []
 
     let to_strings decls =
       List.map
