@@ -290,6 +290,12 @@ module type Symbol =
     val load : Vertex_syntax.File.t -> table
     val kind : table -> Vertex_syntax.Token.t -> kind option
 
+    type stem_table
+
+    val load_stems : Vertex_syntax.File.t -> stem_table
+    val common_stem :
+      stem_table -> Vertex_syntax.Token.t -> Vertex_syntax.Token.t list
+
   end
 
 module Symbol : Symbol =
@@ -324,8 +330,8 @@ module Symbol : Symbol =
 
     let empty = ST.empty
 
-    let add table tokens kind =
-      ST.add tokens kind table
+    let add table token kind =
+      ST.add token kind table
 
     let index_space index =
       let spaces =
@@ -374,6 +380,48 @@ module Symbol : Symbol =
 
     let kind table token =
       try Some (ST.find token table) with Not_found -> None
+
+    module TS =
+      Set.Make
+        (struct
+          type t = T.t
+          let compare = compare
+         end)
+
+    type stem_table = TS.t ST.t
+
+    let add_stem table token =
+      let stem = T.stem token in
+      let token_set =
+	try
+	  ST.find stem table
+	with
+	| Not_found -> TS.empty in
+      ST.add stem (TS.add token token_set) table
+
+    let insert_stem table = function
+      | F.Particle p ->
+        begin match p.P.name with
+        | P.Neutral name -> add_stem table name
+        | P.Charged (name, anti) -> add_stem (add_stem table name) anti
+        end
+      | F.Index i -> add_stem table i.I.name
+      | F.Tensor t -> add_stem table t.X.name
+      | F.Parameter p ->
+        begin match p with
+        | Q.Parameter name
+	| Q.Derived name -> add_stem table name.Q.name
+        end
+      | F.Vertex _ -> table
+
+    let load_stems decls =
+      List.fold_left insert_stem ST.empty decls
+
+    let common_stem table token =
+      try
+	TS.elements (ST.find (T.stem token) table)
+      with
+      | Not_found -> []
 
   end
 
@@ -433,9 +481,7 @@ module Vertex =
     let factor_add_other_index factor token =
       { factor with other = token :: factor.other }
 
-    (* TODO: [token] vs [token list] *)
-
-    let factor_add_index symbol_table factor = function
+    let rec factor_add_index symbol_table stem_table factor = function
       | T.Token "," -> factor
       | T.Token ("*" | "\\ast" as star) ->
         factor_add_prefix factor star
@@ -450,13 +496,19 @@ module Vertex =
           | S.Tensor _ -> invalid_arg "factor_add_index: \\tensor"
           | S.Parameter -> invalid_arg "factor_add_index: \\parameter"
           end
-        | None -> factor_add_other_index factor token
+        | None ->
+	   begin match S.common_stem stem_table token with
+	   | [] -> factor_add_other_index factor token
+           | tokens ->
+	      List.fold_left
+		(factor_add_index symbol_table stem_table) factor tokens
+	   end
         end
 
-    let factor_of_token symbol_table token =
+    let factor_of_token symbol_table stem_table token =
       let token = T.wrap_scripted token in
       rev (List.fold_left
-             (factor_add_index symbol_table)
+             (factor_add_index symbol_table stem_table)
              (factor_stem token)
              (token.T.super @ token.T.sub))
 
@@ -477,14 +529,15 @@ module Vertex =
 
     let vertices s =
       let decls = parse_string s in
-      let symbol_table = Symbol.load decls in
+      let symbol_table = Symbol.load decls
+      and stem_table = Symbol.load_stems decls in
       let tokens =
         List.fold_left
           (fun acc -> function
           | Vertex_syntax.File.Vertex (_, v) -> T.wrap_list v @ acc
           | _ -> acc)
           [] decls in
-      List.map (factor_of_token symbol_table) tokens
+      List.map (factor_of_token symbol_table stem_table) tokens
 
     let vertices' s =
       String.concat "; "
