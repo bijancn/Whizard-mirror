@@ -278,8 +278,8 @@ module Particle =
   struct
 
     type name =
-    | Neutral of Token.t list
-    | Charged of Token.t list * Token.t list
+    | Neutral of Token.t
+    | Charged of Token.t * Token.t
 
     type attr =
     | TeX of Token.t list | TeX_Anti of Token.t list
@@ -317,10 +317,9 @@ i*)
 
     let name_to_string = function
       | Neutral p ->
-	"\\neutral{" ^ Token.list_to_string p ^ "}"
+	 "\\neutral{" ^ Token.to_string p ^ "}"
       | Charged (p, ap) ->
-	"\\charged{" ^ Token.list_to_string p ^
-	  "}{" ^ Token.list_to_string ap ^ "}"
+	"\\charged{" ^ Token.to_string p ^ "}{" ^ Token.to_string ap ^ "}"
 
     let attr_to_string = function
       | TeX tl -> "\\tex{" ^ Token.list_to_string tl ^ "}"
@@ -350,7 +349,7 @@ module Parameter =
     | Fortran of Token.t list
 
     type t' =
-      { name : Token.t list;
+      { name : Token.t;
 	value : Expr.t;
 	attr : attr list}
 
@@ -376,8 +375,7 @@ i*)
       | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
 
     let to_string' p =
-      "{" ^ Token.list_to_string p.name ^ "}{" ^
-	Expr.to_string p.value ^ "}" ^
+      "{" ^ Token.to_string p.name ^ "}{" ^ Expr.to_string p.value ^ "}" ^
 	String.concat "" (List.map attr_to_string p.attr)
 
     let to_string = function
@@ -418,7 +416,7 @@ module Index =
     | Lorentz of Token.t list
 
     type t =
-      { name : Token.t list;
+      { name : Token.t;
 	attr : attr list }
 
     let attr_to_string = function
@@ -427,7 +425,7 @@ module Index =
       | Lorentz tl -> "\\lorentz{" ^ Token.list_to_string tl ^ "}"
 
     let to_string i =
-      "\\index{" ^ Token.list_to_string i.name ^ "}" ^
+      "\\index{" ^ Token.to_string i.name ^ "}" ^
 	String.concat "" (List.map attr_to_string i.attr)
   end
 
@@ -440,7 +438,7 @@ module Tensor =
     | Lorentz of Token.t list
 
     type t =
-      { name : Token.t list;
+      { name : Token.t;
 	attr : attr list }
 
     let attr_to_string = function
@@ -449,7 +447,7 @@ module Tensor =
       | Lorentz tl -> "\\lorentz{" ^ Token.list_to_string tl ^ "}"
 
     let to_string i =
-      "\\tensor{" ^ Token.list_to_string i.name ^ "}" ^
+      "\\tensor{" ^ Token.to_string i.name ^ "}" ^
 	String.concat "" (List.map attr_to_string i.attr)
   end
 

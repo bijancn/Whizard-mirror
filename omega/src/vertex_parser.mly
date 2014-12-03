@@ -91,9 +91,9 @@ declaration:
 ;
 
 particle:
- | NEUTRAL token_list_arg particle_attributes
+ | NEUTRAL token_arg particle_attributes
      { { P.name = P.Neutral $2; P.attr = $3 } }
- | CHARGED token_list_arg_pair particle_attributes
+ | CHARGED token_arg_pair particle_attributes
      { let p, ap = $2 in
        { P.name = P.Charged (p, ap); P.attr = $3 } }
 ;
@@ -104,15 +104,20 @@ expr_arg:
  | LBRACKET expr END      { parse_error "missing `]'" }
 ;
 
+token_arg:
+ | LBRACE scripted_token RBRACE   { $2 }
+ | LBRACE scripted_token END      { parse_error "missing `}'" }
+;
+
+token_arg_pair:
+ | token_arg token_arg { ($1, $2) }
+;
+
 token_list_arg:
  | LBRACE token_list RBRACE   { $2 }
  | LBRACE token_list END      { parse_error "missing `}'" }
 /* This results in a reduce/reduce conflict:\hfil\goodbreak
 \verb+ | LBRACE token_list RBRACKET { parse_error "expected `}', found `]'" }+ */
-;
-
-token_list_arg_pair:
- | token_list_arg token_list_arg { ($1, $2) }
 ;
 
 particle_attributes:
@@ -135,9 +140,9 @@ particle_attribute:
 ;
 
 parameter:
- | PARAMETER token_list_arg arg parameter_attributes
+ | PARAMETER token_arg arg parameter_attributes
      { V.Parameter { V.name = $2; V.value = $3; V.attr = $4 } }
- | DERIVED   token_list_arg arg parameter_attributes
+ | DERIVED   token_arg arg parameter_attributes
      { V.Derived { V.name = $2; V.value = $3; V.attr = $4 } }
 ;
 
@@ -159,7 +164,7 @@ parameter_attribute:
 ;
 
 index:
- | INDEX token_list_arg index_attributes { { I.name = $2; I.attr = $3 } }
+ | INDEX token_arg index_attributes { { I.name = $2; I.attr = $3 } }
 ;
 
 index_attributes:
@@ -174,7 +179,7 @@ index_attribute:
 ;
 
 tensor:
- | TENSOR token_list_arg tensor_attributes { { X.name = $2; X.attr = $3 } }
+ | TENSOR token_arg tensor_attributes { { X.name = $2; X.attr = $3 } }
 ;
 
 tensor_attributes:

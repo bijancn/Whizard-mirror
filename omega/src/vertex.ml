@@ -147,19 +147,19 @@ module Parser_Test : Test =
 
     let electron1 =
       "electron1" >:::
-        [ "\\charged{e^-}{e^+}" => "\\charged{{e^-}}{{e^+}}";
-          ?> "\\charged{{e^-}}{{e^+}}" ]
+        [ ?> "\\charged{e^-}{e^+}";
+          "\\charged{{e^-}}{{e^+}}" => "\\charged{e^-}{e^+}" ]
 
     let electron2 =
       "electron2" >:::
         [ "\\charged{e^-}{e^+}\\fortran{ele}" =>
-          "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}";
+          "\\charged{e^-}{e^+}\\fortran{{ele}}";
           "\\charged{e^-}{e^+}\\fortran{electron}\\fortran{ele}" =>
-          "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}\\fortran{{electron}}";
+          "\\charged{e^-}{e^+}\\fortran{{ele}}\\fortran{{electron}}";
           "\\charged{e^-}{e^+}\\alias{e2}\\alias{e1}" =>
-          "\\charged{{e^-}}{{e^+}}\\alias{{e1}}\\alias{{e2}}";
+          "\\charged{e^-}{e^+}\\alias{{e1}}\\alias{{e2}}";
           "\\charged{e^-}{e^+}\\fortran{ele}\\anti\\fortran{pos}" =>
-          "\\charged{{e^-}}{{e^+}}\\fortran{{ele}}\\anti\\fortran{{pos}}" ]
+          "\\charged{e^-}{e^+}\\fortran{{ele}}\\anti\\fortran{{pos}}" ]
 
     let particles =
       "particles" >:::
@@ -168,10 +168,9 @@ module Parser_Test : Test =
 
     let parameters =
       "parameters" >:::
-        [ "\\parameter{alpha}{1/137}" => "\\parameter{{alpha}}{1/137}";
-          "\\derived{alpha\\_s}{1/\\ln{\\frac{\\mu}{\\Lambda}}}" =>
-          "\\derived{{alpha\\_s}}{1/\\ln{\\frac{\\mu}{\\Lambda}}}";
-          "\\parameter{alpha}{1/137}\\anti\\fortran{alpha}" =>!
+        [ ?> "\\parameter{\\alpha}{1/137}";
+          ?> "\\derived{\\alpha_s}{1/\\ln{\\frac{\\mu}{\\Lambda}}}";
+          "\\parameter{\\alpha}{1/137}\\anti\\fortran{alpha}" =>!
           ("invalid parameter attribute", "\\anti") ]
 
     let indices =
@@ -289,7 +288,7 @@ module type Symbol =
     type table
 
     val load : Vertex_syntax.File.t -> table
-    val kind : table -> Vertex_syntax.Token.t list -> kind option
+    val kind : table -> Vertex_syntax.Token.t -> kind option
 
   end
 
@@ -317,8 +316,8 @@ module Symbol : Symbol =
     module ST =
       Map.Make
         (struct
-          type t = T.t list
-          let compare = ThoList.compare ~cmp:T.compare
+          type t = T.t
+          let compare = compare
          end)
 
     type table = kind ST.t
@@ -373,8 +372,8 @@ module Symbol : Symbol =
     let load decls =
       List.fold_left insert empty decls
 
-    let kind table tokens =
-      try Some (ST.find tokens table) with Not_found -> None
+    let kind table token =
+      try Some (ST.find token table) with Not_found -> None
 
   end
 
@@ -441,7 +440,7 @@ module Vertex =
       | T.Token ("*" | "\\ast" as star) ->
         factor_add_prefix factor star
       | token ->
-        begin match S.kind symbol_table [token] with
+        begin match S.kind symbol_table token with
         | Some kind ->
           begin match kind with
           | S.Particle -> factor_add_particle factor token

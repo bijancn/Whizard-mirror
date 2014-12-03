@@ -129,8 +129,8 @@ module Particle :
        charged particles also by the name of the
        anti-particle,  \ldots *)
     type name =
-    | Neutral of Token.t list
-    | Charged of Token.t list * Token.t list
+    | Neutral of Token.t
+    | Charged of Token.t * Token.t
 
     (* \ldots{} and a list of attributes: aliases, external
        representations for \LaTeX{} and Fortran, quantum
@@ -162,7 +162,7 @@ module Parameter :
     | Fortran of Token.t list
 
     type t' =
-      { name : Token.t list;
+      { name : Token.t;
 	value : Expr.t;
 	attr : attr list}
 
@@ -220,7 +220,7 @@ module Index :
     | Lorentz of Token.t list
 
     type t =
-      { name : Token.t list;
+      { name : Token.t;
 	attr : attr list }
 
     val to_string : t -> string
@@ -238,7 +238,7 @@ module Tensor :
     | Lorentz of Token.t list
 
     type t =
-      { name : Token.t list;
+      { name : Token.t;
 	attr : attr list }
 
     val to_string : t -> string
