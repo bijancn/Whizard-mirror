@@ -275,11 +275,16 @@ module Tensor =
 module type Symbol =
   sig
 
+    type space =
+    | Color
+    | Lorentz
+    | Flavor
+
     type kind =
     | Particle
     | Parameter
-    | Index
-    | Tensor
+    | Index of space
+    | Tensor of space
 
     type table
 
@@ -288,7 +293,7 @@ module type Symbol =
 
   end
 
-module Symbol (* : Symbol *) =
+module Symbol : Symbol =
   struct
 
     module T = Vertex_syntax.Token
@@ -312,16 +317,16 @@ module Symbol (* : Symbol *) =
     module ST =
       Map.Make
         (struct
-          type t = T.t
-          let compare = T.compare
+          type t = T.t list
+          let compare = ThoList.compare ~cmp:T.compare
          end)
 
     type table = kind ST.t
 
     let empty = ST.empty
 
-    let add table token kind =
-      ST.add (T.stem (T.list token)) kind table
+    let add table tokens kind =
+      ST.add tokens kind table
 
     let index_space index =
       let spaces =
@@ -368,8 +373,8 @@ module Symbol (* : Symbol *) =
     let load decls =
       List.fold_left insert empty decls
 
-    let kind table token =
-      try Some (ST.find (T.stem token) table) with Not_found -> None
+    let kind table tokens =
+      try Some (ST.find tokens table) with Not_found -> None
 
   end
 
@@ -429,12 +434,14 @@ module Vertex =
     let factor_add_other_index factor token =
       { factor with other = token :: factor.other }
 
+    (* TODO: [token] vs [token list] *)
+
     let factor_add_index symbol_table factor = function
       | T.Token "," -> factor
       | T.Token ("*" | "\\ast" as star) ->
         factor_add_prefix factor star
       | token ->
-        begin match S.kind symbol_table token with
+        begin match S.kind symbol_table [token] with
         | Some kind ->
           begin match kind with
           | S.Particle -> factor_add_particle factor token
