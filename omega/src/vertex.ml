@@ -290,8 +290,11 @@ module type Symbol =
        can refer either to particles, to parameters (derived and input)
        or to tensors and indices.  *)
     type kind =
-    | Particle
+    | Neutral
+    | Charged
+    | Anti
     | Parameter
+    | Derived
     | Index of space
     | Tensor of space
 
@@ -302,11 +305,16 @@ module type Symbol =
     type kind_table
     val kind : kind_table -> t -> kind option
     val load_kinds : file -> kind_table
+    val dump_kinds : out_channel -> kind_table -> unit
+
+    exception Missing_Space of t
+    exception Conflicting_Space of t
 
     (* A table to look up all symbols with the same [stem]. *)
     type stem_table
     val common_stem : stem_table -> t -> t list
     val load_stems : file -> stem_table
+    val dump_stems : out_channel -> stem_table -> unit
 
   end
 
@@ -328,11 +336,28 @@ module Symbol : Symbol =
     | Lorentz
     | Flavor
         
+    let space_to_string = function
+      | Color -> "color"
+      | Lorentz -> "Lorentz"
+      | flavor -> "flavor"
+
     type kind =
-    | Particle
+    | Neutral
+    | Charged
+    | Anti
     | Parameter
+    | Derived
     | Index of space
     | Tensor of space
+
+    let kind_to_string = function
+      | Neutral -> "neutral particle"
+      | Charged -> "charged particle"
+      | Anti -> "charged anti particle"
+      | Parameter -> "input parameter"
+      | Derived -> "derived parameter"
+      | Index space -> space_to_string space ^ " index"
+      | Tensor space -> space_to_string space ^ " tensor"
 
     module ST =
       Map.Make
@@ -343,10 +368,14 @@ module Symbol : Symbol =
 
     type kind_table = kind ST.t
 
-    let empty = ST.empty
-
     let add table token kind =
       ST.add token kind table
+
+    (* Go through the list of attributes, make sure that
+       the space is declared and unique.  Return the space. *)
+
+    exception Missing_Space of t
+    exception Conflicting_Space of t
 
     let index_space index =
       let spaces =
@@ -358,8 +387,8 @@ module Symbol : Symbol =
           [] index.I.attr in
       match ThoList.uniq (List.sort compare spaces) with
       | [space] -> space
-      | [] -> invalid_arg "index not declared as color, flavor or index"
-      | _ -> invalid_arg "conflicting index declarations"
+      | [] -> raise (Missing_Space index.I.name)
+      | _ -> raise (Conflicting_Space index.I.name)
 
     let tensor_space tensor =
       let spaces =
@@ -371,39 +400,46 @@ module Symbol : Symbol =
           [] tensor.X.attr in
       match ThoList.uniq (List.sort compare spaces) with
       | [space] -> space
-      | [] -> invalid_arg "tensor not declared as color, flavor or index"
-      | _ -> invalid_arg "conflicting tensor declarations"
+      | [] -> raise (Missing_Space tensor.X.name)
+      | _ -> raise (Conflicting_Space tensor.X.name)
 
-    let insert table = function
+    let insert_kind table = function
       | F.Particle p ->
         begin match p.P.name with
-        | P.Neutral name -> add table name Particle
+        | P.Neutral name -> add table name Neutral
         | P.Charged (name, anti) ->
-          add (add table name Particle) anti Particle
+          add (add table name Charged) anti Anti
         end
       | F.Index i -> add table i.I.name (Index (index_space i))
       | F.Tensor t -> add table t.X.name (Tensor (tensor_space t))
       | F.Parameter p ->
         begin match p with
         | Q.Parameter name -> add table name.Q.name Parameter
-        | Q.Derived name -> add table name.Q.name Parameter
+        | Q.Derived name -> add table name.Q.name Derived
         end
       | F.Vertex _ -> table
 
     let load_kinds decls =
-      List.fold_left insert empty decls
+      List.fold_left insert_kind ST.empty decls
 
     let kind table token =
       try Some (ST.find token table) with Not_found -> None
 
-    module TS =
+    let dump_kinds oc table =
+      Printf.fprintf oc "<<< Symbol Table: >>>\n";
+      ST.iter
+	(fun s k ->
+	 Printf.fprintf oc "%s -> %s\n" (T.to_string s) (kind_to_string k))
+	table
+
+    module SS =
       Set.Make
         (struct
           type t = T.t
           let compare = compare
          end)
 
-    type stem_table = TS.t ST.t
+    type stem_table = SS.t ST.t
 
     let add_stem table token =
       let stem = T.stem token in
@@ -411,8 +447,8 @@ module Symbol : Symbol =
 	try
 	  ST.find stem table
 	with
-	| Not_found -> TS.empty in
-      ST.add stem (TS.add token token_set) table
+	| Not_found -> SS.empty in
+      ST.add stem (SS.add token token_set) table
 
     let insert_stem table = function
       | F.Particle p ->
@@ -434,11 +470,24 @@ module Symbol : Symbol =
 
     let common_stem table token =
       try
-	TS.elements (ST.find (T.stem token) table)
+	SS.elements (ST.find (T.stem token) table)
       with
       | Not_found -> []
 
+    let dump_stems oc table =
+      Printf.fprintf oc "<<< Stem Table: >>>\n";
+      ST.iter
+	(fun stem symbols ->
+	 Printf.fprintf
+	   oc "%s -> %s\n"
+	   (T.to_string stem)
+	   (String.concat
+	      ", " (List.map T.to_string (SS.elements symbols))))
+	table
+
   end
+
+(* \thocwmodulesubsection{Vertices} *)
 
 module Vertex =
   struct
@@ -488,6 +537,7 @@ module Vertex =
       { factor with color = token :: factor.color }
 
     let factor_add_lorentz_index factor token =
+      (* diagnostics: [Printf.eprintf "[L:[%s]]\n" (T.to_string token);] *)
       { factor with lorentz = token :: factor.lorentz }
 
     let factor_add_flavor_index factor token =
@@ -504,12 +554,13 @@ module Vertex =
         begin match S.kind symbol_table token with
         | Some kind ->
           begin match kind with
-          | S.Particle -> factor_add_particle factor token
+          | S.Neutral | S.Charged | S.Anti -> factor_add_particle factor token
           | S.Index S.Color -> factor_add_color_index factor token
           | S.Index S.Lorentz -> factor_add_lorentz_index factor token
           | S.Index S.Flavor -> factor_add_flavor_index factor token
           | S.Tensor _ -> invalid_arg "factor_add_index: \\tensor"
           | S.Parameter -> invalid_arg "factor_add_index: \\parameter"
+          | S.Derived -> invalid_arg "factor_add_index: \\derived"
           end
         | None ->
 	   begin match S.common_stem stem_table token with
@@ -546,6 +597,8 @@ module Vertex =
       let decls = parse_string s in
       let symbol_table = Symbol.load_kinds decls
       and stem_table = Symbol.load_stems decls in
+      (* diagnostics: [Symbol.dump_kinds stderr symbol_table;
+                       Symbol.dump_stems stderr stem_table;] *)
       let tokens =
         List.fold_left
           (fun acc -> function
@@ -562,6 +615,8 @@ module Vertex =
       { name : T.t list }
 
   end
+
+(* \thocwmodulesubsection{Complete Models} *)
 
 module Modelfile =
   struct
@@ -582,15 +637,17 @@ module Modelfile_Test =
             (fun () ->
               assert_equal ~printer:(fun s -> s)
                 "[\\psi; prefix=\\bar; \
-                  particle=e; color=a; lorentz=\\alpha_1]; \
+                  particle=e^+,e^-; color=a; lorentz=\\alpha_1]; \
                  [\\gamma; lorentz=\\mu,\\alpha_1,\\alpha_2]; \
-                 [\\psi; particle=e; color=a; lorentz=\\alpha_2]; \
+                 [\\psi; particle=e^+,e^-; color=a; lorentz=\\alpha_2]; \
                  [A; lorentz=\\mu]"
                 (Vertex.vertices'
                    "\\charged{e^-}{e^+}\
                     \\index{a}\\color{SU(3)}\
                     \\index{\\mu}\\lorentz{X}\
                     \\index{\\alpha}\\lorentz{X}\
+                    \\index{\\alpha_1}\\lorentz{X}\
+                    \\index{\\alpha_2}\\lorentz{X}\
                     \\vertex{\\bar{\\psi_e}_{a,\\alpha_1}\
                              \\gamma^\\mu_{\\alpha_1\\alpha_2}\
                              {\\psi_e}_{a,\\alpha_2}A_\\mu}"));

@@ -446,9 +446,9 @@ module Tensor =
       | Flavor tl -> "\\flavor{" ^ Token.list_to_string tl ^ "}"
       | Lorentz tl -> "\\lorentz{" ^ Token.list_to_string tl ^ "}"
 
-    let to_string i =
-      "\\tensor{" ^ Token.to_string i.name ^ "}" ^
-	String.concat "" (List.map attr_to_string i.attr)
+    let to_string t =
+      "\\tensor{" ^ Token.to_string t.name ^ "}" ^
+	String.concat "" (List.map attr_to_string t.attr)
   end
 
 module File_Tree =
