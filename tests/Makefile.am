@@ -171,8 +171,9 @@ TESTS_REQ_OCAML = \
     rebuild_3.run \
     defaultcuts.run \
     cuts.run \
-    model_test.run \
     model_change_1.run \
+    model_change_2.run \
+    model_test.run \
     qedtest_1.run \
     qedtest_2.run \
     qedtest_3.run \

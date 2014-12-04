@@ -33,12 +33,13 @@ noinst_LTLIBRARIES = libSM_tt_threshold_bundle.la
 ## We need all in the distribution
 
 EXTRA_DIST = interpolation.f90  nr_hypgeometric.f90  \
-	toppik.f  ttv_formfactors.f90
+	toppik.f  toppik_axial.f  ttv_formfactors.f90
 
 libSM_tt_threshold_bundle_la_SOURCES = \
   interpolation.f90 \
   nr_hypgeometric.f90 \
   toppik.f \
+  toppik_axial.f \
   ttv_formfactors.f90
 
 # Dump module names into file Modules

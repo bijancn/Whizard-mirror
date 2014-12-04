@@ -42,12 +42,13 @@ module ttv_formfactors
   real(default) :: mtpole = 0.0_default
   real(default) :: mtpole_init = 0.0_default
   real(default) :: h, mu_h, ah
-  real(default) :: f, mu_s, as, nustar_fixed
+  real(default) :: f, mu_s, as, asLL, nustar_fixed
   real(default), parameter :: nustar_offset = 0.05_default
   real(default) :: mu_u, au
   real(default), parameter :: nf = 5.0_default
-  real(default) :: a1, a2, b0, b1, current_c1
-  real(default), dimension(3) :: xc
+  real(default) :: a1, a2, b0, b1
+  real(default), dimension(2) :: aa2, aa3, aa4, aa5, aa8, aa0, current_c, matching_c
+  real(default), dimension(0:2) :: xc
   integer :: ff_init
   real(default) :: sqrts_ref = -1.e9
 
@@ -115,12 +116,14 @@ contains
     real(default) :: nu_in = -1.0_default
     real(default) :: ff_in = 1.0_default
     real(default) :: Vtb = 1.0_default
-    m1s   = m1s_in
+    init = .false.
+    m1s = m1s_in
     if ( int(nloop_in) > nloop ) then
       print *, "  WARNING: reset to highest available nloop = ", nloop
     else
       nloop = int(nloop_in)
     end if
+
     !!! handle the top width consistently: not smaller than open t->bW channel
     gam = compute_gamtot_LO (1./aemi, sw, Vtb, m1s, mw, mb)
     if (gam_inout < gam ) then
@@ -129,12 +132,11 @@ contains
       print *, "         Smallest consistent width: gam_tWb = ", gam
     end if
     gam = gam_inout
-    !!! global hard scale and alphas used in *all* form factors
-    h     = h_in
-    mu_h  = m1s * h
-    ah    = running_as (mu_h, az, mz, 2, nf)
-    nustar_fixed = nu_in
-    nustar_dynamic =  ( nustar_fixed  < 0. )
+
+    !!! global hard parameters incl. hard alphas used in *all* form factors
+    h    = h_in
+    mu_h = m1s * h
+    ah   = running_as (mu_h, az, mz, 2, nf)
     !!! auxiliary numbers needed later
     z3 = 1.20205690315959428539973816151_default
     b0 = coeff_b0(nf) * (4.*pi)
@@ -144,24 +146,49 @@ contains
          (1798./81. + 56./3.*z3)*CA*TR*nf - &
          (55./3. - 16.*z3)*CF*TR*nf + &
          (20./9.*TR*nf)**2 )
-    !!! soft parameters (incl. mtpole!) depend on sqrts: init with sqrts ~ 2*m1s
+    !!! hard s/p-wave 1-loop matching coefficients, cf. arXiv:hep-ph/0604072
+    matching_c(1) = ( 1.0_default - 2.*(CF/pi) * ah )
+    matching_c(2) = ( 1.0_default -    (CF/pi) * ah )
+    !!! current coefficients Ai(S,L,J), cf. arXiv:hep-ph/0609151, Eqs. (63)-(64)
+    !!! 3S1 coefficients (s-wave, vector current)
+    aa2(1) = (CF*(CA*CF*(9.*CA - 100.*CF) - &
+              b0*(26.*CA**2 + 19.*CA*CF - 32.*CF**2)))/(26.*b0**2 *CA)
+    aa3(1) = CF**2/( b0**2 *(6.*b0 - 13.*CA)*(b0 - 2.*CA)) * &
+              (CA**2 *(9.*CA - 100.*CF) + b0*CA*(74.*CF - CA*16.) - &
+              6.*b0**2 *(2.*CF - CA))
+    aa4(1) = (24.*CF**2 * (11.*CA - 3.*b0)*(5.*CA + 8.*CF)) / &
+              (13.*CA*(6.*b0 - 13.*CA)**2)
+    aa5(1) =  (CF**2 * (CA*(15.-28) + b0*5.))/(6.*(b0-2.*CA)**2)
+    aa8(1) = 0.0_default
+    aa0(1) = -((8.*CF*(CA + CF)*(CA + 2.*CF))/(3.*b0**2))
+    !!! 3P1 coefficients (p-wave, axial vector current)
+    aa2(2) = -1./3. * (CF*(CA+2.*CF)/b0 - CF**2/(4.*b0) )
+    aa3(2) =  0.0_default
+    aa4(2) =  0.0_default
+    aa5(2) =  1./3. * CF**2/(4.*(b0-2.*CA))
+    aa8(2) = -1./3. * CF**2/(b0-CA)
+    aa0(2) = -1./3. * 8.*CA*CF*(CA+4.*CF)/(3.*b0**2)
+
+    !!! soft parameters incl. mtpole (depend on sqrts: init with sqrts ~ 2*m1s)
+    nustar_fixed = nu_in
+    nustar_dynamic = ( nustar_fixed  < 0. )
     f = f_in
     call update_soft_parameters ( 2.*m1s )
     mtpole_init = mtpole
     mpole_out = mtpole_init
     ff_init = int(ff_in)
     scan_threshold = ( ff_init < 2 )
+
     init = .true.
   end subroutine init_parameters
 
   subroutine init_threshold_grid ()
-    integer :: i, i_en, i_pt, n_nan
     if ( .not.init .or. .not.scan_threshold ) return
     print *, " "
     print *, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
     print *, " Initialize e+e- => ttbar threshold resummation:"
-    print *, " Use analytic (LL) or TOPPIK (NLL) form factor for ttA/ttZ vector couplings"
-    print *, " in the threshold region."
+    print *, " Use analytic (LL) or TOPPIK (NLL) form factors for ttA/ttZ vector"
+    print *, " and axial vector couplings (S/P-wave) in the threshold region."
     print *, " Cf. threshold shapes from A. Hoang et al.: [arXiv:hep-ph/0107144],"
     print *, " [arXiv:1309.6323]."
     if ( nloop > 0 ) then
@@ -170,91 +197,57 @@ contains
     end if
     print *, "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
     print *, " "
-    i=1
-    call scan_formfactor_over_pt_en (i)
-    !!! TOPPIK sometimes becomes unstable and returns NaN:
-    !!! repair this by hand by interpolating from adjacent energies
-    do i_en=2, n_en-1
-      n_nan = 0
-      if ( unstable(i_en,i) ) then
-        print *, "WARNING: Caught TOPPIK instability at sqrts = ", sqrts_iter(i_en)
-        print *, " "
-        n_nan = n_nan + 1
-        if ( unstable(i_en-1,i) .or. unstable(i_en+1,i) .or. n_nan > 2 ) then
-          print *, "ERROR: Too many TOPPIK instabilities! Check your parameter setup"
-          print *, "       or slightly vary the scales sh and/or sf. STOP."
-          print *, " "
-          stop
-        else
-          do i_pt=1, n_pt
-            ff_data(i_en,i_pt,i) = ( ff_data(i_en-1,i_pt,i) + ff_data(i_en+1,i_pt,i) ) / 2.
-          end do
-        end if
-      end if
-    end do
+    call scan_formfactor_over_pt_en ()
     scan_threshold = .false.
   end subroutine init_threshold_grid
 
-  subroutine update_soft_parameters (sqrts_in)
-    real(default), intent(in), optional :: sqrts_in
-    real(default) :: sqrts, z, w, aa0, aa2, aa3, aa4, aa5
-    real(default) :: nusoft
-    if ( is_equal(sqrts_in, sqrts_ref) ) then
-      return
-    else
-      sqrts = sqrts_in
-      sqrts_ref = sqrts
-      if ( .not. nustar_dynamic .and. mtpole > 0.0_default ) return
-    end if
+  subroutine update_soft_parameters (sqrts)
+    real(default), intent(in) :: sqrts
+    real(default) :: nusoft, z, w
+    integer :: i
+    if ( .not. nustar_dynamic .and. mtpole > 0.0_default ) return
+    if ( init .and. is_equal(sqrts, sqrts_ref) ) return
+    sqrts_ref = sqrts
     !!! (ultra)soft scales and alphas values required by threshold code
     nusoft = f * nustar (sqrts)
     mu_s = m1s * h * nusoft
     mu_u = m1s * h * nusoft**2
-    as   = alphas_soft (sqrts, nloop) !!! NLL here
+    as   = alphas_soft (sqrts, nloop)
+    asLL = alphas_soft (sqrts, 0)
     au   = running_as (mu_u, ah, mu_h, 0, nf) !!! LL here
     !!! *global* pole mass (threshold code)
     mtpole = m1s_to_mpole (sqrts)
     !!! Coulomb potential coefficients needed by TOPPIK
-    select case (nloop)
-      case (0)
-        xc(1) = 1.0_default
-        xc(2) = 0.0_default
-        xc(3) = 0.0_default
-      case (1)
-        xc(1) = 1.0_default + as/(4.*pi) * a1
-        xc(2) = as/(4.*pi) * b0
-        xc(3) = 0.0_default
-      case (2)
-        xc(1) = 1 + as/(4.*pi)*a1 + (as/(4.*pi))**2 * a2
-        xc(2) = as/(4.*pi)*b0 + (as/(4.*pi))**2 * (b1 + 2*b0*a1)
-        xc(3) = (as/(4.*pi))**2 * b0**2
-      case default
-        print *, "  ERROR: nloop = ", nloop
-    end select
-    !!! Max' current coefficient
-    select case (nloop)
-      case (0)
-        current_c1 = 1.0_default
-      case (1)
-        !!! LL here for as, au for consistency!
-        z   = running_as (mu_s, ah, mu_h, 0, nf) / ah
-        w   = au / running_as (mu_s, ah, mu_h, 0, nf)
-        aa4 = (24.*CF**2 * (11.*CA - 3.*b0)*(5.*CA + 8.*CF)) / &
-              (13.*CA*(6.*b0 - 13.*CA)**2)
-        aa5 = (CF**2 * (CA*(15.-28) + b0*5.))/(6.*(b0-2.*CA)**2)
-        aa2 = (CF*(CA*CF*(9.*CA - 100.*CF) - &
-              b0*(26.*CA**2 + 19.*CA*CF - 32.*CF**2)))/(26.*b0**2 *CA)
-        aa3 = CF**2/( b0**2 *(6.*b0 - 13.*CA)*(b0 - 2.*CA)) * &
-              (CA**2 *(9.*CA - 100.*CF) + b0*CA*(74.*CF - CA*16.) - &
-                 6.*b0**2 *(2.*CF - CA))
-        aa0 = -((8.*CF*(CA + CF)*(CA + 2.*CF))/(3.*b0**2))
-        current_c1 = ( 1.0_default - 2.*CF/pi * ah ) * exp( &
-              ah*pi*( aa2*(1.-z) + aa3*log(z) + &
-              aa4*(1. - z**(1.-(13.*CA)/(6.*b0))) + &
-              aa5*(1. - z**(1.-(2.*CA)/b0)) + aa0*((z - 1.) - log(w)/w)) )
-      case default
-        print *, "  ERROR: nloop = ", nloop
-    end select
+    xc(0) = 1.0_default
+    xc(1) = 0.0_default
+    xc(2) = 0.0_default
+    if ( nloop > 0 ) then
+      xc(0) = xc(0) + as/(4.*pi) * a1
+      xc(1) = xc(1) + as/(4.*pi) * b0
+    end if
+    if ( nloop > 1 ) then
+      xc(0) = xc(0) + (as/(4.*pi))**2 * a2
+      xc(1) = xc(1) + (as/(4.*pi))**2 * (b1 + 2*b0*a1)
+      xc(2) = xc(2) + (as/(4.*pi))**2 * b0**2
+    end if
+    !!! s/p-wave current coefficients, cf. arXiv:hep-ph/0609151, Eq. (62)
+    do i=1, 2
+      select case (nloop)
+        case (0)
+          current_c(i) = 1.0_default
+        case (1)
+          !!! LL here for as, au for consistency!
+          z = asLL / ah
+          w = au / asLL
+          current_c(i) = matching_c(i) * exp( ah*pi*( &
+                aa2(i)*(1.-z) + aa3(i)*log(z) + &
+                aa4(i)*(1.-z**(1.-13.*CA/(6.*b0))) + &
+                aa5(i)*(1.-z**(1.-2.*CA/b0)) + &
+                aa8(i)*(1.-z**(1.-CA/b0)) + aa0(i)*(z-1.-log(w)/w) ))
+        case default
+          print *, "  ERROR: nloop = ", nloop
+      end select
+    end do
   end subroutine update_soft_parameters
 
   pure function FF_master (p2, k2, q2, i, ff_in) result (c)
@@ -267,7 +260,7 @@ contains
     integer :: ff
     real(default) :: sq, p0, pt
     c = 0.0_default
-    if ( .not.init .or. i==2 ) return
+    if ( .not.init ) return
     !!! on-shell veto
     if ( is_equal(sqrt(p2), mtpole_init) .and. is_equal(sqrt(k2), mtpole_init) ) return
     call rel_to_nrel (p2, k2, q2, sq, p0, pt)
@@ -325,7 +318,7 @@ contains
     complex(default) :: c
     real(default) :: en
     c  = 0.0_default
-    if ( .not.init .or. i==2 ) return
+    if ( .not.init ) return
     if ( .not.sqrts_within_range(sqrts) ) return
     en = sqrts - 2.*m1s_to_mpole(sqrts)
     c = formfactor_from_pt_en_scan (p, en, i)
@@ -339,9 +332,17 @@ contains
     integer, intent(in) :: i
     complex(default) :: c
     c  = 1.0_default
-    if ( .not.init .or. i==2 ) return
-    c = (   G0p (    CF * as, mtpole, pt, en, gam) &
-          / G0p (0.0_default, mtpole, pt, en, gam)  )
+    if ( .not.init ) return
+    select case (i)
+      case (1)
+        c = (   G0p (    CF * as, mtpole, pt, en, gam) &
+              / G0p (0.0_default, mtpole, pt, en, gam)  )
+      case (2)
+        !!! not implemented yet
+        c = 1.0_default
+      case default
+        print *, "ERROR: unknown ttZ/ttA vertex component i = ", i
+    end select
   end function formfactor_ll_analytic
 
   !!! including p0 dependence
@@ -517,11 +518,6 @@ contains
       return
     end if
 
-    if ( i==2 ) then
-      ff_data(i_en,:,i) = (/ (1.0_default, i_pt=1, n_pt) /)
-      return
-    end if
-
     xenergy = en
     xtm     = mtpole
     xtg     = gam
@@ -529,9 +525,9 @@ contains
     xscale  = mu_s
     xcutn   = 175.E6
     xcutv   = 175.E6
-    xc0     = xc(1)
-    xc1     = xc(2)
-    xc2     = xc(3)
+    xc0     = xc(0)
+    xc1     = xc(1)
+    xc2     = xc(2)
     xcdeltc = 0.
     xcdeltl = 0.
     xcfullc = 0.
@@ -544,13 +540,26 @@ contains
     xkincv  = 0.
     jvflg   = 0
 
-    call tttoppik &
-           (xenergy,xtm,xtg,xalphas,xscale,xcutn,xcutv,xc0,xc1,xc2, &
-            xcdeltc,xcdeltl,xcfullc,xcfulll,xcrm2,xkincm,xkinca,jknflg, &
-            jgcflg, xkincv,jvflg,xim,xdi,np,xpp,xww,xdsdp,ff_toppik)
+    select case (i)
+      case (1)
+        call tttoppik &
+               (xenergy,xtm,xtg,xalphas,xscale,xcutn,xcutv,xc0,xc1,xc2, &
+                xcdeltc,xcdeltl,xcfullc,xcfulll,xcrm2,xkincm,xkinca,jknflg, &
+                jgcflg, xkincv,jvflg,xim,xdi,np,xpp,xww,xdsdp,ff_toppik)
+      case (2)
+        call tttoppikaxial &
+               (xenergy,xtm,xtg,xalphas,xscale,xcutn,xcutv,xc0,xc1,xc2, &
+                xcdeltc,xcdeltl,xcfullc,xcfulll,xcrm2,xkincm,xkinca,jknflg, &
+                jgcflg, xkincv,jvflg,xim,xdi,np,xpp,xww,xdsdp,ff_toppik)
+        !!! 1st ~10 TOPPIK p-wave entries are unstable: discard them
+        ff_toppik(1:10) = (/ (ff_toppik(11), i_pt=1, 10) /)
+      case default
+        print *, "ERROR: unknown ttZ/ttA vertex component i = ", i
+        return
+    end select
 
     pt_data(:) = xpp(1:n_pt)
-    ff_data(i_en,:,i) = current_c1 * ff_toppik(1:n_pt)
+    ff_data(i_en,:,i) = current_c(i) * ff_toppik(1:n_pt)
     unstable(i_en,i) = ( np < 0 )
   end subroutine scan_formfactor_toppik_over_pt
 
@@ -564,7 +573,8 @@ contains
     if ( present(i_en_in) ) i_en = i_en_in
     select case (nloop)
       case (0)
-        call scan_formfactor_ll_analytic_over_pt (en, i, i_en)
+!        call scan_formfactor_ll_analytic_over_pt (en, i, i_en)
+        call scan_formfactor_toppik_over_pt (en, i, i_en)
       case (1)
         call scan_formfactor_toppik_over_pt (en, i, i_en)
       case default
@@ -572,17 +582,34 @@ contains
     end select
   end subroutine scan_formfactor_over_pt
 
-  subroutine scan_formfactor_over_pt_en (i)
-    integer, intent(in) :: i
+  subroutine scan_formfactor_over_pt_en ()
     real(default) :: sq, en
-    integer :: i_en, i_pt
+    integer :: i_en, i_pt, i, n_nan
     do i_en = n_en, 1, -1
-      sq = sqrts_iter (i_en)
-      call update_soft_parameters (sq)
-      en = sq - 2.*mtpole
-      call scan_formfactor_over_pt (en, i, i_en)
-      en_data(i_en) = en
-      scale_data(i_en) = pt_data(20)
+      do i=1, 2
+        sq = sqrts_iter (i_en)
+        call update_soft_parameters (sq)
+        en = sq - 2.*mtpole
+        call scan_formfactor_over_pt (en, i, i_en)
+        en_data(i_en) = en
+        scale_data(i_en) = pt_data(20)
+        !!! TOPPIK sometimes becomes unstable and returns NaN:
+        !!! repair this by hand by interpolating from adjacent energies
+        n_nan = 0
+        if ( unstable(i_en,i) ) then
+          print *, "WARNING: Caught TOPPIK instability at sqrts = ", sqrts_iter(i_en)
+          print *, " "
+          n_nan = n_nan + 1
+          if ( unstable(i_en-1,i) .or. unstable(i_en+1,i) .or. n_nan > 2 ) then
+            print *, "ERROR: Too many TOPPIK instabilities! Check your parameter setup"
+            print *, "       or slightly vary the scales sh and/or sf. STOP."
+            print *, " "
+            stop 1
+          end if
+          ff_data(i_en,:,i) = &
+            (/ (( ff_data(i_en-1,i_pt,i) + ff_data(i_en+1,i_pt,i) ) / 2., i_pt=1, n_pt) /)
+        end if
+      end do
     end do
     do i_en = n_en, 1, -1
       scale_data(i_en) = scale_data(i_en) / scale_data(1)
@@ -595,15 +622,17 @@ contains
     end if
   end subroutine scan_formfactor_over_pt_en
 
-  pure function formfactor_from_pt_scan (pt, en, i) result (c)
+  pure function formfactor_from_pt_scan (pt, en, i, i_en_in) result (c)
     real(default), intent(in) :: pt
     real(default), intent(in) :: en
     integer, intent(in) :: i
+    integer, intent(in), optional :: i_en_in
     complex(default) :: c
     complex(default), dimension(2) :: ff
-    c = 1.0_default
-    if ( i==2 ) return
-    call interpolate_linear (pt_data, ff_data(1,:,:), pt, ff)
+    integer :: i_en
+    i_en = 1
+    if ( present(i_en_in) ) i_en = i_en_in
+    call interpolate_linear (pt_data, ff_data(i_en,:,:), pt, ff)
     c = ff(i)
   end function formfactor_from_pt_scan
 
@@ -615,7 +644,7 @@ contains
     complex(default), dimension(2) :: ff
     real(default) :: scale_pt
     c = 1.0_default
-    if ( i==2 .or. scan_threshold ) return
+    if ( scan_threshold ) return
     call interpolate_linear (en_data, scale_data, en, scale_pt)
     call interpolate_linear (en_data, pt_data, ff_data, en, pt/scale_pt, ff)
     c = ff(i)

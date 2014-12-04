@@ -7,6 +7,7 @@
 !     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 !     Juergen Reuter <juergen.reuter@desy.de>
 !     with contributions from
+!     Bijan Chokoufe <bijan.chokoufe@desy.de>
 !     Fabian Bach <fabian.bach@desy.de>
 !     Christian Speckner <cnspeckn@googlemail.com>
 !
@@ -37,6 +38,8 @@ module lhapdf
   ! Public types
   public :: lhapdf_pdf_t
 
+  public :: lhapdf_transfer_pointer
+
   type :: lhapdf_pdf_t
      private
      type(c_ptr) :: cptr
@@ -54,6 +57,7 @@ module lhapdf
      procedure :: get_qmass => lhapdf_get_qmass
      procedure :: num_pdfm => lhapdf_num_pdfm
      procedure :: alphas_pdf => lhapdf_alphas_pdf
+     procedure :: final => lhapdf_final
   end type lhapdf_pdf_t
 
   ! Interface for generic operators
@@ -283,5 +287,19 @@ contains
     c_q = q
     as = lhapdf_alphaspdf (pdf%cptr, c_q)
   end function lhapdf_alphas_pdf
+
+  subroutine lhapdf_final (pdf)
+    class(lhapdf_pdf_t), intent(inout) :: pdf
+    if (c_associated (pdf%cptr)) then
+       call lhapdf_pdf_delete (pdf%cptr)
+    end if
+  end subroutine lhapdf_final
+
+  subroutine lhapdf_transfer_pointer (pdf_in, pdf_out)
+    type(lhapdf_pdf_t), intent(inout), target :: pdf_in
+    type(lhapdf_pdf_t), intent(out), target :: pdf_out
+    pdf_out = pdf_in    
+    pdf_out%cptr = transfer (pdf_in%cptr, pdf_out%cptr)
+  end subroutine lhapdf_transfer_pointer
 
 end module lhapdf

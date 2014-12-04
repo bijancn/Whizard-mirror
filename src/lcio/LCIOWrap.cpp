@@ -105,12 +105,10 @@ extern "C" LCWriter* lcio_writer_delete ( LCWriter* lcWrt ) {
 //////////////////////////////////////////////////////////////////////////
 // LCRunHeader functions
 
-extern "C" LCRunHeaderImpl* runHdr() {
-  return new LCRunHeaderImpl;
-}
-
-extern "C" int runhdr_set_run_number( LCRunHeaderImpl* runHdr, int rn ) {
+extern "C" LCRunHeaderImpl* new_lcio_run_header( int rn ) {
+  LCRunHeaderImpl* runHdr = new LCRunHeaderImpl;
   runHdr->setRunNumber (rn);
+  return runHdr;
 }
 
 extern "C" void write_run_header 

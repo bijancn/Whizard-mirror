@@ -6638,7 +6638,6 @@ determine the result.
              end if
           end if
        end if
-       ! call eval_node_write_rec (en)   !!! Debugging
     case (EN_RECORD_CMD)
        exist = .true.
        en%lval = .false.
@@ -9417,23 +9416,6 @@ always synchronized.
   end function model_get_var_list_ptr
 
 @ %def model_get_var_list_ptr
-@ [Obsolete] Synchronize the model var list and an imported var list.  That is,
-(i) link the variable list to the model, (ii) update model parameters,
-(iii) make sure that this update is reflected in the derived
-parameters within the var list.
-<<XXX Models: model: TBP>>=
-  procedure :: synchronize_var_list => model_synchronize_var_list
-<<XXX Models: procedures>>=
-  subroutine model_synchronize_var_list (model, var_list)
-    class(model_t), intent(inout) :: model
-    type(var_list_t), intent(inout) :: var_list
-    call var_list_set_original_pointers (var_list, model%var_list)
-    call var_list_restore (var_list)
-    call model%update_parameters ()
-    call var_list_synchronize (var_list, model%var_list)
-  end subroutine model_synchronize_var_list
-    
-@ %def model_synchronize_var_list
 @ 
 \subsection{Reading models from file}
 This procedure defines the model-file syntax for the parser, returning
@@ -9617,7 +9599,6 @@ module variables:
     call parse_tree_init (model%parse_tree, syntax_model_file, lexer)
     call stream_final (stream)
     call lexer_final (lexer)
-    ! call parse_tree_write (parse_tree)    !!! Debugging 
     nd_model_def => parse_tree_get_root_ptr (model%parse_tree)
     nd_model_name_def => parse_node_get_sub_ptr (nd_model_def)
     model_name = parse_node_get_string &
@@ -19402,7 +19383,7 @@ outsourced to a separate module (inc. [[lhapdf_status]] etc.).
        call InitPDFM (set, member)
     else if (LHAPDF6_AVAILABLE) then
        if (lhapdf_global_status_is_initialized (set) .and. &
-            pdf%is_associated ())  return
+            pdf%is_associated ()) return
        if (file == "") then
           select case (set)
           case (1);  file = LHAPDF6_DEFAULT_PROTON
@@ -26134,7 +26115,6 @@ the file to those.  Set [[match]] true if everything agrees.
     integer, dimension(:), allocatable :: n_tree
     integer :: t
     logical :: real_phsp_work
-    ! call parse_tree_write (parse_tree)     !!! Debugging
     node_header => parse_tree_get_process_ptr (parse_tree, process_id)
     found = associated (node_header);  if (.not. found)  return
     if (present (match)) then
@@ -42739,9 +42719,10 @@ the [[subevt_t]] parent type.
 <<Subevt expr: subevt expr: TBP>>=
   procedure :: base_write => subevt_expr_write
 <<Subevt expr: procedures>>=
-  subroutine subevt_expr_write (object, unit)
+  subroutine subevt_expr_write (object, unit, pacified)
     class(subevt_expr_t), intent(in) :: object
     integer, intent(in), optional :: unit
+    logical, intent(in), optional :: pacified
     integer :: u
     u = given_output_unit (unit)
     write (u, "(1x,A)")  "Local variables:"
@@ -42749,7 +42730,7 @@ the [[subevt_t]] parent type.
     call var_list_write (object%var_list, u, follow_link=.false.)
     call write_separator (u)
     if (object%subevt_filled) then
-       call object%subevt_t%write (u)
+       call object%subevt_t%write (u, pacified = pacified)
        if (object%has_selection) then
           call write_separator (u)
           write (u, "(1x,A)")  "Selection expression:"
@@ -42932,13 +42913,14 @@ Note: the [[prefix]] argument is declared in the [[write]] method of the
 <<Subevt expr: parton expr: TBP>>=
   procedure :: write => parton_expr_write
 <<Subevt expr: procedures>>=
-  subroutine parton_expr_write (object, unit, prefix)
+  subroutine parton_expr_write (object, unit, prefix, pacified)
     class(parton_expr_t), intent(in) :: object
     integer, intent(in), optional :: unit
     character(*), intent(in), optional :: prefix
+    logical, intent(in), optional :: pacified
     integer :: u
     u = given_output_unit (unit)
-    call object%base_write (u)
+    call object%base_write (u, pacified = pacified)
     if (object%subevt_filled) then
        if (object%has_scale) then
           call write_separator (u)
@@ -43321,13 +43303,14 @@ Note: the [[prefix]] argument is declared in the [[write]] method of the
 <<Subevt expr: event expr: TBP>>=
   procedure :: write => event_expr_write
 <<Subevt expr: procedures>>=
-  subroutine event_expr_write (object, unit, prefix)
+  subroutine event_expr_write (object, unit, prefix, pacified)
     class(event_expr_t), intent(in) :: object
     integer, intent(in), optional :: unit
     character(*), intent(in), optional :: prefix
+    logical, intent(in), optional :: pacified
     integer :: u
     u = given_output_unit (unit)
-    call object%base_write (u)
+    call object%base_write (u, pacified = pacified)
     if (object%subevt_filled) then
        if (object%has_reweight) then
           call write_separator (u)
@@ -53914,6 +53897,613 @@ We have the following modules:
 \end{description}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Generic Event Handling}
+We introduce events first in form of an abstract type, together with
+some utilities.  Abstract events can be used by other modules, in
+particular event I/O, without introducing an explicit dependency on
+the event implementation.
+<<[[event_base.f90]]>>=
+<<File header>>
+
+module event_base
+  
+  use kinds
+<<Use strings>>
+  use string_utils, only: lower_case
+  use diagnostics
+  use model_data
+  use particles
+
+<<Standard module head>>
+
+<<Event base: public>>
+
+<<Event base: parameters>>
+
+<<Event base: types>>
+
+<<Event base: interfaces>>
+
+contains
+  
+<<Event base: procedures>>
+
+end module event_base
+@ %def event_base
+@
+\subsection{generic event type}
+<<Event base: public>>=
+  public :: generic_event_t
+<<Event base: types>>=
+  type, abstract :: generic_event_t
+     private
+     logical :: particle_set_is_valid = .false.
+     type(particle_set_t), pointer :: particle_set => null ()
+     logical :: sqme_ref_known = .false.
+     real(default) :: sqme_ref = 0
+     logical :: sqme_prc_known = .false.
+     real(default) :: sqme_prc = 0
+     logical :: weight_ref_known = .false.
+     real(default) :: weight_ref = 0
+     logical :: weight_prc_known = .false.
+     real(default) :: weight_prc = 0
+     logical :: excess_prc_known = .false.
+     real(default) :: excess_prc = 0
+     integer :: n_alt = 0
+     logical :: sqme_alt_known = .false.
+     real(default), dimension(:), allocatable :: sqme_alt
+     logical :: weight_alt_known = .false.
+     real(default), dimension(:), allocatable :: weight_alt
+   contains
+   <<Event base: generic event: TBP>>
+  end type generic_event_t
+  
+@ %def generic_event_t
+@
+\subsection{Initialization}
+This determines the number of alternate weights and sqme values.
+<<Event base: generic event: TBP>>=
+  procedure :: base_init => generic_event_init
+<<Event base: procedures>>=
+  subroutine generic_event_init (event, n_alt)
+    class(generic_event_t), intent(out) :: event
+    integer, intent(in) :: n_alt
+    event%n_alt = n_alt
+    allocate (event%sqme_alt (n_alt))
+    allocate (event%weight_alt (n_alt))
+  end subroutine generic_event_init
+  
+@ %def generic_event_init
+@
+\subsection{Access particle set}
+The particle set is the core of the event.  We allow access to it via
+a pointer, and we maintain the information whether the particle set
+is valid, i.e., has been filled with meaningful data.
+<<Event base: generic event: TBP>>=
+  procedure :: has_valid_particle_set => generic_event_has_valid_particle_set
+  procedure :: accept_particle_set => generic_event_accept_particle_set
+  procedure :: discard_particle_set => generic_event_discard_particle_set
+<<Event base: procedures>>=
+  function generic_event_has_valid_particle_set (event) result (flag)
+    class(generic_event_t), intent(in) :: event
+    logical :: flag
+    flag = event%particle_set_is_valid
+  end function generic_event_has_valid_particle_set
+  
+  subroutine generic_event_accept_particle_set (event)
+    class(generic_event_t), intent(inout) :: event
+    event%particle_set_is_valid = .true.
+  end subroutine generic_event_accept_particle_set
+  
+  subroutine generic_event_discard_particle_set (event)
+    class(generic_event_t), intent(inout) :: event
+    event%particle_set_is_valid = .false.
+  end subroutine generic_event_discard_particle_set
+  
+@ %def generic_event_has_valid_particle_set
+@ %def generic_event_accept_particle_set
+@ %def generic_event_discard_particle_set
+@ 
+These procedures deal with the particle set directly.  Return the pointer:
+<<Event base: generic event: TBP>>=
+  procedure :: get_particle_set_ptr => generic_event_get_particle_set_ptr
+<<Event base: procedures>>=
+  function generic_event_get_particle_set_ptr (event) result (ptr)
+    class(generic_event_t), intent(in) :: event
+    type(particle_set_t), pointer :: ptr
+    ptr => event%particle_set
+  end function generic_event_get_particle_set_ptr
+  
+@ %def generic_event_get_particle_set_ptr
+@ 
+Let it point to
+some existing particle set:
+<<Event base: generic event: TBP>>=
+  procedure :: link_particle_set => generic_event_link_particle_set
+<<Event base: procedures>>=
+  subroutine generic_event_link_particle_set (event, particle_set)
+    class(generic_event_t), intent(inout) :: event
+    type(particle_set_t), intent(in), target :: particle_set
+    event%particle_set => particle_set
+    call event%accept_particle_set ()
+  end subroutine generic_event_link_particle_set
+
+@ %def generic_event_link_particle_set
+@
+\subsection{Access sqme and weight}
+There are several incarnations: the current value, a reference value,
+alternate values.
+<<Event base: generic event: TBP>>=
+  procedure :: sqme_prc_is_known => generic_event_sqme_prc_is_known
+  procedure :: sqme_ref_is_known => generic_event_sqme_ref_is_known
+  procedure :: sqme_alt_is_known => generic_event_sqme_alt_is_known
+  procedure :: weight_prc_is_known => generic_event_weight_prc_is_known
+  procedure :: weight_ref_is_known => generic_event_weight_ref_is_known
+  procedure :: weight_alt_is_known => generic_event_weight_alt_is_known
+  procedure :: excess_prc_is_known => generic_event_excess_prc_is_known
+<<Event base: procedures>>=
+  function generic_event_sqme_prc_is_known (event) result (flag)
+    class(generic_event_t), intent(in) :: event
+    logical :: flag
+    flag = event%sqme_prc_known
+  end function generic_event_sqme_prc_is_known
+
+  function generic_event_sqme_ref_is_known (event) result (flag)
+    class(generic_event_t), intent(in) :: event
+    logical :: flag
+    flag = event%sqme_ref_known
+  end function generic_event_sqme_ref_is_known
+
+  function generic_event_sqme_alt_is_known (event) result (flag)
+    class(generic_event_t), intent(in) :: event
+    logical :: flag
+    flag = event%sqme_alt_known
+  end function generic_event_sqme_alt_is_known
+
+  function generic_event_weight_prc_is_known (event) result (flag)
+    class(generic_event_t), intent(in) :: event
+    logical :: flag
+    flag = event%weight_prc_known
+  end function generic_event_weight_prc_is_known
+
+  function generic_event_weight_ref_is_known (event) result (flag)
+    class(generic_event_t), intent(in) :: event
+    logical :: flag
+    flag = event%weight_ref_known
+  end function generic_event_weight_ref_is_known
+
+  function generic_event_weight_alt_is_known (event) result (flag)
+    class(generic_event_t), intent(in) :: event
+    logical :: flag
+    flag = event%weight_alt_known
+  end function generic_event_weight_alt_is_known
+
+  function generic_event_excess_prc_is_known (event) result (flag)
+    class(generic_event_t), intent(in) :: event
+    logical :: flag
+    flag = event%excess_prc_known
+  end function generic_event_excess_prc_is_known
+
+@ %def generic_event_sqme_prc_is_known
+@ %def generic_event_sqme_ref_is_known
+@ %def generic_event_sqme_alt_is_known
+@ %def generic_event_weight_prc_is_known
+@ %def generic_event_weight_ref_is_known
+@ %def generic_event_weight_alt_is_known
+@ %def generic_event_excess_prc_is_known
+@
+<<Event base: generic event: TBP>>=
+  procedure :: get_n_alt => generic_event_get_n_alt
+<<Event base: procedures>>=
+  function generic_event_get_n_alt (event) result (n)
+    class(generic_event_t), intent(in) :: event
+    integer :: n
+    n = event%n_alt
+  end function generic_event_get_n_alt
+  
+@ %def generic_event_get_n_alt
+@ 
+<<Event base: generic event: TBP>>=
+  procedure :: get_sqme_prc => generic_event_get_sqme_prc
+  procedure :: get_sqme_ref => generic_event_get_sqme_ref
+  generic :: get_sqme_alt => &
+       generic_event_get_sqme_alt_0, generic_event_get_sqme_alt_1
+  procedure :: generic_event_get_sqme_alt_0
+  procedure :: generic_event_get_sqme_alt_1
+  procedure :: get_weight_prc => generic_event_get_weight_prc
+  procedure :: get_weight_ref => generic_event_get_weight_ref
+  generic :: get_weight_alt => &
+       generic_event_get_weight_alt_0, generic_event_get_weight_alt_1
+  procedure :: generic_event_get_weight_alt_0
+  procedure :: generic_event_get_weight_alt_1
+  procedure :: get_excess_prc => generic_event_get_excess_prc
+<<Event base: procedures>>=
+  function generic_event_get_sqme_prc (event) result (sqme)
+    class(generic_event_t), intent(in) :: event
+    real(default) :: sqme
+    if (event%sqme_prc_known) then
+       sqme = event%sqme_prc
+    else
+       sqme = 0
+    end if
+  end function generic_event_get_sqme_prc
+
+  function generic_event_get_sqme_ref (event) result (sqme)
+    class(generic_event_t), intent(in) :: event
+    real(default) :: sqme
+    if (event%sqme_ref_known) then
+       sqme = event%sqme_ref
+    else
+       sqme = 0
+    end if
+  end function generic_event_get_sqme_ref
+
+  function generic_event_get_sqme_alt_0 (event, i) result (sqme)
+    class(generic_event_t), intent(in) :: event
+    integer, intent(in) :: i
+    real(default) :: sqme
+    if (event%sqme_alt_known) then
+       sqme = event%sqme_alt(i)
+    else
+       sqme = 0
+    end if
+  end function generic_event_get_sqme_alt_0
+
+  function generic_event_get_sqme_alt_1 (event) result (sqme)
+    class(generic_event_t), intent(in) :: event
+    real(default), dimension(event%n_alt) :: sqme
+    sqme = event%sqme_alt
+  end function generic_event_get_sqme_alt_1
+
+  function generic_event_get_weight_prc (event) result (weight)
+    class(generic_event_t), intent(in) :: event
+    real(default) :: weight
+    if (event%weight_prc_known) then
+       weight = event%weight_prc
+    else
+       weight = 0
+    end if
+  end function generic_event_get_weight_prc
+
+  function generic_event_get_weight_ref (event) result (weight)
+    class(generic_event_t), intent(in) :: event
+    real(default) :: weight
+    if (event%weight_ref_known) then
+       weight = event%weight_ref
+    else
+       weight = 0
+    end if
+  end function generic_event_get_weight_ref
+
+  function generic_event_get_weight_alt_0 (event, i) result (weight)
+    class(generic_event_t), intent(in) :: event
+    integer, intent(in) :: i
+    real(default) :: weight
+    if (event%weight_alt_known) then
+       weight = event%weight_alt(i)
+    else
+       weight = 0
+    end if
+  end function generic_event_get_weight_alt_0
+
+  function generic_event_get_weight_alt_1 (event) result (weight)
+    class(generic_event_t), intent(in) :: event
+    real(default), dimension(event%n_alt) :: weight
+    weight = event%weight_alt
+  end function generic_event_get_weight_alt_1
+
+  function generic_event_get_excess_prc (event) result (excess)
+    class(generic_event_t), intent(in) :: event
+    real(default) :: excess
+    if (event%excess_prc_known) then
+       excess = event%excess_prc
+    else
+       excess = 0
+    end if
+  end function generic_event_get_excess_prc
+
+@ %def generic_event_get_sqme_prc
+@ %def generic_event_get_sqme_ref
+@ %def generic_event_get_sqme_alt
+@ %def generic_event_get_weight_prc
+@ %def generic_event_get_weight_ref
+@ %def generic_event_get_weight_alt
+@ %def generic_event_get_excess_prc
+@
+<<Event base: generic event: TBP>>=
+  procedure :: set_sqme_prc => generic_event_set_sqme_prc
+  procedure :: set_sqme_ref => generic_event_set_sqme_ref
+  procedure :: set_sqme_alt => generic_event_set_sqme_alt
+  procedure :: set_weight_prc => generic_event_set_weight_prc
+  procedure :: set_weight_ref => generic_event_set_weight_ref
+  procedure :: set_weight_alt => generic_event_set_weight_alt
+  procedure :: set_excess_prc => generic_event_set_excess_prc
+<<Event base: procedures>>=
+  subroutine generic_event_set_sqme_prc (event, sqme)
+    class(generic_event_t), intent(inout) :: event
+    real(default), intent(in) :: sqme
+    event%sqme_prc = sqme
+    event%sqme_prc_known = .true.
+  end subroutine generic_event_set_sqme_prc
+
+  subroutine generic_event_set_sqme_ref (event, sqme)
+    class(generic_event_t), intent(inout) :: event
+    real(default), intent(in) :: sqme
+    event%sqme_ref = sqme
+    event%sqme_ref_known = .true.
+  end subroutine generic_event_set_sqme_ref
+
+  subroutine generic_event_set_sqme_alt (event, sqme)
+    class(generic_event_t), intent(inout) :: event
+    real(default), dimension(:), intent(in) :: sqme
+    event%sqme_alt = sqme
+    event%sqme_alt_known = .true.
+  end subroutine generic_event_set_sqme_alt
+
+  subroutine generic_event_set_weight_prc (event, weight)
+    class(generic_event_t), intent(inout) :: event
+    real(default), intent(in) :: weight
+    event%weight_prc = weight
+    event%weight_prc_known = .true.
+  end subroutine generic_event_set_weight_prc
+
+  subroutine generic_event_set_weight_ref (event, weight)
+    class(generic_event_t), intent(inout) :: event
+    real(default), intent(in) :: weight
+    event%weight_ref = weight
+    event%weight_ref_known = .true.
+  end subroutine generic_event_set_weight_ref
+
+  subroutine generic_event_set_weight_alt (event, weight)
+    class(generic_event_t), intent(inout) :: event
+    real(default), dimension(:), intent(in) :: weight
+    event%weight_alt = weight
+    event%weight_alt_known = .true.
+  end subroutine generic_event_set_weight_alt
+
+  subroutine generic_event_set_excess_prc (event, excess)
+    class(generic_event_t), intent(inout) :: event
+    real(default), intent(in) :: excess
+    event%excess_prc = excess
+    event%excess_prc_known = .true.
+  end subroutine generic_event_set_excess_prc
+
+@ %def generic_event_set_sqme_prc
+@ %def generic_event_set_sqme_ref
+@ %def generic_event_set_sqme_alt
+@ %def generic_event_set_weight_prc
+@ %def generic_event_set_weight_ref
+@ %def generic_event_set_weight_alt
+@ %def generic_event_set_excess_prc
+@
+\subsection{Pure Virtual Methods}
+These procedures can only implemented in the concrete implementation.
+
+Output (verbose, depending on parameters).
+<<Event base: generic event: TBP>>=
+  procedure (generic_event_write), deferred :: write
+<<Event base: interfaces>>=
+  abstract interface
+     subroutine generic_event_write (object, unit, &
+          show_process, show_transforms, &
+          show_decay, verbose, testflag)
+       import
+       class(generic_event_t), intent(in) :: object
+       integer, intent(in), optional :: unit
+       logical, intent(in), optional :: show_process
+       logical, intent(in), optional :: show_transforms
+       logical, intent(in), optional :: show_decay
+       logical, intent(in), optional :: verbose
+       logical, intent(in), optional :: testflag
+     end subroutine generic_event_write
+  end interface
+
+@ %def generic_event_write
+@
+Inject a particle set that is supposed to represent the hard process.
+How this determines the event, is dependent on the event structure,
+therefore this is a deferred method.
+<<Event base: generic event: TBP>>=
+  procedure (generic_event_set_hard_particle_set), deferred :: &
+       set_hard_particle_set 
+<<Event base: interfaces>>=
+  abstract interface
+     subroutine generic_event_set_hard_particle_set (event, particle_set)
+       import
+       class(generic_event_t), intent(inout) :: event
+       type(particle_set_t), intent(in) :: particle_set
+     end subroutine generic_event_set_hard_particle_set
+  end interface
+
+@ %def generic_event_set_hard_particle_set
+@
+Select internal parameters
+<<Event base: generic event: TBP>>=
+  procedure (generic_event_select), deferred :: select
+<<Event base: interfaces>>=
+  abstract interface
+     subroutine generic_event_select (event,  i_mci, i_term, channel)
+       import
+       class(generic_event_t), intent(inout) :: event
+       integer, intent(in) :: i_mci, i_term, channel
+     end subroutine generic_event_select
+  end interface
+  
+@ %def generic_event_select
+@ Return a pointer to the model for the currently active process.
+<<Event base: generic event: TBP>>=
+  procedure (generic_event_get_model_ptr), deferred :: get_model_ptr
+<<Event base: interfaces>>=
+  abstract interface
+     function generic_event_get_model_ptr (event) result (model)
+       import
+       class(generic_event_t), intent(in) :: event
+       class(model_data_t), pointer :: model
+     end function generic_event_get_model_ptr
+  end interface
+  
+@ %def generic_event_get_model_ptr
+@ Return data used by external event formats.
+<<Event base: generic event: TBP>>=
+  procedure (generic_event_get_index), deferred :: get_index
+  procedure (generic_event_get_fac_scale), deferred :: get_fac_scale
+  procedure (generic_event_get_alpha_s), deferred :: get_alpha_s
+<<Event base: interfaces>>=
+  abstract interface
+     function generic_event_get_index (event) result (index)
+       import
+       class(generic_event_t), intent(in) :: event
+       integer :: index
+     end function generic_event_get_index
+  end interface
+    
+  abstract interface
+     function generic_event_get_fac_scale (event) result (fac_scale)
+       import
+       class(generic_event_t), intent(in) :: event
+       real(default) :: fac_scale
+     end function generic_event_get_fac_scale
+  end interface
+    
+  abstract interface
+     function generic_event_get_alpha_s (event) result (alpha_s)
+       import
+       class(generic_event_t), intent(in) :: event
+       real(default) :: alpha_s
+     end function generic_event_get_alpha_s
+  end interface
+
+@ %def generic_event_get_index
+@ %def generic_event_get_fac_scale
+@ %def generic_event_get_alpha_s
+@
+\subsection{Utilities}
+Applying this, current event contents are marked as incomplete but
+are not deleted.  In particular, the initialization is kept.
+<<Event base: generic event: TBP>>=
+  procedure :: reset => generic_event_reset
+  procedure :: base_reset => generic_event_reset
+<<Event base: procedures>>=
+  subroutine generic_event_reset (event)
+    class(generic_event_t), intent(inout) :: event
+    call event%discard_particle_set ()
+    event%sqme_ref_known = .false.
+    event%sqme_prc_known = .false.
+    event%sqme_alt_known = .false.
+    event%weight_ref_known = .false.
+    event%weight_prc_known = .false.
+    event%weight_alt_known = .false.
+    event%excess_prc_known = .false.
+  end subroutine generic_event_reset
+  
+@ %def generic_event_reset
+@ Pacify particle set.
+<<Event base: generic event: TBP>>=
+  procedure :: pacify_particle_set => generic_event_pacify_particle_set
+<<Event base: procedures>>=
+  subroutine generic_event_pacify_particle_set (event)
+    class(generic_event_t), intent(inout) :: event
+    if (event%has_valid_particle_set ())  call pacify (event%particle_set)
+  end subroutine generic_event_pacify_particle_set
+
+@ %def generic_event_pacify_particle_set
+@
+\subsection{Event normalization}
+The parameters for event normalization.  For unweighted events,
+[[NORM_UNIT]] is intended as default, while for weighted events, it is
+[[NORM_SIGMA]].
+
+Note: the unit test for this is in [[eio_data_2]] below.
+<<Event base: parameters>>=
+  integer, parameter, public :: NORM_UNDEFINED = 0
+  integer, parameter, public :: NORM_UNIT = 1
+  integer, parameter, public :: NORM_N_EVT = 2
+  integer, parameter, public :: NORM_SIGMA = 3
+  integer, parameter, public :: NORM_S_N = 4
+
+@ %def NORM_UNDEFINED NORM_UNIT NORM_N_EVT NORM_SIGMA NORM_S_N
+@ These functions translate between the user representation and the
+internal one.
+<<Event base: public>>=
+  public :: event_normalization_mode
+  public :: event_normalization_string
+<<Event base: procedures>>=
+  function event_normalization_mode (string, unweighted) result (mode)
+    integer :: mode
+    type(string_t), intent(in) :: string
+    logical, intent(in) :: unweighted
+    select case (lower_case (char (string)))
+    case ("auto")
+       if (unweighted) then
+          mode = NORM_UNIT
+       else
+          mode = NORM_SIGMA
+       end if
+    case ("1")
+       mode = NORM_UNIT
+    case ("1/n")
+       mode = NORM_N_EVT
+    case ("sigma")
+       mode = NORM_SIGMA
+    case ("sigma/n")
+       mode = NORM_S_N
+    case default
+       call msg_fatal ("Event normalization: unknown value '" &
+            // char (string) // "'")
+    end select
+  end function event_normalization_mode
+  
+  function event_normalization_string (norm_mode) result (string)
+    integer, intent(in) :: norm_mode
+    type(string_t) :: string
+    select case (norm_mode)
+    case (NORM_UNDEFINED); string = "[undefined]"
+    case (NORM_UNIT);      string = "'1'"
+    case (NORM_N_EVT);     string = "'1/n'"
+    case (NORM_SIGMA);     string = "'sigma'"
+    case (NORM_S_N);       string = "'sigma/n'"
+    case default;          string = "???"
+    end select
+  end function event_normalization_string
+  
+@ %def event_normalization_mode
+@ %def event_normalization_string
+@ We place this here as a generic helper, so we can update event
+weights whenever we need, not just in connection with an event sample
+data object.
+<<Event base: public>>=
+  public :: event_normalization_update
+<<Event base: procedures>>=
+  subroutine event_normalization_update (weight, sigma, n, mode_new, mode_old)
+    real(default), intent(inout) :: weight
+    real(default), intent(in) :: sigma
+    integer, intent(in) :: n
+    integer, intent(in) :: mode_new, mode_old
+    if (mode_new /= mode_old) then
+       if (sigma > 0 .and. n > 0) then
+          weight = weight / factor (mode_old) * factor (mode_new)
+       else
+          call msg_fatal ("Event normalization update: null sample")
+       end if
+    end if
+  contains
+    function factor (mode)
+      real(default) :: factor
+      integer, intent(in) :: mode
+      select case (mode)
+      case (NORM_UNIT);   factor = 1._default
+      case (NORM_N_EVT);  factor = 1._default / n
+      case (NORM_SIGMA);  factor = sigma
+      case (NORM_S_N);    factor = sigma / n
+      case default
+         call msg_fatal ("Event normalization update: undefined mode")
+      end select
+    end function factor
+  end subroutine event_normalization_update
+  
+@ %def event_normalization_update
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Abstract Event Transforms}
 <<[[event_transforms.f90]]>>=
 <<File header>>
@@ -57036,13 +57626,15 @@ $s\to f\bar f$.
 
 module shower
 
-  use kinds, only: default, double
+<<Use kinds with double>>
 <<Use strings>>
   use io_units
   use constants, only: pi, twopi
   use format_utils, only: write_separator
   use unit_tests
   use system_defs, only: LF
+  use os_interface
+  use xml
   use diagnostics
   use lorentz
   use system_dependencies, only: LHAPDF5_AVAILABLE
@@ -57050,18 +57642,14 @@ module shower
   use lhapdf !NODEP!
   use pdf_builtin !NODEP!
   
-  use shower_base !NODEP!
-  use shower_partons !NODEP!
-  use shower_core !NODEP!
-  use shower_topythia !NODEP!
+  use shower_base
+  use shower_partons
+  use shower_core
+  use shower_topythia
   use muli, muli_output_unit => output_unit !NODEP!
-  use mlm_matching !NODEP!
-  use ckkw_pseudo_weights !NODEP!
-  use ckkw_matching !NODEP!
-  use tao_random_numbers !NODEP!
-
-  use os_interface
-  use xml
+  use mlm_matching
+  use ckkw_pseudo_weights
+  use ckkw_matching
   
   use sm_qcd
   use flavors
@@ -57070,27 +57658,30 @@ module shower
   use state_matrices
   use subevents
   use model_data
-  use models
   use variables
   use beam_structures
-  use hep_common
   use process_libraries
+  use rng_base
+  use mci_base
+  use phs_base
+
+  use event_transforms
+  ! For model_hadrons and testing
+  use models
+  ! For Pythia6 communication
+  use hep_common
+  ! For PDF information
+  use processes
+  ! For integration tests
+  use rng_tao
+  use mci_midpoint
+  use phs_single
   use prc_core
   use prc_omega
-  use rng_base
-  use rng_tao
-  use mci_base
-  use mci_midpoint
-  use phs_base
-  use phs_single
-  use processes
-  use event_transforms
 
 <<Standard module head>>
 
 <<Shower: public>>
-
-<<Shower: parameters>>
 
 <<Shower: types>>
 
@@ -57102,16 +57693,6 @@ contains
 
 end module shower
 @ %def shower
-@
-\subsection{PDF Parameters}
-The shower has to know about the PDF set used for the parent process,
-if any.  We support the following:
-<<Shower: parameters>>=
-  integer, parameter :: STRF_NONE = 0
-  integer, parameter :: STRF_LHAPDF = 1
-  integer, parameter :: STRF_PDF_BUILTIN = 2
-  
-@ %def STRF_NONE STRF_LHAPDF STRF_PDF_BUILTIN
 @
 \subsection{Configuration Parameters}
 <<Shower: public>>=
@@ -57346,37 +57927,20 @@ from WHIZARD.
   public :: apply_shower_particle_set
 <<Shower: procedures>>=
   subroutine apply_shower_particle_set & 
-       (particle_set, shower_settings,  model, model_hadrons, &
-        os_data, pdf_type, pdf_set, valid, vetoed, pdf)
-    type(particle_set_t), intent(inout) :: particle_set
-    type(shower_settings_t), intent(in) :: shower_settings
-    class(model_data_t), intent(in), target :: model
-    class(model_data_t), intent(in), target :: model_hadrons
-    type(os_data_t), intent(in) :: os_data
-    integer, intent(in) :: pdf_type
-    integer, intent(in) :: pdf_set
+       (evt, valid, vetoed)
+    class(evt_shower_t), intent(inout) :: evt
     logical, intent(inout) :: valid
     logical, intent(inout) :: vetoed
-    type(lhapdf_pdf_t), intent(inout), optional :: pdf
-    real(kind=double) :: pdftest
+    real(kind=double) :: pdftest    
     logical, parameter :: debug = .false., to_file = .false.
 
     type(mlm_matching_data_t) :: mlm_matching_data
-    logical, save :: matching_disabled=.false.
-    procedure(shower_pdf), pointer :: pdf_func => null()
+    logical, save :: matching_disabled = .false.
 
-    interface
-       subroutine evolvePDFM (set, x, q, ff)
-         integer, intent(in) :: set
-         double precision, intent(in) :: x, q
-         double precision, dimension(-6:6), intent(out) :: ff
-       end subroutine evolvePDFM
-    end interface
-
-    if (.not. shower_settings%ps_fsr_active .and. &
-        .not. shower_settings%ps_isr_active .and. &
-        .not. shower_settings%hadronization_active .and. &
-        .not. shower_settings%mlm_matching) then
+    if (.not. evt%settings%ps_fsr_active .and. &
+        .not. evt%settings%ps_isr_active .and. &
+        .not. evt%settings%hadronization_active .and. &
+        .not. evt%settings%mlm_matching) then
        ! return if nothing to do
        return
     end if
@@ -57387,46 +57951,37 @@ from WHIZARD.
     if (signal_is_pending ()) return    
     
     ! ensure that lhapdf is initialized
-    if (pdf_type .eq. STRF_LHAPDF) then       
-       if (shower_settings%ps_isr_active .and. &
+    if (evt%pdf_type .eq. STRF_LHAPDF5) then
+       if (evt%settings%ps_isr_active .and. &
             (abs (particle_get_pdg (particle_set_get_particle &
-                 (particle_set, 1))) >= 1000) .and. &
+                 (evt%particle_set, 1))) >= 1000) .and. &
             (abs (particle_get_pdg (particle_set_get_particle &
-                 (particle_set, 2))) >= 1000)) then
-          call GetQ2max (0,pdftest)
-          if (pdftest == 0._double) then
+                 (evt%particle_set, 2))) >= 1000)) then
+          call GetQ2max (0, pdftest)
+          if (pdftest < epsilon(pdftest)) then
              call msg_fatal ("ISR QCD shower enabled, but LHAPDF not" // &
                   "initialized," // LF // "     aborting simulation")
              return
           end if
        end if
-       if (LHAPDF5_AVAILABLE) then
-          pdf_func => evolvepdfm
-       else if (LHAPDF6_AVAILABLE) then
-          pdf_func => evolvepdfm6
-       else
-          call msg_fatal ("LHAPDF requested but library is not linked")
-          return
-       end if
-    else if (pdf_type == STRF_PDF_BUILTIN) then
-       if (shower_settings%ps_use_PYTHIA_shower) then
+    else if (evt%pdf_type == STRF_PDF_BUILTIN) then
+       if (evt%settings%ps_use_PYTHIA_shower) then
           call msg_fatal ("Builtin PDFs cannot be used for PYTHIA showers," &
                // LF // "     aborting simulation")
           return
        end if
-       pdf_func => pdf_evolve_LHAPDF
     end if
-    if (shower_settings%mlm_matching .and. shower_settings%ckkw_matching) then
+    if (evt%settings%mlm_matching .and. evt%settings%ckkw_matching) then
        call msg_fatal ("Both MLM and CKKW matching activated," // &
             LF // "     aborting simulation")
        return      
     end if
 
-    if (debug)  call shower_settings%write ()
+    if (debug)  call evt%settings%write ()
     
-    if (shower_settings%ps_use_PYTHIA_shower .or. &
-         shower_settings%hadronization_active) then
-       if (.not. shower_settings%ps_PYTHIA_verbose) then
+    if (evt%settings%ps_use_PYTHIA_shower .or. &
+         evt%settings%hadronization_active) then
+       if (.not. evt%settings%ps_PYTHIA_verbose) then
           call PYGIVE ('MSTU(12)=12345')
           call PYGIVE ('MSTU(13)=0')
        else 
@@ -57439,14 +57994,14 @@ from WHIZARD.
     if (.not. matching_disabled) then
        !!! Check if the beams are hadrons
        if ((abs (particle_get_pdg (particle_set_get_particle &
-            (particle_set, 1))) <= 18) .and. &
+            (evt%particle_set, 1))) <= 18) .and. &
             (abs (particle_get_pdg (particle_set_get_particle &
-            (particle_set, 2))) <= 18)) then
+            (evt%particle_set, 2))) <= 18)) then
           mlm_matching_data%is_hadron_collision = .false.
        else if ((abs (particle_get_pdg (particle_set_get_particle &
-            (particle_set, 1))) >= 1000) .and. &
+            (evt%particle_set, 1))) >= 1000) .and. &
             (abs (particle_get_pdg (particle_set_get_particle &
-            (particle_set, 2))) >= 1000)) then
+            (evt%particle_set, 2))) >= 1000)) then
           mlm_matching_data%is_hadron_collision = .true.
        else 
           call msg_error (" Matching didn't recognize beams setup," // &
@@ -57459,32 +58014,33 @@ from WHIZARD.
     if (debug)  print *, "Shower: apply shower"
 
     !!! SHOWER
-    if (shower_settings%ps_use_PYTHIA_shower .or. &
-         (.not. shower_settings%ps_fsr_active .and. &
-          .not. shower_settings%ps_isr_active .and. &
-           shower_settings%hadronization_active)) then
-       call apply_PYTHIAshower_particle_set (particle_set, &
-            shower_settings, mlm_matching_data%P_ME, model, model_hadrons, &
+    if (evt%settings%ps_use_PYTHIA_shower .or. &
+         (.not. evt%settings%ps_fsr_active .and. &
+          .not. evt%settings%ps_isr_active .and. &
+           evt%settings%hadronization_active)) then
+       call apply_PYTHIAshower_particle_set (evt%particle_set, &
+            evt%settings, mlm_matching_data%P_ME, evt%model, evt%model_hadrons, &
             valid)
        if (debug)  call pylist(2)
     else
-       call apply_WHIZARDshower_particle_set (particle_set, &
-            shower_settings, mlm_matching_data%P_ME, model, model_hadrons, &
-            os_data, pdf_func, pdf_set, valid, vetoed)
+       call apply_WHIZARDshower_particle_set (evt%particle_set, &
+            evt%settings, mlm_matching_data%P_ME, evt%model, evt%model_hadrons, &
+            evt%os_data, evt%pdf_type, evt%pdf_set, evt%pdf, &
+            evt%xmin, evt%xmax, evt%qmin, evt%qmax, valid, vetoed)
        if (vetoed) return
     end if
     if (debug) then
        print *, " after SHOWER"
-       call particle_set_write (particle_set)
+       call particle_set_write (evt%particle_set)
     end if
        
-    if (shower_settings%mlm_matching .and. &
+    if (evt%settings%mlm_matching .and. &
          (matching_disabled.eqv..false.)) then
     !!! MLM stage 2 -> PS jets and momenta
        call matching_transfer_PS &
-            (mlm_matching_data, particle_set, shower_settings)
+            (mlm_matching_data, evt%particle_set, evt%settings)
     !!! MLM stage 3 -> reconstruct and possible reject
-       call mlm_matching_apply (mlm_matching_data, shower_settings%ms, vetoed)
+       call mlm_matching_apply (mlm_matching_data, evt%settings%ms, vetoed)
        if (vetoed) then
           call mlm_matching_data_final (mlm_matching_data)
           return
@@ -57492,12 +58048,12 @@ from WHIZARD.
     endif
 
 !!! HADRONIZATION
-    if (shower_settings%hadronization_active) then
+    if (evt%settings%hadronization_active) then
        !! Assume that the event record is still in the PYTHIA COMMON BLOCKS
        !! transferred there by one of the shower routines
        if (valid) then
-          call apply_PYTHIAhadronization (particle_set, &
-               shower_settings, model, model_hadrons, valid)
+          call apply_PYTHIAhadronization (evt%particle_set, &
+               evt%settings, evt%model, evt%model_hadrons, valid)
        end if
     end if
 !!! FINAL
@@ -57507,14 +58063,7 @@ from WHIZARD.
     if (debug)  print *, "SHOWER+HADRONIZATION+MATCHING finished"
 
   contains
-
-    subroutine evolvepdfm6 (set, x, q, ff) 
-      integer, intent(in) :: set
-      double precision, intent(in) :: x, q
-      double precision, dimension(-6:6), intent(out) :: ff
-      call pdf%evolve_pdfm(x, q, ff)
-    end subroutine evolvepdfm6
-
+    
     subroutine shower_set_PYTHIA_error (mstu23)
       ! PYTHIA common blocks
       IMPLICIT DOUBLE PRECISION(A-H, O-Z)
@@ -57660,7 +58209,7 @@ from WHIZARD.
          if (debug)  print *, "calling pyinit"
          call PYINIT ("USER", "", "", 0D0)
 
-         call tao_random_number (rand)
+         call evt%rng%generate (rand)
          write (buffer, "(I10)") floor (rand*900000000)
          call pygive ("MRPY(1)="//buffer)
          call pygive ("MRPY(2)=0")
@@ -57721,15 +58270,17 @@ from WHIZARD.
 
     subroutine apply_WHIZARDshower_particle_set & 
          (particle_set, shower_settings, JETS_ME, model, model_hadrons, &
-         os_data, pdf_func, pdf_set, valid, vetoed)
+         os_data, pdf_type, pdf_set, pdf, &
+         xmin, xmax, qmin, qmax, valid, vetoed)
       type(particle_set_t), intent(inout) :: particle_set
       type(shower_settings_t), intent(in) :: shower_settings
       type(vector4_t), dimension(:), allocatable, intent(inout) :: JETS_ME
       class(model_data_t), intent(in), target :: model
       class(model_data_t), intent(in), target :: model_hadrons
       type(os_data_t), intent(in) :: os_data
-      procedure(shower_pdf), pointer, intent(in) :: pdf_func
-      integer, intent(in) :: pdf_set
+      type(lhapdf_pdf_t), intent(inout) :: pdf
+      integer, intent(in) :: pdf_set, pdf_type
+      real(double), intent(in) :: xmin, xmax, qmin, qmax
       logical, intent(inout) :: valid
       logical, intent(out) :: vetoed
 
@@ -57773,20 +58324,18 @@ from WHIZARD.
            (shower_settings%ps_fixed_alpha_s)
       call shower_set_isr_pt_ordered &
            (shower_settings%ps_isr_pt_ordered)
-      call shower_set_isr_angular_ordered &
-           (shower_settings%ps_isr_angular_ordered)
       Call shower_set_primordial_kt_width &
            (shower_settings%ps_isr_primordial_kt_width)
       call shower_set_primordial_kt_cutoff &
            (shower_settings%ps_isr_primordial_kt_cutoff)
-      call shower_set_maxz_isr (shower_settings%ps_isr_z_cutoff)
-      call shower_set_minenergy_timelike (shower_settings%ps_isr_minenergy)
-      call shower_set_tscalefactor_isr (shower_settings%ps_isr_tscalefactor)
-      call shower_set_isr_only_onshell_emitted_partons &
-           (shower_settings%ps_isr_only_onshell_emitted_partons)
-      call shower_set_pdf_set (pdf_set)
-      call shower_set_pdf_func (pdf_func)
-
+      shower%isr_angular_ordered = shower_settings%ps_isr_angular_ordered
+      shower%pdf_set = pdf_set
+      shower%pdf_type = pdf_type
+      shower%maxz_isr = shower_settings%ps_isr_z_cutoff
+      shower%minenergy_timelike = shower_settings%ps_isr_minenergy
+      shower%tscalefactor_isr = shower_settings%ps_isr_tscalefactor
+      call shower_set_rng(evt%rng)
+      
       if (.not. msg_written) then
          call msg_message ("Using WHIZARD's internal showering")
          msg_written = .true.
@@ -57795,12 +58344,14 @@ from WHIZARD.
       n_loop = 0
       TRY_SHOWER: do ! just a loop to be able to discard events
          n_loop = n_loop + 1
-         if (n_loop > 1) then
-            call msg_fatal ("Bijan: This loop can occur twice") !!!  Debugging
-         end if
+         ! TODO: (bcn 2014-12-02) Can this loop even occur twice?
          if (n_loop > 1000) call msg_fatal &
               ("Shower: too many loops (try_shower)")
-         call shower%create ()
+         if (pdf_type == STRF_LHAPDF6) then
+            call shower%create (xmin, xmax, qmin, qmax, pdf)
+         else
+            call shower%create (xmin, xmax, qmin, qmax)
+         end if
          if (signal_is_pending ()) return             
          max_color_nr = 0
 
@@ -58028,7 +58579,7 @@ from WHIZARD.
                   partons(4)%c1 = color_corr(1,4)
                   partons(4)%c2 = color_corr(2,4)
 
-                  call tao_random_number (phi)
+                  call evt%rng%generate (phi)
                   phi = 2*pi*phi
                   call parton_set_momentum (partons(3), &
                        0.5_default*sqrt(shat), sqrt(mi_scale)*cos(phi), &
@@ -58143,6 +58694,7 @@ from WHIZARD.
       end if         
          
       call shower%final ()
+      call shower_get_rng(evt%rng)
       !!! clean-up muli: we should finalize the muli pdf sets 
       !!!      when all runs are done. 
       ! call mi%finalize()
@@ -58769,7 +59321,10 @@ remaining new outgoing particles.
   type, extends (evt_t) :: evt_shower_t
      type(shower_settings_t) :: settings
      type(model_t), pointer :: model_hadrons => null ()
-     type(os_data_t) :: os_data
+     type(lhapdf_pdf_t) :: pdf
+     real(default) :: xmin = 0, xmax = 0
+     real(default) :: qmin = 0, qmax = 0
+     type(os_data_t) :: os_data     
      integer :: pdf_type = STRF_NONE
      integer :: pdf_set = 0
    contains
@@ -58822,7 +59377,11 @@ shower.
     type(process_t), intent(in) :: process
     type(beam_structure_t), intent(in) :: beam_structure
     if (beam_structure%contains ("lhapdf")) then
-       evt%pdf_type = STRF_LHAPDF
+       if (LHAPDF6_AVAILABLE) then
+          evt%pdf_type = STRF_LHAPDF6
+       else if (LHAPDF5_AVAILABLE) then
+          evt%pdf_type = STRF_LHAPDF5
+       end if
        evt%pdf_set = process%get_pdf_set ()
        write (msg_buffer, "(A,I0)")  "Shower: interfacing LHAPDF set #", &
             evt%pdf_set
@@ -58875,9 +59434,7 @@ by the caller which is why we mark the particle set as invalid.
           call ckkw_fake_pseudo_shower_weights (evt%settings%ckkw_settings, &
                evt%settings%ckkw_weights, evt%particle_set)
        end if
-       call apply_shower_particle_set (evt%particle_set, &
-            evt%settings, evt%model, evt%model_hadrons, &
-            evt%os_data, evt%pdf_type, evt%pdf_set, valid, vetoed)
+       call apply_shower_particle_set (evt, valid, vetoed)
        probability = 1
        !!! BCN: WK please check: In 2.1.1 vetoed events reduced sim%n_events by
        ! one while invalid events did not. This bookkeeping should be reenabled
@@ -59319,7 +59876,6 @@ module events
 <<Use kinds>>
 <<Use strings>>
   use io_units
-  use string_utils, only: lower_case
   use format_utils, only: write_separator
   use format_defs, only: FMT_12
   use unit_tests
@@ -59328,7 +59884,6 @@ module events
   use subevents
   use variables
   use expr_base
-!  use models
   use model_data
   use state_matrices
   use particles
@@ -59338,6 +59893,7 @@ module events
   use process_libraries
   use processes
   use process_stacks
+  use event_base
   use event_transforms
   use decays
   use shower
@@ -59345,8 +59901,6 @@ module events
 <<Standard module head>>
 
 <<Events: public>>
-
-<<Events: parameters>>
 
 <<Events: types>>
 
@@ -59443,108 +59997,16 @@ so the actual nodes are not stored inside the event object.
   
 @ %def event_config_write
 @
-\subsection{Event normalization}
-The parameters for event normalization.  For unweighted events,
-[[NORM_UNIT]] is intended as default, while for weighted events, it is
-[[NORM_SIGMA]].
-
-Note: the unit test for this is in [[eio_data_2]] below.
-<<Events: parameters>>=
-  integer, parameter, public :: NORM_UNDEFINED = 0
-  integer, parameter, public :: NORM_UNIT = 1
-  integer, parameter, public :: NORM_N_EVT = 2
-  integer, parameter, public :: NORM_SIGMA = 3
-  integer, parameter, public :: NORM_S_N = 4
-
-@ %def NORM_UNDEFINED NORM_UNIT NORM_N_EVT NORM_SIGMA NORM_S_N
-@ These functions translate between the user representation and the
-internal one.
-<<Events: public>>=
-  public :: event_normalization_mode
-  public :: event_normalization_string
-<<Events: procedures>>=
-  function event_normalization_mode (string, unweighted) result (mode)
-    integer :: mode
-    type(string_t), intent(in) :: string
-    logical, intent(in) :: unweighted
-    select case (lower_case (char (string)))
-    case ("auto")
-       if (unweighted) then
-          mode = NORM_UNIT
-       else
-          mode = NORM_SIGMA
-       end if
-    case ("1")
-       mode = NORM_UNIT
-    case ("1/n")
-       mode = NORM_N_EVT
-    case ("sigma")
-       mode = NORM_SIGMA
-    case ("sigma/n")
-       mode = NORM_S_N
-    case default
-       call msg_fatal ("Event normalization: unknown value '" &
-            // char (string) // "'")
-    end select
-  end function event_normalization_mode
-  
-  function event_normalization_string (norm_mode) result (string)
-    integer, intent(in) :: norm_mode
-    type(string_t) :: string
-    select case (norm_mode)
-    case (NORM_UNDEFINED); string = "[undefined]"
-    case (NORM_UNIT);      string = "'1'"
-    case (NORM_N_EVT);     string = "'1/n'"
-    case (NORM_SIGMA);     string = "'sigma'"
-    case (NORM_S_N);       string = "'sigma/n'"
-    case default;          string = "???"
-    end select
-  end function event_normalization_string
-  
-@ %def event_normalization_mode
-@ %def event_normalization_string
-@ We place this here as a generic helper, so we can update event
-weights whenever we need, not just in connection with an event sample
-data object.
-<<Events: public>>=
-  public :: event_normalization_update
-<<Events: procedures>>=
-  subroutine event_normalization_update (weight, sigma, n, mode_new, mode_old)
-    real(default), intent(inout) :: weight
-    real(default), intent(in) :: sigma
-    integer, intent(in) :: n
-    integer, intent(in) :: mode_new, mode_old
-    if (mode_new /= mode_old) then
-       if (sigma > 0 .and. n > 0) then
-          weight = weight / factor (mode_old) * factor (mode_new)
-       else
-          call msg_fatal ("Event normalization update: null sample")
-       end if
-    end if
-  contains
-    function factor (mode)
-      real(default) :: factor
-      integer, intent(in) :: mode
-      select case (mode)
-      case (NORM_UNIT);   factor = 1._default
-      case (NORM_N_EVT);  factor = 1._default / n
-      case (NORM_SIGMA);  factor = sigma
-      case (NORM_S_N);    factor = sigma / n
-      case default
-         call msg_fatal ("Event normalization update: undefined mode")
-      end select
-    end function factor
-  end subroutine event_normalization_update
-  
-@ %def event_normalization_update
-@
 \subsection{The event type}
-Each event has a single elementary process as its core.  This process
-may be dressed by a shower, a decay chain etc.  For this core we
-implement pointers to a process instance.
+This is the concrete implementation of the [[generic_event_t]] core
+that is defined above in the [[event_base]] module.  The core manages
+the main (dressed) particle set pointer and the current values for
+weights and sqme.  The implementation adds configuration data,
+expressions, process references, and event transforms.
 
-The actual (dressed) event record is implemented as a [[particle_set]]
-object.
+Each event refers to a single elementary process.  This process may be
+dressed by a shower, a decay chain etc.  We maintain pointers to a
+process instance.
 
 A list of event transforms (class [[evt_t]]) transform the connected
 interactions of the process instance into the final particle set.  In
@@ -59577,7 +60039,7 @@ and should be written to file, including copies of [[sqme]] and [[weight]].
 <<Events: public>>=
   public :: event_t
 <<Events: types>>=
-  type :: event_t
+  type, extends (generic_event_t) :: event_t
      type(event_config_t) :: config
      type(process_t), pointer :: process => null ()
      type(process_instance_t), pointer :: instance => null ()
@@ -59588,23 +60050,6 @@ and should be written to file, including copies of [[sqme]] and [[weight]].
      logical :: is_complete = .false.
      class(evt_t), pointer :: transform_first => null ()
      class(evt_t), pointer :: transform_last => null ()
-     logical :: particle_set_exists = .false.
-     type(particle_set_t), pointer :: particle_set => null ()
-     logical :: sqme_ref_is_known = .false.
-     real(default) :: sqme_ref = 0
-     logical :: sqme_prc_is_known = .false.
-     real(default) :: sqme_prc = 0
-     logical :: weight_ref_is_known = .false.
-     real(default) :: weight_ref = 0
-     logical :: weight_prc_is_known = .false.
-     real(default) :: weight_prc = 0
-     logical :: excess_prc_is_known = .false.
-     real(default) :: excess_prc = 0
-     integer :: n_alt = 0
-     logical :: sqme_alt_is_known = .false.
-     real(default), dimension(:), allocatable :: sqme_alt
-     logical :: weight_alt_is_known = .false.
-     real(default), dimension(:), allocatable :: weight_alt
      type(event_expr_t) :: expr
      logical :: selection_evaluated = .false.
      logical :: passed = .false.
@@ -59663,24 +60108,26 @@ should suffice to print the latter.
     end if
     call write_separator (u)
     call object%config%write (u)
-    if (object%sqme_ref_is_known .or. object%weight_ref_is_known) then
+    if (object%sqme_ref_is_known () .or. object%weight_ref_is_known ()) then
        call write_separator (u)
     end if
-    if (object%sqme_ref_is_known) then
-       write (u, "(3x,A,ES19.12)")  "Squared matrix el. = ", object%sqme_ref
-       if (object%sqme_alt_is_known) then
-          do i = 1, object%n_alt
+    if (object%sqme_ref_is_known ()) then
+       write (u, "(3x,A,ES19.12)") &
+            "Squared matrix el. = ", object%get_sqme_ref ()
+       if (object%sqme_alt_is_known ()) then
+          do i = 1, object%get_n_alt ()
              write (u, "(5x,A,ES19.12,1x,I0)")  &
-                  "alternate sqme   = ", object%sqme_alt(i), i
+                  "alternate sqme   = ", object%get_sqme_alt(i), i
           end do
        end if
     end if
-    if (object%weight_ref_is_known) then
-       write (u, "(3x,A,ES19.12)")  "Event weight       = ", object%weight_ref
-       if (object%weight_alt_is_known) then
-          do i = 1, object%n_alt
+    if (object%weight_ref_is_known ()) then
+       write (u, "(3x,A,ES19.12)") &
+            "Event weight       = ", object%get_weight_ref ()
+       if (object%weight_alt_is_known ()) then
+          do i = 1, object%get_n_alt ()
              write (u, "(5x,A,ES19.12,1x,I0)")  &
-                  "alternate weight = ", object%weight_alt(i), i
+                  "alternate weight = ", object%get_weight_alt(i), i
           end do
        end if
     end if
@@ -59727,7 +60174,7 @@ should suffice to print the latter.
           call write_separator (u, 2)
        end if
        if (object%expr%subevt_filled) then
-          call object%expr%write (u)
+          call object%expr%write (u, pacified = testflag)
           call write_separator (u, 2)
        end if
     else
@@ -59761,6 +60208,12 @@ first one.
     integer, intent(in), optional :: n_alt
     type(string_t) :: norm_string
     logical :: polarized_events
+    if (present (n_alt)) then
+       call event%base_init (n_alt)
+       call event%expr%init (n_alt)
+    else
+       call event%base_init (0)
+    end if
     if (present (var_list)) then
        event%config%unweighted = var_list_get_lval (var_list, &
             var_str ("?unweighted"))
@@ -59781,12 +60234,6 @@ first one.
        end if
     else
        event%config%norm_mode = NORM_SIGMA
-    end if
-    if (present (n_alt)) then
-       event%n_alt = n_alt
-       allocate (event%sqme_alt (n_alt))
-       allocate (event%weight_alt (n_alt))
-       call event%expr%init (n_alt)
     end if
     allocate (evt_trivial_t :: event%transform_first)
     event%transform_last => event%transform_first
@@ -59947,7 +60394,7 @@ For testing purpose, we allow for providing them explicitly, as an option.
     real(default), dimension(:), intent(in), optional :: r
     class(evt_t), pointer :: evt
     integer :: i_term
-    event%particle_set_exists = .false.
+    call event%discard_particle_set ()
     call event%check ()
     if (event%instance%is_complete_event ()) then
        call event%instance%select_i_term (i_term)
@@ -59970,8 +60417,7 @@ For testing purpose, we allow for providing them explicitly, as an option.
        end do
        evt => event%transform_last
        if (associated (evt) .and. evt%particle_set_exists) then
-          event%particle_set => evt%particle_set
-          call event%accept_particle_set ()
+          call event%link_particle_set (evt%particle_set)
        end if
     end if
   end subroutine event_evaluate_transforms
@@ -59982,30 +60428,35 @@ Evaluate the event-related expressions, given a valid
 [[particle_set]].  If [[update_sqme]] is set, we use the process
 instance for the [[sqme_prc]] value.  The [[sqme_ref]] value is
 always taken from the event record.
+
+Note: without the explicit [[particle_set]] pointer, some gfortran 4.8
+version corrupts its memory.
 <<Events: event: TBP>>=
   procedure :: evaluate_expressions => event_evaluate_expressions
 <<Events: procedures>>=
   subroutine event_evaluate_expressions (event)
     class(event_t), intent(inout) :: event
-    if (event%particle_set_exists) then
-       call event%expr%fill_subevt (event%particle_set)
+    type(particle_set_t), pointer :: particle_set
+    if (event%has_valid_particle_set ()) then
+       particle_set => event%get_particle_set_ptr ()
+       call event%expr%fill_subevt (particle_set)
     end if
-    if (event%weight_ref_is_known) then
-       call event%expr%set (weight_ref = event%weight_ref)
+    if (event%weight_ref_is_known ()) then
+       call event%expr%set (weight_ref = event%get_weight_ref ())
     end if
-    if (event%weight_prc_is_known) then
-       call event%expr%set (weight_prc = event%weight_prc)
+    if (event%weight_prc_is_known ()) then
+       call event%expr%set (weight_prc = event%get_weight_prc ())
     end if
-    if (event%excess_prc_is_known) then
-       call event%expr%set (excess_prc = event%excess_prc)
+    if (event%excess_prc_is_known ()) then
+       call event%expr%set (excess_prc = event%get_excess_prc ())
     end if
-    if (event%sqme_ref_is_known) then
-       call event%expr%set (sqme_ref = event%sqme_ref)
+    if (event%sqme_ref_is_known ()) then
+       call event%expr%set (sqme_ref = event%get_sqme_ref ())
     end if
-    if (event%sqme_prc_is_known) then
-       call event%expr%set (sqme_prc = event%sqme_prc)
+    if (event%sqme_prc_is_known ()) then
+       call event%expr%set (sqme_prc = event%get_sqme_prc ())
     end if
-    if (event%particle_set_exists) then
+    if (event%has_valid_particle_set ()) then
        call event%expr%evaluate &
             (event%passed, event%reweight, event%analysis_flag)
        event%selection_evaluated = .true.
@@ -60021,11 +60472,11 @@ values.
 <<Events: procedures>>=
   subroutine event_store_alt_values (event)
     class(event_t), intent(inout) :: event
-    if (event%weight_alt_is_known) then
-       call event%expr%set (weight_alt = event%weight_alt)
+    if (event%weight_alt_is_known ()) then
+       call event%expr%set (weight_alt = event%get_weight_alt ())
     end if
-    if (event%sqme_alt_is_known) then
-       call event%expr%set (sqme_alt = event%sqme_alt)
+    if (event%sqme_alt_is_known ()) then
+       call event%expr%set (sqme_alt = event%get_sqme_alt ())
     end if
   end subroutine event_store_alt_values
   
@@ -60040,18 +60491,11 @@ are not deleted.  In particular, the initialization is kept.
   subroutine event_reset (event)
     class(event_t), intent(inout) :: event
     class(evt_t), pointer :: evt
+    call event%base_reset ()
     event%selected_i_mci = 0
     event%selected_i_term = 0
     event%selected_channel = 0
     event%is_complete = .false.
-    event%particle_set_exists = .false.
-    event%sqme_ref_is_known = .false.
-    event%sqme_prc_is_known = .false.
-    event%sqme_alt_is_known = .false.
-    event%weight_ref_is_known = .false.
-    event%weight_prc_is_known = .false.
-    event%weight_alt_is_known = .false.
-    event%excess_prc_is_known = .false.
     call event%expr%reset ()
     event%selection_evaluated = .false.
     event%passed = .false.
@@ -60082,33 +60526,26 @@ Set the appropriate entry directly.
     real(default), intent(in), optional :: sqme_ref, sqme_prc
     real(default), dimension(:), intent(in), optional :: sqme_alt, weight_alt
     real(default), intent(in), optional :: excess_prc
-    if (present (sqme_ref)) then
-       event%sqme_ref_is_known = .true.
-       event%sqme_ref = sqme_ref
-    end if
     if (present (sqme_prc)) then
-       event%sqme_prc_is_known = .true.
-       event%sqme_prc = sqme_prc
+       call event%set_sqme_prc (sqme_prc)
+    end if
+    if (present (sqme_ref)) then
+       call event%set_sqme_ref (sqme_ref)
     end if 
     if (present (sqme_alt)) then
-       event%sqme_alt_is_known = .true.
-       event%sqme_alt = sqme_alt
-    end if
-    if (present (weight_ref)) then
-       event%weight_ref_is_known = .true.
-       event%weight_ref = weight_ref
+       call event%set_sqme_alt (sqme_alt)
     end if
     if (present (weight_prc)) then
-       event%weight_prc_is_known = .true.
-       event%weight_prc = weight_prc
+       call event%set_weight_prc (weight_prc)
+    end if
+    if (present (weight_ref)) then
+       call event%set_weight_ref (weight_ref)
     end if
     if (present (weight_alt)) then
-       event%weight_alt_is_known = .true.
-       event%weight_alt = weight_alt
+       call event%set_weight_alt (weight_alt)
     end if
     if (present (excess_prc)) then
-       event%excess_prc_is_known = .true.
-       event%excess_prc = excess_prc
+       call event%set_excess_prc (excess_prc)
     end if
   end subroutine event_set
   
@@ -60142,29 +60579,29 @@ record.
 <<Events: procedures>>=
   subroutine event_accept_sqme_ref (event)
     class(event_t), intent(inout) :: event
-    if (event%sqme_ref_is_known) then
-       call event%set (sqme_prc = event%sqme_ref)
+    if (event%sqme_ref_is_known ()) then
+       call event%set (sqme_prc = event%get_sqme_ref ())
     end if
   end subroutine event_accept_sqme_ref
   
   subroutine event_accept_sqme_prc (event)
     class(event_t), intent(inout) :: event
-    if (event%sqme_prc_is_known) then
-       call event%set (sqme_ref = event%sqme_prc)
+    if (event%sqme_prc_is_known ()) then
+       call event%set (sqme_ref = event%get_sqme_prc ())
     end if
   end subroutine event_accept_sqme_prc
   
   subroutine event_accept_weight_ref (event)
     class(event_t), intent(inout) :: event
-    if (event%weight_ref_is_known) then
-       call event%set (weight_prc = event%weight_ref)
+    if (event%weight_ref_is_known ()) then
+       call event%set (weight_prc = event%get_weight_ref ())
     end if
   end subroutine event_accept_weight_ref
   
   subroutine event_accept_weight_prc (event)
     class(event_t), intent(inout) :: event
-    if (event%weight_prc_is_known) then
-       call event%set (weight_ref = event%weight_prc)
+    if (event%weight_prc_is_known ()) then
+       call event%set (weight_ref = event%get_weight_prc ())
     end if
   end subroutine event_accept_weight_prc
   
@@ -60183,6 +60620,7 @@ configuration record.
     class(event_t), intent(inout) :: event
     integer, intent(in), optional :: mode_ref
     integer :: mode_old
+    real(default) :: weight, excess
     if (present (mode_ref)) then
        mode_old = mode_ref
     else if (event%config%unweighted) then
@@ -60190,14 +60628,18 @@ configuration record.
     else
        mode_old = NORM_SIGMA
     end if
-    call event_normalization_update (event%weight_prc, &
+    weight = event%get_weight_prc ()
+    call event_normalization_update (weight, &
          event%config%sigma, event%config%n, &
          mode_new = event%config%norm_mode, &
          mode_old = mode_old)
-    call event_normalization_update (event%excess_prc, &
+    call event%set_weight_prc (weight)
+    excess = event%get_excess_prc ()
+    call event_normalization_update (excess, &
          event%config%sigma, event%config%n, &
          mode_new = event%config%norm_mode, &
          mode_old = mode_old)
+    call event%set_excess_prc (excess)
   end subroutine event_update_normalization
   
 @ %def event_update_normalization
@@ -60209,15 +60651,15 @@ the sqme and weight values.
 <<Events: procedures>>=
   subroutine event_check (event)
     class(event_t), intent(inout) :: event
-    event%is_complete = event%particle_set_exists &
-         .and. event%sqme_ref_is_known &
-         .and. event%sqme_prc_is_known &
-         .and. event%weight_ref_is_known &
-         .and. event%weight_prc_is_known
-    if (event%n_alt /= 0) then
+    event%is_complete = event%has_valid_particle_set () &
+         .and. event%sqme_ref_is_known () &
+         .and. event%sqme_prc_is_known () &
+         .and. event%weight_ref_is_known () &
+         .and. event%weight_prc_is_known ()
+    if (event%get_n_alt () /= 0) then
        event%is_complete = event%is_complete &
-            .and. event%sqme_alt_is_known &
-            .and. event%weight_alt_is_known
+            .and. event%sqme_alt_is_known () &
+            .and. event%weight_alt_is_known ()
     end if
   end subroutine event_check
   
@@ -60269,17 +60711,17 @@ for deterministic testing.
 @ %def event_generate
 @ Get a copy of the particle set belonging to the hard process.
 <<Events: event: TBP>>=
-  procedure :: get_particle_set_hard_proc => event_get_particle_set_hard_proc
+  procedure :: get_hard_particle_set => event_get_hard_particle_set
 <<Events: procedures>>=
-  subroutine event_get_particle_set_hard_proc (event, pset)
+  subroutine event_get_hard_particle_set (event, pset)
     class(event_t), intent(in) :: event
     type(particle_set_t), intent(out) :: pset
     class(evt_t), pointer :: evt
     evt => event%transform_first
     pset = evt%particle_set
-  end subroutine event_get_particle_set_hard_proc
+  end subroutine event_get_hard_particle_set
     
-@ %def event_get_particle_set_hard_proc
+@ %def event_get_hard_particle_set
 @
 \subsection{Recovering an event}
 Select MC group, term, and integration channel.
@@ -60311,36 +60753,24 @@ transforms to generate a fully dressed event.
 Since this makes all subsequent event transforms invalid, we call
 [[reset]] on them.
 <<Events: event: TBP>>=
-  procedure :: set_particle_set_hard_proc => event_set_particle_set_hard_proc
+  procedure :: set_hard_particle_set => event_set_hard_particle_set
 <<Events: procedures>>=
-  subroutine event_set_particle_set_hard_proc (event, particle_set)
+  subroutine event_set_hard_particle_set (event, particle_set)
     class(event_t), intent(inout) :: event
     type(particle_set_t), intent(in) :: particle_set
     class(evt_t), pointer :: evt
     evt => event%transform_first
     call evt%set_particle_set (particle_set, &
          event%selected_i_mci, event%selected_i_term)
-    event%particle_set => evt%particle_set
-    call event%accept_particle_set ()
+    call event%link_particle_set (evt%particle_set)
     evt => evt%next
     do while (associated (evt))
        call evt%reset ()
        evt => evt%next
     end do
-  end subroutine event_set_particle_set_hard_proc
+  end subroutine event_set_hard_particle_set
 
-@ %def event_set_particle_set_hard_proc
-@ Mark the particle set as existing, assuming that it has just been
-filled somehow.
-<<Events: event: TBP>>=
-  procedure :: accept_particle_set => event_accept_particle_set
-<<Events: procedures>>=
-  subroutine event_accept_particle_set (event)
-    class(event_t), intent(inout) :: event
-    event%particle_set_exists = .true.
-  end subroutine event_accept_particle_set
-  
-@ %def event_accept_particle_set
+@ %def event_set_hard_particle_set
 @
 Here we try to recover an event from the [[particle_set]] subobject
 and recalculate the structure functions and matrix elements.  We
@@ -60375,8 +60805,10 @@ Evaluating event expressions must also be done separately.
     logical, intent(in) :: update_sqme
     real(default), intent(in), optional :: weight_factor
     logical, intent(in), optional :: recover_beams
+    type(particle_set_t), pointer :: particle_set
     integer :: i_mci, i_term, channel
-    if (event%particle_set_exists) then
+    if (event%has_valid_particle_set ()) then
+       particle_set => event%get_particle_set_ptr ()
        i_mci = event%selected_i_mci
        i_term = event%selected_i_term
        channel = event%selected_channel
@@ -60384,15 +60816,15 @@ Evaluating event expressions must also be done separately.
           call msg_bug ("Event: recalculate: undefined selection parameters")
        end if
        call event%instance%choose_mci (i_mci)
-       call event%instance%set_trace (event%particle_set, i_term, recover_beams)
+       call event%instance%set_trace (particle_set, i_term, recover_beams)
        call event%instance%recover (channel, i_term, update_sqme) 
        if (signal_is_pending ())  return
        if (update_sqme .and. present (weight_factor)) then
           call event%instance%evaluate_event_data &
                (weight = event%instance%get_sqme () * weight_factor)
-       else if (event%weight_ref_is_known) then
+       else if (event%weight_ref_is_known ()) then
           call event%instance%evaluate_event_data &
-               (weight = event%weight_ref)
+               (weight = event%get_weight_ref ())
        else
           call event%process%recover_event (event%instance, i_term)
           if (signal_is_pending ())  return
@@ -60416,9 +60848,10 @@ Evaluating event expressions must also be done separately.
 @ %def event_recalculate
 @
 \subsection{Access content}
-Pointer to the associated process object.
+Pointer to the associated process object (the associated model).
 <<Events: event: TBP>>=
   procedure :: get_process_ptr => event_get_process_ptr
+  procedure :: get_model_ptr => event_get_model_ptr
 <<Events: procedures>>=
   function event_get_process_ptr (event) result (ptr)
     class(event_t), intent(in) :: event
@@ -60426,29 +60859,14 @@ Pointer to the associated process object.
     ptr => event%process
   end function event_get_process_ptr
 
-@ %def event_get_process_ptr
-@ Tell whether the particle set is defined:
-<<Events: event: TBP>>=
-  procedure :: has_particle_set => event_has_particle_set
-<<Events: procedures>>=
-  function event_has_particle_set (event) result (flag)
+  function event_get_model_ptr (event) result (model)
     class(event_t), intent(in) :: event
-    logical :: flag
-    flag = event%particle_set_exists
-  end function event_has_particle_set
-  
-@ %def event_has_particle_set
-@ Pointer to the particle set.
-<<Events: event: TBP>>=
-  procedure :: get_particle_set_ptr => event_get_particle_set_ptr
-<<Events: procedures>>=
-  function event_get_particle_set_ptr (event) result (ptr)
-    class(event_t), intent(in), target :: event
-    type(particle_set_t), pointer :: ptr
-    ptr => event%particle_set
-  end function event_get_particle_set_ptr
-  
-@ %def event_get_particle_set_ptr
+    class(model_data_t), pointer :: model
+    model => event%process%get_model_ptr ()
+  end function event_get_model_ptr
+
+@ %def event_get_process_ptr
+@ %def event_get_model_ptr
 @ Return the current values of indices: the MCI group of components, the term
 index (different terms corresponding, potentially, to different effective
 kinematics), and the MC integration channel.  The [[i_mci]] call is delegated
@@ -60499,9 +60917,9 @@ and squared matrix element.
   function event_get_kinematical_weight (event) result (f)
     class(event_t), intent(in) :: event
     real(default) :: f
-    if (event%sqme_ref_is_known .and. event%weight_ref_is_known &
-         .and. event%sqme_ref /= 0) then
-       f = event%weight_ref / event%sqme_ref
+    if (event%sqme_ref_is_known () .and. event%weight_ref_is_known () &
+         .and. event%get_sqme_ref () /= 0) then
+       f = event%get_weight_ref () / event%get_sqme_ref ()
     else
        f = 0
     end if
@@ -60510,9 +60928,16 @@ and squared matrix element.
 @ %def event_get_kinematical_weight
 @ Return data used by external event formats.
 <<Events: event: TBP>>=
+  procedure :: get_index => event_get_index
   procedure :: get_fac_scale => event_get_fac_scale
   procedure :: get_alpha_s => event_get_alpha_s
 <<Events: procedures>>=
+  function event_get_index (event) result (index)
+    class(event_t), intent(in) :: event
+    integer :: index
+    index = event%expr%index
+  end function event_get_index
+    
   function event_get_fac_scale (event) result (fac_scale)
     class(event_t), intent(in) :: event
     real(default) :: fac_scale
@@ -60525,6 +60950,7 @@ and squared matrix element.
     alpha_s = event%instance%get_alpha_s (event%selected_i_term)
   end function event_get_alpha_s
     
+@ %def event_get_index
 @ %def event_get_fac_scale
 @ %def event_get_alpha_s
 @
@@ -60540,7 +60966,7 @@ transforms (which includes associated process instances).
   subroutine pacify_event (event)
     class(event_t), intent(inout) :: event
     class(evt_t), pointer :: evt
-    if (event%particle_set_exists)  call pacify (event%particle_set)
+    call event%pacify_particle_set ()
     if (event%expr%subevt_filled)  call pacify (event%expr)
     evt => event%transform_first
     do while (associated (evt))
@@ -60693,7 +61119,7 @@ record, recall the particle set, and recover the event from that.
     call event%evaluate_expressions ()
     call event%write (u)
     
-    particle_set = event%particle_set
+    particle_set = event%get_particle_set_ptr ()
 
     call event%final ()
     deallocate (event)
@@ -60716,7 +61142,7 @@ record, recall the particle set, and recover the event from that.
     call event%connect (process_instance, process%get_model_ptr ())
     
     call event%select (1, 1, 1)
-    call event%set_particle_set_hard_proc (particle_set)
+    call event%set_hard_particle_set (particle_set)
     call event%recalculate (update_sqme = .true.)
     call event%write (u)
 
@@ -60801,9 +61227,9 @@ without recomputing the squared matrix element.
     call event%evaluate_expressions ()
     call event%write (u)
     
-    particle_set = event%particle_set
-    sqme = event%sqme_ref
-    weight = event%weight_ref
+    particle_set = event%get_particle_set_ptr ()
+    sqme = event%get_sqme_ref ()
+    weight = event%get_weight_ref ()
 
     call event%final ()
     deallocate (event)
@@ -60826,7 +61252,7 @@ without recomputing the squared matrix element.
     call event%connect (process_instance, process%get_model_ptr ())
     
     call event%select (1, 1, 1)
-    call event%set_particle_set_hard_proc (particle_set)
+    call event%set_hard_particle_set (particle_set)
     call event%recalculate (update_sqme = .false.)
     call event%write (u)
 
@@ -66503,7 +66929,9 @@ module eio_data
   use unit_tests
   use diagnostics
 
-  use events
+  use event_base
+
+<<Standard module head>>
 
 <<EIO data: public>>
 
@@ -66712,7 +67140,7 @@ Check the functions for translating modes and updating weights.
     integer, intent(in) :: u
     type(string_t) :: s
     logical :: unweighted
-    real(default) :: w, sigma
+    real(default) :: w, w0, sigma
     integer :: n
 
     write (u, "(A)")  "* Test output: eio_data_2"
@@ -66863,9 +67291,10 @@ module eio_base
   use lorentz
   use model_data
   use particles
-  use beams
-  use processes
-  use events
+!  use beams
+!  use processes
+!  use events
+  use event_base
   use eio_data
 
 <<Standard module head>>
@@ -66886,18 +67315,6 @@ contains
 
 end module eio_base
 @ %def eio_base
-@
-\subsection{Process pointer}
-For handling multiple processes, we need an array of process pointers.  This
-requires a wrapper:
-<<EIO base: public>>=
-  public :: process_ptr_t
-<<EIO base: types>>=
-  type :: process_ptr_t
-     type(process_t), pointer :: ptr => null ()
-  end type process_ptr_t
-  
-@ %def process_ptr_t
 @
 \subsection{Type}
 We can assume that most implementations will need the file extension as a
@@ -66991,22 +67408,20 @@ channels.
   end subroutine eio_set_fallback_model
   
 @ %def eio_set_fallback_model
-@ Initialize for output.  We provide process pointers.  This should
+@ Initialize for output.  We provide process names.  This should
 open an event file if appropriate and write header data.  Some methods
 may require event sample data.
 <<EIO base: eio: TBP>>=
   procedure (eio_init_out), deferred :: init_out
 <<EIO base: interfaces>>=
   abstract interface
-     subroutine eio_init_out &
-          (eio, sample, process_ptr, data, success, extension)
+     subroutine eio_init_out (eio, sample, data, success, extension)
        import
        class(eio_t), intent(inout) :: eio
        type(string_t), intent(in) :: sample
-       type(string_t), intent(in), optional :: extension       
-       type(process_ptr_t), dimension(:), intent(in) :: process_ptr
        type(event_sample_data_t), intent(in), optional :: data
        logical, intent(out), optional :: success
+       type(string_t), intent(in), optional :: extension       
      end subroutine eio_init_out
   end interface
 
@@ -67022,15 +67437,13 @@ keep other parts and/or check them against the data in the file.
   procedure (eio_init_in), deferred :: init_in
 <<EIO base: interfaces>>=
   abstract interface
-     subroutine eio_init_in &
-          (eio, sample, process_ptr, data, success, extension)
+     subroutine eio_init_in (eio, sample, data, success, extension)
        import
        class(eio_t), intent(inout) :: eio
        type(string_t), intent(in) :: sample
-       type(string_t), intent(in), optional :: extension
-       type(process_ptr_t), dimension(:), intent(in) :: process_ptr
        type(event_sample_data_t), intent(inout), optional :: data
        logical, intent(out), optional :: success
+       type(string_t), intent(in), optional :: extension
      end subroutine eio_init_in
   end interface
 
@@ -67069,12 +67482,12 @@ indicates that the event was read from file, not generated.
   procedure (eio_output), deferred :: output
 <<EIO base: interfaces>>=
   abstract interface
-     subroutine eio_output (eio, event, i_prc, reading)
+     subroutine eio_output (eio, event, i_prc, reading, pacify)
        import
        class(eio_t), intent(inout) :: eio
-       type(event_t), intent(in), target :: event
+       class(generic_event_t), intent(in), target :: event
        integer, intent(in) :: i_prc
-       logical, intent(in), optional :: reading
+       logical, intent(in), optional :: reading, pacify
      end subroutine eio_output
   end interface
   
@@ -67106,7 +67519,7 @@ requires, negative for EOF and positive for error.
      subroutine eio_input_event (eio, event, iostat)
        import
        class(eio_t), intent(inout) :: eio
-       type(event_t), intent(inout), target :: event
+       class(generic_event_t), intent(inout), target :: event
        integer, intent(out) :: iostat
      end subroutine eio_input_event
   end interface
@@ -67127,14 +67540,12 @@ requires, negative for EOF and positive for error.
 @ 
 \subsubsection{Test type for event I/O}
 The contents simulate the contents of an external file.  We have the
-[[sample]] string as the file name, [[sqrts]] and the array of [[process_id]]s
-as metadata, and the array of momenta [[event_p]] as the list of events.  The
+[[sample]] string as the file name and the array of momenta
+[[event_p]] as the list of events.  The 
 second index is the event index.  The [[event_i]] component is the pointer
 to the current event, [[event_n]] is the total number of stored events.
 <<EIO base: test types>>=
   type, extends (eio_t) :: eio_test_t
-     real(default) :: sqrts
-     type(string_t) :: process_id
      integer :: event_n = 0
      integer :: event_i = 0
      integer :: i_prc = 0
@@ -67154,8 +67565,6 @@ to the current event, [[event_n]] is the total number of stored events.
     integer :: u, i
     u = given_output_unit (unit)
     write (u, "(1x,A)")  "Test event stream"
-    write (u, "(3x,A,A,A)")  "Process ID  = '", char (object%process_id), "'"
-    write (u, "(3x,A,ES19.12)")  "sqrts       = ", object%sqrts
     if (object%event_i /= 0) then
        write (u, "(1x,A,I0,A)")  "Event #", object%event_i, ":"
        do i = 1, size (object%event_p, 1)
@@ -67185,19 +67594,13 @@ process.
 <<EIO base: eio test: TBP>>=
   procedure :: init_out => eio_test_init_out
 <<EIO base: procedures>>=
-  subroutine eio_test_init_out &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_test_init_out (eio, sample, data, success, extension)
     class(eio_test_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
-    type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(in), optional :: data
     logical, intent(out), optional :: success
-    type(beam_data_t), pointer :: beam_data
+    type(string_t), intent(in), optional :: extension
     eio%sample = sample
-    eio%process_id = process_ptr(1)%ptr%get_id ()
-    beam_data => process_ptr(1)%ptr%get_beam_data_ptr ()
-    eio%sqrts = beam_data_get_sqrts (beam_data)
     eio%event_n = 0
     eio%event_i = 0
     allocate (eio%event_p (2, 10))
@@ -67209,14 +67612,12 @@ process.
 <<EIO base: eio test: TBP>>=
   procedure :: init_in => eio_test_init_in
 <<EIO base: procedures>>=
-  subroutine eio_test_init_in &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_test_init_in (eio, sample, data, success, extension)
     class(eio_test_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
-    type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(inout), optional :: data
     logical, intent(out), optional :: success
+    type(string_t), intent(in), optional :: extension
     if (present (success))  success = .true.
   end subroutine eio_test_init_in
   
@@ -67237,10 +67638,10 @@ event.
 <<EIO base: eio test: TBP>>=
   procedure :: output => eio_test_output
 <<EIO base: procedures>>=
-  subroutine eio_test_output (eio, event, i_prc, reading)
+  subroutine eio_test_output (eio, event, i_prc, reading, pacify)
     class(eio_test_t), intent(inout) :: eio
-    type(event_t), intent(in), target :: event
-    logical, intent(in), optional :: reading
+    class(generic_event_t), intent(in), target :: event
+    logical, intent(in), optional :: reading, pacify
     integer, intent(in) :: i_prc
     type(particle_set_t), pointer :: pset
     type(particle_t) :: prt
@@ -67271,7 +67672,7 @@ event.  For the test case, we do not actually modify the current event.
 
   subroutine eio_test_input_event (eio, event, iostat)
     class(eio_test_t), intent(inout) :: eio
-    type(event_t), intent(inout), target :: event
+    class(generic_event_t), intent(inout), target :: event
     integer, intent(out) :: iostat
     eio%event_i = eio%event_i + 1
     iostat = 0
@@ -67288,11 +67689,12 @@ We test the implementation of all I/O methods using the [[eio_test_t]] type.
        u, results)
 <<EIO base: tests>>=
   subroutine eio_base_1 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     class(eio_t), allocatable :: eio
     integer :: i_prc,  iostat
@@ -67307,7 +67709,6 @@ We test the implementation of all I/O methods using the [[eio_test_t]] type.
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -67324,7 +67725,7 @@ We test the implementation of all I/O methods using the [[eio_test_t]] type.
  
     allocate (eio_test_t :: eio)
     
-    call eio%init_out (sample, [process_ptr])
+    call eio%init_out (sample)
     call event%generate (1, [0._default, 0._default])
     call eio%output (event, 42)
     call eio%write (u)
@@ -67334,7 +67735,7 @@ We test the implementation of all I/O methods using the [[eio_test_t]] type.
     write (u, "(A)")  "* Re-read the event"
     write (u, "(A)")
     
-    call eio%init_in (sample, [process_ptr])
+    call eio%init_in (sample)
     call eio%input_i_prc (i_prc, iostat)
     call eio%input_event (event, iostat)
     call eio%write (u)
@@ -67355,7 +67756,7 @@ We test the implementation of all I/O methods using the [[eio_test_t]] type.
     write (u, "(A)")  "* Re-read both events"
     write (u, "(A)")
     
-    call eio%init_in (sample, [process_ptr])
+    call eio%init_in (sample)
     call eio%input_i_prc (i_prc, iostat)
     call eio%input_event (event, iostat)
     call eio%input_i_prc (i_prc, iostat)
@@ -67406,11 +67807,12 @@ module eio_raw
   use variables
   use model_data
   use particles
-  use beams
-  use processes
-  use events
+!  use beams
+!  use processes
+  use event_base
   use eio_data
   use eio_base
+  use events
 
 <<Standard module head>>
 
@@ -67508,14 +67910,12 @@ of the current object status.
 <<EIO raw: eio raw: TBP>>=
   procedure :: init_out => eio_raw_init_out
 <<EIO raw: procedures>>=
-  subroutine eio_raw_init_out &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_raw_init_out (eio, sample, data, success, extension)
     class(eio_raw_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
-    type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(in), optional :: data
     logical, intent(out), optional :: success
+    type(string_t), intent(in), optional :: extension
     character(32) :: md5sum_prc, md5sum_cfg
     character(32), dimension(:), allocatable :: md5sum_alt
     integer :: i
@@ -67561,14 +67961,12 @@ of the current object status.
 <<EIO raw: eio raw: TBP>>=
   procedure :: init_in => eio_raw_init_in
 <<EIO raw: procedures>>=
-  subroutine eio_raw_init_in &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_raw_init_in (eio, sample, data, success, extension)
     class(eio_raw_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
-    type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(inout), optional :: data
     logical, intent(out), optional :: success
+    type(string_t), intent(in), optional :: extension
     character(32) :: md5sum_prc, md5sum_cfg
     character(32), dimension(:), allocatable :: md5sum_alt
     integer :: i
@@ -67658,29 +68056,34 @@ values and thus obtain distinct [[prc]] values, or just accept them.
 <<EIO raw: eio raw: TBP>>=
   procedure :: output => eio_raw_output
 <<EIO raw: procedures>>=
-  subroutine eio_raw_output (eio, event, i_prc, reading)
+  subroutine eio_raw_output (eio, event, i_prc, reading, pacify)
     class(eio_raw_t), intent(inout) :: eio
-    type(event_t), intent(in), target :: event
-    logical, intent(in), optional :: reading
+    class(generic_event_t), intent(in), target :: event
+    logical, intent(in), optional :: reading, pacify
     integer, intent(in) :: i_prc
     type(particle_set_t) :: pset
     integer :: i
     if (eio%writing) then
-       if (event%has_particle_set ()) then
-          write (eio%unit)  i_prc
-          write (eio%unit)  event%get_i_mci ()
-          write (eio%unit)  event%get_i_term ()
-          write (eio%unit)  event%get_channel ()
-          write (eio%unit)  event%expr%weight_prc
-          write (eio%unit)  event%expr%excess_prc
-          write (eio%unit)  event%expr%sqme_prc
-          do i = 1, eio%n_alt
-             write (eio%unit)  event%expr%weight_alt(i)
-             write (eio%unit)  event%expr%sqme_alt(i)
-          end do
-          call event%get_particle_set_hard_proc (pset)
-          call particle_set_write_raw (pset, eio%unit)
-          call particle_set_final (pset)
+       if (event%has_valid_particle_set ()) then
+          select type (event)
+          type is (event_t)
+             write (eio%unit)  i_prc
+             write (eio%unit)  event%get_i_mci ()
+             write (eio%unit)  event%get_i_term ()
+             write (eio%unit)  event%get_channel ()
+             write (eio%unit)  event%expr%weight_prc
+             write (eio%unit)  event%expr%excess_prc
+             write (eio%unit)  event%expr%sqme_prc
+             do i = 1, eio%n_alt
+                write (eio%unit)  event%expr%weight_alt(i)
+                write (eio%unit)  event%expr%sqme_alt(i)
+             end do
+             call event%get_hard_particle_set (pset)
+             call particle_set_write_raw (pset, eio%unit)
+             call particle_set_final (pset)
+          class default
+             call msg_bug ("Event: write raw: defined only for full event_t")
+          end select
        else
           call msg_bug ("Event: write raw: particle set is undefined")
        end if
@@ -67695,7 +68098,7 @@ values and thus obtain distinct [[prc]] values, or just accept them.
 
 Note: the particle set is physically copied.  If there is a
 performance issue, we might choose to pointer-assign it instead, with
-a different version of [[event%set_particle_set_hard_proc]].
+a different version of [[event%set_hard_particle_set]].
 <<EIO raw: eio raw: TBP>>=
   procedure :: input_i_prc => eio_raw_input_i_prc
   procedure :: input_event => eio_raw_input_event
@@ -67714,52 +68117,57 @@ a different version of [[event%set_particle_set_hard_proc]].
 
   subroutine eio_raw_input_event (eio, event, iostat)
     class(eio_raw_t), intent(inout) :: eio
-    type(event_t), intent(inout), target :: event
+    class(generic_event_t), intent(inout), target :: event
     integer, intent(out) :: iostat
     integer :: i_mci, i_term, channel, i
     real(default) :: weight, excess, sqme
     real(default), dimension(:), allocatable :: weight_alt, sqme_alt
     type(particle_set_t) :: pset
     if (eio%reading) then
-       read (eio%unit, iostat = iostat)  i_mci
-       if (iostat /= 0)  return
-       read (eio%unit, iostat = iostat)  i_term
-       if (iostat /= 0)  return
-       read (eio%unit, iostat = iostat)  channel
-       if (iostat /= 0)  return
-       read (eio%unit, iostat = iostat)  weight
-       if (iostat /= 0)  return
-       read (eio%unit, iostat = iostat)  excess
-       if (iostat /= 0)  return
-       read (eio%unit, iostat = iostat)  sqme
-       if (iostat /= 0)  return
-       call event%reset ()
-       call event%select (i_mci, i_term, channel)
-       if (eio%norm_mode /= NORM_UNDEFINED) then
-          call event_normalization_update (weight, &
-               eio%sigma, eio%n, event%get_norm_mode (), eio%norm_mode)
-          call event_normalization_update (excess, &
-               eio%sigma, eio%n, event%get_norm_mode (), eio%norm_mode)
-       end if
-       call event%set (sqme_ref = sqme, weight_ref = weight, &
-            excess_prc = excess)
-       if (eio%n_alt /= 0) then
-          allocate (sqme_alt (eio%n_alt), weight_alt (eio%n_alt))
-          do i = 1, eio%n_alt
-             read (eio%unit, iostat = iostat)  weight_alt(i)
-             if (iostat /= 0)  return
-             read (eio%unit, iostat = iostat)  sqme_alt(i)
-             if (iostat /= 0)  return
-          end do
-          call event%set (sqme_alt = sqme_alt, weight_alt = weight_alt)
-       end if
-       call particle_set_read_raw (pset, eio%unit, iostat)
-       if (iostat /= 0)  return
-       if (associated (event%process)) then
-          call particle_set_set_model (pset, event%process%get_model_ptr ())
-       end if
-       call event%set_particle_set_hard_proc (pset)
-       call particle_set_final (pset)
+       select type (event)
+       type is (event_t)
+          read (eio%unit, iostat = iostat)  i_mci
+          if (iostat /= 0)  return
+          read (eio%unit, iostat = iostat)  i_term
+          if (iostat /= 0)  return
+          read (eio%unit, iostat = iostat)  channel
+          if (iostat /= 0)  return
+          read (eio%unit, iostat = iostat)  weight
+          if (iostat /= 0)  return
+          read (eio%unit, iostat = iostat)  excess
+          if (iostat /= 0)  return
+          read (eio%unit, iostat = iostat)  sqme
+          if (iostat /= 0)  return
+          call event%reset ()
+          call event%select (i_mci, i_term, channel)
+          if (eio%norm_mode /= NORM_UNDEFINED) then
+             call event_normalization_update (weight, &
+                  eio%sigma, eio%n, event%get_norm_mode (), eio%norm_mode)
+             call event_normalization_update (excess, &
+                  eio%sigma, eio%n, event%get_norm_mode (), eio%norm_mode)
+          end if
+          call event%set (sqme_ref = sqme, weight_ref = weight, &
+               excess_prc = excess)
+          if (eio%n_alt /= 0) then
+             allocate (sqme_alt (eio%n_alt), weight_alt (eio%n_alt))
+             do i = 1, eio%n_alt
+                read (eio%unit, iostat = iostat)  weight_alt(i)
+                if (iostat /= 0)  return
+                read (eio%unit, iostat = iostat)  sqme_alt(i)
+                if (iostat /= 0)  return
+             end do
+             call event%set (sqme_alt = sqme_alt, weight_alt = weight_alt)
+          end if
+          call particle_set_read_raw (pset, eio%unit, iostat)
+          if (iostat /= 0)  return
+          if (associated (event%process)) then
+             call particle_set_set_model (pset, event%process%get_model_ptr ())
+          end if
+          call event%set_hard_particle_set (pset)
+          call particle_set_final (pset)
+       class default
+          call msg_bug ("Event: read raw: defined only for full event_t")
+       end select
     else
        call eio%write ()
        call msg_fatal ("Raw event file is not open for reading")
@@ -67789,11 +68197,11 @@ We test the implementation of all I/O methods.
        u, results)
 <<EIO raw: tests>>=
   subroutine eio_raw_1 (u)
+    use processes
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     class(eio_t), allocatable :: eio
     integer :: i_prc, iostat
@@ -67808,7 +68216,6 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -67825,7 +68232,7 @@ We test the implementation of all I/O methods.
  
     allocate (eio_raw_t :: eio)
     
-    call eio%init_out (sample, [process_ptr])
+    call eio%init_out (sample)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
     call event%write (u)
@@ -67844,7 +68251,7 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Re-read the event"
     write (u, "(A)")
     
-    call eio%init_in (sample, [process_ptr])
+    call eio%init_in (sample)
 
     allocate (process_instance)
     call process_instance%init (process)
@@ -67887,7 +68294,7 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Re-read both events"
     write (u, "(A)")
     
-    call eio%init_in (sample, [process_ptr])
+    call eio%init_in (sample)
 
     allocate (process_instance)
     call process_instance%init (process)
@@ -67941,12 +68348,12 @@ We test the implementation of all I/O methods.
        u, results)
 <<EIO raw: tests>>=
   subroutine eio_raw_2 (u)
+    use processes
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(var_list_t) :: var_list
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -67963,7 +68370,6 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -67989,11 +68395,12 @@ We test the implementation of all I/O methods.
  
     allocate (eio_raw_t :: eio)
     
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
     call event%set (sqme_alt = [2._default, 3._default])
-    call event%set (weight_alt = [2 * event%weight_ref, 3 * event%weight_ref])
+    call event%set (weight_alt = &
+         [2 * event%get_weight_ref (), 3 * event%get_weight_ref ()])
     call event%store_alt_values ()
     call event%check ()
 
@@ -68013,7 +68420,7 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Re-read the event"
     write (u, "(A)")
     
-    call eio%init_in (sample, [process_ptr], data)
+    call eio%init_in (sample, data)
 
     allocate (process_instance)
     call process_instance%init (process)
@@ -68072,8 +68479,9 @@ module eio_checkpoints
 
   use cputime
   use model_data
-  use processes
-  use events
+!  use processes
+!  use events
+  use event_base
   use eio_data
   use eio_base
 
@@ -68167,12 +68575,10 @@ of the current status.
 <<EIO checkpoints: eio checkpoints: TBP>>=
   procedure :: init_out => eio_checkpoints_init_out
 <<EIO checkpoints: procedures>>=
-  subroutine eio_checkpoints_init_out &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_checkpoints_init_out (eio, sample, data, success, extension)
     class(eio_checkpoints_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(in), optional :: data
     logical, intent(out), optional :: success
     if (present (data)) then
@@ -68191,12 +68597,10 @@ of the current status.
 <<EIO checkpoints: eio checkpoints: TBP>>=
   procedure :: init_in => eio_checkpoints_init_in
 <<EIO checkpoints: procedures>>=
-  subroutine eio_checkpoints_init_in &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_checkpoints_init_in (eio, sample, data, success, extension)
     class(eio_checkpoints_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(inout), optional :: data
     logical, intent(out), optional :: success
     call msg_bug ("Event checkpoints: event input not supported")
@@ -68220,11 +68624,11 @@ of the current status.
 <<EIO checkpoints: eio checkpoints: TBP>>=
   procedure :: output => eio_checkpoints_output
 <<EIO checkpoints: procedures>>=
-  subroutine eio_checkpoints_output (eio, event, i_prc, reading)
+  subroutine eio_checkpoints_output (eio, event, i_prc, reading, pacify)
     class(eio_checkpoints_t), intent(inout) :: eio
-    type(event_t), intent(in), target :: event
+    class(generic_event_t), intent(in), target :: event
     integer, intent(in) :: i_prc
-    logical, intent(in), optional :: reading
+    logical, intent(in), optional :: reading, pacify
     logical :: rd
     rd = .false.;  if (present (reading))  rd = reading
     if (eio%active) then
@@ -68318,7 +68722,7 @@ of the current status.
 
   subroutine eio_checkpoints_input_event (eio, event, iostat)
     class(eio_checkpoints_t), intent(inout) :: eio
-    type(event_t), intent(inout), target :: event
+    class(generic_event_t), intent(inout), target :: event
     integer, intent(out) :: iostat
     call msg_bug ("Event checkpoints: event input not supported")
     iostat = 1
@@ -68362,11 +68766,12 @@ We test the implementation of all I/O methods.
        u, results)
 <<EIO checkpoints: tests>>=
   subroutine eio_checkpoints_1 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     class(eio_t), allocatable :: eio
     type(event_sample_data_t) :: data
@@ -68383,7 +68788,6 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -68409,7 +68813,7 @@ We test the implementation of all I/O methods.
        call eio%set_parameters (checkpoint = 4)
     end select
 
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
 
     do i = 1, n_events
        call event%generate (1, [0._default, 0._default])
@@ -69751,10 +70155,11 @@ module hep_events
 
   use model_data
   use particles
-  use processes
+!   use processes
   use hep_common
   use hepmc_interface
-  use events
+!   use events
+  use event_base
 
 <<Standard module head>>
 
@@ -69773,12 +70178,12 @@ Fill the HEPEUP block, given a \whizard\ event object.
   public :: hepeup_from_event
 <<HEP events: procedures>>=
   subroutine hepeup_from_event (event, keep_beams, process_index)
-    type(event_t), intent(in), target :: event
+    class(generic_event_t), intent(in), target :: event
     logical, intent(in), optional :: keep_beams
     integer, intent(in), optional :: process_index
     type(particle_set_t), pointer :: particle_set
     real(default) :: scale, alpha_qcd
-    if (event%has_particle_set ()) then
+    if (event%has_valid_particle_set ()) then
        particle_set => event%get_particle_set_ptr ()
        call hepeup_from_particle_set (particle_set, keep_beams)
        if (present (process_index)) &
@@ -69789,8 +70194,8 @@ Fill the HEPEUP block, given a \whizard\ event object.
        alpha_qcd = event%get_alpha_s ()       
        if (alpha_qcd /= 0) &
             call hepeup_set_event_parameters (alpha_qcd = alpha_qcd)
-       if (event%weight_prc_is_known) then
-          call hepeup_set_event_parameters (weight = event%weight_prc)
+       if (event%weight_prc_is_known ()) then
+          call hepeup_set_event_parameters (weight = event%get_weight_prc ())
        else
           call msg_bug ("HEPEUP: process weight is unknown")
        end if
@@ -69813,26 +70218,24 @@ Note: setting of scale or alpha is not yet supported by the
 <<HEP events: procedures>>=
   subroutine hepeup_to_event &
        (event, fallback_model, process_index, recover_beams)
-    type(event_t), intent(inout), target :: event
+    class(generic_event_t), intent(inout), target :: event
     class(model_data_t), intent(in), target :: fallback_model
     integer, intent(out), optional :: process_index
     logical, intent(in), optional :: recover_beams
-    type(process_t), pointer :: process
     class(model_data_t), pointer :: model
     real(default) :: weight, scale, alpha_qcd
     type(particle_set_t) :: particle_set
-    process => event%get_process_ptr ()
-    model => process%get_model_ptr ()
+    model => event%get_model_ptr ()
     call hepeup_to_particle_set &
          (particle_set, recover_beams, model, fallback_model)
-    call event%set_particle_set_hard_proc (particle_set)
+    call event%set_hard_particle_set (particle_set)
     call particle_set_final (particle_set)
     if (present (process_index)) then
        call hepeup_get_event_parameters (proc_id = process_index)
     end if
     call hepeup_get_event_parameters (weight = weight, &
          scale = scale, alpha_qcd = alpha_qcd)
-    call event%set (weight_ref = weight)
+    call event%set_weight_ref (weight)
 !!! Not implemented yet:
 !     if (scale > 0)  call event%set_scales (scale)
 !     if (alpha_qcd > 0)  call event%set_alpha_qcd (alpha_qcd)
@@ -69844,17 +70247,17 @@ Note: setting of scale or alpha is not yet supported by the
   public :: hepevt_from_event
 <<HEP events: procedures>>=
   subroutine hepevt_from_event (event, i_evt, keep_beams)
-    type(event_t), intent(in), target :: event
+    class(generic_event_t), intent(in), target :: event
     integer, intent(in), optional :: i_evt
     logical, intent(in), optional :: keep_beams  
     type(particle_set_t), pointer :: particle_set
-    if (event%has_particle_set ()) then
+    if (event%has_valid_particle_set ()) then
        particle_set => event%get_particle_set_ptr ()
        call hepevt_from_particle_set (particle_set, keep_beams)
-       if (event%weight_prc_is_known .and. event%sqme_prc_is_known) then
+       if (event%weight_prc_is_known () .and. event%sqme_prc_is_known ()) then
           call hepevt_set_event_parameters ( &
-               weight = event%weight_prc, &
-               function_value = event%sqme_prc)
+               weight = event%get_weight_prc (), &
+               function_value = event%get_sqme_prc ())
        else
           call msg_bug ("HEPEVT: event weight and/or sqme unknown")
        end if
@@ -69872,22 +70275,19 @@ Note: setting of scale or alpha is not yet supported by the
 <<HEP events: procedures>>=
   subroutine hepmc_to_event &
        (event, hepmc_event, fallback_model, process_index, recover_beams)
-    type(event_t), intent(inout), target :: event
+    class(generic_event_t), intent(inout), target :: event
     type(hepmc_event_t), intent(inout) :: hepmc_event
     class(model_data_t), intent(in), target :: fallback_model
     integer, intent(out), optional :: process_index
     logical, intent(in), optional :: recover_beams
-    type(process_t), pointer :: process
     class(model_data_t), pointer :: model
     real(default) :: weight, scale, alpha_qcd
     type(particle_set_t) :: particle_set
-    process => event%get_process_ptr ()
-    model => process%get_model_ptr ()
+    model => event%get_model_ptr ()
     call particle_set_init &
          (particle_set, hepmc_event, model, fallback_model, PRT_DEFINITE_HELICITY)
-    call event%set_particle_set_hard_proc (particle_set)
+    call event%set_hard_particle_set (particle_set)
     call particle_set_final (particle_set)
-    call event%set ()
 !!! Not implemented yet:
 !     if (scale > 0)  call event%set_scales (scale)
 !     if (alpha_qcd > 0)  call event%set_alpha_qcd (alpha_qcd)
@@ -69914,9 +70314,10 @@ module eio_lhef
   use lorentz
   use model_data
   use particles
-  use beams
-  use processes
-  use events
+!  use beams
+!  use processes
+!  use events
+  use event_base
   use eio_data
   use eio_base
   use hep_common
@@ -70230,12 +70631,10 @@ are specific for \whizard.
 <<EIO LHEF: eio lhef: TBP>>=
   procedure :: init_out => eio_lhef_init_out
 <<EIO LHEF: procedures>>=
-  subroutine eio_lhef_init_out &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_lhef_init_out (eio, sample, data, success, extension)
     class(eio_lhef_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(in), optional :: data
     logical, intent(out), optional :: success
     integer :: u, i
@@ -70281,12 +70680,10 @@ For input, we do not (yet?) support split event files.
 <<EIO LHEF: eio lhef: TBP>>=
   procedure :: init_in => eio_lhef_init_in
 <<EIO LHEF: procedures>>=
-  subroutine eio_lhef_init_in &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_lhef_init_in (eio, sample, data, success, extension)
     class(eio_lhef_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(inout), optional :: data
     logical, intent(out), optional :: success
     logical :: exist, ok, closing
@@ -70425,11 +70822,11 @@ squared matrix element, then the particle set.
 <<EIO LHEF: eio lhef: TBP>>=
   procedure :: output => eio_lhef_output
 <<EIO LHEF: procedures>>=
-  subroutine eio_lhef_output (eio, event, i_prc, reading)
+  subroutine eio_lhef_output (eio, event, i_prc, reading, pacify)
     class(eio_lhef_t), intent(inout) :: eio
-    type(event_t), intent(in), target :: event
+    class(generic_event_t), intent(in), target :: event
     integer, intent(in) :: i_prc
-    logical, intent(in), optional :: reading
+    logical, intent(in), optional :: reading, pacify
     integer :: u
     u = given_output_unit (eio%unit);  if (u < 0)  return
     if (eio%writing) then
@@ -70530,7 +70927,7 @@ the matrix element.
 <<EIO LHEF: procedures>>=
   subroutine eio_lhef_input_event (eio, event, iostat)
     class(eio_lhef_t), intent(inout) :: eio
-    type(event_t), intent(inout), target :: event
+    class(generic_event_t), intent(inout), target :: event
     integer, intent(out) :: iostat
     type(particle_set_t), pointer :: pset
     type(string_t) :: s
@@ -70766,29 +71163,29 @@ are collected in a common tag.
 <<EIO LHEF: procedures>>=
   subroutine eio_lhef_write_event_20 (eio, event)
     class(eio_lhef_t), intent(in) :: eio
-    type(event_t), intent(in) :: event
+    class(generic_event_t), intent(in) :: event
     type(string_t) :: s
     integer :: i, u
     u = eio%unit
     if (eio%write_sqme_ref) then
-       s = str (event%sqme_ref)
+       s = str (event%get_sqme_ref ())
        call eio%tag_sqme_ref%write (s, u);  write (u, *)
     end if
     if (eio%write_sqme_prc) then
-       s = str (event%sqme_prc)
+       s = str (event%get_sqme_prc ())
        call eio%tag_sqme_prc%write (s, u);  write (u, *)
     end if
     if (eio%n_alt > 0) then
        if (eio%write_sqme_alt) then
-          s = str (event%sqme_alt(1))
+          s = str (event%get_sqme_alt(1))
           do i = 2, eio%n_alt
-             s = s // " " // str (event%sqme_alt(i));  write (u, *)
+             s = s // " " // str (event%get_sqme_alt(i));  write (u, *)
           end do
           call eio%tag_sqme_alt(1)%write (s, u)
        end if
-       s = str (event%weight_alt(1))
+       s = str (event%get_weight_alt(1))
        do i = 2, eio%n_alt
-          s = s // " " // str (event%weight_alt(i));  write (u, *)
+          s = s // " " // str (event%get_weight_alt(i));  write (u, *)
        end do
        call eio%tag_wgts_alt(1)%write (s, u)
     end if
@@ -70804,7 +71201,7 @@ tags written by the above writer, are skipped.
 <<EIO LHEF: procedures>>=
   subroutine eio_lhef_read_event_20 (eio, event)
     class(eio_lhef_t), intent(inout) :: eio
-    type(event_t), intent(inout) :: event
+    class(generic_event_t), intent(inout) :: event
     type(string_t) :: content
     logical :: found, closing
     SCAN_EVENT_TAGS: do
@@ -70814,7 +71211,7 @@ tags written by the above writer, are skipped.
           call eio%tag_weight%read_content (eio%cstream, content, closing)
           if (.not. closing)  call err_weight
           if (eio%tag_weight%get_attribute (1) == "sqme_prc") then
-             call event%set (sqme_ref = read_rval (content))
+             call event%set_sqme_ref (read_rval (content))
           end if
           cycle SCAN_EVENT_TAGS
        end if
@@ -70963,27 +71360,27 @@ maximum length.
 <<EIO LHEF: procedures>>=
   subroutine eio_lhef_write_event_30 (eio, event)
     class(eio_lhef_t), intent(in) :: eio
-    type(event_t), intent(in) :: event
+    class(generic_event_t), intent(in) :: event
     type(string_t) :: s
     integer :: u, i
     u = eio%unit
     s = ""
     if (eio%write_sqme_ref) then
-       s = s // str (event%sqme_ref) // " "
+       s = s // str (event%get_sqme_ref ()) // " "
     end if
     if (eio%write_sqme_prc) then
-       s = s // str (event%sqme_prc) // " "
+       s = s // str (event%get_sqme_prc ()) // " "
     end if
     if (eio%n_alt > 0) then
        if (eio%write_sqme_alt) then
-          s = s // str (event%sqme_alt(1)) // " "
+          s = s // str (event%get_sqme_alt(1)) // " "
           do i = 2, eio%n_alt
-             s = s // str (event%sqme_alt(i)) // " "
+             s = s // str (event%get_sqme_alt(i)) // " "
           end do
        end if
-       s = s // str (event%weight_alt(1)) // " "
+       s = s // str (event%get_weight_alt(1)) // " "
        do i = 2, eio%n_alt
-          s = s // str (event%weight_alt(i)) // " "
+          s = s // str (event%get_weight_alt(i)) // " "
        end do
     end if
     if (len_trim (s) > 0) then
@@ -71002,7 +71399,7 @@ tags written by the above writer, are skipped.
 <<EIO LHEF: procedures>>=
   subroutine eio_lhef_read_event_30 (eio, event)
     class(eio_lhef_t), intent(inout) :: eio
-    type(event_t), intent(inout) :: event
+    class(generic_event_t), intent(inout) :: event
     type(string_t) :: content, string
     logical :: found, closing
     integer :: i
@@ -71017,7 +71414,7 @@ tags written by the above writer, are skipped.
                 call split (content, string, " ")
                 content = adjustl (content)
                 if (i == eio%i_weight_sqme) then
-                   call event%set (sqme_ref = read_rval (string))
+                   call event%set_sqme_ref (read_rval (string))
                    exit SCAN_WEIGHTS
                 end if
              end do SCAN_WEIGHTS
@@ -71107,11 +71504,12 @@ according to version 1.0.
        u, results)
 <<EIO LHEF: tests>>=
   subroutine eio_lhef_1 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -71128,7 +71526,6 @@ according to version 1.0.
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -71161,7 +71558,7 @@ according to version 1.0.
        call eio%set_parameters ()
     end select
     
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
 
     call eio%output (event, i_prc = 1)
@@ -71228,11 +71625,12 @@ implement some of them.
        u, results)
 <<EIO LHEF: tests>>=
   subroutine eio_lhef_2 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -71249,7 +71647,6 @@ implement some of them.
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -71282,7 +71679,7 @@ implement some of them.
        call eio%set_parameters (version = "2.0", write_sqme_prc = .true.)
     end select
     
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
 
 
@@ -71333,11 +71730,12 @@ and suggests a new treatment of weights.
        u, results)
 <<EIO LHEF: tests>>=
   subroutine eio_lhef_3 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -71354,7 +71752,6 @@ and suggests a new treatment of weights.
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -71387,7 +71784,7 @@ and suggests a new treatment of weights.
        call eio%set_parameters (version = "3.0", write_sqme_prc = .true.)
     end select
     
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
 
 
@@ -71437,13 +71834,14 @@ Check input of a version-1.0 conforming LHEF file.
        u, results)
 <<EIO LHEF: tests>>=
   subroutine eio_lhef_4 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(model_t), pointer :: fallback_model
     type(os_data_t) :: os_data
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -71505,7 +71903,6 @@ Check input of a version-1.0 conforming LHEF file.
     call model%init_test ()
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -71534,7 +71931,7 @@ Check input of a version-1.0 conforming LHEF file.
     write (u, "(A)")  "* Initialize and read header"
     write (u, "(A)")
 
-    call eio%init_in (sample, [process_ptr], data)
+    call eio%init_in (sample, data)
     call eio%write (u)
     
     write (u, *)
@@ -71601,13 +71998,14 @@ Check input of a version-2.0 conforming LHEF file.
        u, results)
 <<EIO LHEF: tests>>=
   subroutine eio_lhef_5 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(model_t), pointer :: fallback_model
     type(os_data_t) :: os_data
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -71669,7 +72067,6 @@ Check input of a version-2.0 conforming LHEF file.
     call model%init_test ()
 
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -71698,7 +72095,7 @@ Check input of a version-2.0 conforming LHEF file.
     write (u, "(A)")  "* Initialize and read header"
     write (u, "(A)")
 
-    call eio%init_in (sample, [process_ptr], data)
+    call eio%init_in (sample, data)
     call eio%write (u)
     
     write (u, *)
@@ -71765,13 +72162,14 @@ Check input of a version-3.0 conforming LHEF file.
        u, results)
 <<EIO LHEF: tests>>=
   subroutine eio_lhef_6 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(model_t), pointer :: fallback_model
     type(os_data_t) :: os_data
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -71834,7 +72232,6 @@ Check input of a version-3.0 conforming LHEF file.
     call model%init_test ()
 
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -71863,7 +72260,7 @@ Check input of a version-3.0 conforming LHEF file.
     write (u, "(A)")  "* Initialize and read header"
     write (u, "(A)")
 
-    call eio%init_in (sample, [process_ptr], data)
+    call eio%init_in (sample, data)
     call eio%write (u)
     
     write (u, *)
@@ -71941,9 +72338,10 @@ module eio_hepmc
   use model_data
   use particles
   use subevents
-  use beams
-  use processes
-  use events
+!  use beams
+!  use processes
+!  use events
+  use event_base
   use hep_events
   use eio_data
   use eio_base
@@ -72119,12 +72517,10 @@ one.  If the file needs a header, repeat it for the new file.
 <<EIO HepMC: eio hepmc: TBP>>=
   procedure :: init_out => eio_hepmc_init_out
 <<EIO HepMC: procedures>>=
-  subroutine eio_hepmc_init_out &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_hepmc_init_out (eio, sample, data, success, extension)
     class(eio_hepmc_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(in), optional :: data
     logical, intent(out), optional :: success
     call eio%set_splitting (data)    
@@ -72143,12 +72539,10 @@ event files.
 <<EIO HepMC: eio hepmc: TBP>>=
   procedure :: init_in => eio_hepmc_init_in
 <<EIO HepMC: procedures>>=
-  subroutine eio_hepmc_init_in & 
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_hepmc_init_in (eio, sample, data, success, extension)
     class(eio_hepmc_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(inout), optional :: data
     logical, intent(out), optional :: success
     logical :: exist
@@ -72181,17 +72575,17 @@ event files.
 <<EIO HepMC: eio hepmc: TBP>>=
   procedure :: output => eio_hepmc_output
 <<EIO HepMC: procedures>>=
-  subroutine eio_hepmc_output (eio, event, i_prc, reading)
+  subroutine eio_hepmc_output (eio, event, i_prc, reading, pacify)
     class(eio_hepmc_t), intent(inout) :: eio
-    type(event_t), intent(in), target :: event
+    class(generic_event_t), intent(in), target :: event
     integer, intent(in) :: i_prc
-    logical, intent(in), optional :: reading
+    logical, intent(in), optional :: reading, pacify
     type(particle_set_t), pointer :: pset_ptr
     if (eio%writing) then
        pset_ptr => event%get_particle_set_ptr ()
        call hepmc_event_init (eio%hepmc_event, &
             proc_id = eio%proc_num_id (i_prc), &
-            event_id = event%expr%index)
+            event_id = event%get_index ())
        call hepmc_event_from_particle_set (eio%hepmc_event, pset_ptr)
        call hepmc_event_set_scale (eio%hepmc_event, event%get_fac_scale ())
        call hepmc_event_set_alpha_qcd (eio%hepmc_event, event%get_alpha_s ())
@@ -72241,7 +72635,7 @@ event files.
 
   subroutine eio_hepmc_input_event (eio, event, iostat)
     class(eio_hepmc_t), intent(inout) :: eio
-    type(event_t), intent(inout), target :: event
+    class(generic_event_t), intent(inout), target :: event
     integer, intent(out) :: iostat
     type(particle_set_t), pointer :: pset
     logical :: ok    
@@ -72306,11 +72700,12 @@ We test the implementation of all I/O methods.
        u, results)
 <<EIO HepMC: tests>>=
   subroutine eio_hepmc_1 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -72327,7 +72722,6 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)        
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -72359,7 +72753,7 @@ We test the implementation of all I/O methods.
        call eio%set_parameters ()
     end select
     
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
 
     call eio%output (event, i_prc = 1)
@@ -72446,13 +72840,14 @@ We test the implementation of all I/O methods.
        u, results)
 <<EIO HepMC: tests>>=
   subroutine eio_hepmc_2 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(model_t), pointer :: fallback_model
     type(os_data_t) :: os_data
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -72504,7 +72899,6 @@ We test the implementation of all I/O methods.
     call fallback_model%read (var_str ("SM_hadrons.mdl"), os_data)
 
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -72533,7 +72927,7 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Initialize"
     write (u, "(A)")
              
-    call eio%init_in (sample, [process_ptr], data)
+    call eio%init_in (sample, data)
     call eio%write (u)    
     
     write (u, "(A)")
@@ -72601,10 +72995,11 @@ module eio_lcio
   use model_data
   use particles
   use subevents
-  use beams
-  use processes
-  use events
+!  use beams
+!  use processes
+!  use events
   use models
+  use event_base
   use hep_events
   use eio_data
   use eio_base
@@ -72640,6 +73035,7 @@ index and the proper event data.
      logical :: keep_beams = .false.
      logical :: recover_beams = .false.
      type(lcio_writer_t) :: lcio_writer
+     type(lcio_run_header_t) :: lcio_run_hdr
      type(lcio_event_t) :: lcio_event
      integer, dimension(:), allocatable :: proc_num_id
    contains
@@ -72739,7 +73135,7 @@ one.  If the file needs a header, repeat it for the new file.
             char (eio%filename), "'"
        call msg_message ()
        call lcio_writer_close (eio%lcio_writer)
-       call lcio_writer_open_out (eio%lcio_writer, eio%filename)
+       call lcio_writer_open_out (eio%lcio_writer, eio%filename)       
     end if
   end subroutine eio_lcio_split_out
   
@@ -72782,12 +73178,10 @@ one.  If the file needs a header, repeat it for the new file.
 <<EIO LCIO: eio lcio: TBP>>=
   procedure :: init_out => eio_lcio_init_out
 <<EIO LCIO: procedures>>=
-  subroutine eio_lcio_init_out &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_lcio_init_out (eio, sample, data, success, extension)
     class(eio_lcio_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(in), optional :: data
     logical, intent(out), optional :: success
     call eio%set_splitting (data)    
@@ -72797,6 +73191,7 @@ one.  If the file needs a header, repeat it for the new file.
     call msg_message ()
     eio%writing = .true.
     call lcio_writer_open_out (eio%lcio_writer, eio%filename)
+    call lcio_run_header_init (eio%lcio_run_hdr)
     if (present (success))  success = .true.
   end subroutine eio_lcio_init_out
     
@@ -72806,12 +73201,10 @@ event files.
 <<EIO LCIO: eio lcio: TBP>>=
   procedure :: init_in => eio_lcio_init_in
 <<EIO LCIO: procedures>>=
-  subroutine eio_lcio_init_in & 
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_lcio_init_in (eio, sample, data, success, extension)
     class(eio_lcio_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(inout), optional :: data
     logical, intent(out), optional :: success
     logical :: exist
@@ -72840,21 +73233,21 @@ event files.
   end subroutine eio_lcio_switch_inout
   
 @ %def eio_lcio_switch_inout
-@ Output an event to the allocated HepMC output stream.
+@ Output an event to the allocated LCIO writer.
 <<EIO LCIO: eio lcio: TBP>>=
   procedure :: output => eio_lcio_output
 <<EIO LCIO: procedures>>=
-  subroutine eio_lcio_output (eio, event, i_prc, reading)
+  subroutine eio_lcio_output (eio, event, i_prc, reading, pacify)
     class(eio_lcio_t), intent(inout) :: eio
-    type(event_t), intent(in), target :: event
+    class(generic_event_t), intent(in), target :: event
     integer, intent(in) :: i_prc
-    logical, intent(in), optional :: reading
+    logical, intent(in), optional :: reading, pacify
     type(particle_set_t), pointer :: pset_ptr
     if (eio%writing) then
        pset_ptr => event%get_particle_set_ptr ()
        call lcio_event_init (eio%lcio_event, &
              proc_id = eio%proc_num_id (i_prc), &
-             event_id = event%expr%index)
+             event_id = event%get_index ())
        !!! call hepmc_event_from_particle_set (eio%hepmc_event, pset_ptr)
        !!! call hepmc_event_set_scale (eio%hepmc_event, event%get_fac_scale ())
        !!! call hepmc_event_set_alpha_qcd (eio%hepmc_event, event%get_alpha_s ())
@@ -72904,7 +73297,7 @@ event files.
 
   subroutine eio_lcio_input_event (eio, event, iostat)
     class(eio_lcio_t), intent(inout) :: eio
-    type(event_t), intent(inout), target :: event
+    class(generic_event_t), intent(inout), target :: event
     integer, intent(out) :: iostat
     type(particle_set_t), pointer :: pset
     logical :: ok    
@@ -72970,11 +73363,12 @@ We test the implementation of all I/O methods.
        u, results)
 <<EIO LCIO: tests>>=
   subroutine eio_lcio_1 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -72991,7 +73385,6 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)        
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -73023,7 +73416,7 @@ We test the implementation of all I/O methods.
        call eio%set_parameters ()
     end select
     
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
 
     call eio%output (event, i_prc = 1)
@@ -73092,13 +73485,14 @@ We test the implementation of all I/O methods.
        u, results)
 <<EIO LCIO: tests>>=
   subroutine eio_lcio_2 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(model_t), pointer :: fallback_model
     type(os_data_t) :: os_data
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -73151,7 +73545,6 @@ We test the implementation of all I/O methods.
     call model%init_test ()
 
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -73180,7 +73573,7 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Initialize"
     write (u, "(A)")
              
-    call eio%init_in (sample, [process_ptr], data)
+    call eio%init_in (sample, data)
     call eio%write (u)    
     
     write (u, "(A)")
@@ -73246,13 +73639,14 @@ module eio_ascii
   use lorentz
   use model_data
   use particles
-  use beams
-  use processes
-  use events
-  use eio_data
-  use eio_base
+!  use beams
+!  use processes
+!  use events
+  use event_base
   use hep_common
   use hep_events
+  use eio_data
+  use eio_base
 
 <<Standard module head>>
 
@@ -73492,12 +73886,10 @@ that are not covered by the HEPRUP definition.
 <<EIO ascii: eio ascii: TBP>>=
   procedure :: init_out => eio_ascii_init_out
 <<EIO ascii: procedures>>=
-  subroutine eio_ascii_init_out &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_ascii_init_out (eio, sample, data, success, extension)
     class(eio_ascii_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(in), optional :: data
     logical, intent(out), optional :: success
     integer :: i
@@ -73590,12 +73982,10 @@ particular, many formats require unweighted events.
 <<EIO ascii: eio ascii: TBP>>=
   procedure :: init_in => eio_ascii_init_in
 <<EIO ascii: procedures>>=
-  subroutine eio_ascii_init_in &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_ascii_init_in (eio, sample, data, success, extension)
     class(eio_ascii_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(inout), optional :: data
     logical, intent(out), optional :: success
     call msg_bug ("ASCII: event input not supported")
@@ -73647,11 +74037,11 @@ squared matrix element, then the particle set.
 <<EIO ascii: eio ascii: TBP>>=
   procedure :: output => eio_ascii_output
 <<EIO ascii: procedures>>=
-  subroutine eio_ascii_output (eio, event, i_prc, reading)
+  subroutine eio_ascii_output (eio, event, i_prc, reading, pacify)
     class(eio_ascii_t), intent(inout) :: eio
-    type(event_t), intent(in), target :: event
+    class(generic_event_t), intent(in), target :: event
     integer, intent(in) :: i_prc
-    logical, intent(in), optional :: reading
+    logical, intent(in), optional :: reading, pacify
     if (eio%writing) then
        select type (eio)
        type is (eio_ascii_lha_t)
@@ -73669,10 +74059,10 @@ squared matrix element, then the particle set.
                show_process = .false., &
                show_transforms = .false., &
                show_decay = .false., &
-               verbose = .false.)
+               verbose = .false., testflag = pacify)
        type is (eio_ascii_athena_t)
           call hepevt_from_event (event, &
-               i_evt = event%expr%index, &          
+               i_evt = event%get_index (), &          
                keep_beams = eio%keep_beams)
           call hepevt_write_athena (eio%unit)                    
        type is (eio_ascii_debug_t)
@@ -73683,27 +74073,27 @@ squared matrix element, then the particle set.
                verbose = eio%verbose)
        type is (eio_ascii_hepevt_t)
           call hepevt_from_event (event, &
-               i_evt = event%expr%index, &                         
+               i_evt = event%get_index (), &                         
                keep_beams = eio%keep_beams)
           call hepevt_write_hepevt (eio%unit)                              
        type is (eio_ascii_hepevt_verb_t)
           call hepevt_from_event (event, &
-               i_evt = event%expr%index, &                         
+               i_evt = event%get_index (), &                         
                keep_beams = eio%keep_beams)
           call hepevt_write_verbose (eio%unit)
        type is (eio_ascii_long_t)
           call hepevt_from_event (event, &
-               i_evt = event%expr%index, & 
+               i_evt = event%get_index (), & 
                keep_beams = eio%keep_beams)
           call hepevt_write_ascii (eio%unit, .true.)                           
        type is (eio_ascii_mokka_t)
           call hepevt_from_event (event, &
-               i_evt = event%expr%index, &                         
+               i_evt = event%get_index (), &                         
                keep_beams = eio%keep_beams)
           call hepevt_write_mokka (eio%unit)                              
        type is (eio_ascii_short_t)
           call hepevt_from_event (event, &
-               i_evt = event%expr%index, &  
+               i_evt = event%get_index (), &  
                keep_beams = eio%keep_beams)
           call hepevt_write_ascii (eio%unit, .false.)                    
        end select       
@@ -73730,7 +74120,7 @@ squared matrix element, then the particle set.
 
   subroutine eio_ascii_input_event (eio, event, iostat)
     class(eio_ascii_t), intent(inout) :: eio
-    type(event_t), intent(inout), target :: event
+    class(generic_event_t), intent(inout), target :: event
     integer, intent(out) :: iostat
     call msg_bug ("ASCII: event input not supported")
     iostat = 1
@@ -73759,11 +74149,12 @@ We test the implementation of all I/O methods, method [[ascii]]:
        u, results)
 <<EIO ascii: tests>>=
   subroutine eio_ascii_1 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -73781,7 +74172,6 @@ We test the implementation of all I/O methods, method [[ascii]]:
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -73811,7 +74201,7 @@ We test the implementation of all I/O methods, method [[ascii]]:
     select type (eio)
     class is (eio_ascii_t);  call eio%set_parameters ()
     end select
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -73873,11 +74263,12 @@ We test the implementation of all I/O methods, method [[athena]]:
        u, results)
 <<EIO ascii: tests>>=
   subroutine eio_ascii_2 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -73895,7 +74286,6 @@ We test the implementation of all I/O methods, method [[athena]]:
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -73925,7 +74315,7 @@ We test the implementation of all I/O methods, method [[athena]]:
     select type (eio)
     class is (eio_ascii_t);  call eio%set_parameters ()
     end select
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -73987,11 +74377,12 @@ We test the implementation of all I/O methods, method [[debug]]:
        u, results)
 <<EIO ascii: tests>>=
   subroutine eio_ascii_3 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -74009,7 +74400,6 @@ We test the implementation of all I/O methods, method [[debug]]:
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -74039,7 +74429,7 @@ We test the implementation of all I/O methods, method [[debug]]:
     select type (eio)
     class is (eio_ascii_t);  call eio%set_parameters ()
     end select
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -74101,11 +74491,12 @@ We test the implementation of all I/O methods, method [[hepevt]]:
        u, results)
 <<EIO ascii: tests>>=
   subroutine eio_ascii_4 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -74123,7 +74514,6 @@ We test the implementation of all I/O methods, method [[hepevt]]:
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -74153,7 +74543,7 @@ We test the implementation of all I/O methods, method [[hepevt]]:
     select type (eio)
     class is (eio_ascii_t);  call eio%set_parameters ()
     end select
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -74215,11 +74605,12 @@ We test the implementation of all I/O methods, method [[lha]] (old LHA):
        u, results)
 <<EIO ascii: tests>>=
   subroutine eio_ascii_5 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -74237,7 +74628,6 @@ We test the implementation of all I/O methods, method [[lha]] (old LHA):
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -74267,7 +74657,7 @@ We test the implementation of all I/O methods, method [[lha]] (old LHA):
     select type (eio)
     class is (eio_ascii_t);  call eio%set_parameters ()
     end select
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -74329,11 +74719,12 @@ We test the implementation of all I/O methods, method [[long]]:
        u, results)
 <<EIO ascii: tests>>=
   subroutine eio_ascii_6 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -74351,7 +74742,6 @@ We test the implementation of all I/O methods, method [[long]]:
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -74381,7 +74771,7 @@ We test the implementation of all I/O methods, method [[long]]:
     select type (eio)
     class is (eio_ascii_t);  call eio%set_parameters ()
     end select
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -74443,11 +74833,12 @@ We test the implementation of all I/O methods, method [[mokka]]:
        u, results)
 <<EIO ascii: tests>>=
   subroutine eio_ascii_7 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -74465,7 +74856,6 @@ We test the implementation of all I/O methods, method [[mokka]]:
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -74495,7 +74885,7 @@ We test the implementation of all I/O methods, method [[mokka]]:
     select type (eio)
     class is (eio_ascii_t);  call eio%set_parameters ()
     end select
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -74557,11 +74947,12 @@ We test the implementation of all I/O methods, method [[short]]:
        u, results)
 <<EIO ascii: tests>>=
   subroutine eio_ascii_8 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -74579,7 +74970,6 @@ We test the implementation of all I/O methods, method [[short]]:
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -74609,7 +74999,7 @@ We test the implementation of all I/O methods, method [[short]]:
     select type (eio)
     class is (eio_ascii_t);  call eio%set_parameters ()
     end select
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -74672,11 +75062,12 @@ LHA) in verbose version:
        u, results)
 <<EIO ascii: tests>>=
   subroutine eio_ascii_9 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -74694,7 +75085,6 @@ LHA) in verbose version:
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -74724,7 +75114,7 @@ LHA) in verbose version:
     select type (eio)
     class is (eio_ascii_t);  call eio%set_parameters ()
     end select
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -74786,11 +75176,12 @@ We test the implementation of all I/O methods, method [[hepevt_verb]]:
        u, results)
 <<EIO ascii: tests>>=
   subroutine eio_ascii_10 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -74808,7 +75199,6 @@ We test the implementation of all I/O methods, method [[hepevt_verb]]:
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -74838,7 +75228,7 @@ We test the implementation of all I/O methods, method [[hepevt_verb]]:
     select type (eio)
     class is (eio_ascii_t);  call eio%set_parameters ()
     end select
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -74912,13 +75302,14 @@ module eio_stdhep
   use lorentz
   use model_data
   use particles
-  use beams
-  use processes
-  use events
-  use eio_data
-  use eio_base
+!  use beams
+!  use processes
+!  use events
+  use event_base
   use hep_common
   use hep_events
+  use eio_data
+  use eio_base
 
 <<Standard module head>>
 
@@ -75090,12 +75481,10 @@ the common block contents are still intact.)
 <<EIO stdhep: eio stdhep: TBP>>=
   procedure :: init_out => eio_stdhep_init_out
 <<EIO stdhep: procedures>>=
-  subroutine eio_stdhep_init_out &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_stdhep_init_out (eio, sample, data, success, extension)
     class(eio_stdhep_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(in), optional :: data
     logical, intent(out), optional :: success
     integer :: i
@@ -75138,12 +75527,10 @@ the common block contents are still intact.)
 <<EIO stdhep: eio stdhep: TBP>>=
   procedure :: init_in => eio_stdhep_init_in
 <<EIO stdhep: procedures>>=
-  subroutine eio_stdhep_init_in &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_stdhep_init_in (eio, sample, data, success, extension)
     class(eio_stdhep_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(inout), optional :: data
     logical, intent(out), optional :: success
     
@@ -75169,11 +75556,11 @@ squared matrix element, then the particle set.
 <<EIO stdhep: eio stdhep: TBP>>=
   procedure :: output => eio_stdhep_output
 <<EIO stdhep: procedures>>=
-  subroutine eio_stdhep_output (eio, event, i_prc, reading)
+  subroutine eio_stdhep_output (eio, event, i_prc, reading, pacify)
     class(eio_stdhep_t), intent(inout) :: eio
-    type(event_t), intent(in), target :: event
+    class(generic_event_t), intent(in), target :: event
     integer, intent(in) :: i_prc
-    logical, intent(in), optional :: reading
+    logical, intent(in), optional :: reading, pacify
     if (eio%writing) then
        select type (eio)
        type is (eio_stdhep_hepeup_t)
@@ -75183,7 +75570,7 @@ squared matrix element, then the particle set.
           call stdhep_write (STDHEP_HEPEUP)
        type is (eio_stdhep_hepevt_t)
           call hepevt_from_event (event, &
-               i_evt = event%expr%index, &                         
+               i_evt = event%get_index (), &                         
                keep_beams = eio%keep_beams)
           call stdhep_write (STDHEP_HEPEVT)                              
        end select       
@@ -75210,7 +75597,7 @@ squared matrix element, then the particle set.
 
   subroutine eio_stdhep_input_event (eio, event, iostat)
     class(eio_stdhep_t), intent(inout) :: eio
-    type(event_t), intent(inout), target :: event
+    class(generic_event_t), intent(inout), target :: event
     integer, intent(out) :: iostat
     call msg_bug ("STDHEP: event input not supported")
     iostat = 1
@@ -75289,11 +75676,12 @@ We test the implementation of the STDHEP HEPEVT I/O method:
        u, results)
 <<EIO stdhep: tests>>=
   subroutine eio_stdhep_1 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -75311,7 +75699,6 @@ We test the implementation of the STDHEP HEPEVT I/O method:
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -75342,7 +75729,7 @@ We test the implementation of the STDHEP HEPEVT I/O method:
        call eio%set_parameters ()
     end select
     
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -75407,11 +75794,12 @@ We test the implementation of the STDHEP HEPEUP I/O method:
        u, results)
 <<EIO stdhep: tests>>=
   subroutine eio_stdhep_2 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -75429,7 +75817,6 @@ We test the implementation of the STDHEP HEPEUP I/O method:
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -75460,7 +75847,7 @@ We test the implementation of the STDHEP HEPEUP I/O method:
        call eio%set_parameters ()
     end select    
     
-    call eio%init_out (sample, [process_ptr], data)
+    call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
     call event%evaluate_expressions ()
 
@@ -75539,9 +75926,10 @@ module eio_weights
   use variables
   use model_data
   use particles
-  use beams
-  use processes
-  use events
+!  use beams
+!  use processes
+!  use events
+  use event_base
   use eio_data
   use eio_base
 
@@ -75629,12 +76017,10 @@ of the current object status.
 <<EIO weights: eio weights: TBP>>=
   procedure :: init_out => eio_weights_init_out
 <<EIO weights: procedures>>=
-  subroutine eio_weights_init_out &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_weights_init_out (eio, sample, data, success, extension)
     class(eio_weights_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(in), optional :: data
     logical, intent(out), optional :: success
     if (present(extension)) then
@@ -75658,12 +76044,10 @@ of the current object status.
 <<EIO weights: eio weights: TBP>>=
   procedure :: init_in => eio_weights_init_in
 <<EIO weights: procedures>>=
-  subroutine eio_weights_init_in &
-       (eio, sample, process_ptr, data, success, extension)
+  subroutine eio_weights_init_in (eio, sample, data, success, extension)
     class(eio_weights_t), intent(inout) :: eio
     type(string_t), intent(in) :: sample
     type(string_t), intent(in), optional :: extension
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(event_sample_data_t), intent(inout), optional :: data
     logical, intent(out), optional :: success
     call msg_bug ("Weight stream: event input not supported")
@@ -75694,32 +76078,32 @@ a new calculation, and thus qualifies as [[sqme_prc]].
 <<EIO weights: eio weights: TBP>>=
   procedure :: output => eio_weights_output
 <<EIO weights: procedures>>=
-  subroutine eio_weights_output (eio, event, i_prc, reading)
+  subroutine eio_weights_output (eio, event, i_prc, reading, pacify)
     class(eio_weights_t), intent(inout) :: eio
-    type(event_t), intent(in), target :: event
+    class(generic_event_t), intent(in), target :: event
     integer, intent(in) :: i_prc
-    logical, intent(in), optional :: reading
+    logical, intent(in), optional :: reading, pacify
     integer :: i_mci, i_term, n_alt, i
     real(default) :: weight, sqme_ref, sqme_prc
     if (eio%writing) then
-       i_mci = event%get_i_mci ()
-       i_term = event%get_i_term ()
-       weight = event%weight_prc
-       sqme_ref = event%sqme_ref
-       sqme_prc = event%sqme_prc
-       n_alt = event%n_alt
+!       i_mci = event%get_i_mci ()
+!       i_term = event%get_i_term ()
+       weight = event%get_weight_prc ()
+       sqme_ref = event%get_sqme_ref ()
+       sqme_prc = event%get_sqme_prc ()
+       n_alt = event%get_n_alt ()
 1      format (I0,3(1x,ES17.10),3(1x,I0))
 2      format (I0,3(1x,ES15.8),3(1x,I0))       
        if (eio%pacify) then
           write (eio%unit, 2)  0, weight, sqme_prc, sqme_ref, &
-               i_prc, i_mci, i_term
+               i_prc !, i_mci, i_term
        else
           write (eio%unit, 1)  0, weight, sqme_prc, sqme_ref, &
-               i_prc, i_mci, i_term
+               i_prc !, i_mci, i_term
        end if
        do i = 1, n_alt
-          weight = event%weight_alt(i)
-          sqme_prc = event%sqme_alt(i)
+          weight = event%get_weight_alt(i)
+          sqme_prc = event%get_sqme_alt(i)
           if (eio%pacify) then
              write (eio%unit, 2)  i, weight, sqme_prc
           else
@@ -75749,7 +76133,7 @@ a new calculation, and thus qualifies as [[sqme_prc]].
 
   subroutine eio_weights_input_event (eio, event, iostat)
     class(eio_weights_t), intent(inout) :: eio
-    type(event_t), intent(inout), target :: event
+    class(generic_event_t), intent(inout), target :: event
     integer, intent(out) :: iostat
     call msg_bug ("Weight stream: event input not supported")
     iostat = 1
@@ -75778,11 +76162,12 @@ We test the implementation of all I/O methods.
        u, results)
 <<EIO weights: tests>>=
   subroutine eio_weights_1 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     class(eio_t), allocatable :: eio
     type(string_t) :: sample
@@ -75798,7 +76183,6 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -75815,7 +76199,7 @@ We test the implementation of all I/O methods.
  
     allocate (eio_weights_t :: eio)
     
-    call eio%init_out (sample, [process_ptr])
+    call eio%init_out (sample)
     call event%generate (1, [0._default, 0._default])
 
     call eio%output (event, i_prc = 42)
@@ -75861,12 +76245,13 @@ We test the implementation of all I/O methods.
        u, results)
 <<EIO weights: tests>>=
   subroutine eio_weights_2 (u)
+    use processes
+    use events
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(var_list_t) :: var_list
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(process_instance_t), allocatable, target :: process_instance
     class(eio_t), allocatable :: eio
     type(string_t) :: sample
@@ -75882,7 +76267,6 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Initialize test process"
  
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -75904,14 +76288,15 @@ We test the implementation of all I/O methods.
  
     allocate (eio_weights_t :: eio)
     
-    call eio%init_out (sample, [process_ptr])
+    call eio%init_out (sample)
     select type (eio)
     type is (eio_weights_t)
        call eio%set_parameters (pacify = .true.)
     end select
     call event%generate (1, [0._default, 0._default])
     call event%set (sqme_alt = [2._default, 3._default])
-    call event%set (weight_alt = [2 * event%weight_prc, 3 * event%weight_prc])
+    call event%set (weight_alt = &
+         [2 * event%get_weight_prc (), 3 * event%get_weight_prc ()])
 
     call eio%output (event, i_prc = 42)
     call eio%write (u)
@@ -82379,9 +82764,11 @@ This module provides no new types, just procedures.
 module dispatch
   
 <<Use kinds>>
-  use kinds, only: i16
+  use kinds, only: i16, double
 <<Use strings>>
   use constants, only: PI
+  use system_dependencies, only: LHAPDF5_AVAILABLE
+  use system_dependencies, only: LHAPDF6_AVAILABLE
   use io_units
   use format_utils, only: write_separator
   use unit_tests
@@ -82398,6 +82785,7 @@ module dispatch
   use models
   use process_constants
   use pdf_builtin !NODEP!
+  use lhapdf !NODEP!  
   use sf_mappings
   use sf_base
   use sf_pdf_builtin
@@ -82427,6 +82815,7 @@ module dispatch
   use prc_template_me
   use prc_core
   use processes
+  use shower_base !NODEP!
   use shower
   use event_transforms
   use decays
@@ -82451,6 +82840,8 @@ module dispatch
 
 <<Dispatch: types>>
 
+<<Dispatch: interfaces>>
+
 contains
   
 <<Dispatch: procedures>>
@@ -82459,6 +82850,44 @@ contains
 
 end module dispatch
 @ %def dispatch
+@
+\subsection{Interfaces}
+<<Dispatch: interfaces>>=
+  interface
+     subroutine GetXminM (set, mem, xmin)
+       integer, intent(in) :: set, mem
+       double precision, intent(out) :: xmin
+     end subroutine GetXminM
+  end interface
+
+@ %def GetXminM
+<<Dispatch: interfaces>>=
+  interface
+     subroutine GetXmaxM (set, mem, xmax)
+       integer, intent(in) :: set, mem
+       double precision, intent(out) :: xmax
+     end subroutine GetXmaxM
+  end interface
+
+@ %def GetXmaxM
+<<Dispatch: interfaces>>=
+  interface
+     subroutine GetQ2minM (set, mem, q2min)
+       integer, intent(in) :: set, mem
+       double precision, intent(out) :: q2min
+     end subroutine GetQ2minM
+  end interface
+
+@ %def GetQ2minM
+<<Dispatch: interfaces>>=
+  interface
+     subroutine GetQ2maxM (set, mem, q2max)
+       integer, intent(in) :: set, mem
+       double precision, intent(out) :: q2max
+     end subroutine GetQ2maxM
+  end interface
+
+@ %def GetQ2maxM
 @
 \subsection{Process Core Definition}
 The [[prc_core_def_t]] abstract type can be instantiated by providing a
@@ -84037,12 +84466,24 @@ concatenated, we provide individual dispatchers for each of them.
 
   subroutine dispatch_evt_shower (evt, global, process)
     class(evt_t), intent(out), pointer :: evt
-    type(rt_data_t), intent(in) :: global
+    type(rt_data_t), intent(in), target :: global
     type(process_t), intent(in), optional, target :: process
     logical :: allow_shower
+    type(var_list_t), pointer :: var_list
+    type(string_t) :: lhapdf_file, lhapdf_dir
+    integer :: lhapdf_member
+    double precision :: xmin, xmax, q2min, q2max
     type(shower_settings_t) :: settings
+    external :: GetXminM, GetXmaxM, GetQ2minM, GetQ2maxM    
     allow_shower = &
-         var_list_get_lval (global%var_list, var_str ("?allow_shower"))    
+         var_list_get_lval (global%var_list, var_str ("?allow_shower"))
+    var_list => global%get_var_list_ptr ()    
+    lhapdf_dir = &
+         var_list_get_sval (var_list, var_str ("$lhapdf_dir"))    
+    lhapdf_file = &
+         var_list_get_sval (var_list, var_str ("$lhapdf_file"))
+    lhapdf_member = &
+         var_list_get_ival (var_list, var_str ("lhapdf_member"))             
     if (allow_shower) then
        allocate (evt_shower_t :: evt)
        call msg_message ("Simulate: activating parton shower")
@@ -84056,8 +84497,30 @@ concatenated, we provide individual dispatchers for each of them.
        select type (evt)
        type is (evt_shower_t)
           call evt%init (settings, global%fallback_model, global%os_data)
+          if (LHAPDF6_AVAILABLE) then
+             call lhapdf_initialize &
+                  (1, lhapdf_dir, lhapdf_file, lhapdf_member, evt%pdf)
+          end if
           if (present (process)) &
                call evt%setup_pdf (process, global%beam_structure)
+          select case (evt%pdf_type)
+          case (STRF_LHAPDF6)
+             evt%xmin = evt%pdf%getxmin ()
+             evt%xmax = evt%pdf%getxmax ()
+             evt%qmin = sqrt(evt%pdf%getq2min ())
+             evt%qmax = sqrt(evt%pdf%getq2max ())
+          case (STRF_LHAPDF5)
+             if (LHAPDF5_AVAILABLE) then
+                call GetXminM (1, lhapdf_member, xmin)
+                call GetXmaxM (1, lhapdf_member, xmax)
+                call GetQ2minM (1, lhapdf_member, q2min)
+                call GetQ2maxM (1, lhapdf_member, q2max)
+                evt%xmin = xmin
+                evt%xmax = xmax
+                evt%qmin = sqrt(q2min)
+                evt%qmax = sqrt(q2max)
+             end if
+          end select
        end select
     else
        evt => null ()
@@ -85075,6 +85538,7 @@ the only nontrivial transform is the partonic decay chain..
     integer, intent(in) :: u
     type(rt_data_t), target :: global
     class(evt_t), pointer :: evt
+    type(var_list_t), pointer :: model_vars
     
     write (u, "(A)")  "* Test output: dispatch_13"
     write (u, "(A)")  "*   Purpose: configure event transform"
@@ -85084,6 +85548,7 @@ the only nontrivial transform is the partonic decay chain..
     call global%global_init ()
     call global%init_fallback_model &
          (var_str ("SM_hadrons"), var_str ("SM_hadrons.mdl"))
+    model_vars => global%get_var_list_ptr ()    
 
     write (u, "(A)")  "* Partonic decays"
     write (u, "(A)")
@@ -88164,13 +88629,12 @@ happens if we open a stream for reading and get new information there.
   procedure :: init => event_stream_array_init
 <<Event streams: procedures>>=
   subroutine event_stream_array_init &
-       (es_array, sample, stream_fmt, process_ptr, global, &
+       (es_array, sample, stream_fmt, global, &
        data, input, input_sample, input_data, allow_switch, checkpoint, &
        error)
     class(event_stream_array_t), intent(out) :: es_array
     type(string_t), intent(in) :: sample
     type(string_t), dimension(:), intent(in) :: stream_fmt
-    type(process_ptr_t), dimension(:), intent(in) :: process_ptr
     type(rt_data_t), intent(in) :: global
     type(event_sample_data_t), intent(inout), optional :: data
     type(string_t), intent(in), optional :: input
@@ -88204,18 +88668,16 @@ happens if we open a stream for reading and get new information there.
        allocate (es_array%entry (n + 1))
        call dispatch_eio &
             (es_array%entry(n+1)%eio, var_str ("checkpoint"), global)
-       call es_array%entry(n+1)%eio%init_out (sample, process_ptr, data)
+       call es_array%entry(n+1)%eio%init_out (sample, data)
     else
        allocate (es_array%entry (n))
     end if
     if (present (input)) then
        call dispatch_eio (es_array%entry(n)%eio, input, global)
        if (present (input_data)) then
-          call es_array%entry(n)%eio%init_in &
-               (sample_in, process_ptr, input_data, success)
+          call es_array%entry(n)%eio%init_in (sample_in, input_data, success)
        else
-          call es_array%entry(n)%eio%init_in &
-               (sample_in, process_ptr, data, success)
+          call es_array%entry(n)%eio%init_in (sample_in, data, success)
        end if
        if (success) then
           es_array%i_in = n
@@ -88232,14 +88694,13 @@ happens if we open a stream for reading and get new information there.
           call es_array%entry(n)%eio%final ()
           if (switch) then
              call msg_message ("Events: generating new events")
-             call es_array%entry(n)%eio%init_out &
-                  (sample, process_ptr, data)
+             call es_array%entry(n)%eio%init_out (sample, data)
           end if
        end if
     end if
     do i = 1, size (stream_fmt)
        call dispatch_eio (es_array%entry(i)%eio, stream_fmt(i), global)
-       call es_array%entry(i)%eio%init_out (sample, process_ptr, data)
+       call es_array%entry(i)%eio%init_out (sample, data)
     end do
   end subroutine event_stream_array_init
   
@@ -88267,10 +88728,12 @@ If there is no output stream, do nothing.
 <<Event streams: event stream array: TBP>>=
   procedure :: output => event_stream_array_output
 <<Event streams: procedures>>=
-  subroutine event_stream_array_output (es_array, event, i_prc, event_index)
+  subroutine event_stream_array_output (es_array, event, i_prc, &
+                                        event_index, pacify)
     class(event_stream_array_t), intent(inout) :: es_array
     type(event_t), intent(in), target :: event
     integer, intent(in) :: i_prc, event_index
+    logical, intent(in), optional :: pacify
     integer :: i
     do i = 1, size (es_array%entry)
        if (i /= es_array%i_in) then
@@ -88281,7 +88744,8 @@ If there is no output stream, do nothing.
                   call eio%split_out ()
                end if
             end if
-            call eio%output (event, i_prc, reading = es_array%i_in /= 0)
+            call eio%output (event, i_prc, reading = es_array%i_in /= 0, &
+                 pacify = pacify)
           end associate
        end if
     end do
@@ -88367,7 +88831,6 @@ initialization, output, and finalization (which are all no-ops).
     type(event_t) :: event
     type(string_t) :: sample
     type(string_t), dimension(0) :: empty_string_array
-    type(process_ptr_t), dimension(0) :: empty_process_ptr_array
 
     write (u, "(A)")  "* Test output: event_streams_1"
     write (u, "(A)")  "*   Purpose: handle empty event stream array"
@@ -88375,8 +88838,7 @@ initialization, output, and finalization (which are all no-ops).
 
     sample = "event_streams_1"
 
-    call es_array%init &
-         (sample, empty_string_array, empty_process_ptr_array, global)
+    call es_array%init (sample, empty_string_array, global)
     call es_array%output (event, 42, 1)
     call es_array%write (u)
     call es_array%final ()
@@ -88404,7 +88866,6 @@ the stream array.
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
     type(process_instance_t), allocatable, target :: process_instance
-    type(process_ptr_t) :: process_ptr
     type(string_t) :: sample
     type(string_t), dimension(0) :: empty_string_array
     integer :: i_prc, iostat
@@ -88424,7 +88885,6 @@ the stream array.
     write (u, "(A)")
 
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -88442,7 +88902,7 @@ the stream array.
 
     sample = "event_streams_2"
 
-    call es_array%init (sample, [var_str ("raw")], [process_ptr], global)
+    call es_array%init (sample, [var_str ("raw")], global)
     call es_array%output (event, 1, 1)
     call es_array%write (u)
     call es_array%final ()
@@ -88452,7 +88912,7 @@ the stream array.
     write (u, "(A)")
 
     sample = "foo"
-    call es_array%init (sample, empty_string_array, [process_ptr], global, &
+    call es_array%init (sample, empty_string_array, global, &
          input = var_str ("raw"), input_sample = var_str ("event_streams_2"))
     call es_array%write (u)
 
@@ -88497,7 +88957,6 @@ reading when the file is exhausted.
     type(event_t), allocatable, target :: event
     type(process_t), allocatable, target :: process
     type(process_instance_t), allocatable, target :: process_instance
-    type(process_ptr_t) :: process_ptr
     type(string_t) :: sample
     type(string_t), dimension(0) :: empty_string_array
     integer :: i_prc, iostat
@@ -88517,7 +88976,6 @@ reading when the file is exhausted.
     write (u, "(A)")
 
     allocate (process)
-    process_ptr%ptr => process
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
     call process_instance%setup_event_data ()
@@ -88533,7 +88991,7 @@ reading when the file is exhausted.
 
     sample = "event_streams_3"
 
-    call es_array%init (sample, [var_str ("raw")], [process_ptr], global)
+    call es_array%init (sample, [var_str ("raw")], global)
     call es_array%output (event, 1, 1)
     call es_array%write (u)
     call es_array%final ()
@@ -88542,7 +89000,7 @@ reading when the file is exhausted.
     write (u, "(A)") "* Reallocate raw eio stream for reading"
     write (u, "(A)")
 
-    call es_array%init (sample, empty_string_array, [process_ptr], global, &
+    call es_array%init (sample, empty_string_array, global, &
          input = var_str ("raw"))
     call es_array%write (u)
 
@@ -88573,7 +89031,7 @@ reading when the file is exhausted.
     write (u, "(A)") "* Reallocate raw eio stream for reading"
     write (u, "(A)")
 
-    call es_array%init (sample, empty_string_array, [process_ptr], global, &
+    call es_array%init (sample, empty_string_array, global, &
          input = var_str ("raw"))
     call es_array%write (u)
 
@@ -88615,7 +89073,6 @@ parameters and once with modified parameters.
     type(event_stream_array_t) :: es_array
     type(rt_data_t) :: global
     type(process_t), allocatable, target :: process
-    type(process_ptr_t) :: process_ptr
     type(string_t) :: sample
     type(string_t), dimension(0) :: empty_string_array
     type(event_sample_data_t) :: data
@@ -88636,7 +89093,6 @@ parameters and once with modified parameters.
          .true., is_known = .true.)
 
     allocate (process)
-    process_ptr%ptr => process
 
     write (u, "(A)") "* Allocate raw eio stream for writing"
     write (u, "(A)")
@@ -88644,8 +89100,7 @@ parameters and once with modified parameters.
     sample = "event_streams_4"
     data%md5sum_cfg = "1234567890abcdef1234567890abcdef"
 
-    call es_array%init &
-         (sample, [var_str ("raw")], [process_ptr], global, data)
+    call es_array%init (sample, [var_str ("raw")], global, data)
     call es_array%write (u)
     call es_array%final ()
     
@@ -88653,7 +89108,7 @@ parameters and once with modified parameters.
     write (u, "(A)") "* Reallocate raw eio stream for reading"
     write (u, "(A)")
 
-    call es_array%init (sample, empty_string_array, [process_ptr], global, &
+    call es_array%init (sample, empty_string_array, global, &
          data, input = var_str ("raw"))
     call es_array%write (u)
     call es_array%final ()
@@ -88663,7 +89118,7 @@ parameters and once with modified parameters.
     write (u, "(A)")
 
     data%md5sum_cfg = "1234567890______1234567890______"
-    call es_array%init (sample, empty_string_array, [process_ptr], global, &
+    call es_array%init (sample, empty_string_array, global, &
          data, input = var_str ("raw"))
     call es_array%write (u)
     call es_array%final ()
@@ -88674,7 +89129,7 @@ parameters and once with modified parameters.
 
     call global%set_log (var_str ("?check_event_file"), &
          .false., is_known = .true.)
-    call es_array%init (sample, empty_string_array, [process_ptr], global, &
+    call es_array%init (sample, empty_string_array, global, &
          data, input = var_str ("raw"))
     call es_array%write (u)
     call es_array%final ()
@@ -88727,6 +89182,7 @@ module simulations
   use prc_core
   use prclib_stacks
   use processes
+  use event_base
   use events
   use event_transforms
   use decays
@@ -89254,8 +89710,8 @@ the normalization procedure for the process components.
     integer, intent(in) :: i_mci
     logical, intent(in), optional :: from_file
     real(default) :: weight, excess
-    weight = entry%weight_prc
-    excess = entry%excess_prc
+    weight = entry%get_weight_prc ()
+    excess = entry%get_excess_prc ()
     call entry%counter%record (weight, excess, from_file)
     call entry%mci_set(i_mci)%counter%record (weight, excess)
   end subroutine entry_record
@@ -89465,8 +89921,8 @@ This is the particle set of the hard process.
     class(alt_entry_t), intent(inout) :: alt_entry
     class(entry_t), intent(in), target :: entry
     type(particle_set_t) :: pset
-    call entry%get_particle_set_hard_proc (pset)
-    call alt_entry%set_particle_set_hard_proc (pset)
+    call entry%get_hard_particle_set (pset)
+    call alt_entry%set_hard_particle_set (pset)
     call particle_set_final (pset)
   end subroutine entry_fill_particle_set
     
@@ -89612,7 +90068,11 @@ in order to suppress numerical noise in the testsuite.
     logical, intent(in), optional :: verbose
     integer, intent(in), optional :: i_prc
     logical, intent(in), optional :: testflag
+    logical :: pacified
     integer :: current
+    pacified = .false.
+    if (present(testflag)) pacified = testflag
+    pacified = pacified .or. object%pacify
     if (present (i_prc)) then
        current = i_prc
     else
@@ -89620,7 +90080,7 @@ in order to suppress numerical noise in the testsuite.
     end if
     if (current > 0) then
        call object%entry(current)%write (unit, verbose = verbose, &
-            testflag = testflag)
+            testflag = pacified)
     else
        call msg_fatal ("Simulation: write event: no process selected")
     end if
@@ -90039,9 +90499,9 @@ endless loop.
                        "matrix element vanishes, no events can be generated.")
                call entry%generate (simulation%i_mci)
                if (signal_is_pending ()) return
-               if (entry%particle_set_exists)  exit
+               if (entry%has_valid_particle_set ())  exit
             end do
-            if (.not. entry%particle_set_exists) then
+            if (.not. entry%has_valid_particle_set ()) then
                write (msg_buffer, "(A,I0,A)")  "Simulation: failed to &
                     &generate valid event after ", &
                     simulation%n_max_tries, " tries (sample_max_tries)"
@@ -90049,8 +90509,8 @@ endless loop.
             end if
             call entry%evaluate_expressions ()
             if (signal_is_pending ()) return
-            simulation%weight = entry%weight_ref
-            simulation%excess = entry%excess_prc
+            simulation%weight = entry%get_weight_ref ()
+            simulation%excess = entry%get_excess_prc ()
             call simulation%counter%record &
                  (simulation%weight, simulation%excess)
             call entry%record (simulation%i_mci)
@@ -90062,8 +90522,8 @@ endless loop.
             call entry%check ()
             call entry%evaluate_expressions ()
             if (signal_is_pending ()) return
-            simulation%weight = entry%weight_ref
-            simulation%excess = entry%excess_prc
+            simulation%weight = entry%get_weight_ref ()
+            simulation%excess = entry%get_excess_prc ()
             call simulation%counter%record &
                  (simulation%weight, simulation%excess, from_file=.true.)
             call entry%record (simulation%i_mci, from_file=.true.)
@@ -90129,8 +90589,8 @@ external matrix element parameters event by event.  The matrix element
            call alt_entry%evaluate_expressions ()
            if (signal_is_pending ())  return
            call alt_entry%restore_process ()
-           sqme_alt(j) = alt_entry%sqme_ref
-           weight_alt(j) = alt_entry%weight_ref
+           sqme_alt(j) = alt_entry%get_sqme_ref ()
+           weight_alt(j) = alt_entry%get_weight_ref ()
          end associate
       end do
       call entry%set (sqme_alt = sqme_alt, weight_alt = weight_alt)
@@ -90196,7 +90656,7 @@ if [[update_weight]] is set.)  Otherwise, we accept the reference values.
             call entry%check ()
             call entry%evaluate_expressions ()
             if (signal_is_pending ())  return
-            simulation%weight = entry%weight_prc
+            simulation%weight = entry%get_weight_prc ()
             call simulation%counter%record (simulation%weight, from_file=.true.)
             call entry%record (simulation%i_mci, from_file=.true.)
           end associate
@@ -90207,7 +90667,7 @@ if [[update_weight]] is set.)  Otherwise, we accept the reference values.
             call entry%check ()
             call entry%evaluate_expressions ()
             if (signal_is_pending ())  return
-            simulation%weight = entry%weight_ref
+            simulation%weight = entry%get_weight_ref ()
             call simulation%counter%record (simulation%weight, from_file=.true.)
             call entry%record (simulation%i_mci, from_file=.true.)
           end associate
@@ -90279,7 +90739,7 @@ must be selected, or the current index must be available.
              call eio%split_out ()
           end if
        end if
-       call eio%output (object%entry(current)%event_t, current)
+       call eio%output (object%entry(current)%event_t, current, pacify = object%pacify)
     else
        call msg_fatal ("Simulation: write event: no process selected")
     end if
@@ -90338,7 +90798,8 @@ available.
     i_prc = object%i_prc
     if (i_prc > 0) then
        event_index = object%counter%total
-       call es_array%output (object%entry(i_prc)%event_t, i_prc, event_index)
+       call es_array%output (object%entry(i_prc)%event_t, i_prc, &
+            event_index, pacify = object%pacify)
     else
        call msg_fatal ("Simulation: write event: no process selected")
     end if
@@ -90433,22 +90894,7 @@ into [[sqme_prc]] and [[weight_prc]].
 @ %def simulation_recalculate
 @
 \subsection{Extract contents}
-Return an array of pointers to the currently selected processes.
-<<Simulations: simulation: TBP>>=
-  procedure :: get_process_ptr => simulation_get_process_ptr
-<<Simulations: procedures>>=
-  function simulation_get_process_ptr (simulation) result (ptr)
-    class(simulation_t), intent(in) :: simulation
-    type(process_ptr_t), dimension(:), allocatable :: ptr
-    integer :: i
-    allocate (ptr (simulation%n_prc))
-    do i = 1, size (ptr)
-       ptr(i)%ptr => simulation%entry(i)%get_process_ptr ()
-    end do
-  end function simulation_get_process_ptr
-    
-@ %def simulation_get_process_ptr
-@ Return the MD5 sum that summarizes configuration and integration
+Return the MD5 sum that summarizes configuration and integration
 (but not the event file).  Used for initializing the event streams.
 <<Simulations: simulation: TBP>>=
   procedure :: get_md5sum_prc => simulation_get_md5sum_prc
@@ -91001,7 +91447,6 @@ Generate event for a test process, write to file and reread.
     integer, intent(in) :: u
     type(string_t) :: libname, procname1, sample
     type(rt_data_t), target :: global
-    type(process_ptr_t) :: process_ptr
     class(eio_t), allocatable :: eio
     type(simulation_t), allocatable, target :: simulation
     
@@ -91065,10 +91510,8 @@ Generate event for a test process, write to file and reread.
     write (u, "(A)")  "* Initialize raw event file"
     write (u, "(A)")
 
-    process_ptr%ptr => global%process_stack%get_process_ptr (procname1)
-    
     allocate (eio_raw_t :: eio)
-    call eio%init_out (sample, [process_ptr])
+    call eio%init_out (sample)
     
     write (u, "(A)")  "* Generate an event"
     write (u, "(A)")
@@ -91090,7 +91533,7 @@ Generate event for a test process, write to file and reread.
     call simulation%init ([procname1], .true., .true., global)
     call simulation%init_process_selector ()
     allocate (eio_raw_t :: eio)
-    call eio%init_in (sample, [process_ptr])
+    call eio%init_in (sample)
     
     call simulation%read_event (eio)
     call simulation%write_event (u)
@@ -91129,7 +91572,6 @@ reread.
     integer, intent(in) :: u
     type(string_t) :: libname, procname1, sample
     type(rt_data_t), target :: global
-    type(process_ptr_t) :: process_ptr
     class(eio_t), allocatable :: eio
     type(simulation_t), allocatable, target :: simulation
     type(flavor_t) :: flv
@@ -91208,10 +91650,8 @@ reread.
     write (u, "(A)")  "* Initialize raw event file"
     write (u, "(A)")
 
-    process_ptr%ptr => global%process_stack%get_process_ptr (procname1)
-    
     allocate (eio_raw_t :: eio)
-    call eio%init_out (sample, [process_ptr])
+    call eio%init_out (sample)
     
     write (u, "(A)")  "* Generate an event"
     write (u, "(A)")
@@ -91236,7 +91676,7 @@ reread.
     call simulation%init ([procname1], .true., .true., global)
     call simulation%init_process_selector ()
     allocate (eio_raw_t :: eio)
-    call eio%init_in (sample, [process_ptr])
+    call eio%init_in (sample)
     
     call simulation%read_event (eio)
     call simulation%write_event (u, verbose = .true., testflag = .true.)
@@ -91360,9 +91800,7 @@ append.
 
     data%md5sum_prc = simulation%get_md5sum_prc ()
     data%md5sum_cfg = simulation%get_md5sum_cfg ()
-    call es_array%init &
-         (sample, [var_str ("raw")], simulation%get_process_ptr (), global, &
-         data)
+    call es_array%init (sample, [var_str ("raw")], global, data)
     
     write (u, "(A)")  "* Generate an event"
     write (u, "(A)")
@@ -91387,8 +91825,7 @@ append.
 
     data%md5sum_prc = simulation%get_md5sum_prc ()
     data%md5sum_cfg = simulation%get_md5sum_cfg ()
-    call es_array%init (sample, &
-         empty_string_array, simulation%get_process_ptr (), global, data, &
+    call es_array%init (sample, empty_string_array, global, data, &
          input = var_str ("raw"))
     
     call simulation%generate (2, es_array)
@@ -91413,8 +91850,7 @@ append.
 
     data%md5sum_prc = simulation%get_md5sum_prc ()
     data%md5sum_cfg = simulation%get_md5sum_cfg ()
-    call es_array%init (sample, &
-         empty_string_array, simulation%get_process_ptr (), global, data, &
+    call es_array%init (sample, empty_string_array, global, data, &
          input = var_str ("raw"))
 
     call simulation%generate (2, es_array)
@@ -91534,8 +91970,7 @@ Generate events and rescan the resulting raw event file.
     data%md5sum_cfg = simulation%get_md5sum_cfg ()
     write (u, "(1x,A,A,A)")  "MD5 sum (proc)   = '", data%md5sum_prc, "'"
     write (u, "(1x,A,A,A)")  "MD5 sum (config) = '", data%md5sum_cfg, "'"
-    call es_array%init &
-         (sample, [var_str ("raw")], simulation%get_process_ptr (), global, &
+    call es_array%init (sample, [var_str ("raw")], global, &
          data)
     
     write (u, "(A)")
@@ -91565,8 +92000,7 @@ Generate events and rescan the resulting raw event file.
     data%md5sum_cfg = ""
     write (u, "(1x,A,A,A)")  "MD5 sum (proc)   = '", data%md5sum_prc, "'"
     write (u, "(1x,A,A,A)")  "MD5 sum (config) = '", data%md5sum_cfg, "'"
-    call es_array%init (sample, &
-         empty_string_array, simulation%get_process_ptr (), global, data, &
+    call es_array%init (sample, empty_string_array, global, data, &
          input = var_str ("raw"), input_sample = sample, allow_switch = .false.)
     
     call simulation%rescan (1, es_array, &
@@ -91599,8 +92033,7 @@ Generate events and rescan the resulting raw event file.
     data%md5sum_cfg = ""
     write (u, "(1x,A,A,A)")  "MD5 sum (proc)   = '", data%md5sum_prc, "'"
     write (u, "(1x,A,A,A)")  "MD5 sum (config) = '", data%md5sum_cfg, "'"
-    call es_array%init (sample, &
-         empty_string_array, simulation%get_process_ptr (), global, data, &
+    call es_array%init (sample, empty_string_array, global, data, &
          input = var_str ("raw"), input_sample = sample, allow_switch = .false.)
     
     call simulation%rescan (1, es_array, &
@@ -91731,8 +92164,7 @@ Generate events and rescan with process mismatch.
     data%md5sum_cfg = simulation%get_md5sum_cfg ()
     write (u, "(1x,A,A,A)")  "MD5 sum (proc)   = '", data%md5sum_prc, "'"
     write (u, "(1x,A,A,A)")  "MD5 sum (config) = '", data%md5sum_cfg, "'"
-    call es_array%init &
-         (sample, [var_str ("raw")], simulation%get_process_ptr (), global, &
+    call es_array%init (sample, [var_str ("raw")], global, &
          data)
     
     write (u, "(A)")
@@ -91764,8 +92196,7 @@ Generate events and rescan with process mismatch.
     data%md5sum_cfg = ""
     write (u, "(1x,A,A,A)")  "MD5 sum (proc)   = '", data%md5sum_prc, "'"
     write (u, "(1x,A,A,A)")  "MD5 sum (config) = '", data%md5sum_cfg, "'"
-    call es_array%init (sample, &
-         empty_string_array, simulation%get_process_ptr (), global, data, &
+    call es_array%init (sample, empty_string_array, global, data, &
          input = var_str ("raw"), input_sample = sample, &
          allow_switch = .false., error = error)
     
@@ -92012,7 +92443,6 @@ accepting a limit for the number of events per file.
     integer, intent(in) :: u
     type(string_t) :: libname, procname1, sample
     type(rt_data_t), target :: global
-    type(process_ptr_t) :: process_ptr
     class(eio_t), allocatable :: eio
     type(simulation_t), allocatable, target :: simulation
     type(flavor_t) :: flv
@@ -92093,13 +92523,11 @@ accepting a limit for the number of events per file.
     write (u, "(A)")  "* Initialize ASCII event file"
     write (u, "(A)")
 
-    process_ptr%ptr => global%process_stack%get_process_ptr (procname1)
-    
     allocate (eio_ascii_short_t :: eio)
     select type (eio)
     class is (eio_ascii_t);  call eio%set_parameters ()
     end select
-    call eio%init_out (sample, [process_ptr], data = simulation%get_data ())
+    call eio%init_out (sample, data = simulation%get_data ())
     
     write (u, "(A)")  "* Generate 5 events, distributed among three files"
 
@@ -98132,7 +98560,7 @@ terminate then in [[command_list_execute]].
           allocate (sample_fmt (n_fmt))
           if (n_fmt > 0)  sample_fmt = cmd%local%sample_fmt
           call es_array%init (sample, &
-               sample_fmt, sim%get_process_ptr (), cmd%local, &
+               sample_fmt, cmd%local, &
                data = data, &
                input = var_str ("raw"), &
                allow_switch = write_raw, &
@@ -98144,7 +98572,7 @@ terminate then in [[command_list_execute]].
           if (n_fmt > 0)  sample_fmt(:n_fmt) = cmd%local%sample_fmt
           sample_fmt(n_fmt+1) = var_str ("raw")
           call es_array%init (sample, &
-               sample_fmt, sim%get_process_ptr (), cmd%local, &
+               sample_fmt, cmd%local, &
                data = data, &
                checkpoint = checkpoint)
           call sim%generate (n_events, es_array)
@@ -98153,7 +98581,7 @@ terminate then in [[command_list_execute]].
           allocate (sample_fmt (n_fmt))
           if (n_fmt > 0)  sample_fmt = cmd%local%sample_fmt
           call es_array%init (sample, &
-               sample_fmt, sim%get_process_ptr (), cmd%local, &
+               sample_fmt, cmd%local, &
                data = data, &
                checkpoint = checkpoint)
           call sim%generate (n_events, es_array)
@@ -98347,7 +98775,7 @@ object and its associated methods.
        data%n_evt = n_events
        input_data%md5sum_cfg = ""
        call es_array%init (sample, &
-            sample_fmt, sim%get_process_ptr (), cmd%local, data, &
+            sample_fmt, cmd%local, data, &
             input = input_format, input_sample = input_sample, &
             input_data = input_data, &
             allow_switch = .false.)

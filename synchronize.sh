@@ -9,15 +9,15 @@ NEW_YEAR2="Copyright (C) 2001-2014";
 OLD_ADDRESS="Fabian Bach <fabian.bach@cern.ch>"
 NEW_ADDRESS="Fabian Bach <fabian.bach@desy.de>"
 
-OLD_DATE="Aug 15 2014"
-NEW_DATE="Nov 30 2014"
-OLD_VERSION="2.2.2"
-NEW_VERSION="2.2.3"
+OLD_DATE="Nov 30 2014"
+NEW_DATE="Dec 31 2014"
+OLD_VERSION="2.2.3"
+NEW_VERSION="2.2.4"
 #OLD_STATUS="PACKAGE_STATUS=\"alpha\""
 #NEW_STATUS="PACKAGE_STATUS=\"beta\""
-OLD_STATUS="PACKAGE_STATUS=\"beta\""
+OLD_STATUS="PACKAGE_STATUS=\"release\""
 #NEW_STATUS="PACKAGE_STATUS=\"rc1\""
-NEW_STATUS="PACKAGE_STATUS=\"release\""
+NEW_STATUS="PACKAGE_STATUS=\"alpha\""
 
 ## We should add an option to add an author here.
 

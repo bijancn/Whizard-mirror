@@ -47,7 +47,7 @@ libwhizard_core_la_SOURCES = \
   mci_midpoint.f90 mci_vamp.f90 \
   prc_core.f90 subevt_expr.f90 parton_states.f90 \
   processes.f90 process_stacks.f90 \
-  event_transforms.f90 decays.f90 shower.f90 \
+  event_base.f90 event_transforms.f90 decays.f90 shower.f90 \
   events.f90 prc_omega.f90 prc_template_me.f90 prc_gosam.f90 \
   loop_archive.f90 \
   hep_common.f90 hep_events.f90 \

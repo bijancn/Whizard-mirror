@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2014 by 
+# Copyright (C) 1999-2014 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -12,13 +12,13 @@
 #     Sebastian Schmidt, Daniel Wiesler
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by 
+# under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2, or (at your option)
 # any later version.
 #
 # WHIZARD is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
@@ -28,7 +28,7 @@
 ########################################################################
 
 ## The files in this directory end up in an auxiliary libtool library.
-## If shower is enabled, pythia is enabled automatically
+## If shower is enabled, pythia6 is enabled automatically
 if SHOWER_AVAILABLE
 noinst_LTLIBRARIES = libshower.la
 else
@@ -81,10 +81,10 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
 	for list in $^; do \
-	  dir="`dirname $$list`"; \
-	  for mod in `cat $$list`; do \
-	    echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
-	  done ; \
+		dir="`dirname $$list`"; \
+		for mod in `cat $$list`; do \
+			echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+		done ; \
 	done
 
 DISTCLEANFILES = Module_dependencies.sed
@@ -98,19 +98,14 @@ Makefile.depend: Module_dependencies.sed
 Makefile.depend: $(libshower_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
-	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
-	  grep '^ *use ' $$src \
-	    | grep -v '!NODEP!' \
-	    | sed -e 's/^ *use */'$$module'.lo: /' \
-	          -f Module_dependencies.sed; \
+		module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
+		grep '^ *use ' $$src \
+			| grep -v '!NODEP!' \
+			| sed -e 's/^ *use */'$$module'.lo: /' \
+			-f Module_dependencies.sed; \
 	done > $@
 
-DISTCLEANFILES += Makefile.depend 
-
-## Dependency libbasics / libaux (kinds, strings)
-## (tao_random_numbers will be removed when switching to rng_factory)
-$(libshower_la_OBJECTS): \
-../../vamp/src/tao_random_numbers.$(FC_MODULE_EXT)
+DISTCLEANFILES += Makefile.depend
 
 libshower_la_LIBADD = ../../pythia/libpythia_wo.la
 
@@ -119,7 +114,7 @@ libshower_la_LIBADD = ../../pythia/libpythia_wo.la
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I ../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I../../vamp/src/ -I../../pythia
+AM_FCFLAGS = -I../basics -I../utilities -I ../system -I../testing -I ../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I ../lhapdf -I ../pdf_builtin -I../../pythia
 AM_FFLAGS =
 
 ########################################################################
@@ -149,17 +144,17 @@ shower.stamp: $(PRELUDE) $(srcdir)/shower.nw $(POSTLUDE)
 	@rm -f shower.tmp
 	@touch shower.tmp
 	for src in $(SHOWER_SRC); do \
-	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
-        done
+		$(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
+	done
 	@mv -f shower.tmp shower.stamp
 
-SHOWER_SRC = $(libshower_la_SOURCES) $(libshower_dummy_la_SOURCES) 
+SHOWER_SRC = $(libshower_la_SOURCES) $(libshower_dummy_la_SOURCES)
 
 $(SHOWER_SRC): shower.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
-	  rm -f shower.stamp; \
-	  $(MAKE) $(AM_MAKEFLAGS) shower.stamp; \
+		rm -f shower.stamp; \
+		$(MAKE) $(AM_MAKEFLAGS) shower.stamp; \
 	fi
 
 endif
@@ -169,7 +164,7 @@ endif
 ## Remove sources that can be recreated using NOWEB
 if NOWEB_AVAILABLE
 maintainer-clean-noweb:
-	-rm -f *.f90 *.f 
+	-rm -f *.f90 *.f
 endif
 .PHONY: maintainer-clean-noweb
 

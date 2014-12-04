@@ -99,9 +99,11 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! LCRunHeader functions
 
-! extern "C" void* runHdr()
-  type(c_ptr) function runHdr () bind(C)
-    use iso_c_binding
-    runHdr = c_null_ptr
-  end function runHdr
+! extern "C" LCRunHeaderImpl* new_lcio_run_header( int run_id ) {
+     type(c_ptr) function new_lcio_run_header ( run_id ) bind(C)
+       use iso_c_binding
+       integer(c_int), value :: run_id
+       new_lcio_run_header = c_null_ptr
+     end function new_lcio_run_header
 
+     

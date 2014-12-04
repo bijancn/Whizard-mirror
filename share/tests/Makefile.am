@@ -431,8 +431,9 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/rebuild_3.ref \
     ref-output/rebuild_4.ref \
     ref-output/fatal.ref \
-    ref-output/model_test.ref \
     ref-output/model_change_1.ref \
+    ref-output/model_change_2.ref \
+    ref-output/model_test.ref \
     ref-output/cuts.ref \
     ref-output/user_cuts.ref \
     ref-output/qedtest_1.ref \
@@ -706,8 +707,9 @@ MISC_TESTS_SIN = \
     fatal.sin \
     defaultcuts.sin \
     cuts.sin \
-    model_test.sin \
     model_change_1.sin \
+    model_change_2.sin \
+    model_test.sin \
     structure_1.sin \
     structure_2.sin \
     structure_3.sin \
