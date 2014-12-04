@@ -271,30 +271,42 @@ module Tensor =
 
   end
 
+(* \thocwmodulesubsection{Symbol Tables} *)
+
 module type Symbol =
   sig
 
+    (* Tensors and their indices are representations of
+       color, flavor or Lorentz groups.  In the end it might
+       turn out to be unnecessary to distinguish [Color] from
+       [Flavor].  *)
+ 
     type space =
     | Color
     | Lorentz
     | Flavor
 
+    (* A symbol (i.\,e.~a [Symbol.t = Vertex_syntax.Token.t])
+       can refer either to particles, to parameters (derived and input)
+       or to tensors and indices.  *)
     type kind =
     | Particle
     | Parameter
     | Index of space
     | Tensor of space
 
-    type table
+    type file = Vertex_syntax.File.t
+    type t = Vertex_syntax.Token.t
 
-    val load : Vertex_syntax.File.t -> table
-    val kind : table -> Vertex_syntax.Token.t -> kind option
+    (* A table to look up the [kind] of a symbol. *)
+    type kind_table
+    val kind : kind_table -> t -> kind option
+    val load_kinds : file -> kind_table
 
+    (* A table to look up all symbols with the same [stem]. *)
     type stem_table
-
-    val load_stems : Vertex_syntax.File.t -> stem_table
-    val common_stem :
-      stem_table -> Vertex_syntax.Token.t -> Vertex_syntax.Token.t list
+    val common_stem : stem_table -> t -> t list
+    val load_stems : file -> stem_table
 
   end
 
@@ -307,6 +319,9 @@ module Symbol : Symbol =
     module I = Vertex_syntax.Index
     module Q = Vertex_syntax.Parameter
     module X = Vertex_syntax.Tensor
+
+    type file = F.t
+    type t = T.t
 
     type space =
     | Color
@@ -326,7 +341,7 @@ module Symbol : Symbol =
           let compare = compare
          end)
 
-    type table = kind ST.t
+    type kind_table = kind ST.t
 
     let empty = ST.empty
 
@@ -375,7 +390,7 @@ module Symbol : Symbol =
         end
       | F.Vertex _ -> table
 
-    let load decls =
+    let load_kinds decls =
       List.fold_left insert empty decls
 
     let kind table token =
@@ -529,7 +544,7 @@ module Vertex =
 
     let vertices s =
       let decls = parse_string s in
-      let symbol_table = Symbol.load decls
+      let symbol_table = Symbol.load_kinds decls
       and stem_table = Symbol.load_stems decls in
       let tokens =
         List.fold_left
