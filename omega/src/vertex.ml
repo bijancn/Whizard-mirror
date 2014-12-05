@@ -644,7 +644,7 @@ module Modelfile_Test =
                  [A; lorentz=\\mu]"
                 (Vertex.vertices'
                    "\\charged{e^-}{e^+}\
-                    \\index{a}\\color{SU(3)}\
+                    \\index{a}\\color{E_8}\
                     \\index{\\mu}\\lorentz{X}\
                     \\index{\\alpha}\\lorentz{X}\
                     \\index{\\alpha_1}\\lorentz{X}\

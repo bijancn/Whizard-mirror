@@ -395,40 +395,36 @@ module Color =
 
     module T = Token
 
-    let of_tokens = function
-      | [T.Token "S"; T.Token "U";
-	 T.Token "("; T.Digit n; T.Token ")"] -> SU n
-      | [T.Token "S"; T.Token "U";
-	 T.Token "("; T.Digit n; T.Digit m; T.Token ")"] -> SU (10 * n + m)
-      | [T.Token "U";
-	 T.Token "("; T.Digit n; T.Token ")"] -> U n
-      | [T.Token "U";
-	 T.Token "("; T.Digit n; T.Digit m; T.Token ")"] -> U (10 * n + m)
-      | [T.Token "S"; T.Token "O";
-	 T.Token "("; T.Digit n; T.Token ")"] -> SO n
-      | [T.Token "S"; T.Token "O";
-	 T.Token "("; T.Digit n; T.Digit m; T.Token ")"] -> SO (10 * n + m)
-      | [T.Token "O";
-	 T.Token "("; T.Digit n; T.Token ")"] -> O n
-      | [T.Token "O";
-	 T.Token "("; T.Digit n; T.Digit m; T.Token ")"] -> O (10 * n + m)
-      | [T.Token "S"; T.Token "p";
-	 T.Token "("; T.Digit n; T.Token ")"] -> Sp n
-      | [T.Token "S"; T.Token "p";
-	 T.Token "("; T.Digit n; T.Digit m; T.Token ")"] -> Sp (10 * n + m)
-      | [T.Scripted { T.stem = T.Token "E"; T.prefix = [];
+    let series tokens name n =
+      match name, n with
+      | "SU", n -> SU n
+      | "U", n -> U n
+      | "SO", n -> SO n
+      | "O", n -> O n
+      | _ -> invalid_arg ("Vertex.Color.of_tokens: " ^ T.list_to_string tokens)
+
+    let exceptional tokens name n =
+      match name, n with
+      | "E", 6 -> E6
+      | "E", 7 -> E7
+      | "E", 8 -> E8
+      | "F", 4 -> F4
+      | "G", 2 -> G2
+      | _ -> invalid_arg ("Vertex.Color.of_tokens: " ^ T.list_to_string tokens)
+
+    let of_tokens tokens =
+      match tokens with
+      | [T.Token c1; T.Token c2; T.Token "("; T.Digit n; T.Token ")"] ->
+	 series tokens (c1 ^ c2) n
+      | [T.Token c1; T.Token c2; T.Token "("; T.Digit n1; T.Digit n2; T.Token ")"] ->
+	 series tokens (c1 ^ c2) (10 * n1 + n2)
+      | [T.Token c; T.Token "("; T.Digit n; T.Token ")"] ->
+	 series tokens c n
+      | [T.Token c; T.Token "("; T.Digit n1; T.Digit n2; T.Token ")"] ->
+	 series tokens c (10 * n1 + n2)
+      | [T.Scripted { T.stem = T.Token c; T.prefix = [];
 		      T.super = []; T.sub = [T.Digit n] }] ->
-	 begin
-	   match n with
-	   | 6 -> E6
-	   | 7 -> E7 
-	   | 8 -> E8
-	   | n -> invalid_arg ("Vertex.Color.of_tokens: E" ^ string_of_int n)
-	 end
-      | [T.Scripted { T.stem = T.Token "F"; T.prefix = [];
-		      T.super = []; T.sub = [T.Digit 4] }] -> F4
-      | [T.Scripted { T.stem = T.Token "G"; T.prefix = [];
-		      T.super = []; T.sub = [T.Digit 2] }] -> G2
+	 exceptional tokens c n
       | t -> invalid_arg ("Vertex.Color.of_tokens: " ^ T.list_to_string t)
 
     let to_string = function
