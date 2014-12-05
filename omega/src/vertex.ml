@@ -276,15 +276,18 @@ module Tensor =
 module type Symbol =
   sig
 
+    type file = Vertex_syntax.File.t
+    type t = Vertex_syntax.Token.t
+
     (* Tensors and their indices are representations of
        color, flavor or Lorentz groups.  In the end it might
        turn out to be unnecessary to distinguish [Color] from
        [Flavor].  *)
  
     type space =
-    | Color
-    | Lorentz
-    | Flavor
+    | Color of Vertex_syntax.Color.t
+    | Lorentz of t list
+    | Flavor of t list
 
     (* A symbol (i.\,e.~a [Symbol.t = Vertex_syntax.Token.t])
        can refer either to particles, to parameters (derived and input)
@@ -297,9 +300,6 @@ module type Symbol =
     | Derived
     | Index of space
     | Tensor of space
-
-    type file = Vertex_syntax.File.t
-    type t = Vertex_syntax.Token.t
 
     (* A table to look up the [kind] of a symbol. *)
     type kind_table
@@ -325,6 +325,7 @@ module Symbol : Symbol =
     module F = Vertex_syntax.File
     module P = Vertex_syntax.Particle
     module I = Vertex_syntax.Index
+    module C = Vertex_syntax.Color
     module Q = Vertex_syntax.Parameter
     module X = Vertex_syntax.Tensor
 
@@ -332,14 +333,14 @@ module Symbol : Symbol =
     type t = T.t
 
     type space =
-    | Color
-    | Lorentz
-    | Flavor
+    | Color of C.t
+    | Lorentz of t list
+    | Flavor of t list
         
     let space_to_string = function
-      | Color -> "color"
-      | Lorentz -> "Lorentz"
-      | flavor -> "flavor"
+      | Color c -> "color:" ^ C.to_string c
+      | Lorentz _ -> "Lorentz"
+      | Flavor _ -> "flavor"
 
     type kind =
     | Neutral
@@ -381,9 +382,9 @@ module Symbol : Symbol =
       let spaces =
         List.fold_left
           (fun acc -> function
-          | I.Color _ -> Color :: acc
-          | I.Lorentz _ -> Lorentz :: acc
-          | I.Flavor _ -> Flavor :: acc)
+          | I.Color t -> Color (C.of_tokens t) :: acc
+          | I.Lorentz t -> Lorentz t :: acc
+          | I.Flavor t -> Flavor t :: acc)
           [] index.I.attr in
       match ThoList.uniq (List.sort compare spaces) with
       | [space] -> space
@@ -394,9 +395,9 @@ module Symbol : Symbol =
       let spaces =
         List.fold_left
           (fun acc -> function
-          | X.Color _ -> Color :: acc
-          | X.Lorentz _ -> Lorentz :: acc
-          | X.Flavor _ -> Flavor :: acc)
+          | X.Color t -> Color (C.of_tokens t) :: acc
+          | X.Lorentz t -> Lorentz t :: acc
+          | X.Flavor t -> Flavor t :: acc)
           [] tensor.X.attr in
       match ThoList.uniq (List.sort compare spaces) with
       | [space] -> space
@@ -533,14 +534,14 @@ module Vertex =
     let factor_add_particle factor token =
       { factor with particle = token :: factor.particle }
 
-    let factor_add_color_index factor token =
+    let factor_add_color_index t factor token =
       { factor with color = token :: factor.color }
 
-    let factor_add_lorentz_index factor token =
+    let factor_add_lorentz_index t factor token =
       (* diagnostics: [Printf.eprintf "[L:[%s]]\n" (T.to_string token);] *)
       { factor with lorentz = token :: factor.lorentz }
 
-    let factor_add_flavor_index factor token =
+    let factor_add_flavor_index t factor token =
       { factor with flavor = token :: factor.flavor }
 
     let factor_add_other_index factor token =
@@ -555,9 +556,9 @@ module Vertex =
         | Some kind ->
           begin match kind with
           | S.Neutral | S.Charged | S.Anti -> factor_add_particle factor token
-          | S.Index S.Color -> factor_add_color_index factor token
-          | S.Index S.Lorentz -> factor_add_lorentz_index factor token
-          | S.Index S.Flavor -> factor_add_flavor_index factor token
+          | S.Index S.Color t -> factor_add_color_index t factor token
+          | S.Index S.Lorentz t -> factor_add_lorentz_index t factor token
+          | S.Index S.Flavor t -> factor_add_flavor_index t factor token
           | S.Tensor _ -> invalid_arg "factor_add_index: \\tensor"
           | S.Parameter -> invalid_arg "factor_add_index: \\parameter"
           | S.Derived -> invalid_arg "factor_add_index: \\derived"

@@ -392,7 +392,57 @@ module Color =
     | SO of int | O of int
     | Sp of int
     | E6 | E7 | E8 | F4 | G2
-      
+
+    module T = Token
+
+    let of_tokens = function
+      | [T.Token "S"; T.Token "U";
+	 T.Token "("; T.Digit n; T.Token ")"] -> SU n
+      | [T.Token "S"; T.Token "U";
+	 T.Token "("; T.Digit n; T.Digit m; T.Token ")"] -> SU (10 * n + m)
+      | [T.Token "U";
+	 T.Token "("; T.Digit n; T.Token ")"] -> U n
+      | [T.Token "U";
+	 T.Token "("; T.Digit n; T.Digit m; T.Token ")"] -> U (10 * n + m)
+      | [T.Token "S"; T.Token "O";
+	 T.Token "("; T.Digit n; T.Token ")"] -> SO n
+      | [T.Token "S"; T.Token "O";
+	 T.Token "("; T.Digit n; T.Digit m; T.Token ")"] -> SO (10 * n + m)
+      | [T.Token "O";
+	 T.Token "("; T.Digit n; T.Token ")"] -> O n
+      | [T.Token "O";
+	 T.Token "("; T.Digit n; T.Digit m; T.Token ")"] -> O (10 * n + m)
+      | [T.Token "S"; T.Token "p";
+	 T.Token "("; T.Digit n; T.Token ")"] -> Sp n
+      | [T.Token "S"; T.Token "p";
+	 T.Token "("; T.Digit n; T.Digit m; T.Token ")"] -> Sp (10 * n + m)
+      | [T.Scripted { T.stem = T.Token "E"; T.prefix = [];
+		      T.super = []; T.sub = [T.Digit n] }] ->
+	 begin
+	   match n with
+	   | 6 -> E6
+	   | 7 -> E7 
+	   | 8 -> E8
+	   | n -> invalid_arg ("Vertex.Color.of_tokens: E" ^ string_of_int n)
+	 end
+      | [T.Scripted { T.stem = T.Token "F"; T.prefix = [];
+		      T.super = []; T.sub = [T.Digit 4] }] -> F4
+      | [T.Scripted { T.stem = T.Token "G"; T.prefix = [];
+		      T.super = []; T.sub = [T.Digit 2] }] -> G2
+      | t -> invalid_arg ("Vertex.Color.of_tokens: " ^ T.list_to_string t)
+
+    let to_string = function
+      | SU n -> "SU" ^ string_of_int n
+      | U n -> "U" ^ string_of_int n
+      | SO n -> "SO" ^ string_of_int n
+      | O n -> "O" ^ string_of_int n
+      | Sp n -> "Sp" ^ string_of_int n
+      | E6 -> "E6"
+      | E7 -> "E7"
+      | E8 -> "E8"
+      | F4 -> "F4"
+      | G2 -> "G2"
+
     type r = int
 
   end

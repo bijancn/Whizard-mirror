@@ -189,6 +189,9 @@ module Color :
     | Sp of int
     | E6 | E7 | E8 | F4 | G2
 
+    val of_tokens : Token.t list -> t
+    val to_string : t -> string
+
     (* Labelling the representation by their dimension, or
        their negative dimension, is of course not general enough,
        but will do for the moment. *)
