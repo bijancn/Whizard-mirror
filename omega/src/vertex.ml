@@ -382,7 +382,7 @@ module Symbol : Symbol =
       let spaces =
         List.fold_left
           (fun acc -> function
-          | I.Color t -> Color (C.of_tokens t) :: acc
+          | I.Color t -> Color (C.of_string (T.list_to_string t)) :: acc
           | I.Lorentz t -> Lorentz t :: acc
           | I.Flavor t -> Flavor t :: acc)
           [] index.I.attr in
@@ -395,7 +395,7 @@ module Symbol : Symbol =
       let spaces =
         List.fold_left
           (fun acc -> function
-          | X.Color t -> Color (C.of_tokens t) :: acc
+          | X.Color t -> Color (C.of_string (T.list_to_string t)) :: acc
           | X.Lorentz t -> Lorentz t :: acc
           | X.Flavor t -> Flavor t :: acc)
           [] tensor.X.attr in

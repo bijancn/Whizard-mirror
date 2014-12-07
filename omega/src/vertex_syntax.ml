@@ -395,37 +395,35 @@ module Color =
 
     module T = Token
 
-    let series tokens name n =
+    let invalid s =
+      invalid_arg ("Vertex.Color.of_string: " ^ s)
+
+    let series s name n =
       match name, n with
       | "SU", n -> SU n
       | "U", n -> U n
       | "SO", n -> SO n
       | "O", n -> O n
-      | _ -> invalid_arg ("Vertex.Color.of_tokens: " ^ T.list_to_string tokens)
+      | _ -> invalid s
 
-    let exceptional tokens name n =
+    let exceptional s name n =
       match name, n with
       | "E", 6 -> E6
       | "E", 7 -> E7
       | "E", 8 -> E8
       | "F", 4 -> F4
       | "G", 2 -> G2
-      | _ -> invalid_arg ("Vertex.Color.of_tokens: " ^ T.list_to_string tokens)
+      | _ -> invalid s
 
-    let of_tokens tokens =
-      match tokens with
-      | [T.Token c1; T.Token c2; T.Token "("; T.Digit n; T.Token ")"] ->
-	 series tokens (c1 ^ c2) n
-      | [T.Token c1; T.Token c2; T.Token "("; T.Digit n1; T.Digit n2; T.Token ")"] ->
-	 series tokens (c1 ^ c2) (10 * n1 + n2)
-      | [T.Token c; T.Token "("; T.Digit n; T.Token ")"] ->
-	 series tokens c n
-      | [T.Token c; T.Token "("; T.Digit n1; T.Digit n2; T.Token ")"] ->
-	 series tokens c (10 * n1 + n2)
-      | [T.Scripted { T.stem = T.Token c; T.prefix = [];
-		      T.super = []; T.sub = [T.Digit n] }] ->
-	 exceptional tokens c n
-      | t -> invalid_arg ("Vertex.Color.of_tokens: " ^ T.list_to_string t)
+    let of_string s =
+      try
+	Scanf.sscanf s "%_[{]%[SUOp](%d)%_[}]%!" (series s)
+      with
+      | _ ->
+	 try
+	   Scanf.sscanf s "%_[{]%[EFG]_%d%_[}]%!" (exceptional s)
+	 with
+	 | _ -> invalid s
 
     let to_string = function
       | SU n -> "SU" ^ string_of_int n
