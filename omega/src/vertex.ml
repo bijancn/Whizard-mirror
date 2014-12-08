@@ -176,7 +176,7 @@ module Parser_Test : Test =
     let indices =
       "indices" >:::
         [ ?> "\\index{a}\\color{8}";
-          "\\index{a}\\color[SU(2)]{3}" => "\\index{a}\\color[{SU(2)}]{3}" ]
+          "\\index{a}\\color[SU(2)]{3}" => "\\index{a}\\color[{SU(2)}]{3}"  ]
 
     let tensors =
       "tensors" >:::
@@ -251,7 +251,7 @@ module type Symbol =
        [Flavor].  *)
  
     type space =
-    | Color of Vertex_syntax.Color.t
+    | Color of Vertex_syntax.Lie.t
     | Flavor of t list * t list
     | Lorentz of t list
 
@@ -291,7 +291,7 @@ module Symbol : Symbol =
     module F = Vertex_syntax.File
     module P = Vertex_syntax.Particle
     module I = Vertex_syntax.Index
-    module C = Vertex_syntax.Color
+    module L = Vertex_syntax.Lie
     module Q = Vertex_syntax.Parameter
     module X = Vertex_syntax.Tensor
 
@@ -299,13 +299,13 @@ module Symbol : Symbol =
     type t = T.t
 
     type space =
-    | Color of C.t
+    | Color of L.t
     | Flavor of t list * t list
     | Lorentz of t list
         
     let space_to_string = function
       | Color (g, r) ->
-	 "color:" ^ C.group_to_string g ^ ":" ^ C.rep_to_string r
+	 "color:" ^ L.group_to_string g ^ ":" ^ L.rep_to_string r
       | Flavor (_, _) -> "flavor"
       | Lorentz _ -> "Lorentz"
 
@@ -351,9 +351,9 @@ module Symbol : Symbol =
     let group_rep_of_tokens group rep =
       let group =
 	match group with
-	| [] -> C.default_group
-	| group -> C.group_of_string (T.list_to_string group) in
-	Color (group, C.rep_of_string group (T.list_to_string rep))
+	| [] -> L.default_group
+	| group -> L.group_of_string (T.list_to_string group) in
+	Color (group, L.rep_of_string group (T.list_to_string rep))
 
     let index_space index =
       let spaces =
@@ -623,7 +623,8 @@ module Modelfile_Test =
                  [A; lorentz=\\mu]"
                 (Vertex.vertices'
                    "\\charged{e^-}{e^+}\
-                    \\index{a}\\color[SU(3)]{8}\
+                    \\index{a}\\color{3}\
+                    \\index{b}\\color[SU(3)]{8}\
                     \\index{\\mu}\\lorentz{X}\
                     \\index{\\alpha}\\lorentz{X}\
                     \\index{\\alpha_1}\\lorentz{X}\

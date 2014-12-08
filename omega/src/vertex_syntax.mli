@@ -176,22 +176,17 @@ module Parameter :
 
   end
 
-(* \thocwmodulesubsection{Color Representations} *)
+(* \thocwmodulesubsection{Lie Groups and Algebras} *)
 
-module Color :
+module Lie :
   sig
 
-    (* This list is not realistic.  In practice, we will
-       concentrate on SU(n) for now. *)
+    (* The full list [SU of int | U of int | SO of int | O of int
+       | Sp of int | E6 | E7 | E8 | F4 | G2] is not realistic.
+       In practice, we will concentrate on SU(3) for now. *)
 
-    type group =
-    | SU of int | U of int
-    | SO of int | O of int
-    | Sp of int
-    | E6 | E7 | E8 | F4 | G2
-
+    type group
     val default_group : group
-
     val group_of_string : string -> group
     val group_to_string : group -> string
 
@@ -199,8 +194,7 @@ module Color :
        their negative dimension, is of course not general enough,
        but will do for the moment. *)
 
-    type rep = int
-
+    type rep
     val rep_of_string : group -> string -> rep
     val rep_to_string : rep -> string
 
@@ -213,7 +207,7 @@ module Color :
 module Lorentz :
   sig
 
-    type t =
+    type rep =
     | Scalar | Vector
     | Dirac | ConjDirac | Majorana
     | Weyl | ConjWeyl

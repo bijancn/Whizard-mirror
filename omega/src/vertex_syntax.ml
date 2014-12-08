@@ -330,8 +330,8 @@ i*)
       | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
       | Fortran_Anti tl -> "\\anti\\fortran{" ^ Token.list_to_string tl ^ "}"
       | Spin e -> "\\spin{" ^ Expr.to_string e ^ "}"
-      | Color (rep, []) -> "\\color{" ^ Token.list_to_string rep ^ "}"
-      | Color (rep, group) ->
+      | Color ([], rep) -> "\\color{" ^ Token.list_to_string rep ^ "}"
+      | Color (group, rep) ->
 	 "\\color[" ^ Token.list_to_string group ^ "]{"	 ^
 	   Token.list_to_string rep ^ "}"
       | Charge e -> "\\charge{" ^ Expr.to_string e ^ "}"
@@ -388,7 +388,7 @@ i*)
 
   end
 
-module Color =
+module Lie =
   struct
 
     type group =
@@ -402,14 +402,15 @@ module Color =
     let default_group = SU 3
 
     let invalid_group s =
-      invalid_arg ("Vertex.Color.group_of_string: " ^ s)
+      invalid_arg ("Vertex.Lie.group_of_string: " ^ s)
 
     let series s name n =
       match name, n with
-      | "SU", n -> SU n
-      | "U", n -> U n
-      | "SO", n -> SO n
-      | "O", n -> O n
+      | "SU", n when n > 1 -> SU n
+      | "U", n when n >= 1  -> U n
+      | "SO", n when n > 1  -> SO n
+      | "O", n when n >= 1  -> O n
+      | "Sp", n when n >= 2  -> Sp n
       | _ -> invalid_group s
 
     let exceptional s name n =
@@ -432,11 +433,11 @@ module Color =
 	 | _ -> invalid_group s
 
     let group_to_string = function
-      | SU n -> "SU" ^ string_of_int n
-      | U n -> "U" ^ string_of_int n
-      | SO n -> "SO" ^ string_of_int n
-      | O n -> "O" ^ string_of_int n
-      | Sp n -> "Sp" ^ string_of_int n
+      | SU n -> "SU(" ^ string_of_int n ^ ")"
+      | U n -> "U(" ^ string_of_int n ^ ")"
+      | SO n -> "SO(" ^ string_of_int n ^ ")"
+      | O n -> "O(" ^ string_of_int n ^ ")"
+      | Sp n -> "Sp(" ^ string_of_int n ^ ")"
       | E6 -> "E6"
       | E7 -> "E7"
       | E8 -> "E8"
@@ -445,8 +446,19 @@ module Color =
 
     type rep = int
 
-    let rep_of_string group r =
-      int_of_string r
+    let rep_of_string group rep =
+      match group with
+      | SU 3 ->
+	 begin
+	   match int_of_string rep with
+	   | (3 | -3 | 8) as r -> r
+	   | _ ->
+	      invalid_arg ("Vertex.Lie.rep_of_string:" ^
+			     " unsupported representation " ^ rep ^
+			     " of " ^ group_to_string group)
+	 end
+      | _ -> invalid_arg ("Vertex.Lie.rep_of_string:" ^
+			    " unsupported group " ^ group_to_string group)
 
     let rep_to_string r =
       string_of_int r
@@ -458,7 +470,7 @@ module Color =
 module Lorentz =
   struct
 
-    type t =
+    type rep =
     | Scalar | Vector
     | Dirac | ConjDirac | Majorana
     | Weyl | ConjWeyl
