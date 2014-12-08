@@ -286,7 +286,7 @@ module Particle =
     | Alias of Token.t list | Alias_Anti of Token.t list
     | Fortran of Token.t list | Fortran_Anti of Token.t list
     | Spin of Expr.t | Charge of Expr.t
-    | Color of Token.t list | Colorgroup of Token.t list
+    | Color of Token.t list * Token.t list
     | Mass of Token.t list | Width of Token.t list
 
 (*i
@@ -330,8 +330,10 @@ i*)
       | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
       | Fortran_Anti tl -> "\\anti\\fortran{" ^ Token.list_to_string tl ^ "}"
       | Spin e -> "\\spin{" ^ Expr.to_string e ^ "}"
-      | Color tl -> "\\color{" ^ Token.list_to_string tl ^ "}"
-      | Colorgroup tl -> "\\colorgroup{" ^ Token.list_to_string tl ^ "}"
+      | Color (rep, []) -> "\\color{" ^ Token.list_to_string rep ^ "}"
+      | Color (rep, group) ->
+	 "\\color[" ^ Token.list_to_string group ^ "]{"	 ^
+	   Token.list_to_string rep ^ "}"
       | Charge e -> "\\charge{" ^ Expr.to_string e ^ "}"
       | Mass tl -> "\\mass{" ^ Token.list_to_string tl ^ "}"
       | Width tl -> "\\width{" ^ Token.list_to_string tl ^ "}"
@@ -397,6 +399,8 @@ module Color =
 
     module T = Token
 
+    let default_group = SU 3
+
     let invalid_group s =
       invalid_arg ("Vertex.Color.group_of_string: " ^ s)
 
@@ -441,6 +445,14 @@ module Color =
 
     type rep = int
 
+    let rep_of_string group r =
+      int_of_string r
+
+    let rep_to_string r =
+      string_of_int r
+
+    type t = group * rep
+
   end
 
 module Lorentz =
@@ -457,10 +469,8 @@ module Index =
   struct
 
     type attr =
-    | Color of Token.t list
-    | Colorgroup of Token.t list
-    | Flavor of Token.t list
-    | Flavorgroup of Token.t list
+    | Color of Token.t list * Token.t list
+    | Flavor of Token.t list * Token.t list
     | Lorentz of Token.t list
 
     type t =
@@ -468,10 +478,14 @@ module Index =
 	attr : attr list }
 
     let attr_to_string = function
-      | Color tl -> "\\color{" ^ Token.list_to_string tl ^ "}"
-      | Colorgroup tl -> "\\colorgroup{" ^ Token.list_to_string tl ^ "}"
-      | Flavor tl -> "\\flavor{" ^ Token.list_to_string tl ^ "}"
-      | Flavorgroup tl -> "\\flavorgroup{" ^ Token.list_to_string tl ^ "}"
+      | Color ([], rep) -> "\\color{" ^ Token.list_to_string rep ^ "}"
+      | Color (group, rep) ->
+	 "\\color[" ^ Token.list_to_string group ^ "]{"	 ^
+	   Token.list_to_string rep ^ "}"
+      | Flavor ([], rep) -> "\\flavor{" ^ Token.list_to_string rep ^ "}"
+      | Flavor (group, rep) ->
+	 "\\flavor[" ^ Token.list_to_string group ^ "]{"	 ^
+	   Token.list_to_string rep ^ "}"
       | Lorentz tl -> "\\lorentz{" ^ Token.list_to_string tl ^ "}"
 
     let to_string i =
@@ -483,10 +497,8 @@ module Tensor =
   struct
 
     type attr =
-    | Color of Token.t list
-    | Colorgroup of Token.t list
-    | Flavor of Token.t list
-    | Flavorgroup of Token.t list
+    | Color of Token.t list * Token.t list
+    | Flavor of Token.t list * Token.t list
     | Lorentz of Token.t list
 
     type t =
@@ -494,10 +506,14 @@ module Tensor =
 	attr : attr list }
 
     let attr_to_string = function
-      | Color tl -> "\\color{" ^ Token.list_to_string tl ^ "}"
-      | Colorgroup tl -> "\\colorgroup{" ^ Token.list_to_string tl ^ "}"
-      | Flavor tl -> "\\flavor{" ^ Token.list_to_string tl ^ "}"
-      | Flavorgroup tl -> "\\flavorgroup{" ^ Token.list_to_string tl ^ "}"
+      | Color ([], rep) -> "\\color{" ^ Token.list_to_string rep ^ "}"
+      | Color (group, rep) ->
+	 "\\color[" ^ Token.list_to_string group ^ "]{"	 ^
+	   Token.list_to_string rep ^ "}"
+      | Flavor ([], rep) -> "\\flavor{" ^ Token.list_to_string rep ^ "}"
+      | Flavor (group, rep) ->
+	 "\\flavor[" ^ Token.list_to_string group ^ "]{"	 ^
+	   Token.list_to_string rep ^ "}"
       | Lorentz tl -> "\\lorentz{" ^ Token.list_to_string tl ^ "}"
 
     let to_string t =

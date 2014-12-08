@@ -57,9 +57,9 @@ let invalid_parameter_attr () =
 %token END
 
 %token NEUTRAL CHARGED
-%token ANTI ALIAS TEX FORTRAN SPIN COLOR COLORGROUP CHARGE MASS WIDTH
+%token ANTI ALIAS TEX FORTRAN SPIN COLOR CHARGE MASS WIDTH
 %token PARAMETER DERIVED
-%token TENSOR INDEX FLAVOR FLAVORGROUP LORENTZ
+%token TENSOR INDEX FLAVOR LORENTZ
 %token VERTEX
 
 %left PLUS MINUS
@@ -120,24 +120,29 @@ token_list_arg:
 \verb+ | LBRACE token_list RBRACKET { parse_error "expected `}', found `]'" }+ */
 ;
 
+token_list_opt_arg:
+ | LBRACKET token_list RBRACKET   { $2 }
+ | LBRACKET token_list END        { parse_error "missing `}'" }
+;
+
 particle_attributes:
  |                                        { [ ] }
  | particle_attribute particle_attributes { $1 :: $2 }
 ;
 
 particle_attribute:
- |      ALIAS      token_list_arg   { P.Alias $2 }
- | ANTI ALIAS      token_list_arg   { P.Alias $3 }
- |      TEX        token_list_arg   { P.TeX $2 }
- | ANTI TEX        token_list_arg   { P.TeX_Anti $3 }
- |      FORTRAN    token_list_arg   { P.Fortran $2 }
- | ANTI FORTRAN    token_list_arg   { P.Fortran_Anti $3 }
- |      SPIN       arg              { P.Spin $2 }
- |      COLOR      token_list_arg   { P.Color $2 }
- |      COLORGROUP token_list_arg   { P.Colorgroup $2 }
- |      CHARGE     arg              { P.Charge $2 }
- |      MASS       token_list_arg   { P.Mass $2 }
- |      WIDTH      token_list_arg   { P.Width $2 }
+ |      ALIAS      token_list_arg   		       { P.Alias $2 }
+ | ANTI ALIAS      token_list_arg   		       { P.Alias $3 }
+ |      TEX        token_list_arg   		       { P.TeX $2 }
+ | ANTI TEX        token_list_arg   		       { P.TeX_Anti $3 }
+ |      FORTRAN    token_list_arg   		       { P.Fortran $2 }
+ | ANTI FORTRAN    token_list_arg   		       { P.Fortran_Anti $3 }
+ |      SPIN       arg              		       { P.Spin $2 }
+ |      COLOR                         token_list_arg   { P.Color ([], $2) }
+ |      COLOR      token_list_opt_arg token_list_arg   { P.Color ($2, $3) }
+ |      CHARGE     arg              		       { P.Charge $2 }
+ |      MASS       token_list_arg   		       { P.Mass $2 }
+ |      WIDTH      token_list_arg   		       { P.Width $2 }
 ;
 
 parameter:
@@ -159,7 +164,6 @@ parameter_attribute:
  | ANTI                   { invalid_parameter_attr () }
  | SPIN                   { invalid_parameter_attr () }
  | COLOR                  { invalid_parameter_attr () }
- | COLORGROUP             { invalid_parameter_attr () }
  | CHARGE                 { invalid_parameter_attr () }
  | MASS                   { invalid_parameter_attr () }
  | WIDTH                  { invalid_parameter_attr () }
@@ -175,11 +179,11 @@ index_attributes:
 ;
 
 index_attribute:
- | COLOR       token_list_arg { I.Color $2 }
- | COLORGROUP  token_list_arg { I.Colorgroup $2 }
- | FLAVOR      token_list_arg { I.Flavor $2 }
- | FLAVORGROUP token_list_arg { I.Flavorgroup $2 }
- | LORENTZ     token_list_arg { I.Lorentz $2 }
+ | COLOR                      token_list_arg { I.Color ([], $2) }
+ | COLOR  token_list_opt_arg  token_list_arg { I.Color ($2, $3) }
+ | FLAVOR                     token_list_arg { I.Flavor ([], $2) }
+ | FLAVOR token_list_opt_arg  token_list_arg { I.Flavor ($2, $3) }
+ | LORENTZ                    token_list_arg { I.Lorentz $2 }
 ;
 
 tensor:
@@ -192,11 +196,11 @@ tensor_attributes:
 ;
 
 tensor_attribute:
- | COLOR       token_list_arg { X.Color $2 }
- | COLORGROUP  token_list_arg { X.Colorgroup $2 }
- | FLAVOR      token_list_arg { X.Flavor $2 }
- | FLAVORGROUP token_list_arg { X.Flavorgroup $2 }
- | LORENTZ     token_list_arg { X.Lorentz $2 }
+ | COLOR                      token_list_arg { X.Color ([], $2) }
+ | COLOR  token_list_opt_arg  token_list_arg { X.Color ($2, $3) }
+ | FLAVOR                     token_list_arg { X.Flavor ([], $2) }
+ | FLAVOR token_list_opt_arg  token_list_arg { X.Flavor ($2, $3) }
+ | LORENTZ                    token_list_arg { X.Lorentz $2 }
 ;
 
 vertex:
@@ -320,8 +324,6 @@ bare_token:
  | COMMA    { T.token "," }
  | LPAREN   { T.token "(" }
  | RPAREN   { T.token ")" }
- | LBRACKET { T.token "[" }
- | RBRACKET { T.token "]" }
 
 not_arg_or_token_list:
  | DIGIT    { () }
@@ -332,7 +334,6 @@ not_arg_or_token_list:
  | TIMES    { () }
  | DIV      { () }
  | COMMA    { () }
- | LPAREN   { () }
  | RPAREN   { () }
  | RBRACKET { () }
  | RBRACE   { () }

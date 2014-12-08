@@ -140,7 +140,7 @@ module Particle :
     | Alias of Token.t list | Alias_Anti of Token.t list
     | Fortran of Token.t list | Fortran_Anti of Token.t list
     | Spin of Expr.t | Charge of Expr.t
-    | Color of Token.t list | Colorgroup of Token.t list
+    | Color of Token.t list * Token.t list
     | Mass of Token.t list | Width of Token.t list
 
     type t =
@@ -190,6 +190,8 @@ module Color :
     | Sp of int
     | E6 | E7 | E8 | F4 | G2
 
+    val default_group : group
+
     val group_of_string : string -> group
     val group_to_string : group -> string
 
@@ -198,6 +200,11 @@ module Color :
        but will do for the moment. *)
 
     type rep = int
+
+    val rep_of_string : group -> string -> rep
+    val rep_to_string : rep -> string
+
+    type t = group * rep
 
   end
 
@@ -219,10 +226,8 @@ module Index :
   sig
 
     type attr =
-    | Color of Token.t list
-    | Colorgroup of Token.t list
-    | Flavor of Token.t list
-    | Flavorgroup of Token.t list
+    | Color of Token.t list * Token.t list
+    | Flavor of Token.t list * Token.t list
     | Lorentz of Token.t list
 
     type t =
@@ -239,10 +244,8 @@ module Tensor :
   sig
 
     type attr =
-    | Color of Token.t list
-    | Colorgroup of Token.t list
-    | Flavor of Token.t list
-    | Flavorgroup of Token.t list
+    | Color of Token.t list * Token.t list
+    | Flavor of Token.t list * Token.t list
     | Lorentz of Token.t list
 
     type t =

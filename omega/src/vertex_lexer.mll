@@ -97,7 +97,6 @@ rule token = parse
   | pfx "alias"       { ALIAS }
   | pfx "spin"        { SPIN }
   | pfx "color"       { COLOR }
-  | pfx "colorgroup"  { COLORGROUP }
   | pfx "charge"      { CHARGE }
   | pfx "mass"        { MASS }
   | pfx "width"       { WIDTH }
@@ -106,7 +105,6 @@ rule token = parse
   | pfx "tensor"      { TENSOR }
   | pfx "lorentz"     { LORENTZ }
   | pfx "flavor"      { FLAVOR }
-  | pfx "flavorgroup" { FLAVORGROUP }
   | pfx "parameter"   { PARAMETER }
   | pfx "derived"     { DERIVED }
   | digit as i        { DIGIT (int_of_char i) }

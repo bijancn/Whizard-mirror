@@ -134,7 +134,7 @@ module Parser_Test : Test =
 	  "\\vertex2}{}" =>! ("expected `[' or `{'", "\\vertex2");
 	  "\\vertex[(2}{}" =>! ("expected `)', found `}'", "(2}");
 	  "\\vertex[(2]{}" =>! ("expected `)', found `]'", "(2]");
-	  "\\vertex{2]{}" =>! ("syntax error", "");
+	  "\\vertex{2]{}" =>! ("syntax error", "2");
 	  "\\vertex[2}{}" =>! ("expected `]', found `}'", "[2}");
 	  "\\vertex[2{}" =>! ("syntax error", "2");
 	  "\\vertex[2*]{}" =>! ("syntax error", "2") ]
@@ -175,8 +175,8 @@ module Parser_Test : Test =
 
     let indices =
       "indices" >:::
-        [ "\\index{a}\\color{8}\\colorgroup{SU(3)}" =>
-	  "\\index{a}\\color{8}\\colorgroup{{SU(3)}}" ]
+        [ ?> "\\index{a}\\color{8}";
+          "\\index{a}\\color[SU(2)]{3}" => "\\index{a}\\color[{SU(2)}]{3}" ]
 
     let tensors =
       "tensors" >:::
@@ -251,11 +251,9 @@ module type Symbol =
        [Flavor].  *)
  
     type space =
-    | Color of t list
-    | Colorgroup of Vertex_syntax.Color.group
+    | Color of Vertex_syntax.Color.t
+    | Flavor of t list * t list
     | Lorentz of t list
-    | Flavor of t list
-    | Flavorgroup of t list
 
     (* A symbol (i.\,e.~a [Symbol.t = Vertex_syntax.Token.t])
        can refer either to particles, to parameters (derived and input)
@@ -301,18 +299,15 @@ module Symbol : Symbol =
     type t = T.t
 
     type space =
-    | Color of t list
-    | Colorgroup of C.group
+    | Color of C.t
+    | Flavor of t list * t list
     | Lorentz of t list
-    | Flavor of t list
-    | Flavorgroup of t list
         
     let space_to_string = function
-      | Color _ -> "color"
-      | Colorgroup g -> "colorgroup:" ^ C.group_to_string g
+      | Color (g, r) ->
+	 "color:" ^ C.group_to_string g ^ ":" ^ C.rep_to_string r
+      | Flavor (_, _) -> "flavor"
       | Lorentz _ -> "Lorentz"
-      | Flavor _ -> "flavor"
-      | Flavorgroup _ -> "flavorgroup"
 
     type kind =
     | Neutral
@@ -353,16 +348,20 @@ module Symbol : Symbol =
     (* TODO: this is broken since we allow more than one
        attribute: group and representation. *)
 
+    let group_rep_of_tokens group rep =
+      let group =
+	match group with
+	| [] -> C.default_group
+	| group -> C.group_of_string (T.list_to_string group) in
+	Color (group, C.rep_of_string group (T.list_to_string rep))
+
     let index_space index =
       let spaces =
         List.fold_left
           (fun acc -> function
-          | I.Color t -> Color t :: acc
-          | I.Colorgroup t ->
-	     Colorgroup (C.group_of_string (T.list_to_string t)) :: acc
-          | I.Lorentz t -> Lorentz t :: acc
-          | I.Flavor t -> Flavor t :: acc
-          | I.Flavorgroup t -> Flavorgroup t :: acc)
+          | I.Color (group, rep) -> group_rep_of_tokens group rep :: acc
+          | I.Flavor (group, rep) -> Flavor (rep, group) :: acc
+          | I.Lorentz t -> Lorentz t :: acc)
           [] index.I.attr in
       match ThoList.uniq (List.sort compare spaces) with
       | [space] -> space
@@ -373,12 +372,9 @@ module Symbol : Symbol =
       let spaces =
         List.fold_left
           (fun acc -> function
-          | X.Color t -> Color t :: acc
-          | X.Colorgroup t
-	    -> Colorgroup (C.group_of_string (T.list_to_string t)) :: acc
-          | X.Lorentz t -> Lorentz t :: acc
-          | X.Flavor t -> Flavor t :: acc
-          | X.Flavorgroup t -> Flavorgroup t :: acc)
+          | X.Color (group, rep) -> group_rep_of_tokens rep group :: acc
+          | X.Flavor (group, rep) -> Flavor (rep, group) :: acc
+          | X.Lorentz t -> Lorentz t :: acc)
           [] tensor.X.attr in
       match ThoList.uniq (List.sort compare spaces) with
       | [space] -> space
@@ -487,10 +483,8 @@ module Vertex =
         prefix : string list;
         particle : T.t list;
         color : T.t list;
-        colorgroup : T.t list;
-        lorentz : T.t list;
         flavor : T.t list;
-        flavorgroup : T.t list;
+        lorentz : T.t list;
         other : T.t list }
 
     let factor_stem token =
@@ -498,10 +492,8 @@ module Vertex =
         prefix = token.T.prefix;
         particle = [];
         color = [];
-        colorgroup = [];
-        lorentz = [];
         flavor = [];
-        flavorgroup = [];
+        lorentz = [];
         other = [] }
 
     let rev factor =
@@ -509,10 +501,8 @@ module Vertex =
         prefix = List.rev factor.prefix;
         particle = List.rev factor.particle;
         color = List.rev factor.color;
-        colorgroup = List.rev factor.colorgroup;
-        lorentz = List.rev factor.lorentz;
         flavor = List.rev factor.flavor;
-        flavorgroup = List.rev factor.flavorgroup;
+        lorentz = List.rev factor.lorentz;
         other = List.rev factor.other }
 
     let factor_add_prefix factor token =
@@ -524,18 +514,12 @@ module Vertex =
     let factor_add_color_index t factor token =
       { factor with color = token :: factor.color }
 
-    let factor_add_colorgroup_index t factor token =
-      { factor with colorgroup = token :: factor.colorgroup }
-
     let factor_add_lorentz_index t factor token =
       (* diagnostics: [Printf.eprintf "[L:[%s]]\n" (T.to_string token);] *)
       { factor with lorentz = token :: factor.lorentz }
 
     let factor_add_flavor_index t factor token =
       { factor with flavor = token :: factor.flavor }
-
-    let factor_add_flavorgroup_index t factor token =
-      { factor with flavorgroup = token :: factor.flavorgroup }
 
     let factor_add_other_index factor token =
       { factor with other = token :: factor.other }
@@ -549,11 +533,11 @@ module Vertex =
         | Some kind ->
           begin match kind with
           | S.Neutral | S.Charged | S.Anti -> factor_add_particle factor token
-          | S.Index S.Color t -> factor_add_color_index t factor token
-          | S.Index S.Colorgroup t -> factor_add_colorgroup_index t factor token
+          | S.Index S.Color (rep, group) ->
+	     factor_add_color_index (rep, group) factor token
+          | S.Index S.Flavor (rep, group) ->
+	     factor_add_flavor_index (rep, group) factor token
           | S.Index S.Lorentz t -> factor_add_lorentz_index t factor token
-          | S.Index S.Flavor t -> factor_add_flavor_index t factor token
-          | S.Index S.Flavorgroup t -> factor_add_flavorgroup_index t factor token
           | S.Tensor _ -> invalid_arg "factor_add_index: \\tensor"
           | S.Parameter -> invalid_arg "factor_add_index: \\parameter"
           | S.Derived -> invalid_arg "factor_add_index: \\derived"
@@ -585,10 +569,8 @@ module Vertex =
          | l -> "; prefix=" ^ String.concat ", " l) ^
          list_to_string "particle" factor.particle ^
          list_to_string "color" factor.color ^
-         list_to_string "colorgroup" factor.colorgroup ^
-         list_to_string "lorentz" factor.lorentz ^
          list_to_string "flavor" factor.flavor ^
-         list_to_string "flavorgroup" factor.flavorgroup ^
+         list_to_string "lorentz" factor.lorentz ^
          list_to_string "other" factor.other ^ "]"
 
     let vertices s =
@@ -641,7 +623,7 @@ module Modelfile_Test =
                  [A; lorentz=\\mu]"
                 (Vertex.vertices'
                    "\\charged{e^-}{e^+}\
-                    \\index{a}\\color{8}\\colorgroup{SU(3)}\
+                    \\index{a}\\color[SU(3)]{8}\
                     \\index{\\mu}\\lorentz{X}\
                     \\index{\\alpha}\\lorentz{X}\
                     \\index{\\alpha_1}\\lorentz{X}\
