@@ -139,7 +139,8 @@ module Particle :
     | TeX of Token.t list | TeX_Anti of Token.t list
     | Alias of Token.t list | Alias_Anti of Token.t list
     | Fortran of Token.t list | Fortran_Anti of Token.t list
-    | Spin of Expr.t | Color of Token.t list | Charge of Expr.t
+    | Spin of Expr.t | Charge of Expr.t
+    | Color of Token.t list | Colorgroup of Token.t list
     | Mass of Token.t list | Width of Token.t list
 
     type t =
@@ -183,20 +184,20 @@ module Color :
     (* This list is not realistic.  In practice, we will
        concentrate on SU(n) for now. *)
 
-    type t =
+    type group =
     | SU of int | U of int
     | SO of int | O of int
     | Sp of int
     | E6 | E7 | E8 | F4 | G2
 
-    val of_string : string -> t
-    val to_string : t -> string
+    val group_of_string : string -> group
+    val group_to_string : group -> string
 
     (* Labelling the representation by their dimension, or
        their negative dimension, is of course not general enough,
        but will do for the moment. *)
 
-    type r = int
+    type rep = int
 
   end
 
@@ -219,7 +220,9 @@ module Index :
 
     type attr =
     | Color of Token.t list
+    | Colorgroup of Token.t list
     | Flavor of Token.t list
+    | Flavorgroup of Token.t list
     | Lorentz of Token.t list
 
     type t =
@@ -237,7 +240,9 @@ module Tensor :
 
     type attr =
     | Color of Token.t list
+    | Colorgroup of Token.t list
     | Flavor of Token.t list
+    | Flavorgroup of Token.t list
     | Lorentz of Token.t list
 
     type t =
