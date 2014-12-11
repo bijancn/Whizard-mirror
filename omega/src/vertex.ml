@@ -328,19 +328,8 @@ module Symbol : Symbol =
       | Index space -> space_to_string space ^ " index"
       | Tensor space -> space_to_string space ^ " tensor"
 
-    module ST =
-      Map.Make
-        (struct
-          type t = T.t
-          let compare = compare
-         end)
-
-    module SS =
-      Set.Make
-        (struct
-          type t = T.t
-          let compare = compare
-         end)
+    module ST = Map.Make (T)
+    module SS = Set.Make (T)
 
     type table = 
 	{ symbol_kinds : kind ST.t;
@@ -364,10 +353,43 @@ module Symbol : Symbol =
       with
       | Not_found -> []
 
+    let add_symbol_kind table token kind =
+      try
+	let old_kind = ST.find token table in
+	if kind = old_kind then
+	  table
+	else
+	  invalid_arg ("conflicting symbol kind: " ^
+			 T.to_string token ^ " -> " ^
+			   kind_to_string kind ^ " vs " ^
+			     kind_to_string old_kind)
+      with
+      | Not_found -> ST.add token kind table
+
+    let add_stem_kind table token kind =
+      let stem = T.stem token in
+      try
+	let old_kind = ST.find stem table in
+	if kind = old_kind then
+	  table
+	else begin
+	    match kind, old_kind with
+	    | Charged, Anti -> ST.add stem Charged table
+	    | Anti, Charged -> table
+	    | _, _ ->
+	       invalid_arg ("conflicting stem kind: " ^
+			      T.to_string token ^ " -> " ^
+				T.to_string stem ^ " -> " ^
+				  kind_to_string kind ^ " vs " ^
+				    kind_to_string old_kind)
+	  end
+      with
+      | Not_found -> ST.add stem kind table
+
     let add_kind table token kind =
       { table with
-	symbol_kinds = ST.add token kind table.symbol_kinds;
-	stem_kinds = ST.add (T.stem token) kind table.stem_kinds }
+	symbol_kinds = add_symbol_kind table.symbol_kinds token kind;
+	stem_kinds = add_stem_kind table.stem_kinds token kind }
 
     let add_stem table token =
       let stem = T.stem token in
@@ -418,12 +440,14 @@ module Symbol : Symbol =
       | [] -> raise (Missing_Space tensor.X.name)
       | _ -> raise (Conflicting_Space tensor.X.name)
 
+    (* NB: if [P.Charged (name, name)] below, only
+       the [Charged] will survive, [Anti] will be shadowed. *)
     let insert_kind table = function
       | F.Particle p ->
         begin match p.P.name with
         | P.Neutral name -> add_kind table name Neutral
         | P.Charged (name, anti) ->
-          add_kind (add_kind table name Charged) anti Anti
+          add_kind (add_kind table anti Anti) name Charged
         end
       | F.Index i -> add_kind table i.I.name (Index (index_space i))
       | F.Tensor t -> add_kind table t.X.name (Tensor (tensor_space t))
@@ -588,8 +612,7 @@ module Vertex =
     let vertices s =
       let decls = parse_string s in
       let symbol_table = Symbol.load decls in
-      (* diagnostics: [Symbol.dump stderr symbol_table] *)
-      Symbol.dump stderr symbol_table;
+      (* diagnostics: [Symbol.dump stderr symbol_table;] *)
       let tokens =
         List.fold_left
           (fun acc -> function
@@ -643,6 +666,33 @@ module Modelfile_Test =
                     \\vertex{\\bar{\\psi_e}_{a,\\alpha_1}\
                              \\gamma^\\mu_{\\alpha_1\\alpha_2}\
                              {\\psi_e}_{a,\\alpha_2}A_\\mu}"));
+	  "kind-conflict1" >::
+	    (fun () ->
+	     assert_raises
+	       (Invalid_argument
+		  "conflicting stem kind: a_2 -> a -> \
+		   Lorentz index vs color:SU(3):3 index")
+	       (fun () -> Vertex.vertices'
+			    "\\index{a_1}\\color{3}\
+			     \\index{a_2}\\lorentz{X}"));
+	  "kind-conflict2" >::
+	    (fun () ->
+	     assert_raises
+	       (Invalid_argument
+		  "conflicting stem kind: a_2 -> a -> \
+		   color:SU(3):8 index vs color:SU(3):3 index")
+	       (fun () -> Vertex.vertices'
+			    "\\index{a_1}\\color{3}\
+			     \\index{a_2}\\color{8}"));
+	  "kind-conflict3" >::
+	    (fun () ->
+	     assert_raises
+	       (Invalid_argument
+		  "conflicting stem kind: H^- -> H -> \
+		   charged anti particle vs neutral particle")
+	       (fun () -> Vertex.vertices'
+			    "\\neutral{H}\
+			     \\charged{H^+}{H^-}"));
           "QCD.omf" >::
             (fun () ->
               dump_file "QCD" (parse_file "QCD.omf"));
