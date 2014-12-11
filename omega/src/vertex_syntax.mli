@@ -53,6 +53,10 @@ module Token :
     | Scripted of scripted
     | List of t list
 
+    (* TODO: investigate if it is possible to introduce [stem]
+       as a separate type to allow more fine-grained compile-time
+       checks. *)
+
     (* In addition to super- and subscripts, there are prefixes
        such as \verb+\bar+, \verb+\hat+, etc.  *)
     and scripted = private
@@ -186,15 +190,16 @@ module Lie :
        In practice, we will concentrate on SU(3) for now. *)
 
     type group
-    val default_group : group
+
+    val default_group : group (* SU(3), of course *)
     val group_of_string : string -> group
     val group_to_string : group -> string
 
-    (* Labelling the representation by their dimension, or
-       their negative dimension, is of course not general enough,
-       but will do for the moment. *)
+    (* For now, we only support the~$\mathbf{3}$, $\bar{\mathbf{3}}$
+       and~$\mathbf{8}$ of SU(3). *)
 
     type rep
+
     val rep_of_string : group -> string -> rep
     val rep_to_string : rep -> string
 

@@ -450,8 +450,10 @@ module Lie =
       match group with
       | SU 3 ->
 	 begin
-	   match int_of_string rep with
-	   | (3 | -3 | 8) as r -> r
+	   match rep with
+	   | "3" -> 3
+	   | "\\bar 3" -> -3
+	   | "8" -> 8
 	   | _ ->
 	      invalid_arg ("Vertex.Lie.rep_of_string:" ^
 			     " unsupported representation " ^ rep ^

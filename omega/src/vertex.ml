@@ -267,20 +267,21 @@ module type Symbol =
     | Index of space
     | Tensor of space
 
-    (* A table to look up the [kind] of a symbol. *)
-    type kind_table
-    val kind : kind_table -> t -> kind option
-    val load_kinds : file -> kind_table
-    val dump_kinds : out_channel -> kind_table -> unit
+    type table
+    val load : file -> table
+    val dump : out_channel -> table -> unit
+
+    (* Look up the [kind] of a symbol. *)
+    val kind_of_symbol : table -> t -> kind option
+
+    (* Look up the [kind] of a symbol's stem. *)
+    val kind_of_stem : table -> t -> kind option
+
+    (* A table to look up all symbols with the same [stem]. *)
+    val common_stem : table -> t -> t list
 
     exception Missing_Space of t
     exception Conflicting_Space of t
-
-    (* A table to look up all symbols with the same [stem]. *)
-    type stem_table
-    val common_stem : stem_table -> t -> t list
-    val load_stems : file -> stem_table
-    val dump_stems : out_channel -> stem_table -> unit
 
   end
 
@@ -334,19 +335,55 @@ module Symbol : Symbol =
           let compare = compare
          end)
 
-    type kind_table = kind ST.t
+    module SS =
+      Set.Make
+        (struct
+          type t = T.t
+          let compare = compare
+         end)
 
-    let add table token kind =
-      ST.add token kind table
+    type table = 
+	{ symbol_kinds : kind ST.t;
+	  stem_kinds : kind ST.t;
+	  common_stems : SS.t ST.t }
+
+    let empty = 
+	{ symbol_kinds = ST.empty;
+	  stem_kinds = ST.empty;
+	  common_stems = ST.empty }
+
+    let kind_of_symbol table token =
+      try Some (ST.find token table.symbol_kinds) with Not_found -> None
+
+    let kind_of_stem table token =
+      try Some (ST.find (T.stem token) table.stem_kinds) with Not_found -> None
+
+    let common_stem table token =
+      try
+	SS.elements (ST.find (T.stem token) table.common_stems)
+      with
+      | Not_found -> []
+
+    let add_kind table token kind =
+      { table with
+	symbol_kinds = ST.add token kind table.symbol_kinds;
+	stem_kinds = ST.add (T.stem token) kind table.stem_kinds }
+
+    let add_stem table token =
+      let stem = T.stem token in
+      let set =
+	try
+	  ST.find stem table.common_stems
+	with
+	| Not_found -> SS.empty in
+      { table with
+	common_stems = ST.add stem (SS.add token set) table.common_stems }
 
     (* Go through the list of attributes, make sure that
-       the space is declared and unique.  Return the space. *)
+       the [space] is declared and unique.  Return the space. *)
 
     exception Missing_Space of t
     exception Conflicting_Space of t
-
-    (* TODO: this is broken since we allow more than one
-       attribute: group and representation. *)
 
     let group_rep_of_tokens group rep =
       let group =
@@ -384,49 +421,18 @@ module Symbol : Symbol =
     let insert_kind table = function
       | F.Particle p ->
         begin match p.P.name with
-        | P.Neutral name -> add table name Neutral
+        | P.Neutral name -> add_kind table name Neutral
         | P.Charged (name, anti) ->
-          add (add table name Charged) anti Anti
+          add_kind (add_kind table name Charged) anti Anti
         end
-      | F.Index i -> add table i.I.name (Index (index_space i))
-      | F.Tensor t -> add table t.X.name (Tensor (tensor_space t))
+      | F.Index i -> add_kind table i.I.name (Index (index_space i))
+      | F.Tensor t -> add_kind table t.X.name (Tensor (tensor_space t))
       | F.Parameter p ->
         begin match p with
-        | Q.Parameter name -> add table name.Q.name Parameter
-        | Q.Derived name -> add table name.Q.name Derived
+        | Q.Parameter name -> add_kind table name.Q.name Parameter
+        | Q.Derived name -> add_kind table name.Q.name Derived
         end
       | F.Vertex _ -> table
-
-    let load_kinds decls =
-      List.fold_left insert_kind ST.empty decls
-
-    let kind table token =
-      try Some (ST.find token table) with Not_found -> None
-
-    let dump_kinds oc table =
-      Printf.fprintf oc "<<< Symbol Table: >>>\n";
-      ST.iter
-	(fun s k ->
-	 Printf.fprintf oc "%s -> %s\n" (T.to_string s) (kind_to_string k))
-	table
-
-    module SS =
-      Set.Make
-        (struct
-          type t = T.t
-          let compare = compare
-         end)
-
-    type stem_table = SS.t ST.t
-
-    let add_stem table token =
-      let stem = T.stem token in
-      let token_set =
-	try
-	  ST.find stem table
-	with
-	| Not_found -> SS.empty in
-      ST.add stem (SS.add token token_set) table
 
     let insert_stem table = function
       | F.Particle p ->
@@ -443,17 +449,24 @@ module Symbol : Symbol =
         end
       | F.Vertex _ -> table
 
-    let load_stems decls =
-      List.fold_left insert_stem ST.empty decls
+    let insert table token =
+      insert_stem (insert_kind table token) token
 
-    let common_stem table token =
-      try
-	SS.elements (ST.find (T.stem token) table)
-      with
-      | Not_found -> []
+    let load decls =
+      List.fold_left insert empty decls
 
-    let dump_stems oc table =
+    let dump oc table =
+      Printf.fprintf oc "<<< Symbol Table: >>>\n";
+      ST.iter
+	(fun s k ->
+	 Printf.fprintf oc "%s -> %s\n" (T.to_string s) (kind_to_string k))
+	table.symbol_kinds;
       Printf.fprintf oc "<<< Stem Table: >>>\n";
+      ST.iter
+	(fun s k ->
+	 Printf.fprintf oc "%s -> %s\n" (T.to_string s) (kind_to_string k))
+	table.stem_kinds;
+      Printf.fprintf oc "<<< Common Stems: >>>\n";
       ST.iter
 	(fun stem symbols ->
 	 Printf.fprintf
@@ -461,7 +474,7 @@ module Symbol : Symbol =
 	   (T.to_string stem)
 	   (String.concat
 	      ", " (List.map T.to_string (SS.elements symbols))))
-	table
+	table.common_stems
 
   end
 
@@ -524,12 +537,12 @@ module Vertex =
     let factor_add_other_index factor token =
       { factor with other = token :: factor.other }
 
-    let rec factor_add_index symbol_table stem_table factor = function
+    let rec factor_add_index symbol_table factor = function
       | T.Token "," -> factor
       | T.Token ("*" | "\\ast" as star) ->
         factor_add_prefix factor star
       | token ->
-        begin match S.kind symbol_table token with
+        begin match S.kind_of_symbol symbol_table token with
         | Some kind ->
           begin match kind with
           | S.Neutral | S.Charged | S.Anti -> factor_add_particle factor token
@@ -543,18 +556,17 @@ module Vertex =
           | S.Derived -> invalid_arg "factor_add_index: \\derived"
           end
         | None ->
-	   begin match S.common_stem stem_table token with
+	   begin match S.common_stem symbol_table token with
 	   | [] -> factor_add_other_index factor token
            | tokens ->
-	      List.fold_left
-		(factor_add_index symbol_table stem_table) factor tokens
+	      List.fold_left (factor_add_index symbol_table) factor tokens
 	   end
         end
 
-    let factor_of_token symbol_table stem_table token =
+    let factor_of_token symbol_table token =
       let token = T.wrap_scripted token in
       rev (List.fold_left
-             (factor_add_index symbol_table stem_table)
+             (factor_add_index symbol_table)
              (factor_stem token)
              (token.T.super @ token.T.sub))
 
@@ -575,17 +587,16 @@ module Vertex =
 
     let vertices s =
       let decls = parse_string s in
-      let symbol_table = Symbol.load_kinds decls
-      and stem_table = Symbol.load_stems decls in
-      (* diagnostics: [Symbol.dump_kinds stderr symbol_table;
-                       Symbol.dump_stems stderr stem_table;] *)
+      let symbol_table = Symbol.load decls in
+      (* diagnostics: [Symbol.dump stderr symbol_table] *)
+      Symbol.dump stderr symbol_table;
       let tokens =
         List.fold_left
           (fun acc -> function
           | Vertex_syntax.File.Vertex (_, v) -> T.wrap_list v @ acc
           | _ -> acc)
           [] decls in
-      List.map (factor_of_token symbol_table stem_table) tokens
+      List.map (factor_of_token symbol_table) tokens
 
     let vertices' s =
       String.concat "; "
@@ -623,7 +634,7 @@ module Modelfile_Test =
                  [A; lorentz=\\mu]"
                 (Vertex.vertices'
                    "\\charged{e^-}{e^+}\
-                    \\index{a}\\color{3}\
+                    \\index{a}\\color{\\bar3}\
                     \\index{b}\\color[SU(3)]{8}\
                     \\index{\\mu}\\lorentz{X}\
                     \\index{\\alpha}\\lorentz{X}\
