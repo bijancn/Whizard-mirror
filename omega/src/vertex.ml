@@ -504,7 +504,22 @@ module Symbol : Symbol =
 
 (* \thocwmodulesubsection{Vertices} *)
 
-module Vertex =
+module type Vertex =
+  sig
+
+    type factor
+    val vertices : string -> factor list
+
+    (* For testing and debugging *)
+    val vertices' : string -> string
+
+    (* TODO: [vertices] must produce a [t list] with
+       [type t = factor list], so that we can perform
+       sanity checks on [t]. *)
+
+  end
+
+module Vertex : Vertex =
   struct
 
     module S = Symbol
