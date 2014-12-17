@@ -507,15 +507,12 @@ module Symbol : Symbol =
 module type Vertex =
   sig
 
-    type factor
-    val vertices : string -> factor list
+    type t
+
+    val vertices : string -> t list
 
     (* For testing and debugging *)
     val vertices' : string -> string
-
-    (* TODO: [vertices] must produce a [t list] with
-       [type t = factor list], so that we can perform
-       sanity checks on [t]. *)
 
   end
 
@@ -538,6 +535,8 @@ module Vertex : Vertex =
         flavor : T.t list;
         lorentz : T.t list;
         other : T.t list }
+
+    type t = factor list
 
     let factor_stem token =
       { stem = token.T.stem;
@@ -631,14 +630,16 @@ module Vertex : Vertex =
       let tokens =
         List.fold_left
           (fun acc -> function
-          | Vertex_syntax.File.Vertex (_, v) -> T.wrap_list v @ acc
+          | Vertex_syntax.File.Vertex (_, v) -> T.wrap_list v :: acc
           | _ -> acc)
           [] decls in
-      List.map (factor_of_token symbol_table) tokens
+      List.map (List.map (factor_of_token symbol_table)) tokens
 
     let vertices' s =
       String.concat "; "
-        (List.map factor_to_string (vertices s))
+        (List.map
+	   (fun v -> String.concat " * " (List.map factor_to_string v))
+	   (vertices s))
 
     type field =
       { name : T.t list }
@@ -666,9 +667,9 @@ module Modelfile_Test =
             (fun () ->
               assert_equal ~printer:(fun s -> s)
                 "[\\psi; prefix=\\bar; \
-                  particle=e^+,e^-; color=a; lorentz=\\alpha_1]; \
-                 [\\gamma; lorentz=\\mu,\\alpha_1,\\alpha_2]; \
-                 [\\psi; particle=e^+,e^-; color=a; lorentz=\\alpha_2]; \
+                  particle=e^+,e^-; color=a; lorentz=\\alpha_1] * \
+                 [\\gamma; lorentz=\\mu,\\alpha_1,\\alpha_2] * \
+                 [\\psi; particle=e^+,e^-; color=a; lorentz=\\alpha_2] * \
                  [A; lorentz=\\mu]"
                 (Vertex.vertices'
                    "\\charged{e^-}{e^+}\
