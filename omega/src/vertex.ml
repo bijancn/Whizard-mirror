@@ -598,31 +598,31 @@ module Vertex : Vertex =
     let factor_add_other_index factor token =
       { factor with other = token :: factor.other }
 
-    let rec factor_add_index symbol_table factor = function
+    let factor_add_kind factor token = function
+      | S.Neutral | S.Charged | S.Anti -> factor_add_particle factor token
+      | S.Index (S.Color (rep, group)) ->
+	 factor_add_color_index (rep, group) factor token
+      | S.Index (S.Flavor (rep, group)) ->
+	 factor_add_flavor_index (rep, group) factor token
+      | S.Index (S.Lorentz t) -> factor_add_lorentz_index t factor token
+      | S.Tensor _ -> invalid_arg "factor_add_index: \\tensor"
+      | S.Parameter -> invalid_arg "factor_add_index: \\parameter"
+      | S.Derived -> invalid_arg "factor_add_index: \\derived"
+
+    let kind_of_symbol_or_stem symbol_table token =
+      match S.kind_of_symbol symbol_table token with
+      | Some _ as kind -> kind
+      | None -> S.kind_of_stem symbol_table token
+      
+    let factor_add_index symbol_table factor = function
       | T.Token "," -> factor
-      | T.Token ("*" | "\\ast" as star) ->
-        factor_add_prefix factor star
+      | T.Token ("*" | "\\ast" as star) -> factor_add_prefix factor star
       | token ->
-        begin match S.kind_of_symbol symbol_table token with
-        | Some kind ->
-          begin match kind with
-          | S.Neutral | S.Charged | S.Anti -> factor_add_particle factor token
-          | S.Index (S.Color (rep, group)) ->
-	     factor_add_color_index (rep, group) factor token
-          | S.Index (S.Flavor (rep, group)) ->
-	     factor_add_flavor_index (rep, group) factor token
-          | S.Index (S.Lorentz t) -> factor_add_lorentz_index t factor token
-          | S.Tensor _ -> invalid_arg "factor_add_index: \\tensor"
-          | S.Parameter -> invalid_arg "factor_add_index: \\parameter"
-          | S.Derived -> invalid_arg "factor_add_index: \\derived"
-          end
-        | None ->
-	   begin match S.common_stem symbol_table token with
-	   | [] -> factor_add_other_index factor token
-           | tokens ->
-	      List.fold_left (factor_add_index symbol_table) factor tokens
-	   end
-        end
+         begin
+	   match kind_of_symbol_or_stem symbol_table token with
+           | Some kind -> factor_add_kind factor token kind
+           | None -> factor_add_other_index factor token
+	 end
 
     let factor_of_token symbol_table token =
       let token = T.wrap_scripted token in
@@ -707,8 +707,7 @@ module Modelfile_Test =
 	       (Invalid_argument "index a_1 appears 1 times, \
 				  index a_2 appears 1 times")
 	       (fun () -> Vertex.vertices'
-			    "\\index{a_1}\\color{3}\
-			     \\index{a_2}\\color{3}\
+			    "\\index{a}\\color{3}\
 			     \\vertex{\\bar\\psi_{a_1}\\psi_{a_2}}"));
 	  "3" >::
 	    (fun () ->
@@ -754,9 +753,9 @@ module Modelfile_Test =
             (fun () ->
               assert_equal ~printer:(fun s -> s)
                 "[\\psi; prefix=\\bar; \
-                  particle=e^+,e^-; color=a; lorentz=\\alpha_1] * \
+                  particle=e; color=a; lorentz=\\alpha_1] * \
                  [\\gamma; lorentz=\\mu,\\alpha_1,\\alpha_2] * \
-                 [\\psi; particle=e^+,e^-; color=a; lorentz=\\alpha_2] * \
+                 [\\psi; particle=e; color=a; lorentz=\\alpha_2] * \
                  [A; lorentz=\\mu]"
                 (Vertex.vertices'
                    "\\charged{e^-}{e^+}\
@@ -764,8 +763,6 @@ module Modelfile_Test =
                     \\index{b}\\color[SU(3)]{8}\
                     \\index{\\mu}\\lorentz{X}\
                     \\index{\\alpha}\\lorentz{X}\
-                    \\index{\\alpha_1}\\lorentz{X}\
-                    \\index{\\alpha_2}\\lorentz{X}\
                     \\vertex{\\bar{\\psi_e}_{a,\\alpha_1}\
                              \\gamma^\\mu_{\\alpha_1\\alpha_2}\
                              {\\psi_e}_{a,\\alpha_2}A_\\mu}"));
