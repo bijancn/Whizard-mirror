@@ -514,6 +514,9 @@ module type Vertex =
     (* For testing and debugging *)
     val vertices' : string -> string
 
+    val count_indices : t -> (int * Symbol.t) list
+    val indices_ok : t -> unit
+
   end
 
 module Vertex : Vertex =
@@ -522,14 +525,34 @@ module Vertex : Vertex =
     module S = Symbol
     module T = Vertex_syntax.Token
 
-    type attr =
+    type prefix =
     | Bar
     | Dagger
     | Star
+    | Tilde
+    | Hat
+    | Prime
+
+    let string_to_prefix = function
+      | "\\bar" | "\\overline" -> Bar
+      | "\\hat" | "\\widehat" -> Hat
+      | "\\tilde" | "\\widetilde" -> Tilde
+      | "\\dagger" -> Dagger
+      | "*" | "\\ast" -> Star
+      | "\\prime" -> Prime
+      | _ -> invalid_arg "Vertex.string_to_prefix"
+
+    let prefix_to_string = function
+      | Bar -> "\\bar"
+      | Hat -> "\\hat"
+      | Tilde -> "\\tilde"
+      | Dagger -> "\\dagger"
+      | Star -> "*"
+      | Prime -> "\\prime"
 
     type factor =
       { stem : T.t;
-        prefix : string list;
+        prefix : prefix list;
         particle : T.t list;
         color : T.t list;
         flavor : T.t list;
@@ -540,7 +563,7 @@ module Vertex : Vertex =
 
     let factor_stem token =
       { stem = token.T.stem;
-        prefix = token.T.prefix;
+        prefix = List.map string_to_prefix token.T.prefix;
         particle = [];
         color = [];
         flavor = [];
@@ -557,7 +580,7 @@ module Vertex : Vertex =
         other = List.rev factor.other }
 
     let factor_add_prefix factor token =
-      { factor with prefix = token :: factor.prefix }
+      { factor with prefix = string_to_prefix token :: factor.prefix }
 
     let factor_add_particle factor token =
       { factor with particle = token :: factor.particle }
@@ -584,11 +607,11 @@ module Vertex : Vertex =
         | Some kind ->
           begin match kind with
           | S.Neutral | S.Charged | S.Anti -> factor_add_particle factor token
-          | S.Index S.Color (rep, group) ->
+          | S.Index (S.Color (rep, group)) ->
 	     factor_add_color_index (rep, group) factor token
-          | S.Index S.Flavor (rep, group) ->
+          | S.Index (S.Flavor (rep, group)) ->
 	     factor_add_flavor_index (rep, group) factor token
-          | S.Index S.Lorentz t -> factor_add_lorentz_index t factor token
+          | S.Index (S.Lorentz t) -> factor_add_lorentz_index t factor token
           | S.Tensor _ -> invalid_arg "factor_add_index: \\tensor"
           | S.Parameter -> invalid_arg "factor_add_index: \\parameter"
           | S.Derived -> invalid_arg "factor_add_index: \\derived"
@@ -616,13 +639,26 @@ module Vertex : Vertex =
        "[" ^ T.to_string factor.stem ^
          (match factor.prefix with
          | [] -> ""
-         | l -> "; prefix=" ^ String.concat ", " l) ^
+         | l -> "; prefix=" ^ String.concat "," (List.map prefix_to_string l)) ^
          list_to_string "particle" factor.particle ^
          list_to_string "color" factor.color ^
          list_to_string "flavor" factor.flavor ^
          list_to_string "lorentz" factor.lorentz ^
          list_to_string "other" factor.other ^ "]"
 
+    let count_indices factors =
+      ThoList.classify
+	(ThoList.flatmap (fun f -> f.color @ f.flavor @ f.lorentz) factors)
+
+    let format_mismatch (n, index) =
+      Printf.sprintf "index %s appears %d times" (T.to_string index) n
+
+    let indices_ok factors =
+      match List.filter (fun (n, _) -> n <> 2) (count_indices factors) with
+      | [] -> ()
+      | mismatches ->
+	 invalid_arg (String.concat ", " (List.map format_mismatch mismatches))
+      
     let vertices s =
       let decls = parse_string s in
       let symbol_table = Symbol.load decls in
@@ -633,7 +669,9 @@ module Vertex : Vertex =
           | Vertex_syntax.File.Vertex (_, v) -> T.wrap_list v :: acc
           | _ -> acc)
           [] decls in
-      List.map (List.map (factor_of_token symbol_table)) tokens
+      let vlist = List.map (List.map (factor_of_token symbol_table)) tokens in
+      List.iter indices_ok vlist;
+      vlist
 
     let vertices' s =
       String.concat "; "
@@ -661,6 +699,55 @@ module Modelfile_Test =
 
     open OUnit
 
+    let index_mismatches =
+      "index mismatches" >:::
+	[ "1" >::
+	    (fun () ->
+	     assert_raises
+	       (Invalid_argument "index a_1 appears 1 times, \
+				  index a_2 appears 1 times")
+	       (fun () -> Vertex.vertices'
+			    "\\index{a_1}\\color{3}\
+			     \\index{a_2}\\color{3}\
+			     \\vertex{\\bar\\psi_{a_1}\\psi_{a_2}}"));
+	  "3" >::
+	    (fun () ->
+	     assert_raises
+	       (Invalid_argument "index a appears 3 times")
+	       (fun () -> Vertex.vertices'
+			    "\\index{a}\\color{3}\
+			     \\vertex{\\bar\\psi_a\\psi_a\\phi_a}")) ]
+
+    let kind_conflicts =
+      "kind conflictings" >:::
+	[ "lorentz / color" >::
+	    (fun () ->
+	     assert_raises
+	       (Invalid_argument
+		  "conflicting stem kind: a_2 -> a -> \
+		   Lorentz index vs color:SU(3):3 index")
+	       (fun () -> Vertex.vertices'
+			    "\\index{a_1}\\color{3}\
+			     \\index{a_2}\\lorentz{X}"));
+	  "color / color" >::
+	    (fun () ->
+	     assert_raises
+	       (Invalid_argument
+		  "conflicting stem kind: a_2 -> a -> \
+		   color:SU(3):8 index vs color:SU(3):3 index")
+	       (fun () -> Vertex.vertices'
+			    "\\index{a_1}\\color{3}\
+			     \\index{a_2}\\color{8}"));
+	  "neutral / charged" >::
+	    (fun () ->
+	     assert_raises
+	       (Invalid_argument
+		  "conflicting stem kind: H^- -> H -> \
+		   charged anti particle vs neutral particle")
+	       (fun () -> Vertex.vertices'
+			    "\\neutral{H}\
+			     \\charged{H^+}{H^-}")) ]
+
     let suite =
       "Modelfile_Test" >:::
         [ "ok" >::
@@ -682,33 +769,8 @@ module Modelfile_Test =
                     \\vertex{\\bar{\\psi_e}_{a,\\alpha_1}\
                              \\gamma^\\mu_{\\alpha_1\\alpha_2}\
                              {\\psi_e}_{a,\\alpha_2}A_\\mu}"));
-	  "kind-conflict1" >::
-	    (fun () ->
-	     assert_raises
-	       (Invalid_argument
-		  "conflicting stem kind: a_2 -> a -> \
-		   Lorentz index vs color:SU(3):3 index")
-	       (fun () -> Vertex.vertices'
-			    "\\index{a_1}\\color{3}\
-			     \\index{a_2}\\lorentz{X}"));
-	  "kind-conflict2" >::
-	    (fun () ->
-	     assert_raises
-	       (Invalid_argument
-		  "conflicting stem kind: a_2 -> a -> \
-		   color:SU(3):8 index vs color:SU(3):3 index")
-	       (fun () -> Vertex.vertices'
-			    "\\index{a_1}\\color{3}\
-			     \\index{a_2}\\color{8}"));
-	  "kind-conflict3" >::
-	    (fun () ->
-	     assert_raises
-	       (Invalid_argument
-		  "conflicting stem kind: H^- -> H -> \
-		   charged anti particle vs neutral particle")
-	       (fun () -> Vertex.vertices'
-			    "\\neutral{H}\
-			     \\charged{H^+}{H^-}"));
+	  index_mismatches;
+	  kind_conflicts;
           "QCD.omf" >::
             (fun () ->
               dump_file "QCD" (parse_file "QCD.omf"));
