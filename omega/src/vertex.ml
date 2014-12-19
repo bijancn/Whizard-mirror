@@ -277,6 +277,10 @@ module type Symbol =
     (* Look up the [kind] of a symbol's stem. *)
     val kind_of_stem : table -> t -> kind option
 
+    (* Look up the [kind] of a symbol and fall back to the
+       [kind] of the symbol's stem, if necessary. *)
+    val kind_of_symbol_or_stem : table -> t -> kind option
+
     (* A table to look up all symbols with the same [stem]. *)
     val common_stem : table -> t -> t list
 
@@ -345,7 +349,15 @@ module Symbol : Symbol =
       try Some (ST.find token table.symbol_kinds) with Not_found -> None
 
     let kind_of_stem table token =
-      try Some (ST.find (T.stem token) table.stem_kinds) with Not_found -> None
+      try
+	Some (ST.find (T.stem token) table.stem_kinds)
+      with
+      | Not_found -> None
+
+    let kind_of_symbol_or_stem symbol_table token =
+      match kind_of_symbol symbol_table token with
+      | Some _ as kind -> kind
+      | None -> kind_of_stem symbol_table token
 
     let common_stem table token =
       try
@@ -609,17 +621,12 @@ module Vertex : Vertex =
       | S.Parameter -> invalid_arg "factor_add_index: \\parameter"
       | S.Derived -> invalid_arg "factor_add_index: \\derived"
 
-    let kind_of_symbol_or_stem symbol_table token =
-      match S.kind_of_symbol symbol_table token with
-      | Some _ as kind -> kind
-      | None -> S.kind_of_stem symbol_table token
-      
     let factor_add_index symbol_table factor = function
       | T.Token "," -> factor
       | T.Token ("*" | "\\ast" as star) -> factor_add_prefix factor star
       | token ->
          begin
-	   match kind_of_symbol_or_stem symbol_table token with
+	   match S.kind_of_symbol_or_stem symbol_table token with
            | Some kind -> factor_add_kind factor token kind
            | None -> factor_add_other_index factor token
 	 end
