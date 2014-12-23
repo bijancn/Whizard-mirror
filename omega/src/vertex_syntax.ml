@@ -37,9 +37,34 @@ module Token =
 
     and scripted = 
       { stem : t;
-	prefix : string list;
+	prefix : prefix list;
 	super : t list;
 	sub : t list }
+
+    and prefix =
+    | Bar
+    | Dagger
+    | Star
+    | Tilde
+    | Hat
+    | Prime
+
+    let prefix_of_string = function
+      | "\\bar" | "\\overline" -> Bar
+      | "\\hat" | "\\widehat" -> Hat
+      | "\\tilde" | "\\widetilde" -> Tilde
+      | "\\dagger" -> Dagger
+      | "*" | "\\ast" -> Star
+      | "\\prime" -> Prime
+      | _ -> invalid_arg "Vertex_Syntax.Token.string_to_prefix"
+
+    let prefix_to_string = function
+      | Bar -> "\\bar"
+      | Hat -> "\\hat"
+      | Tilde -> "\\tilde"
+      | Dagger -> "\\dagger"
+      | Star -> "*"
+      | Prime -> "\\prime"
 
     let wrap_scripted = function
       | Scripted st -> st
@@ -73,12 +98,12 @@ module Token =
       | _, [], None, None -> token
       | (Digit _ | Token _ | List _) as t, _, _, _ ->
 	Scripted { stem = t;
-		   prefix = prefix;
+		   prefix =  List.map prefix_of_string prefix;
 		   super = optional super;
 		   sub = optional sub }
       | Scripted st, _, _, _ ->
 	Scripted { stem = st.stem;
-		   prefix = prefix @ st.prefix;
+		   prefix =  List.map prefix_of_string prefix @ st.prefix;
 		   super = st.super @ optional super;
 		   sub = st.sub @ optional sub }
 
@@ -181,7 +206,8 @@ module Token =
 	match t.sub with
 	| [] -> ""
 	| tl -> "_" ^ list_to_string tl in
-      String.concat "" t.prefix ^ to_string t.stem ^ super ^ sub
+      String.concat "" (List.map prefix_to_string t.prefix) ^
+	to_string t.stem ^ super ^ sub
 
     and required_space t1 t2 =
       let required_space' s1 s2 =

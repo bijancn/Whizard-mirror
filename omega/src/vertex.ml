@@ -538,34 +538,9 @@ module Declaration : Declaration =
     module S = Symbol
     module T = Vertex_syntax.Token
 
-    type prefix =
-    | Bar
-    | Dagger
-    | Star
-    | Tilde
-    | Hat
-    | Prime
-
-    let string_to_prefix = function
-      | "\\bar" | "\\overline" -> Bar
-      | "\\hat" | "\\widehat" -> Hat
-      | "\\tilde" | "\\widetilde" -> Tilde
-      | "\\dagger" -> Dagger
-      | "*" | "\\ast" -> Star
-      | "\\prime" -> Prime
-      | _ -> invalid_arg "Declaration.string_to_prefix"
-
-    let prefix_to_string = function
-      | Bar -> "\\bar"
-      | Hat -> "\\hat"
-      | Tilde -> "\\tilde"
-      | Dagger -> "\\dagger"
-      | Star -> "*"
-      | Prime -> "\\prime"
-
     type factor =
       { stem : T.t;
-        prefix : prefix list;
+        prefix : T.prefix list;
         particle : T.t list;
         color : T.t list;
         flavor : T.t list;
@@ -576,7 +551,7 @@ module Declaration : Declaration =
 
     let factor_stem token =
       { stem = token.T.stem;
-        prefix = List.map string_to_prefix token.T.prefix;
+        prefix = token.T.prefix;
         particle = [];
         color = [];
         flavor = [];
@@ -593,7 +568,7 @@ module Declaration : Declaration =
         other = List.rev factor.other }
 
     let factor_add_prefix factor token =
-      { factor with prefix = string_to_prefix token :: factor.prefix }
+      { factor with prefix = T.prefix_of_string token :: factor.prefix }
 
     let factor_add_particle factor token =
       { factor with particle = token :: factor.particle }
@@ -647,12 +622,13 @@ module Declaration : Declaration =
        "[" ^ T.to_string factor.stem ^
          (match factor.prefix with
          | [] -> ""
-         | l -> "; prefix=" ^ String.concat "," (List.map prefix_to_string l)) ^
-         list_to_string "particle" factor.particle ^
-         list_to_string "color" factor.color ^
-         list_to_string "flavor" factor.flavor ^
-         list_to_string "lorentz" factor.lorentz ^
-         list_to_string "other" factor.other ^ "]"
+         | l -> "; prefix=" ^
+		  String.concat "," (List.map T.prefix_to_string l)) ^
+           list_to_string "particle" factor.particle ^
+           list_to_string "color" factor.color ^
+           list_to_string "flavor" factor.flavor ^
+           list_to_string "lorentz" factor.lorentz ^
+           list_to_string "other" factor.other ^ "]"
 
     let count_indices factors =
       ThoList.classify

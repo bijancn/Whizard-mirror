@@ -61,9 +61,20 @@ module Token :
        such as \verb+\bar+, \verb+\hat+, etc.  *)
     and scripted = private
       { stem : t;
-	prefix : string list;
+	prefix : prefix list;
 	super : t list;
 	sub : t list }
+
+    and prefix = private
+    | Bar
+    | Dagger
+    | Star
+    | Tilde
+    | Hat
+    | Prime
+
+    val prefix_of_string : string -> prefix
+    val prefix_to_string : prefix -> string
 
     (* Smart constructors that avoid redundant nestings of lists
        and scripted tokens with empty scripts. *)
