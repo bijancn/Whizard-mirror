@@ -514,24 +514,25 @@ module Symbol : Symbol =
 
   end
 
-(* \thocwmodulesubsection{Vertices} *)
+(* \thocwmodulesubsection{Declarations} *)
 
-module type Vertex =
+module type Declaration =
   sig
 
     type t
 
-    val vertices : string -> t list
+    val of_string : string -> t list
+    val to_string : t list -> string
 
     (* For testing and debugging *)
-    val vertices' : string -> string
+    val of_string_and_back : string -> string
 
     val count_indices : t -> (int * Symbol.t) list
     val indices_ok : t -> unit
 
   end
 
-module Vertex : Vertex =
+module Declaration : Declaration =
   struct
 
     module S = Symbol
@@ -552,7 +553,7 @@ module Vertex : Vertex =
       | "\\dagger" -> Dagger
       | "*" | "\\ast" -> Star
       | "\\prime" -> Prime
-      | _ -> invalid_arg "Vertex.string_to_prefix"
+      | _ -> invalid_arg "Declaration.string_to_prefix"
 
     let prefix_to_string = function
       | Bar -> "\\bar"
@@ -666,7 +667,7 @@ module Vertex : Vertex =
       | mismatches ->
 	 invalid_arg (String.concat ", " (List.map format_mismatch mismatches))
       
-    let vertices s =
+    let of_string s =
       let decls = parse_string s in
       let symbol_table = Symbol.load decls in
       (* diagnostics: [Symbol.dump stderr symbol_table;] *)
@@ -680,11 +681,14 @@ module Vertex : Vertex =
       List.iter indices_ok vlist;
       vlist
 
-    let vertices' s =
+    let to_string decls =
       String.concat "; "
         (List.map
 	   (fun v -> String.concat " * " (List.map factor_to_string v))
-	   (vertices s))
+	   decls)
+
+    let of_string_and_back s =
+      to_string (of_string s)
 
     type field =
       { name : T.t list }
@@ -713,14 +717,14 @@ module Modelfile_Test =
 	     assert_raises
 	       (Invalid_argument "index a_1 appears 1 times, \
 				  index a_2 appears 1 times")
-	       (fun () -> Vertex.vertices'
+	       (fun () -> Declaration.of_string_and_back
 			    "\\index{a}\\color{3}\
 			     \\vertex{\\bar\\psi_{a_1}\\psi_{a_2}}"));
 	  "3" >::
 	    (fun () ->
 	     assert_raises
 	       (Invalid_argument "index a appears 3 times")
-	       (fun () -> Vertex.vertices'
+	       (fun () -> Declaration.of_string_and_back
 			    "\\index{a}\\color{3}\
 			     \\vertex{\\bar\\psi_a\\psi_a\\phi_a}")) ]
 
@@ -732,7 +736,7 @@ module Modelfile_Test =
 	       (Invalid_argument
 		  "conflicting stem kind: a_2 -> a -> \
 		   Lorentz index vs color:SU(3):3 index")
-	       (fun () -> Vertex.vertices'
+	       (fun () -> Declaration.of_string_and_back
 			    "\\index{a_1}\\color{3}\
 			     \\index{a_2}\\lorentz{X}"));
 	  "color / color" >::
@@ -741,7 +745,7 @@ module Modelfile_Test =
 	       (Invalid_argument
 		  "conflicting stem kind: a_2 -> a -> \
 		   color:SU(3):8 index vs color:SU(3):3 index")
-	       (fun () -> Vertex.vertices'
+	       (fun () -> Declaration.of_string_and_back
 			    "\\index{a_1}\\color{3}\
 			     \\index{a_2}\\color{8}"));
 	  "neutral / charged" >::
@@ -750,7 +754,7 @@ module Modelfile_Test =
 	       (Invalid_argument
 		  "conflicting stem kind: H^- -> H -> \
 		   charged anti particle vs neutral particle")
-	       (fun () -> Vertex.vertices'
+	       (fun () -> Declaration.of_string_and_back
 			    "\\neutral{H}\
 			     \\charged{H^+}{H^-}")) ]
 
@@ -764,7 +768,7 @@ module Modelfile_Test =
                  [\\gamma; lorentz=\\mu,\\alpha_1,\\alpha_2] * \
                  [\\psi; particle=e; color=a; lorentz=\\alpha_2] * \
                  [A; lorentz=\\mu]"
-                (Vertex.vertices'
+                (Declaration.of_string_and_back
                    "\\charged{e^-}{e^+}\
                     \\index{a}\\color{\\bar3}\
                     \\index{b}\\color[SU(3)]{8}\
