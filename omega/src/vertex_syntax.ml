@@ -42,11 +42,8 @@ module Token =
 	sub : t list }
 
     and prefix =
-    | Bar
-    | Dagger
-    | Star
-    | Tilde
-    | Hat
+    | Bar | Hat | Tilde
+    | Dagger | Star
     | Prime
 
     let prefix_of_string = function
@@ -78,7 +75,7 @@ module Token =
       if i >= 0 && i <= 9 then
 	Digit i
       else
-	invalid_arg ("digit: " ^ string_of_int i)
+	invalid_arg ("Vertex_Syntax.Token.digit: " ^ string_of_int i)
 
     let token s =
       Token s

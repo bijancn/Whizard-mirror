@@ -65,12 +65,9 @@ module Token :
 	super : t list;
 	sub : t list }
 
-    and prefix = private
-    | Bar
-    | Dagger
-    | Star
-    | Tilde
-    | Hat
+    and prefix =
+    | Bar | Hat | Tilde
+    | Dagger | Star
     | Prime
 
     val prefix_of_string : string -> prefix
