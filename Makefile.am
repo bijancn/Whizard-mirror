@@ -2,12 +2,18 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2014 by 
+# Copyright (C) 1999-2015 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
 #     with contributions from
+#     Fabian Bach <fabian.bach@desy.de>
+#     Bijan Chokoufe <bijan.chokoufe@desy.de>
 #     Christian Speckner <cnspeckn@googlemail.com>
+#     Marco Sekulla <marco.sekulla@desy.de>
+#     Christian Weiss <christian.weiss@desy.de>
+#     Felix Braam, Sebastian Schmidt,
+#     Hans-Werner Boschmann, Daniel Wiesler
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by 
@@ -29,7 +35,7 @@
 ACLOCAL_AMFLAGS = -I m4
 
 ## Subdirectories to configure
-SUBDIRS = circe1 circe2 omega vamp pythia src share \
+SUBDIRS = circe1 circe2 omega vamp pythia6 src share \
    tests scripts libtool-config 
 if !OCAML_AVAILABLE
 dist-hook:
@@ -52,8 +58,7 @@ EXTRA_DISTCHECK_CONFIGURE_FLAGS = \
     "--disable-noweb-force" \
     "--disable-noweb-force --disable-ocaml" \
     "--disable-noweb-force --disable-static" \
-    "--disable-shower" \
-    "--enable-shower --enable-mpi" \
+    "--disable-pythia6" \
     "--enable-fc-extended --enable-fc-openmp"
 
 extra-distcheck:

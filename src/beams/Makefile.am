@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2014 by 
+# Copyright (C) 1999-2015 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -33,7 +33,17 @@ libbeams_la_SOURCES = \
   beams.f90 \
   sf_mappings.f90 \
   sf_aux.f90 \
-  sf_base.f90
+  sf_base.f90 \
+  sf_isr.f90 \
+  sf_epa.f90 \
+  sf_ewa.f90 \
+  sf_escan.f90 \
+  sf_beam_events.f90 \
+  sf_circe1.f90 \
+  sf_circe2.f90 \
+  hoppet_interface.f90 \
+  sf_pdf_builtin.f90 \
+  sf_lhapdf.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = beams.nw
@@ -54,10 +64,19 @@ module_lists = \
   ../testing/Modules \
   ../system/Modules \
   ../combinatorics/Modules \
+  ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
   ../types/Modules \
   ../particles/Modules
+
+# Explicit dependencies, not automatically generated
+sf_circe1.lo: ../../circe1/src/circe1.$(FC_MODULE_EXT)
+sf_circe2.lo: ../../circe2/src/circe2.$(FC_MODULE_EXT)
+hoppet_interface.lo:  ../lhapdf/lhapdf.$(FC_MODULE_EXT)
+sf_pdf_builtin.lo: ../pdf_builtin/pdf_builtin.$(FC_MODULE_EXT)
+sf_lhapdf.lo:  ../lhapdf/lhapdf.$(FC_MODULE_EXT)
+
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -100,7 +119,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../physics -I../fastjet -I../qft -I../types -I../particles
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I../../circe1/src -I../../circe2/src -I../pdf_builtin -I../lhapdf
 
 
 ########################################################################

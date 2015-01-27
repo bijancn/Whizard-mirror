@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2014 by 
+# Copyright (C) 1999-2015 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -35,7 +35,8 @@ libcombinatorics_la_SOURCES = \
   hashes.f90 \
   md5.f90 \
   permutations.f90 \
-  sorting.f90
+  sorting.f90 \
+  grids.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = combinatorics.nw
@@ -53,7 +54,8 @@ Modules: Makefile
 module_lists = \
   ../basics/Modules \
   ../testing/Modules \
-  ../system/Modules
+  ../system/Modules \
+  ../utilities/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -97,7 +99,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../testing -I../system
+AM_FCFLAGS = -I../basics -I../testing -I../system -I../utilities
 
 
 ########################################################################

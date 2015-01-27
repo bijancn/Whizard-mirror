@@ -4,7 +4,7 @@ dnl =======================================================================
 dnl Process this file with autoconf to produce a configure script.
 dnl =======================================================================
 dnl 
-dnl Copyright (C) 1999-2014 by 
+dnl Copyright (C) 1999-2015 by 
 dnl     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 dnl     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 dnl     Juergen Reuter <juergen.reuter@desy.de>

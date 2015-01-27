@@ -1,8 +1,8 @@
-C $Id: mstw2008.f 6124 2014-09-16 09:51:26Z kilian $
+C $Id: mstwpdf.f 6443 2015-01-05 23:46:18Z jr_reuter $
 
 C ---- FORTRAN 90 ----
 C
-C This file is nearly identical with the official mstw2008 FORTRAN code.
+C This file is nearly identical with the official mstwpdf FORTRAN code.
 C The changes are:
 C
 C  - The code has been wrapped in a module to avoid symbol clashes.
@@ -13,10 +13,10 @@ C    breaking support for error sets.
 C  - Unit handling has been sanitized, replacing 33 with a dynamically
 C    determined value
 C  - Non-error prints have been removed.
-C  - getallpdfs has been renamed to getmstw2008
+C  - getallpdfs has been renamed to getmstwpdf
 
 C----------------------------------------------------------------------
-C--   Fortran interpolation code for MSTW PDFs, building on existing
+C--   Fortran interpolation code for MSTW/MMHT PDFs, building on existing
 C--   MRST Fortran code and Jeppe Andersen's C++ code.
 C--   Three user interfaces:
 C--    call GetAllPDFs(prefix,ih,x,q,upv,dnv,usea,dsea,
@@ -24,13 +24,14 @@ C--                    str,sbar,chm,cbar,bot,bbar,glu,phot)
 C--    call GetAllPDFsAlt(prefix,ih,x,q,xpdf,xphoton)
 C--    xf = GetOnePDF(prefix,ih,x,q,f)
 C--   See enclosed example.f for usage.
-C--   Comments to Graeme Watt <Graeme.Watt(at)cern.ch>.
+C--   Original code by Graeme Watt <Graeme.Watt(at)durham.ac.uk>.
 C--   Updated 25/06/2010: Enlarge allowed range for m_c and m_b.
+C--   Updated 25/01/2011: Fix "NaN" bug for q <= m_c when m_c^2 < 1.25 GeV^2.
 C----------------------------------------------------------------------
 
 C----------------------------------------------------------------------
 
-      module mstw2008
+      module mstwpdf
       use io_units
 
       contains
@@ -38,7 +39,7 @@ C----------------------------------------------------------------------
 C--   Traditional MRST-like interface: return all flavours.
 C--   (Note the additional "sbar", "cbar", "bbar" and "phot"
 C--   compared to previous MRST releases.)
-      subroutine getmstw2008(path,prefix,ih,x,q,
+      subroutine getmstwpdf(path,prefix,ih,x,q,
      &     upv,dnv,usea,dsea,str,sbar,chm,cbar,bot,bbar,glu,phot)
       implicit none
       integer ih
@@ -753,6 +754,7 @@ C--   "len_trim" since not supported by all Fortran 77 compilers.
       return
       end function
 
-      end module mstw2008
+      end module mstwpdf
 
 C----------------------------------------------------------------------
+C ORIG

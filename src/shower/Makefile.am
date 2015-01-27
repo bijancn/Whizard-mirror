@@ -2,14 +2,18 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2014 by
+# Copyright (C) 1999-2015 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
 #     with contributions from
+#     Fabian Bach <fabian.bach@desy.de>
 #     Bijan Chokoufe <bijan.chokoufe@desy.de>
 #     Christian Speckner <cnspeckn@googlemail.com>
-#     Sebastian Schmidt, Daniel Wiesler
+#     Marco Sekulla <marco.sekulla@desy.de>
+#     Christian Weiss <christian.weiss@desy.de>
+#     Felix Braam, Sebastian Schmidt,
+#     Hans-Werner Boschmann, Daniel Wiesler
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by
@@ -28,15 +32,10 @@
 ########################################################################
 
 ## The files in this directory end up in an auxiliary libtool library.
-## If shower is enabled, pythia6 is enabled automatically
-if SHOWER_AVAILABLE
 noinst_LTLIBRARIES = libshower.la
-else
-noinst_LTLIBRARIES = libshower_dummy.la
-endif
 
 libshower_la_SOURCES = \
-   pythia_up.f \
+   pythia6_up.f \
    shower_base.f90 \
    shower_partons.f90 \
    shower_core.f90 \
@@ -44,7 +43,6 @@ libshower_la_SOURCES = \
    mlm_matching.f90 \
    ckkw_pseudo_weights.f90 \
    ckkw_matching.f90
-libshower_dummy_la_SOURCES = shower_dummy.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = shower.nw
@@ -69,7 +67,8 @@ module_lists = \
   ../physics/Modules \
   ../qft/Modules \
   ../types/Modules \
-  ../particles/Modules
+  ../particles/Modules \
+  ../events/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -107,14 +106,18 @@ Makefile.depend: $(libshower_la_SOURCES)
 
 DISTCLEANFILES += Makefile.depend
 
-libshower_la_LIBADD = ../../pythia/libpythia_wo.la
+if PYTHIA6_AVAILABLE
+libshower_la_LIBADD = ../../pythia6/libpythia6_wo.la
+else
+libshower_la_LIBADD = ../../pythia6/libpythia6_wo_dummy.la
+endif
 
 # Fortran90 module files are generated at the same time as object files
 .lo.$(FC_MODULE_EXT):
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I ../system -I../testing -I ../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I ../lhapdf -I ../pdf_builtin -I../../pythia
+AM_FCFLAGS = -I../basics -I../utilities -I ../system -I../testing -I ../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I../events -I ../lhapdf -I ../pdf_builtin -I../../pythia6
 AM_FFLAGS =
 
 ########################################################################
@@ -135,6 +138,8 @@ endif
 ########################################################################
 
 ## (Re)create F90 sources from NOWEB source.
+## This needs to be outside the NOWEB bracket.
+
 if NOWEB_AVAILABLE
 
 PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
@@ -148,7 +153,7 @@ shower.stamp: $(PRELUDE) $(srcdir)/shower.nw $(POSTLUDE)
 	done
 	@mv -f shower.tmp shower.stamp
 
-SHOWER_SRC = $(libshower_la_SOURCES) $(libshower_dummy_la_SOURCES)
+SHOWER_SRC = $(libshower_la_SOURCES) 
 
 $(SHOWER_SRC): shower.stamp
 ## Recover from the removal of $@

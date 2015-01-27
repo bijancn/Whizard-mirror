@@ -1,6 +1,6 @@
 ! WHIZARD <<Version>> <<Date>>
 ! 
-! Copyright (C) 1999-2014 by 
+! Copyright (C) 1999-2015 by 
 !     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 !     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 !     Juergen Reuter <juergen.reuter@desy.de>
@@ -48,9 +48,27 @@
        type(c_ptr), value :: evt_obj
      end subroutine lcio_event_delete
 
+! extern "C" void lcio_event_add_collection ( LCEventImpl* evt, LCCollectionVec* mcVec )     
+     subroutine lcio_event_add_collection (evt_obj, lccoll_obj) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: evt_obj, lccoll_obj
+     end subroutine lcio_event_add_collection
+     
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! MCParticleImpl functions
+!! MCParticleImpl and LCCollectionVec functions
 
+! extern "C" LCCollectionVec* new_lccollection()
+     type(c_ptr) function new_lccollection () bind (C)
+       use iso_c_binding
+       new_lccollection = c_null_ptr
+     end function new_lccollection
+
+! extern "C" void add_particle_to_collection (MCParticleImpl* mcp, LCCollectionVec* mcVec)
+     subroutine add_particle_to_collection (prt_obj, lccoll_obj) bind (C)
+       use iso_c_binding
+       type(c_ptr), value :: prt_obj, lccoll_obj
+     end subroutine add_particle_to_collection
+     
 ! extern "C" MCParticleImpl* new_lcio_particle(void* momentum, int pdg_id, int status)
      type(c_ptr) function new_lcio_particle (mom, pdg_id, mass, status) bind(C)
        use iso_c_binding
@@ -78,9 +96,10 @@
 !! LCWriter functions
 
 ! extern "C" LCWriter* open_lcio_writer_new 
-     type (c_ptr) function open_lcio_writer_new (filename) bind (C)
+     type (c_ptr) function open_lcio_writer_new (filename, complevel) bind (C)
        use iso_c_binding
        character(c_char), dimension(*), intent(in) :: filename
+       integer(c_int), value :: complevel
        open_lcio_writer_new = c_null_ptr
      end function open_lcio_writer_new
      
@@ -95,15 +114,32 @@
        use iso_c_binding
        type(c_ptr), value :: io_obj, evt_obj
      end subroutine lcio_write_event
+
+! extern "C" void lcio_particle_add_parent
+     subroutine lcio_particle_add_parent (io_obj1, io_obj2) bind (C)
+       use iso_c_binding
+       type(c_ptr), value :: io_obj1, io_obj2
+     end subroutine lcio_particle_add_parent
      
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! LCRunHeader functions
 
 ! extern "C" LCRunHeaderImpl* new_lcio_run_header( int run_id ) {
-     type(c_ptr) function new_lcio_run_header ( run_id ) bind(C)
+     type(c_ptr) function new_lcio_run_header (run_id) bind(C)
        use iso_c_binding
        integer(c_int), value :: run_id
        new_lcio_run_header = c_null_ptr
      end function new_lcio_run_header
 
-     
+! extern "C" void run_header_set_simstring (LCRunHeaderImpl* runHdr, char* simstring)      
+     subroutine run_header_set_simstring (runhdr_obj, simstring) bind (C)
+       use iso_c_binding
+       type(c_ptr), value :: runhdr_obj
+       character(c_char), dimension(*), intent(in) :: simstring
+     end subroutine run_header_set_simstring
+
+! extern "C" void write_run_header (LCWriter* lcWrt, const LCRunHeaderImpl* runHdr)
+     subroutine write_run_header (lcwrt_obj, runhdr_obj) bind (C)
+       use iso_c_binding
+       type(c_ptr), value :: lcwrt_obj, runhdr_obj
+     end subroutine write_run_header

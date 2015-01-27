@@ -2188,7 +2188,7 @@ stores the signed invariant mass (no squaring).
      end function gen_particle_is_beam
   end interface
 @ %def gen_particle_is_beam
-@ Determine whether a particle os a beam particle. 
+@ Determine whether a particle is a beam particle. 
 <<HepMC interface: public>>=
   public :: hepmc_particle_is_beam
 <<HepMC interface: procedures>>=
@@ -3719,6 +3719,16 @@ The Fortran version has initializer form.
      end function new_lcio_run_header
   end interface
 @ %def new_lcio_run_header
+<<LCIO interface: interfaces>>=
+  interface
+     subroutine run_header_set_simstring &
+          (runhdr_obj, simstring) bind(C)
+       import
+       type(c_ptr), value :: runhdr_obj
+       character(c_char), dimension(*), intent(in) :: simstring
+     end subroutine run_header_set_simstring
+  end interface
+@ %def run_header_set_simstring
 <<LCIO interface: public>>=
   public :: lcio_run_header_init
 <<LCIO interface: procedures>>=
@@ -3728,26 +3738,66 @@ The Fortran version has initializer form.
     integer(c_int) :: pid
     pid = 0;  if (present (proc_id))  pid = proc_id
     runhdr%obj = new_lcio_run_header (pid)
+    call run_header_set_simstring (runhdr%obj, &
+         "WHIZARD version:" // "<<Version>>")
   end subroutine lcio_run_header_init
 
 @ %def lcio_run_header_init
 @
-\subsection{LCIO Event}
+<<LCIO interface: interfaces>>=
+  interface
+     subroutine write_run_header (lcwrt_obj, runhdr_obj) bind(C)
+       import
+       type(c_ptr), value :: lcwrt_obj
+       type(c_ptr), value :: runhdr_obj
+     end subroutine write_run_header
+  end interface
+@ %def write_run_header
+<<LCIO interface: public>>=
+  public :: lcio_run_header_write
+<<LCIO interface: procedures>>=
+  subroutine lcio_run_header_write (wrt, hdr)
+    type(lcio_writer_t), intent(inout) :: wrt
+    type(lcio_run_header_t), intent(inout) :: hdr
+    call write_run_header (wrt%obj, hdr%obj)
+  end subroutine lcio_run_header_write
+
+@ %def lcio_run_header_write 
+@
+\subsection{LCIO Event and LC Collection}
 The main object of LCIO is a LCEventImpl.  The object is filled by
 MCParticle objects, which are set as LCCollection.
+<<LCIO interface: public>>=
+  public :: lccollection_t
+<<LCIO interface: types>>=
+  type :: lccollection_t
+     private
+     type(c_ptr) :: obj
+  end type lccollection_t
+
+@ %def lccollection_t
+@ Initializer.
+<<LCIO interface: interfaces>>=
+  interface
+     type(c_ptr) function new_lccollection () bind(C)
+       import
+     end function new_lccollection
+  end interface
+@ %def new_lccollection
 <<LCIO interface: public>>=
   public :: lcio_event_t
 <<LCIO interface: types>>=
   type :: lcio_event_t
      private
      type(c_ptr) :: obj
+     type(lccollection_t) :: lccoll
   end type lcio_event_t
 
 @ %def lcio_event_t 
 @ Constructor.  Arguments are process ID (integer) and event ID
 (integer).
 
-The Fortran version has initializer form.
+The Fortran version has initializer form. 
 <<LCIO interface: interfaces>>=
   interface
      type(c_ptr) function new_lcio_event (proc_id, event_id) bind(C)
@@ -3756,6 +3806,7 @@ The Fortran version has initializer form.
      end function new_lcio_event
   end interface
 @ %def new_lcio_event
+@ 
 <<LCIO interface: public>>=
   public :: lcio_event_init
 <<LCIO interface: procedures>>=
@@ -3766,6 +3817,7 @@ The Fortran version has initializer form.
     pid = 0;  if (present (proc_id))  pid = proc_id
     eid = 0;  if (present (event_id)) eid = event_id
     evt%obj = new_lcio_event (pid, eid)
+    evt%lccoll%obj = new_lccollection ()
   end subroutine lcio_event_init
 
 @ %def lcio_event_init
@@ -3787,6 +3839,26 @@ The Fortran version has initializer form.
   end subroutine lcio_event_final
 
 @ %def lcio_event_final
+<<LCIO interface: interfaces>>=
+  interface
+     subroutine lcio_event_add_collection &
+          (evt_obj, lccoll_obj) bind(C)
+       import
+       type(c_ptr), value :: evt_obj, lccoll_obj
+     end subroutine lcio_event_add_collection
+  end interface
+@ %def lcio_event_add_collection
+<<LCIO interface: public>>=
+  public :: lcio_event_add_coll
+<<LCIO interface: procedures>>=
+  subroutine lcio_event_add_coll (evt) 
+    type(lcio_event_t), intent(inout) :: evt
+    call lcio_event_add_collection (evt%obj, &
+         evt%lccoll%obj)
+  end subroutine lcio_event_add_coll
+
+@ %def lcio_event_add_coll
+@
 \subsection{LCIO Particle}
 Particle objects have the obvious meaning.
 <<LCIO interface: public>>=
@@ -3798,10 +3870,11 @@ Particle objects have the obvious meaning.
   end type lcio_particle_t
 
 @ %def lcio_particle_t
-@ Constructor. Do we need a destructor?
+@ Constructor. 
 <<LCIO interface: interfaces>>=
   interface
-     type(c_ptr) function new_lcio_particle (mom, pdg_id, mass, status) bind(C)
+     type(c_ptr) function new_lcio_particle &
+          (mom, pdg_id, mass, status) bind(C)
        import
        integer(c_int), value :: pdg_id, status
        real(c_double), value :: mass
@@ -3809,18 +3882,41 @@ Particle objects have the obvious meaning.
      end function new_lcio_particle
   end interface
 @ %def new_lcio_particle
+@
+<<LCIO interface: interfaces>>=
+  interface
+     subroutine add_particle_to_collection &
+          (prt_obj, lccoll_obj) bind(C)
+       import
+       type(c_ptr), value :: prt_obj, lccoll_obj
+     end subroutine add_particle_to_collection
+  end interface
+@ %def add_particle_to_collection
+<<LCIO interface: public>>=
+  public :: lcio_particle_add_to_evt_coll
+<<LCIO interface: procedures>>=
+  subroutine lcio_particle_add_to_evt_coll &
+       (lprt, evt)
+    type(lcio_particle_t), intent(in) :: lprt
+    type(lcio_event_t), intent(inout) :: evt
+    call add_particle_to_collection (lprt%obj, evt%lccoll%obj)
+  end subroutine lcio_particle_add_to_evt_coll
+
+@ %def lcio_particle_to_collection
+@
 <<LCIO interface: public>>=
   public :: lcio_particle_init
 <<LCIO interface: procedures>>=
-  subroutine lcio_particle_init (prt, p, pdg, status, mass)
+  subroutine lcio_particle_init (prt, p, pdg, status)
     type(lcio_particle_t), intent(out) :: prt
     type(vector4_t), intent(in) :: p
-    real(default), intent(in) :: mass
+    real(default) :: mass
     real(default) :: px, py, pz
     integer, intent(in) :: pdg, status
     px = vector4_get_component (p, 1)
     py = vector4_get_component (p, 2)
     pz = vector4_get_component (p, 3)
+    mass = p**1
     prt%obj = new_lcio_particle ([real (px, c_double), real (py, c_double), &
          real (pz, c_double)], int (pdg, c_int), &
          real (mass, c_double), int (status, c_int))
@@ -3891,6 +3987,24 @@ directly from a pair of integers.
 
 @ %def lcio_particle_get_color
 @
+<<LCIO interface: interfaces>>=
+  interface
+     subroutine lcio_particle_add_parent (prt_obj1, prt_obj2) bind(C)
+       import
+       type(c_ptr), value :: prt_obj1, prt_obj2
+     end subroutine lcio_particle_add_parent
+  end interface  
+@ %def lcio_particle_add_parent
+<<LCIO interface: public>>=
+  public :: lcio_particle_set_parent
+<<LCIO interface: procedures>>=
+  subroutine lcio_particle_set_parent (daughter, parent) 
+    type(lcio_particle_t), intent(inout) :: daughter, parent
+    call lcio_particle_add_parent (daughter%obj, parent%obj)
+  end subroutine lcio_particle_set_parent
+
+@ %def lcio_particle_set_parent
+@
 \subsection{LCIO Writer type}
 There is a specific LCIO Writer type for handling the output of
 LCEventImpl objects (i.e., Monte Carlo event samples) to file.  Opening
@@ -3907,9 +4021,10 @@ the file is done by the constructor, closing by the destructor.
 @ Constructor for an output associated to a file.
 <<LCIO interface: interfaces>>=
   interface
-     type(c_ptr) function open_lcio_writer_new (filename) bind(C)
+     type(c_ptr) function open_lcio_writer_new (filename, complevel) bind(C)
        import
        character(c_char), dimension(*), intent(in) :: filename
+       integer(c_int), intent(in) :: complevel
      end function open_lcio_writer_new
   end interface
 @ %def open_lcio_writer_now
@@ -3919,7 +4034,8 @@ the file is done by the constructor, closing by the destructor.
   subroutine lcio_writer_open_out (lcio_writer, filename)
     type(lcio_writer_t), intent(out) :: lcio_writer
     type(string_t), intent(in) :: filename
-    lcio_writer%obj = open_lcio_writer_new (char (filename) // c_null_char)
+    lcio_writer%obj = open_lcio_writer_new (char (filename) // &
+         c_null_char, 9_c_int)
   end subroutine lcio_writer_open_out
 
 @ %def lcio_writer_open_out
@@ -3988,6 +4104,7 @@ module particles
   use interactions
   use evaluators
   use hepmc_interface
+  use lcio_interface
   use subevents
   use polarizations
 
@@ -4998,6 +5115,104 @@ http://herwig.hepforge.org/trac/wiki/FaQs.
   end subroutine hepmc_event_from_particle_set
   
 @ %def hepmc_event_from_particle_set
+@
+\subsubsection{LCIO event format}
+The master output function fills a LCIO event object that is
+already initialized, but has no particles in it.
+
+In contrast to HepMC in LCIO there are no vertices (except for tracker 
+and other detector specifications). So we assign first all incoming 
+particles and then all outgoing particles to LCIO particle types.  
+Particles which have neither parent nor children entries (this 
+should not happen) are dropped. Finally, we insert the beam particles.  
+If there are none, use the incoming particles instead.
+@ Transform a particle into a [[lcio_particle]] object, including
+color and polarization.  The LCIO status is equivalent to the HepMC
+status, in particular: 0 = null entry, 1 = physical particle, 2 =
+decayed/fragmented SM hadron, tau or muon, 3 = other unphysical particle 
+entry, 4 = incoming particles, 11 = intermediate resonance such as squarks.
+The use of 11 for intermediate resonances is as done by HERWIG, see 
+http://herwig.hepforge.org/trac/wiki/FaQs.
+@
+<<Particles: procedures>>=
+  subroutine particle_to_lcio (prt, lprt)
+    type(particle_t), intent(in) :: prt
+    type(lcio_particle_t), intent(out) :: lprt
+    integer :: lcio_status
+    select case (particle_get_status (prt))
+    case (PRT_UNDEFINED)
+       lcio_status = 0
+    case (PRT_OUTGOING)
+       lcio_status = 1
+    case (PRT_BEAM)
+       lcio_status = 4
+    case (PRT_RESONANT)
+       if(abs(particle_get_pdg(prt)) == 13 .or. &
+            abs(particle_get_pdg(prt)) == 15) then
+          lcio_status = 2
+       else
+          lcio_status = 11
+       end if
+    case default
+       lcio_status = 3
+    end select
+    call lcio_particle_init (lprt, &
+         particle_get_momentum (prt), &
+         particle_get_pdg (prt), &
+         lcio_status)
+    call lcio_particle_set_color (lprt, &
+         particle_get_color (prt))
+    ! select case (particle_get_polarization_status (prt))
+    ! case (PRT_DEFINITE_HELICITY)
+    !    call hepmc_particle_set_polarization (hprt, &
+    !         particle_get_helicity (prt))
+    ! case (PRT_GENERIC_POLARIZATION)
+    !    call hepmc_particle_set_polarization (hprt, &
+    !         particle_get_polarization (prt))
+    ! end select
+  end subroutine particle_to_lcio
+
+@ %def particle_to_lcio
+@ 
+<<Particles: public>>=
+  public :: lcio_event_from_particle_set 
+<<Particles: procedures>>=
+  subroutine lcio_event_from_particle_set (evt, particle_set)
+    type(lcio_event_t), intent(inout) :: evt
+    type(particle_set_t), intent(in) :: particle_set
+    type(lcio_particle_t), dimension(:), allocatable :: lprt
+    type(lcio_particle_t), dimension(2) :: lbeam
+    integer, dimension(:), allocatable :: parent, child    
+    logical, dimension(:), allocatable :: is_beam
+    integer :: n_tot, i, j, n_parents
+    n_tot = particle_set%n_tot
+    allocate (lprt (n_tot))
+    do i = 1, n_tot
+       call particle_to_lcio (particle_set%prt(i), lprt(i))
+       n_parents = particle_get_n_parents (particle_set%prt(i))
+       if (n_parents /= 0) then
+          allocate (parent (n_parents))
+          parent = particle_get_parents (particle_set%prt(i))
+          do j = 1, n_parents
+             call lcio_particle_set_parent (lprt(i), lprt(parent(j)))
+          end do
+          deallocate (parent)
+       end if
+       call lcio_particle_add_to_evt_coll (lprt(i), evt)
+    end do
+    call lcio_event_add_coll (evt)
+    !! allocate (is_beam (n_tot))
+    !! is_beam = particle_get_status (particle_set%prt(1:n_tot)) == PRT_BEAM
+    !! if (.not. any (is_beam)) then
+    !!     is_beam = particle_get_status (particle_set%prt(1:n_tot)) == PRT_INCOMING
+    !! end if    
+    !! if (count (is_beam) == 2) then
+    !!    hbeam = pack (hprt, is_beam)
+    !!    call hepmc_event_set_beam_particles (evt, hbeam(1), hbeam(2))
+    !! end if
+  end subroutine lcio_event_from_particle_set
+  
+@ %def lcio_event_from_particle_set
 @
 \subsubsection{Get contents}
 @ Find parents/children of a particular particle recursively; the

@@ -1,7 +1,7 @@
 #!/bin/sh
 ### Check WHIZARDs initial state shower/matching
 echo "Running script $0"
-if test -f OCAML_FLAG -a -f SHOWER_FLAG; then
+if test -f OCAML_FLAG -a -f PYTHIA6_FLAG; then
     ./run_whizard.sh @script@ --no-logging
     script=`basename @script@`
     ### Event files not compared, numerical noise!
@@ -13,6 +13,6 @@ if test -f OCAML_FLAG -a -f SHOWER_FLAG; then
 
 else
     echo "|=============================================================================|"
-    echo "No O'Mega matrix elements available and/or shower disabled, test skipped"
+    echo "No O'Mega matrix elements available and/or PYTHIA6 disabled, test skipped"
     exit 77
 fi

@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2014 by
+# Copyright (C) 1999-2015 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -31,7 +31,7 @@ dist_noinst_DATA = manual.tex $(PACKAGE).tex \
 
 ## The WHIZARD documented source is assembled from various directories
 w_srcdir = $(top_srcdir)/src
-VPATH = $(srcdir):$(w_srcdir)/noweb-frame:$(w_srcdir)/utilities:$(w_srcdir)/testing:$(w_srcdir)/system:$(w_srcdir)/combinatorics:$(w_srcdir)/parsing:$(w_srcdir)/rng:$(w_srcdir)/physics:$(w_srcdir)/qft:$(w_srcdir)/types:$(w_srcdir)/matrix_elements:$(w_srcdir)/particles:$(w_srcdir)/beams:$(w_srcdir)/phase_space:$(w_srcdir)/mci:$(w_srcdir)/shower:$(w_srcdir)/whizard-core
+VPATH = $(srcdir):$(w_srcdir)/noweb-frame:$(w_srcdir)/utilities:$(w_srcdir)/testing:$(w_srcdir)/system:$(w_srcdir)/combinatorics:$(w_srcdir)/parsing:$(w_srcdir)/rng:$(w_srcdir)/expr_base:$(w_srcdir)/physics:$(w_srcdir)/qft:$(w_srcdir)/types:$(w_srcdir)/matrix_elements:$(w_srcdir)/particles:$(w_srcdir)/beams:$(w_srcdir)/me_methods:$(w_srcdir)/events:$(w_srcdir)/phase_space:$(w_srcdir)/mci:$(w_srcdir)/user:$(w_srcdir)/fks:$(w_srcdir)/gosam:$(w_srcdir)/blha:$(w_srcdir)/shower:$(w_srcdir)/muli:$(w_srcdir)/variables:$(w_srcdir)/model_features:$(w_srcdir)/whizard-core
 
 MANUAL_PICS = \
    proc_4f-history.eps proc_4f-history.pdf \
@@ -140,9 +140,13 @@ WHIZARD_NOWEB_SRC = \
   matrix_elements.nw \
   particles.nw \
   beams.nw \
+  me_methods.nw \
+  events.nw \
   phase_space.nw \
   mci.nw \
-  shower.nw \
+  shower.nw muli.nw \
+  user.nw blha.nw gosam.nw fks.nw \
+  model_features.nw \
   whizard.nw \
   whizard-postlude.nw
 
