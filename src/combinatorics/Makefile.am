@@ -36,7 +36,8 @@ libcombinatorics_la_SOURCES = \
   md5.f90 \
   permutations.f90 \
   sorting.f90 \
-  grids.f90
+  grids.f90 \
+  solver.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = combinatorics.nw

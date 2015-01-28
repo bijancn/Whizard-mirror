@@ -17162,58 +17162,83 @@ with
 We expect that an underlying Born flavor structure $f_b$ has been
 generated with a probability proportional to its contribution to the
 $\tilde B$ at the given kinematic point.
-<<[[powheg_rad_gen.f90]]>>=
+<<[[powheg_generator.f90]]>>=
 <<File header>>
 
-module powheg_rad_gen
+module powheg_generator
 
 <<Use kinds>>
+  use constants
+  use unit_tests
+  use rng_base
+  use grids
+  use solver
+  use nlo_data
 
 <<Standard module head>>
 
-<<powheg rad gen: public>>
+<<powheg generator: public>>
 
-<<powheg rad gen: parameters>>
+<<powheg generator: parameters>>
 
-<<powheg rad gen: types>>
+<<powheg generator: types>>
 
-<<powheg rad gen: interfaces>>
+<<powheg generator: interfaces>>
 
 contains
 
-<<powheg rad gen: procedures>>
+<<powheg generator: procedures>>
 
-end module powheg_rad_gen
-@ %def powheg_rad_gen
-@ Bundle together the variables that describe radiation.
-<<powheg rad gen: public>>=
-  public :: radiation_t
-<<powheg rad gen: types>>=
-  type :: radiation_t
-    real(default) :: xi, y, phi, pt2
-  end type radiation_t
+end module powheg_generator
+@ %def powheg_generator
+@
+<<powheg generator: public>>=
+  public :: powheg_settings_t
+<<powheg generator: types>>=
+  type :: powheg_settings_t
+     real(default) :: pt_min
+     real(default) :: lambda_QCD
+  contains
+   <<powheg generator: powheg settings: TBP>>
+  end type powheg_settings_t
 
-@ %def radiation_t
+@ %def powheg_settings_t
+@
+<<powheg generator: public>>=
+  public :: powheg_generator_t
+<<powheg generator: types>>=
+  type :: powheg_generator_t
+     class(rng_t), allocatable :: rng
+     !type(solver_t) :: solver
+     type(grid_t) :: grid
+     type(nlo_data_t), pointer :: nlo_data
+     type(powheg_settings_t) :: powheg_settings
+  contains
+   <<powheg generator: powheg generator t: TBP>>
+  end type powheg_generator_t
+
+@ %def powheg_generator_t
 @ By keeping the radiation with the largest [[pt2]], we are effectively
 implementing the highest bid procedure. This means that we generate
 values $(f_B)$
-<<powheg rad gen: procedures>>=
+<<powheg generator: procedures>>=
   pure subroutine generate_all_radiation ()
     type(radiation_t) :: radiation, radiation_max
-    radiation_max = zero
+    integer :: i_region, n_regions
+    radiation_max%pt2 = zero
+    n_regions = 1337 ! Fix this
     do i_region = 1, n_regions
-       region(i_region)%generate_radiation (radiation)
+       !region(i_region)%generate_radiation (radiation)
        if (radiation%pt2 > radiation_max%pt2) then
           radiation_max = radiation
        end if
     end do
     if (.not. vanishes (radiation_max%pt2)) then
-       call select_flavour_structure
-       call select_alpha_r
-       call add_generated_radiation (particle_set, radiation_max,
-       alpha_r, )
+       !call select_alpha_r
+       !call add_generated_radiation (particle_set, radiation_max,
+       !alpha_r, )
     end if
-  end subroutine generate_radiation
+  end subroutine generate_all_radiation
 
 @ %def generate_radiation
 @ A region should be aware if it is ISR or FSR and call the appropriate
@@ -17231,58 +17256,17 @@ depends on $f_b$, rr, $\xi$ and $y$ and has to save the maximum over
 $\xi$ and $y$ as well. For each underlying Born $f_b$, there is a number
 of radiation regions.
 
-We put it here but frame it in a general way such that it could be
-reused to determine the maximal grids for any two dimensional function.
+@ Bundle together the variables that describe radiation. Might not be
+useful.
+<<powheg generator: public>>=
+  public :: radiation_t
+<<powheg generator: types>>=
+  type :: radiation_t
+    real(default) :: xi, y, phi, pt2
+  end type radiation_t
 
-It could be benefitial to vary the fineness of the grid for the
-different radiation regions by changing [[points]].
-<<powheg rad gen: public>>=
-  public :: max_grid_t
-<<powheg rad gen: types>>=
-  type :: max_grid_t
-     real(default), dimension(:,:), allocatable :: values
-     integer :: points_per_dim
-  contains
-<<powheg rad gen: norm ubf: TBP>>
-  end type max_grid_t
-
-@ %def max_grid_t
+@ %def radiation_t
 @
-<<powheg rad gen: public>>=
-  integer, public, parameter :: DEF_N_POINTS = 100
-<<powheg rad gen: norm ubf: TBP>>=
-  procedure :: init => max_grid_init
-<<powheg rad gen: procedures>>=
-  pure subroutine max_grid_init (max_grid)
-    class(max_grid_t), intent(out) :: max_grid
-    real(default), dimension(:,:), optional, intent(in) :: values
-    integer, optional, intent(in) :: n_points
-    real(default), dimension(:,:) :: vals
-    integer :: n_pnts
-    vals = zero;  if (present (values))  vals = values
-    n_pnts = DEF_N_POINTS;  if (present (n_points))  n_pnts = n_points
-    if (present (vals) .and. size (vals) /= n_pnts) then
-       call msg_bug ("powheg_rad_gen: Mismatch in size between grids!")
-    end if
-    max_grid%points_per_dim = n_pnts
-    allocate (max_grid%values (max_grid%points_per_dim, max_grid%points_per_dim))
-    max_grid%values = vals
-  end subroutine max_grid_init
-
-@ %def max_grid_init
-@ Given a function that depends on two variables $x$, $y$, we generate 
-$N(x,y)$ such that $f(x,y)\leq N(x,y)\forall x,y\in[0,1]$.
-<<powheg rad gen: norm ubf: TBP>>=
-  procedure :: generate => max_grid_generate
-<<powheg rad gen: procedures>>=
-  pure subroutine max_grid_generate (max_grid, funct, n_points)
-    class(max_grid_t), intent(inout) :: max_grid
-    
-  end subroutine max_grid_generate
-
-@ %def max_grid_generate
-@
-
 \subsection{Abstract Shower Type}
 Any parton shower implementation will use random numbers to generate
 emissions.
@@ -45155,6 +45139,7 @@ module whizard
   use md5
   use sorting
   use grids
+  use solver
   use cputime
   use sm_qcd
   use ifiles
@@ -45931,6 +45916,8 @@ This is for developers only, but needs a well-defined interface.
        call sorting_test (u, results)
     case ("grids")
        call grids_test (u, results)
+    case ("solver")
+       call solver_test (u, results)
     case ("md5")       
        call md5_test (u, results)       
     case ("xml")
@@ -46075,6 +46062,7 @@ This is for developers only, but needs a well-defined interface.
        call md5_test (u, results)
        call lexer_test (u, results)
        call sorting_test (u, results)
+       call solver_test (u, results)
        call grids_test (u, results)
        call parse_test (u, results)
        call color_test (u, results)

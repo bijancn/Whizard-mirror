@@ -2753,3 +2753,178 @@ $f(x_i)\geq y_i\;\forall \{x_i, y_i\}$.
   end subroutine grids_4
 
 @ %def grids_4
+@ One could think of multiple implementations of a generic type.
+<<[[solver.f90]]>>=
+<<File header>>
+
+module solver
+
+<<Use kinds>>
+  use constants
+  use unit_tests
+  use diagnostics
+
+<<Standard module head>>
+
+<<solver: public>>
+
+<<solver: parameters>>
+
+<<solver: types>>
+
+<<solver: interfaces>>
+
+contains
+
+<<solver: procedures>>
+
+end module solver
+@ %def solver
+@
+<<solver: public>>=
+  public :: solve
+<<solver: procedures>>=
+  function solve (func, lower_start, upper_start, success, precision) result (x0)
+    real(default) :: x0
+    interface
+       pure function func (x) result (f)
+         import
+         real(default) :: f
+         real(default), intent(in) :: x
+       end function
+    end interface
+    real(default), intent(in) :: lower_start, upper_start
+    real(default), intent(in), optional :: precision
+    logical, intent(out) :: success
+    real(default) :: desired, x_curr, x_next, f_curr, f_next, x_new
+    integer :: n_iter
+    desired = DEFAULT_PRECISION; if (present(precision)) desired = precision
+    x_curr = lower_start
+    x_next = upper_start
+    n_iter = 0
+    success = .false.
+    SEARCH: do
+       n_iter = n_iter + 1
+       f_curr = func (x_curr)
+       f_next = func (x_next)
+       <<Exit if close to zero and handle exceptions>>
+       x_new = x_next - (x_next - x_curr) / (f_next - f_curr) * f_next
+       x_curr = x_next
+       x_next = x_new
+    end do SEARCH
+    if (x0 < lower_start .or. x0 > upper_start) then
+       call msg_warning ("solve: The root of the function is not in boundaries")
+       return
+    end if
+    success = .true.
+  end function solve
+
+@ %def solve
+<<Exit if close to zero and handle exceptions>>=
+if (abs (f_next) < desired) then
+   x0 = x_next
+   exit
+end if
+if (n_iter > MAX_TRIES) then
+   call msg_warning ("solve: Couldn't find root of function")
+   return
+end if
+if (vanishes (f_next - f_curr)) then
+   x_next = x_next + (x_next - x_curr) / 10
+   cycle
+end if
+@
+@
+<<solver: parameters>>=
+  real(default), parameter :: DEFAULT_PRECISION = tiny_07
+@ %def name
+@
+<<solver: parameters>>=
+  integer, parameter :: MAX_TRIES = 1000
+@ %def MAX_TRIES
+@
+\subsection{Unit tests}
+<<solver: public>>=
+  public :: solver_test
+<<solver: procedures>>=
+  subroutine solver_test (u, results)
+    integer, intent(in) :: u
+    type(test_results_t), intent(inout) :: results
+  <<solver: execute tests>>
+  end subroutine solver_test
+
+@ %def solver_test
+@
+\subsubsection{Solve trivial functions}
+<<solver: execute tests>>=
+  call test(solver_1, "solver_1", &
+            "Solve trivial functions", u, results)
+<<solver: procedures>>=
+  subroutine solver_1 (u)
+    integer, intent(in) :: u
+    real(default) :: zero_position
+    logical :: success
+    write (u, "(A)")  "* Test output: solver_1"
+    write (u, "(A)")  "*   Purpose: Solve trivial functions"
+    write (u, "(A)")
+
+    zero_position = solve (test_func_1, -one, one, success)
+    call assert (u, success, "success")
+    print *, 'zero_position =    ', zero_position   !!! Debugging
+    call assert_equal (u, zero_position, zero, "zero_position")
+
+    zero_position = solve (test_func_2, -one, one, success)
+    call assert (u, success, "success")
+    call assert_equal (u, zero_position, zero, &
+         "zero_position", abs_smallness=10000*DEFAULT_PRECISION)
+
+    zero_position = solve (test_func_3, zero, one, success)
+    call assert (u, success, "success")
+    call assert_equal (u, zero_position, zero, "zero_position")
+
+    zero_position = solve (test_func_4, two, 10.0_default, success)
+    call assert (u, success, "success")
+    call assert_equal (u, zero_position, 3.5216674014805425_default, &
+         "zero_position", rel_smallness=1000*DEFAULT_PRECISION)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: solver_1"
+  end subroutine solver_1
+
+@ %def solver_1
+@
+<<solver: procedures>>=
+  pure function test_func_1 (x) result (y)
+    real(default) :: y
+    real(default), intent(in) :: x
+    y = x
+  end function test_func_1
+
+  pure function test_func_2 (x) result (y)
+    real(default) :: y
+    real(default), intent(in) :: x
+    y = x ** 2
+  end function test_func_2
+
+  pure function test_func_3 (x) result (y)
+    real(default) :: y
+    real(default), intent(in) :: x
+    y = x ** 3
+  end function test_func_3
+
+  pure function test_func_4 (x) result (y)
+    real(default) :: y
+    real(default), intent(in) :: x
+    real(default) :: s, cutoff
+    s = 100.0_default
+    cutoff = 1.01_default
+    if (x < cutoff) then
+       y = - (log (s) * log (log (s) / log(cutoff**2)) - log (s / cutoff**2)) - &
+         log (one/two)
+    else
+       y = - (log (s) * log (log (s) / log(x**2)) - log (s / x**2)) - &
+            log (one/two)
+    end if
+ end function test_func_4
+
+@ %def test_func_1
