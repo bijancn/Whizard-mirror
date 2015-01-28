@@ -117,7 +117,7 @@ endif
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I ../system -I../testing -I ../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I../events -I ../lhapdf -I ../pdf_builtin -I../../pythia6
+AM_FCFLAGS = -I../basics -I../utilities -I ../system -I../combinatorics -I../testing -I ../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I../events -I ../lhapdf -I ../pdf_builtin -I../../pythia6
 AM_FFLAGS =
 
 ########################################################################
