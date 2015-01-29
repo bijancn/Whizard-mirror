@@ -50,6 +50,7 @@ UNIT_TESTS = \
     formats.run \
     sorting.run \
     grids.run \
+    solver.run \
     state_matrices.run \
     interactions.run \
     xml.run \

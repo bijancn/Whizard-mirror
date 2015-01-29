@@ -47,7 +47,8 @@ Modules: Makefile
 ## Fortran module dependencies
 # Get module lists from other directories
 module_lists = \
-  ../basics/Modules
+  ../basics/Modules \
+  ../utilities/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -97,7 +98,7 @@ nodist_execmod_HEADERS = \
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics
+AM_FCFLAGS = -I../basics -I../utilities
 
 
 ########################################################################
