@@ -16624,6 +16624,9 @@ from the matrix element generation is available.
 \subsubsection{Testbed}
 This sequence sets up a two-jet process, ready for generating events.
 <<Shower: tests>>=
+  <<setup testbed>>
+@
+<<setup testbed>>=
   subroutine setup_testbed &
        (prefix, os_data, lib, model_list, process, process_instance)
     type(string_t), intent(in) :: prefix
@@ -17189,6 +17192,12 @@ module powheg_generator
   use grids
   use solver
   use nlo_data
+  use phs_fks
+  use rng_base
+  use lorentz
+
+  ! For integration tests
+  !use rng_tao
 
 <<Standard module head>>
 
@@ -17213,36 +17222,130 @@ end module powheg_generator
   type :: powheg_settings_t
      real(default) :: pt_min
      real(default) :: lambda_QCD
+     integer :: n_init
   contains
    <<powheg generator: powheg settings: TBP>>
   end type powheg_settings_t
 
 @ %def powheg_settings_t
 @
+<<powheg generator: interfaces>>=
+  interface generate_real_phsp
+     subroutine generate_real_phsp (real_momenta, radiation_variables, born_momenta, region)
+       import
+       type(vector4_t), dimension(:), intent(out) :: real_momenta
+       real(default), dimension(3), intent(in) :: radiation_variables
+       type(vector4_t), dimension(:), intent(in) :: born_momenta
+       integer, intent(in) :: region
+     end subroutine
+  end interface
+@ %def generate_real_phsp
+@
 <<powheg generator: public>>=
   public :: powheg_generator_t
 <<powheg generator: types>>=
   type :: powheg_generator_t
      class(rng_t), allocatable :: rng
-     !type(solver_t) :: solver
      type(grid_t) :: grid
-     type(nlo_data_t), pointer :: nlo_data
-     type(powheg_settings_t) :: powheg_settings
+     type(nlo_data_t), pointer :: nlo_data => null()
+     !type(phs_fks_generator_t) :: phs_fks_generator
+     type(vector4_t) :: born_momenta
+     type(vector4_t) :: real_momenta
+     type(powheg_settings_t) :: settings
+     real(default) :: born_me
   contains
-   <<powheg generator: powheg generator t: TBP>>
+   <<powheg generator: powheg generator: TBP>>
   end type powheg_generator_t
 
 @ %def powheg_generator_t
+@
+<<powheg generator: powheg generator: TBP>>=
+  procedure :: generate_real_phsp => powheg_generator_generate_real_phsp
+<<powheg generator: procedures>>=
+  subroutine powheg_generator_generate_real_phsp (powheg_generator, &
+       radiation_variables, region)
+    class(powheg_generator_t), intent(inout) :: powheg_generator
+    real(default), dimension(:), intent(in) :: radiation_variables
+    integer, intent(in) :: region
+    !call powheg_generator%gen_real (powheg_generator%real_momenta, &
+         !radiation_variables, powheg_generator%born_momenta, region)
+    ! TODO: (bcn 2015-01-29) put in here correct call to phs_fks_generator
+  end subroutine powheg_generator_generate_real_phsp
+
+@ %def powheg_generator_generate_real_phsp
+@
+\subsection{Initialization and Finalization}
+@
+<<powheg generator: powheg generator: TBP>>=
+  procedure :: init => powheg_generator_init
+<<powheg generator: procedures>>=
+  subroutine powheg_generator_init (powheg_generator, rng, nlo_data)
+    class(powheg_generator_t), intent(out) :: powheg_generator
+    class(rng_t), allocatable, intent(inout) :: rng
+    type(nlo_data_t), target, intent(in) :: nlo_data
+    powheg_generator%nlo_data => nlo_data
+    call powheg_generator%import_rng (rng)
+  end subroutine powheg_generator_init
+
+@ %def powheg_generator_init
+@
+<<powheg generator: powheg generator: TBP>>=
+  procedure :: import_rng => powheg_generator_import_rng
+<<powheg generator: procedures>>=
+  pure subroutine powheg_generator_import_rng (powheg_generator, rng)
+    class(powheg_generator_t), intent(inout) :: powheg_generator
+    class(rng_t), allocatable, intent(inout) :: rng
+    call move_alloc (from = rng, to = powheg_generator%rng)
+  end subroutine powheg_generator_import_rng
+
+@ %def powheg_generator_import_rng
+@
+<<powheg generator: powheg generator: TBP>>=
+  procedure :: export_rng => powheg_generator_export_rng
+<<powheg generator: procedures>>=
+  pure subroutine powheg_generator_export_rng (powheg_generator, rng)
+    class(powheg_generator_t), intent(inout) :: powheg_generator
+    class(rng_t), allocatable, intent(inout) :: rng
+    call move_alloc (from = powheg_generator%rng, to = rng)
+  end subroutine powheg_generator_export_rng
+
+@ %def powheg_generator_export_rng
+@
+\subsection{Physics}
+The following is valid for one underlying Born for now
+<<powheg generator: powheg generator: TBP>>=
+  procedure :: initialize_process => powheg_generator_initialize_process
+<<powheg generator: procedures>>=
+  subroutine powheg_generator_initialize_process (powheg_generator)
+    class(powheg_generator_t), intent(inout) :: powheg_generator
+    real(default), dimension(3) :: radiation_variables
+    real(default) :: y
+    integer :: scan, region, nreg
+    do scan = 1, powheg_generator%settings%n_init
+       call powheg_generator%rng%generate (radiation_variables)
+       do region = 1, powheg_generator%nlo_data%n_alr
+          call powheg_generator%generate_real_phsp &
+               (radiation_variables, region)
+          !y = jacobian * real_me  / powheg_generator%born_me
+          ! TODO: (bcn 2015-01-29) 1 -> I_XI , 2 -> I_Y
+          call powheg_generator%grid%update_maxima &
+          ([radiation_variables(1:2), (one * &
+          region)/powheg_generator%nlo_data%n_alr], y)
+       end do
+    end do
+  end subroutine powheg_generator_initialize_process
+
+@ %def powheg_generator_initialize_process
 @ By keeping the radiation with the largest [[pt2]], we are effectively
 implementing the highest bid procedure. This means that we generate
 values $(f_B)$
 <<powheg generator: procedures>>=
-  pure subroutine generate_all_radiation ()
+  pure subroutine generate_all_radiation (powheg_generator)
+    class(powheg_generator_t), intent(inout) :: powheg_generator
     type(radiation_t) :: radiation, radiation_max
-    integer :: i_region, n_regions
+    integer :: region
     radiation_max%pt2 = zero
-    n_regions = 1337 ! Fix this
-    do i_region = 1, n_regions
+    do region = 1, powheg_generator%nlo_data%n_alr
        !region(i_region)%generate_radiation (radiation)
        if (radiation%pt2 > radiation_max%pt2) then
           radiation_max = radiation
@@ -17264,14 +17367,13 @@ space only depends upon the radiation region kinematics rr and not on
 the specific $\alpha_r$.  $\alpha_r$ can be picked in the set
 $\{\alpha_r|f_b,\text{rr}\}$ proportional to their $R_{\alpha_r}$.
 
-
 Before event generation can occur, the normalization of the upper
 bounding function [[norm_ubf]] has to be determined.  The normalization
 depends on $f_b$, rr, $\xi$ and $y$ and has to save the maximum over
 $\xi$ and $y$ as well. For each underlying Born $f_b$, there is a number
 of radiation regions.
 
-@ Bundle together the variables that describe radiation. Might not be
+Bundle together the variables that describe radiation. Might not be
 useful.
 <<powheg generator: public>>=
   public :: radiation_t
@@ -17281,6 +17383,44 @@ useful.
   end type radiation_t
 
 @ %def radiation_t
+@
+\subsection{Unit tests}
+<<powheg generator: public>>=
+  public :: powheg_generator_test
+<<powheg generator: procedures>>=
+  subroutine powheg_generator_test (u, results)
+    integer, intent(in) :: u
+    type(test_results_t), intent(inout) :: results
+  <<powheg generator: execute tests>>
+  end subroutine powheg_generator_test
+
+@ %def powheg_generator_test
+@
+\subsubsection{Basic features}
+<<powheg generator: execute tests>>=
+  call test(powheg_generator_1, "powheg_generator_1", &
+            "Basic features", u, results)
+<<powheg generator: procedures>>=
+  subroutine powheg_generator_1 (u)
+    integer, intent(in) :: u
+    type(powheg_generator_t) :: powheg_generator
+    class(rng_factory_t), allocatable :: rng_factory
+    class(rng_t), allocatable :: rng
+    type(nlo_data_t) :: nlo_data
+    write (u, "(A)")  "* Test output: powheg_generator_1"
+    write (u, "(A)")  "*   Purpose: Basic features"
+    write (u, "(A)")
+
+    allocate (rng_test_factory_t :: rng_factory)
+    call rng_factory%make (rng)
+    nlo_data%n_alr = 2
+    call powheg_generator%init(rng, nlo_data)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: powheg_generator_1"
+  end subroutine powheg_generator_1
+
+@ %def powheg_generator_1
 @
 \subsection{Abstract Shower Type}
 Any parton shower implementation will use random numbers to generate
@@ -17926,94 +18066,7 @@ evaluation chain.
 \subsubsection{Testbed}
 This sequence sets up a two-jet process, ready for generating events.
 <<Pure Shower: tests>>=
-  subroutine setup_testbed &
-       (prefix, os_data, lib, model_list, process, process_instance)
-    type(string_t), intent(in) :: prefix
-    type(os_data_t), intent(out) :: os_data
-    type(process_library_t), intent(out), target :: lib
-    type(model_list_t), intent(out) :: model_list
-    class(model_data_t), pointer :: model
-    type(model_t), pointer :: model_tmp
-    type(process_t), target, intent(out) :: process
-    type(process_instance_t), target, intent(out) :: process_instance
-    type(var_list_t), pointer :: model_vars
-    type(string_t) :: model_name, libname, procname, run_id
-    type(process_def_entry_t), pointer :: entry
-    type(string_t), dimension(:), allocatable :: prt_in, prt_out
-    type(qcd_t) :: qcd
-    class(rng_factory_t), allocatable :: rng_factory
-    class(prc_core_t), allocatable :: core_template
-    class(mci_t), allocatable :: mci_template
-    class(phs_config_t), allocatable :: phs_config_template
-    real(default) :: sqrts
-
-    model_name = "SM"
-    libname = prefix // "_lib"
-    procname = prefix // "p"
-    run_id = "1"
-    
-    call os_data_init (os_data)
-    allocate (rng_tao_factory_t :: rng_factory)
-    allocate (model_tmp)
-    call model_list%read_model (model_name, model_name // ".mdl", &
-         os_data, model_tmp)
-    model_vars => model_tmp%get_var_list_ptr ()
-    call var_list_set_real (model_vars, var_str ("me"), 0._default, &
-         is_known = .true.)
-    model => model_tmp
-
-    call lib%init (libname)
-
-    allocate (prt_in (2), source = [var_str ("e-"), var_str ("e+")])
-    allocate (prt_out (2), source = [var_str ("d"), var_str ("dbar")])
-
-    allocate (entry)
-    call entry%init (procname, model, n_in = 2, n_components = 1)
-    call omega_make_process_component (entry, 1, &
-         model_name, prt_in, prt_out, &
-         report_progress=.true.)
-    call lib%append (entry)
-
-    call lib%configure (os_data)
-    call lib%write_makefile (os_data, force = .true.)
-    call lib%clean (os_data, distclean = .false.)
-    call lib%write_driver (force = .true.)
-    call lib%load (os_data)
-    
-    call process%init (procname, run_id, lib, os_data, &
-         qcd, rng_factory, model)
-    
-    allocate (prc_omega_t :: core_template)
-    allocate (mci_midpoint_t :: mci_template)
-    allocate (phs_single_config_t :: phs_config_template)
-
-    model => process%get_model_ptr ()
-
-    select type (core_template)
-    type is (prc_omega_t)
-       call core_template%set_parameters (model = model)
-    end select
-    call process%init_component &
-         (1, core_template, mci_template, phs_config_template)
-
-    sqrts = 1000
-    call process%setup_beams_sqrts (sqrts)
-    call process%configure_phs ()
-    call process%setup_mci ()
-    call process%setup_terms ()
-    
-    call process_instance%init (process)
-    call process%integrate (process_instance, 1, 1, 1000)
-    call process%final_integration (1)
-
-    call process_instance%setup_event_data ()
-    call process_instance%init_simulation (1)
-    call process%generate_weighted_event (process_instance, 1)
-    call process_instance%evaluate_event_data ()
-
-  end subroutine setup_testbed
-
-@ %def setup_testbed
+  <<setup testbed>>
 @
 \subsubsection{Trivial Test}
 We generate a two-jet event and shower it using default settings, i.e.
