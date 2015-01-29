@@ -17171,6 +17171,8 @@ module powheg_generator
 <<Use kinds>>
   use constants
   use unit_tests
+  use physics_defs
+  use diagnostics
   use rng_base
   use grids
   use solver
@@ -17204,8 +17206,9 @@ end module powheg_generator
 <<powheg generator: types>>=
   type :: powheg_settings_t
      real(default) :: pt_min
-     real(default) :: lambda_QCD
+     real(default) :: lambda2
      integer :: n_init
+     integer :: upper_bound_func
   contains
    <<powheg generator: powheg settings: TBP>>
   end type powheg_settings_t
@@ -17232,10 +17235,11 @@ end module powheg_generator
      type(grid_t) :: grid
      type(nlo_data_t), pointer :: nlo_data => null()
      !type(phs_fks_generator_t) :: phs_fks_generator
-     type(vector4_t) :: born_momenta
+     type(vector4_t), dimension(:), allocatable :: born_momenta
      type(vector4_t) :: real_momenta
      type(powheg_settings_t) :: settings
      real(default) :: born_me
+     real(default) :: lambda_gen2, cms_energy
   contains
    <<powheg generator: powheg generator: TBP>>
   end type powheg_generator_t
@@ -17246,11 +17250,10 @@ end module powheg_generator
   procedure :: generate_real_phsp => powheg_generator_generate_real_phsp
 <<powheg generator: procedures>>=
   subroutine powheg_generator_generate_real_phsp (powheg_generator, &
-       radiation_variables, region)
+       radiation_variables)
     class(powheg_generator_t), intent(inout) :: powheg_generator
     real(default), dimension(:), intent(in) :: radiation_variables
-    integer, intent(in) :: region
-    !call powheg_generator%gen_real (powheg_generator%real_momenta, &
+    !call powheg_generator%generate_fsr (powheg_generator%real_momenta, &
          !radiation_variables, powheg_generator%born_momenta, region)
     ! TODO: (bcn 2015-01-29) put in here correct call to phs_fks_generator
   end subroutine powheg_generator_generate_real_phsp
@@ -17262,12 +17265,22 @@ end module powheg_generator
 <<powheg generator: powheg generator: TBP>>=
   procedure :: init => powheg_generator_init
 <<powheg generator: procedures>>=
-  subroutine powheg_generator_init (powheg_generator, rng, nlo_data)
+  subroutine powheg_generator_init (powheg_generator, rng, nlo_data, &
+         born_me, born_momenta)
     class(powheg_generator_t), intent(out) :: powheg_generator
     class(rng_t), allocatable, intent(inout) :: rng
     type(nlo_data_t), target, intent(in) :: nlo_data
-    powheg_generator%nlo_data => nlo_data
+    real(default), intent(in) :: born_me
+    type(vector4_t), dimension(:), intent(in) :: born_momenta
     call powheg_generator%import_rng (rng)
+    powheg_generator%nlo_data => nlo_data
+    powheg_generator%born_me = born_me
+    allocate (powheg_generator%born_momenta (size (born_momenta)))
+    powheg_generator%born_momenta = born_momenta
+
+    call powheg_generator%grid%init ([100,100,powheg_generator%nlo_data%n_alr])
+    call powheg_generator%set_cms ()
+    call powheg_generator%compute_lambda_gen2 ()
   end subroutine powheg_generator_init
 
 @ %def powheg_generator_init
@@ -17293,8 +17306,61 @@ end module powheg_generator
   end subroutine powheg_generator_export_rng
 
 @ %def powheg_generator_export_rng
+@ This has to be changed when we have sorted out the handling of ISR,
+partonic vs hadronic cms as well as decays in POWHEG:
+<<powheg generator: powheg generator: TBP>>=
+  procedure :: set_cms => powheg_generator_set_cms
+<<powheg generator: procedures>>=
+  pure subroutine powheg_generator_set_cms (powheg_generator)
+    class(powheg_generator_t), intent(inout) :: powheg_generator
+    powheg_generator%cms_energy = &
+         (powheg_generator%born_momenta(1) + powheg_generator%born_momenta(2))**2
+  end subroutine powheg_generator_set_cms
+
+@ %def powheg_generator_set_cms
 @
 \subsection{Physics}
+@ [[running_alpha_s]] should implement a variable-flavor-2-loop result
+and optionally return [[n_flavors]] that are active at the scale.  The
+main point to ensure here is that the simple fixed-flavor-1-loop
+expression $\alpha_s^\text{rad}$ is smaller than the more accurate
+$\alpha_s$ such that we can use a reweighting veto and use $\alpha_s^\text{rad}$
+for the generation of the emission. This can be done by setting
+\begin{equation}
+  \alpha_s^\text{rad}(\mu_0) = \alpha_s (\mu_0)
+\end{equation}
+whereby $\mu_0^2$ is the [[scale_to_relate2]] that is taken to be
+$(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
+[[settings%lambda2]].
+<<powheg generator: powheg generator: TBP>>=
+  procedure :: compute_lambda_gen2 => powheg_generator_compute_lambda_gen2
+<<powheg generator: procedures>>=
+  pure subroutine powheg_generator_compute_lambda_gen2 (powheg_generator)
+    class(powheg_generator_t), intent(inout) :: powheg_generator
+    integer :: n_flavors
+    real(default) :: alpha_s, scale_to_relate2
+    scale_to_relate2 = 4 * powheg_generator%settings%lambda2
+    !call running_alpha_s (alpha_s, scale_to_relate2, n_flavors=n_flavors)
+    alpha_s = 0.17_default
+    n_flavors = 3
+    alpha_s = improve_nll_accuracy (alpha_s, n_flavors)
+    powheg_generator%lambda_gen2 = exp (- one / (b0rad * alpha_s)) * scale_to_relate2
+  end subroutine powheg_generator_compute_lambda_gen2
+
+@ %def powheg_generator_compute_lambda_gen2
+@ See (4.31) in 0709.2092. Should be used everywhere in the Sudakov
+exponent.
+<<powheg generator: procedures>>=
+  pure function improve_nll_accuracy (alpha_s, n_flavors) result (alpha_s_imp)
+    real(default) :: alpha_s_imp
+    real(default), intent(in) :: alpha_s
+    integer, intent(in) :: n_flavors
+      alpha_s_imp = alpha_s * (one + alpha_s / (two*pi) * &
+           ((67.0_default/18 - pi**2/6) * CA - five/9 * n_flavors))
+  end function improve_nll_accuracy
+
+@ %def improve_nll_accuracy
+
 The following is valid for one underlying Born for now
 <<powheg generator: powheg generator: TBP>>=
   procedure :: initialize_process => powheg_generator_initialize_process
@@ -17302,18 +17368,34 @@ The following is valid for one underlying Born for now
   subroutine powheg_generator_initialize_process (powheg_generator)
     class(powheg_generator_t), intent(inout) :: powheg_generator
     real(default), dimension(3) :: radiation_variables
-    real(default) :: y
-    integer :: scan, region, nreg
+    real(default), dimension(powheg_generator%nlo_data%n_alr) :: jacobians
+    real(default), dimension(powheg_generator%nlo_data%n_alr) :: xis
+    real(default), dimension(powheg_generator%nlo_data%n_alr) :: ys
+    real(default) :: f_alr, xi, y, norm, real_me, ubf
+    integer :: scan, alr
+    logical :: is_fsr
+    is_fsr = .true.
     do scan = 1, powheg_generator%settings%n_init
        call powheg_generator%rng%generate (radiation_variables)
-       do region = 1, powheg_generator%nlo_data%n_alr
-          call powheg_generator%generate_real_phsp &
-               (radiation_variables, region)
-          !y = jacobian * real_me  / powheg_generator%born_me
+       call powheg_generator%generate_real_phsp (radiation_variables)
+       !call powheg_generator%phs_fks_generator%get_jacobians (jacobians)
+       !call powheg_generator%phs_fks_generator%get_radiation_variables (xis, ys)
+       jacobians = one
+       !call powheg_generator%phs_fks_generator%get_xis (xis)
+       xis = one
+       !call powheg_generator%phs_fks_generator%get_ys (ys)
+       ys = one
+       do alr = 1, powheg_generator%nlo_data%n_alr
+          real_me = one ! get_real_me(powheg_generator%real_momenta, flavor_structure?)
+          ubf = upper_bound_func (powheg_generator%settings, is_fsr, &
+               powheg_generator%cms_energy, &
+               powheg_generator%lambda_gen2, xis(alr), ys(alr))
+          norm = jacobians (alr) * real_me  / &
+               (powheg_generator%born_me * ubf)
+          norm = (one * alr) / powheg_generator%nlo_data%n_alr
           ! TODO: (bcn 2015-01-29) 1 -> I_XI , 2 -> I_Y
           call powheg_generator%grid%update_maxima &
-          ([radiation_variables(1:2), (one * &
-          region)/powheg_generator%nlo_data%n_alr], y)
+               ([radiation_variables(1:2), f_alr], norm)
        end do
     end do
   end subroutine powheg_generator_initialize_process
@@ -17367,6 +17449,41 @@ useful.
 
 @ %def radiation_t
 @
+\subsection{Upper bounding functions}
+@ The $\alpha_s$ used here is the simplified version
+$\alpha_s^\text{rad}$.  [[upper_bound_func]] does \emph{not} contain the
+normalization $N$ which is given by the grids.
+<<powheg generator: procedures>>=
+  function upper_bound_func (powheg_settings, is_fsr, s, lambda_gen2, xi, y) result (u)
+    real(default) :: u
+    type(powheg_settings_t), intent(in) :: powheg_settings
+    logical, intent(in) :: is_fsr
+    real(default), intent(in) :: s, lambda_gen2, xi, y
+    real(default) :: kT2, alpha_s
+    if (is_fsr) then
+       kT2 = s / 2 * xi**2 * (1-y)
+       alpha_s = 1 / (b0rad * log (kT2 / lambda_gen2))
+       select case (powheg_settings%upper_bound_func)
+       case (UBF_SIMPLE)
+          u = alpha_s / (xi * (1-y))
+       case default
+          call msg_fatal ("upper_bound_func: Please choose upper bounding function!")
+       end select
+    else
+       call msg_fatal ("upper_bound_func: ISR not implemented yet!")
+    end if
+  end function upper_bound_func
+
+@ %def upper_bound_func
+@ This is fixed to $n_f=5$ for radiation generation. It will be
+reweighted to the variable-flavour two loop expression.
+<<powheg generator: parameters>>=
+  real, parameter :: b0rad = (33 - 2 * 5) / 12 * pi
+@ %def b0
+@
+<<powheg generator: parameters>>=
+  integer, parameter :: UBF_SIMPLE = 1
+@ %def UBF_SIMPLE
 \subsection{Unit tests}
 <<powheg generator: public>>=
   public :: powheg_generator_test
@@ -17390,6 +17507,8 @@ useful.
     class(rng_factory_t), allocatable :: rng_factory
     class(rng_t), allocatable :: rng
     type(nlo_data_t) :: nlo_data
+    type(vector4_t), dimension(4) :: born_momenta
+    real(default) :: born_me
     write (u, "(A)")  "* Test output: powheg_generator_1"
     write (u, "(A)")  "*   Purpose: Basic features"
     write (u, "(A)")
@@ -17397,7 +17516,8 @@ useful.
     allocate (rng_test_factory_t :: rng_factory)
     call rng_factory%make (rng)
     nlo_data%n_alr = 2
-    call powheg_generator%init(rng, nlo_data)
+    born_me = five
+    call powheg_generator%init(rng, nlo_data, born_me, born_momenta)
 
     write (u, "(A)")
     write (u, "(A)")  "* Test output end: powheg_generator_1"
@@ -17517,7 +17637,7 @@ the public [[set]] functions and setting up the [[shower]] object.
     shower%implementation%maxz_isr = shower_settings%isr_z_cutoff
     shower%implementation%minenergy_timelike = shower_settings%isr_minenergy
     shower%implementation%tscalefactor_isr = shower_settings%isr_tscalefactor
-    
+
     call shower%implementation%pdf_data%init (pdf_data)
   end subroutine shower_analytic_init
 
