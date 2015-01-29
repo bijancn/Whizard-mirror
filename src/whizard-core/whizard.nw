@@ -17175,7 +17175,9 @@ module powheg_generator
   use grids
   use solver
   use nlo_data
+  use phs_fks
   use rng_base
+  use lorentz
 
   ! For integration tests
   !use rng_tao
@@ -17203,11 +17205,24 @@ end module powheg_generator
   type :: powheg_settings_t
      real(default) :: pt_min
      real(default) :: lambda_QCD
+     integer :: n_init
   contains
    <<powheg generator: powheg settings: TBP>>
   end type powheg_settings_t
 
 @ %def powheg_settings_t
+@
+<<powheg generator: interfaces>>=
+  interface generate_real_phsp
+     subroutine generate_real_phsp (real_momenta, radiation_variables, born_momenta, region)
+       import
+       type(vector4_t), dimension(:), intent(out) :: real_momenta
+       real(default), dimension(3), intent(in) :: radiation_variables
+       type(vector4_t), dimension(:), intent(in) :: born_momenta
+       integer, intent(in) :: region
+     end subroutine
+  end interface
+@ %def generate_real_phsp
 @
 <<powheg generator: public>>=
   public :: powheg_generator_t
@@ -17215,26 +17230,48 @@ end module powheg_generator
   type :: powheg_generator_t
      class(rng_t), allocatable :: rng
      type(grid_t) :: grid
-     type(nlo_data_t), pointer :: nlo_data
-     type(powheg_settings_t) :: powheg_settings
+     type(nlo_data_t), pointer :: nlo_data => null()
+     !type(phs_fks_generator_t) :: phs_fks_generator
+     type(vector4_t) :: born_momenta
+     type(vector4_t) :: real_momenta
+     type(powheg_settings_t) :: settings
+     real(default) :: born_me
   contains
    <<powheg generator: powheg generator: TBP>>
   end type powheg_generator_t
 
 @ %def powheg_generator_t
 @
+<<powheg generator: powheg generator: TBP>>=
+  procedure :: generate_real_phsp => powheg_generator_generate_real_phsp
+<<powheg generator: procedures>>=
+  subroutine powheg_generator_generate_real_phsp (powheg_generator, &
+       radiation_variables, region)
+    class(powheg_generator_t), intent(inout) :: powheg_generator
+    real(default), dimension(:), intent(in) :: radiation_variables
+    integer, intent(in) :: region
+    !call powheg_generator%gen_real (powheg_generator%real_momenta, &
+         !radiation_variables, powheg_generator%born_momenta, region)
+    ! TODO: (bcn 2015-01-29) put in here correct call to phs_fks_generator
+  end subroutine powheg_generator_generate_real_phsp
+
+@ %def powheg_generator_generate_real_phsp
+@
 \subsection{Initialization and Finalization}
 @
 <<powheg generator: powheg generator: TBP>>=
   procedure :: init => powheg_generator_init
 <<powheg generator: procedures>>=
-  pure subroutine powheg_generator_init (powheg_generator, rng)
+  subroutine powheg_generator_init (powheg_generator, rng, nlo_data)
     class(powheg_generator_t), intent(out) :: powheg_generator
     class(rng_t), allocatable, intent(inout) :: rng
+    type(nlo_data_t), target, intent(in) :: nlo_data
+    powheg_generator%nlo_data => nlo_data
     call powheg_generator%import_rng (rng)
   end subroutine powheg_generator_init
 
 @ %def powheg_generator_init
+@
 <<powheg generator: powheg generator: TBP>>=
   procedure :: import_rng => powheg_generator_import_rng
 <<powheg generator: procedures>>=
@@ -17256,16 +17293,42 @@ end module powheg_generator
   end subroutine powheg_generator_export_rng
 
 @ %def powheg_generator_export_rng
+@
+\subsection{Physics}
+The following is valid for one underlying Born for now
+<<powheg generator: powheg generator: TBP>>=
+  procedure :: initialize_process => powheg_generator_initialize_process
+<<powheg generator: procedures>>=
+  subroutine powheg_generator_initialize_process (powheg_generator)
+    class(powheg_generator_t), intent(inout) :: powheg_generator
+    real(default), dimension(3) :: radiation_variables
+    real(default) :: y
+    integer :: scan, region, nreg
+    do scan = 1, powheg_generator%settings%n_init
+       call powheg_generator%rng%generate (radiation_variables)
+       do region = 1, powheg_generator%nlo_data%n_alr
+          call powheg_generator%generate_real_phsp &
+               (radiation_variables, region)
+          !y = jacobian * real_me  / powheg_generator%born_me
+          ! TODO: (bcn 2015-01-29) 1 -> I_XI , 2 -> I_Y
+          call powheg_generator%grid%update_maxima &
+          ([radiation_variables(1:2), (one * &
+          region)/powheg_generator%nlo_data%n_alr], y)
+       end do
+    end do
+  end subroutine powheg_generator_initialize_process
+
+@ %def powheg_generator_initialize_process
 @ By keeping the radiation with the largest [[pt2]], we are effectively
 implementing the highest bid procedure. This means that we generate
 values $(f_B)$
 <<powheg generator: procedures>>=
-  pure subroutine generate_all_radiation ()
+  pure subroutine generate_all_radiation (powheg_generator)
+    class(powheg_generator_t), intent(inout) :: powheg_generator
     type(radiation_t) :: radiation, radiation_max
-    integer :: i_region, n_regions
+    integer :: region
     radiation_max%pt2 = zero
-    n_regions = 1337 ! Fix this
-    do i_region = 1, n_regions
+    do region = 1, powheg_generator%nlo_data%n_alr
        !region(i_region)%generate_radiation (radiation)
        if (radiation%pt2 > radiation_max%pt2) then
           radiation_max = radiation
@@ -17326,13 +17389,15 @@ useful.
     type(powheg_generator_t) :: powheg_generator
     class(rng_factory_t), allocatable :: rng_factory
     class(rng_t), allocatable :: rng
+    type(nlo_data_t) :: nlo_data
     write (u, "(A)")  "* Test output: powheg_generator_1"
     write (u, "(A)")  "*   Purpose: Basic features"
     write (u, "(A)")
 
     allocate (rng_test_factory_t :: rng_factory)
     call rng_factory%make (rng)
-    call powheg_generator%init(rng)
+    nlo_data%n_alr = 2
+    call powheg_generator%init(rng, nlo_data)
 
     write (u, "(A)")
     write (u, "(A)")  "* Test output end: powheg_generator_1"
