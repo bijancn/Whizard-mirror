@@ -2505,12 +2505,12 @@ parameterizing an s-channel resonance.
        associate (component => process%component(i))
          if (component%active) then
             if (process%nlo_process) then
-               select case (char (component%config%get_nlo_type ()))
-               case ('Born', 'Virtual', 'Subtraction')
+               select case (component%config%get_nlo_type ())
+               case (BORN, NLO_VIRTUAL, NLO_SUBTRACTION)
                   call component%configure_phs (sqrts, process%beam_config, &
                        rebuild, ignore_mismatch, verbose=verbose)
                   call check_and_extend_phs (component, combined_integration)
-               case ('Real')
+               case (NLO_REAL)
                   i_born = component%config%get_associated_born ()
                   call check_and_extend_phs (component, combined_integration)
                   call process%component(i_born)%extract_phs_config (phs_config_born)
@@ -2689,7 +2689,7 @@ make a random-number generator instance for each MCI group.
     do i = 1, process%meta%n_components
        associate (component => process%component(i))
           if (component%needs_mci_entry () .and. &
-              component%config%get_nlo_type () /= 'Subtraction') then
+              component%config%get_nlo_type () /= NLO_SUBTRACTION) then
             i_mci = i_mci + 1
             associate (mci_entry => process%mci_entry(i_mci))
               call mci_entry%set_combined_integration (combined_integration)
@@ -3295,7 +3295,7 @@ Return the current integral and error obtained by the integrator [[i_mci]].
            result (nlo_type)
     class(process_t), intent(in) :: process
     integer, intent(in) :: i_component
-    type(string_t) :: nlo_type
+    integer :: nlo_type
     nlo_type = process%component(i_component)%config%get_nlo_type ()
   end function process_get_component_nlo_type
 
@@ -4206,6 +4206,7 @@ status.  It is a part of the [[mci_entry]] component below.
   integer, parameter :: STAT_EVALUATED_TRACE = 10
   integer, parameter :: STAT_EVENT_COMPLETE = 11
 
+
   integer, parameter, public :: COMP_DEFAULT = 0
   integer, parameter, public :: COMP_MASTER  = 1
   integer, parameter, public :: COMP_VIRT = 2
@@ -4576,13 +4577,13 @@ is hardcoded.
     logical, intent(in), optional :: final, pacify
     integer, intent(in), optional :: i_component
     integer :: u_log
-    type(string_t) :: nlo_type
+    integer :: nlo_type
     if (present (i_component)) then
       if (associated (instance%component(i_component)%config)) then
         nlo_type = instance%component(i_component)%config%config%get_nlo_type ()
       end if
     else
-      nlo_type = 'Born'
+      nlo_type = BORN
     end if
     u_log = logfile_unit ()
     call instance%choose_mci (mci_entry%i_mci)
@@ -4597,8 +4598,8 @@ is hardcoded.
          (mci_entry%process_type, screen = .true., unit = u_log)
     call mci_entry%results%new_pass ()
     associate (mci_instance => instance%mci_work(mci_entry%i_mci)%mci)
-      select case (char (nlo_type))
-      case ('Virtual', 'Real')
+      select case (nlo_type)
+      case (NLO_VIRTUAL, NLO_REAL)
         select type (mci_instance)
         type is (mci_vamp_instance_t)
           mci_instance%negative_weights = .true.
@@ -4949,7 +4950,7 @@ configuration finalizer may include closing an open scratch file.
     type(phs_wood_config_t), intent(in), optional, target :: phs_config
     logical, intent(in), optional :: verbose
     logical :: no_strfun, verb
-    type(string_t) :: nlo_type
+    integer :: nlo_type
     no_strfun = beam_config%n_strfun == 0
     verb = .true.;  if (present (verbose))  verb = verbose
     nlo_type = component%config%get_nlo_type ()
@@ -5892,7 +5893,7 @@ a pointer.
      logical :: sf_chain_allocated = .false.
      logical :: phs_allocated = .false.
      logical :: f_allocated = .false.
-     type(string_t) :: nlo_type
+     integer :: nlo_type
      integer :: emitter
    contains
    <<Processes: kinematics: TBP>>
@@ -5961,8 +5962,7 @@ a pointer.
 <<Processes: procedures>>=
   subroutine kinematics_set_nlo_data (k, nlo_type, emitter)
     class(kinematics_t), intent(inout) :: k
-!    integer, intent(in) :: nlo_type
-    type(string_t) :: nlo_type
+    integer, intent(in) :: nlo_type
     integer, intent(in), optional :: emitter
     k%nlo_type = nlo_type
     if (present (emitter)) then
@@ -6266,7 +6266,7 @@ type and contents depend on the process variant.
      real(default) :: sqme = 0
      class(workspace_t), allocatable :: tmp
      type(nlo_data_t), pointer :: nlo_data => null ()
-     type(string_t) :: nlo_type
+     integer :: nlo_type = BORN
    contains
    <<Processes: component instance: TBP>>
   end type component_instance_t
@@ -6335,7 +6335,7 @@ matter of the process core.
   subroutine component_instance_init (component, config)
     class(component_instance_t), intent(out) :: component
     type(process_component_t), intent(in), target :: config
-    type(string_t) :: nlo_type
+    integer :: nlo_type
     integer :: n_in, n_tot
     component%config => config
     nlo_type = component%config%config%get_nlo_type ()
@@ -6343,10 +6343,10 @@ matter of the process core.
     associate (core => component%config%core)
       n_in = core%data%n_in
       n_tot = n_in + core%data%n_out
-      select case (char (nlo_type))
-      case ('Real')
+      select case (nlo_type)
+      case (NLO_REAL)
         allocate (component%p_seed (n_tot -1))
-      case ('Born', 'Virtual')
+      case (BORN, NLO_VIRTUAL)
         allocate (component%p_seed (n_tot))
       end select
       call core%allocate_workspace (component%tmp)
@@ -6366,10 +6366,10 @@ allocated explicitly.
     type(process_beam_config_t), intent(in) :: config
     logical, intent(in), optional :: combined_integration
     class(phs_config_t), pointer :: fks_config
-    type(string_t) :: nlo_type
+    integer :: nlo_type
     nlo_type = component%config%config%get_nlo_type ()
-    if (component%config%phs_config%nlo_type == "") &
-      component%config%phs_config%nlo_type = nlo_type
+!    if (component%config%phs_config%nlo_type == "") &
+!      component%config%phs_config%nlo_type = nlo_type
     if (present (combined_integration)) then
        if (combined_integration) then
           select type (phs_config => component%config%phs_config)
@@ -6583,8 +6583,8 @@ imaginary part of the terms, which should be zero anyway.
 <<Processes: procedures>>=
   subroutine reset_nlo_components (component)
      type(component_instance_t), intent(inout) :: component
-     select case (char (component%config%config%get_nlo_type ()))
-     case ('Real', 'Virtual')
+     select case (component%config%config%get_nlo_type ())
+     case (NLO_REAL, NLO_VIRTUAL)
         component%nlo_data%sqme_born = 0
         component%nlo_data%sqme_real_non_sub = 0
      end select
@@ -6596,8 +6596,8 @@ imaginary part of the terms, which should be zero anyway.
   subroutine add_born_to_nlo_component (component, summand)
      type(component_instance_t), intent(inout) :: component
      real(default), intent(in) :: summand
-     select case (char (component%config%config%get_nlo_type ()))
-     case ('Real')
+     select case (component%config%config%get_nlo_type ())
+     case (NLO_REAL)
         component%nlo_data%sqme_born = summand
      end select
   end subroutine add_born_to_nlo_component
@@ -6613,7 +6613,7 @@ imaginary part of the terms, which should be zero anyway.
      integer :: i_flv
      logical :: bad_point
 
-     if (term%nlo_type /= 'Virtual') return
+     if (term%nlo_type /= NLO_VIRTUAL) return
      call term%nlo_data%set_alpha_s_born &
                (component%config%core%get_alpha_s (component%tmp))
      call term%nlo_data%virtual_terms%set_ren_scale &
@@ -6656,7 +6656,7 @@ imaginary part of the terms, which should be zero anyway.
      integer :: i_flv
      logical :: bad_point
 
-     if (term%nlo_type /= 'Real') return
+     if (term%nlo_type /= NLO_REAL) return
      p_real = term%nlo_data%get_real_momenta ()
      select type (core => component%config%core)
      !!! Get the unsubtracted real matrix element, 
@@ -6712,20 +6712,11 @@ imaginary part of the terms, which should be zero anyway.
 <<Processes: component instance: TBP>>=
   procedure :: get_nlo_type => component_instance_get_nlo_type
 <<Processes: procedures>>=
-  elemental function component_instance_get_nlo_type (component, i_component) &
+  elemental function component_instance_get_nlo_type (component) &
                                         result (nlo_type)
     class(component_instance_t), intent(in) :: component
-    integer, intent(in) :: i_component
-    type(string_t) :: nlo_type
-    if (associated (component%nlo_data)) then
-       if (component%nlo_type == "") then
-          nlo_type = 'Born'
-       else
-           nlo_type = component%nlo_type
-       end if
-    else
-       nlo_type = 'Born'
-    end if
+    integer :: nlo_type
+    nlo_type = component%nlo_type
   end function component_instance_get_nlo_type
 
 @ %def component_instance_get_nlo_type
@@ -6816,7 +6807,7 @@ has passed cuts, we calculate the various scale and weight expressions.
      real(default) :: weight = 1
      type(vector4_t), dimension(:), allocatable :: p_hard
      type(nlo_data_t), pointer :: nlo_data => null ()
-     type(string_t) :: nlo_type
+     integer :: nlo_type = BORN
    contains
    <<Processes: term instance: TBP>>
   end type term_instance_t
@@ -6884,8 +6875,8 @@ has passed cuts, we calculate the various scale and weight expressions.
     call term%connected%final ()
     call term%isolated%final ()
     call interaction_final (term%int_hard)
-    select case (char (term%nlo_type))
-    case ('Real')
+    select case (term%nlo_type)
+    case (NLO_REAL)
       call term%connected_real%final ()
       call term%isolated_real%final ()
       call interaction_final (term%int_hard_real)
@@ -7020,8 +7011,8 @@ relevant for a NLO algorithm.
     call term%connected%setup_subevt (term%isolated%sf_chain_eff, &
          beam_config%data%flv, f_in, f_out)
     call term%connected%setup_var_list (process_var_list, beam_config%data)
-    select case (char (term%nlo_type))
-    case ('Real')
+    select case (term%nlo_type)
+    case (NLO_REAL)
       allocate (f_out_real (n_out+1))
       f_out_real (1:n_out) = f_out
       f_out_real (n_out+1) = term%nlo_data%reg_data%flv_extra
@@ -7107,14 +7098,14 @@ The quantum numbers mask of the incoming particle
     n_in = interaction_get_n_in (term%int_hard)
     allocate (mask_in (n_in))
     mask_in = term%k_term%sf_chain%get_out_mask ()
-    select case (char (term%nlo_type))
-    case ('Born', 'Virtual')
+    select case (term%nlo_type)
+    case (BORN, NLO_VIRTUAL)
       call term%isolated%setup_square_matrix (core, model, mask_in, &
          term%config%col)
       call term%isolated%setup_square_flows (core, model, mask_in)
       call term%connected%setup_connected_matrix (term%isolated)
       call term%connected%setup_connected_flows (term%isolated)
-    case ('Real')
+    case (NLO_REAL)
       call term%isolated_real%setup_square_matrix (core, model, mask_in, &
                term%config%col)
       call term%isolated_real%setup_square_flows (core, model, mask_in)
@@ -7186,18 +7177,18 @@ kinematics to the evaluators and to the [[subevt]].
        i_component = term%config%i_component
        i_term = term%config%i_term
       associate (core => component(i_component)%config%core)
-         select case (char (term%nlo_type))
-         case ('Born', 'Virtual')
+         select case (term%nlo_type)
+         case (BORN, NLO_VIRTUAL)
            call core%compute_eff_kinematics &
               (i_term, term%int_hard, term%isolated%int_eff, &
               component(i_component)%tmp)
-         case ('Real')
+         case (NLO_REAL)
            call component(i_component)%config%core_sub_born%compute_eff_kinematics & 
                 (i_term, term%nlo_data%int_born, term%isolated%int_eff, &
                 component(i_component)%tmp)
          end select
-        select case (char (term%nlo_type))
-        case ('Real')
+        select case (term%nlo_type)
+        case (NLO_REAL)
           call core%compute_eff_kinematics &
                 (i_term, term%int_hard_real, term%isolated_real%int_eff, &
                  component(i_component)%tmp)
@@ -7259,8 +7250,8 @@ method may modify the [[tmp]] workspace object.
     i_component = term%config%i_component
     i_term = term%config%i_term
     term%p_hard = interaction_get_momenta (term%int_hard)
-    select case (char (term%nlo_type))
-    case ('Born', 'Virtual')
+    select case (term%nlo_type)
+    case (BORN, NLO_VIRTUAL)
        associate (core => component(i_component)%config%core)
           do i = 1, term%config%n_allowed
              term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
@@ -7270,7 +7261,7 @@ method may modify the [[tmp]] workspace object.
           end do
           call interaction_set_matrix_element (term%int_hard, term%amp)
        end associate 
-    case ('Real')
+    case (NLO_REAL)
        call term%evaluate_interaction_real (component(i_component), i_term)
     end select  
   end subroutine term_instance_evaluate_interaction
@@ -7290,8 +7281,8 @@ interaction, then compute the convolution with the initial state.
     call term%isolated%evaluate_sf_chain (term%fac_scale)
     call term%isolated%evaluate_trace ()
     call term%connected%evaluate_trace ()
-    select case (char (term%nlo_type))
-    case ('Real')
+    select case (term%nlo_type)
+    case (NLO_REAL)
       call term%isolated_real%evaluate_trace ()
       call term%connected_real%evaluate_trace ()
     end select
@@ -7305,11 +7296,11 @@ physical event.
 <<Processes: procedures>>=
   subroutine term_instance_evaluate_event_data (term)
     class(term_instance_t), intent(inout) :: term
-    select case (char (term%nlo_type))
-    case ('Born', 'Virtual')
+    select case (term%nlo_type)
+    case (BORN, NLO_VIRTUAL)
       call term%isolated%evaluate_event_data ()
       call term%connected%evaluate_event_data ()
-    case ('Real')
+    case (NLO_REAL)
       call term%isolated_real%evaluate_event_data ()
       call term%connected_real%evaluate_event_data ()
     end select
@@ -7675,7 +7666,7 @@ selected by the [[i_mci]] index above.
      type(term_instance_t), dimension(:), allocatable :: term
      type(mci_work_t), dimension(:), allocatable :: mci_work
      type(sqme_collector_t), pointer :: sqme_collector => null()
-     type(nlo_data_t) :: nlo_data
+     type(nlo_data_t), pointer :: nlo_data => null()
    contains
    <<Processes: process instance: TBP>>
   end type process_instance_t
@@ -7902,9 +7893,8 @@ subobject of [[instance]].
     logical, intent(in), optional :: combined_integration
     integer :: i, i_component
     type(process_constants_t), dimension(2), save :: prc_constants
-    type(string_t) :: nlo_type
+    integer :: nlo_type
     integer :: i_born, i_real
-    type(nlo_pointer_t), dimension(:), allocatable :: nlo_p
     logical :: use_internal_cc, use_internal_sc
 
     if (present (combined_integration)) then
@@ -7917,38 +7907,31 @@ subobject of [[instance]].
        call instance%mci_work(i)%init (process%mci_entry(i))
     end do
     allocate (instance%component (process%config%n_components))
-    allocate (nlo_p (process%config%n_components))
-    do i = 1, size (nlo_p)
-      allocate (nlo_p(i)%nlo_data)
-    end do
+    allocate (instance%nlo_data)
     do i_component = 1, size (instance%component)
-       instance%component(i_component)%nlo_type = var_str ('Born')
+!!       instance%component(i_component)%nlo_type = var_str ('Born')
        if (process%component(i_component)%active) then
           associate (component => instance%component(i_component))
             call component%init (process%component(i_component))
             nlo_type = component%config%config%get_nlo_type ()
-            select case (char (nlo_type))
-            case ('Born')
-!!              call nlo_p(i_component)%nlo_data%set_nlo_type (var_str ('Born'))
+            select case (nlo_type)
+            case (BORN)
               component%nlo_data => instance%nlo_data
-!!              call component%nlo_data%set_nlo_type (i_component, var_str ('Born'))
               if (associated (instance%sqme_collector)) &
                  call component%set_component_type (COMP_MASTER)
-            case ('Real')
+            case (NLO_REAL)
               component%nlo_data => instance%nlo_data
               i_born = component%config%config%get_associated_born ()
               call process%term(i_born)%fetch_constants (prc_constants(1))
               call process%term(i_component)%fetch_constants(prc_constants(2))
-!              call nlo_p(i_component)%nlo_data%set_internal_procedures &
-!                                          (use_internal_cc, use_internal_sc)
-!              call nlo_p(i_component)%nlo_data%init (var_str ('Real'), prc_constants, &
-!                                               process%component(i_component)%fks_template, &
-!                                               process%config%model)
-!              call nlo_p(i_component)%nlo_data%set_flv_born (process%term(i_born)%flv)
-!              call nlo_p(i_component)%nlo_data%set_col_born (process%term(i_born)%col)
-!              call nlo_p(i_component)%nlo_data%set_hel_born (process%term(i_born)%hel)
-!              allocate (instance%sqme_real (size (nlo_p(i_component)%nlo_data%reg_data%regions)))
-              component%nlo_type = var_str ('Real')
+              if (present (cc_flag)) then
+                 use_internal_cc = cc_flag
+                 use_internal_sc = .false.
+              else
+                 use_internal_cc = .true.
+                 use_internal_sc = .false.
+              end if 
+              component%nlo_type = NLO_REAL
               call component%nlo_data%set_internal_procedures &
                                           (use_internal_cc, use_internal_sc)
               call component%nlo_data%init (prc_constants, &
@@ -7960,20 +7943,17 @@ subobject of [[instance]].
               allocate (instance%sqme_real (size (component%nlo_data%reg_data%regions)))
               if (associated (instance%sqme_collector)) &
                  call component%set_component_type (COMP_REAL)
-            case ('Virtual')
-                i_born = component%config%config%get_associated_born ()
-                i_real = i_born + process%config%n_components / 3
-                component%nlo_data => instance%nlo_data
-!                call component%nlo_data%set_nlo_type (i_component, var_str ('Virtual'))
-                component%nlo_type = var_str ('Virtual')
-                call component%nlo_data%init_virtual ()
-!
+            case (NLO_VIRTUAL)
+              i_born = component%config%config%get_associated_born ()
+              i_real = i_born + process%config%n_components / 3
+              component%nlo_data => instance%nlo_data
+              component%nlo_type = NLO_VIRTUAL
+              call component%nlo_data%init_virtual ()
               if (associated (instance%sqme_collector)) &
                  call component%set_component_type (COMP_VIRT) 
-            case ('Subtraction')
+            case (NLO_SUBTRACTION)
                component%nlo_data => instance%nlo_data
-               component%nlo_type = var_str ('Subtraction')
-!               call component%nlo_data%set_nlo_type (i_component, var_str ('Subtraction'))
+               component%nlo_type = NLO_SUBTRACTION
             end select
             call component%setup_kinematics &
                  (instance%sf_chain, process%beam_config, &
@@ -7984,35 +7964,22 @@ subobject of [[instance]].
     allocate (instance%term (process%config%n_terms))
     do i = 1, size (instance%term)
        associate (term => instance%term(i))
-         term%nlo_type = var_str ('Born')
+!!         term%nlo_type = var_str ('Born')
          i_component = process%term(i)%i_component
          if (i_component /= 0) then
             associate (component => instance%component(i_component))
               nlo_type = component%config%config%get_nlo_type ()
               term%nlo_type = nlo_type
               call component%k_seed%set_nlo_data (nlo_type)
-!              select case (char (nlo_type))
-!              case ('Virtual')
-!                i_born = component%config%config%get_associated_born ()
-!                i_real = i_born + process%config%n_components / 3
-!                nlo_p(i_component)%nlo_data = instance%term(i_real)%nlo_data
-!                call nlo_p(i_component)%nlo_data%set_nlo_type (var_str ('Virtual'))
-!                call nlo_p(i_component)%nlo_data%init_virtual ()
-!                component%nlo_data => instance%nlo_data
-!                call component%nlo_data%set_nlo_type (i_component, var_str ('Virtual'))
-!                call component%nlo_data%init_virtual ()
-!
-!              end select
 
               call term%init (process%term(i), &
                    component%k_seed, &
                    process%beam_config, &
                    process%component(i_component)%core, &
-!                   process%meta%var_list, nlo_p(i_component)%nlo_data)
                    process%meta%var_list, component%nlo_data)
               call term%setup_expressions (process%meta, process%config)
-              select case (char (nlo_type))
-              case ('Real')
+              select case (nlo_type)
+              case (NLO_REAL)
                 call term%setup_expressions_real (process%meta, process%config)
               end select
            end associate
@@ -8291,10 +8258,10 @@ components, from the seed kinematics.
     if (instance%evaluation_status >= STAT_SEED_KINEMATICS) then
        do i = 1, size (instance%component)
           if (instance%component(i)%active) then
-            select case (char (instance%component(i)%config%config%get_nlo_type()))
-            case ('Born', 'Virtual')
+            select case (instance%component(i)%config%config%get_nlo_type())
+            case (BORN, NLO_VIRTUAL)
               real_phsp = .false.
-            case ('Real')
+            case (NLO_REAL)
               real_phsp = .true.
             end select
               call instance%component(i)% &
@@ -8457,14 +8424,14 @@ terms, iterating over all active process components.
        do i = 1, size (instance%term)
           associate (term => instance%term(i))
             if (term%active .and. term%passed) then
-              select case (char (term%nlo_type))
-              case ('Real')
+              select case (term%nlo_type)
+              case (NLO_REAL)
                  if (.not. associated (instance%sqme_collector)) then
                     call instance%evaluate_trace_real (term, i)
                  else
                     i_real = i
                  end if
-              case ('Born', 'Virtual')
+              case (BORN, NLO_VIRTUAL)
                  call term%evaluate_interaction (instance%component)
                  call term%evaluate_trace ()
               end select
@@ -8474,8 +8441,8 @@ terms, iterating over all active process components.
        do i = 1, size (instance%component)
           associate (component => instance%component(i))
             if (component%active) then
-              select case (char (component%config%config%get_nlo_type()))
-              case ('Born', 'Virtual')
+              select case (component%config%config%get_nlo_type())
+              case (BORN, NLO_VIRTUAL)
                 call component%evaluate_sqme (instance%term)
                 instance%sqme = instance%sqme + component%sqme
                 instance%evaluation_status = STAT_EVALUATED_TRACE
@@ -8875,10 +8842,10 @@ component.
     class(process_instance_t), intent(in), target :: instance
     integer, intent(in) :: i_term
     type(interaction_t), pointer :: ptr
-    select case (char (instance%term(i_term)%nlo_type))
-    case ('Born', 'Virtual')
+    select case (instance%term(i_term)%nlo_type)
+    case (BORN, NLO_VIRTUAL)
       ptr => instance%term(i_term)%connected%get_matrix_int_ptr ()
-    case ('Real')
+    case (NLO_REAL)
       ptr => instance%term(i_term)%connected_real%get_matrix_int_ptr ()
     end select
   end function process_instance_get_matrix_int_ptr
@@ -8887,10 +8854,10 @@ component.
     class(process_instance_t), intent(in), target :: instance
     integer, intent(in) :: i_term
     type(interaction_t), pointer :: ptr
-    select case (char (instance%term(i_term)%nlo_type))
-    case ('Born', 'Virtual')
+    select case (instance%term(i_term)%nlo_type)
+    case (BORN, NLO_VIRTUAL)
       ptr => instance%term(i_term)%connected%get_flows_int_ptr ()
-    case ('Real')
+    case (NLO_REAL)
       ptr => instance%term(i_term)%connected_real%get_flows_int_ptr ()
     end select
   end function process_instance_get_flows_int_ptr
@@ -9113,8 +9080,7 @@ it.  It should be switched off when reading from raw event file.
   function process_instance_has_nlo_component (instance) result (nlo)
     class(process_instance_t), intent(in) :: instance
     logical :: nlo
-!    nlo = any (instance%component%get_nlo_type() /= 'Born')
-    nlo = any (instance%component%nlo_type /= 'Born')
+    nlo = any (instance%component%nlo_type /= BORN)
   end function process_instance_has_nlo_component
 
 @ %def process_instance_has_nlo_component
@@ -9146,11 +9112,9 @@ it.  It should be switched off when reading from raw event file.
                                            var_str ('alphas_power'))
        end associate
        do i = 1, size (process%term)
-!          if (instance%component(i)%get_nlo_type() == 'Born') then
-          if (instance%component(i)%nlo_type == 'Born') then
+          if (instance%component(i)%nlo_type == BORN) then
              flv_born = process%term(i)%data%flv_state
-!          else if (instance%component(i)%get_nlo_type() == 'Real') then
-          else if (instance%component(i)%nlo_type == 'Real') then
+          else if (instance%component(i)%nlo_type == NLO_REAL) then
              flv_real = process%term(i)%data%flv_state
           end if
        end do
@@ -24073,7 +24037,7 @@ intent(out).
     type(string_t), dimension(:), intent(in) :: prt_out
     type(rt_data_t), intent(in) :: global
     type(string_t), intent(in), optional :: id
-    type(string_t), intent(in), optional :: nlo_type
+    integer, intent(in), optional :: nlo_type
     type(string_t) :: method
     type(string_t) :: model_name
     type(string_t) :: restrictions
@@ -26915,7 +26879,7 @@ polarization flag and names of decay processes, where applicable.
     type(prt_spec_t), dimension(:), intent(in) :: prt_in
     type(prt_spec_t), dimension(:), intent(in) :: prt_out
     type(rt_data_t), intent(inout) :: global
-    type(string_t), intent(in), optional :: nlo_type
+    integer, intent(in), optional :: nlo_type
     logical, intent(in), optional :: active_in
     type(string_t), dimension(:), allocatable :: prt_str_in
     type(string_t), dimension(:), allocatable :: prt_str_out
@@ -28366,8 +28330,8 @@ local changes to currently inactive models.
        call dispatch_core (core_template, config%get_core_def_ptr (), &
             intg%process%get_model_ptr (), helicity_selection, intg%qcd, &
             use_color_factors)
-       select case (char (config%get_nlo_type ()))
-       case ('Virtual')
+       select case (config%get_nlo_type ())
+       case (NLO_VIRTUAL)
          call gosam_template%set_loop (var_list%get_lval (&
                                        var_str ('?use_gosam_loops')))
          call intg%process%init_component &
@@ -28376,7 +28340,7 @@ local changes to currently inactive models.
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_VIRT)
          call gosam_template%reset ()
-       case ('Real')
+       case (NLO_REAL)
          call gosam_template%set_real_trees (var_list%get_lval (&
                                              var_str ('?use_gosam_real_trees')))
          call dispatch_phs (phs_config_template_real, local, &
@@ -28390,13 +28354,13 @@ local changes to currently inactive models.
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_REAL)
          call gosam_template%reset ()
-       case ('Born')
+       case (BORN)
          call intg%process%init_component &
             (i_component, core_template, mci_template, phs_config_template)
          i_born = config%get_associated_born ()
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_MASTER)
-       case ('Subtraction')
+       case (NLO_SUBTRACTION)
          call gosam_template%set_subtraction (var_list%get_lval (&
                                               var_str ('?use_gosam_correlations')))
          call intg%process%init_component &
@@ -28615,7 +28579,7 @@ of the integration history.
     type(iterations_list_t) :: it_list
     logical :: pacify
     integer :: pass, i_mci, n_mci, n_pass
-    type(string_t) :: nlo_type
+    integer :: nlo_type
     logical :: display_summed
     logical :: use_internal_color_correlations
 
@@ -28689,7 +28653,7 @@ of the integration history.
          call intg%process%write_logfile (i_mci, log_filename)    
        else
          nlo_type = intg%process%get_component_nlo_type (i_mci)
-         if (nlo_type /= "Subtraction") display_summed = .false.
+         if (nlo_type /= NLO_SUBTRACTION) display_summed = .false.
        end if          
     end do
 
@@ -28713,7 +28677,7 @@ of the integration history.
     type(process_instance_t), intent(inout) :: instance
     integer :: i_born, i_sub
     integer :: n_components, i_component
-    type (string_t) :: nlo_type
+    integer :: nlo_type
     class(prc_core_t), allocatable :: core_born
     associate (process => intg%process)
        n_components = process%get_n_components ()
@@ -28721,8 +28685,8 @@ of the integration history.
           nlo_type = process%get_component_nlo_type (i_component)
           i_born = process%get_component_associated_born (i_component)
           i_sub = i_born + 3
-          select case (char (nlo_type))
-          case ('Real', 'Virtual')
+          select case (nlo_type)
+          case (NLO_REAL, NLO_VIRTUAL)
              call process%extract_component_core (i_sub, core_born)
              call process%init_sub_born (i_component, core_born)
              call process%restore_component_core (i_sub, core_born)
@@ -35506,7 +35470,7 @@ or arrays which would make the expansion ambiguous.
                  global%var_list%get_lval (var_str ('?use_gosam_real_trees'))
 
             call prc_config%setup_component (i, prt_spec_in, prt_spec_out, &
-                                             cmd%local, var_str ('Born'), &
+                                             cmd%local, BORN, &
                                              active_in = active_comp (1))
             call split_prt (prt_spec_in, n_in, pl_in)
             call split_prt (prt_spec_out, n_out, pl_out)
@@ -35526,14 +35490,14 @@ or arrays which would make the expansion ambiguous.
             call prc_config%setup_component (n_components + i, &
                             new_prt_spec (prt_in_nlo), &
                             new_prt_spec (prt_out_nlo),&
-                            cmd%local, var_str ('Real'), &
+                            cmd%local, NLO_REAL, &
                             active_in = active_comp (2))
 
             if (use_gosam_loops .and..not. method_changed) &
                  call global%change_to_gosam (method_changed)
 
             call prc_config%setup_component (n_components*2 + i, prt_spec_in, &
-                            prt_spec_out, global, var_str ('Virtual'), &
+                            prt_spec_out, global, NLO_VIRTUAL, &
                             active_in = active_comp (3))
 
             if (.not. use_gosam_correlations .and. method_changed) then
@@ -35543,7 +35507,7 @@ or arrays which would make the expansion ambiguous.
             end if
 
             call prc_config%setup_component (n_components*3 + i, prt_spec_in, &
-                            prt_spec_out, global, var_str ('Subtraction'), &
+                            prt_spec_out, global, NLO_SUBTRACTION, &
                             .false.)                     
             call prc_config%set_component_associations (i_list)
          end associate
