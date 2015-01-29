@@ -39,7 +39,7 @@ noinst_LTLIBRARIES = libwhizard_core.la
 
 libwhizard_core_la_SOURCES = \
   subevt_expr.f90 parton_states.f90 processes.f90 process_stacks.f90 \
-  event_transforms.f90 decays.f90 powheg_generator.f90 pure_shower.f90 shower.f90 \
+  event_transforms.f90 decays.f90 powheg.f90 pure_shower.f90 shower.f90 \
   events.f90 eio_raw.f90 \
   user_files.f90 rt_data.f90  \
   dispatch.f90 \
