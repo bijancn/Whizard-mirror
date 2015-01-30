@@ -6688,33 +6688,35 @@ imaginary part of the terms, which should be zero anyway.
         end do
      end select 
      !!! Get the necessary subtraction matrix elements.
-     select type (core_born => component%config%core_sub_born)
-     type is (prc_gosam_t)
-        do i_flv = 1, component%nlo_data%n_flv_born
-           if (.not. term%nlo_data%use_internal_color_correlations) then
-              call core_born%compute_sqme_cc (i_flv, &
-                          interaction_get_momenta (component%nlo_data%int_born), &
-                          0._default, core_born%get_alpha_s (component%tmp), &
-                          component%nlo_data%sqme_born(i_flv), &
-                          component%nlo_data%sqme_born_cc (:,:,i_flv), &
-                          bad_point)
-           else
-              !!! Implementation for color-correlations using color_data
-           end if
-           if (.not. term%nlo_data%use_internal_spin_correlations  &
-               .and. term%nlo_data%requires_spin_correlation (i_flv)) &
-              !!! This far only correct for e+ e- -> q qbar gl
-              call core_born%compute_sqme_sc (i_flv, 5, &
+     if (term%nlo_data%is_subtraction_active ()) then
+        select type (core_born => component%config%core_sub_born)
+        type is (prc_gosam_t)
+           do i_flv = 1, component%nlo_data%n_flv_born
+              if (.not. term%nlo_data%use_internal_color_correlations) then
+                 call core_born%compute_sqme_cc (i_flv, &
                              interaction_get_momenta (component%nlo_data%int_born), &
                              0._default, core_born%get_alpha_s (component%tmp), &
-                             component%nlo_data%me_sc, &
+                             component%nlo_data%sqme_born(i_flv), &
+                             component%nlo_data%sqme_born_cc (:,:,i_flv), &
                              bad_point)
-        end do
-     type is (prc_omega_t)
-        component%nlo_data%sqme_born_cc (:,:,1) = component%nlo_data%sqme_born(1) * &
-                                           component%nlo_data%color_data%beta_ij (:,:,1)
-     end select
-     call term%nlo_data%copy_matrix_elements ()
+              else
+                 !!! Implementation for color-correlations using color_data
+              end if
+              if (.not. term%nlo_data%use_internal_spin_correlations  &
+                  .and. term%nlo_data%requires_spin_correlation (i_flv)) &
+                 !!! This far only correct for e+ e- -> q qbar gl
+                 call core_born%compute_sqme_sc (i_flv, 5, &
+                                interaction_get_momenta (component%nlo_data%int_born), &
+                                0._default, core_born%get_alpha_s (component%tmp), &
+                                component%nlo_data%me_sc, &
+                                bad_point)
+           end do
+        type is (prc_omega_t)
+           component%nlo_data%sqme_born_cc (:,:,1) = component%nlo_data%sqme_born(1) * &
+                                              component%nlo_data%color_data%beta_ij (:,:,1)
+        end select
+        call term%nlo_data%copy_matrix_elements ()
+     end if
      call term%nlo_data%set_alpha_s_born &
                         (component%config%core%get_alpha_s (component%tmp))
      component%nlo_data%sqme_real = term%nlo_data%compute_sqme_real_fin &
@@ -6722,7 +6724,6 @@ imaginary part of the terms, which should be zero anyway.
   end subroutine component_instance_evaluate_sqme_real
 
 @ %def subroutine component_instance_evaluate_sqme_real
-
 @ Get nlo-type and emitter of the component.
 <<Processes: component instance: TBP>>=
   procedure :: get_nlo_type => component_instance_get_nlo_type
@@ -7392,6 +7393,52 @@ physical event.
   end subroutine term_instance_evaluate_interaction_real
 
 @ %def term_instance_evaluate_interaction_real
+<<Processes: term instance: TBP>>=
+  procedure :: evaluate_interaction_real_rad => &
+                        term_instance_evaluate_interaction_real_rad
+<<Processes: procedures>>=
+  subroutine term_instance_evaluate_interaction_real_rad (term, &
+                          component, p_born, p_real, i_term)
+    class(term_instance_t), intent(inout) :: term
+    type(component_instance_t), intent(inout) :: component
+    type(vector4_t), intent(in), dimension(:) :: p_born, p_real
+    integer, intent(in) :: i_term
+    integer :: i
+
+    call interaction_set_momenta (term%nlo_data%int_born, p_born)
+    call interaction_set_momenta (term%int_hard_real, p_real)
+    call component%tmp%reset_new_kinematics ()
+    select type (core => component%config%core)
+    type is (prc_omega_t)
+       do i = 1, term%config%n_allowed
+          term%amp(i) = core%compute_amplitude (i_term, &
+             interaction_get_momenta (term%int_hard_real), &
+             term%config%flv(i), term%config%hel(i), term%config%col(i), &
+             term%fac_scale, term%ren_scale, &
+             component%tmp)
+       end do
+    type is (prc_gosam_t)
+       call core%update_alpha_s (component%tmp, term%fac_scale)
+    end select
+    call interaction_set_matrix_element (term%int_hard_real, term%amp)
+    call component%tmp%reset_new_kinematics ()
+    select type (core_sub_born => component%config%core_sub_born)
+    type is (prc_omega_t)
+       do i = 1, term%nlo_data%n_allowed_born
+          term%nlo_data%amp_born(i) = core_sub_born%compute_amplitude (i_term, &
+              interaction_get_momenta (term%nlo_data%int_born), &
+              term%nlo_data%flv_born(i), term%nlo_data%hel_born(i), &
+              term%nlo_data%col_born(i), term%fac_scale, term%ren_scale, &
+              component%tmp)
+       end do
+    type is (prc_gosam_t)
+       call core_sub_born%update_alpha_s (component%tmp, term%fac_scale)
+    end select 
+    call interaction_set_matrix_element &
+        (term%nlo_data%int_born, term%nlo_data%amp_born) 
+  end subroutine term_instance_evaluate_interaction_real_rad
+
+@ %def term_instance_evaluate_interaction_real_rad
 @ Return data that might be useful for external processing.  The
 factorization scale:
 <<Processes: term instance: TBP>>=
@@ -8597,6 +8644,56 @@ it from the MCI record.
   end subroutine process_instance_evaluate_trace_real
 
 @ %def process_instance_evaluate_trace_real
+<<Processes: process instance: TBP>>=
+  procedure :: evaluate_trace_real_rad => process_instance_evaluate_trace_real_rad
+<<Processes: procedures>>=
+  subroutine process_instance_evaluate_trace_real_rad (instance, term, i)
+    class(process_instance_t), intent(inout) :: instance
+    type(term_instance_t), intent(inout) :: term
+    integer, intent(in) :: i
+    
+    associate (component => instance%component(i))
+       call component%evaluate_sqme_real (term)
+       instance%sqme_collector%sqme_real = component%nlo_data%sqme_real
+    end associate 
+  end subroutine process_instance_evaluate_trace_real_rad
+    
+@ %def process_instance_evaluate_trace_real_rad
+@
+<<Processes: process instance: TBP>>=
+  procedure :: compute_sqme_real_rad => process_instance_compute_sqme_real_rad
+<<Processes: procedures>>=
+  subroutine process_instance_compute_sqme_real_rad (instance, p_born, p_real)
+    class(process_instance_t), intent(inout) :: instance
+    type(vector4_t), intent(in), dimension(:) :: p_born, p_real
+    integer :: i_real
+    
+    if (.not. associated (instance%sqme_collector)) &
+       call msg_fatal ("Compute radiation matrix elements: Sqme collector must&
+                       &be allocated!")
+    call instance%nlo_data%disable_subtraction () 
+    i_real = instance%component(1)%config%config%get_associated_real ()
+    associate (term => instance%term(i_real))
+       call term%evaluate_interaction_real_rad (instance%component(i_real), &
+                                                p_born, p_real, i_real)
+       call instance%evaluate_trace_real_rad (term, i_real)
+    end associate
+  end subroutine process_instance_compute_sqme_real_rad
+
+@ %def process_instance_compute_sqme_real_rad
+@
+<<Processes: process instance: TBP>>=
+  procedure :: get_matrix_elements => process_instance_get_matrix_elements
+<<Processes: procedures>>=
+  subroutine process_instance_get_matrix_elements (instance, sqme_born, sqme_real)
+    class(process_instance_t), intent(inout) :: instance
+    real(default), intent(out) :: sqme_born, sqme_real
+    sqme_born = instance%sqme_collector%sqme_born
+    sqme_real = instance%sqme_collector%sqme_real
+  end subroutine process_instance_get_matrix_elements
+
+@ %def process_instance_get_matrix_elements
+@
 @ For unweighted event generation, we should reset the reported event
 weight to unity (signed) or zero.  The latter case is appropriate for
 an event which failed for whatever reason.
