@@ -17208,6 +17208,7 @@ module powheg
 
 <<Use kinds>>
   use constants
+<<Use strings>>
   use unit_tests
   use physics_defs
   use diagnostics
@@ -17220,7 +17221,20 @@ module powheg
   use lorentz
 
   ! For integration tests
-  !use rng_tao
+  use rng_tao
+  use os_interface
+  use processes
+  use process_libraries
+  use models
+  use model_data
+  use variables
+  use sm_qcd
+  use prc_core
+  use prc_omega
+  use mci_base
+  use mci_midpoint
+  use phs_base
+  use phs_single
 
 <<Standard module head>>
 
@@ -17238,6 +17252,10 @@ contains
 
 end module powheg
 @ %def powheg
+@ Should be turned off for production, once everything runs as expected.
+<<powheg: parameters>>=
+  logical, parameter :: ENSURE = .true.
+@ %def ENSURE
 @
 <<powheg: public>>=
   public :: powheg_settings_t
@@ -17272,6 +17290,7 @@ end module powheg
      class(rng_t), allocatable :: rng
      type(grid_t) :: grid
      type(nlo_data_t), pointer :: nlo_data => null()
+     type(string_t) :: process_name
      type(phs_fks_generator_t) :: phs_fks_generator
      type(vector4_t), dimension(:), allocatable :: born_momenta
      type(vector4_t), dimension(:), allocatable :: real_momenta
@@ -17289,16 +17308,20 @@ end module powheg
 <<powheg: powheg: TBP>>=
   procedure :: init => powheg_init
 <<powheg: procedures>>=
-  subroutine powheg_init (powheg, rng, nlo_data, &
+  subroutine powheg_init (powheg, settings, rng, nlo_data, process_name, &
          born_me, born_momenta)
     class(powheg_t), intent(out) :: powheg
+    type(powheg_settings_t), intent(in) :: settings
     class(rng_t), allocatable, intent(inout) :: rng
     type(nlo_data_t), target, intent(in) :: nlo_data
+    type(string_t), intent(in) :: process_name
     real(default), intent(in) :: born_me
     type(vector4_t), dimension(:), intent(in) :: born_momenta
 
+    powheg%settings = settings
     call powheg%import_rng (rng)
     powheg%nlo_data => nlo_data
+    powheg%process_name = process_name
     powheg%born_me = born_me
     allocate (powheg%born_momenta (size (born_momenta)))
     powheg%born_momenta = born_momenta
@@ -17349,11 +17372,16 @@ that the number of born momenta does not change.  We keep the
 <<powheg: powheg: TBP>>=
   procedure :: update => powheg_update
 <<powheg: procedures>>=
-  pure subroutine powheg_update (powheg, born_me, born_momenta)
+  subroutine powheg_update (powheg, born_me, born_momenta)
     class(powheg_t), intent(inout) :: powheg
     real(default), intent(in) :: born_me
-    type(vector4_t), intent(in) :: born_momenta
+    type(vector4_t), dimension(:), intent(in) :: born_momenta
     powheg%born_me = born_me
+    if (ENSURE) then
+       if (size (born_momenta) /= size (powheg%born_momenta)) then
+          call msg_fatal ("powheg_update: number of born_momenta has changed")
+       end if
+    end if
     powheg%born_momenta = born_momenta
     call powheg%set_cms ()
   end subroutine powheg_update
@@ -17440,6 +17468,16 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
   end subroutine powheg_initialize_process
 
 @ %def powheg_initialize_process
+@
+<<powheg: powheg: TBP>>=
+  procedure :: save_results => powheg_save_results
+<<powheg: procedures>>=
+  subroutine powheg_save_results (powheg)
+    class(powheg_t), intent(inout) :: powheg
+    call powheg%grid%save_to_file (char (powheg%process_name) // "_powheg_grids.dat")
+  end subroutine powheg_save_results
+
+@ %def powheg_save_results
 @ By keeping the radiation with the largest [[pt2]], we are effectively
 implementing the highest bid procedure. This means that we generate
 values $(f_B)$
@@ -17535,7 +17573,102 @@ reweighted to the variable-flavour two loop expression.
 
 @ %def powheg_test
 @
+\subsubsection{Testbed}
+This sequence sets up a two-jet process at NLO in QCD, ready for
+generating events.
+<<powheg: procedures>>=
+  subroutine setup_testbed &
+       (prefix, os_data, lib, model_list, process, process_instance)
+    type(string_t), intent(in) :: prefix
+    type(os_data_t), intent(out) :: os_data
+    type(process_library_t), intent(out), target :: lib
+    type(model_list_t), intent(out) :: model_list
+    class(model_data_t), pointer :: model
+    type(model_t), pointer :: model_tmp
+    type(process_t), target, intent(out) :: process
+    type(process_instance_t), target, intent(out) :: process_instance
+    type(var_list_t), pointer :: model_vars
+    type(string_t) :: model_name, libname, procname, run_id
+    type(process_def_entry_t), pointer :: entry
+    type(string_t), dimension(:), allocatable :: prt_in, prt_out
+    type(qcd_t) :: qcd
+    class(rng_factory_t), allocatable :: rng_factory
+    class(prc_core_t), allocatable :: core_template
+    class(mci_t), allocatable :: mci_template
+    class(phs_config_t), allocatable :: phs_config_template
+    real(default) :: sqrts
+
+    model_name = "SM"
+    libname = prefix // "_lib"
+    procname = prefix // "p"
+    run_id = "1"
+
+    call os_data_init (os_data)
+    allocate (rng_tao_factory_t :: rng_factory)
+    allocate (model_tmp)
+    call model_list%read_model (model_name, model_name // ".mdl", &
+         os_data, model_tmp)
+    model_vars => model_tmp%get_var_list_ptr ()
+    call var_list_set_real (model_vars, var_str ("me"), 0._default, &
+         is_known = .true.)
+    model => model_tmp
+
+    call lib%init (libname)
+
+    allocate (prt_in (2), source = [var_str ("e-"), var_str ("e+")])
+    allocate (prt_out (2), source = [var_str ("d"), var_str ("dbar")])
+
+    allocate (entry)
+    call entry%init (procname, model, n_in = 2, n_components = 1)
+    call omega_make_process_component (entry, 1, &
+         model_name, prt_in, prt_out, &
+         report_progress=.true.)
+    call lib%append (entry)
+
+    call lib%configure (os_data)
+    call lib%write_makefile (os_data, force = .true.)
+    call lib%clean (os_data, distclean = .false.)
+    call lib%write_driver (force = .true.)
+    call lib%load (os_data)
+
+    call process%init (procname, run_id, lib, os_data, &
+         qcd, rng_factory, model)
+
+    allocate (prc_omega_t :: core_template)
+    allocate (mci_midpoint_t :: mci_template)
+    allocate (phs_single_config_t :: phs_config_template)
+
+    model => process%get_model_ptr ()
+
+    select type (core_template)
+    type is (prc_omega_t)
+       call core_template%set_parameters (model = model)
+    end select
+    call process%init_component &
+         (1, core_template, mci_template, phs_config_template)
+
+    sqrts = 1000
+    call process%setup_beams_sqrts (sqrts)
+    call process%configure_phs ()
+    call process%setup_mci ()
+    call process%setup_terms ()
+
+    call process_instance%init (process)
+    call process%integrate (process_instance, 1, 1, 1000)
+    call process%final_integration (1)
+
+    call process_instance%setup_event_data ()
+    call process_instance%init_simulation (1)
+    call process%generate_weighted_event (process_instance, 1)
+    call process_instance%evaluate_event_data ()
+
+  end subroutine setup_testbed
+
+@ %def setup_testbed
+@
 \subsubsection{Initialization}
+<<powheg: procedures>>=
+  <<setup testbed>>
 <<powheg: execute tests>>=
   call test(powheg_1, "powheg_1", &
             "Initialization", u, results)
@@ -17543,11 +17676,14 @@ reweighted to the variable-flavour two loop expression.
   subroutine powheg_1 (u)
     integer, intent(in) :: u
     type(powheg_t) :: powheg
+    type(powheg_settings_t) :: powheg_settings
     class(rng_factory_t), allocatable :: rng_factory
     class(rng_t), allocatable :: rng
     type(nlo_data_t) :: nlo_data
-    type(vector4_t), dimension(4) :: born_momenta
+    type(string_t) :: process_name
     real(default) :: born_me
+    type(vector4_t), dimension(4) :: born_momenta
+    integer :: i
     write (u, "(A)")  "* Test output: powheg_1"
     write (u, "(A)")  "*   Purpose: Initialization"
     write (u, "(A)")
@@ -17556,7 +17692,15 @@ reweighted to the variable-flavour two loop expression.
     call rng_factory%make (rng)
     nlo_data%n_alr = 2
     born_me = five
-    call powheg%init(rng, nlo_data, born_me, born_momenta)
+    process_name = "test_powheg_1"
+    powheg%settings%n_init = 1000
+    call powheg%init (powheg_settings, rng, nlo_data, process_name, born_me, born_momenta)
+    do i = 1, powheg%settings%n_init
+       ! generate new momenta and born ME
+       call powheg%update (born_me, born_momenta)
+       call powheg%initialize_process ()
+    end do
+    call powheg%save_results ()
 
     write (u, "(A)")
     write (u, "(A)")  "* Test output end: powheg_1"
@@ -45413,6 +45557,7 @@ module whizard
   use process_stacks
   use event_transforms
   use decays
+  use powheg
   use shower
   use events
 
@@ -46212,6 +46357,8 @@ This is for developers only, but needs a well-defined interface.
        call event_transforms_test (u, results)       
     case ("decays")
        call decays_test (u, results)       
+    case ("powheg")
+       call powheg_test (u, results)
     case ("shower")
        call shower_test (u, results)       
     case ("events")
@@ -46326,6 +46473,7 @@ This is for developers only, but needs a well-defined interface.
        call process_stacks_test (u, results)   
        call event_transforms_test (u, results)
        call decays_test (u, results)
+       call powheg_test (u, results)
        call shower_test (u, results)
        call events_test (u, results)
        call prc_omega_test (u, results)

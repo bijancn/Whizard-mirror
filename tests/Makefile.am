@@ -93,6 +93,7 @@ UNIT_TESTS = \
     cascades.run \
     event_transforms.run \
     decays.run \
+    powheg.run \
     shower.run \
     events.run \
     eio_data.run \
