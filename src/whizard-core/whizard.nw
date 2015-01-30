@@ -17343,6 +17343,22 @@ partonic vs hadronic cms as well as decays in POWHEG:
   end subroutine powheg_set_cms
 
 @ %def powheg_set_cms
+@ This is the procedure to update the event by event data.  I assume
+that the number of born momenta does not change.  We keep the
+[[set_cms]] with the partonic cms in mind.
+<<powheg: powheg: TBP>>=
+  procedure :: update => powheg_update
+<<powheg: procedures>>=
+  pure subroutine powheg_update (powheg, born_me, born_momenta)
+    class(powheg_t), intent(inout) :: powheg
+    real(default), intent(in) :: born_me
+    type(vector4_t), intent(in) :: born_momenta
+    powheg%born_me = born_me
+    powheg%born_momenta = born_momenta
+    call powheg%set_cms ()
+  end subroutine powheg_update
+
+@ %def powheg_update
 @
 \subsection{Physics}
 @ [[running_alpha_s]] should implement a variable-flavor-2-loop result
@@ -17365,6 +17381,7 @@ $(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
     integer :: n_flavors
     real(default) :: alpha_s, scale_to_relate2
     scale_to_relate2 = 4 * powheg%settings%lambda2
+    ! TODO: (bcn 2015-01-30) implement variable flavor alpha_s
     !call running_alpha_s (alpha_s, scale_to_relate2, n_flavors=n_flavors)
     alpha_s = 0.17_default
     n_flavors = 3
@@ -17386,7 +17403,11 @@ exponent.
 
 @ %def improve_nll_accuracy
 
-The following is valid for one underlying Born for now
+The following is valid for one underlying Born for now.  The embedding
+event transfrom has to call this multiple times after updating the
+born_momenta.  [[get_real_me]] is the projected real matrix element
+$R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
+[[nlo%set_alr]].
 <<powheg: powheg: TBP>>=
   procedure :: initialize_process => powheg_initialize_process
 <<powheg: procedures>>=
@@ -17398,23 +17419,24 @@ The following is valid for one underlying Born for now
     integer :: scan, alr, emitter
     logical :: is_fsr
     is_fsr = .true.
-    do scan = 1, powheg%settings%n_init
-       call powheg%rng%generate (radiation_variables)
-       do alr = 1, powheg%nlo_data%n_alr
-          emitter = powheg%nlo_data%get_emitter (alr)
-          call powheg%phs_fks_generator%generate_fsr_from_x &
+    call powheg%rng%generate (radiation_variables)
+    associate (nlo => powheg%nlo_data, fks => powheg%phs_fks_generator)
+       do alr = 1, nlo%n_alr
+          emitter = nlo%get_emitter (alr)
+          call fks%generate_fsr_from_x &
               (radiation_variables, emitter, powheg%born_momenta, powheg%real_momenta)
-          real_me = one ! get_real_me(powheg%real_momenta, flavor_structure?)
-          call powheg%phs_fks_generator%get_jacobian (emitter, jacobian)
-          call powheg%phs_fks_generator%get_radiation_variables (emitter, xi, y)
+          !call nlo%set_alr (alr)
+          real_me = one ! get_real_me (powheg%real_momenta, flavor_structure?)
+          call fks%get_jacobian (emitter, jacobian)
+          call fks%get_radiation_variables (emitter, xi, y)
           ubf = upper_bound_func (powheg%settings, is_fsr, powheg%cms_energy, &
                                   powheg%lambda_gen2, xi, y)
           norm = jacobian * real_me  / (powheg%born_me * ubf)
-          f_alr = (one * alr) / powheg%nlo_data%n_alr
+          f_alr = (one * alr) / nlo%n_alr
           call powheg%grid%update_maxima &
                ([radiation_variables(I_XI:I_Y), f_alr], norm)
        end do
-    end do
+    end associate
   end subroutine powheg_initialize_process
 
 @ %def powheg_initialize_process
@@ -17495,7 +17517,7 @@ normalization $N$ which is given by the grids.
 @ This is fixed to $n_f=5$ for radiation generation. It will be
 reweighted to the variable-flavour two loop expression.
 <<powheg: parameters>>=
-  real, parameter :: b0rad = (33 - 2 * 5) / 12 * pi
+  real(default), parameter :: b0rad = (33 - 2 * 5) / (12 * pi)
 @ %def b0
 @
 <<powheg: parameters>>=
@@ -17513,10 +17535,10 @@ reweighted to the variable-flavour two loop expression.
 
 @ %def powheg_test
 @
-\subsubsection{Basic features}
+\subsubsection{Initialization}
 <<powheg: execute tests>>=
   call test(powheg_1, "powheg_1", &
-            "Basic features", u, results)
+            "Initialization", u, results)
 <<powheg: procedures>>=
   subroutine powheg_1 (u)
     integer, intent(in) :: u
@@ -17527,7 +17549,7 @@ reweighted to the variable-flavour two loop expression.
     type(vector4_t), dimension(4) :: born_momenta
     real(default) :: born_me
     write (u, "(A)")  "* Test output: powheg_1"
-    write (u, "(A)")  "*   Purpose: Basic features"
+    write (u, "(A)")  "*   Purpose: Initialization"
     write (u, "(A)")
 
     allocate (rng_test_factory_t :: rng_factory)
