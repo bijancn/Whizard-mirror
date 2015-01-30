@@ -1030,9 +1030,9 @@ there is only a soft singularity if the radiated parton becomes soft.
 @ %def region_data_evaluate_flavors
 @ Creates a list containing the emitter of each singular region.
 <<fks regions: reg data: TBP>>=
-  procedure :: get_emitters => region_data_get_emitters
+  procedure :: get_emitter_list => region_data_get_emitter_list
 <<fks regions: procedures>>=
-  function region_data_get_emitters (reg_data) result(emitters)
+  function region_data_get_emitter_list (reg_data) result(emitters)
     class(region_data_t), intent(inout) :: reg_data
     integer, dimension(:), allocatable :: emitters
     integer :: i
@@ -1040,9 +1040,21 @@ there is only a soft singularity if the radiated parton becomes soft.
     do i = 1, reg_data%n_regions
        emitters(i) = reg_data%regions(i)%emitter
     end do
-  end function region_data_get_emitters
+  end function region_data_get_emitter_list
 
-@ %def region_data_get_emitters
+@ %def region_data_get_emitter_list
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: get_emitter => region_data_get_emitter
+<<fks regions: procedures>>=
+  function region_data_get_emitter (reg_data, alr) result (emitter)
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: alr 
+    integer :: emitter
+    emitter = reg_data%regions(alr)%emitter
+  end function region_data_get_emitter
+
+@ %def region_data_get_emitter
 @ Returns $S_i = \frac{1}{\mathcal{D}d_i}$ or $S_{ij} =
 \frac{1}{\mathcal{D}d_{ij}}$ for one particular singular region.  At
 this point, the flavor array should be rearranged in such a way that
@@ -2853,6 +2865,7 @@ it is necessary to expand with $z$ once.
     type(soft_subtraction_t) :: sub_soft
     type(coll_subtraction_t) :: sub_coll
     logical, dimension(:), allocatable :: sc_required
+    logical :: perform_subtraction = .true.
   contains
   <<real subtraction: real subtraction: TBP>>
   end type real_subtraction_t
@@ -2965,7 +2978,7 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
             sqme = sqme + rsub%evaluate_region (emitter, alpha_s) 
          end if
     end do
-    sqme = sqme*rsub%get_phs_factor ()
+    if (rsub%perform_subtraction) sqme = sqme*rsub%get_phs_factor ()
   end function real_subtraction_compute
 
 @ %def real_subtraction_compute
@@ -2995,21 +3008,23 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
       sqme0 = sqme0 * s_alpha
       sqme0 = sqme0 * region%mult
       sqme0 = sqme0 * region%double_fsr_factor (rsub%p_real)
-      call rsub%compute_sub_soft (emitter, alpha_s)
-      call rsub%compute_sub_coll (emitter, alpha_s)
-      call rsub%compute_sub_coll_soft (emitter, alpha_s)
-      call rsub%get_limit_sqme (sqme_soft, sqme_coll, sqme_cs)
+      sqme0 = sqme0 * xi**2/xi_tilde * rsub%fks_kinematics%jac(1)
+      if (rsub%perform_subtraction) then 
+         call rsub%evaluate_subtraction_terms (emitter, alpha_s, &
+                                               sqme_soft, sqme_coll, sqme_cs)
 @ Supply the $\tilde{\xi}^{-1}(1-y)^{-1}$-factor; note that this is not done for the pure real matrix element because 
 it directly cancels out with the numerator. Further, the jacobians are supplied in their appropriate limits.
 <<real subtraction: procedures>>=
-      associate (jac => rsub%fks_kinematics%jac)
-         sqme0 = sqme0 * xi**2/xi_tilde * jac(1)
-         sqme_soft = sqme_soft/(1-y)/xi_tilde * jac(2)
-         sqme_coll = sqme_coll/(1-y)/xi_tilde * jac(3)
-         sqme_cs = sqme_cs/(1-y)/xi_tilde * jac(2)
-      end associate
-      sqme_remn = (sqme_soft - sqme_cs)*log(xi_max)*xi_tilde
-      sqme = sqme0 - sqme_soft - sqme_coll + sqme_cs + sqme_remn
+         associate (jac => rsub%fks_kinematics%jac)
+            sqme_soft = sqme_soft/(1-y)/xi_tilde * jac(2)
+            sqme_coll = sqme_coll/(1-y)/xi_tilde * jac(3)
+            sqme_cs = sqme_cs/(1-y)/xi_tilde * jac(2)
+         end associate
+         sqme_remn = (sqme_soft - sqme_cs)*log(xi_max)*xi_tilde
+         sqme = sqme0 - sqme_soft - sqme_coll + sqme_cs + sqme_remn
+      else
+         sqme = sqme0
+      end if
       sqme = sqme * rsub%fks_kinematics%jac_rand (emitter)
     end associate
     !!! This occurs if the result is NaN.
@@ -3036,20 +3051,27 @@ it directly cancels out with the numerator. Further, the jacobians are supplied 
 @ %def real_subtraction_evalute_region
 @
 <<real subtraction: real subtraction: TBP>>=
-  procedure :: get_limit_sqme => real_subtraction_get_limit_sqme
+  procedure :: evaluate_subtraction_terms => &
+                       real_subtraction_evaluate_subtraction_terms
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_get_limit_sqme (rsub, &
+  subroutine real_subtraction_evaluate_subtraction_terms (rsub, &
+                  emitter, alpha_s, &
                   sqme_soft, sqme_coll, sqme_cs)
-    class(real_subtraction_t), intent(in) :: rsub
+    class(real_subtraction_t), intent(inout) :: rsub
+    integer, intent(in) :: emitter
+    real(default), intent(in) :: alpha_s
     real(default), intent(out) :: sqme_soft, sqme_coll, sqme_cs
     integer :: alr
     alr = rsub%current_alr
+    call rsub%compute_sub_soft (emitter, alpha_s)
+    call rsub%compute_sub_coll (emitter, alpha_s)
+    call rsub%compute_sub_coll_soft (emitter, alpha_s)
     sqme_soft = rsub%sub_soft%value(alr)
     sqme_coll = rsub%sub_coll%value(alr)
     sqme_cs = rsub%sub_coll%value_soft(alr)
-  end subroutine real_subtraction_get_limit_sqme
+  end subroutine real_subtraction_evaluate_subtraction_terms
 
-@ %def real_subtraction_get_limit_sqme
+@ %def real_subtraction_evaluate_subtraction_terms
 @
 <<real subtraction: real subtraction: TBP>>=
   procedure :: get_phs_factor => real_subtraction_get_phs_factor
@@ -4152,15 +4174,27 @@ process.
 @ %def nlo_data_init_virtual
 @
 <<nlo data: nlo data: TBP>>=
-  procedure :: get_emitters => nlo_data_get_emitters
+  procedure :: get_emitter_list => nlo_data_get_emitter_list
 <<nlo data: procedures>>=
-  function nlo_data_get_emitters (nlo_data) result(emitters)
+  function nlo_data_get_emitter_list (nlo_data) result(emitters)
     class(nlo_data_t), intent(inout) :: nlo_data
     integer, dimension(:), allocatable :: emitters
-    emitters = nlo_data%reg_data%get_emitters ()
-  end function nlo_data_get_emitters
+    emitters = nlo_data%reg_data%get_emitter_list ()
+  end function nlo_data_get_emitter_list
 
-@ %def nlo_data_get_emmiters
+@ %def nlo_data_get_emmiter_list
+@
+<<nlo data: nlo data: TBP>>=
+  procedure :: get_emitter => nlo_data_get_emitter
+<<nlo data: procedures>>=
+  function nlo_data_get_emitter (nlo_data, alr) result (emitter)
+    class(nlo_data_t), intent(in) :: nlo_data
+    integer, intent(in) :: alr
+    integer :: emitter
+    emitter = nlo_data%reg_data%get_emitter (alr)
+  end function nlo_data_get_emitter
+
+@ %def nlo_data_get_emitter
 @
 <<nlo data: nlo data: TBP>>=
   procedure :: set_active_emitter => nlo_data_set_active_emitter
@@ -4746,16 +4780,6 @@ channel-emitter-association and allocates space for the momenta.
     type is (phs_fks_t)
       phs%n_r_born = phs%config%n_par - 3
       call phs%init_momenta (phs_config)
-!      allocate (phs%m2 (phs_config%n_tot))
-!      allocate (phs%xi_max (phs_config%n_tot))
-!      allocate (phs%y (phs_config%n_tot))
-!      allocate (phs%jac_rand (phs_config%n_tot))
-!      phs%xi_max = 0._default
-!      phs%y = 0._default
-!      phs%jac_rand = 1._default
-!      phs%jac = 1._default
-!      phs%xi_min = 1d-5
-!      phs%y_max = 1._default
     end select
   end subroutine phs_fks_init
 
@@ -5458,8 +5482,56 @@ is equal to
 
 @ %def phs_fks_generator_generate_radiation_variables
 @
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: get_fsr_from_x => phs_fks_generator_get_fsr_from_x
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_get_fsr_from_x (generator, &
+                    r_in, emitter, p_born, p_real)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    real(default), intent(in), dimension(:) :: r_in
+    integer, intent(in) :: emitter
+    type(vector4_t), intent(in), dimension(:) :: p_born
+    type(vector4_t), intent(out), dimension(:), allocatable :: p_real
 
+    call generator%generate_radiation_variables (r_in, p_born)
+    call generator%generate_fsr (emitter, p_born, p_real)
+  end subroutine phs_fks_generator_get_fsr_from_x
 
+@ %def phs_fks_generator_get_fsr_from_x
+@ 
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: get_radiation_variables => &
+                   phs_fks_generator_get_radiation_variables
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_get_radiation_variables (generator, &
+                              emitter, xi, y, phi)
+    class(phs_fks_generator_t), intent(in) :: generator
+    integer, intent(in) :: emitter
+    real(default), intent(out), dimension(:), allocatable :: xi, y
+    real(default), intent(out), optional :: phi
+    associate (rad_var => generator%fks_kinematics)
+       xi = rad_var%xi_max(emitter) * rad_var%xi_tilde
+       y = rad_var%y(emitter)
+       if (present (phi)) phi = rad_var%phi
+    end associate
+  end subroutine phs_fks_generator_get_radiation_variables
+
+@ %def phs_fks_generator_get_radiation_variables
+@
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: get_jacobian => phs_fks_generator_get_jacobian
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_get_jacobian (generator, emitter, jac)
+    class(phs_fks_generator_t), intent(in) :: generator
+    integer, intent(in) :: emitter
+    real(default) :: jac
+    associate (rad_var => generator%fks_kinematics)
+       jac = rad_var%jac_rand (emitter) * rad_var%jac(1)
+    end associate
+  end subroutine phs_fks_generator_get_jacobian
+                            
+@ %def phs_fks_generator_get_jacobian
+@
 
 
 
