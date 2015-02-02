@@ -6731,8 +6731,8 @@ imaginary part of the terms, which should be zero anyway.
            component%nlo_data%sqme_born_cc (:,:,1) = component%nlo_data%sqme_born(1) * &
                                               component%nlo_data%color_data%beta_ij (:,:,1)
         end select
-        call term%nlo_data%copy_matrix_elements ()
      end if
+     call term%nlo_data%copy_matrix_elements ()
      call term%nlo_data%set_alpha_s_born &
                         (component%config%core%get_alpha_s (component%tmp))
      component%nlo_data%sqme_real = term%nlo_data%compute_sqme_real_fin &
@@ -7423,6 +7423,14 @@ physical event.
 
     call interaction_set_momenta (term%nlo_data%int_born, p_born)
     call interaction_set_momenta (term%int_hard_real, p_real)
+    call term%nlo_data%set_real_momenta (p_real)
+
+    call term%isolated_real%receive_kinematics ()
+    call term%connected_real%receive_kinematics ()
+    
+    call term%connected_real%evaluate_expressions (term%passed, &
+         term%scale, term%fac_scale, term%ren_scale, term%weight)
+
     call component%tmp%reset_new_kinematics ()
     select type (core => component%config%core)
     type is (prc_omega_t)
@@ -8009,7 +8017,6 @@ subobject of [[instance]].
     allocate (instance%component (process%config%n_components))
     allocate (instance%nlo_data)
     do i_component = 1, size (instance%component)
-!!       instance%component(i_component)%nlo_type = var_str ('Born')
        if (process%component(i_component)%active) then
           associate (component => instance%component(i_component))
             call component%init (process%component(i_component))
@@ -8649,6 +8656,7 @@ it from the MCI record.
     type(term_instance_t), intent(inout) :: term
     integer, intent(in) :: i
     
+    call term%evaluate_trace ()
     associate (component => instance%component(i))
        call component%evaluate_sqme_real (term)
        instance%sqme_collector%sqme_real = component%nlo_data%sqme_real
@@ -8660,14 +8668,18 @@ it from the MCI record.
 <<Processes: process instance: TBP>>=
   procedure :: compute_sqme_real_rad => process_instance_compute_sqme_real_rad
 <<Processes: procedures>>=
-  subroutine process_instance_compute_sqme_real_rad (instance, p_born, p_real)
+  subroutine process_instance_compute_sqme_real_rad (instance, emitter, p_born, p_real)
     class(process_instance_t), intent(inout) :: instance
-    type(vector4_t), intent(in), dimension(:) :: p_born, p_real
+    integer, intent(in) :: emitter
+    type(vector4_t), intent(in), dimension(:), allocatable :: p_born 
+    type(vector4_t), intent(in), dimension(:), allocatable :: p_real
     integer :: i_real
     
     if (.not. associated (instance%sqme_collector)) &
        call msg_fatal ("Compute radiation matrix elements: Sqme collector must&
                        &be allocated!")
+    call instance%nlo_data%set_active_emitter (emitter)
+!    call instance%nlo_data%real_terms%set_momenta (p_born, p_real)
     call instance%nlo_data%disable_subtraction () 
     i_real = instance%component(1)%config%config%get_associated_real ()
     associate (term => instance%term(i_real))
@@ -18349,8 +18361,8 @@ hadrons that may be generated in the shower.
     type(process_stack_t), intent(in), optional :: process_stack
     
     call evt%base_connect (process_instance, model, process_stack)
-    stop 'Going to connect powheg'
     call evt%powheg%connect (process_instance)
+    stop 'Done: Connecting powheg'
   end subroutine evt_pure_shower_connect
 
 @ %def evt_pure_shower_connect
@@ -31439,11 +31451,16 @@ does not affect parameters.
     type(process_t), intent(inout), target :: process
     class(model_data_t), intent(in), optional :: model
     allocate (process_instance)
+!    if (process%is_nlo_calculation ()) then
+!       call setup_nlo_component_cores (process, process_instance)
+!       allocate (process_instance%sqme_collector)
+!    end if
     if (process%is_nlo_calculation ()) then
+       call process_instance%init (process, combined_integration = .true.)
        call setup_nlo_component_cores (process, process_instance)
-       allocate (process_instance%sqme_collector)
+    else
+       call process_instance%init (process)
     end if
-    call process_instance%init (process)
     call process_instance%setup_event_data (model)
   end subroutine prepare_process_instance 
 
