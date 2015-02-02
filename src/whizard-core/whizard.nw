@@ -3272,7 +3272,8 @@ Return the current integral and error obtained by the integrator [[i_mci]].
     integer, intent(in) :: i_component
     class(prc_core_t), intent(inout) :: core_born_in
     associate (component => proc%component(i_component))
-      allocate (component%core_sub_born, source = core_born_in)
+      if (.not. allocated (component%core_sub_born)) &
+         allocate (component%core_sub_born, source = core_born_in)
     end associate
   end subroutine process_init_sub_born
 
@@ -3311,6 +3312,21 @@ Return the current integral and error obtained by the integrator [[i_mci]].
     i_born = process%component(i_component)%config%get_associated_born ()
   end function process_get_component_associated_born
 
+@ %def process_get_component_associated_born
+@
+<<Processes: process: TBP>>=
+  procedure :: get_n_allowed_born => process_get_n_allowed_born
+<<Processes: procedures>>=
+  function process_get_n_allowed_born (process, i_born) result (n_born)
+    class(process_t), intent(inout) :: process
+    integer, intent(in) :: i_born
+    integer :: n_born
+    n_born = process%term(i_born)%n_allowed
+
+  end function process_get_n_allowed_born
+
+@ %def process_get_n_allowed_born
+@ 
 <<Processes: process: TBP>>=
   procedure :: is_active_nlo_component => process_is_active_nlo_component 
 <<Processes: procedures>>=
@@ -8025,6 +8041,7 @@ subobject of [[instance]].
               call component%nlo_data%set_col_born (process%term(i_born)%col)
               call component%nlo_data%set_hel_born (process%term(i_born)%hel)
               allocate (instance%sqme_real (size (component%nlo_data%reg_data%regions)))
+              call component%nlo_data%init_born_amps (process%get_n_allowed_born (i_born))
               if (associated (instance%sqme_collector)) &
                  call component%set_component_type (COMP_REAL)
             case (NLO_VIRTUAL)
@@ -8138,27 +8155,7 @@ particle settings.
   end subroutine process_instance_setup_event_data
 
 @ %def process_instance_setup_event_data
-@
-<<Processes: process instance: TBP>>=
-  procedure :: init_born_amps => process_instance_init_born_amps
-<<Processes: procedures>>=
-  subroutine process_instance_init_born_amps (instance, i_component, i_born)
-    class(process_instance_t), intent(inout) :: instance
-    integer, intent(in) :: i_component, i_born
-    select type (core_born => instance%component(i_component)%config%core_sub_born)
-    type is (prc_omega_t)
-      call instance%component(i_component)%nlo_data%init_born_amps &
-                          (instance%term(i_born)%config%n_allowed, .true.)
-    type is (prc_gosam_t)
-      call instance%component(i_component)%nlo_data%init_born_amps &
-                          (instance%term(i_born)%config%n_allowed, .false.)
-    end select
-  end subroutine process_instance_init_born_amps
-
-@ %def process_instance_init_born_amps
-@   
 @ Choose a MC parameter set and the corresponding integrator. 
-
 The choice persists beyond calls of the [[reset]] method above.  This method
 is automatically called here.
 <<Processes: process instance: TBP>>=
@@ -9314,6 +9311,7 @@ apply this to the phase space subobject of the process instance.
     integer :: i_born, i_sub
     integer :: n_components, i_component
     integer :: nlo_type
+!!!    integer :: n_born
     class(prc_core_t), allocatable :: core_born
     n_components = process%get_n_components ()
     do i_component = 1, n_components
@@ -9322,10 +9320,11 @@ apply this to the phase space subobject of the process instance.
        i_sub = i_born + 3
        select case (nlo_type)
        case (NLO_REAL, NLO_VIRTUAL)
+!!!          n_born = process%get_n_allowed_born (i_born)
           call process%extract_component_core (i_sub, core_born)
           call process%init_sub_born (i_component, core_born)
           call process%restore_component_core (i_sub, core_born)
-          call instance%init_born_amps (i_component, i_born)
+!!! To early          call instance%nlo_data%init_born_amps (n_born)
        end select
     end do
   end subroutine setup_nlo_component_cores
@@ -11905,6 +11904,7 @@ module event_transforms
   use phs_single
   use processes
   use process_stacks
+  use powheg
   
 <<Standard module head>>
 
@@ -17109,6 +17109,7 @@ module pure_shower
   use variables
   use beam_structures
   use process_libraries
+  use process_stacks
   use rng_base
   use mci_base
   use phs_base
@@ -17126,6 +17127,8 @@ module pure_shower
   use phs_single
   use prc_core
   use prc_omega
+
+  use powheg
 
 <<Standard module head>>
 
@@ -17403,6 +17406,7 @@ end module powheg
      type(powheg_settings_t) :: settings
      real(default) :: born_me
      real(default) :: lambda_gen2, cms_energy
+     type(process_instance_t), pointer :: process_instance => null()
   contains
    <<powheg: powheg: TBP>>
   end type powheg_t
@@ -17412,27 +17416,36 @@ end module powheg
 \subsubsection{Initialization and Finalization}
 @
 <<powheg: powheg: TBP>>=
+  procedure :: connect => powheg_connect
+<<powheg: procedures>>=
+  subroutine powheg_connect (powheg, process_instance)
+    class(powheg_t), intent(inout) :: powheg
+    type(process_instance_t), intent(in), target :: process_instance
+    powheg%process_instance => process_instance
+  end subroutine powheg_connect
+
+@ %def powheg_connect
+@
+<<powheg: powheg: TBP>>=
   procedure :: init => powheg_init
 <<powheg: procedures>>=
-  subroutine powheg_init (powheg, settings, rng, nlo_data, process_name, &
+  subroutine powheg_init (powheg, settings, rng, process_name, &
          born_me, born_momenta)
     class(powheg_t), intent(out) :: powheg
     type(powheg_settings_t), intent(in) :: settings
     class(rng_t), allocatable, intent(inout) :: rng
-    type(nlo_data_t), target, intent(in) :: nlo_data
     type(string_t), intent(in) :: process_name
     real(default), intent(in) :: born_me
     type(vector4_t), dimension(:), intent(in) :: born_momenta
 
     powheg%settings = settings
     call powheg%import_rng (rng)
-    powheg%nlo_data => nlo_data
     powheg%process_name = process_name
     powheg%born_me = born_me
     allocate (powheg%born_momenta (size (born_momenta)))
     powheg%born_momenta = born_momenta
 
-    call powheg%grid%init ([100,100,powheg%nlo_data%n_alr])
+    call powheg%grid%init ([100,100,powheg%process_instance%nlo_data%n_alr])
     call powheg%set_cms ()
     call powheg%compute_lambda_gen2 ()
   end subroutine powheg_init
@@ -17554,7 +17567,8 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
     logical :: is_fsr
     is_fsr = .true.
     call powheg%rng%generate (radiation_variables)
-    associate (nlo => powheg%nlo_data, fks => powheg%phs_fks_generator)
+    associate (nlo => powheg%process_instance%nlo_data, &
+                      fks => powheg%phs_fks_generator)
        do alr = 1, nlo%n_alr
           emitter = nlo%get_emitter (alr)
           call fks%generate_fsr_from_x &
@@ -17593,7 +17607,7 @@ values $(f_B)$
     type(radiation_t) :: radiation, radiation_max
     integer :: region
     radiation_max%pt2 = zero
-    do region = 1, powheg%nlo_data%n_alr
+    do region = 1, powheg%process_instance%nlo_data%n_alr
        !region(i_region)%generate_radiation (radiation)
        if (radiation%pt2 > radiation_max%pt2) then
           radiation_max = radiation
@@ -17783,7 +17797,7 @@ ready for generating events.
     type(powheg_settings_t) :: powheg_settings
     class(rng_factory_t), allocatable :: rng_factory
     class(rng_t), allocatable :: rng
-    type(nlo_data_t) :: nlo_data
+    type(string_t) :: process_name
     type(string_t) :: prefix
     real(default) :: born_me
     type(vector4_t), dimension(4) :: born_momenta
@@ -17801,13 +17815,12 @@ ready for generating events.
 
     allocate (rng_test_factory_t :: rng_factory)
     call rng_factory%make (rng)
-    nlo_data%n_alr = 2
     born_me = five
     prefix = "test_powheg_1"
     powheg%settings%n_init = 1000
+    call powheg%init (powheg_settings, rng, process_name, born_me, born_momenta)
     call setup_testbed &
        (prefix, os_data, lib, model_list, process, process_instance)
-    call powheg%init (powheg_settings, rng, nlo_data, prefix, born_me, born_momenta)
     do i = 1, powheg%settings%n_init
        ! generate new momenta and born ME
        call powheg%update (born_me, born_momenta)
@@ -18300,6 +18313,7 @@ hadrons that may be generated in the shower.
      class(shower_generic_t), allocatable :: shower
      type(model_t), pointer :: model_hadrons => null ()
      type(pdf_data_t) :: pdf_data
+     type(powheg_t) :: powheg
    contains
    <<Pure Shower: evt pure shower: TBP>>
   end type evt_pure_shower_t
@@ -18324,6 +18338,22 @@ hadrons that may be generated in the shower.
   end subroutine evt_pure_shower_write
     
 @ %def evt_pure_shower_write
+@
+<<Pure Shower: evt pure shower: TBP>>=
+  procedure :: connect => evt_pure_shower_connect
+<<Pure Shower: procedures>>=
+  subroutine evt_pure_shower_connect (evt, process_instance, model, process_stack)
+    class(evt_pure_shower_t), intent(inout), target :: evt
+    type(process_instance_t), intent(in), target :: process_instance
+    class(model_data_t), intent(in), target :: model
+    type(process_stack_t), intent(in), optional :: process_stack
+    
+    call evt%base_connect (process_instance, model, process_stack)
+    stop 'Going to connect powheg'
+    call evt%powheg%connect (process_instance)
+  end subroutine evt_pure_shower_connect
+
+@ %def evt_pure_shower_connect
 @ Initialize the event transformation. This will be executed once during
 dispatching.
 <<Pure Shower: evt pure shower: TBP>>=
