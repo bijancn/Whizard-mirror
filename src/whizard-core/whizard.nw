@@ -17204,6 +17204,7 @@ implementations.
      logical :: isr_active = .false.
      logical :: fsr_active = .false.
      !logical :: muli_active = .false.
+     logical :: powheg_matching = .false.
 
      integer :: shower_type = ANALYTIC
      !!! values present in PYTHIA and WHIZARDs PS,
@@ -17240,10 +17241,14 @@ implementations.
          var_list%get_lval (var_str ("?ps_isr_active"))
     pure_shower_settings%fsr_active = &
          var_list%get_lval (var_str ("?ps_fsr_active"))
+    pure_shower_settings%powheg_matching = &
+         var_list%get_lval (var_str ("?powheg_matching"))
     !pure_shower_settings%muli_active = &
          !var_list%get_lval (var_str ("?muli_active"))
     pure_shower_settings%active = pure_shower_settings%isr_active .or. &
-         pure_shower_settings%fsr_active !.or. pure_shower_settings%muli_active
+         pure_shower_settings%fsr_active .or. &
+         pure_shower_settings%powheg_matching
+         !.or. pure_shower_settings%muli_active
 
     if (.not. pure_shower_settings%active) then
        return
@@ -17444,7 +17449,7 @@ end module powheg
      type(vector4_t), dimension(:), allocatable :: p_real
      type(powheg_settings_t) :: settings
      real(default) :: born_me
-     real(default) :: lambda_gen2, cms_energy
+     real(default) :: lambda_gen2, cms_energy, xi_max2
      type(process_instance_t), pointer :: process_instance => null()
   contains
    <<powheg: powheg: TBP>>
@@ -17733,7 +17738,66 @@ reweighted to the variable-flavour two loop expression.
 <<powheg: parameters>>=
   real(default), parameter :: b0rad = (33 - 2 * 5) / (12 * pi)
 @ %def b0
+@ The select case statements for FSR, ISR and the different upper
+bounding functions are ugly.  Would be nice to have different
+implementations of a generic class.
+<<powheg: powheg: TBP>>=
+  procedure :: generate_naive_emission => powheg_generate_naive_emission
+<<powheg: procedures>>=
+  subroutine powheg_generate_naive_emission (powheg, alr)
+    class(powheg_t), intent(inout) :: powheg
+    integer, intent(in) :: alr
+    real(default), dimension(3) :: random
+    real(default) :: s, norm_max, pt2
+    logical :: success
+    success = .false.
+    s = powheg%cms_energy
+    call powheg%rng%generate (random)
+    norm_max = powheg%grid%get_maximum_in_3d (alr)
+    pt2 = solve (log_rand_minus_log_integrated_ubf, &
+         powheg%settings%pt_min, &
+         s * powheg%xi_max2, success)
+    if (pt2 < powheg%settings%pt_min) then
+       return ! No radiation generated
+    end if
+
+  contains
+
+    function log_rand_minus_log_integrated_ubf (pt2) result (y)
+      real(default) :: y
+      real(default), intent(in) :: pt2
+      real(default) :: ld2, xm2s, xm2sl
+      logical :: within_boundaries
+      logical :: is_fsr
+      is_fsr = .true.
+      y = log (random(1))
+      ld2 = powheg%settings%lambda2
+      xm2s = powheg%xi_max2 * s
+      xm2sl = xm2s / ld2
+      if (is_fsr) then
+         within_boundaries = pt2 / s < powheg%xi_max2
+         if (within_boundaries) then
+            select case (powheg%settings%upper_bound_func)
+            case (UBF_SIMPLE)
+               y = y + pi * norm_max / b0rad * (log (xm2sl) * &
+                    log (log (xm2sl) / log (pt2 / ld2)) - &
+                    log (xm2s / pt2))
+            case default
+               call msg_fatal ("log_rand_minus_log_integrated_ubf:" // &
+                    "Please choose upper bounding function!")
+            end select
+         end if
+      else
+         call msg_fatal ("log_rand_minus_log_integrated_ubf: ISR not implemented yet!")
+      end if
+    end function log_rand_minus_log_integrated_ubf
+
+  end subroutine powheg_generate_naive_emission
+
+@ %def powheg_generate_naive_emission
 @
+<<powheg: procedures>>=
+@ %def one_minus_log_integrated_ubf
 <<powheg: parameters>>=
   integer, parameter :: UBF_SIMPLE = 1
 @ %def UBF_SIMPLE
