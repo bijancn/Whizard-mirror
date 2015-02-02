@@ -4200,7 +4200,8 @@ status.  It is a part of the [[mci_entry]] component below.
 <<Processes: types>>=
   type :: sqme_collector_t
     real(default) :: sqme_born = 0
-    real(default) :: sqme_real = 0
+    real(default), dimension(:), allocatable :: sqme_real_per_emitter
+    real(default) :: sqme_real_sum = 0
     real(default) :: sqme_virt = 0
   contains
   <<Processes: sqme collector: TBP>>
@@ -4294,11 +4295,24 @@ instance; the process object just copies the instance counter.
     class(sqme_collector_t), intent(in) :: collector
     real(default) :: sqme
     sqme = collector%sqme_born + &
-           collector%sqme_real + &
+           collector%sqme_real_sum + &
            collector%sqme_virt
   end function sqme_collector_get_sqme_sum
 
 @ %def sqme_collector_get_sqme_sum
+@
+<<Processes: sqme collector: TBP>>=
+  procedure :: setup_sqme_real => sqme_collector_setup_sqme_real
+<<Processes: procedures>>=
+  subroutine sqme_collector_setup_sqme_real (collector, n_particles)
+    class(sqme_collector_t), intent(inout) :: collector
+    integer, intent(in) :: n_particles
+    if (.not. allocated (collector%sqme_real_per_emitter)) &
+       allocate (collector%sqme_real_per_emitter (n_particles))
+    collector%sqme_real_per_emitter = 0._default
+  end subroutine sqme_collector_setup_sqme_real
+
+@ %def sqme_collector_setup_sqme_real
 @
 \subsection{Multi-channel integration}
 The [[process_mci_entry_t]] block contains, for each process component that is
@@ -8070,10 +8084,13 @@ subobject of [[instance]].
           end associate
        end if
     end do
+    if (associated (instance%sqme_collector)) then
+         call instance%sqme_collector%setup_sqme_real &
+              (instance%nlo_data%n_in + instance%nlo_data%n_out_born)
+    end if
     allocate (instance%term (process%config%n_terms))
     do i = 1, size (instance%term)
        associate (term => instance%term(i))
-!!         term%nlo_type = var_str ('Born')
          i_component = process%term(i)%i_component
          if (i_component /= 0) then
             associate (component => instance%component(i_component))
@@ -8636,6 +8653,10 @@ it from the MCI record.
                  call add_born_to_nlo_component (component, sqme_born*term%weight)
                  call component%evaluate_sqme_real (term)
                  instance%sqme_real(ireg) = instance%component(i)%nlo_data%sqme_real
+                 if (associated (instance%sqme_collector)) then
+                    instance%sqme_collector%sqme_real_per_emitter(j) = &
+                                          instance%sqme_real(ireg)
+                 end if
               end associate
            end if
            ireg = ireg + 1
@@ -8643,7 +8664,7 @@ it from the MCI record.
      end do
      instance%sqme = instance%sqme + sum (instance%sqme_real)
      if (associated (instance%sqme_collector)) &
-        instance%sqme_collector%sqme_real = sum (instance%sqme_real)
+        instance%sqme_collector%sqme_real_sum = sum (instance%sqme_real)
      instance%evaluation_status = STAT_EVALUATED_TRACE  
   end subroutine process_instance_evaluate_trace_real
 
@@ -8655,11 +8676,14 @@ it from the MCI record.
     class(process_instance_t), intent(inout) :: instance
     type(term_instance_t), intent(inout) :: term
     integer, intent(in) :: i
+    integer :: emitter
     
     call term%evaluate_trace ()
+    emitter = term%nlo_data%active_emitter
     associate (component => instance%component(i))
        call component%evaluate_sqme_real (term)
-       instance%sqme_collector%sqme_real = component%nlo_data%sqme_real
+       instance%sqme_collector%sqme_real_per_emitter (emitter) &
+                                 = component%nlo_data%sqme_real
     end associate 
   end subroutine process_instance_evaluate_trace_real_rad
     
@@ -8697,8 +8721,10 @@ it from the MCI record.
   subroutine process_instance_get_matrix_elements (instance, sqme_born, sqme_real)
     class(process_instance_t), intent(inout) :: instance
     real(default), intent(out) :: sqme_born, sqme_real
+    integer :: emitter
+    emitter = instance%nlo_data%active_emitter 
     sqme_born = instance%sqme_collector%sqme_born
-    sqme_real = instance%sqme_collector%sqme_real
+    sqme_real = instance%sqme_collector%sqme_real_per_emitter (emitter)
   end subroutine process_instance_get_matrix_elements
 
 @ %def process_instance_get_matrix_elements
@@ -17397,6 +17423,8 @@ end module powheg
      real(default) :: pt_min
      real(default) :: lambda2
      integer :: n_init
+     integer :: size_grid_xi = 100
+     integer :: size_grid_y = 100
      integer :: upper_bound_func
   contains
    <<powheg: powheg settings: TBP>>
@@ -17410,11 +17438,10 @@ end module powheg
   type :: powheg_t
      class(rng_t), allocatable :: rng
      type(grid_t) :: grid
-     type(nlo_data_t), pointer :: nlo_data => null()
      type(string_t) :: process_name
      type(phs_fks_generator_t) :: phs_fks_generator
-     type(vector4_t), dimension(:), allocatable :: born_momenta
-     type(vector4_t), dimension(:), allocatable :: real_momenta
+     type(vector4_t), dimension(:), allocatable :: p_born
+     type(vector4_t), dimension(:), allocatable :: p_real
      type(powheg_settings_t) :: settings
      real(default) :: born_me
      real(default) :: lambda_gen2, cms_energy
@@ -17441,24 +17468,23 @@ end module powheg
 <<powheg: powheg: TBP>>=
   procedure :: init => powheg_init
 <<powheg: procedures>>=
-  subroutine powheg_init (powheg, settings, rng, process_name, &
-         born_me, born_momenta)
+  subroutine powheg_init (powheg, settings, process_name)
     class(powheg_t), intent(out) :: powheg
     type(powheg_settings_t), intent(in) :: settings
-    class(rng_t), allocatable, intent(inout) :: rng
+    !!! class(rng_t), allocatable, intent(inout) :: rng 
     type(string_t), intent(in) :: process_name
-    real(default), intent(in) :: born_me
-    type(vector4_t), dimension(:), intent(in) :: born_momenta
 
     powheg%settings = settings
-    call powheg%import_rng (rng)
     powheg%process_name = process_name
-    powheg%born_me = born_me
-    allocate (powheg%born_momenta (size (born_momenta)))
-    powheg%born_momenta = born_momenta
+    associate (nlo_data => powheg%process_instance%nlo_data)
+       allocate (powheg%p_born (nlo_data%n_in + nlo_data%n_out_born))
+       allocate (powheg%p_real (nlo_data%n_in + nlo_data%n_out_real))
 
-    call powheg%grid%init ([100,100,powheg%process_instance%nlo_data%n_alr])
-    call powheg%set_cms ()
+       call powheg%grid%init ([powheg%settings%size_grid_xi, &
+                               powheg%settings%size_grid_y, &
+                               nlo_data%n_alr])
+    end associate
+    !!! call powheg%import_rng (rng)
     call powheg%compute_lambda_gen2 ()
   end subroutine powheg_init
 
@@ -17493,7 +17519,7 @@ partonic vs hadronic cms as well as decays in POWHEG:
   pure subroutine powheg_set_cms (powheg)
     class(powheg_t), intent(inout) :: powheg
     powheg%cms_energy = &
-         (powheg%born_momenta(1) + powheg%born_momenta(2))**2
+         (powheg%p_born(1) + powheg%p_born(2))**2
   end subroutine powheg_set_cms
 
 @ %def powheg_set_cms
@@ -17503,17 +17529,18 @@ that the number of born momenta does not change.  We keep the
 <<powheg: powheg: TBP>>=
   procedure :: update => powheg_update
 <<powheg: procedures>>=
-  subroutine powheg_update (powheg, born_me, born_momenta)
+  subroutine powheg_update (powheg, rng, p_born)
     class(powheg_t), intent(inout) :: powheg
-    real(default), intent(in) :: born_me
-    type(vector4_t), dimension(:), intent(in) :: born_momenta
-    powheg%born_me = born_me
+    class(rng_t), intent(inout), allocatable :: rng
+    type(vector4_t), dimension(:), intent(in) :: p_born
+    call powheg%import_rng (rng)
+    powheg%born_me = powheg%process_instance%sqme_collector%sqme_born
     if (ENSURE) then
-       if (size (born_momenta) /= size (powheg%born_momenta)) then
+       if (size (p_born) /= size (powheg%p_born)) then
           call msg_fatal ("powheg_update: number of born_momenta has changed")
        end if
     end if
-    powheg%born_momenta = born_momenta
+    powheg%p_born = p_born
     call powheg%set_cms ()
   end subroutine powheg_update
 
@@ -17561,7 +17588,22 @@ exponent.
   end function improve_nll_accuracy
 
 @ %def improve_nll_accuracy
+@
+<<powheg: powheg: TBP>>=
+  procedure :: compute_sqme_real => powheg_compute_sqme_real
+<<powheg: procedures>>=
+  function powheg_compute_sqme_real (powheg, emitter) result (sqme)
+    class(powheg_t), intent(inout) :: powheg
+    integer, intent(in) :: emitter
+    real(default) :: sqme
+    associate (instance => powheg%process_instance)
+       call instance%compute_sqme_real_rad (emitter, powheg%p_born, powheg%p_real)
+       sqme = instance%sqme_collector%sqme_real_per_emitter (emitter)
+    end associate
+  end function powheg_compute_sqme_real
 
+@ %def powheg_compute_sqme_real  
+@
 The following is valid for one underlying Born for now.  The embedding
 event transfrom has to call this multiple times after updating the
 [[born_momenta]].  [[get_real_me]] is the projected real matrix element
@@ -17584,14 +17626,16 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
        do alr = 1, nlo%n_alr
           emitter = nlo%get_emitter (alr)
           call fks%generate_fsr_from_x &
-              (radiation_variables, emitter, powheg%born_momenta, powheg%real_momenta)
+              (radiation_variables, emitter, powheg%p_born, powheg%p_real)
           !call nlo%set_alr (alr)
-          real_me = one ! get_real_me (powheg%real_momenta, flavor_structure?)
+          real_me = powheg%compute_sqme_real (emitter)
           call fks%get_jacobian (emitter, jacobian)
           call fks%get_radiation_variables (emitter, xi, y)
           ubf = upper_bound_func (powheg%settings, is_fsr, powheg%cms_energy, &
                                   powheg%lambda_gen2, xi, y)
-          norm = jacobian * real_me  / (powheg%born_me * ubf)
+          !!! output of compute_sqme_real is already multiplied with jacobian
+          !!! norm = jacobian * real_me  / (powheg%born_me * ubf)
+          norm = real_me / (powheg%born_me * ubf)
           f_alr = (one * alr) / nlo%n_alr
           call powheg%grid%update_maxima &
                ([radiation_variables(I_XI:I_Y), f_alr], norm)
@@ -17830,12 +17874,12 @@ ready for generating events.
     born_me = five
     prefix = "test_powheg_1"
     powheg%settings%n_init = 1000
-    call powheg%init (powheg_settings, rng, process_name, born_me, born_momenta)
+    call powheg%init (powheg_settings, process_name)
     call setup_testbed &
        (prefix, os_data, lib, model_list, process, process_instance)
     do i = 1, powheg%settings%n_init
        ! generate new momenta and born ME
-       call powheg%update (born_me, born_momenta)
+       !!! call powheg%update (born_me, born_momenta)
        !call powheg%fill_grids ()
     end do
     call powheg%save_results ()
@@ -18362,7 +18406,6 @@ hadrons that may be generated in the shower.
     
     call evt%base_connect (process_instance, model, process_stack)
     call evt%powheg%connect (process_instance)
-    stop 'Done: Connecting powheg'
   end subroutine evt_pure_shower_connect
 
 @ %def evt_pure_shower_connect
