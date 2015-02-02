@@ -17109,6 +17109,7 @@ module pure_shower
   use variables
   use beam_structures
   use process_libraries
+  use process_stacks
   use rng_base
   use mci_base
   use phs_base
@@ -17430,7 +17431,7 @@ end module powheg
 
 @ %def powheg_t
 @
-\subsection{Initialization and Finalization}
+\subsubsection{Initialization and Finalization}
 @
 <<powheg: powheg: TBP>>=
   procedure :: connect => powheg_connect
@@ -17524,7 +17525,7 @@ that the number of born momenta does not change.  We keep the
 
 @ %def powheg_update
 @
-\subsection{Physics}
+\subsubsection{Physics}
 @ [[running_alpha_s]] should implement a variable-flavor-2-loop result
 and optionally return [[n_flavors]] that are active at the scale.  The
 main point to ensure here is that the simple fixed-flavor-1-loop
@@ -17569,13 +17570,13 @@ exponent.
 
 The following is valid for one underlying Born for now.  The embedding
 event transfrom has to call this multiple times after updating the
-born_momenta.  [[get_real_me]] is the projected real matrix element
+[[born_momenta]].  [[get_real_me]] is the projected real matrix element
 $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
 [[nlo%set_alr]].
 <<powheg: powheg: TBP>>=
-  procedure :: initialize_process => powheg_initialize_process
+  procedure :: fill_grids => powheg_fill_grids
 <<powheg: procedures>>=
-  subroutine powheg_initialize_process (powheg)
+  subroutine powheg_fill_grids (powheg)
     class(powheg_t), intent(inout) :: powheg
     real(default), dimension(3) :: radiation_variables
     real(default) :: jacobian
@@ -17602,9 +17603,9 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
                ([radiation_variables(I_XI:I_Y), f_alr], norm)
        end do
     end associate
-  end subroutine powheg_initialize_process
+  end subroutine powheg_fill_grids
 
-@ %def powheg_initialize_process
+@ %def powheg_fill_grids
 @
 <<powheg: powheg: TBP>>=
   procedure :: save_results => powheg_save_results
@@ -17619,7 +17620,7 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
 implementing the highest bid procedure. This means that we generate
 values $(f_B)$
 <<powheg: procedures>>=
-  pure subroutine generate_all_radiation (powheg)
+  pure subroutine generate_emission (powheg)
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t) :: radiation, radiation_max
     integer :: region
@@ -17635,9 +17636,9 @@ values $(f_B)$
        !call add_generated_radiation (particle_set, radiation_max,
        !alpha_r, )
     end if
-  end subroutine generate_all_radiation
+  end subroutine generate_emission
 
-@ %def generate_radiation
+@ %def generate_emission
 @ A region should be aware if it is ISR or FSR and call the appropriate
 generation subroutine.
 
@@ -17663,7 +17664,7 @@ useful.
 
 @ %def radiation_t
 @
-\subsection{Upper bounding functions}
+\subsubsection{Upper bounding functions}
 @ The $\alpha_s$ used here is the simplified version
 $\alpha_s^\text{rad}$.  [[upper_bound_func]] does \emph{not} contain the
 normalization $N$ which is given by the grids.
@@ -17698,7 +17699,7 @@ reweighted to the variable-flavour two loop expression.
 <<powheg: parameters>>=
   integer, parameter :: UBF_SIMPLE = 1
 @ %def UBF_SIMPLE
-\subsection{Unit tests}
+\subsubsection{Unit tests}
 <<powheg: public>>=
   public :: powheg_test
 <<powheg: procedures>>=
@@ -17710,9 +17711,9 @@ reweighted to the variable-flavour two loop expression.
 
 @ %def powheg_test
 @
-\subsubsection{Testbed}
-This sequence sets up a two-jet process at NLO in QCD, ready for
-generating events.
+\paragraph{Testbed}
+This sequence will at some time set up a two-jet process at NLO in QCD,
+ready for generating events.
 <<powheg: procedures>>=
   subroutine setup_testbed &
        (prefix, os_data, lib, model_list, process, process_instance)
@@ -17803,7 +17804,7 @@ generating events.
 
 @ %def setup_testbed
 @
-\subsubsection{Initialization}
+\paragraph{Initialization}
 <<powheg: execute tests>>=
   call test(powheg_1, "powheg_1", &
             "Initialization", u, results)
@@ -17815,9 +17816,17 @@ generating events.
     class(rng_factory_t), allocatable :: rng_factory
     class(rng_t), allocatable :: rng
     type(string_t) :: process_name
+    type(string_t) :: prefix
     real(default) :: born_me
     type(vector4_t), dimension(4) :: born_momenta
     integer :: i
+
+    type(os_data_t) :: os_data
+    type(process_library_t) :: lib
+    type(model_list_t) :: model_list
+    type(process_t) :: process
+    type(process_instance_t) :: process_instance
+
     write (u, "(A)")  "* Test output: powheg_1"
     write (u, "(A)")  "*   Purpose: Initialization"
     write (u, "(A)")
@@ -17825,13 +17834,15 @@ generating events.
     allocate (rng_test_factory_t :: rng_factory)
     call rng_factory%make (rng)
     born_me = five
-    process_name = "test_powheg_1"
+    prefix = "test_powheg_1"
     powheg%settings%n_init = 1000
     call powheg%init (powheg_settings, rng, process_name, born_me, born_momenta)
+    call setup_testbed &
+       (prefix, os_data, lib, model_list, process, process_instance)
     do i = 1, powheg%settings%n_init
        ! generate new momenta and born ME
        call powheg%update (born_me, born_momenta)
-       call powheg%initialize_process ()
+       !call powheg%fill_grids ()
     end do
     call powheg%save_results ()
 
@@ -18346,16 +18357,16 @@ hadrons that may be generated in the shower.
     
 @ %def evt_pure_shower_write
 @
-<<Pure shower: evt pure shower: TBP>>=
+<<Pure Shower: evt pure shower: TBP>>=
   procedure :: connect => evt_pure_shower_connect
-<<Pure shower: procedures>>=
+<<Pure Shower: procedures>>=
   subroutine evt_pure_shower_connect (evt, process_instance, model, process_stack)
     class(evt_pure_shower_t), intent(inout), target :: evt
     type(process_instance_t), intent(in), target :: process_instance
     class(model_data_t), intent(in), target :: model
     type(process_stack_t), intent(in), optional :: process_stack
     
-    call evt%evt_t%connect (process_instance, model, process_stack)
+    call evt%base_connect (process_instance, model, process_stack)
     stop 'Going to connect powheg'
     call evt%powheg%connect (process_instance)
   end subroutine evt_pure_shower_connect
