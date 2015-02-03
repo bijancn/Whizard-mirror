@@ -17427,8 +17427,8 @@ end module powheg
 <<powheg: types>>=
   type :: powheg_settings_t
      real(default) :: pt2_min
-     real(default) :: lambda2
-     integer :: n_init = 1000
+     real(default) :: lambda2 = lambda_test
+     integer :: n_init = 200000
      integer :: size_grid_xi = 100
      integer :: size_grid_y = 100
      integer :: upper_bound_func = UBF_SIMPLE
@@ -17601,6 +17601,37 @@ exponent.
 
 @ %def powheg_compute_sqme_real  
 @
+<<powheg: powheg: TBP>>=
+  procedure :: display_grid_startup_message => &
+                      powheg_display_grid_startup_message
+<<powheg: procedures>>=
+  subroutine powheg_display_grid_startup_message (powheg)
+    class(powheg_t), intent(in) :: powheg
+    real(default) :: points_per_cell 
+    write (msg_buffer, "(A,A,A)") "Generating grid for process '", &
+                               char (powheg%process_name), "'"
+    call msg_message
+    associate (settings => powheg%settings)
+       write (msg_buffer, "(A,I10)") "Number of xi-points: ", &
+                                      settings%size_grid_xi
+       call msg_message ()
+       write (msg_buffer, "(A,I10)") "Number of y-points: ", &
+                                      settings%size_grid_y
+       call msg_message ()
+       write (msg_buffer, "(A,I6, A)") "Using ", settings%n_init , &
+                                       "sampling points"
+       points_per_cell =  settings%n_init*one / &
+                          (settings%size_grid_xi * settings%size_grid_y)
+       write (msg_buffer, "(A, F5.2, A)") "Average: ", points_per_cell, &
+                                        " points per cell"
+       call msg_message ()
+       write (msg_buffer, "(A)") "Progress: "
+       call msg_message ()
+    end associate
+  end subroutine powheg_display_grid_startup_message
+
+@ %def powheg_display_grid_startup_message
+@
 The following is valid for one underlying Born for now.  The embedding
 event transfrom has to call this multiple times after updating the
 [[born_momenta]].  [[get_real_me]] is the projected real matrix element
@@ -17619,15 +17650,15 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
     integer :: n
     type(vector4_t), dimension(:), allocatable :: p_born
     is_fsr = .true.
+    call powheg%display_grid_startup_message()
     associate (nlo => powheg%process_instance%nlo_data, &
                       fks => powheg%phs_fks_generator)
        do n = 1, powheg%settings%n_init
           associate (process => powheg%process_instance%process)
              call process%generate_weighted_event (powheg%process_instance, 1)
           end associate
-          powheg%p_born = interaction_get_momenta (nlo%int_born) 
+          call powheg%update (interaction_get_momenta (nlo%int_born))
           call powheg%rng%generate (radiation_variables)
-          print *, 'n_alr: ', nlo%get_n_alr ()
           do alr = 1, nlo%get_n_alr ()
              emitter = nlo%get_emitter (alr)
              call fks%generate_fsr_from_x &
@@ -17642,14 +17673,25 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
           !!! norm = jacobian * real_me  / (powheg%born_me * ubf)
              norm = real_me / (powheg%born_me * ubf)
              f_alr = (one * alr) / nlo%get_n_alr ()
-             print *, real_me, ubf, powheg%born_me, f_alr, norm
              call powheg%grid%update_maxima &
                   ([radiation_variables(I_XI:I_Y), f_alr], norm)
+             call check_and_display_progress
           end do
        end do 
     end associate
 !    call powheg%grid%write ()
     stop 'Check grids'
+  contains 
+    subroutine check_and_display_progress ()
+      real(default) :: prog
+      integer, save :: next_check = 10
+      prog = n*one/powheg%settings%n_init * 100
+      if (prog >= next_check) then
+         write (msg_buffer, "(F5.1,A)") prog, "%"
+         call msg_message ()
+         next_check = next_check + 10
+      end if
+    end subroutine check_and_display_progress 
   end subroutine powheg_fill_grids
 
 @ %def powheg_fill_grids
@@ -17722,7 +17764,6 @@ normalization $N$ which is given by the grids.
     logical, intent(in) :: is_fsr
     real(default), intent(in) :: s, lambda_gen2, xi, y
     real(default) :: kT2, alpha_s
-    print *, 'Check ubf: ', is_fsr, s, lambda_gen2, xi, y
     if (is_fsr) then
        kT2 = s / 2 * xi**2 * (1-y)
        alpha_s = 1 / (b0rad * log (kT2 / lambda_gen2))
@@ -17742,6 +17783,7 @@ normalization $N$ which is given by the grids.
 reweighted to the variable-flavour two loop expression.
 <<powheg: parameters>>=
   real(default), parameter :: b0rad = (33 - 2 * 5) / (12 * pi)
+  real(default), parameter :: lambda_test = 0.5
 @ %def b0
 @ The select case statements for FSR, ISR and the different upper
 bounding functions are ugly.  Would be nice to have different
