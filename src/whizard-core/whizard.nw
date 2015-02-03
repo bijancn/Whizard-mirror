@@ -17432,7 +17432,7 @@ end module powheg
      integer :: n_init = 1000
      integer :: size_grid_xi = 100
      integer :: size_grid_y = 100
-     integer :: upper_bound_func
+     integer :: upper_bound_func = UBF_SIMPLE
   contains
    <<powheg: powheg settings: TBP>>
   end type powheg_settings_t
@@ -17731,7 +17731,29 @@ reweighted to the variable-flavour two loop expression., pt2l
   subroutine powheg_connect (powheg, process_instance)
     class(powheg_t), intent(inout) :: powheg
     type(process_instance_t), intent(in), target :: process_instance
+    integer :: n_alr, alr
     powheg%process_instance => process_instance
+    associate (nlo_data => powheg%process_instance%nlo_data)
+       n_alr = nlo_data%get_n_alr ()
+       allocate (powheg%event_deps%p_born (nlo_data%n_in + nlo_data%n_out_born))
+       allocate (powheg%event_deps%p_real (nlo_data%n_in + nlo_data%n_out_real))
+
+       call powheg%grid%init ([powheg%settings%size_grid_xi, &
+                               powheg%settings%size_grid_y, &
+                               n_alr])
+
+       associate (generator => powheg%phs_fks_generator)
+          call generator%setup_fks_kinematics (nlo_data%real_kinematics)
+          call generator%set_emitters (nlo_data%reg_data%emitters)
+       end associate
+    end associate
+    allocate (powheg%sudakov (n_alr))
+    do alr = 1, n_alr
+       ! TODO: (bcn 2015-02-03) Here will the select case statement enter
+       allocate(sudakov_simple_fsr_t :: powheg%sudakov(alr)%s)
+       call powheg%sudakov(alr)%s%init (powheg%process_deps, &
+            powheg%event_deps, powheg%settings)
+    end do
   end subroutine powheg_connect
 
 @ %def powheg_connect
@@ -17743,26 +17765,9 @@ reweighted to the variable-flavour two loop expression., pt2l
     class(powheg_t), intent(out) :: powheg
     type(powheg_settings_t), intent(in) :: settings
     type(string_t), intent(in) :: process_name
-    integer :: n_alr, alr
 
     powheg%settings = settings
     powheg%process_name = process_name
-    associate (nlo_data => powheg%process_instance%nlo_data)
-       !n_alr = nlo_data%get_n_alr ()
-       allocate (powheg%event_deps%p_born (nlo_data%n_in + nlo_data%n_out_born))
-       allocate (powheg%event_deps%p_real (nlo_data%n_in + nlo_data%n_out_real))
-
-       call powheg%grid%init ([powheg%settings%size_grid_xi, &
-                               powheg%settings%size_grid_y, &
-                               n_alr])
-       allocate (powheg%sudakov (n_alr))
-       do alr = 1, n_alr
-          ! TODO: (bcn 2015-02-03) Here will the select case statement enter
-          allocate(sudakov_simple_fsr_t :: powheg%sudakov(alr)%s)
-          call powheg%sudakov(alr)%s%init (powheg%process_deps, &
-               powheg%event_deps, powheg%settings)
-       end do
-    end associate
     call powheg%compute_lambda2_gen ()
   end subroutine powheg_init
 
@@ -17863,7 +17868,7 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
     real(default) :: f_alr, xi, y, norm, real_me, ubf
     integer :: scan, alr, emitter
     logical :: is_fsr
-    integer :: n
+    integer :: n, n_alr
     type(vector4_t), dimension(:), allocatable :: p_born
     is_fsr = .true.
     associate (nlo => powheg%process_instance%nlo_data, &
@@ -17874,7 +17879,8 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
           end associate
           powheg%event_deps%p_born = interaction_get_momenta (nlo%int_born) 
           call powheg%rng%generate (radiation_variables)
-          do alr = 1, nlo%n_alr
+          n_alr = nlo%get_n_alr ()
+          do alr = 1, n_alr
              emitter = nlo%get_emitter (alr)
              call fks%generate_fsr_from_x &
                  (radiation_variables, emitter, &
@@ -17884,16 +17890,16 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
              !!!! call fks%get_jacobian (emitter, jacobian)
              call fks%get_radiation_variables (emitter, xi, y)
              ubf = powheg%sudakov(alr)%s%upper_bound_func (xi, y)
-          !!! output of compute_sqme_real is already multiplied with jacobian
-          !!! norm = jacobian * real_me  / (powheg%event_deps%born_me * ubf)
+             !!! output of compute_sqme_real is already multiplied with jacobian
+             !!! norm = jacobian * real_me  / (powheg%event_deps%born_me * ubf)
              norm = real_me / (powheg%event_deps%born_me * ubf)
-             f_alr = (one * alr) / nlo%n_alr
+             f_alr = (one * alr) / n_alr
              call powheg%grid%update_maxima &
                   ([radiation_variables(I_XI:I_Y), f_alr], norm)
           end do
        end do 
     end associate
-    call powheg%grid%write ()
+!    call powheg%grid%write ()
     stop 'Check grids'
   end subroutine powheg_fill_grids
 
@@ -17917,7 +17923,7 @@ values $(f_B)$
     type(radiation_t) :: radiation, radiation_max
     integer :: region
     radiation_max%pt2 = zero
-    do region = 1, powheg%process_instance%nlo_data%n_alr
+    do region = 1, powheg%process_instance%nlo_data%get_n_alr ()
        !region(i_region)%generate_radiation (radiation)
        if (radiation%pt2 > radiation_max%pt2) then
           radiation_max = radiation
@@ -18635,8 +18641,6 @@ dispatching.
     class(rng_t), allocatable :: rng
     call process%make_rng (rng)
     call evt%shower%import_rng (rng)
-    print *, 'Check: ', evt%settings%powheg_matching
-    stop
     if (evt%settings%powheg_matching) then
        call process%make_rng (rng)
        call evt%powheg%import_rng (rng)
