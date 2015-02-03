@@ -17422,6 +17422,7 @@ end module powheg
   logical, parameter :: ENSURE = .true.
 @ %def ENSURE
 @
+\subsubsection{Base types for settings and data}
 <<powheg: public>>=
   public :: powheg_settings_t
 <<powheg: types>>=
@@ -17437,7 +17438,273 @@ end module powheg
   end type powheg_settings_t
 
 @ %def powheg_settings_t
+@ These are the possible values for [[upper_bound_func]] and will be
+used to decide which ubf object is allocated.
+<<powheg: parameters>>=
+  integer, parameter :: UBF_SIMPLE = 1
+@ %def UBF_SIMPLE
 @
+<<powheg: public>>=
+  public :: radiation_t
+<<powheg: types>>=
+  type :: radiation_t
+    real(default) :: xi, y, phi, pt2
+  end type radiation_t
+
+@ %def radiation_t
+@ [[lambda2_gen]] $\neq$ [[lambda2]] and is used in the upper bounding
+functions.
+<<powheg: public>>=
+  public :: process_deps_t
+<<powheg: types>>=
+  type :: process_deps_t
+     real(default) :: lambda2_gen
+  contains
+   <<powheg: process deps: TBP>>
+  end type process_deps_t
+
+@ %def process_deps_t
+@
+<<powheg: public>>=
+  public :: event_deps_t
+<<powheg: types>>=
+  type :: event_deps_t
+     real(default) :: cms_energy2
+     type(vector4_t), dimension(:), allocatable :: p_born
+     type(vector4_t), dimension(:), allocatable :: p_real
+     real(default) :: born_me
+  contains
+   <<powheg: event deps: TBP>>
+  end type event_deps_t
+
+@ %def event_deps_t
+@
+<<powheg: event deps: TBP>>=
+  procedure :: update => event_deps_update
+<<powheg: procedures>>=
+  subroutine event_deps_update (event_deps, born_me, p_born)
+    class(event_deps_t), intent(out) :: event_deps
+    real(default), intent(in) :: born_me
+    type(vector4_t), dimension(:), intent(in) :: p_born
+    event_deps%born_me = born_me
+    if (ENSURE) then
+       if (size (p_born) /= size (event_deps%p_born)) then
+          call msg_fatal ("powheg_update: number of born_momenta has changed")
+       end if
+    end if
+    event_deps%p_born = p_born
+    call event_deps%set_cms ()
+  end subroutine event_deps_update
+
+@ %def event_deps_update
+@ This has to be changed when we have sorted out the handling of ISR,
+partonic vs hadronic cms as well as decays in POWHEG:
+<<powheg: event deps: TBP>>=
+  procedure :: set_cms => event_deps_set_cms
+<<powheg: procedures>>=
+  pure subroutine event_deps_set_cms (event_deps)
+    class(event_deps_t), intent(inout) :: event_deps
+    event_deps%cms_energy2 = &
+         (event_deps%p_born(1) + event_deps%p_born(2))**2
+  end subroutine event_deps_set_cms
+
+@ %def event_deps_set_cms
+@
+\subsubsection{Upper bounding functions and [[sudakov]]s}
+\paragraph{Abstract version}
+This contains the $\alpha_r$ dependent pieces
+<<powheg: public>>=
+  public :: sudakov_t
+<<powheg: types>>=
+  type, abstract :: sudakov_t
+     type(process_deps_t), pointer :: process_deps
+     type(event_deps_t), pointer :: event_deps
+     type(powheg_settings_t), pointer :: powheg_settings
+     real(default) :: xi2_max, norm_max
+  contains
+   <<powheg: sudakov: TBP>>
+  end type sudakov_t
+
+@ %def sudakov_t
+@ To allow for arrays of this class
+<<powheg: public>>=
+  public :: sudakov_wrapper_t
+<<powheg: types>>=
+  type :: sudakov_wrapper_t
+     class(sudakov_t), allocatable :: s
+  end type sudakov_wrapper_t
+
+@ %def sudakov_wrapper_t
+@
+<<powheg: sudakov: TBP>>=
+  procedure :: init => sudakov_init
+<<powheg: procedures>>=
+  subroutine sudakov_init (sudakov, &
+         process_deps, event_deps, powheg_settings)
+    class(sudakov_t), intent(out) :: sudakov
+    type(process_deps_t), target, intent(in) :: process_deps
+    type(event_deps_t), target, intent(in) :: event_deps
+    type(powheg_settings_t), target, intent(in) :: powheg_settings
+    sudakov%process_deps => process_deps
+    sudakov%event_deps => event_deps
+    sudakov%powheg_settings => powheg_settings
+  end subroutine sudakov_init
+
+@ %def sudakov_init
+@ This has to be done after the grids are initialized.
+<<powheg: sudakov: TBP>>=
+  procedure :: set_normalization => sudakov_set_normalization
+<<powheg: procedures>>=
+  pure subroutine sudakov_set_normalization (sudakov, norm_max)
+    class(sudakov_t), intent(inout) :: sudakov
+    real(default), intent(in) :: norm_max
+    sudakov%norm_max = norm_max
+  end subroutine sudakov_set_normalization
+
+@ %def sudakov_set_normalization
+@
+<<powheg: sudakov: TBP>>=
+  procedure :: update => sudakov_update
+<<powheg: procedures>>=
+  pure subroutine sudakov_update (sudakov, xi2_max)
+    class(sudakov_t), intent(inout) :: sudakov
+    real(default), intent(in) :: xi2_max
+    sudakov%xi2_max = xi2_max
+  end subroutine sudakov_update
+
+@ %def sudakov_update
+@ The $\alpha_s$ to be used here is the simplified version
+$\alpha_s^\text{rad}$.  [[upper_bound_func]] does \emph{not} contain the
+normalization $N$ which is given by the grids.
+<<powheg: sudakov: TBP>>=
+  procedure (sudakov_upper_bound_func), deferred :: upper_bound_func
+<<powheg: interfaces>>=
+  interface
+     pure function sudakov_upper_bound_func (sudakov, xi, y) result (u)
+       import
+       real(default) :: u
+       class(sudakov_t), intent(in) :: sudakov
+       real(default), intent(in) :: xi, y
+     end function sudakov_upper_bound_func
+  end interface
+       
+@ %def sudakov_upper_bound_func
+@ Again we do not include the norm here: $-log\Delta()$
+<<powheg: sudakov: TBP>>=
+  procedure (sudakov_log_integrated_ubf), deferred :: log_integrated_ubf
+<<powheg: interfaces>>=
+  interface
+     pure function sudakov_log_integrated_ubf (sudakov, pt2) result (y)
+       import
+       real(default) :: y
+       class(sudakov_t), intent(in) :: sudakov
+       real(default), intent(in) :: pt2
+     end function sudakov_log_integrated_ubf
+  end interface
+       
+@ %def sudakov_log_integrated_ubf
+@
+<<powheg: sudakov: TBP>>=
+  procedure :: generate_pt2 => sudakov_generate_pt2
+<<powheg: procedures>>=
+  subroutine sudakov_generate_pt2 (sudakov, random)
+    class(sudakov_t), intent(inout) :: sudakov
+    real(default), intent(in) :: random
+    real(default) :: s, norm_max, pt2
+    integer :: emitter
+    logical :: success
+    success = .false.
+    pt2 = solve (log_rand_minus_log_integrated_ubf, &
+         sudakov%powheg_settings%pt2_min, &
+         sudakov%xi2_max * sudakov%event_deps%cms_energy2, success)
+    if (.not. success) then
+       return ! No solution found in boundaries -> No radiation generated
+    end if
+
+  contains
+
+    pure function log_rand_minus_log_integrated_ubf (pt2) result (y)
+      real(default) :: y
+      real(default), intent(in) :: pt2
+      y = log (random) + norm_max * sudakov%log_integrated_ubf (pt2)
+    end function log_rand_minus_log_integrated_ubf
+
+  end subroutine sudakov_generate_pt2
+
+@ %def sudakov_generate_pt2
+@
+\paragraph{Simple FSR}
+@
+<<powheg: public>>=
+  public :: sudakov_simple_fsr_t
+<<powheg: types>>=
+  type, extends (sudakov_t) :: sudakov_simple_fsr_t
+  contains
+   <<powheg: sudakov simple fsr: TBP>>
+  end type sudakov_simple_fsr_t
+
+@ %def sudakov_simple_fsr_t
+<<powheg: sudakov simple fsr: TBP>>=
+  procedure :: upper_bound_func => sudakov_simple_fsr_upper_bound_func
+<<powheg: procedures>>=
+  pure function sudakov_simple_fsr_upper_bound_func (sudakov, xi, y) result (u)
+    real(default) :: u
+    class(sudakov_simple_fsr_t), intent(in) :: sudakov
+    real(default), intent(in) :: xi, y
+    real(default) :: kT2, alpha_s
+    kT2 = sudakov%event_deps%cms_energy2 / 2 * xi**2 * (1 - y)
+    alpha_s = 1 / (b0rad * log (kT2 / sudakov%process_deps%lambda2_gen))
+    u = alpha_s / (xi * (1 - y))
+  end function sudakov_simple_fsr_upper_bound_func
+
+@ %def sudakov_simple_fsr_upper_bound_func
+@ This is fixed to $n_f=5$ for radiation generation. It will be
+reweighted to the variable-flavour two loop expression., pt2l
+<<powheg: parameters>>=
+  real(default), parameter :: b0rad = (33 - 2 * 5) / (12 * pi)
+  real(default), parameter :: lambda_test = 0.5
+@ %def b0
+<<powheg: sudakov simple fsr: TBP>>=
+  procedure :: log_integrated_ubf => sudakov_simple_fsr_log_integrated_ubf
+<<powheg: procedures>>=
+  pure function sudakov_simple_fsr_log_integrated_ubf (sudakov, pt2) result (y)
+    real(default) :: y
+    class(sudakov_simple_fsr_t), intent(in) :: sudakov
+    real(default), intent(in) :: pt2
+    real(default) :: xm2s, xm2sl, pt2l
+    logical :: within_boundaries
+    within_boundaries = pt2 / sudakov%event_deps%cms_energy2 < sudakov%xi2_max
+    if (within_boundaries) then
+       xm2s = sudakov%xi2_max * sudakov%event_deps%cms_energy2
+       xm2sl = xm2s / sudakov%process_deps%lambda2_gen
+       pt2l = pt2 / sudakov%process_deps%lambda2_gen
+       y = pi / b0rad * (log (xm2sl) * &
+            log (log (xm2sl) / log (pt2l)) - &
+            log (xm2s / pt2))
+    else
+       y = 0
+    end if
+  end function sudakov_simple_fsr_log_integrated_ubf
+
+@ %def sudakov_simple_fsr_log_integrated_ubf
+@
+<<powheg: procedures (old)>>=
+    norm_max = powheg%grid%get_maximum_in_3d (alr)
+    call sudakov%update (powheg%cms_energy, xi2_max)
+    call powheg%rng%generate (random)
+
+    if (is_fsr) then
+       select case (powheg_settings%upper_bound_func)
+       case (UBF_SIMPLE)
+       case default
+          call msg_fatal ("upper_bound_func: Please choose upper bounding function!")
+       end select
+    else
+       call msg_fatal ("upper_bound_func: ISR not implemented yet!")
+    end if
+
+@
+\subsubsection{Main POWHEG class}
 <<powheg: public>>=
   public :: powheg_t
 <<powheg: types>>=
@@ -17446,19 +17713,18 @@ end module powheg
      type(grid_t) :: grid
      type(string_t) :: process_name
      type(phs_fks_generator_t) :: phs_fks_generator
-     type(vector4_t), dimension(:), allocatable :: p_born
-     type(vector4_t), dimension(:), allocatable :: p_real
      type(powheg_settings_t) :: settings
-     real(default) :: born_me
-     real(default) :: lambda_gen2, cms_energy2
      type(process_instance_t), pointer :: process_instance => null()
+     type(event_deps_t), pointer :: event_deps
+     type(process_deps_t), pointer :: process_deps
+     type(sudakov_wrapper_t), dimension(:), allocatable :: sudakov
   contains
    <<powheg: powheg: TBP>>
   end type powheg_t
 
 @ %def powheg_t
 @
-\subsubsection{Initialization and Finalization}
+\paragraph{Initialization and Finalization}
 @
 <<powheg: powheg: TBP>>=
   procedure :: connect => powheg_connect
@@ -17466,19 +17732,29 @@ end module powheg
   subroutine powheg_connect (powheg, process_instance)
     class(powheg_t), intent(inout) :: powheg
     type(process_instance_t), intent(in), target :: process_instance
+    integer :: n_alr, alr
     powheg%process_instance => process_instance
     associate (nlo_data => powheg%process_instance%nlo_data)
-       allocate (powheg%p_born (nlo_data%n_in + nlo_data%n_out_born))
-       allocate (powheg%p_real (nlo_data%n_in + nlo_data%n_out_real))
+       n_alr = nlo_data%get_n_alr ()
+       allocate (powheg%event_deps%p_born (nlo_data%n_in + nlo_data%n_out_born))
+       allocate (powheg%event_deps%p_real (nlo_data%n_in + nlo_data%n_out_real))
 
        call powheg%grid%init ([powheg%settings%size_grid_xi, &
                                powheg%settings%size_grid_y, &
-                               nlo_data%get_n_alr()])
+                               n_alr])
+
        associate (generator => powheg%phs_fks_generator)
           call generator%setup_fks_kinematics (nlo_data%real_kinematics)
           call generator%set_emitters (nlo_data%reg_data%emitters)
        end associate
     end associate
+    allocate (powheg%sudakov (n_alr))
+    do alr = 1, n_alr
+       ! TODO: (bcn 2015-02-03) Here will the select case statement enter
+       allocate(sudakov_simple_fsr_t :: powheg%sudakov(alr)%s)
+       call powheg%sudakov(alr)%s%init (powheg%process_deps, &
+            powheg%event_deps, powheg%settings)
+    end do
   end subroutine powheg_connect
 
 @ %def powheg_connect
@@ -17489,13 +17765,11 @@ end module powheg
   subroutine powheg_init (powheg, settings, process_name)
     class(powheg_t), intent(out) :: powheg
     type(powheg_settings_t), intent(in) :: settings
-    !!! class(rng_t), allocatable, intent(inout) :: rng 
     type(string_t), intent(in) :: process_name
 
     powheg%settings = settings
     powheg%process_name = process_name
-    !!! call powheg%import_rng (rng)
-    call powheg%compute_lambda_gen2 ()
+    call powheg%compute_lambda2_gen ()
   end subroutine powheg_init
 
 @ %def powheg_init
@@ -17510,35 +17784,13 @@ end module powheg
   end subroutine powheg_import_rng
 
 @ %def powheg_import_rng
-@ This has to be changed when we have sorted out the handling of ISR,
-partonic vs hadronic cms as well as decays in POWHEG:
-<<powheg: powheg: TBP>>=
-  procedure :: set_cms => powheg_set_cms
-<<powheg: procedures>>=
-  pure subroutine powheg_set_cms (powheg)
-    class(powheg_t), intent(inout) :: powheg
-    powheg%cms_energy2 = &
-         (powheg%p_born(1) + powheg%p_born(2))**2
-  end subroutine powheg_set_cms
-
-@ %def powheg_set_cms
-@ This is the procedure to update the event by event data.  I assume
-that the number of born momenta does not change.  We keep the
-[[set_cms]] with the partonic cms in mind.
 <<powheg: powheg: TBP>>=
   procedure :: update => powheg_update
 <<powheg: procedures>>=
   subroutine powheg_update (powheg, p_born)
     class(powheg_t), intent(inout) :: powheg
     type(vector4_t), dimension(:), intent(in) :: p_born
-    powheg%born_me = powheg%process_instance%sqme_collector%sqme_born
-    if (ENSURE) then
-       if (size (p_born) /= size (powheg%p_born)) then
-          call msg_fatal ("powheg_update: number of born_momenta has changed")
-       end if
-    end if
-    powheg%p_born = p_born
-    call powheg%set_cms ()
+    call powheg%event_deps%update (powheg%process_instance%sqme_collector%sqme_born, p_born)
   end subroutine powheg_update
 
 @ %def powheg_update
@@ -17557,9 +17809,9 @@ whereby $\mu_0^2$ is the [[scale_to_relate2]] that is taken to be
 $(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
 [[settings%lambda2]].
 <<powheg: powheg: TBP>>=
-  procedure :: compute_lambda_gen2 => powheg_compute_lambda_gen2
+  procedure :: compute_lambda2_gen => powheg_compute_lambda2_gen
 <<powheg: procedures>>=
-  pure subroutine powheg_compute_lambda_gen2 (powheg)
+  pure subroutine powheg_compute_lambda2_gen (powheg)
     class(powheg_t), intent(inout) :: powheg
     integer :: n_flavors
     real(default) :: alpha_s, scale_to_relate2
@@ -17569,10 +17821,10 @@ $(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
     alpha_s = 0.17_default
     n_flavors = 3
     alpha_s = improve_nll_accuracy (alpha_s, n_flavors)
-    powheg%lambda_gen2 = exp (- one / (b0rad * alpha_s)) * scale_to_relate2
-  end subroutine powheg_compute_lambda_gen2
+    powheg%process_deps%lambda2_gen = exp (- one / (b0rad * alpha_s)) * scale_to_relate2
+  end subroutine powheg_compute_lambda2_gen
 
-@ %def powheg_compute_lambda_gen2
+@ %def powheg_compute_lambda2_gen
 @ See (4.31) in 0709.2092. Should be used everywhere in the Sudakov
 exponent.
 <<powheg: procedures>>=
@@ -17594,7 +17846,8 @@ exponent.
     integer, intent(in) :: emitter
     real(default) :: sqme
     associate (instance => powheg%process_instance)
-       call instance%compute_sqme_real_rad (emitter, powheg%p_born, powheg%p_real)
+       call instance%compute_sqme_real_rad (emitter, &
+            powheg%event_deps%p_born, powheg%event_deps%p_real)
        sqme = instance%sqme_collector%sqme_real_per_emitter (emitter)
     end associate
   end function powheg_compute_sqme_real
@@ -17647,7 +17900,7 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
     real(default) :: f_alr, xi, y, norm, real_me, ubf
     integer :: scan, alr, emitter
     logical :: is_fsr
-    integer :: n
+    integer :: n, n_alr
     type(vector4_t), dimension(:), allocatable :: p_born
     is_fsr = .true.
     call powheg%display_grid_startup_message()
@@ -17659,20 +17912,21 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
           end associate
           call powheg%update (interaction_get_momenta (nlo%int_born))
           call powheg%rng%generate (radiation_variables)
-          do alr = 1, nlo%get_n_alr ()
+          n_alr = nlo%get_n_alr ()
+          do alr = 1, n_alr
              emitter = nlo%get_emitter (alr)
              call fks%generate_fsr_from_x &
-                 (radiation_variables, emitter, powheg%p_born, powheg%p_real)
+                 (radiation_variables, emitter, &
+                  powheg%event_deps%p_born, powheg%event_deps%p_real)
              !call nlo%set_alr (alr)
              real_me = powheg%compute_sqme_real (emitter)
              !!!! call fks%get_jacobian (emitter, jacobian)
              call fks%get_radiation_variables (emitter, xi, y)
-             ubf = upper_bound_func (powheg%settings, is_fsr, powheg%cms_energy2, &
-                                     powheg%lambda_gen2, xi, y)
-          !!! output of compute_sqme_real is already multiplied with jacobian
-          !!! norm = jacobian * real_me  / (powheg%born_me * ubf)
-             norm = real_me / (powheg%born_me * ubf)
-             f_alr = (one * alr) / nlo%get_n_alr ()
+             ubf = powheg%sudakov(alr)%s%upper_bound_func (xi, y)
+             !!! output of compute_sqme_real is already multiplied with jacobian
+             !!! norm = jacobian * real_me  / (powheg%event_deps%born_me * ubf)
+             norm = real_me / (powheg%event_deps%born_me * ubf)
+             f_alr = (one * alr) / n_alr
              call powheg%grid%update_maxima &
                   ([radiation_variables(I_XI:I_Y), f_alr], norm)
              call check_and_display_progress
@@ -17728,9 +17982,6 @@ values $(f_B)$
   end subroutine generate_emission
 
 @ %def generate_emission
-@ A region should be aware if it is ISR or FSR and call the appropriate
-generation subroutine.
-
 A radiation region rr may correspond multiple $\alpha_r$s.  The phase
 space only depends upon the radiation region kinematics rr and not on
 the specific $\alpha_r$.  $\alpha_r$ can be picked in the set
@@ -17742,112 +17993,6 @@ depends on $f_b$, rr, $\xi$ and $y$ and has to save the maximum over
 $\xi$ and $y$ as well. For each underlying Born $f_b$, there is a number
 of radiation regions.
 
-Bundle together the variables that describe radiation. Might not be
-useful.
-<<powheg: public>>=
-  public :: radiation_t
-<<powheg: types>>=
-  type :: radiation_t
-    real(default) :: xi, y, phi, pt2
-  end type radiation_t
-
-@ %def radiation_t
-@
-\subsubsection{Upper bounding functions}
-@ The $\alpha_s$ used here is the simplified version
-$\alpha_s^\text{rad}$.  [[upper_bound_func]] does \emph{not} contain the
-normalization $N$ which is given by the grids.
-<<powheg: procedures>>=
-  function upper_bound_func (powheg_settings, is_fsr, s, lambda_gen2, xi, y) result (u)
-    real(default) :: u
-    type(powheg_settings_t), intent(in) :: powheg_settings
-    logical, intent(in) :: is_fsr
-    real(default), intent(in) :: s, lambda_gen2, xi, y
-    real(default) :: kT2, alpha_s
-    if (is_fsr) then
-       kT2 = s / 2 * xi**2 * (1-y)
-       alpha_s = 1 / (b0rad * log (kT2 / lambda_gen2))
-       select case (powheg_settings%upper_bound_func)
-       case (UBF_SIMPLE)
-          u = alpha_s / (xi * (1-y))
-       case default
-          call msg_fatal ("upper_bound_func: Please choose upper bounding function!")
-       end select
-    else
-       call msg_fatal ("upper_bound_func: ISR not implemented yet!")
-    end if
-  end function upper_bound_func
-
-@ %def upper_bound_func
-@ This is fixed to $n_f=5$ for radiation generation. It will be
-reweighted to the variable-flavour two loop expression.
-<<powheg: parameters>>=
-  real(default), parameter :: b0rad = (33 - 2 * 5) / (12 * pi)
-  real(default), parameter :: lambda_test = 0.5
-@ %def b0
-@ The select case statements for FSR, ISR and the different upper
-bounding functions are ugly.  Would be nice to have different
-implementations of a generic class.
-<<powheg: powheg: TBP>>=
-  procedure :: generate_naive_emission => powheg_generate_naive_emission
-<<powheg: procedures>>=
-  subroutine powheg_generate_naive_emission (powheg, alr)
-    class(powheg_t), intent(inout) :: powheg
-    integer, intent(in) :: alr
-    real(default), dimension(3) :: random
-    real(default) :: s, norm_max, pt2
-    logical :: success
-    success = .false.
-    s = powheg%cms_energy2
-    call powheg%rng%generate (random)
-    norm_max = powheg%grid%get_maximum_in_3d (alr)
-!    pt2 = solve (log_rand_minus_log_integrated_ubf, &
-!         powheg%settings%pt_min, &
-!         s * powheg%xi_max2, success)
-!    if (pt2 < powheg%settings%pt2_min) then
-!       return ! No radiation generated
-!    end if
-
-  contains
-
-    function log_rand_minus_log_integrated_ubf (pt2) result (y)
-      real(default) :: y
-      real(default), intent(in) :: pt2
-      real(default) :: ld2, xm2s, xm2sl
-      logical :: within_boundaries
-      logical :: is_fsr
-      is_fsr = .true.
-      y = log (random(1))
-      ld2 = powheg%settings%lambda2
-!      xm2s = powheg%xi_max2 * s
-      xm2sl = xm2s / ld2
-      if (is_fsr) then
-!         within_boundaries = pt2 / s < powheg%xi_max2
-         if (within_boundaries) then
-            select case (powheg%settings%upper_bound_func)
-            case (UBF_SIMPLE)
-               y = y + pi * norm_max / b0rad * (log (xm2sl) * &
-                    log (log (xm2sl) / log (pt2 / ld2)) - &
-                    log (xm2s / pt2))
-            case default
-               call msg_fatal ("log_rand_minus_log_integrated_ubf:" // &
-                    "Please choose upper bounding function!")
-            end select
-         end if
-      else
-         call msg_fatal ("log_rand_minus_log_integrated_ubf: ISR not implemented yet!")
-      end if
-    end function log_rand_minus_log_integrated_ubf
-
-  end subroutine powheg_generate_naive_emission
-
-@ %def powheg_generate_naive_emission
-@
-<<powheg: procedures>>=
-@ %def one_minus_log_integrated_ubf
-<<powheg: parameters>>=
-  integer, parameter :: UBF_SIMPLE = 1
-@ %def UBF_SIMPLE
 \subsubsection{Unit tests}
 <<powheg: public>>=
   public :: powheg_test
@@ -18063,7 +18208,7 @@ emissions.
 <<Pure Shower: public>>=
   public :: shower_analytic_t
 <<Pure Shower: types>>=
-  type, extends (shower_generic_t):: shower_analytic_t
+  type, extends (shower_generic_t) :: shower_analytic_t
   type(shower_t) :: implementation
    contains
    <<Pure Shower: shower analytic: TBP>>
