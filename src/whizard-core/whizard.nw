@@ -17399,6 +17399,7 @@ module powheg
   use mci_midpoint
   use phs_base
   use phs_single
+  use interactions
 
 <<Standard module head>>
 
@@ -17427,7 +17428,7 @@ end module powheg
   type :: powheg_settings_t
      real(default) :: pt2_min
      real(default) :: lambda2
-     integer :: n_init
+     integer :: n_init = 1000
      integer :: size_grid_xi = 100
      integer :: size_grid_y = 100
      integer :: upper_bound_func
@@ -17611,28 +17612,38 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
     real(default) :: f_alr, xi, y, norm, real_me, ubf
     integer :: scan, alr, emitter
     logical :: is_fsr
+    integer :: n
+    type(vector4_t), dimension(:), allocatable :: p_born
     is_fsr = .true.
-    call powheg%rng%generate (radiation_variables)
     associate (nlo => powheg%process_instance%nlo_data, &
                       fks => powheg%phs_fks_generator)
-       do alr = 1, nlo%n_alr
-          emitter = nlo%get_emitter (alr)
-          call fks%generate_fsr_from_x &
-              (radiation_variables, emitter, powheg%p_born, powheg%p_real)
-          !call nlo%set_alr (alr)
-          real_me = powheg%compute_sqme_real (emitter)
-          call fks%get_jacobian (emitter, jacobian)
-          call fks%get_radiation_variables (emitter, xi, y)
-          ubf = upper_bound_func (powheg%settings, is_fsr, powheg%cms_energy2, &
-                                  powheg%lambda2_gen, xi, y)
+       do n = 1, powheg%settings%n_init
+          associate (process => powheg%process_instance%process)
+             call process%generate_weighted_event (powheg%process_instance, 1)
+          end associate
+          powheg%p_born = interaction_get_momenta (nlo%int_born) 
+          call powheg%rng%generate (radiation_variables)
+          do alr = 1, nlo%n_alr
+             emitter = nlo%get_emitter (alr)
+             call fks%generate_fsr_from_x &
+                 (radiation_variables, emitter, powheg%p_born, powheg%p_real)
+             !call nlo%set_alr (alr)
+             real_me = powheg%compute_sqme_real (emitter)
+             !!!! call fks%get_jacobian (emitter, jacobian)
+             call fks%get_radiation_variables (emitter, xi, y)
+             ubf = upper_bound_func (powheg%settings, is_fsr, powheg%cms_energy2, &
+                                     powheg%lambda_gen2, xi, y)
           !!! output of compute_sqme_real is already multiplied with jacobian
           !!! norm = jacobian * real_me  / (powheg%born_me * ubf)
-          norm = real_me / (powheg%born_me * ubf)
-          f_alr = (one * alr) / nlo%n_alr
-          call powheg%grid%update_maxima &
-               ([radiation_variables(I_XI:I_Y), f_alr], norm)
-       end do
+             norm = real_me / (powheg%born_me * ubf)
+             f_alr = (one * alr) / nlo%n_alr
+             call powheg%grid%update_maxima &
+                  ([radiation_variables(I_XI:I_Y), f_alr], norm)
+          end do
+       end do 
     end associate
+    call powheg%grid%write ()
+    stop 'Check grids'
   end subroutine powheg_fill_grids
 
 @ %def powheg_fill_grids
@@ -17869,7 +17880,6 @@ reweighted to the variable-flavour two loop expression.
 @
 <<powheg: procedures (old)>>=
     norm_max = powheg%grid%get_maximum_in_3d (alr)
-
     !call sudakov%update (powheg%cms_energy, xi2_max)
     call powheg%rng%generate (random)
 
@@ -18546,7 +18556,9 @@ hadrons that can be generated in the shower.
     type(process_stack_t), intent(in), optional :: process_stack
     
     call evt%base_connect (process_instance, model, process_stack)
+    call evt%make_rng (evt%process)
     call evt%powheg%connect (process_instance)
+    call evt%powheg%fill_grids ()
   end subroutine evt_pure_shower_connect
 
 @ %def evt_pure_shower_connect
@@ -18567,20 +18579,21 @@ dispatching.
     if (evt%settings%powheg_matching) then
        call evt%powheg%init (powheg_settings, process_name)
     end if
-    call evt%make_rng (evt%process)
   end subroutine evt_pure_shower_init
   
 @ %def evt_pure_shower_init
 @ Implement a RNG instance, spawned by the process object.
-<<Decays: decay term: TBP>>=
+<<Pure Shower: evt pure shower: TBP>>=
   procedure :: make_rng => evt_pure_shower_make_rng
-<<Decays: procedures>>=
+<<Pure Shower: procedures>>=
   subroutine evt_pure_shower_make_rng (evt, process)
     class(evt_pure_shower_t), intent(inout) :: evt
     type(process_t), intent(inout) :: process
     class(rng_t), allocatable :: rng
     call process%make_rng (rng)
     call evt%shower%import_rng (rng)
+    print *, 'Check: ', evt%settings%powheg_matching
+    stop
     if (evt%settings%powheg_matching) then
        call process%make_rng (rng)
        call evt%powheg%import_rng (rng)
@@ -18590,7 +18603,7 @@ dispatching.
 @ %def evt_pure_shower_make_rng
 @ Use the process and beam structure to determine PDF parameters.  Will
 be performed during dispatching.
-<<Pure Shower: evt shower: TBP>>=
+<<Pure Shower: evt pure shower: TBP>>=
   procedure :: setup_pdf => evt_pure_shower_setup_pdf
 <<Pure Shower: procedures>>=
   subroutine evt_pure_shower_setup_pdf (evt, process, beam_structure, lhapdf_member)
@@ -18689,7 +18702,6 @@ evaluation chain.
        call evt%shower%generate_emissions ( evt%particle_set, &
             evt%settings, evt%model, evt%model_hadrons, &
             number_of_emissions=1)
-       call evt%shower%export_rng (evt%rng)
        if (DEBUG) then
           print *, "Pure Shower: obtained particle set after SHOWER"
           call particle_set_write (evt%particle_set)
@@ -18778,10 +18790,10 @@ in disabled mode.
     write (u, "(A)")
 
     allocate (evt_pure_shower_t :: evt_pure_shower)
-    select type (evt_pure_shower)
-    type is (evt_pure_shower_t)
-       call evt_pure_shower%init (settings, model_hadrons)
-    end select
+!    select type (evt_pure_shower)
+!    type is (evt_pure_shower_t)
+!       call evt_pure_shower%init (settings, model_hadrons)
+!    end select
 
     call evt_pure_shower%connect (process_instance, model)
     evt_trivial%next => evt_pure_shower
@@ -18878,10 +18890,10 @@ We generate a two-jet event and shower it with the Whizard FSR shower.
     settings%fsr_active = .true.
 
     allocate (evt_pure_shower_t :: evt_pure_shower)
-    select type (evt_pure_shower)
-    type is (evt_pure_shower_t)
-       call evt_pure_shower%init (settings, model_hadrons)
-    end select
+!    select type (evt_pure_shower)
+!    type is (evt_pure_shower_t)
+!       call evt_pure_shower%init (settings, model_hadrons)
+!    end select
 
     call evt_pure_shower%connect (process_instance, model)
     evt_trivial%next => evt_pure_shower
@@ -26403,8 +26415,9 @@ concatenated, we provide individual dispatchers for each of them.
     type(var_list_t), pointer :: var_list
     type(string_t) :: lhapdf_file, lhapdf_dir
     integer :: lhapdf_member
-!!!    double precision :: xmin, xmax, q2min, q2max
-!!!    external :: GetXminM, GetXmaxM, GetQ2minM, GetQ2maxM    
+    type(pure_shower_settings_t) :: settings
+    double precision :: xmin, xmax, q2min, q2max
+    external :: GetXminM, GetXmaxM, GetQ2minM, GetQ2maxM    
     var_list => global%get_var_list_ptr ()    
     allow_shower = &
          var_list%get_lval (var_str ("?allow_shower"))
@@ -26419,16 +26432,16 @@ concatenated, we provide individual dispatchers for each of them.
        call msg_message ("Simulate: activating pure parton shower")
        select type (evt)
        type is (evt_pure_shower_t)
-          call evt%settings%init (var_list)
+          call settings%init (var_list)
 
-          call evt%init (evt%settings, global%fallback_model)
+          call evt%init (settings, global%fallback_model)
 !!! TODO: Bijan
-!!!          if (LHAPDF6_AVAILABLE) then
-!!!             call lhapdf_initialize &
-!!!                  (1, lhapdf_dir, lhapdf_file, lhapdf_member, evt%pdf)
-!!!          end if
-!!!          if (present (process)) &
-!!!               call evt%setup_pdf (process, global%beam_structure, lhapdf_member)
+          if (LHAPDF6_AVAILABLE) then
+            call lhapdf_initialize &
+                  (1, lhapdf_dir, lhapdf_file, lhapdf_member, evt%pdf_data%pdf)
+          end if
+          if (present (process)) &
+               call evt%setup_pdf (process, global%beam_structure, lhapdf_member)
        end select
     else
        evt => null ()
@@ -31733,7 +31746,7 @@ objects and store them.
 <<Simulations: procedures>>=
   subroutine entry_setup_event_transforms (entry, process, local)
     class(entry_t), intent(inout) :: entry
-    type(process_t), intent(in), target :: process
+    type(process_t), intent(inout), target :: process
     type(rt_data_t), intent(in), target :: local
     class(evt_t), pointer :: evt
     logical :: enable_qcd, old_module
