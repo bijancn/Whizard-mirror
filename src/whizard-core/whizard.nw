@@ -17399,6 +17399,7 @@ module powheg
   use mci_midpoint
   use phs_base
   use phs_single
+  use interactions
 
 <<Standard module head>>
 
@@ -17427,7 +17428,7 @@ end module powheg
   type :: powheg_settings_t
      real(default) :: pt_min
      real(default) :: lambda2
-     integer :: n_init
+     integer :: n_init = 1000
      integer :: size_grid_xi = 100
      integer :: size_grid_y = 100
      integer :: upper_bound_func
@@ -17624,28 +17625,38 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
     real(default) :: f_alr, xi, y, norm, real_me, ubf
     integer :: scan, alr, emitter
     logical :: is_fsr
+    integer :: n
+    type(vector4_t), dimension(:), allocatable :: p_born
     is_fsr = .true.
-    call powheg%rng%generate (radiation_variables)
     associate (nlo => powheg%process_instance%nlo_data, &
                       fks => powheg%phs_fks_generator)
-       do alr = 1, nlo%n_alr
-          emitter = nlo%get_emitter (alr)
-          call fks%generate_fsr_from_x &
-              (radiation_variables, emitter, powheg%p_born, powheg%p_real)
-          !call nlo%set_alr (alr)
-          real_me = powheg%compute_sqme_real (emitter)
-          call fks%get_jacobian (emitter, jacobian)
-          call fks%get_radiation_variables (emitter, xi, y)
-          ubf = upper_bound_func (powheg%settings, is_fsr, powheg%cms_energy, &
-                                  powheg%lambda_gen2, xi, y)
+       do n = 1, powheg%settings%n_init
+          associate (process => powheg%process_instance%process)
+             call process%generate_weighted_event (powheg%process_instance, 1)
+          end associate
+          powheg%p_born = interaction_get_momenta (nlo%int_born) 
+          call powheg%rng%generate (radiation_variables)
+          do alr = 1, nlo%n_alr
+             emitter = nlo%get_emitter (alr)
+             call fks%generate_fsr_from_x &
+                 (radiation_variables, emitter, powheg%p_born, powheg%p_real)
+             !call nlo%set_alr (alr)
+             real_me = powheg%compute_sqme_real (emitter)
+             !!!! call fks%get_jacobian (emitter, jacobian)
+             call fks%get_radiation_variables (emitter, xi, y)
+             ubf = upper_bound_func (powheg%settings, is_fsr, powheg%cms_energy, &
+                                     powheg%lambda_gen2, xi, y)
           !!! output of compute_sqme_real is already multiplied with jacobian
           !!! norm = jacobian * real_me  / (powheg%born_me * ubf)
-          norm = real_me / (powheg%born_me * ubf)
-          f_alr = (one * alr) / nlo%n_alr
-          call powheg%grid%update_maxima &
-               ([radiation_variables(I_XI:I_Y), f_alr], norm)
-       end do
+             norm = real_me / (powheg%born_me * ubf)
+             f_alr = (one * alr) / nlo%n_alr
+             call powheg%grid%update_maxima &
+                  ([radiation_variables(I_XI:I_Y), f_alr], norm)
+          end do
+       end do 
     end associate
+    call powheg%grid%write ()
+    stop 'Check grids'
   end subroutine powheg_fill_grids
 
 @ %def powheg_fill_grids
@@ -17754,9 +17765,9 @@ implementations of a generic class.
     s = powheg%cms_energy
     call powheg%rng%generate (random)
     norm_max = powheg%grid%get_maximum_in_3d (alr)
-    pt2 = solve (log_rand_minus_log_integrated_ubf, &
-         powheg%settings%pt_min, &
-         s * powheg%xi_max2, success)
+!    pt2 = solve (log_rand_minus_log_integrated_ubf, &
+!         powheg%settings%pt_min, &
+!         s * powheg%xi_max2, success)
     if (pt2 < powheg%settings%pt_min) then
        return ! No radiation generated
     end if
@@ -18470,6 +18481,7 @@ hadrons that may be generated in the shower.
     
     call evt%base_connect (process_instance, model, process_stack)
     call evt%powheg%connect (process_instance)
+    call evt%powheg%fill_grids ()
   end subroutine evt_pure_shower_connect
 
 @ %def evt_pure_shower_connect
