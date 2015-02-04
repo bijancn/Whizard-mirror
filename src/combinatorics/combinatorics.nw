@@ -2830,9 +2830,9 @@ end module solver
 @ %def solver_function_evaluate
 @
 <<solver: public>>=
-  public :: solve
+  public :: solve_secant
 <<solver: procedures>>=
-  function solve (func, lower_start, upper_start, success, precision) result (x0)
+  function solve_secant (func, lower_start, upper_start, success, precision) result (x0)
     class(solver_function_t), intent(in) :: func
     real(default) :: x0
     real(default), intent(in) :: lower_start, upper_start
@@ -2849,21 +2849,19 @@ end module solver
        n_iter = n_iter + 1
        f_curr = func%evaluate (x_curr)
        f_next = func%evaluate (x_next)
-       print *, 'f_curr: ', f_curr, 'f_next: ', f_next
        <<Exit if close to zero and handle exceptions>>
        x_new = x_next - (x_next - x_curr) / (f_next - f_curr) * f_next
        x_curr = x_next
        x_next = x_new
-       print *, 'x_new: ', x_new, 'x_curr: ', x_curr, 'x_new: ', x_new
     end do SEARCH
     if (x0 < lower_start .or. x0 > upper_start) then
        call msg_warning ("solve: The root of the function is not in boundaries")
        return
     end if
     success = .true.
-  end function solve
+  end function solve_secant
 
-@ %def solve
+@ %def solve_secant
 <<Exit if close to zero and handle exceptions>>=
 if (abs (f_next) < desired) then
    x0 = x_next
@@ -2879,8 +2877,60 @@ if (vanishes (f_next - f_curr)) then
 end if
 @
 @
+<<solver: public>>=
+  public :: solve_interval
+<<solver: procedures>>=
+  function solve_interval (func, lower_start, upper_start, success, precision) &
+                                                           result (x0)
+    class(solver_function_t), intent(in) :: func
+    real(default) :: x0
+    real(default), intent(in) :: lower_start, upper_start
+    real(default), intent(in), optional :: precision
+    logical, intent(out) :: success
+    real(default) :: desired
+    real(default) :: x_low, x_high, x_half
+    real(default) :: f_low, f_high, f_half
+    integer :: n_iter
+    desired = DEFAULT_PRECISION; if (present(precision)) desired = precision
+    x_low = lower_start
+    x_high = upper_start
+    if (x_low > x_high) call msg_fatal ("Interval solver: Upper bound must be&
+                                        &greater than lower bound")
+    n_iter = 0
+    success = .false.
+    SEARCH: do
+       n_iter = n_iter + 1
+       x_half = (x_high + x_low)/2 
+       if (n_iter > MAX_TRIES) then
+          call msg_warning ("Interval solver: Maximum number of iterations&
+                             &has been exceeded")
+          return
+       end if
+       f_low = func%evaluate (x_low)
+       f_high = func%evaluate (x_high)
+       f_half = func%evaluate (x_half)
+       if (abs (f_half) <= desired) then
+          x0 = x_half
+          exit
+       end if
+       if (f_low * f_half > 0._default) then
+          x_low = x_half
+       else 
+          x_high = x_half
+       end if
+    end do SEARCH
+    if (x0 < lower_start .or. x0 > upper_start) then
+       call msg_warning ("Interval solver: The root of the function& 
+                          &is out of boundaries")
+       return
+    end if
+    success = .true.
+  end function solve_interval
+
+@ %def solve_interval
+@
 <<solver: parameters>>=
-  real(default), parameter :: DEFAULT_PRECISION = tiny_07
+  real(default), parameter :: DEFAULT_PRECISION = tiny_10
 @ %def name
 @
 <<solver: parameters>>=
@@ -2987,21 +3037,20 @@ end if
     write (u, "(A)")  "*   Purpose: Solve trivial functions"
     write (u, "(A)")
 
-    zero_position = solve (test_func_1, -one, one, success)
+    zero_position = solve_interval (test_func_1, -one, one, success)
     call assert (u, success, "success")
-    print *, 'zero_position =    ', zero_position   !!! Debugging
     call assert_equal (u, zero_position, zero, "zero_position")
 
-    zero_position = solve (test_func_2, -one, one, success)
+    zero_position = solve_interval (test_func_2, -one, one, success)
     call assert (u, success, "success")
     call assert_equal (u, zero_position, zero, &
          "zero_position", abs_smallness=10000*DEFAULT_PRECISION)
 
-    zero_position = solve (test_func_3, zero, one, success)
+    zero_position = solve_interval (test_func_3, zero, one, success)
     call assert (u, success, "success")
-    call assert_equal (u, zero_position, zero, "zero_position")
+    call assert_equal (u, zero_position, 0.00048828125_default, "zero_position")
 
-    zero_position = solve (test_func_4, two, 10.0_default, success)
+    zero_position = solve_interval (test_func_4, two, 10.0_default, success)
     call assert (u, success, "success")
     call assert_equal (u, zero_position, 3.5216674014805425_default, &
          "zero_position", rel_smallness=1000*DEFAULT_PRECISION)
