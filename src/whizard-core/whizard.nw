@@ -17374,6 +17374,7 @@ module powheg
   use constants
 <<Use strings>>
   use unit_tests
+  use io_units, only: given_output_unit, free_unit
   use physics_defs
   use diagnostics
   use rng_base
@@ -17443,6 +17444,24 @@ used to decide which ubf object is allocated.
 <<powheg: parameters>>=
   integer, parameter :: UBF_SIMPLE = 1
 @ %def UBF_SIMPLE
+@
+<<powheg: powheg settings: TBP>>=
+  procedure :: write => powheg_settings_write
+<<powheg: procedures>>=
+  subroutine powheg_settings_write (powheg_settings, unit)
+    class(powheg_settings_t), intent(in) :: powheg_settings
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit);  if (u < 0)  return
+    write (u, *) "pt2_min", powheg_settings%pt2_min
+    write (u, *) "lambda2", powheg_settings%lambda2
+    write (u, *) "n_init", powheg_settings%n_init
+    write (u, *) "size_grid_xi", powheg_settings%size_grid_xi
+    write (u, *) "size_grid_y", powheg_settings%size_grid_y
+    write (u, *) "upper_bound_func", powheg_settings%upper_bound_func
+  end subroutine powheg_settings_write
+
+@ %def powheg_settings_write
 @
 <<powheg: public>>=
   public :: radiation_t
@@ -17776,6 +17795,7 @@ reweighted to the variable-flavour two loop expression., pt2l
   end subroutine powheg_setup_sudakovs
 
 @ %def powheg_setup_sudakovs
+@
 <<powheg: powheg: TBP>>=
   procedure :: init => powheg_init
 <<powheg: procedures>>=
@@ -17833,16 +17853,23 @@ $(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
 <<powheg: powheg: TBP>>=
   procedure :: compute_lambda2_gen => powheg_compute_lambda2_gen
 <<powheg: procedures>>=
-  pure subroutine powheg_compute_lambda2_gen (powheg)
+  subroutine powheg_compute_lambda2_gen (powheg)
     class(powheg_t), intent(inout) :: powheg
-    integer :: n_flavors
+    integer :: nf
     real(default) :: alpha_s, scale_to_relate2
     scale_to_relate2 = 4 * powheg%settings%lambda2
     ! TODO: (bcn 2015-01-30) implement variable flavor alpha_s
-    !call running_alpha_s (alpha_s, scale_to_relate2, n_flavors=n_flavors)
-    alpha_s = 0.17_default
-    n_flavors = 3
-    alpha_s = improve_nll_accuracy (alpha_s, n_flavors)
+    alpha_s = powheg%qcd%alpha%get (scale_to_relate2)
+    select type (alpha => powheg%qcd%alpha)
+    type is (alpha_qcd_from_scale_t)
+       nf = alpha%nf
+    type is (alpha_qcd_from_lambda_t)
+       nf = alpha%nf
+    class default
+       call msg_warning ("QCD type is not alpha_qcd_from_scale_t")
+       nf = 5
+    end select
+    alpha_s = improve_nll_accuracy (alpha_s, nf)
     powheg%process_deps%lambda2_gen = exp (- one / (b0rad * alpha_s)) * scale_to_relate2
     powheg%process_deps%lambda2_gen = 0.5
   end subroutine powheg_compute_lambda2_gen
@@ -18015,7 +18042,7 @@ values $(f_B)$
     call powheg%rng%generate (random)
     do alr = 1, powheg%n_alr
        associate (nlo => powheg%process_instance%nlo_data)
-          xi2_max = nlo%get_xi_max(alr)**2  
+          xi2_max = nlo%get_xi_max (alr)**2
        end associate
        call powheg%sudakov(alr)%s%update (xi2_max)
        pt2_max = xi2_max * powheg%event_deps%cms_energy2
@@ -31806,6 +31833,7 @@ base type by the [[connect]] method, so we can reference them later.
           call process_instance%init_simulation (i, entry%config%safety_factor)
        end do
     end if
+    call dispatch_qcd (entry%qcd, local)
     call entry%setup_event_transforms (process, local)
 
     if (present (global)) then
@@ -31816,7 +31844,6 @@ base type by the [[connect]] method, so we can reference them later.
     call entry%setup_expressions ()
 
     entry%model => process%get_model_ptr ()
-    call dispatch_qcd (entry%qcd, local)
     entry%valid = .true.
     
   end subroutine entry_init
