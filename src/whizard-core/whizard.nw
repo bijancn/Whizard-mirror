@@ -17521,6 +17521,7 @@ This contains the $\alpha_r$ dependent pieces
      type(event_deps_t), pointer :: event_deps
      type(powheg_settings_t), pointer :: powheg_settings
      real(default) :: xi2_max, norm_max, random
+     real(default) :: current_pt2_max, last_log
   contains
    <<powheg: sudakov: TBP>>
   end type sudakov_t
@@ -17607,19 +17608,19 @@ normalization $N$ which is given by the grids.
 <<powheg: sudakov: TBP>>=
   procedure :: generate_pt2 => sudakov_generate_pt2
 <<powheg: procedures>>=
-  subroutine sudakov_generate_pt2 (sudakov, random)
+  function sudakov_generate_pt2 (sudakov, random) result (pt2)
+    real(default) :: pt2
     class(sudakov_t), intent(inout) :: sudakov
     real(default), intent(in) :: random
-    real(default) :: s, pt2
-    integer :: emitter
     logical :: success
     success = .false.
     sudakov%random = random
     pt2 = solve (sudakov, &
          sudakov%powheg_settings%pt2_min, &
-         sudakov%xi2_max * sudakov%event_deps%cms_energy2, success)
+         sudakov%current_pt2_max, success)
+    sudakov%last_log = sudakov%log_integrated_ubf (pt2)
     if (.not. success) then
-       return ! No solution found in boundaries -> No radiation generated
+       pt2 = sudakov%powheg_settings%pt2_min
     end if
 
   end subroutine sudakov_generate_pt2
@@ -17676,11 +17677,11 @@ reweighted to the variable-flavour two loop expression., pt2l
             log (xm2s / pt2))
     else
        y = 0
-    end if
+    end iolver_f%log_integrated_ubf (x)
   end function sudakov_simple_fsr_log_integrated_ubf
 
 @ %def sudakov_simple_fsr_log_integrated_ubf
-@
+@ $p_\text{T,max}=\xi_\text{max}^2s$
 @
 <<powheg: sudakov simple fsr: TBP>>=
   procedure :: evaluate => sudakov_simple_fsr_evaluate
@@ -17690,6 +17691,7 @@ reweighted to the variable-flavour two loop expression., pt2l
     class(sudakov_simple_fsr_t), intent(in) :: solver_f
     real(default), intent(in) :: x
     f = log (solver_f%random) + solver_f%norm_max * solver_f%log_integrated_ubf (x)
+         - solver_f%last_log
   end function sudakov_simple_fsr_evaluate
 
 @ %def sudakov_simple_fsr_evaluate
@@ -17916,7 +17918,7 @@ The following is valid for one underlying Born.
     real(default), dimension(3) :: radiation_variables
     real(default) :: jacobian
     real(default) :: f_alr, xi, y, norm, real_me, ubf
-    integer :: scan, alr, emitter
+    integer :: alr, emitter
     integer :: n
     type(vector4_t), dimension(:), allocatable :: p_born
     call powheg%display_grid_startup_message()
@@ -17945,6 +17947,7 @@ The following is valid for one underlying Born.
        end do 
     end associate
     call powheg%set_normalizations ()
+    call powheg%generate_emissions ()
     stop 'Check grids'
 
   contains 
@@ -17994,18 +17997,33 @@ values $(f_B)$
   subroutine generate_emission (powheg)
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t) :: radiation, radiation_max
-    real(default) :: xi2_max, random
+    real(default) :: xi2_max, random(17)
     integer :: alr
     radiation_max%pt2 = zero
+    call powheg%rng%generate (random)
     do alr = 1, powheg%n_alr
        call powheg%sudakov(alr)%s%update (xi2_max)
-       call powheg%rng%generate (random)
-       call powheg%sudakov(alr)%s%generate_pt2 (random)
+       pt2_max = xi2_max * powheg%event_deps%cms_energy2
+       powheg%sudakov(alr)%s%current_pt2_max = pt2_max
+       print *, 'Should be zero:'
+       powheg%sudakov(alr)%s%last_log = powheg%sudakov(alr)%s%log_integrated_ubf (pt2max)
+       print *, 'powheg%sudakov(alr)%s%last_log =    ', powheg%sudakov(alr)%s%last_log   !!! Debugging
+
+       LOOP_UNTIL_ACCEPTED: do
+          pt2 = powheg%sudakov(alr)%s%generate_pt2 (random(1))
+          vetoed = powheg%reweight_alpha_s (pt2, random(2))
+          if (vetoed) then
+             powheg%sudakov(alr)%s%current_pt2_max = pt2
+             cycle
+          end if
+          exit
+       end do LOOP_UNTIL_ACCEPTED
+
        if (radiation%pt2 > radiation_max%pt2) then
           radiation_max = radiation
        end if
     end do
-    if (.not. vanishes (radiation_max%pt2)) then
+    if (radiation_max%pt2 > powheg%settings%pt2_min) then
        !call select_alpha_r
        !call add_generated_radiation (particle_set, radiation_max,
        !alpha_r, )
