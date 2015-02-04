@@ -17693,22 +17693,6 @@ reweighted to the variable-flavour two loop expression., pt2l
   end function sudakov_simple_fsr_evaluate
 
 @ %def sudakov_simple_fsr_evaluate
-
-<<powheg: procedures (old)>>=
-    norm_max = powheg%grid%get_maximum_in_3d (alr)
-    call sudakov%update (powheg%cms_energy, xi2_max)
-    call powheg%rng%generate (random)
-
-    if (is_fsr) then
-       select case (powheg_settings%upper_bound_func)
-       case (UBF_SIMPLE)
-       case default
-          call msg_fatal ("upper_bound_func: Please choose upper bounding function!")
-       end select
-    else
-       call msg_fatal ("upper_bound_func: ISR not implemented yet!")
-    end if
-
 @
 \subsubsection{Main POWHEG class}
 <<powheg: public>>=
@@ -17724,6 +17708,7 @@ reweighted to the variable-flavour two loop expression., pt2l
      type(event_deps_t), pointer :: event_deps
      type(process_deps_t), pointer :: process_deps
      type(sudakov_wrapper_t), dimension(:), allocatable :: sudakov
+     integer :: n_alr
   contains
    <<powheg: powheg: TBP>>
   end type powheg_t
@@ -17738,33 +17723,53 @@ reweighted to the variable-flavour two loop expression., pt2l
   subroutine powheg_connect (powheg, process_instance)
     class(powheg_t), intent(inout) :: powheg
     type(process_instance_t), intent(in), target :: process_instance
-    integer :: n_alr, alr
     powheg%process_instance => process_instance
     associate (nlo_data => powheg%process_instance%nlo_data)
-       n_alr = nlo_data%get_n_alr ()
+       powheg%n_alr = nlo_data%get_n_alr ()
        allocate (powheg%event_deps%p_born (nlo_data%n_in + nlo_data%n_out_born))
        allocate (powheg%event_deps%p_real (nlo_data%n_in + nlo_data%n_out_real))
 
        call powheg%grid%init ([powheg%settings%size_grid_xi, &
                                powheg%settings%size_grid_y, &
-                               n_alr])
+                               powheg%n_alr])
 
        associate (generator => powheg%phs_fks_generator)
           call generator%setup_fks_kinematics (nlo_data%real_kinematics)
           call generator%set_emitters (nlo_data%reg_data%emitters)
        end associate
     end associate
-    allocate (powheg%sudakov (n_alr))
-    do alr = 1, n_alr
-       ! TODO: (bcn 2015-02-03) Here will the select case statement enter
-       allocate(sudakov_simple_fsr_t :: powheg%sudakov(alr)%s)
-       call powheg%sudakov(alr)%s%init (powheg%process_deps, &
-            powheg%event_deps, powheg%settings)
-    end do
+    call powheg%setup_sudakovs ()
   end subroutine powheg_connect
 
 @ %def powheg_connect
 @
+<<powheg: powheg: TBP>>=
+  procedure :: setup_sudakovs => powheg_setup_sudakovs
+<<powheg: procedures>>=
+  subroutine powheg_setup_sudakovs (powheg)
+    class(powheg_t), intent(inout) :: powheg
+    integer :: alr
+    logical :: is_fsr
+    allocate (powheg%sudakov (powheg%n_alr))
+    is_fsr = .true.
+    do alr = 1, powheg%n_alr
+       if (is_fsr) then
+          select case (powheg%settings%upper_bound_func)
+          case (UBF_SIMPLE)
+             allocate(sudakov_simple_fsr_t :: powheg%sudakov(alr)%s)
+          case default
+             call msg_fatal ("powheg_connect: Please choose upper bounding function!")
+          end select
+       else
+          call msg_fatal ("powheg_connect: ISR not implemented yet!")
+       end if
+
+       call powheg%sudakov(alr)%s%init (powheg%process_deps, &
+            powheg%event_deps, powheg%settings)
+    end do
+  end subroutine powheg_setup_sudakovs
+
+@ %def powheg_setup_sudakovs
 <<powheg: powheg: TBP>>=
   procedure :: init => powheg_init
 <<powheg: procedures>>=
@@ -17802,7 +17807,7 @@ reweighted to the variable-flavour two loop expression., pt2l
 
 @ %def powheg_update
 @
-\subsubsection{Physics}
+\paragraph{Physics}
 @ [[running_alpha_s]] should implement a variable-flavor-2-loop result
 and optionally return [[n_flavors]] that are active at the scale.  The
 main point to ensure here is that the simple fixed-flavor-1-loop
@@ -17907,7 +17912,7 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
     real(default) :: f_alr, xi, y, norm, real_me, ubf
     integer :: scan, alr, emitter
     logical :: is_fsr
-    integer :: n, n_alr
+    integer :: n
     type(vector4_t), dimension(:), allocatable :: p_born
     is_fsr = .true.
     call powheg%display_grid_startup_message()
@@ -17919,8 +17924,7 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
           end associate
           call powheg%update (interaction_get_momenta (nlo%int_born))
           call powheg%rng%generate (radiation_variables)
-          n_alr = nlo%get_n_alr ()
-          do alr = 1, n_alr
+          do alr = 1, powheg%n_alr
              emitter = nlo%get_emitter (alr)
              call fks%generate_fsr_from_x &
                  (radiation_variables, emitter, &
@@ -17933,16 +17937,18 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
              !!! output of compute_sqme_real is already multiplied with jacobian
              !!! norm = jacobian * real_me  / (powheg%event_deps%born_me * ubf)
              norm = real_me / (powheg%event_deps%born_me * ubf)
-             f_alr = (one * alr) / n_alr
+             f_alr = (one * alr) / powheg%n_alr
              call powheg%grid%update_maxima &
                   ([radiation_variables(I_XI:I_Y), f_alr], norm)
              call check_and_display_progress
           end do
        end do 
     end associate
-!    call powheg%grid%write ()
+    call powheg%set_normalizations ()
     stop 'Check grids'
+
   contains 
+
     subroutine check_and_display_progress ()
       real(default) :: prog
       integer, save :: next_check = 10
@@ -17958,6 +17964,21 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
 @ %def powheg_fill_grids
 @
 <<powheg: powheg: TBP>>=
+  procedure :: set_normalizations => powheg_set_normalizations
+<<powheg: procedures>>=
+  subroutine powheg_set_normalizations (powheg)
+    class(powheg_t), intent(inout) :: powheg
+    integer :: alr
+    real(default) :: norm_max
+    do alr = 1, powheg%n_alr
+       norm_max = powheg%grid%get_maximum_in_3d (alr)
+       call powheg%sudakov(alr)%s%set_normalization (norm_max)
+    end do
+  end subroutine powheg_set_normalizations
+
+@ %def powheg_set_normalizations
+@
+<<powheg: powheg: TBP>>=
   procedure :: save_results => powheg_save_results
 <<powheg: procedures>>=
   subroutine powheg_save_results (powheg)
@@ -17970,13 +17991,16 @@ $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is set
 implementing the highest bid procedure. This means that we generate
 values $(f_B)$
 <<powheg: procedures>>=
-  pure subroutine generate_emission (powheg)
+  subroutine generate_emission (powheg)
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t) :: radiation, radiation_max
-    integer :: region
+    real(default) :: xi2_max, random
+    integer :: alr
     radiation_max%pt2 = zero
-    do region = 1, powheg%process_instance%nlo_data%get_n_alr ()
-       !region(i_region)%generate_radiation (radiation)
+    do alr = 1, powheg%n_alr
+       call powheg%sudakov(alr)%s%update (xi2_max)
+       call powheg%rng%generate (random)
+       call powheg%sudakov(alr)%s%generate_pt2 (random)
        if (radiation%pt2 > radiation_max%pt2) then
           radiation_max = radiation
        end if
