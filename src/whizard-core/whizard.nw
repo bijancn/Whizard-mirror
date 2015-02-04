@@ -17429,7 +17429,7 @@ end module powheg
   type :: powheg_settings_t
      real(default) :: pt2_min
      real(default) :: lambda2 = lambda_test
-     integer :: n_init = 200000
+     integer :: n_init = 2000
      integer :: size_grid_xi = 100
      integer :: size_grid_y = 100
      integer :: upper_bound_func = UBF_SIMPLE
@@ -17483,7 +17483,7 @@ functions.
   procedure :: update => event_deps_update
 <<powheg: procedures>>=
   subroutine event_deps_update (event_deps, born_me, p_born)
-    class(event_deps_t), intent(out) :: event_deps
+    class(event_deps_t), intent(inout) :: event_deps
     real(default), intent(in) :: born_me
     type(vector4_t), dimension(:), intent(in) :: p_born
     event_deps%born_me = born_me
@@ -17517,9 +17517,9 @@ This contains the $\alpha_r$ dependent pieces
   public :: sudakov_t
 <<powheg: types>>=
   type, abstract, extends (solver_function_t) :: sudakov_t
-     type(process_deps_t), pointer :: process_deps
-     type(event_deps_t), pointer :: event_deps
-     type(powheg_settings_t), pointer :: powheg_settings
+     type(process_deps_t), pointer :: process_deps => null()
+     type(event_deps_t), pointer :: event_deps => null()
+     type(powheg_settings_t), pointer :: powheg_settings => null()
      real(default) :: xi2_max, norm_max, random
      real(default) :: current_pt2_max, last_log
   contains
@@ -17594,7 +17594,7 @@ normalization $N$ which is given by the grids.
 <<powheg: sudakov: TBP>>=
   procedure (sudakov_log_integrated_ubf), deferred :: log_integrated_ubf
 <<powheg: interfaces>>=
-  interface
+  abstract interface
      pure function sudakov_log_integrated_ubf (sudakov, pt2) result (y)
        import
        real(default) :: y
@@ -17623,7 +17623,7 @@ normalization $N$ which is given by the grids.
        pt2 = sudakov%powheg_settings%pt2_min
     end if
 
-  end subroutine sudakov_generate_pt2
+  end function sudakov_generate_pt2
 
 @ %def sudakov_generate_pt2
 @
@@ -17677,7 +17677,7 @@ reweighted to the variable-flavour two loop expression., pt2l
             log (xm2s / pt2))
     else
        y = 0
-    end iolver_f%log_integrated_ubf (x)
+    end if 
   end function sudakov_simple_fsr_log_integrated_ubf
 
 @ %def sudakov_simple_fsr_log_integrated_ubf
@@ -17690,7 +17690,7 @@ reweighted to the variable-flavour two loop expression., pt2l
     real(default) :: f
     class(sudakov_simple_fsr_t), intent(in) :: solver_f
     real(default), intent(in) :: x
-    f = log (solver_f%random) + solver_f%norm_max * solver_f%log_integrated_ubf (x)
+    f = log (solver_f%random) + solver_f%norm_max * solver_f%log_integrated_ubf (x) &
          - solver_f%last_log
   end function sudakov_simple_fsr_evaluate
 
@@ -17705,12 +17705,13 @@ reweighted to the variable-flavour two loop expression., pt2l
      type(grid_t) :: grid
      type(string_t) :: process_name
      type(phs_fks_generator_t) :: phs_fks_generator
-     type(powheg_settings_t) :: settings
+     type(powheg_settings_t), pointer :: settings => null ()
      type(process_instance_t), pointer :: process_instance => null()
-     type(event_deps_t), pointer :: event_deps
-     type(process_deps_t), pointer :: process_deps
+     type(event_deps_t), pointer :: event_deps => null ()
+     type(process_deps_t), pointer :: process_deps => null ()
      type(sudakov_wrapper_t), dimension(:), allocatable :: sudakov
      integer :: n_alr
+     type(qcd_t), pointer :: qcd => null()
   contains
    <<powheg: powheg: TBP>>
   end type powheg_t
@@ -17775,13 +17776,17 @@ reweighted to the variable-flavour two loop expression., pt2l
 <<powheg: powheg: TBP>>=
   procedure :: init => powheg_init
 <<powheg: procedures>>=
-  subroutine powheg_init (powheg, settings, process_name)
+  subroutine powheg_init (powheg, settings, process_name, qcd)
     class(powheg_t), intent(out) :: powheg
     type(powheg_settings_t), intent(in) :: settings
     type(string_t), intent(in) :: process_name
+    type(qcd_t), intent(in), target :: qcd
 
+    allocate (powheg%settings)
     powheg%settings = settings
     powheg%process_name = process_name
+    allocate (powheg%event_deps, powheg%process_deps)
+    powheg%qcd => qcd
     call powheg%compute_lambda2_gen ()
   end subroutine powheg_init
 
@@ -17920,7 +17925,6 @@ The following is valid for one underlying Born.
     real(default) :: f_alr, xi, y, norm, real_me, ubf
     integer :: alr, emitter
     integer :: n
-    type(vector4_t), dimension(:), allocatable :: p_born
     call powheg%display_grid_startup_message()
     associate (nlo => powheg%process_instance%nlo_data, &
                       fks => powheg%phs_fks_generator)
@@ -17947,7 +17951,7 @@ The following is valid for one underlying Born.
        end do 
     end associate
     call powheg%set_normalizations ()
-    call powheg%generate_emissions ()
+    call powheg%generate_emission ()
     stop 'Check grids'
 
   contains 
@@ -17993,12 +17997,16 @@ The following is valid for one underlying Born.
 @ By keeping the radiation with the largest [[pt2]], we are effectively
 implementing the highest bid procedure. This means that we generate
 values $(f_B)$
+<<powheg: powheg: TBP>>=
+  procedure :: generate_emission => powheg_generate_emission
 <<powheg: procedures>>=
-  subroutine generate_emission (powheg)
+  subroutine powheg_generate_emission (powheg)
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t) :: radiation, radiation_max
     real(default) :: xi2_max, random(17)
     integer :: alr
+    real(default) :: pt2_max, pt2
+    logical :: vetoed
     radiation_max%pt2 = zero
     call powheg%rng%generate (random)
     do alr = 1, powheg%n_alr
@@ -18006,7 +18014,8 @@ values $(f_B)$
        pt2_max = xi2_max * powheg%event_deps%cms_energy2
        powheg%sudakov(alr)%s%current_pt2_max = pt2_max
        print *, 'Should be zero:'
-       powheg%sudakov(alr)%s%last_log = powheg%sudakov(alr)%s%log_integrated_ubf (pt2max)
+       powheg%sudakov(alr)%s%last_log = &
+              powheg%sudakov(alr)%s%log_integrated_ubf (pt2_max)
        print *, 'powheg%sudakov(alr)%s%last_log =    ', powheg%sudakov(alr)%s%last_log   !!! Debugging
 
        LOOP_UNTIL_ACCEPTED: do
@@ -18028,9 +18037,21 @@ values $(f_B)$
        !call add_generated_radiation (particle_set, radiation_max,
        !alpha_r, )
     end if
-  end subroutine generate_emission
+  end subroutine powheg_generate_emission
 
 @ %def generate_emission
+@
+<<powheg: powheg: TBP>>=
+  procedure :: reweight_alpha_s => powheg_reweight_alpha_s
+<<powheg: procedures>>=
+  function powheg_reweight_alpha_s (powheg, pt2, random) result (vetoed)
+    class(powheg_t), intent(in) :: powheg
+    real(default), intent(in) :: pt2, random
+    logical :: vetoed
+    vetoed = .false.
+  end function powheg_reweight_alpha_s
+
+@ %def powheg_reweight_alpha_s
 @
 \subsubsection{Unit tests}
 <<powheg: public>>=
@@ -18160,6 +18181,8 @@ ready for generating events.
     type(process_t) :: process
     type(process_instance_t) :: process_instance
 
+    type(qcd_t) :: qcd
+
     write (u, "(A)")  "* Test output: powheg_1"
     write (u, "(A)")  "*   Purpose: Initialization"
     write (u, "(A)")
@@ -18169,7 +18192,7 @@ ready for generating events.
     born_me = five
     prefix = "test_powheg_1"
     powheg%settings%n_init = 1000
-    call powheg%init (powheg_settings, process_name)
+    call powheg%init (powheg_settings, process_name, qcd)
     call setup_testbed &
        (prefix, os_data, lib, model_list, process, process_instance)
     do i = 1, powheg%settings%n_init
@@ -18654,6 +18677,7 @@ hadrons that can be generated in the shower.
      type(model_t), pointer :: model_hadrons => null ()
      type(pdf_data_t) :: pdf_data
      type(powheg_t) :: powheg
+     type(qcd_t), pointer :: qcd => null()
    contains
    <<Pure Shower: evt pure shower: TBP>>
   end type evt_pure_shower_t
@@ -18700,17 +18724,19 @@ dispatching.
 <<Pure Shower: evt pure shower: TBP>>=
   procedure :: init => evt_pure_shower_init
 <<Pure Shower: procedures>>=
-  subroutine evt_pure_shower_init (evt, settings, model_hadrons)
+  subroutine evt_pure_shower_init (evt, settings, model_hadrons, qcd)
     class(evt_pure_shower_t), intent(out) :: evt
     type(pure_shower_settings_t), intent(in) :: settings
     type(model_t), intent(in), target :: model_hadrons
+    type(qcd_t), intent(in), target :: qcd
     type(powheg_settings_t) :: powheg_settings
     type(string_t) :: process_name
     evt%settings = settings
     evt%model_hadrons => model_hadrons
+    evt%qcd => qcd
     process_name = "test"
     if (evt%settings%powheg_matching) then
-       call evt%powheg%init (powheg_settings, process_name)
+       call evt%powheg%init (powheg_settings, process_name, qcd)
     end if
   end subroutine evt_pure_shower_init
   
@@ -26538,10 +26564,11 @@ concatenated, we provide individual dispatchers for each of them.
 <<Dispatch: public>>=
   public :: dispatch_evt_pure_shower
 <<Dispatch: procedures>>=
-  subroutine dispatch_evt_pure_shower (evt, global, process)
+  subroutine dispatch_evt_pure_shower (evt, global, process, qcd)
     class(evt_t), intent(out), pointer :: evt
     type(rt_data_t), intent(in), target :: global
     type(process_t), intent(in), optional, target :: process
+    type(qcd_t), intent(in), target :: qcd
     logical :: allow_shower
     type(var_list_t), pointer :: var_list
     type(string_t) :: lhapdf_file, lhapdf_dir
@@ -26565,7 +26592,7 @@ concatenated, we provide individual dispatchers for each of them.
        type is (evt_pure_shower_t)
           call settings%init (var_list)
 
-          call evt%init (settings, global%fallback_model)
+          call evt%init (settings, global%fallback_model, qcd)
 !!! TODO: Bijan
           if (LHAPDF6_AVAILABLE) then
             call lhapdf_initialize &
@@ -31899,7 +31926,7 @@ objects and store them.
        if (old_module) then
           call dispatch_evt_shower (evt, local, process)
        else
-          call dispatch_evt_pure_shower (evt, local, process)
+          call dispatch_evt_pure_shower (evt, local, process, entry%qcd)
        end if
        if (associated (evt))  call entry%import_transform (evt)
     end if
