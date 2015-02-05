@@ -17373,6 +17373,7 @@ module powheg
 <<Use kinds>>
   use constants
 <<Use strings>>
+  use, intrinsic :: iso_fortran_env
   use unit_tests
   use io_units, only: given_output_unit, free_unit
   use physics_defs
@@ -17468,6 +17469,7 @@ used to decide which ubf object is allocated.
 <<powheg: types>>=
   type :: radiation_t
     real(default) :: xi, y, phi, pt2
+    integer :: alr
   end type radiation_t
 
 @ %def radiation_t
@@ -17539,6 +17541,7 @@ This contains the $\alpha_r$ dependent pieces
      type(process_deps_t), pointer :: process_deps => null()
      type(event_deps_t), pointer :: event_deps => null()
      type(powheg_settings_t), pointer :: powheg_settings => null()
+     type(qcd_t), pointer :: qcd => null()
      real(default) :: xi2_max, norm_max, random
      real(default) :: current_pt2_max, last_log
   contains
@@ -17560,14 +17563,16 @@ This contains the $\alpha_r$ dependent pieces
   procedure :: init => sudakov_init
 <<powheg: procedures>>=
   subroutine sudakov_init (sudakov, &
-         process_deps, event_deps, powheg_settings)
+         process_deps, event_deps, powheg_settings, qcd)
     class(sudakov_t), intent(out) :: sudakov
     type(process_deps_t), target, intent(in) :: process_deps
     type(event_deps_t), target, intent(in) :: event_deps
     type(powheg_settings_t), target, intent(in) :: powheg_settings
+    type(qcd_t), target, intent(in) :: qcd
     sudakov%process_deps => process_deps
     sudakov%event_deps => event_deps
     sudakov%powheg_settings => powheg_settings
+    sudakov%qcd => qcd
   end subroutine sudakov_init
 
 @ %def sudakov_init
@@ -17647,6 +17652,61 @@ normalization $N$ which is given by the grids.
 
 @ %def sudakov_generate_pt2
 @
+<<powheg: sudakov: TBP>>=
+  procedure :: generate_emission => sudakov_generate_emission
+<<powheg: procedures>>=
+  function sudakov_generate_emission (sudakov, random) result (r)
+    type(radiation_t) :: r
+    class(sudakov_t), intent(inout) :: sudakov
+    real(default), intent(in), dimension(5) :: random
+    real(default) :: s
+    logical :: vetoed
+    s = sudakov%event_deps%cms_energy2
+    sudakov%current_pt2_max = sudakov%xi2_max * s
+    sudakov%last_log = sudakov%log_integrated_ubf (sudakov%current_pt2_max)
+    LOOP_UNTIL_ACCEPTED: do
+       r%pt2 = sudakov%generate_pt2 (random(1))
+       vetoed = sudakov%reweight_alpha_s (r%pt2, random(2))
+       if (vetoed) then
+          sudakov%current_pt2_max = r%pt2
+          cycle
+       end if
+       <<generate xi>>
+       r%y = one - (two * r%pt2) / (s * r%xi**2)
+       if (ENSURE) then
+          call assert_equal (output_unit, r%pt2, &
+               s / two * r%xi**2 * (one - r%y), &
+               "sudakov_generate_emission: pt2")
+       end if
+       vetoed = sudakov%reweight_norm (r%xi, r%y, random(4))
+       if (vetoed) then
+          sudakov%current_pt2_max = r%pt2
+          cycle
+       end if
+       r%phi = random(5) * 2 * pi
+       exit
+    end do LOOP_UNTIL_ACCEPTED
+  end function sudakov_generate_emission
+
+@ %def sudakov_generate_emission
+@ Generate $\xi \in [\frac{p_\text{T}}{\sqrts{s}}, \xi_\text{max}]$
+with a density $1 / \xi$
+<<generate xi>>=
+r%xi = exp (((1-random(3)) * log (r%pt2 / s) &
+                       + random(3) * log (sudakov%xi2_max)) / two)
+@
+@
+<<powheg: sudakov: TBP>>=
+  procedure :: reweight_norm => sudakov_reweight_norm
+<<powheg: procedures>>=
+  pure function sudakov_reweight_norm (sudakov, xi, y, random) result (vetoed)
+    logical :: vetoed
+    class(sudakov_t), intent(in) :: sudakov
+    real(default), intent(in) :: xi, y, random
+    !vetoed = random < norm(xi, y) / sudakov%norm_max
+  end function sudakov_reweight_norm
+
+@ %def sudakov_reweight_norm
 \paragraph{Simple FSR}
 <<powheg: public>>=
   public :: sudakov_simple_fsr_t
@@ -17672,7 +17732,7 @@ normalization $N$ which is given by the grids.
 
 @ %def sudakov_simple_fsr_upper_bound_func
 @ This is fixed to $n_f=5$ for radiation generation. It will be
-reweighted to the variable-flavour two loop expression., pt2l
+reweighted to the more precise $\alpha_s$.
 <<powheg: parameters>>=
   real(default), parameter :: b0rad = (33 - 2 * 5) / (12 * pi)
   real(default), parameter :: lambda_test = 0.5
@@ -17788,7 +17848,7 @@ reweighted to the variable-flavour two loop expression., pt2l
        end if
 
        call powheg%sudakov(alr)%s%init (powheg%process_deps, &
-            powheg%event_deps, powheg%settings)
+            powheg%event_deps, powheg%settings, powheg%qcd)
     end do
   end subroutine powheg_setup_sudakovs
 
@@ -17834,89 +17894,6 @@ reweighted to the variable-flavour two loop expression., pt2l
   end subroutine powheg_update
 
 @ %def powheg_update
-@
-\paragraph{$\alpha_s$ and its reweighting}
-[[running_alpha_s]] should implement a variable-flavor-2-loop result
-and optionally return [[n_flavors]] that are active at the scale.  The
-main point to ensure here is that the simple fixed-flavor-1-loop
-expression $\alpha_s^\text{rad}$ is larger than the more accurate
-$\alpha_s$ such that we can use a reweighting veto and use $\alpha_s^\text{rad}$
-for the generation of the emission. This can be done by setting
-\begin{equation}
-  \alpha_s^\text{rad}(\mu_0) = \alpha_s (\mu_0)
-\end{equation}
-whereby $\mu_0^2$ is the [[scale_to_relate2]] that is taken to be
-$(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
-[[settings%lambda2]].
-<<powheg: powheg: TBP>>=
-  procedure :: compute_lambda2_gen => powheg_compute_lambda2_gen
-<<powheg: procedures>>=
-  subroutine powheg_compute_lambda2_gen (powheg)
-    class(powheg_t), intent(inout) :: powheg
-    real(default) :: alpha_s, scale_to_relate2
-    scale_to_relate2 = 4 * powheg%settings%lambda2
-    alpha_s = powheg%get_alpha (scale_to_relate2)
-    powheg%process_deps%lambda2_gen = exp (- one / (b0rad * alpha_s)) * scale_to_relate2
-  end subroutine powheg_compute_lambda2_gen
-
-@ %def powheg_compute_lambda2_gen
-@
-<<powheg: powheg: TBP>>=
-  procedure :: get_alpha => powheg_get_alpha
-<<powheg: procedures>>=
-  function powheg_get_alpha (powheg, scale2) result (alpha_s)
-    real(default) :: alpha_s
-    class(powheg_t), intent(in) :: powheg
-    real(default), intent(in) :: scale2
-    integer :: nf
-    ! TODO: (bcn 2015-01-30) implement variable flavor alpha_s
-    ! TODO: (bcn 2015-02-05) Do we want from scale or from lambda or both?
-    alpha_s = powheg%qcd%alpha%get (sqrt(scale2))
-    select type (alpha => powheg%qcd%alpha)
-    type is (alpha_qcd_from_scale_t)
-       nf = alpha%nf
-    type is (alpha_qcd_from_lambda_t)
-       nf = alpha%nf
-    class default
-       call msg_warning ("powheg_get_alpha: QCD type is not running! Assuming 5-flavors!")
-       nf = 5
-    end select
-    alpha_s = improve_nll_accuracy (alpha_s, nf)
-  end function powheg_get_alpha
-
-@ %def powheg_get_alpha
-@ See (4.31) in 0709.2092. Should be used everywhere in the Sudakov
-exponent.
-<<powheg: procedures>>=
-  pure function improve_nll_accuracy (alpha_s, n_flavors) result (alpha_s_imp)
-    real(default) :: alpha_s_imp
-    real(default), intent(in) :: alpha_s
-    integer, intent(in) :: n_flavors
-      alpha_s_imp = alpha_s * (one + alpha_s / (two*pi) * &
-           ((67.0_default/18 - pi**2/6) * CA - five/9 * n_flavors))
-  end function improve_nll_accuracy
-
-@ %def improve_nll_accuracy
-@
-<<powheg: powheg: TBP>>=
-  procedure :: reweight_alpha_s => powheg_reweight_alpha_s
-<<powheg: procedures>>=
-  function powheg_reweight_alpha_s (powheg, pt2, random) result (vetoed)
-    logical :: vetoed
-    class(powheg_t), intent(in) :: powheg
-    real(default), intent(in) :: pt2, random
-    real(default) :: alpha_s_true, alpha_s_rad
-    alpha_s_true = powheg%get_alpha (pt2)
-    alpha_s_rad = one / (b0rad * log (pt2 / powheg%process_deps%lambda2_gen))
-    if (ENSURE) then
-       if (alpha_s_rad < alpha_s_true) then
-          call msg_fatal ("powheg_reweight_alpha_s: This should never happen!")
-       end if
-    end if
-    vetoed = random < alpha_s_rad / alpha_s_true
-  end function powheg_reweight_alpha_s
-
-@ %def powheg_reweight_alpha_s
 @
 \paragraph{Generation algorithm and grid initialization}
 [[compute_sqme_real]] is the projected real matrix element
@@ -18065,44 +18042,115 @@ values $(f_B)$
 <<powheg: procedures>>=
   subroutine powheg_generate_emission (powheg)
     class(powheg_t), intent(inout) :: powheg
-    type(radiation_t) :: radiation, radiation_max
-    real(default) :: xi2_max, random
+    type(radiation_t) :: r, r_max
+    real(default) :: xi2_max
+    real(default), dimension(5) :: random
     integer :: alr
-    real(default) :: pt2_max, pt2
+    real(default) :: pt2_max, pt2, xi
     logical :: vetoed = .false.
-    radiation_max%pt2 = zero
+    r_max%pt2 = zero
+    r_max%alr = 0
     do alr = 1, powheg%n_alr
        associate (nlo => powheg%process_instance%nlo_data)
           xi2_max = nlo%get_xi_max (alr)**2
        end associate
        call powheg%sudakov(alr)%s%update (xi2_max)
-       pt2_max = xi2_max * powheg%event_deps%cms_energy2
-       powheg%sudakov(alr)%s%current_pt2_max = pt2_max
-       powheg%sudakov(alr)%s%last_log = &
-              powheg%sudakov(alr)%s%log_integrated_ubf (pt2_max)
-
-       LOOP_UNTIL_ACCEPTED: do
-          call powheg%rng%generate (random)
-          pt2 = powheg%sudakov(alr)%s%generate_pt2 (random)
-          if (vetoed) then
-             powheg%sudakov(alr)%s%current_pt2_max = pt2
-             cycle
-          end if
-          exit
-       end do LOOP_UNTIL_ACCEPTED
-
-       if (radiation%pt2 > radiation_max%pt2) then
-          radiation_max = radiation
+       call powheg%rng%generate (random)
+       r = powheg%sudakov(alr)%s%generate_emission (random)
+       ! veto according to ME
+       if (r%pt2 > r_max%pt2) then
+          r%alr = alr
+          r_max = r
        end if
     end do
-    if (radiation_max%pt2 > powheg%settings%pt2_min) then
+    if (r_max%pt2 > powheg%settings%pt2_min) then
        !call select_alpha_r
-       !call add_generated_radiation (particle_set, radiation_max,
-       !alpha_r, )
+       !call add_generated_r (particle_set, r_max, )
     end if
   end subroutine powheg_generate_emission
 
 @ %def generate_emission
+@
+\subsubsection{$\alpha_s$ and its reweighting}
+[[running_alpha_s]] should implement a variable-flavor-2-loop result
+and optionally return [[n_flavors]] that are active at the scale.  The
+main point to ensure here is that the simple fixed-flavor-1-loop
+expression $\alpha_s^\text{rad}$ is larger than the more accurate
+$\alpha_s$ such that we can use a reweighting veto and use $\alpha_s^\text{rad}$
+for the generation of the emission. This can be done by setting
+\begin{equation}
+  \alpha_s^\text{rad}(\mu_0) = \alpha_s (\mu_0)
+\end{equation}
+whereby $\mu_0^2$ is the [[scale_to_relate2]] that is taken to be
+$(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
+[[settings%lambda2]].
+<<powheg: powheg: TBP>>=
+  procedure :: compute_lambda2_gen => powheg_compute_lambda2_gen
+<<powheg: procedures>>=
+  subroutine powheg_compute_lambda2_gen (powheg)
+    class(powheg_t), intent(inout) :: powheg
+    real(default) :: alpha_s, scale_to_relate2
+    scale_to_relate2 = 4 * powheg%settings%lambda2
+    alpha_s = get_alpha (powheg%qcd, scale_to_relate2)
+    powheg%process_deps%lambda2_gen = exp (- one / (b0rad * alpha_s)) * scale_to_relate2
+  end subroutine powheg_compute_lambda2_gen
+
+@ %def powheg_compute_lambda2_gen
+@
+<<powheg: procedures>>=
+  function get_alpha (qcd, scale2) result (alpha_s)
+    real(default) :: alpha_s
+    class(qcd_t), intent(in) :: qcd
+    real(default), intent(in) :: scale2
+    integer :: nf
+    ! TODO: (bcn 2015-01-30) implement variable flavor alpha_s
+    ! TODO: (bcn 2015-02-05) Do we want from scale or from lambda or both?
+    alpha_s = qcd%alpha%get (sqrt(scale2))
+    select type (alpha => qcd%alpha)
+    type is (alpha_qcd_from_scale_t)
+       nf = alpha%nf
+    type is (alpha_qcd_from_lambda_t)
+       nf = alpha%nf
+    class default
+       call msg_warning ("get_alpha: QCD type is not running! Assuming 5-flavors!")
+       nf = 5
+    end select
+    alpha_s = improve_nll_accuracy (alpha_s, nf)
+  end function get_alpha
+
+@ %def get_alpha
+@ See (4.31) in 0709.2092. Should be used everywhere in the Sudakov
+exponent.
+<<powheg: procedures>>=
+  pure function improve_nll_accuracy (alpha_s, n_flavors) result (alpha_s_imp)
+    real(default) :: alpha_s_imp
+    real(default), intent(in) :: alpha_s
+    integer, intent(in) :: n_flavors
+      alpha_s_imp = alpha_s * (one + alpha_s / (two*pi) * &
+           ((67.0_default/18 - pi**2/6) * CA - five/9 * n_flavors))
+  end function improve_nll_accuracy
+
+@ %def improve_nll_accuracy
+@
+<<powheg: sudakov: TBP>>=
+  procedure :: reweight_alpha_s => sudakov_reweight_alpha_s
+<<powheg: procedures>>=
+  function sudakov_reweight_alpha_s (sudakov, pt2, random) result (vetoed)
+    logical :: vetoed
+    class(sudakov_t), intent(in) :: sudakov
+    real(default), intent(in) :: pt2, random
+    real(default) :: alpha_s_true, alpha_s_rad
+    alpha_s_true = get_alpha (sudakov%qcd, pt2)
+    alpha_s_rad = one / (b0rad * log (pt2 / sudakov%process_deps%lambda2_gen))
+    if (ENSURE) then
+       if (alpha_s_rad < alpha_s_true) then
+          call msg_fatal ("sudakov_reweight_alpha_s: This should never happen!")
+       end if
+    end if
+    vetoed = random < alpha_s_rad / alpha_s_true
+  end function sudakov_reweight_alpha_s
+
+@ %def sudakov_reweight_alpha_s
 @
 \subsubsection{Unit tests}
 <<powheg: public>>=
