@@ -17877,18 +17877,15 @@ reweighted to the more precise $\alpha_s$.
 <<powheg: powheg: TBP>>=
   procedure :: init => powheg_init
 <<powheg: procedures>>=
-  subroutine powheg_init (powheg, settings, process_name, qcd)
+  subroutine powheg_init (powheg, settings, process_name)
     class(powheg_t), intent(out) :: powheg
     type(powheg_settings_t), intent(in) :: settings
     type(string_t), intent(in) :: process_name
-    type(qcd_t), intent(in), target :: qcd
 
     allocate (powheg%settings)
     powheg%settings = settings
     powheg%process_name = process_name
     allocate (powheg%event_deps, powheg%process_deps)
-    powheg%qcd => qcd
-    call powheg%compute_lambda2_gen ()
   end subroutine powheg_init
 
 @ %def powheg_init
@@ -18309,7 +18306,8 @@ ready for generating events.
     type(process_t) :: process
     type(process_instance_t) :: process_instance
 
-    type(qcd_t) :: qcd
+    type(qcd_t), pointer :: qcd => null()
+    allocate (qcd)
 
     write (u, "(A)")  "* Test output: powheg_1"
     write (u, "(A)")  "*   Purpose: Initialization"
@@ -18320,7 +18318,7 @@ ready for generating events.
     born_me = five
     prefix = "test_powheg_1"
     powheg%settings%n_init = 1000
-    call powheg%init (powheg_settings, process_name, qcd)
+    call powheg%init (powheg_settings, process_name)
     call setup_testbed &
        (prefix, os_data, lib, model_list, process, process_instance)
     do i = 1, powheg%settings%n_init
@@ -18852,19 +18850,17 @@ dispatching.
 <<Pure Shower: evt pure shower: TBP>>=
   procedure :: init => evt_pure_shower_init
 <<Pure Shower: procedures>>=
-  subroutine evt_pure_shower_init (evt, settings, model_hadrons, qcd)
+  subroutine evt_pure_shower_init (evt, settings, model_hadrons)
     class(evt_pure_shower_t), intent(out) :: evt
     type(pure_shower_settings_t), intent(in) :: settings
     type(model_t), intent(in), target :: model_hadrons
-    type(qcd_t), intent(in), target :: qcd
     type(powheg_settings_t) :: powheg_settings
     type(string_t) :: process_name
     evt%settings = settings
     evt%model_hadrons => model_hadrons
-    evt%qcd => qcd
     process_name = "test"
     if (evt%settings%powheg_matching) then
-       call evt%powheg%init (powheg_settings, process_name, qcd)
+       call evt%powheg%init (powheg_settings, process_name)
     end if
   end subroutine evt_pure_shower_init
   
@@ -18980,8 +18976,6 @@ evaluation chain.
   subroutine evt_pure_shower_generate_weighted (evt, probability)
     class(evt_pure_shower_t), intent(inout) :: evt
     real(default), intent(out) :: probability
-    type(vector4_t), dimension(:), allocatable :: p_test
-    print *, 'previous particle set exists: ', evt%previous%particle_set_exists
     if (evt%previous%particle_set_exists) then
        if (DEBUG)  print *, "Pure Shower: apply shower"
 !!! TODO: Import rng once during dispatch
@@ -18989,7 +18983,6 @@ evaluation chain.
        evt%particle_set = evt%previous%particle_set
        if (evt%settings%powheg_matching) then
           call particle_set_write (evt%particle_set)
-          p_test = evt%particle_set%get_momenta ()
           call evt%powheg%update (evt%particle_set)
           call evt%powheg%generate_emission ()
        end if
@@ -26702,11 +26695,10 @@ concatenated, we provide individual dispatchers for each of them.
 <<Dispatch: public>>=
   public :: dispatch_evt_pure_shower
 <<Dispatch: procedures>>=
-  subroutine dispatch_evt_pure_shower (evt, global, process, qcd)
+  subroutine dispatch_evt_pure_shower (evt, global, process)
     class(evt_t), intent(out), pointer :: evt
     type(rt_data_t), intent(in), target :: global
     type(process_t), intent(in), optional, target :: process
-    type(qcd_t), intent(in), target :: qcd
     logical :: allow_shower
     type(var_list_t), pointer :: var_list
     type(string_t) :: lhapdf_file, lhapdf_dir
@@ -26730,7 +26722,7 @@ concatenated, we provide individual dispatchers for each of them.
        type is (evt_pure_shower_t)
           call settings%init (var_list)
 
-          call evt%init (settings, global%fallback_model, qcd)
+          call evt%init (settings, global%fallback_model)
 !!! TODO: Bijan
           if (LHAPDF6_AVAILABLE) then
             call lhapdf_initialize &
@@ -31477,7 +31469,7 @@ module simulations
   use compilations
   use integrations
   use event_streams
-
+  use pure_shower
 <<Standard module head>>
 
 <<Simulations: public>>
@@ -31871,7 +31863,7 @@ base type by the [[connect]] method, so we can reference them later.
     type(process_t), pointer :: process, master_process
     type(process_instance_t), pointer :: process_instance
     integer :: i
-    
+
     call prepare_process (master_process, process_id, integrate, local, global)
     if (signal_is_pending ())  return
 
@@ -31925,8 +31917,10 @@ base type by the [[connect]] method, so we can reference them later.
           call process_instance%init_simulation (i, entry%config%safety_factor)
        end do
     end if
-    call dispatch_qcd (entry%qcd, local)
     call entry%setup_event_transforms (process, local)
+    call dispatch_qcd (entry%qcd, local)
+
+    call entry%connect_qcd ()
 
     if (present (global)) then
        call entry%connect (process_instance, local%model, global%process_stack)
@@ -32066,9 +32060,9 @@ objects and store them.
        if (.not. local%get_lval (var_str ("?powheg_matching"))) then
           call dispatch_evt_shower (evt, local, process)
        else
-          call dispatch_evt_pure_shower (evt, local, process, entry%qcd)
+          call dispatch_evt_pure_shower (evt, local, process)
        end if
-       if (associated (evt))  call entry%import_transform (evt)
+      if (associated (evt))  call entry%import_transform (evt)
     end if
   end subroutine entry_setup_event_transforms
 
@@ -32198,6 +32192,26 @@ parameters stored in the process object.
   end subroutine entry_combine_mci_sets
  
 @ %def entry_combine_mci_sets
+@
+<<Simulations: entry: TBP>>=
+  procedure :: connect_qcd => entry_connect_qcd
+<<Simulations: procedures>>=
+  subroutine entry_connect_qcd (entry)
+    class(entry_t), intent(inout), target :: entry
+    class(evt_t), pointer :: evt
+    evt => entry%transform_first
+    do while (associated (evt))
+       select type (evt)
+       type is (evt_pure_shower_t)
+          evt%qcd => entry%qcd
+          evt%powheg%qcd => entry%qcd
+          call evt%powheg%compute_lambda2_gen ()
+       end select
+       evt => evt%next
+    end do
+  end subroutine entry_connect_qcd
+
+@ %def entry_connect_qcd
 @
 \subsection{Entries for alternative environment}
 Entries for alternate environments.  [No additional components
