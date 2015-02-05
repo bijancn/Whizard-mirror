@@ -17376,6 +17376,7 @@ module powheg
   use, intrinsic :: iso_fortran_env
   use unit_tests
   use io_units, only: given_output_unit, free_unit
+  use format_defs
   use physics_defs
   use diagnostics
   use rng_base
@@ -17474,6 +17475,24 @@ used to decide which ubf object is allocated.
   end type radiation_t
 
 @ %def radiation_t
+@
+<<powheg: radiation: TBP>>=
+  procedure :: write => radiation_write
+<<powheg: procedures>>=
+  subroutine radiation_write (radiation, unit)
+    class(radiation_t), intent(in) :: radiation
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit);  if (u < 0)  return
+    write (u, "(A)") "radiation_t:"
+    write (u, "(A," // FMT_16 // ")") "xi = ", radiation%xi
+    write (u, "(A," // FMT_16 // ")") "y = ", radiation%y
+    write (u, "(A," // FMT_16 // ")") "phi = ", radiation%phi
+    write (u, "(A," // FMT_16 // ")") "pt2 = ", radiation%pt2
+    write (u, "(A, I12)") "alr = ", radiation%alr
+  end subroutine radiation_write
+
+@ %def radiation_write
 @ [[lambda2_gen]] $\neq$ [[lambda2]] and is used in the upper bounding
 functions.
 <<powheg: public>>=
@@ -17725,10 +17744,9 @@ r%xi = exp (((1-random(3)) * log (r%pt2 / s) &
     real(default) :: u
     class(sudakov_simple_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: xi, y
-    real(default) :: kT2, alpha_s
+    real(default) :: kT2
     kT2 = sudakov%event_deps%cms_energy2 / 2 * xi**2 * (1 - y)
-    alpha_s = 1 / (b0rad * log (kT2 / sudakov%process_deps%lambda2_gen))
-    u = alpha_s / (xi * (1 - y))
+    u = sudakov%alpha_s_rad (kT2) / (xi * (1 - y))
   end function sudakov_simple_fsr_upper_bound_func
 
 @ %def sudakov_simple_fsr_upper_bound_func
@@ -18001,8 +18019,6 @@ The following is valid for one underlying Born.
        end do 
     end associate
     call powheg%set_normalizations ()
-!!    call powheg%generate_emission ()
-!!    stop 'Check grids'
 
   contains 
 
@@ -18143,6 +18159,18 @@ exponent.
 @ %def improve_nll_accuracy
 @
 <<powheg: sudakov: TBP>>=
+  procedure :: alpha_s_rad => sudakov_alpha_s_rad
+<<powheg: procedures>>=
+  elemental function sudakov_alpha_s_rad (sudakov, scale) result (y)
+    real(default) :: y
+    class(sudakov_t), intent(in) :: sudakov
+    real(default), intent(in) :: scale
+    y = one / (b0rad * log (scale / sudakov%process_deps%lambda2_gen))
+  end function sudakov_alpha_s_rad
+
+@ %def sudakov_alpha_s_rad
+@
+<<powheg: sudakov: TBP>>=
   procedure :: reweight_alpha_s => sudakov_reweight_alpha_s
 <<powheg: procedures>>=
   function sudakov_reweight_alpha_s (sudakov, pt2, random) result (vetoed)
@@ -18151,9 +18179,12 @@ exponent.
     real(default), intent(in) :: pt2, random
     real(default) :: alpha_s_true, alpha_s_rad
     alpha_s_true = get_alpha (sudakov%qcd, pt2)
-    alpha_s_rad = one / (b0rad * log (pt2 / sudakov%process_deps%lambda2_gen))
+    alpha_s_rad = sudakov%alpha_s_rad (pt2)
     if (ENSURE) then
        if (alpha_s_rad < alpha_s_true) then
+          print *, 'pt2 =    ', pt2
+          print *, 'alpha_s_rad =    ', alpha_s_rad
+          print *, 'alpha_s_true =    ', alpha_s_true
           call msg_fatal ("sudakov_reweight_alpha_s: This should never happen!")
        end if
     end if
