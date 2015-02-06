@@ -17475,6 +17475,7 @@ used to decide which ubf object is allocated.
   type :: radiation_t
     real(default) :: xi, y, phi, pt2
     integer :: alr
+    logical :: valid = .false.
   contains
   <<powheg: radiation: TBP>>
   end type radiation_t
@@ -17751,15 +17752,18 @@ normalization $N$ which is given by the grids.
 <<powheg: sudakov: TBP>>=
   procedure :: generate_emission => sudakov_generate_emission
 <<powheg: procedures>>=
-  function sudakov_generate_emission (sudakov) result (r)
-    type(radiation_t) :: r
+  subroutine sudakov_generate_emission (sudakov, success, r)
     class(sudakov_t), intent(inout) :: sudakov
+    logical, intent(out) :: success
+    type(radiation_t), intent(out) :: r
     real(default) :: s, random
     logical :: vetoed
     s = sudakov%event_deps%cms_energy2
     sudakov%current_pt2_max = sudakov%xi2_max * s
     sudakov%last_log = sudakov%log_integrated_ubf (sudakov%current_pt2_max)
+    success = .false.
     LOOP_UNTIL_ACCEPTED: do
+       r%valid = .false.
        call sudakov%rng%generate (random)
        r%pt2 = sudakov%generate_pt2 (random)
        if (r%pt2 <= sudakov%powheg_settings%pt2_min) then
@@ -17776,6 +17780,7 @@ normalization $N$ which is given by the grids.
        call r%compute_y (s)
        call sudakov%rng%generate (random)
        r%phi = random * twopi
+       r%valid = .true.
        if (ENSURE) then
           call assert_equal (output_unit, r%pt2, &
                s / two * r%xi**2 * (one - r%y), &
@@ -17787,9 +17792,10 @@ normalization $N$ which is given by the grids.
           sudakov%current_pt2_max = r%pt2
           cycle
        end if
+       success = .true.
        exit
     end do LOOP_UNTIL_ACCEPTED
-  end function sudakov_generate_emission
+  end subroutine sudakov_generate_emission
 
 @ %def sudakov_generate_emission
 @
@@ -17804,6 +17810,8 @@ normalization $N$ which is given by the grids.
   end function sudakov_reweight_norm
 
 @ %def sudakov_reweight_norm
+@
+
 \paragraph{Simple FSR}
 <<powheg: public>>=
   public :: sudakov_simple_fsr_t
@@ -18018,6 +18026,32 @@ reweighted to the more precise $\alpha_s$.
 
 @ %def powheg_update
 @
+<<powheg: powheg: TBP>>=
+  procedure :: reweight_matrix_elements => powheg_reweight_matrix_elements
+<<powheg: procedures>>=
+  function powheg_reweight_matrix_elements (powheg, radiation, random, alr) &
+                                                           result (vetoed)
+    logical :: vetoed
+    class(powheg_t), intent(inout) :: powheg
+    type(radiation_t), intent(in) :: radiation
+    real(default), intent(in) :: random
+    integer, intent(in) :: alr
+    integer :: emitter
+    type(vector4_t), dimension(:), allocatable :: p_real
+    
+    emitter = powheg%process_instance%nlo_data%get_emitter (alr)
+    print *, 'p_born: '
+    call vector4_write_set (powheg%event_deps%p_born)
+    print *, 'emitter: ', emitter
+    print *, 'xi: ', radiation%xi, 'y: ', radiation%y, 'phi: ', radiation%phi
+    p_real =  powheg%phs_fks_generator%generate_fsr_from_xi_and_y (radiation%xi, &
+                                        radiation%y, radiation%phi, emitter, &
+                                        powheg%event_deps%p_born)
+    call vector4_write_set (p_real, show_mass = .true.)
+  end function powheg_reweight_matrix_elements
+
+@ %def powheg_reweight_matrix_element
+@
 \paragraph{Generation algorithm and grid initialization}
 [[compute_sqme_real]] is the projected real matrix element
 $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is
@@ -18165,10 +18199,11 @@ values $(f_B)$
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t) :: r, r_max
     real(default) :: xi2_max
-    real(default), dimension(5) :: random
+    real(default) :: random
     integer :: alr
     real(default) :: pt2_max, pt2, xi
     logical :: vetoed = .false.
+    logical :: success 
     r_max%pt2 = zero
     r_max%alr = 0
     do alr = 1, powheg%process_deps%n_alr
@@ -18176,13 +18211,15 @@ values $(f_B)$
           xi2_max = nlo%get_xi_max (alr)**2
        end associate
        call powheg%sudakov(alr)%s%update (xi2_max)
-       call powheg%rng%generate (random)
-       r = powheg%sudakov(alr)%s%generate_emission ()
+       call powheg%sudakov(alr)%s%generate_emission (success, r)
        ! veto according to ME
        if (r%pt2 > r_max%pt2) then
           r%alr = alr
           r_max = r
        end if
+       call powheg%rng%generate (random)
+       if (success) &
+          vetoed = powheg%reweight_matrix_elements (r, random, alr)
     end do
     if (r_max%pt2 > powheg%settings%pt2_min) then
        !call select_alpha_r
