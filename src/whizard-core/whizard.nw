@@ -17187,7 +17187,8 @@ contains
 end module pure_shower
 @ %def pure_shower
 <<Pure Shower: parameters>>=
-  logical, parameter :: DEBUG = .false.
+  logical, parameter :: DEBUG = .true.
+  logical, parameter :: POWHEG_TESTING = .true.
   logical, parameter :: TO_FILE = .false.
   integer, parameter :: ANALYTIC = 1
 @ %def DEBUG TO_FILE ANALYTIC
@@ -17375,7 +17376,9 @@ module powheg
 <<Use strings>>
   use, intrinsic :: iso_fortran_env
   use unit_tests
+  use system_defs, only: TAB
   use io_units, only: given_output_unit, free_unit
+  use format_utils, only: write_separator
   use format_defs
   use physics_defs
   use diagnostics
@@ -17459,12 +17462,12 @@ used to decide which ubf object is allocated.
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit);  if (u < 0)  return
-    write (u, *) "pt2_min", powheg_settings%pt2_min
-    write (u, *) "lambda", powheg_settings%lambda
-    write (u, *) "n_init", powheg_settings%n_init
-    write (u, *) "size_grid_xi", powheg_settings%size_grid_xi
-    write (u, *) "size_grid_y", powheg_settings%size_grid_y
-    write (u, *) "upper_bound_func", powheg_settings%upper_bound_func
+    write (u, "(A," // FMT_16 //")") "pt2_min = " // TAB, powheg_settings%pt2_min
+    write (u, "(A," // FMT_16 //")") "lambda = " // TAB, powheg_settings%lambda
+    write (u, "(A,I12)") "n_init = " // TAB, powheg_settings%n_init
+    write (u, "(A,I12)") "size_grid_xi = " // TAB, powheg_settings%size_grid_xi
+    write (u, "(A,I12)") "size_grid_y = " // TAB, powheg_settings%size_grid_y
+    write (u, "(A,I12)") "upper_bound_func = " // TAB, powheg_settings%upper_bound_func
   end subroutine powheg_settings_write
 
 @ %def powheg_settings_write
@@ -17521,8 +17524,9 @@ functions.
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit);  if (u < 0)  return
-    write (u, "(A," // FMT_19 // ")") "lambda2_gen = ", process_deps%lambda2_gen
-    write (u, "(A, I12)") "n_alr = ", process_deps%n_alr
+    write (u, "(1X,A)") "Process dependencies:"
+    write (u, "(3X,A," // FMT_19 // ")") "lambda2_gen = " // TAB, process_deps%lambda2_gen
+    write (u, "(3X,A, I12)") "n_alr = " // TAB, process_deps%n_alr
   end subroutine process_deps_write
 
 @ %def process_deps_write
@@ -17549,8 +17553,9 @@ functions.
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit);  if (u < 0)  return
-    write (u, "(A," // FMT_19 // ")") "cms_energy2 = ", event_deps%cms_energy2
-    write (u, "(A," // FMT_19 // ")") "born_me = ", event_deps%born_me
+    write (u, "(1X,A)") "Event dependencies:"
+    write (u, "(3X,A," // FMT_19 // ")") "cms_energy2 = ", event_deps%cms_energy2
+    write (u, "(3X,A," // FMT_19 // ")") "born_me = ", event_deps%born_me
   end subroutine event_deps_write
 
 @ %def event_deps_write
@@ -17621,8 +17626,8 @@ This contains the $\alpha_r$ dependent pieces
      type(powheg_settings_t), pointer :: powheg_settings => null()
      type(qcd_t), pointer :: qcd => null()
      class(rng_t), pointer :: rng => null()
-     real(default) :: xi2_max, norm_max, random ! remove random now
-     real(default) :: current_pt2_max, last_log
+     real(default) :: xi2_max, norm_max
+     real(default) :: current_pt2_max, last_log, random
   contains
    <<powheg: sudakov: TBP>>
   end type sudakov_t
@@ -17637,10 +17642,10 @@ This contains the $\alpha_r$ dependent pieces
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit);  if (u < 0)  return
-    write (u, "(A," // FMT_19 // ")") "xi2_max = ", sudakov%xi2_max
-    write (u, "(A," // FMT_19 // ")") "norm_max = ", sudakov%norm_max
-    write (u, "(A," // FMT_19 // ")") "current_pt2_max = ", sudakov%current_pt2_max
-    write (u, "(A," // FMT_19 // ")") "last_log = ", sudakov%last_log
+    write (u, "(1X,A," // FMT_19 // ")") "xi2_max = " // TAB, sudakov%xi2_max
+    write (u, "(1X,A," // FMT_19 // ")") "norm_max = " // TAB, sudakov%norm_max
+    write (u, "(1X,A," // FMT_19 // ")") "current_pt2_max = " // TAB, sudakov%current_pt2_max
+    write (u, "(1X,A," // FMT_19 // ")") "last_log = " // TAB, sudakov%last_log
   end subroutine sudakov_write
 
 @ %def sudakov_write
@@ -17729,13 +17734,12 @@ normalization $N$ which is given by the grids.
 <<powheg: sudakov: TBP>>=
   procedure :: generate_pt2 => sudakov_generate_pt2
 <<powheg: procedures>>=
-  function sudakov_generate_pt2 (sudakov, random) result (pt2)
+  function sudakov_generate_pt2 (sudakov) result (pt2)
     real(default) :: pt2
     class(sudakov_t), intent(inout) :: sudakov
-    real(default), intent(in) :: random
     logical :: success
     success = .false.
-    sudakov%random = random
+    call sudakov%rng%generate (sudakov%random)
     pt2 = solve_interval (sudakov, &
          sudakov%powheg_settings%pt2_min, &
          sudakov%current_pt2_max, success, &
@@ -17764,8 +17768,7 @@ normalization $N$ which is given by the grids.
     success = .false.
     LOOP_UNTIL_ACCEPTED: do
        r%valid = .false.
-       call sudakov%rng%generate (random)
-       r%pt2 = sudakov%generate_pt2 (random)
+       r%pt2 = sudakov%generate_pt2 ()
        if (r%pt2 <= sudakov%powheg_settings%pt2_min) then
           exit
        end if
@@ -17807,11 +17810,24 @@ normalization $N$ which is given by the grids.
     class(sudakov_t), intent(in) :: sudakov
     real(default), intent(in) :: xi, y, random
     !vetoed = random < norm(xi, y) / sudakov%norm_max
+    vetoed = .false.
   end function sudakov_reweight_norm
 
 @ %def sudakov_reweight_norm
 @
+<<powheg: sudakov: TBP>>=
+  procedure :: evaluate => sudakov_evaluate
+<<powheg: procedures>>=
+  pure function sudakov_evaluate (solver_f, x) result (f)
+    real(default) :: f
+    class(sudakov_t), intent(in) :: solver_f
+    real(default), intent(in) :: x
+    f = log (solver_f%random) + solver_f%norm_max * solver_f%log_integrated_ubf (x) &
+         - solver_f%last_log
+  end function sudakov_evaluate
 
+@ %def sudakov_evaluate
+@
 \paragraph{Simple FSR}
 <<powheg: public>>=
   public :: sudakov_simple_fsr_t
@@ -17840,6 +17856,7 @@ reweighted to the more precise $\alpha_s$.
 <<powheg: parameters>>=
   real(default), parameter :: b0rad = (33 - 2 * 5) / (12 * pi)
 @ %def b0
+@ $p_\text{T,max}=\xi_\text{max}^2s$
 <<powheg: sudakov simple fsr: TBP>>=
   procedure :: log_integrated_ubf => sudakov_simple_fsr_log_integrated_ubf
 <<powheg: procedures>>=
@@ -17864,21 +17881,6 @@ reweighted to the more precise $\alpha_s$.
   end function sudakov_simple_fsr_log_integrated_ubf
 
 @ %def sudakov_simple_fsr_log_integrated_ubf
-@ $p_\text{T,max}=\xi_\text{max}^2s$
-@
-<<powheg: sudakov simple fsr: TBP>>=
-  procedure :: evaluate => sudakov_simple_fsr_evaluate
-<<powheg: procedures>>=
-  pure function sudakov_simple_fsr_evaluate (solver_f, x) result (f)
-    real(default) :: f
-    class(sudakov_simple_fsr_t), intent(in) :: solver_f
-    real(default), intent(in) :: x
-    real(default) :: test
-    f = log (solver_f%random) + solver_f%norm_max * solver_f%log_integrated_ubf (x) &
-         - solver_f%last_log
-  end function sudakov_simple_fsr_evaluate
-
-@ %def sudakov_simple_fsr_evaluate
 @
 \subsubsection{Main POWHEG class}
 <<powheg: public>>=
@@ -17902,6 +17904,36 @@ reweighted to the more precise $\alpha_s$.
 @ %def powheg_t
 @
 \paragraph{Output}
+<<powheg: powheg: TBP>>=
+  procedure :: display_grid_startup_message => &
+                      powheg_display_grid_startup_message
+<<powheg: procedures>>=
+  subroutine powheg_display_grid_startup_message (powheg)
+    class(powheg_t), intent(in) :: powheg
+    real(default) :: points_per_cell 
+    write (msg_buffer, "(A,A,A)") "Generating grid for process '", &
+                               char (powheg%process_name), "'"
+    call msg_message
+    associate (settings => powheg%settings)
+       write (msg_buffer, "(A,I10)") "Number of xi-points: ", &
+                                      settings%size_grid_xi
+       call msg_message ()
+       write (msg_buffer, "(A,I10)") "Number of y-points: ", &
+                                      settings%size_grid_y
+       call msg_message ()
+       write (msg_buffer, "(A,I6, A)") "Using ", settings%n_init , &
+                                       "sampling points"
+       points_per_cell =  settings%n_init*one / &
+                          (settings%size_grid_xi * settings%size_grid_y)
+       write (msg_buffer, "(A, F5.2, A)") "Average: ", points_per_cell, &
+                                        " points per cell"
+       call msg_message ()
+       write (msg_buffer, "(A)") "Progress: "
+       call msg_message ()
+    end associate
+  end subroutine powheg_display_grid_startup_message
+
+@ %def powheg_display_grid_startup_message
 @
 <<powheg: powheg: TBP>>=
   procedure :: write => powheg_write
@@ -17911,21 +17943,25 @@ reweighted to the more precise $\alpha_s$.
     integer, intent(in), optional :: unit
     integer :: u, alr
     u = given_output_unit (unit);  if (u < 0)  return
-    write (u, "(A)") char (powheg%process_name)
+    call write_separator (u, 2)
+    write (*, "(1X,A)") "POWHEG Emission Generator"
+    write (u, "(1X,A)") "Process name: " // char (powheg%process_name)
     call powheg%rng%write (u)
-    call powheg%grid%write (u)
-    !call powheg%phs_fks_generator%write (u)
     call powheg%settings%write (u)
-    call powheg%process_instance%write (u)
     call powheg%event_deps%write (u)
     call powheg%process_deps%write (u)
+    call powheg%qcd%write (u)
     do alr = 1, size(powheg%sudakov)
+       call write_separator (u)
+       write (*, "(1X,A,I12,A)") "sudakov (alr = ", alr, ")"
        call powheg%sudakov(alr)%s%write (u)
     end do
-    call powheg%qcd%write (u)
+    !call powheg%process_instance%write (u) ! too much information
+    call write_separator (u, 2)
   end subroutine powheg_write
 
 @ %def powheg_write
+@
 \paragraph{Initialization and Finalization}
 <<powheg: powheg: TBP>>=
   procedure :: connect => powheg_connect
@@ -18072,37 +18108,6 @@ Jacobian.
   end function powheg_compute_sqme_real
 
 @ %def powheg_compute_sqme_real  
-@
-<<powheg: powheg: TBP>>=
-  procedure :: display_grid_startup_message => &
-                      powheg_display_grid_startup_message
-<<powheg: procedures>>=
-  subroutine powheg_display_grid_startup_message (powheg)
-    class(powheg_t), intent(in) :: powheg
-    real(default) :: points_per_cell 
-    write (msg_buffer, "(A,A,A)") "Generating grid for process '", &
-                               char (powheg%process_name), "'"
-    call msg_message
-    associate (settings => powheg%settings)
-       write (msg_buffer, "(A,I10)") "Number of xi-points: ", &
-                                      settings%size_grid_xi
-       call msg_message ()
-       write (msg_buffer, "(A,I10)") "Number of y-points: ", &
-                                      settings%size_grid_y
-       call msg_message ()
-       write (msg_buffer, "(A,I6, A)") "Using ", settings%n_init , &
-                                       "sampling points"
-       points_per_cell =  settings%n_init*one / &
-                          (settings%size_grid_xi * settings%size_grid_y)
-       write (msg_buffer, "(A, F5.2, A)") "Average: ", points_per_cell, &
-                                        " points per cell"
-       call msg_message ()
-       write (msg_buffer, "(A)") "Progress: "
-       call msg_message ()
-    end associate
-  end subroutine powheg_display_grid_startup_message
-
-@ %def powheg_display_grid_startup_message
 @
 For each underlying Born $f_b$, there is a number of radiation regions.
 A radiation region rr may correspond multiple $\alpha_r$s.  The phase
@@ -18619,7 +18624,6 @@ the public [[set]] functions and setting up the [[shower]] object.
     integer :: u_S2W
 
     if (signal_is_pending ()) return
-    call shower_import_rng (shower%rng)
     if (.not. msg_written) then
        call msg_message ("Using WHIZARD's internal showering")
        msg_written = .true.
@@ -18818,7 +18822,6 @@ the public [[set]] functions and setting up the [[shower]] object.
     end if         
        
     call shower%implementation%final ()
-    call shower_export_rng (shower%rng)
     !!! clean-up muli: we should finalize the muli pdf sets 
     !!!      when _all_ runs are done. Not after every event if possible
     ! call mi%finalize()
@@ -19123,19 +19126,19 @@ evaluation chain.
     class(evt_pure_shower_t), intent(inout) :: evt
     real(default), intent(out) :: probability
     if (evt%previous%particle_set_exists) then
-       if (DEBUG)  print *, "Pure Shower: apply shower"
-!!! TODO: Import rng once during dispatch
-       call evt%shower%import_rng (evt%rng)
+       if (DEBUG)  print *, "Pure Shower: Generate weighted event"
        evt%particle_set = evt%previous%particle_set
        if (evt%settings%powheg_matching) then
           call particle_set_write (evt%particle_set)
           call evt%powheg%update (evt%particle_set)
           call evt%powheg%generate_emission ()
+          if (DEBUG) call evt%powheg%write ()
        end if
-       stop 'Check particle set'
-       call evt%shower%generate_emissions ( evt%particle_set, &
-            evt%settings, evt%model, evt%model_hadrons, &
-            number_of_emissions=1)
+       if (.not. POWHEG_TESTING) then
+          call evt%shower%generate_emissions ( evt%particle_set, &
+               evt%settings, evt%model, evt%model_hadrons, &
+               number_of_emissions=1)
+       end if
        if (DEBUG) then
           print *, "Pure Shower: obtained particle set after SHOWER"
           call particle_set_write (evt%particle_set)
