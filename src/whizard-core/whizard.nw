@@ -17187,7 +17187,7 @@ contains
 end module pure_shower
 @ %def pure_shower
 <<Pure Shower: parameters>>=
-  logical, parameter :: DEBUG = .true.
+  logical, parameter :: DEBUG = .false.
   logical, parameter :: POWHEG_TESTING = .true.
   logical, parameter :: TO_FILE = .false.
   integer, parameter :: ANALYTIC = 1
@@ -17769,7 +17769,7 @@ normalization $N$ which is given by the grids.
     if (ENSURE) then
        call assert_equal (OUTPUT_UNIT, r%pt2, &
             s / two * r%xi**2 * (one - r%y), &
-            "sudakov_generate_emission: pt2")
+            "sudakov_generate_xi_and_y_and_phi: pt2 inconsistency")
     end if
   end subroutine sudakov_generate_xi_and_y_and_phi
 
@@ -17778,15 +17778,13 @@ normalization $N$ which is given by the grids.
 <<powheg: sudakov: TBP>>=
   procedure :: generate_emission => sudakov_generate_emission
 <<powheg: procedures>>=
-  subroutine sudakov_generate_emission (sudakov, success, r)
+  subroutine sudakov_generate_emission (sudakov, r)
     class(sudakov_t), intent(inout) :: sudakov
-    logical, intent(out) :: success
-    type(radiation_t), intent(out) :: r
+    type(radiation_t), intent(inout) :: r
     real(default) :: s
     logical :: vetoed
-    sudakov%current_pt2_max = sudakov%xi2_max * sudakov%event_deps%cms_energy2
+    sudakov%current_pt2_max = r%pt2
     sudakov%last_log = sudakov%log_integrated_ubf (sudakov%current_pt2_max)
-    success = .false.
     LOOP_UNTIL_ACCEPTED: do
        r%valid = .false.
        r%pt2 = sudakov%generate_pt2 ()
@@ -17794,36 +17792,17 @@ normalization $N$ which is given by the grids.
           exit
        end if
        vetoed = sudakov%reweight_alpha_s (r%pt2)
-       <<if vetoed, reset current_pt2_max and cycle>>
+       if (vetoed) then
+          sudakov%current_pt2_max = r%pt2
+          cycle
+       end if
        call sudakov%generate_xi_and_y_and_phi (r)
-       vetoed = sudakov%reweight_norm (r%xi, r%y)
-       <<if vetoed, reset current_pt2_max and cycle>>
        r%valid = .true.
-       success = .true.
        exit
     end do LOOP_UNTIL_ACCEPTED
   end subroutine sudakov_generate_emission
 
 @ %def sudakov_generate_emission
-<<if vetoed, reset current_pt2_max and cycle>>=
-if (vetoed) then
-   sudakov%current_pt2_max = r%pt2
-   cycle
-end if
-@
-<<powheg: sudakov: TBP>>=
-  procedure :: reweight_norm => sudakov_reweight_norm
-<<powheg: procedures>>=
-  function sudakov_reweight_norm (sudakov, xi, y) result (vetoed)
-    logical :: vetoed
-    class(sudakov_t), intent(inout) :: sudakov
-    real(default), intent(in) :: xi, y
-    call sudakov%rng%generate (sudakov%random)
-    !vetoed = sudakov%random < norm(xi, y) / sudakov%norm_max
-    vetoed = .false.
-  end function sudakov_reweight_norm
-
-@ %def sudakov_reweight_norm
 @
 <<powheg: sudakov: TBP>>=
   procedure :: evaluate => sudakov_evaluate
@@ -18075,19 +18054,17 @@ reweighted to the more precise $\alpha_s$.
 <<powheg: powheg: TBP>>=
   procedure :: reweight_matrix_elements => powheg_reweight_matrix_elements
 <<powheg: procedures>>=
-  function powheg_reweight_matrix_elements (powheg, radiation, random, alr) &
-                                                           result (vetoed)
+  function powheg_reweight_matrix_elements (powheg, r) result (vetoed)
     logical :: vetoed
     class(powheg_t), intent(inout) :: powheg
-    type(radiation_t), intent(in) :: radiation
-    real(default), intent(in) :: random
-    integer, intent(in) :: alr
+    type(radiation_t), intent(in) :: r
+    real(default) :: random
     integer :: emitter
     type(vector4_t), dimension(:), allocatable :: p_real
-    
-    emitter = powheg%process_instance%nlo_data%get_emitter (alr)
-    p_real =  powheg%phs_fks_generator%generate_fsr_from_xi_and_y (radiation%xi, &
-                                        radiation%y, radiation%phi, emitter, &
+    call powheg%rng%generate (random)
+    emitter = powheg%process_instance%nlo_data%get_emitter (r%alr)
+    p_real =  powheg%phs_fks_generator%generate_fsr_from_xi_and_y (r%xi, &
+                                        r%y, r%phi, emitter, &
                                         powheg%event_deps%p_born)
 !    call vector4_write_set (p_real, show_mass = .true.)
   end function powheg_reweight_matrix_elements
@@ -18209,26 +18186,31 @@ values $(f_B)$
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t) :: r, r_max
     real(default) :: xi2_max
-    real(default) :: random
     integer :: alr
-    logical :: vetoed = .false.
-    logical :: success 
+    logical :: vetoed
     r_max%pt2 = zero
     r_max%alr = 0
     do alr = 1, powheg%process_deps%n_alr
-       associate (nlo => powheg%process_instance%nlo_data)
+       associate (nlo => powheg%process_instance%nlo_data, &
+               sudakov => powheg%sudakov(alr)%s)
           xi2_max = nlo%get_xi_max (alr)**2
-       end associate
-       call powheg%sudakov(alr)%s%update (xi2_max)
-       call powheg%sudakov(alr)%s%generate_emission (success, r)
-       ! veto according to ME
-       if (r%pt2 > r_max%pt2) then
+          call sudakov%update (xi2_max)
           r%alr = alr
-          r_max = r
-       end if
-       call powheg%rng%generate (random)
-       if (success) &
-          vetoed = powheg%reweight_matrix_elements (r, random, alr)
+          r%pt2 = sudakov%xi2_max * powheg%event_deps%cms_energy2
+          do
+             call powheg%sudakov(alr)%s%generate_emission (r)
+             if (r%valid) then
+                vetoed = powheg%reweight_norm (r)
+                if (vetoed) cycle
+                vetoed = powheg%reweight_matrix_elements (r)
+                if (vetoed) cycle
+                exit
+             end if
+          end do
+          if (r%pt2 > r_max%pt2 .and. r%valid) then
+             r_max = r
+          end if
+       end associate
     end do
     if (r_max%pt2 > powheg%settings%pt2_min) then
        !call select_alpha_r
@@ -18237,7 +18219,34 @@ values $(f_B)$
   end subroutine powheg_generate_emission
 
 @ %def generate_emission
-@
+@ Only massless for now
+<<powheg: powheg: TBP>>=
+  procedure :: reweight_norm => powheg_reweight_norm
+<<powheg: procedures>>=
+  function powheg_reweight_norm (powheg, r) result (vetoed)
+    logical :: vetoed
+    class(powheg_t), intent(inout) :: powheg
+    type(radiation_t), intent(in) :: r
+    real(default), dimension(2) :: rands
+    real(default) :: f_alr, random, norm_max, norm_true
+    call powheg%rng%generate (random)
+    f_alr = (one * r%alr) / powheg%process_deps%n_alr
+    rands(I_XI) = r%xi / sqrt(powheg%sudakov(r%alr)%s%xi2_max)
+    rands(I_Y) = (one - r%y) / two
+    norm_true = powheg%grid%get_value ([rands, f_alr])
+    norm_max = powheg%sudakov(r%alr)%s%norm_max
+    if (ENSURE) then
+       if (r%xi > sqrt(powheg%sudakov(r%alr)%s%xi2_max)) then
+          call msg_bug ("powheg_reweight_norm: xi shouldnt be larger than xi_max")
+       end if
+       if (norm_true > norm_max) then
+          call msg_bug ("powheg_reweight_norm: xi shouldnt be larger than xi_max")
+       end if
+    end if
+    vetoed = random < norm_true / norm_max
+  end function powheg_reweight_norm
+
+@ %def powheg_reweight_norm
 \subsubsection{$\alpha_s$ and its reweighting}
 [[running_alpha_s]] should implement a variable-flavor-2-loop result
 and optionally return [[n_flavors]] that are active at the scale.  The
