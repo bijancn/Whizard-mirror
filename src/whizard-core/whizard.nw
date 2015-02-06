@@ -17754,16 +17754,37 @@ normalization $N$ which is given by the grids.
 @ %def sudakov_generate_pt2
 @
 <<powheg: sudakov: TBP>>=
+  procedure :: generate_xi_and_y_and_phi => sudakov_generate_xi_and_y_and_phi
+<<powheg: procedures>>=
+  subroutine sudakov_generate_xi_and_y_and_phi (sudakov, r)
+    class(sudakov_t), intent(inout) :: sudakov
+    type(radiation_t), intent(inout) :: r
+    real(default) :: s
+    s = sudakov%event_deps%cms_energy2
+    call sudakov%rng%generate (sudakov%random)
+    call r%compute_xi (sudakov%random, sudakov%xi2_max, s)
+    call r%compute_y (s)
+    call sudakov%rng%generate (sudakov%random)
+    r%phi = sudakov%random * twopi
+    if (ENSURE) then
+       call assert_equal (OUTPUT_UNIT, r%pt2, &
+            s / two * r%xi**2 * (one - r%y), &
+            "sudakov_generate_emission: pt2")
+    end if
+  end subroutine sudakov_generate_xi_and_y_and_phi
+
+@ %def sudakov_generate_xi_and_y_and_phi
+@
+<<powheg: sudakov: TBP>>=
   procedure :: generate_emission => sudakov_generate_emission
 <<powheg: procedures>>=
   subroutine sudakov_generate_emission (sudakov, success, r)
     class(sudakov_t), intent(inout) :: sudakov
     logical, intent(out) :: success
     type(radiation_t), intent(out) :: r
-    real(default) :: s, random
+    real(default) :: s
     logical :: vetoed
-    s = sudakov%event_deps%cms_energy2
-    sudakov%current_pt2_max = sudakov%xi2_max * s
+    sudakov%current_pt2_max = sudakov%xi2_max * sudakov%event_deps%cms_energy2
     sudakov%last_log = sudakov%log_integrated_ubf (sudakov%current_pt2_max)
     success = .false.
     LOOP_UNTIL_ACCEPTED: do
@@ -17772,44 +17793,33 @@ normalization $N$ which is given by the grids.
        if (r%pt2 <= sudakov%powheg_settings%pt2_min) then
           exit
        end if
-       call sudakov%rng%generate (random)
-       vetoed = sudakov%reweight_alpha_s (r%pt2, random)
-       if (vetoed) then
-          sudakov%current_pt2_max = r%pt2
-          cycle
-       end if
-       call sudakov%rng%generate (random)
-       call r%compute_xi (random, sudakov%xi2_max, s)
-       call r%compute_y (s)
-       call sudakov%rng%generate (random)
-       r%phi = random * twopi
+       vetoed = sudakov%reweight_alpha_s (r%pt2)
+       <<if vetoed, reset current_pt2_max and cycle>>
+       call sudakov%generate_xi_and_y_and_phi (r)
+       vetoed = sudakov%reweight_norm (r%xi, r%y)
+       <<if vetoed, reset current_pt2_max and cycle>>
        r%valid = .true.
-       if (ENSURE) then
-          call assert_equal (output_unit, r%pt2, &
-               s / two * r%xi**2 * (one - r%y), &
-               "sudakov_generate_emission: pt2")
-       end if
-       call sudakov%rng%generate (random)
-       vetoed = sudakov%reweight_norm (r%xi, r%y, random)
-       if (vetoed) then
-          sudakov%current_pt2_max = r%pt2
-          cycle
-       end if
        success = .true.
        exit
     end do LOOP_UNTIL_ACCEPTED
   end subroutine sudakov_generate_emission
 
 @ %def sudakov_generate_emission
+<<if vetoed, reset current_pt2_max and cycle>>=
+if (vetoed) then
+   sudakov%current_pt2_max = r%pt2
+   cycle
+end if
 @
 <<powheg: sudakov: TBP>>=
   procedure :: reweight_norm => sudakov_reweight_norm
 <<powheg: procedures>>=
-  pure function sudakov_reweight_norm (sudakov, xi, y, random) result (vetoed)
+  function sudakov_reweight_norm (sudakov, xi, y) result (vetoed)
     logical :: vetoed
-    class(sudakov_t), intent(in) :: sudakov
-    real(default), intent(in) :: xi, y, random
-    !vetoed = random < norm(xi, y) / sudakov%norm_max
+    class(sudakov_t), intent(inout) :: sudakov
+    real(default), intent(in) :: xi, y
+    call sudakov%rng%generate (sudakov%random)
+    !vetoed = sudakov%random < norm(xi, y) / sudakov%norm_max
     vetoed = .false.
   end function sudakov_reweight_norm
 
@@ -18310,10 +18320,10 @@ exponent.
 <<powheg: sudakov: TBP>>=
   procedure :: reweight_alpha_s => sudakov_reweight_alpha_s
 <<powheg: procedures>>=
-  function sudakov_reweight_alpha_s (sudakov, pt2, random) result (vetoed)
+  function sudakov_reweight_alpha_s (sudakov, pt2) result (vetoed)
     logical :: vetoed
-    class(sudakov_t), intent(in) :: sudakov
-    real(default), intent(in) :: pt2, random
+    class(sudakov_t), intent(inout) :: sudakov
+    real(default), intent(in) :: pt2
     real(default) :: alpha_s_true, alpha_s_rad
     alpha_s_true = get_alpha (sudakov%qcd, pt2)
     alpha_s_rad = sudakov%alpha_s_rad (pt2)
@@ -18326,7 +18336,8 @@ exponent.
           call msg_fatal ("sudakov_reweight_alpha_s: This should never happen!")
        end if
     end if
-    vetoed = random < alpha_s_rad / alpha_s_true
+    call sudakov%rng%generate (sudakov%random)
+    vetoed = sudakov%random < alpha_s_rad / alpha_s_true
   end function sudakov_reweight_alpha_s
 
 @ %def sudakov_reweight_alpha_s
