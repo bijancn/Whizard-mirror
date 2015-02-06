@@ -4302,6 +4302,17 @@ instance; the process object just copies the instance counter.
 @ %def sqme_collector_get_sqme_sum
 @
 <<Processes: sqme collector: TBP>>=
+  procedure :: get_sqme_born => sqme_collector_get_sqme_born
+<<Processes: procedures>>=
+  function sqme_collector_get_sqme_born (collector) result (sqme)
+    class(sqme_collector_t), intent(in) :: collector
+    real(default) :: sqme
+    sqme = collector%sqme_born
+  end function sqme_collector_get_sqme_born
+
+@ %def sqme_collector_get_sqme_born
+@
+<<Processes: sqme collector: TBP>>=
   procedure :: setup_sqme_real => sqme_collector_setup_sqme_real
 <<Processes: procedures>>=
   subroutine sqme_collector_setup_sqme_real (collector, n_particles)
@@ -17187,7 +17198,7 @@ contains
 end module pure_shower
 @ %def pure_shower
 <<Pure Shower: parameters>>=
-  logical, parameter :: DEBUG = .true.
+  logical, parameter :: DEBUG = .false.
   logical, parameter :: POWHEG_TESTING = .true.
   logical, parameter :: TO_FILE = .false.
   integer, parameter :: ANALYTIC = 1
@@ -17380,6 +17391,8 @@ module powheg
   use io_units, only: given_output_unit, free_unit
   use format_utils, only: write_separator
   use format_defs
+  use os_interface
+  use string_utils
   use physics_defs
   use diagnostics
   use rng_base
@@ -17439,9 +17452,9 @@ $\alpha_s^\text{rad}$ is still larger than the true $\alpha_s$.
   type :: powheg_settings_t
      real(default) :: pt2_min = 1._default
      real(default) :: lambda = LAMBDA_QCD_REF
-     integer :: n_init = 2000
-     integer :: size_grid_xi = 100
-     integer :: size_grid_y = 100
+     integer :: n_init = GRIDPOINTS_DEFAULT
+     integer :: size_grid_xi = 50
+     integer :: size_grid_y = 50
      integer :: upper_bound_func = UBF_SIMPLE
   contains
    <<powheg: powheg settings: TBP>>
@@ -17452,6 +17465,7 @@ $\alpha_s^\text{rad}$ is still larger than the true $\alpha_s$.
 used to decide which ubf object is allocated.
 <<powheg: parameters>>=
   integer, parameter :: UBF_SIMPLE = 1
+  integer, parameter :: GRIDPOINTS_DEFAULT = 100000
 @ %def UBF_SIMPLE
 @
 <<powheg: powheg settings: TBP>>=
@@ -17613,6 +17627,56 @@ partonic vs hadronic cms as well as decays in POWHEG:
   end subroutine event_deps_set_cms
 
 @ %def event_deps_set_cms
+@
+<<powheg: types>>=
+  type :: veto_counter_t
+    integer :: n_alpha_s = 0
+    integer :: n_unorm = 0
+    integer :: n_sqme = 0
+    integer :: veto_alpha_s = 0
+    integer :: veto_unorm = 0
+    integer :: veto_sqme = 0
+  contains
+  <<powheg: veto counter: TBP>>
+  end type veto_counter_t
+
+@ %def veto_counter_t
+@
+<<powheg: veto counter: TBP>>=
+  procedure :: record_alpha_s => veto_counter_record_alpha_s
+<<powheg: procedures>>=
+  subroutine veto_counter_record_alpha_s (counter, vetoed)
+    class(veto_counter_t), intent(inout) :: counter
+    logical, intent(in) :: vetoed
+    counter%n_alpha_s = counter%n_alpha_s + 1
+    if (vetoed) counter%veto_alpha_s = counter%veto_alpha_s + 1
+  end subroutine veto_counter_record_alpha_s
+
+@ %def veto_counter_record_alpha_s
+@
+<<powheg: veto counter: TBP>>=
+  procedure :: record_unorm => veto_counter_record_unorm
+<<powheg: procedures>>=
+  subroutine veto_counter_record_unorm (counter, vetoed)
+    class(veto_counter_t), intent(inout) :: counter
+    logical, intent(in) :: vetoed
+    counter%n_unorm = counter%n_unorm + 1
+    if (vetoed) counter%veto_unorm = counter%veto_unorm + 1
+  end subroutine veto_counter_record_unorm
+
+@ %def veto_counter_record_unorm
+@
+<<powheg: veto counter: TBP>>=
+  procedure :: record_sqme => veto_counter_record_sqme
+<<powheg: procedures>>=
+  subroutine veto_counter_record_sqme (counter, vetoed)
+    class(veto_counter_t), intent(inout) :: counter
+    logical, intent(in) :: vetoed
+    counter%n_sqme = counter%n_sqme + 1
+    if (vetoed) counter%veto_sqme = counter%veto_sqme + 1
+  end subroutine veto_counter_record_sqme
+
+@ %def veto_counter_record_sqme
 @
 \subsubsection{Upper bounding functions and [[sudakov]]s}
 \paragraph{Abstract version}
@@ -18084,12 +18148,23 @@ reweighted to the more precise $\alpha_s$.
     integer, intent(in) :: alr
     integer :: emitter
     type(vector4_t), dimension(:), allocatable :: p_real
+    real(default) :: sqme_real_x_jacobian
+    real(default) :: sqme_born
+    real(default) :: norm_max, ubf
+    real(default) :: ubound
     
     emitter = powheg%process_instance%nlo_data%get_emitter (alr)
     p_real =  powheg%phs_fks_generator%generate_fsr_from_xi_and_y (radiation%xi, &
                                         radiation%y, radiation%phi, emitter, &
                                         powheg%event_deps%p_born)
-!    call vector4_write_set (p_real, show_mass = .true.)
+    powheg%event_deps%p_real = p_real
+    sqme_real_x_jacobian = powheg%compute_sqme_real (emitter)
+    sqme_born = powheg%process_instance%sqme_collector%get_sqme_born ()
+    norm_max = powheg%sudakov(alr)%s%norm_max
+    ubf = powheg%sudakov(alr)%s%upper_bound_func (radiation%xi, radiation%y) 
+    ubound = sqme_born*ubf*norm_max
+    vetoed = ubound*random > sqme_real_x_jacobian
+    print *, 'Matrix elements: ', sqme_real_x_jacobian, ubound*random, vetoed
   end function powheg_reweight_matrix_elements
 
 @ %def powheg_reweight_matrix_element
@@ -18150,7 +18225,7 @@ The following is valid for one underlying Born.
              call fks%get_radiation_variables (emitter, xi, y)
              ubf = powheg%sudakov(alr)%s%upper_bound_func (xi, y)
              norm = real_me / (powheg%event_deps%born_me * ubf)
-             f_alr = (one * alr) / powheg%process_deps%n_alr
+             f_alr = (one * alr) / powheg%process_deps%n_alr - tiny_07
              call powheg%grid%update_maxima &
                   ([radiation_variables(I_XI:I_Y), f_alr], norm)
              call check_and_display_progress
@@ -18191,14 +18266,44 @@ The following is valid for one underlying Born.
 @ %def powheg_set_normalizations
 @
 <<powheg: powheg: TBP>>=
-  procedure :: save_results => powheg_save_results
+  procedure :: save_grids => powheg_save_grids
 <<powheg: procedures>>=
-  subroutine powheg_save_results (powheg)
+  subroutine powheg_save_grids (powheg)
     class(powheg_t), intent(inout) :: powheg
-    call powheg%grid%save_to_file (char (powheg%process_name) // "_powheg_grids.dat")
-  end subroutine powheg_save_results
+    type(string_t) :: filename, n_points
+    n_points = integer_to_string (powheg%settings%n_init)
+    filename = powheg%process_name // "_" // n_points // "_powheg_grids.dat"
+    call powheg%grid%save_to_file (char (filename))
+  end subroutine powheg_save_grids
 
-@ %def powheg_save_results
+@ %def powheg_save_grids
+@
+<<powheg: powheg: TBP>>=
+  procedure :: load_grids => powheg_load_grids
+<<powheg: procedures>>=
+  subroutine powheg_load_grids (powheg)
+    class(powheg_t), intent(inout) :: powheg
+    type(string_t) :: filename, n_points
+    n_points = integer_to_string (powheg%settings%n_init)
+    filename = powheg%process_name // "_" // n_points // "_powheg_grids.dat"
+    call powheg%grid%load_from_file (char (filename))
+  end subroutine powheg_load_grids
+
+@ %def powheg_load_grids
+@
+<<powheg: powheg: TBP>>=
+  procedure :: requires_new_grids => powheg_requires_new_grids
+<<powheg: procedures>>=
+  function powheg_requires_new_grids (powheg) result (requires)
+    logical :: requires
+    class(powheg_t), intent(in) :: powheg
+    type(string_t) :: filename, n_points
+    n_points = integer_to_string (powheg%settings%n_init)
+    filename = powheg%process_name // "_" // n_points // "_powheg_grids.dat"
+    requires = .not. os_file_exist (filename)
+  end function powheg_requires_new_grids    
+
+@ %def powheg_requires_new_grids 
 @ By keeping the radiation with the largest [[pt2]], we are effectively
 implementing the highest bid procedure. This means that we generate
 values $(f_B)$
@@ -18221,7 +18326,6 @@ values $(f_B)$
        end associate
        call powheg%sudakov(alr)%s%update (xi2_max)
        call powheg%sudakov(alr)%s%generate_emission (success, r)
-       ! veto according to ME
        if (r%pt2 > r_max%pt2) then
           r%alr = alr
           r_max = r
@@ -18484,7 +18588,7 @@ ready for generating events.
        !!! call powheg%update (born_me, born_momenta)
        !call powheg%fill_grids ()
     end do
-    call powheg%save_results ()
+    call powheg%save_grids ()
 
     write (u, "(A)")
     write (u, "(A)")  "* Test output end: powheg_1"
@@ -18997,7 +19101,12 @@ hadrons that can be generated in the shower.
     call evt%base_connect (process_instance, model, process_stack)
     call evt%make_rng (evt%process)
     call evt%powheg%connect (process_instance)
-    call evt%powheg%fill_grids ()
+    if (evt%powheg%requires_new_grids()) then
+       call evt%powheg%fill_grids ()
+       call evt%powheg%save_grids ()
+    else
+       call evt%powheg%load_grids ()
+    end if
   end subroutine evt_pure_shower_connect
 
 @ %def evt_pure_shower_connect
