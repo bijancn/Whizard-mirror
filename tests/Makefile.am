@@ -74,6 +74,7 @@ UNIT_TESTS = \
     phs_single.run \
     phs_forests.run \
     phs_wood.run \
+    phs_fks_generator.run \
     rng_base.run \
     rng_tao.run \
     selectors.run \
