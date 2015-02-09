@@ -17441,6 +17441,7 @@ end module powheg
 @ Should be turned off for production, once everything runs as expected.
 <<powheg: parameters>>=
   logical, parameter :: ENSURE = .true.
+  logical, parameter :: DEBUG_EVENTS = .false.
 @ %def ENSURE
 @
 \subsubsection{Base types for settings and data}
@@ -17878,7 +17879,7 @@ normalization $N$ which is given by the grids.
     class(sudakov_t), intent(inout) :: sudakov
     type(radiation_t), intent(inout) :: r
     real(default) :: s
-    logical :: vetoed
+    logical :: accepted
     sudakov%current_pt2_max = r%pt2
     sudakov%last_log = sudakov%log_integrated_ubf (sudakov%current_pt2_max)
     LOOP_UNTIL_ACCEPTED: do
@@ -17887,9 +17888,9 @@ normalization $N$ which is given by the grids.
        if (r%pt2 <= sudakov%powheg_settings%pt2_min) then
           exit
        end if
-       vetoed = sudakov%reweight_alpha_s (r%pt2)
-       call sudakov%veto_counter%record_alpha_s (vetoed)
-       if (vetoed) then
+       accepted = sudakov%reweight_alpha_s (r%pt2)
+       call sudakov%veto_counter%record_alpha_s (.not. accepted)
+       if (.not. accepted) then
           sudakov%current_pt2_max = r%pt2
           cycle
        end if
@@ -18167,18 +18168,15 @@ reweighted to the more precise $\alpha_s$.
 <<powheg: powheg: TBP>>=
   procedure :: reweight_matrix_elements => powheg_reweight_matrix_elements
 <<powheg: procedures>>=
-  function powheg_reweight_matrix_elements (powheg, r) result (vetoed)
-    logical :: vetoed
+  function powheg_reweight_matrix_elements (powheg, r) result (accepted)
+    logical :: accepted
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t), intent(in) :: r
     real(default) :: random
     integer :: emitter
     type(vector4_t), dimension(:), allocatable :: p_real
-    real(default) :: sqme_real_x_jacobian
-    real(default) :: sqme_born
-    real(default) :: norm_max, ubf
-    real(default) :: ubound
-    
+    real(default) :: sqme_real_x_jacobian, sqme_born
+    real(default) :: norm_max, ubf, ubound
     call powheg%rng%generate (random)
     emitter = powheg%process_instance%nlo_data%get_emitter (r%alr)
     p_real =  powheg%phs_fks_generator%generate_fsr_from_xi_and_y (r%xi, &
@@ -18190,7 +18188,7 @@ reweighted to the more precise $\alpha_s$.
     norm_max = powheg%sudakov(r%alr)%s%norm_max
     ubf = powheg%sudakov(r%alr)%s%upper_bound_func (r%xi, r%y) 
     ubound = sqme_born*ubf*norm_max
-    vetoed = ubound*random > sqme_real_x_jacobian
+    accepted = random < sqme_real_x_jacobian / ubound
   end function powheg_reweight_matrix_elements
 
 @ %def powheg_reweight_matrix_element
@@ -18352,7 +18350,7 @@ values $(f_B)$
     type(radiation_t) :: r, r_max
     real(default) :: xi2_max
     integer :: alr
-    logical :: vetoed
+    logical :: accepted
     r_max%pt2 = zero
     r_max%alr = 0
     do alr = 1, powheg%process_deps%n_alr
@@ -18365,12 +18363,12 @@ values $(f_B)$
           do
              call powheg%sudakov(alr)%s%generate_emission (r)
              if (r%valid) then
-                vetoed = powheg%reweight_norm (r)
-                call sudakov%veto_counter%record_norm (vetoed)
-                if (vetoed) cycle
-                vetoed = powheg%reweight_matrix_elements (r)
-                call sudakov%veto_counter%record_sqme (vetoed)
-                if (vetoed) cycle
+                accepted = powheg%reweight_norm (r)
+                call sudakov%veto_counter%record_norm (.not. accepted)
+                if (.not. accepted) cycle
+                accepted = powheg%reweight_matrix_elements (r)
+                call sudakov%veto_counter%record_sqme (.not. accepted)
+                if (.not. accepted) cycle
              end if
              exit
           end do
@@ -18390,8 +18388,8 @@ values $(f_B)$
 <<powheg: powheg: TBP>>=
   procedure :: reweight_norm => powheg_reweight_norm
 <<powheg: procedures>>=
-  function powheg_reweight_norm (powheg, r) result (vetoed)
-    logical :: vetoed
+  function powheg_reweight_norm (powheg, r) result (accepted)
+    logical :: accepted
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t), intent(in) :: r
     real(default), dimension(2) :: rands
@@ -18402,6 +18400,15 @@ values $(f_B)$
     rands(I_Y) = (one - r%y) / two
     norm_true = powheg%grid%get_value ([rands, f_alr])
     norm_max = powheg%sudakov(r%alr)%s%norm_max
+    accepted = random < norm_true / norm_max
+    if (DEBUG_EVENTS) then
+       print *, 'reweight_norm'
+       print *, 'r%alr =    ', r%alr
+       print *, 'random =    ', random
+       print *, 'norm_true =    ', norm_true
+       print *, 'norm_max =    ', norm_max
+       print *, 'norm accepted =    ', accepted
+    end if
     if (ENSURE) then
        if (r%xi > sqrt(powheg%sudakov(r%alr)%s%xi2_max)) then
           call msg_bug ("powheg_reweight_norm: xi shouldnt be larger than xi_max")
@@ -18410,7 +18417,6 @@ values $(f_B)$
           call msg_bug ("powheg_reweight_norm: xi shouldnt be larger than xi_max")
        end if
     end if
-    vetoed = random < norm_true / norm_max
   end function powheg_reweight_norm
 
 @ %def powheg_reweight_norm
@@ -18490,13 +18496,15 @@ exponent.
 <<powheg: sudakov: TBP>>=
   procedure :: reweight_alpha_s => sudakov_reweight_alpha_s
 <<powheg: procedures>>=
-  function sudakov_reweight_alpha_s (sudakov, pt2) result (vetoed)
-    logical :: vetoed
+  function sudakov_reweight_alpha_s (sudakov, pt2) result (accepted)
+    logical :: accepted
     class(sudakov_t), intent(inout) :: sudakov
     real(default), intent(in) :: pt2
     real(default) :: alpha_s_true, alpha_s_rad
     alpha_s_true = get_alpha (sudakov%qcd, pt2)
     alpha_s_rad = sudakov%alpha_s_rad (pt2)
+    call sudakov%rng%generate (sudakov%random)
+    accepted = sudakov%random < alpha_s_true / alpha_s_rad
     if (ENSURE) then
        if (alpha_s_rad < alpha_s_true) then
           print *, 'pt2 =    ', pt2
@@ -18506,8 +18514,6 @@ exponent.
           call msg_fatal ("sudakov_reweight_alpha_s: This should never happen!")
        end if
     end if
-    call sudakov%rng%generate (sudakov%random)
-    vetoed = sudakov%random < alpha_s_true / alpha_s_rad
   end function sudakov_reweight_alpha_s
 
 @ %def sudakov_reweight_alpha_s
