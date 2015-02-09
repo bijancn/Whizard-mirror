@@ -18266,27 +18266,44 @@ The following is valid for one underlying Born.
   subroutine powheg_fill_grids (powheg)
     class(powheg_t), intent(inout) :: powheg
     real(default), dimension(3) :: radiation_variables
-    real(default) :: f_alr, xi, y, norm, real_me, ubf
+    real(default) :: f_alr, xi, y, phi, norm, real_me, ubf
     integer :: alr, emitter
     integer :: n, n_points
+    logical :: valid_point
     call powheg%display_grid_startup_message()
     n_points = powheg%settings%n_init
     UNTIL_ACCEPTED: do
        associate (nlo => powheg%process_instance%nlo_data, &
                          fks => powheg%phs_fks_generator)
-          do n = 1, n_points
+          n = 1
+          EVALUATE_GRID_POINTS: do
              associate (process => powheg%process_instance%process)
                 call process%generate_weighted_event (powheg%process_instance, 1)
              end associate
              call powheg%update (interaction_get_momenta (nlo%int_born))
              call powheg%rng%generate (radiation_variables)
+             call fks%generate_radiation_variables (radiation_variables, powheg%event_deps%p_born)
+             valid_point = .true.
              do alr = 1, powheg%process_deps%n_alr
                 emitter = nlo%get_emitter (alr)
-                call fks%generate_fsr_from_x &
-                    (radiation_variables, emitter, &
-                     powheg%event_deps%p_born, powheg%event_deps%p_real)
-                real_me = powheg%compute_sqme_real (emitter)
                 call fks%get_radiation_variables (emitter, xi, y)
+                if (.not. check_pt2_min_bound (powheg%settings%pt2_min, &
+                                               powheg%event_deps%cms_energy2, xi, y)) then
+                   valid_point = .false.
+                   exit
+                end if
+             end do  
+             if (.not. valid_point) cycle 
+             do alr = 1, powheg%process_deps%n_alr
+                emitter = nlo%get_emitter (alr)
+                call fks%get_radiation_variables (emitter, xi, y, phi) 
+                !!! call fks%generate_fsr_from_x &
+                !!!    (radiation_variables, emitter, &
+                !!!     powheg%event_deps%p_born, powheg%event_deps%p_real)
+                powheg%event_deps%p_real = fks%generate_fsr_from_xi_and_y &
+                                 (xi, y, phi, emitter, powheg%event_deps%p_born)
+                !!! call fks%get_radiation_variables (emitter, xi, y)
+                real_me = powheg%compute_sqme_real (emitter)
                 ubf = powheg%sudakov(alr)%s%upper_bound_func (xi, y)
                 norm = real_me / (powheg%event_deps%born_me * ubf)
                 if (ENSURE) then
@@ -18304,7 +18321,8 @@ The following is valid for one underlying Born.
                      ([radiation_variables(I_XI:I_Y), f_alr], norm)
                 call check_and_display_progress
              end do
-          end do
+             n = n+1; if (n >= n_points) exit
+          end do EVALUATE_GRID_POINTS
        end associate
        if (powheg%grid%is_non_zero_everywhere ()) then
           return
@@ -18329,6 +18347,13 @@ The following is valid for one underlying Born.
          next_check = next_check + 10
       end if
     end subroutine check_and_display_progress 
+
+    function check_pt2_min_bound (pt2_min, s, xi, y) result (check)
+      logical :: check
+      real(default), intent(in) :: pt2_min, s, xi, y
+      check = s/2 * xi**2 * (1-y) >= pt2_min 
+    end function check_pt2_min_bound
+
   end subroutine powheg_fill_grids
 
 @ %def powheg_fill_grids
