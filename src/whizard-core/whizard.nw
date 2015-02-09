@@ -18229,32 +18229,44 @@ The following is valid for one underlying Born.
     real(default), dimension(3) :: radiation_variables
     real(default) :: f_alr, xi, y, norm, real_me, ubf
     integer :: alr, emitter
-    integer :: n
+    integer :: n, n_points
     call powheg%display_grid_startup_message()
-    associate (nlo => powheg%process_instance%nlo_data, &
-                      fks => powheg%phs_fks_generator)
-       do n = 1, powheg%settings%n_init
-          associate (process => powheg%process_instance%process)
-             call process%generate_weighted_event (powheg%process_instance, 1)
-          end associate
-          call powheg%update (interaction_get_momenta (nlo%int_born))
-          call powheg%rng%generate (radiation_variables)
-          do alr = 1, powheg%process_deps%n_alr
-             emitter = nlo%get_emitter (alr)
-             call fks%generate_fsr_from_x &
-                 (radiation_variables, emitter, &
-                  powheg%event_deps%p_born, powheg%event_deps%p_real)
-             real_me = powheg%compute_sqme_real (emitter)
-             call fks%get_radiation_variables (emitter, xi, y)
-             ubf = powheg%sudakov(alr)%s%upper_bound_func (xi, y)
-             norm = real_me / (powheg%event_deps%born_me * ubf)
-             f_alr = (one * alr) / powheg%process_deps%n_alr - tiny_07
-             call powheg%grid%update_maxima &
-                  ([radiation_variables(I_XI:I_Y), f_alr], norm)
-             call check_and_display_progress
+    n_points = powheg%settings%n_init
+    UNTIL_ACCEPTED: do
+       associate (nlo => powheg%process_instance%nlo_data, &
+                         fks => powheg%phs_fks_generator)
+          do n = 1, n_points
+             associate (process => powheg%process_instance%process)
+                call process%generate_weighted_event (powheg%process_instance, 1)
+             end associate
+             call powheg%update (interaction_get_momenta (nlo%int_born))
+             call powheg%rng%generate (radiation_variables)
+             do alr = 1, powheg%process_deps%n_alr
+                emitter = nlo%get_emitter (alr)
+                call fks%generate_fsr_from_x &
+                    (radiation_variables, emitter, &
+                     powheg%event_deps%p_born, powheg%event_deps%p_real)
+                real_me = powheg%compute_sqme_real (emitter)
+                call fks%get_radiation_variables (emitter, xi, y)
+                ubf = powheg%sudakov(alr)%s%upper_bound_func (xi, y)
+                norm = real_me / (powheg%event_deps%born_me * ubf)
+                f_alr = (one * alr) / powheg%process_deps%n_alr - tiny_07
+                call powheg%grid%update_maxima &
+                     ([radiation_variables(I_XI:I_Y), f_alr], norm)
+                call check_and_display_progress
+             end do
           end do
-       end do 
-    end associate
+       end associate
+       if (powheg%grid%is_non_zero_everywhere ()) then
+          return
+       else
+          n_points = powheg%settings%n_init / 5
+          write (msg_buffer, '(A,I12,A)') 'Number of point for POWHEG grid ' // &
+               'initialization was not enough. Run continues with ', &
+               n_points, ' additional points.'
+          call msg_warning ()
+       end if
+    end do UNTIL_ACCEPTED
 
   contains 
 
@@ -18382,7 +18394,7 @@ values $(f_B)$
     real(default), dimension(2) :: rands
     real(default) :: f_alr, random, norm_max, norm_true
     call powheg%rng%generate (random)
-    f_alr = (one * r%alr) / powheg%process_deps%n_alr
+    f_alr = (one * r%alr) / powheg%process_deps%n_alr - tiny_07
     rands(I_XI) = r%xi / sqrt(powheg%sudakov(r%alr)%s%xi2_max)
     rands(I_Y) = (one - r%y) / two
     norm_true = powheg%grid%get_value ([rands, f_alr])
@@ -18640,11 +18652,7 @@ ready for generating events.
     call powheg%init (powheg_settings, process_name)
     call setup_testbed &
        (prefix, os_data, lib, model_list, process, process_instance)
-    do i = 1, powheg%settings%n_init
-       ! generate new momenta and born ME
-       !!! call powheg%update (born_me, born_momenta)
-       !call powheg%fill_grids ()
-    end do
+    !call powheg%fill_grids ()
     call powheg%save_grids ()
 
     write (u, "(A)")
