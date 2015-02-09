@@ -17441,6 +17441,7 @@ end module powheg
 @ Should be turned off for production, once everything runs as expected.
 <<powheg: parameters>>=
   logical, parameter :: ENSURE = .true.
+  logical, parameter :: DEBUG_EVENTS = .false.
 @ %def ENSURE
 @
 \subsubsection{Base types for settings and data}
@@ -17454,8 +17455,8 @@ $\alpha_s^\text{rad}$ is still larger than the true $\alpha_s$.
      real(default) :: pt2_min = 1._default
      real(default) :: lambda = LAMBDA_QCD_REF
      integer :: n_init = GRIDPOINTS_DEFAULT
-     integer :: size_grid_xi = 10
-     integer :: size_grid_y = 10
+     integer :: size_grid_xi = 5
+     integer :: size_grid_y = 5
      integer :: upper_bound_func = UBF_SIMPLE
   contains
    <<powheg: powheg settings: TBP>>
@@ -17637,6 +17638,7 @@ partonic vs hadronic cms as well as decays in POWHEG:
     integer :: veto_alpha_s = 0
     integer :: veto_norm = 0
     integer :: veto_sqme = 0
+    integer :: n_veto_fail = 0
   contains
   <<powheg: veto counter: TBP>>
   end type veto_counter_t
@@ -17680,6 +17682,16 @@ partonic vs hadronic cms as well as decays in POWHEG:
 @ %def veto_counter_record_sqme
 @
 <<powheg: veto counter: TBP>>=
+  procedure :: record_fail => veto_counter_record_fail
+<<powheg: procedures>>=
+  subroutine veto_counter_record_fail (counter)
+    class(veto_counter_t), intent(inout) :: counter
+    counter%n_veto_fail = counter%n_veto_fail + 1
+  end subroutine veto_counter_record_fail
+
+@ %def veto_counter_record_fail
+@
+<<powheg: veto counter: TBP>>=
   procedure :: write => veto_counter_write
 <<powheg: procedures>>=
   subroutine veto_counter_write (counter, unit)
@@ -17705,6 +17717,8 @@ partonic vs hadronic cms as well as decays in POWHEG:
        write (u, "(A,F4.2)") "Fraction of vetoed points: ", &
                             one*counter%veto_sqme / counter%n_sqme
     call write_separator (u)
+    write (u, "(A,I5)") "Nr. of upper-bound failures: ", &
+                        counter%n_veto_fail
   end subroutine veto_counter_write
 
 @ %def veto_counter_write
@@ -17803,11 +17817,13 @@ normalization $N$ which is given by the grids.
   procedure (sudakov_upper_bound_func), deferred :: upper_bound_func
 <<powheg: interfaces>>=
   abstract interface
-     pure function sudakov_upper_bound_func (sudakov, xi, y) result (u)
+     pure function sudakov_upper_bound_func (sudakov, xi, y, use_true_alpha_s) &
+                                             result (u)
        import
        real(default) :: u
        class(sudakov_t), intent(in) :: sudakov
        real(default), intent(in) :: xi, y
+       logical, intent(in), optional :: use_true_alpha_s
      end function sudakov_upper_bound_func
   end interface
        
@@ -17878,7 +17894,7 @@ normalization $N$ which is given by the grids.
     class(sudakov_t), intent(inout) :: sudakov
     type(radiation_t), intent(inout) :: r
     real(default) :: s
-    logical :: vetoed
+    logical :: accepted
     sudakov%current_pt2_max = r%pt2
     sudakov%last_log = sudakov%log_integrated_ubf (sudakov%current_pt2_max)
     LOOP_UNTIL_ACCEPTED: do
@@ -17887,9 +17903,9 @@ normalization $N$ which is given by the grids.
        if (r%pt2 <= sudakov%powheg_settings%pt2_min) then
           exit
        end if
-       vetoed = sudakov%reweight_alpha_s (r%pt2)
-       call sudakov%veto_counter%record_alpha_s (vetoed)
-       if (vetoed) then
+       accepted = sudakov%reweight_alpha_s (r%pt2)
+       call sudakov%veto_counter%record_alpha_s (.not. accepted)
+       if (.not. accepted) then
           sudakov%current_pt2_max = r%pt2
           cycle
        end if
@@ -17927,13 +17943,23 @@ normalization $N$ which is given by the grids.
 <<powheg: sudakov simple fsr: TBP>>=
   procedure :: upper_bound_func => sudakov_simple_fsr_upper_bound_func
 <<powheg: procedures>>=
-  pure function sudakov_simple_fsr_upper_bound_func (sudakov, xi, y) result (u)
+  function sudakov_simple_fsr_upper_bound_func (sudakov, xi, y, use_true_alpha_s) &
+                                                result (u)
     real(default) :: u
     class(sudakov_simple_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: xi, y
+    logical, intent(in), optional :: use_true_alpha_s
     real(default) :: kT2
+    real(default) :: alpha_s
+    logical :: yorn
     kT2 = sudakov%event_deps%cms_energy2 / 2 * xi**2 * (1 - y)
-    u = sudakov%alpha_s_rad (kT2) / (xi * (1 - y))
+    yorn = .false.; if (present (use_true_alpha_s)) yorn = use_true_alpha_s
+    if (yorn) then
+       alpha_s = get_alpha (sudakov%qcd, kT2)
+    else
+       alpha_s = sudakov%alpha_s_rad (kT2)
+    end if
+    u = alpha_s / (xi*(1-y))
   end function sudakov_simple_fsr_upper_bound_func
 
 @ %def sudakov_simple_fsr_upper_bound_func
@@ -18167,18 +18193,15 @@ reweighted to the more precise $\alpha_s$.
 <<powheg: powheg: TBP>>=
   procedure :: reweight_matrix_elements => powheg_reweight_matrix_elements
 <<powheg: procedures>>=
-  function powheg_reweight_matrix_elements (powheg, r) result (vetoed)
-    logical :: vetoed
+  function powheg_reweight_matrix_elements (powheg, r) result (accepted)
+    logical :: accepted
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t), intent(in) :: r
     real(default) :: random
     integer :: emitter
     type(vector4_t), dimension(:), allocatable :: p_real
-    real(default) :: sqme_real_x_jacobian
-    real(default) :: sqme_born
-    real(default) :: norm_max, ubf
-    real(default) :: ubound
-    
+    real(default) :: sqme_real_x_jacobian, sqme_born
+    real(default) :: norm_max, ubf, ubound
     call powheg%rng%generate (random)
     emitter = powheg%process_instance%nlo_data%get_emitter (r%alr)
     p_real =  powheg%phs_fks_generator%generate_fsr_from_xi_and_y (r%xi, &
@@ -18187,19 +18210,15 @@ reweighted to the more precise $\alpha_s$.
     powheg%event_deps%p_real = p_real
     sqme_real_x_jacobian = powheg%compute_sqme_real (emitter)
     sqme_born = powheg%process_instance%sqme_collector%get_sqme_born ()
-    norm_max = powheg%sudakov(r%alr)%s%norm_max
-    ubf = powheg%sudakov(r%alr)%s%upper_bound_func (r%xi, r%y) 
+    norm_max = powheg%get_norm_true (r)
+    ubf = powheg%sudakov(r%alr)%s%upper_bound_func (r%xi, r%y, .true.) 
     ubound = sqme_born*ubf*norm_max
+    if (sqme_real_x_jacobian/ubound > 1) &
+        call powheg%sudakov(r%alr)%s%veto_counter%record_fail()
     if (ENSURE) then
-       if (sqme_real_x_jacobian/ubound > 1) then
-          call msg_warning ("R/B > 1!")
-       else if (sqme_real_x_jacobian/ubound < 0) then
-          call msg_warning ("R/B < 0!")
-       end if
+       if (sqme_real_x_jacobian/ubound < 0) call msg_warning ("R/B < 0!")
     end if
-!    print *, 'sqme_born: ', sqme_born, 'norm_max: ', norm_max, 'ubf: ', ubf
-!    print *, 'ubound: ', ubound , 'random: ', random, 'sqme_real_x_jacobian: ', sqme_real_x_jacobian
-    vetoed = ubound*random > sqme_real_x_jacobian
+    accepted = random < sqme_real_x_jacobian / ubound
   end function powheg_reweight_matrix_elements
 
 @ %def powheg_reweight_matrix_element
@@ -18361,7 +18380,7 @@ values $(f_B)$
     type(radiation_t) :: r, r_max
     real(default) :: xi2_max
     integer :: alr
-    logical :: vetoed
+    logical :: accepted
     r_max%pt2 = zero
     r_max%alr = 0
     do alr = 1, powheg%process_deps%n_alr
@@ -18374,12 +18393,12 @@ values $(f_B)$
           do
              call powheg%sudakov(alr)%s%generate_emission (r)
              if (r%valid) then
-                vetoed = powheg%reweight_norm (r)
-                call sudakov%veto_counter%record_norm (vetoed)
-                if (vetoed) cycle
-                vetoed = powheg%reweight_matrix_elements (r)
-                call sudakov%veto_counter%record_sqme (vetoed)
-                if (vetoed) cycle
+                accepted = powheg%reweight_norm (r)
+                call sudakov%veto_counter%record_norm (.not. accepted)
+                if (.not. accepted) cycle
+                accepted = powheg%reweight_matrix_elements (r)
+                call sudakov%veto_counter%record_sqme (.not. accepted)
+                if (.not. accepted) cycle
              end if
              exit
           end do
@@ -18399,18 +18418,23 @@ values $(f_B)$
 <<powheg: powheg: TBP>>=
   procedure :: reweight_norm => powheg_reweight_norm
 <<powheg: procedures>>=
-  function powheg_reweight_norm (powheg, r) result (vetoed)
-    logical :: vetoed
+  function powheg_reweight_norm (powheg, r) result (accepted)
+    logical :: accepted
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t), intent(in) :: r
-    real(default), dimension(2) :: rands
-    real(default) :: f_alr, random, norm_max, norm_true
+    real(default) :: random, norm_max, norm_true
     call powheg%rng%generate (random)
-    f_alr = (one * r%alr) / powheg%process_deps%n_alr - tiny_07
-    rands(I_XI) = r%xi / sqrt(powheg%sudakov(r%alr)%s%xi2_max)
-    rands(I_Y) = (one - r%y) / two
-    norm_true = powheg%grid%get_value ([rands, f_alr])
+    norm_true = powheg%get_norm_true (r)
     norm_max = powheg%sudakov(r%alr)%s%norm_max
+    accepted = random < norm_true / norm_max
+    if (DEBUG_EVENTS) then
+       print *, 'reweight_norm'
+       print *, 'r%alr =    ', r%alr
+       print *, 'random =    ', random
+       print *, 'norm_true =    ', norm_true
+       print *, 'norm_max =    ', norm_max
+       print *, 'norm accepted =    ', accepted
+    end if
     if (ENSURE) then
        if (r%xi > sqrt(powheg%sudakov(r%alr)%s%xi2_max)) then
           call msg_bug ("powheg_reweight_norm: xi shouldnt be larger than xi_max")
@@ -18419,10 +18443,27 @@ values $(f_B)$
           call msg_bug ("powheg_reweight_norm: xi shouldnt be larger than xi_max")
        end if
     end if
-    vetoed = random < norm_true / norm_max
   end function powheg_reweight_norm
 
 @ %def powheg_reweight_norm
+@
+<<powheg: powheg: TBP>>=
+  procedure :: get_norm_true => powheg_get_norm_true
+<<powheg: procedures>>=
+  function powheg_get_norm_true (powheg, r) result (norm_true)
+    real(default) :: norm_true
+    class(powheg_t), intent(inout) :: powheg
+    type(radiation_t), intent(in) :: r
+    real(default) :: f_alr
+    real(default), dimension(2) :: rands
+    f_alr = (one*r%alr) / powheg%process_deps%n_alr - tiny_07
+    rands(I_XI) = r%xi / sqrt (powheg%sudakov(r%alr)%s%xi2_max)
+    rands(I_Y) = (one - r%y) / two
+    norm_true = powheg%grid%get_value ([rands, f_alr])
+  end function powheg_get_norm_true
+
+@ %def powheg_get_norm_true
+@
 \subsubsection{$\alpha_s$ and its reweighting}
 [[running_alpha_s]] should implement a variable-flavor-2-loop result
 and optionally return [[n_flavors]] that are active at the scale.  The
@@ -18499,13 +18540,15 @@ exponent.
 <<powheg: sudakov: TBP>>=
   procedure :: reweight_alpha_s => sudakov_reweight_alpha_s
 <<powheg: procedures>>=
-  function sudakov_reweight_alpha_s (sudakov, pt2) result (vetoed)
-    logical :: vetoed
+  function sudakov_reweight_alpha_s (sudakov, pt2) result (accepted)
+    logical :: accepted
     class(sudakov_t), intent(inout) :: sudakov
     real(default), intent(in) :: pt2
     real(default) :: alpha_s_true, alpha_s_rad
     alpha_s_true = get_alpha (sudakov%qcd, pt2)
     alpha_s_rad = sudakov%alpha_s_rad (pt2)
+    call sudakov%rng%generate (sudakov%random)
+    accepted = sudakov%random < alpha_s_true / alpha_s_rad
     if (ENSURE) then
        if (alpha_s_rad < alpha_s_true) then
           print *, 'pt2 =    ', pt2
@@ -18515,8 +18558,6 @@ exponent.
           call msg_fatal ("sudakov_reweight_alpha_s: This should never happen!")
        end if
     end if
-    call sudakov%rng%generate (sudakov%random)
-    vetoed = sudakov%random < alpha_s_true / alpha_s_rad
   end function sudakov_reweight_alpha_s
 
 @ %def sudakov_reweight_alpha_s
