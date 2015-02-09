@@ -17441,7 +17441,7 @@ end module powheg
 @ Should be turned off for production, once everything runs as expected.
 <<powheg: parameters>>=
   logical, parameter :: ENSURE = .true.
-  logical, parameter :: DEBUG_EVENTS = .false.
+  logical, parameter :: DEBUG_EVENTS = .true.
 @ %def ENSURE
 @
 \subsubsection{Base types for settings and data}
@@ -18112,6 +18112,7 @@ reweighted to the more precise $\alpha_s$.
     else
        call powheg%load_grids ()
     end if
+    call powheg%grid%compute_and_write_mean_and_max ()
     call powheg%set_normalizations ()
   end subroutine powheg_setup_grids
 
@@ -18197,11 +18198,10 @@ reweighted to the more precise $\alpha_s$.
     logical :: accepted
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t), intent(in) :: r
-    real(default) :: random
     integer :: emitter
     type(vector4_t), dimension(:), allocatable :: p_real
     real(default) :: sqme_real_x_jacobian, sqme_born
-    real(default) :: norm_max, ubf, ubound
+    real(default) :: norm_max, ubf, ubound, random
     call powheg%rng%generate (random)
     emitter = powheg%process_instance%nlo_data%get_emitter (r%alr)
     p_real =  powheg%phs_fks_generator%generate_fsr_from_xi_and_y (r%xi, &
@@ -18219,6 +18219,13 @@ reweighted to the more precise $\alpha_s$.
        if (sqme_real_x_jacobian/ubound < 0) call msg_warning ("R/B < 0!")
     end if
     accepted = random < sqme_real_x_jacobian / ubound
+    if (DEBUG_EVENTS) then
+       print *, 'reweight_matrix_elements'
+       print *, 'random =    ', random
+       print *, 'sqme_real_x_jacobian =    ', sqme_real_x_jacobian
+       print *, 'ubound =    ', ubound
+       print *, 'matrix element  accepted =    ', accepted
+    end if
   end function powheg_reweight_matrix_elements
 
 @ %def powheg_reweight_matrix_element
@@ -18281,6 +18288,16 @@ The following is valid for one underlying Born.
                 call fks%get_radiation_variables (emitter, xi, y)
                 ubf = powheg%sudakov(alr)%s%upper_bound_func (xi, y)
                 norm = real_me / (powheg%event_deps%born_me * ubf)
+                if (ENSURE) then
+                   if (.not. (zero < norm .and. norm < one)) then
+                      print *, 'real_me =    ', real_me
+                      print *, 'ubf =    ', ubf
+                      print *, 'powheg%event_deps%born_me =    ', powheg%event_deps%born_me
+                      print *, 'emitter =    ', emitter
+                      print *, 'norm =    ', norm
+                      call msg_bug ("powheg_fill_grids: norm is out of bounds")
+                   end if
+                end if
                 f_alr = (one * alr) / powheg%process_deps%n_alr - tiny_07
                 call powheg%grid%update_maxima &
                      ([radiation_variables(I_XI:I_Y), f_alr], norm)
@@ -18436,11 +18453,12 @@ values $(f_B)$
        print *, 'norm accepted =    ', accepted
     end if
     if (ENSURE) then
-       if (r%xi > sqrt(powheg%sudakov(r%alr)%s%xi2_max)) then
-          call msg_bug ("powheg_reweight_norm: xi shouldnt be larger than xi_max")
+       if (.not. (zero < r%xi .and. &
+                  r%xi < sqrt(powheg%sudakov(r%alr)%s%xi2_max))) then
+          call msg_bug ("powheg_reweight_norm: xi is out of bounds")
        end if
        if (norm_true > norm_max) then
-          call msg_bug ("powheg_reweight_norm: xi shouldnt be larger than xi_max")
+          call msg_bug ("powheg_reweight_norm: norm shouldnt be larger than norm_max")
        end if
     end if
   end function powheg_reweight_norm
@@ -18549,6 +18567,13 @@ exponent.
     alpha_s_rad = sudakov%alpha_s_rad (pt2)
     call sudakov%rng%generate (sudakov%random)
     accepted = sudakov%random < alpha_s_true / alpha_s_rad
+    if (DEBUG_EVENTS) then
+       print *, 'reweight_alpha_s'
+       print *, 'sudakov%random =    ', sudakov%random
+       print *, 'alpha_s_true =    ', alpha_s_true
+       print *, 'alpha_s_rad =    ', alpha_s_rad
+       print *, 'alpha_s accepted =    ', accepted
+    end if
     if (ENSURE) then
        if (alpha_s_rad < alpha_s_true) then
           print *, 'pt2 =    ', pt2
