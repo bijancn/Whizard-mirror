@@ -17396,6 +17396,7 @@ module powheg
   use string_utils
   use physics_defs
   use diagnostics
+  use subevents
   use rng_base
   use grids
   use solver
@@ -17405,6 +17406,11 @@ module powheg
   use lorentz
   use particles
   use interactions
+  use colors
+  use helicities
+  use flavors
+  use polarizations
+  
  
   ! For integration tests
   use rng_tao
@@ -17699,25 +17705,25 @@ partonic vs hadronic cms as well as decays in POWHEG:
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit); if (u < 0) return
-    write (u, "(A,I5)") "Nr. of alpha_s-veto calls: ", counter%n_alpha_s
-    write (u, "(A,I5)") "Nr. of alpha_s-vetos: ", counter%veto_alpha_s
+    write (u, "(A,I12)") "Nr. of alpha_s-veto calls: ", counter%n_alpha_s
+    write (u, "(A,I12)") "Nr. of alpha_s-vetos: ", counter%veto_alpha_s
     if (counter%n_alpha_s > 0) &
        write (u, "(A,F4.2)") "Fraction of vetoed points: ", &
                             one*counter%veto_alpha_s / counter%n_alpha_s
     call write_separator (u)
-    write (u, "(A,I5)") "Nr. of norm-veto calls: ", counter%n_norm
-    write (u, "(A,I5)") "Nr. of norm-vetos: ", counter%veto_norm
+    write (u, "(A,I12)") "Nr. of norm-veto calls: ", counter%n_norm
+    write (u, "(A,I12)") "Nr. of norm-vetos: ", counter%veto_norm
     if (counter%n_norm > 0) &
        write (u, "(A,F4.2)") "Fraction of vetoed points: ", &
                             one*counter%veto_norm / counter%n_norm
     call write_separator (u)
-    write (u, "(A,I5)") "Nr. of sqme-veto calls: ", counter%n_sqme
-    write (u, "(A,I5)") "Nr. of sqme-vetos: ", counter%veto_sqme
+    write (u, "(A,I12)") "Nr. of sqme-veto calls: ", counter%n_sqme
+    write (u, "(A,I12)") "Nr. of sqme-vetos: ", counter%veto_sqme
     if (counter%n_sqme > 0) &
        write (u, "(A,F4.2)") "Fraction of vetoed points: ", &
                             one*counter%veto_sqme / counter%n_sqme
     call write_separator (u)
-    write (u, "(A,I5)") "Nr. of upper-bound failures: ", &
+    write (u, "(A,I12)") "Nr. of upper-bound failures: ", &
                         counter%n_veto_fail
   end subroutine veto_counter_write
 
@@ -18421,35 +18427,41 @@ values $(f_B)$
     real(default) :: xi2_max
     integer :: alr
     logical :: accepted
+    type(vector4_t), dimension(:), allocatable :: p_real_max
     r_max%pt2 = zero
     r_max%alr = 0
-    do alr = 1, powheg%process_deps%n_alr
-       associate (nlo => powheg%process_instance%nlo_data, &
-               sudakov => powheg%sudakov(alr)%s)
-          xi2_max = nlo%get_xi_max (alr)**2
-          call sudakov%update (xi2_max)
-          r%alr = alr
-          r%pt2 = sudakov%xi2_max * powheg%event_deps%cms_energy2
-          do
-             call powheg%sudakov(alr)%s%generate_emission (r)
-             if (r%valid) then
-                accepted = powheg%reweight_norm (r)
-                call sudakov%veto_counter%record_norm (.not. accepted)
-                if (.not. accepted) cycle
-                accepted = powheg%reweight_matrix_elements (r)
-                call sudakov%veto_counter%record_sqme (.not. accepted)
-                if (.not. accepted) cycle
+    associate (nlo => powheg%process_instance%nlo_data)
+       allocate (p_real_max (nlo%get_n_particles_real ()))
+       do alr = 1, powheg%process_deps%n_alr
+          associate (sudakov => powheg%sudakov(alr)%s)
+             xi2_max = nlo%get_xi_max (alr)**2
+             call sudakov%update (xi2_max)
+             r%alr = alr
+             r%pt2 = sudakov%xi2_max * powheg%event_deps%cms_energy2
+             do
+                call powheg%sudakov(alr)%s%generate_emission (r)
+                if (r%valid) then
+                   accepted = powheg%reweight_norm (r)
+                   call sudakov%veto_counter%record_norm (.not. accepted)
+                   if (.not. accepted) cycle
+                   accepted = powheg%reweight_matrix_elements (r)
+                   call sudakov%veto_counter%record_sqme (.not. accepted)
+                   if (.not. accepted) cycle
+                end if
+                exit
+             end do
+             if (r%pt2 > r_max%pt2 .and. r%valid) then
+                r_max = r
+                p_real_max = powheg%event_deps%p_real
              end if
-             exit
-          end do
-          if (r%pt2 > r_max%pt2 .and. r%valid) then
-             r_max = r
-          end if
-       end associate
-    end do
-    if (r_max%pt2 > powheg%settings%pt2_min) then
-       call powheg%build_particle_set (particle_set, r_max)
-    end if
+          end associate
+       end do
+       if (r_max%pt2 > powheg%settings%pt2_min) then
+          call powheg%build_particle_set (particle_set, &
+                                          powheg%event_deps%p_born, &
+                                          p_real_max, nlo%get_emitter (r_max%alr))
+       end if
+    end associate
   end subroutine powheg_generate_emission
 
 @ %def generate_emission
@@ -18457,14 +18469,80 @@ values $(f_B)$
 <<powheg: powheg: TBP>>=
   procedure :: build_particle_set => powheg_build_particle_set
 <<powheg: procedures>>=
-  subroutine powheg_build_particle_set (powheg, particle_set, r)
-    class(powheg_t), intent(inout) :: powheg
+  subroutine powheg_build_particle_set (powheg, particle_set, p_born, p_real, emitter)
+    class(powheg_t), intent(in) :: powheg
     type(particle_set_t), intent(inout) :: particle_set
-    type(radiation_t), intent(in) :: r
-    integer :: emitter
-    associate (nlo => powheg%process_instance%nlo_data)
-       emitter = nlo%get_emitter (r%alr)
-    end associate
+    type(vector4_t), dimension(:), intent(in) :: p_born, p_real 
+    integer, intent(in) :: emitter
+    type(particle_set_t) :: new_particle_set
+    type(particle_t) :: new_particle
+    integer :: i, pdg_index_radiation, n_particles
+    integer :: n_in, n_vir, n_out, n_tot
+    integer, dimension(:), allocatable :: parents, children
+    type(color_t) :: new_color
+    type(helicity_t) :: new_hel
+    type(polarization_t) :: new_pol
+    type(flavor_t) :: new_flv
+    
+    n_particles = size (particle_set%prt)
+    if (n_particles+1 /= size (p_real)) call msg_fatal &
+                       ("Number of particles does not equal number of momenta")
+    new_particle_set%n_beam = particle_set%n_beam
+    new_particle_set%n_in = particle_set%n_in
+    new_particle_set%n_vir = particle_set%n_vir+2
+    new_particle_set%n_out = particle_set%n_out+1
+    new_particle_set%n_tot = particle_set%n_tot+3
+    new_particle_set%correlated_state = particle_set%correlated_state
+    allocate (new_particle_set%prt (new_particle_set%n_tot))
+    n_in = new_particle_set%n_in; n_vir = new_particle_set%n_vir
+    n_out = new_particle_set%n_out; n_tot = new_particle_set%n_tot
+    do i = 1, n_in
+       new_particle_set%prt(i) = particle_set%prt(i)
+       call particle_set_momentum (new_particle_set%prt(i), p_real(i)) 
+       call particle_reset_status (new_particle_set%prt(i), PRT_INCOMING)
+    end do
+    do i = n_in+1, n_in+n_vir
+       new_particle_set%prt(i) = particle_set%prt(i)
+       call particle_set_momentum (new_particle_set%prt(i), p_born(i))
+       call particle_reset_status (new_particle_set%prt(i), PRT_VIRTUAL)
+    end do
+    !!! Parents correct, care for children
+    allocate (children (n_out))
+    do i = 1, n_out
+       children(i) = n_in+n_vir+i
+    end do
+    do i = n_in+1, n_in+n_vir
+       call particle_set_children (new_particle_set%prt(i), children)
+    end do
+    do i = n_in+n_vir+1, n_tot-1   
+       new_particle_set%prt(i) = particle_set%prt(i-n_vir)
+       call particle_set_momentum (new_particle_set%prt(i), p_real(i-n_vir))
+       call particle_reset_status (new_particle_set%prt(i), PRT_OUTGOING)
+    end do 
+     call color_init (new_color)
+     call particle_reset_status (new_particle, PRT_OUTGOING)
+     call particle_set_momentum (new_particle, p_real(n_tot-n_vir))
+     !call helicity_init (new_hel)
+     !call polarization_init (new_pol)
+     pdg_index_radiation = powheg%process_instance%nlo_data%flv_state_real &
+                                  (n_tot-n_vir, 1)
+     call flavor_init (new_flv, pdg_index_radiation, &
+                       powheg%process_instance%process%get_model_ptr ())
+     call particle_set_color (new_particle, new_color)
+     !call particle_set_helicity (new_particle, new_hel)
+     !call particle_set_polarization (new_particle, new_pol)
+     call particle_set_flavor (new_particle, new_flv)
+     new_particle_set%prt(n_tot) = new_particle
+     !!! Set proper parents for outgoing particles
+     allocate (parents (n_vir))
+     do i = 1, n_vir
+        parents(i) = n_vir+i
+     end do
+     do i = n_in+n_vir+1, n_tot
+        call particle_set_parents (new_particle_set%prt(i), parents)
+     end do
+     !!! Overwrite old particle set
+      particle_set = new_particle_set
   end subroutine powheg_build_particle_set
 
 @ %def powheg_build_particle_set
