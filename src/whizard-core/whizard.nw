@@ -17410,6 +17410,7 @@ module powheg
   use helicities
   use flavors
   use polarizations
+  use pdg_arrays, only: is_quark, is_gluon
   
  
   ! For integration tests
@@ -18476,7 +18477,8 @@ values $(f_B)$
     integer, intent(in) :: emitter
     type(particle_set_t) :: new_particle_set
     type(particle_t) :: new_particle
-    integer :: i, pdg_index_radiation, n_particles
+    integer :: i, n_particles
+    integer :: pdg_index_emitter, pdg_index_radiation
     integer :: n_in, n_vir, n_out, n_tot
     integer, dimension(:), allocatable :: parents, children
     type(color_t) :: new_color
@@ -18487,6 +18489,7 @@ values $(f_B)$
     n_particles = size (particle_set%prt)
     if (n_particles+1 /= size (p_real)) call msg_fatal &
                        ("Number of particles does not equal number of momenta")
+    
     new_particle_set%n_beam = particle_set%n_beam
     new_particle_set%n_in = particle_set%n_in
     new_particle_set%n_vir = particle_set%n_vir+2
@@ -18519,16 +18522,18 @@ values $(f_B)$
        call particle_set_momentum (new_particle_set%prt(i), p_real(i-n_vir))
        call particle_reset_status (new_particle_set%prt(i), PRT_OUTGOING)
     end do 
-     call color_init (new_color)
      call particle_reset_status (new_particle, PRT_OUTGOING)
      call particle_set_momentum (new_particle, p_real(n_tot-n_vir))
      !call helicity_init (new_hel)
      !call polarization_init (new_pol)
+     pdg_index_emitter = powheg%process_instance%nlo_data%flv_state_real &
+                                  (emitter, 1)
      pdg_index_radiation = powheg%process_instance%nlo_data%flv_state_real &
                                   (n_tot-n_vir, 1)
      call flavor_init (new_flv, pdg_index_radiation, &
                        powheg%process_instance%process%get_model_ptr ())
-     call particle_set_color (new_particle, new_color)
+     call reassign_colors (new_particle, new_particle_set%prt(n_vir+emitter), &
+                           pdg_index_radiation, pdg_index_emitter)
      !call particle_set_helicity (new_particle, new_hel)
      !call particle_set_polarization (new_particle, new_pol)
      call particle_set_flavor (new_particle, new_flv)
@@ -18546,6 +18551,71 @@ values $(f_B)$
   end subroutine powheg_build_particle_set
 
 @ %def powheg_build_particle_set
+@
+<<powheg: procedures>>=
+  subroutine reassign_colors (prt_radiated, prt_emitter, i_rad, i_em)
+    type(particle_t), intent(inout) :: prt_radiated, prt_emitter
+    integer :: i_rad, i_em 
+    type(color_t) :: col_rad, col_em
+    if (is_quark (abs (i_em)) .and. is_gluon (i_rad)) then        
+       call reassign_colors_qg (prt_emitter, col_rad, col_em)
+    else if (is_gluon (i_em) .and. is_gluon (i_rad)) then
+       !!! Needs rng
+       !!! call reassign_colors_gg (prt_radiated, prt_emitter)
+    else if (is_gluon (i_em) .and. is_quark (abs (i_rad))) then
+       call reassign_colors_qq (prt_emitter, i_em, col_rad, col_em)
+    else
+       call msg_fatal ("Invalid splitting")
+    end if
+    call particle_set_color (prt_emitter, col_em)
+    call particle_set_color (prt_radiated, col_rad)
+  end subroutine reassign_colors 
+
+  subroutine reassign_colors_qg (prt_emitter, col_rad, col_em)
+    type(particle_t), intent(in) :: prt_emitter
+    type(color_t), intent(out) :: col_rad, col_em
+    integer, dimension(2) :: color_rad, color_em
+    integer :: i1, i2
+    integer :: new_color_index
+    logical :: is_anti_quark
+
+    color_em = particle_get_color (prt_emitter)
+    i1 = 1; i2 = 2
+    is_anti_quark = color_em(2) /= 0
+    if (is_anti_quark) then
+       i1 = 2; i2 = 1
+    end if
+    new_color_index = color_em(i1)+1
+    color_rad(i1) = color_em(i1)
+    color_rad(i2) = new_color_index
+    color_em(i1) = new_color_index
+    call color_init_col_acl (col_em, color_em(1), color_em(2))
+    call color_init_col_acl (col_rad, color_rad(1), color_rad(2))
+  end subroutine reassign_colors_qg
+
+  subroutine reassign_colors_qq (prt_emitter, pdg_emitter, col_rad, col_em)
+    !!! NOT TESTED YET
+    type(particle_t), intent(in) :: prt_emitter
+    integer, intent(in) :: pdg_emitter
+    type(color_t), intent(out) :: col_rad, col_em
+    integer, dimension(2) :: color_rad, color_em
+    integer :: i1, i2
+    logical :: is_anti_quark
+
+    color_em = particle_get_color (prt_emitter)
+    i1 = 1; i2 = 2
+    is_anti_quark = pdg_emitter < 0 
+    if (is_anti_quark) then
+       i1 = 2; i1 = 1
+    end if
+    color_em(i2) = 0
+    color_rad(i1) = 0
+    color_rad(i2) = color_em(i1)
+    call color_init_col_acl (col_em, color_em(1), color_em(2))
+    call color_init_col_acl (col_rad, color_rad(1), color_rad(2))
+  end subroutine reassign_colors_qq
+
+@ %def reassign_colors
 @ Only massless for now
 <<powheg: powheg: TBP>>=
   procedure :: reweight_norm => powheg_reweight_norm
