@@ -127,6 +127,7 @@ UNIT_TESTS_REQ_FASTJET = \
     jets.run
 
 UNIT_TESTS_REQ_HEPMC = \
+    hepmc.run \
     eio_hepmc.run
 
 UNIT_TESTS_REQ_STDHEP = \
@@ -180,6 +181,7 @@ TESTS_REQ_OCAML = \
     libraries_3.run \
     rebuild_2.run \
     rebuild_3.run \
+    rebuild_5.run \
     defaultcuts.run \
     cuts.run \
     model_change_1.run \
@@ -304,13 +306,15 @@ XFAIL_TESTS_REQ_OCAML = \
     $(TESTS_USER_STRFUN)
 
 TESTS_REQ_HEPMC = \
-    hepmc.run \
     hepmc_1.run \
     hepmc_2.run \
     hepmc_3.run \
     hepmc_4.run \
     hepmc_5.run \
-    hepmc_6.run
+    hepmc_6.run \
+    hepmc_7.run \
+    hepmc_8.run
+XFAIL_TESTS_REQ_HEPMC =
 
 UNIT_TESTS_REQ_LHAPDF5 = \
     sf_lhapdf5.run 
@@ -699,6 +703,7 @@ clean-local:
 	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
 	rm -f *.run *.log slha_test.out
+	rm -f core*
 	rm -f *.f90 *.c *.$(FC_MODULE_EXT) *.o *.la
 	rm -f *.makefile
 	rm -rf err-output

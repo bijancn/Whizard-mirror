@@ -70,6 +70,8 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/state_matrix_1.ref \
     ref-output/state_matrix_2.ref \
     ref-output/state_matrix_3.ref \
+    ref-output/state_matrix_4.ref \
+    ref-output/state_matrix_5.ref \
     ref-output/interaction_1.ref \
     ref-output/parse_1.ref \
     ref-output/color_1.ref \
@@ -79,6 +81,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/os_interface_1.ref \
     ref-output/format_1.ref \
     ref-output/hepmc_interface_1.ref \
+    ref-output/lcio_interface_1.ref \
     ref-output/xml_1.ref \
     ref-output/xml_2.ref \
     ref-output/xml_3.ref \
@@ -94,6 +97,12 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/auto_components_3.ref \
     ref-output/particles_1.ref \
     ref-output/particles_2.ref \
+    ref-output/particles_3.ref \
+    ref-output/particles_4.ref \
+    ref-output/particles_5.ref \
+    ref-output/particles_6.ref \
+    ref-output/particles_7.ref \
+    ref-output/particles_8.ref \
     ref-output/beam_structures_1.ref \
     ref-output/beam_structures_2.ref \
     ref-output/beam_structures_3.ref \
@@ -303,6 +312,8 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/eio_lhef_6.ref \
     ref-output/eio_hepmc_1.ref \
     ref-output/eio_hepmc_2.ref \
+    ref-output/eio_lcio_1.ref \
+    ref-output/eio_lcio_2.ref \
     ref-output/eio_stdhep_1.ref \
     ref-output/eio_stdhep_2.ref \
     ref-output/eio_ascii_1.ref \
@@ -487,6 +498,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/hepmc_4.ref \
     ref-output/hepmc_5.ref \
     ref-output/hepmc_6.ref \
+    ref-output/hepmc_7.ref \
     ref-output/lhef_1.ref \
     ref-output/lhef_2.ref \
     ref-output/lhef_3.ref \
@@ -546,6 +558,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/parton_shower_2.ref \
     ref-output-double/helicity.ref \
     ref-output-double/lhef_7.ref \
+    ref-output-double/hepmc_8.ref \
     ref-output-double/multi_comp_1.ref \
     ref-output-double/multi_comp_2.ref \
     ref-output-double/multi_comp_3.ref \
@@ -586,6 +599,7 @@ REF_OUTPUT_FILES_EXT = \
     ref-output-ext/parton_shower_2.ref \
     ref-output-ext/helicity.ref \
     ref-output-ext/lhef_7.ref \
+    ref-output-ext/hepmc_8.ref \
     ref-output-ext/multi_comp_1.ref \
     ref-output-ext/multi_comp_2.ref \
     ref-output-ext/multi_comp_3.ref \
@@ -749,6 +763,7 @@ MISC_TESTS_SIN = \
     rebuild_2.sin \
     rebuild_3.sin \
     rebuild_4.sin \
+    rebuild_5.sin \
     qedtest_1.sin \
     qedtest_2.sin \
     qedtest_3.sin \
@@ -808,6 +823,9 @@ MISC_TESTS_SIN = \
     hepmc_4.sin \
     hepmc_5.sin \
     hepmc_6.sin \
+    hepmc_7.sin \
+    hepmc_8.sin \
+    lcio.sin \
     stdhep_1.sin \
     stdhep_2.sin \
     stdhep_3.sin \

@@ -40,7 +40,7 @@ MANUAL_PICS = \
    Z-lineshape_1.pdf Z-lineshape_2.eps Z-lineshape_2.pdf \
    flow4.eps flow4.pdf lep_higgs_1.eps lep_higgs_1.pdf \
    lep_higgs_2.eps lep_higgs_2.pdf lep_higgs_3.eps \
-   lep_higgs_3.pdf
+   lep_higgs_3.pdf circe2-smoothing.eps circe2-smoothing.pdf
 
 ## The primary targets
 if DISTRIBUTION
