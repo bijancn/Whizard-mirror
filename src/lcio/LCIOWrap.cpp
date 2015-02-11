@@ -1,11 +1,16 @@
 //////////////////////////////////////////////////////////////////////////
 // Interface for building LCIO events
 //////////////////////////////////////////////////////////////////////////
+#include<stdio.h>
 #include<string>
+#include<iostream>
+#include<fstream>
 
 #include "lcio.h"
 #include "IO/LCWriter.h"
+#include "IO/LCReader.h"
 #include "EVENT/LCIO.h"
+#include "EVENT/MCParticle.h"
 #include "IMPL/LCEventImpl.h"
 #include "IMPL/LCRunHeaderImpl.h"
 #include "IMPL/LCCollectionVec.h"
@@ -16,6 +21,7 @@
 using namespace std;
 using namespace lcio;
 using namespace IMPL;
+using namespace EVENT;
 
 // Tell the caller that this is the true LCIO library
 extern "C" bool lcio_available() {
@@ -293,13 +299,6 @@ extern "C" int lcio_event_daughter_k
   return p_daughters[num_part-1][k_daughter-1] + 1;
 }
 
-// add collection to LCIO event
-
-extern "C" void lcio_event_add_collection
-( LCEventImpl* evt, LCCollectionVec* mcVec ) {
-  evt->addCollection( mcVec, "MCParticle" );
-}
-
 //////////////////////////////////////////////////////////////////////////
 // MCParticle and LCCollectionVec functions
 
@@ -343,6 +342,49 @@ extern "C" void lcio_particle_add_parent
   daughter->addParent( parent );
 }
 
+extern "C" int lcio_particle_get_generator_status ( MCParticleImpl* mcp) {
+  return mcp->getGeneratorStatus();
+}
+
+extern "C" int lcio_particle_get_pdg_code ( MCParticleImpl* mcp) {
+  return mcp->getPDG();
+}
+
+extern "C" int lcio_particle_flow ( MCParticleImpl* mcp, int col_index ) {
+  return mcp->getColorFlow()[ col_index ];
+}
+
+extern "C" double lcio_polarization_degree ( MCParticleImpl* mcp) {
+  return mcp->getSpin()[ 0 ];
+}
+
+extern "C" double lcio_polarization_theta ( MCParticleImpl* mcp) {
+  return mcp->getSpin()[ 1 ];
+}
+
+extern "C" double lcio_polarization_phi ( MCParticleImpl* mcp) {
+  return mcp->getSpin()[ 2 ];
+}
+
+extern "C" double lcio_three_momentum ( MCParticleImpl* mcp, int p_index ) {
+  return mcp->getMomentum()[ p_index ];  
+}
+
+extern "C" double lcio_energy ( MCParticleImpl* mcp ) {
+  return mcp->getEnergy();
+}
+
+extern "C" double lcio_mass ( MCParticleImpl* mcp ) {
+  return mcp->getMass();
+}
+
+extern "C" int lcio_n_parents ( MCParticleImpl* mcp) {
+  return mcp->getParents().size();
+}
+
+extern "C" int lcio_n_daughters ( MCParticleImpl* mcp) {
+  return mcp->getDaughters().size();
+}  
 
 //////////////////////////////////////////////////////////////////////////
 // LCWriter functions
@@ -418,6 +460,14 @@ extern "C" LCRunHeaderImpl* new_lcio_run_header( int rn ) {
 extern "C" void run_header_set_simstring
 (LCRunHeaderImpl* runHdr, char* simstring) {
   runHdr->parameters().setValue ( "SimulationProgram", simstring );
+}
+
+extern "C" bool read_run_header ( LCReader* lcRdr , LCRunHeader* runHdr ) {  
+  return ((runHdr = lcRdr->readNextRunHeader ()) != 0);
+}  
+
+extern "C" void dump_run_header ( LCRunHeaderImpl* runHdr ) {
+  LCTOOLS::dumpRunHeader( runHdr );
 }
     
 extern "C" void write_run_header 

@@ -134,6 +134,7 @@ UNIT_TESTS_REQ_STDHEP = \
     eio_stdhep.run
 
 UNIT_TESTS_REQ_LCIO = \
+    lcio.run \
     eio_lcio.run
 
 UNIT_TESTS_REQ_OCAML = \
@@ -301,8 +302,6 @@ TESTS_REQ_OCAML = \
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
     user_cuts.run \
-    lhef_7.run \
-    lhef_8.run \
     $(TESTS_USER_STRFUN)
 
 TESTS_REQ_HEPMC = \

@@ -63,23 +63,79 @@
        type(c_ptr), value :: evt_obj
      end subroutine lcio_event_delete
 
+! extern "C" LCEvent* read_lcio_event ( LCReader* lcRdr ) 
+     type (c_ptr) function read_lcio_event (io_obj) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: io_obj
+       read_lcio_event = c_null_ptr
+     end function read_lcio_event
+     
+! extern "C" void dump_lcio_event ( LCEventImpl* evt )
+     subroutine dump_lcio_event (evt_obj) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: evt_obj
+     end subroutine dump_lcio_event
+
+! extern "C" int lcio_event_signal_process_id (LCEvent* evt)
+     integer(c_int) function lcio_event_signal_process_id (evt_obj) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: evt_obj
+       lcio_event_signal_process_id = 0
+     end function lcio_event_signal_process_id
+     
+! extern "C" int lcio_event_get_n_particles (LCEvent* evt) 
+     integer(c_int) function lcio_event_get_n_particles (evt_obj) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: evt_obj
+       lcio_event_get_n_particles = 0
+     end function lcio_event_get_n_particles       
+
+! extern "C" double lcio_event_get_alpha_qcd (LCEvent* evt) 
+     real(c_double) function lcio_event_get_alpha_qcd (evt_obj) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: evt_obj
+       lcio_event_get_alpha_qcd = 0._c_double
+     end function lcio_event_get_alpha_qcd
+     
+! extern "C" double lcio_event_get_scale (LCEvent* evt) 
+     real(c_double) function lcio_event_get_scale (evt_obj) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: evt_obj
+       lcio_event_get_scale = 0._c_double
+     end function lcio_event_get_scale
+     
+! extern "C" void lcio_event_to_file ( LCEvent* evt, char* filename )
+     subroutine lcio_event_to_file (evt_obj, filename) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: evt_obj
+       character(c_char), dimension(*), intent(in) :: filename       
+     end subroutine lcio_event_to_file
+     
 ! extern "C" void lcio_event_add_collection ( LCEventImpl* evt, LCCollectionVec* mcVec )     
      subroutine lcio_event_add_collection (evt_obj, lccoll_obj) bind(C)
        use iso_c_binding
        type(c_ptr), value :: evt_obj, lccoll_obj
      end subroutine lcio_event_add_collection
+
+! extern "C" MCParticleImpl* lcio_event_particle_k ( LCEventImpl* evt, int k ) 
+     type(c_ptr) function lcio_event_particle_k (evt_obj, k) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: evt_obj
+       integer(c_int), value :: k
+       lcio_event_particle_k = c_null_ptr
+     end function lcio_event_particle_k
      
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! MCParticleImpl and LCCollectionVec functions
 
 ! extern "C" LCCollectionVec* new_lccollection()
-     type(c_ptr) function new_lccollection () bind (C)
+     type(c_ptr) function new_lccollection () bind(C)
        use iso_c_binding
        new_lccollection = c_null_ptr
      end function new_lccollection
 
 ! extern "C" void add_particle_to_collection (MCParticleImpl* mcp, LCCollectionVec* mcVec)
-     subroutine add_particle_to_collection (prt_obj, lccoll_obj) bind (C)
+     subroutine add_particle_to_collection (prt_obj, lccoll_obj) bind(C)
        use iso_c_binding
        type(c_ptr), value :: prt_obj, lccoll_obj
      end subroutine add_particle_to_collection
@@ -215,7 +271,7 @@
 !! LCWriter functions
 
 ! extern "C" LCWriter* open_lcio_writer_new 
-     type (c_ptr) function open_lcio_writer_new (filename, complevel) bind (C)
+     type (c_ptr) function open_lcio_writer_new (filename, complevel) bind(C)
        use iso_c_binding
        character(c_char), dimension(*), intent(in) :: filename
        integer(c_int), value :: complevel
@@ -234,11 +290,42 @@
        type(c_ptr), value :: io_obj, evt_obj
      end subroutine lcio_write_event
 
-! extern "C" void lcio_particle_add_parent
-     subroutine lcio_particle_add_parent (io_obj1, io_obj2) bind (C)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! LCReader functions
+
+! extern "C" LCReader* open_lcio_reader () 
+     type(c_ptr) function open_lcio_reader (filename) bind(C)
        use iso_c_binding
-       type(c_ptr), value :: io_obj1, io_obj2
-     end subroutine lcio_particle_add_parent
+       character(c_char), dimension(*), intent(in) :: filename
+       open_lcio_reader = c_null_ptr
+     end function open_lcio_reader
+ 
+! extern "C" LCReader* open_lcio_reader () 
+     type(c_ptr) function open_lcio_reader_direct_access (filename) bind(C)
+       use iso_c_binding
+       character(c_char), dimension(*), intent(in) :: filename
+       open_lcio_reader_direct_access = c_null_ptr
+     end function open_lcio_reader_direct_access  
+
+! extern "C" void lcio_get_n_runs ( LCReader* lcRdr ) 
+     integer(c_int) function lcio_get_n_runs (io_obj) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: io_obj
+       lcio_get_n_runs = 0_c_int
+     end function lcio_get_n_runs
+
+! extern "C" void lcio_get_n_events ( LCReader* lcRdr ) 
+     integer(c_int) function lcio_get_n_events (io_obj) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: io_obj
+       lcio_get_n_events = 0_c_int
+     end function lcio_get_n_events
+       
+! extern "C" void lcio_reader_delete ( LCReader* lcRdr ) 
+     subroutine lcio_reader_delete (io_obj) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: io_obj
+     end subroutine lcio_reader_delete
      
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! LCRunHeader functions
@@ -251,14 +338,20 @@
      end function new_lcio_run_header
 
 ! extern "C" void run_header_set_simstring (LCRunHeaderImpl* runHdr, char* simstring)      
-     subroutine run_header_set_simstring (runhdr_obj, simstring) bind (C)
+     subroutine run_header_set_simstring (runhdr_obj, simstring) bind(C)
        use iso_c_binding
        type(c_ptr), value :: runhdr_obj
        character(c_char), dimension(*), intent(in) :: simstring
      end subroutine run_header_set_simstring
 
+! extern "C" void dump_run_header ( LCRunHeaderImpl* runHdr )
+     subroutine dump_run_header (runhdr_obj) bind(C)
+       use iso_c_binding
+       type(c_ptr), value :: runhdr_obj
+     end subroutine dump_run_header
+     
 ! extern "C" void write_run_header (LCWriter* lcWrt, const LCRunHeaderImpl* runHdr)
-     subroutine write_run_header (lcwrt_obj, runhdr_obj) bind (C)
+     subroutine write_run_header (lcwrt_obj, runhdr_obj) bind(C)
        use iso_c_binding
        type(c_ptr), value :: lcwrt_obj, runhdr_obj
      end subroutine write_run_header

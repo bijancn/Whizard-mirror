@@ -3732,7 +3732,8 @@ The Fortran version has initializer form.
     integer, intent(in), optional :: proc_id, run_id
     integer(c_int) :: pid, rid
     pid = 0;  if (present (proc_id))  pid = proc_id
-    runhdr%obj = new_lcio_run_header (pid)
+    rid = 0; if (present (run_id))  rid = run_id
+    runhdr%obj = new_lcio_run_header (rid)
     call run_header_set_simstring (runhdr%obj, &
          "WHIZARD version:" // "<<Version>>")
   end subroutine lcio_run_header_init
@@ -3811,7 +3812,8 @@ The Fortran version has initializer form.
     integer(c_int) :: pid, eid, rid
     pid = 0;  if (present (proc_id))  pid = proc_id
     eid = 0;  if (present (event_id)) eid = event_id
-    evt%obj = new_lcio_event (pid, eid)
+    rid = 0;  if (present (run_id))   rid = run_id
+    evt%obj = new_lcio_event (pid, eid, rid)
     evt%lccoll%obj = new_lccollection ()
   end subroutine lcio_event_init
 
@@ -3877,6 +3879,46 @@ The Fortran version has initializer form.
   end subroutine lcio_event_final
 
 @ %def lcio_event_final
+@
+<<LCIO interface: interfaces>>=
+  interface
+     subroutine lcio_set_alpha_qcd (evt_obj, alphas) bind(C)
+       import
+       type(c_ptr), value :: evt_obj
+       real(c_double), value :: alphas
+     end subroutine lcio_set_alpha_qcd
+  end interface
+  interface 
+     subroutine lcio_set_scale (evt_obj, scale) bind(C)
+       import
+       type(c_ptr), value :: evt_obj
+       real(c_double), value :: scale
+     end subroutine lcio_set_scale
+  end interface  
+@ %def lcio_set_alpha_qcd lcio_set_scale
+@
+<<LCIO interface: public>>=
+  public :: lcio_event_set_alpha_qcd
+<<LCIO interface: procedures>>=
+  subroutine lcio_event_set_alpha_qcd (evt, alphas)
+    type(lcio_event_t), intent(inout) :: evt
+    real(default), intent(in) :: alphas
+    call lcio_set_alpha_qcd (evt%obj, real (alphas, c_double))
+  end subroutine lcio_event_set_alpha_qcd
+
+@ %def lcio_event_set_alpha_qcd
+@ 
+<<LCIO interface: public>>=
+  public :: lcio_event_set_scale
+<<LCIO interface: procedures>>=
+  subroutine lcio_event_set_scale (evt, scale) 
+    type(lcio_event_t), intent(inout) :: evt
+    real(default), intent(in) :: scale
+    call lcio_set_scale (evt%obj, real (scale, c_double))
+  end subroutine lcio_event_set_scale
+
+@ %def lcio_event_set_scale
+@ 
 <<LCIO interface: interfaces>>=
   interface
      subroutine lcio_event_add_collection &
@@ -3912,7 +3954,7 @@ Particle objects have the obvious meaning.
 <<LCIO interface: interfaces>>=
   interface
      type(c_ptr) function new_lcio_particle &
-          (mom, pdg_id, mass, status) bind(C)
+          (px, py, pz, pdg_id, mass, status) bind(C)
        import
        integer(c_int), value :: pdg_id, status
        real(c_double), value :: px, py, pz, mass
@@ -3954,8 +3996,8 @@ Particle objects have the obvious meaning.
     py = vector4_get_component (p, 2)
     pz = vector4_get_component (p, 3)
     mass = p**1
-    prt%obj = new_lcio_particle ([real (px, c_double), real (py, c_double), &
-         real (pz, c_double)], int (pdg, c_int), &
+    prt%obj = new_lcio_particle (real (px, c_double), real (py, c_double), &
+         real (pz, c_double), int (pdg, c_int), &
          real (mass, c_double), int (status, c_int))
   end subroutine lcio_particle_init
 
@@ -4362,24 +4404,6 @@ of the parent and daughter arrays of the LCIO particles.
   end function lcio_get_n_children
 
 @ %def lcio_get_n_children
-@
-<<LCIO interface: interfaces>>=
-  interface
-     subroutine lcio_particle_add_parent (prt_obj1, prt_obj2) bind(C)
-       import
-       type(c_ptr), value :: prt_obj1, prt_obj2
-     end subroutine lcio_particle_add_parent
-  end interface  
-@ %def lcio_particle_add_parent
-<<LCIO interface: public>>=
-  public :: lcio_particle_set_parent
-<<LCIO interface: procedures>>=
-  subroutine lcio_particle_set_parent (daughter, parent) 
-    type(lcio_particle_t), intent(inout) :: daughter, parent
-    call lcio_particle_add_parent (daughter%obj, parent%obj)
-  end subroutine lcio_particle_set_parent
-
-@ %def lcio_particle_set_parent
 @
 \subsection{LCIO Writer type}
 There is a specific LCIO Writer type for handling the output of
@@ -5462,8 +5486,6 @@ correlations that are lost in the individual particle entries.
      integer :: n_tot = 0
      type(particle_t), dimension(:), allocatable :: prt
      type(state_matrix_t) :: correlated_state
-  contains 
-  <<Particles: particle set: TBP>>
   end type particle_set_t
 
 @ %def particle_set_t
@@ -5744,17 +5766,6 @@ in the correlated state matrix.
   end subroutine particle_set_final
 
 @ %def particle_set_final
-@
-<<Particles: particle set: TBP>>=
-  procedure :: get_momenta => particle_set_get_momenta
-<<Particles: procedures>>=
-  function particle_set_get_momenta (particle_set) result (p)
-    class(particle_set_t), intent(in) :: particle_set
-    type(vector4_t), dimension(:), allocatable :: p
-    p = particle_set%prt%p
-  end function particle_set_get_momenta
-
-@ %def particle_set_get_momenta
 @ Output (default format)
 <<Particles: public>>=
   public :: particle_set_write
@@ -5988,14 +5999,14 @@ http://herwig.hepforge.org/trac/wiki/FaQs.
          lcio_status)
     call lcio_particle_set_color (lprt, &
          particle_get_color (prt))
-    ! select case (particle_get_polarization_status (prt))
-    ! case (PRT_DEFINITE_HELICITY)
-    !    call hepmc_particle_set_polarization (hprt, &
-    !         particle_get_helicity (prt))
-    ! case (PRT_GENERIC_POLARIZATION)
-    !    call hepmc_particle_set_polarization (hprt, &
-    !         particle_get_polarization (prt))
-    ! end select
+    select case (particle_get_polarization_status (prt))
+    case (PRT_DEFINITE_HELICITY)
+       call lcio_polarization_init (lprt, &
+            particle_get_helicity (prt))
+    case (PRT_GENERIC_POLARIZATION)
+       call lcio_polarization_init (lprt, &
+            particle_get_polarization (prt))
+    end select
   end subroutine particle_to_lcio
 
 @ %def particle_to_lcio
@@ -6027,15 +6038,6 @@ http://herwig.hepforge.org/trac/wiki/FaQs.
        call lcio_particle_add_to_evt_coll (lprt(i), evt)
     end do
     call lcio_event_add_coll (evt)
-    !! allocate (is_beam (n_tot))
-    !! is_beam = particle_get_status (particle_set%prt(1:n_tot)) == PRT_BEAM
-    !! if (.not. any (is_beam)) then
-    !!     is_beam = particle_get_status (particle_set%prt(1:n_tot)) == PRT_INCOMING
-    !! end if    
-    !! if (count (is_beam) == 2) then
-    !!    hbeam = pack (hprt, is_beam)
-    !!    call hepmc_event_set_beam_particles (evt, hbeam(1), hbeam(2))
-    !! end if
   end subroutine lcio_event_from_particle_set
   
 @ %def lcio_event_from_particle_set
