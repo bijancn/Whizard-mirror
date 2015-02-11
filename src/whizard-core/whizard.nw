@@ -18530,7 +18530,7 @@ values $(f_B)$
   procedure :: build_particle_set => powheg_build_particle_set
 <<powheg: procedures>>=
   subroutine powheg_build_particle_set (powheg, particle_set, p_born, p_real, emitter)
-    class(powheg_t), intent(in) :: powheg
+    class(powheg_t), intent(inout) :: powheg
     type(particle_set_t), intent(inout) :: particle_set
     type(vector4_t), dimension(:), intent(in) :: p_born, p_real 
     integer, intent(in) :: emitter
@@ -18592,7 +18592,8 @@ values $(f_B)$
      call flavor_init (new_flv, pdg_index_radiation, &
                        powheg%process_instance%process%get_model_ptr ())
      call reassign_colors (new_particle, new_particle_set%prt(n_vir+emitter), &
-                           pdg_index_radiation, pdg_index_emitter)
+                           pdg_index_radiation, pdg_index_emitter, &
+                           powheg%rng)
      !call particle_set_helicity (new_particle, new_hel)
      !call particle_set_polarization (new_particle, new_pol)
      call particle_set_flavor (new_particle, new_flv)
@@ -18612,15 +18613,15 @@ values $(f_B)$
 @ %def powheg_build_particle_set
 @
 <<powheg: procedures>>=
-  subroutine reassign_colors (prt_radiated, prt_emitter, i_rad, i_em)
+  subroutine reassign_colors (prt_radiated, prt_emitter, i_rad, i_em, rng)
     type(particle_t), intent(inout) :: prt_radiated, prt_emitter
-    integer :: i_rad, i_em 
+    integer, intent(in) :: i_rad, i_em 
+    class(rng_t), intent(inout), allocatable :: rng
     type(color_t) :: col_rad, col_em
     if (is_quark (abs (i_em)) .and. is_gluon (i_rad)) then        
        call reassign_colors_qg (prt_emitter, col_rad, col_em)
     else if (is_gluon (i_em) .and. is_gluon (i_rad)) then
-       !!! Needs rng
-       !!! call reassign_colors_gg (prt_radiated, prt_emitter)
+       call reassign_colors_gg (prt_emitter, rng, col_rad, col_em)
     else if (is_gluon (i_em) .and. is_quark (abs (i_rad))) then
        call reassign_colors_qq (prt_emitter, i_em, col_rad, col_em)
     else
@@ -18651,6 +18652,29 @@ values $(f_B)$
     call color_init_col_acl (col_em, color_em(1), color_em(2))
     call color_init_col_acl (col_rad, color_rad(1), color_rad(2))
   end subroutine reassign_colors_qg
+
+  subroutine reassign_colors_gg (prt_emitter, rng, col_rad, col_em)
+    !!! NOT TESTED YET
+    type(particle_t), intent(in) :: prt_emitter
+    class(rng_t), intent(inout), allocatable :: rng
+    type(color_t), intent(out) :: col_rad, col_em
+    real(default) :: random
+    integer, dimension(2) :: color_rad, color_em
+    integer :: i1, i2
+    integer :: new_color_index
+    call rng%generate (random)
+    color_em = particle_get_color (prt_emitter)
+    new_color_index = maxval (abs (color_em)) 
+    i1 = 1; i2 = 2
+    if (random < 0.5) then
+       i1 = 2; i2 = 1
+    end if 
+    color_rad(i1) = new_color_index
+    color_rad(i2) = color_em(i2)
+    color_em(i2) = new_color_index
+    call color_init_col_acl (col_em, color_em(1), color_em(2))
+    call color_init_col_acl (col_rad, color_rad(1), color_rad(2))
+  end subroutine reassign_colors_gg
 
   subroutine reassign_colors_qq (prt_emitter, pdg_emitter, col_rad, col_em)
     !!! NOT TESTED YET
@@ -19407,6 +19431,7 @@ dispatching.
     powheg_settings%size_grid_xi = var_list%get_ival (var_str ("powheg_grid_size_xi"))
     powheg_settings%size_grid_y = var_list%get_ival (var_str ("powheg_grid_size_y")) 
     powheg_settings%n_init = var_list%get_ival (var_str ("powheg_grid_sampling_points"))
+    powheg_settings%pt2_min = var_list%get_rval (var_str ("powheg_pt_min"))**2
     if (evt%settings%powheg_matching) then
        call evt%powheg%init (powheg_settings, process_name)
     end if
@@ -23839,6 +23864,9 @@ so the latter is always available (and kept global).
     call var_list_append_int &
         (global%var_list, var_str ("powheg_grid_sampling_points"), &
          500000, intrinsic = .true.)
+    call var_list_append_real &
+         (global%var_list, var_str ("powheg_pt_min"), &
+          1._default, intrinsic = .true.)
     call var_list_append_log &
         (global%var_list, var_str ("?combined_nlo_integration"), &
          .false., intrinsic = .true.)
