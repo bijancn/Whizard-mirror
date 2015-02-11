@@ -1117,6 +1117,7 @@ list.  Variables used within the expressions are looked up in [[var_list]].
   public :: connected_state_t
 <<Parton states: types>>=
   type, extends (parton_state_t) :: connected_state_t
+     type(state_flv_content_t) :: state_flv
      logical :: has_flows_sf = .false.
      type(evaluator_t) :: flows_sf
      logical :: has_expr = .false.
@@ -1491,6 +1492,32 @@ caller-provided [[int]], this is not necessary.
   end subroutine connected_state_setup_connected_flows
   
 @ %def connected_state_setup_connected_flows
+@ Determine and store the flavor content for the connected state.
+This queries the [[matrix]] evaluator component, which should hold the
+requested flavor information.
+<<Parton states: connected state: TBP>>=
+  procedure :: setup_state_flv => connected_state_setup_state_flv
+<<Parton states: procedures>>=
+  subroutine connected_state_setup_state_flv (state, n_out_hard)
+    class(connected_state_t), intent(inout), target :: state
+    integer, intent(in) :: n_out_hard
+    type(interaction_t), pointer :: int
+    int => evaluator_get_int_ptr (state%matrix)
+    call interaction_get_flv_content (int, state%state_flv, n_out_hard)
+  end subroutine connected_state_setup_state_flv
+  
+@ %def connected_state_setup_state_flv
+@ Return the current flavor state object.
+<<Parton states: connected state: TBP>>=
+  procedure :: get_state_flv => connected_state_get_state_flv
+<<Parton states: procedures>>=
+  function connected_state_get_state_flv (state) result (state_flv)
+    class(connected_state_t), intent(in) :: state
+    type(state_flv_content_t) :: state_flv
+    state_flv = state%state_flv
+  end function connected_state_get_state_flv
+  
+@ %def connected_state_get_state_flv
 @ 
 \subsection{Cuts and expressions}
 Set up the [[subevt]] that corresponds to the connected interaction.
@@ -1794,6 +1821,19 @@ the trace (and thus, matrix and flows) evaluator, respectively.
   
 @ %def connected_state_get_beam_index
 @ %def connected_state_get_in_index
+@ Return the number of outgoing (hard) particles for the state.
+<<Parton states: parton state: TBP>>=
+  procedure :: get_n_out => parton_state_get_n_out
+<<Parton states: procedures>>=
+  function parton_state_get_n_out (state) result (n)
+    class(parton_state_t), intent(in), target :: state
+    integer :: n
+    type(interaction_t), pointer :: int
+    int => evaluator_get_int_ptr (state%trace)
+    n = interaction_get_n_out (int)
+  end function parton_state_get_n_out
+  
+@ %def parton_state_get_n_out
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Complete Elementary Processes}
@@ -7170,8 +7210,9 @@ The quantum numbers mask of the incoming particle
                 (term%isolated_real)
       call term%connected_real%setup_connected_flows &
                 (term%isolated_real)
+      call term%connected_real%setup_state_flv (term%isolated_real%get_n_out ())
     end select
-  end subroutine term_instance_setup_event_data
+ end subroutine term_instance_setup_event_data
     
 @ %def term_instance_setup_event_data
 @ Associate the hard real interaction.
@@ -9046,6 +9087,19 @@ component.
 @ %def process_instance_get_trace_int_ptr
 @ %def process_instance_get_matrix_int_ptr
 @ %def process_instance_get_flows_int_ptr
+@ Return the complete account of flavor combinations in the underlying
+interaction object, including beams, radiation, and hard interaction.
+<<Processes: process instance: TBP>>=
+  procedure :: get_state_flv => process_instance_get_state_flv
+<<Processes: procedures>>=
+  function process_instance_get_state_flv (instance, i_term) result (state_flv)
+    class(process_instance_t), intent(in) :: instance
+    integer, intent(in) :: i_term
+    type(state_flv_content_t) :: state_flv
+    state_flv = instance%term(i_term)%connected%get_state_flv ()
+  end function process_instance_get_state_flv
+  
+@ %def process_get_term_state_flv
 @ Return pointers to the parton states of a selected term.
 <<Processes: process instance: TBP>>=
   procedure :: get_isolated_state_ptr => &
@@ -9226,16 +9280,20 @@ it.  It should be switched off when reading from raw event file.
          [0._default, 0._default], .false., .true.)
   end subroutine process_instance_get_trace
     
-  subroutine process_instance_set_trace (instance, pset, i_term, recover_beams)
+  subroutine process_instance_set_trace &
+       (instance, pset, i_term, recover_beams, check_match)
     class(process_instance_t), intent(inout), target :: instance
     type(particle_set_t), intent(in) :: pset
     integer, intent(in) :: i_term
-    logical, intent(in), optional :: recover_beams
+    logical, intent(in), optional :: recover_beams, check_match
     type(interaction_t), pointer :: int
     integer :: n_in
     int => instance%get_trace_int_ptr (i_term)
     n_in = instance%process%get_n_in ()
-    call particle_set_fill_interaction (pset, int, n_in, recover_beams)
+    call particle_set_fill_interaction (pset, int, n_in, &
+         recover_beams = recover_beams, &
+         check_match = check_match, &
+         state_flv = instance%get_state_flv (i_term))
   end subroutine process_instance_set_trace
 
 @ %def process_instance_get_trace
@@ -9851,7 +9909,7 @@ functionality.
     allocate (process_instance)
     call process_instance%init (process)
     call process_instance%choose_mci (1)
-    call process_instance%set_trace (pset, 1)
+    call process_instance%set_trace (pset, 1, check_match = .false.)
 
     call process_instance%activate ()
     process_instance%evaluation_status = STAT_EFF_KINEMATICS
@@ -10130,7 +10188,7 @@ structure-function channel.
     call process_instance%init (process)
 
     call process_instance%choose_mci (1)
-    call process_instance%set_trace (pset, 1)
+    call process_instance%set_trace (pset, 1, check_match = .false.)
     call process_instance%recover &
          (channel = 1, i_term = 1, update_sqme = .true.)
     call process_instance%write (u)
@@ -10303,7 +10361,7 @@ distinct phase-space channels.
     call process_instance%init (process)
 
     call process_instance%choose_mci (1)
-    call process_instance%set_trace (pset, 1)
+    call process_instance%set_trace (pset, 1, check_match = .false.)
     call process_instance%recover &
          (channel = 2, i_term = 1, update_sqme = .true.)
     call process_instance%write (u)
@@ -10693,7 +10751,7 @@ temporary storage, read kinematics and recalculate the event.
     call process_instance%setup_event_data ()
 
     call process_instance%choose_mci (1)
-    call process_instance%set_trace (pset, 1)
+    call process_instance%set_trace (pset, 1, check_match = .false.)
     call process_instance%recover &
          (channel = 1, i_term = 1, update_sqme = .true.)
 
@@ -11028,7 +11086,7 @@ Initialize an evaluate a decay process.
     allocate (process_instance)
     call process_instance%init (process)
     call process_instance%choose_mci (1)
-    call process_instance%set_trace (pset, 1)
+    call process_instance%set_trace (pset, 1, check_match = .false.)
     call process_instance%recover (1, 1, .true.)
     call process_instance%write (u)
 
@@ -11295,7 +11353,7 @@ Initialize an evaluate a decay process for a moving particle.
     call process_instance%init (process)
 
     call process_instance%choose_mci (1)
-    call process_instance%set_trace (pset, 1)
+    call process_instance%set_trace (pset, 1, check_match = .false.)
     call process_instance%recover (1, 1, .true.)
     call process_instance%write (u)
 
@@ -20697,10 +20755,10 @@ Select MC group, term, and integration channel.
 Copy a particle set into the event record.
 
 We deliberately use the first (the trivial) transform for this, i.e.,
-the hard process.  Thus, with the current implementation, event
-readers can only be used for reading hard events.  However, once we
-have reconstructed the master process, we may apply all event
-transforms to generate a fully dressed event.
+the hard process.  The event reader may either read in the transformed
+event separately, or apply all event
+transforms to the hard particle set to (re)generate a fully dressed
+event.
 
 Since this makes all subsequent event transforms invalid, we call
 [[reset]] on them.
@@ -20857,6 +20915,23 @@ to the current process instance.
 @ %def event_get_i_mci
 @ %def event_get_i_term
 @ %def event_get_channel
+@ This flag tells us whether the event consists just of a hard process
+(i.e., holds at most the first, trivial transform), or is a dressed
+events with additional transforms.
+<<Events: event: TBP>>=
+  procedure :: has_transform => event_has_transform
+<<Events: procedures>>=
+  function event_has_transform (event) result (flag)
+    class(event_t), intent(in) :: event
+    logical :: flag
+    if (associated (event%transform_first)) then
+       flag = associated (event%transform_first%next)
+    else
+       flag = .false.
+    end if
+  end function event_has_transform
+  
+@ %def event_has_transform
 @ Return the currently selected normalization mode, or alternate
 normalization mode.
 <<Events: event: TBP>>=
@@ -21481,6 +21556,8 @@ module eio_raw
 
 <<EIO raw: public>>
 
+<<EIO raw: parameters>>
+
 <<EIO raw: types>>
 
 contains
@@ -21492,7 +21569,30 @@ contains
 end module eio_raw
 @ %def eio_raw
 @
+\subsection{File Format Version}
+This is the current default file version. 
+<<EIO raw: parameters>>=
+  integer, parameter :: CURRENT_FILE_VERSION = 2
+
+@ %def CURRENT_FILE_VERSION
+@ The user may change this number; this should force some
+compatibility mode for reading and writing.  In any case, the file
+version stored in a event file that we read has to match the expected
+file version.
+
+History of version numbers:
+\begin{enumerate}
+\item
+  Format for WHIZARD 2.2.0 to 2.2.3.  No version number stored in the raw file.
+\item
+  Format from 2.2.4 on.  File contains version number.  The file
+  contains the transformed particle set (if applicable) after the
+  hard-process particle set.
+\end{enumerate}
+@
 \subsection{Type}
+Note the file version number.  The default may be reset during
+initialization, which should enforce some compatibility mode.
 <<EIO raw: public>>=
   public :: eio_raw_t
 <<EIO raw: types>>=
@@ -21505,6 +21605,7 @@ end module eio_raw
      integer :: n = 1
      integer :: n_alt = 0
      logical :: check = .false.
+     integer :: file_version = CURRENT_FILE_VERSION
    contains
    <<EIO raw: eio raw: TBP>>
   end type eio_raw_t
@@ -21556,11 +21657,24 @@ of the current object status.
 <<EIO raw: eio raw: TBP>>=
   procedure :: set_parameters => eio_raw_set_parameters
 <<EIO raw: procedures>>=
-  subroutine eio_raw_set_parameters (eio, check, extension)
+  subroutine eio_raw_set_parameters (eio, check, version_string, extension)
     class(eio_raw_t), intent(inout) :: eio
-    logical, intent(in) :: check
+    logical, intent(in), optional :: check
+    type(string_t), intent(in), optional :: version_string
     type(string_t), intent(in), optional :: extension 
-    eio%check = check
+    if (present (check))  eio%check = check
+    if (present (version_string)) then
+       select case (char (version_string))
+       case ("", "2.2.4")
+          eio%file_version = CURRENT_FILE_VERSION
+       case ("2.2")
+          eio%file_version = 1
+       case default
+          call msg_fatal ("Raw event I/O: unsupported version '" &
+               // char (version_string) // "'")
+          eio%file_version = 0
+       end select
+    end if
     if (present (extension)) then
        eio%extension = extension
     else
@@ -21609,6 +21723,9 @@ of the current object status.
     end if
     open (eio%unit, file = char (eio%filename), form = "unformatted", &
          action = "write", status = "replace")
+    select case (eio%file_version)
+    case (2:);  write (eio%unit)  eio%file_version
+    end select
     write (eio%unit)  md5sum_prc
     write (eio%unit)  md5sum_cfg
     write (eio%unit)  eio%norm_mode
@@ -21632,7 +21749,7 @@ of the current object status.
     type(string_t), intent(in), optional :: extension
     character(32) :: md5sum_prc, md5sum_cfg
     character(32), dimension(:), allocatable :: md5sum_alt
-    integer :: i
+    integer :: i, file_version
     if (present (success))  success = .true.
     if (present (extension)) then
        eio%extension = extension
@@ -21651,6 +21768,17 @@ of the current object status.
     eio%reading = .true.
     open (eio%unit, file = char (eio%filename), form = "unformatted", &
          action = "read", status = "old")
+    select case (eio%file_version)
+    case (2:);  read (eio%unit)  file_version
+    case default;  file_version = 1
+    end select
+    if (file_version /= eio%file_version) then
+       call msg_error ("Reading event file: raw-file version mismatch.")
+       if (present (success))  success = .false.
+       return
+    else if (file_version /= CURRENT_FILE_VERSION) then
+       call msg_warning ("Reading event file: compatibility mode.")
+    end if
     read (eio%unit)  md5sum_prc
     read (eio%unit)  md5sum_cfg
     read (eio%unit)  eio%norm_mode
@@ -21724,7 +21852,7 @@ values and thus obtain distinct [[prc]] values, or just accept them.
     class(generic_event_t), intent(in), target :: event
     logical, intent(in), optional :: reading, pacify
     integer, intent(in) :: i_prc
-    type(particle_set_t) :: pset
+    type(particle_set_t), pointer :: pset
     integer :: i
     if (eio%writing) then
        if (event%has_valid_particle_set ()) then
@@ -21741,9 +21869,21 @@ values and thus obtain distinct [[prc]] values, or just accept them.
                 write (eio%unit)  event%expr%weight_alt(i)
                 write (eio%unit)  event%expr%sqme_alt(i)
              end do
+             allocate (pset)
              call event%get_hard_particle_set (pset)
              call particle_set_write_raw (pset, eio%unit)
              call particle_set_final (pset)
+             deallocate (pset)
+             select case (eio%file_version)
+             case (2:)
+                if (event%has_transform ()) then
+                   write (eio%unit)  .true.
+                   pset => event%get_particle_set_ptr ()
+                   call particle_set_write_raw (pset, eio%unit)
+                else
+                   write (eio%unit)  .false.
+                end if
+             end select
           class default
              call msg_bug ("Event: write raw: defined only for full event_t")
           end select
@@ -21785,7 +21925,9 @@ a different version of [[event%set_hard_particle_set]].
     integer :: i_mci, i_term, channel, i
     real(default) :: weight, excess, sqme
     real(default), dimension(:), allocatable :: weight_alt, sqme_alt
-    type(particle_set_t) :: pset
+    logical :: has_transform
+    type(particle_set_t), pointer :: pset
+    class(model_data_t), pointer :: model
     if (eio%reading) then
        select type (event)
        type is (event_t)
@@ -21821,13 +21963,30 @@ a different version of [[event%set_hard_particle_set]].
              end do
              call event%set (sqme_alt = sqme_alt, weight_alt = weight_alt)
           end if
+          model => null ()
+          if (associated (event%process)) then
+             model => event%process%get_model_ptr ()
+          end if
+          allocate (pset)
           call particle_set_read_raw (pset, eio%unit, iostat)
           if (iostat /= 0)  return
-          if (associated (event%process)) then
-             call particle_set_set_model (pset, event%process%get_model_ptr ())
-          end if
+          if (associated (model))  call particle_set_set_model (pset, model)
           call event%set_hard_particle_set (pset)
           call particle_set_final (pset)
+          deallocate (pset)
+          select case (eio%file_version)
+          case (2:)
+             read (eio%unit, iostat = iostat)  has_transform
+             if (iostat /= 0)  return
+             if (has_transform) then
+                allocate (pset)
+                call particle_set_read_raw (pset, eio%unit, iostat)
+                if (iostat /= 0)  return
+                if (associated (model)) &
+                     call particle_set_set_model (pset, model)
+                call event%link_particle_set (pset)
+             end if
+          end select
        class default
           call msg_bug ("Event: read raw: defined only for full event_t")
        end select
@@ -26922,7 +27081,7 @@ structure-function chain.
     type(rt_data_t), intent(in) :: global
     logical :: check, keep_beams, recover_beams
     logical :: write_sqme_prc, write_sqme_ref, write_sqme_alt
-    type(string_t) :: lhef_version, lhef_extension
+    type(string_t) :: lhef_version, lhef_extension, raw_version
     type(string_t) :: extension_default, debug_extension, extension_hepmc, &
          extension_lha, extension_hepevt, extension_ascii_short, &
          extension_ascii_long, extension_athena, extension_mokka, &
@@ -33253,14 +33412,17 @@ we may only read and rescan events.
        call msg_message ()
     end select
     select case (char (version_string))
-    case ("2.0","2.1")
-       simulation%version = 0
-    case default
+    case ("", "2.2.4")
+       simulation%version = 2
+    case ("2.2")
        simulation%version = 1
+    case default
+       simulation%version = 0
     end select
     if (simulation%version == 0) then
-       call msg_fatal ("Event file formats older than version 2.2 are " &
-          // "not compatible with this version.")
+       call msg_fatal ("Event file format '" &
+            // char (version_string) &
+            // "' is not compatible with this version.")
     end if  	  
     simulation%n_prc = size (process_id)
     allocate (simulation%entry (simulation%n_prc))
@@ -46927,6 +47089,7 @@ module whizard
   use process_libraries
   use prclib_stacks
   use hepmc_interface
+  use lcio_interface
   use jets
   use pdg_arrays
   use interactions
@@ -47639,6 +47802,8 @@ This is for developers only, but needs a well-defined interface.
        call format_test (u, results)
     case ("hepmc")
        call hepmc_test (u, results)
+    case ("lcio")
+       call lcio_test (u, results)
     case ("jets")
        call jets_test (u, results)
     case ("pdg_arrays")
@@ -47815,6 +47980,7 @@ This is for developers only, but needs a well-defined interface.
        call expressions_test (u, results)
        call format_test (u, results)
        call hepmc_test (u, results)
+       call lcio_test (u, results)
        call jets_test (u, results)
        call os_interface_test (u, results)
        call cputime_test (u, results)

@@ -5041,20 +5041,20 @@ two particles should be the incoming partons.
        do k = 5, 6
           call particle_set_parents (prt(k), [k-4])
        end do
-    else
-       call handle_beams (prt)
+!     else
+!        call handle_beams (prt)
     end if
     call particle_set_replace (particle_set, prt)
   end subroutine hepeup_to_particle_set
   
 @ %def hepeup_to_particle_set
-@ Beams and beam remnants require a special handling.  \whizard's interactions
+@ [Obsolete:] Beams and beam remnants require a special handling.  \whizard's interactions
 are set up such that in the list of children of beam particles, the remnant
 comes before the interacting parton.  To enforce this, we may have to reorder
 things.
 
 The beam particles will always be the first two particles.
-<<HEP common: procedures>>=
+<<XXX HEP common: procedures>>=
   subroutine handle_beams (prt)
     type(particle_t), dimension(:), intent(inout) :: prt
     integer :: i
@@ -5110,7 +5110,7 @@ This is a separate module that manages data exchange between the common blocks
 and [[event_t]] objects.  We separate this from the previous module in order
 to avoid a circular module dependency. It also contains the functions
 necessary for communication between [[hepmc_event_t]] and
-[[event_t]] objects.
+[[event_t]] or [[lcio_event_t]] and [[event_t]] objects.
 <<[[hep_events.f90]]>>=
 <<File header>>
 
@@ -5124,6 +5124,7 @@ module hep_events
   use particles
   use hep_common
   use hepmc_interface
+  use lcio_interface
   use event_base
 
 <<Standard module head>>
@@ -5234,7 +5235,8 @@ Note: setting of scale or alpha is not yet supported by the
   end subroutine hepevt_from_event
 
 @ %def hepevt_from_event
-@
+@ Fill a WHIZARD event from a HepMC event record.  Recall that
+HepMC events are always unweighted, so the weight is unity.
 <<HEP events: public>>=
   public :: hepmc_to_event
 <<HEP events: procedures>>=
@@ -5253,12 +5255,38 @@ Note: setting of scale or alpha is not yet supported by the
          (particle_set, hepmc_event, model, fallback_model, PRT_DEFINITE_HELICITY)
     call event%set_hard_particle_set (particle_set)
     call particle_set_final (particle_set)
+    call event%set_weight_ref (1._default)
 !!! Not implemented yet:
 !     if (scale > 0)  call event%set_scales (scale)
 !     if (alpha_qcd > 0)  call event%set_alpha_qcd (alpha_qcd)
   end subroutine hepmc_to_event
   
 @ %def hepmc_to_event
+@
+<<HEP events: public>>=
+  public :: lcio_to_event
+<<HEP events: procedures>>=
+  subroutine lcio_to_event &
+       (event, lcio_event, fallback_model, process_index, recover_beams)
+    class(generic_event_t), intent(inout), target :: event
+    type(lcio_event_t), intent(inout) :: lcio_event
+    class(model_data_t), intent(in), target :: fallback_model
+    integer, intent(out), optional :: process_index
+    logical, intent(in), optional :: recover_beams
+    class(model_data_t), pointer :: model
+    real(default) :: weight, scale, alpha_qcd
+    type(particle_set_t) :: particle_set
+    model => event%get_model_ptr ()
+    call particle_set_init &
+         (particle_set, lcio_event, model, fallback_model, PRT_DEFINITE_HELICITY)
+    call event%set_hard_particle_set (particle_set)
+    call particle_set_final (particle_set)
+    !!! Not implemented yet:
+    ! if (scale > 0)  call event%set_scales (scale)
+    ! if (alpha_qcd > 0)  call event%set_alpha_qcd (alpha_qcd)
+  end subroutine lcio_to_event
+  
+@ %def lcio_to_event
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 \section{LHEF Input/Output}
@@ -5272,6 +5300,7 @@ module eio_lhef
   use kinds
   use io_units
 <<Use strings>>
+  use string_utils
   use unit_tests
   use diagnostics
   use os_interface
@@ -6399,51 +6428,6 @@ tags written by the above writer, are skipped.
   end subroutine eio_lhef_read_event_30
     
 @ %def eio_lhef_read_event_30
-@
-\subsection{Auxiliary}
-Create a string from a number.  We use fixed format for the reals
-and variable format for integers.
-<<EIO LHEF: interfaces>>=
-  interface str
-     module procedure str_int, str_real
-  end interface
-<<EIO LHEF: procedures>>=
-  function str_int (i) result (s)
-    integer, intent(in) :: i
-    type(string_t) :: s
-    character(32) :: buffer
-    write (buffer, "(I0)")  i
-    s = var_str (trim (buffer))
-  end function str_int
-  
-  function str_real (x) result (s)
-    real(default), intent(in) :: x
-    type(string_t) :: s
-    character(32) :: buffer
-    write (buffer, "(ES17.10)")  x
-    s = var_str (trim (adjustl (buffer)))
-  end function str_real
-  
-@ %def str
-@ Auxiliary: Read real, integer, string value.
-<<EIO LHEF: procedures>>=
-  function read_rval (s) result (rval)
-    type(string_t), intent(in) :: s
-    real(default) :: rval
-    character(80) :: buffer
-    buffer = s
-    read (buffer, *)  rval
-  end function read_rval
-    
-  function read_ival (s) result (ival)
-    type(string_t), intent(in) :: s
-    integer :: ival
-    character(80) :: buffer
-    buffer = s
-    read (buffer, *)  ival
-  end function read_ival
-    
-@ %def read_rval read_ival
 @
 \subsection{Unit tests}
 <<EIO LHEF: public>>=
@@ -7628,6 +7612,7 @@ We test the implementation of the STDHEP HEPEUP I/O method:
     integer, intent(in) :: u
     class(generic_event_t), pointer :: event
     type(event_sample_data_t) :: data
+    class(model_data_t), pointer :: fallback_model
     class(eio_t), allocatable :: eio
     type(string_t) :: sample
     integer :: u_file, iostat
@@ -7640,7 +7625,8 @@ We test the implementation of the STDHEP HEPEUP I/O method:
 
     write (u, "(A)")  "* Initialize test process"
  
-    call eio_prepare_test (event)
+    call eio_prepare_fallback_model (fallback_model)
+    call eio_prepare_test (event, unweighted = .false.)
     
     call data%init (1)
     data%n_evt = 1
@@ -7662,7 +7648,8 @@ We test the implementation of the STDHEP HEPEUP I/O method:
     select type (eio)
     type is (eio_stdhep_hepeup_t)
        call eio%set_parameters ()
-    end select    
+    end select  
+    call eio%set_fallback_model (fallback_model)
     
     call eio%init_out (sample, data)
     call event%generate (1, [0._default, 0._default])
@@ -7707,6 +7694,7 @@ We test the implementation of the STDHEP HEPEUP I/O method:
     write (u, "(A)")  "* Cleanup"
  
     call eio_cleanup_test (event)
+    call eio_cleanup_fallback_model (fallback_model)
 
     write (u, "(A)")
     write (u, "(A)")  "* Test output end: eio_stdhep_2"
@@ -7727,6 +7715,7 @@ module eio_hepmc
   use kinds
   use io_units
 <<Use strings>>
+  use string_utils
   use unit_tests
   use diagnostics
   use os_interface
@@ -8046,32 +8035,6 @@ event files.
 @ %def eio_hepmc_input_i_prc
 @ %def eio_hepmc_input_event
 @
-\subsection{Auxiliary}
-Create a string from a number.  We use fixed format for the reals
-and variable format for integers.
-<<EIO HepMC: interfaces>>=
-  interface str
-     module procedure str_int, str_real
-  end interface
-<<EIO HepMC: procedures>>=
-  function str_int (i) result (s)
-    integer, intent(in) :: i
-    type(string_t) :: s
-    character(32) :: buffer
-    write (buffer, "(I0)")  i
-    s = var_str (trim (buffer))
-  end function str_int
-  
-  function str_real (x) result (s)
-    real(default), intent(in) :: x
-    type(string_t) :: s
-    character(32) :: buffer
-    write (buffer, "(ES17.10)")  x
-    s = var_str (trim (adjustl (buffer)))
-  end function str_real
-  
-@ %def str
-@
 \subsection{Unit tests}
 <<EIO HepMC: public>>=
   public :: eio_hepmc_test
@@ -8333,6 +8296,7 @@ module eio_lcio
   use kinds
   use io_units
 <<Use strings>>
+  use string_utils
   use unit_tests
   use diagnostics
   use os_interface
@@ -8376,6 +8340,7 @@ index and the proper event data.
      logical :: keep_beams = .false.
      logical :: recover_beams = .false.
      type(lcio_writer_t) :: lcio_writer
+     type(lcio_reader_t) :: lcio_reader
      type(lcio_run_header_t) :: lcio_run_hdr
      type(lcio_event_t) :: lcio_event
      integer, dimension(:), allocatable :: proc_num_id
@@ -8456,7 +8421,7 @@ of the current object status.
        write (msg_buffer, "(A,A,A)")  "Events: closing LCIO file '", &
             char (object%filename), "'"
        call msg_message ()
-       call lcio_writer_close (object%lcio_writer)
+       call lcio_reader_close (object%lcio_reader)
        object%reading = .false.
     end if
   end subroutine eio_lcio_final
@@ -8558,7 +8523,7 @@ event files.
     inquire (file = char (eio%filename), exist = exist)
     if (.not. exist)  call msg_fatal ("Events: LCIO file not found.")
     eio%reading = .true.
-    !!! call hepmc_iostream_open_in (eio%iostream, eio%filename)
+    call lcio_open_file (eio%lcio_reader, eio%filename)
     if (present (success))  success = .true.
   end subroutine eio_lcio_init_in
     
@@ -8591,8 +8556,8 @@ event files.
              proc_id = eio%proc_num_id (i_prc), &
              event_id = event%get_index ())
        call lcio_event_from_particle_set (eio%lcio_event, pset_ptr)
-       !!! call hepmc_event_set_scale (eio%hepmc_event, event%get_fac_scale ())
-       !!! call hepmc_event_set_alpha_qcd (eio%hepmc_event, event%get_alpha_s ())
+       call lcio_event_set_scale (eio%lcio_event, event%get_fac_scale ())
+       call lcio_event_set_alpha_qcd (eio%lcio_event, event%get_alpha_s ())
        call lcio_event_write (eio%lcio_writer, eio%lcio_event)
        call lcio_event_final (eio%lcio_event)
     else
@@ -8614,13 +8579,12 @@ event files.
     logical :: ok
     integer :: i, proc_num_id
     iostat = 0
-    call lcio_event_init (eio%lcio_event)
-    !!! call hepmc_iostream_read_event (eio%iostream, eio%hepmc_event, ok)
-    !!! proc_num_id = hepmc_event_get_process_id (eio%hepmc_event)
+    call lcio_read_event (eio%lcio_reader, eio%lcio_event, ok)
     if (.not. ok) then 
        iostat = -1 
        return
     end if
+    proc_num_id = lcio_event_get_process_id (eio%lcio_event)    
     i_prc = 0
     FIND_I_PRC: do i = 1, size (eio%proc_num_id)
        if (eio%proc_num_id(i) == proc_num_id) then
@@ -8646,8 +8610,8 @@ event files.
     iostat = 0
     call event%reset ()
     call event%select (1, 1, 1)
-    !!! call hepmc_to_event (event, eio%hepmc_event, eio%fallback_model, &
-    !!!     recover_beams = eio%recover_beams) 
+    call lcio_to_event (event, eio%lcio_event, eio%fallback_model, &
+         recover_beams = eio%recover_beams) 
     ! if (associated (event%process)) then
     !    pset => event%get_particle_set_ptr ()
     !    call particle_set_set_model (pset, event%process%get_model_ptr ())
@@ -8657,33 +8621,6 @@ event files.
 
 @ %def eio_lcio_input_i_prc
 @ %def eio_lcio_input_event
-@
-@
-\subsection{Auxiliary}
-Create a string from a number.  We use fixed format for the reals
-and variable format for integers.
-<<EIO LCIO: interfaces>>=
-  interface str
-     module procedure str_int, str_real
-  end interface
-<<EIO LCIO: procedures>>=
-  function str_int (i) result (s)
-    integer, intent(in) :: i
-    type(string_t) :: s
-    character(32) :: buffer
-    write (buffer, "(I0)")  i
-    s = var_str (trim (buffer))
-  end function str_int
-  
-  function str_real (x) result (s)
-    real(default), intent(in) :: x
-    type(string_t) :: s
-    character(32) :: buffer
-    write (buffer, "(ES17.10)")  x
-    s = var_str (trim (adjustl (buffer)))
-  end function str_real
-  
-@ %def str
 @
 \subsection{Unit tests}
 <<EIO LCIO: public>>=
@@ -8709,9 +8646,10 @@ We test the implementation of all I/O methods.
     class(generic_event_t), pointer :: event
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
+    type(particle_set_t), pointer :: pset_ptr    
     type(string_t) :: sample
     integer :: u_file, iostat
-    character(116) :: buffer
+    character(215) :: buffer
 
     write (u, "(A)")  "* Test output: eio_lcio_1"
     write (u, "(A)")  "*   Purpose: write a LCIO file"
@@ -8743,38 +8681,16 @@ We test the implementation of all I/O methods.
     type is (eio_lcio_t)
        call eio%set_parameters ()
     end select
-    
-    call eio%init_out (sample, data)
-    call event%generate (1, [0._default, 0._default])
 
-    call eio%output (event, i_prc = 1)
+    call eio%init_out (sample, data)
+    
+    call event%generate (1, [0._default, 0._default])
+    call event%pacify_particle_set ()
+    
+    call eio%output (event, i_prc = 1)    
     call eio%write (u)
     call eio%final ()
 
-    !!! write (u, "(A)")
-    !!! write (u, "(A)")  "* File contents (blanking out last two digits):"
-    !!! write (u, "(A)")
-    !!! 
-    !!! u_file = free_unit ()
-    !!! open (u_file, file = char (sample // ".hepmc"), &
-    !!!      action = "read", status = "old")
-    !!! do
-    !!!    read (u_file, "(A)", iostat = iostat)  buffer
-    !!!    if (iostat /= 0)  exit
-    !!!    if (trim (buffer) == "")  cycle
-    !!!    if (buffer(1:14) == "HepMC::Version")  cycle
-    !!!    if (buffer(1:10) == "P 10001 25") &
-    !!!         call buffer_blanker (buffer, 32, 55, 78)
-    !!!    if (buffer(1:10) == "P 10002 25") &
-    !!!         call buffer_blanker (buffer, 33, 56, 79)
-    !!!    if (buffer(1:10) == "P 10003 25") &
-    !!!         call buffer_blanker (buffer, 29, 53, 78, 101)
-    !!!    if (buffer(1:10) == "P 10004 25") &
-    !!!         call buffer_blanker (buffer, 28, 51, 76, 99)       
-    !!!    write (u, "(A)") trim (buffer)
-    !!! end do
-    !!! close (u_file)
-    
     write (u, "(A)")
     write (u, "(A)")  "* Reset data"
     write (u, "(A)")
@@ -8788,6 +8704,39 @@ We test the implementation of all I/O methods.
     end select
     call eio%write (u)
 
+    write (u, "(A)") 
+    write (u, "(A)")  "* Write LCIO file contents to ASCII file"
+    write (u, "(A)")
+
+    select type (eio)    
+    type is (eio_lcio_t)       
+       call lcio_event_init (eio%lcio_event, &
+            proc_id = 42, &
+            event_id = event%get_index ())
+       pset_ptr => event%get_particle_set_ptr ()
+       call lcio_event_from_particle_set &
+            (eio%lcio_event,  pset_ptr)
+       call write_lcio_event (eio%lcio_event, var_str ("test_file.slcio"))
+       call lcio_event_final (eio%lcio_event)       
+    end select
+    
+    write (u, "(A)") 
+    write (u, "(A)")  "* Read in ASCII contents of LCIO file"
+    write (u, "(A)")    
+    
+    u_file = free_unit ()
+    open (u_file, file = "test_file.slcio", &
+         action = "read", status = "old")
+    do
+       read (u_file, "(A)", iostat = iostat)  buffer
+       if (iostat /= 0)  exit
+       if (trim (buffer) == "")  cycle
+       if (buffer(1:12) == " - timestamp")  cycle
+       if (buffer(1:6) == " date:")  cycle       
+       write (u, "(A)") trim (buffer)
+    end do
+    close (u_file)    
+    
     write (u, "(A)")
     write (u, "(A)")  "* Cleanup"
  
@@ -8801,9 +8750,9 @@ We test the implementation of all I/O methods.
 @ %def eio_lcio_1
 @ Test also the reading of LCIO events.
 <<EIO LCIO: execute tests>>=
-  !call test (eio_lcio_2, "eio_lcio_2", &
-  !     "read event contents", &
-  !     u, results)
+  call test (eio_lcio_2, "eio_lcio_2", &
+       "read event contents", &
+       u, results)
 <<EIO LCIO: tests>>=
   subroutine eio_lcio_2 (u)
     integer, intent(in) :: u
@@ -8817,49 +8766,55 @@ We test the implementation of all I/O methods.
     write (u, "(A)")  "* Test output: eio_lcio_2"
     write (u, "(A)")  "*   Purpose: read a LCIO event"
     write (u, "(A)")
-
-    write (u, "(A)")  "* Write a LCIO data file"
-    write (u, "(A)")
-    
-    u_file = free_unit ()
-    sample = "eio_lcio_2"
-    open (u_file, file = char (sample // ".slcio"), &
-         status = "replace", action = "readwrite")
-    
-    !!! write (u_file, "(A)")  "HepMC::Version 2.06.09"
-    !!! write (u_file, "(A)")  "HepMC::IO_GenEvent-START_EVENT_LISTING"
-    !!! write (u_file, "(A)")  "E 0 -1 -1.0000000000000000e+00 &
-    !!!      &-1.0000000000000000e+00 &
-    !!!      &-1.0000000000000000e+00 42 0 1 10001 10002 0 0"
-    !!! write (u_file, "(A)")  "U GEV MM"
-    !!! write (u_file, "(A)")  "V -1 0 0 0 0 0 2 2 0"
-    !!! write (u_file, "(A)")  "P 10001 25 0 0 4.8412291827592713e+02 &
-    !!!      &5.0000000000000000e+02 &
-    !!!      &1.2499999999999989e+02 3 0 0 -1 0"
-    !!! write (u_file, "(A)")  "P 10002 25 0 0 -4.8412291827592713e+02 &
-    !!!      &5.0000000000000000e+02 &
-    !!!      &1.2499999999999989e+02 3 0 0 -1 0"
-    !!! write (u_file, "(A)")  "P 10003 25 -1.4960220911365536e+02 &
-    !!!      &-4.6042825611414656e+02 &
-    !!!      &0 5.0000000000000000e+02 1.2500000000000000e+02 1 0 0 0 0"
-    !!! write (u_file, "(A)")  "P 10004 25 1.4960220911365536e+02 &
-    !!!      &4.6042825611414656e+02 &
-    !!!      &0 5.0000000000000000e+02 1.2500000000000000e+02 1 0 0 0 0"
-    !!! write (u_file, "(A)")  "HepMC::IO_GenEvent-END_EVENT_LISTING"
-    !!! close (u_file)
-
     
     write (u, "(A)")  "* Initialize test process" 
-    write (u, "(A)")
     
     call eio_prepare_fallback_model (fallback_model)
     call eio_prepare_test (event)
+    
+    call data%init (1)
+    data%n_beam = 2
+    data%unweighted = .true.
+    data%norm_mode = NORM_UNIT
+    data%pdg_beam = 25
+    data%energy_beam = 500
+    data%proc_num_id = [42]
+    data%cross_section(1) = 100
+    data%error(1) = 1
+    data%total_cross_section = sum (data%cross_section)    
 
+    write (u, "(A)")
+    write (u, "(A)")  "* Generate and write an event"
+    write (u, "(A)")
+ 
+    sample = "eio_lcio_2"
+ 
     allocate (eio_lcio_t :: eio)
     select type (eio)
     type is (eio_lcio_t)
        call eio%set_parameters (recover_beams = .false.)
     end select            
+    call eio%set_fallback_model (fallback_model)
+    
+    call eio%init_out (sample, data)
+    call event%generate (1, [0._default, 0._default])
+    call event%evaluate_expressions ()
+    call event%pacify_particle_set ()
+
+    call eio%output (event, i_prc = 1)
+    call eio%write (u)
+    call eio%final ()
+    deallocate (eio)
+    
+    write (u, "(A)")    
+    write (u, "(A)")  "* Initialize"
+    write (u, "(A)")
+             
+    allocate (eio_lcio_t :: eio)
+    select type (eio)
+    type is (eio_lcio_t)
+       call eio%set_parameters (recover_beams = .false.)
+    end select
     call eio%set_fallback_model (fallback_model)
     
     call data%init (1)
@@ -8870,14 +8825,14 @@ We test the implementation of all I/O methods.
     data%energy_beam = 500
     data%proc_num_id = [42]
     call data%write (u)
-
-    write (u, "(A)")    
+    write (u, *)
+    
     write (u, "(A)")  "* Initialize"
     write (u, "(A)")
-             
-    call eio%init_in (sample, data)
-    call eio%write (u)    
     
+    call eio%init_in (sample, data)
+    call eio%write (u)        
+
     write (u, "(A)")
     write (u, "(A)")  "* Read event"
     write (u, "(A)")
@@ -8890,10 +8845,9 @@ We test the implementation of all I/O methods.
             " with ID = ", eio%proc_num_id(i_prc)
     end select
     
-    call eio%input_event (event, iostat)
-    
+    call eio%input_event (event, iostat)    
     call event%write (u)
-        
+    
     write (u, "(A)")
     write (u, "(A)")  "* Read closing"
     write (u, "(A)")
