@@ -5,7 +5,7 @@
 ##
 ########################################################################
 #
-# Copyright (C) 1999-2014 by 
+# Copyright (C) 1999-2015 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -64,11 +64,11 @@ NOWEB_FILES += circe2_moments.nw
 
 bin_PROGRAMS = circe2_moments circe2_ls
 circe2_moments_SOURCES = circe2_moments.f90
-circe2_moments_LDADD = libcirce2.la libtaorng.la
+circe2_moments_LDADD = kinds.lo libcirce2.la libtaorng.la
 circe2_moments.o: $(MODULE_FILES)
 
 circe2_ls_SOURCES = circe2_ls.f90
-circe2_ls_LDADD = libcirce2.la libtaorng.la
+circe2_ls_LDADD = kinds.lo libcirce2.la libtaorng.la
 circe2_ls.o: $(MODULE_FILES)
 
 bin_SCRIPTS =

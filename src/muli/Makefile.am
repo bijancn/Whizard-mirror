@@ -2,16 +2,18 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2014 by
+# Copyright (C) 1999-2015 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
 #     with contributions from
-#     Hans-Werner Boschmann
+#     Fabian Bach <fabian.bach@desy.de>
 #     Bijan Chokoufe <bijan.chokoufe@desy.de>
 #     Christian Speckner <cnspeckn@googlemail.com>
-#     Sebastian Schmidt
-#     Daniel Wiesler
+#     Marco Sekulla <marco.sekulla@desy.de>
+#     Christian Weiss <christian.weiss@desy.de>
+#     Felix Braam, Sebastian Schmidt,
+#     Hans-Werner Boschmann, Daniel Wiesler
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by
@@ -31,11 +33,7 @@
 
 ## The files in this directory end up in an auxiliary libtool library.
 
-if MPI_AVAILABLE
 noinst_LTLIBRARIES = libmuli.la
-else
-noinst_LTLIBRARIES = libmuli_dummy.la
-endif
 
 libmuli_la_SOURCES = \
    muli_base.f90 \
@@ -49,7 +47,6 @@ libmuli_la_SOURCES = \
    muli_dsigma.f90 \
    muli_remnant.f90 \
    muli_mcint.f90
-libmuli_dummy_la_SOURCES = muli_dummy.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = muli.nw
@@ -66,7 +63,8 @@ Modules: Makefile
 # Get module lists from other directories
 module_lists = \
   ../basics/Modules \
-  ../system/Modules 
+  ../system/Modules \
+  ../utilities/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -148,7 +146,7 @@ muli.stamp: $(PRELUDE) $(srcdir)/muli.nw $(POSTLUDE)
 	done
 	@mv -f muli.tmp muli.stamp
 
-MULI_SRC = $(libmuli_la_SOURCES) $(libmuli_dummy_la_SOURCES)
+MULI_SRC = $(libmuli_la_SOURCES)
 
 $(MULI_SRC): muli.stamp
 ## Recover from the removal of $@

@@ -5,13 +5,18 @@ dnl ************************************************************************
 dnl configure -- Main configuration script for WHIZARD
 dnl configure.ac -- WHIZARD configuration
 dnl 
-dnl Copyright (C) 1999-2014 by 
+dnl Copyright (C) 1999-2015 by 
 dnl     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 dnl     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 dnl     Juergen Reuter <juergen.reuter@desy.de>
-dnl	with contributions from
+dnl     with contributions from
+dnl     Fabian Bach <fabian.bach@desy.de>
+dnl     Bijan Chokoufe <bijan.chokoufe@desy.de>
 dnl     Christian Speckner <cnspeckn@googlemail.com>
-dnl     and others
+dnl     Marco Sekulla <marco.sekulla@desy.de>
+dnl     Christian Weiss <christian.weiss@desy.de>
+dnl     Felix Braam, Sebastian Schmidt,
+dnl     Hans-Werner Boschmann, Daniel Wiesler
 dnl 
 dnl WHIZARD is free software; you can redistribute it and/or modify it
 dnl under the terms of the GNU General Public License as published by 
@@ -34,7 +39,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl 
 dnl *********************************************************************** 
 dnl Start configuration
-AC_INIT([WHIZARD],[2.2.4])
+AC_INIT([WHIZARD],[2.2.5])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AC_PREREQ([2.65])
 
@@ -48,7 +53,7 @@ AC_MSG_NOTICE([**************************************************************])
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Dec 31 2014"
+PACKAGE_DATE="Mar 01 2015"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
@@ -297,7 +302,7 @@ WO_CONFIGURE_SECTION([Fortran compiler checks])
 user_FCFLAGS="${FCFLAGS}"
 AC_PROG_FC()
 
-### Choose FC standard for PYTHIA F77 files
+### Choose FC standard for PYTHIA6 F77 files
 AC_PROG_F77([$FC])
 
 ### Determine compiler vendor and version
@@ -441,9 +446,9 @@ WO_CONFIGURE_SECTION([LCIO])
 WO_PROG_LCIO()
 
 ###---------------------------------------------------------------------
-### PYTHIA
+### PYTHIA6 etc
 
-WO_CONFIGURE_SECTION([SHOWERS PYTHIA MPI])
+WO_CONFIGURE_SECTION([SHOWERS PYTHIA6 MPI])
 
 WO_PROG_QCD()
 
@@ -572,9 +577,9 @@ AC_CONFIG_FILES([src/hepmc/Makefile])
 AC_CONFIG_FILES([src/lcio/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory pythia: WHIZARD's PYTHIA version
+### Subdirectory pythia6: WHIZARD's internal PYTHIA6 version
 
-AC_CONFIG_FILES([pythia/Makefile])
+AC_CONFIG_FILES([pythia6/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/muli: multiple interactions
@@ -691,6 +696,11 @@ AC_CONFIG_FILES([src/parsing/Makefile])
 AC_CONFIG_FILES([src/rng/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/expr_base: abstract expressions
+
+AC_CONFIG_FILES([src/expr_base/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory src/physics: particle-physics related functions
 
 AC_CONFIG_FILES([src/physics/Makefile])
@@ -711,6 +721,11 @@ AC_CONFIG_FILES([src/types/Makefile])
 AC_CONFIG_FILES([src/matrix_elements/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/me_methods: specific process code and interface
+
+AC_CONFIG_FILES([src/me_methods/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory src/particles: particle objects
 
 AC_CONFIG_FILES([src/particles/Makefile])
@@ -719,6 +734,11 @@ AC_CONFIG_FILES([src/particles/Makefile])
 ### Subdirectory src/beams: beams and beam structure
 
 AC_CONFIG_FILES([src/beams/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/events: generic events and event I/O
+
+AC_CONFIG_FILES([src/events/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/mci: multi-channel integration and event generation
@@ -731,7 +751,37 @@ AC_CONFIG_FILES([src/mci/Makefile])
 AC_CONFIG_FILES([src/phase_space/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/models
+### Subdirectory src/user: user plugin support
+
+AC_CONFIG_FILES([src/user/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/blha: BLHA support (NLO data record)
+
+AC_CONFIG_FILES([src/blha/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/gosam: GoSAM support (NLO amplitudes)
+
+AC_CONFIG_FILES([src/gosam/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/fks: FKS subtraction algorithm
+
+AC_CONFIG_FILES([src/fks/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/variables: Implementation of variable lists
+
+AC_CONFIG_FILES([src/variables/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/model_features: Model access and methods
+
+AC_CONFIG_FILES([src/model_features/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/models: Model-specific code
 
 AC_CONFIG_FILES([src/models/Makefile])
 

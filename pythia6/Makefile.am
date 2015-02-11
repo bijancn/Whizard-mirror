@@ -5,10 +5,13 @@
 ##
 ########################################################################
 #
-# Copyright (C) 1999-2014 by 
+# Copyright (C) 1999-2015 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
+#     with contributions from
+#     Fabian Bach <fabian.bach@desy.de>
+#     Bijan Chokoufe <bijan.chokoufe@desy.de>    
 #     Christian Speckner <cnspeckn@googlemail.com>
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
@@ -31,24 +34,29 @@
 AM_FFLAGS =
 AM_FCFLAGS =
 
-if PYTHIA_AVAILABLE
+if PYTHIA6_AVAILABLE
 
 if FC_IS_NAG
 AM_FFLAGS += -dcfuns -w
 AM_FCFLAGS += -dcfuns -w
 endif
 
-noinst_LTLIBRARIES = libpythia_wo.la
+noinst_LTLIBRARIES = libpythia6_wo.la
 
 if LHAPDF5_AVAILABLE
-libpythia_wo_la_SOURCES = pythia.f
+libpythia6_wo_la_SOURCES = pythia.f
 else
 if LHAPDF6_AVAILABLE
-libpythia_wo_la_SOURCES = pythia.f
+libpythia6_wo_la_SOURCES = pythia.f
 else
-libpythia_wo_la_SOURCES = pythia.f pythia_pdf.f
+libpythia6_wo_la_SOURCES = pythia.f pythia_pdf.f
 endif
 endif	
+
+else 
+
+noinst_LTLIBRARIES = libpythia6_wo_dummy.la
+libpythia6_wo_dummy_la_SOURCES = pythia6_dummy.f90
 
 endif
 ########################################################################
