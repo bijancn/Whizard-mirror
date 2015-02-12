@@ -60,7 +60,8 @@ module_lists = \
   ../combinatorics/Modules \
   ../parsing/Modules \
   ../qft/Modules \
-  ../types/Modules
+  ../types/Modules \
+  ../physics/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
