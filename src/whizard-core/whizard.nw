@@ -6150,15 +6150,9 @@ parameter arrays for the selected channel.
     call k%phs%select_channel (phs_channel)
     select type (phs => k%phs)
     type is (phs_fks_t)
-      call phs%set_emitters (nlo_data%reg_data%emitters)
-      if (nlo_data%has_massive_emitter ()) &
-           call phs%enable_massive_emitters ()
       call phs%evaluate_selected_channel &
            (phs_channel, mci_work%get_x_process ())
       if (phs%q_defined) then
-!!         call phs%get_real_kinematics (xit, y, phi, xi_max, jac, jac_rand)
-!!         if (present (nlo_data)) &
-!!              call nlo_data%set_real_kinematics (xit, y, phi, xi_max, jac, jac_rand)
          call phs%get_born_momenta (p)
          k%phs_factor = phs%get_overall_factor ()
          success = .true.
@@ -6466,6 +6460,7 @@ allocated explicitly.
 
 @ %def component_instance_setup_kinematics
 @
+  call phs%set_emitters (nlo_data%reg_data%emitters)
 <<Processes: component instance: TBP>>=
   procedure :: setup_fks_kinematics => component_instance_setup_fks_kinematics
 <<Processes: procedures>>=
@@ -6473,6 +6468,11 @@ allocated explicitly.
     class(component_instance_t), intent(inout), target :: component
     select type (phs => component%k_seed%phs)
     type is (phs_fks_t)
+       associate (nlo_data => component%nlo_data)
+          phs%massive_phsp = nlo_data%has_massive_emitter ()
+          call phs%set_emitters (nlo_data%reg_data%emitters)
+          call phs%setup_masses (nlo_data%n_in + nlo_data%n_out_born)
+       end associate
        phs%fks_kinematics => component%nlo_data%real_kinematics
        call phs%setup_generator_kinematics ()
     class default 
@@ -6710,33 +6710,35 @@ imaginary part of the terms, which should be zero anyway.
      logical :: bad_point
 
      if (term%nlo_type /= NLO_VIRTUAL) return
-     call term%nlo_data%set_alpha_s_born &
-               (component%config%core%get_alpha_s (component%tmp))
-     call term%nlo_data%virtual_terms%set_ren_scale &
-                (interaction_get_momenta (term%int_hard), term%ren_scale) 
-     select type (core => component%config%core)
-     type is (prc_gosam_t)
-        do i_flv = 1, core%get_nflv()
-           call core%compute_sqme_virt (i_flv, &
-                      interaction_get_momenta (term%int_hard), &
-                      term%ren_scale, &
-                      core%get_alpha_s (component%tmp), &
-                      sqme_virt, bad_point)
-           if (.not. term%nlo_data%use_internal_color_correlations) &
-              call core%compute_sqme_cc (i_flv, &
-                        interaction_get_momenta (term%int_hard), &
-                        term%ren_scale, &
-                        core%get_alpha_s (component%tmp), &
-                        born_cc = component%nlo_data%sqme_born_cc (:,:,i_flv), &
-                        bad_point = bad_point)
-           call term%nlo_data%virtual_terms%set_vfin (sqme_virt(3))
-           call term%nlo_data%virtual_terms%set_bad_point (bad_point)
-           component%nlo_data%sqme_born = sqme_virt (4)             
-           component%sqme = component%sqme + &
-                            term%nlo_data%compute_virt (i_flv, term%int_hard) * &
-                            term%weight
-        end do
-     end select
+     associate (nlo_data => component%nlo_data)
+        call nlo_data%set_alpha_s_born &
+                  (component%config%core%get_alpha_s (component%tmp))
+        call nlo_data%virtual_terms%set_ren_scale &
+                   (interaction_get_momenta (term%int_hard), term%ren_scale) 
+        select type (core => component%config%core)
+        type is (prc_gosam_t)
+           do i_flv = 1, core%get_nflv()
+              call core%compute_sqme_virt (i_flv, &
+                         interaction_get_momenta (term%int_hard), &
+                         term%ren_scale, &
+                         core%get_alpha_s (component%tmp), &
+                         sqme_virt, bad_point)
+              if (.not. nlo_data%use_internal_color_correlations) &
+                 call core%compute_sqme_cc (i_flv, &
+                           interaction_get_momenta (term%int_hard), &
+                           term%ren_scale, &
+                           core%get_alpha_s (component%tmp), &
+                           born_cc = nlo_data%sqme_born_cc (:,:,i_flv), &
+                           bad_point = bad_point)
+              call nlo_data%virtual_terms%set_vfin (sqme_virt(3))
+              call nlo_data%virtual_terms%set_bad_point (bad_point)
+              nlo_data%sqme_born = sqme_virt (4)             
+              component%sqme = component%sqme + &
+                               nlo_data%compute_virt (i_flv, term%int_hard) * &
+                               term%weight
+           end do
+        end select
+     end associate
   end subroutine component_instance_evaluate_sqme_virt
 
 @ %def component_instance_evaluate_sqme_virt
@@ -6769,39 +6771,39 @@ imaginary part of the terms, which should be zero anyway.
         end do
      end select 
      !!! Get the necessary subtraction matrix elements.
-     if (term%nlo_data%is_subtraction_active ()) then
-        select type (core_born => component%config%core_sub_born)
-        type is (prc_gosam_t)
-           do i_flv = 1, component%nlo_data%n_flv_born
-              if (.not. term%nlo_data%use_internal_color_correlations) then
-                 call core_born%compute_sqme_cc (i_flv, &
-                             interaction_get_momenta (component%nlo_data%int_born), &
-                             0._default, core_born%get_alpha_s (component%tmp), &
-                             component%nlo_data%sqme_born(i_flv), &
-                             component%nlo_data%sqme_born_cc (:,:,i_flv), &
-                             bad_point)
-              else
-                 !!! Implementation for color-correlations using color_data
-              end if
-              if (.not. term%nlo_data%use_internal_spin_correlations  &
-                  .and. term%nlo_data%requires_spin_correlation (i_flv)) &
-                 !!! This far only correct for e+ e- -> q qbar gl
-                 call core_born%compute_sqme_sc (i_flv, 5, &
-                                interaction_get_momenta (component%nlo_data%int_born), &
+     associate (nlo_data => component%nlo_data)
+        if (nlo_data%is_subtraction_active ()) then
+           select type (core_born => component%config%core_sub_born)
+           type is (prc_gosam_t)
+              do i_flv = 1, nlo_data%n_flv_born
+                 if (.not. nlo_data%use_internal_color_correlations) then
+                    call core_born%compute_sqme_cc (i_flv, &
+                                interaction_get_momenta (nlo_data%int_born), &
                                 0._default, core_born%get_alpha_s (component%tmp), &
-                                component%nlo_data%me_sc, &
+                                nlo_data%sqme_born(i_flv), &
+                                nlo_data%sqme_born_cc (:,:,i_flv), &
                                 bad_point)
-           end do
-        type is (prc_omega_t)
-           component%nlo_data%sqme_born_cc (:,:,1) = component%nlo_data%sqme_born(1) * &
-                                              component%nlo_data%color_data%beta_ij (:,:,1)
-        end select
-     end if
-     call term%nlo_data%copy_matrix_elements ()
-     call term%nlo_data%set_alpha_s_born &
+                 else
+                    !!! Implementation for color-correlations using color_data
+                 end if
+                 if (.not. nlo_data%use_internal_spin_correlations  &
+                     .and. nlo_data%requires_spin_correlation (i_flv)) &
+                    call core_born%compute_sqme_sc (i_flv, 5, &
+                                   interaction_get_momenta (nlo_data%int_born), &
+                                   0._default, core_born%get_alpha_s (component%tmp), &
+                                   nlo_data%me_sc, bad_point)
+              end do
+           type is (prc_omega_t)
+              nlo_data%sqme_born_cc (:,:,1) = nlo_data%sqme_born(1) * &
+                                              nlo_data%color_data%beta_ij (:,:,1)
+           end select
+        end if
+        call nlo_data%copy_matrix_elements ()
+        call nlo_data%set_alpha_s_born &
                         (component%config%core%get_alpha_s (component%tmp))
-     component%nlo_data%sqme_real = term%nlo_data%compute_sqme_real_fin &
-                                      (term%weight, p_real) 
+        nlo_data%sqme_real = nlo_data%compute_sqme_real_fin &
+                                         (term%weight, p_real) 
+     end associate
   end subroutine component_instance_evaluate_sqme_real
 
 @ %def subroutine component_instance_evaluate_sqme_real
