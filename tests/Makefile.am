@@ -137,6 +137,9 @@ UNIT_TESTS_REQ_LCIO = \
     lcio.run \
     eio_lcio.run
 
+UNIT_TESTS_REQ_GOSAM = \
+    smtest_18.run
+
 UNIT_TESTS_REQ_OCAML = \
     prc_omega.run \
     compilations.run \
@@ -250,6 +253,7 @@ TESTS_REQ_OCAML = \
     smtest_15.run \
     smtest_16.run \
     smtest_17.run \
+    smtest_18.run \
     mssmtest.run \
     spincor_1.run \
     show_1.run \
@@ -362,6 +366,7 @@ TEST_DRIVERS_RUN = \
     $(UNIT_TESTS_REQ_GAMELAN) \
     $(UNIT_TESTS_REQ_HEPMC) \
     $(UNIT_TESTS_REQ_LCIO) \
+    $(UNIT_TESTS_REQ_GOSAM) \
     $(UNIT_TESTS_REQ_FASTJET) \
     $(UNIT_TESTS_REQ_LHAPDF5) \
     $(UNIT_TESTS_REQ_LHAPDF6) \
@@ -391,6 +396,7 @@ UNIT_TESTS += $(UNIT_TESTS_REQ_GAMELAN)
 UNIT_TESTS += $(UNIT_TESTS_REQ_FASTJET)
 UNIT_TESTS += $(UNIT_TESTS_REQ_HEPMC)
 UNIT_TESTS += $(UNIT_TESTS_REQ_LCIO)
+UNIT_TESTS += $(UNIT_TESTS_REQ_GOSAM)
 UNIT_TESTS += $(UNIT_TESTS_REQ_LHAPDF5)
 UNIT_TESTS += $(UNIT_TESTS_REQ_LHAPDF6)
 UNIT_TESTS += $(UNIT_TESTS_REQ_STDHEP)

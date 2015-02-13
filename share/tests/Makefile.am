@@ -524,6 +524,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/smtest_15.ref \
     ref-output/smtest_16.ref \
     ref-output/smtest_17.ref \
+    ref-output/smtest_18.ref \
     ref-output/mssmtest.ref \
     ref-output/spincor_1.ref \
     ref-output/show_1.ref \
@@ -847,6 +848,7 @@ MISC_TESTS_SIN = \
     smtest_15.sin \
     smtest_16.sin \
     smtest_17.sin \
+    smtest_18.sin \
     mssmtest.sin \
     spincor_1.sin \
     show_1.sin \
