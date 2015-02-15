@@ -3583,7 +3583,7 @@ and virtual counterterms.
   subroutine color_data_init (color_data, reg_data, prc_constants)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
-    type(process_constants_t), intent(inout), dimension(2) :: prc_constants
+    type(process_constants_t), intent(in), dimension(2) :: prc_constants
     integer :: nlegs_born, nlegs_real
     integer :: i
     nlegs_born = reg_data%nlegs_born
@@ -4009,16 +4009,27 @@ one to determine this.
     logical :: val
     integer :: n_tot, i
     val = .false.
-    n_tot = nlo_data%n_in + nlo_data%n_out_born
-    do i = nlo_data%n_in+1, n_tot
-       if (any (i == nlo_data%reg_data%emitters)) &
-          val = val .or. nlo_data%reg_data%flv_born(1)%massive(i)
-    end do
+    associate (particle_data => nlo_data%particle_data)
+       n_tot = particle_data%n_in + particle_data%n_out_born
+       do i = particle_data%n_in+1, n_tot
+          if (any (i == nlo_data%reg_data%emitters)) &
+             val = val .or. nlo_data%reg_data%flv_born(1)%massive(i)
+       end do
+    end associate
   end function nlo_data_has_massive_emitter
 
 @ %def nlo_data_has_massive_emitter
 @
 \subsection{Putting it together}
+<<nlo data: types>>=
+  type :: nlo_particle_data_t
+    integer :: n_in
+    integer :: n_out_born, n_out_real
+    integer :: n_flv_born, n_flv_real
+  end type nlo_particle_data_t
+
+@ %def nlo_particle_data_t
+@
 This data type governs the whole calculation. It contains information
 about color, spin and flavor as well as the information about the Born
 process. 
@@ -4027,12 +4038,8 @@ process.
 <<nlo data: types>>=
   type :: nlo_data_t
     type(region_data_t) :: reg_data
-    integer :: n_in
-    integer :: n_out_born
-    integer :: n_out_real
+    type(nlo_particle_data_t) :: particle_data
     integer :: n_allowed_born
-    integer :: n_flv_born 
-    integer :: n_flv_real
     integer :: active_emitter
     complex(default), dimension(:), allocatable :: amp_born
     type(color_data_t) :: color_data
@@ -4068,7 +4075,7 @@ process.
 <<nlo data: procedures>>=  
   subroutine nlo_data_init (nlo_data, prc_constants, template, model)
      class(nlo_data_t), intent(inout) :: nlo_data
-     type(process_constants_t), intent(inout), dimension(2) :: prc_constants
+     type(process_constants_t), intent(in), dimension(2) :: prc_constants
      type(fks_template_t), intent(in) :: template
      type(model_data_t), intent(in) :: model
      integer :: i
@@ -4082,24 +4089,17 @@ process.
      type is (fks_mapping_default_t)
         call mapping%set_parameter (template%fks_dij_exp1, template%fks_dij_exp2)
      end select
-     nlo_data%n_flv_born = nlo_data%reg_data%n_flv_born
-     nlo_data%n_flv_real = nlo_data%reg_data%n_flv_real
-     allocate (nlo_data%sqme_born (nlo_data%n_flv_born))
-     allocate (nlo_data%sqme_real_non_sub (nlo_data%n_flv_real))
-     nlo_data%sqme_born = 0.0
-     nlo_data%n_in = prc_constants(2)%n_in
-     nlo_data%n_out_born = prc_constants(1)%n_out
-     nlo_data%n_out_real = prc_constants(2)%n_out
-     allocate (nlo_data%sqme_born_cc (nlo_data%n_in + nlo_data%n_out_born, &
-                                      nlo_data%n_in + nlo_data%n_out_born, &
-                                      nlo_data%n_flv_born))
+     call nlo_data%set_particle_data (prc_constants)
+     call nlo_data%setup_matrix_elements ()
      if (nlo_data%use_internal_color_correlations) &
         call nlo_data%color_data%init (nlo_data%reg_data, prc_constants)
      nlo_data%alpha_s_born_set = .false.
      call nlo_data%init_real_kinematics
-     call nlo_data%real_terms%init (nlo_data%reg_data, &
-                                    nlo_data%n_in + nlo_data%n_out_born, &
-                                    nlo_data%n_in + nlo_data%n_out_born + 1)
+     associate (particle_data => nlo_data%particle_data)
+        call nlo_data%real_terms%init (nlo_data%reg_data, &
+                                       particle_data%n_in + particle_data%n_out_born, &
+                                       particle_data%n_in + particle_data%n_out_real)
+     end associate
      nlo_data%counter_exists = template%count_kinematics
      if (nlo_data%counter_exists) call nlo_data%counter%init(20)
    end subroutine nlo_data_init
@@ -4107,15 +4107,71 @@ process.
 @ %def nlo_data_init
 @
 <<nlo data: nlo data: TBP>>=
+  procedure :: set_particle_data => nlo_data_set_particle_data
+<<nlo data: procedures>>=
+  subroutine nlo_data_set_particle_data (nlo_data, prc_constants)
+    class(nlo_data_t), intent(inout) :: nlo_data
+    type(process_constants_t), intent(in), dimension(2) :: prc_constants
+    associate (particle_data => nlo_data%particle_data)
+       particle_data%n_flv_born = nlo_data%reg_data%n_flv_born
+       particle_data%n_flv_real = nlo_data%reg_data%n_flv_real
+       particle_data%n_in = prc_constants(2)%n_in
+       particle_data%n_out_born = prc_constants(1)%n_out
+       particle_data%n_out_real = prc_constants(2)%n_out
+    end associate
+  end subroutine nlo_data_set_particle_data
+
+@ %def nlo_data_set_particle_data
+@
+<<nlo data: nlo data: TBP>>=
+  procedure :: setup_matrix_elements => nlo_data_setup_matrix_elements
+<<nlo data: procedures>>=
+  subroutine nlo_data_setup_matrix_elements (nlo_data)
+    class(nlo_data_t), intent(inout) :: nlo_data
+    integer :: n_tot_born
+    associate (particle_data => nlo_data%particle_data)
+       allocate (nlo_data%sqme_born (particle_data%n_flv_born))
+       allocate (nlo_data%sqme_real_non_sub (particle_data%n_flv_real))
+       n_tot_born = particle_data%n_in + particle_data%n_out_born
+       allocate (nlo_data%sqme_born_cc (n_tot_born, n_tot_born, particle_data%n_flv_born))
+    end associate                       
+    nlo_data%sqme_born = 0 
+  end subroutine nlo_data_setup_matrix_elements
+
+@ %def nlo_data_setup_matrix_elements
+@
+<<nlo data: nlo data: TBP>>=
   procedure :: get_n_particles_real => nlo_data_get_n_particles_real
 <<nlo data: procedures>>=
   pure function nlo_data_get_n_particles_real (nlo_data) result (n_particles)
     integer :: n_particles
     class(nlo_data_t), intent(in) :: nlo_data
-    n_particles = nlo_data%n_in + nlo_data%n_out_real
+    n_particles = nlo_data%particle_data%n_in + nlo_data%particle_data%n_out_real
   end function nlo_data_get_n_particles_real
 
 @ %def nlo_data_get_n_particles_real
+@
+<<nlo data: nlo data: TBP>>=
+  procedure :: get_n_flv_born => nlo_data_get_n_flv_born
+<<nlo data: procedures>>=
+  elemental function nlo_data_get_n_flv_born (nlo_data) result (n_flv)
+    class(nlo_data_t), intent(in) :: nlo_data
+    integer :: n_flv
+    n_flv = nlo_data%particle_data%n_flv_born
+  end function nlo_data_get_n_flv_born
+
+@ %def nlo_data_get_n_flv_born
+@
+<<nlo data: nlo data: TBP>>=
+  procedure :: get_n_flv_real => nlo_data_get_n_flv_real
+<<nlo data: procedures>>=
+  elemental function nlo_data_get_n_flv_real (nlo_data) result (n_flv)
+    class(nlo_data_t), intent(in) :: nlo_data
+    integer :: n_flv
+    n_flv = nlo_data%particle_data%n_flv_real
+  end function nlo_data_get_n_flv_real
+
+@ %def nlo_data_get_n_flv_real
 @
 <<nlo data: nlo data: TBP>>=
   procedure :: get_n_alr => nlo_data_get_n_alr
@@ -4154,24 +4210,6 @@ process.
   end subroutine nlo_data_copy_matrix_elements
 
 @ %def nlo_data_copy_matrix_elements
-@
-<<nlo data: nlo data: TBP>>=
-  procedure :: write => nlo_data_write
-<<nlo data: procedures>>=
-  !!! Incomplete
-  subroutine nlo_data_write (nlo_data, unit)
-    class(nlo_data_t), intent(in) :: nlo_data
-    integer, intent(in), optional :: unit
-    integer :: i, u
-    u = given_output_unit (unit); if (u < 0) return
-    write (u, "(1x,A,I0)") "n_alr          = ", nlo_data%get_n_alr ()
-    write (u, "(1x,A,I0)") "n_in           = ", nlo_data%n_in
-    write (u, "(1x,A,I0)") "n_out_born     = ", nlo_data%n_out_born
-    write (u, "(1x,A,I0)") "n_out_real     = ", nlo_data%n_out_real
-    write (u, "(1x,A,I0)") "n_allowed_born = ", nlo_data%n_allowed_born
-  end subroutine nlo_data_write
-
-@ %def nlo_data_write
 @
 <<nlo data: nlo data: TBP>>=
   procedure :: init_born_amps => nlo_data_init_born_amps
@@ -4349,7 +4387,8 @@ process.
   subroutine nlo_data_init_real_kinematics (nlo_data)
     class(nlo_data_t), intent(inout) :: nlo_data
     integer :: n_tot
-    n_tot = nlo_data%n_in + nlo_data%n_out_born
+    n_tot = nlo_data%particle_data%n_in + &
+            nlo_data%particle_data%n_out_born
     allocate (nlo_data%real_kinematics)
     associate (real_kinematics => nlo_data%real_kinematics)
        allocate (real_kinematics%xi_max (n_tot))
