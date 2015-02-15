@@ -32,9 +32,10 @@ noinst_LTLIBRARIES = libfks.la
 
 libfks_la_SOURCES = \
   fks_regions.f90 \
+  nlo_data.f90 \
   virtual.f90 \
   real_subtraction.f90 \
-  nlo_data.f90 \
+  nlo_controller.f90 \
   phs_fks.f90
 
 ## Omitting this would exclude it from the distribution
