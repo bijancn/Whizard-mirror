@@ -4030,6 +4030,17 @@ one to determine this.
 
 @ %def nlo_particle_data_t
 @
+<<nlo data: types>>=
+  type :: nlo_states_t
+    integer, dimension(:,:), allocatable :: flv_state_born
+    integer, dimension(:,:), allocatable :: flv_state_real
+    integer, dimension(:), allocatable :: flv_born
+    integer, dimension(:), allocatable :: hel_born
+    integer, dimension(:), allocatable :: col_born
+  end type nlo_states_t
+
+@ %def nlo_states_t
+@
 This data type governs the whole calculation. It contains information
 about color, spin and flavor as well as the information about the Born
 process. 
@@ -4039,6 +4050,7 @@ process.
   type :: nlo_data_t
     type(region_data_t) :: reg_data
     type(nlo_particle_data_t) :: particle_data
+    type(nlo_states_t) :: particle_states
     integer :: n_allowed_born
     integer :: active_emitter
     complex(default), dimension(:), allocatable :: amp_born
@@ -4046,11 +4058,6 @@ process.
     type(real_kinematics_t), pointer :: real_kinematics => null()
     type(virtual_t) :: virtual_terms
     type(real_subtraction_t) :: real_terms
-    integer, dimension(:,:), allocatable :: flv_state_born
-    integer, dimension(:,:), allocatable :: flv_state_real
-    integer, dimension(:), allocatable :: flv_born
-    integer, dimension(:), allocatable :: hel_born
-    integer, dimension(:), allocatable :: col_born
     real(default) :: alpha_s_born
     logical :: alpha_s_born_set
     real(default), dimension(:), allocatable :: sqme_born
@@ -4078,17 +4085,8 @@ process.
      type(process_constants_t), intent(in), dimension(2) :: prc_constants
      type(fks_template_t), intent(in) :: template
      type(model_data_t), intent(in) :: model
-     integer :: i
-     nlo_data%flv_state_born = prc_constants(1)%get_flv_state ()
-     nlo_data%flv_state_real = prc_constants(2)%get_flv_state ()
-     call nlo_data%reg_data%init (model, &
-          nlo_data%flv_state_born, &
-          nlo_data%flv_state_real, &
-          template%mapping_type)
-     select type (mapping => nlo_data%reg_data%fks_mapping)
-     type is (fks_mapping_default_t)
-        call mapping%set_parameter (template%fks_dij_exp1, template%fks_dij_exp2)
-     end select
+     call nlo_data%set_flv_states (prc_constants)
+     call nlo_data%init_region_data (template, model)
      call nlo_data%set_particle_data (prc_constants)
      call nlo_data%setup_matrix_elements ()
      if (nlo_data%use_internal_color_correlations) &
@@ -4105,6 +4103,32 @@ process.
    end subroutine nlo_data_init
 
 @ %def nlo_data_init
+@
+<<nlo data: nlo data: TBP>>=
+  procedure :: set_flv_states => nlo_data_set_flv_states
+<<nlo data: procedures>>=
+  subroutine nlo_data_set_flv_states (nlo_data, prc_constants)
+    class(nlo_data_t), intent(inout) :: nlo_data
+    type(process_constants_t), intent(in), dimension(2) :: prc_constants
+    associate (states => nlo_data%particle_states)
+       states%flv_state_born = prc_constants(1)%get_flv_state ()
+       states%flv_state_real = prc_constants(2)%get_flv_state ()
+    end associate
+  end subroutine nlo_data_set_flv_states
+
+@ %def nlo_data_set_flv_states
+@
+<<nlo data: nlo data: TBP>>=
+  procedure :: get_flv_state_real => nlo_data_get_flv_state_real
+<<nlo data: procedures>>=
+  function nlo_data_get_flv_state_real (nlo_data, i_uborn) result (flv_state)
+    class(nlo_data_t), intent(in) :: nlo_data
+    integer, intent(in) :: i_uborn
+    integer, dimension(:), allocatable :: flv_state
+    flv_state = nlo_data%particle_states%flv_state_real (:,i_uborn)
+  end function nlo_data_get_flv_state_real
+
+@ %def nlo_data_get_flv_state_real
 @
 <<nlo data: nlo data: TBP>>=
   procedure :: set_particle_data => nlo_data_set_particle_data
@@ -4185,6 +4209,26 @@ process.
 @ %def nlo_data_get_n_alr
 @
 <<nlo data: nlo data: TBP>>=
+  procedure :: init_region_data => nlo_data_init_region_data
+<<nlo data: procedures>>=
+  subroutine nlo_data_init_region_data (nlo_data, template, model)
+    class(nlo_data_t), intent(inout) :: nlo_data
+    type(fks_template_t), intent(in) :: template
+    type(model_data_t), intent(in) :: model
+    associate (states => nlo_data%particle_states)
+       call nlo_data%reg_data%init (model, &
+                     states%flv_state_born, states%flv_state_real, &
+                     template%mapping_type)
+    end associate
+    select type (mapping => nlo_data%reg_data%fks_mapping)
+    type is (fks_mapping_default_t)
+       call mapping%set_parameter (template%fks_dij_exp1, template%fks_dij_exp2)
+    end select
+  end subroutine nlo_data_init_region_data
+
+@ %def nlo_data_init_region_data
+@
+<<nlo data: nlo data: TBP>>=
   procedure :: get_xi_max => nlo_data_get_xi_max
 <<nlo data: procedures>>=
   function nlo_data_get_xi_max (nlo_data, alr) result (xi_max)
@@ -4254,7 +4298,7 @@ process.
 <<nlo data: procedures>>=
   subroutine nlo_data_init_virtual (nlo_data)
     class(nlo_data_t), intent(inout) :: nlo_data
-    call nlo_data%virtual_terms%init (nlo_data%flv_state_born)
+    call nlo_data%virtual_terms%init (nlo_data%particle_states%flv_state_born)
   end subroutine nlo_data_init_virtual
 
 @ %def nlo_data_init_virtual
@@ -4339,8 +4383,10 @@ process.
   subroutine nlo_data_set_flv_born (nlo_data, flv_in)
     class(nlo_data_t), intent(inout) :: nlo_data
     integer, intent(in), dimension(:), allocatable :: flv_in
-    allocate (nlo_data%flv_born (size (flv_in)))
-    nlo_data%flv_born = flv_in
+    associate (states => nlo_data%particle_states)
+       allocate (states%flv_born (size (flv_in)))
+       states%flv_born = flv_in
+    end associate
   end subroutine nlo_data_set_flv_born 
 
 @ %def nlo_data_set_flv_born
@@ -4351,8 +4397,10 @@ process.
   subroutine nlo_data_set_hel_born (nlo_data, hel_in)
     class(nlo_data_t), intent(inout) :: nlo_data
     integer, intent(in), dimension(:), allocatable :: hel_in
-    allocate (nlo_data%hel_born (size (hel_in)))
-    nlo_data%hel_born = hel_in
+    associate (states => nlo_data%particle_states)
+       allocate (states%hel_born (size (hel_in)))
+       states%hel_born = hel_in
+    end associate
   end subroutine nlo_data_set_hel_born 
 
 @ %def nlo_data_set_hel_born
@@ -4363,11 +4411,49 @@ process.
   subroutine nlo_data_set_col_born (nlo_data, col_in)
     class(nlo_data_t), intent(inout) :: nlo_data
     integer, intent(in), dimension(:), allocatable :: col_in
-    allocate (nlo_data%col_born (size (col_in)))
-    nlo_data%col_born = col_in
+    associate (states => nlo_data%particle_states)
+       allocate (states%col_born (size (col_in)))
+       states%col_born = col_in
+   end associate
   end subroutine nlo_data_set_col_born
 
 @ %def nlo_data_set_col_born
+@
+<<nlo data: nlo data: TBP>>=
+  procedure :: get_flv_born => nlo_data_get_flv_born
+<<nlo data: procedures>>=
+  elemental function nlo_data_get_flv_born (nlo_data, i) result  (flv)
+    class(nlo_data_t), intent(in) :: nlo_data
+    integer, intent(in) :: i
+    integer :: flv
+    flv = nlo_data%particle_states%flv_born(i)
+  end function nlo_data_get_flv_born 
+
+@ %def nlo_data_get_flv_born
+@
+<<nlo data: nlo data: TBP>>=
+  procedure :: get_hel_born => nlo_data_get_hel_born
+<<nlo data: procedures>>=
+  elemental function nlo_data_get_hel_born (nlo_data, i) result (hel)
+    class(nlo_data_t), intent(in) :: nlo_data
+    integer, intent(in) :: i
+    integer :: hel
+    hel = nlo_data%particle_states%hel_born (i)
+  end function nlo_data_get_hel_born 
+
+@ %def nlo_data_get_hel_born
+@
+<<nlo data: nlo data: TBP>>=
+  procedure :: get_col_born => nlo_data_get_col_born
+<<nlo data: procedures>>=
+  elemental function nlo_data_get_col_born (nlo_data, i) result (col)
+    class(nlo_data_t), intent(in) :: nlo_data
+    integer, intent(in) :: i
+    integer :: col
+    col = nlo_data%particle_states%col_born (i)
+  end function nlo_data_get_col_born
+
+@ %def nlo_data_get_col_born
 @
 <<nlo data: nlo data: TBP>>=
   procedure :: set_alpha_s_born => nlo_data_set_alpha_s_born
