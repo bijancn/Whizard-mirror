@@ -129,6 +129,7 @@ flavor as it is supported by LHAPDF6.
 [[ASSERT]] does additional sanity checks that should be disabled for
 production.
 <<Shower base: parameters>>=
+! TODO: (bcn 2015-02-18) Rename D_PRINT to DEBUG and ASSERT to ENSURE
   logical, parameter, public :: D_PRINT = .false.
   logical, parameter, public :: ASSERT = .false.
 @ %def D_PRINT
@@ -1017,6 +1018,7 @@ parton [[prt]] into its daughters are allowed or not.
 <<Shower partons: procedures>>=
   recursive subroutine parton_apply_costheta (prt)
     type(parton_t), intent(inout) :: prt
+    if (D_PRINT) print *, "D: parton_apply_costheta for parton " , prt%nr
     prt%z = 0.5_default * (one + parton_get_beta (prt) * prt%costheta)
     if (associated (prt%child1) .and. associated (prt%child2) ) then
        if (prt%child1%simulated .and. &
@@ -1081,7 +1083,7 @@ parton [[prt]] into its daughters are allowed or not.
 
 @ %def parton_apply_lorentztrafo_recursive
 @ This takes the three-momentum of a parton and generates
-three-momenta of its children.
+three-momenta of its children given their energy and virtuality
 <<Shower partons: public>>=
   public :: parton_generate_ps
 <<Shower partons: procedures>>=
@@ -1771,10 +1773,9 @@ treated massless.
     end if
     do i = 1, size (partons)
        if (signal_is_pending ()) return
-       !!! ensure that partons are marked as belonging to the hard interaction
+       !!! partons are marked as belonging to the hard interaction
        shower%interactions(n_int)%i%partons(i)%p%belongstointeraction &
             = .true.
-       !!! ensure that incoming partons are marked as belonging to ISR
        shower%interactions(n_int)%i%partons(i)%p%belongstoFSR = i > 2
 
        shower%interactions(n_int)%i%partons(i)%p%interactionnr &
@@ -1815,8 +1816,8 @@ treated massless.
        <<Perform clustering in the usual way>>
     end if
 
-    !!! add all partons to the shower
-    <<Count number of associated [[shower%partons(i)%p]]>>
+    !!! this is not used for anything
+    !<<Count number of associated [[shower%partons(i)%p]]>>
 
     !!! set the FSR starting scale for all partons
     do i = 1, size (new_partons)
@@ -2016,7 +2017,7 @@ CLUSTERING: do
               sqrt(one - &
               (parton_get_beta(prt))**2), space_part(prt%momentum) / &
               space_part_norm(prt%momentum)) * childmomentum
-         prt%costheta = enclosed_angle_ct(prtmomentum, childmomentum)
+         prt%costheta = enclosed_angle_ct (prtmomentum, childmomentum)
       else
          prt%costheta = - one
       end if
@@ -2493,8 +2494,10 @@ end subroutine set_starting_scale
           lastfree = i
        end if
     end do
-    if (lastfree == 0) then
-       call msg_bug ("Shower: no free pointers found")
+    if (ASSERT) then
+       if (lastfree == 0) then
+          call msg_bug ("Shower: no free pointers found")
+       end if
     end if
     shower%partons(lastfree)%p => newprt%p
   end subroutine shower_add_parent
@@ -4261,6 +4264,7 @@ branching, while FSR branchings are ignored.
        temp3 = shower%get_xpdf (prt%initial%type, prt%child1%x, prt%child1%t, &
             prt%child1%type) / &
             shower%get_xpdf (prt%initial%type, prt%child1%x, prt%t, prt%child1%type)
+       ! TODO: (bcn 2015-02-19) ???
        if (temp1 * temp2 * temp3 > one) then
           print *, "weights:", temp1, temp2, temp3
        end if
@@ -4333,7 +4337,7 @@ branching, while FSR branchings are ignored.
               two * D_Nf * &
               integral_over_P_qqg (one - zmax, one - prt%child1%x))
       else
-         print *, "neither quark nor gluon in generate_next_trial_scale"
+         call msg_bug("neither quark nor gluon in generate_next_trial_scale")
       end if
       F = F / shower%get_xpdf (prt%child1%initial%type, prt%child1%x, &
            prt%child1%t, prt%child1%type)
@@ -4348,7 +4352,7 @@ branching, while FSR branchings are ignored.
       real(default) :: random
       real(default) :: z, zstep, zmin, integral
       real(default) :: zmax = 0.99_default !! ??
-      ! print *, "generate next_z"
+      if (D_PRINT) print *, "D: generate generate_trial_z_and_typ"
       call rng%generate (random)
       integral = zero
       !!! decide which branching a->bc occurs
@@ -4382,7 +4386,7 @@ branching, while FSR branchings are ignored.
                  one - prt%child1%x)
          end if
       else
-         print *, "neither quark nor gluon in generate_next_trial_scale"
+         call msg_bug("neither quark nor gluon in generate_next_trial_scale")
       end if
       !!! generate the z-value
       !!! z between prt%child1%x and zmax
@@ -4803,7 +4807,6 @@ FSR branchings are ignored.
     call shower%sort_partons ()
     call shower_boost_to_CMframe (shower)         !!! really necessary?
     call shower_rotate_to_z (shower)              !!! really necessary?
-    ! print *, "shower_generate_next_isr_branching finished"
     end function shower_generate_next_isr_branching
 
 @ %def shower_generate_next_isr_branching
@@ -4858,7 +4861,7 @@ flavors, momenta, etc.
     type(parton_t), pointer :: prta, prtb, prtc, prtr
     real(default) :: mar, mbr
     real(default) :: phirand
-    ! print *, "shower_execute_next_isr_branching"
+    if (D_PRINT) print *, "D: shower_execute_next_isr_branching"
     if (.not. associated (prtp%p)) then
        call msg_fatal ("Shower: prtp not associated")
     end if
@@ -5209,6 +5212,8 @@ procedure is intended for branched FSR-partons emitted in the ISR.
     type(shower_t), intent(inout) :: shower
     type(parton_t), intent(inout), target :: prt
     type(parton_pointer_t), dimension(:), allocatable :: partons
+    logical :: single_emission = .false.
+    if (D_PRINT) print *, 'D: shower_parton_generate_fsr'
     if (signal_is_pending ()) return
     if (ASSERT) then
        if (.not. parton_is_branched (prt)) then
@@ -5225,58 +5230,80 @@ procedure is intended for branched FSR-partons emitted in the ISR.
        end if
     end if
 
-    allocate (partons(1:1))
+    allocate (partons(1))
     partons(1)%p => prt
-    call shower_parton_pointer_array_generate_fsr (shower, partons)
+    if (single_emission) then
+       call shower%parton_pointer_array_generate_fsr (partons, partons)
+    else
+       call shower%parton_pointer_array_generate_fsr_recursive (partons)
+    end if
 
   end subroutine shower_parton_generate_fsr
 
 @ %def shower_parton_generate_fsr
 @
+<<Shower core: shower: TBP>>=
+  procedure :: parton_pointer_array_generate_fsr_recursive => &
+       shower_parton_pointer_array_generate_fsr_recursive
+@
 <<Shower core: procedures>>=
-    recursive subroutine shower_parton_pointer_array_generate_fsr &
+    recursive subroutine shower_parton_pointer_array_generate_fsr_recursive &
          (shower, partons)
-      type(shower_t), intent(inout) :: shower
+      class(shower_t), intent(inout) :: shower
       type(parton_pointer_t), dimension(:), allocatable, intent(inout) :: &
            partons
       type(parton_pointer_t), dimension(:), allocatable :: partons_new
-      integer :: i, size_partons, size_partons_new
-      size_partons = size (partons)
+      if (D_PRINT) print *, 'D: shower_parton_pointer_array_generate_fsr_recursive'
       if (signal_is_pending ()) return
-      if (size_partons == 0) return
-      !!! sort partons -> necessary ?? -> probably not
+      if (size (partons) == 0) return
+      call shower%parton_pointer_array_generate_fsr (partons, partons_new)
+      call shower%parton_pointer_array_generate_fsr_recursive (partons_new)
+    end subroutine shower_parton_pointer_array_generate_fsr_recursive
+@
+<<Shower core: shower: TBP>>=
+  procedure :: parton_pointer_array_generate_fsr => &
+       shower_parton_pointer_array_generate_fsr
+@
+<<Shower core: procedures>>=
+    subroutine shower_parton_pointer_array_generate_fsr &
+         (shower, partons, partons_new)
+      class(shower_t), intent(inout) :: shower
+      type(parton_pointer_t), dimension(:), allocatable, intent(inout) :: &
+           partons
+      type(parton_pointer_t), dimension(:), allocatable, intent(out) :: partons_new
+      integer :: i, size_partons, size_partons_new
+      if (D_PRINT) print *, 'D: shower_parton_pointer_array_generate_fsr'
       !!! simulate highest/first parton
       call shower_simulate_children_ana (shower, partons(1)%p)
       !!! check for new daughters to be included in new_partons
+      size_partons = size (partons)
       size_partons_new = size_partons - 1   !!! partons(1) not needed anymore
       if (parton_is_branched (partons(1)%p%child1)) &
            size_partons_new = size_partons_new + 1
       if (parton_is_branched (partons(1)%p%child2)) &
            size_partons_new = size_partons_new + 1
 
-      allocate (partons_new(1:size_partons_new))
+      allocate (partons_new (1:size_partons_new))
 
       if (size_partons > 1) then
          do i = 2, size_partons
-            partons_new(i - 1)%p => partons(i)%p
+            partons_new (i - 1)%p => partons(i)%p
          end do
       end if
       if (parton_is_branched (partons(1)%p%child1)) &
-           partons_new(size_partons)%p => partons(1)%p%child1
+           partons_new (size_partons)%p => partons(1)%p%child1
       if (parton_is_branched (partons(1)%p%child2)) then
          !!! check if child1 is already included
          if (size_partons_new == size_partons) then
-            partons_new(size_partons)%p => partons(1)%p%child2
+            partons_new (size_partons)%p => partons(1)%p%child2
          else if (size_partons_new == size_partons + 1) then
-            partons_new(size_partons + 1)%p => partons(1)%p%child2
+            partons_new (size_partons + 1)%p => partons(1)%p%child2
          else
             call msg_fatal ("Shower: wrong sizes in" &
                  // "shower_parton_pointer_array_generate_fsr")
          end if
       end if
       deallocate(partons)
-
-      call shower_parton_pointer_array_generate_fsr (shower, partons_new)
 
     end subroutine shower_parton_pointer_array_generate_fsr
 
@@ -7719,14 +7746,12 @@ end function shower_clustering_allowed
     index = 0
     do i = 1, size (shower%partons)
        prt => shower%partons(i)%p
-       if (.not. prt%belongstoFSR) cycle
-       if (prt%belongstointeraction) cycle
+       if (.not. prt%belongstoFSR .or. prt%belongstointeraction) cycle
        if (associated(prt%child1) .and. associated(prt%child2)) then
           if (prt%child1%simulated .and. &
               prt%child2%simulated) cycle
        end if
        if (parton_is_final (prt)) cycle
-
          index = i
          exit
       end do
