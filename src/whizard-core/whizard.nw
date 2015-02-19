@@ -19520,8 +19520,10 @@ hadrons that can be generated in the shower.
     
     call evt%base_connect (process_instance, model, process_stack)
     call evt%make_rng (evt%process)
-    call evt%powheg%connect (process_instance)
-    call evt%powheg%setup_grids ()
+    if (evt%settings%powheg_matching) then
+       call evt%powheg%connect (process_instance)
+       call evt%powheg%setup_grids ()
+    end if
   end subroutine evt_pure_shower_connect
 
 @ %def evt_pure_shower_connect
@@ -19539,12 +19541,12 @@ dispatching.
     type(powheg_settings_t) :: powheg_settings
     evt%settings = settings
     evt%model_hadrons => model_hadrons
-    powheg_settings%size_grid_xi = var_list%get_ival (var_str ("powheg_grid_size_xi"))
-    powheg_settings%size_grid_y = var_list%get_ival (var_str ("powheg_grid_size_y")) 
-    powheg_settings%n_init = var_list%get_ival (var_str ("powheg_grid_sampling_points"))
-    powheg_settings%pt2_min = var_list%get_rval (var_str ("powheg_pt_min"))**2
-    powheg_settings%lambda = var_list%get_rval (var_str ("powheg_lambda"))
     if (evt%settings%powheg_matching) then
+       powheg_settings%size_grid_xi = var_list%get_ival (var_str ("powheg_grid_size_xi"))
+       powheg_settings%size_grid_y = var_list%get_ival (var_str ("powheg_grid_size_y")) 
+       powheg_settings%n_init = var_list%get_ival (var_str ("powheg_grid_sampling_points"))
+       powheg_settings%pt2_min = var_list%get_rval (var_str ("powheg_pt_min"))**2
+       powheg_settings%lambda = var_list%get_rval (var_str ("powheg_lambda"))
        call evt%powheg%init (powheg_settings, process_name)
     end if
   end subroutine evt_pure_shower_init
@@ -37344,9 +37346,14 @@ or arrays which would make the expansion ambiguous.
     logical :: use_gosam_correlations
     logical :: use_gosam_real_trees
     integer , dimension(4) :: i_list
-    logical :: combined_nlo_integration
+    logical :: combined_nlo_integration, powheg_active
     
-    nlo_calc = cmd%local%nlo_calculation
+    nlo_calc = cmd%local%nlo_calculation                 
+    combined_nlo_integration = &
+           global%var_list%get_lval (var_str ('?combined_nlo_integration'))
+    powheg_active = & 
+           global%var_list%get_lval (var_str ('?powheg_matching')) 
+    call check_nlo_options (nlo_calc, combined_nlo_integration, powheg_active)
     active_nlo_components = cmd%local%active_nlo_components
 
     var_list => cmd%local%get_var_list_ptr ()
@@ -37453,6 +37460,24 @@ or arrays which would make the expansion ambiguous.
     call prc_config%record (cmd%local)
  
   contains
+    subroutine check_nlo_options (nlo, combined, powheg)
+      logical, intent(in) :: nlo, combined, powheg
+      logical :: case_lo_but_any_other
+      logical :: case_nlo_powheg_but_not_combined
+      case_lo_but_any_other = .not. nlo .and. &
+                              any ([combined, powheg])
+      case_nlo_powheg_but_not_combined = &
+                              nlo .and. powheg .and. .not. combined
+      if (case_lo_but_any_other) then
+          call msg_fatal ("Option mismatch: Leading order process is selected &
+                          &but either powheg_matching or combined_nlo_integration &
+                          &is set to true.")
+      else if (case_nlo_powheg_but_not_combined) then
+          call msg_fatal ("POWHEG requires the 'combined_nlo_integration'-option &
+                          &to be set to true.")
+      end if
+    end subroutine check_nlo_options
+
     subroutine split_prt (prt, n_out, pl)
       type(prt_spec_t), intent(in), dimension(:), allocatable :: prt
       integer, intent(in) :: n_out
