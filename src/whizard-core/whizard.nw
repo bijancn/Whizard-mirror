@@ -17696,6 +17696,7 @@ partonic vs hadronic cms as well as decays in POWHEG:
 @
 <<powheg: types>>=
   type :: veto_counter_t
+    integer :: n_first_fail = 0
     integer :: n_alpha_s = 0
     integer :: n_norm = 0
     integer :: n_sqme = 0
@@ -17708,6 +17709,16 @@ partonic vs hadronic cms as well as decays in POWHEG:
   end type veto_counter_t
 
 @ %def veto_counter_t
+@
+<<powheg: veto counter: TBP>>=
+  procedure :: record_first_fail => veto_counter_record_first_fail
+<<powheg: procedures>>=
+  subroutine veto_counter_record_first_fail (counter)
+    class(veto_counter_t), intent(inout) :: counter
+    counter%n_first_fail = counter%n_first_fail + 1
+  end subroutine veto_counter_record_first_fail
+
+@ %def veto_counter_record_first_fail
 @
 <<powheg: veto counter: TBP>>=
   procedure :: record_alpha_s => veto_counter_record_alpha_s
@@ -17763,25 +17774,26 @@ partonic vs hadronic cms as well as decays in POWHEG:
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit); if (u < 0) return
-    write (u, "(A,I12)") "Nr. of alpha_s-veto calls: ", counter%n_alpha_s
-    write (u, "(A,I12)") "Nr. of alpha_s-vetos: ", counter%veto_alpha_s
+    write (u, "(A,I0)") "Nr. of times no zero point is found: ", counter%n_first_fail
+    write (u, "(A,I0)") "Nr. of alpha_s-veto calls: ", counter%n_alpha_s
+    write (u, "(A,I0)") "Nr. of alpha_s-vetos: ", counter%veto_alpha_s
     if (counter%n_alpha_s > 0) &
        write (u, "(A,F4.2)") "Fraction of vetoed points: ", &
                             one*counter%veto_alpha_s / counter%n_alpha_s
     call write_separator (u)
-    write (u, "(A,I12)") "Nr. of norm-veto calls: ", counter%n_norm
-    write (u, "(A,I12)") "Nr. of norm-vetos: ", counter%veto_norm
+    write (u, "(A,I0)") "Nr. of norm-veto calls: ", counter%n_norm
+    write (u, "(A,I0)") "Nr. of norm-vetos: ", counter%veto_norm
     if (counter%n_norm > 0) &
        write (u, "(A,F4.2)") "Fraction of vetoed points: ", &
                             one*counter%veto_norm / counter%n_norm
     call write_separator (u)
-    write (u, "(A,I12)") "Nr. of sqme-veto calls: ", counter%n_sqme
-    write (u, "(A,I12)") "Nr. of sqme-vetos: ", counter%veto_sqme
+    write (u, "(A,I0)") "Nr. of sqme-veto calls: ", counter%n_sqme
+    write (u, "(A,I0)") "Nr. of sqme-vetos: ", counter%veto_sqme
     if (counter%n_sqme > 0) &
        write (u, "(A,F4.2)") "Fraction of vetoed points: ", &
                             one*counter%veto_sqme / counter%n_sqme
     call write_separator (u)
-    write (u, "(A,I12)") "Nr. of upper-bound failures: ", &
+    write (u, "(A,I0)") "Nr. of upper-bound failures: ", &
                         counter%n_veto_fail
   end subroutine veto_counter_write
 
@@ -17920,8 +17932,8 @@ normalization $N$ which is given by the grids.
          sudakov%powheg_settings%pt2_min, &
          sudakov%current_pt2_max, success, &
          0.001_default)
-    sudakov%last_log = sudakov%last_log + sudakov%norm_max * &
-         sudakov%log_integrated_ubf (pt2)
+    sudakov%last_log = sudakov%last_log + &
+                       sudakov%norm_max * sudakov%log_integrated_ubf (pt2)
     if (.not. success) then
        pt2 = sudakov%powheg_settings%pt2_min
     end if
@@ -17960,6 +17972,8 @@ normalization $N$ which is given by the grids.
     type(radiation_t), intent(inout) :: r
     real(default) :: s
     logical :: accepted
+    integer :: i_try
+    i_try = 0
     sudakov%current_pt2_max = r%pt2
     sudakov%last_log = sudakov%norm_max * sudakov%log_integrated_ubf (sudakov%current_pt2_max)
     if (DEBUG_EVENTS) then
@@ -17969,12 +17983,14 @@ normalization $N$ which is given by the grids.
     end if
     LOOP_UNTIL_ACCEPTED: do
        r%valid = .false.
+       i_try = i_try + 1
        r%pt2 = sudakov%generate_pt2 ()
        if (DEBUG_EVENTS) then
           print *, '  sqrt (r%pt2) = ', sqrt (r%pt2)
           print *, '  sudakov%last_log =    ', sudakov%last_log
        end if
        if (r%pt2 <= sudakov%powheg_settings%pt2_min) then
+          if (i_try == 1) call sudakov%veto_counter%record_first_fail ()
           exit
        end if
        accepted = sudakov%reweight_alpha_s (r%pt2)
@@ -18867,7 +18883,8 @@ $(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
   subroutine powheg_compute_lambda2_gen (powheg)
     class(powheg_t), intent(inout) :: powheg
     real(default) :: alpha_s, scale_to_relate2
-    scale_to_relate2 = (2 * powheg%settings%lambda) ** 2
+!    scale_to_relate2 = (2 * powheg%settings%lambda) ** 2
+    scale_to_relate2 = powheg%settings%pt2_min
     alpha_s = get_alpha (powheg%qcd, scale_to_relate2)
     powheg%process_deps%lambda2_gen = exp (- one / (b0rad * alpha_s)) * scale_to_relate2
   end subroutine powheg_compute_lambda2_gen
