@@ -7440,11 +7440,11 @@ physical event.
                         term_instance_evaluate_interaction_real_rad
 <<Processes: procedures>>=
   subroutine term_instance_evaluate_interaction_real_rad (term, &
-                          component, p_born, p_real, pt2, i_term)
+                          component, p_born, p_real, alpha_s, i_term)
     class(term_instance_t), intent(inout) :: term
     type(component_instance_t), intent(inout) :: component
     type(vector4_t), intent(in), dimension(:) :: p_born, p_real
-    real(default), intent(in) :: pt2
+    real(default), intent(in) :: alpha_s
     integer, intent(in) :: i_term
     integer :: i
 
@@ -7459,13 +7459,14 @@ physical event.
          term%scale, term%fac_scale, term%ren_scale, term%weight)
 
     call component%tmp%reset_new_kinematics ()
+!    print *, 'Compute real amplitudes: '
     select type (core => component%config%core)
     type is (prc_omega_t)
        do i = 1, term%config%n_allowed
-          term%amp(i) = core%compute_amplitude (i_term, &
+          term%amp(i) = core%compute_amplitude_rad (i_term, &
              interaction_get_momenta (term%int_hard_real), &
              term%config%flv(i), term%config%hel(i), term%config%col(i), &
-             sqrt(pt2), term%ren_scale, &
+             alpha_s, term%ren_scale, &
              component%tmp)
        end do
     type is (prc_gosam_t)
@@ -8707,12 +8708,12 @@ it from the MCI record.
 <<Processes: process instance: TBP>>=
   procedure :: compute_sqme_real_rad => process_instance_compute_sqme_real_rad
 <<Processes: procedures>>=
-  subroutine process_instance_compute_sqme_real_rad (instance, emitter, p_born, p_real, pt2)
+  subroutine process_instance_compute_sqme_real_rad (instance, emitter, p_born, p_real, alpha_s)
     class(process_instance_t), intent(inout) :: instance
     integer, intent(in) :: emitter
     type(vector4_t), intent(in), dimension(:), allocatable :: p_born 
     type(vector4_t), intent(in), dimension(:), allocatable :: p_real
-    real(default), intent(in) :: pt2
+    real(default), intent(in) :: alpha_s
     integer :: i_real
     
     if (.not. associated (instance%sqme_collector)) &
@@ -8723,7 +8724,7 @@ it from the MCI record.
     i_real = instance%component(1)%config%config%get_associated_real ()
     associate (term => instance%term(i_real))
        call term%evaluate_interaction_real_rad (instance%component(i_real), &
-                                                p_born, p_real, pt2, i_real)
+                                                p_born, p_real, alpha_s, i_real)
        call instance%evaluate_trace_real_rad (term, i_real)
     end associate
   end subroutine process_instance_compute_sqme_real_rad
@@ -17874,14 +17875,14 @@ normalization $N$ which is given by the grids.
   procedure (sudakov_upper_bound_func), deferred :: upper_bound_func
 <<powheg: interfaces>>=
   abstract interface
-     function sudakov_upper_bound_func (sudakov, xi, y, use_true_alpha_s) &
-                                             result (u)
+     subroutine sudakov_upper_bound_func (sudakov, xi, y, u, alpha_s, &
+                                          use_true_alpha_s)
        import
-       real(default) :: u
        class(sudakov_t), intent(in) :: sudakov
        real(default), intent(in) :: xi, y
+       real(default), intent(out) :: u, alpha_s
        logical, intent(in), optional :: use_true_alpha_s
-     end function sudakov_upper_bound_func
+     end subroutine sudakov_upper_bound_func
   end interface
        
 @ %def sudakov_upper_bound_func
@@ -18038,14 +18039,13 @@ normalization $N$ which is given by the grids.
 <<powheg: sudakov simple fsr: TBP>>=
   procedure :: upper_bound_func => sudakov_simple_fsr_upper_bound_func
 <<powheg: procedures>>=
-  function sudakov_simple_fsr_upper_bound_func (sudakov, xi, y, use_true_alpha_s) &
-                                                result (u)
-    real(default) :: u
+  subroutine sudakov_simple_fsr_upper_bound_func (sudakov, xi, y, u, alpha_s, &
+                                                  use_true_alpha_s)
     class(sudakov_simple_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: xi, y
+    real(default), intent(out) :: u, alpha_s
     logical, intent(in), optional :: use_true_alpha_s
     real(default) :: kT2
-    real(default) :: alpha_s
     logical :: yorn
     kT2 = sudakov%event_deps%cms_energy2 / 2 * xi**2 * (1 - y)
     yorn = .false.; if (present (use_true_alpha_s)) yorn = use_true_alpha_s
@@ -18055,7 +18055,7 @@ normalization $N$ which is given by the grids.
        alpha_s = sudakov%alpha_s_rad (kT2)
     end if
     u = alpha_s / (xi*(1-y))
-  end function sudakov_simple_fsr_upper_bound_func
+  end subroutine sudakov_simple_fsr_upper_bound_func
 
 @ %def sudakov_simple_fsr_upper_bound_func
 @ This is fixed to $n_f=5$ for radiation generation. It will be
@@ -18316,17 +18316,18 @@ reweighted to the more precise $\alpha_s$.
     type(vector4_t), dimension(:), allocatable :: p_real
     real(default) :: sqme_real_x_jacobian, sqme_born
     real(default) :: norm, ubf, ubound, random
+    real(default) :: alpha_s
     call powheg%rng%generate (random)
     emitter = powheg%process_instance%nlo_controller%get_emitter (r%alr)
     p_real =  powheg%phs_fks_generator%generate_fsr_from_xi_and_y (r%xi, &
                                         r%y, r%phi, emitter, &
                                         powheg%event_deps%p_born)
     powheg%event_deps%p_real = p_real
-    sqme_real_x_jacobian = powheg%compute_sqme_real (r%alr, r%pt2)
-    sqme_born = powheg%event_deps%sqme_born
     norm = powheg%norm_from_xi_and_y (r)
-    ubf = powheg%sudakov(r%alr)%s%upper_bound_func (r%xi, r%y, &
-                                                use_true_alpha_s=.true.)
+    call powheg%sudakov(r%alr)%s%upper_bound_func (r%xi, r%y, ubf, alpha_s, &
+                                                   use_true_alpha_s=.true.)
+    sqme_real_x_jacobian = powheg%compute_sqme_real (r%alr, alpha_s)
+    sqme_born = powheg%event_deps%sqme_born
     ubound = sqme_born * ubf * norm
     if (sqme_real_x_jacobian/ubound > 1) &
         call powheg%sudakov(r%alr)%s%veto_counter%record_fail()
@@ -18360,17 +18361,17 @@ Jacobian.
 <<powheg: powheg: TBP>>=
   procedure :: compute_sqme_real => powheg_compute_sqme_real
 <<powheg: procedures>>=
-  function powheg_compute_sqme_real (powheg, alr, pt2) result (sqme)
+  function powheg_compute_sqme_real (powheg, alr, alpha_s) result (sqme)
     class(powheg_t), intent(inout) :: powheg
     integer, intent(in) :: alr
-    real(default), intent(in) :: pt2
+    real(default), intent(in) :: alpha_s
     integer :: emitter
     real(default) :: sqme
     if (.not. powheg%testing%active) then
        associate (instance => powheg%process_instance)
           emitter = instance%nlo_controller%get_emitter (alr)
           call instance%compute_sqme_real_rad (emitter, &
-               powheg%event_deps%p_born, powheg%event_deps%p_real, pt2)
+               powheg%event_deps%p_born, powheg%event_deps%p_real, alpha_s)
           sqme = instance%sqme_collector%sqme_real_per_emitter (emitter)
        end associate
     else
@@ -18407,9 +18408,10 @@ The following is valid for one underlying Born.
           do alr = 1, powheg%process_deps%n_alr
              call powheg%generate_xi_and_y_for_grids &
                   (radiation_variables, alr, xi, y)
-             kT2 = powheg%event_deps%cms_energy2/2*xi**2*(1-y)
-             real_me = powheg%compute_sqme_real (alr, kT2)
-             ubf = powheg%sudakov(alr)%s%upper_bound_func (xi, y)
+             associate (s => powheg%sudakov(alr)%s)
+                call s%upper_bound_func (xi, y, ubf, current_alpha_s)
+                real_me = powheg%compute_sqme_real (alr, current_alpha_s)
+             end associate
              norm = real_me / (powheg%event_deps%sqme_born * ubf)
              <<ENSURE [[norm]] is in bounds>>
              f_alr = (one * alr) / powheg%process_deps%n_alr - tiny_07

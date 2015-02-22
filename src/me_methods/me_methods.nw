@@ -3343,7 +3343,69 @@ $\alpha_s$.  This works only if $\alpha_s$ varies, and if the workspace
   end function prc_omega_get_alpha_s
   
 @ %def prc_omega_get_alpha_s
-@
+@ Alternative computation amplitudes using direct input of alpha_s
+<<Omega interface: prc omega: TBP>>=
+  procedure :: compute_amplitude_rad => prc_omega_compute_amplitude_rad
+<<Omega interface: procedures>>=
+  function prc_omega_compute_amplitude_rad &
+       (object, j, p, f, h, c, alpha_s_in, ren_scale, tmp) result (amp)
+    class(prc_omega_t), intent(in) :: object
+    integer, intent(in) :: j
+    type(vector4_t), dimension(:), intent(in) :: p
+    integer, intent(in) :: f, h, c
+    real(default), intent(in) :: alpha_s_in, ren_scale
+    class(workspace_t), intent(inout), allocatable, optional :: tmp
+    real(default) :: alpha_qcd
+    complex(default) :: amp
+    integer :: n_tot, i
+    real(c_default_float), dimension(:,:), allocatable :: parray
+    complex(c_default_complex) :: camp
+    logical :: new_event
+    select type (driver => object%driver)
+    type is (omega_driver_t)
+       new_event = .true.
+       if (present (tmp)) then
+          if (allocated (tmp)) then
+             select type (tmp)
+             type is (omega_state_t)
+                new_event = tmp%new_kinematics
+                tmp%new_kinematics = .false.
+             end select
+          end if
+       end if
+       if (new_event) then
+          if (allocated (object%qcd%alpha)) then
+             alpha_qcd = alpha_s_in
+!             print *, 'alpha_s used for matrix element: ', alpha_qcd
+             call driver%update_alpha_s (alpha_qcd)
+             if (present (tmp)) then
+                if (allocated (tmp)) then
+                   select type (tmp)
+                   type is (omega_state_t)
+                      tmp%alpha_qcd = alpha_qcd
+                   end select
+                end if
+             end if
+          end if
+          n_tot = object%data%n_in + object%data%n_out
+          allocate (parray (0:3, n_tot))
+          do i = 1, n_tot
+             parray(:,i) = vector4_get_components (p(i))
+          end do
+          call driver%new_event (parray)
+       end if
+       if (object%is_allowed (1, f, h, c)) then
+          call driver%get_amplitude &
+               (int (f, c_int), int (h, c_int), int (c, c_int), camp)
+          amp = camp
+       else
+          amp = 0
+       end if
+    end select
+  end function prc_omega_compute_amplitude_rad
+    
+@ %def prc_omega_compute_amplitude_rad
+
 \subsection{Test}
 This is the master for calling self-test procedures. There is a
 separate test for testing \oMega\ diagram generation as this depends on
