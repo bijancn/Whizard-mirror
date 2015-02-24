@@ -18639,9 +18639,10 @@ values $(f_B)$
 <<powheg: powheg: TBP>>=
   procedure :: generate_emission => powheg_generate_emission
 <<powheg: procedures>>=
-  subroutine powheg_generate_emission (powheg, particle_set)
+  subroutine powheg_generate_emission (powheg, particle_set, pt2_generated)
     class(powheg_t), intent(inout) :: powheg
-    type(particle_set_t), intent(inout) :: particle_set
+    type(particle_set_t), intent(inout), optional :: particle_set
+    real(default), intent(out), optional :: pt2_generated
     type(radiation_t) :: r, r_max
     real(default) :: xi2_max
     integer :: alr
@@ -18678,11 +18679,14 @@ values $(f_B)$
        if (r_max%pt2 > powheg%settings%pt2_min) then
           powheg%n_emissions = powheg%n_emissions + 1
           call powheg%set_scale (r_max%pt2)
-          call powheg%build_particle_set (particle_set, &
-                                          powheg%event_deps%p_born, &
-                                          p_real_max, nlo%get_emitter (r_max%alr))
+          if (present (particle_set)) &
+             call powheg%build_particle_set (particle_set, &
+                                             powheg%event_deps%p_born, &
+                                             p_real_max, nlo%get_emitter (r_max%alr))
+          if (present (pt2_generated)) pt2_generated = r_max%pt2
        else
           call powheg%set_scale (powheg%settings%pt2_min)
+          if (present (pt2_generated)) pt2_generated = powheg%settings%pt2_min
        end if
     end associate
   end subroutine powheg_generate_emission
@@ -18991,6 +18995,89 @@ exponent.
   end function sudakov_alpha_s_rad
 
 @ %def sudakov_alpha_s_rad
+@
+<<powheg: powheg: TBP>>=
+  procedure :: test_sudakov => powheg_test_sudakov
+<<powheg: procedures>>=
+  subroutine powheg_test_sudakov (powheg)
+    class(powheg_t), intent(inout) :: powheg
+    integer :: n_calls1, n_calls2, n_calls_effective
+    integer, parameter :: n_bins = 20
+    real(default), dimension(n_bins) :: histo1, histo2
+    real(default) :: sqme_real_x_jacobian, sqme_born
+    type(vector4_t), dimension(:), allocatable :: p_born
+    real(default), dimension(3) :: random
+    real(default) :: xi, y, phi
+    integer :: i_call, i_bin, alr, emitter
+    real(default) :: alpha_s, kT2, weight
+    real(default) :: pt2_min, s
+    real(default), dimension(n_bins) :: average
+    
+    p_born = powheg%event_deps%p_born
+!    print *, 'p_born: '
+!    call vector4_write_set (p_born)
+    sqme_born = powheg%event_deps%sqme_born
+!    print *, 'sqme_born: ', sqme_born
+    s = powheg%event_deps%cms_energy2
+    pt2_min = powheg%settings%pt2_min
+!    print *, 's: ', s, 'pt2_min: ', pt2_min
+    n_calls1 = 500000; n_calls2 = 500000
+    histo1 = 0._default; histo2 = 0._default
+    do i_call = 1, n_calls1
+       do alr = 1, powheg%process_deps%n_alr
+          call powheg%rng%generate (random)
+          emitter = powheg%process_instance%nlo_controller%get_emitter (alr)
+!          print *, 'emitter: ', emitter
+          powheg%event_deps%p_real = &
+                 powheg%phs_fks_generator%generate_fsr_from_x (random, emitter, p_born)
+          
+!          print *, 'p_real: '
+!          call vector4_write_set (powheg%event_deps%p_real)
+          call powheg%phs_fks_generator%get_radiation_variables (emitter, xi, y, phi)
+          kT2 = s/2 * xi**2 * (1-y)
+          if (kT2 < pt2_min) then
+!             print *, 'Underflow'
+             kT2 = pt2_min
+          end if
+!          print *, 'xi: ', xi, 'y: ', y, 'kT2: ', kT2
+          alpha_s = get_alpha (powheg%qcd, kT2)
+          sqme_real_x_jacobian = powheg%compute_sqme_real (alr, alpha_s)
+          weight = sqme_real_x_jacobian / sqme_born
+!          print *, 'weight: ', weight
+          do i_bin = 0, n_bins-1
+             if (kT2 <= pt2_min + i_bin*s/n_bins) then
+                histo1(i_bin+1) = histo1(i_bin+1) + weight
+                exit
+             end if
+          end do
+       end do
+    end do
+    average = histo1/n_calls1
+    average = exp(-average)
+
+    do i_call = 1, n_calls2
+       call powheg%generate_emission (pt2_generated = kT2)
+!       print *, 'Generated kT2: ', kT2
+       do i_bin = 0, n_bins-1
+          if (kT2 <= pt2_min + i_bin*s/n_bins) then
+              histo2(i_bin+1) = histo2(i_bin+1) + one
+              exit
+          end if
+       end do
+    end do
+    print *, 'Integrated R/B-distribution: '
+    do i_bin = 1, n_bins
+       print *, pt2_min + (i_bin-1)*s/n_bins, average(i_bin)
+    end do
+    print *, '*******************************'
+    print *, 'Emission probability: '
+    do i_bin = 1, n_bins
+       print *, pt2_min + (i_bin-1)*s/n_bins, one-histo2(i_bin)/n_calls2
+    end do
+          
+  end subroutine powheg_test_sudakov
+
+@ %def powheg_test_sudakov
 @
 <<powheg: powheg: TBP>>=
   procedure :: write_statistics => powheg_write_statistics
@@ -19790,7 +19877,9 @@ evaluation chain.
        if (evt%settings%powheg_matching) then
           if (DEBUG) call particle_set_write (evt%particle_set)
           call evt%powheg%update (evt%particle_set)
-          call evt%powheg%generate_emission (evt%particle_set)
+          call evt%powheg%test_sudakov ()
+          stop
+          call evt%powheg%generate_emission (particle_set = evt%particle_set)
           if (DEBUG) call evt%powheg%write ()
        end if
        if (.not. POWHEG_TESTING) then
