@@ -17515,8 +17515,8 @@ $\alpha_s^\text{rad}$ is still larger than the true $\alpha_s$.
 used to decide which ubf object is allocated.
 <<powheg: parameters>>=
   integer, parameter :: UBF_SIMPLE = 1
-  integer, parameter :: GRIDPOINTS_DEFAULT = 200000
-@ %def UBF_SIMPLE
+  integer, parameter :: UBF_EEQQ = 2
+@ %def UBF_SIMPLE UBF_EEQQ
 @
 <<powheg: powheg settings: TBP>>=
   procedure :: write => powheg_settings_write
@@ -17546,8 +17546,6 @@ contains the necessary dummy information:
      integer :: n_alr, n_in, n_out_born, n_out_real
      real(default) :: sqme_born
      logical :: active
-  contains
-   <<powheg: powheg testing: TBP>>
   end type powheg_testing_t
 
 @ %def powheg_testing_t
@@ -17639,29 +17637,6 @@ functions.
   end subroutine event_deps_write
 
 @ %def event_deps_write
-@ Generate $\xi \in [\frac{p_\text{T}}{\sqrts{s}}, \xi_\text{max}]$
-with a density $1 / \xi$
-<<powheg: radiation: TBP>>=
-  procedure :: compute_xi => radiation_compute_xi
-<<powheg: procedures>>=
-  subroutine radiation_compute_xi (rad, x, xi2_max, s)
-    class(radiation_t), intent(inout) :: rad
-    real(default), intent(in) :: x, xi2_max, s
-    rad%xi = exp (((1-x)*log(rad%pt2/s) + x*log(xi2_max)) / two)
-  end subroutine radiation_compute_xi
-
-@ %def radiation_compute_xi
-@ 
-<<powheg: radiation: TBP>>=
-  procedure :: compute_y => radiation_compute_y
-<<powheg: procedures>>=
-  subroutine radiation_compute_y (rad, s)
-    class(radiation_t), intent(inout) :: rad
-    real(default) :: s
-    rad%y = one - (two*rad%pt2) / (s*rad%xi**2)
-  end subroutine radiation_compute_y
-
-@ %def radiation_compute_y
 @
 <<powheg: event deps: TBP>>=
   procedure :: update => event_deps_update
@@ -17696,9 +17671,11 @@ partonic vs hadronic cms as well as decays in POWHEG:
 @
 <<powheg: types>>=
   type :: veto_counter_t
+    integer :: n_ubf = 0
     integer :: n_alpha_s = 0
     integer :: n_norm = 0
     integer :: n_sqme = 0
+    integer :: veto_ubf = 0
     integer :: veto_alpha_s = 0
     integer :: veto_norm = 0
     integer :: veto_sqme = 0
@@ -17709,6 +17686,18 @@ partonic vs hadronic cms as well as decays in POWHEG:
 
 @ %def veto_counter_t
 @
+@
+<<powheg: veto counter: TBP>>=
+  procedure :: record_ubf => veto_counter_record_ubf
+<<powheg: procedures>>=
+  pure subroutine veto_counter_record_ubf (counter, vetoed)
+    class(veto_counter_t), intent(inout) :: counter
+    logical, intent(in) :: vetoed
+    counter%n_ubf = counter%n_ubf + 1
+    if (vetoed) counter%veto_ubf = counter%veto_ubf + 1
+  end subroutine veto_counter_record_ubf
+
+@ %def veto_counter_record_ubf
 <<powheg: veto counter: TBP>>=
   procedure :: record_alpha_s => veto_counter_record_alpha_s
 <<powheg: procedures>>=
@@ -17763,6 +17752,12 @@ partonic vs hadronic cms as well as decays in POWHEG:
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit); if (u < 0) return
+    write (u, "(A,I12)") "Nr. of ubf-veto calls: ", counter%n_ubf
+    write (u, "(A,I12)") "Nr. of ubf-vetos: ", counter%veto_ubf
+    if (counter%n_ubf > 0) &
+       write (u, "(A,F4.2)") "Fraction of vetoed points: ", &
+                            one*counter%veto_ubf / counter%n_ubf
+    call write_separator (u)
     write (u, "(A,I12)") "Nr. of alpha_s-veto calls: ", counter%n_alpha_s
     write (u, "(A,I12)") "Nr. of alpha_s-vetos: ", counter%veto_alpha_s
     if (counter%n_alpha_s > 0) &
@@ -17892,7 +17887,7 @@ normalization $N$ which is given by the grids.
   end interface
        
 @ %def sudakov_upper_bound_func
-@ Again we do not include the norm here: $-log\Delta()$
+@ Again we do not include the norm here: $-\frac 1 N \log\Delta(p_T^2)$
 <<powheg: sudakov: TBP>>=
   procedure (sudakov_log_integrated_ubf), deferred :: log_integrated_ubf
 <<powheg: interfaces>>=
@@ -17906,6 +17901,33 @@ normalization $N$ which is given by the grids.
   end interface
        
 @ %def sudakov_log_integrated_ubf
+@
+<<powheg: sudakov: TBP>>=
+  procedure (sudakov_generate_xi_and_y_and_phi), deferred :: generate_xi_and_y_and_phi
+<<powheg: interfaces>>=
+  abstract interface
+     subroutine sudakov_generate_xi_and_y_and_phi (sudakov, r)
+       import
+       class(sudakov_t), intent(inout) :: sudakov
+       type(radiation_t), intent(inout) :: r
+     end subroutine sudakov_generate_xi_and_y_and_phi
+  end interface
+
+@ %def sudakov_generate_xi_and_y_and_phi
+@
+<<powheg: sudakov: TBP>>=
+  procedure (sudakov_reweight_ubf), deferred :: reweight_ubf
+<<powheg: interfaces>>=
+  abstract interface
+     function sudakov_reweight_ubf (sudakov, pt2) result (accepted)
+       import
+       logical accepted
+       class(sudakov_t), intent(inout) :: sudakov
+       real(default), intent(in) :: pt2
+    end function sudakov_reweight_ubf
+  end interface
+
+@ %def sudakov_reweight_ubf
 @
 <<powheg: sudakov: TBP>>=
   procedure :: generate_pt2 => sudakov_generate_pt2
@@ -17925,32 +17947,9 @@ normalization $N$ which is given by the grids.
     if (.not. success) then
        pt2 = sudakov%powheg_settings%pt2_min
     end if
-
   end function sudakov_generate_pt2
 
 @ %def sudakov_generate_pt2
-@
-<<powheg: sudakov: TBP>>=
-  procedure :: generate_xi_and_y_and_phi => sudakov_generate_xi_and_y_and_phi
-<<powheg: procedures>>=
-  subroutine sudakov_generate_xi_and_y_and_phi (sudakov, r)
-    class(sudakov_t), intent(inout) :: sudakov
-    type(radiation_t), intent(inout) :: r
-    real(default) :: s
-    s = sudakov%event_deps%cms_energy2
-    call sudakov%rng%generate (sudakov%random)
-    call r%compute_xi (sudakov%random, sudakov%xi2_max, s)
-    call r%compute_y (s)
-    call sudakov%rng%generate (sudakov%random)
-    r%phi = sudakov%random * twopi
-    if (ENSURE) then
-       call assert_equal (OUTPUT_UNIT, r%pt2, &
-            s / two * r%xi**2 * (one - r%y), &
-            "sudakov_generate_xi_and_y_and_phi: pt2 inconsistency")
-    end if
-  end subroutine sudakov_generate_xi_and_y_and_phi
-
-@ %def sudakov_generate_xi_and_y_and_phi
 @
 <<powheg: sudakov: TBP>>=
   procedure :: generate_emission => sudakov_generate_emission
@@ -17971,11 +17970,17 @@ normalization $N$ which is given by the grids.
        r%valid = .false.
        r%pt2 = sudakov%generate_pt2 ()
        if (DEBUG_EVENTS) then
-          print *, '  sqrt (r%pt2) = ', sqrt (r%pt2)
+          print *, '  sqrt (r%pt2) =    ', sqrt (r%pt2)
           print *, '  sudakov%last_log =    ', sudakov%last_log
        end if
        if (r%pt2 <= sudakov%powheg_settings%pt2_min) then
           exit
+       end if
+       accepted = sudakov%reweight_ubf (r%pt2)
+       call sudakov%veto_counter%record_ubf (.not. accepted)
+       if (.not. accepted) then
+          sudakov%current_pt2_max = r%pt2
+          cycle
        end if
        accepted = sudakov%reweight_alpha_s (r%pt2)
        call sudakov%veto_counter%record_alpha_s (.not. accepted)
@@ -18067,6 +18072,151 @@ reweighted to the more precise $\alpha_s$.
   end function sudakov_simple_fsr_log_integrated_ubf
 
 @ %def sudakov_simple_fsr_log_integrated_ubf
+@ No further ubf veto needed for now.
+<<powheg: sudakov simple fsr: TBP>>=
+  procedure :: reweight_ubf => sudakov_simple_fsr_reweight_ubf
+<<powheg: procedures>>=
+  function sudakov_simple_fsr_reweight_ubf (sudakov, pt2) result (accepted)
+    logical :: accepted
+    class(sudakov_simple_fsr_t), intent(inout) :: sudakov
+    real(default), intent(in) :: pt2
+    accepted = .true.
+  end function sudakov_simple_fsr_reweight_ubf
+
+@ %def sudakov_simple_fsr_reweight_ubf
+@ Warning: This depends on choice of $p_T$
+<<powheg: sudakov simple fsr: TBP>>=
+  procedure :: generate_xi_and_y_and_phi => sudakov_simple_fsr_generate_xi_and_y_and_phi
+<<powheg: procedures>>=
+  subroutine sudakov_simple_fsr_generate_xi_and_y_and_phi (sudakov, r)
+    class(sudakov_simple_fsr_t), intent(inout) :: sudakov
+    type(radiation_t), intent(inout) :: r
+    real(default) :: s
+    s = sudakov%event_deps%cms_energy2
+    r%xi = sudakov%generate_xi (r)
+    r%y = one - (two * r%pt2) / (s * r%xi**2)
+    call sudakov%rng%generate (sudakov%random)
+    r%phi = sudakov%random * twopi
+    if (ENSURE) then
+       call assert_equal (OUTPUT_UNIT, r%pt2, &
+            s / two * r%xi**2 * (one - r%y), &
+            "sudakov_generate_xi_and_y_and_phi: pt2 inconsistency")
+    end if
+  contains
+  end subroutine sudakov_simple_fsr_generate_xi_and_y_and_phi
+
+@ %def sudakov_generate_xi_and_y_and_phi
+@ Generate $\xi \in [\frac{p_\text{T}}{\sqrts{s}}, \xi_\text{max}]$
+with a density $1 / \xi$
+<<powheg: sudakov simple fsr: TBP>>=
+  procedure :: generate_xi => sudakov_simple_fsr_generate_xi
+<<powheg: procedures>>=
+  function sudakov_simple_fsr_generate_xi (sudakov, r) result (xi)
+    real(default) :: xi
+    class(sudakov_simple_fsr_t), intent(inout) :: sudakov
+    type(radiation_t), intent(in) :: r
+    real(default) :: s, xi2_max
+    s = sudakov%event_deps%cms_energy2
+    xi2_max = sudakov%xi2_max
+    call sudakov%rng%generate (sudakov%random)
+    xi = exp (((one - sudakov%random) * log (r%pt2 / s) + &
+         sudakov%random * log (xi2_max)) / two)
+  end function sudakov_simple_fsr_generate_xi
+
+@ %def sudakov_simple_fsr_generate_xi
+\paragraph{Dijet production at lepton colliders}
+@ In the POWHEG method paper, this is done for $e^+e^-\to q\bar{q}$.
+There $k_\text{max}=q^0/2$ and thus $$. We slightly extend this to
+<<powheg: public>>=
+  public :: sudakov_eeqq_fsr_t
+<<powheg: types>>=
+  type, extends (sudakov_t) :: sudakov_eeqq_fsr_t
+  contains
+   <<powheg: sudakov eeqq fsr: TBP>>
+  end type sudakov_eeqq_fsr_t
+
+@ %def sudakov_eeqq_fsr_t
+@
+<<powheg: sudakov eeqq fsr: TBP>>=
+  procedure :: upper_bound_func => sudakov_eeqq_fsr_upper_bound_func
+<<powheg: procedures>>=
+  function sudakov_eeqq_fsr_upper_bound_func (sudakov, xi, y, use_true_alpha_s) &
+                                                result (u)
+    real(default) :: u
+    class(sudakov_eeqq_fsr_t), intent(in) :: sudakov
+    real(default), intent(in) :: xi, y
+    logical, intent(in), optional :: use_true_alpha_s
+    real(default) :: kT2
+    real(default) :: alpha_s
+    logical :: yorn
+    kT2 = sudakov%event_deps%cms_energy2 / 2 * xi**2 * (1 - y)
+    yorn = .false.; if (present (use_true_alpha_s)) yorn = use_true_alpha_s
+    if (yorn) then
+       alpha_s = get_alpha (sudakov%qcd, kT2)
+    else
+       alpha_s = sudakov%alpha_s_rad (kT2)
+    end if
+    u = alpha_s / (xi*(1-y))
+  end function sudakov_eeqq_fsr_upper_bound_func
+
+@ %def sudakov_eeqq_fsr_upper_bound_func
+<<powheg: sudakov eeqq fsr: TBP>>=
+  procedure :: log_integrated_ubf => sudakov_eeqq_fsr_log_integrated_ubf
+<<powheg: procedures>>=
+  pure function sudakov_eeqq_fsr_log_integrated_ubf (sudakov, pt2) result (y)
+    real(default) :: y
+    class(sudakov_eeqq_fsr_t), intent(in) :: sudakov
+    real(default), intent(in) :: pt2
+    logical :: within_boundaries
+    within_boundaries = pt2 / sudakov%event_deps%cms_energy2 <= sudakov%xi2_max &
+         .and. pt2 >= sudakov%powheg_settings%pt2_min
+    if (within_boundaries) then
+       !xm2s = sudakov%xi2_max * sudakov%event_deps%cms_energy2
+       !xm2sl = xm2s / sudakov%process_deps%lambda2_gen
+       !pt2l = pt2 / sudakov%process_deps%lambda2_gen
+       !y = pi / b0rad * (log (xm2sl) * &
+            !log (log (xm2sl) / log (pt2l)) - &
+            !log (xm2s / pt2))
+    else
+       y = 0
+    end if
+  end function sudakov_eeqq_fsr_log_integrated_ubf
+
+@ %def sudakov_eeqq_fsr_log_integrated_ubf
+@
+<<powheg: sudakov eeqq fsr: TBP>>=
+  procedure :: reweight_ubf => sudakov_eeqq_fsr_reweight_ubf
+<<powheg: procedures>>=
+  function sudakov_eeqq_fsr_reweight_ubf (sudakov, pt2) result (accepted)
+    logical :: accepted
+    class(sudakov_eeqq_fsr_t), intent(inout) :: sudakov
+    real(default), intent(in) :: pt2
+    accepted = .false.
+  end function sudakov_eeqq_fsr_reweight_ubf
+
+@ %def sudakov_eeqq_fsr_reweight_ubf
+@
+<<powheg: sudakov eeqq fsr: TBP>>=
+  procedure :: generate_xi_and_y_and_phi => sudakov_eeqq_fsr_generate_xi_and_y_and_phi
+<<powheg: procedures>>=
+  subroutine sudakov_eeqq_fsr_generate_xi_and_y_and_phi (sudakov, r)
+    class(sudakov_eeqq_fsr_t), intent(inout) :: sudakov
+    type(radiation_t), intent(inout) :: r
+    real(default) :: s
+    s = sudakov%event_deps%cms_energy2
+    !r%xi = sudakov%generate_xi (r)
+    !r%y = one - (two * r%pt2) / (s * r%xi**2)
+    call sudakov%rng%generate (sudakov%random)
+    r%phi = sudakov%random * twopi
+    if (ENSURE) then
+       call assert_equal (OUTPUT_UNIT, r%pt2, &
+            s / two * r%xi**2 * (one - r%y), &
+            "sudakov_generate_xi_and_y_and_phi: pt2 inconsistency")
+    end if
+  contains
+  end subroutine sudakov_eeqq_fsr_generate_xi_and_y_and_phi
+
+@ %def sudakov_generate_xi_and_y_and_phi
 @
 \subsubsection{Main POWHEG class}
 <<powheg: public>>=
@@ -18221,6 +18371,8 @@ reweighted to the more precise $\alpha_s$.
           select case (powheg%settings%upper_bound_func)
           case (UBF_SIMPLE)
              allocate (sudakov_simple_fsr_t :: powheg%sudakov(alr)%s)
+          case (UBF_EEQQ)
+             allocate (sudakov_eeqq_fsr_t :: powheg%sudakov(alr)%s)
           case default
              call msg_fatal ("powheg_setup_sudakovs: Please choose upper bounding function!")
           end select
