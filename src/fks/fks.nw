@@ -2989,6 +2989,7 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
     real(default) :: sqme0, sqme_soft, sqme_coll, sqme_cs, sqme_remn
     real(default) :: s_alpha
     real(default) :: xi, xi_max, xi_tilde, y, phi
+    real(default) :: s
     xi_tilde = rsub%fks_kinematics%xi_tilde
     xi_max = rsub%fks_kinematics%xi_max(emitter)
     xi = xi_tilde * xi_max
@@ -2996,15 +2997,17 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
     phi = rsub%fks_kinematics%phi
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       i_real = region%real_index
-      if (rsub%sqme_np1_active) then
-         sqme0 = rsub%sqme_real_non_sub (i_real)
-         s_alpha = rsub%reg_data%get_svalue (rsub%p_real, rsub%current_alr, emitter)
-         sqme0 = sqme0 * s_alpha
-         sqme0 = sqme0 * region%mult
-         sqme0 = sqme0 * region%double_fsr_factor (rsub%p_real)
+      sqme0 = rsub%sqme_real_non_sub (i_real)
+      s_alpha = rsub%reg_data%get_svalue (rsub%p_real, rsub%current_alr, emitter)
+      sqme0 = sqme0 * s_alpha
+      sqme0 = sqme0 * region%mult
+      sqme0 = sqme0 * region%double_fsr_factor (rsub%p_real)
+      if (rsub%subtraction_active) then
          sqme0 = sqme0 * xi**2/xi_tilde * rsub%fks_kinematics%jac(1)
       else 
-         sqme0 = 0._default
+           s = rsub%fks_kinematics%cms_energy2
+!!         rsub%fks_kinematics%jac(1) = rsub%fks_kinematics%jac(1)*xi
+         sqme0 = sqme0*rsub%fks_kinematics%jac(1)*s/(8*twopi3)*xi
       end if
       if (rsub%subtraction_active) then 
          call rsub%evaluate_subtraction_terms (emitter, alpha_s, &
@@ -3019,10 +3022,10 @@ it directly cancels out with the numerator. Further, the jacobians are supplied 
          end associate
          sqme_remn = (sqme_soft - sqme_cs)*log(xi_max)*xi_tilde
          sqme = sqme0 - sqme_soft - sqme_coll + sqme_cs + sqme_remn
+         sqme = sqme * rsub%fks_kinematics%jac_rand (emitter)
       else
          sqme = sqme0
       end if
-      sqme = sqme * rsub%fks_kinematics%jac_rand (emitter)
     end associate
     !!! This occurs if the result is NaN.
     if (sqme /= sqme) & 
@@ -3280,6 +3283,7 @@ end module nlo_data
     type(vector4_t), dimension(:), allocatable :: p_real
     real(default), dimension(:), allocatable :: jac_rand
     real(default), dimension(:), allocatable :: y_soft
+    real(default) :: cms_energy2
   contains
   <<nlo data: real kinematics: TBP>>
   end type real_kinematics_t
@@ -4604,6 +4608,7 @@ process.
        real_kinematics%y = 0
        real_kinematics%xi_max = 0
        real_kinematics%phi = 0
+       real_kinematics%cms_energy2 = 0
     end associate
   end subroutine nlo_controller_init_real_kinematics
 
@@ -5357,6 +5362,7 @@ recoiling momenta.
     q = p_born(1) + p_born(2)
     q0 = q%p(0)
     q2 = q**2
+    generator%fks_kinematics%cms_energy2 = q2
 
     generator%E_gluon = q0*xi/2
     uk_np1 = generator%E_gluon
@@ -5502,6 +5508,7 @@ $\xi$.
     uk_em = sqrt(k0_em**2-m2)
     uk_rec = sqrt(k0_rec**2 - mrec2)
     uk = uk_rec
+    generator%fks_kinematics%cms_energy2 = q2
     generator%fks_kinematics%jac = q0*(z1-z2)/4*k0_np1
     generator%fks_kinematics%y_soft = &
                  (2*q2*z-q2-mrec2+m2)/(sqrt(k0_em_max**2-m2)*q0)/2
