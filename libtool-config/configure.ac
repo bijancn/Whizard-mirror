@@ -33,7 +33,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl =======================================================================
 dnl 
 dnl Start configuration
-AC_INIT([libtool-config],[2.2.5])
+AC_INIT([libtool-config],[2.2.6])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AM_MAKE_INCLUDE
 LT_INIT

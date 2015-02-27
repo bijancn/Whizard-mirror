@@ -39,7 +39,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl 
 dnl *********************************************************************** 
 dnl Start configuration
-AC_INIT([WHIZARD],[2.2.5])
+AC_INIT([WHIZARD],[2.2.6])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AC_PREREQ([2.65])
 
@@ -53,7 +53,7 @@ AC_MSG_NOTICE([**************************************************************])
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Mar 01 2015"
+PACKAGE_DATE="Apr 01 2015"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
@@ -446,11 +446,13 @@ WO_CONFIGURE_SECTION([LCIO])
 WO_PROG_LCIO()
 
 ###---------------------------------------------------------------------
-### PYTHIA6 etc
+### PYTHIA6, PYTHIA8 etc
 
-WO_CONFIGURE_SECTION([SHOWERS PYTHIA6 MPI])
+WO_CONFIGURE_SECTION([SHOWERS PYTHIA6 PYTHIA8 MPI])
 
 WO_PROG_QCD()
+
+WO_PROG_PYTHIA8()
 
 ###---------------------------------------------------------------------
 ### HOPPET
@@ -605,6 +607,11 @@ AC_CONFIG_FILES([src/pdf_builtin/Makefile])
 ### Subdirectory src/stdhep: dummy library as STDHEP replacement
 
 AC_CONFIG_FILES([src/stdhep/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/xdr: XDR reader 
+
+AC_CONFIG_FILES([src/xdr/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/hoppet
@@ -779,6 +786,11 @@ AC_CONFIG_FILES([src/variables/Makefile])
 ### Subdirectory src/model_features: Model access and methods
 
 AC_CONFIG_FILES([src/model_features/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/sindarin: New Sindarin Implementation
+
+AC_CONFIG_FILES([src/sindarin/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/models: Model-specific code

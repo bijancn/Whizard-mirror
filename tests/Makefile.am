@@ -49,6 +49,7 @@ UNIT_TESTS = \
     evaluators.run \
     formats.run \
     sorting.run \
+    object_base.run \
     grids.run \
     solver.run \
     state_matrices.run \
@@ -97,6 +98,7 @@ UNIT_TESTS = \
     powheg.run \
     shower.run \
     events.run \
+    hep_events.run \
     eio_data.run \
     eio_base.run \
     eio_raw.run \
@@ -235,6 +237,10 @@ TESTS_REQ_OCAML = \
     lhef_6.run \
     lhef_7.run \
     lhef_8.run \
+    lhef_9.run \
+    lhef_10.run \
+    select_1.run \
+    select_2.run \
     fatal_beam_decay.run \
     smtest_1.run \
     smtest_2.run \
@@ -253,7 +259,6 @@ TESTS_REQ_OCAML = \
     smtest_15.run \
     smtest_16.run \
     smtest_17.run \
-    smtest_18.run \
     mssmtest.run \
     spincor_1.run \
     show_1.run \
@@ -316,7 +321,9 @@ TESTS_REQ_HEPMC = \
     hepmc_5.run \
     hepmc_6.run \
     hepmc_7.run \
-    hepmc_8.run
+    hepmc_8.run \
+    hepmc_9.run \
+    hepmc_10.run
 XFAIL_TESTS_REQ_HEPMC =
 
 UNIT_TESTS_REQ_LHAPDF5 = \
@@ -334,7 +341,9 @@ XFAIL_TESTS_REQ_LHAPDF6 =
 TESTS_REQ_STDHEP = \
     stdhep_1.run \
     stdhep_2.run \
-    stdhep_3.run
+    stdhep_3.run \
+    stdhep_4.run \
+    stdhep_5.run
 XFAIL_TESTS_REQ_STDHEP =
 
 TESTS_STATIC = \
@@ -597,6 +606,13 @@ hepmc_6_rd_LDADD = $(LDFLAGS_HEPMC)
 hepmc_6.run: hepmc_6_rd
 endif
 
+if STDHEP_AVAILABLE
+stdhep_4.run: stdhep_rd
+stdhep_5.run: stdhep_rd
+stdhep_rd: $(top_builddir)/src/xdr/stdhep_rd
+	cp $< $@
+endif
+
 susyhit.in: $(top_builddir)/share/tests/susyhit.in
 	cp $< $@
 
@@ -714,7 +730,7 @@ clean-local:
 	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
 	rm -f *.run *.log slha_test.out
-	rm -f core*
+	rm -f core* stdhep_rd
 	rm -f *.f90 *.c *.$(FC_MODULE_EXT) *.o *.la
 	rm -f *.makefile
 	rm -rf err-output

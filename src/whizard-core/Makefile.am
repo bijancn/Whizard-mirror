@@ -74,6 +74,7 @@ module_lists = \
   ../physics/Modules \
   ../qft/Modules \
   ../expr_base/Modules \
+  ../sindarin/Modules \
   ../types/Modules \
   ../matrix_elements/Modules \
   ../particles/Modules \
@@ -140,7 +141,7 @@ SUFFIXES = .lo .$(FC_MODULE_EXT)
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../expr_base -I../matrix_elements -I../types -I../particles -I../beams -I../me_methods -I../events -I../phase_space -I../mci -I../user -I../blha -I../gosam -I../fks -I../variables -I../model_features -I../../vamp/src -I../muli -I../shower -I../pdf_builtin -I../muli -I../../circe1/src -I../../circe2/src -I../lhapdf -I../fastjet
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../expr_base -I../sindarin -I../matrix_elements -I../types -I../particles -I../beams -I../me_methods -I../xdr -I../events -I../phase_space -I../mci -I../user -I../blha -I../gosam -I../fks -I../variables -I../model_features -I../../vamp/src -I../muli -I../shower -I../pdf_builtin -I../muli -I../../circe1/src -I../../circe2/src -I../lhapdf -I../fastjet
 
 ########################################################################
 ## Default Fortran compiler options

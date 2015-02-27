@@ -38,6 +38,7 @@ SUBDIRS = \
   testing \
   system \
   combinatorics parsing rng expr_base \
+  sindarin \
   physics qft \
   fastjet \
   types \
@@ -45,7 +46,7 @@ SUBDIRS = \
   hepmc lcio particles \
   lhapdf lhapdf5 pdf_builtin hoppet beams \
   me_methods \
-  stdhep events \
+  stdhep xdr events \
   phase_space \
   mci \
   shower muli \
@@ -88,6 +89,7 @@ libwhizard_la_LIBADD = \
   user/libuser.la \
   mci/libmci.la \
   phase_space/libphase_space.la \
+  xdr/libWOStdHep.la \
   events/libevents.la \
   beams/libbeams.la \
   particles/libparticles.la \
@@ -96,6 +98,7 @@ libwhizard_la_LIBADD = \
   types/libtypes.la \
   qft/libqft.la \
   physics/libphysics.la \
+  sindarin/libsindarin.la \
   expr_base/libexpr_base.la \
   rng/librng.la \
   parsing/libparsing.la \
