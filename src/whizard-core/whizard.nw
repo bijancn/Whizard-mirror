@@ -17888,21 +17888,18 @@ This contains the $\alpha_r$ dependent pieces
   end subroutine sudakov_update
 
 @ %def sudakov_update
-@ The $\alpha_s$ to be used here is the simplified version
-$\alpha_s^\text{rad}$.  [[upper_bound_func]] does \emph{not} contain the
-normalization $N$ which is given by the grids.
+@ [[upper_bound_func]] does \emph{not} contain the normalization $N$
+which is given by the grids.
 <<powheg: sudakov: TBP>>=
   procedure (sudakov_upper_bound_func), deferred :: upper_bound_func
 <<powheg: interfaces>>=
   abstract interface
-     subroutine sudakov_upper_bound_func (sudakov, xi, y, u, alpha_s, &
-                                          use_true_alpha_s)
+     pure function sudakov_upper_bound_func (sudakov, xi, y, alpha_s) result (u)
        import
+       real(default) :: u
        class(sudakov_t), intent(in) :: sudakov
-       real(default), intent(in) :: xi, y
-       real(default), intent(out) :: u, alpha_s
-       logical, intent(in), optional :: use_true_alpha_s
-     end subroutine sudakov_upper_bound_func
+       real(default), intent(in) :: xi, y, alpha_s
+     end function sudakov_upper_bound_func
   end interface
        
 @ %def sudakov_upper_bound_func
@@ -17934,6 +17931,20 @@ normalization $N$ which is given by the grids.
 
 @ %def sudakov_generate_xi_and_y_and_phi
 @
+@
+<<powheg: sudakov: TBP>>=
+  procedure (sudakov_kt2), deferred :: kt2
+<<powheg: interfaces>>=
+  abstract interface
+     pure function sudakov_kt2 (sudakov, xi, y) result (kt2)
+       import
+       real(default) :: kt2
+       class(sudakov_t), intent(in) :: sudakov
+       real(default), intent(in) :: xi, y
+     end function sudakov_kt2
+  end interface
+
+@ %def sudakov_kt2
 <<powheg: sudakov: TBP>>=
   procedure (sudakov_reweight_ubf), deferred :: reweight_ubf
 <<powheg: interfaces>>=
@@ -17947,6 +17958,27 @@ normalization $N$ which is given by the grids.
   end interface
 
 @ %def sudakov_reweight_ubf
+@ In the generation of $p_T^2$ via [[log_integrated_ubf]], we use the
+simplified version $\alpha_s^\text{rad}$ while the grids take the
+improved version.
+<<powheg: sudakov: TBP>>=
+  procedure :: alpha_s => sudakov_alpha_s
+<<powheg: procedures>>=
+  function sudakov_alpha_s (sudakov, kt2, use_true) result (a)
+    real(default) :: a
+    class(sudakov_t), intent(in) :: sudakov
+    real(default), intent(in) :: kT2
+    logical, intent(in), optional :: use_true
+    logical :: yorn
+    yorn = .false.; if (present (use_true)) yorn = use_true
+    if (yorn) then
+       a = get_alpha (sudakov%qcd, kT2)
+    else
+       a = sudakov%alpha_s_rad (kT2)
+    end if
+  end function sudakov_alpha_s
+
+@ %def sudakov_alpha_s
 @
 <<powheg: sudakov: TBP>>=
   procedure :: generate_pt2 => sudakov_generate_pt2
@@ -18069,25 +18101,26 @@ normalization $N$ which is given by the grids.
 <<powheg: sudakov simple fsr: TBP>>=
   procedure :: upper_bound_func => sudakov_simple_fsr_upper_bound_func
 <<powheg: procedures>>=
-  subroutine sudakov_simple_fsr_upper_bound_func (sudakov, xi, y, u, alpha_s, &
-                                                  use_true_alpha_s)
+  pure function sudakov_simple_fsr_upper_bound_func (sudakov, xi, y, alpha_s) result (u)
+    real(default) :: u
     class(sudakov_simple_fsr_t), intent(in) :: sudakov
-    real(default), intent(in) :: xi, y
-    real(default), intent(out) :: u, alpha_s
-    logical, intent(in), optional :: use_true_alpha_s
-    real(default) :: kT2
-    logical :: yorn
-    kT2 = sudakov%event_deps%cms_energy2 / 2 * xi**2 * (1 - y)
-    yorn = .false.; if (present (use_true_alpha_s)) yorn = use_true_alpha_s
-    if (yorn) then
-       alpha_s = get_alpha (sudakov%qcd, kT2)
-    else
-       alpha_s = sudakov%alpha_s_rad (kT2)
-    end if
-    u = alpha_s / (xi*(1-y))
-  end subroutine sudakov_simple_fsr_upper_bound_func
+    real(default), intent(in) :: xi, y, alpha_s
+    u = alpha_s / (xi * (1 - y))
+  end function sudakov_simple_fsr_upper_bound_func
 
 @ %def sudakov_simple_fsr_upper_bound_func
+@
+<<powheg: sudakov simple fsr: TBP>>=
+  procedure :: kt2 => sudakov_simple_fsr_kt2
+<<powheg: procedures>>=
+  pure function sudakov_simple_fsr_kt2 (sudakov, xi, y) result (kt2)
+    real(default) :: kt2
+    class(sudakov_simple_fsr_t), intent(in) :: sudakov
+    real(default), intent(in) :: xi, y
+    kt2 = sudakov%event_deps%cms_energy2 / 2 * xi**2 * (1 - y)
+  end function sudakov_simple_fsr_kt2
+
+@ %def sudakov_simple_fsr_kt2
 @ This is fixed to $n_f=5$ for radiation generation. It will be
 reweighted to the more precise $\alpha_s$.
 <<powheg: parameters>>=
@@ -18170,9 +18203,10 @@ with a density $1 / \xi$
   end function sudakov_simple_fsr_generate_xi
 
 @ %def sudakov_simple_fsr_generate_xi
+@
 \paragraph{Dijet production at lepton colliders}
-@ In the POWHEG method paper, this is done for $e^+e^-\to q\bar{q}$.
-There $k_\text{max}=q^0/2$ and thus $$. We slightly extend this to
+In the POWHEG method paper, this is done for $e^+e^-\to q\bar{q}$.
+There $k_\text{max}=q^0/2=\sqrt{s}/2$. We slightly extend this to
 <<powheg: public>>=
   public :: sudakov_eeqq_fsr_t
 <<powheg: types>>=
@@ -18182,29 +18216,33 @@ There $k_\text{max}=q^0/2$ and thus $$. We slightly extend this to
   end type sudakov_eeqq_fsr_t
 
 @ %def sudakov_eeqq_fsr_t
-@
+@ This $k_T$ measure is the same as the simple FSR up to
+$\mathcal{O}(\theta^4)$ when $y=\cos\theta$.
+<<powheg: sudakov eeqq fsr: TBP>>=
+  procedure :: kt2 => sudakov_eeqq_fsr_kt2
+<<powheg: procedures>>=
+  pure function sudakov_eeqq_fsr_kt2 (sudakov, xi, y) result (kt2)
+    real(default) :: kt2
+    class(sudakov_eeqq_fsr_t), intent(in) :: sudakov
+    real(default), intent(in) :: xi, y
+    kt2 = sudakov%event_deps%cms_energy2 / 2 * xi**2 * (1 - y**2) / 2
+  end function sudakov_eeqq_fsr_kt2
+
+@ %def sudakov_eeqq_fsr_kt2
+@ This covers also the singularity at $(\xi,y)\to(1,-1)$ that occurs for
+a massless recoiling system.
 <<powheg: sudakov eeqq fsr: TBP>>=
   procedure :: upper_bound_func => sudakov_eeqq_fsr_upper_bound_func
 <<powheg: procedures>>=
-  subroutine sudakov_eeqq_fsr_upper_bound_func (sudakov, xi, y, u, alpha_s, &
-                                                  use_true_alpha_s)
-    real(default), intent(out) :: u, alpha_s
+  pure function sudakov_eeqq_fsr_upper_bound_func (sudakov, xi, y, alpha_s) result (u)
+    real(default) :: u
     class(sudakov_eeqq_fsr_t), intent(in) :: sudakov
-    real(default), intent(in) :: xi, y
-    logical, intent(in), optional :: use_true_alpha_s
-    real(default) :: kT2
-    logical :: yorn
-    kT2 = sudakov%event_deps%cms_energy2 / 2 * xi**2 * (1 - y)
-    yorn = .false.; if (present (use_true_alpha_s)) yorn = use_true_alpha_s
-    if (yorn) then
-       alpha_s = get_alpha (sudakov%qcd, kT2)
-    else
-       alpha_s = sudakov%alpha_s_rad (kT2)
-    end if
-    u = alpha_s / (xi*(1-y))
-  end subroutine sudakov_eeqq_fsr_upper_bound_func
+    real(default), intent(in) :: xi, y, alpha_s
+    u = alpha_s / (xi * (1 - y**2))
+  end function sudakov_eeqq_fsr_upper_bound_func
 
 @ %def sudakov_eeqq_fsr_upper_bound_func
+@
 <<powheg: sudakov eeqq fsr: TBP>>=
   procedure :: log_integrated_ubf => sudakov_eeqq_fsr_log_integrated_ubf
 <<powheg: procedures>>=
@@ -18345,6 +18383,35 @@ There $k_\text{max}=q^0/2$ and thus $$. We slightly extend this to
   end subroutine powheg_write
 
 @ %def powheg_write
+@
+<<powheg: powheg: TBP>>=
+  procedure :: write_statistics => powheg_write_statistics
+<<powheg: procedures>>=
+  subroutine powheg_write_statistics (powheg)
+    class(powheg_t), intent(in) :: powheg
+    integer :: u
+    integer :: alr
+!    integer :: n_emissions, n_emissions_tot
+    type(string_t) :: filename
+    u = free_unit ()
+!    n_emissions_tot = 0
+    filename = powheg%process_name // "_veto.log"
+    open (file=char(filename), unit=u, action='write')
+    write (u, '(A)') "Summary of Powheg veto procedure"
+    do alr = 1, powheg%process_deps%n_alr
+       write(u,'(A,I0)') 'alr: ', alr
+       associate (veto_counter => powheg%sudakov(alr)%s%veto_counter)
+          call veto_counter%write (u)
+!          n_emissions = veto_counter%n_sqme - veto_counter%veto_sqme
+!          n_emissions_tot = n_emissions_tot + n_emissions
+       end associate
+       call write_separator (u)
+    end do
+    write (u,'(A,I0)') "Total number of events which radiate a gluon: ", &
+                       powheg%n_emissions
+  end subroutine powheg_write_statistics
+
+@ %def powheg_write_statistics
 @
 \paragraph{Initialization and Finalization}
 <<powheg: powheg: TBP>>=
@@ -18501,17 +18568,19 @@ There $k_\text{max}=q^0/2$ and thus $$. We slightly extend this to
                                         powheg%event_deps%p_born)
     powheg%event_deps%p_real = p_real
     norm = powheg%norm_from_xi_and_y (r)
-    call powheg%sudakov(r%alr)%s%upper_bound_func (r%xi, r%y, ubf, alpha_s, &
-                                                   use_true_alpha_s=.true.)
-    sqme_real_x_jacobian = powheg%compute_sqme_real (r%alr, alpha_s)
-    sqme_born = powheg%event_deps%sqme_born
-    ubound = sqme_born * ubf * norm
-    if (sqme_real_x_jacobian/ubound > 1) &
-        call powheg%sudakov(r%alr)%s%veto_counter%record_fail()
-    if (ENSURE) then
-       if (sqme_real_x_jacobian/ubound < 0) call msg_warning ("R/B < 0!")
-    end if
-    accepted = random < sqme_real_x_jacobian / ubound
+    associate (s => powheg%sudakov(r%alr)%s)
+       alpha_s = s%alpha_s (s%kt2(r%xi, r%y), use_true=.true.)
+       ubf = s%upper_bound_func (r%xi, r%y, alpha_s)
+       sqme_real_x_jacobian = powheg%compute_sqme_real (r%alr, alpha_s)
+       sqme_born = powheg%event_deps%sqme_born
+       ubound = sqme_born * ubf * norm
+       if (sqme_real_x_jacobian/ubound > 1) &
+           call s%veto_counter%record_fail()
+       if (ENSURE) then
+          if (sqme_real_x_jacobian/ubound < 0) call msg_warning ("R/B < 0!")
+       end if
+       accepted = random < sqme_real_x_jacobian / ubound
+    end associate
     if (DEBUG_EVENTS) then
        print *, 'reweight_matrix_elements'
        print *, '  r%alr =    ',   r%alr !!! Debugging
@@ -18587,7 +18656,7 @@ The following is valid for one underlying Born.
     integer :: alr
     integer :: n, n_points
     logical :: valid_point
-    real(default) :: current_alpha_s
+    real(default) :: alpha_s
     call powheg%display_grid_startup_message()
     n_points = powheg%settings%n_init
     UNTIL_ACCEPTED: do
@@ -18597,8 +18666,9 @@ The following is valid for one underlying Born.
              call powheg%generate_xi_and_y_for_grids &
                   (radiation_variables, alr, xi, y)
              associate (s => powheg%sudakov(alr)%s)
-                call s%upper_bound_func (xi, y, ubf, current_alpha_s, use_true_alpha_s = .true.)
-                real_me = powheg%compute_sqme_real (alr, current_alpha_s)
+                alpha_s = s%alpha_s (s%kt2(xi, y), use_true=.true.)
+                ubf = s%upper_bound_func (xi, y, alpha_s)
+                real_me = powheg%compute_sqme_real (alr, alpha_s)
              end associate
              norm = real_me / (powheg%event_deps%sqme_born * ubf)
              <<ENSURE [[norm]] is in bounds>>
@@ -18715,17 +18785,10 @@ end if
        do alr = 1, powheg%process_deps%n_alr
           emitter = nlo%get_emitter (alr)
           call fks%get_radiation_variables (emitter, xi, y)
-          yorn = check_pt2_min_bound (powheg%settings%pt2_min, &
-                                   powheg%event_deps%cms_energy2, xi, y)
+          yorn = powheg%sudakov(alr)%s%kt2 (xi, y) >= pt2_min
           if (.not. yorn) exit
-       end do  
+       end do
     end associate
-  contains 
-    pure function check_pt2_min_bound (pt2_min, s, xi, y) result (check)
-      logical :: check
-      real(default), intent(in) :: pt2_min, s, xi, y
-      check = s/2 * xi**2 * (1-y) >= pt2_min 
-    end function check_pt2_min_bound
   end function powheg_above_pt2_min
 
 @ %def powheg_above_pt2_min
@@ -18781,9 +18844,9 @@ end if
     n_points = integer_to_string (powheg%settings%n_init)
     filename = powheg%process_name // "_" // n_points // "_powheg_grids.dat"
     requires = .not. os_file_exist (filename) .or. powheg%settings%rebuild_grids
-  end function powheg_requires_new_grids    
+  end function powheg_requires_new_grids
 
-@ %def powheg_requires_new_grids 
+@ %def powheg_requires_new_grids
 @ By keeping the radiation with the largest [[pt2]], we are effectively
 implementing the highest bid procedure. This means that we generate
 values $(f_B)$
@@ -18850,7 +18913,7 @@ values $(f_B)$
   subroutine powheg_build_particle_set (powheg, particle_set, p_born, p_real, emitter)
     class(powheg_t), intent(inout) :: powheg
     type(particle_set_t), intent(inout) :: particle_set
-    type(vector4_t), dimension(:), intent(in) :: p_born, p_real 
+    type(vector4_t), dimension(:), intent(in) :: p_born, p_real
     integer, intent(in) :: emitter
     type(particle_set_t) :: new_particle_set
     type(particle_t) :: new_particle
@@ -18863,11 +18926,11 @@ values $(f_B)$
     type(helicity_t) :: new_hel
     type(polarization_t) :: new_pol
     type(flavor_t) :: new_flv
-    
+
     n_particles = size (particle_set%prt)
     if (n_particles+1 /= size (p_real)) call msg_fatal &
                        ("Number of particles does not equal number of momenta")
-    
+
     new_particle_set%n_beam = particle_set%n_beam
     new_particle_set%n_in = particle_set%n_in
     new_particle_set%n_vir = particle_set%n_vir+2
@@ -18879,7 +18942,7 @@ values $(f_B)$
     n_out = new_particle_set%n_out; n_tot = new_particle_set%n_tot
     do i = 1, n_in
        new_particle_set%prt(i) = particle_set%prt(i)
-       call particle_set_momentum (new_particle_set%prt(i), p_real(i)) 
+       call particle_set_momentum (new_particle_set%prt(i), p_real(i))
        call particle_reset_status (new_particle_set%prt(i), PRT_INCOMING)
     end do
     do i = n_in+1, n_in+n_vir
@@ -18895,11 +18958,11 @@ values $(f_B)$
     do i = n_in+1, n_in+n_vir
        call particle_set_children (new_particle_set%prt(i), children)
     end do
-    do i = n_in+n_vir+1, n_tot-1   
+    do i = n_in+n_vir+1, n_tot-1
        new_particle_set%prt(i) = particle_set%prt(i-n_vir)
        call particle_set_momentum (new_particle_set%prt(i), p_real(i-n_vir))
        call particle_reset_status (new_particle_set%prt(i), PRT_OUTGOING)
-    end do 
+    end do
      call particle_reset_status (new_particle, PRT_OUTGOING)
      call particle_set_momentum (new_particle, p_real(n_tot-n_vir))
      !call helicity_init (new_hel)
@@ -18935,10 +18998,10 @@ values $(f_B)$
 <<powheg: procedures>>=
   subroutine reassign_colors (prt_radiated, prt_emitter, i_rad, i_em, rng)
     type(particle_t), intent(inout) :: prt_radiated, prt_emitter
-    integer, intent(in) :: i_rad, i_em 
+    integer, intent(in) :: i_rad, i_em
     class(rng_t), intent(inout), allocatable :: rng
     type(color_t) :: col_rad, col_em
-    if (is_quark (abs (i_em)) .and. is_gluon (i_rad)) then        
+    if (is_quark (abs (i_em)) .and. is_gluon (i_rad)) then
        call reassign_colors_qg (prt_emitter, col_rad, col_em)
     else if (is_gluon (i_em) .and. is_gluon (i_rad)) then
        call reassign_colors_gg (prt_emitter, rng, col_rad, col_em)
@@ -18949,7 +19012,7 @@ values $(f_B)$
     end if
     call particle_set_color (prt_emitter, col_em)
     call particle_set_color (prt_radiated, col_rad)
-  end subroutine reassign_colors 
+  end subroutine reassign_colors
 
   subroutine reassign_colors_qg (prt_emitter, col_rad, col_em)
     type(particle_t), intent(in) :: prt_emitter
@@ -18984,11 +19047,11 @@ values $(f_B)$
     integer :: new_color_index
     call rng%generate (random)
     color_em = particle_get_color (prt_emitter)
-    new_color_index = maxval (abs (color_em)) 
+    new_color_index = maxval (abs (color_em))
     i1 = 1; i2 = 2
     if (random < 0.5) then
        i1 = 2; i2 = 1
-    end if 
+    end if
     color_rad(i1) = new_color_index
     color_rad(i2) = color_em(i2)
     color_em(i2) = new_color_index
@@ -19007,7 +19070,7 @@ values $(f_B)$
 
     color_em = particle_get_color (prt_emitter)
     i1 = 1; i2 = 2
-    is_anti_quark = pdg_emitter < 0 
+    is_anti_quark = pdg_emitter < 0
     if (is_anti_quark) then
        i1 = 2; i1 = 1
     end if
@@ -19071,18 +19134,16 @@ values $(f_B)$
 @ %def powheg_norm_from_xi_and_y
 @
 \subsubsection{$\alpha_s$ and its reweighting}
-[[running_alpha_s]] should implement a variable-flavor-2-loop result
-and optionally return [[n_flavors]] that are active at the scale.  The
-main point to ensure here is that the simple fixed-flavor-1-loop
+The main point to ensure here is that the simple fixed-flavor-1-loop
 expression $\alpha_s^\text{rad}$ is larger than the more accurate
-$\alpha_s$ such that we can use a reweighting veto and use $\alpha_s^\text{rad}$
-for the generation of the emission. This can be done by setting
+$\alpha_s$ such that we can use a reweighting veto and use
+$\alpha_s^\text{rad}$ for the generation of the emission. This can be
+done by setting
 \begin{equation}
   \alpha_s^\text{rad}(\mu_0) = \alpha_s (\mu_0)
 \end{equation}
 whereby $\mu_0^2$ is the [[scale_to_relate2]] that is taken to be
-$(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
-[[settings%lambda2]].
+$p_{T,\text{min}}^2$.
 <<powheg: powheg: TBP>>=
   procedure :: compute_lambda2_gen => powheg_compute_lambda2_gen
 <<powheg: procedures>>=
@@ -19096,7 +19157,8 @@ $(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
   end subroutine powheg_compute_lambda2_gen
 
 @ %def powheg_compute_lambda2_gen
-@
+@ [[qcd%alpha%get]] should implement a variable-flavor result and
+optionally return [[n_flavors]] that are active at the scale...
 <<powheg: procedures>>=
   function get_alpha (qcd, scale2) result (alpha_s)
     real(default) :: alpha_s
@@ -19104,7 +19166,6 @@ $(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
     real(default), intent(in) :: scale2
     integer :: nf, order
     ! TODO: (bcn 2015-01-30) implement variable flavor alpha_s
-    ! TODO: (bcn 2015-02-05) Do we want from scale or from lambda or both?
     alpha_s = qcd%alpha%get (sqrt(scale2))
     select type (alpha => qcd%alpha)
     type is (alpha_qcd_from_scale_t)
@@ -19114,7 +19175,8 @@ $(2\Lambda_\text{MSbar}^{(5)})^2$, which we assume to be stored in
        nf = alpha%nf
        order = alpha%order
     class default
-       call msg_warning ("get_alpha: QCD type is not running! Assuming 5-flavors!")
+       call msg_warning ("get_alpha: QCD type is not running!" // &
+            "Assuming 5-flavors and LO (1-loop) running!")
        nf = 5
        order = 0
     end select
@@ -19147,115 +19209,6 @@ exponent.
 
 @ %def sudakov_alpha_s_rad
 @
-<<powheg: powheg: TBP>>=
-  procedure :: test_sudakov => powheg_test_sudakov
-<<powheg: procedures>>=
-  subroutine powheg_test_sudakov (powheg)
-    class(powheg_t), intent(inout) :: powheg
-    integer :: n_calls1, n_calls2, n_calls_effective
-    integer, parameter :: n_bins = 20
-    real(default), dimension(n_bins) :: histo1, histo2
-    real(default) :: sqme_real_x_jacobian, sqme_born
-    type(vector4_t), dimension(:), allocatable :: p_born
-    real(default), dimension(3) :: random
-    real(default) :: xi, y, phi
-    integer :: i_call, i_bin, alr, emitter
-    real(default) :: alpha_s, kT2, weight
-    real(default) :: pt2_min, s
-    real(default), dimension(n_bins) :: average
-    
-    p_born = powheg%event_deps%p_born
-!    print *, 'p_born: '
-!    call vector4_write_set (p_born)
-    sqme_born = powheg%event_deps%sqme_born
-!    print *, 'sqme_born: ', sqme_born
-    s = powheg%event_deps%cms_energy2
-    pt2_min = powheg%settings%pt2_min
-!    print *, 's: ', s, 'pt2_min: ', pt2_min
-    n_calls1 = 500000; n_calls2 = 500000
-    histo1 = 0._default; histo2 = 0._default
-    do i_call = 1, n_calls1
-       do alr = 1, powheg%process_deps%n_alr
-          call powheg%rng%generate (random)
-          emitter = powheg%process_instance%nlo_controller%get_emitter (alr)
-!          print *, 'emitter: ', emitter
-          powheg%event_deps%p_real = &
-                 powheg%phs_fks_generator%generate_fsr_from_x (random, emitter, p_born)
-          
-!          print *, 'p_real: '
-!          call vector4_write_set (powheg%event_deps%p_real)
-          call powheg%phs_fks_generator%get_radiation_variables (emitter, xi, y, phi)
-          kT2 = s/2 * xi**2 * (1-y)
-          if (kT2 < pt2_min) then
-!             print *, 'Underflow'
-             kT2 = pt2_min
-          end if
-!          print *, 'xi: ', xi, 'y: ', y, 'kT2: ', kT2
-          alpha_s = get_alpha (powheg%qcd, kT2)
-          sqme_real_x_jacobian = powheg%compute_sqme_real (alr, alpha_s)
-          weight = sqme_real_x_jacobian / sqme_born
-!          print *, 'weight: ', weight
-          do i_bin = 1, n_bins
-             if (log(kT2/pt2_min) > i_bin*log(s/pt2_min)/n_bins) then
-                histo1(i_bin) = histo1(i_bin) + weight
-             end if
-          end do
-       end do
-    end do
-    average = histo1/n_calls1
-    average = exp(-average)
-
-    do i_call = 1, n_calls2
-       call powheg%generate_emission (pt2_generated = kT2)
-!       print *, 'Generated kT2: ', kT2
-       do i_bin = 1, n_bins
-          if (log(kT2/pt2_min) > i_bin*log(s/pt2_min)/n_bins) then
-              histo2(i_bin) = histo2(i_bin) + one
-          end if
-       end do
-    end do
-    print *, 'Integrated R/B-distribution: '
-    do i_bin = 1, n_bins
-       print *, i_bin*log(s/pt2_min/n_bins), average(i_bin)
-    end do
-    print *, '*******************************'
-    print *, 'Emission probability: '
-    do i_bin = 1, n_bins
-       print *, i_bin*log(s/pt2_min/n_bins), one-histo2(i_bin)/n_calls2
-    end do
-          
-  end subroutine powheg_test_sudakov
-
-@ %def powheg_test_sudakov
-@
-<<powheg: powheg: TBP>>=
-  procedure :: write_statistics => powheg_write_statistics
-<<powheg: procedures>>=
-  subroutine powheg_write_statistics (powheg)
-    class(powheg_t), intent(in) :: powheg
-    integer :: u
-    integer :: alr
-!    integer :: n_emissions, n_emissions_tot
-    type(string_t) :: filename
-    u = free_unit ()
-!    n_emissions_tot = 0
-    filename = powheg%process_name // "_veto.log"
-    open (file=char(filename), unit=u, action='write')
-    write (u, '(A)') "Summary of Powheg veto procedure"
-    do alr = 1, powheg%process_deps%n_alr
-       write(u,'(A,I0)') 'alr: ', alr
-       associate (veto_counter => powheg%sudakov(alr)%s%veto_counter)
-          call veto_counter%write (u)
-!          n_emissions = veto_counter%n_sqme - veto_counter%veto_sqme
-!          n_emissions_tot = n_emissions_tot + n_emissions
-       end associate
-       call write_separator (u)
-    end do
-    write (u,'(A,I0)') "Total number of events which radiate a gluon: ", &
-                       powheg%n_emissions
-  end subroutine powheg_write_statistics
-
-@ %def powheg_write_statistics 
 <<powheg: sudakov: TBP>>=
   procedure :: reweight_alpha_s => sudakov_reweight_alpha_s
 <<powheg: procedures>>=
@@ -19305,6 +19258,7 @@ exponent.
 @ %def powheg_test
 @
 \paragraph{Initialization}
+Still very basic and incomplete.
 <<powheg: execute tests>>=
   call test(powheg_1, "powheg_1", &
             "Initialization", u, results)
@@ -19372,6 +19326,92 @@ exponent.
   end subroutine powheg_1
 
 @ %def powheg_1
+@
+\paragraph{Compare generated emission with Sudakov form factor}
+This is a nontrivial test of the generation algorithm and should be
+independent of the used upper bounding function (as long as all
+singularities are included).  Using it as unit test needs a setup of the
+NLO process though.
+<<powheg: powheg: TBP>>=
+  procedure :: test_sudakov => powheg_test_sudakov
+<<powheg: procedures>>=
+  subroutine powheg_test_sudakov (powheg)
+    class(powheg_t), intent(inout) :: powheg
+    integer :: n_calls1, n_calls2, n_calls_effective
+    integer, parameter :: n_bins = 20
+    real(default), dimension(n_bins) :: histo1, histo2
+    real(default) :: sqme_real_x_jacobian, sqme_born
+    type(vector4_t), dimension(:), allocatable :: p_born
+    real(default), dimension(3) :: random
+    real(default) :: xi, y, phi
+    integer :: i_call, i_bin, alr, emitter
+    real(default) :: alpha_s, kT2, weight
+    real(default) :: pt2_min, s
+    real(default), dimension(n_bins) :: average
+
+    p_born = powheg%event_deps%p_born
+!    print *, 'p_born: '
+!    call vector4_write_set (p_born)
+    sqme_born = powheg%event_deps%sqme_born
+!    print *, 'sqme_born: ', sqme_born
+    s = powheg%event_deps%cms_energy2
+    pt2_min = powheg%settings%pt2_min
+!    print *, 's: ', s, 'pt2_min: ', pt2_min
+    n_calls1 = 500000; n_calls2 = 500000
+    histo1 = 0._default; histo2 = 0._default
+    do i_call = 1, n_calls1
+       do alr = 1, powheg%process_deps%n_alr
+          call powheg%rng%generate (random)
+          emitter = powheg%process_instance%nlo_controller%get_emitter (alr)
+!          print *, 'emitter: ', emitter
+          powheg%event_deps%p_real = &
+                 powheg%phs_fks_generator%generate_fsr_from_x (random, emitter, p_born)
+
+!          print *, 'p_real: '
+!          call vector4_write_set (powheg%event_deps%p_real)
+          call powheg%phs_fks_generator%get_radiation_variables (emitter, xi, y, phi)
+          kT2 = s/2 * xi**2 * (1-y)
+          if (kT2 < pt2_min) then
+!             print *, 'Underflow'
+             kT2 = pt2_min
+          end if
+!          print *, 'xi: ', xi, 'y: ', y, 'kT2: ', kT2
+          alpha_s = get_alpha (powheg%qcd, kT2)
+          sqme_real_x_jacobian = powheg%compute_sqme_real (alr, alpha_s)
+          weight = sqme_real_x_jacobian / sqme_born
+!          print *, 'weight: ', weight
+          do i_bin = 1, n_bins
+             if (log(kT2/pt2_min) > i_bin*log(s/pt2_min)/n_bins) then
+                histo1(i_bin) = histo1(i_bin) + weight
+             end if
+          end do
+       end do
+    end do
+    average = histo1/n_calls1
+    average = exp(-average)
+
+    do i_call = 1, n_calls2
+       call powheg%generate_emission (pt2_generated = kT2)
+!       print *, 'Generated kT2: ', kT2
+       do i_bin = 1, n_bins
+          if (log(kT2/pt2_min) > i_bin*log(s/pt2_min)/n_bins) then
+              histo2(i_bin) = histo2(i_bin) + one
+          end if
+       end do
+    end do
+    print *, 'Integrated R/B-distribution: '
+    do i_bin = 1, n_bins
+       print *, i_bin*log(s/pt2_min/n_bins), average(i_bin)
+    end do
+    print *, '*******************************'
+    print *, 'Emission probability: '
+    do i_bin = 1, n_bins
+       print *, i_bin*log(s/pt2_min/n_bins), one-histo2(i_bin)/n_calls2
+    end do
+
+  end subroutine powheg_test_sudakov
+
+@ %def powheg_test_sudakov
 @
 \subsection{Abstract Shower Type}
 Any parton shower implementation will use random numbers to generate
