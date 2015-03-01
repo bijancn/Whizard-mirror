@@ -1,4 +1,4 @@
 #!/bin/sh
-### Check WHIZARD sorting algorithms
+### Check WHIZARD solving algorithms
 echo "Running script $0"
 exec ./run_whizard.sh @script@ --check solver

@@ -175,6 +175,12 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/sf_beam_events_3.ref \
     ref-output/sf_escan_1.ref \
     ref-output/sf_escan_2.ref \
+    ref-output/grids_1.ref \
+    ref-output/grids_2.ref \
+    ref-output/grids_3.ref \
+    ref-output/grids_4.ref \
+    ref-output/grids_5.ref \
+    ref-output/solver_1.ref \
     ref-output/phs_base_1.ref \
     ref-output/phs_base_2.ref \
     ref-output/phs_base_3.ref \
@@ -192,6 +198,8 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/phs_wood_5.ref \
     ref-output/phs_wood_6.ref \
     ref-output/phs_wood_vis_1.ref \
+    ref-output/phs_fks_generator_1.ref \
+    ref-output/powheg_1.ref \
     ref-output/rng_base_1.ref \
     ref-output/rng_base_2.ref \
     ref-output/rng_tao_1.ref \
@@ -536,7 +544,6 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/smtest_15.ref \
     ref-output/smtest_16.ref \
     ref-output/smtest_17.ref \
-    ref-output/smtest_18.ref \
     ref-output/mssmtest.ref \
     ref-output/spincor_1.ref \
     ref-output/show_1.ref \
@@ -555,7 +562,8 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/beam_events_1.ref \
     ref-output/beam_events_4.ref \
     ref-output/energy_scan_1.ref \
-    ref-output/user_strfun.ref
+    ref-output/user_strfun.ref \
+    ref-output/gosam_1.ref
 
 # Reference files that depend on the numerical precision
 REF_OUTPUT_FILES_DOUBLE = \
@@ -691,11 +699,15 @@ UNIT_TESTS_SIN = \
     sf_circe2.sin \
     sf_beam_events.sin \
     sf_escan.sin \
+    grids.sin \
+    solver.sin \
     phs_base.sin \
     phs_single.sin \
     phs_forests.sin \
     phs_wood.sin \
     phs_wood_vis.sin \
+    phs_fks_generator.sin \
+    powheg.sin \
     rng_base.sin \
     rng_tao.sin \
     selectors.sin \
@@ -870,7 +882,6 @@ MISC_TESTS_SIN = \
     smtest_15.sin \
     smtest_16.sin \
     smtest_17.sin \
-    smtest_18.sin \
     mssmtest.sin \
     spincor_1.sin \
     show_1.sin \
@@ -922,7 +933,8 @@ MISC_TESTS_SIN = \
     static_1.sin \
     static_1.exe.sin \
     user_cuts.sin \
-    user_strfun.sin
+    user_strfun.sin \
+    gosam_1.sin
 ### Extended self tests
 #     sm_ext.sin
 
