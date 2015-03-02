@@ -1007,25 +1007,24 @@ end module prc_gosam
 @ %def gosam_writer_get_n_proc
 @
 <<prc gosam: gosam driver: TBP>>=
-  procedure :: execute_olp_file => gosam_driver_execute_olp_file
+  procedure :: write_makefile => gosam_driver_write_makefile
 <<prc gosam: procedures>>=
-  subroutine gosam_driver_execute_olp_file (object)
+  subroutine gosam_driver_write_makefile (object, unit)
     class(gosam_driver_t), intent(in) :: object
-    type(string_t) :: command
-    command = object%gosam_dir // "/bin" // &
-              '/gosam.py --olp ' // object%olp_file // &
-              ' --destination=' // object%olp_dir // &
-              ' -f -z'
-    call os_system_call (command)
-    call msg_message ("Configure olp_modules")
-    command = "cd " // object%olp_dir // "; ./autogen.sh --prefix=$(pwd)"
-    call os_system_call (command)
-    call msg_message ("Installing olp_modules")
-    command = "cd " // object%olp_dir // ";  make install"
-    call os_system_call (command)
-  end subroutine gosam_driver_execute_olp_file
-
-@ %def gosam_driver_execute_olp_file
+    integer, intent(in) :: unit
+    write (unit, "(A)") char ("OLP_FILE="//object%olp_file)
+    write (unit, "(A)") char ("OLP_DIR="//object%olp_dir)
+    write (unit, "(A)") 
+    write (unit, "(A)") "all: $(OLP_DIR)"
+    write (unit, "(2A)") TAB, "cd $<; ./autogen.sh --prefix=$(PWD); &
+                             &make install"
+    write (unit, "(A)")
+    write (unit, "(A)") "$(OLP_DIR): "
+    write (unit, "(4A)") TAB, char (object%gosam_dir // "/bin/gosam.py "), &
+                             "--olp $(OLP_FILE) --destination=$(OLP_DIR)", &
+                             " -f -z"
+  end subroutine gosam_driver_write_makefile
+@ %def gosam_driver_write_makefile
 @
 <<prc gosam: gosam driver: TBP>>=
   procedure :: set_alpha_s => gosam_driver_set_alpha_s
@@ -1237,31 +1236,94 @@ end module prc_gosam
 @ %def gosam_driver_read_olc_file
 @
 <<prc gosam: prc gosam: TBP>>=
-  procedure :: execute_olp_file => prc_gosam_execute_olp_file
+  procedure :: search_for_existing_library => &
+                      prc_gosam_search_for_existing_library
 <<prc gosam: procedures>>=
-  subroutine prc_gosam_execute_olp_file (object, os_data)
+  subroutine prc_gosam_search_for_existing_library (object, os_data, found)
     class(prc_gosam_t), intent(inout) :: object
     type(os_data_t), intent(in) :: os_data
-    logical :: found, dl_success
-    integer :: ierr
+    logical, intent(out) :: found
     select type (driver => object%driver)
     type is (gosam_driver_t)
        call driver%loop_archive%search ([driver%olp_file, &
                         var_str ('golem.in'), driver%olp_dir // &
                         '/.libs/libgolem_olp.so'], found)
-       if (found) then
+    end select
+  end subroutine prc_gosam_search_for_existing_library
+
+@ %def prc_gosam_search_for_exsting_library
+@
+<<prc gosam: prc gosam: TBP>>=
+  procedure :: write_makefile => prc_gosam_write_makefile
+<<prc gosam: procedures>>=
+  subroutine prc_gosam_write_makefile (object, unit)
+    class(prc_gosam_t), intent(in) :: object
+    integer, intent(in) :: unit
+    select type (driver => object%driver)
+    type is (gosam_driver_t)
+       call driver%write_makefile (unit)
+    end select
+  end subroutine prc_gosam_write_makefile
+
+@ %def prc_gosam_write_makefile
+@
+<<prc gosam: prc gosam: TBP>>=
+  procedure :: execute_makefile => prc_gosam_execute_makefile
+<<prc gosam: procedures>>=
+  subroutine prc_gosam_execute_makefile (object)
+    class(prc_gosam_t), intent(in) :: object
+    select type (driver => object%driver)
+    type is (gosam_driver_t)
+       call os_system_call (var_str ("make -f Gosam_Makefile"))
+    end select
+  end subroutine prc_gosam_execute_makefile
+
+@ %def prc_gosam_execute_makefile
+@ 
+<<prc gosam: prc gosam: TBP>>=
+  procedure :: create_olp_library => prc_gosam_create_olp_library
+<<prc gosam: procedures>>=
+  subroutine prc_gosam_create_olp_library (object, lib_exists)
+    class(prc_gosam_t), intent(inout) :: object
+    logical, intent(in) :: lib_exists
+    integer :: unit
+
+    select type (driver => object%driver)
+    type is (gosam_driver_t)
+       if (lib_exists) then
           call driver%loop_archive%restore (driver%olp_file, driver%olp_dir)
        else
-         call driver%execute_olp_file ()
+          unit = free_unit ()
+          open (unit, file = "Gosam_Makefile", status = "replace", action= "write")
+          call object%write_makefile (unit)
+          close (unit)
+          call object%execute_makefile ()
        end if
-       call driver%load (os_data, .not.found, dl_success)
+    end select
+  end subroutine prc_gosam_create_olp_library
+
+@ %def prc_gosam_create_olp_library
+@
+<<prc gosam: prc gosam: TBP>>=
+  procedure :: load_olp_library => prc_gosam_load_olp_library
+<<prc gosam: procedures>>=
+  subroutine prc_gosam_load_olp_library (object, os_data, store)
+    class(prc_gosam_t), intent(inout) :: object
+    type(os_data_t), intent(in) :: os_data
+    logical, intent(in) :: store
+    logical :: dl_success
+    integer :: ierr
+    
+    select type (driver => object%driver)
+    type is (gosam_driver_t)
+       call driver%load (os_data, store, dl_success)
        if (.not. dl_success) &
-          call msg_fatal ('Error linking GoSam libraries')
+          call msg_fatal ("Error while loading GoSam libraries: ")
        call driver%gosam_olp_start (char (driver%olc_file), ierr)
     end select
-  end subroutine prc_gosam_execute_olp_file
-       
-@ %def prc_gosam_execute_olp_file
+  end subroutine prc_gosam_load_olp_library
+
+@ %def prc_gosam_load_olp_library
 @
 <<prc gosam: prc gosam: TBP>>=
   procedure :: write => prc_gosam_write

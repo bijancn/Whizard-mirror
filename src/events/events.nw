@@ -4680,7 +4680,8 @@ the exception of lifetime and spin, where default values are stored.
 <<HEP common: public>>=
   public :: hepevt_set_particle
 <<HEP common: procedures>>=
-  subroutine hepevt_set_particle (i, pdg, status, parent, child, p, m2, hel)
+  subroutine hepevt_set_particle &
+       (i, pdg, status, parent, child, p, m2, hel, vtx)
     integer, intent(in) :: i
     integer, intent(in) :: pdg, status
     integer, dimension(:), intent(in) :: parent
@@ -4688,6 +4689,7 @@ the exception of lifetime and spin, where default values are stored.
     type(vector4_t), intent(in) :: p
     real(default), intent(in) :: m2
     integer, intent(in) :: hel
+    type(vector4_t), intent(in) :: vtx
     IDHEP(i) = pdg
     select case (status)
       case (PRT_BEAM);      ISTHEP(i) = 2
@@ -4710,7 +4712,8 @@ the exception of lifetime and spin, where default values are stored.
     PHEP(1:3,i) = vector3_get_components (space_part (p))
     PHEP(4,i) = energy (p)
     PHEP(5,i) = sign (sqrt (abs (m2)), m2)
-    VHEP(1:4,i) = 0
+    VHEP(1:3,i) = vtx%p(1:3)
+    VHEP(4,i) = vtx%p(0)
     hepevt_pol(i) = hel
   end subroutine hepevt_set_particle
 
@@ -5139,7 +5142,8 @@ its polarization is fully defined.
               prt%get_children (), &
               prt%get_momentum (), &
               prt%get_p2 (), &
-              prt%get_helicity ())
+              prt%get_helicity (), &
+              prt%get_vertex ())
        end associate
     end do
     call pset_hepevt%final ()
@@ -5940,6 +5944,55 @@ polarized).  Note that the generated polarization object needs finalization.
 
 @ %def hepmc_particle_get_color
 @
+<<HepMC interface: interfaces>>=
+  interface
+     function gen_vertex_pos_x (v_obj) result (x) bind(C)
+       import
+       type(c_ptr), value :: v_obj
+       real(c_double) :: x
+     end function gen_vertex_pos_x
+  end interface
+  interface
+     function gen_vertex_pos_y (v_obj) result (y) bind(C)
+       import
+       type(c_ptr), value :: v_obj
+       real(c_double) :: y
+     end function gen_vertex_pos_y
+  end interface
+  interface
+     function gen_vertex_pos_z (v_obj) result (z) bind(C)
+       import
+       type(c_ptr), value :: v_obj
+       real(c_double) :: z
+     end function gen_vertex_pos_z
+  end interface
+  interface
+     function gen_vertex_time (v_obj) result (t) bind(C)
+       import
+       type(c_ptr), value :: v_obj
+       real(c_double) :: t
+     end function gen_vertex_time
+  end interface  
+@ 
+<<HepMC interface: public>>=
+  public :: hepmc_vertex_to_vertex
+<<HepMC interface: procedures>>=
+  function hepmc_vertex_to_vertex (vtx) result (v)
+    type(hepmc_vertex_t), intent(in) :: vtx
+    type(vector4_t) :: v
+    real(default) :: t, vx, vy, vz
+    if (hepmc_vertex_is_valid (vtx)) then
+       t = gen_vertex_time (vtx%obj)
+       vx = gen_vertex_pos_x (vtx%obj)
+       vy = gen_vertex_pos_y (vtx%obj)
+       vz = gen_vertex_pos_z (vtx%obj)    
+       v = vector4_moving (t, &
+            vector3_moving ([vx, vy, vz]))
+    end if
+  end function hepmc_vertex_to_vertex
+
+@ %def hepmc_vertex_to_vertex  
+@ 
 \subsection{GenVertex}
 Vertices are made of particles (incoming and outgoing).
 <<HepMC interface: public>>=
@@ -7728,6 +7781,55 @@ stores the signed invariant mass (no squaring).
   end function lcio_particle_get_mass_squared
 
 @ %def lcio_particle_get_mass_squared
+@ Return vertex and production time of a LCIO particle.
+<<LCIO interface: interfaces>>=
+  interface 
+     real(c_double) function lcio_vtx_x (prt) bind(C)
+       import
+       type(c_ptr), value :: prt       
+     end function lcio_vtx_x
+  end interface
+  interface 
+     real(c_double) function lcio_vtx_y (prt) bind(C)
+       import
+       type(c_ptr), value :: prt       
+     end function lcio_vtx_y
+  end interface
+  interface 
+     real(c_double) function lcio_vtx_z (prt) bind(C)
+       import
+       type(c_ptr), value :: prt       
+     end function lcio_vtx_z
+  end interface  
+  interface 
+     real(c_double) function lcio_prt_time (prt) bind(C)
+       import
+       type(c_ptr), value :: prt    
+     end function lcio_prt_time
+  end interface    
+@  
+@
+<<LCIO interface: public>>=
+  public :: lcio_particle_get_vertex
+  public :: lcio_particle_get_time
+<<LCIO interface: procedures>>=
+  function lcio_particle_get_vertex (prt) result (vtx)
+    type(vector3_t) :: vtx
+    type(lcio_particle_t), intent(in) :: prt
+    real(default) :: vx, vy, vz
+    vx = lcio_vtx_x (prt%obj)
+    vy = lcio_vtx_y (prt%obj)
+    vz = lcio_vtx_z (prt%obj)    
+    vtx = vector3_moving ([vx, vy, vz])
+  end function lcio_particle_get_vertex
+
+  function lcio_particle_get_time (prt) result (time)
+    real(default) :: time
+    type(lcio_particle_t), intent(in) :: prt
+    time = lcio_prt_time (prt%obj)
+  end function lcio_particle_get_time
+  
+@ %def lcio_particle_get_vertex lcio_particle_get_time
 @
 \subsection{Polarization}
 For polarization there is a three-component float entry foreseen in the LCIO 
@@ -7866,6 +7968,47 @@ $\cos\theta$ is relevant, mapped to positive/negative helicity.
   end subroutine lcio_particle_to_hel
 
 @ %def lcio_particle_to_hel
+@ Set the vertex of a particle.
+<<LCIO interface: interfaces>>=
+  interface
+     subroutine lcio_particle_set_vertex (prt_obj, vx, vy, vz) bind(C)
+       import
+       type(c_ptr), value :: prt_obj
+       real(c_double), value :: vx, vy, vz
+     end subroutine lcio_particle_set_vertex
+  end interface
+  interface
+     subroutine lcio_particle_set_time (prt_obj, t) bind(C)
+       import
+       type(c_ptr), value :: prt_obj
+       real(c_double), value :: t
+     end subroutine lcio_particle_set_time
+  end interface  
+  
+@ %def lcio_particle_set_vertex lcio_particle_set_time
+@
+<<LCIO interface: public>>=
+  public :: lcio_particle_set_vtx
+<<LCIO interface: procedures>>=
+  subroutine lcio_particle_set_vtx (prt, vtx) 
+    type(lcio_particle_t), intent(inout) :: prt
+    type(vector3_t), intent(in) :: vtx
+    call lcio_particle_set_vertex (prt%obj, real(vtx%p(1), c_double), &
+         real(vtx%p(2), c_double), real(vtx%p(3), c_double))
+  end subroutine lcio_particle_set_vtx
+
+@ %def lcio_particle_set_vtx
+@
+<<LCIO interface: public>>=
+  public :: lcio_particle_set_t 
+<<LCIO interface: procedures>>=
+  subroutine lcio_particle_set_t (prt, t)
+    type(lcio_particle_t), intent(out) :: prt
+    real(default), intent(in) :: t
+    call lcio_particle_set_time (prt%obj, real(t, c_double))
+  end subroutine lcio_particle_set_t
+
+@ %def lcio_particle_set_t
 @ 
 <<LCIO interface: interfaces>>=
   interface
@@ -8358,13 +8501,19 @@ object can be correctly initialized.
     call lcio_particle_set_parent (prt6, prt3)
     call lcio_particle_set_parent (prt6, prt4)    
     
-    ! $W^-$ decay
+    ! $W^-$ decay    
     call particle_init (prt7, &
          -2.445_default, 28.816_default, 6.082_default, 29.552_default, &
          1, 1)
     call particle_init (prt8, &
          3.962_default, -49.498_default, -26.687_default, 56.373_default, &
          -2, 1)
+    call lcio_particle_set_t (prt7, 0.12_default)
+    call lcio_particle_set_t (prt8, 0.12_default)    
+    call lcio_particle_set_vtx &
+         (prt7, vector3_moving ([-0.3_default, 0.05_default, 0.004_default]))
+    call lcio_particle_set_vtx &
+         (prt8, vector3_moving ([-0.3_default, 0.05_default, 0.004_default]))
     call lcio_particle_set_parent (prt7, prt5)
     call lcio_particle_set_parent (prt8, prt5)
     call lcio_particle_add_to_evt_coll (prt1, evt)
@@ -8415,7 +8564,8 @@ object can be correctly initialized.
     
   contains
 
-    subroutine particle_init (prt, px, py, pz, E, pdg, status)
+    subroutine particle_init &
+         (prt, px, py, pz, E, pdg, status)
       type(lcio_particle_t), intent(out) :: prt
       real(default), intent(in) :: px, py, pz, E
       integer, intent(in) :: pdg, status
@@ -8652,22 +8802,28 @@ http://herwig.hepforge.org/trac/wiki/FaQs.
     type(hepmc_vertex_t), dimension(:), allocatable :: v
     type(hepmc_particle_t), dimension(:), allocatable :: hprt
     type(hepmc_particle_t), dimension(2) :: hbeam
+    type(vector4_t), dimension(:), allocatable :: vtx
     logical, dimension(:), allocatable :: is_beam
     integer, dimension(:), allocatable :: v_from, v_to
     integer :: n_vertices, n_tot, i
     n_tot = particle_set%get_n_tot ()
     allocate (v_from (n_tot), v_to (n_tot))
     call particle_set%assign_vertices (v_from, v_to, n_vertices)
-    allocate (v (n_vertices))
-    do i = 1, n_vertices
-       call hepmc_vertex_init (v(i))
-       call hepmc_event_add_vertex (evt, v(i))
-    end do
-    allocate (hprt (n_tot))
+    allocate (hprt (n_tot))    
+    allocate (vtx (n_vertices))
+    vtx = vector4_null
     do i = 1, n_tot
        if (v_to(i) /= 0 .or. v_from(i) /= 0) then
           call particle_to_hepmc (particle_set%prt(i), hprt(i))
+          if (v_to(i) /= 0) then
+             vtx(v_to(i)) = particle_set%prt(i)%get_vertex ()
+          end if
        end if
+    end do       
+    allocate (v (n_vertices))    
+    do i = 1, n_vertices
+       call hepmc_vertex_init (v(i), vtx(i))
+       call hepmc_event_add_vertex (evt, v(i))
     end do
     allocate (is_beam (n_tot))
     is_beam = particle_set%prt(1:n_tot)%get_status () == PRT_BEAM
@@ -8710,6 +8866,7 @@ could be replaced by a hash table.
     type(particle_t), intent(out) :: prt
     type(hepmc_particle_t), intent(in) :: hprt
     type(model_data_t), intent(in), target :: model
+    type(hepmc_vertex_t) :: vtx
     integer, intent(in) :: polarization
     integer, dimension(:), intent(in) :: barcode
     type(hepmc_polarization_t) :: hpol
@@ -8717,6 +8874,7 @@ could be replaced by a hash table.
     type(color_t) :: col
     type(helicity_t) :: hel
     type(polarization_t) :: pol
+    type(vector4_t) :: vertex
     integer :: n_parents, n_children
     integer, dimension(:), allocatable :: &
          parent_barcode, child_barcode, parent, child
@@ -8760,6 +8918,11 @@ could be replaced by a hash table.
     call prt%set_children (child)
     if (prt%get_status () == PRT_VIRTUAL .and. n_parents == 0) &
          call prt%set_status (PRT_INCOMING)
+    vtx = hepmc_particle_get_decay_vertex (hprt)
+    if (hepmc_vertex_is_valid (vtx)) then
+       vertex = hepmc_vertex_to_vertex (vtx)
+       if (vertex /= vector4_null)  call prt%set_vertex (vertex)
+    end if
   end subroutine particle_from_hepmc_particle
 
 @ %def particle_from_hepmc_particle
@@ -8905,6 +9068,7 @@ tagged as outgoing, otherwise unphysical.
     type(particle_t), intent(in) :: prt
     type(lcio_particle_t), intent(out) :: lprt
     integer :: lcio_status
+    type(vector4_t) :: vtx
     select case (prt%get_status ())
     case (PRT_UNDEFINED)
        lcio_status = 0
@@ -8933,6 +9097,9 @@ tagged as outgoing, otherwise unphysical.
          prt%get_pdg (), &
          lcio_status)
     call lcio_particle_set_color (lprt, prt%get_color ())
+    vtx = prt%get_vertex ()
+    call lcio_particle_set_vtx (lprt, space_part (vtx))
+    call lcio_particle_set_t (lprt, vtx%p(0))
     select case (prt%get_polarization_status ())
     case (PRT_DEFINITE_HELICITY)
        call lcio_polarization_init (lprt, prt%get_helicity ())
@@ -8954,6 +9121,8 @@ necessary for making a fully qualified flavor component.
     type(lcio_particle_t), intent(in) :: lprt
     type(model_data_t), intent(in), target :: model
     integer, dimension(:), intent(in) :: daughters, parents    
+    type(vector3_t) :: vtx3
+    type(vector4_t) :: vtx4
     type(flavor_t) :: flv
     type(color_t) :: col
     type(helicity_t) :: hel
@@ -8985,6 +9154,9 @@ necessary for making a fully qualified flavor component.
     call prt%set_children (daughters)
     if (prt%get_status () == PRT_VIRTUAL .and. size(parents) == 0) &
          call prt%set_status (PRT_INCOMING)
+    vtx4 = vector4_moving (lcio_particle_get_time (lprt), &
+         lcio_particle_get_vertex (lprt))
+    if (vtx4 /= vector4_null)  call prt%set_vertex (vtx4)       
   end subroutine particle_from_lcio_particle
 
 @ %def particle_from_lcio_particle

@@ -5,7 +5,7 @@ if test -f GOSAM_FLAG; then
     if test -f OCAML_FLAG; then
         name=`basename @script@`
         ./run_whizard.sh @script@ --no-logging
-        cat $name.log | sed -e 's/Reading model file.*/Reading model file SM_rad.mdl/' > $name.log.tmp
+        cat $name.log | sed -e 's/Reading model file.*/Reading model file SM_rad.mdl/' -e 's/6\.14784[0-9][0-9]/6\.14784XX/' > $name.log.tmp
         mv $name.log.tmp $name.log
         diff ref-output/`basename @script@`.ref `basename @script@`.log
     else

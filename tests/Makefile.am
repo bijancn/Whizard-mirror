@@ -737,7 +737,8 @@ clean-local:
 	rm -f *.makefile
 	rm -rf err-output
 	rm -rf ref-output
-	rm -f *.sin *.hbc
+	rm -f *.sin *.hbc *.olp *.olc golem.in 
+	rm -rf Generated_Loops nlo_tt_LOOP_olp_modules include
 	rm -f *.phs *.vg *.vgb *.evt *.evx *.lhe *.hepmc *.dat *.debug 
 	rm -f *.tmp *.hepevt *.hepevt.verb *.lha *.lha.verb *.slcio
 	rm -f prc_omega_diags_1_p_i1_diags.out prc_omega_diags_1_p_i1_diags.toc

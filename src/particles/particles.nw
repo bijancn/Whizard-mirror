@@ -1626,7 +1626,9 @@ it has a generic polarization, the [[pol]] component is defined.  For
 each particle we store the four-momentum and the invariant mass
 squared, i.e., the squared norm of the four-momentum.  There is also
 an optional list of parent and child particles, for bookkeeping in
-physical events.
+physical events. The vertex is an optional component that consists of
+a Lorentz 4-vector, denoting the position and time of the vertex
+(displaced vertex/time).
 <<Particles: public>>=
   public :: particle_t
 <<Particles: types>>=
@@ -1640,6 +1642,7 @@ physical events.
      type(polarization_t) :: pol
      type(vector4_t) :: p = vector4_null
      real(default) :: p2 = 0
+     type(vector4_t), allocatable :: vertex
      integer, dimension(:), allocatable :: parent
      integer, dimension(:), allocatable :: child
    contains
@@ -1664,6 +1667,8 @@ relations.
     prt_out%pol = prt_in%pol
     prt_out%p = prt_in%p
     prt_out%p2 = prt_in%p2
+    if (allocated (prt_in%vertex))  &
+       allocate (prt_out%vertex, source=prt_in%vertex)
   end subroutine particle_init_particle
 
 @ %def particle_init_particle
@@ -1706,6 +1711,7 @@ polarization.  This mode is translated into the polarization status.
   subroutine particle_final (prt)
     class(particle_t), intent(inout) :: prt
     call polarization_final (prt%pol)
+    if (allocated (prt%vertex))  deallocate (prt%vertex)
   end subroutine particle_final
 
 @ %def particle_final
@@ -1751,9 +1757,9 @@ polarization.  This mode is translated into the polarization status.
        write (u, *)
     end select    
     call vector4_write (prt%p, unit, testflag = testflag)
-    pp2 = prt%p2        
+    pp2 = prt%p2  
     if (pacified)  call pacify (pp2, tolerance = 1E-10_default)	
-    write (u, "(1x,A,1x," // fmt // ")")  "T = ", pp2
+    write (u, "(1x,A,1x," // fmt // ")")  "T = ", pp2    
     if (allocated (prt%parent)) then
        if (size (prt%parent) /= 0) then
           write (u, "(1x,A,40(1x,I0))")  "Parents: ", prt%parent
@@ -1763,6 +1769,12 @@ polarization.  This mode is translated into the polarization status.
        if (size (prt%child) /= 0) then
           write (u, "(1x,A,40(1x,I0))")  "Children:", prt%child
        end if
+    end if
+    if (allocated (prt%vertex)) then
+       write (u, "(1x,A,1x," // fmt // ")")  "Vtx t = ", prt%vertex%p(0)
+       write (u, "(1x,A,1x," // fmt // ")")  "Vtx x = ", prt%vertex%p(1)    
+       write (u, "(1x,A,1x," // fmt // ")")  "Vtx y = ", prt%vertex%p(2)    
+       write (u, "(1x,A,1x," // fmt // ")")  "Vtx z = ", prt%vertex%p(3)
     end if
   end subroutine particle_write
 
@@ -1796,13 +1808,17 @@ polarization.  This mode is translated into the polarization status.
        write (u) size (prt%child)
        write (u) prt%child
     end if
+    write (u) allocated (prt%vertex)
+    if (allocated (prt%vertex)) then
+       call vector4_write_raw (prt%vertex, u)
+    end if    
   end subroutine particle_write_raw
 
   subroutine particle_read_raw (prt, u, iostat)
     class(particle_t), intent(out) :: prt
     integer, intent(in) :: u
     integer, intent(out) :: iostat
-    logical :: allocated_parent, allocated_child
+    logical :: allocated_parent, allocated_child, allocated_vertex
     integer :: size_parent, size_child
     read (u, iostat=iostat) prt%status, prt%polarization
     call prt%flv%read_raw (u, iostat=iostat)
@@ -1826,6 +1842,11 @@ polarization.  This mode is translated into the polarization status.
        read (u, iostat=iostat) size_child
        allocate (prt%child (size_child))
        read (u, iostat=iostat) prt%child
+    end if
+    read (u, iostat=iostat) allocated_vertex
+    if (allocated_vertex) then
+       allocate (prt%vertex)
+       read (u, iostat=iostat) prt%vertex%p
     end if
   end subroutine particle_read_raw
 
@@ -2010,6 +2031,53 @@ particles.
   end subroutine particle_set_polarization
 
 @ %def particle_set_polarization 
+@
+<<Particles: particle: TBP>>=
+  generic :: set_vertex => set_vertex_from_vector3, set_vertex_from_xyz, &
+       set_vertex_from_vector4, set_vertex_from_xyzt
+  procedure :: set_vertex_from_vector4 => particle_set_vertex_from_vector4
+  procedure :: set_vertex_from_vector3 => particle_set_vertex_from_vector3
+  procedure :: set_vertex_from_xyzt => particle_set_vertex_from_xyzt
+  procedure :: set_vertex_from_xyz => particle_set_vertex_from_xyz
+<<Particles: procedures>>=
+  subroutine particle_set_vertex_from_vector4 (prt, vertex)
+    class(particle_t), intent(inout) :: prt
+    type(vector4_t), intent(in) :: vertex
+    if (allocated (prt%vertex)) deallocate (prt%vertex)
+    allocate (prt%vertex, source=vertex)
+  end subroutine particle_set_vertex_from_vector4
+
+  subroutine particle_set_vertex_from_vector3 (prt, vertex)
+    class(particle_t), intent(inout) :: prt
+    type(vector3_t), intent(in) :: vertex
+    type(vector4_t) :: vtx
+    vtx = vector4_moving (0._default, vertex)
+    if (allocated (prt%vertex)) deallocate (prt%vertex)
+    allocate (prt%vertex, source=vtx)
+  end subroutine particle_set_vertex_from_vector3
+  
+  subroutine particle_set_vertex_from_xyzt (prt, vx, vy, vz, t)
+    class(particle_t), intent(inout) :: prt
+    real(default), intent(in) :: vx, vy, vz, t
+    type(vector4_t) :: vertex
+    if (allocated (prt%vertex)) deallocate (prt%vertex)
+    vertex = vector4_moving (t, vector3_moving ([vx, vy, vz]))
+    allocate (prt%vertex, source=vertex)
+  end subroutine particle_set_vertex_from_xyzt
+  
+  subroutine particle_set_vertex_from_xyz (prt, vx, vy, vz)
+    class(particle_t), intent(inout) :: prt
+    real(default), intent(in) :: vx, vy, vz
+    type(vector4_t) :: vertex
+    if (allocated (prt%vertex)) deallocate (prt%vertex)
+    vertex = vector4_moving (0._default, vector3_moving ([vx, vy, vz]))
+    allocate (prt%vertex, source=vertex)
+  end subroutine particle_set_vertex_from_xyz
+
+@ %def particle_set_vertex_from_vector3
+@ %def particle_set_vertex_from_vector4
+@ %def particle_set_vertex_from_xyz
+@ %def particle_set_vertex_from_xyzt
 @
 \subsubsection{Accessing contents}
 The status code.
@@ -2204,6 +2272,21 @@ The status code.
   end function particle_get_p2
 
 @ %def particle_get_momentum particle_get_p2
+@ Return the particle vertex, if allocated.
+<<Particles: particle: TBP>>=
+  procedure :: get_vertex => particle_get_vertex
+<<Particles: procedures>>=
+  elemental function particle_get_vertex (prt) result (vtx)
+    type(vector4_t) :: vtx
+    class(particle_t), intent(in) :: prt
+    if (allocated (prt%vertex)) then
+       vtx = prt%vertex
+    else
+       vtx = vector4_null
+    end if
+  end function particle_get_vertex
+  
+@ %def particle_get_vertex
 @ 
 \subsection{Particle sets}
 A particle set is what is usually called an event: an array of
@@ -3235,6 +3318,10 @@ created, assigned as the current 'from' vertex, and as the 'to' vertex
 for all parents.
 
 Then, the analogous procedure is done for the children.
+
+Furthermore, we assign to each vertex the vertex position from the
+parent(s). We check that these vertex positions coincide, and if not
+return a null vector.
 <<Particles: particle set: TBP>>=
   procedure :: assign_vertices => particle_set_assign_vertices
 <<Particles: procedures>>=
@@ -3598,12 +3685,12 @@ particles.  The process is $d\bar d \to Z \to q\bar q$.
 
     call particle_set4%write (u)
 
-    !!! write (u, "(A)")
-    !!! write (u, "(A)")  "* Transform to a subevt object"
-    !!! write (u, "(A)")
-    !!! 
-    !!! call particle_set4%to_subevt (subevt)
-    !!! call subevt_write (subevt, u)
+    write (u, "(A)")
+    write (u, "(A)")  "* Transform to a subevt object"
+    write (u, "(A)")
+    
+    call particle_set4%to_subevt (subevt)
+    call subevt_write (subevt, u)
 
     write (u, "(A)")
     write (u, "(A)")  "* Cleanup"
