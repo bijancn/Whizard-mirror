@@ -18210,13 +18210,13 @@ improved version.
 <<powheg: sudakov: TBP>>=
   procedure :: alpha_s => sudakov_alpha_s
 <<powheg: procedures>>=
-  function sudakov_alpha_s (sudakov, kt2, use_true) result (a)
+  function sudakov_alpha_s (sudakov, kt2, use_correct) result (a)
     real(default) :: a
     class(sudakov_t), intent(in) :: sudakov
     real(default), intent(in) :: kT2
-    logical, intent(in), optional :: use_true
+    logical, intent(in), optional :: use_correct
     logical :: yorn
-    yorn = .false.; if (present (use_true)) yorn = use_true
+    yorn = .false.; if (present (use_correct)) yorn = use_correct
     if (yorn) then
        a = get_alpha (sudakov%qcd, kT2)
     else
@@ -18420,7 +18420,7 @@ reweighted to the more precise $\alpha_s$.
     type(radiation_t), intent(inout) :: r
     real(default) :: s
     s = sudakov%event_deps%cms_energy2
-    r%xi = sudakov%generate_xi (r)
+    call sudakov%generate_xi (r)
     r%y = one - (two * r%pt2) / (s * r%xi**2)
     call sudakov%rng%generate (sudakov%random)
     r%phi = sudakov%random * twopi
@@ -18438,17 +18438,16 @@ with a density $1 / \xi$
 <<powheg: sudakov simple fsr: TBP>>=
   procedure :: generate_xi => sudakov_simple_fsr_generate_xi
 <<powheg: procedures>>=
-  function sudakov_simple_fsr_generate_xi (sudakov, r) result (xi)
-    real(default) :: xi
+  subroutine sudakov_simple_fsr_generate_xi (sudakov, r)
     class(sudakov_simple_fsr_t), intent(inout) :: sudakov
-    type(radiation_t), intent(in) :: r
+    type(radiation_t), intent(inout) :: r
     real(default) :: s, xi2_max
     s = sudakov%event_deps%cms_energy2
     xi2_max = sudakov%xi2_max
     call sudakov%rng%generate (sudakov%random)
-    xi = exp (((one - sudakov%random) * log (r%pt2 / s) + &
+    r%xi = exp (((one - sudakov%random) * log (r%pt2 / s) + &
          sudakov%random * log (xi2_max)) / two)
-  end function sudakov_simple_fsr_generate_xi
+  end subroutine sudakov_simple_fsr_generate_xi
 
 @ %def sudakov_simple_fsr_generate_xi
 @
@@ -18800,41 +18799,39 @@ a massless recoiling system.
     class(powheg_t), intent(inout) :: powheg
     type(radiation_t), intent(in) :: r
     integer :: emitter
-    type(vector4_t), dimension(:), allocatable :: p_real
     real(default) :: sqme_real_x_jacobian, sqme_born
-    real(default) :: norm, ubf, ubound, random
+    real(default) :: norm, ubf, ubound, random, weight
     real(default) :: alpha_s
     call powheg%rng%generate (random)
     emitter = powheg%process_instance%nlo_controller%get_emitter (r%alr)
-    p_real =  powheg%phs_fks_generator%generate_fsr_from_xi_and_y (r%xi, &
-                                        r%y, r%phi, emitter, &
-                                        powheg%event_deps%p_born)
-    powheg%event_deps%p_real = p_real
+    powheg%event_deps%p_real = &
+         powheg%phs_fks_generator%generate_fsr_from_xi_and_y (r%xi, &
+                          r%y, r%phi, emitter, powheg%event_deps%p_born)
     norm = powheg%norm_from_xi_and_y (r)
     associate (s => powheg%sudakov(r%alr)%s)
-       alpha_s = s%alpha_s (s%kt2(r%xi, r%y), use_true=.true.)
+       alpha_s = s%alpha_s (s%kt2 (r%xi, r%y), use_correct=.true.)
        ubf = s%upper_bound_func (r%xi, r%y, alpha_s)
        sqme_real_x_jacobian = powheg%compute_sqme_real (r%alr, alpha_s)
        sqme_born = powheg%event_deps%sqme_born
        ubound = sqme_born * ubf * norm
-       if (sqme_real_x_jacobian/ubound > 1) &
-           call s%veto_counter%record_fail()
+       weight = sqme_real_x_jacobian / ubound
+       if (weight > 1) call s%veto_counter%record_fail()
        if (ENSURE) then
-          if (sqme_real_x_jacobian/ubound < 0) call msg_warning ("R/B < 0!")
+          if (weight < 0) call msg_warning ("R/B < 0!")
        end if
-       accepted = random < sqme_real_x_jacobian / ubound
+       accepted = random < weight
     end associate
     if (DEBUG_EVENTS) then
        print *, 'reweight_matrix_elements'
-       print *, '  r%alr =    ',   r%alr !!! Debugging
-       print *, '  r%xi =    ', r%xi !!! Debugging
-       print *, '  r%y =    ', r%y !!! Debugging
-       print *, '  emitter =    ', emitter !!! Debugging
+       print *, '  r%alr =    ',   r%alr
+       print *, '  r%xi =    ', r%xi
+       print *, '  r%y =    ', r%y
+       print *, '  emitter =    ', emitter
        print *, '  random =    ', random
        print *, '  sqme_real_x_jacobian =    ', sqme_real_x_jacobian
-       print *, '  sqme_born =    ', sqme_born !!! Debugging
-       print *, '  ubf =    ', ubf !!! Debugging
-       print *, '  norm =    ',   norm !!! Debugging
+       print *, '  sqme_born =    ', sqme_born
+       print *, '  ubf =    ', ubf
+       print *, '  norm =    ',   norm
        print *, '  ubound =    ', ubound
        print *, '  matrix element  accepted =    ', accepted
     end if
@@ -18909,7 +18906,7 @@ The following is valid for one underlying Born.
              call powheg%generate_xi_and_y_for_grids &
                   (radiation_variables, alr, xi, y)
              associate (s => powheg%sudakov(alr)%s)
-                alpha_s = s%alpha_s (s%kt2(xi, y), use_true=.true.)
+                alpha_s = s%alpha_s (s%kt2(xi, y), use_correct=.true.)
                 ubf = s%upper_bound_func (xi, y, alpha_s)
                 real_me = powheg%compute_sqme_real (alr, alpha_s)
              end associate
@@ -18917,7 +18914,7 @@ The following is valid for one underlying Born.
              f_alr = (one * alr) / powheg%process_deps%n_alr - tiny_07
              call powheg%grid%update_maxima &
                   ([radiation_variables(I_XI:I_Y), f_alr], norm)
-             call check_and_display_progress ()
+             call msg_show_progress (n, n_points)
           end do
        end do EVALUATE_GRID_POINTS
        if (powheg%grid%is_non_zero_everywhere ()) then
@@ -18930,19 +18927,6 @@ The following is valid for one underlying Born.
           call msg_warning ()
        end if
     end do UNTIL_ACCEPTED
-
-  contains 
-
-    subroutine check_and_display_progress ()
-      real(default) :: prog
-      integer, save :: next_check = 10
-      prog = n*one/powheg%settings%n_init * 100
-      if (prog >= next_check) then
-         write (msg_buffer, "(F5.1,A)") prog, "%"
-         call msg_message ()
-         next_check = next_check + 10
-      end if
-    end subroutine check_and_display_progress 
 
   end subroutine powheg_fill_grids
 
@@ -19580,33 +19564,35 @@ NLO process though.
     sqme_born = powheg%event_deps%sqme_born
     s = powheg%event_deps%cms_energy2
     pt2_min = powheg%settings%pt2_min
-    n_calls1 = 1000000; n_calls2 = 100000
+    n_calls1 = 50000; n_calls2 = 5000
     histo1 = zero; histo2 = zero; histo1sq = zero
 
-    do i_call = 1, n_calls1
-       do alr = 1, powheg%process_deps%n_alr
-          call powheg%rng%generate (random)
-          emitter = powheg%process_instance%nlo_controller%get_emitter (alr)
-          powheg%event_deps%p_real = &
-                 powheg%phs_fks_generator%generate_fsr_from_x (random, emitter, p_born)
-          
-          call powheg%phs_fks_generator%get_radiation_variables (emitter, xi, y, phi)
-          kT2 = powheg%sudakov(alr)%s%kt2(xi, y)
-          !print *, 'xi: ', xi, 'y: ', y, 'kT2: ', kT2
-          alpha_s = get_alpha (powheg%qcd, kT2)
-          sqme_real_x_jacobian = powheg%compute_sqme_real (alr, alpha_s)
-          random_jacobian = powheg%process_instance%nlo_controller%real_kinematics%jac_rand (emitter)
-          weight = sqme_real_x_jacobian * random_jacobian / sqme_born
-          !print *, 'sqme_real_x_jacobian: ', sqme_real_x_jacobian, &
-               !'sqme_born: ', sqme_born, 'weight: ', weight
-          do i_bin = 1, n_bins
-             if (kT2 > binning(i_bin)) then
-                histo1(i_bin) = histo1(i_bin) + weight
-                histo1sq(i_bin) = histo1sq(i_bin) + weight**2
+    associate (nlo => powheg%process_instance%nlo_controller, &
+               fks => powheg%phs_fks_generator)
+       do i_call = 1, n_calls1
+          do alr = 1, powheg%process_deps%n_alr
+             call powheg%rng%generate (random)
+             emitter = nlo%get_emitter (alr)
+             powheg%event_deps%p_real = fks%generate_fsr_from_x (random, emitter, p_born)
+             call fks%get_radiation_variables (emitter, xi, y, phi)
+             kT2 = powheg%sudakov(alr)%s%kt2(xi, y)
+             if (kT2 > pt2_min .and. xi < one - 1000*tiny_07) then
+                alpha_s = get_alpha (powheg%qcd, kT2)
+                sqme_real_x_jacobian = powheg%compute_sqme_real (alr, alpha_s)
+                random_jacobian = nlo%real_kinematics%jac_rand (emitter)
+                weight = sqme_real_x_jacobian * random_jacobian / sqme_born
+                do i_bin = 1, n_bins
+                   if (kT2 > binning(i_bin)) then
+                      histo1(i_bin) = histo1(i_bin) + weight
+                      histo1sq(i_bin) = histo1sq(i_bin) + weight**2
+                   end if
+                end do
              end if
+             ! Do not cycle since there is a Heaviside in the exponent
           end do
+          call msg_show_progress (i_call, n_calls1)
        end do
-    end do
+    end associate
     average = histo1 / n_calls1
     average_sq = histo1sq / n_calls1
     error = sqrt ((average_sq - average**2) / n_calls1)
@@ -19618,18 +19604,18 @@ NLO process though.
 
     do i_call = 1, n_calls2
        call powheg%generate_emission (pt2_generated = kT2)
-       !print *, 'Generated kT2: ', kT2
        do i_bin = 1, n_bins
           if (kT2 > binning(i_bin)) then
               histo2(i_bin) = histo2(i_bin) + one
           end if
        end do
+       call msg_show_progress (i_call, n_calls2)
     end do
     histo2 = histo2 / n_calls2
     histo2 = one - histo2
 
     print *, 'exp(-Integrated R/B)-distribution: '
-    print *, 'Left bin edge  sudakov_+  sudakov_0  sudakov_-  rel_err[%]: '
+    print *, 'pT2  sudakov_+  sudakov_0  sudakov_-  rel_err[%]: '
     do i_bin = 1, n_bins
        print *, binning (i_bin), &
             sudakov_p (i_bin), sudakov_0 (i_bin), sudakov_m (i_bin), &
@@ -19646,8 +19632,8 @@ NLO process though.
     pure function binning (i) result (pt2)
       real(default) :: pt2
       integer, intent(in) :: i
-      pt2 = pt2_min + s * (i-1) / n_bins
-            ! i * log (s / pt2_min) / n_bins
+      !pt2 = pt2_min + (s-pt2_min) * (i-1) / (n_bins-1)
+      pt2 = pt2_min * exp (s / pt2_min * (i-1) / (n_bins-1))
     end function
   end subroutine powheg_test_sudakov
 
