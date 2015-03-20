@@ -71,7 +71,6 @@ module polarizations
   use helicities
   use quantum_numbers
   use state_matrices
-!  use models
 
 <<Standard module head>>
 
@@ -2827,14 +2826,16 @@ The correlated state matrix, if any, is also ignored.
 <<Particles: particle set: TBP>>=
   procedure :: apply_keep_beams => particle_set_apply_keep_beams
 <<Particles: procedures>>=
-  subroutine particle_set_apply_keep_beams (pset_in, pset_out, keep_beams)
+  subroutine particle_set_apply_keep_beams &
+       (pset_in, pset_out, keep_beams, real_parents)
     class(particle_set_t), intent(in) :: pset_in
     type(particle_set_t), intent(out) :: pset_out
-    logical, intent(in), optional :: keep_beams
+    logical, intent(in), optional :: keep_beams, real_parents
     integer, dimension(:), allocatable :: status, map
     integer :: i, j
-    logical :: kb
+    logical :: kb, rp
     kb = .false.;  if (present (keep_beams))  kb = keep_beams
+    rp = .false.; if (present (real_parents)) rp = real_parents
     allocate (status (pset_in%n_tot))    
     status = particle_get_status (pset_in%prt)
     if (kb)  pset_out%n_beam  = count (status == PRT_BEAM)
@@ -2862,20 +2863,17 @@ The correlated state matrix, if any, is also ignored.
     call copy_particles (PRT_OUTGOING)
     do i = 1, pset_in%n_tot
        if (map(i) == 0)  cycle
-       !!! !!! triggers nagfor bug!
-       !!!  call particle_set_parents (pset_out%prt(map(i)), &
-       !!!       map (particle_set_get_real_parents (pset_in, i)))
-       !!!  call particle_set_children (pset_out%prt(map(i)), &
-       !!!       map (particle_set_get_real_children (pset_in, i)))
-       !!! !!! workaround:
-       call pset_out%prt(map(i))%set_parents &
-            (pset_in%get_real_parents (i, kb))
-       call pset_out%prt(map(i))%set_parents &
-            (map (pset_out%prt(map(i))%parent))
-       call pset_out%prt(map(i))%set_children &
-            (pset_in%get_real_children (i, kb))
-       call pset_out%prt(map(i))%set_children &
-            (map (pset_out%prt(map(i))%child))
+       if (rp) then
+          call pset_out%prt(map(i))%set_parents &
+               (map (pset_in%get_real_parents (i, kb)))
+          call pset_out%prt(map(i))%set_children &
+               (map (pset_in%get_real_children (i, kb)))
+       else
+          call pset_out%prt(map(i))%set_parents &
+               (map (pset_in%prt(i)%get_parents ()))
+          call pset_out%prt(map(i))%set_children &
+               (map (pset_in%prt(i)%get_children ()))
+       end if
     end do
   contains
     subroutine copy_particles (stat)
@@ -2917,7 +2915,7 @@ To be on the safe side, allocate four times the original size.
     integer, dimension(:), allocatable :: parent, child
     integer :: n_tot, n_parents, n_children, i, j, c, n
 
-    call pset_in%apply_keep_beams (pset, keep_beams)
+    call pset_in%apply_keep_beams (pset, keep_beams = keep_beams)
     n_tot = pset%n_tot
     allocate (prt (4 * n_tot))
     allocate (map1(4 * n_tot))
@@ -2980,30 +2978,16 @@ To be on the safe side, allocate four times the original size.
        call particle_init_particle (pset_out%prt(i), pset%prt(prt(i)%src))
        call particle_reset_status (pset_out%prt(i), prt(i)%status)
        if (prt(i)%orig == 0) then
-          !!! !!! This causes nagfor 5.2 (770) Panic
-          !!!  call particle_set_parents &
-          !!!       (pset_out%prt(i), &
-          !!!        map2 (particle_get_parents (pset%prt(prt(i)%src))))
-          !!! !!! Workaround
-          n_parents = particle_get_n_parents (pset%prt(prt(i)%src))
-          parent(1:n_parents) = particle_get_parents (pset%prt(prt(i)%src))
-          call particle_set_parents (pset_out%prt(i), &
-                                     map2(parent(1:n_parents)))
+          call pset_out%prt(i)%set_parents &
+               (map2 (pset%prt(prt(i)%src)%get_parents ()))
        else
-          call particle_set_parents (pset_out%prt(i), [ prt(i)%orig ])
+          call pset_out%prt(i)%set_parents ([ prt(i)%orig ])
        end if
        if (prt(i)%copy == 0) then
-          !!! !!! This causes nagfor 5.2 (770) Panic
-          !!!  call particle_set_children &
-          !!!       (pset_out%prt(i), &
-          !!!        map1 (particle_get_children (pset%prt(prt(i)%src))))
-          !!! !!! Workaround
-          n_children = particle_get_n_children (pset%prt(prt(i)%src))
-          child(1:n_children) = particle_get_children (pset%prt(prt(i)%src))
-          call particle_set_children (pset_out%prt(i), &
-                                      map1(child(1:n_children)))
+          call pset_out%prt(i)%set_children &
+               (map1 (pset%prt(prt(i)%src)%get_children ()))
        else
-          call particle_set_children (pset_out%prt(i), [ prt(i)%copy ])
+          call pset_out%prt(i)%set_children ([ prt(i)%copy ])
        end if
     end do
   contains

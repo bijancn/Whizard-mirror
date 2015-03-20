@@ -38,10 +38,10 @@ libshower_la_SOURCES = \
    pythia6_up.f \
    shower_base.f90 \
    shower_partons.f90 \
-   shower_core.f90 \
-   shower_topythia.f90 \
+   ckkw_base.f90 \
    mlm_matching.f90 \
-   ckkw_pseudo_weights.f90 \
+   shower_core.f90 \
+   shower_pythia6.f90 \
    ckkw_matching.f90
 
 ## Omitting this would exclude it from the distribution
@@ -71,8 +71,11 @@ module_lists = \
   ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
-  ../types/Modules \
   ../particles/Modules \
+  ../types/Modules \
+  ../variables/Modules \
+  ../model_features/Modules \
+  ../muli/Modules \
   ../events/Modules
 
 $(module_lists):
@@ -122,7 +125,7 @@ endif
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I ../system -I../combinatorics -I../testing -I ../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I../events -I ../lhapdf -I ../pdf_builtin -I../../pythia6
+AM_FCFLAGS = -I../basics -I../utilities -I ../system -I../combinatorics -I../testing -I ../rng -I../expr_base -I../physics -I../fastjet -I../qft -I../types -I../particles -I../parsing -I../events -I ../lhapdf -I ../pdf_builtin -I../../pythia6 -I../model_features -I../variables -I../../vamp/src -I../muli
 AM_FFLAGS =
 
 ########################################################################

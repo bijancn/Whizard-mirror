@@ -778,6 +778,11 @@ AC_CONFIG_FILES([src/gosam/Makefile])
 AC_CONFIG_FILES([src/fks/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/fks: POWHEG algorithm
+
+AC_CONFIG_FILES([src/powheg/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory src/variables: Implementation of variable lists
 
 AC_CONFIG_FILES([src/variables/Makefile])
@@ -796,6 +801,11 @@ AC_CONFIG_FILES([src/sindarin/Makefile])
 ### Subdirectory src/models: Model-specific code
 
 AC_CONFIG_FILES([src/models/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/whizard-core
+
+AC_CONFIG_FILES([src/process_integration/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/models/SM_tt_threshold_bundle
@@ -827,7 +837,7 @@ AC_CONFIG_FILES([src/feynmf/Makefile])
 
 AC_CONFIG_FILES([src/gamelan/Makefile])
 
-AC_CONFIG_FILES([src/gamelan/gml], [chmod u+x src/gamelan/gml])
+AC_CONFIG_FILES([src/gamelan/whizard-gml], [chmod u+x src/gamelan/whizard-gml])
 ###---------------------------------------------------------------------
 ### Subdirectory share
 

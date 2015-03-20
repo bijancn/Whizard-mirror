@@ -104,6 +104,7 @@ dist_examples_DATA = \
   examples/eeww_polarized.sin \
   examples/circe1.sin \
   examples/HERA_DIS.sin \
+  examples/NLO_eettbar.sin \
   examples/DrellYanMatchingP.sin \
   examples/DrellYanMatchingW.sin \
   examples/DrellYanNoMatchingP.sin \

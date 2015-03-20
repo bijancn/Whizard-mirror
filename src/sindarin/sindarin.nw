@@ -17,15 +17,18 @@
 
 module object_base
 
+<<Use strings>>
   use unit_tests
+  use format_utils
+  use io_units
 
 <<Standard module head>>
 
 <<Object base: public>>
 
-<<Object base: types>>
-
 <<Object base: parameters>>
+
+<<Object base: types>>
 
 <<Object base: interfaces>>
 
@@ -37,6 +40,1037 @@ contains
 
 end module object_base
 @ %def object_base
+@
+\subsection{Basic objects (abstract)}
+Each object can serve as a prototype.  An instance will retain a
+pointer to the prototype.  To keep track, we count the number of
+instances.   Since the object itself also counts as an instance, we
+start with 1, which may be incremented later.  Conversely, an object
+is finally deallocated only if its instance count becomes zero.
+
+Any object that is part of a composite will have a context.  
+
+Each object has a name which should be unique within the current scope
+(i.e., as a member of the parent object, if any).
+
+The [[mode]] distinguishes abstract, constant, and variable objects.  Abstract
+objects can't be assigned a value.  Constant objects get a value during
+construction and retain this value.  Variable objects can change their value.
+<<Object base: parameters>>=
+  integer, parameter, public :: MODE_ABSTRACT = 0
+  integer, parameter, public :: MODE_CONSTANT = 1
+  integer, parameter, public :: MODE_VARIABLE = 2
+
+@ %def MODE_ABSTRACT MODE_CONSTANT MODE_VARIABLE
+@
+Objects may be instrinsic or user-defined, inheriting from some intrinsic
+prototype. 
+
+A basic object has a [[defined]] status.  If defined, the value is
+known and can be queried.  If undefined, the object signature is
+determined but the value is unknown.  If there
+is no value, we understand that the object is always defined.
+<<Object base: public>>=
+  public :: object_t
+<<Object base: types>>=
+  type, abstract :: object_t
+     private
+     class(object_t), pointer :: prototype => null ()
+     class(object_t), pointer :: context => null ()
+     integer :: refcount = 1
+     type(string_t) :: name
+     integer :: mode = MODE_ABSTRACT
+     logical :: intrinsic = .true.
+     logical :: defined = .false.
+   contains
+   <<Object base: object: TBP>>
+  end type object_t
+  
+@ %def object_t
+@ There must be a specific finalizer.  The finalizer might be empty,
+but this method must be implemented.
+<<Object base: object: TBP>>=
+  procedure (object_final), deferred :: final
+<<Object base: interfaces>>=
+  abstract interface
+     subroutine object_final (object)
+       import
+       class(object_t), intent(inout) :: object
+     end subroutine object_final
+  end interface
+       
+@ %def object_final
+@ Any object must have a [[write]] method, so we can print a
+representation on screen.  We define a generic [[write]] which will
+take various components and write them as needed.
+
+The [[complete]] optional, if unset, writes only summary information,
+that fits on the current line without advancing.
+
+The [[info]] optional displays debugging info such as the reference
+count.
+<<Object base: object: TBP>>=
+  procedure, non_overridable :: write => object_write
+<<Object base: procedures>>=
+  recursive subroutine object_write (object, unit, indent, complete, info)
+    class (object_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer, intent(in), optional :: indent
+    logical, intent(in), optional :: complete
+    logical, intent(in), optional :: info
+    logical :: comp
+    integer :: u
+    u = given_output_unit (unit)
+    comp = .true.;  if (present (complete))  comp = complete
+    call write_indent (u, indent)
+    call object%write_prototype (u)
+    write (u, "(1x,A)", advance="no") &
+         char (object%get_name ())
+    write (u, "(1x,'||')", advance="no")
+    call object%write_signature (u)
+    write (u, "('||')", advance="no")
+    if (present (info)) then
+       if (info) then
+          write (u, "(1x,'(',I0,')')", advance="no")  object%refcount
+          if (object%is_reference ())  write (u, "('*')", advance="no")
+       end if
+    end if
+    if (comp) then
+       if (object%has_members ()) then
+          call object%write_contents (u, indent, complete, info)
+       end if
+       if (object%has_value ()) then
+          write (u, "(1x,'=',1x)", advance="no")
+          if (object%is_defined ()) then
+             call object%write_value (u, indent, complete, info)
+          else
+             write (u, "('???')", advance="no")
+          end if
+       end if
+       write (u, *)
+    end if
+  end subroutine object_write
+  
+@ %def object_write
+@ Wrapper for the prototype name: enclose in [[type(...)]] unless it
+is an intrinsic object.
+<<Object base: procedures>>=
+  subroutine write_prototype_name (prototype, u)
+    class(object_t), intent(in) :: prototype
+    integer, intent(in) :: u
+    if (.not. prototype%intrinsic)  write (u, "('type(')", advance="no")
+    write (u, "(A)", advance="no")  char (prototype%get_name ())
+    if (.not. prototype%intrinsic)  write (u, "(')')", advance="no")
+  end subroutine write_prototype_name
+    
+@ %def write_prototype_name
+@ For these specific output functions we provide a default
+implementation.  For ordinary objects, the signature is the name of
+the prototype, if any.
+<<Object base: object: TBP>>=
+  procedure :: write_prototype => object_write_prototype
+  procedure :: write_signature => object_write_signature
+  procedure :: write_contents => object_write_contents
+  procedure :: write_value => object_write_value
+<<Object base: procedures>>=
+  subroutine object_write_prototype (object, unit)
+    class(object_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    if (associated (object%prototype)) then
+       call write_prototype_name (object%prototype, u)
+    else
+       write (u, "('object')", advance="no")
+    end if
+  end subroutine object_write_prototype
+       
+  subroutine object_write_signature (object, unit)
+    class(object_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    select case (object%mode)
+    case (MODE_ABSTRACT);  write (u, "('abstract')", advance="no")
+    case (MODE_CONSTANT);  write (u, "('constant')", advance="no")
+    case (MODE_VARIABLE);  write (u, "('variable')", advance="no")
+    end select
+  end subroutine object_write_signature
+       
+  subroutine object_write_contents (object, unit, indent, complete, info)
+    class(object_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer, intent(in), optional :: indent
+    logical, intent(in), optional :: complete
+    logical, intent(in), optional :: info
+  end subroutine object_write_contents
+       
+  subroutine object_write_value (object, unit, indent, complete, info)
+    class(object_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer, intent(in), optional :: indent
+    logical, intent(in), optional :: complete
+    logical, intent(in), optional :: info
+  end subroutine object_write_value
+       
+@ %def object_write_prototype
+@ %def object_write_signature
+@ %def object_write_contents
+@ %def object_write_value
+@ The finalizer should not be called explicitly.  Instead, when an
+object is ready for deletion, we should call this method, which calls
+the specific finalizer, takes care of any prototype, and checks for
+any extra instances before deallocating.
+
+This procedure can't be type-bound.
+<<Object base: public>>=
+  public :: remove_object
+<<Object base: procedures>>=
+  recursive subroutine remove_object (object)
+    class(object_t), intent(inout), pointer :: object
+    if (associated (object)) then
+       object%refcount = object%refcount - 1
+       if (object%refcount == 0) then
+          call object%final ()
+          call object%unregister ()
+          deallocate (object)
+       end if
+    end if
+  end subroutine remove_object
+  
+@ %def remove_object
+@ If this query is true, we don't have to care about other object pointing to
+this object (as prototype or as reference target).
+<<Object base: object: TBP>>=
+  procedure, non_overridable :: is_free => object_is_free
+<<Object base: procedures>>=
+  function object_is_free (object) result (flag)
+    class(object_t), intent(in) :: object
+    logical :: flag
+    flag = object%refcount == 1
+  end function object_is_free
+  
+@ %def object_is_free
+@ Assignment is handled like [[remove_object]]: Only if the object is free, we
+can keep it and perform the assignment directly.  If not, we have to make sure
+that it is preserved, therefore allocate a new object as a clone of the
+source.
+
+In case the object is reallocated, we have to make sure that persistent
+properties of the original are reinstated.  We use a temporary pointer to the
+old version (which will stay valid since the original is not deallocated by
+[[remove_object]] in this case) and transfer the required data.
+
+The source is always dereferenced, if possible.  This implements the pointer
+strategy of Fortran or Python.
+<<Object base: public>>=
+  public :: assign_object
+<<Object base: procedures>>=
+  recursive subroutine assign_object (object, source)
+    class(object_t), intent(inout), pointer :: object
+    class(object_t), intent(in), target :: source
+    class(object_t), pointer :: remote, tmp
+    type(string_t) :: name
+    remote => source%dereference ()
+    if (object%is_free ()) then
+       call object%assign (remote)
+    else
+       tmp => object
+       name = object%get_name ()
+       call remove_object (object)
+       call remote%clone (object, name, reference=tmp)
+    end if
+  end subroutine assign_object
+    
+@ %def assign_object
+@ Actual procedure for assignment.  The implementation has to decide which
+types can be accepted for assignment.  (This should be checked before calling
+this.)
+
+The [[target]] attribute is required for the implementation of
+composite-object assignment.  The actual need not carry it.
+<<Object base: object: TBP>>=
+  procedure (object_assign), deferred :: assign
+<<Object base: interfaces>>=
+  abstract interface
+     subroutine object_assign (object, source)
+       import
+       class(object_t), intent(inout) :: object
+       class(object_t), intent(in) :: source
+     end subroutine object_assign
+  end interface
+       
+@ %def object_assign
+@ Transfer essential properties of [[tmp]] to the new instance [[object]].  We
+bind this twice so we can call an extended version but keep the basic version
+available.
+<<Object base: object: TBP>>=
+  procedure, non_overridable :: import_basic_properties => &
+       object_import_basic_properties
+<<Object base: procedures>>=
+  subroutine object_import_basic_properties (object, tmp)
+    class(object_t), intent(inout) :: object
+    class(object_t), intent(in) :: tmp
+    object%context => tmp%context
+    object%mode = tmp%mode
+    object%intrinsic = tmp%intrinsic
+  end subroutine object_import_basic_properties
+  
+@ %def object_import_basic_properties
+@ Mark the object as non-intrinsic.  Default is intrinsic.
+<<Object base: object: TBP>>=
+  procedure, non_overridable :: tag_non_intrinsic => object_tag_non_intrinsic
+<<Object base: procedures>>=
+  pure subroutine object_tag_non_intrinsic (object)
+    class(object_t), intent(inout) :: object
+    object%intrinsic = .false.
+  end subroutine object_tag_non_intrinsic
+  
+@ %def object_tag_non_intrinsic
+@ Set the context pointer.
+<<Object base: object: TBP>>=
+  procedure, non_overridable :: set_context => object_set_context
+<<Object base: procedures>>=
+  subroutine object_set_context (object, context)
+    class(object_t), intent(inout) :: object
+    class(object_t), intent(in), target :: context
+    object%context => context
+  end subroutine object_set_context
+  
+@ %def object_set_context
+@ Access the object's name.  The setter should be called by the
+[[instantiate]] method, or it must be explicitly called during object
+initialization.  If there is no name given, we may inherit from a
+prototype.  Otherwise, tag the object as anonymous.
+<<Object base: object: TBP>>=
+  procedure, non_overridable :: set_name => object_set_name
+  procedure, non_overridable :: get_name => object_get_name
+<<Object base: procedures>>=
+  pure subroutine object_set_name (object, name, prototype)
+    class(object_t), intent(inout) :: object
+    type(string_t), intent(in), optional :: name
+    class(object_t), intent(in), optional :: prototype
+    if (present (name)) then
+       object%name = name
+    else if (present (prototype)) then
+       object%name = prototype%get_name ()
+    else
+       object%name = "<object>"
+    end if
+  end subroutine object_set_name
+  
+  pure function object_get_name (object) result (name)
+    class(object_t), intent(in) :: object
+    type(string_t) :: name
+    name = object%name
+  end function object_get_name
+  
+@ %def object_set_name
+@ %def object_get_name
+@ This comes into play for composite objects.
+<<Object base: object: TBP>>=
+  procedure :: has_members => object_has_members
+<<Object base: procedures>>=
+  function object_has_members (object) result (flag)
+    class(object_t), intent(in) :: object
+    logical :: flag
+    flag = .false.
+  end function object_has_members
+  
+@ %def object_has_members
+@ Check if this is a reference object.
+<<Object base: object: TBP>>=
+  procedure :: is_reference => object_is_reference
+<<Object base: procedures>>=
+  pure function object_is_reference (object) result (flag)
+    class(object_t), intent(in) :: object
+    logical :: flag
+    flag = .false.
+  end function object_is_reference
+  
+@ %def object_is_reference
+@ This should be called by the type-specific initializer.  We reset the mode
+and definition status.  The caller has to ensure that the setting reflect the
+truth.  Note that an abstract object remains always undefined.
+
+If the mode is not provided, it stays intact.  If the definition status is not
+provided, the status becomes undefined.
+<<Object base: object: TBP>>=
+  procedure, non_overridable :: reset => object_reset
+<<Object base: procedures>>=
+  pure subroutine object_reset (object, mode, defined)
+    class(object_t), intent(inout) :: object
+    integer, intent(in), optional :: mode
+    logical, intent(in), optional :: defined
+    if (present (mode)) object%mode = mode
+    if (present (defined)) then
+       select case (object%mode)
+       case (MODE_CONSTANT, MODE_VARIABLE)
+          object%defined = defined
+       case default
+          object%defined = .false.
+       end select
+    else
+       object%defined = .false.
+    end if
+  end subroutine object_reset
+ 
+@ %def object_reset
+@ Query the object mode.
+<<Object base: object: TBP>>=
+  procedure, non_overridable :: get_mode => object_get_mode
+<<Object base: procedures>>=
+  pure function object_get_mode (object) result (mode)
+    class(object_t), intent(in) :: object
+    integer :: mode
+    mode = object%mode
+  end function object_get_mode
+  
+@ %def object_get_mode
+@ Return a pointer to a specific member.  If the object has no members, or the
+member is not found, return a null pointer.  After searching the current
+object, search the prototype, then search the context.
+<<Object base: object: TBP>>=
+  procedure :: find => object_find
+  procedure :: find_basic => object_find
+  procedure :: find_member => object_find_member
+<<Object base: procedures>>=
+  recursive subroutine object_find (object, path, member)
+    class(object_t), intent(in) :: object
+    type(string_t), dimension(:), intent(in) :: path
+    class(object_t), intent(inout), pointer :: member
+    member => null ()
+    if (size (path) > 0) then
+       if (associated (object%prototype)) then
+          call object%prototype%find (path, member)
+       end if
+       if (.not. associated (member)) then
+          if (associated (object%context)) then
+             call object%context%find (path, member)
+          end if
+       end if
+    end if
+  end subroutine object_find
+    
+  subroutine object_find_member (object, name, member)
+    class(object_t), intent(in) :: object
+    type(string_t), intent(in) :: name
+    class(object_t), intent(inout), pointer :: member
+    member => null ()
+  end subroutine object_find_member
+    
+@ %def object_find
+@ %def object_find_member
+@ When an instance is created, it should call the
+[[register]] method with specified object as prototype.  The variant
+[[register_with_prototype]] does this with the prototype of the object,
+instead.
+
+The [[unregister]] method is called only by [[remove_object]] and therefore
+is private.  It calls [[remove_object]] for the prototype, which will delete
+the prototype object if there is no other instance of it.
+
+The new object inherits the [[intrinsic]] tag from its prototype, so
+we don't need to unset it manually.
+<<Object base: object: TBP>>=
+  procedure, non_overridable :: register => object_register
+  procedure, non_overridable :: register_with_prototype &
+       => object_register_with_prototype
+  procedure, private, non_overridable :: unregister &
+       => object_unregister
+<<Object base: procedures>>=
+  subroutine object_register (object, prototype)
+    class(object_t), intent(inout) :: object
+    class(object_t), intent(inout), target :: prototype
+    object%prototype => prototype
+    prototype%refcount = prototype%refcount + 1
+    object%intrinsic = prototype%intrinsic
+  end subroutine object_register
+
+  subroutine object_register_with_prototype (object, template)
+    class(object_t), intent(inout) :: object
+    class(object_t), intent(inout) :: template
+    if (associated (template%prototype)) then
+       call object%register (template%prototype)
+    end if
+  end subroutine object_register_with_prototype
+
+  recursive subroutine object_unregister (object)
+    class(object_t), intent(inout) :: object
+    class(object_t), pointer :: prototype
+    call remove_object (object%prototype)
+    object%prototype => null ()
+  end subroutine object_unregister
+
+@ %def object_register
+@ %def object_unregister
+@ Since we are basing the object structure on prototyping, each object
+must provide an [[instantiate]] method.  As a rule, the instance
+inherits the properties of the prototype with the exception of the
+value (core value and member values).  In particular, the copy should
+be of the same actual type as the prototype.
+
+We require a pointer implementation for allocating objects, at this
+point.  This allows us to freely use pointers without caring too much
+about [[target]] attributes.
+
+We optionally provide a name for the new object.  If not, the new
+object inherits the name from the prototype.
+<<Object base: object: TBP>>=
+  procedure (object_instantiate), deferred :: instantiate
+<<Object base: interfaces>>=
+  abstract interface
+     subroutine object_instantiate (object, instance, name)
+       import
+       class(object_t), intent(inout), target :: object
+       class(object_t), intent(out), pointer :: instance
+       type(string_t), intent(in), optional :: name
+     end subroutine object_instantiate
+  end interface
+       
+@ %def object_instantiate
+@ Create a copy.  This should include current contents, and it is also
+specific for the object.  Since the prototype is not assigned to the original
+but to its prototype, no target attribute.
+
+If the copy should get a name different from the original, it can be
+separately given.  Furthermore, a [[reference]] object will determine the
+persistent properties of the copy, instead of the original.  Those are object
+context, mode, some attributes, and possibly more.  The basic properties are
+transferred by [[import_basic_properties]], which an implementation should
+call for the reference object.
+<<Object base: object: TBP>>=
+  procedure (object_clone), deferred :: clone
+<<Object base: interfaces>>=
+  abstract interface
+     subroutine object_clone (object, instance, name, reference)
+       import
+       class(object_t), intent(inout), target :: object
+       class(object_t), intent(out), pointer :: instance
+       type(string_t), intent(in), optional :: name
+       class(object_t), intent(in), optional :: reference
+     end subroutine object_clone
+  end interface
+       
+@ %def object_clone
+@ Analogously, create a reference object.  The reference is a composite where
+the core is the previous object (via pointer).  We therefore can implement the
+method directly.
+<<Object base: object: TBP>>=
+  procedure :: make_reference => object_make_reference
+<<Object base: procedures>>=
+  subroutine object_make_reference (object, reference, name)
+    class(object_t), intent(inout), target :: object
+    class(object_t), intent(out), pointer :: reference
+    type(string_t), intent(in), optional :: name
+    allocate (composite_t :: reference)
+    select type (reference)
+    type is (composite_t)
+       call reference%init (mode = object%get_mode (), defined = .true.)
+       call reference%link_core (object)
+    end select
+    call reference%set_name (name, object)
+  end subroutine object_make_reference
+  
+@ %def object_make_reference
+@ Dereference: if this is not a composite, return the pointer to the object
+itself.
+<<Object base: object: TBP>>=
+  procedure :: dereference => object_dereference
+<<Object base: procedures>>=
+  recursive function object_dereference (object) result (remote)
+    class(object_t), intent(in), target :: object
+    class(object_t), pointer :: remote
+    remote => object
+  end function object_dereference
+
+@ %def object_dereference
+@ This query tells whether the object can hold a value, directly or
+indirectly.  By default, this is determined by the mode.
+<<Object base: object: TBP>>=
+  procedure :: has_value => object_has_value
+<<Object base: procedures>>=
+  pure function object_has_value (object) result (flag)
+    class(object_t), intent(in) :: object
+    logical :: flag
+    select case (object%mode)
+    case (MODE_CONSTANT, MODE_VARIABLE)
+       flag = .true.
+    case default
+       flag = .false.
+    end select
+  end function object_has_value
+  
+@ %def object_has_value
+@ Return the definition status.
+<<Object base: object: TBP>>=
+  procedure :: is_defined => object_is_defined
+<<Object base: procedures>>=
+  pure function object_is_defined (object) result (flag)
+    class(object_t), intent(in) :: object
+    logical :: flag
+    flag = object%defined
+  end function object_is_defined
+  
+@ %def object_is_defined
+@
+\subsection{Composite object type}
+A composite object consists of a core (essentially, its value) and
+members (properties).  Both are optional.  If there is a core, the
+object implements a decorator pattern since we can delegate queries to
+the core.  Without core, the members constitute the object, so it
+behaves like a derived type.
+
+The [[reference]] flag is set if the core is actually a reference.
+<<Object base: public>>=
+  public :: composite_t
+<<Object base: types>>=
+  type, extends (object_t) :: composite_t
+     private
+     class(object_t), pointer :: core => null ()
+     logical :: reference = .false.
+     type(composite_t), dimension(:), pointer :: member => null ()
+   contains
+   <<Object base: composite: TBP>>
+  end type composite_t
+
+@ %def composite_t
+@ The finalizer has to take care of core and members.
+<<Object base: composite: TBP>>=
+  procedure :: final => composite_final
+<<Object base: procedures>>=
+  recursive subroutine composite_final (object)
+    class(composite_t), intent(inout) :: object
+    integer :: i
+    if (associated (object%member)) then
+       do i = 1, size (object%member)
+          if (associated (object%member(i)%core)) then
+             call remove_object (object%member(i)%core)
+          end if
+       end do
+       deallocate (object%member)
+    end if
+    if (associated (object%core)) then
+       call remove_object (object%core)
+    end if
+  end subroutine composite_final
+       
+@ %def composite_final
+@ Prototype: the name of the prototype if this is a composite object
+with nontrivial structure, otherwise the prototype of the prototype.
+If there is no prototype, delegate to the core.
+
+We distinguish intrinsic objects by writing their prototype without an
+enclosing [[type(..)]] clause.
+<<Object base: composite: TBP>>=
+  procedure :: write_prototype => composite_write_prototype
+<<Object base: procedures>>=
+  recursive subroutine composite_write_prototype (object, unit)
+    class(composite_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    if (associated (object%prototype)) then
+       associate (prototype => object%prototype)
+         if (prototype%has_members ()) then
+            call write_prototype_name (prototype, u)
+         else
+            call prototype%write_prototype (u)
+         end if
+       end associate
+    else if (associated (object%core)) then
+       call object%core%write_prototype (u)
+    else
+       write (u, "('<composite>')", advance="no")
+    end if
+  end subroutine composite_write_prototype
+  
+@ %def composite_write_prototype
+@ Core and contents.
+<<Object base: composite: TBP>>=
+  procedure :: write_value => composite_write_value
+  procedure :: write_contents => composite_write_contents
+<<Object base: procedures>>=
+  recursive subroutine composite_write_value &
+       (object, unit, indent, complete, info)
+    class(composite_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer, intent(in), optional :: indent
+    logical, intent(in), optional :: complete
+    logical, intent(in), optional :: info
+    integer :: u, i, ind
+    u = given_output_unit (unit)
+    ind = 0;  if (present (indent))  ind = indent
+    if (object%core%is_defined ()) then
+       call object%core%write_value (u, ind+1, complete, info)
+    else
+       write (u, "('???')", advance="no")
+    end if
+  end subroutine composite_write_value
+  
+  recursive subroutine composite_write_contents &
+       (object, unit, indent, complete, info)
+    class(composite_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer, intent(in), optional :: indent
+    logical, intent(in), optional :: complete
+    logical, intent(in), optional :: info
+    integer :: u, i, ind
+    u = given_output_unit (unit)
+    ind = 0;  if (present (indent))  ind = indent
+    if (associated (object%member)) then
+       write (u, "(1x,'{')")
+       do i = 1, size (object%member)
+          call object%member(i)%core%write (u, ind+1, complete, info)
+       end do
+       call write_indent (u, indent)
+       write (u, "('}')", advance="no")
+    end if
+  end subroutine composite_write_contents
+  
+@ %def composite_write_value
+@ %def composite_write_contents
+@ Initialize/reset.
+<<Object base: composite: TBP>>=
+  procedure :: init => composite_init
+<<Object base: procedures>>=
+  pure subroutine composite_init (object, mode, defined, n_members)
+    class(composite_t), intent(inout) :: object
+    integer, intent(in), optional :: mode
+    logical, intent(in), optional :: defined
+    integer, intent(in), optional :: n_members
+    call object%reset (mode=mode, defined=defined)
+    if (present (n_members)) then
+       allocate (object%member (n_members))
+    end if
+  end subroutine composite_init
+ 
+@ %def composite_init
+@ Import an object as the new core.
+<<Object base: composite: TBP>>=
+  procedure, non_overridable :: import_core => composite_import_core
+<<Object base: procedures>>=
+  subroutine composite_import_core (object, core)
+    class(composite_t), intent(inout) :: object
+    class(object_t), intent(inout), pointer :: core
+    if (associated (object%core))  call remove_object (object%core)
+    object%core => core
+    object%reference = .false.
+    core => null ()
+  end subroutine composite_import_core
+    
+@ %def composite_import_core
+@ Link the core as a pointer to an existing object, updating the reference
+count.
+<<Object base: composite: TBP>>=
+  procedure, non_overridable :: link_core => composite_link_core
+<<Object base: procedures>>=
+  subroutine composite_link_core (object, remote)
+    class(composite_t), intent(inout) :: object
+    class(object_t), intent(inout), target :: remote
+    class(object_t), pointer :: remote_target
+    if (associated (object%core))  call remove_object (object%core)
+    remote_target => remote%dereference ()
+    object%core => remote_target
+    object%reference = .true.
+    remote_target%refcount = remote_target%refcount + 1
+  end subroutine composite_link_core
+    
+@ %def composite_link_core
+@ Initialize a member object (composite with no members).  The
+prototype will be used directly to initialize the member's core.  The name is
+given to the member itself, not to the core.
+
+This is useful for atomic members.
+<<Object base: composite: TBP>>=
+  procedure :: init_member => composite_init_member
+<<Object base: procedures>>=
+  subroutine composite_init_member (object, i, name, prototype)
+    class(composite_t), intent(inout), target :: object
+    integer, intent(in) :: i
+    type(string_t), intent(in) :: name
+    class(object_t), intent(inout), target :: prototype
+    call object%member(i)%set_name (var_str (""))
+    call prototype%instantiate (object%member(i)%core, name)
+    call object%member(i)%core%set_context (object)
+  end subroutine composite_init_member
+    
+@ %def composite_init_member
+@ Import a member object which has been created previously.  The object will
+become the member's core.  No copy is made, the original pointer is
+discarded.
+<<Object base: composite: TBP>>=
+  procedure :: import_member => composite_import_member
+<<Object base: procedures>>=
+  subroutine composite_import_member (object, i, member)
+    class(composite_t), intent(inout), target :: object
+    integer, intent(in) :: i
+    class(object_t), intent(inout), pointer :: member
+    call member%set_context (object)
+    object%member(i)%core => member
+    member => null ()
+  end subroutine composite_import_member
+    
+@ %def composite_import_member
+@ Instantiate: setup a composite with the same core as the prototype.
+
+Clone: also copy member objects and core.  The copy is thus a deep copy.
+<<Object base: composite: TBP>>=
+  procedure :: instantiate => composite_instantiate
+  procedure :: clone => composite_clone
+<<Object base: procedures>>=
+  recursive subroutine composite_instantiate (object, instance, name)
+    class(composite_t), intent(inout), target :: object
+    class(object_t), intent(out), pointer :: instance
+    type(string_t), intent(in), optional :: name
+    allocate (composite_t :: instance)
+    call instance%register (object)
+    call instance%set_name (name, object)
+    select type (instance)
+    type is (composite_t)
+       call instance%init ()
+       call object%core%instantiate (instance%core)
+    end select
+  end subroutine composite_instantiate
+    
+  recursive subroutine composite_clone (object, instance, name, reference)
+    class(composite_t), intent(inout), target :: object
+    class(object_t), intent(out), pointer :: instance
+    type(string_t), intent(in), optional :: name
+    class(object_t), intent(in), optional :: reference
+    class(object_t), pointer :: member
+    integer :: i, n
+    allocate (composite_t :: instance)
+    call instance%register_with_prototype (object)
+    call instance%set_name (name, object)
+    select type (instance)
+    type is (composite_t)
+       if (associated (object%member)) then
+          n = size (object%member)
+          call instance%init &
+               (mode = object%mode, defined = object%is_defined (), &
+               n_members = n)
+          if (present (reference)) &
+               call instance%import_basic_properties (reference)
+          do i = 1, n
+             call object%member(i)%core%clone (member)
+             call instance%import_member (i, member)
+          end do
+       else
+          call instance%init &
+               (mode = object%mode, defined = object%is_defined ())
+          if (present (reference)) &
+               call instance%import_basic_properties (reference)
+       end if
+       call object%core%clone (instance%core)
+    end select
+  end subroutine composite_clone
+    
+@ %def composite_instantiate
+@ %def composite_clone
+@ This turns a reference into a clone.  More precisely, the core is cloned and
+the clone becomes the new core.
+<<Object base: composite: TBP>>=
+  procedure :: clone_core => composite_clone_core
+<<Object base: procedures>>=
+  subroutine composite_clone_core (object)
+    class(composite_t), intent(inout) :: object
+    class(object_t), pointer :: instance
+    call object%core%clone (instance)
+    call object%import_core (instance)
+  end subroutine composite_clone_core
+  
+@ %def composite_clone_core
+@ Assignment.  Both source and object must be defined as composites, i.e.,
+there must be an allocated core which, in turn, may either be defined or
+undefined.
+
+TODO: Members.
+<<Object base: composite: TBP>>=
+  procedure :: assign => composite_assign
+<<Object base: procedures>>=
+  recursive subroutine composite_assign (object, source)
+    class(composite_t), intent(inout) :: object
+    class(object_t), intent(in) :: source
+    select type (source)
+    class is (composite_t)
+       call assign_object (object%core, source%core)
+    end select
+  end subroutine composite_assign
+       
+@ %def composite_assign
+@ This query tells whether the object has a core, and this core
+describes a value.
+<<Object base: composite: TBP>>=
+  procedure :: has_value => composite_has_value
+<<Object base: procedures>>=
+  pure recursive function composite_has_value (object) result (flag)
+    class(composite_t), intent(in) :: object
+    logical :: flag
+    if (associated (object%core)) then
+       flag = object%core%has_value ()
+    else
+       flag = .false.
+    end if
+  end function composite_has_value
+  
+@ %def composite_has_value
+@ Dereference.
+<<Object base: composite: TBP>>=
+  procedure :: dereference => composite_dereference
+<<Object base: procedures>>=
+  recursive function composite_dereference (object) result (remote)
+    class(composite_t), intent(in), target :: object
+    class(object_t), pointer :: remote
+    if (object%is_reference ()) then
+       remote => object%core%dereference ()
+    else
+       remote => object
+    end if
+  end function composite_dereference
+
+@ %def composite_dereference
+@ Query the reference flag, which exists for composite objects.
+<<Object base: composite: TBP>>=
+  procedure :: is_reference => composite_is_reference
+<<Object base: procedures>>=
+  pure function composite_is_reference (object) result (flag)
+    class(composite_t), intent(in) :: object
+    logical :: flag
+    if (associated (object%core)) then
+       flag = object%reference
+    else
+       flag = .false.
+    end if
+  end function composite_is_reference
+  
+@ %def composite_is_reference
+@ Analogously for members.
+<<Object base: composite: TBP>>=
+  procedure :: has_members => composite_has_members
+<<Object base: procedures>>=
+  function composite_has_members (object) result (flag)
+    class(composite_t), intent(in) :: object
+    logical :: flag
+    flag = associated (object%member)
+  end function composite_has_members
+  
+@ %def composite_has_members
+@ Return a pointer to a path, given in form of an array of strings.  If no
+object is found, return a null pointer.  Otherwise, return a pointer to the
+object as [[member]].
+
+First search the immediate members of the current object.  Then search the
+prototype object.
+<<Object base: composite: TBP>>=
+  procedure :: find => composite_find
+<<Object base: procedures>>=
+  recursive subroutine composite_find (object, path, member)
+    class(composite_t), intent(in) :: object
+    type(string_t), dimension(:), intent(in) :: path
+    class(object_t), intent(inout), pointer :: member
+    class(object_t), pointer :: parent
+    member => null ()
+    if (size (path) > 0) then
+       call object%find_member (path(1), member)
+       if (associated (member)) then
+          if (size (path) > 1) then
+             parent => member
+             call parent%find (path(2:), member)
+          end if
+       else
+          call object%find_basic (path, member)
+       end if
+    end if
+  end subroutine composite_find
+    
+@ %def composite_find_member
+@ Return a pointer to a specific member.  If the object has no members, or the
+member is not found, return a null pointer.
+<<Object base: composite: TBP>>=
+  procedure :: find_member => composite_find_member
+<<Object base: procedures>>=
+  subroutine composite_find_member (object, name, member)
+    class(composite_t), intent(in) :: object
+    type(string_t), intent(in) :: name
+    class(object_t), intent(inout), pointer :: member
+    integer :: i
+    if (associated (object%member)) then
+       do i = 1, size (object%member)
+          member => object%member(i)%core
+          if (member%get_name () == name) return
+       end do
+    end if
+    member => null ()
+  end subroutine composite_find_member
+    
+@ %def composite_find_member
+@
+\subsection{Tag object type}
+A tag is an atomic object with no content, it just exists.  (As a
+variable, it has a name but no value.)  The definition status is
+always defined.
+
+We introduce this here, so we have concrete objects that we can use in
+unit tests.  Object types with value are defined elsewhere.
+<<Object base: types>>=
+  type, extends (object_t) :: tag_t
+     private
+   contains
+   <<Object base: tag: TBP>>
+  end type tag_t
+  
+@ %def tag_t
+@ We do not nded an initializer: The mode stays fixed to [[MODE_ABSTRACT]],
+and the value is always undefined.
+
+The finalizer is also empty.
+<<Object base: tag: TBP>>=
+  procedure :: final => tag_final
+<<Object base: procedures>>=
+  subroutine tag_final (object)
+    class(tag_t), intent(inout) :: object
+  end subroutine tag_final
+ 
+@ %def tag_final
+@ For a new tag instance, nothing needs to be copied.  Cloning differs only by
+the prototype assignment. 
+<<Object base: tag: TBP>>=
+  procedure :: instantiate => tag_instantiate
+  procedure :: clone => tag_clone
+<<Object base: procedures>>=
+  subroutine tag_instantiate (object, instance, name)
+    class(tag_t), intent(inout), target :: object
+    class(object_t), intent(out), pointer :: instance
+    type(string_t), intent(in), optional :: name
+    allocate (tag_t :: instance)
+    call instance%register (object)
+    call instance%set_name (name, object)
+  end subroutine tag_instantiate
+    
+  subroutine tag_clone (object, instance, name, reference)
+    class(tag_t), intent(inout), target :: object
+    class(object_t), intent(out), pointer :: instance
+    type(string_t), intent(in), optional :: name
+    class(object_t), intent(in), optional :: reference
+    allocate (tag_t :: instance)
+    if (associated (object%prototype)) call instance%register (object%prototype)
+    call instance%set_name (name, object)
+    if (present (reference))  call instance%import_basic_properties (reference)
+  end subroutine tag_clone
+    
+@ %def tag_instantiate
+@ %def tag_clone
+@ Doesn't apply.
+<<Object base: tag: TBP>>=
+  procedure :: assign => tag_assign
+<<Object base: procedures>>=
+  subroutine tag_assign (object, source)
+    class(tag_t), intent(inout) :: object
+    class(object_t), intent(in) :: source
+  end subroutine tag_assign
+       
+@ %def tag_assign
 @ 
 \subsection{Unit tests}
 <<Object base: public>>=
@@ -50,22 +1084,926 @@ end module object_base
   
 @ %def object_base_test 
 @
+\subsubsection{Prototype Implementation}
+Create a tag object and use it as a prototype.
 <<Object base: execute tests>>=
   call test (object_base_1, "object_base_1", &
-       "check object base", &
+       "object and prototype", &
        u, results)
 <<Object base: tests>>=  
   subroutine object_base_1 (u)
     integer, intent(in) :: u
+    class(object_t), pointer :: prototype, object
 
-    write (u, "(A)")  "* Test output: Object base"
-    write (u, "(A)")  "*   Purpose: "
+    write (u, "(A)")  "* Test output: object_base_1"
+    write (u, "(A)")  "*   Purpose: elementary operations with objects"
     write (u, "(A)")      
     
+    write (u, "(A)")  "* Trivial object (tag): create, display, destroy"
+
+    allocate (tag_t :: object)
+    call object%set_name (var_str ("tag"))
+    
+    write (u, "(A)")
+    call object%write (u, info=.true.)
+
+    call remove_object (object)
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Create instance from prototype:"
+
+    allocate (tag_t :: prototype)
+    call prototype%set_name (var_str ("tag"))
+    
+    call prototype%instantiate (object, var_str ("instance"))
+    
+    write (u, "(A)")
+    call prototype%write (u, info=.true.)
+    call object%write (u, info=.true.)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Remove, show prototype again:"
+
+    call remove_object (object)
+
+    write (u, "(A)")
+    call prototype%write (u, info=.true.)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup:"
+
+    call remove_object (prototype)
+
+    write (u, "(A)")
+    write (u, "(A,1x,L1)")  "prototype allocated =", associated (prototype)
+    write (u, "(A,1x,L1)")  "object allocated =", associated (object)
+
     write (u, "(A)")
     write (u, "(A)")  "* Test output end: object_base_1"
     
     end subroutine object_base_1
 
 @ %def object_base_1
+@ Create a composite object.
+<<Object base: execute tests>>=
+  call test (object_base_2, "object_base_2", &
+       "composite object", &
+       u, results)
+<<Object base: tests>>=  
+  subroutine object_base_2 (u)
+    integer, intent(in) :: u
+    class(object_t), pointer :: prototype, object1, object2, object3
+
+    write (u, "(A)")  "* Test output: object_base_2"
+    write (u, "(A)")  "*   Purpose: build composite objects"
+
+    write (u, "(A)")      
+    write (u, "(A)")  "* Create tag prototype"
+    
+    allocate (tag_t :: prototype)
+    call prototype%set_name (var_str ("tag"))
+
+    write (u, "(A)")
+    call prototype%write (u, info=.true.)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Instantiate as composite without members"
+    
+    allocate (composite_t :: object1)
+    call object1%set_name (var_str ("obj1"))
+    select type (object1)
+    class is (composite_t)
+       call object1%init ()
+       call prototype%instantiate (object1%core)
+    end select
+   
+    write (u, "(A)")
+    call object1%write (u)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Prototype status"
+    
+    write (u, "(A)")
+    call prototype%write (u, info=.true.)
+
+    write (u, "(A)")      
+    write (u, "(A)")  "* Instantiate as composite with two members"
+    
+    call object1%instantiate (object2, var_str ("obj2"))
+    select type (object2)
+    class is (composite_t)
+       call object2%tag_non_intrinsic ()
+       call object2%init (n_members = 2)
+       call object2%init_member (1, var_str ("foo"), prototype)
+       call object2%init_member (2, var_str ("bar"), prototype)
+    end select
+    
+    write (u, "(A)")
+    call object2%write (u)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Prototype status"
+    
+    write (u, "(A)")
+    call prototype%write (u, info=.true.)
+    call object1%write (u, complete=.false., info=.true.);  write (u, *)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Instantiate further with additional member"
+    
+    call object2%instantiate (object3, var_str ("obj3"))
+    select type (object3)
+    class is (composite_t)
+       call object3%init (n_members = 1)
+       call object3%init_member (1, var_str ("new"), prototype)
+    end select
+    
+    write (u, "(A)")
+    call object3%write (u)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Prototype status"
+    
+    write (u, "(A)")
+    call prototype%write (u, info=.true.)
+    call object1%write (u, complete=.false., info=.true.);  write (u, *)
+    call object2%write (u, complete=.false., info=.true.);  write (u, *)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Remove obj3"
+    
+    call remove_object (object3)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Prototype status"
+    
+    write (u, "(A)")
+    call prototype%write (u, info=.true.)
+    call object1%write (u, complete=.false., info=.true.);  write (u, *)
+    call object2%write (u, complete=.false., info=.true.);  write (u, *)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Remove obj2"
+    
+    call remove_object (object2)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Prototype status"
+    
+    write (u, "(A)")
+    call prototype%write (u, info=.true.)
+    call object1%write (u, complete=.false., info=.true.);  write (u, *)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Remove obj1"
+    
+    call remove_object (object1)
+
+    write (u, "(A)")      
+    write (u, "(A)")  "* Prototype status"
+    
+    write (u, "(A)")
+    call prototype%write (u, info=.true.)
+
+    call remove_object (prototype)
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup:"
+
+    write (u, "(A)")
+    write (u, "(A,1x,L1)")  "prototype allocated =", associated (prototype)
+    write (u, "(A,1x,L1)")  "obj1 allocated =", associated (object1)
+    write (u, "(A,1x,L1)")  "obj2 allocated =", associated (object2)
+    write (u, "(A,1x,L1)")  "obj3 allocated =", associated (object3)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: object_base_2"
+    
+    end subroutine object_base_2
+
+@ %def object_base_2
+@ Find objects by path.
+<<Object base: execute tests>>=
+  call test (object_base_3, "object_base_3", &
+       "object path search", &
+       u, results)
+<<Object base: tests>>=  
+  subroutine object_base_3 (u)
+    integer, intent(in) :: u
+    class(object_t), pointer :: prototype, composite
+    class(object_t), pointer :: object1, object2, object3, foo, bar
+
+    write (u, "(A)")  "* Test output: object_base_3"
+    write (u, "(A)")  "*   Purpose: find objects by path"
+
+    write (u, "(A)")      
+    write (u, "(A)")  "* Create prototypes for tag and tag composite"
+
+    allocate (tag_t :: prototype)
+    call prototype%set_name (var_str ("tag"))
+    
+    allocate (composite_t :: composite)
+    call composite%set_name (var_str ("composite"))
+    select type (composite)
+    class is (composite_t)
+       call composite%init ()
+       call prototype%instantiate (composite%core)
+    end select
+   
+    write (u, "(A)")      
+    write (u, "(A)")  "* Create nested composite"
+    
+    call composite%instantiate (object1, var_str ("obj1"))
+    select type (object1)
+    class is (composite_t)
+       call object1%init (n_members = 1)
+       call object1%init_member (1, var_str ("foo"), composite)
+    end select
+
+    call object1%instantiate (object2, var_str ("obj2"))
+    call object1%tag_non_intrinsic ()
+
+    call composite%instantiate (object3, var_str ("obj3"))
+    select type (object3)
+    class is (composite_t)
+       call object3%init (n_members = 3)
+       call object3%import_member (1, object1)
+       call object3%import_member (2, object2)
+       call object3%init_member (3, var_str ("bar"), prototype)
+    end select
+    
+    write (u, "(A)")
+    call object3%write (u)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Return pointer to obj1"
+
+    object1 => null ()
+    call object3%find_member (var_str ("obj1"), object1)
+
+    write (u, "(A)")
+    call object1%write (u)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Return pointer to obj1.foo"
+
+    foo => null ()
+    call object3%find ([var_str ("obj1"), var_str ("foo")], foo)
+
+    if (associated (foo)) then
+       write (u, "(A)")
+       call foo%write (u)
+    end if
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Return pointer to obj2.foo"
+
+    foo => null ()
+    call object3%find ([var_str ("obj2"), var_str ("foo")], foo)
+
+    if (associated (foo)) then
+       write (u, "(A)")
+       call foo%write (u)
+    end if
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Starting at obj1, return pointer to obj2"
+
+    object2 => null ()
+    call object1%find ([var_str ("obj2")], object2)
+
+    if (associated (object2)) then
+       write (u, "(A)")
+       call object2%write (u)
+    end if
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Starting at obj1, return pointer to obj2.foo"
+
+    foo => null ()
+    call object1%find ([var_str ("obj2"), var_str ("foo")], foo)
+
+    if (associated (foo)) then
+       write (u, "(A)")
+       call foo%write (u)
+    end if
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Starting at obj1, return pointer to bar"
+
+    bar => null ()
+    call object1%find ([var_str ("bar")], bar)
+
+    if (associated (bar)) then
+       write (u, "(A)")
+       call bar%write (u)
+    end if
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Starting at bar, return pointer to obj1.foo"
+
+    foo => null ()
+    call bar%find ([var_str ("obj1"), var_str ("foo")], foo)
+
+    if (associated (foo)) then
+       write (u, "(A)")
+       call foo%write (u)
+    end if
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+ 
+    call remove_object (object3)
+
+    call remove_object (composite)
+    call remove_object (prototype)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: object_base_3"
+    
+    end subroutine object_base_3
+
+@ %def object_base_3
+@ Handle references and copies.
+<<Object base: execute tests>>=
+  call test (object_base_4, "object_base_4", &
+       "object references and copies", &
+       u, results)
+<<Object base: tests>>=  
+  subroutine object_base_4 (u)
+    integer, intent(in) :: u
+    class(object_t), pointer :: prototype
+    class(object_t), pointer :: obj, cpr, ref, cpy
+
+    write (u, "(A)")  "* Test output: object_base_4"
+    write (u, "(A)")  "*   Purpose: create references and copies"
+
+    write (u, "(A)")      
+    write (u, "(A)")  "* Create prototype"
+
+    allocate (tag_t :: prototype)
+    call prototype%set_name (var_str ("tag"))
+    
+    write (u, "(A)")      
+    call prototype%write (u, info=.true.)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Create object"
+    
+    call prototype%instantiate (obj, var_str ("obj"))
+    
+    write (u, "(A)")      
+    call prototype%write (u, info=.true.)
+    call obj%write (u, info=.true.)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Create reference"
+
+    call obj%make_reference (ref, var_str ("ref"))
+
+    write (u, "(A)")      
+    call prototype%write (u, info=.true.)
+    call obj%write (u, info=.true.)
+    call ref%write (u, info=.true.)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Create extra reference and copy"
+
+    call obj%make_reference (cpr, var_str ("cpr"))
+    call obj%clone (cpy, var_str ("cpy"))
+
+    write (u, "(A)")      
+    call prototype%write (u, info=.true.)
+    call obj%write (u, info=.true.)
+    call ref%write (u, info=.true.)
+    call cpr%write (u, info=.true.)
+    call cpy%write (u, info=.true.)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Turn reference into copy"
+
+    select type (cpr)
+    class is (composite_t)
+       call cpr%clone_core ()
+    end select
+
+    write (u, "(A)")      
+    call prototype%write (u, info=.true.)
+    call obj%write (u, info=.true.)
+    call ref%write (u, info=.true.)
+    call cpr%write (u, info=.true.)
+    call cpy%write (u, info=.true.)
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+ 
+    call remove_object (ref)
+    call remove_object (cpr)
+    call remove_object (cpy)
+    call remove_object (obj)
+    call remove_object (prototype)
+
+    write (u, "(A)")
+    write (u, "(A,1x,L1)")  "prototype allocated =", associated (prototype)
+    write (u, "(A,1x,L1)")  "obj allocated =", associated (obj)
+    write (u, "(A,1x,L1)")  "ref allocated =", associated (ref)
+    write (u, "(A,1x,L1)")  "cpr allocated =", associated (cpr)
+    write (u, "(A,1x,L1)")  "cpy allocated =", associated (cpy)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: object_base_4"
+    
+  end subroutine object_base_4
+
+@ %def object_base_4
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Logical values}
+<<[[object_logical.f90]]>>=
+<<File header>>
+
+module object_logical
+
+<<Use strings>>
+  use unit_tests
+  use format_utils
+  use io_units
+  use object_base
+
+<<Standard module head>>
+
+<<Logical: public>>
+
+<<Logical: parameters>>
+
+<<Logical: types>>
+
+<<Logical: interfaces>>
+
+contains
+
+<<Logical: procedures>>
+
+<<Logical: tests>>
+
+end module object_logical
+@ %def object_logical
+@ 
+\subsection{Type definition}
+A logical object carries a logical value.  The [[defined]] status also
+applies.
+<<Logical: public>>=
+  public :: logical_t
+<<Logical: types>>=
+  type, extends (object_t) :: logical_t
+     private
+     logical :: value = .false.
+   contains
+   <<Logical: logical: TBP>>
+  end type logical_t
+  
+@ %def logical_t
+@ Display the value.
+<<Logical: logical: TBP>>=
+  procedure :: write_value => logical_write_value
+<<Logical: procedures>>=
+  subroutine logical_write_value (object, unit, indent, complete, info)
+    class(logical_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer, intent(in), optional :: indent
+    logical, intent(in), optional :: complete
+    logical, intent(in), optional :: info
+    integer :: u
+    u = given_output_unit (unit)
+    if (object%value) then
+       write (u, "(A)", advance="no")  "true"
+    else
+       write (u, "(A)", advance="no")  "false"
+    end if
+  end subroutine logical_write_value
+       
+@ %def logical_write_value
+@ Finalizer is empty.
+<<Logical: logical: TBP>>=
+  procedure :: final => logical_final
+<<Logical: procedures>>=
+  subroutine logical_final (object)
+    class(logical_t), intent(inout) :: object
+  end subroutine logical_final
+ 
+@ %def logical_final
+@ Initializer: we may define object mode and value.
+<<Logical: logical: TBP>>=
+  procedure :: init => logical_init
+<<Logical: procedures>>=
+  pure subroutine logical_init (object, mode, value)
+    class(logical_t), intent(inout) :: object
+    integer, intent(in), optional :: mode
+    logical, intent(in), optional :: value
+    call object%reset (mode, present (value))
+    if (object%has_value () .and. present (value)) then
+       object%value = value
+    end if
+  end subroutine logical_init
+ 
+@ %def logical_init
+@ For a new tag instance, nothing needs to be copied.  Cloning copies the
+value. 
+<<Logical: logical: TBP>>=
+  procedure :: instantiate => logical_instantiate
+  procedure :: clone => logical_clone
+<<Logical: procedures>>=
+  subroutine logical_instantiate (object, instance, name)
+    class(logical_t), intent(inout), target :: object
+    class(object_t), intent(out), pointer :: instance
+    type(string_t), intent(in), optional :: name
+    allocate (logical_t :: instance)
+    call instance%register (object)
+    call instance%set_name (name, object)
+  end subroutine logical_instantiate
+    
+  subroutine logical_clone (object, instance, name, reference)
+    class(logical_t), intent(inout), target :: object
+    class(object_t), intent(out), pointer :: instance
+    type(string_t), intent(in), optional :: name
+    class(object_t), intent(in), optional :: reference
+    allocate (logical_t :: instance)
+    call instance%register_with_prototype (object)
+    call instance%set_name (name, object)
+    select type (instance)
+    type is (logical_t)
+       call instance%init (object%get_mode (), object%value)
+    end select
+    if (present (reference))  call instance%import_basic_properties (reference)
+  end subroutine logical_clone
+    
+@ %def logical_instantiate
+@ %def logical_clone
+@ If defined, copy the value.  The object mode is unchanged.
+<<Logical: logical: TBP>>=
+  procedure :: assign => logical_assign
+<<Logical: procedures>>=
+  subroutine logical_assign (object, source)
+    class(logical_t), intent(inout) :: object
+    class(object_t), intent(in) :: source
+    select type (source)
+    class is (logical_t)
+       if (source%is_defined ()) then
+          call object%init (value = source%value)
+       else
+          call object%init ()
+       end if
+    end select
+  end subroutine logical_assign
+       
+@ %def logical_assign
+@ 
+\subsection{Unit tests}
+<<Logical: public>>=
+  public :: object_logical_test
+<<Logical: procedures>>=
+  subroutine object_logical_test (u, results)
+    integer, intent(in) :: u
+    type(test_results_t), intent(inout) :: results
+  <<Logical: execute tests>>  
+  end subroutine object_logical_test
+  
+@ %def object_logical_test 
+@
+\subsubsection{Values}
+Create logical objects.
+<<Logical: execute tests>>=
+  call test (object_logical_1, "object_logical_1", &
+       "values", &
+       u, results)
+<<Logical: tests>>=  
+  subroutine object_logical_1 (u)
+    integer, intent(in) :: u
+    class(object_t), pointer :: prototype, true, false, lval1, lval2
+
+    write (u, "(A)")  "* Test output: object_logical_1"
+    write (u, "(A)")  "*   Purpose: construct logical value objects"
+    write (u, "(A)")      
+    
+    write (u, "(A)")  "* Logical objects: prototype"
+
+    allocate (logical_t :: prototype)
+    call prototype%set_name (var_str ("logical"))
+    
+    write (u, "(A)")
+    call prototype%write (u, info=.true.)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Logical objects: constant, variable"
+
+    call prototype%instantiate (true, var_str ("true"))
+    select type (true)
+    type is (logical_t);  call true%init (mode=MODE_CONSTANT, value=.true.)
+    end select
+
+    call prototype%instantiate (false, var_str ("false"))
+    select type (false)
+    type is (logical_t);  call false%init (mode=MODE_CONSTANT, value=.false.)
+    end select
+
+    call prototype%instantiate (lval1, var_str ("lval1"))
+    select type (lval1)
+    type is (logical_t);  call lval1%init (mode=MODE_VARIABLE)
+    end select
+
+    call prototype%instantiate (lval2, var_str ("lval2"))
+    select type (lval2)
+    type is (logical_t);  call lval2%init (mode=MODE_VARIABLE, value=.true.)
+    end select
+
+    write (u, "(A)")
+    call prototype%write (u, info=.true.)
+
+    write (u, "(A)")
+    call true%write (u, info=.true.)
+    call false%write (u, info=.true.)
+    call lval1%write (u, info=.true.)
+    call lval2%write (u, info=.true.)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+
+    call remove_object (lval1)
+    call remove_object (lval2)
+    call remove_object (true)
+    call remove_object (false)
+    call remove_object (prototype)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: object_logical_1"
+    
+    end subroutine object_logical_1
+
+@ %def object_logical_1
+@ 
+\subsubsection{Atomic assignment}
+Perform assignments of elementary logicals.
+<<Logical: execute tests>>=
+  call test (object_logical_2, "object_logical_2", &
+       "assignment", &
+       u, results)
+<<Logical: tests>>=  
+  subroutine object_logical_2 (u)
+    integer, intent(in) :: u
+    class(object_t), pointer :: prototype, true, false, lval1, lval2, lval3
+
+    write (u, "(A)")  "* Test output: object_logical_2"
+    write (u, "(A)")  "*   Purpose: assignments"
+    write (u, "(A)")      
+    
+    write (u, "(A)")  "* Create objects"
+
+    allocate (logical_t :: prototype)
+    call prototype%set_name (var_str ("logical"))
+    
+    call prototype%instantiate (true, var_str ("true"))
+    select type (true)
+    type is (logical_t);  call true%init (mode=MODE_CONSTANT, value=.true.)
+    end select
+
+    call prototype%instantiate (false, var_str ("false"))
+    select type (false)
+    type is (logical_t);  call false%init (mode=MODE_CONSTANT, value=.false.)
+    end select
+
+    call prototype%instantiate (lval1, var_str ("lval1"))
+    select type (lval1)
+    type is (logical_t);  call lval1%init (mode=MODE_VARIABLE)
+    end select
+
+    call prototype%instantiate (lval2, var_str ("lval2"))
+    select type (lval2)
+    type is (logical_t);  call lval2%init (mode=MODE_VARIABLE)
+    end select
+
+    call prototype%instantiate (lval3, var_str ("lval3"))
+    select type (lval3)
+    type is (logical_t);  call lval3%init (mode=MODE_VARIABLE)
+    end select
+
+    write (u, "(A)")
+    call true%write (u)
+    call false%write (u)
+    call lval1%write (u)
+    call lval2%write (u)
+    call lval3%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* lval1 = true"
+    write (u, "(A)")  "* lval2 = false"
+
+    call lval1%assign (true)
+    call lval2%assign (false)
+
+    write (u, "(A)")
+    call lval1%write (u)
+    call lval2%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* lval2 = lval1"
+
+    call lval2%assign (lval1)
+
+    write (u, "(A)")
+    call lval2%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* lval2 = lval3"
+
+    call lval2%assign (lval3)
+
+    write (u, "(A)")
+    call lval2%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+
+    call remove_object (lval1)
+    call remove_object (lval2)
+    call remove_object (lval3)
+    call remove_object (true)
+    call remove_object (false)
+    call remove_object (prototype)
+
+    write (u, "(A)")
+    write (u, "(A,1x,L1)")  "prototype allocated =", associated (prototype)
+    write (u, "(A,1x,L1)")  "true allocated =", associated (true)
+    write (u, "(A,1x,L1)")  "false allocated =", associated (false)
+    write (u, "(A,1x,L1)")  "lval1 allocated =", associated (lval1)
+    write (u, "(A,1x,L1)")  "lval2 allocated =", associated (lval2)
+    write (u, "(A,1x,L1)")  "lval3 allocated =", associated (lval3)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: object_logical_2"
+    
+    end subroutine object_logical_2
+
+@ %def object_logical_2
+@ 
+\subsubsection{Composite assignment}
+Perform assignments of composites with elementary logical core.
+<<Logical: execute tests>>=
+  call test (object_logical_3, "object_logical_3", &
+       "composite assignment", &
+       u, results)
+<<Logical: tests>>=  
+  subroutine object_logical_3 (u)
+    integer, intent(in) :: u
+    class(object_t), pointer :: prototype, true, fal1, fal2, unknown
+    class(object_t), pointer :: lval1, lval2, lval3, lval4, lref1
+
+    write (u, "(A)")  "* Test output: object_logical_3"
+    write (u, "(A)")  "*   Purpose: simple composite assignments"
+    write (u, "(A)")      
+    
+    write (u, "(A)")  "* Create atomic objects"
+
+    allocate (logical_t :: prototype)
+    call prototype%set_name (var_str ("logical"))
+    
+    call prototype%instantiate (true, var_str ("true"))
+    select type (true)
+    type is (logical_t);  call true%init (mode=MODE_CONSTANT, value=.true.)
+    end select
+
+    call prototype%instantiate (fal1, var_str ("fal1"))
+    select type (fal1)
+    type is (logical_t);  call fal1%init (mode=MODE_CONSTANT, value=.false.)
+    end select
+
+    call prototype%instantiate (fal2, var_str ("fal2"))
+    select type (fal2)
+    type is (logical_t);  call fal2%init (mode=MODE_CONSTANT, value=.false.)
+    end select
+
+    call prototype%instantiate (unknown, var_str ("unknown"))
+    select type (unknown)
+    type is (logical_t);  call unknown%init (mode=MODE_CONSTANT)
+    end select
+
+    write (u, "(A)")
+    call true%write (u)
+    call fal1%write (u)
+    call fal2%write (u)
+    call unknown%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Import into composite objects"
+
+    allocate (composite_t :: lval1)
+    select type (lval1)
+    type is (composite_t)
+       call lval1%set_name (var_str ("lval1"))
+       call lval1%init (mode=MODE_VARIABLE, defined=.true.)
+       call lval1%import_core (true)
+    end select
+
+    allocate (composite_t :: lval2)
+    select type (lval2)
+    type is (composite_t)
+       call lval2%set_name (var_str ("lval2"))
+       call lval2%init (mode=MODE_VARIABLE, defined=.true.)
+       call lval2%import_core (fal1)
+    end select
+
+    allocate (composite_t :: lval3)
+    select type (lval3)
+    type is (composite_t)
+       call lval3%set_name (var_str ("lval3"))
+       call lval3%init (mode=MODE_VARIABLE, defined=.true.)
+       call lval3%import_core (unknown)
+    end select
+
+    allocate (composite_t :: lval4)
+    select type (lval4)
+    type is (composite_t)
+       call lval4%set_name (var_str ("lval4"))
+       call lval4%init (mode=MODE_VARIABLE, defined=.true.)
+       call lval4%import_core (fal2)
+    end select
+
+    write (u, "(A)")
+    call lval1%write (u)
+    call lval2%write (u)
+    call lval3%write (u)
+    call lval4%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Create reference lref1 => lval4"
+
+    call lval4%make_reference (lref1, var_str ("lref1"))
+
+    write (u, "(A)")
+    call lref1%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* lval2 = lval1"
+    
+    call assign_object (lval2, lval1)
+
+    write (u, "(A)")
+    call lval1%write (u)
+    call lval2%write (u)
+    call lval3%write (u)
+    call lval4%write (u)
+    call lref1%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* lval4 = lval1"
+    write (u, "(A)")  "* lref1 value should not change"
+
+    call assign_object (lval4, lval1)
+
+    write (u, "(A)")
+    call lval1%write (u)
+    call lval2%write (u)
+    call lval3%write (u)
+    call lval4%write (u)
+    call lref1%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* lval2 = lval3"
+
+    call assign_object (lval2, lval3)
+
+    write (u, "(A)")
+    call lval1%write (u)
+    call lval2%write (u)
+    call lval3%write (u)
+    call lval4%write (u)
+    call lref1%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+
+    call remove_object (lref1)
+    call remove_object (lval1)
+    call remove_object (lval2)
+    call remove_object (lval3)
+    call remove_object (lval4)
+    call remove_object (prototype)
+
+    write (u, "(A)")
+    write (u, "(A,1x,L1)")  "prototype allocated =", associated (prototype)
+    write (u, "(A,1x,L1)")  "true allocated =", associated (true)
+    write (u, "(A,1x,L1)")  "fal1 allocated =", associated (fal1)
+    write (u, "(A,1x,L1)")  "fal2 allocated =", associated (fal2)
+    write (u, "(A,1x,L1)")  "unknown allocated =", associated (unknown)
+    write (u, "(A,1x,L1)")  "lval1 allocated =", associated (lval1)
+    write (u, "(A,1x,L1)")  "lval2 allocated =", associated (lval2)
+    write (u, "(A,1x,L1)")  "lval3 allocated =", associated (lval3)
+    write (u, "(A,1x,L1)")  "lval4 allocated =", associated (lval4)
+    write (u, "(A,1x,L1)")  "lref1 allocated =", associated (lref1)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: object_logical_3"
+    
+    end subroutine object_logical_3
+
+@ %def object_logical_3
 

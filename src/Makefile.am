@@ -48,12 +48,14 @@ SUBDIRS = \
   me_methods \
   stdhep xdr events \
   phase_space \
-  mci \
-  shower muli \
+  mci variables \
+  muli shower \
   user \
   blha \
   gosam fks \
-  variables model_features \
+  model_features \
+  process_integration \
+  powheg \
   whizard-core \
   prebuilt models
 if MPOST_AVAILABLE
@@ -83,6 +85,8 @@ libwhizard_la_LIBADD = \
   pdf_builtin/libpdf_builtin.la \
   model_features/libmodel_features.la \
   variables/libvariables.la \
+  process_integration/libprocess_integration.la \
+  powheg/libpowheg.la \
   fks/libfks.la \
   gosam/libgosam.la \
   blha/libblha.la \

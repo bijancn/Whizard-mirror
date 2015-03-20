@@ -50,6 +50,7 @@ UNIT_TESTS = \
     formats.run \
     sorting.run \
     object_base.run \
+    object_logical.run \
     grids.run \
     solver.run \
     state_matrices.run \
@@ -357,9 +358,6 @@ TESTS_REQ_EV_ANA = \
     analyze_3.run
 XFAIL_TESTS_REQ_EV_ANA =
 
-TESTS_REQ_GOSAM = \
-    gosam_1.run
-
 TESTS_EXTENDED = \
     sm_ext.run \
     mssm_ext.run \
@@ -389,7 +387,6 @@ TEST_DRIVERS_RUN = \
     $(TESTS_REQ_STDHEP) \
     $(TESTS_REQ_PYTHIA6) \
     $(TESTS_REQ_EV_ANA) \
-    $(TESTS_REQ_GOSAM) \
     $(TESTS_STATIC) \
     $(TESTS_EXTENDED)
 
@@ -441,9 +438,6 @@ XFAIL_TESTS += $(XFAIL_TESTS_REQ_PYTHIA6)
 
 TESTS += $(TESTS_REQ_EV_ANA)
 XFAIL_TESTS += $(XFAIL_TESTS_REQ_EV_ANA)
-
-TESTS += $(TESTS_REQ_GOSAM)
-XFAIL_TESTS += $(XFAIL_TESTS_GOSAM)
 
 TESTS += $(TESTS_STATIC)
 XFAIL_TESTS += $(XFAIL_TESTS_STATIC)
@@ -623,7 +617,6 @@ BUILT_SOURCES = \
     STDHEP_FLAG \
     HEPMC_FLAG \
     LCIO_FLAG \
-    GOSAM_FLAG \
     FASTJET_FLAG \
     LHAPDF5_FLAG \
     LHAPDF6_FLAG \
@@ -658,11 +651,6 @@ endif
 
 LCIO_FLAG:
 if LCIO_AVAILABLE
-	touch $@
-endif
-
-GOSAM_FLAG:
-if GOSAM_AVAILABLE
 	touch $@
 endif
 
@@ -728,7 +716,7 @@ notestflag:
 clean-local:
 	rm -f gamelan.sty TEST.mdl 
 	rm -f TESTFLAG GAMELAN_FLAG STDHEP_FLAG 
-	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG GOSAM_FLAG
+	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
 	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
 	rm -f *.run *.log slha_test.out
@@ -737,8 +725,7 @@ clean-local:
 	rm -f *.makefile
 	rm -rf err-output
 	rm -rf ref-output
-	rm -f *.sin *.hbc *.olp *.olc golem.in 
-	rm -rf Generated_Loops nlo_tt_LOOP_olp_modules include
+	rm -f *.sin *.hbc 
 	rm -f *.phs *.vg *.vgb *.evt *.evx *.lhe *.hepmc *.dat *.debug 
 	rm -f *.tmp *.hepevt *.hepevt.verb *.lha *.lha.verb *.slcio
 	rm -f prc_omega_diags_1_p_i1_diags.out prc_omega_diags_1_p_i1_diags.toc

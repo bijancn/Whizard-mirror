@@ -68,6 +68,12 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/lexer_1.ref \
     ref-output/sorting_1.ref \
     ref-output/object_base_1.ref \
+    ref-output/object_base_2.ref \
+    ref-output/object_base_3.ref \
+    ref-output/object_base_4.ref \
+    ref-output/object_logical_1.ref \
+    ref-output/object_logical_2.ref \
+    ref-output/object_logical_3.ref \
     ref-output/state_matrix_1.ref \
     ref-output/state_matrix_2.ref \
     ref-output/state_matrix_3.ref \
@@ -499,7 +505,6 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/alphas.ref \
     ref-output/jets_xsec.ref \
     ref-output/parton_shower_1.ref \
-    ref-output/pythia6_1.ref \
     ref-output/pythia6_2.ref \
     ref-output/mlm_matching_fsr.ref \
     ref-output/mlm_pythia6_isr.ref \
@@ -561,8 +566,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/beam_events_1.ref \
     ref-output/beam_events_4.ref \
     ref-output/energy_scan_1.ref \
-    ref-output/user_strfun.ref \
-    ref-output/gosam_1.ref
+    ref-output/user_strfun.ref
 
 # Reference files that depend on the numerical precision
 REF_OUTPUT_FILES_DOUBLE = \
@@ -578,6 +582,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/parton_shower_2.ref \
     ref-output-double/helicity.ref \
     ref-output-double/lhef_7.ref \
+    ref-output-double/pythia6_1.ref \
     ref-output-double/hepmc_8.ref \
     ref-output-double/multi_comp_1.ref \
     ref-output-double/multi_comp_2.ref \
@@ -620,6 +625,7 @@ REF_OUTPUT_FILES_EXT = \
     ref-output-ext/parton_shower_2.ref \
     ref-output-ext/helicity.ref \
     ref-output-ext/lhef_7.ref \
+    ref-output-ext/pythia6_1.ref \
     ref-output-ext/hepmc_8.ref \
     ref-output-ext/multi_comp_1.ref \
     ref-output-ext/multi_comp_2.ref \
@@ -671,6 +677,7 @@ UNIT_TESTS_SIN = \
     polarizations.sin \
     sorting.sin \
     object_base.sin \
+    object_logical.sin \
     interactions.sin \
     state_matrices.sin \
     md5.sin \
@@ -934,8 +941,7 @@ MISC_TESTS_SIN = \
     static_1.sin \
     static_1.exe.sin \
     user_cuts.sin \
-    user_strfun.sin \
-    gosam_1.sin
+    user_strfun.sin
 ### Extended self tests
 #     sm_ext.sin
 

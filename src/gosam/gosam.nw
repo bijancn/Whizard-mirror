@@ -1,5 +1,5 @@
 % -*- ess-noweb-default-code-mode: f90-mode; noweb-default-code-mode: f90-mode; -*- 
-% WHIZARD code as NOWEB source: matrix elements and process libraries
+% WHIZARD code as NOWEB source: GoSam interface
 
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -48,6 +48,7 @@ end module loop_archive
     logical :: active = .false.
     type(string_t) :: name
     type(string_t) :: current_prefix
+    type(os_data_t) :: os_data
   contains
   <<Loop archive: loop archive: TBP>>
   end type loop_archive_t
@@ -57,12 +58,14 @@ end module loop_archive
 <<Loop archive: loop archive: TBP>>=
   procedure :: activate => loop_archive_activate
 <<Loop archive: procedures>>=
-  subroutine loop_archive_activate (archive, name)
+  subroutine loop_archive_activate (archive, name, os_data)
     class(loop_archive_t), intent(inout) :: archive
     type(string_t), intent(in) :: name
+    type(os_data_t), intent(in) :: os_data
     integer :: status, success
     type(string_t) :: prefix
     archive%name = name
+    archive%os_data = os_data
     call os_system_call ('test -d "' // name // &
                          '"', status = status, verbose = .true.)
     if (status /= 0) then
@@ -78,29 +81,34 @@ end module loop_archive
 <<Loop archive: loop archive: TBP>>=
   procedure :: record => loop_archive_record
 <<Loop archive: procedures>>=
-  subroutine loop_archive_record (archive, olp_file, config_file, lib)
+  subroutine loop_archive_record (archive, olp_file, olc_file, config_file, lib)
     class(loop_archive_t), intent(inout) :: archive
-    type(string_t), intent(in) :: olp_file, config_file, lib
+    type(string_t), intent(in) :: olp_file, olc_file, config_file, lib
     type(string_t) :: current_prefix
     type(string_t) :: filename
     
-! Copy, rename and move olp-file
+    ! Copy, rename and move olp-file and olc-file
     filename = archive%current_prefix // '.olp'
     call os_system_call ('cp ' // olp_file // ' ' // &
-                         filename)
+       filename)
     call os_system_call ('mv ' // filename // ' ' // &
-                         archive%name)
-! Do the same with the loop-library and the config file
-    filename = archive%current_prefix // '_libgolem_olp.so'
+       archive%name)
+    filename = archive%current_prefix // '.olc'
+    call os_system_call ('cp ' // olc_file // ' ' // &
+       filename)
+    call os_system_call ('mv ' // filename // ' ' // & 
+       archive%name)
+    ! Do the same with the loop-library and the config file
+    filename = archive%current_prefix // '_libgolem_olp.' // &
+       archive%os_data%shrlib_ext
     call os_system_call ('cp ' // lib // ' ' // filename)
     call os_system_call ('mv ' // filename // ' ' // &
-                         archive%name)
+       archive%name)
     filename = archive%current_prefix // '_golem.in'
     call os_system_call ('cp ' // config_file // ' ' // &
-                         filename)
+       filename)
     call os_system_call ('mv ' // filename // ' ' // &
-                         archive%name)
-
+       archive%name)
   end subroutine loop_archive_record
 
 @ %def loop_archive_record
@@ -124,7 +132,8 @@ end module loop_archive
        write(prefix,"(A,I2.2)") 'V', counter
        current_olp = archive%name // '/' // var_str (prefix) // '.olp'
        current_config = archive%name // '/' // var_str (prefix) // '_golem.in'
-       current_lib = archive%name // '/' // var_str (prefix) // '_libgolem_olp.so'
+       current_lib = archive%name // '/' // var_str (prefix) // &
+            '_libgolem_olp.' // archive%os_data%shrlib_ext
        inquire (file = char (current_olp), exist = exist(1))
        inquire (file = char (current_config), exist = exist(2))
        if (all (exist)) then
@@ -153,24 +162,31 @@ end module loop_archive
 <<Loop archive: loop archive: TBP>>=
   procedure :: restore => loop_archive_restore
 <<Loop archive: procedures>>=
-  subroutine loop_archive_restore (archive, olp_orig, path)
+  subroutine loop_archive_restore (archive, olp_orig, olc_orig, path)
     class(loop_archive_t), intent(inout) :: archive
-    type(string_t), intent(in) :: olp_orig, path
-    type(string_t) :: olp_file, config_file, lib
+    type(string_t), intent(in) :: olp_orig, olc_orig, path
+    type(string_t) :: olp_file, olc_file, config_file, lib
     
     olp_file = archive%current_prefix // '.olp'
+    olc_file = archive%current_prefix // '.olc'
     config_file = archive%current_prefix // '_golem.in'
-    lib = archive%current_prefix // '_libgolem_olp.so'
+    lib = archive%current_prefix // '_libgolem_olp.' // &
+         archive%os_data%shrlib_ext
 
     call os_system_call ('cp ' // archive%name // '/' // olp_file // ' .')
     call os_system_call ('mv ' // olp_file // ' ' // olp_orig)
-    
+
+    call os_system_call ('cp ' // archive%name // '/' // olc_file // ' .')
+    call os_system_call ('mv ' // olc_file // ' ' // olc_orig)
+   
     call os_system_call ('cp ' // archive%name // '/' // config_file // ' .')
     call os_system_call ('mv ' // config_file // ' golem.in')
 
     call os_system_call ('cp ' // archive%name // '/' // lib // ' .')
-    call os_system_call ('mv ' // lib // ' libgolem_olp.so')
-    call os_system_call ('cp libgolem_olp.so ' // path)
+    call os_system_call ('mv ' // lib // ' libgolem_olp.' // &
+         archive%os_data%shrlib_ext)
+    call os_system_call ('mv libgolem_olp.' // archive%os_data%shrlib_ext &
+         // ' ' // path // '/.libs')
     
   end subroutine loop_archive_restore
 
@@ -291,6 +307,7 @@ end module prc_gosam
     type(string_t) :: olp_file
     type(string_t) :: olc_file
     type(string_t) :: olp_dir
+    type(string_t) :: olp_lib
     type(loop_archive_t) :: loop_archive
     procedure(olp_start),nopass,  pointer :: &
               gosam_olp_start => null ()
@@ -342,7 +359,7 @@ end module prc_gosam
 @ 
 @ %def prc_gosam_t
 <<prc gosam: types>>=
-  type, extends (workspace_t) :: gosam_state_t
+  type, extends (prc_core_state_t) :: gosam_state_t
     logical :: new_kinematics = .true.
     real(default) :: alpha_qcd = -1
   contains
@@ -369,8 +386,10 @@ end module prc_gosam
       import
       integer(kind=c_int), value, intent(in) :: label
       real(kind=c_double), value, intent(in) :: mu
-      real(kind=c_double), dimension(GOSAM_MOMENTUM_LIMIT), intent(in) :: momenta
-      real(kind=c_double), dimension(GOSAM_PARAMETER_LIMIT), intent(in) :: parameters
+      real(kind=c_double), dimension(GOSAM_MOMENTUM_LIMIT), intent(in) :: &
+           momenta
+      real(kind=c_double), dimension(GOSAM_PARAMETER_LIMIT), intent(in) :: &
+           parameters
       real(kind=c_double), dimension(GOSAM_RESULTS_LIMIT), intent(out) :: res
     end subroutine olp_eval
   end interface
@@ -379,8 +398,7 @@ end module prc_gosam
 @
 <<prc gosam: interfaces>>=
   interface
-    subroutine olp_info (olp_file, olp_version, message) &
-         bind(C,name="OLP_Info")
+    subroutine olp_info (olp_file, olp_version, message) bind(C)
       import
       character(kind=c_char), intent(inout), dimension(15) :: olp_file
       character(kind=c_char), intent(inout), dimension(15) :: olp_version
@@ -393,8 +411,7 @@ end module prc_gosam
 <<prc gosam: interfaces>>=
   interface
     subroutine olp_set_parameter &
-         (variable_name, real_part, complex_part, success) &
-            bind(C,name="OLP_SetParameter")
+         (variable_name, real_part, complex_part, success) bind(C)
       import
       character(kind=c_char,len=1), intent(in) :: variable_name
       real(kind=c_double), intent(in) :: real_part, complex_part
@@ -406,8 +423,7 @@ end module prc_gosam
 @
 <<prc gosam: interfaces>>=
   interface
-    subroutine olp_eval2 (label, momenta, mu, res, acc) &
-         bind(C,name="OLP_EvalSubProcess2")
+    subroutine olp_eval2 (label, momenta, mu, res, acc) bind(C)
       import
       integer(kind=c_int), intent(in) :: label
       real(kind=c_double), intent(in) :: mu
@@ -439,7 +455,7 @@ end module prc_gosam
 @
 <<prc gosam: interfaces>>=
   interface
-    subroutine olp_option (line, stat) bind(C,name="OLP_Option")
+    subroutine olp_option (line, stat) bind(C)
       import
       character(kind=c_char, len=1), intent(in) :: line
       integer(kind=c_int), intent(out) :: stat
@@ -450,7 +466,7 @@ end module prc_gosam
 @
 <<prc gosam: interfaces>>=
   interface
-    subroutine olp_polvec (p, q, eps) bind(C,name="OLP_Polvec")
+    subroutine olp_polvec (p, q, eps) bind(C)
       import
       real(kind=c_double), dimension(0:3), intent(in) :: p, q
       real(kind=c_double), dimension(0:7), intent(out) :: eps
@@ -461,7 +477,7 @@ end module prc_gosam
 @
 <<prc gosam: interfaces>>=
   interface
-    subroutine olp_finalize () bind(C,name="OLP_Finalize")
+    subroutine olp_finalize () bind(C)
       import
     end subroutine olp_finalize
   end interface
@@ -470,7 +486,7 @@ end module prc_gosam
 @
 <<prc gosam: interfaces>>=
   interface
-    subroutine olp_print_parameter (filename) bind(C,name="OLP_PrintParameter")
+    subroutine olp_print_parameter (filename) bind(C)
       import
       character(kind=c_char, len=1), intent(in) :: filename
     end subroutine olp_print_parameter
@@ -907,15 +923,16 @@ end module prc_gosam
   procedure :: init_gosam => gosam_driver_init_gosam
 <<prc gosam: procedures>>=
   subroutine gosam_driver_init_gosam (object, os_data, olp_file, &
-                                olc_file, olp_dir)
+                                olc_file, olp_dir, olp_lib)
     class(gosam_driver_t), intent(inout) :: object
     type(os_data_t), intent(in) :: os_data
-    type(string_t), intent(in) :: olp_file, olc_file, olp_dir
+    type(string_t), intent(in) :: olp_file, olc_file, olp_dir, olp_lib
     object%gosam_dir = GOSAM_DIR
     object%olp_file = olp_file
     object%olc_file = olc_file
     object%olp_dir = olp_dir
-    call object%loop_archive%activate (var_str ('Generated_Loops'))
+    object%olp_lib = olp_lib
+    call object%loop_archive%activate (var_str ('Generated_Loops'), os_data)
   end subroutine gosam_driver_init_gosam
 
 @ %def gosam_driver_init
@@ -1005,22 +1022,29 @@ end module prc_gosam
   end function gosam_writer_get_n_proc
 
 @ %def gosam_writer_get_n_proc
-@
+@ We have to assure that all files necessary for the configure process
+in the GoSam code are ready. This is done with a stamp mechanism.
 <<prc gosam: gosam driver: TBP>>=
   procedure :: write_makefile => gosam_driver_write_makefile
 <<prc gosam: procedures>>=
-  subroutine gosam_driver_write_makefile (object, unit)
+  subroutine gosam_driver_write_makefile (object, unit, libname)
     class(gosam_driver_t), intent(in) :: object
     integer, intent(in) :: unit
-    write (unit, "(A)") char ("OLP_FILE="//object%olp_file)
-    write (unit, "(A)") char ("OLP_DIR="//object%olp_dir)
-    write (unit, "(A)") 
-    write (unit, "(A)") "all: $(OLP_DIR)"
-    write (unit, "(2A)") TAB, "cd $<; ./autogen.sh --prefix=$(PWD); &
-                             &make install"
+    type(string_t), intent(in) :: libname
+    write (unit, "(2A)")  "OLP_FILE = ", char (object%olp_file)
+    write (unit, "(2A)")  "OLP_DIR = ", char (object%olp_dir)
     write (unit, "(A)")
-    write (unit, "(A)") "$(OLP_DIR): "
-    write (unit, "(4A)") TAB, char (object%gosam_dir // "/bin/gosam.py "), &
+    write (unit, "(A)")   "all: autogen"
+    write (unit, "(4A)")   TAB, "make ", &
+         char (object%loop_archive%os_data%makeflags), &
+         " -C $(OLP_DIR) install"
+    write (unit, "(A)")
+    write (unit, "(3A)")   "autogen: ", char (libname)
+    write (unit, "(3A)")  TAB, "cd $(OLP_DIR); ./autogen.sh --prefix=", &
+         "$(dir $(abspath $(lastword $(MAKEFILE_LIST))))"
+    write (unit, "(A)")
+    write (unit, "(2A)")  char (libname), ":"
+    write (unit, "(4A)")  TAB, char (object%gosam_dir // "/bin/gosam.py "), &
                              "--olp $(OLP_FILE) --destination=$(OLP_DIR)", &
                              " -f -z"
   end subroutine gosam_driver_write_makefile
@@ -1090,42 +1114,46 @@ end module prc_gosam
     type(string_t) ::  path
     type(c_funptr) :: c_fptr
 
-    path = object%olp_dir // '/.libs'
+    path = object%olp_dir // '/.libs' 
     call dlaccess_init &
-          (dlaccess, var_str ("."), path // '/libgolem_olp.so', os_data)
-    if (os_file_exist (path // '/libgolem_olp.so')) then
-      c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Start"))
-      call c_f_procpointer (c_fptr, object%gosam_olp_start)
+          (dlaccess, var_str ("."), path // '/libgolem_olp.' // &
+          os_data%shrlib_ext, os_data)
+    if (os_file_exist (path // '/libgolem_olp.' // &
+         os_data%shrlib_ext)) then
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Start"))
+       call c_f_procpointer (c_fptr, object%gosam_olp_start)
+       
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_EvalSubProcess"))
+       call c_f_procpointer (c_fptr, object%gosam_olp_eval)
 
-      c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_EvalSubProcess"))
-      call c_f_procpointer (c_fptr, object%gosam_olp_eval)
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Info"))
+       call c_f_procpointer (c_fptr, object%gosam_olp_info)
 
-      c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Info"))
-      call c_f_procpointer (c_fptr, object%gosam_olp_info)
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_SetParameter"))
+       call c_f_procpointer (c_fptr, object%gosam_olp_set_parameter)
 
-      c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_SetParameter"))
-      call c_f_procpointer (c_fptr, object%gosam_olp_set_parameter)
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_EvalSubProcess2"))
+       call c_f_procpointer (c_fptr, object%gosam_olp_eval2)
 
-      c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_EvalSubProcess2"))
-      call c_f_procpointer (c_fptr, object%gosam_olp_eval2)
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Option"))
+       call c_f_procpointer (c_fptr, object%gosam_olp_option)
 
-      c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Option"))
-      call c_f_procpointer (c_fptr, object%gosam_olp_option)
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Polvec"))
+       call c_f_procpointer (c_fptr, object%gosam_olp_polvec)
 
-      c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Polvec"))
-      call c_f_procpointer (c_fptr, object%gosam_olp_polvec)
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Finalize"))
+       call c_f_procpointer (c_fptr, object%gosam_olp_finalize)
 
-      c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Finalize"))
-      call c_f_procpointer (c_fptr, object%gosam_olp_finalize)
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_PrintParameter"))
+       call c_f_procpointer (c_fptr, object%gosam_olp_print_parameter)
 
-      c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_PrintParameter"))
-      call c_f_procpointer (c_fptr, object%gosam_olp_print_parameter)
-
-      success = .not. dlaccess_has_error (dlaccess)
-      if (store .and. success) call object%loop_archive%record (object%olp_file, &
-                                  var_str ('golem.in'), path // '/libgolem_olp.so')
+       success = .not. dlaccess_has_error (dlaccess)
+       if (store .and. success) &
+          call object%loop_archive%record (object%olp_file, object%olc_file, &
+               var_str ('golem.in'), path // '/libgolem_olp.' // &
+               os_data%shrlib_ext)
     else
-      success = .false.
+       success = .false.
     end if
   end subroutine gosam_driver_load
 
@@ -1246,8 +1274,8 @@ end module prc_gosam
     select type (driver => object%driver)
     type is (gosam_driver_t)
        call driver%loop_archive%search ([driver%olp_file, &
-                        var_str ('golem.in'), driver%olp_dir // &
-                        '/.libs/libgolem_olp.so'], found)
+            var_str ('golem.in'), driver%olp_dir // &
+            '/.libs/libgolem_olp.' // os_data%shrlib_ext], found)
     end select
   end subroutine prc_gosam_search_for_existing_library
 
@@ -1256,12 +1284,13 @@ end module prc_gosam
 <<prc gosam: prc gosam: TBP>>=
   procedure :: write_makefile => prc_gosam_write_makefile
 <<prc gosam: procedures>>=
-  subroutine prc_gosam_write_makefile (object, unit)
+  subroutine prc_gosam_write_makefile (object, unit, libname)
     class(prc_gosam_t), intent(in) :: object
     integer, intent(in) :: unit
+    type(string_t), intent(in) :: libname
     select type (driver => object%driver)
     type is (gosam_driver_t)
-       call driver%write_makefile (unit)
+       call driver%write_makefile (unit, libname)
     end select
   end subroutine prc_gosam_write_makefile
 
@@ -1270,11 +1299,14 @@ end module prc_gosam
 <<prc gosam: prc gosam: TBP>>=
   procedure :: execute_makefile => prc_gosam_execute_makefile
 <<prc gosam: procedures>>=
-  subroutine prc_gosam_execute_makefile (object)
+  subroutine prc_gosam_execute_makefile (object, libname)
     class(prc_gosam_t), intent(in) :: object
+    type(string_t), intent(in) :: libname
     select type (driver => object%driver)
     type is (gosam_driver_t)
-       call os_system_call (var_str ("make -f Gosam_Makefile"))
+       call os_system_call ("make " // &
+            driver%loop_archive%os_data%makeflags // " -f " // &
+            char (libname // "_gosam.makefile"))
     end select
   end subroutine prc_gosam_execute_makefile
 
@@ -1283,21 +1315,23 @@ end module prc_gosam
 <<prc gosam: prc gosam: TBP>>=
   procedure :: create_olp_library => prc_gosam_create_olp_library
 <<prc gosam: procedures>>=
-  subroutine prc_gosam_create_olp_library (object, lib_exists)
+  subroutine prc_gosam_create_olp_library (object, libname, lib_exists)
     class(prc_gosam_t), intent(inout) :: object
+    type(string_t), intent(in) :: libname
     logical, intent(in) :: lib_exists
     integer :: unit
-
     select type (driver => object%driver)
     type is (gosam_driver_t)
        if (lib_exists) then
-          call driver%loop_archive%restore (driver%olp_file, driver%olp_dir)
+          call driver%loop_archive%restore (driver%olp_file, driver%olc_file, &
+                                            driver%olp_dir)
        else
           unit = free_unit ()
-          open (unit, file = "Gosam_Makefile", status = "replace", action= "write")
-          call object%write_makefile (unit)
+          open (unit, file = char (libname // "_gosam.makefile"), &
+               status = "replace", action= "write")
+          call object%write_makefile (unit, libname)
           close (unit)
-          call object%execute_makefile ()
+          call object%execute_makefile (libname)
        end if
     end select
   end subroutine prc_gosam_create_olp_library
@@ -1371,7 +1405,8 @@ end module prc_gosam
        call driver%is_allowed (f, h, c, cflag)
        flag = cflag
     class default
-       call msg_fatal ("Gosam instance created, but driver is not a GoSam driver!")
+       call msg_fatal &
+            ("Gosam instance created, but driver is not a GoSam driver!")
     end select
   end function prc_gosam_is_allowed
 
@@ -1380,9 +1415,9 @@ end module prc_gosam
 <<prc gosam: prc gosam: TBP>>=
   procedure :: update_alpha_s => prc_gosam_update_alpha_s
 <<prc gosam: procedures>>=
-  subroutine prc_gosam_update_alpha_s (object, tmp, fac_scale) 
+  subroutine prc_gosam_update_alpha_s (object, core_state, fac_scale) 
     class(prc_gosam_t), intent(in) :: object
-    class(workspace_t), intent(inout), allocatable :: tmp
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
     real(default), intent(in) :: fac_scale
     real(default) :: alpha_qcd
     if (allocated (object%qcd%alpha)) then
@@ -1391,10 +1426,10 @@ end module prc_gosam
        type is (gosam_driver_t)
           call driver%update_alpha_s (alpha_qcd)
        end select 
-       if (allocated (tmp)) then
-          select type (tmp)
+       if (allocated (core_state)) then
+          select type (core_state)
           type is (gosam_state_t)
-             tmp%alpha_qcd = alpha_qcd
+             core_state%alpha_qcd = alpha_qcd
           end select
        end if
     end if
@@ -1406,16 +1441,16 @@ end module prc_gosam
   procedure :: compute_hard_kinematics => prc_gosam_compute_hard_kinematics
 <<prc gosam: procedures>>=
   subroutine prc_gosam_compute_hard_kinematics &
-       (object, p_seed, i_term, int_hard, tmp)
+       (object, p_seed, i_term, int_hard, core_state)
     class(prc_gosam_t), intent(in) :: object
     type(vector4_t), dimension(:), intent(in) :: p_seed
     integer, intent(in) :: i_term
     type(interaction_t), intent(inout) :: int_hard
-    class(workspace_t), intent(inout), allocatable :: tmp 
+    class(prc_core_state_t), intent(inout), allocatable :: core_state 
     call interaction_set_momenta (int_hard, p_seed)
-    if (allocated (tmp)) then
-      select type (tmp)
-      type is (gosam_state_t); tmp%new_kinematics = .true.
+    if (allocated (core_state)) then
+      select type (core_state)
+      type is (gosam_state_t); core_state%new_kinematics = .true.
       end select
     end if
   end subroutine prc_gosam_compute_hard_kinematics
@@ -1426,12 +1461,12 @@ end module prc_gosam
   procedure :: compute_eff_kinematics => prc_gosam_compute_eff_kinematics
 <<prc gosam: procedures>>=
   subroutine prc_gosam_compute_eff_kinematics &
-       (object, i_term, int_hard, int_eff, tmp)
+       (object, i_term, int_hard, int_eff, core_state)
     class(prc_gosam_t), intent(in) :: object
     integer, intent(in) :: i_term
     type(interaction_t), intent(in) :: int_hard
     type(interaction_t), intent(inout) :: int_eff
-    class(workspace_t), intent(inout), allocatable :: tmp
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
   end subroutine prc_gosam_compute_eff_kinematics
 
 @
@@ -1440,19 +1475,19 @@ end module prc_gosam
   procedure :: compute_amplitude => prc_gosam_compute_amplitude
 <<prc gosam: procedures>>=
   function prc_gosam_compute_amplitude &
-       (object, j, p, f, h, c, fac_scale, ren_scale, alpha_qcd_forced, tmp) &
-       result (amp)
+       (object, j, p, f, h, c, fac_scale, ren_scale, alpha_qcd_forced, &
+       core_state)  result (amp)
     class(prc_gosam_t), intent(in) :: object
     integer, intent(in) :: j
     type(vector4_t), dimension(:), intent(in) :: p
     integer, intent(in) :: f, h, c
     real(default), intent(in) :: fac_scale, ren_scale
     real(default), intent(in), allocatable :: alpha_qcd_forced
-    class(workspace_t), intent(inout), allocatable, optional :: tmp
+    class(prc_core_state_t), intent(inout), allocatable, optional :: core_state
     complex(default) :: amp
-    select type (tmp)
+    select type (core_state)
     type is (gosam_state_t)
-      tmp%alpha_qcd = object%qcd%alpha%get (fac_scale)
+      core_state%alpha_qcd = object%qcd%alpha%get (fac_scale)
     end select
     amp = 0.0
   end function prc_gosam_compute_amplitude
@@ -1463,11 +1498,11 @@ end module prc_gosam
   procedure :: recover_kinematics => prc_gosam_recover_kinematics
 <<prc gosam: procedures>>=
   subroutine prc_gosam_recover_kinematics &
-       (object, p_seed, int_hard, int_eff, tmp)
+       (object, p_seed, int_hard, int_eff, core_state)
     class(prc_gosam_t), intent(in) :: object
     type(vector4_t), dimension(:), intent(inout) :: p_seed
     type(interaction_t), intent(inout) :: int_hard, int_eff
-    class(workspace_t), intent(inout), allocatable :: tmp
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
     integer :: n_in
     n_in = interaction_get_n_in (int_eff)
     call interaction_set_momenta (int_eff, p_seed(1:n_in), outgoing = .false.)
@@ -1534,7 +1569,8 @@ end module prc_gosam
 
     select type(driver => object%driver)
     type is (gosam_driver_t)
-      call driver%init_gosam (os_data, olp_file, olc_file, olp_dir)
+      call driver%init_gosam (os_data, olp_file, olc_file, olp_dir, &
+           var_str ("libgolem_olp"))
     end select
   end subroutine prc_gosam_init_driver
 
@@ -1792,10 +1828,10 @@ end module prc_gosam
 <<prc gosam: prc gosam: TBP>>=
   procedure :: allocate_workspace => prc_gosam_allocate_workspace
 <<prc gosam: procedures>>=
-  subroutine prc_gosam_allocate_workspace (object, tmp)
+  subroutine prc_gosam_allocate_workspace (object, core_state)
     class(prc_gosam_t), intent(in) :: object
-    class(workspace_t), intent(inout), allocatable :: tmp
-    allocate (gosam_state_t :: tmp)
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+    allocate (gosam_state_t :: core_state)
   end subroutine prc_gosam_allocate_workspace
 
 @ %def prc_gosam_allocate_workspace
@@ -1803,14 +1839,14 @@ end module prc_gosam
 <<prc gosam: prc gosam: TBP>>=
   procedure :: get_alpha_s => prc_gosam_get_alpha_s
 <<prc gosam: procedures>>=
-  function prc_gosam_get_alpha_s (object, tmp) result (alpha)
+  function prc_gosam_get_alpha_s (object, core_state) result (alpha)
     class(prc_gosam_t), intent(in) :: object
-    class(workspace_t), intent(in), allocatable :: tmp
+    class(prc_core_state_t), intent(in), allocatable :: core_state
     real(default) :: alpha
-    if (allocated (tmp)) then
-      select type (tmp)
+    if (allocated (core_state)) then
+      select type (core_state)
       type is (gosam_state_t)
-        alpha = tmp%alpha_qcd
+        alpha = core_state%alpha_qcd
       end select
     else
       alpha = 0._default 

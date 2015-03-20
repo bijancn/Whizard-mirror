@@ -31,7 +31,8 @@
 noinst_LTLIBRARIES = libsindarin.la
 
 libsindarin_la_SOURCES = \
-  object_base.f90
+  object_base.f90 \
+  object_logical.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = sindarin.nw
@@ -53,7 +54,8 @@ BUILT_SOURCES = Modules
 # Get module lists from other directories
 module_lists = \
   ../basics/Modules \
-  ../testing/Modules
+  ../testing/Modules \
+  ../utilities/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
