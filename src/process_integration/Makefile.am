@@ -74,7 +74,8 @@ module_lists = \
   ../blha/Modules \
   ../gosam/Modules \
   ../fks/Modules \
-  ../variables/Modules
+  ../variables/Modules \
+  ../parsing/Modules
 
 include_modules_bare = ${module_lists:/Modules=}
 include_modules = ${include_modules_bare:../%=-I../%}
@@ -121,7 +122,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = $(include_modules) -I../../vamp/src
+AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../fastjet
 
 ########################################################################
 ## Default Fortran compiler options

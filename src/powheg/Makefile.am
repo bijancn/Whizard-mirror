@@ -57,15 +57,21 @@ module_lists = \
   ../testing/Modules \
   ../system/Modules \
   ../combinatorics/Modules \
+  ../parsing/Modules \
   ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
+  ../expr_base/Modules \
   ../types/Modules \
   ../particles/Modules \
+  ../beams/Modules \
   ../matrix_elements/Modules \
   ../me_methods/Modules \
   ../phase_space/Modules \
   ../mci/Modules \
+  ../user/Modules \
+  ../blha/Modules \
+  ../gosam/Modules \
   ../fks/Modules \
   ../model_features/Modules \
   ../variables/Modules \
@@ -116,7 +122,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = $(include_modules)
+AM_FCFLAGS = $(include_modules) -I../fastjet -I../../vamp/src
 
 ########################################################################
 ## Default Fortran compiler options
