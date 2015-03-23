@@ -71,6 +71,7 @@ module_lists = \
   ../mci/Modules \
   ../user/Modules \
   ../blha/Modules \
+  ../openloops/Modules \
   ../gosam/Modules \
   ../fks/Modules \
   ../model_features/Modules \

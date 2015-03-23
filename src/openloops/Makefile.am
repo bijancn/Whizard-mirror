@@ -7,13 +7,7 @@
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
 #     with contributions from
-#     Fabian Bach <fabian.bach@desy.de>
-#     Bijan Chokoufe <bijan.chokoufe@desy.de>
 #     Christian Speckner <cnspeckn@googlemail.com>
-#     Marco Sekulla <marco.sekulla@desy.de>
-#     Christian Weiss <christian.weiss@desy.de>
-#     Felix Braam, Sebastian Schmidt,
-#     Hans-Werner Boschmann, Daniel Wiesler
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by 
@@ -31,35 +25,29 @@
 #
 ########################################################################
 
-## The files in this directory make up the WHIZARD core
+## The files in this directory interface the OpenLoops amplitude calculator
 
 ## We create a library which is still to be combined with auxiliary libs.
-## 
-noinst_LTLIBRARIES = libwhizard_core.la
+noinst_LTLIBRARIES = libopenloops.la
 
-libwhizard_core_la_SOURCES = \
-  event_transforms.f90 hadrons.f90 \
-  decays.f90 shower.f90 \
-  events.f90 eio_raw.f90 \
-  user_files.f90 rt_data.f90  \
-  dispatch.f90 \
-  process_configurations.f90 compilations.f90 integrations.f90 \
-  event_streams.f90 simulations.f90 \
-  expr_tests.f90 \
-  commands.f90 \
-  whizard.f90
-
-# Adds the whizard-c-interface
-EXTRA_libwhizard_core_la_SOURCES = whizard-c-interface.f90
-libwhizard_core_la_LIBADD = whizard-c-interface.lo
-
-## The main program makes up a library on its own.
-lib_LTLIBRARIES = libwhizard_main.la
-
-libwhizard_main_la_SOURCES = main.f90
+libopenloops_la_SOURCES = \
+  prc_openloops.f90 
 
 ## Omitting this would exclude it from the distribution
-dist_noinst_DATA = whizard.nw
+dist_noinst_DATA = openloops.nw
+
+# Dump module names into file Modules
+libopenloops_Modules = ${libopenloops_la_SOURCES:.f90=}
+Modules: Makefile
+	@for module in $(libopenloops_Modules); do \
+          echo $$module >> $@.new; \
+        done
+	@if diff $@ $@.new -q >/dev/null; then \
+          rm $@.new; \
+	else \
+          mv $@.new $@; echo "Modules updated"; \
+        fi
+BUILT_SOURCES = Modules
 
 ## Fortran module dependencies
 # Get module lists from other directories
@@ -68,43 +56,16 @@ module_lists = \
   ../utilities/Modules \
   ../testing/Modules \
   ../system/Modules \
-  ../combinatorics/Modules \
-  ../parsing/Modules \
-  ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
-  ../expr_base/Modules \
-  ../sindarin/Modules \
   ../types/Modules \
-  ../matrix_elements/Modules \
   ../particles/Modules \
-  ../beams/Modules \
+  ../matrix_elements/Modules \
   ../me_methods/Modules \
-  ../events/Modules \
-  ../phase_space/Modules \
-  ../mci/Modules \
-  ../user/Modules \
-  ../blha/Modules \
-  ../openloops/Modules \
-  ../gosam/Modules \
-  ../fks/Modules \
-  ../variables/Modules \
-  ../model_features/Modules \
-  ../muli/Modules \
-  ../shower/Modules \
-  ../powheg/Modules \
-  ../process_integration/Modules
-
-include_modules_bare = ${module_lists:/Modules=}
-include_modules = ${include_modules_bare:../%=-I../%}
+  ../blha/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
-
-$(module_dummy_lists):
-	$(MAKE) -C `dirname $@` Modules
-
-$(module_lists): $(module_dummy_lists)
 
 Module_dependencies.sed: $(module_lists)
 	@rm -f $@
@@ -128,7 +89,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libwhizard_core_la_SOURCES) $(libwhizard_main_la_SOURCES) $(EXTRA_libwhizard_core_la_SOURCES)
+Makefile.depend: $(libopenloops_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -140,13 +101,13 @@ Makefile.depend: $(libwhizard_core_la_SOURCES) $(libwhizard_main_la_SOURCES) $(E
 
 DISTCLEANFILES += Makefile.depend 
 
-SUFFIXES = .lo .$(FC_MODULE_EXT)
 # Fortran90 module files are generated at the same time as object files
 .lo.$(FC_MODULE_EXT):
 	@:
 #	touch $@
 
-AM_FCFLAGS = $(include_modules) -I../xdr -I../../vamp/src -I../pdf_builtin -I../../circe1/src -I../../circe2/src -I../lhapdf -I../fastjet
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../blha -I../fastjet
+
 
 ########################################################################
 ## Default Fortran compiler options
@@ -161,33 +122,33 @@ if FC_USE_OPENMP
 AM_FCFLAGS += $(FCFLAGS_OPENMP)
 endif
 
+
 ########################################################################
 ## Non-standard targets and dependencies
 
 ## (Re)create F90 sources from NOWEB source.
 if NOWEB_AVAILABLE
 
-WHIZARD_SRC = $(libwhizard_core_la_SOURCES) $(EXTRA_libwhizard_core_la_SOURCES) main.f90
-
 PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
 POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 
-whizard.stamp: $(PRELUDE) $(srcdir)/whizard.nw $(POSTLUDE)
-	@rm -f whizard.tmp
-	@touch whizard.tmp
-	for src in $(WHIZARD_SRC); do \
+openloops.stamp: $(PRELUDE) $(srcdir)/openloops.nw $(POSTLUDE)
+	@rm -f openloops.tmp
+	@touch openloops.tmp
+	for src in $(libopenloops_la_SOURCES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
-	@mv -f whizard.tmp whizard.stamp
+	@mv -f openloops.tmp openloops.stamp
 
-$(WHIZARD_SRC): whizard.stamp
+$(libopenloops_la_SOURCES): openloops.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
-	  rm -f whizard.stamp; \
-	  $(MAKE) $(AM_MAKEFLAGS) whizard.stamp; \
+	  rm -f openloops.stamp; \
+	  $(MAKE) $(AM_MAKEFLAGS) openloops.stamp; \
 	fi
 
 endif
+
 
 ########################################################################
 ## Non-standard cleanup tasks
@@ -207,7 +168,7 @@ endif
 
 ## Remove F90 module files
 clean-local: clean-noweb
-	-rm -f whizard.stamp whizard.tmp
+	-rm -f openloops.stamp openloops.tmp
 	-rm -f *.$(FC_MODULE_EXT)
 
 ## Remove backup files

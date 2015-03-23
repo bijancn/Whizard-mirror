@@ -52,7 +52,7 @@ SUBDIRS = \
   muli shower \
   user \
   blha \
-  gosam fks \
+  gosam openloops fks \
   model_features \
   process_integration \
   powheg \
@@ -88,6 +88,7 @@ libwhizard_la_LIBADD = \
   process_integration/libprocess_integration.la \
   powheg/libpowheg.la \
   fks/libfks.la \
+  openloops/libopenloops.la \
   gosam/libgosam.la \
   blha/libblha.la \
   user/libuser.la \

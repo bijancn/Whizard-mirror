@@ -8391,15 +8391,24 @@ so the latter is always available (and kept global).
     call var_list_append_log &
          (global%var_list, var_str ("?openmp_logging"), &
          .true., intrinsic=.true.)    
-    call var_list_append_log &
-        (global%var_list, var_str ("?use_gosam_loops"), &
-         .true., intrinsic = .true.)
-    call var_list_append_log &
-        (global%var_list, var_str ("?use_gosam_correlations"), &
-         .false., intrinsic = .true.)
-    call var_list_append_log &
-        (global%var_list, var_str ("?use_gosam_real_trees"), &
-         .false., intrinsic = .true.)
+!    call var_list_append_log &
+!        (global%var_list, var_str ("?use_gosam_loops"), &
+!         .true., intrinsic = .true.)
+!    call var_list_append_log &
+!        (global%var_list, var_str ("?use_gosam_correlations"), &
+!         .false., intrinsic = .true.)
+!    call var_list_append_log &
+!        (global%var_list, var_str ("?use_gosam_real_trees"), &
+!         .false., intrinsic = .true.)
+    call var_list_append_string &
+       (global%var_list, var_str ("$loop_me_method"), &
+        var_str ("gosam"), intrinsic = .true.)
+    call var_list_append_string &
+       (global%var_list, var_str ("$correlation_me_method"), &
+        var_str ("omega"), intrinsic = .true.)
+    call var_list_append_string &
+       (global%var_list, var_str ("$real_tree_me_method"), &
+        var_str ("omega"), intrinsic = .true.)
     call var_list_append_real &
         (global%var_list, var_str ("fks_dij_exp1"), &
          1._default, intrinsic = .true.)
@@ -9416,6 +9425,20 @@ suppress numerical fluctuations in (constant) test matrix elements.
   end subroutine rt_data_change_to_omega
 
 @ %def rt_data_change_to_gosam rt_data_change_to_omega
+@ Set the matrix element method
+<<RT data: rt data: TBP>>=
+  procedure :: set_me_method => rt_data_set_me_method
+<<RT data: procedures>>=
+ subroutine rt_data_set_me_method (global, me_method)
+   class(rt_data_t), intent(inout) :: global
+   type(string_t), intent(in) :: me_method
+   logical :: success
+   success = global%var_list%contains (var_str ("$method"))
+   if (success) &
+      call global%var_list%set_sval (var_str ("$method"), me_method)
+ end subroutine rt_data_set_me_method
+ 
+@ %def rt_data_set_me_method
 @
 \subsection{Test}
 This is the master for calling self-test procedures.
@@ -10275,6 +10298,7 @@ module dispatch
   use eio_weights
   use rt_data
   use prc_gosam
+  use prc_openloops
   use phs_fks
   use nlo_data
 
@@ -10436,6 +10460,17 @@ intent(out).
              call msg_fatal ("Dispatch GoSam def: No id!")
           end if
         end select
+      case ("openloops")
+         allocate (openloops_def_t :: core_def)
+         select type (core_def)
+         type is (openloops_def_t)
+            if (present (id)) then
+               call core_def%init (id, model_name, prt_in, &
+                                   prt_out, nlo_type)
+            else
+               call msg_fatal ("Dispatch OpenLoops def: No id!")
+            end if
+         end select
       case default
          call msg_fatal ("Process configuration: method '" &
               // char (method) // "' not implemented")
@@ -10482,6 +10517,12 @@ grab it from the model.
       select type (core)
       type is (prc_gosam_t)
         call core%set_parameters (qcd, use_color_factors)
+      end select
+    type is (openloops_def_t)
+      if (.not. allocated (core)) allocate (prc_openloops_t :: core)
+      select type (core)
+      type is (prc_openloops_t)
+         call core%set_parameters (qcd, use_color_factors)
       end select
     class default
        call msg_bug ("Process core: unexpected process definition type")
@@ -14720,6 +14761,7 @@ local changes to currently inactive models.
     integer :: i_born
     type(fks_template_t) :: fks_template
     type(gosam_template_t) :: gosam_template
+    type(string_t) :: me_method
     type(eval_tree_factory_t) :: expr_factory
   
     verb = .true.; if (present (verbose))  verb = verbose
@@ -14805,17 +14847,26 @@ local changes to currently inactive models.
             use_color_factors)
        select case (config%get_nlo_type ())
        case (NLO_VIRTUAL)
-         call gosam_template%set_loop (var_list%get_lval (&
-                                       var_str ('?use_gosam_loops')))
+!         call gosam_template%set_loop (var_list%get_lval (&
+!                                       var_str ('?use_gosam_loops')))
+         me_method = var_list%get_sval (var_str ("$loop_me_method"))
+         select case (char (me_method)) 
+         case ('gosam')
+            call gosam_template%set_loop (.true.)
+         end select
          call intg%process%init_component &
             (i_component, core_template, mci_template, phs_config_template, &
              gosam_template = gosam_template)
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_VIRT)
-         call gosam_template%reset ()
        case (NLO_REAL)
-         call gosam_template%set_real_trees (var_list%get_lval (&
-                                             var_str ('?use_gosam_real_trees')))
+!         call gosam_template%set_real_trees (var_list%get_lval (&
+!                                             var_str ('?use_gosam_real_trees')))
+         me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
+         select case (char (me_method))
+         case ('gosam')
+            call gosam_template%set_real_trees (.true.)
+         end select
          call dispatch_phs (phs_config_template_real, local, &
              intg%process_id, mapping_defs, phs_par, &
              var_str ('fks'))
@@ -14826,7 +14877,6 @@ local changes to currently inactive models.
              gosam_template = gosam_template)
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_REAL)
-         call gosam_template%reset ()
        case (BORN)
          call intg%process%init_component &
             (i_component, core_template, mci_template, phs_config_template)
@@ -14834,18 +14884,23 @@ local changes to currently inactive models.
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_MASTER)
        case (NLO_SUBTRACTION)
-         call gosam_template%set_subtraction (var_list%get_lval (&
-                                              var_str ('?use_gosam_correlations')))
+!         call gosam_template%set_subtraction (var_list%get_lval (&
+!                                              var_str ('?use_gosam_correlations')))
+         me_method = var_list%get_sval (var_str ("$correlation_me_method"))
+         select case (char (me_method))
+         case ('gosam')
+            call gosam_template%set_subtraction (.true.)
+         end select
          call intg%process%init_component &
              (i_component, core_template, mci_template, phs_config_template, &
               gosam_template = gosam_template)
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_SUB)
-         call gosam_template%reset ()
        case default
          call msg_fatal ("setup_process: NLO type not implemented!")
        end select
        deallocate (core_template)
+       call gosam_template%reset ()
     end do
 
     if (verb)  call intg%process%write (screen = .true.)
@@ -21950,9 +22005,13 @@ or arrays which would make the expansion ambiguous.
     type(radiation_generator_t) :: radiation_generator
     type(pdg_list_t) :: pl_in, pl_out
     logical :: method_changed = .false.
-    logical :: use_gosam_loops
-    logical :: use_gosam_correlations
-    logical :: use_gosam_real_trees
+!    logical :: use_gosam_loops
+!    logical :: use_gosam_correlations
+!    logical :: use_gosam_real_trees
+    type(string_t) :: loop_me_method
+    type(string_t) :: correlation_me_method
+    type(string_t) :: real_tree_me_method
+    type(string_t) :: current_me_method 
     integer , dimension(4) :: i_list
     logical :: combined_nlo_integration, powheg_active
     
@@ -22012,12 +22071,15 @@ or arrays which would make the expansion ambiguous.
             i_list(2) = i + n_components
             i_list(3) = i + 2*n_components
             i_list(4) = i + 3*n_components
-            use_gosam_loops = &
-                 global%var_list%get_lval (var_str ('?use_gosam_loops'))
-            use_gosam_correlations = &
-                 global%var_list%get_lval (var_str ('?use_gosam_correlations'))
-            use_gosam_real_trees = &
-                 global%var_list%get_lval (var_str ('?use_gosam_real_trees'))
+!            use_gosam_loops = &
+!                 global%var_list%get_lval (var_str ('?use_gosam_loops'))
+!            use_gosam_correlations = &
+!                 global%var_list%get_lval (var_str ('?use_gosam_correlations'))
+!            use_gosam_real_trees = &
+!                 global%var_list%get_lval (var_str ('?use_gosam_real_trees'))
+            loop_me_method = global%var_list%get_sval (var_str ("$loop_me_method"))
+            correlation_me_method = global%var_list%get_sval (var_str ("$correlation_me_method"))
+            real_tree_me_method = global%var_list%get_sval (var_str ("$real_tree_me_method"))
 
             call prc_config%setup_component (i, prt_spec_in, prt_spec_out, &
                                              cmd%local, BORN, &
@@ -22032,9 +22094,14 @@ or arrays which would make the expansion ambiguous.
                  (cmd%local%radiation_model)
             call radiation_generator%generate (prt_in_nlo, prt_out_nlo)
 
-            if (use_gosam_real_trees) then
-               if (.not. method_changed) &
-                 call global%change_to_gosam (method_changed)
+!            if (use_gosam_real_trees) then
+!               if (.not. method_changed) &
+!                 call global%change_to_gosam (method_changed)
+!            end if
+            current_me_method = var_str ('omega')
+            if (current_me_method /= real_tree_me_method) then
+               call global%set_me_method (real_tree_me_method)
+               current_me_method = real_tree_me_method
             end if
   
             call prc_config%setup_component (n_components + i, &
@@ -22043,17 +22110,25 @@ or arrays which would make the expansion ambiguous.
                             cmd%local, NLO_REAL, &
                             active_in = active_comp (2))
 
-            if (use_gosam_loops .and..not. method_changed) &
-                 call global%change_to_gosam (method_changed)
+!            if (use_gosam_loops .and..not. method_changed) &
+!                 call global%change_to_gosam (method_changed)
+            if (current_me_method /= loop_me_method) then
+               call global%set_me_method (loop_me_method)
+               current_me_method = loop_me_method
+            end if
 
             call prc_config%setup_component (n_components*2 + i, prt_spec_in, &
                             prt_spec_out, global, NLO_VIRTUAL, &
                             active_in = active_comp (3))
 
-            if (.not. use_gosam_correlations .and. method_changed) then
-               call global%change_to_omega ()
-            else if (use_gosam_correlations .and..not. method_changed) then
-               call global%change_to_gosam (method_changed)
+!            if (.not. use_gosam_correlations .and. method_changed) then
+!               call global%change_to_omega ()
+!            else if (use_gosam_correlations .and..not. method_changed) then
+!               call global%change_to_gosam (method_changed)
+!            end if
+            if (current_me_method /= correlation_me_method) then
+               call global%set_me_method (correlation_me_method)
+               current_me_method = correlation_me_method
             end if
 
             call prc_config%setup_component (n_components*3 + i, prt_spec_in, &

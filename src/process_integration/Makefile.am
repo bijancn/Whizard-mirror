@@ -73,6 +73,7 @@ module_lists = \
   ../mci/Modules \
   ../blha/Modules \
   ../gosam/Modules \
+  ../openloops/Modules \
   ../fks/Modules \
   ../variables/Modules \
   ../parsing/Modules

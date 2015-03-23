@@ -773,6 +773,11 @@ AC_CONFIG_FILES([src/blha/Makefile])
 AC_CONFIG_FILES([src/gosam/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/openloops: OpenLoops support (NLO amplitudes)
+
+AC_CONFIG_FILES([src/openloops/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory src/fks: FKS subtraction algorithm
 
 AC_CONFIG_FILES([src/fks/Makefile])
