@@ -125,6 +125,10 @@ DISTCLEANFILES += Makefile.depend
 
 AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../fastjet
 
+if !OPENLOOPS_AVAILABLE
+AM_FCFLAGS += -I../openloops_dummy
+endif
+
 ########################################################################
 ## Default Fortran compiler options
 

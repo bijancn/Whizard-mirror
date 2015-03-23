@@ -52,6 +52,7 @@ SUBDIRS = \
   muli shower \
   user \
   blha \
+  openloops_dummy \
   gosam openloops fks \
   model_features \
   process_integration \
@@ -166,6 +167,11 @@ libwhizard_la_LIBADD += $(FASTJET_LIBS) fastjet/libFastjetWrap.la
 else
 libwhizard_la_LIBADD += fastjet/libFastjetWrap_dummy.la
 endif 
+
+if !OPENLOOPS_AVAILABLE
+libwhizard_la_LIBADD += openloops_dummy/libopenloops_dummy.la
+endif
+
 
 ## -------------------------------------------------------------------
 ## Build a standalone program

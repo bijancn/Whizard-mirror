@@ -148,6 +148,10 @@ SUFFIXES = .lo .$(FC_MODULE_EXT)
 
 AM_FCFLAGS = $(include_modules) -I../xdr -I../../vamp/src -I../pdf_builtin -I../../circe1/src -I../../circe2/src -I../lhapdf -I../fastjet
 
+if !OPENLOOPS_AVAILABLE
+AM_FCFLAGS += -I../openloops_dummy
+endif
+
 ########################################################################
 ## Default Fortran compiler options
 

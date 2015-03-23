@@ -476,6 +476,13 @@ WO_CONFIGURE_SECTION([GOSAM])
 WO_PROG_GOSAM()
 
 ###---------------------------------------------------------------------
+### OpenLoops
+
+WO_CONFIGURE_SECTION([OPENLOOPS])
+
+WO_PROG_OPENLOOPS()
+
+###---------------------------------------------------------------------
 ### Extra flags for helping the linker finding libraries
 
 WO_CONFIGURE_SECTION([Handle linking with C++ libraries])
@@ -778,6 +785,12 @@ AC_CONFIG_FILES([src/gosam/Makefile])
 AC_CONFIG_FILES([src/openloops/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/openloops_dummy: dummy library as OpenLoops replacement
+
+AC_CONFIG_FILES([src/openloops_dummy/Makefile])
+
+###---------------------------------------------------------------------
+
 ### Subdirectory src/fks: FKS subtraction algorithm
 
 AC_CONFIG_FILES([src/fks/Makefile])

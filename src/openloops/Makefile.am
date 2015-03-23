@@ -108,6 +108,9 @@ DISTCLEANFILES += Makefile.depend
 
 AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../blha -I../fastjet
 
+if !OPENLOOPS_AVAILABLE
+AM_FCFLAGS += -I../openloops_dummy
+endif
 
 ########################################################################
 ## Default Fortran compiler options
