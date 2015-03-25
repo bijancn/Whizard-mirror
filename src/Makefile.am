@@ -52,7 +52,6 @@ SUBDIRS = \
   muli shower \
   user \
   blha \
-  openloops_dummy \
   gosam openloops fks \
   model_features \
   process_integration \
