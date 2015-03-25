@@ -785,12 +785,6 @@ AC_CONFIG_FILES([src/gosam/Makefile])
 AC_CONFIG_FILES([src/openloops/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/openloops_dummy: dummy library as OpenLoops replacement
-
-AC_CONFIG_FILES([src/openloops_dummy/Makefile])
-
-###---------------------------------------------------------------------
-
 ### Subdirectory src/fks: FKS subtraction algorithm
 
 AC_CONFIG_FILES([src/fks/Makefile])
