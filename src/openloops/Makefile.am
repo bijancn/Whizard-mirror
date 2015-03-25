@@ -31,7 +31,7 @@
 noinst_LTLIBRARIES = libopenloops.la
 
 libopenloops_la_SOURCES = \
-  prc_openloops.f90 
+  prc_openloops.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = openloops.nw
@@ -107,10 +107,6 @@ DISTCLEANFILES += Makefile.depend
 #	touch $@
 
 AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../blha -I../fastjet
-
-if !OPENLOOPS_AVAILABLE
-AM_FCFLAGS += -I../openloops_dummy
-endif
 
 ########################################################################
 ## Default Fortran compiler options

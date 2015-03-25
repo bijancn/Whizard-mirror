@@ -168,11 +168,6 @@ else
 libwhizard_la_LIBADD += fastjet/libFastjetWrap_dummy.la
 endif 
 
-if !OPENLOOPS_AVAILABLE
-libwhizard_la_LIBADD += openloops_dummy/libopenloops_dummy.la
-endif
-
-
 ## -------------------------------------------------------------------
 ## Build a standalone program
 bin_PROGRAMS = whizard 

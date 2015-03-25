@@ -159,7 +159,8 @@ Parameters to enumerate the different options in the order.
   integer, public, parameter :: &
        BLHA_MPS_ONSHELL=1, BLHA_MPS_OTHER=2
   integer, public, parameter :: &
-       BLHA_MODE_GOSAM=1, BLHA_MODE_FEYNARTS = 2, BLHA_MODE_GENERIC=3
+       BLHA_MODE_GOSAM=1, BLHA_MODE_FEYNARTS = 2, BLHA_MODE_GENERIC=3, &
+       BLHA_MODE_OPENLOOPS=4
   integer, public, parameter :: &
        BLHA_OM_NONE=1, BLHA_OM_NOCPL=2, BLHA_OM_OTHER=3
    integer, public, parameter :: &
@@ -243,6 +244,7 @@ This types control the creation of BLHA-interface files
   end type blha_flv_state_t
 
   type :: blha_master_t
+    integer, dimension(3) :: blha_mode
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     integer :: n_in, n_out
     logical :: compute_loops = .true.
@@ -305,7 +307,7 @@ This types control the creation of BLHA-interface files
           master%suffix(i_file) = "_LOOP"
           call blha_init_virtual (master%blha_cfg(i_file), blha_flavor, &
                                   alpha_power, alphas_power, &
-                                  basename, model)
+                                  basename, model, master%blha_mode(1))
           i_file = i_file+1
         else
           call msg_fatal ("GoSam Loops requested but " &
@@ -323,7 +325,7 @@ This types control the creation of BLHA-interface files
           master%suffix(i_file) = "_SUB"
           call blha_init_subtraction (master%blha_cfg(i_file), blha_flavor, &
                                   alpha_power, alphas_power, &
-                                  basename, model)
+                                  basename, model, master%blha_mode(2))
           i_file = i_file+1
        else
           call msg_fatal ("GoSam Correlations requested but "&
@@ -341,7 +343,7 @@ This types control the creation of BLHA-interface files
           master%suffix(i_file) = "_REAL"
           call blha_init_real (master%blha_cfg(i_file), blha_flavor, &
                                   alpha_power, alphas_power, &
-                                  basename, model)
+                                  basename, model, master%blha_mode(3))
        else
           call msg_fatal ("GoSam Trees requested but "&
                            // "Real flavor not existing")
@@ -351,13 +353,36 @@ This types control the creation of BLHA-interface files
 
 @ %def blha_master_init
 @
+<<BLHA config: blha master: TBP>>=
+  procedure :: set_gosam => blha_master_set_gosam
 <<BLHA config: procedures>>=
-  subroutine blha_init_virtual (blha_cfg, blha_flavor, ap, asp, basename, model)
+  subroutine blha_master_set_gosam (master, i)
+    class(blha_master_t), intent(inout) :: master
+    integer, intent(in) :: i
+    master%blha_mode(i) = BLHA_MODE_GOSAM
+  end subroutine blha_master_set_gosam
+
+@ %def blha_master_set_gosam
+@
+<<BLHA config: blha master: TBP>>=
+  procedure :: set_openloops => blha_master_set_openloops
+<<BLHA config: procedures>>=
+  subroutine blha_master_set_openloops (master, i)
+    class(blha_master_t), intent(inout) :: master
+    integer, intent(in) :: i
+    master%blha_mode(i) = BLHA_MODE_OPENLOOPS
+  end subroutine blha_master_set_openloops
+
+@ %def blha_master_set_openloops
+@
+<<BLHA config: procedures>>=
+  subroutine blha_init_virtual (blha_cfg, blha_flavor, ap, asp, basename, model, blha_mode)
     type(blha_configuration_t), intent(inout) :: blha_cfg
     type(blha_flv_state_t), intent(in), dimension(:) :: blha_flavor
     integer, intent(in) :: ap, asp
     type(string_t), intent(in) :: basename
     type(model_data_t), intent(in), target :: model
+    integer, intent(in) :: blha_mode
     integer, dimension(:), allocatable :: amp_type
     integer :: i
 
@@ -367,7 +392,7 @@ This types control the creation of BLHA-interface files
        amp_type(2*i) = BLHA_AMP_CC
     end do
     call blha_configuration_init (blha_cfg, basename // "_VIRT" , &
-                                  model, BLHA_MODE_GOSAM)
+                                  model, blha_mode)
     call blha_configuration_append_processes (blha_cfg, &
                                   blha_flavor, amp_type)
     call blha_configuration_set (blha_cfg, 2, &
@@ -375,16 +400,17 @@ This types control the creation of BLHA-interface files
                                  irreg = BLHA_IRREG_CDR, &
                                  alphas_power = asp, &
                                  alpha_power = ap, &
-                                 ew_scheme = BLHA_EW_GF, &
-                                 debug = .true.)
+                                 ew_scheme = BLHA_EW_0, &
+                                 debug = blha_mode == BLHA_MODE_GOSAM)
   end subroutine blha_init_virtual
 
-  subroutine blha_init_subtraction (blha_cfg, blha_flavor, ap, asp, basename, model)
+  subroutine blha_init_subtraction (blha_cfg, blha_flavor, ap, asp, basename, model, blha_mode)
     type(blha_configuration_t), intent(inout) :: blha_cfg
     type(blha_flv_state_t), intent(in), dimension(:) :: blha_flavor
     integer, intent(in) :: ap, asp
     type(string_t), intent(in) :: basename
     type(model_data_t), intent(in), target :: model
+    integer, intent(in) :: blha_mode
     integer, dimension(:), allocatable :: amp_type
     integer :: i
 
@@ -395,7 +421,7 @@ This types control the creation of BLHA-interface files
        amp_type(3*i) = BLHA_AMP_SC
     end do
     call blha_configuration_init (blha_cfg, basename // "_SUB" , &
-                                  model, BLHA_MODE_GOSAM)
+                                  model, blha_mode)
     call blha_configuration_append_processes (blha_cfg, &
                                   blha_flavor, amp_type)
     call blha_configuration_set (blha_cfg, 2, &
@@ -403,16 +429,18 @@ This types control the creation of BLHA-interface files
                                  irreg = BLHA_IRREG_CDR, &
                                  alphas_power = asp, &
                                  alpha_power = ap, &
-                                 ew_scheme = BLHA_EW_GF, &
-                                 debug = .true.)
+                                 ew_scheme = BLHA_EW_0, &
+!                                 debug = .true.)
+                                 debug = blha_mode == BLHA_MODE_GOSAM)
   end subroutine blha_init_subtraction
 
-  subroutine blha_init_real (blha_cfg, blha_flavor, ap, asp, basename, model)
+  subroutine blha_init_real (blha_cfg, blha_flavor, ap, asp, basename, model, blha_mode)
     type(blha_configuration_t), intent(inout) :: blha_cfg
     type(blha_flv_state_t), intent(in), dimension(:) :: blha_flavor
     integer, intent(in) :: ap, asp
     type(string_t), intent(in) :: basename
     type(model_data_t), intent(in), target :: model
+    integer, intent(in) :: blha_mode
     integer, dimension(:), allocatable :: amp_type
     integer :: i
 
@@ -421,7 +449,7 @@ This types control the creation of BLHA-interface files
        amp_type(i) = BLHA_AMP_TREE
     end do
     call blha_configuration_init (blha_cfg, basename // "_REAL" , &
-                                  model, BLHA_MODE_GOSAM)
+                                  model, blha_mode)
     call blha_configuration_append_processes (blha_cfg, &
                                   blha_flavor, amp_type)
     call blha_configuration_set (blha_cfg, 2, &
@@ -429,8 +457,9 @@ This types control the creation of BLHA-interface files
                                  irreg = BLHA_IRREG_CDR, &
                                  alphas_power = asp+1, &
                                  alpha_power = ap, &
-                                 ew_scheme = BLHA_EW_GF, &
-                                 debug = .true.)
+                                 ew_scheme = BLHA_EW_0, &
+!                                 debug = .true.)
+                                 debug = blha_mode == BLHA_MODE_GOSAM)
   end subroutine blha_init_real
 
 @ %def blha_master_init_virtual, blha_master_init_real, blha_master_init_subtraction
@@ -943,6 +972,7 @@ Write the BLHA file. Internal mode is intented for md5summing only.
     end if
     select case (cfg%mode)
        case (BLHA_MODE_GOSAM); buf = "GoSam"
+       case (BLHA_MODE_OPENLOOPS); buf = "OpenLoops"
        case default; buf = "vanilla"
     end select
     write (u,'(A)') "# BLHA interface mode: " // char (buf)
@@ -988,7 +1018,8 @@ Write the BLHA file. Internal mode is intented for md5summing only.
        case (BLHA_MPS_ONSHELL); buf = "OnShell"
        case default; buf = cfg%massive_particle_scheme_other
     end select
-    write (u,'(A25,A)') "MassiveParticleScheme" // pad, char (buf)
+    if (cfg%mode == BLHA_MODE_GOSAM) &
+       write (u,'(A25,A)') "MassiveParticleScheme" // pad, char (buf)
 !    select case (cfg%subtraction_mode)
 !       case (BLHA_SUBMODE_NONE); buf = "None"
 !       case default; buf = cfg%subtraction_mode_other
@@ -1000,10 +1031,18 @@ Write the BLHA file. Internal mode is intented for md5summing only.
 !    else
 !       write (u,'(A25,A)') "SubdivideSubprocess" // pad, "no"
 !    end if
-    if (cfg%alphas_power >= 0) write (u,'(A25,A)') &
-       "AlphasPower" // pad, int2char (cfg%alphas_power)
-    if (cfg%alpha_power >= 0) write (u,'(A25,A)') &
-       "AlphaPower " // pad, int2char (cfg%alpha_power)
+    select case (cfg%version)
+    case (1)
+      if (cfg%alphas_power >= 0) write (u,'(A25,A)') &
+         "AlphasPower" // pad, int2char (cfg%alphas_power)
+      if (cfg%alpha_power >= 0) write (u,'(A25,A)') &
+         "AlphaPower " // pad, int2char (cfg%alpha_power)
+    case (2) 
+      if (cfg%alphas_power >= 0) write (u,'(A25,A)') &
+         "CouplingPower QCD " // pad, int2char (cfg%alphas_power)
+      if (cfg%alpha_power >= 0) write (u, '(A25,A)') &
+         "CouplingPower QED " // pad, int2char (cfg%alpha_power)
+    end select
     select case (cfg%ew_scheme)
        case (BLHA_EW_GF); buf = "alphaGF"
        case (BLHA_EW_MZ); buf = "alphaMZ"
@@ -1027,12 +1066,14 @@ Write the BLHA file. Internal mode is intented for md5summing only.
 !      write (accuracy, '(f6.5)') cfg%accuracy_target
 !      write (u, '(A25,A)') "AccuracyTarget " // pad , accuracy 
 !    end if
-    if (cfg%debug_unstable) then
-      buf = "True"
-    else
-      buf = "False"
-    end if
-    write (u, '(A25,A)') "DebugUnstable " // pad, char (buf)
+!    if (cfg%debug_unstable) then
+!      buf = "True"
+!    else
+!      buf = "False"
+!    end if
+!   write (u, '(A25,A)') "DebugUnstable " // pad, char (buf)
+    if (cfg%debug_unstable) &
+      write (u, '(A25,A)') "DebugUnstable " // pad, "True"
     write (u, *)
     node => cfg%processes
     do while (associated (node))
