@@ -476,13 +476,13 @@ WO_CONFIGURE_SECTION([GOSAM])
 WO_PROG_GOSAM()
 
 ###---------------------------------------------------------------------
-### OpenLoops
+### LoopTools 
 
-WO_CONFIGURE_SECTION([OPENLOOPS])
+WO_CONFIGURE_SECTION([LOOPTOOLS]) 
 
-WO_PROG_OPENLOOPS()
+WO_PROG_LOOPTOOLS() 
 
-###---------------------------------------------------------------------
+###--------------------------------------------------------------------- 
 ### Extra flags for helping the linker finding libraries
 
 WO_CONFIGURE_SECTION([Handle linking with C++ libraries])
@@ -629,6 +629,11 @@ AC_CONFIG_FILES([src/hoppet/Makefile])
 ### Subdirectory src/fastjet
 
 AC_CONFIG_FILES([src/fastjet/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/looptools
+
+AC_CONFIG_FILES([src/looptools/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/shower: shower and all that
@@ -780,25 +785,9 @@ AC_CONFIG_FILES([src/blha/Makefile])
 AC_CONFIG_FILES([src/gosam/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/openloops: OpenLoops support (NLO amplitudes)
-
-AC_CONFIG_FILES([src/openloops/Makefile])
-
-###---------------------------------------------------------------------
-### Subdirectory src/openloops_dummy: dummy library as OpenLoops replacement
-
-AC_CONFIG_FILES([src/openloops_dummy/Makefile])
-
-###---------------------------------------------------------------------
-
 ### Subdirectory src/fks: FKS subtraction algorithm
 
 AC_CONFIG_FILES([src/fks/Makefile])
-
-###---------------------------------------------------------------------
-### Subdirectory src/fks: POWHEG algorithm
-
-AC_CONFIG_FILES([src/powheg/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/variables: Implementation of variable lists
@@ -819,11 +808,6 @@ AC_CONFIG_FILES([src/sindarin/Makefile])
 ### Subdirectory src/models: Model-specific code
 
 AC_CONFIG_FILES([src/models/Makefile])
-
-###---------------------------------------------------------------------
-### Subdirectory src/whizard-core
-
-AC_CONFIG_FILES([src/process_integration/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/models/SM_tt_threshold_bundle
@@ -906,6 +890,11 @@ AC_CONFIG_FILES([share/muli/Makefile])
 
 AC_CONFIG_FILES([share/interfaces/Makefile])
 AC_CONFIG_FILES([share/interfaces/py_whiz_setup.py])
+
+###---------------------------------------------------------------------
+### Subdirectory share/SM_tt_threshold_data
+
+AC_CONFIG_FILES([share/SM_tt_threshold_data/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory tests

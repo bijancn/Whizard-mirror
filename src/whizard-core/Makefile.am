@@ -38,8 +38,9 @@
 noinst_LTLIBRARIES = libwhizard_core.la
 
 libwhizard_core_la_SOURCES = \
+  subevt_expr.f90 parton_states.f90 processes.f90 process_stacks.f90 \
   event_transforms.f90 hadrons.f90 \
-  decays.f90 shower.f90 \
+  decays.f90 powheg.f90 shower.f90 \
   events.f90 eio_raw.f90 \
   user_files.f90 rt_data.f90  \
   dispatch.f90 \
@@ -85,21 +86,16 @@ module_lists = \
   ../mci/Modules \
   ../user/Modules \
   ../blha/Modules \
-  ../openloops/Modules \
   ../gosam/Modules \
   ../fks/Modules \
   ../variables/Modules \
   ../model_features/Modules \
   ../muli/Modules \
-  ../shower/Modules \
-  ../powheg/Modules \
-  ../process_integration/Modules
-
-include_modules_bare = ${module_lists:/Modules=}
-include_modules = ${include_modules_bare:../%=-I../%}
+  ../shower/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
+
 
 $(module_dummy_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -146,11 +142,7 @@ SUFFIXES = .lo .$(FC_MODULE_EXT)
 	@:
 #	touch $@
 
-AM_FCFLAGS = $(include_modules) -I../xdr -I../../vamp/src -I../pdf_builtin -I../../circe1/src -I../../circe2/src -I../lhapdf -I../fastjet
-
-if !OPENLOOPS_AVAILABLE
-AM_FCFLAGS += -I../openloops_dummy
-endif
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../expr_base -I../sindarin -I../matrix_elements -I../types -I../particles -I../beams -I../me_methods -I../xdr -I../events -I../phase_space -I../mci -I../user -I../blha -I../gosam -I../fks -I../variables -I../model_features -I../../vamp/src -I../muli -I../shower -I../pdf_builtin -I../muli -I../../circe1/src -I../../circe2/src -I../lhapdf -I../fastjet
 
 ########################################################################
 ## Default Fortran compiler options

@@ -52,11 +52,8 @@ SUBDIRS = \
   muli shower \
   user \
   blha \
-  openloops_dummy \
-  gosam openloops fks \
+  gosam fks looptools \
   model_features \
-  process_integration \
-  powheg \
   whizard-core \
   prebuilt models
 if MPOST_AVAILABLE
@@ -86,10 +83,7 @@ libwhizard_la_LIBADD = \
   pdf_builtin/libpdf_builtin.la \
   model_features/libmodel_features.la \
   variables/libvariables.la \
-  process_integration/libprocess_integration.la \
-  powheg/libpowheg.la \
   fks/libfks.la \
-  openloops/libopenloops.la \
   gosam/libgosam.la \
   blha/libblha.la \
   user/libuser.la \
@@ -168,10 +162,11 @@ else
 libwhizard_la_LIBADD += fastjet/libFastjetWrap_dummy.la
 endif 
 
-if !OPENLOOPS_AVAILABLE
-libwhizard_la_LIBADD += openloops_dummy/libopenloops_dummy.la
-endif
-
+if LOOPTOOLS_AVAILABLE 
+libwhizard_la_LIBADD += $(LDFLAGS_LOOPTOOLS) looptools/liblooptools.la 
+else 
+libwhizard_la_LIBADD += looptools/liblooptools_dummy.la 
+endif 
 
 ## -------------------------------------------------------------------
 ## Build a standalone program
@@ -192,6 +187,7 @@ whizard_LDADD += $(LDFLAGS_HEPMC)
 whizard_LDADD += $(LDFLAGS_LCIO)
 whizard_LDADD += $(LDFLAGS_HOPPET)
 whizard_LDADD += $(FASTJET_LIBS)
+whizard_LDADD += $(LDFLAGS_LOOPTOOLS)
 
 AM_FCFLAGS =
 

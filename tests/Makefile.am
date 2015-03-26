@@ -268,6 +268,7 @@ TESTS_REQ_OCAML = \
     multi_comp_3.run \
     multi_comp_4.run \
     flvsum_1.run \
+    decay_err_1.run \
     pdf_builtin.run \
     ep_1.run \
     ep_2.run \
@@ -544,7 +545,7 @@ user_strfun.f90: $(top_builddir)/share/tests/user_strfun.f90
 
 model_test.run: tdefs.$(FC_MODULE_EXT) tglue.$(FC_MODULE_EXT) \
 	threeshl.$(FC_MODULE_EXT) tscript.$(FC_MODULE_EXT) \
-	ttv_formfactors.$(FC_MODULE_EXT) nr_hypgeometric.$(FC_MODULE_EXT) \
+	ttv_formfactors.$(FC_MODULE_EXT) nr_tools.$(FC_MODULE_EXT) \
 	nr.$(FC_MODULE_EXT) nrtype.$(FC_MODULE_EXT) interpolation.$(FC_MODULE_EXT)
 tdefs.mod: $(top_builddir)/src/models/threeshl_bundle/tdefs.$(FC_MODULE_EXT)
 	cp $< $@
@@ -556,7 +557,7 @@ threeshl.mod: $(top_builddir)/src/models/threeshl_bundle/threeshl.$(FC_MODULE_EX
 	cp $< $@
 ttv_formfactors.mod: $(top_builddir)/src/models/SM_tt_threshold_bundle/ttv_formfactors.$(FC_MODULE_EXT)
 	cp $< $@
-nr_hypgeometric.mod: $(top_builddir)/src/models/SM_tt_threshold_bundle/nr_hypgeometric.$(FC_MODULE_EXT)
+nr_tools.mod: $(top_builddir)/src/models/SM_tt_threshold_bundle/nr_tools.$(FC_MODULE_EXT)
 	cp $< $@ 
 nr.mod: $(top_builddir)/src/models/SM_tt_threshold_bundle/nr.$(FC_MODULE_EXT)
 	cp $< $@ 
