@@ -790,6 +790,11 @@ AC_CONFIG_FILES([src/gosam/Makefile])
 AC_CONFIG_FILES([src/fks/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/fks: POWHEG algorithm
+
+AC_CONFIG_FILES([src/powheg/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory src/variables: Implementation of variable lists
 
 AC_CONFIG_FILES([src/variables/Makefile])
@@ -818,6 +823,11 @@ AC_CONFIG_FILES([src/models/SM_tt_threshold_bundle/Makefile])
 ### Subdirectory src/models/threeshl_bundle
 
 AC_CONFIG_FILES([src/models/threeshl_bundle/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/process_integration
+
+AC_CONFIG_FILES([src/process_integration/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/whizard-core

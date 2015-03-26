@@ -73,7 +73,6 @@ module_lists = \
   ../mci/Modules \
   ../blha/Modules \
   ../gosam/Modules \
-  ../openloops/Modules \
   ../fks/Modules \
   ../variables/Modules \
   ../parsing/Modules
@@ -124,10 +123,6 @@ DISTCLEANFILES += Makefile.depend
 #	touch $@
 
 AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../fastjet
-
-if !OPENLOOPS_AVAILABLE
-AM_FCFLAGS += -I../openloops_dummy
-endif
 
 ########################################################################
 ## Default Fortran compiler options
