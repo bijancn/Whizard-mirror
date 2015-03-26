@@ -85,8 +85,8 @@ module_lists = \
   ../mci/Modules \
   ../user/Modules \
   ../blha/Modules \
-  ../openloops/Modules \
   ../gosam/Modules \
+  ../openloops/Modules \
   ../fks/Modules \
   ../variables/Modules \
   ../model_features/Modules \

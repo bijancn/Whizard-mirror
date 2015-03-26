@@ -1,3 +1,6 @@
+% -*- ess-noweb-default-code-mode: f90-mode; noweb-default-code-mode: f90-mode; -*- 
+% WHIZARD code as NOWEB source: integration and process objects and such
+
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Integration and Process Objects}
@@ -487,8 +490,8 @@ particles.
     type(subevt_t), intent(out) :: subevt
     type(flavor_t), dimension(:), allocatable :: flv
     integer :: n_beam, n_in, n_out, i, j
-    allocate (flv (interaction_get_n_tot (int)))
-    flv = quantum_numbers_get_flavor (interaction_get_quantum_numbers (int, 1))
+    allocate (flv (int%get_n_tot ()))
+    flv = quantum_numbers_get_flavor (int%get_quantum_numbers (1))
     n_beam = size (j_beam)
     n_in = size (j_in)
     n_out = size (j_out)
@@ -520,12 +523,9 @@ particles.
     type(interaction_t), intent(in) :: int
     integer, dimension(:), intent(in) :: j_beam, j_in, j_out
     type(subevt_t), intent(inout) :: subevt
-    call subevt_set_p_beam &
-         (subevt, - interaction_get_momenta (int, j_beam))
-    call subevt_set_p_incoming &
-         (subevt, - interaction_get_momenta (int, j_in))
-    call subevt_set_p_outgoing &
-         (subevt, interaction_get_momenta (int, j_out))
+    call subevt_set_p_beam (subevt, - int%get_momenta (j_beam))
+    call subevt_set_p_incoming (subevt, - int%get_momenta (j_in))
+    call subevt_set_p_outgoing (subevt, int%get_momenta (j_out))
   end subroutine interaction_momenta_to_subevt_id
 
   subroutine interaction_momenta_to_subevt_tr &
@@ -535,11 +535,11 @@ particles.
     type(subevt_t), intent(inout) :: subevt
     type(lorentz_transformation_t), intent(in) :: lt
     call subevt_set_p_beam &
-         (subevt, - lt * interaction_get_momenta (int, j_beam))
+         (subevt, - lt * int%get_momenta (j_beam))
     call subevt_set_p_incoming &
-         (subevt, - lt * interaction_get_momenta (int, j_in))
+         (subevt, - lt * int%get_momenta (j_in))
     call subevt_set_p_outgoing &
-         (subevt, lt * interaction_get_momenta (int, j_out))
+         (subevt, lt * int%get_momenta (j_out))
   end subroutine interaction_momenta_to_subevt_tr
 
 @ %def interaction_momenta_to_subevt
@@ -1156,7 +1156,7 @@ list.  Variables used within the expressions are looked up in [[var_list]].
           write (u, "(1x,A)") &
                "Effective interaction:"
           call write_separator (u)
-          call interaction_write (state%int_eff, u, testflag = testflag)
+          call state%int_eff%basic_write (u, testflag = testflag)
        end if
     class is (connected_state_t)
        if (state%has_flows_sf) then
@@ -1226,7 +1226,7 @@ list.  Variables used within the expressions are looked up in [[var_list]].
        call state%expr%final ()
     class is (isolated_state_t)
        if (state%int_is_allocated) then
-          call interaction_final (state%int_eff)
+          call state%int_eff%final ()
           deallocate (state%int_eff)
           state%int_is_allocated = .false.
        end if
@@ -1566,8 +1566,8 @@ structure-function chain.
     n_beam = size (f_beam)
     n_in = size (f_in)
     n_out = size (f_out)
-    n_vir = interaction_get_n_vir (int)
-    n_tot = interaction_get_n_tot (int)
+    n_vir = int%get_n_vir ()
+    n_tot = int%get_n_tot ()
     allocate (i_beam (n_beam), i_in (n_in), i_out (n_out))
     i_beam = [(i, i = 1, n_beam)]
     do j = 1, n_in
@@ -1853,7 +1853,7 @@ the trace (and thus, matrix and flows) evaluator, respectively.
     integer :: n
     type(interaction_t), pointer :: int
     int => evaluator_get_int_ptr (state%trace)
-    n = interaction_get_n_out (int)
+    n = int%get_n_out ()
   end function parton_state_get_n_out
   
 @ %def parton_state_get_n_out
@@ -5184,12 +5184,12 @@ interaction object.
     call write_separator (u)
     write (u, "(1x,A)")  "Hard interaction:"
     call write_separator (u)
-    call interaction_write (term%int, u)
+    call term%int%basic_write (u)
     if (term%rearrange) then
        call write_separator (u)
        write (u, "(1x,A)")  "Rearranged hard interaction:"
        call write_separator (u)
-       call interaction_write (term%int_eff, u)
+       call term%int_eff%basic_write (u)
     end if
   end subroutine process_term_write
      
@@ -5207,7 +5207,7 @@ interaction object.
     character :: sgn
     u = given_output_unit (unit)
     write (u, "(1x,A,I0)")  "Term #", term%i_term_global
-    call it%init (interaction_get_state_matrix_ptr (term%int))
+    call it%init (term%int%get_state_matrix_ptr ())
     do while (it%is_valid ())
        i = it%get_me_index ()
        f = term%flv(i)
@@ -5233,9 +5233,9 @@ finalizer that we must call.
 <<Processes: procedures>>=
   subroutine process_term_final (term)
     class(process_term_t), intent(inout) :: term
-    call interaction_final (term%int)
+    call term%int%final ()
     if (term%rearrange) then
-       call interaction_final (term%int_eff)
+       call term%int_eff%final ()
        deallocate (term%int_eff)
     end if
   end subroutine process_term_final
@@ -5324,8 +5324,8 @@ matrix element.
       term%n_allowed = n
       allocate (flv (n_tot), col (n_tot), hel (n_tot))
       allocate (qn (n_tot))
-      call interaction_init &
-           (term%int, data%n_in, 0, data%n_out, set_relations=.true.)
+      call term%int%basic_init &
+           (data%n_in, 0, data%n_out, set_relations=.true.)
       i = 0
       do f = 1, data%n_flv
          do h = 1, data%n_hel
@@ -5342,12 +5342,12 @@ matrix element.
                   call col(:data%n_in)%invert ()
                   call hel%init (data%hel_state(:,h))
                   call qn%init (flv, col, hel)
-                  call interaction_add_state (term%int, qn)
+                  call term%int%add_state (qn)
                end if
             end do
          end do
       end do
-      call interaction_freeze (term%int)
+      call term%int%freeze ()
     end associate
   end subroutine process_term_setup_interaction
   
@@ -6186,7 +6186,7 @@ chain, however.)
     integer :: i
     int => k%sf_chain%get_out_int_ptr ()
     do i = 1, k%n_in
-       p(i) = interaction_get_momentum (int, k%sf_chain%get_out_i (i))
+       p(i) = int%get_momentum (k%sf_chain%get_out_i (i))
     end do
   end subroutine kinematics_get_incoming_momenta
   
@@ -6471,14 +6471,14 @@ postpone until we know the factorization scale), and we have a valid
     logical, intent(out) :: success
     select type (phs => component%k_seed%phs)
     type is (phs_fks_t)
-      call component%k_seed%compute_selected_channel &
-           (mci_work, phs_channel, component%p_seed, success, &
+       call component%k_seed%compute_selected_channel &
+            (mci_work, phs_channel, component%p_seed, success, &
             component%nlo_controller)
-      call interaction_set_momenta (component%nlo_controller%int_born, &
-                                    component%p_seed)
+       call component%nlo_controller%int_born%set_momenta &
+            (component%p_seed)
     class default
-      call component%k_seed%compute_selected_channel &
-         (mci_work, phs_channel, component%p_seed, success)
+       call component%k_seed%compute_selected_channel &
+            (mci_work, phs_channel, component%p_seed, success)
     end select
   end subroutine component_instance_compute_seed_kinematics
     
@@ -6612,7 +6612,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
     type(interaction_t), pointer :: int
     real(default) :: sqme
     int => evaluator_get_int_ptr (term%connected%trace)
-    sqme = interaction_get_matrix_element (int, 1)
+    sqme = int%get_matrix_element (1)
     component%sqme = sqme * term%weight
   end subroutine component_instance_evaluate_sqme_born    
 
@@ -6694,18 +6694,18 @@ imaginary part of the terms, which should be zero anyway.
         call nlo_controller%set_alpha_s_born &
                   (component%config%core%get_alpha_s (component%core_state))
         call nlo_controller%virtual_terms%set_ren_scale &
-                   (interaction_get_momenta (term%int_hard), term%ren_scale) 
+                   (term%int_hard%get_momenta (), term%ren_scale) 
         select type (core => component%config%core)
         type is (prc_gosam_t)
            do i_flv = 1, core%get_nflv()
               call core%compute_sqme_virt (i_flv, &
-                         interaction_get_momenta (term%int_hard), &
+                         term%int_hard%get_momenta (), &
                          term%ren_scale, &
                          core%get_alpha_s (component%core_state), &
                          sqme_virt, bad_point)
               if (.not. nlo_controller%use_internal_color_correlations) &
                  call core%compute_sqme_cc (i_flv, &
-                           interaction_get_momenta (term%int_hard), &
+                           term%int_hard%get_momenta (), &
                            term%ren_scale, &
                            core%get_alpha_s (component%core_state), &
                            born_cc = nlo_controller%sqme_collector%sqme_born_cc (:,:,i_flv), &
@@ -6721,7 +6721,7 @@ imaginary part of the terms, which should be zero anyway.
            do i_flv = 1, core%get_nflv() 
               call core%update_alpha_s (component%core_state, term%fac_scale)
               call core%compute_sqme_virt (1, &
-                        interaction_get_momenta (term%int_hard), &
+                        term%int_hard%get_momenta (), &
                         term%ren_scale, &
                         core%get_alpha_s (component%core_state), &
                         sqme_virt, bad_point)
@@ -6733,6 +6733,7 @@ imaginary part of the terms, which should be zero anyway.
                                term%weight
            end do
         end select
+
      end associate
   end subroutine component_instance_evaluate_sqme_virt
 
@@ -6757,7 +6758,7 @@ imaginary part of the terms, which should be zero anyway.
      type is (prc_omega_t)
         int => evaluator_get_int_ptr (term%connected_real%trace)
         component%nlo_controller%sqme_collector%sqme_real_non_sub = &
-             interaction_get_matrix_element (int, 1)
+             int%get_matrix_element (1)
      type is (prc_gosam_t)
         do i_flv = 1, component%nlo_controller%get_n_flv_real ()
            call core%compute_sqme_real (i_flv, p_real, 0._default, &
@@ -6775,7 +6776,7 @@ imaginary part of the terms, which should be zero anyway.
                do i_flv = 1, nlo_controller%get_n_flv_born ()
                   if (.not. nlo_controller%use_internal_color_correlations) then
                      call core_born%compute_sqme_cc (i_flv, &
-                          interaction_get_momenta (nlo_controller%int_born), &
+                          nlo_controller%int_born%get_momenta (), &
                           0._default, core_born%get_alpha_s (component%core_state), &
                           collector%sqme_born_list (i_flv), &
                           collector%sqme_born_cc (:,:,i_flv), &
@@ -6786,7 +6787,7 @@ imaginary part of the terms, which should be zero anyway.
                   if (.not. nlo_controller%use_internal_spin_correlations  &
                        .and. nlo_controller%requires_spin_correlation (i_flv)) &
                        call core_born%compute_sqme_sc (i_flv, 5, &
-                       interaction_get_momenta (nlo_controller%int_born), &
+                       nlo_controller%int_born%get_momenta (), &
                        0._default, core_born%get_alpha_s (component%core_state), &
                        collector%sqme_born_sc(i_flv), bad_point)
                end do
@@ -6952,7 +6953,7 @@ has passed cuts, we calculate the various scale and weight expressions.
     write (u, "(1x,A)")  "Amplitude (transition matrix of the &
          &hard interaction):"
     call write_separator (u)
-    call interaction_write (term%int_hard, u, testflag = testflag)
+    call term%int_hard%basic_write (u, testflag = testflag)
     if (state .and. term%isolated%has_trace) then
        call write_separator (u)
        write (u, "(1x,A)")  "Evaluators for the hard interaction:"
@@ -6975,12 +6976,12 @@ has passed cuts, we calculate the various scale and weight expressions.
     call term%k_term%final ()
     call term%connected%final ()
     call term%isolated%final ()
-    call interaction_final (term%int_hard)
+    call term%int_hard%final ()
     select case (term%nlo_type)
     case (NLO_REAL)
       call term%connected_real%final ()
       call term%isolated_real%final ()
-      call interaction_final (term%int_hard_real)
+      call term%int_hard_real%final ()
     end select
   end subroutine term_instance_final
   
@@ -7036,9 +7037,9 @@ relevant for a NLO algorithm.
     end if
     allocate (term%amp (config%n_allowed))
     term%int_hard = config%int
-    allocate (term%p_hard (interaction_get_n_tot (term%int_hard)))
+    allocate (term%p_hard (term%int_hard%get_n_tot ()))
     sf_chain_int => term%k_term%sf_chain%get_out_int_ptr ()
-    n_in = interaction_get_n_in (term%int_hard)
+    n_in = term%int_hard%get_n_in ()
     do j = 1, n_in
        i = term%k_term%sf_chain%get_out_i (j)
        call interaction_set_source_link (term%int_hard, j, sf_chain_int, i)
@@ -7084,8 +7085,8 @@ relevant for a NLO algorithm.
     end select
     call term%connected%setup_connected_trace (term%isolated)
     associate (int_eff => term%isolated%int_eff)
-      state_matrix => interaction_get_state_matrix_ptr (int_eff)
-      n_tot = interaction_get_n_tot  (int_eff)
+      state_matrix => int_eff%get_state_matrix_ptr ()
+      n_tot = int_eff%get_n_tot  ()
       allocate (flv_int (n_tot))
       flv_int = quantum_numbers_get_flavor &
            (state_matrix%get_quantum_numbers (1))
@@ -7094,15 +7095,15 @@ relevant for a NLO algorithm.
       deallocate (flv_int)
     end associate
     trace_int => evaluator_get_int_ptr (term%connected%trace)
-    n_in = interaction_get_n_in (trace_int)
-    n_vir = interaction_get_n_vir (trace_int)
-    n_out = interaction_get_n_out (trace_int)
+    n_in = trace_int%get_n_in ()
+    n_vir = trace_int%get_n_vir ()
+    n_out = trace_int%get_n_out ()
     allocate (f_out (n_out))
     do j = 1, n_out
        call interaction_find_source (trace_int, n_in + n_vir + j, src_int, i)
        if (associated (src_int)) then
-          state_matrix => interaction_get_state_matrix_ptr (src_int)
-          allocate (flv_src (interaction_get_n_tot (src_int)))
+          state_matrix => src_int%get_state_matrix_ptr ()
+          allocate (flv_src (src_int%get_n_tot ()))
           flv_src = quantum_numbers_get_flavor &
                (state_matrix%get_quantum_numbers (1))
           f_out(j) = flv_src(i)
@@ -7196,7 +7197,7 @@ The quantum numbers mask of the incoming particle
     class(model_data_t), intent(in), target :: model
     integer :: n_in
     type(quantum_numbers_mask_t), dimension(:), allocatable :: mask_in
-    n_in = interaction_get_n_in (term%int_hard)
+    n_in = term%int_hard%get_n_in ()
     allocate (mask_in (n_in))
     mask_in = term%k_term%sf_chain%get_out_mask ()
     select case (term%nlo_type)
@@ -7371,7 +7372,7 @@ method may modify the [[core_state]] workspace object.
     integer :: i_component, i_term, i
     i_component = term%config%i_component
     i_term = term%config%i_term
-    term%p_hard = interaction_get_momenta (term%int_hard)
+    term%p_hard = term%int_hard%get_momenta ()
     select case (term%nlo_type)
     case (BORN, NLO_VIRTUAL)
        associate (core => component(i_component)%config%core)
@@ -7381,7 +7382,7 @@ method may modify the [[core_state]] workspace object.
                 term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
                 component(i_component)%core_state)
           end do
-          call interaction_set_matrix_element (term%int_hard, term%amp)
+          call term%int_hard%set_matrix_element (term%amp)
        end associate 
     case (NLO_REAL)
        call term%evaluate_interaction_real (component(i_component), i_term)
@@ -7446,7 +7447,7 @@ physical event.
      integer :: i
 
      emitter = term%nlo_controller%get_active_emitter ()
-     p_born = interaction_get_momenta (term%nlo_controller%int_born)
+     p_born = term%nlo_controller%int_born%get_momenta ()
      if (emitter > 2) then
         select type (phs => term%k_term%phs)
         type is (phs_fks_t)
@@ -7456,7 +7457,7 @@ physical event.
      else
         call msg_fatal ("FKS ISR not implemented yet!")
      end if
-     call interaction_set_momenta (term%int_hard_real, p_real)
+     call term%int_hard_real%set_momenta (p_real)
 
      call term%isolated_real%receive_kinematics ()
      call term%connected_real%receive_kinematics ()
@@ -7470,7 +7471,7 @@ physical event.
         type is (prc_omega_t)
            do i = 1, term%config%n_allowed
               term%amp(i) = core%compute_amplitude (i_term, &
-                 interaction_get_momenta (term%int_hard_real), &
+                 term%int_hard_real%get_momenta (), &
                  term%config%flv(i), term%config%hel(i), term%config%col(i), &
                  term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
                  component%core_state)
@@ -7480,22 +7481,27 @@ physical event.
         type is (prc_openloops_t)
            call core%update_alpha_s (component%core_state, term%fac_scale)
         end select
-        call interaction_set_matrix_element (term%int_hard_real, term%amp)
+        call term%int_hard_real%set_matrix_element (term%amp)
         call component%core_state%reset_new_kinematics ()
         select type (core_sub_born => component%config%core_sub_born)
         type is (prc_omega_t)
            do i = 1, term%nlo_controller%n_allowed_born
-               term%nlo_controller%amp_born(i) = core_sub_born%compute_amplitude (i_term, &
-                  interaction_get_momenta (term%nlo_controller%int_born), &
-                  term%nlo_controller%get_flv_born(i), term%nlo_controller%get_hel_born(i), &
-                  term%nlo_controller%get_col_born(i), term%fac_scale, term%ren_scale, &
-                  term%alpha_qcd_forced, &
-                  component%core_state)
+              term%nlo_controller%amp_born(i) = &
+                   core_sub_born%compute_amplitude (i_term, &
+                   term%nlo_controller%int_born%get_momenta (), &
+                   term%nlo_controller%get_flv_born(i), &
+                   term%nlo_controller%get_hel_born(i), &
+                   term%nlo_controller%get_col_born(i), &
+                   term%fac_scale, term%ren_scale, &
+                   term%alpha_qcd_forced, &
+                   component%core_state)
            end do
         type is (prc_gosam_t)
-           call core_sub_born%update_alpha_s (component%core_state, term%fac_scale)
+           call core_sub_born%update_alpha_s &
+                (component%core_state, term%fac_scale)
         end select 
-        call interaction_set_matrix_element (term%nlo_controller%int_born, term%nlo_controller%amp_born) 
+        call term%nlo_controller%int_born%set_matrix_element &
+             (term%nlo_controller%amp_born) 
      end if
   end subroutine term_instance_evaluate_interaction_real
 
@@ -7514,8 +7520,8 @@ physical event.
     integer :: i
     real(default), allocatable :: alpha_qcd_forced
 
-    call interaction_set_momenta (term%nlo_controller%int_born, p_born)
-    call interaction_set_momenta (term%int_hard_real, p_real)
+    call term%nlo_controller%int_born%set_momenta (p_born)
+    call term%int_hard_real%set_momenta (p_real)
     call term%nlo_controller%set_real_momenta (p_real)
 
     call term%isolated_real%receive_kinematics ()
@@ -7534,7 +7540,7 @@ physical event.
        end if
        do i = 1, term%config%n_allowed
           term%amp(i) = core%compute_amplitude (i_term, &
-             interaction_get_momenta (term%int_hard_real), &
+             term%int_hard_real%get_momenta (), &
              term%config%flv(i), term%config%hel(i), term%config%col(i), &
              term%fac_scale, term%ren_scale, alpha_qcd_forced, &
              component%core_state)
@@ -7542,13 +7548,13 @@ physical event.
     type is (prc_gosam_t)
        call core%update_alpha_s (component%core_state, term%fac_scale)
     end select
-    call interaction_set_matrix_element (term%int_hard_real, term%amp)
+    call term%int_hard_real%set_matrix_element (term%amp)
     call component%core_state%reset_new_kinematics ()
     select type (core_sub_born => component%config%core_sub_born)
     type is (prc_omega_t)
        do i = 1, term%nlo_controller%n_allowed_born
           term%nlo_controller%amp_born(i) = core_sub_born%compute_amplitude (i_term, &
-              interaction_get_momenta (term%nlo_controller%int_born), &
+              term%nlo_controller%int_born%get_momenta (), &
               term%nlo_controller%get_flv_born(i), term%nlo_controller%get_hel_born(i), &
               term%nlo_controller%get_col_born(i), term%fac_scale, term%ren_scale, &
               term%alpha_qcd_forced, component%core_state)
@@ -7556,8 +7562,8 @@ physical event.
     type is (prc_gosam_t)
        call core_sub_born%update_alpha_s (component%core_state, term%fac_scale)
     end select 
-    call interaction_set_matrix_element &
-        (term%nlo_controller%int_born, term%nlo_controller%amp_born) 
+    call term%nlo_controller%int_born%set_matrix_element &
+         (term%nlo_controller%amp_born) 
   end subroutine term_instance_evaluate_interaction_real_rad
 
 @ %def term_instance_evaluate_interaction_real_rad
@@ -9416,28 +9422,22 @@ and directly set the coupling value that comes together with a particle set.
 <<Processes: procedures>>=
   subroutine process_instance_create_blha_interface (instance)
     class(process_instance_t), intent(inout) :: instance
-    type(string_t) :: loop_me_method
-    type(string_t) :: correlation_me_method
-    type(string_t) :: real_tree_me_method
-    logical :: use_gosam_loops
-    logical :: use_gosam_correlations
-    logical :: use_gosam_real_trees
+    logical :: use_external_loops
+    logical :: use_external_correlations
+    logical :: use_external_real_trees
     integer :: alpha_power, alphas_power
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     integer :: i
     type(blha_master_t) :: blha_master
+    type(string_t) :: loop_me_method
+    type(string_t) :: correlation_me_method
+    type(string_t) :: real_tree_me_method
 
     associate (process => instance%process)
        associate (var_list => process%meta%var_list)
-!          use_gosam_loops  = var_list%get_lval (&
-!                                           var_str ('?use_gosam_loops'))
-!          use_gosam_correlations = var_list%get_lval (&
-!                                           var_str ('?use_gosam_correlations'))
-!          use_gosam_real_trees= var_list%get_lval (&
-!                                           var_str ('?use_gosam_real_trees'))
-          loop_me_method = var_list%get_sval (var_str ('$loop_me_method'))
-          correlation_me_method = var_list%get_sval (var_str ('$correlation_me_method'))
-          real_tree_me_method = var_list%get_sval (var_str ('$real_tree_me_method'))
+          loop_me_method = var_list%get_sval (var_str ("$loop_me_method"))
+          correlation_me_method = var_list%get_sval (var_str ("$correlation_me_method"))
+          real_tree_me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
           alpha_power = var_list%get_ival (&
                                            var_str ('alpha_power'))
           alphas_power = var_list%get_ival (&
@@ -9450,9 +9450,9 @@ and directly set the coupling value that comes together with a particle set.
              flv_real = process%term(i)%data%flv_state
           end if
        end do
-       use_gosam_loops = loop_me_method /= 'omega'
-       use_gosam_correlations = correlation_me_method /= 'omega'
-       use_gosam_real_trees = real_tree_me_method /= 'omega'
+       use_external_loops = loop_me_method /= 'omega'
+       use_external_correlations = correlation_me_method /= 'omega'
+       use_external_real_trees = real_tree_me_method /= 'omega'
 
        select case (char (loop_me_method))
        case ('gosam')
@@ -9474,8 +9474,8 @@ and directly set the coupling value that comes together with a particle set.
        end select
 
        call blha_master%init (process%meta%id, process%config%model, &
-                              2, size (flv_born,1)-2, use_gosam_loops, &
-                              use_gosam_correlations, use_gosam_real_trees, &
+                              2, size (flv_born,1)-2, use_external_loops, &
+                              use_external_correlations, use_external_real_trees, &
                               alpha_power, alphas_power, &
                               flv_born, flv_real)
        call blha_master%generate (process%meta%id)
@@ -9661,7 +9661,7 @@ so the array fits.
     integer, intent(in) :: i_term
     type(interaction_t), intent(inout) :: int_hard
     class(prc_core_state_t), intent(inout), allocatable :: core_state
-    call interaction_set_momenta (int_hard, p_seed)
+    call int_hard%set_momenta (p_seed)
   end subroutine test_compute_hard_kinematics
   
 @ %def test_compute_hard_kinematics
@@ -9691,9 +9691,9 @@ pointer) to it.
     type(interaction_t), intent(inout) :: int_eff
     class(prc_core_state_t), intent(inout), allocatable :: core_state
     integer :: n_in
-    n_in = interaction_get_n_in (int_eff)
-    call interaction_set_momenta (int_eff, p_seed(1:n_in), outgoing = .false.)
-    p_seed(n_in+1:) = interaction_get_momenta (int_eff, outgoing = .true.)
+    n_in = int_eff%get_n_in ()
+    call int_eff%set_momenta (p_seed(1:n_in), outgoing = .false.)
+    p_seed(n_in+1:) = int_eff%get_momenta (outgoing = .true.)
   end subroutine test_recover_kinematics
     
 @ %def test_recover_kinematics
@@ -10984,7 +10984,7 @@ returns true.
     
     call reset_interaction_counter ()
     call term%setup_interaction (core, model)
-    call interaction_write (term%int, u)
+    call term%int%basic_write (u)
     
     call model%final ()
 
@@ -12090,3 +12090,4 @@ Fill two process stack, linked to each other.
   end subroutine process_stacks_4
   
 @ %def process_stacks_4
+@

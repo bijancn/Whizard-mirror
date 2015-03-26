@@ -53,6 +53,7 @@ SUBDIRS = \
   user \
   blha \
   gosam openloops fks \
+  looptools \
   model_features \
   process_integration \
   powheg \
@@ -88,7 +89,6 @@ libwhizard_la_LIBADD = \
   process_integration/libprocess_integration.la \
   powheg/libpowheg.la \
   fks/libfks.la \
-  openloops/libopenloops.la \
   gosam/libgosam.la \
   blha/libblha.la \
   user/libuser.la \
@@ -167,6 +167,12 @@ else
 libwhizard_la_LIBADD += fastjet/libFastjetWrap_dummy.la
 endif 
 
+if LOOPTOOLS_AVAILABLE 
+libwhizard_la_LIBADD += $(LDFLAGS_LOOPTOOLS) looptools/liblooptools.la 
+else 
+libwhizard_la_LIBADD += looptools/liblooptools_dummy.la 
+endif 
+
 ## -------------------------------------------------------------------
 ## Build a standalone program
 bin_PROGRAMS = whizard 
@@ -186,6 +192,7 @@ whizard_LDADD += $(LDFLAGS_HEPMC)
 whizard_LDADD += $(LDFLAGS_LCIO)
 whizard_LDADD += $(LDFLAGS_HOPPET)
 whizard_LDADD += $(FASTJET_LIBS)
+whizard_LDADD += $(LDFLAGS_LOOPTOOLS)
 
 AM_FCFLAGS =
 

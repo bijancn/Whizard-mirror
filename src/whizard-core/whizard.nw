@@ -64,6 +64,7 @@ module event_transforms
   use phs_single
   use processes
   use process_stacks
+  use powheg
   
 <<Standard module head>>
 
@@ -886,8 +887,8 @@ shower.
          !!! convert pythia /PYJETS/ to lhef given in MSTU(163)=u1
          call pylheo
          !!! read and add lhef from u_P2W
-         if (signal_is_pending ()) return             
-         call lhef_file_to_particle_set &
+         if (signal_is_pending ()) return
+         call combine_lhef_with_particle_set &
               (particle_set, u_P2W, model, model_hadrons)
          close (u_W2P)
          close (u_P2W)
@@ -1849,11 +1850,11 @@ apply to the decay root.
   recursive subroutine decay_config_compute (decay)
     class(decay_config_t), intent(inout) :: decay
     call decay%decay_root_config_t%compute ()
-    if (decay%integral == 0) then
-       call decay%write ()
-       call msg_fatal ("Decay configuration: partial width is zero")
+    if (decay%integral /= 0) then
+       decay%rel_error = decay%abs_error / decay%integral
+    else
+       decay%rel_error = 0
     end if
-    decay%rel_error = decay%abs_error / decay%integral
   end subroutine decay_config_compute
   
 @ %def decay_config_compute
@@ -1959,8 +1960,8 @@ for the outgoing particles.
     type(interaction_t), pointer :: beam_int
     integer :: n_in, n_vir
     beam_int => decay%process_instance%get_beam_int_ptr ()
-    n_in = interaction_get_n_in (trace)
-    n_vir = interaction_get_n_vir (trace)
+    n_in = trace%get_n_in ()
+    n_vir = trace%get_n_vir ()
     call interaction_set_source_link (beam_int, 1, trace, &
          n_in + n_vir + i_prt)
     call decay%link_term_interactions ()
@@ -2521,7 +2522,7 @@ any previous contents.
        call chain%build_term_entries (decay_root%term(decay_root%selected_term))
     end if
     int_last_decay => chain%last%get_matrix_int_ptr ()
-    allocate (qn_mask (interaction_get_n_tot (int_last_decay)))
+    allocate (qn_mask (int_last_decay%get_n_tot ()))
     call qn_mask%init (mask_f = .true., mask_c = .true., mask_h = .true.)
     call evaluator_init_qn_sum (chain%correlated_trace, int_last_decay, qn_mask)
   end subroutine decay_chain_build
@@ -3514,7 +3515,7 @@ $s\to f\bar f$.
   end subroutine decays_6
 
 @ %def decays_6
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Shower}
 We might use matrix elements of LO and NLO to increase the accuracy of
 the shower in the sense of matching as well as merging.
@@ -3576,6 +3577,8 @@ module shower
 <<Shower: parameters>>
 
 <<Shower: types>>
+
+<<Shower: interfaces>>
 
 contains
 
@@ -6145,7 +6148,10 @@ of the current object status.
        eio%n = data%n_evt
        eio%n_alt = data%n_alt
        if (eio%n_alt > 0) then
-          allocate (md5sum_alt (data%n_alt), source = data%md5sum_alt)
+          !!! !!! !!! Workaround for gfortran 5.0 ICE
+          allocate (md5sum_alt (data%n_alt))
+          md5sum_alt = data%md5sum_alt
+          !!! allocate (md5sum_alt (data%n_alt), source = data%md5sum_alt) 
        end if
     else
        md5sum_prc = ""
@@ -8391,15 +8397,6 @@ so the latter is always available (and kept global).
     call var_list_append_log &
          (global%var_list, var_str ("?openmp_logging"), &
          .true., intrinsic=.true.)    
-!    call var_list_append_log &
-!        (global%var_list, var_str ("?use_gosam_loops"), &
-!         .true., intrinsic = .true.)
-!    call var_list_append_log &
-!        (global%var_list, var_str ("?use_gosam_correlations"), &
-!         .false., intrinsic = .true.)
-!    call var_list_append_log &
-!        (global%var_list, var_str ("?use_gosam_real_trees"), &
-!         .false., intrinsic = .true.)
     call var_list_append_string &
        (global%var_list, var_str ("$loop_me_method"), &
         var_str ("gosam"), intrinsic = .true.)
@@ -9392,39 +9389,6 @@ suppress numerical fluctuations in (constant) test matrix elements.
   end subroutine rt_data_pacify
 
 @ %def rt_data_pacify 
-@ Switch the matrix element entry to Gosam and back
-<<RT data: rt data: TBP>>=
-  procedure :: change_to_gosam => rt_data_change_to_gosam
-<<RT data: procedures>>=
-  subroutine rt_data_change_to_gosam (global, success)
-    class(rt_data_t), intent(inout) :: global
-    logical, intent(out) :: success
-    success = global%var_list%contains (var_str ("$method"))
-    if (global%var_list%contains (var_str ("$method"))) then
-       call global%var_list%set_sval (var_str ("$method"), var_str ("gosam"))
-    end if
-!     call var_list_replace_string &
-!          (global%var_list, var_str ("$method"), var_str ("gosam"), &
-!           intrinsic = .true., success = success)
-
-  end subroutine rt_data_change_to_gosam
-
-<<RT data: rt data: TBP>>=
-  procedure :: change_to_omega => rt_data_change_to_omega
-<<RT data: procedures>>=
-  subroutine rt_data_change_to_omega (global)
-    class(rt_data_t), intent(inout) :: global
-    logical :: success
-    success = global%var_list%contains (var_str ("$method"))
-    if (global%var_list%contains (var_str ("$method"))) then
-       call global%var_list%set_sval (var_str ("$method"), var_str ("omega"))
-    end if
-!     call var_list_replace_string &
-!          (global%var_list, var_str ("$method"), var_str ("omega"), &
-!           intrinsic = .true., success = success)
-  end subroutine rt_data_change_to_omega
-
-@ %def rt_data_change_to_gosam rt_data_change_to_omega
 @ Set the matrix element method
 <<RT data: rt data: TBP>>=
   procedure :: set_me_method => rt_data_set_me_method
@@ -14060,6 +14024,7 @@ write a subroutine which returns the names of the compiled libraries.
     write (u, "(A)") "LDFLAGS_STATIC = " // char (os_data%ldflags_static)   
     write (u, "(A)") "LDFLAGS_HEPMC = " // char (os_data%ldflags_hepmc)
     write (u, "(A)") "LDFLAGS_HOPPET = " // char (os_data%ldflags_hoppet)    
+    write (u, "(A)") "LDFLAGS_LOOPTOOLS = " // char (os_data%ldflags_looptools)
     write (u, "(A)") "LDWHIZARD = " // char (os_data%whizard_ldflags)
     write (u, "(A)") ""
     write (u, "(A)") "# Libtool"
@@ -14092,7 +14057,7 @@ write a subroutine which returns the names of the compiled libraries.
     write (u, "(A)") TAB // "$(LINK) $(FC) -static-libtool-libs $(FCFLAGS) \"
     write (u, "(A)") TAB // "   $(LDWHIZARD) $(LDFLAGS) \" 
     write (u, "(A)") TAB // "   -o $(EXE) $^ \"
-    write (u, "(A)") TAB // "   $(LDFLAGS_HEPMC) $(LDFLAGS_HOPPET) \"
+    write (u, "(A)") TAB // "   $(LDFLAGS_HEPMC) $(LDFLAGS_HOPPET) $(LDFLAGS_LOOPTOOLS) \"
     write (u, "(A)") TAB // "   $(LDFLAGS_STATIC)" // char (ext_tag)
     write (u, "(A)") ""
     write (u, "(A)") "# Main targets"
@@ -14359,6 +14324,7 @@ create driver files for a static executable.
       os_data%ldflags_static = "my-ldflags-static"
       os_data%ldflags_hepmc = "my-ldflags-hepmc"
       os_data%ldflags_hoppet = "my-ldflags-hoppet"      
+      os_data%ldflags_looptools = "my-ldflags-looptools"
       os_data%whizard_ldflags = "my-ldwhizard"
       os_data%whizard_libtool = "my-libtool"
     end associate
@@ -14847,8 +14813,6 @@ local changes to currently inactive models.
             use_color_factors)
        select case (config%get_nlo_type ())
        case (NLO_VIRTUAL)
-!         call gosam_template%set_loop (var_list%get_lval (&
-!                                       var_str ('?use_gosam_loops')))
          me_method = var_list%get_sval (var_str ("$loop_me_method"))
          select case (char (me_method)) 
          case ('gosam')
@@ -14860,8 +14824,6 @@ local changes to currently inactive models.
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_VIRT)
        case (NLO_REAL)
-!         call gosam_template%set_real_trees (var_list%get_lval (&
-!                                             var_str ('?use_gosam_real_trees')))
          me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
          select case (char (me_method))
          case ('gosam')
@@ -14884,8 +14846,6 @@ local changes to currently inactive models.
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_MASTER)
        case (NLO_SUBTRACTION)
-!         call gosam_template%set_subtraction (var_list%get_lval (&
-!                                              var_str ('?use_gosam_correlations')))
          me_method = var_list%get_sval (var_str ("$correlation_me_method"))
          select case (char (me_method))
          case ('gosam')
@@ -14899,8 +14859,8 @@ local changes to currently inactive models.
        case default
          call msg_fatal ("setup_process: NLO type not implemented!")
        end select
-       deallocate (core_template)
        call gosam_template%reset ()
+       deallocate (core_template)
     end do
 
     if (verb)  call intg%process%write (screen = .true.)
@@ -22007,9 +21967,6 @@ or arrays which would make the expansion ambiguous.
     type(radiation_generator_t) :: radiation_generator
     type(pdg_list_t) :: pl_in, pl_out
     logical :: method_changed = .false.
-!    logical :: use_gosam_loops
-!    logical :: use_gosam_correlations
-!    logical :: use_gosam_real_trees
     type(string_t) :: loop_me_method
     type(string_t) :: correlation_me_method
     type(string_t) :: real_tree_me_method
@@ -22073,12 +22030,6 @@ or arrays which would make the expansion ambiguous.
             i_list(2) = i + n_components
             i_list(3) = i + 2*n_components
             i_list(4) = i + 3*n_components
-!            use_gosam_loops = &
-!                 global%var_list%get_lval (var_str ('?use_gosam_loops'))
-!            use_gosam_correlations = &
-!                 global%var_list%get_lval (var_str ('?use_gosam_correlations'))
-!            use_gosam_real_trees = &
-!                 global%var_list%get_lval (var_str ('?use_gosam_real_trees'))
             loop_me_method = global%var_list%get_sval (var_str ("$loop_me_method"))
             correlation_me_method = global%var_list%get_sval (var_str ("$correlation_me_method"))
             real_tree_me_method = global%var_list%get_sval (var_str ("$real_tree_me_method"))
@@ -22096,10 +22047,6 @@ or arrays which would make the expansion ambiguous.
                  (cmd%local%radiation_model)
             call radiation_generator%generate (prt_in_nlo, prt_out_nlo)
 
-!            if (use_gosam_real_trees) then
-!               if (.not. method_changed) &
-!                 call global%change_to_gosam (method_changed)
-!            end if
             current_me_method = var_str ('omega')
             if (current_me_method /= real_tree_me_method) then
                call global%set_me_method (real_tree_me_method)
@@ -22112,8 +22059,6 @@ or arrays which would make the expansion ambiguous.
                             cmd%local, NLO_REAL, &
                             active_in = active_comp (2))
 
-!            if (use_gosam_loops .and..not. method_changed) &
-!                 call global%change_to_gosam (method_changed)
             if (current_me_method /= loop_me_method) then
                call global%set_me_method (loop_me_method)
                current_me_method = loop_me_method
@@ -22123,11 +22068,6 @@ or arrays which would make the expansion ambiguous.
                             prt_spec_out, global, NLO_VIRTUAL, &
                             active_in = active_comp (3))
 
-!            if (.not. use_gosam_correlations .and. method_changed) then
-!               call global%change_to_omega ()
-!            else if (use_gosam_correlations .and..not. method_changed) then
-!               call global%change_to_gosam (method_changed)
-!            end if
             if (current_me_method /= correlation_me_method) then
                call global%set_me_method (correlation_me_method)
                current_me_method = correlation_me_method

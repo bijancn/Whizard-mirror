@@ -556,6 +556,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/show_4.ref \
     ref-output/multi_comp_4.ref \
     ref-output/flvsum_1.ref \
+    ref-output/decay_err_1.ref \
     ref-output/circe1_2.ref \
     ref-output/circe1_3.ref \
     ref-output/circe1_6.ref \
@@ -901,6 +902,7 @@ MISC_TESTS_SIN = \
     multi_comp_3.sin \
     multi_comp_4.sin \
     flvsum_1.sin \
+    decay_err_1.sin \
     pdf_builtin.sin \
     lhapdf5.sin \
     lhapdf6.sin \

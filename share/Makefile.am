@@ -25,7 +25,7 @@
 ########################################################################
 
 ## Subdirectories to configure
-SUBDIRS = doc susy models cuts beam-sim tests examples muli interfaces
+SUBDIRS = doc susy models cuts beam-sim tests examples muli interfaces SM_tt_threshold_data
 
 ## Data files needed for running WHIZARD
 ## to be installed with the 'models' prefix kept
@@ -146,3 +146,9 @@ mulidir = $(pkgdatadir)/muli
 dist_muli_DATA = \
   muli/dsigma_cteq6ll.LHpdf.xml \
   muli/pdf_norm_cteq6ll.LHpdf.xml
+
+## Files containing precompiled cross sections for muli
+## to be installed with the 'muli' prefix kept
+thresholddir = $(pkgdatadir)/SM_tt_threshold_data
+dist_threshold_DATA = \
+  SM_tt_threshold_data/download_data.sh

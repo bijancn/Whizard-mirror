@@ -2113,6 +2113,31 @@ The status code.
   end function particle_is_real
 
 @ %def particle_is_real
+@
+<<Particles: particle: TBP>>=
+  procedure :: is_colored => particle_is_colored
+<<Particles: procedures>>=
+  elemental function particle_is_colored (particle) result (flag)
+    logical :: flag
+    class(particle_t), intent(in) :: particle
+    flag = particle%col%is_nonzero ()
+  end function particle_is_colored
+
+@ %def particle_is_colored
+@ $[90,100]$ hopefully catches all of them and not too many.
+<<Particles: particle: TBP>>=
+  procedure :: is_hadronic_beam_remnant => particle_is_hadronic_beam_remnant
+<<Particles: procedures>>=
+  elemental function particle_is_hadronic_beam_remnant (particle) result (flag)
+    class(particle_t), intent(in) :: particle
+    logical :: flag
+    integer :: pdg
+    pdg = particle%flv%get_pdg ()
+    flag = particle%status == PRT_BEAM_REMNANT .and. &
+         abs(pdg) >= 90 .and. abs(pdg) <= 100
+  end function particle_is_hadronic_beam_remnant
+
+@ %def particle_is_hadronic_beam_remnant
 @ Polarization status.
 <<Particles: particle: TBP>>=
   procedure :: get_polarization_status => particle_get_polarization_status
@@ -2367,13 +2392,13 @@ possible, in particular if the squared matrix element is zero.
     integer :: i, j
     if (present (n_incoming)) then
        n_in  = n_incoming
-       n_vir = interaction_get_n_vir (int) - n_incoming
+       n_vir = int%get_n_vir () - n_incoming
     else
-       n_in  = interaction_get_n_in  (int)
-       n_vir = interaction_get_n_vir (int)
+       n_in  = int%get_n_in  ()
+       n_vir = int%get_n_vir ()
     end if
-    n_out = interaction_get_n_out (int)
-    n_tot = interaction_get_n_tot (int)
+    n_out = int%get_n_out ()
+    n_tot = int%get_n_tot ()
     particle_set%n_in  = n_in
     particle_set%n_out = n_out
     if (keep_virtual) then
@@ -2383,17 +2408,17 @@ possible, in particular if the squared matrix element is zero.
        particle_set%n_vir = 0
        particle_set%n_tot = n_in + n_out
     end if
-    call interaction_factorize &
-         (int, FM_IGNORE_HELICITY, x(1), is_valid, flavor_state)
+    call int%factorize &
+         (FM_IGNORE_HELICITY, x(1), is_valid, flavor_state)
     allocate (qn (n_tot,1))
     do i = 1, n_tot
        qn(i,:) = flavor_state(i)%get_quantum_numbers (1)
     end do
     if (keep_correlations .and. keep_virtual) then
-       call interaction_factorize (int_flows, mode, x(2), ok, &
+       call int_flows%factorize (mode, x(2), ok, &
             single_state, particle_set%correlated_state, qn(:,1))
     else
-       call interaction_factorize (int_flows, mode, x(2), ok, &
+       call int_flows%factorize (mode, x(2), ok, &
             single_state, qn_in=qn(:,1))
     end if
     is_valid = is_valid .and. ok
@@ -2402,18 +2427,16 @@ possible, in particular if the squared matrix element is zero.
     do i = 1, n_tot
        if (i <= n_in) then
           call particle_set%prt(j)%init (single_state(i), PRT_INCOMING, mode)
-          call particle_set%prt(j)%set_momentum &
-               (interaction_get_momentum (int, i))
+          call particle_set%prt(j)%set_momentum (int%get_momentum (i))
        else if (i <= n_in + n_vir) then
           if (.not. keep_virtual)  cycle
           call particle_set%prt(j)%init &
                (single_state(i), PRT_VIRTUAL, mode) 
-          call particle_set%prt(j)%set_momentum &
-               (interaction_get_momentum (int, i))
+          call particle_set%prt(j)%set_momentum (int%get_momentum (i))
        else
           call particle_set%prt(j)%init (single_state(i), PRT_OUTGOING, mode)
           call particle_set%prt(j)%set_momentum &
-               (interaction_get_momentum (int, i), on_shell = .true.)
+               (int%get_momentum (i), on_shell = .true.)
        end if
        if (keep_virtual) then
           call particle_set%prt(j)%set_children &
@@ -2726,6 +2749,22 @@ particle set.
   end function particle_set_get_particle
 
 @ %def particle_set_get_particle
+@
+<<Particles: particle set: TBP>>=
+  procedure :: get_indices => particle_set_get_indices
+<<Particles: procedures>>=
+  pure function particle_set_get_indices (pset, mask) result (finals)
+    integer, dimension(:), allocatable :: finals
+    class(particle_set_t), intent(in) :: pset
+    logical, dimension(:), intent(in) :: mask
+    integer, dimension(size(mask)) :: indices
+    integer :: i
+    allocate (finals (count (mask)))
+    indices = [(i, i=1, pset%n_tot)]
+    finals = pack (indices, mask)
+  end function particle_set_get_indices
+
+@ %def particle_set_get_indices
 @
 \subsubsection{Tools}
 Given a subevent, reset status codes.  If the new status is beam,
@@ -3052,16 +3091,16 @@ given a particle set.  Since the particle orderings
           end select
        end if
     else
-       allocate (map (interaction_get_n_tot (int)))
+       allocate (map (int%get_n_tot ()))
        map = [(i, i = 1, size (map))]
        r_beams = .false.
     end if
-    allocate (i_set (interaction_get_n_tot (int)), source = .false.)
+    allocate (i_set (int%get_n_tot ()), source = .false.)
     do p = 1, size (map)
        if (map(p) /= 0) then
           i_set(map(p)) = .true.
-          call interaction_set_momentum (int, &
-               pset%prt(p)%get_momentum (), map(p))
+          call int%set_momentum &
+               (pset%prt(p)%get_momentum (), map(p))
        end if
     end do
     if (r_beams) then
@@ -3093,7 +3132,7 @@ given a particle set.  Since the particle orderings
       integer, dimension(:), allocatable :: p_status, p_idx
       integer :: n_in_i, n_out_i
       integer :: i
-      i = interaction_get_n_tot (int)
+      i = int%get_n_tot ()
       n_in_i = interaction_get_n_parents (int, i)
       if (n_in_i /= n_in)  call err_int_n_in
       allocate (i_in (n_in))
@@ -3122,7 +3161,7 @@ given a particle set.  Since the particle orderings
       integer :: n_tot
       logical, dimension(:), allocatable :: mask_i, mask_p
       logical :: success
-      n_tot = interaction_get_n_tot (int)
+      n_tot = int%get_n_tot ()
       allocate (map (n_tot), source = 0)
       if (present (state_flv)) then
          allocate (mask_i (n_tot), source = .false.)
@@ -3218,8 +3257,7 @@ given a particle set.  Since the particle orderings
       type(interaction_t), pointer :: int_src
       integer, dimension(2) :: i_child
       call interaction_find_source (int, k, int_src, k_src)
-      call interaction_set_momentum (int, &
-           interaction_get_momentum (int_src, k_src), k)
+      call int%set_momentum (int_src%get_momentum (k_src), k)
       i_set(k) = .true.
       if (n_in == 2) then
          i_child = interaction_get_children (int, k)
@@ -3229,9 +3267,8 @@ given a particle set.  Since the particle orderings
             k_in = i_child(2);  k_rad = i_child(1)
          end if
          if (.not. i_set(k_in))  call err_beams
-         call interaction_set_momentum (int, &
-              interaction_get_momentum (int, k) &
-              - interaction_get_momentum (int, k_in), k_rad)
+         call int%set_momentum &
+              (int%get_momentum (k) - int%get_momentum (k_in), k_rad)
          i_set(k_rad) = .true.
       end if
     end subroutine reconstruct_beam_and_radiation
@@ -3270,18 +3307,18 @@ given a particle set.  Since the particle orderings
     end subroutine err_mismatch
     subroutine err_map
       call pset%write ()
-      call interaction_write (int)
+      call int%basic_write ()
       call msg_fatal ("Reading hard-process particle set: " &
            // "Incomplete mapping from particle set to interaction")
     end subroutine err_map
     subroutine err_beams
       call pset%write ()
-      call interaction_write (int)
+      call int%basic_write ()
       call msg_fatal ("Reading particle set: Beam structure " &
            // "does not match requested process")
     end subroutine err_beams
     subroutine err_radiation
-      call interaction_write (int)
+      call int%basic_write ()
       call msg_bug ("Reading particle set: Interaction " &
            // "contains inconsistent radiation pattern.")
     end subroutine err_radiation
@@ -3535,74 +3572,74 @@ particles.  The process is $d\bar d \to Z \to q\bar q$.
     write (u, "(A)")
     write (u, "(A)")  "* Initializing production process"
 
-    call interaction_init (int1, 2, 0, 1, set_relations=.true.)
+    call int1%basic_init (2, 0, 1, set_relations=.true.)
     call flv%init ([1, -1, 23], model)
     call col%init_col_acl ([0, 0, 0], [0, 0, 0])
     call hel(3)%init (1, 1)
     call qn%init (flv, col, hel)
-    call interaction_add_state (int1, qn, value=(0.25_default, 0._default))
+    call int1%add_state (qn, value=(0.25_default, 0._default))
     call hel(3)%init (1,-1)
     call qn%init (flv, col, hel)
-    call interaction_add_state (int1, qn, value=(0._default, 0.25_default))
+    call int1%add_state (qn, value=(0._default, 0.25_default))
     call hel(3)%init (-1, 1)
     call qn%init (flv, col, hel)
-    call interaction_add_state (int1, qn, value=(0._default,-0.25_default))
+    call int1%add_state (qn, value=(0._default,-0.25_default))
     call hel(3)%init (-1,-1)
     call qn%init (flv, col, hel)
-    call interaction_add_state (int1, qn, value=(0.25_default, 0._default))
+    call int1%add_state (qn, value=(0.25_default, 0._default))
     call hel(3)%init (0, 0)
     call qn%init (flv, col, hel)
-    call interaction_add_state (int1, qn, value=(0.5_default, 0._default))
-    call interaction_freeze (int1)
+    call int1%add_state (qn, value=(0.5_default, 0._default))
+    call int1%freeze ()
     p(1) = vector4_moving (45._default, 45._default, 3)
     p(2) = vector4_moving (45._default,-45._default, 3)
     p(3) = p(1) + p(2)
-    call interaction_set_momenta (int1, p)
+    call int1%set_momenta (p)
 
     write (u, "(A)")
     write (u, "(A)")  "* Setup decay process"
 
-    call interaction_init (int2, 1, 0, 2, set_relations=.true.)
+    call int2%basic_init (1, 0, 2, set_relations=.true.)
     call flv%init ([23, 1, -1], model)
     call col%init_col_acl ([0, 501, 0], [0, 0, 501])
     call hel%init ([1, 1, 1], [1, 1, 1])
     call qn%init (flv, col, hel)
-    call interaction_add_state (int2, qn, value=(1._default, 0._default))
+    call int2%add_state (qn, value=(1._default, 0._default))
     call hel%init ([1, 1, 1], [-1,-1,-1])
     call qn%init (flv, col, hel)
-    call interaction_add_state (int2, qn, value=(0._default, 0.1_default))
+    call int2%add_state (qn, value=(0._default, 0.1_default))
     call hel%init ([-1,-1,-1], [1, 1, 1])
     call qn%init (flv, col, hel)
-    call interaction_add_state (int2, qn, value=(0._default,-0.1_default))
+    call int2%add_state (qn, value=(0._default,-0.1_default))
     call hel%init ([-1,-1,-1], [-1,-1,-1])
     call qn%init (flv, col, hel)
-    call interaction_add_state (int2, qn, value=(1._default, 0._default))
+    call int2%add_state (qn, value=(1._default, 0._default))
     call hel%init ([0, 1,-1], [0, 1,-1])
     call qn%init (flv, col, hel)
-    call interaction_add_state (int2, qn, value=(4._default, 0._default))
+    call int2%add_state (qn, value=(4._default, 0._default))
     call hel%init ([0,-1, 1], [0, 1,-1])
     call qn%init (flv, col, hel)
-    call interaction_add_state (int2, qn, value=(2._default, 0._default))
+    call int2%add_state (qn, value=(2._default, 0._default))
     call hel%init ([0, 1,-1], [0,-1, 1])
     call qn%init (flv, col, hel)
-    call interaction_add_state (int2, qn, value=(2._default, 0._default))
+    call int2%add_state (qn, value=(2._default, 0._default))
     call hel%init ([0,-1, 1], [0,-1, 1])
     call qn%init (flv, col, hel)
-    call interaction_add_state (int2, qn, value=(4._default, 0._default))
+    call int2%add_state (qn, value=(4._default, 0._default))
     call flv%init ([23, 2, -2], model)
     call hel%init ([0, 1,-1], [0, 1,-1])
     call qn%init (flv, col, hel)
-    call interaction_add_state (int2, qn, value=(0.5_default, 0._default))
+    call int2%add_state (qn, value=(0.5_default, 0._default))
     call hel%init ([0,-1, 1], [0,-1, 1])
     call qn%init (flv, col, hel)
-    call interaction_add_state (int2, qn, value=(0.5_default, 0._default))
-    call interaction_freeze (int2)
+    call int2%add_state (qn, value=(0.5_default, 0._default))
+    call int2%freeze ()
     p(2) = vector4_moving (45._default, 45._default, 2)
     p(3) = vector4_moving (45._default,-45._default, 2)
-    call interaction_set_momenta (int2, p)
+    call int2%set_momenta (p)
     call interaction_set_source_link (int2, 1, int1, 3)
-    call interaction_write (int1, u)
-    call interaction_write (int2, u)
+    call int1%basic_write (u)
+    call int2%basic_write (u)
 
     write (u, "(A)")
     write (u, "(A)")  "* Concatenate production and decay"
@@ -3684,8 +3721,8 @@ particles.  The process is $d\bar d \to Z \to q\bar q$.
     call particle_set3%final ()
     call particle_set4%final ()
     call evaluator_final (eval)
-    call interaction_final (int1)
-    call interaction_final (int2)
+    call int1%final ()
+    call int2%final ()
 
     call model%final ()
        
@@ -3722,7 +3759,7 @@ Reconstruct a hard interaction from a particle set.
     write (u, "(A)")      
 
     call reset_interaction_counter ()
-    call interaction_init (int, 0, 2, 3)
+    call int%basic_init (0, 2, 3)
     do i = 1, 2
        do j = 3, 5
           call interaction_relate (int, i, j)
@@ -3730,10 +3767,10 @@ Reconstruct a hard interaction from a particle set.
     end do
 
     allocate (qn (5))
-    call interaction_add_state (int, qn)
-    call interaction_freeze (int)
+    call int%add_state (qn)
+    call int%freeze ()
 
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")      
     write (u, "(A)")  "* Manually set up a flavor-content record"
@@ -3784,12 +3821,12 @@ Reconstruct a hard interaction from a particle set.
     write (u, "(A)")
 
     call pset%fill_interaction (int, 2, state_flv=state_flv)
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")
     write (u, "(A)")  "* Cleanup"
 
-    call interaction_final (int)
+    call int%final ()
     call pset%final ()
     
     write (u, "(A)")
@@ -3825,7 +3862,7 @@ interaction, from a particle set.
     write (u, "(A)")      
 
     call reset_interaction_counter ()
-    call interaction_init (int, 0, 6, 3)
+    call int%basic_init (0, 6, 3)
     call interaction_relate (int, 1, 3)
     call interaction_relate (int, 1, 4)
     call interaction_relate (int, 2, 5)
@@ -3837,10 +3874,10 @@ interaction, from a particle set.
     end do
 
     allocate (qn (9))
-    call interaction_add_state (int, qn)
-    call interaction_freeze (int)
+    call int%add_state (qn)
+    call int%freeze ()
 
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")      
     write (u, "(A)")  "* Manually set up a flavor-content record"
@@ -3912,12 +3949,12 @@ interaction, from a particle set.
     write (u, "(A)")
 
     call particle_set_fill_interaction (pset, int, 2, state_flv=state_flv)
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")
     write (u, "(A)")  "* Cleanup"
 
-    call interaction_final (int)
+    call int%final ()
     call pset%final ()
     
     write (u, "(A)")
@@ -3954,23 +3991,21 @@ interaction, from a particle set that is missing the beam information.
     write (u, "(A)")  "* Set up an interaction that contains beams only"
     write (u, "(A)")      
 
-    call interaction_init (int_beams, 0, 0, 2)
-    call interaction_set_momentum (int_beams, &
-         vector4_at_rest (1._default), 1)
-    call interaction_set_momentum (int_beams, &
-         vector4_at_rest (2._default), 2)
+    call int_beams%basic_init (0, 0, 2)
+    call int_beams%set_momentum (vector4_at_rest (1._default), 1)
+    call int_beams%set_momentum (vector4_at_rest (2._default), 2)
     allocate (qn (2))
-    call interaction_add_state (int_beams, qn)
-    call interaction_freeze (int_beams)
+    call int_beams%add_state (qn)
+    call int_beams%freeze ()
     
-    call interaction_write (int_beams, u)
+    call int_beams%basic_write (u)
 
     write (u, "(A)")      
     write (u, "(A)")  "* Set up a 2 -> 2 -> 3 interaction with radiation"
     write (u, "(A)")  "    + no quantum numbers"
     write (u, "(A)")      
 
-    call interaction_init (int, 0, 6, 3)
+    call int%basic_init (0, 6, 3)
     call interaction_relate (int, 1, 3)
     call interaction_relate (int, 1, 4)
     call interaction_relate (int, 2, 5)
@@ -3986,10 +4021,10 @@ interaction, from a particle set that is missing the beam information.
 
     deallocate (qn)
     allocate (qn (9))
-    call interaction_add_state (int, qn)
-    call interaction_freeze (int)
+    call int%add_state (qn)
+    call int%freeze ()
 
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")      
     write (u, "(A)")  "* Manually set up a flavor-content record"
@@ -4048,12 +4083,12 @@ interaction, from a particle set that is missing the beam information.
 
     call pset%fill_interaction (int, 2, state_flv=state_flv, &
          recover_beams = .true.)
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")
     write (u, "(A)")  "* Cleanup"
 
-    call interaction_final (int)
+    call int%final ()
     call pset%final ()
     
     write (u, "(A)")
@@ -4090,7 +4125,7 @@ canonical ordering).
     write (u, "(A)")      
 
     call reset_interaction_counter ()
-    call interaction_init (int, 0, 6, 3)
+    call int%basic_init (0, 6, 3)
     call interaction_relate (int, 1, 3)
     call interaction_relate (int, 1, 4)
     call interaction_relate (int, 2, 5)
@@ -4102,10 +4137,10 @@ canonical ordering).
     end do
 
     allocate (qn (9))
-    call interaction_add_state (int, qn)
-    call interaction_freeze (int)
+    call int%add_state (qn)
+    call int%freeze ()
 
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")      
     write (u, "(A)")  "* Manually set up a flavor-content record"
@@ -4193,12 +4228,12 @@ canonical ordering).
     write (u, "(A)")
 
     call pset%fill_interaction (int, 2, state_flv=state_flv)
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")
     write (u, "(A)")  "* Cleanup"
 
-    call interaction_final (int)
+    call int%final ()
     call pset%final ()
     
     write (u, "(A)")
@@ -4234,7 +4269,7 @@ particle set.
     write (u, "(A)")      
 
     call reset_interaction_counter ()
-    call interaction_init (int, 0, 6, 3)
+    call int%basic_init (0, 6, 3)
     do i = 1, 2
        do j = 3, 6
           call interaction_relate (int, i, j)
@@ -4247,10 +4282,10 @@ particle set.
     end do
 
     allocate (qn (9))
-    call interaction_add_state (int, qn)
-    call interaction_freeze (int)
+    call int%add_state (qn)
+    call int%freeze ()
 
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")      
     write (u, "(A)")  "* Manually set up a flavor-content record"
@@ -4322,12 +4357,12 @@ particle set.
     write (u, "(A)")
 
     call particle_set_fill_interaction (pset, int, 2, state_flv=state_flv)
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")
     write (u, "(A)")  "* Cleanup"
 
-    call interaction_final (int)
+    call int%final ()
     call pset%final ()
     
     write (u, "(A)")
@@ -4362,16 +4397,16 @@ Reconstruct a hard decay interaction from a shuffled particle set.
     write (u, "(A)")      
 
     call reset_interaction_counter ()
-    call interaction_init (int, 0, 1, 3)
+    call int%basic_init (0, 1, 3)
     do j = 2, 4
        call interaction_relate (int, 1, j)
     end do
 
     allocate (qn (4))
-    call interaction_add_state (int, qn)
-    call interaction_freeze (int)
+    call int%add_state (qn)
+    call int%freeze ()
 
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")      
     write (u, "(A)")  "* Manually set up a flavor-content record"
@@ -4422,12 +4457,12 @@ Reconstruct a hard decay interaction from a shuffled particle set.
     write (u, "(A)")
 
     call particle_set_fill_interaction (pset, int, 1, state_flv=state_flv)
-    call interaction_write (int, u)
+    call int%basic_write (u)
 
     write (u, "(A)")
     write (u, "(A)")  "* Cleanup"
 
-    call interaction_final (int)
+    call int%final ()
     call pset%final ()
     
     write (u, "(A)")

@@ -476,13 +476,13 @@ WO_CONFIGURE_SECTION([GOSAM])
 WO_PROG_GOSAM()
 
 ###---------------------------------------------------------------------
-### OpenLoops
+### LoopTools 
 
-WO_CONFIGURE_SECTION([OPENLOOPS])
+WO_CONFIGURE_SECTION([LOOPTOOLS]) 
 
-WO_PROG_OPENLOOPS()
+WO_PROG_LOOPTOOLS() 
 
-###---------------------------------------------------------------------
+###--------------------------------------------------------------------- 
 ### Extra flags for helping the linker finding libraries
 
 WO_CONFIGURE_SECTION([Handle linking with C++ libraries])
@@ -629,6 +629,11 @@ AC_CONFIG_FILES([src/hoppet/Makefile])
 ### Subdirectory src/fastjet
 
 AC_CONFIG_FILES([src/fastjet/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/looptools
+
+AC_CONFIG_FILES([src/looptools/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/shower: shower and all that
@@ -815,11 +820,6 @@ AC_CONFIG_FILES([src/sindarin/Makefile])
 AC_CONFIG_FILES([src/models/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/whizard-core
-
-AC_CONFIG_FILES([src/process_integration/Makefile])
-
-###---------------------------------------------------------------------
 ### Subdirectory src/models/SM_tt_threshold_bundle
 
 AC_CONFIG_FILES([src/models/SM_tt_threshold_bundle/Makefile])
@@ -828,6 +828,11 @@ AC_CONFIG_FILES([src/models/SM_tt_threshold_bundle/Makefile])
 ### Subdirectory src/models/threeshl_bundle
 
 AC_CONFIG_FILES([src/models/threeshl_bundle/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/process_integration
+
+AC_CONFIG_FILES([src/process_integration/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/whizard-core
@@ -900,6 +905,11 @@ AC_CONFIG_FILES([share/muli/Makefile])
 
 AC_CONFIG_FILES([share/interfaces/Makefile])
 AC_CONFIG_FILES([share/interfaces/py_whiz_setup.py])
+
+###---------------------------------------------------------------------
+### Subdirectory share/SM_tt_threshold_data
+
+AC_CONFIG_FILES([share/SM_tt_threshold_data/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory tests
