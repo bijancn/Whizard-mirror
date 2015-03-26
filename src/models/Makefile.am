@@ -291,6 +291,7 @@ testingdir = $(top_builddir)/src/testing
 utilitiesdir = $(top_builddir)/src/utilities
 systemdir = $(top_builddir)/src/system
 physicsdir = $(top_builddir)/src/physics
+combinatoricsdir = $(top_builddir)/src/combinatorics
 omegadir = $(top_builddir)/omega/src
 
 KINDS_MOD = kinds.$(FC_MODULE_EXT)
@@ -299,6 +300,7 @@ PHYSICS_DEFS_MOD = physics_defs.$(FC_MODULE_EXT)
 FORMAT_DEFS_MOD = format_defs.$(FC_MODULE_EXT)
 DIAGNOSTICS_MOD = diagnostics.$(FC_MODULE_EXT)
 SMPHYSICS_MOD = sm_physics.$(FC_MODULE_EXT)
+SOLVER_MOD = solver.$(FC_MODULE_EXT)
 OMEGAVECTORS_MOD = omega_vectors.$(FC_MODULE_EXT)
 TTV_FORMFACTORS_MOD = ttv_formfactors.$(FC_MODULE_EXT)
 
@@ -310,12 +312,13 @@ $(libmodels_la_OBJECTS) $(external_SM_tt_threshold_la_OBJECTS) $(external_Threes
   $(systemdir)/$(DIAGNOSTICS_MOD) \
   $(physicsdir)/$(PHYSICS_DEFS_MOD) \
   $(physicsdir)/$(SMPHYSICS_MOD) \
+  $(combinatoricsdir)/$(SOLVER_MOD) \
   $(omegadir)/$(OMEGAVECTORS_MOD) \
   SM_tt_threshold_bundle/$(TTV_FORMFACTORS_MOD) \
   threeshl_bundle/threeshl.$(FC_MODULE_EXT) \
   threeshl_bundle/tglue.$(FC_MODULE_EXT)
 
-AM_FCFLAGS = -I$(basicsdir) -I$(testingdir) -I$(utilitiesdir) -I$(systemdir) -I$(physicsdir) -I$(omegadir) -ISM_tt_threshold_bundle -Ithreeshl_bundle
+AM_FCFLAGS = -I$(basicsdir) -I$(testingdir) -I$(utilitiesdir) -I$(systemdir) -I$(physicsdir) -I$(combinatoricsdir) -I$(omegadir) -ISM_tt_threshold_bundle -Ithreeshl_bundle
 
 ########################################################################
 ## Default Fortran compiler options

@@ -45,7 +45,7 @@ module ttv_formfactors
   save
   private
 
-  logical :: ext_Vinput = .false.
+  logical :: ext_Vinput = .true.
   logical :: ext_NLO = .false.
 
   logical :: init_pars, init_ps, init_ff, init_J0
@@ -1008,7 +1008,7 @@ contains
         call import_Vmatrices ()
       else
         n_p0 = 85
-        n_p_p0dep = 320
+        n_p_p0dep = 315
       end if
       call init_p0_grid (p_grid, n_p0)
     else
@@ -1319,11 +1319,11 @@ contains
       do i_loop = 0, nloop
         select case (10*i+i_loop)
           case (10)
-!            Vfile = Vpath // "Vmatrix_s-wave_LO.dat"
-            Vfile = Vpath // "VmatrixLO.dat"
+            Vfile = Vpath // "Vmatrix_s-wave_LO.dat"
+!            Vfile = Vpath // "VmatrixLO.dat"
           case (11)
-!            Vfile = Vpath // "Vmatrix_s-wave_NLO.dat"
-            Vfile = Vpath // "VmatrixNLO.dat"
+            Vfile = Vpath // "Vmatrix_s-wave_NLO.dat"
+!            Vfile = Vpath // "VmatrixNLO.dat"
           case (20)
             Vfile = Vpath // "Vmatrix_p-wave_LO.dat"
           case (21)
