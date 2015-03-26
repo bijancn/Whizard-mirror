@@ -121,7 +121,9 @@ if FC_USE_OPENMP
 AM_FCFLAGS += $(FCFLAGS_OPENMP)
 endif
 
-
+#if OPENLOOPS_AVAILABLE
+AM_FCFLAGS += -L/scratch/OpenLoops/lib -lcuttools -lopenloops -loneloop -lolcommon -lrambo
+#endif
 ########################################################################
 ## Non-standard targets and dependencies
 

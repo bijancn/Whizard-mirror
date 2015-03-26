@@ -31,6 +31,8 @@ module prc_openloops
   use prc_core_def
   use prc_core
 
+  use blha_olp_interfaces
+
 <<Standard module head>>
 
 <<prc openloops: public>>
@@ -48,132 +50,13 @@ end module prc_openloops
 @ %def module prc_openloops
 @
 <<prc openloops: interfaces>>=
-  interface 
-    subroutine olp_start (contract_file_name, ierr) bind (C,name="OLP_Start")
-      import
-      character(kind=c_char, len=1), intent(in) :: contract_file_name
-      integer(kind=c_int), intent(out) :: ierr
-    end subroutine olp_start
-  end interface
-
-@ %def olp_start_interface
-@
-<<prc openloops: interfaces>>=
-  interface
-    subroutine olp_eval (label, momenta, mu, parameters, res) &
-         bind (C,name="OLP_EvalSubProcess")
-      import
-      integer(kind=c_int), value, intent(in) :: label
-      real(kind=c_double), value, intent(in) :: mu
-      real(kind=c_double), dimension(50), intent(in) :: &
-           momenta
-      real(kind=c_double), dimension(10), intent(in) :: &
-           parameters
-      real(kind=c_double), dimension(60), intent(out) :: res
-    end subroutine olp_eval
-  end interface
-
-@ %def olp_eval interface
-@
-<<prc openloops: interfaces>>=
-  interface
-    subroutine olp_info (olp_file, olp_version, message) bind(C)
-      import
-      character(kind=c_char), intent(inout), dimension(15) :: olp_file
-      character(kind=c_char), intent(inout), dimension(15) :: olp_version
-      character(kind=c_char), intent(inout), dimension(255) :: message
-    end subroutine olp_info
-  end interface
-
-@ %def olp_info interface
-@
-<<prc openloops: interfaces>>=
-  interface
-    subroutine olp_set_parameter &
-         (variable_name, real_part, complex_part, success) bind(C)
-      import
-      character(kind=c_char,len=1), intent(in) :: variable_name
-      real(kind=c_double), intent(in) :: real_part, complex_part
-      integer(kind=c_int), intent(out) :: success
-    end subroutine olp_set_parameter
-  end interface
-
-@ %def olp_set_parameter_interface
-@
-<<prc openloops: interfaces>>=
-  interface
-    subroutine olp_eval2 (label, momenta, mu, res, acc) bind(C)
-      import
-      integer(kind=c_int), intent(in) :: label
-      real(kind=c_double), intent(in) :: mu
-      real(kind=c_double), dimension(50), intent(in) :: momenta
-      real(kind=c_double), dimension(60), intent(out) :: res
-      real(kind=c_double), intent(out) :: acc
-    end subroutine olp_eval2
-  end interface
-
-@ %def olp_eval2_interface
-@
-<<prc openloops: interfaces>>=
   abstract interface
      subroutine omega_update_alpha_s (alpha_s) bind(C)
        import
        real(c_default_float), intent(in) :: alpha_s
      end subroutine omega_update_alpha_s
   end interface
-  
-  abstract interface
-     subroutine omega_is_allowed (flv, hel, col, flag) bind(C)
-       import
-       integer(c_int), intent(in) :: flv, hel, col
-       logical(c_bool), intent(out) :: flag
-     end subroutine omega_is_allowed
-  end interface
 
-@ %def omega-interfaces
-@
-<<prc openloops: interfaces>>=
-  interface
-    subroutine olp_option (line, stat) bind(C)
-      import
-      character(kind=c_char, len=1), intent(in) :: line
-      integer(kind=c_int), intent(out) :: stat
-    end subroutine
-  end interface
-
-@ %def olp_option_interface
-@
-<<prc openloops: interfaces>>=
-  interface
-    subroutine olp_polvec (p, q, eps) bind(C)
-      import
-      real(kind=c_double), dimension(0:3), intent(in) :: p, q
-      real(kind=c_double), dimension(0:7), intent(out) :: eps
-    end subroutine
-  end interface
-
-@ %def olp_polvec_interface
-@
-<<prc openloops: interfaces>>=
-  interface
-    subroutine olp_finalize () bind(C)
-      import
-    end subroutine olp_finalize
-  end interface
-
-@ %def olp_finalize_interface
-@
-<<prc openloops: interfaces>>=
-  interface
-    subroutine olp_print_parameter (filename) bind(C)
-      import
-      character(kind=c_char, len=1), intent(in) :: filename
-    end subroutine olp_print_parameter
-  end interface
-
-@ %def olp_print_parameter_interface
-@
- 
 <<prc openloops: types>>=
   type, extends (prc_writer_f_module_t) :: openloops_writer_t
     type(string_t) :: model_name
@@ -201,6 +84,12 @@ end module prc_openloops
     type(string_t) :: olp_file
     procedure(olp_start), nopass, pointer :: &
       openloops_olp_start => null ()
+    procedure(olp_eval2), nopass, pointer :: &
+      openloops_olp_eval2 => null ()
+    procedure(olp_set_parameter), nopass, pointer :: &
+      openloops_olp_set_parameter => null ()
+    procedure(omega_update_alpha_s), nopass, pointer :: &
+              update_alpha_s => null ()
   contains
   <<prc openloops: openloops driver: TBP>>
   end type openloops_driver_t 
@@ -570,12 +459,38 @@ end module prc_openloops
 
     c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Start"))
     call c_f_procpointer (c_fptr, object%openloops_olp_start)
-    print *, 'Start successful? ', .not. dlaccess_has_error (dlaccess)
+    if (dlaccess_has_error (dlaccess)) &
+       call msg_fatal ("Loading of OLP_Start failed!")
+
+    c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_EvalSubProcess2"))
+    call c_f_procpointer (c_fptr, object%openloops_olp_eval2)
+    if (dlaccess_has_error (dlaccess)) &
+       call msg_fatal ("Loading of OLP_EvalSubProcess2 failed!")
+
+    c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_SetParameter"))
+    call c_f_procpointer (c_fptr, object%openloops_olp_set_parameter)
+    if (dlaccess_has_error (dlaccess)) &
+       call msg_fatal ("Loading of OLP_SetParameter failed!")
+
 
   end subroutine openloops_driver_load
 
 @ %def openloops_driver_load
 @   
+<<prc openloops: openloops driver: TBP>>=
+  procedure :: set_alpha_s => openloops_driver_set_alpha_s
+<<prc openloops: procedures>>=
+  subroutine openloops_driver_set_alpha_s (driver, alpha_s)
+    class(openloops_driver_t), intent(inout) :: driver
+    real(default), intent(in) :: alpha_s
+    integer :: ierr
+    call driver%openloops_olp_set_parameter &
+       (c_char_'alphas'//c_null_char, &
+        dble (alpha_s), 0._double, ierr)
+  end subroutine openloops_driver_set_alpha_s
+
+@ %def openloops_driver_set_alpha_s
+@
 <<prc openloops: openloops driver: TBP>>=
   procedure, nopass :: type_name => openloops_driver_type_name
 <<prc openloops: procedures>>=
@@ -636,13 +551,13 @@ end module prc_openloops
     integer, intent(in) :: i
     integer :: pid, fid
     class(prc_core_driver_t), intent(inout) :: proc_driver
-!    type(c_funptr) :: fptr
+    type(c_funptr) :: fptr
     select type (proc_driver)
     type is (openloops_driver_t)       
-!       pid = i
-!       fid = 2
-!       call lib_driver%get_fptr (pid, fid, fptr)
-!       call c_f_procpointer (fptr, proc_driver%update_alpha_s)
+       pid = i
+       fid = 2
+       call lib_driver%get_fptr (pid, fid, fptr)
+       call c_f_procpointer (fptr, proc_driver%update_alpha_s)
 !       fid = 4
 !       call lib_driver%get_fptr (pid, fid, fptr)
 !       call c_f_procpointer (fptr, proc_driver%is_allowed)
@@ -669,8 +584,20 @@ end module prc_openloops
     class(openloops_state_t), intent(inout) :: object
     object%new_kinematics = .true.
   end subroutine openloops_state_reset_new_kinematics
+
 @ 
 @ %def openloops_state_reset_new_kinematics
+<<prc openloops: prc openloops: TBP>>=
+  procedure :: allocate_workspace => prc_openloops_allocate_workspace
+<<prc openloops: procedures>>=
+  subroutine prc_openloops_allocate_workspace (object, core_state)
+    class(prc_openloops_t), intent(in) :: object
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+    allocate (openloops_state_t :: core_state)
+  end subroutine prc_openloops_allocate_workspace
+
+@ %def prc_openloops_allocate_workspace
+@
 <<prc openloops: prc openloops: TBP>>=
   procedure :: init_openloops => prc_openloops_init_openloops
 <<prc openloops: procedures>>=
@@ -841,6 +768,50 @@ end module prc_openloops
 @
 @ %def prc_openloops_needs_mcset
 <<prc openloops: prc openloops: TBP>>=
+  procedure :: update_alpha_s => prc_openloops_update_alpha_s
+<<prc openloops: procedures>>=
+  subroutine prc_openloops_update_alpha_s (object, core_state, fac_scale) 
+    class(prc_openloops_t), intent(in) :: object
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+    real(default), intent(in) :: fac_scale
+    real(default) :: alpha_qcd
+    if (allocated (object%qcd%alpha)) then
+       alpha_qcd = object%qcd%alpha%get (fac_scale)
+       select type (driver => object%driver)
+       type is (openloops_driver_t)
+          call driver%update_alpha_s (alpha_qcd)
+       end select 
+       if (allocated (core_state)) then
+          select type (core_state)
+          type is (openloops_state_t)
+             core_state%alpha_qcd = alpha_qcd
+          end select
+       end if
+    end if
+  end subroutine prc_openloops_update_alpha_s
+
+@ %def prc_openloops_update_alpha_s
+@
+<<prc openloops: prc openloops: TBP>>=
+  procedure :: get_alpha_s => prc_openloops_get_alpha_s
+<<prc openloops: procedures>>=
+  function prc_openloops_get_alpha_s (object, core_state) result (alpha)
+    class(prc_openloops_t), intent(in) :: object
+    class(prc_core_state_t), intent(in), allocatable :: core_state
+    real(default) :: alpha
+    if (allocated (core_state)) then
+       select type (core_state)
+       type is (openloops_state_t) 
+          alpha = core_state%alpha_qcd
+       end select
+    else
+       alpha = 0._default
+    end if
+  end function prc_openloops_get_alpha_s
+
+@ %def prc_openloops_get_alpha_s
+@ 
+<<prc openloops: prc openloops: TBP>>=
   procedure :: load_driver => prc_openloops_load_driver
 <<prc openloops: procedures>>=
   subroutine prc_openloops_load_driver (object, os_data)
@@ -863,16 +834,49 @@ end module prc_openloops
     integer :: ierr
     select type (driver => object%driver)
     type is (openloops_driver_t) 
-       print *, 'Evaluating BLHA file'
-       call driver%openloops_olp_start (char (driver%olp_file), ierr)
+       call driver%openloops_olp_start (char (driver%olp_file)//c_null_char, ierr)
     end select
   end subroutine prc_openloops_start
 
 @ %def prc_openloops_start
 @
+<<prc openloops: prc openloops: TBP>>=
+  procedure :: compute_sqme_virt => prc_openloops_compute_sqme_virt
+<<prc openloops: procedures>>=
+  subroutine prc_openloops_compute_sqme_virt (object, i_flv, p, ren_scale, alpha_s, &
+     sqme, bad_point)
+    class(prc_openloops_t), intent(inout) :: object
+    integer, intent(in) :: i_flv
+    type(vector4_t), dimension(:), intent(in) :: p
+    real(default), intent(in) :: ren_scale
+    real(default), intent(in) :: alpha_s
+    logical, intent(out) :: bad_point
+    real(default), dimension(4), intent(out) :: sqme
+    real(double) :: mu
+    real(double), dimension(OLP_MOMENTUM_LIMIT) :: mom
+    real(double), dimension(OLP_RESULTS_LIMIT) :: r
+    real(double) :: acc_dble
+    real(default) :: acc
 
+    mom = create_blha_momentum_array (p)
+    if (ren_scale == 0._default) then
+       mu = sqrt (2* (p(1)*p(2)))
+    else
+       mu = ren_scale
+    end if
+    select type (driver => object%driver)
+    type is (openloops_driver_t)
+       call driver%set_alpha_s (alpha_s)
+       call driver%openloops_olp_eval2 (i_flv, mom, mu, r, acc_dble)
+    end select
+    acc = acc_dble
+    sqme = r(1:4)
+    bad_point = .false.
+    print *, 'sqme: ', sqme
+  end subroutine prc_openloops_compute_sqme_virt
 
-
+@ %def prc_openloops_compute_sqme_virt
+@
 
 
 

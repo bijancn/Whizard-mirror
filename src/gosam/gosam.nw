@@ -230,6 +230,7 @@ module prc_gosam
   use prc_core
 
   use blha_config
+  use blha_olp_interfaces
   use loop_archive
 
 <<Standard module head>>
@@ -256,13 +257,8 @@ end module prc_gosam
              lib_suffix = [character(10) :: &
              '.a', '.la', '.so', '.so.0', '.so.0.0.0']
 
-@ The GoSam interface requires the momentum and result array to be of a fixed length.
-<<prc gosam: constants>>=
-  integer, parameter :: GOSAM_PARAMETER_LIMIT = 10
-  integer, parameter :: GOSAM_MOMENTUM_LIMIT = 50
-  integer, parameter :: GOSAM_RESULTS_LIMIT = 60
-
-@ 
+@ Different types of QCD splittings: 1 - $q \rightarrow qg$, 2 - $g \rightarrow gg$, 
+3 - $g \rightarrow qq$.
 <<prc gosam: constants>>=
   integer, parameter :: Q_TO_QG = 1
   integer, parameter :: G_TO_GG = 2
@@ -371,73 +367,6 @@ end module prc_gosam
 @ %def gosam_state_t
 @
 <<prc gosam: interfaces>>=
-  interface 
-    subroutine olp_start (contract_file_name, ierr) bind (C,name="OLP_Start")
-      import
-      character(kind=c_char, len=1), intent(in) :: contract_file_name
-      integer(kind=c_int), intent(out) :: ierr
-    end subroutine olp_start
-  end interface
-
-@ %def olp_start_interface
-@
-<<prc gosam: interfaces>>=
-  interface
-    subroutine olp_eval (label, momenta, mu, parameters, res) &
-         bind (C,name="OLP_EvalSubProcess")
-      import
-      integer(kind=c_int), value, intent(in) :: label
-      real(kind=c_double), value, intent(in) :: mu
-      real(kind=c_double), dimension(GOSAM_MOMENTUM_LIMIT), intent(in) :: &
-           momenta
-      real(kind=c_double), dimension(GOSAM_PARAMETER_LIMIT), intent(in) :: &
-           parameters
-      real(kind=c_double), dimension(GOSAM_RESULTS_LIMIT), intent(out) :: res
-    end subroutine olp_eval
-  end interface
-
-@ %def olp_eval interface
-@
-<<prc gosam: interfaces>>=
-  interface
-    subroutine olp_info (olp_file, olp_version, message) bind(C)
-      import
-      character(kind=c_char), intent(inout), dimension(15) :: olp_file
-      character(kind=c_char), intent(inout), dimension(15) :: olp_version
-      character(kind=c_char), intent(inout), dimension(255) :: message
-    end subroutine olp_info
-  end interface
-
-@ %def olp_info interface
-@
-<<prc gosam: interfaces>>=
-  interface
-    subroutine olp_set_parameter &
-         (variable_name, real_part, complex_part, success) bind(C)
-      import
-      character(kind=c_char,len=1), intent(in) :: variable_name
-      real(kind=c_double), intent(in) :: real_part, complex_part
-      integer(kind=c_int), intent(out) :: success
-    end subroutine olp_set_parameter
-  end interface
-
-@ %def olp_set_parameter_interface
-@
-<<prc gosam: interfaces>>=
-  interface
-    subroutine olp_eval2 (label, momenta, mu, res, acc) bind(C)
-      import
-      integer(kind=c_int), intent(in) :: label
-      real(kind=c_double), intent(in) :: mu
-      real(kind=c_double), dimension(GOSAM_MOMENTUM_LIMIT), intent(in) :: momenta
-      real(kind=c_double), dimension(GOSAM_RESULTS_LIMIT), intent(out) :: res
-      real(kind=c_double), intent(out) :: acc
-    end subroutine olp_eval2
-  end interface
-
-@ %def olp_eval2_interface
-@
-<<prc gosam: interfaces>>=
   abstract interface
      subroutine omega_update_alpha_s (alpha_s) bind(C)
        import
@@ -454,47 +383,6 @@ end module prc_gosam
   end interface
 
 @ %def omega-interfaces
-@
-<<prc gosam: interfaces>>=
-  interface
-    subroutine olp_option (line, stat) bind(C)
-      import
-      character(kind=c_char, len=1), intent(in) :: line
-      integer(kind=c_int), intent(out) :: stat
-    end subroutine
-  end interface
-
-@ %def olp_option_interface
-@
-<<prc gosam: interfaces>>=
-  interface
-    subroutine olp_polvec (p, q, eps) bind(C)
-      import
-      real(kind=c_double), dimension(0:3), intent(in) :: p, q
-      real(kind=c_double), dimension(0:7), intent(out) :: eps
-    end subroutine
-  end interface
-
-@ %def olp_polvec_interface
-@
-<<prc gosam: interfaces>>=
-  interface
-    subroutine olp_finalize () bind(C)
-      import
-    end subroutine olp_finalize
-  end interface
-
-@ %def olp_finalize_interface
-@
-<<prc gosam: interfaces>>=
-  interface
-    subroutine olp_print_parameter (filename) bind(C)
-      import
-      character(kind=c_char, len=1), intent(in) :: filename
-    end subroutine olp_print_parameter
-  end interface
-
-@ %def olp_print_parameter_interface
 @
 <<prc gosam: gosam def: TBP>>=
   procedure :: init => gosam_def_init
@@ -1602,26 +1490,6 @@ in the GoSam code are ready. This is done with a stamp mechanism.
 
 @ %def prc_gosam_set_parameters
 @
-<<prc gosam: procedures>>=
-  function create_blha_momentum_array (p) result (mom)
-    type(vector4_t), intent(in), dimension(:) :: p
-    real(double), dimension(GOSAM_MOMENTUM_LIMIT) :: mom
-    integer :: n, i, k
-
-    n = size (p)
-    if (n > 10) call msg_fatal ("Number of external particles exceeeds" &
-                                 // "size of GoSam-internal momentum array")
-    k = 1
-    do i = 1, n
-       mom(k:k+3) = vector4_get_components (p(i))
-       mom(k+4) = invariant_mass (p(i))
-       k = k+5
-    end do
-    mom (k:50) = 0.0
-  end function create_blha_momentum_array
-
-@ %def create_blha_momentum_array
-@
 <<prc gosam: prc gosam: TBP>>=
   procedure :: compute_sqme_virt => prc_gosam_compute_sqme_virt
 <<prc gosam: procedures>>=
@@ -1635,8 +1503,8 @@ in the GoSam code are ready. This is done with a stamp mechanism.
     logical, intent(out) :: bad_point
     real(default), dimension(4), intent(out) :: sqme
     real(double) :: mu
-    real(double), dimension(GOSAM_MOMENTUM_LIMIT) :: mom
-    real(double), dimension(GOSAM_RESULTS_LIMIT) :: r
+    real(double), dimension(OLP_MOMENTUM_LIMIT) :: mom
+    real(double), dimension(OLP_RESULTS_LIMIT) :: r
     real(double) :: acc_dble
     real(default) :: acc
 
@@ -1675,8 +1543,8 @@ in the GoSam code are ready. This is done with a stamp mechanism.
     real(default), intent(in) :: alpha_s
     real(default), intent(out) :: sqme
     logical, intent(out) :: bad_point
-    real(double), dimension(GOSAM_MOMENTUM_LIMIT) :: mom
-    real(double), dimension(GOSAM_RESULTS_LIMIT) :: r
+    real(double), dimension(OLP_MOMENTUM_LIMIT) :: mom
+    real(double), dimension(OLP_RESULTS_LIMIT) :: r
     real(double) :: mu
     real(double) :: acc_dble
     real(default) :: acc
@@ -1714,8 +1582,8 @@ in the GoSam code are ready. This is done with a stamp mechanism.
     real(default), intent(out), optional :: born_out
     real(default), intent(inout), dimension(:,:) :: born_cc
     logical, intent(out) :: bad_point
-    real(double), dimension(GOSAM_MOMENTUM_LIMIT) :: mom
-    real(double), dimension(GOSAM_RESULTS_LIMIT) :: r
+    real(double), dimension(OLP_MOMENTUM_LIMIT) :: mom
+    real(double), dimension(OLP_RESULTS_LIMIT) :: r
     real(double) :: mu
     integer :: i, j, pos
     integer :: im1, jm1
@@ -1778,8 +1646,8 @@ in the GoSam code are ready. This is done with a stamp mechanism.
     real(default), intent(in) :: alpha_s
     complex(default), intent(out) :: me_sc
     logical, intent(out) :: bad_point
-    real(double), dimension(GOSAM_MOMENTUM_LIMIT) :: mom
-    real(double), dimension(GOSAM_RESULTS_LIMIT) :: r
+    real(double), dimension(OLP_MOMENTUM_LIMIT) :: mom
+    real(double), dimension(OLP_RESULTS_LIMIT) :: r
     real(double) :: ren_scale
     integer :: i, igm1, n
     integer :: pos_real, pos_imag

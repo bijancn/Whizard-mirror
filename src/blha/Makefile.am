@@ -33,7 +33,8 @@ noinst_LTLIBRARIES = libblha.la
 libblha_la_SOURCES = \
   blha_config.f90 \
   blha_interface.f90 \
-  blha_driver.f90
+  blha_driver.f90 \
+  blha_olp_interfaces.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = blha.nw
