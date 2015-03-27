@@ -36,6 +36,7 @@ module blha_olp_interfaces
   use kinds
 <<Use strings>>
   use string_utils
+  use physics_defs
   use diagnostics
   use os_interface
   use lorentz
@@ -863,6 +864,140 @@ end module blha_olp_interfaces
   end subroutine prc_blha_compute_sqme_virt
 
 @ %def prc_blha_compute_sqme_virt
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: compute_sqme_real => prc_blha_compute_sqme_real
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_compute_sqme_real &
+         (object, i_flv, p, ren_scale, alpha_s, sqme, bad_point)
+    class(prc_blha_t), intent(inout) :: object
+    integer, intent(in) :: i_flv
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default), intent(in) :: ren_scale
+    real(default), intent(in) :: alpha_s
+    real(default), intent(out) :: sqme
+    logical, intent(out) :: bad_point
+    real(double), dimension(5*object%n_particles) :: mom
+    real(double), dimension(blha_result_array_size (object%n_particles, &
+                                                    BLHA_AMP_TREE)) :: r
+    real(double) :: mu
+    real(double) :: acc_dble
+    real(default) :: acc
+ 
+    mom = create_blha_momentum_array (p)
+    if (ren_scale == 0.0) then
+       mu = sqrt (2*p(1)*p(2))
+    else
+      mu = ren_scale
+    end if
+    select type (driver => object%driver)
+    class is (blha_driver_t)
+       call driver%set_alpha_s (alpha_s)
+       call driver%blha_olp_eval2 (object%i_real(i_flv), mom, &
+                                    mu, r, acc_dble)
+       sqme = r(4)
+    end select
+    acc = acc_dble
+    if (acc > object%maximum_accuracy) bad_point = .true.
+  end subroutine prc_blha_compute_sqme_real
+
+@ %def prc_blha_compute_sqme_real
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: compute_sqme_cc => prc_blha_compute_sqme_cc
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_compute_sqme_cc &
+         (object, i_flv, p, ren_scale, alpha_s, &
+          born_out, born_cc, bad_point)
+    class(prc_blha_t), intent(inout) :: object
+    integer, intent(in) :: i_flv
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default), intent(in) :: ren_scale
+    real(default), intent(in) :: alpha_s
+    real(default), intent(out), optional :: born_out
+    real(default), intent(inout), dimension(:,:) :: born_cc
+    logical, intent(out) :: bad_point
+    real(double), dimension(OLP_MOMENTUM_LIMIT) :: mom
+    real(double), dimension(OLP_RESULTS_LIMIT) :: r
+    real(double) :: mu
+    integer :: i, j, pos
+    integer :: im1, jm1
+    real(double) :: acc_dble1, acc_dble2
+    real(default) :: acc1, acc2
+    real(default) :: born
+
+    mom = create_blha_momentum_array (p)
+    if (ren_scale == 0.0) then
+       mu = sqrt (2*p(1)*p(2))
+    else
+       mu = ren_scale
+    end if
+    select type (driver => object%driver)
+    class is (blha_driver_t)
+       call driver%set_alpha_s (alpha_s)
+       if (allocated (object%i_born)) then
+          call driver%blha_olp_eval2 (object%i_born(i_flv), &
+                                       mom, mu, r, acc_dble1)
+          born = r(4)
+       end if
+       if (present (born_out)) born_out = born
+       call driver%blha_olp_eval2 (object%i_cc(i_flv), &
+                                    mom, mu, r, acc_dble2)
+    end select
+    do j = 1, size (p)
+      do i = 1, j
+        if (i <= 2 .or. j <= 2) then
+          born_cc (i,j) = 0._default
+        else if (i == j) then
+          born_cc (i,j) = -cf*born
+        else
+          im1 = i-1; jm1 = j-1
+          pos = im1 + jm1*(jm1-1)/2 + 1
+          born_cc (i,j) = -r(pos)
+        end if
+        born_cc (j,i) = born_cc (i,j)
+      end do
+    end do
+    acc1 = acc_dble1; acc2 = acc_dble2
+    if (acc1 > object%maximum_accuracy .or. &
+        acc2 > object%maximum_accuracy) then
+      bad_point = .true.
+    end if
+  end subroutine prc_blha_compute_sqme_cc
+
+@ %def prc_blha_compute_sqme_cc
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure(prc_blha_compute_sqme_sc), deferred :: &
+      compute_sqme_sc
+<<BLHA OLP interfaces: interfaces>>=
+  abstract interface
+    subroutine prc_blha_compute_sqme_sc (object, &
+         i_flv, em, p, ren_scale_in, alpha_s, me_sc, bad_point)
+      import
+      class(prc_blha_t), intent(inout) :: object
+      integer, intent(in) :: i_flv, em
+      type(vector4_t), intent(in), dimension(:) :: p
+      real(default), intent(in) :: ren_scale_in, alpha_s
+      complex(default), intent(out) :: me_sc
+      logical, intent(out) :: bad_point 
+    end subroutine prc_blha_compute_sqme_sc
+  end interface
+
+@ %def interface prc_blha_compute_sqme_sc
+@   
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure(prc_blha_init_driver), deferred :: &
+      init_driver
+<<BLHA OLP interfaces: interfaces>>=
+  abstract interface
+    subroutine prc_blha_init_driver (object, os_data)
+      import
+      class(prc_blha_t), intent(inout) :: object
+      type(os_data_t), intent(in) :: os_data
+    end subroutine prc_blha_init_driver
+  end interface
+@ %def prc_blha_init_driver interface
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 The module is split into a configuration interface which manages configuration
