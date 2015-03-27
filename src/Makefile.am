@@ -90,6 +90,7 @@ libwhizard_la_LIBADD = \
   powheg/libpowheg.la \
   fks/libfks.la \
   gosam/libgosam.la \
+  openloops/libopenloops.la \
   blha/libblha.la \
   user/libuser.la \
   mci/libmci.la \
