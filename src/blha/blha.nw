@@ -35,14 +35,30 @@ module blha_olp_interfaces
 
   use kinds
 <<Use strings>>
-  use lorentz
+  use string_utils
   use diagnostics
+  use os_interface
+  use lorentz
+  use sm_qcd
+  use interactions
+  use flavors
+  use model_data
+
+  use prclib_interfaces
+  use process_libraries
+  use prc_core_def
+  use prc_core
+
+  use blha_config, only: BLHA_AMP_TREE, BLHA_AMP_LOOP, &
+     BLHA_AMP_CC, BLHA_AMP_SC
 
 <<Standard module head>>
 
 <<BLHA OLP interfaces: public>>
 
 <<BLHA OLP interfaces: public parameters>>
+
+<<BLHA OLP interfaces: types>>
 
 <<BLHA OLP interfaces: interfaces>>
 
@@ -53,6 +69,80 @@ contains
 end module blha_olp_interfaces
 
 @ %def module blha_olp_interfaces
+@
+<<BLHA OLP interfaces: public>>=
+  public :: blha_template_t
+<<BLHA OLP interfaces: types>>=
+  type :: blha_template_t
+    integer :: I_REAL = 1
+    integer :: I_LOOP = 2
+    integer :: I_SUB = 3
+    logical, dimension(3) :: compute_component
+  contains
+  <<BLHA OLP interfaces: blha template: TBP>>
+  end type blha_template_t
+
+@ %def blha_template_t
+@
+<<BLHA OLP interfaces: public>>=
+  public :: prc_blha_t
+<<BLHA OLP interfaces: types>>=
+  type, abstract, extends (prc_core_t) :: prc_blha_t
+    type(qcd_t) :: qcd
+    integer :: n_flv
+    integer :: n_particles
+    real(default) :: maximum_accuracy = 10000.0
+    integer, dimension(:), allocatable :: i_born, i_sc, i_cc
+    integer, dimension(:), allocatable :: i_real
+    integer, dimension(:), allocatable :: i_virt
+  contains
+  <<BLHA OLP interfaces: prc blha: TBP>>
+  end type prc_blha_t
+
+@ 
+@ %def prc_blha_t
+<<BLHA OLP interfaces: types>>=
+  type, abstract, extends (prc_core_driver_t) :: blha_driver_t 
+    procedure(olp_start),nopass,  pointer :: &
+              blha_olp_start => null ()
+    procedure(olp_eval), nopass, pointer :: &
+              blha_olp_eval => null()
+    procedure(olp_info), nopass, pointer :: &
+              blha_olp_info => null ()
+    procedure(olp_set_parameter), nopass, pointer :: &
+              blha_olp_set_parameter => null ()
+    procedure(olp_eval2), nopass, pointer :: &
+              blha_olp_eval2 => null ()
+    procedure(olp_option), nopass, pointer :: &
+              blha_olp_option => null ()
+    procedure(olp_polvec), nopass, pointer :: &
+              blha_olp_polvec => null ()
+    procedure(olp_finalize), nopass, pointer :: &
+              blha_olp_finalize => null ()
+    procedure(olp_print_parameter), nopass, pointer :: &
+              blha_olp_print_parameter => null ()
+@ We have to add two O'Mega-routines to the GoSam driver to ensure
+  proper process setup.
+<<BLHA OLP interfaces: types>>=
+    procedure(omega_update_alpha_s), nopass, pointer :: &
+              update_alpha_s => null ()
+    procedure(omega_is_allowed), nopass, pointer :: &
+              is_allowed => null ()
+  contains
+  <<BLHA OLP interfaces: blha driver: TBP>>
+  end type blha_driver_t
+
+@ 
+@ %def blha_driver_t
+<<BLHA OLP interfaces: types>>=
+  type, abstract, extends (prc_core_state_t) :: blha_state_t
+    logical :: new_kinematics = .true.
+    real(default) :: alpha_qcd = -1
+  contains
+  <<prc blha: blha state: TBP>>
+  end type blha_state_t
+
+@ %def blha_state_t
 @
 <<BLHA OLP interfaces: public parameters>>=
   integer, parameter, public :: OLP_PARAMETER_LIMIT = 10
@@ -185,6 +275,42 @@ end module blha_olp_interfaces
 
 @ %def olp_print_parameter_interface
 @
+<<BLHA OLP interfaces: interfaces>>=
+  abstract interface
+     subroutine omega_update_alpha_s (alpha_s) bind(C)
+       import
+       real(c_default_float), intent(in) :: alpha_s
+     end subroutine omega_update_alpha_s
+  end interface
+  
+  abstract interface
+     subroutine omega_is_allowed (flv, hel, col, flag) bind(C)
+       import
+       integer(c_int), intent(in) :: flv, hel, col
+       logical(c_bool), intent(out) :: flag
+     end subroutine omega_is_allowed
+  end interface
+
+@ %def omega-interfaces
+@
+<<BLHA OLP interfaces: procedures>>=
+  pure function blha_result_array_size (n_part, amp_type) result (rsize)
+    integer, intent(in) :: n_part, amp_type
+    integer :: rsize
+    select case (amp_type)
+       case (BLHA_AMP_TREE)
+          rsize = 1
+       case (BLHA_AMP_LOOP)
+          rsize = 4
+       case (BLHA_AMP_CC)
+          rsize = n_part*(n_part-1)/2
+       case (BLHA_AMP_SC)
+          rsize = 2*n_part**2
+     end select
+  end function blha_result_array_size
+
+@ %def blha_result_array_size
+@     
 <<BLHA OLP interfaces: public>>=
   public :: create_blha_momentum_array
 <<BLHA OLP interfaces: procedures>>=
@@ -206,6 +332,537 @@ end module blha_olp_interfaces
   end function create_blha_momentum_array
 
 @ %def create_blha_momentum_array
+@
+<<BLHA OLP interfaces: blha template: TBP>>=
+  procedure :: init => blha_template_init
+<<BLHA OLP interfaces: procedures>>=
+  subroutine blha_template_init (template)
+    class(blha_template_t), intent(inout) :: template
+    template%compute_component = .false.
+  end subroutine blha_template_init
+
+@ %def blha_template_init
+@
+<<BLHA OLP interfaces: blha template: TBP>>=
+  procedure :: set_loop => blha_template_set_loop
+  procedure :: set_subtraction => blha_template_set_subtraction
+  procedure :: set_real_trees => blha_template_set_real_trees
+<<BLHA OLP interfaces: procedures>>=
+  subroutine blha_template_set_loop (template)
+    class(blha_template_t), intent(inout) :: template
+    template%compute_component(template%I_LOOP) = .true.
+  end subroutine blha_template_set_loop
+
+  subroutine blha_template_set_subtraction (template)
+    class(blha_template_t), intent(inout) :: template
+    template%compute_component (template%I_SUB) = .true.
+  end subroutine blha_template_set_subtraction
+
+  subroutine blha_template_set_real_trees (template)
+    class(blha_template_t), intent(inout) :: template
+    template%compute_component (template%I_REAL) = .true.
+  end subroutine blha_template_set_real_trees
+
+@ %def blha_template_set_components
+@
+<<BLHA OLP interfaces: blha template: TBP>>=
+  procedure :: compute_loop => blha_template_compute_loop
+  procedure :: compute_subtraction => blha_template_compute_subtraction
+  procedure :: compute_real_trees => blha_template_compute_real_trees
+<<BLHA OLP interfaces: procedures>>=
+  function blha_template_compute_loop (template) result (val)
+    class(blha_template_t), intent(in) :: template
+    logical :: val
+    val = template%compute_component (template%I_LOOP)
+  end function blha_template_compute_loop  
+
+  function blha_template_compute_subtraction (template) result (val)
+    class(blha_template_t), intent(in) :: template
+    logical :: val
+    val = template%compute_component (template%I_SUB)
+  end function blha_template_compute_subtraction
+
+  function blha_template_compute_real_trees (template) result (val)
+    class(blha_template_t), intent(in) :: template
+    logical :: val
+    val = template%compute_component (template%I_REAL)
+  end function blha_template_compute_real_trees
+
+@ %def blha_template_compute
+<<BLHA OLP interfaces: blha template: TBP>>=
+  procedure :: check => blha_template_check
+<<BLHA OLP interfaces: procedures>>=
+  function blha_template_check (template) result (val)
+    class(blha_template_t), intent(in) :: template
+    logical :: val
+    val = count (template%compute_component) == 1
+  end function blha_template_check
+
+@ %def blha_template_check
+@
+<<BLHA OLP interfaces: blha template: TBP>>=
+  procedure :: reset => blha_template_reset
+<<BLHA OLP interfaces: procedures>>=
+  subroutine blha_template_reset (template)
+    class(blha_template_t), intent(inout) :: template
+    template%compute_component = .false.
+  end subroutine blha_template_reset
+
+@ %def blha_template_reset
+@
+<<BLHA OLP interfaces: blha driver: TBP>>=
+  procedure :: set_alpha_qed => blha_driver_set_alpha_qed
+<<BLHA OLP interfaces: procedures>>=
+  subroutine blha_driver_set_alpha_qed (driver, alpha)
+    class(blha_driver_t), intent(inout) :: driver
+    real(default), intent(in) :: alpha
+    integer :: ierr
+    call driver%blha_olp_set_parameter &
+       (c_char_'alpha_qed'//c_null_char, &
+        dble (alpha), 0._double, ierr)
+  end subroutine blha_driver_set_alpha_qed
+
+@ %def blha_driver_set_alpha_qed
+@
+<<BLHA OLP interfaces: blha driver: TBP>>=
+  procedure :: set_alpha_s => blha_driver_set_alpha_s
+<<BLHA OLP interfaces: procedures>>=
+  subroutine blha_driver_set_alpha_s (driver, alpha_s)
+     class(blha_driver_t), intent(inout) :: driver
+     real(default), intent(in) :: alpha_s
+     integer :: ierr
+     call driver%blha_olp_set_parameter &
+              (c_char_'alphaS'//c_null_char, &
+               dble (alpha_s), 0._double, ierr)
+  end subroutine blha_driver_set_alpha_s
+
+@ %def blha_driver_set_alpha_s
+@
+<<BLHA OLP interfaces: blha driver: TBP>>=
+  procedure :: set_mass_and_width => blha_driver_set_mass_and_width
+<<BLHA OLP interfaces: procedures>>=
+  subroutine blha_driver_set_mass_and_width (driver, &
+                                       i_pdg, mass, width)
+    class(blha_driver_t), intent(inout) :: driver
+    integer, intent(in) :: i_pdg
+    real(default), intent(in), optional :: mass
+    real(default), intent(in), optional :: width
+    type(string_t) :: buf
+    character(kind=c_char,len=20) :: c_string
+    integer :: ierr
+    if (present (mass)) then
+       buf = 'mass(' // integer_to_string (abs(i_pdg)) // ')'
+       c_string = char(buf)//c_null_char
+       call driver%blha_olp_set_parameter &
+                (c_string, dble(mass), 0._double, ierr)
+       if (ierr == 0) then
+          buf = "BLHA driver: Attempt to set mass of particle " // &
+                integer_to_string (abs(i_pdg)) // "failed"
+          call msg_fatal (char(buf))
+       end if
+    end if
+    if (present (width)) then
+       buf = 'width(' // integer_to_string (abs(i_pdg)) // ')'
+       c_string = char(buf)//c_null_char
+       call driver%blha_olp_set_parameter &
+                (c_string, dble(width), 0._double, ierr)
+       if (ierr == 0) then
+          buf = "BLHA driver: Attempt to set width of particle " // &
+                integer_to_string (abs(i_pdg)) // "failed"
+          call msg_fatal (char(buf))
+       end if
+    end if
+  end subroutine blha_driver_set_mass_and_width
+
+@ %def blha_driver_set_mass_and_width
+@
+<<BLHA OLP interfaces: blha driver: TBP>>=
+  procedure(blha_driver_init_dlaccess_to_library), deferred :: &
+    init_dlaccess_to_library
+<<BLHA OLP interfaces: interfaces>>=
+  abstract interface
+    subroutine blha_driver_init_dlaccess_to_library &
+       (object, os_data, dlaccess, success)
+      import
+      class(blha_driver_t), intent(in) :: object
+      type(os_data_t), intent(in) :: os_data
+      type(dlaccess_t), intent(out) :: dlaccess
+      logical, intent(out) :: success
+    end subroutine blha_driver_init_dlaccess_to_library
+  end interface
+      
+@ %def interface blha_driver_init_dlaccess_to_library
+@
+<<BLHA OLP interfaces: blha driver: TBP>>=
+  procedure :: load => blha_driver_load
+<<BLHA OLP interfaces: procedures>>=
+  subroutine blha_driver_load (object, os_data, store, success)
+    class(blha_driver_t), intent(inout) :: object
+    type(os_data_t), intent(in) :: os_data
+    logical, intent(in) :: store
+    logical, intent(out) :: success
+    type(dlaccess_t) :: dlaccess
+    type(c_funptr) :: c_fptr
+    logical :: init_success
+
+    call object%init_dlaccess_to_library (os_data, dlaccess, init_success)
+!    call dlaccess_init &
+!          (dlaccess, var_str ("."), path // '/libgolem_olp.' // &
+!          os_data%shrlib_ext, os_data)
+!    if (os_file_exist (path // '/libgolem_olp.' // &
+!         os_data%shrlib_ext)) then
+    c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Start"))
+    call c_f_procpointer (c_fptr, object%blha_olp_start)
+       
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_EvalSubProcess"))
+       call c_f_procpointer (c_fptr, object%blha_olp_eval)
+       call check_for_error (var_str ("OLP_Start"))
+
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Info"))
+       call c_f_procpointer (c_fptr, object%blha_olp_info)
+       call check_for_error (var_str ("OLP_Info"))
+
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_SetParameter"))
+       call c_f_procpointer (c_fptr, object%blha_olp_set_parameter)
+       call check_for_error (var_str ("OLP_SetParameter"))
+
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_EvalSubProcess2"))
+       call c_f_procpointer (c_fptr, object%blha_olp_eval2)
+       call check_for_error (var_str ("OLP_EvalSubProcess2"))
+
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Option"))
+       call c_f_procpointer (c_fptr, object%blha_olp_option)
+       call check_for_error (var_str ("OLP_Option"))
+
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Polvec"))
+       call c_f_procpointer (c_fptr, object%blha_olp_polvec)
+       call check_for_error (var_str ("OLP_Polvec"))
+
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Finalize"))
+       call c_f_procpointer (c_fptr, object%blha_olp_finalize)
+       call check_for_error (var_str ("OLP_Finalize"))
+
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_PrintParameter"))
+       call c_f_procpointer (c_fptr, object%blha_olp_print_parameter)
+       call check_for_error (var_str ("OLP_PrintParameter"))
+
+       success = .true.
+!       if (store .and. success) &
+!          call object%loop_archive%record (object%olp_file, object%olc_file, &
+!               var_str ('golem.in'), path // '/libgolem_olp.' // &
+!               os_data%shrlib_ext)
+!    else
+!       success = .false.
+!    end if
+    contains
+      subroutine check_for_error (function_name)
+        type(string_t), intent(in) :: function_name
+        if (dlaccess_has_error (dlaccess)) &
+           call msg_fatal (char ("Loading of " // function_name // " failed!"))
+     end subroutine check_for_error
+  end subroutine blha_driver_load
+
+@ %def blha_driver_load
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: needs_mcset => prc_blha_needs_mcset
+<<BLHA OLP interfaces: procedures>>=
+  function prc_blha_needs_mcset (object) result (flag)
+    class(prc_blha_t), intent(in) :: object
+    logical :: flag
+    flag = .true.
+  end function prc_blha_needs_mcset
+
+@
+@ %def prc_blha_needs_mc_set
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: get_n_terms => prc_blha_get_n_terms
+<<BLHA OLP interfaces: procedures>>=
+  function prc_blha_get_n_terms (object) result (n)
+    class(prc_blha_t), intent(in) :: object
+    integer :: n
+    n = 1
+  end function prc_blha_get_n_terms
+
+@  
+@ %def prc_blha_get_n_termsi
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: is_allowed => prc_blha_is_allowed
+<<BLHA OLP interfaces: procedures>>=
+  function prc_blha_is_allowed (object, i_term, f, h, c) result (flag)
+    class(prc_blha_t), intent(in) :: object
+    integer, intent(in) :: i_term, f, h, c
+    logical :: flag
+    logical(c_bool) :: cflag
+    select type (driver => object%driver)
+    class is (blha_driver_t)
+       call driver%is_allowed (f, h, c, cflag)
+       flag = cflag
+    class default
+       call msg_fatal &
+            ("BLHA instance created, but driver is not a BLHA driver!")
+    end select
+  end function prc_blha_is_allowed
+
+@
+@ %def prc_blha_is_allowed
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: update_alpha_s => prc_blha_update_alpha_s
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_update_alpha_s (object, core_state, fac_scale) 
+    class(prc_blha_t), intent(in) :: object
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+    real(default), intent(in) :: fac_scale
+    real(default) :: alpha_qcd
+    if (allocated (object%qcd%alpha)) then
+       alpha_qcd = object%qcd%alpha%get (fac_scale)
+       select type (driver => object%driver)
+       class is (blha_driver_t)
+          call driver%update_alpha_s (alpha_qcd)
+       end select 
+       if (allocated (core_state)) then
+          select type (core_state)
+          class is (blha_state_t)
+             core_state%alpha_qcd = alpha_qcd
+          end select
+       end if
+    end if
+  end subroutine prc_blha_update_alpha_s
+
+@ %def prc_blha_update_alpha_s
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: get_alpha_s => prc_blha_get_alpha_s
+<<BLHA OLP interfaces: procedures>>=
+  function prc_blha_get_alpha_s (object, core_state) result (alpha)
+    class(prc_blha_t), intent(in) :: object
+    class(prc_core_state_t), intent(in), allocatable :: core_state
+    real(default) :: alpha
+    if (allocated (core_state)) then
+      select type (core_state)
+      class is (blha_state_t)
+        alpha = core_state%alpha_qcd
+      end select
+    else
+      alpha = 0._default 
+    end if
+  end function prc_blha_get_alpha_s
+
+@ %def prc_blha_get_alpha_s
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: set_alpha_qed => prc_blha_set_alpha_qed
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_set_alpha_qed (object, alpha)
+    class(prc_blha_t), intent(inout) :: object
+    real(default), intent(in) :: alpha
+    select type (driver => object%driver)
+    class is (blha_driver_t)
+       call driver%set_alpha_qed (alpha)
+    end select
+  end subroutine prc_blha_set_alpha_qed
+
+@ %def prc_blha_set_alpha_qed
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: compute_hard_kinematics => prc_blha_compute_hard_kinematics
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_compute_hard_kinematics &
+       (object, p_seed, i_term, int_hard, core_state)
+    class(prc_blha_t), intent(in) :: object
+    type(vector4_t), dimension(:), intent(in) :: p_seed
+    integer, intent(in) :: i_term
+    type(interaction_t), intent(inout) :: int_hard
+    class(prc_core_state_t), intent(inout), allocatable :: core_state 
+    call int_hard%set_momenta (p_seed)
+    if (allocated (core_state)) then
+      select type (core_state)
+      class is (blha_state_t); core_state%new_kinematics = .true.
+      end select
+    end if
+  end subroutine prc_blha_compute_hard_kinematics
+
+@ 
+@ %def prc_blha_compute_hard_kinematics
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: compute_eff_kinematics => prc_blha_compute_eff_kinematics
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_compute_eff_kinematics &
+       (object, i_term, int_hard, int_eff, core_state)
+    class(prc_blha_t), intent(in) :: object
+    integer, intent(in) :: i_term
+    type(interaction_t), intent(in) :: int_hard
+    type(interaction_t), intent(inout) :: int_eff
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+  end subroutine prc_blha_compute_eff_kinematics
+
+@
+@ %def prc_blha_compute_eff_kinematics
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: compute_amplitude => prc_blha_compute_amplitude
+<<BLHA OLP interfaces: procedures>>=
+  function prc_blha_compute_amplitude &
+       (object, j, p, f, h, c, fac_scale, ren_scale, alpha_qcd_forced, &
+       core_state)  result (amp)
+    class(prc_blha_t), intent(in) :: object
+    integer, intent(in) :: j
+    type(vector4_t), dimension(:), intent(in) :: p
+    integer, intent(in) :: f, h, c
+    real(default), intent(in) :: fac_scale, ren_scale
+    real(default), intent(in), allocatable :: alpha_qcd_forced
+    class(prc_core_state_t), intent(inout), allocatable, optional :: core_state
+    complex(default) :: amp
+    select type (core_state)
+    class is (blha_state_t)
+      core_state%alpha_qcd = object%qcd%alpha%get (fac_scale)
+    end select
+    amp = 0.0
+  end function prc_blha_compute_amplitude
+
+@
+@ %def prc_blha_compute_amplitude
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: recover_kinematics => prc_blha_recover_kinematics
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_recover_kinematics &
+       (object, p_seed, int_hard, int_eff, core_state)
+    class(prc_blha_t), intent(in) :: object
+    type(vector4_t), dimension(:), intent(inout) :: p_seed
+    type(interaction_t), intent(inout) :: int_hard, int_eff
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+    integer :: n_in
+    n_in = int_eff%get_n_in ()
+    call int_eff%set_momenta (p_seed(1:n_in), outgoing = .false.)
+    p_seed(n_in+1:) = int_eff%get_momenta (outgoing = .true.)
+  end subroutine prc_blha_recover_kinematics
+
+@ 
+@ %def prc_blha_recover_kinematics
+<<BLHA OLP interfaces: prc blha: TBP>>=
+   procedure :: init_blha => prc_blha_init_blha
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_init_blha (object, blha_template)
+    class(prc_blha_t), intent(inout) :: object
+    type(blha_template_t), intent(inout) :: blha_template
+    integer :: i_flv
+
+    object%n_flv = size (object%data%flv_state, 2)
+   
+    if (blha_template%compute_loop ()) then
+       allocate (object%i_virt (object%n_flv), &
+                 object%i_cc (object%n_flv))
+    else if (blha_template%compute_subtraction ()) then
+       allocate (object%i_born (object%n_flv), &
+                 object%i_cc (object%n_flv) , &
+                 object%i_sc (object%n_flv))
+    else if (blha_template%compute_real_trees ()) then
+       allocate (object%i_real (object%n_flv))
+    end if
+  end subroutine prc_blha_init_blha
+@ %def prc_blha_init_blha
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: get_nflv => prc_blha_get_nflv
+<<BLHA OLP interfaces: procedures>>=
+  function prc_blha_get_nflv (object) result (n_flv)
+    class(prc_blha_t), intent(in) :: object
+    integer :: n_flv
+    n_flv = object%n_flv
+  end function prc_blha_get_nflv
+
+@ %def prc_blha_get_nflv
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: set_parameters => prc_blha_set_parameters
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_set_parameters (object, qcd, use_color_factors)
+    class(prc_blha_t), intent(inout) :: object
+    type(qcd_t), intent(in) :: qcd
+    logical, intent(in) :: use_color_factors
+    object%qcd = qcd
+    object%use_color_factors = use_color_factors
+
+  end subroutine prc_blha_set_parameters
+
+@ %def prc_blha_set_parameters
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: set_particle_properties => prc_blha_set_particle_properties
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_set_particle_properties (object, model) 
+    class(prc_blha_t), intent(inout) :: object
+    class(model_data_t), intent(in), target :: model
+    type(flavor_t), dimension(:), allocatable :: flv
+    real(default), dimension(:), allocatable :: masses
+    real(default), dimension(:), allocatable :: widths
+    integer :: i_part, i_flv
+    integer :: n_part, n_flv
+    n_part = size (object%data%flv_state,1)
+    n_flv = size (object%data%flv_state,2)
+    allocate (flv (n_part), masses (n_part), widths (n_part))
+    do i_flv = 1, n_flv
+       associate (i_pdg => object%data%flv_state (:,i_flv))
+          call flv%init (i_pdg, model)
+          masses = flv%get_mass ()
+          widths = flv%get_width ()
+          select type (driver => object%driver)
+          class is (blha_driver_t)
+             do i_part = 1, n_part
+                if (masses(i_part) /= 0._default) &
+                   call driver%set_mass_and_width (abs(i_pdg(i_part)), &
+                                                   mass=masses(i_part))
+                if (abs(i_pdg(i_part)) == 6) &
+                   call driver%set_mass_and_width (abs(i_pdg(i_part)), &
+                                                   width=widths(i_part))
+             end do
+          end select
+       end associate
+    end do
+  end subroutine prc_blha_set_particle_properties
+
+@ %def prc_blha_set_particle_properties
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: compute_sqme_virt => prc_blha_compute_sqme_virt
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_compute_sqme_virt (object, &
+                i_flv, p, ren_scale, alpha_s, sqme, bad_point)
+    class(prc_blha_t), intent(inout) :: object
+    integer, intent(in) :: i_flv
+    type(vector4_t), dimension(:), intent(in) :: p
+    real(default), intent(in) :: ren_scale
+    real(default), intent(in) :: alpha_s
+    logical, intent(out) :: bad_point
+    real(default), dimension(4), intent(out) :: sqme
+    real(double) :: mu
+    real(double), dimension(5*object%n_particles) :: mom
+    real(double), dimension(blha_result_array_size (object%n_particles, &
+                                                    BLHA_AMP_LOOP)) :: r
+    real(double) :: acc_dble
+    real(default) :: acc
+
+    mom = create_blha_momentum_array (p)
+    if (ren_scale == 0.0) then
+      mu = sqrt (2* (p(1)*p(2)))
+    else
+      mu = ren_scale
+    end if
+    select type (driver => object%driver)
+    class is (blha_driver_t)
+      call driver%set_alpha_s (alpha_s)
+      call driver%blha_olp_eval2 (object%i_virt(i_flv), &
+                                   mom, mu, r, acc_dble) 
+    end select
+    acc = acc_dble
+    sqme = r(1:4)
+    if (acc > object%maximum_accuracy) then
+       bad_point = .true.
+    else
+       bad_point = .false.
+    end if
+  end subroutine prc_blha_compute_sqme_virt
+
+@ %def prc_blha_compute_sqme_virt
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 The module is split into a configuration interface which manages configuration

@@ -63,8 +63,15 @@ module_lists = \
   ../parsing/Modules \
   ../physics/Modules \
   ../qft/Modules \
+  ../expr_base/Modules \
   ../types/Modules \
-  ../particles/Modules
+  ../matrix_elements/Modules \
+  ../particles/Modules \
+  ../beams/Modules \
+  ../me_methods/Modules
+
+include_modules_bare = ${module_lists:/Modules=}
+include_modules = ${include_modules_bare:../%=-I../%}
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -108,8 +115,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../types -I../particles -I../fastjet
-
+AM_FCFLAGS = $(include_modules) -I../fastjet 
 
 ########################################################################
 ## Default Fortran compiler options
