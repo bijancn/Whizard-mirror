@@ -285,6 +285,9 @@ contains
     real(double) :: as
     real(c_double) :: c_q = 0
     c_q = q
+    !!! Without this print statement, c_q is undefined and LHAPDF6 gives an error
+    !!! when called from sf_lhapdf
+    print *, c_q
     as = lhapdf_alphaspdf (pdf%cptr, c_q)
   end function lhapdf_alphas_pdf
 
