@@ -476,6 +476,13 @@ WO_CONFIGURE_SECTION([GOSAM])
 WO_PROG_GOSAM()
 
 ###---------------------------------------------------------------------
+### OpenLoops
+
+WO_CONFIGURE_SECTION([OPENLOOPS])
+
+WO_PROG_OPENLOOPS()
+
+###---------------------------------------------------------------------
 ### LoopTools 
 
 WO_CONFIGURE_SECTION([LOOPTOOLS]) 
