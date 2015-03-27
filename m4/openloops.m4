@@ -25,7 +25,7 @@ if test "$enable_openloops" = "yes"; then
   if test "$openloops_lib" = "no"; then
     AC_MSG_ERROR([OpenLoops is enabled but not found])
   else
-    openloops_libdir=`dirname $openloops_exe`
+    openloops_libdir=`dirname $openloops_lib`
     OPENLOOPS_DIR=`dirname $openloops_libdir`
     echo "OpenLoops dir is " $OPENLOOPS_DIR
   fi
