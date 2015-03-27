@@ -77,6 +77,7 @@ module_lists = \
   ../user/Modules \
   ../blha/Modules \
   ../gosam/Modules \
+  ../openloops/Modules \
   ../fks/Modules \
   ../model_features/Modules \
   ../variables/Modules \
