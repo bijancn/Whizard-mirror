@@ -569,7 +569,7 @@ nothing but to trigger event generation for an elementary process.
 <<File header>>
 
 module hadrons
-    
+
 <<Use kinds>>
 <<Use strings>>
   use io_units
@@ -583,7 +583,7 @@ module hadrons
   use event_transforms
   use shower_base
   use shower_pythia6
-  
+
 <<Standard module head>>
 
 <<Hadrons: public>>
@@ -592,16 +592,66 @@ module hadrons
 
 <<Hadrons: interfaces>>
 
+<<Hadrons: parameters>>
+
 contains
-  
-<<Hadrons: procedures>>  
+
+<<Hadrons: procedures>>
 
 end module hadrons
-@ %def hadrons 
+@ %def hadrons
+@
+\subsection{Hadronization implementations}
+<<Hadrons: public>>=
+  public :: HADRONS_PYTHIA6, HADRONS_PYTHIA8
+<<Hadrons: parameters>>=
+  integer, parameter :: HADRONS_PYTHIA6 = 1
+  integer, parameter :: HADRONS_PYTHIA8 = 2
+  integer, parameter :: HADRONS_UNDEFINED = 17
+@ %def HADRONS_PYTHIA6 HADRONS_PYTHIA8 HADRONS_UNDEFINED
+@ A dictionary
+<<Hadrons: public>>=
+  public :: hadrons_method_of_string
+<<Hadrons: procedures>>=
+  elemental function hadrons_method_of_string (string) result (i)
+    integer :: i
+    type(string_t), intent(in) :: string
+    select case (char(string))
+    case ("PYTHIA6")
+       i = HADRONS_PYTHIA6
+    case ("PYTHIA8")
+       i = HADRONS_PYTHIA8
+    case default
+       i = HADRONS_UNDEFINED
+    end select
+  end function hadrons_method_of_string
+
+@ %def hadrons_method_of_string
+@
+<<Hadrons: public>>=
+  public :: hadrons_method_to_string
+<<Hadrons: procedures>>=
+  elemental function hadrons_method_to_string (i) result (string)
+    type(string_t) :: string
+    integer, intent(in) :: i
+    select case (i)
+    case (HADRONS_PYTHIA6)
+       string = "PYTHIA6"
+    case (HADRONS_PYTHIA8)
+       string = "PYTHIA8"
+    case default
+       string = "UNDEFINED"
+    end select
+  end function hadrons_method_to_string
+
+@ %def hadrons_method_to_string
 @
 \subsection{Abstract Hadronization Type}
+The [[model]] is the fallback model including all hadrons
 <<Hadrons: types>>=
   type, abstract :: hadrons_base_t
+   type(shower_settings_t), pointer :: settings
+   type(model_t), pointer :: model => null()
    contains
    <<Hadrons: hadrons base: TBP>>
   end type hadrons_base_t
@@ -612,9 +662,11 @@ end module hadrons
   procedure (hadrons_init), deferred :: init
 <<Hadrons: interfaces>>=
   abstract interface
-    subroutine hadrons_init (hadrons)
+    subroutine hadrons_init (hadrons, settings, model_hadrons)
       import
       class(hadrons_base_t), intent(out) :: hadrons
+      type(shower_settings_t), target, intent(in) :: settings
+      type(model_t), target, intent(in) :: model_hadrons
     end subroutine hadrons_init
    end interface
 
@@ -625,14 +677,12 @@ end module hadrons
 <<Hadrons: interfaces>>=
   abstract interface
      subroutine hadrons_hadronize &
-          (hadrons, pset, settings, model, model_hadrons, valid)
+          (hadrons, particle_set, model, valid)
        import
        class(hadrons_base_t), intent(inout) :: hadrons
-       type(particle_set_t), intent(inout) :: pset
-       type(shower_settings_t), intent(inout) :: settings
+       type(particle_set_t), intent(inout) :: particle_set
        class(model_data_t), intent(in), target :: model
-       class(model_data_t), intent(in), target :: model_hadrons
-       logical, intent(inout) :: valid
+       logical, intent(out) :: valid
      end subroutine hadrons_hadronize
   end interface
 @ %def hadrons_hadronize
@@ -650,31 +700,65 @@ hadronization within \whizard.
 <<Hadrons: hadrons PYTHIA6: TBP>>=
   procedure :: init => hadrons_pythia6_init
 <<Hadrons: procedures>>=
-  subroutine hadrons_pythia6_init (hadrons)
+  subroutine hadrons_pythia6_init (hadrons, settings, model_hadrons)
     class(hadrons_pythia6_t), intent(out) :: hadrons
+    type(shower_settings_t), target, intent(in) :: settings
+    type(model_t), intent(in), target :: model_hadrons
+    logical :: pygive_not_set_by_shower
+    hadrons%model => model_hadrons
+    hadrons%settings => settings
+    pygive_not_set_by_shower = .not. (settings%method == PS_PYTHIA6 &
+         .and. (settings%isr_active .or. settings%fsr_active))
+    if (pygive_not_set_by_shower) then
+       call pythia6_set_verbose (settings%verbose)
+       call pythia6_set_config (settings%pythia6_pygive)
+    end if
     call msg_message &
          ("Using PYTHIA6 interface for hadronization and decays")
   end subroutine hadrons_pythia6_init
-  
+
 @ %def hadrons_pythia6_init
 @ This is the actual hadronization done via PYTHIA6.
+Assume that the event record is still in the PYTHIA COMMON BLOCKS
+transferred there by one of the shower routines
 <<Hadrons: hadrons PYTHIA6: TBP>>=
   procedure :: hadronize => hadrons_pythia6_hadronize
-<<Hadrons: procedures>>=  
+<<Hadrons: procedures>>=
   subroutine hadrons_pythia6_hadronize &
-       (hadrons, pset, settings, model, model_hadrons, valid)
+       (hadrons, particle_set, model, valid)
     class(hadrons_pythia6_t), intent(inout) :: hadrons
-    type(particle_set_t), intent(inout) :: pset
-    type(shower_settings_t), intent(inout) :: settings
+    type(particle_set_t), intent(inout) :: particle_set
     class(model_data_t), intent(in), target :: model
-    class(model_data_t), intent(in), target :: model_hadrons
-    logical, intent(inout) :: valid
-    !! Assume that the event record is still in the PYTHIA COMMON BLOCKS
-    !! transferred there by one of the shower routines
-    call apply_hadronization_pythia6 (pset, settings, &
-         model, model_hadrons, valid)
+    logical, intent(out) :: valid
+    integer :: u_W2P, u_P2W
+    if (signal_is_pending ()) return
+
+    call pythia6_setup_lhe_io_units (u_W2P, u_P2W)
+
+    !!! Assume that the event is still present in the PYTHIA common blocks
+    ! call pygive ("MSTP(61)=0")  ! switch off ISR
+    ! call pygive ("MSTP(71)=0")  ! switch off FSR
+    call PYGIVE ("MSTP(111)=1") !!! switch on hadronization
+
+    call PYEXEC
+
+    if (pythia6_get_error () > 0) then
+       call pythia6_set_error (0)
+       close (u_W2P)
+       valid = .false.
+    else
+       !!! convert pythia /PYJETS/ to lhef given in MSTU(163)
+       call pylheo
+       !!! read and add lhef from u_P2W
+       call combine_lhef_with_particle_set &
+            (particle_set, u_P2W, model, hadrons%model)
+       close (u_W2P)
+       close (u_P2W)
+       valid = .true.
+    end if
+
   end subroutine hadrons_pythia6_hadronize
-  
+
 @ %def hadrons_pythia6_hadronize
 @
 \subsection{Hadronization Event Transform}
@@ -694,6 +778,31 @@ depend on the specific hadronization implementation of
   end type evt_hadrons_t
 
 @ %def evt_hadrons_t
+@ Initialize the parameters.  The [[model_hadrons]] is supposed to be
+the SM variant that contains all hadrons that may be generated in the
+shower.
+<<Hadrons: evt hadrons: TBP>>=
+  procedure :: init => evt_hadrons_init
+<<Hadrons: procedures>>=
+  subroutine evt_hadrons_init (evt, settings, model_hadrons, method)
+    class(evt_hadrons_t), intent(out) :: evt
+    type(shower_settings_t), target, intent(in) :: settings
+    type(model_t), intent(in), target :: model_hadrons
+    type(string_t), intent(in) :: method
+    evt%settings = settings
+    evt%model_hadrons => model_hadrons
+    ! TODO: (bcn 2015-03-27) method should be part of hadronization settings
+    select case (char (method))
+    case ("PYTHIA6")
+       allocate (hadrons_pythia6_t :: evt%hadrons)
+    case default
+       call msg_fatal ("Hadronization method " // char (method) // &
+            " not implemented.")
+    end select
+    call evt%hadrons%init (evt%settings, model_hadrons)
+  end subroutine evt_hadrons_init
+
+@ %def evt_hadrons_init
 @ Output.
 <<Hadrons: evt hadrons: TBP>>=
   procedure :: write => evt_hadrons_write
@@ -711,7 +820,7 @@ depend on the specific hadronization implementation of
     call write_separator (u)
     call object%settings%write (u)
   end subroutine evt_hadrons_write
-    
+
 @ %def evt_hadrons_write
 @ Here we take the particle set from the previous event transform
 (assuming that there is always one) and apply the hadronization.  The
@@ -719,7 +828,7 @@ result is stored in the event transform of the current object.  We
 always return a probability of unity as we don't have the analytic
 weight of the hadronization.  Invalid or vetoed events have to be
 discarded by the caller which is why we mark the particle set as
-invalid.  
+invalid.
 <<Hadrons: evt hadrons: TBP>>=
   procedure :: generate_weighted => evt_hadrons_generate_weighted
 <<Hadrons: procedures>>=
@@ -733,8 +842,7 @@ invalid.
        if (evt%settings%hadronization_active) then
           call assure_heprup (evt%particle_set)
        end if
-       call evt%hadrons%hadronize (evt%particle_set, evt%settings, &
-            evt%model, evt%model_hadrons, valid)  
+       call evt%hadrons%hadronize (evt%particle_set, evt%model, valid)
        probability = 1
        evt%particle_set_exists = valid
     else
@@ -768,103 +876,6 @@ vetoed).  So we do nothing here.  The factorization parameters are irrelevant.
   end subroutine evt_hadrons_prepare_new_event
 
 @ %def evt_hadrons_prepare_new_event
-@ Initialize the parameters.  The [[model_hadrons]] is supposed to be
-the SM variant that contains all hadrons that may be generated in the
-shower.
-<<Hadrons: evt hadrons: TBP>>=
-  procedure :: init => evt_hadrons_init
-<<Hadrons: procedures>>=
-  subroutine evt_hadrons_init (evt, settings, model_hadrons, method)
-    class(evt_hadrons_t), intent(out) :: evt
-    type(shower_settings_t), intent(in) :: settings
-    type(model_t), intent(in), target :: model_hadrons
-    type(string_t), intent(in) :: method
-    evt%settings = settings
-    evt%model_hadrons => model_hadrons
-    select case (char (method))
-    case ("PYTHIA6")
-       allocate (hadrons_pythia6_t :: evt%hadrons)
-    case default
-       call msg_fatal ("Hadronization method " // char (method) // &
-            " not implemented.")
-    end select
-    call evt%hadrons%init ()
-  end subroutine evt_hadrons_init
-  
-@ %def evt_hadrons_init
-@
-<<Hadrons: procedures>>=
-    subroutine apply_hadronization_pythia6 &
-         (particle_set, settings, model, model_hadrons, valid)
-      type(particle_set_t), intent(inout) :: particle_set
-      type(shower_settings_t), intent(in) :: settings
-      class(model_data_t), intent(in), target :: model
-      class(model_data_t), intent(in), target :: model_hadrons
-      logical, intent(inout) :: valid
-      integer :: u_W2P, u_P2W
-      logical :: pygive_not_set_by_shower
-      character(len=10) :: buffer
-      logical, parameter :: debug = .false., to_file = .false.
-      if (.not. settings%hadronization_active)  return
-      if (.not. valid) return
-      if (signal_is_pending ()) return          
-
-      u_W2P = free_unit ()
-      if (debug) then
-         open (unit=u_W2P, status="replace", file="whizardout.lhe", &
-              action="readwrite") 
-      else
-         open (unit=u_W2P, status="scratch", action="readwrite")
-      end if
-      call w2p_write_lhef_event (u_W2P)
-      rewind (u_W2P)
-      write (buffer, "(I10)")  u_W2P
-      call PYGIVE ("MSTP(161)=" // buffer)  !!! Unit for PYUPIN (LHA)
-      call PYGIVE ("MSTP(162)=" // buffer)  !!! Unit for PYUPEV (LHA)
-
-      !!! Assume that the event is still present in the PYTHIA common blocks
-      ! call pygive ("MSTP(61)=0")  ! switch off ISR
-      ! call pygive ("MSTP(71)=0")  ! switch off FSR
-
-      pygive_not_set_by_shower = .not. (settings%ps_use_PYTHIA6_shower &
-           .and. (settings%ps_isr_active .or. settings%ps_fsr_active))
-      if (pygive_not_set_by_shower) then
-         call pythia6_set_verbose (settings%ps_PYTHIA_verbose)
-         call pythia6_set_config (settings%ps_PYTHIA_PYGIVE)
-      end if
-
-      call PYGIVE ("MSTP(111)=1") !!! switch on hadronization
-      if (signal_is_pending ()) return          
-      
-      call PYEXEC
-
-      if (pythia6_get_error () > 0) then
-         call pythia6_set_error (0)
-         close (u_W2P)
-         valid = .false.
-      else
-         !!! convert back
-         u_P2W = free_unit ()
-         write (buffer, "(I10)")  u_P2W
-         call PYGIVE ("MSTP(163)=" // buffer)
-         if (debug .and. to_file) then
-            open (unit=u_P2W, file="pythiaout2.lhe", status="replace", &
-                 action="readwrite")  
-         else            
-            open (unit=u_P2W, status="scratch", action="readwrite")
-         end if
-         !!! convert pythia /PYJETS/ to lhef given in MSTU(163)=u1
-         call pylheo
-         !!! read and add lhef from u_P2W
-         call combine_lhef_with_particle_set &
-              (particle_set, u_P2W, model, model_hadrons)
-         close (u_W2P)
-         close (u_P2W)
-         valid = .true.
-      end if
-    end subroutine apply_hadronization_pythia6
-  
-@ %def apply_hadronization_pythia6
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Decays}
@@ -1818,7 +1829,7 @@ apply to the decay root.
   recursive subroutine decay_config_compute (decay)
     class(decay_config_t), intent(inout) :: decay
     call decay%decay_root_config_t%compute ()
-    if (decay%integral /= 0) then
+    if (.not. vanishes (decay%integral)) then
        decay%rel_error = decay%abs_error / decay%integral
     else
        decay%rel_error = 0
@@ -3764,7 +3775,7 @@ we mark the particle set as invalid. This procedure directly takes the
           call evt%powheg%generate_emission (particle_set = evt%particle_set)
           if (DEBUG_SHOWER) call evt%powheg%write ()
        end if       
-       if (evt%settings%ps_use_PYTHIA6_shower .or. &
+       if (evt%settings%method == PS_PYTHIA6 .or. &
            evt%settings%hadronization_active) then
           call assure_heprup (evt%particle_set)
        end if
@@ -3776,8 +3787,8 @@ we mark the particle set as invalid. This procedure directly takes the
                   data%ckkw_weights, evt%particle_set)
           end select
        end if
-       if (evt%settings%ps_fsr_active .or. &
-            evt%settings%ps_isr_active .or. &
+       if (evt%settings%fsr_active .or. &
+            evt%settings%isr_active .or. &
             evt%settings%hadronization_active .or. &
             evt%settings%mlm_matching .and. &
             .not. POWHEG_TESTING) then
@@ -3786,7 +3797,7 @@ we mark the particle set as invalid. This procedure directly takes the
           end do
           ! ensure that lhapdf is initialized
           if (evt%pdf_data%type .eq. STRF_LHAPDF5) then
-             if (evt%settings%ps_isr_active .and. &
+             if (evt%settings%isr_active .and. &
                   (all (abs (prt_in%get_pdg ()) >= 1000))) then
                 call GetQ2max (0, pdftest)
                 if (pdftest < epsilon(pdftest)) then
@@ -3795,12 +3806,11 @@ we mark the particle set as invalid. This procedure directly takes the
                    return
                 end if
              end if
-          else if (evt%pdf_data%type == STRF_PDF_BUILTIN) then
-             if (evt%settings%ps_use_PYTHIA6_shower) then
-                call msg_fatal ("Builtin PDFs cannot be used for PYTHIA showers," &
-                     // LF // "     aborting simulation")
-                return
-             end if
+          else if (evt%pdf_data%type == STRF_PDF_BUILTIN .and. &
+             evt%settings%method == PS_PYTHIA6) then
+             call msg_fatal ("Builtin PDFs cannot be used for PYTHIA showers," &
+                  // LF // "     aborting simulation")
+             return
           end if
           if (DEBUG_SHOWER)  print *, "Shower: beam checks for mlm_matching"
           if (.not. matching_disabled .and. allocated (evt%data)) then
@@ -3873,7 +3883,6 @@ irrelevant.
 <<Shower: procedures>>=
   subroutine evt_shower_final (object)
     class(evt_shower_t), intent(inout) :: object
-    integer :: i
     if (object%settings%powheg_matching) &
          call object%powheg%write_statistics ()
   end subroutine evt_shower_final
@@ -4210,7 +4219,7 @@ We generate a two-jet event and shower it with the Whizard FSR shower.
     write (u, "(A)")  "* Set up shower event transform"
     write (u, "(A)")
 
-    settings%ps_fsr_active = .true.
+    settings%fsr_active = .true.
 
     allocate (evt_shower_t :: evt_shower)
     select type (evt_shower)
@@ -4266,6 +4275,7 @@ module events
   
 <<Use kinds>>
 <<Use strings>>
+  use constants, only: one
   use io_units
   use format_utils, only: write_separator
   use format_defs, only: FMT_12
@@ -4361,7 +4371,7 @@ so the actual nodes are not stored inside the event object.
        write (u, "(A)")  "factorize"
     end select
     write (u, "(3x,A,L1)")  "Keep correlations  = ", object%keep_correlations
-    if (object%safety_factor /= 1) then
+    if (.not. nearly_equal (object%safety_factor, one)) then
        write (u, "(3x,A," // FMT_12 // ")")  &
             "Safety factor      = ", object%safety_factor
     end if
@@ -5352,7 +5362,7 @@ and squared matrix element.
     class(event_t), intent(in) :: event
     real(default) :: f
     if (event%sqme_ref_is_known () .and. event%weight_ref_is_known () &
-         .and. event%get_sqme_ref () /= 0) then
+         .and. abs (event%get_sqme_ref ()) > 0) then
        f = event%get_weight_ref () / event%get_sqme_ref ()
     else
        f = 0
@@ -8241,7 +8251,57 @@ so the latter is always available (and kept global).
     call var_list_append_log &
          (global%var_list, var_str ("?polarized_events"), .false., &
             intrinsic=.true.)
-    !!! Default settings for shower
+    call set_shower_defaults ()
+    call set_hadronization_defaults ()
+    call set_mlm_matching_defaults ()
+    call set_powheg_matching_defaults ()
+    call var_list_append_log &
+         (global%var_list, var_str ("?ckkw_matching"), .false., &
+            intrinsic=.true.)
+    call var_list_append_string &
+         (global%var_list, var_str ("$pdf_builtin_set"), var_str ("CTEQ6L"), &
+         intrinsic=.true.)
+    call set_openmp_defaults ()
+    call var_list_append_string &
+       (global%var_list, var_str ("$loop_me_method"), &
+        var_str ("gosam"), intrinsic = .true.)
+    call var_list_append_string &
+       (global%var_list, var_str ("$correlation_me_method"), &
+        var_str ("omega"), intrinsic = .true.)
+    call var_list_append_string &
+       (global%var_list, var_str ("$real_tree_me_method"), &
+        var_str ("omega"), intrinsic = .true.)
+    call var_list_append_real &
+        (global%var_list, var_str ("fks_dij_exp1"), &
+         1._default, intrinsic = .true.)
+    call var_list_append_real &
+        (global%var_list, var_str ("fks_dij_exp2"), &
+         1._default, intrinsic = .true.)
+    call var_list_append_int &
+        (global%var_list, var_str ("fks_mapping_type"), &
+         1, intrinsic = .true.)
+    call var_list_append_int &
+        (global%var_list, var_str ("alpha_power"), &
+         2, intrinsic = .true.)
+    call var_list_append_int &
+        (global%var_list, var_str ("alphas_power"), &
+         0, intrinsic = .true.)
+    call var_list_append_log &
+        (global%var_list, var_str ("?combined_nlo_integration"), &
+         .false., intrinsic = .true.)
+    call global%init_pointer_variables ()
+    call global%process_stack%init_var_list (global%var_list)
+
+  contains
+
+  <<RT data: global init: procedures>>
+
+  end subroutine rt_data_global_init
+
+@ %def rt_data_global_init
+@ 
+<<RT data: global init: procedures>>=
+  subroutine set_shower_defaults ()
     call var_list_append_log &
          (global%var_list, var_str ("?allow_shower"), .true., &
             intrinsic=.true.)
@@ -8249,17 +8309,20 @@ so the latter is always available (and kept global).
          (global%var_list, var_str ("?ps_fsr_active"), .false., &
             intrinsic=.true.)
     call var_list_append_log &
-         (global%var_list, var_str ("?ps_use_PYTHIA6_shower"), .false., &
+         (global%var_list, var_str ("?ps_isr_active"), .false., &
             intrinsic=.true.)
     call var_list_append_log &
-         (global%var_list, var_str ("?ps_PYTHIA_verbose"), .false., &
+         (global%var_list, var_str ("?muli_active"), .false., &
+            intrinsic=.true.)
+    call var_list_append_string &
+         (global%var_list, var_str ("$shower_method"), var_str ("WHIZARD"), &
+            intrinsic=.true.)
+    call var_list_append_log &
+         (global%var_list, var_str ("?shower_verbose"), .false., &
             intrinsic=.true.)
     call var_list_append_string &
          (global%var_list, var_str ("$ps_PYTHIA_PYGIVE"), var_str (""), &
           intrinsic=.true.)
-    call var_list_append_log &
-         (global%var_list, var_str ("?ps_isr_active"), .false., &
-            intrinsic=.true.)
     call var_list_append_real (global%var_list, &
          var_str ("ps_mass_cutoff"), 1._default, intrinsic = .true.)
     call var_list_append_real (global%var_list, &
@@ -8294,17 +8357,11 @@ so the latter is always available (and kept global).
          ("ps_isr_tscalefactor"), 1._default, intrinsic = .true.)
     call var_list_append_log (global%var_list, var_str &
          ("?ps_isr_only_onshell_emitted_partons"), .false., intrinsic=.true.)
-    !!! Default settings for hadronization
-    call var_list_append_log &
-         (global%var_list, var_str ("?allow_hadronization"), .true., &
-            intrinsic=.true.)    
-    call var_list_append_log &
-         (global%var_list, var_str ("?hadronization_active"), .false., &
-            intrinsic=.true.)
-    call var_list_append_string &
-         (global%var_list, var_str ("$hadronization_method"), &
-         var_str ("PYTHIA6"), intrinsic = .true.)
-    !!! Setting for mlm matching
+  end subroutine set_shower_defaults
+
+@
+<<RT data: global init: procedures>>=
+  subroutine set_mlm_matching_defaults ()
     call var_list_append_log &
          (global%var_list, var_str ("?mlm_matching"), .false., &
             intrinsic=.true.)
@@ -8332,61 +8389,14 @@ so the latter is always available (and kept global).
          ("mlm_Rclusfactor"), 1._default, intrinsic = .true.)
     call var_list_append_real (global%var_list, var_str &
          ("mlm_Eclusfactor"), 1._default, intrinsic = .true.)
-    call var_list_append_log &
-         (global%var_list, var_str ("?ckkw_matching"), .false., &
-            intrinsic=.true.)
+    
+  end subroutine set_mlm_matching_defaults 
+@ 
+<<RT data: global init: procedures>>=
+  subroutine set_powheg_matching_defaults ()
     call var_list_append_log &
         (global%var_list, var_str ("?powheg_matching"), &
          .false., intrinsic = .true.)
-    call var_list_append_log &
-         (global%var_list, var_str ("?muli_active"), .false., &
-            intrinsic=.true.)
-    call var_list_append_string &
-         (global%var_list, var_str ("$pdf_builtin_set"), var_str ("CTEQ6L"), &
-         intrinsic=.true.)
-    call var_list_append_log &
-         (global%var_list, var_str ("?omega_openmp"), &
-         openmp_is_active (), &
-         intrinsic=.true.)
-    call var_list_append_log &
-         (global%var_list, var_str ("?openmp_is_active"), &
-         openmp_is_active (), &
-         locked=.true., intrinsic=.true.)
-    call var_list_append_int &
-         (global%var_list, var_str ("openmp_num_threads_default"), &
-         openmp_get_default_max_threads (), &
-         locked=.true., intrinsic=.true.)
-    call var_list_append_int &
-         (global%var_list, var_str ("openmp_num_threads"), &        
-         openmp_get_max_threads (), &
-         intrinsic=.true.)
-    call var_list_append_log &
-         (global%var_list, var_str ("?openmp_logging"), &
-         .true., intrinsic=.true.)    
-    call var_list_append_string &
-       (global%var_list, var_str ("$loop_me_method"), &
-        var_str ("gosam"), intrinsic = .true.)
-    call var_list_append_string &
-       (global%var_list, var_str ("$correlation_me_method"), &
-        var_str ("omega"), intrinsic = .true.)
-    call var_list_append_string &
-       (global%var_list, var_str ("$real_tree_me_method"), &
-        var_str ("omega"), intrinsic = .true.)
-    call var_list_append_real &
-        (global%var_list, var_str ("fks_dij_exp1"), &
-         1._default, intrinsic = .true.)
-    call var_list_append_real &
-        (global%var_list, var_str ("fks_dij_exp2"), &
-         1._default, intrinsic = .true.)
-    call var_list_append_int &
-        (global%var_list, var_str ("fks_mapping_type"), &
-         1, intrinsic = .true.)
-    call var_list_append_int &
-        (global%var_list, var_str ("alpha_power"), &
-         2, intrinsic = .true.)
-    call var_list_append_int &
-        (global%var_list, var_str ("alphas_power"), &
-         0, intrinsic = .true.)
     call var_list_append_log &
         (global%var_list, var_str ("?powheg_use_singular_jacobian"), &
          .false., intrinsic = .true.)
@@ -8408,15 +8418,47 @@ so the latter is always available (and kept global).
     call var_list_append_log &
          (global%var_list, var_str ("?powheg_rebuild_grids"), &
           .false., intrinsic = .true.)
+  end subroutine set_powheg_matching_defaults 
+    
+@
+<<RT data: global init: procedures>>=
+  subroutine set_hadronization_defaults ()
     call var_list_append_log &
-        (global%var_list, var_str ("?combined_nlo_integration"), &
-         .false., intrinsic = .true.)
-    call global%init_pointer_variables ()
-    call global%process_stack%init_var_list (global%var_list)
-  end subroutine rt_data_global_init
+         (global%var_list, var_str ("?allow_hadronization"), .true., &
+            intrinsic=.true.)    
+    call var_list_append_log &
+         (global%var_list, var_str ("?hadronization_active"), .false., &
+            intrinsic=.true.)
+    call var_list_append_string &
+         (global%var_list, var_str ("$hadronization_method"), &
+         var_str ("PYTHIA6"), intrinsic = .true.)
+  end subroutine set_hadronization_defaults
 
-@ %def rt_data_global_init
-@ 
+@
+<<RT data: global init: procedures>>=
+  subroutine set_openmp_defaults ()
+    call var_list_append_log &
+         (global%var_list, var_str ("?omega_openmp"), &
+         openmp_is_active (), &
+         intrinsic=.true.)
+    call var_list_append_log &
+         (global%var_list, var_str ("?openmp_is_active"), &
+         openmp_is_active (), &
+         locked=.true., intrinsic=.true.)
+    call var_list_append_int &
+         (global%var_list, var_str ("openmp_num_threads_default"), &
+         openmp_get_default_max_threads (), &
+         locked=.true., intrinsic=.true.)
+    call var_list_append_int &
+         (global%var_list, var_str ("openmp_num_threads"), &        
+         openmp_get_max_threads (), &
+         intrinsic=.true.)
+    call var_list_append_log &
+         (global%var_list, var_str ("?openmp_logging"), &
+         .true., intrinsic=.true.)    
+  end subroutine set_openmp_defaults 
+
+@
 \subsection{Local copies}
 This is done at compile time when a local copy of runtime data is
 needed: Link the variable list and initialize all derived parameters.
@@ -10912,13 +10954,13 @@ flavors (beam index, component index) for the hard process.
          allocate (isr_data_t :: data)
          isr_alpha = &
               var_list%get_rval (var_str ("isr_alpha"))
-         if (isr_alpha == 0) then
+         if (vanishes (isr_alpha)) then
             isr_alpha = (var_list%get_rval (var_str ("ee"))) &
                  ** 2 / (4 * PI)
          end if
          isr_q_max = &
               var_list%get_rval (var_str ("isr_q_max"))
-         if (isr_q_max == 0) then
+         if (vanishes (isr_q_max)) then
             isr_q_max = sqrts
          end if
          isr_mass   = var_list%get_rval (var_str ("isr_mass"))
@@ -10935,14 +10977,14 @@ flavors (beam index, component index) for the hard process.
       case ("epa")
          allocate (epa_data_t :: data)
          epa_alpha = var_list%get_rval (var_str ("epa_alpha"))
-         if (epa_alpha == 0) then
+         if (vanishes (epa_alpha)) then
             epa_alpha = (var_list%get_rval (var_str ("ee"))) &
                  ** 2 / (4 * PI)
          end if         
          epa_x_min = var_list%get_rval (var_str ("epa_x_min"))
          epa_q_min = var_list%get_rval (var_str ("epa_q_min"))
          epa_e_max = var_list%get_rval (var_str ("epa_e_max"))
-         if (epa_e_max == 0) then
+         if (vanishes (epa_e_max)) then
             epa_e_max = sqrts
          end if
          epa_mass   = var_list%get_rval (var_str ("epa_mass"))
@@ -10966,7 +11008,7 @@ flavors (beam index, component index) for the hard process.
          ewa_id = abs (pdg_array_get (pdg_prc1(1), 1))
          ewa_x_min = var_list%get_rval (var_str ("ewa_x_min"))
          ewa_pt_max = var_list%get_rval (var_str ("ewa_pt_max")) 
-         if (ewa_pt_max == 0) then
+         if (vanishes (ewa_pt_max)) then
             ewa_pt_max = sqrts
          end if
          ewa_mass = var_list%get_rval (var_str ("ewa_mass"))  
@@ -11932,18 +11974,6 @@ each matrix-element call.
 @ %def dispatch_qcd
 @
 \subsection{Parton Shower}
-Transfer the settings and parameters for shower and hadronization from
-the [[global]] object to the [[shower_settings]] object.
-<<Dispatch: procedures>>=
-  subroutine dispatch_shower_settings (settings, global)
-    type(shower_settings_t), intent(inout) :: settings
-    type(rt_data_t), intent(in), target :: global
-    type(var_list_t), pointer :: var_list
-    var_list => global%get_var_list_ptr ()
-    call settings%init (var_list)
-  end subroutine dispatch_shower_settings
-
-@ %def dispatch_shower_settings
 @ If POWHEG matching is switched on, transfer the specific settings to
 the corresponding variables.
 <<Dispatch: procedures>>=
@@ -11984,20 +12014,16 @@ concatenated, we provide individual dispatchers for each of them.
 <<Dispatch: public>>=
   public :: dispatch_evt_shower
 <<Dispatch: procedures>>=
-  subroutine dispatch_evt_shower (evt, global, process)
+  subroutine dispatch_evt_shower (evt, rt_data, process)
     class(evt_t), intent(out), pointer :: evt
-    type(rt_data_t), intent(in), target :: global
+    type(rt_data_t), intent(in), target :: rt_data
     type(process_t), intent(in), optional, target :: process
     type(var_list_t), pointer :: var_list
     type(powheg_t) :: powheg
     type(string_t) :: lhapdf_file, lhapdf_dir, process_name
     integer :: lhapdf_member
-    double precision :: xmin, xmax, q2min, q2max
     type(shower_settings_t) :: settings
-    class(matching_settings_t), allocatable :: matching_settings
-    external :: GetXminM, GetXmaxM, GetQ2minM, GetQ2maxM
-    var_list => global%get_var_list_ptr ()
-    process_name = ""
+    var_list => rt_data%get_var_list_ptr ()
     lhapdf_dir = &
          var_list%get_sval (var_str ("$lhapdf_dir"))
     lhapdf_file = &
@@ -12006,11 +12032,11 @@ concatenated, we provide individual dispatchers for each of them.
          var_list%get_ival (var_str ("lhapdf_member"))
     allocate (evt_shower_t :: evt)
     call msg_message ("Simulate: activating parton shower")
-    call dispatch_shower_settings (settings, global)
+    call settings%init (var_list)
     if (present (process)) then
        process_name = process%get_id ()
        if (settings%powheg_matching) then
-          call dispatch_powheg (powheg, global, process_name)
+          call dispatch_powheg (powheg, rt_data, process_name)
        end if
     end if
     if (settings%mlm_matching .and. settings%ckkw_matching) then
@@ -12019,9 +12045,8 @@ concatenated, we provide individual dispatchers for each of them.
     end if
     select type (evt)
     type is (evt_shower_t)
-       call evt%init &
-            (settings, global%fallback_model, global%os_data, &
-             powheg)
+       call evt%init (settings, rt_data%fallback_model, rt_data%os_data, &
+            powheg)
        if (settings%mlm_matching) then
           call msg_message ("Simulate: applying MLM matching")
           allocate (mlm_matching_settings_t :: evt%matching_settings)
@@ -12040,13 +12065,16 @@ concatenated, we provide individual dispatchers for each of them.
        end if
        if (present (process)) &
             call evt%setup_pdf &
-            (process, global%beam_structure, lhapdf_member)
-       select case (evt%settings%shower_type)
-       case (SHOWER_ANALYTIC,SHOWER_KT_ORDERED)
+            (process, rt_data%beam_structure, lhapdf_member)
+       select case (evt%settings%method)
+       case (PS_WHIZARD)
           allocate (shower_t :: evt%shower)
-       case (SHOWER_PYTHIA6_KT,SHOWER_PYTHIA6_ANGULAR)
+       case (PS_PYTHIA6)
           allocate (shower_pythia6_t :: evt%shower)
        case default
+          call msg_fatal ('Shower: Method ' // &
+            char (var_list%get_sval (var_str ("$shower_method"))) // &
+            'not implemented!')
        end select
        call evt%shower%init (evt%settings, evt%pdf_data)
     end select
@@ -12061,7 +12089,6 @@ concatenated, we provide individual dispatchers for each of them.
     class(evt_t), intent(out), pointer :: evt
     type(rt_data_t), intent(in), target :: global
     type(process_t), intent(in), optional, target :: process
-    logical :: allow_hadronization
     type(string_t) :: method
     type(var_list_t), pointer :: var_list
     type(shower_settings_t) :: settings
@@ -12070,7 +12097,7 @@ concatenated, we provide individual dispatchers for each of them.
          var_list%get_sval (var_str ("$hadronization_method"))
     allocate (evt_hadrons_t :: evt)
     call msg_message ("Simulate: activating hadronization")
-    call dispatch_shower_settings (settings, global)
+    call settings%init (var_list)
     select type (evt)
     type is (evt_hadrons_t)
        call settings%init (var_list)
@@ -13023,6 +13050,7 @@ to steer the initial and final state.
   subroutine dispatch_12 (u)
     integer, intent(in) :: u
     type(rt_data_t), target :: global
+    type(var_list_t), pointer :: var_list
     type(shower_settings_t) :: shower_settings
     
     write (u, "(A)")  "* Test output: dispatch_12"
@@ -13035,7 +13063,8 @@ to steer the initial and final state.
     call global%global_init ()
     call var_list_set_log (global%var_list, var_str ("?alpha_s_is_fixed"), &
          .true., is_known = .true.)
-    call dispatch_shower_settings (shower_settings, global)
+    var_list => global%get_var_list_ptr ()
+    call shower_settings%init (var_list)
     call write_separator (u)
     call shower_settings%write (u)
     call write_separator (u)
@@ -13045,6 +13074,8 @@ to steer the initial and final state.
     write (u, "(A)")  "      and MLM matching"
     write (u, "(A)")
     
+    call var_list_set_string (global%var_list, var_str ("$shower_method"), &
+         var_str ("PYTHIA6"), is_known = .true.)
     call var_list_set_log (global%var_list, var_str ("?ps_fsr_active"), &
          .true., is_known = .true.)
     call var_list_set_log (global%var_list, var_str ("?ps_isr_active"), &
@@ -13062,7 +13093,7 @@ to steer the initial and final state.
          var_str ("mlm_etamax"), 3.456_default, is_known=.true.)
     call var_list_set_string (global%var_list, &
          var_str ("$ps_PYTHIA_PYGIVE"), var_str ("abcdefgh"), is_known=.true.)    
-    call dispatch_shower_settings (shower_settings, global)
+    call shower_settings%init (var_list)
     call write_separator (u)
     call shower_settings%write (u)
     call write_separator (u)
@@ -13118,6 +13149,8 @@ the only nontrivial transform is the partonic decay chain..
 
     call var_list_set_log (global%var_list, var_str ("?allow_shower"), .true., &
          is_known = .true.)
+    call var_list_set_string (global%var_list, var_str ("$shower_method"), &
+         var_str ("WHIZARD"), is_known = .true.)
     call dispatch_evt_shower (evt, global)
     select type (evt)
     type is (evt_shower_t)
@@ -14418,8 +14451,6 @@ we use the wrapper [[compile_executable]] procedure.
     integer, intent(in) :: u
     type(string_t) :: libname, procname, exename
     type(rt_data_t), target :: global
-    type(compilation_item_t) :: item
-    type(compilation_t) :: compilation
     logical :: exist
     integer :: u_file
 
@@ -14671,7 +14702,6 @@ local changes to currently inactive models.
     logical :: sf_trace
     type(string_t) :: sf_string, sf_trace_file
     logical :: verb
-    type(process_constants_t) :: prc_const
     integer :: i_born
     type(fks_template_t) :: fks_template
     type(gosam_template_t) :: gosam_template
@@ -17603,11 +17633,9 @@ contains pointers to the process and instance.
     type(string_t), intent(in) :: process_id
     type(process_t), intent(in), target :: master_process
     type(rt_data_t), intent(inout), target :: local
-    class(rng_factory_t), allocatable :: rng_factory
     type(process_t), pointer :: process
     type(process_instance_t), pointer :: process_instance
     type(string_t) :: run_id
-    type(integration_t) :: intg
     integer :: i
 
     call msg_message ("Simulate: initializing alternate process setup ...")
@@ -17774,7 +17802,7 @@ writes the current event and process instance, depending on options.
             char (object%entry(object%i_prc)%process_id)
        write (u, "(3x,A,I0)")  "MCI set #", object%i_mci
        write (u, "(3x,A," // FMT_19 // ")")  "Weight    = ", object%weight
-       if (object%excess /= 0) &
+       if (.not. vanishes (object%excess)) &
             write (u, "(3x,A," // FMT_19 // ")")  "Excess    = ", object%excess
     else
        write (u, "(1x,A,I0,A,A)")  "Current event: [undefined]"
@@ -18103,7 +18131,7 @@ choose the larger number.
              write (msg_buffer, "(A,1x,I0)") &
                   "Simulation: requested number of events =", n_events
              call msg_message ()
-             if (simulation%integral /= 0) then
+             if (.not. vanishes (simulation%integral)) then
                 write (msg_buffer, "(A,1x,ES11.4)") &
                      "            corr. to luminosity [fb-1] = ", &
                      n_events / simulation%integral        
@@ -20200,7 +20228,6 @@ Generate an event with subsequent partonic decays.
     type(rt_data_t), target :: global
     type(prclib_entry_t), pointer :: lib
     type(string_t) :: prefix, procname1, procname2
-    type(process_t), pointer :: process
     type(simulation_t), target :: simulation
     
     write (u, "(A)")  "* Test output: simulations_11"
@@ -21909,11 +21936,9 @@ or arrays which would make the expansion ambiguous.
     integer :: i, j, n_in, n_out, n_terms, n_components
     logical :: nlo_calc
     logical, dimension(3) :: active_nlo_components
-    type(pdg_array_t), dimension(:), allocatable :: pdg_array_in, pdg_array_out
     type(string_t), dimension(:), allocatable :: prt_in_nlo, prt_out_nlo
     type(radiation_generator_t) :: radiation_generator
     type(pdg_list_t) :: pl_in, pl_out
-    logical :: method_changed = .false.
     type(string_t) :: loop_me_method
     type(string_t) :: correlation_me_method
     type(string_t) :: real_tree_me_method
@@ -22844,7 +22869,6 @@ with the model.  This is similar to executing [[cmd_model]].
     class(cmd_slha_t), intent(inout) :: cmd
     type(rt_data_t), intent(inout), target :: global
     logical :: input, spectrum, decays
-    type(model_t), pointer :: model
     if (cmd%write_mode) then
        input = .true.
        spectrum = .false.
@@ -26045,7 +26069,7 @@ referred to at any time.
     type(string_t) :: prt_in
     type(string_t), dimension(:), allocatable :: prt_out
     type(process_configuration_t) :: prc_config
-    integer :: i, j, k, n
+    integer :: i, j, k
     call flv_in%init (pdg_in, global%model)
     if (rad) then
        call constraints%init (2)
@@ -33656,7 +33680,7 @@ end program main
     type(process_t), pointer :: process
     integer :: proc
    
-    integer :: factorization_mode, try
+    integer :: factorization_mode
    
     call c_f_pointer (w_c_instance, whizard_instance)        
     

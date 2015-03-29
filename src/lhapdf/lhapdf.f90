@@ -192,7 +192,7 @@ contains
   end subroutine lhapdf_pdf_init
 
   function lhapdf_is_associated (pdf) result (flag)
-    class(lhapdf_pdf_t), intent(inout) :: pdf
+    class(lhapdf_pdf_t), intent(in) :: pdf
     logical :: flag
     flag = c_associated (pdf%cptr)
   end function lhapdf_is_associated
