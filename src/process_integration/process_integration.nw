@@ -1968,6 +1968,7 @@ module processes
   use prc_openloops
   use prc_omega
   use blha_config
+  use blha_olp_interfaces
   
 <<Standard module head>>
 
@@ -2315,18 +2316,18 @@ from the library.
 <<Processes: procedures>>=
   subroutine process_init_component &
        (process, index, core_template, mci_template, phs_config_template, &
-        fks_template, gosam_template)
+        fks_template, blha_template)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: index
     class(prc_core_t), intent(in), allocatable :: core_template
     class(mci_t), intent(in), allocatable :: mci_template
     class(phs_config_t), intent(in), allocatable :: phs_config_template
     type(fks_template_t), intent(in), optional :: fks_template
-    type(gosam_template_t), intent(inout), optional :: gosam_template
+    type(blha_template_t), intent(inout), optional :: blha_template
     call process%component(index)%init (index, &
          process%meta, process%config, &
          core_template, mci_template, phs_config_template, &
-         gosam_template, fks_template)
+         blha_template, fks_template)
     if (.not. process%component(index)%active) then
        call process%meta%deactivate_component(index)
     end if
@@ -4937,7 +4938,7 @@ configuration finalizer may include closing an open scratch file.
   subroutine process_component_init (component, &
        i_component, meta, config, &
        core_template, mci_template, phs_config_template, &
-       gosam_template, fks_template)
+       blha_template, fks_template)
     class(process_component_t), intent(out) :: component
     integer, intent(in) :: i_component
     type(process_metadata_t), intent(in) :: meta
@@ -4945,7 +4946,7 @@ configuration finalizer may include closing an open scratch file.
     class(prc_core_t), intent(in), allocatable :: core_template
     class(mci_t), intent(in), allocatable :: mci_template
     class(phs_config_t), intent(in), allocatable :: phs_config_template
-    type(gosam_template_t), intent(inout), optional :: gosam_template
+    type(blha_template_t), intent(inout), optional :: blha_template
     type(fks_template_t), intent(in), optional :: fks_template
     integer, dimension(3) :: amp_type
 
@@ -4958,18 +4959,15 @@ configuration finalizer may include closing an open scratch file.
       component%fks_template = fks_template
     end if
     select type (core => component%core)
-    type is (prc_gosam_t)
-      if (present (gosam_template)) then
-        call core%init_gosam (gosam_template)
+    class is (prc_blha_t)
+      if (present (blha_template)) then
+        call core%init_blha (blha_template)
       else
-        call msg_bug ("process_component_init: gosam core cannot be initialized - &
+        call msg_bug ("process_component_init: BLHA core cannot be initialized - &
                        & missing template")
       end if
       call core%init_driver (config%os_data)
-      call core%set_initialized ()
-    type is (prc_openloops_t)
-       call core%init_openloops ()
-       call core%init_driver (config%os_data)
+!      call core%set_initialized ()
     end select
     component%active = component%core%has_matrix_element ()
     if (component%active) then
@@ -6698,8 +6696,10 @@ imaginary part of the terms, which should be zero anyway.
         call nlo_controller%virtual_terms%set_ren_scale &
                    (term%int_hard%get_momenta (), term%ren_scale) 
         select type (core => component%config%core)
-        type is (prc_gosam_t)
+!        type is (prc_gosam_t)
+        class is (prc_blha_t)
            do i_flv = 1, core%get_nflv()
+              call core%update_alpha_s (component%core_state, term%fac_scale)
               call core%compute_sqme_virt (i_flv, &
                          term%int_hard%get_momenta (), &
                          term%ren_scale, &
@@ -6719,21 +6719,21 @@ imaginary part of the terms, which should be zero anyway.
                                nlo_controller%compute_virt (i_flv, term%int_hard) * &
                                term%weight
            end do
-        type is (prc_openloops_t)
-           do i_flv = 1, core%get_nflv() 
-              call core%update_alpha_s (component%core_state, term%fac_scale)
-              call core%compute_sqme_virt (1, &
-                        term%int_hard%get_momenta (), &
-                        term%ren_scale, &
-                        core%get_alpha_s (component%core_state), &
-                        sqme_virt, bad_point)
-              call nlo_controller%virtual_terms%set_vfin (sqme_virt(3))
-              call nlo_controller%virtual_terms%set_bad_point (bad_point)
-              nlo_controller%sqme_collector%current_sqme_born = sqme_virt (4)             
-              component%sqme = component%sqme + &
-                               nlo_controller%compute_virt (i_flv, term%int_hard) * &
-                               term%weight
-           end do
+!        type is (prc_openloops_t)
+!           do i_flv = 1, core%get_nflv() 
+!              call core%update_alpha_s (component%core_state, term%fac_scale)
+!              call core%compute_sqme_virt (1, &
+!                        term%int_hard%get_momenta (), &
+!                        term%ren_scale, &
+!                        core%get_alpha_s (component%core_state), &
+!                        sqme_virt, bad_point)
+!              call nlo_controller%virtual_terms%set_vfin (sqme_virt(3))
+!              call nlo_controller%virtual_terms%set_bad_point (bad_point)
+!              nlo_controller%sqme_collector%current_sqme_born = sqme_virt (4)             
+!              component%sqme = component%sqme + &
+!                               nlo_controller%compute_virt (i_flv, term%int_hard) * &
+!                               term%weight
+!           end do
         end select
 
      end associate
@@ -6761,7 +6761,8 @@ imaginary part of the terms, which should be zero anyway.
         int => evaluator_get_int_ptr (term%connected_real%trace)
         component%nlo_controller%sqme_collector%sqme_real_non_sub = &
              int%get_matrix_element (1)
-     type is (prc_gosam_t)
+!     type is (prc_gosam_t)
+     class is (prc_blha_t)
         do i_flv = 1, component%nlo_controller%get_n_flv_real ()
            call core%compute_sqme_real (i_flv, p_real, 0._default, &
                 core%get_alpha_s (component%core_state), &
@@ -6774,7 +6775,8 @@ imaginary part of the terms, which should be zero anyway.
        if (nlo_controller%is_subtraction_active ()) then
           associate (collector => nlo_controller%sqme_collector)
             select type (core_born => component%config%core_sub_born)
-            type is (prc_gosam_t)
+!            type is (prc_gosam_t)
+            class is (prc_blha_t)
                do i_flv = 1, nlo_controller%get_n_flv_born ()
                   if (.not. nlo_controller%use_internal_color_correlations) then
                      call core_born%compute_sqme_cc (i_flv, &
@@ -7478,9 +7480,10 @@ physical event.
                  term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
                  component%core_state)
            end do
-        type is (prc_gosam_t)
-           call core%update_alpha_s (component%core_state, term%fac_scale)
-        type is (prc_openloops_t)
+!        type is (prc_gosam_t)
+!           call core%update_alpha_s (component%core_state, term%fac_scale)
+!        type is (prc_openloops_t)
+        class is (prc_blha_t)
            call core%update_alpha_s (component%core_state, term%fac_scale)
         end select
         call term%int_hard_real%set_matrix_element (term%amp)
@@ -7498,7 +7501,8 @@ physical event.
                    term%alpha_qcd_forced, &
                    component%core_state)
            end do
-        type is (prc_gosam_t)
+!        type is (prc_gosam_t)
+        class is (prc_blha_t)
            call core_sub_born%update_alpha_s &
                 (component%core_state, term%fac_scale)
         end select 
@@ -7547,7 +7551,8 @@ physical event.
              term%fac_scale, term%ren_scale, alpha_qcd_forced, &
              component%core_state)
        end do
-    type is (prc_gosam_t)
+!    type is (prc_gosam_t)
+    class is (prc_blha_t)
        call core%update_alpha_s (component%core_state, term%fac_scale)
     end select
     call term%int_hard_real%set_matrix_element (term%amp)
@@ -7561,7 +7566,8 @@ physical event.
               term%nlo_controller%get_col_born(i), term%fac_scale, term%ren_scale, &
               term%alpha_qcd_forced, component%core_state)
        end do
-    type is (prc_gosam_t)
+!    type is (prc_gosam_t)
+    class is (prc_blha_t)
        call core_sub_born%update_alpha_s (component%core_state, term%fac_scale)
     end select 
     call term%nlo_controller%int_born%set_matrix_element &
@@ -8156,6 +8162,8 @@ subobject of [[instance]].
               component%nlo_type = NLO_REAL
               call component%nlo_controller%set_internal_procedures &
                                           (use_internal_cc, use_internal_sc)
+              process%component(i_component)%fks_template%id = &
+                 prc_constants(1)%id
               call component%nlo_controller%init (prc_constants, &
                    process%component(i_component)%fks_template, &
                    process%config%model)
@@ -9501,12 +9509,16 @@ and directly set the coupling value that comes together with a particle set.
        type is (prc_gosam_t)
           call core%search_for_existing_library (os_data, lib_found)
           call core%create_olp_library (libname, lib_found)
-          call core%load_olp_library (os_data, .not. lib_found)
-          call core%read_olc_file (instance%process%term(i)%data%flv_state)
+!          call core%load_olp_library (os_data, .not. lib_found)
+          call core%load_driver (os_data, lib_found)
+          call core%start ()
+          call core%read_contract_file (instance%process%term(i)%data%flv_state)
           call core%set_particle_properties (instance%process%config%model)
        type is (prc_openloops_t)
          call core%load_driver (os_data)
          call core%start ()
+         call core%read_contract_file (instance%process%term(i)%data%flv_state)
+         call core%set_particle_properties (instance%process%config%model)
        end select
     end do
   end subroutine process_instance_load_blha_libraries

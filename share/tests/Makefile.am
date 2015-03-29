@@ -589,6 +589,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/multi_comp_2.ref \
     ref-output-double/multi_comp_3.ref \
     ref-output-double/phs_fks_generator_1.ref \
+    ref-output-double/phs_fks_generator_2.ref \
     ref-output-double/pdf_builtin.ref \
     ref-output-double/lhapdf5.ref \
     ref-output-double/lhapdf6.ref \
@@ -632,6 +633,7 @@ REF_OUTPUT_FILES_EXT = \
     ref-output-ext/multi_comp_2.ref \
     ref-output-ext/multi_comp_3.ref \
     ref-output-ext/phs_fks_generator_1.ref \
+    ref-output-ext/phs_fks_generator_2.ref \
     ref-output-ext/pdf_builtin.ref \
     ref-output-ext/lhapdf5.ref \
     ref-output-ext/lhapdf6.ref \
