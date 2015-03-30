@@ -386,6 +386,8 @@ end module blha_olp_interfaces
 
 @ %def omega-interfaces
 @
+<<BLHA OLP interfaces: public>>=
+  public :: blha_result_array_size
 <<BLHA OLP interfaces: procedures>>=
   pure function blha_result_array_size (n_part, amp_type) result (rsize)
     integer, intent(in) :: n_part, amp_type
@@ -872,17 +874,14 @@ end module blha_olp_interfaces
     logical :: init_success
 
     call object%init_dlaccess_to_library (os_data, dlaccess, init_success)
-!    call dlaccess_init &
-!          (dlaccess, var_str ("."), path // '/libgolem_olp.' // &
-!          os_data%shrlib_ext, os_data)
-!    if (os_file_exist (path // '/libgolem_olp.' // &
-!         os_data%shrlib_ext)) then
-    c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Start"))
-    call c_f_procpointer (c_fptr, object%blha_olp_start)
+
+       c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Start"))
+       call c_f_procpointer (c_fptr, object%blha_olp_start)
+       call check_for_error (var_str ("OLP_Start"))
        
        c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_EvalSubProcess"))
        call c_f_procpointer (c_fptr, object%blha_olp_eval)
-       call check_for_error (var_str ("OLP_Start"))
+       call check_for_error (var_str ("OLP_EvalSubProcess"))
 
        c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("OLP_Info"))
        call c_f_procpointer (c_fptr, object%blha_olp_info)
@@ -1057,46 +1056,6 @@ end module blha_olp_interfaces
       end do
     end function find_next_word_index
 
-!    function compute_flavor_positions (flavors) result (pos)
-!      integer, intent(in), dimension(:,:) :: flavors
-!      integer, dimension(:,:,:), allocatable :: pos
-!      integer :: i_flv, i_part
-!      integer :: i_first, i_last
-!      integer :: n_offset 
-!      allocate (pos (size (flavors, 1), &
-!                     size (flavors, 2), 2))
-!      do i_flv = 1, size (flavors, 2)
-!         i_first = 1; i_last = 0
-!         n_offset = 0
-!         do i_part = 1, size (flavors, 1)
-!            if (i_last > 0 .and. i_part /= 3) then
-!               i_first = i_last+2
-!            else if (i_last > 0 .and. i_part == 3) then
-!               i_first = i_first + 6
-!               i_first = i_first + driver%olc_flavor_offset
-!            end if
-!            i_last = i_first + flavor_digits (flavors (i_part, i_flv)) - 1
-!            pos (i_part, i_flv, 1) = i_first
-!            pos (i_part, i_flv, 2) = i_last
-!            if (i_part > 1) then
-!               pos (i_part, i_flv, 1) = pos (i_part, i_flv, 1) + n_offset
-!               pos (i_part, i_flv, 2) = pos (i_part, i_flv, 2) + n_offset
-!            end if
-!            n_offset = n_offset + driver%olc_flavor_offset
-!         end do
-!      end do
-!    end function compute_flavor_positions             
-!            
-!    function flavor_digits (flavor) result (ndigits)
-!      integer, intent(in) :: flavor
-!      integer :: ndigits
-!      if (abs(flavor) >= 10) then
-!         ndigits = 2
-!      else
-!         ndigits = 1
-!      end if
-!      if (flavor < 0) ndigits = ndigits+1
-!    end function flavor_digits
   end subroutine blha_driver_read_contract_file
 
 @ %def blha_driver_read_contract_file
@@ -1458,42 +1417,23 @@ end module blha_olp_interfaces
 @ %def prc_blha_compute_sqme_virt
 @
 <<BLHA OLP interfaces: prc blha: TBP>>=
-  procedure :: compute_sqme_real => prc_blha_compute_sqme_real
-<<BLHA OLP interfaces: procedures>>=
-  subroutine prc_blha_compute_sqme_real &
-         (object, i_flv, p, ren_scale, alpha_s, sqme, bad_point)
-    class(prc_blha_t), intent(inout) :: object
-    integer, intent(in) :: i_flv
-    type(vector4_t), intent(in), dimension(:) :: p
-    real(default), intent(in) :: ren_scale
-    real(default), intent(in) :: alpha_s
-    real(default), intent(out) :: sqme
-    logical, intent(out) :: bad_point
-    real(double), dimension(5*object%n_particles) :: mom
-    real(double), dimension(blha_result_array_size (object%n_particles, &
-                                                    BLHA_AMP_TREE)) :: r
-    real(double) :: mu
-    real(double) :: acc_dble
-    real(default) :: acc
- 
-    mom = object%create_momentum_array (p)
-    if (ren_scale == 0.0) then
-       mu = sqrt (2*p(1)*p(2))
-    else
-      mu = ren_scale
-    end if
-    select type (driver => object%driver)
-    class is (blha_driver_t)
-       call driver%set_alpha_s (alpha_s)
-       call driver%blha_olp_eval2 (object%i_real(i_flv), mom, &
-                                    mu, r, acc_dble)
-       sqme = r(4)
-    end select
-    acc = acc_dble
-    if (acc > object%maximum_accuracy) bad_point = .true.
-  end subroutine prc_blha_compute_sqme_real
+  procedure(prc_blha_compute_sqme_real), deferred :: &
+      compute_sqme_real
+<<BLHA OLP interfaces: interfaces>>=
+  abstract interface
+    subroutine prc_blha_compute_sqme_real (object, i_flv, &
+          p, ren_scale, alpha_s, sqme, bad_point)
+      import
+      class(prc_blha_t), intent(inout) :: object
+      integer, intent(in) :: i_flv
+      type(vector4_t), intent(in), dimension(:) :: p
+      real(default), intent(in) :: ren_scale, alpha_s
+      real(default), intent(out) :: sqme
+      logical, intent(out) :: bad_point
+    end subroutine prc_blha_compute_sqme_real
+  end interface 
 
-@ %def prc_blha_compute_sqme_real
+@ %def prc_blha_compute_sqme_real interface
 @
 <<BLHA OLP interfaces: prc blha: TBP>>=
   procedure :: compute_sqme_cc => prc_blha_compute_sqme_cc
@@ -1509,8 +1449,9 @@ end module blha_olp_interfaces
     real(default), intent(out), optional :: born_out
     real(default), intent(inout), dimension(:,:) :: born_cc
     logical, intent(out) :: bad_point
-    real(double), dimension(OLP_MOMENTUM_LIMIT) :: mom
-    real(double), dimension(OLP_RESULTS_LIMIT) :: r
+    real(double), dimension(5*object%n_particles) :: mom
+    real(double), dimension(blha_result_array_size (object%n_particles, &
+                                                    BLHA_AMP_CC)) :: r
     real(double) :: mu
     integer :: i, j, pos
     integer :: im1, jm1
