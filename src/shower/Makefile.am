@@ -31,7 +31,8 @@
 #
 ########################################################################
 
-## The files in this directory end up in an auxiliary libtool library.
+## The files in this directory make up the shower routines
+
 noinst_LTLIBRARIES = libshower.la
 
 libshower_la_SOURCES = \
@@ -78,8 +79,16 @@ module_lists = \
   ../muli/Modules \
   ../events/Modules
 
+include_modules_bare = ${module_lists:/Modules=}
+include_modules = ${include_modules_bare:../%=-I../%}
+
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
+
+$(module_dummy_lists):
+	$(MAKE) -C `dirname $@` Modules
+
+$(module_lists): $(module_dummy_lists)
 
 Module_dependencies.sed: $(module_lists)
 	@rm -f $@
@@ -125,7 +134,7 @@ endif
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I ../system -I../combinatorics -I../testing -I ../rng -I../expr_base -I../physics -I../fastjet -I../qft -I../types -I../particles -I../parsing -I../events -I ../lhapdf -I ../pdf_builtin -I../../pythia6 -I../model_features -I../variables -I../../vamp/src -I../muli
+AM_FCFLAGS = $(include_modules) -I../fastjet -I../lhapdf -I ../pdf_builtin -I../../pythia6
 AM_FFLAGS =
 
 ########################################################################
@@ -144,11 +153,13 @@ AM_FCFLAGS += $(FCFLAGS_OPENMP)
 endif
 
 ########################################################################
+## Non-standard targets and dependencies
 
 ## (Re)create F90 sources from NOWEB source.
-## This needs to be outside the NOWEB bracket.
 
 if NOWEB_AVAILABLE
+
+SHOWER_SRC = $(libshower_la_SOURCES)
 
 PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
 POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
@@ -160,8 +171,6 @@ shower.stamp: $(PRELUDE) $(srcdir)/shower.nw $(POSTLUDE)
 		$(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
 	done
 	@mv -f shower.tmp shower.stamp
-
-SHOWER_SRC = $(libshower_la_SOURCES) 
 
 $(SHOWER_SRC): shower.stamp
 ## Recover from the removal of $@

@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2015 by 
+# Copyright (C) 1999-2015 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -16,13 +16,13 @@
 #     Hans-Werner Boschmann, Daniel Wiesler
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by 
+# under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2, or (at your option)
 # any later version.
 #
 # WHIZARD is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
@@ -34,7 +34,6 @@
 ## The files in this directory make up the WHIZARD core
 
 ## We create a library which is still to be combined with auxiliary libs.
-## 
 noinst_LTLIBRARIES = libwhizard_core.la
 
 libwhizard_core_la_SOURCES = \
@@ -113,14 +112,13 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
 	for list in $^; do \
-	  dir="`dirname $$list`"; \
-	  for mod in `cat $$list`; do \
-	    echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
-	  done ; \
+		dir="`dirname $$list`"; \
+		for mod in `cat $$list`; do \
+			echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+		done ; \
 	done
 
 DISTCLEANFILES = Module_dependencies.sed
-
 
 # The following line just says
 #    include Makefile.depend
@@ -131,14 +129,14 @@ Makefile.depend: Module_dependencies.sed
 Makefile.depend: $(libwhizard_core_la_SOURCES) $(libwhizard_main_la_SOURCES) $(EXTRA_libwhizard_core_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
-	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
-	  grep '^ *use ' $$src \
-	    | grep -v '!NODEP!' \
-	    | sed -e 's/^ *use */'$$module'.lo: /' \
-	          -f Module_dependencies.sed; \
+		module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
+		grep '^ *use ' $$src \
+			| grep -v '!NODEP!' \
+			| sed -e 's/^ *use */'$$module'.lo: /' \
+			-f Module_dependencies.sed; \
 	done > $@
 
-DISTCLEANFILES += Makefile.depend 
+DISTCLEANFILES += Makefile.depend
 
 SUFFIXES = .lo .$(FC_MODULE_EXT)
 # Fortran90 module files are generated at the same time as object files
