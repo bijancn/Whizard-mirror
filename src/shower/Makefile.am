@@ -69,9 +69,11 @@ module_lists = \
   ../testing/Modules \
   ../system/Modules \
   ../combinatorics/Modules \
+  ../parsing/Modules \
   ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
+  ../expr_base/Modules \
   ../particles/Modules \
   ../types/Modules \
   ../variables/Modules \
@@ -134,7 +136,7 @@ endif
 	@:
 #	touch $@
 
-AM_FCFLAGS = $(include_modules) -I../fastjet -I../lhapdf -I ../pdf_builtin -I../../pythia6
+AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../fastjet -I../lhapdf -I ../pdf_builtin -I../../pythia6
 AM_FFLAGS =
 
 ########################################################################
