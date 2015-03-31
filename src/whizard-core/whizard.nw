@@ -649,22 +649,22 @@ end module hadrons
 \subsection{Abstract Hadronization Type}
 The [[model]] is the fallback model including all hadrons
 <<Hadrons: types>>=
-  type, abstract :: hadrons_base_t
+  type, abstract :: hadrons_t
    type(shower_settings_t), pointer :: settings
    type(model_t), pointer :: model => null()
    contains
-   <<Hadrons: hadrons base: TBP>>
-  end type hadrons_base_t
+   <<Hadrons: hadrons: TBP>>
+  end type hadrons_t
 
-@ %def hadrons_base_t
+@ %def hadrons_t
 @
-<<Hadrons: hadrons base: TBP>>=
+<<Hadrons: hadrons: TBP>>=
   procedure (hadrons_init), deferred :: init
 <<Hadrons: interfaces>>=
   abstract interface
     subroutine hadrons_init (hadrons, settings, model_hadrons)
       import
-      class(hadrons_base_t), intent(out) :: hadrons
+      class(hadrons_t), intent(out) :: hadrons
       type(shower_settings_t), target, intent(in) :: settings
       type(model_t), target, intent(in) :: model_hadrons
     end subroutine hadrons_init
@@ -672,32 +672,47 @@ The [[model]] is the fallback model including all hadrons
 
 @ %def hadrons_init
 @
-<<Hadrons: hadrons base: TBP>>=
+<<Hadrons: hadrons: TBP>>=
   procedure (hadrons_hadronize), deferred :: hadronize
 <<Hadrons: interfaces>>=
   abstract interface
      subroutine hadrons_hadronize &
-          (hadrons, particle_set, model, valid)
+          (hadrons, particle_set, valid)
        import
-       class(hadrons_base_t), intent(inout) :: hadrons
-       type(particle_set_t), intent(inout) :: particle_set
-       class(model_data_t), intent(in), target :: model
+       class(hadrons_t), intent(inout) :: hadrons
+       type(particle_set_t), intent(in) :: particle_set
        logical, intent(out) :: valid
      end subroutine hadrons_hadronize
   end interface
 @ %def hadrons_hadronize
 @
-\subsection{PYTHIA6 Hadronization Type}
-Hadronization via PYTHIA6 is at the moment the only option for
+<<Hadrons: hadrons: TBP>>=
+  procedure (hadrons_make_particle_set), deferred :: make_particle_set
+<<Hadrons: interfaces>>=
+  abstract interface
+     subroutine hadrons_make_particle_set (hadrons, particle_set, &
+                                           model, valid)
+       import
+       class(hadrons_t), intent(in) :: hadrons
+       type(particle_set_t), intent(inout) :: particle_set
+       class(model_data_t), intent(in), target :: model
+       logical, intent(out) :: valid
+     end subroutine hadrons_make_particle_set
+  end interface
+
+@ %def hadrons_make_particle_set
+@
+\subsection{[[PYTHIA6]] Hadronization Type}
+Hadronization via [[PYTHIA6]] is at the moment the only option for
 hadronization within \whizard.
 <<Hadrons: types>>=
-  type, extends (hadrons_base_t) :: hadrons_pythia6_t
+  type, extends (hadrons_t) :: hadrons_pythia6_t
    contains
-   <<Hadrons: hadrons PYTHIA6: TBP>>
+   <<Hadrons: hadrons pythia6: TBP>>
   end type hadrons_pythia6_t
 
 @ %def hadrons_pythia6_t
-<<Hadrons: hadrons PYTHIA6: TBP>>=
+<<Hadrons: hadrons pythia6: TBP>>=
   procedure :: init => hadrons_pythia6_init
 <<Hadrons: procedures>>=
   subroutine hadrons_pythia6_init (hadrons, settings, model_hadrons)
@@ -714,41 +729,47 @@ hadronization within \whizard.
        call pythia6_set_config (settings%pythia6_pygive)
     end if
     call msg_message &
-         ("Using PYTHIA6 interface for hadronization and decays")
+         ("Hadronization: Using PYTHIA6 interface for hadronization and decays")
   end subroutine hadrons_pythia6_init
 
 @ %def hadrons_pythia6_init
-@ This is the actual hadronization done via PYTHIA6.
-Assume that the event record is still in the PYTHIA COMMON BLOCKS
-transferred there by one of the shower routines
-<<Hadrons: hadrons PYTHIA6: TBP>>=
+@ Assume that the event record is still in the PYTHIA COMMON BLOCKS
+transferred there by the WHIZARD or PYTHIA6 shower routines.
+<<Hadrons: hadrons pythia6: TBP>>=
   procedure :: hadronize => hadrons_pythia6_hadronize
 <<Hadrons: procedures>>=
-  subroutine hadrons_pythia6_hadronize &
-       (hadrons, particle_set, model, valid)
+  subroutine hadrons_pythia6_hadronize (hadrons, particle_set, valid)
     class(hadrons_pythia6_t), intent(inout) :: hadrons
+    type(particle_set_t), intent(in) :: particle_set
+    logical, intent(out) :: valid
+    if (signal_is_pending ()) return
+    !!! Assume that the event is still present in the PYTHIA common blocks
+    ! Necessary when shower sets up common block anyway?
+    !call assure_heprup (particle_set) !!! Could this be done in init?
+    call pygive ("MSTP(111)=1") !!! switch on hadronization
+    call PYEXEC
+  end subroutine hadrons_pythia6_hadronize
+
+@ %def hadrons_pythia6_hadronize
+@
+<<Hadrons: hadrons pythia6: TBP>>=
+  procedure :: make_particle_set => hadrons_pythia6_make_particle_set
+<<Hadrons: procedures>>=
+  subroutine hadrons_pythia6_make_particle_set &
+         (hadrons, particle_set, model, valid)
+    class(hadrons_pythia6_t), intent(in) :: hadrons
     type(particle_set_t), intent(inout) :: particle_set
     class(model_data_t), intent(in), target :: model
     logical, intent(out) :: valid
     integer :: u_W2P, u_P2W
     if (signal_is_pending ()) return
-
     call pythia6_setup_lhe_io_units (u_W2P, u_P2W)
-
-    !!! Assume that the event is still present in the PYTHIA common blocks
-    ! call pygive ("MSTP(61)=0")  ! switch off ISR
-    ! call pygive ("MSTP(71)=0")  ! switch off FSR
-    call PYGIVE ("MSTP(111)=1") !!! switch on hadronization
-
-    call PYEXEC
-
     if (pythia6_get_error () > 0) then
        call pythia6_set_error (0)
        close (u_W2P)
        valid = .false.
     else
-       !!! convert pythia /PYJETS/ to lhef given in MSTU(163)
-       call pylheo
+       call pylheo (u_P2W)
        !!! read and add lhef from u_P2W
        call combine_lhef_with_particle_set &
             (particle_set, u_P2W, model, hadrons%model)
@@ -756,20 +777,77 @@ transferred there by one of the shower routines
        close (u_P2W)
        valid = .true.
     end if
+  end subroutine hadrons_pythia6_make_particle_set
 
-  end subroutine hadrons_pythia6_hadronize
+@ %def hadrons_pythia6_make_particle_set
+@
+\subsection{[[Pythia8]] Hadronization Type}
+<<Hadrons: public>>=
+  public :: hadrons_pythia8_t
+<<Hadrons: types>>=
+  type,extends (hadrons_t) :: hadrons_pythia8_t
+  contains
+   <<Hadrons: hadrons pythia8: TBP>>
+  end type hadrons_pythia8_t
 
-@ %def hadrons_pythia6_hadronize
+@ %def hadrons_pythia8_t
+@
+<<Hadrons: hadrons pythia8: TBP>>=
+  procedure :: init => hadrons_pythia8_init
+<<Hadrons: procedures>>=
+  subroutine hadrons_pythia8_init (hadrons, settings, model_hadrons)
+    class(hadrons_pythia8_t), intent(out) :: hadrons
+    type(shower_settings_t), target, intent(in) :: settings
+    type(model_t), intent(in), target :: model_hadrons
+    logical :: options_not_set_by_shower
+    options_not_set_by_shower = .not. (settings%method == PS_PYTHIA8 &
+         .and. (settings%isr_active .or. settings%fsr_active))
+    if (options_not_set_by_shower) then
+       !call pythia8_set_verbose (settings%verbose)
+       !call pythia8_set_config (settings%pythia8_config)
+       !call pythia8_set_config_file (settings%pythia8_config_file)
+    end if
+    call msg_message &
+         ("Using Pythia8 interface for hadronization and decays")
+  end subroutine hadrons_pythia8_init
+
+@ %def hadrons_pythia8_init
+@
+<<Hadrons: hadrons pythia8: TBP>>=
+  procedure :: hadronize => hadrons_pythia8_hadronize
+<<Hadrons: procedures>>=
+  subroutine hadrons_pythia8_hadronize (hadrons, particle_set, valid)
+    class(hadrons_pythia8_t), intent(inout) :: hadrons
+    type(particle_set_t), intent(in) :: particle_set
+    logical, intent(out) :: valid
+    ! call pythia8_hadronize
+  end subroutine hadrons_pythia8_hadronize
+
+@ %def hadrons_pythia8_hadronize
+@
+<<Hadrons: hadrons pythia8: TBP>>=
+  procedure :: make_particle_set => hadrons_pythia8_make_particle_set
+<<Hadrons: procedures>>=
+  pure subroutine hadrons_pythia8_make_particle_set &
+         (hadrons, particle_set, model, valid)
+    class(hadrons_pythia8_t), intent(in) :: hadrons
+    type(particle_set_t), intent(inout) :: particle_set
+    class(model_data_t), intent(in), target :: model
+    logical, intent(out) :: valid
+    ! call pythia8_combine_particle_set
+  end subroutine hadrons_pythia8_make_particle_set
+
+@ %def hadrons_pythia8_make_particle_set
 @
 \subsection{Hadronization Event Transform}
 This is the type for the hadronization event transform.  It does not
 depend on the specific hadronization implementation of
-[[hadrons_base_t]].
+[[hadrons_t]].
 <<Hadrons: public>>=
   public :: evt_hadrons_t
 <<Hadrons: types>>=
   type, extends (evt_t) :: evt_hadrons_t
-     class(hadrons_base_t), allocatable :: hadrons
+     class(hadrons_t), allocatable :: hadrons
      type(shower_settings_t) :: settings
      type(model_t), pointer :: model_hadrons => null()
      type(qcd_t), pointer :: qcd_t => null()
@@ -795,6 +873,8 @@ shower.
     select case (char (method))
     case ("PYTHIA6")
        allocate (hadrons_pythia6_t :: evt%hadrons)
+    case ("PYTHIA8")
+       allocate (hadrons_pythia8_t :: evt%hadrons)
     case default
        call msg_fatal ("Hadronization method " // char (method) // &
             " not implemented.")
@@ -807,8 +887,8 @@ shower.
 <<Hadrons: evt hadrons: TBP>>=
   procedure :: write => evt_hadrons_write
 <<Hadrons: procedures>>=
-  subroutine evt_hadrons_write (object, unit, testflag)
-    class(evt_hadrons_t), intent(in) :: object
+  subroutine evt_hadrons_write (evt_hadrons, unit, testflag)
+    class(evt_hadrons_t), intent(in) :: evt_hadrons
     integer, intent(in), optional :: unit
     logical, intent(in), optional :: testflag
     integer :: u
@@ -816,17 +896,16 @@ shower.
     call write_separator (u, 2)
     write (u, "(1x,A)")  "Event transform: hadronization"
     call write_separator (u)
-    call object%base_write (u, testflag = testflag)
+    call evt_hadrons%base_write (u, testflag = testflag)
     call write_separator (u)
-    call object%settings%write (u)
+    call evt_hadrons%settings%write (u)
   end subroutine evt_hadrons_write
 
 @ %def evt_hadrons_write
-@ Here we take the particle set from the previous event transform
-(assuming that there is always one) and apply the hadronization.  The
-result is stored in the event transform of the current object.  We
-always return a probability of unity as we don't have the analytic
-weight of the hadronization.  Invalid or vetoed events have to be
+@ Here we take the particle set from the previous event transform and
+apply the hadronization.  The result is stored in the [[evt%hadrons]]
+object.  We always return a probability of unity as we don't have the
+analytic weight of the hadronization.  Invalid events have to be
 discarded by the caller which is why we mark the particle set as
 invalid.
 <<Hadrons: evt hadrons: TBP>>=
@@ -836,13 +915,9 @@ invalid.
     class(evt_hadrons_t), intent(inout) :: evt
     real(default), intent(out) :: probability
     logical :: valid
-    valid = .true.
     if (evt%previous%particle_set_exists) then
        evt%particle_set = evt%previous%particle_set
-       if (evt%settings%hadronization_active) then
-          call assure_heprup (evt%particle_set)
-       end if
-       call evt%hadrons%hadronize (evt%particle_set, evt%model, valid)
+       call evt%hadrons%hadronize (evt%particle_set, valid)
        probability = 1
        evt%particle_set_exists = valid
     else
@@ -851,8 +926,7 @@ invalid.
   end subroutine evt_hadrons_generate_weighted
 
 @ %def evt_hadrons_generate_weighted
-@ The particle set was already made by the routine above (or the event was
-vetoed).  So we do nothing here.  The factorization parameters are irrelevant.
+@ The factorization parameters are irrelevant.
 <<Hadrons: evt hadrons: TBP>>=
   procedure :: make_particle_set => evt_hadrons_make_particle_set
 <<Hadrons: procedures>>=
@@ -862,10 +936,13 @@ vetoed).  So we do nothing here.  The factorization parameters are irrelevant.
     integer, intent(in) :: factorization_mode
     logical, intent(in) :: keep_correlations
     real(default), dimension(:), intent(in), optional :: r
+    logical :: valid
+    call evt%hadrons%make_particle_set (evt%particle_set, evt%model, valid)
+    evt%particle_set_exists = evt%particle_set_exists .and. valid
   end subroutine evt_hadrons_make_particle_set
 
 @ %def event_hadrons_make_particle_set
-@ Prepare: nothing to do here.
+@
 <<Hadrons: evt hadrons: TBP>>=
   procedure :: prepare_new_event => evt_hadrons_prepare_new_event
 <<Hadrons: procedures>>=
@@ -3763,10 +3840,13 @@ we mark the particle set as invalid. This procedure directly takes the
     valid = .true.
     vetoed = .false.
     if (evt%previous%particle_set_exists) then
-       if (DEBUG_SHOWER)  print *, "Shower: Generate weighted event"       
+       if (DEBUG_SHOWER) then
+          print *, "Shower: Generate weighted event"
+          print *, "Given hard particle set:"
+          call evt%previous%particle_set%write (detailled=.true.)
+       end if
        evt%particle_set = evt%previous%particle_set
        if (evt%settings%powheg_matching) then
-          if (DEBUG_SHOWER) call evt%particle_set%write ()
           call evt%powheg%update (evt%particle_set)
           if (TEST_SUDAKOV) then
              call evt%powheg%test_sudakov ()
@@ -3827,7 +3907,7 @@ we mark the particle set as invalid. This procedure directly takes the
              end if
           end if              
           call evt%shower%generate_emissions (evt%particle_set, &
-               evt%settings, evt%model, evt%model_hadrons, evt%os_data, &
+               evt%model, evt%model_hadrons, evt%os_data, &
                evt%matching_settings, evt%data, valid, vetoed)
           if (evt%settings%mlm_matching .and. &
                (.not. matching_disabled)) then
@@ -3847,7 +3927,7 @@ we mark the particle set as invalid. This procedure directly takes the
        end if          
        if (DEBUG_SHOWER) then
           print *, "Shower: obtained particle set after SHOWER"
-          call evt%particle_set%write ()
+          call evt%particle_set%write (detailled=.true.)
        end if       
        probability = 1
        if (valid .and. .not. vetoed) then
