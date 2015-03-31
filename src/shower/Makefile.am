@@ -87,11 +87,6 @@ include_modules = ${include_modules_bare:../%=-I../%}
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
 
-$(module_dummy_lists):
-	$(MAKE) -C `dirname $@` Modules
-
-$(module_lists): $(module_dummy_lists)
-
 Module_dependencies.sed: $(module_lists)
 	@rm -f $@
 	echo 's/, *only:.*//' >> $@

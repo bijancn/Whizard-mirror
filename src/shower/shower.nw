@@ -6828,11 +6828,11 @@ contains
        open (unit = u_P2W, status="scratch", action="readwrite")
     end if
     if (DEBUG_SHOWER)  write (*, "(A)")  "calling PYLHEO"
-    call pylheo (u_P2W)
-    !!! Read and add lhef from u_P2W
     if (signal_is_pending ()) return
-    call combine_lhef_with_particle_set &
-         (particle_set, u_P2W, model, model_hadrons)
+    !call pylheo (u_P2W)
+    !call combine_lhef_with_particle_set &
+         !(particle_set, u_P2W, model, model_hadrons)
+    call shower%combine_with_particle_set (particle_set, model, model_hadrons)
     close (unit=u_P2W)
 
     !!! Transfer momenta of the partons in the final state of
@@ -6855,6 +6855,135 @@ contains
   end subroutine shower_pythia6_generate_emissions
 
 @ %def shower_pythia6_generate_emissions
+@ Has to be available for hadrons?
+<<Shower PYTHIA6: shower pythia6: TBP>>=
+  procedure :: combine_with_particle_set => shower_pythia6_combine_with_particle_set
+<<Shower PYTHIA6: procedures>>=
+  subroutine shower_pythia6_combine_with_particle_set &
+         (shower, particle_set, model, model_hadrons)
+    class(shower_pythia6_t), intent(inout) :: shower
+    type(particle_set_t), intent(inout) :: particle_set
+    class(model_data_t), intent(in), target :: model
+    class(model_data_t), intent(in), target :: model_hadrons
+  
+    !C...PYTHIA commonblock: only used to provide read/write units and version.
+    common /PYPARS/ MSTP(200), PARP(200), MSTI(200), PARI(200)
+    common /PYJETS/ N, NPAD, K(4000,5), P(4000,5), V(4000,5)
+    save /PYPARS/
+    save /PYJETS/
+  
+    !C...User process initialization commonblock.
+    !C...User process event common block.
+    integer, parameter :: MAXPUP = 100, MAXNUP = 500
+    integer :: IDBMUP, PDFGUP, PDFSUP, IDWTUP, NPRUP, LPRUP
+    integer :: NUP, IDPRUP, IDUP, ISTUP, MOTHUP, ICOLUP
+    real(double) :: EBMUP, XSECUP, XERRUP, XMAXUP
+    real(double) :: XWGTUP, SCALUP, AQEDUP, AQCDUP, PUP, VTIMUP, SPINUP
+    integer, parameter :: KSUSY1 = 1000000, KSUSY2 = 2000000
+    common /HEPRUP/ &
+         IDBMUP(2), EBMUP(2), PDFGUP(2), PDFSUP(2), IDWTUP, NPRUP, &
+         XSECUP(MAXPUP), XERRUP(MAXPUP), XMAXUP(MAXPUP), LPRUP(MAXPUP)
+    save /HEPRUP/
+    common /HEPEUP/ &
+         NUP, IDPRUP, XWGTUP, SCALUP, AQEDUP, AQCDUP, IDUP(MAXNUP), &
+         ISTUP(MAXNUP), MOTHUP(2,MAXNUP), ICOLUP(2,MAXNUP), &
+         PUP(5,MAXNUP), VTIMUP(MAXNUP), SPINUP(MAXNUP)
+    save /HEPEUP/
+  
+    !C...Lines to read in assumed never longer than 200 characters.
+    PARAMETER (MAXLEN=200)
+    character(len=maxlen) :: string
+  
+    integer :: LEN, dangling_col, dangling_anti_col, color
+  
+    if (signal_is_pending ()) return
+    if (DEBUG_SHOWER) print *, 'Combine PYTHIA6 with particle set'
+    if (DEBUG_SHOWER) call pylist ()
+  
+    !!! Find the numbers of entries of the <event block>
+    NENTRIES = 0
+    do I = 1, N
+       if (K(I,1) == 1 .or. K(I,1) == 2 .or. K(I,1) == 21) then
+          NENTRIES = NENTRIES + 1
+       end if
+    end do
+  
+    print *, NENTRIES, IDPRUP, XWGTUP, SCALUP, AQEDUP, AQCDUP
+  
+    dangling_col = 0
+    dangling_anti_col = 0
+    next_color = 1   ! TODO find next free color number ??
+    do I = 1, N
+       call assign_colors (color, anti_color)
+       print *,  K(I,2), K(I,1), K(I,3), K(I,3), &
+            color, anti_color, (P(I,J),J=1,5), 0, -9
+    end do
+  
+    stop
+  contains
+  
+  <<Shower PYTHIA6: combine with particle set: procedures>>
+  
+  end subroutine shower_pythia6_combine_with_particle_set
+
+@ %def shower_pythia6_combine_with_particle_set
+<<Shower PYTHIA6: combine with particle set: procedures>>=
+  subroutine assign_colors (color, anti_color)
+    integer, intent(out) :: color, anti_color
+    if ((K(I,1) >= 1 .and. K(I,1) <= 15) .or. (K(I,1) == 21)) then
+       if ((K(I,2) == 21) .or. (IABS(K(I,2)) <= 8) .or. &
+            (abs (K(I,2)) >= KSUSY1+1 .and. abs (K(I,2)) <= KSUSY1+8) &
+            .or. &
+            (abs (K(I,2)) >= KSUSY2+1 .and. abs (K(I,2)) <= KSUSY2+8) .or. &
+            (abs (K(I,2)) >= 1000 .and. abs (K(I,2)) <= 9999) ) then
+       if (dangling_col == 0 .and. dangling_anti_col == 0) then
+          ! new color string
+          ! Gluon and gluino only color octets implemented so far
+          if (K(I,2).eq.21 .or. K(I,2).eq.1000021) then
+             color = next_color
+             dangling_col = color
+             next_color = next_color + 1
+             anti_color = next_color
+             dangling_anti_col = anti_color
+             next_color = next_color + 1
+          else if (K(I,2) .gt. 0) then  ! particles to have color
+             color = next_color
+             dangling_col = color
+             anti_color = 0
+             next_color = next_color + 1
+          else if (K(I,2) .lt. 0) then  ! antiparticles to have anticolor
+             anti_color = next_color
+             dangling_anti_col = anti_color
+             color = 0
+             next_color = next_color + 1
+          end if
+       else if(K(I,1).eq.1) then
+          ! end of string
+          color = dangling_anti_col
+          anti_color = dangling_col
+          dangling_col = 0
+          dangling_anti_col = 0
+       else
+          ! inside the string
+          if(dangling_col /= 0) then
+             anti_color = dangling_col
+             color = next_color
+             dangling_col = next_color
+             next_color = next_color +1
+          else if(dangling_anti_col /= 0) then
+             color = dangling_anti_col
+             anti_color = next_color
+             dangling_anti_col = next_color
+             next_color = next_color +1
+          else
+             call msg_bug("ERROR IN PYLHEO")
+          end if
+       end if
+    else
+       color = 0
+       anti_color = 0
+    end if
+  end subroutine assign_colors 
 @
 <<Shower PYTHIA6: procedures>>=
   subroutine get_ME_momenta_from_PYTHIA (JETS_ME)
