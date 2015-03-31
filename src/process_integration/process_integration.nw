@@ -1206,21 +1206,21 @@ list.  Variables used within the expressions are looked up in [[var_list]].
   subroutine parton_state_final (state)
     class(parton_state_t), intent(inout) :: state
     if (state%has_flows) then
-       call evaluator_final (state%flows)
+       call state%flows%final ()
        state%has_flows = .false.
     end if
     if (state%has_matrix) then
-       call evaluator_final (state%matrix)
+       call state%matrix%final ()
        state%has_matrix = .false.
     end if
     if (state%has_trace) then
-       call evaluator_final (state%trace)
+       call state%trace%final ()
        state%has_trace = .false.
     end if
     select type (state)
     class is (connected_state_t)
        if (state%has_flows_sf) then
-          call evaluator_final (state%flows_sf)
+          call state%flows_sf%final ()
           state%has_flows_sf = .false.
        end if
        call state%expr%final ()
@@ -1283,16 +1283,13 @@ table from the hard matrix element data.
       qn_mask(data%n_in+1:) = &
            quantum_numbers_mask (.true., .true., .true.)
     if (core%use_color_factors) then
-       call evaluator_init_square (state%trace, &
-            state%int_eff, qn_mask, &
+       call state%trace%init_square (state%int_eff, qn_mask, &
             col_flow_index = data%cf_index, &
             col_factor = data%color_factors, &
             col_index_hi = col, &
             nc = core%nc)
     else
-       call evaluator_init_square (state%trace, &
-            state%int_eff, qn_mask, &
-            nc = core%nc)
+       call state%trace%init_square (state%int_eff, qn_mask, nc = core%nc)
     end if
     end associate
     state%has_trace = .true.
@@ -1346,14 +1343,13 @@ apply the provided [[qn_mask_in]] which communicates the beam properties.
          end if
       end do
     if (core%use_color_factors) then
-       call evaluator_init_square (state%matrix, &
-            state%int_eff, qn_mask, &
+       call state%matrix%init_square (state%int_eff, qn_mask, &
             col_flow_index = data%cf_index, &
             col_factor = data%color_factors, &
             col_index_hi = col, &
             nc = core%nc)
     else
-       call evaluator_init_square (state%matrix, state%int_eff, &
+       call state%matrix%init_square (state%int_eff, &
             qn_mask, &
             nc = core%nc)
     end if
@@ -1398,7 +1394,7 @@ Helicity handling: see above.
               .or. qn_mask_in(i)
          end if
       end do
-      call evaluator_init_square (state%flows, state%int_eff, qn_mask, &
+      call state%flows%init_square (state%int_eff, qn_mask, &
            expand_color_flows = .true.)
     end associate
     state%has_flows = .true.
@@ -1434,8 +1430,7 @@ event output.
     else
        src_int => isolated%sf_chain_eff%get_out_int_ptr ()
     end if
-    call evaluator_init_product &
-         (state%trace, src_int, isolated%trace, &
+    call state%trace%init_product (src_int, isolated%trace, &
           qn_mask_conn = mask, &
           qn_mask_rest = mask, &
           connections_are_resonant = resonant)
@@ -1465,8 +1460,8 @@ numbers which are present in the original evaluators.
     else
        src_int => isolated%sf_chain_eff%get_out_int_ptr ()
     end if
-    call evaluator_init_product &
-         (state%matrix, src_int, isolated%matrix, mask, &
+    call state%matrix%init_product &
+         (src_int, isolated%matrix, mask, &
           qn_filter_conn = qn_filter_conn, &
           connections_are_resonant = resonant)
     state%has_matrix = .true.
@@ -1501,12 +1496,11 @@ caller-provided [[int]], this is not necessary.
        src_int => int
     else
        src_int => isolated%sf_chain_eff%get_out_int_ptr ()
-       call evaluator_init_color_contractions (state%flows_sf, src_int)
+       call state%flows_sf%init_color_contractions (src_int)
        state%has_flows_sf = .true.
-       src_int => evaluator_get_int_ptr (state%flows_sf)
+       src_int => state%flows_sf%interaction_t
     end if
-    call evaluator_init_product &
-         (state%flows, src_int, isolated%flows, mask, &
+    call state%flows%init_product (src_int, isolated%flows, mask, &
           qn_filter_conn = qn_filter_conn, &
           connections_are_resonant = resonant)
     state%has_flows = .true.
@@ -1522,9 +1516,8 @@ requested flavor information.
   subroutine connected_state_setup_state_flv (state, n_out_hard)
     class(connected_state_t), intent(inout), target :: state
     integer, intent(in) :: n_out_hard
-    type(interaction_t), pointer :: int
-    int => evaluator_get_int_ptr (state%matrix)
-    call interaction_get_flv_content (int, state%state_flv, n_out_hard)
+    call interaction_get_flv_content &
+         (state%matrix%interaction_t, state%state_flv, n_out_hard)
   end subroutine connected_state_setup_state_flv
   
 @ %def connected_state_setup_state_flv
@@ -1560,22 +1553,22 @@ structure-function chain.
     integer :: n_beam, n_in, n_out, n_vir, n_tot, i, j
     integer, dimension(:), allocatable :: i_beam, i_in, i_out
     integer :: sf_out_i
-    type(interaction_t), pointer :: int, sf_int
-    int => evaluator_get_int_ptr (state%trace)
+    type(interaction_t), pointer :: sf_int
     sf_int => sf_chain%get_out_int_ptr ()
     n_beam = size (f_beam)
     n_in = size (f_in)
     n_out = size (f_out)
-    n_vir = int%get_n_vir ()
-    n_tot = int%get_n_tot ()
+    n_vir = state%trace%get_n_vir ()
+    n_tot = state%trace%get_n_tot ()
     allocate (i_beam (n_beam), i_in (n_in), i_out (n_out))
     i_beam = [(i, i = 1, n_beam)]
     do j = 1, n_in
        sf_out_i = sf_chain%get_out_i (j)
-       i_in(j) = interaction_find_link (int, sf_int, sf_out_i)
+       i_in(j) = interaction_find_link &
+            (state%trace%interaction_t, sf_int, sf_out_i)
     end do
     i_out = [(i, i = n_vir + 1, n_tot)]
-    call state%expr%setup_subevt (int, &
+    call state%expr%setup_subevt (state%trace%interaction_t, &
          i_beam, i_in, i_out, f_beam, f_in, f_out)
     state%has_expr = .true.
   end subroutine connected_state_setup_subevt
@@ -1657,14 +1650,12 @@ Note: we may want to apply a boost for the [[subevt]].
 <<Parton states: procedures>>=
   subroutine parton_state_receive_kinematics (state)
     class(parton_state_t), intent(inout), target :: state
-    type(interaction_t), pointer :: int
     if (state%has_trace) then
-       call evaluator_receive_momenta (state%trace)
+       call state%trace%receive_momenta ()
        select type (state)
        class is (connected_state_t)
           if (state%has_expr) then
-             int => evaluator_get_int_ptr (state%trace)
-             call state%expr%fill_subevt (int)
+             call state%expr%fill_subevt (state%trace%interaction_t)
           end if
        end select
     end if
@@ -1684,13 +1675,11 @@ Instead, we reconstruct the beam (and ISR) momentum configuration.
 <<Parton states: procedures>>=
   subroutine parton_state_send_kinematics (state)
     class(parton_state_t), intent(inout), target :: state
-    type(interaction_t), pointer :: int
     if (state%has_trace) then
-       call evaluator_send_momenta (state%trace)
+       call interaction_send_momenta (state%trace%interaction_t)
        select type (state)
        class is (connected_state_t)
-          int => evaluator_get_int_ptr (state%trace)
-          call state%expr%fill_subevt (int)
+          call state%expr%fill_subevt (state%trace%interaction_t)
        end select
     end if
   end subroutine parton_state_send_kinematics
@@ -1753,16 +1742,16 @@ evaluated at this point.
     select type (state)
     type is (connected_state_t)
        if (state%has_flows_sf) then
-          call evaluator_receive_momenta (state%flows_sf)
+          call state%flows_sf%receive_momenta ()
           call state%flows_sf%evaluate ()
        end if
     end select
     if (state%has_matrix) then
-       call evaluator_receive_momenta (state%matrix)
+       call state%matrix%receive_momenta ()
        call state%matrix%evaluate ()
     end if
     if (state%has_flows) then
-       call evaluator_receive_momenta (state%flows)
+       call state%flows%receive_momenta ()
        call state%flows%evaluate ()
     end if
   end subroutine parton_state_evaluate_event_data
@@ -1778,7 +1767,7 @@ and flow evaluators are unchanged.
   subroutine parton_state_normalize_matrix_by_trace (state)
     class(parton_state_t), intent(inout) :: state
     if (state%has_matrix) then
-       call evaluator_normalize_by_trace (state%matrix)
+       call state%matrix%normalize_by_trace ()
     end if
   end subroutine parton_state_normalize_matrix_by_trace
   
@@ -1795,7 +1784,7 @@ Three functions return a pointer to the event-relevant interactions.
     class(parton_state_t), intent(in), target :: state
     type(interaction_t), pointer :: ptr
     if (state%has_trace) then
-       ptr => evaluator_get_int_ptr (state%trace)
+       ptr => state%trace%interaction_t
     else
        ptr => null ()
     end if
@@ -1805,7 +1794,7 @@ Three functions return a pointer to the event-relevant interactions.
     class(parton_state_t), intent(in), target :: state
     type(interaction_t), pointer :: ptr
     if (state%has_matrix) then
-       ptr => evaluator_get_int_ptr (state%matrix)
+       ptr => state%matrix%interaction_t
     else
        ptr => null ()
     end if
@@ -1815,7 +1804,7 @@ Three functions return a pointer to the event-relevant interactions.
     class(parton_state_t), intent(in), target :: state
     type(interaction_t), pointer :: ptr
     if (state%has_flows) then
-       ptr => evaluator_get_int_ptr (state%flows)
+       ptr => state%flows%interaction_t
     else
        ptr => null ()
     end if
@@ -1851,9 +1840,7 @@ the trace (and thus, matrix and flows) evaluator, respectively.
   function parton_state_get_n_out (state) result (n)
     class(parton_state_t), intent(in), target :: state
     integer :: n
-    type(interaction_t), pointer :: int
-    int => evaluator_get_int_ptr (state%trace)
-    n = int%get_n_out ()
+    n = state%trace%get_n_out ()
   end function parton_state_get_n_out
   
 @ %def parton_state_get_n_out
@@ -6609,10 +6596,8 @@ stored in the kinematics subobject to their source.  This is a side effect.
   subroutine component_instance_evaluate_sqme_born (component, term)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout), target :: term
-    type(interaction_t), pointer :: int
     real(default) :: sqme
-    int => evaluator_get_int_ptr (term%connected%trace)
-    sqme = int%get_matrix_element (1)
+    sqme = term%connected%trace%get_matrix_element (1)
     component%sqme = sqme * term%weight
   end subroutine component_instance_evaluate_sqme_born    
 
@@ -6732,7 +6717,6 @@ imaginary part of the terms, which should be zero anyway.
      class(component_instance_t), intent(inout) :: component
      type(term_instance_t), intent(inout), target :: term
      type(vector4_t), dimension(:), allocatable :: p_real
-     type(interaction_t), pointer :: int
      integer :: i_flv
      logical :: bad_point
 
@@ -6742,9 +6726,8 @@ imaginary part of the terms, which should be zero anyway.
      !!! Get the unsubtracted real matrix element, 
      !!! either from the parton states or from GoSam
      type is (prc_omega_t)
-        int => evaluator_get_int_ptr (term%connected_real%trace)
         component%nlo_controller%sqme_collector%sqme_real_non_sub = &
-             int%get_matrix_element (1)
+             term%connected_real%trace%get_matrix_element (1)
      class is (prc_blha_t)
         do i_flv = 1, component%nlo_controller%get_n_flv_real ()
            call core%compute_sqme_real (i_flv, p_real, 0._default, &
@@ -6997,7 +6980,8 @@ relevant for a NLO algorithm.
     type(process_term_t), intent(in), target :: config
     type(kinematics_t), intent(in) :: k_seed
     type(process_beam_config_t), intent(in) :: beam_config
-    type(interaction_t), pointer :: sf_chain_int, trace_int, src_int
+    type(interaction_t), pointer :: sf_chain_int
+    type(interaction_t), pointer :: src_int
     class(prc_core_t), intent(in) :: core
     type(var_list_t), intent(in), target :: process_var_list
     type(nlo_controller_t), intent(inout), pointer :: nlo_controller
@@ -7028,7 +7012,7 @@ relevant for a NLO algorithm.
     n_in = term%int_hard%get_n_in ()
     do j = 1, n_in
        i = term%k_term%sf_chain%get_out_i (j)
-       call interaction_set_source_link (term%int_hard, j, sf_chain_int, i)
+       call term%int_hard%set_source_link (j, sf_chain_int, i)
     end do
     if (config%rearrange) then
        ! rearrangement hard to effective kinematics not implemented yet
@@ -7080,13 +7064,13 @@ relevant for a NLO algorithm.
       f_in = flv_int(1:n_in)
       deallocate (flv_int)
     end associate
-    trace_int => evaluator_get_int_ptr (term%connected%trace)
-    n_in = trace_int%get_n_in ()
-    n_vir = trace_int%get_n_vir ()
-    n_out = trace_int%get_n_out ()
+    n_in = term%connected%trace%get_n_in ()
+    n_vir = term%connected%trace%get_n_vir ()
+    n_out = term%connected%trace%get_n_out ()
     allocate (f_out (n_out))
     do j = 1, n_out
-       call interaction_find_source (trace_int, n_in + n_vir + j, src_int, i)
+       call term%connected%trace%find_source &
+            (n_in + n_vir + j, src_int, i)
        if (associated (src_int)) then
           state_matrix => src_int%get_state_matrix_ptr ()
           allocate (flv_src (src_int%get_n_tot ()))

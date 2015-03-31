@@ -11667,7 +11667,7 @@ module muli_aq
   use muli_trapezium
   use muli_fibonacci_tree
 
-<<Standard module header>>  
+<<Standard module head>>  
 
 <<Muli aq: public>>
 
@@ -11686,6 +11686,8 @@ end module muli_aq
 initialised before the main loop can be called. Additionaly, the nodes
 and segments should be preprocessed by [[first_run]] before the main
 loop is called.
+<<Muli aq: public>>=
+  public :: aq_class
 <<Muli aq: types>>=
   type, extends (identified_t), abstract :: aq_class
      logical :: is_deferred_initialised = .false.
@@ -11721,6 +11723,7 @@ loop is called.
 @ %def aq_class
 @
 <<Muli aq: aq class: TBP>>=
+  procedure :: basic_write_to_marker => aq_write_to_marker
   procedure :: write_to_marker => aq_write_to_marker
 <<Muli aq: procedures>>=
   subroutine aq_write_to_marker (this, marker, status)
@@ -11759,6 +11762,7 @@ loop is called.
 @ %def aq_write_to_marker 
 @
 <<Muli aq: aq class: TBP>>=
+  procedure :: basic_read_from_marker => aq_read_from_marker
   procedure :: read_from_marker => aq_read_from_marker
 <<Muli aq: procedures>>=
   subroutine aq_read_from_marker (this, marker, status)
@@ -11811,6 +11815,7 @@ loop is called.
 @ %def aq_read_from_marker
 @
 <<Muli aq: aq class: TBP>>=
+  procedure :: basic_print_to_unit => aq_print_to_unit
   procedure :: print_to_unit => aq_print_to_unit  
 <<Muli aq: procedures>>=
   subroutine aq_print_to_unit (this, unit, parents, components, peers)
@@ -12441,6 +12446,7 @@ module muli_dsigma
   use muli_interactions
   use muli_base
   use muli_cuba
+  use muli_trapezium
   use muli_aq
 
 <<Standard module head>>
@@ -12486,7 +12492,7 @@ end module muli_dsigma
     integer(dik), intent(out) :: status
     class(ser_class_t), pointer :: ser
     call marker%mark_begin ("muli_dsigma_t")
-    call aq_write_to_marker (this, marker, status)
+    call this%basic_write_to_marker (marker, status)
     call this%cuba_int%serialize (marker, "cuba_int")
     call marker%mark_end ("muli_dsigma_t")
   end subroutine muli_dsigma_write_to_marker
@@ -12501,7 +12507,7 @@ end module muli_dsigma
     class(marker_t), intent(inout) :: marker
     integer(dik), intent(out) :: status
     call marker%pick_begin ("muli_dsigma_t", status=status)
-    call aq_read_from_marker (this, marker, status)
+    call this%basic_read_from_marker (marker, status)
     call this%cuba_int%deserialize ("cuba_int", marker)
     call marker%pick_end ("muli_dsigma_t", status)
   end subroutine muli_dsigma_read_from_marker
@@ -12517,8 +12523,8 @@ end module muli_dsigma
     integer, intent(in) :: unit
     integer(dik), intent(in) :: parents, components, peers
     integer :: ite
-    if (parents > 0)  &
-         call aq_print_to_unit (this, unit, parents-1, components, peers)
+    if (parents > 0)  call this%basic_print_to_unit &
+         (unit, parents-1, components, peers)
     write (unit, "(A)")  "Components of muli_dsigma_t"
     if (components > 0) then
        write (unit, "(A)")  "Printing components of cuba_int:"
@@ -14398,284 +14404,6 @@ module muli_remnant
 contains
 
 <<Muli remnant: procedures>>  
-  
-  subroutine pp_remnant_momentum_pdf (this,x_proton,gev2_scale,n,pdg_f,pdf)
-    class(pp_remnant_t), intent(in) :: this
-    real(default), intent(in) :: x_proton, gev2_scale
-    integer, intent(in) :: n, pdg_f
-    real(default), intent(out) :: pdf
-    if (n==1 .or. n==2) then
-       if (x_proton<=this%proton(n)%momentum_fraction) then
-          if (pdg_f==PDG_FLAVOR_g) then
-             call this%proton(n)%momentum_flavor_pdf (sqrt(GeV2_scale), &
-                  x_proton / this%proton(n)%momentum_fraction, &
-                  LHA_FLAVOR_g, pdf)
-          else
-             call this%proton(n)%momentum_flavor_pdf (sqrt(GeV2_scale), &
-                  x_proton / this%proton(n)%momentum_fraction, &
-                  pdg_f, pdf)
-          end if
-          pdf = pdf * this%proton(n)%momentum_fraction
-       else
-          pdf = zero
-       end if
-    else
-       call msg_error ("pp_remnant_momentum_pdf: n must be either 1 or 2, " &
-            // "but it is " // char (str (n)) // ".")
-       stop
-    end if
-  end subroutine pp_remnant_momentum_pdf
-
-  subroutine pp_remnant_apply_interaction(this,qcd_2_2)
-    class(pp_remnant_t), intent(inout)::this
-    class(qcd_2_2_class), intent(in)::qcd_2_2
-    integer, dimension(4)::lha_f
-    integer, dimension(2)::int_k
-    real(default) :: gev_pt
-    real(default), dimension(2) :: mom_f
-    integer::n
-    mom_f=qcd_2_2%get_remnant_momentum_fractions()
-    lha_f=qcd_2_2%get_lha_flavors()
-    int_k=qcd_2_2%get_pdf_int_kinds()
-    gev_pt=qcd_2_2%get_gev_scale()
-    !print *,"pp_remnant_apply_interaction",mom_f,qcd_2_2%get_parton_id(1),qcd_2_2%get_parton_id(2),lha_f
-    do n=1,2
-       select case (int_k(n))
-       case (PDF_VALENCE_DOWN)
-          call this%proton(n)%remove_valence_down_quark &
-               (qcd_2_2%get_parton_id(n), gev_pt, mom_f(n))
-       case (PDF_VALENCE_UP)
-          call this%proton(n)%remove_valence_up_quark(qcd_2_2%get_parton_id(n),gev_pt,mom_f(n))
-       case (PDF_SEA)
-          call this%proton(n)%remove_sea_quark(qcd_2_2%get_parton_id(n),gev_pt,mom_f(n),lha_f(n))
-       case (PDF_GLUON)
-          call this%proton(n)%remove_gluon(qcd_2_2%get_parton_id(n),gev_pt,mom_f(n))
-       end select
-    end do
-    this%X=this%proton(1)%momentum_fraction*this%proton(2)%momentum_fraction
-  end subroutine pp_remnant_apply_interaction
-
-  pure function pp_remnant_get_pdf_int_weights &
-       (this, pdf_int_kinds) result (weight)
-    class(pp_remnant_t), intent(in) :: this
-    real(default) :: weight
-    integer, dimension(2), intent(in) :: pdf_int_kinds ! pdf_int_kind
-    weight = this%proton(1)%pdf_int_weight (pdf_int_kinds(1)) * &
-         this%proton(2)%pdf_int_weight (pdf_int_kinds(2)) !*((this%x)**2)
-  end function pp_remnant_get_pdf_int_weights
-
-  elemental function pp_remnant_get_pdf_int_weight(this,kind1,kind2) result(weight)
-    class(pp_remnant_t), intent(in)::this
-    real(double)::weight
-    integer, intent(in)::kind1,kind2 ! pdf_int_kind
-    weight=this%proton(1)%pdf_int_weight(kind1)*this%proton(2)%pdf_int_weight(kind2)!*((this%x)**2)
-  end function pp_remnant_get_pdf_int_weight
-
-  subroutine pp_remnant_set_pdf_weight (this, weights)
-    class(pp_remnant_t), intent(inout) :: this
-    real(default), dimension(10), intent(in) :: weights
-    this%proton(1)%pdf_int_weight = weights(1:5)
-    this%proton(2)%pdf_int_weight = weights(6:10)
-  end subroutine pp_remnant_set_pdf_weight
-
-  elemental function pp_remnant_get_gev_initial_cme(this) result(cme)
-    class(pp_remnant_t), intent(in)::this
-    real(double)::cme
-    cme=this%gev_initial_cme
-  end function pp_remnant_get_gev_initial_cme
-
-  elemental function pp_remnant_get_gev_actual_cme(this) result(cme)
-    class(pp_remnant_t), intent(in)::this
-    real(double)::cme
-    cme=this%gev_initial_cme*this%X
-  end function pp_remnant_get_gev_actual_cme
-
-  elemental function pp_remnant_get_cme_fraction(this) result(cme)
-    class(pp_remnant_t), intent(in)::this
-    real(double)::cme
-    cme=this%X
-  end function pp_remnant_get_cme_fraction
-
-  pure function pp_remnant_get_proton_remnant_momentum_fractions(this) result(fractions)
-    class(pp_remnant_t), intent(in)::this
-    real(double), dimension(2)::fractions
-    fractions=[this%proton(1)%get_momentum_fraction(),this%proton(2)%get_momentum_fraction()]
-  end function pp_remnant_get_proton_remnant_momentum_fractions
-
-  subroutine pp_remnant_get_proton_remnants(this,proton1,proton2)
-    class(pp_remnant_t),target, intent(in)::this
-    class(proton_remnant_t), intent(out),pointer::proton1,proton2
-    proton1=>this%proton(1)
-    proton2=>this%proton(2)
-  end subroutine pp_remnant_get_proton_remnants
-
-  subroutine pp_remnant_get_remnant_parton_flavor_pdf_arrays &
-       (this, GeV_scale, momentum1, momentum2, pdf1, pdf2)
-    class(pp_remnant_t), intent(in) :: this
-    real(default), intent(in) :: GeV_scale, momentum1, momentum2
-    real(double), dimension(-6:6), intent(out)::pdf1,pdf2
-    call this%proton(1)%parton_flavor_pdf_array (GeV_scale, momentum1, pdf1)
-    call this%proton(2)%parton_flavor_pdf_array (GeV_scale, momentum2, pdf2)
-  end subroutine pp_remnant_get_remnant_parton_flavor_pdf_arrays
-
-  pure function remnant_dglap_splitting_gqq (z) result(p)
-    real(default) :: p
-    real(default), intent(in) :: z
-    p = (z**2 + (1-z)**2) / two
-  end function remnant_dglap_splitting_gqq
-  
-  pure function remnant_gluon_pdf_approx (x,p) result (g)
-    real(default) :: g
-    integer, intent(in) :: p
-    real(default), intent(in) :: x
-    g = ((1-x)**p) / x
-  end function remnant_gluon_pdf_approx
-
-  pure function remnant_norm_0 (xs) result (c0)
-    real(default) :: c0
-    real(default), intent(in) :: xs
-    c0 = 6*xs / (2 - xs * (3 - 3*xs + 2*xs**2))
-  end function remnant_norm_0
-
-  pure function remnant_norm_1 (xs) result (c1)
-    real(default) :: c1
-    real(default), intent(in)::xs
-    c1 = 3*xs / (2 - xs**2 * (3-xs) + 3*xs*log(xs))
-  end function remnant_norm_1
-
-  pure function remnant_norm_4 (xs) result (c4)
-    real(default) :: c4
-    real(default), intent(in) :: xs
-    real(default) :: y
-    if ((one-xs) > 1E-3_default) then
-       c4 = 3*xs / (1 + 11*xs + 6*xs*log(xs) + 12*xs**3*log(xs) + &
-            18*xs**2*log(xs) + 9*xs**2 - 19*xs**3 - 2*xs**4)
-    else
-       y=one / (one-xs)
-       c4= 1130._default / 11907._default &
-            - 10._default * y**5 &
-            - 40._default * y**4 / three &
-            -160._default * y**3 / 63._default &
-            + 50._default * y**2 / 189._default &
-            -565._default * y / 3969._default &
-            -186170._default * (one-xs) / 2750517._default
-    end if
-  end function remnant_norm_4
-
-  pure function remnant_norm (xs, p) result (c)
-    real(default) :: c
-    real(default), intent(in) :: xs
-    integer, intent(in) :: p
-    select case (p)
-    case (0)
-       c = remnant_norm_0 (xs)
-    case (1)
-       c = remnant_norm_1 (xs)
-    case default
-       c = remnant_norm_4 (xs)
-    end select
-  end function remnant_norm
-
-  pure function remnant_twin_pdf_p (x, xs, p) result (qc)
-    real(default) :: qc
-    real(default), intent(in) :: x, xs
-    integer, intent(in) :: p
-    qc = remnant_norm (xs, p) * remnant_gluon_pdf_approx (xs + x, p) &
-         * remnant_dglap_splitting_gqq (xs / (xs+x)) / (xs+x)
-  end function remnant_twin_pdf_p
-  
-  elemental function remnant_twin_momentum_4 (xs) result (p)
-    real(default) :: p
-    real(default), intent(in) :: xs
-    if (xs < 0.99_default) then
-       p = (-9 * (-1+xs) * xs * (1+xs) * (5+xs*(24+xs)) + &
-            12*xs*(1+2*xs)*(1+2*xs*(5+2*xs))*Log(xs))/&
-            (8*(1+2*xs)*((-1+xs)*(1+xs*(10+xs))-6*xs*(1+xs)*Log(xs)))
-    else
-       p = (1-xs) / 6 - (5*(-1+xs)**2)/63+(5*(-1+xs)**3) / 216
-    end if
-  end function remnant_twin_momentum_4
-
-  subroutine gnuplot_integrated_pdf (this, momentum_unit, parton_unit)
-    class(proton_remnant_t), intent(in)::this
-    integer, intent(in)::momentum_unit,parton_unit
-!    real(double), intent(in)::gev_scale
-    integer, parameter :: x_grid = 1000000
-    integer, parameter :: q_grid = 100
-    integer::n,m,mem
-    real(default) :: x, q, dx, dq, overall_sum, xmin, xmax, &
-         q2min, q2max, qmin, qmax
-    real(double) :: q2min_dbl, q2max_dbl, xmin_dbl, xmax_dbl
-    real(double), dimension(-6:6) :: sea_pdf, sea_momentum_pdf_sum, &
-         sea_parton_pdf_sum
-    real(default), dimension(2) :: valence_pdf, valence_momentum_pdf_sum,&
-         valence_parton_pdf_sum
-    real(default), allocatable, dimension(:) :: twin_momentum_pdf_sum
-    class(muli_parton_t), pointer :: tmp_twin
-    mem=1
-    call GetXmin (mem, xmin_dbl)
-    call GetXmax (mem, xmax_dbl)
-    call GetQ2max (mem, q2max_dbl)
-    call GetQ2min (mem, q2min_dbl)
-    xmin = xmin_dbl
-    xmax = xmax_dbl
-    q2min = q2min_dbl
-    q2max = q2max_dbl
-    qmin=sqrt(q2min)
-    qmax=sqrt(q2max)
-    print *,"qmin=",qmin,"GeV"
-    print *,"qmax=",qmax,"GeV"
-    dx=(xmax-xmin)/x_grid
-    dq=(qmax-qmin)/q_grid
-    q=qmin+dq/2D0
-    tmp_twin=>this%twin_partons%next
-    n=0
-    if (this%n_twins>0) then
-       allocate(twin_momentum_pdf_sum(this%n_twins))
-       do while(associated(tmp_twin))
-          n=n+1
-          twin_momentum_pdf_sum(n)=tmp_twin%momentum
-          tmp_twin=>tmp_twin%next
-       end do
-    end if
-    do m=1,q_grid
-       valence_momentum_pdf_sum=[0D0,0D0]
-       valence_parton_pdf_sum=[0D0,0D0]
-       sea_momentum_pdf_sum=[0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0]    
-       sea_parton_pdf_sum=[0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0]    
-       x=xmin+dx/2D0
-       do n=1,x_grid
-          call this%parton_kind_pdf_array (Q, x, valence_pdf, sea_pdf)
-          valence_parton_pdf_sum=valence_parton_pdf_sum+valence_pdf
-          sea_parton_pdf_sum=sea_parton_pdf_sum+sea_pdf
-          call this%momentum_kind_pdf_array (Q, x, valence_pdf, sea_pdf)
-          valence_momentum_pdf_sum=valence_momentum_pdf_sum+valence_pdf
-          sea_momentum_pdf_sum=sea_momentum_pdf_sum+sea_pdf
-          x=x+dx
-       end do
-       valence_parton_pdf_sum=valence_parton_pdf_sum*dx
-       sea_parton_pdf_sum=sea_parton_pdf_sum*dx
-       valence_momentum_pdf_sum=valence_momentum_pdf_sum*dx
-       sea_momentum_pdf_sum=sea_momentum_pdf_sum*dx
-       if (this%n_twins>0) then
-          write(momentum_unit,fmt=*)q,&
-               sum(valence_momentum_pdf_sum)+sum(sea_momentum_pdf_sum)+sum(twin_momentum_pdf_sum),&
-               valence_momentum_pdf_sum,&
-               sea_momentum_pdf_sum,&
-               twin_momentum_pdf_sum
-       else
-          write(momentum_unit,fmt=*)q,&
-               sum(valence_momentum_pdf_sum)+sum(sea_momentum_pdf_sum),&
-               valence_momentum_pdf_sum,&
-               sea_momentum_pdf_sum
-       end if
-       write(parton_unit,fmt=*)q,&
-            sum(valence_parton_pdf_sum)+sum(sea_parton_pdf_sum),&
-            valence_parton_pdf_sum,&
-            sea_parton_pdf_sum
-       q=q+dq
-    end do
-  end subroutine gnuplot_integrated_pdf
 
 end module muli_remnant
 
@@ -16161,6 +15889,37 @@ end module muli_remnant
 @
 <<Muli remnant: PP remnant: TBP>>=
   procedure :: momentum_pdf => pp_remnant_momentum_pdf
+<<Muli remnant: procedures>>=
+  subroutine pp_remnant_momentum_pdf &
+       (this, x_proton, gev2_scale, n, pdg_f, pdf)
+    class(pp_remnant_t), intent(in) :: this
+    real(default), intent(in) :: x_proton, gev2_scale
+    integer, intent(in) :: n, pdg_f
+    real(default), intent(out) :: pdf
+    if (n==1 .or. n==2) then
+       if (x_proton <= this%proton(n)%momentum_fraction) then
+          if (pdg_f == PDG_FLAVOR_g) then
+             call this%proton(n)%momentum_flavor_pdf (sqrt(GeV2_scale), &
+                  x_proton / this%proton(n)%momentum_fraction, &
+                  LHA_FLAVOR_g, pdf)
+          else
+             call this%proton(n)%momentum_flavor_pdf (sqrt(GeV2_scale), &
+                  x_proton / this%proton(n)%momentum_fraction, &
+                  pdg_f, pdf)
+          end if
+          pdf = pdf * this%proton(n)%momentum_fraction
+       else
+          pdf = zero
+       end if
+    else
+       call msg_error ("pp_remnant_momentum_pdf: n must be either 1 or 2, " &
+            // "but it is " // char (str (n)) // ".")
+       stop
+    end if
+  end subroutine pp_remnant_momentum_pdf
+  
+@ %def pp_remnant_momentum_pdf
+@
 <<Muli remnant: PP remnant: TBP>>=
   procedure :: parton_pdf => pp_remnant_parton_pdf
 <<Muli remnant: procedures>>=
@@ -16194,26 +15953,157 @@ end module muli_remnant
 @
 <<Muli remnant: PP remnant: TBP>>=
   procedure :: apply_interaction => pp_remnant_apply_interaction
+<<Muli remnant: procedures>>=
+  subroutine pp_remnant_apply_interaction (this, qcd_2_2)
+    class(pp_remnant_t), intent(inout) :: this
+    class(qcd_2_2_class), intent(in) :: qcd_2_2
+    integer, dimension(4) :: lha_f
+    integer, dimension(2) :: int_k
+    real(default) :: gev_pt
+    real(default), dimension(2) :: mom_f
+    integer :: n
+    mom_f = qcd_2_2%get_remnant_momentum_fractions ()
+    lha_f = qcd_2_2%get_lha_flavors ()
+    int_k = qcd_2_2%get_pdf_int_kinds ()
+    gev_pt = qcd_2_2%get_gev_scale ()
+    ! print *,"pp_remnant_apply_interaction", mom_f, &
+    !    qcd_2_2%get_parton_id(1), qcd_2_2%get_parton_id(2), lha_f
+    do n = 1, 2
+       select case (int_k(n))
+       case (PDF_VALENCE_DOWN)
+          call this%proton(n)%remove_valence_down_quark &
+               (qcd_2_2%get_parton_id(n), gev_pt, mom_f(n))
+       case (PDF_VALENCE_UP)
+          call this%proton(n)%remove_valence_up_quark &
+               (qcd_2_2%get_parton_id(n), gev_pt, mom_f(n))
+       case (PDF_SEA)
+          call this%proton(n)%remove_sea_quark &
+               (qcd_2_2%get_parton_id(n), gev_pt, mom_f(n), lha_f(n))
+       case (PDF_GLUON)
+          call this%proton(n)%remove_gluon &
+               (qcd_2_2%get_parton_id(n), gev_pt, mom_f(n))
+       end select
+    end do
+    this%X = this%proton(1)%momentum_fraction * &
+         this%proton(2)%momentum_fraction
+  end subroutine pp_remnant_apply_interaction
+
+@ %def pp_remnant_apply_interaction 
+@
 <<Muli remnant: PP remnant: TBP>>=
   procedure :: get_pdf_int_weights => pp_remnant_get_pdf_int_weights
+<<Muli remnant: procedures>>=
+  pure function pp_remnant_get_pdf_int_weights &
+       (this, pdf_int_kinds) result (weight)
+    class(pp_remnant_t), intent(in) :: this
+    real(default) :: weight
+    integer, dimension(2), intent(in) :: pdf_int_kinds ! pdf_int_kind
+    weight = this%proton(1)%pdf_int_weight (pdf_int_kinds(1)) * &
+         this%proton(2)%pdf_int_weight (pdf_int_kinds(2)) !*((this%x)**2)
+  end function pp_remnant_get_pdf_int_weights
+
+@ %def pp_remnant_get_pdf_int_weights 
+@
 <<Muli remnant: PP remnant: TBP>>=
   procedure :: get_pdf_int_weight => pp_remnant_get_pdf_int_weight
+<<Muli remnant: procedures>>=
+  elemental function pp_remnant_get_pdf_int_weight &
+       (this, kind1, kind2) result (weight)
+    class(pp_remnant_t), intent(in) :: this
+    real(double) :: weight
+    integer, intent(in) :: kind1, kind2 ! pdf_int_kind
+    weight = this%proton(1)%pdf_int_weight(kind1) * &
+         this%proton(2)%pdf_int_weight(kind2)     !*((this%x)**2)
+  end function pp_remnant_get_pdf_int_weight
+
+@ %def pp_remnant_get_pdf_int_weight 
+@
 <<Muli remnant: PP remnant: TBP>>=
   procedure :: set_pdf_weight => pp_remnant_set_pdf_weight
+<<Muli remnant: procedures>>=
+  subroutine pp_remnant_set_pdf_weight (this, weights)
+    class(pp_remnant_t), intent(inout) :: this
+    real(default), dimension(10), intent(in) :: weights
+    this%proton(1)%pdf_int_weight = weights(1:5)
+    this%proton(2)%pdf_int_weight = weights(6:10)
+  end subroutine pp_remnant_set_pdf_weight
+
+@ %def pp_remnant_set_pdf_weight 
+@
 <<Muli remnant: PP remnant: TBP>>=
   procedure :: get_gev_initial_cme => pp_remnant_get_gev_initial_cme
+<<Muli remnant: procedures>>=
+  elemental function pp_remnant_get_gev_initial_cme (this) result (cme)
+    class(pp_remnant_t), intent(in) :: this
+    real(double) :: cme
+    cme  =this%gev_initial_cme
+  end function pp_remnant_get_gev_initial_cme
+
+@ %def pp_remnant_get_gev_initial_cme 
+@
 <<Muli remnant: PP remnant: TBP>>=
   procedure :: get_gev_actual_cme => pp_remnant_get_gev_actual_cme
+<<Muli remnant: procedures>>=
+  elemental function pp_remnant_get_gev_actual_cme (this) result (cme)
+    class(pp_remnant_t), intent(in) :: this
+    real(double) :: cme
+    cme = this%gev_initial_cme * this%X
+  end function pp_remnant_get_gev_actual_cme
+
+@ %def pp_remnant_get_gev_actual_cme 
+@
 <<Muli remnant: PP remnant: TBP>>=
   procedure :: get_cme_fraction => pp_remnant_get_cme_fraction
+<<Muli remnant: procedures>>=
+  elemental function pp_remnant_get_cme_fraction (this) result (cme)
+    class(pp_remnant_t), intent(in) :: this
+    real(double) :: cme
+    cme = this%X
+  end function pp_remnant_get_cme_fraction
+
+@ %def pp_remnant_get_cme_fraction 
+@
 <<Muli remnant: PP remnant: TBP>>=
   procedure :: get_proton_remnant_momentum_fractions => &
        pp_remnant_get_proton_remnant_momentum_fractions
+<<Muli remnant: procedures>>=
+  pure function pp_remnant_get_proton_remnant_momentum_fractions &
+       (this) result (fractions)
+    class(pp_remnant_t), intent(in) :: this
+    real(double), dimension(2) :: fractions
+    fractions = [this%proton(1)%get_momentum_fraction(), &
+         this%proton(2)%get_momentum_fraction()]
+  end function pp_remnant_get_proton_remnant_momentum_fractions
+
+@ %def pp_remnant_get_proton_remnant_momentum_fractions 
+@
 <<Muli remnant: PP remnant: TBP>>=  
   procedure :: get_proton_remnants => pp_remnant_get_proton_remnants
+<<Muli remnant: procedures>>=
+  subroutine pp_remnant_get_proton_remnants (this, proton1, proton2)
+    class(pp_remnant_t), target, intent(in) :: this
+    class(proton_remnant_t), intent(out), pointer :: proton1, proton2
+    proton1 => this%proton(1)
+    proton2 => this%proton(2)
+  end subroutine pp_remnant_get_proton_remnants
+
+@ %def pp_remnant_get_proton_remnants 
+@
 <<Muli remnant: PP remnant: TBP>>=
   procedure :: get_remnant_parton_flavor_pdf_arrays => &
        pp_remnant_get_remnant_parton_flavor_pdf_arrays     
+<<Muli remnant: procedures>>=
+  subroutine pp_remnant_get_remnant_parton_flavor_pdf_arrays &
+       (this, GeV_scale, momentum1, momentum2, pdf1, pdf2)
+    class(pp_remnant_t), intent(in) :: this
+    real(default), intent(in) :: GeV_scale, momentum1, momentum2
+    real(double), dimension(-6:6), intent(out) :: pdf1, pdf2
+    call this%proton(1)%parton_flavor_pdf_array (GeV_scale, momentum1, pdf1)
+    call this%proton(2)%parton_flavor_pdf_array (GeV_scale, momentum2, pdf2)
+  end subroutine pp_remnant_get_remnant_parton_flavor_pdf_arrays
+
+@ %def pp_remnant_get_remnant_parton_flavor_pdf_arrays 
+@
 <<Muli remnant: interfaces>>=
   interface 
      subroutine getxmin (mem, xmin)
@@ -16251,48 +16141,220 @@ end module muli_remnant
   
 @ %def getq2max
 @
+<<Muli remnant: procedures>>=    
+  pure function remnant_dglap_splitting_gqq (z) result(p)
+    real(default) :: p
+    real(default), intent(in) :: z
+    p = (z**2 + (1-z)**2) / two
+  end function remnant_dglap_splitting_gqq
+  
+@ %def remnant_dglap_splitting_gqq 
+@
+<<Muli remnant: procedures>>=
+  pure function remnant_gluon_pdf_approx (x, p) result (g)
+    real(default) :: g
+    integer, intent(in) :: p
+    real(default), intent(in) :: x
+    g = ((1-x)**p) / x
+  end function remnant_gluon_pdf_approx
+
+@ %def remnant_gluon_pdf_approx 
+@
+<<Muli remnant: procedures>>=
+  pure function remnant_norm_0 (xs) result (c0)
+    real(default) :: c0
+    real(default), intent(in) :: xs
+    c0 = 6*xs / (2 - xs * (3 - 3*xs + 2*xs**2))
+  end function remnant_norm_0
+
+@ %def remnant_norm_0 
+@
+<<Muli remnant: procedures>>=
+  pure function remnant_norm_1 (xs) result (c1)
+    real(default) :: c1
+    real(default), intent(in)::xs
+    c1 = 3*xs / (2 - xs**2 * (3-xs) + 3*xs*log(xs))
+  end function remnant_norm_1
+
+@ %def remnant_norm_1 
+@
+<<Muli remnant: procedures>>=
+  pure function remnant_norm_4 (xs) result (c4)
+    real(default) :: c4
+    real(default), intent(in) :: xs
+    real(default) :: y
+    if ((one-xs) > 1E-3_default) then
+       c4 = 3*xs / (1 + 11*xs + 6*xs*log(xs) + 12*xs**3*log(xs) + &
+            18*xs**2*log(xs) + 9*xs**2 - 19*xs**3 - 2*xs**4)
+    else
+       y=one / (one-xs)
+       c4= 1130._default / 11907._default &
+            - 10._default * y**5 &
+            - 40._default * y**4 / three &
+            -160._default * y**3 / 63._default &
+            + 50._default * y**2 / 189._default &
+            -565._default * y / 3969._default &
+            -186170._default * (one-xs) / 2750517._default
+    end if
+  end function remnant_norm_4
+
+@ %def remnant_norm_4 
+@
+<<Muli remnant: procedures>>=
+  pure function remnant_norm (xs, p) result (c)
+    real(default) :: c
+    real(default), intent(in) :: xs
+    integer, intent(in) :: p
+    select case (p)
+    case (0)
+       c = remnant_norm_0 (xs)
+    case (1)
+       c = remnant_norm_1 (xs)
+    case default
+       c = remnant_norm_4 (xs)
+    end select
+  end function remnant_norm
+
+@ %def remnant_norm 
+@
+<<Muli remnant: procedures>>=
+  pure function remnant_twin_pdf_p (x, xs, p) result (qc)
+    real(default) :: qc
+    real(default), intent(in) :: x, xs
+    integer, intent(in) :: p
+    qc = remnant_norm (xs, p) * remnant_gluon_pdf_approx (xs + x, p) &
+         * remnant_dglap_splitting_gqq (xs / (xs+x)) / (xs+x)
+  end function remnant_twin_pdf_p
+  
+@ %def remnant_twin_pdf_p 
+@
+<<Muli remnant: procedures>>=
+  elemental function remnant_twin_momentum_4 (xs) result (p)
+    real(default) :: p
+    real(default), intent(in) :: xs
+    if (xs < 0.99_default) then
+       p = (-9 * (-1+xs) * xs * (1+xs) * (5+xs*(24+xs)) + &
+            12*xs*(1+2*xs)*(1+2*xs*(5+2*xs))*Log(xs))/&
+            (8*(1+2*xs)*((-1+xs)*(1+xs*(10+xs))-6*xs*(1+xs)*Log(xs)))
+    else
+       p = (1-xs) / 6 - (5*(-1+xs)**2) / 63 + (5*(-1+xs)**3) / 216
+    end if
+  end function remnant_twin_momentum_4
+
+@ %def remnant_twin_momentum_4 
+@
+<<Muli remnant: procedures>>=
+  subroutine gnuplot_integrated_pdf (this, momentum_unit, parton_unit)
+    class(proton_remnant_t), intent(in) :: this
+    integer, intent(in) :: momentum_unit, parton_unit
+    ! real(double), intent(in) :: gev_scale
+    integer, parameter :: x_grid = 1000000
+    integer, parameter :: q_grid = 100
+    integer :: n, m, mem
+    real(default) :: x, q, dx, dq, overall_sum, xmin, xmax, &
+         q2min, q2max, qmin, qmax
+    real(double) :: q2min_dbl, q2max_dbl, xmin_dbl, xmax_dbl
+    real(double), dimension(-6:6) :: sea_pdf, sea_momentum_pdf_sum, &
+         sea_parton_pdf_sum
+    real(default), dimension(2) :: valence_pdf, valence_momentum_pdf_sum,&
+         valence_parton_pdf_sum
+    real(default), allocatable, dimension(:) :: twin_momentum_pdf_sum
+    class(muli_parton_t), pointer :: tmp_twin
+    mem = 1
+    call GetXmin (mem, xmin_dbl)
+    call GetXmax (mem, xmax_dbl)
+    call GetQ2max (mem, q2max_dbl)
+    call GetQ2min (mem, q2min_dbl)
+    xmin = xmin_dbl
+    xmax = xmax_dbl
+    q2min = q2min_dbl
+    q2max = q2max_dbl
+    qmin = sqrt(q2min)
+    qmax = sqrt(q2max)
+    print *, "qmin=", qmin, "GeV"
+    print *, "qmax=", qmax, "GeV"
+    dx = (xmax-xmin) / x_grid
+    dq = (qmax-qmin) / q_grid
+    q = qmin + dq / 2D0
+    tmp_twin => this%twin_partons%next
+    n = 0
+    if (this%n_twins > 0) then
+       allocate (twin_momentum_pdf_sum (this%n_twins))
+       do while (associated (tmp_twin))
+          n = n + 1
+          twin_momentum_pdf_sum(n) = tmp_twin%momentum
+          tmp_twin => tmp_twin%next
+       end do
+    end if
+    do m = 1, q_grid
+       valence_momentum_pdf_sum = [0D0,0D0]
+       valence_parton_pdf_sum = [0D0,0D0]
+       sea_momentum_pdf_sum = &
+            [0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0]    
+       sea_parton_pdf_sum = &
+            [0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0,0D0]    
+       x = xmin + dx / 2D0
+       do n = 1, x_grid
+          call this%parton_kind_pdf_array (Q, x, valence_pdf, sea_pdf)
+          valence_parton_pdf_sum = valence_parton_pdf_sum + valence_pdf
+          sea_parton_pdf_sum = sea_parton_pdf_sum + sea_pdf
+          call this%momentum_kind_pdf_array (Q, x, valence_pdf, sea_pdf)
+          valence_momentum_pdf_sum = valence_momentum_pdf_sum + valence_pdf
+          sea_momentum_pdf_sum = sea_momentum_pdf_sum + sea_pdf
+          x = x + dx
+       end do
+       valence_parton_pdf_sum = valence_parton_pdf_sum * dx
+       sea_parton_pdf_sum = sea_parton_pdf_sum * dx
+       valence_momentum_pdf_sum = valence_momentum_pdf_sum * dx
+       sea_momentum_pdf_sum = sea_momentum_pdf_sum * dx
+       if (this%n_twins > 0) then
+          write (momentum_unit, fmt=*) q, &
+               sum(valence_momentum_pdf_sum) + &
+               sum(sea_momentum_pdf_sum) + sum(twin_momentum_pdf_sum), &
+               valence_momentum_pdf_sum, &
+               sea_momentum_pdf_sum, &
+               twin_momentum_pdf_sum
+       else
+          write (momentum_unit, fmt=*) q, &
+               sum(valence_momentum_pdf_sum) + sum(sea_momentum_pdf_sum), &
+               valence_momentum_pdf_sum, &
+               sea_momentum_pdf_sum
+       end if
+       write (parton_unit,fmt=*) q, &
+            sum(valence_parton_pdf_sum) + sum(sea_parton_pdf_sum), &
+            valence_parton_pdf_sum, &
+            sea_parton_pdf_sum
+       q = q + dq
+    end do
+  end subroutine gnuplot_integrated_pdf
+  
+@ %def gnuplot_integrated_pdf
+@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{The Multiple Interactions main module}
+
+This file contains the module [[muli]] which is the multiple parton 
+interactions interface module to \whizard. [[muli]] is supposed to run
+together with initial state radiation. Both share a momentum evolution
+variable and compete for beam momentum, so the generation of this
+scale variable must be fully transparent to \whizard. That is why the
+corresponding procedures are here, while all other work like phase
+space integration, flavor generation and treatment of the beam remnant
+is put into [[muli_dsigma]], [[muli_mcint]] and [[muli_remnant]],
+respectively. 
+
+[[qcd_2_2_t]] is a container class for properties of QCD $2\to 2$
+interactions. It holds a very condensed internal representation and
+offers a convenient set of TBP to query all aspects without the burden
+of the generator internals.
+
+[[muli_t]] then is an extension of [[qcd_2_2_t]] that adds generator 
+internals like random number generator, integrated cross-sections, the
+actual Monte Carlo generator for flavor generation and beam remnants in
+[[tao_rnd]], [[dsigma]], samples and beam, respectively.
+ 
 <<[[muli.f90]]>>=
-!!! module: muli
-!!! This code is part of my Ph.D studies.
-!!! 
-!!! Copyright (C) 2011 Hans-Werner Boschmann <boschmann@tp1.physik.uni-siegen.de>
-!!! 
-!!! This program is free software; you can redistribute it and/or modify it
-!!! under the terms of the GNU General Public License as published by the Free 
-!!! Software Foundation; either version 3 of the License, or (at your option) 
-!!! any later version.
-!!! 
-!!! This program is distributed in the hope that it will be useful, but WITHOUT
-!!! ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
-!!! FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
-!!! more details.
-!!! 
-!!! You should have received a copy of the GNU General Public License along
-!!! with this program; if not, see <http://www.gnu.org/licenses/>.
-!!! 
-!!! Latest Change: 2011-08-03 11:12:37 CEST(+0200)
-!!! 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-!!! This file contains the module "muli" which is the multiple parton 
-!!! interactions interface module to WHIZARD. muli is supposed to run together
-!!! with initial state radiation. Both share a momentum evolution variable and 
-!!! compete for beam momentum, so the generation of this scale variable must
-!!! be fully transparent to WHIZARD. That's why the corresponding procedures
-!!! are here, while all other work like phase space integration, flavour
-!!! generation and treatment of the beam remnant is put into muli_dsigma, 
-!!! muli_mcint and muli_remnant respectively.
-
-!!! qcd_2_2_type is a container class for properties of qcd 2->2 interactions.
-!!! It holds a very condensed internal representation and offers a convenient
-!!! set of TBP to query all aspects without the burden of the generator 
-!!! internals.
-
-!!! muli_t then is an extension of qcd_2_2_type that adds generator
-!!! internals like random number generator, integrated cross-sections, the
-!!! actual Monte Carlo generator for flavour genertation and beam remnants in
-!!! tao_rnd, dsigma, samples and beam respectively.
+<<File header>>
 
 module muli
   use, intrinsic :: iso_fortran_env
@@ -16309,47 +16371,18 @@ module muli
 
 <<Standard module head>>
 
+<<Muli: variables>>
+
+<<Muli: public>>
+
+<<Muli: types>>
+
   logical,parameter::muli_default_modify_pdfs=.true.
   integer,parameter::muli_default_lhapdf_member=0
   character(*),parameter::muli_default_lhapdf_file="cteq6ll.LHpdf"
   
-  type, extends(qcd_2_2_class) :: qcd_2_2_type
-     private
-     integer::process_id=-1
-     integer::integrand_id=-1
-     integer, dimension(2)::parton_ids=[0,0]
-     integer, dimension(4)::flow=[0,0,0,0]
-     real(default), dimension(3) :: momentum_fractions = [-one, -one, -one]
-     real(default), dimension(3) :: hyperbolic_fractions = [-one ,- one,- one]
-   contains
-     !overridden ser_class_t procedures
-     procedure,public::write_to_marker=>qcd_2_2_write_to_marker
-     procedure,public::read_from_marker=>qcd_2_2_read_from_marker
-     procedure,public::print_to_unit=>qcd_2_2_print_to_unit
-     procedure,public,nopass::get_type=>qcd_2_2_get_type
-     ! new type-bound-procedures
-     procedure,public::get_process_id=>qcd_2_2_get_process_id
-     procedure,public::get_integrand_id=>qcd_2_2_get_integrand_id
-     procedure,public::get_diagram_kind=>qcd_2_2_get_diagram_kind
-     procedure,public::get_diagram_color_kind=>qcd_2_2_get_diagram_color_kind
-     procedure,public::get_io_kind=>qcd_2_2_get_io_kind
-     procedure,public::get_lha_flavors=>qcd_2_2_get_lha_flavors
-     procedure,public::get_pdg_flavors=>qcd_2_2_get_pdg_flavors
-     procedure,public::get_parton_id=>qcd_2_2_get_parton_id
-     procedure,public::get_parton_kinds=>qcd_2_2_get_parton_kinds
-     procedure,public::get_pdf_int_kinds=>qcd_2_2_get_pdf_int_kinds
-     procedure,public::get_momentum_boost=>qcd_2_2_get_momentum_boost
-     procedure,public::get_hyperbolic_fractions=>qcd_2_2_get_hyperbolic_fractions
-     procedure,public::get_remnant_momentum_fractions=>qcd_2_2_get_remnant_momentum_fractions
-     procedure,public::get_total_momentum_fractions=>qcd_2_2_get_total_momentum_fractions
-     procedure,public::get_color_flow=>qcd_2_2_get_color_flow
-     procedure,public::get_color_correlations=>qcd_2_2_get_color_correlations
-     procedure,public::qcd_2_2_initialize
-     generic,public::initialize=>qcd_2_2_initialize
-  end type qcd_2_2_type
-
   public :: muli_t
-  type,extends(qcd_2_2_type)::muli_t
+  type,extends(qcd_2_2_t)::muli_t
 !     private
      ! model parameters
      real(default)::GeV2_scale_cutoff     
@@ -16412,111 +16445,48 @@ module muli
 
 contains
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!! type bound procedures for qcd_2_2_type !!!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+<<Muli: procedures>>  
   
-  !overridden ser_class_t procedures
-
-  subroutine qcd_2_2_write_to_marker(this,marker,status)
-    class(qcd_2_2_type), intent(in)::this
-    class(marker_t), intent(inout)::marker
-    integer(dik), intent(out)::status
-    call marker%mark_begin("qcd_2_2_type")
-    call this%mom_write_to_marker (marker, status)
-    call marker%mark("process_id",this%process_id)
-    call marker%mark("integrand_id",this%integrand_id)
-    call marker%mark("momentum_fractions",this%momentum_fractions)
-    call marker%mark("hyperbolic_fractions",this%hyperbolic_fractions)
-    call marker%mark_end("qcd_2_2_type")
-  end subroutine qcd_2_2_write_to_marker
-
-  subroutine qcd_2_2_read_from_marker(this,marker,status)
-    class(qcd_2_2_type), intent(out)::this
-    class(marker_t), intent(inout)::marker
-    integer(dik), intent(out)::status
-    call marker%pick_begin("qcd_2_2_type",status=status)
-    call this%mom_read_from_marker (marker, status)
-    call marker%pick("process_id",this%process_id,status)
-    call marker%pick("integrand_id",this%integrand_id,status)
-    call marker%pick("momentum_fractions",this%momentum_fractions,status)
-    call marker%pick("hyperbolic_fractions",this%hyperbolic_fractions,status)
-    call marker%pick_end("qcd_2_2_type",status=status)
-  end subroutine qcd_2_2_read_from_marker
-
-  subroutine qcd_2_2_print_to_unit(this,unit,parents,components,peers)
-    class(qcd_2_2_type), intent(in)::this
-    integer, intent(in)::unit
-    integer(dik), intent(in)::parents,components,peers
-    integer, dimension(2,4)::flow
-    integer::index
-    if (parents > i_zero) & 
-         call this%mom_print_to_unit (unit, parents-1, components, peers)
-    write(unit,'("Components of qcd_2_2_type:")')
-    write(unit,'("Process id is:       ",I3)')this%get_process_id()
-    write(unit,'("Integrand id is:     ",I3)')this%get_integrand_id()
-    if (this%get_integrand_id()>0) then
-       write(unit,'("LHA Flavors are:     ",4(I3))')this%get_lha_flavors()
-       write(unit,'("PDG Flavors are:     ",4(I3))')this%get_pdg_flavors()
-       write(unit,'("Parton kinds are:    ",2(I3))')this%get_parton_kinds()
-       write(unit,'("PDF int kinds are:   ",2(I3))')this%get_pdf_int_kinds()
-       write(unit,'("Diagram kind is:     ",2(I3))')this%get_diagram_kind()
-    end if
-    call this%get_color_correlations(1,index,flow)
-    write(unit,'("Color Permutations:  ",4(I0))')this%flow
-    write(unit,'("Color Connections:")')
-    write(unit,'("(",I0,",",I0,")+(",I0,",",I0,")->(",I0,",",I0,")+(",I0,",",I0,")")')flow
-    write(unit,'("Evolution scale is:  ",E14.7)')this%get_unit2_scale()
-    write(unit,'("Momentum boost is:   ",E14.7)')this%get_momentum_boost()
-    write(unit,'("Remant momentum fractions are: ",2(E14.7))')this%get_remnant_momentum_fractions()
-    write(unit,'("Total momentum fractions are:  ",2(E14.7))')this%get_total_momentum_fractions()
-  end subroutine qcd_2_2_print_to_unit
-  
-  pure subroutine qcd_2_2_get_type(type)
-    character(:),allocatable, intent(out)::type
-    allocate(type,source="qcd_2_2_type")
-  end subroutine qcd_2_2_get_type
-
   elemental function qcd_2_2_get_process_id(this) result(id)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer::id
     id=this%process_id
   end function qcd_2_2_get_process_id
 
   elemental function qcd_2_2_get_integrand_id(this) result(id)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer::id
     id=this%integrand_id
   end function qcd_2_2_get_integrand_id
 
   pure function qcd_2_2_get_lha_flavors(this) result(lha)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer, dimension(4)::lha
     lha = valid_processes(1:4,this%process_id)
   end function qcd_2_2_get_lha_flavors
 
   pure function qcd_2_2_get_pdg_flavors(this) result(pdg)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer, dimension(4)::pdg
     pdg=this%get_lha_flavors()
     where(pdg==0) pdg=21
   end function qcd_2_2_get_pdg_flavors
 
   pure function qcd_2_2_get_pdf_int_kinds(this) result(kinds)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer, dimension(2)::kinds
     kinds=double_pdf_kinds(1:2,this%integrand_id)
   end function qcd_2_2_get_pdf_int_kinds
 
   pure function qcd_2_2_get_parton_id(this,n) result(id)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer, intent(in)::n
     integer::id
     id=this%parton_ids(n)
   end function qcd_2_2_get_parton_id
 
   pure function qcd_2_2_get_parton_kinds(this) result(kinds)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer, dimension(2)::kinds
     kinds=this%get_pdf_int_kinds()
     kinds(1)=parton_kind_of_int_kind(kinds(1))
@@ -16524,13 +16494,13 @@ contains
   end function qcd_2_2_get_parton_kinds
 
   elemental function qcd_2_2_get_io_kind(this) result(kind)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer::kind
     kind=valid_processes(5,this%process_id)
   end function qcd_2_2_get_io_kind
 
   elemental function qcd_2_2_get_diagram_kind(this) result(kind)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer::kind
     kind=valid_processes(6,this%process_id)
   end function qcd_2_2_get_diagram_kind
@@ -16541,7 +16511,7 @@ contains
     ! cross sections were summed up to diagram kind 1. 
     ! Now muli also generates color flows, so we must devide diagram kind 1 into diagram color kind 0
     ! and diagram color kind 1.
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer::kind
     kind=valid_processes(6,this%process_id)
     if (kind==1) then
@@ -16552,7 +16522,7 @@ contains
   end function qcd_2_2_get_diagram_color_kind
 
   elemental function qcd_2_2_get_momentum_boost (this) result (boost)
-    class(qcd_2_2_type), intent(in) :: this
+    class(qcd_2_2_t), intent(in) :: this
     real(default) :: boost
     boost = -one
     ! print('("qcd_2_2_get_momentum_boost: not yet implemented.")')
@@ -16560,19 +16530,19 @@ contains
   end function qcd_2_2_get_momentum_boost
 
   pure function qcd_2_2_get_hyperbolic_fractions(this) result(fractions)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     real(double), dimension(3)::fractions
     fractions=this%hyperbolic_fractions
   end function qcd_2_2_get_hyperbolic_fractions
 
   pure function qcd_2_2_get_remnant_momentum_fractions (this) result (fractions)
-    class(qcd_2_2_type), intent(in) :: this
+    class(qcd_2_2_t), intent(in) :: this
     real(default), dimension(2) :: fractions
     fractions = this%momentum_fractions(1:2)
   end function qcd_2_2_get_remnant_momentum_fractions
 
   pure function qcd_2_2_get_total_momentum_fractions (this) result (fractions)
-    class(qcd_2_2_type), intent(in) :: this
+    class(qcd_2_2_t), intent(in) :: this
     real(default), dimension(2) :: fractions
     fractions = [-one, -one]
     ! fractions = this%hyperbolic_fractions(1:2) * &
@@ -16580,13 +16550,13 @@ contains
   end function qcd_2_2_get_total_momentum_fractions
 
   pure function qcd_2_2_get_color_flow(this) result(flow)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer, dimension(4)::flow
     flow=this%flow
   end function qcd_2_2_get_color_flow
 
   subroutine qcd_2_2_get_color_correlations(this,start_index,final_index,flow)
-    class(qcd_2_2_type), intent(in)::this
+    class(qcd_2_2_t), intent(in)::this
     integer, intent(in)::start_index
     integer, intent(out)::final_index
     integer, dimension(2,4), intent(out)::flow
@@ -16624,7 +16594,7 @@ contains
 
   subroutine qcd_2_2_initialize (this, gev2_s, process_id, &
        integrand_id, parton_ids, flow,hyp, cart)
-    class(qcd_2_2_type), intent(out) :: this
+    class(qcd_2_2_t), intent(out) :: this
     real(default), intent(in) :: gev2_s
     integer, intent(in) :: process_id, integrand_id
     integer, dimension(2), intent(in) :: parton_ids
@@ -17299,13 +17269,134 @@ contains
     call this%beam%print_all ()
   end subroutine muli_fake_interaction
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!  private procedures  !!
-!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 end module muli
-
+@ %def muli
+<<Muli: types>>=
+  type, extends(qcd_2_2_class) :: qcd_2_2_t
+     private
+     integer :: process_id = -1
+     integer :: integrand_id = -1
+     integer, dimension(2) :: parton_ids = [0,0]
+     integer, dimension(4) :: flow = [0,0,0,0]
+     real(default), dimension(3) :: momentum_fractions = [-one, -one, -one]
+     real(default), dimension(3) :: hyperbolic_fractions = [-one ,- one,- one]
+   contains
+   <<Muli: QCD22: TBP>>
+     ! new type-bound-procedures
+     procedure,public::get_process_id=>qcd_2_2_get_process_id
+     procedure,public::get_integrand_id=>qcd_2_2_get_integrand_id
+     procedure,public::get_diagram_kind=>qcd_2_2_get_diagram_kind
+     procedure,public::get_diagram_color_kind=>qcd_2_2_get_diagram_color_kind
+     procedure,public::get_io_kind=>qcd_2_2_get_io_kind
+     procedure,public::get_lha_flavors=>qcd_2_2_get_lha_flavors
+     procedure,public::get_pdg_flavors=>qcd_2_2_get_pdg_flavors
+     procedure,public::get_parton_id=>qcd_2_2_get_parton_id
+     procedure,public::get_parton_kinds=>qcd_2_2_get_parton_kinds
+     procedure,public::get_pdf_int_kinds=>qcd_2_2_get_pdf_int_kinds
+     procedure,public::get_momentum_boost=>qcd_2_2_get_momentum_boost
+     procedure,public::get_hyperbolic_fractions=>qcd_2_2_get_hyperbolic_fractions
+     procedure,public::get_remnant_momentum_fractions=>qcd_2_2_get_remnant_momentum_fractions
+     procedure,public::get_total_momentum_fractions=>qcd_2_2_get_total_momentum_fractions
+     procedure,public::get_color_flow=>qcd_2_2_get_color_flow
+     procedure,public::get_color_correlations=>qcd_2_2_get_color_correlations
+     procedure,public::qcd_2_2_initialize
+     generic,public::initialize=>qcd_2_2_initialize
+  end type qcd_2_2_t
+  
+@ %def qcd_2_2_t
+@
+<<Muli: QCD22: TBP>>=
+  procedure :: write_to_marker => qcd_2_2_write_to_marker
+<<Muli: procedures>>=
+  subroutine qcd_2_2_write_to_marker (this, marker, status)
+    class(qcd_2_2_t), intent(in) :: this
+    class(marker_t), intent(inout) :: marker
+    integer(dik), intent(out) :: status
+    call marker%mark_begin ("qcd_2_2_t")
+    call this%mom_write_to_marker (marker, status)
+    call marker%mark ("process_id", this%process_id)
+    call marker%mark ("integrand_id", this%integrand_id)
+    call marker%mark ("momentum_fractions", this%momentum_fractions)
+    call marker%mark ("hyperbolic_fractions", this%hyperbolic_fractions)
+    call marker%mark_end("qcd_2_2_t")
+  end subroutine qcd_2_2_write_to_marker
+  
+@ %def qcd_2_2_write_to_marker
+@
+<<Muli: QCD22: TBP>>=
+  procedure :: read_from_marker => qcd_2_2_read_from_marker
+<<Muli: procedures>>=
+  subroutine qcd_2_2_read_from_marker (this, marker, status)
+    class(qcd_2_2_t), intent(out) :: this
+    class(marker_t), intent(inout) :: marker
+    integer(dik), intent(out) :: status
+    call marker%pick_begin ("qcd_2_2_t", status=status)
+    call this%mom_read_from_marker (marker, status)
+    call marker%pick ("process_id", this%process_id, status)
+    call marker%pick ("integrand_id", this%integrand_id, status)
+    call marker%pick ("momentum_fractions", this%momentum_fractions, status)
+    call marker%pick &
+         ("hyperbolic_fractions", this%hyperbolic_fractions, status)
+    call marker%pick_end ("qcd_2_2_t", status=status)
+  end subroutine qcd_2_2_read_from_marker
+  
+@ %def qcd_2_2_read_from_marker
+@
+<<Muli: QCD22: TBP>>=
+  procedure :: print_to_unit => qcd_2_2_print_to_unit
+<<Muli: procedures>>=
+  subroutine qcd_2_2_print_to_unit (this, unit, parents, components, peers)
+    class(qcd_2_2_t), intent(in) :: this
+    integer, intent(in) :: unit
+    integer(dik), intent(in) :: parents, components, peers
+    integer, dimension(2,4) :: flow
+    integer :: index
+    if (parents > i_zero) & 
+         call this%mom_print_to_unit (unit, parents-1, components, peers)
+    write (unit, "(1x,A)")  "Components of qcd_2_2_t:"
+    write (unit, "(3x,A,I3)")  "Process id is:       ", this%get_process_id ()
+    write (unit, "(3x,A,I3)")  "Integrand id is:     ", this%get_integrand_id ()
+    if (this%get_integrand_id () > 0) then
+       write (unit, "(3x,A,4(I3))")  "LHA Flavors are:     ", &
+            this%get_lha_flavors ()
+       write (unit, "(3x,A,4(I3))")  "PDG Flavors are:     ", &
+            this%get_pdg_flavors ()
+       write (unit, "(3x,A,2(I3))")  "Parton kinds are:    ", &
+            this%get_parton_kinds ()
+       write (unit, "(3x,A,2(I3))")  "PDF int kinds are:   ", &
+            this%get_pdf_int_kinds ()
+       write (unit, "(3x,A,2(I3))")  "Diagram kind is:     ", &
+            this%get_diagram_kind ()
+    end if
+    call this%get_color_correlations (1, index, flow)
+    write (unit, "(3x,A,4(I0))")  "Color Permutations:  ", this%flow
+    write (unit, "(3x,A)")  "Color Connections:"
+    write (unit, &
+         '("   (",I0,",",I0,")+(",I0,",",I0,")->(",I0,",",I0,&
+         &")+(",I0,",",I0,")")') flow
+    write (unit, "(3x,A,E14.7)")  "Evolution scale is:  ", &
+         this%get_unit2_scale ()
+    write (unit, "(3x,A,E14.7)")  "Momentum boost is:   ", &
+         this%get_momentum_boost ()
+    write (unit, "(3x,A,2(E14.7))")  "Remant momentum fractions are: ", &
+         this%get_remnant_momentum_fractions ()
+    write (unit, "(3x,A,2(E14.7))")  "Total momentum fractions are:  ", &
+         this%get_total_momentum_fractions ()
+  end subroutine qcd_2_2_print_to_unit
+  
+@ %def qcd_2_2_print_to_unit
+@
+<<Muli: QCD22: TBP>>=
+  procedure, nopass :: get_type => qcd_2_2_get_type  
+<<Muli: procedures>>=
+  pure subroutine qcd_2_2_get_type (type)
+    character(:), allocatable, intent(out) :: type
+    allocate (type, source="qcd_2_2_t")
+  end subroutine qcd_2_2_get_type
+  
+@ %def qcd_2_2_get_type
 @ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 <<[[muli_cross_sections.f90]]>>=
 ! This is a dummy for muli_cross_sections_module
 module muli_cross_sections_module

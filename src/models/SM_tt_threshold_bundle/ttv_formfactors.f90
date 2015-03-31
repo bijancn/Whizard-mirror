@@ -856,13 +856,15 @@ contains
   end function scan_formfactor_over_p_LL_analytic
 
   !!! tttoppik wrapper
-  function scan_formfactor_over_p_TOPPIK (a_soft, sqrts, i, p_grid_out) result (ff_toppik)
+  function scan_formfactor_over_p_TOPPIK (a_soft, sqrts, i, p_grid_out, mpole_in) result (ff_toppik)
     real(default), intent(in) :: a_soft
     real(default), intent(in) :: sqrts
     integer, intent(in) :: i
     real(default), dimension(n_p), intent(out), optional :: p_grid_out
+    real(default), intent(in), optional :: mpole_in
     complex(default), dimension(n_p) :: ff_toppik
     integer :: i_p
+    real(default) :: mpole
     real(default), dimension(n_p) :: p_toppik
     type(nr_spline_t) :: toppik_spline
 
@@ -876,9 +878,11 @@ contains
 
     if ( n_p > nmax-40 ) call abort ("TOPPIK: n_p must be <=" // char(nmax-40))
     ff_toppik = (/ (0.0_default, i_p=1, n_p) /)
+    mpole = mtpole
+    if ( present(mpole_in) ) mpole = mpole_in
 
     xenergy = sqrts_to_en (sqrts, mtpole)
-    xtm     = mtpole
+    xtm     = mpole
     xtg     = gam
     xalphas = a_soft
     xscale  = mu_s
@@ -1005,6 +1009,7 @@ contains
     p_grid = p_grid_from_TOPPIK ()
     if ( need_p0 ) then
       if ( ff_type == 0 .and. ext_Vinput ) then
+        p_grid = p_grid_from_TOPPIK (173.0_default)
         call import_Vmatrices ()
       else
         n_p0 = 85
@@ -1320,10 +1325,8 @@ contains
         select case (10*i+i_loop)
           case (10)
             Vfile = Vpath // "Vmatrix_s-wave_LO.dat"
-!            Vfile = Vpath // "VmatrixLO.dat"
           case (11)
             Vfile = Vpath // "Vmatrix_s-wave_NLO.dat"
-!            Vfile = Vpath // "VmatrixNLO.dat"
           case (20)
             Vfile = Vpath // "Vmatrix_p-wave_LO.dat"
           case (21)
@@ -1335,7 +1338,7 @@ contains
         inquire (file=char(Vfile), exist=ex)
         if ( .not.ex ) then
           call msg ("Input data missing. You may choose to:")
-          call msg (" (d)ownload files from whizard.hepforge.org (180/560 MB packed/unpacked);")
+          call msg (" (d)ownload files from whizard.hepforge.org (180/590 MB packed/unpacked);")
           call msg (" (c)ompute data on the fly (may take 1-3 hours to initialize).")
           call msg (" Please enter d/c:")
           read (input_unit, *) flag
@@ -1539,11 +1542,15 @@ contains
     en = sqrts - 2.*mpole
   end function sqrts_to_en
 
-  function p_grid_from_TOPPIK () result (p_toppik)
+  function p_grid_from_TOPPIK (mpole_in) result (p_toppik)
+    real(default), intent(in), optional :: mpole_in
     real(default), dimension(n_p) :: p_toppik
+    real(default) :: mpole
     complex(default), dimension(n_p) :: ff_dummy
+    mpole = mtpole
+    if ( present(mpole_in) ) mpole = mpole_in
     ff_dummy = scan_formfactor_over_p_TOPPIK &
-                 (alphas_soft(2.*m1s,nloop), 2.*m1s, 1, p_toppik)
+                 (alphas_soft(2.*m1s,nloop), 2.*m1s, 1, p_toppik, mpole)
     if ( .not.strictly_monotonous(p_toppik) ) &
       call abort ("p_grid NOT strictly monotonous!")
   end function p_grid_from_TOPPIK

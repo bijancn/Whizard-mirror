@@ -127,8 +127,9 @@ endif
 
 ## Install the modules used by generated matrix element code
 ## and by the user code library
-#execmoddir = $(pkglibdir)/mod/combinatorics
-#nodist_execmod_HEADERS = 
+execmoddir = $(pkglibdir)/mod/combinatorics
+nodist_execmod_HEADERS = \
+  solver.$(FC_MODULE_EXT)
 
 ## (Re)create F90 sources from NOWEB source.
 if NOWEB_AVAILABLE
