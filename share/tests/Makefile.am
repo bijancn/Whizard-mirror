@@ -110,6 +110,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/particles_5.ref \
     ref-output/particles_6.ref \
     ref-output/particles_7.ref \
+    ref-output/particles_8.ref \
     ref-output/beam_structures_1.ref \
     ref-output/beam_structures_2.ref \
     ref-output/beam_structures_3.ref \
