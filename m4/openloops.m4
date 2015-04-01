@@ -1,5 +1,6 @@
-dnl openloops.m4 -- checks for gosam package and required helper packages
+dnl openloops.m4 -- checks for OpenLoops package
 dnl
+
 
 AC_DEFUN([WO_PROG_OPENLOOPS],
 [dnl
@@ -16,22 +17,19 @@ unset OPENLOOPS_DIR
 
 if test "$enable_openloops" = "yes"; then
 
-  if test "$with_openloops" = ""; then
-    AC_PATH_PROG(openloops_lib, [lib/libopenloops.so], [no])
-  else
-    AC_PATH_PROG(openloops_lib, [lib/libopenloops.so], no, ${with_openloops})
-  fi
-
-  if test "$openloops_lib" = "no"; then
-    AC_MSG_ERROR([OpenLoops is enabled but not found])
-  else
-    openloops_libdir=`dirname $openloops_lib`
-    OPENLOOPS_DIR=`dirname $openloops_libdir`
-    echo "OpenLoops dir is " $OPENLOOPS_DIR
-  fi
-
   save_path=$PATH
   save_ld_library_path=$LD_LIBRARY_PATH
+
+  unset OPENLOOPS_DIR
+  if test -n "$with_openloops"; then
+    WO_PATH_LIB(openloops_lib, [openloops], [libopenloops.${SHRLIB_EXT}], ${with_openloops}/lib)
+  else
+    WO_PATH_LIB(openloops_lib, [openloops], [libopenloops.${SHRLIB_EXT}], $LD_LIBRARY_PATH)
+  fi
+  if test "$openloops_lib" != "no"; then
+    openloops_libdir=`dirname $openloops_lib`
+    OPENLOOPS_DIR=`dirname $openloops_libdir`
+  fi
 
 else
 

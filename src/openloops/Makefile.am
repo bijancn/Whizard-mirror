@@ -7,7 +7,13 @@
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
 #     with contributions from
+#     Fabian Bach <fabian.bach@desy.de>
+#     Bijan Chokoufe <bijan.chokoufe@desy.de>  
 #     Christian Speckner <cnspeckn@googlemail.com>
+#     Marco Sekulla <marco.sekulla@desy.de>
+#     Christian Weiss <christian.weiss@desy.de>
+#     Felix Braam, Sebastian Schmidt,
+#     Hans-Werner Boschmann, Daniel Wiesler       
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by 
@@ -28,18 +34,18 @@
 ## The files in this directory interface the OpenLoops amplitude calculator
 
 ## We create a library which is still to be combined with auxiliary libs.
-noinst_LTLIBRARIES = libopenloops.la
+noinst_LTLIBRARIES = liboloops.la
 
-libopenloops_la_SOURCES = \
+liboloops_la_SOURCES = \
   prc_openloops.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = openloops.nw
 
 # Dump module names into file Modules
-libopenloops_Modules = ${libopenloops_la_SOURCES:.f90=}
+liboloops_Modules = ${liboloops_la_SOURCES:.f90=}
 Modules: Makefile
-	@for module in $(libopenloops_Modules); do \
+	@for module in $(liboloops_Modules); do \
           echo $$module >> $@.new; \
         done
 	@if diff $@ $@.new -q >/dev/null; then \
@@ -89,7 +95,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libopenloops_la_SOURCES)
+Makefile.depend: $(liboloops_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -137,12 +143,12 @@ POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 openloops.stamp: $(PRELUDE) $(srcdir)/openloops.nw $(POSTLUDE)
 	@rm -f openloops.tmp
 	@touch openloops.tmp
-	for src in $(libopenloops_la_SOURCES); do \
+	for src in $(liboloops_la_SOURCES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
 	@mv -f openloops.tmp openloops.stamp
 
-$(libopenloops_la_SOURCES): openloops.stamp
+$(liboloops_la_SOURCES): openloops.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
 	  rm -f openloops.stamp; \
