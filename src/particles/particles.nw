@@ -1693,7 +1693,6 @@ relations.
   end subroutine particle_init_external
 
 @ %def particle_init_external
-@ %def init
 @ Initialize a particle using a single-particle state matrix which
 determines flavor, color, and polarization.  The state matrix must
 have unique flavor and color.  The factorization mode determines
@@ -2815,7 +2814,51 @@ particle set.
 @ %def particle_set_get_indices
 @
 \subsubsection{Tools}
-Given a subevent, reset status codes.  If the new status is beam,
+Build a new particles array without hadronic remnants but with
+[[n_extra]] additional spots.
+<<Particles: particle set: TBP>>=
+  procedure :: without_hadronic_remnants => particle_set_without_hadronic_remnants
+<<Particles: procedures>>=
+  subroutine particle_set_without_hadronic_remnants &
+         (particle_set, particles, n_particles, n_extra)
+    class(particle_set_t), intent(inout) :: particle_set
+    type(particle_t), allocatable, dimension(:), intent(out) :: particles
+    integer, intent(in) :: n_extra
+    integer, intent(out) :: n_particles
+    logical, dimension(particle_set%n_tot) :: no_hadronic_remnants
+    integer, allocatable, dimension(:) :: children, new_children
+    integer :: i
+    no_hadronic_remnants = .not. (particle_set%prt%is_hadronic_beam_remnant ())
+    n_particles = count (no_hadronic_remnants)
+    allocate (particles (n_particles + n_extra))
+    particles (1:n_particles) = pack (particle_set%prt, no_hadronic_remnants)
+    if (n_particles /= particle_set%n_tot) then
+       ! TODO: (bcn 2015-04-01) CHECK MDRS of incoming to outgoing
+       do i = 1, n_particles
+          select case (particles(i)%get_status ())
+          case (PRT_BEAM)
+             children = particles(i)%get_children ()
+             no_hadronic_remnants = .not. (particles(children)%is_hadronic_beam_remnant ())
+             !allocate (new_children (count &
+                  !(.not. particles(children)%is_hadronic_beam_remnant ())))
+             !new_children = pack (children, &
+                  !.not. particles(children)%is_hadronic_beam_remnant ())
+             new_children = pack (children, no_hadronic_remnants)
+             call particles(i)%set_children (new_children)
+             !deallocate (new_children)
+          case (PRT_INCOMING)
+             children = particles(i)%get_children ()
+             call particles(i)%set_children (children - &
+                  (particle_set%n_tot - n_particles))
+          case (PRT_OUTGOING)
+          case default
+          end select
+       end do
+    end if
+  end subroutine particle_set_without_hadronic_remnants
+
+@ %def particle_set_without_hadronic_remnants
+@ Given a subevent, reset status codes.  If the new status is beam,
 incoming, or outgoing, we also make sure that the stored $p^2$ value
 is equal to the on-shell mass squared.
 <<Particles: particle set: TBP>>=
@@ -3706,7 +3749,7 @@ particles.  The process is $d\bar d \to Z \to q\bar q$.
     call particle_set1%init &
          (ok, int, int, FM_FACTOR_HELICITY, &
           [0.2_default, 0.2_default], .false., .true.)
-    call particle_set_write (particle_set1, u)
+    call particle_set1%write (u)
 
     write (u, "(A)")
     write (u, "(A)")  "* Factorize as subevent (in/out only, selected helicity)"
@@ -3897,7 +3940,6 @@ interaction, from a particle set.
     type(interaction_t) :: int
     type(state_flv_content_t) :: state_flv
     type(particle_set_t) :: pset
-    type(flavor_t), dimension(:), allocatable :: flv
     type(quantum_numbers_t), dimension(:), allocatable :: qn
     integer :: i, j
     
@@ -3942,8 +3984,37 @@ interaction, from a particle set.
 
     write (u, "(A)")      
     write (u, "(A)")  "* Manually create a matching particle set"
-    write (u, "(A)")      
+    write (u, "(A)")
 
+    call create_test_particle_set_1 (pset)
+
+    call pset%write (u)
+ 
+    write (u, "(A)")      
+    write (u, "(A)")  "*   Fill interaction from particle set"
+    write (u, "(A)")
+
+    call pset%fill_interaction (int, 2, state_flv=state_flv)
+    call int%basic_write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+
+    call int%final ()
+    call pset%final ()
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: particles_3"
+
+  end subroutine particles_3
+  
+@ %def particles_3
+@
+<<Particles: procedures>>=
+  subroutine create_test_particle_set_1 (pset)
+    type(particle_set_t), intent(out) :: pset
+    type(flavor_t), dimension(:), allocatable :: flv
+    integer :: i
     pset%n_beam = 2
     pset%n_in   = 2
     pset%n_vir  = 2
@@ -3955,8 +4026,8 @@ interaction, from a particle set.
     call pset%prt(2)%reset_status (PRT_BEAM)
     call pset%prt(3)%reset_status (PRT_INCOMING)
     call pset%prt(4)%reset_status (PRT_INCOMING)
-    call pset%prt(5)%reset_status (PRT_OUTGOING)
-    call pset%prt(6)%reset_status (PRT_OUTGOING)
+    call pset%prt(5)%reset_status (PRT_BEAM_REMNANT)
+    call pset%prt(6)%reset_status (PRT_BEAM_REMNANT)
     call pset%prt(7)%reset_status (PRT_OUTGOING)
     call pset%prt(8)%reset_status (PRT_OUTGOING)
     call pset%prt(9)%reset_status (PRT_OUTGOING)
@@ -3970,9 +4041,9 @@ interaction, from a particle set.
     call pset%prt(4)%set_parents ([2])
     call pset%prt(5)%set_parents ([1])
     call pset%prt(6)%set_parents ([2])
-    call pset%prt(7)%set_parents ([5,6])
-    call pset%prt(8)%set_parents ([5,6])
-    call pset%prt(9)%set_parents ([5,6])
+    call pset%prt(7)%set_parents ([3,4])
+    call pset%prt(8)%set_parents ([3,4])
+    call pset%prt(9)%set_parents ([3,4])
 
     call pset%prt(1)%set_momentum (vector4_at_rest (1._default))
     call pset%prt(2)%set_momentum (vector4_at_rest (2._default))
@@ -3989,28 +4060,10 @@ interaction, from a particle set.
     do i = 1, 9
        call pset%prt(i)%set_flavor (flv(i))
     end do
+  end subroutine create_test_particle_set_1
 
-    call pset%write (u)
- 
-    write (u, "(A)")      
-    write (u, "(A)")  "*   Fill interaction from particle set"
-    write (u, "(A)")
+@ %def create_test_particle_set_1
 
-    call particle_set_fill_interaction (pset, int, 2, state_flv=state_flv)
-    call int%basic_write (u)
-
-    write (u, "(A)")
-    write (u, "(A)")  "* Cleanup"
-
-    call int%final ()
-    call pset%final ()
-    
-    write (u, "(A)")
-    write (u, "(A)")  "* Test output end: particles_3"
-
-  end subroutine particles_3
-  
-@ %def particles_3
 @ 
 Reconstruct an interaction with beam structure, e.g., a hadronic
 interaction, from a particle set that is missing the beam information.
@@ -4404,7 +4457,7 @@ particle set.
     write (u, "(A)")  "*   Fill interaction from particle set"
     write (u, "(A)")
 
-    call particle_set_fill_interaction (pset, int, 2, state_flv=state_flv)
+    call pset%fill_interaction (int, 2, state_flv=state_flv)
     call int%basic_write (u)
 
     write (u, "(A)")
@@ -4504,7 +4557,7 @@ Reconstruct a hard decay interaction from a shuffled particle set.
     write (u, "(A)")  "*   Fill interaction from particle set"
     write (u, "(A)")
 
-    call particle_set_fill_interaction (pset, int, 1, state_flv=state_flv)
+    call pset%fill_interaction (int, 1, state_flv=state_flv)
     call int%basic_write (u)
 
     write (u, "(A)")
@@ -4519,6 +4572,47 @@ Reconstruct a hard decay interaction from a shuffled particle set.
   end subroutine particles_7
   
 @ %def particles_7
+@
+<<Particles: execute tests>>=
+  call test(particles_8, "particles_8", &
+            "Test functions on particle sets", u, results)
+<<Particles: procedures>>=
+  subroutine particles_8 (u)
+    integer, intent(in) :: u
+    type(particle_set_t) :: particle_set
+    type(particle_t), dimension(:), allocatable :: particles
+    integer, allocatable, dimension(:) :: children
+    integer :: n_particles, i
+    write (u, "(A)")  "* Test output: particles_8"
+    write (u, "(A)")  "*   Purpose: Test functions on particle sets"
+    write (u, "(A)")
 
-  
+    call create_test_particle_set_1 (particle_set)
+    call particle_set%write (u)
+    call assert_equal (u, particle_set%n_tot, 9)
+    call assert_equal (u, particle_set%n_beam, 2)
+    children = particle_set%prt(3)%get_children()
+    call assert_equal (u, particle_set%prt(children(1))%get_pdg (), 3)
+    call assert_equal (u, size (particle_set%prt(1)%get_children ()), 2)
+    call assert_equal (u, size (particle_set%prt(2)%get_children ()), 2)
 
+    call particle_set%without_hadronic_remnants &
+         (particles, n_particles, 3)
+
+    call assert_equal (u, n_particles, 7)
+    call assert_equal (u, size(particles), 10)
+
+    call particle_set%replace (particles)
+    call particle_set%write (u)
+    call assert_equal (u, particle_set%n_tot, 10)
+    call assert_equal (u, particle_set%n_beam, 0)
+    children = particle_set%prt(3)%get_children()
+    call assert_equal (u, particle_set%prt(children(1))%get_pdg (), 3)
+    call assert_equal (u, size (particle_set%prt(1)%get_children ()), 1)
+    call assert_equal (u, size (particle_set%prt(2)%get_children ()), 1)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: particles_8"
+  end subroutine particles_8
+
+@ %def particles_8
