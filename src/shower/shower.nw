@@ -872,13 +872,10 @@ for the clustering of CKKW pseudo weights and CKKW matching,
     type(particle_t) :: particle
     class(parton_t), intent(in) :: parton
     class(model_data_t), pointer, intent(in) :: model
-    type(flavor_t) :: flavor
-    call flavor%init (parton%type, model)
-    call particle%set_color (parton%to_color ())
-    call particle%set_flavor (flavor)
-    call particle%set_status (parton%to_status ())
-    call particle%set_momentum (parton%momentum)
-    ! skip pol, hel and polarization for now
+    integer :: col, anti_col
+    call parton%to_color (col, anti_col)
+    call particle%init (parton%to_status (), parton%type, model, &
+         col, anti_col, parton%momentum)
   end function parton_to_particle
 
 @ %def parton_to_particle
@@ -907,18 +904,17 @@ for the clustering of CKKW pseudo weights and CKKW matching,
 <<Shower partons: parton: TBP>>=
   procedure :: to_color => parton_to_color
 <<Shower partons: procedures>>=
-  pure function parton_to_color (parton) result (color)
+  pure subroutine parton_to_color (parton, c1, c2)
     class(parton_t), intent(in) :: parton
-    type(color_t) :: color
-    integer :: c1, c2
-    c1 = 0
-    c2 = 0
+    integer, intent(out) :: c1, c2
     if (parton%is_colored ()) then
        if (parton%c1 /= 0) c1 = 500 + parton%c1
        if (parton%c2 /= 0) c2 = 500 + parton%c2
+    else
+       c1 = 0
+       c2 = 0
     end if
-    call color%init_col_acl (c1, c2)
-  end function parton_to_color
+  end subroutine parton_to_color
 
 @ %def parton_to_color
 <<Shower partons: public>>=
@@ -6856,7 +6852,7 @@ contains
 
 @ %def shower_pythia6_generate_emissions
 @ Has to be available for hadrons?
-<<Shower PYTHIA6: shower pythia6: TBP>>=
+<<Shower PYTHIA6: shower PYTHIA6: TBP>>=
   procedure :: combine_with_particle_set => shower_pythia6_combine_with_particle_set
 <<Shower PYTHIA6: procedures>>=
   subroutine shower_pythia6_combine_with_particle_set &
@@ -6893,7 +6889,7 @@ contains
   
     if (signal_is_pending ()) return
     if (DEBUG_SHOWER) print *, 'Combine PYTHIA6 with particle set'
-    if (DEBUG_SHOWER) call pylist ()
+    if (DEBUG_SHOWER) call pylist (2)
   
     !!! Find the numbers of entries of the <event block>
     NENTRIES = 0
@@ -6910,8 +6906,24 @@ contains
     next_color = 1   ! TODO find next free color number ??
     do I = 1, N
        call assign_colors (color, anti_color)
-       print *,  K(I,2), K(I,1), K(I,3), K(I,3), &
-            color, anti_color, (P(I,J),J=1,5), 0, -9
+       ! K(I,1) parton is fragmented or decayed
+       !   1 = undecayed particle or unfragmented parton (single or last
+       !       of parton system)
+       !   2 = unfragmented parton (followed by more partons in the same
+       !       color singlet
+       !   3 = unfragmented parton (color info in K(I,4), K(I,5))
+       !  11 = decayed particle or fragmented parton
+       !  12 = fragmented parton
+       !  13 = fragmented parton that has been removed
+       !  14 = branched parton with color info like 3
+       !  21 = documentation lines
+       ! K(I,2) PDG code
+       ! K(I,3) Parent where known else 0. Unphysical to assign
+       !        particles partons as parents
+       ! K(I,4) Normally first daughter
+       ! K(I,5) Normally last daughter
+       print *,  K(I,1), K(I,2), K(I,3), K(I,4), K(I,5), &
+            color, anti_color, (P(I,J),J=1,5)
     end do
   
     stop
@@ -6926,33 +6938,32 @@ contains
   subroutine assign_colors (color, anti_color)
     integer, intent(out) :: color, anti_color
     if ((K(I,1) >= 1 .and. K(I,1) <= 15) .or. (K(I,1) == 21)) then
-       if ((K(I,2) == 21) .or. (IABS(K(I,2)) <= 8) .or. &
-            (abs (K(I,2)) >= KSUSY1+1 .and. abs (K(I,2)) <= KSUSY1+8) &
-            .or. &
+       if ((K(I,2) == 21) .or. (abs (K(I,2)) <= 8) .or. &
+            (abs (K(I,2)) >= KSUSY1+1 .and. abs (K(I,2)) <= KSUSY1+8) .or. &
             (abs (K(I,2)) >= KSUSY2+1 .and. abs (K(I,2)) <= KSUSY2+8) .or. &
             (abs (K(I,2)) >= 1000 .and. abs (K(I,2)) <= 9999) ) then
           if (dangling_col == 0 .and. dangling_anti_col == 0) then
              ! new color string
              ! Gluon and gluino only color octets implemented so far
-             if (K(I,2).eq.21 .or. K(I,2).eq.1000021) then
+             if (K(I,2) == 21 .or. K(I,2) == 1000021) then
                 color = next_color
                 dangling_col = color
                 next_color = next_color + 1
                 anti_color = next_color
                 dangling_anti_col = anti_color
                 next_color = next_color + 1
-             else if (K(I,2) .gt. 0) then  ! particles to have color
+             else if (K(I,2) > 0) then  ! particles have color
                 color = next_color
                 dangling_col = color
                 anti_color = 0
                 next_color = next_color + 1
-             else if (K(I,2) .lt. 0) then  ! antiparticles to have anticolor
+             else if (K(I,2) < 0) then  ! antiparticles have anticolor
                 anti_color = next_color
                 dangling_anti_col = anti_color
                 color = 0
                 next_color = next_color + 1
              end if
-          else if(K(I,1).eq.1) then
+          else if(K(I,1) == 1) then
              ! end of string
              color = dangling_anti_col
              anti_color = dangling_col
