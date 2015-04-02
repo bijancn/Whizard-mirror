@@ -1570,6 +1570,7 @@ module particles
   use format_utils, only: write_separator
   use format_utils, only: pac_fmt
   use format_defs, only: FMT_16, FMT_17, FMT_19
+  use constants, only: one, tiny_07
   use unit_tests
   use diagnostics
   use lorentz
@@ -2853,6 +2854,44 @@ relations.
   end subroutine particle_set_without_hadronic_remnants
 
 @ %def particle_set_without_hadronic_remnants
+@
+<<Particles: particle set: TBP>>=
+  procedure :: find_particle => particle_set_find_particle
+<<Particles: procedures>>=
+  !pure 
+  function particle_set_find_particle &
+         (particle_set, pdg, momentum, abs_smallness, rel_smallness) result (idx)
+    integer :: idx
+    class(particle_set_t), intent(in) :: particle_set
+    integer, intent(in) :: pdg
+    type(vector4_t), intent(in) :: momentum
+    real(default), intent(in), optional :: abs_smallness, rel_smallness
+    integer :: i
+    idx = 0
+    print *, 'finding particle' !!! Debugging
+    print *, 'pdg =    ', pdg !!! Debugging
+    call vector4_write (momentum)
+    if (present (rel_smallness)) then
+       print *, 'rel_smallness =    ', rel_smallness !!! Debugging
+    end if
+    do i = 1, size (particle_set%prt)
+       call particle_set%prt(i)%write () !!! Debugging
+       print *, 'particle_set%prt(i)%get_pdg() =    ', &
+         particle_set%prt(i)%get_pdg() !!! Debugging
+       print *, 'particle_set%prt(i)%flv%get_pdg() =    ', &
+         particle_set%prt(i)%flv%get_pdg() !!! Debugging
+       if (particle_set%prt(i)%get_pdg () == pdg) then
+          print *, 'PDG CODE GOOD' !!! Debugging
+          if (all (nearly_equal (particle_set%prt(i)%p%p, momentum%p, &
+                                 abs_smallness, rel_smallness))) then
+             idx = i
+             return
+          end if
+       end if
+    end do
+  end function particle_set_find_particle
+
+@ %def particle_set_find_particle
 @ Given a subevent, reset status codes.  If the new status is beam,
 incoming, or outgoing, we also make sure that the stored $p^2$ value
 is equal to the on-shell mass squared.
@@ -4583,6 +4622,7 @@ Reconstruct a hard decay interaction from a shuffled particle set.
     write (u, "(A)")
 
     call create_test_particle_set_1 (particle_set)
+    call particle_set%write (u)
     call assert_equal (u, particle_set%n_tot, 9)
     call assert_equal (u, particle_set%n_beam, 2)
     children = particle_set%prt(3)%get_children()
@@ -4592,11 +4632,11 @@ Reconstruct a hard decay interaction from a shuffled particle set.
 
     call particle_set%without_hadronic_remnants &
          (particles, n_particles, 3)
+    call particle_set%replace (particles)
+    call particle_set%write (u)
 
     call assert_equal (u, n_particles, 7)
     call assert_equal (u, size(particles), 10)
-
-    call particle_set%replace (particles)
     call assert_equal (u, particle_set%n_tot, 10)
     call assert_equal (u, particle_set%n_beam, 2)
     do i = 3, 4
@@ -4612,8 +4652,18 @@ Reconstruct a hard decay interaction from a shuffled particle set.
        call assert_equal (u, particle_set%prt(parents(1))%get_pdg (), 11)
        call assert_equal (u, particle_set%prt(parents(2))%get_pdg (), 12)
     end do
-    call assert_equal (u, size (particle_set%prt(1)%get_children ()), 1)
-    call assert_equal (u, size (particle_set%prt(2)%get_children ()), 1)
+    call assert_equal (u, size (particle_set%prt(1)%get_children ()), &
+         1, "get children of 1")
+    call assert_equal (u, size (particle_set%prt(2)%get_children ()), &
+         1, "get children of 2")
+
+    call assert_equal(u, particle_set%find_particle &
+         (particle_set%prt(1)%get_pdg (), particle_set%prt(1)%p), &
+         1, "find 1st particle")
+    call assert_equal(u, particle_set%find_particle &
+         (particle_set%prt(2)%get_pdg (), particle_set%prt(2)%p * &
+          (one + tiny_07), rel_smallness=1.0E-6_default), &
+         2, "find 2nd particle fuzzy")
 
     write (u, "(A)")
     write (u, "(A)")  "* Test output end: particles_8"
