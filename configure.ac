@@ -802,7 +802,7 @@ AC_CONFIG_FILES([src/openloops/Makefile])
 AC_CONFIG_FILES([src/fks/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/fks: POWHEG algorithm
+### Subdirectory src/powheg: POWHEG algorithm
 
 AC_CONFIG_FILES([src/powheg/Makefile])
 
@@ -840,6 +840,11 @@ AC_CONFIG_FILES([src/models/threeshl_bundle/Makefile])
 ### Subdirectory src/process_integration
 
 AC_CONFIG_FILES([src/process_integration/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/transforms: event transforms and event API
+
+AC_CONFIG_FILES([src/transforms/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/whizard-core

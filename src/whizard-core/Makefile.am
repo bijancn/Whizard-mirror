@@ -37,13 +37,14 @@
 noinst_LTLIBRARIES = libwhizard_core.la
 
 libwhizard_core_la_SOURCES = \
-  event_transforms.f90 hadrons.f90 \
-  decays.f90 shower.f90 \
-  events.f90 eio_raw.f90 \
-  user_files.f90 rt_data.f90  \
+  user_files.f90 \
+  rt_data.f90  \
   dispatch.f90 \
-  process_configurations.f90 compilations.f90 integrations.f90 \
-  event_streams.f90 simulations.f90 \
+  process_configurations.f90 \
+  compilations.f90 \
+  integrations.f90 \
+  event_streams.f90 \
+  simulations.f90 \
   expr_tests.f90 \
   commands.f90 \
   whizard.f90
@@ -92,7 +93,8 @@ module_lists = \
   ../muli/Modules \
   ../shower/Modules \
   ../powheg/Modules \
-  ../process_integration/Modules
+  ../process_integration/Modules \
+  ../transforms/Modules
 
 include_modules_bare = ${module_lists:/Modules=}
 include_modules = ${include_modules_bare:../%=-I../%}

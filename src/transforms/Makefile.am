@@ -35,26 +35,23 @@
 ## such as model representation and quantum numbers.
 
 ## We create a library which is still to be combined with auxiliary libs.
-noinst_LTLIBRARIES = libqft.la
+noinst_LTLIBRARIES = libtransforms.la
 
-libqft_la_SOURCES = \
-  model_data.f90 \
-  model_testbed.f90 \
-  helicities.f90 \
-  colors.f90 \
-  flavors.f90 \
-  quantum_numbers.f90 \
-  state_matrices.f90 \
-  interactions.f90 \
-  evaluators.f90
+libtransforms_la_SOURCES = \
+   event_transforms.f90 \
+   hadrons.f90 \
+   decays.f90 \
+   shower.f90 \
+   events.f90 \
+   eio_raw.f90
 
 ## Omitting this would exclude it from the distribution
-dist_noinst_DATA = qft.nw
+dist_noinst_DATA = transforms.nw
 
 # Dump module names into file Modules
-libqft_Modules = ${libqft_la_SOURCES:.f90=}
+libtransforms_Modules = ${libtransforms_la_SOURCES:.f90=}
 Modules: Makefile
-	@for module in $(libqft_Modules); do \
+	@for module in $(libtransforms_Modules); do \
           echo $$module >> $@.new; \
         done
 	@if diff $@ $@.new -q >/dev/null; then \
@@ -71,9 +68,28 @@ module_lists = \
   ../utilities/Modules \
   ../testing/Modules \
   ../system/Modules \
-  ../combinatorics/Modules \
+  ../physics/Modules \
+  ../qft/Modules \
+  ../particles/Modules \
+  ../types/Modules \
+  ../matrix_elements/Modules \
+  ../me_methods/Modules \
+  ../rng/Modules \
+  ../mci/Modules \
+  ../phase_space/Modules \
+  ../process_integration/Modules \
+  ../powheg/Modules \
+  ../model_features/Modules \
+  ../events/Modules \
+  ../shower/Modules \
   ../expr_base/Modules \
-  ../physics/Modules
+  ../variables/Modules \
+  ../beams/Modules
+
+# Explicit dependencies, not automatically generated
+event_transforms.lo:  ../../vamp/src/vamp.$(FC_MODULE_EXT)
+shower.lo:  ../lhapdf/lhapdf.$(FC_MODULE_EXT)
+shower.lo:  ../pdf_builtin/pdf_builtin.$(FC_MODULE_EXT)
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -100,7 +116,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libqft_la_SOURCES)
+Makefile.depend: $(libtransforms_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -117,7 +133,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../expr_base -I../physics
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system  -I../combinatorics -I../parsing -I../physics -I../qft -I../particles -I../types -I../matrix_elements -I../me_methods -I../rng -I../mci -I../phase_space -I../process_integration -I../powheg -I../model_features -I../events -I../shower -I../expr_base -I../variables -I../muli -I../beams -I../blha -I../fks -I../openloops -I../gosam -I../fastjet -I../lhapdf -I../pdf_builtin -I../../vamp/src -I../user
 
 
 ########################################################################
@@ -138,7 +154,7 @@ endif
 ## Non-standard targets and dependencies
 
 ## Install the modules used by generated matrix element code
-#execmoddir = $(pkglibdir)/mod/qft
+#execmoddir = $(pkglibdir)/mod/transforms
 #nodist_execmod_HEADERS = \#
 
 ## (Re)create F90 sources from NOWEB source.
@@ -147,19 +163,19 @@ if NOWEB_AVAILABLE
 PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
 POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 
-qft.stamp: $(PRELUDE) $(srcdir)/qft.nw $(POSTLUDE)
-	@rm -f qft.tmp
-	@touch qft.tmp
-	for src in $(libqft_la_SOURCES); do \
+transforms.stamp: $(PRELUDE) $(srcdir)/transforms.nw $(POSTLUDE)
+	@rm -f transforms.tmp
+	@touch transforms.tmp
+	for src in $(libtransforms_la_SOURCES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
-	@mv -f qft.tmp qft.stamp
+	@mv -f transforms.tmp transforms.stamp
 
-$(libqft_la_SOURCES): qft.stamp
+$(libtransforms_la_SOURCES): transforms.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
-	  rm -f qft.stamp; \
-	  $(MAKE) $(AM_MAKEFLAGS) qft.stamp; \
+	  rm -f transforms.stamp; \
+	  $(MAKE) $(AM_MAKEFLAGS) transforms.stamp; \
 	fi
 
 endif
@@ -183,7 +199,7 @@ endif
 
 ## Remove F90 module files
 clean-local: clean-noweb
-	-rm -f qft.stamp qft.tmp
+	-rm -f transforms.stamp transforms.tmp
 	-rm -f *.$(FC_MODULE_EXT)
 
 ## Remove backup files

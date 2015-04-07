@@ -44,7 +44,11 @@ SUBDIRS = \
   types \
   matrix_elements \
   hepmc lcio particles \
-  lhapdf lhapdf5 pdf_builtin hoppet beams \
+  lhapdf \
+  lhapdf5 \
+  pdf_builtin \
+  hoppet \
+  beams \
   me_methods \
   stdhep xdr events \
   phase_space \
@@ -57,8 +61,10 @@ SUBDIRS = \
   model_features \
   process_integration \
   powheg \
+  transforms \
   whizard-core \
-  prebuilt models
+  prebuilt \
+  models
 if MPOST_AVAILABLE
 SUBDIRS += gamelan feynmf
 endif
@@ -78,6 +84,7 @@ libomega_la_SOURCES =
 ## Collect the various partial libraries
 libwhizard_la_LIBADD = \
   whizard-core/libwhizard_core.la \
+  transforms/libtransforms.la \
   ../vamp/src/libvamp.la \
   ../circe1/src/libcirce1.la \
   ../circe2/src/libcirce2.la \

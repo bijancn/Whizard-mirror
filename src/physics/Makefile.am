@@ -37,7 +37,7 @@ libphysics_la_SOURCES = \
   lorentz.f90 \
   sm_physics.f90 \
   sm_qcd.f90 \
-	shower_algorithms.f90
+  shower_algorithms.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = physics.nw
@@ -63,7 +63,7 @@ module_lists = \
   ../testing/Modules \
   ../system/Modules \
   ../combinatorics/Modules \
-	../rng/Modules
+  ../rng/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
