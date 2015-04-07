@@ -6589,6 +6589,7 @@ module shower_pythia6
 
 <<Use kinds with double>>
 <<Use strings>>
+  use constants
   use io_units
   use physics_defs
   use diagnostics
@@ -6865,7 +6866,7 @@ The first two particles are always the beams, in Pythia and Whizard
     integer, parameter :: MAXPUP = 100, MAXNUP = 500
     !integer :: IDBMUP, PDFGUP, PDFSUP, IDWTUP, NPRUP, LPRUP
     integer :: NUP, IDPRUP, IDUP, ISTUP, MOTHUP, ICOLUP
-    real(double) :: EBMUP, XSECUP, XERRUP, XMAXUP
+    !real(double) :: EBMUP, XSECUP, XERRUP, XMAXUP
     real(double) :: XWGTUP, SCALUP, AQEDUP, AQCDUP, PUP, VTIMUP, SPINUP
     integer, parameter :: KSUSY1 = 1000000, KSUSY2 = 2000000
     !common /HEPRUP/ &
@@ -6879,7 +6880,7 @@ The first two particles are always the beams, in Pythia and Whizard
     save /HEPEUP/
     integer :: dangling_col, dangling_anti_col, color, anti_color
     integer :: i, j, k, py_entries, next_color, n_hard, parent, real_parent
-    integer :: pdg, status
+    integer :: pdg, status, child
     integer, allocatable, dimension(:) :: old_index
   
     if (signal_is_pending ()) return
@@ -6887,47 +6888,49 @@ The first two particles are always the beams, in Pythia and Whizard
     !if (DEBUG_SHOWER) 
     call pylist (2)
   
-    !!! Find the numbers of entries of the <event block>
     py_entries = 0
     do i = 1, N
        status = K(i,1)
-       if (status >= 1 .and. status <= 15) then
+       if (status >= 1 .and. status <= 15 .and. any (P(i,1:4) > eps0)) then
           py_entries = py_entries + 1
        end if
     end do
     allocate (old_index (py_entries))
     call particle_set%without_hadronic_remnants &
          (particles, n_hard, py_entries)
-  
     call add_particles_of_shower ()
-
     call particle_set%replace (particles)
-
-    do i = 1, n_hard
-       ! add 
-    end do
     do j = 1, py_entries
        parent = K(old_index(j),3)
+       child = n_hard + j
        if (parent <= 2) then
-          call particle_set%prt(n_hard + j)%set_parents ([parent])
-          call particle_set%prt(parent)%add_child (j)
+          call particle_set%prt(child)%set_parents ([parent])
+          call particle_set%prt(parent)%add_child (child)
        else
           pdg = K(parent,2)
           momentum = real([P(parent,4), P(parent,1:3)], kind=default)
           real_parent = particle_set%find_particle (pdg, momentum)
           if (real_parent > 0) then
-             call particle_set%prt(n_hard + i)%set_parents ([real_parent])
-             call particle_set%prt(real_parent)%add_child (n_hard + j)
+             call particle_set%prt(child)%set_parents ([real_parent])
+             call particle_set%prt(real_parent)%add_child (child)
           else
-             print *, 'pdg =    ', pdg !!! Debugging
-             print *, 'momentum%p =    ', momentum%p !!! Debugging
+             print *, 'pdg =    ', pdg
+             print *, 'momentum%p =    ', momentum%p
              call msg_error ("Couldn't match Pythia particle with " // &
                              "Whizards particle set")
           end if
        end if
     end do
+    do i = 1, n_hard
+       if (particle_set%prt(i)%get_status () == PRT_OUTGOING .and. &
+            particle_set%prt(i)%has_children ()) then
+          call particle_set%prt(i)%set_status (PRT_VIRTUAL)
+       end if
+       ! add beamremnant?
+    end do
+
+    call particle_set%write (detailled=.true.) !!! Debugging
   
-    stop
   contains
   
   <<Shower PYTHIA6: combine with particle set: procedures>>
@@ -6943,10 +6946,12 @@ The first two particles are always the beams, in Pythia and Whizard
     j = 1
     do i = 1, N
        status = K(i,1)
-       if (status >= 1 .and. status <= 15) then
+       print *, 'i =    ', i !!! Debugging
+       if (status >= 1 .and. status <= 15 .and. any (P(i,1:4) > eps0)) then
           call assign_colors (color, anti_color)
           momentum = real([P(i,4), P(i,1), P(i,2), P(i,3)], kind=default)
           pdg = K(i,2)
+          print *, 'pdg =    ', pdg !!! Debugging
           parent = K(i,3)
           call particles(n_hard + j)%init &
                (PRT_OUTGOING, pdg, model, color, anti_color, momentum)
