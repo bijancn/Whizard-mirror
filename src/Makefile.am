@@ -55,8 +55,8 @@ SUBDIRS = \
   mci variables \
   muli shower \
   user \
-  blha \
-  gosam openloops fks \
+  fks blha \
+  gosam openloops \
   looptools \
   model_features \
   process_integration \

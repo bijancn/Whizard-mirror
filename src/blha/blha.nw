@@ -158,6 +158,8 @@ end module blha_olp_interfaces
   public :: blha_def_t
 <<BLHA OLP interfaces: types>>=
   type, abstract, extends (prc_core_def_t) :: blha_def_t
+    type(string_t) :: basename
+    type(string_t) :: suffix
   contains
   <<BLHA OLP interfaces: blha def: TBP>>
   end type blha_def_t
@@ -1121,12 +1123,6 @@ end module blha_olp_interfaces
        class is (blha_driver_t)
           call driver%update_alpha_s (alpha_qcd)
        end select 
-       if (allocated (core_state)) then
-          select type (core_state)
-          class is (blha_state_t)
-             core_state%alpha_qcd = alpha_qcd
-          end select
-       end if
     end if
   end subroutine prc_blha_update_alpha_s
 
@@ -1218,6 +1214,25 @@ end module blha_olp_interfaces
   end subroutine prc_blha_read_contract_file
 
 @ %def prc_blha_read_contract_file
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: print_parameter_file => prc_blha_print_parameter_file
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_print_parameter_file (object)
+    class(prc_blha_t), intent(in) :: object
+    type(string_t) :: filename
+    
+    select type (def => object%def)
+    class is (blha_def_t)
+       filename = def%basename // '.olp_parameters'
+    end select
+    select type (driver => object%driver)
+    class is (blha_driver_t)
+       call driver%blha_olp_print_parameter (char(filename)//c_null_char)
+    end select
+  end subroutine prc_blha_print_parameter_file
+
+@ %def prc_blha_print_parameter_file
 @
 <<BLHA OLP interfaces: prc blha: TBP>>=
   procedure :: compute_hard_kinematics => prc_blha_compute_hard_kinematics
@@ -1382,20 +1397,21 @@ end module blha_olp_interfaces
   procedure :: compute_sqme_virt => prc_blha_compute_sqme_virt
 <<BLHA OLP interfaces: procedures>>=
   subroutine prc_blha_compute_sqme_virt (object, &
-                i_flv, p, ren_scale, alpha_s, sqme, bad_point)
+                i_flv, p, ren_scale, sqme, bad_point)
     class(prc_blha_t), intent(inout) :: object
     integer, intent(in) :: i_flv
     type(vector4_t), dimension(:), intent(in) :: p
     real(default), intent(in) :: ren_scale
-    real(default), intent(in) :: alpha_s
     logical, intent(out) :: bad_point
     real(default), dimension(4), intent(out) :: sqme
-    real(double) :: mu
     real(double), dimension(5*object%n_particles) :: mom
     real(double), dimension(blha_result_array_size (object%n_particles, &
                                                     BLHA_AMP_LOOP)) :: r
+    real(double) :: mu_dble
+    real(default) :: mu
     real(double) :: acc_dble
     real(default) :: acc
+    real(default) :: alpha_s
 
     mom = object%create_momentum_array (p)
     if (ren_scale == 0.0) then
@@ -1403,11 +1419,13 @@ end module blha_olp_interfaces
     else
       mu = ren_scale
     end if
+    mu_dble = dble(mu)
+    alpha_s = object%qcd%alpha%get (mu)
     select type (driver => object%driver)
     class is (blha_driver_t)
       call driver%set_alpha_s (alpha_s)
       call driver%blha_olp_eval2 (object%i_virt(i_flv), &
-                                   mom, mu, r, acc_dble) 
+                                   mom, mu_dble, r, acc_dble) 
     end select
     acc = acc_dble
     sqme = r(1:4)
@@ -1426,12 +1444,12 @@ end module blha_olp_interfaces
 <<BLHA OLP interfaces: interfaces>>=
   abstract interface
     subroutine prc_blha_compute_sqme_real (object, i_flv, &
-          p, ren_scale, alpha_s, sqme, bad_point)
+          p, ren_scale, sqme, bad_point)
       import
       class(prc_blha_t), intent(inout) :: object
       integer, intent(in) :: i_flv
       type(vector4_t), intent(in), dimension(:) :: p
-      real(default), intent(in) :: ren_scale, alpha_s
+      real(default), intent(in) :: ren_scale
       real(default), intent(out) :: sqme
       logical, intent(out) :: bad_point
     end subroutine prc_blha_compute_sqme_real
@@ -1464,20 +1482,21 @@ Hence, the interface is simpler than in the other routines.
   procedure :: compute_sqme_cc => prc_blha_compute_sqme_cc
 <<BLHA OLP interfaces: procedures>>=
   subroutine prc_blha_compute_sqme_cc &
-         (object, i_flv, p, ren_scale, alpha_s, &
+         (object, i_flv, p, ren_scale, &
           born_out, born_cc, bad_point)
     class(prc_blha_t), intent(inout) :: object
     integer, intent(in) :: i_flv
     type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: ren_scale
-    real(default), intent(in) :: alpha_s
     real(default), intent(out), optional :: born_out
     real(default), intent(inout), dimension(:,:) :: born_cc
     logical, intent(out) :: bad_point
     real(double), dimension(5*object%n_particles) :: mom
     real(double), dimension(blha_result_array_size (object%n_particles, &
                                               BLHA_AMP_CC)) :: r
-    real(double) :: mu
+    real(default) :: mu
+    real(double) :: mu_dble
+    real(default) :: alpha_s
     integer :: i, j, pos
     integer :: im1, jm1
     real(double) :: acc_dble
@@ -1490,19 +1509,21 @@ Hence, the interface is simpler than in the other routines.
     else
        mu = ren_scale
     end if
+    mu_dble = dble(mu)
+    alpha_s = object%qcd%alpha%get (mu)
     select type (driver => object%driver)
     class is (blha_driver_t)
        call driver%set_alpha_s (alpha_s)
        if (allocated (object%i_born)) then
        call object%compute_sqme_born (object%i_born(i_flv), &
-                                      mom, mu, born, acc1)
+                                      mom, mu_dble, born, acc1)
        else
           born = 0._default
           acc1 = 0._default
        end if
        if (present (born_out)) born_out = born
        call driver%blha_olp_eval2 (object%i_cc(i_flv), &
-                                    mom, mu, r, acc_dble)
+                                    mom, mu_dble, r, acc_dble)
     end select
     do j = 1, size (p)
       do i = 1, j
@@ -1533,12 +1554,12 @@ Hence, the interface is simpler than in the other routines.
 <<BLHA OLP interfaces: interfaces>>=
   abstract interface
     subroutine prc_blha_compute_sqme_sc (object, &
-         i_flv, em, p, ren_scale_in, alpha_s, me_sc, bad_point)
+         i_flv, em, p, ren_scale_in, me_sc, bad_point)
       import
       class(prc_blha_t), intent(inout) :: object
       integer, intent(in) :: i_flv, em
       type(vector4_t), intent(in), dimension(:) :: p
-      real(default), intent(in) :: ren_scale_in, alpha_s
+      real(default), intent(in) :: ren_scale_in
       complex(default), intent(out) :: me_sc
       logical, intent(out) :: bad_point 
     end subroutine prc_blha_compute_sqme_sc
@@ -1586,6 +1607,8 @@ module blha_config
   use parser
   use syntax_rules
   use ifiles
+
+  use fks_regions, only: flv_structure_t
 
 <<Standard module head>>
 
@@ -1782,7 +1805,7 @@ This types control the creation of BLHA-interface files
 
   type :: blha_master_t
     integer, dimension(3) :: blha_mode
-    integer, dimension(:,:), allocatable :: flv_born, flv_real
+!    integer, dimension(:,:), allocatable :: flv_born, flv_real
     integer :: n_in, n_out
     logical :: compute_loops = .true.
     logical :: compute_correlations = .false.

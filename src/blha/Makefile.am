@@ -68,7 +68,8 @@ module_lists = \
   ../matrix_elements/Modules \
   ../particles/Modules \
   ../beams/Modules \
-  ../me_methods/Modules
+  ../me_methods/Modules \
+  ../fks/Modules
 
 include_modules_bare = ${module_lists:/Modules=}
 include_modules = ${include_modules_bare:../%=-I../%}

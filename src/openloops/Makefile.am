@@ -68,6 +68,7 @@ module_lists = \
   ../particles/Modules \
   ../matrix_elements/Modules \
   ../me_methods/Modules \
+  ../fks/Modules \
   ../blha/Modules
 
 $(module_lists):
@@ -112,7 +113,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../blha -I../fastjet
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../fks -I../blha -I../fastjet
 
 ########################################################################
 ## Default Fortran compiler options
