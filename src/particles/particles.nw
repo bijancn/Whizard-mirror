@@ -1742,18 +1742,21 @@ polarization.  This mode is translated into the polarization status.
 <<Particles: particle: TBP>>=
   procedure :: write => particle_write
 <<Particles: procedures>>=
-  subroutine particle_write (prt, unit, testflag)
+  subroutine particle_write (prt, unit, testflag, compressed)
     class(particle_t), intent(in) :: prt
     integer, intent(in), optional :: unit
-    logical, intent(in), optional :: testflag
-    logical :: pacified
+    logical, intent(in), optional :: testflag, compressed
+    integer, dimension(2) :: parent, child
+    logical :: comp, pacified
     integer :: u
     real(default) :: pp2
     character(len=7) :: fmt
-    pacified = .false.
-    if (present (testflag))  pacified = testflag
+    comp = .false.; if (present (compressed))  comp = compressed
+    pacified = .false.;  if (present (testflag))  pacified = testflag
     call pac_fmt (fmt, FMT_19, FMT_16, testflag)
     u = given_output_unit (unit);  if (u < 0)  return
+    pp2 = prt%p2
+    if (pacified)  call pacify (pp2, tolerance = 1E-10_default)
     select case (prt%status)
     case (PRT_UNDEFINED);    write (u, "(1x, A)", advance="no")  "[-]"
     case (PRT_BEAM);         write (u, "(1x, A)", advance="no")  "[b]"
@@ -1764,39 +1767,57 @@ polarization.  This mode is translated into the polarization status.
     case (PRT_BEAM_REMNANT); write (u, "(1x, A)", advance="no")  "[x]"
     end select
     write (u, "(1x)", advance="no")
-    call prt%flv%write (unit)
-    if (prt%col%is_nonzero ()) then
-       call color_write (prt%col, unit)
-    end if
-    select case (prt%polarization)
-    case (PRT_DEFINITE_HELICITY)
-       call prt%hel%write (unit)
-       write (u, *)
-    case (PRT_GENERIC_POLARIZATION)
-       write (u, *)
-       call polarization_write (prt%pol, unit)
-    case default
-       write (u, *)
-    end select    
-    call vector4_write (prt%p, unit, testflag = testflag)
-    pp2 = prt%p2  
-    if (pacified)  call pacify (pp2, tolerance = 1E-10_default)	
-    write (u, "(1x,A,1x," // fmt // ")")  "T = ", pp2    
-    if (allocated (prt%parent)) then
-       if (size (prt%parent) /= 0) then
-          write (u, "(1x,A,40(1x,I0))")  "Parents: ", prt%parent
+    if (comp) then
+       if (allocated (prt%parent) .and. size (prt%parent) /= 0) then
+          parent(1) = prt%parent (1)
+          parent(2) = prt%parent (size (prt%parent))
+       else
+          parent = 0
        end if
-    end if
-    if (allocated (prt%child)) then
-       if (size (prt%child) /= 0) then
-          write (u, "(1x,A,40(1x,I0))")  "Children:", prt%child
+       if (allocated (prt%child) .and. size (prt%child) /= 0) then
+          child(1) = prt%child (1)
+          child(2) = prt%child (size (prt%child))
+       else
+          child = 0
        end if
-    end if
-    if (allocated (prt%vertex)) then
-       write (u, "(1x,A,1x," // fmt // ")")  "Vtx t = ", prt%vertex%p(0)
-       write (u, "(1x,A,1x," // fmt // ")")  "Vtx x = ", prt%vertex%p(1)    
-       write (u, "(1x,A,1x," // fmt // ")")  "Vtx y = ", prt%vertex%p(2)    
-       write (u, "(1x,A,1x," // fmt // ")")  "Vtx z = ", prt%vertex%p(3)
+       write (u, "(1X,7(I10,2X),5(F10.2,2X))") prt%flv%get_pdg (), &
+            prt%col%get_col (), prt%col%get_acl (), &
+            parent(1), parent(2), child, &
+            prt%p%p(1), prt%p%p(2), prt%p%p(3), prt%p%p(0), &
+            pp2
+    else
+       call prt%flv%write (unit)
+       if (prt%col%is_nonzero ()) then
+          call color_write (prt%col, unit)
+       end if
+       select case (prt%polarization)
+       case (PRT_DEFINITE_HELICITY)
+          call prt%hel%write (unit)
+          write (u, *)
+       case (PRT_GENERIC_POLARIZATION)
+          write (u, *)
+          call polarization_write (prt%pol, unit)
+       case default
+          write (u, *)
+       end select
+       call vector4_write (prt%p, unit, testflag = testflag)
+       write (u, "(1x,A,1x," // fmt // ")")  "T = ", pp2
+       if (allocated (prt%parent)) then
+          if (size (prt%parent) /= 0) then
+             write (u, "(1x,A,40(1x,I0))")  "Parents: ", prt%parent
+          end if
+       end if
+       if (allocated (prt%child)) then
+          if (size (prt%child) /= 0) then
+             write (u, "(1x,A,40(1x,I0))")  "Children:", prt%child
+          end if
+       end if
+       if (allocated (prt%vertex)) then
+          write (u, "(1x,A,1x," // fmt // ")")  "Vtx t = ", prt%vertex%p(0)
+          write (u, "(1x,A,1x," // fmt // ")")  "Vtx x = ", prt%vertex%p(1)
+          write (u, "(1x,A,1x," // fmt // ")")  "Vtx y = ", prt%vertex%p(2)
+          write (u, "(1x,A,1x," // fmt // ")")  "Vtx z = ", prt%vertex%p(3)
+       end if
     end if
   end subroutine particle_write
 
@@ -1804,7 +1825,7 @@ polarization.  This mode is translated into the polarization status.
 @ Binary I/O:
 <<Particles: particle: TBP>>=
   procedure :: write_raw => particle_write_raw
-  procedure :: read_raw => particle_read_raw  
+  procedure :: read_raw => particle_read_raw
 <<Particles: procedures>>=
   subroutine particle_write_raw (prt, u)
     class(particle_t), intent(in) :: prt
@@ -2161,6 +2182,17 @@ The status code.
   end function particle_is_hadronic_beam_remnant
 
 @ %def particle_is_hadronic_beam_remnant
+@
+<<Particles: particle: TBP>>=
+  procedure :: is_beam_remnant => particle_is_beam_remnant
+<<Particles: procedures>>=
+  elemental function particle_is_beam_remnant (particle) result (flag)
+    class(particle_t), intent(in) :: particle
+    logical :: flag
+    flag = particle%status == PRT_BEAM_REMNANT
+  end function particle_is_beam_remnant
+
+@ %def particle_is_beam_remnant
 @ Polarization status.
 <<Particles: particle: TBP>>=
   procedure :: get_polarization_status => particle_get_polarization_status
@@ -2566,31 +2598,39 @@ in the correlated state matrix.
 <<Particles: particle set: TBP>>=
   procedure :: write => particle_set_write
 <<Particles: procedures>>=
-  subroutine particle_set_write (particle_set, unit, testflag, detailled)
+  subroutine particle_set_write &
+    (particle_set, unit, testflag, summary, compressed)
     class(particle_set_t), intent(in) :: particle_set
     integer, intent(in), optional :: unit
-    logical, intent(in), optional :: testflag
-    logical, intent(in), optional :: detailled
-    logical :: d
+    logical, intent(in), optional :: testflag, summary, compressed
+    logical :: summ, comp
     type(vector4_t) :: sum_vec
     integer :: u, i
     u = given_output_unit (unit);  if (u < 0)  return
-    d = .false.; if (present (detailled)) d = detailled
+    summ = .false.; if (present (summary)) summ = summary
+    comp = .false.; if (present (compressed)) comp = compressed
     write (u, "(1x,A)") "Particle set:"
     call write_separator (u)
+    if (comp) write (u, "(14(A10,2X))") "Nr", "Status", "PDG", &
+         "Color", "Anti-Color", "Parent(1)", "Parent(N)", &
+         "Child(1)", "Child(N)", &
+         "P(1)", "P(2)", "P(3)", "P(0)", "P^2"
     if (particle_set%n_tot /= 0) then
        do i = 1, particle_set%n_tot
-          write (u, "(1x,A,1x,I0)", advance="no") "Particle", i
-          call particle_set%prt(i)%write (u, testflag)
-          if (d) write (u, "(A)") ""
+          if (comp) then
+             write (u, "(I10,2X,6X)", advance="no") i
+          else
+             write (u, "(1x,A,1x,I0)", advance="no") "Particle", i
+          end if
+          call particle_set%prt(i)%write (u, testflag, compressed)
        end do
        if (particle_set%correlated_state%is_defined ()) then
           call write_separator (u)
           write (u, *) "Correlated state density matrix:"
           call particle_set%correlated_state%write (u)
-          if (d) write (u, "(A)") ""
+          if (summ) write (u, "(A)") ""
        end if
-       if (d) then
+       if (summ) then
           write (u, "(A)") "Sum of all momenta (without virtual and resonant):"
           sum_vec = sum (particle_set%prt%p, &
                mask=particle_set%prt%get_status () /= PRT_VIRTUAL .and. &
@@ -2876,6 +2916,46 @@ relations.
   end subroutine particle_set_without_hadronic_remnants
 
 @ %def particle_set_without_hadronic_remnants
+@
+Build a new particles array without remnants but with
+[[n_extra]] additional spots.  We also update the mother-daughter
+relations.
+<<Particles: particle set: TBP>>=
+  procedure :: without_remnants => particle_set_without_remnants
+<<Particles: procedures>>=
+  subroutine particle_set_without_remnants &
+         (particle_set, particles, n_particles, n_extra)
+    class(particle_set_t), intent(inout) :: particle_set
+    type(particle_t), allocatable, dimension(:), intent(out) :: particles
+    integer, intent(in) :: n_extra
+    integer, intent(out) :: n_particles
+    logical, allocatable, dimension(:) :: no_remnants
+    integer, allocatable, dimension(:) :: children, new_children
+    integer :: i
+    no_remnants = .not. (particle_set%prt%is_beam_remnant ())
+    n_particles = count (no_remnants)
+    allocate (particles (n_particles + n_extra))
+    particles (1:n_particles) = pack (particle_set%prt, no_remnants)
+    if (n_particles /= particle_set%n_tot) then
+       do i = 1, n_particles
+          select case (particles(i)%get_status ())
+          case (PRT_BEAM)
+             children = particles(i)%get_children ()
+             no_remnants = .not. (particle_set%prt(children)%is_beam_remnant ())
+             new_children = pack (children, no_remnants)
+             call particles(i)%set_children (new_children)
+          case (PRT_INCOMING)
+             children = particles(i)%get_children ()
+             call particles(i)%set_children (children - &
+                  (particle_set%n_tot - n_particles))
+          case (PRT_OUTGOING)
+          case default
+          end select
+       end do
+    end if
+  end subroutine particle_set_without_remnants
+
+@ %def particle_set_without_remnants
 @
 <<Particles: particle set: TBP>>=
   procedure :: find_particle => particle_set_find_particle
