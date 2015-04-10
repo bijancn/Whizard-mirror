@@ -2335,19 +2335,19 @@ the public [[set]] functions and setting up the [[shower]] object.
           end select
        end if
 
-       u_S2W = free_unit ()
-       if (DEBUG_SHOWER .and. TO_FILE) then
-          open (unit=u_S2W, file="showerout.lhe", &
-               status="replace", action="readwrite")
-       else
-          open (unit=u_S2W, status="scratch", action="readwrite")
-       end if
-       !call shower%write_lhef (u_S2W)
-       !call combine_lhef_with_particle_set &
-            !(particle_set, u_S2W, model, model_hadrons)
+       ! u_S2W = free_unit ()
+       ! if (DEBUG_SHOWER .and. TO_FILE) then
+       !    open (unit=u_S2W, file="showerout.lhe", &
+       !         status="replace", action="readwrite")
+       ! else
+       !    open (unit=u_S2W, status="scratch", action="readwrite")
+       ! end if
+       ! call shower%write_lhef (u_S2W)
+       ! call combine_lhef_with_particle_set &
+       !      (particle_set, u_S2W, model, model_hadrons)
        call shower%combine_with_particle_set (particle_set, model, &
             model_hadrons)
-       close (u_S2W)
+       ! close (u_S2W)
 
        !!! move the particle data to the PYTHIA COMMON BLOCKS in case
        !!! hadronization is active
@@ -6635,11 +6635,9 @@ contains
     logical, intent(inout) :: valid
     logical, intent(inout) :: vetoed
     integer, optional, intent(in) :: number_of_emissions
-    character(len=10) :: buffer
     type(particle_set_t) :: pset_reduced
     !!! Units for transfer from WHIZARD to PYTHIA and back
     integer :: u_W2P, u_P2W
-    real(default) :: rand
 
     if (signal_is_pending ()) return
     if (DEBUG_SHOWER) then
@@ -6651,7 +6649,6 @@ contains
 
     !!! Check if the beam particles are quarks
     if (any (abs(IDBMUP) <= 8)) then
-       !!! PYTHIA doesn't support these settings
        if (.not. shower%warning_given) then
           call msg_error ("PYTHIA doesn't support quarks as beam particles," &
                // LF // "     neglecting ISR, FSR and hadronization")
@@ -6663,21 +6660,46 @@ contains
     call particle_set%reduce (pset_reduced)
     call hepeup_from_particle_set (pset_reduced)
     call hepeup_set_event_parameters (proc_id=1)
-
-    u_W2P = free_unit ()
-    if (DEBUG_SHOWER .and. TO_FILE) then
-       open (unit=u_W2P, status="replace", &
-            file="whizardout1.lhe", action="readwrite")
-    else
-       open (unit=u_W2P, status="scratch", action="readwrite")
-    end if
+    call pythia6_setup_lhe_io_units (u_W2P, u_P2W)
     call w2p_write_lhef_event (u_W2P)
     rewind (u_W2P)
+    call shower%transfer_settings ()
+
+    if (DEBUG_SHOWER)  write (*, "(A)")  "calling pyevnt"
+    call PYEVNT ()
     if (signal_is_pending ()) return
-    write (buffer, "(I10)")  u_W2P
-    call PYGIVE ("MSTP(161)=" // buffer)
-    call PYGIVE ("MSTP(162)=" // buffer)
-    if (DEBUG_SHOWER)  write (*, "(A)")  buffer
+    !call pylheo (u_P2W)
+    !call combine_lhef_with_particle_set &
+    !     (particle_set, u_P2W, model, model_hadrons)
+    call shower%combine_with_particle_set (particle_set, model, model_hadrons)
+    !close (u_P2W)
+
+    !!! Transfer momenta of the partons in the final state of
+    !!!     the hard initeraction
+    if (shower%settings%mlm_matching .and. allocated (data)) then
+       select type (data)
+       type is (mlm_matching_data_t)
+          call get_ME_momenta_from_PYTHIA (data%P_ME)
+       class default
+          call msg_fatal ("MLM matching called with wrong data.")
+       end select
+    end if
+
+    valid = pythia6_handle_errors ()
+    close (u_W2P)
+
+  end subroutine shower_pythia6_generate_emissions
+
+@ %def shower_pythia6_generate_emissions
+@
+@
+<<Shower PYTHIA6: shower PYTHIA6: TBP>>=
+  procedure :: transfer_settings => shower_pythia6_transfer_settings
+<<Shower PYTHIA6: procedures>>=
+  subroutine shower_pythia6_transfer_settings (shower)
+    class(shower_pythia6_t), intent(inout) :: shower
+    character(len=10) :: buffer
+    real(default) :: rand
     if (shower%settings%isr_active) then
        call PYGIVE ("MSTP(61)=1")
     else
@@ -6689,7 +6711,6 @@ contains
        call PYGIVE ("MSTP(71)=0")   !!! switch off FSR
     end if
     call PYGIVE ("MSTP(111)=0")     !!! switch off hadronization
-
     if (shower%initialized_for_NPRUP >= NPRUP) then
        if (DEBUG_SHOWER)  print *, "calling upinit"
        call upinit
@@ -6699,7 +6720,6 @@ contains
        call PYGIVE ("PARJ(82)=" // buffer)
        write (buffer, "(F10.5)") shower%settings%isr_tscalefactor
        call PYGIVE ("PARP(71)=" // buffer)
-
        write (buffer, "(F10.5)") shower%settings%fsr_lambda
        call PYGIVE ("PARP(72)=" // buffer)
        write(buffer, "(F10.5)") shower%settings%isr_lambda
@@ -6737,59 +6757,16 @@ contains
        end if
        if (DEBUG_SHOWER)  print *, "calling pyinit"
        call PYINIT ("USER", "", "", 0D0)
-
        call shower%rng%generate (rand)
        write (buffer, "(I10)") floor (rand*900000000)
        call PYGIVE ("MRPY(1)=" // buffer)
        call PYGIVE ("MRPY(2)=0")
-
        call pythia6_set_config (shower%settings%pythia6_pygive)
-
        shower%initialized_for_NPRUP = NPRUP
-
     end if
+  end subroutine shower_pythia6_transfer_settings
 
-    call PYEVNT ()
-    if (DEBUG_SHOWER)  write (*, "(A)")  "called pyevnt"
-
-    u_P2W = free_unit ()
-    write (buffer, "(I10)")  u_P2W
-    call PYGIVE ("MSTP(163)="//buffer)
-    if (DEBUG_SHOWER .and. TO_FILE) then
-       open (unit = u_P2W, file="pythiaout.lhe", status="replace", &
-            action="readwrite")
-    else
-       open (unit = u_P2W, status="scratch", action="readwrite")
-    end if
-    if (DEBUG_SHOWER)  write (*, "(A)")  "calling PYLHEO"
-    if (signal_is_pending ()) return
-    !call pylheo (u_P2W)
-    !call combine_lhef_with_particle_set &
-    !     (particle_set, u_P2W, model, model_hadrons)
-    call shower%combine_with_particle_set (particle_set, model, model_hadrons)
-    close (unit=u_P2W)
-
-    !!! Transfer momenta of the partons in the final state of
-    !!!     the hard initeraction
-    if (shower%settings%mlm_matching .and. allocated (data)) then
-       select type (data)
-       type is (mlm_matching_data_t)
-          call get_ME_momenta_from_PYTHIA (data%P_ME)
-       class default
-          call msg_fatal ("MLM matching called with wrong data.")
-       end select
-    end if
-
-    if (pythia6_get_error () > 0) then
-       call pythia6_set_error (0)
-       valid = .false.
-    end if
-    close (unit=u_W2P)
-
-  end subroutine shower_pythia6_generate_emissions
-
-@ %def shower_pythia6_generate_emissions
-@
+@ %def shower_pythia6_transfer_settings
 <<Shower PYTHIA6: shower PYTHIA6: TBP>>=
   procedure :: combine_with_particle_set => &
        shower_pythia6_combine_with_particle_set
@@ -6840,14 +6817,14 @@ added back in by Pythia.
     type(vector4_t) :: momentum
     type(particle_t), dimension(:), allocatable :: particles
 
-    integer :: N, NPAD
+    integer :: N, NPAD, K
     real(double) :: P, V
     common /PYJETS/ N, NPAD, K(4000,5), P(4000,5), V(4000,5)
     save /PYJETS/
     integer, parameter :: KSUSY1 = 1000000, KSUSY2 = 2000000
     integer :: dangling_col, dangling_anti_col, color, anti_color
-    integer :: i, j, k, py_entries, next_color, n_hard, parent, real_parent
-    integer :: pdg, status, child, start
+    integer :: i, j, py_entries, next_color, n_hard, parent, real_parent
+    integer :: pdg, status, child, hadro_start
     integer, allocatable, dimension(:) :: old_index
 
     if (signal_is_pending ()) return
@@ -6857,13 +6834,12 @@ added back in by Pythia.
     call pylist (2)
 
     call count_valid_entries_in_pythia_record ()
-    ! TODO: (bcn 2015-04-07) go back to hadronic_remnants and avoid
-    ! insertion of pythia isr photon
-    call particle_set%without_remnants &
+    call particle_set%without_hadronic_remnants &
          (particles, n_hard, py_entries)
     call add_particles_of_shower ()
     call particle_set%replace (particles)
-    call update_parent_child_relations ()
+    call set_parent_child_relations_of_known_pythia_parents ()
+    call set_parent_child_relations_of_color_strings_to_hadrons ()
     do i = 1, n_hard + py_entries
        if (particle_set%prt(i)%get_status () == PRT_OUTGOING .and. &
             particle_set%prt(i)%has_children ()) then
@@ -6884,16 +6860,18 @@ added back in by Pythia.
 <<Shower PYTHIA6: combine with particle set: procedures>>=
   subroutine count_valid_entries_in_pythia_record ()
     py_entries = 0
-    start = 0
+    hadro_start = 0
     FIND: do i = 1, N
        if (K(i,2) == 92) then
-          start = i
+          hadro_start = i
           exit FIND
        end if
     end do FIND
     COUNT: do i = 1, N
        status = K(i,1)
        if (<<valid pythia particle>>) then
+          !!! Dont take technical Pythia photons
+          if (K(i,2) == 22 .and. py_entries < 1) cycle
           py_entries = py_entries + 1
        end if
     end do COUNT
@@ -6903,7 +6881,7 @@ added back in by Pythia.
 @
 <<valid pythia particle>>=
 status >= 1 .and. status <= 15 .and. &
-any (P(i,1:4) > eps0) .and. i >= start
+any (P(i,1:4) > eps0) .and. i >= hadro_start
 @
 <<Shower PYTHIA6: combine with particle set: procedures>>=
   subroutine add_particles_of_shower ()
@@ -6914,6 +6892,8 @@ any (P(i,1:4) > eps0) .and. i >= start
     do i = 1, N
        status = K(i,1)
        if (<<valid pythia particle>>) then
+          !!! Dont take technical Pythia photons
+          if (K(i,2) == 22 .and. j < 2) cycle
           call assign_colors (color, anti_color)
           momentum = real ([P(i,4), P(i,1), P(i,2), P(i,3)], kind=default)
           pdg = K(i,2)
@@ -6935,7 +6915,7 @@ any (P(i,1:4) > eps0) .and. i >= start
          (abs (K(I,2)) >= KSUSY1+1 .and. abs (K(I,2)) <= KSUSY1+8) .or. &
          (abs (K(I,2)) >= KSUSY2+1 .and. abs (K(I,2)) <= KSUSY2+8) .or. &
          (abs (K(I,2)) >= 1000 .and. abs (K(I,2)) <= 9999) .and. &
-         start == 0) then
+         hadro_start == 0) then
        if (dangling_col == 0 .and. dangling_anti_col == 0) then
           ! new color string
           ! Gluon and gluino only color octets implemented so far
@@ -6987,9 +6967,7 @@ any (P(i,1:4) > eps0) .and. i >= start
 
 @
 <<Shower PYTHIA6: combine with particle set: procedures>>=
-  subroutine update_parent_child_relations ()
-    integer :: begin_string, end_string, old_start, next_start
-    integer, allocatable, dimension(:) :: tmp
+  subroutine set_parent_child_relations_of_known_pythia_parents ()
     do j = 1, py_entries
        parent = K(old_index(j),3)
        child = n_hard + j
@@ -7005,15 +6983,17 @@ any (P(i,1:4) > eps0) .and. i >= start
           if (real_parent > 0) then
              call particle_set%prt(child)%set_parents ([real_parent])
              call particle_set%prt(real_parent)%add_child (child)
-          else
-             print *, 'pdg =    ', pdg
-             print *, 'momentum%p =    ', momentum%p
-             call msg_error ("Couldn't match Pythia particle with " // &
-                             "Whizards particle set")
           end if
        end if
     end do
-    if (start > 0) then ! there are shower -> hadro helper particles
+  end subroutine set_parent_child_relations_of_known_pythia_parents
+
+@
+<<Shower PYTHIA6: combine with particle set: procedures>>=
+  subroutine set_parent_child_relations_of_color_strings_to_hadrons ()
+    integer :: begin_string, end_string, old_start, next_start
+    integer, allocatable, dimension(:) :: tmp
+    if (hadro_start > 0) then
        old_start = n_hard + 1
        do
           next_start = 0
@@ -7040,7 +7020,7 @@ any (P(i,1:4) > eps0) .and. i >= start
           if (next_start == 0) exit
        end do
     end if
-  end subroutine update_parent_child_relations
+  end subroutine set_parent_child_relations_of_color_strings_to_hadrons
 
 @
 <<Shower PYTHIA6: procedures>>=
@@ -7277,24 +7257,22 @@ any (P(i,1:4) > eps0) .and. i >= start
 <<Shower PYTHIA6: procedures>>=
   subroutine pythia6_setup_lhe_io_units (u_W2P, u_P2W)
     integer, intent(out) :: u_W2P, u_P2W
-    logical, parameter :: debug = .false., to_file = .false.
+    logical, parameter :: debug_file = .true.
     character(len=10) :: buffer
     u_W2P = free_unit ()
-    if (debug) then
+    if (debug_file) then
        open (unit=u_W2P, status="replace", file="whizardout.lhe", &
             action="readwrite")
     else
        open (unit=u_W2P, status="scratch", action="readwrite")
     end if
-    call w2p_write_lhef_event (u_W2P)
-    rewind (u_W2P)
     write (buffer, "(I10)")  u_W2P
     call PYGIVE ("MSTP(161)=" // buffer)  !!! Unit for PYUPIN (LHA)
     call PYGIVE ("MSTP(162)=" // buffer)  !!! Unit for PYUPEV (LHA)
     u_P2W = free_unit ()
     write (buffer, "(I10)")  u_P2W
     call PYGIVE ("MSTP(163)=" // buffer)
-    if (debug .and. to_file) then
+    if (debug_file) then
        open (unit=u_P2W, file="pythiaout2.lhe", status="replace", &
             action="readwrite")
     else
@@ -7352,6 +7330,19 @@ any (P(i,1:4) > eps0) .and. i >= start
   end function pythia6_get_error
 
 @ %def pythia6_get_error
+@
+<<Shower PYTHIA6: public>>=
+  public :: pythia6_handle_errors
+<<Shower PYTHIA6: procedures>>=
+  function pythia6_handle_errors () result (valid)
+    logical :: valid
+    valid = pythia6_get_error () == 0
+    if (.not. valid) then
+       call pythia6_set_error (0)
+    end if
+  end function pythia6_handle_errors
+
+@ %def pythia6_handle_errors
 @
 <<Shower PYTHIA6: public>>=
   public :: pythia6_set_verbose
