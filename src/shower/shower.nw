@@ -6674,6 +6674,7 @@ contains
 
     valid = pythia6_handle_errors ()
     close (u_W2P)
+    close (u_P2W)
 
   end subroutine shower_pythia6_generate_emissions
 
@@ -6858,8 +6859,7 @@ added back in by Pythia.
     COUNT: do i = 1, N
        status = K(i,1)
        if (<<valid pythia particle>>) then
-          !!! Dont take technical Pythia photons
-          if (K(i,2) == 22 .and. py_entries < 1) cycle
+          <<don't take technical Pythia photons off beams>>
           py_entries = py_entries + 1
        end if
     end do COUNT
@@ -6871,6 +6871,10 @@ added back in by Pythia.
 status >= 1 .and. status <= 15 .and. &
 any (P(i,1:4) > eps0) .and. i >= hadro_start
 @
+<<don't take technical Pythia photons off beams>>=
+if (K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2) &
+    .and. py_entries < 1) cycle
+@
 <<Shower PYTHIA6: combine with particle set: procedures>>=
   subroutine add_particles_of_shower ()
     dangling_col = 0
@@ -6880,8 +6884,7 @@ any (P(i,1:4) > eps0) .and. i >= hadro_start
     do i = 1, N
        status = K(i,1)
        if (<<valid pythia particle>>) then
-          !!! Dont take technical Pythia photons
-          if (K(i,2) == 22 .and. j < 2) cycle
+          <<don't take technical Pythia photons off beams>>
           call assign_colors (color, anti_color)
           momentum = real ([P(i,4), P(i,1), P(i,2), P(i,3)], kind=default)
           pdg = K(i,2)
@@ -6980,30 +6983,50 @@ any (P(i,1:4) > eps0) .and. i >= hadro_start
 <<Shower PYTHIA6: combine with particle set: procedures>>=
   subroutine set_parent_child_relations_of_color_strings_to_hadrons ()
     integer :: begin_string, end_string, old_start, next_start
-    integer, allocatable, dimension(:) :: tmp
+    !integer, allocatable, dimension(:) :: tmp
+    integer, allocatable, dimension(:) :: parents
     if (hadro_start > 0) then
-       old_start = n_hard + 1
+       !old_start = n_hard + 1
+       old_start = hadro_start
        do
           next_start = 0
-          FIND: do i = old_start + 1, n_hard + py_entries
-             if (particle_set%prt(i)%get_pdg () == 92) then
+          !FIND: do i = old_start + 1, n_hard + py_entries
+          FIND: do i = old_start + 1, N
+             !if (particle_set%prt(i)%get_pdg () == 92) then
+             if (K(i,2) == 92) then
                 next_start = i
                 exit FIND
              end if
           end do FIND
-          tmp = particle_set%prt(old_start)%get_parents ()
-          begin_string = tmp(1)
+          !tmp = particle_set%prt(old_start)%get_parents ()
+          !begin_string = tmp(1)
+          begin_string = K(old_start,3)
           if (next_start > 0) then
-             tmp = particle_set%prt(next_start)%get_parents ()
-             end_string = tmp(1) - 1
+             !tmp = particle_set%prt(next_start)%get_parents ()
+             !end_string = tmp(1) - 1
+             end_string = K(next_start,3) - 1
           else
-             end_string = n_hard
+             !end_string = n_hard
+             end_string = hadro_start - 1
           end if
-          call particle_set%prt(old_start)%set_parents &
-               ([(i, i=begin_string, end_string)])
+          !call particle_set%prt(old_start)%set_parents &
+               !([(i, i=begin_string, end_string)])
+          allocate (parents (end_string - begin_string))
+          parents = 0
           do i = begin_string, end_string
-             call particle_set%prt(i)%add_child (old_start)
+             !call particle_set%prt(i)%add_child (old_start)
+
+             pdg = K(i,2)
+             momentum = real([P(i,4), P(i,1:3)], kind=default)
+             real_parent = particle_set%find_particle (pdg, momentum, &
+               abs_smallness = 1E-9_default, &
+               rel_smallness = 1E-6_default)
+             if (real_parent > 0) then
+                call particle_set%prt(real_parent)%add_child (child)
+                parents (i) = real_parent
+             end if
           end do
+          call particle_set%prt(old_start)%set_parents (parents)
           old_start = next_start
           if (next_start == 0) exit
        end do
