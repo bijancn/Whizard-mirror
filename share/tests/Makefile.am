@@ -506,6 +506,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/alphas.ref \
     ref-output/jets_xsec.ref \
     ref-output/parton_shower_1.ref \
+    ref-output/pythia6_1.ref \
     ref-output/pythia6_2.ref \
     ref-output/mlm_matching_fsr.ref \
     ref-output/mlm_pythia6_isr.ref \
@@ -561,6 +562,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/circe1_2.ref \
     ref-output/circe1_3.ref \
     ref-output/circe1_6.ref \
+    ref-output/circe1_10.ref \
     ref-output/circe1_errors_1.ref \
     ref-output/circe2_1.ref \
     ref-output/circe2_2.ref \
@@ -584,7 +586,6 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/parton_shower_2.ref \
     ref-output-double/helicity.ref \
     ref-output-double/lhef_7.ref \
-    ref-output-double/pythia6_1.ref \
     ref-output-double/hepmc_8.ref \
     ref-output-double/multi_comp_1.ref \
     ref-output-double/multi_comp_2.ref \
@@ -628,7 +629,6 @@ REF_OUTPUT_FILES_EXT = \
     ref-output-ext/parton_shower_2.ref \
     ref-output-ext/helicity.ref \
     ref-output-ext/lhef_7.ref \
-    ref-output-ext/pythia6_1.ref \
     ref-output-ext/hepmc_8.ref \
     ref-output-ext/multi_comp_1.ref \
     ref-output-ext/multi_comp_2.ref \
@@ -921,6 +921,7 @@ MISC_TESTS_SIN = \
     circe1_7.sin \
     circe1_8.sin \
     circe1_9.sin \
+    circe1_10.sin \
     circe1_photons_1.sin \
     circe1_photons_2.sin \
     circe1_photons_3.sin \

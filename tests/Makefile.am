@@ -282,6 +282,7 @@ TESTS_REQ_OCAML = \
     circe1_7.run \
     circe1_8.run \
     circe1_9.run \
+    circe1_10.run \
     circe1_photons_1.run \
     circe1_photons_2.run \
     circe1_photons_3.run \
