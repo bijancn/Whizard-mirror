@@ -6564,8 +6564,6 @@ module shower_pythia6
 
 <<Shower PYTHIA6: public>>
 
-<<Shower PYTHIA6: variables>>
-
 <<Shower PYTHIA6: types>>
 
 contains
@@ -6859,7 +6857,7 @@ added back in by Pythia.
     COUNT: do i = 1, N
        status = K(i,1)
        if (<<valid pythia particle>>) then
-          <<don't take technical Pythia photons off beams>>
+          if (<<Photons off beams>> .and. py_entries < 1) cycle
           py_entries = py_entries + 1
        end if
     end do COUNT
@@ -6872,9 +6870,8 @@ added back in by Pythia.
 status >= 1 .and. status <= 15 .and. &
 any (P(i,1:4) > eps0) .and. i >= hadro_start
 @
-<<don't take technical Pythia photons off beams>>=
-if (K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2) &
-    .and. py_entries < 1) cycle
+<<Photons off beams>>=
+K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
 @
 <<Shower PYTHIA6: combine with particle set: procedures>>=
   subroutine add_particles_of_shower ()
@@ -6882,10 +6879,13 @@ if (K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2) &
     dangling_anti_col = 0
     next_color = 500
     j = 1
+    print *, 'n_hard, py_entries =    ', n_hard, py_entries !!! Debugging
+    print *, 'size (particles) =    ', size (particles) !!! Debugging
     do i = 1, N
        status = K(i,1)
        if (<<valid pythia particle>>) then
-          <<don't take technical Pythia photons off beams>>
+          if (<<Photons off beams>> .and. j < 2) cycle
+          print *, 'i, j =    ', i, j !!! Debugging
           call assign_colors (color, anti_color)
           momentum = real ([P(i,4), P(i,1), P(i,2), P(i,3)], kind=default)
           pdg = K(i,2)
@@ -6968,11 +6968,7 @@ if (K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2) &
           call particle_set%prt(child)%set_parents ([parent])
           call particle_set%prt(parent)%add_child (child)
        else
-          pdg = K(parent,2)
-          momentum = real([P(parent,4), P(parent,1:3)], kind=default)
-          real_parent = particle_set%find_particle (pdg, momentum, &
-               abs_smallness = 1E-9_default, &
-               rel_smallness = 1E-6_default)
+          real_parent = find_pythia_particle (parent)
           if (real_parent > 0) then
              call particle_set%prt(child)%set_parents ([real_parent])
              call particle_set%prt(real_parent)%add_child (child)
@@ -6984,59 +6980,62 @@ if (K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2) &
 @
 <<Shower PYTHIA6: combine with particle set: procedures>>=
   subroutine set_parent_child_relations_of_color_strings_to_hadrons ()
-    integer :: begin_string, end_string, old_start, next_start
-    !integer, allocatable, dimension(:) :: tmp
+    integer :: begin_string, end_string, old_start, next_start, real_child
     integer, allocatable, dimension(:) :: parents
+    print *, 'hadro_start =    ', hadro_start !!! Debugging
     if (hadro_start > 0) then
-       !old_start = n_hard + 1
        old_start = hadro_start
        do
           next_start = 0
-          !FIND: do i = old_start + 1, n_hard + py_entries
           FIND: do i = old_start + 1, N
-             !if (particle_set%prt(i)%get_pdg () == 92) then
              if (K(i,2) == 92) then
                 next_start = i
                 exit FIND
              end if
           end do FIND
-          !tmp = particle_set%prt(old_start)%get_parents ()
-          !begin_string = tmp(1)
+          print *, 'next_start =    ', next_start !!! Debugging
           begin_string = K(old_start,3)
+          print *, 'begin_string =    ', begin_string !!! Debugging
           if (next_start > 0) then
-             !tmp = particle_set%prt(next_start)%get_parents ()
-             !end_string = tmp(1) - 1
              end_string = K(next_start,3) - 1
           else
-             !end_string = n_hard
              end_string = hadro_start - 1
           end if
-          !call particle_set%prt(old_start)%set_parents &
-               !([(i, i=begin_string, end_string)])
+          print *, 'end_string =    ', end_string !!! Debugging
           allocate (parents (end_string - begin_string + 1))
           parents = 0
+          print *, 'size (parents) =    ', size (parents) !!! Debugging
+          real_child = find_pythia_particle (old_start)
           do i = begin_string, end_string
-             !call particle_set%prt(i)%add_child (old_start)
-
-             pdg = K(i,2)
-             momentum = real([P(i,4), P(i,1:3)], kind=default)
-             real_parent = particle_set%find_particle (pdg, momentum, &
-                  abs_smallness = 1E-9_default, &
-                  rel_smallness = 1E-6_default)
+             real_parent = find_pythia_particle (i)
+             print *, 'real_parent =    ', real_parent !!! Debugging
              if (real_parent > 0) then
-                call particle_set%prt(real_parent)%add_child (new_index(i))
+                call particle_set%prt(real_parent)%add_child (real_child)
                 parents (i - begin_string + 1) = real_parent
              end if
           end do
-          call particle_set%prt(old_start)%set_parents (parents)
+          print *, 'parents =    ', parents !!! Debugging
+          call particle_set%prt(real_child)%set_parents (parents)
           deallocate (parents)
-          old_start = next_start
           if (next_start == 0) exit
+          old_start = next_start
        end do
     end if
   end subroutine set_parent_child_relations_of_color_strings_to_hadrons
 
 @
+<<Shower PYTHIA6: combine with particle set: procedures>>=
+  function find_pythia_particle (i) result (j)
+    integer :: j
+    integer, intent(in) :: i
+    pdg = K(i,2)
+    momentum = real([P(i,4), P(i,1:3)], kind=default)
+    j = particle_set%find_particle (pdg, momentum, &
+         abs_smallness = 1E-9_default, &
+         rel_smallness = 1E-6_default)
+  end function find_pythia_particle
+
+@ %def find_pythia_particle
 <<Shower PYTHIA6: procedures>>=
   subroutine get_ME_momenta_from_PYTHIA (JETS_ME)
     IMPLICIT DOUBLE PRECISION(A-H, O-Z)
