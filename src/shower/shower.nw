@@ -798,14 +798,15 @@ available to all operations on the shower partons, we endow the
 <<Shower partons: parton: TBP>>=
   procedure :: to_particle => parton_to_particle
 <<Shower partons: procedures>>=
-  function parton_to_particle (parton, model) result (particle)
+  function parton_to_particle (parton, model, not_remnant) result (particle)
     type(particle_t) :: particle
     class(parton_t), intent(in) :: parton
     class(model_data_t), pointer, intent(in) :: model
+    logical, intent(in), optional :: not_remnant
     integer :: col, anti_col
     call parton%to_color (col, anti_col)
-    call particle%init (parton%to_status (), parton%type, model, &
-         col, anti_col, parton%momentum)
+    call particle%init (parton%to_status (not_remnant), parton%type, &
+         model, col, anti_col, parton%momentum)
   end function parton_to_particle
 
 @ %def parton_to_particle
@@ -813,13 +814,21 @@ available to all operations on the shower partons, we endow the
 <<Shower partons: parton: TBP>>=
   procedure :: to_status => parton_to_status
 <<Shower partons: procedures>>=
-  pure function parton_to_status (parton) result (status)
+  pure function parton_to_status (parton, not_remnant) result (status)
     integer :: status
     class(parton_t), intent(in) :: parton
-    !!! Not clear if the shower can handle a pure decay (1->n) and if it
-    !!! is a relevant use case. Assume 2->n for now
+    logical, intent(in), optional :: not_remnant
+    logical :: nr
+    nr = .false.; if (present (not_remnant))  nr = not_remnant
+    if (nr) then
+       if (associated (parton%initial)) then
+          status = PRT_INCOMING
+       else
+          status = PRT_OUTGOING
+       end if
+    end if
     if (parton%is_colored ()) then
-       if (parton%nr <= 2) then
+       if (associated (parton%initial)) then
           status = PRT_INCOMING
        else
           status = PRT_OUTGOING
@@ -2098,7 +2107,6 @@ the public [[set]] functions and setting up the [[shower]] object.
     integer, dimension(2) :: col_array
     integer, dimension(1) :: parent
     integer, dimension(2,4) :: color_corr
-    integer :: u_S2W
 
     if (signal_is_pending ()) return
 
@@ -2328,19 +2336,8 @@ the public [[set]] functions and setting up the [[shower]] object.
           end select
        end if
 
-       ! u_S2W = free_unit ()
-       ! if (DEBUG_SHOWER) then
-       !    open (unit=u_S2W, file="showerout.lhe", &
-       !         status="replace", action="readwrite")
-       ! else
-       !    open (unit=u_S2W, status="scratch", action="readwrite")
-       ! end if
-       ! call shower%write_lhef (u_S2W)
-       ! call combine_lhef_with_particle_set &
-       !      (particle_set, u_S2W, model, model_hadrons)
        call shower%combine_with_particle_set (particle_set, model, &
             model_hadrons)
-       ! close (u_S2W)
 
        !!! move the particle data to the PYTHIA COMMON BLOCKS in case
        !!! hadronization is active
@@ -3546,7 +3543,7 @@ whereby you can require a minimum energy [[mine]] and specify whether to
     logical :: finished
     integer :: i
     finished = .true.
-    if (.not.allocated (shower%interactions)) return
+    if (.not. allocated (shower%interactions)) return
     do i = 1, size(shower%interactions)
        if (.not. interaction_fsr_is_finished (shower%interactions(i)%i)) then
           finished = .false.
@@ -4132,12 +4129,11 @@ implemented.
        do i = 1, size (shower%partons)
           if (associated (shower%partons(i)%p)) then
              call shower%partons(i)%p%write (u)
-             if (i < size (shower%partons)) then
-                if (associated (shower%partons(i + 1)%p)) then
-                   if (shower%partons(i)%p%belongstointeraction .and. &
-                        .not. shower%partons(i + 1)%p%belongstointeraction) then
-                      call write_separator (u)
-                   end if
+             if (i < size (shower%partons) .and. &
+                  associated (shower%partons(i + 1)%p)) then
+                if (shower%partons(i)%p%belongstointeraction .and. &
+                     .not. shower%partons(i + 1)%p%belongstointeraction) then
+                   call write_separator (u)
                 end if
              end if
           end if
@@ -4167,24 +4163,30 @@ of the hard final state.
     class(shower_t), intent(in) :: shower
     type(particle_set_t), intent(inout) :: particle_set
     type(particle_t), dimension(:), allocatable :: particles
-    integer, dimension(:), allocatable :: hard_colored_ids, shower_partons_ids
+    integer, dimension(:), allocatable :: hard_colored_ids, &
+         shower_partons_ids, incoming_ids, outgoing_ids
     class(model_data_t), intent(in), target :: model_in
     class(model_data_t), intent(in), target :: model_hadrons
     class(model_data_t), pointer :: model
     logical, dimension(:), allocatable :: hard_colored_mask
-    integer :: n_shower_partons, n_remnants, i, n_hard
+    integer :: n_shower_partons, n_remnants, i, j
+    integer :: n_in, n_out, n_beam, n_tot_old
     if (signal_is_pending ()) return
+    call particle_set%write (compressed=.true.) !!! Debugging
 
     n_shower_partons = shower%get_nr_of_partons (only_colored = &
                                      .true., no_hard_prts = .true.)
     n_remnants = shower%get_nr_of_partons (only_colored = .false., &
                                            no_hard_prts = .true.)
     call particle_set%without_hadronic_remnants &
-         (particles, n_hard, n_shower_partons + n_remnants)
+         (particles, n_tot_old, n_shower_partons + n_remnants)
     call count_and_allocate ()
+    if (shower%settings%isr_active) then
+       call replace_incoming_and_outgoings ()
+    end if
     call set_hard_colored_as_resonant_parents_for_shower ()
-    call add_to_pset (n_hard, .true.)
-    call add_to_pset (n_hard + n_remnants, .false.)
+    call add_to_pset (n_tot_old, .true.)
+    call add_to_pset (n_tot_old + n_remnants, .false.)
     call particle_set%replace (particles)
 
   contains
@@ -4196,21 +4198,63 @@ of the hard final state.
 @ %def shower_combine_with_particle_set
 <<Shower core: shower combine with particle set: procedures>>=
   subroutine count_and_allocate ()
-    allocate (hard_colored_mask (n_hard))
+    n_beam = particle_set%get_n_beam ()
+    n_in = particle_set%get_n_in ()
+    n_out = particle_set%get_n_out ()
+    allocate (hard_colored_mask (n_tot_old))
     hard_colored_mask = (particles%get_status () == PRT_INCOMING .or. &
                          particles%get_status () == PRT_OUTGOING) .and. &
                         particles%is_colored ()
     hard_colored_ids = pack ([(i, i=1, size (particles))], hard_colored_mask)
-    !allocate (shower_partons_ids (n_shower_partons))
-    shower_partons_ids = [(n_hard + n_remnants + i, i=1, n_shower_partons)]
+    shower_partons_ids = [(n_tot_old + n_remnants + i, i=1, n_shower_partons)]
+    incoming_ids = [(n_beam +  i, i=1, n_in)]
+    outgoing_ids = [(n_tot_old - n_out  + i, i=1, n_out )]
+    print *, 'incoming_ids =    ', incoming_ids !!! Debugging
+    print *, 'outgoing_ids =    ', outgoing_ids !!! Debugging
   end subroutine count_and_allocate
 
 @
 <<Shower core: shower combine with particle set: procedures>>=
+  subroutine replace_incoming_and_outgoings ()
+    do i = 1, size (shower%interactions)
+       if (i > 1) then
+          call msg_bug ('shower_combine_with_particle_set assumes 1 interaction')
+       end if
+       associate (interaction => shower%interactions(i)%i)
+          do j = 1, size (interaction%partons)
+             if (associated (interaction%partons(j)%p)) then
+                call replace_parton_in_particles (j, interaction%partons(j)%p)
+             end if
+          end do
+       end associate
+    end do
+  end subroutine replace_incoming_and_outgoings
+
+@
+<<Shower core: shower combine with particle set: procedures>>=
+  subroutine replace_parton_in_particles (j, prt)
+    integer, intent(in) :: j
+    type(parton_t), intent(in) :: prt
+    integer :: idx
+    call find_model (model, prt%type, model_in, model_hadrons)
+    if (associated (prt%initial)) then
+       idx = n_beam + j
+       particles(idx) = prt%to_particle (model, not_remnant=.true.)
+       call particles(idx)%set_parents ([prt%initial%nr])
+       call particles(idx)%set_children (outgoing_ids)
+    else
+       idx = n_tot_old - n_out + j
+       particles(idx) = prt%to_particle (model, not_remnant=.true.)
+       call particles(idx)%set_parents (incoming_ids)
+    end if
+  end subroutine replace_parton_in_particles
+
+@
+<<Shower core: shower combine with particle set: procedures>>=
   subroutine set_hard_colored_as_resonant_parents_for_shower ()
-    do i = 1, n_hard
+    do i = 1, n_tot_old
        if (hard_colored_mask (i)) then
-         call particles(i)%set_children (shower_partons_ids)
+         call particles(i)%add_children (shower_partons_ids)
          if (particles(i)%get_status () == PRT_OUTGOING) then
             call particles(i)%set_status (PRT_RESONANT)
          end if
@@ -6808,7 +6852,7 @@ added back in by Pythia.
     save /PYJETS/
     integer, parameter :: KSUSY1 = 1000000, KSUSY2 = 2000000
     integer :: dangling_col, dangling_anti_col, color, anti_color
-    integer :: i, j, py_entries, next_color, n_hard, parent, real_parent
+    integer :: i, j, py_entries, next_color, n_tot_old, parent, real_parent
     integer :: pdg, status, child, hadro_start
     integer, allocatable, dimension(:) :: old_index, new_index
 
@@ -6821,12 +6865,12 @@ added back in by Pythia.
 
     call count_valid_entries_in_pythia_record ()
     call particle_set%without_hadronic_remnants &
-         (particles, n_hard, py_entries)
+         (particles, n_tot_old, py_entries)
     call add_particles_of_shower ()
     call particle_set%replace (particles)
     call set_parent_child_relations_of_known_pythia_parents ()
     call set_parent_child_relations_of_color_strings_to_hadrons ()
-    do i = 1, n_hard + py_entries
+    do i = 1, n_tot_old + py_entries
        if (particle_set%prt(i)%get_status () == PRT_OUTGOING .and. &
             particle_set%prt(i)%has_children ()) then
           call particle_set%prt(i)%set_status (PRT_RESONANT)
@@ -6879,7 +6923,7 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
     dangling_anti_col = 0
     next_color = 500
     j = 1
-    print *, 'n_hard, py_entries =    ', n_hard, py_entries !!! Debugging
+    print *, 'n_tot_old, py_entries =    ', n_tot_old, py_entries !!! Debugging
     print *, 'size (particles) =    ', size (particles) !!! Debugging
     do i = 1, N
        status = K(i,1)
@@ -6891,10 +6935,10 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
           pdg = K(i,2)
           parent = K(i,3)
           call find_model (model, pdg, model_in, model_hadrons)
-          call particles(n_hard + j)%init &
+          call particles(n_tot_old + j)%init &
                (PRT_OUTGOING, pdg, model, color, anti_color, momentum)
           old_index(j) = i
-          new_index(i) = n_hard + j
+          new_index(i) = n_tot_old + j
           j = j + 1
        end if
     end do
@@ -6963,7 +7007,7 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
   subroutine set_parent_child_relations_of_known_pythia_parents ()
     do j = 1, py_entries
        parent = K(old_index(j),3)
-       child = n_hard + j
+       child = n_tot_old + j
        if (parent <= 2) then
           call particle_set%prt(child)%set_parents ([parent])
           call particle_set%prt(parent)%add_child (child)
@@ -7302,7 +7346,7 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
     type(string_t) :: pygive_remaining, pygive_partial
     if (len (pygive_all) > 0) then
        pygive_remaining = pygive_all
-       do while (len (pygive_remaining)>0)
+       do while (len (pygive_remaining) > 0)
           call split (pygive_remaining, pygive_partial, ";")
           call PYGIVE (char (pygive_partial))
        end do
