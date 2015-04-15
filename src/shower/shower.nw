@@ -798,14 +798,14 @@ available to all operations on the shower partons, we endow the
 <<Shower partons: parton: TBP>>=
   procedure :: to_particle => parton_to_particle
 <<Shower partons: procedures>>=
-  function parton_to_particle (parton, model, not_remnant) result (particle)
+  function parton_to_particle (parton, model, from_hard_int) result (particle)
     type(particle_t) :: particle
     class(parton_t), intent(in) :: parton
     class(model_data_t), pointer, intent(in) :: model
-    logical, intent(in), optional :: not_remnant
+    logical, intent(in), optional :: from_hard_int
     integer :: col, anti_col
-    call parton%to_color (col, anti_col)
-    call particle%init (parton%to_status (not_remnant), parton%type, &
+    call parton%to_color (col, anti_col, from_hard_int)
+    call particle%init (parton%to_status (from_hard_int), parton%type, &
          model, col, anti_col, parton%momentum)
   end function parton_to_particle
 
@@ -814,13 +814,13 @@ available to all operations on the shower partons, we endow the
 <<Shower partons: parton: TBP>>=
   procedure :: to_status => parton_to_status
 <<Shower partons: procedures>>=
-  pure function parton_to_status (parton, not_remnant) result (status)
+  pure function parton_to_status (parton, from_hard_int) result (status)
     integer :: status
     class(parton_t), intent(in) :: parton
-    logical, intent(in), optional :: not_remnant
-    logical :: nr
-    nr = .false.; if (present (not_remnant))  nr = not_remnant
-    if (nr) then
+    logical, intent(in), optional :: from_hard_int
+    logical :: fhi
+    fhi = .false.; if (present (from_hard_int))  fhi = from_hard_int
+    if (fhi) then
        if (associated (parton%initial)) then
           status = PRT_INCOMING
        else
@@ -843,14 +843,22 @@ available to all operations on the shower partons, we endow the
 <<Shower partons: parton: TBP>>=
   procedure :: to_color => parton_to_color
 <<Shower partons: procedures>>=
-  pure subroutine parton_to_color (parton, c1, c2)
+  pure subroutine parton_to_color (parton, c1, c2, from_hard_int)
     class(parton_t), intent(in) :: parton
     integer, intent(out) :: c1, c2
+    logical, intent(in), optional :: from_hard_int
+    logical :: fhi
+    fhi = .false.; if (present (from_hard_int))  fhi = from_hard_int
     c1 = 0
     c2 = 0
     if (parton%is_colored ()) then
-       if (parton%c1 /= 0) c1 = 500 + parton%c1
-       if (parton%c2 /= 0) c2 = 500 + parton%c2
+       if (fhi) then
+          if (parton%c1 /= 0) c1 = parton%c1
+          if (parton%c2 /= 0) c2 = parton%c2
+       else
+          if (parton%c1 /= 0) c1 = 500 + parton%c1
+          if (parton%c2 /= 0) c2 = 500 + parton%c2
+       end if
     end if
   end subroutine parton_to_color
 
@@ -4172,7 +4180,11 @@ of the hard final state.
     integer :: n_shower_partons, n_remnants, i, j
     integer :: n_in, n_out, n_beam, n_tot_old
     if (signal_is_pending ()) return
-    call particle_set%write (compressed=.true.) !!! Debugging
+
+    if (DEBUG_SHOWER) then
+       print *, 'Particle set before replacing' !!! Debugging
+       call particle_set%write (compressed=.true.) !!! Debugging
+    end if
 
     n_shower_partons = shower%get_nr_of_partons (only_colored = &
                                      .true., no_hard_prts = .true.)
@@ -4188,6 +4200,10 @@ of the hard final state.
     call add_to_pset (n_tot_old, .true.)
     call add_to_pset (n_tot_old + n_remnants, .false.)
     call particle_set%replace (particles)
+    if (DEBUG_SHOWER) then
+       print *, 'Particle set after replacing' !!! Debugging
+       call particle_set%write (compressed=.true.) !!! Debugging
+    end if
 
   contains
 
@@ -4224,6 +4240,7 @@ of the hard final state.
           do j = 1, size (interaction%partons)
              if (associated (interaction%partons(j)%p)) then
                 call replace_parton_in_particles (j, interaction%partons(j)%p)
+                print *, 'replacing: j =    ', j !!! Debugging
              end if
           end do
        end associate
@@ -4239,14 +4256,15 @@ of the hard final state.
     call find_model (model, prt%type, model_in, model_hadrons)
     if (associated (prt%initial)) then
        idx = n_beam + j
-       particles(idx) = prt%to_particle (model, not_remnant=.true.)
+       particles(idx) = prt%to_particle (model, from_hard_int=.true.)
        call particles(idx)%set_parents ([prt%initial%nr])
        call particles(idx)%set_children (outgoing_ids)
     else
        idx = n_tot_old - n_out + j
-       particles(idx) = prt%to_particle (model, not_remnant=.true.)
+       particles(idx) = prt%to_particle (model, from_hard_int=.true.)
        call particles(idx)%set_parents (incoming_ids)
     end if
+    print *, 'idx =    ', idx !!! Debugging
   end subroutine replace_parton_in_particles
 
 @
@@ -6697,11 +6715,7 @@ contains
     if (DEBUG_SHOWER)  write (*, "(A)")  "calling pyevnt"
     call PYEVNT ()
     if (signal_is_pending ()) return
-    !call pylheo (u_P2W)
-    !call combine_lhef_with_particle_set &
-    !     (particle_set, u_P2W, model, model_hadrons)
     call shower%combine_with_particle_set (particle_set, model, model_hadrons)
-    !close (u_P2W)
 
     !!! Transfer momenta of the partons in the final state of
     !!!     the hard initeraction
