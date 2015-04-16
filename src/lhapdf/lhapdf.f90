@@ -289,7 +289,7 @@ contains
     !!! Without this print statement, c_q is undefined when called from
     !!! sf_lhapdf and LHAPDF6 gives an error and the test sf_lhapdf_3 fails
     !!! print *, c_q
-    as = lhapdf_alphaspdf (pdf%cptr, c_q)
+    as = lhapdf_alphaspdf (pdf%cptr, real(q, kind=default))
   end function lhapdf_alphas_pdf
 
   subroutine lhapdf_final (pdf)
