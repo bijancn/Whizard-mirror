@@ -1632,7 +1632,7 @@ a Lorentz 4-vector, denoting the position and time of the vertex
   public :: particle_t
 <<Particles: types>>=
   type :: particle_t
-     private
+     !private
      integer :: status = PRT_UNDEFINED
      integer :: polarization = PRT_UNPOLARIZED
      type(flavor_t) :: flv
@@ -1767,15 +1767,15 @@ polarization.  This mode is translated into the polarization status.
     end select
     write (u, "(1x)", advance="no")
     if (comp) then
-       write (u, "(I7,1X)", advance="no") prt%flv%get_pdg ()
+       write (u, "(A7,1X)", advance="no") char (prt%flv%get_name ())
        write (u, "(2(I4,1X))", advance="no") &
             prt%col%get_col (), prt%col%get_acl ()
        call write_compressed_integer_array (buffer, prt%parent)
        write (u, "(A,1X)", advance="no") buffer
        call write_compressed_integer_array (buffer, prt%child)
        write (u, "(A,1X)", advance="no") buffer
-       write (u, "(5(F10.2,1X))") prt%p%p(1), prt%p%p(2), prt%p%p(3), &
-            prt%p%p(0), pp2
+       call prt%p%write(u, testflag=testflag, compressed=comp)
+       write (u, "(F12.3)") pp2
     else
        call prt%flv%write (unit)
        if (prt%col%is_nonzero ()) then
@@ -1791,7 +1791,7 @@ polarization.  This mode is translated into the polarization status.
        case default
           write (u, *)
        end select
-       call vector4_write (prt%p, unit, testflag = testflag)
+       call prt%p%write (unit, testflag = testflag)
        write (u, "(1x,A,1x," // fmt // ")")  "T = ", pp2
        if (allocated (prt%parent)) then
           if (size (prt%parent) /= 0) then
@@ -2356,7 +2356,7 @@ The status code.
 <<Particles: particle: TBP>>=
   procedure :: has_children => particle_has_children
 <<Particles: procedures>>=
-  pure function particle_has_children (prt) result (has_children)
+  elemental function particle_has_children (prt) result (has_children)
     logical :: has_children
     class(particle_t), intent(in) :: prt
     has_children = .false.
@@ -2370,7 +2370,7 @@ The status code.
 <<Particles: particle: TBP>>=
   procedure :: has_parents => particle_has_parents
 <<Particles: procedures>>=
-  pure function particle_has_parents (prt) result (has_parents)
+  elemental function particle_has_parents (prt) result (has_parents)
     logical :: has_parents
     class(particle_t), intent(in) :: prt
     has_parents = .false.
@@ -2619,6 +2619,18 @@ in the correlated state matrix.
   end subroutine particle_set_set_momenta
 
 @ %def particle_set_set_momenta
+@
+<<Particles: particle set: TBP>>=
+  procedure :: parent_add_child => particle_set_parent_add_child
+<<Particles: procedures>>=
+  subroutine particle_set_parent_add_child (particle_set, parent, child)
+    class(particle_set_t), intent(inout) :: particle_set
+    integer, intent(in) :: parent, child
+    call particle_set%prt(child)%set_parents ([parent])
+    call particle_set%prt(parent)%add_child (child)
+  end subroutine particle_set_parent_add_child
+
+@ %def particle_set_parent_add_child
 @ Output (default format)
 <<Particles: particle set: TBP>>=
   procedure :: write => particle_set_write
@@ -2637,9 +2649,9 @@ in the correlated state matrix.
     write (u, "(1x,A)") "Particle set:"
     call write_separator (u)
     if (comp) write (u, &
-         "((A4,1X),(A6,1X),(A7,1X),2(A4,1X),2(A20,1X),5(A10,1X))") &
-         "Nr", "Status", "PDG", "Col", "ACol", "Parents", "Children", &
-         "P(1)", "P(2)", "P(3)", "P(0)", "P^2"
+         "((A4,1X),(A6,1X),(A7,1X),2(A4,1X),2(A20,1X),5(A12,1X))") &
+         "Nr", "Status", "Flavor", "Col", "ACol", "Parents", "Children", &
+         "P(0)", "P(1)", "P(2)", "P(3)", "P^2"
     if (particle_set%n_tot /= 0) then
        do i = 1, particle_set%n_tot
           if (comp) then
@@ -2647,37 +2659,33 @@ in the correlated state matrix.
           else
              write (u, "(1x,A,1x,I0)", advance="no") "Particle", i
           end if
-          call particle_set%prt(i)%write (u, testflag, compressed)
+          call particle_set%prt(i)%write (u, testflag, comp)
        end do
        if (particle_set%correlated_state%is_defined ()) then
           call write_separator (u)
           write (u, *) "Correlated state density matrix:"
           call particle_set%correlated_state%write (u)
-          if (summ) write (u, "(A)") ""
        end if
        if (summ) then
-          write (u, "(A)") "Sum of outgoing and remnant momenta:"
-          sum_vec = sum (particle_set%prt%p, &
-               mask=particle_set%prt%get_status () == PRT_OUTGOING .or. &
-                    particle_set%prt%get_status () == PRT_BEAM_REMNANT)
-          call vector4_write (sum_vec)
-          write (u, "(A)") "Sum of all momenta (without virtual and resonant):"
-          sum_vec = sum (particle_set%prt%p, &
-               mask=particle_set%prt%get_status () /= PRT_VIRTUAL .and. &
-                    particle_set%prt%get_status () /= PRT_RESONANT)
-          call vector4_write (sum_vec)
-          write (u, "(A)") "Sum of outgoing momenta:"
-          sum_vec = sum (particle_set%prt%p, &
-               mask=particle_set%prt%get_status () == PRT_OUTGOING)
-          call vector4_write (sum_vec)
-          write (u, "(A)") "Sum of incoming momenta:"
+          call write_separator (u)
+          write (u, "(A)", advance="no") "Sum of incoming momenta: p(0:3) =     "
           sum_vec = sum (particle_set%prt%p, &
                mask=particle_set%prt%get_status () == PRT_INCOMING)
-          call vector4_write (sum_vec)
-          write (u, "(A)") "Sum of beam remnant momenta:"
+          call pacify (sum_vec, tolerance = 1E-10_default)
+          call sum_vec%write (u, compressed=.true.)
+          write (u, *)
+          write (u, "(A)", advance="no") "Sum of beam remnant momenta: p(0:3) = "
           sum_vec = sum (particle_set%prt%p, &
                mask=particle_set%prt%get_status () == PRT_BEAM_REMNANT)
-          call vector4_write (sum_vec)
+          call pacify (sum_vec, tolerance = 1E-10_default)
+          call sum_vec%write (u, compressed=.true.)
+          write (u, *)
+          write (u, "(A)", advance="no") "Sum of outgoing momenta: p(0:3) =     "
+          sum_vec = sum (particle_set%prt%p, &
+               mask=particle_set%prt%get_status () == PRT_OUTGOING)
+          call pacify (sum_vec, tolerance = 1E-10_default)
+          call sum_vec%write (u, compressed=.true.)
+          write (u, "(A)") ""
        end if
     else
        write (u, "(3x,A)") "[empty]"
@@ -2923,6 +2931,7 @@ relations assuming the ordering [[b]], [[i]], [[r]], [[x]], [[o]].
     logical, allocatable, dimension(:) :: no_hadronic_remnants
     integer, allocatable, dimension(:) :: children, new_children
     integer :: i, j, first_remnant
+    first_remnant = particle_set%n_tot
     do i = 1, particle_set%n_tot
        if (particle_set%prt(i)%is_hadronic_beam_remnant ()) then
           first_remnant = i
@@ -2976,6 +2985,7 @@ relations assuming the ordering [[b]], [[i]], [[r]], [[x]], [[o]].
     logical, allocatable, dimension(:) :: no_remnants
     integer, allocatable, dimension(:) :: children, new_children
     integer :: i,j, first_remnant
+    first_remnant = particle_set%n_tot
     do i = 1, particle_set%n_tot
        if (particle_set%prt(i)%is_beam_remnant ()) then
           first_remnant = i

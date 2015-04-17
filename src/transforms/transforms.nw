@@ -129,31 +129,48 @@ instance is a pointer and should not be finalized here.
   end subroutine evt_final
   
 @ %def evt_final
+<<Event transforms: evt: TBP>>=
+  procedure (evt_write), deferred :: write
+<<Event transforms: interfaces>>=
+  abstract interface
+     subroutine evt_write (evt, unit, verbose, more_verbose, testflag)
+       import
+       class(evt_t), intent(in) :: evt
+       integer, intent(in), optional :: unit
+       logical, intent(in), optional :: verbose, more_verbose, testflag
+     end subroutine evt_write
+  end interface
+
+@ %def evt_write
 @ Output.  We can print r.n.g. info.
 <<Event transforms: evt: TBP>>=
-  procedure :: base_write => evt_write
+  procedure :: base_write => evt_base_write
 <<Event transforms: procedures>>=
-  subroutine evt_write (object, unit, verbose, testflag)
-    class(evt_t), intent(in) :: object
+  subroutine evt_base_write (evt, unit, testflag, show_set)
+    class(evt_t), intent(in) :: evt
     integer, intent(in), optional :: unit
-    logical, intent(in), optional :: verbose, testflag
+    logical, intent(in), optional :: testflag, show_set
     integer :: u
+    logical :: show
     u = given_output_unit (unit)
-    if (associated (object%process)) then
+    show = .true.;  if (present (show_set))  show = show_set
+    if (associated (evt%process)) then
        write (u, "(3x,A,A,A)")   "Associated process: '", &
-            char (object%process%get_id ()), "'"
+            char (evt%process%get_id ()), "'"
     end if
-    if (allocated (object%rng)) then
-       call object%rng%write (u, 1)
-       write (u, "(3x,A,I0)")  "Number of tries = ", object%rejection_count
+    if (allocated (evt%rng)) then
+       call evt%rng%write (u, 1)
+       write (u, "(3x,A,I0)")  "Number of tries = ", evt%rejection_count
     end if
-    if (object%particle_set_exists) then
-       call write_separator (u)
-       call object%particle_set%write (u, testflag)
+    if (show) then
+       if (evt%particle_set_exists) then
+          call write_separator (u)
+          call evt%particle_set%write (u, testflag)
+       end if
     end if
-  end subroutine evt_write
+  end subroutine evt_base_write
   
-@ %def evt_write
+@ %def evt_base_write
 @ Connect the transform with a process instance (and thus with the
 associated process).  Use this to allocate the master random-number
 generator.
@@ -361,16 +378,16 @@ instance.  The [[generate]] methods do nothing.
 <<Event transforms: evt trivial: TBP>>=
   procedure :: write => evt_trivial_write
 <<Event transforms: procedures>>=
-  subroutine evt_trivial_write (object, unit, verbose, testflag)
-    class(evt_trivial_t), intent(in) :: object
+  subroutine evt_trivial_write (evt, unit, verbose, more_verbose, testflag)
+    class(evt_trivial_t), intent(in) :: evt
     integer, intent(in), optional :: unit
-    logical, intent(in), optional :: verbose, testflag
+    logical, intent(in), optional :: verbose, more_verbose, testflag
     integer :: u
     u = given_output_unit (unit)
     call write_separator (u, 2)
     write (u, "(1x,A)")  "Event transform: trivial (hard process)"
     call write_separator (u)
-    call object%base_write (u, testflag = testflag)
+    call evt%base_write (u, testflag = testflag)
   end subroutine evt_trivial_write
   
 @ %def evt_trivial_write
@@ -526,12 +543,9 @@ nothing but to trigger event generation for an elementary process.
     call evt%prepare_new_event (1, 1)
     call evt%generate_unweighted ()
 
-    select type (evt)
-    type is (evt_trivial_t)
-       call write_separator (u, 2)
-       call evt%write (u)
-       call write_separator (u, 2)
-    end select
+    call write_separator (u, 2)
+    call evt%write (u)
+    call write_separator (u, 2)
 
     write (u, "(A)")
     write (u, "(A)")  "* Obtain particle set"
@@ -542,12 +556,9 @@ nothing but to trigger event generation for an elementary process.
     
     call evt%make_particle_set (factorization_mode, keep_correlations)
 
-    select type (evt)
-    type is (evt_trivial_t)
-       call write_separator (u, 2)
-       call evt%write (u)
-       call write_separator (u, 2)
-    end select
+    call write_separator (u, 2)
+    call evt%write (u)
+    call write_separator (u, 2)
 
     write (u, "(A)")
     write (u, "(A)")  "* Cleanup"
@@ -760,20 +771,12 @@ transferred there by the WHIZARD or PYTHIA6 shower routines.
     type(particle_set_t), intent(inout) :: particle_set
     class(model_data_t), intent(in), target :: model
     logical, intent(out) :: valid
-    !integer :: u_W2P, u_P2W
     if (signal_is_pending ()) return
-    !call pythia6_setup_lhe_io_units (u_W2P, u_P2W)
     valid = pythia6_handle_errors ()
     if (valid) then
-       !call pylheo (u_P2W)
-       !!! read and add lhef from u_P2W
-       !call combine_lhef_with_particle_set &
-            !(particle_set, u_P2W, model, hadrons%model)
        call pythia6_combine_with_particle_set &
             (particle_set, model, hadrons%model)
     end if
-    !close (u_W2P)
-    !close (u_P2W)
   end subroutine hadrons_pythia6_make_particle_set
 
 @ %def hadrons_pythia6_make_particle_set
@@ -884,18 +887,21 @@ shower.
 <<Hadrons: evt hadrons: TBP>>=
   procedure :: write => evt_hadrons_write
 <<Hadrons: procedures>>=
-  subroutine evt_hadrons_write (evt_hadrons, unit, testflag)
-    class(evt_hadrons_t), intent(in) :: evt_hadrons
+  subroutine evt_hadrons_write (evt, unit, verbose, more_verbose, testflag)
+    class(evt_hadrons_t), intent(in) :: evt
     integer, intent(in), optional :: unit
-    logical, intent(in), optional :: testflag
+    logical, intent(in), optional :: verbose, more_verbose, testflag
     integer :: u
     u = given_output_unit (unit)
     call write_separator (u, 2)
     write (u, "(1x,A)")  "Event transform: hadronization"
     call write_separator (u)
-    call evt_hadrons%base_write (u, testflag = testflag)
+    call evt%base_write (u, testflag = testflag, show_set = .false.)
+    if (evt%particle_set_exists)  &
+         call evt%particle_set%write &
+         (u, summary = .true., compressed = .true.)
     call write_separator (u)
-    call evt_hadrons%settings%write (u)
+    call evt%settings%write (u)
   end subroutine evt_hadrons_write
 
 @ %def evt_hadrons_write
@@ -2738,31 +2744,25 @@ includes configuration data, and the decay chain, i.e., the evaluators.
 <<Decays: evt decay: TBP>>=
   procedure :: write => evt_decay_write
 <<Decays: procedures>>=
-  subroutine evt_decay_write (object, unit, &
-       show_decay_tree, &
-       show_processes, &
-       verbose)
-    class(evt_decay_t), intent(in) :: object
+  subroutine evt_decay_write (evt, unit, verbose, more_verbose, testflag)
+    class(evt_decay_t), intent(in) :: evt
     integer, intent(in), optional :: unit
-    logical, intent(in), optional :: show_decay_tree, show_processes, verbose
-    logical :: dec, prc, verb
+    logical, intent(in), optional :: verbose, more_verbose, testflag
+    logical :: verb, verb2
     integer :: u
     u = given_output_unit (unit)
-    dec = .true.;  if (present (show_decay_tree))  dec = show_decay_tree
-    prc = .false.;  if (present (show_processes))  prc = show_processes
-    verb = .false.;  if (present (verbose))  verb = verbose
+    verb = .true.;  if (present (verbose))  verb = verbose
+    verb2 = .false.;  if (present (more_verbose))  verb2 = more_verbose
     call write_separator (u, 2)
     write (u, "(1x,A)")  "Event transform: partonic decays"
     call write_separator (u, 2)
-    call object%base_write (u)
-    if (dec) then
+    call evt%base_write (u)
+    if (verb) then
        call write_separator (u)
-       call object%decay_root%write (u)
-       if (verb) then
-          call object%decay_chain%write (u)
-       end if
-       if (prc) then
-          call object%decay_root%write_process_instances (u, verb)
+       call evt%decay_root%write (u)
+       if (verb2) then
+          call evt%decay_chain%write (u)
+          call evt%decay_root%write_process_instances (u, verb)
        end if
     else
        call write_separator (u, 2)
@@ -3678,18 +3678,21 @@ hadrons that can be generated in the shower.
 <<Shower: evt shower: TBP>>=
   procedure :: write => evt_shower_write
 <<Shower: procedures>>=
-  subroutine evt_shower_write (object, unit, testflag)
-    class(evt_shower_t), intent(in) :: object
+  subroutine evt_shower_write (evt, unit, verbose, more_verbose, testflag)
+    class(evt_shower_t), intent(in) :: evt
     integer, intent(in), optional :: unit
-    logical, intent(in), optional :: testflag
+    logical, intent(in), optional :: verbose, more_verbose, testflag
     integer :: u
     u = given_output_unit (unit)
     call write_separator (u, 2)
     write (u, "(1x,A)")  "Event transform: shower"
     call write_separator (u)
-    call object%base_write (u, testflag = testflag)
+    call evt%base_write (u, testflag = testflag, show_set = .false.)
+    if (evt%particle_set_exists)  &
+         call evt%particle_set%write &
+         (u, summary = .true., compressed = .true.)
     call write_separator (u)
-    call object%settings%write (u)
+    call evt%settings%write (u)
   end subroutine evt_shower_write
     
 @ %def evt_shower_write
@@ -3810,7 +3813,6 @@ transformation chain is evaluated.
     if (.not. evt%settings%active .or. signal_is_pending ()) then
        return
     end if
-    if (DEBUG_EVT_SHOWER) call evt%settings%write ()    
   end subroutine evt_shower_prepare_new_event
 
 @ %def evt_shower_prepare_new_event
@@ -3837,12 +3839,6 @@ we mark the particle set as invalid. This procedure directly takes the
     valid = .true.
     vetoed = .false.
     if (evt%previous%particle_set_exists) then
-       if (DEBUG_EVT_SHOWER) then
-          print *, "Shower: Generate weighted event"
-          print *, "Given hard particle set:"
-          call evt%previous%particle_set%write (summary=.true., &
-                                                compressed=.true.)
-       end if
        evt%particle_set = evt%previous%particle_set
        if (evt%settings%powheg_matching) then
           call evt%powheg%update (evt%particle_set)
@@ -3927,7 +3923,7 @@ we mark the particle set as invalid. This procedure directly takes the
           print *, "Shower: obtained particle set after SHOWER"
           call evt%particle_set%write (summary=.true., &
                                                 compressed=.true.)
-       end if       
+       end if
        probability = 1
        if (valid .and. .not. vetoed) then
           evt%particle_set_exists = .true.
@@ -4376,7 +4372,6 @@ module events
   use event_base
   use event_transforms
   use decays
-  use shower
 
 <<Standard module head>>
 
@@ -4641,13 +4636,10 @@ should suffice to print the latter.
           evt => object%transform_first
           do while (associated (evt))
              select type (evt)
-             type is (evt_trivial_t)
-                call evt%write (u, verbose = verbose, testflag = testflag)
              type is (evt_decay_t)
-                call evt%write (u, show_decay_tree = dec, &
-                     show_processes = dec .and. verb, verbose = verb)
-             type is (evt_shower_t)
-                call evt%write (u)
+                call evt%write (u, verbose = dec, more_verbose = verb)
+             class default
+                call evt%write (u, verbose = verb, testflag = testflag)
              end select
              call write_separator (u, 2)
              evt => evt%next
