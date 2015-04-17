@@ -49,7 +49,9 @@ UNIT_TESTS = \
     evaluators.run \
     formats.run \
     sorting.run \
+    codes.run \
     object_base.run \
+    object_builder.run \
     object_logical.run \
     grids.run \
     solver.run \
@@ -59,6 +61,7 @@ UNIT_TESTS = \
     sm_qcd.run \
     models.run \
     auto_components.run \
+    radiation_generator.run \
     particles.run \
     beam_structures.run \
     sf_aux.run \

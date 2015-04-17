@@ -67,13 +67,25 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/cputime_2.ref \
     ref-output/lexer_1.ref \
     ref-output/sorting_1.ref \
+    ref-output/codes_1.ref \
     ref-output/object_base_1.ref \
     ref-output/object_base_2.ref \
     ref-output/object_base_3.ref \
     ref-output/object_base_4.ref \
+    ref-output/object_base_5.ref \
+    ref-output/object_base_6.ref \
+    ref-output/object_base_7.ref \
+    ref-output/object_builder_1.ref \
     ref-output/object_logical_1.ref \
     ref-output/object_logical_2.ref \
     ref-output/object_logical_3.ref \
+    ref-output/object_logical_4.ref \
+    ref-output/object_logical_5.ref \
+    ref-output/object_logical_6.ref \
+    ref-output/object_logical_7.ref \
+    ref-output/object_logical_8.ref \
+    ref-output/object_logical_9.ref \
+    ref-output/object_logical_10.ref \
     ref-output/state_matrix_1.ref \
     ref-output/state_matrix_2.ref \
     ref-output/state_matrix_3.ref \
@@ -103,6 +115,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/auto_components_1.ref \
     ref-output/auto_components_2.ref \
     ref-output/auto_components_3.ref \
+    ref-output/radiation_generator_1.ref \
     ref-output/particles_1.ref \
     ref-output/particles_2.ref \
     ref-output/particles_3.ref \
@@ -680,7 +693,9 @@ UNIT_TESTS_SIN = \
     beams.sin \
     polarizations.sin \
     sorting.sin \
+    codes.sin \
     object_base.sin \
+    object_builder.sin \
     object_logical.sin \
     interactions.sin \
     state_matrices.sin \
@@ -696,6 +711,7 @@ UNIT_TESTS_SIN = \
     sm_qcd.sin \
     models.sin \
     auto_components.sin \
+    radiation_generator.sin \
     particles.sin \
     beam_structures.sin \
     sf_aux.sin \

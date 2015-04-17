@@ -31,7 +31,11 @@
 noinst_LTLIBRARIES = libsindarin.la
 
 libsindarin_la_SOURCES = \
+  codes.f90 \
+  builders.f90 \
   object_base.f90 \
+  object_builder.f90 \
+  object_expr.f90 \
   object_logical.f90
 
 ## Omitting this would exclude it from the distribution
