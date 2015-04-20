@@ -189,7 +189,7 @@ endif
 
 ## Remove F90 module files
 clean-local: clean-noweb
-	-rm -f process_integration.stamp process_integration.tmp Makefile.depend Module_dependencies.sed Modules
+	-rm -f process_integration.stamp process_integration.tmp
 	-rm -f *.$(FC_MODULE_EXT)
 
 ## Remove backup files

@@ -83,9 +83,6 @@ module_lists = \
   ../variables/Modules \
   ../process_integration/Modules
 
-include_modules_bare = ${module_lists:/Modules=}
-include_modules = ${include_modules_bare:../%=-I../%}
-
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
 
@@ -128,7 +125,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = $(include_modules) -I../fastjet -I../../vamp/src
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../expr_base -I../types -I../particles -I../beams -I../matrix_elements -I../me_methods -I../phase_space -I../mci -I../user -I../blha -I../gosam -I../openloops -I../fks -I../model_features -I../variables -I../process_integration -I../fastjet -I../../vamp/src
 
 ########################################################################
 ## Default Fortran compiler options
@@ -189,7 +186,7 @@ endif
 
 ## Remove F90 module files
 clean-local: clean-noweb
-	-rm -f *.stamp *.tmp Makefile.depend Module_dependencies.sed Modules
+	-rm -f powheg.stamp powheg.tmp 
 	-rm -f *.$(FC_MODULE_EXT)
 
 ## Remove backup files
