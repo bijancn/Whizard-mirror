@@ -622,6 +622,8 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/circe1_photons_3.ref \
     ref-output-double/circe1_photons_4.ref \
     ref-output-double/circe1_photons_5.ref \
+    ref-output-double/pythia6_3.ref \
+    ref-output-double/pythia6_4.ref \
     ref-output-double/ewa_1.ref \
     ref-output-double/ewa_2.ref \
     ref-output-double/ewa_3.ref \
@@ -665,6 +667,8 @@ REF_OUTPUT_FILES_EXT = \
     ref-output-ext/circe1_photons_3.ref \
     ref-output-ext/circe1_photons_4.ref \
     ref-output-ext/circe1_photons_5.ref \
+    ref-output-ext/pythia6_3.ref \
+    ref-output-ext/pythia6_4.ref \
     ref-output-ext/ewa_1.ref \
     ref-output-ext/ewa_2.ref \
     ref-output-ext/ewa_3.ref \
@@ -873,6 +877,8 @@ MISC_TESTS_SIN = \
     parton_shower_2.sin \
     pythia6_1.sin \
     pythia6_2.sin \
+    pythia6_3.sin \
+    pythia6_4.sin \
     mlm_matching_fsr.sin \
     mlm_pythia6_isr.sin \
     hepmc.sin \

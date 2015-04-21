@@ -285,11 +285,11 @@ contains
     real(double) :: as
     real(c_double) :: c_q = 0
     c_q = q
-    !!! TODO:
+    !!! Problems with -O0:
     !!! Without this print statement, c_q is undefined when called from
     !!! sf_lhapdf and LHAPDF6 gives an error and the test sf_lhapdf_3 fails
     !!! print *, c_q
-    as = lhapdf_alphaspdf (pdf%cptr, real(q, kind=double))
+    as = lhapdf_alphaspdf (pdf%cptr, real(q, kind=c_double))
   end function lhapdf_alphas_pdf
 
   subroutine lhapdf_final (pdf)
