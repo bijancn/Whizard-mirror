@@ -6712,80 +6712,71 @@ contains
     class(shower_pythia6_t), intent(inout) :: shower
     character(len=10) :: buffer
     real(default) :: rand
-    logical :: qed_isr_active = .false.
-    logical :: varying_energy = .true.
     if (shower%settings%isr_active) then
-       call PYGIVE ("MSTP(61)=1")
+       call pygive ("MSTP(61)=1")
     else
-       call PYGIVE ("MSTP(61)=0")  !!! switch off ISR
+       call pygive ("MSTP(61)=0")  !!! switch off ISR
     end if
     if (shower%settings%fsr_active) then
-       call PYGIVE ("MSTP(71)=1")
+       call pygive ("MSTP(71)=1")
     else
-       call PYGIVE ("MSTP(71)=0")   !!! switch off FSR
+       call pygive ("MSTP(71)=0")   !!! switch off FSR
     end if
-    call PYGIVE ("MSTP(111)=0")     !!! switch off hadronization
-    if (qed_isr_active) then
-       call PYGIVE ("MSTP(11)=1")
-    else
-       call PYGIVE ("MSTP(11)=0")
-    end if
-! Allow variable energies in PYTHIA when CIRCE is used. Works with LHE?
-    if (varying_energy) then
-       call PYGIVE ("MSTP(171)=1")
-    else
-       call PYGIVE ("MSTP(171)=0")
-    end if
+    call pygive ("MSTP(111)=1")     !!! Allow hadronization and decays
+    call pygive ("MSTJ(1)=0")       !!! No jet fragmentation
+    call pygive ("MSTJ(21)=1")      !!! Allow decays but no jet fragmentation
+    call pygive ("MSTP(11)=0")      !!! Disable Pythias QED-ISR per default
+    call pygive ("MSTP(171)=1")     !!! Allow variable energies
 
     if (shower%initialized_for_NPRUP >= NPRUP) then
        if (DEBUG_SHOWER)  print *, "calling upinit"
        call upinit
     else
        write (buffer, "(F10.5)") sqrt (abs (shower%settings%d_min_t))
-       call PYGIVE ("PARJ(82)=" // buffer)
+       call pygive ("PARJ(82)=" // buffer)
        write (buffer, "(F10.5)") shower%settings%isr_tscalefactor
-       call PYGIVE ("PARP(71)=" // buffer)
+       call pygive ("PARP(71)=" // buffer)
        write (buffer, "(F10.5)") shower%settings%fsr_lambda
-       call PYGIVE ("PARP(72)=" // buffer)
+       call pygive ("PARP(72)=" // buffer)
        write(buffer, "(F10.5)") shower%settings%isr_lambda
-       call PYGIVE ("PARP(61)=" // buffer)
+       call pygive ("PARP(61)=" // buffer)
        write (buffer, "(I10)") shower%settings%max_n_flavors
-       call PYGIVE ("MSTJ(45)=" // buffer)
+       call pygive ("MSTJ(45)=" // buffer)
        if (shower%settings%isr_alpha_s_running) then
-          call PYGIVE ("MSTP(64)=2")
+          call pygive ("MSTP(64)=2")
        else
-          call PYGIVE ("MSTP(64)=0")
+          call pygive ("MSTP(64)=0")
        end if
        if (shower%settings%fsr_alpha_s_running) then
-          call PYGIVE ("MSTJ(44)=2")
+          call pygive ("MSTJ(44)=2")
        else
-          call PYGIVE ("MSTJ(44)=0")
+          call pygive ("MSTJ(44)=0")
        end if
        write (buffer, "(F10.5)") shower%settings%fixed_alpha_s
-       call PYGIVE ("PARU(111)=" // buffer)
+       call pygive ("PARU(111)=" // buffer)
        write (buffer, "(F10.5)") shower%settings%isr_primordial_kt_width
-       call PYGIVE ("PARP(91)=" // buffer)
+       call pygive ("PARP(91)=" // buffer)
        write (buffer, "(F10.5)") shower%settings%isr_primordial_kt_cutoff
-       call PYGIVE ("PARP(93)=" // buffer)
+       call pygive ("PARP(93)=" // buffer)
        write (buffer, "(F10.5)") 1._double - shower%settings%isr_z_cutoff
-       call PYGIVE ("PARP(66)=" // buffer)
+       call pygive ("PARP(66)=" // buffer)
        write (buffer, "(F10.5)") shower%settings%isr_minenergy
-       call PYGIVE ("PARP(65)=" // buffer)
+       call pygive ("PARP(65)=" // buffer)
        if (shower%settings%isr_only_onshell_emitted_partons) then
-          call PYGIVE ("MSTP(63)=0")
+          call pygive ("MSTP(63)=0")
        else
-          call PYGIVE ("MSTP(63)=2")
+          call pygive ("MSTP(63)=2")
        end if
        if (shower%settings%mlm_matching) then
-          call PYGIVE ("MSTP(62)=2")
-          call PYGIVE ("MSTP(67)=0")
+          call pygive ("MSTP(62)=2")
+          call pygive ("MSTP(67)=0")
        end if
        if (DEBUG_SHOWER)  print *, "calling pyinit"
        call PYINIT ("USER", "", "", 0D0)
        call shower%rng%generate (rand)
        write (buffer, "(I10)") floor (rand*900000000)
-       call PYGIVE ("MRPY(1)=" // buffer)
-       call PYGIVE ("MRPY(2)=0")
+       call pygive ("MRPY(1)=" // buffer)
+       call pygive ("MRPY(2)=0")
        call pythia6_set_config (shower%settings%pythia6_pygive)
        shower%initialized_for_NPRUP = NPRUP
     end if
@@ -6845,7 +6836,7 @@ added back in by Pythia.
     integer :: i, j, py_entries, next_color, n_tot_old, parent, real_parent
     integer :: pdg, status, child, hadro_start
     integer, allocatable, dimension(:) :: old_index, new_index, backup_parents
-    logical, allocatable, dimension(:) :: pythia_particle
+    logical, allocatable, dimension(:) :: pythia_particle, valid
     type(lorentz_transformation_t) :: L
     logical :: boost_required
     integer :: N, NPAD, K
@@ -6861,32 +6852,28 @@ added back in by Pythia.
        call particle_set%write (summary=.true., compressed=.true.)
        call pylist (2)
     end if
+    call determine_boost ()
     call count_valid_entries_in_pythia_record ()
     call particle_set%without_hadronic_remnants &
          (particles, n_tot_old, py_entries)
-    allocate (pythia_particle (n_tot_old + py_entries))
-    pythia_particle = .false.
     if (DEBUG_SHOWER) then
        print *, 'n_tot_old =    ', n_tot_old
        print *, 'py_entries =    ', py_entries
     end if
-    backup_parents = pack ([(i, i=1, size (particles))], &
-         (particles%get_status () == PRT_INCOMING .or. &
-          particles%get_status () == PRT_OUTGOING))
-    where (particles%status == PRT_OUTGOING .or. &
-           (particles%status == PRT_BEAM_REMNANT .and. &
-           particles%flv%get_pdg () /= PHOTON))  particles%status = PRT_VIRTUAL
+    call prepare_temporary_objects_and_particles ()
     call add_particles_of_pythia ()
-    call determine_boost ()
+    if (boost_required) then
+       where (pythia_particle)  particles%p = L * particles%p
+    end if
     call particle_set%replace (particles)
     call set_parent_child_relations_of_known_pythia_parents ()
     call set_parent_child_relations_of_color_strings_to_hadrons ()
+    call give_orphans_backup_parents ()
     where ((particle_set%prt%status == PRT_OUTGOING .or. &
             particle_set%prt%status == PRT_VIRTUAL .or. &
             particle_set%prt%status == PRT_BEAM_REMNANT) .and. &
             particle_set%prt%has_children ()) &
             particle_set%prt%status = PRT_RESONANT
-    call give_orphans_backup_parents ()
     if (DEBUG_SHOWER) then
        print *, 'Particle set after replacing'
        call particle_set%write (summary=.true., compressed=.true.)
@@ -6901,51 +6888,62 @@ added back in by Pythia.
 @ %def pythia6_combine_with_particle_set
 <<Shower PYTHIA6: combine with particle set: procedures>>=
   subroutine count_valid_entries_in_pythia_record ()
-    py_entries = 0
+    integer :: pset_idx
     hadro_start = 0
-    FIND: do i = 1, N
+    allocate (valid(N))
+    valid = .false.
+    FIND: do i = 5, N
        if (K(i,2) >= 91 .and. K(i,2) <= 94) then
           hadro_start = i
           exit FIND
        end if
     end do FIND
-    COUNT: do i = 1, N
+    do i = 5, N
        status = K(i,1)
-       if (<<valid pythia particle>>) then
-          !if (<<Photons off beams>> .and. py_entries < 1) cycle
-          py_entries = py_entries + 1
+       if (any (P(i,1:4) > eps0) .and. (status >= 1 .and. status <= 21)) then
+          pset_idx = find_pythia_particle (i)
+          if (pset_idx == 0) then
+             valid (i) = .true.
+          end if
        end if
-    end do COUNT
+    end do
+    py_entries = count (valid)
     allocate (old_index (py_entries))
     allocate (new_index (N))
   end subroutine count_valid_entries_in_pythia_record
 
 @
-<<valid pythia particle>>=
-any (P(i,1:4) > eps0) .and. &
-((i >= hadro_start .and. status >= 1 .and. status <= 15) .or. &
- (i < hadro_start .and. status == 1))
-@
-<<Photons off beams>>=
-K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
+<<Shower PYTHIA6: combine with particle set: procedures>>=
+  subroutine prepare_temporary_objects_and_particles ()
+    allocate (pythia_particle (n_tot_old + py_entries))
+    pythia_particle = .false.
+    backup_parents = pack ([(i, i=1, size (particles))], &
+         (particles%get_status () == PRT_INCOMING .or. &
+          particles%get_status () == PRT_OUTGOING))
+  end subroutine prepare_temporary_objects_and_particles
 @
 <<Shower PYTHIA6: combine with particle set: procedures>>=
   subroutine add_particles_of_pythia ()
+    integer :: whizard_status
     dangling_col = 0
     dangling_anti_col = 0
     next_color = 500
     j = 1
-    do i = 1, N
+    do i = 5, N
        status = K(i,1)
-       if (<<valid pythia particle>>) then
-          !if (<<Photons off beams>> .and. j < 2) cycle
+       if (valid(i)) then
           call assign_colors (color, anti_color)
-          momentum = real ([P(i,4), P(i,1), P(i,2), P(i,3)], kind=default)
+          momentum = real ([P(i,4), P(i,1:3)], kind=default)
           pdg = K(i,2)
           parent = K(i,3)
           call find_model (model, pdg, model_in, model_hadrons)
+          if (status <= 10) then
+             whizard_status = PRT_OUTGOING
+          else
+             whizard_status = PRT_VIRTUAL
+          end if
           call particles(n_tot_old + j)%init &
-               (PRT_OUTGOING, pdg, model, color, anti_color, momentum)
+               (whizard_status, pdg, model, color, anti_color, momentum)
           old_index(j) = i
           new_index(i) = n_tot_old + j
           pythia_particle(n_tot_old + j) = .true.
@@ -6959,14 +6957,20 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
 <<Shower PYTHIA6: combine with particle set: procedures>>=
   subroutine determine_boost ()
     type(vector4_t) :: sum_vec_in, sum_vec_out
-    logical, dimension(1) :: mask
     boost_required = .false.
-    if (all (particles(1:2)%flv%get_pdg_abs () >= ELECTRON .and. &
-         particles(1:2)%flv%get_pdg_abs () <= TAU)) then
-       sum_vec_in = sum (particles%p, &
-            mask=particles%get_status () == PRT_INCOMING)
-       sum_vec_out = sum (particles%p, &
-            mask=particles%get_status () == PRT_OUTGOING)
+    if (all (particle_set%prt(1:2)%flv%get_pdg_abs () >= ELECTRON .and. &
+         particle_set%prt(1:2)%flv%get_pdg_abs () <= TAU)) then
+       sum_vec_in = sum (particle_set%prt%p, &
+            mask=particle_set%prt%get_status () == PRT_INCOMING)
+       sum_vec_out = [zero, zero, zero, zero]
+       do i = 1, N
+          if (K(i,1) <= 10) then
+             momentum = real ([P(i,4), P(i,1:3)], kind=default)
+             sum_vec_out = sum_vec_out + momentum
+          end if
+       end do
+       !sum_vec_out = sum (particles%p, &
+            !mask=particles%get_status () == PRT_OUTGOING)
        if (DEBUG_SHOWER) then
           print *, 'sum_vec_in%p =    ', sum_vec_in%p
           print *, 'sum_vec_out%p =    ', sum_vec_out%p
@@ -6980,9 +6984,6 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
     end if
     if (DEBUG_SHOWER) then
        print *, 'boost_required =    ', boost_required
-    end if
-    if (boost_required) then
-       where (pythia_particle)  particles%p = L * particles%p
     end if
   end subroutine determine_boost
 
@@ -7050,12 +7051,14 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
     do j = 1, py_entries
        parent = K(old_index(j),3)
        child = n_tot_old + j
-       if (parent <= 2) then
-          call particle_set%parent_add_child (parent, child)
-       else
-          real_parent = find_pythia_particle (parent)
-          if (real_parent > 0 .and. real_parent /= child) then
-             call particle_set%parent_add_child (real_parent, child)
+       if (parent > 0) then
+          if (parent >= 1 .and. parent <= 2) then
+             call particle_set%parent_add_child (parent, child)
+          else
+             real_parent = find_pythia_particle (parent)
+             if (real_parent > 0 .and. real_parent /= child) then
+                call particle_set%parent_add_child (real_parent, child)
+             end if
           end if
        end if
     end do
@@ -7077,11 +7080,17 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
              end if
           end do FIND
           begin_string = K(old_start,3)
-          if (next_start > 0) then
-             end_string = K(next_start,3) - 1
-          else
-             end_string = hadro_start - 1
-          end if
+          do i = begin_string, N
+             if (K(i,1) == 11) then
+                end_string = i
+                exit
+             end if
+          end do
+          !if (next_start > 0) then
+          !   end_string = K(next_start,3) - 1
+          !else
+          !   end_string = hadro_start - 1
+          !end if
           allocate (parents (end_string - begin_string + 1))
           parents = 0
           real_child = find_pythia_particle (old_start)
@@ -7102,12 +7111,15 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
 
 @
 <<Shower PYTHIA6: combine with particle set: procedures>>=
-  function find_pythia_particle (i) result (j)
+  function find_pythia_particle (i, no_boost) result (j)
     integer :: j
     integer, intent(in) :: i
+    logical, intent(in), optional :: no_boost
+    logical :: nb
+    nb = .false.;  if (present(no_boost)) nb = no_boost
     pdg = K(i,2)
     momentum = real([P(i,4), P(i,1:3)], kind=default)
-    if (boost_required) then
+    if (boost_required .and. .not. nb) then
        momentum = L * momentum
     end if
     j = particle_set%find_particle (pdg, momentum, &
@@ -7133,18 +7145,16 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
 
 @
 <<Shower PYTHIA6: procedures>>=
-  subroutine get_ME_momenta_from_PYTHIA (JETS_ME)
+  subroutine get_ME_momenta_from_PYTHIA (jets_me)
     IMPLICIT DOUBLE PRECISION(A-H, O-Z)
     IMPLICIT INTEGER(I-N)
     COMMON/PYJETS/N,NPAD,K(4000,5),P(4000,5),V(4000,5)
     SAVE /PYJETS/
 
-    type(vector4_t), dimension(:), allocatable :: JETS_ME
-    real(kind=default), dimension(:,:), allocatable :: pdum
+    type(vector4_t), dimension(:), allocatable :: jets_me
     integer :: i, j, n_jets
 
-    if (allocated (JETS_ME))  deallocate (JETS_ME)
-    if (allocated (pdum))  deallocate (pdum)
+    if (allocated (jets_me))  deallocate (jets_me)
 
     if (signal_is_pending ()) return
     !!! final ME partons start in 7th row of event record
@@ -7160,18 +7170,15 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
     end do
 
     if (n_jets == 0) return
-    allocate (JETS_ME(1:n_jets))
-    allocate (pdum(1:n_jets,4))
+    allocate (jets_me(1:n_jets))
 
     !!! transfer jets
     i = 7
     j = 1
-    pdum = p
     do
        if (K(I,1) /= 21) exit
-       if ((K(I,2) == 21) .or. (abs(K(I,2)).le.6)) then
-          JETS_ME(j)= vector4_moving (pdum(I,4), &
-               vector3_moving ( [pdum(I,1),pdum(I,2),pdum(I,3)] ))
+       if ((K(I,2) == 21) .or. (abs(K(I,2)) <= 6)) then
+          jets_me(j) = real ([P(i,4), P(i,1:3)], kind=default)
           j = j + 1
        end if
        i = i + 1
@@ -7376,12 +7383,12 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
        open (unit=u_W2P, status="scratch", action="readwrite")
     end if
     write (buffer, "(I10)")  u_W2P
-    call PYGIVE ("MSTP(161)=" // buffer)  !!! Unit for PYUPIN (LHA)
-    call PYGIVE ("MSTP(162)=" // buffer)  !!! Unit for PYUPEV (LHA)
+    call pygive ("MSTP(161)=" // buffer)  !!! Unit for PYUPIN (LHA)
+    call pygive ("MSTP(162)=" // buffer)  !!! Unit for PYUPEV (LHA)
     if (present (u_P2W)) then
        u_P2W = free_unit ()
        write (buffer, "(I10)")  u_P2W
-       call PYGIVE ("MSTP(163)=" // buffer)
+       call pygive ("MSTP(163)=" // buffer)
        if (DEBUG_SHOWER) then
           open (unit=u_P2W, file="pythiaout2.lhe", status="replace", &
                action="readwrite")
@@ -7403,7 +7410,7 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
        pygive_remaining = pygive_all
        do while (len (pygive_remaining) > 0)
           call split (pygive_remaining, pygive_partial, ";")
-          call PYGIVE (char (pygive_partial))
+          call pygive (char (pygive_partial))
        end do
        if (pythia6_get_error() /= 0) then
           call msg_fatal &
@@ -7461,10 +7468,10 @@ K(i,2) == 22 .and. (K(i,3) == 1 .or. K(i,3) == 2)
   subroutine pythia6_set_verbose (verbose)
     logical, intent(in) :: verbose
     if (verbose) then
-       call PYGIVE ('MSTU(13)=1')
+       call pygive ('MSTU(13)=1')
     else
-       call PYGIVE ('MSTU(12)=12345') !!! No title page is written
-       call PYGIVE ('MSTU(13)=0')     !!! No information is written
+       call pygive ('MSTU(12)=12345') !!! No title page is written
+       call pygive ('MSTU(13)=0')     !!! No information is written
     end if
   end subroutine pythia6_set_verbose
 
