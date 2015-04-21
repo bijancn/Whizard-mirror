@@ -844,8 +844,13 @@ there is only a soft singularity if the radiated parton becomes soft.
              region%soft_divergence = &
                 ftuple(reg)%splitting_type /= G_TO_QQ
 
-             region%coll_divergence = &
+             if (i1 == 0) then
+             !!! IS-splitting always has a collinear divergence (because massless)
+               region%coll_divergence = .true.
+             else
+               region%coll_divergence = &
                     .not. region%flst_real%massive(i1)
+             end if
 
              if (ftuple(reg)%splitting_type > 1) then
                 region%double_fsr = .true.
@@ -2598,8 +2603,7 @@ The soft momentum is a unit vector, because $k^2 = \left(k^0\right)^2 - \left(k^
     type(vector4_t) :: p_soft
     type(vector3_t) :: dir
     type(lorentz_transformation_t) :: rot
-@ The soft momentum is constructed by first creating a unit vector parallel to the emitter's Born momentum. This unit vector
-is then rotated about the corresponding angles $y$ and $\phi$.
+@ The soft momentum is constructed by first creating a unit vector parallel to the emitter's Born momentum. This unit vector is then rotated about the corresponding angles $y$ and $\phi$.
 <<real subtraction: procedures>>=
     p_soft%p(0) = 1._default
     p_soft%p(1:3) = p_born(emitter)%p(1:3) / space_part_norm (p_born(emitter))
@@ -2615,6 +2619,20 @@ is then rotated about the corresponding angles $y$ and $\phi$.
   end function create_softvec_fsr
   
 @ %def create_softvec_fsr
+@ For initial-state emissions, the soft vector is just a unit vector with the same direction as the radiated particle.
+<<real subtraction: procedures>>=
+  function create_softvec_isr (y, phi) result (p_soft)
+    real(default), intent(in) :: y, phi
+    type(vector4_t) :: p_soft
+    real(default) :: sin_theta
+    sin_theta = sqrt(1-y**2)
+    p_soft%p(0) = 1._default
+    p_soft%p(1) = sin_theta * sin(phi)
+    p_soft%p(2) = sin_theta * cos(phi)
+    p_soft%p(3) = y
+  end function create_softvec_isr
+
+@ %def create_softvec_isr
 @ Computation of $\mathcal{R}_{\rm{soft}}$:
 <<real subtraction: soft sub: TBP>>=
   procedure :: compute => soft_subtraction_compute
@@ -2633,7 +2651,11 @@ is then rotated about the corresponding angles $y$ and $\phi$.
     real(default) :: kb
     integer :: i, j
 
-    p_soft = create_softvec_fsr (p_born, y_soft, phi, emitter)
+    if (emitter > 2) then
+       p_soft = create_softvec_fsr (p_born, y_soft, phi, emitter)
+    else
+       p_soft = create_softvec_isr (y_soft, phi)
+    end if
     s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
          (p_born, p_soft, alr, emitter)
     call sub_soft%compute_momentum_matrix (p_born, p_soft)
@@ -2784,16 +2806,21 @@ it is necessary to expand with $z$ once.
     flv_rad = sregion%flst_real%flst(nlegs)
     flv_em = sregion%flst_real%flst(emitter)
     p0 = vector4_get_component (p_born(emitter),0)
+    q0 = vector4_get_component (p_born(1), 0) + &
+         vector4_get_component (p_born(2), 0)
+    !!! Here, z corresponds to 1-z in the formulas of arXiv:1002.2581; 
+    !!! the integrand is symmetric under this variable change
+    zoxi = q0/(2*p0)
+    z = xi*zoxi; onemz = 1-z
+
     if (sregion%emitter <= 2) then
-      coll_sub%value(alr) = 0   
-      return
+      !!! Initial-state: No spin-correlations up to now
+      if (is_quark(abs (flv_em)) .and. is_gluon(flv_rad)) then
+        res = sqme_born*CF*(z+z**3)/onemz/zoxi 
+      else if (is_gluon(flv_em) .and. is_quark(abs (flv_rad))) then
+        res = sqme_born*TR*(z**2+(1-z)**2)*z/zoxi
+      end if
     else
-      q0 = vector4_get_component (p_born(1), 0) + &
-           vector4_get_component (p_born(2), 0)
-      !!! Here, z corresponds to 1-z in the formulas of arXiv:1002.2581; 
-      !!! the integrand is symmetric under this variable change
-      zoxi = q0/(2*p0)
-      z = xi*zoxi; onemz = 1-z
       if (is_gluon(flv_em) .and. is_gluon(flv_rad)) then
 @ Implementation of equation (\ref{coll1}). Note that an additional factor $z$, so that in the last step, the whole expression is divided by $z/\xi$.
 <<real subtraction: procedures>>=
@@ -3578,6 +3605,7 @@ end module nlo_controller
                (flst, 1, allreg, color_states_born, color_states_real, p_rad)
           call icm%create_map &
                (flst, 2, allreg, color_states_born, color_states_real, p_rad)
+          return
         end if
         flv_rad = flst%flst (p_rad)
         if (is_quark (abs(flv_em)) .and. is_gluon (flv_rad)) then
@@ -3659,7 +3687,7 @@ and virtual counterterms.
     type(region_data_t), intent(inout) :: reg_data
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
     integer :: nlegs_born, nlegs_real
-    integer :: i
+    integer :: i, n_in
     nlegs_born = reg_data%nlegs_born
     nlegs_real = reg_data%nlegs_real
     call prc_constants(1)%get_col_state (color_data%col_state_born)
@@ -3676,6 +3704,8 @@ and virtual counterterms.
       call color_init_from_array (color_data%color_real (:,i), &
            color_data%col_state_real (:,:,i), &
            color_data%ghost_flag_real (:,i))
+      n_in = prc_constants(1)%n_in
+      call color_data%color_real (1:n_in,i)%invert () 
     end do
     do i = 1, size(reg_data%regions)
       call color_data%icm(i)%init
@@ -5029,7 +5059,7 @@ end module phs_fks
   type :: phs_fks_generator_t
     integer, dimension(:), allocatable :: emitters
     type(real_kinematics_t), pointer :: real_kinematics => null()
-    real(default), dimension(:), allocatable :: is_momentum_fractions
+    real(default), dimension(2) :: is_momentum_fractions = 1._default
     !!! xi_min should be set to a non-zero value in order to avoid 
     !!! phase-space points with p_real(emitter) = 0
     real(default) :: xi_min = tiny_07
@@ -5724,6 +5754,7 @@ is equal to
       xi = rad_var%xi_tilde * xi_max
       y = rad_var%y(1)
       phi = rad_var%phi
+      rad_var%y_soft = y
     end associate
     nlegborn = size (p_born)
     nlegreal = nlegborn+1
@@ -5761,7 +5792,6 @@ is equal to
     forall (i=3:nlegborn) &
          p_real(i) = lambda_longit_inv * p_real(i)
 
-!    generator%jac_isr(1) = sqrts_sreal**2 * xi/(1-x)
   contains
     function create_longitudinal_boost (p, inverse) result (lambda)
        type(vector4_t), intent(in), dimension(:) :: p
@@ -5833,31 +5863,13 @@ is equal to
 @ %def phs_fks_generator_setup_masses
 @
 <<phs fks: phs fks generator: TBP>>=
-  procedure :: init_is_momentum_fractions => &
-                    phs_fks_generator_init_is_momentum_fractions
-<<phs fks: procedures>>=
-  subroutine phs_fks_generator_init_is_momentum_fractions (generator)
-    class(phs_fks_generator_t), intent(inout) :: generator
-    if (any (generator%emitters <= 2)) then
-       allocate (generator%is_momentum_fractions (2))
-       generator%is_momentum_fractions = 1._default
-    end if
-  end subroutine phs_fks_generator_init_is_momentum_fractions
-
-@ %def phs_fks_generator_init_is_momentum_fractions
-@
-<<phs fks: phs fks generator: TBP>>=
   procedure :: set_is_momentum_fractions => &
                    phs_fks_generator_set_is_momentum_fractions 
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_set_is_momentum_fractions (generator, p_born)
     class(phs_fks_generator_t), intent(inout) :: generator
     type(vector4_t), dimension(:), intent(in) :: p_born
-    if (allocated (generator%is_momentum_fractions)) then
-       generator%is_momentum_fractions = space_part_norm (p_born(1:2)) / (generator%E_beam_tot/2)
-    else
-       call msg_fatal ("Trying to set IS momentum fractions, but they are not allocated")
-    end if
+    generator%is_momentum_fractions = space_part_norm (p_born(1:2)) / (generator%E_beam_tot/2)
   end subroutine phs_fks_generator_set_is_momentum_fractions
 
 @ %def phs_fks_generator_set_is_momentum_fractions
@@ -5884,7 +5896,8 @@ is equal to
     type(vector4_t), intent(in), dimension(:) :: p_born
     integer :: em
 
-    call generator%set_beam_energy (p_born(1)%p(0) + p_born(2)%p(0))
+!    call generator%set_beam_energy (p_born(1)%p(0) + p_born(2)%p(0))
+    if (any (generator%emitters <= 2)) call generator%set_is_momentum_fractions (p_born)
     associate (rad_var => generator%real_kinematics)
        rad_var%jac_rand = 1.0
        call generator%compute_xi_tilde (r_in(I_XI))
@@ -6202,7 +6215,6 @@ is equal to
     allocate (generator%emitters (2))
     generator%emitters(1) = 1; generator%emitters(2) = 2 
     call generator%set_beam_energy (sqrts_hadronic)
-    call generator%init_is_momentum_fractions ()
     call generator%set_is_momentum_fractions (p_born)
 
     write (u, "(A)") "* Use four-particle phase space containing: "
