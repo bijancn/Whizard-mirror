@@ -522,7 +522,6 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/pythia6_1.ref \
     ref-output/pythia6_2.ref \
     ref-output/mlm_matching_fsr.ref \
-    ref-output/mlm_matching_isr.ref \
     ref-output/mlm_pythia6_isr.ref \
     ref-output/hepmc_1.ref \
     ref-output/hepmc_2.ref \
@@ -625,6 +624,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     ref-output-double/circe1_photons_5.ref \
     ref-output-double/pythia6_3.ref \
     ref-output-double/pythia6_4.ref \
+    ref-output-double/mlm_matching_isr.ref \
     ref-output-double/ewa_1.ref \
     ref-output-double/ewa_2.ref \
     ref-output-double/ewa_3.ref \
@@ -670,6 +670,7 @@ REF_OUTPUT_FILES_EXT = \
     ref-output-ext/circe1_photons_5.ref \
     ref-output-ext/pythia6_3.ref \
     ref-output-ext/pythia6_4.ref \
+    ref-output-ext/mlm_matching_isr.ref \
     ref-output-ext/ewa_1.ref \
     ref-output-ext/ewa_2.ref \
     ref-output-ext/ewa_3.ref \
