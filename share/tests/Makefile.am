@@ -522,6 +522,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/pythia6_1.ref \
     ref-output/pythia6_2.ref \
     ref-output/mlm_matching_fsr.ref \
+    ref-output/mlm_matching_isr.ref \
     ref-output/mlm_pythia6_isr.ref \
     ref-output/hepmc_1.ref \
     ref-output/hepmc_2.ref \
@@ -880,6 +881,7 @@ MISC_TESTS_SIN = \
     pythia6_3.sin \
     pythia6_4.sin \
     mlm_matching_fsr.sin \
+    mlm_matching_isr.sin \
     mlm_pythia6_isr.sin \
     hepmc.sin \
     hepmc_1.sin \

@@ -358,6 +358,7 @@ TESTS_REQ_PYTHIA6 = \
     pythia6_2.run \
     pythia6_3.run \
     pythia6_4.run \
+    mlm_matching_isr.run \
     mlm_pythia6_isr.run
 XFAIL_TESTS_REQ_PYTHIA6 = 
 
