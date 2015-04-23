@@ -2538,6 +2538,7 @@ module real_subtraction
   use flavors
   use fks_regions
   use nlo_data
+  use pdf_subtraction
 
 <<Standard module head>>
 
@@ -2878,6 +2879,7 @@ it is necessary to expand with $z$ once.
     type(region_data_t) :: reg_data
     type(vector4_t), dimension(:), allocatable :: p_born, p_real
     type(real_kinematics_t), pointer :: real_kinematics => null()
+    type(is_data_t), pointer :: is_data => null()
     integer :: current_alr = 0
     real(default), dimension(:), pointer :: sqme_real_non_sub
     real(default), dimension(:), pointer :: sqme_born
@@ -2885,6 +2887,7 @@ it is necessary to expand with $z$ once.
     complex(default), dimension(:), pointer :: sqme_born_sc => null()
     type(soft_subtraction_t) :: sub_soft
     type(coll_subtraction_t) :: sub_coll
+    type(pdf_subtraction_t) :: sub_pdf
     logical, dimension(:), allocatable :: sc_required
     logical :: sqme_np1_active = .true.
     logical :: subtraction_active = .true.
@@ -2919,6 +2922,7 @@ it is necessary to expand with $z$ once.
      
     call rsub%sub_soft%init (reg_data, nlegs_born, nlegs_real)
     call rsub%sub_coll%init (reg_data%n_regions)
+    call rsub%sub_pdf%init (reg_data%flv_born(1)%flst, reg_data%n_regions)
   end subroutine real_subtraction_init
 
 @ %def real_subtraction_init
@@ -2945,6 +2949,17 @@ it is necessary to expand with $z$ once.
 
 @ %def real_subtraction_set_real_kinematics
 @ 
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: set_is_data => real_subtraction_set_is_data
+<<real subtraction: procedures>>=
+  subroutine real_subtraction_set_is_data (rsub, fractions)
+    class(real_subtraction_t), intent(inout) :: rsub
+    type(is_data_t), intent(in), target :: fractions
+    rsub%is_data => fractions
+  end subroutine real_subtraction_set_is_data
+
+@ %def real_subtraction_set_is_data
+@
 <<real subtraction: real subtraction: TBP>>=
   procedure :: set_alr => real_subtraction_set_alr
 <<real subtraction: procedures>>=
@@ -3018,7 +3033,7 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
     real(default), intent(in) :: alpha_s
     real(default) :: sqme
     integer :: i_real
-    real(default) :: sqme0, sqme_soft, sqme_coll, sqme_cs, sqme_remn
+    real(default) :: sqme0, sqme_soft, sqme_coll, sqme_cs, sqme_pdf, sqme_remn
     real(default) :: s_alpha
     real(default) :: xi, xi_max, xi_tilde, y, phi
     real(default) :: s
@@ -3042,7 +3057,7 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
       end if
       if (rsub%subtraction_active) then 
          call rsub%evaluate_subtraction_terms (emitter, alpha_s, &
-                                               sqme_soft, sqme_coll, sqme_cs)
+                   sqme_soft, sqme_coll, sqme_cs, sqme_pdf)
          associate (jac => rsub%real_kinematics%jac)
             sqme_soft = sqme_soft/(1-y)/xi_tilde * jac(emitter)%jac(2)
             sqme_coll = sqme_coll/(1-y)/xi_tilde * jac(emitter)%jac(3)
@@ -3087,16 +3102,23 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
 <<real subtraction: procedures>>=
   subroutine real_subtraction_evaluate_subtraction_terms (rsub, &
                   emitter, alpha_s, &
-                  sqme_soft, sqme_coll, sqme_cs)
+                  sqme_soft, sqme_coll, sqme_cs, sqme_pdf)
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: emitter
     real(default), intent(in) :: alpha_s
-    real(default), intent(out) :: sqme_soft, sqme_coll, sqme_cs
+    real(default), intent(out) :: sqme_soft, sqme_coll, sqme_cs, sqme_pdf
     integer :: alr
+    real(default) :: xi
     alr = rsub%current_alr
     call rsub%compute_sub_soft (emitter, alpha_s)
     call rsub%compute_sub_coll (emitter, alpha_s)
     call rsub%compute_sub_coll_soft (emitter, alpha_s)
+    if (emitter <= 2) then
+       call rsub%compute_sub_pdf (emitter, alpha_s)
+       sqme_pdf = rsub%sub_pdf%value(alr)
+    else
+       sqme_pdf = zero
+    end if
     sqme_soft = rsub%sub_soft%value(alr)
     sqme_coll = rsub%sub_coll%value(alr)
     sqme_cs = rsub%sub_coll%value_soft(alr)
@@ -3208,6 +3230,25 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
   end subroutine real_subtraction_compute_sub_coll_soft
 
 @ %def real_subtraction_compute_sub_coll_soft
+@
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: compute_sub_pdf => real_subtraction_compute_sub_pdf
+<<real subtraction: procedures>>=
+  subroutine real_subtraction_compute_sub_pdf (rsub, emitter, alpha_s)
+    class(real_subtraction_t), intent(inout) :: rsub
+    integer, intent(in) :: emitter
+    real(default), intent(in) :: alpha_s
+    real(default) :: xi
+    integer :: alr
+    alr = rsub%current_alr
+    xi = rsub%real_kinematics%xi_tilde * rsub%real_kinematics%xi_max (emitter)
+    associate (sregion => rsub%reg_data%regions(alr))
+       call rsub%sub_pdf%set_kinematics (rsub%is_data, xi)
+       call rsub%sub_pdf%evaluate (alpha_s, rsub%sqme_born(sregion%uborn_index), alr)
+    end associate
+  end subroutine real_subtraction_compute_sub_pdf
+
+@ %def real_subtraction_compute_sub_pdf
 @
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -3327,7 +3368,7 @@ end module nlo_data
   end type real_kinematics_t
 
 @ %def real_kinematics_t
-@
+@ 
 <<nlo data: real kinematics: TBP>>=
   procedure :: write => real_kinematics_write
 <<nlo data: procedures>>=
@@ -3346,6 +3387,17 @@ end module nlo_data
   end subroutine real_kinematics_write
 
 @ %def real_kinematics_write
+@ Another container for the $x_\oplus$- and $x_\ominus$-values for initial-state phase spaces.
+<<nlo data: public>>=
+  public :: is_data_t
+<<nlo data: types>>=
+  type :: is_data_t
+    real(default), dimension(2) :: x = 1._default
+    real(default) :: sqrts_born
+    real(default) :: fac_scale
+  end type is_data_t
+
+@ %def type is_data_t
 @
 <<[[nlo_controller.f90]]>>=
 <<File header>>
@@ -4098,6 +4150,8 @@ and virtual counterterms.
     call nlo_controller%real_terms%set_momenta (p_born, p_real)
     call nlo_controller%real_terms%set_real_kinematics &
          (nlo_controller%real_kinematics)
+    call nlo_controller%real_terms%set_is_data &
+         (nlo_controller%is_data)
     sqme_fin = nlo_controller%real_terms%compute &
          (emitter, nlo_controller%alpha_s_born)
     sqme_fin = sqme_fin * weight
@@ -4240,6 +4294,7 @@ process.
     complex(default), dimension(:), allocatable :: amp_born
     type(color_data_t) :: color_data
     type(real_kinematics_t), pointer :: real_kinematics => null()
+    type(is_data_t), pointer :: is_data => null()
     type(virtual_t) :: virtual_terms
     type(real_subtraction_t) :: real_terms
     real(default) :: alpha_s_born
@@ -4654,6 +4709,7 @@ process.
     n_tot = nlo_controller%particle_data%n_in + &
             nlo_controller%particle_data%n_out_born
     allocate (nlo_controller%real_kinematics)
+    allocate (nlo_controller%is_data)
     associate (real_kinematics => nlo_controller%real_kinematics)
        allocate (real_kinematics%xi_max (n_tot))
        allocate (real_kinematics%y (n_tot))
@@ -4735,6 +4791,17 @@ process.
   end function nlo_controller_get_real_momenta
 
 @ %def nlo_controller_get_real_kinematics
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: set_fac_scale => nlo_controller_set_fac_scale 
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_set_fac_scale (nlo_controller, fac_scale)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    real(default), intent(in) :: fac_scale
+    nlo_controller%is_data%fac_scale = fac_scale
+  end subroutine nlo_controller_set_fac_scale
+
+@ %def nlo_controller_set_fac_scale
 @
 \subsection{xxx}
 <<nlo controller: nlo controller: TBP>>=
@@ -5059,7 +5126,8 @@ end module phs_fks
   type :: phs_fks_generator_t
     integer, dimension(:), allocatable :: emitters
     type(real_kinematics_t), pointer :: real_kinematics => null()
-    real(default), dimension(2) :: is_momentum_fractions = 1._default
+!    real(default), dimension(2) :: is_momentum_fractions = 1._default
+    type(is_data_t), pointer :: is_data => null()
     !!! xi_min should be set to a non-zero value in order to avoid 
     !!! phase-space points with p_real(emitter) = 0
     real(default) :: xi_min = tiny_07
@@ -5093,6 +5161,7 @@ channel with an emitter.
     type(vector4_t), dimension(:), allocatable :: q_real
     type(vector4_t), dimension(:), allocatable :: p_born_tot
     type(real_kinematics_t), pointer :: real_kinematics => null()
+    type(is_data_t), pointer :: is_data => null()
     type(phs_fks_generator_t) :: generator
     type(kinematics_counter_t) :: counter
     logical :: massive_phsp = .false.
@@ -5144,15 +5213,26 @@ channel-emitter-association and allocates space for the momenta.
 @ %def phs_fks_init
 @
 <<phs fks: phs fks: TBP>>=
-  procedure :: set_real_kinematics => phs_fks_set_real_kinematics
+  procedure :: setup_real_kinematics => phs_fks_setup_real_kinematics
 <<phs fks: procedures>>=
-  subroutine phs_fks_set_real_kinematics (phs, real_kinematics)
+  subroutine phs_fks_setup_real_kinematics (phs, real_kinematics)
     class(phs_fks_t), intent(inout) :: phs
     type(real_kinematics_t), intent(in), target :: real_kinematics
     phs%real_kinematics => real_kinematics
-  end subroutine phs_fks_set_real_kinematics
+  end subroutine phs_fks_setup_real_kinematics
 
-@ %def phs_fks_set_real_kinematics
+@ %def phs_fks_setup_real_kinematics
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: setup_is_data => phs_fks_setup_is_data
+<<phs fks: procedures>>=
+  subroutine phs_fks_setup_is_data (phs, fractions)
+    class(phs_fks_t), intent(inout) :: phs
+    type(is_data_t), intent(in), target :: fractions
+    phs%is_data => fractions
+  end subroutine phs_fks_setup_is_data
+
+@ %def phs_fks_setup_is_data
 @
 <<phs fks: phs fks: TBP>>=
   procedure :: final => phs_fks_final
@@ -5357,6 +5437,7 @@ calculated from the Born momenta.
   subroutine phs_fks_setup_generator_kinematics (phs)
     class(phs_fks_t), intent(inout), target :: phs
     phs%generator%real_kinematics => phs%real_kinematics
+    phs%generator%is_data => phs%is_data
     phs%generator%massive_phsp = phs%massive_phsp
   end subroutine phs_fks_setup_generator_kinematics
 
@@ -5701,18 +5782,22 @@ is equal to
 @ %def get_xi_max_fsr_massive
 @
 <<phs fks: procedures>>=
-  function get_xi_max_isr (xb_plus, xb_minus, y) result (xi_max)
-    real(default), intent(in) :: xb_plus, xb_minus, y
+  function get_xi_max_isr (xb, y) result (xi_max)
+    real(default), dimension(2), intent(in) :: xb
+    real(default), intent(in) :: y
+    real(default) :: xb_plus, xb_minus
     real(default) :: xi_max
     real(default) :: plus_val, minus_val
     
+    xb_plus = xb(1); xb_minus = xb(2)
+
     plus_val = 2*(1+y)*xb_plus**2 / &
                (sqrt ((1+xb_plus**2)**2*(1-y)**2 + 16*y*xb_plus**2) &
                + (1-y)*(1-xb_plus**2))
     minus_val = 2*(1-y)*xb_minus**2 / &
                 (sqrt ((1+xb_minus**2)**2*(1+y)**2 - 16*y*xb_minus**2) &
                + (1-y)*(1-xb_minus**2))
-    xi_max = 1._default - max (plus_val, minus_val)
+    xi_max = one - max (plus_val, minus_val)
   end function get_xi_max_isr
 
 @ %def get_xi_max_isr	 
@@ -5743,7 +5828,7 @@ is equal to
     type(vector4_t), intent(out), dimension(:), allocatable :: p_real
     real(default) :: xi_max, xi, y, phi
     integer :: nlegborn, nlegreal
-    real(default) :: sqrts_born, sqrts_real
+    real(default) :: sqrts_real
     real(default) :: k0_np1
     type(lorentz_transformation_t) :: lambda_transv, lambda_longit, lambda_longit_inv
     real(default) :: x_plus, x_minus, xb_plus, xb_minus
@@ -5758,19 +5843,19 @@ is equal to
     end associate
     nlegborn = size (p_born)
     nlegreal = nlegborn+1
-    sqrts_born = sqrt ((p_born(1) + p_born(2))**2)
+    generator%is_data%sqrts_born = sqrt ((p_born(1) + p_born(2))**2)
     allocate (p_real (nlegreal))
    
     !!! Initial state real momenta
-    xb_plus = generator%is_momentum_fractions(1)
-    xb_minus = generator%is_momentum_fractions(2)
+    xb_plus = generator%is_data%x(1)
+    xb_minus = generator%is_data%x(2)
     x_plus = xb_plus/sqrt(1-xi) * sqrt ((2-xi*(1-y)) / (2-xi*(1+y)))
     x_minus = xb_minus/sqrt(1-xi) * sqrt ((2-xi*(1+y)) / (2-xi*(1-y)))
     p_real(1) = x_plus/xb_plus * p_born(1)
     p_real(2) = x_minus/xb_minus * p_born(2)
 
     !!! Create radiation momentum
-    sqrts_real = sqrts_born / (1-xi)
+    sqrts_real = generator%is_data%sqrts_born / (1-xi)
     k0_np1 = sqrts_real*xi/2 
     p_real(nlegreal)%p(0) = k0_np1
     p_real(nlegreal)%p(1) = k0_np1*sqrt(1-y**2)*sin(phi)
@@ -5863,16 +5948,15 @@ is equal to
 @ %def phs_fks_generator_setup_masses
 @
 <<phs fks: phs fks generator: TBP>>=
-  procedure :: set_is_momentum_fractions => &
-                   phs_fks_generator_set_is_momentum_fractions 
+  procedure :: set_is_data => phs_fks_generator_set_is_data 
 <<phs fks: procedures>>=
-  subroutine phs_fks_generator_set_is_momentum_fractions (generator, p_born)
+  subroutine phs_fks_generator_set_is_data (generator, p_born)
     class(phs_fks_generator_t), intent(inout) :: generator
     type(vector4_t), dimension(:), intent(in) :: p_born
-    generator%is_momentum_fractions = space_part_norm (p_born(1:2)) / (generator%E_beam_tot/2)
-  end subroutine phs_fks_generator_set_is_momentum_fractions
+    generator%is_data%x = space_part_norm (p_born(1:2)) / (generator%E_beam_tot/2)
+  end subroutine phs_fks_generator_set_is_data
 
-@ %def phs_fks_generator_set_is_momentum_fractions
+@ %def phs_fks_generator_set_is_data
 @ 
 <<phs fks: phs fks generator: TBP>>=
   procedure :: setup_real_kinematics => phs_fks_generator_setup_real_kinematics
@@ -5897,7 +5981,7 @@ is equal to
     integer :: em
 
 !    call generator%set_beam_energy (p_born(1)%p(0) + p_born(2)%p(0))
-    if (any (generator%emitters <= 2)) call generator%set_is_momentum_fractions (p_born)
+    if (any (generator%emitters <= 2)) call generator%set_is_data (p_born)
     associate (rad_var => generator%real_kinematics)
        rad_var%jac_rand = 1.0
        call generator%compute_xi_tilde (r_in(I_XI))
@@ -5915,8 +5999,7 @@ is equal to
                    end if
                 else
                    if (em <= 2) then
-                      rad_var%xi_max(em) = get_xi_max_isr (generator%is_momentum_fractions(1), &
-                         generator%is_momentum_fractions(2), rad_var%y(em))
+                      rad_var%xi_max(em) = get_xi_max_isr (generator%is_data%x, rad_var%y(em))
                    else
                       rad_var%xi_max(em) = get_xi_max_fsr (p_born, em)
                    end if
@@ -6213,9 +6296,10 @@ is equal to
     p_born(4)%p(3) = -105.601_default
 
     allocate (generator%emitters (2))
+    allocate (generator%is_data)
     generator%emitters(1) = 1; generator%emitters(2) = 2 
     call generator%set_beam_energy (sqrts_hadronic)
-    call generator%set_is_momentum_fractions (p_born)
+    call generator%set_is_data (p_born)
 
     write (u, "(A)") "* Use four-particle phase space containing: "
     call vector4_write_set (p_born, u, testflag = .true.)
@@ -6245,7 +6329,7 @@ is equal to
       write (u, "(A,F3.2)") "phi: ", rad_var%phi
     end associate
     write (u, "(A)") "Initial-state momentum fractions: "
-    associate (xb => generator%is_momentum_fractions)
+    associate (xb => generator%is_data%x)
        write (u, "(A,F3.2)") "x_born_plus: ", xb(1)
        write (u, "(A,F3.2)") "x_born_minus: ", xb(2)
     end associate
@@ -6262,3 +6346,364 @@ is equal to
   end subroutine phs_fks_generator_2
 
 @ %def phs_fks_generator_2
+@
+\clearpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Subtraction of initial-state divergences}
+We must calculate two terms, $G_\oplus$ and $G_\ominus$ for each possible initial-state emitter.
+Following the notation of 0709.2092, this is separated into $G = \tilde{\mathcal{L}}\mathcal{G}$, such
+that $\tilde{\mathcal{L}}$ contains the PDF-values at the scales, explicitly
+\begin{align*}
+  \tilde{\mathcal{L}} &=
+  \begin{cases}
+    \mathcal{L}(\bar{x}_\oplus/z, \bar{x}_\ominus) &\mbox{for} \alpha \in \mbox{ISR}_\oplus \\ 
+    \mathcal{L}(\bar{x}_\oplus, \bar{x}_\ominus/z) &\mbox{for} \alpha \in \mbox{ISR}_\ominus 
+  \end{cases}
+\end{align*}
+For each flavor combination $f_\oplus$ and $f_\ominus$ of initial-state particles, the relevant terms are given by
+\begin{align*}
+  \mathcal{G}_\oplus^{f_\oplus f_\ominus} (z) = 
+           \frac{\alpha_s}{2\pi}\sum_{f'_\oplus} &\left\lbrace (1-z)P^{f_\oplus f'_\ominus}(z,0)
+           \left[\left(\frac{1}{1-z}\right)_+\log\frac{s}{2\mu_F^2} + 2\left(\frac{\log(1-z)}{1-z}\right)_+\right]\right.\\
+           - \left.\left[\frac{\partial P^{f_\oplus f'_\oplus}(z,\epsilon)}{\partial \epsilon}\right]_{\epsilon=0} 
+           - K^{f_\oplus f'_\oplus}\right\rbrace \mathcal{B}^{f'_\oplus f_\ominus}(z)
+\end{align*}
+where $P(z,\epsilon)$ are the Altarelli-Parisi splitting functions
+\begin{align*}
+  P_{qq}(z,\epsilon) &= C_F \left[\frac{1+z^2}{1-z} - \epsilon(1-z)\right], \\
+  P_{qg}(z,\epsilon) &= C_F \left[\frac{1+(1-z)^2}{z} - \epsilon z\right], \\
+  P_{gq}(z,\epsilon) &= T_F \left[1 - \frac{2z(1-z)}{1-\epsilon}\right], \\
+  P_{gg}(z,\epsilon) &= 2C_A \left[\frac{z}{1-z} + \frac{1-z}{z} + z(1-z)\right].
+\end{align*}
+In the code we deal with $\hat{P}^{f_\oplus f_\ominus}(z) = (1-z)P^{f_\oplus f_\ominus}(z,0)$ because this quantity
+behaves nicely in the limit $z \to 1$.
+The factor $K^{f_\oplus f_\ominus}$ depends on the renormalization scheme and vanishes for $\overline{MS}$.\\
+The second thing to consider is the fact that the integration over $z$ is carried out over the interval $[\bar{x}_\oplus,1]$ or $[\bar{x}_\ominus,1]$, respectively, but the plus-distribution can only be evaluated over $[0,1]$. We thus use the identities
+\begin{align*}
+  \int_{\bar{x}_\oplus}^1 dz \left(\frac{1}{1-z}\right)_+ f(z) &= \log(1-\bar{x}_\oplus)f(1) + \int_{\bar{x}_\oplus}^1 dz \frac{f(z)-f(1)}{1-z}, \\
+  \int_{\bar{x}_\oplus}^1 dz \left(\frac{\log(1-z)}{1-z}\right)_+ f(z) &= \frac{1}{2} \log^2(1-\bar{x}_\oplus) f(1) + \int_{\bar{x}_\oplus}^1 dz \frac{\log(1-z)[f(z)-f(1)]}{1-z}.
+\end{align*}
+
+<<[[pdf_subtraction.f90]]>>=
+<<File header>>
+
+module pdf_subtraction
+
+<<Use kinds with double>>
+<<Use strings>>
+  use system_dependencies, only: LHAPDF6_AVAILABLE
+  use diagnostics
+  use shower_base
+  use constants
+  use physics_defs
+  use pdg_arrays
+  use sf_lhapdf
+  use nlo_data, only: is_data_t
+
+<<Standard module head>>
+
+<<pdf subtraction: public>>
+
+<<pdf subtraction: types>>
+
+contains
+
+<<pdf subtraction: procedures>>
+
+end module pdf_subtraction
+
+@ %def module pdf_subtraction
+@
+<<pdf subtraction: types>>=
+  type :: pdf_container_t
+     real(default), dimension(-6:6) :: f
+  end type pdf_container_t
+
+@ %def pdf_container_t
+@
+<<pdf subtraction: public>>=
+  public :: pdf_subtraction_t
+<<pdf subtraction: types>>=
+  type :: pdf_subtraction_t
+    logical :: initialized 
+    type(pdf_data_t) :: pdf_data
+    integer, dimension(:), allocatable :: i_light_quarks
+    integer, dimension(2) :: flv_in
+    real(default), dimension(2) :: x_born
+    type(pdf_container_t), dimension(2) :: pdf_scaled
+    type(pdf_container_t), dimension(2) :: pdf_born
+    real(default) :: sqrts_born
+    real(default) :: fac_scale2
+    real(default), dimension(2) :: z
+    real(default), dimension(:), allocatable :: value
+  contains
+  <<pdf subtraction: pdf subtraction: TBP>>
+  end type pdf_subtraction_t
+
+@ %def pdf_subtraction_t
+@
+<<pdf subtraction: pdf subtraction: TBP>>=
+  procedure :: init => pdf_subtraction_init
+<<pdf subtraction: procedures>>=
+  subroutine pdf_subtraction_init (pdf_sub, flv, n_alr)
+    class(pdf_subtraction_t), intent(inout) :: pdf_sub
+    integer, dimension(:), intent(in) :: flv
+    integer, intent(in) :: n_alr
+    integer :: i, j, n_quarks
+    logical, dimension(-6:6) :: quark_checked = .false.
+    pdf_sub%initialized = any ([is_quark(flv(1)), &
+        is_quark(flv(2)), is_gluon(flv(1)), is_gluon(flv(2))])
+    if (.not. pdf_sub%initialized) return
+
+    allocate (pdf_sub%value (n_alr))
+    call pdf_sub%set_incoming_flavor (flv(1), flv(2))
+    n_quarks = 0
+    do i = 1, size (flv)
+       if (is_quark(flv(i))) then
+          n_quarks = n_quarks+1
+          quark_checked(flv(i)) = .true.
+       end if
+    end do
+    allocate (pdf_sub%i_light_quarks (n_quarks))
+    j = 1
+    do i = -6, 6
+       if (quark_checked(i)) then
+          pdf_sub%i_light_quarks(j) = i
+          j = j+1
+       end if
+    end do
+
+    call pdf_sub%init_pdfs ()
+  end subroutine pdf_subtraction_init
+
+@ %def pdf_subtraction_init
+@
+<<pdf subtraction: pdf subtraction: TBP>>=
+  procedure :: set_incoming_flavor => pdf_subtraction_set_incoming_flavor
+<<pdf subtraction: procedures>>=
+  subroutine pdf_subtraction_set_incoming_flavor (pdf_sub, flv1, flv2)
+    class(pdf_subtraction_t), intent(inout) :: pdf_sub
+    integer, intent(in) :: flv1, flv2
+    pdf_sub%flv_in(1) = flv1; pdf_sub%flv_in(2) = flv2
+  end subroutine pdf_subtraction_set_incoming_flavor
+
+@ %def pdf_subtraction_set_incoming_flavor
+@
+<<pdf subtraction: pdf subtraction: TBP>>=
+  procedure :: set_kinematics => pdf_subtraction_set_kinematics
+<<pdf subtraction: procedures>>=
+  subroutine pdf_subtraction_set_kinematics (pdf_sub, is_data, xi)
+    class(pdf_subtraction_t), intent(inout) :: pdf_sub
+    type(is_data_t), intent(in) :: is_data
+    real(default), intent(in) :: xi
+    integer :: i
+    pdf_sub%x_born(1) = is_data%x(1)
+    pdf_sub%x_born(2) = is_data%x(2)
+    pdf_sub%sqrts_born = is_data%sqrts_born
+    pdf_sub%z = one - xi
+    pdf_sub%fac_scale2 = is_data%fac_scale**2
+    do i = 1, 2
+       call pdf_sub%compute_pdfs (i, pdf_sub%z(i), pdf_sub%x_born(i), sqrt(pdf_sub%fac_scale2))
+    end do
+  end subroutine pdf_subtraction_set_kinematics
+
+@ %def pdf_subtraction_set_kinematics
+@
+<<pdf subtraction: pdf subtraction: TBP>>=
+  procedure :: init_pdfs => pdf_subtraction_init_pdfs
+<<pdf subtraction: procedures>>=
+  subroutine pdf_subtraction_init_pdfs (pdf_sub)
+    class(pdf_subtraction_t), intent(inout) :: pdf_sub
+    type(string_t) :: lhapdf_dir, lhapdf_file
+    integer :: lhapdf_member
+    lhapdf_dir = ""
+    lhapdf_file = ""
+    lhapdf_member = 0
+    if (LHAPDF6_AVAILABLE) then
+       call lhapdf_initialize &
+            (1, lhapdf_dir, lhapdf_file, lhapdf_member, pdf_sub%pdf_data%pdf)
+       associate (pdf_data => pdf_sub%pdf_data)
+          pdf_data%type = STRF_LHAPDF6
+          pdf_data%xmin = pdf_data%pdf%getxmin ()
+          pdf_data%xmax = pdf_data%pdf%getxmax ()
+          pdf_data%qmin = sqrt(pdf_data%pdf%getq2min ())
+          pdf_data%qmax = sqrt(pdf_data%pdf%getq2max ())
+       end associate
+    else
+       call msg_fatal ("Real subtraction: PDFs could not be initialized")
+    end if
+  end subroutine pdf_subtraction_init_pdfs
+
+@ %def pdf_subtraction_init_pdfs
+@
+<<pdf subtraction: pdf subtraction: TBP>>=
+  procedure :: compute_pdfs => pdf_subtraction_compute_pdfs
+<<pdf subtraction: procedures>>=
+  subroutine pdf_subtraction_compute_pdfs (pdf_sub, i, z, x, Q)
+    class(pdf_subtraction_t), intent(inout) :: pdf_sub
+    integer, intent(in) :: i
+    real(default), intent(in) :: z, x, Q
+    real(double), dimension(-6:6) :: f_dble = 0._double
+    call pdf_sub%pdf_data%evolve (dble(x), dble(Q), f_dble)
+    pdf_sub%pdf_born(i)%f = f_dble
+    call pdf_sub%pdf_data%evolve (dble(x/z), dble(Q), f_dble)
+    pdf_sub%pdf_scaled(i)%f = f_dble
+  end subroutine pdf_subtraction_compute_pdfs
+
+@ %def pdf_subtraction_compute_pdfs
+@
+<<pdf subtraction: pdf subtraction: TBP>>=
+  procedure :: get_gluon_pdf => pdf_subtraction_get_gluon_pdf
+<<pdf subtraction: procedures>>=
+  function pdf_subtraction_get_gluon_pdf (pdf_sub, em, scaled) result (pdf)
+    class(pdf_subtraction_t), intent(in) :: pdf_sub
+    integer, intent(in) :: em
+    logical, intent(in) :: scaled
+    real(default) :: pdf
+    if (scaled) then
+       pdf = pdf_sub%pdf_scaled(em)%f(0)
+    else
+       pdf = pdf_sub%pdf_born(em)%f(0)
+    end if
+  end function pdf_subtraction_get_gluon_pdf
+
+@ %def pdf_subtraction_get_gluon_pdf
+@
+<<pdf subtraction: pdf subtraction: TBP>>=
+  procedure :: get_quark_pdf => pdf_subtraction_get_quark_pdf
+<<pdf subtraction: procedures>>=
+  function pdf_subtraction_get_quark_pdf (pdf_sub, em, i, scaled) result (pdf)
+    class(pdf_subtraction_t), intent(in) :: pdf_sub
+    integer, intent(in) :: em, i
+    logical, intent(in) :: scaled
+    real(default) :: pdf
+    if (scaled) then
+       pdf = pdf_sub%pdf_scaled(em)%f(i)
+    else
+       pdf = pdf_sub%pdf_born(em)%f(i)
+    end if
+  end function pdf_subtraction_get_quark_pdf
+
+@ %def pdf_subtraction_get_quark_pdf
+@
+<<pdf subtraction: pdf subtraction: TBP>>=
+  procedure :: get_summed_quark_pdf => pdf_subtraction_get_summed_quark_pdf
+<<pdf subtraction: procedures>>=
+  function pdf_subtraction_get_summed_quark_pdf (pdf_sub, em) result (pdf)
+    class(pdf_subtraction_t), intent(in) :: pdf_sub
+    integer, intent(in) :: em
+    real(default) :: pdf
+    integer :: i_quark
+    pdf = 0._default
+    do i_quark = -6, 6
+       if (any(i_quark == pdf_sub%i_light_quarks)) &
+          pdf = pdf + pdf_sub%get_quark_pdf(em, i_quark, scaled = .true.)
+    end do
+  end function pdf_subtraction_get_summed_quark_pdf
+
+@ %def pdf_subtraction_get_summed_quark_pdf
+@
+<<pdf subtraction: pdf subtraction: TBP>>=
+  procedure :: evaluate => pdf_subtraction_evaluate
+<<pdf subtraction: procedures>>=
+  subroutine pdf_subtraction_evaluate (pdf_sub, alpha_s, sqme_born, alr)
+    class(pdf_subtraction_t), intent(inout) :: pdf_sub
+    real(default), intent(in) :: alpha_s
+    real(default), intent(in) :: sqme_born
+    integer, intent(in) :: alr
+    real(default) :: factor, factor_soft, remnant
+    real(default) :: pdfs, pdfb
+    integer :: emitter
+    real(default), dimension(2) :: tmp
+    real(default) :: sb, xb, onemz
+    pdf_sub%value = 0._default
+    sb = pdf_sub%sqrts_born
+    tmp = 0._default
+    do emitter = 1, 2
+      associate (z => pdf_sub%z(emitter))
+        onemz = one - z
+        factor = log(sb/z/pdf_sub%fac_scale2)/onemz + 2*log(onemz)/onemz
+        factor_soft = log(sb/pdf_sub%fac_scale2)/onemz + 2*log(onemz)/onemz
+
+        xb = pdf_sub%x_born(emitter)
+        remnant = log(1-xb)*log(sb/pdf_sub%fac_scale2) + log(1-xb)**2
+
+        if (is_gluon(pdf_sub%flv_in(1))) then
+          pdfs = pdf_sub%get_gluon_pdf (emitter, scaled = .true.)
+          pdfb = pdf_sub%get_gluon_pdf (emitter, scaled = .false.)
+          tmp(emitter) = p_hat_gg(z) * factor/z * pdfs/pdfb &
+                       - p_hat_gg(one) * factor_soft  &
+                       + p_hat_gg(one) * remnant 
+          pdfs = pdf_sub%get_summed_quark_pdf (emitter)
+          tmp(emitter) = tmp(emitter) + (p_hat_qg(z)*factor - p_derived_qg(z))/z * pdfs/pdfb
+        else if (is_quark(abs(pdf_sub%flv_in(emitter)))) then
+          pdfs = pdf_sub%get_quark_pdf (emitter, pdf_sub%flv_in(emitter), scaled = .true.)
+          pdfb = pdf_sub%get_quark_pdf (emitter, pdf_sub%flv_in(emitter), scaled = .false.)
+          tmp(emitter) = p_hat_qq(z) * factor/z * pdfs/pdfb &
+                       - p_derived_qq(z)/z &
+                       - p_hat_qq(one) * factor_soft &
+                       + p_hat_qq(one) * remnant
+          pdfs = pdf_sub%get_gluon_pdf (emitter, scaled = .true.)
+          tmp(emitter) = tmp(emitter) + (p_hat_gq(z)*factor - p_derived_gq(z))/z * pdfs/pdfb
+        end if
+      end associate
+    end do
+    pdf_sub%value(alr) = alpha_s/twopi * (tmp(1)+tmp(2)) * sqme_born     
+  end subroutine pdf_subtraction_evaluate
+
+@ %def pdf_subtraction_evaluate
+@
+<<pdf subtraction: procedures>>=
+  function p_hat_gg (z)
+    real(default) :: p_hat_gg
+  <<p variables>>
+    p_hat_gg = 2*CA*(z + onemz**2/z + z*onemz**2)
+  end function p_hat_gg
+
+  function p_hat_qg (z)
+    real(default) :: p_hat_qg
+  <<p variables>>
+    p_hat_qg = CF * onemz/z * (1+onemz**2)
+  end function p_hat_qg
+
+  function p_hat_gq (z)
+    real(default) :: p_hat_gq
+  <<p variables>>
+    p_hat_gq = TR*(onemz - 2*z*onemz**2)
+  end function p_hat_gq
+
+  function p_hat_qq (z)
+    real(default) :: p_hat_qq
+  <<p variables>>
+    p_hat_qq = CF*(one+z**2)
+  end function p_hat_qq
+
+  function p_derived_gg (z)
+    real(default) :: p_derived_gg
+  <<p variables>>
+    p_derived_gg = 0._default
+  end function p_derived_gg
+
+  function p_derived_qg (z)
+    real(default) :: p_derived_qg
+  <<p variables>>
+    p_derived_qg = -CF*z
+  end function p_derived_qg
+
+  function p_derived_gq (z)
+    real(default) :: p_derived_gq
+  <<p variables>>
+    p_derived_gq = -2*TR*z*onemz
+  end function p_derived_gq
+ 
+  function p_derived_qq (z)
+    real(default) :: p_derived_qq
+  <<p variables>>
+    p_derived_qq = -CF*onemz
+  end function p_derived_qq
+
+<<p variables>>=
+  real(default), intent(in) :: z
+  real(default) :: onemz
+  onemz = one - z
+@ %def p_derived

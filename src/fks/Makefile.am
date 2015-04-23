@@ -35,6 +35,7 @@ libfks_la_SOURCES = \
   nlo_data.f90 \
   virtual.f90 \
   real_subtraction.f90 \
+  pdf_subtraction.f90 \
   nlo_controller.f90 \
   phs_fks.f90
 
@@ -62,6 +63,7 @@ module_lists = \
   ../testing/Modules \
   ../system/Modules \
   ../parsing/Modules \
+  ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
   ../types/Modules \
@@ -69,7 +71,9 @@ module_lists = \
   ../matrix_elements/Modules \
   ../beams/Modules \
   ../me_methods/Modules \
-  ../phase_space/Modules
+  ../phase_space/Modules \
+  ../shower/Modules \
+  ../variables/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -113,7 +117,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../phase_space -I../fastjet
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../phase_space -I../shower -I../variables -I../lhapdf -I../pdf_builtin -I../fastjet
 
 
 ########################################################################

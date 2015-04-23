@@ -81,6 +81,7 @@ module_lists = \
   ../fks/Modules \
   ../model_features/Modules \
   ../variables/Modules \
+  ../shower/Modules \
   ../process_integration/Modules
 
 $(module_lists):
@@ -125,7 +126,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../expr_base -I../types -I../particles -I../beams -I../matrix_elements -I../me_methods -I../phase_space -I../mci -I../user -I../blha -I../gosam -I../openloops -I../fks -I../model_features -I../variables -I../process_integration -I../fastjet -I../../vamp/src
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../expr_base -I../types -I../particles -I../beams -I../matrix_elements -I../me_methods -I../phase_space -I../mci -I../user -I../blha -I../gosam -I../openloops -I../fks -I../model_features -I../variables -I../shower -I../process_integration -I../fastjet -I../../vamp/src -I../lhapdf -I../pdf_builtin
 
 ########################################################################
 ## Default Fortran compiler options

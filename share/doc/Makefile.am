@@ -62,6 +62,8 @@ html_DATA = manual.html index.html
 endif HEVEA_AVAILABLE
 endif DISTRIBUTION
 
+GML=../../src/gamelan/whizard-gml --math=scaled -halt-on-error --gmldir ../../src/gamelan
+
 LATEX_STYLES = \
     noweb.sty thophys.sty gamelan.sty hevea.sty
 
@@ -79,9 +81,10 @@ gamelan_manual.pdf: gamelan.sty
 ## Rules for creating PS
 .tex.dvi:
 	-TEXINPUTS=$(TEX_FLAGS) $(LATEX) $<; \
-	while grep 'Rerun to get cross-references right\.' $<.log; \
+	while grep 'Rerun to get cross-references right\.' $*.log; \
 	do TEXINPUTS=$(TEX_FLAGS) $(LATEX) $<; \
 	done
+	-test -r $*.mp && $(GML) $*
 	TEXINPUTS=$(TEX_FLAGS) $(LATEX) $<
 .dvi.ps:
 	$(DVIPS) -o $@ $<
@@ -93,13 +96,14 @@ if DISTRIBUTION
 if PDFLATEX_AVAILABLE
 .tex.pdf:
 	-TEXINPUTS=$(TEX_FLAGS) $(PDFLATEX) $<; \
-	while grep 'Rerun to get cross-references right\.' $<.log; \
+	while grep 'Rerun to get cross-references right\.' $*.log; \
 	do TEXINPUTS=$(TEX_FLAGS) $(PDFLATEX) $<; \
 	done
+	-test -r $*.mp && $(GML) $*
 	TEXINPUTS=$(TEX_FLAGS) $(PDFLATEX) $<
 else
 if PS2PDF_AVAILABLE
-ps.pdf:
+.ps.pdf:
 	$(PS2PDF) $<.ps
 else
 	@echo "Neither pdflatex nor ps2pdf available. The PDF manual cannot be made"
@@ -162,14 +166,15 @@ endif NOWEB_AVAILABLE
 
 ## Cleanup tasks
 mostlyclean-latex:
-	-rm -f *.aux *.log *.dvi *.toc *.idx *.out \
-	manual.ps manual.pdf
+	-rm -f *.aux *.log *.dvi *.toc *.idx *.out *.ltp *.mp *.mpx *.glo \
+	gamelan_manual.[1-9] gamelan_manual.[1-9][0-9] \
+	manual.ps manual.pdf gamelan_manual.ps gamelan_manual.pdf
 clean-latex:
 maintainer-clean-latex:
-	-rm manual.ps manual.pdf
+	-rm manual.ps manual.pdf gamelan_manual.ps gamelan_manual.pdf
 if NOWEB_AVAILABLE
 mostlyclean-whizard:
-	-rm -f $(PACKAGE).tex $(PACKAGE).ps $(PACKAGE).pdf
+	-rm -f $(PACKAGE).tex $(PACKAGE).ps $(PACKAGE).pdf gamelan.sty
 maintainer-clean-whizard:
 else
 mostlyclean-whizard:

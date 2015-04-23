@@ -81,7 +81,8 @@ module_lists = \
   ../openloops/Modules \
   ../fks/Modules \
   ../variables/Modules \
-  ../parsing/Modules
+  ../parsing/Modules \
+  ../shower/Modules
 
 include_modules_bare = ${module_lists:/Modules=}
 include_modules = ${include_modules_bare:../%=-I../%}
@@ -128,7 +129,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../fastjet
+AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../lhapdf -I../pdf_builtin -I../fastjet
 
 ########################################################################
 ## Default Fortran compiler options

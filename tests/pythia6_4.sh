@@ -8,10 +8,10 @@ if test -f OCAML_FLAG -a -f PYTHIA6_FLAG; then
     cat ${script}a.debug >> $script.log
     echo "Partial contents of ${script}b.debug:" >> $script.log
     cat ${script}b.debug >> $script.log
-    echo "Partial contents of ${script}c.debug:" >> $script.log
-    cat ${script}c.debug >> $script.log
-    echo "Partial contents of ${script}d.debug:" >> $script.log
-    cat ${script}d.debug >> $script.log
+#    echo "Partial contents of ${script}c.debug:" >> $script.log
+#    cat ${script}c.debug >> $script.log
+#    echo "Partial contents of ${script}d.debug:" >> $script.log
+#    cat ${script}d.debug >> $script.log
     diff ref-output/$script.ref $script.log
 else
     echo "|=============================================================================|"
