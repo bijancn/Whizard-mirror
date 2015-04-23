@@ -2360,10 +2360,10 @@ $k_T$-ordered showers.
           call shower%write ()
        end if
 
-       call shower%matching%after_shower ()
-
        call shower%combine_with_particle_set (particle_set, model, &
             model_hadrons)
+
+       call shower%matching%after_shower (particle_set)
 
        !!! move the particle data to the PYTHIA COMMON BLOCKS in case
        !!! hadronization is active
@@ -2385,6 +2385,16 @@ $k_T$-ordered showers.
 
 @ %def shower_generate_emissions
 @
+@
+<<Shower core: shower: TBP>>=
+  procedure :: cleanup => shower_cleanup
+<<Shower core: procedures>>=
+  pure subroutine shower_cleanup (shower)
+    class(shower_t), intent(inout) :: shower
+    implementation
+  end subroutine shower_cleanup
+
+@ %def shower_cleanup
 <<Copy hadrons from [[particle_set]] to hadrons>>=
 j = 0
 if (n_beam > 0 .and. all (particle_set%prt(1:2)%flv%get_pdg_abs () > TAU)) then
@@ -2482,75 +2492,6 @@ if (shower%settings%muli_active) then
         n2=shower%interactions(1)%i%partons(2)%p%parent%nr)
 end if
 @
-<<Shower core: public>>=
-  public :: matching_transfer_PS
-<<Shower core: procedures>>=
-  subroutine matching_transfer_PS &
-       (data, particle_set, settings)
-    !!! transfer partons after parton shower to data%P_PS
-    type(mlm_matching_data_t), intent(inout) :: data
-    type(particle_set_t), intent(in) :: particle_set
-    type(mlm_matching_settings_t), intent(in) :: settings
-    integer :: i, j, n_jets_PS
-    integer, dimension(2) :: col
-    type(particle_t) :: tempprt
-    real(double) :: eta
-    type(vector4_t) :: p_tmp
-
-    !!! loop over particles and extract final colored ones with eta<etamax
-    n_jets_PS = 0
-    do i = 1, particle_set%get_n_tot ()
-       if (signal_is_pending ()) return
-       tempprt = particle_set%get_particle (i)
-       if (tempprt%get_status () /= PRT_OUTGOING) cycle
-       col = tempprt%get_color ()
-       if (all (col == 0)) cycle
-       if (data%is_hadron_collision) then
-          p_tmp = tempprt%get_momentum ()
-          if (energy (p_tmp) - longitudinal_part (p_tmp) < 1.E-10_default .or. &
-               energy (p_tmp) + longitudinal_part (p_tmp) < 1.E-10_default) then
-             eta = pseudorapidity (p_tmp)
-          else
-             eta = rapidity (p_tmp)
-          end if
-          if (eta > settings%mlm_etaClusfactor * &
-               settings%mlm_etamax)  then
-             if (DEBUG_SHOWER) then
-                print *, "REJECTING"
-                call tempprt%write ()
-             end if
-             cycle
-          end if
-       end if
-       n_jets_PS = n_jets_PS + 1
-    end do
-
-    allocate (data%P_PS(1:n_jets_PS))
-    if (DEBUG_SHOWER)  write (*, "(A,1x,I0)")  "n_jets_ps =", n_jets_ps
-
-    j = 1
-    do i = 1, particle_set%get_n_tot ()
-       tempprt = particle_set%get_particle (i)
-       if (tempprt%get_status () /= PRT_OUTGOING) cycle
-       col = tempprt%get_color ()
-       if (all(col == 0)) cycle
-       if (data%is_hadron_collision) then
-          p_tmp = tempprt%get_momentum ()
-          if (energy (p_tmp) - longitudinal_part (p_tmp) < 1.E-10_default .or. &
-               energy (p_tmp) + longitudinal_part (p_tmp) < 1.E-10_default) then
-             eta = pseudorapidity (p_tmp)
-          else
-             eta = rapidity (p_tmp)
-          end if
-          if (eta > settings%mlm_etaClusfactor * &
-               settings%mlm_etamax) cycle
-       end if
-       data%P_PS(j) = tempprt%get_momentum ()
-       j = j + 1
-    end do
-  end subroutine matching_transfer_PS
-
-@ %def matching_transfer_PS
 @ The parameters of the shower module:
 <<Shower core: parameters>>=
   real(default), save :: alphasxpdfmax = 12._default
@@ -7948,6 +7889,74 @@ jet momenta.
   end subroutine mlm_matching_after_shower
 
 @ %def mlm_matching_after_shower
+<<MLM Matching: public>>=
+  public :: matching_transfer_PS
+<<MLM Matching: procedures>>=
+  subroutine matching_transfer_PS &
+       (matching, particle_set, settings)
+    !!! transfer partons after parton shower to matching%P_PS
+    type(mlm_matching_t), intent(inout) :: matching
+    type(particle_set_t), intent(in) :: particle_set
+    integer :: i, j, n_jets_PS
+    integer, dimension(2) :: col
+    type(particle_t) :: tempprt
+    real(double) :: eta
+    type(vector4_t) :: p_tmp
+
+    !!! loop over particles and extract final colored ones with eta<etamax
+    n_jets_PS = 0
+    do i = 1, particle_set%get_n_tot ()
+       if (signal_is_pending ()) return
+       tempprt = particle_set%get_particle (i)
+       if (tempprt%get_status () /= PRT_OUTGOING) cycle
+       col = tempprt%get_color ()
+       if (all (col == 0)) cycle
+       if (matching%is_hadron_collision) then
+          p_tmp = tempprt%get_momentum ()
+          if (energy (p_tmp) - longitudinal_part (p_tmp) < 1.E-10_default .or. &
+               energy (p_tmp) + longitudinal_part (p_tmp) < 1.E-10_default) then
+             eta = pseudorapidity (p_tmp)
+          else
+             eta = rapidity (p_tmp)
+          end if
+          if (eta > settings%mlm_etaClusfactor * &
+               settings%mlm_etamax)  then
+             if (DEBUG_SHOWER) then
+                print *, "REJECTING"
+                call tempprt%write ()
+             end if
+             cycle
+          end if
+       end if
+       n_jets_PS = n_jets_PS + 1
+    end do
+
+    allocate (matching%P_PS(1:n_jets_PS))
+    if (DEBUG_SHOWER)  write (*, "(A,1x,I0)")  "n_jets_ps =", n_jets_ps
+
+    j = 1
+    do i = 1, particle_set%get_n_tot ()
+       tempprt = particle_set%get_particle (i)
+       if (tempprt%get_status () /= PRT_OUTGOING) cycle
+       col = tempprt%get_color ()
+       if (all(col == 0)) cycle
+       if (matching%is_hadron_collision) then
+          p_tmp = tempprt%get_momentum ()
+          if (energy (p_tmp) - longitudinal_part (p_tmp) < 1.E-10_default .or. &
+               energy (p_tmp) + longitudinal_part (p_tmp) < 1.E-10_default) then
+             eta = pseudorapidity (p_tmp)
+          else
+             eta = rapidity (p_tmp)
+          end if
+          if (eta > settings%mlm_etaClusfactor * &
+               settings%mlm_etamax) cycle
+       end if
+       matching%P_PS(j) = tempprt%get_momentum ()
+       j = j + 1
+    end do
+  end subroutine matching_transfer_PS
+
+@ %def matching_transfer_PS
 @
 <<MLM Matching: mlm matching: TBP>>=
   procedure :: apply => mlm_matching_apply
