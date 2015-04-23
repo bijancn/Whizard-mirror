@@ -64,7 +64,6 @@ module event_transforms
   use phs_single
   use processes
   use process_stacks
-  use powheg
   
 <<Standard module head>>
 
@@ -614,15 +613,20 @@ end module hadrons
 @
 \subsection{Hadronization implementations}
 <<Hadrons: public>>=
-  public :: HADRONS_PYTHIA6, HADRONS_PYTHIA8
+  public :: HADRONS_PYTHIA6, HADRONS_PYTHIA8, HADRONS_UNDEFINED
 <<Hadrons: parameters>>=
   integer, parameter :: HADRONS_PYTHIA6 = 1
   integer, parameter :: HADRONS_PYTHIA8 = 2
   integer, parameter :: HADRONS_UNDEFINED = 17
 @ %def HADRONS_PYTHIA6 HADRONS_PYTHIA8 HADRONS_UNDEFINED
 @ A dictionary
-<<Hadrons: public>>=
-  public :: hadrons_method_of_string
+<<Shower base: public>>=
+  public :: hadrons_method
+<<Shower base: interfaces>>=
+  interface hadrons_method
+     module procedure hadrons_method_of_string
+     module procedure hadrons_method_to_string
+  end interface
 <<Hadrons: procedures>>=
   elemental function hadrons_method_of_string (string) result (i)
     integer :: i
@@ -637,11 +641,6 @@ end module hadrons
     end select
   end function hadrons_method_of_string
 
-@ %def hadrons_method_of_string
-@
-<<Hadrons: public>>=
-  public :: hadrons_method_to_string
-<<Hadrons: procedures>>=
   elemental function hadrons_method_to_string (i) result (string)
     type(string_t) :: string
     integer, intent(in) :: i
@@ -655,7 +654,7 @@ end module hadrons
     end select
   end function hadrons_method_to_string
 
-@ %def hadrons_method_to_string
+@ %def hadrons_method
 @
 \subsection{Abstract Hadronization Type}
 The [[model]] is the fallback model including all hadrons
@@ -3840,32 +3839,15 @@ we mark the particle set as invalid. This procedure directly takes the
     vetoed = .false.
     if (evt%previous%particle_set_exists) then
        evt%particle_set = evt%previous%particle_set
-       if (evt%settings%powheg_matching) then
-          call evt%powheg%update (evt%particle_set)
-          if (TEST_SUDAKOV) then
-             call evt%powheg%test_sudakov ()
-             stop
-          end if
-          call evt%powheg%generate_emission (particle_set = evt%particle_set)
-          if (DEBUG_EVT_SHOWER) call evt%powheg%write ()
-       end if       
+       call evt%matching%before_shower (evt%particle_set)
        if (evt%settings%method == PS_PYTHIA6 .or. &
            evt%settings%hadronization_active) then
           call assure_heprup (evt%particle_set)
        end if
-       if (evt%settings%ckkw_matching) then
-          select type (data => evt%data)
-          type is (ckkw_matching_data_t)
-             call ckkw_pseudo_shower_weights_init (data%ckkw_weights)
-             call ckkw_fake_pseudo_shower_weights (evt%matching_settings, &
-                  data%ckkw_weights, evt%particle_set)
-          end select
-       end if
        if (evt%settings%fsr_active .or. &
             evt%settings%isr_active .or. &
             evt%settings%hadronization_active .or. &
-            evt%settings%mlm_matching .and. &
-            .not. POWHEG_TESTING) then
+            evt%settings%mlm_matching) then
           do i = 1, 2
              prt_in(i) = evt%particle_set%get_particle (i)
           end do
@@ -3963,65 +3945,6 @@ irrelevant.
   end subroutine evt_shower_final
 
 @ %def evt_shower_final
-@
-\subsubsection{Matching functions}
-@ Generate fake ckkw weights. This can be dropped, once information
-from the matrix element generation is available.
-<<Shower: public>>=
-  public :: ckkw_fake_pseudo_shower_weights
-<<Shower: procedures>>=
-  subroutine ckkw_fake_pseudo_shower_weights &
-       (settings, &
-        ckkw_pseudo_shower_weights, particle_set)
-    class(matching_settings_t), intent(inout) :: settings
-    type(ckkw_pseudo_shower_weights_t), intent(inout) :: &
-         ckkw_pseudo_shower_weights
-    type(particle_set_t), intent(in) :: particle_set
-    type(particle_t) :: prt
-    integer :: i, j
-    integer :: n
-    type(vector4_t) :: momentum
-
-    select type (settings)
-    type is (ckkw_matching_settings_t)    
-       settings%alphaS = 1.0_default
-       settings%Qmin = 1.0_default
-       settings%n_max_jets = 3
-    class default
-       call msg_fatal ("CKKW matching called with wrong data.")
-    end select
-       
-    n = 2**particle_set%get_n_tot()
-    if (allocated (ckkw_pseudo_shower_weights%weights)) then 
-       deallocate (ckkw_pseudo_shower_weights%weights)
-    end if
-    allocate (ckkw_pseudo_shower_weights%weights (1:n))
-    do i = 1, n
-       momentum = vector4_null
-       do j = 1, particle_set%get_n_tot ()
-          if (btest (i,j-1)) then
-             prt = particle_set%get_particle (j) 
-             momentum = momentum + prt%get_momentum ()
-          end if
-       end do
-       if (momentum**1 > 0.0) then
-          ckkw_pseudo_shower_weights%weights(i) = 1.0 / (momentum**2)
-       end if
-    end do
-    ! equally distribute the weights by type
-    if (allocated (ckkw_pseudo_shower_weights%weights_by_type)) then
-       deallocate (ckkw_pseudo_shower_weights%weights_by_type)
-    end if
-    allocate (ckkw_pseudo_shower_weights%weights_by_type (1:n, 0:4))
-    do i = 1, n
-       do j = 0, 4
-          ckkw_pseudo_shower_weights%weights_by_type(i,j) = &
-               0.2 * ckkw_pseudo_shower_weights%weights(i)
-       end do
-    end do
-  end subroutine ckkw_fake_pseudo_shower_weights
-  
-@ %def ckkw_fake_pseudo_shower_weights
 @
 \subsection{Unit Tests}
 <<Shower: public>>=
