@@ -17,6 +17,8 @@
   Statements, assignment, expressions and operators.
 \item[object\_logical]
   Logical values and expressions.
+\item[sindarin\_parser]
+  Parse Sindarin code and transform into bytecode and object tree.
 \end{description}
 
  
@@ -65,6 +67,46 @@ locations within a (composite) object.
   integer, parameter, public :: POS_PRIMER = 4
 
 @ %def POS_NONE POS_HERE POS_ID POS_CORE POS_MEMBER POS_PRIMER
+@ The [[position_t]] object combines a location code with an arbitrary integer
+counter.   The type is kept public and transparent.
+<<Codes: public>>=
+  public :: position_t
+<<Codes: types>>=
+  type :: position_t
+     integer :: part = POS_HERE
+     integer :: i = 0
+   contains
+   <<Codes: position: TBP>>
+  end type position_t
+
+@ %def position_t
+<<Codes: position: TBP>>=
+  procedure :: write => position_write
+<<Codes: procedures>>=
+  subroutine position_write (position, unit)
+    class(position_t), intent(in) :: position
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    select case (position%part)
+    case (POS_NONE)
+       write (u, "(1x,'-')", advance="no")
+    case (POS_HERE)
+       write (u, "(1x,'H')", advance="no")
+    case (POS_ID)
+       write (u, "(1x,'I')", advance="no")
+    case (POS_CORE)
+       write (u, "(1x,'C')", advance="no")
+    case (POS_MEMBER)
+       write (u, "(1x,'M',I0)", advance="no")  position%i
+    case (POS_PRIMER)
+       write (u, "(1x,'P',I0)", advance="no")  position%i
+    case default
+       write (u, "(1x,'?')", advance="no")
+    end select
+  end subroutine position_write
+
+@ %def position_write
 @
 \subsection{Object categories}
 Category codes for atomic objects.
@@ -350,6 +392,19 @@ These are the Fortran elementary types that we allow.
        
 @ %def val_logical_read 
 @ %def val_logical_write
+<<Codes: code: TBP>>=
+  procedure :: create_logical_val
+<<Codes: procedures>>=
+  subroutine create_logical_val (code, item)
+    class(code_t), intent(inout) :: code
+    logical, intent(in) :: item
+    call create_val (code%val, VT_LOGICAL, 1)
+    select type (val => code%val)
+    type is (val_logical_t);  val%x(1) = item
+    end select
+  end subroutine create_logical_val
+  
+@ %def create_logical_val
 @
 \subsubsection{String}
 <<Codes: public>>=
@@ -431,8 +486,21 @@ to [[NAME_LEN_MAX]]
        
 @ %def val_string_read 
 @ %def val_string_write
+<<Codes: code: TBP>>=
+  procedure :: create_string_val
+<<Codes: procedures>>=
+  subroutine create_string_val (code, item)
+    class(code_t), intent(inout) :: code
+    type(string_t), intent(in) :: item
+    call create_val (code%val, VT_STRING, 1)
+    select type (val => code%val)
+    type is (val_string_t);  val%x(1) = item
+    end select
+  end subroutine create_string_val
+  
+@ %def create_string_val
 @
-\subsection{Value constructor}
+\subsection{Generic value constructor}
 Depending on the value code, we allocate a specific value object.
 <<Codes: code: TBP>>=
   procedure, nopass :: create_val
@@ -579,7 +647,7 @@ Finalizer:
 @
 Output:
 <<Builder: builder: TBP>>=
-procedure(builder_write), deferred :: write
+  procedure(builder_write), deferred :: write
 <<Builder: interfaces>>=
   abstract interface
      subroutine builder_write (builder, unit)
@@ -676,6 +744,7 @@ module object_base
   use unit_tests
   use format_utils
   use io_units
+  use diagnostics
   use codes
 
 <<Standard module head>>
@@ -1222,18 +1291,6 @@ The [[has_value]] variant is true if the core represents a value.  The
   
 @ %def object_get_member_ptr
 @ %def object_get_primer_ptr
-@ Return the evaluation status.  This is always true for a data object, but
-varies for a statement or expression object.
-<<Object base: object: TBP>>=
-  procedure :: is_evaluated => object_is_evaluated
-<<Object base: procedures>>=
-  pure function object_is_evaluated (object) result (flag)
-    class(object_t), intent(in) :: object
-    logical :: flag
-    flag = .true.
-  end function object_is_evaluated
-  
-@ %def object_is_evaluated
 @ Return the definition status.  An object is defined if it has a value and
 the value is defined.  Generic objects are undefined.
 <<Object base: object: TBP>>=
@@ -1349,6 +1406,8 @@ prototype includes the core, we do not need to build value objects.
        type is (id_t)
           call object%init_from_code (code)
        end select
+    case (CAT_REFERENCE)
+       allocate (reference_t :: object)
     case default
        object => null ()
     end select
@@ -1420,6 +1479,133 @@ object.
   end subroutine object_find
     
 @ %def object_find
+@ This is invalid for all objects except assignment, where it fills the stack
+of matching items that will be assigned.
+<<Object base: object: TBP>>=
+  procedure :: push => object_push
+<<Object base: procedures>>=
+  subroutine object_push (object, lhs, rhs)
+    class(object_t), intent(inout) :: object
+    class(value_t), intent(in), pointer :: lhs, rhs
+    call msg_bug ("Object: push method invalid in this context")
+  end subroutine object_push
+  
+@ %def object_push
+@ Match an object [[source]] against a pattern object [[ref]], iteratively and
+recursively.  Return [[success]].  If also [[master]] is provided, call its
+[[push]] method for any matching item pair.
+
+We use a pair of iterators, one for the lhs and one for the rhs.  We iterate
+over the lhs and track the moves of the iterator.  Whenever we go to a core,
+we go to the core of the rhs and match the values, if any.  For a successful
+match, the lhs and rhs value pointer pair is pushed onto the assignment item
+stack.  When we go to a member, we check if we actually can assign it.  If
+yes, we take its name and find the corresponding member on the rhs.  The
+member indices need not coincide, then we navigate to the member core(s).
+Finally, when the current lhs object is exhausted, we also skip the current
+rhs object.
+
+Also, the match fails if any [[lhs]] object has mode ABSTRACT.
+
+TODO: distinguish VARIABLE/CONSTANT
+
+TODO: assignment for primer statements.
+
+Any mismatch immediately aborts the matching procedure.
+<<Object base: object: TBP>>=
+  procedure :: match => object_match
+<<Object base: procedures>>=
+  recursive subroutine object_match (ref, source, success, master)
+    class(object_t), intent(in), target :: ref
+    class(object_t), intent(in), target :: source
+    logical, intent(out) :: success
+    class(object_t), intent(inout), optional :: master
+    type(object_iterator_t) :: it_lhs, it_rhs
+    class(object_t), pointer :: lhs, rhs, rhs_context
+    class(value_t), pointer :: lval, rval
+    type(position_t) :: position
+    integer :: part, i
+    logical :: mutable, required
+    lhs => ref
+    rhs => source
+    call it_lhs%init (lhs)
+    call it_rhs%init (rhs)
+    ITERATE: do while (it_lhs%is_valid ())
+       call it_lhs%get_next_position (position)
+       select case (position%part)
+       case (POS_NONE)
+          call it_lhs%to_context (success);  if (.not. success)  exit ITERATE
+          call it_rhs%to_context (success);  if (.not. success)  exit ITERATE
+       case (POS_ID)
+          call it_lhs%to_id (success);  if (.not. success)  exit ITERATE
+          call it_rhs%to_id (success);  if (.not. success)  exit ITERATE
+          call it_lhs%get_object (lhs)
+          call it_rhs%get_object (rhs)
+          select type (lhs)
+             class is (id_t)
+             call lhs%match (rhs, success);  if (.not. success)  exit ITERATE
+             if (present (master)) then
+                select type (rhs)
+                class is (id_t)
+                   lval => lhs
+                   rval => rhs
+                   call master%push (lval, rval)
+                end select
+             end if
+          end select
+       case (POS_CORE)
+          call it_lhs%to_core (success);  if (.not. success)  exit ITERATE
+          call it_rhs%to_core (success);  if (.not. success)  exit ITERATE
+          call it_lhs%get_object (lhs)
+          call it_rhs%get_object (rhs)
+          select type (lhs)
+             class is (value_t)
+             call lhs%match (rhs, success);  if (.not. success)  exit ITERATE
+             if (present (master)) then
+                select type (rhs)
+                class is (value_t)
+                   lval => lhs
+                   rval => rhs
+                   call master%push (lval, rval)
+                end select
+             end if
+          end select
+       case (POS_MEMBER)
+          call it_lhs%to_member &
+               (position%i, success);  if (.not. success)  exit ITERATE
+          call it_lhs%get_object (lhs)
+          select type (lhs)
+             class is (composite_t)
+             call lhs%check_mode (mutable)
+             call lhs%check_role (required)
+          end select
+          if (mutable .or. required) then
+             call it_rhs%get_object (rhs_context)
+             select type (rhs_context)
+                class is (composite_t)
+                call rhs_context%find_member (lhs%get_name (), index=i)
+             end select
+             if (i > 0) then
+                call it_rhs%to_member &
+                     (i, success);  if (.not. success)  exit ITERATE
+             else if (required) then
+                success = .false.;  exit ITERATE
+             else
+                call it_lhs%to_context &
+                     (success);  if (.not. success)  exit ITERATE
+             end if
+          else
+             call it_lhs%to_context &
+                  (success);  if (.not. success)  exit ITERATE
+          end if
+       case default
+          call it_lhs%to_context &
+               (success);  if (.not. success)  exit ITERATE
+       end select
+    end do ITERATE
+  end subroutine object_match
+    
+@ %def object_match
 @
 \subsection{Tag Object Type}
 A tag is an atomic object with no content, it just exists.  (As a
@@ -1604,13 +1790,14 @@ whether the assignment is allowed.
   procedure :: match => value_match
   procedure :: assign => value_assign
 <<Object base: procedures>>=
-  subroutine value_match (object, source, success)
-    class(value_t), intent(in) :: object
-    class(object_t), intent(in) :: source
+  subroutine value_match (ref, source, success, master)
+    class(value_t), intent(in), target :: ref
+    class(object_t), intent(in), target :: source
     logical, intent(out) :: success
+    class(object_t), intent(inout), optional :: master
     select type (source)
     class is (value_t)
-       call object%match_value (source, success)
+       call ref%match_value (source, success)
     class default
        success = .false.
     end select
@@ -1693,10 +1880,7 @@ object value.
     integer :: u, i
     u = given_output_unit (unit)
     if (allocated (object%path)) then
-       do i = 1, size (object%path)
-          if (i > 1)  write (u, "('.')", advance="no")
-          write (u, "(A)", advance="no")  char (object%path(i))
-       end do
+       write (u, "(A)", advance="no")  char (object%get_path_string ())
     else
        write (u, "(A)", advance="no")  "<id>"
     end if
@@ -1716,11 +1900,13 @@ The name is [[id]]
   end function id_get_name
 
 @ %def id_get_name  
-@ Return the path.
+@ Return the path, either as a string array or as a string, concatenated by
+dots.
 <<Object base: id: TBP>>=
   procedure :: get_path => id_get_path
+  procedure :: get_path_string => id_get_path_string
 <<Object base: procedures>>=
-  function id_get_path (object) result (path)
+  pure function id_get_path (object) result (path)
     class(id_t), intent(in) :: object
     type(string_t), dimension(:), allocatable :: path
     if (allocated (object%path)) then
@@ -1729,7 +1915,24 @@ The name is [[id]]
     end if
   end function id_get_path
   
+  pure function id_get_path_string (object) result (path)
+    class(id_t), intent(in) :: object
+    type(string_t) :: path
+    integer :: i
+    path = ""
+    if (allocated (object%path)) then
+       do i = 1, size (object%path)
+          if (i == 1) then
+             path = object%path(i)
+          else
+             path = path // "." // object%path(i)
+          end if
+       end do
+    end if
+  end function id_get_path_string
+  
 @ %def id_get_path
+@ %def id_get_path_string
 @
 \subsubsection{Construction and initialization}
 Instantiate: likely unused.
@@ -1921,7 +2124,6 @@ queries are delegated.
   procedure :: is_reference => wrapper_is_reference
   procedure :: is_statement => wrapper_is_statement
   procedure :: is_expression => wrapper_is_expression
-  procedure :: is_evaluated => wrapper_is_evaluated
   procedure :: is_defined => wrapper_is_defined
 <<Object base: procedures>>=
   pure recursive function wrapper_is_reference (object) result (flag)
@@ -1954,16 +2156,6 @@ queries are delegated.
     end if
   end function wrapper_is_expression
   
-  pure recursive function wrapper_is_evaluated (object) result (flag)
-    class(wrapper_t), intent(in) :: object
-    logical :: flag
-    if (associated (object%core)) then
-       flag = object%core%is_evaluated ()
-    else
-       flag = .false.
-    end if
-  end function wrapper_is_evaluated
-  
   pure recursive function wrapper_is_defined (object) result (flag)
     class(wrapper_t), intent(in) :: object
     logical :: flag
@@ -1975,11 +2167,9 @@ queries are delegated.
   end function wrapper_is_defined
   
 @ %def wrapper_is_reference
-@ %def wrapper_has_value
 @ %def wrapper_is_statement
 @ %def wrapper_is_expression
 @ %def wrapper_is_defined
-@ %def wrapper_is_evaluated
 @ Return pointer to the core.
 <<Object base: wrapper: TBP>>=
   procedure :: get_core_ptr => wrapper_get_core_ptr
@@ -2048,20 +2238,24 @@ inserted as the core before proceeding.
     type(position_t), intent(inout) :: position
     class(object_t), intent(out), pointer, optional :: next_object
     class(object_t), intent(inout), pointer, optional :: import_object
-    select case (position%part)
-    case (POS_CORE)
+    if (object%is_statement ()) then
        call object_next_position (object, position, next_object)
-    case default
-       if (present (import_object)) then
-          call object%import_core (import_object)
-       end if
-       if (associated (object%core)) then
-          position%part = POS_CORE
-          if (present (next_object))  next_object => object%core
-       else
+    else       
+       select case (position%part)
+       case (POS_CORE)
           call object_next_position (object, position, next_object)
-       end if
-    end select
+       case default
+          if (present (import_object)) then
+             call object%import_core (import_object)
+          end if
+          if (associated (object%core)) then
+             position%part = POS_CORE
+             if (present (next_object))  next_object => object%core
+          else
+             call object_next_position (object, position, next_object)
+          end if
+       end select
+    end if
   end subroutine wrapper_next_position
   
 @ %def wrapper_next_position
@@ -2091,11 +2285,19 @@ Find: refer to the context object.
 This extension of a wrapper behaves as a pointer to the core object.  We have
 to assume that the target object of that core has been allocated remotely, and
 should not be deallocated from here.
+
+The target is identified via the [[id]] component.  Initially, the core object
+is unassigned.  To resolve a reference, we search for the referenced object
+and link it to the core.
+
+TODO: For references as user-level objects, we would need a prototype matching
+feature.  The current implementation does not type-check.
 <<Object base: public>>=
   public :: reference_t
 <<Object base: types>>=
   type, extends (wrapper_t) :: reference_t
      private
+     class(object_t), pointer :: id => null ()
    contains
    <<Object base: reference: TBP>>
   end type reference_t
@@ -2110,6 +2312,10 @@ The finalizer should not finalize the core.  However, it should call
 <<Object base: procedures>>=
   recursive subroutine reference_final (object)
     class(reference_t), intent(inout) :: object
+    if (associated (object%id)) then
+       call object%id%final ()
+       deallocate (object%id)
+    end if
     if (associated (object%core)) then
        call remove_object (object%core)
     end if
@@ -2127,7 +2333,15 @@ The output procedures are delegated to the core as appropriate.
     class(reference_t), intent(in) :: object
     integer, intent(in), optional :: unit
     integer, intent(in), optional :: indent
-    if (associated (object%core)) then
+    integer :: u
+    u = given_output_unit (unit)
+    if (associated (object%id)) then
+       if (object%id%is_defined ()) then
+          call object%id%write_as_statement (unit, indent)
+       else
+          write (u, "('<REF>')", advance="no")
+       end if
+    else if (associated (object%core)) then
        call object%core%write_statement (unit, indent)
     end if
   end subroutine reference_write_statement
@@ -2136,7 +2350,15 @@ The output procedures are delegated to the core as appropriate.
     class(reference_t), intent(in) :: object
     integer, intent(in), optional :: unit
     integer, intent(in), optional :: indent
-    if (associated (object%core)) then
+    integer :: u
+    u = given_output_unit (unit)
+    if (associated (object%id)) then
+       if (object%id%is_defined ()) then
+          call object%id%write_as_expression (unit, indent)
+       else
+          write (u, "('<REF>')", advance="no")
+       end if
+    else if (associated (object%core)) then
        call object%core%write_expression (unit, indent)
     end if
   end subroutine reference_write_expression
@@ -2145,7 +2367,27 @@ The output procedures are delegated to the core as appropriate.
 @ %def reference_write_expression
 @
 \subsubsection{Queries}
-The signature includes a [[reference]] string.
+The name should really be the ID.
+<<Object base: reference: TBP>>=
+  procedure :: get_name => reference_get_name
+<<Object base: procedures>>=
+  pure recursive function reference_get_name (object) result (name)
+    class(reference_t), intent(in) :: object
+    type(string_t) :: name
+    if (associated (object%id)) then
+       select type (id => object%id)
+       class is (id_t)
+          name = id%get_path_string ()
+       end select
+    else if (associated (object%core)) then
+       name = object%core%get_name ()
+    else
+       name = "<???>"
+    end if
+  end function reference_get_name
+  
+@ %def reference_get_name
+@ The signature includes a [[reference]] string.
 <<Object base: reference: TBP>>=
   procedure :: get_signature => reference_get_signature
 <<Object base: procedures>>=
@@ -2178,6 +2420,28 @@ The signature includes a [[reference]] string.
   end function reference_is_reference
   
 @ %def reference_is_reference
+@ This query tells whether the object contains an ID subobject.
+<<Object base: reference: TBP>>=
+  procedure :: has_id => reference_has_id
+<<Object base: procedures>>=
+  pure function reference_has_id (object) result (flag)
+    class(reference_t), intent(in) :: object
+    logical :: flag
+    flag = associated (object%id)
+  end function reference_has_id
+  
+@ %def reference_has_id
+@ Return the pointer to the ID subobject, if any.
+<<Object base: reference: TBP>>=
+  procedure :: get_id_ptr => reference_get_id_ptr
+<<Object base: procedures>>=
+  subroutine reference_get_id_ptr (object, id)
+    class(reference_t), intent(in) :: object
+    class(object_t), pointer, intent(out) :: id
+    id => object%id
+  end subroutine reference_get_id_ptr
+  
+@ %def reference_get_id_ptr
 @
 \subsubsection{Construction and Initialization}
 The [[instantiate]] method must be implemented.
@@ -2191,20 +2455,36 @@ The [[instantiate]] method must be implemented.
   end subroutine reference_instantiate
     
 @ %def reference_instantiate
-@ Code is simple.
-
-TODO: We might need a way to identify a remote target.
 <<Object base: reference: TBP>>=
-  procedure :: get_code => reference_get_code
+  procedure :: set_path => reference_set_path
 <<Object base: procedures>>=
-  function reference_get_code (object, repository) result (code)
-    class(reference_t), intent(in), target :: object
-    type(repository_t), intent(in), optional :: repository
-    type(code_t) :: code
-    code%cat = CAT_REFERENCE
-  end function reference_get_code
+  subroutine reference_set_path (object, lhs_path)
+    class(reference_t), intent(inout) :: object
+    type(string_t), dimension(:), intent(in) :: lhs_path
+    allocate (id_t :: object%id)
+    select type (id => object%id)
+    type is (id_t)
+       call id%init (lhs_path)
+    end select
+  end subroutine reference_set_path
+    
+@ %def reference_set_path
+@ Import an existing ID object.
+<<Object base: reference: TBP>>=
+  procedure :: import_id => reference_import_id
+<<Object base: procedures>>=
+  subroutine reference_import_id (object, id)
+    class(reference_t), intent(inout) :: object
+    class(object_t), intent(inout), pointer :: id
+    if (associated (object%id)) then
+       call object%id%final ()
+       deallocate (object%id)
+    end if
+    object%id => id
+    id => null ()
+  end subroutine reference_import_id
   
-@ %def reference_get_code
+@ %def reference_import_id
 @ Link the core as a pointer to an existing object, updating the reference
 count.
 <<Object base: reference: TBP>>=
@@ -2221,6 +2501,44 @@ count.
   end subroutine reference_link_core
     
 @ %def reference_link_core
+@ Resolve: Find the object that belongs to the stored ID and link it to the
+reference's core.
+
+TODO: match the target type against a prototype.
+<<Object base: reference: TBP>>=
+  procedure :: resolve => reference_resolve
+<<Object base: procedures>>=
+  subroutine reference_resolve (object, success)
+    class(reference_t), intent(inout), target :: object
+    logical, intent(out) :: success
+    class(object_t), pointer :: remote
+    if (object%has_id ()) then
+       select type (id => object%id)
+       type is (id_t)
+          call object%find (id%get_path (), remote)
+       end select
+    end if
+    success = associated (remote)
+    if (success) then
+       call object%link_core (remote)
+    end if
+  end subroutine reference_resolve
+    
+@ %def reference_resolve
+@
+\subsubsection{Code}
+Code is simple.  The reference will be followed by the target ID.
+<<Object base: reference: TBP>>=
+  procedure :: get_code => reference_get_code
+<<Object base: procedures>>=
+  function reference_get_code (object, repository) result (code)
+    class(reference_t), intent(in), target :: object
+    type(repository_t), intent(in), optional :: repository
+    type(code_t) :: code
+    code%cat = CAT_REFERENCE
+  end function reference_get_code
+  
+@ %def reference_get_code
 @
 \subsubsection{Tools}
 Dereference.
@@ -2233,7 +2551,7 @@ Dereference.
     if (associated (object%core)) then
        remote => object%core%dereference ()
     else
-       remote => null ()
+       remote => object
     end if
   end function reference_dereference
 
@@ -2266,7 +2584,6 @@ prototype.
      type(string_t) :: name
      integer :: mode = MODE_ABSTRACT
      logical :: intrinsic = .true.
-     logical :: constructed = .false.
      class(composite_t), pointer :: prototype => null ()
      logical, dimension(:), allocatable :: member_is_argument
      type(wrapper_t), dimension(:), pointer :: member => null ()
@@ -2509,12 +2826,16 @@ describes a value.
   pure function composite_has_value (object) result (flag)
     class(composite_t), intent(in) :: object
     logical :: flag
-    select case (object%mode)
-    case (MODE_CONSTANT, MODE_VARIABLE)
-       flag = associated (object%core)
-    case default
+    if (object%is_statement ()) then
        flag = .false.
-    end select
+    else
+       select case (object%mode)
+       case (MODE_CONSTANT, MODE_VARIABLE)
+          flag = associated (object%core)
+       case default
+          flag = .false.
+       end select
+    end if
   end function composite_has_value
   
 @ %def composite_has_value
@@ -2691,18 +3012,17 @@ Instantiate: setup a composite with the same core as the prototype.
   
 @ %def composite_instantiate
 @
-The attribute list consists of [[intrinsic]], [[mode]], and
-[[constructed]], expressed as integers.
+The attribute list consists of [[intrinsic]] and [[mode]], expressed as
+integers.
 
 Attribute codes are assigned as follows:
 \begin{enumerate}
 \item Prototype index, from the repository
+\item [[mode]]
+\item [[intrinsic]] status
 \item Number of members
 \item Number of arguments (included in members)
 \item Number of primer statements
-\item [[mode]]
-\item [[intrinsic]] status
-\item [[constructed]] status
 \end{enumerate}
 <<Object base: composite: TBP>>=
   procedure :: get_code => composite_get_code
@@ -2711,29 +3031,42 @@ Attribute codes are assigned as follows:
     class(composite_t), intent(in), target :: object
     type(repository_t), intent(in), optional :: repository
     type(code_t) :: code
-    code%cat = CAT_COMPOSITE
-    code%natt = 7
-    if (present (repository)) then
-       code%att(1) = object%get_prototype_index (repository)
-    end if
-    code%att(2) = object%get_n_members ()
-    code%att(3) = object%get_n_arguments ()
-    code%att(4) = object%get_n_primers ()
-    code%att(5) = object%mode
-    if (.not. object%intrinsic) then
-       code%att(6) = 1
-    end if
-    if (object%constructed) then
-       code%att(7) = 1
-    end if
-    call code%create_val (code%val, VT_STRING, 1)
-    select type (val => code%val)
-    type is (val_string_t)
-       val%x(1) = object%get_name ()
-    end select
+    call object%get_base_code (code, repository)
+    call object%get_name_code (code)
   end function composite_get_code
   
 @ %def composite_get_code
+@ Separate procedures for base code and name string.
+<<Object base: composite: TBP>>=
+  procedure :: get_base_code => composite_get_base_code
+  procedure :: get_name_code => composite_get_name_code
+<<Object base: procedures>>=
+  subroutine composite_get_base_code (object, code, repository)
+    class(composite_t), intent(in), target :: object
+    type(code_t), intent(inout) :: code
+    type(repository_t), intent(in), optional :: repository
+    code%cat = CAT_COMPOSITE
+    code%natt = 6
+    if (present (repository)) then
+       code%att(1) = object%get_prototype_index (repository)
+    end if
+    code%att(2) = object%mode
+    if (.not. object%intrinsic) then
+       code%att(3) = 1
+    end if
+    code%att(4) = object%get_n_members ()
+    code%att(5) = object%get_n_arguments ()
+    code%att(6) = object%get_n_primers ()
+  end subroutine composite_get_base_code
+  
+  subroutine composite_get_name_code (object, code)
+    class(composite_t), intent(in), target :: object
+    type(code_t), intent(inout) :: code
+    call code%create_string_val (object%get_name ())
+  end subroutine composite_get_name_code
+  
+@ %def composite_get_base_code  
+@ %def composite_get_name_code  
 @ Initialize from code.
 <<Object base: composite: TBP>>=
   procedure :: init_from_code => composite_init_from_code
@@ -2742,18 +3075,21 @@ Attribute codes are assigned as follows:
     class(composite_t), intent(inout) :: object
     type(code_t), intent(in) :: code
     type(string_t) :: name
-    select type (val => code%val)
-    type is (val_string_t);  name = val%x(1)
-    class default;  name = ""
-    end select
+    if (allocated (code%val)) then
+       select type (val => code%val)
+       type is (val_string_t);  name = val%x(1)
+       class default;  name = ""
+       end select
+    else
+       name = ""
+    end if
     call object%init ( &
          name = name, &
-         mode = code%att(5), &
-         n_members = code%att(2), &
-         n_arguments = code%att(3), &
-         n_primers = code%att(4))
-    object%intrinsic = code%att(6) == 0
-    object%constructed = code%att(7) /= 0
+         mode = code%att(2), &
+         n_members = code%att(4), &
+         n_arguments = code%att(5), &
+         n_primers = code%att(6))
+    call object%set_intrinsic (code%att(3) == 0)
   end subroutine composite_init_from_code
 
 @ %def composite_init_from_code
@@ -2766,6 +3102,10 @@ is not provided, the corresponding array is not allocated.
 <<Object base: composite: TBP>>=
   generic :: init => composite_init
   procedure, private :: composite_init
+  procedure :: set_mode => composite_set_mode
+  procedure :: set_intrinsic => composite_set_intrinsic
+  procedure :: init_members => composite_init_members
+  procedure :: init_primers => composite_init_primers
 <<Object base: procedures>>=
   subroutine composite_init &
        (object, name, mode, n_members, n_arguments, n_primers)
@@ -2775,31 +3115,57 @@ is not provided, the corresponding array is not allocated.
     integer, intent(in), optional :: n_members
     integer, intent(in), optional :: n_arguments
     integer, intent(in), optional :: n_primers
-    integer :: i
     object%name = name
-    if (present (mode))  object%mode = mode
+    if (present (mode))  call object%set_mode (mode)
     if (present (n_members)) then
-       allocate (object%member (n_members))
-       do i = 1, n_members
-          call object%member(i)%set_context (object)
-       end do
-       allocate (object%member_is_argument (n_members), source = .false.)
-       if (present (n_arguments)) then
-          object%member_is_argument(1:n_arguments) = .true.
-       end if
+       call object%init_members (n_members, n_arguments)
     end if
     if (present (n_primers)) then
-       allocate (object%primer (n_primers))
-       do i = 1, n_primers
-          call object%primer(i)%set_context (object)
-       end do
-       object%constructed = .false.
-    else
-       object%constructed = .true.
+       call object%init_primers (n_primers)
     end if
   end subroutine composite_init
  
+  subroutine composite_set_mode (object, mode)
+    class(composite_t), intent(inout) :: object
+    integer, intent(in) :: mode
+    object%mode = mode
+  end subroutine composite_set_mode
+
+  subroutine composite_set_intrinsic (object, intrinsic)
+    class(composite_t), intent(inout) :: object
+    logical, intent(in) :: intrinsic
+    object%intrinsic = intrinsic
+  end subroutine composite_set_intrinsic
+
+  subroutine composite_init_members (object, n_members, n_arguments)
+    class(composite_t), intent(inout), target :: object
+    integer, intent(in) :: n_members
+    integer, intent(in), optional :: n_arguments
+    integer :: i
+    allocate (object%member (n_members))
+    do i = 1, n_members
+       call object%member(i)%set_context (object)
+    end do
+    allocate (object%member_is_argument (n_members), source = .false.)
+    if (present (n_arguments)) then
+       object%member_is_argument(1:n_arguments) = .true.
+    end if
+  end subroutine composite_init_members
+ 
+  subroutine composite_init_primers (object, n_primers)
+    class(composite_t), intent(inout), target :: object
+    integer, intent(in) :: n_primers
+    integer :: i
+    allocate (object%primer (n_primers))
+    do i = 1, n_primers
+       call object%primer(i)%set_context (object)
+    end do
+  end subroutine composite_init_primers
+ 
 @ %def composite_init
+@ %def composite_set_mode
+@ %def composite_init_members
+@ %def composite_init_primers
 @
 Mark the object as non-intrinsic.  Default is intrinsic.
 <<Object base: composite: TBP>>=
@@ -2850,43 +3216,42 @@ pointer is discarded.
     class(object_t), intent(inout), pointer :: primer
     call primer%set_context (object%primer(i))
     call object%primer(i)%final ()
-    object%primer(i)%core => primer
-    primer => null ()
+    call object%primer(i)%import_core (primer)
   end subroutine composite_import_primer
     
 @ %def composite_import_primer
 @
 \subsubsection{Evaluation}
-Construct: First resolve the primer statements, recursively, so pointers are
-assigned.  Then evaluate.
+Resolve: First resolve arguments/members, then primer statements.
 <<Object base: composite: TBP>>=
-  procedure :: construct => composite_construct
+  procedure :: resolve => composite_resolve
 <<Object base: procedures>>=
-  recursive subroutine composite_construct (object, success)
+  recursive subroutine composite_resolve (object, success)
     class(composite_t), intent(inout), target :: object
     logical, intent(out) :: success
     integer :: i
     success = .true.
-    if (.not. object%constructed) then
+    if (associated (object%member)) then
+       do i = 1, size (object%member)
+          call object%member(i)%core%resolve (success)
+          if (.not. success)  return
+       end do
+    end if
+    if (associated (object%primer)) then
        do i = 1, size (object%primer)
           call object%primer(i)%core%resolve (success)
           if (.not. success)  return
        end do
-       do i = 1, size (object%primer)
-          call object%primer(i)%core%evaluate ()
-       end do
     end if
-    object%constructed = .true.
-  end subroutine composite_construct
+  end subroutine composite_resolve
   
-@ %def composite_construct
-@ Evaluate all members that are marked as arguments, if they are local
-references.  We can stop at the first member that is not an argument.
+@ %def composite_resolve
+@ Evaluation: first arguments, then primer statements.
 <<Object base: composite: TBP>>=
-  procedure :: evaluate_arguments => composite_evaluate_arguments
+  procedure :: evaluate => composite_evaluate
 <<Object base: procedures>>=
-  recursive subroutine composite_evaluate_arguments (object)
-    class(composite_t), intent(inout) :: object
+  recursive subroutine composite_evaluate (object)
+    class(composite_t), intent(inout), target :: object
     integer :: i
     if (associated (object%member)) then
        do i = 1, size (object%member)
@@ -2895,13 +3260,20 @@ references.  We can stop at the first member that is not an argument.
           end if
        end do
     end if
-  end subroutine composite_evaluate_arguments
-       
-@ %def composite_evaluate_arguments
+    if (associated (object%primer)) then
+       do i = 1, size (object%primer)
+          call object%primer(i)%core%evaluate ()
+       end do
+    end if
+  end subroutine composite_evaluate
+  
+@ %def composite_evaluate
 @
 \subsubsection{Iterator Support}
 Iterate: first scan the members, then core.  Then, return to
 context.
+<<Object base: public>>=
+  public :: composite_next_position
 <<Object base: composite: TBP>>=
   procedure :: next_position => composite_next_position
 <<Object base: procedures>>=
@@ -2930,8 +3302,8 @@ context.
           if (present (next_object)) &
                next_object => object%primer(position%i)%core
        else
-          call object%wrapper_t%next_position &
-               (position, next_object, import_object)
+          call wrapper_next_position &
+               (object, position, next_object, import_object)
        end if
     case (POS_MEMBER)
        if (position%i < size (object%member)) then
@@ -2950,8 +3322,8 @@ context.
           if (present (next_object)) &
                next_object => object%primer(position%i)%core
        else
-          call object%wrapper_t%next_position &
-               (position, next_object, import_object)
+          call wrapper_next_position &
+               (object, position, next_object, import_object)
        end if
     case (POS_PRIMER)
        if (position%i < size (object%primer)) then
@@ -2959,14 +3331,15 @@ context.
           if (present (import_object)) then
              call object%import_primer (position%i, import_object)
           end if
-          if (present (next_object))  next_object => object%primer(position%i)
+          if (present (next_object)) &
+               next_object => object%primer(position%i)%core
        else
-          call object%wrapper_t%next_position &
-               (position, next_object, import_object)
+          call wrapper_next_position &
+               (object, position, next_object, import_object)
        end if
     case default
-       call object%wrapper_t%next_position &
-            (position, next_object, import_object)
+       call wrapper_next_position &
+            (object, position, next_object, import_object)
     end select
   end subroutine composite_next_position
   
@@ -3034,6 +3407,30 @@ member is not found, return a null pointer.
   end subroutine composite_find_member
     
 @ %def composite_find_member
+@ Expand the member array by inserting empty entries at the end.
+<<Object base: composite: TBP>>=
+  procedure :: expand => composite_expand
+<<Object base: procedures>>=
+  subroutine composite_expand (object, n_extra, is_argument)
+    class(composite_t), intent(inout) :: object
+    integer, intent(in) :: n_extra
+    logical, intent(in) :: is_argument
+    type(wrapper_t), dimension(:), pointer :: member
+    class(object_t), pointer :: core
+    integer :: i
+    member => object%member
+    allocate (object%member (object%get_n_members () + n_extra))
+    if (associated (member)) then
+       do i = 1, size (member)
+          call member(i)%get_core_ptr (core)
+          if (associated (core))  call object%import_member (i, core)
+       end do
+    end if
+    object%member_is_argument = &
+         [object%member_is_argument, spread (is_argument, 1, n_extra)]
+  end subroutine composite_expand
+    
+@ %def composite_expand
 @
 \subsection{Repository}
 A repository is a simple extension of a generic [[composite_t]] object.  It
@@ -3113,24 +3510,29 @@ prototype name or use a known member index.
     
 @ %def spawn_by_name
 @ %def spawn_by_index
+@ Extract an array that contains all member names, so we have an independent
+lookup for prototypes.
+<<Object base: repository: TBP>>=
+  procedure :: get_prototype_names => repository_get_prototype_names
+<<Object base: procedures>>=
+  subroutine repository_get_prototype_names (repository, name)
+    class(repository_t), intent(in) :: repository
+    type(string_t), dimension(:), allocatable, intent(out) :: name
+    class(object_t), pointer :: prototype
+    integer :: i
+    allocate (name (repository%get_n_members ()))
+    do i = 1, size (name)
+       call repository%get_member_ptr (i, prototype)
+       name(i) = prototype%get_name ()
+    end do
+  end subroutine repository_get_prototype_names
+    
+@ %def repository_get_prototype_names 
 @
 \subsection{Object iterator}
 The object iterator allows us to traverse the object tree in a well-defined
-order.   
+oorder.   
 
-\subsubsection{Position object}
-The index allows us to track members.  Objects should communicate with the
-iterator via the [[position_t]] object, therefore public and transparent.
-<<Object base: public>>=
-  public :: position_t
-<<Object base: types>>=
-  type :: position_t
-     integer :: part = POS_HERE
-     integer :: i = 0
-  end type position_t
-
-@ %def position_t
-@ 
 \subsubsection{Iterator stack}
 Positions objects are pushed on a stack (LIFO).  This constitutes the
 iterator, the last stack entry provides the current object pointer.
@@ -3178,22 +3580,7 @@ iterator, the last stack entry provides the current object pointer.
     u = given_output_unit (unit)
     entry => it%current
     do while (associated (entry))
-       select case (entry%part)
-       case (POS_NONE)
-          write (u, "(1x,'-')", advance="no")
-       case (POS_HERE)
-          write (u, "(1x,'H')", advance="no")
-       case (POS_ID)
-          write (u, "(1x,'I')", advance="no")
-       case (POS_CORE)
-          write (u, "(1x,'C')", advance="no")
-       case (POS_MEMBER)
-          write (u, "(1x,'M',I0)", advance="no")  entry%i
-       case (POS_PRIMER)
-          write (u, "(1x,'P',I0)", advance="no")  entry%i
-       case default
-          write (u, "(1x,'?')", advance="no")
-       end select
+       call entry%write (u)
        entry => entry%previous
     end do
   end subroutine object_iterator_write
@@ -3249,6 +3636,7 @@ current entry, associated with the current object.
     class(object_iterator_t), intent(in) :: it
     logical :: flag
     flag = associated (it%current)
+    if (flag)  flag = associated (it%current%object)
   end function object_iterator_is_valid
   
 @ %def object_iterator_is_valid
@@ -4140,10 +4528,10 @@ Create a tag object and use it as a prototype.
     utmp = free_unit ()
     open (utmp, status="scratch")
     ! Composite with 1 member, named 'obj1'
-    write (utmp, "(A)")  "100 2 1 7 1 1 0 0 0 1 1"
+    write (utmp, "(A)")  "100 2 1 6 1 0 0 1 0 0"
     write (utmp, "(A)")  " obj1"
     ! Member: composite named 'foo'
-    write (utmp, "(A)")  "100 2 1 7 1 0 0 0 0 1 1"
+    write (utmp, "(A)")  "100 2 1 6 1 0 0 0 0 0"
     write (utmp, "(A)")  " foo"
     ! Member core: tag
     write (utmp, "(A)")  "  1 0 0 0"
@@ -4192,6 +4580,85 @@ Create a tag object and use it as a prototype.
     end subroutine object_base_7
 
 @ %def object_base_7
+@ Resolve named reference
+<<Object base: execute tests>>=
+  call test (object_base_8, "object_base_8", &
+       "named reference", &
+       u, results)
+<<Object base: tests>>=  
+  subroutine object_base_8 (u)
+    integer, intent(in) :: u
+    class(object_t), pointer :: tag, prototype
+    class(object_t), pointer :: main, foo, ref
+    logical :: success
+
+    write (u, "(A)")  "* Test output: object_base_8"
+    write (u, "(A)")  "*   Purpose: resolve reference by ID"
+
+    write (u, "(A)")      
+    write (u, "(A)")  "* Create prototype"
+
+    allocate (tag_t :: tag)
+    
+    allocate (composite_t :: prototype)
+    select type (prototype)
+    type is (composite_t)
+       call prototype%init (name = var_str ("tag"))
+       call prototype%import_core (tag)
+    end select
+
+    write (u, "(A)")      
+    call prototype%write (u)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Create main"
+
+    call prototype%instantiate (foo)
+    select type (foo)
+    class is (composite_t)
+       call foo%init (name = var_str ("foo"))
+    end select
+    
+    allocate (reference_t :: ref)
+    select type (ref)
+    class is (reference_t)
+       call ref%set_path ([var_str ("foo")])
+    end select
+
+    allocate (composite_t :: main)
+    select type (main)
+    class is (composite_t)
+       call main%init (name = var_str ("main"), n_members = 2)
+       call main%import_member (1, foo)
+       call main%import_member (2, ref)
+    end select
+    
+    write (u, "(A)")      
+    call main%write (u)
+    
+    write (u, "(A)")      
+    write (u, "(A)")  "* Resolve reference"
+
+    call main%resolve (success)
+
+    write (u, "(A)")      
+    write (u, "(A,1x,L1)")  "success =", success
+
+    write (u, "(A)")      
+    call main%write (u)
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+ 
+    call remove_object (main)
+    call remove_object (prototype)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: object_base_8"
+    
+  end subroutine object_base_8
+
+@ %def object_base_8
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Object Builder}
@@ -4211,6 +4678,7 @@ module object_builder
   use unit_tests
   use format_utils
   use io_units
+  use diagnostics
   use codes
   use builders
   use object_base
@@ -4267,16 +4735,40 @@ Output:
   subroutine object_builder_write (builder, unit)
     class(object_builder_t), intent(in) :: builder
     integer, intent(in), optional :: unit
-    class(object_t), pointer :: core
     integer :: u
     u = given_output_unit (unit)
     write (u, "(A)")  "Object builder:"
+    call builder%write_repository (u)
+    call builder%write_object (u)
+    call builder%write_iterator (u)
+  end subroutine object_builder_write
+
+@ %def object_builder_write
+@ Write parts
+<<Object builder: object builder: TBP>>=
+  procedure :: write_repository => object_builder_write_repository
+  procedure :: write_object => object_builder_write_object
+  procedure :: write_iterator => object_builder_write_iterator
+<<Object builder: procedures>>=
+  subroutine object_builder_write_repository (builder, unit)
+    class(object_builder_t), intent(in) :: builder
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
     write (u, "(1x)", advance="no")
     if (allocated (builder%repository)) then
        call builder%repository%write (u)
     else
        write (u, "(A)")  "[no repository]"
     end if
+  end subroutine object_builder_write_repository
+  
+  subroutine object_builder_write_object (builder, unit)
+    class(object_builder_t), intent(in) :: builder
+    integer, intent(in), optional :: unit
+    class(object_t), pointer :: core
+    integer :: u
+    u = given_output_unit (unit)
     write (u, "(1x)", advance="no")
     if (associated (builder%main)) then
        select type (main => builder%main)
@@ -4291,6 +4783,13 @@ Output:
     else
        write (u, "(A)")  "[No object]"
     end if
+  end subroutine object_builder_write_object
+  
+  subroutine object_builder_write_iterator (builder, unit)
+    class(object_builder_t), intent(in) :: builder
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
     if (builder%it%is_valid ()) then
        write (u, "(1x,A)", advance="no")  "Iterator:"
        call builder%it%write (u)
@@ -4298,9 +4797,11 @@ Output:
     else
        write (u, "(1x,A)")  "[Null iterator]"
     end if
-  end subroutine object_builder_write
-
-@ %def object_builder_write
+  end subroutine object_builder_write_iterator
+  
+@ %def object_builder_write_repository
+@ %def object_builder_write_object
+@ %def object_builder_write_iterator
 @
 \subsection{Initialization}
 This is probably done only once.
@@ -4388,18 +4889,32 @@ advance the iterator to the new location.
     type(code_t), intent(in) :: code
     logical, intent(out) :: success
     class(object_t), pointer :: object
+    logical, parameter :: DEBUG = .false.
+!     logical, parameter :: DEBUG = .true.
+    if (DEBUG)  print *
+    if (DEBUG)  print *, "build object"
+    if (DEBUG)  call code%write ()
     call build_object (object, code, builder%repository)
     if (associated (object)) then
        call builder%it%advance (import_object = object)
     else
        call builder%it%advance ()
     end if
-    call builder%it%get_object (object)
-    select type (object)
-    class is (value_t)
-       call object%init_from_code (code)
-    end select
     success = builder%it%is_valid ()
+    if (success) then
+       call builder%it%get_object (object)
+       if (DEBUG)  call builder%it%write ()
+       if (DEBUG)  print *
+       if (DEBUG)  call object%write ()
+       select type (object)
+       class is (value_t)
+          call object%init_from_code (code)
+       end select
+    else
+       call builder%write ()
+       call code%write ()
+       call msg_fatal ("Sindarin: error in byte code")
+    end if
   end subroutine object_builder_build
     
 @ %def object_builder_build
@@ -4573,6 +5088,7 @@ module object_expr
   use unit_tests
   use format_utils
   use io_units
+  use diagnostics
   use codes
   use object_base
 
@@ -4716,7 +5232,7 @@ expression.  The RHS is written as an expression.
     if (associated (rhs)) then
        call rhs%write_as_expression (unit, indent)
     else
-       write (u, "(A)") "<???>"
+       write (u, "(A)", advance="no") "<???>"
     end if
   end subroutine assignment_write_statement
     
@@ -4959,36 +5475,14 @@ required items are present at the correct position and with correct value type
 in the RHS object tree.
 
 TODO: find should not extend beyond the immediate composite-object context.
-
-We use a pair of iterators, one for the lhs and one for the rhs.  We iterate
-over the lhs and track the moves of the iterator.  Whenever we go to a core,
-we go to the core of the rhs and match the values, if any.  For a successful
-match, the lhs and rhs value pointer pair is pushed onto the assignment item
-stack.  When we go to a member, we check if we actually can assign it.  If
-yes, we take its name and find the corresponding member on the rhs.  The
-member indices need not coincide, then we navigate to the member core(s).
-Finally, when the current lhs object is exhausted, we also skip the current
-rhs object.
-
-Also, the match fails if any [[lhs]] object has mode ABSTRACT.
-
-TODO: distinguish VARIABLE/CONSTANT
-
-TODO: assignment for primer statements.
-
-Any mismatch immediately aborts the matching procedure.
 <<Expr: assignment: TBP>>=
   procedure :: resolve => assignment_resolve
 <<Expr: procedures>>=
   subroutine assignment_resolve (object, success)
     class(assignment_t), intent(inout), target :: object
     logical, intent(out) :: success
-    type(object_iterator_t) :: it_lhs, it_rhs
-    class(object_t), pointer :: lhs, rhs, rhs_context
-    class(value_t), pointer :: lval, rval
-    type(position_t) :: position
-    integer :: part, i
-    logical :: mutable, required
+    class(object_t), pointer :: lhs, rhs
+    logical :: mutable
     if (object%has_id ()) then
        select type (id => object%id)
        type is (id_t)
@@ -5005,77 +5499,11 @@ Any mismatch immediately aborts the matching procedure.
     if (success) then
        lhs => object%lhs
        call object%get_member_ptr (1, rhs)
-       call it_lhs%init (lhs)
-       call it_rhs%init (rhs)
-       ITERATE: do while (it_lhs%is_valid ())
-          call it_lhs%get_next_position (position)
-          select case (position%part)
-          case (POS_NONE)
-             call it_lhs%to_context (success);  if (.not. success)  exit ITERATE
-             call it_rhs%to_context (success);  if (.not. success)  exit ITERATE
-          case (POS_ID)
-             call it_lhs%to_id (success);  if (.not. success)  exit ITERATE
-             call it_rhs%to_id (success);  if (.not. success)  exit ITERATE
-             call it_lhs%get_object (lhs)
-             call it_rhs%get_object (rhs)
-             select type (lhs)
-             class is (id_t)
-                call lhs%match (rhs, success);  if (.not. success)  exit ITERATE
-                select type (rhs)
-                class is (id_t)
-                   lval => lhs
-                   rval => rhs
-                   call object%push (lval, rval)
-                 end select
-             end select
-          case (POS_CORE)
-             call it_lhs%to_core (success);  if (.not. success)  exit ITERATE
-             call it_rhs%to_core (success);  if (.not. success)  exit ITERATE
-             call it_lhs%get_object (lhs)
-             call it_rhs%get_object (rhs)
-             select type (lhs)
-             class is (value_t)
-                call lhs%match (rhs, success);  if (.not. success)  exit ITERATE
-                select type (rhs)
-                class is (value_t)
-                   lval => lhs
-                   rval => rhs
-                   call object%push (lval, rval)
-                 end select
-             end select
-          case (POS_MEMBER)
-             call it_lhs%to_member &
-                  (position%i, success);  if (.not. success)  exit ITERATE
-             call it_lhs%get_object (lhs)
-             select type (lhs)
-             class is (composite_t)
-               call lhs%check_mode (mutable)
-               call lhs%check_role (required)
-             end select
-             if (mutable .or. required) then
-                call it_rhs%get_object (rhs_context)
-                select type (rhs_context)
-                class is (composite_t)
-                   call rhs_context%find_member (lhs%get_name (), index=i)
-                end select
-                if (i > 0) then
-                   call it_rhs%to_member &
-                        (i, success);  if (.not. success)  exit ITERATE
-                else if (required) then
-                   success = .false.;  exit ITERATE
-                else
-                   call it_lhs%to_context &
-                        (success);  if (.not. success)  exit ITERATE
-                end if
-             else
-                call it_lhs%to_context &
-                     (success);  if (.not. success)  exit ITERATE
-             end if
-          case default
-             call it_lhs%to_context &
-                  (success);  if (.not. success)  exit ITERATE
-          end select
-       end do ITERATE
+       if (associated (lhs) .and. associated (rhs)) then
+          call lhs%match (rhs, success, object)
+       else
+          success = .false.
+       end if
     end if
   end subroutine assignment_resolve
     
@@ -5120,12 +5548,12 @@ Iterate: scan the ID object (the LHS) before the rest.
           position%part = POS_ID
           if (present (next_object))  next_object => object%id
        else
-          call object%composite_t%next_position &
-               (position, next_object, import_object)
+          call composite_next_position &
+               (object, position, next_object, import_object)
        end if
     case default
-       call object%composite_t%next_position &
-            (position, next_object, import_object)
+       call composite_next_position &
+            (object, position, next_object, import_object)
     end select
   end subroutine assignment_next_position
   
@@ -5139,7 +5567,6 @@ interpreted as arguments.
 <<Expr: types>>=
   type, extends (composite_t), abstract :: expression_t
      private
-     logical :: evaluated = .false.
    contains
    <<Expr: expression: TBP>>
   end type expression_t
@@ -5158,17 +5585,6 @@ The expression has an expression, unless it is marked [[abstract]].
   end function expression_is_expression
   
 @ %def expression_is_expression
-@ Evaluation status.
-<<Expr: expression: TBP>>=
-  procedure :: is_evaluated => expression_is_evaluated
-<<Expr: procedures>>=
-  pure function expression_is_evaluated (object) result (flag)
-    class(expression_t), intent(in) :: object
-    logical :: flag
-    flag = object%evaluated
-  end function expression_is_evaluated
-  
-@ %def expression_is_evaluated
 @ For expressions, we should look for the name of the object itself, not the
 name of the prototype object (which is the prototype of the value).
 <<Expr: expression: TBP>>=
@@ -5184,7 +5600,8 @@ name of the prototype object (which is the prototype of the value).
 @ %def expression_get_prototype_index
 @
 \subsection{Construction / Decoding}
-Expressions don't require the attribute list of generic composites.
+For expressions, we store the standard composite code set, but leave out the
+object name.
 <<Expr: expression: TBP>>=
   procedure :: get_code => expression_get_code
 <<Expr: procedures>>=
@@ -5192,38 +5609,47 @@ Expressions don't require the attribute list of generic composites.
     class(expression_t), intent(in), target :: object
     type(repository_t), intent(in), optional :: repository
     type(code_t) :: code
-    code%cat = CAT_COMPOSITE
-    code%natt = 1
-    if (present (repository)) then
-       code%att(1) = object%get_prototype_index (repository)
-    end if
+    call object%get_base_code (code, repository)
   end function expression_get_code
   
 @ %def expression_get_code
-@
-\subsubsection{Evaluation}
-Mark as evaluated / unmark.
+@ Build object from code: we don't need much of initialization here since this
+is achieved by instantiating the prototype.  We just set the number of
+arguments.
 <<Expr: expression: TBP>>=
-  procedure :: mark_as_evaluated => expression_mark_as_evaluated
-  procedure :: reset => expression_reset
+  procedure :: init_from_code => expression_init_from_code
 <<Expr: procedures>>=
-  subroutine expression_mark_as_evaluated (object)
+  subroutine expression_init_from_code (object, code)
     class(expression_t), intent(inout) :: object
-    object%evaluated = .true.
-  end subroutine expression_mark_as_evaluated
-  
-  subroutine expression_reset (object)
-    class(expression_t), intent(inout) :: object
-    object%evaluated = .false.
-  end subroutine expression_reset
-  
-@ %def expression_mark_as_evaluated
-@ %def expression_reset
+    type(code_t), intent(in) :: code
+    call object%set_mode (mode = code%att(2))
+    call object%init_args (n_arg = code%att(5))
+    call object%set_intrinsic (intrinsic = code%att(3) == 0)
+  end subroutine expression_init_from_code
+
+@ %def expression_init_from_code
+@
+We define a separate procedure that initializes the number of arguments.
+Extensions may do a sanity check.
+<<Expr: expression: TBP>>=
+  procedure (expression_init_args), deferred :: init_args
+<<Expr: interfaces>>=
+  abstract interface
+     subroutine expression_init_args (object, n_arg)
+       import
+       class(expression_t), intent(inout) :: object
+       integer, intent(in) :: n_arg
+     end subroutine expression_init_args
+  end interface
+
+@ %def expression_init_args
 @
 \subsection{Operators}
 An operator is an expression with a specific notation.  We have unary and
-binary operators.
+binary operators.  In addition to the result prototype, which is stored in the
+parent type, we store a pointer to the (uniform) prototype of the arguments.
 <<Expr: public>>=
+  public :: operator_t
   public :: operator_unary_t
   public :: operator_binary_t
 <<Expr: types>>=
@@ -5282,26 +5708,22 @@ output, so there we decide about extra brackets to write.
     integer, intent(in), optional :: unit
     integer, intent(in), optional :: indent
     class(object_t), pointer :: arg
-    integer :: u, priority
+    integer :: u, priority, i
     u = given_output_unit (unit)
     priority = object%get_priority ()
-    call object%get_member_ptr (1, arg)
-    if (associated (arg)) then
-       arg => arg%dereference ()
-       call arg%write_as_expression &
-            (unit, indent, priority=priority, lr=.true.)
-    else
-       write (u, "(A)", advance="no") "???"
-    end if
-    write (u, "(1x,A,1x)", advance="no")  char (object%get_name ())
-    call object%get_member_ptr (2, arg)
-    if (associated (arg)) then
-       arg => arg%dereference ()
-       call arg%write_as_expression &
-            (unit, indent, priority=priority, lr=.false.)
-    else
-       write (u, "(A)", advance="no") "???"
-    end if
+    do i = 1, object%get_n_members ()
+       if (i > 1) then
+          write (u, "(1x,A,1x)", advance="no")  char (object%get_name ())
+       end if
+       call object%get_member_ptr (i, arg)
+       if (associated (arg)) then
+          arg => arg%dereference ()
+          call arg%write_as_expression &
+               (unit, indent, priority=priority, lr=.true.)
+       else
+          write (u, "(A)", advance="no") "???"
+       end if
+    end do
   end subroutine operator_binary_write_expression
     
 @ %def operator_unary_write_expression
@@ -5367,17 +5789,30 @@ qualified as either [[unary]] or [[binary]].
 @ %def operator_binary_get_signature
 @
 \subsubsection{Construction}
-Build object from code: in contrast to composites, we don't need
-initialization here since this is achieved by instantiating the prototype.
+We define a separate procedure that initializes the number of arguments and
+does a sanity check.  Argument type is not checked.
 <<Expr: operator: TBP>>=
-  procedure :: init_from_code => operator_init_from_code
+  procedure :: init_args => operator_init_args
 <<Expr: procedures>>=
-  subroutine operator_init_from_code (object, code)
+  subroutine operator_init_args (object, n_arg)
     class(operator_t), intent(inout) :: object
-    type(code_t), intent(in) :: code
-  end subroutine operator_init_from_code
+    integer, intent(in) :: n_arg
+    select type (object)
+    class is (operator_unary_t)
+       if (n_arg /= 1) then
+          call object%write ()
+          call msg_bug ("Unary operator: number of arguments must be one")
+       end if
+    class is (operator_binary_t)
+       if (n_arg < 2) then
+          call object%write ()
+          call msg_bug ("Binary operator: number of arguments less than two")
+       end if
+    end select
+    call object%init_members (n_members = n_arg, n_arguments = n_arg)
+  end subroutine operator_init_args
 
-@ %def operator_init_from_code
+@ %def operator_init_args
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Logical values}
@@ -5434,6 +5869,14 @@ applies, inherited from [[value_t]].
   end type logical_t
   
 @ %def logical_t
+@ A wrapper type for assembling pointers in expression objects:
+<<Logical: types>>=
+  type :: logical_p
+     private
+     type(logical_t), pointer :: p => null ()
+  end type logical_p
+     
+@ %def logical_p
 @
 \subsubsection{Finalizer}
 Finalizer is empty.
@@ -5580,13 +6023,21 @@ Copy the value.  LHS and RHS must both be logical.
 The [[not]] operator is a unary operator.  Both argument and result are of
 type [[logical_t]].  We define pointer shortcuts for both argument and
 result.
-<<Logical: public>>=
-  public :: not_t
 <<Logical: types>>=
-  type, extends (operator_unary_t) :: not_t
+  type, extends (operator_unary_t), abstract :: logical_unary_t
      private
      type(logical_t), pointer :: res => null ()
      type(logical_t), pointer :: arg => null ()
+   contains
+   <<Logical: logical unary: TBP>>
+  end type logical_unary_t
+
+@ %def logical_unary_t
+<<Logical: public>>=
+  public :: not_t
+<<Logical: types>>=
+  type, extends (logical_unary_t) :: not_t
+     private
    contains
    <<Logical: not: TBP>>
   end type not_t
@@ -5619,31 +6070,25 @@ Instantiate: we have to initialize, so the core and argument types are fixed.
     select type (instance)
     class is (not_t)
        call object%get_prototype_ptr (prototype)
-       call instance%init (prototype)
+       call instance%init (prototype, mode=MODE_CONSTANT)
     end select
   end subroutine not_instantiate
   
 @ %def not_instantiate
-@ Initialize: one argument, no extra members.  We need the [[logical]]
-prototype for initializing core and argument.  If this is not an instance, we
-also declare the prototype for the object itself.
-<<Logical: not: TBP>>=
-  generic :: init => not_init
-  procedure, private :: not_init
+@ Initialize: We need the [[logical]] prototype for initializing the core.
+Arguments are not allocated, this requires a call to the [[init_args]]
+method.
+<<Logical: logical unary: TBP>>=
+  generic :: init => logical_unary_init
+  procedure, private :: logical_unary_init
 <<Logical: procedures>>=
-  subroutine not_init (object, prototype)
-    class(not_t), intent(inout) :: object
+  subroutine logical_unary_init (object, prototype, name, mode)
+    class(logical_unary_t), intent(inout) :: object
     class(object_t), intent(inout), target :: prototype
-    class(object_t), pointer :: value, core, member
-    call object%composite_t%init &
-         (var_str ("not"), mode = MODE_CONSTANT, n_members = 1, &
-         n_arguments = 1)
-    call prototype%instantiate (member)
-    select type (member)
-    type is (composite_t)
-       call member%init (mode = MODE_VARIABLE, name = var_str ("arg"))
-    end select
-    call object%import_member (1, member)
+    type(string_t), intent(in) :: name
+    integer, intent(in), optional :: mode
+    class(object_t), pointer :: value, core
+    call object%init (name, mode = mode)
     select type (prototype)
     class is (composite_t)
        call prototype%get_core_ptr (value)
@@ -5651,6 +6096,21 @@ also declare the prototype for the object itself.
     end select
     call value%instantiate (core)
     call object%import_core (core)
+  end subroutine logical_unary_init
+  
+@ %def logical_unary_init 
+@ Initialize: one argument, no extra members.  We need the [[logical]]
+prototype for initializing core and argument.  If this is not an instance, we
+also declare the prototype for the object itself.
+<<Logical: not: TBP>>=
+  generic :: init => not_init
+  procedure, private :: not_init
+<<Logical: procedures>>=
+  subroutine not_init (object, prototype, mode)
+    class(not_t), intent(inout) :: object
+    class(object_t), intent(inout), target :: prototype
+    integer, intent(in), optional :: mode
+    call logical_unary_init (object, prototype, var_str ("not"), mode)
   end subroutine not_init
   
 @ %def not_init 
@@ -5658,11 +6118,11 @@ also declare the prototype for the object itself.
 \subsubsection{Evaluation}
 Resolve: check argument and assign pointer shortcuts.  The argument must be
 of type logical.
-<<Logical: not: TBP>>=
-  procedure :: resolve => not_resolve
+<<Logical: logical unary: TBP>>=
+  procedure :: resolve => logical_unary_resolve
 <<Logical: procedures>>=
-  recursive subroutine not_resolve (object, success)
-    class(not_t), intent(inout), target :: object
+  recursive subroutine logical_unary_resolve (object, success)
+    class(logical_unary_t), intent(inout), target :: object
     logical, intent(out) :: success
     class(object_t), pointer :: arg, core
     success = .false.
@@ -5689,22 +6149,21 @@ of type logical.
           end select
        end select
     end if
-  end subroutine not_resolve
+  end subroutine logical_unary_resolve
   
-@ %def not_resolve
+@ %def logical_unary_resolve
 @ Evaluate the operation.
 <<Logical: not: TBP>>=
   procedure :: evaluate => not_evaluate
 <<Logical: procedures>>=
   recursive subroutine not_evaluate (object)
     class(not_t), intent(inout), target :: object
-    call object%evaluate_arguments ()
+    call object%composite_t%evaluate ()
     if (object%arg%is_defined ()) then
        call object%res%init (.not. object%arg%value)
     else
        call object%res%init ()
     end if
-    call object%mark_as_evaluated ()
   end subroutine not_evaluate
   
 @ %def not_evaluate
@@ -5717,8 +6176,7 @@ arguments and result.
   type, extends (operator_binary_t), abstract :: logical_binary_t
      private
      type(logical_t), pointer :: res => null ()
-     type(logical_t), pointer :: arg1 => null ()
-     type(logical_t), pointer :: arg2 => null ()
+     type(logical_p), dimension(:), allocatable :: arg_ptr
    contains
    <<Logical: logical binary: TBP>>
   end type logical_binary_t
@@ -5766,7 +6224,8 @@ Priority value.
 @ %def or_get_priority
 @
 \subsubsection{Construction}
-Instantiate: initialize using the generic logical binary initializer.
+Instantiate: initialize using the generic logical binary initializer.  The
+number of arguments is not yet known, we just initialize the core.
 <<Logical: and: TBP>>=
   procedure :: instantiate => and_instantiate
 <<Logical: or: TBP>>=
@@ -5778,9 +6237,9 @@ Instantiate: initialize using the generic logical binary initializer.
     class(composite_t), pointer :: prototype
     allocate (and_t :: instance)
     select type (instance)
-    class is (and_t)
+    type is (and_t)
        call object%get_prototype_ptr (prototype)
-       call instance%init (prototype)
+       call instance%init (prototype, mode=MODE_CONSTANT)
     end select
   end subroutine and_instantiate
   
@@ -5790,36 +6249,28 @@ Instantiate: initialize using the generic logical binary initializer.
     class(composite_t), pointer :: prototype
     allocate (or_t :: instance)
     select type (instance)
-    class is (or_t)
+    type is (or_t)
        call object%get_prototype_ptr (prototype)
-       call instance%init (prototype)
+       call instance%init (prototype, mode=MODE_CONSTANT)
     end select
   end subroutine or_instantiate
   
 @ %def and_instantiate
 @ %def or_instantiate
-@ Initialize: two arguments, no extra members.  We need the [[logical]]
-prototype for initializing core and arguments.
+@ Initialize: We need the [[logical]] prototype for initializing the core.
+Arguments are not allocated, this requires a call to the [[init_args]]
+method.
+<<Logical: logical binary: TBP>>=
+  generic :: init => logical_binary_init
+  procedure, private :: logical_binary_init
 <<Logical: procedures>>=
-  subroutine logical_binary_init (object, prototype, name)
+  subroutine logical_binary_init (object, prototype, name, mode)
     class(logical_binary_t), intent(inout) :: object
     class(object_t), intent(inout), target :: prototype
-    type(string_t), intent(in), optional :: name
-    class(object_t), pointer :: value, core, member
-    call object%init (name, mode = MODE_CONSTANT, n_members = 2, &
-         n_arguments = 2)
-    call prototype%instantiate (member)
-    select type (member)
-    type is (composite_t)
-       call member%init (mode = MODE_VARIABLE, name = var_str ("arg1"))
-    end select
-    call object%import_member (1, member)
-    call prototype%instantiate (member)
-    select type (member)
-    type is (composite_t)
-       call member%init (mode = MODE_VARIABLE, name = var_str ("arg2"))
-    end select
-    call object%import_member (2, member)
+    type(string_t), intent(in) :: name
+    integer, intent(in), optional :: mode
+    class(object_t), pointer :: value, core
+    call object%init (name, mode)
     select type (prototype)
     class is (composite_t)
        call prototype%get_core_ptr (value)
@@ -5838,20 +6289,72 @@ prototype for initializing core and arguments.
   generic :: init => or_init
   procedure, private :: or_init
 <<Logical: procedures>>=
-  subroutine and_init (object, prototype)
+  subroutine and_init (object, prototype, mode)
     class(and_t), intent(inout) :: object
     class(object_t), intent(inout), target :: prototype
-    call logical_binary_init (object, prototype, var_str ("and"))
+    integer, intent(in), optional :: mode
+    call logical_binary_init (object, prototype, var_str ("and"), mode)
   end subroutine and_init
   
-  subroutine or_init (object, prototype)
+  subroutine or_init (object, prototype, mode)
     class(or_t), intent(inout) :: object
     class(object_t), intent(inout), target :: prototype
-    call logical_binary_init (object, prototype, var_str ("or"))
+    integer, intent(in), optional :: mode
+    call logical_binary_init (object, prototype, var_str ("or"), mode)
   end subroutine or_init
   
 @ %def and_init 
 @ %def or_init 
+@ Shortcut to member initialization.  This routine is used only in the unit
+tests below.
+<<Logical: tests>>=
+  subroutine init_members (object, n_arg)
+    class(object_t), intent(inout) :: object
+    integer, intent(in) :: n_arg
+    select type (object)
+    class is (operator_t)
+       call object%init_args (n_arg)
+    end select
+  end subroutine init_members
+    
+@ %def init_members
+@ Set the member value directly.  This routine is used only in the unit tests
+below.
+<<Logical: tests>>=
+  subroutine set_member_val (object, i, value)
+    class(object_t), intent(inout) :: object
+    integer, intent(in) :: i
+    logical, intent(in), optional :: value
+    class(object_t), pointer :: member, core
+    class(composite_t), pointer :: prototype
+    type(string_t) :: name
+    if (present (value)) then
+       if (value) then
+          name = "true"
+       else
+          name = "false"
+       end if
+    else
+       name = "undef"
+    end if
+    select type (object)
+    class is (composite_t)
+       call object%get_prototype_ptr (prototype)
+       call prototype%instantiate (member)
+       select type (member)
+       class is (composite_t)
+          call member%init (name = name, mode = MODE_CONSTANT)
+          call member%get_core_ptr (core)
+          select type (core)
+          class is (logical_t)
+             call core%init (value)
+          end select
+       end select
+       call object%import_member (i, member)
+    end select
+  end subroutine set_member_val
+    
+@ %def set_member_val
 @
 \subsubsection{Evaluation}
 Resolve: check argument and assign pointer shortcuts.  The argument must be
@@ -5863,10 +6366,10 @@ of type logical, otherwise the routine is universal for binary operators.
     class(logical_binary_t), intent(inout), target :: object
     logical, intent(out) :: success
     class(object_t), pointer :: arg, core
+    integer :: i, n_args
     success = .false.
     object%res => null ()
-    object%arg1 => null ()
-    object%arg2 => null ()
+    n_args = object%get_n_members ()
     call object%get_core_ptr (core)
     call core%resolve (success);  if (.not. success)  return
     select type (core)
@@ -5875,30 +6378,22 @@ of type logical, otherwise the routine is universal for binary operators.
     class default
        return
     end select
+    if (.not. allocated (object%arg_ptr)) &
+         allocate (object%arg_ptr (n_args))
     if (object%has_value ()) then
-       call object%get_member_ptr (1, arg)
-       call arg%resolve (success);  if (.not. success)  return
-       select type (arg)
-       class is (wrapper_t)
-          call arg%get_core_ptr (core)
-          select type (core)
-          type is (logical_t)
-             object%arg1 => core
-             success = .true.
+       do i = 1, n_args
+          call object%get_member_ptr (i, arg)
+          call arg%resolve (success);  if (.not. success)  return
+          select type (arg)
+          class is (wrapper_t)
+             call arg%get_core_ptr (core)
+             select type (core)
+             type is (logical_t)
+                object%arg_ptr(i)%p => core
+                success = .true.
+             end select
           end select
-       end select
-       if (.not. success)  return
-       call object%get_member_ptr (2, arg)
-       call arg%resolve (success);  if (.not. success)  return
-       select type (arg)
-       class is (wrapper_t)
-          call arg%get_core_ptr (core)
-          select type (core)
-          type is (logical_t)
-             object%arg2 => core
-             success = .true.
-          end select
-       end select
+       end do
     end if
   end subroutine logical_binary_resolve
   
@@ -5911,24 +6406,40 @@ of type logical, otherwise the routine is universal for binary operators.
 <<Logical: procedures>>=
   recursive subroutine and_evaluate (object)
     class(and_t), intent(inout), target :: object
-    call object%evaluate_arguments ()
-    if (object%arg1%is_defined () .and. object%arg2%is_defined ()) then
-       call object%res%init (object%arg1%value .and. object%arg2%value)
-    else
-       call object%res%init ()
-    end if
-    call object%mark_as_evaluated ()
+    integer :: i
+    call object%composite_t%evaluate ()
+    do i = 1, size (object%arg_ptr)
+       if (.not. object%arg_ptr(i)%p%is_defined ()) then
+          call object%res%init ()
+          return
+       end if
+    end do
+    do i = 1, size (object%arg_ptr)
+       if (.not. object%arg_ptr(i)%p%value) then
+          call object%res%init (.false.)
+          return
+       end if
+    end do
+    call object%res%init (.true.)
   end subroutine and_evaluate
   
   recursive subroutine or_evaluate (object)
     class(or_t), intent(inout), target :: object
-    call object%evaluate_arguments ()
-    if (object%arg1%is_defined () .and. object%arg2%is_defined ()) then
-       call object%res%init (object%arg1%value .or. object%arg2%value)
-    else
-       call object%res%init ()
-    end if
-    call object%mark_as_evaluated ()
+    integer :: i
+    call object%composite_t%evaluate ()
+    do i = 1, size (object%arg_ptr)
+       if (.not. object%arg_ptr(i)%p%is_defined ()) then
+          call object%res%init ()
+          return
+       end if
+    end do
+    do i = 1, size (object%arg_ptr)
+       if (object%arg_ptr(i)%p%value) then
+          call object%res%init (.true.)
+          return
+       end if
+    end do
+    call object%res%init (.false.)
   end subroutine or_evaluate
   
 @ %def and_evaluate
@@ -6276,7 +6787,8 @@ Perform assignments of composites with elementary logical core.
     
     select type (main)
     type is (composite_t)
-       call main%construct (success)
+       call main%resolve (success)
+       call main%evaluate ()
     end select
     write (u, "(A)")
     write (u, "(A,L1)")  "success = ", success
@@ -6310,7 +6822,8 @@ Perform assignments of composites with elementary logical core.
 
     select type (main)
     type is (composite_t)
-       call main%construct (success)
+       call main%resolve (success)
+       call main%evaluate ()
     end select
     write (u, "(A)")
     write (u, "(A,L1)")  "success = ", success
@@ -6349,7 +6862,8 @@ Perform assignments of composites with elementary logical core.
 
     select type (main)
     type is (composite_t)
-       call main%construct (success)
+       call main%resolve (success)
+       call main%evaluate ()
     end select
     write (u, "(A)")
     write (u, "(A,L1)")  "success = ", success
@@ -6507,7 +7021,8 @@ Perform assignments of composites with multiple and composite members.
     
     select type (main)
     type is (composite_t)
-       call main%construct (success)
+       call main%resolve (success)
+       call main%evaluate ()
     end select
     write (u, "(A)")
     write (u, "(A,L1)")  "success = ", success
@@ -6543,58 +7058,7 @@ Perform assignments of composites with multiple and composite members.
 @ %def object_logical_4
 @ 
 \subsubsection{Operators: not}
-Build and evaluate simple logical expressions.  We first introduce shortcuts
-for creating logical constants:
-<<Logical: tests>>=
-  subroutine create_true (true, prototype)
-    class(object_t), pointer, intent(out) :: true
-    class(object_t), target, intent(inout) :: prototype
-    class(object_t), pointer :: core
-    call prototype%instantiate (true)
-    select type (true)
-    type is (composite_t)
-       call true%init (mode = MODE_CONSTANT, name = var_str ("true"))
-       allocate (logical_t :: core)
-       select type (core)
-       type is (logical_t);  call core%init (value = .true.)
-       end select
-       call true%import_core (core)
-    end select
-  end subroutine create_true
-    
-  subroutine create_false (false, prototype)
-    class(object_t), pointer, intent(out) :: false
-    class(object_t), target, intent(inout) :: prototype
-    class(object_t), pointer :: core
-    call prototype%instantiate (false)
-    select type (false)
-    type is (composite_t)
-       call false%init (mode = MODE_CONSTANT, name = var_str ("false"))
-       allocate (logical_t :: core)
-       select type (core)
-       type is (logical_t);  call core%init (value = .false.)
-       end select
-       call false%import_core (core)
-    end select
-  end subroutine create_false
-
-  subroutine create_undef (undef, prototype)
-    class(object_t), pointer, intent(out) :: undef
-    class(object_t), target, intent(inout) :: prototype
-    class(object_t), pointer :: core
-    call prototype%instantiate (undef)
-    select type (undef)
-    type is (composite_t)
-       call undef%init (mode = MODE_CONSTANT, name = var_str ("undef"))
-       allocate (logical_t :: core)
-       call undef%import_core (core)
-    end select
-  end subroutine create_undef
-
-@ %def create_true    
-@ %def create_false    
-@ %def create_undef    
-@ Now the test for [[not]].
+Now the test for [[not]].
 <<Logical: execute tests>>=
   call test (object_logical_5, "object_logical_5", &
        "operator: not", &
@@ -6603,7 +7067,7 @@ for creating logical constants:
   subroutine object_logical_5 (u)
     integer, intent(in) :: u
     class(object_t), pointer :: core
-    class(object_t), pointer :: prototype, true, false, undef
+    class(object_t), pointer :: prototype
     class(object_t), pointer :: not, expr1, expr2, expr3
     logical :: success
 
@@ -6633,33 +7097,23 @@ for creating logical constants:
     write (u, "(A)")
     write (u, "(A)")  "* Create expressions"
 
-    call create_true (true, prototype)
-    call create_false (false, prototype)
-    call create_undef (undef, prototype)
-    
     write (u, "(A)")
     
     call not%instantiate (expr1)
-    select type (expr1)
-    class is (composite_t)
-       call expr1%import_member (1, true)
-    end select
+    call init_members (expr1, 1)
+    call set_member_val (expr1, 1, .true.)
     call expr1%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call not%instantiate (expr2)
-    select type (expr2)
-    class is (composite_t)
-       call expr2%import_member (1, false)
-    end select
+    call init_members (expr2, 1)
+    call set_member_val (expr2, 1, .false.)
     call expr2%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call not%instantiate (expr3)
-    select type (expr3)
-    class is (composite_t)
-       call expr3%import_member (1, undef)
-    end select
+    call init_members (expr3, 1)
+    call set_member_val (expr3, 1)
     call expr3%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
@@ -6705,9 +7159,6 @@ for creating logical constants:
     write (u, "(A)")
     write (u, "(A,1x,L1)")  "prototype allocated =", associated (prototype)
     write (u, "(A,1x,L1)")  "not allocated =", associated (not)
-    write (u, "(A,1x,L1)")  "true allocated =", associated (true)
-    write (u, "(A,1x,L1)")  "false allocated =", associated (false)
-    write (u, "(A,1x,L1)")  "undef allocated =", associated (undef)
     write (u, "(A,1x,L1)")  "expr1 allocated =", associated (expr1)
     write (u, "(A,1x,L1)")  "expr2 allocated =", associated (expr2)
     write (u, "(A,1x,L1)")  "expr3 allocated =", associated (expr3)
@@ -6729,9 +7180,10 @@ Build and evaluate simple logical expressions.
   subroutine object_logical_6 (u)
     integer, intent(in) :: u
     class(object_t), pointer :: core
-    class(object_t), pointer :: prototype, true, false, undef
+    class(object_t), pointer :: prototype
     class(object_t), pointer :: and
     class(object_t), pointer :: expr1, expr2, expr3, expr4, expr5, expr6, expr7
+    class(object_t), pointer :: expr8, expr9
     logical :: success
 
     write (u, "(A)")  "* Test output: object_logical_6"
@@ -6762,80 +7214,71 @@ Build and evaluate simple logical expressions.
     write (u, "(A)")
     
     call and%instantiate (expr1)
-    select type (expr1)
-    class is (composite_t)
-       call create_true (true, prototype)
-       call expr1%import_member (1, true)
-       call create_true (true, prototype)
-       call expr1%import_member (2, true)
-    end select
+    call init_members (expr1, 2)
+    call set_member_val (expr1, 1, .true.)
+    call set_member_val (expr1, 2, .true.) 
     call expr1%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call and%instantiate (expr2)
-    select type (expr2)
-    class is (composite_t)
-       call create_true (true, prototype)
-       call expr2%import_member (1, true)
-       call create_false (false, prototype)
-       call expr2%import_member (2, false)
-    end select
+    call init_members (expr2, 2)
+    call set_member_val (expr2, 1, .true.)
+    call set_member_val (expr2, 2, .false.) 
     call expr2%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call and%instantiate (expr3)
-    select type (expr3)
-    class is (composite_t)
-       call create_false (false, prototype)
-       call expr3%import_member (1, false)
-       call create_true (true, prototype)
-       call expr3%import_member (2, true)
-    end select
+    call init_members (expr3, 2)
+    call set_member_val (expr3, 1, .false.)
+    call set_member_val (expr3, 2, .true.) 
     call expr3%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call and%instantiate (expr4)
-    select type (expr4)
-    class is (composite_t)
-       call create_false (false, prototype)
-       call expr4%import_member (1, false)
-       call create_false (false, prototype)
-       call expr4%import_member (2, false)
-    end select
+    call init_members (expr4, 2)
+    call set_member_val (expr4, 1, .false.)
+    call set_member_val (expr4, 2, .false.) 
     call expr4%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call and%instantiate (expr5)
-    select type (expr5)
-    class is (composite_t)
-       call create_undef (undef, prototype)
-       call expr5%import_member (1, undef)
-       call create_true (true, prototype)
-       call expr5%import_member (2, true)
-    end select
+    call init_members (expr5, 2)
+    call set_member_val (expr5, 1)
+    call set_member_val (expr5, 2, .true.) 
     call expr5%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call and%instantiate (expr6)
-    select type (expr6)
-    class is (composite_t)
-       call create_false (false, prototype)
-       call expr6%import_member (1, false)
-       call create_undef (undef, prototype)
-       call expr6%import_member (2, undef)
-    end select
+    call init_members (expr6, 2)
+    call set_member_val (expr6, 1, .false.)
+    call set_member_val (expr6, 2) 
     call expr6%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call and%instantiate (expr7)
-    select type (expr7)
-    class is (composite_t)
-       call create_undef (undef, prototype)
-       call expr7%import_member (1, undef)
-       call create_undef (undef, prototype)
-       call expr7%import_member (2, undef)
-    end select
+    call init_members (expr7, 2)
+    call set_member_val (expr7, 1)
+    call set_member_val (expr7, 2) 
     call expr7%resolve (success)
+    write (u, "(A,L1)")  "success = ", success
+
+    write (u, *)
+
+    call and%instantiate (expr8)
+    call init_members (expr8, 3)
+    call set_member_val (expr8, 1, .true.)
+    call set_member_val (expr8, 2, .true.) 
+    call set_member_val (expr8, 3, .false.) 
+    call expr8%resolve (success)
+    write (u, "(A,L1)")  "success = ", success
+
+    call and%instantiate (expr9)
+    call init_members (expr9, 4)
+    call set_member_val (expr9, 1, .true.)
+    call set_member_val (expr9, 2, .true.) 
+    call set_member_val (expr9, 3, .true.)
+    call set_member_val (expr9, 4, .true.) 
+    call expr9%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     write (u, "(A)")
@@ -6846,6 +7289,10 @@ Build and evaluate simple logical expressions.
     call expr5%write (u)
     call expr6%write (u)
     call expr7%write (u)
+
+    write (u, "(A)")
+    call expr8%write (u)
+    call expr9%write (u)
 
     write (u, "(A)")
     call expr1%write_as_expression (u)
@@ -6863,6 +7310,12 @@ Build and evaluate simple logical expressions.
     call expr7%write_as_expression (u)
     write (u, *)
 
+    write (u, *)
+    call expr8%write_as_expression (u)
+    write (u, *)
+    call expr9%write_as_expression (u)
+    write (u, *)
+
     write (u, "(A)")
     write (u, "(A)")  "* Evaluate"
   
@@ -6874,6 +7327,9 @@ Build and evaluate simple logical expressions.
     call expr6%evaluate ()
     call expr7%evaluate ()
 
+    call expr8%evaluate ()
+    call expr9%evaluate ()
+
     write (u, "(A)")
     call expr1%write (u)
     call expr2%write (u)
@@ -6882,6 +7338,10 @@ Build and evaluate simple logical expressions.
     call expr5%write (u)
     call expr6%write (u)
     call expr7%write (u)
+
+    write (u, "(A)")
+    call expr8%write (u)
+    call expr9%write (u)
 
     write (u, "(A)")
     call expr1%write_as_value (u)
@@ -6899,6 +7359,12 @@ Build and evaluate simple logical expressions.
     call expr7%write_as_value (u)
     write (u, *)
 
+    write (u, *)
+    call expr8%write_as_value (u)
+    write (u, *)
+    call expr9%write_as_value (u)
+    write (u, *)
+
     write (u, "(A)")
     write (u, "(A)")  "* Cleanup"
 
@@ -6909,6 +7375,8 @@ Build and evaluate simple logical expressions.
     call remove_object (expr5)
     call remove_object (expr6)
     call remove_object (expr7)
+    call remove_object (expr8)
+    call remove_object (expr9)
     call remove_object (and)
     call remove_object (prototype)
 
@@ -6929,9 +7397,10 @@ Build and evaluate simple logical expressions.
   subroutine object_logical_7 (u)
     integer, intent(in) :: u
     class(object_t), pointer :: core
-    class(object_t), pointer :: prototype, true, false, undef
+    class(object_t), pointer :: prototype
     class(object_t), pointer :: or
     class(object_t), pointer :: expr1, expr2, expr3, expr4, expr5, expr6, expr7
+    class(object_t), pointer :: expr8, expr9
     logical :: success
 
     write (u, "(A)")  "* Test output: object_logical_7"
@@ -6962,80 +7431,71 @@ Build and evaluate simple logical expressions.
     write (u, "(A)")
     
     call or%instantiate (expr1)
-    select type (expr1)
-    class is (composite_t)
-       call create_true (true, prototype)
-       call expr1%import_member (1, true)
-       call create_true (true, prototype)
-       call expr1%import_member (2, true)
-    end select
+    call init_members (expr1, 2)
+    call set_member_val (expr1, 1, .true.)
+    call set_member_val (expr1, 2, .true.) 
     call expr1%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call or%instantiate (expr2)
-    select type (expr2)
-    class is (composite_t)
-       call create_true (true, prototype)
-       call expr2%import_member (1, true)
-       call create_false (false, prototype)
-       call expr2%import_member (2, false)
-    end select
+    call init_members (expr2, 2)
+    call set_member_val (expr2, 1, .true.)
+    call set_member_val (expr2, 2, .false.) 
     call expr2%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call or%instantiate (expr3)
-    select type (expr3)
-    class is (composite_t)
-       call create_false (false, prototype)
-       call expr3%import_member (1, false)
-       call create_true (true, prototype)
-       call expr3%import_member (2, true)
-    end select
+    call init_members (expr3, 2)
+    call set_member_val (expr3, 1, .false.)
+    call set_member_val (expr3, 2, .true.) 
     call expr3%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call or%instantiate (expr4)
-    select type (expr4)
-    class is (composite_t)
-       call create_false (false, prototype)
-       call expr4%import_member (1, false)
-       call create_false (false, prototype)
-       call expr4%import_member (2, false)
-    end select
+    call init_members (expr4, 2)
+    call set_member_val (expr4, 1, .false.)
+    call set_member_val (expr4, 2, .false.) 
     call expr4%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call or%instantiate (expr5)
-    select type (expr5)
-    class is (composite_t)
-       call create_undef (undef, prototype)
-       call expr5%import_member (1, undef)
-       call create_true (true, prototype)
-       call expr5%import_member (2, true)
-    end select
+    call init_members (expr5, 2)
+    call set_member_val (expr5, 1)
+    call set_member_val (expr5, 2, .true.) 
     call expr5%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call or%instantiate (expr6)
-    select type (expr6)
-    class is (composite_t)
-       call create_false (false, prototype)
-       call expr6%import_member (1, false)
-       call create_undef (undef, prototype)
-       call expr6%import_member (2, undef)
-    end select
+    call init_members (expr6, 2)
+    call set_member_val (expr6, 1, .false.)
+    call set_member_val (expr6, 2) 
     call expr6%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call or%instantiate (expr7)
-    select type (expr7)
-    class is (composite_t)
-       call create_undef (undef, prototype)
-       call expr7%import_member (1, undef)
-       call create_undef (undef, prototype)
-       call expr7%import_member (2, undef)
-    end select
+    call init_members (expr7, 2)
+    call set_member_val (expr7, 1)
+    call set_member_val (expr7, 2) 
     call expr7%resolve (success)
+    write (u, "(A,L1)")  "success = ", success
+
+    write (u, *)
+
+    call or%instantiate (expr8)
+    call init_members (expr8, 3)
+    call set_member_val (expr8, 1, .false.)
+    call set_member_val (expr8, 2, .false.) 
+    call set_member_val (expr8, 3, .true.) 
+    call expr8%resolve (success)
+    write (u, "(A,L1)")  "success = ", success
+
+    call or%instantiate (expr9)
+    call init_members (expr9, 4)
+    call set_member_val (expr9, 1, .false.)
+    call set_member_val (expr9, 2, .false.) 
+    call set_member_val (expr9, 3, .false.)
+    call set_member_val (expr9, 4, .false.) 
+    call expr9%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     write (u, "(A)")
@@ -7046,6 +7506,10 @@ Build and evaluate simple logical expressions.
     call expr5%write (u)
     call expr6%write (u)
     call expr7%write (u)
+
+    write (u, "(A)")
+    call expr8%write (u)
+    call expr9%write (u)
 
     write (u, "(A)")
     call expr1%write_as_expression (u)
@@ -7063,6 +7527,12 @@ Build and evaluate simple logical expressions.
     call expr7%write_as_expression (u)
     write (u, *)
 
+    write (u, *)
+    call expr8%write_as_expression (u)
+    write (u, *)
+    call expr9%write_as_expression (u)
+    write (u, *)
+
     write (u, "(A)")
     write (u, "(A)")  "* Evaluate"
   
@@ -7074,6 +7544,9 @@ Build and evaluate simple logical expressions.
     call expr6%evaluate ()
     call expr7%evaluate ()
 
+    call expr8%evaluate ()
+    call expr9%evaluate ()
+
     write (u, "(A)")
     call expr1%write (u)
     call expr2%write (u)
@@ -7082,6 +7555,10 @@ Build and evaluate simple logical expressions.
     call expr5%write (u)
     call expr6%write (u)
     call expr7%write (u)
+
+    write (u, "(A)")
+    call expr8%write (u)
+    call expr9%write (u)
 
     write (u, "(A)")
     call expr1%write_as_value (u)
@@ -7099,6 +7576,12 @@ Build and evaluate simple logical expressions.
     call expr7%write_as_value (u)
     write (u, *)
 
+    write (u, *)
+    call expr8%write_as_value (u)
+    write (u, *)
+    call expr9%write_as_value (u)
+    write (u, *)
+
     write (u, "(A)")
     write (u, "(A)")  "* Cleanup"
 
@@ -7109,6 +7592,8 @@ Build and evaluate simple logical expressions.
     call remove_object (expr5)
     call remove_object (expr6)
     call remove_object (expr7)
+    call remove_object (expr8)
+    call remove_object (expr9)
     call remove_object (or)
     call remove_object (prototype)
 
@@ -7119,7 +7604,7 @@ Build and evaluate simple logical expressions.
 
 @ %def object_logical_7
 @ 
-\subsubsection{Operators: or}
+\subsubsection{Operators: nested expression}
 Build and evaluate simple logical expressions.
 <<Logical: execute tests>>=
   call test (object_logical_8, "object_logical_8", &
@@ -7129,11 +7614,11 @@ Build and evaluate simple logical expressions.
   subroutine object_logical_8 (u)
     integer, intent(in) :: u
     class(object_t), pointer :: core
-    class(object_t), pointer :: prototype, true, false, undef
+    class(object_t), pointer :: prototype
     class(object_t), pointer :: not, and, or
     class(object_t), pointer :: expr1, expr2, expr3, expr4, expr5
     class(object_t), pointer :: arg1, arg2
-    logical :: success
+1    logical :: success
 
     write (u, "(A)")  "* Test output: object_logical_8"
     write (u, "(A)")  "*   Purpose: check nested logical expressions"
@@ -7172,88 +7657,70 @@ Build and evaluate simple logical expressions.
     write (u, "(A)")
     
     call and%instantiate (expr1)
+    call init_members (expr1, 2)
     select type (expr1)
     class is (composite_t)
        call not%instantiate (arg1)
-       select type (arg1)
-       class is (composite_t)
-          call create_true (true, prototype)
-          call arg1%import_member (1, true)
-       end select
+       call init_members (arg1, 1)
+       call set_member_val (arg1, 1, .true.)
        call expr1%import_member (1, arg1)
-       call create_false (false, prototype)
-       call expr1%import_member (2, false)
     end select
+    call set_member_val (expr1, 2, .false.)
     call expr1%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call not%instantiate (expr2)
+    call init_members (expr2, 1)
     select type (expr2)
     class is (composite_t)
        call and%instantiate (arg1)
-       select type (arg1)
-       class is (composite_t)
-          call create_true (true, prototype)
-          call arg1%import_member (1, true)
-          call create_false (false, prototype)
-          call arg1%import_member (2, false)
-       end select
+       call init_members (arg1, 2)
+       call set_member_val (arg1, 1, .true.)
+       call set_member_val (arg1, 2, .false.)
        call expr2%import_member (1, arg1)
     end select
     call expr2%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call and%instantiate (expr3)
+    call init_members (expr3, 2)
+    call set_member_val (expr3, 1, .true.)
     select type (expr3)
     class is (composite_t)
-       call create_true (true, prototype)
-       call expr3%import_member (1, true)
        call or%instantiate (arg2)
-       select type (arg2)
-       class is (composite_t)
-          call create_false (false, prototype)
-          call arg2%import_member (1, false)
-          call create_true (true, prototype)
-          call arg2%import_member (2, true)
-       end select
+       call init_members (arg2, 2)
+       call set_member_val (arg2, 1, .false.)
+       call set_member_val (arg2, 2, .true.)
        call expr3%import_member (2, arg2)
     end select
     call expr3%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call and%instantiate (expr4)
+    call init_members (expr4, 2)
+    call set_member_val (expr4, 1, .true.)
     select type (expr4)
     class is (composite_t)
-       call create_true (true, prototype)
-       call expr4%import_member (1, true)
        call and%instantiate (arg2)
-       select type (arg2)
-       class is (composite_t)
-          call create_false (false, prototype)
-          call arg2%import_member (1, false)
-          call create_true (true, prototype)
-          call arg2%import_member (2, true)
-       end select
+       call init_members (arg2, 2)
+       call set_member_val (arg2, 1, .false.)
+       call set_member_val (arg2, 2, .true.)
        call expr4%import_member (2, arg2)
     end select
     call expr4%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
     call and%instantiate (expr5)
+    call init_members (expr5, 2)
     select type (expr5)
     class is (composite_t)
        call and%instantiate (arg1)
-       select type (arg1)
-       class is (composite_t)
-          call create_true (true, prototype)
-          call arg1%import_member (1, true)
-          call create_false (false, prototype)
-          call arg1%import_member (2, false)
-       end select
+       call init_members (arg1, 2)
+       call set_member_val (arg1, 1, .true.)
+       call set_member_val (arg1, 2, .false.)
        call expr5%import_member (1, arg1)
-       call create_true (true, prototype)
-       call expr5%import_member (2, true)
     end select
+    call set_member_val (expr5, 2, .true.)
     call expr5%resolve (success)
     write (u, "(A,L1)")  "success = ", success
 
@@ -7540,7 +8007,8 @@ Construct logical expressions from bytecode.
 
     call repository%spawn (var_str ("not"), expr)
     select type (expr)
-    class is (composite_t)
+    class is (not_t)
+       call expr%init_args (1)
        call expr%import_member (1, val1)
     end select
 
@@ -7638,7 +8106,8 @@ Construct logical expressions from bytecode.
 
     call repository%spawn (var_str ("and"), expr)
     select type (expr)
-    class is (composite_t)
+    class is (and_t)
+       call expr%init_args (2)
        call expr%import_member (1, val1)
        call expr%import_member (2, val2)
     end select
@@ -7737,7 +8206,8 @@ Construct logical expressions from bytecode.
 
     call repository%spawn (var_str ("or"), expr)
     select type (expr)
-    class is (composite_t)
+    class is (or_t)
+       call expr%init_args (2)
        call expr%import_member (1, val1)
        call expr%import_member (2, val2)
     end select
@@ -7819,4 +8289,1160 @@ Construct logical expressions from bytecode.
   end subroutine object_logical_10
 
 @ %def object_logical_10
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Sindarin Parser}
+<<[[sindarin_parser.f90]]>>=
+<<File header>>
+
+module sindarin_parser
+
+<<Use strings>>
+  use unit_tests
+  use format_utils
+  use io_units
+  use diagnostics
+
+  use ifiles
+  use syntax_rules
+  use lexers
+  use parser
+  
+  use codes
+  use builders
+
+  use object_base
+  use object_builder
+  use object_expr
+  use object_logical
+
+<<Standard module head>>
+
+<<Sindarin parser: public>>
+
+<<Sindarin parser: types>>
+
+<<Sindarin parser: variables>>
+
+contains
+
+<<Sindarin parser: procedures>>
+
+<<Sindarin parser: tests>>
+
+end module sindarin_parser
+@ %def sindarin_parser
+@ 
+\subsection{Prototype Repository}
+<<Sindarin parser: procedures>>=
+  subroutine make_sindarin_repository (repository)
+    type(repository_t), intent(inout) :: repository
+    class(object_t), pointer :: core
+    class(object_t), pointer :: logical
+    class(object_t), pointer :: not, and, or
+    class(object_t), pointer :: assignment
+    integer :: i
+    integer, parameter :: n_members = 5
+    call repository%init (name = var_str ("repository"), n_members = n_members)
+    ! Elementary data types
+    ! logical
+    allocate (composite_t :: logical)
+    select type (logical)
+    type is (composite_t)
+       allocate (logical_t :: core)
+       call logical%init (var_str ("logical"))
+       call logical%import_core (core)
+    end select
+    ! Logical operators
+    ! not
+    allocate (not_t :: not)
+    select type (not)
+    type is (not_t);  call not%init (logical)
+    end select
+    ! and
+    allocate (and_t :: and)
+    select type (and)
+    type is (and_t);  call and%init (logical)
+    end select
+    ! or
+    allocate (or_t :: or)
+    select type (or)
+    type is (or_t);  call or%init (logical)
+    end select
+    ! Statements
+    ! Assignment
+    allocate (assignment_t :: assignment)
+    select type (assignment)
+    type is (assignment_t);  call assignment%init ()
+    end select
+    i = 0
+    i = i + 1;  call repository%import_member (i, logical)
+    i = i + 1;  call repository%import_member (i, not)
+    i = i + 1;  call repository%import_member (i, and)
+    i = i + 1;  call repository%import_member (i, or)
+    i = i + 1;  call repository%import_member (i, assignment)
+    if (i /= n_members) then
+       write (msg_buffer, "(A,I0,A,I0,A)")  "Sindarin: prototype repository&
+            & has size ", n_members, ", but ", i, " items are given."
+       call msg_bug ()
+    end if
+  end subroutine make_sindarin_repository
+    
+@ %def make_sindarin_repository
+@ 
+\subsection{Syntax Object}
+<<Sindarin parser: public>>=
+  public :: syntax_sindarin
+<<Sindarin parser: variables>>=
+  type(syntax_t), target, save :: syntax_sindarin
+  
+@ %def syntax_sindarin
+<<Sindarin parser: public>>=
+  public :: syntax_sindarin_init
+<<Sindarin parser: procedures>>=
+  subroutine syntax_sindarin_init ()
+    type(ifile_t) :: ifile
+    call sindarin_syntax_setup (ifile)
+    call syntax_init (syntax_sindarin, ifile)
+    call ifile%final ()
+  end subroutine syntax_sindarin_init
+
+@ %def syntax_sindarin_init
+<<Sindarin parser: public>>=
+  public :: syntax_sindarin_final
+<<Sindarin parser: procedures>>=
+  subroutine syntax_sindarin_final ()
+    call syntax_final (syntax_sindarin)
+  end subroutine syntax_sindarin_final
+
+@ %def syntax_sindarin_final
+<<Sindarin parser: public>>=
+  public :: syntax_sindarin_write
+<<Sindarin parser: procedures>>=
+  subroutine syntax_sindarin_write (unit)
+    integer, intent(in), optional :: unit
+    call syntax_write (syntax_sindarin, unit)
+  end subroutine syntax_sindarin_write
+
+@ %def syntax_sindarin_write
+<<Sindarin parser: procedures>>=
+  subroutine sindarin_syntax_setup (ifile)
+    type(ifile_t), intent(inout) :: ifile
+    call ifile%append ("SEQ script = command*")
+    call ifile%append ("ALT command = declaration | assignment")
+    call ifile%append ("SEQ declaration =&
+         & builtin_type var_name assignment_clause?")
+    call ifile%append ("SEQ assignment = var_name assignment_clause")
+    call ifile%append ("ALT builtin_type = logical")
+    call ifile%append ("KEY logical")
+    call ifile%append ("IDE var_name")
+    call ifile%append ("SEQ assignment_clause = '=' expr")
+    call ifile%append ("KEY '='")
+    call ifile%append ("ALT expr = logical_expr")
+    call ifile%append ("SEQ logical_expr = logical_term or_clause*")
+    call ifile%append ("SEQ logical_term = logical_value and_clause*")
+    call ifile%append ("ALT logical_value =&
+         & not_clause | logical_literal | group | atom")
+    call ifile%append ("SEQ or_clause = or logical_term")
+    call ifile%append ("SEQ and_clause = and logical_value")
+    call ifile%append ("SEQ not_clause = not logical_value")
+    call ifile%append ("ALT logical_literal = true | false")
+    call ifile%append ("KEY or")
+    call ifile%append ("KEY and")
+    call ifile%append ("KEY not")
+    call ifile%append ("KEY true")
+    call ifile%append ("KEY false")
+    call ifile%append ("GRO group = ( expr )")
+    call ifile%append ("IDE atom")
+  end subroutine sindarin_syntax_setup
+
+@ %def sindarin_syntax_setup
+@
+\subsection{Parse Node Decoder}
+This is an object that allows us to iterate over the parse tree step by step.
+We implement it as an implementation of [[builder_t]], because it is
+technically a builder (with only the decoding mode implemented) that works
+just on a single node.
+
+The [[sindarin_decoder_t]] below contains a factory method that allocates the
+correct implementation of [[pn_decoder_t]], corresponding to a particular
+syntax rule.
+
+The [[pn_decoder_t]] object holds the pointer to a parse node and a numeric
+item counter.  We also point to the syntax rule.
+
+We include a pointer to the [[prototypes]] array, which is allocated in the
+parent [[sindarin_decoder_t]] object.
+
+The [[previous]] pointer allows us to build a stack of decoder objects.
+<<Sindarin parser: types>>=
+  type, extends (builder_t), abstract :: pn_decoder_t
+     private
+     type(parse_node_t), pointer :: pn => null ()
+     type(parse_node_t), pointer :: pn_next => null ()
+     type(syntax_rule_t), pointer :: rule => null ()
+     type(string_t), dimension(:), pointer :: prototypes => null ()
+     type(position_t) :: position
+     class(pn_decoder_t), pointer :: previous => null ()
+   contains
+   <<Sindarin parser: pn decoder: TBP>>
+  end type pn_decoder_t
+  
+@ %def pn_decoder_t
+@ Finalizer: not needed in the default case.
+<<Sindarin parser: pn decoder: TBP>>=
+  procedure :: final => pn_decoder_final
+<<Sindarin parser: procedures>>=
+  subroutine pn_decoder_final (builder)
+    class(pn_decoder_t), intent(inout) :: builder
+  end subroutine pn_decoder_final
+  
+@ %def pn_decoder_final
+@ Output: print rule keyword and item index.
+<<Sindarin parser: pn decoder: TBP>>=
+  procedure :: write => pn_decoder_write
+<<Sindarin parser: procedures>>=
+  subroutine pn_decoder_write (builder, unit)
+    class(pn_decoder_t), intent(in) :: builder
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, "(2x)", advance="no")
+    call builder%rule%write (u, short=.true., key_only=.true., advance=.false.)
+    write (u, "(':',1x)", advance="no")
+    call builder%position%write (u)
+    write (u, *)
+  end subroutine pn_decoder_write
+
+@ %def pn_decoder_write
+@ Initialization: assign the parse node, determine the rule.  Also set the
+prototype index if applicable.
+
+The may have preset content, therefore intent(inout).
+<<Sindarin parser: pn decoder: TBP>>=
+  procedure :: init => pn_decoder_init
+<<Sindarin parser: procedures>>=
+  subroutine pn_decoder_init (builder, parse_node, rule, prototypes)
+    class(pn_decoder_t), intent(inout) :: builder
+    type(parse_node_t), intent(in), target :: parse_node
+    type(syntax_rule_t), intent(in), target :: rule
+    type(string_t), dimension(:), target :: prototypes
+    builder%pn => parse_node
+    builder%rule => rule
+    builder%prototypes => prototypes
+  end subroutine pn_decoder_init
+  
+@ %def pn_decoder_init
+@ The [[build]] method is not implemented for this type.  We just support
+decoding, which is deferred to the rule-dependent implementation.
+<<Sindarin parser: pn decoder: TBP>>=
+  procedure :: build => pn_decoder_build
+<<Sindarin parser: procedures>>=
+  subroutine pn_decoder_build (builder, code, success)
+    class(pn_decoder_t), intent(inout) :: builder
+    type(code_t), intent(in) :: code
+    logical, intent(out) :: success
+    success = .false.
+    call msg_bug ("Parse-node decoder: build method not implemented")
+  end subroutine pn_decoder_build
+    
+@ %def pn_decoder_build
+@ Return the next parse (sub-)node to be interpreted, originating from the
+current node.  If this is null, the current node has been digested fully.
+<<Sindarin parser: pn decoder: TBP>>=
+  procedure :: get_next_node => pn_decoder_get_next_node
+<<Sindarin parser: procedures>>=
+  subroutine pn_decoder_get_next_node (builder, parse_node)
+    class(pn_decoder_t), intent(in) :: builder
+    type(parse_node_t), pointer, intent(out) :: parse_node
+    parse_node => builder%pn_next
+  end subroutine pn_decoder_get_next_node
+  
+@ %def pn_decoder_get_next_node
+@ Return the current value of the position-part marker.
+<<Sindarin parser: pn decoder: TBP>>=
+  procedure :: get_part => pn_decoder_get_part
+<<Sindarin parser: procedures>>=
+  function pn_decoder_get_part (builder) result (part)
+    class(pn_decoder_t), intent(in) :: builder
+    integer :: part
+    part = builder%position%part
+  end function pn_decoder_get_part
+  
+@ %def pn_decoder_get_part
+@
+\subsection{Parse Tree Interpreter}
+The Sindarin source is parsed by the [[parse_tree]] object, using the
+[[sindarin_syntax]] table.  The next step is to convert the parse tree into
+bytecode, corresponding to the Sindarin object tree structure.
+
+This task is given to a the [[sindarin_decoder_t]] object, which is an
+incarnation of the [[builder_t]] abstract type.  An abstract builder has
+methods both for coding and decoding an object tree.  Here we just decode:
+iterate over the parse tree and return a sequence of byte codes.
+
+We store the array of prototype names, a pointer to the parse-tree root, and a
+pointer to the node-decoder stack.  The prototype-name array is allocated via
+pointer, so we can target it without worrying about TARGET attributes.
+
+We also store the prototype index of the [[assignment]] statement, since this
+will be frequently used and constant.
+<<Sindarin parser: types>>=
+  type, extends (builder_t) :: sindarin_decoder_t
+     private
+     type(string_t), dimension(:), pointer :: prototypes => null ()
+     type(parse_node_t), pointer :: pn_root => null ()
+     class(pn_decoder_t), pointer :: pn_decoder => null ()
+   contains
+   <<Sindarin parser: sindarin decoder: TBP>>
+  end type sindarin_decoder_t
+     
+@ %def sindarin_decoder_t
+@
+\subsubsection{Finalizer}
+Clear content accumulated by the decoder.
+<<Sindarin parser: sindarin decoder: TBP>>=
+  procedure :: final => sindarin_decoder_final
+<<Sindarin parser: procedures>>=
+  subroutine sindarin_decoder_final (builder)
+    class(sindarin_decoder_t), intent(inout) :: builder
+    class(pn_decoder_t), pointer :: pn_decoder
+    if (associated (builder%prototypes))  deallocate (builder%prototypes)
+    do while (associated (builder%pn_decoder))
+       pn_decoder => builder%pn_decoder
+       builder%pn_decoder => pn_decoder%previous
+       call pn_decoder%final ()
+       deallocate (pn_decoder)
+    end do
+  end subroutine sindarin_decoder_final
+  
+@ %def sindarin_decoder_final
+@
+\subsubsection{Output}
+<<Sindarin parser: sindarin decoder: TBP>>=
+  procedure :: write => sindarin_decoder_write
+  procedure :: write_prototypes => sindarin_decoder_write_prototypes
+  procedure :: write_tree => sindarin_decoder_write_tree
+  procedure :: write_stack => sindarin_decoder_write_stack
+<<Sindarin parser: procedures>>=
+  subroutine sindarin_decoder_write (builder, unit)
+    class(sindarin_decoder_t), intent(in) :: builder
+    integer, intent(in), optional :: unit
+    class(pn_decoder_t), pointer :: pn_decoder
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, "(A)")  "Parse-tree decoder state:"
+    call builder%write_prototypes (u)
+    call builder%write_tree (u)
+    call builder%write_stack (u)
+  end subroutine sindarin_decoder_write
+
+  subroutine sindarin_decoder_write_prototypes (builder, unit)
+    class(sindarin_decoder_t), intent(in) :: builder
+    integer, intent(in), optional :: unit
+    integer :: u, i
+    u = given_output_unit (unit)
+    if (associated (builder%prototypes)) then
+       write (u, "(A)")  "Prototype names:"
+       do i = 1, size (builder%prototypes)
+          write (u, "(1x,I0,1x,A)")  i, char (builder%prototypes(i))
+       end do
+    else
+       write (u, "(A)")  "[No prototype array]"
+    end if
+  end subroutine sindarin_decoder_write_prototypes
+
+  subroutine sindarin_decoder_write_tree (builder, unit)
+    class(sindarin_decoder_t), intent(in) :: builder
+    integer, intent(in), optional :: unit
+    class(pn_decoder_t), pointer :: pn_decoder
+    integer :: u
+    u = given_output_unit (unit)
+    if (associated (builder%pn_root)) then
+       write (u, "(A)")  "Parse tree:"
+       call builder%pn_root%write (unit, short=.true., depth = 1)
+    else
+       write (u, "(A)")  "[No parse tree]"
+    end if
+  end subroutine sindarin_decoder_write_tree
+
+  subroutine sindarin_decoder_write_stack (builder, unit)
+    class(sindarin_decoder_t), intent(in) :: builder
+    integer, intent(in), optional :: unit
+    class(pn_decoder_t), pointer :: pn_decoder
+    integer :: u
+    u = given_output_unit (unit)
+    if (associated (builder%pn_decoder)) then
+       write (u, "(A)")  "Node handler stack:"
+       pn_decoder => builder%pn_decoder
+       do while (associated (pn_decoder))
+          call pn_decoder%write (u)
+          pn_decoder => pn_decoder%previous
+       end do
+    else
+       write (u, "(A)")  "[No pointer stack]"
+    end if
+  end subroutine sindarin_decoder_write_stack
+
+@ %def sindarin_decoder_write
+@ %def sindarin_decoder_write_tree
+@ %def sindarin_decoder_write_stack
+@
+\subsubsection{Initialization}
+The decoder is started by associating the root of an existing parse tree.
+<<Sindarin parser: sindarin decoder: TBP>>=
+  procedure :: init => sindarin_decoder_init
+<<Sindarin parser: procedures>>=
+  subroutine sindarin_decoder_init (decoder, parse_tree, prototype_names)
+    class(sindarin_decoder_t), intent(out) :: decoder
+    type(parse_tree_t), intent(in) :: parse_tree
+    type(string_t), dimension(:), intent(in) :: prototype_names
+    class(pn_decoder_t), pointer :: pn_decoder
+    integer :: i
+    allocate (decoder%prototypes (size (prototype_names)))
+    decoder%prototypes = prototype_names
+    decoder%pn_root => parse_tree%get_root_ptr ()
+    if (associated (decoder%pn_root)) then
+       call decoder%push (decoder%pn_root, 0)
+    end if
+  end subroutine sindarin_decoder_init
+  
+@ %def sindarin_decoder_init
+@
+\subsubsection{Pointer Stack}
+The decoder maintains a stack of decoder objects, which point to locations in
+the parse tree.
+<<Sindarin parser: sindarin decoder: TBP>>=
+  procedure, private :: push => sindarin_decoder_push
+  procedure, private :: pop => sindarin_decoder_pop
+<<Sindarin parser: procedures>>=
+  subroutine sindarin_decoder_push (builder, parse_node, context_part)
+    class(sindarin_decoder_t), intent(inout) :: builder
+    type(parse_node_t), intent(in), target :: parse_node
+    integer, intent(in) :: context_part
+    class(pn_decoder_t), pointer :: pn_decoder
+    call builder%make_pn_decoder (parse_node, context_part, pn_decoder)
+    pn_decoder%previous => builder%pn_decoder
+    builder%pn_decoder => pn_decoder
+  end subroutine sindarin_decoder_push
+    
+  subroutine sindarin_decoder_pop (builder)
+    class(sindarin_decoder_t), intent(inout) :: builder
+    class(pn_decoder_t), pointer :: pn_decoder
+    pn_decoder => builder%pn_decoder
+    builder%pn_decoder => pn_decoder%previous
+    call pn_decoder%final ()
+    deallocate (pn_decoder)
+  end subroutine sindarin_decoder_pop
+    
+@ %def sindarin_decoder_push
+@ %def sindarin_decoder_pop
+@
+\subsubsection{Decoding}
+Decode the current object and advance to the next.  If there is a valid
+sub-node for the current node, push this to the top of the stack for the next
+iteration.  If there is no object left, return [[.false.]]
+<<Sindarin parser: sindarin decoder: TBP>>=
+  procedure :: decode => sindarin_decoder_decode
+<<Sindarin parser: procedures>>=
+  subroutine sindarin_decoder_decode (builder, code, success)
+    class(sindarin_decoder_t), intent(inout) :: builder
+    type(code_t), intent(out) :: code
+    logical, intent(out) :: success
+    type(parse_node_t), pointer :: pn_next
+    integer :: context_part
+    do while (associated (builder%pn_decoder))
+       call builder%pn_decoder%decode (code, success)
+       if (success) then
+          call builder%pn_decoder%get_next_node (pn_next)
+          if (associated (pn_next)) then
+             context_part = builder%pn_decoder%get_part ()
+             call builder%push (pn_next, context_part)
+          end if
+          if (code%cat /= 0) then
+             return
+          end if
+       else
+          call builder%pop ()
+       end if
+    end do
+    success = .false.
+  end subroutine sindarin_decoder_decode
+
+@ %def sindarin_decoder_decode
+@
+\subsubsection{Building}
+This is not applicable for [[sindarin_decoder_t]].
+<<Sindarin parser: sindarin decoder: TBP>>=
+  procedure :: build => sindarin_decoder_build
+<<Sindarin parser: procedures>>=
+  subroutine sindarin_decoder_build (builder, code, success)
+    class(sindarin_decoder_t), intent(inout) :: builder
+    type(code_t), intent(in) :: code
+    logical, intent(out) :: success
+    success = .false.
+    call msg_bug ("Sindarin decoder: build method not implemented")
+  end subroutine sindarin_decoder_build
+    
+@ %def sindarin_decoder_build
+@
+\subsection{Handling Individual Parse Nodes}
+This is the factory method for creating a specific parse-node handler.  We
+check the syntax rule and allocate a matching extension of [[pn_decoder_t]].
+This extension is initialized with pointers to the parse node and rule.
+<<Sindarin parser: sindarin decoder: TBP>>=
+  procedure :: make_pn_decoder => sindarin_decoder_make_pn_decoder
+<<Sindarin parser: procedures>>=
+  subroutine sindarin_decoder_make_pn_decoder &
+       (builder, parse_node, context_part, pn_decoder)
+    class(sindarin_decoder_t), intent(inout) :: builder
+    type(parse_node_t), intent(in), target :: parse_node
+    integer, intent(in) :: context_part
+    class(pn_decoder_t), intent(out), pointer :: pn_decoder
+    type(syntax_rule_t), pointer :: rule
+    integer :: prototype_index
+    rule => parse_node%get_rule_ptr ()
+    prototype_index = 0
+    select case (char (rule%get_key ()))
+     <<Sindarin parser: decoder selection>>
+    case default
+       call msg_bug ("Sindarin decoder: rule '" &
+            // char (rule%get_key ()) // "' not supported")
+    end select
+    call pn_decoder%init (parse_node, rule, builder%prototypes)
+  end subroutine sindarin_decoder_make_pn_decoder
+    
+@ %def sindarin_decoder_make_pn_decoder
+@ Auxiliary: return the index of a named prototype, using the prototype array.
+
+NB: We do a simple linear search.  In case this becomes a bottleneck, we should
+think about a hash table for the prototypes array.
+<<Sindarin parser: procedures>>=
+  function find_index (array, name) result (i_prototype)
+    type(string_t), dimension(:), intent(in) :: array
+    type(string_t), intent(in) :: name
+    integer :: i_prototype
+    integer :: i
+    i_prototype = 0
+    do i = 1, size (array)
+       if (name == array(i)) then
+          i_prototype = i
+          return
+       end if
+    end do
+  end function find_index
+
+@ %def find_index
+@
+\subsubsection{Script}
+<<Sindarin parser: decoder selection>>=
+  case ("script")
+     allocate (pnd_script_t :: pn_decoder)
+<<Sindarin parser: types>>=
+  type, extends (pn_decoder_t) :: pnd_script_t
+     private
+     integer :: n_declarations = 0
+     integer :: n_commands = 0
+     integer, dimension(:), allocatable :: dec
+     integer, dimension(:), allocatable :: com
+   contains
+     procedure :: decode => decode_script
+  end type pnd_script_t
+  
+@ %def pnd_script_t
+<<Sindarin parser: procedures>>=
+  recursive subroutine decode_script (builder, code, success)
+    class(pnd_script_t), intent(inout) :: builder
+    type(code_t), intent(out) :: code
+    logical, intent(out) :: success
+    type(parse_node_t), pointer :: pn_com, pn_asg
+    type(syntax_rule_t), pointer :: rule, rule_asg
+    logical, dimension(:), allocatable :: mask_dec, mask_com
+    integer :: i, n_sub, n_dec, n_com
+    success = .true.
+    select case (builder%position%part)
+    case (POS_HERE)
+       n_sub = builder%pn%get_n_sub ()
+       allocate (mask_dec (n_sub))
+       allocate (mask_com (n_sub))
+       pn_com => builder%pn%get_sub_ptr ()
+       do i = 1, n_sub
+          rule => pn_com%get_rule_ptr ()
+          select case (char (rule%get_key ()))
+          case ("declaration")
+             mask_dec(i) = .true.
+             pn_asg => pn_com%get_sub_ptr (3)
+             mask_com(i) = associated (pn_asg)
+          case default
+             mask_dec(i) = .false.
+             mask_com(i) = .true.
+          end select
+          pn_com => pn_com%get_next_ptr ()
+       end do
+       n_dec = count (mask_dec)
+       n_com = count (mask_com)
+       code%cat = CAT_COMPOSITE
+       code%natt = 6
+       code%att(4) = n_dec
+       code%att(6) = n_com
+       call code%create_string_val (builder%rule%get_key ())
+       builder%n_declarations = n_dec
+       builder%n_commands = n_com
+       builder%dec = pack ([(i, i=1, n_sub)], mask_dec)
+       builder%com = pack ([(i, i=1, n_sub)], mask_com)
+       if (n_dec > 0) then
+          builder%position%part = POS_MEMBER
+          i = 1
+          builder%pn_next => builder%pn%get_sub_ptr (builder%dec(1))
+       else if (n_com > 0) then
+          builder%position%part = POS_PRIMER
+          i = 1
+          builder%pn_next => builder%pn%get_sub_ptr (builder%com(1))
+       else
+          builder%position%part = POS_NONE
+          i = 0
+          builder%pn_next => null ()
+       end if
+    case (POS_MEMBER)
+       i = builder%position%i
+       if (i < builder%n_declarations) then
+          i = i + 1
+          builder%pn_next => builder%pn%get_sub_ptr (builder%dec(i))
+       else if (builder%n_commands > 0) then
+          builder%position%part = POS_PRIMER
+          i = 1
+          builder%pn_next => builder%pn%get_sub_ptr (builder%com(1))
+       else
+          builder%position%part = POS_NONE
+          i = 0
+          builder%pn_next => null ()
+       end if
+       builder%position%i = i
+    case (POS_PRIMER)
+       i = builder%position%i
+       if (i < builder%n_commands) then
+          i = i + 1
+          builder%pn_next => builder%pn%get_sub_ptr (builder%com(i))
+       else
+          builder%position%part = POS_NONE
+          i = 0
+          builder%pn_next => null ()
+       end if
+    case default
+       builder%pn_next => null ()
+       success = .false.
+    end select
+    builder%position%i = i
+  end subroutine decode_script
+  
+@ %def decode_script
+@
+\subsubsection{Declaration}
+A declaration defines a new member of the current context.  When we encounter
+the declaration statement, we decode it and prepare a member object with
+undefined value.
+
+The declaration may have an assignment clause.  To handle this, we create an
+assignment builder instead (see below), when we encounter the parse node again
+during primer generation.
+<<Sindarin parser: decoder selection>>=
+  case ("declaration")
+     select case (context_part)
+     case (POS_MEMBER)
+        allocate (pnd_declaration_t :: pn_decoder)
+     case (POS_PRIMER)
+        allocate (pnd_assignment_t :: pn_decoder)
+     end select
+<<Sindarin parser: types>>=
+  type, extends (pn_decoder_t) :: pnd_declaration_t
+     private
+   contains
+     procedure :: decode => decode_declaration
+  end type pnd_declaration_t
+  
+@ %def pnd_declaration_t
+@ Declaration: we handle the declaration of a variable with name and
+prototype and generate the code for initializing this as a member object.
+
+The current implementation supports only [[variable]] objects.
+<<Sindarin parser: procedures>>=
+  recursive subroutine decode_declaration (builder, code, success)
+    class(pnd_declaration_t), intent(inout) :: builder
+    type(code_t), intent(out) :: code
+    logical, intent(out) :: success
+    type(parse_node_t), pointer :: pn_prototype, pn_var_name
+    type(syntax_rule_t), pointer :: rule
+    type(string_t) :: var_name
+    success = .true.
+    select case (builder%position%part)
+    case (POS_HERE)
+       pn_prototype => builder%pn%get_sub_ptr ()
+       rule => pn_prototype%get_rule_ptr ()
+       pn_var_name => pn_prototype%get_next_ptr ()
+       var_name = pn_var_name%get_string ()
+       code%cat = CAT_COMPOSITE
+       code%natt = 2
+       code%att(1) = find_index (builder%prototypes, rule%get_key ())
+       code%att(2) = MODE_VARIABLE
+       call code%create_string_val (var_name)
+       builder%position%part = POS_CORE
+       builder%pn_next => null ()
+    case (POS_CORE)
+       code%cat = CAT_VALUE
+       builder%position%part = POS_NONE
+       builder%pn_next => null ()
+    case default
+       builder%pn_next => null ()
+       success = .false.
+    end select
+  end subroutine decode_declaration
+  
+@ %def decode_declaration
+@
+\subsubsection{Assignment}
+Assign a variable: lhs is the variable name, rhs is an expression.  The
+prototype index is constant.
+<<Sindarin parser: decoder selection>>=
+  case ("assignment")
+     allocate (pnd_assignment_t :: pn_decoder)
+<<Sindarin parser: types>>=
+  type, extends (pn_decoder_t) :: pnd_assignment_t
+     private
+     type(string_t) :: var_name
+     type(parse_node_t), pointer :: pn_rhs => null ()
+   contains
+     procedure :: decode => decode_assignment
+  end type pnd_assignment_t
+  
+@ %def pnd_assignment_t
+@ Decode.  There is a composite assignment object, a left-hand side (variable
+name) as an ID object, and a right-hand side expression which becomes a member
+object.
+<<Sindarin parser: procedures>>=
+  recursive subroutine decode_assignment (builder, code, success)
+    class(pnd_assignment_t), intent(inout) :: builder
+    type(code_t), intent(out) :: code
+    logical, intent(out) :: success
+    type(parse_node_t), pointer :: pn_lhs, pn_asg
+    success = .true.
+    select case (builder%position%part)
+    case (POS_HERE)
+       select case (char (builder%rule%get_key ()))
+       case ("assignment")
+          pn_lhs => builder%pn%get_sub_ptr ()
+       case ("declaration")
+          pn_lhs => builder%pn%get_sub_ptr (2)
+       end select
+       pn_asg => pn_lhs%get_next_ptr ()
+       builder%pn_rhs => pn_asg%get_sub_ptr (2)
+       builder%var_name = pn_lhs%get_string ()
+       code%cat = CAT_COMPOSITE
+       code%natt = 1
+       code%att(1) = find_index (builder%prototypes, var_str ("assignment"))
+       builder%position%part = POS_ID
+       builder%pn_next => null ()
+    case (POS_ID)
+       code%cat = CAT_ID
+       call code%create_string_val (builder%var_name)
+       builder%position%part = POS_MEMBER
+       builder%pn_next => null ()
+    case (POS_MEMBER)
+       builder%position%part = POS_NONE
+       builder%pn_next => builder%pn_rhs
+    case default
+       builder%pn_next => null ()
+       success = .false.
+    end select
+  end subroutine decode_assignment
+  
+@ %def decode_assignment
+@
+\subsubsection{Atom}
+This is a variable reference.
+
+Note: current support only for simple variable name.
+<<Sindarin parser: decoder selection>>=
+  case ("atom")
+     allocate (pnd_atom_t :: pn_decoder)
+<<Sindarin parser: types>>=
+  type, extends (pn_decoder_t) :: pnd_atom_t
+     private
+   contains
+     procedure :: decode => decode_atom
+  end type pnd_atom_t
+  
+@ %def pnd_atom_t
+@ Decode.
+<<Sindarin parser: procedures>>=
+  recursive subroutine decode_atom (builder, code, success)
+    class(pnd_atom_t), intent(inout) :: builder
+    type(code_t), intent(out) :: code
+    logical, intent(out) :: success
+    success = .true.
+    select case (builder%position%part)
+    case (POS_HERE)
+       code%cat = CAT_REFERENCE
+       builder%position%part = POS_ID
+       builder%pn_next => null ()
+    case (POS_ID)
+       code%cat = CAT_ID
+       call code%create_string_val (builder%pn%get_string ())
+       builder%position%part = POS_NONE
+       builder%pn_next => null ()
+    case default
+       builder%pn_next => null ()
+       success = .false.
+    end select
+  end subroutine decode_atom
+  
+@ %def decode_atom
+@
+\subsubsection{Logical expression}
+Assign a variable: lhs is the variable name, rhs is an expression.  The
+prototype index is constant.
+<<Sindarin parser: decoder selection>>=
+  case ("logical_expr", "logical_term")
+     allocate (pnd_logical_expr_t :: pn_decoder)
+  case ("not_clause")
+     allocate (pnd_logical_expr_t :: pn_decoder)
+     select type (pn_decoder)
+     type is (pnd_logical_expr_t)
+        pn_decoder%unary = .true.
+     end select
+<<Sindarin parser: types>>=
+  type, extends (pn_decoder_t) :: pnd_logical_expr_t
+     private
+     logical :: unary = .false.
+   contains
+     procedure :: decode => decode_logical_expr
+  end type pnd_logical_expr_t
+  
+@ %def pnd_logical_expr_t
+@ Decode.
+<<Sindarin parser: procedures>>=
+  recursive subroutine decode_logical_expr (builder, code, success)
+    class(pnd_logical_expr_t), intent(inout) :: builder
+    type(code_t), intent(out) :: code
+    logical, intent(out) :: success
+    type(parse_node_t), pointer :: pn_arg, pn_op
+    type(syntax_rule_t), pointer :: rule
+    integer :: i, n_terms
+    success = .true.
+    select case (builder%position%part)
+    case (POS_HERE)
+       if (builder%unary) then
+          pn_arg => null ()
+          pn_op => builder%pn
+       else
+          pn_arg => builder%pn%get_sub_ptr ()
+          pn_op => builder%pn%get_sub_ptr (2)
+       end if
+       n_terms = builder%pn%get_n_sub ()
+       if (associated (pn_op)) then
+          rule => pn_op%get_rule_ptr ()
+          code%cat = CAT_COMPOSITE
+          code%natt = 5
+          select case (char (rule%get_key ()))
+          case ("not_clause")
+             code%att(1) = find_index (builder%prototypes, var_str ("not"))
+             code%att(2) = MODE_CONSTANT
+             code%att(4) = 1
+             code%att(5) = 1
+          case ("and_clause")
+             code%att(1) = find_index (builder%prototypes, var_str ("and"))
+             code%att(2) = MODE_CONSTANT
+             code%att(4) = n_terms
+             code%att(5) = n_terms
+          case ("or_clause")
+             code%att(1) = find_index (builder%prototypes, var_str ("or"))
+             code%att(2) = MODE_CONSTANT
+             code%att(4) = n_terms
+             code%att(5) = n_terms
+          end select
+          builder%position%part = POS_MEMBER
+          builder%position%i = 1
+          builder%pn_next => pn_arg
+       else
+          builder%position%part = POS_NONE
+          builder%pn_next => pn_arg
+       end if
+    case (POS_MEMBER)
+       i = builder%position%i
+       i = i + 1
+       if (builder%unary) then
+          pn_op => builder%pn
+       else
+          pn_op => builder%pn%get_sub_ptr (i)
+       end if
+       pn_arg => pn_op%get_sub_ptr (2)
+       builder%position%part = POS_CORE
+       builder%pn_next => pn_arg
+    case (POS_CORE)
+       code%cat = CAT_VALUE
+       builder%position%part = POS_NONE
+       builder%pn_next => null ()
+    case default
+       builder%pn_next => null ()
+       success = .false.
+    end select
+  end subroutine decode_logical_expr
+  
+@ %def decode_logical_expr
+@
+\subsubsection{Logical literal}
+The logical values [[true]] and [[false]] are coded as [[logical]] objects
+with a definite initial value.
+<<Sindarin parser: decoder selection>>=
+  case ("true")
+     allocate (pnd_logical_literal_t :: pn_decoder)
+     select type (pn_decoder)
+     type is (pnd_logical_literal_t)
+        pn_decoder%value = .true.
+     end select
+  case ("false")
+     allocate (pnd_logical_literal_t :: pn_decoder)
+     select type (pn_decoder)
+     type is (pnd_logical_literal_t)
+        pn_decoder%value = .false.
+     end select
+<<Sindarin parser: types>>=
+  type, extends (pn_decoder_t) :: pnd_logical_literal_t
+     private
+     logical :: value
+   contains
+     procedure :: decode => decode_logical_literal
+  end type pnd_logical_literal_t
+  
+@ %def pnd_logical_literal_t
+@ Decode.
+<<Sindarin parser: procedures>>=
+  recursive subroutine decode_logical_literal (builder, code, success)
+    class(pnd_logical_literal_t), intent(inout) :: builder
+    type(code_t), intent(out) :: code
+    logical, intent(out) :: success
+    type(parse_node_t), pointer :: pn1, pn_op
+    success = .true.
+    select case (builder%position%part)
+    case (POS_HERE)
+       code%cat = CAT_COMPOSITE
+       code%natt = 2
+       code%att(1) = find_index (builder%prototypes, var_str ("logical"))
+       code%att(2) = MODE_CONSTANT
+       builder%position%part = POS_CORE
+       builder%pn_next => null ()
+    case (POS_CORE)
+       code%cat = CAT_VALUE
+       call code%create_logical_val (builder%value)
+       builder%position%part = POS_NONE
+       builder%pn_next => null ()
+    case default
+       builder%pn_next => null ()
+       success = .false.
+    end select
+  end subroutine decode_logical_literal
+  
+@ %def decode_logical_literal
+@ 
+\subsection{Unit tests}
+<<Sindarin parser: public>>=
+  public :: sindarin_parser_test
+<<Sindarin parser: procedures>>=
+  subroutine sindarin_parser_test (u, results)
+    integer, intent(in) :: u
+    type(test_results_t), intent(inout) :: results
+  <<Sindarin parser: execute tests>>  
+  end subroutine sindarin_parser_test
+  
+@ %def sindarin_parser_test 
+@
+Build and display the Sindarin syntax
+<<Sindarin parser: execute tests>>=
+  call test (sindarin_parser_1, "sindarin_parser_1", &
+       "syntax table", &
+       u, results)
+<<Sindarin parser: tests>>=  
+  subroutine sindarin_parser_1 (u)
+    integer, intent(in) :: u
+
+    write (u, "(A)")  "* Test output: sindarin_parser_1"
+    write (u, "(A)")  "*   Purpose: build syntax table"
+    write (u, "(A)")      
+    
+    call syntax_sindarin_init ()
+    call syntax_sindarin_write (u)
+    call syntax_sindarin_final ()
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: sindarin_parser_1"
+    
+    end subroutine sindarin_parser_1
+
+@ %def sindarin_parser_1
+@
+Build and display the Sindarin repository
+<<Sindarin parser: execute tests>>=
+  call test (sindarin_parser_2, "sindarin_parser_2", &
+       "repository", &
+       u, results)
+<<Sindarin parser: tests>>=  
+  subroutine sindarin_parser_2 (u)
+    integer, intent(in) :: u
+    type(repository_t) :: repository
+    type(string_t), dimension(:), allocatable :: name
+    integer :: i
+
+    write (u, "(A)")  "* Test output: sindarin_parser_2"
+    write (u, "(A)")  "*   Purpose: build Sindarin repository"
+    write (u, "(A)")      
+    
+    call make_sindarin_repository (repository)
+    call repository%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Name array"
+    write (u, "(A)")
+    
+    call repository%get_prototype_names (name)
+    do i = 1, size (name)
+       write (u, "(I0,1x,A)")  i, char (name (i))
+    end do
+
+    call repository%final ()
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: sindarin_parser_2"
+    
+    end subroutine sindarin_parser_2
+
+@ %def sindarin_parser_2
+@
+Parse a simple Sindarin script
+<<Sindarin parser: execute tests>>=
+  call test (sindarin_parser_3, "sindarin_parser_3", &
+       "parse script", &
+       u, results)
+<<Sindarin parser: tests>>=  
+  subroutine sindarin_parser_3 (u)
+    integer, intent(in) :: u
+    type(lexer_t) :: lexer
+    type(stream_t), target :: stream
+    type(parse_tree_t) :: parse_tree
+    type(sindarin_decoder_t) :: decoder
+    type(repository_t), allocatable :: repository
+    type(string_t), dimension(:), allocatable :: prototype_names
+    type(object_builder_t) :: builder
+    type(code_t) :: code
+    class(object_t), pointer :: main
+    logical :: success
+    integer :: u_sin, u_code, iostat
+    character(80) :: buffer
+
+    write (u, "(A)")  "* Test output: sindarin_parser_3"
+    write (u, "(A)")  "*   Purpose: parse a simple script"
+    write (u, "(A)")      
+    
+    call syntax_sindarin_init ()
+
+    allocate (repository)
+    call make_sindarin_repository (repository)
+
+    write (u, "(A)")  "* Create script"
+    write (u, "(A)")      
+
+    u_sin = free_unit ()
+    open (u_sin, status="scratch")
+    
+    write (u_sin, "(A)")  "logical a"
+    write (u_sin, "(A)")  "logical b = true"
+    write (u_sin, "(A)")  "a = b and not false"          ! = true 
+    write (u_sin, "(A)")  "b = (a or true) and (not b)"  ! = false
+    
+    rewind (u_sin)
+    do
+       read (u_sin, "(A)", end=1)  buffer
+       write (u, "(A)") trim (buffer)
+    end do
+1   continue
+    
+    rewind (u_sin)
+
+    write (u, "(A)")      
+    write (u, "(A)")  "* Parse script"
+    write (u, "(A)")      
+
+    call lexer%init ( &
+         comment_chars = "", &
+         quote_chars = '', &
+         quote_match = '', &
+         single_chars = "()", &
+         special_class = [ "=" ] , &
+         keyword_list = syntax_get_keyword_list_ptr (syntax_sindarin))
+
+    call stream%init (u_sin)
+    call lexer%assign_stream (stream)
+
+    call parse_tree%parse (syntax_sindarin, lexer)
+
+    write (u, "(A)")  "* Setup decoder"
+    write (u, "(A)")
+    
+    call repository%get_prototype_names (prototype_names)
+
+    call decoder%init (parse_tree, prototype_names)
+    call decoder%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Decode (see 'sindarin_parser_3.dat')"
+    write (u, "(A)")
+    
+    u_code = free_unit ()
+    open (u_code, file="sindarin_parser_3.dat", &
+         status="replace", action="readwrite")
+    
+    do
+       call decoder%decode (code, success)
+       if (.not. success)  exit
+       call code%write (u_code)
+    end do
+    
+    write (u, "(A)")  "* Create object tree"
+    write (u, "(A)")
+    
+    rewind (u_code)
+
+    call builder%import_repository (repository)
+    call builder%init_empty ()
+
+    do
+       call code%read (u_code, iostat=iostat)
+       if (iostat /= 0)  exit
+       call builder%build (code, success)
+       if (.not. success)  exit
+    end do
+    close (u_code)
+
+    call builder%export (main)
+    
+    call main%write (u)
+    call remove_object (main)
+
+    write (u, "(A)")      
+    write (u, "(A)")  "* Cleanup"
+    
+    call builder%final ()
+    call parse_tree%final ()
+
+    close (u_sin)
+    close (u_code)
+    call stream%final ()
+    call lexer%final ()
+
+    call syntax_sindarin_final ()
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: sindarin_parser_3"
+    
+    end subroutine sindarin_parser_3
+
+@ %def sindarin_parser_3
 

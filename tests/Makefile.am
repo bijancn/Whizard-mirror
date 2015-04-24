@@ -53,6 +53,7 @@ UNIT_TESTS = \
     object_base.run \
     object_builder.run \
     object_logical.run \
+    sindarin_parser.run \
     grids.run \
     solver.run \
     state_matrices.run \

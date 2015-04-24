@@ -75,6 +75,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/object_base_5.ref \
     ref-output/object_base_6.ref \
     ref-output/object_base_7.ref \
+    ref-output/object_base_8.ref \
     ref-output/object_builder_1.ref \
     ref-output/object_logical_1.ref \
     ref-output/object_logical_2.ref \
@@ -86,6 +87,9 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/object_logical_8.ref \
     ref-output/object_logical_9.ref \
     ref-output/object_logical_10.ref \
+    ref-output/sindarin_parser_1.ref \
+    ref-output/sindarin_parser_2.ref \
+    ref-output/sindarin_parser_3.ref \
     ref-output/state_matrix_1.ref \
     ref-output/state_matrix_2.ref \
     ref-output/state_matrix_3.ref \
@@ -703,6 +707,7 @@ UNIT_TESTS_SIN = \
     object_base.sin \
     object_builder.sin \
     object_logical.sin \
+    sindarin_parser.sin \
     interactions.sin \
     state_matrices.sin \
     md5.sin \

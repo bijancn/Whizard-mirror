@@ -614,7 +614,7 @@ temporarily override defaults.  The data set is transparent.
      integer :: quit_code = 0
      type(string_t) :: logfile 
      logical :: nlo_calculation = .false.
-     logical, dimension(3) :: active_nlo_components
+     logical, dimension(4) :: active_nlo_components
    contains
    <<RT data: rt data: TBP>>
   end type rt_data_t
@@ -7946,7 +7946,7 @@ local changes to currently inactive models.
     type(var_list_t), pointer :: var_list
     class(prc_core_t), allocatable :: core_template
     class(phs_config_t), allocatable :: phs_config_template
-    class(phs_config_t), allocatable :: phs_config_template_real
+    class(phs_config_t), allocatable :: phs_config_template_other
     type(phs_parameters_t) :: phs_par
     type(mapping_defaults_t) :: mapping_defs
     class(mci_t), allocatable :: mci_template
@@ -8068,16 +8068,24 @@ local changes to currently inactive models.
          case ('gosam', 'openloops')
             call blha_template%set_real_trees ()
          end select
-         call dispatch_phs (phs_config_template_real, local, &
+         call dispatch_phs (phs_config_template_other, local, &
              intg%process_id, mapping_defs, phs_par, &
              var_str ('fks'))
          call dispatch_fks (fks_template, local)
          call intg%process%init_component &
             (i_component, core_template, mci_template, &
-             phs_config_template_real, fks_template = fks_template, &
+             phs_config_template_other, fks_template = fks_template, &
              blha_template = blha_template)
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_REAL)
+       case (NLO_PDF)
+         call dispatch_phs (phs_config_template_other, local, &
+             intg%process_id, mapping_defs, phs_par, &
+             var_str ('fks'))
+         call intg%process%init_component &
+           (i_component, core_template, mci_template, phs_config_template_other)
+         if (intg%combined_integration) &
+            call intg%process%set_component_type (i_component, COMP_PDF)
        case (BORN)
          call intg%process%init_component &
             (i_component, core_template, mci_template, phs_config_template)
@@ -8100,6 +8108,7 @@ local changes to currently inactive models.
        end select
        call blha_template%reset ()
        deallocate (core_template)
+       if (allocated (phs_config_template_other)) deallocate (phs_config_template_other)
     end do
 
     if (verb)  call intg%process%write (screen = .true.)
@@ -15197,7 +15206,7 @@ or arrays which would make the expansion ambiguous.
     integer, dimension(:), allocatable :: i_term
     integer :: i, j, n_in, n_out, n_terms, n_components
     logical :: nlo_calc
-    logical, dimension(3) :: active_nlo_components
+    logical, dimension(4) :: active_nlo_components
     type(string_t), dimension(:), allocatable :: prt_in_nlo, prt_out_nlo
     type(radiation_generator_t) :: radiation_generator
     type(pdg_list_t) :: pl_in, pl_out
@@ -15205,7 +15214,8 @@ or arrays which would make the expansion ambiguous.
     type(string_t) :: correlation_me_method
     type(string_t) :: real_tree_me_method
     type(string_t) :: current_me_method 
-    integer , dimension(4) :: i_list
+!    integer , dimension(4) :: i_list
+    integer, dimension(5) :: i_list
     logical :: combined_nlo_integration, powheg_active
     
     nlo_calc = cmd%local%nlo_calculation                 
@@ -15252,7 +15262,8 @@ or arrays which would make the expansion ambiguous.
        pdg_out_tab(n_components) = pdg_out
     end do SCAN_COMPONENTS
     if (nlo_calc) then
-      call prc_config%init (cmd%id, n_in, n_components*4, cmd%local)
+!      call prc_config%init (cmd%id, n_in, n_components*4, cmd%local)
+      call prc_config%init (cmd%id, n_in, n_components*5, cmd%local)
     else
       call prc_config%init (cmd%id, n_in, n_components, cmd%local)
     end if
@@ -15264,6 +15275,7 @@ or arrays which would make the expansion ambiguous.
             i_list(2) = i + n_components
             i_list(3) = i + 2*n_components
             i_list(4) = i + 3*n_components
+            i_list(5) = i + 4*n_components
             loop_me_method = global%var_list%get_sval (var_str ("$loop_me_method"))
             correlation_me_method = global%var_list%get_sval (var_str ("$correlation_me_method"))
             real_tree_me_method = global%var_list%get_sval (var_str ("$real_tree_me_method"))
@@ -15285,7 +15297,6 @@ or arrays which would make the expansion ambiguous.
                call global%set_me_method (real_tree_me_method)
                current_me_method = real_tree_me_method
             end if
-  
             call prc_config%setup_component (n_components + i, &
                             new_prt_spec (prt_in_nlo), &
                             new_prt_spec (prt_out_nlo),&
@@ -15296,17 +15307,24 @@ or arrays which would make the expansion ambiguous.
                call global%set_me_method (loop_me_method)
                current_me_method = loop_me_method
             end if
-
             call prc_config%setup_component (n_components*2 + i, prt_spec_in, &
                             prt_spec_out, global, NLO_VIRTUAL, &
                             active_in = active_comp (3))
+
+            if (current_me_method /= "omega") then
+               call global%set_me_method (var_str ("omega"))
+               current_me_method = "omega"
+            end if
+            call prc_config%setup_component (n_components*3+i, prt_spec_in, &
+                            prt_spec_out, global, NLO_PDF, &
+                            active_in = active_comp (4))
+           
 
             if (current_me_method /= correlation_me_method) then
                call global%set_me_method (correlation_me_method)
                current_me_method = correlation_me_method
             end if
-
-            call prc_config%setup_component (n_components*3 + i, prt_spec_in, &
+            call prc_config%setup_component (n_components*4 + i, prt_spec_in, &
                             prt_spec_out, global, NLO_SUBTRACTION, &
                             .false.)                     
             call prc_config%set_component_associations (i_list)
@@ -15475,7 +15493,7 @@ particle-specifier expression which we can process further.
   type, extends (command_t) :: cmd_nlo_t
     private
     type(parse_node_p), dimension(3) :: pn_components
-    logical, dimension(3) :: active_component  
+    logical, dimension(4) :: active_component  
   contains
     <<Commands: cmd nlo: TBP>>
   end type cmd_nlo_t
@@ -15541,6 +15559,8 @@ particle-specifier expression which we can process further.
             cmd%active_component(2) = .true.
          case ('Virtual')
             cmd%active_component(3) = .true.
+         case ('Pdf')
+            cmd%active_component(4) = .true.
          case ('Full')
             cmd%active_component = .true.
          end select
@@ -15551,9 +15571,9 @@ particle-specifier expression which we can process further.
          exit
       end if
     end do   
-    ! global%nlo_calculation = cmd%nlo_calc
     global%nlo_calculation = cmd%active_component(2) &
-                        .or. cmd%active_component(3)
+                        .or. cmd%active_component(3) &
+                        .or. cmd%active_component(4)
     global%active_nlo_components = cmd%active_component
   end subroutine cmd_nlo_execute
 
@@ -24983,6 +25003,7 @@ module whizard
   use object_base
   use object_builder
   use object_logical
+  use sindarin_parser
   use grids
   use solver
   use cputime
@@ -25774,6 +25795,8 @@ This is for developers only, but needs a well-defined interface.
        call object_builder_test (u, results)
     case ("object_logical")
        call object_logical_test (u, results)
+    case ("sindarin_parser")
+       call sindarin_parser_test (u, results)
     case ("grids")
        call grids_test (u, results)
     case ("solver")
@@ -25934,6 +25957,7 @@ This is for developers only, but needs a well-defined interface.
        call object_base_test (u, results)
        call object_builder_test (u, results)
        call object_logical_test (u, results)
+       call sindarin_parser_test (u, results)
        call solver_test (u, results)
        call grids_test (u, results)
        call parse_test (u, results)

@@ -2564,7 +2564,7 @@ parameterizing an s-channel resonance.
                   call component%configure_phs (sqrts, process%beam_config, &
                        rebuild, ignore_mismatch, verbose=verbose)
                   call check_and_extend_phs (component, combined_integration)
-               case (NLO_REAL)
+               case (NLO_REAL, NLO_PDF)
                   i_born = component%config%get_associated_born ()
                   call check_and_extend_phs (component, combined_integration)
                   call process%component(i_born)%extract_phs_config (phs_config_born)
@@ -4256,7 +4256,8 @@ status.  It is a part of the [[mci_entry]] component below.
   integer, parameter, public :: COMP_MASTER  = 1
   integer, parameter, public :: COMP_VIRT = 2
   integer, parameter, public :: COMP_REAL = 3
-  integer, parameter, public :: COMP_SUB = 4
+  integer, parameter, public :: COMP_PDF = 4
+  integer, parameter, public :: COMP_SUB = 5
   
 @ %def STAT_UNDEFINED STAT_INITIAL STAT_ACTIVATED 
 @ %def STAT_BEAM_MOMENTA STAT_FAILED_KINEMATICS
@@ -4630,7 +4631,7 @@ is hardcoded.
     call mci_entry%results%new_pass ()
     associate (mci_instance => instance%mci_work(mci_entry%i_mci)%mci)
       select case (nlo_type)
-      case (NLO_VIRTUAL, NLO_REAL)
+      case (NLO_VIRTUAL, NLO_REAL, NLO_PDF)
         select type (mci_instance)
         type is (mci_vamp_instance_t)
           mci_instance%negative_weights = .true.
@@ -4988,6 +4989,7 @@ configuration finalizer may include closing an open scratch file.
        select type (config => component%phs_config)
        type is (phs_fks_config_t)
           call config%set_born_config (phs_config)
+          call config%set_mode (nlo_type)
        end select
     end if
     call component%phs_config%configure (sqrts, &
@@ -6101,10 +6103,11 @@ parameter arrays for the selected channel.
     call k%phs%set_incoming_momenta (p(1:k%n_in))
     call k%phs%compute_flux ()
     call k%phs%select_channel (phs_channel)
+    call k%phs%evaluate_selected_channel &
+           (phs_channel, mci_work%get_x_process ())
+
     select type (phs => k%phs)
     type is (phs_fks_t)
-      call phs%evaluate_selected_channel &
-           (phs_channel, mci_work%get_x_process ())
       if (phs%q_defined) then
          call phs%get_born_momenta (p)
          k%phs_factor = phs%get_overall_factor ()
@@ -6114,15 +6117,15 @@ parameter arrays for the selected channel.
          success = .false.
       end if
     class default
-       call phs%evaluate_selected_channel &
-            (phs_channel, mci_work%get_x_process ())
+!      call phs%evaluate_selected_channel &
+!           (phs_channel, mci_work%get_x_process ())
       if (phs%q_defined) then
          call k%phs%get_outgoing_momenta (p(k%n_in+1:))
          k%phs_factor = k%phs%get_overall_factor ()
          success = .true.
       else
-       k%phs_factor = 0
-       success = .false.
+         k%phs_factor = 0
+         success = .false.
       end if
     end select
   end subroutine kinematics_compute_selected_channel
@@ -6374,7 +6377,7 @@ matter of the process core.
       select case (nlo_type)
       case (NLO_REAL)
         allocate (component%p_seed (n_tot -1))
-      case (BORN, NLO_VIRTUAL)
+      case (BORN, NLO_VIRTUAL, NLO_PDF)
         allocate (component%p_seed (n_tot))
       end select
       call core%allocate_workspace (component%core_state)
@@ -6411,9 +6414,9 @@ allocated explicitly.
 @ %def component_instance_setup_kinematics
 @
 <<Processes: component instance: TBP>>=
-  procedure :: setup_real_kinematics => component_instance_setup_real_kinematics
+  procedure :: setup_fks_kinematics => component_instance_setup_fks_kinematics
 <<Processes: procedures>>=
-  subroutine component_instance_setup_real_kinematics (component, var_list)
+  subroutine component_instance_setup_fks_kinematics (component, var_list)
     class(component_instance_t), intent(inout), target :: component
     type(var_list_t), intent(in) :: var_list
     logical :: singular_jacobian
@@ -6421,6 +6424,8 @@ allocated explicitly.
     select type (phs => component%k_seed%phs)
     type is (phs_fks_t)
        associate (nlo_controller => component%nlo_controller)
+          call phs%setup_isr_kinematics (nlo_controller%isr_kinematics)
+          call phs%setup_real_kinematics (nlo_controller%real_kinematics)
           call phs%set_beam_energy ()
           phs%massive_phsp = nlo_controller%has_massive_emitter ()
           call phs%set_emitters (nlo_controller%reg_data%emitters)
@@ -6431,15 +6436,16 @@ allocated explicitly.
           singular_jacobian = var_list%get_lval (var_str ("?powheg_use_singular_jacobian"))
           call phs%set_singular_jacobian (singular_jacobian)
        end associate
-       call phs%setup_real_kinematics (component%nlo_controller%real_kinematics)
-       call phs%setup_is_data (component%nlo_controller%is_data)
+!       call phs%setup_real_kinematics (component%nlo_controller%real_kinematics)
+!       call phs%set_beam_energy ()
+!       call phs%setup_isr_kinematics (component%nlo_controller%isr_kinematics)
        call phs%setup_generator_kinematics ()
     class default 
        call msg_fatal ("Phase space should be an FKS phase space!")
     end select
-  end subroutine component_instance_setup_real_kinematics
+  end subroutine component_instance_setup_fks_kinematics
 
-@ %def component_instance_setup_real_kinematics 
+@ %def component_instance_setup_fks_kinematics 
 @ Setup seed kinematics, starting from the MC parameter set given as
 argument.  As a result, the [[k_seed]] kinematics object is evaluated
 (except for the structure-function matrix-element evaluation, which we
@@ -6635,7 +6641,7 @@ imaginary part of the terms, which should be zero anyway.
   subroutine reset_nlo_components (component)
      type(component_instance_t), intent(inout) :: component
      select case (component%config%config%get_nlo_type ())
-     case (NLO_REAL, NLO_VIRTUAL)
+     case (NLO_REAL, NLO_VIRTUAL, NLO_PDF)
         associate (collector => component%nlo_controller%sqme_collector)
            collector%current_sqme_born = 0
            collector%sqme_real_non_sub = 0
@@ -7265,7 +7271,7 @@ kinematics to the evaluators and to the [[subevt]].
        i_term = term%config%i_term
       associate (core => component(i_component)%config%core)
          select case (term%nlo_type)
-         case (BORN, NLO_VIRTUAL)
+         case (BORN, NLO_VIRTUAL, NLO_PDF)
            call core%compute_eff_kinematics &
               (i_term, term%int_hard, term%isolated%int_eff, &
               component(i_component)%core_state)
@@ -7340,7 +7346,7 @@ method may modify the [[core_state]] workspace object.
     i_term = term%config%i_term
     term%p_hard = term%int_hard%get_momenta ()
     select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL)
+    case (BORN, NLO_VIRTUAL, NLO_PDF)
        associate (core => component(i_component)%config%core)
           do i = 1, term%config%n_allowed
              term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
@@ -7386,7 +7392,7 @@ physical event.
   subroutine term_instance_evaluate_event_data (term)
     class(term_instance_t), intent(inout) :: term
     select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL)
+    case (BORN, NLO_VIRTUAL, NLO_PDF)
       call term%isolated%evaluate_event_data ()
       call term%connected%evaluate_event_data ()
     case (NLO_REAL)
@@ -8150,6 +8156,13 @@ subobject of [[instance]].
               call component%nlo_controller%init_virtual ()
               if (associated (instance%sqme_collector)) &
                  call component%set_component_type (COMP_VIRT) 
+            case (NLO_PDF)
+               i_born = component%config%config%get_associated_born ()
+               component%nlo_controller => instance%nlo_controller
+               component%nlo_type = NLO_PDF
+!               call component%nlo_controller%init_pdf_subtraction ()
+               if (associated (instance%sqme_collector)) &
+                  call component%set_component_type (COMP_PDF)
             case (NLO_SUBTRACTION)
                component%nlo_controller => instance%nlo_controller
                component%nlo_type = NLO_SUBTRACTION
@@ -8157,7 +8170,8 @@ subobject of [[instance]].
             call component%setup_kinematics &
                  (instance%sf_chain, process%beam_config, &
                   combined_integration)
-            if (nlo_type == NLO_REAL) call component%setup_real_kinematics (process%meta%var_list)
+            if (nlo_type == NLO_REAL .or. nlo_type == NLO_PDF) &
+               call component%setup_fks_kinematics (process%meta%var_list)
           end associate
        end if
     end do
@@ -8447,7 +8461,7 @@ components, from the seed kinematics.
        do i = 1, size (instance%component)
           if (instance%component(i)%active) then
             select case (instance%component(i)%config%config%get_nlo_type())
-            case (BORN, NLO_VIRTUAL)
+            case (BORN, NLO_VIRTUAL, NLO_PDF)
               real_phsp = .false.
             case (NLO_REAL)
               real_phsp = .true.
@@ -8618,7 +8632,7 @@ terms, iterating over all active process components.
                  else
                     i_real = i
                  end if
-              case (BORN, NLO_VIRTUAL)
+              case (BORN, NLO_VIRTUAL, NLO_PDF)
                  call term%evaluate_interaction (instance%component)
                  call term%evaluate_trace ()
               end select
@@ -8629,7 +8643,7 @@ terms, iterating over all active process components.
           associate (component => instance%component(i))
             if (component%active) then
               select case (component%config%config%get_nlo_type())
-              case (BORN, NLO_VIRTUAL)
+              case (BORN, NLO_VIRTUAL, NLO_PDF)
                 call component%evaluate_sqme (instance%term)
                 instance%sqme = instance%sqme + component%sqme
                 instance%evaluation_status = STAT_EVALUATED_TRACE
@@ -9098,7 +9112,7 @@ component.
     integer, intent(in) :: i_term
     type(interaction_t), pointer :: ptr
     select case (instance%term(i_term)%nlo_type)
-    case (BORN, NLO_VIRTUAL)
+    case (BORN, NLO_VIRTUAL, NLO_PDF)
       ptr => instance%term(i_term)%connected%get_matrix_int_ptr ()
     case (NLO_REAL)
       ptr => instance%term(i_term)%connected_real%get_matrix_int_ptr ()
@@ -9110,7 +9124,7 @@ component.
     integer, intent(in) :: i_term
     type(interaction_t), pointer :: ptr
     select case (instance%term(i_term)%nlo_type)
-    case (BORN, NLO_VIRTUAL)
+    case (BORN, NLO_VIRTUAL, NLO_PDF)
       ptr => instance%term(i_term)%connected%get_flows_int_ptr ()
     case (NLO_REAL)
       ptr => instance%term(i_term)%connected_real%get_flows_int_ptr ()

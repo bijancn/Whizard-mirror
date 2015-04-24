@@ -36,7 +36,8 @@ libsindarin_la_SOURCES = \
   object_base.f90 \
   object_builder.f90 \
   object_expr.f90 \
-  object_logical.f90
+  object_logical.f90 \
+  sindarin_parser.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = sindarin.nw
@@ -59,7 +60,9 @@ BUILT_SOURCES = Modules
 module_lists = \
   ../basics/Modules \
   ../testing/Modules \
-  ../utilities/Modules
+  ../utilities/Modules \
+  ../system/Modules \
+  ../parsing/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -103,7 +106,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../testing -I../utilities
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing
 
 
 ########################################################################

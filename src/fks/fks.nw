@@ -2538,7 +2538,6 @@ module real_subtraction
   use flavors
   use fks_regions
   use nlo_data
-  use pdf_subtraction
 
 <<Standard module head>>
 
@@ -2879,7 +2878,7 @@ it is necessary to expand with $z$ once.
     type(region_data_t) :: reg_data
     type(vector4_t), dimension(:), allocatable :: p_born, p_real
     type(real_kinematics_t), pointer :: real_kinematics => null()
-    type(is_data_t), pointer :: is_data => null()
+    type(isr_kinematics_t), pointer :: isr_kinematics => null()
     integer :: current_alr = 0
     real(default), dimension(:), pointer :: sqme_real_non_sub
     real(default), dimension(:), pointer :: sqme_born
@@ -2887,7 +2886,6 @@ it is necessary to expand with $z$ once.
     complex(default), dimension(:), pointer :: sqme_born_sc => null()
     type(soft_subtraction_t) :: sub_soft
     type(coll_subtraction_t) :: sub_coll
-    type(pdf_subtraction_t) :: sub_pdf
     logical, dimension(:), allocatable :: sc_required
     logical :: sqme_np1_active = .true.
     logical :: subtraction_active = .true.
@@ -2922,7 +2920,6 @@ it is necessary to expand with $z$ once.
      
     call rsub%sub_soft%init (reg_data, nlegs_born, nlegs_real)
     call rsub%sub_coll%init (reg_data%n_regions)
-    call rsub%sub_pdf%init (reg_data%flv_born(1)%flst, reg_data%n_regions)
   end subroutine real_subtraction_init
 
 @ %def real_subtraction_init
@@ -2950,15 +2947,15 @@ it is necessary to expand with $z$ once.
 @ %def real_subtraction_set_real_kinematics
 @ 
 <<real subtraction: real subtraction: TBP>>=
-  procedure :: set_is_data => real_subtraction_set_is_data
+  procedure :: set_isr_kinematics => real_subtraction_set_isr_kinematics
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_set_is_data (rsub, fractions)
+  subroutine real_subtraction_set_isr_kinematics (rsub, fractions)
     class(real_subtraction_t), intent(inout) :: rsub
-    type(is_data_t), intent(in), target :: fractions
-    rsub%is_data => fractions
-  end subroutine real_subtraction_set_is_data
+    type(isr_kinematics_t), intent(in), target :: fractions
+    rsub%isr_kinematics => fractions
+  end subroutine real_subtraction_set_isr_kinematics
 
-@ %def real_subtraction_set_is_data
+@ %def real_subtraction_set_isr_kinematics
 @
 <<real subtraction: real subtraction: TBP>>=
   procedure :: set_alr => real_subtraction_set_alr
@@ -3033,7 +3030,7 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
     real(default), intent(in) :: alpha_s
     real(default) :: sqme
     integer :: i_real
-    real(default) :: sqme0, sqme_soft, sqme_coll, sqme_cs, sqme_pdf, sqme_remn
+    real(default) :: sqme0, sqme_soft, sqme_coll, sqme_cs, sqme_remn
     real(default) :: s_alpha
     real(default) :: xi, xi_max, xi_tilde, y, phi
     real(default) :: s
@@ -3057,7 +3054,7 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
       end if
       if (rsub%subtraction_active) then 
          call rsub%evaluate_subtraction_terms (emitter, alpha_s, &
-                   sqme_soft, sqme_coll, sqme_cs, sqme_pdf)
+                   sqme_soft, sqme_coll, sqme_cs)
          associate (jac => rsub%real_kinematics%jac)
             sqme_soft = sqme_soft/(1-y)/xi_tilde * jac(emitter)%jac(2)
             sqme_coll = sqme_coll/(1-y)/xi_tilde * jac(emitter)%jac(3)
@@ -3102,23 +3099,17 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
 <<real subtraction: procedures>>=
   subroutine real_subtraction_evaluate_subtraction_terms (rsub, &
                   emitter, alpha_s, &
-                  sqme_soft, sqme_coll, sqme_cs, sqme_pdf)
+                  sqme_soft, sqme_coll, sqme_cs)
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: emitter
     real(default), intent(in) :: alpha_s
-    real(default), intent(out) :: sqme_soft, sqme_coll, sqme_cs, sqme_pdf
+    real(default), intent(out) :: sqme_soft, sqme_coll, sqme_cs
     integer :: alr
     real(default) :: xi
     alr = rsub%current_alr
     call rsub%compute_sub_soft (emitter, alpha_s)
     call rsub%compute_sub_coll (emitter, alpha_s)
     call rsub%compute_sub_coll_soft (emitter, alpha_s)
-    if (emitter <= 2) then
-       call rsub%compute_sub_pdf (emitter, alpha_s)
-       sqme_pdf = rsub%sub_pdf%value(alr)
-    else
-       sqme_pdf = zero
-    end if
     sqme_soft = rsub%sub_soft%value(alr)
     sqme_coll = rsub%sub_coll%value(alr)
     sqme_cs = rsub%sub_coll%value_soft(alr)
@@ -3230,25 +3221,6 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
   end subroutine real_subtraction_compute_sub_coll_soft
 
 @ %def real_subtraction_compute_sub_coll_soft
-@
-<<real subtraction: real subtraction: TBP>>=
-  procedure :: compute_sub_pdf => real_subtraction_compute_sub_pdf
-<<real subtraction: procedures>>=
-  subroutine real_subtraction_compute_sub_pdf (rsub, emitter, alpha_s)
-    class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter
-    real(default), intent(in) :: alpha_s
-    real(default) :: xi
-    integer :: alr
-    alr = rsub%current_alr
-    xi = rsub%real_kinematics%xi_tilde * rsub%real_kinematics%xi_max (emitter)
-    associate (sregion => rsub%reg_data%regions(alr))
-       call rsub%sub_pdf%set_kinematics (rsub%is_data, xi)
-       call rsub%sub_pdf%evaluate (alpha_s, rsub%sqme_born(sregion%uborn_index), alr)
-    end associate
-  end subroutine real_subtraction_compute_sub_pdf
-
-@ %def real_subtraction_compute_sub_pdf
 @
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -3389,15 +3361,17 @@ end module nlo_data
 @ %def real_kinematics_write
 @ Another container for the $x_\oplus$- and $x_\ominus$-values for initial-state phase spaces.
 <<nlo data: public>>=
-  public :: is_data_t
+  public :: isr_kinematics_t
 <<nlo data: types>>=
-  type :: is_data_t
+  type :: isr_kinematics_t
     real(default), dimension(2) :: x = 1._default
+    real(default), dimension(2) :: z
     real(default) :: sqrts_born
+    real(default) :: beam_energy
     real(default) :: fac_scale
-  end type is_data_t
+  end type isr_kinematics_t
 
-@ %def type is_data_t
+@ %def type isr_kinematics_t
 @
 <<[[nlo_controller.f90]]>>=
 <<File header>>
@@ -4150,8 +4124,8 @@ and virtual counterterms.
     call nlo_controller%real_terms%set_momenta (p_born, p_real)
     call nlo_controller%real_terms%set_real_kinematics &
          (nlo_controller%real_kinematics)
-    call nlo_controller%real_terms%set_is_data &
-         (nlo_controller%is_data)
+    call nlo_controller%real_terms%set_isr_kinematics &
+         (nlo_controller%isr_kinematics)
     sqme_fin = nlo_controller%real_terms%compute &
          (emitter, nlo_controller%alpha_s_born)
     sqme_fin = sqme_fin * weight
@@ -4294,7 +4268,7 @@ process.
     complex(default), dimension(:), allocatable :: amp_born
     type(color_data_t) :: color_data
     type(real_kinematics_t), pointer :: real_kinematics => null()
-    type(is_data_t), pointer :: is_data => null()
+    type(isr_kinematics_t), pointer :: isr_kinematics => null()
     type(virtual_t) :: virtual_terms
     type(real_subtraction_t) :: real_terms
     real(default) :: alpha_s_born
@@ -4709,7 +4683,7 @@ process.
     n_tot = nlo_controller%particle_data%n_in + &
             nlo_controller%particle_data%n_out_born
     allocate (nlo_controller%real_kinematics)
-    allocate (nlo_controller%is_data)
+    allocate (nlo_controller%isr_kinematics)
     associate (real_kinematics => nlo_controller%real_kinematics)
        allocate (real_kinematics%xi_max (n_tot))
        allocate (real_kinematics%y (n_tot))
@@ -4798,7 +4772,7 @@ process.
   subroutine nlo_controller_set_fac_scale (nlo_controller, fac_scale)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     real(default), intent(in) :: fac_scale
-    nlo_controller%is_data%fac_scale = fac_scale
+    nlo_controller%isr_kinematics%fac_scale = fac_scale
   end subroutine nlo_controller_set_fac_scale
 
 @ %def nlo_controller_set_fac_scale
@@ -4894,9 +4868,9 @@ module phs_fks
 
 <<phs fks: public>>
 
-<<phs fks: types>>
-
 <<phs fks: parameters>>
+
+<<phs fks: types>>
 
 <<phs fks: interfaces>>
 
@@ -4913,12 +4887,17 @@ end module phs_fks
   integer, parameter, public :: I_Y = 2
   integer, parameter, public :: I_PHI = 3
 
+  integer, parameter :: PHS_MODE_UNDEFINED = 0
+  integer, parameter :: PHS_MODE_ADDITIONAL_PARTICLE = 1
+  integer, parameter :: PHS_MODE_COLLINEAR_REMNANT = 2
+
 @ %def parameters
 @
 <<phs fks: public>>=
   public :: phs_fks_config_t
 <<phs fks: types>>=
   type, extends (phs_wood_config_t) :: phs_fks_config_t
+    integer :: mode = PHS_MODE_UNDEFINED
   contains
   <<phs fks: fks config: TBP>>
   end type phs_fks_config_t
@@ -4947,6 +4926,22 @@ end module phs_fks
 @ %def phs_fks_config_write
 @
 <<phs fks: fks config: TBP>>=
+  procedure :: set_mode => phs_fks_config_set_mode
+<<phs fks: procedures>>=
+  subroutine phs_fks_config_set_mode (phs_config, mode)
+    class(phs_fks_config_t), intent(inout) :: phs_config
+    integer, intent(in) :: mode
+    select case (mode)
+    case (NLO_REAL)
+       phs_config%mode = PHS_MODE_ADDITIONAL_PARTICLE
+    case (NLO_PDF)
+       phs_config%mode = PHS_MODE_COLLINEAR_REMNANT
+    end select
+  end subroutine phs_fks_config_set_mode
+
+@ %def phs_fks_config_set_mod
+@
+<<phs fks: fks config: TBP>>=
   procedure :: configure => phs_fks_config_configure
 <<phs fks: procedures>>=
   subroutine phs_fks_config_configure (phs_config, sqrts, &
@@ -4961,11 +4956,17 @@ end module phs_fks
     logical, intent(in), optional :: ignore_mismatch
     integer, intent(inout), optional :: nlo_type
     if (present (nlo_type)) then
-      if (nlo_type /= NLO_REAL) & 
-        call msg_fatal ("FKS config has to be called with nlo_type = 'Real'")
+      if (.not. (nlo_type == NLO_REAL .or. nlo_type == NLO_PDF)) & 
+        call msg_fatal ("FKS config has to be called with nlo_type = 'Real' or nlo_type = 'Pdf'")
     end if 
-    if (.not. phs_config%extended_phs) &
-       phs_config%n_par = phs_config%n_par + 3
+    if (.not. phs_config%extended_phs) then
+       select case (phs_config%mode)
+       case (PHS_MODE_ADDITIONAL_PARTICLE)
+          phs_config%n_par = phs_config%n_par + 3
+       case (PHS_MODE_COLLINEAR_REMNANT)
+          phs_config%n_par = phs_config%n_par + 1
+       end select
+    end if
 !!! Channel equivalences not accessible yet
     phs_config%provides_equivalences = .false.
   end subroutine phs_fks_config_configure
@@ -4982,16 +4983,6 @@ end module phs_fks
   end subroutine phs_fks_config_startup_message
 
 @ %def phs_fks_config_startup_message
-@
-<<phs fks: fks config: TBP>>=
-  procedure :: increase_n_par => phs_fks_config_increase_n_par
-<<phs fks: procedures>>=
-  subroutine phs_fks_config_increase_n_par (phs_config)
-    class(phs_fks_config_t), intent(inout) :: phs_config
-    phs_config%n_par = phs_config%n_par + 3
-  end subroutine phs_fks_config_increase_n_par
-
-@ %def phs_fks_config_increase_n_par
 @
 <<phs fks: fks config: TBP>>=
   procedure, nopass :: allocate_instance => phs_fks_config_allocate_instance
@@ -5127,7 +5118,7 @@ end module phs_fks
     integer, dimension(:), allocatable :: emitters
     type(real_kinematics_t), pointer :: real_kinematics => null()
 !    real(default), dimension(2) :: is_momentum_fractions = 1._default
-    type(is_data_t), pointer :: is_data => null()
+    type(isr_kinematics_t), pointer :: isr_kinematics => null()
     !!! xi_min should be set to a non-zero value in order to avoid 
     !!! phase-space points with p_real(emitter) = 0
     real(default) :: xi_min = tiny_07
@@ -5155,17 +5146,21 @@ channel with an emitter.
   public :: phs_fks_t
 <<phs fks: types>>=
   type, extends (phs_wood_t) :: phs_fks_t
+    integer :: mode = PHS_MODE_UNDEFINED
     type(vector4_t), dimension(:), allocatable :: p_born
     type(vector4_t), dimension(:), allocatable :: q_born
     type(vector4_t), dimension(:), allocatable :: p_real
     type(vector4_t), dimension(:), allocatable :: q_real
     type(vector4_t), dimension(:), allocatable :: p_born_tot
     type(real_kinematics_t), pointer :: real_kinematics => null()
-    type(is_data_t), pointer :: is_data => null()
+    type(isr_kinematics_t), pointer :: isr_kinematics => null()
     type(phs_fks_generator_t) :: generator
     type(kinematics_counter_t) :: counter
     logical :: massive_phsp = .false.
     logical :: perform_generation = .true.
+    !!! Not entirley suited for combined integration
+    !!! TODO: Modifiy global r_real-array
+    real(default) :: r_isr  
 
   contains
   <<phs fks: phs fks: TBP>>
@@ -5205,7 +5200,17 @@ channel-emitter-association and allocates space for the momenta.
 
     select type(phs)
     type is (phs_fks_t)
-      phs%n_r_born = phs%config%n_par - 3
+      select type (phs_config)
+      type is (phs_fks_config_t)
+         phs%mode = phs_config%mode
+      end select
+      
+      select case (phs%mode)
+      case (PHS_MODE_ADDITIONAL_PARTICLE)
+         phs%n_r_born = phs%config%n_par - 3
+      case (PHS_MODE_COLLINEAR_REMNANT)
+         phs%n_r_born = phs%config%n_par - 1
+      end select
       call phs%init_momenta (phs_config)
     end select
   end subroutine phs_fks_init
@@ -5224,15 +5229,15 @@ channel-emitter-association and allocates space for the momenta.
 @ %def phs_fks_setup_real_kinematics
 @
 <<phs fks: phs fks: TBP>>=
-  procedure :: setup_is_data => phs_fks_setup_is_data
+  procedure :: setup_isr_kinematics => phs_fks_setup_isr_kinematics
 <<phs fks: procedures>>=
-  subroutine phs_fks_setup_is_data (phs, fractions)
+  subroutine phs_fks_setup_isr_kinematics (phs, fractions)
     class(phs_fks_t), intent(inout) :: phs
-    type(is_data_t), intent(in), target :: fractions
-    phs%is_data => fractions
-  end subroutine phs_fks_setup_is_data
+    type(isr_kinematics_t), intent(in), target :: fractions
+    phs%isr_kinematics => fractions
+  end subroutine phs_fks_setup_isr_kinematics
 
-@ %def phs_fks_setup_is_data
+@ %def phs_fks_setup_isr_kinematics
 @
 <<phs fks: phs fks: TBP>>=
   procedure :: final => phs_fks_final
@@ -5250,10 +5255,13 @@ channel-emitter-association and allocates space for the momenta.
     class(phs_fks_t), intent(inout) :: phs
     class(phs_config_t), intent(in) :: phs_config
     allocate (phs%p_born (phs_config%n_in))
-    allocate (phs%q_born (phs_config%n_out-1))
     allocate (phs%p_real (phs_config%n_in))
-    allocate (phs%q_real (phs_config%n_out-1))
-    allocate (phs%p_born_tot (phs%config%n_in + phs%config%n_out-1))
+    select case (phs%mode)
+    case (PHS_MODE_ADDITIONAL_PARTICLE)
+       allocate (phs%q_born (phs_config%n_out-1))
+       allocate (phs%q_real (phs_config%n_out-1))
+       allocate (phs%p_born_tot (phs%config%n_in + phs%config%n_out-1))
+    end select
   end subroutine phs_fks_init_momenta
 
 @ %def phs_fks_init_momenta
@@ -5271,16 +5279,23 @@ calculated from the Born momenta.
     real(default), intent(in), dimension(:) :: r_in
     integer :: n_in
  
-    n_in = phs%config%n_in
     call phs%phs_wood_t%evaluate_selected_channel (c_in, r_in)
-    phs%p_born = phs%phs_wood_t%p
-    phs%q_born = phs%phs_wood_t%q
-    phs%p_born_tot (1:n_in) = phs%p_born
-    phs%p_born_tot (n_in+1:) = phs%q_born
     phs%r(:,c_in) = r_in
 
-    if (phs%perform_generation) call phs%generate_radiation_variables &
-                                             (r_in(phs%n_r_born+1:phs%n_r_born+3))
+    if (phs%perform_generation) then     
+       select case (phs%mode)
+       case (PHS_MODE_ADDITIONAL_PARTICLE)
+          n_in = phs%config%n_in
+          phs%p_born = phs%phs_wood_t%p
+          phs%q_born = phs%phs_wood_t%q
+          phs%p_born_tot (1:n_in) = phs%p_born
+          phs%p_born_tot (n_in+1:) = phs%q_born
+          call phs%generate_radiation_variables (r_in(phs%n_r_born+1:phs%n_r_born+3))
+       case (PHS_MODE_COLLINEAR_REMNANT)
+          call phs%compute_isr_kinematics (r_in(phs%n_r_born+1))
+          phs%r_isr = r_in(phs%n_r_born+1)
+       end select
+    end if
   end subroutine phs_fks_evaluate_selected_channel
 
 @ %def phs_fks_evaluate_selected_channel
@@ -5305,7 +5320,12 @@ calculated from the Born momenta.
     integer, intent(in) :: c
     real(default), dimension(:), intent(out) :: r
     r(1:phs%n_r_born) = phs%r(1:phs%n_r_born,c)
-    r(phs%n_r_born+1:) = phs%r_real
+    select case (phs%mode)
+    case (PHS_MODE_ADDITIONAL_PARTICLE)
+       r(phs%n_r_born+1:) = phs%r_real
+    case (PHS_MODE_COLLINEAR_REMNANT)
+       r(phs%n_r_born+1:) = phs%r_isr
+    end select
   end subroutine phs_fks_get_mcpar
 
 @ %def phs_fks_get_mcpar
@@ -5339,6 +5359,7 @@ calculated from the Born momenta.
   subroutine phs_fks_set_beam_energy (phs)
     class(phs_fks_t), intent(inout) :: phs
     call phs%generator%set_beam_energy (phs%config%sqrts)
+    phs%isr_kinematics%beam_energy = phs%config%sqrts/2
   end subroutine phs_fks_set_beam_energy
 
 @ %def phs_fks_set_beam_energy
@@ -5393,8 +5414,14 @@ calculated from the Born momenta.
   subroutine phs_fks_get_born_momenta (phs, p)
     class(phs_fks_t), intent(inout) :: phs
     type(vector4_t), intent(out), dimension(:) :: p
-    p(1:phs%config%n_in) = phs%p_born
-    p(phs%config%n_in+1:) = phs%q_born
+    select case (phs%mode)
+    case (PHS_MODE_ADDITIONAL_PARTICLE)
+       p(1:phs%config%n_in) = phs%p_born
+       p(phs%config%n_in+1:) = phs%q_born
+    case (PHS_MODE_COLLINEAR_REMNANT)
+       p(1:phs%config%n_in) = phs%phs_wood_t%p
+       p(phs%config%n_in+1:) = phs%phs_wood_t%q
+    end select
   end subroutine phs_fks_get_born_momenta
 
 @ %def phs_fks_get_born_momenta
@@ -5405,7 +5432,12 @@ calculated from the Born momenta.
   subroutine phs_fks_get_outgoing_momenta (phs, q)
     class(phs_fks_t), intent(in) :: phs
     type(vector4_t), intent(out), dimension(:) :: q
-    q = phs%q_real
+    select case (phs%mode)
+    case (PHS_MODE_ADDITIONAL_PARTICLE)
+       q = phs%q_real
+    case (PHS_MODE_COLLINEAR_REMNANT)
+       q = phs%phs_wood_t%q
+    end select
   end subroutine phs_fks_get_outgoing_momenta
 
 @ %def phs_fks_get_outgoing_momenta
@@ -5437,7 +5469,7 @@ calculated from the Born momenta.
   subroutine phs_fks_setup_generator_kinematics (phs)
     class(phs_fks_t), intent(inout), target :: phs
     phs%generator%real_kinematics => phs%real_kinematics
-    phs%generator%is_data => phs%is_data
+    phs%generator%isr_kinematics => phs%isr_kinematics
     phs%generator%massive_phsp = phs%massive_phsp
   end subroutine phs_fks_setup_generator_kinematics
 
@@ -5843,19 +5875,19 @@ is equal to
     end associate
     nlegborn = size (p_born)
     nlegreal = nlegborn+1
-    generator%is_data%sqrts_born = sqrt ((p_born(1) + p_born(2))**2)
+    generator%isr_kinematics%sqrts_born = sqrt ((p_born(1) + p_born(2))**2)
     allocate (p_real (nlegreal))
    
     !!! Initial state real momenta
-    xb_plus = generator%is_data%x(1)
-    xb_minus = generator%is_data%x(2)
+    xb_plus = generator%isr_kinematics%x(1)
+    xb_minus = generator%isr_kinematics%x(2)
     x_plus = xb_plus/sqrt(1-xi) * sqrt ((2-xi*(1-y)) / (2-xi*(1+y)))
     x_minus = xb_minus/sqrt(1-xi) * sqrt ((2-xi*(1+y)) / (2-xi*(1-y)))
     p_real(1) = x_plus/xb_plus * p_born(1)
     p_real(2) = x_minus/xb_minus * p_born(2)
 
     !!! Create radiation momentum
-    sqrts_real = generator%is_data%sqrts_born / (1-xi)
+    sqrts_real = generator%isr_kinematics%sqrts_born / (1-xi)
     k0_np1 = sqrts_real*xi/2 
     p_real(nlegreal)%p(0) = k0_np1
     p_real(nlegreal)%p(1) = k0_np1*sqrt(1-y**2)*sin(phi)
@@ -5948,15 +5980,15 @@ is equal to
 @ %def phs_fks_generator_setup_masses
 @
 <<phs fks: phs fks generator: TBP>>=
-  procedure :: set_is_data => phs_fks_generator_set_is_data 
+  procedure :: set_isr_kinematics => phs_fks_generator_set_isr_kinematics 
 <<phs fks: procedures>>=
-  subroutine phs_fks_generator_set_is_data (generator, p_born)
+  subroutine phs_fks_generator_set_isr_kinematics (generator, p_born)
     class(phs_fks_generator_t), intent(inout) :: generator
     type(vector4_t), dimension(:), intent(in) :: p_born
-    generator%is_data%x = space_part_norm (p_born(1:2)) / (generator%E_beam_tot/2)
-  end subroutine phs_fks_generator_set_is_data
+    generator%isr_kinematics%x = space_part_norm (p_born(1:2)) / (generator%E_beam_tot/2)
+  end subroutine phs_fks_generator_set_isr_kinematics
 
-@ %def phs_fks_generator_set_is_data
+@ %def phs_fks_generator_set_isr_kinematics
 @ 
 <<phs fks: phs fks generator: TBP>>=
   procedure :: setup_real_kinematics => phs_fks_generator_setup_real_kinematics
@@ -5981,7 +6013,7 @@ is equal to
     integer :: em
 
 !    call generator%set_beam_energy (p_born(1)%p(0) + p_born(2)%p(0))
-    if (any (generator%emitters <= 2)) call generator%set_is_data (p_born)
+    if (any (generator%emitters <= 2)) call generator%set_isr_kinematics (p_born)
     associate (rad_var => generator%real_kinematics)
        rad_var%jac_rand = 1.0
        call generator%compute_xi_tilde (r_in(I_XI))
@@ -5999,7 +6031,7 @@ is equal to
                    end if
                 else
                    if (em <= 2) then
-                      rad_var%xi_max(em) = get_xi_max_isr (generator%is_data%x, rad_var%y(em))
+                      rad_var%xi_max(em) = get_xi_max_isr (generator%isr_kinematics%x, rad_var%y(em))
                    else
                       rad_var%xi_max(em) = get_xi_max_fsr (p_born, em)
                    end if
@@ -6173,6 +6205,27 @@ is equal to
 
 @ %def phs_fks_generator_write
 @
+<<phs fks: phs fks: TBP>>=
+  procedure :: compute_isr_kinematics => phs_fks_compute_isr_kinematics 
+<<phs fks: procedures>>=
+  subroutine phs_fks_compute_isr_kinematics (phs, r)
+    class(phs_fks_t), intent(inout) :: phs
+    real(default), intent(in) :: r
+    real(default) :: E_beam
+    integer :: em
+    type(vector4_t), dimension(2) :: p_in
+    E_beam = phs%isr_kinematics%beam_energy
+    do em = 1, 2
+       p_in(em) = phs%phs_wood_t%p(em)
+       phs%isr_kinematics%x(em) = p_in(em)%p(0) / E_beam
+       phs%isr_kinematics%z(em) = one - (one-phs%isr_kinematics%x(em))*r
+    end do
+
+    phs%isr_kinematics%sqrts_born = (p_in(1) + p_in(2))**1
+  end subroutine phs_fks_compute_isr_kinematics
+
+@ %def phs_fks_compute_isr_kinematics
+@
 \subsection{Unit tests}
 <<phs fks: public>>=
   public :: phs_fks_generator_test
@@ -6296,10 +6349,10 @@ is equal to
     p_born(4)%p(3) = -105.601_default
 
     allocate (generator%emitters (2))
-    allocate (generator%is_data)
+    allocate (generator%isr_kinematics)
     generator%emitters(1) = 1; generator%emitters(2) = 2 
     call generator%set_beam_energy (sqrts_hadronic)
-    call generator%set_is_data (p_born)
+    call generator%set_isr_kinematics (p_born)
 
     write (u, "(A)") "* Use four-particle phase space containing: "
     call vector4_write_set (p_born, u, testflag = .true.)
@@ -6329,7 +6382,7 @@ is equal to
       write (u, "(A,F3.2)") "phi: ", rad_var%phi
     end associate
     write (u, "(A)") "Initial-state momentum fractions: "
-    associate (xb => generator%is_data%x)
+    associate (xb => generator%isr_kinematics%x)
        write (u, "(A,F3.2)") "x_born_plus: ", xb(1)
        write (u, "(A,F3.2)") "x_born_minus: ", xb(2)
     end associate
@@ -6398,7 +6451,7 @@ module pdf_subtraction
   use physics_defs
   use pdg_arrays
   use sf_lhapdf
-  use nlo_data, only: is_data_t
+  use nlo_data, only: isr_kinematics_t
 
 <<Standard module head>>
 
@@ -6492,19 +6545,19 @@ end module pdf_subtraction
 <<pdf subtraction: pdf subtraction: TBP>>=
   procedure :: set_kinematics => pdf_subtraction_set_kinematics
 <<pdf subtraction: procedures>>=
-  subroutine pdf_subtraction_set_kinematics (pdf_sub, is_data, xi)
+  subroutine pdf_subtraction_set_kinematics (pdf_sub, isr_kinematics, xi)
     class(pdf_subtraction_t), intent(inout) :: pdf_sub
-    type(is_data_t), intent(in) :: is_data
+    type(isr_kinematics_t), intent(in) :: isr_kinematics
     real(default), intent(in) :: xi
     integer :: i
-    pdf_sub%x_born(1) = is_data%x(1)
-    pdf_sub%x_born(2) = is_data%x(2)
-    pdf_sub%sqrts_born = is_data%sqrts_born
+    pdf_sub%x_born(1) = isr_kinematics%x(1)
+    pdf_sub%x_born(2) = isr_kinematics%x(2)
+    pdf_sub%sqrts_born = isr_kinematics%sqrts_born
     pdf_sub%z = one - xi
-    pdf_sub%fac_scale2 = is_data%fac_scale**2
-    do i = 1, 2
-       call pdf_sub%compute_pdfs (i, pdf_sub%z(i), pdf_sub%x_born(i), sqrt(pdf_sub%fac_scale2))
-    end do
+    pdf_sub%fac_scale2 = isr_kinematics%fac_scale**2
+!    do i = 1, 2
+!       call pdf_sub%compute_pdfs (i, pdf_sub%z(i), pdf_sub%x_born(i), sqrt(pdf_sub%fac_scale2))
+!    end do
   end subroutine pdf_subtraction_set_kinematics
 
 @ %def pdf_subtraction_set_kinematics
