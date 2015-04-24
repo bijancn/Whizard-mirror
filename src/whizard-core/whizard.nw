@@ -1255,6 +1255,9 @@ so the latter is always available (and kept global).
          (global%var_list, var_str ("sample_split_n_evt"), 0, &
          intrinsic = .true.)
     call var_list_append_int &
+         (global%var_list, var_str ("sample_split_n_kbytes"), 0, &
+         intrinsic = .true.)
+    call var_list_append_int &
          (global%var_list, var_str ("sample_split_index"), 0, &
          intrinsic = .true.)
     call var_list_append_string &
@@ -9665,14 +9668,19 @@ If there is no output stream, do nothing.
     type(event_t), intent(in), target :: event
     integer, intent(in) :: i_prc, event_index
     logical, intent(in), optional :: passed, pacify
+    logical :: increased
     integer :: i
     do i = 1, size (es_array%entry)
        if (i /= es_array%i_in) then
           associate (eio => es_array%entry(i)%eio)
             if (eio%split) then
-               if (event_index > 1 .and. &
-                    mod (event_index, eio%split_n_evt) == 1) then
+               if (eio%split_n_evt > 0 &
+                    .and. event_index > 1 &
+                    .and. mod (event_index, eio%split_n_evt) == 1) then
                   call eio%split_out ()
+               else if (eio%split_n_kbytes > 0) then
+                  call eio%update_split_count (increased)
+                  if (increased)  call eio%split_out ()
                end if
             end if
             call eio%output (event, i_prc, reading = es_array%i_in /= 0, &
@@ -11006,6 +11014,7 @@ event file version. It can be
      type(selector_t) :: process_selector
      integer :: n_evt_requested = 0
      integer :: split_n_evt = 0
+     integer :: split_n_kbytes = 0
      integer :: split_index = 0
      type(counter_t) :: counter
      class(rng_t), allocatable :: rng
@@ -11061,8 +11070,9 @@ writes the current event and process instance, depending on options.
        write (u, "(3x,A,A,A)")  "MD5 sum (config) = '", object%md5sum_cfg, "'"
     end if
     write (u, "(3x,A,I0)")  "Events requested  = ", object%n_evt_requested
-    if (object%split_n_evt > 0) then
+    if (object%split_n_evt > 0 .or. object%split_n_kbytes > 0) then
        write (u, "(3x,A,I0)")  "Events per file   = ", object%split_n_evt
+       write (u, "(3x,A,I0)")  "KBytes per file   = ", object%split_n_kbytes
        write (u, "(3x,A,I0)")  "First file index  = ", object%split_index
     end if
     call object%counter%write (u)
@@ -11246,6 +11256,8 @@ we may only read and rescan events.
          local%get_ival (var_str ("sample_max_tries"))
     simulation%split_n_evt = &
          local%get_ival (var_str ("sample_split_n_evt"))
+    simulation%split_n_kbytes = &
+         local%get_ival (var_str ("sample_split_n_kbytes"))
     simulation%split_index = &
          local%get_ival (var_str ("sample_split_index"))
     simulation%update_sqme = &
@@ -11820,6 +11832,7 @@ must be selected, or the current index must be available.
     class(simulation_t), intent(in) :: object
     class(eio_t), intent(inout) :: eio
     integer, intent(in), optional :: i_prc
+    logical :: increased
     integer :: current
     if (present (i_prc)) then
        current = i_prc
@@ -11827,11 +11840,13 @@ must be selected, or the current index must be available.
        current = object%i_prc
     end if
     if (current > 0) then
-       if (object%split_n_evt > 0) then
-          if (object%counter%total > 1 .and. &
-               mod (object%counter%total, object%split_n_evt) == 1) then
-             call eio%split_out ()
-          end if
+       if (object%split_n_evt > 0 &
+            .and. object%counter%total > 1 &
+            .and. mod (object%counter%total, object%split_n_evt) == 1) then
+          call eio%split_out ()
+       else if (object%split_n_kbytes > 0) then
+          call eio%update_split_count (increased)
+          if (increased)  call eio%split_out ()
        end if
        call eio%output (object%entry(current)%event_t, current, pacify = object%pacify)
     else
@@ -12062,8 +12077,9 @@ Return the MD5 sum that summarizes configuration and integration
     sdata%total_cross_section = sum (sdata%cross_section)
     sdata%md5sum_prc = simulation%get_md5sum_prc ()
     sdata%md5sum_cfg = simulation%get_md5sum_cfg ()
-    if (simulation%split_n_evt > 0) then
+    if (simulation%split_n_evt > 0 .or. simulation%split_n_kbytes > 0) then
        sdata%split_n_evt = simulation%split_n_evt
+       sdata%split_n_kbytes = simulation%split_n_kbytes
        sdata%split_index = simulation%split_index
     end if
   end function simulation_get_data

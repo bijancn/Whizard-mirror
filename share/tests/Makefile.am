@@ -544,6 +544,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/lhef_6.ref \
     ref-output/lhef_9.ref \
     ref-output/lhef_10.ref \
+    ref-output/lhef_11.ref \
     ref-output/select_1.ref \
     ref-output/select_2.ref \
     ref-output/stdhep_1.ref \
@@ -878,6 +879,7 @@ MISC_TESTS_SIN = \
     lhef_8.sin \
     lhef_9.sin \
     lhef_10.sin \
+    lhef_11.sin \
     select_1.sin \
     select_2.sin \
     parton_shower_1.sin \

@@ -6629,6 +6629,7 @@ imaginary part of the terms, which should be zero anyway.
             call associate_sqme_born (component, component%sqme*term(i)%weight)
             call component%evaluate_sqme_real (term(i))
             call component%evaluate_sqme_virt (term(i))
+            call component%evaluate_sqme_pdf (term(i))
          end if
       end do
     end associate
@@ -6709,7 +6710,25 @@ imaginary part of the terms, which should be zero anyway.
   end subroutine component_instance_evaluate_sqme_virt
 
 @ %def component_instance_evaluate_sqme_virt
-@ Perform the matrix-element-evaluation if the component is flagged as real
+@ Perform the matrix-element evaluation if the component is flagged as pdf
+<<Processes: component instance: TBP>>=
+  procedure :: evaluate_sqme_pdf => component_instance_evaluate_sqme_pdf 
+<<Processes: procedures>>=
+  subroutine component_instance_evaluate_sqme_pdf (component, term)
+    class(component_instance_t), intent(inout) :: component
+    type(term_instance_t), intent(inout) :: term
+    real(default) :: sqme_pdf
+    if (term%nlo_type /= NLO_PDF) return
+    associate (nlo_controller => component%nlo_controller)
+       if (.not. nlo_controller%pdf_subtraction_is_required ()) return
+       call nlo_controller%set_alpha_s_born &
+                 (component%config%core%get_alpha_s (component%core_state))
+       sqme_pdf = nlo_controller%evaluate_pdf_subtraction (term%weight, component%sqme)
+    end associate
+  end subroutine component_instance_evaluate_sqme_pdf
+
+@ %def component_instance_evaluate_sqme_pdf
+@ Perform the matrix-element evaluation if the component is flagged as real
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_real => component_instance_evaluate_sqme_real
 <<Processes: procedures>>=
@@ -7028,9 +7047,14 @@ relevant for a NLO algorithm.
           int_sav => term%int_hard
           sf_sav => term%k_term%sf_chain
         type is (phs_fks_t)
-          term%nlo_controller%int_born = int_sav
-          call term%isolated%init (sf_sav, term%nlo_controller%int_born)
-          call term%setup_real_interaction (term%int_hard)
+          select case (phs%mode)
+          case (PHS_MODE_ADDITIONAL_PARTICLE)
+             term%nlo_controller%int_born = int_sav
+             call term%isolated%init (sf_sav, term%nlo_controller%int_born)
+             call term%setup_real_interaction (term%int_hard)
+          case (PHS_MODE_COLLINEAR_REMNANT)
+             call term%isolated%init (term%k_term%sf_chain, term%int_hard)
+          end select
         class default
           call term%isolated%init (term%k_term%sf_chain, term%int_hard)
       end select
@@ -7049,9 +7073,14 @@ relevant for a NLO algorithm.
         core_sav = core
       end select
       type is (phs_fks_t)
-        mask_in = sf_sav%get_out_mask ()
-        call term%isolated%setup_square_trace (core_sav, mask_in, col_sav)
-        call term%init_states (core)
+        select case (phs%mode)
+        case (PHS_MODE_ADDITIONAL_PARTICLE)
+           mask_in = sf_sav%get_out_mask ()
+           call term%isolated%setup_square_trace (core_sav, mask_in, col_sav)
+           call term%init_states (core)
+        case (PHS_MODE_COLLINEAR_REMNANT)
+           call term%isolated%setup_square_trace (core, mask_in, term%config%col)
+        end select      
       class default
         call term%isolated%setup_square_trace (core, mask_in, term%config%col)
     end select
@@ -7173,7 +7202,7 @@ The quantum numbers mask of the incoming particle
     allocate (mask_in (n_in))
     mask_in = term%k_term%sf_chain%get_out_mask ()
     select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL)
+    case (BORN, NLO_VIRTUAL, NLO_PDF)
       call term%isolated%setup_square_matrix (core, model, mask_in, &
          term%config%col)
       call term%isolated%setup_square_flows (core, model, mask_in)
@@ -7355,6 +7384,7 @@ method may modify the [[core_state]] workspace object.
                 component(i_component)%core_state)
           end do
           call term%int_hard%set_matrix_element (term%amp)
+          if (associated (term%nlo_controller)) call term%nlo_controller%set_fac_scale (term%fac_scale)
        end associate 
     case (NLO_REAL)
        call term%evaluate_interaction_real (component(i_component), i_term)
@@ -7438,7 +7468,6 @@ physical event.
      call term%connected_real%evaluate_expressions (term%passed, &
           term%scale, term%fac_scale, term%ren_scale, term%weight)
      
-     call term%nlo_controller%set_fac_scale (term%fac_scale)
 
      if (term%passed) then
         call component%core_state%reset_new_kinematics ()
@@ -8160,7 +8189,7 @@ subobject of [[instance]].
                i_born = component%config%config%get_associated_born ()
                component%nlo_controller => instance%nlo_controller
                component%nlo_type = NLO_PDF
-!               call component%nlo_controller%init_pdf_subtraction ()
+               call component%nlo_controller%init_pdf_subtraction ()
                if (associated (instance%sqme_collector)) &
                   call component%set_component_type (COMP_PDF)
             case (NLO_SUBTRACTION)

@@ -241,6 +241,7 @@ TESTS_REQ_OCAML = \
     lhef_8.run \
     lhef_9.run \
     lhef_10.run \
+    lhef_11.run \
     select_1.run \
     select_2.run \
     fatal_beam_decay.run \
