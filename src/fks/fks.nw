@@ -2030,7 +2030,7 @@ end module virtual
     real(default) :: sqme_cc
     real(default) :: sqme_virt
     real(default), dimension(:,:), allocatable :: gamma_0, gamma_p, c_flv
-    real(default) :: ren_scale2
+    real(default) :: ren_scale2, fac_scale
     integer, dimension(:), allocatable :: n_is_neutrinos
     integer :: nlegs, nflv
     logical :: bad_point
@@ -2116,6 +2116,21 @@ center-of-mass energy.
   end subroutine virtual_set_ren_scale
   
 @ %def virtual_set_ren_scale
+<<virtual: virtual: TBP>>=
+  procedure :: set_fac_scale => virtual_set_fac_scale
+<<virtual: procedures>>=
+  subroutine virtual_set_fac_scale (object, p, fac_scale)
+    class(virtual_t), intent(inout) :: object
+    type(vector4_t), dimension(:), intent(in) :: p
+    real(default), optional :: fac_scale
+    if (present (fac_scale)) then
+       object%fac_scale = fac_scale
+    else
+       object%fac_scale = (p(1)+p(2))**1
+    end if
+  end subroutine virtual_set_fac_scale
+
+@ %def virtual_set_fac_scale
 @ The virtual-subtracted matrix element is given by the equation
 \begin{equation}
   \label{virt_sub}
@@ -2125,13 +2140,14 @@ center-of-mass energy.
 where the quantity $\mathcal{Q}$ is given by
 \begin{equation}
   \begin{split}
-    \mathcal{Q} = \sum_{i=1}^n&\left[\gamma'_{f_i} - \log\frac{s}{Q^2}
+    \mathcal{Q} = \sum_{i=3}^n&\left[\gamma'_{f_i} - \log\frac{s}{Q^2}
                   \left(\gamma_{f_i} - 2C_{f_i}\log\frac{2E_i}{\sqrt{s}}\right)\right.\\
                   &\left. +2C_{f_i}\log^2\frac{2E_i}{\sqrt{s}} - 2\gamma_{f_i}\frac{2E_i}{\sqrt{s}}\right]\\
                   &- \log\frac{\mu_F^2}{Q^2}\left(\gamma_{f+} + \gamma_{f-}\right).
   \end{split}
   \label{virt_Q}
 \end{equation} 
+Note that the summation only runs over final-state particles.
 The expressions for $\mathcal{I}_{ij}$ can be found in equations (\ref{I_00}), (\ref{I_mm}), (\ref{I_0m}), 
 depending on whether the particles involved in the radiation process are massive or massless. 
 <<virtual: virtual: TBP>>=
@@ -2241,12 +2257,11 @@ summand containing $\log\left(s/q^2\right)$ and the $\gamma$-factors vanish.
     real(default) :: s1, s2, s3, s4
     integer :: i
     sqrts = sqrt ((p_born(1)+p_born(2))**2)
-    !!! ---- NOTE: Implementation only works for lepton collisions. 
-    !!!            This implies that both the summand containing log(s/q**2) 
-    !!!            and (γ_fp + γ…vfm) vanish. 
-    !!!            Also, s = (p_born(1)+p_born(2))**2
     object%Q = 0
-    do i = 1, object%nlegs
+    do i = 1, 2
+       object%Q = object%Q - object%gamma_0(i, i_flv) * 2*log(object%fac_scale/sqrts)
+    end do
+    do i = 3, object%nlegs
        if (.not. massive (i)) then
           s1 = object%gamma_p(i, i_flv)
           E = vector4_get_component (p_born(i), 0)
@@ -3369,6 +3384,7 @@ end module nlo_data
     real(default) :: sqrts_born
     real(default) :: beam_energy
     real(default) :: fac_scale
+    real(default), dimension(2) :: jacobian = 1._default
   end type isr_kinematics_t
 
 @ %def type isr_kinematics_t
@@ -6276,6 +6292,7 @@ is equal to
        p_in(em) = phs%phs_wood_t%p(em)
        phs%isr_kinematics%x(em) = p_in(em)%p(0) / E_beam
        phs%isr_kinematics%z(em) = one - (one-phs%isr_kinematics%x(em))*r
+       phs%isr_kinematics%jacobian(em) =  phs%isr_kinematics%jacobian(em) * (one-phs%isr_kinematics%x(em))
     end do
 
     phs%isr_kinematics%sqrts_born = (p_in(1) + p_in(2))**1
@@ -6713,60 +6730,50 @@ end module pdf_subtraction
     integer :: emitter
     real(default), dimension(2) :: tmp
     real(default) :: sb, xb, onemz
-    real(default) :: fac_scale2
+    real(default) :: fac_scale2, jac
 
     pdf_sub%value = 0._default
     sb = pdf_sub%isr_kinematics%sqrts_born
     tmp = 0._default
     fac_scale2 = pdf_sub%isr_kinematics%fac_scale**2
-    print *, 'Evaluate pdf subtraction'
    
     call pdf_sub%compute_pdfs ()
 
     do emitter = 1, 2
       associate (z => pdf_sub%isr_kinematics%z(emitter))
-        print *, 'z: ', z
+        jac = pdf_sub%isr_kinematics%jacobian(emitter)
         onemz = one - z
-        factor = log(sb/z/fac_scale2)/onemz + 2*log(onemz)/onemz
+        factor = log(sb/z/fac_scale2)/onemz + 2*log(onemz)/onemz 
         factor_soft = log(sb/fac_scale2)/onemz + 2*log(onemz)/onemz
-        print *, 'factor: ', factor
-        print *, 'factor_soft: ', factor_soft
 
         xb = pdf_sub%isr_kinematics%x(emitter)
-        print *, 'xb: ', xb
         remnant = log(1-xb)*log(sb/fac_scale2) + log(1-xb)**2
-        print *, 'remnant: ', remnant
 
         if (is_gluon(pdf_sub%flv_in(1))) then
           pdfs = pdf_sub%get_gluon_pdf (emitter, scaled = .true.)
           pdfb = pdf_sub%get_gluon_pdf (emitter, scaled = .false.)
-          tmp(emitter) = p_hat_gg(z) * factor/z * pdfs/pdfb &
-                       - p_hat_gg(one) * factor_soft  &
+          tmp(emitter) = p_hat_gg(z) * factor/z * pdfs/pdfb * jac &
+                       - p_hat_gg(one) * factor_soft * jac &
                        + p_hat_gg(one) * remnant 
           pdfs = pdf_sub%get_summed_quark_pdf (emitter)
-          tmp(emitter) = tmp(emitter) + (p_hat_qg(z)*factor - p_derived_qg(z))/z * pdfs/pdfb
+          tmp(emitter) = tmp(emitter) + (p_hat_qg(z)*factor - p_derived_qg(z))/z * pdfs/pdfb * jac
         else if (is_quark(abs(pdf_sub%flv_in(emitter)))) then
-          print *, 'Check IS gluon'
           pdfs = pdf_sub%get_quark_pdf (emitter, pdf_sub%flv_in(emitter), scaled = .true.)
-          print *, 'pdfs: ', pdfs
           pdfb = pdf_sub%get_quark_pdf (emitter, pdf_sub%flv_in(emitter), scaled = .false.)
-          print *, 'pdfb: ', pdfb
-          print *, 'pdf_ratio: ', pdfs/pdfb
-          tmp(emitter) = p_hat_qq(z) * factor/z * pdfs/pdfb &
-                       - p_derived_qq(z)/z &
-                       - p_hat_qq(one) * factor_soft &
+          if (pdfb == 0._default) then
+             pdf_sub%value(alr) = 0._default
+             return
+          end if
+          tmp(emitter) = p_hat_qq(z) * factor/z * pdfs/pdfb * jac &
+                       - p_derived_qq(z)/z * pdfs/pdfb * jac &
+                       - p_hat_qq(one) * factor_soft * jac &
                        + p_hat_qq(one) * remnant
           pdfs = pdf_sub%get_gluon_pdf (emitter, scaled = .true.)
-          tmp(emitter) = tmp(emitter) + (p_hat_gq(z)*factor - p_derived_gq(z))/z * pdfs/pdfb
+          tmp(emitter) = tmp(emitter) + (p_hat_gq(z)*factor - p_derived_gq(z))/z * pdfs/pdfb * jac
         end if
       end associate
     end do
     pdf_sub%value(alr) = alpha_s/twopi * (tmp(1)+tmp(2)) * sqme_born     
-    print *, 'Computed: '
-    print *, 'alpha_s: ', alpha_s
-    print *, 'tmp(1): ', tmp(1), 'tmp(2): ', tmp(2)
-    print *, 'sqme_born: ', sqme_born
-    print *, 'value: ', pdf_sub%value(alr)
   end subroutine pdf_subtraction_evaluate
 
 @ %def pdf_subtraction_evaluate
