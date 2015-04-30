@@ -10,6 +10,8 @@ module matching_base
 
 <<Use kinds>>
 <<Use strings>>
+  use sm_qcd
+  use model_data
   use particles
   use variables
   use shower_base
@@ -33,12 +35,18 @@ end module matching_base
 @ %def matching_base
 @
 \section{Abstract Matching Type}
+A matching will need access to the [[shower]] as well as matrix elements
+that we currently get over [[process_instace]].  The [[model]] is
+intended for the backup [[model_hadrons]].
 <<Matching base: public>>=
   public :: matching_t
 <<Matching base: types>>=
   type, abstract :: matching_t
     logical :: is_hadron_collision = .false.
+    type(qcd_t), pointer :: qcd => null ()
     class(shower_base_t), pointer :: shower => null ()
+    type(process_instance_t), pointer :: process_instance => null ()
+    class(model_data_t), pointer :: model => null ()
    contains
    <<Matching base: matching: TBP>>
   end type matching_t
@@ -65,23 +73,25 @@ end module matching_base
      subroutine matching_write (matching, unit)
        import
        class(matching_t), intent(in) :: matching
-       integer, intent(in) :: unit
+       integer, intent(in), optional :: unit
      end subroutine matching_write
   end interface
 
 @ %def matching_write
 @
 <<Matching base: matching: TBP>>=
-  procedure :: base_connect => matching_base_connect
+  procedure :: connect => matching_connect
+  procedure :: base_connect => matching_connect
 <<Matching base: procedures>>=
-  pure subroutine matching_base_connect (matching, process_instance, model, shower)
+  subroutine matching_connect (matching, process_instance, model, shower)
     class(matching_t), intent(inout) :: matching
     type(process_instance_t), intent(in), target :: process_instance
     class(model_data_t), intent(in), target :: model
     class(shower_base_t), intent(in), target :: shower
     matching%process_instance => process_instance
+    matching%model => model
     matching%shower => shower
-  end subroutine matching_base_connect
+  end subroutine matching_connect
 
 @ %def matching_base_connect
 @
@@ -177,6 +187,7 @@ module mlm_matching
   use diagnostics
   use file_utils
   use lorentz
+  use subevents, only: PRT_OUTGOING
   use particles
   use variables
   use shower_base
@@ -219,7 +230,7 @@ end module mlm_matching
 <<MLM matching: mlm matching settings: TBP>>=
   procedure :: init => mlm_matching_settings_init
 <<MLM matching: procedures>>=
-  pure subroutine mlm_matching_settings_init (settings, var_list)
+  subroutine mlm_matching_settings_init (settings, var_list)
     class(mlm_matching_settings_t), intent(out) :: settings
     type(var_list_t), intent(in) :: var_list
     settings%mlm_Qcut_ME = &
@@ -306,7 +317,7 @@ jet momenta.
 <<MLM matching: mlm matching: TBP>>=
   procedure :: init => mlm_matching_init
 <<MLM matching: procedures>>=
-  pure subroutine mlm_matching_init (matching, var_list)
+  subroutine mlm_matching_init (matching, var_list)
     class(mlm_matching_t), intent(out) :: matching
     type(var_list_t), intent(in) :: var_list
     call matching%settings%init (var_list)
@@ -370,25 +381,38 @@ jet momenta.
 @ %def mlm_matching_write
 @
 <<MLM matching: mlm matching: TBP>>=
+  procedure :: before_shower => mlm_matching_before_shower
+<<MLM matching: procedures>>=
+  subroutine mlm_matching_before_shower &
+         (matching, particle_set, vetoed)
+    class(mlm_matching_t), intent(inout) :: matching
+    type(particle_set_t), intent(inout) :: particle_set
+    logical, intent(out) :: vetoed
+    vetoed = .false.
+  end subroutine mlm_matching_before_shower
+
+@ %def mlm_matching_before_shower
+@
+<<MLM matching: mlm matching: TBP>>=
   procedure :: after_shower => mlm_matching_after_shower
 <<MLM matching: procedures>>=
-  pure subroutine mlm_matching_after_shower (matching, particle_set, vetoed)
+  subroutine mlm_matching_after_shower (matching, particle_set, vetoed)
     class(mlm_matching_t), intent(inout) :: matching
     type(particle_set_t), intent(inout) :: particle_set
     logical, intent(out) :: vetoed
     if (allocated (matching%P_ME))  deallocate (matching%P_ME)
-    matching%P_ME = shower%get_final_colored_ME_momenta ()
-    call matching%transfer_PS (evt%particle_set)
+    matching%P_ME = matching%shower%get_final_colored_ME_momenta ()
+    call matching%fill_P_PS (particle_set)
     !!! MLM stage 3 -> reconstruct and possibly reject
-    call mlm_matching_apply (data, ms, vetoed)
+    call matching%apply (vetoed)
   end subroutine mlm_matching_after_shower
 
 @ %def mlm_matching_after_shower
 @ Transfer partons after parton shower to [[matching%P_PS]]
 <<MLM matching: mlm matching: TBP>>=
-  procedure :: transfer_PS => mlm_matching_transfer_PS
+  procedure :: fill_P_PS => mlm_matching_fill_P_PS
 <<MLM matching: procedures>>=
-  subroutine matching_transfer_PS (matching, particle_set)
+  subroutine mlm_matching_fill_P_PS (matching, particle_set)
     class(mlm_matching_t), intent(inout) :: matching
     type(particle_set_t), intent(in) :: particle_set
     integer :: i, j, n_jets_PS
@@ -405,6 +429,7 @@ jet momenta.
        if (tempprt%get_status () /= PRT_OUTGOING) cycle
        col = tempprt%get_color ()
        if (all (col == 0)) cycle
+! TODO: (bcn 2015-04-28) where is the corresponding part for lepton colliders?
        if (matching%is_hadron_collision) then
           p_tmp = tempprt%get_momentum ()
           if (energy (p_tmp) - longitudinal_part (p_tmp) < 1.E-10_default .or. &
@@ -413,8 +438,8 @@ jet momenta.
           else
              eta = rapidity (p_tmp)
           end if
-          if (eta > settings%mlm_etaClusfactor * &
-               settings%mlm_etamax)  then
+          if (eta > matching%settings%mlm_etaClusfactor * &
+               matching%settings%mlm_etamax)  then
              if (DEBUG_SHOWER) then
                 print *, "REJECTING"
                 call tempprt%write ()
@@ -434,6 +459,7 @@ jet momenta.
        if (tempprt%get_status () /= PRT_OUTGOING) cycle
        col = tempprt%get_color ()
        if (all(col == 0)) cycle
+! TODO: (bcn 2015-04-28) where is the corresponding part for lepton colliders?
        if (matching%is_hadron_collision) then
           p_tmp = tempprt%get_momentum ()
           if (energy (p_tmp) - longitudinal_part (p_tmp) < 1.E-10_default .or. &
@@ -442,15 +468,15 @@ jet momenta.
           else
              eta = rapidity (p_tmp)
           end if
-          if (eta > settings%mlm_etaClusfactor * &
-               settings%mlm_etamax) cycle
+          if (eta > matching%settings%mlm_etaClusfactor * &
+               matching%settings%mlm_etamax) cycle
        end if
        matching%P_PS(j) = tempprt%get_momentum ()
        j = j + 1
     end do
-  end subroutine matching_transfer_PS
+  end subroutine mlm_matching_fill_P_PS
 
-@ %def matching_transfer_PS
+@ %def mlm_matching_fill_P_PS
 @
 <<MLM matching: mlm matching: TBP>>=
   procedure :: apply => mlm_matching_apply
@@ -827,7 +853,7 @@ from the matrix element generation is available.
     integer :: i, j, n
     type(vector4_t) :: momentum
     n = 2**particle_set%n_tot
-    if (allocated (weights%weights)) then 
+    if (allocated (weights%weights)) then
        deallocate (weights%weights)
     end if
     allocate (weights%weights (1:n))
@@ -853,7 +879,7 @@ from the matrix element generation is available.
        end do
     end do
   end subroutine ckkw_pseudo_shower_weights_fake
-  
+
 @ %def ckkw_pseudo_shower_weights_fake
 @
 <<CKKW matching: public>>=
@@ -871,7 +897,7 @@ from the matrix element generation is available.
 <<CKKW matching: ckkw matching: TBP>>=
   procedure :: init => ckkw_matching_init
 <<CKKW matching: procedures>>=
-  pure subroutine ckkw_matching_init (matching, var_list)
+  subroutine ckkw_matching_init (matching, var_list)
     class(ckkw_matching_t), intent(out) :: matching
     type(var_list_t), intent(in) :: var_list
     call matching%settings%init (var_list)
@@ -880,23 +906,11 @@ from the matrix element generation is available.
 @ %def ckkw_matching_init
 @
 <<CKKW matching: ckkw matching: TBP>>=
-  procedure :: connect => ckkw_matching_connect
-<<CKKW matching: procedures>>=
-  subroutine ckkw_matching_connect (matching, process_instance, shower)
-    class(ckkw_matching_t), intent(inout) :: matching
-    type(process_instance_t), intent(in), target :: process_instance
-    class(shower_base_t), intent(in), target :: shower
-    call matching%base_connect (process_instance, shower)
-  end subroutine ckkw_matching_connect
-
-@ %def ckkw_matching_connect
-@
-<<CKKW matching: ckkw matching: TBP>>=
   procedure :: write => ckkw_matching_write
 <<CKKW matching: procedures>>=
   subroutine ckkw_matching_write (matching, unit)
     class(ckkw_matching_t), intent(in) :: matching
-    integer, intent(in) :: unit
+    integer, intent(in), optional :: unit
     call matching%settings%write (unit)
     call matching%weights%write (unit)
   end subroutine ckkw_matching_write
@@ -907,14 +921,13 @@ from the matrix element generation is available.
   procedure :: before_shower => ckkw_matching_before_shower
 <<CKKW matching: procedures>>=
   subroutine ckkw_matching_before_shower &
-         (matching, particle_set, shower, vetoed)
+         (matching, particle_set, vetoed)
     class(ckkw_matching_t), intent(inout) :: matching
     type(particle_set_t), intent(inout) :: particle_set
-    class(shower_base_t), intent(inout) :: shower
     logical, intent(out) :: vetoed
     call matching%weights%init ()
     call matching%weights%fake (particle_set)
-    select type (shower)
+    select type (shower => matching%shower)
     type is (shower_t)
        call ckkw_matching_apply (shower%partons, &
             matching%settings, &
@@ -929,13 +942,13 @@ from the matrix element generation is available.
 <<CKKW matching: public>>=
   public :: ckkw_matching_apply
 <<CKKW matching: procedures>>=
-  subroutine ckkw_matching_apply (partons, settings, weights, rng, veto)
+  subroutine ckkw_matching_apply (partons, settings, weights, rng, vetoed)
     type(parton_pointer_t), dimension(:), intent(inout), allocatable :: &
          partons
     type(ckkw_matching_settings_t), intent(in) :: settings
     type(ckkw_pseudo_shower_weights_t), intent(in) :: weights
     class(rng_t), intent(inout), allocatable :: rng
-    logical, intent(out) :: veto
+    logical, intent(out) :: vetoed
 
     real(default), dimension(:), allocatable :: scales
     real(double) :: weight, sf
@@ -1097,9 +1110,9 @@ from the matrix element generation is available.
     print *, "final weight: ", weight
 
     !!!!!!! WRONG
-    veto = .false.
-    veto = (rand > weight)
-    if (veto) then
+    vetoed = .false.
+    ! vetoed = (rand > weight)
+    if (vetoed) then
        return
     end if
 
@@ -1119,6 +1132,7 @@ from the matrix element generation is available.
     class(ckkw_matching_t), intent(inout) :: matching
        type(particle_set_t), intent(inout) :: particle_set
        logical, intent(out) :: vetoed
+       vetoed = .false.
   end subroutine ckkw_matching_after_shower
 
 @ %def ckkw_matching_after_shower
@@ -1252,14 +1266,13 @@ module powheg
   use format_defs
   use os_interface
   use string_utils
-  use physics_defs
-  use diagnostics
-  use subevents
-  use rng_base
   use grids
   use solver
-  use nlo_controller
-  use phs_fks
+  use rng_base
+  use physics_defs
+  use sm_qcd, only: qcd_t, alpha_qcd_from_scale_t, alpha_qcd_from_lambda_t
+  use diagnostics
+  use subevents
   use lorentz
   use particles
   use interactions
@@ -1268,6 +1281,10 @@ module powheg
   use flavors
   use polarizations
   use pdg_arrays, only: is_quark, is_gluon
+  use shower_base, only: shower_base_t
+  use phs_fks
+  use nlo_controller
+  use matching_base
 
   ! For integration tests
   use rng_tao
@@ -1277,7 +1294,6 @@ module powheg
   use models
   use model_data
   use variables
-  use sm_qcd
   use prc_core
   use prc_omega
   use mci_base
@@ -2136,50 +2152,64 @@ a massless recoiling system.
 @
 \subsection{Main POWHEG class}
 <<Powheg: public>>=
-  public :: powheg_t
+  public :: powheg_matching_t
 <<Powheg: types>>=
-  type, extends(matching_t) :: powheg_t
+  type, extends(matching_t) :: powheg_matching_t
      type(string_t) :: process_name
      class(rng_t), allocatable :: rng
      type(grid_t) :: grid
      type(phs_fks_generator_t) :: phs_fks_generator
      type(powheg_settings_t) :: settings
      type(powheg_testing_t) :: testing
-     type(process_instance_t), pointer :: process_instance => null()
      type(event_deps_t) :: event_deps
      type(process_deps_t) :: process_deps
      type(sudakov_wrapper_t), dimension(:), allocatable :: sudakov
-     type(qcd_t), pointer :: qcd => null()
      integer :: n_emissions = 0
   contains
-   <<Powheg: powheg: TBP>>
-  end type powheg_t
+   <<Powheg: powheg matching: TBP>>
+  end type powheg_matching_t
 
-@ %def powheg_t
+@ %def powheg_matching_t
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: before_shower => powheg_matching_before_shower
 <<Powheg: procedures>>=
-  subroutine powheg_matching_before_shower (matching, particle_set)
+  subroutine powheg_matching_before_shower &
+         (matching, particle_set, vetoed)
     class(powheg_matching_t), intent(inout) :: matching
     type(particle_set_t), intent(inout) :: particle_set
-    call matching%powheg%update (particle_set)
+    logical, intent(out) :: vetoed
+    call matching%update (particle_set)
     if (TEST_SUDAKOV) then
-       call matching%powheg%test_sudakov ()
+       call matching%test_sudakov ()
        stop
     end if
-    call matching%powheg%generate_emission (particle_set = particle_set)
+    call matching%generate_emission (particle_set = particle_set)
+    vetoed = .false.
   end subroutine powheg_matching_before_shower
 
 @ %def powheg_matching_before_shower
 @
+<<Powheg: powheg matching: TBP>>=
+  procedure :: after_shower => powheg_matching_after_shower
+<<Powheg: procedures>>=
+  subroutine powheg_matching_after_shower (matching, particle_set, vetoed)
+    class(powheg_matching_t), intent(inout) :: matching
+    type(particle_set_t), intent(inout) :: particle_set
+    logical, intent(out) :: vetoed
+    vetoed = .false.
+  end subroutine powheg_matching_after_shower
+
+@ %def powheg_matching_after_shower
+  end subroutine ckkw_matching_after_shower
+@
 \subsubsection{Output}
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: display_grid_startup_message => &
                       powheg_display_grid_startup_message
 <<Powheg: procedures>>=
   subroutine powheg_display_grid_startup_message (powheg)
-    class(powheg_t), intent(in) :: powheg
+    class(powheg_matching_t), intent(in) :: powheg
     real(default) :: points_per_cell
     write (msg_buffer, "(A,A,A)") "Generating grid for process '", &
                                char (powheg%process_name), "'"
@@ -2206,11 +2236,11 @@ a massless recoiling system.
 
 @ %def powheg_display_grid_startup_message
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: write => powheg_write
 <<Powheg: procedures>>=
   subroutine powheg_write (powheg, unit)
-    class(powheg_t), intent(in) :: powheg
+    class(powheg_matching_t), intent(in) :: powheg
     integer, intent(in), optional :: unit
     integer :: u, alr
     u = given_output_unit (unit);  if (u < 0)  return
@@ -2232,11 +2262,11 @@ a massless recoiling system.
 
 @ %def powheg_write
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: write_statistics => powheg_write_statistics
 <<Powheg: procedures>>=
   subroutine powheg_write_statistics (powheg)
-    class(powheg_t), intent(in) :: powheg
+    class(powheg_matching_t), intent(in) :: powheg
     integer :: u
     integer :: alr
     type(string_t) :: filename
@@ -2258,51 +2288,23 @@ a massless recoiling system.
 @ %def powheg_write_statistics
 @
 \subsubsection{Initialization and Finalization}
-<<Powheg: powheg: TBP>>=
-  procedure :: connect => powheg_connect
+<<Powheg: powheg matching: TBP>>=
+  procedure :: connect => powheg_matching_connect
 <<Powheg: procedures>>=
-  subroutine powheg_connect (powheg, process_instance, testing)
-    class(powheg_t), intent(inout), target :: powheg
+  subroutine powheg_matching_connect (matching, process_instance, model, shower)
+    class(powheg_matching_t), intent(inout) :: matching
     type(process_instance_t), intent(in), target :: process_instance
-    type(powheg_testing_t), intent(in), optional :: testing
-    integer :: n_in, n_out_born, n_out_real
-    if (.not. present (testing)) then
-       call base_connect(process_instance, shower)
-       associate (nlo_controller => powheg%process_instance%nlo_controller)
-          powheg%process_deps%n_alr = nlo_controller%get_n_alr ()
-          n_in = nlo_controller%particle_data%n_in
-          n_out_born = nlo_controller%particle_data%n_out_born
-          n_out_real = nlo_controller%particle_data%n_out_real
-          associate (generator => powheg%phs_fks_generator)
-             call generator%setup_real_kinematics (nlo_controller%real_kinematics)
-             call generator%set_emitters (nlo_controller%reg_data%emitters)
-             call generator%setup_masses (n_in + n_out_born)
-          end associate
-       end associate
-    else
-       powheg%testing = testing
-       powheg%process_deps%n_alr = testing%n_alr
-       n_in = testing%n_in
-       n_out_born = testing%n_out_born
-       n_out_real = testing%n_out_real
-    end if
+    class(model_data_t), intent(in), target :: model
+    class(shower_base_t), intent(in), target :: shower
+  end subroutine powheg_matching_connect
 
-    allocate (powheg%event_deps%p_born (n_in + n_out_born))
-    allocate (powheg%event_deps%p_real (n_in + n_out_real))
-    call powheg%grid%init ([powheg%settings%size_grid_xi, &
-                            powheg%settings%size_grid_y, &
-                            powheg%process_deps%n_alr])
-    call powheg%setup_sudakovs ()
-    call powheg%setup_grids ()
-  end subroutine powheg_connect
-
-@ %def powheg_connect
+@ %def powheg_matching_connect
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: setup_grids => powheg_setup_grids
 <<Powheg: procedures>>=
   subroutine powheg_setup_grids (powheg)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     if (powheg%requires_new_grids ()) then
        call powheg%fill_grids ()
        call powheg%save_grids ()
@@ -2315,11 +2317,11 @@ a massless recoiling system.
 
 @ %def powheg_setup_grids
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: setup_sudakovs => powheg_setup_sudakovs
 <<Powheg: procedures>>=
   subroutine powheg_setup_sudakovs (powheg)
-    class(powheg_t), intent(inout), target :: powheg
+    class(powheg_matching_t), intent(inout), target :: powheg
     integer :: alr
     logical :: is_fsr
     allocate (powheg%sudakov (powheg%process_deps%n_alr))
@@ -2345,37 +2347,46 @@ a massless recoiling system.
 
 @ %def powheg_setup_sudakovs
 @
-<<Powheg: powheg: TBP>>=
-  procedure :: init => powheg_init
+<<Powheg: powheg matching: TBP>>=
+  procedure :: init => powheg_matching_init
 <<Powheg: procedures>>=
-  subroutine powheg_init (powheg, settings, process_name)
-    class(powheg_t), intent(out) :: powheg
+  subroutine powheg_matching_init (powheg, settings, process_name)
+    class(powheg_matching_t), intent(out) :: powheg
     type(powheg_settings_t), intent(in) :: settings
     type(string_t), intent(in) :: process_name
+    type(powheg_testing_t), intent(in), optional :: testing
     powheg%settings = settings
     powheg%process_name = process_name
-  end subroutine powheg_init
+  end subroutine powheg_matching_init
 
-@ %def powheg_init
+@ %def powheg_matching_init
+
+    if (present (testing)) then
+       powheg%testing = testing
+       powheg%process_deps%n_alr = testing%n_alr
+       n_in = testing%n_in
+       n_out_born = testing%n_out_born
+       n_out_real = testing%n_out_real
+    end if
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: import_rng => powheg_import_rng
 <<Powheg: procedures>>=
   pure subroutine powheg_import_rng (powheg, rng)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     class(rng_t), allocatable, intent(inout) :: rng
     call move_alloc (from = rng, to = powheg%rng)
   end subroutine powheg_import_rng
 
 @ %def powheg_import_rng
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   generic :: update => update_momenta, &
                        update_particle_set
   procedure :: update_momenta => powheg_update_momenta
   procedure :: update_particle_set => powheg_update_particle_set
 <<Powheg: procedures>>=
   subroutine powheg_update_momenta (powheg, p_born)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     type(vector4_t), dimension(:), intent(in) :: p_born
     if (.not. powheg%testing%active) then
        call powheg%event_deps%update &
@@ -2387,19 +2398,19 @@ a massless recoiling system.
   end subroutine powheg_update_momenta
 
   subroutine powheg_update_particle_set (powheg, particle_set)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     type(particle_set_t), intent(in) :: particle_set
     call powheg%update_momenta (particle_set%get_momenta())
   end subroutine powheg_update_particle_set
 
 @ %def powheg_update
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: reweight_matrix_elements => powheg_reweight_matrix_elements
 <<Powheg: procedures>>=
   function powheg_reweight_matrix_elements (powheg, r) result (accepted)
     logical :: accepted
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     type(radiation_t), intent(in) :: r
     integer :: emitter
     real(default) :: sqme_real_x_jacobian, sqme_born
@@ -2447,11 +2458,11 @@ a massless recoiling system.
 $R_{\alpha_r} = S_{\alpha_r} R$ whereby the current $\alpha_r$ is
 implied by the [[emitter]].  Furthermore, it is multiplied by the
 Jacobian.
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: compute_sqme_real => powheg_compute_sqme_real
 <<Powheg: procedures>>=
   function powheg_compute_sqme_real (powheg, alr, alpha_s) result (sqme)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     integer, intent(in) :: alr
     real(default), intent(in) :: alpha_s
     integer :: emitter
@@ -2470,11 +2481,11 @@ Jacobian.
 
 @ %def powheg_compute_sqme_real
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: set_scale => powheg_set_scale
 <<Powheg: procedures>>=
   subroutine powheg_set_scale (powheg, pT2)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     real(default), intent(in) :: pT2
     call powheg%process_instance%set_fac_scale (sqrt(pT2))
   end subroutine powheg_set_scale
@@ -2489,11 +2500,11 @@ $\{\alpha_r|f_b,\text{rr}\}$ proportional to their $R_{\alpha_r}$.  For
 now, we simplify things though and just work with the $\alpha_r$.
 
 The following is valid for one underlying Born.
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: fill_grids => powheg_fill_grids
 <<Powheg: procedures>>=
   subroutine powheg_fill_grids (powheg)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     real(default), dimension(3) :: radiation_variables
     real(default) :: f_alr, xi, y, norm, real_me, ubf
     integer :: alr
@@ -2534,12 +2545,12 @@ The following is valid for one underlying Born.
 
 @ %def powheg_fill_grids
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: generate_xi_and_y_for_grids => powheg_generate_xi_and_y_for_grids
 <<Powheg: procedures>>=
   subroutine powheg_generate_xi_and_y_for_grids (powheg, &
                                        radiation_randoms, alr, xi, y)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     integer, intent(in) :: alr
     real(default), dimension(:), intent(in) :: radiation_randoms
     real(default), intent(out) :: xi, y
@@ -2560,13 +2571,13 @@ The following is valid for one underlying Born.
 
 @ %def powheg_generate_xi_and_y_for_grids
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: prepare_momenta_for_fill_grids => powheg_prepare_momenta_for_fill_grids
 <<Powheg: procedures>>=
   subroutine powheg_prepare_momenta_for_fill_grids (powheg, &
                                                       radiation_randoms)
     real(default), dimension(3), intent(out) :: radiation_randoms
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     if (.not. powheg%testing%active) then
        associate (nlo => powheg%process_instance%nlo_controller, &
                   fks => powheg%phs_fks_generator, &
@@ -2587,12 +2598,12 @@ The following is valid for one underlying Born.
 
 @ %def powheg_prepare_momenta_for_fill_grids
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: above_pt2_min => powheg_above_pt2_min
 <<Powheg: procedures>>=
   pure function powheg_above_pt2_min (powheg) result (yorn)
     logical :: yorn
-    class(powheg_t), intent(in) :: powheg
+    class(powheg_matching_t), intent(in) :: powheg
     integer :: alr, emitter
     real(default) :: xi, y
     yorn = .true.
@@ -2609,11 +2620,11 @@ The following is valid for one underlying Born.
 
 @ %def powheg_above_pt2_min
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: set_normalizations => powheg_set_normalizations
 <<Powheg: procedures>>=
   subroutine powheg_set_normalizations (powheg)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     integer :: alr
     real(default) :: norm_max
     do alr = 1, powheg%process_deps%n_alr
@@ -2624,11 +2635,11 @@ The following is valid for one underlying Born.
 
 @ %def powheg_set_normalizations
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: save_grids => powheg_save_grids
 <<Powheg: procedures>>=
   subroutine powheg_save_grids (powheg)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     type(string_t) :: filename, n_points
     n_points = str (powheg%settings%n_init)
     filename = powheg%process_name // "_" // n_points // "_powheg_grids.dat"
@@ -2637,11 +2648,11 @@ The following is valid for one underlying Born.
 
 @ %def powheg_save_grids
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: load_grids => powheg_load_grids
 <<Powheg: procedures>>=
   subroutine powheg_load_grids (powheg)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     type(string_t) :: filename, n_points
     n_points = str (powheg%settings%n_init)
     filename = powheg%process_name // "_" // n_points // "_powheg_grids.dat"
@@ -2650,12 +2661,12 @@ The following is valid for one underlying Born.
 
 @ %def powheg_load_grids
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: requires_new_grids => powheg_requires_new_grids
 <<Powheg: procedures>>=
   function powheg_requires_new_grids (powheg) result (requires)
     logical :: requires
-    class(powheg_t), intent(in) :: powheg
+    class(powheg_matching_t), intent(in) :: powheg
     type(string_t) :: filename, n_points
     n_points = str (powheg%settings%n_init)
     filename = powheg%process_name // "_" // n_points // "_powheg_grids.dat"
@@ -2666,11 +2677,11 @@ The following is valid for one underlying Born.
 @ By keeping the radiation with the largest [[pt2]], we are effectively
 implementing the highest bid procedure. This means that we generate
 values $(f_B)$
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: generate_emission => powheg_generate_emission
 <<Powheg: procedures>>=
   subroutine powheg_generate_emission (powheg, particle_set, pt2_generated)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     type(particle_set_t), intent(inout), optional :: particle_set
     real(default), intent(out), optional :: pt2_generated
     type(radiation_t) :: r, r_max
@@ -2723,12 +2734,12 @@ values $(f_B)$
 
 @ %def generate_emission
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: build_particle_set => powheg_build_particle_set
 <<Powheg: procedures>>=
   subroutine powheg_build_particle_set &
        (powheg, particle_set, p_born, p_real, emitter)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     type(particle_set_t), intent(inout) :: particle_set
     type(vector4_t), dimension(:), intent(in) :: p_born, p_real
     integer, intent(in) :: emitter
@@ -2895,12 +2906,12 @@ values $(f_B)$
 
 @ %def reassign_colors
 @ Only massless for now
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: reweight_norm => powheg_reweight_norm
 <<Powheg: procedures>>=
   function powheg_reweight_norm (powheg, r) result (accepted)
     logical :: accepted
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     type(radiation_t), intent(in) :: r
     real(default) :: random, norm_max, norm_true
     call powheg%rng%generate (random)
@@ -2928,12 +2939,12 @@ values $(f_B)$
 
 @ %def powheg_reweight_norm
 @
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: norm_from_xi_and_y => powheg_norm_from_xi_and_y
 <<Powheg: procedures>>=
   function powheg_norm_from_xi_and_y (powheg, r) result (norm_true)
     real(default) :: norm_true
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     type(radiation_t), intent(in) :: r
     real(default) :: f_alr
     real(default), dimension(2) :: rands
@@ -2956,19 +2967,63 @@ done by setting
 \end{equation}
 whereby $\mu_0^2$ is the [[scale_to_relate2]] that is taken to be
 $p_{T,\text{min}}^2$.
-<<Powheg: powheg: TBP>>=
-  procedure :: compute_lambda2_gen => powheg_compute_lambda2_gen
+<<Powheg: powheg matching: TBP>>=
+  procedure :: prepare_for_events => powheg_prepare_for_events
 <<Powheg: procedures>>=
-  subroutine powheg_compute_lambda2_gen (powheg)
-    class(powheg_t), intent(inout) :: powheg
+  subroutine powheg_prepare_for_events (powheg)
+    class(powheg_matching_t), intent(inout) :: powheg
     real(default) :: alpha_s, scale_to_relate2
-    scale_to_relate2 = powheg%settings%pt2_min
-    alpha_s = get_alpha (powheg%qcd, scale_to_relate2)
-    powheg%process_deps%lambda2_gen = exp (- one / (b0rad * alpha_s)) * &
-         scale_to_relate2
-  end subroutine powheg_compute_lambda2_gen
+    call matching%setup_nlo_environment ()
+    call matching%grid%init ([matching%settings%size_grid_xi, &
+                              matching%settings%size_grid_y, &
+                              matching%process_deps%n_alr])
+    call matching%compute_lambda2_gen ()
+    call matching%setup_sudakovs ()
+    call matching%setup_grids ()
+  end subroutine powheg_prepare_for_events
 
-@ %def powheg_compute_lambda2_gen
+@ %def powheg_prepare_for_events
+@
+<<Powheg: powheg matching: TBP>>=
+  procedure :: compute_lambda2_gen => powheg_matching_compute_lambda2_gen
+<<Powheg: procedures>>=
+  pure subroutine powheg_matching_compute_lambda2_gen (matching)
+    class(powheg_matching_t), intent(inout) :: matching
+    scale_to_relate2 = matching%settings%pt2_min
+    alpha_s = get_alpha (matching%qcd, scale_to_relate2)
+    matching%process_deps%lambda2_gen = exp (- one / (b0rad * alpha_s)) * &
+         scale_to_relate2
+  end subroutine powheg_matching_compute_lambda2_gen
+
+@ %def powheg_matching_compute_lambda2_gen
+@
+<<Powheg: powheg matching: TBP>>=
+  procedure :: setup_nlo_environment => powheg_matching_setup_nlo_environment
+<<Powheg: procedures>>=
+  pure subroutine powheg_matching_setup_nlo_environment (powheg_matching)
+    class(powheg_matching_t), intent(inout) :: powheg_matching
+    integer :: n_in, n_out_born, n_out_real
+    if (.not. testing%active) then
+       associate (nlo_controller => matching%process_instance%nlo_controller)
+          matching%process_deps%n_alr = nlo_controller%get_n_alr ()
+          n_in = nlo_controller%particle_data%n_in
+          n_out_born = nlo_controller%particle_data%n_out_born
+          n_out_real = nlo_controller%particle_data%n_out_real
+          associate (generator => matching%phs_fks_generator)
+             call generator%setup_real_kinematics (nlo_controller%real_kinematics)
+             call generator%set_emitters (nlo_controller%reg_data%emitters)
+             call generator%setup_masses (n_in + n_out_born)
+          end associate
+       end associate
+    else
+    end if
+
+    allocate (matching%event_deps%p_born (n_in + n_out_born))
+    allocate (matching%event_deps%p_real (n_in + n_out_real))
+    
+  end subroutine powheg_matching_setup_nlo_environment
+
+@ %def powheg_matching_setup_nlo_environment
 @ [[qcd%alpha%get]] should implement a variable-flavor result and
 optionally return [[n_flavors]] that are active at the scale...
 <<Powheg: procedures>>=
@@ -3077,10 +3132,12 @@ Still very basic and incomplete.
 <<Powheg: procedures>>=
   subroutine powheg_1 (u)
     integer, intent(in) :: u
-    type(powheg_t) :: powheg
+    type(powheg_matching_t) :: powheg
     type(powheg_settings_t) :: powheg_settings
     type(powheg_testing_t) :: powheg_testing
-    type(process_instance_t) :: process_instance
+    type(process_instance_t), target :: process_instance
+    type(shower_base_t), target :: shower
+    type(model_data_t), target :: model
     type(particle_set_t) :: particle_set
     class(rng_factory_t), allocatable :: rng_factory
     class(rng_t), allocatable :: rng
@@ -3120,11 +3177,11 @@ Still very basic and incomplete.
     write (u, "(A)")  "*   Purpose: Initialization"
     write (u, "(A)")
 
-    call powheg%init (powheg_settings, process_name)
+    call powheg%init (powheg_settings, process_name, powheg_testing)
     powheg%qcd => qcd
     call powheg%import_rng (rng)
-    call powheg%connect (process_instance, powheg_testing)
-    call powheg%compute_lambda2_gen ()
+    call powheg%connect (process_instance, model, shower)
+    call powheg%prepare_for_events ()
     call powheg%update (particle_set)
     !!! Needs some more thought: if we just set R = 1, B = 1 the grid
     !!! setup will fail
@@ -3143,11 +3200,11 @@ This is a nontrivial test of the generation algorithm and should be
 independent of the used upper bounding function (as long as all
 singularities are included).  Using it as unit test needs a setup of the
 NLO process though.
-<<Powheg: powheg: TBP>>=
+<<Powheg: powheg matching: TBP>>=
   procedure :: test_sudakov => powheg_test_sudakov
 <<Powheg: procedures>>=
   subroutine powheg_test_sudakov (powheg)
-    class(powheg_t), intent(inout) :: powheg
+    class(powheg_matching_t), intent(inout) :: powheg
     integer :: n_calls1, n_calls2
     integer, parameter :: n_bins = 20
     real(default) :: sqme_real_x_jacobian, sqme_born
