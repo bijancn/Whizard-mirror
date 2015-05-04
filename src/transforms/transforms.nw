@@ -120,11 +120,11 @@ instance is a pointer and should not be finalized here.
   procedure :: final => evt_final
   procedure :: base_final => evt_final
 <<Event transforms: procedures>>=
-  subroutine evt_final (object)
-    class(evt_t), intent(inout) :: object
-    if (allocated (object%rng))  call object%rng%final ()
-    if (object%particle_set_exists) &
-         call object%particle_set%final ()
+  subroutine evt_final (evt)
+    class(evt_t), intent(inout) :: evt
+    if (allocated (evt%rng))  call evt%rng%final ()
+    if (evt%particle_set_exists) &
+         call evt%particle_set%final ()
   end subroutine evt_final
   
 @ %def evt_final
@@ -3588,13 +3588,7 @@ module shower
   use pdf_builtin !NODEP!
   
   use shower_base
-  use shower_partons
-  use shower_core
-  use shower_pythia6
-  use mlm_matching
-  use ckkw_base
-  use ckkw_matching
-  use powheg
+  use matching_base
   
   use sm_qcd
   use particles
@@ -3617,6 +3611,9 @@ module shower
   use phs_single
   use prc_core
   use prc_omega
+
+  ! For integration tests
+  use shower_core
 
 <<Standard module head>>
 
@@ -3641,7 +3638,6 @@ and testing of the POWHEG procedure.
 <<Shower: parameters>>=
   logical, parameter :: DEBUG_EVT_SHOWER = .false.
   logical, parameter :: POWHEG_TESTING = .false.
-  logical, parameter :: TEST_SUDAKOV = .false.
   logical, parameter :: TO_FILE = .false.
 
 @ %def DEBUG_EVT_SHOWER POWHEG_TESTING TO_FILE
@@ -3699,7 +3695,7 @@ hadrons that can be generated in the shower.
     type(process_stack_t), intent(in), optional :: process_stack
     call evt%base_connect (process_instance, model, process_stack)
     call evt%make_rng (evt%process)
-    call matching%connect (process_instance)
+    call evt%matching%connect (process_instance, model, evt%shower)
   end subroutine evt_shower_connect
 
 @ %def evt_shower_connect
@@ -3732,9 +3728,9 @@ shower.
     class(rng_t), allocatable :: rng
     call process%make_rng (rng)
     call evt%shower%import_rng (rng)
-    if (evt%settings%powheg_matching) then
+    if (allocated (evt%matching)) then
        call process%make_rng (rng)
-       call evt%powheg%import_rng (rng)
+       call evt%matching%import_rng (rng)
     end if
   end subroutine evt_shower_make_rng
 
@@ -3796,7 +3792,6 @@ transformation chain is evaluated.
   subroutine evt_shower_prepare_new_event (evt, i_mci, i_term)
     class(evt_shower_t), intent(inout) :: evt
     integer, intent(in) :: i_mci, i_term
-    logical, save :: first_event = .true.
     call evt%reset ()
     call evt%shower%prepare_new_event ()
   end subroutine evt_shower_prepare_new_event
@@ -3806,17 +3801,14 @@ transformation chain is evaluated.
 <<Shower: evt shower: TBP>>=
   procedure :: first_event => evt_shower_first_event
 <<Shower: procedures>>=
-  pure subroutine evt_shower_first_event (evt)
+  subroutine evt_shower_first_event (evt)
     class(evt_shower_t), intent(inout) :: evt
-    type(particle_t), dimension(1:2) :: prt_in    
-    do i = 1, 2
-       prt_in(i) = evt%particle_set%get_particle (i)
-    end do
+    real(default) :: pdftest
     ! TODO: (bcn 2015-04-24) also set info for combine_with_particle_set
     if (allocated (evt%matching)) then
-       if (all (prt_in%get_pdg_abs () <= 18)) then
+       if (all (evt%particle_set%prt%flv%get_pdg_abs () <= 18)) then
           evt%matching%is_hadron_collision = .false.
-       else if (all (prt_in%get_pdg_abs () >= 1000)) then
+       else if (all (evt%particle_set%prt%flv%get_pdg_abs () >= 1000)) then
           evt%matching%is_hadron_collision = .true.
        else 
           call msg_fatal (" evt_shower didn't recognize beams setup")
@@ -3825,8 +3817,8 @@ transformation chain is evaluated.
     if (evt%pdf_data%type == STRF_LHAPDF5) then
        if (evt%settings%isr_active .and. evt%matching%is_hadron_collision) then
           call GetQ2max (0, pdftest)
-          if (pdftest < epsilon(pdftest)) then
-             call msg_fatal ("ISR QCD shower enabled, but LHAPDF not" // &
+          if (pdftest < epsilon (pdftest)) then
+             call msg_bug ("ISR QCD shower enabled, but LHAPDF not" // &
                   "initialized," // LF // "     aborting simulation")
              return
           end if
@@ -3836,14 +3828,9 @@ transformation chain is evaluated.
        call msg_fatal ("Builtin PDFs cannot be used for PYTHIA showers," &
             // LF // "     aborting simulation")
        return
-    if (any (abs(IDBMUP) <= 8)) then
-       if (.not. shower%warning_given) then
-          call msg_error ("PYTHIA doesn't support quarks as beam particles," &
-               // LF // "     neglecting ISR, FSR and hadronization")
-          shower%warning_given = .true.
-       end if
-       return
     end if
+    if (evt%settings%method == PS_PYTHIA6 .and. any (abs (IDBMUP) <= 8)) then
+       call msg_fatal ("PYTHIA doesn't support quarks as beam particles")
     end if
   end subroutine evt_shower_first_event
 
@@ -3864,28 +3851,27 @@ we mark the particle set as invalid. This procedure directly takes the
     class(evt_shower_t), intent(inout) :: evt
     real(default), intent(out) :: probability
     logical :: valid, vetoed
-    logical, save :: matching_disabled = .false.    
-    integer :: i
-    real(kind=double) :: pdftest    
+    logical, save :: first_event = .false.    
     evt%particle_set = evt%previous%particle_set
     if (first_event) then
        call evt%first_event ()
        first_event = .false.
     end if
-    call evt%shower%import_particle_set (evt%particle_set)
-    call evt%matching%before_shower (evt%particle_set)
-    if (DEBUG_EVT_SHOWER) call evt%matching%write ()
-    if (evt%settings%method == PS_PYTHIA6 .or. &
-        evt%settings%hadronization_active) then
-       call assure_heprup (evt%particle_set)
-    end if
-    call evt%shower%generate_emissions (evt%particle_set, &
-         evt%model, evt%model_hadrons, evt%os_data, &
-         evt%matching_settings, evt%data, valid)
-    call evt%matching%after_shower (shower, vetoed)
-    if (DEBUG_EVT_SHOWER) then
-       print *, "Shower: obtained particle set after SHOWER"
-       call evt%particle_set%write (summary = .true., compressed = .true.)
+    call evt%shower%import_particle_set (evt%particle_set, evt%os_data)
+    call evt%matching%before_shower (evt%particle_set, vetoed)
+    valid = .true.
+    if (.not. vetoed) then
+       if (DEBUG_EVT_SHOWER) call evt%matching%write ()
+       if (evt%settings%method == PS_PYTHIA6 .or. &
+           evt%settings%hadronization_active) then
+          call assure_heprup (evt%particle_set)
+       end if
+       call evt%shower%generate_emissions (valid)
+       call evt%matching%after_shower (evt%particle_set, vetoed)
+       if (DEBUG_EVT_SHOWER) then
+          print *, "Shower: obtained particle set after SHOWER"
+          call evt%particle_set%write (summary = .true., compressed = .true.)
+       end if
     end if
     probability = 1
     evt%particle_set_exists = valid .and. .not. vetoed
@@ -3912,10 +3898,12 @@ irrelevant.
 <<Shower: evt shower: TBP>>=
   procedure :: final => evt_shower_final
 <<Shower: procedures>>=
-  subroutine evt_shower_final (object)
-    class(evt_shower_t), intent(inout) :: object
-    if (object%settings%powheg_matching) &
-         call object%powheg%write_statistics ()
+  subroutine evt_shower_final (evt)
+    class(evt_shower_t), intent(inout) :: evt
+    call evt%base_final ()
+    if (allocated (evt%matching)) then
+       call evt%matching%final ()
+    end if
   end subroutine evt_shower_final
 
 @ %def evt_shower_final
@@ -4095,7 +4083,7 @@ in disabled mode.
        call evt_shower%init (settings, model_hadrons, os_data)
        allocate (shower_t :: evt_shower%shower)
        call evt_shower%shower%init (evt_shower%settings, pdf_data)
-       call evt_shower%connect (process_instance, model)		
+       call evt_shower%connect (process_instance, model)
     end select
 
     evt_trivial%next => evt_shower

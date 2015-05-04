@@ -3514,12 +3514,12 @@ module dispatch
   use prc_template_me
   use prc_core
   use processes
-  use powheg
   use shower_base
   use shower_core
   use shower_pythia6
   use mlm_matching
-  use ckkw_base
+  use ckkw_matching
+  use powheg_matching
   use shower
   use event_transforms
   use decays
@@ -5239,21 +5239,6 @@ each matrix-element call.
   
 @ %def dispatch_qcd
 @
-\subsection{Parton Shower}
-@ If POWHEG matching is switched on, transfer the specific settings to
-the corresponding variables.
-<<Dispatch: procedures>>=
-  subroutine dispatch_powheg (powheg, global, process_name)
-    type(powheg_t), intent(inout) :: powheg 
-    type(powheg_settings_t) :: settings
-    type(rt_data_t), intent(in), target :: global
-    type(string_t), intent(in) :: process_name
-    type(var_list_t), pointer :: var_list    
-    var_list => global%get_var_list_ptr ()
-    call settings%init (var_list)
-    call powheg%init (settings, process_name)
-  end subroutine dispatch_powheg
-@ 
 \subsection{Event Transform}
 An event transform is responsible for dressing a partonic event.
 Since event transforms are not mutually exclusive but are
@@ -5283,49 +5268,32 @@ concatenated, we provide individual dispatchers for each of them.
   subroutine dispatch_evt_shower (evt, rt_data, process)
     class(evt_t), intent(out), pointer :: evt
     type(rt_data_t), intent(in), target :: rt_data
-    type(process_t), intent(in), optional, target :: process
+    type(process_t), intent(in), optional :: process
     type(var_list_t), pointer :: var_list
-    type(powheg_t) :: powheg
     type(string_t) :: lhapdf_file, lhapdf_dir, process_name
     integer :: lhapdf_member
     type(shower_settings_t) :: settings
-    var_list => rt_data%get_var_list_ptr ()
-    lhapdf_dir = &
-         var_list%get_sval (var_str ("$lhapdf_dir"))
-    lhapdf_file = &
-         var_list%get_sval (var_str ("$lhapdf_file"))
-    lhapdf_member = &
-         var_list%get_ival (var_str ("lhapdf_member"))
-    allocate (evt_shower_t :: evt)
     call msg_message ("Simulate: activating parton shower")
+    var_list => rt_data%get_var_list_ptr ()
+    allocate (evt_shower_t :: evt)
     call settings%init (var_list)
     if (present (process)) then
        process_name = process%get_id ()
-       if (settings%powheg_matching) then
-          call dispatch_powheg (powheg, rt_data, process_name)
-       end if
+    else
+       process_name = 'dispatch_testing'
     end if
-    if (settings%mlm_matching .and. settings%ckkw_matching) then
-       call msg_fatal ("Both MLM and CKKW matching activated," // &
-            LF // "     aborting simulation")
-    end if
+    call dispatch_matching (evt, settings, var_list, process_name)
     select type (evt)
     type is (evt_shower_t)
        call evt%init (settings, rt_data%fallback_model, rt_data%os_data, &
             powheg)
-       if (settings%mlm_matching) then
-          call msg_message ("Simulate: applying MLM matching")
-          allocate (mlm_matching_settings_t :: evt%matching_settings)
-          allocate (mlm_matching_data_t :: evt%data)
-       end if
-       if (settings%ckkw_matching) then
-          call msg_warning ("Simulate: CKKW(-L) matching not yet supported")
-          allocate (ckkw_matching_settings_t :: evt%matching_settings)
-          allocate (ckkw_matching_data_t :: evt%data)
-       end if
-       if (allocated (evt%matching_settings)) &
-            call evt%matching_settings%init (var_list)
+       lhapdf_member = &
+            var_list%get_ival (var_str ("lhapdf_member"))
        if (LHAPDF6_AVAILABLE) then
+          lhapdf_dir = &
+               var_list%get_sval (var_str ("$lhapdf_dir"))
+          lhapdf_file = &
+               var_list%get_sval (var_str ("$lhapdf_file"))
           call lhapdf_initialize &
                (1, lhapdf_dir, lhapdf_file, lhapdf_member, evt%pdf_data%pdf)
        end if
@@ -5347,6 +5315,35 @@ concatenated, we provide individual dispatchers for each of them.
   end subroutine dispatch_evt_shower
 
 @ %def dispatch_evt_shower
+@
+<<Dispatch: public>>=
+  public :: dispatch_matching
+<<Dispatch: procedures>>=
+  subroutine dispatch_matching (evt, settings, var_list, process_name)
+    class(evt_shower_t), intent(inout) :: evt
+    type(var_list_t), intent(in) :: var_list
+    type(string_t), intent(in) :: process_name
+    type(shower_settings_t), intent(in) :: settings
+    if (settings%mlm_matching .and. settings%ckkw_matching) then
+       call msg_fatal ("Both MLM and CKKW matching activated," // &
+            LF // "     aborting simulation")
+    end if
+    ! TODO: (bcn 2015-05-04) Change interface to '$matching_method'
+    if (settings%powheg_matching) then
+       allocate (powheg_matching_t :: evt%matching)
+    end if
+    if (settings%mlm_matching) then
+       call msg_message ("Simulate: applying MLM matching")
+       allocate (mlm_matching_t :: evt%matching)
+    end if
+    if (settings%ckkw_matching) then
+       call msg_warning ("Simulate: CKKW(-L) matching not yet supported")
+       allocate (ckkw_matching_t :: evt%matching)
+    end if
+    if (allocated (evt%matching))  call evt%matching%init (var_list)
+  end subroutine dispatch_matching
+
+@ %def dispatch_matching
 @
 <<Dispatch: public>>=
   public :: dispatch_evt_hadrons
@@ -25051,7 +25048,7 @@ module whizard
   use process_stacks
   use event_transforms
   use decays
-  use powheg
+  use powheg_matching
   use shower
   use events
 

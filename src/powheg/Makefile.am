@@ -39,7 +39,7 @@ libpowheg_la_SOURCES = \
   matching_base.f90 \
   ckkw_matching.f90 \
   mlm_matching.f90 \
-  powheg.f90
+  powheg_matching.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = powheg.nw
