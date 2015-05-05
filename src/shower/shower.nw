@@ -330,6 +330,8 @@ hadronization are switched on).
          "ps_isr_active                = ", settings%isr_active
     write (u, "(3x,A,1x,L1)") &
          "ps_fsr_active                = ", settings%fsr_active
+    write (u, "(3x,A,1x,L1)") &
+         "muli_active                  = ", settings%muli_active
     write (u, "(1x,A)")  "General settings:"
     if (settings%isr_active .or. settings%fsr_active) then
        write (u, "(3x,A)") &
@@ -524,9 +526,9 @@ emissions.
 [[ENSURE]] does additional sanity checks that should be disabled for
 production.
 <<Shower base: parameters>>=
-  logical, parameter, public :: DEBUG_WHIZ_SHOWER = .false.
-  logical, parameter, public :: ENSURE = .false.
-  logical, parameter, public :: DEBUG_SHOWER = .false.
+  logical, parameter, public :: DEBUG_WHIZ_SHOWER = .true.
+  logical, parameter, public :: ENSURE = .true.
+  logical, parameter, public :: DEBUG_SHOWER = .true.
 @ %def DEBUG_WHIZ_SHOWER ENSURE DEBUG_SHOWER
 @
 These parameters are the cut-off scale $t_{\text{cut}}$, given in
@@ -823,11 +825,14 @@ available to all operations on the shower partons, we endow the
 <<Shower partons: public>>=
   public :: parton_of_particle
 <<Shower partons: procedures>>=
-  pure function parton_of_particle (particle, nr) result (parton)
+ ! pure 
+  function parton_of_particle (particle, nr) result (parton)
     type(parton_t) :: parton
     type(particle_t), intent(in) :: particle
     integer, intent(in) :: nr
     integer, dimension(2) :: col_array
+    print *, 'parton_of_particle' !!! Debugging
+    call particle%write () !!! Debugging
     parton%nr = nr
     parton%momentum = particle%p
     parton%t = parton%momentum**2
@@ -1697,6 +1702,8 @@ generates the two remaining three-momenta.
     if (signal_is_pending ()) return
     if (DEBUG_WHIZ_SHOWER) then
        print *, "D: parton_next_t_ana: for parton " , prt%nr
+       call prt%write () !!! debugging
+       print *, 'prt%settings%min_virtuality =    ', prt%settings%min_virtuality !!! Debugging
     end if
 
     ! check if branchings are possible at all
@@ -2143,12 +2150,14 @@ $k_T$-ordered showers.
     class(shower_t), target, intent(inout) :: shower
     type(particle_set_t), intent(in) :: particle_set
     type(os_data_t), intent(in) :: os_data
-    integer, dimension(:), allocatable :: connections
-    type(parton_t), dimension(:), allocatable, target :: partons, hadrons
+    !integer, dimension(:), allocatable :: connections
+    type(parton_t), dimension(:), allocatable, target, save :: partons, hadrons
     type(parton_pointer_t), dimension(:), allocatable :: &
          parton_pointers
     integer :: n_beam, n_in, n_out, n_tot
     integer :: i, j, nr, max_color_nr
+    if (DEBUG_SHOWER)  print *, 'shower_import_particle_set'
+    call shower%settings%write () !!! Debugging
     call count_and_allocate ()
     call setup_hadrons_from_particle_set ()
     call setup_partons_from_particle_set ()
@@ -2169,11 +2178,9 @@ $k_T$-ordered showers.
     n_in = particle_set%get_n_in ()
     n_out = particle_set%get_n_out ()
     n_tot = particle_set%get_n_tot ()
-    allocate (connections (n_tot))
-    connections = 0
-    allocate (hadrons (1:2))
-    allocate (partons (1:n_in+n_out))
-    allocate (parton_pointers (1:n_in+n_out))
+    if (allocated (partons))  deallocate (partons)
+    allocate (partons (n_in + n_out))
+    allocate (parton_pointers (n_in+n_out))
   end subroutine count_and_allocate
 
 @
@@ -2181,15 +2188,16 @@ $k_T$-ordered showers.
   subroutine setup_hadrons_from_particle_set ()
     j = 0
     if (n_beam > 0 .and. all (particle_set%prt(1:2)%flv%get_pdg_abs () > TAU)) then
-       if (DEBUG_SHOWER) print *, "Copy hadrons from particle_set to hadrons"
+       if (DEBUG_SHOWER)  print *, "Copy hadrons from particle_set to hadrons"
+       if (.not. allocated (hadrons))  allocate (hadrons (1:2))
        do i = 1, n_tot
           if (particle_set%prt(i)%status == PRT_BEAM) then
              j = j + 1
              nr = shower%get_next_free_nr ()
              hadrons(j) = parton_of_particle (particle_set%prt(i), nr)
+             hadrons(j)%settings => shower%settings
              max_color_nr = max (max_color_nr, abs(hadrons(j)%c1), &
                                                abs(hadrons(j)%c2))
-             connections(i) = j
           end if
        end do
     end if
@@ -2211,11 +2219,11 @@ $k_T$-ordered showers.
           parton_pointers(j)%p => partons(j)
           max_color_nr = max (max_color_nr, abs (partons(j)%c1), &
                                             abs (partons(j)%c2))
-          connections(i) = j
           if (particle_set%prt(i)%get_status () == PRT_INCOMING .and. &
-              particle_set%prt(i)%get_n_parents () == 1) then
+              particle_set%prt(i)%get_n_parents () == 1 .and. &
+              allocated (hadrons)) then
              parent = particle_set%prt(i)%get_parents ()
-             partons(j)%initial => hadrons (connections (parent(1)))
+             partons(j)%initial => hadrons (parent(1))
              partons(j)%x = space_part_norm (partons(j)%momentum) / &
                             space_part_norm (partons(j)%initial%momentum)
           end if
@@ -2244,6 +2252,7 @@ $k_T$-ordered showers.
 
     if (shower%settings%isr_active) then
        if (DEBUG_SHOWER) print *, "Generate ISR with FSR"
+       call shower%write () !!! Debugging
        i = 0
        BRANCHINGS: do
           i = i+1
@@ -2261,6 +2270,8 @@ $k_T$-ordered showers.
           !!! scale is the scale of the next branching
           ! temppp=shower%generate_next_isr_branching_veto ()
           temppp = shower%generate_next_isr_branching ()
+          print *, 'After generate_next_isr_branching' !!! Debugging
+          call shower%write () !!! Debugging
 
           if (.not. associated (temppp%p) .and. &
                mi_scale < shower%settings%min_virtuality) then
@@ -2354,6 +2365,8 @@ $k_T$-ordered showers.
           end if
        end do BRANCHINGS
 
+       print *, 'Before generate_fsr_for_isr_partons' !!! Debugging
+       call shower%write () !!! Debugging
        call shower%generate_fsr_for_isr_partons ()
     else
        if (signal_is_pending ()) return
@@ -2883,6 +2896,7 @@ end subroutine set_starting_scale
     do i = 1, size (shower%partons)
        if (associated (shower%partons(i)%p, prt)) then
           shower%partons(i)%p => null()
+          ! TODO: (bcn 2015-05-05) memory leak here? no deallocation?
           exit
        end if
        if (ENSURE) then
@@ -3130,6 +3144,9 @@ end subroutine set_starting_scale
        prt%child2 => newprt%p
     end if
     newprt%p%parent => prt
+    if (associated (prt%settings)) then
+       newprt%p%settings => prt%settings
+    end if
     newprt%p%interactionnr = prt%interactionnr
     !!! add new parton to shower%partons list
     if (associated (shower%partons (size(shower%partons))%p)) then
@@ -3164,6 +3181,9 @@ end subroutine set_starting_scale
     !!! add new parton as parent
     newprt%p%child1 => prt
     prt%parent => newprt%p
+    if (associated (prt%settings)) then
+       newprt%p%settings => prt%settings
+    end if
     newprt%p%interactionnr = prt%interactionnr
     !!! add new parton to shower%partons list
     if (.not. allocated (shower%partons) .or. &
@@ -3986,9 +4006,7 @@ implemented.
 partons of the shower.  For simplicity, we do not maintain the
 mother-daughter-relations of the shower.  Hadronic [[beam_remnants]] of
 the old [[particle_set]] are removed as they are provided, including
-proper flavor information, by the ISR shower.  We assume that beam
-remnants come after initials such that we don't have to update the MDRs
-of the hard final state.
+proper flavor information, by the ISR shower.
 <<Shower core: shower: TBP>>=
   procedure :: combine_with_particle_set => shower_combine_with_particle_set
 <<Shower core: procedures>>=
@@ -4015,16 +4033,18 @@ of the hard final state.
                                      .true., no_hard_prts = .true.)
     n_remnants = shower%get_nr_of_partons (only_colored = .false., &
                                            no_hard_prts = .true.)
-    call particle_set%without_hadronic_remnants &
-         (particles, n_tot_old, n_shower_partons + n_remnants)
-    call count_and_allocate ()
-    if (shower%settings%isr_active) then
-       call replace_incoming_and_outgoings ()
+    if (n_shower_partons + n_remnants > 0) then
+       call particle_set%without_hadronic_remnants &
+            (particles, n_tot_old, n_shower_partons + n_remnants)
+       call count_and_allocate ()
+       if (shower%settings%isr_active) then
+          call replace_incoming_and_outgoings ()
+       end if
+       call set_hard_colored_as_resonant_parents_for_shower ()
+       call add_to_pset (n_tot_old, .true.)
+       call add_to_pset (n_tot_old + n_remnants, .false.)
+       call particle_set%replace (particles)
     end if
-    call set_hard_colored_as_resonant_parents_for_shower ()
-    call add_to_pset (n_tot_old, .true.)
-    call add_to_pset (n_tot_old + n_remnants, .false.)
-    call particle_set%replace (particles)
     if (DEBUG_SHOWER) then
        print *, 'Particle set after replacing'
        call particle_set%write (summary=.true., compressed=.true.)
@@ -4052,6 +4072,7 @@ of the hard final state.
     outgoing_ids = [(n_tot_old - n_out  + i, i=1, n_out )]
     if (DEBUG_SHOWER) then
         print *, 'n_remnants =    ', n_remnants
+        print *, 'n_shower_partons =    ', n_shower_partons
         print *, 'n_tot_old =    ', n_tot_old
         print *, 'n_beam =    ', n_beam
         print *, 'n_in, n_out =    ', n_in, n_out
@@ -4934,9 +4955,8 @@ branching, while FSR branchings are ignored.
     next_brancher%p => null()
     !!! branchable partons
     n_partons = 0
-    do i = 1,size (shower%partons)
+    do i = 1, size (shower%partons)
        prt => shower%partons(i)%p
-       if (signal_is_pending ()) return
        if (.not. associated (prt)) cycle
        if (prt%belongstoFSR) cycle
        if (prt%is_final ()) cycle
@@ -4954,7 +4974,6 @@ branching, while FSR branchings are ignored.
        if (prt%belongstoFSR) cycle
        if (prt%is_final ()) cycle
        if (.not. prt%belongstoFSR .and. prt%simulated) cycle
-       if (signal_is_pending ()) return
        partons(n_partons)%p => shower%partons(i)%p
        n_partons = n_partons + 1
     end do
@@ -5543,7 +5562,7 @@ FSR branchings are ignored.
     call shower%sort_partons ()
     call shower%boost_to_CMframe ()        !!! really necessary?
     call shower%rotate_to_z ()             !!! really necessary?
-    end function shower_generate_next_isr_branching
+  end function shower_generate_next_isr_branching
 
 @ %def shower_generate_next_isr_branching
 @ This is a loop which searches for all emitted and branched partons.
@@ -7529,12 +7548,14 @@ module ktclus
 
 <<Use kinds>>
 
+<<KTCLUS: public>>
+
 contains
 
 <<KTCLUS: procedures>>
 
-end module KTCLUS
-@ %def KTCLUS
+end module ktclus
+@ %def ktclus
 <<KTCLUS: procedures>>=
 !C-----------------------------------------------------------------------
 !C-----------------------------------------------------------------------
@@ -7657,6 +7678,8 @@ end module KTCLUS
 !C-----------------------------------------------------------------------
 !C-----------------------------------------------------------------------
 !C-----------------------------------------------------------------------
+<<KTCLUS: public>>=
+  public :: ktclur
 <<KTCLUS: procedures>>=
   SUBROUTINE KTCLUR(IMODE,PP,NN,R,ECUT,Y,*)
     use io_units
@@ -7824,6 +7847,8 @@ end module KTCLUS
 999 RETURN 1
   END SUBROUTINE KTCLUR
 !C-----------------------------------------------------------------------
+<<KTCLUS: public>>=
+  public :: ktreco
 <<KTCLUS: procedures>>=
 !C-----------------------------------------------------------------------
     SUBROUTINE KTRECO(RECO,PP,NN,ECUT,YCUT,YMAC,PJET,JET,NJET,NSUB,*)

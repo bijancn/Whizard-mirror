@@ -144,17 +144,29 @@ necessary but then we introduce [[select type]] statements all over the place.
   end interface
 
 @ %def matching_after_shower
-@
-@
+@ Per default, do nothing here.
 <<Matching base: matching: TBP>>=
-  procedure (matching_final), deferred :: final
-<<Matching base: interfaces>>=
-  abstract interface
-     subroutine matching_final (matching)
-       import
-       class(matching_t), intent(in) :: matching
-     end subroutine matching_final
-  end interface
+  procedure :: prepare_for_events => matching_prepare_for_events
+<<Matching base: procedures>>=
+  subroutine matching_prepare_for_events (matching)
+    class(matching_t), intent(inout) :: matching
+  end subroutine matching_prepare_for_events
+
+@ %def matching_prepare_for_events
+<<Matching base: matching: TBP>>=
+  procedure :: first_event => matching_first_event
+<<Matching base: procedures>>=
+  subroutine matching_first_event (matching)
+    class(matching_t), intent(inout) :: matching
+  end subroutine matching_first_event
+
+@ %def matching_first_event
+<<Matching base: matching: TBP>>=
+  procedure :: final => matching_final
+<<Matching base: procedures>>=
+  subroutine matching_final (matching)
+    class(matching_t), intent(in) :: matching
+  end subroutine matching_final
 
 @ %def matching_final
 @
@@ -226,6 +238,7 @@ module mlm_matching
   use particles
   use variables
   use shower_base
+  use ktclus
   use matching_base
 
 <<Standard module head>>
@@ -727,14 +740,14 @@ if (n_jets_ME > 0 .and. n_jets_PS > 0) then
    end do
 end if
 @
-<<MLM matching: mlm matching: TBP>>=
-  procedure :: final => mlm_matching_final
-<<MLM matching: procedures>>=
-  subroutine mlm_matching_final (matching)
-    class(mlm_matching_t), intent(in) :: matching
-  end subroutine mlm_matching_final
-
-@ %def mlm_matching_final
+%%<MLM matching: mlm matching: TBP>>=
+%  procedure :: final => mlm_matching_final
+%%<MLM matching: procedures>>=
+%  subroutine mlm_matching_final (matching)
+%    class(mlm_matching_t), intent(in) :: matching
+%  end subroutine mlm_matching_final
+%
+%@ %def mlm_matching_final
 @
 \section{CKKW matching}
 This module contains the CKKW matching.
@@ -981,14 +994,14 @@ from the matrix element generation is available.
 
 @ %def ckkw_matching_before_shower
 @
-<<CKKW matching: ckkw matching: TBP>>=
-  procedure :: final => ckkw_matching_final
-<<CKKW matching: procedures>>=
-  subroutine ckkw_matching_final (matching)
-    class(ckkw_matching_t), intent(in) :: matching
-  end subroutine ckkw_matching_final
-
-@ %def ckkw_matching_final
+%%<CKKW matching: ckkw matching: TBP>>=
+%  procedure :: final => ckkw_matching_final
+%%<CKKW matching: procedures>>=
+%  subroutine ckkw_matching_final (matching)
+%    class(ckkw_matching_t), intent(in) :: matching
+%  end subroutine ckkw_matching_final
+%
+%@ %def ckkw_matching_final
 @
 <<CKKW matching: public>>=
   public :: ckkw_matching_apply
@@ -1370,7 +1383,7 @@ end module powheg_matching
 @ Should be turned off for production, once everything runs as expected.
 <<POWHEG matching: parameters>>=
   logical, parameter :: ENSURE = .true.
-  logical, parameter :: DEBUG_EVENTS = .false.
+  logical, parameter :: DEBUG_EVENTS = .true.
   logical, parameter :: TEST_SUDAKOV = .false.
 @ %def ENSURE
 @
@@ -2316,8 +2329,7 @@ a massless recoiling system.
 <<POWHEG matching: procedures>>=
   subroutine powheg_matching_final (matching)
     class(powheg_matching_t), intent(in) :: matching
-    integer :: u
-    integer :: alr
+    integer :: u, alr
     type(string_t) :: filename
     u = free_unit ()
     filename = matching%process_name // "_veto.log"
@@ -2336,18 +2348,18 @@ a massless recoiling system.
 @
 \subsubsection{Initialization and Finalization}
 <<POWHEG matching: powheg matching: TBP>>=
+  procedure :: first_event => powheg_setup_grids
   procedure :: setup_grids => powheg_setup_grids
 <<POWHEG matching: procedures>>=
-  subroutine powheg_setup_grids (powheg)
-    class(powheg_matching_t), intent(inout) :: powheg
-    if (powheg%requires_new_grids ()) then
-       call powheg%fill_grids ()
-       call powheg%save_grids ()
+  subroutine powheg_setup_grids (matching)
+    class(powheg_matching_t), intent(inout) :: matching
+    if (matching%requires_new_grids ()) then
+       call matching%fill_grids ()
+       call matching%save_grids ()
     else
-       call powheg%load_grids ()
+       call matching%load_grids ()
     end if
-    call powheg%grid%compute_and_write_mean_and_max ()
-    call powheg%set_normalizations ()
+    call matching%set_normalizations ()
   end subroutine powheg_setup_grids
 
 @ %def powheg_setup_grids
@@ -2990,7 +3002,6 @@ $p_{T,\text{min}}^2$.
                               matching%process_deps%n_alr])
     call matching%compute_lambda2_gen ()
     call matching%setup_sudakovs ()
-    call matching%setup_grids ()
   end subroutine powheg_prepare_for_events
 
 @ %def powheg_prepare_for_events
@@ -3194,14 +3205,16 @@ Still very basic and incomplete.
 
     call powheg%init (var_list, process_name)
     powheg%testing = powheg_testing
+    powheg%settings = powheg_settings
     powheg%qcd => qcd
     call powheg%import_rng (rng)
     call powheg%connect (process_instance, model, shower)
     call powheg%prepare_for_events ()
     call powheg%update (particle_set)
+    ! TODO: (bcn 2015-05-04) put this write somewhere useful
+    call powheg%grid%compute_and_write_mean_and_max (u)
     !!! Needs some more thought: if we just set R = 1, B = 1 the grid
     !!! setup will fail
-    !!! call powheg%setup_grids ()
     !!! call powheg%generate_emission (particle_set)
     call powheg%write (u)
 
