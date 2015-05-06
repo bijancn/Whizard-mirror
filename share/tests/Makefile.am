@@ -87,6 +87,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/object_logical_8.ref \
     ref-output/object_logical_9.ref \
     ref-output/object_logical_10.ref \
+    ref-output/object_integer_1.ref \
     ref-output/sindarin_parser_1.ref \
     ref-output/sindarin_parser_2.ref \
     ref-output/sindarin_parser_3.ref \
@@ -577,6 +578,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/multi_comp_4.ref \
     ref-output/flvsum_1.ref \
     ref-output/decay_err_1.ref \
+    ref-output/decay_err_2.ref \
     ref-output/circe1_2.ref \
     ref-output/circe1_3.ref \
     ref-output/circe1_6.ref \
@@ -708,6 +710,7 @@ UNIT_TESTS_SIN = \
     object_base.sin \
     object_builder.sin \
     object_logical.sin \
+    object_integer.sin \
     sindarin_parser.sin \
     interactions.sin \
     state_matrices.sin \
@@ -938,6 +941,7 @@ MISC_TESTS_SIN = \
     multi_comp_4.sin \
     flvsum_1.sin \
     decay_err_1.sin \
+    decay_err_2.sin \
     pdf_builtin.sin \
     lhapdf5.sin \
     lhapdf6.sin \

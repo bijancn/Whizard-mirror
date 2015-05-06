@@ -56,6 +56,7 @@ dist_models_DATA = \
   models/SM_ac.mdl \
   models/SM_CKM.mdl \
   models/SM_rx.mdl \
+  models/SM_ul.mdl \
   models/SM_top.mdl \
   models/SM_top_anom.mdl \
   models/SM_tt_threshold.mdl \
@@ -64,6 +65,8 @@ dist_models_DATA = \
   models/SM_hadrons.mdl \
   models/SM_rad.mdl \
   models/SSC.mdl \
+  models/SSC_2.mdl \
+  models/SSC_AltT.mdl \
   models/Template.mdl \
   models/UED.mdl \
   models/Xdim.mdl \

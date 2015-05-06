@@ -37,6 +37,7 @@ libsindarin_la_SOURCES = \
   object_builder.f90 \
   object_expr.f90 \
   object_logical.f90 \
+  object_integer.f90 \
   sindarin_parser.f90
 
 ## Omitting this would exclude it from the distribution

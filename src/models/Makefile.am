@@ -66,9 +66,12 @@ libmodels_la_SOURCES = \
   parameters.SM_tt_threshold.f90 \
   parameters.SM_Higgs.f90 \
   parameters.SM_rx.f90 \
+  parameters.SM_ul.f90 \
   parameters.Template.f90 \
   parameters.UED.f90 \
   parameters.SSC.f90 \
+  parameters.SSC_2.f90 \
+  parameters.SSC_AltT.f90 \
   parameters.Xdim.f90 \
   parameters.Zprime.f90 \
   parameters.Threeshl.f90 \
@@ -109,9 +112,12 @@ nodist_execmod_HEADERS = \
   parameters_sm_tt_threshold.$(FC_MODULE_EXT) \
   parameters_sm_higgs.$(FC_MODULE_EXT) \
   parameters_sm_rx.$(FC_MODULE_EXT) \
+  parameters_sm_ul.$(FC_MODULE_EXT) \
   parameters_template.$(FC_MODULE_EXT) \
   parameters_ued.$(FC_MODULE_EXT) \
   parameters_ssc.$(FC_MODULE_EXT) \
+  parameters_ssc_2.$(FC_MODULE_EXT) \
+  parameters_ssc_altt.$(FC_MODULE_EXT) \
   parameters_xdim.$(FC_MODULE_EXT) \
   parameters_zprime.$(FC_MODULE_EXT) \
   parameters_threeshl.$(FC_MODULE_EXT) \
@@ -253,6 +259,9 @@ parameters_sm_higgs.$(FC_MODULE_EXT): parameters.SM_Higgs.lo
 parameters_sm_rx.$(FC_MODULE_EXT): parameters.SM_rx.lo
 	@:
 
+parameters_sm_ul.$(FC_MODULE_EXT): parameters.SM_ul.lo
+	@:
+
 parameters_simplest.$(FC_MODULE_EXT): parameters.Simplest.lo
 	@:
 
@@ -275,6 +284,12 @@ parameters_ued.$(FC_MODULE_EXT): parameters.UED.lo
 	@:
 
 parameters_ssc.$(FC_MODULE_EXT): parameters.SSC.lo
+	@:
+
+parameters_ssc.$(FC_MODULE_EXT): parameters.SSC_2.lo
+	@:
+
+parameters_ssc_altt.$(FC_MODULE_EXT): parameters.SSC_AltT.lo
 	@:
 
 parameters_xdim.$(FC_MODULE_EXT): parameters.Xdim.lo

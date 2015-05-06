@@ -8,9 +8,14 @@ dnl Copyright (C) 1999-2015 by
 dnl     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 dnl     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 dnl     Juergen Reuter <juergen.reuter@desy.de>
-dnl	with contributions from
-dnl	Christian Speckner <cnspeckn@googlemail.com>
-dnl     and others
+dnl     with contributions from
+dnl     Fabian Bach <fabian.bach@desy.de>
+dnl     Bijan Chokoufe <bijan.chokoufe@desy.de>
+dnl     Christian Speckner <cnspeckn@googlemail.com>
+dnl     Marco Sekulla <marco.sekulla@desy.de>
+dnl     Christian Weiss <christian.weiss@desy.de>
+dnl     Felix Braam, Sebastian Schmidt,
+dnl     Hans-Werner Boschmann, Daniel Wiesler
 dnl 
 dnl WHIZARD is free software; you can redistribute it and/or modify it
 dnl under the terms of the GNU General Public License as published by 
@@ -33,7 +38,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl =======================================================================
 dnl 
 dnl Start configuration
-AC_INIT([circe2],[2.2.6])
+AC_INIT([circe2],[2.2.7])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AM_MAKE_INCLUDE
@@ -44,7 +49,7 @@ AM_MAKE_INCLUDE
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Apr 01 2015"
+PACKAGE_DATE="Jun 01 2015"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)

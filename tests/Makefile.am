@@ -53,6 +53,7 @@ UNIT_TESTS = \
     object_base.run \
     object_builder.run \
     object_logical.run \
+    object_integer.run \
     sindarin_parser.run \
     grids.run \
     solver.run \
@@ -274,6 +275,7 @@ TESTS_REQ_OCAML = \
     multi_comp_4.run \
     flvsum_1.run \
     decay_err_1.run \
+    decay_err_2.run \
     pdf_builtin.run \
     ep_1.run \
     ep_2.run \

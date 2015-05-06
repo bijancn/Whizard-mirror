@@ -17,6 +17,8 @@
   Statements, assignment, expressions and operators.
 \item[object\_logical]
   Logical values and expressions.
+\item[object\_integer]
+  Integer values and expressions.
 \item[sindarin\_parser]
   Parse Sindarin code and transform into bytecode and object tree.
 \end{description}
@@ -500,6 +502,96 @@ to [[NAME_LEN_MAX]]
   
 @ %def create_string_val
 @
+\subsubsection{Integer}
+<<Codes: public>>=
+  public :: val_integer_t
+<<Codes: types>>=
+  type, extends (val_t) :: val_integer_t
+     integer, dimension(:), allocatable :: x
+   contains
+   <<Codes: val integer: TBP>>
+  end type val_integer_t
+     
+@ %def val_integer_t
+@ Type code.
+<<Codes: parameters>>=
+  integer, parameter, public :: VT_INTEGER = 3
+<<Codes: val cases>>=
+  case (VT_INTEGER);  allocate (val_integer_t :: val)
+<<Codes: val integer: TBP>>=
+  procedure :: get_type => val_integer_get_type
+<<Codes: procedures>>=
+  function val_integer_get_type (val) result (type)
+    class(val_integer_t), intent(in) :: val
+    integer :: type
+    type = VT_INTEGER
+  end function val_integer_get_type
+  
+@ %def val_integer_get_type
+@ Init.  Allocate the array.
+<<Codes: val integer: TBP>>=
+  procedure :: init => val_integer_init
+<<Codes: procedures>>=
+  subroutine val_integer_init (val, nval)
+    class(val_integer_t), intent(out) :: val
+    integer, intent(in) :: nval
+    allocate (val%x (nval))
+  end subroutine val_integer_init
+  
+@ %def val_integer_init
+@ Return array size.
+<<Codes: val integer: TBP>>=
+  procedure :: get_nval => val_integer_get_nval
+<<Codes: procedures>>=
+  function val_integer_get_nval (val) result (nval)
+    class(val_integer_t), intent(in) :: val
+    integer :: nval
+    if (allocated (val%x)) then
+       nval = size (val%x)
+    else
+       nval = 0
+    end if
+  end function val_integer_get_nval
+  
+@ %def val_integer_get_nval
+@ I/O.  List-directed is ok.
+<<Codes: val integer: TBP>>=
+  procedure :: read => val_integer_read
+  procedure :: write => val_integer_write
+<<Codes: procedures>>=
+  subroutine val_integer_read (val, unit, i, iostat)
+    class(val_integer_t), intent(inout) :: val
+    integer, intent(in) :: unit, i
+    integer, intent(out), optional :: iostat
+    if (present (iostat)) then
+       read (unit, *, iostat=iostat)  val%x(i)
+    else
+       read (unit, *)  val%x(i)
+    end if
+  end subroutine val_integer_read
+       
+  subroutine val_integer_write (val, unit, i)
+    class(val_integer_t), intent(in) :: val
+    integer, intent(in) :: unit, i
+    write (unit, "(I0)")  val%x(i)
+  end subroutine val_integer_write
+       
+@ %def val_integer_read 
+@ %def val_integer_write
+<<Codes: code: TBP>>=
+  procedure :: create_integer_val
+<<Codes: procedures>>=
+  subroutine create_integer_val (code, item)
+    class(code_t), intent(inout) :: code
+    integer, intent(in) :: item
+    call create_val (code%val, VT_INTEGER, 1)
+    select type (val => code%val)
+    type is (val_integer_t);  val%x(1) = item
+    end select
+  end subroutine create_integer_val
+  
+@ %def create_integer_val
+@
 \subsection{Generic value constructor}
 Depending on the value code, we allocate a specific value object.
 <<Codes: code: TBP>>=
@@ -554,6 +646,10 @@ Create a tag object and use it as a prototype.
     write (utmp, "(1x,A)")  "7 1 2 0"
     write (utmp, "(1x,A)")  "T"
     write (utmp, "(1x,A)")  "F"
+    write (utmp, "(1x,A)")  "42 3 3 0"
+    write (utmp, "(1x,A)")  "0"
+    write (utmp, "(1x,A)")  "12345"
+    write (utmp, "(1x,A)")  "-987654321"
     
     rewind (utmp)
     do
@@ -565,7 +661,7 @@ Create a tag object and use it as a prototype.
     rewind (utmp)
     write (u, *)
 
-    do i = 1, 3
+    do i = 1, 4
        call code%read (utmp)
        call code%write (u, verbose=.true.)
     end do
@@ -573,7 +669,7 @@ Create a tag object and use it as a prototype.
     rewind (utmp)
     write (u, *)
 
-    do i = 1, 3
+    do i = 1, 4
        call code%read (utmp)
        call code%write (u)
     end do
@@ -6088,7 +6184,7 @@ method.
     type(string_t), intent(in) :: name
     integer, intent(in), optional :: mode
     class(object_t), pointer :: value, core
-    call object%init (name, mode = mode)
+    call object%composite_t%init (name, mode = mode)
     select type (prototype)
     class is (composite_t)
        call prototype%get_core_ptr (value)
@@ -6270,7 +6366,7 @@ method.
     type(string_t), intent(in) :: name
     integer, intent(in), optional :: mode
     class(object_t), pointer :: value, core
-    call object%init (name, mode)
+    call object%composite_t%init (name, mode)
     select type (prototype)
     class is (composite_t)
        call prototype%get_core_ptr (value)
@@ -8291,6 +8387,316 @@ Construct logical expressions from bytecode.
 @ %def object_logical_10
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Integer values}
+Integer values are a concrete implementation of [[value_t]].  We also define
+integer expressions.
+
+Integer values and expressions allow us to write unit tests for assignment,
+expression evaluation, building and decoding.
+<<[[object_integer.f90]]>>=
+<<File header>>
+
+module object_integer
+
+<<Use strings>>
+  use unit_tests
+  use format_utils
+  use io_units
+
+  use codes
+  use object_base
+  use object_builder
+  use object_expr
+
+<<Standard module head>>
+
+<<Integer: public>>
+
+<<Integer: parameters>>
+
+<<Integer: types>>
+
+<<Integer: interfaces>>
+
+contains
+
+<<Integer: procedures>>
+
+<<Integer: tests>>
+
+end module object_integer
+@ %def object_integer
+@ 
+\subsection{Type definition}
+A integer object carries a integer value.  The [[defined]] status also
+applies, inherited from [[value_t]].
+<<Integer: public>>=
+  public :: integer_t
+<<Integer: types>>=
+  type, extends (value_t) :: integer_t
+     private
+     integer :: value = 0
+   contains
+   <<Integer: integer: TBP>>
+  end type integer_t
+  
+@ %def integer_t
+@ A wrapper type for assembling pointers in expression objects:
+<<Integer: types>>=
+  type :: integer_p
+     private
+     type(integer_t), pointer :: p => null ()
+  end type integer_p
+     
+@ %def integer_p
+@
+\subsubsection{Finalizer}
+Finalizer is empty.
+<<Integer: integer: TBP>>=
+  procedure :: final => integer_final
+<<Integer: procedures>>=
+  pure subroutine integer_final (object)
+    class(integer_t), intent(inout) :: object
+  end subroutine integer_final
+ 
+@ %def integer_final
+@
+\subsubsection{Output}
+Display the value.
+<<Integer: integer: TBP>>=
+  procedure :: write_expression => integer_write_value
+  procedure :: write_value => integer_write_value
+<<Integer: procedures>>=
+  subroutine integer_write_value (object, unit, indent)
+    class(integer_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer, intent(in), optional :: indent
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, "(I0)", advance="no")  object%value
+  end subroutine integer_write_value
+       
+@ %def integer_write_expression
+@ %def integer_write_value
+@
+\subsubsection{Queries}
+The name of atomic objects is the type, here [[integer]].
+<<Integer: integer: TBP>>=
+  procedure :: get_name => integer_get_name
+<<Integer: procedures>>=
+  pure function integer_get_name (object) result (name)
+    class(integer_t), intent(in) :: object
+    type(string_t) :: name
+    name = "integer"
+  end function integer_get_name
+  
+@ %def integer_get_name
+@
+\subsubsection{Construction}
+For a new tag instance, nothing needs to be copied.
+<<Integer: integer: TBP>>=
+  procedure :: instantiate => integer_instantiate
+<<Integer: procedures>>=
+  subroutine integer_instantiate (object, instance)
+    class(integer_t), intent(inout), target :: object
+    class(object_t), intent(out), pointer :: instance
+    allocate (integer_t :: instance)
+  end subroutine integer_instantiate
+    
+@ %def integer_instantiate
+@ Integer value: the code includes the value.
+<<Integer: integer: TBP>>=
+  procedure :: get_code => integer_get_code
+<<Integer: procedures>>=
+  function integer_get_code (object, repository) result (code)
+    class(integer_t), intent(in), target :: object
+    type(repository_t), intent(in), optional :: repository
+    type(code_t) :: code
+    code%cat = CAT_VALUE
+    if (object%is_defined ()) then
+       allocate (val_integer_t :: code%val)
+       select type (val => code%val)
+       type is (val_integer_t)
+          call val%init (1)
+          val%x(1) = object%value
+       end select
+    end if
+  end function integer_get_code
+  
+@ %def integer_get_code
+@ Initialize the value, given a code object.
+<<Integer: integer: TBP>>=
+  procedure :: init_from_code => integer_init_from_code
+<<Integer: procedures>>=
+  subroutine integer_init_from_code (object, code)
+    class(integer_t), intent(out) :: object
+    type(code_t), intent(in) :: code
+    if (allocated (code%val)) then
+       select type (val => code%val)
+       type is (val_integer_t)
+          if (val%get_nval () > 0)  call object%init (val%x(1))
+       end select
+    end if
+  end subroutine integer_init_from_code
+    
+@ %def integer_init_from_code
+@ Initializer: we may define or undefine the value.
+<<Integer: integer: TBP>>=
+  procedure :: init => integer_init
+<<Integer: procedures>>=
+  pure subroutine integer_init (object, value)
+    class(integer_t), intent(inout) :: object
+    integer, intent(in), optional :: value
+    if (present (value)) then
+       object%value = value
+       call object%set_defined (.true.)
+    else
+       call object%set_defined (.false.)
+    end if
+  end subroutine integer_init
+ 
+@ %def integer_init
+@
+\subsubsection{Assignment}
+Copy the value.  LHS and RHS must both be integer.
+<<Integer: integer: TBP>>=
+  procedure :: match_value => integer_match_value
+  procedure :: assign_value => integer_assign_value
+<<Integer: procedures>>=
+  subroutine integer_match_value (object, source, success)
+    class(integer_t), intent(in) :: object
+    class(value_t), intent(in) :: source
+    logical, intent(out) :: success
+    select type (source)
+    class is (integer_t)
+       success = .true.
+    class default
+       success = .false.
+    end select
+  end subroutine integer_match_value
+       
+  subroutine integer_assign_value (object, source)
+    class(integer_t), intent(inout) :: object
+    class(value_t), intent(in) :: source
+    select type (source)
+    class is (integer_t)
+       object%value = source%value
+    end select
+  end subroutine integer_assign_value
+       
+@ %def integer_match_value
+@ %def integer_assign_value
+@ 
+\subsection{Unit tests}
+<<Integer: public>>=
+  public :: object_integer_test
+<<Integer: procedures>>=
+  subroutine object_integer_test (u, results)
+    integer, intent(in) :: u
+    type(test_results_t), intent(inout) :: results
+  <<Integer: execute tests>>  
+  end subroutine object_integer_test
+  
+@ %def object_integer_test 
+@
+\subsubsection{Values}
+Create integer objects.
+<<Integer: execute tests>>=
+  call test (object_integer_1, "object_integer_1", &
+       "values", &
+       u, results)
+<<Integer: tests>>=  
+  subroutine object_integer_1 (u)
+    integer, intent(in) :: u
+    class(object_t), pointer :: bare_integer, core
+    class(object_t), pointer :: prototype, pos, neg, zero, undef
+
+    write (u, "(A)")  "* Test output: object_integer_1"
+    write (u, "(A)")  "*   Purpose: construct integer value objects"
+    write (u, "(A)")      
+    
+    write (u, "(A)")  "* Integer objects: prototype"
+
+    allocate (integer_t :: bare_integer)
+    
+    allocate (composite_t :: prototype)
+    select type (prototype)
+    type is (composite_t)
+       call prototype%init (name = var_str ("integer"))
+       call prototype%import_core (bare_integer)
+    end select
+
+    write (u, "(A)")
+    call prototype%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Integer objects: zero, positive, negative, undefined"
+
+    call prototype%instantiate (pos)
+    select type (pos)
+    type is (composite_t)
+       call pos%init (mode = MODE_CONSTANT, name = var_str ("pos"))
+       allocate (integer_t :: core)
+       select type (core)
+       type is (integer_t);  call core%init (value = 42)
+       end select
+       call pos%import_core (core)
+    end select
+
+    call prototype%instantiate (neg)
+    select type (neg)
+    type is (composite_t)
+       call neg%init (mode = MODE_CONSTANT, name = var_str ("neg"))
+       allocate (integer_t :: core)
+       select type (core)
+       type is (integer_t);  call core%init (value = -1234567890)
+       end select
+       call neg%import_core (core)
+    end select
+
+    call prototype%instantiate (zero)
+    select type (zero)
+    type is (composite_t)
+       call zero%init (mode = MODE_CONSTANT, name = var_str ("zero"))
+       allocate (integer_t :: core)
+       select type (core)
+       type is (integer_t);  call core%init (value = 0)
+       end select
+       call zero%import_core (core)
+    end select
+
+    call prototype%instantiate (undef)
+    select type (undef)
+    type is (composite_t)
+       call undef%init (mode = MODE_CONSTANT, name = var_str ("undef"))
+       allocate (integer_t :: core)
+       call undef%import_core (core)
+    end select
+
+    write (u, "(A)")
+    call pos%write (u)
+    call neg%write (u)
+    call zero%write (u)
+    call undef%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+
+    call remove_object (undef)
+    call remove_object (pos)
+    call remove_object (neg)
+    call remove_object (zero)
+    call remove_object (prototype)
+    call remove_object (bare_integer)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: object_integer_1"
+    
+    end subroutine object_integer_1
+
+@ %def object_integer_1
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Sindarin Parser}
 <<[[sindarin_parser.f90]]>>=
 <<File header>>
@@ -8315,6 +8721,7 @@ module sindarin_parser
   use object_builder
   use object_expr
   use object_logical
+  use object_integer
 
 <<Standard module head>>
 

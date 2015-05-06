@@ -39,7 +39,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl 
 dnl *********************************************************************** 
 dnl Start configuration
-AC_INIT([WHIZARD],[2.2.6])
+AC_INIT([WHIZARD],[2.2.7])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AC_PREREQ([2.65])
 
@@ -53,7 +53,7 @@ AC_MSG_NOTICE([**************************************************************])
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Apr 01 2015"
+PACKAGE_DATE="Jun 01 2015"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)

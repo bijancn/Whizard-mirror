@@ -1,4 +1,4 @@
-! $Id: parameters.AltH.f90,  2013/09/23 13:11:48 msekulla Exp $
+! $Id: parameters.SSC.f90,  2014/03/22 13:11:48 msekulla Exp $
 !
 ! Copyright (C) 1999-2015 by 
 !     Wolfgang Kilian <kilian@physik.uni-siegen.de>
@@ -23,7 +23,7 @@
 ! Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-module parameters_alth
+module parameters_ssc_2
   use kinds
   use constants 
   implicit none
@@ -37,26 +37,33 @@ module parameters_alth
   real(default), public :: sinthw, costhw, sin2thw, tanthw
   real(default), public :: qelep, qeup, qedwn
   complex(default), public :: qlep, qup, qdwn, gcc, qw, &
-       gzww, gwww, &
+       gzww, gwww, ghww, ghhww, ghzz, ghhzz, &
+       ghbb, ghtt, ghcc, ghtautau, gh3, gh4, &
+       ghgaga, ghgaz, ghgg, ghmm, & 		
        iqw, igzww, igwww, gw4, gzzww, gazww, gaaww, &
        gszz, gszzt, gsww, gswwt, gssww, gsszz, &
        gpnww, gpnzz, gpwz, gpww, &
        gfww, gfzz, gfwwt, gfzzt, &
-       gtnww, gtnzz, gtwz, gtww
+       gcf, gfwwcf, gfzzcf, &
+       gtnww, gtnzz, gtwz, gtww, &
+       gtnwwcf, gtnzzcf, gtwzcf, gtwwcf, &
+       fs0hhww, fs0hhzz, fs1hhww, fs1hhzz, fsh4, &
+       gshh, gfhh, gfhhcf
   real(default), public :: vev
   complex(default), dimension(2), public :: &
        gncneu, gnclep, gncup, gncdwn
-  real(default), public :: a4, a5, a6, a7, a10
+  real(default), public :: fs0, fs1, a6, a7, a10
   complex(default), public :: ig1a, ig1z, rg5a, rg5z, &
        ig1pkpg4a, ig1pkpg4z, ig1pkmg4a, ig1pkmg4z, &
        ig1mkpg4a, ig1mkpg4z, ig1mkmg4a, ig1mkmg4z, &
        ila, ilz, il5a, il5z, ik5a, ik5z, &
        ialww0, ialww2, ialzw0, ialzw1, ialzz, &
-       alww0, alww2, alzw0, alzw1, alzz
+       alww0, alww2, alzw0, alzw1, alzz, &
+       igdh4, gdh2w2, gdh2z2, gdhw2, gdhz2 
   real(default), public :: lam_reg   
-  real(default), public :: fudge_higgs, fudge_km, w_res, &
+  real(default), public :: fudge_higgs, fudge_km, w_res,  &
        amp00, amp02, amp11, amp20, amp22
-  real(default), dimension(1:12), public :: gkm
+  real(default), dimension(1:14), public :: gkm
   real(default), dimension(1:5), public :: mkm, wkm
   complex(default), public :: ghvva
   integer, public :: part_r
@@ -67,11 +74,12 @@ module parameters_alth
 
 contains
   subroutine import_from_whizard (par_array)
-    real(default), dimension(64), intent(in) :: par_array
+    real(default), dimension(68), intent(in) :: par_array
     type :: parameter_set
        real(default) :: gf
        real(default) :: mZ
        real(default) :: mW
+       real(default) :: mH
        real(default) :: alphas
        real(default) :: me
        real(default) :: mmu
@@ -83,10 +91,11 @@ contains
        real(default) :: wtop
        real(default) :: wZ
        real(default) :: wW
+       real(default) :: wH
        real(default) :: xi0
        real(default) :: xipm
-       real(default) :: a4
-       real(default) :: a5
+       real(default) :: fs0
+       real(default) :: fs1
        real(default) :: a6
        real(default) :: a7
        real(default) :: a10
@@ -129,6 +138,8 @@ contains
        real(default) :: gkm_tt
        real(default) :: fmixed
        real(default) :: fkappa
+       real(default) :: cf
+       real(default) :: eft_h
        real(default) :: v
        real(default) :: cw
        real(default) :: sw
@@ -142,67 +153,71 @@ contains
     par%gf     = par_array(1)
     par%mZ     = par_array(2)
     par%mW     = par_array(3)
-    par%alphas = par_array(4)
-    par%me     = par_array(5)
-    par%mmu    = par_array(6)
-    par%mtau   = par_array(7)
-    par%ms     = par_array(8)
-    par%mc     = par_array(9)
-    par%mb     = par_array(10)
-    par%mtop   = par_array(11)
-    par%wtop   = par_array(12)
-    par%wZ     = par_array(13)
-    par%wW     = par_array(14)
-    par%xi0    = par_array(15)
-    par%xipm   = par_array(16)
-    par%a4     = par_array(17)         
-    par%a5     = par_array(18)
-    par%a6     = par_array(19)
-    par%a7     = par_array(20)
-    par%a10    = par_array(21)
-    par%mkm_s  = par_array(22)
-    par%mkm_p  = par_array(23)
-    par%mkm_r  = par_array(24)
-    par%mkm_f  = par_array(25)
-    par%mkm_t  = par_array(26)
-    par%gkm_s  = par_array(27)
-    par%gkm_p  = par_array(28)
-    par%gkm_r  = par_array(29)
-    par%gkm_f  = par_array(30)
-    par%gkm_t  = par_array(31)
-    par%wkm_s  = par_array(32)
-    par%wkm_p  = par_array(33)
-    par%wkm_r  = par_array(34)
-    par%wkm_f  = par_array(35)
-    par%wkm_t  = par_array(36)
-    par%g1a    = par_array(37)
-    par%g1z    = par_array(38)
-    par%g4a    = par_array(39)
-    par%g4z    = par_array(40)
-    par%g5a    = par_array(41)
-    par%g5z    = par_array(42)
-    par%ka     = par_array(43)
-    par%kz     = par_array(44)
-    par%la     = par_array(45)
-    par%lz     = par_array(46)
-    par%k5a    = par_array(47)
-    par%k5z    = par_array(48)
-    par%l5a    = par_array(49)
-    par%l5z    = par_array(50)
-    par%mreg   = par_array(51)
-    par%fkm    = par_array(52)
-    par%wres   = par_array(53)
-    par%gkm_st = par_array(54)
-    par%gkm_pt = par_array(55)
-    par%gkm_rt = par_array(56)
-    par%gkm_ft = par_array(57)
-    par%gkm_tt = par_array(58)
-    par%fmixed = par_array(59)
-    par%fkappa = par_array(60)
-    par%v      = par_array(61)
-    par%cw     = par_array(62)
-    par%sw     = par_array(63)
-    par%ee     = par_array(64)
+    par%mH     = par_array(4)
+    par%alphas = par_array(5)
+    par%me     = par_array(6)
+    par%mmu    = par_array(7)
+    par%mtau   = par_array(8)
+    par%ms     = par_array(9)
+    par%mc     = par_array(10)
+    par%mb     = par_array(11)
+    par%mtop   = par_array(12)
+    par%wtop   = par_array(13)
+    par%wZ     = par_array(14)
+    par%wW     = par_array(15)
+    par%wH     = par_array(16)
+    par%xi0    = par_array(17)
+    par%xipm   = par_array(18)
+    par%fs0    = par_array(19)         
+    par%fs1    = par_array(20)
+    par%a6     = par_array(21)
+    par%a7     = par_array(22)
+    par%a10    = par_array(23)
+    par%mkm_s  = par_array(24)
+    par%mkm_p  = par_array(25)
+    par%mkm_r  = par_array(26)
+    par%mkm_f  = par_array(27)
+    par%mkm_t  = par_array(28)
+    par%gkm_s  = par_array(29)
+    par%gkm_p  = par_array(30)
+    par%gkm_r  = par_array(31)
+    par%gkm_f  = par_array(32)
+    par%gkm_t  = par_array(33)
+    par%wkm_s  = par_array(34)
+    par%wkm_p  = par_array(35)
+    par%wkm_r  = par_array(36)
+    par%wkm_f  = par_array(37)
+    par%wkm_t  = par_array(38)
+    par%g1a    = par_array(39)
+    par%g1z    = par_array(40)
+    par%g4a    = par_array(41)
+    par%g4z    = par_array(42)
+    par%g5a    = par_array(43)
+    par%g5z    = par_array(44)
+    par%ka     = par_array(45)
+    par%kz     = par_array(46)
+    par%la     = par_array(47)
+    par%lz     = par_array(48)
+    par%k5a    = par_array(49)
+    par%k5z    = par_array(50)
+    par%l5a    = par_array(51)
+    par%l5z    = par_array(52)
+    par%mreg   = par_array(53)
+    par%fkm    = par_array(54)
+    par%wres   = par_array(55)
+    par%gkm_st = par_array(56)
+    par%gkm_pt = par_array(57)
+    par%gkm_rt = par_array(58)
+    par%gkm_ft = par_array(59)
+    par%gkm_tt = par_array(60)
+    par%fmixed = par_array(61)
+    par%fkappa = par_array(62)
+    par%cf     = par_array(63)
+    par%eft_h  = par_array(64)
+    par%v      = par_array(65)
+    par%cw     = par_array(66)
+    par%sw     = par_array(67)
+    par%ee     = par_array(68)
     mass(1:27) = 0
     width(1:27) = 0
     mass(3) = par%ms
@@ -217,6 +232,8 @@ contains
     width(23) = par%wZ
     mass(24) = par%mW
     width(24) = par%wW
+    mass(25) = par%mH
+    width(25) = par%wH
     mass(26) =  par%xi0 * mass(23)
     width(26) =  0
     mass(27) =  par%xipm * mass(24)
@@ -242,11 +259,11 @@ contains
     mkm(3) = par%mkm_r
     mkm(4) = par%mkm_f
     mkm(5) = par%mkm_t
-    gkm(1) = par%gkm_s
-    gkm(2) = par%gkm_p
+    gkm(1) = par%gkm_s / 1000.0_default
+    gkm(2) = par%gkm_p / 1000.0_default
     gkm(3) = par%gkm_r
-    gkm(4) = par%gkm_f
-    gkm(5) = par%gkm_t
+    gkm(4) = par%gkm_f / 1000.0_default
+    gkm(5) = par%gkm_t / 1000.0_default
     gkm(6) = par%gkm_st
     gkm(7) = par%gkm_pt
     gkm(8) = par%gkm_rt
@@ -254,6 +271,8 @@ contains
     gkm(10) = par%gkm_tt
     gkm(11) = par%fmixed
     gkm(12) = par%fkappa
+    gkm(13) = par%cf
+    gkm(14) = par%eft_h
     wkm(1) = par%wkm_s
     wkm(2) = par%wkm_p
     wkm(3) = par%wkm_r
@@ -270,31 +289,35 @@ contains
     w_res = par%wres
     vev = par%v
     do i=1,5
-      if (w_res == 1 .and. wkm(i) == 0) then
+      if (w_res == 1 .and. wkm(i) == 0 .and. gkm(i) /= 0 ) then
         select case (i)
           case (1) !!! Scalar isosinglet
-            wkm(1) = 3.*gkm(1)**2/32./Pi * mkm(1)**3/vev**2
+            wkm(1) = (3 + gkm(14))*gkm(1)**2 /128.0_default/Pi * &
+                 & mkm(1)**3 
             width(45) = wkm(1)
-!!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_s =", wkm(1)
+            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_s =", wkm(1)
           case (2) !!! Scalar isoquintet
-            wkm(2) = gkm(2)**2/64./Pi * mkm(2)**3/vev**2
+            wkm(2) = gkm(2)**2 /256.0_default/Pi * mkm(2)**3 
             width(46) = wkm(2)
             width(47) = wkm(2)
             width(48) = wkm(2)
-!!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_p =", wkm(2)
+            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_p =", wkm(2)
           case (3) !!! Vector isotriplet
-            wkm(3) = gkm(3)**2/48./Pi * mkm(3)
+             wkm(3) = gkm(3)**2/48.0_default/Pi * mkm(3)
 !!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_r =", wkm(3)
           case (4) !!! Tensor isosinglet
-            wkm(4) = gkm(4)**2/320./Pi * mkm(4)**3/vev**2
+            wkm(4) = (3 + gkm(14))*gkm(4)**2 /3840.0_default/Pi * &
+                 & mkm(4)**3 
             width(52) = wkm(4)
- !!           write (*, "(1x,A,ES19.12)")  "Setting width: wkm_f =", wkm(4)
+           write (*, "(1x,A,ES19.12)")  "Setting width: wkm_f =", wkm(4)
+           write (*, "(1x,A,ES19.12)")  "Setting width: mkm_f =", mkm(4)
+           write (*, "(1x,A,ES19.12)")  "Setting width: gkm_f =", gkm(4)
           case (5) !!! Tensor isoquintet
-            wkm(5) = gkm(5)**2/1920./Pi * mkm(5)**3/vev**2
+            wkm(5) = gkm(5)**2 /7680.0_default/Pi * mkm(5)**3 
             width(53) = wkm(5)
             width(54) = wkm(5)
             width(55) = wkm(5)
-!!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_t =", wkm(5)
+            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_t =", wkm(5)
         end select
       end if
     end do
@@ -320,22 +343,43 @@ contains
     gzzww = gzww**2
     gazww = gzww * qw
     gaaww = qw**2
-    gsww = gkm(1) * mass(24) * g
-    gszz = gkm(1) * mass(23) * g / costhw
+    ghww = mass(24) * g
+    ghhww = g**2 / 2.0_default
+    ghzz = mass(23) * g / costhw
+    ghhzz = g**2 / 2.0_default / costhw**2
+    ghtt = - mass(6) / vev
+    ghbb = - mass(5) / vev
+    ghcc = - mass(4) / vev
+    ghtautau = - mass(15) / vev
+    ghmm = - mass(13) / vev
+    gh3 = - 3 * mass(25)**2 / vev
+    gh4 = - 3 * mass(25)**2 / vev**2
+    gcf = gkm(13)
+    gsww = gkm(1) * mass(24) ** 2
+    gszz = gkm(1) * mass(23) ** 2
+    gshh = - gkm(1) * gkm(14)
     gswwt = gkm(6) * g**3 / mass(24) / (16.0 * PI) 
     gszzt = gkm(6) * g**3 / costhw**3 / mass(23) /(16.0 * PI)
-    gpnww = - gkm(2) * mass(24) * g / 2 / sqrt(3.0_default)
-    gpnzz = gkm(2) * mass(23) * g / costhw  / sqrt(3.0_default)
-    gpwz = gkm(2) * mass(23) * g / 2
-    gpww = gkm(2) * mass(24) * g / sqrt(2.0_default)
-    gfww = gkm(4) * mass(24) * g / 2
-    gfzz = gkm(4) * mass(23) * g / costhw / 2
+    gpnww = - gkm(2) * mass(24) ** 2 / sqrt(12.0_default)
+    gpnzz = gkm(2) * mass(23) ** 2  / sqrt(3.0_default)
+    gpwz = gkm(2) * mass(23) ** 2  / 2.0_default
+    gpww = gkm(2) * mass(24) ** 2  / sqrt(2.0_default)
+    gfww = gkm(4) * mass(24) ** 2  / 2.0_default
+    gfwwcf = gfww * gcf
+    gfzz = gkm(4) * mass(23) ** 2 / 2.0_default
+    gfzzcf = gfzz * gcf
+    gfhh = - gkm(4) / 2.0_default * gkm(14)
+    gfhhcf = gfhh * gcf
     gfwwt = gkm(9) * g**3 / mass(24) / (32.0 * PI) 
     gfzzt = gkm(9) * g**3 / costhw**3 / mass(23) /(32.0 * PI)
-    gtnww = - gkm(5) * mass(24) * g / 4 / sqrt(3.0_default)
-    gtnzz = gkm(5) * mass(23) * g / costhw / 2 / sqrt(3.0_default)
-    gtwz = gkm(5) * mass(23) * g / 4
-    gtww = gkm(5) * mass(24) * g / 2 / sqrt(2.0_default)
+    gtnww = - gkm(5) * mass(24) ** 2 / 4.0_default / sqrt(3.0_default)
+    gtnwwcf = gtnww * gcf
+    gtnzz = gkm(5) * mass(23) ** 2 / 2.0_default / sqrt(3.0_default)
+    gtnzzcf = gtnzz * gcf
+    gtwz = gkm(5) * mass(23) ** 2 / 4.0_default
+    gtwzcf = gtwz * gcf
+    gtww = gkm(5) * mass(24) ** 2 / 2.0_default / sqrt(2.0_default)
+    gtwwcf = gtww * gcf
     gssww = 0
     gsszz = 0
     part_r = 1
@@ -343,14 +387,14 @@ contains
     !!! Color flow basis, divide by sqrt(2)
     gs = sqrt(2.0_default*PI*par%alphas)
     igs = cmplx (0.0_default, 1.0_default, kind=default) * gs    
-    a4 = par%a4
-    a5 = par%a5
+    fs0 = par%fs0  / (1000.0_default ** 4)
+    fs1 = par%fs1  / (1000.0_default ** 4)
     a6 = par%a6
     a7 = par%a7
     a10 = par%a10
     lam_reg = par%mreg
-    fudge_higgs = 1
-    ghvva = 1
+    fudge_higgs = 0
+    ghvva = 0
     fudge_km = par%fkm
     ig1a = iqw * par%g1a
     ig1z = igzww * par%g1z
@@ -370,18 +414,23 @@ contains
     ik5z = igzww * par%k5z
     il5a = iqw   * par%l5a / (mass(24)*mass(24))
     il5z = igzww * par%l5z / (mass(24)*mass(24))
-    alww0 = g**4 * (a4 + 2 * a5)
-    alww2 = g**4 * 2 * a4
-    alzw1 = g**4 / costhw**2 * (a4 + a6)
-    alzw0 = g**4 / costhw**2 * 2 * (a5 + a7)
-    alzz = g**4 / costhw**4 * 2 * (a4 + a5 + (a6+a7+a10)*2)
-    ialww0 = g**2 * sqrt (-cmplx(a4 + 2 * a5, kind=default))
-    ialww2 = g**2 * sqrt (-cmplx(2 * a4, kind=default))
-    ialzw1 = g**2 / costhw * sqrt (-cmplx(a4 + a6, kind=default))
-    ialzw0 = g**2 / costhw &
-         & * sqrt (-cmplx(2 * (a5 + a7), kind=default))
-    ialzz  = g**2 / (costhw*costhw) &
-         & * sqrt (-cmplx(2 * (a4 + a5 + (a6+a7+a10)*2), &
+    fs0hhww = - g ** 2 * vev ** 2 / 4 * fs0 * gkm(14)
+    fs1hhww = - g ** 2 * vev ** 2 / 2 * fs1 * gkm(14)
+    fs0hhzz = - g ** 2 / costhw**2 * vev ** 2 / 4 * fs0 * gkm(14)
+    fs1hhzz = - g ** 2 / costhw**2 * vev ** 2 / 2 * fs1 * gkm(14)
+    fsh4 = 2.0_default * ( fs0 + fs1) * gkm(14)
+    alww0 = g**4 * vev**4 * (fs0 + 2 * fs1) / 16
+    alww2 = g**4 * vev**4 * fs0 / 8
+    alzw1 = g**4 / costhw**2 * vev**4 * fs0 / 16
+    alzw0 = g**4 / costhw**2 * vev**4 * fs1 / 8
+    alzz = g**4 / costhw**4 * vev**4 * (fs0 + fs1) / 8
+    ialww0 = g**2 * vev**2 * sqrt (-cmplx( (fs0 + 2 * fs1) / 16, kind=default) )
+    ialww2 = g**2 * vev**2 * sqrt (-cmplx(fs0 / 8, kind=default))
+    ialzw1 = g**2 * vev **2 / costhw * sqrt (-cmplx(fs0 / 16, kind=default))
+    ialzw0 = g**2 * vev**2 / costhw &
+         & * sqrt (-cmplx(fs1 / 8, kind=default))
+    ialzz  = g**2 * vev**2 / (costhw*costhw) &
+         & * sqrt (-cmplx( (fs0 + fs1) / 8 , &
          &                kind=default))
   end subroutine import_from_whizard
 
@@ -391,4 +440,4 @@ contains
     igs = cmplx (0.0_default, 1.0_default, kind=default) * gs     
     !!! The Hgg coupling should not get a running alpha_s
   end subroutine model_update_alpha_s
-end module parameters_alth
+end module parameters_ssc_2

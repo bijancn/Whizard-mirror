@@ -969,6 +969,7 @@ module decays
 <<Use strings>>
   use io_units
   use format_utils, only: write_indent, write_separator
+  use format_defs, only: FMT_15
   use unit_tests
   use diagnostics
   use os_interface
@@ -1536,6 +1537,10 @@ the connected state.
 Infer stability from the particle properties, using the first row in the set
 of flavor states.  For unstable particles, we look for decays,
 recursively, available from the process stack (if present).
+
+For the unstable particles, we have to check whether their masses
+match between the production and the decay.  Fortunately, both
+versions are available for comparison.
 <<Decays: decay root config: TBP>>=
   procedure :: connect => decay_root_config_connect
 <<Decays: procedures>>=
@@ -1550,6 +1555,7 @@ recursively, available from the process stack (if present).
     type(interaction_t), pointer :: int
     type(flavor_t), dimension(:,:), allocatable :: flv
     logical, dimension(:), allocatable :: stable
+    real(default), dimension(:), allocatable :: m_prod, m_dec
     integer :: i
     call decay%init (model, process%get_id (), process%get_n_terms ())
     do i = 1, size (decay%term_config)
@@ -1560,13 +1566,38 @@ recursively, available from the process stack (if present).
        else
           call process%get_term_flv_out (i, flv)
        end if
+       m_prod = flv(:,1)%get_mass ()
        call flv%set_model (model)
+       m_dec = flv(:,1)%get_mass ()
        allocate (stable (size (flv, 1)))
        stable = flv(:,1)%is_stable ()
+       call check_masses ()
        call decay%init_term (i, flv, stable, model, process_stack)
        deallocate (flv, stable)
     end do
     decay%process => process
+  contains
+    subroutine check_masses ()
+      integer :: i
+      logical :: ok
+      ok = .true.
+      do i = 1, size (m_prod)
+         if (.not. stable(i)) then
+            if (m_prod(i) /= m_dec(i)) then
+               write (msg_buffer, "(A,A,A)")  "particle '", &
+                    char (flv(i,1)%get_name ()), "':"
+               call msg_message
+               write (msg_buffer, &
+                    "(2x,A,1x," // FMT_15 // ",3x,A,1x," // FMT_15 // ")") &
+                    "m_prod =", m_prod(i), "m_dec =", m_dec(i)
+               call msg_message
+               ok = .false.
+            end if
+         end if
+      end do
+      if (.not. ok)  call msg_fatal &
+           ("Particle mass mismatch between production and decay")
+    end subroutine check_masses
   end subroutine decay_root_config_connect
 
 @ %def decay_root_config_connect

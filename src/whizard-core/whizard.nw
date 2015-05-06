@@ -6641,7 +6641,7 @@ polarization flag and names of decay processes, where applicable.
   subroutine process_configuration_set_component_associations &
        (config, i_list)
     class(process_configuration_t), intent(inout) :: config
-    integer, intent(in), dimension(4) :: i_list 
+    integer, intent(in), dimension(:) :: i_list 
     integer :: i_component
     do i_component = 1, config%entry%get_n_components ()
        if (any (i_list == i_component)) then
@@ -15230,9 +15230,10 @@ or arrays which would make the expansion ambiguous.
     type(string_t) :: correlation_me_method
     type(string_t) :: real_tree_me_method
     type(string_t) :: current_me_method 
-!    integer , dimension(4) :: i_list
-    integer, dimension(5) :: i_list
+    integer, dimension(:), allocatable :: i_list
     logical :: combined_nlo_integration, powheg_active
+    logical :: initial_state_colored
+    integer :: n_components_nlo
     
     nlo_calc = cmd%local%nlo_calculation                 
     combined_nlo_integration = &
@@ -15249,9 +15250,19 @@ or arrays which would make the expansion ambiguous.
     do i = 1, n_in
        pdg_in = &
             eval_pdg_array (cmd%pn_pdg_in(i)%ptr, var_list)
+       call pdg_in%write ()
        prt_in(i) = make_flavor_string (pdg_in, cmd%local%model)
        prt_spec_in(i) = new_prt_spec (prt_in(i))
     end do
+    
+    initial_state_colored = pdg_in%has_colored_particles()
+    if (initial_state_colored) then
+       n_components_nlo = 5
+    else
+       n_components_nlo = 4
+    end if
+    allocate (i_list (n_components_nlo))
+
     call compile_prt_expr &
          (prt_expr_out, cmd%pn_out, var_list, cmd%local%model)
     call prt_expr_out%expand ()
@@ -15279,7 +15290,7 @@ or arrays which would make the expansion ambiguous.
     end do SCAN_COMPONENTS
     if (nlo_calc) then
 !      call prc_config%init (cmd%id, n_in, n_components*4, cmd%local)
-      call prc_config%init (cmd%id, n_in, n_components*5, cmd%local)
+      call prc_config%init (cmd%id, n_in, n_components*n_components_nlo, cmd%local)
     else
       call prc_config%init (cmd%id, n_in, n_components, cmd%local)
     end if
@@ -15291,7 +15302,8 @@ or arrays which would make the expansion ambiguous.
             i_list(2) = i + n_components
             i_list(3) = i + 2*n_components
             i_list(4) = i + 3*n_components
-            i_list(5) = i + 4*n_components
+            if (initial_state_colored) &
+               i_list(5) = i + 4*n_components
             loop_me_method = global%var_list%get_sval (var_str ("$loop_me_method"))
             correlation_me_method = global%var_list%get_sval (var_str ("$correlation_me_method"))
             real_tree_me_method = global%var_list%get_sval (var_str ("$real_tree_me_method"))
@@ -15313,7 +15325,7 @@ or arrays which would make the expansion ambiguous.
                call global%set_me_method (real_tree_me_method)
                current_me_method = real_tree_me_method
             end if
-            call prc_config%setup_component (n_components + i, &
+            call prc_config%setup_component (n_components+i, &
                             new_prt_spec (prt_in_nlo), &
                             new_prt_spec (prt_out_nlo),&
                             cmd%local, NLO_REAL, &
@@ -15323,7 +15335,7 @@ or arrays which would make the expansion ambiguous.
                call global%set_me_method (loop_me_method)
                current_me_method = loop_me_method
             end if
-            call prc_config%setup_component (n_components*2 + i, prt_spec_in, &
+            call prc_config%setup_component (n_components*2+i, prt_spec_in, &
                             prt_spec_out, global, NLO_VIRTUAL, &
                             active_in = active_comp (3))
 
@@ -15332,17 +15344,21 @@ or arrays which would make the expansion ambiguous.
                current_me_method = "omega"
             end if
             call prc_config%setup_component (n_components*3+i, prt_spec_in, &
-                            prt_spec_out, global, NLO_PDF, &
+!                            prt_spec_out, global, NLO_PDF, &
+                            prt_spec_out, global, NLO_SUBTRACTION, &
                             active_in = active_comp (4))
            
 
-            if (current_me_method /= correlation_me_method) then
-               call global%set_me_method (correlation_me_method)
-               current_me_method = correlation_me_method
+            if (initial_state_colored) then
+               if (current_me_method /= correlation_me_method) then
+                  call global%set_me_method (correlation_me_method)
+                  current_me_method = correlation_me_method
+               end if
+               call prc_config%setup_component (n_components*4+i, prt_spec_in, &
+!                               prt_spec_out, global, NLO_SUBTRACTION, &
+                               prt_spec_out, global, NLO_PDF, &
+                               .false.)                     
             end if
-            call prc_config%setup_component (n_components*4 + i, prt_spec_in, &
-                            prt_spec_out, global, NLO_SUBTRACTION, &
-                            .false.)                     
             call prc_config%set_component_associations (i_list)
          end associate
        else
@@ -25019,6 +25035,7 @@ module whizard
   use object_base
   use object_builder
   use object_logical
+  use object_integer
   use sindarin_parser
   use grids
   use solver
@@ -25811,6 +25828,8 @@ This is for developers only, but needs a well-defined interface.
        call object_builder_test (u, results)
     case ("object_logical")
        call object_logical_test (u, results)
+    case ("object_integer")
+       call object_integer_test (u, results)
     case ("sindarin_parser")
        call sindarin_parser_test (u, results)
     case ("grids")
@@ -25973,6 +25992,7 @@ This is for developers only, but needs a well-defined interface.
        call object_base_test (u, results)
        call object_builder_test (u, results)
        call object_logical_test (u, results)
+       call object_integer_test (u, results)
        call sindarin_parser_test (u, results)
        call solver_test (u, results)
        call grids_test (u, results)

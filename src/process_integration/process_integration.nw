@@ -6117,8 +6117,6 @@ parameter arrays for the selected channel.
          success = .false.
       end if
     class default
-!      call phs%evaluate_selected_channel &
-!           (phs_channel, mci_work%get_x_process ())
       if (phs%q_defined) then
          call k%phs%get_outgoing_momenta (p(k%n_in+1:))
          k%phs_factor = k%phs%get_overall_factor ()
@@ -6657,7 +6655,7 @@ imaginary part of the terms, which should be zero anyway.
      type(component_instance_t), intent(inout) :: component
      real(default), intent(in) :: summand
      select case (component%config%config%get_nlo_type ())
-     case (NLO_REAL)
+     case (NLO_REAL, NLO_PDF)
         associate (collector => component%nlo_controller%sqme_collector)
            collector%current_sqme_born = summand 
            collector%sqme_born_list(1) = summand
@@ -6722,10 +6720,13 @@ imaginary part of the terms, which should be zero anyway.
     real(default) :: sqme_pdf
     if (term%nlo_type /= NLO_PDF) return
     associate (nlo_controller => component%nlo_controller)
-       if (.not. nlo_controller%pdf_subtraction_is_required ()) return
+       if (.not. nlo_controller%pdf_subtraction_is_required ()) then
+          component%sqme = 0._default
+          return
+       end if
        call nlo_controller%set_alpha_s_born &
                  (component%config%core%get_alpha_s (component%core_state))
-       sqme_pdf = nlo_controller%evaluate_pdf_subtraction (term%weight, component%sqme)
+       call nlo_controller%evaluate_pdf_subtraction (component%sqme)
     end associate
   end subroutine component_instance_evaluate_sqme_pdf
 
@@ -7455,13 +7456,12 @@ physical event.
         if (emitter > 2) then
            call phs%generate_fsr (emitter, p_born, p_real)
         else
-           call phs%generate_isr (emitter, p_born, p_real)
+           call phs%generate_isr (p_born, p_real)
         end if
      class default 
         call msg_fatal ("Evaluate real interaction: Phase space not of FKS-type!")
      end select
 
-     call term%nlo_controller%set_real_momenta (p_real)
      call term%int_hard_real%set_momenta (p_real)
 
      call term%isolated_real%receive_kinematics ()
@@ -7528,7 +7528,6 @@ physical event.
 
     call term%nlo_controller%int_born%set_momenta (p_born)
     call term%int_hard_real%set_momenta (p_real)
-    call term%nlo_controller%set_real_momenta (p_real)
 
     call term%isolated_real%receive_kinematics ()
     call term%connected_real%receive_kinematics ()
@@ -8756,7 +8755,7 @@ it from the MCI record.
      nlegs = term%nlo_controller%reg_data%nlegs_real
      ireg = 1
      instance%sqme_real = 0
-     do j = 1, nlegs
+     do j = 0, nlegs
         if (any (term%nlo_controller%reg_data%emitters == j)) then
            call term%nlo_controller%set_active_emitter (j)
            call term%evaluate_interaction_real (instance%component(i), i)
