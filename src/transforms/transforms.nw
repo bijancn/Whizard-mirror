@@ -64,7 +64,6 @@ module event_transforms
   use phs_single
   use processes
   use process_stacks
-  use powheg
   
 <<Standard module head>>
 
@@ -121,11 +120,11 @@ instance is a pointer and should not be finalized here.
   procedure :: final => evt_final
   procedure :: base_final => evt_final
 <<Event transforms: procedures>>=
-  subroutine evt_final (object)
-    class(evt_t), intent(inout) :: object
-    if (allocated (object%rng))  call object%rng%final ()
-    if (object%particle_set_exists) &
-         call object%particle_set%final ()
+  subroutine evt_final (evt)
+    class(evt_t), intent(inout) :: evt
+    if (allocated (evt%rng))  call evt%rng%final ()
+    if (evt%particle_set_exists) &
+         call evt%particle_set%final ()
   end subroutine evt_final
   
 @ %def evt_final
@@ -614,15 +613,20 @@ end module hadrons
 @
 \subsection{Hadronization implementations}
 <<Hadrons: public>>=
-  public :: HADRONS_PYTHIA6, HADRONS_PYTHIA8
+  public :: HADRONS_PYTHIA6, HADRONS_PYTHIA8, HADRONS_UNDEFINED
 <<Hadrons: parameters>>=
   integer, parameter :: HADRONS_PYTHIA6 = 1
   integer, parameter :: HADRONS_PYTHIA8 = 2
   integer, parameter :: HADRONS_UNDEFINED = 17
 @ %def HADRONS_PYTHIA6 HADRONS_PYTHIA8 HADRONS_UNDEFINED
 @ A dictionary
-<<Hadrons: public>>=
-  public :: hadrons_method_of_string
+<<Shower base: public>>=
+  public :: hadrons_method
+<<Shower base: interfaces>>=
+  interface hadrons_method
+     module procedure hadrons_method_of_string
+     module procedure hadrons_method_to_string
+  end interface
 <<Hadrons: procedures>>=
   elemental function hadrons_method_of_string (string) result (i)
     integer :: i
@@ -637,11 +641,6 @@ end module hadrons
     end select
   end function hadrons_method_of_string
 
-@ %def hadrons_method_of_string
-@
-<<Hadrons: public>>=
-  public :: hadrons_method_to_string
-<<Hadrons: procedures>>=
   elemental function hadrons_method_to_string (i) result (string)
     type(string_t) :: string
     integer, intent(in) :: i
@@ -655,7 +654,7 @@ end module hadrons
     end select
   end function hadrons_method_to_string
 
-@ %def hadrons_method_to_string
+@ %def hadrons_method
 @
 \subsection{Abstract Hadronization Type}
 The [[model]] is the fallback model including all hadrons
@@ -687,8 +686,7 @@ The [[model]] is the fallback model including all hadrons
   procedure (hadrons_hadronize), deferred :: hadronize
 <<Hadrons: interfaces>>=
   abstract interface
-     subroutine hadrons_hadronize &
-          (hadrons, particle_set, valid)
+     subroutine hadrons_hadronize (hadrons, particle_set, valid)
        import
        class(hadrons_t), intent(inout) :: hadrons
        type(particle_set_t), intent(in) :: particle_set
@@ -919,14 +917,10 @@ invalid.
     class(evt_hadrons_t), intent(inout) :: evt
     real(default), intent(out) :: probability
     logical :: valid
-    if (evt%previous%particle_set_exists) then
-       evt%particle_set = evt%previous%particle_set
-       call evt%hadrons%hadronize (evt%particle_set, valid)
-       probability = 1
-       evt%particle_set_exists = valid
-    else
-       call msg_bug ("Hadrons: input particle set does not exist")
-    end if
+    evt%particle_set = evt%previous%particle_set
+    call evt%hadrons%hadronize (evt%particle_set, valid)
+    probability = 1
+    evt%particle_set_exists = valid
   end subroutine evt_hadrons_generate_weighted
 
 @ %def evt_hadrons_generate_weighted
@@ -3625,13 +3619,7 @@ module shower
   use pdf_builtin !NODEP!
   
   use shower_base
-  use shower_partons
-  use shower_core
-  use shower_pythia6
-  use mlm_matching
-  use ckkw_base
-  use ckkw_matching
-  use powheg
+  use matching_base
   
   use sm_qcd
   use particles
@@ -3654,6 +3642,9 @@ module shower
   use phs_single
   use prc_core
   use prc_omega
+
+  ! For integration tests
+  use shower_core
 
 <<Standard module head>>
 
@@ -3678,10 +3669,8 @@ and testing of the POWHEG procedure.
 <<Shower: parameters>>=
   logical, parameter :: DEBUG_EVT_SHOWER = .false.
   logical, parameter :: POWHEG_TESTING = .false.
-  logical, parameter :: TEST_SUDAKOV = .false.
-  logical, parameter :: TO_FILE = .false.
 
-@ %def DEBUG_EVT_SHOWER POWHEG_TESTING TO_FILE
+@ %def DEBUG_EVT_SHOWER POWHEG_TESTING
 @
 \subsection{Event Transform}
 The event transforms can do more than mere showering.  Especially, it
@@ -3694,10 +3683,8 @@ hadrons that can be generated in the shower.
   type, extends (evt_t) :: evt_shower_t
      type(shower_settings_t) :: settings
      class(shower_base_t), allocatable :: shower
+     class(matching_t), allocatable :: matching
      type(model_t), pointer :: model_hadrons => null ()
-     type(powheg_t) :: powheg
-     class(matching_settings_t), allocatable :: matching_settings
-     class(matching_data_t), allocatable :: data
      type(qcd_t), pointer :: qcd => null()
      type(pdf_data_t) :: pdf_data     
      type(os_data_t) :: os_data     
@@ -3738,31 +3725,28 @@ hadrons that can be generated in the shower.
     type(process_stack_t), intent(in), optional :: process_stack
     call evt%base_connect (process_instance, model, process_stack)
     call evt%make_rng (evt%process)
-    if (evt%settings%powheg_matching) then
-       call evt%powheg%connect (process_instance)
-       call evt%powheg%setup_grids ()
+    if (allocated (evt%matching)) then
+       call evt%matching%connect (process_instance, model, evt%shower)
     end if
   end subroutine evt_shower_connect
 
 @ %def evt_shower_connect
-@ Initialize the event transformation. This will be executed once
-during dispatching. The [[model_hadrons]] is supposed to be the SM
+@ Initialize the event transformation.  This will be executed once
+during dispatching.  The [[model_hadrons]] is supposed to be the SM
 variant that contains all hadrons that may be generated in the
 shower. 
 <<Shower: evt shower: TBP>>=
   procedure :: init => evt_shower_init
 <<Shower: procedures>>=
   subroutine evt_shower_init &
-       (evt, settings, model_hadrons, os_data, powheg)
+       (evt, settings, model_hadrons, os_data)
     class(evt_shower_t), intent(out) :: evt
     type(shower_settings_t), intent(in) :: settings
     type(model_t), intent(in), target :: model_hadrons
     type(os_data_t), intent(in) :: os_data    
-    type(powheg_t), intent(in), optional :: powheg
     evt%settings = settings
     evt%os_data = os_data
     evt%model_hadrons => model_hadrons
-    if (present (powheg))  evt%powheg = powheg
   end subroutine evt_shower_init
   
 @ %def evt_shower_init
@@ -3776,9 +3760,9 @@ shower.
     class(rng_t), allocatable :: rng
     call process%make_rng (rng)
     call evt%shower%import_rng (rng)
-    if (evt%settings%powheg_matching) then
+    if (allocated (evt%matching)) then
        call process%make_rng (rng)
-       call evt%powheg%import_rng (rng)
+       call evt%matching%import_rng (rng)
     end if
   end subroutine evt_shower_make_rng
 
@@ -3841,12 +3825,52 @@ transformation chain is evaluated.
     class(evt_shower_t), intent(inout) :: evt
     integer, intent(in) :: i_mci, i_term
     call evt%reset ()
-    if (.not. evt%settings%active .or. signal_is_pending ()) then
-       return
-    end if
+    call evt%shower%prepare_new_event ()
   end subroutine evt_shower_prepare_new_event
 
 @ %def evt_shower_prepare_new_event
+@
+<<Shower: evt shower: TBP>>=
+  procedure :: first_event => evt_shower_first_event
+<<Shower: procedures>>=
+  subroutine evt_shower_first_event (evt)
+    class(evt_shower_t), intent(inout) :: evt
+    real(default) :: pdftest
+    logical :: is_hadron_collision
+    ! TODO: (bcn 2015-04-24) also set info for combine_with_particle_set
+    is_hadron_collision = .false.
+    if (all (evt%particle_set%prt%flv%get_pdg_abs () <= 18)) then
+       is_hadron_collision = .false.
+    else if (all (evt%particle_set%prt%flv%get_pdg_abs () >= 1000)) then
+       is_hadron_collision = .true.
+    else 
+       call msg_fatal (" evt_shower didn't recognize beams setup")
+    end if
+    if (allocated (evt%matching)) then
+       evt%matching%is_hadron_collision = is_hadron_collision
+       call evt%matching%first_event ()
+    end if
+    if (evt%pdf_data%type == STRF_LHAPDF5) then
+       if (evt%settings%isr_active .and. is_hadron_collision) then
+          call GetQ2max (0, pdftest)
+          if (pdftest < epsilon (pdftest)) then
+             call msg_bug ("ISR QCD shower enabled, but LHAPDF not" // &
+                  "initialized," // LF // "     aborting simulation")
+             return
+          end if
+       end if
+    else if (evt%pdf_data%type == STRF_PDF_BUILTIN .and. &
+             evt%settings%method == PS_PYTHIA6) then
+       call msg_fatal ("Builtin PDFs cannot be used for PYTHIA showers," &
+            // LF // "     aborting simulation")
+       return
+    end if
+    if (evt%settings%method == PS_PYTHIA6 .and. any (abs (IDBMUP) <= 8)) then
+       call msg_fatal ("PYTHIA doesn't support quarks as beam particles")
+    end if
+  end subroutine evt_shower_first_event
+
+@ %def evt_shower_first_event
 @ Here we take the particle set from the previous event transform
 (assuming that there is always one) and apply the shower algorithm.  The
 result is stored in the event transform of the current object.  We
@@ -3863,114 +3887,33 @@ we mark the particle set as invalid. This procedure directly takes the
     class(evt_shower_t), intent(inout) :: evt
     real(default), intent(out) :: probability
     logical :: valid, vetoed
-    logical, save :: matching_disabled = .false.    
-    integer :: i
-    type(particle_t), dimension(1:2) :: prt_in    
-    real(kind=double) :: pdftest    
-    valid = .true.
-    vetoed = .false.
-    if (evt%previous%particle_set_exists) then
-       evt%particle_set = evt%previous%particle_set
-       if (evt%settings%powheg_matching) then
-          call evt%powheg%update (evt%particle_set)
-          if (TEST_SUDAKOV) then
-             call evt%powheg%test_sudakov ()
-             stop
-          end if
-          call evt%powheg%generate_emission (particle_set = evt%particle_set)
-          if (DEBUG_EVT_SHOWER) call evt%powheg%write ()
-       end if       
+    logical, save :: first_event = .false.    
+    evt%particle_set = evt%previous%particle_set
+    if (first_event) then
+       call evt%first_event ()
+       first_event = .false.
+    end if
+    call evt%shower%import_particle_set (evt%particle_set, evt%os_data)
+    if (allocated (evt%matching)) then
+       call evt%matching%before_shower (evt%particle_set, vetoed)
+    end if
+    valid = .true.;  vetoed = .false.
+    if (.not. vetoed .and. .not. POWHEG_TESTING) then
+       if (DEBUG_EVT_SHOWER .and. allocated (evt%matching)) &
+            call evt%matching%write ()
        if (evt%settings%method == PS_PYTHIA6 .or. &
            evt%settings%hadronization_active) then
           call assure_heprup (evt%particle_set)
        end if
-       if (evt%settings%ckkw_matching) then
-          select type (data => evt%data)
-          type is (ckkw_matching_data_t)
-             call ckkw_pseudo_shower_weights_init (data%ckkw_weights)
-             call ckkw_fake_pseudo_shower_weights (evt%matching_settings, &
-                  data%ckkw_weights, evt%particle_set)
-          end select
-       end if
-       if (evt%settings%fsr_active .or. &
-            evt%settings%isr_active .or. &
-            evt%settings%hadronization_active .or. &
-            evt%settings%mlm_matching .and. &
-            .not. POWHEG_TESTING) then
-          do i = 1, 2
-             prt_in(i) = evt%particle_set%get_particle (i)
-          end do
-          ! ensure that lhapdf is initialized
-          if (evt%pdf_data%type .eq. STRF_LHAPDF5) then
-             if (evt%settings%isr_active .and. &
-                  (all (abs (prt_in%get_pdg ()) >= 1000))) then
-                call GetQ2max (0, pdftest)
-                if (pdftest < epsilon(pdftest)) then
-                   call msg_fatal ("ISR QCD shower enabled, but LHAPDF not" // &
-                        "initialized," // LF // "     aborting simulation")
-                   return
-                end if
-             end if
-          else if (evt%pdf_data%type == STRF_PDF_BUILTIN .and. &
-             evt%settings%method == PS_PYTHIA6) then
-             call msg_fatal ("Builtin PDFs cannot be used for PYTHIA showers," &
-                  // LF // "     aborting simulation")
-             return
-          end if
-          if (.not. matching_disabled .and. allocated (evt%data)) then
-             if (DEBUG_EVT_SHOWER)  &
-                  print *, "Shower: Set up beam type for mlm_matching"
-             if (all (abs (prt_in%get_pdg ()) <= 18)) then
-                evt%data%is_hadron_collision = .false.
-             else if (all (abs (prt_in%get_pdg ()) >= 1000)) then
-                evt%data%is_hadron_collision = .true.
-             else 
-                call msg_error (" Matching didn't recognize beams setup," // &
-                     LF // "     disabling matching")
-                matching_disabled = .true.
-                return
-             end if
-          end if              
-          call evt%shower%generate_emissions (evt%particle_set, &
-               evt%model, evt%model_hadrons, evt%os_data, &
-               evt%matching_settings, evt%data, valid, vetoed)
-          if (evt%settings%mlm_matching .and. &
-               (.not. matching_disabled)) then
-             !!! MLM stage 2 -> PS jets and momenta
-             select type (data => evt%data)
-             type is (mlm_matching_data_t)
-                select type (ms => evt%matching_settings)
-                type is (mlm_matching_settings_t)
-                   call matching_transfer_PS (data, evt%particle_set, ms)
-                   !!! MLM stage 3 -> reconstruct and possibly reject
-                   call mlm_matching_apply (data, ms, vetoed)
-                   call mlm_matching_data_final (data)
-                end select
-             end select
-          end if
-          if (DEBUG_EVT_SHOWER)  print *, "SHOWER+MATCHING finished"          
-       end if          
-       if (DEBUG_EVT_SHOWER) then
-          print *, "Shower: obtained particle set after SHOWER"
-          call evt%particle_set%write (summary=.true., &
-                                                compressed=.true.)
-       end if
-       probability = 1
-       if (valid .and. .not. vetoed) then
-          evt%particle_set_exists = .true.
-       else
-          evt%particle_set_exists = .false.
-       end if
-    else
-       call msg_bug ("Shower: input particle set does not exist")
+       call evt%shower%generate_emissions (valid)
     end if
+    probability = 1
+    evt%particle_set_exists = valid .and. .not. vetoed
   end subroutine evt_shower_generate_weighted
 
 @ %def evt_shower_generate_weighted
-@ Here we fill the particle set with the partons from the shower. The
-particle set was already made by the routine above (or the event was
-vetoed).  So we do nothing here.  The factorization parameters are
-irrelevant.  
+@ Here, we fill the particle set with the partons from the shower.
+The factorization parameters are irrelevant.  
 <<Shower: evt shower: TBP>>=
   procedure :: make_particle_set => evt_shower_make_particle_set
 <<Shower: procedures>>=
@@ -3980,6 +3923,20 @@ irrelevant.
     integer, intent(in) :: factorization_mode
     logical, intent(in) :: keep_correlations
     real(default), dimension(:), intent(in), optional :: r
+    logical :: vetoed
+    if (evt%particle_set_exists) then
+       call evt%shower%make_particle_set (evt%particle_set, &
+            evt%model, evt%model_hadrons)
+       vetoed = .false.
+       if (allocated (evt%matching)) then
+          call evt%matching%after_shower (evt%particle_set, vetoed)
+       end if
+       if (DEBUG_EVT_SHOWER) then
+          print *, "Shower: obtained particle set after shower + matching"
+          call evt%particle_set%write (summary = .true., compressed = .true.)
+       end if
+       evt%particle_set_exists = .not. vetoed
+    end if
   end subroutine evt_shower_make_particle_set
 
 @ %def event_shower_make_particle_set
@@ -3987,72 +3944,13 @@ irrelevant.
 <<Shower: evt shower: TBP>>=
   procedure :: final => evt_shower_final
 <<Shower: procedures>>=
-  subroutine evt_shower_final (object)
-    class(evt_shower_t), intent(inout) :: object
-    if (object%settings%powheg_matching) &
-         call object%powheg%write_statistics ()
+  subroutine evt_shower_final (evt)
+    class(evt_shower_t), intent(inout) :: evt
+    call evt%base_final ()
+    if (allocated (evt%matching))  call evt%matching%final ()
   end subroutine evt_shower_final
 
 @ %def evt_shower_final
-@
-\subsubsection{Matching functions}
-@ Generate fake ckkw weights. This can be dropped, once information
-from the matrix element generation is available.
-<<Shower: public>>=
-  public :: ckkw_fake_pseudo_shower_weights
-<<Shower: procedures>>=
-  subroutine ckkw_fake_pseudo_shower_weights &
-       (settings, &
-        ckkw_pseudo_shower_weights, particle_set)
-    class(matching_settings_t), intent(inout) :: settings
-    type(ckkw_pseudo_shower_weights_t), intent(inout) :: &
-         ckkw_pseudo_shower_weights
-    type(particle_set_t), intent(in) :: particle_set
-    type(particle_t) :: prt
-    integer :: i, j
-    integer :: n
-    type(vector4_t) :: momentum
-
-    select type (settings)
-    type is (ckkw_matching_settings_t)    
-       settings%alphaS = 1.0_default
-       settings%Qmin = 1.0_default
-       settings%n_max_jets = 3
-    class default
-       call msg_fatal ("CKKW matching called with wrong data.")
-    end select
-       
-    n = 2**particle_set%get_n_tot()
-    if (allocated (ckkw_pseudo_shower_weights%weights)) then 
-       deallocate (ckkw_pseudo_shower_weights%weights)
-    end if
-    allocate (ckkw_pseudo_shower_weights%weights (1:n))
-    do i = 1, n
-       momentum = vector4_null
-       do j = 1, particle_set%get_n_tot ()
-          if (btest (i,j-1)) then
-             prt = particle_set%get_particle (j) 
-             momentum = momentum + prt%get_momentum ()
-          end if
-       end do
-       if (momentum**1 > 0.0) then
-          ckkw_pseudo_shower_weights%weights(i) = 1.0 / (momentum**2)
-       end if
-    end do
-    ! equally distribute the weights by type
-    if (allocated (ckkw_pseudo_shower_weights%weights_by_type)) then
-       deallocate (ckkw_pseudo_shower_weights%weights_by_type)
-    end if
-    allocate (ckkw_pseudo_shower_weights%weights_by_type (1:n, 0:4))
-    do i = 1, n
-       do j = 0, 4
-          ckkw_pseudo_shower_weights%weights_by_type(i,j) = &
-               0.2 * ckkw_pseudo_shower_weights%weights(i)
-       end do
-    end do
-  end subroutine ckkw_fake_pseudo_shower_weights
-  
-@ %def ckkw_fake_pseudo_shower_weights
 @
 \subsection{Unit Tests}
 <<Shower: public>>=
@@ -4229,7 +4127,7 @@ in disabled mode.
        call evt_shower%init (settings, model_hadrons, os_data)
        allocate (shower_t :: evt_shower%shower)
        call evt_shower%shower%init (evt_shower%settings, pdf_data)
-       call evt_shower%connect (process_instance, model)		
+       call evt_shower%connect (process_instance, model)
     end select
 
     evt_trivial%next => evt_shower

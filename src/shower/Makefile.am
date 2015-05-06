@@ -37,13 +37,11 @@ noinst_LTLIBRARIES = libshower.la
 
 libshower_la_SOURCES = \
    pythia6_up.f \
+   ktclus.f90 \
    shower_base.f90 \
    shower_partons.f90 \
-   ckkw_base.f90 \
-   mlm_matching.f90 \
    shower_core.f90 \
-   shower_pythia6.f90 \
-   ckkw_matching.f90
+   shower_pythia6.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = shower.nw

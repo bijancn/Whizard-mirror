@@ -36,7 +36,10 @@
 noinst_LTLIBRARIES = libpowheg.la
 
 libpowheg_la_SOURCES = \
-  powheg.f90
+  matching_base.f90 \
+  ckkw_matching.f90 \
+  mlm_matching.f90 \
+  powheg_matching.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = powheg.nw
