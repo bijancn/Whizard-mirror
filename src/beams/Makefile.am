@@ -38,6 +38,7 @@ libbeams_la_SOURCES = \
   sf_epa.f90 \
   sf_ewa.f90 \
   sf_escan.f90 \
+  sf_gaussian.f90 \
   sf_beam_events.f90 \
   sf_circe1.f90 \
   sf_circe2.f90 \

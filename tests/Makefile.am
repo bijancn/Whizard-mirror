@@ -75,6 +75,7 @@ UNIT_TESTS = \
     sf_ewa.run \
     sf_circe1.run \
     sf_circe2.run \
+    sf_gaussian.run \
     sf_beam_events.run \
     sf_escan.run \
     phs_base.run \
@@ -303,6 +304,8 @@ TESTS_REQ_OCAML = \
     ewa_3.run \
     ewa_4.run \
     ilc.run \
+    gaussian_1.run \
+    gaussian_2.run \
     beam_events_1.run \
     beam_events_2.run \
     beam_events_3.run \

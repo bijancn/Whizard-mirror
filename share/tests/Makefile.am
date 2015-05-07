@@ -195,6 +195,8 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/sf_circe2_1.ref \
     ref-output/sf_circe2_2.ref \
     ref-output/sf_circe2_3.ref \
+    ref-output/sf_gaussian_1.ref \
+    ref-output/sf_gaussian_2.ref \
     ref-output/sf_beam_events_1.ref \
     ref-output/sf_beam_events_2.ref \
     ref-output/sf_beam_events_3.ref \
@@ -587,6 +589,8 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/circe2_1.ref \
     ref-output/circe2_2.ref \
     ref-output/ewa_4.ref \
+    ref-output/gaussian_1.ref \
+    ref-output/gaussian_2.ref \
     ref-output/beam_events_1.ref \
     ref-output/beam_events_4.ref \
     ref-output/energy_scan_1.ref \
@@ -740,6 +744,7 @@ UNIT_TESTS_SIN = \
     sf_ewa.sin \
     sf_circe1.sin \
     sf_circe2.sin \
+    sf_gaussian.sin \
     sf_beam_events.sin \
     sf_escan.sin \
     grids.sin \
@@ -971,6 +976,8 @@ MISC_TESTS_SIN = \
     ewa_3.sin \
     ewa_4.sin \
     ilc.sin \
+    gaussian_1.sin \
+    gaussian_2.sin \
     beam_events_1.sin \
     beam_events_2.sin \
     beam_events_3.sin \
