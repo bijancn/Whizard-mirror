@@ -286,7 +286,7 @@ parameters_ued.$(FC_MODULE_EXT): parameters.UED.lo
 parameters_ssc.$(FC_MODULE_EXT): parameters.SSC.lo
 	@:
 
-parameters_ssc.$(FC_MODULE_EXT): parameters.SSC_2.lo
+parameters_ssc_2.$(FC_MODULE_EXT): parameters.SSC_2.lo
 	@:
 
 parameters_ssc_altt.$(FC_MODULE_EXT): parameters.SSC_AltT.lo
