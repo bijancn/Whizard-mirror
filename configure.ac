@@ -802,9 +802,9 @@ AC_CONFIG_FILES([src/openloops/Makefile])
 AC_CONFIG_FILES([src/fks/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/powheg: POWHEG algorithm
+### Subdirectory src/matching: matching algorithms
 
-AC_CONFIG_FILES([src/powheg/Makefile])
+AC_CONFIG_FILES([src/matching/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/variables: Implementation of variable lists

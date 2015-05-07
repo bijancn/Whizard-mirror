@@ -313,6 +313,7 @@ TESTS_REQ_OCAML = \
     energy_scan_1.run \
     restrictions.run \
     process_log.run \
+    shower_err_1.run \
     parton_shower_1.run \
     parton_shower_2.run \
     mlm_matching_fsr.run \

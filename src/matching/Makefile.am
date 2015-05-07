@@ -30,24 +30,24 @@
 #
 ########################################################################
 
-## The files in this directory implement the POWHEG generation
+## The files in this directory implement different matchings
 
 ## We create a library which is still to be combined with auxiliary libs.
-noinst_LTLIBRARIES = libpowheg.la
+noinst_LTLIBRARIES = libmatching.la
 
-libpowheg_la_SOURCES = \
+libmatching_la_SOURCES = \
   matching_base.f90 \
   ckkw_matching.f90 \
   mlm_matching.f90 \
   powheg_matching.f90
 
 ## Omitting this would exclude it from the distribution
-dist_noinst_DATA = powheg.nw
+dist_noinst_DATA = matching.nw
 
 # Dump module names into file Modules
-libpowheg_Modules = ${libpowheg_la_SOURCES:.f90=}
+libmatching_Modules = ${libmatching_la_SOURCES:.f90=}
 Modules: Makefile
-	@for module in $(libpowheg_Modules); do \
+	@for module in $(libmatching_Modules); do \
           echo $$module >> $@.new; \
         done
 	@if diff $@ $@.new -q >/dev/null; then \
@@ -114,7 +114,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libpowheg_la_SOURCES)
+Makefile.depend: $(libmatching_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -156,19 +156,19 @@ if NOWEB_AVAILABLE
 PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
 POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 
-powheg.stamp: $(PRELUDE) $(srcdir)/powheg.nw $(POSTLUDE)
-	@rm -f powheg.tmp
-	@touch powheg.tmp
-	for src in $(libpowheg_la_SOURCES); do \
+matching.stamp: $(PRELUDE) $(srcdir)/matching.nw $(POSTLUDE)
+	@rm -f matching.tmp
+	@touch matching.tmp
+	for src in $(libmatching_la_SOURCES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
-	@mv -f powheg.tmp powheg.stamp
+	@mv -f matching.tmp matching.stamp
 
-$(libpowheg_la_SOURCES): powheg.stamp
+$(libmatching_la_SOURCES): matching.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
-	  rm -f powheg.stamp; \
-	  $(MAKE) $(AM_MAKEFLAGS) powheg.stamp; \
+	  rm -f matching.stamp; \
+	  $(MAKE) $(AM_MAKEFLAGS) matching.stamp; \
 	fi
 
 endif
@@ -192,7 +192,7 @@ endif
 
 ## Remove F90 module files
 clean-local: clean-noweb
-	-rm -f powheg.stamp powheg.tmp 
+	-rm -f matching.stamp matching.tmp 
 	-rm -f *.$(FC_MODULE_EXT)
 
 ## Remove backup files

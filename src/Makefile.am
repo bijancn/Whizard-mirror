@@ -60,7 +60,7 @@ SUBDIRS = \
   looptools \
   model_features \
   process_integration \
-  powheg \
+  matching \
   transforms \
   whizard-core \
   prebuilt \
@@ -94,7 +94,7 @@ libwhizard_la_LIBADD = \
   model_features/libmodel_features.la \
   variables/libvariables.la \
   process_integration/libprocess_integration.la \
-  powheg/libpowheg.la \
+  matching/libmatching.la \
   fks/libfks.la \
   gosam/libgosam.la \
   openloops/liboloops.la \
