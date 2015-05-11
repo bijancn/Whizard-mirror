@@ -32,6 +32,8 @@ These are the implementation modules, the concrete counterparts of
   Effective $W$ (and $Z$) approximation.
 \item[sf\_escan]
   Energy spectrum that emulates a uniform energy scan.
+\item[sf\_gaussian]
+  Gaussian beam spread
 \item[sf\_beam\_events]
   Beam-event generator that reads its input from an external file.
 \item[sf\_circe1]
@@ -1233,7 +1235,7 @@ parameters.
     real(default), intent(in), optional :: sqrts
     if (beam_data_are_valid (beam_data)) then
        if (present (sqrts)) then
-          if (sqrts /= beam_data%sqrts) then
+          if (.not. nearly_equal (sqrts, beam_data%sqrts)) then
              call msg_error ("Current setting of sqrts is inconsistent " &
                   // "with beam setup (ignored).")
           end if
@@ -1547,7 +1549,7 @@ been modified.  This can be checked here.
   function beam_data_masses_are_consistent (beam_data) result (flag)
     logical :: flag
     type(beam_data_t), intent(in) :: beam_data
-    flag = all (beam_data%mass == beam_data%flv%get_mass ())
+    flag = all (nearly_equal (beam_data%mass, beam_data%flv%get_mass ()))
   end function beam_data_masses_are_consistent
 
 @ %def beam_data_masses_are_consistent
@@ -2385,7 +2387,7 @@ for dropping the on-shell condition here.
     real(default) :: tt0, tt1, den
     type(vector3_t) :: kk, q1, q2
     if (d%collinear) then
-       if (d%s == 0 .and. d%u == 0) then
+       if (vanishes (d%s) .and. vanishes(d%u)) then
           q(1) = d%xb * k
           q(2) = d%x * k
        else
@@ -2515,12 +2517,12 @@ deduce the splitting parameters $x$, $t$, and $\phi$.
        end if
        ct2 = 1 - st2
        ct = sqrt (max (ct2, 0._default))
-       if (ct /= -1) then
+       if (.not. vanishes (1 + ct)) then
           d%t = d%t1 - 2 * d%xb * d%p * d%pb * st2 / (1 + ct)
        else
           d%t = d%t0
        end if
-       if (p1 /= 0 .or. p2 /= 0) then
+       if (.not. vanishes (p1) .or. .not. vanishes (p2)) then
           d%phi = atan2 (-p2, -p1)
        else
           d%phi = 0
@@ -5129,7 +5131,7 @@ and for the default case $\alpha=1$:
           factor = factor * power * xx / p(1)
        end if
     end if
-    if (xx /= 0) then
+    if (.not. vanishes (xx)) then
        r(1) = xx ** yy
        r(2) = xx / r(1)
        factor = factor * abs (log (xx))
@@ -5149,9 +5151,9 @@ and for the default case $\alpha=1$:
     real(kind=default) :: lg, xx, yy
     factor = 1
     xx = r(1) * r(2)
-    if (xx /= 0) then
+    if (.not. vanishes (xx)) then
        lg = log (xx)
-       if (lg /= 0) then
+       if (.not. vanishes (lg)) then
           yy = log (r(1)) / lg
        else
           yy = 0
@@ -8063,7 +8065,7 @@ the matrix elements are real, so we take the real part.
     integer :: i
     if (sf_int%status >= SF_EVALUATED) then
        do i = 1, size (value)
-          value(i) = sf_int%get_matrix_element (i)
+          value(i) = real (sf_int%get_matrix_element (i))
        end do
     else
        value = 0
@@ -9193,7 +9195,7 @@ functions in the chain.
                 end associate
              end do
              out_int => chain%get_out_int_ptr ()
-             sf_sum = out_int%sum ()
+             sf_sum = real (out_int%sum ())
              call chain%config%trace &
                   (chain%selected_channel, chain%p, chain%x, chain%f, sf_sum)
           end if
@@ -12561,7 +12563,7 @@ singularity which should in principle be resummed.
           data%error = MASS_MIX;  return
        end if
     end if
-    if (data%mass == 0) then
+    if (vanishes (data%mass)) then
        data%error = ZERO_MASS;  return
     else if (data%mass >= data%q_max) then
        data%error = Q_MAX_TOO_SMALL;  return
@@ -13848,7 +13850,7 @@ particle mass.
     data%E_max = E_max
     data%x_min = x_min
     data%x_max = 1
-    if (data%x_min == 0) then
+    if (vanishes (data%x_min)) then
        data%error = ZERO_XMIN;  return
     end if
     data%q_min = q_min
@@ -15057,7 +15059,7 @@ set the upper bound for $x$, $x_{\rm max}$, but we fix it to one here.
     data%sqrts = sqrts
     data%x_min = x_min
     data%x_max = 1
-    if (data%x_min == 0) then
+    if (vanishes (data%x_min)) then
        data%error = ZERO_XMIN;  return
     end if    
     select case (char (data%model%get_name ()))
@@ -15683,7 +15685,7 @@ generated $x$ values are identical.
          fL = data%coeff * &
               (cv**2 + ca**2) * (2 * xb / x) * c2       
          f = fp + fm + fL
-         if (f /= 0) then
+         if (.not. vanishes (f)) then
             fp = fp / f
             fm = fm / f
             fL = fL / f      
@@ -16362,7 +16364,7 @@ $\hat\sigma$ as a function of $\sqrt{\hat s}$.
     end do
     m2 = data%flv_in(1,:)%get_mass ()
     do i = 1, 2
-       if (any (data%flv_in(1:data%n_flv(i),i)%get_mass () /= m2(i))) then
+       if (.not. any (nearly_equal (data%flv_in(1:data%n_flv(i),i)%get_mass (), m2(i)))) then
           call msg_fatal ("Energy scan: incoming particle mass must be uniform")
        end if
     end do
@@ -17329,7 +17331,8 @@ Active the beam event reader, generate an event.
     x_free = 1
     call sf_int%generate_free (r, rb, x_free)
     call sf_int%complete_kinematics (x, f, r, rb, map=.false.)
-
+    call pacify (rb, 1.e-8_default)
+    
     write (u, "(A,9(1x,F10.7))")  "r =", r
     write (u, "(A,9(1x,F10.7))")  "rb=", rb
     write (u, "(A,9(1x,F10.7))")  "x =", x
@@ -19323,7 +19326,7 @@ in the current directory.
     case (-4)
        call msg_fatal ("CIRCE2: data file too large.")
     end select
-    if (data%lumi == 0) then
+    if (vanishes (data%lumi)) then
        call msg_fatal ("CIRCE2: luminosity vanishes for specified beams.")
     end if
   end subroutine circe2_data_check
@@ -19524,7 +19527,7 @@ helicities.
             null_array, [0._default, 0._default])    
        sf_int%data => data              
        if (data%polarized) then
-          if (sum (data%lumi_hel_frac) == 0 .or. &
+          if (vanishes (sum (data%lumi_hel_frac)) .or. &
                any (data%lumi_hel_frac < 0)) then
              call msg_fatal ("Circe2: Helicity-dependent lumi " &
                   // "fractions all vanish or",  &
@@ -22071,3 +22074,168 @@ type.
   end subroutine sf_lhapdf_3
 
 @ %def sf_lhapdf_3
+@
+\section{Easy PDF Access}
+For the shower, subtraction and matching, it is very useful to have
+direct access to $f(x,Q)$ independently of the used library.
+<<[[pdf.f90]]>>=
+<<File header>>
+
+module pdf
+
+<<Use kinds with double>>
+  use io_units
+  use system_dependencies, only: LHAPDF5_AVAILABLE, LHAPDF6_AVAILABLE
+  use diagnostics
+  use beam_structures
+  use lhapdf !NODEP!
+  use pdf_builtin !NODEP!
+
+<<Standard module head>>
+
+<<PDF: public>>
+
+<<PDF: parameters>>
+
+<<PDF: types>>
+
+contains
+
+<<PDF: procedures>>
+
+end module pdf
+@ %def pdf
+We support the following implementations:
+<<PDF: parameters>>=
+  integer, parameter, public :: STRF_NONE = 0
+  integer, parameter, public :: STRF_LHAPDF6 = 1
+  integer, parameter, public :: STRF_LHAPDF5 = 2
+  integer, parameter, public :: STRF_PDF_BUILTIN = 3
+
+@ %def STRF_NONE STRF_LHAPDF6 STRF_LHAPDF5 STRF_PDF_BUILTIN
+@ A container to bundle all necessary PDF data. Could be moved to a more
+central location.
+<<PDF: public>>=
+  public :: pdf_data_t
+<<PDF: types>>=
+  type :: pdf_data_t
+    type(lhapdf_pdf_t) :: pdf
+    real(default) :: xmin, xmax, qmin, qmax
+    integer :: type = STRF_NONE
+    integer :: set = 0
+   contains
+   <<PDF: pdf data: TBP>>
+  end type pdf_data_t
+
+@ %def pdf_data
+@
+<<PDF: pdf data: TBP>>=
+  procedure :: init => pdf_data_init
+<<PDF: procedures>>=
+  subroutine pdf_data_init (pdf_data, pdf_data_in)
+    class(pdf_data_t), intent(out) :: pdf_data
+    type(pdf_data_t), target, intent(in) :: pdf_data_in
+    pdf_data%xmin = pdf_data_in%xmin
+    pdf_data%xmax = pdf_data_in%xmax
+    pdf_data%qmin = pdf_data_in%qmin
+    pdf_data%qmax = pdf_data_in%qmax
+    pdf_data%set = pdf_data_in%set
+    pdf_data%type = pdf_data_in%type
+    if (pdf_data%type == STRF_LHAPDF6) then
+       if (pdf_data_in%pdf%is_associated ()) then
+          call lhapdf_copy_pointer (pdf_data_in%pdf, pdf_data%pdf)
+       else
+          call msg_bug ('pdf_data_init: pdf_data%pdf was not associated!')
+       end if
+    end if
+  end subroutine pdf_data_init
+
+@ %def pdf_data_init
+@
+<<PDF: pdf data: TBP>>=
+  procedure :: write => pdf_data_write
+<<PDF: procedures>>=
+  subroutine pdf_data_write (pdf_data, unit)
+    class(pdf_data_t), intent(in) :: pdf_data
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit); if (u < 0) return
+    write (u, "(3x,A,I0)") "PDF set  = ", pdf_data%set
+    write (u, "(3x,A,I0)") "PDF type = ", pdf_data%type
+  end subroutine pdf_data_write
+
+@ %def pdf_data_write
+@
+<<PDF: pdf data: TBP>>=
+  procedure :: setup => pdf_data_setup
+<<PDF: procedures>>=
+  subroutine pdf_data_setup (pdf_data, caller, beam_structure, lhapdf_member, set)
+    class(pdf_data_t), intent(out) :: pdf_data
+    character(len=*), intent(in) :: caller
+    type(beam_structure_t), intent(in) :: beam_structure
+    integer, intent(in) :: lhapdf_member, set
+    real(default) :: xmin, xmax, q2min, q2max
+    pdf_data%set = set
+    if (beam_structure%contains ("lhapdf")) then
+       if (LHAPDF6_AVAILABLE) then
+          pdf_data%type = STRF_LHAPDF6
+       else if (LHAPDF5_AVAILABLE) then
+          pdf_data%type = STRF_LHAPDF5
+       end if
+       write (msg_buffer, "(A,I0)")  caller // ": interfacing LHAPDF set #", &
+            pdf_data%set
+       call msg_message ()
+    else if (beam_structure%contains ("pdf_builtin")) then
+       pdf_data%type = STRF_PDF_BUILTIN
+       write (msg_buffer, "(A,I0)")  caller // ": interfacing PDF builtin set #", &
+            pdf_data%set
+       call msg_message ()
+    end if
+    select case (pdf_data%type)
+    case (STRF_LHAPDF6)
+       pdf_data%xmin = pdf_data%pdf%getxmin ()
+       pdf_data%xmax = pdf_data%pdf%getxmax ()
+       pdf_data%qmin = sqrt(pdf_data%pdf%getq2min ())
+       pdf_data%qmax = sqrt(pdf_data%pdf%getq2max ())
+    case (STRF_LHAPDF5)
+       if (LHAPDF5_AVAILABLE) then
+          call GetXminM (1, lhapdf_member, xmin)
+          call GetXmaxM (1, lhapdf_member, xmax)
+          call GetQ2minM (1, lhapdf_member, q2min)
+          call GetQ2maxM (1, lhapdf_member, q2max)
+          pdf_data%xmin = xmin
+          pdf_data%xmax = xmax
+          pdf_data%qmin = sqrt(q2min)
+          pdf_data%qmax = sqrt(q2max)
+       end if
+    end select
+  end subroutine pdf_data_setup
+
+@ %def pdf_data_setup
+@ This could be overloaded with a version that only asks for a specific
+flavor as it is supported by LHAPDF6.
+<<PDF: pdf data: TBP>>=
+  procedure :: evolve => pdf_data_evolve
+<<PDF: procedures>>=
+  subroutine pdf_data_evolve (pdf_data, x, q_in, f)
+    class(pdf_data_t), intent(inout) :: pdf_data
+    real(double), intent(in) :: x, q_in
+    real(double), dimension(-6:6), intent(out) :: f
+    real(double) :: q
+    select case (pdf_data%type)
+    case (STRF_PDF_BUILTIN)
+       call pdf_evolve_LHAPDF (pdf_data%set, x, q_in, f)
+    case (STRF_LHAPDF6)
+       q = min (pdf_data%qmax, q_in)
+       q = max (pdf_data%qmin, q)
+       call pdf_data%pdf%evolve_pdfm (x, q, f)
+    case (STRF_LHAPDF5)
+       q = min (pdf_data%qmax, q_in)
+       q = max (pdf_data%qmin, q)
+       call evolvePDFM (pdf_data%set, x, q, f)
+    case default
+       call msg_fatal ("PDF function: unknown PDF method.")
+    end select
+  end subroutine pdf_data_evolve
+@ %def pdf_data_evolve
+@

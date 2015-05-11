@@ -3614,9 +3614,7 @@ module shower
   use os_interface
   use diagnostics
   use lorentz
-  use system_dependencies, only: LHAPDF5_AVAILABLE, LHAPDF6_AVAILABLE
-  use lhapdf !NODEP!
-  use pdf_builtin !NODEP!
+  use pdf
   
   use shower_base
   use matching_base
@@ -3667,10 +3665,9 @@ end module shower
 [[POWHEG_TESTING]] allows to disable the parton shower for validation
 and testing of the POWHEG procedure.
 <<Shower: parameters>>=
-  logical, parameter :: DEBUG_EVT_SHOWER = .false.
   logical, parameter :: POWHEG_TESTING = .false.
 
-@ %def DEBUG_EVT_SHOWER POWHEG_TESTING
+@ %def POWHEG_TESTING
 @
 \subsection{Event Transform}
 The event transforms can do more than mere showering.  Especially, it
@@ -3767,55 +3764,6 @@ shower.
   end subroutine evt_shower_make_rng
 
 @ %def evt_shower_make_rng
-@ Use the process and beam structure to determine PDF parameters.  Will
-be performed during dispatching.
-<<Shower: evt shower: TBP>>=
-  procedure :: setup_pdf => evt_shower_setup_pdf
-<<Shower: procedures>>=
-  subroutine evt_shower_setup_pdf (evt, process, beam_structure, lhapdf_member)
-    class(evt_shower_t), intent(inout) :: evt
-    type(process_t), intent(in) :: process
-    type(beam_structure_t), intent(in) :: beam_structure
-    integer, intent(in) :: lhapdf_member
-    real(default) :: xmin, xmax, q2min, q2max
-    if (beam_structure%contains ("lhapdf")) then
-       if (LHAPDF6_AVAILABLE) then
-          evt%pdf_data%type = STRF_LHAPDF6
-       else if (LHAPDF5_AVAILABLE) then
-          evt%pdf_data%type = STRF_LHAPDF5
-       end if
-       evt%pdf_data%set = process%get_pdf_set ()
-       write (msg_buffer, "(A,I0)")  "Shower: interfacing LHAPDF set #", &
-            evt%pdf_data%set
-       call msg_message ()
-    else if (beam_structure%contains ("pdf_builtin")) then
-       evt%pdf_data%type = STRF_PDF_BUILTIN
-       evt%pdf_data%set = process%get_pdf_set ()
-       write (msg_buffer, "(A,I0)")  "Shower: interfacing PDF builtin set #", &
-            evt%pdf_data%set
-       call msg_message ()
-    end if
-    select case (evt%pdf_data%type)
-    case (STRF_LHAPDF6)
-       evt%pdf_data%xmin = evt%pdf_data%pdf%getxmin ()
-       evt%pdf_data%xmax = evt%pdf_data%pdf%getxmax ()
-       evt%pdf_data%qmin = sqrt(evt%pdf_data%pdf%getq2min ())
-       evt%pdf_data%qmax = sqrt(evt%pdf_data%pdf%getq2max ())
-    case (STRF_LHAPDF5)
-       if (LHAPDF5_AVAILABLE) then
-          call GetXminM (1, lhapdf_member, xmin)
-          call GetXmaxM (1, lhapdf_member, xmax)
-          call GetQ2minM (1, lhapdf_member, q2min)
-          call GetQ2maxM (1, lhapdf_member, q2max)
-          evt%pdf_data%xmin = xmin
-          evt%pdf_data%xmax = xmax
-          evt%pdf_data%qmin = sqrt(q2min)
-          evt%pdf_data%qmax = sqrt(q2max)
-       end if
-    end select
-  end subroutine evt_shower_setup_pdf
-    
-@ %def evt_shower_setup_pdf
 @ Things we want to do for a new event before the whole event
 transformation chain is evaluated.
 <<Shower: evt shower: TBP>>=
@@ -3838,6 +3786,7 @@ transformation chain is evaluated.
     real(default) :: pdftest
     logical :: hadron_collision
     ! TODO: (bcn 2015-04-24) also set info for combine_with_particle_set
+    call msg_debug (D_TRANSFORMS, "evt_shower_first_event")
     hadron_collision = .false.
     if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () <= 18)) then
        hadron_collision = .false.
@@ -3891,6 +3840,7 @@ we mark the particle set as invalid. This procedure directly takes the
     real(default), intent(out) :: probability
     logical :: valid, vetoed
     logical, save :: first_event = .true.
+    call msg_debug (D_TRANSFORMS, "evt_shower_generate_weighted")
     evt%particle_set = evt%previous%particle_set
     if (first_event) then
        call evt%first_event ()
@@ -3899,11 +3849,13 @@ we mark the particle set as invalid. This procedure directly takes the
     call evt%shower%import_particle_set (evt%particle_set, evt%os_data)
     if (allocated (evt%matching)) then
        call evt%matching%before_shower (evt%particle_set, vetoed)
+       if (msg_level(D_TRANSFORMS) >= DEBUG) then
+          call msg_debug (D_TRANSFORMS, "Matching before generate emissions")
+          call evt%matching%write ()
+       end if
     end if
     valid = .true.;  vetoed = .false.
     if (.not. vetoed .and. .not. POWHEG_TESTING) then
-       if (DEBUG_EVT_SHOWER .and. allocated (evt%matching)) &
-            call evt%matching%write ()
        if (evt%settings%method == PS_PYTHIA6 .or. &
            evt%settings%hadronization_active) then
           call assure_heprup (evt%particle_set)
@@ -3934,8 +3886,9 @@ The factorization parameters are irrelevant.
        if (allocated (evt%matching)) then
           call evt%matching%after_shower (evt%particle_set, vetoed)
        end if
-       if (DEBUG_EVT_SHOWER) then
-          print *, "Shower: obtained particle set after shower + matching"
+       if (debug_active (D_TRANSFORMS)) then
+          call msg_debug (D_TRANSFORMS, &
+               "Shower: obtained particle set after shower + matching")
           call evt%particle_set%write (summary = .true., compressed = .true.)
        end if
        evt%particle_set_exists = .not. vetoed

@@ -88,9 +88,19 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/object_logical_9.ref \
     ref-output/object_logical_10.ref \
     ref-output/object_integer_1.ref \
+    ref-output/object_integer_2.ref \
+    ref-output/object_integer_3.ref \
+    ref-output/object_integer_4.ref \
+    ref-output/object_integer_5.ref \
+    ref-output/object_integer_6.ref \
+    ref-output/object_integer_7.ref \
+    ref-output/object_integer_8.ref \
+    ref-output/object_integer_9.ref \
+    ref-output/object_integer_10.ref \
     ref-output/sindarin_parser_1.ref \
     ref-output/sindarin_parser_2.ref \
     ref-output/sindarin_parser_3.ref \
+    ref-output/sindarin_parser_4.ref \
     ref-output/state_matrix_1.ref \
     ref-output/state_matrix_2.ref \
     ref-output/state_matrix_3.ref \
@@ -525,6 +535,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/colors_hgg.ref \
     ref-output/alphas.ref \
     ref-output/jets_xsec.ref \
+    ref-output/shower_err_1.ref \
     ref-output/parton_shower_1.ref \
     ref-output/pythia6_1.ref \
     ref-output/pythia6_2.ref \
@@ -890,6 +901,7 @@ MISC_TESTS_SIN = \
     lhef_11.sin \
     select_1.sin \
     select_2.sin \
+    shower_err_1.sin \
     parton_shower_1.sin \
     parton_shower_2.sin \
     pythia6_1.sin \

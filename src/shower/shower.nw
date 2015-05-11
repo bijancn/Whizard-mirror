@@ -24,12 +24,11 @@ module shower_base
   use os_interface
   use rng_base
   use physics_defs
-  use lhapdf !NODEP!
-  use pdf_builtin !NODEP!
   use sm_physics, only: running_as_lam
   use particles
   use variables
   use model_data
+  use pdf
 
 <<Standard module head>>
 
@@ -97,95 +96,6 @@ end module shower_base
   end function shower_method_to_string
 
 @ %def shower_method_to_string
-@
-\subsection{PDF Parameters}
-The shower has to know about the PDF set used for the parent process,
-if any.  We support the following:
-<<Shower base: parameters>>=
-  integer, parameter, public :: STRF_NONE = 0
-  integer, parameter, public :: STRF_LHAPDF6 = 1
-  integer, parameter, public :: STRF_LHAPDF5 = 2
-  integer, parameter, public :: STRF_PDF_BUILTIN = 3
-
-@ %def STRF_NONE STRF_LHAPDF6 STRF_LHAPDF5 STRF_PDF_BUILTIN
-@ A container to bundle all necessary PDF data. Could be moved to a more
-central location.
-<<Shower base: public>>=
-  public :: pdf_data_t
-<<Shower base: types>>=
-  type :: pdf_data_t
-    type(lhapdf_pdf_t) :: pdf
-    real(default) :: xmin, xmax, qmin, qmax
-    integer :: type = STRF_NONE
-    integer :: set = 0
-   contains
-   <<Shower base: pdf data: TBP>>
-  end type pdf_data_t
-
-@ %def pdf_data
-@
-<<Shower base: pdf data: TBP>>=
-  procedure :: init => pdf_data_init
-<<Shower base: procedures>>=
-  subroutine pdf_data_init (pdf_data, pdf_data_in)
-    class(pdf_data_t), intent(out) :: pdf_data
-    type(pdf_data_t), target, intent(in) :: pdf_data_in
-    pdf_data%xmin = pdf_data_in%xmin
-    pdf_data%xmax = pdf_data_in%xmax
-    pdf_data%qmin = pdf_data_in%qmin
-    pdf_data%qmax = pdf_data_in%qmax
-    pdf_data%set = pdf_data_in%set
-    pdf_data%type = pdf_data_in%type
-    if (pdf_data%type == STRF_LHAPDF6) then
-       if (pdf_data_in%pdf%is_associated ()) then
-          call lhapdf_copy_pointer (pdf_data_in%pdf, pdf_data%pdf)
-       else
-          call msg_bug ('pdf_data_init: pdf_data%pdf was not associated!')
-       end if
-    end if
-  end subroutine pdf_data_init
-
-@ %def pdf_data_init
-@
-<<Shower base: pdf data: TBP>>=
-  procedure :: write => pdf_data_write
-<<Shower base: procedures>>=
-  subroutine pdf_data_write (pdf_data, unit)
-    class(pdf_data_t), intent(in) :: pdf_data
-    integer, intent(in), optional :: unit
-    integer :: u
-    u = given_output_unit (unit); if (u < 0) return
-    write (u, "(3x,A,I0)") "PDF set  = ", pdf_data%set
-    write (u, "(3x,A,I0)") "PDF type = ", pdf_data%type
-  end subroutine pdf_data_write
-
-@ %def pdf_data_write
-@ This could be overloaded with a version that only asks for a specific
-flavor as it is supported by LHAPDF6.
-<<Shower base: pdf data: TBP>>=
-  procedure :: evolve => pdf_data_evolve
-<<Shower base: procedures>>=
-  subroutine pdf_data_evolve (pdf_data, x, q_in, f)
-    class(pdf_data_t), intent(inout) :: pdf_data
-    real(double), intent(in) :: x, q_in
-    real(double), dimension(-6:6), intent(out) :: f
-    real(double) :: q
-    select case (pdf_data%type)
-    case (STRF_PDF_BUILTIN)
-       call pdf_evolve_LHAPDF (pdf_data%set, x, q_in, f)
-    case (STRF_LHAPDF6)
-       q = min (pdf_data%qmax, q_in)
-       q = max (pdf_data%qmin, q)
-       call pdf_data%pdf%evolve_pdfm (x, q, f)
-    case (STRF_LHAPDF5)
-       q = min (pdf_data%qmax, q_in)
-       q = max (pdf_data%qmin, q)
-       call evolvePDFM (pdf_data%set, x, q, f)
-    case default
-       call msg_fatal ("PDF function: unknown PDF method.")
-    end select
-  end subroutine pdf_data_evolve
-@ %def pdf_data_evolve
 @
 \subsection{Shower settings}
 These the general shower settings, the settings and parameters for the
@@ -522,15 +432,6 @@ emissions.
 @ %def shower_base_get_final_colored_ME_momenta
 @
 \subsection{Additional parameters}
-[[DEBUG_WHIZ_SHOWER]] decides whether to print out additional information while
-[[ENSURE]] does additional sanity checks that should be disabled for
-production.
-<<Shower base: parameters>>=
-  logical, parameter, public :: DEBUG_WHIZ_SHOWER = .false.
-  logical, parameter, public :: ENSURE = .false.
-  logical, parameter, public :: DEBUG_SHOWER = .false.
-@ %def DEBUG_WHIZ_SHOWER ENSURE DEBUG_SHOWER
-@
 These parameters are the cut-off scale $t_{\text{cut}}$, given in
 GeV$^2$ ([[PARJ(82)]]), the cut-off scale for the $P_t^2$-ordered
 shower in GeV$^2$, and the two shower parameters [[PARP(72)]] and
@@ -1387,7 +1288,8 @@ parton [[prt]] into its daughters are allowed or not.
   recursive subroutine parton_apply_z(prt, newz)
     type(parton_t), intent(inout) :: prt
     real(default), intent(in) :: newz
-    if (DEBUG_WHIZ_SHOWER) print *, "D: old z = ", prt%z , " new z = ", newz
+    call msg_debug2 (D_SHOWER, "parton_apply_z: old z", prt%z)
+    call msg_debug2 (D_SHOWER, "              : new z", newz)
     prt%z = newz
     if (associated (prt%child1) .and. associated (prt%child2)) then
        prt%child1%momentum%p(0) = newz * prt%momentum%p(0)
@@ -1405,7 +1307,7 @@ parton [[prt]] into its daughters are allowed or not.
   recursive subroutine parton_apply_costheta (prt, rng)
     type(parton_t), intent(inout) :: prt
     class(rng_t), intent(inout), allocatable :: rng
-    if (DEBUG_WHIZ_SHOWER) print *, "D: parton_apply_costheta for parton " , prt%nr
+    if (debug2_active (D_SHOWER)) print *, "D: parton_apply_costheta for parton " , prt%nr
     prt%z = 0.5_default * (one + prt%get_beta () * prt%costheta)
     if (associated (prt%child1) .and. associated (prt%child2) ) then
        if (prt%child1%simulated .and. &
@@ -1483,8 +1385,8 @@ three-momenta of its children given their energy and virtuality
     real(default), dimension(1:3) :: momentum
     type(vector3_t) :: pchild1_direction
     type(lorentz_transformation_t) :: L, rotation
-    if (DEBUG_WHIZ_SHOWER) print *, "D: parton_generate_ps for parton " , prt%nr
-    if (ENSURE) then
+    if (debug2_active (D_SHOWER)) print *, "D: parton_generate_ps for parton " , prt%nr
+    if (debug_active (D_SHOWER)) then
        if (.not. (associated (prt%child1) .and. associated (prt%child2))) then
           print *, "no children for generate_ps"
           stop 1
@@ -1553,7 +1455,7 @@ three-momenta of its children given their energy and virtuality
        pabs = space_part_norm (prt%momentum)
        if ((prt%child1%momentum%p(0)**2 - prt%child1%t < 0) .or. &
            (prt%child2%momentum%p(0)**2 - prt%child2%t < 0)) then
-          if (DEBUG_WHIZ_SHOWER) print *, "D: generate_ps error at E^2 < t"
+          call msg_debug(D_SHOWER, "generate_ps error at E^2 < t")
           return
        end if
        p1abs = sqrt (prt%child1%momentum%p(0)**2 - prt%child1%t)
@@ -1561,7 +1463,7 @@ three-momenta of its children given their energy and virtuality
        x = (pabs**2 + p1abs**2 - p2abs**2) / (two * pabs)
        if (pabs > p1abs + p2abs .or. &
             pabs < abs(p1abs - p2abs)) then
-          if (DEBUG_WHIZ_SHOWER) then
+          if (debug_active (D_SHOWER)) then
              print *, "D: parton_generate_ps Dreiecksungleichung error &
                   &for parton ", prt%nr, " ", &
                   space_part_norm (prt%momentum), " ", p1abs, " ", p2abs
@@ -1614,8 +1516,8 @@ generates the two remaining three-momenta.
     integer :: i,j
     real(default) :: scproduct, pabs, p1abs, p2abs, x, ptabs, phi
     real(default), dimension(1:3) :: momentum
-    if (DEBUG_WHIZ_SHOWER) print *, "D: parton_generate_ps_ini: for parton " , prt%nr
-    if (ENSURE) then
+    if (debug_active (D_SHOWER)) print *, "D: parton_generate_ps_ini: for parton " , prt%nr
+    if (debug_active (D_SHOWER)) then
        if (.not. (associated (prt%child1) .and. associated (prt%child2))) then
           print *, "no children for generate_ps"
           stop 1
@@ -1655,7 +1557,7 @@ generates the two remaining three-momenta.
             prt%child2%t))
 
        x = (pabs**2 + p1abs**2 - p2abs**2) / (two * pabs)
-       if (ENSURE) then
+       if (debug_active (D_SHOWER)) then
           if (pabs > p1abs + p2abs .or. pabs < abs(p1abs - p2abs)) then
              print *, "error at generate_ps, Dreiecksungleichung for parton ", &
                   prt%nr, " ", pabs," ",p1abs," ",p2abs
@@ -1665,7 +1567,7 @@ generates the two remaining three-momenta.
              stop 1
           end if
        end if
-       if (DEBUG_WHIZ_SHOWER) print *, "D: parton_generate_ps_ini: x = ", x
+       if (debug_active (D_SHOWER)) print *, "D: parton_generate_ps_ini: x = ", x
        ptabs = sqrt (p1abs * p1abs - x**2)
        call rng%generate (phi)
        phi = twopi * phi
@@ -1698,9 +1600,6 @@ generates the two remaining three-momenta.
     real(default) :: integral, random
 
     if (signal_is_pending ()) return
-    if (DEBUG_WHIZ_SHOWER) then
-       print *, "D: parton_next_t_ana: for parton " , prt%nr
-    end if
 
     ! check if branchings are possible at all
     if (min (prt%t, prt%momentum%p(0)**2) < &
@@ -1713,7 +1612,6 @@ generates the two remaining three-momenta.
     integral = zero
     call rng%generate (random)
     do
-       if (signal_is_pending ()) return
        call parton_simulate_stept (prt, rng, integral, random, gtoqq, .false.)
        if (prt%simulated) then
           if (prt%is_gluon ()) then
@@ -2001,8 +1899,7 @@ module shower_core
   use flavors
   use colors
   use subevents
-  use pdf_builtin !NODEP!
-  use lhapdf !NODEP!
+  use pdf
   use rng_base
   use shower_base
   use shower_partons
@@ -2076,8 +1973,7 @@ $k_T$-ordered showers.
     class(shower_t), intent(out) :: shower
     type(shower_settings_t), intent(in) :: settings
     type(pdf_data_t), intent(in) :: pdf_data
-    if (DEBUG_WHIZ_SHOWER) &
-         print *, "D: shower_init"
+    call msg_debug (D_SHOWER, "shower_init")
     shower%settings = settings
     call shower%pdf_data%init (pdf_data)
     shower%name = "WHIZARD internal"
@@ -2094,7 +1990,7 @@ $k_T$-ordered showers.
     call shower%cleanup ()
     shower%next_free_nr = 1
     shower%next_color_nr = 1
-    if (ENSURE) then
+    if (debug_active (D_SHOWER)) then
        if (allocated (shower%interactions)) then
           call msg_bug ("Shower: creating new shower while old one " // &
                "is still associated (interactions)")
@@ -2152,7 +2048,7 @@ $k_T$-ordered showers.
          parton_pointers
     integer :: n_beam, n_in, n_out, n_tot
     integer :: i, j, nr, max_color_nr
-    if (DEBUG_SHOWER)  print *, 'shower_import_particle_set'
+    call msg_debug (D_SHOWER, 'shower_import_particle_set')
     call count_and_allocate ()
     call setup_hadrons_from_particle_set ()
     call setup_partons_from_particle_set ()
@@ -2183,7 +2079,7 @@ $k_T$-ordered showers.
   subroutine setup_hadrons_from_particle_set ()
     j = 0
     if (n_beam > 0 .and. all (particle_set%prt(1:2)%flv%get_pdg_abs () > TAU)) then
-       if (DEBUG_SHOWER)  print *, "Copy hadrons from particle_set to hadrons"
+       call msg_debug (D_SHOWER, 'Copy hadrons from particle_set to hadrons')
        if (.not. allocated (hadrons))  allocate (hadrons (1:2))
        do i = 1, n_tot
           if (particle_set%prt(i)%status == PRT_BEAM) then
@@ -2203,7 +2099,7 @@ $k_T$-ordered showers.
   subroutine setup_partons_from_particle_set ()
     integer, dimension(1) :: parent
     j = 0
-    if (DEBUG_SHOWER) print *, "Copy partons from particle_set to partons"
+    call msg_debug (D_SHOWER, "Copy partons from particle_set to partons")
     do i = 1, n_tot
        if (particle_set%prt(i)%get_status () == PRT_INCOMING .or. &
            particle_set%prt(i)%get_status () == PRT_OUTGOING) then
@@ -2245,145 +2141,143 @@ $k_T$-ordered showers.
     integer :: n_int, max_color_nr
     integer, dimension(2,4) :: color_corr
 
-       if (shower%settings%isr_active) then
-          if (DEBUG_SHOWER) print *, "Generate ISR with FSR"
-          i = 0
-          BRANCHINGS: do
-             i = i+1
-             if (signal_is_pending ()) return
-             if (shower%settings%muli_active) then
-             call shower%mi%generate_gev2_pt2 &
-                     (shower%get_ISR_scale (), mi_scale)
-             else
-                mi_scale = 0.0
-             end if
-
-             !!! Shower: debugging
-             !!! shower%generate_next_isr_branching returns a pointer to
-             !!! the parton with the next ISR-branching, this parton's
-             !!! scale is the scale of the next branching
-             ! temppp=shower%generate_next_isr_branching_veto ()
-             temppp = shower%generate_next_isr_branching ()
-
-             if (.not. associated (temppp%p) .and. &
-               mi_scale < shower%settings%min_virtuality) then
-                exit BRANCHINGS
-             end if
-             !!! check if branching or interaction occurs next
-             if (associated (temppp%p)) then
-                ps_scale = abs(temppp%p%t)
-             else
-                ps_scale = 0._default
-             end if
-             if (mi_scale > ps_scale) then
-                !!! discard branching evolution lower than mi_scale
-                call shower%set_max_ISR_scale (mi_scale)
-                if (associated (temppp%p)) &
-                     call temppp%p%set_simulated (.false.)
-
-                !!! execute new interaction
-                deallocate (partons)
-                deallocate (parton_pointers)
-                allocate (partons(1:4))
-                allocate (parton_pointers(1:4))
-                do j = 1, 4
-                   partons(j)%nr = shower%get_next_free_nr ()
-                   partons(j)%belongstointeraction = .true.
-                   parton_pointers(j)%p => partons(j)
-                end do
-             call shower%mi%generate_partons (partons(1)%nr, partons(2)%nr, &
-                     partons(1)%x, partons(2)%x, &
-                     partons(1)%type, partons(2)%type, &
-                     partons(3)%type, partons(4)%type)
-                !!! calculate momenta
-                shat = partons(1)%x *partons(2)%x * &
-                     shower_interaction_get_s (shower%interactions(1)%i)
-                partons(1)%momentum = [0.5_default * sqrt(shat), &
-                     zero, zero, 0.5_default*sqrt(shat)]
-                partons(2)%momentum = [0.5_default * sqrt(shat), &
-                     zero, zero, -0.5_default*sqrt(shat)]
-                call parton_set_initial (partons(1), &
-                     shower%interactions(1)%i%partons(1)%p%initial)
-                call parton_set_initial (partons(2), &
-                     shower%interactions(1)%i%partons(2)%p%initial)
-                partons(1)%belongstoFSR = .false.
-                partons(2)%belongstoFSR = .false.
-                !!! calculate color connection
-             call shower%mi%get_color_correlations &
-                     (shower%get_next_color_nr (), &
-                     max_color_nr,color_corr)
-             call shower%update_max_color_nr (max_color_nr)
-
-                partons(1)%c1 = color_corr(1,1)
-                partons(1)%c2 = color_corr(2,1)
-                partons(2)%c1 = color_corr(1,2)
-                partons(2)%c2 = color_corr(2,2)
-                partons(3)%c1 = color_corr(1,3)
-                partons(3)%c2 = color_corr(2,3)
-                partons(4)%c1 = color_corr(1,4)
-                partons(4)%c2 = color_corr(2,4)
-
-                call shower%rng%generate (phi)
-                phi = 2 * pi * phi
-                partons(3)%momentum = [0.5_default*sqrt(shat), &
-                     sqrt(mi_scale)*cos(phi), &
-                     sqrt(mi_scale)*sin(phi), &
-                     sqrt(0.25_default*shat - mi_scale)]
-                partons(4)%momentum = [ 0.5_default*sqrt(shat), &
-                     -sqrt(mi_scale)*cos(phi), &
-                     -sqrt(mi_scale)*sin(phi), &
-                     -sqrt(0.25_default*shat - mi_scale)]
-                partons(3)%belongstoFSR = .true.
-                partons(4)%belongstoFSR = .true.
-
-                call shower%add_interaction_2ton (parton_pointers)
-                n_int = size (shower%interactions)
-                do k = 1, 2
-                call shower%mi%replace_parton &
-                     (shower%interactions(n_int)%i%partons(k)%p%initial%nr, &
-                      shower%interactions(n_int)%i%partons(k)%p%nr, &
-                      shower%interactions(n_int)%i%partons(k)%p%parent%nr, &
-                      shower%interactions(n_int)%i%partons(k)%p%type, &
-                      shower%interactions(n_int)%i%partons(k)%p%x, &
-                      mi_scale)
-                end do
-             else
-             !!! execute the next branching 'found' in the previous step
-                call shower%execute_next_isr_branching (temppp)
-                if (shower%settings%muli_active) then
-                call shower%mi%replace_parton (temppp%p%initial%nr, &
-                        temppp%p%child1%nr, temppp%p%nr, &
-                        temppp%p%type, temppp%p%x, ps_scale)
-                end if
-
-             end if
-          end do BRANCHINGS
-
-          call shower%generate_fsr_for_isr_partons ()
-       else
+    if (shower%settings%isr_active) then
+       call msg_debug (D_SHOWER, "Generate ISR with FSR")
+       i = 0
+       BRANCHINGS: do
+          i = i+1
           if (signal_is_pending ()) return
-          if (DEBUG_SHOWER) print *, 'Generate FSR without ISR'
-          call shower%simulate_no_isr_shower ()
-       end if
+          if (shower%settings%muli_active) then
+          call shower%mi%generate_gev2_pt2 &
+                  (shower%get_ISR_scale (), mi_scale)
+          else
+             mi_scale = 0.0
+          end if
 
-       !!! some bookkeeping, needed after the shower is done
-       call shower%boost_to_labframe ()
-       call shower%generate_primordial_kt ()
-       call shower%update_beamremnants ()
+          !!! Shower: debugging
+          !!! shower%generate_next_isr_branching returns a pointer to
+          !!! the parton with the next ISR-branching, this parton's
+          !!! scale is the scale of the next branching
+          ! temppp=shower%generate_next_isr_branching_veto ()
+          temppp = shower%generate_next_isr_branching ()
 
-       if (shower%settings%fsr_active) then
-          do i = 1, size (shower%interactions)
-             if (signal_is_pending ()) return
-             call shower%interaction_generate_fsr_2ton &
-                  (shower%interactions(i)%i)
-          end do
-       else
-          call shower%simulate_no_fsr_shower ()
-       end if
-       if (DEBUG_SHOWER) then
-          write (*, "(A)")  "SHOWER FINISHED: "
-          call shower%write ()
-       end if
+          if (.not. associated (temppp%p) .and. &
+            mi_scale < shower%settings%min_virtuality) then
+             exit BRANCHINGS
+          end if
+          !!! check if branching or interaction occurs next
+          if (associated (temppp%p)) then
+             ps_scale = abs(temppp%p%t)
+          else
+             ps_scale = 0._default
+          end if
+          if (mi_scale > ps_scale) then
+             !!! discard branching evolution lower than mi_scale
+             call shower%set_max_ISR_scale (mi_scale)
+             if (associated (temppp%p)) &
+                  call temppp%p%set_simulated (.false.)
+
+             !!! execute new interaction
+             deallocate (partons)
+             deallocate (parton_pointers)
+             allocate (partons(1:4))
+             allocate (parton_pointers(1:4))
+             do j = 1, 4
+                partons(j)%nr = shower%get_next_free_nr ()
+                partons(j)%belongstointeraction = .true.
+                parton_pointers(j)%p => partons(j)
+             end do
+          call shower%mi%generate_partons (partons(1)%nr, partons(2)%nr, &
+                  partons(1)%x, partons(2)%x, &
+                  partons(1)%type, partons(2)%type, &
+                  partons(3)%type, partons(4)%type)
+             !!! calculate momenta
+             shat = partons(1)%x *partons(2)%x * &
+                  shower_interaction_get_s (shower%interactions(1)%i)
+             partons(1)%momentum = [0.5_default * sqrt(shat), &
+                  zero, zero, 0.5_default*sqrt(shat)]
+             partons(2)%momentum = [0.5_default * sqrt(shat), &
+                  zero, zero, -0.5_default*sqrt(shat)]
+             call parton_set_initial (partons(1), &
+                  shower%interactions(1)%i%partons(1)%p%initial)
+             call parton_set_initial (partons(2), &
+                  shower%interactions(1)%i%partons(2)%p%initial)
+             partons(1)%belongstoFSR = .false.
+             partons(2)%belongstoFSR = .false.
+             !!! calculate color connection
+          call shower%mi%get_color_correlations &
+                  (shower%get_next_color_nr (), &
+                  max_color_nr,color_corr)
+          call shower%update_max_color_nr (max_color_nr)
+
+             partons(1)%c1 = color_corr(1,1)
+             partons(1)%c2 = color_corr(2,1)
+             partons(2)%c1 = color_corr(1,2)
+             partons(2)%c2 = color_corr(2,2)
+             partons(3)%c1 = color_corr(1,3)
+             partons(3)%c2 = color_corr(2,3)
+             partons(4)%c1 = color_corr(1,4)
+             partons(4)%c2 = color_corr(2,4)
+
+             call shower%rng%generate (phi)
+             phi = 2 * pi * phi
+             partons(3)%momentum = [0.5_default*sqrt(shat), &
+                  sqrt(mi_scale)*cos(phi), &
+                  sqrt(mi_scale)*sin(phi), &
+                  sqrt(0.25_default*shat - mi_scale)]
+             partons(4)%momentum = [ 0.5_default*sqrt(shat), &
+                  -sqrt(mi_scale)*cos(phi), &
+                  -sqrt(mi_scale)*sin(phi), &
+                  -sqrt(0.25_default*shat - mi_scale)]
+             partons(3)%belongstoFSR = .true.
+             partons(4)%belongstoFSR = .true.
+
+             call shower%add_interaction_2ton (parton_pointers)
+             n_int = size (shower%interactions)
+             do k = 1, 2
+             call shower%mi%replace_parton &
+                  (shower%interactions(n_int)%i%partons(k)%p%initial%nr, &
+                   shower%interactions(n_int)%i%partons(k)%p%nr, &
+                   shower%interactions(n_int)%i%partons(k)%p%parent%nr, &
+                   shower%interactions(n_int)%i%partons(k)%p%type, &
+                   shower%interactions(n_int)%i%partons(k)%p%x, &
+                   mi_scale)
+             end do
+          else
+          !!! execute the next branching 'found' in the previous step
+             call shower%execute_next_isr_branching (temppp)
+             if (shower%settings%muli_active) then
+             call shower%mi%replace_parton (temppp%p%initial%nr, &
+                     temppp%p%child1%nr, temppp%p%nr, &
+                     temppp%p%type, temppp%p%x, ps_scale)
+             end if
+
+          end if
+       end do BRANCHINGS
+
+       call shower%generate_fsr_for_isr_partons ()
+    else
+       if (signal_is_pending ()) return
+       call msg_debug (D_SHOWER, "Generate FSR without ISR")
+       call shower%simulate_no_isr_shower ()
+    end if
+
+    !!! some bookkeeping, needed after the shower is done
+    call shower%boost_to_labframe ()
+    call shower%generate_primordial_kt ()
+    call shower%update_beamremnants ()
+
+    if (shower%settings%fsr_active) then
+       do i = 1, size (shower%interactions)
+          if (signal_is_pending ()) return
+          call shower%interaction_generate_fsr_2ton &
+               (shower%interactions(i)%i)
+       end do
+    else
+       call shower%simulate_no_fsr_shower ()
+    end if
+    call msg_debug (D_SHOWER, "Shower finished:")
+    if (debug_active (D_SHOWER))  call shower%write ()
 
     valid = shower%valid
     !!! clean-up muli: we should finalize the muli pdf sets
@@ -2447,7 +2341,7 @@ treated massless.
     type(lorentz_transformation_t) :: L
 
     if (signal_is_pending ()) return
-    if (DEBUG_SHOWER) print *, "Add interaction2toN"
+    call msg_debug (D_SHOWER, "Add interaction2toN")
     n_partons = size (partons)
     n_out = n_partons - 2
     if (n_out < 2) then
@@ -2458,8 +2352,8 @@ treated massless.
     isr_is_possible_and_allowed = (associated (partons(1)%p%initial) &
          .and. associated (partons(2)%p%initial)) .and. &
          shower%settings%isr_active
-    if (DEBUG_SHOWER) print *, 'isr_is_possible_and_allowed =    ', &
-         isr_is_possible_and_allowed
+    call msg_debug (D_SHOWER, "isr_is_possible_and_allowed", &
+         isr_is_possible_and_allowed)
 
     if (associated (partons(1)%p%initial) .and. &
          partons(1)%p%is_quark ()) then
@@ -2891,7 +2785,7 @@ end subroutine set_starting_scale
           ! TODO: (bcn 2015-05-05) memory leak here? no deallocation?
           exit
        end if
-       if (ENSURE) then
+       if (debug_active (D_SHOWER)) then
           if (i == size (shower%partons)) then
              call msg_error ("shower_remove_parton_from_partons: parton&
                   &to be removed not found")
@@ -2927,7 +2821,7 @@ end subroutine set_starting_scale
     class(shower_t), intent(inout) :: shower
     integer :: i, j, maxsort, size_partons
     logical :: changed
-    if (DEBUG_WHIZ_SHOWER) print *, "D: shower_sort_partons"
+    call msg_debug2 (D_SHOWER, "shower_sort_partons")
     if (.not. allocated (shower%partons)) return
     size_partons = size (shower%partons)
     maxsort = 0
@@ -3017,7 +2911,6 @@ end subroutine set_starting_scale
           if (.not. changed) exit OUTERDO_T
        end do OUTERDO_T
     end if
-    if (DEBUG_WHIZ_SHOWER) print *, "D: shower_sort_partons: finished"
   end subroutine shower_sort_partons
 
 @ %def shower_sort_partons
@@ -3083,13 +2976,13 @@ end subroutine set_starting_scale
     integer, intent(in), optional :: custom_length
     integer :: i, length, oldlength
     type(parton_pointer_t), dimension(:), allocatable :: tmp_partons
-    if (DEBUG_WHIZ_SHOWER) print *, "D: shower_enlarge_partons_array"
+    call msg_debug (D_SHOWER, "shower_enlarge_partons_array")
     if (present(custom_length)) then
        length = custom_length
     else
        length = 10
     end if
-    if (ENSURE) then
+    if (debug_active (D_SHOWER)) then
        if (length < 1) then
           call msg_bug ("Shower: no parton_pointers added in shower%partons")
        end if
@@ -3167,7 +3060,7 @@ end subroutine set_starting_scale
     type(parton_t), intent(inout), target :: prt
     integer :: i, lastfree
     type(parton_pointer_t) :: newprt
-    if (DEBUG_WHIZ_SHOWER) print *, "D: shower_add_parent: for parton ", prt%nr
+    call msg_debug2 (D_SHOWER, "shower_add_parent: for parton nr", prt%nr)
     allocate (newprt%p)
     newprt%p%nr = shower%get_next_free_nr ()
     !!! add new parton as parent
@@ -3189,7 +3082,7 @@ end subroutine set_starting_scale
           lastfree = i
        end if
     end do
-    if (ENSURE) then
+    if (debug_active (D_SHOWER)) then
        if (lastfree == 0) then
           call msg_bug ("Shower: no free pointers found")
        end if
@@ -3737,7 +3630,7 @@ center-of-mass frame of its partons nearest to the hadron.
          (interaction, prt1, prt2, isr_pt_ordered)
     beta = prt1%momentum + prt2%momentum
     beta = beta / beta%p(0)
-    if (ENSURE) then
+    if (debug_active (D_SHOWER)) then
        if (beta**2 > one) then
           call msg_error ("Shower: boost to CM frame: beta > 1")
           return
@@ -4016,11 +3909,11 @@ proper flavor information, by the ISR shower.
     integer :: n_shower_partons, n_remnants, i, j
     integer :: n_in, n_out, n_beam, n_tot_old
     if (signal_is_pending ()) return
+    call msg_debug (D_SHOWER, "shower_combine_with_particle_set")
+    call msg_debug (D_SHOWER, "Particle set before replacing")
+    if (debug_active (D_SHOWER))  &
+         call particle_set%write (summary=.true., compressed=.true.)
 
-    if (DEBUG_SHOWER) then
-       print *, 'Particle set before replacing'
-       call particle_set%write (summary=.true., compressed=.true.)
-    end if
     n_shower_partons = shower%get_nr_of_partons (only_colored = &
                                      .true., no_hard_prts = .true.)
     n_remnants = shower%get_nr_of_partons (only_colored = .false., &
@@ -4035,10 +3928,10 @@ proper flavor information, by the ISR shower.
        call add_to_pset (n_tot_old + n_remnants, .false.)
        call particle_set%replace (particles)
     end if
-    if (DEBUG_SHOWER) then
-       print *, 'Particle set after replacing'
-       call particle_set%write (summary=.true., compressed=.true.)
-    end if
+
+    call msg_debug (D_SHOWER, 'Particle set after replacing')
+    if (debug_active (D_SHOWER))  &
+         call particle_set%write (summary=.true., compressed=.true.)
 
   contains
 
@@ -4060,7 +3953,7 @@ proper flavor information, by the ISR shower.
     shower_partons_ids = [(n_tot_old + n_remnants + i, i=1, n_shower_partons)]
     incoming_ids = [(n_beam +  i, i=1, n_in)]
     outgoing_ids = [(n_tot_old - n_out  + i, i=1, n_out )]
-    if (DEBUG_SHOWER) then
+    if (debug_active (D_SHOWER)) then
         print *, 'n_remnants =    ', n_remnants
         print *, 'n_shower_partons =    ', n_shower_partons
         print *, 'n_tot_old =    ', n_tot_old
@@ -4098,10 +3991,6 @@ proper flavor information, by the ISR shower.
        idx = n_tot_old - n_out - n_in + j
     end if
     call particles(idx)%set_momentum (prt%momentum)
-    if (DEBUG_SHOWER) then
-       print *, 'idx =    ', idx
-       call particles(idx)%write()
-    end if
   end subroutine replace_parton_in_particles
 
 @
@@ -4306,7 +4195,7 @@ proper flavor information, by the ISR shower.
       integer :: quark, d_nf
 
       integral = zero
-      if (DEBUG_WHIZ_SHOWER) then
+      if (debug2_active (D_SHOWER)) then
          print *, "D: integral_over_z_simple: t = ", prt%t
       end if
       minz = prt%x
@@ -4572,7 +4461,7 @@ proper flavor information, by the ISR shower.
     if (signal_is_pending ()) return
     gtoqq = 0
 
-    if (DEBUG_WHIZ_SHOWER) print *, "D: shower_simulate_children_ana: for parton " , prt%nr
+    if (debug2_active (D_SHOWER)) print *, "D: shower_simulate_children_ana: for parton " , prt%nr
 
     if (.not. associated (prt%child1) .or. .not. associated (prt%child2)) then
        call msg_error ("Shower: error in simulate_children_ana: no children.")
@@ -4835,7 +4724,7 @@ number and the integral.
 
       quarkpdfsum = zero
       d_nf = shower%settings%max_n_flavors
-      if (DEBUG_WHIZ_SHOWER) then
+      if (debug2_active (D_SHOWER)) then
          print *, "D: integral_over_z_isr_pt: for scale = ", prt%scale
       end if
 
@@ -4847,7 +4736,7 @@ number and the integral.
            0.25_default * sqrt(prt%scale) / mbr), shower%settings%isr_z_cutoff)
       zstep = (zmax - zmin) / n_total_bins
 
-      if (ENSURE) then
+      if (debug_active (D_SHOWER)) then
          if (zmin > zmax) then
             call msg_bug(" error in integral_over_z_isr_pt: zmin > zmax ")
             integral = zero
@@ -5102,7 +4991,7 @@ branching, while FSR branchings are ignored.
       real(default) :: random
       real(default) :: z, zstep, zmin, integral
       real(default) :: zmax = 0.99_default !! ??
-      if (DEBUG_WHIZ_SHOWER) print *, "D: generate generate_trial_z_and_typ"
+      call msg_debug (D_SHOWER, "generate_trial_z_and_typ")
       call shower%rng%generate (random)
       integral = zero
       !!! decide which branching a->bc occurs
@@ -5411,7 +5300,7 @@ branching, while FSR branchings are ignored.
         real(default) :: temprand
         real(default), parameter :: zstepfactor = 0.1_default
         real(default), parameter :: zstepmin = 0.0001_default
-        if (DEBUG_WHIZ_SHOWER) print *, "D: integral_over_z_part_isr"
+        call msg_debug2 (D_SHOWER, "integral_over_z_part_isr")
         pdf_divisor = shower%get_pdf &
              (prt%initial%type, prt%child1%x, prt%t, prt%child1%type)
         z = minz
@@ -5529,10 +5418,9 @@ FSR branchings are ignored.
           index = i
           exit
        end do
-       if (ENSURE) then
+       if (debug_active (D_SHOWER)) then
           if (index == 0) then
              call msg_fatal(" no branchable partons found")
-             return
           end if
        end if
 
@@ -5577,7 +5465,7 @@ FSR branchings are ignored.
     integer :: n_int, i
     type(parton_t), pointer :: prt
     if (shower%settings%isr_only_onshell_emitted_partons) return
-    if (DEBUG_WHIZ_SHOWER) print *, "D: shower_generate_fsr_for_partons_emitted_in_ISR"
+    call msg_debug (D_SHOWER, "shower_generate_fsr_for_partons_emitted_in_ISR")
     INTERACTIONS_LOOP: do n_int = 1, size (shower%interactions)
        INCOMING_PARTONS_LOOP: do i = 1, 2
           if (signal_is_pending ()) return
@@ -5618,7 +5506,7 @@ flavors, momenta, etc.
     type(parton_t), pointer :: prta, prtb, prtc, prtr
     real(default) :: mar, mbr
     real(default) :: phirand
-    if (DEBUG_WHIZ_SHOWER) print *, "D: shower_execute_next_isr_branching"
+    call msg_debug (D_SHOWER, "shower_execute_next_isr_branching")
     if (.not. associated (prtp%p)) then
        call msg_fatal ("Shower: prtp not associated")
     end if
@@ -5972,9 +5860,9 @@ procedure is intended for branched FSR-partons emitted in the ISR.
     type(parton_t), intent(inout), target :: prt
     type(parton_pointer_t), dimension(:), allocatable :: partons
     logical :: single_emission = .false.
-    if (DEBUG_WHIZ_SHOWER) print *, 'D: shower_parton_generate_fsr'
+    call msg_debug (D_SHOWER, "shower_parton_generate_fsr")
     if (signal_is_pending ()) return
-    if (ENSURE) then
+    if (debug_active (D_SHOWER)) then
        if (.not. prt%is_branched ()) then
           call msg_error ("shower_parton_generate_fsr: parton not branched")
           return
@@ -6011,7 +5899,7 @@ procedure is intended for branched FSR-partons emitted in the ISR.
       type(parton_pointer_t), dimension(:), allocatable, intent(inout) :: &
            partons
       type(parton_pointer_t), dimension(:), allocatable :: partons_new
-      if (DEBUG_WHIZ_SHOWER) print *, 'D: shower_parton_pointer_array_generate_fsr_recursive'
+      call msg_debug (D_SHOWER, "shower_parton_pointer_array_generate_fsr_recursive")
       if (signal_is_pending ()) return
       if (size (partons) == 0) return
       call shower%parton_pointer_array_generate_fsr (partons, partons_new)
@@ -6031,7 +5919,7 @@ procedure is intended for branched FSR-partons emitted in the ISR.
     type(parton_pointer_t), dimension(:), allocatable, intent(out) :: &
          partons_new
     integer :: i, size_partons, size_partons_new
-    if (DEBUG_WHIZ_SHOWER) print *, 'D: shower_parton_pointer_array_generate_fsr'
+    call msg_debug (D_SHOWER, "shower_parton_pointer_array_generate_fsr")
     !!! Simulate highest/first parton
     call shower_simulate_children_ana (shower, partons(1)%p)
     !!! check for new daughters to be included in new_partons
@@ -6168,16 +6056,15 @@ real(default), intent(in) :: x, Q2
 real(default) :: pdf
 real(double), save :: f(-6:6) = 0._double
 real(double), save :: lastx, lastQ2 = 0._double
-if (ENSURE) then
+pdf = zero
+if (debug_active (D_SHOWER)) then
    if (abs (mother) /= PROTON) then
-      pdf = zero
-      print *, "mother = ", mother
+      call msg_debug (D_SHOWER, "mother", mother)
       call msg_fatal ("Shower: pdf only implemented for (anti-)proton")
    end if
    if (.not. (abs (daughter) >= 1 .and. abs (daughter) <= 6 .or. &
               daughter == GLUON)) then
-      pdf = zero
-      print *, "daughter = ", daughter
+      call msg_debug (D_SHOWER, "daughter", daughter)
       call msg_fatal ("Shower: error in pdf, unknown daughter")
    end if
 end if
@@ -6191,8 +6078,6 @@ if (x > zero .and. x < one) then
    else
       pdf = max (f(0), tiny_10)
    end if
-else
-   pdf = zero
 end if
 lastQ2 = dble(Q2)
 lastx  = dble(x)
@@ -6408,6 +6293,7 @@ module shower_pythia6
   use particles
   use model_data
   use hep_common
+  use pdf
 
 <<Standard module head>>
 
@@ -6448,8 +6334,7 @@ contains
     class(shower_pythia6_t), intent(out) :: shower
     type(shower_settings_t), intent(in) :: settings
     type(pdf_data_t), intent(in) :: pdf_data
-    if (DEBUG_SHOWER) print *,  &
-         "Transfer settings from shower_settings to shower"
+    call msg_debug (D_SHOWER, "shower_pythia6_init")
     shower%settings = settings
     call pythia6_set_verbose (settings%verbose)
     call shower%pdf_data%init (pdf_data)
@@ -6477,7 +6362,7 @@ contains
     type(particle_set_t), intent(in) :: particle_set
     type(os_data_t), intent(in) :: os_data
     type(particle_set_t) :: pset_reduced
-    if (DEBUG_SHOWER) then
+    if (debug_active (D_SHOWER)) then
        print *, "shower_pythia6_import_particle_set"
        print *, 'IDBMUP(1:2) =    ', IDBMUP(1:2)
        print *, 'EBMUP, PDFGUP =    ', EBMUP, PDFGUP
@@ -6509,7 +6394,7 @@ contains
     call w2p_write_lhef_event (u_W2P)
     rewind (u_W2P)
     call shower%transfer_settings ()
-    if (DEBUG_SHOWER)  write (*, "(A)")  "calling pyevnt"
+    call msg_debug (D_SHOWER, "calling pyevnt")
     ! TODO: (bcn 2015-04-24) doesnt change anything I think
     ! P(1,1:5) = pset_reduced%prt(1)%p%to_pythia6 ()
     ! P(2,1:5) = pset_reduced%prt(2)%p%to_pythia6 ()
@@ -6558,7 +6443,7 @@ contains
     call pygive ("MSTP(171)=1")     !!! Allow variable energies
 
     if (shower%initialized_for_NPRUP >= NPRUP) then
-       if (DEBUG_SHOWER)  print *, "calling upinit"
+       call msg_debug (D_SHOWER, "calling upinit")
        call upinit
     else
        write (buffer, "(F10.5)") sqrt (abs (shower%settings%min_virtuality))
@@ -6600,7 +6485,7 @@ contains
           call pygive ("MSTP(62)=2")
           call pygive ("MSTP(67)=0")
        end if
-       if (DEBUG_SHOWER)  print *, "calling pyinit"
+       call msg_debug (D_SHOWER, "calling pyinit")
        call PYINIT ("USER", "", "", 0D0)
        call shower%rng%generate (rand)
        write (buffer, "(I10)") floor (rand*900000000)
@@ -6676,7 +6561,7 @@ added back in by Pythia.
     integer, parameter :: KSUSY1 = 1000000, KSUSY2 = 2000000
 
     if (signal_is_pending ()) return
-    if (DEBUG_SHOWER) then
+    if (debug_active (D_SHOWER)) then
        print *, 'Combine PYTHIA6 with particle set'
        print *, 'Particle set before replacing'
        call particle_set%write (summary=.true., compressed=.true.)
@@ -6686,7 +6571,7 @@ added back in by Pythia.
     call count_valid_entries_in_pythia_record ()
     call particle_set%without_hadronic_remnants &
          (particles, n_tot_old, py_entries)
-    if (DEBUG_SHOWER) then
+    if (debug_active (D_SHOWER)) then
        print *, 'n_tot_old =    ', n_tot_old
        print *, 'py_entries =    ', py_entries
     end if
@@ -6704,7 +6589,7 @@ added back in by Pythia.
             particle_set%prt%status == PRT_BEAM_REMNANT) .and. &
             particle_set%prt%has_children ()) &
             particle_set%prt%status = PRT_RESONANT
-    if (DEBUG_SHOWER) then
+    if (debug_active (D_SHOWER)) then
        print *, 'Particle set after replacing'
        call particle_set%write (summary=.true., compressed=.true.)
     end if
@@ -6799,9 +6684,7 @@ added back in by Pythia.
              sum_vec_out = sum_vec_out + momentum
           end if
        end do
-       !sum_vec_out = sum (particles%p, &
-            !mask=particles%get_status () == PRT_OUTGOING)
-       if (DEBUG_SHOWER) then
+       if (debug_active (D_SHOWER)) then
           print *, 'sum_vec_in%p =    ', sum_vec_in%p
           print *, 'sum_vec_out%p =    ', sum_vec_out%p
        end if
@@ -6812,9 +6695,7 @@ added back in by Pythia.
           L = boost (sum_vec_in, sum_vec_out%p(0))
        end if
     end if
-    if (DEBUG_SHOWER) then
-       print *, 'boost_required =    ', boost_required
-    end if
+    call msg_debug (D_SHOWER, "boost_required", boost_required)
   end subroutine determine_boost
 
 @ %def determine_boost
@@ -7192,7 +7073,7 @@ added back in by Pythia.
     integer, intent(out), optional :: u_P2W
     character(len=10) :: buffer
     u_W2P = free_unit ()
-    if (DEBUG_SHOWER) then
+    if (debug_active (D_SHOWER)) then
        open (unit=u_W2P, status="replace", file="whizardout.lhe", &
             action="readwrite")
     else
@@ -7205,7 +7086,7 @@ added back in by Pythia.
        u_P2W = free_unit ()
        write (buffer, "(I10)")  u_P2W
        call pygive ("MSTP(163)=" // buffer)
-       if (DEBUG_SHOWER) then
+       if (debug_active (D_SHOWER)) then
           open (unit=u_P2W, file="pythiaout2.lhe", status="replace", &
                action="readwrite")
        else

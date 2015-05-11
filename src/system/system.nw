@@ -284,8 +284,9 @@ module diagnostics
   use, intrinsic :: iso_c_binding !NODEP! 
   use, intrinsic :: iso_fortran_env, only: output_unit !NODEP!
 
-<<Use kinds>>
+  use kinds, only: double, default, extended
 <<Use strings>>
+  use string_utils, only: str
   use io_units
 
   use system_dependencies
@@ -311,13 +312,72 @@ end module diagnostics
 @ %def diagnostics
 @
 Diagnostics levels:
+<<Diagnostics: public>>=
+  public :: RESULT, DEBUG, DEBUG2
 <<Diagnostics: parameters>>=
-  integer, parameter :: &
-       & TERMINATE=-2, BUG=-1, &
-       & FATAL=1, ERROR=2, WARNING=3, MESSAGE=4, RESULT=5, DEBUG=6
-@ %def FATAL ERROR WARNING MESSAGE RESULT DEBUG
+  integer, parameter :: TERMINATE=-2, BUG=-1, FATAL=1, &
+       ERROR=2, WARNING=3, MESSAGE=4, RESULT=5, &
+       DEBUG=6, DEBUG2=7
+@ %def FATAL ERROR WARNING MESSAGE RESULT DEBUG DEBUG2
+Diagnostics areas:
+<<Diagnostics: public>>=
+  public :: d_area
+<<Diagnostics: interfaces>>=
+  interface d_area
+     module procedure d_area_of_string
+     module procedure d_area_to_string
+  end interface
+<<Diagnostics: procedures>>=
+  elemental function d_area_of_string (string) result (i)
+    integer :: i
+    type(string_t), intent(in) :: string
+    select case (char (string))
+    case ("all")
+       i = D_ALL
+    case ("shower")
+       i = D_SHOWER
+    case ("model_features")
+       i = D_MODEL_F
+    case ("matching")
+       i = D_MATCHING
+    case ("transforms")
+       i = D_TRANSFORMS
+    case default
+       i = D_ALL
+    end select
+  end function d_area_of_string
+
+  elemental function d_area_to_string (i) result (string)
+    type(string_t) :: string
+    integer, intent(in) :: i
+    select case (i)
+    case (D_ALL)
+       string = "all"
+    case (D_SHOWER)
+       string = "shower"
+    case (D_MODEL_F)
+       string = "model_features"
+    case (D_MATCHING)
+       string = "matching"
+    case (D_TRANSFORMS)
+       string = "transforms"
+    case default
+       string = "undefined"
+    end select
+  end function d_area_to_string
+
+@ %def d_area
+@
+<<Diagnostics: public>>=
+  public :: D_ALL, D_SHOWER, D_MODEL_F, D_MATCHING, D_TRANSFORMS
+<<Diagnostics: parameters>>=
+  integer, parameter :: D_ALL=0, D_SHOWER=1, D_MODEL_F=2, &
+       D_MATCHING=3, D_TRANSFORMS=4
+@ %def ALL SHOWER D_MODEL_F MATCHING TRANSFORMS
+<<Diagnostics: public>>=
+  public :: msg_level
 <<Diagnostics: variables>>=
-  integer, save :: msg_level = RESULT
+  integer, save, dimension(D_ALL:D_TRANSFORMS) :: msg_level = RESULT
 @ %def msg_level
 @ 
 Mask fatal errors so that are treated as normal errors.  Useful for
@@ -343,7 +403,7 @@ double counting.
 <<Diagnostics: public>>=
   public :: msg_count
 <<Diagnostics: variables>>=
-  integer, dimension(TERMINATE:DEBUG), save :: msg_count = 0
+  integer, dimension(TERMINATE:WARNING), save :: msg_count = 0
 @ %def msg_count
 @ Keep a list of all errors and warnings.  Since we do not know the number of
 entries beforehand, we use a linked list.
@@ -476,19 +536,22 @@ messages and warnings, an additional exclamation mark and a blank is
 prepended.  Furthermore, each message is appended to the internal
 message list (without prepending anything).
 <<Diagnostics: procedures>>=
-  subroutine message_print (level, string, str_arr, unit, logfile)
+  subroutine message_print (level, string, str_arr, unit, logfile, area)
     integer, intent(in) :: level
     character(len=*), intent(in), optional :: string
     type(string_t), dimension(:), intent(in), optional :: str_arr
     integer, intent(in), optional :: unit
-    logical, intent(in), optional :: logfile   
-    type(string_t) :: prep_string, aux_string, head_footer
-    integer :: lu, i
+    logical, intent(in), optional :: logfile
+    integer, intent(in), optional :: area
+    type(string_t) :: prep_string, aux_string, head_footer, app_string
+    integer :: lu, i, ar
     logical :: severe, is_error
+    ar = D_ALL; if (present (area))  ar = area
     severe = .false.
     head_footer  = "******************************************************************************"
     aux_string = ""
     is_error = .false.
+    app_string = ""
     select case (level)
     case (TERMINATE)
        prep_string = ""
@@ -508,8 +571,11 @@ message list (without prepending anything).
        is_error = .true.
     case (WARNING)
        prep_string = "Warning: "
-    case (MESSAGE, DEBUG)
+    case (MESSAGE)
        prep_string = "| "
+    case (DEBUG, DEBUG2)
+       prep_string = achar(27) // "[34mD: "
+       app_string = achar(27) // "[0m"
     case default
        prep_string = ""
     end select
@@ -519,7 +585,8 @@ message list (without prepending anything).
        if (unit /= output_unit) then
           if (severe) write (unit, "(A)") char(head_footer) 
           if (is_error) write (unit, "(A)") char(head_footer) 
-          write (unit, "(A,A)") char(prep_string), trim(msg_buffer)
+          write (unit, "(A,A,A)") char(prep_string), trim(msg_buffer), &
+               char(app_string)
           if (present (str_arr)) then
              do i = 1, size(str_arr)
                 write (unit, "(A,A)") char(aux_string), char(trim(str_arr(i)))
@@ -529,10 +596,11 @@ message list (without prepending anything).
           if (severe) write (unit, "(A)") char(head_footer)
           flush (unit)
           lu = -1
-       else if (level <= msg_level) then
+       else if (level <= msg_level(ar)) then
           if (severe) print "(A)", char(head_footer) 
           if (is_error) print "(A)", char(head_footer) 
-          print "(A,A)", char(prep_string), trim(msg_buffer)
+          print "(A,A,A)", char(prep_string), trim(msg_buffer), &
+               char(app_string)
           if (present (str_arr)) then
              do i = 1, size(str_arr)
                 print "(A,A)", char(aux_string), char(trim(str_arr(i)))
@@ -543,10 +611,11 @@ message list (without prepending anything).
           flush (output_unit)
           if (unit == log_unit)  lu = -1
        end if
-    else if (level <= msg_level) then
+    else if (level <= msg_level(ar)) then
        if (severe) print "(A)", char(head_footer) 
        if (is_error) print "(A)", char(head_footer) 
-       print "(A,A)", char(prep_string), trim(msg_buffer)
+       print "(A,A,A)", char(prep_string), trim(msg_buffer), &
+               char(app_string)
           if (present (str_arr)) then
              do i = 1, size(str_arr)
                 print "(A,A)", char(aux_string), char(trim(str_arr(i)))
@@ -562,7 +631,8 @@ message list (without prepending anything).
     if (logging .and. lu >= 0) then
        if (severe) write (lu, "(A)") char(head_footer) 
        if (is_error) write (lu, "(A)") char(head_footer) 
-       write (lu, "(A,A)")  char(prep_string), trim(msg_buffer)
+       write (lu, "(A,A,A)")  char(prep_string), trim(msg_buffer), &
+               char(app_string)
        if (present (str_arr)) then
           do i = 1, size(str_arr)
              write (lu, "(A,A)") char(aux_string), char(trim(str_arr(i)))
@@ -576,7 +646,7 @@ message list (without prepending anything).
     call buffer_clear
   end subroutine message_print
 
-@ %def message_print_array
+@ %def message_print
 @
 The number of non-fatal errors that we allow before stopping the
 program.  We might trade this later for an adjustable number.
@@ -592,7 +662,7 @@ but this may change.
 <<Diagnostics: public>>=
   public :: msg_terminate
   public :: msg_bug, msg_fatal, msg_error, msg_warning
-  public :: msg_message, msg_result, msg_debug
+  public :: msg_message, msg_result
 <<Diagnostics: procedures>>=
   subroutine msg_terminate (string, unit, quit_code)
     integer, intent(in), optional :: unit
@@ -709,14 +779,124 @@ but this may change.
     call message_print (RESULT, string, arr, unit, logfile)
   end subroutine msg_result
 
-  subroutine msg_debug (string, arr, unit)
-    integer, intent(in), optional :: unit
+@ %def msg_warning msg_message msg_result
+@
+<<Diagnostics: public>>=
+  public :: msg_debug
+<<Diagnostics: interfaces>>=
+  interface msg_debug
+     module procedure msg_debug_none
+     module procedure msg_debug_logical
+     module procedure msg_debug_integer
+     module procedure msg_debug_double
+     module procedure msg_debug_real
+  end interface
+<<Diagnostics: procedures>>=
+  subroutine msg_debug_none (area, string)
+    integer, intent(in) :: area
     character(len=*), intent(in), optional :: string
-    type(string_t), dimension(:), intent(in), optional :: arr
-    call message_print (DEBUG, string, arr, unit)
-  end subroutine msg_debug
+    call message_print (DEBUG, string, unit=output_unit, &
+         area=area, logfile=.false.)
+  end subroutine msg_debug_none
 
-@ %def msg_warning msg_message msg_result msg_debug
+  subroutine msg_debug_logical (area, string, value)
+    integer, intent(in) :: area
+    character(len=*), intent(in) :: string
+    logical, intent(in) :: value
+    call msg_debug_none (area, char (string // " = " // str (value)))
+  end subroutine msg_debug_logical
+
+  subroutine msg_debug_integer (area, string, value)
+    integer, intent(in) :: area
+    character(len=*), intent(in) :: string
+    integer, intent(in) :: value
+    call msg_debug_none (area, char (string // " = " // str (value)))
+  end subroutine msg_debug_integer
+
+  subroutine msg_debug_double (area, string, value)
+    integer, intent(in) :: area
+    character(len=*), intent(in) :: string
+    real(double), intent(in) :: value
+    call msg_debug_none (area, char (string // " = " // str (value)))
+  end subroutine msg_debug_double
+
+  subroutine msg_debug_real (area, string, value)
+    integer, intent(in) :: area
+    character(len=*), intent(in) :: string
+    real(extended), intent(in) :: value
+    call msg_debug_none (area, char (string // " = " // str (value)))
+  end subroutine msg_debug_real
+
+@ %def msg_debug
+@
+<<Diagnostics: public>>=
+  public :: msg_debug2
+<<Diagnostics: interfaces>>=
+  interface msg_debug2
+     module procedure msg_debug2_none
+     module procedure msg_debug2_logical
+     module procedure msg_debug2_integer
+     module procedure msg_debug2_double
+     module procedure msg_debug2_real
+  end interface
+<<Diagnostics: procedures>>=
+  subroutine msg_debug2_none (area, string)
+    integer, intent(in) :: area
+    character(len=*), intent(in), optional :: string
+    call message_print (DEBUG2, string, unit=output_unit, &
+         area=area, logfile=.false.)
+  end subroutine msg_debug2_none
+
+  subroutine msg_debug2_logical (area, string, value)
+    integer, intent(in) :: area
+    character(len=*), intent(in) :: string
+    logical, intent(in) :: value
+    call msg_debug2_none (area, char (string // " = " // str (value)))
+  end subroutine msg_debug2_logical
+
+  subroutine msg_debug2_integer (area, string, value)
+    integer, intent(in) :: area
+    character(len=*), intent(in) :: string
+    integer, intent(in) :: value
+    call msg_debug2_none (area, char (string // " = " // str (value)))
+  end subroutine msg_debug2_integer
+
+  subroutine msg_debug2_double (area, string, value)
+    integer, intent(in) :: area
+    character(len=*), intent(in) :: string
+    real(double), intent(in) :: value
+    call msg_debug2_none (area, char (string // " = " // str (value)))
+  end subroutine msg_debug2_double
+
+  subroutine msg_debug2_real (area, string, value)
+    integer, intent(in) :: area
+    character(len=*), intent(in) :: string
+    real(extended), intent(in) :: value
+    call msg_debug2_none (area, char (string // " = " // str (value)))
+  end subroutine msg_debug2_real
+
+@ %def msg_debug2
+<<Diagnostics: public>>=
+  public :: debug_active
+<<Diagnostics: procedures>>=
+  elemental function debug_active (area) result (active)
+    logical :: active
+    integer, intent(in) :: area
+    active = msg_level(area) >= DEBUG
+  end function debug_active
+
+@ %def debug_active
+@
+<<Diagnostics: public>>=
+  public :: debug2_active
+<<Diagnostics: procedures>>=
+  elemental function debug2_active (area) result (active)
+    logical :: active
+    integer, intent(in) :: area
+    active = msg_level(area) >= DEBUG2
+  end function debug2_active
+
+@ %def debug2_active
 @ Show the progress of a loop in steps of 10 \%.  Could be generalized
 to other step sizes with an optional argument.
 <<Diagnostics: public>>=

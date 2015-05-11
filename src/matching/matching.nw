@@ -10,6 +10,7 @@ module matching_base
 
 <<Use kinds>>
 <<Use strings>>
+  use diagnostics
   use sm_qcd
   use model_data
   use particles
@@ -74,6 +75,7 @@ necessary but then we introduce [[select type]] statements all over the place.
 <<default matching init>>=
   type(var_list_t), intent(in) :: var_list
   type(string_t), intent(in) :: process_name
+  call msg_debug (D_MATCHING, "matching_init")
   call matching%settings%init (var_list)
   matching%process_name = process_name
 @
@@ -110,6 +112,7 @@ necessary but then we introduce [[select type]] statements all over the place.
     type(process_instance_t), intent(in), target :: process_instance
     class(model_data_t), intent(in), target :: model
     class(shower_base_t), intent(in), target :: shower
+    call msg_debug (D_MATCHING, "matching_connect")
     matching%process_instance => process_instance
     matching%model => model
     matching%shower => shower
@@ -487,8 +490,8 @@ jet momenta.
           end if
           if (eta > matching%settings%mlm_etaClusfactor * &
                matching%settings%mlm_etamax)  then
-             if (DEBUG_SHOWER) then
-                print *, "REJECTING"
+             if (debug_active (D_MATCHING)) then
+                call msg_debug (D_MATCHING, "Rejecting this particle")
                 call tempprt%write ()
              end if
              cycle
@@ -498,7 +501,7 @@ jet momenta.
     end do
 
     allocate (matching%P_PS(1:n_jets_PS))
-    if (DEBUG_SHOWER)  write (*, "(A,1x,I0)")  "n_jets_ps =", n_jets_ps
+    call msg_debug (D_MATCHING, "n_jets_ps", n_jets_ps)
 
     j = 1
     do i = 1, particle_set%get_n_tot ()
@@ -1381,12 +1384,6 @@ contains
 
 end module powheg_matching
 @ %def powheg_matching
-@ Should be turned off for production, once everything runs as expected.
-<<POWHEG matching: parameters>>=
-  logical, parameter :: ENSURE = .true.
-  logical, parameter :: DEBUG_EVENTS = .false.
-  logical, parameter :: TEST_SUDAKOV = .false.
-@ %def ENSURE
 @
 \subsection{Base types for settings and data}
 [[lambda]] enters for now as the lowest scale
@@ -1403,6 +1400,7 @@ $\alpha_s^\text{rad}$ is still larger than the true $\alpha_s$.
      integer :: size_grid_y
      integer :: upper_bound_func = UBF_SIMPLE
      logical :: rebuild_grids = .false.
+     logical :: test_sudakov = .false.
   contains
    <<POWHEG matching: powheg settings: TBP>>
   end type powheg_settings_t
@@ -1564,7 +1562,7 @@ functions.
     real(default), intent(in) :: sqme_born
     type(vector4_t), dimension(:), intent(in) :: p_born
     event_deps%sqme_born = sqme_born
-    if (ENSURE) then
+    if (debug_active (D_MATCHING)) then
        if (size (p_born) /= size (event_deps%p_born)) then
           call msg_fatal ("event_deps_update: number of born_momenta has changed")
        end if
@@ -1954,19 +1952,15 @@ improved version.
     sudakov%current_pt2_max = r%pt2
     sudakov%last_log = sudakov%norm_max * &
          sudakov%log_integrated_ubf (sudakov%current_pt2_max)
-    if (DEBUG_EVENTS) then
-       print *, 'sudakov_generate_emission'
-       print *, '  sqrt (sudakov%current_pt2_max) =    ', &
-            sqrt (sudakov%current_pt2_max)
-       print *, '  sudakov%last_log =    ', sudakov%last_log
-    end if
+    call msg_debug (D_MATCHING, "sudakov_generate_emission")
+    call msg_debug (D_MATCHING, "sqrt (sudakov%current_pt2_max)", &
+         sqrt (sudakov%current_pt2_max))
+    call msg_debug (D_MATCHING, "sudakov%last_log", sudakov%last_log)
     LOOP_UNTIL_ACCEPTED: do
        r%valid = .false.
        r%pt2 = sudakov%generate_pt2 ()
-       if (DEBUG_EVENTS) then
-          print *, '  sqrt (r%pt2) =    ', sqrt (r%pt2)
-          print *, '  sudakov%last_log =    ', sudakov%last_log
-       end if
+       call msg_debug (D_MATCHING, "sqrt (r%pt2)", sqrt (r%pt2))
+       call msg_debug (D_MATCHING, "sudakov%last_log", sudakov%last_log)
        if (r%pt2 <= sudakov%powheg_settings%pt2_min) then
           exit
        end if
@@ -2091,7 +2085,7 @@ reweighted to the more precise $\alpha_s$.
     r%y = one - (two * r%pt2) / (s * r%xi**2)
     call sudakov%rng%generate (sudakov%random)
     r%phi = sudakov%random * twopi
-    if (ENSURE) then
+    if (debug_active (D_MATCHING)) then
        call assert_equal (OUTPUT_UNIT, r%pt2, &
             s / two * r%xi**2 * (one - r%y), &
             "sudakov_generate_xi_and_y_and_phi: pt2 inconsistency")
@@ -2205,7 +2199,7 @@ a massless recoiling system.
     !r%y = one - (two * r%pt2) / (s * r%xi**2)
     call sudakov%rng%generate (sudakov%random)
     r%phi = sudakov%random * twopi
-    if (ENSURE) then
+    if (debug_active (D_MATCHING)) then
        call assert_equal (OUTPUT_UNIT, r%pt2, &
             s / two * r%xi**2 * (one - r%y), &
             "sudakov_generate_xi_and_y_and_phi: pt2 inconsistency")
@@ -2243,7 +2237,7 @@ a massless recoiling system.
     type(particle_set_t), intent(inout) :: particle_set
     logical, intent(out) :: vetoed
     call matching%update (particle_set)
-    if (TEST_SUDAKOV) then
+    if (matching%settings%test_sudakov) then
        call matching%test_sudakov ()
        stop
     end if
@@ -2276,7 +2270,7 @@ a massless recoiling system.
     real(default) :: points_per_cell
     write (msg_buffer, "(A,A,A)") "Generating grid for process '", &
                                char (powheg%process_name), "'"
-    call msg_message
+    call msg_message ()
     associate (settings => powheg%settings)
        write (msg_buffer, "(A,I10)") "Number of xi-points: ", &
                                       settings%size_grid_xi
@@ -2449,6 +2443,7 @@ a massless recoiling system.
     real(default) :: sqme_real_x_jacobian, sqme_born
     real(default) :: norm, ubf, ubound, random, weight
     real(default) :: alpha_s
+    call msg_debug (D_MATCHING, "reweight_matrix_elements")
     call powheg%rng%generate (random)
     emitter = powheg%process_instance%nlo_controller%get_emitter (r%alr)
     powheg%event_deps%p_real = &
@@ -2463,13 +2458,12 @@ a massless recoiling system.
        ubound = sqme_born * ubf * norm
        weight = sqme_real_x_jacobian / ubound
        if (weight > 1) call s%veto_counter%record_fail()
-       if (ENSURE) then
+       if (debug_active (D_MATCHING)) then
           if (weight < 0) call msg_warning ("R/B < 0!")
        end if
        accepted = random < weight
     end associate
-    if (DEBUG_EVENTS) then
-       print *, 'reweight_matrix_elements'
+    if (debug_active (D_MATCHING)) then
        print *, '  r%alr =    ',   r%alr
        print *, '  r%xi =    ', r%xi
        print *, '  r%y =    ', r%y
@@ -2947,19 +2941,19 @@ values $(f_B)$
     class(powheg_matching_t), intent(inout) :: powheg
     type(radiation_t), intent(in) :: r
     real(default) :: random, norm_max, norm_true
+    call msg_debug (D_MATCHING, "reweight_norm")
     call powheg%rng%generate (random)
     norm_true = powheg%norm_from_xi_and_y (r)
     norm_max = powheg%sudakov(r%alr)%s%norm_max
     accepted = random < norm_true / norm_max
-    if (DEBUG_EVENTS) then
-       print *, 'reweight_norm'
+    if (debug_active (D_MATCHING)) then
        print *, '  r%alr =    ', r%alr
        print *, '  random =    ', random
        print *, '  norm_true =    ', norm_true
        print *, '  norm_max =    ', norm_max
        print *, '  norm accepted =    ', accepted
     end if
-    if (ENSURE) then
+    if (debug_active (D_MATCHING)) then
        if (.not. (zero < r%xi .and. &
                   r%xi < sqrt(powheg%sudakov(r%alr)%s%xi2_max))) then
           call msg_bug ("powheg_reweight_norm: xi is out of bounds")
@@ -3005,6 +2999,7 @@ $p_{T,\text{min}}^2$.
 <<POWHEG matching: procedures>>=
   subroutine powheg_prepare_for_events (matching)
     class(powheg_matching_t), intent(inout) :: matching
+    call msg_debug (D_MATCHING, "powheg_prepare_for_events")
     call matching%setup_nlo_environment ()
     call matching%grid%init ([matching%settings%size_grid_xi, &
                               matching%settings%size_grid_y, &
@@ -3119,25 +3114,21 @@ exponent.
     real(default), intent(in) :: pt2
     real(default) :: alpha_s_true, alpha_s_rad
     logical :: alpha_s_equal
+    call msg_debug (D_MATCHING, "reweight_alpha_s")
     alpha_s_true = get_alpha (sudakov%qcd, pt2)
     alpha_s_rad = sudakov%alpha_s_rad (pt2)
     call sudakov%rng%generate (sudakov%random)
-
     alpha_s_equal = nearly_equal (alpha_s_true, alpha_s_rad)
     accepted = alpha_s_equal .or. sudakov%random < alpha_s_true / alpha_s_rad
-    if (DEBUG_EVENTS) then
-       print *, 'reweight_alpha_s'
+    if (debug_active (D_MATCHING)) then
        print *, '  sudakov%random =    ', sudakov%random
        print *, '  alpha_s_true =    ', alpha_s_true
        print *, '  alpha_s_rad =    ', alpha_s_rad
        print *, '  alpha_s accepted =    ', accepted
-    end if
-    if (ENSURE) then
        if (alpha_s_rad < alpha_s_true .and. .not. alpha_s_equal) then
           print *, 'pt2 =    ', pt2
-          print *, 'alpha_s_rad =    ', alpha_s_rad
-          print *, 'alpha_s_true =    ', alpha_s_true
-          print *, 'sudakov%process_deps%lambda2_gen =    ', sudakov%process_deps%lambda2_gen
+          print *, 'sudakov%process_deps%lambda2_gen =    ', &
+               sudakov%process_deps%lambda2_gen
           call msg_fatal ("sudakov_reweight_alpha_s: This should never happen. &
                            &Have you chosen a running alpha_s?")
        end if

@@ -71,13 +71,13 @@ module_lists = \
   ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
-  ../expr_base/Modules \
   ../particles/Modules \
   ../types/Modules \
   ../variables/Modules \
   ../model_features/Modules \
   ../muli/Modules \
-  ../events/Modules
+  ../events/Modules \
+  ../beams/Modules
 
 include_modules_bare = ${module_lists:/Modules=}
 include_modules = ${include_modules_bare:../%=-I../%}

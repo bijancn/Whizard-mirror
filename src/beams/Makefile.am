@@ -44,7 +44,8 @@ libbeams_la_SOURCES = \
   sf_circe2.f90 \
   hoppet_interface.f90 \
   sf_pdf_builtin.f90 \
-  sf_lhapdf.f90
+  sf_lhapdf.f90 \
+  pdf.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = beams.nw
