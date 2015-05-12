@@ -1672,11 +1672,74 @@ end module radiation_generator
        if (associated (queue%current_prt%next)) &
           queue%current_prt => queue%current_prt%next
     else
-       call msg_fatal ("Tried to get particle string from empty queue!")
+       prt_string = " "
     end if
   end function prt_queue_get
 
 @ %def prt_queue_get
+@
+<<radiation generator: prt queue: TBP>>=
+  procedure :: reset => prt_queue_reset
+<<radiation generator: procedures>>=
+  subroutine prt_queue_reset (queue)
+    class(prt_queue_t), intent(inout) :: queue
+    queue%current_prt => queue%front
+  end subroutine prt_queue_reset
+
+@ %def prt_queue_reset
+@
+<<radiation generator: prt queue: TBP>>=
+  procedure :: check_for_same_prt_strings => prt_queue_check_for_same_prt_strings
+<<radiation generator: procedures>>=
+  function prt_queue_check_for_same_prt_strings (queue) result (val)
+    class(prt_queue_t), intent(inout) :: queue
+    logical :: val
+    type(string_t), dimension(:), allocatable :: prt_string
+    integer, dimension(:,:), allocatable :: i_particle
+    integer :: n_u, n_ubar, n_gl
+    integer :: i, j
+    call queue%reset ()
+    allocate (i_particle (queue%n_lists, 3))   
+    do i = 1, queue%n_lists
+       prt_string = queue%get ()
+       n_u = count_particle (prt_string, 2)
+       n_ubar = count_particle (prt_string, -2)
+       n_gl = count_particle (prt_string, 21)
+       i_particle (i, 1) = n_u
+       i_particle (i, 2) = n_ubar
+       i_particle (i, 3) = n_gl
+    end do
+    val = .false.
+    do i = 1, queue%n_lists
+       do j = 1, queue%n_lists
+          if  (i == j) cycle
+          val = val .or. all (i_particle (i,:) == i_particle(j,:))
+       end do
+    end do
+  contains
+    function count_particle (prt_string, pdg) result (n)
+      type(string_t), dimension(:), intent(in) :: prt_string
+      integer, intent(in) :: pdg
+      integer :: n
+      integer :: i
+      type(string_t) :: prt_ref
+      n = 0
+      select case (pdg)
+      case (2)
+         prt_ref = "u"
+      case (-2)
+         prt_ref = "ubar"
+      case (21) 
+         prt_ref = "gl"
+      end select
+      do i = 1, size (prt_string)
+         if (prt_string(i) == prt_ref) n = n+1
+      end do
+    end function count_particle
+
+  end function prt_queue_check_for_same_prt_strings
+
+@ %def prt_queue_check_for_same_prt_strings
 @
 <<radiation generator: prt queue: TBP>>=
   procedure :: contains => prt_queue_contains
@@ -1718,19 +1781,22 @@ end module radiation_generator
     class(prt_queue_t), intent(in) :: queue
     integer :: u
     type(prt_queue_t), pointer :: current => null ()
-    integer :: i
+    integer :: i, j
     if (associated (queue%front)) then
        current => queue%front
     else
        write (u, "(A)") "[Particle queue is empty]"
     end if
+    j = 1
     do
+       write (u, "(I2,A,1X)", advance = 'no') j , ":"
        do i = 1, size (current%prt_string)
           write (u, "(A,1X)", advance = 'no') char (current%prt_string(i))
        end do
        write (u, "(A)") 
        if (associated (current%next)) then
           current => current%next
+          j = j+1
        else
           exit
        end if
@@ -2339,10 +2405,8 @@ end module radiation_generator
     type(string_t), dimension(:), allocatable :: prt_fetched
     type(string_t), dimension(:), allocatable :: prt_in
     type(string_t), dimension(:), allocatable :: prt_out1, prt_out2
-    type(pdg_array_t), dimension(:), allocatable :: pdg_new_out, pdg_new_in
-    integer :: initial_multiplicity, current_multiplicity
-    integer :: i, n_out
-    initial_multiplicity = generator%n_out+1
+    type(pdg_array_t), dimension(:), allocatable :: pdg_new_out
+    integer :: current_multiplicity
     do 
        prt_fetched = prt_queue%get ()
        current_multiplicity = size (prt_fetched)
@@ -2458,7 +2522,7 @@ end module radiation_generator
     call test(radiation_generator_1, "radiation_generator_1", &
        "Test the generator of N+1-particle flavor structures", &
        u, results)
-    call test(radiation_generator_2, "radiation generator_2", &
+    call test(radiation_generator_2, "radiation_generator_2", &
        "Test multiple splittings", &
        u, results)
   end subroutine radiation_generator_test
@@ -2596,19 +2660,14 @@ end module radiation_generator
     integer, intent(in) :: u
     type(radiation_generator_t) :: generator
     type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out
-    type(string_t), dimension(:), allocatable :: prt_strings_in
-    type(string_t), dimension(:), allocatable :: prt_strings_out
-    type(string_t), dimension(:), allocatable :: prt_strings_split
     type(os_data_t) :: os_data
     type(model_list_t) :: model_list
     type(model_t), pointer :: radiation_model => null ()
-    type(flavor_t), dimension(:), allocatable :: flv_out
-    integer :: i
-    integer :: current_n_out
     type(prt_queue_t) :: prt_queue
 
     write (u, "(A)") "* Test output: radiation_generator_2"
     write (u, "(A)") "* Purpose: Test the repeated application of a radiation generator splitting"
+    write (u, "(A)") "* Only Final state emissions! "
     write (u, "(A)") 
     write (u, "(A)") "* Loading radiation model: SM_rad.mdl"
 
@@ -2622,8 +2681,7 @@ end module radiation_generator
 
     allocate (pdg_in (2))
     pdg_in(1) = 11; pdg_in(2) = -11
-    current_n_out = 2
-    allocate (pdg_out(current_n_out))
+    allocate (pdg_out(2))
     pdg_out(1) = 2; pdg_out(2) = -2
 
     write (u, "(A)") "* Leading order"
@@ -2633,13 +2691,24 @@ end module radiation_generator
     call write_pdg_array (pdg_out, u)
 
     call generator%init (pdg_in, pdg_out, qcd = .true., qed = .false.)
-    call generator%set_n (2, current_n_out, 0)
+    call generator%set_n (2, 2, 0)
     call generator%set_constraints (.false., .false., .true., .true.)
 
-    prt_queue = generator%generate_multiple (6)    
+    call write_separator (u)
+    write (u, "(A)") "Generated higher-multiplicity states"
+    prt_queue = generator%generate_multiple (10)    
     call prt_queue%write (u)
-    
-  contains
+    call write_separator (u)
+    write (u, "(A,I0)") "Number of higher-multiplicity states: ", prt_queue%n_lists
+
+    write (u, "(A)") "Check that no particle state occurs twice or more"
+    if (.not. prt_queue%check_for_same_prt_strings()) then
+       write (u, "(A)") "SUCCESS"
+    else
+       write (u, "(A)") "FAIL"
+    end if
+       
+  contains      
     subroutine write_pdg_array (pdg, u)
       type(pdg_array_t), dimension(:), intent(in) :: pdg
       integer, intent(in) :: u
