@@ -1573,9 +1573,11 @@ module radiation_generator
 <<Use strings>>
   use diagnostics
   use format_utils, only: write_separator
+  use sorting
   use os_interface
   use models
   use pdg_arrays
+  use flavors
   use particle_specifiers
   use model_data
   use auto_components
@@ -1617,6 +1619,130 @@ end module radiation_generator
   end type pdg_states_t
 
 @ %def pdg_states_t
+@
+<<radiation generator: types>>=
+  type :: prt_string_list_t
+    type(string_t), dimension(:), allocatable :: prt_string
+    type(prt_string_list_t), pointer :: next => null ()
+    integer :: n_lists = 0
+  contains
+  <<radiation generator: prt string list: TBP>>
+  end type prt_string_list_t
+
+@ %def prt_string_list_t
+@
+<<radiation generator: prt string list: TBP>>=
+  procedure :: append => prt_string_list_append
+<<radiation generator: procedures>>=
+  subroutine prt_string_list_append (string_list, prt_string)
+    class(prt_string_list_t), intent(inout) :: string_list
+    type(string_t), intent(in), dimension(:) :: prt_string
+    type(prt_string_list_t), pointer :: current
+    if (associated (string_list%next)) then
+       current => string_list%next
+       do 
+          if (associated (current%next)) then
+             current => current%next
+          else
+             allocate (current%next)
+             current%next%prt_string = prt_string
+             exit
+          end if
+       end do
+    else
+       allocate (string_list%next)
+       string_list%next%prt_string = prt_string
+    end if
+    string_list%n_lists = string_list%n_lists + 1
+  end subroutine prt_string_list_append
+
+@ %def prt_string_list_append
+@ 
+<<radiation generator: prt string list: TBP>>=
+  procedure :: contains => prt_string_list_contains
+<<radiation generator: procedures>>=
+  function prt_string_list_contains (str_list, prt_string) result (val)
+    class(prt_string_list_t), intent(in) :: str_list
+    type(string_t), intent(in), dimension(:) :: prt_string
+    logical :: val
+    type(prt_string_list_t), pointer :: current => null()
+    val = .false.
+    if (associated (str_list%next)) then
+       current => str_list%next
+    else
+       return
+    end if
+    do
+       if (size (prt_string) == size (current%prt_string)) then
+          if (all (prt_string == current%prt_string)) then
+             val = .true.
+             exit
+          end if
+       end if
+       if (associated (current%next)) then
+          current => current%next
+       else
+          exit
+       end if
+    end do
+  end function prt_string_list_contains
+
+@ %def prt_string_list_contains
+@
+<<radiation generator: prt string list: TBP>>=
+  procedure :: write => prt_string_list_write
+<<radiation generator: procedures>>=
+  subroutine prt_string_list_write (string_list, u)
+    class(prt_string_list_t), intent(in) :: string_list
+    integer :: u
+    type(prt_string_list_t), pointer :: current => null ()
+    integer :: i
+    if (associated (string_list%next)) then
+       current => string_list%next
+    else
+       write (u, "(A)") "[String list is empty]"
+    end if
+    do
+       do i = 1, size (current%prt_string)
+          write (u, "(A,1X)", advance = 'no') char (current%prt_string(i))
+       end do
+       write (u, "(A)") 
+       if (associated (current%next)) then
+          current => current%next
+       else
+          exit
+       end if
+    end do
+  end subroutine prt_string_list_write
+
+@ %def prt_string_list_write
+@
+<<radiation generator: prt string list: TBP>>=
+!  procedure :: get_prt_strings => prt_string_list_get_prt_strings
+<<radiation generator: procedures>>=
+!  function prt_string_list_get_prt_strings (string_list) result (string_array)
+!    class(prt_string_list_t), intent(in) :: string_list
+!    type(string_t), dimension(:), allocatable :: string_array
+!    type(prt_string_list_t), pointer :: current
+!    integer :: i
+!    allocate (string_array (string_list%n_lists))
+!    if (associated (string_list%next)) then
+!       current => string_list%next
+!    else
+!       call msg_fatal ("Particle string list is not allocated")
+!    end if
+!    do i = 1, string_list%n_lists
+!       string_array(i) = current%prt_string
+!       if (associated (current%next)) then
+!          current => current%next
+!       else
+!          call msg_warning ("Less particle strings than expected collected!")
+!          exit
+!       end if
+!    end do
+!  end function prt_string_list_get_prt_strings
+!
+@ %def prt_string_list_get_prt_strings
 @
 <<radiation generator: types>>=
   type :: reshuffle_list_t
@@ -1848,10 +1974,13 @@ end module radiation_generator
     type(pdg_list_t) :: pl_antiparticles
     type(pdg_array_t) :: pdg_gluon, pdg_photon
     type(pdg_array_t) :: pdg_add, pdg_tmp
-    integer :: i_skip, last_index
-    integer :: n_new_particles
-    i_skip = -1
+    integer :: last_index
+    integer :: n_new_particles, n_skip
+    integer, dimension(:), allocatable :: i_skip
     
+    allocate (i_skip (generator%n_tot))
+    i_skip = -1
+
     n_constraints = 1 + count([set_n_loop, set_mass_sum, &
          set_selected_particles, set_required_particles])
     associate (constraints => generator%constraints)
@@ -1872,17 +2001,20 @@ end module radiation_generator
            do i = 1, generator%n_out
               pdg_tmp = generator%pl_out%get(i)
               if (pdg_tmp%search_for_particle (GLUON)) then
-                 i_skip = i
-                 exit
+                 i_skip(i) = i
               end if
            end do
-           call pl_req%init (generator%n_out-1)
+
+           n_skip = count (i_skip > 0)
+           call pl_req%init (generator%n_out-n_skip)
         else
            call pl_req%init (generator%n_out)
         end if
+        j = 1
         do i = 1, generator%n_out
-           if (i == i_skip) cycle
-           call pl_req%set (i, generator%pl_out%get(i))
+           if (any (i == i_skip)) cycle
+           call pl_req%set (j, generator%pl_out%get(i))
+           j = j+1
         end do          
         call constraints%set (n, constrain_require (pl_req))
         n = n+1
@@ -2101,6 +2233,119 @@ end module radiation_generator
 @ %def radiation_generator_generate
 @
 <<radiation generator: radiation generator: TBP>>=
+  procedure :: generate_multiple => radiation_generator_generate_multiple
+<<radiation generator: procedures>>=
+  function radiation_generator_generate_multiple (generator, depth) result (string_list)
+    class(radiation_generator_t), intent(inout) :: generator
+    integer, intent(in) :: depth
+    type(prt_string_list_t) :: string_list
+    call generator%append_emissions (depth, string_list)
+  end function radiation_generator_generate_multiple
+
+@ %def radiation_generator_generate_multiple
+@
+<<radiation generator: radiation generator: TBP>>=
+  procedure :: append_emissions => radiation_generator_append_emissions 
+<<radiation generator: procedures>>=
+  recursive subroutine radiation_generator_append_emissions (generator, depth, string_list)
+    class(radiation_generator_t), intent(inout) :: generator
+    integer, intent(in) :: depth
+    type(prt_string_list_t), intent(inout) :: string_list
+    type(string_t), dimension(:), allocatable :: prt_in, prt_out
+    type(string_t), dimension(:), allocatable :: prt_out2
+    type(pdg_array_t), dimension(:), allocatable :: pdg_new_out, pdg_new_in
+    integer :: i, n_out
+    call generator%generate (prt_in, prt_out)
+    n_out = size (prt_out)
+    call separate_particles (prt_out, prt_out2)
+    if (.not. string_list%contains (prt_out2)) call string_list%append (prt_out2)
+    if (.not. any (prt_out == " ")) then
+!       print *, 'Appending prt_out'
+       if (.not. string_list%contains (prt_out)) &
+          call string_list%append(prt_out)
+    end if
+    if (depth > 1) then
+       pdg_new_in = create_pdg_array (prt_in, generator%radiation_model)
+       pdg_new_out = create_pdg_array (prt_out2, generator%radiation_model)
+       call sort_pdg (pdg_new_out)
+!       print *, 'pdg_new_in: '
+!       do i = 1, size (pdg_new_in)
+!          call pdg_new_in(i)%write ()
+!       end do
+!       print *, 'pdg_new_out: '
+!       do i = 1, size (pdg_new_out)
+!          call pdg_new_out(i)%write ()
+!       end do
+!       print *, 'n_out: ', n_out
+       call generator%init (pdg_new_in, pdg_new_out, qcd = .true., qed = .false.)
+       call generator%set_n (2, n_out, 0)
+       call generator%set_constraints (.false., .false., .true., .true.)
+!       print *, 'Append emissions'
+       call generator%append_emissions (depth-1, string_list) 
+       if (.not. any (prt_out == " ")) then
+          pdg_new_out = create_pdg_array (prt_out, generator%radiation_model)
+          call sort_pdg (pdg_new_out)
+!          print *, 'Second time: '
+!          do i = 1, size (pdg_new_out)
+!             call pdg_new_out(i)%write ()
+!          end do
+          call generator%init (pdg_new_in, pdg_new_out, qcd = .true., qed = .false.)
+          call generator%set_n (2, n_out, 0)
+          call generator%set_constraints (.false., .false., .true., .true.)
+          call generator%append_emissions (depth-1, string_list)
+       end if
+     end if
+
+  contains
+    subroutine sort_pdg (pdg)
+      type(pdg_array_t), dimension(:), intent(inout) :: pdg
+      integer, dimension(:), allocatable :: i_pdg
+      integer :: i
+
+      allocate (i_pdg (size (pdg)))
+      i_pdg = pdg%get ()
+      i_pdg = sort_abs (i_pdg)
+      do i = 1, size (pdg)
+         call pdg(i)%set (1, i_pdg(i))
+      end do
+    end subroutine sort_pdg
+ 
+    function create_pdg_array (prt, radiation_model) result (pdg)
+      type (string_t), dimension(:), intent(in) :: prt
+      class (model_data_t), intent(in), target :: radiation_model
+      type(pdg_array_t), dimension(:), allocatable :: pdg
+      type(flavor_t) :: flv
+      integer :: i
+      allocate (pdg (size (prt)))
+      do i = 1, size (prt)
+         call flv%init (prt(i), radiation_model)
+         pdg(i) = flv%get_pdg ()
+      end do
+    end function create_pdg_array
+  
+    subroutine separate_particles (prt1, prt2)
+      type(string_t), intent(inout), dimension(:) :: prt1
+      type(string_t), intent(out), dimension(:), allocatable :: prt2
+      integer :: i
+      logical, dimension(:), allocatable :: tuples_occured
+      allocate (prt2 (size (prt1)))
+      allocate (tuples_occured (size (prt1)))
+      do i = 1, size (prt1)
+         call split (prt1(i), prt2(i), var_str (":"))
+         tuples_occured(i) = prt1(i) /= " " .and. prt2(i) /= " "
+      end do
+      if (any (tuples_occured)) then
+         do i = 1, size (prt1)
+            if (.not. tuples_occured (i)) prt1(i) = prt2(i)
+         end do
+      end if
+    end subroutine separate_particles
+
+  end subroutine radiation_generator_append_emissions
+
+@ %def radiation_generator_append_emissions
+@
+<<radiation generator: radiation generator: TBP>>=
   procedure :: get_raw_states => radiation_generator_get_raw_states
 <<radiation generator: procedures>>=
   function radiation_generator_get_raw_states (generator) result (raw_states)
@@ -2170,6 +2415,9 @@ end module radiation_generator
     type(test_results_t), intent(inout) :: results
     call test(radiation_generator_1, "radiation_generator_1", &
        "Test the generator of N+1-particle flavor structures", &
+       u, results)
+    call test(radiation_generator_2, "radiation generator_2", &
+       "Test multiple splittings", &
        u, results)
   end subroutine radiation_generator_test
 
@@ -2300,6 +2548,78 @@ end module radiation_generator
   end subroutine radiation_generator_1
 
 @ %def radiation_generator_1
+@
+<<radiation generator: procedures>>=
+  subroutine radiation_generator_2 (u)
+    integer, intent(in) :: u
+    type(radiation_generator_t) :: generator
+    type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out
+    type(string_t), dimension(:), allocatable :: prt_strings_in
+    type(string_t), dimension(:), allocatable :: prt_strings_out
+    type(string_t), dimension(:), allocatable :: prt_strings_split
+    type(os_data_t) :: os_data
+    type(model_list_t) :: model_list
+    type(model_t), pointer :: radiation_model => null ()
+    type(flavor_t), dimension(:), allocatable :: flv_out
+    integer :: i
+    integer :: current_n_out
+    type(prt_string_list_t) :: prt_string_list
+
+    write (u, "(A)") "* Test output: radiation_generator_2"
+    write (u, "(A)") "* Purpose: Test the repeated application of a radiation generator splitting"
+    write (u, "(A)") 
+    write (u, "(A)") "* Loading radiation model: SM_rad.mdl"
+
+    call syntax_model_file_init ()
+    call os_data_init (os_data)
+    call model_list%read_model &
+       (var_str ("SM_rad"), var_str ("SM_rad.mdl"), &
+        os_data, radiation_model)
+    call generator%init_radiation_model (radiation_model)
+    write (u, "(A)") "Success"
+
+    allocate (pdg_in (2))
+    pdg_in(1) = 11; pdg_in(2) = -11
+    current_n_out = 2
+    allocate (pdg_out(current_n_out))
+    pdg_out(1) = 2; pdg_out(2) = -2
+
+    write (u, "(A)") "* Leading order"
+    write (u, "(A)", advance = 'no') "* Incoming: "
+    call write_pdg_array (pdg_in, u)
+    write (u, "(A)", advance = 'no') "* Outgoing: "
+    call write_pdg_array (pdg_out, u)
+
+    call generator%init (pdg_in, pdg_out, qcd = .true., qed = .false.)
+    call generator%set_n (2, current_n_out, 0)
+    call generator%set_constraints (.false., .false., .true., .true.)
+
+    prt_string_list = generator%generate_multiple (5)    
+    call prt_string_list%write (u)
+    
+  contains
+    subroutine write_pdg_array (pdg, u)
+      type(pdg_array_t), dimension(:), intent(in) :: pdg
+      integer, intent(in) :: u
+      integer :: i
+      do i = 1, size (pdg)
+         call pdg(i)%write (u)
+      end do
+      write (u, "(A)")
+    end subroutine write_pdg_array
+ 
+    subroutine write_particle_string (prt, u)
+      type(string_t), dimension(:), intent(in) :: prt
+      integer, intent(in) :: u
+      integer :: i
+      do i = 1, size (prt)
+         write (u, "(A,1X)", advance = "no") char (prt(i))
+      end do
+      write (u, "(A)") 
+    end subroutine write_particle_string
+  end subroutine radiation_generator_2
+
+@ %def radiation_generator_2
 @
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
