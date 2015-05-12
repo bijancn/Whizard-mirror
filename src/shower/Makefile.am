@@ -76,6 +76,7 @@ module_lists = \
   ../variables/Modules \
   ../model_features/Modules \
   ../muli/Modules \
+  ../expr_base/Modules \
   ../events/Modules \
   ../beams/Modules
 

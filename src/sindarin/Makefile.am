@@ -63,7 +63,8 @@ module_lists = \
   ../testing/Modules \
   ../utilities/Modules \
   ../system/Modules \
-  ../parsing/Modules
+  ../parsing/Modules \
+  ../system/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -107,7 +108,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../system
 
 
 ########################################################################
