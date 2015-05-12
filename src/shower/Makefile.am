@@ -71,6 +71,7 @@ module_lists = \
   ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
+  ../expr_base/Modules \
   ../particles/Modules \
   ../types/Modules \
   ../variables/Modules \
