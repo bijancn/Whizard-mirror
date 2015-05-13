@@ -1926,6 +1926,7 @@ end module radiation_generator
     integer :: n_light_quarks
     real(default) :: mass_sum
     class(model_data_t), pointer :: radiation_model
+    type(prt_queue_t) :: prt_queue
     type(pdg_states_t) :: pdg_raw
     type(pdg_array_t), dimension(:), allocatable :: pdg_in_born, pdg_out_born
   contains
@@ -2368,29 +2369,27 @@ end module radiation_generator
 <<radiation generator: radiation generator: TBP>>=
   procedure :: generate_multiple => radiation_generator_generate_multiple
 <<radiation generator: procedures>>=
-  function radiation_generator_generate_multiple (generator, max_multiplicity) result (prt_queue)
+  subroutine radiation_generator_generate_multiple (generator, max_multiplicity)
     class(radiation_generator_t), intent(inout) :: generator
     integer, intent(in) :: max_multiplicity
-    type(prt_queue_t) :: prt_queue
     if (max_multiplicity <= generator%n_out) &
        call msg_fatal ("GKS states: Multiplicity is not large enough!")
-    call generator%first_emission (prt_queue)
+    call generator%first_emission ()
     if (max_multiplicity - generator%n_out > 1) then
-       call generator%append_emissions (max_multiplicity-1, prt_queue)
+       call generator%append_emissions (max_multiplicity-1)
     end if
-  end function radiation_generator_generate_multiple
+  end subroutine radiation_generator_generate_multiple
 
 @ %def radiation_generator_generate_multiple
 @
 <<radiation generator: radiation generator: TBP>>=
   procedure :: first_emission => radiation_generator_first_emission
 <<radiation generator: procedures>>=
-  subroutine radiation_generator_first_emission (generator, prt_queue)
+  subroutine radiation_generator_first_emission (generator)
     class(radiation_generator_t), intent(inout) :: generator
-    type(prt_queue_t), intent(inout) :: prt_queue
     type(string_t), dimension(:), allocatable :: prt_in, prt_out
     call generator%generate (prt_in, prt_out)
-    call prt_queue%append (prt_out)
+    call generator%prt_queue%append (prt_out)
   end subroutine radiation_generator_first_emission
 
 @ %def radiation_generator_first_emission
@@ -2398,17 +2397,16 @@ end module radiation_generator
 <<radiation generator: radiation generator: TBP>>=
   procedure :: append_emissions => radiation_generator_append_emissions 
 <<radiation generator: procedures>>=
-  subroutine radiation_generator_append_emissions (generator, max_multiplicity, prt_queue)
+  subroutine radiation_generator_append_emissions (generator, max_multiplicity)
     class(radiation_generator_t), intent(inout) :: generator
     integer, intent(in) :: max_multiplicity
-    type(prt_queue_t), intent(inout) :: prt_queue
     type(string_t), dimension(:), allocatable :: prt_fetched
     type(string_t), dimension(:), allocatable :: prt_in
     type(string_t), dimension(:), allocatable :: prt_out1, prt_out2
     type(pdg_array_t), dimension(:), allocatable :: pdg_new_out
     integer :: current_multiplicity
     do 
-       prt_fetched = prt_queue%get ()
+       prt_fetched = generator%prt_queue%get ()
        current_multiplicity = size (prt_fetched)
        if (current_multiplicity == max_multiplicity) exit
        pdg_new_out = create_pdg_array (prt_fetched, generator%radiation_model)
@@ -2418,12 +2416,12 @@ end module radiation_generator
        call generator%generate (prt_in, prt_out1)
        call separate_particles (prt_out1, prt_out2)
        call sort_prt (prt_out2, generator%radiation_model)
-       if (.not. prt_queue%contains (prt_out2)) &
-          call prt_queue%append (prt_out2)
+       if (.not. generator%prt_queue%contains (prt_out2)) &
+          call generator%prt_queue%append (prt_out2)
        if (.not. any (prt_out1 == " ")) then
           call sort_prt (prt_out1, generator%radiation_model)
-          if (.not. prt_queue%contains (prt_out1)) &
-             call prt_queue%append (prt_out1) 
+          if (.not. generator%prt_queue%contains (prt_out1)) &
+             call generator%prt_queue%append (prt_out1) 
        end if
     end do
 
@@ -2663,7 +2661,6 @@ end module radiation_generator
     type(os_data_t) :: os_data
     type(model_list_t) :: model_list
     type(model_t), pointer :: radiation_model => null ()
-    type(prt_queue_t) :: prt_queue
 
     write (u, "(A)") "* Test output: radiation_generator_2"
     write (u, "(A)") "* Purpose: Test the repeated application of a radiation generator splitting"
@@ -2696,13 +2693,13 @@ end module radiation_generator
 
     call write_separator (u)
     write (u, "(A)") "Generated higher-multiplicity states"
-    prt_queue = generator%generate_multiple (10)    
-    call prt_queue%write (u)
+    call generator%generate_multiple (10)    
+    call generator%prt_queue%write (u)
     call write_separator (u)
-    write (u, "(A,I0)") "Number of higher-multiplicity states: ", prt_queue%n_lists
+    write (u, "(A,I0)") "Number of higher-multiplicity states: ", generator%prt_queue%n_lists
 
     write (u, "(A)") "Check that no particle state occurs twice or more"
-    if (.not. prt_queue%check_for_same_prt_strings()) then
+    if (.not. generator%prt_queue%check_for_same_prt_strings()) then
        write (u, "(A)") "SUCCESS"
     else
        write (u, "(A)") "FAIL"
