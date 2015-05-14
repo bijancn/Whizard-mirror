@@ -1564,6 +1564,9 @@ so the latter is always available (and kept global).
     call var_list_append_log &
         (global%var_list, var_str ("?combined_nlo_integration"), &
          .false., intrinsic = .true.)
+    call var_list_append_int &
+        (global%var_list, var_str ("gks_multiplicity"), &
+         0, intrinsic = .true.)
     call global%init_pointer_variables ()
     call global%process_stack%init_var_list (global%var_list)
 
@@ -8146,6 +8149,9 @@ local changes to currently inactive models.
               blha_template = blha_template)
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_SUB)
+       case (GKS)
+         call intg%process%init_component &
+             (i_component, core_template, mci_template, phs_config_template) 
        case default
          call msg_fatal ("setup_process: NLO type not implemented!")
        end select
@@ -15271,14 +15277,20 @@ or arrays which would make the expansion ambiguous.
     type(string_t) :: current_me_method 
     integer, dimension(:), allocatable :: i_list
     logical :: combined_nlo_integration, powheg_active
+    logical :: gks_active
     logical :: initial_state_colored
-    integer :: n_components_nlo
+    integer :: n_components_extra
+    integer :: gks_multiplicity
     
     nlo_calc = cmd%local%nlo_calculation                 
     combined_nlo_integration = &
            global%var_list%get_lval (var_str ('?combined_nlo_integration'))
     powheg_active = & 
            global%var_list%get_lval (var_str ('?powheg_matching')) 
+    gks_multiplicity = &
+           global%var_list%get_ival (var_str ('gks_multiplicity'))
+    gks_active = gks_multiplicity > 2
+
     call check_nlo_options (nlo_calc, combined_nlo_integration, powheg_active)
     active_nlo_components = cmd%local%active_nlo_components
 
@@ -15294,14 +15306,6 @@ or arrays which would make the expansion ambiguous.
        prt_spec_in(i) = new_prt_spec (prt_in(i))
     end do
     
-    initial_state_colored = pdg_in%has_colored_particles()
-    if (initial_state_colored) then
-       n_components_nlo = 5
-    else
-       n_components_nlo = 4
-    end if
-    allocate (i_list (n_components_nlo))
-
     call compile_prt_expr &
          (prt_expr_out, cmd%pn_out, var_list, cmd%local%model)
     call prt_expr_out%expand ()
@@ -15327,9 +15331,34 @@ or arrays which would make the expansion ambiguous.
        i_term(n_components) = i
        pdg_out_tab(n_components) = pdg_out
     end do SCAN_COMPONENTS
+
+    if (nlo_calc .or. gks_active) then
+       call split_prt (prt_spec_in, n_in, pl_in)
+       call split_prt (prt_spec_out, n_out, pl_out)
+       call radiation_generator%init (pl_in, pl_out, qcd = .true., qed = .false.)
+       call radiation_generator%set_n (n_in, n_out, 0)
+       call radiation_generator%set_constraints (.false., .false., .true., .true.)
+       call radiation_generator%init_radiation_model (cmd%local%radiation_model)
+    end if
+
     if (nlo_calc) then
-!      call prc_config%init (cmd%id, n_in, n_components*4, cmd%local)
-      call prc_config%init (cmd%id, n_in, n_components*n_components_nlo, cmd%local)
+       initial_state_colored = pdg_in%has_colored_particles()
+       if (initial_state_colored) then
+          n_components_extra = 5
+       else
+          n_components_extra = 4
+       end if
+       allocate (i_list (n_components_extra))
+    else if (gks_active) then
+       call radiation_generator%generate_multiple (gks_multiplicity)
+       n_components_extra = radiation_generator%get_n_gks_states ()
+    end if
+
+
+    if (nlo_calc) then
+      call prc_config%init (cmd%id, n_in, n_components*n_components_extra, cmd%local)
+    else if (gks_active) then
+      call prc_config%init (cmd%id, n_in, n_components*(n_components_extra+1), cmd%local)
     else
       call prc_config%init (cmd%id, n_in, n_components, cmd%local)
     end if
@@ -15350,13 +15379,6 @@ or arrays which would make the expansion ambiguous.
             call prc_config%setup_component (i, prt_spec_in, prt_spec_out, &
                                              cmd%local, BORN, &
                                              active_in = active_comp (1))
-            call split_prt (prt_spec_in, n_in, pl_in)
-            call split_prt (prt_spec_out, n_out, pl_out)
-            call radiation_generator%init (pl_in, pl_out, qcd = .true., qed = .false.)
-            call radiation_generator%set_n (n_in, n_out, 0)
-            call radiation_generator%set_constraints (.false., .false., .true., .true.)
-            call radiation_generator%init_radiation_model &
-                 (cmd%local%radiation_model)
             call radiation_generator%generate (prt_in_nlo, prt_out_nlo)
 
             current_me_method = var_str ('omega')
@@ -15383,7 +15405,6 @@ or arrays which would make the expansion ambiguous.
                current_me_method = "omega"
             end if
             call prc_config%setup_component (n_components*3+i, prt_spec_in, &
-!                            prt_spec_out, global, NLO_PDF, &
                             prt_spec_out, global, NLO_SUBTRACTION, &
                             active_in = active_comp (4))
            
@@ -15394,12 +15415,24 @@ or arrays which would make the expansion ambiguous.
                   current_me_method = correlation_me_method
                end if
                call prc_config%setup_component (n_components*4+i, prt_spec_in, &
-!                               prt_spec_out, global, NLO_SUBTRACTION, &
                                prt_spec_out, global, NLO_PDF, &
                                .false.)                     
             end if
             call prc_config%set_component_associations (i_list)
          end associate
+       else if (gks_active) then
+          call prc_config%setup_component (i, prt_spec_in, prt_spec_out, &
+                                           cmd%local, BORN, &
+                                           active_in = .true.)
+          call radiation_generator%reset_queue ()
+          do j = 1, n_components_extra
+             prt_out_nlo =  radiation_generator%get_next_state ()
+             call prc_config%setup_component (i+j, &
+                                              new_prt_spec (prt_in), &
+                                              new_prt_spec (prt_out_nlo), &
+                                              cmd%local, GKS, &
+                                              active_in = .false.)
+          end do  
        else
          call prc_config%setup_component (i, prt_spec_in, prt_spec_out, cmd%local)
        end if
