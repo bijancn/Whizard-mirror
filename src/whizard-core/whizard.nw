@@ -10842,9 +10842,9 @@ objects and store them.
 <<Simulations: procedures>>=
   function entry_get_next (entry) result (next_entry)
      class(entry_t), intent(in) :: entry
-     type(entry_t) :: next_entry
+     type(entry_t), pointer :: next_entry
      if (associated (entry%next)) then
-        next_entry = entry%next
+        next_entry => entry%next
      else
         call msg_fatal ("Get next entry: No next entry")
      end if
@@ -10922,12 +10922,19 @@ the normalization procedure for the process components.
   procedure :: init_mci_selector => entry_init_mci_selector
 <<Simulations: procedures>>=
   subroutine entry_init_mci_selector (entry)
-    class(entry_t), intent(inout) :: entry
-    integer :: i
+    class(entry_t), intent(inout), target :: entry
+    type(entry_t), pointer :: current_entry
+    integer :: i, j
+    integer :: n_nlo_entries
     if (entry%has_integral) then
-       call entry%mci_selector%init (entry%mci_set%integral)
-       do i = 1, entry%n_mci
-          entry%mci_set(i)%weight_mci = entry%mci_selector%get_weight (i)
+       current_entry => entry
+       do j = 1, current_entry%count_nlo_entries () 
+          if (j > 1) current_entry => current_entry%get_next ()
+          call current_entry%mci_selector%init (current_entry%mci_set%integral)
+          do i = 1, current_entry%n_mci
+             current_entry%mci_set(i)%weight_mci = &
+                current_entry%mci_selector%get_weight (i)
+          end do
        end do
     end if
   end subroutine entry_init_mci_selector
@@ -11712,12 +11719,13 @@ process instance will not be complete.  This should be fixed.
   procedure :: generate => simulation_generate
 <<Simulations: procedures>>=
   subroutine simulation_generate (simulation, n, es_array)
-    class(simulation_t), intent(inout) :: simulation
+    class(simulation_t), intent(inout), target :: simulation
     integer, intent(in) :: n
     type(event_stream_array_t), intent(inout), optional :: es_array
     type(string_t) :: str1, str2, str3
     logical :: generate_new, passed
     integer :: i, j, k
+    type(entry_t), pointer :: current_entry
     simulation%n_evt_requested = n
     call simulation%entry%set_n (n)
     if (simulation%n_alt > 0)  call simulation%alt_entry%set_n (n)
@@ -11752,15 +11760,16 @@ process instance will not be complete.  This should be fixed.
           simulation%i_prc = simulation%select_prc ()
           simulation%i_mci = simulation%select_mci ()
           associate (entry => simulation%entry(simulation%i_prc))
-            do k = 1, entry%count_nlo_entries ()
-               if (k > 1) entry = entry%get_next ()
+            current_entry => entry
+            do k = 1, current_entry%count_nlo_entries ()
+               if (k > 1) current_entry = current_entry%get_next ()
                do j = 1, simulation%n_max_tries
-                  if (.not. entry%valid)  call msg_warning &
-                          ("Process '" // char (entry%process_id) // "': " // &
+                  if (.not. current_entry%valid)  call msg_warning &
+                          ("Process '" // char (current_entry%process_id) // "': " // &
                           "matrix element vanishes, no events can be generated.")
-                  call entry%generate (simulation%i_mci)
+                  call current_entry%generate (simulation%i_mci)
                   if (signal_is_pending ()) return
-                  if (entry%has_valid_particle_set ())  exit
+                  if (current_entry%has_valid_particle_set ())  exit
                end do
             end do
             if (.not. entry%has_valid_particle_set ()) then
