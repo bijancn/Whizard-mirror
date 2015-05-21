@@ -4236,8 +4236,9 @@ module evt_nlo
 
 <<Use kinds>>
 <<Use strings>>
-  use constants, only: one
+  use constants
   use lorentz
+  use diagnostics
   use model_data
   use processes
   use process_stacks
@@ -4263,9 +4264,7 @@ end module evt_nlo
 <<Evt Nlo: types>>=
   type, extends (evt_t) :: evt_nlo_t
     type(phs_fks_generator_t) :: phs_fks_generator
-    real(default) :: weight_born_plus_virt = 0._default
-    real(default), dimension(:), allocatable :: weight_real_non_sub
-    real(default), dimension(:), allocatable :: weight_subtraction
+    real(default) :: sqme_rad
     integer :: emitter
   contains
   <<Evt Nlo: evt nlo: TBP>>
@@ -4301,11 +4300,6 @@ end module evt_nlo
        call generator%setup_real_kinematics (nlo_controller%real_kinematics)
        call generator%set_emitters (nlo_controller%reg_data%emitters)
        call generator%setup_masses (n_in + n_out_born)
-       n_emitters = size (nlo_controller%reg_data%emitters)
-       allocate (evt%weight_real_non_sub (n_emitters))
-       allocate (evt%weight_subtraction (n_emitters))
-       evt%weight_real_non_sub = 0._default
-       evt%weight_subtraction = 0._default
     end associate
   end subroutine evt_nlo_connect
 
@@ -4327,24 +4321,19 @@ end module evt_nlo
   subroutine evt_nlo_generate_weighted (evt, probability)
     class(evt_nlo_t), intent(inout) :: evt
     real(default), intent(inout) :: probability
+    real(default) :: weight
     evt%particle_set = evt%previous%particle_set
-    call evt%generate_emission ()
-    probability = one
-!    stop 'Reached step point'
+    if (evt%emitter == -1) then
+       weight = evt%compute_subtraction_weights ()
+       probability = probability + weight
+    else
+       call evt%generate_emission ()
+       probability = evt%sqme_rad
+    end if
+    evt%particle_set_exists = .true.
   end subroutine evt_nlo_generate_weighted
 
 @ %def evt_nlo_generate_weighted
-@
-<<Evt Nlo: evt nlo: TBP>>=
-!  procedure :: generate_unweighted => evt_nlo_generate_unweighted
-<<Evt Nlo: procedures>>=
-!  subroutine evt_nlo_generate_unweighted (evt)
-!    class(evt_nlo_t), intent(inout) :: evt
-!    real(default) :: p
-!    call evt%generate_weighted (p)
-!  end subroutine evt_nlo_generate_unweighted
-!
-@ %def evt_nlo_generate_unweighted
 @
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: make_particle_set => evt_nlo_make_particle_set
@@ -4360,44 +4349,67 @@ end module evt_nlo
 @ %def evt_nlo_make_particle_set
 @
 <<Evt Nlo: evt nlo: TBP>>=
-  procedure :: generate_emission => evt_nlo_generate_emission
+  procedure :: compute_subtraction_weights => evt_nlo_compute_subtraction_weights
 <<Evt Nlo: procedures>>=
-  subroutine evt_nlo_generate_emission (evt)
+  function evt_nlo_compute_subtraction_weights (evt) result (weight)
     class(evt_nlo_t), intent(inout) :: evt
-    type(vector4_t), dimension(:), allocatable :: p_born
-    type(vector4_t), dimension(:,:), allocatable :: p_real
+    real(default) :: weight
+    type(vector4_t), dimension(:), allocatable :: p_born, p_real
     integer, dimension(:), allocatable :: emitters
-    integer :: n_born, n_real
-    integer :: i, emitter
     real(default), dimension(3) :: x_rad
-    p_born = evt%particle_set%get_momenta ()
-    n_born = evt%particle_set%n_in + evt%particle_set%n_out
-    n_real = n_born + 1
+    integer :: i, emitter
+    weight = zero
     associate (instance => evt%process_instance)
-       emitters = instance%nlo_controller%get_emitter_list () 
-       allocate (p_real (n_real, size (emitters))) 
+       emitters = instance%nlo_controller%get_emitter_list ()
        x_rad = instance%nlo_controller%real_kinematics%x_rad
+       p_born = evt%particle_set%get_momenta ()
        call evt%phs_fks_generator%generate_radiation_variables (x_rad, p_born)
        do i = 1, size (emitters)
           emitter = emitters(i)
           if (emitter <= 2) then
-             p_real (:,i) = evt%phs_fks_generator%generate_isr_from_x &
-                (x_rad, p_born)
+             call msg_fatal ("NLO Events only for lepton collisions so far")
           else
-             p_real (:,i) = evt%phs_fks_generator%generate_fsr_from_x &
-                (x_rad, emitter, p_born)
+             p_real = evt%phs_fks_generator%generate_fsr_from_x &
+                  (x_rad, emitter, p_born)
           end if
           call instance%nlo_controller%set_momenta (p_born, born_phsp = .true.)
           call instance%nlo_controller%set_momenta (p_born, born_phsp = .true., cms = .true.)
-          call instance%nlo_controller%set_momenta (p_real (:,i), born_phsp = .false.)
-          call instance%nlo_controller%set_momenta (p_real (:,i), born_phsp = .false., cms = .true.)
-          call instance%compute_sqme_real_rad (emitter, p_born, p_real (:,i), 0.1178_default)
-          evt%weight_real_non_sub (i) = instance%sqme_collector%sqme_real_per_emitter (emitter)
-          call instance%compute_sqme_real_sub (emitter, p_born, p_real (:,i), 0.1178_default)
-          evt%weight_subtraction (i) = instance%sqme_collector%sqme_real_per_emitter (emitter)
+          call instance%nlo_controller%set_momenta (p_real, born_phsp = .false.)
+          call instance%nlo_controller%set_momenta (p_real, born_phsp = .false., cms = .true.)
+          call instance%compute_sqme_real_sub (emitter, p_born, p_real, 0.1178_default)
+          weight = weight + instance%sqme_collector%sqme_real_per_emitter (emitter)
        end do
     end associate
-    evt%particle_set_exists = .true.
+  end function evt_nlo_compute_subtraction_weights
+
+@ %def evt_nlo_compute_subtraction_weights
+@      
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: generate_emission => evt_nlo_generate_emission
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_generate_emission (evt)
+    class(evt_nlo_t), intent(inout) :: evt
+    type(vector4_t), dimension(:), allocatable :: p_born, p_real
+    integer :: n_born, n_real
+    integer :: i, emitter
+    real(default), dimension(3) :: x_rad
+    p_born = evt%particle_set%get_momenta ()
+    associate (instance => evt%process_instance)
+       x_rad = instance%nlo_controller%real_kinematics%x_rad
+       call evt%phs_fks_generator%generate_radiation_variables (x_rad, p_born)
+       if (evt%emitter <= 2) then
+          call msg_fatal ("NLO Events only for lepton collisions so far")
+       else
+          p_real = evt%phs_fks_generator%generate_fsr_from_x &
+              (x_rad, evt%emitter, p_born)
+       end if
+       call instance%nlo_controller%set_momenta (p_born, born_phsp = .true.)
+       call instance%nlo_controller%set_momenta (p_born, born_phsp = .true., cms = .true.)
+       call instance%nlo_controller%set_momenta (p_real, born_phsp = .false.)
+       call instance%nlo_controller%set_momenta (p_real, born_phsp = .false., cms = .true.)
+       call instance%compute_sqme_real_rad (evt%emitter, p_born, p_real, 0.1178_default)
+       evt%sqme_rad = instance%sqme_collector%sqme_real_per_emitter (evt%emitter)
+    end associate
   end subroutine evt_nlo_generate_emission
 
 @ %def evt_nlo_generate_emission
