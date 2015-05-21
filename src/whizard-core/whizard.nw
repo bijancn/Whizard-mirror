@@ -10562,6 +10562,39 @@ deallocate it here.  Then we call the finalizer of the base type.
   end subroutine entry_final
   
 @ %def entry_final
+@ Copy the content of an entry into another one, except for the next-pointer
+<<Simulations: entry: TBP>>=
+  procedure :: copy => entry_copy
+<<Simulations: procedures>>=
+  subroutine entry_copy (entry1, entry2)
+    class(entry_t), intent(in) :: entry1
+    type(entry_t), intent(inout) :: entry2
+    entry2%event_t = entry1%event_t
+    entry2%process_id = entry1%process_id
+    entry2%library = entry1%library
+    entry2%run_id = entry1%run_id 
+    entry2%has_integral = entry1%has_integral
+    entry2%integral = entry1%integral
+    entry2%error = entry1%error
+    entry2%process_weight = entry1%process_weight
+    entry2%valid = entry1%valid
+    entry2%counter = entry1%counter
+    entry2%n_in = entry1%n_in
+    entry2%n_mci = entry1%n_mci
+    if (allocated (entry1%mci_set)) then
+       allocate (entry2%mci_set (size (entry1%mci_set)))
+       entry2%mci_set = entry1%mci_set
+    end if
+    entry2%mci_selector = entry1%mci_selector
+    if (allocated (entry1%core_safe)) then
+       allocate (entry2%core_safe (size (entry1%core_safe)))
+       entry2%core_safe = entry1%core_safe
+    end if
+    entry2%model => entry1%model
+    entry2%qcd = entry1%qcd
+  end subroutine entry_copy
+
+@ %def entry_copy
 @ Initialization.  Search for a process entry and allocate a process
 instance as an anonymous object, temporarily accessible via the
 [[process_instance]] pointer.  Assign data by looking at the process
@@ -10776,7 +10809,7 @@ objects and store them.
     do i = 1, n_alr
        allocate (current_entry%next)
        current_entry => current_entry%next
-       current_entry = entry
+       call entry%copy (current_entry)
        evt = get_nlo_evt_ptr (current_entry)
        evt%emitter = emitters(i)
     end do
@@ -10803,6 +10836,43 @@ objects and store them.
   end subroutine entry_setup_additional_entries
 
 @ %def entry_setup_additional_entries      
+@
+<<Simulations: entry: TBP>>=
+  procedure :: get_next => entry_get_next
+<<Simulations: procedures>>=
+  function entry_get_next (entry) result (next_entry)
+     class(entry_t), intent(in) :: entry
+     type(entry_t) :: next_entry
+     if (associated (entry%next)) then
+        next_entry = entry%next
+     else
+        call msg_fatal ("Get next entry: No next entry")
+     end if
+  end function entry_get_next 
+
+@ %def entry_get_next
+@ 
+<<Simulations: entry: TBP>>=
+  procedure :: count_nlo_entries => entry_count_nlo_entries
+<<Simulations: procedures>>=
+  function entry_count_nlo_entries (entry) result (n)
+    class(entry_t), intent(in), target :: entry
+    integer :: n
+    type(entry_t), pointer :: current_entry
+    n = 1
+    if (.not. associated (entry%next)) then
+       return
+    else
+       current_entry => entry%next
+       do
+          n = n+1
+          if (.not. associated (current_entry%next)) exit
+          current_entry => current_entry%next
+       end do
+    end if
+  end function entry_count_nlo_entries
+
+@ %def entry_count_nlo_entries
 @ Part of simulation-entry initialization: dispatch event transforms
 (decay, shower) as requested.
 <<Simulations: entry: TBP>>=
@@ -11647,7 +11717,7 @@ process instance will not be complete.  This should be fixed.
     type(event_stream_array_t), intent(inout), optional :: es_array
     type(string_t) :: str1, str2, str3
     logical :: generate_new, passed
-    integer :: i, j
+    integer :: i, j, k
     simulation%n_evt_requested = n
     call simulation%entry%set_n (n)
     if (simulation%n_alt > 0)  call simulation%alt_entry%set_n (n)
@@ -11682,13 +11752,16 @@ process instance will not be complete.  This should be fixed.
           simulation%i_prc = simulation%select_prc ()
           simulation%i_mci = simulation%select_mci ()
           associate (entry => simulation%entry(simulation%i_prc))
-            do j = 1, simulation%n_max_tries
-               if (.not. entry%valid)  call msg_warning &
-                       ("Process '" // char (entry%process_id) // "': " // &
-                       "matrix element vanishes, no events can be generated.")
-               call entry%generate (simulation%i_mci)
-               if (signal_is_pending ()) return
-               if (entry%has_valid_particle_set ())  exit
+            do k = 1, entry%count_nlo_entries ()
+               if (k > 1) entry = entry%get_next ()
+               do j = 1, simulation%n_max_tries
+                  if (.not. entry%valid)  call msg_warning &
+                          ("Process '" // char (entry%process_id) // "': " // &
+                          "matrix element vanishes, no events can be generated.")
+                  call entry%generate (simulation%i_mci)
+                  if (signal_is_pending ()) return
+                  if (entry%has_valid_particle_set ())  exit
+               end do
             end do
             if (.not. entry%has_valid_particle_set ()) then
                write (msg_buffer, "(A,I0,A)")  "Simulation: failed to &
