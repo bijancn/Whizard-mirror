@@ -5300,6 +5300,11 @@ concatenated, we provide individual dispatchers for each of them.
     class(evt_t), intent(out), pointer :: evt
     call msg_message ("Simuate: activating fixed-order NLO events")
     allocate (evt_nlo_t :: evt)
+    evt%only_weighted_events = .true.
+    select type (evt)
+    type is (evt_nlo_t)
+       evt%i_evaluation = 0
+    end select
   end subroutine dispatch_evt_nlo
 
 @ %def dispatch_evt_nlo
@@ -10564,12 +10569,19 @@ deallocate it here.  Then we call the finalizer of the base type.
 @ %def entry_final
 @ Copy the content of an entry into another one, except for the next-pointer
 <<Simulations: entry: TBP>>=
-  procedure :: copy => entry_copy
+  procedure :: copy_entry => entry_copy_entry
 <<Simulations: procedures>>=
-  subroutine entry_copy (entry1, entry2)
+  subroutine entry_copy_entry (entry1, entry2)
     class(entry_t), intent(in) :: entry1
     type(entry_t), intent(inout) :: entry2
+!    entry2%event_t = entry1%event_t
+!    call entry1%event_t%copy_event (entry2%event_t)
+!    entry2%transform_first = entry1%transform_first
     entry2%event_t = entry1%event_t
+    if (associated (entry1%transform_first)) then
+       if (associated (entry2%transform_first)) nullify (entry2%transform_first)
+       allocate (entry2%transform_first, source=entry1%transform_first)
+    end if
     entry2%process_id = entry1%process_id
     entry2%library = entry1%library
     entry2%run_id = entry1%run_id 
@@ -10592,9 +10604,9 @@ deallocate it here.  Then we call the finalizer of the base type.
     end if
     entry2%model => entry1%model
     entry2%qcd = entry1%qcd
-  end subroutine entry_copy
+  end subroutine entry_copy_entry
 
-@ %def entry_copy
+@ %def entry_copy_entry
 @ Initialization.  Search for a process entry and allocate a process
 instance as an anonymous object, temporarily accessible via the
 [[process_instance]] pointer.  Assign data by looking at the process
@@ -10805,13 +10817,12 @@ objects and store them.
     end associate
     current_entry => entry
     evt => get_nlo_evt_ptr (current_entry)
-    evt%emitter = -1
+    allocate (evt%emitters (n_alr))
+    evt%emitters = entry%instance%nlo_controller%reg_data%get_emitter_list ()
     do i = 1, n_alr
        allocate (current_entry%next)
        current_entry => current_entry%next
-       call entry%copy (current_entry)
-       evt = get_nlo_evt_ptr (current_entry)
-       evt%emitter = emitters(i)
+       call entry%copy_entry (current_entry)
     end do
   contains
     function get_nlo_evt_ptr (entry) result (evt)
@@ -10873,6 +10884,24 @@ objects and store them.
   end function entry_count_nlo_entries
 
 @ %def entry_count_nlo_entries
+@
+<<Simulations: entry: TBP>>=
+  procedure :: reset_nlo_counter => entry_reset_nlo_counter 
+<<Simulations: procedures>>=
+  subroutine entry_reset_nlo_counter (entry)
+    class(entry_t), intent(inout) :: entry
+    class(evt_t), pointer :: evt
+    evt => entry%transform_first
+    do while (associated (evt%next))
+       select type (evt)
+       type is (evt_nlo_t)
+          evt%i_evaluation = 0
+       end select
+       evt => evt%next
+   end do
+  end subroutine entry_reset_nlo_counter
+
+@ %def entry_reset_nlo_counter       
 @ Part of simulation-entry initialization: dispatch event transforms
 (decay, shower) as requested.
 <<Simulations: entry: TBP>>=
@@ -11772,6 +11801,7 @@ process instance will not be complete.  This should be fixed.
                   if (current_entry%has_valid_particle_set ())  exit
                end do
             end do
+            if (entry%nlo_event) call entry%reset_nlo_counter ()
             if (.not. entry%has_valid_particle_set ()) then
                write (msg_buffer, "(A,I0,A)")  "Simulation: failed to &
                     &generate valid event after ", &
