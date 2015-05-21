@@ -1564,6 +1564,9 @@ so the latter is always available (and kept global).
     call var_list_append_log &
         (global%var_list, var_str ("?combined_nlo_integration"), &
          .false., intrinsic = .true.)
+    call var_list_append_log &
+        (global%var_list, var_str ("?nlo_fixed_order"), &
+         .false., intrinsic = .true.)
     call var_list_append_int &
         (global%var_list, var_str ("gks_multiplicity"), &
          0, intrinsic = .true.)
@@ -3559,6 +3562,7 @@ module dispatch
   use prc_openloops
   use phs_fks
   use nlo_data
+  use evt_nlo
 
 <<Standard module head>>
 
@@ -5289,6 +5293,17 @@ each matrix-element call.
 An event transform is responsible for dressing a partonic event.
 Since event transforms are not mutually exclusive but are
 concatenated, we provide individual dispatchers for each of them.
+<<Dispatch: public>>=
+  public :: dispatch_evt_nlo
+<<Dispatch: procedures>>=
+  subroutine dispatch_evt_nlo (evt)
+    class(evt_t), intent(out), pointer :: evt
+    call msg_message ("Simuate: activating fixed-order NLO events")
+    allocate (evt_nlo_t :: evt)
+  end subroutine dispatch_evt_nlo
+
+@ %def dispatch_evt_nlo
+@
 <<Dispatch: public>>=
   public :: dispatch_evt_decay
 <<Dispatch: procedures>>=
@@ -10172,6 +10187,7 @@ module simulations
   use event_base
   use events
   use event_transforms
+  use evt_nlo
   use decays
   use shower
   use eio_data
@@ -10480,6 +10496,7 @@ this case, the [[qcd]] and/or [[model]] components are present.
      class(model_data_t), pointer :: model => null ()
      type(qcd_t) :: qcd
      logical :: nlo_event = .false.
+     type(entry_t), pointer :: next => null ()
    contains
    <<Simulations: entry: TBP>>
   end type entry_t
@@ -10742,6 +10759,51 @@ objects and store them.
   end subroutine entry_prepare_expressions
 
 @ %def entry_prepare_expressions
+<<Simulations: entry: TBP>>=
+  procedure :: setup_additional_entries => entry_setup_additional_entries
+<<Simulations: procedures>>=
+  subroutine entry_setup_additional_entries (entry)
+    class(entry_t), intent(inout), target :: entry
+    type(entry_t), pointer :: current_entry
+    integer :: i, n_alr
+    integer, dimension(:), allocatable :: emitters
+    type(evt_nlo_t), pointer :: evt
+    associate (reg_data => entry%instance%nlo_controller%reg_data)
+       n_alr = reg_data%n_regions 
+       emitters = reg_data%emitters 
+    end associate
+    current_entry => entry
+    evt = get_nlo_evt_ptr (current_entry)
+    evt%emitter = -1
+    do i = 1, n_alr
+       allocate (current_entry%next)
+       current_entry => current_entry%next
+       current_entry = entry
+       evt = get_nlo_evt_ptr (current_entry)
+       evt%emitter = emitters(i)
+    end do
+  contains
+    function get_nlo_evt_ptr (entry) result (evt)
+      type(entry_t), intent(in), target :: entry
+      type(evt_nlo_t), pointer :: evt
+      class(evt_t), pointer :: current_evt
+      current_evt => entry%transform_first
+      do
+         select type (current_evt)
+         type is (evt_nlo_t)
+            evt = current_evt 
+            exit
+         end select
+         if (associated (current_evt%next)) then 
+            current_evt => current_evt%next
+         else
+            call msg_fatal ("evt_nlo not in list of event transforms")
+         end if
+      end do
+    end function get_nlo_evt_ptr
+  end subroutine entry_setup_additional_entries
+
+@ %def entry_setup_additional_entries      
 @ Part of simulation-entry initialization: dispatch event transforms
 (decay, shower) as requested.
 <<Simulations: entry: TBP>>=
@@ -10753,10 +10815,18 @@ objects and store them.
     type(process_t), intent(inout), target :: process
     type(rt_data_t), intent(in), target :: local
     class(evt_t), pointer :: evt
-    logical :: enable_shower
+    logical :: enable_fixed_order, enable_shower
     if (process%contains_unstable (local%model)) then
        call dispatch_evt_decay (evt, local)
        if (associated (evt))  call entry%import_transform (evt)
+    end if
+    enable_fixed_order = local%get_lval (var_str ("?nlo_fixed_order"))
+    if (enable_fixed_order) then
+       if (local%get_lval (var_str ("?unweighted"))) &
+          call msg_fatal ("NLO Fixed Order events have to be generated with &
+                          &?unweighted = false")
+       call dispatch_evt_nlo (evt)
+       call entry%import_transform (evt)
     end if
     enable_shower = local%get_lval (var_str ("?allow_shower")) .and. &
             (local%get_lval (var_str ("?ps_isr_active")) &
@@ -11375,6 +11445,9 @@ we may only read and rescan events.
                integrate, generate, simulation%update_sqme, &
                local, global)
           if (signal_is_pending ())  return          
+          simulation%entry(i)%nlo_event = .true.
+          if (simulation%entry(i)%nlo_event) &
+             call simulation%entry(i)%setup_additional_entries ()
        end do
        if (.not. any (simulation%entry%valid)) then
           call msg_error ("Simulate: " &

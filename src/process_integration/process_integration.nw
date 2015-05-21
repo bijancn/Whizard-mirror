@@ -2714,6 +2714,24 @@ if there are structure functions.
   end function process_contains_trivial_component
   
 @ %def process_contains_trivial_component
+@
+<<Processes: process: TBP>>=
+  procedure :: deactivate_real_component => process_deactivate_real_component
+<<Processes: procedures>>=
+  subroutine process_deactivate_real_component (process)
+    class(process_t), intent(inout) :: process
+    integer :: i
+    do i = 1, process%meta%n_components
+       call process%mci_entry(1)%deactivate_real_component &
+          (process%component(i))
+       select case (process%component(i)%component_type)
+       case (COMP_REAL)
+          process%component(i)%active = .false.
+       end select
+    end do
+  end subroutine
+
+@ %def process_deactivate_real_component
 @ Determine the MC parameter set structure and the MCI configuration for each
 process component.  We need data from the structure-function and phase-space
 setup, so those should be complete before this is called.  We also
@@ -4499,6 +4517,27 @@ restriction should be relaxed.
 
 @ %def process_mci_entry_create_component_list
 @
+<<Processes: process mci entry: TBP>>=
+  procedure :: deactivate_real_component => &
+     process_mci_entry_deactivate_real_component 
+<<Processes: procedures>>=
+  subroutine process_mci_entry_deactivate_real_component (mci_entry, component)
+    class(process_mci_entry_t), intent(inout) :: mci_entry
+    type(process_component_t), intent(in), target :: component
+    integer, dimension(4) :: i_list
+    if (allocated (mci_entry%i_component)) then
+       deallocate (mci_entry%i_component)
+       allocate (mci_entry%i_component (2))
+       i_list = component%config%get_association_list ()
+       mci_entry%i_component(1) = i_list(1)
+       mci_entry%i_component(2) = i_list(3)
+    else
+       call msg_fatal ("Trying to reset deallocated component list")
+    end if
+  end subroutine process_mci_entry_deactivate_real_component 
+
+@ %def process_mci_entry_deactivate_real_component
+@ 
 <<Processes: process mci entry: TBP>>=
   procedure :: set_combined_integration => &
                      process_mci_entry_set_combined_integration
@@ -6459,11 +6498,14 @@ postpone until we know the factorization scale), and we have a valid
     type(mci_work_t), intent(in) :: mci_work
     integer, intent(in) :: phs_channel
     logical, intent(out) :: success
+    integer :: sf_channel
     select type (phs => component%k_seed%phs)
     type is (phs_fks_t)
        call component%k_seed%compute_selected_channel &
             (mci_work, phs_channel, component%p_seed, success, &
             component%nlo_controller)
+       sf_channel = component%k_seed%phs%config%get_sf_channel (phs_channel)
+       call component%nlo_controller%sf_born%compute_kinematics (sf_channel, mci_work%get_x_strfun ())
        call component%nlo_controller%int_born%set_momenta &
             (component%p_seed)
     class default
@@ -6742,7 +6784,7 @@ imaginary part of the terms, which should be zero anyway.
      logical :: bad_point
 
      if (term%nlo_type /= NLO_REAL) return
-     p_real = term%nlo_controller%get_real_momenta ()
+     p_real = term%nlo_controller%get_momenta (born_phsp = .false.)
      select type (core => component%config%core)
      !!! Get the unsubtracted real matrix element, 
      !!! either from the parton states or from GoSam
@@ -7052,7 +7094,14 @@ relevant for a NLO algorithm.
           select case (phs%mode)
           case (PHS_MODE_ADDITIONAL_PARTICLE)
              term%nlo_controller%int_born = int_sav
-             call term%isolated%init (sf_sav, term%nlo_controller%int_born)
+             term%nlo_controller%sf_born => sf_sav
+             do j = 1, n_in
+                i = term%nlo_controller%sf_born%get_out_i (j)
+                call term%nlo_controller%int_born%set_source_link &
+                   (j, term%nlo_controller%sf_born%get_out_int_ptr (), i)
+             end do
+             call term%isolated%init (term%nlo_controller%sf_born, &
+                                      term%nlo_controller%int_born)
              call term%setup_real_interaction (term%int_hard)
           case (PHS_MODE_COLLINEAR_REMNANT)
              call term%isolated%init (term%k_term%sf_chain, term%int_hard)
@@ -7405,14 +7454,15 @@ interaction, then compute the convolution with the initial state.
   subroutine term_instance_evaluate_trace (term)
     class(term_instance_t), intent(inout) :: term
     call term%k_term%evaluate_sf_chain (term%fac_scale)
-    call term%isolated%evaluate_sf_chain (term%fac_scale)
-    call term%isolated%evaluate_trace ()
-    call term%connected%evaluate_trace ()
     select case (term%nlo_type)
     case (NLO_REAL)
+      call term%nlo_controller%sf_born%evaluate (term%fac_scale)
       call term%isolated_real%evaluate_trace ()
       call term%connected_real%evaluate_trace ()
     end select
+    call term%isolated%evaluate_sf_chain (term%fac_scale)
+    call term%isolated%evaluate_trace ()
+    call term%connected%evaluate_trace ()
   end subroutine term_instance_evaluate_trace
   
 @ %def term_instance_evaluate_trace
@@ -8449,6 +8499,11 @@ recovered, and we are just computing the rest.
           instance%evaluation_status = STAT_FAILED_KINEMATICS
        end if
     end if
+    if (associated (instance%nlo_controller)) then
+       associate (mci_work => instance%mci_work(instance%i_mci))
+          call instance%nlo_controller%set_x_rad (mci_work%get_x_process ())
+       end associate
+    end if
   end subroutine process_instance_compute_seed_kinematics
 
 @ %def process_instance_compute_seed_kinematics
@@ -8688,7 +8743,7 @@ terms, iterating over all active process components.
             end if
           end associate
        end do
-       if (associated (instance%sqme_collector)) &
+       if (associated (instance%sqme_collector) .and. i_real > 0) &
           call instance%evaluate_trace_real (instance%term(i_real), i_real)
     else
        ! failed kinematics, failed cuts: set sqme to zero
@@ -8820,8 +8875,8 @@ it from the MCI record.
        (instance, emitter, p_born, p_real, alpha_s)
     class(process_instance_t), intent(inout) :: instance
     integer, intent(in) :: emitter
-    type(vector4_t), intent(in), dimension(:), allocatable :: p_born 
-    type(vector4_t), intent(in), dimension(:), allocatable :: p_real
+    type(vector4_t), intent(in), dimension(:) :: p_born 
+    type(vector4_t), intent(in), dimension(:) :: p_real
     real(default), intent(in) :: alpha_s
     integer :: i_real
     
@@ -8832,13 +8887,36 @@ it from the MCI record.
     call instance%nlo_controller%disable_subtraction () 
     i_real = instance%component(1)%config%config%get_associated_real ()
     associate (term => instance%term(i_real))
-      call term%evaluate_interaction_real_rad (instance%component(i_real), &
-           p_born, p_real, alpha_s, i_real)
+       call term%evaluate_interaction_real_rad (instance%component(i_real), &
+            p_born, p_real, alpha_s, i_real)
        call instance%evaluate_trace_real_rad (term, i_real)
     end associate
   end subroutine process_instance_compute_sqme_real_rad
 
 @ %def process_instance_compute_sqme_real_rad
+@
+<<Processes: process instance: TBP>>=
+  procedure :: compute_sqme_real_sub => process_instance_compute_sqme_real_sub
+<<Processes: procedures>>=
+  subroutine process_instance_compute_sqme_real_sub &
+       (instance, emitter, p_born, p_real, alpha_s)
+     class(process_instance_t), intent(inout) :: instance
+     integer, intent(in) :: emitter
+     type(vector4_t), intent(in), dimension(:) :: p_born
+     type(vector4_t), intent(in), dimension(:) :: p_real
+     real(default), intent(in) :: alpha_s
+     integer :: i_real
+     call instance%nlo_controller%set_active_emitter (emitter)
+     call instance%nlo_controller%disable_sqme_np1 ()
+     i_real = instance%component(1)%config%config%get_associated_real ()
+     associate (term => instance%term(i_real))
+        call term%evaluate_interaction_real_rad (instance%component(i_real), &
+             p_born, p_real, alpha_s, i_real)
+        call instance%evaluate_trace_real_rad (term, i_real)
+     end associate
+  end subroutine process_instance_compute_sqme_real_sub
+
+@ %def process_instance_compute_sqme_real_sub
 @
 <<Processes: process instance: TBP>>=
   procedure :: get_matrix_elements => process_instance_get_matrix_elements

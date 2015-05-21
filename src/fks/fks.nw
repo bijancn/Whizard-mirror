@@ -2969,7 +2969,7 @@ it is necessary to expand with $z$ once.
     type(soft_subtraction_t) :: sub_soft
     type(coll_subtraction_t) :: sub_coll
     logical, dimension(:), allocatable :: sc_required
-    logical :: sqme_np1_active = .true.
+    logical :: radiation_active = .true.
     logical :: subtraction_active = .true.
   contains
   <<real subtraction: real subtraction: TBP>>
@@ -3113,29 +3113,37 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
     y = rsub%real_kinematics%y(emitter)
     phi = rsub%real_kinematics%phi
     associate (region => rsub%reg_data%regions(rsub%current_alr))
-      i_real = region%real_index
-      sqme0 = rsub%sqme_real_non_sub (i_real)
-      s_alpha = rsub%reg_data%get_svalue (rsub%real_kinematics%p_real_cms, rsub%current_alr, emitter)
-      sqme0 = sqme0 * s_alpha
-      sqme0 = sqme0 * region%mult
-      sqme0 = sqme0 * region%double_fsr_factor (rsub%real_kinematics%p_real_cms)
-      if (rsub%subtraction_active) then
-         sqme0 = sqme0 * xi**2/xi_tilde * rsub%real_kinematics%jac(emitter)%jac(1)
-      else
-         s = rsub%real_kinematics%cms_energy2
-         sqme0 = sqme0*rsub%real_kinematics%jac(emitter)%jac(1)*s/(8*twopi3)*xi
+      if (rsub%radiation_active) then
+         i_real = region%real_index
+         sqme0 = rsub%sqme_real_non_sub (i_real)
+         s_alpha = rsub%reg_data%get_svalue (rsub%real_kinematics%p_real_cms, rsub%current_alr, emitter)
+         sqme0 = sqme0 * s_alpha
+         sqme0 = sqme0 * region%mult
+         sqme0 = sqme0 * region%double_fsr_factor (rsub%real_kinematics%p_real_cms)
+         if (rsub%subtraction_active) then
+            sqme0 = sqme0 * xi**2/xi_tilde * rsub%real_kinematics%jac(emitter)%jac(1)
+         else
+            s = rsub%real_kinematics%cms_energy2
+            sqme0 = sqme0*rsub%real_kinematics%jac(emitter)%jac(1)*s/(8*twopi3)*xi
+         end if
       end if
       if (rsub%subtraction_active) then
          call rsub%evaluate_subtraction_terms_fsr (emitter, alpha_s, &
                    sqme_soft, sqme_coll, sqme_cs)
-         associate (jac => rsub%real_kinematics%jac)
-            sqme_soft = sqme_soft/(1-y)/xi_tilde * jac(emitter)%jac(2)
-            sqme_coll = sqme_coll/(1-y)/xi_tilde * jac(emitter)%jac(3)
-            sqme_cs = sqme_cs/(1-y)/xi_tilde * jac(emitter)%jac(2)
-         end associate
+         if (rsub%subtraction_active) then
+            associate (jac => rsub%real_kinematics%jac)
+               sqme_soft = sqme_soft/(1-y)/xi_tilde * jac(emitter)%jac(2)
+               sqme_coll = sqme_coll/(1-y)/xi_tilde * jac(emitter)%jac(3)
+               sqme_cs = sqme_cs/(1-y)/xi_tilde * jac(emitter)%jac(2)
+            end associate
+         end if
          sqme_remn = (sqme_soft - sqme_cs)*log(xi_max)*xi_tilde
-         sqme = sqme0 - sqme_soft - sqme_coll + sqme_cs + sqme_remn
-         sqme = sqme * rsub%real_kinematics%jac_rand (emitter)
+         if (rsub%subtraction_active) then
+            sqme = sqme0 - sqme_soft - sqme_coll + sqme_cs + sqme_remn
+            sqme = sqme * rsub%real_kinematics%jac_rand (emitter)
+         else
+            sqme = -sqme_soft - sqme_coll + sqme_cs + sqme_remn
+         end if
       else
          sqme = sqme0
       end if
@@ -3543,6 +3551,7 @@ end module nlo_data
     type(vector4_t), dimension(:), allocatable :: p_born_lab
     type(vector4_t), dimension(:), allocatable :: p_real_cms
     type(vector4_t), dimension(:), allocatable :: p_real_lab
+    real(default), dimension(3) :: x_rad
     real(default), dimension(:), allocatable :: jac_rand
     real(default), dimension(:), allocatable :: y_soft
     real(default) :: cms_energy2
@@ -4488,11 +4497,11 @@ process.
     logical :: alpha_s_born_set
     complex(default) :: me_sc
     type(interaction_t), public :: int_born
+    type(sf_chain_instance_t), pointer :: sf_born => null ()
     type(kinematics_counter_t), public :: counter
     logical, public :: counter_exists = .false.
     logical :: use_internal_color_correlations = .true.
     logical :: use_internal_spin_correlations = .false.
-    logical :: combined_nlo_integration = .false.
   contains
   <<nlo controller: nlo controller: TBP>>
   end type nlo_controller_t
@@ -4590,6 +4599,8 @@ process.
        collector%sqme_real_per_emitter = 0._default
        collector%sqme_born_cc = 0._default
        collector%sqme_born_sc = cmplx (0._default, 0._default, kind=default)
+       collector%current_sqme_real = 0._default
+       collector%sqme_real_sum = 0._default
     end associate
   end subroutine nlo_controller_setup_matrix_elements
 
@@ -4702,6 +4713,20 @@ process.
 @ %def nlo_controller_set_internal_procedures
 @
 <<nlo controller: nlo controller: TBP>>=
+  procedure :: set_x_rad => nlo_controller_set_x_rad
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_set_x_rad (controller, x_rad)
+    class(nlo_controller_t), intent(inout) :: controller
+    real(default), intent(in), dimension(:) :: x_rad
+    integer :: n_par
+    n_par = size (x_rad)
+    if (associated (controller%real_kinematics)) &
+       controller%real_kinematics%x_rad = x_rad (n_par-2:n_par)
+  end subroutine nlo_controller_set_x_rad
+
+@ %def nlo_controller_set_x_rad
+@
+<<nlo controller: nlo controller: TBP>>=
   procedure :: init_virtual => nlo_controller_init_virtual
 <<nlo controller: procedures>>=
   subroutine nlo_controller_init_virtual (nlo_controller)
@@ -4801,7 +4826,7 @@ process.
 <<nlo controller: procedures>>=
   subroutine nlo_controller_disable_subtraction (nlo_controller)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    nlo_controller%real_terms%sqme_np1_active = .true.
+    nlo_controller%real_terms%radiation_active = .true.
     nlo_controller%real_terms%subtraction_active = .false.
   end subroutine nlo_controller_disable_subtraction
 
@@ -4819,8 +4844,8 @@ process.
 <<nlo controller: procedures>>=
   subroutine nlo_controller_disable_sqme_np1 (nlo_controller)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    nlo_controller%real_terms%sqme_np1_active = .false.
-    nlo_controller%real_terms%subtraction_active = .false.
+    nlo_controller%real_terms%radiation_active = .false.
+    nlo_controller%real_terms%subtraction_active = .true.
   end subroutine nlo_controller_disable_sqme_np1
 
 @ %def nlo_controller_disable_sqme_np1
@@ -5012,15 +5037,58 @@ process.
 @ %def nlo_controller_get_real_kinematics
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: get_real_momenta => nlo_controller_get_real_momenta
+  procedure :: set_momenta => nlo_controller_set_momenta
 <<nlo controller: procedures>>=
-  function nlo_controller_get_real_momenta (nlo_controller) result (p)
+  subroutine nlo_controller_set_momenta (nlo_controller, p, born_phsp, cms)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    type(vector4_t), dimension(:), allocatable :: p
-    p = nlo_controller%real_kinematics%p_real_lab
-  end function nlo_controller_get_real_momenta
+    type(vector4_t), intent(in), dimension(:) :: p
+    logical, intent(in) :: born_phsp
+    logical, intent(in), optional :: cms
+    logical :: yorn
+    yorn = .false.; if (present (cms)) yorn = cms
+    if (born_phsp) then
+       if (yorn) then
+           nlo_controller%real_kinematics%p_born_cms = p
+       else
+          nlo_controller%real_kinematics%p_born_lab = p
+       end if
+    else
+       if (yorn) then
+          nlo_controller%real_kinematics%p_real_cms = p
+       else
+          nlo_controller%real_kinematics%p_real_lab = p
+       end if
+    end if
+  end subroutine nlo_controller_set_momenta
 
-@ %def nlo_controller_get_real_kinematics
+@ %def nlo_controller_set_momenta
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: get_momenta => nlo_controller_get_momenta
+<<nlo controller: procedures>>=
+  function nlo_controller_get_momenta (nlo_controller, born_phsp, cms) result (p)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    logical, intent(in) :: born_phsp
+    logical, intent(in), optional :: cms
+    type(vector4_t), dimension(:), allocatable :: p
+    logical :: yorn
+    yorn = .false.; if (present (cms)) yorn = cms
+    if (born_phsp) then
+       if (yorn) then
+          p = nlo_controller%real_kinematics%p_born_cms
+       else
+          p = nlo_controller%real_kinematics%p_born_lab
+       end if
+    else
+       if (yorn) then
+          p = nlo_controller%real_kinematics%p_real_cms
+       else
+          p = nlo_controller%real_kinematics%p_real_lab
+       end if
+    end if
+  end function nlo_controller_get_momenta
+
+@ %def nlo_controller_get_momenta
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: set_fac_scale => nlo_controller_set_fac_scale
@@ -6133,7 +6201,19 @@ is equal to
     class(phs_fks_t), intent(inout) :: phs
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(out), dimension(:), allocatable :: p_real
+    type(vector4_t), dimension(:), allocatable :: p
+    phs%generator%real_kinematics%p_born_lab = p_born
+    associate (p_born_cms => phs%generator%real_kinematics%p_born_cms)
+       if (.not. phs%config%cm_frame) then
+          p_born_cms = inverse (phs%lt_cm_to_lab) * p_born
+       else
+          p_born_cms = p_born
+       end if
+    end associate
     call phs%generator%generate_isr (p_born, p_real)
+    phs%generator%real_kinematics%p_real_lab = p_real
+    if (.not. phs%config%cm_frame) &
+       phs%generator%real_kinematics%p_real_cms = inverse (phs%lt_cm_to_lab) * p_real
   end subroutine phs_fks_generate_isr
 
 @ %def phs_fks_generate_isr
@@ -6242,6 +6322,22 @@ is equal to
   end subroutine phs_fks_generator_generate_isr
 
 @ %def phs_fks_generator_generate_isr
+@
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: generate_isr_from_x => phs_fks_generator_generate_isr_from_x
+<<phs fks: procedures>>=
+  function phs_fks_generator_generate_isr_from_x (generator, &
+                    r_in, p_born) result  (p_real)
+    type(vector4_t), dimension(:), allocatable :: p_real
+    class(phs_fks_generator_t), intent(inout) :: generator
+    real(default), intent(in), dimension(:) :: r_in
+    type(vector4_t), intent(in), dimension(:) :: p_born
+
+    call generator%generate_radiation_variables (r_in, p_born)
+    call generator%generate_isr (p_born, p_real)
+  end function phs_fks_generator_generate_isr_from_x
+
+@ %def phs_fks_generator_generate_isr_from_x
 @
 <<phs fks: phs fks generator: TBP>>=
   procedure :: set_beam_energy => phs_fks_generator_set_beam_energy
