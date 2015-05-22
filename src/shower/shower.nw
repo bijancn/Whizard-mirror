@@ -6565,8 +6565,8 @@ added back in by Pythia.
 
     if (signal_is_pending ()) return
     if (debug_active (D_SHOWER)) then
-       print *, 'Combine PYTHIA6 with particle set'
-       print *, 'Particle set before replacing'
+       call msg_debug (D_SHOWER, 'Combine PYTHIA6 with particle set')
+       call msg_debug (D_SHOWER, 'Particle set before replacing')
        call particle_set%write (summary=.true., compressed=.true.)
        call pylist (2)
     end if
@@ -6594,7 +6594,7 @@ added back in by Pythia.
             particle_set%prt%status == PRT_BEAM_REMNANT) .and. &
             particle_set%prt%has_children ()) &
             particle_set%prt%status = PRT_RESONANT
-    call connect_broken_links ()
+    call particle_set%remove_duplicates (py_tiny)
     if (debug_active (D_SHOWER)) then
        print *, 'Particle set after replacing'
        call particle_set%write (summary=.true., compressed=.true.)
@@ -6713,6 +6713,9 @@ added back in by Pythia.
             abs_smallness = 1E-9_default, &
             rel_smallness = 1E-6_default)) then
           boost_required = .true.
+          if (abs (sum_vec_in%p(0) - sum_vec_out%p(0)) > 2900_default) then
+             msg_level(D_SHOWER) = DEBUG
+          end if
           L = boost (sum_vec_in, sum_vec_out%p(0))
        end if
     end if
@@ -6892,71 +6895,6 @@ relations than when deciding whether we add particles or not.
     end do
   end subroutine give_orphans_backup_parents
 
-@
-<<Shower pythia6: combine with particle set: procedures>>=
-  subroutine connect_broken_links ()
-    integer :: pdg_i, n_removals, child_i
-    integer, dimension(particle_set%n_tot) :: to_remove
-    type(vector4_t) :: p_i
-    integer, dimension(:), allocatable :: map
-    to_remove = 0
-    OUTER: do i = 1, particle_set%n_tot
-       if (particle_set%prt(i)%status == PRT_OUTGOING .or. &
-            particle_set%prt(i)%status == PRT_VIRTUAL .or. &
-            particle_set%prt(i)%status == PRT_RESONANT) then
-          if (allocated (particle_set%prt(i)%child)) then
-             if (size (particle_set%prt(i)%child) > 1) cycle OUTER
-             if (size (particle_set%prt(i)%child) == 1) then
-                child_i = particle_set%prt(i)%child(1)
-             else
-                child_i = 0
-             end if
-          end if
-          pdg_i = particle_set%prt(i)%flv%get_pdg ()
-          p_i = particle_set%prt(i)%p
-          do j = i + 1, particle_set%n_tot
-             if (pdg_i == particle_set%prt(j)%flv%get_pdg ()) then
-                if (all (nearly_equal (particle_set%prt(j)%p%p, p_i%p, &
-                     abs_smallness = py_tiny, &
-                     rel_smallness = 1E4_default * py_tiny))) then
-                   if (child_i > 0 .and. j /= child_i) then
-                         cycle OUTER
-                   end if
-                   to_remove(j) = i
-                   cycle OUTER
-                end if
-             end if
-          end do
-       end if
-    end do OUTER
-    n_removals = count (to_remove > 0)
-    if (n_removals > 0) then
-       call msg_debug (D_SHOWER, "Removing duplicates")
-       call msg_debug (D_SHOWER, "n_removals", n_removals)
-       deallocate (particles)
-       allocate (particles (particle_set%n_tot - n_removals))
-       allocate (map (particle_set%n_tot))
-       map = 0
-       j = 0
-       do i = 1, particle_set%n_tot
-          if (to_remove(i) == 0) then
-             j = j + 1
-             map(i) = j
-             call particles(j)%init (particle_set%prt(i))
-          end if
-       end do
-       do i = 1, particle_set%n_tot
-          if (map(i) == 0)  cycle
-          call particles(map(i))%set_parents &
-               (map (particle_set%prt(i)%get_parents ()))
-          call particles(map(i))%set_children &
-               (map (particle_set%prt(i)%get_children ()))
-          ! Add missing link
-       end do
-       call particle_set%replace (particles)
-    end if
-  end subroutine connect_broken_links
-@
 <<Shower pythia6: shower pythia6: TBP>>=
   procedure :: get_final_colored_ME_momenta => shower_pythia6_get_final_colored_ME_momenta
 <<Shower pythia6: procedures>>=
