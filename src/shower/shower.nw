@@ -6594,6 +6594,7 @@ added back in by Pythia.
             particle_set%prt%status == PRT_BEAM_REMNANT) .and. &
             particle_set%prt%has_children ()) &
             particle_set%prt%status = PRT_RESONANT
+    call connect_broken_links ()
     if (debug_active (D_SHOWER)) then
        print *, 'Particle set after replacing'
        call particle_set%write (summary=.true., compressed=.true.)
@@ -6798,7 +6799,7 @@ added back in by Pythia.
           if (parent >= 1 .and. parent <= 2) then
              call particle_set%parent_add_child (parent, child)
           else
-             real_parent = find_pythia_particle (parent)
+             real_parent = find_pythia_particle (parent, more_fuzzy=.true.)
              if (real_parent > 0 .and. real_parent /= child) then
                 call particle_set%parent_add_child (real_parent, child)
              end if
@@ -6832,9 +6833,9 @@ added back in by Pythia.
           end do
           allocate (parents (end_string - begin_string + 1))
           parents = 0
-          real_child = find_pythia_particle (old_start)
+          real_child = find_pythia_particle (old_start, more_fuzzy=.true.)
           do i = begin_string, end_string
-             real_parent = find_pythia_particle (i)
+             real_parent = find_pythia_particle (i, more_fuzzy=.true.)
              if (real_parent > 0) then
                 call particle_set%prt(real_parent)%add_child (real_child)
                 parents (i - begin_string + 1) = real_parent
@@ -6848,19 +6849,27 @@ added back in by Pythia.
     end if
   end subroutine set_parent_child_relations_of_color_strings_to_hadrons
 
-@
+@ We allow to be [[more_fuzzy]] when finding particles for parent child
+relations than when deciding whether we add particles or not.
 <<Shower pythia6: combine with particle set: procedures>>=
-  function find_pythia_particle (i) result (j)
+  function find_pythia_particle (i, more_fuzzy) result (j)
     integer :: j
     integer, intent(in) :: i
+    logical, intent(in), optional :: more_fuzzy
+    real(default) :: rel_small
     pdg = K(i,2)
     momentum = real([P(i,4), P(i,1:3)], kind=default)
     if (boost_required) then
        momentum = L * momentum
     end if
+    if (present (more_fuzzy)) then
+       rel_small = 1E4_default * py_tiny
+    else
+       rel_small = 1E3_default * py_tiny
+    end if
     j = particle_set%find_particle (pdg, momentum, &
          abs_smallness = py_tiny, &
-         rel_smallness = 1E3_default * py_tiny)
+         rel_smallness = rel_small)
   end function find_pythia_particle
 
 @
@@ -6868,7 +6877,7 @@ added back in by Pythia.
   subroutine give_orphans_backup_parents ()
     do i = 1, size (particle_set%prt)
        if ((particle_set%prt(i)%status == PRT_OUTGOING .or. &
-            particle_set%prt(i)%status == PRT_VIRTUAL .or. &
+!            particle_set%prt(i)%status == PRT_VIRTUAL .or. &
             particle_set%prt(i)%status == PRT_RESONANT) .and. .not. &
             particle_set%prt(i)%has_parents ()) then
           call particle_set%prt(i)%set_parents (backup_parents)
@@ -6883,6 +6892,65 @@ added back in by Pythia.
     end do
   end subroutine give_orphans_backup_parents
 
+@
+<<Shower pythia6: combine with particle set: procedures>>=
+  subroutine connect_broken_links ()
+    integer :: pdg_i, n_removals
+    integer, dimension(particle_set%n_tot) :: to_remove
+    type(vector4_t) :: p_i
+    integer, dimension(:), allocatable :: map
+    to_remove = 0
+    OUTER: do i = 1, particle_set%n_tot
+       if ((particle_set%prt(i)%status == PRT_OUTGOING .or. &
+            particle_set%prt(i)%status == PRT_VIRTUAL .or. &
+            particle_set%prt(i)%status == PRT_RESONANT) .and. &
+            size (particle_set%prt(i)%child) <= 1) then
+          pdg_i = particle_set%prt(i)%flv%get_pdg ()
+          p_i = particle_set%prt(i)%p
+          do j = i + 1, particle_set%n_tot
+             if (pdg_i == particle_set%prt(j)%flv%get_pdg ()) then
+                if (all (nearly_equal (particle_set%prt(j)%p%p, p_i%p, &
+                     abs_smallness = py_tiny, &
+                     rel_smallness = 1E4_default * py_tiny))) then
+                   if (size (particle_set%prt(i)%child) == 1) then
+                      if (j /= particle_set%prt(i)%child(1)) then
+                         cycle OUTER
+                      end if
+                   end if
+                   to_remove(j) = i
+                   cycle OUTER
+                end if
+             end if
+          end do
+       end if
+    end do OUTER
+    n_removals = count (to_remove > 0)
+    if (n_removals > 0) then
+       call msg_debug (D_SHOWER, "Removing duplicates")
+       call msg_debug (D_SHOWER, "n_removals", n_removals)
+       deallocate (particles)
+       allocate (particles (particle_set%n_tot - n_removals))
+       allocate (map (particle_set%n_tot))
+       map = 0
+       j = 0
+       do i = 1, particle_set%n_tot
+          if (to_remove(i) == 0) then
+             j = j + 1
+             map(i) = j
+             call particles(j)%init (particle_set%prt(i))
+          end if
+       end do
+       do i = 1, particle_set%n_tot
+          if (map(i) == 0)  cycle
+          call particles(map(i))%set_parents &
+               (map (particle_set%prt(i)%get_parents ()))
+          call particles(map(i))%set_children &
+               (map (particle_set%prt(i)%get_children ()))
+          ! Add missing link
+       end do
+       call particle_set%replace (particles)
+    end if
+  end subroutine connect_broken_links
 @
 <<Shower pythia6: shower pythia6: TBP>>=
   procedure :: get_final_colored_ME_momenta => shower_pythia6_get_final_colored_ME_momenta
