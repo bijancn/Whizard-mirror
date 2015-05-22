@@ -4240,6 +4240,7 @@ module evt_nlo
   use lorentz
   use diagnostics
   use model_data
+  use particles
   use processes
   use process_stacks
   use event_transforms
@@ -4267,6 +4268,7 @@ end module evt_nlo
     real(default) :: sqme_rad
     integer :: i_evaluation
     integer, dimension(:), allocatable :: emitters
+    type(particle_set_t), dimension(:), allocatable :: particle_set_radiated
   contains
   <<Evt Nlo: evt nlo: TBP>>
   end type evt_nlo_t
@@ -4333,8 +4335,7 @@ end module evt_nlo
        call evt%generate_emission (emitter)
        probability = evt%sqme_rad
     end if
-!    evt%i_evaluation = evt%i_evaluation+1
-!    evt%particle_set_exists = .true.
+    evt%particle_set_exists = .true.
   end subroutine evt_nlo_generate_weighted
 
 @ %def evt_nlo_generate_weighted
@@ -4348,24 +4349,34 @@ end module evt_nlo
     integer, intent(in) :: factorization_mode
     logical, intent(in) :: keep_correlations
     real(default), dimension(:), intent(in), optional :: r
+  end subroutine evt_nlo_make_particle_set
+
+@ %def evt_nlo_make_particle_set
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: build_radiated_particle_set => evt_nlo_build_radiated_particle_set
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_build_radiated_particle_set (evt, i_event)
+    class(evt_nlo_t), intent(inout) :: evt
+    integer, intent(in) :: i_event
     real(default) :: r_col
     type(vector4_t), dimension(:), allocatable :: p_new
     integer, dimension(:), allocatable :: flv_radiated
     integer :: emitter
+    evt%particle_set_radiated(i_event) = evt%particle_set
     if (evt%i_evaluation /= 0) then
        flv_radiated = evt%process_instance%nlo_controller%get_flv_state_real (1)
        call evt%rng%generate (r_col)
        emitter = evt%emitters (evt%i_evaluation)
        p_new = evt%process_instance%nlo_controller%get_momenta (born_phsp = .false.)
-       call evt%particle_set%build_radiation (p_new, emitter, flv_radiated, &
+       call evt%particle_set_radiated(i_event)%build_radiation (p_new, emitter, flv_radiated, &
             evt%process_instance%process%get_model_ptr (), r_col) 
     end if
     evt%i_evaluation = evt%i_evaluation + 1
-    evt%particle_set_exists = .true.
-  end subroutine evt_nlo_make_particle_set
+  end subroutine evt_nlo_build_radiated_particle_set
 
-@ %def evt_nlo_make_particle_set
-@
+@ %def evt_nlo_build_radiated_particle_set
+@ 
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: compute_subtraction_weights => evt_nlo_compute_subtraction_weights
 <<Evt Nlo: procedures>>=
@@ -4467,6 +4478,7 @@ module events
   use event_base
   use event_transforms
   use decays
+  use evt_nlo
 
 <<Standard module head>>
 
@@ -4628,6 +4640,7 @@ and should be written to file, including copies of [[sqme]] and [[weight]].
      real(default) :: reweight = 1
      logical :: analysis_flag = .false.
      logical :: nlo_event = .false.
+     integer :: i_event = 0
    contains
    <<Events: event: TBP>>
   end type event_t
@@ -4995,7 +5008,16 @@ For testing purpose, we allow for providing them explicitly, as an option.
        end do
        evt => event%transform_last
        if (associated (evt) .and. evt%particle_set_exists) then
-          call event%link_particle_set (evt%particle_set)
+          if (event%nlo_event) then
+             select type (evt)
+             type is (evt_nlo_t)
+                call evt%build_radiated_particle_set (event%i_event+1)
+                call event%link_particle_set &
+                   (evt%particle_set_radiated(event%i_event+1))
+             end select
+          else
+             call event%link_particle_set (evt%particle_set)
+          end if
        end if
     end if
   end subroutine event_evaluate_transforms
