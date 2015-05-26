@@ -3615,6 +3615,7 @@ module shower
   use diagnostics
   use lorentz
   use pdf
+  use subevents
   
   use shower_base
   use matching_base
@@ -3848,6 +3849,7 @@ we mark the particle set as invalid. This procedure directly takes the
     logical :: valid, vetoed
     call msg_debug (D_TRANSFORMS, "evt_shower_generate_weighted")
     evt%particle_set = evt%previous%particle_set
+    valid = .true.;  vetoed = .false.
     if (evt%is_first_event) then
        call evt%first_event ()
        evt%is_first_event = .false.
@@ -3860,8 +3862,7 @@ we mark the particle set as invalid. This procedure directly takes the
           call evt%matching%write ()
        end if
     end if
-    valid = .true.;  vetoed = .false.
-    if (.not. vetoed .and. .not. POWHEG_TESTING) then
+    if (.not. (vetoed .or. POWHEG_TESTING)) then
        if (evt%settings%method == PS_PYTHIA6 .or. &
            evt%settings%hadronization_active) then
           call assure_heprup (evt%particle_set)
@@ -3875,6 +3876,8 @@ we mark the particle set as invalid. This procedure directly takes the
 @ %def evt_shower_generate_weighted
 @ Here, we fill the particle set with the partons from the shower.
 The factorization parameters are irrelevant.  
+We make a sanity check that the initial energy lands either in the
+outgoing particles or add to the beam remnant.
 <<Shower: evt shower: TBP>>=
   procedure :: make_particle_set => evt_shower_make_particle_set
 <<Shower: procedures>>=
@@ -3884,11 +3887,15 @@ The factorization parameters are irrelevant.
     integer, intent(in) :: factorization_mode
     logical, intent(in) :: keep_correlations
     real(default), dimension(:), intent(in), optional :: r
-    logical :: vetoed
+    type(vector4_t) :: sum_vec_in, sum_vec_out, sum_vec_beamrem, &
+         sum_vec_beamrem_before
+    logical :: vetoed, sane
     if (evt%particle_set_exists) then
+       vetoed = .false.
+       sum_vec_beamrem_before = sum (evt%particle_set%prt%p, &
+            mask=evt%particle_set%prt%get_status () == PRT_BEAM_REMNANT)
        call evt%shower%make_particle_set (evt%particle_set, &
             evt%model, evt%model_hadrons)
-       vetoed = .false.
        if (allocated (evt%matching)) then
           call evt%matching%after_shower (evt%particle_set, vetoed)
        end if
@@ -3897,7 +3904,18 @@ The factorization parameters are irrelevant.
                "Shower: obtained particle set after shower + matching")
           call evt%particle_set%write (summary = .true., compressed = .true.)
        end if
-       evt%particle_set_exists = .not. vetoed
+       sum_vec_in = sum (evt%particle_set%prt%p, &
+            mask=evt%particle_set%prt%get_status () == PRT_INCOMING)
+       sum_vec_out = sum (evt%particle_set%prt%p, &
+            mask=evt%particle_set%prt%get_status () == PRT_OUTGOING)
+       sum_vec_beamrem = sum (evt%particle_set%prt%p, &
+            mask=evt%particle_set%prt%get_status () == PRT_BEAM_REMNANT)
+       sum_vec_beamrem = sum_vec_beamrem - sum_vec_beamrem_before
+       sane = abs(sum_vec_out%p(0) - sum_vec_in%p(0)) < &
+            sum_vec_in%p(0) / 10 .or. &
+            abs((sum_vec_out%p(0) + sum_vec_beamrem%p(0)) - sum_vec_in%p(0)) < &
+            sum_vec_in%p(0) / 10
+       evt%particle_set_exists = .not. vetoed .and. sane
     end if
   end subroutine evt_shower_make_particle_set
 
