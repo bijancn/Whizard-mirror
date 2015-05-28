@@ -2569,6 +2569,8 @@ module real_subtraction
 
 <<real subtraction: public>>
 
+<<real subtraction: parameters>>
+
 <<real subtraction: types>>
 
 contains
@@ -2579,6 +2581,13 @@ end module real_subtraction
 @ %def real_subtraction
 @
 \subsubsection{Soft subtraction terms}
+<<real subtraction: parameters>>=
+  integer, parameter, public :: INTEGRATION = 0
+  integer, parameter, public :: FIXED_ORDER_EVENTS = 1
+  integer, parameter, public :: POWHEG = 2
+
+@ %def real subtraction parameters
+@
 In the soft limit, the real matrix element behaves as
 \begin{equation*}
   \mathcal{R}_{\rm{soft}} = 4\pi\alpha_s \left[\sum_{i \neq j} \mathcal{B}_{ij} \frac{k_i \cdot k_j}{(k_i \cdot k)(k_j \cdot k)} - \mathcal{B} \sum_{i} \frac{k_i^2}{(k_i \cdot k)^2}C_i\right],
@@ -2600,6 +2609,7 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
   end type soft_subtraction_t
 
 @ %def soft_subtraction_t
+@
 <<real subtraction: soft sub: TBP>>=
   procedure :: init => soft_subtraction_init
 <<real subtraction: procedures>>=
@@ -2969,6 +2979,7 @@ it is necessary to expand with $z$ once.
     type(soft_subtraction_t) :: sub_soft
     type(coll_subtraction_t) :: sub_coll
     logical, dimension(:), allocatable :: sc_required
+    integer :: purpose = INTEGRATION
     logical :: radiation_active = .true.
     logical :: subtraction_active = .true.
   contains
@@ -3085,7 +3096,8 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
             end if
          end if
     end do
-    if (rsub%subtraction_active) sqme = sqme*rsub%get_phs_factor ()
+    if (rsub%purpose == INTEGRATION) &
+        sqme = sqme*rsub%get_phs_factor ()
   end function real_subtraction_compute
 
 @ %def real_subtraction_compute
@@ -3105,12 +3117,13 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
     integer :: i_real
     real(default) :: sqme0, sqme_soft, sqme_coll, sqme_cs, sqme_remn
     real(default) :: s_alpha
-    real(default) :: xi, xi_max, xi_tilde, y, phi
+    real(default) :: xi, xi_max, xi_tilde, y, onemy, phi
     real(default) :: s
     xi_tilde = rsub%real_kinematics%xi_tilde
     xi_max = rsub%real_kinematics%xi_max(emitter)
     xi = xi_tilde * xi_max
     y = rsub%real_kinematics%y(emitter)
+    onemy = one-y
     phi = rsub%real_kinematics%phi
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       if (rsub%radiation_active) then
@@ -3120,33 +3133,39 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
          sqme0 = sqme0 * s_alpha
          sqme0 = sqme0 * region%mult
          sqme0 = sqme0 * region%double_fsr_factor (rsub%real_kinematics%p_real_cms)
-         if (rsub%subtraction_active) then
+         select case (rsub%purpose)
+         case (INTEGRATION, FIXED_ORDER_EVENTS)
             sqme0 = sqme0 * xi**2/xi_tilde * rsub%real_kinematics%jac(emitter)%jac(1)
-         else
+         case (POWHEG)
             s = rsub%real_kinematics%cms_energy2
             sqme0 = sqme0*rsub%real_kinematics%jac(emitter)%jac(1)*s/(8*twopi3)*xi
-         end if
+         end select
       end if
       if (rsub%subtraction_active) then
          call rsub%evaluate_subtraction_terms_fsr (emitter, alpha_s, &
                    sqme_soft, sqme_coll, sqme_cs)
-         if (rsub%subtraction_active) then
+         sqme_soft = sqme_soft/onemy/xi_tilde
+         sqme_coll = sqme_coll/onemy/xi_tilde
+         sqme_cs = sqme_cs/onemy/xi_tilde
+         select case (rsub%purpose)
+         case (INTEGRATION, FIXED_ORDER_EVENTS)
             associate (jac => rsub%real_kinematics%jac)
-               sqme_soft = sqme_soft/(1-y)/xi_tilde * jac(emitter)%jac(2)
-               sqme_coll = sqme_coll/(1-y)/xi_tilde * jac(emitter)%jac(3)
-               sqme_cs = sqme_cs/(1-y)/xi_tilde * jac(emitter)%jac(2)
+               sqme_soft = sqme_soft * jac(emitter)%jac(2)
+               sqme_coll = sqme_coll * jac(emitter)%jac(3)
+               sqme_cs = sqme_cs * jac(emitter)%jac(2)
             end associate
-         end if
+         end select
          sqme_remn = (sqme_soft - sqme_cs)*log(xi_max)*xi_tilde
-         if (rsub%radiation_active) then
+         select case (rsub%purpose)
+         case (INTEGRATION)
             sqme = sqme0 - sqme_soft - sqme_coll + sqme_cs + sqme_remn
-            sqme = sqme * rsub%real_kinematics%jac_rand (emitter)
-         else
+         case (FIXED_ORDER_EVENTS)
             sqme = -sqme_soft - sqme_coll + sqme_cs + sqme_remn
-         end if
+         end select
       else
          sqme = sqme0
       end if
+      sqme = sqme * rsub%real_kinematics%jac_rand(emitter)
     end associate
     !!! This occurs if the result is NaN.
     if (sqme /= sqme) &
@@ -4386,6 +4405,25 @@ one to determine this.
   end function nlo_controller_get_mass_info
 
 @ %def nlo_controller_get_mass_info
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: set_fixed_order_event_mode => nlo_controller_set_fixed_order_event_mode
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_set_fixed_order_event_mode (nlo_controller)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    nlo_controller%real_terms%purpose = FIXED_ORDER_EVENTS
+  end subroutine nlo_controller_set_fixed_order_event_mode
+
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: set_powheg_mode => nlo_controller_set_powheg_mode
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_set_powheg_mode (nlo_controller)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    nlo_controller%real_terms%purpose = POWHEG
+  end subroutine nlo_controller_set_powheg_mode
+
+@ %def nlo_controller_set_fixed_order_event_mode
+@ %def nlo_controller_set_powheg_mode
 @
 \subsection{Putting it together}
 <<nlo data: public>>=
