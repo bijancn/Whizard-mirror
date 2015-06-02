@@ -1378,14 +1378,15 @@ $\alpha_s^\text{rad}$ is still larger than the true $\alpha_s$.
   public :: powheg_settings_t
 <<POWHEG matching: types>>=
   type :: powheg_settings_t
-     real(default) :: pt2_min
-     real(default) :: lambda
-     integer :: n_init
-     integer :: size_grid_xi
-     integer :: size_grid_y
+     real(default) :: pt2_min = zero
+     real(default) :: lambda = zero
+     integer :: n_init = 0
+     integer :: size_grid_xi = 0
+     integer :: size_grid_y = 0
      integer :: upper_bound_func = UBF_SIMPLE
      logical :: rebuild_grids = .false.
      logical :: test_sudakov = .false.
+     logical :: singular_jacobian = .false.
   contains
    <<POWHEG matching: powheg settings: TBP>>
   end type powheg_settings_t
@@ -1415,6 +1416,8 @@ used to decide which ubf object is allocated.
     settings%lambda = var_list%get_rval (var_str ("powheg_lambda"))
     settings%rebuild_grids = &
          var_list%get_lval (var_str ("?powheg_rebuild_grids"))
+    settings%singular_jacobian = &
+         var_list%get_lval (var_str ("?powheg_use_singular_jacobian"))
   end subroutine powheg_settings_init
 
 @ %def powheg_settings_init
@@ -1487,7 +1490,7 @@ functions.
   public :: process_deps_t
 <<POWHEG matching: types>>=
   type :: process_deps_t
-     real(default) :: lambda2_gen
+     real(default) :: lambda2_gen, sqrts
      integer :: n_alr
   contains
    <<POWHEG matching: process deps: TBP>>
@@ -1514,7 +1517,7 @@ functions.
   public :: event_deps_t
 <<POWHEG matching: types>>=
   type :: event_deps_t
-     real(default) :: cms_energy2
+     real(default) :: sqrts_hat
      type(vector4_t), dimension(:), allocatable :: p_born
      type(vector4_t), dimension(:), allocatable :: p_real
      real(default) :: sqme_born
@@ -1533,7 +1536,7 @@ functions.
     integer :: u
     u = given_output_unit (unit);  if (u < 0)  return
     write (u, "(1X,A)") "Event dependencies:"
-    write (u, "(3X,A," // FMT_19 // ")") "cms_energy2 = ", event_deps%cms_energy2
+    write (u, "(3X,A," // FMT_19 // ")") "sqrts_hat = ", event_deps%sqrts_hat
     write (u, "(3X,A," // FMT_19 // ")") "sqme_born = ", event_deps%sqme_born
   end subroutine event_deps_write
 
@@ -1564,7 +1567,7 @@ partonic vs hadronic cms as well as decays in POWHEG:
 <<POWHEG matching: procedures>>=
   pure subroutine event_deps_set_cms (event_deps)
     class(event_deps_t), intent(inout) :: event_deps
-    event_deps%cms_energy2 = &
+    event_deps%sqrts_hat = &
          (event_deps%p_born(1) + event_deps%p_born(2))**2
   end subroutine event_deps_set_cms
 
@@ -2011,7 +2014,7 @@ improved version.
     real(default) :: kt2
     class(sudakov_simple_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: xi, y
-    kt2 = sudakov%event_deps%cms_energy2 / 2 * xi**2 * (1 - y)
+    kt2 = sudakov%event_deps%sqrts_hat / 2 * xi**2 * (1 - y)
   end function sudakov_simple_fsr_kt2
 
 @ %def sudakov_simple_fsr_kt2
@@ -2030,10 +2033,10 @@ reweighted to the more precise $\alpha_s$.
     real(default), intent(in) :: pt2
     real(default) :: xm2s, xm2sl, pt2l
     logical :: within_boundaries
-    within_boundaries = pt2 / sudakov%event_deps%cms_energy2 <= sudakov%xi2_max &
+    within_boundaries = pt2 / sudakov%event_deps%sqrts_hat <= sudakov%xi2_max &
          .and. pt2 >= sudakov%powheg_settings%pt2_min
     if (within_boundaries) then
-       xm2s = sudakov%xi2_max * sudakov%event_deps%cms_energy2
+       xm2s = sudakov%xi2_max * sudakov%event_deps%sqrts_hat
        xm2sl = xm2s / sudakov%process_deps%lambda2_gen
        pt2l = pt2 / sudakov%process_deps%lambda2_gen
        y = pi / b0rad * (log (xm2sl) * &
@@ -2065,7 +2068,7 @@ reweighted to the more precise $\alpha_s$.
     class(sudakov_simple_fsr_t), intent(inout) :: sudakov
     type(radiation_t), intent(inout) :: r
     real(default) :: s
-    s = sudakov%event_deps%cms_energy2
+    s = sudakov%event_deps%sqrts_hat
     call sudakov%generate_xi (r)
     r%y = one - (two * r%pt2) / (s * r%xi**2)
     call sudakov%rng%generate (sudakov%random)
@@ -2088,7 +2091,7 @@ with a density $1 / \xi$
     class(sudakov_simple_fsr_t), intent(inout) :: sudakov
     type(radiation_t), intent(inout) :: r
     real(default) :: s, xi2_max
-    s = sudakov%event_deps%cms_energy2
+    s = sudakov%event_deps%sqrts_hat
     xi2_max = sudakov%xi2_max
     call sudakov%rng%generate (sudakov%random)
     r%xi = exp (((one - sudakov%random) * log (r%pt2 / s) + &
@@ -2118,7 +2121,7 @@ $\mathcal{O}(\theta^4)$ when $y=\cos\theta$.
     real(default) :: kt2
     class(sudakov_eeqq_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: xi, y
-    kt2 = sudakov%event_deps%cms_energy2 / 2 * xi**2 * (1 - y**2) / 2
+    kt2 = sudakov%event_deps%sqrts_hat / 2 * xi**2 * (1 - y**2) / 2
   end function sudakov_eeqq_fsr_kt2
 
 @ %def sudakov_eeqq_fsr_kt2
@@ -2144,10 +2147,10 @@ a massless recoiling system.
     class(sudakov_eeqq_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: pt2
     logical :: within_boundaries
-    within_boundaries = pt2 / sudakov%event_deps%cms_energy2 <= sudakov%xi2_max &
+    within_boundaries = pt2 / sudakov%event_deps%sqrts_hat <= sudakov%xi2_max &
          .and. pt2 >= sudakov%powheg_settings%pt2_min
     if (within_boundaries) then
-       !xm2s = sudakov%xi2_max * sudakov%event_deps%cms_energy2
+       !xm2s = sudakov%xi2_max * sudakov%event_deps%sqrts_hat
        !xm2sl = xm2s / sudakov%process_deps%lambda2_gen
        !pt2l = pt2 / sudakov%process_deps%lambda2_gen
        !y = pi / b0rad * (log (xm2sl) * &
@@ -2179,7 +2182,7 @@ a massless recoiling system.
     class(sudakov_eeqq_fsr_t), intent(inout) :: sudakov
     type(radiation_t), intent(inout) :: r
     real(default) :: s
-    s = sudakov%event_deps%cms_energy2
+    s = sudakov%event_deps%sqrts_hat
     !r%xi = sudakov%generate_xi (r)
     !r%y = one - (two * r%pt2) / (s * r%xi**2)
     call sudakov%rng%generate (sudakov%random)
@@ -2745,7 +2748,7 @@ values $(f_B)$
            xi2_max = nlo%get_xi_max (alr)**2
            call sudakov%update (xi2_max)
            r%alr = alr
-           r%pt2 = sudakov%xi2_max * powheg%event_deps%cms_energy2
+           r%pt2 = sudakov%xi2_max * powheg%event_deps%sqrts_hat
            PT_EVOLUTION: do
               if (signal_is_pending ())  return
               call sudakov%generate_emission (r)
@@ -3058,11 +3061,11 @@ $p_{T,\text{min}}^2$.
           n_in = nlo_controller%particle_data%n_in
           n_out_born = nlo_controller%particle_data%n_out_born
           n_out_real = nlo_controller%particle_data%n_out_real
-          associate (generator => matching%phs_fks_generator)
-             call generator%setup_real_kinematics (nlo_controller%real_kinematics)
-             call generator%set_emitters (nlo_controller%reg_data%emitters)
-             call generator%setup_masses (n_in + n_out_born)
-          end associate
+          matching%process_deps%sqrts = matching%process_instance%get_sqrts ()
+          call nlo_controller%setup_generator &
+               (matching%phs_fks_generator, &
+               matching%settings%singular_jacobian,
+               matching%process_deps%sqrts)
        end associate
     else
        matching%process_deps%n_alr = matching%testing%n_alr
@@ -3275,7 +3278,7 @@ NLO process though.
 
     p_born = powheg%event_deps%p_born
     sqme_born = powheg%event_deps%sqme_born
-    s = powheg%event_deps%cms_energy2
+    s = powheg%event_deps%sqrts_hat
     pt2_min = powheg%settings%pt2_min
     n_calls1 = 50000; n_calls2 = 5000
     histo1 = zero; histo2 = zero; histo1sq = zero
