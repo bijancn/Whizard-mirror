@@ -109,6 +109,8 @@ We will collect event transforms in a list, therefore we include
      type(particle_set_t) :: particle_set
      class(evt_t), pointer :: previous => null ()
      class(evt_t), pointer :: next => null ()
+     real(default) :: weight = 0._default
+     logical :: only_weighted_events = .false.
    contains
    <<Event transforms: evt: TBP>>
   end type evt_t
@@ -229,7 +231,7 @@ rejection.
      subroutine evt_generate_weighted (evt, probability)
        import
        class(evt_t), intent(inout) :: evt
-       real(default), intent(out) :: probability
+       real(default), intent(inout) :: probability
      end subroutine evt_generate_weighted
   end interface
   
@@ -407,7 +409,7 @@ instance.  The [[generate]] methods do nothing.
 <<Event transforms: procedures>>=
   subroutine evt_trivial_generate_weighted (evt, probability)
     class(evt_trivial_t), intent(inout) :: evt
-    real(default), intent(out) :: probability
+    real(default), intent(inout) :: probability
     probability = 1
   end subroutine evt_trivial_generate_weighted
     
@@ -915,7 +917,7 @@ invalid.
 <<Hadrons: procedures>>=
   subroutine evt_hadrons_generate_weighted (evt, probability)
     class(evt_hadrons_t), intent(inout) :: evt
-    real(default), intent(out) :: probability
+    real(default), intent(inout) :: probability
     logical :: valid
     evt%particle_set = evt%previous%particle_set
     call evt%hadrons%hadronize (evt%particle_set, valid)
@@ -2843,7 +2845,7 @@ subroutine, fill it with momenta and evaluate.
 <<Decays: procedures>>=
   subroutine evt_decay_generate_weighted (evt, probability)
     class(evt_decay_t), intent(inout) :: evt
-    real(default), intent(out) :: probability
+    real(default), intent(inout) :: probability
     call evt%decay_root%generate ()
     if (signal_is_pending ())  return
     call evt%decay_chain%evaluate ()
@@ -3710,10 +3712,6 @@ hadrons that can be generated in the shower.
          (u, summary = .true., compressed = .true., testflag = testflag)
     call write_separator (u)
     call evt%settings%write (u)
-    if (allocated (evt%matching)) then
-       call write_separator (u)
-       call evt%matching%write (u)
-    end if
   end subroutine evt_shower_write
     
 @ %def evt_shower_write
@@ -3845,7 +3843,7 @@ we mark the particle set as invalid. This procedure directly takes the
 <<Shower: procedures>>=
   subroutine evt_shower_generate_weighted (evt, probability)
     class(evt_shower_t), intent(inout) :: evt
-    real(default), intent(out) :: probability
+    real(default), intent(inout) :: probability
     logical :: valid, vetoed
     call msg_debug (D_TRANSFORMS, "evt_shower_generate_weighted")
     evt%particle_set = evt%previous%particle_set
@@ -4247,6 +4245,263 @@ We generate a two-jet event and shower it with the Whizard FSR shower.
 @ %def shower_2
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Fixed Order NLO Events}
+
+<<[[evt_nlo.f90]]>>=
+<<File header>>
+
+module evt_nlo
+
+<<Use kinds>>
+<<Use strings>>
+  use constants
+  use lorentz
+  use diagnostics
+  use sm_qcd
+  use model_data
+  use particles
+  use processes
+  use process_stacks
+  use event_transforms
+  use phs_fks
+
+<<Standard module head>>
+
+<<Evt Nlo: public>>
+
+<<Evt Nlo: parameters>>
+
+<<Evt Nlo: types>>
+
+contains
+
+<<Evt Nlo: procedures>>
+
+end module evt_nlo
+
+@ %def evt_nlo
+@
+<<Evt Nlo: parameters>>=
+  integer, parameter :: ALPHAS_FROM_SQRTS = 1
+  integer, parameter :: ALPHAS_FROM_PT = 2
+
+@ %def evt_nlo parameters
+@
+<<Evt Nlo: public>>=
+  public :: evt_nlo_t
+<<Evt Nlo: types>>=
+  type, extends (evt_t) :: evt_nlo_t
+    type(phs_fks_generator_t) :: phs_fks_generator
+    real(default) :: sqme_rad
+    integer :: i_evaluation
+    integer, dimension(:), allocatable :: emitters
+    type(particle_set_t), dimension(:), allocatable :: particle_set_radiated
+    type(qcd_t), pointer :: qcd => null ()
+    integer :: alphas_mode = ALPHAS_FROM_SQRTS
+  contains
+  <<Evt Nlo: evt nlo: TBP>>
+  end type evt_nlo_t
+  
+@ %def evt_nlo_t
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: write => evt_nlo_write
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_write (evt, unit, verbose, more_verbose, testflag)
+    class(evt_nlo_t), intent(in) :: evt
+    integer, intent(in), optional :: unit
+    logical, intent(in), optional :: verbose, more_verbose, testflag
+  end subroutine evt_nlo_write
+
+@ %def evt_nlo_write
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: connect => evt_nlo_connect
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_connect (evt, process_instance, model, process_stack)
+    class(evt_nlo_t), intent(inout), target :: evt
+    type(process_instance_t), intent(in), target :: process_instance
+    class(model_data_t), intent(in), target :: model
+    type(process_stack_t), intent(in), optional :: process_stack
+    integer :: n_in, n_out_born, n_emitters
+    call evt%base_connect (process_instance, model, process_stack)
+    associate (generator => evt%phs_fks_generator, &
+               nlo_controller => process_instance%nlo_controller)
+       n_in = nlo_controller%particle_data%n_in
+       n_out_born = nlo_controller%particle_data%n_out_born
+       call generator%setup_real_kinematics (nlo_controller%real_kinematics)
+       call generator%set_emitters (nlo_controller%reg_data%emitters)
+       call generator%setup_masses (n_in + n_out_born)
+       generator%is_massive = nlo_controller%get_mass_info(1)
+    end associate
+    call process_instance%nlo_controller%set_fixed_order_event_mode ()
+  end subroutine evt_nlo_connect
+
+@ %def evt_nlo_connect
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: prepare_new_event => evt_nlo_prepare_new_event
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_prepare_new_event (evt, i_mci, i_term)
+    class(evt_nlo_t), intent(inout) :: evt
+    integer, intent(in) :: i_mci, i_term
+  end subroutine evt_nlo_prepare_new_event
+
+@ %def evt_nlo_prepare_new_event
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: generate_weighted => evt_nlo_generate_weighted
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_generate_weighted (evt, probability)
+    class(evt_nlo_t), intent(inout) :: evt
+    real(default), intent(inout) :: probability
+    real(default) :: weight
+    integer :: emitter
+    evt%particle_set = evt%previous%particle_set
+    if (evt%i_evaluation == 0) then
+       weight = evt%compute_subtraction_weights ()
+       probability = probability + weight
+    else
+       emitter = evt%emitters (evt%i_evaluation)
+       call evt%generate_emission (emitter)
+       probability = evt%sqme_rad
+    end if
+    evt%particle_set_exists = .true.
+  end subroutine evt_nlo_generate_weighted
+
+@ %def evt_nlo_generate_weighted
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: make_particle_set => evt_nlo_make_particle_set
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_make_particle_set &
+       (evt, factorization_mode, keep_correlations, r)
+    class(evt_nlo_t), intent(inout) :: evt
+    integer, intent(in) :: factorization_mode
+    logical, intent(in) :: keep_correlations
+    real(default), dimension(:), intent(in), optional :: r
+  end subroutine evt_nlo_make_particle_set
+
+@ %def evt_nlo_make_particle_set
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: build_radiated_particle_set => evt_nlo_build_radiated_particle_set
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_build_radiated_particle_set (evt, i_event)
+    class(evt_nlo_t), intent(inout) :: evt
+    integer, intent(in) :: i_event
+    real(default) :: r_col
+    type(vector4_t), dimension(:), allocatable :: p_new
+    integer, dimension(:), allocatable :: flv_radiated
+    integer :: emitter
+    evt%particle_set_radiated(i_event) = evt%particle_set
+    if (evt%i_evaluation /= 0) then
+       flv_radiated = evt%process_instance%nlo_controller%get_flv_state_real (1)
+       call evt%rng%generate (r_col)
+       emitter = evt%emitters (evt%i_evaluation)
+       p_new = evt%process_instance%nlo_controller%get_momenta (born_phsp = .false.)
+       call evt%particle_set_radiated(i_event)%build_radiation (p_new, emitter, flv_radiated, &
+            evt%process_instance%process%get_model_ptr (), r_col) 
+    end if
+    evt%i_evaluation = evt%i_evaluation + 1
+  end subroutine evt_nlo_build_radiated_particle_set
+
+@ %def evt_nlo_build_radiated_particle_set
+@ 
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: compute_subtraction_weights => evt_nlo_compute_subtraction_weights
+<<Evt Nlo: procedures>>=
+  function evt_nlo_compute_subtraction_weights (evt) result (weight)
+    class(evt_nlo_t), intent(inout) :: evt
+    real(default) :: weight
+    type(vector4_t), dimension(:), allocatable :: p_born, p_real
+    integer, dimension(:), allocatable :: emitters
+    real(default), dimension(3) :: x_rad
+    integer :: i, emitter
+    real(default) :: alpha_s
+    weight = zero
+    associate (instance => evt%process_instance)
+       emitters = instance%nlo_controller%get_emitter_list ()
+       x_rad = instance%nlo_controller%real_kinematics%x_rad
+       p_born = evt%particle_set%get_momenta ()
+       call evt%phs_fks_generator%set_beam_energy (p_born(1)%p(0))
+       call evt%phs_fks_generator%generate_radiation_variables (x_rad, p_born)
+       do i = 1, size (emitters)
+          emitter = emitters(i)
+          if (emitter <= 2) then
+             call msg_fatal ("NLO Events only for lepton collisions so far")
+          else
+             p_real = evt%phs_fks_generator%generate_fsr_from_x &
+                  (x_rad, emitter, p_born)
+          end if
+          associate (nlo_controller => instance%nlo_controller)
+             call nlo_controller%set_momenta (p_born, born_phsp = .true.)
+             call nlo_controller%set_momenta (p_born, born_phsp = .true., cms = .true.)
+             call nlo_controller%set_momenta (p_real, born_phsp = .false.)
+             call nlo_controller%set_momenta (p_real, born_phsp = .false., cms = .true.)
+             select case (evt%alphas_mode)
+             case (ALPHAS_FROM_SQRTS) 
+                alpha_s = evt%qcd%alpha%get (sqrt (nlo_controller%real_kinematics%cms_energy2))
+             case (ALPHAS_FROM_PT)
+                call msg_warning ("Transverse momentum as scale might yield problematic values")
+                alpha_s = evt%qcd%alpha%get &
+                   (transverse_part (p_real(emitter), p_real(nlo_controller%get_n_particles_real())))
+             case default
+                call msg_fatal ("evt_nlo: Undefined strong coupling type")
+             end select
+          end associate
+          call instance%compute_sqme_real_sub (emitter, p_born, p_real, alpha_s)
+          weight = weight + instance%sqme_collector%sqme_real_per_emitter (emitter)
+       end do
+    end associate
+  end function evt_nlo_compute_subtraction_weights
+
+@ %def evt_nlo_compute_subtraction_weights
+@      
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: generate_emission => evt_nlo_generate_emission
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_generate_emission (evt, emitter)
+    class(evt_nlo_t), intent(inout) :: evt
+    integer, intent(in) :: emitter
+    type(vector4_t), dimension(:), allocatable :: p_born, p_real
+    integer :: n_born, n_real
+    integer :: i
+    real(default), dimension(3) :: x_rad
+    real(default) :: alpha_s
+    p_born = evt%particle_set%get_momenta ()
+    associate (instance => evt%process_instance)
+       x_rad = instance%nlo_controller%real_kinematics%x_rad
+       call evt%phs_fks_generator%generate_radiation_variables (x_rad, p_born)
+       if (emitter <= 2) then
+          call msg_fatal ("NLO Events only for lepton collisions so far")
+       else
+          p_real = evt%phs_fks_generator%generate_fsr_from_x &
+              (x_rad, emitter, p_born)
+       end if
+       associate (nlo_controller => instance%nlo_controller)
+          call nlo_controller%set_momenta (p_born, born_phsp = .true.)
+          call nlo_controller%set_momenta (p_born, born_phsp = .true., cms = .true.)
+          call nlo_controller%set_momenta (p_real, born_phsp = .false.)
+          call nlo_controller%set_momenta (p_real, born_phsp = .false., cms = .true.)
+          select case (evt%alphas_mode)
+          case (ALPHAS_FROM_SQRTS) 
+             alpha_s = evt%qcd%alpha%get (sqrt (nlo_controller%real_kinematics%cms_energy2))
+          case (ALPHAS_FROM_PT)
+             call msg_warning ("Transverse momentum as scale might yield problematic values")
+             alpha_s = evt%qcd%alpha%get &
+                (transverse_part (p_real(emitter), p_real(nlo_controller%get_n_particles_real())))
+          case default
+             call msg_fatal ("evt_nlo: Undefined strong coupling type")
+          end select
+       end associate
+       call instance%compute_sqme_real_rad (emitter, p_born, p_real, alpha_s)
+       evt%sqme_rad = instance%sqme_collector%sqme_real_per_emitter (emitter)
+    end associate
+  end subroutine evt_nlo_generate_emission
+
+@ %def evt_nlo_generate_emission
+@
 \section{Complete Events}
 
 This module combines hard processes with decay chains, shower, and
@@ -4281,6 +4536,7 @@ module events
   use event_base
   use event_transforms
   use decays
+  use evt_nlo
 
 <<Standard module head>>
 
@@ -4441,6 +4697,7 @@ and should be written to file, including copies of [[sqme]] and [[weight]].
      real(default), allocatable :: scale_forced
      real(default) :: reweight = 1
      logical :: analysis_flag = .false.
+     integer :: i_event = 0
    contains
    <<Events: event: TBP>>
   end type event_t
@@ -4793,7 +5050,12 @@ For testing purpose, we allow for providing them explicitly, as an option.
        end do
        evt => event%transform_first
        do while (associated (evt))
-          call evt%generate_unweighted ()
+          if (evt%only_weighted_events) then
+!             call evt%generate_weighted (event%weight_prc)
+             call evt%generate_weighted (event%sqme_prc)
+          else
+             call evt%generate_unweighted ()
+          end if
           if (signal_is_pending ())  return
           call evt%make_particle_set (event%config%factorization_mode, &
                event%config%keep_correlations)
@@ -4803,7 +5065,16 @@ For testing purpose, we allow for providing them explicitly, as an option.
        end do
        evt => event%transform_last
        if (associated (evt) .and. evt%particle_set_exists) then
-          call event%link_particle_set (evt%particle_set)
+          if (event%nlo_event) then
+             select type (evt)
+             type is (evt_nlo_t)
+                call evt%build_radiated_particle_set (event%i_event+1)
+                call event%link_particle_set &
+                   (evt%particle_set_radiated(event%i_event+1))
+             end select
+          else
+             call event%link_particle_set (evt%particle_set)
+          end if
        end if
     end if
   end subroutine event_evaluate_transforms
@@ -5044,11 +5315,14 @@ for deterministic testing.
 <<Events: event: TBP>>=
   procedure :: generate => event_generate
 <<Events: procedures>>=
-  subroutine event_generate (event, i_mci, r)
+  subroutine event_generate (event, i_mci, r, i_nlo)
     class(event_t), intent(inout) :: event
     integer, intent(in) :: i_mci
     real(default), dimension(:), intent(in), optional :: r
-    call event%reset ()
+    integer, intent(in), optional :: i_nlo
+    logical :: generate_new = .true.
+    if (present (i_nlo)) generate_new = (i_nlo == 1)
+    if (generate_new) call event%reset ()
     event%selected_i_mci = i_mci
     if (event%config%unweighted) then
        call event%process%generate_unweighted_event (event%instance, i_mci)
@@ -5056,7 +5330,9 @@ for deterministic testing.
        call event%instance%evaluate_event_data ()
        call event%instance%normalize_weight ()
     else
-       call event%process%generate_weighted_event (event%instance, i_mci)
+       if (event%nlo_event) &
+          call event%process%deactivate_real_component ()
+       if (generate_new) call event%process%generate_weighted_event (event%instance, i_mci)
        if (signal_is_pending ()) return
        call event%instance%evaluate_event_data ()
     end if

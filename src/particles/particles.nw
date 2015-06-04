@@ -1583,6 +1583,7 @@ module particles
   use evaluators
   use subevents
   use polarizations
+  use pdg_arrays, only: is_quark, is_gluon
 
 <<Standard module head>>
 
@@ -2631,6 +2632,173 @@ in the correlated state matrix.
   end subroutine particle_set_parent_add_child
 
 @ %def particle_set_parent_add_child
+@
+<<Particles: particle set: TBP>>=
+  procedure :: build_radiation => particle_set_build_radiation
+<<Particles: procedures>>=
+  subroutine particle_set_build_radiation (particle_set, p_radiated, &
+     emitter, flv_radiated, model, r_color)
+     class(particle_set_t), intent(inout) :: particle_set
+     type(vector4_t), intent(in), dimension(:) :: p_radiated
+     integer, intent(in) :: emitter
+     integer, intent(in), dimension(:) :: flv_radiated
+     class(model_data_t), intent(in), target :: model
+     real(default), intent(in) :: r_color
+     type(particle_set_t) :: new_particle_set
+     type(particle_t) :: new_particle
+     integer :: i, n_particles
+     integer :: pdg_index_emitter, pdg_index_radiation
+     integer :: n_in, n_vir, n_out, n_tot
+     integer, dimension(:), allocatable :: parents, children
+     type(flavor_t) :: new_flv
+
+     n_particles = size (particle_set%prt)
+     if (n_particles+1 /= size (p_radiated))  call msg_fatal &
+        ("Number of particles does not equal number of momenta")
+
+     new_particle_set%n_beam = particle_set%n_beam
+     new_particle_set%n_in = particle_set%n_in
+     new_particle_set%n_vir = particle_set%n_vir
+     new_particle_set%n_out = particle_set%n_out+1
+     new_particle_set%n_tot = particle_set%n_tot+1
+     new_particle_set%correlated_state = particle_set%correlated_state
+     allocate (new_particle_set%prt (new_particle_set%n_tot))
+     n_in = new_particle_set%n_in; n_vir = new_particle_set%n_vir
+     n_out = new_particle_set%n_out; n_tot = new_particle_set%n_tot
+     do i = 1, n_in
+        new_particle_set%prt(i) = particle_set%prt(i)
+        call new_particle_set%prt(i)%set_momentum (p_radiated(i))
+        call new_particle_set%prt(i)%reset_status (PRT_INCOMING)
+     end  do
+     do i = n_in+1, n_in+n_vir
+        new_particle_set%prt(i) = particle_set%prt(i)
+        call new_particle_set%prt(i)%set_momentum (particle_set%prt(i)%p)
+        call new_particle_set%prt(i)%reset_status (PRT_VIRTUAL)
+     end do
+     !!! Parents correct, care for children
+     allocate (children (n_out))
+     do i = 1, n_out
+        children(i) = n_in+n_vir+i
+     end do
+     do i = n_in+1, n_in+n_vir
+        call new_particle_set%prt(i)%set_children (children)
+     end do
+     do i = n_in+n_vir+1, n_tot-1
+        new_particle_set%prt(i) = particle_set%prt(i-n_vir)
+        call new_particle_set%prt(i)%set_momentum (p_radiated(i-n_vir))
+        call new_particle_set%prt(i)%reset_status (PRT_OUTGOING)
+     end do
+     call new_particle%reset_status (PRT_OUTGOING)
+     call new_particle%set_momentum (p_radiated (n_tot-n_vir))
+     !!! Helicity and polarization handling is missing at this point
+     pdg_index_emitter = flv_radiated (emitter)
+     pdg_index_radiation = flv_radiated (n_tot-n_vir)
+     call new_flv%init (pdg_index_radiation, model)
+     call reassign_colors (new_particle, new_particle_set%prt(n_vir+emitter), &
+                           pdg_index_radiation, pdg_index_emitter, r_color)
+     !!! Also, no helicities or polarizations yet
+     call new_particle%set_flavor (new_flv)
+     new_particle_set%prt(n_tot) = new_particle
+     !!! Set proper parents for outgoing particles
+     allocate (parents (n_in))
+     do i = 1, n_in
+        parents(i) = n_in+i
+     end do
+     do i = n_in+n_vir+1, n_tot
+        call new_particle_set%prt(i)%set_parents (parents)
+     end do
+     !!! Overwrite old particle set
+     select type (particle_set)
+     type is (particle_set_t)
+        particle_set = new_particle_set
+     end select
+  contains
+    subroutine reassign_colors (prt_radiated, prt_emitter, i_rad, i_em, r_col)
+      type(particle_t), intent(inout) :: prt_radiated, prt_emitter
+      integer, intent(in) :: i_rad, i_em
+      real(default), intent(in) :: r_col
+      type(color_t) :: col_rad, col_em
+      if (is_quark (abs (i_em)) .and. is_gluon (i_rad)) then
+         call reassign_colors_qg (prt_emitter, col_rad, col_em)
+      else if (is_gluon (i_em) .and. is_gluon (i_rad)) then
+         call reassign_colors_gg (prt_emitter, r_col, col_rad, col_em)
+      else if (is_gluon (i_em) .and. is_quark (abs (i_rad))) then
+         call reassign_colors_qq (prt_emitter, i_em, col_rad, col_em)
+      else
+         call msg_fatal ("Invalid splitting")
+      end if
+      call prt_emitter%set_color (col_em)
+      call prt_radiated%set_color (col_rad)
+    end subroutine reassign_colors
+
+    subroutine reassign_colors_qg (prt_emitter, col_rad, col_em)
+      type(particle_t), intent(in) :: prt_emitter
+      type(color_t), intent(out) :: col_rad, col_em
+      integer, dimension(2) :: color_rad, color_em
+      integer :: i1, i2
+      integer :: new_color_index
+      logical :: is_anti_quark
+
+      color_em = prt_emitter%get_color ()
+      i1 = 1; i2 = 2
+      is_anti_quark = color_em(2) /= 0
+      if (is_anti_quark) then
+         i1 = 2; i2 = 1
+      end if
+      new_color_index = color_em(i1)+1
+      color_rad(i1) = color_em(i1)
+      color_rad(i2) = new_color_index
+      color_em(i1) = new_color_index
+      call col_em%init_col_acl (color_em(1), color_em(2))
+      call col_rad%init_col_acl (color_rad(1), color_rad(2))
+    end subroutine reassign_colors_qg
+
+    subroutine reassign_colors_gg (prt_emitter, random, col_rad, col_em)
+      !!! NOT TESTED YET
+      type(particle_t), intent(in) :: prt_emitter
+      real(default), intent(in) :: random
+      type(color_t), intent(out) :: col_rad, col_em
+      integer, dimension(2) :: color_rad, color_em
+      integer :: i1, i2
+      integer :: new_color_index
+
+      color_em = prt_emitter%get_color ()
+      new_color_index = maxval (abs (color_em))
+      i1 = 1; i2 = 2
+      if (random < 0.5) then
+         i1 = 2; i2 = 1
+      end if
+      color_rad(i1) = new_color_index
+      color_rad(i2) = color_em(i2)
+      color_em(i2) = new_color_index
+      call col_em%init_col_acl (color_em(1), color_em(2))
+      call col_rad%init_col_acl (color_rad(1), color_rad(2))
+    end subroutine reassign_colors_gg
+
+    subroutine reassign_colors_qq (prt_emitter, pdg_emitter, col_rad, col_em)
+      !!! NOT TESTED YET
+      type(particle_t), intent(in) :: prt_emitter
+      integer, intent(in) :: pdg_emitter
+      type(color_t), intent(out) :: col_rad, col_em
+      integer, dimension(2) :: color_rad, color_em
+      integer :: i1, i2
+      logical :: is_anti_quark
+
+      color_em = prt_emitter%get_color ()
+      i1 = 1; i2 = 2
+      is_anti_quark = pdg_emitter < 0
+      if (is_anti_quark) then
+         i1 = 2; i1 = 1
+      end if
+      color_em(i2) = 0
+      color_rad(i1) = 0
+      color_rad(i2) = color_em(i1)
+      call col_em%init_col_acl (color_em(1), color_em(2))
+      call col_rad%init_col_acl (color_rad(1), color_rad(2))
+    end subroutine reassign_colors_qq
+  end subroutine particle_set_build_radiation
+
+@ %def particle_set_build_radiation   
 @ Output (default format)
 <<Particles: particle set: TBP>>=
   procedure :: write => particle_set_write
