@@ -3075,7 +3075,8 @@ daughters to $i$.
   end subroutine particle_set_remove_duplicates
 
 @ %def particle_set_remove_duplicates
-@
+@ This doesn't catch all cases. Missing are splittings of the type
+$i \to \text{something and} j$.
 <<Particles: remove duplicates: procedures>>=
   subroutine find_duplicates ()
     integer :: pdg_i, child_i, i, j
@@ -3100,8 +3101,13 @@ daughters to $i$.
                 if (all (nearly_equal (particle_set%prt(j)%p%p, p_i%p, &
                      abs_smallness = smallness, &
                      rel_smallness = 1E4_default * smallness))) then
-                   if (.not. (child_i > 0 .and. j /= child_i)) &
-                        to_remove(j) = i
+                   if (child_i == 0 .or. j == child_i) then
+                      to_remove(j) = i
+                      call msg_debug2 (D_PARTICLES, &
+                           "Particles: Will remove duplicate of i", i)
+                      call msg_debug2 (D_PARTICLES, &
+                           "Particles: j", j)
+                   end if
                    cycle OUTER
                 end if
              end if
@@ -3125,17 +3131,20 @@ daughters to $i$.
 @
 <<Particles: remove duplicates: procedures>>=
   subroutine strip_duplicates (particles)
-    type(particle_t), dimension(:), allocatable :: particles
+    type(particle_t), dimension(:), allocatable, intent(out) :: particles
     integer :: kept, removed, i, j
     integer, dimension(:), allocatable :: old_children
-    call msg_debug (D_PARTICLES, "Removing duplicates")
-    call msg_debug (D_PARTICLES, "n_removals", n_removals)
+    logical, dimension(:), allocatable :: parent_set
+    call msg_debug (D_PARTICLES, "Particles: Removing duplicates")
+    call msg_debug (D_PARTICLES, "Particles: n_removals", n_removals)
     if (debug2_active (D_PARTICLES)) then
-       call msg_debug2 (D_PARTICLES, "Given particle set")
+       call msg_debug2 (D_PARTICLES, "Particles: Given set before removing:")
        call particle_set%write (summary=.true., compressed=.true.)
     end if
     allocate (particles (particle_set%n_tot - n_removals))
     allocate (map (particle_set%n_tot))
+    allocate (parent_set (particle_set%n_tot))
+    parent_set = .false.
     map = 0
     j = 0
     do i = 1, particle_set%n_tot
@@ -3147,8 +3156,10 @@ daughters to $i$.
     end do
     do i = 1, particle_set%n_tot
        if (map(i) /= 0) then
-          call particles(map(i))%set_parents &
-               (map (particle_set%prt(i)%get_parents ()))
+          if (.not. parent_set(map(i))) then
+             call particles(map(i))%set_parents &
+                  (map (particle_set%prt(i)%get_parents ()))
+          end if
           call particles(map(i))%set_children &
                (map (particle_set%prt(i)%get_children ()))
        else
@@ -3158,6 +3169,9 @@ daughters to $i$.
              old_children = particle_set%prt(removed)%get_children ()
              do j = 1, size (old_children)
                 if (map(old_children(j)) > 0) then
+                   call particles(map(old_children(j)))%set_parents &
+                        ([get_alive_index (kept)])
+                   parent_set(map(old_children(j))) = .true.
                    call particles(get_alive_index (kept))%add_child &
                         (map(old_children(j)))
                 end if
