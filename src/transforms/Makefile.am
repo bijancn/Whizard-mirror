@@ -42,6 +42,7 @@ libtransforms_la_SOURCES = \
    hadrons.f90 \
    decays.f90 \
    shower.f90 \
+   evt_nlo.f90 \
    events.f90 \
    eio_raw.f90
 
@@ -84,7 +85,8 @@ module_lists = \
   ../shower/Modules \
   ../expr_base/Modules \
   ../variables/Modules \
-  ../beams/Modules
+  ../beams/Modules \
+  ../fks/Modules
 
 # Explicit dependencies, not automatically generated
 event_transforms.lo:  ../../vamp/src/vamp.$(FC_MODULE_EXT)

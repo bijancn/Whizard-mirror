@@ -1564,6 +1564,9 @@ so the latter is always available (and kept global).
     call var_list_append_log &
         (global%var_list, var_str ("?combined_nlo_integration"), &
          .false., intrinsic = .true.)
+    call var_list_append_log &
+        (global%var_list, var_str ("?nlo_fixed_order"), &
+         .false., intrinsic = .true.)
     call var_list_append_int &
         (global%var_list, var_str ("gks_multiplicity"), &
          0, intrinsic = .true.)
@@ -3559,6 +3562,7 @@ module dispatch
   use prc_openloops
   use phs_fks
   use nlo_data
+  use evt_nlo
 
 <<Standard module head>>
 
@@ -5289,6 +5293,22 @@ each matrix-element call.
 An event transform is responsible for dressing a partonic event.
 Since event transforms are not mutually exclusive but are
 concatenated, we provide individual dispatchers for each of them.
+<<Dispatch: public>>=
+  public :: dispatch_evt_nlo
+<<Dispatch: procedures>>=
+  subroutine dispatch_evt_nlo (evt)
+    class(evt_t), intent(out), pointer :: evt
+    call msg_message ("Simuate: activating fixed-order NLO events")
+    allocate (evt_nlo_t :: evt)
+    evt%only_weighted_events = .true.
+    select type (evt)
+    type is (evt_nlo_t)
+       evt%i_evaluation = 0
+    end select
+  end subroutine dispatch_evt_nlo
+
+@ %def dispatch_evt_nlo
+@
 <<Dispatch: public>>=
   public :: dispatch_evt_decay
 <<Dispatch: procedures>>=
@@ -10174,6 +10194,7 @@ module simulations
   use event_base
   use events
   use event_transforms
+  use evt_nlo
   use decays
   use shower
   use eio_data
@@ -10481,7 +10502,8 @@ this case, the [[qcd]] and/or [[model]] components are present.
      type(core_safe_t), dimension(:), allocatable :: core_safe
      class(model_data_t), pointer :: model => null ()
      type(qcd_t) :: qcd
-     logical :: nlo_event = .false.
+     type(entry_t), pointer :: first => null ()
+     type(entry_t), pointer :: next => null ()
    contains
    <<Simulations: entry: TBP>>
   end type entry_t
@@ -10548,6 +10570,40 @@ deallocate it here.  Then we call the finalizer of the base type.
   end subroutine entry_final
   
 @ %def entry_final
+@ Copy the content of an entry into another one, except for the next-pointer
+<<Simulations: entry: TBP>>=
+  procedure :: copy_entry => entry_copy_entry
+<<Simulations: procedures>>=
+  subroutine entry_copy_entry (entry1, entry2)
+    class(entry_t), intent(in) :: entry1
+    type(entry_t), intent(inout) :: entry2
+    entry2%event_t = entry1%event_t
+    entry2%process_id = entry1%process_id
+    entry2%library = entry1%library
+    entry2%run_id = entry1%run_id 
+    entry2%has_integral = entry1%has_integral
+    entry2%integral = entry1%integral
+    entry2%error = entry1%error
+    entry2%process_weight = entry1%process_weight
+    entry2%valid = entry1%valid
+    entry2%counter = entry1%counter
+    entry2%n_in = entry1%n_in
+    entry2%n_mci = entry1%n_mci
+    if (allocated (entry1%mci_set)) then
+       allocate (entry2%mci_set (size (entry1%mci_set)))
+       entry2%mci_set = entry1%mci_set
+    end if
+    entry2%mci_selector = entry1%mci_selector
+    if (allocated (entry1%core_safe)) then
+       allocate (entry2%core_safe (size (entry1%core_safe)))
+       entry2%core_safe = entry1%core_safe
+    end if
+    entry2%model => entry1%model
+    entry2%qcd = entry1%qcd
+!    entry2%first => entry1%first
+  end subroutine entry_copy_entry
+
+@ %def entry_copy_entry
 @ Initialization.  Search for a process entry and allocate a process
 instance as an anonymous object, temporarily accessible via the
 [[process_instance]] pointer.  Assign data by looking at the process
@@ -10619,10 +10675,7 @@ base type by the [[connect]] method, so we can reference them later.
     do i = 1, size (entry%mci_set)
        call entry%mci_set(i)%init (i, master_process)
     end do
-    if (process%is_nlo_calculation ()) then
-      entry%nlo_event = .true.
-      call entry%combine_mci_sets ()
-    end if
+    entry%nlo_event = local%get_lval (var_str ("?nlo_fixed_order"))
 
     call entry%import_process_results (master_process)
     call entry%prepare_expressions (local)
@@ -10744,6 +10797,134 @@ objects and store them.
   end subroutine entry_prepare_expressions
 
 @ %def entry_prepare_expressions
+<<Simulations: entry: TBP>>=
+  procedure :: setup_additional_entries => entry_setup_additional_entries
+<<Simulations: procedures>>=
+  subroutine entry_setup_additional_entries (entry)
+    class(entry_t), intent(inout), target :: entry
+    type(entry_t), pointer :: current_entry
+    integer :: i, n_alr
+    integer, dimension(:), allocatable :: emitters
+    type(evt_nlo_t), pointer :: evt
+    evt => null ()
+    associate (reg_data => entry%instance%nlo_controller%reg_data)
+       n_alr = reg_data%n_regions 
+       emitters = reg_data%emitters 
+    end associate
+    select type (entry)
+    type is (entry_t)
+       current_entry => entry
+       current_entry%first => entry
+    end select
+    evt => get_nlo_evt_ptr (current_entry)
+    allocate (evt%emitters (n_alr))
+    allocate (evt%particle_set_radiated (n_alr+1))
+    evt%emitters = entry%instance%nlo_controller%reg_data%get_emitter_list ()
+    evt%qcd => entry%qcd
+    do i = 1, n_alr
+       allocate (current_entry%next)
+       current_entry%next%first => current_entry%first
+       current_entry => current_entry%next
+       call entry%copy_entry (current_entry)
+       current_entry%i_event = i
+    end do
+  contains
+    function get_nlo_evt_ptr (entry) result (evt)
+      type(entry_t), intent(in), target :: entry
+      type(evt_nlo_t), pointer :: evt
+      class(evt_t), pointer :: current_evt
+      evt => null ()
+      current_evt => entry%transform_first
+      do
+         select type (current_evt)
+         type is (evt_nlo_t)
+            evt => current_evt 
+            exit
+         end select
+         if (associated (current_evt%next)) then 
+            current_evt => current_evt%next
+         else
+            call msg_fatal ("evt_nlo not in list of event transforms")
+         end if
+      end do
+    end function get_nlo_evt_ptr
+  end subroutine entry_setup_additional_entries
+
+@ %def entry_setup_additional_entries      
+@
+<<Simulations: entry: TBP>>=
+  procedure :: choose => entry_choose
+<<Simulations: procedures>>=
+  function entry_choose (entry) result (entry_out)
+    class(entry_t), intent(in), target :: entry
+    type(entry_t), pointer :: entry_out
+    select type (entry)
+    type is (entry_t)
+       if (entry%nlo_event) then
+          entry_out => entry%first
+       else
+          entry_out => entry
+       end if
+    end select
+  end function entry_choose
+
+@ %def entry_choose
+@
+<<Simulations: entry: TBP>>=
+  procedure :: get_next => entry_get_next
+<<Simulations: procedures>>=
+  function entry_get_next (entry) result (next_entry)
+     class(entry_t), intent(in) :: entry
+     type(entry_t), pointer :: next_entry
+     if (associated (entry%next)) then
+        next_entry => entry%next
+     else
+        call msg_fatal ("Get next entry: No next entry")
+     end if
+  end function entry_get_next 
+
+@ %def entry_get_next
+@ 
+<<Simulations: entry: TBP>>=
+  procedure :: count_nlo_entries => entry_count_nlo_entries
+<<Simulations: procedures>>=
+  function entry_count_nlo_entries (entry) result (n)
+    class(entry_t), intent(in), target :: entry
+    integer :: n
+    type(entry_t), pointer :: current_entry
+    n = 1
+    if (.not. associated (entry%next)) then
+       return
+    else
+       current_entry => entry%next
+       do
+          n = n+1
+          if (.not. associated (current_entry%next)) exit
+          current_entry => current_entry%next
+       end do
+    end if
+  end function entry_count_nlo_entries
+
+@ %def entry_count_nlo_entries
+@
+<<Simulations: entry: TBP>>=
+  procedure :: reset_nlo_counter => entry_reset_nlo_counter 
+<<Simulations: procedures>>=
+  subroutine entry_reset_nlo_counter (entry)
+    class(entry_t), intent(inout) :: entry
+    class(evt_t), pointer :: evt
+    evt => entry%transform_first
+    do 
+       select type (evt)
+       type is (evt_nlo_t)
+          evt%i_evaluation = 0
+          exit
+       end select
+       if (associated (evt%next)) evt => evt%next
+   end do
+  end subroutine entry_reset_nlo_counter
+
+@ %def entry_reset_nlo_counter       
 @ Part of simulation-entry initialization: dispatch event transforms
 (decay, shower) as requested.
 <<Simulations: entry: TBP>>=
@@ -10755,10 +10936,18 @@ objects and store them.
     type(process_t), intent(inout), target :: process
     type(rt_data_t), intent(in), target :: local
     class(evt_t), pointer :: evt
-    logical :: enable_shower
+    logical :: enable_fixed_order, enable_shower
     if (process%contains_unstable (local%model)) then
        call dispatch_evt_decay (evt, local)
        if (associated (evt))  call entry%import_transform (evt)
+    end if
+    enable_fixed_order = local%get_lval (var_str ("?nlo_fixed_order"))
+    if (enable_fixed_order) then
+       if (local%get_lval (var_str ("?unweighted"))) &
+          call msg_fatal ("NLO Fixed Order events have to be generated with &
+                          &?unweighted = false")
+       call dispatch_evt_nlo (evt)
+       call entry%import_transform (evt)
     end if
     enable_shower = local%get_lval (var_str ("?allow_shower")) .and. &
             (local%get_lval (var_str ("?ps_isr_active")) &
@@ -10785,12 +10974,22 @@ the normalization procedure for the process components.
   procedure :: init_mci_selector => entry_init_mci_selector
 <<Simulations: procedures>>=
   subroutine entry_init_mci_selector (entry)
-    class(entry_t), intent(inout) :: entry
-    integer :: i
+    class(entry_t), intent(inout), target :: entry
+    type(entry_t), pointer :: current_entry
+    integer :: i, j
+    integer :: n_nlo_entries
     if (entry%has_integral) then
-       call entry%mci_selector%init (entry%mci_set%integral)
-       do i = 1, entry%n_mci
-          entry%mci_set(i)%weight_mci = entry%mci_selector%get_weight (i)
+       select type (entry)
+       type is (entry_t)
+          current_entry => entry
+       end select
+       do j = 1, current_entry%count_nlo_entries () 
+          if (j > 1) current_entry => current_entry%get_next ()
+          call current_entry%mci_selector%init (current_entry%mci_set%integral)
+          do i = 1, current_entry%n_mci
+             current_entry%mci_set(i)%weight_mci = &
+                current_entry%mci_selector%get_weight (i)
+          end do
        end do
     end if
   end subroutine entry_init_mci_selector
@@ -10884,26 +11083,6 @@ parameters stored in the process object.
   
 @ %def entry_update_process
 @ %def entry_restore_process
-<<Simulations: entry: TBP>>=
-  procedure :: combine_mci_sets => entry_combine_mci_sets
-<<Simulations: procedures>>=
-  subroutine entry_combine_mci_sets (entry)
-    class(entry_t), intent(inout) :: entry
-    integer :: n_components_lo, i_component, i_virt
-    n_components_lo = entry%n_mci / 3
-    do i_component = 1, n_components_lo
-      i_virt = i_component + 2*n_components_lo
-      entry%mci_set(i_component)%integral = &
-        entry%mci_set(i_component)%integral + entry%mci_set(i_virt)%integral
-      entry%mci_set(i_component)%error = sqrt (&
-        entry%mci_set(i_component)%error**2 + entry%mci_set(i_virt)%error**2)
-      entry%mci_set(i_virt)%integral = 0._default
-      entry%mci_set(i_virt)%has_integral = .false.
-    end do
-  end subroutine entry_combine_mci_sets
- 
-@ %def entry_combine_mci_sets
-@
 <<Simulations: entry: TBP>>=
   procedure :: connect_qcd => entry_connect_qcd
 <<Simulations: procedures>>=
@@ -11377,6 +11556,8 @@ we may only read and rescan events.
                integrate, generate, simulation%update_sqme, &
                local, global)
           if (signal_is_pending ())  return          
+          if (simulation%entry(i)%nlo_event) &
+             call simulation%entry(i)%setup_additional_entries ()
        end do
        if (.not. any (simulation%entry%valid)) then
           call msg_error ("Simulate: " &
@@ -11593,12 +11774,13 @@ process instance will not be complete.  This should be fixed.
   procedure :: generate => simulation_generate
 <<Simulations: procedures>>=
   subroutine simulation_generate (simulation, n, es_array)
-    class(simulation_t), intent(inout) :: simulation
+    class(simulation_t), intent(inout), target :: simulation
     integer, intent(in) :: n
     type(event_stream_array_t), intent(inout), optional :: es_array
     type(string_t) :: str1, str2, str3
     logical :: generate_new, passed
-    integer :: i, j
+    integer :: i, j, k
+    type(entry_t), pointer :: current_entry
     simulation%n_evt_requested = n
     call simulation%entry%set_n (n)
     if (simulation%n_alt > 0)  call simulation%alt_entry%set_n (n)
@@ -11633,21 +11815,35 @@ process instance will not be complete.  This should be fixed.
           simulation%i_prc = simulation%select_prc ()
           simulation%i_mci = simulation%select_mci ()
           associate (entry => simulation%entry(simulation%i_prc))
-            do j = 1, simulation%n_max_tries
-               if (.not. entry%valid)  call msg_warning &
-                       ("Process '" // char (entry%process_id) // "': " // &
-                       "matrix element vanishes, no events can be generated.")
-               call entry%generate (simulation%i_mci)
-               if (signal_is_pending ()) return
-               if (entry%has_valid_particle_set ())  exit
+            current_entry => entry%choose ()
+            do k = 1, current_entry%count_nlo_entries ()
+               if (k > 1) then
+                  current_entry => current_entry%get_next ()
+                  current_entry%particle_set => current_entry%first%particle_set
+                  current_entry%particle_set_is_valid &
+                     = current_entry%first%particle_set_is_valid
+               end if
+               do j = 1, simulation%n_max_tries
+                  if (.not. current_entry%valid)  call msg_warning &
+                          ("Process '" // char (current_entry%process_id) // "': " // &
+                          "matrix element vanishes, no events can be generated.")
+                  call current_entry%generate (simulation%i_mci, i_nlo=k)
+                  if (signal_is_pending ()) return
+                  if (current_entry%has_valid_particle_set ())  exit
+               end do
             end do
+            if (entry%nlo_event) call entry%reset_nlo_counter ()
             if (.not. entry%has_valid_particle_set ()) then
                write (msg_buffer, "(A,I0,A)")  "Simulation: failed to &
                     &generate valid event after ", &
                     simulation%n_max_tries, " tries (sample_max_tries)"
                call msg_fatal ()
             end if
-            call entry%evaluate_expressions ()
+            current_entry => entry%choose ()
+            do k = 1, current_entry%count_nlo_entries ()
+               if (k > 1) current_entry => current_entry%get_next ()
+               call current_entry%evaluate_expressions ()
+            end do
             if (signal_is_pending ()) return
             if (entry%passed_selection ()) then
                simulation%weight = entry%get_weight_ref ()
@@ -11948,15 +12144,21 @@ available.
   procedure :: write_event_es_array => simulation_write_event_es_array
 <<Simulations: procedures>>=
   subroutine simulation_write_event_es_array (object, es_array, passed)
-    class(simulation_t), intent(in) :: object
+    class(simulation_t), intent(in), target :: object
     class(event_stream_array_t), intent(inout) :: es_array
     logical, intent(in), optional :: passed
     integer :: i_prc, event_index
+    integer :: i
+    type(entry_t), pointer :: current_entry
     i_prc = object%i_prc
     if (i_prc > 0) then
        event_index = object%counter%total
-       call es_array%output (object%entry(i_prc)%event_t, i_prc, &
-            event_index, passed = passed, pacify = object%pacify)
+       current_entry => object%entry(i_prc)%choose ()
+       do i = 1, current_entry%count_nlo_entries ()
+          if (i > 1) current_entry => current_entry%get_next ()
+          call es_array%output (current_entry%event_t, i_prc, &
+             event_index, passed = passed, pacify = object%pacify)
+       end do
     else
        call msg_fatal ("Simulation: write event: no process selected")
     end if
