@@ -40,6 +40,7 @@ noinst_LTLIBRARIES = libtransforms.la
 libtransforms_la_SOURCES = \
    event_transforms.f90 \
    hadrons.f90 \
+   tau_decays.f90 \
    decays.f90 \
    shower.f90 \
    evt_nlo.f90 \

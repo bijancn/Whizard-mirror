@@ -2550,9 +2550,10 @@ where $\vec{\beta}_i = \frac{\vec{k}_i}{k_i^0}$. Further
 
 module real_subtraction
 
-<<Use kinds>>
+<<Use kinds with double>>
 <<Use strings>>
   use io_units, only: given_output_unit
+  use system_dependencies, only: LHAPDF6_AVAILABLE
   use constants
   use unit_tests
   use diagnostics
@@ -2560,6 +2561,8 @@ module real_subtraction
   use model_data
   use physics_defs
   use sm_physics
+  use sf_lhapdf
+  use pdf
   use lorentz
   use flavors
   use fks_regions
@@ -2604,6 +2607,8 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     real(default), dimension(:,:), allocatable :: momentum_matrix
     logical :: use_internal_color_correlations = .true.
     logical :: use_internal_spin_correlations = .false.
+    type(pdf_container_t), pointer :: pdf_born_plus => null ()
+    type(pdf_container_t), pointer :: pdf_born_minus => null ()
   contains
   <<real subtraction: soft sub: TBP>>
   end type soft_subtraction_t
@@ -2753,6 +2758,10 @@ soft-collinear contribution to the cross section.
     integer :: n_alr
     real(default), dimension(0:3,0:3) :: b_munu
     real(default) , dimension(0:3,0:3) :: k_perp_matrix
+    type(pdf_container_t), pointer :: pdf_born_plus => null ()
+    type(pdf_container_t), pointer :: pdf_born_minus => null ()
+    type(pdf_container_t), pointer :: pdf_scaled_plus => null ()
+    type(pdf_container_t), pointer :: pdf_scaled_minus => null () 
   contains
   <<real subtraction: coll sub: TBP>>
   end type coll_subtraction_t
@@ -2969,6 +2978,7 @@ it is necessary to expand with $z$ once.
 <<real subtraction: types>>=
   type :: real_subtraction_t
     type(region_data_t) :: reg_data
+    type(pdf_data_t) :: pdf_data
     type(real_kinematics_t), pointer :: real_kinematics => null()
     type(isr_kinematics_t), pointer :: isr_kinematics => null()
     integer :: current_alr = 0
@@ -2982,6 +2992,7 @@ it is necessary to expand with $z$ once.
     integer :: purpose = INTEGRATION
     logical :: radiation_active = .true.
     logical :: subtraction_active = .true.
+    type(pdf_container_t), dimension(2) :: pdf_born, pdf_scaled
   contains
   <<real subtraction: real subtraction: TBP>>
   end type real_subtraction_t
@@ -2993,7 +3004,7 @@ it is necessary to expand with $z$ once.
 <<real subtraction: procedures>>=
   subroutine real_subtraction_init (rsub, reg_data, nlegs_born, &
                                     nlegs_real, sqme_collector)
-    class(real_subtraction_t), intent(inout) :: rsub
+    class(real_subtraction_t), intent(inout), target :: rsub
     type(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: nlegs_born, nlegs_real
     type(sqme_collector_t), intent(in), target :: sqme_collector
@@ -3012,9 +3023,46 @@ it is necessary to expand with $z$ once.
 
     call rsub%sub_soft%init (reg_data, nlegs_born, nlegs_real)
     call rsub%sub_coll%init (reg_data%n_regions)
+
+    if (any (rsub%reg_data%get_emitter_list () <= 2)) then
+       call rsub%init_pdfs ()
+       rsub%sub_soft%pdf_born_plus => rsub%pdf_born(I_PLUS)
+       rsub%sub_soft%pdf_born_minus => rsub%pdf_born(I_MINUS)
+       rsub%sub_coll%pdf_born_plus => rsub%pdf_born(I_PLUS)
+       rsub%sub_coll%pdf_born_minus => rsub%pdf_born(I_MINUS)
+       rsub%sub_coll%pdf_scaled_plus => rsub%pdf_scaled(I_PLUS)
+       rsub%sub_coll%pdf_scaled_minus => rsub%pdf_scaled(I_MINUS)
+    end if
   end subroutine real_subtraction_init
 
 @ %def real_subtraction_init
+@
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: init_pdfs => real_subtraction_init_pdfs
+<<real subtraction: procedures>>=
+  subroutine real_subtraction_init_pdfs (rsub)
+    class(real_subtraction_t), intent(inout) :: rsub
+    type(string_t) :: lhapdf_dir, lhapdf_file
+    integer :: lhapdf_member
+    lhapdf_dir = ""
+    lhapdf_file = ""
+    lhapdf_member = 0
+    if (LHAPDF6_AVAILABLE) then
+       call lhapdf_initialize &
+          (1, lhapdf_dir, lhapdf_file, lhapdf_member, rsub%pdf_data%pdf)
+       associate (pdf_data => rsub%pdf_data)
+          pdf_data%type = STRF_LHAPDF6
+          pdf_data%xmin = pdf_data%pdf%getxmin ()
+          pdf_data%xmax = pdf_data%pdf%getxmax ()
+          pdf_data%qmin = sqrt (pdf_data%pdf%getq2min ())
+          pdf_data%qmax = sqrt (pdf_data%pdf%getq2max ())
+       end associate
+    else
+       call msg_fatal ("Real subtraction: PDFs must be initialized")
+    end if
+  end subroutine real_subtraction_init_pdfs
+
+@ %def real_subtraction_init_pdfs
 @
 <<real subtraction: real subtraction: TBP>>=
   procedure :: set_real_kinematics => real_subtraction_set_real_kinematics
@@ -3447,6 +3495,27 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
 
 @ %def real_subtraction_compute_sub_coll_soft
 @
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: compute_pdfs => real_subtraction_compute_pdfs
+<<real subtraction: procedures>>=
+  subroutine real_subtraction_compute_pdfs (rsub)
+    class(real_subtraction_t), intent(inout) :: rsub
+    integer :: i
+    real(default) :: z, x, Q
+    real(double), dimension(-6:6) :: f_dble = 0._double
+    do i = 1, 2
+       x = rsub%isr_kinematics%x(i)
+       z = rsub%isr_kinematics%z(i)
+       Q = rsub%isr_kinematics%fac_scale
+       call rsub%pdf_data%evolve (dble(x), dble(Q), f_dble)
+       rsub%pdf_born(i)%f = f_dble
+       call rsub%pdf_data%evolve (dble(x/z), dble(Q), f_dble)
+       rsub%pdf_scaled(i)%f = f_dble
+    end do
+  end subroutine real_subtraction_compute_pdfs
+
+@ %def real_subtraction_compute_pdfs
+@       
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Combining the FKS Pieces}
@@ -3707,6 +3776,17 @@ end module nlo_data
   end subroutine kinematics_counter_display
 
 @ %def kinematics_counter_display
+@
+<<nlo data: public>>=
+  public :: pdf_container_t
+<<nlo data: types>>=
+  type :: pdf_container_t
+     real(default), dimension(-6:6) :: f
+  contains
+  <<nlo data: pdf container: TBP>>
+  end type pdf_container_t
+
+@ %def pdf_container_t
 @
 <<[[nlo_controller.f90]]>>=
 <<File header>>
@@ -6902,13 +6982,6 @@ end module pdf_subtraction
 
 @ %def module pdf_subtraction
 @
-<<pdf subtraction: types>>=
-  type :: pdf_container_t
-     real(default), dimension(-6:6) :: f
-  end type pdf_container_t
-
-@ %def pdf_container_t
-@
 <<pdf subtraction: public>>=
   public :: pdf_subtraction_t
 <<pdf subtraction: types>>=
@@ -7000,7 +7073,7 @@ end module pdf_subtraction
           pdf_data%qmax = sqrt(pdf_data%pdf%getq2max ())
        end associate
     else
-       call msg_fatal ("Real subtraction: PDFs could not be initialized")
+       call msg_fatal ("PDF subtraction: PDFs could not be initialized")
     end if
   end subroutine pdf_subtraction_init_pdfs
 
