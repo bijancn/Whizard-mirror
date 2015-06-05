@@ -97,10 +97,20 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/object_integer_8.ref \
     ref-output/object_integer_9.ref \
     ref-output/object_integer_10.ref \
+    ref-output/object_container_1.ref \
+    ref-output/object_container_2.ref \
+    ref-output/object_container_3.ref \
+    ref-output/object_container_4.ref \
+    ref-output/object_comparison_1.ref \
+    ref-output/object_comparison_2.ref \
+    ref-output/object_conditional_1.ref \
     ref-output/sindarin_parser_1.ref \
     ref-output/sindarin_parser_2.ref \
     ref-output/sindarin_parser_3.ref \
     ref-output/sindarin_parser_4.ref \
+    ref-output/sindarin_parser_5.ref \
+    ref-output/sindarin_parser_6.ref \
+    ref-output/sindarin_parser_7.ref \
     ref-output/state_matrix_1.ref \
     ref-output/state_matrix_2.ref \
     ref-output/state_matrix_3.ref \
@@ -726,6 +736,9 @@ UNIT_TESTS_SIN = \
     object_builder.sin \
     object_logical.sin \
     object_integer.sin \
+    object_container.sin \
+    object_comparison.sin \
+    object_conditional.sin \
     sindarin_parser.sin \
     interactions.sin \
     state_matrices.sin \

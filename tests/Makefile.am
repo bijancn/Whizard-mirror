@@ -54,6 +54,9 @@ UNIT_TESTS = \
     object_builder.run \
     object_logical.run \
     object_integer.run \
+    object_container.run \
+    object_comparison.run \
+    object_conditional.run \
     sindarin_parser.run \
     grids.run \
     solver.run \
