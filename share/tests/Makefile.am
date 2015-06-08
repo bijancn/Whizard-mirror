@@ -609,6 +609,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/circe1_errors_1.ref \
     ref-output/circe2_1.ref \
     ref-output/circe2_2.ref \
+    ref-output/circe2_3.ref \
     ref-output/ewa_4.ref \
     ref-output/gaussian_1.ref \
     ref-output/gaussian_2.ref \
@@ -996,6 +997,7 @@ MISC_TESTS_SIN = \
     circe1_errors_1.sin \
     circe2_1.sin \
     circe2_2.sin \
+    circe2_3.sin \
     ewa_1.sin \
     ewa_2.sin \
     ewa_3.sin \
