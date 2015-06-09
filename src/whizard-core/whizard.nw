@@ -9813,6 +9813,24 @@ error or an EOF condition, as usual.
   end subroutine event_stream_array_input_event
   
 @ %def event_stream_array_input_event
+@ Skip an entry of eio_t. Used to synchronize the event read-in for 
+NLO events.
+<<Event streams: event stream array: TBP>>=
+  procedure :: skip_eio_entry => event_stream_array_skip_eio_entry
+<<Event streams: procedures>>=
+  subroutine event_stream_array_skip_eio_entry (es_array, iostat)
+    class(event_stream_array_t), intent(inout) :: es_array
+    integer, intent(out) :: iostat
+    integer :: n
+    if (es_array%has_input ()) then
+       n = es_array%i_in
+       call es_array%entry(n)%eio%skip (iostat)
+    else
+       call msg_fatal ("Reading events: no input stream selected")
+    end if
+  end subroutine event_stream_array_skip_eio_entry
+
+@ %def event_stream_array_skip_eio_entry
 @ Return true if there is an input channel among the event streams.
 <<Event streams: event stream array: TBP>>=
   procedure :: has_input => event_stream_array_has_input
@@ -12211,18 +12229,27 @@ can be appended to that stream.
 <<Simulations: procedures>>=
   subroutine simulation_read_event_es_array (object, es_array, enable_switch, &
        fail)
-    class(simulation_t), intent(inout) :: object
-    class(event_stream_array_t), intent(inout) :: es_array
+    class(simulation_t), intent(inout), target :: object
+    class(event_stream_array_t), intent(inout), target :: es_array
     logical, intent(in) :: enable_switch
     logical, intent(out) :: fail
     integer :: iostat, i_prc
+    type(entry_t), pointer :: current_entry => null ()
+    integer :: i
     if (es_array%has_input ()) then
        fail = .false.
        call es_array%input_i_prc (i_prc, iostat)
        select case (iostat)
        case (0)
           object%i_prc = i_prc
-          call es_array%input_event (object%entry(i_prc)%event_t, iostat)
+          current_entry => object%entry(i_prc)
+          do i = 1, current_entry%count_nlo_entries ()
+             if (i > 1) then
+                call es_array%skip_eio_entry (iostat)
+                current_entry => current_entry%get_next ()
+             end if
+             call es_array%input_event (current_entry%event_t, iostat)
+          end do
        case (:-1)
           write (msg_buffer, "(A,1x,I0,1x,A)")  &
                "... event file terminates after", &
