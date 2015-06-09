@@ -7949,6 +7949,7 @@ selected by the [[i_mci]] index above.
      type(mci_work_t), dimension(:), allocatable :: mci_work
      type(sqme_collector_t), pointer :: sqme_collector => null()
      type(nlo_controller_t), pointer :: nlo_controller => null()
+     logical :: collect_matrix_elements = .false.
    contains
    <<Processes: process instance: TBP>>
   end type process_instance_t
@@ -8163,7 +8164,7 @@ selected MCI parameter set.
   subroutine process_instance_disable_virtual_components (instance)
     class(process_instance_t), intent(inout) :: instance
     integer :: i
-    if (.not. associated (instance%sqme_collector)) &
+    if (.not. instance%collect_matrix_elements) &
        call msg_fatal ("Sqme collector must be allocated to prepare for&
                         &component selection")
     do i = 1, size (instance%component)
@@ -8218,7 +8219,7 @@ subobject of [[instance]].
             select case (nlo_type)
             case (BORN)
               component%nlo_controller => instance%nlo_controller
-              if (associated (instance%sqme_collector)) &
+              if (instance%collect_matrix_elements) &
                  call component%set_component_type (COMP_MASTER)
             case (NLO_REAL)
               component%nlo_controller => instance%nlo_controller
@@ -8251,7 +8252,7 @@ subobject of [[instance]].
                     size (component%nlo_controller%reg_data%regions)))
               call component%nlo_controller%init_born_amps &
                    (process%get_n_allowed_born (i_born))
-              if (associated (instance%sqme_collector)) &
+              if (instance%collect_matrix_elements) &
                  call component%set_component_type (COMP_REAL)
             case (NLO_VIRTUAL)
               i_born = component%config%config%get_associated_born ()
@@ -8259,14 +8260,14 @@ subobject of [[instance]].
               component%nlo_controller => instance%nlo_controller
               component%nlo_type = NLO_VIRTUAL
               call component%nlo_controller%init_virtual ()
-              if (associated (instance%sqme_collector)) &
+              if (instance%collect_matrix_elements) &
                  call component%set_component_type (COMP_VIRT) 
             case (NLO_PDF)
                i_born = component%config%config%get_associated_born ()
                component%nlo_controller => instance%nlo_controller
                component%nlo_type = NLO_PDF
                call component%nlo_controller%init_pdf_subtraction ()
-               if (associated (instance%sqme_collector)) &
+               if (instance%collect_matrix_elements) &
                   call component%set_component_type (COMP_PDF)
             case (NLO_SUBTRACTION)
                component%nlo_controller => instance%nlo_controller
@@ -8280,7 +8281,7 @@ subobject of [[instance]].
           end associate
        end if
     end do
-    if (associated (instance%sqme_collector)) then
+    if (instance%collect_matrix_elements) then
          call instance%sqme_collector%setup_sqme_real &
               (instance%nlo_controller%reg_data%n_flv_real, &
                instance%nlo_controller%particle_data%n_in + &
@@ -8311,8 +8312,10 @@ subobject of [[instance]].
        end associate
     end do
     if (present (combined_integration)) then
-       if (combined_integration) &
+       if (combined_integration) then
+          instance%collect_matrix_elements = .true.
           instance%sqme_collector => instance%nlo_controller%sqme_collector
+       end if
     end if
     instance%evaluation_status = STAT_INITIAL
   end subroutine process_instance_init
@@ -8737,7 +8740,7 @@ terms, iterating over all active process components.
             if (term%active .and. term%passed) then
               select case (term%nlo_type)
               case (NLO_REAL)
-                 if (.not. associated (instance%sqme_collector)) then
+                 if (.not. instance%collect_matrix_elements) then
                     if (debug_active (D_SUBTRACTION)) &
                         call msg_debug (D_SUBTRACTION, "Evaluate real trace")
                     call instance%evaluate_trace_real (term, i)
@@ -8773,7 +8776,7 @@ terms, iterating over all active process components.
             end if
           end associate
        end do
-       if (associated (instance%sqme_collector) .and. i_real > 0) &
+       if (instance%collect_matrix_elements .and. i_real > 0) &
           call instance%evaluate_trace_real (instance%term(i_real), i_real)
     else
        ! failed kinematics, failed cuts: set sqme to zero
@@ -8858,7 +8861,7 @@ it from the MCI record.
               call term%evaluate_trace ()
               if (instance%component(i)%active) then
                  associate (component => instance%component(i))
-                    if (.not. associated (instance%sqme_collector)) then
+                    if (.not. instance%collect_matrix_elements) then
                        call component%evaluate_sqme_born (term)
                        sqme_born = component%sqme
                        if (debug_active (D_SUBTRACTION)) &
@@ -8870,7 +8873,7 @@ it from the MCI record.
                     call component%evaluate_sqme_real (term)
                     instance%sqme_real(i_flv, ireg) = &
                       component%nlo_controller%sqme_collector%current_sqme_real
-                    if (associated (instance%sqme_collector)) then
+                    if (instance%collect_matrix_elements) then
                        instance%sqme_collector%sqme_real_per_emitter(i_flv,j) = &
                            component%nlo_controller%sqme_collector%current_sqme_real 
                     end if
@@ -8881,7 +8884,7 @@ it from the MCI record.
         end if
      end do
      instance%sqme = instance%sqme + sum (instance%sqme_real)
-     if (associated (instance%sqme_collector)) &
+     if (instance%collect_matrix_elements) &
         instance%sqme_collector%sqme_real_sum = sum (instance%sqme_real)
      instance%evaluation_status = STAT_EVALUATED_TRACE  
      if (debug_active (D_SUBTRACTION)) stop
@@ -8920,7 +8923,7 @@ it from the MCI record.
     real(default), intent(in) :: alpha_s
     integer :: i_real
     
-    if (.not. associated (instance%sqme_collector)) &
+    if (.not. instance%collect_matrix_elements) &
          call msg_fatal ("Compute radiation matrix elements: " // &
          "Sqme collector must be allocated!")
     call instance%nlo_controller%set_active_emitter (emitter)
@@ -9020,7 +9023,7 @@ Before calling this, we should call [[choose_mci]].
     call instance%evaluate_expressions ()
     call instance%compute_other_channels ()
     call instance%evaluate_trace ()
-    if (associated (instance%sqme_collector)) &
+    if (instance%collect_matrix_elements) &
        instance%sqme = instance%sqme_collector%get_sqme_sum ()
   end subroutine process_instance_evaluate_sqme
   
