@@ -949,6 +949,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     integer :: n_flv_real
     integer :: nlegs_born
     integer :: nlegs_real
+    integer, dimension(:), allocatable :: underlying_borns
     type(flavor_t) :: flv_extra
     class(fks_mapping_t), allocatable :: fks_mapping
   contains
@@ -1005,6 +1006,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     call reg_data%evaluate_flavors (model)
     call reg_data%set_splitting_info ()
     call reg_data%find_emitters ()
+    call reg_data%set_underlying_borns ()
   end subroutine region_data_init
 
 @ %def region_data_init
@@ -1421,7 +1423,28 @@ of the present one is increased.
   end subroutine region_data_find_emitters
 
 @ %def region_data_find_emitters
-@
+@ Create the map real_flavor -> underlying Born
+<<fks regions: reg data: TBP>>=
+  procedure :: set_underlying_borns => region_data_set_underlying_borns
+<<fks regions: procedures>>=
+  subroutine region_data_set_underlying_borns (reg_data)
+    class(region_data_t), intent(inout) :: reg_data
+    integer :: i, alr
+    integer, dimension(:), allocatable :: flst_real
+    allocate (reg_data%underlying_borns (reg_data%n_flv_real))
+    do i = 1, reg_data%n_flv_real
+       flst_real = reg_data%flv_real(i)%flst
+       do alr = 1, reg_data%n_regions
+          if (all (reg_data%regions(alr)%flst_real%flst == flst_real)) then
+             reg_data%underlying_borns(i) = reg_data%regions(alr)%uborn_index
+             exit
+          end if
+       end do
+    end do
+  end subroutine region_data_set_underlying_borns
+          
+@ %def region_data_set_underlying_borns
+@  
 <<fks regions: reg data: TBP>>=
   procedure :: set_splitting_info => region_data_set_splitting_info
 <<fks regions: procedures>>=
@@ -2708,6 +2731,8 @@ The soft momentum is a unit vector, because $k^2 = \left(k^0\right)^2 - \left(k^
                born_ij (i,j)
        end do
     end do
+    if (debug_active (D_SUBTRACTION)) &
+       call msg_debug (D_SUBTRACTION, 'KB', kb)
     sub_soft%value(alr) = sub_soft%value(alr)*kb
     q2 = 4 * p_born(1)%p(0)*p_born(2)%p(0)
     sub_soft%value(alr) = 4/q2 * (1-y) * sub_soft%value(alr)
@@ -3126,16 +3151,17 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
 <<real subtraction: real subtraction: TBP>>=
   procedure :: compute => real_subtraction_compute
 <<real subtraction: procedures>>=
-  function real_subtraction_compute (rsub, emitter, alpha_s) result (sqme)
+  function real_subtraction_compute (rsub, emitter, i_flv, alpha_s) result (sqme)
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_flv
     real(default) :: alpha_s
     real(default) :: sqme
     integer :: alr
 
     sqme = 0._default
     do alr = 1, size (rsub%reg_data%regions)
-         if (emitter == rsub%reg_data%regions(alr)%emitter) then
+         if (emitter == rsub%reg_data%regions(alr)%emitter .and. &
+            i_flv == rsub%reg_data%regions(alr)%real_index) then
             call rsub%set_alr (alr)
             if (emitter <= 2) then
                sqme = sqme + rsub%evaluate_region_isr (emitter, alpha_s)
@@ -3455,6 +3481,8 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
              call rsub%sub_coll%compute_isr (sregion, rsub%real_kinematics%p_born_cms, &
                 rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
           else
+             if (debug_active (D_SUBTRACTION)) &
+                print *, 'sqme_born list: ', rsub%sqme_born
              call rsub%sub_coll%compute_fsr (sregion, rsub%real_kinematics%p_born_cms, &
                 rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr)
           end if
@@ -4533,17 +4561,18 @@ and virtual counterterms.
     type(vector4_t), intent(inout), dimension(:), allocatable :: p_real
     type(vector4_t), dimension(:), allocatable :: p_born
     real(default) :: sqme_fin
-    integer :: emitter
+    integer :: emitter, i_flv
     if (.not. nlo_controller%alpha_s_born_set) &
       call msg_fatal ("Strong coupling not set for real calculation")
     emitter = nlo_controller%get_active_emitter ()
     p_born = nlo_controller%int_born%get_momenta ()
+    i_flv = nlo_controller%active_flavor_structure_real
     call nlo_controller%real_terms%set_real_kinematics &
          (nlo_controller%real_kinematics)
     call nlo_controller%real_terms%set_isr_kinematics &
          (nlo_controller%isr_kinematics)
     sqme_fin = nlo_controller%real_terms%compute &
-         (emitter, nlo_controller%alpha_s_born)
+         (emitter, i_flv, nlo_controller%alpha_s_born)
     sqme_fin = sqme_fin * weight
   end function nlo_controller_compute_sqme_real_fin
 
@@ -4632,7 +4661,7 @@ one to determine this.
   type :: sqme_collector_t
     real(default) :: current_sqme_born
     real(default) :: current_sqme_real
-    real(default), dimension(:), allocatable :: sqme_real_per_emitter
+    real(default), dimension(:,:), allocatable :: sqme_real_per_emitter
     real(default), dimension(:), allocatable :: sqme_real_non_sub
     real(default), dimension(:,:,:), allocatable :: sqme_born_cc
     complex(default), dimension(:), allocatable :: sqme_born_sc
@@ -4677,11 +4706,11 @@ one to determine this.
 <<nlo data: sqme collector: TBP>>=
   procedure :: setup_sqme_real => sqme_collector_setup_sqme_real
 <<nlo data: procedures>>=
-  subroutine sqme_collector_setup_sqme_real (collector, n_particles)
+  subroutine sqme_collector_setup_sqme_real (collector, n_flv, n_particles)
     class(sqme_collector_t), intent(inout) :: collector
-    integer, intent(in) :: n_particles
+    integer, intent(in) :: n_flv, n_particles
     if (.not. allocated (collector%sqme_real_per_emitter)) &
-       allocate (collector%sqme_real_per_emitter (n_particles))
+       allocate (collector%sqme_real_per_emitter (n_flv, n_particles))
     collector%sqme_real_per_emitter = 0._default
   end subroutine sqme_collector_setup_sqme_real
 
@@ -4700,6 +4729,7 @@ process.
     type(sqme_collector_t) :: sqme_collector
     integer :: n_allowed_born
     integer :: active_emitter
+    integer :: active_flavor_structure_real
     complex(default), dimension(:), allocatable :: amp_born
     type(color_data_t) :: color_data
     type(real_kinematics_t), pointer :: real_kinematics => null()
@@ -4804,7 +4834,9 @@ process.
                particle_data => nlo_controller%particle_data)
        allocate (collector%sqme_born_list (particle_data%n_flv_born))
        allocate (collector%sqme_real_non_sub (particle_data%n_flv_real))
-       allocate (collector%sqme_real_per_emitter (particle_data%n_in + particle_data%n_out_born))
+       allocate (collector%sqme_real_per_emitter &
+          (nlo_controller%reg_data%n_flv_real, &
+           particle_data%n_in + particle_data%n_out_born))
        n_tot_born = particle_data%n_in + particle_data%n_out_born
        allocate (collector%sqme_born_cc (n_tot_born, n_tot_born, particle_data%n_flv_born))
        allocate (collector%sqme_born_sc (particle_data%n_flv_born))
