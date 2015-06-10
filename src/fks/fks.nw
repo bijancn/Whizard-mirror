@@ -2205,6 +2205,13 @@ depending on whether the particles involved in the radiation process are massive
        alr = find_first_matching_uborn (reg_data, i_flv)
        associate (flst_born => reg_data%regions(alr)%flst_uborn)
          call object%compute_Q (p_born, i_flv, flst_born%massive)
+
+         if (debug_active (D_VIRTUAL)) then
+            call msg_debug (D_VIRTUAL, "Compute Q")
+            print *, 'massive flavors: ', flst_born%massive
+            print *, 'Q: ', object%Q
+         end if
+
          do i = 1, object%nlegs
            do j = 1, object%nlegs
              if (i /= j) then
@@ -2212,6 +2219,10 @@ depending on whether the particles involved in the radiation process are massive
                   call object%compute_I (p_born, flst_born%massive, i, j)
                   BI = BI + b_ij (i,j,reg_data%regions(alr)%uborn_index) * &
                                   object%I(i,j)
+
+                  if (debug_active (D_VIRTUAL)) &
+                      print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
+                               'I_ij: ', object%I(i,j)
                end if
              end if
            end do
@@ -2220,6 +2231,16 @@ depending on whether the particles involved in the radiation process are massive
        if (object%use_internal_color_correlations) BI = BI*born
        !!! A factor of alpha_s/twopi is assumed to be included in vfin
        object%sqme_virt = alpha_s/twopi * (object%Q*born + BI) + object%vfin
+       
+       if (debug_active (D_VIRTUAL)) then
+          call msg_debug (D_VIRTUAL, "virtual-subtracted matrix element: ")
+          print *, 'Q*born: ', object%q*born
+          print *, 'BI: ', BI
+          print *, 'vfin: ', object%vfin
+          print *, 'Result: ', object%sqme_virt
+          stop
+       end if
+
        if (object%n_is_neutrinos(i_flv) > 0) &
           object%sqme_virt = object%sqme_virt * object%n_is_neutrinos(i_flv)*2
     end if
@@ -3555,6 +3576,7 @@ module nlo_data
 
 <<Use kinds>>
 <<Use strings>>
+  use diagnostics
   use constants, only: twopi
   use io_units
   use lorentz
@@ -4659,15 +4681,14 @@ one to determine this.
   public :: sqme_collector_t
 <<nlo data: types>>=
   type :: sqme_collector_t
-    real(default) :: current_sqme_born
     real(default) :: current_sqme_real
     real(default), dimension(:,:), allocatable :: sqme_real_per_emitter
     real(default), dimension(:), allocatable :: sqme_real_non_sub
     real(default), dimension(:,:,:), allocatable :: sqme_born_cc
     complex(default), dimension(:), allocatable :: sqme_born_sc
     real(default) :: sqme_real_sum
-    real(default) :: current_sqme_virt
     real(default), dimension(:), allocatable :: sqme_born_list
+    real(default), dimension(:), allocatable :: sqme_virt_list
   contains
   <<nlo data: sqme collector: TBP>>
   end type sqme_collector_t
@@ -4680,9 +4701,16 @@ one to determine this.
   function sqme_collector_get_sqme_sum (collector) result (sqme)
     class(sqme_collector_t), intent(in) :: collector
     real(default) :: sqme
-    sqme = collector%current_sqme_born + &
+    sqme = sum (collector%sqme_born_list) + &
            collector%sqme_real_sum + &
-           collector%current_sqme_virt
+           sum (collector%sqme_virt_list)
+    if (debug_active (D_SUBTRACTION)) then
+       call msg_debug (D_SUBTRACTION, "Get content of sqme lists: ")
+       print *, 'Born: ', collector%sqme_born_list
+       print *, 'Real: ', collector%sqme_real_sum
+       print *, 'Virt: ', collector%sqme_virt_list
+       print *, 'Sum: ', sqme
+    end if 
   end function sqme_collector_get_sqme_sum
 
 @ %def sqme_collector_get_sqme_sum
@@ -4692,13 +4720,9 @@ one to determine this.
 <<nlo data: procedures>>=
   function sqme_collector_get_sqme_born (collector, i_flv) result (sqme)
     class(sqme_collector_t), intent(in) :: collector
-    integer, intent(in), optional :: i_flv
+    integer, intent(in) :: i_flv
     real(default) :: sqme
-    if (present (i_flv)) then
-       sqme = collector%sqme_born_list (i_flv)
-    else
-       sqme = collector%current_sqme_born
-    end if
+    sqme = collector%sqme_born_list (i_flv)
   end function sqme_collector_get_sqme_born
 
 @ %def sqme_collector_get_sqme_born
@@ -4833,6 +4857,7 @@ process.
     associate (collector => nlo_controller%sqme_collector, &
                particle_data => nlo_controller%particle_data)
        allocate (collector%sqme_born_list (particle_data%n_flv_born))
+       allocate (collector%sqme_virt_list (particle_data%n_flv_born))
        allocate (collector%sqme_real_non_sub (particle_data%n_flv_real))
        allocate (collector%sqme_real_per_emitter &
           (nlo_controller%reg_data%n_flv_real, &
@@ -5389,13 +5414,13 @@ process.
           call nlo_controller%virtual_terms%evaluate &
                (nlo_controller%reg_data, &
                i_flv, nlo_controller%alpha_s_born, &
-               p_born, collector%current_sqme_born, &
+               p_born, collector%sqme_born_list (i_flv), &
                nlo_controller%color_data%beta_ij)
        else
           call nlo_controller%virtual_terms%evaluate &
                (nlo_controller%reg_data, &
                i_flv, nlo_controller%alpha_s_born, &
-               p_born, collector%current_sqme_born, &
+               p_born, collector%sqme_born_list (i_flv), &
                collector%sqme_born_cc)
        end if
     end associate

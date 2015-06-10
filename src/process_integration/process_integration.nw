@@ -6669,7 +6669,6 @@ imaginary part of the terms, which should be zero anyway.
      select case (component%config%config%get_nlo_type ())
      case (NLO_REAL, NLO_VIRTUAL, NLO_PDF)
         associate (collector => component%nlo_controller%sqme_collector)
-           collector%current_sqme_born = 0
            collector%sqme_real_non_sub = 0
         end associate
      end select
@@ -6686,10 +6685,7 @@ imaginary part of the terms, which should be zero anyway.
      case (NLO_REAL, NLO_PDF)
         if (debug_active (D_SUBTRACTION)) &
            call msg_debug (D_SUBTRACTION, "Associate Born matrix element", i)
-        associate (collector => component%nlo_controller%sqme_collector)
-           collector%current_sqme_born = summand 
-           collector%sqme_born_list(i) = summand
-        end associate
+        component%nlo_controller%sqme_collector%sqme_born_list(i) = summand
      end select
   end subroutine associate_sqme_born
 
@@ -6706,6 +6702,14 @@ imaginary part of the terms, which should be zero anyway.
 
      if (term%nlo_type /= NLO_VIRTUAL) return
      associate (nlo_controller => component%nlo_controller)
+
+        if (debug_active (D_VIRTUAL)) then
+           call msg_debug (D_VIRTUAL, "Evaluating virtual-subtracted matrix elements")
+           print *, 'alpha_s: ', component%config%core%get_alpha_s (component%core_state)
+           print *, 'ren_scale: ', term%ren_scale
+           print *, 'fac_scale: ', term%fac_scale
+        end if
+
         call nlo_controller%set_alpha_s_born &
                   (component%config%core%get_alpha_s (component%core_state))
         call nlo_controller%virtual_terms%set_ren_scale &
@@ -6715,11 +6719,18 @@ imaginary part of the terms, which should be zero anyway.
         select type (core => component%config%core)
         class is (prc_blha_t)
            do i_flv = 1, core%get_nflv()
+              if (debug_active (D_VIRTUAL)) call msg_debug (D_VIRTUAL, "i_flv", i_flv)
               call core%update_alpha_s (component%core_state, term%fac_scale)
               call core%compute_sqme_virt (i_flv, &
                          term%int_hard%get_momenta (), &
                          term%ren_scale, &
                          sqme_virt, bad_point)
+
+              if (debug_active (D_VIRTUAL)) then
+                 call msg_debug (D_VIRTUAL, "OLP output: ")
+                 print *, sqme_virt
+              end if
+
               if (.not. nlo_controller%use_internal_color_correlations) &
                  call core%compute_sqme_cc (i_flv, &
                            term%int_hard%get_momenta (), &
@@ -6728,13 +6739,15 @@ imaginary part of the terms, which should be zero anyway.
                            bad_point = bad_point)
               call nlo_controller%virtual_terms%set_vfin (sqme_virt(3))
               call nlo_controller%virtual_terms%set_bad_point (bad_point)
-              nlo_controller%sqme_collector%current_sqme_born = sqme_virt (4)             
-              component%sqme = component%sqme + &
-                               nlo_controller%compute_virt (i_flv, term%int_hard) * &
-                               term%weight
+              nlo_controller%sqme_collector%sqme_born_list (i_flv) = sqme_virt (4)             
+              nlo_controller%sqme_collector%sqme_virt_list (i_flv) = &
+                  nlo_controller%compute_virt (i_flv, term%int_hard) * term%weight
+              !!! component%sqme = component%sqme + &
+              !!!                 nlo_controller%compute_virt (i_flv, term%int_hard) * &
+              !!!                 term%weight
            end do
         end select
-
+        component%sqme = component%sqme + sum (nlo_controller%sqme_collector%sqme_virt_list)
      end associate
   end subroutine component_instance_evaluate_sqme_virt
 
@@ -6767,7 +6780,7 @@ imaginary part of the terms, which should be zero anyway.
      class(component_instance_t), intent(inout) :: component
      type(term_instance_t), intent(inout), target :: term
      type(vector4_t), dimension(:), allocatable :: p_real
-     integer :: i_flv
+     integer :: i_flv, i_flv_born
      logical :: bad_point
 
      if (term%nlo_type /= NLO_REAL) return
@@ -6796,6 +6809,7 @@ imaginary part of the terms, which should be zero anyway.
        if (nlo_controller%is_subtraction_active ()) then
           associate (collector => nlo_controller%sqme_collector)
             do i_flv = 1, nlo_controller%get_n_flv_born ()
+               i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv)
                select type (core_born => component%config%core_sub_born)
                class is (prc_blha_t)
                   if (.not. nlo_controller%use_internal_color_correlations) then
@@ -6803,8 +6817,8 @@ imaginary part of the terms, which should be zero anyway.
                      call core_born%compute_sqme_cc (i_flv, &
                              nlo_controller%int_born%get_momenta (), &
                              0._default, &
-                             collector%sqme_born_list (i_flv), &
-                             collector%sqme_born_cc (:,:,i_flv), &
+                             collector%sqme_born_list (i_flv_born), &
+                             collector%sqme_born_cc (:,:,i_flv_born), &
                              bad_point)
                   else
                   !!! Implementation for color-correlations using color_data
@@ -6812,13 +6826,13 @@ imaginary part of the terms, which should be zero anyway.
                   if (.not. nlo_controller%use_internal_spin_correlations  &
                        .and. nlo_controller%requires_spin_correlation (i_flv)) then
                        call core_born%update_alpha_s (component%core_state, term%fac_scale)
-                       call core_born%compute_sqme_sc (i_flv, 5, &
+                       call core_born%compute_sqme_sc (i_flv_born, 5, &
                           nlo_controller%int_born%get_momenta (), &
-                          0._default, collector%sqme_born_sc(i_flv), bad_point)
+                          0._default, collector%sqme_born_sc(i_flv_born), bad_point)
                   end if
                type is (prc_omega_t)
-               collector%sqme_born_cc (:,:,i_flv) = collector%current_sqme_born * &
-                    nlo_controller%color_data%beta_ij (:,:,i_flv)
+               collector%sqme_born_cc (:,:,i_flv_born) = collector%sqme_born_list (i_flv_born) * &
+                    nlo_controller%color_data%beta_ij (:,:,i_flv_born)
                end select
             end do
           end associate
@@ -8762,16 +8776,6 @@ terms, iterating over all active process components.
                 call component%evaluate_sqme (instance%term)
                 instance%sqme = instance%sqme + component%sqme
                 instance%evaluation_status = STAT_EVALUATED_TRACE
-                associate (collector => instance%nlo_controller%sqme_collector)
-                   select case (component%get_component_type())
-                   case (COMP_DEFAULT, COMP_MASTER)
-                      collector%current_sqme_born = component%sqme
-                      if (allocated (collector%sqme_born_list)) &
-                         collector%sqme_born_list(1) = collector%current_sqme_born
-                   case (COMP_VIRT)
-                      collector%current_sqme_virt = component%sqme
-                   end select
-                end associate
               end select
             end if
           end associate
@@ -8835,7 +8839,7 @@ it from the MCI record.
      class(process_instance_t), intent(inout) :: instance
      type(term_instance_t), intent(inout) :: term
      integer, intent(in) :: i
-     integer :: j, ireg, i_flv
+     integer :: j, ireg, i_flv_real, i_flv_born
      integer :: nlegs
      real(default) :: sqme_born
 
@@ -8847,10 +8851,11 @@ it from the MCI record.
            if (debug_active (D_SUBTRACTION)) call msg_debug (D_SUBTRACTION, "active emitter", j)
            call term%nlo_controller%set_active_emitter (j)
            call term%evaluate_real_phase_space ()
-           do i_flv = 1, term%nlo_controller%reg_data%n_flv_real
+           do i_flv_real = 1, term%nlo_controller%reg_data%n_flv_real
+              i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real) 
               if (debug_active (D_SUBTRACTION)) &
-                 call msg_debug (D_SUBTRACTION, "active real flavor", i_flv)
-              term%nlo_controller%active_flavor_structure_real = i_flv
+                 call msg_debug (D_SUBTRACTION, "active real flavor", i_flv_real)
+              term%nlo_controller%active_flavor_structure_real = i_flv_real
               call term%evaluate_interaction_real (instance%component(i), i)
               if (.not. term%passed) then
               !!! Cuts failed, leave subroutine
@@ -8867,14 +8872,14 @@ it from the MCI record.
                        if (debug_active (D_SUBTRACTION)) &
                           call msg_debug (D_SUBTRACTION, "sqme_born", sqme_born)
                     else
-                       sqme_born = instance%sqme_collector%current_sqme_born
+                       sqme_born = instance%sqme_collector%sqme_born_list (i_flv_born)
                     end if
-                    call associate_sqme_born (component, sqme_born*term%weight, i_flv)
+                    call associate_sqme_born (component, sqme_born*term%weight, i_flv_born)
                     call component%evaluate_sqme_real (term)
-                    instance%sqme_real(i_flv, ireg) = &
+                    instance%sqme_real(i_flv_real, ireg) = &
                       component%nlo_controller%sqme_collector%current_sqme_real
                     if (instance%collect_matrix_elements) then
-                       instance%sqme_collector%sqme_real_per_emitter(i_flv,j) = &
+                       instance%sqme_collector%sqme_real_per_emitter(i_flv_real,j) = &
                            component%nlo_controller%sqme_collector%current_sqme_real 
                     end if
                  end associate
@@ -8976,13 +8981,14 @@ it from the MCI record.
   procedure :: get_matrix_elements => process_instance_get_matrix_elements
 <<Processes: procedures>>=
   subroutine process_instance_get_matrix_elements &
-       (instance, sqme_born, sqme_real)
+       (instance, i_born, i_real, sqme_born, sqme_real)
     class(process_instance_t), intent(inout) :: instance
+    integer, intent(in) :: i_born, i_real
     real(default), intent(out) :: sqme_born, sqme_real
     integer :: emitter
     emitter = instance%nlo_controller%active_emitter 
-    sqme_born = instance%sqme_collector%current_sqme_born
-    sqme_real = instance%sqme_collector%sqme_real_per_emitter (1, emitter)
+    sqme_born = instance%sqme_collector%sqme_born_list (i_born)
+    sqme_real = instance%sqme_collector%sqme_real_per_emitter (i_real, emitter)
   end subroutine process_instance_get_matrix_elements
 
 @ %def process_instance_get_matrix_elements
