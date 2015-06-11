@@ -5708,15 +5708,23 @@ phase-space points with [[p_real(emitter) = 0]].
   pure subroutine phs_fks_generator_compute_isr_kinematics (generator, r, p_in)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: r
-    type(vector4_t), dimension(2), intent(in) :: p_in
+    type(vector4_t), dimension(2), intent(in), optional :: p_in
     integer :: em
+    type(vector4_t), dimension(2) :: p
+
+    if (present (p_in)) then
+       p = p_in
+    else
+       p = generator%real_kinematics%p_born_lab
+    end if
+
     associate (isr => generator%isr_kinematics)
        do em = 1, 2
-          isr%x(em) = p_in(em)%p(0) / isr%beam_energy
+          isr%x(em) = p(em)%p(0) / isr%beam_energy
           isr%z(em) = one - (one - isr%x(em)) * r
           isr%jacobian(em) =  isr%jacobian(em) * (one - isr%x(em))
        end do
-       isr%sqrts_born = (p_in(1) + p_in(2))**1
+       isr%sqrts_born = (p(1) + p(2))**1
     end associate
   end subroutine phs_fks_generator_compute_isr_kinematics
 
@@ -5865,6 +5873,8 @@ calculated from the Born momenta.
           phs%q_born = phs%phs_wood_t%q
           phs%p_born_tot (1:n_in) = phs%p_born
           phs%p_born_tot (n_in+1:) = phs%q_born
+          call phs%set_reference_frames ()
+          call phs%set_isr_kinematics ()
           call phs%generate_radiation_variables (r_in(phs%n_r_born+1:phs%n_r_born+3))
        case (PHS_MODE_COLLINEAR_REMNANT)
           call phs%compute_isr_kinematics (r_in(phs%n_r_born+1))
@@ -6010,6 +6020,17 @@ calculated from the Born momenta.
 @ %def phs_fks_display_kinematics
 @
 <<phs fks: phs fks: TBP>>=
+  procedure :: set_isr_kinematics => phs_fks_set_isr_kinematics
+<<phs fks: procedures>>=
+  subroutine phs_fks_set_isr_kinematics (phs, p_born)
+    class(phs_fks_t), intent(inout) :: phs
+    type(vector4_t), dimension(2), intent(in), optional :: p_born
+    call phs%generator%set_isr_kinematics (p_born)
+  end subroutine phs_fks_set_isr_kinematics
+
+@ %def phs_fks_set_isr_kinematics
+@
+<<phs fks: phs fks: TBP>>=
   procedure :: generate_radiation_variables => &
                        phs_fks_generate_radiation_variables
 <<phs fks: procedures>>=
@@ -6023,6 +6044,25 @@ calculated from the Born momenta.
   end subroutine phs_fks_generate_radiation_variables
 
 @ %def phs_fks_generate_radiation_variables
+@ When initial-state radiation is involved, either due to beamnstrahlung or
+QCD corrections, it is important to have access to both the phase space points
+in the center-of-mass and lab frame.
+<<phs fks: phs fks: TBP>>=
+  procedure :: set_reference_frames => phs_fks_set_reference_frames
+<<phs fks: procedures>>=
+  subroutine phs_fks_set_reference_frames (phs)
+    class(phs_fks_t), intent(inout) :: phs
+    associate (real_kinematics => phs%generator%real_kinematics)
+       real_kinematics%p_born_cms = phs%p_born_tot
+       if (.not. phs%config%cm_frame) then
+          real_kinematics%p_born_lab = phs%lt_cm_to_lab * phs%p_born_tot
+       else
+          real_kinematics%p_born_lab = phs%p_born_tot
+       end if
+    end associate
+  end subroutine phs_fks_set_reference_frames
+
+@ %def phs_fks_set_reference_frames
 @
 \subsection{Creation of the real phase space - FSR}
 At this point, the Born phase space has been generated, as well as the
@@ -6199,13 +6239,14 @@ $\xi$.
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(out), dimension(:), allocatable :: p_real
     type(vector4_t), dimension(:), allocatable :: p
-    phs%generator%real_kinematics%p_born_lab = p_born
-    if (.not. phs%config%cm_frame) then
-       p = inverse (phs%lt_cm_to_lab) * p_born
-    else
-       p = p_born
-    end if
-    phs%generator%real_kinematics%p_born_cms = p
+    !!!phs%generator%real_kinematics%p_born_lab = p_born
+    !!!if (.not. phs%config%cm_frame) then
+    !!!   p = inverse (phs%lt_cm_to_lab) * p_born
+    !!!else
+    !!!   p = p_born
+    !!!end if
+    !!!phs%generator%real_kinematics%p_born_cms = p
+    p = phs%generator%real_kinematics%p_born_cms
     call phs%generator%generate_fsr (emitter, p, p_real)
     phs%generator%real_kinematics%p_real_cms = p_real
     if (.not. phs%config%cm_frame) p_real = phs%lt_cm_to_lab * p_real
@@ -6390,18 +6431,26 @@ is equal to
     class(phs_fks_t), intent(inout) :: phs
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(out), dimension(:), allocatable :: p_real
-    phs%generator%real_kinematics%p_born_lab = p_born
-    associate (p_born_cms => phs%generator%real_kinematics%p_born_cms)
-       if (.not. phs%config%cm_frame) then
-          p_born_cms = inverse (phs%lt_cm_to_lab) * p_born
-       else
-          p_born_cms = p_born
-       end if
-    end associate
+    !!!phs%generator%real_kinematics%p_born_lab = p_born
+    !!!associate (p_born_cms => phs%generator%real_kinematics%p_born_cms)
+    !!!   if (.not. phs%config%cm_frame) then
+    !!!     p_born_cms = inverse (phs%lt_cm_to_lab) * p_born
+    !!!   else
+    !!!      p_born_cms = p_born
+    !!!   end if
+    !!!end associate
     call phs%generator%generate_isr (p_born, p_real)
     phs%generator%real_kinematics%p_real_lab = p_real
     if (.not. phs%config%cm_frame) &
        phs%generator%real_kinematics%p_real_cms = inverse (phs%lt_cm_to_lab) * p_real
+    print *, 'CMS, Born: '
+    call vector4_write_set (phs%generator%real_kinematics%p_born_cms)
+    print *, 'LAB, Born: '
+    call vector4_write_set (phs%generator%real_kinematics%p_born_lab)
+    print *, 'CMS, real: '
+    call vector4_write_set (phs%generator%real_kinematics%p_real_cms, check_conservation = .true.)
+    print *, 'LAB, real: '
+    call vector4_write_set (phs%generator%real_kinematics%p_real_lab, check_conservation = .true.)
   end subroutine phs_fks_generate_isr
 
 @ %def phs_fks_generate_isr
@@ -6432,8 +6481,6 @@ is equal to
       rad_var%y_soft = y
     end associate
     
-    call generator%set_isr_kinematics (generator%real_kinematics%p_born_lab)
-
     nlegborn = size (p_born)
     nlegreal = nlegborn+1
     generator%isr_kinematics%sqrts_born = sqrt ((p_born(1) + p_born(2))**2)
@@ -6573,9 +6620,17 @@ is equal to
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_set_isr_kinematics (generator, p_born)
     class(phs_fks_generator_t), intent(inout) :: generator
-    type(vector4_t), dimension(:), intent(in) :: p_born
-    generator%isr_kinematics%x = space_part_norm (p_born(1:2)) / &
-         (generator%sqrts/2)
+    type(vector4_t), dimension(2), intent(in), optional :: p_born
+    type(vector4_t), dimension(2) :: p
+    
+    if (present (p_born)) then
+       p = p_born
+    else
+       p = generator%real_kinematics%p_born_lab(1:2)
+    end if
+
+    generator%isr_kinematics%x = p%p(0) / (generator%sqrts/2)
+    print *, 'xb: ', generator%isr_kinematics%x
   end subroutine phs_fks_generator_set_isr_kinematics
 
 @ %def phs_fks_generator_set_isr_kinematics
@@ -6590,6 +6645,9 @@ is equal to
     real(default), intent(in), dimension(:) :: r_in
     type(vector4_t), intent(in), dimension(:) :: p_born
     integer :: em
+
+    if (any (generator%emitters <= 2)) &
+        call generator%set_isr_kinematics (generator%real_kinematics%p_born_lab)
 
     associate (rad_var => generator%real_kinematics)
        rad_var%jac_rand = 1.0
@@ -6790,7 +6848,7 @@ is equal to
   subroutine phs_fks_compute_isr_kinematics (phs, r)
     class(phs_fks_t), intent(inout) :: phs
     real(default), intent(in) :: r
-    call phs%generator%compute_isr_kinematics (r, phs%phs_wood_t%p)
+    call phs%generator%compute_isr_kinematics (r)
   end subroutine phs_fks_compute_isr_kinematics
 
 @ %def phs_fks_compute_isr_kinematics
