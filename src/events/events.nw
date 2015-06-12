@@ -1796,7 +1796,7 @@ end module eio_checkpoints
 @ %def eio_checkpoints_t
 @
 \subsection{Specific Methods}
-Set parameters that are specifically used with LHEF.
+Set parameters that are specifically used for checkpointing.
 <<EIO checkpoints: eio checkpoints: TBP>>=
   procedure :: set_parameters => eio_checkpoints_set_parameters
 <<EIO checkpoints: procedures>>=
@@ -2541,8 +2541,9 @@ end module eio_ascii
   type, abstract, extends (eio_t) :: eio_ascii_t
      logical :: writing = .false.
      integer :: unit = 0
-     logical :: keep_beams = .false.     
+     logical :: keep_beams = .false.
      logical :: keep_remnants = .true.
+     logical :: ensure_order = .false.
    contains
    <<EIO ascii: eio ascii: TBP>>
   end type eio_ascii_t
@@ -2641,16 +2642,18 @@ particular, this is the file extension.
   procedure :: set_parameters => eio_ascii_set_parameters
 <<EIO ascii: procedures>>=
   subroutine eio_ascii_set_parameters (eio, &
-       keep_beams, keep_remnants, extension, &
+       keep_beams, keep_remnants, ensure_order, extension, &
        show_process, show_transforms, show_decay, verbose)
     class(eio_ascii_t), intent(inout) :: eio
     logical, intent(in), optional :: keep_beams
     logical, intent(in), optional :: keep_remnants
+    logical, intent(in), optional :: ensure_order
     type(string_t), intent(in), optional :: extension
     logical, intent(in), optional :: show_process, show_transforms, show_decay
     logical, intent(in), optional :: verbose
     if (present (keep_beams))  eio%keep_beams = keep_beams
     if (present (keep_remnants))  eio%keep_remnants = keep_remnants
+    if (present (ensure_order))  eio%ensure_order = ensure_order
     if (present (extension)) then
        eio%extension = extension
     else
@@ -2668,7 +2671,7 @@ particular, this is the file extension.
        type is (eio_ascii_lha_t)
           eio%extension = "lha"
        type is (eio_ascii_lha_verb_t)
-          eio%extension = "lha.verb"          
+          eio%extension = "lha.verb"
        type is (eio_ascii_long_t)
           eio%extension = "long.evt"
        type is (eio_ascii_mokka_t)
@@ -2945,7 +2948,8 @@ squared matrix element, then the particle set.
           call hepevt_from_event (event, &
                i_evt = event%get_index (), &          
                keep_beams = eio%keep_beams, &
-               keep_remnants = eio%keep_remnants)
+               keep_remnants = eio%keep_remnants, &
+               ensure_order = eio%ensure_order)
           call hepevt_write_athena (eio%unit)                    
        type is (eio_ascii_debug_t)
           call event%write (eio%unit, &
@@ -2958,31 +2962,36 @@ squared matrix element, then the particle set.
           call hepevt_from_event (event, &
                i_evt = event%get_index (), &                         
                keep_beams = eio%keep_beams, &
-               keep_remnants = eio%keep_remnants)
+               keep_remnants = eio%keep_remnants, &
+               ensure_order = eio%ensure_order)
           call hepevt_write_hepevt (eio%unit)                              
        type is (eio_ascii_hepevt_verb_t)
           call hepevt_from_event (event, &
                i_evt = event%get_index (), &                         
                keep_beams = eio%keep_beams, &
-               keep_remnants = eio%keep_remnants)
+               keep_remnants = eio%keep_remnants, &
+               ensure_order = eio%ensure_order)
           call hepevt_write_verbose (eio%unit)
        type is (eio_ascii_long_t)
           call hepevt_from_event (event, &
                i_evt = event%get_index (), & 
                keep_beams = eio%keep_beams, &
-               keep_remnants = eio%keep_remnants)
+               keep_remnants = eio%keep_remnants, &
+               ensure_order = eio%ensure_order)
           call hepevt_write_ascii (eio%unit, .true.)                           
        type is (eio_ascii_mokka_t)
           call hepevt_from_event (event, &
                i_evt = event%get_index (), &                         
                keep_beams = eio%keep_beams, &
-               keep_remnants = eio%keep_remnants)
+               keep_remnants = eio%keep_remnants, &
+               ensure_order = eio%ensure_order)
           call hepevt_write_mokka (eio%unit)                              
        type is (eio_ascii_short_t)
           call hepevt_from_event (event, &
                i_evt = event%get_index (), &  
                keep_beams = eio%keep_beams, &
-               keep_remnants = eio%keep_remnants)
+               keep_remnants = eio%keep_remnants, &
+               ensure_order = eio%ensure_order)
           call hepevt_write_ascii (eio%unit, .false.)                    
        end select       
     else
@@ -3607,7 +3616,6 @@ We test the implementation of all I/O methods, method [[mokka]]:
 <<EIO ascii: tests>>=
   subroutine eio_ascii_7 (u)
     integer, intent(in) :: u
-    type(model_data_t), target :: model
     class(generic_event_t), pointer :: event
     type(event_sample_data_t) :: data
     class(eio_t), allocatable :: eio
@@ -5475,16 +5483,24 @@ its polarization is fully defined.
   public :: hepevt_from_particle_set
 <<HEP common: procedures>>=
   subroutine hepevt_from_particle_set &
-       (particle_set, keep_beams, keep_remnants)
+       (particle_set, keep_beams, keep_remnants, ensure_order)
     type(particle_set_t), intent(in) :: particle_set
-    type(particle_set_t), target :: pset_hepevt
+    type(particle_set_t), target :: pset_hepevt, pset_tmp
     logical, intent(in), optional :: keep_beams
     logical, intent(in), optional :: keep_remnants
+    logical, intent(in), optional :: ensure_order
     integer :: i, status, n_tot
-    logical :: activate_remnants
+    logical :: activate_remnants, ensure
     activate_remnants = .true.
     if (present (keep_remnants))  activate_remnants = keep_remnants
-    call particle_set%to_hepevt_form (pset_hepevt, keep_beams)
+    ensure = .false.
+    if (present (ensure_order))  ensure = ensure_order
+    call particle_set%apply_keep_beams (pset_tmp, keep_beams = keep_beams)
+    if (ensure) then
+       call pset_tmp%to_hepevt_form (pset_hepevt)
+    else
+       pset_hepevt = pset_tmp
+    end if
     n_tot = pset_hepevt%get_n_tot ()
     call hepevt_init (n_tot, pset_hepevt%get_n_out ())
     do i = 1, n_tot
@@ -9071,15 +9087,18 @@ Note: setting of scale or alpha is not yet supported by the
 <<HEP events: public>>=
   public :: hepevt_from_event
 <<HEP events: procedures>>=
-  subroutine hepevt_from_event (event, i_evt, keep_beams, keep_remnants)
+  subroutine hepevt_from_event  &
+         (event, i_evt, keep_beams, keep_remnants, ensure_order)
     class(generic_event_t), intent(in), target :: event
     integer, intent(in), optional :: i_evt
     logical, intent(in), optional :: keep_beams  
     logical, intent(in), optional :: keep_remnants
+    logical, intent(in), optional :: ensure_order
     type(particle_set_t), pointer :: particle_set
     if (event%has_valid_particle_set ()) then
        particle_set => event%get_particle_set_ptr ()
-       call hepevt_from_particle_set (particle_set, keep_beams, keep_remnants)
+       call hepevt_from_particle_set (particle_set, keep_beams, &
+            keep_remnants, ensure_order)
        if (event%weight_prc_is_known () .and. event%sqme_prc_is_known ()) then
           call hepevt_set_event_parameters ( &
                weight = event%get_weight_prc (), &
@@ -11788,6 +11807,7 @@ end module eio_stdhep
      integer :: unit = 0
      logical :: keep_beams = .false.     
      logical :: keep_remnants = .true.
+     logical :: ensure_order = .false.
      logical :: recover_beams = .false.
      logical :: use_alpha_s_from_file = .false.
      logical :: use_scale_from_file = .false.
@@ -11821,17 +11841,19 @@ Set parameters that are specifically used with STDHEP file formats.
   procedure :: set_parameters => eio_stdhep_set_parameters
 <<EIO stdhep: procedures>>=
   subroutine eio_stdhep_set_parameters (eio, &
-       keep_beams, keep_remnants, recover_beams, use_alpha_s_from_file, &
-       use_scale_from_file, extension)
+       keep_beams, keep_remnants, ensure_order, recover_beams, &
+       use_alpha_s_from_file, use_scale_from_file, extension)
     class(eio_stdhep_t), intent(inout) :: eio
     logical, intent(in), optional :: keep_beams
     logical, intent(in), optional :: keep_remnants
+    logical, intent(in), optional :: ensure_order
     logical, intent(in), optional :: recover_beams
     logical, intent(in), optional :: use_alpha_s_from_file
     logical, intent(in), optional :: use_scale_from_file
     type(string_t), intent(in), optional :: extension
     if (present (keep_beams))  eio%keep_beams = keep_beams
     if (present (keep_remnants))  eio%keep_remnants = keep_remnants
+    if (present (ensure_order))  eio%ensure_order = ensure_order
     if (present (recover_beams))  eio%recover_beams = recover_beams
     if (present (use_alpha_s_from_file)) &
          eio%use_alpha_s_from_file = use_alpha_s_from_file
@@ -12082,7 +12104,8 @@ squared matrix element, then the particle set.
           call hepevt_from_event (event, &
                i_evt = event%get_index (), &                         
                keep_beams = eio%keep_beams, &
-               keep_remnants = eio%keep_remnants)
+               keep_remnants = eio%keep_remnants, &
+               ensure_order = eio%ensure_order)
           call stdhep_write (STDHEP_HEPEVT)                              
        end select       
     else
