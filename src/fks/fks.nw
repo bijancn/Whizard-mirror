@@ -286,9 +286,9 @@ the [[ftuple]]-object.
 @ %def ftuple_set
 @
 <<fks regions: ftuple: TBP>>=
-  procedure :: determine_splitting_type => ftuple_determine_splitting_type
+  procedure :: determine_splitting_type_fsr => ftuple_determine_splitting_type_fsr
 <<fks regions: procedures>>=
-  subroutine ftuple_determine_splitting_type (ftuple, flv, i, j)
+  subroutine ftuple_determine_splitting_type_fsr (ftuple, flv, i, j)
     class(ftuple_t), intent(inout) :: ftuple
     type(flv_structure_t), intent(in) :: flv
     integer, intent(in) :: i, j
@@ -305,9 +305,33 @@ the [[ftuple]]-object.
           ftuple%splitting_type = UNDEFINED_SPLITTING
        end if
     end associate
-  end subroutine ftuple_determine_splitting_type
+  end subroutine ftuple_determine_splitting_type_fsr
 
-@ %def ftuple_determine_splitting_type
+@ %def ftuple_determine_splitting_type_fsr
+@
+<<fks regions: ftuple: TBP>>=
+  procedure :: determine_splitting_type_isr => ftuple_determine_splitting_type_isr
+<<fks regions: procedures>>=
+  subroutine ftuple_determine_splitting_type_isr (ftuple, flv, i, j)
+    class(ftuple_t), intent(inout) :: ftuple
+    type(flv_structure_t), intent(in) :: flv
+    integer, intent(in) :: i, j
+    integer :: em
+    em = i; if (i == 0) em = 1
+    associate (flst => flv%flst)
+       if (flst(em) == GLUON .and. flst(j) == GLUON) then
+          ftuple%splitting_type = G_TO_GG
+       else if (flst(em) == GLUON .and. is_quark(abs(flst(j)))) then
+          ftuple%splitting_type = G_TO_QQ
+       else if (is_quark(abs(flst(em))) .and. flst(j) == GLUON) then
+          ftuple%splitting_type = Q_TO_QG
+       else
+          ftuple%splitting_type = UNDEFINED_SPLITTING
+       end if
+    end associate
+  end subroutine ftuple_determine_splitting_type_isr
+
+@ %def ftuple_determine_splitting_type_isr
 @ Each singular region can have a different number of
 emitter-radiation pairs. This is coped with using the linked list
 [[ftuple_list]].
@@ -845,7 +869,6 @@ there is only a soft singularity if the radiated parton becomes soft.
                 ftuple(reg)%splitting_type /= G_TO_QQ
 
              if (i1 == 0) then
-             !!! IS-splitting always has a collinear divergence (because massless)
                region%coll_divergence = .true.
              else
                region%coll_divergence = &
@@ -1183,7 +1206,7 @@ are therefore equivalent.
                  flst_alr_tmp(n) = flv_real(l)
               end if
               call current_ftuple%set (i,j)
-              call current_ftuple%determine_splitting_type (flv_real(l), i, j)
+              call current_ftuple%determine_splitting_type_fsr (flv_real(l), i, j)
               call ftuples(l)%append (current_ftuple)
               emitter_tmp(n) = nlegreal - 1
               exit
@@ -1208,6 +1231,7 @@ initial-state of the second array.
         if (valid1 .or. valid2) then
            n = n + 1
            call current_ftuple%set(m, i)
+           call current_ftuple%determine_splitting_type_isr (flv_real(l), m, i)
            call ftuples(l)%append (current_ftuple)
            emitter_tmp(n) = m
            flst_alr_tmp(n) = create_alr (flv_real(l), m, i)
@@ -1450,9 +1474,9 @@ of the present one is increased.
 <<fks regions: procedures>>=
   subroutine region_data_set_splitting_info (reg_data)
      class(region_data_t), intent(inout) :: reg_data
-     integer :: reg
-     do reg = 1, reg_data%n_regions
-        call reg_data%regions(reg)%set_splitting_info ()
+     integer :: alr
+     do alr = 1, reg_data%n_regions
+        call reg_data%regions(alr)%set_splitting_info ()
      end do
    end subroutine region_data_set_splitting_info
 
@@ -3348,6 +3372,37 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
          sqme = sqme0
       end if
     end associate
+       
+    if (debug_active (D_SUBTRACTION)) then
+       call msg_debug (D_SUBTRACTION, "Current state of subtraction components: ")
+       call write_computation_status ()
+    end if
+    !stop
+
+  contains
+    subroutine write_computation_status (unit)
+       integer, intent(in), optional :: unit
+       integer :: i_uborn
+       integer :: u
+       u = given_output_unit (unit); if (u < 0) return
+       i_uborn = rsub%reg_data%regions(rsub%current_alr)%uborn_index
+       write (u,'(A,I2)') 'alr: ', rsub%current_alr
+       write (u,'(A,I2)') 'emitter: ', emitter
+       write (u,'(A,F4.2)') 'xi_max: ', xi_max
+       !!!write (u,'(A,F4.2,A,F4.2)') 'xi: ', xi, 'y: ', y
+       print *, 'xi: ', xi, 'y: ', y
+       print *, 'phi: ', phi
+       print *, 'xb1: ', rsub%isr_kinematics%x(1), 'xb2: ', rsub%isr_kinematics%x(2)
+       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn)
+       write (u,'(A,ES16.9)')  'sqme_real: ', sqme0
+       write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
+       write (u,'(A,ES16.9)')  'sqme_coll_plus: ', sqme_coll_plus
+       write (u,'(A,ES16.9)')  'sqme_coll_minus: ', sqme_coll_minus
+       write (u,'(A,ES16.9)')  'sqme_cs_plus: ', sqme_cs_plus
+       write (u,'(A,ES16.9)')  'sqme_cs_minus: ', sqme_cs_minus
+       write (u,'(A,ES16.9)')  'sqme_remn: ', sqme_remn
+    end subroutine write_computation_status
+
 
   end function real_subtraction_evaluate_region_isr
 
@@ -6443,14 +6498,6 @@ is equal to
     phs%generator%real_kinematics%p_real_lab = p_real
     if (.not. phs%config%cm_frame) &
        phs%generator%real_kinematics%p_real_cms = inverse (phs%lt_cm_to_lab) * p_real
-    print *, 'CMS, Born: '
-    call vector4_write_set (phs%generator%real_kinematics%p_born_cms)
-    print *, 'LAB, Born: '
-    call vector4_write_set (phs%generator%real_kinematics%p_born_lab)
-    print *, 'CMS, real: '
-    call vector4_write_set (phs%generator%real_kinematics%p_real_cms, check_conservation = .true.)
-    print *, 'LAB, real: '
-    call vector4_write_set (phs%generator%real_kinematics%p_real_lab, check_conservation = .true.)
   end subroutine phs_fks_generate_isr
 
 @ %def phs_fks_generate_isr
