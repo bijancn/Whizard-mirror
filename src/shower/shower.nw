@@ -6094,7 +6094,7 @@ interaction
   <<PYJETS COMMON BLOCK>>
     type(parton_t), pointer :: pp, ppparent
     integer :: i
-
+    K = 0
     do i = 1, 2
        !!! get history of the event
        pp => shower%interactions(1)%i%partons(i)%p
@@ -6300,7 +6300,7 @@ module shower_pythia6
 <<Standard module head>>
 
 <<Shower pythia6: public>>
-
+<<Shower pythia6: variables>>
 <<Shower pythia6: types>>
 
 contains
@@ -6316,6 +6316,10 @@ contains
   COMMON/PYJETS/N,NPAD,K(4000,5),P(4000,5),V(4000,5)
   SAVE /PYJETS/
 @
+<<Shower pythia6: variables>>=
+  integer :: N_old
+
+@ %def N_old
 @ The PYTHIA6 shower type.
 <<Shower pythia6: public>>=
   public :: shower_pythia6_t
@@ -6364,14 +6368,19 @@ contains
     type(particle_set_t), intent(in) :: particle_set
     type(os_data_t), intent(in) :: os_data
     type(particle_set_t) :: pset_reduced
+    call msg_debug (D_SHOWER, "shower_pythia6_import_particle_set")
     if (debug_active (D_SHOWER)) then
-       print *, "shower_pythia6_import_particle_set"
        print *, 'IDBMUP(1:2) =    ', IDBMUP(1:2)
        print *, 'EBMUP, PDFGUP =    ', EBMUP, PDFGUP
        print *, 'PDFSUP, IDWTUP =    ', PDFSUP, IDWTUP
        print *, "NPRUP = ", NPRUP
+       call particle_set%write (summary=.true., compressed=.true.)
     end if
     call particle_set%reduce (pset_reduced)
+    if (debug2_active (D_SHOWER)) then
+       print *, 'After particle_set%reduce: pset_reduced'
+       call pset_reduced%write (summary=.true., compressed=.true.)
+    end if
     call hepeup_from_particle_set (pset_reduced)
     call hepeup_set_event_parameters (proc_id=1)
   end subroutine shower_pythia6_import_particle_set
@@ -6391,16 +6400,42 @@ contains
     common /PYJETS/ N, NPAD, K(4000,5), P(4000,5), V(4000,5)
     save /PYJETS/
     integer :: u_W2P
+    integer :: i 
+    real(double) :: beta_z, pz_in, E_in
+    integer, parameter :: lower = 5
+    real(double), parameter :: beta_x = 0.0_double
+    real(double), parameter :: beta_y = 0.0_double
+    real(double), parameter :: theta = 0.0_double
+    real(double), parameter :: phi = 0.0_double
     if (signal_is_pending ()) return
     call pythia6_setup_lhe_io_units (u_W2P)
     call w2p_write_lhef_event (u_W2P)
     rewind (u_W2P)
+    call pythia6_set_last_treated_line(6)
     call shower%transfer_settings ()
     call msg_debug (D_SHOWER, "calling pyevnt")
     ! TODO: (bcn 2015-04-24) doesnt change anything I think
     ! P(1,1:5) = pset_reduced%prt(1)%p%to_pythia6 ()
     ! P(2,1:5) = pset_reduced%prt(2)%p%to_pythia6 ()
     call pyevnt ()
+    call pyedit(12)
+    do i = 1, n
+      if (K(i,1) == 14 .and. abs(K(i,2)) >= 11 .and. abs(K(i,2)) <= 16) then
+        if (K(i,4) < N .and. K(i,5) < N) then
+          K(i,1) = 11
+          K(i,4) = K(K(i,4),3)
+          K(i,5) = K(K(i,5),3)
+        end if
+      end if
+    end do
+    pz_in = pup(3,1) + pup(3,2)
+    E_in = pup(4,1) + pup(4,2)
+    beta_z = pz_in / E_in
+    call pyrobo (lower, N, theta, phi, beta_x, beta_y, beta_z)
+    if (debug_active (D_SHOWER)) then
+       print *, ' After pyevnt, after boosting :'
+       call pylist(2)
+    end if   
     close (u_W2P)
     valid = pythia6_handle_errors ()
   end subroutine shower_pythia6_generate_emissions
@@ -6556,7 +6591,7 @@ added back in by Pythia.
          backup_parents, incoming_ids
     logical, allocatable, dimension(:) :: pythia_particle, valid
     type(lorentz_transformation_t) :: L
-    logical :: boost_required
+    logical :: boost_required = .false.
     real(default), parameter :: py_tiny = 1E-10_default
     integer :: N, NPAD, K
     real(double) :: P, V
@@ -6571,7 +6606,7 @@ added back in by Pythia.
        call particle_set%write (summary=.true., compressed=.true.)
        call pylist (2)
     end if
-    call determine_boost ()
+    !call determine_boost ()
     call count_valid_entries_in_pythia_record ()
     call particle_set%without_hadronic_remnants &
          (particles, n_tot_old, py_entries)
@@ -6588,9 +6623,9 @@ added back in by Pythia.
     call particle_set%replace (particles)
     call replace_incomings ()
     call set_parent_child_relations_of_known_pythia_parents ()
-    call set_parent_child_relations_of_color_strings_to_hadrons ()
-    call particle_set%remove_duplicates (py_tiny * 100.0_default)
-    call give_orphans_backup_parents ()
+    !call set_parent_child_relations_of_color_strings_to_hadrons ()
+    !call particle_set%remove_duplicates (py_tiny * 100.0_default)
+    !call give_orphans_backup_parents ()
     where ((particle_set%prt%status == PRT_OUTGOING .or. &
             particle_set%prt%status == PRT_VIRTUAL .or. &
             particle_set%prt%status == PRT_BEAM_REMNANT) .and. &
@@ -6599,7 +6634,9 @@ added back in by Pythia.
     if (debug_active (D_SHOWER)) then
        print *, 'Particle set after replacing'
        call particle_set%write (summary=.true., compressed=.true.)
+       print *, ' pythia6_set_last_treated_line will set to: ', N
     end if
+    call pythia6_set_last_treated_line(N)
 
   contains
 
@@ -6868,7 +6905,7 @@ relations than when deciding whether we add particles or not.
     else
        rel_small = 1E2_default * py_tiny
     end if
-    j = particle_set%find_particle (pdg, momentum, &
+    j = particle_set%reverse_find_particle (pdg, momentum, &
          abs_smallness = py_tiny, &
          rel_smallness = rel_small)
   end function find_pythia_particle
@@ -7214,6 +7251,16 @@ relations than when deciding whether we add particles or not.
   end subroutine pythia6_set_verbose
 
 @ %def pythia6_set_verbose
+@
+<<Shower pythia6: public>>=
+  public :: pythia6_set_last_treated_line
+<<Shower pythia6: procedures>>=
+  subroutine pythia6_set_last_treated_line (last_line)
+    integer,intent(in) :: last_line
+    N_old = last_line
+  end subroutine pythia6_set_last_treated_line
+
+@ %def pythia6_set_last_treated_line
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 <<[[pythia6_up.f]]>>=
