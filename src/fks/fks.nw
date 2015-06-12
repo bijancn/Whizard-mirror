@@ -3363,12 +3363,16 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
     onemy = one-y; onepy = one+y
     phi = rsub%real_kinematics%phi
 
+    call rsub%compute_pdfs ()
+
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       i_real = region%real_index
       sqme0 = rsub%sqme_real_non_sub (i_real)
       s_alpha = rsub%reg_data%get_svalue (rsub%real_kinematics%p_real_cms, rsub%current_alr, emitter)
       sqme0 = sqme0 * s_alpha
       sqme0 = sqme0 * region%mult
+      call rsub%reweight_pdfs (sqme0, I_PLUS)
+      call rsub%reweight_pdfs (sqme0, I_MINUS)
 
       if (rsub%subtraction_active) then
          sqme0 = sqme0 * xi**2/xi_tilde * rsub%real_kinematics%jac(1)%jac(1)
@@ -3378,16 +3382,23 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
       if (rsub%subtraction_active) then
          call rsub%evaluate_subtraction_terms_isr (emitter, alpha_s, &
             sqme_soft, sqme_coll_plus, sqme_coll_minus, sqme_cs_plus, sqme_cs_minus)
+         call rsub%reweight_pdfs (sqme_coll_plus, I_PLUS)
+         call rsub%reweight_pdfs (sqme_coll_minus, I_MINUS)
+         !!!call rsub%reweight_pdfs (sqme_cs_plus, I_PLUS)
+         !!!call rsub%reweight_pdfs (sqme_cs_minus, I_MINUS)
          associate (jac => rsub%real_kinematics%jac)
            sqme_soft = sqme_soft/(one-y**2)/xi_tilde * jac(1)%jac(2)
-           sqme_coll_plus = sqme_coll_plus/onemy/xi_tilde/2 * jac(1)%jac(3)
-           sqme_coll_minus = sqme_coll_minus/onepy/xi_tilde/2 * jac(1)%jac(4)
-           sqme_cs_plus = sqme_cs_plus/onemy/xi_tilde/2 * jac(1)%jac(2)
-           sqme_cs_minus = sqme_cs_minus/onepy/xi_tilde/2 * jac(1)%jac(2)
+           sqme_coll_plus = sqme_coll_plus/onemy/xi_tilde/two * jac(1)%jac(3)
+           sqme_coll_minus = sqme_coll_minus/onepy/xi_tilde/two * jac(1)%jac(4)
+           sqme_cs_plus = sqme_cs_plus/onemy/xi_tilde/two * jac(1)%jac(2)
+           sqme_cs_minus = sqme_cs_minus/onepy/xi_tilde/two * jac(1)%jac(2)
          end associate
-         sqme_remn = log(xi_max_plus)/onemy * (sqme_soft - sqme_coll_plus) &
-                   + log(xi_max_minus)/onepy * (sqme_soft - sqme_coll_minus)
-         sqme_remn = sqme_remn * xi_tilde/2
+         !!!sqme_remn = log(xi_max_plus)/onemy * (sqme_soft - sqme_coll_plus) &
+         !!!          + log(xi_max_minus)/onepy * (sqme_soft - sqme_coll_minus)
+         !!!sqme_remn = sqme_remn * xi_tilde/2
+         sqme_remn = log(xi_max) * xi_tilde * sqme_soft
+         sqme_remn = sqme_remn - log(xi_max_plus)*xi_tilde*sqme_cs_plus &
+                               - log(xi_max_minus)*xi_tilde*sqme_cs_minus 
 
          sqme = sqme0 - sqme_soft - sqme_coll_plus - sqme_coll_minus &
               + sqme_cs_plus + sqme_cs_minus + sqme_remn
@@ -3623,7 +3634,8 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
   end subroutine real_subtraction_compute_sub_coll_soft
 
 @ %def real_subtraction_compute_sub_coll_soft
-@
+@ Gets the pdf value from the [[pdf_data]] object. Note that LHAPDF
+delivers $x \cdot f(x)$ as output, so that $x$ has to be factored out.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: compute_pdfs => real_subtraction_compute_pdfs
 <<real subtraction: procedures>>=
@@ -3631,20 +3643,45 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
     class(real_subtraction_t), intent(inout) :: rsub
     integer :: i
     real(default) :: z, x, Q
+    real(default) :: x_scaled
     real(double), dimension(-6:6) :: f_dble = 0._double
+    Q = rsub%isr_kinematics%fac_scale
+    !print *, 'scale: ', Q
     do i = 1, 2
+       !print *, 'i: ', i
        x = rsub%isr_kinematics%x(i)
        z = rsub%isr_kinematics%z(i)
-       Q = rsub%isr_kinematics%fac_scale
+       x_scaled = x/z
        call rsub%pdf_data%evolve (dble(x), dble(Q), f_dble)
-       rsub%pdf_born(i)%f = f_dble
-       call rsub%pdf_data%evolve (dble(x/z), dble(Q), f_dble)
-       rsub%pdf_scaled(i)%f = f_dble
+       rsub%pdf_born(i)%f = f_dble / dble(x)
+       !print *, 'Born pdfs: ', x
+       !print *, rsub%pdf_born(i)%f
+       call rsub%pdf_data%evolve (dble(x_scaled), dble(Q), f_dble)
+       !print *, 'Real pdfs: ', x/z 
+       !print *, rsub%pdf_born(i)%f
+       rsub%pdf_scaled(i)%f = f_dble / dble(x_scaled)
     end do
   end subroutine real_subtraction_compute_pdfs
 
 @ %def real_subtraction_compute_pdfs
-@       
+@      
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: reweight_pdfs => real_subtraction_reweight_pdfs
+<<real subtraction: procedures>>=
+  subroutine real_subtraction_reweight_pdfs (rsub, sqme, i)
+    class(real_subtraction_t), intent(inout) :: rsub
+    real(default), intent(inout) :: sqme
+    integer, intent(in) :: i
+    integer :: flavor_emitter
+    real(default) :: pdfs, pdfb
+    flavor_emitter = rsub%reg_data%flv_real(1)%flst(i)
+    pdfb = rsub%pdf_born(i)%f(flavor_emitter)
+    pdfs = rsub%pdf_scaled(i)%f(flavor_emitter)
+    sqme = sqme*pdfs/pdfb
+  end subroutine real_subtraction_reweight_pdfs
+
+@ %def real_subtraction_reweight_pdfs
+@
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Combining the FKS Pieces}
@@ -6566,6 +6603,8 @@ is equal to
     x_minus = xb_minus/sqrt(1-xi) * sqrt ((2-xi*(1+y)) / (2-xi*(1-y)))
     p_real(I_PLUS) = x_plus/xb_plus * p_born(I_PLUS)
     p_real(I_MINUS) = x_minus/xb_minus * p_born(I_MINUS)
+    generator%isr_kinematics%z(I_PLUS) = x_plus/generator%isr_kinematics%x(I_PLUS)
+    generator%isr_kinematics%z(I_MINUS) = x_minus/generator%isr_kinematics%x(I_MINUS)
 
     !!! Create radiation momentum
     sqrts_real = generator%isr_kinematics%sqrts_born / sqrt(1-xi)
