@@ -286,9 +286,9 @@ the [[ftuple]]-object.
 @ %def ftuple_set
 @
 <<fks regions: ftuple: TBP>>=
-  procedure :: determine_splitting_type => ftuple_determine_splitting_type
+  procedure :: determine_splitting_type_fsr => ftuple_determine_splitting_type_fsr
 <<fks regions: procedures>>=
-  subroutine ftuple_determine_splitting_type (ftuple, flv, i, j)
+  subroutine ftuple_determine_splitting_type_fsr (ftuple, flv, i, j)
     class(ftuple_t), intent(inout) :: ftuple
     type(flv_structure_t), intent(in) :: flv
     integer, intent(in) :: i, j
@@ -305,9 +305,33 @@ the [[ftuple]]-object.
           ftuple%splitting_type = UNDEFINED_SPLITTING
        end if
     end associate
-  end subroutine ftuple_determine_splitting_type
+  end subroutine ftuple_determine_splitting_type_fsr
 
-@ %def ftuple_determine_splitting_type
+@ %def ftuple_determine_splitting_type_fsr
+@
+<<fks regions: ftuple: TBP>>=
+  procedure :: determine_splitting_type_isr => ftuple_determine_splitting_type_isr
+<<fks regions: procedures>>=
+  subroutine ftuple_determine_splitting_type_isr (ftuple, flv, i, j)
+    class(ftuple_t), intent(inout) :: ftuple
+    type(flv_structure_t), intent(in) :: flv
+    integer, intent(in) :: i, j
+    integer :: em
+    em = i; if (i == 0) em = 1
+    associate (flst => flv%flst)
+       if (flst(em) == GLUON .and. flst(j) == GLUON) then
+          ftuple%splitting_type = G_TO_GG
+       else if (flst(em) == GLUON .and. is_quark(abs(flst(j)))) then
+          ftuple%splitting_type = G_TO_QQ
+       else if (is_quark(abs(flst(em))) .and. flst(j) == GLUON) then
+          ftuple%splitting_type = Q_TO_QG
+       else
+          ftuple%splitting_type = UNDEFINED_SPLITTING
+       end if
+    end associate
+  end subroutine ftuple_determine_splitting_type_isr
+
+@ %def ftuple_determine_splitting_type_isr
 @ Each singular region can have a different number of
 emitter-radiation pairs. This is coped with using the linked list
 [[ftuple_list]].
@@ -845,7 +869,6 @@ there is only a soft singularity if the radiated parton becomes soft.
                 ftuple(reg)%splitting_type /= G_TO_QQ
 
              if (i1 == 0) then
-             !!! IS-splitting always has a collinear divergence (because massless)
                region%coll_divergence = .true.
              else
                region%coll_divergence = &
@@ -1183,7 +1206,7 @@ are therefore equivalent.
                  flst_alr_tmp(n) = flv_real(l)
               end if
               call current_ftuple%set (i,j)
-              call current_ftuple%determine_splitting_type (flv_real(l), i, j)
+              call current_ftuple%determine_splitting_type_fsr (flv_real(l), i, j)
               call ftuples(l)%append (current_ftuple)
               emitter_tmp(n) = nlegreal - 1
               exit
@@ -1208,6 +1231,7 @@ initial-state of the second array.
         if (valid1 .or. valid2) then
            n = n + 1
            call current_ftuple%set(m, i)
+           call current_ftuple%determine_splitting_type_isr (flv_real(l), m, i)
            call ftuples(l)%append (current_ftuple)
            emitter_tmp(n) = m
            flst_alr_tmp(n) = create_alr (flv_real(l), m, i)
@@ -1450,9 +1474,9 @@ of the present one is increased.
 <<fks regions: procedures>>=
   subroutine region_data_set_splitting_info (reg_data)
      class(region_data_t), intent(inout) :: reg_data
-     integer :: reg
-     do reg = 1, reg_data%n_regions
-        call reg_data%regions(reg)%set_splitting_info ()
+     integer :: alr
+     do alr = 1, reg_data%n_regions
+        call reg_data%regions(alr)%set_splitting_info ()
      end do
    end subroutine region_data_set_splitting_info
 
@@ -2736,6 +2760,12 @@ The soft momentum is a unit vector, because $k^2 = \left(k^0\right)^2 - \left(k^
     real(default) :: kb
     integer :: i, j
 
+    if (.not. vector_set_is_cms (p_born)) then
+       call vector4_write_set (p_born, show_mass = .true., &
+          check_conservation = .true.)
+       call msg_fatal ("Soft subtraction: phase space point must be in CMS")
+    end if
+
     if (emitter > 2) then
        p_soft = create_softvec_fsr (p_born, y_soft, phi, emitter)
     else
@@ -2886,6 +2916,14 @@ it is necessary to expand with $z$ once.
     integer :: nlegs, emitter
     integer :: flv_em, flv_rad
     logical :: soft
+
+    if (.not. vector_set_is_cms (p_born)) then
+       call vector4_write_set (p_born, show_mass = .true., &
+          check_conservation = .true.)
+       call msg_fatal ("Collinear subtraction, FSR: Phase space point &
+          &must be in CMS")
+    end if
+ 
     if (present (soft_in)) then
       soft = soft_in
     else
@@ -2970,6 +3008,13 @@ it is necessary to expand with $z$ once.
     integer :: flv_em, flv_rad
     integer :: nlegs
     real(default) :: res
+
+    if (vector_set_is_cms (p_born)) then
+       call vector4_write_set (p_born, show_mass = .true., &
+          check_conservation = .true.)
+       call msg_fatal ("Collinear subtraction, ISR: Phase space point &
+          &must be in lab frame")
+    end if
 
     if (present (soft_in)) then
       soft = soft_in
@@ -3348,6 +3393,37 @@ matrix elements and supplies the corresponding factor $1/\xi/(1-y)$ as well as t
          sqme = sqme0
       end if
     end associate
+       
+    if (debug_active (D_SUBTRACTION)) then
+       call msg_debug (D_SUBTRACTION, "Current state of subtraction components: ")
+       call write_computation_status ()
+    end if
+    !stop
+
+  contains
+    subroutine write_computation_status (unit)
+       integer, intent(in), optional :: unit
+       integer :: i_uborn
+       integer :: u
+       u = given_output_unit (unit); if (u < 0) return
+       i_uborn = rsub%reg_data%regions(rsub%current_alr)%uborn_index
+       write (u,'(A,I2)') 'alr: ', rsub%current_alr
+       write (u,'(A,I2)') 'emitter: ', emitter
+       write (u,'(A,F4.2)') 'xi_max: ', xi_max
+       !!!write (u,'(A,F4.2,A,F4.2)') 'xi: ', xi, 'y: ', y
+       print *, 'xi: ', xi, 'y: ', y
+       print *, 'phi: ', phi
+       print *, 'xb1: ', rsub%isr_kinematics%x(1), 'xb2: ', rsub%isr_kinematics%x(2)
+       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn)
+       write (u,'(A,ES16.9)')  'sqme_real: ', sqme0
+       write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
+       write (u,'(A,ES16.9)')  'sqme_coll_plus: ', sqme_coll_plus
+       write (u,'(A,ES16.9)')  'sqme_coll_minus: ', sqme_coll_minus
+       write (u,'(A,ES16.9)')  'sqme_cs_plus: ', sqme_cs_plus
+       write (u,'(A,ES16.9)')  'sqme_cs_minus: ', sqme_cs_minus
+       write (u,'(A,ES16.9)')  'sqme_remn: ', sqme_remn
+    end subroutine write_computation_status
+
 
   end function real_subtraction_evaluate_region_isr
 
@@ -5708,15 +5784,23 @@ phase-space points with [[p_real(emitter) = 0]].
   pure subroutine phs_fks_generator_compute_isr_kinematics (generator, r, p_in)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: r
-    type(vector4_t), dimension(2), intent(in) :: p_in
+    type(vector4_t), dimension(2), intent(in), optional :: p_in
     integer :: em
+    type(vector4_t), dimension(2) :: p
+
+    if (present (p_in)) then
+       p = p_in
+    else
+       p = generator%real_kinematics%p_born_lab
+    end if
+
     associate (isr => generator%isr_kinematics)
        do em = 1, 2
-          isr%x(em) = p_in(em)%p(0) / isr%beam_energy
+          isr%x(em) = p(em)%p(0) / isr%beam_energy
           isr%z(em) = one - (one - isr%x(em)) * r
           isr%jacobian(em) =  isr%jacobian(em) * (one - isr%x(em))
        end do
-       isr%sqrts_born = (p_in(1) + p_in(2))**1
+       isr%sqrts_born = (p(1) + p(2))**1
     end associate
   end subroutine phs_fks_generator_compute_isr_kinematics
 
@@ -5865,6 +5949,8 @@ calculated from the Born momenta.
           phs%q_born = phs%phs_wood_t%q
           phs%p_born_tot (1:n_in) = phs%p_born
           phs%p_born_tot (n_in+1:) = phs%q_born
+          call phs%set_reference_frames ()
+          call phs%set_isr_kinematics ()
           call phs%generate_radiation_variables (r_in(phs%n_r_born+1:phs%n_r_born+3))
        case (PHS_MODE_COLLINEAR_REMNANT)
           call phs%compute_isr_kinematics (r_in(phs%n_r_born+1))
@@ -6010,6 +6096,17 @@ calculated from the Born momenta.
 @ %def phs_fks_display_kinematics
 @
 <<phs fks: phs fks: TBP>>=
+  procedure :: set_isr_kinematics => phs_fks_set_isr_kinematics
+<<phs fks: procedures>>=
+  subroutine phs_fks_set_isr_kinematics (phs, p_born)
+    class(phs_fks_t), intent(inout) :: phs
+    type(vector4_t), dimension(2), intent(in), optional :: p_born
+    call phs%generator%set_isr_kinematics (p_born)
+  end subroutine phs_fks_set_isr_kinematics
+
+@ %def phs_fks_set_isr_kinematics
+@
+<<phs fks: phs fks: TBP>>=
   procedure :: generate_radiation_variables => &
                        phs_fks_generate_radiation_variables
 <<phs fks: procedures>>=
@@ -6023,6 +6120,25 @@ calculated from the Born momenta.
   end subroutine phs_fks_generate_radiation_variables
 
 @ %def phs_fks_generate_radiation_variables
+@ When initial-state radiation is involved, either due to beamnstrahlung or
+QCD corrections, it is important to have access to both the phase space points
+in the center-of-mass and lab frame.
+<<phs fks: phs fks: TBP>>=
+  procedure :: set_reference_frames => phs_fks_set_reference_frames
+<<phs fks: procedures>>=
+  subroutine phs_fks_set_reference_frames (phs)
+    class(phs_fks_t), intent(inout) :: phs
+    associate (real_kinematics => phs%generator%real_kinematics)
+       real_kinematics%p_born_cms = phs%p_born_tot
+       if (.not. phs%config%cm_frame) then
+          real_kinematics%p_born_lab = phs%lt_cm_to_lab * phs%p_born_tot
+       else
+          real_kinematics%p_born_lab = phs%p_born_tot
+       end if
+    end associate
+  end subroutine phs_fks_set_reference_frames
+
+@ %def phs_fks_set_reference_frames
 @
 \subsection{Creation of the real phase space - FSR}
 At this point, the Born phase space has been generated, as well as the
@@ -6199,13 +6315,14 @@ $\xi$.
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(out), dimension(:), allocatable :: p_real
     type(vector4_t), dimension(:), allocatable :: p
-    phs%generator%real_kinematics%p_born_lab = p_born
-    if (.not. phs%config%cm_frame) then
-       p = inverse (phs%lt_cm_to_lab) * p_born
-    else
-       p = p_born
-    end if
-    phs%generator%real_kinematics%p_born_cms = p
+    !!!phs%generator%real_kinematics%p_born_lab = p_born
+    !!!if (.not. phs%config%cm_frame) then
+    !!!   p = inverse (phs%lt_cm_to_lab) * p_born
+    !!!else
+    !!!   p = p_born
+    !!!end if
+    !!!phs%generator%real_kinematics%p_born_cms = p
+    p = phs%generator%real_kinematics%p_born_cms
     call phs%generator%generate_fsr (emitter, p, p_real)
     phs%generator%real_kinematics%p_real_cms = p_real
     if (.not. phs%config%cm_frame) p_real = phs%lt_cm_to_lab * p_real
@@ -6390,14 +6507,14 @@ is equal to
     class(phs_fks_t), intent(inout) :: phs
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(out), dimension(:), allocatable :: p_real
-    phs%generator%real_kinematics%p_born_lab = p_born
-    associate (p_born_cms => phs%generator%real_kinematics%p_born_cms)
-       if (.not. phs%config%cm_frame) then
-          p_born_cms = inverse (phs%lt_cm_to_lab) * p_born
-       else
-          p_born_cms = p_born
-       end if
-    end associate
+    !!!phs%generator%real_kinematics%p_born_lab = p_born
+    !!!associate (p_born_cms => phs%generator%real_kinematics%p_born_cms)
+    !!!   if (.not. phs%config%cm_frame) then
+    !!!     p_born_cms = inverse (phs%lt_cm_to_lab) * p_born
+    !!!   else
+    !!!      p_born_cms = p_born
+    !!!   end if
+    !!!end associate
     call phs%generator%generate_isr (p_born, p_real)
     phs%generator%real_kinematics%p_real_lab = p_real
     if (.not. phs%config%cm_frame) &
@@ -6423,6 +6540,8 @@ is equal to
     real(default) :: x_plus, x_minus, xb_plus, xb_minus
     integer :: i
     real(default) :: xi_plus, xi_minus
+    real(default) :: beta_gamma
+    type(vector3_t) :: beta_vec
 
     associate (rad_var => generator%real_kinematics)
       xi_max = rad_var%xi_max(1)
@@ -6432,8 +6551,6 @@ is equal to
       rad_var%y_soft = y
     end associate
     
-    call generator%set_isr_kinematics (generator%real_kinematics%p_born_lab)
-
     nlegborn = size (p_born)
     nlegreal = nlegborn+1
     generator%isr_kinematics%sqrts_born = sqrt ((p_born(1) + p_born(2))**2)
@@ -6448,17 +6565,21 @@ is equal to
     p_real(I_MINUS) = x_minus/xb_minus * p_born(I_MINUS)
 
     !!! Create radiation momentum
-    sqrts_real = generator%isr_kinematics%sqrts_born / (1-xi)
+    sqrts_real = generator%isr_kinematics%sqrts_born / sqrt(1-xi)
     k0_np1 = sqrts_real*xi/2
     p_real(nlegreal)%p(0) = k0_np1
     p_real(nlegreal)%p(1) = k0_np1*sqrt(1-y**2)*sin(phi)
     p_real(nlegreal)%p(2) = k0_np1*sqrt(1-y**2)*cos(phi)
     p_real(nlegreal)%p(3) = k0_np1*y
 
-    lambda_longit = create_longitudinal_boost (p_real, inverse = .false.)
+    call get_boost_parameters (p_real, beta_gamma, beta_vec)
+    !!!lambda_longit = create_longitudinal_boost (p_real, inverse = .true.)
+    lambda_longit = create_longitudinal_boost (beta_gamma, beta_vec, inverse = .true.)
     p_real(nlegreal) = lambda_longit * p_real(nlegreal)
 
-    lambda_longit = create_longitudinal_boost (p_born, inverse = .false.)
+    !!!lambda_longit = create_longitudinal_boost (p_born, inverse = .false.)
+    call get_boost_parameters (p_born, beta_gamma, beta_vec)
+    lambda_longit = create_longitudinal_boost (beta_gamma, beta_vec, inverse = .false.)
     forall (i=3:nlegborn) &
         p_real(i) = lambda_longit * p_born(i)
 
@@ -6466,7 +6587,8 @@ is equal to
     forall (i=3:nlegborn) &
          p_real(i) = lambda_transv * p_real(i)
 
-    lambda_longit_inv = create_longitudinal_boost (p_real, inverse = .true.)
+    !!!lambda_longit_inv = create_longitudinal_boost (p_real, inverse = .true.)
+    lambda_longit_inv = create_longitudinal_boost (beta_gamma, beta_vec, inverse = .true.)
     forall (i=3:nlegborn) &
          p_real(i) = lambda_longit_inv * p_real(i)
 
@@ -6482,17 +6604,25 @@ is equal to
        end associate
     end do
   contains
-    function create_longitudinal_boost (p, inverse) result (lambda)
+    subroutine get_boost_parameters (p, beta_gamma, beta_vec)
        type(vector4_t), intent(in), dimension(:) :: p
-       logical, intent(in) :: inverse
-       type(lorentz_transformation_t) :: lambda
-       type(vector3_t) :: beta_vec
-       real(default) :: beta_gamma
+       real(default), intent(out) :: beta_gamma
+       type(vector3_t), intent(out) :: beta_vec
        beta_vec = (p(1)%p(1:3) + p(2)%p(1:3)) / (p(1)%p(0) + p(2)%p(0))
        beta_gamma = beta_vec**1 / sqrt (1-beta_vec**2)
        beta_vec = beta_vec / beta_vec**1
-       if (inverse) beta_gamma = -beta_gamma
-       lambda = boost (-beta_gamma, beta_vec)
+    end subroutine get_boost_parameters
+
+    function create_longitudinal_boost (beta_gamma, beta_vec, inverse) result (lambda)
+       real(default), intent(in) :: beta_gamma
+       type(vector3_t), intent(in) :: beta_vec
+       logical, intent(in) :: inverse
+       type(lorentz_transformation_t) :: lambda
+       if (inverse) then
+          lambda = boost (beta_gamma, beta_vec)
+       else
+          lambda = boost (-beta_gamma, beta_vec)
+       end if
     end function create_longitudinal_boost
 
     function create_transversal_boost (p_rad, xi, sqrts_real) result (lambda)
@@ -6573,9 +6703,16 @@ is equal to
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_set_isr_kinematics (generator, p_born)
     class(phs_fks_generator_t), intent(inout) :: generator
-    type(vector4_t), dimension(:), intent(in) :: p_born
-    generator%isr_kinematics%x = space_part_norm (p_born(1:2)) / &
-         (generator%sqrts/2)
+    type(vector4_t), dimension(2), intent(in), optional :: p_born
+    type(vector4_t), dimension(2) :: p
+    
+    if (present (p_born)) then
+       p = p_born
+    else
+       p = generator%real_kinematics%p_born_lab(1:2)
+    end if
+
+    generator%isr_kinematics%x = p%p(0) / (generator%sqrts/2)
   end subroutine phs_fks_generator_set_isr_kinematics
 
 @ %def phs_fks_generator_set_isr_kinematics
@@ -6590,6 +6727,9 @@ is equal to
     real(default), intent(in), dimension(:) :: r_in
     type(vector4_t), intent(in), dimension(:) :: p_born
     integer :: em
+
+    if (any (generator%emitters <= 2)) &
+        call generator%set_isr_kinematics (generator%real_kinematics%p_born_lab)
 
     associate (rad_var => generator%real_kinematics)
        rad_var%jac_rand = 1.0
@@ -6790,7 +6930,7 @@ is equal to
   subroutine phs_fks_compute_isr_kinematics (phs, r)
     class(phs_fks_t), intent(inout) :: phs
     real(default), intent(in) :: r
-    call phs%generator%compute_isr_kinematics (r, phs%phs_wood_t%p)
+    call phs%generator%compute_isr_kinematics (r)
   end subroutine phs_fks_compute_isr_kinematics
 
 @ %def phs_fks_compute_isr_kinematics
@@ -6941,6 +7081,7 @@ is equal to
        allocate (rad_var%p_born_lab(4), rad_var%p_real_lab(5))
        allocate (rad_var%jac(4))
        allocate (rad_var%jac_rand(4), rad_var%y_soft(4))
+       rad_var%p_born_lab = p_born
     end associate
     allocate (generator%m2 (2))
     generator%m2(1) = 0._default; generator%m2(2) = 0._default
