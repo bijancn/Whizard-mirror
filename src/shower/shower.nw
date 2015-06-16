@@ -6400,7 +6400,7 @@ contains
     common /PYJETS/ N, NPAD, K(4000,5), P(4000,5), V(4000,5)
     save /PYJETS/
     integer :: u_W2P
-    integer :: i 
+    integer :: i
     real(double) :: beta_z, pz_in, E_in
     integer, parameter :: lower = 5
     real(double), parameter :: beta_x = 0.0_double
@@ -6435,7 +6435,7 @@ contains
     if (debug_active (D_SHOWER)) then
        print *, ' After pyevnt, after boosting :'
        call pylist(2)
-    end if   
+    end if
     close (u_W2P)
     valid = pythia6_handle_errors ()
   end subroutine shower_pythia6_generate_emissions
@@ -6657,18 +6657,20 @@ added back in by Pythia.
           exit FIND
        end if
     end do FIND
-    do i = 7, N
+    do i = N, N_old+1, -1
        status = K(i,1)
-       if (any (P(i,1:4) > 1E7_default * py_tiny) .and. (status >= 1 .and. status <= 21)) then
-          pset_idx = find_pythia_particle (i)
-          if (pset_idx == 0) then
-             valid (i) = .true.
+       valid (i) = .true.
+       if (any (P(i,1:4) > 1E7_default * py_tiny) .and. (status > 1 .and. status <= 21)) then
+          pset_idx = find_pythia_particle (i, more_fuzzy=.true.)
+          if (pset_idx /= 0) then
+             valid(i)= .false.
           end if
        end if
     end do
     py_entries = count (valid)
     allocate (old_index (py_entries))
     allocate (new_index (N))
+    new_index(1:N) = 0
   end subroutine count_valid_entries_in_pythia_record
 
 @
@@ -6684,6 +6686,7 @@ added back in by Pythia.
 <<Shower pythia6: combine with particle set: procedures>>=
   subroutine add_particles_of_pythia ()
     integer :: whizard_status
+    integer :: pset_idx
     dangling_col = 0
     dangling_anti_col = 0
     next_color = 1
@@ -6722,6 +6725,9 @@ added back in by Pythia.
           new_index(i) = n_tot_old + j
           pythia_particle(n_tot_old + j) = .true.
           j = j + 1
+       else
+          pset_idx = find_pythia_particle (i,more_fuzzy=.true.)
+          new_index(i) = pset_idx
        end if
     end do
   end subroutine add_particles_of_pythia
@@ -6827,23 +6833,76 @@ added back in by Pythia.
     end do
   end subroutine replace_incomings
 
-@
+@ Use HEPEVT for parent-child informations
 <<Shower pythia6: combine with particle set: procedures>>=
   subroutine set_parent_child_relations_of_known_pythia_parents ()
+    integer, allocatable, dimension(:) :: parents
+    integer:: parent2, parent1, npar
+    integer, parameter :: NMXHEP = 4000
+    integer :: NEVHEP
+    integer :: NHEP
+    integer, dimension(NMXHEP) :: ISTHEP
+    integer, dimension(NMXHEP) :: IDHEP
+    integer, dimension(2, NMXHEP) :: JMOHEP
+    integer, dimension(2, NMXHEP) :: JDAHEP
+    double precision, dimension(5, NMXHEP) :: PHEP
+    double precision, dimension(4, NMXHEP) :: VHEP
+    common /HEPEVT/ &
+     NEVHEP, NHEP, ISTHEP, IDHEP, &
+     JMOHEP, JDAHEP, PHEP, VHEP
+    save /HEPEVT/
+    integer :: i,j
+    call msg_debug (D_SHOWER, &
+         "set_parent_child_relations_of_known_pythia_parents")
+    call pyhepc(1)
+    do i = 1, NHEP
+      if (JDAHEP(1,i) > 0) then
+         if (count (JDAHEP(1,i:NHEP) == JDAHEP(1,i)) > 1) then
+           if (JMOHEP(2,JDAHEP(1,i)) == 0) then
+             if (JMOHEP(1,JDAHEP(1,i)) /= i ) then
+                call msg_error('problem in set_parent_child_' // &
+                     'relations_of_known_pythia_parents')
+             end if
+             JMOHEP(1,JDAHEP(1,i)) = i
+             do j = i + 1, NHEP
+               if (JDAHEP(1,j) == JDAHEP(1,i)) then
+                  JMOHEP(2,JDAHEP(1,i)) = j
+               end if
+             end do
+           end if
+         end if
+      end if
+    end do
+    if (debug_active (D_SHOWER)) then
+       !call heplst(1)
+       print *, '  NHEP, n, py_entries:' , NHEP, n, py_entries
+    end if
     do j = 1, py_entries
-       parent = K(old_index(j),3)
+       parent1 = JMOHEP(1,old_index(j))
+       parent2 = parent1
+       if (JMOHEP(2,old_index(j)) > 0 ) then
+         parent2 = JMOHEP(2,old_index(j))
+       end if
+       allocate (parents(parent2-parent1+1))
        child = n_tot_old + j
-       if (parent > 0) then
-          if (parent >= 1 .and. parent <= 2) then
-             call particle_set%parent_add_child (parent, child)
-          else
-             real_parent = find_pythia_particle (parent, more_fuzzy=.true.)
-             if (real_parent > 0 .and. real_parent /= child) then
-                call particle_set%parent_add_child (real_parent, child)
+       npar = 0
+       do parent = parent1, parent2
+          if (parent > 0) then
+             if (parent >= 1 .and. parent <= 2) then
+                call particle_set%parent_add_child (parent, child)
+             else
+                if (new_index(parent) > 0 ) then
+                   npar = npar + 1
+                   parents(npar) = new_index(parent) 
+                   call particle_set%prt(new_index(parent) )%add_child (child)
+                end if
              end if
           end if
-       end if
+       end do
+       if (npar > 0) call particle_set%prt(child)%set_parents (parents)
+       deallocate (parents)
     end do
+    NHEP = 0
   end subroutine set_parent_child_relations_of_known_pythia_parents
 
 @
