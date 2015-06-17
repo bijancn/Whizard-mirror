@@ -46,7 +46,8 @@ libwhizard_core_la_SOURCES = \
   event_streams.f90 \
   simulations.f90 \
   commands.f90 \
-  whizard.f90
+  whizard.f90 \
+  cmdline_options.f90
 
 libwhizard_core_ut_la_SOURCES = \
   expr_tests_uti.f90 expr_tests_ut.f90 \
@@ -64,9 +65,13 @@ EXTRA_libwhizard_core_la_SOURCES = whizard-c-interface.f90
 libwhizard_core_la_LIBADD = whizard-c-interface.lo
 
 ## The main program makes up a library on its own.
-lib_LTLIBRARIES = libwhizard_main.la
+lib_LTLIBRARIES = libwhizard_main.la libwhizard_main_ut.la
 
-libwhizard_main_la_SOURCES = main.f90
+libwhizard_main_la_SOURCES = \
+  main.f90
+
+libwhizard_main_ut_la_SOURCES = \
+  main_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = whizard.nw
@@ -134,6 +139,7 @@ Makefile.depend: \
   $(libwhizard_core_la_SOURCES) \
   $(libwhizard_core_ut_la_SOURCES) \
   $(libwhizard_main_la_SOURCES) \
+  $(libwhizard_main_ut_la_SOURCES) \
   $(EXTRA_libwhizard_core_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
@@ -176,8 +182,9 @@ if NOWEB_AVAILABLE
 WHIZARD_SRC = \
   $(libwhizard_core_la_SOURCES) \
   $(libwhizard_core_ut_la_SOURCES) \
-  $(EXTRA_libwhizard_core_la_SOURCES) \
-  main.f90
+  $(libwhizard_main_la_SOURCES) \
+  $(libwhizard_main_ut_la_SOURCES) \
+  $(EXTRA_libwhizard_core_la_SOURCES)
 
 PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
 POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw

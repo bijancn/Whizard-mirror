@@ -2,7 +2,7 @@
 ### Check WHIZARD decays module
 echo "Running script $0"
 if test -f OCAML_FLAG; then
-    ./run_whizard.sh @script@ --check shower
+    ./run_whizard_ut.sh @script@ --check shower
 else
     echo "|=============================================================================|"
     echo "No O'Mega matrix elements available, test skipped"

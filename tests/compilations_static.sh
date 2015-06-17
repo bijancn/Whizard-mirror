@@ -3,7 +3,7 @@
 echo "Running script $0"
 if test -f STATIC_FLAG; then
     if test -f OCAML_FLAG; then
-	exec ./run_whizard.sh @script@ --check compilations_static
+	exec ./run_whizard_ut.sh @script@ --check compilations_static
     else
 	echo "|=============================================================================|"
 	echo "No O'Mega matrix elements available, test skipped"

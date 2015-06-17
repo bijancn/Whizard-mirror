@@ -2,7 +2,7 @@
 ### Check WHIZARD process library setup
 echo "Running script $0"
 if test -f OCAML_FLAG -a -f EVENT_ANALYSIS_FLAG; then
-    exec ./run_whizard.sh @script@ --check prc_omega_diags
+    exec ./run_whizard_ut.sh @script@ --check prc_omega_diags
 else
     echo "|=============================================================================|"
     echo "No O'Mega matrix elements available, and or no event analysis"

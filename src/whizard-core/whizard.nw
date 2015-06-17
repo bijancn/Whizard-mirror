@@ -5572,7 +5572,7 @@ module dispatch_uti
   use sf_mappings
   use sf_base
   use mappings
-  use phs_forests, only: phs_parameters_t
+  use phs_forests
   use phs_base
   use phs_wood
   use mci_base
@@ -6906,7 +6906,7 @@ definition library.
 @ %def process_configuration_record
 @
 \subsection{Unit Tests}
-Test module, followed by the stand-alone unit-test procedures.
+Test module, followed by the corresponding implementation module.
 <<[[process_configurations_ut.f90]]>>=
 <<File header>>
 
@@ -10210,6 +10210,7 @@ module event_streams_uti
   use processes
   use models
   use rt_data
+  use processes_ut, only: prepare_test_process
   use events
 
   use event_streams
@@ -12856,7 +12857,7 @@ in the unit tests.)
   
 @ %def simulation_evaluate_expressions
 @
-\subsection{Test}
+\subsection{Unit tests}
 Test module, followed by the stand-alone unit-test procedures.
 <<[[simulations_ut.f90]]>>=
 <<File header>>
@@ -12898,7 +12899,7 @@ module simulations_uti
     use models
     use rt_data
     use event_streams
-    use decays, only: prepare_testbed
+    use decays_ut, only: prepare_testbed
     use process_configurations_ut, only: prepare_test_library
     use compilations, only: compile_library
     use integrations, only: integrate_process
@@ -14596,7 +14597,6 @@ module expr_tests_uti
     use subevt_expr
     use rng_base
     use mci_base
-    use phs_forests
     use phs_base
     use variables
     use eval_trees
@@ -14604,6 +14604,7 @@ module expr_tests_uti
     use prc_core
     use prc_test
     use processes
+    use processes_ut, only: prepare_test_process
     use events
 
 <<Standard module head>>
@@ -22914,7 +22915,7 @@ Also here, after each command we set a breakpoint.
 @ %def lexer_init_cmd_list
 @ 
 \subsection{Unit Tests}
-Test module, followed by the stand-alone unit-test procedures.
+Test module, followed by the corresponding implementation module.
 <<[[commands_ut.f90]]>>=
 <<File header>>
 
@@ -26515,6 +26516,92 @@ a time.
 @
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Tools for the command line}
+
+We don't intent to be very smart here, but this module provides a few
+small tools that simplify dealing with the command line.
+<<[[cmdline_options.f90]]>>=
+<<File header>>
+
+module cmdline_options
+  
+<<Use strings>>
+  use diagnostics
+
+<<Standard module head>>
+
+  public :: init_options
+  public :: no_option_value
+  public :: get_option_value
+
+<<Main: cmdline arg len declaration>>
+
+  abstract interface
+     subroutine msg
+     end subroutine msg
+  end interface
+
+  procedure (msg), pointer :: print_usage => null ()
+
+contains
+
+  subroutine init_options (usage_msg)
+    procedure (msg) :: usage_msg
+    print_usage => usage_msg
+  end subroutine init_options
+
+  subroutine no_option_value (option, value)
+    type(string_t), intent(in) :: option, value
+    if (value /= "") then
+       call msg_error (" Option '" // char (option) // "' should have no value")
+    end if
+  end subroutine no_option_value
+
+  function get_option_value (i, option, value) result (string)
+    type(string_t) :: string
+    integer, intent(inout) :: i
+    type(string_t), intent(in) :: option
+    type(string_t), intent(in), optional :: value
+    character(CMDLINE_ARG_LEN) :: arg
+    character(CMDLINE_ARG_LEN) :: arg_value
+    integer :: arg_len, arg_status
+    logical :: has_value
+    if (present (value)) then
+       has_value = value /= ""
+    else
+       has_value = .false.
+    end if
+    if (has_value) then
+       string = value
+    else
+       i = i + 1 
+       call get_command_argument (i, arg_value, arg_len, arg_status)
+       select case (arg_status)
+       case (0)
+       case (-1)
+          call msg_error (" Option value truncated: '" // arg // "'")
+       case default
+          call print_usage ()
+          call msg_fatal (" Option '" // char (option) // "' needs a value")
+       end select
+       select case (arg(1:1))
+       case ("-")
+          call print_usage ()
+          call msg_fatal (" Option '" // char (option) // "' needs a value")
+       end select
+       string = trim (arg_value)
+    end if
+  end function get_option_value
+  
+end module cmdline_options
+
+@ %def init_options
+@ %def no_option_value
+@ %def get_option_value
+@ %def cmdline_options
+@
+\clearpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Driver program}
 The main program handles command options, initializes the environment,
 and runs WHIZARD in a particular mode (interactive, file, standard
@@ -26537,10 +26624,9 @@ program main
   use diagnostics
   use ifiles
   use os_interface
-
-<<Main: import tests>>
-  
   use whizard
+
+  use cmdline_options
 
   implicit none
 
@@ -26555,9 +26641,7 @@ program main
   logical :: interactive
   logical :: banner
   type(string_t) :: files, this, model, default_lib, library, libraries
-  type(string_t) :: check, checks, logfile
-  type(test_results_t) :: test_results
-  logical :: success
+  type(string_t) :: logfile
   logical :: user_code_enable = .false.
   integer :: n_user_src = 0, n_user_lib = 0
   type(string_t) :: user_src, user_lib, user_target
@@ -26587,8 +26671,6 @@ program main
   logging = .true.
   msg_level = RESULT
   logfile = "whizard.log"
-  check = ""
-  checks = ""
   user_src = ""
   user_lib = ""
   user_target = ""
@@ -26601,6 +26683,7 @@ program main
   call paths_init (paths)
 
   ! Read and process options
+  call init_options (print_usage)
   i = 0
   SCAN_CMDLINE: do
      i = i + 1
@@ -26649,9 +26732,9 @@ program main
               paths%lhapdfdir = get_option_value (i, long_option, value)
               cycle SCAN_CMDLINE
            case ("--check")
-              check = get_option_value (i, long_option, value)
-              checks = checks // " " // check
-              cycle SCAN_CMDLINE
+              call print_usage ()
+              call msg_fatal ("Option --check not supported &
+                   &(for unit tests, run whizard_ut instead)")
            case ("--execute")
               command = get_option_value (i, long_option, value)
               call ifile_append (commands, command)
@@ -26869,18 +26952,6 @@ program main
   ! Overall initialization
   if (logfile /= "")  call logfile_init (logfile)
   if (banner)  call msg_banner ()
-  
-   ! Run any self-checks (and no commands)
-   if (checks /= "") then
-      checks = trim (adjustl (checks))
-      RUN_CHECKS: do while (checks /= "")
-         call split (checks, check, " ")
-         call whizard_check (check, test_results)
-      end do RUN_CHECKS
-      call test_results%wrapup (6, success)
-      if (.not. success)  quit_code = 7
-      quit = .true.
-   end if
    
    allocate (options)
    allocate (whizard_instance)
@@ -26946,49 +27017,6 @@ program main
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 contains
 
-  subroutine no_option_value (option, value)
-    type(string_t), intent(in) :: option, value
-    if (value /= "") then
-       call msg_error (" Option '" // char (option) // "' should have no value")
-    end if
-  end subroutine no_option_value
-
-  function get_option_value (i, option, value) result (string)
-    type(string_t) :: string
-    integer, intent(inout) :: i
-    type(string_t), intent(in) :: option
-    type(string_t), intent(in), optional :: value
-    character(CMDLINE_ARG_LEN) :: arg
-    character(CMDLINE_ARG_LEN) :: arg_value
-    integer :: arg_len, arg_status
-    logical :: has_value
-    if (present (value)) then
-       has_value = value /= ""
-    else
-       has_value = .false.
-    end if
-    if (has_value) then
-       string = value
-    else
-       i = i + 1 
-       call get_command_argument (i, arg_value, arg_len, arg_status)
-       select case (arg_status)
-       case (0)
-       case (-1)
-          call msg_error (" Option value truncated: '" // arg // "'")
-       case default
-          call print_usage ()
-          call msg_fatal (" Option '" // char (option) // "' needs a value")
-       end select
-       select case (arg(1:1))
-       case ("-")
-          call print_usage ()
-          call msg_fatal (" Option '" // char (option) // "' needs a value")
-       end select
-       string = trim (arg_value)
-    end if
-  end function get_option_value
-
   subroutine print_version ()
     print "(A)", "WHIZARD " // WHIZARD_VERSION 
     print "(A)", "Copyright (C) 1999-2015 Wolfgang Kilian, Thorsten Ohl, Juergen Reuter"
@@ -27053,10 +27081,173 @@ contains
     print "(A)", "With no FILE, read standard input."
   end subroutine print_usage
 
-<<Main: tests>>
-
 end program main
 @ %def main
+@
+\clearpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Driver program for the unit tests}
+This is a variant of the above main program that takes unit-test names
+as command-line options and runs those tests.
+<<[[main_ut.f90]]>>=
+<<File header>>
+
+program main_ut
+
+<<Use strings>>
+  use unit_tests
+  use system_dependencies
+  use diagnostics
+  use os_interface
+
+  use cmdline_options
+
+  implicit none
+
+<<Main: cmdline arg len declaration>>
+
+  ! Main program variable declarations
+  character(CMDLINE_ARG_LEN) :: arg
+  character(2) :: option
+  type(string_t) :: long_option, value
+  integer :: i, j, arg_len, arg_status
+  logical :: look_for_options
+  logical :: banner
+  type(string_t) :: check, checks
+  type(test_results_t) :: test_results
+  logical :: success
+
+  ! Exit status
+  logical :: quit = .false.
+  integer :: quit_code = 0
+
+  ! Initial values
+  look_for_options = .true.
+  banner = .true.
+  logging = .false.
+  msg_level = RESULT
+  check = ""
+  checks = ""
+
+  ! Read and process options
+  call init_options (print_usage)
+  i = 0
+  SCAN_CMDLINE: do
+     i = i + 1
+     call get_command_argument (i, arg, arg_len, arg_status)
+     select case (arg_status)
+     case (0)
+     case (-1)
+        call msg_error (" Command argument truncated: '" // arg // "'")
+     case default
+        exit SCAN_CMDLINE
+     end select
+     if (look_for_options) then
+        select case (arg(1:2))
+        case ("--")
+           value = trim (arg)
+           call split (value, long_option, "=")
+           select case (char (long_option))
+           case ("--version")
+              call no_option_value (long_option, value)
+              call print_version (); stop
+           case ("--help")
+              call no_option_value (long_option, value)
+              call print_usage (); stop
+           case ("--banner")
+              call no_option_value (long_option, value)
+              banner = .true.
+              cycle SCAN_CMDLINE
+           case ("--no-banner")
+              call no_option_value (long_option, value)
+              banner = .false.
+              cycle SCAN_CMDLINE
+           case ("--check")
+              check = get_option_value (i, long_option, value)
+              checks = checks // " " // check
+              cycle SCAN_CMDLINE
+           case default
+              call print_usage ()
+              call msg_fatal ("Option '" // trim (arg) // "' not recognized")
+           end select
+        end select
+        select case (arg(1:1))
+        case ("-")
+           j = 1
+           if (len_trim (arg) == 1) then
+              look_for_options = .false.
+           else
+              SCAN_SHORT_OPTIONS: do
+                 j = j + 1
+                 if (j > len_trim (arg)) exit SCAN_SHORT_OPTIONS
+                 option = "-" // arg(j:j)
+                 select case (option)
+                 case ("-V")
+                    call print_version (); stop
+                 case ("-?", "-h")
+                    call print_usage (); stop
+                 case default
+                    call print_usage ()
+                    call msg_fatal &
+                         ("Option '" // option // "' not recognized")
+                 end select
+              end do SCAN_SHORT_OPTIONS
+           end if
+        case default
+           call print_usage ()
+           call msg_fatal ("Option '" // trim (arg) // "' not recognized")
+        end select
+     else
+        call print_usage ()
+        call msg_fatal ("Option '" // trim (arg) // "' not recognized")
+     end if
+  end do SCAN_CMDLINE
+
+  ! Overall initialization
+  if (banner)  call msg_banner ()
+  
+   ! Run any self-checks (and no commands)
+   if (checks /= "") then
+      checks = trim (adjustl (checks))
+      RUN_CHECKS: do while (checks /= "")
+         call split (checks, check, " ")
+         call whizard_check (check, test_results)
+      end do RUN_CHECKS
+      call test_results%wrapup (6, success)
+      if (.not. success)  quit_code = 7
+      quit = .true.
+   end if
+
+   call msg_terminate (quit_code = quit_code)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+contains
+
+  subroutine print_version ()
+    print "(A)", "WHIZARD " // WHIZARD_VERSION // " (unit test driver)"
+    print "(A)", "Copyright (C) 1999-2015 Wolfgang Kilian, Thorsten Ohl, Juergen Reuter"
+    print "(A)", "              ---------------------------------------                "
+    print "(A)", "This is free software; see the source for copying conditions.  There is NO"
+    print "(A)", "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+    print *
+  end subroutine print_version
+
+  subroutine print_usage ()
+    print "(A)", "WHIZARD " // WHIZARD_VERSION // " (unit test driver)"
+    print "(A)", "Usage: whizard_ut [OPTIONS] [FILE]"
+    print "(A)", "Run WHIZARD unit tests as given on the command line"
+    print "(A)", "Options:"
+    print "(A)", "-h, --help            display this help and exit"
+    print "(A)", "    --banner          display banner at startup (default)"
+    print "(A)", "    --no-banner       do not display banner at startup"
+    print "(A)", "-V, --version         output version information and exit"
+    print "(A)", "    --check TEST      run unit test TEST"
+  end subroutine print_usage
+
+<<Main: tests>>
+
+end program main_ut
+@ %def main_ut
 @ 
 \subsection{Self-tests}
 For those self-tests, we need some auxiliary routines that provide an
@@ -27072,6 +27263,7 @@ delete the objects in a separate procedure.
     use variables
     use model_data
     use processes
+    use processes_ut, only: prepare_test_process
     use event_base
     use events
     
@@ -27890,7 +28082,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Processes}
 <<Main: use tests>>=
-  use processes, only: processes_test
+  use processes_ut, only: processes_test
 <<Main: test cases>>=
   case ("processes")
      call processes_test (u, results)
@@ -27899,7 +28091,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Process Stacks}
 <<Main: use tests>>=
-  use process_stacks, only: process_stacks_test
+  use process_stacks_ut, only: process_stacks_test
 <<Main: test cases>>=
   case ("process_stacks")
      call process_stacks_test (u, results)
@@ -27908,7 +28100,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Event Transforms}
 <<Main: use tests>>=
-  use event_transforms, only: event_transforms_test
+  use event_transforms_ut, only: event_transforms_test
 <<Main: test cases>>=
   case ("event_transforms")
      call event_transforms_test (u, results)
@@ -27917,7 +28109,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Decays}
 <<Main: use tests>>=
-  use decays, only: decays_test
+  use decays_ut, only: decays_test
 <<Main: test cases>>=
   case ("decays")
      call decays_test (u, results)
@@ -27935,7 +28127,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Shower}
 <<Main: use tests>>=
-  use shower, only: shower_test
+  use shower_ut, only: shower_test
 <<Main: test cases>>=
   case ("shower")
      call shower_test (u, results)
@@ -27944,7 +28136,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Events}
 <<Main: use tests>>=
-  use events, only: events_test
+  use events_ut, only: events_test
 <<Main: test cases>>=
   case ("events")
      call events_test (u, results)
@@ -27980,7 +28172,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{EIO Raw}
 <<Main: use tests>>=
-  use eio_raw, only: eio_raw_test
+  use eio_raw_ut, only: eio_raw_test
 <<Main: test cases>>=
   case ("eio_raw")
      call eio_raw_test (u, results)

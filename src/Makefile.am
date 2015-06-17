@@ -185,6 +185,8 @@ libwhizard_test_la_SOURCES =
 
 libwhizard_test_la_LIBADD = \
   whizard-core/libwhizard_core_ut.la \
+  transforms/libtransforms_ut.la \
+  process_integration/libprocess_integration_ut.la \
   sindarin/libsindarin_ut.la
 
 ## -------------------------------------------------------------------
@@ -209,7 +211,6 @@ whizard_SOURCES =
 nodist_EXTRA_whizard_SOURCES = dummy.f90
 
 whizard_LDADD  = whizard-core/libwhizard_main.la
-whizard_LDADD += ./libwhizard_test.la
 whizard_LDADD += ./libwhizard.la
 whizard_LDADD += prebuilt/libwhizard_prebuilt.la
 whizard_LDADD += $(LDFLAGS_LHAPDF)
@@ -220,10 +221,33 @@ whizard_LDADD += $(LDFLAGS_HOPPET)
 whizard_LDADD += $(FASTJET_LIBS)
 whizard_LDADD += $(LDFLAGS_LOOPTOOLS)
 
-AM_FCFLAGS =
+## -------------------------------------------------------------------
+## Build a standalone program for running the unit tests
+
+bin_PROGRAMS += whizard_ut
+
+whizard_ut_SOURCES =
+
+## A dummy source tells libtool that the F90 compiler is used for linking
+## Without dummy, libtool uses the C linker (default: ld)
+nodist_EXTRA_whizard_ut_SOURCES = dummy.f90
+
+whizard_ut_LDADD  = whizard-core/libwhizard_main_ut.la
+whizard_ut_LDADD += ./libwhizard_test.la
+whizard_ut_LDADD += ./libwhizard.la
+whizard_ut_LDADD += prebuilt/libwhizard_prebuilt.la
+whizard_ut_LDADD += $(LDFLAGS_LHAPDF)
+whizard_ut_LDADD += $(LDFLAGS_STDHEP)
+whizard_ut_LDADD += $(LDFLAGS_HEPMC)
+whizard_ut_LDADD += $(LDFLAGS_LCIO)
+whizard_ut_LDADD += $(LDFLAGS_HOPPET)
+whizard_ut_LDADD += $(FASTJET_LIBS)
+whizard_ut_LDADD += $(LDFLAGS_LOOPTOOLS)
 
 ########################################################################
 ## Default Fortran compiler options
+
+AM_FCFLAGS =
 
 ## Profiling
 if FC_USE_PROFILING

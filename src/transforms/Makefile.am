@@ -35,7 +35,7 @@
 ## such as model representation and quantum numbers.
 
 ## We create a library which is still to be combined with auxiliary libs.
-noinst_LTLIBRARIES = libtransforms.la
+noinst_LTLIBRARIES = libtransforms.la libtransforms_ut.la
 
 libtransforms_la_SOURCES = \
    event_transforms.f90 \
@@ -47,11 +47,20 @@ libtransforms_la_SOURCES = \
    events.f90 \
    eio_raw.f90
 
+libtransforms_ut_la_SOURCES = \
+   event_transforms_uti.f90 event_transforms_ut.f90 \
+   decays_uti.f90 decays_ut.f90 \
+   shower_uti.f90 shower_ut.f90 \
+   events_uti.f90 events_ut.f90 \
+   eio_raw_uti.f90 eio_raw_ut.f90
+
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = transforms.nw
 
 # Dump module names into file Modules
-libtransforms_Modules = ${libtransforms_la_SOURCES:.f90=}
+libtransforms_Modules = \
+  ${libtransforms_la_SOURCES:.f90=} \
+  ${libtransforms_ut_la_SOURCES:.f90=}
 Modules: Makefile
 	@for module in $(libtransforms_Modules); do \
           echo $$module >> $@.new; \
@@ -119,7 +128,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libtransforms_la_SOURCES)
+Makefile.depend: $(libtransforms_la_SOURCES) $(libtransforms_ut_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -169,12 +178,14 @@ POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 transforms.stamp: $(PRELUDE) $(srcdir)/transforms.nw $(POSTLUDE)
 	@rm -f transforms.tmp
 	@touch transforms.tmp
-	for src in $(libtransforms_la_SOURCES); do \
+	for src in \
+          $(libtransforms_la_SOURCES) \
+          $(libtransforms_ut_la_SOURCES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
 	@mv -f transforms.tmp transforms.stamp
 
-$(libtransforms_la_SOURCES): transforms.stamp
+$(libtransforms_la_SOURCES) $(libtransforms_ut_la_SOURCES): transforms.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
 	  rm -f transforms.stamp; \
