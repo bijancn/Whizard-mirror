@@ -326,7 +326,6 @@ TESTS_REQ_OCAML = \
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
     user_cuts.run \
-    circe2_3.run \
     $(TESTS_USER_STRFUN)
 
 TESTS_REQ_HEPMC = \

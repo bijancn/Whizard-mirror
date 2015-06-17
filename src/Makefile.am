@@ -69,17 +69,19 @@ if MPOST_AVAILABLE
 SUBDIRS += gamelan feynmf
 endif
 
-## -------------------------------------------------------------------
-## Build the toplevel WHIZARD library, which wraps various libraries
+########################################################################
+## Build 
+## (1) the toplevel WHIZARD library, which wraps various libraries
 ## built in the subdirectories
-## and the wrapper O'Mega library, which contains omegalib and
+## (2) the WHIZARD test library that is linked to the main executable
+## as the provider of internal unit tests
+## (3) the wrapper O'Mega library, which contains omegalib and
 ## the W/O interface modules for the various models
-lib_LTLIBRARIES = libwhizard.la libomega.la
+
+lib_LTLIBRARIES = libwhizard.la libwhizard_test.la libomega.la
 
 libwhizard_la_SOURCES =
 libwhizard_la_LDFLAGS = $(LIBRARY_VERSION)
-
-libomega_la_SOURCES =
 
 ## Collect the various partial libraries
 libwhizard_la_LIBADD = \
@@ -133,11 +135,6 @@ else
 libwhizard_la_LIBADD += lcio/libLCIOWrap_dummy.la
 endif 
 
-libomega_la_LIBADD = \
-  ../omega/src/libomega_core.la \
-  models/libmodels.la
-
-
 ## If (parts of) LHAPDF is not available, link in a dummy as replacements
 if LHAPDF5_AVAILABLE
 libwhizard_la_LIBADD += $(LDFLAGS_LHAPDF)
@@ -182,7 +179,27 @@ libwhizard_la_LIBADD += looptools/liblooptools_dummy.la
 endif 
 
 ## -------------------------------------------------------------------
+## WHIZARD unit-test library
+
+libwhizard_test_la_SOURCES =
+
+libwhizard_test_la_LIBADD = \
+  whizard-core/libwhizard_core_ut.la \
+  sindarin/libsindarin_ut.la
+
+## -------------------------------------------------------------------
+## O'Mega main library
+
+libomega_la_SOURCES =
+
+libomega_la_LIBADD = \
+  ../omega/src/libomega_core.la \
+  models/libmodels.la
+
+
+## -------------------------------------------------------------------
 ## Build a standalone program
+
 bin_PROGRAMS = whizard 
 
 whizard_SOURCES =
@@ -192,6 +209,7 @@ whizard_SOURCES =
 nodist_EXTRA_whizard_SOURCES = dummy.f90
 
 whizard_LDADD  = whizard-core/libwhizard_main.la
+whizard_LDADD += ./libwhizard_test.la
 whizard_LDADD += ./libwhizard.la
 whizard_LDADD += prebuilt/libwhizard_prebuilt.la
 whizard_LDADD += $(LDFLAGS_LHAPDF)

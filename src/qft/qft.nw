@@ -12811,7 +12811,7 @@ elements, the pairing array is not used and does not have to be set up.
   end subroutine evaluator_init_identity
 
 @ %def evaluator_init_identity
-
+@
 \subsection {Creating an evaluator: quantum number sum}
 This evaluator operates on the diagonal of a density matrix and sums over the
 quantum numbers specified by the mask. The optional argument [[drop]] allows to
@@ -12829,8 +12829,7 @@ entries and normalization (in the corresponding evaluation routine below).
     type(quantum_numbers_mask_t), dimension(:), intent(in) :: qn_mask
     logical, intent(in), optional, dimension(:) :: drop
     type(state_iterator_t) :: it_old, it_new
-    integer, dimension(:,:), allocatable :: pairing_proto
-    integer, dimension(:), allocatable :: pairing_sizes
+    integer, dimension(:), allocatable :: pairing_size, pairing_target, i_new
     integer, dimension(:), allocatable :: map
     integer :: n_in, n_out, n_vir, n_tot, n_me_old, n_me_new
     integer :: i, j
@@ -12892,9 +12891,9 @@ entries and normalization (in the corresponding evaluation routine below).
     call int%transfer_relations (eval, map)
 
     n_me_old = int%get_n_matrix_elements ()
-    allocate (pairing_proto(n_me_old, n_me_old))
-    allocate (pairing_sizes(n_me_old))
-    pairing_sizes = 0
+    allocate (pairing_size (n_me_old), source = 0)
+    allocate (pairing_target (n_me_old), source = 0)
+    pairing_size = 0
     state_old => int%get_state_matrix_ptr ()
     state_new => eval%get_state_matrix_ptr ()
     call it_old%init (state_old)
@@ -12923,28 +12922,32 @@ entries and normalization (in the corresponding evaluation routine below).
           call eval%add_state (qn(inotdropped))
           i = eval%get_n_matrix_elements ()
        end if
-       pairing_sizes(i) = pairing_sizes(i) + 1
-       pairing_proto(pairing_sizes(i), i) = it_old%get_me_index ()
-       ! print *, &                         !!! Debugging
-       !     i, pairing_sizes(i), it_old%get_me_index ()
+       pairing_size(i) = pairing_size(i) + 1
+       pairing_target(it_old%get_me_index ()) = i
        call it_old%advance ()
     end do
     call eval%freeze ()
 
     n_me_new = eval%get_n_matrix_elements ()
-    allocate (eval%pairing_array(n_me_new))
+    allocate (eval%pairing_array (n_me_new))
     do i = 1, n_me_new
-       ! print *, i, pairing_sizes(i)     !!! Debugging
        call pairing_array_init (eval%pairing_array(i), &
-          pairing_sizes(i), .false., .false.)
-       eval%pairing_array(i)%i1 = pairing_proto(:pairing_sizes(i), i) 
+            pairing_size(i), .false., .false.)
+    end do
+
+    allocate (i_new (n_me_new), source = 0)
+    do i = 1, n_me_old
+       j = pairing_target(i)
+       if (j > 0) then
+          i_new(j) = i_new(j) + 1
+          eval%pairing_array(j)%i1(i_new(j)) = i
+       end if
     end do
 
   end subroutine evaluator_init_qn_sum
 
 @ %def evaluator_init_qn_sum
 @
-
 \subsection{Evaluation}
 When the input interactions (which are pointed to in the pairings
 stored within the evaluator) are filled with values, we can activate
