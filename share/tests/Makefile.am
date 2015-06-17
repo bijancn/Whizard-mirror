@@ -141,6 +141,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/auto_components_2.ref \
     ref-output/auto_components_3.ref \
     ref-output/radiation_generator_1.ref \
+    ref-output/radiation_generator_2.ref \
     ref-output/particles_1.ref \
     ref-output/particles_2.ref \
     ref-output/particles_3.ref \
