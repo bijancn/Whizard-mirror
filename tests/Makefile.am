@@ -322,7 +322,7 @@ TESTS_REQ_OCAML = \
     parton_shower_2.run \
     mlm_matching_fsr.run \
     user_cuts.run \
-    $(TESTS_USER_STRFUN) 
+    $(TESTS_USER_STRFUN)
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
     user_cuts.run \
@@ -514,6 +514,7 @@ EXTENDED_NMSSM_TEST_DRIVERS_SH = $(EXTENDED_NMSSM_TEST_DRIVERS:.run=.sh)
 EXTRA_DIST = $(TEST_DRIVERS_SH) \
     $(EXTENDED_MSSM_TEST_DRIVERS_SH) \
     $(EXTENDED_NMSSM_TEST_DRIVERS_SH) \
+    $(EXTRACHECK_SHOWER_SH) \
     $(TESTS_SRC)
 
 ########################################################################
@@ -521,7 +522,7 @@ EXTRA_DIST = $(TEST_DRIVERS_SH) \
 # VPATH = $(top_builddir)/share/tests:$(top_srcdir)/share/tests:$(srcdir)
 VPATH = $(srcdir)
 
-SUFFIXES = .sh .run
+SUFFIXES = .sh .run .run.extra.trs
 
 .sh.run:
 	@rm -f $@
@@ -532,7 +533,7 @@ SUFFIXES = .sh .run
 	else \
 	  echo "$*.sin not found!" 1>&2; \
 	  exit 2; \
-        fi
+	fi
 	chmod +x $@
 
 structure_2.run: structure_2_inc.sin
@@ -632,6 +633,26 @@ endif
 
 susyhit.in: $(top_builddir)/share/tests/susyhit.in
 	cp $< $@
+
+########################################################################
+EXTRA_DIST += extracheck_combiner.sh produce_trs.sh
+EXTRACHECK_SHOWER_RUN = extra_shower_1.run
+EXTRACHECK_SHOWER_SH = $(EXTRACHECK_SHOWER_RUN:.run=.sh)
+EXTRACHECK_SHOWER_TRS = $(EXTRACHECK_SHOWER_RUN:.run=.run.extra.trs)
+.SECONDARY: $(EXTRACHECK_SHOWER_RUN)
+
+extracheck_shower: $(BUILT_SOURCES) $(EXTRACHECK_SHOWER_TRS)
+	$(SHELL) $(srcdir)/extracheck_combiner.sh extra_shower_*.run.extra.trs
+
+.run.run.extra.trs:
+	$(SHELL) $(srcdir)/produce_trs.sh $< >| $@
+
+clean-extracheck_results:
+	rm -f *.extra.trs
+.PHONY: clean-extracheck_results
+# TODO: (bcn 2015-06-18) remember to add to dist clean
+
+########################################################################
 
 BUILT_SOURCES = \
     TESTFLAG  \
@@ -757,6 +778,7 @@ clean-local:
 	rm -f slhaspectrum.in suspect2.out suspect2_lha.out 
 	rm -f susyhit.in susyhit_slha.out suspect2_lha.in
 	rm -f *.$(WT_OMEGA_CACHE_SUFFIX)
+	rm -f *.run.extra.trs
 
 ## Remove backup files
 maintainer-clean-local: maintainer-clean-fc

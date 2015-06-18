@@ -9,4 +9,3 @@ else
     echo "No O'Mega matrix elements available, test skipped"
     exit 77
 fi
-    
