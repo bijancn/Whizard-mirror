@@ -637,14 +637,8 @@ susyhit.in: $(top_builddir)/share/tests/susyhit.in
 	cp $< $@
 
 ########################################################################
-EXTRA_DIST += extracheck_combiner.sh produce_trs.sh
-EXTRACHECK_SHOWER_RUN = extra_shower_1.run
-EXTRACHECK_SHOWER_SH = $(EXTRACHECK_SHOWER_RUN:.run=.sh)
-EXTRACHECK_SHOWER_TRS = $(EXTRACHECK_SHOWER_RUN:.run=.run.extra.trs)
-.SECONDARY: $(EXTRACHECK_SHOWER_RUN)
 
-extracheck_shower: $(BUILT_SOURCES) $(EXTRACHECK_SHOWER_TRS)
-	$(SHELL) $(srcdir)/extracheck_combiner.sh extra_shower_*.run.extra.trs
+EXTRA_DIST += extracheck_combiner.sh produce_trs.sh
 
 .run.run.extra.trs:
 	$(SHELL) $(srcdir)/produce_trs.sh $< >| $@
@@ -653,6 +647,24 @@ clean-extracheck_results:
 	rm -f *.extra.trs
 .PHONY: clean-extracheck_results
 # TODO: (bcn 2015-06-18) remember to add to dist clean
+
+########################################################################
+
+EXTRACHECK_SHOWER_RUN = extra_shower_1.run extra_shower_2.run
+EXTRACHECK_SHOWER_SH = $(EXTRACHECK_SHOWER_RUN:.run=.sh)
+EXTRACHECK_SHOWER_TRS = $(EXTRACHECK_SHOWER_RUN:.run=.run.extra.trs)
+.SECONDARY: $(EXTRACHECK_SHOWER_RUN)
+extracheck_shower: $(BUILT_SOURCES) $(EXTRACHECK_SHOWER_TRS)
+	$(SHELL) $(srcdir)/extracheck_combiner.sh "extra_shower_*.run.extra.trs"
+
+########################################################################
+
+EXTRACHECK_NLO_RUN = extra_NLO_1.run
+EXTRACHECK_NLO_SH = $(EXTRACHECK_NLO_RUN:.run=.sh)
+EXTRACHECK_NLO_TRS = $(EXTRACHECK_NLO_RUN:.run=.run.extra.trs)
+.SECONDARY: $(EXTRACHECK_NLO_RUN)
+extracheck_NLO: $(BUILT_SOURCES) $(EXTRACHECK_NLO_TRS)
+	$(SHELL) $(srcdir)/extracheck_combiner.sh "extra_NLO_*.run.extra.trs"
 
 ########################################################################
 
@@ -781,11 +793,10 @@ clean-local:
 	rm -f susyhit.in susyhit_slha.out suspect2_lha.in
 	rm -f *.$(WT_OMEGA_CACHE_SUFFIX)
 	rm -f *.run.extra.trs
+	rm -f *.olc *.olp *.olp_parameters
+	rm -rf stability_log
 
 ## Remove backup files
 maintainer-clean-local: maintainer-clean-fc
 	-rm -f *~
 .PHONY: maintainer-clean-local
-
-
-
