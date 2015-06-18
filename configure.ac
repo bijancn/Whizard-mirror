@@ -929,6 +929,7 @@ AC_CONFIG_FILES([share/SM_tt_threshold_data/Makefile])
 AC_CONFIG_FILES([tests/Makefile])
 
 AC_CONFIG_FILES([tests/run_whizard.sh], [chmod u+x tests/run_whizard.sh])
+AC_CONFIG_FILES([tests/run_whizard_ut.sh], [chmod u+x tests/run_whizard_ut.sh])
 
 ###---------------------------------------------------------------------
 ### Subdirectory libtool-config

@@ -32,7 +32,7 @@
 #
 ########################################################################
 
-WHIZARD_DRIVER = run_whizard.sh
+WHIZARD_UT_DRIVER = run_whizard_ut.sh
 
 UNIT_TESTS = \
     analysis.run \
@@ -153,6 +153,8 @@ UNIT_TESTS_REQ_OCAML = \
     prc_omega.run \
     compilations.run \
     compilations_static.run
+
+WHIZARD_DRIVER = run_whizard.sh
 
 TESTS_DEFAULT = \
     empty.run \
@@ -326,7 +328,6 @@ TESTS_REQ_OCAML = \
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
     user_cuts.run \
-    circe2_3.run \
     $(TESTS_USER_STRFUN)
 
 TESTS_REQ_HEPMC = \
@@ -530,10 +531,11 @@ SUFFIXES = .sh .run .run.extra.trs
 	  $(SED) 's|@script@|$(top_builddir)/share/tests/$*|g' $< > $@; \
 	elif test -f $(top_srcdir)/share/tests/$*.sin; then \
 	  $(SED) 's|@script@|$(top_srcdir)/share/tests/$*|g' $< > $@; \
-	else \
-	  echo "$*.sin not found!" 1>&2; \
-	  exit 2; \
 	fi
+#	else \
+#	  echo "$*.sin not found!" 1>&2; \
+#	  exit 2; \
+#
 	chmod +x $@
 
 structure_2.run: structure_2_inc.sin

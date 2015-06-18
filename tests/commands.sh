@@ -2,7 +2,7 @@
 ### Check WHIZARD command setup
 echo "Running script $0"
 if test -f GAMELAN_FLAG; then
-    exec ./run_whizard.sh @script@ --check commands
+    exec ./run_whizard_ut.sh @script@ --check commands
 else
     echo "|=============================================================================|"
     echo "No MetaPost available, test skipped"

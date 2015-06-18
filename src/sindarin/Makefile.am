@@ -27,8 +27,10 @@
 
 ## The files in this directory implement standard algorithms for WHIZARD
 
-## We create a library which is still to be combined with auxiliary libs.
-noinst_LTLIBRARIES = libsindarin.la
+## We create 
+## (1) a library which is still to be combined with auxiliary libs.
+## (2) a test library
+noinst_LTLIBRARIES = libsindarin.la libsindarin_ut.la
 
 libsindarin_la_SOURCES = \
   codes.f90 \
@@ -43,13 +45,25 @@ libsindarin_la_SOURCES = \
   object_conditional.f90 \
   sindarin_parser.f90
 
+libsindarin_ut_la_SOURCES = \
+  codes_uti.f90 codes_ut.f90 \
+  object_base_uti.f90 object_base_ut.f90 \
+  object_builder_uti.f90 object_builder_ut.f90 \
+  object_logical_uti.f90 object_logical_ut.f90 \
+  object_integer_uti.f90 object_integer_ut.f90 \
+  object_container_uti.f90 object_container_ut.f90 \
+  object_comparison_uti.f90 object_comparison_ut.f90 \
+  object_conditional_uti.f90 object_conditional_ut.f90 \
+  sindarin_parser_uti.f90 sindarin_parser_ut.f90
+
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = sindarin.nw
 
 # Dump module names into file Modules
 libsindarin_Modules = ${libsindarin_la_SOURCES:.f90=}
+libsindarin_ut_Modules = ${libsindarin_ut_la_SOURCES:.f90=}
 Modules: Makefile
-	@for module in $(libsindarin_Modules); do \
+	@for module in $(libsindarin_Modules) $(libsindarin_ut_Modules); do \
           echo $$module >> $@.new; \
         done
 	@if diff $@ $@.new -q >/dev/null; then \
@@ -93,7 +107,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libsindarin_la_SOURCES)
+Makefile.depend: $(libsindarin_la_SOURCES) $(libsindarin_ut_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -144,12 +158,13 @@ POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 sindarin.stamp: $(PRELUDE) $(srcdir)/sindarin.nw $(POSTLUDE)
 	@rm -f sindarin.tmp
 	@touch sindarin.tmp
-	for src in $(libsindarin_la_SOURCES); do \
+	for src in $(libsindarin_la_SOURCES) $(libsindarin_ut_la_SOURCES); \
+        do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
 	@mv -f sindarin.tmp sindarin.stamp
 
-$(libsindarin_la_SOURCES): sindarin.stamp
+$(libsindarin_la_SOURCES) $(libsindarin_ut_la_SOURCES): sindarin.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
 	  rm -f sindarin.stamp; \

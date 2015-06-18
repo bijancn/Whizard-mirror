@@ -34,7 +34,7 @@
 ## The files in this directory make up the WHIZARD core
 
 ## We create a library which is still to be combined with auxiliary libs.
-noinst_LTLIBRARIES = libwhizard_core.la
+noinst_LTLIBRARIES = libwhizard_core.la libwhizard_core_ut.la
 
 libwhizard_core_la_SOURCES = \
   user_files.f90 \
@@ -45,18 +45,33 @@ libwhizard_core_la_SOURCES = \
   integrations.f90 \
   event_streams.f90 \
   simulations.f90 \
-  expr_tests.f90 \
   commands.f90 \
-  whizard.f90
+  whizard.f90 \
+  cmdline_options.f90
+
+libwhizard_core_ut_la_SOURCES = \
+  expr_tests_uti.f90 expr_tests_ut.f90 \
+  rt_data_uti.f90 rt_data_ut.f90 \
+  dispatch_uti.f90 dispatch_ut.f90 \
+  process_configurations_uti.f90 process_configurations_ut.f90 \
+  compilations_uti.f90 compilations_ut.f90 \
+  integrations_uti.f90 integrations_ut.f90 \
+  event_streams_uti.f90 event_streams_ut.f90 \
+  simulations_uti.f90 simulations_ut.f90 \
+  commands_uti.f90 commands_ut.f90 
 
 # Adds the whizard-c-interface
 EXTRA_libwhizard_core_la_SOURCES = whizard-c-interface.f90
 libwhizard_core_la_LIBADD = whizard-c-interface.lo
 
 ## The main program makes up a library on its own.
-lib_LTLIBRARIES = libwhizard_main.la
+lib_LTLIBRARIES = libwhizard_main.la libwhizard_main_ut.la
 
-libwhizard_main_la_SOURCES = main.f90
+libwhizard_main_la_SOURCES = \
+  main.f90
+
+libwhizard_main_ut_la_SOURCES = \
+  main_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = whizard.nw
@@ -120,7 +135,12 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libwhizard_core_la_SOURCES) $(libwhizard_main_la_SOURCES) $(EXTRA_libwhizard_core_la_SOURCES)
+Makefile.depend: \
+  $(libwhizard_core_la_SOURCES) \
+  $(libwhizard_core_ut_la_SOURCES) \
+  $(libwhizard_main_la_SOURCES) \
+  $(libwhizard_main_ut_la_SOURCES) \
+  $(EXTRA_libwhizard_core_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 		module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -159,7 +179,12 @@ endif
 ## (Re)create F90 sources from NOWEB source.
 if NOWEB_AVAILABLE
 
-WHIZARD_SRC = $(libwhizard_core_la_SOURCES) $(EXTRA_libwhizard_core_la_SOURCES) main.f90
+WHIZARD_SRC = \
+  $(libwhizard_core_la_SOURCES) \
+  $(libwhizard_core_ut_la_SOURCES) \
+  $(libwhizard_main_la_SOURCES) \
+  $(libwhizard_main_ut_la_SOURCES) \
+  $(EXTRA_libwhizard_core_la_SOURCES)
 
 PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
 POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
