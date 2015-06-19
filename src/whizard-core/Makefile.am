@@ -34,7 +34,8 @@
 ## The files in this directory make up the WHIZARD core
 
 ## We create a library which is still to be combined with auxiliary libs.
-noinst_LTLIBRARIES = libwhizard_core.la libwhizard_core_ut.la
+noinst_LTLIBRARIES = libwhizard_core.la
+check_LTLIBRARIES = libwhizard_core_ut.la
 
 libwhizard_core_la_SOURCES = \
   user_files.f90 \
@@ -65,7 +66,8 @@ EXTRA_libwhizard_core_la_SOURCES = whizard-c-interface.f90
 libwhizard_core_la_LIBADD = whizard-c-interface.lo
 
 ## The main program makes up a library on its own.
-lib_LTLIBRARIES = libwhizard_main.la libwhizard_main_ut.la
+lib_LTLIBRARIES = libwhizard_main.la
+check_LTLIBRARIES += libwhizard_main_ut.la
 
 libwhizard_main_la_SOURCES = \
   main.f90

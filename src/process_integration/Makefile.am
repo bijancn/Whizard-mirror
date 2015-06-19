@@ -33,7 +33,8 @@
 ## The files in this directory form the core of process integration
 
 ## We create a library which is still to be combined with auxiliary libs.
-noinst_LTLIBRARIES = libprocess_integration.la libprocess_integration_ut.la
+noinst_LTLIBRARIES = libprocess_integration.la
+check_LTLIBRARIES = libprocess_integration_ut.la
 
 libprocess_integration_la_SOURCES = \
   subevt_expr.f90 \

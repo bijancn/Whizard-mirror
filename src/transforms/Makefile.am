@@ -35,7 +35,8 @@
 ## such as model representation and quantum numbers.
 
 ## We create a library which is still to be combined with auxiliary libs.
-noinst_LTLIBRARIES = libtransforms.la libtransforms_ut.la
+noinst_LTLIBRARIES = libtransforms.la
+check_LTLIBRARIES = libtransforms_ut.la
 
 libtransforms_la_SOURCES = \
    event_transforms.f90 \

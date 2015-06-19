@@ -25,7 +25,7 @@ NEW_STATUS="PACKAGE_STATUS=\"alpha\""
 ## We have to discuss the entries in gamelan/manual
 ## We have to discuss the entries in src/shower
 
-MAIN_FILES="AUTHORS BUGS Makefile.am README update tests/Makefile.am"
+MAIN_FILES="AUTHORS BUGS Makefile.am README update tests/Makefile.am tests/functional_tests/Makefile.am tests/extended_tests/Makefile.am tests/unit_tests/Makefile.am"
 CONFIGURE_FILES="configure.ac circe1/configure.ac circe2/configure.ac omega/configure.ac vamp/configure.ac libtool-config/configure.ac"
 VERSION_FILES="NEWS omega/NEWS circe2/src/circe2.nw"
 SCRIPTS_FILES="scripts/Makefile.am scripts/whizard-config.in scripts/whizard-setup.csh.in scripts/whizard-setup.sh.in scripts/libtool-config.sh.in scripts/libtool-relocate.sh.in scripts/whizard-relocate.sh.in"

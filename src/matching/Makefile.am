@@ -34,6 +34,7 @@
 
 ## We create a library which is still to be combined with auxiliary libs.
 noinst_LTLIBRARIES = libmatching.la
+check_LTLIBRARIES = libmatching_ut.la
 
 libmatching_la_SOURCES = \
   matching_base.f90 \
@@ -41,11 +42,16 @@ libmatching_la_SOURCES = \
   mlm_matching.f90 \
   powheg_matching.f90
 
+libmatching_ut_la_SOURCES = \
+  powheg_matching_uti.f90 powheg_matching_ut.f90
+
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = matching.nw
 
 # Dump module names into file Modules
-libmatching_Modules = ${libmatching_la_SOURCES:.f90=}
+libmatching_Modules = \
+  ${libmatching_la_SOURCES:.f90=} \
+  ${libmatching_ut_la_SOURCES:.f90=}
 Modules: Makefile
 	@for module in $(libmatching_Modules); do \
           echo $$module >> $@.new; \
@@ -114,7 +120,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libmatching_la_SOURCES)
+Makefile.depend: $(libmatching_la_SOURCES) $(libmatching_ut_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -159,12 +165,14 @@ POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 matching.stamp: $(PRELUDE) $(srcdir)/matching.nw $(POSTLUDE)
 	@rm -f matching.tmp
 	@touch matching.tmp
-	for src in $(libmatching_la_SOURCES); do \
+	for src in \
+          $(libmatching_la_SOURCES) \
+          $(libmatching_ut_la_SOURCES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
 	@mv -f matching.tmp matching.stamp
 
-$(libmatching_la_SOURCES): matching.stamp
+$(libmatching_la_SOURCES) $(libmatching_ut_la_SOURCES): matching.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
 	  rm -f matching.stamp; \

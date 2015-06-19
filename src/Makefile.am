@@ -78,7 +78,7 @@ endif
 ## (3) the wrapper O'Mega library, which contains omegalib and
 ## the W/O interface modules for the various models
 
-lib_LTLIBRARIES = libwhizard.la libwhizard_test.la libomega.la
+lib_LTLIBRARIES = libwhizard.la libomega.la
 
 libwhizard_la_SOURCES =
 libwhizard_la_LDFLAGS = $(LIBRARY_VERSION)
@@ -181,11 +181,14 @@ endif
 ## -------------------------------------------------------------------
 ## WHIZARD unit-test library
 
+check_LTLIBRARIES = libwhizard_test.la
+
 libwhizard_test_la_SOURCES =
 
 libwhizard_test_la_LIBADD = \
   whizard-core/libwhizard_core_ut.la \
   transforms/libtransforms_ut.la \
+  matching/libmatching_ut.la \
   process_integration/libprocess_integration_ut.la \
   sindarin/libsindarin_ut.la
 
@@ -199,7 +202,7 @@ libomega_la_LIBADD = \
   models/libmodels.la
 
 
-## -------------------------------------------------------------------
+########################################################################
 ## Build a standalone program
 
 bin_PROGRAMS = whizard 
@@ -224,7 +227,7 @@ whizard_LDADD += $(LDFLAGS_LOOPTOOLS)
 ## -------------------------------------------------------------------
 ## Build a standalone program for running the unit tests
 
-bin_PROGRAMS += whizard_ut
+check_PROGRAMS = whizard_ut
 
 whizard_ut_SOURCES =
 
