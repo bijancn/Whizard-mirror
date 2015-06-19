@@ -638,7 +638,7 @@ susyhit.in: $(top_builddir)/share/tests/susyhit.in
 
 ########################################################################
 
-EXTRA_DIST += extracheck_combiner.sh produce_trs.sh
+EXTRA_DIST += extracheck_combiner.sh produce_trs.sh check-debug-output.py
 
 .run.run.extra.trs:
 	$(SHELL) $(srcdir)/produce_trs.sh $< >| $@
@@ -648,16 +648,12 @@ clean-extracheck_results:
 .PHONY: clean-extracheck_results
 # TODO: (bcn 2015-06-18) remember to add to dist clean
 
-########################################################################
-
 EXTRACHECK_SHOWER_RUN = extra_shower_1.run extra_shower_2.run
 EXTRACHECK_SHOWER_SH = $(EXTRACHECK_SHOWER_RUN:.run=.sh)
 EXTRACHECK_SHOWER_TRS = $(EXTRACHECK_SHOWER_RUN:.run=.run.extra.trs)
 .SECONDARY: $(EXTRACHECK_SHOWER_RUN)
 extracheck_shower: $(BUILT_SOURCES) $(EXTRACHECK_SHOWER_TRS)
 	$(SHELL) $(srcdir)/extracheck_combiner.sh "extra_shower_*.run.extra.trs"
-
-########################################################################
 
 EXTRACHECK_NLO_RUN = extra_NLO_1.run
 EXTRACHECK_NLO_SH = $(EXTRACHECK_NLO_RUN:.run=.sh)
@@ -679,6 +675,7 @@ BUILT_SOURCES = \
     GAMELAN_FLAG \
     EVENT_ANALYSIS_FLAG \
     OCAML_FLAG \
+    PYTHON_FLAG \
     PYTHIA6_FLAG \
     STATIC_FLAG \
     ref-output \
@@ -730,6 +727,11 @@ if OCAML_AVAILABLE
 	touch $@
 endif
 
+PYTHON_FLAG:
+if PYTHON_AVAILABLE
+	touch $@
+endif
+
 PYTHIA6_FLAG:
 if PYTHIA6_AVAILABLE
 	touch $@
@@ -772,7 +774,7 @@ notestflag:
 clean-local:
 	rm -f gamelan.sty TEST.mdl 
 	rm -f TESTFLAG GAMELAN_FLAG STDHEP_FLAG 
-	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
+	rm -f OCAML_FLAG PYTHON_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
 	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
 	rm -f *.run *.log slha_test.out
