@@ -116,7 +116,7 @@ EXTRA_DIST += extracheck_combiner.sh produce_trs.sh check-debug-output.py
 clean-extracheck_results:
 	rm -f *.extra.trs
 .PHONY: clean-extracheck_results
-# TODO: (bcn 2015-06-18) remember to dist clean
+# TODO: (bcn 2015-06-18) remember to check dist clean
 
 EXTRACHECK_SHOWER_RUN = extra_shower_1.run extra_shower_2.run
 EXTRACHECK_SHOWER_SH = $(EXTRACHECK_SHOWER_RUN:.run=.sh)
@@ -124,10 +124,6 @@ EXTRACHECK_SHOWER_TRS = $(EXTRACHECK_SHOWER_RUN:.run=.run.extra.trs)
 .SECONDARY: $(EXTRACHECK_SHOWER_RUN)
 extracheck_shower: $(BUILT_SOURCES) $(EXTRACHECK_SHOWER_TRS)
 	$(SHELL) $(srcdir)/extracheck_combiner.sh "extra_shower_*.run.extra.trs"
-
-$(EXTRACHECK_SHOWER_RUN): check-debug-output.py
-check-debug-output.py: $(srcdir)/check-debug-output.py
-	cp $< $@
 
 EXTRACHECK_NLO_RUN = extra_NLO_1.run
 EXTRACHECK_NLO_SH = $(EXTRACHECK_NLO_RUN:.run=.sh)
@@ -150,6 +146,8 @@ SUFFIXES = .sh .run .run.extra.trs
 	elif test -f $(top_srcdir)/share/tests/$*.sin; then \
 	  $(SED) 's|@script@|$(top_srcdir)/share/tests/$*|g' $< > $@; \
 	fi
+	$(SED) -i 's|@python_bin@|$(PYTHON_BIN)|g' $@
+	$(SED) -i 's|@src_dir@|@srcdir@|g' $@
 	chmod +x $@
 
 if MPOST_AVAILABLE
