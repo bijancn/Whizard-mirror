@@ -639,6 +639,7 @@ susyhit.in: $(top_builddir)/share/tests/susyhit.in
 ########################################################################
 
 EXTRA_DIST += extracheck_combiner.sh produce_trs.sh check-debug-output.py
+#CHECK_DRIVER = check-debug-output.py
 
 .run.run.extra.trs:
 	$(SHELL) $(srcdir)/produce_trs.sh $< >| $@
