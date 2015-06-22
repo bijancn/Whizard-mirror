@@ -1902,7 +1902,6 @@ module processes
   use constants, only: twopi4
   use format_utils, only: write_separator
   use unit_tests
-  use system_dependencies
   use diagnostics
   use md5
   use cputime
@@ -1911,7 +1910,6 @@ module processes
   use lorentz
   use sm_qcd
   use pdg_arrays
-  use subevents
   use variables
   use expr_base
   use model_data
@@ -1920,9 +1918,7 @@ module processes
   use colors
   use quantum_numbers
   use state_matrices
-  use polarizations
   use interactions
-  use evaluators
   use particles
   use beam_structures
   use beams
@@ -1930,17 +1926,11 @@ module processes
   use sf_base
   use process_constants
   use phs_base
-  use phs_single
   use rng_base
   use mci_base
   use mci_midpoint
   use mci_vamp
-  
-  use vamp !NODEP!  
-
-  use process_constants
-  use prclib_interfaces
-  use prc_core_def
+  use vamp, only: vamp_equivalences_write !NODEP!  
   use process_libraries
   use prc_test
 
@@ -1978,7 +1968,7 @@ contains
 
 <<Processes: procedures>>
 
-<<Processes: tests>>
+<<Processes: test type procedures>>
 
 end module processes
 @ %def processes
@@ -4257,18 +4247,18 @@ status.  It is a part of the [[mci_entry]] component below.
 @ %def process_counter_t
 @ Here are the corresponding numeric codes:
 <<Processes: parameters>>=
-  integer, parameter :: STAT_UNDEFINED = 0
-  integer, parameter :: STAT_INITIAL = 1
-  integer, parameter :: STAT_ACTIVATED = 2
-  integer, parameter :: STAT_BEAM_MOMENTA = 3
-  integer, parameter :: STAT_FAILED_KINEMATICS = 4
-  integer, parameter :: STAT_SEED_KINEMATICS = 5
-  integer, parameter :: STAT_HARD_KINEMATICS = 6
-  integer, parameter :: STAT_EFF_KINEMATICS = 7
-  integer, parameter :: STAT_FAILED_CUTS = 8
-  integer, parameter :: STAT_PASSED_CUTS = 9
-  integer, parameter :: STAT_EVALUATED_TRACE = 10
-  integer, parameter :: STAT_EVENT_COMPLETE = 11
+  integer, parameter, public :: STAT_UNDEFINED = 0
+  integer, parameter, public :: STAT_INITIAL = 1
+  integer, parameter, public :: STAT_ACTIVATED = 2
+  integer, parameter, public :: STAT_BEAM_MOMENTA = 3
+  integer, parameter, public :: STAT_FAILED_KINEMATICS = 4
+  integer, parameter, public :: STAT_SEED_KINEMATICS = 5
+  integer, parameter, public :: STAT_HARD_KINEMATICS = 6
+  integer, parameter, public :: STAT_EFF_KINEMATICS = 7
+  integer, parameter, public :: STAT_FAILED_CUTS = 8
+  integer, parameter, public :: STAT_PASSED_CUTS = 9
+  integer, parameter, public :: STAT_EVALUATED_TRACE = 10
+  integer, parameter, public :: STAT_EVENT_COMPLETE = 11
 
   integer, parameter, public :: COMP_DEFAULT = 0
   integer, parameter, public :: COMP_MASTER  = 1
@@ -5170,6 +5160,10 @@ go into the process instances.
 
 If recombination is in effect, we should allocate [[int_eff]] to describe the
 rearranged partonic state.
+
+This type is public only for use in a unit test.
+<<Processes: public>>=
+  public :: process_term_t
 <<Processes: process part types>>=
   type :: process_term_t
      integer :: i_term_global = 0
@@ -5892,6 +5886,7 @@ For invalid arguments (quantum states), we return zero.
 
 @ %def process_compute_amplitude
 @ 
+\subsubsection{Auxiliary}
 <<Processes: process: TBP>>=
   procedure :: set_component_type => process_set_component_type
 <<Processes: procedures>>=
@@ -5937,8 +5932,37 @@ enter the MD5 sum, we recompute it.
 
 @ %def process_pacify
 @
+The following methods are used only in the unit tests; the access process
+internals directly that would otherwise be hidden.
+@
 \subsection{Process instances}
+<<Processes: process: TBP>>=
+  procedure :: test_allocate_sf_channels
+  procedure :: test_set_component_sf_channel
+  procedure :: test_get_mci_ptr
+<<Processes: procedures>>=
+  subroutine test_allocate_sf_channels (process, n)
+    class(process_t), intent(inout) :: process
+    integer, intent(in) :: n
+    call process%beam_config%allocate_sf_channels (n)
+  end subroutine test_allocate_sf_channels
+    
+  subroutine test_set_component_sf_channel (process, c)
+    class(process_t), intent(inout) :: process
+    integer, dimension(:), intent(in) :: c
+    call process%component(1)%phs_config%set_sf_channel (c)
+  end subroutine test_set_component_sf_channel
+    
+  subroutine test_get_mci_ptr (process, mci)
+    class(process_t), intent(in), target :: process
+    class(mci_t), intent(out), pointer :: mci
+    mci => process%mci_entry(1)%mci
+  end subroutine test_get_mci_ptr
 
+@ %def test_allocate_sf_channels
+@ %def test_set_component_sf_channel
+@ %def test_get_mci_ptr
+@
 \subsubsection{Kinematics instance}
 In this data type we combine all objects (instances) necessary for
 generating (or recovering) a kinematical configuration.  The
@@ -9735,9 +9759,77 @@ apply this to the phase space subobject of the process instance.
 @ %def setup_nlo_component_cores
 @
 \subsection{Unit tests}
-<<Processes: public>>=
+Test module, followed by the corresponding implementation module.
+<<[[processes_ut.f90]]>>=
+<<File header>>
+
+module processes_ut
+  use unit_tests
+  use processes_uti
+  
+<<Standard module head>>
+
+<<Processes: public test>>
+
+<<Processes: public test auxiliary>>
+
+contains
+  
+<<Processes: test driver>>
+
+end module processes_ut
+@ %def processes_ut
+@
+<<[[processes_uti.f90]]>>=
+<<File header>>
+
+module processes_uti
+
+<<Use kinds>>
+<<Use strings>>
+  use format_utils, only: write_separator
+  use constants, only: TWOPI4
+  use physics_defs, only: CONV
+  use os_interface
+  use sm_qcd
+  use lorentz
+  use pdg_arrays
+  use model_data
+  use flavors
+  use interactions, only: reset_interaction_counter
+  use particles
+  use rng_base
+  use mci_base
+  use mci_midpoint
+  use sf_mappings
+  use sf_base
+  use phs_base
+  use phs_single
+  use process_constants
+  use prc_core
+  use prc_test, only: prc_test_create_library
+  use process_libraries
+  use processes
+
+<<Standard module head>>
+
+<<Processes: public test auxiliary>>
+
+<<Processes: test declarations>>
+
+contains
+
+<<Processes: tests>>
+
+<<Processes: test auxiliary>>
+
+end module processes_uti
+  
+@ %def processes_uti
+@ API: driver for the unit tests below.
+<<Processes: public test>>=
   public :: processes_test
-<<Processes: tests>>=
+<<Processes: test driver>>=
   subroutine processes_test (u, results)
     integer, intent(in) :: u
     type(test_results_t), intent(inout) :: results
@@ -9771,7 +9863,7 @@ will then become of type [[prc_test_t]].
   end type test_t
 
 @ %def test_t
-<<Processes: tests>>=
+<<Processes: test type procedures>>=
   subroutine test_write (object, unit)
     class(test_t), intent(in) :: object
     integer, intent(in), optional :: unit
@@ -9783,7 +9875,7 @@ will then become of type [[prc_test_t]].
 @ %def test_write
 @ This process type always needs a MC parameter set and a
 single term.  This only state is always allowed.
-<<Processes: tests>>=
+<<Processes: test type procedures>>=
   function test_needs_mcset (object) result (flag)
     class(test_t), intent(in) :: object
     logical :: flag
@@ -9809,7 +9901,7 @@ single term.  This only state is always allowed.
 @ Transfer the generated momenta directly to the hard interaction in
 the (only) term.  We assume that everything has been set up correctly,
 so the array fits.
-<<Processes: tests>>=
+<<Processes: test type procedures>>=
   subroutine test_compute_hard_kinematics &
        (object, p_seed, i_term, int_hard, core_state)
     class(test_t), intent(in) :: object
@@ -9822,7 +9914,7 @@ so the array fits.
   
 @ %def test_compute_hard_kinematics
 @ This procedure is not called for [[test_t]], just a placeholder.
-<<Processes: tests>>=
+<<Processes: test type procedures>>=
   subroutine test_compute_eff_kinematics &
        (object, i_term, int_hard, int_eff, core_state)
     class(test_t), intent(in) :: object
@@ -9838,7 +9930,7 @@ effective interaction, and vice versa for the outgoing momenta.
 
 [[int_hard]] is left untouched since [[int_eff]] is an alias (via
 pointer) to it.
-<<Processes: tests>>=
+<<Processes: test type procedures>>=
   subroutine test_recover_kinematics &
        (object, p_seed, int_hard, int_eff, core_state)
     class(test_t), intent(in) :: object
@@ -9856,7 +9948,7 @@ pointer) to it.
 @ Compute the amplitude.  The driver ignores all quantum numbers and,
 in fact, returns a constant.  Nevertheless, we properly transfer the
 momentum vectors.
-<<Processes: tests>>=
+<<Processes: test type procedures>>=
   function test_compute_amplitude &
        (object, j, p, f, h, c, fac_scale, ren_scale, alpha_qcd_forced, core_state) &
        result (amp)
@@ -9891,6 +9983,8 @@ The most trivial test is to write an uninitialized process object.
   call test (processes_1, "processes_1", &
        "write an empty process object", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_1
 <<Processes: tests>>=
   subroutine processes_1 (u)
     integer, intent(in) :: u
@@ -9915,6 +10009,8 @@ Initialize a process and display it.
   call test (processes_2, "processes_2", &
        "initialize a simple process object", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_2
 <<Processes: tests>>=
   subroutine processes_2 (u)
     integer, intent(in) :: u
@@ -9987,6 +10083,8 @@ functionality.
   call test (processes_3, "processes_3", &
        "retrieve a trivial matrix element", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_3
 <<Processes: tests>>=
   subroutine processes_3 (u)
     integer, intent(in) :: u
@@ -10094,6 +10192,8 @@ functionality.
   call test (processes_4, "processes_4", &
        "create and fill a process instance (partonic event)", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_4
 <<Processes: tests>>=
   subroutine processes_4 (u)
     integer, intent(in) :: u
@@ -10248,6 +10348,8 @@ Configure structure functions (multi-channel) in a process object.
   call test (processes_7, "processes_7", &
        "process configuration with structure functions", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_7
 <<Processes: tests>>=
   subroutine processes_7 (u)
     integer, intent(in) :: u
@@ -10316,7 +10418,7 @@ Configure structure functions (multi-channel) in a process object.
     call process%init_sf_chain (sf_config)
     deallocate (sf_config)
 
-    call process%beam_config%allocate_sf_channels (3)
+    call process%test_allocate_sf_channels (3)
 
     call sf_channel(1)%init (2)
     call sf_channel(1)%activate_mapping ([1,2])
@@ -10362,6 +10464,8 @@ structure-function channel.
   call test (processes_8, "processes_8", &
        "process evaluation with structure functions", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_8
 <<Processes: tests>>=
   subroutine processes_8 (u)
     integer, intent(in) :: u
@@ -10435,7 +10539,7 @@ structure-function channel.
     
     call process%configure_phs ()
     
-    call process%beam_config%allocate_sf_channels (1)
+    call process%test_allocate_sf_channels (1)
 
     call sf_channel%init (2)
     call sf_channel%activate_mapping ([1,2])
@@ -10517,6 +10621,8 @@ distinct phase-space channels.
   call test (processes_9, "processes_9", &
        "multichannel kinematics and structure functions", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_9
 <<Processes: tests>>=
   subroutine processes_9 (u)
     integer, intent(in) :: u
@@ -10592,7 +10698,7 @@ distinct phase-space channels.
     
     call process%configure_phs ()
     
-    call process%beam_config%allocate_sf_channels (2)
+    call process%test_allocate_sf_channels (2)
 
     call sf_channel%init (2)
     call process%set_sf_channel (1, sf_channel)
@@ -10601,7 +10707,7 @@ distinct phase-space channels.
     call sf_channel%activate_mapping ([1,2])
     call process%set_sf_channel (2, sf_channel)
     
-    call process%component(1)%phs_config%set_sf_channel ([1, 2])
+    call process%test_set_component_sf_channel ([1, 2])
 
     write (u, "(A)")  "* Complete process initialization"
     write (u, "(A)")
@@ -10690,6 +10796,8 @@ require integration in preparation for generating events.
   call test (processes_10, "processes_10", &
        "event generation", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_10
 <<Processes: tests>>=
   subroutine processes_10 (u)
     integer, intent(in) :: u
@@ -10704,6 +10812,7 @@ require integration in preparation for generating events.
     type(process_t), allocatable, target :: process
     class(prc_core_t), allocatable :: core_template
     class(mci_t), allocatable :: mci_template
+    class(mci_t), pointer :: mci
     class(phs_config_t), allocatable :: phs_config_template
     real(default) :: sqrts
     type(process_instance_t), allocatable, target :: process_instance
@@ -10766,7 +10875,8 @@ require integration in preparation for generating events.
     write (u, "(A)")  "* Generate weighted event"
     write (u, "(A)")
 
-    select type (mci => process%mci_entry(1)%mci)
+    call process%test_get_mci_ptr (mci)
+    select type (mci)
     type is (mci_test_t)
        ! This ensures that the next 'random' numbers are 0.3, 0.5, 0.7
        call mci%rng%init (3)
@@ -10783,7 +10893,8 @@ require integration in preparation for generating events.
     write (u, "(A)")
 
     call process%generate_unweighted_event (process_instance, 1)
-    select type (mci => process%mci_entry(1)%mci)
+    call process%test_get_mci_ptr (mci)
+    select type (mci)
     type is (mci_test_t)
        write (u, "(A,I0)")  " Success in try ", mci%tries
        write (u, "(A)")
@@ -10814,6 +10925,8 @@ integrate over phase space.
   call test (processes_11, "processes_11", &
        "integration", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_11
 <<Processes: tests>>=
   subroutine processes_11 (u)
     integer, intent(in) :: u
@@ -10921,9 +11034,11 @@ integrate over phase space.
 For the purpose of simplifying further tests, we implement a
 convenience routine that initializes a process and prepares a single
 event.  This is a wrapup of the test [[processes_10]].
-<<Processes: public>>=
+
+The procedure is re-exported by the [[processes_ut]] module.
+<<Processes: public test auxiliary>>=
   public :: prepare_test_process
-<<Processes: procedures>>=
+<<Processes: test auxiliary>>=
   subroutine prepare_test_process (process, process_instance, model)
     type(process_t), intent(out), target :: process
     type(process_instance_t), intent(out), target :: process_instance
@@ -10938,6 +11053,7 @@ event.  This is a wrapup of the test [[processes_10]].
     class(rng_factory_t), allocatable :: rng_factory
     class(prc_core_t), allocatable :: core_template
     class(mci_t), allocatable :: mci_template
+    class(mci_t), pointer :: mci
     class(phs_config_t), allocatable :: phs_config_template
     real(default) :: sqrts
     libname = "processes_test"
@@ -10970,7 +11086,8 @@ event.  This is a wrapup of the test [[processes_10]].
     call process%setup_mci ()
     call process%setup_terms ()
     call process_instance%init (process)
-    select type (mci => process%mci_entry(1)%mci)
+    call process%test_get_mci_ptr (mci)
+    select type (mci)
     type is (mci_test_t)
        ! This ensures that the next 'random' numbers are 0.3, 0.5, 0.7
        call mci%rng%init (3)
@@ -11002,6 +11119,8 @@ temporary storage, read kinematics and recalculate the event.
   call test (processes_12, "processes_12", &
        "event post-processing", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_12
 <<Processes: tests>>=
   subroutine processes_12 (u)
     integer, intent(in) :: u
@@ -11086,6 +11205,8 @@ returns true.
   call test (processes_13, "processes_13", &
        "colored interaction", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_13
 <<Processes: tests>>=
   subroutine processes_13 (u)
     integer, intent(in) :: u
@@ -11157,6 +11278,8 @@ compute MD5 sums
   call test (processes_14, "processes_14", &
        "process configuration and MD5 sum", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_14
 <<Processes: tests>>=
   subroutine processes_14 (u)
     integer, intent(in) :: u
@@ -11221,7 +11344,7 @@ compute MD5 sums
        call data%init (model, pdg_in)
     end select
 
-    call process%beam_config%allocate_sf_channels (3)
+    call process%test_allocate_sf_channels (3)
 
     allocate (sf_config (2))
     call sf_config(1)%init ([1], data)
@@ -11265,6 +11388,8 @@ Initialize an evaluate a decay process.
   call test (processes_15, "processes_15", &
        "decay process", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_15
 <<Processes: tests>>=
   subroutine processes_15 (u)
     integer, intent(in) :: u
@@ -11412,6 +11537,8 @@ integrate over phase space.
   call test (processes_16, "processes_16", &
        "decay integration", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_16
 <<Processes: tests>>=
   subroutine processes_16 (u)
     integer, intent(in) :: u
@@ -11519,6 +11646,8 @@ Initialize an evaluate a decay process for a moving particle.
   call test (processes_17, "processes_17", &
        "decay of moving particle", &
        u, results)
+<<Processes: test declarations>>=
+  public :: processes_17
 <<Processes: tests>>=
   subroutine processes_17 (u)
     integer, intent(in) :: u
@@ -11695,7 +11824,6 @@ module process_stacks
 <<Use strings>>
   use io_units
   use format_utils, only: write_separator
-  use unit_tests
   use diagnostics
   use os_interface
   use sm_qcd
@@ -11704,7 +11832,7 @@ module process_stacks
   use variables
   use observables
   use process_libraries
-  use prc_test
+  use prc_test, only: prc_test_create_library
   use processes
 
 <<Standard module head>>
@@ -11716,8 +11844,6 @@ module process_stacks
 contains
   
 <<Process stacks: procedures>>
-
-<<Process stacks: tests>>
 
 end module process_stacks
 @ %def process_stacks
@@ -12000,9 +12126,57 @@ linked stack, if necessary.
 @ %def process_stack_get_process_ptr
 @
 \subsection{Unit tests}
-<<Process stacks: public>>=
+Test module, followed by the corresponding implementation module.
+<<[[process_stacks_ut.f90]]>>=
+<<File header>>
+
+module process_stacks_ut
+  use unit_tests
+  use process_stacks_uti
+  
+<<Standard module head>>
+
+<<Process stacks: public test>>
+
+contains
+  
+<<Process stacks: test driver>>
+
+end module process_stacks_ut
+@ %def process_stacks_ut
+@
+<<[[process_stacks_uti.f90]]>>=
+<<File header>>
+
+module process_stacks_uti
+
+<<Use strings>>
+  use os_interface
+  use sm_qcd
+  use model_data
+  use process_libraries
+  use rng_base
+  use prc_test, only: prc_test_create_library
+  use processes
+  use processes_ut, only: prepare_test_process
+  
+  use process_stacks
+
+<<Standard module head>>
+
+<<Process stacks: test declarations>>
+
+contains
+
+<<Process stacks: tests>>
+
+end module process_stacks_uti
+  
+@ %def process_stacks_uti
+@ API: driver for the unit tests below.
+<<Process stacks: public test>>=
   public :: process_stacks_test
-<<Process stacks: tests>>=
+<<Process stacks: test driver>>=
   subroutine process_stacks_test (u, results)
     integer, intent(in) :: u
     type(test_results_t), intent(inout) :: results
@@ -12017,6 +12191,8 @@ The most trivial test is to write an uninitialized process stack.
   call test (process_stacks_1, "process_stacks_1", &
        "write an empty process stack", &
        u, results)
+<<Process stacks: test declarations>>=
+  public :: process_stacks_1
 <<Process stacks: tests>>=
   subroutine process_stacks_1 (u)
     integer, intent(in) :: u
@@ -12041,6 +12217,8 @@ Fill a process stack with two (identical) processes.
   call test (process_stacks_2, "process_stacks_2", &
        "fill a process stack", &
        u, results)
+<<Process stacks: test declarations>>=
+  public :: process_stacks_2
 <<Process stacks: tests>>=
   subroutine process_stacks_2 (u)
     integer, intent(in) :: u
@@ -12106,6 +12284,8 @@ Fill a process stack with two (identical) processes.
   call test (process_stacks_3, "process_stacks_3", &
        "process variables", &
        u, results)
+<<Process stacks: test declarations>>=
+  public :: process_stacks_3
 <<Process stacks: tests>>=
   subroutine process_stacks_3 (u)
     integer, intent(in) :: u
@@ -12169,6 +12349,8 @@ Fill two process stack, linked to each other.
   call test (process_stacks_4, "process_stacks_4", &
        "linked stacks", &
        u, results)
+<<Process stacks: test declarations>>=
+  public :: process_stacks_4
 <<Process stacks: tests>>=
   subroutine process_stacks_4 (u)
     integer, intent(in) :: u

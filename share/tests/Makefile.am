@@ -141,6 +141,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/auto_components_2.ref \
     ref-output/auto_components_3.ref \
     ref-output/radiation_generator_1.ref \
+    ref-output/radiation_generator_2.ref \
     ref-output/particles_1.ref \
     ref-output/particles_2.ref \
     ref-output/particles_3.ref \
@@ -717,115 +718,11 @@ TESTSUITES_M4 = \
     $(NMSSM_EXT_M4)
 
 TESTSUITES_SIN = \
-    $(UNIT_TESTS_SIN) \
     $(MISC_TESTS_SIN) \
     $(MSSM_EXT_SIN) \
     $(NMSSM_EXT_SIN)
 
 MISC_TESTS_M4 =
-
-UNIT_TESTS_SIN = \
-    analysis.sin \
-    jets.sin \
-    pdg_arrays.sin \
-    expressions.sin \
-    beams.sin \
-    polarizations.sin \
-    sorting.sin \
-    codes.sin \
-    object_base.sin \
-    object_builder.sin \
-    object_logical.sin \
-    object_integer.sin \
-    object_container.sin \
-    object_comparison.sin \
-    object_conditional.sin \
-    sindarin_parser.sin \
-    interactions.sin \
-    state_matrices.sin \
-    md5.sin \
-    cputime.sin \
-    color.sin \
-    formats.sin \
-    lexers.sin \
-    parser.sin \
-    evaluators.sin \
-    os_interface.sin \
-    xml.sin \
-    sm_qcd.sin \
-    models.sin \
-    auto_components.sin \
-    radiation_generator.sin \
-    particles.sin \
-    beam_structures.sin \
-    sf_aux.sin \
-    sf_mappings.sin \
-    sf_base.sin \
-    sf_pdf_builtin.sin \
-    sf_lhapdf5.sin \
-    sf_lhapdf6.sin \
-    sf_isr.sin \
-    sf_epa.sin \
-    sf_ewa.sin \
-    sf_circe1.sin \
-    sf_circe2.sin \
-    sf_gaussian.sin \
-    sf_beam_events.sin \
-    sf_escan.sin \
-    grids.sin \
-    solver.sin \
-    phs_base.sin \
-    phs_single.sin \
-    phs_forests.sin \
-    phs_wood.sin \
-    phs_wood_vis.sin \
-    phs_fks_generator.sin \
-    powheg.sin \
-    rng_base.sin \
-    rng_tao.sin \
-    selectors.sin \
-    mci_base.sin \
-    mci_midpoint.sin \
-    mci_vamp.sin \
-    prclib_interfaces.sin \
-    particle_specifiers.sin \
-    process_libraries.sin \
-    prclib_stacks.sin \
-    prc_test.sin \
-    subevt_expr.sin \
-    processes.sin \
-    process_stacks.sin \
-    cascades.sin \
-    slha_interface.sin \
-    event_transforms.sin \
-    decays.sin \
-    shower.sin \
-    events.sin \
-    prc_template_me.sin \
-    prc_omega.sin \
-    prc_omega_diags.sin \
-    hep_events.sin \
-    eio_data.sin \
-    eio_base.sin \
-    eio_raw.sin \
-    eio_checkpoints.sin \
-    eio_lhef.sin \
-    eio_hepmc.sin \
-    eio_lcio.sin \
-    eio_stdhep.sin \
-    eio_ascii.sin \
-    eio_weights.sin \
-    iterations.sin \
-    rt_data.sin \
-    dispatch.sin \
-    process_configurations.sin \
-    compilations.sin \
-    compilations_static.sin \
-    integrations.sin \
-    integrations_history.sin \
-    event_streams.sin \
-    simulations.sin \
-    commands.sin
 
 MISC_TESTS_SIN = \
     empty.sin \
