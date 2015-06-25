@@ -35,5 +35,8 @@
 ## Subdirectories to configure
 SUBDIRS = \
   unit_tests \
-  functional_tests \
+  functional_tests
+
+DIST_SUBDIRS = \
+  $(SUBDIRS) \
   extended_tests

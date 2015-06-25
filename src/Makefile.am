@@ -189,8 +189,24 @@ libwhizard_test_la_LIBADD = \
   whizard-core/libwhizard_core_ut.la \
   transforms/libtransforms_ut.la \
   matching/libmatching_ut.la \
+  fks/libfks_ut.la \
   process_integration/libprocess_integration_ut.la \
-  sindarin/libsindarin_ut.la
+  model_features/libmodel_features_ut.la \
+  mci/libmci_ut.la \
+  phase_space/libphase_space_ut.la \
+  events/libevents_ut.la \
+  beams/libbeams_ut.la \
+  particles/libparticles_ut.la \
+  me_methods/libme_methods_ut.la \
+  matrix_elements/libmatrix_elements_ut.la \
+  types/libtypes_ut.la \
+  qft/libqft_ut.la \
+  physics/libphysics_ut.la \
+  sindarin/libsindarin_ut.la \
+  rng/librng_ut.la \
+  parsing/libparsing_ut.la \
+  combinatorics/libcombinatorics_ut.la \
+  system/libsystem_ut.la
 
 ## -------------------------------------------------------------------
 ## O'Mega main library

@@ -27,6 +27,7 @@
 
 ## We create a library which is still to be combined with auxiliary libs.
 noinst_LTLIBRARIES = libbeams.la
+check_LTLIBRARIES = libbeams_ut.la
 
 libbeams_la_SOURCES = \
   beam_structures.f90 \
@@ -47,11 +48,28 @@ libbeams_la_SOURCES = \
   sf_lhapdf.f90 \
   pdf.f90
 
+libbeams_ut_la_SOURCES = \
+  beam_structures_uti.f90 beam_structures_ut.f90 \
+  beams_uti.f90 beams_ut.f90 \
+  sf_aux_uti.f90 sf_aux_ut.f90 \
+  sf_mappings_uti.f90 sf_mappings_ut.f90 \
+  sf_base_uti.f90 sf_base_ut.f90 \
+  sf_isr_uti.f90 sf_isr_ut.f90 \
+  sf_epa_uti.f90 sf_epa_ut.f90 \
+  sf_ewa_uti.f90 sf_ewa_ut.f90 \
+  sf_escan_uti.f90 sf_escan_ut.f90 \
+  sf_gaussian_uti.f90 sf_gaussian_ut.f90 \
+  sf_beam_events_uti.f90 sf_beam_events_ut.f90 \
+  sf_circe1_uti.f90 sf_circe1_ut.f90 \
+  sf_circe2_uti.f90 sf_circe2_ut.f90 \
+  sf_pdf_builtin_uti.f90 sf_pdf_builtin_ut.f90 \
+  sf_lhapdf_uti.f90 sf_lhapdf_ut.f90
+
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = beams.nw
 
 # Dump module names into file Modules
-libbeams_Modules = ${libbeams_la_SOURCES:.f90=}
+libbeams_Modules = ${libbeams_la_SOURCES:.f90=} ${libbeams_ut_la_SOURCES:.f90=}
 Modules: Makefile
 	@for module in $(libbeams_Modules); do \
           echo $$module >> $@.new; \
@@ -109,7 +127,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libbeams_la_SOURCES)
+Makefile.depend: $(libbeams_la_SOURCES) $(libbeams_ut_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -158,12 +176,12 @@ POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 beams.stamp: $(PRELUDE) $(srcdir)/beams.nw $(POSTLUDE)
 	@rm -f beams.tmp
 	@touch beams.tmp
-	for src in $(libbeams_la_SOURCES); do \
+	for src in $(libbeams_la_SOURCES) $(libbeams_ut_la_SOURCES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
 	@mv -f beams.tmp beams.stamp
 
-$(libbeams_la_SOURCES): beams.stamp
+$(libbeams_la_SOURCES) $(libbeams_ut_la_SOURCES): beams.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
 	  rm -f beams.stamp; \
