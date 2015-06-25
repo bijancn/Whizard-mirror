@@ -279,9 +279,6 @@ TESTS =
 XFAIL_TESTS =
 TESTS_SRC =
 
-# Temporarily, only the new unit tests are executed
-if DEFAULT_CHECKS
-
 TESTS += $(TESTS_DEFAULT)
 XFAIL_TESTS += $(XFAIL_TESTS_DEFAULT)
 
@@ -312,7 +309,6 @@ XFAIL_TESTS += $(XFAIL_TESTS_REQ_EV_ANA)
 TESTS += $(TESTS_STATIC)
 XFAIL_TESTS += $(XFAIL_TESTS_STATIC)
 
-endif DEFAULT_CHECKS
 
 EXTRA_DIST = $(TEST_DRIVERS_SH) \
     $(TESTS_SRC)
@@ -334,7 +330,7 @@ SUFFIXES = .sh .run
 	  echo "$*.sin not found!" 1>&2; \
 	  exit 2; \
 	fi
-	chmod +x $@
+	@chmod +x $@
 
 structure_2.run: structure_2_inc.sin
 structure_2_inc.sin: $(top_builddir)/share/tests/structure_2_inc.sin

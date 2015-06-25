@@ -189,13 +189,9 @@ UNIT_TESTS += $(UNIT_TESTS_REQ_STDHEP)
 UNIT_TESTS += $(UNIT_TESTS_REQ_OCAML)
 UNIT_TESTS += $(UNIT_TESTS_REQ_EV_ANA)
 
-# Temporarily, only the new unit tests are executed
-if DEFAULT_CHECKS
-
 TESTS += $(UNIT_TESTS)
 XFAIL_TESTS += $(XFAIL_UNIT_TESTS)
 
-endif DEFAULT_CHECKS
 
 EXTRA_DIST = $(TEST_DRIVERS_SH)
     $(TESTS_SRC)
@@ -220,7 +216,7 @@ SUFFIXES = .sh .run
 
 .sh.run:
 	@rm -f $@
-	cp $< $@
+	@cp $< $@
 	@chmod +x $@
 
 sf_beam_events.run: test_beam_events.dat
