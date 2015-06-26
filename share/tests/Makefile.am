@@ -826,7 +826,6 @@ MISC_TESTS_SIN = \
     mlm_matching_fsr.sin \
     mlm_matching_isr.sin \
     mlm_pythia6_isr.sin \
-    hepmc.sin \
     hepmc_1.sin \
     hepmc_2.sin \
     hepmc_3.sin \
@@ -837,7 +836,6 @@ MISC_TESTS_SIN = \
     hepmc_8.sin \
     hepmc_9.sin \
     hepmc_10.sin \
-    lcio.sin \
     stdhep_1.sin \
     stdhep_2.sin \
     stdhep_3.sin \

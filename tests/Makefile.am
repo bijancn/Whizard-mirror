@@ -49,6 +49,10 @@ DIST_SUBDIRS = \
 check-extended:
 	$(MAKE) -C extended_tests check
 
+## make clean won't be executed automatically in the subdir.
+## Note that after 'make distcheck', the Makefile is missing, so this fails,
+## that failure should be ignored.
+
 check-extended-shower:
 	$(MAKE) -C extended_tests_shower check
 
@@ -57,6 +61,6 @@ check-extended-NLO:
 
 ## This won't be executed by default
 clean-local:
-	$(MAKE) -C extended_tests clean
-	$(MAKE) -C extended_tests_shower clean
-	$(MAKE) -C extended_tests_NLO clean
+	-test -f extended_tests/Makefile && $(MAKE) -C extended_tests clean
+	-test -f extended_tests_shower/Makefile && $(MAKE) -C extended_tests_shower clean
+	-test -f extended_tests_NLO/Makefile && $(MAKE) -C extended_tests_NLO clean
