@@ -893,6 +893,7 @@ AC_CONFIG_FILES([tests/Makefile])
 AC_CONFIG_FILES([tests/unit_tests/Makefile])
 AC_CONFIG_FILES([tests/functional_tests/Makefile])
 AC_CONFIG_FILES([tests/extended_tests/Makefile])
+AC_CONFIG_FILES([tests/extended_tests_shower/Makefile])
 
 AC_CONFIG_FILES([tests/unit_tests/run_whizard_ut.sh], 
   [chmod u+x tests/unit_tests/run_whizard_ut.sh])
@@ -900,6 +901,8 @@ AC_CONFIG_FILES([tests/functional_tests/run_whizard.sh],
   [chmod u+x tests/functional_tests/run_whizard.sh])
 AC_CONFIG_FILES([tests/extended_tests/run_whizard.sh],
   [chmod u+x tests/extended_tests/run_whizard.sh])
+AC_CONFIG_FILES([tests/extended_tests_shower/run_whizard.sh],
+  [chmod u+x tests/extended_tests_shower/run_whizard.sh])
 
 ###---------------------------------------------------------------------
 ### Subdirectory libtool-config

@@ -37,7 +37,6 @@ SUBDIRS = \
   unit_tests \
   functional_tests
 
-
 ## Subdirs to be configured but not built
 ## In particular, not visited by 'make check'
 DIST_SUBDIRS = \
@@ -48,6 +47,12 @@ DIST_SUBDIRS = \
 check-extended:
 	$(MAKE) -C extended_tests check
 
+check-extended-shower:
+	$(MAKE) -C extended_tests_shower check
+
 ## This won't be executed by default
 clean-local:
 	$(MAKE) -C extended_tests clean
+
+clean-local:
+	$(MAKE) -C extended_tests_shower clean
