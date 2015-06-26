@@ -64,6 +64,7 @@ UNIT_TESTS = \
     interactions.run \
     xml.run \
     sm_qcd.run \
+    sm_physics.run \
     models.run \
     auto_components.run \
     radiation_generator.run \
@@ -123,6 +124,9 @@ UNIT_TESTS = \
     event_streams.run \
     integrations.run \
     simulations.run
+
+XFAIL_UNIT_TESTS = \
+    sm_physics.run
 
 UNIT_TESTS_REQ_GAMELAN = \
     commands.run
@@ -185,12 +189,9 @@ UNIT_TESTS += $(UNIT_TESTS_REQ_STDHEP)
 UNIT_TESTS += $(UNIT_TESTS_REQ_OCAML)
 UNIT_TESTS += $(UNIT_TESTS_REQ_EV_ANA)
 
-# Temporarily, only the new unit tests are executed
-if DEFAULT_CHECKS
-
 TESTS += $(UNIT_TESTS)
+XFAIL_TESTS += $(XFAIL_UNIT_TESTS)
 
-endif DEFAULT_CHECKS
 
 EXTRA_DIST = $(TEST_DRIVERS_SH)
     $(TESTS_SRC)
@@ -215,7 +216,7 @@ SUFFIXES = .sh .run
 
 .sh.run:
 	@rm -f $@
-	cp $< $@
+	@cp $< $@
 	@chmod +x $@
 
 sf_beam_events.run: test_beam_events.dat

@@ -35,5 +35,19 @@
 ## Subdirectories to configure
 SUBDIRS = \
   unit_tests \
-  functional_tests \
+  functional_tests
+
+
+## Subdirs to be configured but not built
+## In particular, not visited by 'make check'
+DIST_SUBDIRS = \
+  $(SUBDIRS) \
   extended_tests
+
+## Invoke extended tests explicitly by 'make check-extended'
+check-extended:
+	$(MAKE) -C extended_tests check
+
+## This won't be executed by default
+clean-local:
+	$(MAKE) -C extended_tests clean

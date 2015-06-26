@@ -32,6 +32,11 @@
 #
 ########################################################################
 
+## Invoke extended tests by 'make check' or 'make check-extended'
+check-extended: check
+
+########################################################################
+
 WHIZARD_DRIVER = run_whizard.sh
 
 TESTS_EXTENDED = \
@@ -54,10 +59,8 @@ TESTS =
 XFAIL_TESTS =
 TESTS_SRC =
 
-if EXT_NUM_CHECKS
 TESTS += $(TESTS_EXTENDED)
 XFAIL_TESTS += $(XFAIL_TESTS_EXTENDED)
-endif EXT_NUM_CHECKS
 
 mssm_ext.run: $(EXTENDED_MSSM_TEST_DRIVERS)
 	echo '#! /bin/sh' >$@
@@ -146,7 +149,7 @@ SUFFIXES = .sh .run .run.extra.trs
 	fi
 	$(SED) -i 's|@python_bin@|$(PYTHON_BIN)|g' $@
 	$(SED) -i 's|@share_dir@|$(top_srcdir)/share/tests/|g' $@
-	chmod +x $@
+	@chmod +x $@
 
 if MPOST_AVAILABLE
 $(TESTS_REQ_GAMELAN): gamelan.sty

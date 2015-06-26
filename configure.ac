@@ -523,44 +523,6 @@ AM_CONDITIONAL([OPTIMIZATION_FOR_PARFILES],
 
 
 ###---------------------------------------------------------------------
-### Disable default checks upon request
-
-AC_ARG_ENABLE([default_checks],
-  [AS_HELP_STRING([--disable-default-checks],
-    [disable the default self-checks [[no]]])])
-
-AC_CACHE_CHECK([whether we want the default self-checks], 
-[wo_cv_default_checks],
-[dnl
-if test "$enable_default_checks" != "no"; then
-  wo_cv_default_checks=yes
-else
-  wo_cv_default_checks=no
-fi])
-
-AM_CONDITIONAL([DEFAULT_CHECKS],
-  [test "$enable_default_checks" != "no"])
-
-###---------------------------------------------------------------------
-### Enable numerical checks upon request
-
-AC_ARG_ENABLE([extnum_checks],
-  [AS_HELP_STRING([--enable-extnum-checks],
-    [enable time-consuming extensive SM, SUSY and models checks [[no]]])])
-
-AC_CACHE_CHECK([whether we want extra extensive checks], 
-[wo_cv_extnum_checks],
-[dnl
-if test "$enable_extnum_checks" = "yes"; then
-  wo_cv_extnum_checks=yes
-else
-  wo_cv_extnum_checks=no
-fi])
-
-AM_CONDITIONAL([EXT_NUM_CHECKS],
-  [test "$enable_extnum_checks" = "yes"])
-
-###---------------------------------------------------------------------
 ### Checks for external interfaces
 
 WO_CONFIGURE_SECTION([Auxiliary stuff for external interfaces])

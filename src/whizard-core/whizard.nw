@@ -3587,6 +3587,8 @@ module dispatch
 
 <<Dispatch: interfaces>>
 
+<<Dispatch: variables>>
+
 contains
   
 <<Dispatch: procedures>>
@@ -4111,7 +4113,6 @@ can always set the seed manually, before it is used.
     use kinds, only: i16
     use rng_base
     use rng_tao
-    
     class(rng_factory_t), allocatable, intent(inout) :: rng_factory
     type(rt_data_t), intent(inout), target :: global
     type(rt_data_t), intent(in), target, optional :: local_input
@@ -4131,15 +4132,17 @@ can always set the seed manually, before it is used.
          local%var_list%get_ival (var_str ("seed"))
     s = int (mod (seed, 32768), i16)
     select case (char (rng_method))
-    case ("unit_test")
-       allocate (rng_test_factory_t :: rng_factory)
-       call msg_message ("RNG: Initializing Test random-number generator")
     case ("tao")
        allocate (rng_tao_factory_t :: rng_factory)
        call msg_message ("RNG: Initializing TAO random-number generator")       
     case default
-       call msg_fatal ("Random-number generator '" &
-            // char (rng_method) // "' not implemented")
+       if (associated (dispatch_rng_factory_extra)) then
+          call dispatch_rng_factory_extra (rng_factory, global, local_input)
+       end if
+       if (.not. allocated (rng_factory)) then
+          call msg_fatal ("Random-number generator '" &
+               // char (rng_method) // "' not implemented")
+       end if
     end select
     write (buffer, "(I0)")  s
     call msg_message ("RNG: Setting seed for random-number generator to " &
@@ -4150,6 +4153,14 @@ can always set the seed manually, before it is used.
   end subroutine dispatch_rng_factory
   
 @ %def dispatch_rng_factory
+@ This is a hook that allows us to inject further handlers for
+RNG factory objects, in particular a test RNG.
+<<Dispatch: public>>=
+  public :: dispatch_rng_factory_extra
+<<Dispatch: variables>>=
+  procedure (dispatch_rng_factory), pointer :: &
+       dispatch_rng_factory_extra => null ()
+@ %def dispatch_rng_factory_extra
 @
 \subsection{Structure function configuration data}
 This data type is a container for transferring structure-function
@@ -4251,16 +4262,6 @@ flavors (beam index, component index) for the hard process.
     sqrts = global%get_sqrts ()
     associate (var_list => global%get_var_list_ptr ())
       select case (char (sf_method))
-      case ("sf_test_0", "sf_test_1")
-         allocate (sf_test_data_t :: data)
-         select type (data)
-         type is (sf_test_data_t)
-            select case (char (sf_method))
-            case ("sf_test_0");  call data%init (model, pdg_in(i_beam(1)))
-            case ("sf_test_1");  call data%init (model, pdg_in(i_beam(1)), &
-                 mode = 1)
-            end select
-         end select
       case ("pdf_builtin")
          allocate (pdf_builtin_data_t :: data)
          select type (data)
@@ -4492,8 +4493,15 @@ flavors (beam index, component index) for the hard process.
             end if
          end select
       case default
-         call msg_bug ("Structure function '" &
-              // char (sf_method) // "' not implemented yet")
+         if (associated (dispatch_sf_data_extra)) then
+            call dispatch_sf_data_extra (data, &
+                 sf_method, i_beam, sf_prop, global, &
+                 pdg_in, pdg_prc, polarized)
+         end if
+         if (.not. allocated (data)) then
+            call msg_fatal ("Structure function '" &
+                 // char (sf_method) // "' not implemented")
+         end if
       end select
     end associate
     if (allocated (data)) then
@@ -4504,6 +4512,14 @@ flavors (beam index, component index) for the hard process.
   end subroutine dispatch_sf_data
   
 @ %def dispatch_sf_data
+@ This is a hook that allows us to inject further handlers for
+structure-function objects, in particular a test structure function.
+<<Dispatch: public>>=
+  public :: dispatch_sf_data_extra
+<<Dispatch: variables>>=
+  procedure (dispatch_sf_data), pointer :: &
+       dispatch_sf_data_extra => null ()
+@ %def dispatch_sf_data_extra
 @ This is an auxiliary procedure, used by the beam-structure
 expansion: tell for a given structure function name, whether it
 corresponds to a pair spectrum ($n=2$), a single-particle structure
@@ -5548,6 +5564,8 @@ module dispatch_ut
 
 <<Dispatch: public test>>
 
+<<Dispatch: public test auxiliary>>
+
 contains
   
 <<Dispatch: test driver>>
@@ -5563,6 +5581,7 @@ module dispatch_uti
 <<Use strings>>
   use format_utils, only: write_separator
   use io_units
+  use diagnostics
   use os_interface
   use physics_defs
   use sm_qcd
@@ -5593,14 +5612,20 @@ module dispatch_uti
   use rt_data
 
   use dispatch
+  
+  use sf_base_ut, only: sf_test_data_t
     
 <<Standard module head>>
+
+<<Dispatch: public test auxiliary>>
 
 <<Dispatch: test declarations>>
 
 contains
 
 <<Dispatch: tests>>
+
+<<Dispatch: test auxiliary>>
 
 end module dispatch_uti
   
@@ -5943,6 +5968,35 @@ end module dispatch_uti
 @ %def dispatch_4
 @
 \subsubsection{Select type: random number generator}
+This is an extra dispatcher that enables the test RNG.  This procedure
+should be assigned to the [[dispatch_rng_factory_extra]] hook before
+any tests are executed.
+<<Dispatch: public test auxiliary>>=
+  public :: dispatch_rng_factory_test
+<<Dispatch: test auxiliary>>=
+  subroutine dispatch_rng_factory_test (rng_factory, global, local_input)
+    use rng_base
+    use rng_base_ut, only: rng_test_factory_t
+    class(rng_factory_t), allocatable, intent(inout) :: rng_factory
+    type(rt_data_t), intent(inout), target :: global
+    type(rt_data_t), intent(in), target, optional :: local_input
+    type(rt_data_t), pointer :: local
+    type(string_t) :: rng_method
+    if (present (local_input)) then
+       local => local_input
+    else
+       local => global
+    end if
+    rng_method = &
+         local%var_list%get_sval (var_str ("$rng_method"))
+    select case (char (rng_method))
+    case ("unit_test")
+       allocate (rng_test_factory_t :: rng_factory)
+       call msg_message ("RNG: Initializing Test random-number generator")
+    end select
+  end subroutine dispatch_rng_factory_test
+    
+@ %def dispatch_rng_factory_test
 <<Dispatch: execute tests>>=
   call test (dispatch_5, "dispatch_5", &
        "random-number generator", &
@@ -6002,6 +6056,8 @@ end module dispatch_uti
   public :: dispatch_6
 <<Dispatch: tests>>=
   subroutine dispatch_6 (u)
+    use phs_base_ut, only: init_test_process_data
+    use phs_wood_ut, only: write_test_phs_file
     use phs_forests
     integer, intent(in) :: u
     type(rt_data_t), target :: global
@@ -6071,6 +6127,38 @@ end module dispatch_uti
 @ %def dispatch_6
 @
 \subsubsection{Select type: structure-function data}
+This is an extra dispatcher that enables the test structure
+functions.  This procedure should be assigned to the
+[[dispatch_sf_data_extra]] hook before any tests are executed.
+<<Dispatch: public test auxiliary>>=
+  public :: dispatch_sf_data_test
+<<Dispatch: test auxiliary>>=
+  subroutine dispatch_sf_data_test (data, sf_method, i_beam, sf_prop, global, &
+       pdg_in, pdg_prc, polarized)
+    class(sf_data_t), allocatable, intent(inout) :: data
+    type(string_t), intent(in) :: sf_method
+    integer, dimension(:), intent(in) :: i_beam
+    type(pdg_array_t), dimension(:), intent(inout) :: pdg_in
+    type(pdg_array_t), dimension(:,:), intent(in) :: pdg_prc
+    type(sf_prop_t), intent(inout) :: sf_prop
+    type(rt_data_t), intent(inout) :: global
+    logical, intent(in) :: polarized
+    select case (char (sf_method))
+    case ("sf_test_0", "sf_test_1")
+       allocate (sf_test_data_t :: data)
+       select type (data)
+       type is (sf_test_data_t)
+          select case (char (sf_method))
+          case ("sf_test_0");  call data%init (global%model, pdg_in(i_beam(1)))
+          case ("sf_test_1");  call data%init (global%model, pdg_in(i_beam(1)),&
+               mode = 1)
+          end select
+       end select
+    end select
+  end subroutine dispatch_sf_data_test
+    
+@ %def dispatch_sf_data_test
+@ The actual test.
 <<Dispatch: execute tests>>=
   call test (dispatch_7, "dispatch_7", &
        "structure-function data", &
@@ -8941,7 +9029,6 @@ module integrations_uti
   use flavors
   use interactions, only: reset_interaction_counter
   use phs_forests
-  use phs_wood, only: write_test_phs_file
   use eval_trees
   use models
   use rt_data
@@ -8950,6 +9037,8 @@ module integrations_uti
 
   use integrations
     
+  use phs_wood_ut, only: write_test_phs_file
+
 <<Standard module head>>
 
 <<Integrations: test declarations>>
@@ -14610,8 +14699,11 @@ module expr_tests_uti
     use prc_core
     use prc_test
     use processes
-    use processes_ut, only: prepare_test_process
     use events
+
+    use rng_base_ut, only: rng_test_factory_t
+    use phs_base_ut, only: phs_test_config_t
+    use processes_ut, only: prepare_test_process
 
 <<Standard module head>>
 
@@ -27344,6 +27436,9 @@ delete the objects in a separate procedure.
 @ %def cleanup_eio_test_event
 @ Assign those procedures to appropriate pointers (module variables) in the
 [[eio_base]] module, so they can be called as if they were module procedures.
+<<Main: use tests>>=
+  use eio_base_ut, only: eio_prepare_test
+  use eio_base_ut, only: eio_cleanup_test
 <<Main: prepare testbed>>=
   eio_prepare_test => prepare_eio_test
   eio_cleanup_test => cleanup_eio_test
@@ -27408,16 +27503,38 @@ tests do not depend on model I/O.
 @ %def prepare_fallback_model
 @ Assign those procedures to appropriate pointers (module variables) in the
 [[eio_base]] module, so they can be called as if they were module procedures.
+<<Main: use tests>>=
+  use eio_base_ut, only: eio_prepare_fallback_model
+  use eio_base_ut, only: eio_cleanup_fallback_model
 <<Main: prepare testbed>>=
   eio_prepare_fallback_model => prepare_fallback_model
   eio_cleanup_fallback_model => cleanup_model
+@
+\subsubsection{Access to the test random-number generator}
+This generator is not normally available for the dispatcher.  We assign an
+additional dispatch routine to the hook in the [[dispatch]] module
+which will be checked before the default rule.
+<<Main: use tests>>=
+  use dispatch, only: dispatch_rng_factory_extra
+  use dispatch_ut, only: dispatch_rng_factory_test
+<<Main: prepare testbed>>=
+  dispatch_rng_factory_extra => dispatch_rng_factory_test
+@
+\subsubsection{Access to the test structure functions}
+These are not normally available for the dispatcher.  We assign an
+additional dispatch routine to the hook in the [[dispatch]] module
+which will be checked before the default rule.
+<<Main: use tests>>=
+  use dispatch, only: dispatch_sf_data_extra
+  use dispatch_ut, only: dispatch_sf_data_test
+<<Main: prepare testbed>>=
+  dispatch_sf_data_extra => dispatch_sf_data_test
 @ 
 \subsubsection{Procedure for Checking}
 This is for developers only, but needs a well-defined interface.
 <<Main: tests>>=
   subroutine whizard_check (check, results)
     use io_units
-    use eio_base
     use model_testbed
     
   <<Main: use tests>>
@@ -27450,7 +27567,7 @@ This is for developers only, but needs a well-defined interface.
 \subsection{Unit test references}
 \subsubsection{Formats}
 <<Main: use tests>>=
-  use formats, only: format_test
+  use formats_ut, only: format_test
 <<Main: test cases>>=
   case ("formats")
      call format_test (u, results)
@@ -27459,7 +27576,7 @@ This is for developers only, but needs a well-defined interface.
 @ 
 \subsubsection{MD5}
 <<Main: use tests>>=
-  use md5, only: md5_test
+  use md5_ut, only: md5_test
 <<Main: test cases>>=
   case ("md5")
      call md5_test (u, results)
@@ -27468,7 +27585,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{OS Interface}
 <<Main: use tests>>=
-  use os_interface, only: os_interface_test
+  use os_interface_ut, only: os_interface_test
 <<Main: test cases>>=
   case ("os_interface")
      call os_interface_test (u, results)
@@ -27477,7 +27594,7 @@ This is for developers only, but needs a well-defined interface.
 @ 
 \subsubsection{Sorting}
 <<Main: use tests>>=
-  use sorting, only: sorting_test
+  use sorting_ut, only: sorting_test
 <<Main: test cases>>=
   case ("sorting")
      call sorting_test (u, results)
@@ -27567,7 +27684,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Grids}
 <<Main: use tests>>=
-  use grids, only: grids_test
+  use grids_ut, only: grids_test
 <<Main: test cases>>=
   case ("grids")
      call grids_test (u, results)
@@ -27576,7 +27693,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Solver}
 <<Main: use tests>>=
-  use solver, only: solver_test
+  use solver_ut, only: solver_test
 <<Main: test cases>>=
   case ("solver")
      call solver_test (u, results)
@@ -27585,7 +27702,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{CPU Time}
 <<Main: use tests>>=
-  use cputime, only: cputime_test
+  use cputime_ut, only: cputime_test
 <<Main: test cases>>=
   case ("cputime")
      call cputime_test (u, results)
@@ -27594,16 +27711,25 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SM QCD}
 <<Main: use tests>>=
-  use sm_qcd, only: sm_qcd_test
+  use sm_qcd_ut, only: sm_qcd_test
 <<Main: test cases>>=
   case ("sm_qcd")
      call sm_qcd_test (u, results)
 <<Main: all tests>>=
   call sm_qcd_test (u, results)
 @
+\subsubsection{SM physics}
+<<Main: use tests>>=
+  use sm_physics_ut, only: sm_physics_test
+<<Main: test cases>>=
+  case ("sm_physics")
+     call sm_physics_test (u, results)
+<<Main: all tests>>=
+  call sm_physics_test (u, results)
+@
 \subsubsection{Lexers}
 <<Main: use tests>>=
-  use lexers, only: lexer_test
+  use lexers_ut, only: lexer_test
 <<Main: test cases>>=
   case ("lexers")
      call lexer_test (u, results)
@@ -27612,7 +27738,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Parser}
 <<Main: use tests>>=
-  use parser, only: parse_test
+  use parser_ut, only: parse_test
 <<Main: test cases>>=
   case ("parser")
      call parse_test (u, results)
@@ -27621,7 +27747,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{XML}
 <<Main: use tests>>=
-  use xml, only: xml_test
+  use xml_ut, only: xml_test
 <<Main: test cases>>=
   case ("xml")
      call xml_test (u, results)
@@ -27630,7 +27756,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Colors}
 <<Main: use tests>>=
-  use colors, only: color_test
+  use colors_ut, only: color_test
 <<Main: test cases>>=
   case ("colors")
      call color_test (u, results)
@@ -27639,7 +27765,7 @@ This is for developers only, but needs a well-defined interface.
 @ 
 \subsubsection{State matrices}
 <<Main: use tests>>=
-  use state_matrices, only: state_matrix_test
+  use state_matrices_ut, only: state_matrix_test
 <<Main: test cases>>=
   case ("state_matrices")
      call state_matrix_test (u, results)
@@ -27648,7 +27774,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Analysis}
 <<Main: use tests>>=
-  use analysis, only: analysis_test
+  use analysis_ut, only: analysis_test
 <<Main: test cases>>=
   case ("analysis")
      call analysis_test (u, results)
@@ -27657,7 +27783,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Particles}
 <<Main: use tests>>=
-  use particles, only: particles_test
+  use particles_ut, only: particles_test
 <<Main: test cases>>=
   case ("particles")
      call particles_test (u, results)
@@ -27666,7 +27792,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Models}
 <<Main: use tests>>=
-  use models, only: models_test
+  use models_ut, only: models_test
 <<Main: test cases>>=
   case ("models")
      call models_test (u, results)
@@ -27675,7 +27801,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Auto Components}
 <<Main: use tests>>=
-  use auto_components, only: auto_components_test
+  use auto_components_ut, only: auto_components_test
 <<Main: test cases>>=
   case ("auto_components")
      call auto_components_test (u, results)
@@ -27684,7 +27810,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Radiation Generator}
 <<Main: use tests>>=
-  use radiation_generator, only: radiation_generator_test
+  use radiation_generator_ut, only: radiation_generator_test
 <<Main: test cases>>=
   case ("radiation_generator")
      call radiation_generator_test (u, results)
@@ -27693,7 +27819,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Evaluators}
 <<Main: use tests>>=
-  use evaluators, only: evaluator_test
+  use evaluators_ut, only: evaluator_test
 <<Main: test cases>>=
   case ("evaluators")
      call evaluator_test (u, results)
@@ -27702,7 +27828,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Expressions}
 <<Main: use tests>>=
-  use eval_trees, only: expressions_test
+  use eval_trees_ut, only: expressions_test
 <<Main: test cases>>=
   case ("expressions")
      call expressions_test (u, results)
@@ -27711,34 +27837,34 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{PHS Forests}
 <<Main: use tests>>=
-  use phs_forests, only: phs_forest_test
+  use phs_forests_ut, only: phs_forests_test
 <<Main: test cases>>=
   case ("phs_forests")
-     call phs_forest_test (u, results)
+     call phs_forests_test (u, results)
 <<Main: all tests>>=
-  call phs_forest_test (u, results)
+  call phs_forests_test (u, results)
 @
 \subsubsection{Beams}
 <<Main: use tests>>=
-  use beams, only: beam_test
+  use beams_ut, only: beams_test
 <<Main: test cases>>=
   case ("beams")
-     call beam_test (u, results)
+     call beams_test (u, results)
 <<Main: all tests>>=
-  call beam_test (u, results)
+  call beams_test (u, results)
 @
 \subsubsection{Polarizations}
 <<Main: use tests>>=
-  use polarizations, only: polarization_test
+  use polarizations_ut, only: polarizations_test
 <<Main: test cases>>=
   case ("polarizations")
-     call polarization_test (u, results)
+     call polarizations_test (u, results)
 <<Main: all tests>>=
-  call polarization_test (u, results)
+  call polarizations_test (u, results)
 @
 \subsubsection{SF Aux}
 <<Main: use tests>>=
-  use sf_aux, only: sf_aux_test
+  use sf_aux_ut, only: sf_aux_test
 <<Main: test cases>>=
   case ("sf_aux")
      call sf_aux_test (u, results)
@@ -27747,7 +27873,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF Mappings}
 <<Main: use tests>>=
-  use sf_mappings, only: sf_mappings_test
+  use sf_mappings_ut, only: sf_mappings_test
 <<Main: test cases>>=
   case ("sf_mappings")
      call sf_mappings_test (u, results)
@@ -27756,7 +27882,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF Base}
 <<Main: use tests>>=
-  use sf_base, only: sf_base_test
+  use sf_base_ut, only: sf_base_test
 <<Main: test cases>>=
   case ("sf_base")
      call sf_base_test (u, results)
@@ -27765,7 +27891,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF PDF Builtin}
 <<Main: use tests>>=
-  use sf_pdf_builtin, only: sf_pdf_builtin_test
+  use sf_pdf_builtin_ut, only: sf_pdf_builtin_test
 <<Main: test cases>>=
   case ("sf_pdf_builtin")
      call sf_pdf_builtin_test (u, results)
@@ -27774,7 +27900,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF LHAPDF}
 <<Main: use tests>>=
-  use sf_lhapdf, only: sf_lhapdf_test
+  use sf_lhapdf_ut, only: sf_lhapdf_test
 <<Main: test cases>>=
   case ("sf_lhapdf")
      call sf_lhapdf_test (u, results)
@@ -27783,7 +27909,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF ISR}
 <<Main: use tests>>=
-  use sf_isr, only: sf_isr_test
+  use sf_isr_ut, only: sf_isr_test
 <<Main: test cases>>=
   case ("sf_isr")
      call sf_isr_test (u, results)
@@ -27792,7 +27918,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF EPA}
 <<Main: use tests>>=
-  use sf_epa, only: sf_epa_test
+  use sf_epa_ut, only: sf_epa_test
 <<Main: test cases>>=
   case ("sf_epa")
      call sf_epa_test (u, results)
@@ -27801,7 +27927,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF EWA}
 <<Main: use tests>>=
-  use sf_ewa, only: sf_ewa_test
+  use sf_ewa_ut, only: sf_ewa_test
 <<Main: test cases>>=
   case ("sf_ewa")
      call sf_ewa_test (u, results)
@@ -27810,7 +27936,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF CIRCE1}
 <<Main: use tests>>=
-  use sf_circe1, only: sf_circe1_test
+  use sf_circe1_ut, only: sf_circe1_test
 <<Main: test cases>>=
   case ("sf_circe1")
      call sf_circe1_test (u, results)
@@ -27819,7 +27945,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF CIRCE2}
 <<Main: use tests>>=
-  use sf_circe2, only: sf_circe2_test
+  use sf_circe2_ut, only: sf_circe2_test
 <<Main: test cases>>=
   case ("sf_circe2")
      call sf_circe2_test (u, results)
@@ -27828,7 +27954,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF Gaussian}
 <<Main: use tests>>=
-  use sf_gaussian, only: sf_gaussian_test
+  use sf_gaussian_ut, only: sf_gaussian_test
 <<Main: test cases>>=
   case ("sf_gaussian")
      call sf_gaussian_test (u, results)
@@ -27837,7 +27963,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF Beam Events}
 <<Main: use tests>>=
-  use sf_beam_events, only: sf_beam_events_test
+  use sf_beam_events_ut, only: sf_beam_events_test
 <<Main: test cases>>=
   case ("sf_beam_events")
      call sf_beam_events_test (u, results)
@@ -27846,7 +27972,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SF EScan}
 <<Main: use tests>>=
-  use sf_escan, only: sf_escan_test
+  use sf_escan_ut, only: sf_escan_test
 <<Main: test cases>>=
   case ("sf_escan")
      call sf_escan_test (u, results)
@@ -27855,7 +27981,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{PHS Base}
 <<Main: use tests>>=
-  use phs_base, only: phs_base_test
+  use phs_base_ut, only: phs_base_test
 <<Main: test cases>>=
   case ("phs_base")
      call phs_base_test (u, results)
@@ -27864,7 +27990,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{PHS Single}
 <<Main: use tests>>=
-  use phs_single, only: phs_single_test
+  use phs_single_ut, only: phs_single_test
 <<Main: test cases>>=
   case ("phs_single")
      call phs_single_test (u, results)
@@ -27873,8 +27999,8 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{PHS Wood}
 <<Main: use tests>>=
-  use phs_wood, only: phs_wood_test
-  use phs_wood, only: phs_wood_vis_test
+  use phs_wood_ut, only: phs_wood_test
+  use phs_wood_ut, only: phs_wood_vis_test
 <<Main: test cases>>=
   case ("phs_wood")
      call phs_wood_test (u, results)
@@ -27886,7 +28012,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{PHS FKS Generator}
 <<Main: use tests>>=
-  use phs_fks, only: phs_fks_generator_test
+  use phs_fks_ut, only: phs_fks_generator_test
 <<Main: test cases>>=
   case ("phs_fks_generator")
      call phs_fks_generator_test (u, results)
@@ -27895,7 +28021,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{RNG Base}
 <<Main: use tests>>=
-  use rng_base, only: rng_base_test
+  use rng_base_ut, only: rng_base_test
 <<Main: test cases>>=
   case ("rng_base")
      call rng_base_test (u, results)
@@ -27904,7 +28030,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{RNG Tao}
 <<Main: use tests>>=
-  use rng_tao, only: rng_tao_test
+  use rng_tao_ut, only: rng_tao_test
 <<Main: test cases>>=
   case ("rng_tao")
      call rng_tao_test (u, results)
@@ -27913,7 +28039,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Selectors}
 <<Main: use tests>>=
-  use selectors, only: selectors_test
+  use selectors_ut, only: selectors_test
 <<Main: test cases>>=
   case ("selectors")
      call selectors_test (u, results)
@@ -27922,7 +28048,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{MCI Base}
 <<Main: use tests>>=
-  use mci_base, only: mci_base_test
+  use mci_base_ut, only: mci_base_test
 <<Main: test cases>>=
   case ("mci_base")
      call mci_base_test (u, results)
@@ -27931,7 +28057,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{MCI Midpoint}
 <<Main: use tests>>=
-  use mci_midpoint, only: mci_midpoint_test
+  use mci_midpoint_ut, only: mci_midpoint_test
 <<Main: test cases>>=
   case ("mci_midpoint")
      call mci_midpoint_test (u, results)
@@ -27940,7 +28066,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{MCI VAMP}
 <<Main: use tests>>=
-  use mci_vamp, only: mci_vamp_test
+  use mci_vamp_ut, only: mci_vamp_test
 <<Main: test cases>>=
   case ("mci_vamp")
      call mci_vamp_test (u, results)
@@ -27949,7 +28075,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{PRCLib Interfaces}
 <<Main: use tests>>=
-  use prclib_interfaces, only: prclib_interfaces_test
+  use prclib_interfaces_ut, only: prclib_interfaces_test
 <<Main: test cases>>=
   case ("prclib_interfaces")
      call prclib_interfaces_test (u, results)
@@ -27958,7 +28084,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Particle Specifiers}
 <<Main: use tests>>=
-  use particle_specifiers, only: particle_specifiers_test
+  use particle_specifiers_ut, only: particle_specifiers_test
 <<Main: test cases>>=
   case ("particle_specifiers")
      call particle_specifiers_test (u, results)
@@ -27967,7 +28093,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Process Libraries}
 <<Main: use tests>>=
-  use process_libraries, only: process_libraries_test
+  use process_libraries_ut, only: process_libraries_test
 <<Main: test cases>>=
   case ("process_libraries")
      call process_libraries_test (u, results)
@@ -27976,7 +28102,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{PRCLib Stacks}
 <<Main: use tests>>=
-  use prclib_stacks, only: prclib_stacks_test
+  use prclib_stacks_ut, only: prclib_stacks_test
 <<Main: test cases>>=
   case ("prclib_stacks")
      call prclib_stacks_test (u, results)
@@ -27985,25 +28111,25 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{HepMC}
 <<Main: use tests>>=
-  use hepmc_interface, only: hepmc_test
+  use hepmc_interface_ut, only: hepmc_interface_test
 <<Main: test cases>>=
   case ("hepmc")
-     call hepmc_test (u, results)
+     call hepmc_interface_test (u, results)
 <<Main: all tests>>=
-  call hepmc_test (u, results)
+  call hepmc_interface_test (u, results)
 @
 \subsubsection{LCIO}
 <<Main: use tests>>=
-  use lcio_interface, only: lcio_test
+  use lcio_interface_ut, only: lcio_interface_test
 <<Main: test cases>>=
   case ("lcio")
-     call lcio_test (u, results)
+     call lcio_interface_test (u, results)
 <<Main: all tests>>=
-  call lcio_test (u, results)
+  call lcio_interface_test (u, results)
 @
 \subsubsection{Jets}
 <<Main: use tests>>=
-  use jets, only: jets_test
+  use jets_ut, only: jets_test
 <<Main: test cases>>=
   case ("jets")
      call jets_test (u, results)
@@ -28012,7 +28138,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{PDG Arrays}
 <<Main: use tests>>=
-  use pdg_arrays, only: pdg_arrays_test
+  use pdg_arrays_ut, only: pdg_arrays_test
 <<Main: test cases>>=
   case ("pdg_arrays")
      call pdg_arrays_test (u, results)
@@ -28021,7 +28147,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{interactions}
 <<Main: use tests>>=
-  use interactions, only: interaction_test
+  use interactions_ut, only: interaction_test
 <<Main: test cases>>=
   case ("interactions")
      call interaction_test (u, results)
@@ -28030,7 +28156,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{SLHA}
 <<Main: use tests>>=
-  use slha_interface, only: slha_test
+  use slha_interface_ut, only: slha_test
 <<Main: test cases>>=
   case ("slha_interface")
      call slha_test (u, results)
@@ -28039,16 +28165,16 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Cascades}
 <<Main: use tests>>=
-  use cascades, only: cascade_test
+  use cascades_ut, only: cascades_test
 <<Main: test cases>>=
   case ("cascades")
-     call cascade_test (u, results)
+     call cascades_test (u, results)
 <<Main: all tests>>=
-  call cascade_test (u, results)
+  call cascades_test (u, results)
 @
 \subsubsection{PRC Test}
 <<Main: use tests>>=
-  use prc_test, only: prc_test_test
+  use prc_test_ut, only: prc_test_test
 <<Main: test cases>>=
   case ("prc_test")
      call prc_test_test (u, results)
@@ -28057,7 +28183,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{PRC Template ME}
 <<Main: use tests>>=
-  use prc_template_me, only: prc_template_me_test
+  use prc_template_me_ut, only: prc_template_me_test
 <<Main: test cases>>=
   case ("prc_template_me")
      call prc_template_me_test (u, results)
@@ -28066,8 +28192,8 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{PRC OMega}
 <<Main: use tests>>=
-  use prc_omega, only: prc_omega_test
-  use prc_omega, only: prc_omega_diags_test
+  use prc_omega_ut, only: prc_omega_test
+  use prc_omega_ut, only: prc_omega_diags_test
 <<Main: test cases>>=
   case ("prc_omega")
      call prc_omega_test (u, results)
@@ -28151,7 +28277,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{HEP Events}
 <<Main: use tests>>=
-  use hep_events, only: hep_events_test
+  use hep_events_ut, only: hep_events_test
 <<Main: test cases>>=
   case ("hep_events")
      call hep_events_test (u, results)
@@ -28160,7 +28286,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{EIO Data}
 <<Main: use tests>>=
-  use eio_data, only: eio_data_test
+  use eio_data_ut, only: eio_data_test
 <<Main: test cases>>=
   case ("eio_data")
      call eio_data_test (u, results)
@@ -28169,7 +28295,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{EIO Base}
 <<Main: use tests>>=
-  use eio_base, only: eio_base_test
+  use eio_base_ut, only: eio_base_test
 <<Main: test cases>>=
   case ("eio_base")
      call eio_base_test (u, results)
@@ -28187,7 +28313,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{EIO Checkpoints}
 <<Main: use tests>>=
-  use eio_checkpoints, only: eio_checkpoints_test
+  use eio_checkpoints_ut, only: eio_checkpoints_test
 <<Main: test cases>>=
   case ("eio_checkpoints")
      call eio_checkpoints_test (u, results)
@@ -28196,7 +28322,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{EIO LHEF}
 <<Main: use tests>>=
-  use eio_lhef, only: eio_lhef_test
+  use eio_lhef_ut, only: eio_lhef_test
 <<Main: test cases>>=
   case ("eio_lhef")
      call eio_lhef_test (u, results)
@@ -28205,7 +28331,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{EIO HepMC}
 <<Main: use tests>>=
-  use eio_hepmc, only: eio_hepmc_test
+  use eio_hepmc_ut, only: eio_hepmc_test
 <<Main: test cases>>=
   case ("eio_hepmc")
      call eio_hepmc_test (u, results)
@@ -28214,7 +28340,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{EIO LCIO}
 <<Main: use tests>>=
-  use eio_lcio, only: eio_lcio_test
+  use eio_lcio_ut, only: eio_lcio_test
 <<Main: test cases>>=
   case ("eio_lcio")
      call eio_lcio_test (u, results)
@@ -28223,7 +28349,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{EIO StdHEP}
 <<Main: use tests>>=
-  use eio_stdhep, only: eio_stdhep_test
+  use eio_stdhep_ut, only: eio_stdhep_test
 <<Main: test cases>>=
   case ("eio_stdhep")
      call eio_stdhep_test (u, results)
@@ -28232,7 +28358,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{EIO ASCII}
 <<Main: use tests>>=
-  use eio_ascii, only: eio_ascii_test
+  use eio_ascii_ut, only: eio_ascii_test
 <<Main: test cases>>=
   case ("eio_ascii")
      call eio_ascii_test (u, results)
@@ -28241,7 +28367,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{EIO Weights}
 <<Main: use tests>>=
-  use eio_weights, only: eio_weights_test
+  use eio_weights_ut, only: eio_weights_test
 <<Main: test cases>>=
   case ("eio_weights")
      call eio_weights_test (u, results)
@@ -28250,7 +28376,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Iterations}
 <<Main: use tests>>=
-  use iterations, only: iterations_test
+  use iterations_ut, only: iterations_test
 <<Main: test cases>>=
   case ("iterations")
      call iterations_test (u, results)
@@ -28259,7 +28385,7 @@ This is for developers only, but needs a well-defined interface.
 @
 \subsubsection{Beam Structures}
 <<Main: use tests>>=
-  use beam_structures, only: beam_structures_test
+  use beam_structures_ut, only: beam_structures_test
 <<Main: test cases>>=
   case ("beam_structures")
      call beam_structures_test (u, results)

@@ -36,7 +36,8 @@
 ## We create 
 ## (1) a library which is still to be combined with auxiliary libs.
 ## (2) a test library
-noinst_LTLIBRARIES = libsindarin.la libsindarin_ut.la
+noinst_LTLIBRARIES = libsindarin.la
+check_LTLIBRARIES = libsindarin_ut.la
 
 libsindarin_la_SOURCES = \
   codes.f90 \

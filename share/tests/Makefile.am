@@ -134,6 +134,7 @@ REF_OUTPUT_FILES_BASE = \
     ref-output/xml_2.ref \
     ref-output/xml_3.ref \
     ref-output/xml_4.ref \
+    ref-output/sm_physics_1.ref \
     ref-output/sm_qcd_1.ref \
     ref-output/models_1.ref \
     ref-output/models_2.ref \

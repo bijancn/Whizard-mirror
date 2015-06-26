@@ -104,6 +104,11 @@ install-data-hook:
 	@echo '*******************************************************************'
 	@echo ''
 
+## Extra target for extended tests
+## (Would use AM_EXTRA_RECURSIVE_TARGETS, but this requires automake >= 1.13)
+check-extended:
+	$(MAKE) -C tests check-extended
+
 ## Remove backup files
 maintainer-clean-local:
 	-rm -f *~
