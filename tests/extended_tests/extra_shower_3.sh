@@ -1,5 +1,5 @@
 #!/bin/sh
-# time ~39 min
+# time ~ min
 echo "Running script $0"
 if test -f OCAML_FLAG -a -f PYTHIA6_FLAG -a -f PYTHON_FLAG; then
     s=`basename @script@`

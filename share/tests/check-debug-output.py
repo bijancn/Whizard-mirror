@@ -7,8 +7,12 @@ filename = test + '.debug'
 inc_energy = 0.0
 out_energy = 0.0
 line_no = 0
-delta = 10.0**-5
+rel_delta = 10.0**-5
+abs_delta = 0.002
 valid = True
+def nearly_equal(a, b):
+  diff = abs(a - b)
+  return diff / max([a, b]) < rel_delta or diff < abs_delta
 
 print 'Start file'
 print (3 * '{:<20s}').format('Line-Nr', 'Incoming-Energy', 'Outgoing-Energy')
@@ -19,7 +23,7 @@ with open(filename, 'r') as infile:
       inc_energy = energy(line)
     elif 'outgoing momenta' in line:
       out_energy = energy(line)
-      if abs(out_energy - inc_energy) / max([out_energy, inc_energy]) > delta:
+      if not nearly_equal(out_energy, inc_energy):
         print ("{:<20d}" + 2 *"{:<20.10f}").format(line_no, inc_energy, out_energy)
         valid = False
 print 'End file'

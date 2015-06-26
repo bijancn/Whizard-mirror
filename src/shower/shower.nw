@@ -439,7 +439,6 @@ shower in GeV$^2$, and the two shower parameters [[PARP(72)]] and
 <<Shower base: parameters>>=
   real(default), public :: D_min_scale = 0.5_default
 @ %def D_min_scale
-@
 Treating either $u$ and $d$, or all quarks except $t$ as massless:
 <<Shower base: parameters>>=
   logical, public :: treat_light_quarks_massless = .true.
@@ -588,7 +587,7 @@ remnants and any other particles.
     case (BEAM_REMNANT)
        mass2 = zero !!! don't know how to handle the beamremnant
     case default
-       mass2 = zero
+       mass2 = - 17777.7_default
     end select
   end function mass_squared_type
 
@@ -625,7 +624,7 @@ remnants and any other particles.
 
 module shower_partons
 
-<<Use kinds>>
+<<Use kinds with double>>
   use io_units
   use constants
   use system_defs, only: TAB
@@ -734,7 +733,7 @@ available to all operations on the shower partons, we endow the
     integer, dimension(2) :: col_array
     parton%nr = nr
     parton%momentum = particle%p
-    parton%t = parton%momentum**2
+    parton%t = particle%p2
     parton%type = particle%flv%get_pdg ()
     col_array = particle%get_color ()
     parton%c1 = col_array (1)
@@ -1211,6 +1210,17 @@ parton and first daughter.  This is only used for debugging.
 
 @ %def parton_mass_squared
 @
+<<Shower partons: parton: TBP>>=
+  procedure :: momentum_to_pythia6 => parton_momentum_to_pythia6
+<<Shower partons: procedures>>=
+  pure function parton_momentum_to_pythia6 (prt) result (p)
+    real(double), dimension(1:5) :: p
+    class(parton_t), intent(in) :: prt
+    p = prt%momentum%to_pythia6 (prt%t)
+  end function parton_momentum_to_pythia6
+
+@ %def parton_momentum_to_pythia6
+@
 <<Shower partons: public>>=
   public :: P_prt_to_child1
 <<Shower partons: procedures>>=
@@ -1265,7 +1275,7 @@ parton [[prt]] into its daughters are allowed or not.
           !!! check angular ordering
           if (associated (prt%child1)) then
              if (associated (prt%child1%child2)) then
-                ctheta = (E3**2 - p1**2 - p4**2 +prt%t) / (two * p1 * p4)
+                ctheta = (E3**2 - p1**2 - p4**2 + prt%t) / (two * p1 * p4)
                 cthetachild1 = (prt%child1%momentum%p(0)**2 - &
                      space_part (prt%child1%child1%momentum)**2 &
                      - space_part (prt%child1%child2%momentum)**2 + prt%child1%t) &
@@ -1283,35 +1293,19 @@ parton [[prt]] into its daughters are allowed or not.
 @ %def thetabar
 @
 <<Shower partons: public>>=
-  public :: parton_apply_z
-<<Shower partons: procedures>>=
-  recursive subroutine parton_apply_z(prt, newz)
-    type(parton_t), intent(inout) :: prt
-    real(default), intent(in) :: newz
-    call msg_debug2 (D_SHOWER, "parton_apply_z: old z", prt%z)
-    call msg_debug2 (D_SHOWER, "              : new z", newz)
-    prt%z = newz
-    if (associated (prt%child1) .and. associated (prt%child2)) then
-       prt%child1%momentum%p(0) = newz * prt%momentum%p(0)
-       call parton_apply_z (prt%child1, prt%child1%z)
-       prt%child2%momentum%p(0) = (one - newz) * prt%momentum%p(0)
-       call parton_apply_z (prt%child2, prt%child2%z)
-    end if
-  end subroutine parton_apply_z
-
-@ %def parton_apply_z
-@
-<<Shower partons: public>>=
   public :: parton_apply_costheta
 <<Shower partons: procedures>>=
   recursive subroutine parton_apply_costheta (prt, rng)
     type(parton_t), intent(inout) :: prt
     class(rng_t), intent(inout), allocatable :: rng
-    if (debug2_active (D_SHOWER)) print *, "D: parton_apply_costheta for parton " , prt%nr
+    if (debug2_active (D_SHOWER)) then
+       print *, "D: parton_apply_costheta for parton " , prt%nr
+       print *, 'prt%momentum%p =    ', prt%momentum%p
+       call msg_debug2 (D_SHOWER, "prt%type", prt%type)
+    end if
     prt%z = 0.5_default * (one + prt%get_beta () * prt%costheta)
-    if (associated (prt%child1) .and. associated (prt%child2) ) then
-       if (prt%child1%simulated .and. &
-           prt%child2%simulated) then
+    if (associated (prt%child1) .and. associated (prt%child2)) then
+       if (prt%child1%simulated .and. prt%child2%simulated) then
           prt%z = 0.5_default * (one + (prt%child1%t - prt%child2%t) / &
                prt%t + prt%get_beta () * prt%costheta * &
                 sqrt((prt%t - prt%child1%t - prt%child2%t)**2 - &
@@ -1388,8 +1382,7 @@ three-momenta of its children given their energy and virtuality
     if (debug2_active (D_SHOWER)) print *, "D: parton_generate_ps for parton " , prt%nr
     if (debug_active (D_SHOWER)) then
        if (.not. (associated (prt%child1) .and. associated (prt%child2))) then
-          print *, "no children for generate_ps"
-          stop 1
+          call msg_fatal ("no children for generate_ps")
        end if
     end if
     !!! test if parton is a virtual parton from the imagined parton shower history
@@ -1519,8 +1512,7 @@ generates the two remaining three-momenta.
     if (debug_active (D_SHOWER)) print *, "D: parton_generate_ps_ini: for parton " , prt%nr
     if (debug_active (D_SHOWER)) then
        if (.not. (associated (prt%child1) .and. associated (prt%child2))) then
-          print *, "no children for generate_ps"
-          stop 1
+          call msg_fatal ("no children for generate_ps")
        end if
     end if
 
@@ -1564,7 +1556,7 @@ generates the two remaining three-momenta.
              call prt%write ()
              call prt%child1%write ()
              call prt%child2%write ()
-             stop 1
+             call msg_fatal ("parton_generate_ps_ini: Dreiecksungleichung")
           end if
        end if
        if (debug_active (D_SHOWER)) print *, "D: parton_generate_ps_ini: x = ", x
@@ -1598,9 +1590,8 @@ generates the two remaining three-momenta.
     class(rng_t), intent(inout), allocatable :: rng
     integer :: gtoqq
     real(default) :: integral, random
-
     if (signal_is_pending ()) return
-
+    call msg_debug (D_SHOWER, "next_t_ana")
     ! check if branchings are possible at all
     if (min (prt%t, prt%momentum%p(0)**2) < &
          prt%mass_squared () + prt%settings%min_virtuality) then
@@ -1608,7 +1599,6 @@ generates the two remaining three-momenta.
        call prt%set_simulated ()
        return
     end if
-
     integral = zero
     call rng%generate (random)
     do
@@ -1629,25 +1619,20 @@ generates the two remaining three-momenta.
 @ %def parton_next_t_ana
 @ The shower is actually sensitive to how close we go to the one here.
 <<Shower partons: procedures>>=
-  pure function cmax (prt, tt) result (cma)
+  function cmax (prt, tt) result (cmaxx)
     type(parton_t), intent(in) :: prt
     real(default), intent(in), optional :: tt
-    real(default) :: cma
-    real(default) :: t, cost
-
-    if (present(tt)) then
-       t = tt
-    else
-       t = prt%t
-    end if
-
+    real(default) :: t, cost, cmaxx, radicand
+    t = prt%t;  if (present (tt))  t = tt
     if (associated (prt%parent)) then
        cost = prt%parent%get_costheta ()
-       cma = min (0.99999_default, sqrt( max(zero, one - t/ &
-              (prt%get_beta () * prt%momentum%p(0))**2 * &
-              (one + cost) / (one - cost))))
+       radicand = max(zero, one - &
+            t / (prt%get_beta () * prt%momentum%p(0))**2 * &
+            (one + cost) / (one - cost))
+       call msg_debug2 (D_SHOWER, "cmax: sqrt (radicand)", sqrt (radicand))
+       cmaxx = min (0.99999_default, sqrt (radicand))
     else
-       cma = 0.99999_default
+       cmaxx = 0.99999_default
     end if
   end function cmax
 
@@ -1685,6 +1670,7 @@ used for the integration.
     real(default), parameter :: cstepmin = 0.03_default
 
     if (signal_is_pending ()) return
+    call msg_debug (D_SHOWER, "parton_simulate_stept")
     gtoqq = 111 ! illegal value
     call prt%set_simulated (.false.)
 
@@ -2057,6 +2043,10 @@ $k_T$-ordered showers.
     if (shower%settings%muli_active) then
        call shower%activate_multiple_interactions (os_data)
     end if
+    call msg_debug2 (D_SHOWER, 'shower%write() after shower_import_particle_set')
+    if (debug2_active (D_SHOWER)) then
+       call shower%write ()
+    end if
   contains
   <<Shower core: shower import particle set: procedures>>
   end subroutine shower_import_particle_set
@@ -2140,7 +2130,7 @@ $k_T$-ordered showers.
     integer :: i, j, k
     integer :: n_int, max_color_nr
     integer, dimension(2,4) :: color_corr
-
+    call msg_debug (D_SHOWER, "shower_generate_emissions")
     if (shower%settings%isr_active) then
        call msg_debug (D_SHOWER, "Generate ISR with FSR")
        i = 0
@@ -2300,7 +2290,7 @@ $k_T$-ordered showers.
          model_hadrons)
     if (shower%settings%hadronization_active) then
        call shower%converttopythia ()
-          end if
+    end if
   end subroutine shower_make_particle_set
 
 @ %def shower_make_particle_set
@@ -2709,6 +2699,7 @@ end subroutine set_starting_scale
     class(shower_t), intent(inout) :: shower
     integer :: i, j
     type(parton_t), pointer :: prt
+    call msg_debug (D_SHOWER, "shower_simulate_no_isr_shower")
     do i = 1, size (shower%interactions)
        do j = 1, 2
           prt => shower%interactions(i)%i%partons(j)%p
@@ -2787,9 +2778,8 @@ end subroutine set_starting_scale
        end if
        if (debug_active (D_SHOWER)) then
           if (i == size (shower%partons)) then
-             call msg_error ("shower_remove_parton_from_partons: parton&
+             call msg_bug ("shower_remove_parton_from_partons: parton&
                   &to be removed not found")
-             stop 1
           end if
        end if
     end do
@@ -4115,7 +4105,6 @@ proper flavor information, by the ISR shower.
   end subroutine shower_write_lhef
 
 @ %def shower_write_lhef
-
 @
 <<Shower core: procedures>>=
   subroutine shower_replace_parent_by_hadron (shower, prt)
@@ -4460,10 +4449,9 @@ proper flavor information, by the ISR shower.
     integer :: n_loop
 
     if (signal_is_pending ()) return
+    if (debug2_active (D_SHOWER))  &
+         print *, "D: shower_simulate_children_ana: for parton " , prt%nr
     gtoqq = 0
-
-    if (debug2_active (D_SHOWER)) print *, "D: shower_simulate_children_ana: for parton " , prt%nr
-
     if (.not. associated (prt%child1) .or. .not. associated (prt%child2)) then
        call msg_error ("Shower: error in simulate_children_ana: no children.")
        return
@@ -4514,8 +4502,8 @@ proper flavor information, by the ISR shower.
        end if
        if (n_loop > 1000) then
           call shower%write ()
-          call msg_message (" simulate_children_ana failed for parton ", prt%nr)
-          call msg_error ("BUG: too many loops in simulate_children_ana (?)")
+          call msg_message ("simulate_children_ana failed for parton ", prt%nr)
+          call msg_warning ("too many loops in simulate_children_ana")
           shower%valid = .false.
           return
        end if
@@ -4524,20 +4512,16 @@ proper flavor information, by the ISR shower.
        t(2) = prt%child2%t
 
        !!! check if a branching in the range t(i) to t(i) - tstep(i) occurs
-
-       !!! check for child1
        if (.not. prt%child1%simulated) then
           call parton_simulate_stept &
                (prt%child1, shower%rng, integral(1), random(1), gtoqq(1))
        end if
-       !!! check for child2
        if (.not. prt%child2%simulated) then
           call parton_simulate_stept &
                (prt%child2, shower%rng, integral(2), random(2), gtoqq(2))
        end if
 
-       if (prt%child1%simulated .and. &
-           prt%child2%simulated) then
+       if (prt%child1%simulated .and. prt%child2%simulated) then
           if (sqrt (prt%t) <= sqrt (prt%child1%t) + sqrt (prt%child2%t)) then
             <<Repeat the simulation for the parton with the lower virtuality>>
           else
@@ -4546,7 +4530,11 @@ proper flavor information, by the ISR shower.
        end if
     end do
 
+    !print *, 'shower after the loop shower_simulate_children_ana' !!! Debugging
+    !call shower%write () !!! Debugging
     call parton_apply_costheta (prt, shower%rng)
+    !print *, 'shower after parton_apply_costheta' !!! Debugging
+    !call shower%write () !!! Debugging
 
     <<Add children>>
     call shower_parton_update_color_connections (shower, prt)
@@ -5177,7 +5165,7 @@ branching, while FSR branchings are ignored.
     else
        call shower%write ()
        call prt%write ()
-       call msg_error ("Shower: no otherparton found")
+       call msg_error ("shower_find_recoiler: no otherparton found")
     end if
   end function shower_find_recoiler
 
@@ -5234,9 +5222,9 @@ branching, while FSR branchings are ignored.
       integer :: quark
 
       !!! calculate shat -> s of parton-parton system
-      shat= (otherprt%momentum + prt%child1%momentum)**2
+      shat = (otherprt%momentum + prt%child1%momentum)**2
       !!! calculate s -> s of hadron-hadron system
-      s= (otherprt%initial%momentum + prt%initial%momentum)**2
+      s = (otherprt%initial%momentum + prt%initial%momentum)**2
       integral = zero
       minz = prt%child1%x
       maxz = maxzz (shat, s, shower%settings%isr_z_cutoff, shower%settings%isr_minenergy)
@@ -5779,13 +5767,12 @@ flavors, momenta, etc.
     real(default) :: scale
     type(parton_t), pointer :: prt
     integer :: i,j
-    print *, "shower_set_max_isr_scale", newscale
-    call shower%write ()
-
+    call msg_debug (D_SHOWER, "shower_set_max_isr_scale: newscale", &
+         newscale)
     if (shower%settings%isr_pt_ordered) then
        scale = newscale
     else
-       scale = -abs(newscale)
+       scale = - abs (newscale)
     end if
 
     INTERACTIONS: do i = 1, size (shower%interactions)
@@ -5827,9 +5814,6 @@ flavors, momenta, etc.
             call shower_remove_parents_and_stuff (shower, prt)
          end do PARTONS
       end do INTERACTIONS
-
-      call shower%write ()
-      print *, "shower_set_max_isr_scale finished"
     end subroutine shower_set_max_isr_scale
 
 @ %def shower_set_max_isr_scale
@@ -5871,13 +5855,10 @@ procedure is intended for branched FSR-partons emitted in the ISR.
        end if
        if (prt%child1%simulated .or. &
            prt%child2%simulated) then
-          print *, " error in shower_parton_generate_fsr:", &
-               "children already simulated for parton ", prt%nr
-          call shower%write ()
+          print *, "children already simulated for parton ", prt%nr
           return
        end if
     end if
-
     allocate (partons(1))
     partons(1)%p => prt
     if (single_emission) then
@@ -5885,7 +5866,6 @@ procedure is intended for branched FSR-partons emitted in the ISR.
     else
        call shower%parton_pointer_array_generate_fsr_recursive (partons)
     end if
-
   end subroutine shower_parton_generate_fsr
 
 @ %def shower_parton_generate_fsr
@@ -6104,7 +6084,7 @@ interaction
           K(i,1) = 21
           K(i,2) = pp%initial%type
           K(i,3) = 0
-          P(i,1:5) = pp%initial%momentum%to_pythia6 ()
+          P(i,1:5) = pp%initial%momentum_to_pythia6 ()
           !!! add partons emitted by the hadron
           ppparent => pp
           do while (associated (ppparent%parent))
@@ -6117,18 +6097,18 @@ interaction
           K(i+2,1) = 21
           K(i+2,2) = ppparent%type
           K(i+2,3) = i
-          P(i+2,1:5) = ppparent%momentum%to_pythia6 ()
+          P(i+2,1:5) = ppparent%momentum_to_pythia6 ()
           !!! add partons in the initial state of the ME
           K(i+4,1) = 21
           K(i+4,2) = pp%type
           K(i+4,3) = i
-          P(i+4,1:5) = pp%momentum%to_pythia6 ()
+          P(i+4,1:5) = pp%momentum_to_pythia6 ()
        else
           !!! for e+e- without ISR all entries are the same
           K(i,1) = 21
           K(i,2) = pp%type
           K(i,3) = 0
-          P(i,1:5) = pp%momentum%to_pythia6 ()
+          P(i,1:5) = pp%momentum_to_pythia6 ()
           P(i+2,:) = P(1,:)
           K(i+2,:) = K(1,:)
           K(i+2,3) = i
@@ -6154,7 +6134,7 @@ interaction
        K(7+I,1) = 21
        K(7+I,2) = pp%type
        K(7+I,3) = 7
-       P(7+I,1:5) = pp%momentum%to_pythia6 ()
+       P(7+I,1:5) = pp%momentum_to_pythia6 ()
        !N = 7 + I
        N = 6 + I
     end do
@@ -6266,7 +6246,7 @@ interaction
        K(N,3) = 0
        K(N,4) = 0
        K(N,5) = 0
-       P(N,1:5) = prt%momentum%to_pythia6()
+       P(N,1:5) = prt%momentum_to_pythia6()
     end do
     deallocate (final_partons)
   end subroutine shower_transfer_final_partons_to_pythia
@@ -6415,8 +6395,8 @@ contains
     call shower%transfer_settings ()
     call msg_debug (D_SHOWER, "calling pyevnt")
     ! TODO: (bcn 2015-04-24) doesnt change anything I think
-    ! P(1,1:5) = pset_reduced%prt(1)%p%to_pythia6 ()
-    ! P(2,1:5) = pset_reduced%prt(2)%p%to_pythia6 ()
+    ! P(1,1:5) = pset_reduced%prt(1)%momentum_to_pythia6 ()
+    ! P(2,1:5) = pset_reduced%prt(2)%momentum_to_pythia6 ()
     call pyevnt ()
     call pyedit(12)
     do i = 1, n
@@ -6621,7 +6601,7 @@ added back in by Pythia.
        incomings%p = L * incomings%p
     end if
     call particle_set%replace (particles)
-    call replace_incomings ()
+    !call replace_incomings ()
     call set_parent_child_relations_of_known_pythia_parents ()
     !call set_parent_child_relations_of_color_strings_to_hadrons ()
     !call particle_set%remove_duplicates (py_tiny * 100.0_default)

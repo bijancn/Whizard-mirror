@@ -107,7 +107,7 @@ EXTRA_DIST = $(TEST_DRIVERS_SH) \
 
 ########################################################################
 
-EXTRA_DIST += extracheck_combiner.sh produce_trs.sh check-debug-output.py
+EXTRA_DIST += extracheck_combiner.sh produce_trs.sh
 
 .run.run.extra.trs:
 	$(SHELL) $(srcdir)/produce_trs.sh $< >| $@
@@ -115,9 +115,8 @@ EXTRA_DIST += extracheck_combiner.sh produce_trs.sh check-debug-output.py
 clean-extracheck_results:
 	rm -f *.extra.trs
 .PHONY: clean-extracheck_results
-# TODO: (bcn 2015-06-18) remember to check dist clean
 
-EXTRACHECK_SHOWER_RUN = extra_shower_1.run extra_shower_2.run
+EXTRACHECK_SHOWER_RUN = extra_shower_1.run extra_shower_2.run extra_shower_3.run
 EXTRACHECK_SHOWER_SH = $(EXTRACHECK_SHOWER_RUN:.run=.sh)
 EXTRACHECK_SHOWER_TRS = $(EXTRACHECK_SHOWER_RUN:.run=.run.extra.trs)
 .SECONDARY: $(EXTRACHECK_SHOWER_RUN)
@@ -146,7 +145,7 @@ SUFFIXES = .sh .run .run.extra.trs
 	  $(SED) 's|@script@|$(top_srcdir)/share/tests/$*|g' $< > $@; \
 	fi
 	$(SED) -i 's|@python_bin@|$(PYTHON_BIN)|g' $@
-	$(SED) -i 's|@src_dir@|@srcdir@|g' $@
+	$(SED) -i 's|@share_dir@|$(top_srcdir)/share/tests/|g' $@
 	chmod +x $@
 
 if MPOST_AVAILABLE

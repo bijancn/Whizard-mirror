@@ -35,13 +35,16 @@
 
 EXTRA_DIST = \
     $(TESTSUITE_MACROS) $(TESTSUITES_M4) $(TESTSUITES_SIN) \
+    $(TESTSUITE_TOOLS) \
     $(REF_OUTPUT_FILES) \
     structure_2_inc.sin testproc_3.phs \
     user_cuts.f90 user_strfun.f90 susyhit.in TEST.mdl
 
 TESTSUITE_MACROS = testsuite.m4
+TESTSUITE_TOOLS = check-debug-output.py compare-integrals.py compare-histos.py
 
 REF_OUTPUT_FILES = \
+    extra_integration_results.dat \
     $(REF_OUTPUT_FILES_BASE) $(REF_OUTPUT_FILES_DOUBLE) \
     $(REF_OUTPUT_FILES_EXT)
 
