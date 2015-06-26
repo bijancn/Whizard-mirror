@@ -58,9 +58,5 @@ check-extended-NLO:
 ## This won't be executed by default
 clean-local:
 	$(MAKE) -C extended_tests clean
-
-clean-local:
 	$(MAKE) -C extended_tests_shower clean
-
-clean-local:
 	$(MAKE) -C extended_tests_NLO clean

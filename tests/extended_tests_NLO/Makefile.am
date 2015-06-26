@@ -35,7 +35,7 @@
 WHIZARD_DRIVER = run_whizard.sh
 
 TESTS_EXTENDED = \
-	extra_NLO_1.run
+	extra_nlo_1.run
 
 XFAIL_TESTS_EXTENDED =
 
@@ -70,6 +70,8 @@ SUFFIXES = .sh .run
 	$(SED) -i 's|@share_dir@|$(top_srcdir)/share/tests/|g' $@
 	@chmod +x $@
 
+#$(SED) -i 's|@python_bin@|$(PYTHON_BIN)|g' $@
+#$(SED) -i 's|@share_dir@|$(top_srcdir)/share/tests/|g' $@
 if MPOST_AVAILABLE
 $(TESTS_REQ_GAMELAN): gamelan.sty
 $(UNIT_TESTS_REQ_GAMELAN): gamelan.sty
