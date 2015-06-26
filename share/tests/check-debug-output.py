@@ -1,7 +1,13 @@
 import re, sys
 
 re_e = re.compile("p\(0:3\) = *([0-9]+\.[0-9]+)")
-energy = lambda line: float(re_e.search(line).group(1))
+def energy(line):
+  try:
+    return float(re_e.search(line).group(1))
+  except AttributeError:
+    print 'Could not find number in this line:'
+    print line
+    return 0.0
 test = sys.argv[1]
 filename = test + '.debug'
 inc_energy = 0.0
@@ -11,8 +17,11 @@ rel_delta = 10.0**-5
 abs_delta = 0.002
 valid = True
 def nearly_equal(a, b):
-  diff = abs(a - b)
-  return diff / max([a, b]) < rel_delta or diff < abs_delta
+  try:
+    diff = abs(a - b)
+    return diff / max([a, b]) < rel_delta or diff < abs_delta
+  except TypeError:
+    return False
 
 print 'Start file'
 print (3 * '{:<20s}').format('Line-Nr', 'Incoming-Energy', 'Outgoing-Energy')

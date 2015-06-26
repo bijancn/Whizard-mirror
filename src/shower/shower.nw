@@ -516,16 +516,17 @@ remnants and any other particles.
   public :: mass_type
   public :: mass_squared_type
 <<Shower base: procedures>>=
-  elemental function mass_type (type) result (mass)
+  elemental function mass_type (type, m2_default) result (mass)
     integer, intent(in) :: type
+    real(default), intent(in) :: m2_default
     real(default) :: mass
-    mass = sqrt (mass_squared_type (type))
+    mass = sqrt (mass_squared_type (type, m2_default))
   end function mass_type
 
-  elemental function mass_squared_type (type) result (mass2)
+  elemental function mass_squared_type (type, m2_default) result (mass2)
     integer, intent(in) :: type
+    real(default), intent(in) :: m2_default
     real(default) :: mass2
-
     select case (abs (type))
     case (1,2)
        if (treat_light_quarks_massless .or. &
@@ -552,8 +553,6 @@ remnants and any other particles.
        else
           mass2 = 4.800_default**2
        end if
-    case (6)
-       mass2 = 175.00_default**2
     case (GLUON)
        mass2 = zero
     case (NEUTRON)
@@ -582,12 +581,10 @@ remnants and any other particles.
        mass2 = 5.8152_default**2
     case (SIGMABPLUS)
        mass2 = 5.8078_default**2
-    case (UNDEFINED)
-       mass2 = zero
     case (BEAM_REMNANT)
        mass2 = zero !!! don't know how to handle the beamremnant
     case default
-       mass2 = - 17777.7_default
+       mass2 = m2_default
     end select
   end function mass_squared_type
 
@@ -607,7 +604,7 @@ remnants and any other particles.
     do i = 1, min (3, d_nf)
     !!! to do: take heavier quarks(-> cuts on allowed costheta in g->qq)
     !!!        into account
-       if ((four * mass_squared_type (i) + min_virtuality) < t ) then
+       if ((four * mass_squared_type (i, zero) + min_virtuality) < t ) then
           nr = i
        else
           exit
@@ -673,6 +670,7 @@ available to all operations on the shower partons, we endow the
      type(shower_settings_t), pointer :: settings => null()
      type(vector4_t) :: momentum = vector4_null
      real(default) :: t  = zero
+     real(default) :: mass2  = zero
      real(default) :: scale = zero
      real(default) :: z = zero
      real(default) :: costheta = zero
@@ -739,6 +737,7 @@ available to all operations on the shower partons, we endow the
     parton%c1 = col_array (1)
     parton%c2 = col_array (2)
     parton%interactionnr = 1
+    parton%mass2 = particle%flv%get_mass () ** 2
   end function parton_of_particle
 
 @ %def parton_of_particle
@@ -799,6 +798,7 @@ available to all operations on the shower partons, we endow the
     prt2%type = prt1%type
     prt2%momentum = prt1%momentum
     prt2%t = prt1%t
+    prt2%mass2 = prt1%mass2
     prt2%scale = prt1%scale
     prt2%z = prt1%z
     prt2%costheta = prt1%costheta
@@ -930,9 +930,9 @@ parton and first daughter.  This is only used for debugging.
                                prt%momentum%p(2), TAB, &
                                prt%momentum%p(3)
     write (u, "(1x,9A)") "<p4square>", TAB // TAB, "<t>", TAB // TAB, &
-         "<scale>", TAB // TAB, "<c1>", TAB, "<c2>"
+         "<scale>", TAB // TAB, "<c1>", TAB, "<c2>", TAB, "<mass2>"
     write (u, "(1x,3(ES12.5,A))", advance = "no") &
-         prt%momentum ** 2, TAB // TAB, prt%t, TAB, prt%scale, TAB
+         prt%momentum ** 2, TAB // TAB, prt%t, TAB, prt%scale, TAB, prt%mass2
     write (u, "(2(I4,A))") prt%c1, TAB, prt%c2, TAB
     if (prt%is_branched ()) then
        if (prt%belongstoFSR) then
@@ -1191,10 +1191,10 @@ parton and first daughter.  This is only used for debugging.
 <<Shower partons: public>>=
   public :: parton_mass
 <<Shower partons: procedures>>=
-  function parton_mass (prt) result (mass)
+  elemental function parton_mass (prt) result (mass)
     type(parton_t), intent(in) :: prt
     real(default) :: mass
-    mass = mass_type (prt%type)
+    mass = mass_type (prt%type, prt%mass2)
   end function parton_mass
 
 @ %def parton_mass
@@ -1202,10 +1202,10 @@ parton and first daughter.  This is only used for debugging.
 <<Shower partons: parton: TBP>>=
   procedure :: mass_squared => parton_mass_squared
 <<Shower partons: procedures>>=
-  function parton_mass_squared (prt) result (mass_squared)
+  elemental function parton_mass_squared (prt) result (mass_squared)
     class(parton_t), intent(in) :: prt
     real(default) :: mass_squared
-    mass_squared = mass_squared_type (prt%type)
+    mass_squared = mass_squared_type (prt%type, prt%mass2)
   end function parton_mass_squared
 
 @ %def parton_mass_squared
@@ -1216,7 +1216,7 @@ parton and first daughter.  This is only used for debugging.
   pure function parton_momentum_to_pythia6 (prt) result (p)
     real(double), dimension(1:5) :: p
     class(parton_t), intent(in) :: prt
-    p = prt%momentum%to_pythia6 (prt%t)
+    p = prt%momentum%to_pythia6 (prt%mass_squared ())
   end function parton_momentum_to_pythia6
 
 @ %def parton_momentum_to_pythia6
@@ -4530,11 +4530,7 @@ proper flavor information, by the ISR shower.
        end if
     end do
 
-    !print *, 'shower after the loop shower_simulate_children_ana' !!! Debugging
-    !call shower%write () !!! Debugging
     call parton_apply_costheta (prt, shower%rng)
-    !print *, 'shower after parton_apply_costheta' !!! Debugging
-    !call shower%write () !!! Debugging
 
     <<Add children>>
     call shower_parton_update_color_connections (shower, prt)
@@ -6873,7 +6869,7 @@ added back in by Pythia.
              else
                 if (new_index(parent) > 0 ) then
                    npar = npar + 1
-                   parents(npar) = new_index(parent) 
+                   parents(npar) = new_index(parent)
                    call particle_set%prt(new_index(parent) )%add_child (child)
                 end if
              end if
