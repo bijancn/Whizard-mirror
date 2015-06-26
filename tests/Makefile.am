@@ -41,6 +41,8 @@ SUBDIRS = \
 ## In particular, not visited by 'make check'
 DIST_SUBDIRS = \
   $(SUBDIRS) \
+  extended_tests_NLO \
+  extended_tests_shower \
   extended_tests
 
 ## Invoke extended tests explicitly by 'make check-extended'
@@ -50,9 +52,15 @@ check-extended:
 check-extended-shower:
 	$(MAKE) -C extended_tests_shower check
 
+check-extended-NLO:
+	$(MAKE) -C extended_tests_NLO check
+
 ## This won't be executed by default
 clean-local:
 	$(MAKE) -C extended_tests clean
 
 clean-local:
 	$(MAKE) -C extended_tests_shower clean
+
+clean-local:
+	$(MAKE) -C extended_tests_NLO clean

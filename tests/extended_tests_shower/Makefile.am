@@ -32,9 +32,6 @@
 #
 ########################################################################
 
-EXTRACHECK_SHOWER_RUN =
-EXTRACHECK_SHOWER_SH = $(EXTRACHECK_SHOWER_RUN:.run=.sh)
-
 WHIZARD_DRIVER = run_whizard.sh
 
 TESTS_EXTENDED = \
@@ -211,9 +208,6 @@ clean-local:
 	rm -f slhaspectrum.in suspect2.out suspect2_lha.out 
 	rm -f susyhit.in susyhit_slha.out suspect2_lha.in
 	rm -f *.$(WT_OMEGA_CACHE_SUFFIX)
-	rm -f *.run.extra.trs
-	rm -f *.olc *.olp *.olp_parameters
-	rm -rf stability_log
 
 ## Remove backup files
 maintainer-clean-local: maintainer-clean-fc

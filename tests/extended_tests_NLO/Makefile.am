@@ -32,17 +32,11 @@
 #
 ########################################################################
 
-## Invoke extended tests by 'make check' or 'make check-extended'
-check-extended: check
-
-########################################################################
-
 WHIZARD_DRIVER = run_whizard.sh
 
 TESTS_EXTENDED = \
-    sm_ext.run \
-    mssm_ext.run \
-    nmssm_ext.run
+	extra_NLO_1.run
+
 XFAIL_TESTS_EXTENDED =
 
 TESTS_REQ_GAMELAN =
@@ -54,63 +48,16 @@ TEST_DRIVERS_SH = $(TEST_DRIVERS_RUN:.run=.sh)
 
 ########################################################################
 
-TESTS = 
-XFAIL_TESTS =
-TESTS_SRC =
+TESTS = $(TESTS_EXTENDED)
+XFAIL_TESTS = $(XFAIL_TESTS_EXTENDED)
 
-TESTS += $(TESTS_EXTENDED)
-XFAIL_TESTS += $(XFAIL_TESTS_EXTENDED)
+EXTRA_DIST = $(TEST_DRIVERS_SH)
 
-mssm_ext.run: $(EXTENDED_MSSM_TEST_DRIVERS)
-	echo '#! /bin/sh' >$@
-	for driver in $(EXTENDED_MSSM_TEST_DRIVERS); do \
-	  echo ./$$driver; \
-	done >>$@
-	chmod +x $@
+########################################################################
 
-nmssm_ext.run: $(EXTENDED_NMSSM_TEST_DRIVERS)
-	echo '#! /bin/sh' >$@
-	for driver in $(EXTENDED_NMSSM_TEST_DRIVERS); do \
-	  echo ./$$driver; \
-	done >>$@
-	chmod +x $@
-
-EXTENDED_MSSM_TEST_DRIVERS = \
-    mssm_ext-ee.run mssm_ext-ee2.run \
-    mssm_ext-en.run mssm_ext-tn.run \
-    mssm_ext-uu.run mssm_ext-uu2.run mssm_ext-uuckm.run \
-    mssm_ext-dd.run mssm_ext-dd2.run mssm_ext-ddckm.run \
-    mssm_ext-bb.run mssm_ext-bt.run mssm_ext-tt.run \
-    mssm_ext-ug.run mssm_ext-dg.run \
-    mssm_ext-aa.run mssm_ext-wa.run mssm_ext-za.run \
-    mssm_ext-ww.run mssm_ext-wz.run mssm_ext-zz.run \
-    mssm_ext-gg.run mssm_ext-ga.run mssm_ext-gw.run mssm_ext-gz.run
-
-EXTENDED_NMSSM_TEST_DRIVERS = \
-    nmssm_ext-aa.run  nmssm_ext-bb1.run nmssm_ext-bb2.run \
-    nmssm_ext-bt.run  nmssm_ext-dd1.run \
-    nmssm_ext-dd2.run nmssm_ext-ee1.run \
-    nmssm_ext-ee2.run nmssm_ext-en.run  \
-    nmssm_ext-ga.run  nmssm_ext-gg.run  \
-    nmssm_ext-gw.run  nmssm_ext-gz.run  \
-    nmssm_ext-qg.run  nmssm_ext-tn.run  \
-    nmssm_ext-tt1.run nmssm_ext-tt2.run \
-    nmssm_ext-uu1.run nmssm_ext-uu2.run \
-    nmssm_ext-wa.run  nmssm_ext-ww1.run nmssm_ext-ww2.run \
-    nmssm_ext-wz.run  nmssm_ext-za.run
-
-EXTENDED_MSSM_TEST_DRIVERS_SH = $(EXTENDED_MSSM_TEST_DRIVERS:.run=.sh)
-EXTENDED_NMSSM_TEST_DRIVERS_SH = $(EXTENDED_NMSSM_TEST_DRIVERS:.run=.sh)
-
-EXTRA_DIST = $(TEST_DRIVERS_SH) \
-    $(EXTENDED_MSSM_TEST_DRIVERS_SH) \
-    $(EXTENDED_NMSSM_TEST_DRIVERS_SH) \
-    $(TESTS_SRC)
-
-# VPATH = $(top_builddir)/share/tests:$(top_srcdir)/share/tests:$(srcdir)
 VPATH = $(srcdir)
 
-SUFFIXES = .sh .run .run.extra.trs
+SUFFIXES = .sh .run
 
 .sh.run:
 	@rm -f $@
@@ -119,6 +66,8 @@ SUFFIXES = .sh .run .run.extra.trs
 	elif test -f $(top_srcdir)/share/tests/$*.sin; then \
 	  $(SED) 's|@script@|$(top_srcdir)/share/tests/$*|g' $< > $@; \
 	fi
+	$(SED) -i 's|@python_bin@|$(PYTHON_BIN)|g' $@
+	$(SED) -i 's|@share_dir@|$(top_srcdir)/share/tests/|g' $@
 	@chmod +x $@
 
 if MPOST_AVAILABLE
@@ -256,6 +205,8 @@ clean-local:
 	rm -f slhaspectrum.in suspect2.out suspect2_lha.out 
 	rm -f susyhit.in susyhit_slha.out suspect2_lha.in
 	rm -f *.$(WT_OMEGA_CACHE_SUFFIX)
+	rm -f *.olc *.olp *.olp_parameters
+	rm -rf stability_log
 
 ## Remove backup files
 maintainer-clean-local: maintainer-clean-fc
