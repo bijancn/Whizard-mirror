@@ -315,17 +315,16 @@ EXTRA_DIST = $(TEST_DRIVERS_SH) \
 
 ########################################################################
 
-# VPATH = $(top_builddir)/share/tests:$(top_srcdir)/share/tests:$(srcdir)
 VPATH = $(srcdir)
 
 SUFFIXES = .sh .run 
 
 .sh.run:
 	@rm -f $@
-	@if test -f $(top_builddir)/share/tests/$*.sin; then \
-	  $(SED) 's|@script@|$(top_builddir)/share/tests/$*|g' $< > $@; \
-	elif test -f $(top_srcdir)/share/tests/$*.sin; then \
-	  $(SED) 's|@script@|$(top_srcdir)/share/tests/$*|g' $< > $@; \
+	@if test -f $(top_builddir)/share/tests/functional_tests/$*.sin; then \
+	  $(SED) 's|@script@|$(top_builddir)/share/tests/functional_tests/$*|g' $< > $@; \
+	elif test -f $(top_srcdir)/share/tests/functional_tests/$*.sin; then \
+	  $(SED) 's|@script@|$(top_srcdir)/share/tests/functional_tests/$*|g' $< > $@; \
 	else \
 	  echo "$*.sin not found!" 1>&2; \
 	  exit 2; \
@@ -333,23 +332,23 @@ SUFFIXES = .sh .run
 	@chmod +x $@
 
 structure_2.run: structure_2_inc.sin
-structure_2_inc.sin: $(top_builddir)/share/tests/structure_2_inc.sin
+structure_2_inc.sin: $(top_builddir)/share/tests/functional_tests/structure_2_inc.sin
 	cp $< $@
 
 testproc_3.run: testproc_3.phs
-testproc_3.phs: $(top_builddir)/share/tests/testproc_3.phs
+testproc_3.phs: $(top_builddir)/share/tests/functional_tests/testproc_3.phs
 	cp $< $@
 
 static_1.run: static_1.exe.sin
-static_1.exe.sin: $(top_builddir)/share/tests/static_1.exe.sin
+static_1.exe.sin: $(top_builddir)/share/tests/functional_tests/static_1.exe.sin
 	cp $< $@
 
 susyhit.run: susyhit.in
 user_cuts.run: user_cuts.f90
 user_strfun.run: user_strfun.f90
-user_cuts.f90: $(top_builddir)/share/tests/user_cuts.f90
+user_cuts.f90: $(top_builddir)/share/tests/functional_tests/user_cuts.f90
 	cp $< $@
-user_strfun.f90: $(top_builddir)/share/tests/user_strfun.f90
+user_strfun.f90: $(top_builddir)/share/tests/functional_tests/user_strfun.f90
 	cp $< $@
 
 model_test.run: tdefs.$(FC_MODULE_EXT) tglue.$(FC_MODULE_EXT) \
@@ -418,7 +417,7 @@ stdhep_rd: $(top_builddir)/src/xdr/stdhep_rd
 	cp $< $@
 endif
 
-susyhit.in: $(top_builddir)/share/tests/susyhit.in
+susyhit.in: $(top_builddir)/share/tests/functional_tests/susyhit.in
 	cp $< $@
 
 BUILT_SOURCES = \
@@ -499,12 +498,12 @@ endif
 
 # The reference output files are in the source directory.  Copy them here.
 if FC_EXT
-ref-output: $(top_srcdir)/share/tests/ref-output 
+ref-output: $(top_srcdir)/share/tests/functional_tests/ref-output
 	mkdir -p ref-output
 	for f in $</*.ref; do cp $$f $@; done
 	for f in $</../ref-output-ext/*.ref; do cp $$f $@; done
 else
-ref-output: $(top_srcdir)/share/tests/ref-output 
+ref-output: $(top_srcdir)/share/tests/functional_tests/ref-output
 	mkdir -p ref-output
 	for f in $</*.ref; do cp $$f $@; done
 	for f in $</../ref-output-double/*.ref; do cp $$f $@; done

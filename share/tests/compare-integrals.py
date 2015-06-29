@@ -16,7 +16,6 @@ with open(filename, 'r') as infile:
       integral = number(line)
     if 'error(' in line:
       error = number(line)
-print process, integral, '+-', error
 
 with open(reference_file, 'r') as infile:
   for line in infile:
@@ -24,8 +23,15 @@ with open(reference_file, 'r') as infile:
       ref_integral, ref_error = numbers(line)
 print 'Reference:', ref_integral, '+-', ref_error
 
-error_sum = sqrt (error**2 + ref_error**2)
-pull = abs (integral - ref_integral) / error_sum
-print 'pull:', pull
-returncode = 0 if pull < 3 else 1
+try:
+  print process, integral, '+-', error
+  error_sum = sqrt (error**2 + ref_error**2)
+  pull = abs (integral - ref_integral) / error_sum
+  print 'pull:', pull
+  valid = pull < 3
+except NameError:
+  print 'Number not found. Run failed.'
+  valid = False
+
+returncode = 0 if valid else 1
 sys.exit(returncode)

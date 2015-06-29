@@ -41,26 +41,27 @@ SUBDIRS = \
 ## In particular, not visited by 'make check'
 DIST_SUBDIRS = \
   $(SUBDIRS) \
-  extended_tests_NLO \
-  extended_tests_shower \
-  extended_tests
+  ext_tests_mssm \
+  ext_tests_nmssm \
+  ext_tests_ilc \
+  ext_tests_nlo \
+  ext_tests_shower
 
 ## Invoke extended tests explicitly by 'make check-extended'
 check-extended:
-	$(MAKE) -C extended_tests check
+	$(MAKE) -C ext_tests_mssm check
+	$(MAKE) -C ext_tests_nmssm check
+	$(MAKE) -C ext_tests_ilc check
+	$(MAKE) -C ext_tests_nlo check
+	$(MAKE) -C ext_tests_shower check
 
 ## make clean won't be executed automatically in the subdir.
 ## Note that after 'make distcheck', the Makefile is missing, so this fails,
 ## that failure should be ignored.
 
-check-extended-shower:
-	$(MAKE) -C extended_tests_shower check
-
-check-extended-NLO:
-	$(MAKE) -C extended_tests_NLO check
-
-## This won't be executed by default
 clean-local:
-	-test -f extended_tests/Makefile && $(MAKE) -C extended_tests clean
-	-test -f extended_tests_shower/Makefile && $(MAKE) -C extended_tests_shower clean
-	-test -f extended_tests_NLO/Makefile && $(MAKE) -C extended_tests_NLO clean
+	-test -f ext_tests_mssm/Makefile && $(MAKE) -C ext_tests_mssm clean
+	-test -f ext_tests_nmssm/Makefile && $(MAKE) -C ext_tests_nmssm clean
+	-test -f ext_tests_ilc/Makefile && $(MAKE) -C ext_tests_ilc clean
+	-test -f ext_tests_shower/Makefile && $(MAKE) -C ext_tests_shower clean
+	-test -f ext_tests_nlo/Makefile && $(MAKE) -C ext_tests_nlo clean

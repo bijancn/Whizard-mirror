@@ -209,7 +209,6 @@ $(WHIZARD_UT):
 
 ########################################################################
 
-# VPATH = $(top_builddir)/share/tests:$(top_srcdir)/share/tests:$(srcdir)
 VPATH = $(srcdir)
 
 SUFFIXES = .sh .run
@@ -318,12 +317,12 @@ endif
 
 # The reference output files are in the source directory.  Copy them here.
 if FC_EXT
-ref-output: $(top_srcdir)/share/tests/ref-output 
+ref-output: $(top_srcdir)/share/tests/unit_tests/ref-output
 	mkdir -p ref-output
 	for f in $</*.ref; do cp $$f $@; done
 	for f in $</../ref-output-ext/*.ref; do cp $$f $@; done
 else
-ref-output: $(top_srcdir)/share/tests/ref-output 
+ref-output: $(top_srcdir)/share/tests/unit_tests/ref-output
 	mkdir -p ref-output
 	for f in $</*.ref; do cp $$f $@; done
 	for f in $</../ref-output-double/*.ref; do cp $$f $@; done
@@ -343,7 +342,7 @@ notestflag:
 
 ## Remove generated files
 clean-local:
-	rm -f gamelan.sty TEST.mdl 
+	rm -f gamelan.sty
 	rm -f TESTFLAG GAMELAN_FLAG STDHEP_FLAG 
 	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
 	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
@@ -362,8 +361,6 @@ clean-local:
 	rm -f *.tex *.mp *.mpx *.t[1-9] *.t[1-9][0-9] *.t[1-9][0-9][0-9] 
 	rm -f *.ltp *.aux *.dvi *.ps *.pdf so_test.*
 	rm -f *.tbl sps1ap_decays.slha bar structure_6[a-b].out 
-	rm -f slhaspectrum.in suspect2.out suspect2_lha.out 
-	rm -f susyhit.in susyhit_slha.out suspect2_lha.in
 	rm -f *.$(WT_OMEGA_CACHE_SUFFIX)
 
 ## Remove backup files
