@@ -109,12 +109,6 @@ install-data-hook:
 check-extended:
 	$(MAKE) -C tests check-extended
 
-check-extended-shower:
-	$(MAKE) -C tests check-extended-shower
-
-check-extended-NLO:
-	$(MAKE) -C tests check-extended-NLO
-
 ## Remove backup files
 maintainer-clean-local:
 	-rm -f *~

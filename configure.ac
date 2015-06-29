@@ -892,20 +892,26 @@ AC_CONFIG_FILES([tests/Makefile])
 
 AC_CONFIG_FILES([tests/unit_tests/Makefile])
 AC_CONFIG_FILES([tests/functional_tests/Makefile])
-AC_CONFIG_FILES([tests/extended_tests/Makefile])
-AC_CONFIG_FILES([tests/extended_tests_shower/Makefile])
-AC_CONFIG_FILES([tests/extended_tests_NLO/Makefile])
+AC_CONFIG_FILES([tests/ext_tests_mssm/Makefile])
+AC_CONFIG_FILES([tests/ext_tests_nmssm/Makefile])
+AC_CONFIG_FILES([tests/ext_tests_ilc/Makefile])
+AC_CONFIG_FILES([tests/ext_tests_shower/Makefile])
+AC_CONFIG_FILES([tests/ext_tests_nlo/Makefile])
 
 AC_CONFIG_FILES([tests/unit_tests/run_whizard_ut.sh], 
   [chmod u+x tests/unit_tests/run_whizard_ut.sh])
 AC_CONFIG_FILES([tests/functional_tests/run_whizard.sh],
   [chmod u+x tests/functional_tests/run_whizard.sh])
-AC_CONFIG_FILES([tests/extended_tests/run_whizard.sh],
-  [chmod u+x tests/extended_tests/run_whizard.sh])
-AC_CONFIG_FILES([tests/extended_tests_shower/run_whizard.sh],
-  [chmod u+x tests/extended_tests_shower/run_whizard.sh])
-AC_CONFIG_FILES([tests/extended_tests_NLO/run_whizard.sh],
-  [chmod u+x tests/extended_tests_NLO/run_whizard.sh])
+AC_CONFIG_FILES([tests/ext_tests_mssm/run_whizard.sh],
+  [chmod u+x tests/ext_tests_mssm/run_whizard.sh])
+AC_CONFIG_FILES([tests/ext_tests_nmssm/run_whizard.sh],
+  [chmod u+x tests/ext_tests_nmssm/run_whizard.sh])
+AC_CONFIG_FILES([tests/ext_tests_ilc/run_whizard.sh],
+  [chmod u+x tests/ext_tests_ilc/run_whizard.sh])
+AC_CONFIG_FILES([tests/ext_tests_shower/run_whizard.sh],
+  [chmod u+x tests/ext_tests_shower/run_whizard.sh])
+AC_CONFIG_FILES([tests/ext_tests_nlo/run_whizard.sh],
+  [chmod u+x tests/ext_tests_nlo/run_whizard.sh])
 
 ###---------------------------------------------------------------------
 ### Subdirectory libtool-config
