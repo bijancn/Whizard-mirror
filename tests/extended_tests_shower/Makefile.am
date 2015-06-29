@@ -37,7 +37,12 @@ WHIZARD_DRIVER = run_whizard.sh
 TESTS_EXTENDED = \
 	extra_shower_1.run \
 	extra_shower_2.run \
-	extra_shower_3.run
+	extra_shower_3_z_nu.run \
+	extra_shower_3_z_tau.run \
+	extra_shower_3_qqqq.run \
+	extra_shower_3_tt.run \
+	extra_shower_3_jj.run \
+	extra_shower_3_bb.run
 
 XFAIL_TESTS_EXTENDED =
 
