@@ -1326,6 +1326,7 @@ module powheg_matching
   use physics_defs, only: CA
   use lorentz
   use sm_qcd, only: qcd_t, alpha_qcd_from_scale_t, alpha_qcd_from_lambda_t
+  use sm_physics, only: Li2
   use colors
   use particles
   use grids
@@ -2186,6 +2187,186 @@ a massless recoiling system.
   end subroutine sudakov_eeqq_fsr_generate_xi_and_y_and_phi
 
 @ %def sudakov_generate_xi_and_y_and_phi
+@
+\subsubsection{Massive FSR}
+<<POWHEG matching: public>>=
+  public :: sudakov_massive_fsr_t
+<<POWHEG matching: types>>=
+  type, extends (sudakov_t) :: sudakov_massive_fsr_t
+    real(default) :: z, z1, z2 = 0._default
+    real(default) :: xi_1, xi_min, xi_m = 0._default
+  contains
+  <<POWHEG matching: sudakov massive fsr: TBP>>
+  end type sudakov_massive_fsr_t
+
+@ %def sudakov_massive_fsr_t
+@
+<<POWHEG matching: sudakov massive fsr: TBP>>=
+  procedure :: generate_xi => sudakov_massive_fsr_generate_xi
+<<POWHEG matching: procedures>>=
+  subroutine sudakov_massive_fsr_generate_xi (sudakov, r)
+    class(sudakov_massive_fsr_t), intent(inout) :: sudakov
+    type(radiation_t), intent(inout) :: r
+    real(default) :: pt2, q0, q02
+    real(default) :: E_em !!! Emitter energy needs to be made accessible
+    pt2 = r%pt2
+    q0 = sudakov%event_deps%sqrts_hat; q02 = q0**2
+    associate (z1 => sudakov%z1, z2 => sudakov%z2)
+      sudakov%xi_min = (sqrt(pt2 * (pt2*z2**2 + 8*E_em*q0*(one-z2))) - pt2*z2) / &
+         (2*q02*(one-z2))
+      sudakov%xi_1 = (sqrt(pt2 * (pt2*z1**2 + 8*E_em*q0*(one-z1))) - pt2*z1) / &
+         (2*q02*(one-z1))
+      sudakov%xi_m = min (sudakov%xi_min, sudakov%xi_1)
+    end associate
+    call sudakov%rng%generate (sudakov%random)
+    r%xi = exp (log(sudakov%xi_min*q02 - pt2) + sudakov%random * &
+          log((sudakov%xi_m*q02 - pt2) / (sudakov%xi_min*q02 - pt2)) + pt2) / q02
+  end subroutine sudakov_massive_fsr_generate_xi
+
+@ %def sudakov_massive_fsr_generate_xi
+@
+<<POWHEG matching: sudakov massive fsr: TBP>>=
+  procedure :: generate_xi_and_y_and_phi => sudakov_massive_fsr_generate_xi_and_y_and_phi
+<<POWHEG matching: procedures>>=
+  subroutine sudakov_massive_fsr_generate_xi_and_y_and_phi (sudakov, r)
+    class(sudakov_massive_fsr_t), intent(inout) :: sudakov
+    type(radiation_t), intent(inout) :: r
+    real(default) :: q0
+    integer :: emitter = 3 !! Dummy emitter
+    real(default) :: m2, mrec2, k0_rec_max
+    real(default) :: E_em, pt2, z
+    type(vector4_t) :: p_emitter
+
+    q0 = sudakov%event_deps%sqrts_hat
+    p_emitter = sudakov%event_deps%p_born(emitter)
+    associate (p => p_emitter%p)
+      mrec2 = (q0 - p(0))**2 - p(1)**2 - p(2)**2 - p(3)**2
+      E_em = p(0)
+    end associate
+    call compute_dalitz_bounds (q0, m2, mrec2, p_emitter, sudakov%z1, sudakov%z2, k0_rec_max)
+    call sudakov%generate_xi (r)
+
+    z = (2*pt2*E_em - r%xi**2*q0**3) / (pt2*r%xi*q0 - r%xi**2*q0**3)
+    r%y = two*(sudakov%z2-z)/(sudakov%z2-sudakov%z1) - one
+    call sudakov%rng%generate (sudakov%random)
+    r%phi = sudakov%random * twopi 
+  end subroutine sudakov_massive_fsr_generate_xi_and_y_and_phi
+    
+@ %def sudakov_massive_fsr_generate_xi_and_y_and_phi
+@ Computes the hardness scale:
+\begin{equation}
+  K_T^2 = \frac{\xi^2q^2(1-z)}{2\bar{p}_{\rm{em}}^0 - z\xi q}
+  \label{HardnessMassiveFSR}
+\end{equation}
+<<POWHEG matching: sudakov massive fsr: TBP>>=
+  procedure :: kt2 => sudakov_massive_fsr_kt2
+<<POWHEG matching: procedures>>=
+  pure function sudakov_massive_fsr_kt2 (sudakov, xi, y) result (kt2)
+    real(default) :: kt2
+    class(sudakov_massive_fsr_t), intent(in) :: sudakov
+    real(default), intent(in) :: xi, y
+    !!! Not implemented yet
+  end function sudakov_massive_fsr_kt2
+
+@ %def sudakov_massive_fsr_kt2
+@ The upper bounding function for massive emitters is (disregarding a possible factor of $\alpha_s$)
+\begin{equation}
+  U(\xi, y) \sim \frac{\sqrt{s}}{\bar{p}_{\rm{em}}} \frac{1}{\xi(1-z)}
+  \label{UBFMassiveFSR}
+\end{equation}
+<<POWHEG matching: sudakov massive fsr: TBP>>=
+  procedure :: upper_bound_func => sudakov_massive_fsr_upper_bound_func
+<<POWHEG matching: procedures>>=
+  pure function sudakov_massive_fsr_upper_bound_func (sudakov, xi, y, alpha_s) result (u)
+    real(default) :: u
+    class(sudakov_massive_fsr_t), intent(in) :: sudakov
+    real(default), intent(in) :: xi, y, alpha_s
+    !!! Not implemented yet
+  end function sudakov_massive_fsr_upper_bound_func
+
+@ %def sudakov_massive_fsr_upper_bound_func
+@ The integrated upper-bounding function for massive final-state emitters is given by
+\begin{align*}
+  I(t) &= \frac{q}{\bar{p}_{\rm{em}}}\left[\log\xi\log\left[(1-z_2)\frac{q}{k_T^2}\right] + 
+          \frac{1}{2} \log^2\xi + G(-k_T^2,q^2,\xi) - G(2\bar{p}_{\rm{em}},-q,\xi)\right]
+          ^{\rm{min}(\xi_1(k_T^2),\xi_{\rm{max}}}_{\xi_{\rm{min}}}) \\
+       &+ \frac{q}{\bar{p}_{\rm{em}}} \theta (\xi_{\rm{max}} - \xi_1(k_T^2))
+          \log\frac{\xi_{\rm{max}}}{\xi_1(k_T^2)}\log\frac{1-z_2}{1-z_1},
+\end{align*}
+where the function $G(a,b,\xi)$ is given by
+\begin{equation}
+  G(a,b,\xi) = \log(a+b\xi)\log\left(1-\frac{a+b\xi}{a}\right) + Li_2\left(\frac{a+b\xi}{a}\right),
+  \label{GMinusMassiveFSR}
+\end{equation}
+for $a < 0$ and by
+\begin{equation}
+  G(a,b,\xi) = \log\left|\frac{b\xi}{a}\right|\log a - Li_2\left(-\frac{b\xi}{a}\right) + \frac{\pi^2}{6},
+  \label{GPlusMassiveFSR}
+\end{equation}
+for $a > 0$.
+<<POWHEG matching: sudakov massive fsr: TBP>>=
+  procedure :: log_integrated_ubf => sudakov_massive_fsr_log_integrated_ubf
+<<POWHEG matching: procedures>>=
+  pure function sudakov_massive_fsr_log_integrated_ubf (sudakov, pt2) result (y)
+    real(default) :: y
+    class(sudakov_massive_fsr_t), intent(in) :: sudakov
+    real(default), intent(in) :: pt2
+    real(default) :: xi, xi_max
+    real(default) :: q0, E_em
+    q0 = sudakov%event_deps%sqrts_hat
+    xi_max = sqrt (sudakov%xi2_max)
+    associate (z1 => sudakov%z1, z2 => sudakov%z2)
+       xi = min (sudakov%xi_1, xi_max)
+       y = log(xi)*log((one-z2)*q0/pt2) + log(xi)**2/two + G_FSR(-pt2,q0**2,xi) - G_FSR(2*E_em,-q0,xi)
+       xi = sudakov%xi_min
+       y = y - log(xi)*log((one-z2)*q0/pt2) - log(xi)**2/two - G_FSR(-pt2,q0**2,xi) + G_FSR(2*E_em,-q0,xi)
+       if (xi_max > sudakov%xi_1) &
+          y = y + log(xi_max/sudakov%xi_1)*log((one-z2)/(one-z1))
+       y = q0/E_em * y
+    end associate
+  end function sudakov_massive_fsr_log_integrated_ubf
+
+@ %def sudakov_massive_fsr_log_integrated_ubf
+@ No further ubf veto needed for now.
+<<POWHEG matching: sudakov massive fsr: TBP>>=
+  procedure :: reweight_ubf => sudakov_massive_fsr_reweight_ubf
+<<POWHEG matching: procedures>>=
+  function sudakov_massive_fsr_reweight_ubf (sudakov, pt2) result (accepted)
+    logical :: accepted
+    class(sudakov_massive_fsr_t), intent(inout) :: sudakov
+    real(default), intent(in) :: pt2
+    accepted = .true.
+  end function sudakov_massive_fsr_reweight_ubf
+
+@ %def sudakov_massive_fsr_reweight_ubf
+@
+\subsubsection{Auxiliary functions}
+Implements the function $G(a,b,\xi)$ given in eq. (\ref{GPlusMassiveFSR}) and eq. (\ref{GMinusMassiveFSR}).
+<<POWHEG matching: procedures>>=
+  elemental function G_FSR (a,b,xi)
+    real(default) :: G_FSR
+    real(default), intent(in) :: a, b, xi
+    if (a > 0) then
+       G_FSR = G_FSR_Plus (a,b,xi)
+    else if (a < 0) then
+       G_FSR = G_FSR_Minus (a,b,xi)
+    !!! a == 0 ?
+    end if
+  end function G_FSR
+
+  elemental function G_FSR_Minus (a,b,xi) 
+    real(default) :: G_FSR_Minus
+    real(default), intent(in) :: a, b, xi
+    G_FSR_Minus = log(a+b*xi)*log(one - (a+b*xi)/a) + Li2((a+b*xi)/a)
+  end function G_FSR_Minus
+
+  elemental function G_FSR_Plus (a,b,xi)
+    real(default) :: G_FSR_Plus
+    real(default), intent(in) :: a, b, xi
+    G_FSR_Plus = log(abs(b*xi/a))*log(a) - Li2(-b*xi/a) + pi**2/6
+  end function G_FSR_Plus
+
+@ %def G_FSR, G_FSR_Minus, G_FSR_Plus
 @
 \subsection{Main POWHEG class}
 <<POWHEG matching: public>>=
