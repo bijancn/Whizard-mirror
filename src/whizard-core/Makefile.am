@@ -48,7 +48,8 @@ libwhizard_core_la_SOURCES = \
   simulations.f90 \
   commands.f90 \
   whizard.f90 \
-  cmdline_options.f90
+  cmdline_options.f90 \
+  features.f90
 
 libwhizard_core_ut_la_SOURCES = \
   expr_tests_uti.f90 expr_tests_ut.f90 \
