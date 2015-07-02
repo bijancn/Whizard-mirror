@@ -23,7 +23,7 @@ def nearly_equal(a, b):
   except TypeError:
     return False
 
-print 'Start file'
+print 'Start file ' + filename
 print (3 * '{:<20s}').format('Line-Nr', 'Incoming-Energy', 'Outgoing-Energy')
 with open(filename, 'r') as infile:
   for line in infile:
@@ -35,6 +35,6 @@ with open(filename, 'r') as infile:
       if not nearly_equal(out_energy, inc_energy):
         print ("{:<20d}" + 2 *"{:<20.10f}").format(line_no, inc_energy, out_energy)
         valid = False
-print 'End file'
+print 'End file ' + filename
 returncode = 0 if valid else 1
 sys.exit(returncode)
