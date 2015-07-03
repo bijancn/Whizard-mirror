@@ -948,6 +948,16 @@ NMSSM_EXT_M4 = \
 MSSM_EXT_SIN = $(MSSM_EXT_M4:.m4=.sin)
 NMSSM_EXT_SIN = $(NMSSM_EXT_M4:.m4=.sin)
 
+SHOWER_EXT_SIN = extra_shower_1.sin \
+    extra_shower_2.sin \
+    extra_shower_3_bb.sin \
+    extra_shower_3_jj.sin \
+    extra_shower_3_qqqq.sin \
+    extra_shower_3_tt.sin \
+    extra_shower_3_z_nu.sin \
+    extra_shower_3_z_tau.sin \
+    extra_shower_4_ee.sin
+
 all-local: $(TESTSUITES_SIN)
 
 if M4_AVAILABLE
