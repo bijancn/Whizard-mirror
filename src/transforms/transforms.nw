@@ -839,7 +839,7 @@ transferred there by the WHIZARD or PYTHIA6 shower routines.
     valid = pythia6_handle_errors ()
     if (valid) then
        call pythia6_combine_with_particle_set &
-            (particle_set, model, hadrons%model)
+            (particle_set, model, hadrons%model, hadrons%settings)
     end if
   end subroutine hadrons_pythia6_make_particle_set
 
@@ -915,6 +915,7 @@ depend on the specific hadronization implementation of
      type(shower_settings_t) :: settings
      type(model_t), pointer :: model_hadrons => null()
      type(qcd_t), pointer :: qcd_t => null()
+     logical :: is_first_event
    contains
    <<Hadrons: evt hadrons: TBP>>
   end type evt_hadrons_t
@@ -944,6 +945,7 @@ shower.
             " not implemented.")
     end select
     call evt%hadrons%init (evt%settings, model_hadrons)
+    evt%is_first_event = .true.
   end subroutine evt_hadrons_init
 
 @ %def evt_hadrons_init
@@ -969,6 +971,31 @@ shower.
   end subroutine evt_hadrons_write
 
 @ %def evt_hadrons_write
+@
+<<Hadrons: evt hadrons: TBP>>=
+  procedure :: first_event => evt_hadrons_first_event
+<<Hadrons: procedures>>=
+  subroutine evt_hadrons_first_event (evt)
+    class(evt_hadrons_t), intent(inout) :: evt
+    call msg_debug (D_TRANSFORMS, "evt_hadrons_first_event")
+    associate (settings => evt%hadrons%settings)
+       settings%hadron_collision = .false.
+       if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () <= 18)) then
+          settings%hadron_collision = .false.
+       else if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () >= 1000)) then
+          settings%hadron_collision = .true.
+       else 
+          call msg_fatal ("evt_hadrons didn't recognize beams setup")
+       end if
+       call msg_debug (D_TRANSFORMS, "hadron_collision", settings%hadron_collision)
+       if (.not. (settings%isr_active .or. settings%fsr_active)) then
+          call msg_fatal ("Hadronization without shower is not supported")
+       end if
+    end associate
+    evt%is_first_event = .false.
+  end subroutine evt_hadrons_first_event
+
+@ %def evt_hadrons_first_event
 @ Here we take the particle set from the previous event transform and
 apply the hadronization.  The result is stored in the [[evt%hadrons]]
 object.  We always return a probability of unity as we don't have the
@@ -984,6 +1011,9 @@ invalid.
     logical :: valid
     if (signal_is_pending ())  return
     evt%particle_set = evt%previous%particle_set
+    if (evt%is_first_event) then
+       call evt%first_event ()
+    end if
     call evt%hadrons%hadronize (evt%particle_set, valid)
     probability = 1
     evt%particle_set_exists = valid
@@ -3991,7 +4021,6 @@ hadrons that can be generated in the shower.
   public :: evt_shower_t
 <<Shower: types>>=
   type, extends (evt_t) :: evt_shower_t
-     type(shower_settings_t) :: settings
      class(shower_base_t), allocatable :: shower
      class(matching_t), allocatable :: matching
      type(model_t), pointer :: model_hadrons => null ()
@@ -4021,7 +4050,7 @@ hadrons that can be generated in the shower.
     if (evt%particle_set_exists)  call evt%particle_set%write &
          (u, summary = .true., compressed = .true., testflag = testflag)
     call write_separator (u)
-    call evt%settings%write (u)
+    call evt%shower%settings%write (u)
   end subroutine evt_shower_write
     
 @ %def evt_shower_write
@@ -4049,13 +4078,10 @@ shower.
 <<Shower: evt shower: TBP>>=
   procedure :: init => evt_shower_init
 <<Shower: procedures>>=
-  subroutine evt_shower_init &
-       (evt, settings, model_hadrons, os_data)
+  subroutine evt_shower_init (evt, model_hadrons, os_data)
     class(evt_shower_t), intent(out) :: evt
-    type(shower_settings_t), intent(in) :: settings
     type(model_t), intent(in), target :: model_hadrons
     type(os_data_t), intent(in) :: os_data    
-    evt%settings = settings
     evt%os_data = os_data
     evt%model_hadrons => model_hadrons
     evt%is_first_event = .true.
@@ -4099,43 +4125,41 @@ transformation chain is evaluated.
   subroutine evt_shower_first_event (evt)
     class(evt_shower_t), intent(inout) :: evt
     real(default) :: pdftest
-    logical :: hadron_collision
-    ! TODO: (bcn 2015-04-24) also set info for combine_with_particle_set
     call msg_debug (D_TRANSFORMS, "evt_shower_first_event")
-    hadron_collision = .false.
-    if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () <= 18)) then
-       hadron_collision = .false.
-    else if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () >= 1000)) then
-       hadron_collision = .true.
-    else 
-       call msg_fatal ("evt_shower didn't recognize beams setup")
-    end if
-    call msg_debug (D_TRANSFORMS, "hadron_collision", hadron_collision)
-    if (allocated (evt%matching)) then
-       evt%matching%is_hadron_collision = hadron_collision
-       call evt%matching%first_event ()
-    end if
-    if (.not. hadron_collision .and. evt%settings%isr_active) then
-       call msg_fatal ("?ps_isr_active is only intended for hadron-collisions")
-    end if
-    if (evt%pdf_data%type == STRF_LHAPDF5) then
-       if (evt%settings%isr_active .and. hadron_collision) then
-          call GetQ2max (0, pdftest)
-          if (pdftest < epsilon (pdftest)) then
-             call msg_bug ("ISR QCD shower enabled, but LHAPDF not" // &
-                  "initialized," // LF // "     aborting simulation")
-             return
-          end if
+    associate (settings => evt%shower%settings)
+       settings%hadron_collision = .false.
+       if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () <= 18)) then
+          settings%hadron_collision = .false.
+       else if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () >= 1000)) then
+          settings%hadron_collision = .true.
+       else 
+          call msg_fatal ("evt_shower didn't recognize beams setup")
        end if
-    else if (evt%pdf_data%type == STRF_PDF_BUILTIN .and. &
-             evt%settings%method == PS_PYTHIA6) then
-       call msg_fatal ("Builtin PDFs cannot be used for PYTHIA showers," &
-            // LF // "     aborting simulation")
-       return
-    end if
-    !if (evt%settings%method == PS_PYTHIA6 .and. any (abs (IDBMUP) <= 8)) then
-    !   call msg_fatal ("PYTHIA doesn't support quarks as beam particles")
-    !end if
+       call msg_debug (D_TRANSFORMS, "hadron_collision", settings%hadron_collision)
+       if (allocated (evt%matching)) then
+          evt%matching%is_hadron_collision = settings%hadron_collision
+          call evt%matching%first_event ()
+       end if
+       if (.not. settings%hadron_collision .and. settings%isr_active) then
+          call msg_fatal ("?ps_isr_active is only intended for hadron-collisions")
+       end if
+       if (evt%pdf_data%type == STRF_LHAPDF5) then
+          if (settings%isr_active .and. settings%hadron_collision) then
+             call GetQ2max (0, pdftest)
+             if (pdftest < epsilon (pdftest)) then
+                call msg_bug ("ISR QCD shower enabled, but LHAPDF not" // &
+                     "initialized," // LF // "     aborting simulation")
+                return
+             end if
+          end if
+       else if (evt%pdf_data%type == STRF_PDF_BUILTIN .and. &
+                settings%method == PS_PYTHIA6) then
+          call msg_fatal ("Builtin PDFs cannot be used for PYTHIA showers," &
+               // LF // "     aborting simulation")
+          return
+       end if
+    end associate
+    evt%is_first_event = .false.
   end subroutine evt_shower_first_event
 
 @ %def evt_shower_first_event
@@ -4161,7 +4185,6 @@ we mark the particle set as invalid. This procedure directly takes the
     valid = .true.;  vetoed = .false.
     if (evt%is_first_event) then
        call evt%first_event ()
-       evt%is_first_event = .false.
     end if
     call evt%shower%import_particle_set (evt%particle_set, evt%os_data)
     if (allocated (evt%matching)) then
@@ -4172,8 +4195,8 @@ we mark the particle set as invalid. This procedure directly takes the
        end if
     end if
     if (.not. (vetoed .or. POWHEG_TESTING)) then
-       if (evt%settings%method == PS_PYTHIA6 .or. &
-           evt%settings%hadronization_active) then
+       if (evt%shower%settings%method == PS_PYTHIA6 .or. &
+           evt%shower%settings%hadronization_active) then
           call assure_heprup (evt%particle_set)
        end if
        call evt%shower%generate_emissions (valid)
@@ -4479,9 +4502,9 @@ in disabled mode.
     allocate (evt_shower_t :: evt_shower)
     select type (evt_shower)
     type is (evt_shower_t)
-       call evt_shower%init (settings, model_hadrons, os_data)
+       call evt_shower%init (model_hadrons, os_data)
        allocate (shower_t :: evt_shower%shower)
-       call evt_shower%shower%init (evt_shower%settings, pdf_data)
+       call evt_shower%shower%init (settings, pdf_data)
        call evt_shower%connect (process_instance, model)
     end select
 
@@ -4585,9 +4608,9 @@ We generate a two-jet event and shower it with the Whizard FSR shower.
     allocate (evt_shower_t :: evt_shower)
     select type (evt_shower)
     type is (evt_shower_t)
-       call evt_shower%init (settings, model_hadrons, os_data)
+       call evt_shower%init (model_hadrons, os_data)
        allocate (shower_t :: evt_shower%shower)
-       call evt_shower%shower%init (evt_shower%settings, pdf_data)
+       call evt_shower%shower%init (settings, pdf_data)
        call evt_shower%connect (process_instance, model)       
     end select
 
