@@ -6259,12 +6259,10 @@ module shower_pythia6
 
 <<Use kinds with double>>
 <<Use strings>>
-  use unit_tests, only: vanishes, nearly_equal
   use constants
   use io_units
   use physics_defs
   use diagnostics
-  use system_defs, only: LF
   use os_interface
   use lorentz
   use subevents
@@ -6405,10 +6403,12 @@ contains
         end if
       end if
     end do
-    pz_in = pup(3,1) + pup(3,2)
-    E_in = pup(4,1) + pup(4,2)
-    beta_z = pz_in / E_in
-    call pyrobo (lower, N, theta, phi, beta_x, beta_y, beta_z)
+    if (.not. shower%settings%hadron_collision) then
+       pz_in = pup(3,1) + pup(3,2)
+       E_in = pup(4,1) + pup(4,2)
+       beta_z = pz_in / E_in
+       call pyrobo (lower, N, theta, phi, beta_x, beta_y, beta_z)
+    end if
     if (debug_active (D_SHOWER)) then
        print *, ' After pyevnt, after boosting :'
        call pylist(2)
@@ -6569,8 +6569,8 @@ added back in by Pythia.
     integer, allocatable, dimension(:) :: old_index, new_index, &
          backup_parents, incoming_ids
     logical, allocatable, dimension(:) :: pythia_particle, valid
-    type(lorentz_transformation_t) :: L
-    logical :: boost_required = .false.
+    !type(lorentz_transformation_t) :: L
+    !logical :: boost_required = .false.
     real(default), parameter :: py_tiny = 1E-10_default
     integer :: N, NPAD, K
     real(double) :: P, V
@@ -6595,14 +6595,20 @@ added back in by Pythia.
     end if
     call prepare_temporary_objects ()
     call add_particles_of_pythia ()
-    if (boost_required) then
-       where (pythia_particle)  particles%p = L * particles%p
-       incomings%p = L * incomings%p
-    end if
+    !if (boost_required) then
+    !   where (pythia_particle)  particles%p = L * particles%p
+    !   incomings%p = L * incomings%p
+    !end if
     call particle_set%replace (particles)
     !call replace_incomings ()
-    call set_parent_child_relations_of_known_pythia_parents ()
-    !call set_parent_child_relations_of_color_strings_to_hadrons ()
+    call msg_debug (D_SHOWER, "settings%hadron_collision", settings%hadron_collision)
+    if (settings%hadron_collision) then
+       call set_parent_child_relations_from_K ()
+       call set_parent_child_relations_of_color_strings_to_hadrons ()
+       call give_orphans_backup_parents ()
+    else
+       call set_parent_child_relations_from_hepevt ()
+    end if
     !call particle_set%remove_duplicates (py_tiny * 100.0_default)
     if (settings%method == PS_WHIZARD) then
        call fudge_whizard_partons_in_hadro ()
@@ -6716,33 +6722,33 @@ added back in by Pythia.
 @
 @
 <<Shower pythia6: combine with particle set: procedures>>=
-  subroutine determine_boost ()
-    type(vector4_t) :: sum_vec_in, sum_vec_out
-    boost_required = .false.
-    if (all (particle_set%prt(1:2)%flv%get_pdg_abs () >= ELECTRON .and. &
-         particle_set%prt(1:2)%flv%get_pdg_abs () <= TAU)) then
-       sum_vec_in = sum (particle_set%prt%p, &
-            mask=particle_set%prt%get_status () == PRT_INCOMING)
-       sum_vec_out = [zero, zero, zero, zero]
-       do i = 1, N
-          if (K(i,1) <= 10) then
-             momentum = real ([P(i,4), P(i,1:3)], kind=default)
-             sum_vec_out = sum_vec_out + momentum
-          end if
-       end do
-       if (debug_active (D_SHOWER)) then
-          print *, 'sum_vec_in%p =    ', sum_vec_in%p
-          print *, 'sum_vec_out%p =    ', sum_vec_out%p
-       end if
-       if (.not. nearly_equal (sum_vec_in%p(3), sum_vec_out%p(3), &
-            abs_smallness = 1E-9_default, &
-            rel_smallness = 1E-6_default)) then
-          boost_required = .true.
-          L = boost (sum_vec_in, sum_vec_out%p(0))
-       end if
-    end if
-    call msg_debug (D_SHOWER, "boost_required", boost_required)
-  end subroutine determine_boost
+!  subroutine determine_boost ()
+!    type(vector4_t) :: sum_vec_in, sum_vec_out
+!    boost_required = .false.
+!    if (all (particle_set%prt(1:2)%flv%get_pdg_abs () >= ELECTRON .and. &
+!         particle_set%prt(1:2)%flv%get_pdg_abs () <= TAU)) then
+!       sum_vec_in = sum (particle_set%prt%p, &
+!            mask=particle_set%prt%get_status () == PRT_INCOMING)
+!       sum_vec_out = [zero, zero, zero, zero]
+!       do i = 1, N
+!          if (K(i,1) <= 10) then
+!             momentum = real ([P(i,4), P(i,1:3)], kind=default)
+!             sum_vec_out = sum_vec_out + momentum
+!          end if
+!       end do
+!       if (debug_active (D_SHOWER)) then
+!          print *, 'sum_vec_in%p =    ', sum_vec_in%p
+!          print *, 'sum_vec_out%p =    ', sum_vec_out%p
+!       end if
+!       if (.not. nearly_equal (sum_vec_in%p(3), sum_vec_out%p(3), &
+!            abs_smallness = 1E-9_default, &
+!            rel_smallness = 1E-6_default)) then
+!          boost_required = .true.
+!          L = boost (sum_vec_in, sum_vec_out%p(0))
+!       end if
+!    end if
+!    call msg_debug (D_SHOWER, "boost_required", boost_required)
+!  end subroutine determine_boost
 
 @ %def determine_boost
 <<Shower pythia6: combine with particle set: procedures>>=
@@ -6816,7 +6822,7 @@ added back in by Pythia.
 
 @ Use HEPEVT for parent-child informations
 <<Shower pythia6: combine with particle set: procedures>>=
-  subroutine set_parent_child_relations_of_known_pythia_parents ()
+  subroutine set_parent_child_relations_from_hepevt ()
     integer, allocatable, dimension(:) :: parents
     integer:: parent2, parent1, npar
     integer, parameter :: NMXHEP = 4000
@@ -6834,7 +6840,7 @@ added back in by Pythia.
     save /HEPEVT/
     integer :: i,j
     call msg_debug (D_SHOWER, &
-         "set_parent_child_relations_of_known_pythia_parents")
+         "set_parent_child_relations_from_hepevt")
     call pyhepc(1)
     do i = 1, NHEP
       if (JDAHEP(1,i) > 0) then
@@ -6884,13 +6890,34 @@ added back in by Pythia.
        deallocate (parents)
     end do
     NHEP = 0
-  end subroutine set_parent_child_relations_of_known_pythia_parents
+  end subroutine set_parent_child_relations_from_hepevt
+
+@
+<<Shower pythia6: combine with particle set: procedures>>=
+  subroutine set_parent_child_relations_from_K ()
+    do j = 1, py_entries
+       parent = K(old_index(j),3)
+       child = n_tot_old + j
+       if (parent > 0) then
+          if (parent >= 1 .and. parent <= 2) then
+             call particle_set%parent_add_child (parent, child)
+          else
+             real_parent = find_pythia_particle (parent, more_fuzzy=.true.)
+             if (real_parent > 0 .and. real_parent /= child) then
+                call particle_set%parent_add_child (real_parent, child)
+             end if
+          end if
+       end if
+    end do
+  end subroutine set_parent_child_relations_from_K
 
 @
 <<Shower pythia6: combine with particle set: procedures>>=
   subroutine set_parent_child_relations_of_color_strings_to_hadrons ()
     integer :: begin_string, end_string, old_start, next_start, real_child
     integer, allocatable, dimension(:) :: parents
+    call msg_debug (D_SHOWER, "set_parent_child_relations_of_color_strings_to_hadrons")
+    call msg_debug (D_SHOWER, "hadro_start", hadro_start)
     if (hadro_start > 0) then
        old_start = hadro_start
        do
@@ -6937,9 +6964,9 @@ relations than when deciding whether we add particles or not.
     real(default) :: rel_small
     pdg = K(i,2)
     momentum = real([P(i,4), P(i,1:3)], kind=default)
-    if (boost_required) then
-       momentum = L * momentum
-    end if
+    !if (boost_required) then
+    !   momentum = L * momentum
+    !end if
     if (present (more_fuzzy)) then
        rel_small = 1E3_default * py_tiny
     else
