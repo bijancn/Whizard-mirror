@@ -712,7 +712,7 @@ end module hadrons
 The [[model]] is the fallback model including all hadrons
 <<Hadrons: types>>=
   type, abstract :: hadrons_t
-   type(shower_settings_t), pointer :: settings
+   type(shower_settings_t) :: settings
    type(model_t), pointer :: model => null()
    contains
    <<Hadrons: hadrons: TBP>>
@@ -727,7 +727,7 @@ The [[model]] is the fallback model including all hadrons
     subroutine hadrons_init (hadrons, settings, model_hadrons)
       import
       class(hadrons_t), intent(out) :: hadrons
-      type(shower_settings_t), target, intent(in) :: settings
+      type(shower_settings_t), intent(in) :: settings
       type(model_t), target, intent(in) :: model_hadrons
     end subroutine hadrons_init
    end interface
@@ -778,11 +778,11 @@ hadronization within \whizard.
 <<Hadrons: procedures>>=
   subroutine hadrons_pythia6_init (hadrons, settings, model_hadrons)
     class(hadrons_pythia6_t), intent(out) :: hadrons
-    type(shower_settings_t), target, intent(in) :: settings
+    type(shower_settings_t), intent(in) :: settings
     type(model_t), intent(in), target :: model_hadrons
     logical :: pygive_not_set_by_shower
     hadrons%model => model_hadrons
-    hadrons%settings => settings
+    hadrons%settings = settings
     pygive_not_set_by_shower = .not. (settings%method == PS_PYTHIA6 &
          .and. (settings%isr_active .or. settings%fsr_active))
     if (pygive_not_set_by_shower) then
@@ -839,7 +839,7 @@ transferred there by the WHIZARD or PYTHIA6 shower routines.
     valid = pythia6_handle_errors ()
     if (valid) then
        call pythia6_combine_with_particle_set &
-            (particle_set, model, hadrons%model)
+            (particle_set, model, hadrons%model, hadrons%settings)
     end if
   end subroutine hadrons_pythia6_make_particle_set
 
@@ -861,9 +861,10 @@ transferred there by the WHIZARD or PYTHIA6 shower routines.
 <<Hadrons: procedures>>=
   subroutine hadrons_pythia8_init (hadrons, settings, model_hadrons)
     class(hadrons_pythia8_t), intent(out) :: hadrons
-    type(shower_settings_t), target, intent(in) :: settings
+    type(shower_settings_t), intent(in) :: settings
     type(model_t), intent(in), target :: model_hadrons
     logical :: options_not_set_by_shower
+    hadrons%settings = settings
     options_not_set_by_shower = .not. (settings%method == PS_PYTHIA8 &
          .and. (settings%isr_active .or. settings%fsr_active))
     if (options_not_set_by_shower) then
@@ -885,6 +886,7 @@ transferred there by the WHIZARD or PYTHIA6 shower routines.
     type(particle_set_t), intent(in) :: particle_set
     logical, intent(out) :: valid
     ! call pythia8_hadronize
+    valid = .true.
   end subroutine hadrons_pythia8_hadronize
 
 @ %def hadrons_pythia8_hadronize
@@ -899,6 +901,7 @@ transferred there by the WHIZARD or PYTHIA6 shower routines.
     class(model_data_t), intent(in), target :: model
     logical, intent(out) :: valid
     ! call pythia8_combine_particle_set
+    valid = .true.
   end subroutine hadrons_pythia8_make_particle_set
 
 @ %def hadrons_pythia8_make_particle_set
@@ -912,9 +915,9 @@ depend on the specific hadronization implementation of
 <<Hadrons: types>>=
   type, extends (evt_t) :: evt_hadrons_t
      class(hadrons_t), allocatable :: hadrons
-     type(shower_settings_t) :: settings
      type(model_t), pointer :: model_hadrons => null()
      type(qcd_t), pointer :: qcd_t => null()
+     logical :: is_first_event
    contains
    <<Hadrons: evt hadrons: TBP>>
   end type evt_hadrons_t
@@ -928,10 +931,9 @@ shower.
 <<Hadrons: procedures>>=
   subroutine evt_hadrons_init (evt, settings, model_hadrons, method)
     class(evt_hadrons_t), intent(out) :: evt
-    type(shower_settings_t), target, intent(in) :: settings
+    type(shower_settings_t), intent(in) :: settings
     type(model_t), intent(in), target :: model_hadrons
     type(string_t), intent(in) :: method
-    evt%settings = settings
     evt%model_hadrons => model_hadrons
     !!! TODO: (bcn 2015-03-27) method should be part of hadronization settings
     select case (char (method))
@@ -943,7 +945,8 @@ shower.
        call msg_fatal ("Hadronization method " // char (method) // &
             " not implemented.")
     end select
-    call evt%hadrons%init (evt%settings, model_hadrons)
+    call evt%hadrons%init (settings, model_hadrons)
+    evt%is_first_event = .true.
   end subroutine evt_hadrons_init
 
 @ %def evt_hadrons_init
@@ -965,10 +968,35 @@ shower.
          call evt%particle_set%write &
          (u, summary = .true., compressed = .true., testflag = testflag)
     call write_separator (u)
-    call evt%settings%write (u)
+    call evt%hadrons%settings%write (u)
   end subroutine evt_hadrons_write
 
 @ %def evt_hadrons_write
+@
+<<Hadrons: evt hadrons: TBP>>=
+  procedure :: first_event => evt_hadrons_first_event
+<<Hadrons: procedures>>=
+  subroutine evt_hadrons_first_event (evt)
+    class(evt_hadrons_t), intent(inout) :: evt
+    call msg_debug (D_TRANSFORMS, "evt_hadrons_first_event")
+    associate (settings => evt%hadrons%settings)
+       settings%hadron_collision = .false.
+       if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () <= 18)) then
+          settings%hadron_collision = .false.
+       else if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () >= 1000)) then
+          settings%hadron_collision = .true.
+       else 
+          call msg_fatal ("evt_hadrons didn't recognize beams setup")
+       end if
+       call msg_debug (D_TRANSFORMS, "hadron_collision", settings%hadron_collision)
+       if (.not. (settings%isr_active .or. settings%fsr_active)) then
+          call msg_fatal ("Hadronization without shower is not supported")
+       end if
+    end associate
+    evt%is_first_event = .false.
+  end subroutine evt_hadrons_first_event
+
+@ %def evt_hadrons_first_event
 @ Here we take the particle set from the previous event transform and
 apply the hadronization.  The result is stored in the [[evt%hadrons]]
 object.  We always return a probability of unity as we don't have the
@@ -984,6 +1012,9 @@ invalid.
     logical :: valid
     if (signal_is_pending ())  return
     evt%particle_set = evt%previous%particle_set
+    if (evt%is_first_event) then
+       call evt%first_event ()
+    end if
     call evt%hadrons%hadronize (evt%particle_set, valid)
     probability = 1
     evt%particle_set_exists = valid
@@ -3991,7 +4022,6 @@ hadrons that can be generated in the shower.
   public :: evt_shower_t
 <<Shower: types>>=
   type, extends (evt_t) :: evt_shower_t
-     type(shower_settings_t) :: settings
      class(shower_base_t), allocatable :: shower
      class(matching_t), allocatable :: matching
      type(model_t), pointer :: model_hadrons => null ()
@@ -4021,7 +4051,7 @@ hadrons that can be generated in the shower.
     if (evt%particle_set_exists)  call evt%particle_set%write &
          (u, summary = .true., compressed = .true., testflag = testflag)
     call write_separator (u)
-    call evt%settings%write (u)
+    call evt%shower%settings%write (u)
   end subroutine evt_shower_write
     
 @ %def evt_shower_write
@@ -4049,13 +4079,10 @@ shower.
 <<Shower: evt shower: TBP>>=
   procedure :: init => evt_shower_init
 <<Shower: procedures>>=
-  subroutine evt_shower_init &
-       (evt, settings, model_hadrons, os_data)
+  subroutine evt_shower_init (evt, model_hadrons, os_data)
     class(evt_shower_t), intent(out) :: evt
-    type(shower_settings_t), intent(in) :: settings
     type(model_t), intent(in), target :: model_hadrons
     type(os_data_t), intent(in) :: os_data    
-    evt%settings = settings
     evt%os_data = os_data
     evt%model_hadrons => model_hadrons
     evt%is_first_event = .true.
@@ -4099,43 +4126,41 @@ transformation chain is evaluated.
   subroutine evt_shower_first_event (evt)
     class(evt_shower_t), intent(inout) :: evt
     real(default) :: pdftest
-    logical :: hadron_collision
-    ! TODO: (bcn 2015-04-24) also set info for combine_with_particle_set
     call msg_debug (D_TRANSFORMS, "evt_shower_first_event")
-    hadron_collision = .false.
-    if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () <= 18)) then
-       hadron_collision = .false.
-    else if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () >= 1000)) then
-       hadron_collision = .true.
-    else 
-       call msg_fatal ("evt_shower didn't recognize beams setup")
-    end if
-    call msg_debug (D_TRANSFORMS, "hadron_collision", hadron_collision)
-    if (allocated (evt%matching)) then
-       evt%matching%is_hadron_collision = hadron_collision
-       call evt%matching%first_event ()
-    end if
-    if (.not. hadron_collision .and. evt%settings%isr_active) then
-       call msg_fatal ("?ps_isr_active is only intended for hadron-collisions")
-    end if
-    if (evt%pdf_data%type == STRF_LHAPDF5) then
-       if (evt%settings%isr_active .and. hadron_collision) then
-          call GetQ2max (0, pdftest)
-          if (pdftest < epsilon (pdftest)) then
-             call msg_bug ("ISR QCD shower enabled, but LHAPDF not" // &
-                  "initialized," // LF // "     aborting simulation")
-             return
-          end if
+    associate (settings => evt%shower%settings)
+       settings%hadron_collision = .false.
+       if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () <= 18)) then
+          settings%hadron_collision = .false.
+       else if (all (evt%particle_set%prt(1:2)%flv%get_pdg_abs () >= 1000)) then
+          settings%hadron_collision = .true.
+       else 
+          call msg_fatal ("evt_shower didn't recognize beams setup")
        end if
-    else if (evt%pdf_data%type == STRF_PDF_BUILTIN .and. &
-             evt%settings%method == PS_PYTHIA6) then
-       call msg_fatal ("Builtin PDFs cannot be used for PYTHIA showers," &
-            // LF // "     aborting simulation")
-       return
-    end if
-    !if (evt%settings%method == PS_PYTHIA6 .and. any (abs (IDBMUP) <= 8)) then
-    !   call msg_fatal ("PYTHIA doesn't support quarks as beam particles")
-    !end if
+       call msg_debug (D_TRANSFORMS, "hadron_collision", settings%hadron_collision)
+       if (allocated (evt%matching)) then
+          evt%matching%is_hadron_collision = settings%hadron_collision
+          call evt%matching%first_event ()
+       end if
+       if (.not. settings%hadron_collision .and. settings%isr_active) then
+          call msg_fatal ("?ps_isr_active is only intended for hadron-collisions")
+       end if
+       if (evt%pdf_data%type == STRF_LHAPDF5) then
+          if (settings%isr_active .and. settings%hadron_collision) then
+             call GetQ2max (0, pdftest)
+             if (pdftest < epsilon (pdftest)) then
+                call msg_bug ("ISR QCD shower enabled, but LHAPDF not" // &
+                     "initialized," // LF // "     aborting simulation")
+                return
+             end if
+          end if
+       else if (evt%pdf_data%type == STRF_PDF_BUILTIN .and. &
+                settings%method == PS_PYTHIA6) then
+          call msg_fatal ("Builtin PDFs cannot be used for PYTHIA showers," &
+               // LF // "     aborting simulation")
+          return
+       end if
+    end associate
+    evt%is_first_event = .false.
   end subroutine evt_shower_first_event
 
 @ %def evt_shower_first_event
@@ -4161,7 +4186,6 @@ we mark the particle set as invalid. This procedure directly takes the
     valid = .true.;  vetoed = .false.
     if (evt%is_first_event) then
        call evt%first_event ()
-       evt%is_first_event = .false.
     end if
     call evt%shower%import_particle_set (evt%particle_set, evt%os_data)
     if (allocated (evt%matching)) then
@@ -4172,8 +4196,8 @@ we mark the particle set as invalid. This procedure directly takes the
        end if
     end if
     if (.not. (vetoed .or. POWHEG_TESTING)) then
-       if (evt%settings%method == PS_PYTHIA6 .or. &
-           evt%settings%hadronization_active) then
+       if (evt%shower%settings%method == PS_PYTHIA6 .or. &
+           evt%shower%settings%hadronization_active) then
           call assure_heprup (evt%particle_set)
        end if
        call evt%shower%generate_emissions (valid)
@@ -4479,9 +4503,9 @@ in disabled mode.
     allocate (evt_shower_t :: evt_shower)
     select type (evt_shower)
     type is (evt_shower_t)
-       call evt_shower%init (settings, model_hadrons, os_data)
+       call evt_shower%init (model_hadrons, os_data)
        allocate (shower_t :: evt_shower%shower)
-       call evt_shower%shower%init (evt_shower%settings, pdf_data)
+       call evt_shower%shower%init (settings, pdf_data)
        call evt_shower%connect (process_instance, model)
     end select
 
@@ -4585,9 +4609,9 @@ We generate a two-jet event and shower it with the Whizard FSR shower.
     allocate (evt_shower_t :: evt_shower)
     select type (evt_shower)
     type is (evt_shower_t)
-       call evt_shower%init (settings, model_hadrons, os_data)
+       call evt_shower%init (model_hadrons, os_data)
        allocate (shower_t :: evt_shower%shower)
-       call evt_shower%shower%init (evt_shower%settings, pdf_data)
+       call evt_shower%shower%init (settings, pdf_data)
        call evt_shower%connect (process_instance, model)       
     end select
 
@@ -4625,24 +4649,24 @@ We generate a two-jet event and shower it with the Whizard FSR shower.
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Fixed Order NLO Events}
-This section deals with the generation of weighted event samples which 
+This section deals with the generation of weighted event samples which
 take into account next-to-leading order corrections. An approach
-generating unweighted events is not possible here, because negative 
+generating unweighted events is not possible here, because negative
 weights might occur due to subtraction. Note that the events produced
-this way are not physical in the sense that they will not keep 
+this way are not physical in the sense that they will not keep
 NLO-accuracy when interfaced to a parton shower. They are rather
-useful for theoretical consistency checks and a fast estimate of 
+useful for theoretical consistency checks and a fast estimate of
 NLO effects.\\
 We generate NLO events in the following way: First, the integration
 is carried out using the complete divergence-subtracted NLO matrix
 element. In the subsequent simulation, $N$-particle kinematics
-are generated using $\mathcal{B}+\mathcal{V}+\mathcal{C}$ as weight. 
-After that, the program loops over all singular regions and for each 
-of them generates an event with $N+1$-particle kinematics. 
-The weight for those events corresponds the the real matrix 
+are generated using $\mathcal{B}+\mathcal{V}+\mathcal{C}$ as weight.
+After that, the program loops over all singular regions and for each
+of them generates an event with $N+1$-particle kinematics.
+The weight for those events corresponds to the real matrix
 element $\mathcal{R}^\alpha$ evaluated at the $\alpha$-region's
-emitter's phase space point, multiplied with $S_\alpha$. 
-This procedure is implemented using the [[evt_nlo]] transform. 
+emitter's phase space point, multiplied with $S_\alpha$.
+This procedure is implemented using the [[evt_nlo]] transform.
 
 <<[[evt_nlo.f90]]>>=
 <<File header>>
@@ -4711,8 +4735,9 @@ end module evt_nlo
   end subroutine evt_nlo_write
 
 @ %def evt_nlo_write
-@ Connects the event transform to the process. Here also the phase space is set 
-up by making [[real_kinematics]] point to the corresponding object in [[nlo_controller]].
+@ Connects the event transform to the process. Here also the phase space
+is set up by making [[real_kinematics]] point to the corresponding
+object in [[nlo_controller]].
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: connect => evt_nlo_connect
 <<Evt Nlo: procedures>>=
@@ -4721,19 +4746,13 @@ up by making [[real_kinematics]] point to the corresponding object in [[nlo_cont
     type(process_instance_t), intent(in), target :: process_instance
     class(model_data_t), intent(in), target :: model
     type(process_stack_t), intent(in), optional :: process_stack
-    integer :: n_in, n_out_born
     real(default) :: sqrts
+    call msg_debug (D_TRANSFORMS, "evt_nlo_connect")
     call evt%base_connect (process_instance, model, process_stack)
     associate (generator => evt%phs_fks_generator, &
                nlo_controller => process_instance%nlo_controller)
-       n_in = nlo_controller%particle_data%n_in
-       n_out_born = nlo_controller%particle_data%n_out_born
        sqrts = process_instance%get_sqrts ()
        call nlo_controller%setup_generator (generator, sqrts)
-       generator%real_kinematics => nlo_controller%real_kinematics
-       call generator%set_emitters (nlo_controller%reg_data%emitters)
-       call generator%setup_masses (n_in + n_out_born)
-       generator%is_massive = nlo_controller%get_mass_info(1)
     end associate
   end subroutine evt_nlo_connect
 
@@ -4748,15 +4767,17 @@ up by making [[real_kinematics]] point to the corresponding object in [[nlo_cont
   end subroutine evt_nlo_prepare_new_event
 
 @ %def evt_nlo_prepare_new_event
-@ The event transform has a variable which counts the number of times 
-it has already been called for one generation point. If [[i_evaluation]] 
-is zero, this means that [[evt_nlo_generate]] is called for the first 
-time, so that the generation of an $N$-particle event is required.
-In all other cases, emission events are generated.\\
-Note that for the first event, the computed weights are added
-to [[probability]], which at this point is equal to 
-$\mathcal{B} + \mathcal{V}$, whereas for all other runs [[probability]] 
-is replaced. 
+@ The event transform has a variable which counts the number of times it
+has already been called for one generation point. If [[i_evaluation]] is
+zero, this means that [[evt_nlo_generate]] is called for the first time,
+so that the generation of an $N$-particle event is required.  In all
+other cases, emission events are generated.\\
+Note that for the first event, the computed weights are added to
+[[probability]], which at this point is equal to $\mathcal{B} +
+\mathcal{V}$, whereas for all other runs [[probability]] is replaced.
+To keep $<\sum{w_i}>=N\times\sigma$ as it is for weighted LO
+events, we have to multiply by $N_{\alpha_r} + 1$ since the cross section
+is distributed over the real and Born subevents.
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: generate_weighted => evt_nlo_generate_weighted
 <<Evt Nlo: procedures>>=
@@ -4765,6 +4786,9 @@ is replaced.
     real(default), intent(inout) :: probability
     real(default) :: weight
     integer :: emitter
+    call msg_debug (D_TRANSFORMS, "evt_nlo_generate_weighted")
+    call msg_debug (D_TRANSFORMS, "probability (before)", probability)
+    call msg_debug (D_TRANSFORMS, "evt%i_evaluation", evt%i_evaluation)
     evt%particle_set = evt%previous%particle_set
     if (evt%i_evaluation == 0) then
        weight = evt%compute_subtraction_weights ()
@@ -4774,10 +4798,13 @@ is replaced.
        call evt%generate_emission (emitter)
        probability = evt%sqme_rad
     end if
+    probability = probability * (size (evt%emitters) + 1)
+    call msg_debug (D_TRANSFORMS, "probability (after)", probability)
     evt%particle_set_exists = .true.
   end subroutine evt_nlo_generate_weighted
 
 @ %def evt_nlo_generate_weighted
+@
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: make_particle_set => evt_nlo_make_particle_set
 <<Evt Nlo: procedures>>=
@@ -4790,8 +4817,9 @@ is replaced.
   end subroutine evt_nlo_make_particle_set
 
 @ %def evt_nlo_make_particle_set
-@ Create the particle set corresponding to a radiation event. This involves setting the
-phase space as well as rearranging the mother-daughter relations and color information.
+@ Create the particle set corresponding to a radiation event. This
+involves setting the phase space as well as rearranging the
+mother-daughter relations and color information.
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: build_radiated_particle_set => evt_nlo_build_radiated_particle_set
 <<Evt Nlo: procedures>>=
@@ -4802,11 +4830,17 @@ phase space as well as rearranging the mother-daughter relations and color infor
     type(vector4_t), dimension(:), allocatable :: p_new
     integer, dimension(:), allocatable :: flv_radiated
     integer :: emitter
+    call msg_debug (D_TRANSFORMS, "evt_nlo_build_radiated_particle_set")
+    call msg_debug (D_TRANSFORMS, "i_event", i_event)
+    call msg_debug (D_TRANSFORMS, "evt%i_evaluation", evt%i_evaluation)
     evt%particle_set_radiated(i_event) = evt%particle_set
     if (evt%i_evaluation /= 0) then
        flv_radiated = evt%process_instance%nlo_controller%get_flv_state_real (1)
        call evt%rng%generate (r_col)
+       call msg_debug2 (D_TRANSFORMS, "r_col", r_col)
+       if (debug2_active (D_TRANSFORMS))  print *, 'flv_radiated =    ', flv_radiated !!! Debugging
        emitter = evt%emitters (evt%i_evaluation)
+       call msg_debug (D_TRANSFORMS, "emitter", emitter)
        p_new = evt%process_instance%nlo_controller%get_momenta (born_phsp = .false.)
        call evt%particle_set_radiated(i_event)%build_radiation (p_new, emitter, flv_radiated, &
             evt%process_instance%process%get_model_ptr (), r_col) 
@@ -4844,6 +4878,7 @@ terms.
                   (x_rad, emitter, p_born)
           end if
           associate (nlo_controller => instance%nlo_controller)
+             ! TODO: (bcn 2015-07-04) clean this
              call nlo_controller%set_momenta (p_born, born_phsp = .true.)
              call nlo_controller%set_momenta (p_born, born_phsp = .true., cms = .true.)
              call nlo_controller%set_momenta (p_real, born_phsp = .false.)
@@ -5439,7 +5474,9 @@ For testing purpose, we allow for providing them explicitly, as an option.
     class(event_t), intent(inout) :: event
     real(default), dimension(:), intent(in), optional :: r
     class(evt_t), pointer :: evt
+    real(default) :: sigma_over_sqme
     integer :: i_term
+    call msg_debug (D_TRANSFORMS, "event_evaluate_transforms")
     call event%discard_particle_set ()
     call event%check ()
     if (event%instance%is_complete_event ()) then
@@ -5452,10 +5489,14 @@ For testing purpose, we allow for providing them explicitly, as an option.
           evt => evt%next
        end do
        evt => event%transform_first
+       call msg_debug (D_TRANSFORMS, "Before event transformations")
+       call msg_debug (D_TRANSFORMS, "event%weight_prc", event%weight_prc)
+       call msg_debug (D_TRANSFORMS, "event%sqme_prc", event%sqme_prc)
        do while (associated (evt))
           if (evt%only_weighted_events) then
-!             call evt%generate_weighted (event%weight_prc)
+             sigma_over_sqme = event%weight_prc / event%sqme_prc
              call evt%generate_weighted (event%sqme_prc)
+             event%weight_prc = sigma_over_sqme * event%sqme_prc
           else
              call evt%generate_unweighted ()
           end if
@@ -5479,6 +5520,9 @@ For testing purpose, we allow for providing them explicitly, as an option.
              call event%link_particle_set (evt%particle_set)
           end if
        end if
+       call msg_debug (D_TRANSFORMS, "After event transformations")
+       call msg_debug (D_TRANSFORMS, "event%weight_prc", event%weight_prc)
+       call msg_debug (D_TRANSFORMS, "event%sqme_prc", event%sqme_prc)
     end if
   end subroutine event_evaluate_transforms
     
