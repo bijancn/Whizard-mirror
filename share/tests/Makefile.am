@@ -42,7 +42,7 @@ EXTRA_DIST = \
     functional_tests/susyhit.in TEST.mdl
 
 TESTSUITE_MACROS = testsuite.m4
-TESTSUITE_TOOLS = check-debug-output.py compare-integrals.py compare-histos.py
+TESTSUITE_TOOLS = check-debug-output.py compare-integrals.py compare-histograms.py
 
 REF_OUTPUT_FILES = \
     extra_integration_results.dat \

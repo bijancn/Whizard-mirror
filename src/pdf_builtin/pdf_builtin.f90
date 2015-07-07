@@ -1,4 +1,4 @@
-!$Id: pdf_builtin.f90 6465 2015-01-10 15:22:31Z jr_reuter $
+!$Id: pdf_builtin.f90 7085 2015-07-03 15:55:10Z kilian $
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -275,7 +275,7 @@ contains
     real(kind=double) :: mx, mq
     real(kind=double) :: upv, dnv, ups, dns, str, chm, bot, glu, phot, &
          sbar, bbar, cbar
-    type(string_t) :: setname, prefix
+    type(string_t) :: setname
     select case (pdftype)
     case (CTEQ6M, CTEQ6D, CTEQ6L, CTEQ6L1)
        if (cteq6_initialized < 0) &
@@ -565,7 +565,6 @@ contains
   end function pdf_builtin_alpi
   
   double precision function pdf_builtin_ALPQCD (IRDR, NF, RML, IRT) 
-    real(kind=double) :: D0 = 0.D0, D1 = 1.D0, BIG = 1.0D15
     real(kind=double) :: b0, b1
     integer, intent(in) :: irdr, nf
     integer :: irt
