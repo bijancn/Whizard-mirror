@@ -6561,14 +6561,14 @@ added back in by Pythia.
     type(shower_settings_t), intent(in) :: settings
     class(model_data_t), pointer :: model
     type(vector4_t) :: momentum
-    type(particle_t), dimension(:), allocatable :: particles
+    type(particle_t), dimension(:), allocatable :: particles, beams
     type(particle_t), dimension(2) :: incomings
     integer :: dangling_col, dangling_anti_col, color, anti_color
     integer :: i, j, py_entries, next_color, n_tot_old, parent, real_parent
     integer :: pdg, status, child, hadro_start
     integer, allocatable, dimension(:) :: old_index, new_index, &
          backup_parents, incoming_ids
-    logical, allocatable, dimension(:) :: pythia_particle, valid
+    logical, allocatable, dimension(:) :: valid
     real(default), parameter :: py_tiny = 1E-10_default
     integer :: N, NPAD, K
     real(double) :: P, V
@@ -6582,24 +6582,37 @@ added back in by Pythia.
        call msg_debug (D_SHOWER, 'Particle set before replacing')
        call particle_set%write (summary=.true., compressed=.true.)
        call pylist (2)
+       call msg_debug (D_SHOWER, "settings%hadron_collision", settings%hadron_collision)
+    end if
+    if (settings%method == PS_PYTHIA6 .and. settings%hadron_collision) then
+       call pythia6_set_last_treated_line(2)
+       allocate (beams(2))
+       beams = particle_set%prt(1:2)
+       call particle_set%replace (beams)
+       if (debug_active (D_SHOWER)) then
+         call msg_debug (D_SHOWER, 'Resetting particle set to')
+         call particle_set%write (summary=.true., compressed=.true.)
+       end if
     end if
     call count_valid_entries_in_pythia_record ()
-    call particle_set%without_hadronic_remnants &
-         (particles, n_tot_old, py_entries)
+    !if (settings%method == PS_PYTHIA6 .and. settings%hadron_collision) then
+    !   allocate (particles (2 + py_entries))
+    !   n_tot_old = 2
+    !else
+       call particle_set%without_hadronic_remnants &
+            (particles, n_tot_old, py_entries)
+    !end if
     if (debug_active (D_SHOWER)) then
        print *, 'n_tot_old =    ', n_tot_old
        print *, 'py_entries =    ', py_entries
     end if
-    call prepare_temporary_objects ()
+    !call prepare_temporary_objects ()
     call add_particles_of_pythia ()
     call particle_set%replace (particles)
-    !call replace_incomings ()
-    call msg_debug (D_SHOWER, "settings%hadron_collision", settings%hadron_collision)
     if (settings%hadron_collision) then
        call set_parent_child_relations_from_K ()
        call set_parent_child_relations_of_color_strings_to_hadrons ()
-       call give_orphans_backup_parents ()
-       call particle_set%remove_duplicates (py_tiny * 100.0_default)
+       !call particle_set%remove_duplicates (py_tiny * 100.0_default)
     else
        call set_parent_child_relations_from_hepevt ()
     end if
@@ -6639,54 +6652,56 @@ added back in by Pythia.
     end do FIND
     do i = N, N_old+1, -1
        status = K(i,1)
-       valid (i) = .true.
-       if (any (P(i,1:4) > 1E7_default * py_tiny) .and. (status > 1 .and. status <= 21)) then
-          pset_idx = find_pythia_particle (i, more_fuzzy=.true.)
-          if (pset_idx /= 0) then
-             valid(i)= .false.
+       if (any (P(i,1:4) > 1E-8_default * P(1,4)) .and. (status >= 1 .and. status <= 21)) then
+          pset_idx = find_pythia_particle (i, more_fuzzy=.false.)
+          if (pset_idx == 0) then
+             valid(i) = .true.
           end if
        end if
     end do
     py_entries = count (valid)
     allocate (old_index (py_entries))
     allocate (new_index (N))
-    new_index(1:N) = 0
+    new_index = 0
   end subroutine count_valid_entries_in_pythia_record
 
 @
 <<Shower pythia6: combine with particle set: procedures>>=
-  subroutine prepare_temporary_objects ()
-    allocate (pythia_particle (n_tot_old + py_entries))
-    pythia_particle = .false.
-    backup_parents = pack ([(i, i=1, size (particles))], &
-         (particles%get_status () == PRT_INCOMING .or. &
-          particles%get_status () == PRT_OUTGOING))
-  end subroutine prepare_temporary_objects
+!  subroutine prepare_temporary_objects ()
+!    backup_parents = pack ([(i, i=1, size (particles))], &
+!         (particles%get_status () == PRT_INCOMING .or. &
+!          particles%get_status () == PRT_OUTGOING))
+!  end subroutine prepare_temporary_objects
 @
 <<Shower pythia6: combine with particle set: procedures>>=
   subroutine add_particles_of_pythia ()
     integer :: whizard_status
-    integer :: pset_idx
-    dangling_col = 0
-    dangling_anti_col = 0
-    next_color = 1
-    j = 1
-    do i = 5, 6
-       call assign_colors (color, anti_color)
-       momentum = real ([P(i,4), P(i,1:3)], kind=default)
-       pdg = K(i,2)
-       parent = K(i,3)
-       call find_model (model, pdg, model_in, model_hadrons)
-       whizard_status = PRT_INCOMING
-       call incomings(j)%init &
-            (whizard_status, pdg, model, color, anti_color, momentum)
-       j = j + 1
-    end do
+    integer :: pset_idx, start_in_py
+    !dangling_col = 0
+    !dangling_anti_col = 0
+    !next_color = 1
+    !j = 1
+    !do i = 5, 6
+    !   call assign_colors (color, anti_color)
+    !   momentum = real ([P(i,4), P(i,1:3)], kind=default)
+    !   pdg = K(i,2)
+    !   parent = K(i,3)
+    !   call find_model (model, pdg, model_in, model_hadrons)
+    !   whizard_status = PRT_INCOMING
+    !   call incomings(j)%init &
+    !        (whizard_status, pdg, model, color, anti_color, momentum)
+    !   j = j + 1
+    !end do
     dangling_col = 0
     dangling_anti_col = 0
     next_color = 500
     j = 1
-    do i = 7, N
+    if (settings%method == PS_PYTHIA6 .and. settings%hadron_collision) then
+       start_in_py = 3
+    else
+       start_in_py = 7
+    end if
+    do i = start_in_py, N
        status = K(i,1)
        if (valid(i)) then
           call assign_colors (color, anti_color)
@@ -6694,19 +6709,23 @@ added back in by Pythia.
           pdg = K(i,2)
           parent = K(i,3)
           call find_model (model, pdg, model_in, model_hadrons)
-          if (status <= 10) then
-             whizard_status = PRT_OUTGOING
+          if (i <= 4) then
+             whizard_status = PRT_INCOMING
           else
-             whizard_status = PRT_VIRTUAL
+             if (status <= 10) then
+                whizard_status = PRT_OUTGOING
+             else
+                whizard_status = PRT_VIRTUAL
+             end if
           end if
           call particles(n_tot_old+j)%init &
                (whizard_status, pdg, model, color, anti_color, momentum)
           old_index(j) = i
           new_index(i) = n_tot_old + j
-          pythia_particle(n_tot_old + j) = .true.
           j = j + 1
        else
-          pset_idx = find_pythia_particle (i,more_fuzzy=.true.)
+          ! we need the map also for particles already in the set
+          pset_idx = find_pythia_particle (i, more_fuzzy=.true.)
           new_index(i) = pset_idx
        end if
     end do
@@ -6772,15 +6791,15 @@ added back in by Pythia.
 
 @
 <<Shower pythia6: combine with particle set: procedures>>=
-  subroutine replace_incomings ()
-    incoming_ids = particle_set%get_indices &
-         (particle_set%prt%status == PRT_INCOMING)
-    do i = 1, 2
-       particle_set%prt(incoming_ids(i))%p = incomings(i)%p
-       particle_set%prt(incoming_ids(i))%flv = incomings(i)%flv
-       particle_set%prt(incoming_ids(i))%col = incomings(i)%col
-    end do
-  end subroutine replace_incomings
+  !subroutine replace_incomings ()
+  !  incoming_ids = particle_set%get_indices &
+  !       (particle_set%prt%status == PRT_INCOMING)
+  !  do i = 1, 2
+  !     particle_set%prt(incoming_ids(i))%p = incomings(i)%p
+  !     particle_set%prt(incoming_ids(i))%flv = incomings(i)%flv
+  !     particle_set%prt(incoming_ids(i))%col = incomings(i)%col
+  !  end do
+  !end subroutine replace_incomings
 
 @ Use HEPEVT for parent-child informations
 <<Shower pythia6: combine with particle set: procedures>>=
@@ -6864,7 +6883,8 @@ added back in by Pythia.
           if (parent >= 1 .and. parent <= 2) then
              call particle_set%parent_add_child (parent, child)
           else
-             real_parent = find_pythia_particle (parent, more_fuzzy=.true.)
+             !real_parent = find_pythia_particle (parent, more_fuzzy=.true.)
+             real_parent = new_index (parent)
              if (real_parent > 0 .and. real_parent /= child) then
                 call particle_set%parent_add_child (real_parent, child)
              end if
@@ -6900,10 +6920,10 @@ added back in by Pythia.
           end do
           allocate (parents (end_string - begin_string + 1))
           parents = 0
-          real_child = find_pythia_particle (old_start, more_fuzzy=.true.)
+          real_child = new_index (old_start)
           do i = begin_string, end_string
-             real_parent = find_pythia_particle (i, more_fuzzy=.true.)
-             if (real_parent > 0 .and. real_parent /= i) then
+             real_parent = new_index (i)
+             if (real_parent > 0) then
                 call particle_set%prt(real_parent)%add_child (real_child)
                 parents (i - begin_string + 1) = real_parent
              end if
@@ -6922,17 +6942,15 @@ relations than when deciding whether we add particles or not.
   function find_pythia_particle (i, more_fuzzy) result (j)
     integer :: j
     integer, intent(in) :: i
-    logical, intent(in), optional :: more_fuzzy
+    logical, intent(in) :: more_fuzzy
     real(default) :: rel_small
     pdg = K(i,2)
     momentum = real([P(i,4), P(i,1:3)], kind=default)
-    !if (boost_required) then
-    !   momentum = L * momentum
-    !end if
-    if (present (more_fuzzy)) then
-       rel_small = 1E3_default * py_tiny
+    if (more_fuzzy) then
+       !rel_small = 1E-7_default
+       rel_small = 1E-6_default
     else
-       rel_small = 1E2_default * py_tiny
+       rel_small = 1E-10_default
     end if
     j = particle_set%reverse_find_particle (pdg, momentum, &
          abs_smallness = py_tiny, &
@@ -6941,19 +6959,19 @@ relations than when deciding whether we add particles or not.
 
 @
 <<Shower pythia6: combine with particle set: procedures>>=
-  subroutine give_orphans_backup_parents ()
-    do i = 1, size (particle_set%prt)
-       if ((particle_set%prt(i)%status == PRT_OUTGOING .or. &
-            particle_set%prt(i)%status == PRT_VIRTUAL .or. &
-            particle_set%prt(i)%status == PRT_RESONANT) .and. .not. &
-            particle_set%prt(i)%has_parents ()) then
-          call particle_set%prt(i)%set_parents (backup_parents)
-          do j = 1, size(backup_parents)
-             call particle_set%prt(backup_parents(j))%add_child (i)
-          end do
-       end if
-    end do
-  end subroutine give_orphans_backup_parents
+  !subroutine give_orphans_backup_parents ()
+  !  do i = 1, size (particle_set%prt)
+  !     if ((particle_set%prt(i)%status == PRT_OUTGOING .or. &
+  !          particle_set%prt(i)%status == PRT_VIRTUAL .or. &
+  !          particle_set%prt(i)%status == PRT_RESONANT) .and. .not. &
+  !          particle_set%prt(i)%has_parents ()) then
+  !        call particle_set%prt(i)%set_parents (backup_parents)
+  !        do j = 1, size(backup_parents)
+  !           call particle_set%prt(backup_parents(j))%add_child (i)
+  !        end do
+  !     end if
+  !  end do
+  !end subroutine give_orphans_backup_parents
 
 @ Outgoing partons after hadronization shouldn't happen and is a dirty
 fix to missing mother daughter relation. I suspect that it has to do
