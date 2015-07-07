@@ -3854,12 +3854,13 @@ Allocate an integrator according to the variable [[$integration_method]].
 <<Dispatch: public>>=
   public :: dispatch_mci
 <<Dispatch: procedures>>=
-  subroutine dispatch_mci (mci, global, process_id)
+  subroutine dispatch_mci (mci, global, process_id, is_nlo)
     use mci_base
     use mci_midpoint
     use mci_vamp
     
     class(mci_t), allocatable, intent(inout) :: mci
+    logical, intent(in), optional :: is_nlo
     type(rt_data_t), intent(in) :: global
     type(string_t), intent(in) :: process_id
     type(string_t) :: run_id
@@ -3867,7 +3868,9 @@ Allocate an integrator according to the variable [[$integration_method]].
     type(grid_parameters_t) :: grid_par
     type(history_parameters_t) :: history_par
     logical :: rebuild_grids, check_grid_file, negative_weights, verbose
+    logical :: neg_w
 
+    neg_w = .false.; if (present (is_nlo)) neg_w = is_nlo
     integration_method = &
          global%var_list%get_sval (var_str ("$integration_method"))
     select case (char (integration_method))
@@ -3914,7 +3917,7 @@ Allocate an integrator according to the variable [[$integration_method]].
          rebuild_grids = &
               var_list%get_lval (var_str ("?rebuild_grids"))
          negative_weights = &
-              var_list%get_lval (var_str ("?negative_weights"))
+              var_list%get_lval (var_str ("?negative_weights")) .or. neg_w
        end associate
        allocate (mci_vamp_t :: mci)
        select type (mci)
@@ -8400,7 +8403,8 @@ local changes to currently inactive models.
        intg%log_filename = intg%process_id // ".log"
     end if
 
-    call dispatch_mci (mci_template, local, intg%process_id)
+    call dispatch_mci (mci_template, local, intg%process_id, &
+       intg%process%is_nlo_calculation ())
 
     if (verb) then
        call msg_message ("Initializing integration for process " &
@@ -26654,6 +26658,223 @@ end module cmdline_options
 @
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Query Feature Support}
+This module accesses the various optional features (modules) that
+WHIZARD can support and repors on their availability.
+<<[[features.f90]]>>=
+module features
+
+  use string_utils, only: lower_case
+  use system_dependencies, only: WHIZARD_VERSION
+<<Features: dependencies>>
+
+<<Standard module head>>
+
+<<Features: public>>
+
+contains
+  
+<<Features: procedures>>
+
+end module features
+@ %def features
+@
+\subsection{Output}
+<<Features: public>>=
+  public :: print_features
+<<Features: procedures>>=
+  subroutine print_features ()
+    print "(A)", "WHIZARD " // WHIZARD_VERSION
+    print "(A)", "Build configuration:"
+  <<Features: config>>
+    print "(A)", "Optional features available in this build:"
+  <<Features: print>>
+  end subroutine print_features
+  
+@ %def print_features
+@
+\subsection{Query function}
+<<Features: procedures>>=
+  subroutine check (feature, recognized, result, help)
+    character(*), intent(in) :: feature
+    logical, intent(out) :: recognized
+    character(*), intent(out) :: result, help
+    recognized = .true.
+    result = "no"
+    select case (lower_case (trim (feature)))
+  <<Features: cases>>
+    case default
+       recognized = .false.
+    end select
+  end subroutine check
+  
+@ %def check
+@ Print this result:
+<<Features: procedures>>=
+  subroutine print_check (feature)
+    character(*), intent(in) :: feature
+    character(16) :: f
+    logical :: recognized
+    character(10) :: result
+    character(48) :: help
+    call check (feature, recognized, result, help)
+    if (.not. recognized) then
+       result = "unknown"
+       help = ""
+    end if
+    f = feature
+    print "(2x,A,1x,A,'(',A,')')", f, result, trim (help)
+  end subroutine print_check
+    
+@ %def print_check
+@
+\subsection{Basic configuration}
+<<Features: config>>=
+  call print_check ("precision")
+<<Features: dependencies>>=
+  use kinds, only: default
+<<Features: cases>>=
+  case ("precision")
+     write (result, "(I0)")  precision (1._default)
+     help = "significant decimals of real/complex numbers"
+@
+\subsection{Optional features case by case}
+<<Features: print>>=
+  call print_check ("OpenMP")
+<<Features: dependencies>>=
+  use system_dependencies, only: openmp_is_active
+<<Features: cases>>=
+  case ("openmp")
+     if (openmp_is_active ()) then
+        result = "yes"
+     end if
+     help = "OpenMP parallel execution"
+@ 
+<<Features: print>>=
+  call print_check ("GoSam")
+<<Features: dependencies>>=
+  use system_dependencies, only: GOSAM_AVAILABLE
+<<Features: cases>>=
+  case ("gosam")
+     if (GOSAM_AVAILABLE) then
+        result = "yes"
+     end if
+     help = "external NLO matrix element provider"
+@ 
+<<Features: print>>=
+  call print_check ("OpenLoops")
+<<Features: dependencies>>=
+  use system_dependencies, only: OPENLOOPS_AVAILABLE
+<<Features: cases>>=
+  case ("openloops")
+     if (OPENLOOPS_AVAILABLE) then
+        result = "yes"
+     end if
+     help = "external NLO matrix element provider"
+@ 
+<<Features: print>>=
+  call print_check ("LHAPDF")
+<<Features: dependencies>>=
+  use system_dependencies, only: LHAPDF5_AVAILABLE
+  use system_dependencies, only: LHAPDF6_AVAILABLE  
+<<Features: cases>>=
+  case ("lhapdf")
+     if (LHAPDF5_AVAILABLE) then
+        result = "v5"
+     else if (LHAPDF6_AVAILABLE) then
+        result = "v6"
+     end if
+     help = "PDF library"
+@ 
+<<Features: print>>=
+  call print_check ("HOPPET")
+<<Features: dependencies>>=
+  use system_dependencies, only: HOPPET_AVAILABLE
+<<Features: cases>>=
+  case ("hoppet")
+     if (HOPPET_AVAILABLE) then
+        result = "yes"
+     end if
+     help = "PDF evolution package"
+@ 
+<<Features: print>>=
+  call print_check ("fastjet")
+<<Features: dependencies>>=
+  use jets, only: fastjet_available
+<<Features: cases>>=
+  case ("fastjet")
+     if (fastjet_available ()) then
+        result = "yes"
+     end if
+     help = "jet-clustering package"
+@ 
+<<Features: print>>=
+  call print_check ("Pythia6")
+<<Features: dependencies>>=
+  use system_dependencies, only: PYTHIA6_AVAILABLE
+<<Features: cases>>=
+  case ("pythia6")
+     if (PYTHIA6_AVAILABLE) then
+        result = "yes"
+     end if
+     help = "direct access for shower/hadronization"
+@ 
+<<Features: print>>=
+  call print_check ("Pythia8")
+<<Features: dependencies>>=
+  use system_dependencies, only: PYTHIA8_AVAILABLE
+<<Features: cases>>=
+  case ("pythia8")
+     if (PYTHIA8_AVAILABLE) then
+        result = "yes"
+     end if
+     help = "direct access for shower/hadronization"
+@ 
+<<Features: print>>=
+  call print_check ("StdHEP")
+<<Features: dependencies>>=
+  use system_dependencies, only: STDHEP_AVAILABLE
+<<Features: cases>>=
+  case ("stdhep")
+     if (STDHEP_AVAILABLE) then
+        result = "yes"
+     end if
+     help = "event I/O format"
+@ 
+<<Features: print>>=
+  call print_check ("HepMC")
+<<Features: dependencies>>=
+  use hepmc_interface, only: hepmc_is_available
+<<Features: cases>>=
+  case ("hepmc")
+     if (hepmc_is_available ()) then
+        result = "yes"
+     end if
+     help = "event I/O format"
+@ 
+<<Features: print>>=
+  call print_check ("LCIO")
+<<Features: dependencies>>=
+  use lcio_interface, only: lcio_is_available
+<<Features: cases>>=
+  case ("lcio")
+     if (lcio_is_available ()) then
+        result = "yes"
+     end if
+     help = "event I/O format"
+@ 
+<<Features: print>>=
+  call print_check ("MetaPost")
+<<Features: dependencies>>=
+  use system_dependencies, only: EVENT_ANALYSIS
+<<Features: cases>>=
+  case ("metapost")
+     result = EVENT_ANALYSIS
+     help = "graphical event analysis via LaTeX/MetaPost"
+@ 
+@
+\clearpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Driver program}
 The main program handles command options, initializes the environment,
 and runs WHIZARD in a particular mode (interactive, file, standard
@@ -26679,6 +26900,7 @@ program main
   use whizard
 
   use cmdline_options
+  use features
 
   implicit none
 
@@ -26787,6 +27009,9 @@ program main
               call print_usage ()
               call msg_fatal ("Option --check not supported &
                    &(for unit tests, run whizard_ut instead)")
+           case ("--show-config")
+              call no_option_value (long_option, value)
+              call print_features (); stop
            case ("--execute")
               command = get_option_value (i, long_option, value)
               call ifile_append (commands, command)
@@ -27121,6 +27346,7 @@ contains
     print "(A)", "    --rebuild-grids   rebuild integration grids"
     print "(A)", "    --rebuild-events  rebuild event samples"
     print "(A)", "    --recompile       recompile process code"
+    print "(A)", "    --show-config     show build-time configuration"
     print "(A)", "-u  --user            enable user-provided code"
     print "(A)", "    --user-src FILE   user-provided source file"
     print "(A)", "    --user-lib FILE   user-provided library file"
