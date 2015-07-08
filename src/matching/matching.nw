@@ -1928,6 +1928,7 @@ improved version.
     type(radiation_t), intent(inout) :: r
     logical :: accepted
     sudakov%current_pt2_max = r%pt2
+    call sudakov%generate_xi_and_y_and_phi (r)
     sudakov%last_log = sudakov%norm_max * &
          sudakov%log_integrated_ubf (sudakov%current_pt2_max)
     call msg_debug2 (D_MATCHING, "sudakov_generate_emission")
@@ -1991,6 +1992,7 @@ This corresponds to Appendix C of [[1002.2581]]
   end type sudakov_simple_fsr_t
 
 @ %def sudakov_simple_fsr_t
+@ The simplest upper bounding function for final-state radiation is
 \begin{equation}
 \mathtt{upper\_bound\_func} = \frac {U(\xi,y)} N
                           = \frac {\alpha_s}{\xi (1-y)}
@@ -2006,7 +2008,10 @@ This corresponds to Appendix C of [[1002.2581]]
   end function sudakov_simple_fsr_upper_bound_func
 
 @ %def sudakov_simple_fsr_upper_bound_func
-@
+@ The above upper bounding function corresponds to the transverse momentum scale
+\begin{equation}
+  k_T^2 = \frac{s}{2} \xi^2 (1-y).
+\end{equation}
 <<POWHEG matching: sudakov simple fsr: TBP>>=
   procedure :: kt2 => sudakov_simple_fsr_kt2
 <<POWHEG matching: procedures>>=
@@ -2201,7 +2206,18 @@ a massless recoiling system.
   end type sudakov_massive_fsr_t
 
 @ %def sudakov_massive_fsr_t
-@
+@ For massive emitters, the radiation variable $\xi$ is constructed as follows. First,
+\begin{equation}
+  \xi_{\rm{min}}(k_T^2) 
+      = \frac{\sqrt{k_T^2 \left(k_T^2z_2^2 + 8\bar{p}^0q(1-z_2\right)} - k_T^2z_2}{2q^2(1-z_2)}
+\end{equation}
+is computed. Then $\xi_1$ is computed according to the same equation with $z_2 \leftrightarrow z_1$.
+Finally, $\xi$ is generated according to
+\begin{equation}
+  \xi = \frac{1}{q^2}\exp\left[\log\left(\xi_{\rm{min}}q^2-k_T^2\right) 
+        + r\log\frac{\xi_m q^2 - k_T^2}{\xi_{\rm{min}}q^2-k_T^2} + k_T^2\right],
+\end{equation}
+%where $\xi_m = \rm{min}\left(\xi_\rm{max}, \xi_1\right)$.
 <<POWHEG matching: sudakov massive fsr: TBP>>=
   procedure :: generate_xi => sudakov_massive_fsr_generate_xi
 <<POWHEG matching: procedures>>=
@@ -2209,24 +2225,25 @@ a massless recoiling system.
     class(sudakov_massive_fsr_t), intent(inout) :: sudakov
     type(radiation_t), intent(inout) :: r
     real(default) :: pt2, q0, q02
-    real(default) :: E_em
+    real(default) :: E_em, xi_max
     pt2 = r%pt2
     E_em = energy (sudakov%event_deps%p_born(sudakov%associated_emitter))
     q0 = sudakov%event_deps%sqrts_hat; q02 = q0**2
+    xi_max = sqrt (sudakov%xi2_max)
     associate (z1 => sudakov%z1, z2 => sudakov%z2)
       sudakov%xi_min = (sqrt(pt2 * (pt2*z2**2 + 8*E_em*q0*(one-z2))) - pt2*z2) / &
          (2*q02*(one-z2))
       sudakov%xi_1 = (sqrt(pt2 * (pt2*z1**2 + 8*E_em*q0*(one-z1))) - pt2*z1) / &
          (2*q02*(one-z1))
-      sudakov%xi_m = min (sudakov%xi_min, sudakov%xi_1)
+      sudakov%xi_m = min (xi_max, sudakov%xi_1)
     end associate
     call sudakov%rng%generate (sudakov%random)
-    r%xi = exp (log(sudakov%xi_min*q02 - pt2) + sudakov%random * &
-          log((sudakov%xi_m*q02 - pt2) / (sudakov%xi_min*q02 - pt2)) + pt2) / q02
+    r%xi = (exp (log(sudakov%xi_min*q02 - pt2) + sudakov%random * &
+          log((sudakov%xi_m*q02 - pt2) / (sudakov%xi_min*q02 - pt2))) + pt2) / q02
   end subroutine sudakov_massive_fsr_generate_xi
 
 @ %def sudakov_massive_fsr_generate_xi
-@
+@ 
 <<POWHEG matching: sudakov massive fsr: TBP>>=
   procedure :: generate_xi_and_y_and_phi => sudakov_massive_fsr_generate_xi_and_y_and_phi
 <<POWHEG matching: procedures>>=
@@ -2235,20 +2252,21 @@ a massless recoiling system.
     type(radiation_t), intent(inout) :: r
     real(default) :: q0
     real(default) :: m2, mrec2, k0_rec_max
-    real(default) :: E_em, pt2, z
+    real(default) :: E_em, z_max
     type(vector4_t) :: p_emitter
 
-    q0 = sudakov%event_deps%sqrts_hat
+    q0 = sqrt (sudakov%event_deps%sqrts_hat)
     p_emitter = sudakov%event_deps%p_born(sudakov%associated_emitter)
     associate (p => p_emitter%p)
       mrec2 = (q0 - p(0))**2 - p(1)**2 - p(2)**2 - p(3)**2
       E_em = p(0)
     end associate
+    m2 = p_emitter**2
     call compute_dalitz_bounds (q0, m2, mrec2, p_emitter, sudakov%z1, sudakov%z2, k0_rec_max)
     call sudakov%generate_xi (r)
 
-    sudakov%z = (2*pt2*E_em - r%xi**2*q0**3) / (pt2*r%xi*q0 - r%xi**2*q0**3)
-    r%y = two*(sudakov%z2-z)/(sudakov%z2-sudakov%z1) - one
+    z_max = (2*r%pt2*E_em - r%xi**2*q0**3) / (r%pt2*r%xi*q0 - r%xi**2*q0**3)
+    r%y = two*(sudakov%z2-z_max)/(sudakov%z2-sudakov%z1) - one
     call sudakov%rng%generate (sudakov%random)
     r%phi = sudakov%random * twopi 
   end subroutine sudakov_massive_fsr_generate_xi_and_y_and_phi
@@ -2267,7 +2285,7 @@ a massless recoiling system.
     class(sudakov_massive_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: xi, y
     real(default) :: E_em, q
-    q = sudakov%event_deps%sqrts_hat
+    q = sqrt (sudakov%event_deps%sqrts_hat)
     E_em = energy (sudakov%event_deps%p_born(sudakov%associated_emitter))
     kt2 = xi**2*q**3*(one-sudakov%z) / (2*E_em - sudakov%z*xi*q)
   end function sudakov_massive_fsr_kt2
@@ -2285,11 +2303,11 @@ a massless recoiling system.
     real(default) :: u
     class(sudakov_massive_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: xi, y, alpha_s
-    real(default) :: q, E_em
+    real(default) :: q, p_em
     !!! ToDo: Include correct factor of alpha_s
     q = sudakov%event_deps%sqrts_hat
-    E_em = energy (sudakov%event_deps%p_born(sudakov%associated_emitter))
-    u = q/E_em * one/(xi*(one-sudakov%z)) 
+    p_em = space_part_norm (sudakov%event_deps%p_born(sudakov%associated_emitter))
+    u = alpha_s * q/p_em * one/(xi*(one-sudakov%z)) 
   end function sudakov_massive_fsr_upper_bound_func
 
 @ %def sudakov_massive_fsr_upper_bound_func
@@ -2320,18 +2338,18 @@ for $a > 0$.
     class(sudakov_massive_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: pt2
     real(default) :: xi, xi_max
-    real(default) :: q0, E_em
+    real(default) :: q0, p_em
     q0 = sudakov%event_deps%sqrts_hat
-    E_em = energy (sudakov%event_deps%p_born(sudakov%associated_emitter))
+    p_em = space_part_norm (sudakov%event_deps%p_born(sudakov%associated_emitter))
     xi_max = sqrt (sudakov%xi2_max)
     associate (z1 => sudakov%z1, z2 => sudakov%z2)
-       xi = min (sudakov%xi_1, xi_max)
-       y = log(xi)*log((one-z2)*q0/pt2) + log(xi)**2/two + G_FSR(-pt2,q0**2,xi) - G_FSR(2*E_em,-q0,xi)
+       xi = sudakov%xi_m
+       y = log(xi)*log((one-z2)*q0/pt2) + log(xi)**2/two + G_FSR(-pt2,q0**2,xi) - G_FSR(2*p_em,-q0,xi)
        xi = sudakov%xi_min
-       y = y - log(xi)*log((one-z2)*q0/pt2) - log(xi)**2/two - G_FSR(-pt2,q0**2,xi) + G_FSR(2*E_em,-q0,xi)
+       y = y - log(xi)*log((one-z2)*q0/pt2) - log(xi)**2/two - G_FSR(-pt2,q0**2,xi) + G_FSR(2*p_em,-q0,xi)
        if (xi_max > sudakov%xi_1) &
           y = y + log(xi_max/sudakov%xi_1)*log((one-z2)/(one-z1))
-       y = q0/E_em * y
+       y = q0/p_em * y
     end associate
   end function sudakov_massive_fsr_log_integrated_ubf
 
@@ -2566,13 +2584,14 @@ Implements the function $G(a,b,\xi)$ given in eq. (\ref{GPlusMassiveFSR}) and eq
           case default
              call msg_fatal ("powheg_setup_sudakovs: Please choose upper bounding function!")
           end select
-          powheg%sudakov(alr)%s%associated_emitter = emitter
        else
           call msg_fatal ("powheg_setup_sudakovs: ISR not implemented yet!")
        end if
 
        call powheg%sudakov(alr)%s%init (powheg%process_deps, &
             powheg%event_deps, powheg%settings, powheg%qcd, powheg%rng)
+          
+       powheg%sudakov(alr)%s%associated_emitter = emitter
     end do
   end subroutine powheg_setup_sudakovs
 
@@ -2829,6 +2848,7 @@ The following is valid for one underlying Born.
              call powheg%rng%generate (radiation_randoms)
              call fks%generate_radiation_variables &
                   (radiation_randoms, powheg%event_deps%p_born)
+             call powheg%update_sudakovs (fks%real_kinematics%y)
              if (powheg%above_pt2_min ()) exit
           end do
        end associate
@@ -2860,6 +2880,34 @@ The following is valid for one underlying Born.
   end function powheg_above_pt2_min
 
 @ %def powheg_above_pt2_min
+@
+<<POWHEG matching: powheg matching: TBP>>=
+  procedure :: update_sudakovs => powheg_update_sudakovs
+<<POWHEG matching: procedures>>=
+  subroutine powheg_update_sudakovs (powheg, y)
+    class(powheg_matching_t), intent(inout) :: powheg
+    real(default), dimension(:), intent(in) :: y
+    integer :: alr, emitter
+    real(default) :: q0, m2, mrec2, E_em, k0_rec_max
+    type(vector4_t) :: p_emitter
+    do alr = 1, powheg%process_deps%n_alr
+       select type (s => powheg%sudakov(alr)%s)
+       type is (sudakov_massive_fsr_t)
+          emitter = s%associated_emitter
+          q0 = s%event_deps%sqrts_hat
+          p_emitter = s%event_deps%p_born (emitter)
+          associate (p => p_emitter%p)
+             mrec2 = (q0 - p(0))**2 - p(1)**2 - p(2)**2 - p(3)**2
+             E_em = p(0)
+          end associate
+          m2 = p_emitter**2
+          call compute_dalitz_bounds (q0, m2, mrec2, p_emitter, s%z1, s%z2, k0_rec_max)
+          s%z = s%z2 - (s%z2-s%z1)*(one+y(emitter))/two
+       end select
+    end do
+  end subroutine powheg_update_sudakovs
+
+@ %def powheg_update_sudakovs
 @
 <<POWHEG matching: powheg matching: TBP>>=
   procedure :: import_norms_from_grid => powheg_import_norms_from_grid
