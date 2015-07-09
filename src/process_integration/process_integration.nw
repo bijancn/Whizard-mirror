@@ -7618,12 +7618,12 @@ physical event.
                         term_instance_evaluate_interaction_real_rad
 <<Processes: procedures>>=
   subroutine term_instance_evaluate_interaction_real_rad (term, &
-                          component, p_born, p_real, alpha_s, i_term)
+                          component, p_born, p_real, i_term, alpha_s_external)
     class(term_instance_t), intent(inout) :: term
     type(component_instance_t), intent(inout) :: component
     type(vector4_t), intent(in), dimension(:) :: p_born, p_real
-    real(default), intent(in) :: alpha_s
     integer, intent(in) :: i_term
+    real(default), intent(in), optional :: alpha_s_external
     integer :: i
     real(default), allocatable :: alpha_qcd_forced
 
@@ -7639,10 +7639,11 @@ physical event.
     call component%core_state%reset_new_kinematics ()
     select type (core => component%config%core)
     type is (prc_omega_t)
-       if (allocated (alpha_qcd_forced)) then
-          alpha_qcd_forced = alpha_s
+       if (present (alpha_s_external)) then
+          allocate (alpha_qcd_forced, source = alpha_s_external)
        else
-          allocate (alpha_qcd_forced, source = alpha_s)
+          if (allocated (term%alpha_qcd_forced)) &
+             allocate (alpha_qcd_forced, source = term%alpha_qcd_forced)
        end if
        do i = 1, term%config%n_allowed
           term%amp(i) = core%compute_amplitude (i_term, &
@@ -8948,7 +8949,6 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
     type(vector4_t), intent(in), dimension(:) :: p_real
     real(default), intent(in), optional :: alpha_s_external
     integer :: i_real
-    real(default) :: alpha_s
     
     if (.not. instance%collect_matrix_elements) &
          call msg_fatal ("Compute radiation matrix elements: " // &
@@ -8957,35 +8957,38 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
     call instance%nlo_controller%disable_subtraction () 
     i_real = instance%component(1)%config%config%get_associated_real ()
     
-    if (present (alpha_s_external)) then
-       alpha_s = alpha_s_external
-    else
-       associate (component => instance%component(i_real))
-          alpha_s = instance%get_alpha_s (i_real)
-       end associate
-    end if
-
     associate (term => instance%term(i_real))
        call term%evaluate_interaction_real_rad (instance%component(i_real), &
-           p_born, p_real, alpha_s, i_real)
+           p_born, p_real, i_real, alpha_s_external)
        call instance%evaluate_trace_real_rad (term, i_real)
     end associate
   end subroutine process_instance_compute_sqme_real_rad
 
 @ %def process_instance_compute_sqme_real_rad
-@ Get the $N$-particle phase space factor
+@
 <<Processes: process instance: TBP>>=
-  procedure :: get_phs_factor => process_instance_get_phs_factor
+  procedure :: compute_sqme_real_sub => process_instance_compute_sqme_real_sub
 <<Processes: procedures>>=
-  function process_instance_get_phs_factor (process_instance) result (phs_factor)
-    class(process_instance_t), intent(in) :: process_instance
-    real(default) :: phs_factor 
-    associate (component => process_instance%component(1))
-       phs_factor = component%k_seed%phs_factor
-    end associate
-  end function process_instance_get_phs_factor
+  subroutine process_instance_compute_sqme_real_sub &
+       (instance, emitter, p_born, p_real, alpha_s_external)
+     class(process_instance_t), intent(inout) :: instance
+     integer, intent(in) :: emitter
+     type(vector4_t), intent(in), dimension(:) :: p_born
+     type(vector4_t), intent(in), dimension(:) :: p_real
+     real(default), intent(in), optional :: alpha_s_external
+     integer :: i_real
+     call instance%nlo_controller%set_active_emitter (emitter)
+     call instance%nlo_controller%disable_sqme_np1 ()
+     i_real = instance%component(1)%config%config%get_associated_real ()
 
-@ %def process_instance_get_phs_factor
+     associate (term => instance%term(i_real))
+        call term%evaluate_interaction_real_rad (instance%component(i_real), &
+             p_born, p_real, i_real, alpha_s_external)
+        call instance%evaluate_trace_real_rad (term, i_real)
+     end associate
+  end subroutine process_instance_compute_sqme_real_sub
+
+@ %def process_instance_compute_sqme_real_sub
 @ Get the hadronic center-of-mass energy
 <<Processes: process instance: TBP>>=
   procedure :: get_sqrts => process_instance_get_sqrts
@@ -8998,39 +9001,6 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
 
 @ %def process_instance_get_sqrts
 @ 
-<<Processes: process instance: TBP>>=
-  procedure :: compute_sqme_real_sub => process_instance_compute_sqme_real_sub
-<<Processes: procedures>>=
-  subroutine process_instance_compute_sqme_real_sub &
-       (instance, emitter, p_born, p_real, alpha_s_external)
-     class(process_instance_t), intent(inout) :: instance
-     integer, intent(in) :: emitter
-     type(vector4_t), intent(in), dimension(:) :: p_born
-     type(vector4_t), intent(in), dimension(:) :: p_real
-     real(default), intent(in), optional :: alpha_s_external
-     integer :: i_real
-     real(default) :: alpha_s
-     call instance%nlo_controller%set_active_emitter (emitter)
-     call instance%nlo_controller%disable_sqme_np1 ()
-     i_real = instance%component(1)%config%config%get_associated_real ()
-
-     if (present (alpha_s_external)) then
-        alpha_s = alpha_s_external
-     else
-        associate (component => instance%component(i_real))
-           alpha_s = instance%get_alpha_s (i_real)
-        end associate
-     end if
-
-     associate (term => instance%term(i_real))
-        call term%evaluate_interaction_real_rad (instance%component(i_real), &
-             p_born, p_real, alpha_s, i_real)
-        call instance%evaluate_trace_real_rad (term, i_real)
-     end associate
-  end subroutine process_instance_compute_sqme_real_sub
-
-@ %def process_instance_compute_sqme_real_sub
-@
 <<Processes: process instance: TBP>>=
   procedure :: get_matrix_elements => process_instance_get_matrix_elements
 <<Processes: procedures>>=
