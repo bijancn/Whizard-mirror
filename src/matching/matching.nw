@@ -1835,6 +1835,21 @@ $-\frac 1 N \log\Delta(p_T^2)$ where
   end interface
 
 @ %def sudakov_kt2
+@
+<<POWHEG matching: sudakov: TBP>>=
+  procedure (sudakov_kt2_max), deferred :: kt2_max
+<<POWHEG matching: interfaces>>=
+  abstract interface
+     pure function sudakov_kt2_max (sudakov, s_hat) result (kt2_max)
+        import
+        real(default) :: kt2_max
+        class(sudakov_t), intent(in) :: sudakov
+        real(default), intent(in) :: s_hat
+    end function sudakov_kt2_max
+  end interface
+
+@ %def sudakov_kt2_max
+@
 <<POWHEG matching: sudakov: TBP>>=
   procedure (sudakov_reweight_ubf), deferred :: reweight_ubf
 <<POWHEG matching: interfaces>>=
@@ -2023,6 +2038,21 @@ This corresponds to Appendix C of [[1002.2581]]
   end function sudakov_simple_fsr_kt2
 
 @ %def sudakov_simple_fsr_kt2
+@ For massless emitters, the upper bound on the radiated energy is 
+\begin{equation*}
+  t_{\mathrm{max}} = \xi_{\mathrm{max}}^2 \hat{s}
+\end{equation*}
+<<POWHEG matching: sudakov simple fsr: TBP>>=
+  procedure :: kt2_max => sudakov_simple_fsr_kt2_max
+<<POWHEG matching: procedures>>=
+  pure function sudakov_simple_fsr_kt2_max (sudakov, s_hat) result (kt2_max)
+     real(default) :: kt2_max
+     class(sudakov_simple_fsr_t), intent(in) :: sudakov
+     real(default), intent(in) :: s_hat
+     kt2_max = sudakov%xi2_max * s_hat
+  end function sudakov_simple_fsr_kt2_max
+
+@ %def sudakov_simple_fsr_kt2_max
 @ This is
 \begin{equation}
   - \frac{\log{\Delta^{(U)}}(p_T)}{N} =
@@ -2128,6 +2158,18 @@ $\mathcal{O}(\theta^4)$ when $y=\cos\theta$.
   end function sudakov_eeqq_fsr_kt2
 
 @ %def sudakov_eeqq_fsr_kt2
+@ Same expression as for [[sudakov_simple_fsr_kt2_max]] 
+<<POWHEG matching: sudakov eeqq fsr: TBP>>=
+  procedure :: kt2_max => sudakov_eeqq_fsr_kt2_max
+<<POWHEG matching: procedures>>=
+  pure function sudakov_eeqq_fsr_kt2_max (sudakov, s_hat) result (kt2_max)
+     real(default) :: kt2_max
+     class(sudakov_eeqq_fsr_t), intent(in) :: sudakov
+     real(default), intent(in) :: s_hat
+     kt2_max = sudakov%xi2_max * s_hat
+  end function sudakov_eeqq_fsr_kt2_max
+
+@ %def sudakov_eeqq_fsr_kt2_max
 @ This covers also the singularity at $(\xi,y)\to(1,-1)$ that occurs for
 a massless recoiling system.
 <<POWHEG matching: sudakov eeqq fsr: TBP>>=
@@ -2291,6 +2333,26 @@ where $\xi_m = \rm{min}\left(\xi_{\rm{max}}, \xi_1\right)$.
   end function sudakov_massive_fsr_kt2
 
 @ %def sudakov_massive_fsr_kt2
+@ For massive emitters, the upper bound on the radiated $p_T$ is
+\begin{equation*}
+  t_{\mathrm{max}} = \frac{\xi_{\mathrm{max}}^2q^3(1-z_2)}{2*\bar{p}^0 - z_2\xi_{\mathrm{max}}q}
+\end{equation*}
+<<POWHEG matching: sudakov massive fsr: TBP>>=
+  procedure :: kt2_max => sudakov_massive_fsr_kt2_max
+<<POWHEG matching: procedures>>=
+  pure function sudakov_massive_fsr_kt2_max (sudakov, s_hat) result (kt2_max)
+     real(default) :: kt2_max
+     class(sudakov_massive_fsr_t), intent(in) :: sudakov
+     real(default), intent(in) :: s_hat
+     real(default) :: q, E_em, xi_max, z2
+     q = sqrt(s_hat)
+     E_em = energy (sudakov%event_deps%p_born (sudakov%associated_emitter))
+     xi_max = sqrt(sudakov%xi2_max)
+     z2 = sudakov%z2
+     kt2_max = (xi_max**2*q**3*(one-z2)) / (2*E_em - z2*xi_max*q)
+  end function sudakov_massive_fsr_kt2_max
+
+@ %def sudakov_massive_fsr_kt2_max
 @ The upper bounding function for massive emitters is (disregarding a possible factor of $\alpha_s$)
 \begin{equation}
   U(\xi, y) \sim \frac{\sqrt{s}}{\bar{p}_{\rm{em}}} \frac{1}{\xi(1-z)}
@@ -2336,19 +2398,24 @@ for $a > 0$.
     real(default) :: y
     class(sudakov_massive_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: pt2
-    real(default) :: xi, xi_max
-    real(default) :: q0, p_em
+    real(default) :: xi, xi_max, xi_1, xi_min
+    real(default) :: q0, p_em, E_em
+    real(default) :: y1, y2
     q0 = sqrt (sudakov%event_deps%s_hat)
+    E_em = energy (sudakov%event_deps%p_born(sudakov%associated_emitter))
     p_em = space_part_norm (sudakov%event_deps%p_born(sudakov%associated_emitter))
     xi_max = sqrt (sudakov%xi2_max)
     associate (z1 => sudakov%z1, z2 => sudakov%z2)
-       xi = sudakov%xi_m
-       y = log(xi)*log((one-z2)*q0/pt2) + log(xi)**2/two + G_FSR(-pt2,q0**2,xi) - G_FSR(2*p_em,-q0,xi)
-       xi = sudakov%xi_min
-       y = y - log(xi)*log((one-z2)*q0/pt2) - log(xi)**2/two - G_FSR(-pt2,q0**2,xi) + G_FSR(2*p_em,-q0,xi)
-       if (xi_max > sudakov%xi_1) &
-          y = y + log(xi_max/sudakov%xi_1)*log((one-z2)/(one-z1))
-       y = q0/p_em * y
+       xi_1 = (sqrt (pt2*(pt2*z1**2 + 8*E_em*q0*(one-z1))) - pt2*z1) / (2*q0**2*(one-z1))
+       xi_min = (sqrt (pt2*(pt2*z2**2 + 8*E_em*q0*(one-z2))) - pt2*z2) / (2*q0**2*(one-z2))
+       xi = min (xi_1, xi_max)
+       y1 = log(xi)*log((one-z2)*q0/pt2) + log(xi)**2/two + G_FSR(-pt2,q0**2,xi) - G_FSR(2*E_em,-q0,xi)
+       xi = xi_min
+       y2 = log(xi)*log((one-z2)*q0/pt2) + log(xi)**2/two + G_FSR(-pt2,q0**2,xi) - G_FSR(2*E_em,-q0,xi)
+       y = y1 - y2
+       if (xi_max > xi_1) &
+          y = y + log(xi_max/xi_1)*log((one-z2)/(one-z1))
+       y = twopi*q0/p_em * y
     end associate
   end function sudakov_massive_fsr_log_integrated_ubf
 
@@ -2989,7 +3056,8 @@ values $(f_B)$
            xi2_max = nlo%get_xi_max (alr)**2
            call sudakov%update (xi2_max)
            r%alr = alr
-           r%pt2 = sudakov%xi2_max * powheg%event_deps%s_hat
+           !r%pt2 = sudakov%xi2_max * powheg%event_deps%s_hat
+           r%pt2 = sudakov%kt2_max (powheg%event_deps%s_hat)
            PT_EVOLUTION: do
               if (signal_is_pending ())  return
               call sudakov%generate_emission (r)
