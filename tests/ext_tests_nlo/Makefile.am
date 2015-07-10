@@ -35,7 +35,8 @@
 WHIZARD_DRIVER = run_whizard.sh
 
 TESTS_EXTENDED = \
-	extra_nlo_1.run
+	extra_nlo_tt.run \
+	extra_nlo_uu.run
 
 XFAIL_TESTS_EXTENDED =
 
@@ -95,6 +96,7 @@ BUILT_SOURCES = \
     OCAML_FLAG \
     PYTHON_FLAG \
     PYTHIA6_FLAG \
+    OPENLOOPS_FLAG \
     STATIC_FLAG \
     ref-output
 
@@ -154,6 +156,11 @@ if PYTHIA6_AVAILABLE
 	touch $@
 endif
 
+OPENLOOPS_FLAG:
+if OPENLOOPS_AVAILABLE
+	touch $@
+endif
+
 EVENT_ANALYSIS_FLAG:
 if EVENT_ANALYSIS_AVAILABLE
 	touch $@
@@ -180,7 +187,7 @@ clean-local:
 	rm -f gamelan.sty TEST.mdl 
 	rm -f TESTFLAG GAMELAN_FLAG STDHEP_FLAG 
 	rm -f OCAML_FLAG PYTHON_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
-	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
+	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG OPENLOOPS_FLAG
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
 	rm -f *.run *.log slha_test.out
 	rm -f core* stdhep_rd

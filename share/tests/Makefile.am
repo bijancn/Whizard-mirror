@@ -42,7 +42,11 @@ EXTRA_DIST = \
     functional_tests/susyhit.in TEST.mdl
 
 TESTSUITE_MACROS = testsuite.m4
-TESTSUITE_TOOLS = check-debug-output.py compare-integrals.py compare-histograms.py
+TESTSUITE_TOOLS = \
+    check-debug-output.py \
+    check-hepmc-weights.py \
+    compare-integrals.py \
+    compare-histograms.py
 
 REF_OUTPUT_FILES = \
     extra_integration_results.dat \
@@ -725,7 +729,9 @@ TESTSUITES_M4 = \
 TESTSUITES_SIN = \
     $(MISC_TESTS_SIN) \
     $(MSSM_EXT_SIN) \
-    $(NMSSM_EXT_SIN)
+    $(NMSSM_EXT_SIN) \
+    $(SHOWER_EXT_SIN) \
+    $(NLO_EXT_SIN)
 
 MISC_TESTS_M4 =
 
@@ -948,7 +954,8 @@ NMSSM_EXT_M4 = \
 MSSM_EXT_SIN = $(MSSM_EXT_M4:.m4=.sin)
 NMSSM_EXT_SIN = $(NMSSM_EXT_M4:.m4=.sin)
 
-SHOWER_EXT_SIN = extra_shower_1.sin \
+SHOWER_EXT_SIN = \
+    extra_shower_1.sin \
     extra_shower_2.sin \
     extra_shower_3_bb.sin \
     extra_shower_3_jj.sin \
@@ -957,6 +964,10 @@ SHOWER_EXT_SIN = extra_shower_1.sin \
     extra_shower_3_z_nu.sin \
     extra_shower_3_z_tau.sin \
     extra_shower_4_ee.sin
+
+NLO_EXT_SIN = \
+    extra_nlo_tt.sin \
+    extra_nlo_uu.sin
 
 all-local: $(TESTSUITES_SIN)
 
