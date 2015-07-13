@@ -1706,6 +1706,9 @@ so the latter is always available (and kept global).
     call var_list_append_log &
          (global%var_list, var_str ("?powheg_rebuild_grids"), &
           .false., intrinsic = .true.)
+    call var_list_append_log &
+         (global%var_list, var_str ("?use_powheg_damping"), &
+          .true., intrinsic = .true.)
   end subroutine set_powheg_matching_defaults
 
 @
@@ -16065,18 +16068,23 @@ or arrays which would make the expansion ambiguous.
     type(string_t) :: real_tree_me_method
     type(string_t) :: current_me_method 
     integer, dimension(:), allocatable :: i_list
-    logical :: combined_nlo_integration, powheg_active
+    logical :: combined_nlo_integration
+    logical :: powheg_active, use_powheg_damping_factors
     logical :: gks_active
     logical :: initial_state_colored
     integer :: n_components_extra
     integer :: gks_multiplicity
+    integer :: i_real, n_real
     
     initial_state_colored = .false.
     nlo_calc = cmd%local%nlo_calculation                 
     combined_nlo_integration = &
-           global%var_list%get_lval (var_str ('?combined_nlo_integration'))
+       global%var_list%get_lval (var_str ('?combined_nlo_integration'))
     powheg_active = & 
-           global%var_list%get_lval (var_str ('?powheg_matching')) 
+       global%var_list%get_lval (var_str ('?powheg_matching')) 
+    use_powheg_damping_factors = &
+       global%var_list%get_lval (var_str ('?use_powheg_damping'))    
+
     gks_multiplicity = &
            global%var_list%get_ival (var_str ('gks_multiplicity'))
     gks_active = gks_multiplicity > 2
@@ -16134,9 +16142,12 @@ or arrays which would make the expansion ambiguous.
        initial_state_colored = pdg_in%has_colored_particles()
        if (initial_state_colored) then
           n_components_extra = 5
+       else if (use_powheg_damping_factors) then
+          n_components_extra = 6
        else
           n_components_extra = 4
        end if
+       print *, 'n_components_extra: ', n_components_extra
        allocate (i_list (n_components_extra))
     else if (gks_active) then
        call radiation_generator%generate_multiple (gks_multiplicity)
@@ -16148,6 +16159,8 @@ or arrays which would make the expansion ambiguous.
       call prc_config%init (cmd%id, n_in, n_components*n_components_extra, cmd%local)
     else if (gks_active) then
       call prc_config%init (cmd%id, n_in, n_components*(n_components_extra+1), cmd%local)
+    !!! else if (use_powheg_damping_factors) then
+    !!!   call prc_config%init (cmd%id, n_in, n_components*(n_components_extra+1), cmd%local)
     else
       call prc_config%init (cmd%id, n_in, n_components, cmd%local)
     end if
@@ -16159,8 +16172,12 @@ or arrays which would make the expansion ambiguous.
             i_list(2) = i + n_components
             i_list(3) = i + 2*n_components
             i_list(4) = i + 3*n_components
-            if (initial_state_colored) &
+            if (initial_state_colored) then
                i_list(5) = i + 4*n_components
+            else if (use_powheg_damping_factors) then
+               i_list(5) = i + 5*n_components
+               i_list(6) = i + 6*n_components
+            end if
             loop_me_method = global%var_list%get_sval (var_str ("$loop_me_method"))
             correlation_me_method = global%var_list%get_sval (var_str ("$correlation_me_method"))
             real_tree_me_method = global%var_list%get_sval (var_str ("$real_tree_me_method"))
@@ -16175,17 +16192,22 @@ or arrays which would make the expansion ambiguous.
                call global%set_me_method (real_tree_me_method)
                current_me_method = real_tree_me_method
             end if
-            call prc_config%setup_component (n_components+i, &
+            n_real = 1; if (use_powheg_damping_factors) n_real = 2
+            do i_real = 1, n_real
+               call prc_config%setup_component (n_components*i_real+i, &
                             new_prt_spec (prt_in_nlo), &
                             new_prt_spec (prt_out_nlo),&
                             cmd%local, NLO_REAL, &
                             active_in = active_comp (2))
+            end do
 
             if (current_me_method /= loop_me_method) then
                call global%set_me_method (loop_me_method)
                current_me_method = loop_me_method
             end if
-            call prc_config%setup_component (n_components*2+i, prt_spec_in, &
+
+            i_real = n_real
+            call prc_config%setup_component (n_components*i_real+i, prt_spec_in, &
                             prt_spec_out, global, NLO_VIRTUAL, &
                             active_in = active_comp (3))
 
@@ -16193,7 +16215,9 @@ or arrays which would make the expansion ambiguous.
                call global%set_me_method (var_str ("omega"))
                current_me_method = "omega"
             end if
-            call prc_config%setup_component (n_components*3+i, prt_spec_in, &
+
+            i_real = i_real+1
+            call prc_config%setup_component (n_components*i_real+i, prt_spec_in, &
                             prt_spec_out, global, NLO_SUBTRACTION, &
                             active_in = active_comp (4))
            
