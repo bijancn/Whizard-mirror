@@ -19,7 +19,7 @@ with open(filename, 'r') as infile:
 
 with open(reference_file, 'r') as infile:
   for line in infile:
-    if process in line:
+    if process + ' ' in line:
       ref_integral, ref_error = numbers(line)
 print 'Reference:', ref_integral, '+-', ref_error
 
