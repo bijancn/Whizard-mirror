@@ -61,7 +61,9 @@ with open(filename, 'r') as infile:
   mean = sum(sum_weights) / sum(NN)
   print 'mean', mean
   print 'abs(mean - xsec)', abs(mean-xsec)
-  valid = abs(mean - xsec) < 3 * error
+  pull = abs(mean-xsec) / error
+  print 'pull', pull
+  valid = pull < 3
   print 'End file ' + filename
 
 returncode = 0 if valid else 1
