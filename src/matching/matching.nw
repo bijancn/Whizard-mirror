@@ -1333,7 +1333,7 @@ module powheg_matching
   use rng_base
   use variables
 
-  use nlo_data, only: compute_dalitz_bounds
+  use nlo_data, only: compute_dalitz_bounds, FSR_SIMPLE, FSR_MASSIVE
   use phs_fks
   use matching_base
 
@@ -1716,6 +1716,7 @@ This contains the pieces that depend on the radiation region $\alpha_r$
      type(process_deps_t), pointer :: process_deps => null()
      type(event_deps_t), pointer :: event_deps => null()
      type(powheg_settings_t), pointer :: powheg_settings => null()
+     type(phs_fks_generator_t), pointer :: phs_fks_generator => null()
      type(qcd_t), pointer :: qcd => null()
      class(rng_t), pointer :: rng => null()
      real(default) :: xi2_max = 0
@@ -1761,17 +1762,19 @@ This contains the pieces that depend on the radiation region $\alpha_r$
 <<POWHEG matching: sudakov: TBP>>=
   procedure :: init => sudakov_init
 <<POWHEG matching: procedures>>=
-  subroutine sudakov_init (sudakov, &
-         process_deps, event_deps, powheg_settings, qcd, rng)
+  subroutine sudakov_init (sudakov, process_deps, event_deps, &
+         powheg_settings, phs_fks_generator, qcd, rng)
     class(sudakov_t), intent(out) :: sudakov
     type(process_deps_t), target, intent(in) :: process_deps
     type(event_deps_t), target, intent(in) :: event_deps
     type(powheg_settings_t), target, intent(in) :: powheg_settings
+    type(phs_fks_generator_t), target, intent(in) :: phs_fks_generator
     type(qcd_t), target, intent(in) :: qcd
     class(rng_t), target, intent(in) :: rng
     sudakov%process_deps => process_deps
     sudakov%event_deps => event_deps
     sudakov%powheg_settings => powheg_settings
+    sudakov%phs_fks_generator => phs_fks_generator
     sudakov%qcd => qcd
     sudakov%rng => rng
   end subroutine sudakov_init
@@ -1851,7 +1854,7 @@ $-\frac 1 N \log\Delta(p_T^2)$ where
   procedure (sudakov_kt2), deferred :: kt2
 <<POWHEG matching: interfaces>>=
   abstract interface
-     pure function sudakov_kt2 (sudakov, xi, y) result (kt2)
+     function sudakov_kt2 (sudakov, xi, y) result (kt2)
        import
        real(default) :: kt2
        class(sudakov_t), intent(in) :: sudakov
@@ -2081,11 +2084,15 @@ This corresponds to Appendix C of [[1002.2581]]
 <<POWHEG matching: sudakov simple fsr: TBP>>=
   procedure :: kt2 => sudakov_simple_fsr_kt2
 <<POWHEG matching: procedures>>=
-  pure function sudakov_simple_fsr_kt2 (sudakov, xi, y) result (kt2)
+  function sudakov_simple_fsr_kt2 (sudakov, xi, y) result (kt2)
     real(default) :: kt2
     class(sudakov_simple_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: xi, y
     kt2 = sudakov%event_deps%s_hat / 2 * xi**2 * (1 - y)
+    call assert_equal (OUTPUT_UNIT, kt2, &
+         sudakov%phs_fks_generator%real_kinematics%kt2 &
+          (sudakov%associated_emitter, FSR_SIMPLE, xi, y), &
+         "sudakov_simple_fsr_kt2: pt2 inconsistency")
     ! TODO: (bcn 2015-07-13) call here phs_fks_generator%real_kinematics%kt2
   end function sudakov_simple_fsr_kt2
 
@@ -2214,7 +2221,7 @@ $\mathcal{O}(\theta^4)$ when $y=\cos\theta$.
 <<POWHEG matching: sudakov eeqq fsr: TBP>>=
   procedure :: kt2 => sudakov_eeqq_fsr_kt2
 <<POWHEG matching: procedures>>=
-  pure function sudakov_eeqq_fsr_kt2 (sudakov, xi, y) result (kt2)
+  function sudakov_eeqq_fsr_kt2 (sudakov, xi, y) result (kt2)
     real(default) :: kt2
     class(sudakov_eeqq_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: xi, y
@@ -2397,7 +2404,7 @@ where $\xi_m = \rm{min}\left(\xi_{\rm{max}}, \xi_1\right)$.
     type(radiation_t), intent(inout) :: r
     real(default) :: q0
     real(default) :: m2, mrec2, k0_rec_max
-    real(default) :: E_em, z_max
+    real(default) :: E_em
     type(vector4_t) :: p_emitter
 
     q0 = sqrt (sudakov%event_deps%s_hat)
@@ -2428,7 +2435,7 @@ where $\xi_m = \rm{min}\left(\xi_{\rm{max}}, \xi_1\right)$.
 <<POWHEG matching: sudakov massive fsr: TBP>>=
   procedure :: kt2 => sudakov_massive_fsr_kt2
 <<POWHEG matching: procedures>>=
-  pure function sudakov_massive_fsr_kt2 (sudakov, xi, y) result (kt2)
+  function sudakov_massive_fsr_kt2 (sudakov, xi, y) result (kt2)
     real(default) :: kt2
     class(sudakov_massive_fsr_t), intent(in) :: sudakov
     real(default), intent(in) :: xi, y
@@ -2436,6 +2443,10 @@ where $\xi_m = \rm{min}\left(\xi_{\rm{max}}, \xi_1\right)$.
     q = sqrt (sudakov%event_deps%s_hat)
     E_em = energy (sudakov%event_deps%p_born(sudakov%associated_emitter))
     kt2 = xi**2*q**3*(one-sudakov%z) / (2*E_em - sudakov%z*xi*q)
+    call assert_equal (OUTPUT_UNIT, kt2, &
+         sudakov%phs_fks_generator%real_kinematics%kt2 &
+          (sudakov%associated_emitter, FSR_MASSIVE, xi, y), &
+         "sudakov_massive_fsr_kt2: pt2 inconsistency")
   end function sudakov_massive_fsr_kt2
 
 @ %def sudakov_massive_fsr_kt2
@@ -2775,7 +2786,8 @@ Implements the function $G(a,b,\xi)$ given in eq. (\ref{GPlusMassiveFSR}) and eq
        end if
 
        call powheg%sudakov(alr)%s%init (powheg%process_deps, &
-            powheg%event_deps, powheg%settings, powheg%qcd, powheg%rng)
+            powheg%event_deps, powheg%settings, &
+            powheg%phs_fks_generator, powheg%qcd, powheg%rng)
           
        powheg%sudakov(alr)%s%associated_emitter = emitter
     end do
@@ -3048,19 +3060,19 @@ The following is valid for one underlying Born.
 <<POWHEG matching: powheg matching: TBP>>=
   procedure :: above_pt2_min => powheg_above_pt2_min
 <<POWHEG matching: procedures>>=
-  pure function powheg_above_pt2_min (powheg) result (yorn)
-    logical :: yorn
+  function powheg_above_pt2_min (powheg) result (above)
+    logical :: above
     class(powheg_matching_t), intent(in) :: powheg
     integer :: alr, emitter
     real(default) :: xi, y
-    yorn = .true.
+    above = .true.
     associate (nlo => powheg%process_instance%nlo_controller, &
                       fks => powheg%phs_fks_generator)
        do alr = 1, powheg%process_deps%n_alr
           emitter = nlo%get_emitter (alr)
           call fks%get_radiation_variables (emitter, xi, y)
-          yorn = powheg%sudakov(alr)%s%kt2 (xi, y) >= powheg%settings%pt2_min
-          if (.not. yorn) exit
+          above = powheg%sudakov(alr)%s%kt2 (xi, y) >= powheg%settings%pt2_min
+          if (.not. above) exit
        end do
     end associate
   end function powheg_above_pt2_min
