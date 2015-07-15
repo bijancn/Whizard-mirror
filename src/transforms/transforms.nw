@@ -4684,8 +4684,6 @@ module evt_nlo
 
 <<Evt Nlo: public>>
 
-<<Evt Nlo: parameters>>
-
 <<Evt Nlo: types>>
 
 contains
@@ -4704,7 +4702,6 @@ end module evt_nlo
     real(default) :: sqme_rad
     integer :: i_evaluation
     integer, dimension(:), allocatable :: emitters
-    type(particle_set_t), dimension(:), allocatable :: particle_set_radiated
     type(qcd_t), pointer :: qcd => null ()
   contains
   <<Evt Nlo: evt nlo: TBP>>
@@ -4782,7 +4779,7 @@ is distributed over the real and Born subevents.
        probability = probability + weight
     else
        emitter = evt%emitters (evt%i_evaluation)
-       call evt%generate_emission (emitter)
+       call evt%compute_real (emitter)
        probability = evt%sqme_rad
     end if
     probability = probability * (size (evt%emitters) + 1)
@@ -4791,7 +4788,10 @@ is distributed over the real and Born subevents.
   end subroutine evt_nlo_generate_weighted
 
 @ %def evt_nlo_generate_weighted
-@
+@ Create the particle set corresponding to a radiation event, if
+necessary.
+This involves setting the phase space as well as rearranging the
+mother-daughter relations and color information.
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: make_particle_set => evt_nlo_make_particle_set
 <<Evt Nlo: procedures>>=
@@ -4801,43 +4801,31 @@ is distributed over the real and Born subevents.
     integer, intent(in) :: factorization_mode
     logical, intent(in) :: keep_correlations
     real(default), dimension(:), intent(in), optional :: r
-  end subroutine evt_nlo_make_particle_set
-
-@ %def evt_nlo_make_particle_set
-@ Create the particle set corresponding to a radiation event. This
-involves setting the phase space as well as rearranging the
-mother-daughter relations and color information.
-<<Evt Nlo: evt nlo: TBP>>=
-  procedure :: build_radiated_particle_set => evt_nlo_build_radiated_particle_set
-<<Evt Nlo: procedures>>=
-  subroutine evt_nlo_build_radiated_particle_set (evt, i_event)
-    class(evt_nlo_t), intent(inout) :: evt
-    integer, intent(in) :: i_event
-    real(default) :: r_col
+    integer :: emitter
     type(vector4_t), dimension(:), allocatable :: p_new
     integer, dimension(:), allocatable :: flv_radiated
-    integer :: emitter
-    call msg_debug (D_TRANSFORMS, "evt_nlo_build_radiated_particle_set")
-    call msg_debug (D_TRANSFORMS, "i_event", i_event)
+    real(default) :: r_col
+    call msg_debug (D_TRANSFORMS, "evt_nlo_make_particle_set")
     call msg_debug (D_TRANSFORMS, "evt%i_evaluation", evt%i_evaluation)
-    evt%particle_set_radiated(i_event) = evt%particle_set
     if (evt%i_evaluation /= 0) then
+       ! TODO: (bcn 2015-07-15) beware the intel
        flv_radiated = evt%process_instance%nlo_controller%get_flv_state_real (1)
        call evt%rng%generate (r_col)
        call msg_debug2 (D_TRANSFORMS, "r_col", r_col)
        if (debug2_active (D_TRANSFORMS))  print *, 'flv_radiated =    ', flv_radiated
        emitter = evt%emitters (evt%i_evaluation)
        call msg_debug (D_TRANSFORMS, "emitter", emitter)
+       ! TODO: (bcn 2015-07-15) beware the intel
        p_new = evt%process_instance%nlo_controller%get_momenta (born_phsp = .false.)
-       call evt%particle_set_radiated(i_event)%build_radiation (p_new, emitter, flv_radiated, &
+       call evt%particle_set%build_radiation (p_new, emitter, flv_radiated, &
             evt%process_instance%process%get_model_ptr (), r_col) 
     end if
     evt%i_evaluation = evt%i_evaluation + 1
-  end subroutine evt_nlo_build_radiated_particle_set
+  end subroutine evt_nlo_make_particle_set
 
-@ %def evt_nlo_build_radiated_particle_set
-@ This routine calls the evaluation of the singular regions only for the subtraction
-terms.  
+@ %def evt_nlo_make_particle_set
+@ This routine calls the evaluation of the singular regions only for the
+subtraction terms.  
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: compute_subtraction_weights => evt_nlo_compute_subtraction_weights
 <<Evt Nlo: procedures>>=
@@ -4851,8 +4839,11 @@ terms.
     call msg_debug (D_TRANSFORMS, "evt_nlo_compute_subtraction_weights")
     weight = zero
     associate (instance => evt%process_instance)
+       ! TODO: (bcn 2015-07-15) beware the intel
        emitters = instance%nlo_controller%get_emitter_list ()
+       ! TODO: (bcn 2015-07-15) beware the intel
        x_rad = instance%nlo_controller%real_kinematics%x_rad
+       ! TODO: (bcn 2015-07-15) beware the intel
        p_born = evt%particle_set%get_momenta ()
        call evt%phs_fks_generator%set_beam_energy (p_born(1)%p(0))
        call evt%phs_fks_generator%generate_radiation_variables (x_rad, p_born)
@@ -4865,11 +4856,8 @@ terms.
                   (x_rad, emitter, p_born)
           end if
           associate (nlo_controller => instance%nlo_controller)
-             ! TODO: (bcn 2015-07-04) clean this
-             call nlo_controller%set_momenta (p_born, born_phsp = .true.)
-             call nlo_controller%set_momenta (p_born, born_phsp = .true., cms = .true.)
-             call nlo_controller%set_momenta (p_real, born_phsp = .false.)
-             call nlo_controller%set_momenta (p_real, born_phsp = .false., cms = .true.)
+             call nlo_controller%set_momenta (p_born, p_real)
+             call nlo_controller%set_momenta (p_born, p_real, cms=.true.)
           end associate
           call instance%compute_sqme_real_sub (emitter, p_born, p_real)
           call msg_debug (D_TRANSFORMS, &
@@ -4881,17 +4869,17 @@ terms.
   end function evt_nlo_compute_subtraction_weights
 
 @ %def evt_nlo_compute_subtraction_weights
-@ This routine calls the evaluation of the singular regions only for emission 
-matrix elements.        
+@ This routine calls the evaluation of the singular regions only for
+emission matrix elements.
 <<Evt Nlo: evt nlo: TBP>>=
-  procedure :: generate_emission => evt_nlo_generate_emission
+  procedure :: compute_real => evt_nlo_compute_real
 <<Evt Nlo: procedures>>=
-  subroutine evt_nlo_generate_emission (evt, emitter)
+  subroutine evt_nlo_compute_real (evt, emitter)
     class(evt_nlo_t), intent(inout) :: evt
     integer, intent(in) :: emitter
     type(vector4_t), dimension(:), allocatable :: p_born, p_real
     real(default), dimension(3) :: x_rad
-    call msg_debug (D_TRANSFORMS, "evt_nlo_generate_emission")
+    call msg_debug (D_TRANSFORMS, "evt_nlo_compute_real")
     p_born = evt%particle_set%get_momenta ()
     associate (instance => evt%process_instance)
        x_rad = instance%nlo_controller%real_kinematics%x_rad
@@ -4903,10 +4891,8 @@ matrix elements.
               (x_rad, emitter, p_born)
        end if
        associate (nlo_controller => instance%nlo_controller)
-          call nlo_controller%set_momenta (p_born, born_phsp = .true.)
-          call nlo_controller%set_momenta (p_born, born_phsp = .true., cms = .true.)
-          call nlo_controller%set_momenta (p_real, born_phsp = .false.)
-          call nlo_controller%set_momenta (p_real, born_phsp = .false., cms = .true.)
+          call nlo_controller%set_momenta (p_born, p_real)
+          call nlo_controller%set_momenta (p_born, p_real, cms=.true.)
        end associate
        call instance%compute_sqme_real_rad (emitter, p_born, p_real)
        call msg_debug (D_TRANSFORMS, &
@@ -4914,9 +4900,9 @@ matrix elements.
             instance%sqme_collector%sqme_real_per_emitter(1,emitter))
        evt%sqme_rad = instance%sqme_collector%sqme_real_per_emitter (1, emitter)
     end associate
-  end subroutine evt_nlo_generate_emission
+  end subroutine evt_nlo_compute_real
 
-@ %def evt_nlo_generate_emission
+@ %def evt_nlo_compute_real
 @
 \section{Complete Events}
 
@@ -5482,16 +5468,7 @@ For testing purpose, we allow for providing them explicitly, as an option.
        end do
        evt => event%transform_last
        if (associated (evt) .and. evt%particle_set_exists) then
-          if (event%nlo_event) then
-             select type (evt)
-             type is (evt_nlo_t)
-                call evt%build_radiated_particle_set (event%i_event+1)
-                call event%link_particle_set &
-                   (evt%particle_set_radiated(event%i_event+1))
-             end select
-          else
-             call event%link_particle_set (evt%particle_set)
-          end if
+          call event%link_particle_set (evt%particle_set)
        end if
        call msg_debug (D_TRANSFORMS, "After event transformations")
        call msg_debug (D_TRANSFORMS, "event%weight_prc", event%weight_prc)
