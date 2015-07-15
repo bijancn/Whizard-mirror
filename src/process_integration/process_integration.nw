@@ -7608,6 +7608,8 @@ physical event.
            call core_sub_born%update_alpha_s &
                 (component%core_state, term%fac_scale)
            term%nlo_controller%amp_born = 0._default
+        class default
+           call msg_fatal ("Invalid core type set up for subtraction matrix elements")
         end select 
         call term%nlo_controller%int_born%set_matrix_element &
              (term%nlo_controller%amp_born) 
@@ -8266,24 +8268,29 @@ subobject of [[instance]].
                  use_internal_sc = .false.
               end if 
               component%nlo_type = NLO_REAL
-              call component%nlo_controller%set_internal_procedures &
-                                          (use_internal_cc, use_internal_sc)
-              process%component(i_component)%fks_template%id = &
-                 prc_constants(1)%id
-              call component%nlo_controller%init (prc_constants, &
-                   process%component(i_component)%fks_template, &
-                   process%config%model)
-              call component%nlo_controller%set_flv_born &
-                   (process%term(i_born)%flv)
-              call component%nlo_controller%set_col_born &
-                   (process%term(i_born)%col)
-              call component%nlo_controller%set_hel_born &
-                   (process%term(i_born)%hel)
-              allocate (instance%sqme_real &
-                   (component%nlo_controller%reg_data%n_flv_real, &
-                    size (component%nlo_controller%reg_data%regions)))
-              call component%nlo_controller%init_born_amps &
-                   (process%get_n_allowed_born (i_born))
+              associate (nlo_controller => component%nlo_controller)
+                 if (nlo_controller%needs_initialization) then
+                   call component%nlo_controller%set_internal_procedures &
+                       (use_internal_cc, use_internal_sc)
+                   process%component(i_component)%fks_template%id = &
+                       prc_constants(1)%id
+                   call component%nlo_controller%init (prc_constants, &
+                      process%component(i_component)%fks_template, &
+                      process%config%model)
+                   call component%nlo_controller%set_flv_born &
+                      (process%term(i_born)%flv)
+                   call component%nlo_controller%set_col_born &
+                      (process%term(i_born)%col)
+                   call component%nlo_controller%set_hel_born &
+                      (process%term(i_born)%hel)
+                   allocate (instance%sqme_real &
+                      (component%nlo_controller%reg_data%n_flv_real, &
+                       size (component%nlo_controller%reg_data%regions)))
+                   call component%nlo_controller%init_born_amps &
+                      (process%get_n_allowed_born (i_born))
+                   nlo_controller%needs_initialization = .false.
+                 end if
+              end associate
             case (NLO_VIRTUAL)
               i_born = component%config%config%get_associated_born ()
               i_real = i_born + process%config%n_components / 3
@@ -9733,15 +9740,20 @@ apply this to the phase space subobject of the process instance.
 <<Processes: procedures>>=
   subroutine setup_nlo_component_cores (process)
     type(process_t), intent(inout), target :: process
-    integer :: i_born, i_sub
+    integer :: i_sub
     integer :: n_components, i_component
-    integer :: nlo_type
     n_components = process%get_n_components ()
+
     do i_component = 1, n_components
-       nlo_type = process%get_component_nlo_type (i_component)
-       i_born = process%get_component_associated_born (i_component)
-       i_sub = i_born + 3
-       select case (nlo_type)
+       select case (process%get_component_nlo_type (i_component))
+       case (NLO_SUBTRACTION)
+          i_sub = i_component
+          exit
+       end select
+    end do
+
+    do i_component = 1, n_components
+       select case (process%get_component_nlo_type (i_component))
        case (NLO_REAL, NLO_VIRTUAL)
           associate (component => process%component (i_component))
              component%core_sub_born => process%component(i_sub)%core 
