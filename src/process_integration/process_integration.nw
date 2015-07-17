@@ -2732,6 +2732,7 @@ make a random-number generator instance for each MCI group.
     logical, intent(in), optional :: combined_integration
     integer :: n_mci, i_mci
     integer :: i
+    logical :: powheg_damping_active
     n_mci = 0
     do i = 1, process%meta%n_components
        associate (component => process%component(i))
@@ -2747,6 +2748,8 @@ make a random-number generator instance for each MCI group.
          call msg_bug ("Process setup: rng factory not allocated")
     allocate (process%mci_entry (n_mci))
     i_mci = 0
+    powheg_damping_active = &
+        any (process%component%component_type == COMP_REAL_SING)
     do i = 1, process%meta%n_components
        associate (component => process%component(i))
           if (component%needs_mci_entry () .and. &
@@ -2754,6 +2757,14 @@ make a random-number generator instance for each MCI group.
             i_mci = i_mci + 1
             associate (mci_entry => process%mci_entry(i_mci))
               call mci_entry%set_combined_integration (combined_integration)
+              if (powheg_damping_active) then
+                 if (component%component_type == COMP_REAL_FIN) then
+                    mci_entry%powheg_damping_type = DAMPING_FINITE
+                 else
+                    mci_entry%powheg_damping_type = DAMPING_SINGULAR
+                 end if
+              end if
+
               call mci_entry%init (process%meta%type, &
                    i_mci, i, component, process%beam_config, &
                    process%config%rng_factory)
@@ -4266,6 +4277,10 @@ status.  It is a part of the [[mci_entry]] component below.
   integer, parameter, public :: COMP_REAL_SING = 5
   integer, parameter, public :: COMP_PDF = 6
   integer, parameter, public :: COMP_SUB = 7
+
+  integer, parameter :: DAMPING_NONE = 0
+  integer, parameter :: DAMPING_SINGULAR = 1
+  integer, parameter :: DAMPING_FINITE = 2
   
 @ %def STAT_UNDEFINED STAT_INITIAL STAT_ACTIVATED 
 @ %def STAT_BEAM_MOMENTA STAT_FAILED_KINEMATICS
@@ -4366,6 +4381,7 @@ The [[results]] object records results, broken down in passes and iterations.
      type(integration_results_t) :: results
      logical :: negative_weights
      logical :: combined_integration = .false.
+     integer :: powheg_damping_type = DAMPING_NONE
    contains
    <<Processes: process mci entry: TBP>>
   end type process_mci_entry_t
@@ -4497,9 +4513,20 @@ restriction should be relaxed.
     integer, dimension(:), allocatable :: i_list
     integer :: n_components
     if (mci_entry%combined_integration) then
-      i_list = component%config%get_association_list ()
-      allocate (mci_entry%i_component (size (i_list)))
-      mci_entry%i_component = i_list
+      select case (mci_entry%powheg_damping_type)
+      case (DAMPING_NONE)
+         i_list = component%config%get_association_list ()
+         allocate (mci_entry%i_component (size (i_list)))
+         mci_entry%i_component = i_list
+      case (DAMPING_SINGULAR)
+         i_list = component%config%get_association_list &
+           (ASSOCIATED_REAL_FIN)
+         allocate (mci_entry%i_component (size(i_list)))
+         mci_entry%i_component = i_list
+      case (DAMPING_FINITE)
+         allocate (mci_entry%i_component (1))
+         mci_entry%i_component(1) = ASSOCIATED_REAL_SING
+      end select
     else
       allocate (mci_entry%i_component (1))
       mci_entry%i_component(1) = i_component
