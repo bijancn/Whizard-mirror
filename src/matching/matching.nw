@@ -1948,11 +1948,12 @@ using the second random number $r_2$.
     success = .false.
     if (sudakov%current_pt2_max > sudakov%powheg_settings%pt2_min) then
        call sudakov%rng%generate (sudakov%random)
+       sudakov%last_log = sudakov%last_log + log(sudakov%random)
        pt2 = solve_interval (sudakov, &
             sudakov%powheg_settings%pt2_min, &
             sudakov%current_pt2_max, success, &
             0.001_default)
-       sudakov%last_log = sudakov%norm_max * sudakov%log_integrated_ubf (pt2)
+       !sudakov%last_log = sudakov%norm_max * sudakov%log_integrated_ubf (pt2)
               !sudakov%last_log + &
     end if
     if (.not. success) then
@@ -1999,16 +2000,17 @@ using the second random number $r_2$.
     logical :: accepted
     sudakov%current_pt2_max = r%pt2
     call sudakov%generate_xi_and_y_and_phi (r)
-    sudakov%last_log = sudakov%norm_max * &
-         sudakov%log_integrated_ubf (sudakov%current_pt2_max)
+    !sudakov%last_log = sudakov%norm_max * &
+         !sudakov%log_integrated_ubf (sudakov%current_pt2_max)
     call msg_debug2 (D_MATCHING, "sudakov_generate_emission")
-    call msg_debug2 (D_MATCHING, "Input was r%pt2", r%pt2)
     call msg_debug2 (D_MATCHING, "sqrt (sudakov%current_pt2_max)", &
          sqrt (sudakov%current_pt2_max))
     call msg_debug2 (D_MATCHING, "sudakov%last_log", sudakov%last_log)
     LOOP_UNTIL_ACCEPTED: do
+       if (signal_is_pending ())  return
        r%valid = .false.
        r%pt2 = sudakov%generate_pt2 ()
+       call msg_debug2 (D_MATCHING, "sudakov_generate_emission: after generate_pt2")
        call msg_debug2 (D_MATCHING, "sqrt (r%pt2)", sqrt (r%pt2))
        call msg_debug2 (D_MATCHING, "sudakov%last_log", sudakov%last_log)
        if (r%pt2 <= sudakov%powheg_settings%pt2_min) then
@@ -2059,8 +2061,9 @@ whereby we will search for $\mathcal s == 0$
     complex(default) :: f
     class(sudakov_t), intent(in) :: solver_f
     real(default), intent(in) :: x
-    f = log (solver_f%random) + solver_f%norm_max * solver_f%log_integrated_ubf (x) &
-         - solver_f%last_log
+    f = solver_f%last_log + solver_f%norm_max * solver_f%log_integrated_ubf (x)
+    !f = log (solver_f%random) + solver_f%norm_max * solver_f%log_integrated_ubf (x) &
+         !- solver_f%last_log
   end function sudakov_evaluate
 
 @ %def sudakov_evaluate
@@ -2624,6 +2627,7 @@ Implements the function $G(a,b,\xi)$ given in eq. (\ref{GPlusMassiveFSR}) and eq
     class(powheg_matching_t), intent(inout) :: matching
     type(particle_set_t), intent(inout) :: particle_set
     logical, intent(out) :: vetoed
+    if (signal_is_pending ())  return
     call matching%update (particle_set)
     if (matching%settings%test_sudakov) then
        call matching%test_sudakov ()
@@ -3182,12 +3186,14 @@ implementing the highest bid procedure.
     integer :: alr
     logical :: accepted
     type(vector4_t), dimension(:), allocatable :: p_real_max
+    if (signal_is_pending ())  return
     r_max%pt2 = zero
     r_max%alr = 0
     call msg_debug (D_MATCHING, "powheg_generate_emission")
     associate (nlo => powheg%process_instance%nlo_controller)
       allocate (p_real_max (nlo%get_n_particles_real ()))
       do alr = 1, powheg%process_deps%n_alr
+         if (signal_is_pending ())  return
          associate (sudakov => powheg%sudakov(alr)%s)
            xi2_max = nlo%get_xi_max (alr)**2
            call sudakov%update (xi2_max)
@@ -3197,10 +3203,12 @@ implementing the highest bid procedure.
            end select
            r%alr = alr
            r%pt2 = sudakov%kt2_max (powheg%event_deps%s_hat)
+           sudakov%last_log = 0
            call msg_debug (D_MATCHING, "Starting evolution at r%pt2", r%pt2)
            PT_EVOLUTION: do
               if (signal_is_pending ())  return
               call sudakov%generate_emission (r)
+              if (signal_is_pending ())  return
               if (r%valid) then
                  accepted = powheg%reweight_norm (r)
                  call sudakov%veto_counter%record_norm (.not. accepted)
@@ -3662,7 +3670,7 @@ NLO process though.
     n_calls1 = 100000; n_calls2 = 1000000
     histo1 = zero; histo2 = zero; histo1sq = zero
 
-    write (msg_buffer, "(A,A,A)") "POWHEG: test_sudakov: Computing integrals"
+    write (msg_buffer, "(A)") "POWHEG: test_sudakov: Computing integrals"
     call msg_message ()
     associate (nlo => powheg%process_instance%nlo_controller, &
                fks => powheg%phs_fks_generator)
@@ -3700,9 +3708,10 @@ NLO process though.
     rel_error = (sudakov_0 - sudakov_p + sudakov_m - sudakov_0) / &
          (2 * sudakov_0) * 100
 
-    write (msg_buffer, "(A,A,A)") "POWHEG: test_sudakov: Generating emissions"
+    write (msg_buffer, "(A)") "POWHEG: test_sudakov: Generating emissions"
     call msg_message ()
     do i_call = 1, n_calls2
+       if (signal_is_pending ())  return
        call powheg%generate_emission (pt2_generated = kT2)
        do i_bin = 1, n_bins
           if (kT2 > binning(i_bin)) then
