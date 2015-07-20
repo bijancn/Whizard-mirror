@@ -967,7 +967,9 @@ SHOWER_EXT_SIN = \
 
 NLO_EXT_SIN = \
     extra_nlo_tt.sin \
-    extra_nlo_uu.sin
+    extra_nlo_tt_powheg.sin \
+    extra_nlo_uu.sin \
+    extra_nlo_uu_powheg.sin
 
 all-local: $(TESTSUITES_SIN)
 
