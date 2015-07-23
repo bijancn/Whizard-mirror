@@ -6863,6 +6863,17 @@ polarization flag and names of decay processes, where applicable.
 @ %def process_configuration_setup_component
 @
 <<Process configurations: process configuration: TBP>>=
+  procedure :: set_fixed_emitter => process_configuration_set_fixed_emitter
+<<Process configurations: procedures>>=
+  subroutine process_configuration_set_fixed_emitter (config, i, emitter)
+     class(process_configuration_t), intent(inout) :: config
+     integer, intent(in) :: i, emitter
+     call config%entry%set_fixed_emitter (i, emitter)
+  end subroutine process_configuration_set_fixed_emitter
+
+@ %def process_configuration_set_fixed_emitter
+@
+<<Process configurations: process configuration: TBP>>=
   generic :: set_component_associations => &
                  set_component_associations_default, &
                  set_component_associations_pdf, &
@@ -6899,7 +6910,7 @@ polarization flag and names of decay processes, where applicable.
      do i_component = 1, config%entry%get_n_components ()
        if (any (i_list == i_component)) then
           call config%entry%set_associated_components (i_component, &
-                 i_list(1), i_list(2), i_list(3), i_list(4), i_pdf = i_pdf)
+                 i_list(1), i_list(2), i_list(3), i_list(4), i_pdf = i_list(i_pdf))
        end if
     end do
   end subroutine process_configuration_set_component_associations_pdf
@@ -6911,16 +6922,17 @@ polarization flag and names of decay processes, where applicable.
                    process_configuration_set_component_associations_powheg_damping
 <<Process configurations: procedures>>=
   subroutine process_configuration_set_component_associations_powheg_damping &
-      (config, i_list, i_rsing, i_rfin)
+      (config, i_list, i_born, i_virt, i_sub, i_rsing, i_rfin)
      class(process_configuration_t), intent(inout) :: config
      integer, intent(in), dimension(:) :: i_list
+     integer, intent(in) :: i_born, i_virt, i_sub
      integer, intent(in) :: i_rsing, i_rfin
      integer :: i_component
      do i_component = 1, config%entry%get_n_components ()
        if (any (i_list == i_component)) then
           call config%entry%set_associated_components (i_component, &
-                 i_list(1), 0, i_list(4), i_list(5), &
-                 i_rsing = i_rsing, i_rfin = i_rfin)
+                 i_list(i_born), 0, i_list(i_virt), i_list(i_sub), &
+                 i_rsing = i_list(i_rsing), i_rfin = i_list(i_rfin))
        end if
     end do
   end subroutine process_configuration_set_component_associations_powheg_damping
@@ -16151,9 +16163,11 @@ or arrays which would make the expansion ambiguous.
     logical :: powheg_active, use_powheg_damping_factors
     logical :: gks_active
     logical :: initial_state_colored
-    integer :: n_components_extra
+    integer :: n_components_extra, component_offset
     integer :: gks_multiplicity
     integer :: i_real, n_real
+    integer :: n_emitters
+    integer, dimension(:), allocatable :: emitters
     
     initial_state_colored = .false.
     nlo_calc = cmd%local%nlo_calculation                 
@@ -16218,12 +16232,17 @@ or arrays which would make the expansion ambiguous.
        call radiation_generator%setup_if_table ()
     end if
 
+    if (use_powheg_damping_factors) then
+       emitters = radiation_generator%get_emitter_indices()
+       n_emitters = size (emitters)
+    end if
+
     if (nlo_calc) then
        initial_state_colored = pdg_in%has_colored_particles()
        if (initial_state_colored) then
           n_components_extra = 5
        else if (use_powheg_damping_factors) then
-          n_components_extra = 5
+          n_components_extra = 4 + n_emitters
        else
           n_components_extra = 4
        end if
@@ -16254,7 +16273,10 @@ or arrays which would make the expansion ambiguous.
             if (initial_state_colored) then
                i_list(5) = i + 4*n_components
             else if (use_powheg_damping_factors) then
-               i_list(5) = i + 4*n_components
+               component_offset = 4
+               do j = component_offset, component_offset + n_emitters - 1
+                  i_list(j+1) = i + 4*n_components
+               end do
             end if
             loop_me_method = global%var_list%get_sval (var_str ("$loop_me_method"))
             correlation_me_method = global%var_list%get_sval (var_str ("$correlation_me_method"))
@@ -16270,13 +16292,15 @@ or arrays which would make the expansion ambiguous.
                call global%set_me_method (real_tree_me_method)
                current_me_method = real_tree_me_method
             end if
-            n_real = 1; if (use_powheg_damping_factors) n_real = 2
+            n_real = 1; if (use_powheg_damping_factors) n_real = n_emitters + 1
             do i_real = 1, n_real
                call prc_config%setup_component (n_components*i_real+i, &
                             new_prt_spec (prt_in_nlo), &
                             new_prt_spec (prt_out_nlo),&
                             cmd%local, NLO_REAL, &
                             active_in = active_comp (2))
+               if (i_real > 1) &
+                  call prc_config%set_fixed_emitter (n_components*i_real+i, emitters(i_real-1))
             end do
 
             if (current_me_method /= loop_me_method) then
@@ -16310,9 +16334,10 @@ or arrays which would make the expansion ambiguous.
                                .false.)                     
             end if
             if (use_powheg_damping_factors) then
-               call prc_config%set_component_associations (i_list, i_list (2), i_list(3))
+               call prc_config%set_component_associations (i_list, 1, 3+n_emitters, &
+                  4+n_emitters, 2, 3)
             else if (initial_state_colored) then
-               call prc_config%set_component_associations (i_list, i_list (5))
+               call prc_config%set_component_associations (i_list, 5)
             else
                call prc_config%set_component_associations (i_list)
             end if
