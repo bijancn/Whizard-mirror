@@ -11007,6 +11007,7 @@ However, all entries share the same event transforms.
      type(qcd_t) :: qcd
      type(entry_t), pointer :: first => null ()
      type(entry_t), pointer :: next => null ()
+     class(evt_t), pointer :: evt_powheg => null ()
    contains
    <<Simulations: entry: TBP>>
   end type entry_t
@@ -11220,9 +11221,24 @@ base type by the [[connect]] method, so we can reference them later.
   subroutine entry_set_active_real_component (entry, i_mci)
     class(entry_t), intent(inout) :: entry
     integer, intent(in) :: i_mci
+    class(evt_t), pointer :: current_transform
+    integer :: i
     associate (instance => entry%instance)
        instance%active_real_component = instance%process%get_associated_real_component (i_mci)
-    end associate
+       i = instance%active_real_component
+       if (associated (entry%evt_powheg)) then
+          select type (evt => entry%evt_powheg)
+          type is (evt_shower_t)
+                if (instance%component(i)%get_component_type() == COMP_REAL_FIN) then
+                   call evt%disable_powheg_matching ()
+                else
+                   call evt%enable_powheg_matching ()
+                end if
+          class default
+             call msg_fatal ("powheg-evt should be evt_shower_t!")
+          end select
+       end if      
+    end associate 
   end subroutine entry_set_active_real_component
 
 @ %def entry_set_active_real_component=
@@ -11447,6 +11463,30 @@ information about how many entries to associate from [[region_data]].
   end subroutine entry_reset_nlo_counter
 
 @ %def entry_reset_nlo_counter       
+@
+<<Simulations: entry: TBP>>=
+  procedure :: determine_if_powheg_matching => entry_determine_if_powheg_matching
+<<Simulations: procedures>>=
+  subroutine entry_determine_if_powheg_matching (entry)
+     class(entry_t), intent(inout) :: entry
+     class(evt_t), pointer :: current_transform
+     current_transform => entry%transform_first
+     do
+        select type (current_transform)
+        type is (evt_shower_t)
+           if (current_transform%contains_powheg_matching ()) &
+               entry%evt_powheg => current_transform
+           exit
+        end select
+        if (associated (current_transform%next)) then
+           current_transform => current_transform%next
+        else
+           exit
+        end if
+     end do
+  end subroutine entry_determine_if_powheg_matching
+  
+@ %def entry_determine_if_powheg_matching
 @ Part of simulation-entry initialization: dispatch event transforms
 (decay, shower) as requested.
 <<Simulations: entry: TBP>>=
@@ -12076,6 +12116,7 @@ we may only read and rescan events.
                (process_id(i), &
                integrate, generate, simulation%update_sqme, &
                local, global)
+          call simulation%entry(i)%determine_if_powheg_matching ()
           if (signal_is_pending ())  return          
           if (simulation%entry(i)%nlo_event) &
              call simulation%entry(i)%setup_additional_entries ()
