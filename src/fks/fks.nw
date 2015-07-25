@@ -3704,6 +3704,8 @@ module nlo_data
 
 <<nlo data: types>>
 
+<<nlo data: interfaces>>
+
 contains
 
 <<nlo data: procedures>>
@@ -4022,6 +4024,53 @@ initial-state phase spaces.
 
 @ %def pdf_container_t
 @
+<<nlo data: public>>=
+  public :: powheg_damping_t
+<<nlo data: types>>=
+  type, abstract :: powheg_damping_t
+  contains
+  <<nlo data: powheg damping: TBP>>
+  end type powheg_damping_t
+
+@ %def powheg_damping_t
+@
+<<nlo data: powheg damping: TBP>>=
+  procedure (powheg_damping_get_f), deferred :: get_f
+<<nlo data: interfaces>>=
+  abstract interface
+    function powheg_damping_get_f (damping, pt2) result (f)
+       import
+       real(default) :: f
+       class(powheg_damping_t), intent(in) :: damping
+       real(default), intent(in) :: pt2
+    end function powheg_damping_get_f
+  end interface
+
+@ %def powheg_damping_get_f
+@
+<<nlo data: public>>=
+  public :: powheg_damping_simple_t
+<<nlo data: types>>=
+  type, extends (powheg_damping_t) :: powheg_damping_simple_t
+     real(default) :: h2 = 5._default
+  contains
+  <<nlo data: powheg damping simple: TBP>>
+  end type powheg_damping_simple_t
+
+@ %def powheg_damping_simple_t
+@ 
+<<nlo data: powheg damping simple: TBP>>=
+  procedure :: get_f => powheg_damping_simple_get_f
+<<nlo data: procedures>>=
+  function powheg_damping_simple_get_f (damping, pt2) result (f)
+    real(default) :: f
+    class(powheg_damping_simple_t), intent(in) :: damping
+    real(default), intent(in) :: pt2
+    f = damping%h2 / (pt2 + damping%h2)
+  end function powheg_damping_simple_get_f
+
+@ %def powheg_damping_simple_get_f    
+@
 <<[[nlo_controller.f90]]>>=
 <<File header>>
 
@@ -4038,7 +4087,6 @@ module nlo_controller
   use sm_physics
   use os_interface
   use model_data
-  use parser
   use pdg_arrays
   use particle_specifiers
   use phs_single
@@ -4923,13 +4971,25 @@ one to determine this.
 
 @ %def sqme_collector_setup_sqme_real
 @
-This data type governs the whole calculation. It contains information
+<<nlo data: sqme collector: TBP>>=
+  procedure :: reset => sqme_collector_reset
+<<nlo data: procedures>>=
+  subroutine sqme_collector_reset (collector)
+    class(sqme_collector_t), intent(inout) :: collector
+       collector%sqme_born_list = 0._default
+       collector%sqme_real_sum = 0._default
+       collector%sqme_virt_list = 0._default
+  end subroutine sqme_collector_reset
+
+@ %def sqme_collector_reset
+@ This data type governs the whole calculation. It contains information
 about color, spin and flavor as well as the information about the Born
 process.
 <<nlo controller: public>>=
   public :: nlo_controller_t
 <<nlo controller: types>>=
   type :: nlo_controller_t
+    logical :: needs_initialization = .true.
     type(region_data_t) :: reg_data
     type(nlo_particle_data_t) :: particle_data
     type(nlo_states_t) :: particle_states
@@ -4953,6 +5013,7 @@ process.
     logical, public :: counter_active = .false.
     logical :: use_internal_color_correlations = .true.
     logical :: use_internal_spin_correlations = .false.
+    class(powheg_damping_t), allocatable :: powheg_damping
   contains
   <<nlo controller: nlo controller: TBP>>
   end type nlo_controller_t
@@ -4983,6 +5044,7 @@ process.
      end associate
      nlo_controller%counter_active = template%count_kinematics
      if (nlo_controller%counter_active) call nlo_controller%counter%init(20)
+     allocate (powheg_damping_simple_t :: nlo_controller%powheg_damping)
    end subroutine nlo_controller_init
 
 @ %def nlo_controller_init
@@ -5055,6 +5117,7 @@ process.
        collector%sqme_born_sc = cmplx (0._default, 0._default, kind=default)
        collector%current_sqme_real = 0._default
        collector%sqme_real_sum = 0._default
+       collector%sqme_virt_list = 0._default
     end associate
   end subroutine nlo_controller_setup_matrix_elements
 
@@ -5300,6 +5363,7 @@ process.
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: disable_subtraction => nlo_controller_disable_subtraction
+  procedure :: enable_subtraction => nlo_controller_enable_subtraction
   procedure :: is_subtraction_active => nlo_controller_is_subtraction_active
 <<nlo controller: procedures>>=
   subroutine nlo_controller_disable_subtraction (nlo_controller)
@@ -5308,6 +5372,11 @@ process.
     nlo_controller%real_terms%subtraction_active = .false.
   end subroutine nlo_controller_disable_subtraction
 
+  subroutine nlo_controller_enable_subtraction (nlo_controller)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    nlo_controller%real_terms%subtraction_active = .true.
+  end subroutine nlo_controller_enable_subtraction
+
   function nlo_controller_is_subtraction_active (nlo_controller) result (active)
     class(nlo_controller_t), intent(in) :: nlo_controller
     logical :: active
@@ -5315,6 +5384,7 @@ process.
   end function nlo_controller_is_subtraction_active
 
 @ %def nlo_controller_disable_subtraction
+@ %def nlo_controller_enable_subtraction
 @ %def nlo_controller_is_subtraction_active
 @
 <<nlo controller: nlo controller: TBP>>=
