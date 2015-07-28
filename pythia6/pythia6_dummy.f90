@@ -45,7 +45,7 @@ subroutine pystop ()
 end subroutine pystop
 subroutine pyrobo (imi, ima, the, phi, bex, bey, bez)
   integer, intent(in) :: imi, ima
-  real(double), intent(in) :: the, phi, bex, bey, bez
+  double precision, intent(in) :: the, phi, bex, bey, bez
   write (0, "(A)")  "**************************************************************"
   write (0, "(A)")  "*** Error: PYTHIA6 has not been enabled, WHIZARD terminates ***"
   write (0, "(A)")  "**************************************************************"
