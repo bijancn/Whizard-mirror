@@ -989,16 +989,16 @@ there is only a soft singularity if the radiated parton becomes soft.
     reg_data%nlegs_real = reg_data%nlegs_born + 1
     allocate (reg_data%flv_born (reg_data%n_flv_born))
     allocate (reg_data%flv_real (reg_data%n_flv_real))
-    allocate (current_flavor (reg_data%n_flv_born))
+    allocate (current_flavor (reg_data%nlegs_born))
     do i = 1, reg_data%n_flv_born
-      current_flavor = flavor_born(:,i)
-      call reg_data%flv_born(i)%init (current_flavor)
+       current_flavor = flavor_born(:,i)
+       call reg_data%flv_born(i)%init (current_flavor)
     end do
     deallocate (current_flavor)
-    allocate (current_flavor (reg_data%n_flv_real))
+    allocate (current_flavor (reg_data%nlegs_real))
     do i = 1, reg_data%n_flv_real
-      current_flavor = flavor_real(:,i)
-      call reg_data%flv_real(i)%init (current_flavor)
+       current_flavor = flavor_real(:,i)
+       call reg_data%flv_real(i)%init (current_flavor)
     end do
 
     select case (mapping_type)
@@ -1288,6 +1288,9 @@ of the present one is increased.
         SCAN_FTUPLES: do i = i_first, i_first + ftuple_limits (l) -1
            equiv = .false.
            if (i==i_first) then
+              if (allocated (flst_alr2(j)%flst)) &
+                   deallocate (flst_alr2(j)%flst)
+              allocate (flst_alr2(j)%flst (size (flst_alr(i)%flst)))
               flst_alr2(j)%flst = flst_alr(i)%flst
               mult(j) = mult(j) + 1
               flst_uborn(j) = flst_alr(i)%create_uborn (emitter(i))
@@ -1319,6 +1322,9 @@ of the present one is increased.
               end if
            end do
            if (.not. equiv) then
+              if (allocated (flst_alr2(j)%flst)) &
+                   deallocate (flst_alr2(j)%flst)
+              allocate (flst_alr2(j)%flst (size (flst_alr(i)%flst)))
               flst_alr2(j)%flst = flst_alr(i)%flst
               mult(j) = mult(j) + 1
               flst_uborn(j) = flst_alr(i)%create_uborn (emitter(i))
@@ -1443,6 +1449,8 @@ of the present one is increased.
     integer, dimension(:), allocatable :: flst_real
     allocate (reg_data%underlying_borns (reg_data%n_flv_real))
     do i = 1, reg_data%n_flv_real
+       if (allocated (flst_real))  deallocate (flst_real)
+       allocate (flst_real (size (reg_data%flv_real(i)%flst)))       
        flst_real = reg_data%flv_real(i)%flst
        do alr = 1, reg_data%n_regions
           if (all (reg_data%regions(alr)%flst_real%flst == flst_real)) then
@@ -4080,7 +4088,6 @@ module nlo_controller
   use interactions
   use lorentz
   use prc_core
-  use pdg_arrays
   use sf_base
   use colors
   use phs_fks
@@ -4406,6 +4413,12 @@ and virtual counterterms.
     call prc_constants(1)%get_color_factors (color_data%color_factors_born)
     color_data%n_col_born = size (color_data%col_state_born(1,1,:))
     color_data%n_col_real = size (color_data%col_state_real(1,1,:))
+    allocate (color_data%ghost_flag_born &
+         (size (prc_constants(1)%get_ghost_flag (), 1), &
+          size (prc_constants(1)%get_ghost_flag ())))
+    allocate (color_data%ghost_flag_real &
+         (size (prc_constants(2)%get_ghost_flag (), 1), &
+          size (prc_constants(2)%get_ghost_flag ())))    
     color_data%ghost_flag_born = prc_constants(1)%get_ghost_flag ()
     color_data%ghost_flag_real = prc_constants(2)%get_ghost_flag ()
     allocate (color_data%color_real (nlegs_real, color_data%n_col_real))
@@ -4589,7 +4602,7 @@ and virtual counterterms.
        do i = 1, reg_data%n_regions
            if (uborn_index == reg_data%regions(i)%uborn_index) then
              if (em1 == reg_data%regions(i)%emitter .or. &
-                 (em1 <= 2 .and. reg_data%regions(i)%emitter == 0)) then
+                  (em1 <= 2 .and. reg_data%regions(i)%emitter == 0)) then
                reg(1,i_reg(1)) = reg_data%regions(i)
                i_reg(1) = i_reg(1)+1
                found(1) = .true.
@@ -4612,40 +4625,51 @@ and virtual counterterms.
            icm1 = color_data%icm (reg(1,i)%alr)
            icm2 = color_data%icm (reg(2,j)%alr)
 
+           allocate (iarray1 (size (icm1%get_index_array ())))
+           allocate (iarray2 (size (icm2%get_index_array ())))           
+           
            iarray1 = icm1%get_index_array ()
            iarray2 = icm2%get_index_array ()
 
+           allocate (iisec1 (count (iarray1 == map_em_col1)))
+           allocate (iisec2 (count (iarray2 == map_em_col2)))           
+           
            iisec1 = pack (iarray1, [ (any(iarray1(i) == map_em_col1), &
                 i = 1, size(iarray1)) ])
            iisec2 = pack (iarray2, [ (any(iarray2(i) == map_em_col2), &
                 i = 1, size(iarray2)) ])
 
+           allocate (cf_present (size (color_index_present &
+                (color_data%cf_index_real), 1), size (color_index_present &
+                (color_data%cf_index_real), 2)))
+           
            cf_present = color_index_present (color_data%cf_index_real)
 
            do k = 1, size (iisec1)
-             do l = 1, size (iisec2)
-               i1 = iisec1(k)
-               i2 = iisec2(l)
-               if (cf_present (i1, i2)) then
-                 if (is_gluon (flst_real%flst (em1)) .or. &
-                     is_gluon (flst_real%flst (em2))) then
-                   sign = get_sign (color_data%col_state_real (:,:,i1)) * &
-                        get_sign (color_data%col_state_real (:,:,i2))
-                 else
-                   sign = 1
-                 end if
-                   color_factor = color_factor + sign*compute_color_factor &
+              do l = 1, size (iisec2)
+                 i1 = iisec1(k)
+                 i2 = iisec2(l)
+                 if (cf_present (i1,i2)) then
+                    if (is_gluon (flst_real%flst (em1)) .or. &
+                         is_gluon (flst_real%flst (em2))) then
+                       sign = get_sign (color_data%col_state_real (:,:,i1)) * &
+                            get_sign (color_data%col_state_real (:,:,i2))
+                    else
+                       sign = 1
+                    end if
+                    color_factor = color_factor + sign*compute_color_factor &
                          (color_data%color_real(:,i1), &
-                          color_data%color_real(:,i2))
-               end if
-             end do
+                         color_data%color_real(:,i2))
+                 end if
+              end do
            end do
-         end do
-       end do
-       !!! The real color factor always differs from the Born one
-       !!! by one vertex factor. Thus, apply the factor 1/2
-       bij = color_factor / (2 * color_factor_born)
-    end if
+        end do
+     end do
+     deallocate (iarray1, iarray2, iisec1, iisec2, cf_present)
+     !!! The real color factor always differs from the Born one
+     !!! by one vertex factor. Thus, apply the factor 1/2
+     bij = color_factor / (2 * color_factor_born)
+  end if
 
   contains
     function share_line (col1, col2) result (share)
@@ -4845,6 +4869,7 @@ one to determine this.
     class(nlo_controller_t), intent(in) :: nlo_controller
     integer, intent(in) :: i_flv
     logical, dimension(:), allocatable :: massive
+    allocate (massive (size (nlo_controller%reg_data%flv_born(i_flv)%massive)))    
     massive = nlo_controller%reg_data%flv_born(i_flv)%massive
   end function nlo_controller_get_mass_info
 
@@ -5043,8 +5068,14 @@ process.
     class(nlo_controller_t), intent(inout) :: nlo_controller
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
     associate (states => nlo_controller%particle_states)
-       states%flv_state_born = prc_constants(1)%get_flv_state ()
-       states%flv_state_real = prc_constants(2)%get_flv_state ()
+      allocate (states%flv_state_born &
+           (size (prc_constants(1)%get_flv_state (), 1), &
+            size (prc_constants(1)%get_flv_state (), 2)))
+      allocate (states%flv_state_real &
+           (size (prc_constants(2)%get_flv_state (), 1), &
+            size (prc_constants(2)%get_flv_state (), 2)))      
+      states%flv_state_born = prc_constants(1)%get_flv_state ()
+      states%flv_state_real = prc_constants(2)%get_flv_state ()
     end associate
   end subroutine nlo_controller_set_flv_states
 
@@ -5579,13 +5610,27 @@ process.
     logical, intent(in), optional :: cms
     logical :: yorn
     yorn = .false.; if (present (cms)) yorn = cms
-    if (yorn) then
-       nlo_controller%real_kinematics%p_born_cms = p_born
-       nlo_controller%real_kinematics%p_real_cms = p_real
-    else
-       nlo_controller%real_kinematics%p_born_lab = p_born
-       nlo_controller%real_kinematics%p_real_lab = p_real
-    end if
+    associate (kinematics => nlo_controller%real_kinematics)
+       if (yorn) then
+          if (.not. allocated (kinematics%p_born_cms)) then
+             allocate (kinematics%p_born_cms (size (p_born)))
+          end if
+          if (.not. allocated (kinematics%p_real_cms)) then
+             allocate (kinematics%p_real_cms (size (p_real)))
+          end if
+          kinematics%p_born_cms = p_born
+          kinematics%p_real_cms = p_real
+       else
+          if (.not. allocated (kinematics%p_born_lab)) then
+             allocate (kinematics%p_born_lab (size (p_born)))
+          end if
+          if (.not. allocated (kinematics%p_real_lab)) then
+             allocate (kinematics%p_real_lab (size (p_real)))
+          end if
+          kinematics%p_born_lab = p_born
+          kinematics%p_real_lab = p_real
+       end if
+    end associate
   end subroutine nlo_controller_set_momenta
 
 @ %def nlo_controller_set_momenta
@@ -5602,15 +5647,19 @@ process.
     yorn = .false.; if (present (cms)) yorn = cms
     if (born_phsp) then
        if (yorn) then
-          p = nlo_controller%real_kinematics%p_born_cms
+          allocate (p(1:size(nlo_controller%real_kinematics%p_born_cms)), &
+               source = nlo_controller%real_kinematics%p_born_cms)
        else
-          p = nlo_controller%real_kinematics%p_born_lab
+          allocate (p(1:size(nlo_controller%real_kinematics%p_born_lab)), &
+               source = nlo_controller%real_kinematics%p_born_lab)
        end if
     else
        if (yorn) then
-          p = nlo_controller%real_kinematics%p_real_cms
+          allocate (p(1:size(nlo_controller%real_kinematics%p_real_cms)), &
+               source = nlo_controller%real_kinematics%p_real_cms)
        else
-          p = nlo_controller%real_kinematics%p_real_lab
+          allocate (p(1:size(nlo_controller%real_kinematics%p_real_lab)), &
+               source = nlo_controller%real_kinematics%p_real_lab)
        end if
     end if
   end function nlo_controller_get_momenta
@@ -5862,9 +5911,9 @@ end module phs_fks
     phs_config%sqrts_fixed = phs_cfg_born%sqrts_fixed
     phs_config%azimuthal_dependence = phs_cfg_born%azimuthal_dependence
     phs_config%provides_chains = phs_cfg_born%provides_chains
-    phs_config%chain = phs_cfg_born%chain
     phs_config%cm_frame = phs_cfg_born%cm_frame
     phs_config%vis_channels = phs_cfg_born%vis_channels
+    allocate (phs_config%chain (size (phs_cfg_born%chain)))
     phs_config%chain = phs_cfg_born%chain
     phs_config%model => phs_cfg_born%model
   end subroutine phs_fks_config_set_born_config
@@ -6467,7 +6516,8 @@ $\xi$.
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(out), dimension(:), allocatable :: p_real
     type(vector4_t), dimension(:), allocatable :: p
-    p = phs%generator%real_kinematics%p_born_cms
+    allocate (p(1:size (phs%generator%real_kinematics%p_born_cms)), &
+         source = phs%generator%real_kinematics%p_born_cms)
     phs%generator%real_kinematics%supply_xi_max = .true.
     call phs%generator%generate_fsr (emitter, p, p_real)
     phs%generator%real_kinematics%p_real_cms = p_real
@@ -6855,6 +6905,7 @@ which corresponds to the borders of the Dalitz-region where the gluon momentum v
   subroutine phs_fks_generator_set_emitters (generator, emitters)
     class(phs_fks_generator_t), intent(inout) :: generator
     integer, intent(in), dimension(:), allocatable ::  emitters
+    allocate (generator%emitters (size (emitters)))
     generator%emitters = emitters
   end subroutine phs_fks_generator_set_emitters
 
