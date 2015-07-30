@@ -4740,7 +4740,14 @@ contains
 end module evt_nlo
 
 @ %def evt_nlo
-@
+@ This event transformation is for the generation of fixed-order NLO events. It
+takes an event with Born kinematics and creates $N_\alpha + 1$ modified weighted events.
+The first one has Born kinematics and its weight is the sum of Born, Real and subtraction
+matrix elements. The other $N_\alpha$ events have a weight which is equal to the real matrix
+element, evaluated with the phase space corresponding to the emitter of the $\alpha$-region.
+All NLO event objects share the same event transformation. For this reason, we save the
+particle set of the current $\alpha$-region in the array [[particle_set_radiated]]. Otherwise
+it would be unretrievable if the usual particle set of the event object was used.@
 <<Evt Nlo: public>>=
   public :: evt_nlo_t
 <<Evt Nlo: types>>=
@@ -4749,6 +4756,7 @@ end module evt_nlo
     real(default) :: sqme_rad
     integer :: i_evaluation
     integer, dimension(:), allocatable :: emitters
+    type(particle_set_t), dimension(:), allocatable :: particle_set_radiated
     type(qcd_t), pointer :: qcd => null ()
   contains
   <<Evt Nlo: evt nlo: TBP>>
@@ -4835,10 +4843,7 @@ is distributed over the real and Born subevents.
   end subroutine evt_nlo_generate_weighted
 
 @ %def evt_nlo_generate_weighted
-@ Create the particle set corresponding to a radiation event, if
-necessary.
-This involves setting the phase space as well as rearranging the
-mother-daughter relations and color information.
+@
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: make_particle_set => evt_nlo_make_particle_set
 <<Evt Nlo: procedures>>=
@@ -4848,12 +4853,26 @@ mother-daughter relations and color information.
     integer, intent(in) :: factorization_mode
     logical, intent(in) :: keep_correlations
     real(default), dimension(:), intent(in), optional :: r
+  end subroutine evt_nlo_make_particle_set
+
+@ %def evt_nlo_make_particle_set
+@ Create the particle set corresponding to a radiation event, if
+necessary.
+This involves setting the phase space as well as rearranging the
+mother-daughter relations and color information.
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: build_radiated_particle_set => evt_nlo_build_radiated_particle_set
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_build_radiated_particle_set (evt, i_event)
+    class(evt_nlo_t), intent(inout) :: evt
+    integer, intent(in) :: i_event
     integer :: emitter
     type(vector4_t), dimension(:), allocatable :: p_new
     integer, dimension(:), allocatable :: flv_radiated
     real(default) :: r_col
-    call msg_debug (D_TRANSFORMS, "evt_nlo_make_particle_set")
+    call msg_debug (D_TRANSFORMS, "evt_nlo_build_radiated_particle_set")
     call msg_debug (D_TRANSFORMS, "evt%i_evaluation", evt%i_evaluation)
+    evt%particle_set_radiated(i_event) = evt%particle_set
     if (evt%i_evaluation /= 0) then
        ! TODO: (bcn 2015-07-15) beware the intel
        flv_radiated = evt%process_instance%nlo_controller%get_flv_state_real (1)
@@ -4864,13 +4883,13 @@ mother-daughter relations and color information.
        call msg_debug (D_TRANSFORMS, "emitter", emitter)
        ! TODO: (bcn 2015-07-15) beware the intel
        p_new = evt%process_instance%nlo_controller%get_momenta (born_phsp = .false.)
-       call evt%particle_set%build_radiation (p_new, emitter, flv_radiated, &
+       call evt%particle_set_radiated(i_event)%build_radiation (p_new, emitter, flv_radiated, &
             evt%process_instance%process%get_model_ptr (), r_col)
     end if
     evt%i_evaluation = evt%i_evaluation + 1
-  end subroutine evt_nlo_make_particle_set
+  end subroutine evt_nlo_build_radiated_particle_set
 
-@ %def evt_nlo_make_particle_set
+@ %def evt_nlo_build_radiated_particle_set
 @ This routine calls the evaluation of the singular regions only for the
 subtraction terms.
 <<Evt Nlo: evt nlo: TBP>>=
@@ -5515,7 +5534,16 @@ For testing purpose, we allow for providing them explicitly, as an option.
        end do
        evt => event%transform_last
        if (associated (evt) .and. evt%particle_set_exists) then
-          call event%link_particle_set (evt%particle_set)
+          if (event%nlo_event) then
+             select type (evt)
+             type is (evt_nlo_t)
+                call evt%build_radiated_particle_set (event%i_event+1)
+                call event%link_particle_set &
+                   (evt%particle_set_radiated(event%i_event+1))
+             end select
+          else
+             call event%link_particle_set (evt%particle_set)
+          end if
        end if
        call msg_debug (D_TRANSFORMS, "After event transformations")
        call msg_debug (D_TRANSFORMS, "event%weight_prc", event%weight_prc)
