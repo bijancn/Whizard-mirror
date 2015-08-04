@@ -78,7 +78,7 @@ module ttv_formfactors
   !!! step size should be reduced to 0.1 before release
 !  real(default), parameter :: sqrts_lo=-4.0_default, sqrts_hi=96.0_default, sqrts_it=0.5_default
   !!! fast setup for sqrts = 2*m1S, sufficient to run SM_tt_threshold_test.sin
-  real(default), parameter :: sqrts_lo=-0.1_default, sqrts_hi=0.1_default, sqrts_it=0.1_default
+  real(default), parameter :: sqrts_lo=-10.0_default, sqrts_hi=20.0_default, sqrts_it=0.2_default
 
 
   interface char
