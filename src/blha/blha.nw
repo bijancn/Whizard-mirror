@@ -80,10 +80,11 @@ end module blha_olp_interfaces
   public :: blha_template_t
 <<BLHA OLP interfaces: types>>=
   type :: blha_template_t
+    integer :: I_BORN = 0
     integer :: I_REAL = 1
     integer :: I_LOOP = 2
     integer :: I_SUB = 3
-    logical, dimension(3) :: compute_component
+    logical, dimension(0:3) :: compute_component
   contains
   <<BLHA OLP interfaces: blha template: TBP>>
   end type blha_template_t
@@ -447,10 +448,21 @@ end module blha_olp_interfaces
 @ %def blha_template_init
 @
 <<BLHA OLP interfaces: blha template: TBP>>=
+  procedure :: set_born => blha_template_set_born
+  procedure :: set_real_trees => blha_template_set_real_trees
   procedure :: set_loop => blha_template_set_loop
   procedure :: set_subtraction => blha_template_set_subtraction
-  procedure :: set_real_trees => blha_template_set_real_trees
 <<BLHA OLP interfaces: procedures>>=
+  subroutine blha_template_set_born (template)
+    class(blha_template_t), intent(inout) :: template
+    template%compute_component (template%I_BORN) = .true.
+  end subroutine blha_template_set_born
+
+  subroutine blha_template_set_real_trees (template)
+    class(blha_template_t), intent(inout) :: template
+    template%compute_component (template%I_REAL) = .true.
+  end subroutine blha_template_set_real_trees
+
   subroutine blha_template_set_loop (template)
     class(blha_template_t), intent(inout) :: template
     template%compute_component(template%I_LOOP) = .true.
@@ -461,18 +473,26 @@ end module blha_olp_interfaces
     template%compute_component (template%I_SUB) = .true.
   end subroutine blha_template_set_subtraction
 
-  subroutine blha_template_set_real_trees (template)
-    class(blha_template_t), intent(inout) :: template
-    template%compute_component (template%I_REAL) = .true.
-  end subroutine blha_template_set_real_trees
-
 @ %def blha_template_set_components
 @
 <<BLHA OLP interfaces: blha template: TBP>>=
+  procedure :: compute_born => blha_template_compute_born
+  procedure :: compute_real_trees => blha_template_compute_real_trees
   procedure :: compute_loop => blha_template_compute_loop
   procedure :: compute_subtraction => blha_template_compute_subtraction
-  procedure :: compute_real_trees => blha_template_compute_real_trees
 <<BLHA OLP interfaces: procedures>>=
+  function blha_template_compute_born (template) result (val)
+    class(blha_template_t), intent(in) :: template
+    logical :: val
+    val = template%compute_component (template%I_BORN)
+  end function blha_template_compute_born
+
+  function blha_template_compute_real_trees (template) result (val)
+    class(blha_template_t), intent(in) :: template
+    logical :: val
+    val = template%compute_component (template%I_REAL)
+  end function blha_template_compute_real_trees
+
   function blha_template_compute_loop (template) result (val)
     class(blha_template_t), intent(in) :: template
     logical :: val
@@ -485,13 +505,8 @@ end module blha_olp_interfaces
     val = template%compute_component (template%I_SUB)
   end function blha_template_compute_subtraction
 
-  function blha_template_compute_real_trees (template) result (val)
-    class(blha_template_t), intent(in) :: template
-    logical :: val
-    val = template%compute_component (template%I_REAL)
-  end function blha_template_compute_real_trees
-
 @ %def blha_template_compute
+@
 <<BLHA OLP interfaces: blha template: TBP>>=
   procedure :: check => blha_template_check
 <<BLHA OLP interfaces: procedures>>=
@@ -1341,6 +1356,8 @@ end module blha_olp_interfaces
                  object%i_sc (object%n_flv))
     else if (blha_template%compute_real_trees ()) then
        allocate (object%i_real (object%n_flv))
+    else if (blha_template%compute_born ()) then
+       allocate (object%i_born (object%n_flv))
     end if
   end subroutine prc_blha_init_blha
 @ %def prc_blha_init_blha
@@ -1452,11 +1469,7 @@ end module blha_olp_interfaces
     end select
     acc = acc_dble
     sqme = r(1:4)
-    if (acc > object%maximum_accuracy) then
-       bad_point = .true.
-    else
-       bad_point = .false.
-    end if
+    bad_point = acc > object%maximum_accuracy
   end subroutine prc_blha_compute_sqme_virt
 
 @ %def prc_blha_compute_sqme_virt
@@ -1488,14 +1501,14 @@ Hence, the interface is simpler than in the other routines.
 <<BLHA OLP interfaces: interfaces>>=
   abstract interface
     subroutine prc_blha_compute_sqme_born (object, i_born, &
-          mom, mu, sqme, acc_born)
+          p, mu, sqme, bad_point)
       import
       class(prc_blha_t), intent(inout) :: object
       integer, intent(in) :: i_born
-      real(double), intent(in), dimension(5*object%n_particles) :: mom
+      type(vector4_t), dimension(:), intent(in) :: p
       real(double), intent(in) :: mu
       real(default), intent(out) :: sqme
-      real(default), intent(out) :: acc_born
+      logical, intent(out) :: bad_point
     end subroutine prc_blha_compute_sqme_born
   end interface 
 
@@ -1522,8 +1535,9 @@ Hence, the interface is simpler than in the other routines.
     real(default) :: alpha_s
     integer :: i, j, pos
     integer :: im1, jm1
+    logical :: bad_point2
     real(double) :: acc_dble
-    real(default) :: acc1, acc2
+    real(default) :: acc
     real(default) :: born
 
     mom = object%create_momentum_array (p)
@@ -1539,10 +1553,10 @@ Hence, the interface is simpler than in the other routines.
        call driver%set_alpha_s (alpha_s)
        if (allocated (object%i_born)) then
        call object%compute_sqme_born (object%i_born(i_flv), &
-                                      mom, mu_dble, born, acc1)
+                                      p, mu_dble, born, bad_point2)
        else
           born = 0._default
-          acc1 = 0._default
+          acc = 0._default
        end if
        if (present (born_out)) born_out = born
        call driver%blha_olp_eval2 (object%i_cc(i_flv), &
@@ -1562,11 +1576,8 @@ Hence, the interface is simpler than in the other routines.
         born_cc (j,i) = born_cc (i,j)
       end do
     end do
-    acc2 = acc_dble
-    if (acc1 > object%maximum_accuracy .or. &
-        acc2 > object%maximum_accuracy) then
-      bad_point = .true.
-    end if
+    acc = acc_dble
+    bad_point = bad_point2 .or. acc > object%maximum_accuracy
   end subroutine prc_blha_compute_sqme_cc
 
 @ %def prc_blha_compute_sqme_cc
@@ -1814,8 +1825,7 @@ This types control the creation of BLHA-interface files
   end type blha_flv_state_t
 
   type :: blha_master_t
-    integer, dimension(3) :: blha_mode
-!    integer, dimension(:,:), allocatable :: flv_born, flv_real
+    integer, dimension(4) :: blha_mode
     integer :: n_in, n_out
     logical :: compute_loops = .true.
     logical :: compute_correlations = .false.
@@ -1836,14 +1846,15 @@ This types control the creation of BLHA-interface files
 <<BLHA config: procedures>>=
   subroutine blha_master_init (master, basename, model, &
                                n_in, n_out, &
-                               cmp_loops, cmp_corr, cmp_real, &
+                               cmp_borns, cmp_loops, &
+                               cmp_corr, cmp_real, &
                                alpha_power, alphas_power, &
                                flv_born, flv_real)
     class(blha_master_t), intent(inout) :: master
     type(string_t), intent(in) :: basename
     class(model_data_t), intent(in), target :: model
     integer, intent(in) :: n_in, n_out
-    logical, intent(in) :: cmp_loops, cmp_corr, cmp_real
+    logical, intent(in) :: cmp_borns, cmp_loops, cmp_corr, cmp_real
     integer, intent(in) :: alpha_power, alphas_power
     integer, dimension(:,:), allocatable, intent(in) :: &
                              flv_born, flv_real
@@ -1852,9 +1863,12 @@ This types control the creation of BLHA-interface files
     integer :: i, i_flv
     integer :: i_file
     integer, dimension(:), allocatable :: amp_type
+    integer :: n_flv_born 
 
     n_proc = 0; n_flv = 1; n_proc_real = 0
+    n_flv_born = size (flv_born, 2)
     master%compute_real_trees = cmp_real
+    if (cmp_borns) master%n_files = master%n_files+1
     if (cmp_loops) master%n_files = master%n_files+1
     if (cmp_corr) master%n_files = master%n_files+1
     if (cmp_real) then
@@ -1866,7 +1880,7 @@ This types control the creation of BLHA-interface files
     end if
     allocate (master%blha_cfg (master%n_files))
     allocate (master%suffix (master%n_files))
-    i_file = 1
+    i_file = 1          
     if (cmp_loops) then
        if (allocated (flv_born)) then
           allocate (blha_flavor (size (flv_born, 2)))
@@ -1880,7 +1894,7 @@ This types control the creation of BLHA-interface files
                                   basename, model, master%blha_mode(1))
           i_file = i_file+1
         else
-          call msg_fatal ("GoSam Loops requested but " &
+          call msg_fatal ("BLHA Loops requested but " &
                            // "Born flavor not existing")
         end if
     end if
@@ -1914,9 +1928,25 @@ This types control the creation of BLHA-interface files
           call blha_init_real (master%blha_cfg(i_file), blha_flavor, &
                                   alpha_power, alphas_power, &
                                   basename, model, master%blha_mode(3))
+          i_file = i_file+1
        else
           call msg_fatal ("GoSam Trees requested but "&
                            // "Real flavor not existing")
+       end if
+    end if
+    if (cmp_borns) then
+       if (allocated (flv_born)) then
+          allocate (blha_flavor (n_flv_born))
+          do i_flv = 1, n_flv_born
+             blha_flavor(i_flv)%flavors = flv_born(:,i_flv)
+             blha_flavor(i_flv)%flv_mult = 1
+          end do
+          master%suffix(i_file) = "_BORN"
+          print *, 'Is this gosam-mode? ', master%blha_mode(4) == BLHA_MODE_GOSAM
+          print *, 'Is this openloops-mode? ', master%blha_mode(4) == BLHA_MODE_OPENLOOPS
+          call blha_init_born (master%blha_cfg(i_file), blha_flavor, &
+                               alpha_power, alphas_power, &
+                               basename, model, master%blha_mode(4))
        end if
     end if
   end subroutine blha_master_init
@@ -1946,6 +1976,39 @@ This types control the creation of BLHA-interface files
 @ %def blha_master_set_openloops
 @
 <<BLHA config: procedures>>=
+  subroutine blha_init_born (blha_cfg, blha_flavor, ap, asp, basename, model, blha_mode)
+    type(blha_configuration_t), intent(inout) :: blha_cfg
+    type(blha_flv_state_t), intent(in), dimension(:) :: blha_flavor
+    integer, intent(in) :: ap, asp
+    type(string_t), intent(in) :: basename
+    type(model_data_t), intent(in), target :: model
+    integer, intent(in) :: blha_mode
+    integer, dimension(:), allocatable :: amp_type
+    integer :: i, ew_scheme
+
+    allocate (amp_type (size (blha_flavor)))
+    do i = 1, size (blha_flavor)
+       amp_type(2*i-1) = BLHA_AMP_TREE
+    end do
+    call blha_configuration_init (blha_cfg, basename // "_BORN" , &
+                                  model, blha_mode)
+    call blha_configuration_append_processes (blha_cfg, &
+                                  blha_flavor, amp_type)
+    select case (blha_cfg%mode)
+    case (BLHA_MODE_GOSAM)
+       ew_scheme = BLHA_EW_GF
+    case (BLHA_MODE_OPENLOOPS)
+       ew_scheme = BLHA_EW_0
+    end select 
+    call blha_configuration_set (blha_cfg, BLHA_VERSION_2, &
+                                 correction_type = BLHA_CT_QCD, &
+                                 irreg = BLHA_IRREG_CDR, &
+                                 alphas_power = asp, &
+                                 alpha_power = ap, &
+                                 ew_scheme = ew_scheme, &
+                                 debug = blha_mode == BLHA_MODE_GOSAM)
+  end subroutine blha_init_born
+
   subroutine blha_init_virtual (blha_cfg, blha_flavor, ap, asp, basename, model, blha_mode)
     type(blha_configuration_t), intent(inout) :: blha_cfg
     type(blha_flv_state_t), intent(in), dimension(:) :: blha_flavor
@@ -1971,7 +2034,7 @@ This types control the creation of BLHA-interface files
     case (BLHA_MODE_OPENLOOPS)
        ew_scheme = BLHA_EW_0
     end select 
-    call blha_configuration_set (blha_cfg, 2, &
+    call blha_configuration_set (blha_cfg, BLHA_VERSION_2, &
                                  correction_type = BLHA_CT_QCD, &
                                  irreg = BLHA_IRREG_CDR, &
                                  alphas_power = asp, &
@@ -2006,7 +2069,7 @@ This types control the creation of BLHA-interface files
     case (BLHA_MODE_OPENLOOPS)
        ew_scheme = BLHA_EW_0
     end select 
-    call blha_configuration_set (blha_cfg, 2, &
+    call blha_configuration_set (blha_cfg, BLHA_VERSION_2, &
                                  correction_type = BLHA_CT_QCD, &
                                  irreg = BLHA_IRREG_CDR, &
                                  alphas_power = asp, &
@@ -2040,7 +2103,7 @@ This types control the creation of BLHA-interface files
     case (BLHA_MODE_OPENLOOPS)
        ew_scheme = BLHA_EW_0
     end select 
-    call blha_configuration_set (blha_cfg, 2, &
+    call blha_configuration_set (blha_cfg, BLHA_VERSION_2, &
                                  correction_type = BLHA_CT_QCD, &
                                  irreg = BLHA_IRREG_CDR, &
                                  alphas_power = asp+1, &

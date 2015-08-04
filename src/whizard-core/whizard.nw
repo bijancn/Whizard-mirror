@@ -1424,6 +1424,9 @@ so the latter is always available (and kept global).
          intrinsic=.true.)
     call set_openmp_defaults ()
     call var_list_append_string &
+       (global%var_list, var_str ("$born_me_method"), &
+        var_str ("omega"), intrinsic = .true.)
+    call var_list_append_string &
        (global%var_list, var_str ("$loop_me_method"), &
         var_str ("gosam"), intrinsic = .true.)
     call var_list_append_string &
@@ -3570,6 +3573,7 @@ module dispatch
   use os_interface
   use physics_defs, only: PHOTON
   use physics_defs, only: MZ_REF, ALPHA_QCD_MZ_REF
+  use physics_defs, only: BORN
   use variables
   use sm_qcd
   use model_data
@@ -3746,8 +3750,13 @@ intent(out).
         select type (core_def)
         type is (gosam_def_t)
           if (present (id)) then
-             call core_def%init (id, model_name, prt_in, &
-                                 prt_out, nlo_type)
+	     if (present (nlo_type)) then
+                call core_def%init (id, model_name, prt_in, &
+                   prt_out, nlo_type)
+             else
+                call core_def%init (id, model_name, prt_in, &
+                   prt_out, BORN)
+             end if
           else
              call msg_fatal ("Dispatch GoSam def: No id!")
           end if
@@ -3757,8 +3766,13 @@ intent(out).
          select type (core_def)
          type is (openloops_def_t)
             if (present (id)) then
-               call core_def%init (id, model_name, prt_in, &
-                                   prt_out, nlo_type)
+               if (present (nlo_type)) then
+                  call core_def%init (id, model_name, prt_in, &
+                     prt_out, nlo_type)
+               else
+                  call core_def%init (id, model_name, prt_in, &
+                     prt_out, BORN)
+               end if
             else
                call msg_fatal ("Dispatch OpenLoops def: No id!")
             end if
@@ -8492,8 +8506,17 @@ local changes to currently inactive models.
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_PDF)
        case (BORN)
-         call intg%process%init_component &
-            (i_component, core_template, mci_template, phs_config_template)
+         me_method = var_list%get_sval (var_str ("$born_me_method"))
+         select case (char (me_method))
+         case ('gosam', 'openloops')
+            call blha_template%set_born ()
+            call intg%process%init_component &
+               (i_component, core_template, mci_template, phs_config_template, &
+                blha_template = blha_template)
+         case default
+            call intg%process%init_component &
+               (i_component, core_template, mci_template, phs_config_template)
+         end select
          if (intg%combined_integration) &
             call intg%process%set_component_type (i_component, COMP_MASTER)
        case (NLO_SUBTRACTION)
@@ -8737,11 +8760,11 @@ of the integration history.
     call process_instance%init (intg%process, use_internal_color_correlations, &
                                 combined_integration = intg%combined_integration)
 
-    if (process_instance%has_nlo_component ()) then
+    !!!if (process_instance%has_nlo_component ()) then
        call process_instance%create_blha_interface ()
        call process_instance%load_blha_libraries (local%os_data)
        call process_instance%set_blha_constants (var_list)
-    end if
+    !!!end if
 
     call openmp_set_num_threads_verbose &
          (var_list%get_ival (var_str ("openmp_num_threads")), &
@@ -16198,9 +16221,10 @@ or arrays which would make the expansion ambiguous.
     type(string_t), dimension(:), allocatable :: prt_in_nlo, prt_out_nlo
     type(radiation_generator_t) :: radiation_generator
     type(pdg_list_t) :: pl_in, pl_out
+    type(string_t) :: born_me_method
+    type(string_t) :: real_tree_me_method
     type(string_t) :: loop_me_method
     type(string_t) :: correlation_me_method
-    type(string_t) :: real_tree_me_method
     type(string_t) :: current_me_method 
     integer, dimension(:), allocatable :: i_list
     logical :: combined_nlo_integration
@@ -16322,16 +16346,24 @@ or arrays which would make the expansion ambiguous.
                   i_list(j+1) = i + 4*n_components
                end do
             end if
+	    born_me_method = global%var_list%get_sval (var_str ("$born_me_method"))
+            real_tree_me_method = global%var_list%get_sval (var_str ("$real_tree_me_method"))
             loop_me_method = global%var_list%get_sval (var_str ("$loop_me_method"))
             correlation_me_method = global%var_list%get_sval (var_str ("$correlation_me_method"))
-            real_tree_me_method = global%var_list%get_sval (var_str ("$real_tree_me_method"))
+
+	    current_me_method = var_str ('omega')
+	   !! if (current_me_method /= born_me_method) then
+           !!!     call global%set_me_metthod (born_me_method)
+           !!!     current_me_method = born_me_method
+           !!! end if
+            print *, 'Born me method: ', char (born_me_method)
+            call switch_method (current_me_method, born_me_method)
 
             call prc_config%setup_component (i, prt_spec_in, prt_spec_out, &
                                              cmd%local, BORN, &
                                              active_in = active_comp (1))
             call radiation_generator%generate (prt_in_nlo, prt_out_nlo)
 
-            current_me_method = var_str ('omega')
             if (current_me_method /= real_tree_me_method) then
                call global%set_me_method (real_tree_me_method)
                current_me_method = real_tree_me_method
@@ -16400,7 +16432,10 @@ or arrays which would make the expansion ambiguous.
                                               active_in = .false.)
           end do  
        else
-         call prc_config%setup_component (i, prt_spec_in, prt_spec_out, cmd%local)
+	  current_me_method = var_str ('omega')
+	  born_me_method = global%var_list%get_sval (var_str ("$born_me_method"))
+          call switch_method (current_me_method, born_me_method)
+          call prc_config%setup_component (i, prt_spec_in, prt_spec_out, cmd%local)
        end if
     end do
     call prc_config%record (cmd%local)
@@ -16423,6 +16458,15 @@ or arrays which would make the expansion ambiguous.
                           &to be set to true.")
       end if
     end subroutine check_nlo_options
+
+    subroutine switch_method (current_method, use_method)
+       type(string_t), intent(inout) :: current_method
+       type(string_t), intent(in) :: use_method
+       if (current_method /= use_method) then
+          call global%set_me_method (use_method)
+          current_method = use_method
+       end if
+    end subroutine switch_method
 
     subroutine split_prt (prt, n_out, pl)
       type(prt_spec_t), intent(in), dimension(:), allocatable :: prt
