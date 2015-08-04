@@ -241,9 +241,9 @@ contains
     integer, intent(in) :: i
     complex(default) :: c
     c = one
-    if ( .not.init_pars ) return
+    if (.not. init_pars) return
     !!! on-shell veto
-    if ( ps%onshell ) return
+    if (ps%onshell) return
     select case (ff_type)
       case (0)
         c = matched_formfactor (ps, i)
@@ -481,7 +481,7 @@ contains
     end select
   end function xc
 
-  pure function current_coeff (a_hard, a_soft, a_usoft, i) result (coeff)
+  function current_coeff (a_hard, a_soft, a_usoft, i) result (coeff)
     real(default), intent(in) :: a_hard
     real(default), intent(in) :: a_soft
     real(default), intent(in) :: a_usoft
@@ -499,6 +499,8 @@ contains
         matching_c = one - 2.*(CF/pi) * a_hard
       case (2)
         matching_c = one -    (CF/pi) * a_hard
+     case default
+        call msg_fatal ("current_coeff: unknown coeff i = " // char(i))
     end select
     !!! current coefficient c1, cf. arXiv:hep-ph/0609151, Eq. (62)
     c1 = exp( a_hard * pi * ( aa2(i)*(1.-z) + aa3(i)*log(z) + &
