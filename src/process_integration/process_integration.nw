@@ -6775,7 +6775,19 @@ stored in the kinematics subobject to their source.  This is a side effect.
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout), target :: term
     real(default) :: sqme
-    sqme = real (term%connected%trace%get_matrix_element (1))
+    integer :: i_flv
+    logical :: bad_point
+    if (term%nlo_type == NLO_VIRTUAL) return
+    select type (core => component%config%core)
+    class is (prc_blha_t)
+       do i_flv = 1, core%get_nflv ()
+          call core%update_alpha_s (component%core_state, term%fac_scale)
+          call core%compute_sqme_born (i_flv, term%int_hard%get_momenta (), &
+             term%ren_scale, sqme, bad_point)
+       end do
+    class default
+       sqme = real (term%connected%trace%get_matrix_element (1))
+    end select
     component%sqme = sqme * term%weight
   end subroutine component_instance_evaluate_sqme_born    
 
@@ -7224,7 +7236,7 @@ relevant for a NLO algorithm.
     type(interaction_t), pointer, save :: int_sav 
     type(sf_chain_instance_t), pointer, save :: sf_sav
     integer, dimension(:), allocatable, save :: col_sav
-    type(prc_omega_t), save :: core_sav
+    class(prc_core_t), save, allocatable :: core_sav
 
     term%config => config
     term%nlo_controller => nlo_controller
@@ -7284,10 +7296,11 @@ relevant for a NLO algorithm.
         allocate (col_sav (size (term%config%col)))
         col_sav = term%config%col
       end if
-      select type (core)
-      type is (prc_omega_t)
-        core_sav = core
-      end select
+      !!!select type (core)
+      !!!type is (prc_omega_t)
+      !!!  core_sav = core
+      !!!end select
+      if (.not. allocated (core_sav)) allocate (core_sav, source=core)
       type is (phs_fks_t)
         select case (phs%mode)
         case (PHS_MODE_ADDITIONAL_PARTICLE)
@@ -9754,7 +9767,8 @@ and directly set the coupling value that comes together with a particle set.
   function process_instance_has_nlo_component (instance) result (nlo)
     class(process_instance_t), intent(in) :: instance
     logical :: nlo
-    nlo = any (instance%component%nlo_type /= BORN)
+    !!!nlo = any (instance%component%nlo_type /= BORN)
+    nlo = associated (instance%nlo_controller)
   end function process_instance_has_nlo_component
 
 @ %def process_instance_has_nlo_component
@@ -9776,22 +9790,25 @@ and directly set the coupling value that comes together with a particle set.
 <<Processes: procedures>>=
   subroutine process_instance_create_blha_interface (instance)
     class(process_instance_t), intent(inout) :: instance
+    logical :: use_external_borns
+    logical :: use_external_real_trees
     logical :: use_external_loops
     logical :: use_external_correlations
-    logical :: use_external_real_trees
     integer :: alpha_power, alphas_power
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     integer :: i
     type(blha_master_t) :: blha_master
+    type(string_t) :: born_me_method
+    type(string_t) :: real_tree_me_method
     type(string_t) :: loop_me_method
     type(string_t) :: correlation_me_method
-    type(string_t) :: real_tree_me_method
 
     associate (process => instance%process)
        associate (var_list => process%meta%var_list)
+          born_me_method = var_list%get_sval (var_str ("$born_me_method"))
+          real_tree_me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
           loop_me_method = var_list%get_sval (var_str ("$loop_me_method"))
           correlation_me_method = var_list%get_sval (var_str ("$correlation_me_method"))
-          real_tree_me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
           alpha_power = var_list%get_ival (&
                                            var_str ('alpha_power'))
           alphas_power = var_list%get_ival (&
@@ -9804,9 +9821,10 @@ and directly set the coupling value that comes together with a particle set.
              flv_real = process%term(i)%data%flv_state
           end if
        end do
+       use_external_borns = born_me_method /= 'omega'
+       use_external_real_trees = real_tree_me_method /= 'omega'
        use_external_loops = loop_me_method /= 'omega'
        use_external_correlations = correlation_me_method /= 'omega'
-       use_external_real_trees = real_tree_me_method /= 'omega'
 
        select case (char (loop_me_method))
        case ('gosam')
@@ -9826,9 +9844,16 @@ and directly set the coupling value that comes together with a particle set.
        case ('openloops')
           call blha_master%set_openloops (3)
        end select
+       select case (char (born_me_method))
+       case ('gosam')
+          call blha_master%set_gosam (4)
+       case ('openloops')
+          call blha_master%set_openloops (4)
+       end select
 
        call blha_master%init (process%meta%id, process%config%model, &
-                              2, size (flv_born,1)-2, use_external_loops, &
+                              2, size (flv_born,1)-2, &
+                              use_external_borns, use_external_loops, &
                               use_external_correlations, use_external_real_trees, &
                               alpha_power, alphas_power, &
                               flv_born, flv_real)
@@ -9847,22 +9872,24 @@ and directly set the coupling value that comes together with a particle set.
     type(string_t) :: libname
     integer :: i
     do i = 1, size (instance%component)
-       select type (core => instance%component(i)%config%core)
-       type is (prc_gosam_t)
-          libname = instance%process%get_library_name ()
-          call core%prepare_library (os_data, libname)
-          call core%start ()
-          call core%read_contract_file (instance%process%term(i)%data%flv_state)
-          call core%set_particle_properties (instance%process%config%model)
-          call core%print_parameter_file ()
-       type is (prc_openloops_t)
-          call core%set_n_external (instance%nlo_controller%get_n_particles ())
-          call core%prepare_library (os_data, instance%process%config%model, &
-                                     instance%process%meta%var_list)
-          call core%start ()
-          call core%read_contract_file (instance%process%term(i)%data%flv_state)
-          call core%print_parameter_file ()
-       end select
+       if (associated (instance%component(i)%config)) then
+          select type (core => instance%component(i)%config%core)
+          type is (prc_gosam_t)
+             libname = instance%process%get_library_name ()
+             call core%prepare_library (os_data, libname)
+             call core%start ()
+             call core%read_contract_file (instance%process%term(i)%data%flv_state)
+             call core%set_particle_properties (instance%process%config%model)
+             call core%print_parameter_file ()
+          type is (prc_openloops_t)
+             call core%set_n_external (instance%nlo_controller%get_n_particles ())
+             call core%prepare_library (os_data, instance%process%config%model, &
+                instance%process%meta%var_list)
+             call core%start ()
+             call core%read_contract_file (instance%process%term(i)%data%flv_state)
+             call core%print_parameter_file ()
+          end select
+       end if
     end do
   end subroutine process_instance_load_blha_libraries
 
@@ -9877,11 +9904,13 @@ and directly set the coupling value that comes together with a particle set.
     real(default) :: alpha
     integer :: i
     do i = 1, size (instance%component)
-       select type (core => instance%component(i)%config%core)
-       type is (prc_openloops_t)
-           alpha = 1._default / var_list%get_rval (var_str ("alpha_em_i"))
-           call core%set_alpha_qed (alpha)
-        end select
+       if (associated (instance%component(i)%config)) then
+          select type (core => instance%component(i)%config%core)
+          type is (prc_openloops_t)
+             alpha = 1._default / var_list%get_rval (var_str ("alpha_em_i"))
+             call core%set_alpha_qed (alpha)
+          end select
+       end if
     end do
   end subroutine process_instance_set_blha_constants
     

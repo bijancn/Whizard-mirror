@@ -41,7 +41,8 @@ check_LTLIBRARIES = libme_methods_ut.la
 libme_methods_la_SOURCES = \
   prc_core.f90 \
   prc_template_me.f90 \
-  prc_omega.f90
+  prc_omega.f90 \
+  prc_user_defined.f90
 
 libme_methods_ut_la_SOURCES = \
   prc_template_me_uti.f90 prc_template_me_ut.f90 \
