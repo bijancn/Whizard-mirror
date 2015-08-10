@@ -348,6 +348,9 @@ WO_FC_CHECK_PROCEDURE_POINTERS()
 ### Check for type extension and further OO features
 WO_FC_CHECK_OO_FEATURES()
 
+### Check for submodules (not yet used)
+WO_FC_CHECK_TR19767()
+
 ### Check for F2003 command-line interface
 WO_FC_CHECK_CMDLINE()
 

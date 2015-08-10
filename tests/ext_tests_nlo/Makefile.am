@@ -200,6 +200,9 @@ clean-local:
 	rm -f *.$(WT_OMEGA_CACHE_SUFFIX)
 	rm -f *.olc *.olp *.olp_parameters
 	rm -rf stability_log
+if FC_SUBMODULES
+	rm -f *.smod
+endif
 
 ## Remove backup files
 maintainer-clean-local: maintainer-clean-fc

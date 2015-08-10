@@ -362,6 +362,9 @@ clean-local:
 	rm -f *.ltp *.aux *.dvi *.ps *.pdf so_test.*
 	rm -f *.tbl sps1ap_decays.slha bar structure_6[a-b].out 
 	rm -f *.$(WT_OMEGA_CACHE_SUFFIX)
+if FC_SUBMODULES
+	rm -f *.smod
+endif
 
 ## Remove backup files
 maintainer-clean-local: maintainer-clean-fc
