@@ -4703,6 +4703,20 @@ performed by the external library driver instead.
   
 @ %def process_driver_fill_constants
 @
+\subsection{Process driver for user-defined processes}
+This is another abstract extension of the driver type. It links user-defined
+matrix element methods like BLHA, which also allow the dircet calculation of 
+squared matrix elements.
+<<Prc core def: public>>=
+  public :: prc_user_defined_base_driver_t
+<<Prc core def: types>>=
+  type, abstract, extends (prc_core_driver_t) :: prc_user_defined_base_driver_t 
+  contains
+  <<Prc core def: prc user defined base driver: TBP>>
+  end type prc_user_defined_base_driver_t
+
+@ %def prc_user_defined_base_driver_t
+@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Process library access}
 \label{sec:process_libraries}
@@ -4843,11 +4857,9 @@ We assume that no finalizer is needed.
      class(prc_core_def_t), allocatable :: core_def
      character(32) :: md5sum = ""
      integer :: nlo_type = BORN
-     integer :: associated_born = 0
-     integer :: associated_real = 0
-     integer :: associated_virt = 0
-     integer :: associated_sub = 0
+     integer, dimension(N_ASSOCIATED_COMPONENTS) :: associated_components = 0
      logical :: active_nlo_component
+     integer :: fixed_emitter = -1
    contains
    <<Process libraries: process component def: TBP>>
   end type process_component_def_t
@@ -5180,6 +5192,10 @@ abstract type.
   procedure :: get_nlo_type => process_component_def_get_nlo_type
   procedure :: get_associated_born &
                => process_component_def_get_associated_born
+  procedure :: get_associated_real_fin &
+               => process_component_def_get_associated_real_fin
+  procedure :: get_associated_real_sing &
+               => process_component_def_get_associated_real_sing
   procedure :: get_association_list &
                => process_component_def_get_association_list
   procedure :: is_active_nlo_component &
@@ -5195,8 +5211,21 @@ abstract type.
   function process_component_def_get_associated_born (component) result (i_born)
     class(process_component_def_t), intent(in) :: component
     integer :: i_born
-    i_born = component%associated_born
+    i_born = component%associated_components(ASSOCIATED_BORN)
   end function process_component_def_get_associated_born
+
+  function process_component_def_get_associated_real_fin (component) result (i_rfin)
+    class(process_component_def_t), intent(in) :: component
+    integer :: i_rfin
+    i_rfin = component%associated_components(ASSOCIATED_REAL_FIN)
+  end function process_component_def_get_associated_real_fin
+
+  function process_component_def_get_associated_real_sing (component) result (i_rsing)
+    class(process_component_def_t), intent(in) :: component
+    integer :: i_rsing
+    i_rsing = component%associated_components(ASSOCIATED_REAL_SING)
+  end function process_component_def_get_associated_real_sing
+
 
   function process_component_def_is_active_nlo_component (component) result (active)
     class(process_component_def_t), intent(in) :: component
@@ -5204,25 +5233,51 @@ abstract type.
     active = component%active_nlo_component
   end function process_component_def_is_active_nlo_component
 
-  function process_component_def_get_association_list (component) result (list)
+  function process_component_def_get_association_list (component, i_skip_in) result (list)
     class(process_component_def_t), intent(in) :: component
-    integer, dimension(4) :: list
-    list(1) = component%associated_born
-    list(2) = component%associated_real
-    list(3) = component%associated_virt
-    list(4) = component%associated_sub
+    integer, intent(in), optional :: i_skip_in
+    integer, dimension(:), allocatable :: list
+    integer :: i, j, n, i_skip
+    logical :: valid
+    i_skip = 0; if (present (i_skip_in)) i_skip = i_skip_in
+
+    n = count (component%associated_components /= 0) - 1
+    if (i_skip > 0) n = n-1
+    allocate (list (n))
+
+    j = 1
+    do i = 1, N_ASSOCIATED_COMPONENTS 
+       valid = component%associated_components(i) /= 0 &
+               .and. i /= ASSOCIATED_SUB .and. i /= i_skip
+       if (valid) then
+          list(j) = component%associated_components(i)
+          j = j+1
+       end if
+    end do
   end function process_component_def_get_association_list
 
   function process_component_def_get_associated_real (component) result (i_real)
     class(process_component_def_t), intent(in) :: component
     integer :: i_real
-    i_real = component%associated_real
+    i_real = component%associated_components(ASSOCIATED_REAL)
   end function process_component_def_get_associated_real
 
 @ %def process_component_def_get_nlo_type, process_component_def_get_associated_born
 @ %def process_component_def_is_active_nlo_component
 @ %def process_component_def_get_association_list
 @ %def process_component_def_get_associated_real
+@ %def process_component_def_get_associated_real_fin
+@
+<<Process libraries: process component def: TBP>>=
+  procedure :: get_fixed_emitter => process_component_def_get_fixed_emitter
+<<Process libraries: procedures>>=
+  function process_component_def_get_fixed_emitter (component) result (emitter)
+     integer :: emitter
+     class(process_component_def_t), intent(in) :: component
+     emitter = component%fixed_emitter
+  end function process_component_def_get_fixed_emitter
+     
+@ %def process_component_def_get_fixed_emitter
 @
 \subsubsection{Process definition}
 The process component definitions are collected in a common process
@@ -5573,20 +5628,39 @@ allocation is moved, so the original allocated object is returned empty.
 @ %def process_def_get_n_components
 @ 
 <<Process libraries: process def: TBP>>=
+  procedure :: set_fixed_emitter => process_def_set_fixed_emitter
+<<Process libraries: procedures>>=
+  subroutine process_def_set_fixed_emitter (def, i, emitter)
+    class(process_def_t), intent(inout) :: def
+    integer, intent(in) :: i, emitter
+    def%initial(i)%fixed_emitter = emitter
+  end subroutine process_def_set_fixed_emitter 
+
+@ %def process_def_set_fixed_emitter
+@
+<<Process libraries: process def: TBP>>=
   procedure :: set_associated_components => &
                    process_def_set_associated_components
 <<Process libraries: procedures>>=
   subroutine process_def_set_associated_components (def, i, &
-                     i_born, i_real, i_virt, i_sub)
+                     i_born, i_real, i_virt, i_sub, &
+                     i_pdf, i_rsing, i_rfin)
     class(process_def_t), intent(inout) :: def
     integer, intent(in) :: i
     integer, intent(in) :: i_born, i_real
     integer, intent(in) :: i_virt, i_sub
-    associate (comp => def%initial(i))
-       comp%associated_born = i_born
-       comp%associated_real = i_real
-       comp%associated_virt = i_virt
-       comp%associated_sub = i_sub
+    integer, intent(in), optional :: i_pdf, i_rsing, i_rfin
+    associate (comp => def%initial(i)%associated_components)
+       comp(ASSOCIATED_BORN) = i_born
+       comp(ASSOCIATED_REAL) = i_real
+       comp(ASSOCIATED_VIRT) = i_virt
+       comp(ASSOCIATED_SUB) = i_sub
+       if (present (i_pdf)) &
+          comp(ASSOCIATED_PDF) = i_pdf
+       if (present (i_rsing)) &
+          comp(ASSOCIATED_REAL_SING) = i_rsing
+       if (present (i_rfin)) &
+          comp(ASSOCIATED_REAL_FIN) = i_rfin
     end associate
   end subroutine process_def_set_associated_components
 
@@ -6153,6 +6227,15 @@ always referring to the lowest status among the process entries.
   integer, parameter, public :: STAT_COMPILED = 4
   integer, parameter, public :: STAT_LINKED = 5
   integer, parameter, public :: STAT_ACTIVE = 6
+
+  integer, parameter, public :: ASSOCIATED_BORN = 1
+  integer, parameter, public :: ASSOCIATED_REAL = 2
+  integer, parameter, public :: ASSOCIATED_VIRT = 3
+  integer, parameter, public :: ASSOCIATED_SUB = 4
+  integer, parameter, public :: ASSOCIATED_PDF = 5
+  integer, parameter, public :: ASSOCIATED_REAL_SING = 6
+  integer, parameter, public :: ASSOCIATED_REAL_FIN = 7
+  integer, parameter, public :: N_ASSOCIATED_COMPONENTS = 7
 
 @ %def STAT_UNKNOWN STAT_OPEN STAT_CONFIGURED 
 @ %def STAT_SOURCE STAT_COMPILED STAT_LINKED STAT_ACTIVE

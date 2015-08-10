@@ -1137,6 +1137,45 @@ Return the number of generated decays.
   end function ps_table_get_length
 
 @ %def ps_table_get_length
+@
+<<Auto components: ps table: TBP>>=
+  procedure :: get_emitters => ps_table_get_emitters
+<<Auto components: procedures>>=
+  function ps_table_get_emitters (table, constraints) result (emitters)
+     integer, dimension(:), allocatable :: emitters
+     class(ps_table_t), intent(in) :: table
+     type(split_constraints_t), intent(in) :: constraints
+     class(pdg_list_t), pointer :: pl
+     integer :: i
+     logical :: passed
+     type(vertex_iterator_t) :: vit
+     integer, dimension(:), allocatable :: pdg1, pdg2
+     integer :: n_emitters
+     integer, dimension(20) :: emitters_tmp
+
+     n_emitters = 0
+     pl => table%first
+     do i = 1, pl%get_size ()
+        call constraints%check_before_split (table, pl, i, passed)
+        if (passed) then
+           pdg1 = pl%get(i)
+           call vit%init (table%model, pdg1)
+           do 
+               call vit%get_next_match(pdg2)
+               if (allocated (pdg2)) then
+                  emitters_tmp (n_emitters+1) = pdg1(1)
+                  n_emitters = n_emitters + 1
+               else
+                  exit
+               end if
+           end do
+        end if
+     end do
+     allocate (emitters (n_emitters))
+     emitters = emitters_tmp (1:n_emitters)
+  end function ps_table_get_emitters
+
+@ %def ps_table_get_emitters
 @ Return an allocated array of decay products (PDG codes).  If
 requested, return also the loop and radiation order count.
 <<Auto components: ps table: TBP>>=
@@ -2082,6 +2121,7 @@ caller when this is a function.
     type(prt_queue_t) :: prt_queue
     type(pdg_states_t) :: pdg_raw
     type(pdg_array_t), dimension(:), allocatable :: pdg_in_born, pdg_out_born
+    type(if_table_t) :: if_table
   contains
   <<radiation generator: radiation generator: TBP>>
   end type radiation_generator_t
@@ -2129,6 +2169,24 @@ caller when this is a function.
   end subroutine radiation_generator_init_pdg_array
 
 @ %def radiation_generator_init_pdg_list radiation_generator_init_pdg_array
+@
+<<radiation generator: radiation generator: TBP>>=
+  procedure :: setup_if_table => radiation_generator_setup_if_table
+<<radiation generator: procedures>>=
+  subroutine radiation_generator_setup_if_table (generator)
+    class(radiation_generator_t), intent(inout) :: generator
+    type(pdg_list_t), dimension(:), allocatable :: pl_in, pl_out
+
+    allocate (pl_in(1), pl_out(1))
+
+    pl_in(1) = generator%pl_in
+    pl_out(1) = generator%pl_out
+
+    call generator%if_table%init &
+       (generator%radiation_model, pl_in, pl_out, generator%constraints)
+  end subroutine radiation_generator_setup_if_table
+
+@ %def radiation_generator_setup_if_table
 @
 <<radiation generator: radiation generator: TBP>>=
   generic :: reset_particle_content => reset_particle_content_pdg_array, &
@@ -2294,7 +2352,6 @@ caller when this is a function.
     type(prt_array_t), dimension(n_flv_max) :: prt_in, prt_out
     type(prt_array_t), dimension(n_flv_max) :: prt_out0, prt_in0
     type(pdg_array_t), dimension(:), allocatable :: pdg_tmp, pdg_out, pdg_in
-    type(if_table_t) :: if_table
     type(pdg_list_t), dimension(:), allocatable :: pl_in, pl_out
     integer :: i, j
     integer, dimension(:), allocatable :: reshuffle_list_local
@@ -2314,21 +2371,23 @@ caller when this is a function.
     call pl_in(1)%create_pdg_array (pdg_in)
     call pl_out(1)%create_pdg_array (pdg_out)
 
-    call if_table%init &
-         (generator%radiation_model, pl_in, pl_out, generator%constraints)
-    call if_table%radiate (generator%constraints)
+    !!!call if_table%init &
+    !!!     (generator%radiation_model, pl_in, pl_out, generator%constraints)
+    associate (if_table => generator%if_table)
+       call if_table%radiate (generator%constraints)
 
-    do i = 1, if_table%get_length ()
-      call if_table%get_pdg_out (i, pdg_tmp)
-      if (size (pdg_tmp) == generator%n_tot) then
-         call if_table%get_particle_string (i, 2, &
-            prt_in0(flv+1)%prt, prt_out0(flv+1)%prt)
-         call pdg_reshuffle (pdg_out, pdg_tmp, reshuffle_list_local)
-         call reshuffle_list%append (reshuffle_list_local)
-         found = .true.
-         flv = flv+1
-      end if
-    end do
+       do i = 1, generator%if_table%get_length ()
+          call generator%if_table%get_pdg_out (i, pdg_tmp)
+          if (size (pdg_tmp) == generator%n_tot) then
+             call if_table%get_particle_string (i, 2, &
+                prt_in0(flv+1)%prt, prt_out0(flv+1)%prt)
+             call pdg_reshuffle (pdg_out, pdg_tmp, reshuffle_list_local)
+             call reshuffle_list%append (reshuffle_list_local)
+             found = .true.
+             flv = flv+1
+          end if
+       end do
+    end associate
 
     if (found) then
       do i = 1, flv
@@ -2478,6 +2537,7 @@ caller when this is a function.
   subroutine radiation_generator_first_emission (generator)
     class(radiation_generator_t), intent(inout) :: generator
     type(string_t), dimension(:), allocatable :: prt_in, prt_out
+    call generator%setup_if_table ()
     call generator%generate (prt_in, prt_out)
     call generator%prt_queue%null ()
     call generator%prt_queue%append (prt_out)
@@ -2505,6 +2565,7 @@ caller when this is a function.
        call generator%reset_particle_content (pdg_new_out)
        call generator%set_n (2, current_multiplicity, 0)
        call generator%set_constraints (.false., .false., .true., .true.)
+       call generator%setup_if_table ()
        call generator%generate (prt_in, prt_out1)
        call separate_particles (prt_out1, prt_out2)
        call sort_prt (prt_out2, generator%radiation_model)
@@ -2572,6 +2633,47 @@ caller when this is a function.
   end function radiation_generator_get_next_state
 
 @ %def radiation_generator_get_next_state
+@
+<<radiation generator: radiation generator: TBP>>=
+  procedure :: get_emitter_indices => radiation_generator_get_emitter_indices
+<<radiation generator: procedures>>=
+  function radiation_generator_get_emitter_indices (generator) result (indices)
+     integer, dimension(:), allocatable :: indices
+     class(radiation_generator_t), intent(in) :: generator
+     type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out
+     integer, dimension(:), allocatable :: flv_in, flv_out
+     integer, dimension(:), allocatable :: emitters
+     integer :: i, j
+     integer :: n_in, n_out
+     
+     call generator%pl_in%create_pdg_array (pdg_in)
+     call generator%pl_out%create_pdg_array (pdg_out)
+
+     n_in = size (pdg_in); n_out = size (pdg_out)
+     allocate (flv_in (n_in), flv_out (n_out))
+     forall (i=1:n_in) flv_in(i) = pdg_in(i)%get()
+     forall (i=1:n_out) flv_out(i) = pdg_out(i)%get()
+
+     emitters = generator%if_table%get_emitters (generator%constraints) 
+     allocate (indices (size (emitters)))
+     
+     j = 1
+     do i = 1, n_in + n_out
+        if (i <= n_in) then
+           if (any (flv_in(i) == emitters)) then
+              indices (j) = i
+              j = j+1
+           end if
+        else
+           if (any (flv_out(i-n_in) == emitters)) then
+              indices (j) = i
+              j = j+1
+           end if
+        end if
+     end do
+  end function radiation_generator_get_emitter_indices
+
+@ %def radiation_generator_get_emitter_indices
 @
 <<radiation generator: radiation generator: TBP>>=
   procedure :: get_raw_states => radiation_generator_get_raw_states
@@ -2789,6 +2891,7 @@ end module radiation_generator_uti
       call generator%init (pdg_in, pdg_out, qcd = .true., qed = .false.)
       call generator%set_n (2, size(pdg_out), 0)
       call generator%set_constraints (.false., .false., .true., .true.)
+      call generator%setup_if_table ()
       call generator%generate (prt_strings_in, prt_strings_out)
       write (u, "(A)") "* Additional radiation: "
       write (u, "(A)") "* Incoming: "

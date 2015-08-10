@@ -329,15 +329,18 @@ end module prc_gosam
   procedure :: init => gosam_def_init
 <<prc gosam: procedures>>=
   subroutine gosam_def_init (object, basename, model_name, &
-                             prt_in, prt_out, nlo_type)
+                             prt_in, prt_out, nlo_type, filter)
     class(gosam_def_t), intent(inout) :: object
     type(string_t), intent(in) :: model_name
     type(string_t), intent(in) :: basename
     type(string_t), dimension(:), intent(in) :: prt_in, prt_out
     integer, intent(in) :: nlo_type
+    type(string_t), dimension(2), intent(in), optional :: filter 
     object%basename = basename
     allocate (gosam_writer_t :: object%writer)
     select case (nlo_type)
+    case (BORN)
+       object%suffix = '_BORN'
     case (NLO_REAL)
        object%suffix = '_REAL'
     case (NLO_VIRTUAL)
@@ -347,7 +350,7 @@ end module prc_gosam
     end select
     select type (writer => object%writer)
     type is (gosam_writer_t)
-      call writer%init (model_name, prt_in, prt_out)
+      call writer%init (model_name, prt_in, prt_out, filter)
     end select
   end subroutine gosam_def_init
 
@@ -414,10 +417,11 @@ end module prc_gosam
 <<prc gosam: gosam writer: TBP>>=
   procedure :: init => gosam_writer_init
 <<prc gosam: procedures>>=
-  subroutine gosam_writer_init (writer,model_name, prt_in, prt_out) 
+  subroutine gosam_writer_init (writer,model_name, prt_in, prt_out, filter) 
     class(gosam_writer_t), intent(inout) :: writer
     type(string_t), intent(in) :: model_name
     type(string_t), dimension(:), intent(in) :: prt_in, prt_out
+    type(string_t), dimension(2), intent(in), optional :: filter
     integer :: i, unit
 
     writer%gosam_dir = GOSAM_DIR
@@ -448,7 +452,7 @@ end module prc_gosam
 
     unit = free_unit ()
     open (unit, file = "golem.in", status = "replace", action = "write")
-    call writer%generate_configuration_file (unit)
+    call writer%generate_configuration_file (unit, filter)
     close(unit)
   end subroutine gosam_writer_init  
 
@@ -509,9 +513,10 @@ end module prc_gosam
             gosam_writer_generate_configuration_file
 <<prc gosam: procedures>>=
   subroutine gosam_writer_generate_configuration_file &
-          (object, unit)
+          (object, unit, filter)
       class(gosam_writer_t), intent(in) :: object
       integer, intent(in) :: unit
+      type(string_t), intent(in), dimension(2), optional :: filter
       type(string_t) :: fc_bin
       type(string_t) :: form_bin, qgraf_bin, haggies_bin
       type(string_t) :: fcflags_golem, ldflags_golem
@@ -562,9 +567,16 @@ end module prc_gosam
       write (unit, "(A)") "ninja.ldflags=" // char (ldflags_ninja)
       !!! This might collide with the mass-setup in the order-file
       !!! write (unit, "(A)") "zero=mU,mD,mC,mS,mB"
+      !!! This is covered by the BLHA2 interface
       write (unit, "(A)") "PSP_check=False"
-      write (unit, "(A)") "filter.lo=lambda d: d.iprop(H) == 0 and d.iprop(chi) == 0"
-      write (unit, "(A)") "filter.nlo=lambda d: d.iprop(H) == 0 and d.iprop(chi) == 0"
+      if (present (filter)) then
+         write (unit, "(A)") "filter.lo=" // char (filter(1))
+         write (unit, "(A)") "filter.nlo=" // char (filter(2))
+      end if
+      ! write (unit, "(A)") "filter.lo=lambda d: d.vertices(T, Tbar, A) > 0 or d.vertices(T, Tbar, Z) > 0"
+      ! write (unit, "(A)") "filter.nlo=lambda d: d.vertices(T, Tbar, A) > 0 or d.vertices(T, Tbar, Z) > 0"
+      ! write (unit, "(A)") "filter.lo=lambda d: d.iprop(H) == 0 and d.iprop(chi) == 0"
+      ! write (unit, "(A)") "filter.nlo=lambda d: d.iprop(H) == 0 and d.iprop(chi) == 0"
   end subroutine gosam_writer_generate_configuration_file
 
 @ %def gosam_writer_generate_configuration_file
@@ -801,16 +813,19 @@ in the GoSam code are ready. This is done with a stamp mechanism.
   procedure :: compute_sqme_born => prc_gosam_compute_sqme_born
 <<prc gosam: procedures>>=
   subroutine prc_gosam_compute_sqme_born &
-         (object, i_born, mom, mu, sqme, acc_born)
+         (object, i_born, p, mu, sqme, bad_point)
     class(prc_gosam_t), intent(inout) :: object
     integer, intent(in) :: i_born
-    real(double), intent(in), dimension(5*object%n_particles) :: mom
+    type(vector4_t), dimension(:), intent(in) :: p
     real(double), intent(in) :: mu
     real(default), intent(out) :: sqme
-    real(default), intent(out) :: acc_born
-    
+    logical, intent(out) :: bad_point
+    real(double), dimension(5*object%n_particles) :: mom
+    real(default) :: acc_born 
     real(double), dimension(OLP_RESULTS_LIMIT) :: r
     real(double) :: acc_dble
+
+    mom = object%create_momentum_array (p)
     
     select type (driver => object%driver)
     type is (gosam_driver_t)
@@ -818,6 +833,7 @@ in the GoSam code are ready. This is done with a stamp mechanism.
        sqme = r(4)
     end select
     acc_born = acc_dble
+    bad_point = acc_born > object%maximum_accuracy
   end subroutine prc_gosam_compute_sqme_born
 
 @ %def prc_gosam_compute_sqme_born
