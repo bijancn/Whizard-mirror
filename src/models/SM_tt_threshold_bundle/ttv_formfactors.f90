@@ -157,7 +157,7 @@ contains
     init_pars = .false.
     m1s = m1s_in
     !!! compute the total LO top width from t->bW decay plus optional invisible width
-    gam = total_top_width_LO (one / aemi, sw, Vtb, m1s, mw, mb) + gam_inv
+    gam = top_width_sm_lo (one / aemi, sw, Vtb, m1s, mw, mb) + gam_inv
     gam_out = gam
     nloop = 1
     if ( int(nloop_in) > nloop ) then
@@ -1183,19 +1183,6 @@ contains
     complex(default) :: m2c
     m2c = m**2 - imago*m*w
   end function complex_m2
-
-  pure function total_top_width_LO (alphaem, sw, Vtb, mt, mW, mb) result (wt)
-    real(default), intent(in) :: alphaem
-    real(default), intent(in) :: sw
-    real(default), intent(in) :: Vtb
-    real(default), intent(in) :: mt
-    real(default), intent(in) :: mW
-    real(default), intent(in) :: mb
-    real(default) :: wt
-    wt = alphaem/4. * mt/(2.*sw**2) * Vtb**2 * ((mt**2 + mb**2)/(2.*mt**2) + &
-         (mt**2 - mb**2)**2/(2.*mt**2*mW**2) - mW**2/mt**2) / mt**2 * &
-         sqrt((mt**2 - (mW + mb)**2) * (mt**2 - (mW - mb)**2))
-  end function total_top_width_LO
 
   !!! -q^2 times the Coulomb potential V at LO resp. NLO
   function minus_q2_V (a, q, p, p0r, i) result (v)
