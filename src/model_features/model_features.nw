@@ -57,6 +57,8 @@ module auto_components
 
 <<Auto components: public>>
 
+<<Auto components: parameters>>
+
 <<Auto components: types>>
 
 <<Auto components: interfaces>>
@@ -373,7 +375,16 @@ For an [[if_table]] in particular, we check the final state only.
     integer :: i, k, n_in
     select type (table)
     type is (if_table_t)
-       n_in = 2
+       if (table%proc_type > 0) then
+          select case (table%proc_type)
+          case (PROC_DECAY)
+             n_in = 1
+          case (PROC_SCATTER)
+             n_in = 2
+          end select
+       else
+          call msg_fatal ("Neither a decay nor a scattering process")
+       end if
     class default
        n_in = 0
     end select
@@ -545,7 +556,13 @@ states are accumulated in a table that we can read out after completion.
 
 @ %def ps_entry_t
 @
-This is the wrapper type for the decay tree for the list of final
+<<Auto components: parameters>>=
+  integer, parameter :: PROC_UNDEFINED = 0
+  integer, parameter :: PROC_DECAY = 1
+  integer, parameter :: PROC_SCATTER = 2
+
+@ %def auto_components parameters
+@ This is the wrapper type for the decay tree for the list of final
 states and the final array.  First, an abstract base type:
 <<Auto components: public>>=
   public :: ps_table_t
@@ -556,6 +573,7 @@ states and the final array.  First, an abstract base type:
      logical :: loops = .false.
      type(ps_entry_t), pointer :: first => null ()
      type(ps_entry_t), pointer :: last => null ()
+     integer :: proc_type
    contains
    <<Auto components: ps table: TBP>>
   end type ps_table_t
@@ -700,7 +718,12 @@ the output, and we write an arrow if [[n_in]] is present.
     integer :: u
     u = given_output_unit (unit)
     write (u, "(1x,A)")  "Table of in/out states:"
-    call object%base_write (u, n_in = 2)
+    select case (object%proc_type)
+    case (PROC_DECAY)
+       call object%base_write (u, n_in = 1)
+    case (PROC_SCATTER)
+       call object%base_write (u, n_in = 2)
+     end select
   end subroutine if_table_write
           
 @ %def ps_table_write ds_table_write fs_table_write
@@ -708,11 +731,11 @@ the output, and we write an arrow if [[n_in]] is present.
 <<Auto components: ps table: TBP>>=
   procedure :: get_particle_string => ps_table_get_particle_string
 <<Auto components: procedures>>=
-  subroutine ps_table_get_particle_string (object, index, n_in, prt_in, prt_out)
+  subroutine ps_table_get_particle_string (object, index, prt_in, prt_out)
     class(ps_table_t), intent(in) :: object
     integer, intent(in) :: index
-    integer, intent(in) :: n_in
     type(string_t), intent(out), dimension(:), allocatable :: prt_in, prt_out
+    integer :: n_in
     type(field_data_t), pointer :: prt
     type(ps_entry_t), pointer :: entry
     integer, dimension(:), allocatable :: pdg
@@ -728,6 +751,18 @@ the output, and we write an arrow if [[n_in]] is present.
         call msg_fatal ("ps_table: entry with requested index does not exist!")
       end if
     end do
+
+    if (object%proc_type > 0) then
+       select case (object%proc_type)
+       case (PROC_DECAY)
+          n_in = 1
+       case (PROC_SCATTER)
+          n_in = 2
+       end select
+    else
+       call msg_fatal ("Neither decay nor scattering process")
+    end if
+
     n0 = n_in + 1
     allocate (prt_in (n_in), prt_out (entry%get_size () - n_in))
     do i = 1, n_in
@@ -787,6 +822,17 @@ the output, and we write an arrow if [[n_in]] is present.
     type(pdg_list_t), dimension(:), allocatable :: pl
     allocate (pl (size (pl_in) * size (pl_out)))
     k = 0
+
+    n_in = size (pl_in)
+    select case (n_in)
+    case (1) 
+       table%proc_type = PROC_DECAY
+    case (2) 
+       table%proc_type = PROC_SCATTER
+    case default 
+       table%proc_type = PROC_UNDEFINED
+    end select
+
     do i = 1, size (pl_in)
        n_in = pl_in(i)%get_size ()
        allocate (pa_in (n_in))
@@ -982,8 +1028,14 @@ procedure.
           pdg_work(1) = pdg(p)
           pdg_work(2:p) = pdg(1:p-1)
           pdg_work(p+1:) = pdg(p+1:)
-          call ps_table_insert (table, &
+          select case (table%proc_type)
+          case (PROC_DECAY)
+             call ps_table_insert (table, &
+               pl, n_rad, i, pdg_work, constraints, n_in = 1)
+          case (PROC_SCATTER)
+             call ps_table_insert (table, &
                pl, n_rad, i, pdg_work, constraints, n_in = 2)
+          end select
        end do
     end if
   end subroutine if_table_insert
@@ -2390,7 +2442,7 @@ caller when this is a function.
        do i = 1, generator%if_table%get_length ()
           call generator%if_table%get_pdg_out (i, pdg_tmp)
           if (size (pdg_tmp) == generator%n_tot) then
-             call if_table%get_particle_string (i, 2, &
+             call if_table%get_particle_string (i, &
                 prt_in0(flv+1)%prt, prt_out0(flv+1)%prt)
              call pdg_reshuffle (pdg_out, pdg_tmp, reshuffle_list_local)
              call reshuffle_list%append (reshuffle_list_local)
@@ -2437,17 +2489,17 @@ caller when this is a function.
       integer, intent(out), dimension(:), allocatable :: list
       type(pdg_sorter_t), dimension(:), allocatable :: sort_born
       type(pdg_sorter_t), dimension(:), allocatable :: sort_real
-      integer :: i_min, n_born, n_real
+      integer :: i_min, n_in, n_born, n_real
       integer :: ib, ir
-      integer, parameter :: n_in = 2
  
-      n_born = size (pdg_born); n_real = size (pdg_real)
+      n_in = generator%n_in
+      n_born = size (pdg_born)
+      n_real = size (pdg_real)
       allocate (list (n_real-n_in))
       allocate (sort_born (n_born))
       allocate (sort_real (n_real-n_in))
 
       sort_born%pdg = pdg_born%get ()
-      !!!sort_real%pdg = pdg_real(3:n_real)%get ()
       sort_real%pdg = pdg_real(n_in+1:n_real)%get()
 
       do ib = 1, n_born
@@ -2457,7 +2509,7 @@ caller when this is a function.
 
       i_min = maxval (sort_real%associated_born) + 1
 
-      do ir = 1, n_real-2
+      do ir = 1, n_real-n_in
          if (sort_real(ir)%associated_born == 0) then
             sort_real(ir)%associated_born = i_min
             i_min = i_min+1
@@ -2473,8 +2525,8 @@ caller when this is a function.
       type(pdg_sorter_t), intent(inout), dimension(:) :: sort_real
       integer, intent(in) :: ib, n_real
       integer :: ir
-      
-      do ir = 1, n_real-2
+
+      do ir = 1, n_real-generator%n_in
          if (sort_born%pdg == sort_real(ir)%pdg &
             .and..not. sort_real(ir)%checked) then
             sort_real(ir)%associated_born = ib
