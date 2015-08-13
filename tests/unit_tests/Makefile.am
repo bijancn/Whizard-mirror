@@ -125,8 +125,7 @@ UNIT_TESTS = \
     integrations.run \
     simulations.run
 
-XFAIL_UNIT_TESTS = \
-    sm_physics.run
+XFAIL_UNIT_TESTS = 
 
 UNIT_TESTS_REQ_GAMELAN = \
     commands.run
@@ -370,6 +369,3 @@ endif
 maintainer-clean-local: maintainer-clean-fc
 	-rm -f *~
 .PHONY: maintainer-clean-local
-
-
-

@@ -32,7 +32,7 @@ module parameters_sm
   real(default), public :: as
   complex(default), public :: gs, igs
 
-  real(default), public :: e, g, e_em
+  real(default), public :: e, g ! , e_em
   real(default), public :: sinthw, costhw, sin2thw, tanthw
   real(default), public :: qelep, qeup, qedwn
   complex(default), public :: qlep, qup, qdwn, gcc, qw, &
@@ -48,7 +48,7 @@ module parameters_sm
 contains
 
   subroutine import_from_whizard (par_array)
-    real(default), dimension(25), intent(in) :: par_array
+    real(default), dimension(26), intent(in) :: par_array
     type :: parameter_set
        real(default) :: gf
        real(default) :: mZ
@@ -71,6 +71,7 @@ contains
        real(default) :: khgg
        real(default) :: xi0
        real(default) :: xipm
+       real(default) :: recompute_widths
        real(default) :: v
        real(default) :: cw
        real(default) :: sw
@@ -78,9 +79,11 @@ contains
     end type parameter_set
     type(parameter_set) :: par
     !!! This corresponds to 1/alpha = 137.03598949333
-    real(default), parameter :: &
-         alpha = 1.0_default/137.03598949333_default
-    e_em = sqrt(4.0_default * PI * alpha)
+    !real(default), parameter :: &
+         !alpha = 1.0_default/137.03598949333_default
+    real(default) :: alpha, alphas
+    integer :: order
+    !e_em = sqrt(4.0_default * PI * alpha)
     par%gf     = par_array(1)
     par%mZ     = par_array(2)
     par%mW     = par_array(3)
@@ -102,10 +105,11 @@ contains
     par%khgg   = par_array(19)
     par%xi0    = par_array(20)
     par%xipm   = par_array(21)
-    par%v      = par_array(22)
-    par%cw     = par_array(23)
-    par%sw     = par_array(24)
-    par%ee     = par_array(25)
+    par%recompute_widths = par_array(22)
+    par%v      = par_array(23)
+    par%cw     = par_array(24)
+    par%sw     = par_array(25)
+    par%ee     = par_array(26)
     mass(1:27) = 0
     width(1:27) = 0
     mass(3) = par%ms
@@ -172,6 +176,24 @@ contains
     !!! Color flow basis, divide by sqrt(2)
     gs = sqrt(2.0_default*PI*par%alphas)
     igs = cmplx (0.0_default, 1.0_default, kind=default) * gs    
+
+    if (par%recompute_widths > 0) then
+       order = int(par%recompute_widths)
+       alpha = alpha_from_g_mu (par%gf, par%mW, sinthw)
+       select case(order)
+       case (1)
+          width(6) = top_width_sm_lo (alpha, sinthw, 1.0_default, par%mtop, par%mw, par%mb)
+       case (2)
+          if (par%mb > 0.00001_default) then
+             alphas = running_as (par%mtop, par%alphas, par%mz, 1, 4.0_default)
+             width(6) = top_width_sm_qcd_nlo (alpha, sinthw, par%mtop, par%mw, &
+                  par%mb, alphas)
+          else
+             alphas = running_as (par%mtop, par%alphas, par%mz, 1, 5.0_default)
+             width(6) = top_width_sm_qcd_nlo_massless_b (alpha, sinthw, par%mtop, par%mw, alphas)
+          end if
+       end select
+    end if
   end subroutine import_from_whizard
 
   subroutine model_update_alpha_s (alpha_s)
