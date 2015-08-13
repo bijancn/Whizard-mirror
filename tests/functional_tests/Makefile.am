@@ -205,6 +205,7 @@ TESTS_REQ_OCAML = \
     parton_shower_2.run \
     mlm_matching_fsr.run \
     user_cuts.run \
+    user_prc.run \
     $(TESTS_USER_STRFUN) 
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
