@@ -26,6 +26,10 @@ These are the implementations:
 \item[prc\_omega]
   Matrix elements calculated by \oMega\ are the default for WHIZARD.
   Here, we provide all necessary support.
+\item[prc\_gosam]
+\item[prc\_openloops]
+\item[prc\_user\_defined\_test]
+\item[prc\_threshold]
 \end{description}
 
 
@@ -4505,11 +4509,12 @@ possible.
   end subroutine prc_omega_diags_1
   
 @ %def prc_omega_diags_1
-@ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-/section{User-defined matrix elements}
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{User-defined matrix elements squared}
 For certain applications, only the squared matrix elements instead of
 the pure amplitude can be obtained, e.g. for BLHA One-Loop providers or
-for the QCD-resummed top-threshold calculation. This is enabled by the
+for the QCD-resummed top-threshold calculation.  This is enabled by the
 [[prc_user_defined_base_t]]-type.
 <<[[prc_user_defined.f90]]>>=
 <<File header>>
@@ -4519,6 +4524,7 @@ module prc_user_defined
 
   use kinds
   use constants
+  use io_units
 <<Use strings>>
   use system_defs, only: TAB
   use diagnostics
@@ -4546,18 +4552,11 @@ contains
 end module prc_user_defined
 @ %def prc_user_defined
 @
-<<Prc User: public>>=
-  public :: prc_user_defined_base_t
-<<Prc User: types>>=
-  type, abstract, extends (prc_core_t) :: prc_user_defined_base_t
-    type(qcd_t) :: qcd
-    integer :: n_flv
-  contains
-  <<Prc User: prc user defined base: TBP>>
-  end type prc_user_defined_base_t
-
-@ %def prc_user_defined_base_t
-@
+\subsection{Abstract user defined processes}
+This process class allows us to factor out common necessities of user
+defined processes.
+\subsubsection{Workspace}
+This is the workspace that is available for user defined processes.
 <<Prc User: types>>=
   type, abstract, extends (prc_core_state_t) :: user_defined_state_t
     logical :: new_kinematics = .true.
@@ -4568,14 +4567,25 @@ end module prc_user_defined
 
 @ %def user_defined_state_t
 @
+<<Prc User: user defined state: TBP>>=
+  procedure :: reset_new_kinematics => user_defined_state_reset_new_kinematics
+<<Prc User: procedures>>=
+  subroutine user_defined_state_reset_new_kinematics (object)
+    class(user_defined_state_t), intent(inout) :: object
+    object%new_kinematics = .true.
+  end subroutine user_defined_state_reset_new_kinematics
+
+@ %def user_defined_state_reset_new_kinematics
+@
+\subsubsection{Driver}
+@ We have to add two O'Mega-routines to the user-defined driver to
+ensure proper process setup.  The problem is that during the setup of
+the real component, the particle and flavor data are taken from the Born
+component to set up the subtraction terms.  However, the Born component
+expects this data to be obtained from the Omega code, accessed by the
+driver.
 <<Prc User: public>>=
   public :: user_defined_driver_t
-@ We have to add two O'Mega-routines to the user-defined driver to ensure
-  proper process setup. The problem is that during the setup of the 
-  real component, the particle and flavor data are taken from the
-  Born component to set up the subtraction terms. However, the Born
-  component expects this data to be obtained from the Omega code, 
-  accessed by the driver.
 <<Prc User: types>>=
   type, abstract, extends (prc_core_driver_t) :: user_defined_driver_t
      procedure(omega_update_alpha_s), nopass, pointer :: &
@@ -4588,152 +4598,18 @@ end module prc_user_defined
 
 @ %def user_defined_driver_t
 @
+\subsubsection{Core}
 <<Prc User: public>>=
-  public :: prc_user_defined_writer_t
+  public :: prc_user_defined_base_t
 <<Prc User: types>>=
-  type, abstract, extends (prc_writer_f_module_t) :: prc_user_defined_writer_t
-    type(string_t) :: model_name
-    type(string_t) :: process_mode
-    type(string_t) :: process_string
+  type, abstract, extends (prc_core_t) :: prc_user_defined_base_t
+    type(qcd_t) :: qcd
+    integer :: n_flv
   contains
-  <<Prc User: user defined writer: TBP>>
-  end type prc_user_defined_writer_t
+  <<Prc User: prc user defined base: TBP>>
+  end type prc_user_defined_base_t
 
-@ %def prc_user_defined_writer_t
-@
-<<Prc User: public>>=
-  public :: user_defined_def_t
-<<Prc User: types>>=
-  type, abstract, extends (prc_core_def_t) :: user_defined_def_t
-    type(string_t) :: basename
-  contains
-  <<Prc User: user def: TBP>>
-  end type user_defined_def_t
-
-@ %def user_defined_def_t
-@
-<<Prc User: interfaces>>=
-  abstract interface
-     subroutine omega_update_alpha_s (alpha_s) bind(C)
-       import
-       real(c_default_float), intent(in) :: alpha_s
-     end subroutine omega_update_alpha_s
-  end interface
-  
-  abstract interface
-     subroutine omega_is_allowed (flv, hel, col, flag) bind(C)
-       import
-       integer(c_int), intent(in) :: flv, hel, col
-       logical(c_bool), intent(out) :: flag
-     end subroutine omega_is_allowed
-  end interface
-
-@ %def omega-interfaces
-@ 
-<<Prc User: public>>=
-  public :: prc_user_defined_test_t
-<<Prc User: types>>=
-  type, extends (prc_user_defined_base_t) :: prc_user_defined_test_t
-  contains
-  <<Prc User: prc test: TBP>>
-  end type prc_user_defined_test_t
-
-@ %def prc_user_defined_test_t
-@
-<<Prc User: types>>=
-  type, extends (user_defined_state_t) :: user_defined_test_state_t
-  contains
-  <<Prc User: user defined test state: TBP>>
-  end type user_defined_test_state_t
-
-@ %def user_defined_test_state_t
-@
-<<Prc User: types>>=
-  type, extends (user_defined_driver_t) :: user_defined_test_driver_t
-  contains
-  <<Prc User: user test driver: TBP>>
-  end type user_defined_test_driver_t
-
-@ %def user_defined_test_driver_t
-@
-<<Prc User: public>>=
-  public :: user_defined_test_def_t
-<<Prc User: types>>=
-  type, extends (user_defined_def_t) :: user_defined_test_def_t
-  contains
-  <<Prc User: user test def: TBP>>
-  end type user_defined_test_def_t
-
-@ %def user_defined_test_def_t
-@
-<<Prc User: types>>=
-  type, extends (prc_user_defined_writer_t) :: user_defined_test_writer_t
-  contains
-  <<Prc User: user test writer: TBP>>
-  end type user_defined_test_writer_t
-
-@ %def user_defined_test_writer_t
-@
-<<Prc User: user defined state: TBP>>=
-  procedure :: reset_new_kinematics => user_defined_state_reset_new_kinematics
-<<Prc User: procedures>>=
-  subroutine user_defined_state_reset_new_kinematics (object)
-    class(user_defined_state_t), intent(inout) :: object
-    object%new_kinematics = .true.
-  end subroutine user_defined_state_reset_new_kinematics
-
-@ %def user_defined_state_reset_new_kinematics
-@
-<<Prc User: user def: TBP>>=
-  procedure, nopass :: get_features => user_defined_def_get_features
-<<Prc User: procedures>>=
-  subroutine user_defined_def_get_features (features)
-    type(string_t), dimension(:), allocatable, intent(out) :: features
-    allocate (features (6))
-    features = [ &
-         var_str ("init"), &
-         var_str ("update_alpha_s"), &
-         var_str ("reset_helicity_selection"), &
-         var_str ("is_allowed"), &
-         var_str ("new_event"), &
-         var_str ("get_amplitude")]
-  end subroutine user_defined_def_get_features 
-
-@
-@ %def user_defined_def_get_features
-<<Prc User: user def: TBP>>=
-  procedure :: connect => user_defined_def_connect
-<<Prc User: procedures>>=
-  subroutine user_defined_def_connect (def, lib_driver, i, proc_driver)   
-    class(user_defined_def_t), intent(in) :: def
-    class(prclib_driver_t), intent(in) :: lib_driver
-    integer, intent(in) :: i
-    integer :: pid, fid
-    class(prc_core_driver_t), intent(inout) :: proc_driver
-    type(c_funptr) :: fptr
-    select type (proc_driver)
-    class is (user_defined_driver_t)       
-       pid = i
-       fid = 2
-       call lib_driver%get_fptr (pid, fid, fptr)
-       call c_f_procpointer (fptr, proc_driver%update_alpha_s)
-       fid = 4
-       call lib_driver%get_fptr (pid, fid, fptr)
-       call c_f_procpointer (fptr, proc_driver%is_allowed)
-    end select
-  end subroutine user_defined_def_connect
-
-@ 
-@ %def user_defined_def_connect
-<<Prc User: user def: TBP>>=
-  procedure, nopass :: needs_code => user_def_needs_code
-<<Prc User: procedures>>=
-  function user_def_needs_code () result (flag)
-    logical :: flag
-    flag = .true.
-  end function user_def_needs_code
-
-@  %def user_def_needs_code
+@ %def prc_user_defined_base_t
 @
 <<Prc User: prc user defined base: TBP>>=
   procedure :: needs_mcset => prc_user_defined_base_needs_mcset
@@ -4869,6 +4745,102 @@ end module prc_user_defined
   end subroutine prc_user_defined_base_update_alpha_s
 
 @ %def prc_user_defined_base_update_alpha_s
+@
+\subsubsection{Configuration}
+This is the abstract user defined process definition
+<<Prc User: public>>=
+  public :: user_defined_def_t
+<<Prc User: types>>=
+  type, abstract, extends (prc_core_def_t) :: user_defined_def_t
+    type(string_t) :: basename
+  contains
+  <<Prc User: user def: TBP>>
+  end type user_defined_def_t
+
+@ %def user_defined_def_t
+@
+<<Prc User: user def: TBP>>=
+  procedure, nopass :: get_features => user_defined_def_get_features
+<<Prc User: procedures>>=
+  subroutine user_defined_def_get_features (features)
+    type(string_t), dimension(:), allocatable, intent(out) :: features
+    allocate (features (6))
+    features = [ &
+         var_str ("init"), &
+         var_str ("update_alpha_s"), &
+         var_str ("reset_helicity_selection"), &
+         var_str ("is_allowed"), &
+         var_str ("new_event"), &
+         var_str ("get_amplitude")]
+  end subroutine user_defined_def_get_features 
+
+@
+@ %def user_defined_def_get_features
+<<Prc User: user def: TBP>>=
+  procedure :: connect => user_defined_def_connect
+<<Prc User: procedures>>=
+  subroutine user_defined_def_connect (def, lib_driver, i, proc_driver)   
+    class(user_defined_def_t), intent(in) :: def
+    class(prclib_driver_t), intent(in) :: lib_driver
+    integer, intent(in) :: i
+    integer :: pid, fid
+    class(prc_core_driver_t), intent(inout) :: proc_driver
+    type(c_funptr) :: fptr
+    select type (proc_driver)
+    class is (user_defined_driver_t)       
+       pid = i
+       fid = 2
+       call lib_driver%get_fptr (pid, fid, fptr)
+       call c_f_procpointer (fptr, proc_driver%update_alpha_s)
+       fid = 4
+       call lib_driver%get_fptr (pid, fid, fptr)
+       call c_f_procpointer (fptr, proc_driver%is_allowed)
+    end select
+  end subroutine user_defined_def_connect
+
+@ %def user_defined_def_connect
+@
+<<Prc User: user def: TBP>>=
+  procedure, nopass :: needs_code => user_def_needs_code
+<<Prc User: procedures>>=
+  function user_def_needs_code () result (flag)
+    logical :: flag
+    flag = .true.
+  end function user_def_needs_code
+
+@  %def user_def_needs_code
+@
+<<Prc User: interfaces>>=
+  abstract interface
+     subroutine omega_update_alpha_s (alpha_s) bind(C)
+       import
+       real(c_default_float), intent(in) :: alpha_s
+     end subroutine omega_update_alpha_s
+  end interface
+  
+  abstract interface
+     subroutine omega_is_allowed (flv, hel, col, flag) bind(C)
+       import
+       integer(c_int), intent(in) :: flv, hel, col
+       logical(c_bool), intent(out) :: flag
+     end subroutine omega_is_allowed
+  end interface
+
+@ %def omega-interfaces
+@
+\subsubsection{Writer}
+<<Prc User: public>>=
+  public :: prc_user_defined_writer_t
+<<Prc User: types>>=
+  type, abstract, extends (prc_writer_f_module_t) :: prc_user_defined_writer_t
+    type(string_t) :: model_name
+    type(string_t) :: process_mode
+    type(string_t) :: process_string
+  contains
+  <<Prc User: user defined writer: TBP>>
+  end type prc_user_defined_writer_t
+
+@ %def prc_user_defined_writer_t
 @
 <<Prc User: user defined writer: TBP>>=
   procedure, nopass :: get_module_name => prc_user_defined_writer_get_module_name
@@ -5095,63 +5067,68 @@ end module prc_user_defined
 
 @ %def prc_user_defined_writer_writer_get_procname
 @
-<<Prc User: prc test: TBP>>=
-  procedure :: write => prc_user_defined_test_write
-<<Prc User: procedures>>=
-  subroutine prc_user_defined_test_write (object, unit)
-    class(prc_user_defined_test_t), intent(in) :: object
-    integer, intent(in), optional :: unit
-    call msg_message ("Test user-defined matrix elements")
-  end subroutine prc_user_defined_test_write
+\subsection{User defined test}
+\subsubsection{Writer}
+<<Prc User: types>>=
+  type, extends (prc_user_defined_writer_t) :: user_defined_test_writer_t
+  contains
+  <<Prc User: user test writer: TBP>>
+  end type user_defined_test_writer_t
 
-@ %def prc_user_defined_write
+@ %def user_defined_test_writer_t
 @
-<<Prc User: prc test: TBP>>=
-  procedure :: compute_amplitude => prc_user_defined_test_compute_amplitude
+<<Prc User: user test writer: TBP>>=
+  procedure, nopass :: type_name => user_defined_test_writer_type_name
 <<Prc User: procedures>>=
-  function prc_user_defined_test_compute_amplitude &
-       (object, j, p, f, h, c, fac_scale, ren_scale, alpha_qcd_forced, &
-       core_state)  result (amp)
-    class(prc_user_defined_test_t), intent(in) :: object
-    integer, intent(in) :: j
-    type(vector4_t), dimension(:), intent(in) :: p
-    integer, intent(in) :: f, h, c
-    real(default), intent(in) :: fac_scale, ren_scale
-    real(default), intent(in), allocatable :: alpha_qcd_forced
-    class(prc_core_state_t), intent(inout), allocatable, optional :: core_state
-    complex(default) :: amp
-    select type (core_state)
-    class is (user_defined_test_state_t)
-       core_state%alpha_qcd = object%qcd%alpha%get (fac_scale)
+  function user_defined_test_writer_type_name () result (string)
+    type(string_t) :: string
+    string = "User-defined dummy"
+  end function user_defined_test_writer_type_name
+
+@ %def user_defined_test_writer_type_name
+@  
+<<Prc User: user test writer: TBP>>=
+  procedure :: init => user_defined_test_writer_init 
+<<Prc User: procedures>>=
+  subroutine user_defined_test_writer_init &
+       (writer, model_name, prt_in, prt_out)
+    class(user_defined_test_writer_t), intent(inout) :: writer
+    type(string_t), intent(in) :: model_name
+    type(string_t), dimension(:), intent(in) :: prt_in, prt_out
+    integer :: i
+    
+    writer%model_name = model_name
+    select case (size (prt_in))
+       case(1); writer%process_mode = " -decay"
+       case(2); writer%process_mode = " -scatter"
     end select
-    amp = 0.0
-  end function prc_user_defined_test_compute_amplitude
 
-@ %def prc_user_defined_test_compute_amplitude
+    associate (s => writer%process_string)
+      s = " '" 
+      do i = 1, size (prt_in)
+         if (i > 1) s = s // " "
+         s = s // prt_in(i)
+      end do
+      s = s // " ->"
+      do i = 1, size (prt_out)
+         s = s // " " // prt_out(i)
+      end do
+      s = s // "'"
+    end associate
+  end subroutine user_defined_test_writer_init
+
+@ %def user_defined_test_writer_init
 @
-<<Prc User: prc test: TBP>>=
-  procedure :: allocate_workspace => prc_user_defined_test_allocate_workspace
-<<Prc User: procedures>>=
-  subroutine prc_user_defined_test_allocate_workspace (object, core_state)
-    class(prc_user_defined_test_t), intent(in) :: object
-    class(prc_core_state_t), intent(inout), allocatable :: core_state
-    allocate (user_defined_test_state_t :: core_state)
-  end subroutine prc_user_defined_test_allocate_workspace
+\subsubsection{Workspace}
+This looks pretty useless. Why don't we make [[user_defined_state_t]]
+nonabstract and remove this?
+<<Prc User: types>>=
+  type, extends (user_defined_state_t) :: user_defined_test_state_t
+  contains
+  <<Prc User: user defined test state: TBP>>
+  end type user_defined_test_state_t
 
-@ %def prc_user_defined_test_allocate_workspace
-@
-<<Prc User: prc test: TBP>>=
-  procedure :: compute_sqme => prc_user_defined_test_compute_sqme
-<<Prc User: procedures>>=
-  function prc_user_defined_test_compute_sqme (object, i_born, p) result (sqme)
-     real(default) :: sqme
-     class(prc_user_defined_test_t), intent(in) :: object
-     integer, intent(in) :: i_born
-     type(vector4_t), dimension(:), intent(in) :: p
-     sqme = one
-  end function prc_user_defined_test_compute_sqme
-
-@ %def prc_user_defined_test_compute_sqme
+@ %def user_defined_test_state_t
 @
 <<Prc User: user defined test state: TBP>>=
   procedure :: write => user_defined_test_state_write
@@ -5162,6 +5139,37 @@ end module prc_user_defined
   end subroutine user_defined_test_state_write
 
 @ %def user_defined_test_state_write
+@
+\subsubsection{Driver}
+<<Prc User: types>>=
+  type, extends (user_defined_driver_t) :: user_defined_test_driver_t
+  contains
+  <<Prc User: user test driver: TBP>>
+  end type user_defined_test_driver_t
+
+@ %def user_defined_test_driver_t
+@
+<<Prc User: user test driver: TBP>>=
+  procedure, nopass :: type_name => user_defined_test_driver_type_name
+<<Prc User: procedures>>=
+  function user_defined_test_driver_type_name () result (type)
+    type(string_t) :: type
+    type = "User-defined dummy"
+  end function user_defined_test_driver_type_name
+
+@ %def user_defined_test_driver_type_name
+@
+\subsubsection{Configuration}
+A user defined test definition.
+<<Prc User: public>>=
+  public :: user_defined_test_def_t
+<<Prc User: types>>=
+  type, extends (user_defined_def_t) :: user_defined_test_def_t
+  contains
+  <<Prc User: user test def: TBP>>
+  end type user_defined_test_def_t
+
+@ %def user_defined_test_def_t
 @
 <<Prc User: user test def: TBP>>=
   procedure :: init => user_defined_test_def_init
@@ -5223,56 +5231,220 @@ end module prc_user_defined
 
 @ %def user_defined_test_def_allocate_driver
 @
-<<Prc User: user test driver: TBP>>=
-  procedure, nopass :: type_name => user_defined_test_driver_type_name
-<<Prc User: procedures>>=
-  function user_defined_test_driver_type_name () result (type)
-    type(string_t) :: type
-    type = "User-defined dummy"
-  end function user_defined_test_driver_type_name
+\subsubsection{Core}
+This user defined test just returns $|\mathcal{M}|^2=1$ and thus the
+result of the integration is the n-particle-phase-space volume.
+<<Prc User: public>>=
+  public :: prc_user_defined_test_t
+<<Prc User: types>>=
+  type, extends (prc_user_defined_base_t) :: prc_user_defined_test_t
+  contains
+  <<Prc User: prc test: TBP>>
+  end type prc_user_defined_test_t
 
-@ %def user_defined_test_driver_type_name
+@ %def prc_user_defined_test_t
 @
-<<Prc User: user test writer: TBP>>=
-  procedure, nopass :: type_name => user_defined_test_writer_type_name
+<<Prc User: prc test: TBP>>=
+  procedure :: write => prc_user_defined_test_write
 <<Prc User: procedures>>=
-  function user_defined_test_writer_type_name () result (string)
-    type(string_t) :: string
-    string = "User-defined dummy"
-  end function user_defined_test_writer_type_name
+  subroutine prc_user_defined_test_write (object, unit)
+    class(prc_user_defined_test_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    call msg_message ("Test user-defined matrix elements")
+  end subroutine prc_user_defined_test_write
 
-@ %def user_defined_test_writer_type_name
-@  
-<<Prc User: user test writer: TBP>>=
-  procedure :: init => user_defined_test_writer_init 
+@ %def prc_user_defined_write
+@
+<<Prc User: prc test: TBP>>=
+  procedure :: compute_amplitude => prc_user_defined_test_compute_amplitude
 <<Prc User: procedures>>=
-  subroutine user_defined_test_writer_init &
-       (writer, model_name, prt_in, prt_out)
-    class(user_defined_test_writer_t), intent(inout) :: writer
-    type(string_t), intent(in) :: model_name
-    type(string_t), dimension(:), intent(in) :: prt_in, prt_out
-    integer :: i
-    
-    writer%model_name = model_name
-    select case (size (prt_in))
-       case(1); writer%process_mode = " -decay"
-       case(2); writer%process_mode = " -scatter"
+  function prc_user_defined_test_compute_amplitude &
+       (object, j, p, f, h, c, fac_scale, ren_scale, alpha_qcd_forced, &
+       core_state)  result (amp)
+    class(prc_user_defined_test_t), intent(in) :: object
+    integer, intent(in) :: j
+    type(vector4_t), dimension(:), intent(in) :: p
+    integer, intent(in) :: f, h, c
+    real(default), intent(in) :: fac_scale, ren_scale
+    real(default), intent(in), allocatable :: alpha_qcd_forced
+    class(prc_core_state_t), intent(inout), allocatable, optional :: core_state
+    complex(default) :: amp
+    select type (core_state)
+    class is (user_defined_test_state_t)
+       core_state%alpha_qcd = object%qcd%alpha%get (fac_scale)
     end select
+    amp = 0.0
+  end function prc_user_defined_test_compute_amplitude
 
-    associate (s => writer%process_string)
-      s = " '" 
-      do i = 1, size (prt_in)
-         if (i > 1) s = s // " "
-         s = s // prt_in(i)
-      end do
-      s = s // " ->"
-      do i = 1, size (prt_out)
-         s = s // " " // prt_out(i)
-      end do
-      s = s // "'"
-    end associate
-  end subroutine user_defined_test_writer_init
-
-@ %def user_defined_test_writer_init
+@ %def prc_user_defined_test_compute_amplitude
 @
+<<Prc User: prc test: TBP>>=
+  procedure :: allocate_workspace => prc_user_defined_test_allocate_workspace
+<<Prc User: procedures>>=
+  subroutine prc_user_defined_test_allocate_workspace (object, core_state)
+    class(prc_user_defined_test_t), intent(in) :: object
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+    allocate (user_defined_test_state_t :: core_state)
+  end subroutine prc_user_defined_test_allocate_workspace
 
+@ %def prc_user_defined_test_allocate_workspace
+@
+<<Prc User: prc test: TBP>>=
+  procedure :: compute_sqme => prc_user_defined_test_compute_sqme
+<<Prc User: procedures>>=
+  function prc_user_defined_test_compute_sqme (object, i_born, p) result (sqme)
+     real(default) :: sqme
+     class(prc_user_defined_test_t), intent(in) :: object
+     integer, intent(in) :: i_born
+     type(vector4_t), dimension(:), intent(in) :: p
+     sqme = one
+  end function prc_user_defined_test_compute_sqme
+
+@ %def prc_user_defined_test_compute_sqme
+@
+\subsection{Threshold}
+\subsubsection{Writer}
+Not necessary
+\subsubsection{Driver}
+\subsubsection{Configuration}
+<<Prc User: public>>=
+  public :: threshold_def_t
+<<Prc User: types>>=
+  type, extends (user_defined_def_t) :: threshold_def_t
+  contains
+  <<Prc User: threshold def: TBP>>
+  end type threshold_def_t
+
+@ %def threshold_def_t
+@
+<<Prc User: threshold def: TBP>>=
+  procedure :: init => threshold_def_init
+<<Prc User: procedures>>=
+  subroutine threshold_def_init (object, basename, model_name, &
+       prt_in, prt_out)
+    class(threshold_def_t), intent(inout) :: object
+    type(string_t), intent(in) :: basename, model_name
+    type(string_t), dimension(:), intent(in) :: prt_in, prt_out
+    object%basename = basename
+    allocate (user_defined_test_writer_t :: object%writer)
+    select type (writer => object%writer)
+    type is (user_defined_test_writer_t)
+       call writer%init (model_name, prt_in, prt_out)
+    end select
+  end subroutine threshold_def_init
+
+@ %def threshold_def_init
+@
+<<Prc User: threshold def: TBP>>=
+  procedure, nopass :: type_string => threshold_def_type_string
+<<Prc User: procedures>>=
+  function threshold_def_type_string () result (string)
+    type(string_t) :: string
+    string = "threshold computation"
+  end function threshold_def_type_string
+
+@ %def user_defined_def_type_string
+@ [[write]] and [[read]] could be put in the abstract version
+<<Prc User: threshold def: TBP>>=
+  procedure :: write => threshold_def_write
+<<Prc User: procedures>>=
+  subroutine threshold_def_write (object, unit)
+    class(threshold_def_t), intent(in) :: object
+    integer, intent(in) :: unit
+  end subroutine threshold_def_write
+
+@ %def threshold_def_write
+@
+<<Prc User: threshold def: TBP>>=
+  procedure :: read => threshold_def_read
+<<Prc User: procedures>>=
+  subroutine threshold_def_read (object, unit)
+    class(threshold_def_t), intent(out) :: object
+    integer, intent(in) :: unit
+  end subroutine threshold_def_read
+
+@ %def threshold_def_read
+@
+<<Prc User: threshold def: TBP>>=
+  procedure :: allocate_driver => threshold_def_allocate_driver
+<<Prc User: procedures>>=
+  subroutine threshold_def_allocate_driver (object, driver, basename)
+    class(threshold_def_t), intent(in) :: object
+    class(prc_core_driver_t), intent(out), allocatable :: driver
+    type(string_t), intent(in) :: basename
+    if (.not. allocated (driver)) allocate (user_defined_test_driver_t :: driver)
+  end subroutine threshold_def_allocate_driver
+
+@ %def threshold_def_allocate_driver
+@
+\subsubsection{Core}
+<<Prc User: public>>=
+  public :: prc_threshold_t
+<<Prc User: types>>=
+  type, extends (prc_user_defined_base_t) :: prc_threshold_t
+  contains
+  <<Prc User: prc threshold: TBP>>
+  end type prc_threshold_t
+
+@ %def prc_threshold_t
+@
+<<Prc User: prc threshold: TBP>>=
+  procedure :: write => prc_threshold_write
+<<Prc User: procedures>>=
+  subroutine prc_threshold_write (object, unit)
+    class(prc_threshold_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    call msg_message ("Supply amplitudes squared for threshold computation")
+  end subroutine prc_threshold_write
+
+@ %def prc_user_defined_write
+@
+<<Prc User: prc threshold: TBP>>=
+  procedure :: compute_amplitude => prc_threshold_compute_amplitude
+<<Prc User: procedures>>=
+  function prc_threshold_compute_amplitude &
+       (object, j, p, f, h, c, fac_scale, ren_scale, alpha_qcd_forced, &
+       core_state)  result (amp)
+    class(prc_threshold_t), intent(in) :: object
+    integer, intent(in) :: j
+    type(vector4_t), dimension(:), intent(in) :: p
+    integer, intent(in) :: f, h, c
+    real(default), intent(in) :: fac_scale, ren_scale
+    real(default), intent(in), allocatable :: alpha_qcd_forced
+    class(prc_core_state_t), intent(inout), allocatable, optional :: core_state
+    complex(default) :: amp
+    select type (core_state)
+    class is (user_defined_test_state_t)
+       core_state%alpha_qcd = object%qcd%alpha%get (fac_scale)
+    end select
+    amp = 0.0
+  end function prc_threshold_compute_amplitude
+
+@ %def prc_threshold_compute_amplitude
+@
+<<Prc User: prc threshold: TBP>>=
+  procedure :: allocate_workspace => prc_threshold_allocate_workspace
+<<Prc User: procedures>>=
+  subroutine prc_threshold_allocate_workspace (object, core_state)
+    class(prc_threshold_t), intent(in) :: object
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+    allocate (user_defined_test_state_t :: core_state)
+  end subroutine prc_threshold_allocate_workspace
+
+@ %def prc_threshold_allocate_workspace
+@
+<<Prc User: prc threshold: TBP>>=
+  procedure :: compute_sqme => prc_threshold_compute_sqme
+<<Prc User: procedures>>=
+  function prc_threshold_compute_sqme (object, i_born, p) result (sqme)
+     real(default) :: sqme
+     class(prc_threshold_t), intent(in) :: object
+     integer, intent(in) :: i_born
+     type(vector4_t), dimension(:), intent(in) :: p
+     ! TODO: (bcn 2015-08-14) put amplitude here
+     sqme = one
+  end function prc_threshold_compute_sqme
+
+@ %def prc_threshold_compute_sqme
