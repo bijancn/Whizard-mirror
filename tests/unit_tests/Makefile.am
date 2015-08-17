@@ -125,7 +125,8 @@ UNIT_TESTS = \
     integrations.run \
     simulations.run
 
-XFAIL_UNIT_TESTS = 
+XFAIL_UNIT_TESTS = \
+    phs_fks_generator.run 
 
 UNIT_TESTS_REQ_GAMELAN = \
     commands.run
