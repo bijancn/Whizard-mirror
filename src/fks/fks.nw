@@ -2050,7 +2050,7 @@ module virtual
 
 <<Use kinds>>
 <<Use strings>>
-  use constants, only: pi, twopi
+  use constants
   use diagnostics
   use pdg_arrays
   use model_data
@@ -2084,7 +2084,7 @@ end module virtual
     real(default), dimension(:,:), allocatable :: gamma_0, gamma_p, c_flv
     real(default) :: ren_scale2, fac_scale
     integer, dimension(:), allocatable :: n_is_neutrinos
-    integer :: nlegs, nflv
+    integer :: n_in, nlegs, nflv
     logical :: bad_point
     logical :: use_internal_color_correlations
   contains
@@ -2095,11 +2095,13 @@ end module virtual
 <<virtual: virtual: TBP>>=
   procedure :: init => virtual_init
 <<virtual: procedures>>=
- subroutine virtual_init (object, flv_born)
+ subroutine virtual_init (object, flv_born, n_in)
     class(virtual_t), intent(inout) :: object
     integer, intent(in), dimension(:,:) :: flv_born
+    integer, intent(in) :: n_in
     integer :: i_flv
     object%nlegs = size (flv_born, 1); object%nflv = size (flv_born, 2)
+    object%n_in = n_in
     allocate (object%I (object%nlegs, object%nlegs))
     allocate (object%gamma_0 (object%nlegs, object%nflv), &
               object%gamma_p (object%nlegs, object%nflv), &
@@ -2417,7 +2419,8 @@ They are defined as follows:
     logical, dimension(:), intent(in) :: massive
     integer, intent(in) :: i, j
     real(default) :: somu2
-    somu2 = (p_born(1)+p_born(2))**2/object%ren_scale2
+    somu2  = sum (p_born(1:object%n_in))**2 / object%ren_scale2
+    !!!somu2 = (p_born(1)+p_born(2))**2/object%ren_scale2
     if (massive(i) .and. massive(j)) then
        object%I(i,j) = compute_Imm (p_born(i), p_born(j), somu2)
     else if (.not.massive(i) .and. massive(j)) then
@@ -2557,7 +2560,7 @@ where $\vec{\beta}_i = \frac{\vec{k}_i}{k_i^0}$. Further
     type(vector4_t), intent(in) :: p1, p2
     real(default) :: I
     type(vector3_t) :: beta1, beta2
-    real(default) :: a, b
+    real(default) :: a, b, b2
     real(default) :: zp, zm, z1, z2, x1, x2
     real(default) :: zmb, z1b
     real(default) :: K1, K2
@@ -2566,6 +2569,13 @@ where $\vec{\beta}_i = \frac{\vec{k}_i}{k_i^0}$. Further
     beta2 = space_part (p2)/energy(p2)
     a = beta1**2 + beta2**2 - 2*beta1*beta2
     b = beta1**2*beta2**2 - (beta1*beta2)**2
+    if (beta1**1 > beta2**2) call switch_beta (beta1, beta2) 
+    if (beta1 == vector3_null) then
+       b2 = beta2**1
+       I = (-0.5*log ((one-b2)/(one+b2)) - 2*Li2 (-2*b2/(one-b2))) &
+           * one/sqrt(a-b)
+       return
+    end if
     x1 = beta1**2 - beta1*beta2
     x2 = beta2**2 - beta1*beta2
     zp = sqrt(a) + sqrt(a-b)
@@ -2581,6 +2591,14 @@ where $\vec{\beta}_i = \frac{\vec{k}_i}{k_i^0}$. Further
           -2*Li2((2*zm*(zp-z2))/((zp-zm)*(zm+z2))) &
           -2*Li2((-2*zp*(zm+z2))/((zp-zm)*(zp-z2)))
     I = (K2 - K1) * (1-beta1*beta2)/sqrt(a-b)
+  contains
+    subroutine switch_beta (beta1, beta2)
+      type(vector3_t), intent(inout) :: beta1, beta2
+      type(vector3_t) :: beta_tmp
+      beta_tmp = beta1
+      beta1 = beta2
+      beta2 = beta_tmp
+    end subroutine switch_beta
   end function I_mm_eps
 
 @ %def I_mm_eps
@@ -5367,7 +5385,8 @@ process.
 <<nlo controller: procedures>>=
   subroutine nlo_controller_init_virtual (nlo_controller)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    call nlo_controller%virtual_terms%init (nlo_controller%particle_states%flv_state_born)
+    call nlo_controller%virtual_terms%init (nlo_controller%particle_states%flv_state_born, &
+       nlo_controller%particle_data%n_in)
   end subroutine nlo_controller_init_virtual
 
 @ %def nlo_controller_init_virtual
