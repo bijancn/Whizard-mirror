@@ -1908,7 +1908,6 @@ the emitter in the flavor structure array.
     type(vector4_t), intent(in), dimension(:) :: p
     integer, intent(in) :: i, j
     real(default) :: d
-    real(default) :: sqrts
     real :: y
     real :: E1, E2
 
@@ -1921,12 +1920,11 @@ the emitter in the flavor structure array.
           E1 = energy (p(j))
           y = polar_angle_ct(p(j))
         end if
-        d = (E1**2 * (1-y**2))**map%exp_2
+        d = (E1**2 * (one-y**2))**map%exp_2
       else
         E1 = energy(p(i))
         E2 = energy(p(j))
         y = enclosed_angle_ct (p(i), p(j))
-        sqrts = (p(1)+p(2))**1
         d = (2*p(i)*p(j) * E1*E2 / (E1 + E2)**2)**map%exp_1
       end if
     else if (i == j) then
@@ -2681,7 +2679,7 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
   type :: soft_subtraction_t
     real(default), dimension(:), allocatable :: value
     type(region_data_t) :: reg_data
-    integer :: nlegs_born, nlegs_real
+    integer :: n_in, nlegs_born, nlegs_real
     real(default), dimension(:,:), allocatable :: momentum_matrix
     logical :: use_internal_color_correlations = .true.
     logical :: use_internal_spin_correlations = .false.
@@ -2696,12 +2694,13 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
 <<real subtraction: soft sub: TBP>>=
   procedure :: init => soft_subtraction_init
 <<real subtraction: procedures>>=
-  subroutine soft_subtraction_init (sub_soft, reg_data, nlegs_born, &
-                                    nlegs_real)
+  subroutine soft_subtraction_init (sub_soft, reg_data, &
+      n_in, nlegs_born, nlegs_real)
     class(soft_subtraction_t), intent(inout) :: sub_soft
     type(region_data_t), intent(in) :: reg_data
-    integer, intent(in) :: nlegs_born, nlegs_real
+    integer, intent(in) :: n_in, nlegs_born, nlegs_real
     sub_soft%reg_data = reg_data
+    sub_soft%n_in = n_in
     sub_soft%nlegs_born = nlegs_born
     sub_soft%nlegs_real = nlegs_real
     allocate (sub_soft%value (reg_data%n_regions))
@@ -2727,7 +2726,7 @@ The soft momentum is a unit vector, because $k^2 = \left(k^0\right)^2 - \left(k^
     p_soft%p(0) = 1._default
     p_soft%p(1:3) = p_born(emitter)%p(1:3) / space_part_norm (p_born(emitter))
     dir = create_orthogonal (space_part (p_born(emitter)))
-    rot = rotation (y, sqrt(1-y**2), dir)
+    rot = rotation (y, sqrt(one-y**2), dir)
     p_soft = rot*p_soft
     if (.not. vanishes (phi)) then
       dir = space_part (p_born(emitter)) / &
@@ -2789,14 +2788,23 @@ The soft momentum is a unit vector, because $k^2 = \left(k^0\right)^2 - \left(k^
     do i = 1, size (p_born)
        do j = 1, size (p_born)
           kb = kb + sub_soft%momentum_matrix (i,j) * &
-               born_ij (i,j)
+             born_ij (i,j)
        end do
     end do
     if (debug_active (D_SUBTRACTION)) &
        call msg_debug (D_SUBTRACTION, 'KB', kb)
     sub_soft%value(alr) = sub_soft%value(alr)*kb
-    q2 = 4 * p_born(1)%p(0)*p_born(2)%p(0)
-    sub_soft%value(alr) = 4/q2 * (1-y) * sub_soft%value(alr)
+    select case (sub_soft%n_in)
+    case (1) 
+       q2 = p_born(1)%p(0)**2
+    case (2)
+       q2 = 4 * p_born(1)%p(0)*p_born(2)%p(0)
+    end select
+    if (emitter <= sub_soft%n_in) then
+       sub_soft%value(alr) = 4/q2 * (one-y**2) * sub_soft%value(alr)
+    else
+       sub_soft%value(alr) = 4/q2 * (one-y) * sub_soft%value(alr)
+    end if
   end subroutine soft_subtraction_compute
 
 @ %def soft_subtraction_compute
@@ -3103,11 +3111,11 @@ it is necessary to expand with $z$ once.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: init => real_subtraction_init
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_init (rsub, reg_data, nlegs_born, &
-                                    nlegs_real, sqme_collector)
+  subroutine real_subtraction_init (rsub, reg_data, n_in, &
+      nlegs_born, nlegs_real, sqme_collector)
     class(real_subtraction_t), intent(inout), target :: rsub
     type(region_data_t), intent(in) :: reg_data
-    integer, intent(in) :: nlegs_born, nlegs_real
+    integer, intent(in) :: n_in, nlegs_born, nlegs_real
     type(sqme_collector_t), intent(in), target :: sqme_collector
     integer :: alr, i_uborn
     rsub%reg_data = reg_data
@@ -3122,7 +3130,7 @@ it is necessary to expand with $z$ once.
           reg_data%flv_born(i_uborn)%count_particle (GLUON) > 0
     end do
 
-    call rsub%sub_soft%init (reg_data, nlegs_born, nlegs_real)
+    call rsub%sub_soft%init (reg_data, n_in, nlegs_born, nlegs_real)
     call rsub%sub_coll%init (reg_data%n_regions)
 
     if (any (rsub%reg_data%get_emitter_list () <= 2)) then
@@ -3544,7 +3552,12 @@ the corresponding jacobians.
     real(default) :: s
     associate (real_kin => rsub%real_kinematics)
        !!! Lorentz invariant, does not matter whether cm or lab frame is used
-       s = (real_kin%p_born_cms(1)+real_kin%p_born_cms(2))**2
+       select case (rsub%isr_kinematics%n_in)
+       case (1) 
+          s = real_kin%p_born_cms(1)**2
+       case (2) 
+          s = (real_kin%p_born_cms(1)+real_kin%p_born_cms(2))**2
+       end select
     end associate
     factor = s / (8*twopi3)
   end function real_subtraction_get_phs_factor
@@ -5138,6 +5151,7 @@ process.
      type(process_constants_t), intent(in), dimension(2) :: prc_constants
      type(fks_template_t), intent(in) :: template
      type(model_data_t), intent(in) :: model
+     integer :: n_in, n_tot_born, n_tot_real
      call nlo_controller%set_flv_states (prc_constants)
      call nlo_controller%init_region_data (template, model)
      call nlo_controller%set_particle_data (prc_constants)
@@ -5147,10 +5161,11 @@ process.
      nlo_controller%alpha_s_born_set = .false.
      call nlo_controller%init_real_kinematics ()
      associate (particle_data => nlo_controller%particle_data)
+        n_in = particle_data%n_in
+        n_tot_born = n_in + particle_data%n_out_born
+        n_tot_real = n_in + particle_data%n_out_real
         call nlo_controller%real_terms%init (nlo_controller%reg_data, &
-                                       particle_data%n_in + particle_data%n_out_born, &
-                                       particle_data%n_in + particle_data%n_out_real, &
-                                       nlo_controller%sqme_collector)
+           n_in, n_tot_born, n_tot_real, nlo_controller%sqme_collector)
      end associate
      nlo_controller%counter_active = template%count_kinematics
      if (nlo_controller%counter_active) call nlo_controller%counter%init(20)
