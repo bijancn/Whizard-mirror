@@ -1,16 +1,41 @@
+! File generated automatically by O'Mega
+!
+!   /scratch/bcho/trunk/_install/develop/bin/omega_SM_tt_threshold.opt -o ttbar_i1.f90 -target:whizard -target:parameter_module parameters_SM_tt_threshold -target:module opr_ttbar_i1 -target:md5sum 3C3BACDC1B40C40DB783E084F0B62DFC -fusion:progress -scatter "e- e+ -> W+ W- b bbar" -cascade "3+5~t && 4+6~tbar"
+!
+! with all scattering amplitudes for the process(es)
+!
+!   flavor combinations:
+!
+!       1: e- e+ -> W+ W- b bbar
+!
+!   color flows:
+!
+!       1: (  0,  0) (  0,  0) -> (  0,  0) (  0,  0) (  1,  0) (  0, -1)
+!
+!     NB: i.g. not all color flows contribute to all flavor
+!     combinations.  Consult the array FLV_COL_IS_ALLOWED
+!     below for the allowed combinations.
+!
+!   Color Factors:
+!
+!     (  1,  1): + N
+!
+!   vanishing or redundant flavor combinations:
+!
+!
+!   diagram selection (MIGHT BREAK GAUGE INVARIANCE!!!):
+!
+!     (3+5 ~ t) && (4+6 ~ tbar)  grouping {{3,5},{4,6}}
+!
+! in minimal electroweak standard model in unitarity gauge
+!
 module @ID@_threshold
-
-  implicit none
+  use kinds
   use omega95
-  use omega_color, OCF => omega_color_factor
   use parameters_SM_tt_threshold
-
+  implicit none
   private
-  public :: number_particles_in, number_particles_out, number_color_indices, &
-    reset_helicity_selection, new_event, is_allowed, get_amplitude, &
-    color_sum, openmp_supported, number_spin_states, spin_states, &
-    number_flavor_states, flavor_states, number_color_flows, color_flows, &
-    number_color_factors, color_factors, init, final, update_alpha_s, md5sum
+  public :: init, md5sum, calculate_amplitudes
 
   ! DON'T EVEN THINK of removing the following!
   ! If the compiler complains about undeclared
@@ -22,18 +47,18 @@ module @ID@_threshold
        omega_couplings_2010_01_A, omega_color_2010_01_A, &
        omega_utils_2010_01_A /)
 
-  integer, parameter :: n_prt = 6
-  integer, parameter :: n_in = 2
-  integer, parameter :: n_out = 4
-  integer, parameter :: n_cflow = 1
-  integer, parameter :: n_cindex = 2
-  integer, parameter :: n_flv = 1
-  integer, parameter :: n_hel = 144
+  integer, parameter, public :: n_prt = 6
+  integer, parameter, public :: n_in = 2
+  integer, parameter, public :: n_out = 4
+  integer, parameter, public :: n_cflow = 1
+  integer, parameter, public :: n_cindex = 2
+  integer, parameter, public :: n_flv = 1
+  integer, parameter, public :: n_hel = 144
 
   ! NB: you MUST NOT change the value of N_ here!!!
   !     It is defined here for convenience only and must be
   !     compatible with hardcoded values in the amplitude!
-  real(kind=default), parameter :: N_ = 3
+  real(kind=default), parameter, public :: N_ = 3
   logical, parameter :: F = .false.
   logical, parameter :: T = .true.
 
@@ -186,54 +211,32 @@ module @ID@_threshold
   integer, dimension(n_prt,n_flv), save, protected :: table_flavor_states
   data table_flavor_states(:,   1) /  11, -11,  24, -24,   5,  -5 / ! e- e+ W+ W- b bbar
 
-  integer, dimension(n_cindex,n_prt,n_cflow), save, protected :: table_color_flows
-  data table_color_flows(:,:,   1) / 0,0,  0,0,  0,0,  0,0,  1,0,  0,-1 /
+  complex(default), dimension(n_hel), save, public :: amp_ff
 
-  logical, dimension(n_prt,n_cflow), save, protected :: table_ghost_flags
-  data table_ghost_flags(:,   1) / F,  F,  F,  F,  F,  F /
-
-  integer, parameter :: n_cfactors = 1
-  type(OCF), dimension(n_cfactors), save, protected :: table_color_factors
-  real(kind=default), parameter, private :: color_factor_000001 = +N_
-  data table_color_factors(     1) / OCF(1,1,color_factor_000001) /
-
-  logical, dimension(n_flv, n_cflow), save, protected ::  flv_col_is_allowed
-  data flv_col_is_allowed(:,   1) / T /
-
-  complex(kind=default), dimension(n_flv, n_cflow, n_hel), save :: amp
-
-  logical, dimension(n_hel), save :: hel_is_allowed = T
-  real(kind=default), dimension(n_hel), save :: hel_max_abs = 0
-  real(kind=default), save :: hel_sum_abs = 0, hel_threshold = 1E10
-  integer, save :: hel_count = 0, hel_cutoff = 100
-  integer :: i
-  integer, save, dimension(n_hel) :: hel_map = (/(i, i = 1, n_hel)/)
-  integer, save :: hel_finite = n_hel
-
-    type(momentum) :: p1, p2, p3, p4, p5, p6
-    type(momentum) :: p12, p35, p46
-    type(spinor) :: owf_d3_1__6_0, owf_l1_1_0
-    type(conjspinor) :: owf_d3b__1_5_0, owf_l1b_2_0
-    type(vector) :: owf_wm_3_0, owf_wp_4_0
-    type(spinor) :: owf_u3_1__46_0
-    type(conjspinor) :: owf_u3b__1_35_0
-    type(vector) :: owf_a_12_0, owf_z_12_0
-    complex(kind=default) :: oks_l1l1bwpwmd3_1_d3b__1
+  type(momentum) :: p1, p2, p3, p4, p5, p6
+  type(momentum) :: p12, p35, p46
+  type(spinor) :: owf_d3_1__6_0, owf_l1_1_0
+  type(conjspinor) :: owf_d3b__1_5_0, owf_l1b_2_0
+  type(vector) :: owf_wm_3_0, owf_wp_4_0
+  type(spinor) :: owf_u3_1__46_0
+  type(conjspinor) :: owf_u3b__1_35_0
+  type(vector) :: owf_a_12_0, owf_z_12_0
+  complex(kind=default) :: amp
 
 contains
+
+  pure function md5sum ()
+    character(len=32) :: md5sum
+    ! DON'T EVEN THINK of modifying the following line!
+    md5sum = "3C3BACDC1B40C40DB783E084F0B62DFC"
+  end function md5sum
 
   subroutine init (par)
     real(kind=default), dimension(*), intent(in) :: par
     call import_from_whizard (par)
   end subroutine init
 
-  subroutine update_alpha_s (alpha_s)
-    real(kind=default), intent(in) :: alpha_s
-    call model_update_alpha_s (alpha_s)
-  end subroutine update_alpha_s
-
-  subroutine calculate_amplitudes (amp, k)
-    complex(kind=default), dimension(:,:,:), intent(out) :: amp
+  subroutine calculate_amplitudes (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
     integer, dimension(n_prt) :: s
     integer :: hi
@@ -246,8 +249,8 @@ contains
     p12 = p1 + p2
     p35 = p3 + p5
     p46 = p4 + p6
-    amp = 0
-    do hi = 1, hel_finite
+    amp_ff = 0
+    do hi = 1, n_hel
       s = table_spin_states(:,hi)
       owf_l1_1_0 = u (mass(11), - p1, s(1))
       owf_l1b_2_0 = vbar (mass(11), - p2, s(2))
@@ -263,17 +266,38 @@ contains
          + f_fvl(gccq33,owf_d3b__1_5_0,owf_wm_3_0))
       owf_u3_1__46_0 = pr_psi(p46,ttv_mtpole(p12*p12),wd_tl(p46,width(6)), &
          + f_vlf(gccq33,owf_wp_4_0,owf_d3_1__6_0))
-      oks_l1l1bwpwmd3_1_d3b__1 = 0
-      oks_l1l1bwpwmd3_1_d3b__1 = oks_l1l1bwpwmd3_1_d3b__1 + owf_z_12_0*( &
+      amp = 0
+      amp = amp + owf_z_12_0*( &
          + va_ff(gncup(1),gncup(2),owf_u3b__1_35_0,owf_u3_1__46_0) &
-         + va_ff(va_ilc_ttz(p35,p46,1),0*va_ilc_ttz(p35,p46,2),owf_u3b__1_35_0,owf_u3_1__46_0))
-      oks_l1l1bwpwmd3_1_d3b__1 = oks_l1l1bwpwmd3_1_d3b__1 + owf_a_12_0*( &
+         + va_ff(va_ilc_ttz(p35,p46,1),va_ilc_ttz(p35,p46,2),owf_u3b__1_35_0,owf_u3_1__46_0))
+      amp = amp + owf_a_12_0*( &
          + v_ff(qup,owf_u3b__1_35_0,owf_u3_1__46_0) &
          + va_ff(va_ilc_tta(p35,p46,1),va_ilc_tta(p35,p46,2),owf_u3b__1_35_0,owf_u3_1__46_0))
-      oks_l1l1bwpwmd3_1_d3b__1 = &
-         - oks_l1l1bwpwmd3_1_d3b__1 ! 4 vertices, 3 propagators
-      amp(1,1,hi) = oks_l1l1bwpwmd3_1_d3b__1
+      amp_ff(hi) = - amp ! 4 vertices, 3 propagators
     end do
   end subroutine calculate_amplitudes
 
 end module @ID@_threshold
+
+! TODO: (bcn 2015-08-18) init parameters
+! alphas will be set in ttv_formfactors
+
+subroutine @ID@_threshold_get_amplitude_squared (p) bind(C)
+  use iso_c_binding
+  use kinds
+  use opr_@ID@, sm_new_event => new_event
+  use opr_@ID@, sm_get_amplitude => get_amplitude
+  use @ID@_threshold
+  implicit none
+  real(c_default_float), dimension(0:3,*), intent(in) :: p
+  real(c_default_float) :: amp2
+  complex(default) :: amp_sm
+  integer :: hi
+  call sm_new_event (p)
+  call calculate_amplitudes (p)
+  amp2 = 0
+  do hi = 1, n_hel
+     amp_sm = sm_get_amplitude (1, hi, 1)
+     amp2 = amp2 + N_ * amp_sm * conjg(amp_ff(hi))
+  end do
+end subroutine @ID@_threshold_get_amplitude_squared
