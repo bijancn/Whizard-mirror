@@ -1899,7 +1899,18 @@ the emitter in the flavor structure array.
   end subroutine fks_mapping_default_set_parameter
 
 @ %def fks_mapping_default_set_parameter
-@
+@ Computes the $d_{ij}$-quantities defined als follows:
+\begin{align*}
+  d_{0i} &= \left[E_i^2\left(1-y_i\right)\right]^{p_1}\\,
+  d_{1i} &= \left[2E_i^2\left(1-y_i\right)\right]^{p_1}\\,
+  d_{2i} &= \left[2E_i^2\left(1+y_i\right)\right]^{p_1}\\,
+\end{align*}
+for initial state regions and
+\begin{align*}
+  d_{ij} = \left[2(k_i \cdot k_j) \frac{E_i E_j}{(E_i+E_j)^2}\right]^{p_2}
+\end{align*}
+for final state regions. The exponents $p_1$ and $p_2$ can be used for tuning the efficiency 
+of the mapping and are set to $1$ per default.
 <<fks regions: fks mapping 1: TBP>>=
   procedure :: dij => fks_mapping_default_dij
 <<fks regions: procedures>>=
@@ -1908,35 +1919,53 @@ the emitter in the flavor structure array.
     type(vector4_t), intent(in), dimension(:) :: p
     integer, intent(in) :: i, j
     real(default) :: d
-    real :: y
-    real :: E1, E2
+    real(default) :: y
+    real(default) :: E1, E2
 
-    if (i /= j .and. (i > 2 .or. j > 2)) then
-      if (i == 0 .or. j == 0) then
-        if (j == 0) then
-          E1 = energy (p(i))
-          y = polar_angle_ct (p(i))
+    !!! FSR Region
+    if (i /= j) then
+        if (i > 2 .and. j > 2) then
+           E1 = energy(p(i))
+           E2 = energy(p(j))
+           y = enclosed_angle_ct (p(i), p(j))
+           d = (2*p(i)*p(j) * E1*E2 / (E1 + E2)**2)**map%exp_1
+        else if ((i == 0 .and. j > 2) .or. (j == 0 .and. i > 2)) then
+           call get_emitter_variables (0, i, j, p, E1, y)
+           d = (E1**2 * (one-y**2))**map%exp_2
+        else if ((i == 1 .and. j > 2) .or. (j == 1 .and. i > 2)) then
+           call get_emitter_variables (1, i, j, p, E1, y)
+           d = (2*E1**2 * (one-y))**map%exp_2
+        else if ((i == 2 .and. j > 2) .or. (j == 2 .and. i > 2)) then
+           call get_emitter_variables (2, i, j, p, E1, y)
+           d = (2*E1**2 * (one+y))**map%exp_2
         else
-          E1 = energy (p(j))
-          y = polar_angle_ct(p(j))
+        !!! case i,j <= 2 not yet implemented
+        d = 0
         end if
-        d = (E1**2 * (one-y**2))**map%exp_2
-      else
-        E1 = energy(p(i))
-        E2 = energy(p(j))
-        y = enclosed_angle_ct (p(i), p(j))
-        d = (2*p(i)*p(j) * E1*E2 / (E1 + E2)**2)**map%exp_1
-      end if
-    else if (i == j) then
-      call msg_fatal ("Invalid FKS region: Emitter equals FKS parton!")
     else
-      !!! case i,j <= 2 not yet implemented
-      d = 0
+      call msg_fatal ("Invalid FKS region: Emitter equals FKS parton!")
     end if
+  contains
+    subroutine get_emitter_variables (i_check, i, j, p, E, y)
+       integer, intent(in) :: i_check, i, j
+       type(vector4_t), intent(in), dimension(:) :: p
+       real(default), intent(out) :: E, y
+       if (j == i_check) then
+           E = energy (p(i))
+           y = polar_angle_ct (p(i))
+       else
+           E = energy (p(j))
+           y = polar_angle_ct(p(j))
+       end if
+    end subroutine get_emitter_variables
+
   end function fks_mapping_default_dij
 
 @  %def fks_mapping_default_dij
-@
+@ Computes the quantity
+\begin{equation*}
+  \mathcal{D} = \sum_k \frac{1}{d_{0k}} + \sum_{kl} \frac{1}{d_{kl}}.
+\end{equation*}
 <<fks regions: fks mapping 1: TBP>>=
   procedure :: compute_sumdij => fks_mapping_default_compute_sumdij
 <<fks regions: procedures>>=
@@ -1958,7 +1987,15 @@ the emitter in the flavor structure array.
   end function fks_mapping_default_compute_sumdij
 
 @ %def fks_mapping_default_compute_sumdij
-@
+@ Computes
+\begin{equation*}
+  S_i = \frac{1}{\mathcal{D} d_{0i}}
+\end{equation*}
+or
+\begin{equation*}
+  S_{ij} = \frac{1}{\mathcal{D} d_{ij}},
+\end{equation*}
+respectively.
 <<fks regions: fks mapping 1: TBP>>=
   procedure :: svalue => fks_mapping_default_svalue
 <<fks regions: procedures>>=
@@ -1971,7 +2008,25 @@ the emitter in the flavor structure array.
   end function fks_mapping_default_svalue
 
 @ %def fks_mapping_default_svalue
-@
+@ In the soft limit, our treatment of the divergences requires a modification 
+of the mapping functions. Recall that there, the ratios of the $d$-functions 
+must approach either $1$ or $0$. This means
+\begin{equation*}
+  \frac{d_{lm}}{d_{0m}} = \frac{(2k_l \cdot k_m) \left[E_lE_m /(E_l + E_m)^2\right]}{E_m^2 (1-y^2)} = 
+    \overset {k_m = E_m \hat{k}} {=} \frac{E_l E_m^2}{(E_l + E_m)^2} \frac{2k_l \cdot \hat{k}}{E_m^2 (1-y^2)} 
+    \overset {E_m \rightarrow 0}{=} \frac{2}{k_l \cdot \hat{k}}{(1-y^2)E_l},
+\end{equation*}
+where we have written the gluon momentum in terms of the soft momentum $\hat{k}$. In the same limit
+\begin{equation*}
+  \frac{d_{lm}}{d_{nm}} = \frac{k_l \cdot \hat{k}}{k_n \cdot \hat{k}} \frac{E_n}{E_l}.
+\end{equation*}
+From these equations we can deduce the soft limit of $d$:
+\begin{align*}
+  d_0^{\rm{soft}} &= 1 - y^2,\\ 
+  d_1^{\rm{soft}} &= 2(1-y),\\
+  d_2^{\rm{soft}} &= 2(1+y),\\
+  d_i^{\rm{soft}} &= \frac{2 k_i \cdot \hat{k}}{E_i}.
+\end{align*}
 <<fks regions: fks mapping 1: TBP>>=
   procedure :: dij_soft => fks_mapping_default_dij_soft
 <<fks regions: procedures>>=
