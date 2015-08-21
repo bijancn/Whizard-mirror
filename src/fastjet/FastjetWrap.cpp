@@ -1,5 +1,6 @@
 #include "fastjet/ClusterSequence.hh"
 #include <iostream>
+#include "fastjet/EECambridgePlugin.hh"
 
 using namespace fastjet;
 using namespace std;
@@ -91,8 +92,18 @@ extern "C" {
     return sjv;
   }
 
-  JetDefinition* new_jet_definition (const JetAlgorithm jet_alg, const double R) {
-    JetDefinition* jet_def = new JetDefinition (jet_alg, R);
+  JetDefinition* new_jet_definition (const JetAlgorithm jet_alg, const double R, const double jet_ycut) {
+    //    JetDefinition* jet_def = new JetDefinition (jet_alg, R);
+    // return jet_def;
+
+    JetDefinition *  jet_def;
+    if(jet_alg==99){      
+      EECambridgePlugin *eec = new EECambridgePlugin (jet_ycut);
+      jet_def = new JetDefinition (eec);
+    }
+    else{
+      jet_def = new JetDefinition (jet_alg, R);
+    }
     return jet_def;
   }
 
