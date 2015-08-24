@@ -279,8 +279,18 @@ contains
 
 end module @ID@_threshold
 
-! TODO: (bcn 2015-08-18) init parameters
 ! alphas will be set in ttv_formfactors
+! warning: this only works with SM_tt_threshold. As this model will
+!        also be used for the full diagrams, we should disable the
+!        va_ilc_tta/z there
+subroutine threshold_init (par) bind(C, name="threshold_init")
+  use iso_c_binding
+  use kinds
+  use @ID@_threshold
+  implicit none
+  real(c_default_float), dimension(*), intent(in) :: par
+  call init (par)
+end subroutine threshold_init 
 
 !subroutine @ID@_threshold_get_amplitude_squared (p) bind(C)
 function threshold_get_amplitude_squared (p) bind(C, name="threshold_get_amplitude_squared") result (amp2)
@@ -294,19 +304,19 @@ function threshold_get_amplitude_squared (p) bind(C, name="threshold_get_amplitu
   real(c_default_float), dimension(0:3,*), intent(in) :: p
   complex(default) :: amp_sm
   integer :: hi, i
-  print *, 'threshold_get_amplitude_squared' !!! Debugging
-  do i = 1, 6
-     print *, 'p =    ', p(:,i) !!! Debugging
-  end do
+  !print *, 'threshold_get_amplitude_squared' !!! Debugging
+  !do i = 1, 6
+     !print *, 'p =    ', p(:,i) !!! Debugging
+  !end do
   !call sm_new_event (p)
-  print *, 'after sm_new_event' !!! Debugging
+  !print *, 'after sm_new_event' !!! Debugging
   call calculate_amplitudes (p)
   amp2 = 0.0
-  print *, 'amp2 =    ', amp2 !!! Debugging
+  !print *, 'amp2 =    ', amp2 !!! Debugging
   do hi = 1, n_hel
      amp_sm = sm_get_amplitude (1, hi, 1)
      amp2 = amp2 + N_ * real(amp_sm * conjg(amp_ff(hi)))
-     print *, 'amp2 =    ', amp2 !!! Debugging
+     !print *, 'amp2 =    ', amp2 !!! Debugging
   end do
 end function threshold_get_amplitude_squared
 !end subroutine @ID@_threshold_get_amplitude_squared

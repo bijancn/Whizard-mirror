@@ -76,10 +76,7 @@ module ttv_formfactors
 
   !!! explicit range and step size of the sqrts-grid relative to 2*m1S:
   !!! step size should be reduced to 0.1 before release
-!  real(default), parameter :: sqrts_lo=-4.0_default, sqrts_hi=96.0_default, sqrts_it=0.5_default
-  !!! fast setup for sqrts = 2*m1S, sufficient to run SM_tt_threshold_test.sin
-  real(default), parameter :: sqrts_lo=-10.0_default, sqrts_hi=80.0_default, sqrts_it=0.2_default
-
+  real(default) :: sqrts_min, sqrts_max, sqrts_it
 
   interface char
     module procedure int_to_char, real_to_char, complex_to_char, logical_to_char
@@ -132,8 +129,10 @@ module ttv_formfactors
 
 contains
 
-  subroutine init_parameters (mpole_out, gam_out, m1s_in, Vtb, gam_inv, aemi, sw, &
-                              az, mz, mw, mb, h_in, f_in, nloop_in, ff_in, v1_in, v2_in)
+  subroutine init_parameters (mpole_out, gam_out, m1s_in, Vtb, gam_inv, &
+         aemi, sw, az, mz, mw, &
+         mb, h_in, f_in, nloop_in, ff_in, &
+         v1_in, v2_in, scan_sqrts_min, scan_sqrts_max, scan_sqrts_stepsize)
     real(default), intent(out) :: mpole_out
     real(default), intent(out) :: gam_out
     real(default), intent(in) :: m1s_in
@@ -151,6 +150,9 @@ contains
     real(default), intent(in) :: ff_in
     real(default), intent(in) :: v1_in
     real(default), intent(in) :: v2_in
+    real(default), intent(in) :: scan_sqrts_min
+    real(default), intent(in) :: scan_sqrts_max
+    real(default), intent(in) :: scan_sqrts_stepsize
     real(default) :: z3
     !!! possibly (re-)enable these as user parameters:
     real(default) :: nu_in = -1
@@ -167,6 +169,9 @@ contains
     end if
     v1 = v1_in
     v2 = v2_in
+    sqrts_min = scan_sqrts_min
+    sqrts_max = scan_sqrts_max
+    sqrts_it = scan_sqrts_stepsize
 
     !!! global hard parameters incl. hard alphas used in *all* form factors
     h    = h_in
@@ -439,8 +444,8 @@ contains
     character(len(parameters_ref)) :: str
     str = char(m1s) // " " // char(gam) // " " // char(nloop) // " " // char(h) &
            // " " // char(f) // " " // char(need_p0) // " " // char(ff_type) &
-           // " " // char(matching_version) //  " " // char(sqrts_lo) &
-           // " " // char(sqrts_hi) // " " // char(sqrts_it)
+           // " " // char(matching_version) //  " " // char(sqrts_min) &
+           // " " // char(sqrts_max) // " " // char(sqrts_it)
   end function parameters_string
 
   subroutine update_soft_parameters (sqrts)
@@ -828,14 +833,16 @@ contains
   pure function sqrts_within_range (sqrts) result (flag)
     real(default), intent(in) :: sqrts
     logical :: flag
-    flag = ( sqrts >= 2.*m1s+sqrts_lo-tiny_07 .and. sqrts <= 2.*m1s+sqrts_hi+tiny_07 )
+    flag = ( sqrts >= sqrts_min - tiny_07 .and. sqrts <= sqrts_max + tiny_07 )
   end function
 
+  ! The mapping is such that even for min=max, we get three points:
+  ! min - it , min, min + it
   pure function sqrts_iter (i_sq) result (sqrts)
     integer, intent(in) :: i_sq
     real(default) :: sqrts
-    sqrts = 2.*m1s + sqrts_lo - sqrts_it + &
-            (sqrts_hi-sqrts_lo+2.*sqrts_it) * real(i_sq-1) / real(n_sq-1)
+    sqrts = sqrts_min - sqrts_it + &
+            (sqrts_max - sqrts_min + two * sqrts_it) * real(i_sq-1) / real(n_sq-1)
   end function sqrts_iter
 
   ! TODO: (bcn 2015-07-31) this is unstable for small b. Take nearly_equal instead
@@ -980,8 +987,11 @@ contains
     allocate (ff_unstable(n_sq,2))
     t_toppik = zero
     t_p0_dep = zero
-    call msg_message ("Scanning over requested energy range")
+    write (msg_buffer, "(3(A,F7.3,1X),A)") "Scanning from ", sqrts_min, &
+         "GeV to ", sqrts_max, "GeV in steps of ", sqrts_it, "GeV"
+    call msg_message ()
     ENERGY_SCAN: do i_sq = 1, n_sq
+      if (signal_is_pending ())  return
       call update_soft_parameters (sq_grid(i_sq))
       a_soft = as
       !!! vector and axial vector
@@ -1019,10 +1029,10 @@ contains
   subroutine init_threshold_phase_space_grid ()
     integer :: i_sq
     call msg_debug (D_THRESHOLD, "init_threshold_phase_space_grid")
-    n_sq = int ((sqrts_hi - sqrts_lo) / sqrts_it + tiny_07) + 1 + 2
+    n_sq = int ((sqrts_max - sqrts_min) / sqrts_it + tiny_07) + 3
     call msg_debug (D_THRESHOLD, "Number of sqrts grid points: n_sq", n_sq)
-    call msg_debug (D_THRESHOLD, "sqrts_hi", sqrts_hi)
-    call msg_debug (D_THRESHOLD, "sqrts_lo", sqrts_lo)
+    call msg_debug (D_THRESHOLD, "sqrts_max", sqrts_max)
+    call msg_debug (D_THRESHOLD, "sqrts_min", sqrts_min)
     call msg_debug (D_THRESHOLD, "sqrts_it", sqrts_it)
     allocate (sq_grid(n_sq))
     sq_grid = [(sqrts_iter (i_sq), i_sq=1, n_sq)]

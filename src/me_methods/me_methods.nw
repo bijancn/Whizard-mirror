@@ -4533,6 +4533,7 @@ module prc_user_defined
   use interactions
   use sm_qcd
 
+  use model_data
   use prclib_interfaces
   use prc_core_def
   use prc_core
@@ -4607,6 +4608,7 @@ driver.
   type, abstract, extends (prc_core_t) :: prc_user_defined_base_t
     type(qcd_t) :: qcd
     integer :: n_flv
+    real(default), dimension(:), allocatable :: par
   contains
   <<Prc User: prc user defined base: TBP>>
   end type prc_user_defined_base_t
@@ -4733,12 +4735,19 @@ driver.
 <<Prc User: prc user defined base: TBP>>=
   procedure :: set_parameters => prc_user_defined_base_set_parameters
 <<Prc User: procedures>>=
-  subroutine prc_user_defined_base_set_parameters (object, qcd, use_color_factors)
+  subroutine prc_user_defined_base_set_parameters (object, qcd, &
+    use_color_factors, model)
     class(prc_user_defined_base_t), intent(inout) :: object
     type(qcd_t), intent(in) :: qcd
     logical, intent(in) :: use_color_factors
+    class(model_data_t), intent(in), target, optional :: model
     object%qcd = qcd
     object%use_color_factors = use_color_factors
+    if (present (model)) then
+       if (.not. allocated (object%par)) &
+            allocate (object%par (model%get_n_real ()))
+       call model%real_parameters_to_c_array (object%par)
+    end if
   end subroutine prc_user_defined_base_set_parameters
 
 @ %def prc_user_defined_base_set_parameters
@@ -5335,6 +5344,7 @@ module prc_threshold
   use sm_qcd
 
   use prclib_interfaces
+  use process_libraries
   use prc_core_def
   use prc_core
   use prc_user_defined
@@ -5422,11 +5432,25 @@ end module prc_threshold
 @ %def olp_start_interface
 @
 <<Prc Threshold: public>>=
+  public :: threshold_init
+<<Prc Threshold: interfaces>>=
+  interface
+   subroutine threshold_init (par) bind(C)
+      import
+      real(c_default_float), dimension(*), intent(in) :: par
+    end subroutine threshold_init
+  end interface
+
+@ %def olp_start_interface
+@
+<<Prc Threshold: public>>=
   public :: threshold_driver_t
 <<Prc Threshold: types>>=
   type, extends (user_defined_driver_t) :: threshold_driver_t
     procedure(threshold_get_amplitude_squared), nopass, pointer :: &
          get_amplitude_squared => null ()
+    procedure(threshold_init), nopass, pointer :: &
+         init => null ()
   contains
   <<Prc Threshold: threshold driver: TBP>>
   end type threshold_driver_t
@@ -5450,14 +5474,16 @@ end module prc_threshold
     class(threshold_driver_t), intent(inout) :: threshold_driver
     type(dlaccess_t), intent(inout) :: dlaccess
     logical :: success
-    type(string_t) :: libname, msg_buffer
     type(c_funptr) :: c_fptr
     ! TODO: (bcn 2015-08-24) use the id in the function name to avoid clashes
     c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("threshold_get_amplitude_squared"))
     call c_f_procpointer (c_fptr, threshold_driver%get_amplitude_squared)
     success = .not. dlaccess_has_error (dlaccess)
+    c_fptr = dlaccess_get_c_funptr (dlaccess, var_str ("threshold_init"))
+    call c_f_procpointer (c_fptr, threshold_driver%init)
+    success = success .and. .not. dlaccess_has_error (dlaccess)
     if (.not. success) then
-       call msg_fatal ("Loading of function has failed!")
+       call msg_fatal ("Loading of extra threshold functions has failed!")
     else
        call msg_message ("Loaded extra threshold functions")
     end if
@@ -5638,3 +5664,41 @@ end module prc_threshold
   end function prc_threshold_compute_sqme
 
 @ %def prc_threshold_compute_sqme
+
+<<Prc Threshold: prc threshold: TBP>>=
+  procedure :: init => prc_threshold_init
+<<Prc Threshold: procedures>>=
+  subroutine prc_threshold_init (object, def, lib, id, i_component)
+    class(prc_threshold_t), intent(inout) :: object
+    class(prc_core_def_t), intent(in), target :: def
+    type(process_library_t), intent(in), target :: lib
+    type(string_t), intent(in) :: id
+    integer, intent(in) :: i_component
+    call object%base_init (def, lib, id, i_component)
+    call object%activate_parameters ()
+  end subroutine prc_threshold_init
+    
+@ %def prc_threshold_init
+@ Activate the stored parameters by transferring them to the external
+matrix element.  
+<<Prc Threshold: prc threshold: TBP>>=
+  procedure :: activate_parameters => prc_threshold_activate_parameters
+<<Prc Threshold: procedures>>=
+  subroutine prc_threshold_activate_parameters (object)
+    class (prc_threshold_t), intent(inout) :: object
+    print *, 'prc_threshold_activate_parameters' !!! Debugging
+    if (allocated (object%driver)) then
+       if (allocated (object%par)) then
+          select type (driver => object%driver)
+          type is (threshold_driver_t)
+             if (associated (driver%init))  call driver%init (object%par)
+          end select
+       else
+          call msg_bug ("prc_threshold_activate: parameter set is not allocated")
+       end if
+    else
+       call msg_bug ("prc_threshold_activate: driver is not allocated")
+    end if
+  end subroutine prc_threshold_activate_parameters
+    
+@ %def prc_threshold_activate_parameters

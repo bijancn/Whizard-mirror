@@ -55,7 +55,7 @@ module parameters_sm_tt_threshold
 contains
 
   subroutine import_from_whizard (par_array)
-    real(default), dimension(35), intent(in) :: par_array
+    real(default), dimension(38), intent(in) :: par_array
     type :: parameter_set
        real(default) :: mZ
        real(default) :: mW
@@ -85,6 +85,9 @@ contains
        real(default) :: FF
        real(default) :: v1
        real(default) :: v2
+       real(default) :: scan_sqrts_min
+       real(default) :: scan_sqrts_max
+       real(default) :: scan_sqrts_stepsize
        real(default) :: test
        real(default) :: ee
        real(default) :: cw
@@ -126,13 +129,16 @@ contains
     par%FF     = par_array(26)
     par%v1     = par_array(27)
     par%v2     = par_array(28)
-    par%test   = par_array(29)
-    par%ee     = par_array(30)
-    par%cw     = par_array(31)
-    par%sw     = par_array(32)
-    par%v      = par_array(33)
-    par%mtpole = par_array(34)
-    par%wtop   = par_array(35)
+    par%scan_sqrts_min = par_array(29)
+    par%scan_sqrts_max = par_array(30)
+    par%scan_sqrts_stepsize = par_array(31)
+    par%test   = par_array(32)
+    par%ee     = par_array(33)
+    par%cw     = par_array(34)
+    par%sw     = par_array(35)
+    par%v      = par_array(36)
+    par%mtpole = par_array(37)
+    par%wtop   = par_array(38)
     mass(1:27) = 0
     width(1:27) = 0
     mass(3) = par%ms
@@ -208,9 +214,11 @@ contains
     !!! Color flow basis, divide by sqrt(2)
     gs = sqrt(2.0_default*PI*par%alphas)
     igs = cmplx (0.0_default, 1.0_default, kind=default) * gs
-    call ttv_formfactors_init_parameters (mass(6), width(6), par%m1s, par%Vtb, &
-       par%wt_inv, par%alphaemi, par%sw, par%alphas, par%mZ, par%mW, mass(5), &
-       par%sh, par%sf, par%nloop, par%FF, par%v1, par%v2)
+    call ttv_formfactors_init_parameters &
+         (mass(6), width(6), par%m1s, par%Vtb, par%wt_inv, &
+          par%alphaemi, par%sw, par%alphas, par%mZ, par%mW, &
+          mass(5), par%sh, par%sf, par%nloop, par%FF, &
+          par%v1, par%v2, par%scan_sqrts_min, par%scan_sqrts_max, par%scan_sqrts_stepsize)
     call ttv_formfactors_init_threshold_grids (par%test)
   end subroutine import_from_whizard
 
@@ -250,6 +258,6 @@ contains
   pure function ttv_mtpole (s) result (m)
     real(default), intent(in) :: s
     real(default) :: m
-    m = ttv_formfactors_m1s_to_mpole ( sqrt(s) )
+    m = ttv_formfactors_m1s_to_mpole (sqrt (s))
   end function ttv_mtpole
 end module parameters_sm_tt_threshold
