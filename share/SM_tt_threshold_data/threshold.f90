@@ -282,22 +282,31 @@ end module @ID@_threshold
 ! TODO: (bcn 2015-08-18) init parameters
 ! alphas will be set in ttv_formfactors
 
-subroutine @ID@_threshold_get_amplitude_squared (p) bind(C)
+!subroutine @ID@_threshold_get_amplitude_squared (p) bind(C)
+function threshold_get_amplitude_squared (p) bind(C, name="threshold_get_amplitude_squared") result (amp2)
   use iso_c_binding
   use kinds
   use opr_@ID@, sm_new_event => new_event
   use opr_@ID@, sm_get_amplitude => get_amplitude
   use @ID@_threshold
   implicit none
-  real(c_default_float), dimension(0:3,*), intent(in) :: p
   real(c_default_float) :: amp2
+  real(c_default_float), dimension(0:3,*), intent(in) :: p
   complex(default) :: amp_sm
-  integer :: hi
-  call sm_new_event (p)
+  integer :: hi, i
+  print *, 'threshold_get_amplitude_squared' !!! Debugging
+  do i = 1, 6
+     print *, 'p =    ', p(:,i) !!! Debugging
+  end do
+  !call sm_new_event (p)
+  print *, 'after sm_new_event' !!! Debugging
   call calculate_amplitudes (p)
-  amp2 = 0
+  amp2 = 0.0
+  print *, 'amp2 =    ', amp2 !!! Debugging
   do hi = 1, n_hel
      amp_sm = sm_get_amplitude (1, hi, 1)
-     amp2 = amp2 + N_ * amp_sm * conjg(amp_ff(hi))
+     amp2 = amp2 + N_ * real(amp_sm * conjg(amp_ff(hi)))
+     print *, 'amp2 =    ', amp2 !!! Debugging
   end do
-end subroutine @ID@_threshold_get_amplitude_squared
+end function threshold_get_amplitude_squared
+!end subroutine @ID@_threshold_get_amplitude_squared
