@@ -1409,7 +1409,7 @@ so the latter is always available (and kept global).
     call var_list_append_real (global%var_list, &
          var_str ("jet_r"), 0._default, &
          intrinsic = .true.)
-    call var_list_append_real (global%var_list, &                                                                                                                                                       
+    call var_list_append_real (global%var_list, &
          var_str ("jet_ycut"), 0._default, &
          intrinsic = .true.)
     call var_list_append_log &
@@ -1474,6 +1474,15 @@ so the latter is always available (and kept global).
     call var_list_append_string &
          (global%var_list, var_str ("$gosam_filter_nlo"), &
          var_str (""), intrinsic = .true.)
+    call var_list_append_real (global%var_list, &
+         var_str ("mult_call_real"), 1._default, &
+         intrinsic = .true.)
+    call var_list_append_real (global%var_list, &
+         var_str ("mult_call_virt"), 1._default, &
+         intrinsic = .true.)
+    call var_list_append_real (global%var_list, &
+         var_str ("mult_call_pdf"), 1._default, &
+         intrinsic = .true.)
     call global%init_pointer_variables ()
     call global%process_stack%init_var_list (global%var_list)
 
@@ -8308,6 +8317,7 @@ applies to a single process.
     type(string_t) :: history_filename
     type(string_t) :: log_filename
     logical :: combined_integration = .false.
+    type(iteration_multipliers_t) :: it_multipliers
    contains
    <<Integrations: integration: TBP>> 
   end type integration_t
@@ -8752,6 +8762,65 @@ for integration.
   end subroutine integration_make_iterations_list
   
 @ %def integration_make_iterations_list
+@ In NLO calculations, the individual components might scale very differently
+with the number of calls. This especially applies to the real-subtracted
+component, which usually fluctuates more than the Born and virtual 
+component, making it a bottleneck of the calculation. Thus, the calculation
+is throttled twice, first by the number of calls for the real component,
+second by the number of surplus calls of computation-intense virtual
+matrix elements. Therefore, we want to set a different number of calls 
+for each component, which is done by the subroutine [[integration_apply_multipliers]].
+<<Integrations: integration: TBP>>=
+  procedure :: init_iteration_multipliers => integration_init_iteration_multipliers
+<<Integrations: procedures>>=
+  subroutine integration_init_iteration_multipliers (intg, local)
+    class(integration_t), intent(inout) :: intg
+    type(rt_data_t), intent(in) :: local
+    integer :: n_pass, pass
+    n_pass = local%it_list%get_n_pass ()
+    associate (it_multipliers => intg%it_multipliers)
+       allocate (it_multipliers%n_calls0 (n_pass))
+       do pass = 1, n_pass
+          it_multipliers%n_calls0(pass) = local%it_list%get_n_calls (pass)
+       end do
+       it_multipliers%mult_real = local%var_list%get_rval &
+           (var_str ("mult_call_real"))
+       it_multipliers%mult_virt = local%var_list%get_rval &
+           (var_str ("mult_call_virt"))
+       it_multipliers%mult_pdf = local%var_list%get_rval &
+           (var_str ("mult_call_pdf"))
+    end associate
+  end subroutine integration_init_iteration_multipliers
+
+@ %def integration_init_iteration_multipliers
+@
+<<Integrations: integration: TBP>>=
+  procedure :: apply_call_multipliers => integration_apply_call_multipliers
+<<Integrations: procedures>>=
+  subroutine integration_apply_call_multipliers (intg, n_pass, i_component, it_list)
+    class(integration_t), intent(in) :: intg
+    integer, intent(in) :: n_pass, i_component
+    type(iterations_list_t), intent(inout) :: it_list
+    integer :: nlo_type
+    integer :: n_calls0, n_calls
+    integer :: pass
+    nlo_type = intg%process%get_component_nlo_type (i_component)
+    if (nlo_type == BORN) return
+    do pass = 1, n_pass
+       n_calls0 = intg%it_multipliers%n_calls0 (pass)
+       select case (nlo_type)
+       case (NLO_REAL)
+          n_calls = floor (intg%it_multipliers%mult_real * n_calls0)
+       case (NLO_VIRTUAL)
+          n_calls = floor (intg%it_multipliers%mult_virt * n_calls0)
+       case (NLO_PDF)
+          n_calls = floor (intg%it_multipliers%mult_pdf * n_calls0)
+       end select
+       call it_list%set_n_calls (pass, n_calls)
+    end do
+  end subroutine integration_apply_call_multipliers
+
+@ %def integration_apply_call_multipliers
 @
 \subsection{API for integration objects}
 This initializer does everything except assigning cuts/scale/weight
@@ -8776,6 +8845,7 @@ expressions.
     end if
     call intg%init_process (local)
     call intg%setup_process (local)
+    call intg%init_iteration_multipliers (local)
   end subroutine integration_init
 
 @ %def integration_init
@@ -8850,6 +8920,7 @@ of the integration history.
          else
             it_list = local%it_list
          end if
+         call intg%apply_call_multipliers (n_pass, i_mci, it_list)
          call msg_message ("Integrate: " // char (it_list%to_string ()))
          do pass = 1, n_pass
             call intg%evaluate (process_instance, i_mci, pass, it_list, pacify)
