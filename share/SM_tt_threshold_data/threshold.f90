@@ -308,12 +308,12 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   integer :: hi, i
   !call sm_new_event (p)
   call calculate_amplitudes (p)
-  amp2 = 0.0
+  amp2 = 0.0_default
   do hi = 1, n_hel
      !amp_sm = sm_get_amplitude (1, hi, 1)
      !amp2 = amp2 + N_ * real(amp_sm * conjg(amp_ff(hi)))
      amp2 = amp2 + real(amp_ff(hi) * conjg(amp_ff(hi)))
   end do
-  amp2 = amp2 * N_
+  amp2 = amp2 * N_ / 4.0_default
 end subroutine threshold_get_amp_squared
 !end subroutine @ID@_threshold_get_amplitude_squared
