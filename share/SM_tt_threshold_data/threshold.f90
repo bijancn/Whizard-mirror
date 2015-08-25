@@ -283,7 +283,7 @@ end module @ID@_threshold
 ! warning: this only works with SM_tt_threshold. As this model will
 !        also be used for the full diagrams, we should disable the
 !        va_ilc_tta/z there
-subroutine threshold_init (par) bind(C, name="threshold_init")
+subroutine threshold_init (par) bind(C)
   use iso_c_binding
   use kinds
   use @ID@_threshold
@@ -293,14 +293,14 @@ subroutine threshold_init (par) bind(C, name="threshold_init")
 end subroutine threshold_init 
 
 !subroutine @ID@_threshold_get_amplitude_squared (p) bind(C)
-function threshold_get_amplitude_squared (p) bind(C, name="threshold_get_amplitude_squared") result (amp2)
+subroutine threshold_get_amp_squared (amp2, p) bind(C)
   use iso_c_binding
   use kinds
   use opr_@ID@, sm_new_event => new_event
   use opr_@ID@, sm_get_amplitude => get_amplitude
   use @ID@_threshold
   implicit none
-  real(c_default_float) :: amp2
+  real(c_default_float), intent(out) :: amp2
   real(c_default_float), dimension(0:3,*), intent(in) :: p
   complex(default) :: amp_sm
   integer :: hi, i
@@ -312,5 +312,5 @@ function threshold_get_amplitude_squared (p) bind(C, name="threshold_get_amplitu
      !amp2 = amp2 + N_ * real(amp_sm * conjg(amp_ff(hi)))
      amp2 = amp2 + N_ * real(amp_ff(hi) * conjg(amp_ff(hi)))
   end do
-end function threshold_get_amplitude_squared
+end subroutine threshold_get_amp_squared
 !end subroutine @ID@_threshold_get_amplitude_squared
