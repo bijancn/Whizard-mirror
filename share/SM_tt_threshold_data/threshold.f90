@@ -304,19 +304,13 @@ function threshold_get_amplitude_squared (p) bind(C, name="threshold_get_amplitu
   real(c_default_float), dimension(0:3,*), intent(in) :: p
   complex(default) :: amp_sm
   integer :: hi, i
-  !print *, 'threshold_get_amplitude_squared' !!! Debugging
-  !do i = 1, 6
-     !print *, 'p =    ', p(:,i) !!! Debugging
-  !end do
-  !call sm_new_event (p)
-  !print *, 'after sm_new_event' !!! Debugging
+  call sm_new_event (p)
   call calculate_amplitudes (p)
   amp2 = 0.0
-  !print *, 'amp2 =    ', amp2 !!! Debugging
   do hi = 1, n_hel
      amp_sm = sm_get_amplitude (1, hi, 1)
-     amp2 = amp2 + N_ * real(amp_sm * conjg(amp_ff(hi)))
-     !print *, 'amp2 =    ', amp2 !!! Debugging
+     !amp2 = amp2 + N_ * real(amp_sm * conjg(amp_ff(hi)))
+     amp2 = amp2 + N_ * real(amp_ff(hi) * conjg(amp_ff(hi)))
   end do
 end function threshold_get_amplitude_squared
 !end subroutine @ID@_threshold_get_amplitude_squared

@@ -272,13 +272,13 @@ contains
     integer, intent(in) :: i
     complex(default) :: c
     c = one
-    if ( matching_version > 0 ) then
-      if ( ps%inside_grid ) then
+    if (matching_version > 0) then
+      if (ps%inside_grid) then
         c = resummed_formfactor (ps, i)
-      else if ( match_to_NLO ) then
+      else if (match_to_NLO) then
         c = nonrelativistic_formfactor ((alphas_soft(ps%sqrts,nloop)-ah), ps, i)
       end if
-      if ( match_to_NLO .and. .not.ext_NLO ) c = c + &
+      if (match_to_NLO .and. .not. ext_NLO) c = c + &
         relativistic_formfactor_pure (ah, ps, i) - one
     else
       c = resummed_formfactor (ps, i)
@@ -291,9 +291,9 @@ contains
     integer, intent(in) :: i
     complex(default) :: c
     c = one
-    if ( .not.init_ff .or. .not.ps%inside_grid ) return
-    if ( need_p0 ) then
-      if ( i == 2 ) return
+    if (.not.init_ff .or. .not.ps%inside_grid) return
+    if (need_p0) then
+      if (i == 2) return
       call interpolate_linear (sq_grid, p_grid, p0_grid, ff_grid(:,:,:,i), &
         ps%sqrts, ps%p, ps%p0, c)
     else
@@ -311,7 +311,7 @@ contains
     complex(default) :: J0_LoopTools
     external J0_LoopTools
     c = one
-    if ( .not.init_pars .or. i==2 ) return
+    if (.not. init_pars .or. i==2) return
     J0 = J0_LoopTools (ps%p2, ps%k2, ps%q2, ps%m2)
     c = formfactor_ttv_relativistic_nlo (alphas, ps, J0)
   end function relativistic_formfactor
@@ -402,19 +402,23 @@ contains
     end if
     call msg_message ("Threshold setup unchanged: reusing existing threshold grid.")
     n_sq = ff_shape(1)
+    n_p = ff_shape(2)
+    call msg_debug (D_THRESHOLD, "ff_shape(1) (n_sq)", ff_shape(1))
+    call msg_debug (D_THRESHOLD, "ff_shape(2)", ff_shape(2))
+    call msg_debug (D_THRESHOLD, "ff_shape(3) (n_p0)", ff_shape(3))
+    call msg_debug (D_THRESHOLD, "ff_shape(4) (==2)", ff_shape(4))
     allocate (sq_grid(n_sq))
     read (u) sq_grid
     allocate (p_grid(n_p))
     read (u) p_grid
+    n_p0 = ff_shape(3)
     if (need_p0) then
-       n_p0 = ff_shape(3)
        call init_p0_grid (p_grid, n_p0)
     end if
     allocate (ff_grid_sp(n_sq,n_p,n_p0,2))
     read (u) ff_grid_sp
     allocate (ff_grid(n_sq,n_p,n_p0,2))
     ff_grid = cmplx (ff_grid_sp, kind=default)
-    deallocate (ff_grid_sp)
     close (u, iostat=st)
     if (st > 0)  call msg_fatal ("close " // char(ff_file) // ": iostat = " // char(st))
     init_ps = .true.
@@ -987,8 +991,9 @@ contains
     allocate (ff_unstable(n_sq,2))
     t_toppik = zero
     t_p0_dep = zero
-    write (msg_buffer, "(3(A,F7.3,1X),A)") "Scanning from ", sqrts_min, &
-         "GeV to ", sqrts_max, "GeV in steps of ", sqrts_it, "GeV"
+    write (msg_buffer, "(3(A,F7.3,1X),A)") "Scanning from ", &
+         sqrts_min - sqrts_it, "GeV to ", &
+         sqrts_max + sqrts_it, "GeV in steps of ", sqrts_it, "GeV"
     call msg_message ()
     ENERGY_SCAN: do i_sq = 1, n_sq
       if (signal_is_pending ())  return
