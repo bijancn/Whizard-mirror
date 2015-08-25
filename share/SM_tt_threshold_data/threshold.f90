@@ -215,12 +215,12 @@ module @ID@_threshold
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p12, p35, p46
-  type(spinor) :: owf_d3_1__6_0, owf_l1_1_0
-  type(conjspinor) :: owf_d3b__1_5_0, owf_l1b_2_0
+  type(spinor) :: owf_b_6, owf_e_1
+  type(conjspinor) :: owf_b_5, owf_e_2
   type(vector) :: owf_wm_3_0, owf_wp_4_0
-  type(spinor) :: owf_u3_1__46_0
-  type(conjspinor) :: owf_u3b__1_35_0
-  type(vector) :: owf_a_12_0, owf_z_12_0
+  type(spinor) :: owf_wb_46
+  type(conjspinor) :: owf_wb_35
+  type(vector) :: owf_a_12, owf_z_12
   complex(kind=default) :: amp
 
 contains
@@ -252,27 +252,29 @@ contains
     amp_ff = 0
     do hi = 1, n_hel
       s = table_spin_states(:,hi)
-      owf_l1_1_0 = u (mass(11), - p1, s(1))
-      owf_l1b_2_0 = vbar (mass(11), - p2, s(2))
+      owf_e_1 = u (mass(11), - p1, s(1))
+      owf_e_2 = vbar (mass(11), - p2, s(2))
       owf_wm_3_0 = conjg (eps (mass(24), p3, s(3)))
       owf_wp_4_0 = conjg (eps (mass(24), p4, s(4)))
-      owf_d3b__1_5_0 = ubar (mass(5), p5, s(5))
-      owf_d3_1__6_0 = v (mass(5), p6, s(6))
-      owf_a_12_0 = pr_feynman(p12, + v_ff(qlep,owf_l1b_2_0,owf_l1_1_0))
-      owf_z_12_0 = pr_unitarity(p12,mass(23),wd_tl(p12,width(23)), &
-         + va_ff(gnclep(1),gnclep(2),owf_l1b_2_0,owf_l1_1_0))
-      owf_u3b__1_35_0 = &
+      owf_b_5 = ubar (mass(5), p5, s(5))
+      owf_b_6 = v (mass(5), p6, s(6))
+
+      owf_a_12 = pr_feynman(p12, v_ff (qlep, owf_e_2, owf_e_1))
+      owf_z_12 = pr_unitarity(p12, mass(23), wd_tl (p12, width(23)), &
+         + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
+      owf_wb_35 = &
          pr_psibar(p35,ttv_mtpole(p12*p12),wd_tl(p35,width(6)), &
-         + f_fvl(gccq33,owf_d3b__1_5_0,owf_wm_3_0))
-      owf_u3_1__46_0 = pr_psi(p46,ttv_mtpole(p12*p12),wd_tl(p46,width(6)), &
-         + f_vlf(gccq33,owf_wp_4_0,owf_d3_1__6_0))
+         + f_fvl(gccq33,owf_b_5,owf_wm_3_0))
+      owf_wb_46 = pr_psi(p46,ttv_mtpole(p12*p12),wd_tl(p46,width(6)), &
+         + f_vlf(gccq33,owf_wp_4_0,owf_b_6))
+
       amp = 0
-      amp = amp + owf_z_12_0*( &
-         + va_ff(gncup(1),gncup(2),owf_u3b__1_35_0,owf_u3_1__46_0) &
-         + va_ff(va_ilc_ttz(p35,p46,1),va_ilc_ttz(p35,p46,2),owf_u3b__1_35_0,owf_u3_1__46_0))
-      amp = amp + owf_a_12_0*( &
-         + v_ff(qup,owf_u3b__1_35_0,owf_u3_1__46_0) &
-         + va_ff(va_ilc_tta(p35,p46,1),va_ilc_tta(p35,p46,2),owf_u3b__1_35_0,owf_u3_1__46_0))
+      amp = amp + owf_z_12 * (&
+         + va_ff (gncup(1),gncup(2),owf_wb_35,owf_wb_46) &
+         + va_ff (va_ilc_ttz(p35,p46,1),va_ilc_ttz(p35,p46,2),owf_wb_35,owf_wb_46))
+      amp = amp + owf_a_12*( &
+         + v_ff(qup,owf_wb_35,owf_wb_46) &
+         + va_ff(va_ilc_tta(p35,p46,1),va_ilc_tta(p35,p46,2),owf_wb_35,owf_wb_46))
       amp_ff(hi) = - amp ! 4 vertices, 3 propagators
     end do
   end subroutine calculate_amplitudes
@@ -304,13 +306,14 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   real(c_default_float), dimension(0:3,*), intent(in) :: p
   complex(default) :: amp_sm
   integer :: hi, i
-  call sm_new_event (p)
+  !call sm_new_event (p)
   call calculate_amplitudes (p)
   amp2 = 0.0
   do hi = 1, n_hel
-     amp_sm = sm_get_amplitude (1, hi, 1)
+     !amp_sm = sm_get_amplitude (1, hi, 1)
      !amp2 = amp2 + N_ * real(amp_sm * conjg(amp_ff(hi)))
-     amp2 = amp2 + N_ * real(amp_ff(hi) * conjg(amp_ff(hi)))
+     amp2 = amp2 + real(amp_ff(hi) * conjg(amp_ff(hi)))
   end do
+  amp2 = amp2 * N_
 end subroutine threshold_get_amp_squared
 !end subroutine @ID@_threshold_get_amplitude_squared
