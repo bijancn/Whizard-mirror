@@ -238,6 +238,7 @@ contains
 
   subroutine calculate_amplitudes (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
+    complex(default) :: blob_a_v, blob_z_av_1, blob_z_av_2
     integer, dimension(n_prt) :: s
     integer :: hi
     p1 = - k(:,1) ! incoming
@@ -268,13 +269,17 @@ contains
       owf_wb_46 = pr_psi(p46,ttv_mtpole(p12*p12),wd_tl(p46,width(6)), &
          + f_vlf(gccq33,owf_wp_4_0,owf_b_6))
 
+      ! Same vector formfactor but different EW coupling
+      blob_a_v = va_ilc_tta (p35,p46,1)
+      blob_z_av_1 = va_ilc_ttz (p35,p46,1)
+      ! Axial part
+      blob_z_av_2 = va_ilc_ttz (p35,p46,2)
+
       amp = 0
-      amp = amp + owf_z_12 * (&
-         + va_ff (gncup(1),gncup(2),owf_wb_35,owf_wb_46) &
-         + va_ff (va_ilc_ttz(p35,p46,1),va_ilc_ttz(p35,p46,2),owf_wb_35,owf_wb_46))
-      amp = amp + owf_a_12*( &
-         + v_ff(qup,owf_wb_35,owf_wb_46) &
-         + va_ff(va_ilc_tta(p35,p46,1),va_ilc_tta(p35,p46,2),owf_wb_35,owf_wb_46))
+      amp = amp + owf_z_12 * va_ff (gncup(1), gncup(2), owf_wb_35, owf_wb_46)
+      amp = amp + owf_z_12 * va_ff (blob_z_av_1, blob_z_av_2, owf_wb_35,owf_wb_46)
+      amp = amp + owf_a_12 * v_ff (qup, owf_wb_35, owf_wb_46)
+      amp = amp + owf_a_12 * v_ff (blob_a_v, owf_wb_35,owf_wb_46)
       amp_ff(hi) = - amp ! 4 vertices, 3 propagators
     end do
   end subroutine calculate_amplitudes
