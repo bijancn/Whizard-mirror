@@ -49,7 +49,8 @@ module ttv_formfactors
   logical :: ext_NLO = .false.
 
   logical :: init_pars, init_ps, init_ff, init_J0
-  real(default) :: m1s, gam
+  ! gam_m1s is only used for the scale nustar
+  real(default) :: m1s, gam, gam_m1s
   integer :: nloop
   real(default) :: mtpole = -1.0_default
   real(default) :: mtpole_init
@@ -158,9 +159,7 @@ contains
     real(default) :: nu_in = -1
     init_pars = .false.
     m1s = m1s_in
-    !!! compute the total LO top width from t->bW decay plus optional invisible width
-    gam = top_width_sm_lo (one / aemi, sw, Vtb, m1s, mw, mb) + gam_inv
-    gam_out = gam
+    gam_m1s = top_width_sm_lo (one / aemi, sw, Vtb, m1s, mw, mb) + gam_inv
     nloop = 1
     if ( int(nloop_in) > nloop ) then
       call msg_warning ("reset to highest available nloop = " // char(nloop))
@@ -210,9 +209,12 @@ contains
     nustar_fixed = nu_in
     nustar_dynamic = ( nustar_fixed  < 0. )
     f = f_in
-    call update_soft_parameters ( 2.*m1s )
+    call update_soft_parameters (2. * m1s)
     mtpole_init = mtpole
     mpole_out = mtpole_init
+    !!! compute the total LO top width from t->bW decay plus optional invisible width
+    gam = top_width_sm_lo (one / aemi, sw, Vtb, mtpole, mw, mb) + gam_inv
+    gam_out = gam
 
     !!! flags
     ff_type = max (int(ff_in), 0)

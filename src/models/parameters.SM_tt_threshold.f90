@@ -50,7 +50,7 @@ module parameters_sm_tt_threshold
        gncneu, gnclep, gncup, gncdwn
 
   public :: import_from_whizard, model_update_alpha_s, &
-       va_ilc_tta, va_ilc_ttz, ttv_mtpole
+       ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole
 
 contains
 
