@@ -211,17 +211,17 @@ module @ID@_threshold
   integer, dimension(n_prt,n_flv), save, protected :: table_flavor_states
   data table_flavor_states(:,   1) /  11, -11,  24, -24,   5,  -5 / ! e- e+ W+ W- b bbar
 
-  complex(default), dimension(n_hel), save, public :: amp_ff
+  complex(default), dimension(n_hel), save, public :: amp_ff, &
+       amp_A_v_tree, amp_A_v_blob, amp_Z_av_tree, amp_Z_av_blob
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p12, p35, p46
   type(spinor) :: owf_b_6, owf_e_1
   type(conjspinor) :: owf_b_5, owf_e_2
-  type(vector) :: owf_wm_3_0, owf_wp_4_0
+  type(vector) :: owf_Wm_3, owf_Wp_4
   type(spinor) :: owf_wb_46
   type(conjspinor) :: owf_wb_35
-  type(vector) :: owf_a_12, owf_z_12
-  complex(kind=default) :: amp
+  type(vector) :: owf_A_12, owf_Z_12
 
 contains
 
@@ -238,6 +238,7 @@ contains
 
   subroutine calculate_amplitudes (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
+    complex(default) :: blob_A_v, blob_Z_vec, blob_Z_ax, amp_Z_av, amp_A_v
     integer, dimension(n_prt) :: s
     integer :: hi
     p1 = - k(:,1) ! incoming
@@ -249,34 +250,33 @@ contains
     p12 = p1 + p2
     p35 = p3 + p5
     p46 = p4 + p6
-    amp_ff = 0
     do hi = 1, n_hel
       s = table_spin_states(:,hi)
       owf_e_1 = u (mass(11), - p1, s(1))
       owf_e_2 = vbar (mass(11), - p2, s(2))
-      owf_wm_3_0 = conjg (eps (mass(24), p3, s(3)))
-      owf_wp_4_0 = conjg (eps (mass(24), p4, s(4)))
+      owf_Wm_3 = conjg (eps (mass(24), p3, s(3)))
+      owf_Wp_4 = conjg (eps (mass(24), p4, s(4)))
       owf_b_5 = ubar (mass(5), p5, s(5))
       owf_b_6 = v (mass(5), p6, s(6))
 
-      owf_a_12 = pr_feynman(p12, v_ff (qlep, owf_e_2, owf_e_1))
-      owf_z_12 = pr_unitarity(p12, mass(23), wd_tl (p12, width(23)), &
+      owf_A_12 = pr_feynman(p12, v_ff (qlep, owf_e_2, owf_e_1))
+      owf_Z_12 = pr_unitarity(p12, mass(23), wd_tl (p12, width(23)), &
          + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
-      owf_wb_35 = &
-         pr_psibar(p35,ttv_mtpole(p12*p12),wd_tl(p35,width(6)), &
-         + f_fvl(gccq33,owf_b_5,owf_wm_3_0))
-      owf_wb_46 = pr_psi(p46,ttv_mtpole(p12*p12),wd_tl(p46,width(6)), &
-         + f_vlf(gccq33,owf_wp_4_0,owf_b_6))
+      owf_wb_35 = pr_psibar (p35, ttv_mtpole (p12*p12), wd_tl (p35, width(6)), &
+         + f_fvl (gccq33, owf_b_5, owf_Wm_3))
+      owf_wb_46 = pr_psi(p46, ttv_mtpole(p12*p12), wd_tl (p46, width(6)), &
+         + f_vlf (gccq33, owf_Wp_4, owf_b_6))
 
-      amp = 0
-      amp = amp + owf_z_12 * (&
-         + va_ff (gncup(1),gncup(2),owf_wb_35,owf_wb_46) &
-         + va_ff (va_ilc_ttz(p35,p46,1),va_ilc_ttz(p35,p46,2),owf_wb_35,owf_wb_46))
-      amp = amp + owf_a_12*( &
-         + v_ff(qup,owf_wb_35,owf_wb_46) &
-         + va_ff(va_ilc_tta(p35,p46,1),va_ilc_tta(p35,p46,2),owf_wb_35,owf_wb_46))
-      amp_ff(hi) = - amp ! 4 vertices, 3 propagators
+      blob_Z_vec = gncup(1) * ttv_formfactor (p35, p46, 1)
+      blob_Z_ax = gncup(2) * ttv_formfactor (p35, p46, 2)
+
+      amp_Z_av_tree(hi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_wb_35, owf_wb_46)
+      amp_Z_av_blob(hi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
+
+      amp_A_v_tree(hi) = owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46)
+      amp_A_v_blob(hi) = amp_A_v_tree(hi) * ttv_formfactor (p35, p46, 1)
     end do
+    amp_ff = amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob
   end subroutine calculate_amplitudes
 
 end module @ID@_threshold
@@ -292,7 +292,7 @@ subroutine threshold_init (par) bind(C)
   implicit none
   real(c_default_float), dimension(*), intent(in) :: par
   call init (par)
-end subroutine threshold_init 
+end subroutine threshold_init
 
 !subroutine @ID@_threshold_get_amplitude_squared (p) bind(C)
 subroutine threshold_get_amp_squared (amp2, p) bind(C)

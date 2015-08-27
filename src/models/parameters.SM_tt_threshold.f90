@@ -50,7 +50,7 @@ module parameters_sm_tt_threshold
        gncneu, gnclep, gncup, gncdwn
 
   public :: import_from_whizard, model_update_alpha_s, &
-       va_ilc_tta, va_ilc_ttz, ttv_mtpole
+       ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole
 
 contains
 
@@ -245,7 +245,7 @@ contains
     type(momentum), intent(in) :: p, k
     integer, intent(in) :: i
     c = 0.0_default
-    if ( i==1 ) c = qup * ttv_formfactor (p, k, 1)
+    if (i==1) c = qup * ttv_formfactor (p, k, 1)
   end function va_ilc_tta
 
   pure function va_ilc_ttz (p, k, i) result (c)
