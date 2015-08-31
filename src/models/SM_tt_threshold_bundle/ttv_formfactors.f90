@@ -33,13 +33,13 @@ module ttv_formfactors
   use constants
   use physics_defs, only: CF, CA, TR
   use sm_physics
-  use interpolation !NODEP!
+  use interpolation
   use nr_tools
   use io_units, only: free_unit
-  use iso_varying_string, string_t => varying_string !NODEP!
-  use system_dependencies !NODEP!
-  use iso_fortran_env !NODEP!
-  use diagnostics !NODEP!
+  use iso_varying_string, string_t => varying_string
+  use system_dependencies
+  use, intrinsic :: iso_fortran_env !NODEP!
+  use diagnostics
   use solver, only: solver_function_t, solve_qgaus
   implicit none
   save

@@ -1,4 +1,4 @@
-!$Id: pdf_builtin.f90 7130 2015-08-05 22:45:20Z jr_reuter $
+!$Id: pdf_builtin.f90 7180 2015-08-27 13:23:22Z kilian $
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -341,6 +341,10 @@ contains
        mq = max (min (q, mrst2004qed_q_max), mrst2004qed_q_min)
        call mrstqed (mx, mq, 1, upv, dnv, ups, dns, str, chm, bot, glu, phot, &
             char (mrst2004qedp_prefix))
+    print *, "AFTER CALL MRSTQED"
+    print *, "CHM = ", chm
+    print *, "BOT = ", bot
+    print *, "GLU = ", glu
        if (present (f)) f = &
             [ 0._double, bot, chm, str, ups, dns, glu, dns + dnv, ups + upv, &
             str, chm, bot, 0._double ] / mx

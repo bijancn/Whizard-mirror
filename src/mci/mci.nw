@@ -189,6 +189,33 @@ will be used for event generation.
   end subroutine mci_startup_message
 
 @ %def mci_startup_message
+@ Dump type-specific info to a logfile.
+<<MCI base: mci: TBP>>=
+  procedure(mci_write_log_entry), deferred :: write_log_entry
+<<MCI base: interfaces>>=
+  abstract interface
+     subroutine mci_write_log_entry (mci, u)
+       import
+       class(mci_t), intent(in) :: mci
+       integer, intent(in) :: u
+     end subroutine mci_write_log_entry
+  end interface
+       
+@ %def mci_write_log_entry
+In order to avoid dependencies on definite MCI implementations,
+we introduce a MD5 sum calculator.
+<<MCI base: mci: TBP>>=
+  procedure(mci_compute_md5sum), deferred :: compute_md5sum
+<<MCI base: interfaces>>=
+  abstract interface
+     subroutine mci_compute_md5sum (mci, pacify)
+       import
+       class(mci_t), intent(inout) :: mci
+       logical, intent(in), optional :: pacify
+     end subroutine mci_compute_md5sum
+  end interface
+
+@ %def mci_compute_md5sum@ 
 @ Record the index of the MCI object within a process.  For
 multi-component processes with more than one integrator, the
 integrator should know about its own index, so file names can be
@@ -530,7 +557,19 @@ Note: currently unused outside of tests, might be deleted later.
   end interface
   
 @ %def mci_rebuild
-@ Return the value of the integral, error, efficiency, and time per call.
+@
+Pacify: reduce numerical noise.  The base implementation does nothing.
+<<MCI base: mci: TBP>>=
+  procedure :: pacify => mci_pacify
+<<MCI base: procedures>>=
+  subroutine mci_pacify (object, efficiency_reset, error_reset)
+    class(mci_t), intent(inout) :: object
+    logical, intent(in), optional :: efficiency_reset, error_reset
+  end subroutine mci_pacify
+    
+@ %def mci_pacify
+@
+Return the value of the integral, error, efficiency, and time per call.
 <<MCI base: mci: TBP>>=
   procedure :: get_integral => mci_get_integral
   procedure :: get_error => mci_get_error
@@ -612,6 +651,7 @@ point.
      integer :: selected_channel = 0
      real(default) :: mci_weight = 0
      real(default) :: integrand  = 0
+     logical :: negative_weights = .false.
    contains
    <<MCI base: mci instance: TBP>>
   end type mci_instance_t
@@ -1156,6 +1196,8 @@ vetoing unweighted events.
      procedure :: final => mci_test_final
      procedure :: write => mci_test_write
      procedure :: startup_message => mci_test_startup_message
+     procedure :: write_log_entry => mci_test_write_log_entry
+     procedure :: compute_md5sum => mci_test_compute_md5sum
      procedure :: declare_flat_dimensions => mci_test_ignore_flat_dimensions
      procedure :: declare_equivalences => mci_test_ignore_equivalences
      procedure :: set_divisions => mci_test_set_divisions
@@ -1208,6 +1250,22 @@ vetoing unweighted events.
   end subroutine mci_test_startup_message
   
 @ %def mci_test_startup_message
+@ Log entry: nothing.
+<<MCI base: tests>>=
+  subroutine mci_test_write_log_entry (mci, u)
+    class(mci_test_t), intent(in) :: mci
+    integer, intent(in) :: u
+  end subroutine mci_test_write_log_entry
+       
+@ %def mci_test_write_log_entry
+@ Compute MD5 sum: nothing.
+<<MCI base: tests>>=
+  subroutine mci_test_compute_md5sum (mci, pacify)
+    class(mci_test_t), intent(inout) :: mci
+    logical, intent(in), optional :: pacify
+  end subroutine mci_test_compute_md5sum
+
+@ %def mci_test_compute_md5sum
 @ This is a no-op for the test integrator.
 <<MCI base: tests>>=
   subroutine mci_test_ignore_flat_dimensions (mci, dim_flat)
@@ -4337,6 +4395,27 @@ end type mci_midpoint_t
   end subroutine mci_midpoint_startup_message
     
 @ %def mci_midpoint_startup_message
+@ Log entry: just headline.
+<<MCI midpoint: mci midpoint: TBP>>=
+  procedure :: write_log_entry => mci_midpoint_write_log_entry
+<<MCI midpoint: procedures>>=
+  subroutine mci_midpoint_write_log_entry (mci, u)
+    class(mci_midpoint_t), intent(in) :: mci
+    integer, intent(in) :: u
+    write (u, "(1x,A)")  "MC Integrator is Midpoint rule"
+  end subroutine mci_midpoint_write_log_entry
+       
+@ %def mci_midpoint_write_log_entry
+@ MD5 sum: nothing.
+<<MCI midpoint: mci midpoint: TBP>>=
+  procedure :: compute_md5sum => mci_midpoint_compute_md5sum
+<<MCI midpoint: procedures>>=
+  subroutine mci_midpoint_compute_md5sum (mci, pacify)
+    class(mci_midpoint_t), intent(inout) :: mci
+    logical, intent(in), optional :: pacify
+  end subroutine mci_midpoint_compute_md5sum
+
+@ %def mci_midpoint_compute_md5sum
 @ The number of channels must be one.
 <<MCI midpoint: mci midpoint: TBP>>=
   procedure :: set_dimensions => mci_midpoint_set_dimensions
@@ -5697,6 +5776,7 @@ module mci_vamp
 <<Use strings>>
   use io_units
   use format_utils, only: pac_fmt
+  use format_utils, only: write_separator
   use format_defs, only: FMT_12, FMT_14, FMT_17, FMT_19
   use diagnostics
   use md5
@@ -6389,6 +6469,27 @@ printout, which incorporates the current results.
   end subroutine mci_vamp_startup_message
     
 @ %def mci_vamp_startup_message
+@ Log entry: just headline.
+<<MCI vamp: mci vamp: TBP>>=
+  procedure :: write_log_entry => mci_vamp_write_log_entry
+<<MCI vamp: procedures>>=
+  subroutine mci_vamp_write_log_entry (mci, u)
+    class(mci_vamp_t), intent(in) :: mci
+    integer, intent(in) :: u
+    write (u, "(1x,A)")  "MC Integrator is VAMP"       
+    call write_separator (u)
+    call mci%write_history (u)
+    call write_separator (u)       
+    if (mci%grid_par%use_vamp_equivalences) then
+       call vamp_equivalences_write (mci%equivalences, u)          
+    else
+       write (u, "(3x,A)") "No VAMP equivalences have been used"
+    end if
+    call write_separator (u)
+    call mci%write_chain_weights (u) 
+  end subroutine mci_vamp_write_log_entry
+       
+@ %def mci_vamp_write_log_entry
 @ Set the MCI index (necessary for processes with multiple components).
 We append the index to the grid filename, just before the final dotted
 suffix.
@@ -7239,7 +7340,8 @@ Note: This feature is currently unused.
   end subroutine mci_vamp_rebuild_event
        
 @ %def mci_vamp_rebuild_event
-@
+@ Pacify: override the default no-op, since VAMP numerics might need
+some massage.
 <<MCI vamp: mci vamp: TBP>>=
   procedure :: pacify => mci_vamp_pacify
 <<MCI vamp: procedures>>=
@@ -7262,7 +7364,7 @@ Note: This feature is currently unused.
     end do
   end subroutine mci_vamp_pacify
     
-@  %def mci_vamp_pacify
+@ %def mci_vamp_pacify
 @
 \subsection{Sampler as Workspace}
 In the full setup, the sampling function requires the process instance
@@ -7304,7 +7406,6 @@ history, which is then just transient.
      logical :: enable_adapt_weights = .false.
      logical :: allow_adapt_grids = .false.
      logical :: allow_adapt_weights = .false.
-     logical :: negative_weights = .false.
      integer :: n_adapt_grids = 0
      integer :: n_adapt_weights = 0
      logical :: generating_events = .false.
