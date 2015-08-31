@@ -155,8 +155,7 @@ dist_muli_DATA = \
   muli/dsigma_cteq6ll.LHpdf.xml \
   muli/pdf_norm_cteq6ll.LHpdf.xml
 
-## Files containing precompiled cross sections for muli
-## to be installed with the 'muli' prefix kept
 thresholddir = $(pkgdatadir)/SM_tt_threshold_data
 dist_threshold_DATA = \
-  SM_tt_threshold_data/download_data.sh
+  SM_tt_threshold_data/download_data.sh \
+  SM_tt_threshold_data/threshold.f90

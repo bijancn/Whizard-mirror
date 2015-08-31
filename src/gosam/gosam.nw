@@ -350,11 +350,27 @@ end module prc_gosam
     end select
     select type (writer => object%writer)
     type is (gosam_writer_t)
-      call writer%init (model_name, prt_in, prt_out, filter)
+      call writer%init (model_name, prt_in, prt_out)
+      call writer%write_config (filter)
     end select
   end subroutine gosam_def_init
 
 @ %def gosam_def_init
+@
+<<prc gosam: gosam writer: TBP>>=
+  procedure :: write_config => gosam_writer_write_config
+<<prc gosam: procedures>>=
+  subroutine gosam_writer_write_config (gosam_writer, filter)
+    class(gosam_writer_t), intent(in) :: gosam_writer
+    type(string_t), dimension(2), intent(in), optional :: filter 
+    integer :: unit
+    unit = free_unit ()
+    open (unit, file = "golem.in", status = "replace", action = "write")
+    call gosam_writer%generate_configuration_file (unit, filter)
+    close(unit)
+  end subroutine gosam_writer_write_config
+
+@ %def gosam_writer_write_config
 @
 <<prc gosam: gosam def: TBP>>=
   procedure, nopass :: type_string => gosam_def_type_string
@@ -417,43 +433,17 @@ end module prc_gosam
 <<prc gosam: gosam writer: TBP>>=
   procedure :: init => gosam_writer_init
 <<prc gosam: procedures>>=
-  subroutine gosam_writer_init (writer,model_name, prt_in, prt_out, filter) 
+  subroutine gosam_writer_init (writer,model_name, prt_in, prt_out) 
     class(gosam_writer_t), intent(inout) :: writer
     type(string_t), intent(in) :: model_name
     type(string_t), dimension(:), intent(in) :: prt_in, prt_out
-    type(string_t), dimension(2), intent(in), optional :: filter
-    integer :: i, unit
-
     writer%gosam_dir = GOSAM_DIR
     writer%golem_dir = GOLEM_DIR 
     writer%samurai_dir = SAMURAI_DIR
     writer%ninja_dir = NINJA_DIR
     writer%form_dir = FORM_DIR
     writer%qgraf_dir = QGRAF_DIR
-
-    writer%model_name = model_name
-
-    select case (size (prt_in))
-      case (1); writer%process_mode = " -decay"
-      case (2); writer%process_mode = " -scatter"
-    end select
-    associate (s => writer%process_string)
-      s = " '" 
-      do i = 1, size (prt_in)
-         if (i > 1) s = s // " "
-         s = s // prt_in(i)
-      end do
-      s = s // " ->"
-      do i = 1, size (prt_out)
-         s = s // " " // prt_out(i)
-      end do
-      s = s // "'"
-    end associate
-
-    unit = free_unit ()
-    open (unit, file = "golem.in", status = "replace", action = "write")
-    call writer%generate_configuration_file (unit, filter)
-    close(unit)
+    call writer%base_init (model_name, prt_in, prt_out)
   end subroutine gosam_writer_init  
 
 @ %def gosam_writer_init
@@ -573,10 +563,7 @@ end module prc_gosam
          write (unit, "(A)") "filter.lo=" // char (filter(1))
          write (unit, "(A)") "filter.nlo=" // char (filter(2))
       end if
-      ! write (unit, "(A)") "filter.lo=lambda d: d.vertices(T, Tbar, A) > 0 or d.vertices(T, Tbar, Z) > 0"
-      ! write (unit, "(A)") "filter.nlo=lambda d: d.vertices(T, Tbar, A) > 0 or d.vertices(T, Tbar, Z) > 0"
-      ! write (unit, "(A)") "filter.lo=lambda d: d.iprop(H) == 0 and d.iprop(chi) == 0"
-      ! write (unit, "(A)") "filter.nlo=lambda d: d.iprop(H) == 0 and d.iprop(chi) == 0"
+      write (unit, "(A)") "symmetries=family,generation"
   end subroutine gosam_writer_generate_configuration_file
 
 @ %def gosam_writer_generate_configuration_file
@@ -822,13 +809,13 @@ in the GoSam code are ready. This is done with a stamp mechanism.
     logical, intent(out) :: bad_point
     real(double), dimension(5*object%n_particles) :: mom
     real(default) :: acc_born 
+    real(double) :: mu_dble
     real(double), dimension(OLP_RESULTS_LIMIT) :: r
     real(double) :: mu_dble
     real(double) :: acc_dble
 
     mom = object%create_momentum_array (p)
     mu_dble = dble(mu)    
-
     select type (driver => object%driver)
     type is (gosam_driver_t)
        call driver%blha_olp_eval2 (i_born, mom, mu_dble, r, acc_dble)

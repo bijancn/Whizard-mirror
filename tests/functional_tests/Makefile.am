@@ -205,6 +205,7 @@ TESTS_REQ_OCAML = \
     parton_shower_2.run \
     mlm_matching_fsr.run \
     user_cuts.run \
+    user_prc.run \
     $(TESTS_USER_STRFUN) 
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
@@ -524,8 +525,9 @@ clean-local:
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
 	rm -f *.run *.log slha_test.out
 	rm -f core* stdhep_rd
-	rm -f *.f90 *.c *.$(FC_MODULE_EXT) *.o *.la
+	rm -f *.f90 *.f90.in *.c *.$(FC_MODULE_EXT) *.o *.la
 	rm -f *.makefile
+	rm -f *.grid
 	rm -rf err-output
 	rm -rf ref-output
 	rm -f *.sin *.hbc 

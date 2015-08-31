@@ -279,10 +279,11 @@ module fastjet
   end interface
 
   interface
-     function new_jet_definition (jet_alg, r) bind (C) result (jet_def)
+     function new_jet_definition (jet_alg, r, jet_ycut) bind (C) result (jet_def)
        import
        integer(jet_algorithm_kind), intent(in), value :: jet_alg
        real(c_double), intent(in), value :: r
+       real(c_double), intent(in), value :: jet_ycut
        type(c_ptr) :: jet_def
      end function new_jet_definition
   end interface
@@ -502,12 +503,18 @@ contains
 
 
   ! Procedures for jet definitions
-  subroutine jet_definition_init (jet_def, jet_alg, r)
+  subroutine jet_definition_init (jet_def, jet_alg, r, jet_ycut)
     class(jet_definition_t), intent(out) :: jet_def
     integer(jet_algorithm_kind), intent(in) :: jet_alg
     real(default), intent(in) :: r
+    real(default), intent(in), optional :: jet_ycut
     type(cpp_string_t) :: description_str
-    jet_def%cptr = new_jet_definition (jet_alg, real (r, c_double))
+    real(default), parameter :: ycut_dummy = -1._default
+    if (present (jet_ycut)) then 
+       jet_def%cptr = new_jet_definition (jet_alg, real (r, c_double), real(jet_ycut, c_double))
+    else
+       jet_def%cptr = new_jet_definition (jet_alg, real (r, c_double), real(ycut_dummy, c_double))
+    end if
     call jet_def%description_str%init &
          (jet_definition_get_description (jet_def%cptr))
     jet_def%description_strlen = len (jet_def%description_str)

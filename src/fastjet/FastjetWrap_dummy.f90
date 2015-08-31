@@ -118,9 +118,10 @@ function pseudojet_vector_sorted_by_pt (jets) bind (C) result (sorted_jets)
   sorted_jets = c_null_ptr
 end function pseudojet_vector_sorted_by_pt
 
-function new_jet_definition (jet_alg, r) bind (C) result (jet_def)
+function new_jet_definition (jet_alg, r, jet_ycut) bind (C) result (jet_def)
   use iso_c_binding
   integer(c_int), intent(in), value :: jet_alg
+  real(c_double), intent(in), value :: jet_ycut
   real(c_double), intent(in), value :: r
   type(c_ptr) :: jet_def
   jet_def = c_null_ptr

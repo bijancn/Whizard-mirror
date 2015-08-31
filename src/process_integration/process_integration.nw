@@ -2014,6 +2014,8 @@ module processes
   use prc_gosam, only: prc_gosam_t
   use prc_openloops, only: prc_openloops_t
   use prc_omega, only: prc_omega_t
+  use prc_user_defined
+  use prc_threshold
 
   use blha_config, only: blha_master_t
   use blha_olp_interfaces, only: blha_template_t, prc_blha_t
@@ -4634,7 +4636,6 @@ restriction should be relaxed.
     integer, intent(in) :: i_component
     type(process_component_t), intent(in), target :: component
     integer, dimension(:), allocatable :: i_list
-    integer :: n_components
     integer, save :: i_rfin_offset = 0
     if (mci_entry%combined_integration) then
       select case (mci_entry%powheg_damping_type)
@@ -6888,11 +6889,12 @@ stored in the kinematics subobject to their source.  This is a side effect.
   subroutine component_instance_evaluate_sqme_born (component, term)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout), target :: term
-    real(default) :: sqme
-    integer :: i_flv
+    real(default) :: sqme, sqme_blha
+    integer :: n_flv, i_flv
     logical :: bad_point
     if (term%nlo_type == NLO_VIRTUAL) return
     i_flv = 1
+    sqme = 0._default
     if (term%nlo_type == NLO_REAL) then
        select type (core => component%config%core_sub_born)
        class is (prc_blha_t)
@@ -6906,8 +6908,18 @@ stored in the kinematics subobject to their source.  This is a side effect.
     else 
        select type (core => component%config%core)
        class is (prc_blha_t)
-          call core%compute_sqme_born (i_flv, term%int_hard%get_momenta (), &
-             term%ren_scale, sqme, bad_point)
+          n_flv = term%config%data%n_flv
+          do i_flv = 1, n_flv
+             call core%compute_sqme_born (i_flv, term%int_hard%get_momenta (), &
+                term%ren_scale, sqme_blha, bad_point)
+                sqme = sqme + sqme_blha
+          end do
+       class is (prc_user_defined_base_t)
+          n_flv = term%config%data%n_flv
+          do i_flv = 1, n_flv
+             call core%update_alpha_s (component%core_state, term%fac_scale)
+             sqme = sqme + core%compute_sqme (i_flv, term%int_hard%get_momenta ())
+          end do
        class default
           sqme = real (term%connected%trace%get_matrix_element (1))
        end select
@@ -7105,8 +7117,8 @@ imaginary part of the terms, which should be zero anyway.
                   !!! Implementation for color-correlations using color_data
                   end if
                type is (prc_omega_t)
-               collector%sqme_born_cc (:,:,i_flv_born) = collector%sqme_born_list (i_flv_born) * &
-                    nlo_controller%color_data%beta_ij (:,:,i_flv_born)
+                  collector%sqme_born_cc (:,:,i_flv_born) = collector%sqme_born_list (i_flv_born) * &
+                       nlo_controller%color_data%beta_ij (:,:,i_flv_born)
                end select
 
                if (nlo_controller%requires_spin_correlation (i_flv)) then
@@ -10016,13 +10028,22 @@ and directly set the coupling value that comes together with a particle set.
 @ %def process_instance_display_real_kinematics
 @
 <<Processes: process instance: TBP>>=
-  procedure :: has_nlo_component => process_instance_has_nlo_component
+  procedure :: has_blha_component => process_instance_has_blha_component
 <<Processes: procedures>>=
-  function process_instance_has_nlo_component (instance) result (nlo)
+  function process_instance_has_blha_component (instance) result (val)
+    logical :: val
     class(process_instance_t), intent(in) :: instance
-    logical :: nlo
-    nlo = instance%process%is_nlo_calculation ()
-  end function process_instance_has_nlo_component
+    integer :: i
+    val = .false.
+    do i = 1, size (instance%component)
+       if (.not. associated (instance%component(i)%config)) cycle
+       select type (core => instance%component(i)%config%core)
+       class is (prc_blha_t)
+          val = .true.
+          exit
+       end select
+    end do
+  end function process_instance_has_blha_component
 
 @ %def process_instance_has_nlo_component
 @
@@ -10050,6 +10071,7 @@ and directly set the coupling value that comes together with a particle set.
     integer :: alpha_power, alphas_power
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     integer :: i
+    integer :: n_in
     type(blha_master_t) :: blha_master
     type(string_t) :: born_me_method
     type(string_t) :: real_tree_me_method
@@ -10070,8 +10092,10 @@ and directly set the coupling value that comes together with a particle set.
        do i = 1, size (process%term)
           if (instance%component(i)%nlo_type == BORN) then
              flv_born = process%term(i)%data%flv_state
+             n_in = process%term(i)%data%n_in
           else if (instance%component(i)%nlo_type == NLO_REAL) then
              flv_real = process%term(i)%data%flv_state
+             n_in = process%term(i)%data%n_in
           end if
        end do
        use_external_borns = born_me_method /= 'omega'
@@ -10105,7 +10129,7 @@ and directly set the coupling value that comes together with a particle set.
        end select
 
        call blha_master%init (process%meta%id, process%config%model, &
-                              2, size (flv_born,1)-2, &
+                              n_in, size (flv_born,1)-n_in, &
                               use_external_borns, use_external_loops, &
                               use_external_correlations, use_external_real_trees, &
                               alpha_power, alphas_power, &
