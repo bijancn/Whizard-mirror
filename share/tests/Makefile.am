@@ -604,6 +604,8 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/smtest_16.ref \
     functional_tests/ref-output/smtest_17.ref \
     functional_tests/ref-output/mssmtest.ref \
+    functional_tests/ref-output/nlo_1.ref \
+    functional_tests/ref-output/nlo_2.ref \
     functional_tests/ref-output/spincor_1.ref \
     functional_tests/ref-output/show_1.ref \
     functional_tests/ref-output/show_2.ref \
