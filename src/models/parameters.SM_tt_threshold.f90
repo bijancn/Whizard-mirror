@@ -237,10 +237,10 @@ contains
     type(momentum), intent(in) :: p, k
     integer, intent(in) :: i
     type(phase_space_point_t) :: ps
-    print *, 'p%t =    ', p%t !!! Debugging
-    print *, 'p%x =    ', p%x !!! Debugging
-    print *, 'k%t =    ', p%t !!! Debugging
-    print *, 'k%x =    ', p%x !!! Debugging
+    !print *, 'p%t =    ', p%t !!! Debugging
+    !print *, 'p%x =    ', p%x !!! Debugging
+    !print *, 'k%t =    ', p%t !!! Debugging
+    !print *, 'k%x =    ', p%x !!! Debugging
     call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
     c = ttv_formfactors_FF (ps, i)
     !!! form factors include tree level: FF = 1 + O(alphas)
@@ -269,6 +269,7 @@ contains
   function ttv_mtpole (s) result (m)
     real(default), intent(in) :: s
     real(default) :: m
-    m = ttv_formfactors_m1s_to_mpole (sqrt (s))
+    !m = ttv_formfactors_m1s_to_mpole (sqrt (s)) ! only for comparison
+    m = 172.0_default
   end function ttv_mtpole
 end module parameters_sm_tt_threshold

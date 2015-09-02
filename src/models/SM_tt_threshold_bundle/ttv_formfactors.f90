@@ -1673,10 +1673,10 @@ contains
     call rel_to_nonrel (p2, k2, q2, ps_point%sqrts, ps_point%p, ps_point%p0)
     ps_point%mpole = m1s_to_mpole (ps_point%sqrts)
     E = ps_point%sqrts - two * ps_point%mpole 
-    print *, 'E =    ', E !!! Debugging
-    print *, 'ps_point%sqrts =    ', ps_point%sqrts !!! Debugging
-    print *, 'ps_point%p =    ', ps_point%p !!! Debugging
-    print *, 'ps_point%p0 =    ', ps_point%p0 !!! Debugging
+    !print *, 'E =    ', E !!! Debugging
+    !print *, 'ps_point%sqrts =    ', ps_point%sqrts !!! Debugging
+    !print *, 'ps_point%p =    ', ps_point%p !!! Debugging
+    !print *, 'ps_point%p0 =    ', ps_point%p0 !!! Debugging
     ps_point%en = sqrts_to_en (ps_point%sqrts)
     ps_point%inside_grid = sqrts_within_range (ps_point%sqrts)
     ps_point%m2 = complex_m2 (ps_point%mpole, gam)
