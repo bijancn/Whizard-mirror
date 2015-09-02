@@ -262,10 +262,16 @@ contains
       owf_A_12 = pr_feynman(p12, v_ff (qlep, owf_e_2, owf_e_1))
       owf_Z_12 = pr_unitarity(p12, mass(23), wd_tl (p12, width(23)), &
          + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
-      owf_wb_35 = pr_psibar (p35, ttv_mtpole (p12*p12), wd_tl (p35, width(6)), &
+
+      ! only for comparison
+      owf_wb_35 = pr_psibar (p35, 172.0_default, wd_tl (p35, width(6)), &
          + f_fvl (gccq33, owf_b_5, owf_Wm_3))
-      owf_wb_46 = pr_psi(p46, ttv_mtpole(p12*p12), wd_tl (p46, width(6)), &
+      owf_wb_46 = pr_psi(p46, 172.0_default, wd_tl (p46, width(6)), &
          + f_vlf (gccq33, owf_Wp_4, owf_b_6))
+      !owf_wb_35 = pr_psibar (p35, ttv_mtpole (p12*p12), wd_tl (p35, width(6)), &
+         !+ f_fvl (gccq33, owf_b_5, owf_Wm_3))
+      !owf_wb_46 = pr_psi(p46, ttv_mtpole(p12*p12), wd_tl (p46, width(6)), &
+         !+ f_vlf (gccq33, owf_Wp_4, owf_b_6))
 
       blob_Z_vec = gncup(1) * ttv_formfactor (p35, p46, 1)
       blob_Z_ax = gncup(2) * ttv_formfactor (p35, p46, 2)
@@ -301,6 +307,7 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   use opr_@ID@, sm_new_event => new_event
   use opr_@ID@, sm_get_amplitude => get_amplitude
   use @ID@_threshold
+  use parameters_sm_tt_threshold
   implicit none
   real(c_default_float), intent(out) :: amp2
   real(c_default_float), dimension(0:3,*), intent(in) :: p
@@ -309,11 +316,33 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   !call sm_new_event (p)
   call calculate_amplitudes (p)
   amp2 = 0.0_default
-  do hi = 1, n_hel
-     !amp_sm = sm_get_amplitude (1, hi, 1)
-     !amp2 = amp2 + N_ * real(amp_sm * conjg(amp_ff(hi)))
-     amp2 = amp2 + real(amp_ff(hi) * conjg(amp_ff(hi)))
-  end do
+  select case (FF)
+  case (3,4)
+     amp2 = sum (amp_A_v_tree * conjg (amp_A_v_tree) + &
+                 amp_A_v_tree * conjg (amp_A_v_blob) + &
+                 amp_A_v_tree * conjg (amp_Z_av_tree) + &
+                 amp_A_v_tree * conjg (amp_Z_av_blob) + &
+                 amp_A_v_blob * conjg (amp_A_v_tree) + &
+                 ! amp_A_v_blob * conjg (amp_A_v_blob) + &
+                 amp_A_v_blob * conjg (amp_Z_av_tree) + &
+                 ! amp_A_v_blob * conjg (amp_Z_av_blob) + &
+                 amp_Z_av_tree * conjg (amp_A_v_tree) + &
+                 amp_Z_av_tree * conjg (amp_A_v_blob) + &
+                 amp_Z_av_tree * conjg (amp_Z_av_tree) + &
+                 amp_Z_av_tree * conjg (amp_Z_av_blob) + &
+                 amp_Z_av_blob * conjg (amp_A_v_tree) + &
+                 ! amp_Z_av_blob * conjg (amp_A_v_blob) + &
+                 amp_Z_av_blob * conjg (amp_Z_av_tree))
+                 ! amp_Z_av_blob * conjg (amp_Z_av_blob) + &
+  case default
+     !do hi = 1, n_hel
+        !amp_sm = sm_get_amplitude (1, hi, 1)
+        !amp2 = amp2 + N_ * real(amp_sm * conjg(amp_ff(hi)))
+        !amp2 = amp2 + real(amp_ff(hi) * conjg(amp_ff(hi)))
+     !end do 
+     amp2 = sum ((amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob) * &
+           conjg (amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob))
+  end select
   amp2 = amp2 * N_ / 4.0_default
 end subroutine threshold_get_amp_squared
 !end subroutine @ID@_threshold_get_amplitude_squared

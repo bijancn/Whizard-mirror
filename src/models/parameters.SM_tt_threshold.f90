@@ -49,6 +49,8 @@ module parameters_sm_tt_threshold
   complex(default), dimension(2), public :: &
        gncneu, gnclep, gncup, gncdwn
 
+  integer, public :: FF
+
   public :: import_from_whizard, model_update_alpha_s, &
        ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole
 
@@ -159,6 +161,7 @@ contains
     width(26) = 0
     mass(27) = par%xipm * mass(24)
     width(27) = 0
+    FF = par%FF
     vev = par%v
     e = par%ee
     sinthw = par%sw
@@ -228,11 +231,16 @@ contains
     igs = cmplx (0.0_default, 1.0_default, kind=default) * gs
   end subroutine model_update_alpha_s
 
-  pure function ttv_formfactor (p, k, i) result (c)
+  !pure
+  function ttv_formfactor (p, k, i) result (c)
     complex(default) :: c
     type(momentum), intent(in) :: p, k
     integer, intent(in) :: i
     type(phase_space_point_t) :: ps
+    print *, 'p%t =    ', p%t !!! Debugging
+    print *, 'p%x =    ', p%x !!! Debugging
+    print *, 'k%t =    ', p%t !!! Debugging
+    print *, 'k%x =    ', p%x !!! Debugging
     call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
     c = ttv_formfactors_FF (ps, i)
     !!! form factors include tree level: FF = 1 + O(alphas)
@@ -240,7 +248,8 @@ contains
     c = c - 1.0_default
   end function ttv_formfactor
 
-  pure function va_ilc_tta (p, k, i) result (c)
+  !pure
+  function va_ilc_tta (p, k, i) result (c)
     complex(default) :: c
     type(momentum), intent(in) :: p, k
     integer, intent(in) :: i
@@ -248,14 +257,16 @@ contains
     if (i==1) c = qup * ttv_formfactor (p, k, 1)
   end function va_ilc_tta
 
-  pure function va_ilc_ttz (p, k, i) result (c)
+  !pure
+  function va_ilc_ttz (p, k, i) result (c)
     complex(default) :: c
     type(momentum), intent(in) :: p, k
     integer, intent(in) :: i
     c = gncup(i) * ttv_formfactor (p, k, i)
   end function va_ilc_ttz
 
-  pure function ttv_mtpole (s) result (m)
+  !pure
+  function ttv_mtpole (s) result (m)
     real(default), intent(in) :: s
     real(default) :: m
     m = ttv_formfactors_m1s_to_mpole (sqrt (s))
