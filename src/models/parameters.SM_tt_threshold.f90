@@ -239,8 +239,8 @@ contains
     type(phase_space_point_t) :: ps
     !print *, 'p%t =    ', p%t !!! Debugging
     !print *, 'p%x =    ', p%x !!! Debugging
-    !print *, 'k%t =    ', p%t !!! Debugging
-    !print *, 'k%x =    ', p%x !!! Debugging
+    !print *, 'k%t =    ', k%t !!! Debugging
+    !print *, 'k%x =    ', k%x !!! Debugging
     call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
     c = ttv_formfactors_FF (ps, i)
     !!! form factors include tree level: FF = 1 + O(alphas)

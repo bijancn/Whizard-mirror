@@ -252,7 +252,7 @@ contains
     c = one
     if (.not. init_pars) return
     !!! on-shell veto
-    !if (ps%onshell) return
+    if (ps%onshell) return
     select case (ff_type)
       case (0)
         c = matched_formfactor (ps, i)
@@ -830,7 +830,8 @@ contains
     mpole = mtpole_init
     nl = nloop
     if ( present(nl_in) ) nl = nl_in
-    mpole = m1s * ( 1. + deltaM(sqrts, nl) )
+    !mpole = m1s * ( 1. + deltaM(sqrts, nl) )
+    mpole = m1s ! only for comparison
   end function m1s_to_mpole
 
   !pure
@@ -1545,12 +1546,12 @@ contains
 !                 + 0.5_default*( dF1 + dF2 + m*( dM1 + dM2 ) )
   end function formfactor_ttv_relativistic_nlo
 
-  pure function p_onshell (en) result (p)
-    real(default), intent(in) :: en
-    real(default) :: p
-    p = 1.d-3
-    if ( en > 0. ) p = sqrt( en**2/4. + en*mtpole )
-  end function p_onshell
+  !pure function p_onshell (en) result (p)
+    !real(default), intent(in) :: en
+    !real(default) :: p
+    !p = 1.d-3
+    !if ( en > 0. ) p = sqrt( en**2/4. + en*mtpole )
+  !end function p_onshell
 
   subroutine scan_J0_over_phase_space_grid ()
     integer :: i_sq, i_p, i_p0
@@ -1677,6 +1678,7 @@ contains
     !print *, 'ps_point%sqrts =    ', ps_point%sqrts !!! Debugging
     !print *, 'ps_point%p =    ', ps_point%p !!! Debugging
     !print *, 'ps_point%p0 =    ', ps_point%p0 !!! Debugging
+    !print *, 'ps_point%mpole =    ', ps_point%mpole !!! Debugging
     ps_point%en = sqrts_to_en (ps_point%sqrts)
     ps_point%inside_grid = sqrts_within_range (ps_point%sqrts)
     ps_point%m2 = complex_m2 (ps_point%mpole, gam)
