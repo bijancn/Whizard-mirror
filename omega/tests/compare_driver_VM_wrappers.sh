@@ -8,8 +8,6 @@ ovm="$2"
 oparams="$2 $3"
 shift 3
 
-models="QED QCD SM"
-
 modules=""
 
 ########################################################################
@@ -37,7 +35,6 @@ while read module threshold abs_threshold n roots model mode process; do
 done
 ########################################################################
 
-rm wrappers.f90
 for module in $modules; do
 
   eval bc_file="\${bc_file_$module}"
@@ -46,7 +43,7 @@ for module in $modules; do
   ovp="`echo $ovp | sed s/%%/amplitude_compare_${tag}_v2_${module}/g`"
   ovp="`echo $ovp | sed s/%/${module}.hbc/g`"
   #echo "writing wrapper file $params_file with '$ovp'" 1>&2
-  $ovp >> wrappers.f90 2>/dev/null
+  $ovp 2>/dev/null
 
 done
 

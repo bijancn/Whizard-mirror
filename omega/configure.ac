@@ -5,13 +5,18 @@ dnl Process this file with autoconf to produce a configure script.
 dnl
 dnl ************************************************************************
 dnl 
-dnl Copyright (C) 1999-2014 by 
+dnl Copyright (C) 1999-2015 by 
 dnl     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 dnl     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 dnl     Juergen Reuter <juergen.reuter@desy.de>
-dnl	with contributions from
-dnl	Christian Speckner <cnspeckn@googlemail.com>
-dnl     and others
+dnl     with contributions from
+dnl     Fabian Bach <fabian.bach@desy.de>
+dnl     Bijan Chokoufe <bijan.chokoufe@desy.de>
+dnl     Christian Speckner <cnspeckn@googlemail.com>
+dnl     Marco Sekulla <marco.sekulla@desy.de>
+dnl     Christian Weiss <christian.weiss@desy.de>
+dnl     Felix Braam, Sebastian Schmidt,
+dnl     Hans-Werner Boschmann, Daniel Wiesler
 dnl 
 dnl WHIZARD is free software; you can redistribute it and/or modify it
 dnl under the terms of the GNU General Public License as published by 
@@ -36,7 +41,7 @@ dnl   OCAMLFLAGS	OCaml compiler flags
 dnl 
 dnl *********************************************************************** 
 
-AC_INIT([omega],[2.2.3])
+AC_INIT([omega],[2.2.8])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 
@@ -49,8 +54,8 @@ AM_MAKE_INCLUDE
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Aug 15 2014"
-PACKAGE_STATUS="beta"
+PACKAGE_DATE="Sep 30 2015"
+PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
 AC_SUBST(PACKAGE_STATUS)
@@ -73,7 +78,7 @@ AC_PROG_RANLIB
 AC_PROG_LIBTOOL
 AC_PROG_MKDIR_P
 LT_INIT
-LT_PREREQ([2.2.6b])
+LT_PREREQ([2.2.8b])
 AC_PATH_PROG([M4],[m4])
 
 dnl ***********************************************************************
@@ -249,18 +254,17 @@ if test X"${user_FCFLAGS}" = X; then
   fi
 fi
 AC_OPENMP
-WO_FC_PARAMETERS
-WO_FC_LIBRARY_LDFLAGS
-WO_FC_CHECK_F95
-dnl WO_FC_CHECK_TR15581
-dnl WO_FC_CHECK_ALLOCATABLE_SCALARS
+WO_FC_PARAMETERS()
+WO_FC_LIBRARY_LDFLAGS()
+WO_FC_CHECK_F95()
+WO_FC_CHECK_TR19767()
 WO_FC_MODULE_FILE([FC_MODULE_NAME], [FC_MODULE_EXT], [$FC], [f90])
-WO_FC_CHECK_EXTENDED
-WO_FC_CHECK_EXTENDED_C
-WO_FC_SET_PRECISION
-WO_FC_SET_OPENMP
-WO_FC_SET_PROFILING
-WO_FC_SET_OMEGA_IMPURE
+WO_FC_CHECK_EXTENDED()
+WO_FC_CHECK_EXTENDED_C()
+WO_FC_SET_PRECISION()
+WO_FC_SET_OPENMP()
+WO_FC_SET_PROFILING()
+WO_FC_SET_OMEGA_IMPURE()
 
 
 ###---------------------------------------------------------------------

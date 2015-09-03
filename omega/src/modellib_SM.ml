@@ -1,6 +1,6 @@
-(* $Id: modellib_SM.ml 6264 2014-11-14 15:40:49Z fbach $
+(* $Id: modellib_SM.ml 6759 2015-03-23 13:42:37Z fbach $
 
-   Copyright (C) 1999-2014 by
+   Copyright (C) 1999-2015 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -24,8 +24,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
-    { RCS.revision = "$Revision: 6264 $";
-      RCS.date = "$Date: 2014-11-14 16:40:49 +0100 (Fri, 14 Nov 2014) $";
+    { RCS.revision = "$Revision: 6759 $";
+      RCS.date = "$Date: 2015-03-23 14:42:37 +0100 (Mon, 23 Mar 2015) $";
       RCS.author = "$Author: fbach $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_SM.ml $" }
@@ -465,17 +465,17 @@ module QCD =
 
     let flavor_to_TeX = function
       | U -> "u"
-      | Ubar -> "\bar{u}"
+      | Ubar -> "\\bar{u}"
       | D -> "d"
-      | Dbar -> "\bar{d}"
+      | Dbar -> "\\bar{d}"
       | C -> "c"
-      | Cbar -> "bar{c}"
+      | Cbar -> "\\bar{c}"
       | S -> "s"
-      | Sbar -> "\bar{s}"
+      | Sbar -> "\\bar{s}"
       | T -> "t"
-      | Tbar -> "\bar{t}"
+      | Tbar -> "\\bar{t}"
       | B -> "b"
-      | Bbar -> "\bar{b}"
+      | Bbar -> "\\bar{b}"
       | Gl -> "g"
 
     let flavor_symbol = function
@@ -640,7 +640,7 @@ module SM_tt_threshold : SM_flags =
     let quartic_anom = false
     let higgs_anom = false
     let k_matrix = false
-    let ckm_present = false
+    let ckm_present = true
     let top_anom = false
     let top_anom_4f = false
     let tt_threshold = true

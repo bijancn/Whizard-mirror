@@ -44,12 +44,6 @@ while read module n roots model mode process; do
 done
 ########################################################################
 
-for model in $models; do
-  ovp="`echo $oparams | sed s/%%%/$model/g`"
-  $ovp 2>/dev/null
-done
-
-########################################################################
 
 cat <<EOF
 program benchmark_amp_parallel
@@ -60,10 +54,15 @@ program benchmark_amp_parallel
   use iso_varying_string, string_t => varying_string
 EOF
 
+for module in $modules; do
+cat <<EOF
+  use amplitude_compare_VM_v2_${module}, initialize_vm_$module => initialize_vm
+EOF
+done
+
 for model in $models; do
 cat <<EOF
   use parameters_$model, init_parameters_$model => init_parameters
-  use parameters_wrapper_$model, initialize_vm_$model => initialize_vm
 EOF
 done
 
@@ -106,7 +105,7 @@ eval model="\${model_$module}"
 
 cat <<EOF
   bytecode_file = '$bc_file'
-  call initialize_vm_$model (vm, bytecode_file)
+  call initialize_vm_$module (vm, bytecode_file)
   nout = vm%number_particles_out ()
   allocate (p(0:3, nout+2, max_threads))
   allocate (helicity(nout+2))
@@ -123,7 +122,7 @@ cat <<EOF
      !\$omp end parallel
      allocate (vms(num_threads))
      do i_threads = 1, num_threads
-        call initialize_vm_$model (vms(i_threads), bytecode_file)
+        call initialize_vm_$module (vms(i_threads), bytecode_file)
      end do
 
      wtime_start = omp_get_wtime ()

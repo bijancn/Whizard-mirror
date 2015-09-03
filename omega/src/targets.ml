@@ -1,6 +1,6 @@
-(* $Id: targets.ml 6273 2014-11-17 11:34:27Z bchokoufe $
+(* $Id: targets.ml 6943 2015-05-01 10:53:21Z msekulla $
 
-   Copyright (C) 1999-2014 by
+   Copyright (C) 1999-2015 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -26,9 +26,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 6273 $";
-      RCS.date = "$Date: 2014-11-17 12:34:27 +0100 (Mon, 17 Nov 2014) $";
-      RCS.author = "$Author: bchokoufe $";
+    { RCS.revision = "$Revision: 6943 $";
+      RCS.date = "$Date: 2015-05-01 12:53:21 +0200 (Fri, 01 May 2015) $";
+      RCS.author = "$Author: msekulla $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets.ml $" }
 
@@ -50,7 +50,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
   struct
     let rcs_list =
       [RCS.rename rcs_file "Targets.VM"
-                  ["First version"]]
+                  ["Virtual Machine able to compute amplitudes from byte code"]]
 
     open Coupling
     open Format
@@ -65,20 +65,27 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     (*i TODO: (bcn 2014-07-21) Not handled yet i*)
     type diagnostic = All | Arguments | Momenta | Gauge
 
-    (*i TODO: (bcn 2014-07-21) Add some sensible options i*)
     let wrapper_module = ref "ovm_wrapper"
     let parameter_module_external = ref "some_external_module_with_model_info"
     let bytecode_file = ref "bytecode.hbc"
+    let md5sum = ref None
+    let openmp = ref false
     let kind = ref "default"
+    let whizard = ref false
 
     let options = Options.create
       [ "wrapper_module", Arg.String (fun s -> wrapper_module := s),
-        "name of wrapper module";
+          "name of wrapper module";
         "bytecode_file", Arg.String (fun s -> bytecode_file := s),
-        "bytecode file to be used in wrapper";
+          "bytecode file to be used in wrapper";
         "parameter_module_external", Arg.String (fun s ->
                                      parameter_module_external := s),
-        "external parameter module to be used in wrapper" ]
+          "external parameter module to be used in wrapper";
+        "md5sum", Arg.String (fun s -> md5sum := Some s),
+          "transfer MD5 checksum in wrapper";
+        "whizard", Arg.Set whizard, "include WHIZARD interface in wrapper";
+        "openmp", Arg.Set openmp,
+          "activate parallel computation of amplitude with OpenMP"]
 
 (* This is part of OCaml 4.01. *)
     let (|>) fn x = x fn
@@ -183,6 +190,13 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let ovm_FUSE_V_SSV = -47
     let ovm_FUSE_S_SSS = -48
     let ovm_FUSE_V_VVV = -49
+
+    let ovm_FUSE_S_G2 = -50
+    let ovm_FUSE_G_SG = -51
+    let ovm_FUSE_G_GS = -52
+    let ovm_FUSE_S_G2_SKEW = -53
+    let ovm_FUSE_G_SG_SKEW = -54
+    let ovm_FUSE_G_GS_SKEW = -55
 
     let inst_length = 8
 
@@ -457,9 +471,9 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       printf "@\n  %s" cmdline;
       (*i
       let t = Unix.localtime (Unix.time() ) in
-        printf "@\n %s %5d %5d %5d" "on " (succ t.Unix.tm_mon) t.Unix.tm_mday
-               t.Unix.tm_year
-      i*)
+        printf "@\n on %5d %5d %5d" (succ t.Unix.tm_mon) t.Unix.tm_mday
+               t.Unix.tm_year;
+       i*)
       printf "@\n"
 
     let num_classified_wfs wfs =
@@ -698,7 +712,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
             if c1 <= c2 then begin
               match table.(c1).(c2) with
               | [] -> ()
-              | cf -> printf "@\n"; List.iter (printf "%d ")
+              | cf -> printf "@\n"; List.iter (printf "%9d")
                 ([succ c1; succ c2] @ (format_powers cf));
             end
           done
@@ -929,7 +943,9 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         List.fold_left print_external_amp WFSet.empty
           (CF.processes lookups.amplitudes)
         )
-      (*i List.iter (print_ext_amp lookups) (CF.processes lookups.amplitudes) i*)
+      (*i
+      List.iter (print_ext_amp lookups) (CF.processes lookups.amplitudes)
+      i*)
 
 (* \thocwmodulesubsection{Currents} *)
 
@@ -1122,11 +1138,26 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           | Aux_Vector_DScalar _ ->
               failwith "print_current: V3: not implemented"
 
-          | Dim5_Scalar_Gauge2 _ ->
-              failwith "print_current: V3: not implemented"
+          | Dim5_Scalar_Gauge2 coeff ->
+              let printc code r1 r2 r3 r4 =  printi code
+                ~lhs:lhs ~coupl:c ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3
+                ~rhs4:r4  in
+              begin match fusion with
+              | (F23|F32) -> printc ovm_FUSE_S_G2 wf1 p1 wf2 p2
+              | (F12|F13) -> printc ovm_FUSE_G_SG wf1 p1 wf2 p2
+              | (F21|F31) -> printc ovm_FUSE_G_GS wf2 p2 wf1 p1
+              end
 
-          | Dim5_Scalar_Gauge2_Skew _ ->
-              failwith "print_current: V3: not implemented"
+          | Dim5_Scalar_Gauge2_Skew coeff ->
+              let printc code ?flip:(f = 1) r1 r2 r3 r4 =  printi code
+                ~lhs:lhs ~coupl:(c*f) ~coeff:coeff ~rhs1:r1 ~rhs2:r2 ~rhs3:r3
+                ~rhs4:r4  in
+              begin match fusion with
+              | (F23|F32) -> printc ovm_FUSE_S_G2_SKEW wf1 p1 wf2 p2
+              | (F12|F13) -> printc ovm_FUSE_G_SG_SKEW wf1 p1 wf2 p2
+              | (F21|F31) -> printc ovm_FUSE_G_GS_SKEW wf2 p1 wf1 p2 ~flip:(-1)
+              end
+
 
           | Dim5_Scalar_Vector_Vector_T _ ->
               failwith "print_current: V3: not implemented"
@@ -1134,10 +1165,16 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           | Dim5_Scalar_Vector_Vector_U _ ->
               failwith "print_current: V3: not implemented"
 
+          | Dim5_Scalar_Scalar2 _ ->
+              failwith "print_current: V3: not implemented"
+
           | Dim6_Vector_Vector_Vector_T _ ->
               failwith "print_current: V3: not implemented"
 
           | Tensor_2_Vector_Vector _ ->
+              failwith "print_current: V3: not implemented"
+
+          | Tensor_2_Scalar_Scalar _ ->
               failwith "print_current: V3: not implemented"
 
           | Dim5_Tensor_2_Vector_Vector_1 _ ->
@@ -1155,10 +1192,40 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           | Scalar_Vector_Vector_t _ ->
               failwith "print_current: V3: not implemented"
 
+          | Tensor_2_Vector_Vector_cf _ ->
+              failwith "print_current: V3: not implemented"
+
+          | Tensor_2_Scalar_Scalar_cf _ ->
+              failwith "print_current: V3: not implemented"
+
           | Tensor_2_Vector_Vector_1 _ ->
               failwith "print_current: V3: not implemented"
 
           | Tensor_2_Vector_Vector_t _ ->
+              failwith "print_current: V3: not implemented"
+
+          | TensorVector_Vector_Vector _ ->
+              failwith "print_current: V3: not implemented"
+
+          | TensorVector_Vector_Vector_cf _ ->
+              failwith "print_current: V3: not implemented"
+
+          | TensorVector_Scalar_Scalar _ ->
+              failwith "print_current: V3: not implemented"
+
+          | TensorVector_Scalar_Scalar_cf _ ->
+              failwith "print_current: V3: not implemented"
+
+          | TensorScalar_Vector_Vector _ ->
+              failwith "print_current: V3: not implemented"
+
+          | TensorScalar_Vector_Vector_cf _ ->
+              failwith "print_current: V3: not implemented"
+
+          | TensorScalar_Scalar_Scalar _ ->
+              failwith "print_current: V3: not implemented"
+
+          | TensorScalar_Scalar_Scalar_cf _ ->
               failwith "print_current: V3: not implemented"
 
           end
@@ -1204,12 +1271,16 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
               List.iter (print_vector4 c lhs wf1 wf2 wf3 fusion) contractions
 
           | Vector4_K_Matrix_tho _
-          | Vector4_K_Matrix_jr _ ->
+          | Vector4_K_Matrix_jr _
+          | DScalar2_Vector2_K_Matrix_ms _
+          | DScalar4_K_Matrix_ms _ ->
               failwith "print_current: V4: K_Matrix not implemented"
-
+          | Dim8_Scalar2_Vector2_1 _ 
+          | Dim8_Scalar2_Vector2_2 _ 
+          | Dim8_Scalar4 _ ->
+              failwith "print_current: V4: not implemented"
           | GBBG _ ->
               failwith "print_current: V4: GBBG not implemented"
-
           | DScalar4 _
           | DScalar2_Vector2 _ ->
               failwith "print_current: V4: DScalars not implemented"
@@ -1274,6 +1345,10 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           propagate ovm_PROPAGATE_NONE
       | Prop_Gauge _ ->
           failwith "print_fusion: Prop_Gauge not implemented!"
+      | Prop_Tensor_pure ->
+          failwith "print_fusion: Prop_Tensor_pure not implemented!"
+      | Prop_Vector_pure ->
+          failwith "print_fusion: Prop_Vector_pure not implemented!"
       | Prop_Rxi _ ->
           failwith "print_fusion: Prop_Rxi not implemented!"
       end;
@@ -1362,6 +1437,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
     let amplitudes_to_channel (cmdline : string) (oc : out_channel)
       (diagnostics : (diagnostic * bool) list ) (amplitudes : CF.amplitudes) =
 
+      set_formatter_out_channel oc;
       if (num_particles amplitudes = 0) then begin
         print_description cmdline;
         print_zero_header (); nl ()
@@ -1391,15 +1467,17 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         print_all_fusions lookups;
         break ();
         print_all_brakets lookups;
-        break (); nl ()
+        break (); nl ();
+        print_flush ()
       end
 
-    let parameters_to_fortran _ _ =
+    let parameters_to_fortran oc _ =
      (*i The -params options is used as wrapper between OVM and Whizard. Most
        * trouble for the OVM comes from the array dimensionalities of couplings
        * but O'Mega should also know whether a constant is real or complex.
        * Hopefully all will be clearer with the fully general Lorentz structures
        * and UFO support. For now, we stick with this brute-force solution. i*)
+      set_formatter_out_channel oc;
       let arrays_to_set = not (IMap.is_empty (snd constants_map)) in
       let set_coupl ty dim cmap = IMap.iter (fun key elt ->
         printf "    %s(%s%d) = %s" ty dim key (M.constant_symbol elt);
@@ -1411,6 +1489,144 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
           printf "  complex(%s), dimension(2, %d) :: ovm_coupl_cmplx2"
             !kind (constants_map |> snd |> largest_key); nl () in
       let print_line str = printf "%s" str; nl() in
+      let print_md5sum = function
+          | Some s ->
+            print_line "  function md5sum ()";
+            print_line "    character(len=32) :: md5sum";
+            print_line ("    bytecode_file = '" ^ !bytecode_file ^ "'");
+            print_line "    call initialize_vm (vm, bytecode_file)";
+            print_line "    ! DON'T EVEN THINK of modifying the following line!";
+            print_line ("    md5sum = '" ^ s ^ "'");
+            print_line "  end function md5sum";
+          | None -> ()
+      in
+      let print_inquiry_function_openmp () = begin
+        print_line "  pure function openmp_supported () result (status)";
+        print_line "    logical :: status";
+        print_line ("    status = " ^ (if !openmp then ".true." else ".false."));
+        print_line "  end function openmp_supported";
+        nl ()
+      end in
+      let print_interface whizard =
+      if whizard then begin
+        print_line "  subroutine init (par)";
+        print_line "    real(kind=default), dimension(*), intent(in) :: par";
+        print_line ("     bytecode_file = '" ^ !bytecode_file ^ "'");
+        print_line "    call import_from_whizard (par)";
+        print_line "    call initialize_vm (vm, bytecode_file)";
+        print_line "  end subroutine init";
+        nl ();
+        print_line "  subroutine final ()";
+        print_line "    call vm%final ()";
+        print_line "  end subroutine final";
+        nl ();
+        print_line "  subroutine update_alpha_s (alpha_s)";
+        print_line ("    real(kind=" ^ !kind ^ "), intent(in) :: alpha_s");
+        print_line "    call model_update_alpha_s (alpha_s)";
+        print_line "  end subroutine update_alpha_s";
+        nl ()
+      end
+      else begin
+        print_line "  subroutine init ()";
+        print_line ("     bytecode_file = '" ^ !bytecode_file ^ "'");
+        print_line "     call init_parameters ()";
+        print_line "     call initialize_vm (vm, bytecode_file)";
+        print_line "  end subroutine"
+      end in
+      let print_lookup_functions () = begin
+        print_line "  pure function number_particles_in () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_particles_in ()";
+        print_line "  end function number_particles_in";
+        nl();
+        print_line "  pure function number_particles_out () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_particles_out ()";
+        print_line "  end function number_particles_out";
+        nl();
+        print_line "  pure function number_spin_states () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_spin_states ()";
+        print_line "  end function number_spin_states";
+        nl();
+        print_line "  pure subroutine spin_states (a)";
+        print_line "    integer, dimension(:,:), intent(out) :: a";
+        print_line "    call vm%spin_states (a)";
+        print_line "  end subroutine spin_states";
+        nl();
+        print_line "  pure function number_flavor_states () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_flavor_states ()";
+        print_line "  end function number_flavor_states";
+        nl();
+        print_line "  pure subroutine flavor_states (a)";
+        print_line "    integer, dimension(:,:), intent(out) :: a";
+        print_line "    call vm%flavor_states (a)";
+        print_line "  end subroutine flavor_states";
+        nl();
+        print_line "  pure function number_color_indices () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_color_indices ()";
+        print_line "  end function number_color_indices";
+        nl();
+        print_line "  pure function number_color_flows () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_color_flows ()";
+        print_line "  end function number_color_flows";
+        nl();
+        print_line "  pure subroutine color_flows (a, g)";
+        print_line "    integer, dimension(:,:,:), intent(out) :: a";
+        print_line "    logical, dimension(:,:), intent(out) :: g";
+        print_line "    call vm%color_flows (a, g)";
+        print_line "  end subroutine color_flows";
+        nl();
+        print_line "  pure function number_color_factors () result (n)";
+        print_line "    integer :: n";
+        print_line "    n = vm%number_color_factors ()";
+        print_line "  end function number_color_factors";
+        nl();
+        print_line "  pure subroutine color_factors (cf)";
+        print_line "    use omega_color";
+        print_line "    type(omega_color_factor), dimension(:), intent(out) :: cf";
+        print_line "    call vm%color_factors (cf)";
+        print_line "  end subroutine color_factors";
+        nl();
+        print_line "  !pure unless OpenMP";
+        print_line "  !pure function color_sum (flv, hel) result (amp2)";
+        print_line "  function color_sum (flv, hel) result (amp2)";
+        print_line "    use kinds";
+        print_line "    integer, intent(in) :: flv, hel";
+        print_line "    real(kind=default) :: amp2";
+        print_line "    amp2 = vm%color_sum (flv, hel)";
+        print_line "  end function color_sum";
+        nl();
+        print_line "  subroutine new_event (p)";
+        print_line "    use kinds";
+        print_line "    real(kind=default), dimension(0:3,*), intent(in) :: p";
+        print_line "    call vm%new_event (p)";
+        print_line "  end subroutine new_event";
+        nl();
+        print_line "  subroutine reset_helicity_selection (threshold, cutoff)";
+        print_line "    use kinds";
+        print_line "    real(kind=default), intent(in) :: threshold";
+        print_line "    integer, intent(in) :: cutoff";
+        print_line "    call vm%reset_helicity_selection (threshold, cutoff)";
+        print_line "  end subroutine reset_helicity_selection";
+        nl();
+        print_line "  pure function is_allowed (flv, hel, col) result (yorn)";
+        print_line "    logical :: yorn";
+        print_line "    integer, intent(in) :: flv, hel, col";
+        print_line "    yorn = vm%is_allowed (flv, hel, col)";
+        print_line "  end function is_allowed";
+        nl();
+        print_line "  pure function get_amplitude (flv, hel, col) result (amp_result)";
+        print_line "    use kinds";
+        print_line "    complex(kind=default) :: amp_result";
+        print_line "    integer, intent(in) :: flv, hel, col";
+        print_line "    amp_result = vm%get_amplitude(flv, hel, col)";
+        print_line "  end function get_amplitude";
+        nl();
+      end in
       let rcs_str s = String.sub s 0 (String.length s - 1) in
       let rcs_tags = rcs_list @ [M.rcs] |> List.map version_string
                                         |> List.map rcs_str in
@@ -1424,11 +1640,21 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       print_line "  private";
       print_line "  type(vm_t) :: vm";
       print_line "  type(string_t) :: bytecode_file";
-      print_line "  public :: number_particles_in, number_particles_out, number_spin_states, &";
-      print_line "    spin_states, number_flavor_states, flavor_states, number_color_indices, &";
-      print_line "    number_color_flows, color_flows, number_color_factors, color_factors, &";
-      print_line "    color_sum, new_event, reset_helicity_selection, is_allowed, get_amplitude, &";
-      print_line "    init";
+      print_line ("  public :: number_particles_in, number_particles_out," ^
+          " number_spin_states, &");
+      print_line ("    spin_states, number_flavor_states, flavor_states," ^
+          " number_color_indices, &");
+      print_line ("    number_color_flows, color_flows," ^
+          " number_color_factors, color_factors, &");
+      print_line ("    color_sum, new_event, reset_helicity_selection," ^
+          " is_allowed, get_amplitude, &");
+      print_line ("    init, " ^ 
+          (match !md5sum with Some _ -> "md5sum, "
+                            | None -> "") ^ "openmp_supported");
+      if !whizard then
+        print_line ("  public :: final, update_alpha_s")
+      else
+        print_line ("  public :: initialize_vm");
       declarations ();
       print_line "contains";
 
@@ -1442,113 +1668,21 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       print_line "    type(string_t), intent(in) :: bytecode_file";
       print_line "    type(string_t) :: version";
       print_line "    type(string_t) :: model";
-      print_line ("   version = '" ^ List.nth rcs_tags 0 ^ "'");
-      print_line ("   model = '" ^ List.nth rcs_tags 1 ^ "'");
+      print_line ("    version = '" ^ List.nth rcs_tags 0 ^ "'");
+      print_line ("    model = '" ^ List.nth rcs_tags 1 ^ "'");
       print_line "    call setup_couplings ()";
       print_line "    call vm%init (bytecode_file, version, model, verbose=.False., &";
       print_line "      coupl_cmplx=ovm_coupl_cmplx, &";
       if arrays_to_set then
         print_line "      coupl_cmplx2=ovm_coupl_cmplx2, &";
-      print_line "      mass=mass, width=width) ";
+      print_line ("      mass=mass, width=width, openmp=" ^ (if !openmp then
+        ".true." else ".false.") ^ ")");
       print_line "  end subroutine initialize_vm";
-
-      print_line "  pure function number_particles_in () result (n)";
-      print_line "    integer :: n";
-      print_line "    n = vm%number_particles_in ()";
-      print_line "  end function number_particles_in";
-
-      print_line "  pure function number_particles_out () result (n)";
-      print_line "    integer :: n";
-      print_line "    n = vm%number_particles_out ()";
-      print_line "  end function number_particles_out";
-
-      print_line "  pure function number_spin_states () result (n)";
-      print_line "    integer :: n";
-      print_line "    n = vm%number_spin_states ()";
-      print_line "  end function number_spin_states";
-
-      print_line "  pure subroutine spin_states (a)";
-      print_line "    integer, dimension(:,:), intent(out) :: a";
-      print_line "    call vm%spin_states (a)";
-      print_line "  end subroutine spin_states";
-
-      print_line "  pure function number_flavor_states () result (n)";
-      print_line "    integer :: n";
-      print_line "    n = vm%number_flavor_states ()";
-      print_line "  end function number_flavor_states";
-
-      print_line "  pure subroutine flavor_states (a)";
-      print_line "    integer, dimension(:,:), intent(out) :: a";
-      print_line "    call vm%flavor_states (a)";
-      print_line "  end subroutine flavor_states";
-
-      print_line "  pure function number_color_indices () result (n)";
-      print_line "    integer :: n";
-      print_line "    n = vm%number_color_indices ()";
-      print_line "  end function number_color_indices";
-
-      print_line "  pure function number_color_flows () result (n)";
-      print_line "    integer :: n";
-      print_line "    n = vm%number_color_flows ()";
-      print_line "  end function number_color_flows";
-
-      print_line "  pure subroutine color_flows (a, g)";
-      print_line "    integer, dimension(:,:,:), intent(out) :: a";
-      print_line "    logical, dimension(:,:), intent(out) :: g";
-      print_line "    call vm%color_flows (a, g)";
-      print_line "  end subroutine color_flows";
-
-      print_line "  pure function number_color_factors () result (n)";
-      print_line "    integer :: n";
-      print_line "    n = vm%number_color_factors ()";
-      print_line "  end function number_color_factors";
-
-      print_line "  pure subroutine color_factors (cf)";
-      print_line "    use omega_color";
-      print_line "    type(omega_color_factor), dimension(:), intent(out) :: cf";
-      print_line "    call vm%color_factors (cf)";
-      print_line "  end subroutine color_factors";
-
-      print_line "  !pure unless OpenMP";
-      print_line "  !pure function color_sum (flv, hel) result (amp2)";
-      print_line "  function color_sum (flv, hel) result (amp2)";
-      print_line "    use kinds";
-      print_line "    integer, intent(in) :: flv, hel";
-      print_line "    real(kind=default) :: amp2";
-      print_line "    amp2 = vm%color_sum (flv, hel)";
-      print_line "  end function color_sum";
-
-      print_line "  subroutine new_event (p)";
-      print_line "    use kinds";
-      print_line "    real(kind=default), dimension(0:3,*), intent(in) :: p";
-      print_line "    call vm%new_event (p)";
-      print_line "  end subroutine new_event";
-
-      print_line "  subroutine reset_helicity_selection (threshold, cutoff)";
-      print_line "    use kinds";
-      print_line "    real(kind=default), intent(in) :: threshold";
-      print_line "    integer, intent(in) :: cutoff";
-      print_line "    call vm%reset_helicity_selection (threshold, cutoff)";
-      print_line "  end subroutine reset_helicity_selection";
-
-      print_line "  pure function is_allowed (flv, hel, col) result (yorn)";
-      print_line "    logical :: yorn";
-      print_line "    integer, intent(in) :: flv, hel, col";
-      print_line "    yorn = vm%is_allowed (flv, hel, col)";
-      print_line "  end function is_allowed";
-
-      print_line "  pure function get_amplitude (flv, hel, col) result (amp_result)";
-      print_line "    use kinds";
-      print_line "    complex(kind=default) :: amp_result";
-      print_line "    integer, intent(in) :: flv, hel, col";
-      print_line "    amp_result = vm%get_amplitude(flv, hel, col)";
-      print_line "  end function get_amplitude";
-
-      print_line "  subroutine init ()";
-      print_line ("     bytecode_file = '" ^ !bytecode_file ^ "'");
-      print_line "     call init_parameters ()";
-      print_line "     call initialize_vm (vm, bytecode_file)";
-      print_line "  end subroutine";
+      nl();
+      print_md5sum !md5sum;
+      print_inquiry_function_openmp ();
+      print_interface !whizard;
+      print_lookup_functions ();
 
       print_line ("end module " ^ !wrapper_module);
       print_line "! O'Mega revision control information:";
@@ -1770,7 +1904,7 @@ module Fortran_Fermions : Fermions =
     let print_fermion_current_mom_ff coeff f c wf1 wf2 p1 p2 p12 fusion =
       let c = format_coupling coeff c in
       let c1 = fastener c 1 and
-          c2 = fastener c 2 in 
+          c2 = fastener c 2 in
       match fusion with
       | F13 -> printf "%s_ff(%s,%s,%s,%s)" f (c1 ~p:p1 ~q:p2 ()) (c2 ~p:p1 ~q:p2 ()) wf1 wf2
       | F31 -> printf "%s_ff(%s,%s,%s,%s)" f (c1 ~p:p1 ~q:p2 ()) (c2 ~p:p1 ~q:p2 ()) wf2 wf1
@@ -1889,6 +2023,8 @@ module Make_Fortran (Fermions : Fermions)
     let no_write = ref false
     let km_write = ref false
     let km_pure = ref false
+    let km_2_write = ref false
+    let km_2_pure = ref false
     let openmp = ref false
     let pure_unless_openmp = false
 
@@ -1917,8 +2053,10 @@ module Make_Fortran (Fermions : Fermions)
         "transfer MD5 checksum";
         "whizard", Arg.Set whizard, "include WHIZARD interface";
         "no_write", Arg.Set no_write, "no 'write' statements";
-        "kmatrix_write", Arg.Set km_write, "write K matrix functions";
+        "kmatrix_write", Arg.Set km_2_write, "write K matrix functions";
+        "kmatrix_2_write", Arg.Set km_write, "write K matrix 2 functions";
         "kmatrix_write_pure", Arg.Set km_pure, "write K matrix pure functions";
+        "kmatrix_2_write_pure", Arg.Set km_2_pure, "write Kmatrix2pure functions";
         "openmp", Arg.Set openmp, "activate OpenMP support in generated code"]
 
 (* Fortran style line continuation: *)
@@ -2585,36 +2723,175 @@ i*)
       printf "@ + ";
       print_dscalar4 c wf1 wf2 wf3 p1 p2 p3 p123 fusion (coeff, contraction)
 
-    let print_dscalar2_vector2 c wf1 wf2 wf3 p1 p2 p3 p123
-        fusion (coeff, contraction) =
-      failwith "Targets.Fortran.print_dscalar2_vector2: incomplete!";
+    let print_dscalar2_vector2 c wf1 wf2 wf3 p1 p2 p3 p123 fusion (coeff, contraction) =
       match contraction, fusion with
+      | C_12_34, (F123|F213|F124|F214) ->
+          printf "(%s%s)*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c p1 p2 wf1 wf2 wf3
       | C_12_34, (F134|F143|F234|F243) ->
-          printf "((%s%s)*(%s*%s)*(%s*%s)*%s)"
-            (format_coeff coeff) c p123 p1 wf2 wf3 wf1
+          printf "(%s%s)*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c p1 p123 wf2 wf3 wf1
+      | C_12_34, (F132|F231|F142|F241) ->
+          printf "(%s%s)*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c p1 p3 wf1 wf3 wf2  
       | C_12_34, (F312|F321|F412|F421) ->
-          printf "((%s%s)*((%s*%s)*%s*%s)*%s)"
-            (format_coeff coeff) c p2 p3 wf2 wf3 wf1
-      | C_12_34, (F341|F431|F342|F432|F123|F213|F124|F214)
-      | C_13_42, (F241|F421|F243|F423|F132|F312|F134|F314)
-      | C_14_23, (F231|F321|F234|F324|F142|F412|F143|F413) ->
-          printf "((%s%s)*(%s*%s)*(%s*%s)*%s*%s*%s)"
-            (format_coeff coeff) c p1 p2 p3 p123 wf1 wf2 wf3
-      | C_13_42, (F124|F142|F324|F342|F213|F231|F413|F431)
-      | C_14_23, (F123|F132|F423|F432|F214|F241|F314|F341) ->
-          printf "((%s%s)*(%s*%s)*(%s*%s)*%s*%s*%s)"
-            (format_coeff coeff) c p2 p3 p1 p123 wf1 wf2 wf3
-      | C_12_34, (F314|F413|F324|F423|F132|F231|F142|F241)
-      | C_13_42, (F214|F412|F234|F432|F123|F321|F143|F341)
-      | C_14_23, (F213|F312|F243|F342|F124|F421|F134|F431) ->
-          printf "((%s%s)*(%s*%s)*(%s*%s)*%s*%s*%s)"
-            (format_coeff coeff) c p1 p3 p2 p123 wf1 wf2 wf3
+          printf "(%s%s)*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c p2 p3 wf2 wf3 wf1 
+      | C_12_34, (F314|F413|F324|F423) ->
+          printf "(%s%s)*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c p2 p123 wf1 wf3 wf2  
+      | C_12_34, (F341|F431|F342|F432) ->
+          printf "(%s%s)*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c p3 p123 wf1 wf2 wf3
+      | C_13_42, (F123|F214) 
+      | C_14_23, (F124|F213) ->
+          printf "((%s%s)*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c wf1 p1 wf3 wf2 p2
+      | C_13_42, (F124|F213) 
+      | C_14_23, (F123|F214) ->
+          printf "((%s%s)*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c wf2 p2 wf3 wf1 p1
+      | C_13_42, (F132|F241) 
+      | C_14_23, (F142|F231) ->
+          printf "((%s%s)*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c wf1 p1 wf2 wf3 p3
+      | C_13_42, (F142|F231) 
+      | C_14_23, (F132|F241) ->
+          printf "((%s%s)*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c wf3 p3 wf2 wf1 p1
+      | C_13_42, (F312|F421) 
+      | C_14_23, (F412|F321) ->
+          printf "((%s%s)*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c wf2 p2 wf1 wf3 p3
+      | C_13_42, (F321|F412) 
+      | C_14_23, (F421|F312) ->
+          printf "((%s%s)*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c wf3 p3 wf1 wf2 p2
+      | C_13_42, (F134|F243) 
+      | C_14_23, (F143|F234) ->
+          printf "((%s%s)*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c wf3 p123 wf1 p1 wf2
+      | C_13_42, (F143|F234) 
+      | C_14_23, (F134|F243) ->
+          printf "((%s%s)*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c wf2 p123 wf1 p1 wf3
+      | C_13_42, (F314|F423) 
+      | C_14_23, (F413|F324) ->
+          printf "((%s%s)*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c wf3 p123 wf2 p2 wf1
+      | C_13_42, (F324|F413) 
+      | C_14_23, (F423|F314) ->
+          printf "((%s%s)*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c wf1 p123 wf2 p2 wf3
+      | C_13_42, (F341|F432) 
+      | C_14_23, (F431|F342) ->
+          printf "((%s%s)*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c wf2 p123 wf3 p3 wf1
+      | C_13_42, (F342|F431) 
+      | C_14_23, (F432|F341) ->
+          printf "((%s%s)*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c wf1 p123 wf3 p3 wf2
 
     let print_add_dscalar2_vector2 c wf1 wf2 wf3 p1 p2 p3 p123
         fusion (coeff, contraction) =
       printf "@ + ";
       print_dscalar2_vector2 c wf1 wf2 wf3 p1 p2 p3 p123
         fusion (coeff, contraction)
+
+    let print_dscalar2_vector2_km c pa pb wf1 wf2 wf3 p1 p2 p3 p123 fusion (coeff, contraction) =
+      match contraction, fusion with
+      | C_12_34, (F123|F213|F124|F214) ->
+          printf "(%s%s%s+%s))*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c pa pb p1 p2 wf1 wf2 wf3
+      | C_12_34, (F134|F143|F234|F243) ->
+          printf "(%s%s%s+%s))*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c pa pb p1 p123 wf2 wf3 wf1
+      | C_12_34, (F132|F231|F142|F241) ->
+          printf "(%s%s%s+%s))*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c pa pb p1 p3 wf1 wf3 wf2  
+      | C_12_34, (F312|F321|F412|F421) ->
+          printf "(%s%s%s+%s))*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c pa pb p2 p3 wf2 wf3 wf1 
+      | C_12_34, (F314|F413|F324|F423) ->
+          printf "(%s%s%s+%s))*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c pa pb p2 p123 wf1 wf3 wf2  
+      | C_12_34, (F341|F431|F342|F432) ->
+          printf "(%s%s%s+%s))*(%s*%s)*(%s*%s)*%s"
+            (format_coeff coeff) c pa pb p3 p123 wf1 wf2 wf3
+      | C_13_42, (F123|F214) 
+      | C_14_23, (F124|F213) ->
+          printf "((%s%s%s+%s))*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c pa pb wf1 p1 wf3 wf2 p2
+      | C_13_42, (F124|F213) 
+      | C_14_23, (F123|F214) ->
+          printf "((%s%s%s+%s))*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c pa pb wf2 p2 wf3 wf1 p1
+      | C_13_42, (F132|F241) 
+      | C_14_23, (F142|F231) ->
+          printf "((%s%s%s+%s))*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c pa pb wf1 p1 wf2 wf3 p3
+      | C_13_42, (F142|F231) 
+      | C_14_23, (F132|F241) ->
+          printf "((%s%s%s+%s))*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c pa pb wf3 p3 wf2 wf1 p1
+      | C_13_42, (F312|F421) 
+      | C_14_23, (F412|F321) ->
+          printf "((%s%s%s+%s))*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c pa pb wf2 p2 wf1 wf3 p3
+      | C_13_42, (F321|F412) 
+      | C_14_23, (F421|F312) ->
+          printf "((%s%s%s+%s))*(%s*%s*%s)*%s*%s)"
+            (format_coeff coeff) c pa pb wf3 p3 wf1 wf2 p2
+      | C_13_42, (F134|F243) 
+      | C_14_23, (F143|F234) ->
+          printf "((%s%s%s+%s))*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c pa pb wf3 p123 wf1 p1 wf2
+      | C_13_42, (F143|F234) 
+      | C_14_23, (F134|F243) ->
+          printf "((%s%s%s+%s))*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c pa pb wf2 p123 wf1 p1 wf3
+      | C_13_42, (F314|F423) 
+      | C_14_23, (F413|F324) ->
+          printf "((%s%s%s+%s))*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c pa pb wf3 p123 wf2 p2 wf1
+      | C_13_42, (F324|F413) 
+      | C_14_23, (F423|F314) ->
+          printf "((%s%s%s+%s))*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c pa pb wf1 p123 wf2 p2 wf3
+      | C_13_42, (F341|F432) 
+      | C_14_23, (F431|F342) ->
+          printf "((%s%s%s+%s))*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c pa pb wf2 p123 wf3 p3 wf1
+      | C_13_42, (F342|F431) 
+      | C_14_23, (F432|F341) ->
+          printf "((%s%s%s+%s))*(%s*%s)*(%s*%s*%s))"
+            (format_coeff coeff) c pa pb wf1 p123 wf3 p3 wf2
+
+    let print_add_dscalar2_vector2_km c pa pb wf1 wf2 wf3 p1 p2 p3 p123 fusion (coeff, contraction) =
+      printf "@ + ";
+      print_dscalar2_vector2_km c pa pb wf1 wf2 wf3 p1 p2 p3 p123 fusion (coeff, contraction)
+
+    let print_dscalar4_km c pa pb wf1 wf2 wf3 p1 p2 p3 p123 fusion (coeff, contraction) =
+      match contraction, fusion with
+      | C_12_34, (F341|F431|F342|F432|F123|F213|F124|F214)
+      | C_13_42, (F241|F421|F243|F423|F132|F312|F134|F314)
+      | C_14_23, (F231|F321|F234|F324|F142|F412|F143|F413) ->
+          printf "((%s%s%s+%s))*(%s*%s)*(%s*%s)*%s*%s*%s)"
+            (format_coeff coeff) c pa pb p1 p2 p3 p123 wf1 wf2 wf3
+      | C_12_34, (F134|F143|F234|F243|F312|F321|F412|F421)
+      | C_13_42, (F124|F142|F324|F342|F213|F231|F413|F431)
+      | C_14_23, (F123|F132|F423|F432|F214|F241|F314|F341) ->
+          printf "((%s%s%s+%s))*(%s*%s)*(%s*%s)*%s*%s*%s)"
+            (format_coeff coeff) c pa pb p2 p3 p1 p123 wf1 wf2 wf3
+      | C_12_34, (F314|F413|F324|F423|F132|F231|F142|F241)
+      | C_13_42, (F214|F412|F234|F432|F123|F321|F143|F341)
+      | C_14_23, (F213|F312|F243|F342|F124|F421|F134|F431) ->
+          printf "((%s%s%s+%s))*(%s*%s)*(%s*%s)*%s*%s*%s)"
+            (format_coeff coeff) c pa pb p1 p3 p2 p123 wf1 wf2 wf3
+
+    let print_add_dscalar4_km c pa pb wf1 wf2 wf3 p1 p2 p3 p123 fusion (coeff, contraction) =
+      printf "@ + ";
+      print_dscalar4_km c pa pb wf1 wf2 wf3 p1 p2 p3 p123 fusion (coeff, contraction)
 
     let print_current amplitude dictionary rhs =
       match F.coupling rhs with
@@ -2910,6 +3187,17 @@ i*)
                     c wf2 p1 p2 wf1 p2 p1 p2 p2 wf1
               end
 
+          | Dim5_Scalar_Scalar2 coeff->
+              let c = format_coupling coeff c in
+	      begin match fusion with
+	      | (F23|F32) -> printf "phi_dim5s2(%s, %s ,%s, %s, %s)" 
+	          c wf1 p1 wf2 p2 
+	      | (F12|F13) -> let p12 = Printf.sprintf "(-%s-%s)" p1 p2 in
+	          printf "phi_dim5s2(%s,%s,%s,%s,%s)" c wf1 p12 wf2 p2
+	      | (F21|F31) -> let p12 = Printf.sprintf "(-%s-%s)" p1 p2 in
+	          printf "phi_dim5s2(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p12
+	      end
+
           | Scalar_Vector_Vector_t coeff ->
               let c = format_coupling coeff c in
               begin match fusion with
@@ -2937,12 +3225,36 @@ i*)
               | (F21|F31) -> printf "v_t2v(%s,%s,%s)" c wf2 wf1
               end
 
+          | Tensor_2_Scalar_Scalar coeff->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "t2_phi2(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F12|F13) -> printf "phi_t2phi(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F21|F31) -> printf "phi_t2phi(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
+              end
+
           | Tensor_2_Vector_Vector_1 coeff ->
               let c = format_coupling coeff c in
               begin match fusion with
               | (F23|F32) -> printf "t2_vv_1(%s,%s,%s)" c wf1 wf2
               | (F12|F13) -> printf "v_t2v_1(%s,%s,%s)" c wf1 wf2
               | (F21|F31) -> printf "v_t2v_1(%s,%s,%s)" c wf2 wf1
+              end
+
+          | Tensor_2_Vector_Vector_cf coeff->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "t2_vv_cf(%s,%s,%s)" c wf1 wf2 
+              | (F12|F13) -> printf "v_t2v_cf(%s,%s,%s)" c wf1 wf2
+              | (F21|F31) -> printf "v_t2v_cf(%s,%s,%s)" c wf2 wf1
+              end
+
+	  | Tensor_2_Scalar_Scalar_cf coeff->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "t2_phi2_cf(%s,%s,%s,%s, %s)" c wf1 p1 wf2 p2 
+              | (F12|F13) -> printf "phi_t2phi_cf(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F21|F31) -> printf "phi_t2phi_cf(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
               end
 
           | Dim5_Tensor_2_Vector_Vector_1 coeff ->
@@ -2968,6 +3280,70 @@ i*)
               | F32 -> printf "t2_vv_d5_2(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
               | (F12|F13) -> printf "v_t2v_d5_2(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
               | (F21|F31) -> printf "v_t2v_d5_2(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
+              end
+
+          | TensorVector_Vector_Vector coeff->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "dv_vv(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2 
+              | (F12|F13) -> printf "v_dvv(%s,%s,%s,%s)" c wf1 p1 wf2 
+              | (F21|F31) -> printf "v_dvv(%s,%s,%s,%s)" c wf2 p2 wf1 
+              end
+
+          | TensorVector_Vector_Vector_cf coeff->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "dv_vv_cf(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2 
+              | (F12|F13) -> printf "v_dvv_cf(%s,%s,%s,%s)" c wf1 p1 wf2
+              | (F21|F31) -> printf "v_dvv_cf(%s,%s,%s,%s)" c wf2 p2 wf1
+              end
+
+          | TensorVector_Scalar_Scalar coeff->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "dv_phi2(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2 
+              | (F12|F13) -> printf "phi_dvphi(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F21|F31) -> printf "phi_dvphi(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
+              end
+
+          | TensorVector_Scalar_Scalar_cf coeff->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "dv_phi2_cf(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2 
+              | (F12|F13) -> printf "phi_dvphi_cf(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F21|F31) -> printf "phi_dvphi_cf(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
+              end
+
+          | TensorScalar_Vector_Vector coeff->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "tphi_vv(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2 
+              | (F12|F13) -> printf "v_tphiv(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F21|F31) -> printf "v_tphiv(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
+              end
+
+          | TensorScalar_Vector_Vector_cf coeff->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "tphi_vv_cf(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2 
+              | (F12|F13) -> printf "v_tphiv_cf(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F21|F31) -> printf "v_tphiv_cf(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
+              end
+
+          | TensorScalar_Scalar_Scalar coeff->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "tphi_ss(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2 
+              | (F12|F13) -> printf "s_tphis(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F21|F31) -> printf "s_tphis(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
+              end
+
+          | TensorScalar_Scalar_Scalar_cf coeff->
+              let c = format_coupling coeff c in
+              begin match fusion with
+              | (F23|F32) -> printf "tphi_ss_cf(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2 
+              | (F12|F13) -> printf "s_tphis_cf(%s,%s,%s,%s,%s)" c wf1 p1 wf2 p2
+              | (F21|F31) -> printf "s_tphis_cf(%s,%s,%s,%s,%s)" c wf2 p2 wf1 p1
               end
 
           | Dim7_Tensor_2_Vector_Vector_T coeff ->
@@ -3056,6 +3432,118 @@ i*)
                     tail;
                   printf ")"
               end
+          | DScalar2_Vector2_K_Matrix_ms (disc, contractions) ->
+              let p123 = Printf.sprintf "(-%s-%s-%s)" p1 p2 p3 in
+              let pa, pb =
+                begin match disc, fusion with
+                | 3, (F143|F413|F142|F412|F321|F231|F324|F234) -> (p1, p2)
+                | 3, (F314|F341|F214|F241|F132|F123|F432|F423) -> (p2, p3)
+                | 3, (F134|F431|F124|F421|F312|F213|F342|F243) -> (p1, p3)
+                | 4, (F143|F413|F142|F412|F321|F231|F324|F234) -> (p1, p2)
+                | 4, (F314|F341|F214|F241|F132|F123|F432|F423) -> (p2, p3)
+                | 4, (F134|F431|F124|F421|F312|F213|F342|F243) -> (p1, p3)
+                | 5, (F143|F413|F142|F412|F321|F231|F324|F234) -> (p1, p2)
+                | 5, (F314|F341|F214|F241|F132|F123|F432|F423) -> (p2, p3)
+                | 5, (F134|F431|F124|F421|F312|F213|F342|F243) -> (p1, p3)
+                | 6, (F134|F132|F314|F312|F241|F243|F421|F423) -> (p1, p2)
+                | 6, (F213|F413|F231|F431|F124|F324|F142|F342) -> (p2, p3)
+                | 6, (F143|F123|F341|F321|F412|F214|F432|F234) -> (p1, p3)
+                | 7, (F134|F132|F314|F312|F241|F243|F421|F423) -> (p1, p2)
+                | 7, (F213|F413|F231|F431|F124|F324|F142|F342) -> (p2, p3)
+                | 7, (F143|F123|F341|F321|F412|F214|F432|F234) -> (p1, p3)
+                | 8, (F134|F132|F314|F312|F241|F243|F421|F423) -> (p1, p2)
+                | 8, (F213|F413|F231|F431|F124|F324|F142|F342) -> (p2, p3)
+                | 8, (F143|F123|F341|F321|F412|F214|F432|F234) -> (p1, p3)
+                | _, (F341|F431|F342|F432|F123|F213|F124|F214) -> (p1, p2)
+                | _, (F134|F143|F234|F243|F312|F321|F412|F421) -> (p2, p3)
+                | _, (F314|F413|F324|F423|F132|F231|F142|F241) -> (p1, p3)
+                end in
+              begin match contractions with
+              | [] -> invalid_arg "Targets.print_current: DScalar2_Vector4_K_Matrix_ms []"
+              | head :: tail ->
+                  printf "(";
+                  print_dscalar2_vector2_km
+                    c pa pb wf1 wf2 wf3 p1 p2 p3 p123 fusion head; 
+                  List.iter (print_add_dscalar2_vector2_km
+                                  c pa pb wf1 wf2 wf3 p1 p2 p3 p123 fusion) 
+                    tail;
+                  printf ")"
+              end
+          | DScalar4_K_Matrix_ms (disc, contractions) ->
+              let p123 = Printf.sprintf "(-%s-%s-%s)" p1 p2 p3 in
+              let pa, pb =
+                begin match disc, fusion with
+                | 3, (F143|F413|F142|F412|F321|F231|F324|F234) -> (p1, p2)
+                | 3, (F314|F341|F214|F241|F132|F123|F432|F423) -> (p2, p3)
+                | 3, (F134|F431|F124|F421|F312|F213|F342|F243) -> (p1, p3)
+                | _, (F341|F431|F342|F432|F123|F213|F124|F214) -> (p1, p2)
+                | _, (F134|F143|F234|F243|F312|F321|F412|F421) -> (p2, p3)
+                | _, (F314|F413|F324|F423|F132|F231|F142|F241) -> (p1, p3)
+                end in
+              begin match contractions with
+              | [] -> invalid_arg "Targets.print_current: DScalar4_K_Matrix_ms []"
+              | head :: tail ->
+                  printf "(";
+                  print_dscalar4_km
+                    c pa pb wf1 wf2 wf3 p1 p2 p3 p123 fusion head; 
+                  List.iter (print_add_dscalar4_km
+                                  c pa pb wf1 wf2 wf3 p1 p2 p3 p123 fusion) 
+                    tail;
+                  printf ")"
+              end
+          | Dim8_Scalar2_Vector2_1 coeff ->
+              let c = format_coupling coeff c in
+                  begin match fusion with
+                  | F134 | F143 | F234 | F243 ->
+                      printf "phi_phi2v_1(%s,%s,%s,%s,%s,%s,%s)"
+                          c wf1 p1 wf2 p2 wf3 p3
+                  | F314 | F413 | F324 | F423 ->
+                      printf "phi_phi2v_1(%s,%s,%s,%s,%s,%s,%s)"
+                          c wf2 p2 wf1 p1 wf3 p3
+                  | F341 | F431 | F342 | F432 ->
+                      printf "phi_phi2v_1(%s,%s,%s,%s,%s,%s,%s)" 
+                          c wf3 p3 wf2 p2 wf1 p1
+                  | F312 | F321 | F412 | F421 ->
+	              printf "v_phi2v_1(%s,%s,%s,%s,%s,%s)"
+                          c wf3 p3 wf2 p2 wf1
+                  | F231 | F132 | F241 | F142 ->
+	              printf "v_phi2v_1(%s,%s,%s,%s,%s,%s)"
+                          c wf1 p1 wf3 p3 wf2
+                  | F123 | F213 | F124 | F214 ->
+	              printf "v_phi2v_1(%s,%s,%s,%s,%s,%s)" 
+                          c wf1 p1 wf2 p2 wf3
+                  end
+          | Dim8_Scalar2_Vector2_2 coeff ->
+              let c = format_coupling coeff c in
+                  begin match fusion with
+                  | F134 | F143 | F234 | F243 ->
+                      printf "phi_phi2v_2(%s,%s,%s,%s,%s,%s,%s)"
+                          c wf1 p1 wf2 p2 wf3 p3
+                  | F314 | F413 | F324 | F423 ->
+                      printf "phi_phi2v_2(%s,%s,%s,%s,%s,%s,%s)"
+                          c wf2 p2 wf1 p1 wf3 p3
+                  | F341 | F431 | F342 | F432 ->
+                      printf "phi_phi2v_2(%s,%s,%s,%s,%s,%s,%s)" 
+                          c wf3 p3 wf2 p2 wf1 p1
+                  | F312 | F321 | F412 | F421 ->
+	              printf "v_phi2v_2(%s,%s,%s,%s,%s,%s)"
+                          c wf3 p3 wf2 p2 wf1
+                  | F231 | F132 | F241 | F142 ->
+	              printf "v_phi2v_2(%s,%s,%s,%s,%s,%s)"
+                          c wf1 p1 wf3 p3 wf2
+                  | F123 | F213 | F124 | F214 ->
+	              printf "v_phi2v_2(%s,%s,%s,%s,%s,%s)" 
+                          c wf1 p1 wf2 p2 wf3
+                  end
+          | Dim8_Scalar4 coeff ->
+              let c = format_coupling coeff c in
+                  begin match fusion with
+                      | F134 | F143 | F234 | F243 | F314 | F413 | F324 | F423
+                      | F341 | F431 | F342 | F432 | F312 | F321 | F412 | F421
+                      | F231 | F132 | F241 | F142 | F123 | F213 | F124 | F214 ->
+	                  printf "s_dim8s3 (%s,%s,%s,%s,%s,%s,%s)" 
+                              c wf1 p1 wf2 p2 wf3 p3
+                  end
           | GBBG (coeff, fb, b, f) ->
               Fermions.print_current_g4 (coeff, fb, b, f) c wf1 wf2 wf3
                    fusion
@@ -3131,6 +3619,10 @@ i*)
           printf "pr_rxi(%s,%s,%s,%s," p m w (CM.gauge_symbol xi)
       | Prop_Tensor_2 ->
           printf "pr_tensor(%s,%s,%s," p m w
+      | Prop_Tensor_pure ->
+          printf "pr_tensor_pure(%s,%s,%s," p m w
+      | Prop_Vector_pure ->
+          printf "pr_vector_pure(%s,%s,%s," p m w
       | Prop_Vectorspinor ->
           printf "pr_grav(%s,%s,%s," p m w
       | Aux_Scalar | Aux_Spinor | Aux_ConjSpinor | Aux_Majorana
@@ -3169,6 +3661,10 @@ i*)
           printf "pj_grav(%s,%s,%s," p m gamma
       | Prop_Tensor_2 ->
           printf "pj_tensor(%s,%s,%s," p m gamma
+      | Prop_Tensor_pure ->
+          invalid_arg "no on-shell pure Tensor propagator!"
+      | Prop_Vector_pure ->
+          invalid_arg "no on-shell pure Vector propagator!"
       | Aux_Scalar | Aux_Spinor | Aux_ConjSpinor | Aux_Majorana
       | Aux_Vector | Aux_Tensor_1 -> printf "("
       | Aux_Col_Scalar | Aux_Col_Vector | Aux_Col_Tensor_1 -> printf "%s * (" minus_third
@@ -3199,6 +3695,10 @@ i*)
           invalid_arg "no on-shell Rxi propagator!"
       | Prop_Tensor_2 ->
           printf "pg_tensor(%s,%s,%s," p m gamma
+      | Prop_Tensor_pure ->
+          invalid_arg "no pure tensor propagator!"
+      | Prop_Vector_pure ->
+          invalid_arg "no pure vector propagator!"
       | Aux_Scalar | Aux_Spinor | Aux_ConjSpinor | Aux_Majorana
       | Aux_Vector | Aux_Tensor_1 -> printf "("
       | Only_Insertion -> printf "("
@@ -4441,6 +4941,7 @@ i*)
       nl ();
       current_continuation_line := 0;
       if !km_write || !km_pure then (Targets_Kmatrix.Fortran.print !km_pure);
+      if !km_2_write || !km_2_pure then (Targets_Kmatrix_2.Fortran.print !km_2_pure);
       current_continuation_line := 1;
       nl ()
 
