@@ -8,7 +8,7 @@ ovm="$2"
 oparams="$2 $3"
 shift 3
 
-models="QED QCD SM"
+models="QED QCD SM SM_CKM SM_Higgs"
 
 modules=""
 
@@ -122,8 +122,6 @@ done
 
 cat <<EOF
   implicit none
-  integer, parameter :: N = 1000
-  real(kind=default), parameter :: ROOTS = 1000
   integer, parameter :: SEED = 42
   integer :: failures, attempts, failed_processes, attempted_processes
   failed_processes = 0
@@ -161,7 +159,7 @@ done
 
 cat <<EOF
   if (failed_processes > 0) then
-     print *, failed_processes, " failed processes in ", attempted_processes, " attempts"
+     print *, failed_processes, " failed processes"
      stop 1
   end if
 end program compare_driver

@@ -1,8 +1,8 @@
-! $Id: compare_lib.f90 6262 2014-11-14 12:51:03Z bchokoufe $
+! $Id: compare_lib.f90 6465 2015-01-10 15:22:31Z jr_reuter $
 ! compare_lib.f90 -- compare two O'Mega versions
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-! Copyright (C) 1999-2014 by
+! Copyright (C) 1999-2015 by
 !     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 !     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 !     Juergen Reuter <juergen.reuter@desy.de>
@@ -56,7 +56,7 @@ contains
     integer :: i, i_flv, i_hel, i_col
     real(kind=default), dimension(:,:), allocatable :: p
     complex(kind=default) :: a1, a2
-    real(kind=default) :: asq1, asq2
+    real(kind=default) :: asq1, asq2, s_asq1, s_asq2
     character(len=80) :: msg
     failures = 0
     attempts = 0
@@ -64,6 +64,8 @@ contains
     a2 = 0
     asq1 = 0
     asq2 = 0
+    s_asq1 = 0
+    s_asq2 = 0
     call quantum_numbers (v1, v2, n_out, n_flv, n_hel, n_col, match)
     if (.not.match) then
        failures = 1
@@ -109,7 +111,9 @@ contains
              write (msg, "(1X,'evt=',I5,', flv=',I3,', hel=',I3)") &
                   i, i_flv, i_hel
              asq1 = v1%color_sum (i_flv, i_hel)
+             s_asq1 = s_asq1 + asq1
              asq2 = v2%color_sum (i_flv, i_hel)
+             s_asq2 = s_asq2 + asq2
              call expect (asq1, asq2, trim(msg), passed, &
                           quiet=.true., threshold=threshold, &
                           abs_threshold=abs_threshold)
@@ -119,9 +123,8 @@ contains
           end do
        end do
     end do
-    print *, 'Last results: '
-    print *, 'a1, a2 =    ', a1, a2
-    print *, 'asq1, asq2 =    ', asq1, asq2
+    print *, 'Summed results: '
+    print *, 's_asq1, s_asq2 =    ', s_asq1, s_asq2
     deallocate (p)
   end subroutine check
 

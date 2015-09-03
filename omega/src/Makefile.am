@@ -1,11 +1,11 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 6245 2014-11-02 16:43:07Z jr_reuter $
+# $Id: Makefile.am 7140 2015-08-07 21:11:59Z jr_reuter $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
 ########################################################################
 #
-# Copyright (C) 1999-2014 by 
+# Copyright (C) 1999-2015 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -192,6 +192,9 @@ endif OCAML_AVAILABLE
 clean-local:
 	rm -f *.cm[aiox] *.cmxa *.[ao] *.l[oa] *.$(FC_MODULE_EXT) \
 		$(OMEGA_DERIVED_CAML) omegalib.stamp
+if FC_SUBMODULES
+	-rm -f *.smod
+endif
 
 distclean-local:
 	-test "$(srcdir)" != "." && rm -f config.mli

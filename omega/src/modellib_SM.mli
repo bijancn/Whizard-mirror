@@ -1,6 +1,6 @@
-(* $Id: modellib_SM.mli 6264 2014-11-14 15:40:49Z fbach $
+(* $Id: modellib_SM.mli 6465 2015-01-10 15:22:31Z jr_reuter $
 
-   Copyright (C) 1999-2014 by
+   Copyright (C) 1999-2015 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -31,7 +31,7 @@ module QCD : Model.T with module Ch = Charges.ZZ
 module type SM_flags =
   sig
     val higgs_triangle : bool (* $H\gamma\gamma$, $Hg\gamma$ and $Hgg couplings *)
-    val higgs_hmm : bool    
+    val higgs_hmm : bool
     val triple_anom : bool
     val quartic_anom : bool
     val higgs_anom : bool

@@ -1,6 +1,6 @@
-(* $Id: omega_SM.ml 4926 2013-12-04 12:35:06Z jr_reuter $
+(* $Id: omega_SM.ml 6465 2015-01-10 15:22:31Z jr_reuter $
 
-   Copyright (C) 1999-2014 by
+   Copyright (C) 1999-2015 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -23,7 +23,7 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 module O = Omega.Make(Fusion.Mixed23)(Targets.Fortran)
-    (Modellib_SM.SM(Modellib_SM.SM_no_anomalous))
+                     (Modellib_SM.SM(Modellib_SM.SM_no_anomalous))
 let _ = O.main ()
 
 (*i
