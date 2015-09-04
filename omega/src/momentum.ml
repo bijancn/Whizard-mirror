@@ -27,7 +27,7 @@ let rcs_file = RCS.parse "Momentum" ["Finite disjoint sums of momenta"]
       RCS.date = "$Date: 2015-01-10 16:22:31 +0100 (Sat, 10 Jan 2015) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/momentum.ml $" }
+        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/momentum.ml $" }
 
 module type T =
   sig
