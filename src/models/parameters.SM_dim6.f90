@@ -1,4 +1,4 @@
-! $Id: parameters.SM_ac.f90,v 1.4 2006/06/16 13:31:48 kilian Exp $
+! $Id: parameters.SM_dim6.f90,v 1.4 2006/06/16 13:31:48 kilian Exp $
 !
 ! Copyright (C) 1999-2015 by 
 !     Wolfgang Kilian <kilian@physik.uni-siegen.de>
@@ -28,7 +28,7 @@
 ! Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-module parameters_sm_ac
+module parameters_sm_dim6
   use kinds
   use constants 
   use sm_physics !NODEP!
@@ -47,7 +47,7 @@ module parameters_sm_ac
   complex(default), public :: qlep, qup, qdwn, gcc, qw, &
        gzww, gwww, ghww, ghhww, ghzz, ghhzz, &
        ghbb, ghtt, ghcc, ghtautau, gh3, gh4, ghmm, & 		
-       iqw, igzww, igwww, gw4, gzzww, gazww, gaaww
+       iqw, igzww, igwww, gw4, gzzww, gazww, gaaww 
   real(default), public :: vev
   complex(default), dimension(2), public :: &
        gncneu, gnclep, gncup, gncdwn
@@ -63,12 +63,23 @@ module parameters_sm_ac
   complex(default), public :: ghgaz_u, ghzz_u, ghww_u
   complex(default), public :: lambda_h, fw, fww, fb, fbb
   complex(default), private :: h_anom
-
+  complex(default), public :: c66, c6p, c6t, c6dw, c6db, c6dpw, c6dpb, c6pb, c6pg, c6g, c6w
+   complex(default), public :: lambdac6
+  complex(default), public :: ghzz6v3, ghzz6d, ghzz6dp, ghzz6pb
+  complex(default), public :: ghaz6d, ghaz6dp, ghaz6pb, dim6awwdp, dim6awwdw, dim6awwgauge
+  complex(default), public :: dim6awwggg, dim6cphi, dim6vev3, ghgaga6, ghww6d, ghww6dp
+  complex(default), public :: dim6gggg ,dim6gggcg, dim6wwzw, dim6wwzdpwdw, dim6wwzdw, dim6wwzd
+  complex(default), public :: adim6h4v2, adim6h4p2, adim6ahwwdpb, adim6ahwwdpw, adim6ahwwdw
+  complex(default), public :: adim6aawwdw, adim6aawww, adim6hhwwdw, adim6hhwwdpw 
+  complex(default), public :: adim6hwwzdw, adim6hwwzddpw, adim6hwwzdpw, adim6hwwzdpb
+  complex(default), public :: adim6ahhzd, adim6ahhzdp, adim6ahhzpb, adim6azwww, adim6azwwdwdpw
+  complex(default), public :: adim6wwwww, adim6wwwwdwdpw, adim6wwzzw, adim6wwzzdwdpw, adim6hhaa
+  complex(default), public :: adim6hhzzd, adim6hhzzdp, adim6hhzzpb, adim6hhzzt
   public :: import_from_whizard, model_update_alpha_s
 
 contains
   subroutine import_from_whizard (par_array)
-    real(default), dimension(52), intent(in) :: par_array
+    real(default), dimension(64), intent(in) :: par_array
     type :: parameter_set
        real(default) :: gf
        real(default) :: mZ
@@ -122,6 +133,18 @@ contains
        real(default) :: fww
        real(default) :: fb
        real(default) :: fbb
+       real(default) :: c66
+       real(default) :: c6p
+       real(default) :: c6t
+       real(default) :: c6dw
+       real(default) :: c6db
+       real(default) :: c6dpw
+       real(default) :: c6dpb
+       real(default) :: c6pb
+       real(default) :: c6pg
+       real(default) :: c6g
+       real(default) :: c6w
+       real(default) :: lambdac6
     end type parameter_set
     type(parameter_set) :: par
     !!! This corresponds to 1/alpha = 137.03598949333
@@ -173,13 +196,25 @@ contains
     par%fww     = par_array(43)
     par%fb      = par_array(44)
     par%fbb     = par_array(45)
-    par%v       = par_array(46)
-    par%cw      = par_array(47)
-    par%sw      = par_array(48)
-    par%ee      = par_array(49)
-    par%aZ      = par_array(50)
-    par%aWZ1    = par_array(51)
-    par%aWZ2    = par_array(52)
+    par%c66     = par_array(46)
+    par%c6p     = par_array(47)
+    par%c6t     = par_array(48)
+    par%c6dw    = par_array(49)
+    par%c6db    = par_array(50)
+    par%c6dpw   = par_array(51)
+    par%c6dpb   = par_array(52)
+    par%c6pb    = par_array(53)
+    par%c6pg    = par_array(54)
+    par%c6g     = par_array(55)
+    par%c6w     = par_array(56)
+    par%lambdac6= par_array(57)
+    par%v       = par_array(58)
+    par%cw      = par_array(59)
+    par%sw      = par_array(60)
+    par%ee      = par_array(61)
+    par%aZ      = par_array(62)
+    par%aWZ1    = par_array(63)
+    par%aWZ2    = par_array(64)
     mass(1:27) = 0
     width(1:27) = 0
     mass(3) = par%ms
@@ -242,7 +277,7 @@ contains
     gzzww = gzww**2
     gazww = gzww * qw
     gaaww = qw**2
-    ghww = mass(24) * g
+    ghww =  mass(24) * g
     ghhww = g**2 / 2.0_default
     ghzz = mass(23) * g / costhw
     ghhzz = g**2 / 2.0_default / costhw**2
@@ -284,6 +319,18 @@ contains
     alzw1 = g**4 / costhw**2 * (a4 + a6)
     alzw0 = g**4 / costhw**2 * 2 * (a5 + a7)
     alzz = g**4 / costhw**4 * 2 * (a4 + a5 + (a6+a7+a10)*2)
+    c66 = par%c66  
+    c6p = par%c6p  
+    c6t = par%c6t  
+    c6dw = par%c6dw
+    c6db = par%c6db 
+    c6dpw = par%c6dpw
+    c6dpb = par%c6dpb
+    c6pb = par%c6pb  
+    c6pg = par%c6pg  
+    c6g = par%c6g    
+    c6w = par%c6w
+    lambdac6 = par%lambdac6    
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !!! Higgs anomaly couplings
     !!! SM LO loop factor (top,bottom,W)
@@ -321,6 +368,64 @@ contains
     ghzz_u = - h_anom * (costhw**2 * par%fw + sinthw**2 * par%fb) / &
          2.0_default / costhw**2
     ghww_u = - h_anom * par%fw / 2.0_default
+    ghaz6d = - e / costhw * vev * c6dw/(lambdac6**2) + g * vev * c6db/(lambdac6**2)
+    ghaz6dp = 0.5 * e / costhw * vev * c6dpw/(lambdac6**2) - 0.5 * g * vev * c6dpb/(lambdac6**2)
+    ghaz6pb = - 4 * costhw * sinthw * vev * c6pb/(lambdac6**2)
+    ghgaga6 = 4 * costhw * costhw * vev * c6pb/(lambdac6**2)
+    dim6awwggg = 6 * sinthw * c6w/(lambdac6**2)
+    dim6awwdp = 0.25 * g * costhw * vev**2 * (g * c6dpb/(lambdac6**2) + &
+                      e / costhw * c6dpw/(lambdac6**2))
+    dim6awwdw = 0.5 * e**2 / sinthw * vev**2 * c6dw/(lambdac6**2)
+    dim6vev3 = 15 * vev**3 * c66/(lambdac6**2)
+    dim6cphi = 4 * vev * c6p/(lambdac6**2)
+    ghww6d = g * vev * c6dw/(lambdac6**2)
+    ghww6dp = 0.5 * g * vev * c6dpw/(lambdac6**2)
+    dim6wwzw = 6 * costhw * c6w/(lambdac6**2)
+    dim6wwzdpwdw = 0.25 * g**2 / costhw * vev**2 * c6dpw/(lambdac6**2) &
+                  + 0.5 * g * vev**2 * (sinthw*e/costhw + 3*costhw*g) * c6dw/(lambdac6**2)
+    dim6wwzdw = 0.5 * e**2 / costhw * vev**2 * c6dw/(lambdac6**2)
+    dim6wwzd = 0.25 * g**2 * costhw * vev**2 * c6dpw/(lambdac6**2) &
+                       + 1.5 * costhw * g**2 * vev**2 * c6dw/(lambdac6**2) &
+                        - 0.25 * g**2 * sinthw * vev**2 * c6dpb/(lambdac6**2) 
+    ghzz6v3 = - 2 * g**2 / costhw**2 * vev**3 * c6t/(lambdac6**2) 
+    ghzz6d = g * vev * c6dw/(lambdac6**2) + e / costhw * vev * c6db/(lambdac6**2)
+    ghzz6dp = 0.5 * vev * (g * c6dpw/(lambdac6**2) + (e / costhw) * c6dpb/(lambdac6**2))
+    ghzz6pb = 4 * sinthw**2 * vev * c6pb/(lambdac6**2)
+!!DONE!!!!!!!!!!!!!!!!!!!!!! 
+!    dim6gggg = 6 * c6g
+!    write (*, "(1x,A,ES19.12)")  "ghzz6dp =", ghzz6dp
+!    dim6gggcg = 2 * gs * vev**2 * c6pg
+    adim6h4v2 = 45 * vev**2 * c66/(lambdac6**2)
+    adim6h4p2 = 4 * c6p/(lambdac6**2)
+    adim6ahwwdpb = 0.5 * g**2 * costhw * vev * c6dpb/(lambdac6**2)
+    adim6ahwwdpw = 0.5 * (e**2 / sinthw) * vev * c6dpw/(lambdac6**2)
+    adim6ahwwdw = (e**2 / sinthw) * vev * c6dw/(lambdac6**2)
+    adim6aawwdw = (e**3 / sinthw) * vev**2 * c6dw/(lambdac6**2)
+    adim6aawww =  6 * e * sinthw * c6w/(lambdac6**2)
+    adim6hhwwdpw = 0.5 * g * c6dpw/(lambdac6**2) 
+    adim6hhwwdw = g * c6dw/(lambdac6**2) 
+    adim6hwwzdw = (e**2 / costhw) * vev *c6dw/(lambdac6**2) 
+    adim6hwwzddpw = g**2 * costhw * vev * ( 3*c6dw/(lambdac6**2) + 0.5*c6dpw/(lambdac6**2) )
+    adim6hwwzdpw = 0.5 * (e**2 / costhw) * vev * c6dpw/(lambdac6**2) 
+    adim6hwwzdpb = 0.5 * (e**2 / sinthw) * vev * c6dpb/(lambdac6**2) 
+    adim6ahhzd = g * c6db/(lambdac6**2)  - e/costhw * c6dw/(lambdac6**2) 
+    adim6ahhzdp = 0.5 * (e/costhw * c6dpw/(lambdac6**2) - g * c6dpb/(lambdac6**2))
+    adim6ahhzpb = 4 * costhw * sinthw * c6pb/(lambdac6**2) 
+    adim6azwww = 6 * e * costhw * c6w/(lambdac6**2) 
+    adim6azwwdwdpw = (e**3/costhw + costhw*(e**3)/(sinthw**2)) * vev**2 * 0.25 * c6dpw/(lambdac6**2) &
+                      + (e**3/costhw + 3*costhw*(e**3)/(sinthw**2))* vev**2 * 0.5 * c6dw/(lambdac6**2) 
+    adim6wwwww = 6 * e/sinthw * c6w/(lambdac6**2) 
+    adim6wwwwdwdpw = (e**3)/(sinthw**3) * vev**2 * (0.5 * c6dpw/(lambdac6**2) + 2 * c6dw/(lambdac6**2) )
+    adim6wwzzw = 6 * costhw**2 * e/sinthw * c6w/(lambdac6**2) 
+    adim6wwzzdwdpw = 0.5 * (costhw**2 * e**3 / sinthw**3 + e**3 / sinthw) * vev**2 * c6dpw/(lambdac6**2) &
+                      + (2 * costhw**2 * e**3 / sinthw**3 + e**3 / sinthw) * vev**2 *c6dw/(lambdac6**2) 
+    adim6hhaa = 4 * costhw**2 * c6pb/(lambdac6**2)
+    adim6hhzzd = (costhw**2 * e / sinthw + e * sinthw ) * c6dw/(lambdac6**2) &
+                  + (costhw * e + sinthw**2 * e/costhw) *c6db/(lambdac6**2)
+    adim6hhzzdp = 0.5*(costhw**2 * e / sinthw + e * sinthw ) * c6dpw/(lambdac6**2) &
+                  + 0.5*(costhw * e + sinthw**2 * e/costhw) *c6dpb/(lambdac6**2)
+    adim6hhzzpb = 4 * sinthw**2 * c6pb/(lambdac6**2)
+    adim6hhzzt = - 6 * vev**2 * (g/costhw)**2 * c6t/(lambdac6**2)
   end subroutine import_from_whizard
 
   subroutine model_update_alpha_s (alpha_s)
@@ -328,4 +433,4 @@ contains
     gs = sqrt(2.0_default*PI*alpha_s)
     igs = cmplx(0.0_default, 1.0_default, kind=default) * gs     
   end subroutine model_update_alpha_s
-end module parameters_sm_ac
+end module parameters_sm_dim6

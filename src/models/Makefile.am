@@ -60,6 +60,7 @@ libmodels_la_SOURCES = \
   parameters.SM.f90 \
   parameters.SM_ac.f90 \
   parameters.SM_ac_CKM.f90 \
+  parameters.SM_dim6.f90 \
   parameters.SM_CKM.f90 \
   parameters.SM_top.f90 \
   parameters.SM_top_anom.f90 \
@@ -236,6 +237,9 @@ parameters_sm.$(FC_MODULE_EXT): parameters.SM.lo
 	@:
 
 parameters_sm_ckm.$(FC_MODULE_EXT): parameters.SM_CKM.lo
+	@:
+
+parameters_sm_dim6.$(FC_MODULE_EXT): parameters.SM_dim6.lo
 	@:
 
 parameters_sm_ac.$(FC_MODULE_EXT): parameters.SM_ac.lo
