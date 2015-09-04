@@ -3800,7 +3800,7 @@ module nlo_data
 <<Use kinds>>
 <<Use strings>>
   use diagnostics
-  use constants, only: one, two, twopi
+  use constants, only: zero, one, two, twopi
   use io_units
   use lorentz
 
@@ -3923,6 +3923,30 @@ end module nlo_data
   end type real_kinematics_t
 
 @ %def real_kinematics_t
+@
+<<nlo data: real kinematics: TBP>>=
+  procedure :: init => real_kinematics_init
+<<nlo data: procedures>>=
+  subroutine real_kinematics_init (r, n_tot)
+    class(real_kinematics_t), intent(inout) :: r
+    integer, intent(in) :: n_tot
+    allocate (r%xi_max (n_tot))
+    allocate (r%y (n_tot))
+    allocate (r%y_soft (n_tot))
+    allocate (r%p_born_cms (n_tot), &
+              r%p_born_lab (n_tot), &
+              r%p_real_cms (n_tot+1), &
+              r%p_real_lab (n_tot+1))
+    allocate (r%jac (n_tot), r%jac_rand (n_tot))
+    allocate (r%k_perp (n_tot))
+    r%xi_tilde = zero
+    r%xi_max = zero
+    r%y = zero
+    r%phi = zero
+    r%cms_energy2 = zero
+  end subroutine real_kinematics_init
+    
+@ %def real_kinematics_init
 @
 <<nlo data: real kinematics: TBP>>=
   procedure :: write => real_kinematics_write
@@ -5230,7 +5254,7 @@ process.
      if (nlo_controller%use_internal_color_correlations) &
         call nlo_controller%color_data%init (nlo_controller%reg_data, prc_constants)
      nlo_controller%alpha_s_born_set = .false.
-     call nlo_controller%init_real_kinematics ()
+     call nlo_controller%init_real_and_isr_kinematics ()
      associate (particle_data => nlo_controller%particle_data)
         n_in = particle_data%n_in
         n_tot_born = n_in + particle_data%n_out_born
@@ -5717,36 +5741,21 @@ process.
 @ %def nlo_controller_set_alpha_s_born
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: init_real_kinematics => nlo_controller_init_real_kinematics
+  procedure :: init_real_and_isr_kinematics &
+     => nlo_controller_init_real_and_isr_kinematics
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_init_real_kinematics (nlo_controller)
+  subroutine nlo_controller_init_real_and_isr_kinematics (nlo_controller)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     integer :: n_tot
     n_tot = nlo_controller%particle_data%n_in + &
             nlo_controller%particle_data%n_out_born
     allocate (nlo_controller%real_kinematics)
     allocate (nlo_controller%isr_kinematics)
-    associate (real_kinematics => nlo_controller%real_kinematics)
-       allocate (real_kinematics%xi_max (n_tot))
-       allocate (real_kinematics%y (n_tot))
-       allocate (real_kinematics%y_soft (n_tot))
-       allocate (real_kinematics%jac_rand (n_tot))
-       allocate (real_kinematics%p_born_cms (n_tot), &
-                 real_kinematics%p_born_lab (n_tot))
-       allocate (real_kinematics%p_real_cms (n_tot+1), &
-                 real_kinematics%p_real_lab (n_tot+1))
-       allocate (real_kinematics%jac (n_tot))
-       real_kinematics%xi_tilde = 0
-       real_kinematics%y = 0
-       real_kinematics%xi_max = 0
-       real_kinematics%phi = 0
-       real_kinematics%cms_energy2 = 0
-       allocate (real_kinematics%k_perp (n_tot))
-    end associate
+    call nlo_controller%real_kinematics%init (n_tot)
     nlo_controller%isr_kinematics%n_in = nlo_controller%particle_data%n_in
-  end subroutine nlo_controller_init_real_kinematics
+  end subroutine nlo_controller_init_real_and_isr_kinematics
 
-@ %def nlo_controller_init_real_kinematics
+@ %def nlo_controller_init_real_and_isr_kinematics
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: init_isr_kinematics => nlo_controller_init_isr_kinematics
@@ -7618,7 +7627,6 @@ end module phs_fks_uti
     p_born(4)%p(1:3) = -p_born(3)%p(1:3)
 
     allocate (generator%isr_kinematics)
-    allocate (generator%real_kinematics)
     generator%n_in = 2
 
     call generator%set_beam_energy (sqrts)
@@ -7630,14 +7638,12 @@ end module phs_fks_uti
 
     x1=0.5_default; x2=0.25_default; x3=0.75_default
     write (u, "(A)" ) "* Use random numbers: "
-    write (u, "(A,F3.2,A,F3.2,A,F3.2)") "x1: ", x1, "x2: ", x2, "x3: ", x3
-    associate (rad_var => generator%real_kinematics)
-       allocate (rad_var%xi_max(4), rad_var%y(4))
-       allocate (rad_var%p_born_cms(4), rad_var%p_real_cms(5))
-       allocate (rad_var%p_born_lab(4), rad_var%p_real_lab(5))
-       allocate (rad_var%jac(4))
-       allocate (rad_var%jac_rand(4), rad_var%y_soft(4))
-    end associate
+    write (u, "(A,F3.2,1X,A,F3.2,1X,A,F3.2)") &
+       "x1: ", x1, "x2: ", x2, "x3: ", x3
+    
+    allocate (generator%real_kinematics)
+    call generator%real_kinematics%init (4)
+
     allocate (generator%emitters (2))
     generator%emitters(1) = 3; generator%emitters(2) = 4
     allocate (generator%m2 (4))
@@ -7716,16 +7722,13 @@ end module phs_fks_uti
 
     x1=0.5_default; x2=0.25_default; x3=0.65_default
     write (u, "(A)" ) "* Use random numbers: "
-    write (u, "(A,F3.2,A,F3.2,A,F3.2)") "x1: ", x1, "x2: ", x2, "x3: ", x3
+    write (u, "(A,F3.2,1X,A,F3.2,1X,A,F3.2)") &
+       "x1: ", x1, "x2: ", x2, "x3: ", x3
+
     allocate (generator%real_kinematics)
-    associate (rad_var => generator%real_kinematics)
-       allocate (rad_var%xi_max(4), rad_var%y(4))
-       allocate (rad_var%p_born_cms(4), rad_var%p_real_cms(5))
-       allocate (rad_var%p_born_lab(4), rad_var%p_real_lab(5))
-       allocate (rad_var%jac(4))
-       allocate (rad_var%jac_rand(4), rad_var%y_soft(4))
-       rad_var%p_born_lab = p_born
-    end associate
+    call generator%real_kinematics%init (4)
+    generator%real_kinematics%p_born_lab = p_born
+
     allocate (generator%m2 (2))
     generator%m2(1) = 0._default; generator%m2(2) = 0._default
     allocate (generator%is_massive (4))
@@ -7785,7 +7788,6 @@ end module phs_fks_uti
     p_born(3)%p(0) = 67.271333209_default
     p_born(3)%p(1:3) = -p_born(2)%p(1:3)
 
-    allocate (generator%real_kinematics)
     generator%n_in = 1 
 
     mB = 4.2_default
@@ -7801,15 +7803,13 @@ end module phs_fks_uti
 
     x1=0.5_default; x2=0.25_default; x3=0.6_default
     write (u, "(A)") "* Use random numbers: "
-    write (u, "(A,F3.2,A,F3.2,A,F3.2)") "x1: ", x1, "x2: ", x2, "x3: ", x3
-    associate (rad_var => generator%real_kinematics)
-       allocate (rad_var%xi_max(3), rad_var%y(3))
-       allocate (rad_var%p_born_cms(3), rad_var%p_real_cms(4))
-       allocate (rad_var%p_born_lab(3), rad_var%p_real_lab(4))
-       allocate (rad_var%jac(3))
-       allocate (rad_var%jac_rand(3), rad_var%y_soft(3))
-       rad_var%p_born_lab = p_born
-    end associate
+    write (u, "(A,F3.2,1X,A,F3.2,A,1X,F3.2)") &
+       "x1: ", x1, "x2: ", x2, "x3: ", x3
+
+    allocate (generator%real_kinematics)
+    call generator%real_kinematics%init (3)
+    generator%real_kinematics%p_born_lab = p_born
+
     allocate (generator%emitters(2))
     generator%emitters(1) = 1
     generator%emitters(2) = 3

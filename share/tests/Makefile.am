@@ -144,6 +144,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/xml_4.ref \
     unit_tests/ref-output/sm_qcd_1.ref \
     unit_tests/ref-output/sm_physics_1.ref \
+    unit_tests/ref-output/sm_physics_2.ref \
     unit_tests/ref-output/models_1.ref \
     unit_tests/ref-output/models_2.ref \
     unit_tests/ref-output/models_3.ref \
@@ -635,6 +636,7 @@ REF_OUTPUT_FILES_BASE = \
 REF_OUTPUT_FILES_DOUBLE = \
     unit_tests/ref-output-double/phs_fks_generator_1.ref \
     unit_tests/ref-output-double/phs_fks_generator_2.ref \
+    unit_tests/ref-output-double/phs_fks_generator_3.ref \
     unit_tests/ref-output-double/sf_isr_5.ref \
     functional_tests/ref-output-double/qedtest_3.ref \
     functional_tests/ref-output-double/qedtest_4.ref \
@@ -681,6 +683,7 @@ REF_OUTPUT_FILES_DOUBLE = \
 REF_OUTPUT_FILES_EXT = \
     unit_tests/ref-output-ext/phs_fks_generator_1.ref \
     unit_tests/ref-output-ext/phs_fks_generator_2.ref \
+    unit_tests/ref-output-ext/phs_fks_generator_3.ref \
     unit_tests/ref-output-ext/sf_isr_5.ref \
     functional_tests/ref-output-ext/qedtest_3.ref \
     functional_tests/ref-output-ext/qedtest_4.ref \

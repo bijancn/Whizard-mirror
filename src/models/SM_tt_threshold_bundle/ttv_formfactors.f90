@@ -785,7 +785,7 @@ contains
     complex(default) :: arg
     if ( nustar_dynamic ) then
       !!! from [arXiv:1309.6323], Eq. (3.2) (other definitions possible)
-      arg = ( sqrts - 2.*m1s + imago*gam ) / m1s
+      arg = ( sqrts - 2.*m1s + imago*gam_m1s ) / m1s
       nu  = nustar_offset + abs(sqrt(arg))
     else
       nu  = nustar_fixed
