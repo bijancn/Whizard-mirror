@@ -209,6 +209,7 @@ TESTS_REQ_OCAML = \
     user_cuts.run \
     user_prc.run \
     $(TESTS_USER_STRFUN) 
+
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
     user_cuts.run \

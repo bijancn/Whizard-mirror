@@ -161,12 +161,9 @@ fi
 WO_FC_CHECK_OO_FEATURES()
 WO_FC_CHECK_TR19767()
 WO_FC_MODULE_FILE([FC_MODULE_NAME], [FC_MODULE_EXT], [$FC], [f90])
-WO_FC_CHECK_EXTENDED
-WO_FC_CHECK_EXTENDED_C
-WO_FC_SET_PRECISION
+WO_FC_CONFIGURE_KINDS([src/kinds.f90])
 WO_FC_SET_OPENMP
 WO_FC_SET_PROFILING
-AC_CONFIG_FILES([src/kinds.f90])
 
 ########################################################################
 ### Wrapup

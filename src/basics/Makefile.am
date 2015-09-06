@@ -106,6 +106,8 @@ if FC_SUBMODULES
 	-rm -f *.smod
 endif
 
+DISTCLEANFILES = kinds.f90
+
 ## Remove backup files
 maintainer-clean-local:
 	-rm -f *~

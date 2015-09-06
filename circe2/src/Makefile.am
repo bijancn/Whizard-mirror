@@ -49,7 +49,7 @@ NOWEB_FILES += circe2.nw
 # otherwise provided by VAMP and/or WHIZARD
 ########################################################################
 
-EXTRA_SOURCE_FILES += kinds.f90.in
+EXTRA_SOURCE_FILES +=
 MODULE_FILES += kinds.$(FC_MODULE_EXT)
 
 lib_LTLIBRARIES += libtaorng.la
@@ -184,10 +184,10 @@ Makefile.depend: $(SOURCE_FILES) $(circe2_moments_SOURCES) $(circe2_ls_SOURCES)
 	          -e 's/, *only:.*//' \
 	          -e 's/, *&//' \
 	          -e 's/, *.*=>.*//' \
-	          -e 's/ *$$/.mod/'; \
+	          -e 's/ *$$/.$$(FC_MODULE_EXT)/'; \
 	done > $@
 
-DISTCLEANFILES = Makefile.depend
+DISTCLEANFILES = Makefile.depend kinds.f90
 
 if OCAML_AVAILABLE
 

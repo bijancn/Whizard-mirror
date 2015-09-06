@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 7140 2015-08-07 21:11:59Z jr_reuter $
+# $Id: Makefile.am 7208 2015-09-05 09:42:23Z ohl $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -109,7 +109,7 @@ SUFFIXES += .lo .$(FC_MODULE_EXT)
 
 ########################################################################
 
-DISTCLEANFILES =
+DISTCLEANFILES = kinds.f90
 
 if NOWEB_AVAILABLE
 

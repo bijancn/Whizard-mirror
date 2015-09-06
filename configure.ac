@@ -363,14 +363,8 @@ WO_FC_CHECK_FLUSH()
 ### Check for iso_fortran_env
 WO_FC_CHECK_ISO_FORTRAN_ENV()
 
-### Check for extended precision support
-WO_FC_CHECK_EXTENDED()
-
-### Check for extended precision support in the C interface
-WO_FC_CHECK_EXTENDED_C()
-
-### Extended precision enforced upon request
-WO_FC_SET_PRECISION()
+### Check for the requested precision
+WO_FC_CONFIGURE_KINDS([src/basics/kinds.f90])
 
 ### Warn about gfortran 4.7 (currently not necessary)
 # WO_FC_WARN_GFORTRAN_47()
@@ -641,7 +635,7 @@ AC_CONFIG_FILES([src/noweb-frame/Makefile])
 ###---------------------------------------------------------------------
 ### Subdirectory src/basics: numeric kinds, strings
 
-AC_CONFIG_FILES([src/basics/Makefile] [src/basics/kinds.f90])
+AC_CONFIG_FILES([src/basics/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/utilities: simple utilities
