@@ -133,7 +133,8 @@ contains
   subroutine init_parameters (mpole_out, gam_out, m1s_in, Vtb, gam_inv, &
          aemi, sw, az, mz, mw, &
          mb, h_in, f_in, nloop_in, ff_in, &
-         v1_in, v2_in, scan_sqrts_min, scan_sqrts_max, scan_sqrts_stepsize)
+         v1_in, v2_in, scan_sqrts_min, scan_sqrts_max, scan_sqrts_stepsize, &
+         mpole_fixed_in)
     real(default), intent(out) :: mpole_out
     real(default), intent(out) :: gam_out
     real(default), intent(in) :: m1s_in
@@ -154,6 +155,7 @@ contains
     real(default), intent(in) :: scan_sqrts_min
     real(default), intent(in) :: scan_sqrts_max
     real(default), intent(in) :: scan_sqrts_stepsize
+    logical, intent(in) :: mpole_fixed_in
     real(default) :: z3
     !!! possibly (re-)enable these as user parameters:
     real(default) :: nu_in = -1

@@ -57,7 +57,7 @@ module parameters_sm_tt_threshold
 contains
 
   subroutine import_from_whizard (par_array)
-    real(default), dimension(38), intent(in) :: par_array
+    real(default), dimension(40), intent(in) :: par_array
     type :: parameter_set
        real(default) :: mZ
        real(default) :: mW
@@ -91,6 +91,8 @@ contains
        real(default) :: scan_sqrts_max
        real(default) :: scan_sqrts_stepsize
        real(default) :: test
+       real(default) :: no_pwave
+       real(default) :: mpole_fixed
        real(default) :: ee
        real(default) :: cw
        real(default) :: sw
@@ -102,6 +104,7 @@ contains
     !!! This corresponds to 1/alpha = 137.03598949333
     real(default), parameter :: &
          alpha = 1.0_default/137.03598949333_default
+    logical :: no_pwave, mpole_fixed
     e_em = sqrt(4.0_default * PI * alpha)
     par%mZ     = par_array(1)
     par%mW     = par_array(2)
@@ -135,12 +138,14 @@ contains
     par%scan_sqrts_max = par_array(30)
     par%scan_sqrts_stepsize = par_array(31)
     par%test   = par_array(32)
-    par%ee     = par_array(33)
-    par%cw     = par_array(34)
-    par%sw     = par_array(35)
-    par%v      = par_array(36)
-    par%mtpole = par_array(37)
-    par%wtop   = par_array(38)
+    par%no_pwave = par_array(33)
+    par%mpole_fixed = par_array(34)
+    par%ee     = par_array(35)
+    par%cw     = par_array(36)
+    par%sw     = par_array(37)
+    par%v      = par_array(38)
+    par%mtpole = par_array(39)
+    par%wtop   = par_array(40)
     mass(1:27) = 0
     width(1:27) = 0
     mass(3) = par%ms
@@ -217,11 +222,13 @@ contains
     !!! Color flow basis, divide by sqrt(2)
     gs = sqrt(2.0_default*PI*par%alphas)
     igs = cmplx (0.0_default, 1.0_default, kind=default) * gs
+    mpole_fixed = par%mpole_fixed > 0.0_default
     call ttv_formfactors_init_parameters &
          (mass(6), width(6), par%m1s, par%Vtb, par%wt_inv, &
           par%alphaemi, par%sw, par%alphas, par%mZ, par%mW, &
           mass(5), par%sh, par%sf, par%nloop, par%FF, &
-          par%v1, par%v2, par%scan_sqrts_min, par%scan_sqrts_max, par%scan_sqrts_stepsize)
+          par%v1, par%v2, par%scan_sqrts_min, par%scan_sqrts_max, &
+          par%scan_sqrts_stepsize, mpole_fixed)
     call ttv_formfactors_init_threshold_grids (par%test)
   end subroutine import_from_whizard
 
@@ -237,10 +244,6 @@ contains
     type(momentum), intent(in) :: p, k
     integer, intent(in) :: i
     type(phase_space_point_t) :: ps
-    !print *, 'p%t =    ', p%t !!! Debugging
-    !print *, 'p%x =    ', p%x !!! Debugging
-    !print *, 'k%t =    ', k%t !!! Debugging
-    !print *, 'k%x =    ', k%x !!! Debugging
     call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
     c = ttv_formfactors_FF (ps, i)
     !!! form factors include tree level: FF = 1 + O(alphas)

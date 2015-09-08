@@ -32,6 +32,7 @@ subroutine init_external_parameters (par) bind (C)
   real(default) :: m1s, Vtb, wt_inv, alphas, mZ, &
                    nloop, sh, sf, FF, v1, v2, match, mpole, &
                    aemi, sw, mW, mb, wtop, sqrts_min, sqrts_max, sqrts_it
+  logical :: mpole_fixed
   mZ     = par(1)
   mW     = par(2)
   alphas = par(4)
@@ -49,10 +50,11 @@ subroutine init_external_parameters (par) bind (C)
   sqrts_min = par(29)
   sqrts_max = par(30)
   sqrts_it = par(31)
-  sw     = par(35)
+  mpole_fixed = par(34) > 0.0_default
+  sw     = par(37)
   call ttv_formfactors_init_parameters (mpole, wtop, m1s, Vtb, wt_inv, aemi, &
                         sw, alphas, mZ, mW, mb, sh, sf, nloop, FF, v1, v2, &
-                        sqrts_min, sqrts_max, sqrts_it)
-  par(37) = mpole
-  par(38) = wtop
+                        sqrts_min, sqrts_max, sqrts_it, mpole_fixed)
+  par(39) = mpole
+  par(40) = wtop
 end subroutine init_external_parameters
