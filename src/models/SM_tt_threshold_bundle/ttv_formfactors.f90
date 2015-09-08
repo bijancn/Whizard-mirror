@@ -49,6 +49,7 @@ module ttv_formfactors
   logical :: ext_NLO = .false.
 
   logical :: init_pars, init_ps, init_ff, init_J0
+  logical :: mpole_fixed
   ! gam_m1s is only used for the scale nustar
   real(default) :: m1s, gam, gam_m1s
   integer :: nloop
@@ -161,8 +162,8 @@ contains
     real(default) :: nu_in = -1
     init_pars = .false.
     m1s = m1s_in
+    mpole_fixed = mpole_fixed_in
     gam_m1s = top_width_sm_lo (one / aemi, sw, Vtb, m1s, mw, mb) + gam_inv
-    gam = gam_m1s !! only for comparison
     nloop = 1
     if ( int(nloop_in) > nloop ) then
       call msg_warning ("reset to highest available nloop = " // char(nloop))
@@ -210,13 +211,13 @@ contains
 
     !!! soft parameters incl. mtpole (depend on sqrts: initialize with sqrts ~ 2*m1s)
     nustar_fixed = nu_in
-    nustar_dynamic = ( nustar_fixed  < 0. )
+    nustar_dynamic = nustar_fixed  < 0.
     f = f_in
     call update_soft_parameters (2. * m1s)
     mtpole_init = mtpole
     mpole_out = mtpole_init
     !!! compute the total LO top width from t->bW decay plus optional invisible width
-    !gam = top_width_sm_lo (one / aemi, sw, Vtb, mtpole, mw, mb) + gam_inv
+    gam = top_width_sm_lo (one / aemi, sw, Vtb, mtpole, mw, mb) + gam_inv
     gam_out = gam
 
     !!! flags
@@ -267,8 +268,10 @@ contains
       case (4)
         c = nonrelativistic_formfactor (ah, ps, i, no_p0=.true.)
       case (5)
-        c = nonrelativistic_formfactor (alphas_soft(ps%sqrts,nloop)-ah, ps, i) &
+        c = nonrelativistic_formfactor (alphas_soft (ps%sqrts, nloop)-ah, ps, i) &
             + relativistic_formfactor_pure (ah, ps, i) - one
+      case (6)
+        c = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts, nloop), ps, i)
       case default
         return
     end select
@@ -295,12 +298,13 @@ contains
   end function matched_formfactor
 
   !!! LL/NLL resummation of nonrelativistic Coulomb potential
-  pure function resummed_formfactor (ps, i) result (c)
+  !pure
+  function resummed_formfactor (ps, i) result (c)
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: i
     complex(default) :: c
     c = one
-    if (.not.init_ff .or. .not.ps%inside_grid) return
+    if (.not. init_ff .or. .not. ps%inside_grid) return
     if (need_p0) then
       if (i == 2) return
       call interpolate_linear (sq_grid, p_grid, p0_grid, ff_grid(:,:,:,i), &
@@ -308,6 +312,8 @@ contains
     else
       call interpolate_linear (sq_grid, p_grid, ff_grid(:,:,1,i), ps%sqrts, ps%p, c)
     end if
+    !print *, 'alphas_soft (sqrts, nloop) =    ', alphas_soft (ps%sqrts, nloop) !!! Debugging
+    !print *, 'c =    ', c !!! Debugging
   end function resummed_formfactor
 
   !!! relativistic off-shell O(alphas^1) contribution (-> no resummation)
@@ -609,6 +615,7 @@ contains
     complex(default), intent(inout) :: ff
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: i
+    call msg_debug (D_THRESHOLD, "match_resummed_formfactor")
     select case (matching_version)
       case (0)
         return
@@ -832,8 +839,11 @@ contains
     mpole = mtpole_init
     nl = nloop
     if ( present(nl_in) ) nl = nl_in
-    !mpole = m1s * ( 1. + deltaM(sqrts, nl) )
-    mpole = m1s ! only for comparison
+    if (.not. mpole_fixed) then
+       mpole = m1s * ( 1. + deltaM(sqrts, nl) )
+    else
+       mpole = m1s
+    end if
   end function m1s_to_mpole
 
   !pure
@@ -1071,7 +1081,7 @@ contains
     p_grid = p_grid_from_TOPPIK ()
     if (need_p0) then
       if (ff_type == 0 .and. ext_Vinput) then
-        ! TODO: (bcn 2015-07-30) why is mpole hard coded here?
+        ! This is only for setup of the p_grid not the form factor
         p_grid = p_grid_from_TOPPIK (173.0_default)
         call import_Vmatrices ()
       else
@@ -1272,8 +1282,12 @@ contains
     complex(default) :: q_integral, ff
     real(default) :: current_c1
     if (i==2) return
+    call msg_debug (D_THRESHOLD, "scan_formfactor_over_p_p0")
+    call msg_debug (D_THRESHOLD, "ext_Vinput", ext_Vinput)
     en = sqrts_to_en (sqrts, mtpole)
+    call msg_debug (D_THRESHOLD, "en", en)
     if (ext_Vinput) then
+       call msg_debug (D_THRESHOLD, "Allocate and compute Vmat and Tvec")
       allocate (Vmat(n_p0,n_p_p0dep,n_q))
       allocate (Tvec(n_q))
       select case (nloop)
@@ -1294,7 +1308,7 @@ contains
     end if
     !!! a_soft @ LL in current coefficient!
     current_c1 = current_coeff (ah, asLL, au, i)
-    !!! integrate over q for each p, p0:
+    call msg_debug (D_THRESHOLD, "Integrate over q for each p, p0")
     do i_p = 1, n_p_p0dep
        p = p_grid(i_p)
        do i_p0 = 1, n_p0
@@ -1669,7 +1683,7 @@ contains
     real(default), intent(in) :: k2
     real(default), intent(in) :: q2
     real(default), intent(in), optional :: m
-    real(default) :: pp2, E
+    real(default) :: E
     ps_point%p2 = p2
     ps_point%k2 = k2
     ps_point%q2 = q2

@@ -279,7 +279,6 @@ contains
   function ttv_mtpole (s) result (m)
     real(default), intent(in) :: s
     real(default) :: m
-    !m = ttv_formfactors_m1s_to_mpole (sqrt (s)) ! only for comparison
-    m = 172.0_default
+    m = ttv_formfactors_m1s_to_mpole (sqrt (s))
   end function ttv_mtpole
 end module parameters_sm_tt_threshold
