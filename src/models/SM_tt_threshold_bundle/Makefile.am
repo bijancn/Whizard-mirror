@@ -60,6 +60,7 @@ Modules: Makefile
 # Get module lists from other directories
 module_lists = \
   ../../basics/Modules \
+  ../../testing/Modules \
   ../../utilities/Modules \
   ../../system/Modules \
   ../../physics/Modules \

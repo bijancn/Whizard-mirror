@@ -25,6 +25,7 @@
 subroutine init_external_parameters (par) bind (C)
   use iso_c_binding
   use kinds
+  use diagnostics
   use ttv_formfactors
   implicit none
 
@@ -33,6 +34,7 @@ subroutine init_external_parameters (par) bind (C)
                    nloop, sh, sf, FF, v1, v2, match, mpole, &
                    aemi, sw, mW, mb, wtop, sqrts_min, sqrts_max, sqrts_it
   logical :: mpole_fixed
+  call msg_debug (D_THRESHOLD, "init_external_parameters")
   mZ     = par(1)
   mW     = par(2)
   alphas = par(4)

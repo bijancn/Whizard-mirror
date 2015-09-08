@@ -302,7 +302,7 @@ parameters_zprime.$(FC_MODULE_EXT): parameters.Zprime.lo
 ## Dependency on O'Mega modules
 
 basicsdir = $(top_builddir)/src/basics
-testingdir = $(top_builddir)/src/testing 
+testingdir = $(top_builddir)/src/testing
 utilitiesdir = $(top_builddir)/src/utilities
 systemdir = $(top_builddir)/src/system
 physicsdir = $(top_builddir)/src/physics

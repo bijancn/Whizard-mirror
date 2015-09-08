@@ -24,10 +24,11 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 module parameters_sm_tt_threshold
   use kinds
-  use constants 
+  use constants
   use sm_physics !NODEP!
   use omega_vectors
   use ttv_formfactors
+  use diagnostics
   implicit none
   private
 
@@ -105,6 +106,7 @@ contains
     real(default), parameter :: &
          alpha = 1.0_default/137.03598949333_default
     logical :: no_pwave, mpole_fixed
+    call msg_debug (D_THRESHOLD, "import_from_whizard")
     e_em = sqrt(4.0_default * PI * alpha)
     par%mZ     = par_array(1)
     par%mW     = par_array(2)
@@ -193,7 +195,12 @@ contains
     gncdwn(1) = - g / 2 / costhw * ( - 0.5_default - 2 * qedwn * sin2thw)
     gncneu(2) = - g / 2 / costhw * ( + 0.5_default)
     gnclep(2) = - g / 2 / costhw * ( - 0.5_default)
-    gncup(2)  = - g / 2 / costhw * ( + 0.5_default)
+    no_pwave = par%no_pwave > 0.0_default
+    if (no_pwave) then
+       gncup(2) = 0.0_default
+    else
+       gncup(2)  = - g / 2 / costhw * ( + 0.5_default)
+    end if
     gncdwn(2) = - g / 2 / costhw * ( - 0.5_default)
     qlep = - e * qelep
     qup = - e * qeup
