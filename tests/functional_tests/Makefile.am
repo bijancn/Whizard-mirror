@@ -151,6 +151,8 @@ TESTS_REQ_OCAML = \
     smtest_16.run \
     smtest_17.run \
     mssmtest.run \
+    nlo_1.run \
+    nlo_2.run \
     spincor_1.run \
     show_1.run \
     show_2.run \
@@ -207,6 +209,7 @@ TESTS_REQ_OCAML = \
     user_cuts.run \
     user_prc.run \
     $(TESTS_USER_STRFUN) 
+
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
     user_cuts.run \

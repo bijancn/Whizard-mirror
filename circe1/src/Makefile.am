@@ -1,5 +1,5 @@
 # Makefile.am --
-# $Id: Makefile.am 7137 2015-08-07 19:02:32Z jr_reuter $
+# $Id: Makefile.am 7208 2015-09-05 09:42:23Z ohl $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -102,7 +102,7 @@ Makefile.depend: $(SOURCE_FILES)
 				 $(depend_filter_extra) ; \
 	done > $@
 
-DISTCLEANFILES = Makefile.depend
+DISTCLEANFILES = Makefile.depend kinds.f90
 
 ########################################################################
 ## Non-standard cleanup tasks

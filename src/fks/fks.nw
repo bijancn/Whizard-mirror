@@ -2385,7 +2385,7 @@ summand containing $\log\left(s/q^2\right)$ and the $\gamma$-factors vanish.
 <<virtual: procedures>>=
   subroutine virtual_compute_Q (object, p_born, i_flv, massive)
     class(virtual_t), intent(inout) :: object
-    type(vector4_t), intent(in), dimension(:), allocatable :: p_born
+    type(vector4_t), dimension(:), intent(in) :: p_born
     integer, intent(in) :: i_flv
     logical, dimension(:), intent(in) :: massive
     real(default) :: sqrts, E
@@ -2395,14 +2395,16 @@ summand containing $\log\left(s/q^2\right)$ and the $\gamma$-factors vanish.
     sqrts = sum (p_born(1:object%n_in))**1
     object%Q = 0
     do i = 1, object%n_in
-       object%Q = object%Q - object%gamma_0(i, i_flv) * 2*log(object%fac_scale/sqrts)
+       object%Q = object%Q - object%gamma_0(i, i_flv) * &
+            2*log(object%fac_scale/sqrts)
     end do
     do i = object%n_in+1, object%nlegs
        if (.not. massive (i)) then
           s1 = object%gamma_p(i, i_flv)
           E = vector4_get_component (p_born(i), 0)
           s2 = log(sqrts**2/object%ren_scale2)* &
-               (object%gamma_0(i, i_flv) - 2*object%c_flv(i, i_flv)*log(2*E/sqrts))
+               (object%gamma_0(i, i_flv) - &
+               2*object%c_flv(i, i_flv)*log(2*E/sqrts))
           s3 = 2*log(2*E/sqrts)**2*object%c_flv(i, i_flv)
           s4 = 2*log(2*E/sqrts)*object%gamma_0(i, i_flv)
           object%Q = object%Q + s1 - s2 + s3 - s4
@@ -2633,7 +2635,7 @@ where $\vec{\beta}_i = \frac{\vec{k}_i}{k_i^0}$. Further
     beta2 = space_part (p2)/energy(p2)
     a = beta1**2 + beta2**2 - 2*beta1*beta2
     b = beta1**2*beta2**2 - (beta1*beta2)**2
-    if (beta1**1 > beta2**2) call switch_beta (beta1, beta2) 
+    if (beta1**1 > beta2**1) call switch_beta (beta1, beta2) 
     if (beta1 == vector3_null) then
        b2 = beta2**1
        I = (-0.5*log ((one-b2)/(one+b2)) - 2*Li2 (-2*b2/(one-b2))) &
@@ -2914,7 +2916,7 @@ soft-collinear contribution to the cross section.
   type :: coll_subtraction_t
     real(default), dimension(:), allocatable :: value
     real(default), dimension(:), allocatable :: value_soft
-    integer :: n_alr
+    integer :: n_in, n_alr
     real(default), dimension(0:3,0:3) :: b_munu
     type(pdf_container_t), pointer :: pdf_born_plus => null ()
     type(pdf_container_t), pointer :: pdf_born_minus => null ()
@@ -2929,9 +2931,10 @@ soft-collinear contribution to the cross section.
 <<real subtraction: coll sub: TBP>>=
   procedure :: init => coll_subtraction_init
 <<real subtraction: procedures>>=
-  subroutine coll_subtraction_init (coll_sub, n_alr)
+  subroutine coll_subtraction_init (coll_sub, n_alr, n_in)
     class(coll_subtraction_t), intent(inout) :: coll_sub
-    integer, intent(in) :: n_alr
+    integer, intent(in) :: n_alr, n_in
+    coll_sub%n_in = n_in
     coll_sub%n_alr = n_alr
     allocate (coll_sub%value (n_alr))
     allocate (coll_sub%value_soft (n_alr))
@@ -3016,11 +3019,16 @@ it is necessary to expand with $z$ once.
     flv_rad = sregion%flst_real%flst(nlegs)
     flv_em = sregion%flst_real%flst(emitter)
     p0 = p_born(emitter)%p(0)
-    q0 = p_born(1)%p(0) + p_born(2)%p(0)
+    select case (coll_sub%n_in)
+    case (1)
+       q0 = p_born(1)%p(0)
+    case (2)
+       q0 = p_born(1)%p(0) + p_born(2)%p(0)
+    end select
     !!! Here, z corresponds to 1-z in the formulas of arXiv:1002.2581;
     !!! the integrand is symmetric under this variable change
     zoxi = q0/(2*p0)
-    z = xi*zoxi; onemz = 1-z
+    z = xi*zoxi; onemz = one-z
 
     if (is_gluon(flv_em) .and. is_gluon(flv_rad)) then
 @ Implementation of equation (\ref{coll1}). Note that an additional factor $z$, so that in the last step, the whole expression is divided by $z/\xi$.
@@ -3196,7 +3204,7 @@ it is necessary to expand with $z$ once.
     end do
 
     call rsub%sub_soft%init (reg_data, n_in, nlegs_born, nlegs_real)
-    call rsub%sub_coll%init (reg_data%n_regions)
+    call rsub%sub_coll%init (reg_data%n_regions, n_in)
 
     if (any (rsub%reg_data%get_emitter_list () <= 2)) then
        call rsub%init_pdfs ()
@@ -5894,6 +5902,7 @@ process.
     type(interaction_t), intent(in) :: int_born
     real(default) :: sqme_virt
     type(vector4_t), dimension(:), allocatable :: p_born
+    allocate (p_born (size (int_born%get_momenta ())))
     p_born = int_born%get_momenta ()
     associate (collector => nlo_controller%sqme_collector)
        if (nlo_controller%use_internal_color_correlations) then
@@ -6716,7 +6725,11 @@ $\xi$.
   contains
     subroutine check_cpsi_bound (cpsi)
       real(default), intent(inout) :: cpsi
-      if (cpsi > 1._default) cpsi = 1._default
+      if (cpsi > one) then
+         cpsi = one
+      else if (cpsi < -one) then
+         cpsi = -one
+      end if
     end subroutine check_cpsi_bound
   end subroutine phs_fks_generator_generate_fsr
 
@@ -6859,12 +6872,12 @@ is equal to
 \xi_{\rm{max}} = \frac{2}{\underline{\bar{k}}_n}{q^0}.
 \end{equation*}
 <<phs fks: procedures>>=
-  pure function get_xi_max_fsr_massless (p_born, emitter) result (xi_max)
+  pure function get_xi_max_fsr_massless (p_born, emitter, n_in) result (xi_max)
     type(vector4_t), intent(in), dimension(:) :: p_born
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, n_in
     real(default) :: xi_max
     real(default) :: uk_n_born, q0
-    q0 = p_born(1)%p(0) + p_born(2)%p(0)
+    q0 = sum (p_born(1:n_in)%p(0))
     uk_n_born = space_part_norm (p_born(emitter))
     xi_max = 2*uk_n_born / q0
   end function get_xi_max_fsr_massless
@@ -6902,16 +6915,18 @@ which corresponds to the borders of the Dalitz-region where the gluon momentum v
   z = z_2 - \frac{1}{2} (z_2 - z_1)(1+y).
 \end{equation*}
 <<phs fks: procedures>>=
-  pure function get_xi_max_fsr_massive (p_born, emitter, m2, y) result (xi_max)
+  pure function get_xi_max_fsr_massive (p_born, emitter, m2, y, n_in) result (xi_max)
+    real(default) :: xi_max
     type(vector4_t), intent(in), dimension(:) :: p_born
     integer, intent(in) :: emitter
     real(default), intent(in) :: m2, y
-    real(default) :: xi_max
+    integer, intent(in) :: n_in
     real(default) :: q0, mrec2
     real(default) :: k0_rec_max
     real(default) :: z, z1, z2
     real(default) :: k_np1_max
-    q0 = 2*p_born(1)%p(0)
+    q0 = n_in*p_born(1)%p(0)
+    !!!q0 = 2*p_born(1)%p(0)
     associate (p => p_born(emitter)%p)
        mrec2 = (q0-p(0))**2 - p(1)**2 - p(2)**2 - p(3)**2
     end associate
@@ -6951,7 +6966,7 @@ which corresponds to the borders of the Dalitz-region where the gluon momentum v
      real(default) :: m_in, m_out1, m_out2
      m_in = p(1)**1
      m_out1 = p(2)**1; m_out2 = p(3)**1
-     xi_max = one - m_out1/m_in - m_out2/m_in
+     xi_max = one - (m_out1 + m_out2)**2 / m_in**2
   end function get_xi_max_isr_decay
 
 @ %def get_xi_max_isr_decay
@@ -7308,8 +7323,12 @@ the rest frame by multiplying with $\Lambda$.
              select case (generator%n_in)
              case (1)
                 if (em > 1) then
-                   rad_var%xi_max(em) = get_xi_max_fsr &
-                      (p_born, em, generator%m2(em), rad_var%y(em))
+                   if (generator%is_massive(em)) then
+                      rad_var%xi_max(em) = get_xi_max_fsr &
+                         (p_born, em, generator%m2(em), rad_var%y(em), 1)
+                   else
+                      rad_var%xi_max(em) = get_xi_max_fsr (p_born, em, 1)
+                   end if
                 else
                    rad_var%xi_max(em) = get_xi_max_isr_decay (p_born) 
                 end if
@@ -7319,13 +7338,13 @@ the rest frame by multiplying with $\Lambda$.
                       call msg_fatal ("Massive emitters incompatible with IS scattering phase space")
                    else
                      rad_var%xi_max(em) = get_xi_max_fsr &
-                        (p_born, em, generator%m2(em), rad_var%y(em))
+                        (p_born, em, generator%m2(em), rad_var%y(em), 2)
                    end if
                 else
                    if (em <= 2) then
                       rad_var%xi_max(em) = get_xi_max_isr (generator%isr_kinematics%x, rad_var%y(em))
                    else
-                      rad_var%xi_max(em) = get_xi_max_fsr (p_born, em)
+                      rad_var%xi_max(em) = get_xi_max_fsr (p_born, em, 2)
                    end if
                 end if
              case default

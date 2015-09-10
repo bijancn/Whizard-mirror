@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 6465 2015-01-10 15:22:31Z jr_reuter $
+# $Id: Makefile.am 7208 2015-09-05 09:42:23Z ohl $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -86,6 +86,12 @@ endif
 uninstall-local:
 	rm -f $(OMEGA_USER_CACHE_DIR)/*$(OMEGA_CACHE_SUFFIX)
 	rm -f $(OMEGA_SYSTEM_CACHE_DIR)/*$(OMEGA_CACHE_SUFFIX)
+
+DISTCLEANFILES = \
+  iso_c_binding_gfortran.$(FC_MODULE_EXT) \
+  iso_fortran_env_2008.$(FC_MODULE_EXT) \
+  query_kinds.$(FC_MODULE_EXT) \
+  report_kinds.$(FC_MODULE_EXT)
 
 ########################################################################
 ## The End.
