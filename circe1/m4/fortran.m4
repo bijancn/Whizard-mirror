@@ -1167,11 +1167,18 @@ contains
        print *, " !!! ERROR: the requested default real kind '" // &
                request // "' is not available in this environment"
        print *, ""
-    else if (trim (request) == "real128") then
-       if (default_real%max_prec < 2 * double_real%max_prec) then
-          print *, " !!! WARNING: the requested default real kind 'real128'", &
+    else
+       if (trim (default_real%c_name) == "-1" .or. &
+         trim (default_real%c_name_complex) == "-1") then
+       	   print *, " !!! ERROR: for the requested default real kind '" // &
+           	     request // "' there is no supported C analogue"
+           print *, ""
+       else if (trim (request) == "real128") then
+          if (default_real%max_prec < 2 * double_real%max_prec) then
+             print *, " !!! WARNING: the requested default real kind 'real128'", &
                " does NOT provide quadruple precision in this environment"
-          print *, ""
+             print *, ""
+          end if
        end if
     end if
     print *, "end module kinds"
@@ -1382,9 +1389,21 @@ rm -f report_kinds.*
 
 dnl  cross_compiling=$save_cross_compiling
 
-AC_SUBST([FC_PRECISION], [$wo_cv_fc_requested_precision])
+if test "$wo_cv_fc_requested_precision" = "real128" -a "$FC_VENDOR" = "gfortran"; then
+  FC_PRECISION="extended"
+elif test "$wo_cv_fc_requested_precision" = "real128" -a "$FC_VENDOR" = "Intel"; then
+  FC_PRECISION="quadruple"
+elif test "$wo_cv_fc_requested_precision" = "real64"; then
+  FC_PRECISION="double"
+elif test "$wo_cv_fc_requested_precision" = "real32"; then
+  FC_PRECISION="single"
+else
+  FC_PRECISION=$wo_cv_fc_requested_precision
+fi
+AC_SUBST([FC_PRECISION])
 AM_CONDITIONAL([FC_EXT], [test "$FC_PRECISION" = "extended"])
 ])
+# AM_CONDITIONAL([FC_QUAD], [test "$FC_PRECISION" = "quadruple"])
 
 ########################################################################
 ### end of configure kinds.f90

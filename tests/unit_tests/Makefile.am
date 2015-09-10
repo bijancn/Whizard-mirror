@@ -315,17 +315,9 @@ if STATIC_AVAILABLE
 endif
 
 # The reference output files are in the source directory.  Copy them here.
-if FC_EXT
 ref-output: $(top_srcdir)/share/tests/unit_tests/ref-output
 	mkdir -p ref-output
 	for f in $</*.ref; do cp $$f $@; done
-	for f in $</../ref-output-ext/*.ref; do cp $$f $@; done
-else
-ref-output: $(top_srcdir)/share/tests/unit_tests/ref-output
-	mkdir -p ref-output
-	for f in $</*.ref; do cp $$f $@; done
-	for f in $</../ref-output-double/*.ref; do cp $$f $@; done
-endif
 
 # The output files from self tests go here.
 err-output:
