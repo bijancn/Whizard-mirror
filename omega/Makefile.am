@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 7208 2015-09-05 09:42:23Z ohl $
+# $Id: Makefile.am 7218 2015-09-08 21:42:34Z jr_reuter $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -46,12 +46,30 @@ DIST_SUBDIRS = src lib models bin share tools extensions tests scripts
 DISTCHECK_CONFIGURE_FLAGS = FC=$(FC) FCFLAGS="$(FCFLAGS)" LIBS="$(LIBS)" \
 	--enable-distribution
 
+if FC_IS_NAG
+EXTRA_DISTCHECK_CONFIGURE_FLAGS = \
+    "--disable-noweb-force" \
+    "--disable-noweb-force --disable-ocaml" \
+    "--disable-noweb-force --disable-shared" \
+    "--disable-noweb-force --disable-static"
+else
+if FC_IS_GFORTRAN
 EXTRA_DISTCHECK_CONFIGURE_FLAGS = \
     "--disable-noweb-force" \
     "--disable-noweb-force --disable-ocaml" \
     "--disable-noweb-force --disable-shared" \
     "--disable-noweb-force --disable-static" \
-    "--disable-noweb-force --enable-fc-quadruple"
+    "--disable-noweb-force --with-precision=extended" \
+    "--disable-noweb-force --with-precision=quadruple"
+else
+EXTRA_DISTCHECK_CONFIGURE_FLAGS = \
+    "--disable-noweb-force" \
+    "--disable-noweb-force --disable-ocaml" \
+    "--disable-noweb-force --disable-shared" \
+    "--disable-noweb-force --disable-static" \
+    "--disable-noweb-force --with-precision=quadruple"
+endif
+endif
 
 extra-distcheck:
 	@echo "================================================="  >$@.log

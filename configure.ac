@@ -172,6 +172,24 @@ fi
 AC_MSG_RESULT([.$SHRLIB_EXT])
 AC_SUBST(SHRLIB_EXT)
 
+### Export whether the C compiler is GNU
+AC_MSG_CHECKING([whether the C compiler is the GNU compiler])
+if test "x$ac_cv_c_compiler_gnu" = "xyes"; then
+   CC_IS_GNU=".true."
+else
+   CC_IS_GNU=".false."
+fi
+AC_MSG_RESULT([$ac_cv_c_compiler_gnu])
+AC_SUBST([CC_IS_GNU])
+
+AC_CHECK_HEADERS([quadmath.h])
+if test "x$ac_cv_header_quadmath_h" = "xyes"; then
+   CC_HAS_QUADMATH=".true."
+else
+   CC_HAS_QUADMATH=".false."
+fi
+AC_SUBST([CC_HAS_QUADMATH])
+
 ########################################################################
 ### Host system MAC OS X check for XCode
 

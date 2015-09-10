@@ -54,12 +54,30 @@ dist_noinst_DATA = BUGS EXTENSIONS
 DISTCHECK_CONFIGURE_FLAGS = F77=$(F77) F77FLAGS="$(F77FLAGS)" FC=$(FC) \
 	FCFLAGS="$(FCFLAGS)" LIBS="$(LIBS)" --enable-distribution
 
+if FC_IS_NAG
+EXTRA_DISTCHECK_CONFIGURE_FLAGS = \
+    "--disable-noweb-force" \
+    "--disable-noweb-force --disable-ocaml" \
+    "--disable-noweb-force --disable-static" \
+    "--disable-pythia6"
+else 
+if FC_IS_GFORTRAN
 EXTRA_DISTCHECK_CONFIGURE_FLAGS = \
     "--disable-noweb-force" \
     "--disable-noweb-force --disable-ocaml" \
     "--disable-noweb-force --disable-static" \
     "--disable-pythia6" \
-    "--with-precision=extended --enable-fc-openmp"
+    "--with-precision=extended" \
+    "--with-precision=quadruple --enable-fc-openmp"
+else
+EXTRA_DISTCHECK_CONFIGURE_FLAGS = \
+    "--disable-noweb-force" \
+    "--disable-noweb-force --disable-ocaml" \
+    "--disable-noweb-force --disable-static" \
+    "--disable-pythia6" \
+    "--with-precision=quadruple --enable-fc-openmp"
+endif
+endif
 
 extra-distcheck:
 	@echo "================================================="  >$@.log

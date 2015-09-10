@@ -213,6 +213,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/sf_isr_2.ref \
     unit_tests/ref-output/sf_isr_3.ref \
     unit_tests/ref-output/sf_isr_4.ref \
+    unit_tests/ref-output/sf_isr_5.ref \
     unit_tests/ref-output/sf_epa_1.ref \
     unit_tests/ref-output/sf_epa_2.ref \
     unit_tests/ref-output/sf_epa_3.ref \
@@ -253,6 +254,9 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/phs_wood_5.ref \
     unit_tests/ref-output/phs_wood_6.ref \
     unit_tests/ref-output/phs_wood_vis_1.ref \
+    unit_tests/ref-output/phs_fks_generator_1.ref \
+    unit_tests/ref-output/phs_fks_generator_2.ref \
+    unit_tests/ref-output/phs_fks_generator_3.ref \
     unit_tests/ref-output/rng_base_1.ref \
     unit_tests/ref-output/rng_base_2.ref \
     unit_tests/ref-output/rng_tao_1.ref \
@@ -632,10 +636,6 @@ REF_OUTPUT_FILES_BASE = \
 
 # Reference files that depend on the numerical precision
 REF_OUTPUT_FILES_DOUBLE = \
-    unit_tests/ref-output-double/phs_fks_generator_1.ref \
-    unit_tests/ref-output-double/phs_fks_generator_2.ref \
-    unit_tests/ref-output-double/phs_fks_generator_3.ref \
-    unit_tests/ref-output-double/sf_isr_5.ref \
     functional_tests/ref-output-double/qedtest_3.ref \
     functional_tests/ref-output-double/qedtest_4.ref \
     functional_tests/ref-output-double/qcdtest_1.ref \
@@ -681,10 +681,6 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/beam_events_3.ref
 
 REF_OUTPUT_FILES_EXT = \
-    unit_tests/ref-output-ext/phs_fks_generator_1.ref \
-    unit_tests/ref-output-ext/phs_fks_generator_2.ref \
-    unit_tests/ref-output-ext/phs_fks_generator_3.ref \
-    unit_tests/ref-output-ext/sf_isr_5.ref \
     functional_tests/ref-output-ext/qedtest_3.ref \
     functional_tests/ref-output-ext/qedtest_4.ref \
     functional_tests/ref-output-ext/qcdtest_1.ref \
