@@ -49,6 +49,7 @@ module ttv_formfactors
   logical :: ext_NLO = .false.
 
   logical :: init_pars, init_ps, init_ff, init_J0
+  logical :: mpole_fixed
   ! gam_m1s is only used for the scale nustar
   real(default) :: m1s, gam, gam_m1s
   integer :: nloop
@@ -133,7 +134,8 @@ contains
   subroutine init_parameters (mpole_out, gam_out, m1s_in, Vtb, gam_inv, &
          aemi, sw, az, mz, mw, &
          mb, h_in, f_in, nloop_in, ff_in, &
-         v1_in, v2_in, scan_sqrts_min, scan_sqrts_max, scan_sqrts_stepsize)
+         v1_in, v2_in, scan_sqrts_min, scan_sqrts_max, scan_sqrts_stepsize, &
+         mpole_fixed_in)
     real(default), intent(out) :: mpole_out
     real(default), intent(out) :: gam_out
     real(default), intent(in) :: m1s_in
@@ -154,11 +156,13 @@ contains
     real(default), intent(in) :: scan_sqrts_min
     real(default), intent(in) :: scan_sqrts_max
     real(default), intent(in) :: scan_sqrts_stepsize
+    logical, intent(in) :: mpole_fixed_in
     real(default) :: z3
     !!! possibly (re-)enable these as user parameters:
     real(default) :: nu_in = -1
     init_pars = .false.
     m1s = m1s_in
+    mpole_fixed = mpole_fixed_in
     gam_m1s = top_width_sm_lo (one / aemi, sw, Vtb, m1s, mw, mb) + gam_inv
     nloop = 1
     if ( int(nloop_in) > nloop ) then
@@ -207,7 +211,7 @@ contains
 
     !!! soft parameters incl. mtpole (depend on sqrts: initialize with sqrts ~ 2*m1s)
     nustar_fixed = nu_in
-    nustar_dynamic = ( nustar_fixed  < 0. )
+    nustar_dynamic = nustar_fixed  < 0.
     f = f_in
     call update_soft_parameters (2. * m1s)
     mtpole_init = mtpole
@@ -243,7 +247,8 @@ contains
     parameters_ref = parameters_string ()
   end subroutine init_threshold_grids
 
-  pure function FF_master (ps, i) result (c)
+  !pure 
+  function FF_master (ps, i) result (c)
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: i
     complex(default) :: c
@@ -260,16 +265,21 @@ contains
         c = relativistic_formfactor_pure (ah, ps, i)
       case (3)
         c = nonrelativistic_formfactor (ah, ps, i)
+      case (4)
+        c = nonrelativistic_formfactor (ah, ps, i, no_p0=.true.)
       case (5)
-        c = nonrelativistic_formfactor (alphas_soft(ps%sqrts,nloop)-ah, ps, i) &
+        c = nonrelativistic_formfactor (alphas_soft (ps%sqrts, nloop)-ah, ps, i) &
             + relativistic_formfactor_pure (ah, ps, i) - one
+      case (6)
+        c = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts, nloop), ps, i)
       case default
         return
     end select
   end function FF_master
 
   !!! matched formfactor (-> resummation in threshold region, smooth continuation above)
-  pure function matched_formfactor (ps, i) result (c)
+  !pure
+  function matched_formfactor (ps, i) result (c)
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: i
     complex(default) :: c
@@ -288,12 +298,13 @@ contains
   end function matched_formfactor
 
   !!! LL/NLL resummation of nonrelativistic Coulomb potential
-  pure function resummed_formfactor (ps, i) result (c)
+  !pure
+  function resummed_formfactor (ps, i) result (c)
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: i
     complex(default) :: c
     c = one
-    if (.not.init_ff .or. .not.ps%inside_grid) return
+    if (.not. init_ff .or. .not. ps%inside_grid) return
     if (need_p0) then
       if (i == 2) return
       call interpolate_linear (sq_grid, p_grid, p0_grid, ff_grid(:,:,:,i), &
@@ -301,6 +312,8 @@ contains
     else
       call interpolate_linear (sq_grid, p_grid, ff_grid(:,:,1,i), ps%sqrts, ps%p, c)
     end if
+    !print *, 'alphas_soft (sqrts, nloop) =    ', alphas_soft (ps%sqrts, nloop) !!! Debugging
+    !print *, 'c =    ', c !!! Debugging
   end function resummed_formfactor
 
   !!! relativistic off-shell O(alphas^1) contribution (-> no resummation)
@@ -335,23 +348,31 @@ contains
 
   !!! leading nonrelativistic O(alphas^1) contribution (-> no resummation)
   !!! nonrelativistic limit of module function 'relativistic_formfactor'
-  pure function nonrelativistic_formfactor (alphas, ps, i) result (c)
+  !pure
+  function nonrelativistic_formfactor (alphas, ps, i, no_p0) result (c)
     real(default), intent(in) :: alphas
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: i
+    logical, optional, intent(in) :: no_p0
+    logical :: nop0
     complex(default) :: c
-    real(default) :: m, p
-    complex(default) :: v
+    real(default) :: m, p, p0, shift_from_hard_current
+    complex(default) :: v, contrib_from_potential
     c = one
-    if ( .not.init_pars .or. i==2 ) return
+    if (.not. init_pars .or. i==2) return
+    nop0 = .false.; if (present (no_p0))  nop0 = no_p0
     m = ps%mpole
     p = ps%p
     v = sqrts_to_v (ps%sqrts)
-    c = c + alphas * ( &
-        !!! O(alphas) contribution from potential
-        0.5_default*imago*CF*m*log( (p+m*v+ps%p0)/(-p+m*v+ps%p0) +ieps) / p &
-        !!! shift from hard current coefficient
-        -2.0_default*CF/pi )
+    if (nop0) then
+       p0 = zero
+    else
+       p0 = ps%p0
+    end if
+    shift_from_hard_current = - two * CF / pi
+    contrib_from_potential = imago * CF * m * &
+         log ((p + m * v + p0) / (-p + m * v + p0) + ieps) / (two * p)
+    c = one + alphas * (contrib_from_potential + shift_from_hard_current)
   end function nonrelativistic_formfactor
 
   subroutine init_formfactor_grid ()
@@ -521,7 +542,8 @@ contains
   end function current_coeff
 
   !!! matching parameter as a function of the phase space point
-  pure function v_matching (ps) result (v)
+  !pure
+  function v_matching (ps) result (v)
     type(phase_space_point_t), intent(in) :: ps
     real(default) :: v
 !    v = real( sqrts_to_v (ps%sqrts) )
@@ -532,7 +554,8 @@ contains
   end function v_matching
 
   !!! measure for the validity of the nonrelativistic approximation
-  pure function A_matching (alphas, ps) result (A)
+  !pure
+  function A_matching (alphas, ps) result (A)
     real(default), intent(in) :: alphas
     type(phase_space_point_t), intent(in) :: ps
     real(default) :: A
@@ -592,6 +615,7 @@ contains
     complex(default), intent(inout) :: ff
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: i
+    call msg_debug (D_THRESHOLD, "match_resummed_formfactor")
     select case (matching_version)
       case (0)
         return
@@ -779,7 +803,8 @@ contains
            ( -z1 + z2 ) / (p*nr_gamma(real(cc)))
   end function formfactor_LL_analytic_p0_swave
 
-  pure function nustar (sqrts) result (nu)
+  !pure
+  function nustar (sqrts) result (nu)
     real(default), intent(in) :: sqrts
     real(default) :: nu
     complex(default) :: arg
@@ -792,7 +817,8 @@ contains
     end if
   end function nustar
 
-  pure function alphas_soft (sqrts, nl, a_hard_in) result (a_soft)
+  !pure
+  function alphas_soft (sqrts, nl, a_hard_in) result (a_soft)
     real(default), intent(in) :: sqrts
     integer, intent(in) :: nl
     real(default), intent(in), optional :: a_hard_in
@@ -804,7 +830,8 @@ contains
     a_soft = running_as (mu_soft, a_hard, mu_h, nl, nf)
   end function alphas_soft
 
-  pure function m1s_to_mpole (sqrts, nl_in) result (mpole)
+  !pure
+  function m1s_to_mpole (sqrts, nl_in) result (mpole)
     real(default), intent(in) :: sqrts
     integer, intent(in), optional :: nl_in
     real(default) :: mpole
@@ -812,10 +839,15 @@ contains
     mpole = mtpole_init
     nl = nloop
     if ( present(nl_in) ) nl = nl_in
-    mpole = m1s * ( 1. + deltaM(sqrts, nl) )
+    if (.not. mpole_fixed) then
+       mpole = m1s * ( 1. + deltaM(sqrts, nl) )
+    else
+       mpole = m1s
+    end if
   end function m1s_to_mpole
 
-  pure function mpole_to_m1s (mpole, sqrts, nl) result (m)
+  !pure
+  function mpole_to_m1s (mpole, sqrts, nl) result (m)
     real(default), intent(in) :: mpole
     real(default), intent(in) :: sqrts
     integer, intent(in) :: nl
@@ -823,7 +855,8 @@ contains
     m = mpole * ( 1. - deltaM(sqrts, nl) )
   end function mpole_to_m1s
 
-  pure function deltaM (sqrts, nl) result (del)
+  !pure
+  function deltaM (sqrts, nl) result (del)
     real(default), intent(in) :: sqrts
     integer, intent(in) :: nl
     real(default) :: del
@@ -943,7 +976,7 @@ contains
     end if
 
     !!! keep track of TOPPIK instabilities and try to repair later
-    if ( np < 0 ) then
+    if (np < 0) then
       ff_toppik(1) = 2.d30
       if (debug_active (D_THRESHOLD)) then
          call msg_warning ("caught TOPPIK instability at sqrts = " // char(sqrts))
@@ -952,7 +985,7 @@ contains
     end if
     p_toppik = xpp(1:n_p)
     ff_toppik = zff(1:n_p)
-    if ( need_p0 ) then
+    if (need_p0) then
       call ff_p_spline%init (p_toppik, ff_toppik)
     else
       !!! TOPPIK output p-grid scales with en above ~ 4 GeV:
@@ -1048,7 +1081,7 @@ contains
     p_grid = p_grid_from_TOPPIK ()
     if (need_p0) then
       if (ff_type == 0 .and. ext_Vinput) then
-        ! TODO: (bcn 2015-07-30) why is mpole hard coded here?
+        ! This is only for setup of the p_grid not the form factor
         p_grid = p_grid_from_TOPPIK (173.0_default)
         call import_Vmatrices ()
       else
@@ -1150,12 +1183,13 @@ contains
                      // "or slightly vary the scales sh and/or sf.")
   end subroutine handle_TOPPIK_instabilities
 
-  pure function sqrts_to_v (sqrts) result (v)
+  !pure
+  function sqrts_to_v (sqrts) result (v)
     real(default), intent(in) :: sqrts
     complex(default) :: v
     real(default) :: m
     m = m1s_to_mpole (sqrts)
-    v = sqrt( (sqrts - 2.*m + imago*gam) / m )
+    v = sqrt ((sqrts - two * m + imago * gam) / m)
   end function sqrts_to_v
 
   pure function v_to_sqrts (v) result (sqrts)
@@ -1167,7 +1201,8 @@ contains
   end function v_to_sqrts
 
   !!! convert squared 4-momenta into sqrts, p0 = E_top-sqrts/2 and abs. 3-momentum p
-  pure subroutine rel_to_nonrel (p2, k2, q2, sqrts, p, p0)
+  !pure
+  subroutine rel_to_nonrel (p2, k2, q2, sqrts, p, p0)
     real(default), intent(in) :: p2
     real(default), intent(in) :: k2
     real(default), intent(in) :: q2
@@ -1175,12 +1210,13 @@ contains
     real(default), intent(out) :: p
     real(default), intent(out) :: p0
     sqrts = sqrt(q2)
-    p0 = abs(p2 - k2) / (2.*sqrts)
-    p = sqrt( 0.5_default*(-p2 - k2 + sqrts**2/2. + 2.*p0**2) )
+    p0 = abs(p2 - k2) / (2. * sqrts)
+    p = sqrt (0.5_default * (- p2 - k2 + sqrts**2/2. + 2.* p0**2))
   end subroutine rel_to_nonrel
 
   !!! convert sqrts, p0 = E_top-sqrts/2 and abs. 3-momentum p into squared 4-momenta
-  pure subroutine nonrel_to_rel (sqrts, p, p0, p2, k2, q2, m2)
+  !pure
+  subroutine nonrel_to_rel (sqrts, p, p0, p2, k2, q2, m2)
     real(default), intent(in) :: sqrts
     real(default), intent(in) :: p
     real(default), intent(in) :: p0
@@ -1191,7 +1227,7 @@ contains
     p2 = (sqrts/2.+p0)**2 - p**2
     k2 = (sqrts/2.-p0)**2 - p**2
     q2 = sqrts**2
-    if ( present(m2) ) m2 = complex_m2 (m1s_to_mpole(sqrts), gam)
+    if (present (m2)) m2 = complex_m2 (m1s_to_mpole (sqrts), gam)
   end subroutine nonrel_to_rel
 
   pure function complex_m2 (m, w) result (m2c)
@@ -1246,8 +1282,12 @@ contains
     complex(default) :: q_integral, ff
     real(default) :: current_c1
     if (i==2) return
+    call msg_debug (D_THRESHOLD, "scan_formfactor_over_p_p0")
+    call msg_debug (D_THRESHOLD, "ext_Vinput", ext_Vinput)
     en = sqrts_to_en (sqrts, mtpole)
+    call msg_debug (D_THRESHOLD, "en", en)
     if (ext_Vinput) then
+       call msg_debug (D_THRESHOLD, "Allocate and compute Vmat and Tvec")
       allocate (Vmat(n_p0,n_p_p0dep,n_q))
       allocate (Tvec(n_q))
       select case (nloop)
@@ -1268,7 +1308,7 @@ contains
     end if
     !!! a_soft @ LL in current coefficient!
     current_c1 = current_coeff (ah, asLL, au, i)
-    !!! integrate over q for each p, p0:
+    call msg_debug (D_THRESHOLD, "Integrate over q for each p, p0")
     do i_p = 1, n_p_p0dep
        p = p_grid(i_p)
        do i_p0 = 1, n_p0
@@ -1522,12 +1562,12 @@ contains
 !                 + 0.5_default*( dF1 + dF2 + m*( dM1 + dM2 ) )
   end function formfactor_ttv_relativistic_nlo
 
-  pure function p_onshell (en) result (p)
-    real(default), intent(in) :: en
-    real(default) :: p
-    p = 1.d-3
-    if ( en > 0. ) p = sqrt( en**2/4. + en*mtpole )
-  end function p_onshell
+  !pure function p_onshell (en) result (p)
+    !real(default), intent(in) :: en
+    !real(default) :: p
+    !p = 1.d-3
+    !if ( en > 0. ) p = sqrt( en**2/4. + en*mtpole )
+  !end function p_onshell
 
   subroutine scan_J0_over_phase_space_grid ()
     integer :: i_sq, i_p, i_p0
@@ -1560,7 +1600,8 @@ contains
                                ps%sqrts, ps%p, ps%p0, J0)
   end function J0_LoopTools_interpolate
 
-  pure function sqrts_to_en (sqrts, mpole_in) result (en)
+  !pure
+  function sqrts_to_en (sqrts, mpole_in) result (en)
     real(default), intent(in) :: sqrts
     real(default), intent(in), optional :: mpole_in
     real(default) :: mpole, en
@@ -1635,24 +1676,33 @@ contains
           * ff_p_spline%interpolate (x)
   end function p0_q_integrand_evaluate
 
-  pure subroutine phase_space_point_init_rel (ps_point, p2, k2, q2, m)
+  !pure
+  subroutine phase_space_point_init_rel (ps_point, p2, k2, q2, m)
     class(phase_space_point_t), intent(inout) :: ps_point
     real(default), intent(in) :: p2
     real(default), intent(in) :: k2
     real(default), intent(in) :: q2
     real(default), intent(in), optional :: m
+    real(default) :: E
     ps_point%p2 = p2
     ps_point%k2 = k2
     ps_point%q2 = q2
     call rel_to_nonrel (p2, k2, q2, ps_point%sqrts, ps_point%p, ps_point%p0)
     ps_point%mpole = m1s_to_mpole (ps_point%sqrts)
+    E = ps_point%sqrts - two * ps_point%mpole 
+    !print *, 'E =    ', E !!! Debugging
+    !print *, 'ps_point%sqrts =    ', ps_point%sqrts !!! Debugging
+    !print *, 'ps_point%p =    ', ps_point%p !!! Debugging
+    !print *, 'ps_point%p0 =    ', ps_point%p0 !!! Debugging
+    !print *, 'ps_point%mpole =    ', ps_point%mpole !!! Debugging
     ps_point%en = sqrts_to_en (ps_point%sqrts)
     ps_point%inside_grid = sqrts_within_range (ps_point%sqrts)
     ps_point%m2 = complex_m2 (ps_point%mpole, gam)
     if ( present(m) ) ps_point%onshell = ps_point%is_onshell (m)
   end subroutine phase_space_point_init_rel
 
-  pure subroutine phase_space_point_init_nonrel (ps_point, sqrts, p, p0, m)
+  !pure
+  subroutine phase_space_point_init_nonrel (ps_point, sqrts, p, p0, m)
     class(phase_space_point_t), intent(inout) :: ps_point
     real(default), intent(in) :: sqrts
     real(default), intent(in) :: p
