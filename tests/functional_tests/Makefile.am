@@ -153,6 +153,8 @@ TESTS_REQ_OCAML = \
     mssmtest.run \
     nlo_1.run \
     nlo_2.run \
+    nlo_3.run \
+    powheg_1.run \
     spincor_1.run \
     show_1.run \
     show_2.run \
