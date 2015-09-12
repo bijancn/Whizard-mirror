@@ -9,7 +9,7 @@ if test -f OCAML_FLAG; then
     cat ${name}_p1.debug >> $name.log
     echo "Contents of ${name}_p1_1000_powheg_grids.dat:" >> $name.log
     cat ${name}_p1_1000_powheg_grids.dat >> $name.log
-    diff ref-output/`basename @script@`.ref `basename @script@`.log
+    diff -b ref-output/`basename @script@`.ref `basename @script@`.log
 else
     echo "|=============================================================================|"
     echo "No O'Mega matrix elements available, test skipped"
