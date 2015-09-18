@@ -23,7 +23,7 @@ if test "$enable_stdhep" = "yes"; then
   wo_stdhep_path="/usr/local/lib:/usr/lib:/opt/local/lib"
   wo_cernlib_path="/usr/local/cern/pro/lib:/cern/pro/lib:/usr/local/lib/cern"
 
-  WO_PATH_LIB(FMCFIO, Fmcfio, libFmcfio.a, $wo_stdhep_path:$wo_cernlib_path:$FMCFIO_DIR)
+  WO_PATH_LIB(FMCFIO, Fmcfio, libFmcfio.a, $wo_stdhep_path:$wo_cernlib_path:$STDHEP_DIR:$FMCFIO_DIR)
   WO_PATH_LIB(STDHEP, stdhep, libstdhep.a, $wo_stdhep_path:$wo_cernlib_path:$STDHEP_DIR)
   if test "$FMCFIO_DIR" = ""; then enable_stdhep="no" 
     if test "$STDHEP_DIR" = ""; then enable_stdhep="no"  
@@ -57,6 +57,9 @@ if test "$enable_stdhep" = "yes"; then
      fi
    fi
   AC_LANG_POP() 	
+  else
+  AC_MSG_CHECKING([for STDHEP])
+  AC_MSG_RESULT([(disabled)])
   fi
 else
   AC_MSG_CHECKING([for STDHEP])

@@ -5899,6 +5899,8 @@ module hepmc_interface
 
 <<HepMC interface: types>>
 
+<<HepMC interface: parameters>>
+
 <<HepMC interface: interfaces>>
 
 contains
@@ -7374,6 +7376,11 @@ Fortran unit is obviously not possible.
      end subroutine gen_event_clear_weights
   end interface
 @ %def gen_event_set_alpha_qed
+@ The HepMC weights are measured in pb.
+<<HepMC interface: parameters>>=
+  real(default), parameter :: pb_per_fb = 1.e-3_default
+@ %def pb_per_fb
+@
 <<HepMC interface: public>>=
   public :: hepmc_event_clear_weights
 <<HepMC interface: procedures>>=
@@ -7401,7 +7408,6 @@ Fortran unit is obviously not possible.
     type(hepmc_event_t), intent(in) :: evt
     real(default), intent(in) :: weight
     real(c_double) :: w
-    real(default), parameter :: pb_per_fb = 1.e-3_default
     w = weight * pb_per_fb
     call gen_event_add_weight (evt%obj, w)
   end subroutine hepmc_event_add_weight
@@ -7446,7 +7452,7 @@ from zero.)
     integer, intent(in) :: index
     integer(c_int) :: i
     i = index - 1
-    weight = gen_event_weight (evt%obj, i)
+    weight = gen_event_weight (evt%obj, i) / pb_per_fb
   end function hepmc_event_get_weight
 
 @ %def hepmc_event_get_weight
@@ -9421,18 +9427,19 @@ Fill the HEPEUP block, given a \whizard\ event object.
     if (event%has_valid_particle_set ()) then
        particle_set => event%get_particle_set_ptr ()
        call hepeup_from_particle_set (particle_set, keep_beams, keep_remnants)
-       if (present (process_index)) &
-            call hepeup_set_event_parameters (proc_id = process_index)
+       if (present (process_index)) then
+          call hepeup_set_event_parameters (proc_id = process_index)
+       end if
        scale = event%get_fac_scale ()
-       if (.not. vanishes (scale)) &
-            call hepeup_set_event_parameters (scale = scale)
+       if (.not. vanishes (scale)) then
+          call hepeup_set_event_parameters (scale = scale)
+       end if
        alpha_qcd = event%get_alpha_s ()       
-       if (.not. vanishes(alpha_qcd)) &
-            call hepeup_set_event_parameters (alpha_qcd = alpha_qcd)
+       if (.not. vanishes(alpha_qcd)) then
+          call hepeup_set_event_parameters (alpha_qcd = alpha_qcd)
+       end if
        if (event%weight_prc_is_known ()) then
           call hepeup_set_event_parameters (weight = event%get_weight_prc ())
-       else
-          call msg_bug ("HEPEUP: process weight is unknown")
        end if
     else
        call msg_bug ("HEPEUP: event incomplete")
@@ -9485,7 +9492,7 @@ Note: setting of scale or alpha is not yet supported by the
   end subroutine hepeup_to_event
 
 @ %def hepeup_to_event
-@ Fill the HEPEVT (event) common block:
+@ Fill the HEPEVT (event) common block.
 <<HEP events: public>>=
   public :: hepevt_from_event
 <<HEP events: procedures>>=
@@ -9501,21 +9508,23 @@ Note: setting of scale or alpha is not yet supported by the
        particle_set => event%get_particle_set_ptr ()
        call hepevt_from_particle_set (particle_set, keep_beams, &
             keep_remnants, ensure_order)
-       if (event%weight_prc_is_known () .and. event%sqme_prc_is_known ()) then
-          call hepevt_set_event_parameters ( &
-               weight = event%get_weight_prc (), &
-               function_value = event%get_sqme_prc ())
-       else
-          call msg_bug ("HEPEVT: event weight and/or sqme unknown")
+       if (event%weight_prc_is_known ()) then
+          call hepevt_set_event_parameters (weight = event%get_weight_prc ())
        end if
-       if (present (i_evt)) &
-            call hepevt_set_event_parameters (i_evt = i_evt)
+       if (event%sqme_prc_is_known ()) then
+          call hepevt_set_event_parameters &
+               (function_value = event%get_sqme_prc ())
+       end if
+       if (present (i_evt)) then
+          call hepevt_set_event_parameters (i_evt = i_evt)
+       end if
     else
        call msg_bug ("HEPEVT: event incomplete")
     end if
   end subroutine hepevt_from_event
 
 @ %def hepevt_from_event
+@
 \subsubsection{HepMC format}
 The master output function fills a HepMC GenEvent object that is
 already initialized, but has no vertices in it.
@@ -9653,10 +9662,11 @@ bottleneck for large particle arrays.  If necessary, the barcode array
 could be replaced by a hash table.
 <<HEP events: procedures>>=
   subroutine particle_from_hepmc_particle &
-       (prt, hprt, model, polarization, barcode)
+       (prt, hprt, model, fallback_model, polarization, barcode)
     type(particle_t), intent(out) :: prt
     type(hepmc_particle_t), intent(in) :: hprt
     type(model_data_t), intent(in), target :: model
+    type(model_data_t), intent(in), target :: fallback_model
     type(hepmc_vertex_t) :: vtx
     integer, intent(in) :: polarization
     integer, dimension(:), intent(in) :: barcode
@@ -9676,7 +9686,7 @@ could be replaced by a hash table.
     case (3);  call prt%set_status (PRT_VIRTUAL)
     end select
     if (hepmc_particle_is_beam (hprt)) call prt%set_status (PRT_BEAM)
-    call flv%init (hepmc_particle_get_pdg (hprt), model)
+    call flv%init (hepmc_particle_get_pdg (hprt), model, fallback_model)
     call col%init (hepmc_particle_get_color (hprt))
     call prt%set_flavor (flv)   
     call prt%set_color (col)
@@ -9758,7 +9768,7 @@ then define an incoming particle as
     do i = 1, n_tot
        prt = hepmc_event_particle_iterator_get (it)
        call particle_from_hepmc_particle (particle_set%prt(i), &
-            prt, model, polarization, barcode)
+            prt, model, fallback_model, polarization, barcode)
        call hepmc_event_particle_iterator_advance (it)
     end do
     call hepmc_event_particle_iterator_final (it)
