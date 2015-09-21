@@ -503,16 +503,25 @@ if STATIC_AVAILABLE
 endif
 
 # The reference output files are in the source directory.  Copy them here.
+if FC_QUAD
+ref-output: $(top_srcdir)/share/tests/functional_tests/ref-output
+	mkdir -p ref-output
+	for f in $</*.ref; do cp $$f $@; done
+	for f in $</../ref-output-prec/*.ref; do cp $$f $@; done
+	for f in $</../ref-output-quad/*.ref; do cp $$f $@; done
+else
 if FC_EXT
 ref-output: $(top_srcdir)/share/tests/functional_tests/ref-output
 	mkdir -p ref-output
 	for f in $</*.ref; do cp $$f $@; done
+	for f in $</../ref-output-prec/*.ref; do cp $$f $@; done
 	for f in $</../ref-output-ext/*.ref; do cp $$f $@; done
 else
 ref-output: $(top_srcdir)/share/tests/functional_tests/ref-output
 	mkdir -p ref-output
 	for f in $</*.ref; do cp $$f $@; done
 	for f in $</../ref-output-double/*.ref; do cp $$f $@; done
+endif
 endif
 
 ## installcheck runs the test scripts with the TESTFLAG removed.
