@@ -994,7 +994,8 @@ SHOWER_EXT_SIN = \
     extra_shower_3_tt.sin \
     extra_shower_3_z_nu.sin \
     extra_shower_3_z_tau.sin \
-    extra_shower_4_ee.sin
+    extra_shower_4_ee.sin \
+    extra_shower_5.sin
 
 NLO_EXT_SIN = \
     extra_nlo_tt.sin \
