@@ -51,7 +51,8 @@ TESTSUITE_TOOLS = \
 REF_OUTPUT_FILES = \
     extra_integration_results.dat \
     $(REF_OUTPUT_FILES_BASE) $(REF_OUTPUT_FILES_DOUBLE) \
-    $(REF_OUTPUT_FILES_EXT)
+    $(REF_OUTPUT_FILES_PREC) $(REF_OUTPUT_FILES_EXT) \
+    $(REF_OUTPUT_FILES_QUAD)
 
 REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/analysis_1.ref \
@@ -608,8 +609,6 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/smtest_15.ref \
     functional_tests/ref-output/smtest_16.ref \
     functional_tests/ref-output/smtest_17.ref \
-    functional_tests/ref-output/nlo_3.ref \
-    functional_tests/ref-output/powheg_1.ref \
     functional_tests/ref-output/mssmtest.ref \
     functional_tests/ref-output/spincor_1.ref \
     functional_tests/ref-output/show_1.ref \
@@ -620,6 +619,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/flvsum_1.ref \
     functional_tests/ref-output/decay_err_1.ref \
     functional_tests/ref-output/decay_err_2.ref \
+    functional_tests/ref-output/circe1_1.ref \
     functional_tests/ref-output/circe1_2.ref \
     functional_tests/ref-output/circe1_3.ref \
     functional_tests/ref-output/circe1_6.ref \
@@ -647,6 +647,8 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/smtest_8.ref \
     functional_tests/ref-output-double/nlo_1.ref \
     functional_tests/ref-output-double/nlo_2.ref \
+    functional_tests/ref-output-double/nlo_3.ref \
+    functional_tests/ref-output-double/powheg_1.ref \
     functional_tests/ref-output-double/defaultcuts.ref \
     functional_tests/ref-output-double/parton_shower_2.ref \
     functional_tests/ref-output-double/helicity.ref \
@@ -661,7 +663,6 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/ep_1.ref \
     functional_tests/ref-output-double/ep_2.ref \
     functional_tests/ref-output-double/ep_3.ref \
-    functional_tests/ref-output-double/circe1_1.ref \
     functional_tests/ref-output-double/circe1_4.ref \
     functional_tests/ref-output-double/circe1_5.ref \
     functional_tests/ref-output-double/circe1_7.ref \
@@ -682,50 +683,69 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/beam_events_2.ref \
     functional_tests/ref-output-double/beam_events_3.ref
 
+REF_OUTPUT_FILES_PREC = \
+    functional_tests/ref-output-prec/qedtest_3.ref \
+    functional_tests/ref-output-prec/qedtest_4.ref \
+    functional_tests/ref-output-prec/qcdtest_1.ref \
+    functional_tests/ref-output-prec/qcdtest_2.ref \
+    functional_tests/ref-output-prec/qcdtest_3.ref \
+    functional_tests/ref-output-prec/smtest_2.ref \
+    functional_tests/ref-output-prec/smtest_8.ref \
+    functional_tests/ref-output-prec/nlo_1.ref \
+    functional_tests/ref-output-prec/nlo_2.ref \
+    functional_tests/ref-output-prec/nlo_3.ref \
+    functional_tests/ref-output-prec/defaultcuts.ref \
+    functional_tests/ref-output-prec/parton_shower_2.ref \
+    functional_tests/ref-output-prec/helicity.ref \
+    functional_tests/ref-output-prec/lhef_7.ref \
+    functional_tests/ref-output-prec/multi_comp_1.ref \
+    functional_tests/ref-output-prec/multi_comp_2.ref \
+    functional_tests/ref-output-prec/multi_comp_3.ref \
+    functional_tests/ref-output-prec/pdf_builtin.ref \
+    functional_tests/ref-output-prec/lhapdf5.ref \
+    functional_tests/ref-output-prec/lhapdf6.ref \
+    functional_tests/ref-output-prec/ep_1.ref \
+    functional_tests/ref-output-prec/ep_2.ref \
+    functional_tests/ref-output-prec/ep_3.ref \
+    functional_tests/ref-output-prec/circe1_9.ref \
+    functional_tests/ref-output-prec/circe1_photons_1.ref \
+    functional_tests/ref-output-prec/circe1_photons_2.ref \
+    functional_tests/ref-output-prec/circe1_photons_3.ref \
+    functional_tests/ref-output-prec/circe1_photons_4.ref \
+    functional_tests/ref-output-prec/circe1_photons_5.ref \
+    functional_tests/ref-output-prec/ewa_1.ref
+
 REF_OUTPUT_FILES_EXT = \
-    functional_tests/ref-output-ext/qedtest_3.ref \
-    functional_tests/ref-output-ext/qedtest_4.ref \
-    functional_tests/ref-output-ext/qcdtest_1.ref \
-    functional_tests/ref-output-ext/qcdtest_2.ref \
-    functional_tests/ref-output-ext/qcdtest_3.ref \
-    functional_tests/ref-output-ext/smtest_2.ref \
-    functional_tests/ref-output-ext/smtest_8.ref \
-    functional_tests/ref-output-ext/nlo_1.ref \
-    functional_tests/ref-output-ext/nlo_2.ref \
-    functional_tests/ref-output-ext/defaultcuts.ref \
-    functional_tests/ref-output-ext/parton_shower_2.ref \
-    functional_tests/ref-output-ext/helicity.ref \
-    functional_tests/ref-output-ext/lhef_7.ref \
-    functional_tests/ref-output-ext/hepmc_8.ref \
-    functional_tests/ref-output-ext/multi_comp_1.ref \
-    functional_tests/ref-output-ext/multi_comp_2.ref \
-    functional_tests/ref-output-ext/multi_comp_3.ref \
-    functional_tests/ref-output-ext/pdf_builtin.ref \
-    functional_tests/ref-output-ext/lhapdf5.ref \
-    functional_tests/ref-output-ext/lhapdf6.ref \
-    functional_tests/ref-output-ext/ep_1.ref \
-    functional_tests/ref-output-ext/ep_2.ref \
-    functional_tests/ref-output-ext/ep_3.ref \
-    functional_tests/ref-output-ext/circe1_1.ref \
     functional_tests/ref-output-ext/circe1_4.ref \
     functional_tests/ref-output-ext/circe1_5.ref \
     functional_tests/ref-output-ext/circe1_7.ref \
     functional_tests/ref-output-ext/circe1_8.ref \
-    functional_tests/ref-output-ext/circe1_9.ref \
-    functional_tests/ref-output-ext/circe1_photons_1.ref \
-    functional_tests/ref-output-ext/circe1_photons_2.ref \
-    functional_tests/ref-output-ext/circe1_photons_3.ref \
-    functional_tests/ref-output-ext/circe1_photons_4.ref \
-    functional_tests/ref-output-ext/circe1_photons_5.ref \
+    functional_tests/ref-output-ext/powheg_1.ref \
     functional_tests/ref-output-ext/pythia6_3.ref \
     functional_tests/ref-output-ext/pythia6_4.ref \
-    functional_tests/ref-output-ext/mlm_matching_isr.ref \
-    functional_tests/ref-output-ext/ewa_1.ref \
     functional_tests/ref-output-ext/ewa_2.ref \
     functional_tests/ref-output-ext/ewa_3.ref \
     functional_tests/ref-output-ext/ilc.ref \
     functional_tests/ref-output-ext/beam_events_2.ref \
-    functional_tests/ref-output-ext/beam_events_3.ref
+    functional_tests/ref-output-ext/beam_events_3.ref \
+    functional_tests/ref-output-ext/mlm_matching_isr.ref \
+    functional_tests/ref-output-ext/hepmc_8.ref
+
+REF_OUTPUT_FILES_QUAD = \
+    functional_tests/ref-output-quad/circe1_4.ref \
+    functional_tests/ref-output-quad/circe1_5.ref \
+    functional_tests/ref-output-quad/circe1_7.ref \
+    functional_tests/ref-output-quad/circe1_8.ref \
+    functional_tests/ref-output-quad/powheg_1.ref \
+    functional_tests/ref-output-quad/pythia6_3.ref \
+    functional_tests/ref-output-quad/pythia6_4.ref \
+    functional_tests/ref-output-quad/ewa_2.ref \
+    functional_tests/ref-output-quad/ewa_3.ref \
+    functional_tests/ref-output-quad/ilc.ref \
+    functional_tests/ref-output-quad/beam_events_2.ref \
+    functional_tests/ref-output-quad/beam_events_3.ref \
+    functional_tests/ref-output-quad/mlm_matching_isr.ref \
+    functional_tests/ref-output-quad/hepmc_8.ref
 
 TESTSUITES_M4 = \
     $(MISC_TESTS_M4) \
@@ -974,7 +994,8 @@ SHOWER_EXT_SIN = \
     extra_shower_3_tt.sin \
     extra_shower_3_z_nu.sin \
     extra_shower_3_z_tau.sin \
-    extra_shower_4_ee.sin
+    extra_shower_4_ee.sin \
+    extra_shower_5.sin
 
 NLO_EXT_SIN = \
     extra_nlo_tt.sin \

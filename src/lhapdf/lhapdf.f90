@@ -290,9 +290,7 @@ contains
 
   subroutine lhapdf_final (pdf)
     class(lhapdf_pdf_t), intent(inout) :: pdf
-    if (c_associated (pdf%cptr)) then
-       call lhapdf_pdf_delete (pdf%cptr)
-    end if
+    call lhapdf_pdf_delete (pdf%cptr)
   end subroutine lhapdf_final
 
   subroutine lhapdf_copy_pointer (pdf_in, pdf_out)

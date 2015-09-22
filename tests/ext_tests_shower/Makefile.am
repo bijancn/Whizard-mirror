@@ -43,7 +43,8 @@ TESTS_EXTENDED = \
 	extra_shower_3_tt.run \
 	extra_shower_3_z_nu.run \
 	extra_shower_3_z_tau.run \
-	extra_shower_4_ee.run
+	extra_shower_4_ee.run \
+	extra_shower_5.run
 
 XFAIL_TESTS_EXTENDED =
 

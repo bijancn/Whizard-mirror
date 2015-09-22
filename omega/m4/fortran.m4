@@ -1401,9 +1401,10 @@ else
   FC_PRECISION=$wo_cv_fc_requested_precision
 fi
 AC_SUBST([FC_PRECISION])
+AM_CONDITIONAL([FC_PREC], [test "$FC_PRECISION" = "extended" || test "$FC_PRECISION" = "quadruple"])
 AM_CONDITIONAL([FC_EXT], [test "$FC_PRECISION" = "extended"])
+AM_CONDITIONAL([FC_QUAD], [test "$FC_PRECISION" = "quadruple"])
 ])
-# AM_CONDITIONAL([FC_QUAD], [test "$FC_PRECISION" = "quadruple"])
 
 ########################################################################
 ### end of configure kinds.f90
