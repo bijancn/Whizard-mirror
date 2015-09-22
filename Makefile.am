@@ -35,7 +35,7 @@
 ACLOCAL_AMFLAGS = -I m4
 
 ## Subdirectories to configure
-SUBDIRS = circe1 circe2 omega vamp pythia6 src share \
+SUBDIRS = circe1 circe2 omega vamp mcfio stdhep pythia6 src share \
    tests scripts libtool-config 
 if !OCAML_AVAILABLE
 dist-hook:
@@ -48,7 +48,7 @@ libtoolexeclibdir = $(pkglibdir)
 nodist_libtoolexeclib_SCRIPTS = libtool
 
 ## Extra files in the distribution
-dist_noinst_DATA = BUGS EXTENSIONS
+dist_noinst_DATA = BUGS EXTENSIONS test-driver
 
 ## Use the same compiler and compiler flags for distcheck
 DISTCHECK_CONFIGURE_FLAGS = F77=$(F77) F77FLAGS="$(F77FLAGS)" FC=$(FC) \

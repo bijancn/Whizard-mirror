@@ -451,7 +451,7 @@ WO_PROG_HEPMC()
 
 WO_CONFIGURE_SECTION([STDHEP])
 
-WO_PROG_STDHEP()
+AC_MSG_NOTICE([StdHEP v5.06.01 is included internally])
 
 ###---------------------------------------------------------------------
 ### LCIO
@@ -575,6 +575,12 @@ AC_CONFIG_FILES([src/lcio/Makefile])
 AC_CONFIG_FILES([pythia6/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory stdhep: WHIZARD's internal StdHep version
+
+AC_CONFIG_FILES([mcfio/Makefile])
+AC_CONFIG_FILES([stdhep/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory src/muli: multiple interactions
 
 AC_CONFIG_FILES([src/muli/Makefile])
@@ -593,11 +599,6 @@ AC_CONFIG_FILES([src/lhapdf/Makefile])
 ### Subdirectory src/pdf_builtin: Builtin PDFs
 
 AC_CONFIG_FILES([src/pdf_builtin/Makefile])
-
-###---------------------------------------------------------------------
-### Subdirectory src/stdhep: dummy library as STDHEP replacement
-
-AC_CONFIG_FILES([src/stdhep/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/xdr: XDR reader 

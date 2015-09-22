@@ -5106,7 +5106,8 @@ structure-function chain.
           extension_hepmc = &
                global%var_list%get_sval (var_str ("$extension_hepmc"))          
           ! call eio%set_parameters (keep_beams, recover_beams, extension_hepmc)
-          call eio%set_parameters (recover_beams, &
+          call eio%set_parameters (global%model, &
+               recover_beams, &
                use_alpha_s_from_file, use_scale_from_file, &
                extension_hepmc, output_cross_section)
        end select
@@ -8616,16 +8617,8 @@ local changes to currently inactive models.
     decay_rest_frame = &
          var_list%get_lval (var_str ("?decay_rest_frame"))    
     if (intg%process_has_me) then
-       if (local%beam_structure%is_set ()) then
-          call intg%process%setup_beams_beam_structure &
-               (local%beam_structure, sqrts, decay_rest_frame)
-        else if (n_in == 2) then
-          call intg%process%setup_beams_sqrts &
-               (sqrts, local%beam_structure)
-       else 
-          call intg%process%setup_beams_decay &
-               (decay_rest_frame, local%beam_structure)
-       end if
+       call intg%process%setup_beams_beam_structure &
+            (local%beam_structure, sqrts, decay_rest_frame)
     end if
     call intg%process%check_masses ()
     if (verb .and. intg%process_has_me) then
@@ -10829,9 +10822,11 @@ module simulations
   use flavors
   use particles
   use state_matrices, only: FM_IGNORE_HELICITY
+  use beam_structures, only: beam_structure_t
   use beams
   use rng_base
   use selectors
+  use process_libraries, only: process_library_t
   use prc_core
   use processes
   use event_base
@@ -11067,10 +11062,10 @@ done, do it.  Any generated process object should be put on the global stack,
 if it is separate from the local one.
 <<Simulations: procedures>>=
   subroutine prepare_process &
-       (process, process_id, integrate, local, global)
+       (process, process_id, use_process, integrate, local, global)
     type(process_t), pointer, intent(out) :: process
     type(string_t), intent(in) :: process_id
-    logical, intent(in) :: integrate
+    logical, intent(in) :: use_process, integrate
     type(rt_data_t), intent(inout), target :: local
     type(rt_data_t), intent(inout), optional, target :: global
     if (present (global)) then
@@ -11078,7 +11073,7 @@ if it is separate from the local one.
     else
        process => local%process_stack%get_process_ptr (process_id)
     end if
-    if (.not. associated (process)) then
+    if (use_process .and. .not. associated (process)) then
        if (integrate) then
           call msg_message ("Simulate: process '" &
                // char (process_id) // "' needs integration")
@@ -11106,6 +11101,10 @@ if it is separate from the local one.
           call msg_fatal ("Simulate: process '" &
                // char (process_id) // "' could not be initialized: aborting")
        end if
+    else if (.not. associated (process)) then
+       call msg_message &
+            ("Simulate: process '" &
+               // char (process_id) // "': enabled for rescan only")
     end if
   end subroutine prepare_process
     
@@ -11264,8 +11263,13 @@ object and at the environment.
 If [[n_alt]] is set, we prepare for additional alternate sqme and weight
 entries.
 
-If the process object is not found initially: if [[integrate]] is set, attempt
-an integration pass and try again.  Otherwise, just initialize the object.
+The [[compile]] flag is only false if we don't need the Whizard
+process at all, just its definition.  In that case, we skip process
+initialization.
+
+Otherwise, and if the process object is not found initially: if
+[[integrate]] is set, attempt an integration pass and try again.
+Otherwise, just initialize the object.
 
 If [[generate]] is set, prepare the MCI objects for generating new events.
 For pure rescanning, this is not necessary.
@@ -11276,11 +11280,12 @@ base type by the [[connect]] method, so we can reference them later.
   procedure :: init => entry_init
 <<Simulations: procedures>>=
   subroutine entry_init &
-       (entry, process_id, integrate, generate, update_sqme, &
+       (entry, process_id, &
+       use_process, integrate, generate, update_sqme, &
        local, global, n_alt)
     class(entry_t), intent(inout), target :: entry
     type(string_t), intent(in) :: process_id
-    logical, intent(in) :: integrate, generate, update_sqme
+    logical, intent(in) :: use_process, integrate, generate, update_sqme
     type(rt_data_t), intent(inout), target :: local
     type(rt_data_t), intent(inout), optional, target :: global
     integer, intent(in), optional :: n_alt
@@ -11289,13 +11294,23 @@ base type by the [[connect]] method, so we can reference them later.
     integer :: i
     logical :: combined_integration
 
-    call prepare_process (master_process, process_id, integrate, local, global)
+    call prepare_process &
+         (master_process, process_id, use_process, integrate, local, global)
     if (signal_is_pending ())  return
 
-    if (.not. master_process%has_matrix_element ()) then
-       entry%has_integral = .true.
+    if (associated (master_process)) then
+       if (.not. master_process%has_matrix_element ()) then
+          entry%has_integral = .true.
+          entry%process_id = process_id
+          entry%valid = .false.          
+          return
+       end if
+    else
+       call entry%basic_init (local%var_list)
+       entry%has_integral = .false.
        entry%process_id = process_id
-       entry%valid = .false.          
+       call entry%import_process_def_characteristics (local%prclib, process_id)
+       entry%valid = .true.
        return
     end if
     
@@ -11454,6 +11469,22 @@ process for basic information.
   end subroutine entry_import_process_characteristics
 
 @ %def entry_import_process_characteristics
+@ This is the alternative form which applies if there is no process
+entry, but just a process definition which we take from the provided
+[[prclib]] definition library.
+<<Simulations: entry: TBP>>=
+  procedure, private :: import_process_def_characteristics &
+       => entry_import_process_def_characteristics
+<<Simulations: procedures>>=
+  subroutine entry_import_process_def_characteristics (entry, prclib, id)
+    class(entry_t), intent(inout) :: entry
+    type(process_library_t), intent(in), target :: prclib
+    type(string_t), intent(in) :: id
+    entry%library = prclib%get_name ()
+    entry%n_in = prclib%get_n_in (id)
+  end subroutine entry_import_process_def_characteristics
+
+@ %def entry_import_process_def_characteristics
 @ Part of simulation-entry initialization: query the
 process for integration results.
 <<Simulations: entry: TBP>>=
@@ -11745,7 +11776,9 @@ the normalization procedure for the process components.
     weight = entry%get_weight_prc ()
     excess = entry%get_excess_prc ()
     call entry%counter%record (weight, excess, from_file)
-    call entry%mci_set(i_mci)%counter%record (weight, excess)
+    if (i_mci > 0) then
+       call entry%mci_set(i_mci)%counter%record (weight, excess)
+    end if
   end subroutine entry_record
     
 @ %def entry_record
@@ -11941,6 +11974,7 @@ event file version. It can be
 <<Simulations: types>>=
   type :: simulation_t
      private
+     type(rt_data_t), pointer :: local => null ()
      type(string_t) :: sample_id
      logical :: unweighted = .true.
      logical :: negative_weights = .false.
@@ -11955,7 +11989,7 @@ event file version. It can be
      integer :: n_prc = 0
      integer :: n_alt = 0
      logical :: has_integral = .false.
-     logical :: valid
+     logical :: valid = .false.
      real(default) :: integral = 0
      real(default) :: error = 0
      integer :: version = 1
@@ -12188,7 +12222,9 @@ we may only read and rescan events.
     type(rt_data_t), dimension(:), intent(inout), optional, target :: alt_env
     class(rng_factory_t), allocatable :: rng_factory
     type(string_t) :: norm_string, version_string
+    logical :: use_process
     integer :: i, j
+    simulation%local => local
     simulation%sample_id = &
          local%get_sval (var_str ("$sample"))
     simulation%unweighted = &
@@ -12221,6 +12257,12 @@ we may only read and rescan events.
          local%get_lval (var_str ("?update_event"))
     simulation%recover_beams = &
          local%get_lval (var_str ("?recover_beams"))
+    use_process = &
+         integrate .or. generate &
+         .or. simulation%update_sqme &
+         .or. simulation%update_weight &
+         .or. simulation%update_event &
+         .or. present (alt_env)
     select case (size (process_id))
     case (0)
        call msg_error ("Simulation: no process selected")
@@ -12254,14 +12296,14 @@ we may only read and rescan events.
        simulation%n_alt = size (alt_env)
        do i = 1, simulation%n_prc
           call simulation%entry(i)%init (process_id(i), &
-               integrate, generate, &
+               use_process, integrate, generate, &
                simulation%update_sqme, &
                local, global, simulation%n_alt)
           if (signal_is_pending ())  return
        end do
-       if (.not. any (simulation%entry%valid)) then
+       simulation%valid = any (simulation%entry%valid)
+       if (.not. simulation%valid) then
           call msg_error ("Simulate: no process has a valid matrix element.")
-          simulation%valid = .false.
           return
        end if
        call simulation%update_processes ()
@@ -12280,22 +12322,25 @@ we may only read and rescan events.
        do i = 1, simulation%n_prc
           call simulation%entry(i)%init &
                (process_id(i), &
-               integrate, generate, simulation%update_sqme, &
+               use_process, integrate, generate, simulation%update_sqme, &
                local, global)
           call simulation%entry(i)%determine_if_powheg_matching ()
           if (signal_is_pending ())  return          
           if (simulation%entry(i)%is_nlo_event()) &
              call simulation%entry(i)%setup_additional_entries ()
        end do
-       if (.not. any (simulation%entry%valid)) then
+       simulation%valid = any (simulation%entry%valid)
+       if (.not. simulation%valid) then
           call msg_error ("Simulate: " &
                // "no process has a valid matrix element.") 
-          simulation%valid = .false.
           return
        end if
     end if
-    call dispatch_rng_factory (rng_factory, local)
-    call rng_factory%make (simulation%rng)
+!!! if this becomes conditional, some ref files will need update (seed change)
+!    if (generate) then
+       call dispatch_rng_factory (rng_factory, local)
+       call rng_factory%make (simulation%rng)
+!    end if
     if (all (simulation%entry%has_integral)) then
        simulation%integral = sum (simulation%entry%integral)
        simulation%error = sqrt (sum (simulation%entry%error ** 2))
@@ -12309,7 +12354,7 @@ we may only read and rescan events.
              end if
           end do
        end if
-    else
+    else 
        if (integrate .and. generate) &
             call msg_error ("Simulation contains undefined integrals.")
     end if
@@ -12320,7 +12365,8 @@ we may only read and rescan events.
        call msg_error ("Simulate: " &
             // "sum of process integrals must be positive; skipping.")
        simulation%valid = .false.
-       return
+    else
+       simulation%valid = .true.
     end if
     if (simulation%valid)  call simulation%compute_md5sum ()
   end subroutine simulation_init
@@ -12413,12 +12459,14 @@ latter should guarantee identical physics.
        do i = 1, simulation%n_prc
           if (.not. simulation%entry(i)%valid) cycle
           process => simulation%entry(i)%get_process_ptr ()
-          n_component = process%get_n_components ()
-          do i_component = 1, n_component
-             if (process%has_matrix_element (i_component)) then
-                buffer = buffer // process%get_md5sum_prc (i_component)
-             end if
-          end do
+          if (associated (process)) then
+             n_component = process%get_n_components ()
+             do i_component = 1, n_component
+                if (process%has_matrix_element (i_component)) then
+                   buffer = buffer // process%get_md5sum_prc (i_component)
+                end if
+             end do
+          end if
        end do
        simulation%md5sum_prc = md5sum (char (buffer))
     end if
@@ -12427,10 +12475,12 @@ latter should guarantee identical physics.
        do i = 1, simulation%n_prc
           if (.not. simulation%entry(i)%valid) cycle          
           process => simulation%entry(i)%get_process_ptr ()
-          n_mci = process%get_n_mci ()
-          do i_mci = 1, n_mci
-             buffer = buffer // process%get_md5sum_mci (i_mci)
-          end do
+          if (associated (process)) then
+             n_mci = process%get_n_mci ()
+             do i_mci = 1, n_mci
+                buffer = buffer // process%get_md5sum_mci (i_mci)
+             end do
+          end if
        end do
        simulation%md5sum_cfg = md5sum (char (buffer))
     end if
@@ -12439,7 +12489,9 @@ latter should guarantee identical physics.
           buffer = ""
           do i = 1, simulation%n_prc
              process => simulation%alt_entry(i,j)%get_process_ptr ()
-             buffer = buffer // process%get_md5sum_cfg ()
+             if (associated (process)) then
+                buffer = buffer // process%get_md5sum_cfg ()
+             end if
           end do
           simulation%md5sum_alt(j) = md5sum (char (buffer))
        end if
@@ -13038,7 +13090,14 @@ Return the MD5 sum that summarizes configuration and integration
     
 @ %def simulation_get_md5sum_prc
 @ %def simulation_get_md5sum_cfg
-@ Return data that may be useful for writing event files..
+@ Return data that may be useful for writing event files.
+
+Usually we can refer to a previously integrated process, for which we
+can fetch a process pointer.  Occasionally, we don't have this because
+we're just rescanning an externally generated file without
+calculation.  For that situation, we generate our local beam data object
+using the current enviroment, or, in simple cases, just fetch the
+necessary data from the process definition and environment.
 <<Simulations: simulation: TBP>>=
   procedure :: get_data => simulation_get_data
 <<Simulations: procedures>>=
@@ -13048,12 +13107,15 @@ Return the MD5 sum that summarizes configuration and integration
     type(event_sample_data_t) :: sdata
     type(process_t), pointer :: process
     type(beam_data_t), pointer :: beam_data
+    type(beam_structure_t), pointer :: beam_structure
     type(flavor_t), dimension(:), allocatable :: flv
     integer :: n, i
-    logical :: enable_alt
+    logical :: enable_alt, construct_beam_data
+    real(default) :: sqrts
+    class(model_data_t), pointer :: model
+    logical :: decay_rest_frame
+    type(string_t) :: process_id
     enable_alt = .true.;  if (present (alt))  enable_alt = alt    
-    process => simulation%entry(1)%get_process_ptr ()
-    beam_data => process%get_beam_data_ptr ()
     if (enable_alt) then
        call sdata%init (simulation%n_prc, simulation%n_alt)
        do i = 1, simulation%n_alt
@@ -13065,16 +13127,51 @@ Return the MD5 sum that summarizes configuration and integration
     sdata%unweighted = simulation%unweighted
     sdata%negative_weights = simulation%negative_weights
     sdata%norm_mode = simulation%norm_mode
-    n = beam_data%get_n_in ()
-    sdata%n_beam = n
-    allocate (flv (n))
-    flv = beam_data%get_flavor ()
-    sdata%pdg_beam(:n) = flv%get_pdg ()
-    sdata%energy_beam(:n) = beam_data%get_energy ()
+    process => simulation%entry(1)%get_process_ptr ()
+    if (associated (process)) then
+       beam_data => process%get_beam_data_ptr ()
+       construct_beam_data = .false.
+    else
+       n = simulation%entry(1)%n_in
+       sqrts = simulation%local%get_sqrts ()
+       beam_structure => simulation%local%beam_structure
+       call beam_structure%check_against_n_in (n, construct_beam_data)
+       if (construct_beam_data) then
+          allocate (beam_data)
+          model => simulation%local%model
+          decay_rest_frame = &
+               simulation%local%get_lval (var_str ("?decay_rest_frame"))    
+          call beam_data%init_structure (beam_structure, &
+               sqrts, model, decay_rest_frame)
+       else
+          beam_data => null ()
+       end if
+    end if
+    if (associated (beam_data)) then
+       n = beam_data%get_n_in ()
+       sdata%n_beam = n
+       allocate (flv (n))
+       flv = beam_data%get_flavor ()
+       sdata%pdg_beam(:n) = flv%get_pdg ()
+       sdata%energy_beam(:n) = beam_data%get_energy ()
+       if (construct_beam_data)  deallocate (beam_data)
+    else
+       n = simulation%entry(1)%n_in
+       sdata%n_beam = n
+       process_id = simulation%entry(1)%process_id
+       call simulation%local%prclib%get_pdg_in_1 &
+            (process_id, sdata%pdg_beam(:n))
+       sdata%energy_beam(:n) = sqrts / n
+    end if
     do i = 1, simulation%n_prc
        if (.not. simulation%entry(i)%valid) cycle
        process => simulation%entry(i)%get_process_ptr ()
-       sdata%proc_num_id(i) = process%get_num_id ()
+       if (associated (process)) then
+          sdata%proc_num_id(i) = process%get_num_id ()
+       else
+          process_id = simulation%entry(i)%process_id
+          sdata%proc_num_id(i) = simulation%local%prclib%get_num_id (process_id)
+       end if
        if (sdata%proc_num_id(i) == 0)  sdata%proc_num_id(i) = i
        if (simulation%entry(i)%has_integral) then
           sdata%cross_section(i) = simulation%entry(i)%integral
@@ -27137,13 +27234,9 @@ end module features
 @ 
 <<Features: print>>=
   call print_check ("StdHEP")
-<<Features: dependencies>>=
-  use system_dependencies, only: STDHEP_AVAILABLE
 <<Features: cases>>=
   case ("stdhep")
-     if (STDHEP_AVAILABLE) then
-        result = "yes"
-     end if
+     result = "yes"
      help = "event I/O format"
 @ 
 <<Features: print>>=

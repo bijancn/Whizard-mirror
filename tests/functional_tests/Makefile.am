@@ -130,6 +130,11 @@ TESTS_REQ_OCAML = \
     lhef_9.run \
     lhef_10.run \
     lhef_11.run \
+    stdhep_1.run \
+    stdhep_2.run \
+    stdhep_3.run \
+    stdhep_4.run \
+    stdhep_5.run \
     select_1.run \
     select_2.run \
     fatal_beam_decay.run \
@@ -237,16 +242,9 @@ TESTS_REQ_LHAPDF6 = \
 XFAIL_TESTS_REQ_LHAPDF5 =
 XFAIL_TESTS_REQ_LHAPDF6 =
 
-TESTS_REQ_STDHEP = \
-    stdhep_1.run \
-    stdhep_2.run \
-    stdhep_3.run \
-    stdhep_4.run \
-    stdhep_5.run
-XFAIL_TESTS_REQ_STDHEP =
-
 TESTS_STATIC = \
-    static_1.run
+    static_1.run \
+    static_2.run
 XFAIL_TESTS_STATIC =
 
 TESTS_REQ_PYTHIA6 = \
@@ -272,7 +270,6 @@ TEST_DRIVERS_RUN = \
     $(TESTS_REQ_LHAPDF6) \
     $(TESTS_REQ_HEPMC) \
     $(TESTS_REQ_FASTJET) \
-    $(TESTS_REQ_STDHEP) \
     $(TESTS_REQ_PYTHIA6) \
     $(TESTS_REQ_EV_ANA) \
     $(TESTS_STATIC)
@@ -302,9 +299,6 @@ XFAIL_TESTS += $(XFAIL_TESTS_REQ_LHAPDF5)
 
 TESTS += $(TESTS_REQ_LHAPDF6)
 XFAIL_TESTS += $(XFAIL_TESTS_REQ_LHAPDF6)
-
-TESTS += $(TESTS_REQ_STDHEP)
-XFAIL_TESTS += $(XFAIL_TESTS_REQ_STDHEP)
 
 TESTS += $(TESTS_REQ_PYTHIA6)
 XFAIL_TESTS += $(XFAIL_TESTS_REQ_PYTHIA6)
@@ -347,6 +341,9 @@ testproc_3.phs: $(top_builddir)/share/tests/functional_tests/testproc_3.phs
 
 static_1.run: static_1.exe.sin
 static_1.exe.sin: $(top_builddir)/share/tests/functional_tests/static_1.exe.sin
+	cp $< $@
+static_2.run: static_2.exe.sin
+static_2.exe.sin: $(top_builddir)/share/tests/functional_tests/static_2.exe.sin
 	cp $< $@
 
 susyhit.run: susyhit.in
@@ -416,19 +413,16 @@ hepmc_6_rd_LDADD = $(LDFLAGS_HEPMC)
 hepmc_6.run: hepmc_6_rd
 endif
 
-if STDHEP_AVAILABLE
 stdhep_4.run: stdhep_rd
 stdhep_5.run: stdhep_rd
 stdhep_rd: $(top_builddir)/src/xdr/stdhep_rd
 	cp $< $@
-endif
 
 susyhit.in: $(top_builddir)/share/tests/functional_tests/susyhit.in
 	cp $< $@
 
 BUILT_SOURCES = \
     TESTFLAG  \
-    STDHEP_FLAG \
     HEPMC_FLAG \
     LCIO_FLAG \
     FASTJET_FLAG \
@@ -446,11 +440,6 @@ BUILT_SOURCES = \
 # otherwise it uses the installed version
 TESTFLAG:
 	touch $@
-
-STDHEP_FLAG:
-if STDHEP_AVAILABLE
-	touch $@
-endif
 
 FASTJET_FLAG:
 if FASTJET_AVAILABLE
@@ -533,10 +522,10 @@ notestflag:
 ## Remove generated files
 clean-local:
 	rm -f gamelan.sty TEST.mdl 
-	rm -f TESTFLAG GAMELAN_FLAG STDHEP_FLAG 
+	rm -f TESTFLAG GAMELAN_FLAG 
 	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
 	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
-	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
+	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe static_2.exe
 	rm -f *.run *.log slha_test.out
 	rm -f core* stdhep_rd
 	rm -f *.f90 *.f90.in *.c *.$(FC_MODULE_EXT) *.o *.la

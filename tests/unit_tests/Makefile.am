@@ -115,6 +115,7 @@ UNIT_TESTS = \
     eio_raw.run \
     eio_checkpoints.run \
     eio_lhef.run \
+    eio_stdhep.run \
     eio_ascii.run \
     eio_weights.run \
     iterations.run \
@@ -142,9 +143,6 @@ UNIT_TESTS_REQ_HEPMC = \
     hepmc.run \
     eio_hepmc.run
 
-UNIT_TESTS_REQ_STDHEP = \
-    eio_stdhep.run
-
 UNIT_TESTS_REQ_LCIO = \
     lcio.run \
     eio_lcio.run
@@ -167,7 +165,6 @@ TEST_DRIVERS_RUN = \
     $(UNIT_TESTS_REQ_FASTJET) \
     $(UNIT_TESTS_REQ_LHAPDF5) \
     $(UNIT_TESTS_REQ_LHAPDF6) \
-    $(UNIT_TESTS_REQ_STDHEP) \
     $(UNIT_TESTS_REQ_OCAML)
 
 TEST_DRIVERS_SH = $(TEST_DRIVERS_RUN:.run=.sh)
@@ -184,7 +181,6 @@ UNIT_TESTS += $(UNIT_TESTS_REQ_HEPMC)
 UNIT_TESTS += $(UNIT_TESTS_REQ_LCIO)
 UNIT_TESTS += $(UNIT_TESTS_REQ_LHAPDF5)
 UNIT_TESTS += $(UNIT_TESTS_REQ_LHAPDF6)
-UNIT_TESTS += $(UNIT_TESTS_REQ_STDHEP)
 UNIT_TESTS += $(UNIT_TESTS_REQ_OCAML)
 UNIT_TESTS += $(UNIT_TESTS_REQ_EV_ANA)
 
@@ -239,7 +235,6 @@ endif
 
 BUILT_SOURCES = \
     TESTFLAG  \
-    STDHEP_FLAG \
     HEPMC_FLAG \
     LCIO_FLAG \
     FASTJET_FLAG \
@@ -258,11 +253,6 @@ BUILT_SOURCES = \
 # otherwise it uses the installed version
 TESTFLAG:
 	touch $@
-
-STDHEP_FLAG:
-if STDHEP_AVAILABLE
-	touch $@
-endif
 
 FASTJET_FLAG:
 if FASTJET_AVAILABLE
@@ -334,12 +324,12 @@ notestflag:
 ## Remove generated files
 clean-local:
 	rm -f gamelan.sty
-	rm -f TESTFLAG GAMELAN_FLAG STDHEP_FLAG 
+	rm -f TESTFLAG GAMELAN_FLAG 
 	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
 	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
 	rm -f *.run *.log slha_test.out
-	rm -f core* stdhep_rd
+	rm -f core* 
 	rm -f *.f90 *.c *.$(FC_MODULE_EXT) *.o *.la
 	rm -f *.makefile
 	rm -rf err-output

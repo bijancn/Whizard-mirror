@@ -114,7 +114,6 @@ endif
 
 BUILT_SOURCES = \
     TESTFLAG  \
-    STDHEP_FLAG \
     HEPMC_FLAG \
     LCIO_FLAG \
     FASTJET_FLAG \
@@ -131,11 +130,6 @@ BUILT_SOURCES = \
 # otherwise it uses the installed version
 TESTFLAG:
 	touch $@
-
-STDHEP_FLAG:
-if STDHEP_AVAILABLE
-	touch $@
-endif
 
 FASTJET_FLAG:
 if FASTJET_AVAILABLE
@@ -196,7 +190,7 @@ notestflag:
 ## Remove generated files
 clean-local:
 	rm -f gamelan.sty TEST.mdl 
-	rm -f TESTFLAG GAMELAN_FLAG STDHEP_FLAG 
+	rm -f TESTFLAG GAMELAN_FLAG 
 	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
 	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe

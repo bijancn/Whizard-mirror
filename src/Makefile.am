@@ -50,7 +50,7 @@ SUBDIRS = \
   hoppet \
   beams \
   me_methods \
-  stdhep xdr events \
+  xdr events \
   phase_space \
   mci variables \
   muli shower \
@@ -153,13 +153,6 @@ else
 libwhizard_la_LIBADD += lhapdf/libLHAPDFWrap_dummy.la
 endif
 
-## If STDHEP is not available, link in a dummy as replacements
-if STDHEP_AVAILABLE
-libwhizard_la_LIBADD += $(LDFLAGS_STDHEP)
-else
-libwhizard_la_LIBADD += stdhep/libstdhep_dummy.la
-endif 
-
 if HOPPET_AVAILABLE
 libwhizard_la_LIBADD += $(LDFLAGS_HOPPET) hoppet/libhoppet.la
 else
@@ -233,7 +226,6 @@ whizard_LDADD  = whizard-core/libwhizard_main.la
 whizard_LDADD += ./libwhizard.la
 whizard_LDADD += prebuilt/libwhizard_prebuilt.la
 whizard_LDADD += $(LDFLAGS_LHAPDF)
-whizard_LDADD += $(LDFLAGS_STDHEP)
 whizard_LDADD += $(LDFLAGS_HEPMC)
 whizard_LDADD += $(LDFLAGS_LCIO)
 whizard_LDADD += $(LDFLAGS_HOPPET)
@@ -256,7 +248,6 @@ whizard_ut_LDADD += ./libwhizard_test.la
 whizard_ut_LDADD += ./libwhizard.la
 whizard_ut_LDADD += prebuilt/libwhizard_prebuilt.la
 whizard_ut_LDADD += $(LDFLAGS_LHAPDF)
-whizard_ut_LDADD += $(LDFLAGS_STDHEP)
 whizard_ut_LDADD += $(LDFLAGS_HEPMC)
 whizard_ut_LDADD += $(LDFLAGS_LCIO)
 whizard_ut_LDADD += $(LDFLAGS_HOPPET)
