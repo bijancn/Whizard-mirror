@@ -274,6 +274,7 @@ end module prc_gosam
     type(string_t) :: ninja_dir
     type(string_t) :: form_dir
     type(string_t) :: qgraf_dir
+    type(string_t), dimension(2) :: filter
   contains
   <<prc gosam: gosam writer: TBP>>
   end type gosam_writer_t
@@ -351,7 +352,11 @@ end module prc_gosam
     select type (writer => object%writer)
     type is (gosam_writer_t)
       call writer%init (model_name, prt_in, prt_out)
-      call writer%write_config (filter)
+      if (present (filter)) then
+         call writer%set_filters (filter)
+      else
+         call writer%set_filters ([var_str(""),var_str("")])
+      end if
     end select
   end subroutine gosam_def_init
 
@@ -360,13 +365,12 @@ end module prc_gosam
 <<prc gosam: gosam writer: TBP>>=
   procedure :: write_config => gosam_writer_write_config
 <<prc gosam: procedures>>=
-  subroutine gosam_writer_write_config (gosam_writer, filter)
+  subroutine gosam_writer_write_config (gosam_writer)
     class(gosam_writer_t), intent(in) :: gosam_writer
-    type(string_t), dimension(2), intent(in), optional :: filter 
     integer :: unit
     unit = free_unit ()
     open (unit, file = "golem.in", status = "replace", action = "write")
-    call gosam_writer%generate_configuration_file (unit, filter)
+    call gosam_writer%generate_configuration_file (unit)
     close(unit)
   end subroutine gosam_writer_write_config
 
@@ -433,7 +437,7 @@ end module prc_gosam
 <<prc gosam: gosam writer: TBP>>=
   procedure :: init => gosam_writer_init
 <<prc gosam: procedures>>=
-  subroutine gosam_writer_init (writer,model_name, prt_in, prt_out) 
+  subroutine gosam_writer_init (writer, model_name, prt_in, prt_out) 
     class(gosam_writer_t), intent(inout) :: writer
     type(string_t), intent(in) :: model_name
     type(string_t), dimension(:), intent(in) :: prt_in, prt_out
@@ -447,6 +451,17 @@ end module prc_gosam
   end subroutine gosam_writer_init  
 
 @ %def gosam_writer_init
+@
+<<prc gosam: gosam writer: TBP>>=
+  procedure :: set_filters => gosam_writer_set_filters 
+<<prc gosam: procedures>>=
+  subroutine gosam_writer_set_filters (writer, filters)
+     class(gosam_writer_t), intent(inout) :: writer
+     type(string_t), intent(in), dimension(2) :: filters
+     writer%filter = filters
+  end subroutine gosam_writer_set_filters
+
+@ %def gosam_writer_set_filters
 @
 <<prc gosam: gosam driver: TBP>>=
   procedure, nopass :: type_name => gosam_driver_type_name
@@ -503,10 +518,9 @@ end module prc_gosam
             gosam_writer_generate_configuration_file
 <<prc gosam: procedures>>=
   subroutine gosam_writer_generate_configuration_file &
-          (object, unit, filter)
+          (object, unit)
       class(gosam_writer_t), intent(in) :: object
       integer, intent(in) :: unit
-      type(string_t), intent(in), dimension(2), optional :: filter
       type(string_t) :: fc_bin
       type(string_t) :: form_bin, qgraf_bin, haggies_bin
       type(string_t) :: fcflags_golem, ldflags_golem
@@ -559,10 +573,10 @@ end module prc_gosam
       !!! write (unit, "(A)") "zero=mU,mD,mC,mS,mB"
       !!! This is covered by the BLHA2 interface
       write (unit, "(A)") "PSP_check=False"
-      if (present (filter)) then
-         write (unit, "(A)") "filter.lo=" // char (filter(1))
-         write (unit, "(A)") "filter.nlo=" // char (filter(2))
-      end if
+      if (char (object%filter(1)) /= "") &
+         write (unit, "(A)") "filter.lo=" // char (object%filter(1))
+      if (char (object%filter(2)) /= "") &
+         write (unit, "(A)") "filter.nlo=" // char (object%filter(2))
       write (unit, "(A)") "symmetries=family,generation"
   end subroutine gosam_writer_generate_configuration_file
 
@@ -627,6 +641,10 @@ in the GoSam code are ready. This is done with a stamp mechanism.
     type(os_data_t), intent(in) :: os_data
     type(string_t), intent(in) :: libname
     logical :: lib_found
+    select type (writer => object%def%writer)
+    type is (gosam_writer_t)
+       call writer%write_config ()
+    end select
     call object%search_for_existing_library (os_data, lib_found)
     call object%create_olp_library (libname, lib_found)
     call object%load_driver (os_data, .not. lib_found)
