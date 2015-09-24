@@ -399,6 +399,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/eio_ascii_10.ref \
     unit_tests/ref-output/eio_weights_1.ref \
     unit_tests/ref-output/eio_weights_2.ref \
+    unit_tests/ref-output/eio_dump_1.ref \
     unit_tests/ref-output/iterations_1.ref \
     unit_tests/ref-output/iterations_2.ref \
     unit_tests/ref-output/rt_data_1.ref \
@@ -547,6 +548,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/observables_1.ref \
     functional_tests/ref-output/event_weights_1.ref \
     functional_tests/ref-output/event_weights_2.ref \
+    functional_tests/ref-output/event_dump_1.ref \
     functional_tests/ref-output/reweight_1.ref \
     functional_tests/ref-output/reweight_2.ref \
     functional_tests/ref-output/reweight_3.ref \
@@ -821,6 +823,7 @@ MISC_TESTS_SIN = \
     functional_tests/observables_1.sin \
     functional_tests/event_weights_1.sin \
     functional_tests/event_weights_2.sin \
+    functional_tests/event_dump_1.sin \
     functional_tests/reweight_1.sin \
     functional_tests/reweight_2.sin \
     functional_tests/reweight_3.sin \

@@ -33,6 +33,10 @@ These are the implementation modules:
 \item[eio\_weights]
   Print some event summary data, no details.  The main use if for
   testing purposes.
+\item[eio\_dump]
+  Dump the contents of WHIZARD's [[particle_set]] internal record,
+  using the [[write]] method of that record as-is.  The main use if for
+  testing purposes.
 \item[hep\_common]
   Implements traditional HEP common blocks that are (still) used by
   some of the event I/O formats below.
@@ -2768,6 +2772,436 @@ We test the implementation of all I/O methods.
   end subroutine eio_weights_2
   
 @ %def eio_weights_2
+@ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+\section{Event Dump Output}
+This is an output-only format.  We simply dump the contents of the
+[[particle_set]], using the [[write]] method of that type.  The
+event-format options are the options of that procedure.
+<<[[eio_dump.f90]]>>=
+<<File header>>
+
+module eio_dump
+
+  use, intrinsic :: iso_fortran_env, only: output_unit
+
+<<Use kinds>>
+  use kinds, only: i64
+<<Use strings>>
+  use format_utils, only: write_separator
+  use format_utils, only: pac_fmt
+  use format_defs, only: FMT_16, FMT_19
+  use io_units
+  use diagnostics
+  use event_base
+  use eio_data
+  use eio_base
+
+<<Standard module head>>
+
+<<EIO dump: public>>
+
+<<EIO dump: types>>
+
+contains
+  
+<<EIO dump: procedures>>
+
+end module eio_dump
+@ %def eio_dump
+@
+\subsection{Type}
+<<EIO dump: public>>=
+  public :: eio_dump_t
+<<EIO dump: types>>=
+  type, extends (eio_t) :: eio_dump_t
+     integer(i64) :: count = 0
+     integer :: unit = 0
+     logical :: writing = .false.
+     logical :: screen = .false.
+     logical :: pacify = .false.
+     logical :: weights = .false.
+     logical :: compressed = .false.
+     logical :: summary = .false.
+   contains
+   <<EIO dump: eio dump: TBP>>
+  end type eio_dump_t
+  
+@ %def eio_dump_t
+@
+\subsection{Specific Methods}
+Set pacify flags.
+<<EIO dump: eio dump: TBP>>=
+  procedure :: set_parameters => eio_dump_set_parameters
+<<EIO dump: procedures>>=
+  subroutine eio_dump_set_parameters (eio, extension, &
+       pacify, weights, compressed, summary, screen)
+    class(eio_dump_t), intent(inout) :: eio
+    type(string_t), intent(in), optional :: extension
+    logical, intent(in), optional :: pacify
+    logical, intent(in), optional :: weights
+    logical, intent(in), optional :: compressed
+    logical, intent(in), optional :: summary
+    logical, intent(in), optional :: screen
+    if (present (pacify))  eio%pacify = pacify
+    if (present (weights))  eio%weights = weights
+    if (present (compressed))  eio%compressed = compressed
+    if (present (summary))  eio%summary = summary
+    if (present (screen))  eio%screen = screen
+    eio%extension = "pset.dat"
+    if (present (extension))  eio%extension = extension
+  end subroutine eio_dump_set_parameters
+  
+@ %def eio_dump_set_parameters
+@ 
+\subsection{Common Methods}
+@ Output.  This is not the actual event format, but a readable account
+of the current object status.
+<<EIO dump: eio dump: TBP>>=
+  procedure :: write => eio_dump_write
+<<EIO dump: procedures>>=
+  subroutine eio_dump_write (object, unit)
+    class(eio_dump_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, "(1x,A)")  "Dump event stream:"
+    if (object%writing) then
+       write (u, "(3x,A,L1)") "Screen output     = ", object%screen
+       write (u, "(3x,A,A)")  "Writing to file   = ", char (object%filename)
+       write (u, "(3x,A,L1)") "Reduced I/O prec. = ", object%pacify 
+       write (u, "(3x,A,L1)") "Show weights/sqme = ", object%weights
+       write (u, "(3x,A,L1)") "Compressed        = ", object%compressed
+       write (u, "(3x,A,L1)") "Summary           = ", object%summary
+    else
+       write (u, "(3x,A)")  "[closed]"
+    end if
+  end subroutine eio_dump_write
+  
+@ %def eio_dump_write
+@ Finalizer: close any open file.
+<<EIO dump: eio dump: TBP>>=
+  procedure :: final => eio_dump_final
+<<EIO dump: procedures>>=
+  subroutine eio_dump_final (object)
+    class(eio_dump_t), intent(inout) :: object
+    if (object%screen) then
+       write (msg_buffer, "(A,A,A)")  "Events: display complete"
+       call msg_message ()
+       object%screen = .false.
+    end if
+    if (object%writing) then
+       write (msg_buffer, "(A,A,A)")  "Events: closing event dump file '", &
+            char (object%filename), "'"
+       call msg_message ()
+       close (object%unit)
+       object%writing = .false.
+    end if
+  end subroutine eio_dump_final
+  
+@ %def eio_dump_final
+@ Initialize event writing.
+<<EIO dump: eio dump: TBP>>=
+  procedure :: init_out => eio_dump_init_out
+<<EIO dump: procedures>>=
+  subroutine eio_dump_init_out (eio, sample, data, success, extension)
+    class(eio_dump_t), intent(inout) :: eio
+    type(string_t), intent(in) :: sample
+    type(string_t), intent(in), optional :: extension
+    type(event_sample_data_t), intent(in), optional :: data
+    logical, intent(out), optional :: success
+    if (present(extension)) then
+       eio%extension = extension
+    else 
+       eio%extension = "pset.dat"
+    end if
+    if (sample /= "") then
+       eio%filename = sample // "." // eio%extension
+       eio%unit = free_unit ()
+       write (msg_buffer, "(A,A,A)")  "Events: writing to event dump file '", &
+            char (eio%filename), "'"
+       call msg_message ()
+       eio%writing = .true.
+       open (eio%unit, file = char (eio%filename), &
+            action = "write", status = "replace")
+    end if
+    if (eio%screen) then
+       write (msg_buffer, "(A,A,A)")  "Events: display on standard output"
+       call msg_message ()
+    end if
+    eio%count = 0
+    if (present (success))  success = .true.
+  end subroutine eio_dump_init_out
+    
+@ %def eio_dump_init_out
+@ Initialize event reading.
+<<EIO dump: eio dump: TBP>>=
+  procedure :: init_in => eio_dump_init_in
+<<EIO dump: procedures>>=
+  subroutine eio_dump_init_in (eio, sample, data, success, extension)
+    class(eio_dump_t), intent(inout) :: eio
+    type(string_t), intent(in) :: sample
+    type(string_t), intent(in), optional :: extension
+    type(event_sample_data_t), intent(inout), optional :: data
+    logical, intent(out), optional :: success
+    call msg_bug ("Event dump: event input not supported")
+    if (present (success))  success = .false.
+  end subroutine eio_dump_init_in
+    
+@ %def eio_dump_init_in
+@ Switch from input to output: reopen the file for reading.
+<<EIO dump: eio dump: TBP>>=
+  procedure :: switch_inout => eio_dump_switch_inout
+<<EIO dump: procedures>>=
+  subroutine eio_dump_switch_inout (eio, success)
+    class(eio_dump_t), intent(inout) :: eio
+    logical, intent(out), optional :: success
+    call msg_bug ("Event dump: in-out switch not supported")
+    if (present (success))  success = .false.
+  end subroutine eio_dump_switch_inout
+  
+@ %def eio_dump_switch_inout
+@ Output an event.  Delegate the output call to the [[write]] method
+of the current particle set, if valid.  Output both to file (if defined)
+and to screen (if requested).
+<<EIO dump: eio dump: TBP>>=
+  procedure :: output => eio_dump_output
+<<EIO dump: procedures>>=
+  subroutine eio_dump_output (eio, event, i_prc, reading, passed, pacify)
+    class(eio_dump_t), intent(inout) :: eio
+    class(generic_event_t), intent(in), target :: event
+    integer, intent(in) :: i_prc
+    logical, intent(in), optional :: reading, passed, pacify
+    character(len=7) :: fmt
+    integer :: i
+    eio%count = eio%count + 1
+    call pac_fmt (fmt, FMT_19, FMT_16, pacify)
+    if (eio%writing)  call dump (eio%unit)
+    if (eio%screen) then
+       call dump (output_unit)
+       if (logfile_unit () > 0)  call dump (logfile_unit ())
+    end if
+  contains
+    subroutine dump (u)
+      integer, intent(in) :: u
+      call write_separator (u, 2)
+      write (u, "(1x,A,I0)")  "Event #", eio%count
+      if (eio%weights) then
+         call write_separator (u)
+         if (event%sqme_ref_known) then
+            write (u, "(1x,A," // fmt // ")")  "sqme (ref)   = ", &
+                 event%sqme_ref
+         else
+            write (u, "(1x,A)")  "sqme (ref)    = [undefined]"
+         end if
+         if (event%sqme_ref_known) then
+            write (u, "(1x,A," // fmt // ")")  "sqme (prc)   = ", &
+                 event%sqme_prc
+         else
+            write (u, "(1x,A)")  "sqme (prc)    = [undefined]"
+         end if
+         if (event%weight_ref_known) then
+            write (u, "(1x,A," // fmt // ")")  "weight (ref) = ", &
+                 event%weight_ref
+         else
+            write (u, "(1x,A)")  "weight (ref) = [undefined]"
+         end if
+         if (event%weight_prc_known) then
+            write (u, "(1x,A," // fmt // ")")  "weight (prc) = ", &
+                 event%weight_prc
+         else
+            write (u, "(1x,A)")  "weight (prc) = [undefined]"
+         end if
+         if (event%excess_prc_known) then
+            write (u, "(1x,A," // fmt // ")")  "excess (prc) = ", &
+                 event%excess_prc
+         else
+            write (u, "(1x,A)")  "excess (prc) = [undefined]"
+         end if
+         do i = 1, event%n_alt
+            if (event%sqme_ref_known) then
+               write (u, "(1x,A,I0,A," // fmt // ")")  "sqme (", i, ")     = ",&
+                    event%sqme_prc
+            else
+               write (u, "(1x,A,I0,A)")  "sqme (", i, ")    = [undefined]"
+            end if
+            if (event%weight_prc_known) then
+               write (u, "(1x,A,I0,A," // fmt // ")")  "weight (", i, ")   = ",&
+                    event%weight_prc
+            else
+               write (u, "(1x,A,I0,A)")  "weight (", i, ")   = [undefined]"
+            end if
+         end do
+      end if
+      call write_separator (u)
+      if (event%particle_set_is_valid) then
+         call event%particle_set%write (unit = u, &
+              summary = eio%summary, compressed = eio%compressed, &
+              testflag = eio%pacify)
+      else
+         write (u, "(1x,A)")  "Particle set: [invalid]"
+      end if
+    end subroutine dump
+  end subroutine eio_dump_output
+
+@ %def eio_dump_output
+@ Input an event.
+<<EIO dump: eio dump: TBP>>=
+  procedure :: input_i_prc => eio_dump_input_i_prc
+  procedure :: input_event => eio_dump_input_event
+<<EIO dump: procedures>>=
+  subroutine eio_dump_input_i_prc (eio, i_prc, iostat)
+    class(eio_dump_t), intent(inout) :: eio
+    integer, intent(out) :: i_prc
+    integer, intent(out) :: iostat
+    call msg_bug ("Dump stream: event input not supported")
+    i_prc = 0
+    iostat = 1
+  end subroutine eio_dump_input_i_prc
+
+  subroutine eio_dump_input_event (eio, event, iostat)
+    class(eio_dump_t), intent(inout) :: eio
+    class(generic_event_t), intent(inout), target :: event
+    integer, intent(out) :: iostat
+    call msg_bug ("Dump stream: event input not supported")
+    iostat = 1
+  end subroutine eio_dump_input_event
+
+@ %def eio_dump_input_i_prc
+@ %def eio_dump_input_event
+@
+<<EIO dump: eio dump: TBP>>=
+  procedure :: skip => eio_dump_skip
+<<EIO dump: procedures>>=
+  subroutine eio_dump_skip (eio, iostat)
+    class(eio_dump_t), intent(inout) :: eio
+    integer, intent(out) :: iostat
+    iostat = 0
+  end subroutine eio_dump_skip
+
+@ %def eio_dump_skip
+@
+\subsection{Unit tests}
+Test module, followed by the corresponding implementation module.
+<<[[eio_dump_ut.f90]]>>=
+<<File header>>
+
+module eio_dump_ut
+  use unit_tests
+  use eio_dump_uti
+  
+<<Standard module head>>
+
+<<EIO dump: public test>>
+
+contains
+  
+<<EIO dump: test driver>>
+
+end module eio_dump_ut
+@ %def eio_dump_ut
+@
+<<[[eio_dump_uti.f90]]>>=
+<<File header>>
+
+module eio_dump_uti
+
+<<Use kinds>>
+<<Use strings>>
+  use io_units
+  use event_base
+  use eio_data
+  use eio_base
+
+  use eio_dump
+  
+  use eio_base_ut, only: eio_prepare_test, eio_cleanup_test
+
+<<Standard module head>>
+
+<<EIO dump: test declarations>>
+
+contains
+
+<<EIO dump: tests>>
+
+end module eio_dump_uti
+@ %def eio_dump_ut
+@ API: driver for the unit tests below.
+<<EIO dump: public test>>=
+  public :: eio_dump_test
+<<EIO dump: test driver>>=
+  subroutine eio_dump_test (u, results)
+    integer, intent(in) :: u
+    type(test_results_t), intent(inout) :: results
+  <<EIO dump: execute tests>>
+  end subroutine eio_dump_test
+  
+@ %def eio_dump_test 
+@
+\subsubsection{Test I/O methods}
+We test the implementation of all I/O methods.
+<<EIO dump: execute tests>>=
+  call test (eio_dump_1, "eio_dump_1", &
+       "read and write event contents", &
+       u, results)
+<<EIO dump: test declarations>>=
+  public :: eio_dump_1
+<<EIO dump: tests>>=
+  subroutine eio_dump_1 (u)
+    integer, intent(in) :: u
+    class(generic_event_t), pointer :: event
+    class(eio_t), allocatable :: eio
+    integer :: u_file
+    character(80) :: buffer
+
+    write (u, "(A)")  "* Test output: eio_dump_1"
+    write (u, "(A)")  "*   Purpose: generate an event and dump to output"
+    write (u, "(A)")
+
+    write (u, "(A)")  "* Initialize test process"
+ 
+    call eio_prepare_test (event, unweighted = .false.)
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Generate and write an event"
+    write (u, "(A)")
+ 
+    allocate (eio_dump_t :: eio)
+    select type (eio)
+    type is (eio_dump_t)
+       eio%unit = u
+       eio%writing = .true.
+       eio%weights = .true.
+    end select
+    
+    call eio%init_out (var_str (""))
+    call event%generate (1, [0._default, 0._default])
+
+    call eio%output (event, i_prc = 42)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Contents of eio_dump object"
+    write (u, "(A)")
+
+    call eio%write (u)
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+ 
+    select type (eio)
+    type is (eio_dump_t)
+       eio%writing = .false.
+    end select
+    call eio%final ()
+
+    call eio_cleanup_test (event) 
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: eio_dump_1"
+  end subroutine eio_dump_1
+  
+@ %def eio_dump_1
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{ASCII File Formats}

@@ -118,6 +118,7 @@ UNIT_TESTS = \
     eio_stdhep.run \
     eio_ascii.run \
     eio_weights.run \
+    eio_dump.run \
     iterations.run \
     rt_data.run \
     dispatch.run \
