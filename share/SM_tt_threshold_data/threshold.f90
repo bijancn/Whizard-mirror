@@ -48,12 +48,14 @@ module @ID@_threshold
        omega_utils_2010_01_A /)
 
   integer, parameter, public :: n_prt = 6
+  integer, parameter :: n_prt_OS = 4
   integer, parameter, public :: n_in = 2
   integer, parameter, public :: n_out = 4
   integer, parameter, public :: n_cflow = 1
   integer, parameter, public :: n_cindex = 2
   integer, parameter, public :: n_flv = 1
   integer, parameter, public :: n_hel = 144
+  integer, parameter :: n_hel_OS = 16
 
   ! NB: you MUST NOT change the value of N_ here!!!
   !     It is defined here for convenience only and must be
@@ -61,6 +63,24 @@ module @ID@_threshold
   real(kind=default), parameter, public :: N_ = 3
   logical, parameter :: F = .false.
   logical, parameter :: T = .true.
+
+  integer, dimension(n_prt_OS,n_hel_OS), save, protected :: table_spin_states_OS
+  data table_spin_states_OS(:,   1) / -1, -1, -1, -1 /
+  data table_spin_states_OS(:,   2) / -1, -1, -1,  1 /
+  data table_spin_states_OS(:,   3) / -1, -1,  1, -1 /
+  data table_spin_states_OS(:,   4) / -1, -1,  1,  1 /
+  data table_spin_states_OS(:,   5) / -1,  1, -1, -1 /
+  data table_spin_states_OS(:,   6) / -1,  1, -1,  1 /
+  data table_spin_states_OS(:,   7) / -1,  1,  1, -1 /
+  data table_spin_states_OS(:,   8) / -1,  1,  1,  1 /
+  data table_spin_states_OS(:,   9) /  1, -1, -1, -1 /
+  data table_spin_states_OS(:,  10) /  1, -1, -1,  1 /
+  data table_spin_states_OS(:,  11) /  1, -1,  1, -1 /
+  data table_spin_states_OS(:,  12) /  1, -1,  1,  1 /
+  data table_spin_states_OS(:,  13) /  1,  1, -1, -1 /
+  data table_spin_states_OS(:,  14) /  1,  1, -1,  1 /
+  data table_spin_states_OS(:,  15) /  1,  1,  1, -1 /
+  data table_spin_states_OS(:,  16) /  1,  1,  1,  1 /
 
   integer, dimension(n_prt,n_hel), save, protected :: table_spin_states
   data table_spin_states(:,   1) / -1, -1, -1, -1, -1, -1 /
@@ -216,8 +236,8 @@ module @ID@_threshold
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p12, p35, p46
-  type(spinor) :: owf_b_6, owf_e_1
-  type(conjspinor) :: owf_b_5, owf_e_2
+  type(spinor) :: owf_t_4, owf_b_6, owf_e_1
+  type(conjspinor) :: owf_t_3, owf_b_5, owf_e_2
   type(vector) :: owf_Wm_3, owf_Wp_4
   type(spinor) :: owf_wb_46
   type(conjspinor) :: owf_wb_35
@@ -238,8 +258,9 @@ contains
 
   subroutine calculate_amplitudes (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
-    complex(default) :: blob_A_v, blob_Z_vec, blob_Z_ax, amp_Z_av, amp_A_v
+    complex(default) :: blob_Z_vec, blob_Z_ax
     integer, dimension(n_prt) :: s
+    integer, dimension(n_prt_OS) :: s_OS
     integer :: hi
     p1 = - k(:,1) ! incoming
     p2 = - k(:,2) ! incoming
@@ -250,33 +271,62 @@ contains
     p12 = p1 + p2
     p35 = p3 + p5
     p46 = p4 + p6
-    do hi = 1, n_hel
-      s = table_spin_states(:,hi)
-      owf_e_1 = u (mass(11), - p1, s(1))
-      owf_e_2 = vbar (mass(11), - p2, s(2))
-      owf_Wm_3 = conjg (eps (mass(24), p3, s(3)))
-      owf_Wp_4 = conjg (eps (mass(24), p4, s(4)))
-      owf_b_5 = ubar (mass(5), p5, s(5))
-      owf_b_6 = v (mass(5), p6, s(6))
+    amp_Z_av_tree = zero
+    amp_Z_av_tree = zero
+    amp_A_v_tree = zero
+    amp_A_v_blob = zero
+    if (onshell_tops (p3, p4)) then
+       do hi = 1, n_hel_OS
+          s_OS = table_spin_states_OS(:,hi)
+          owf_e_1 = u (mass(11), - p1, s_OS(1))
+          owf_e_2 = vbar (mass(11), - p2, s_OS(2))
+          owf_t_3 = ubar (ttv_mtpole(p12*p12), p3, s_OS(3))
+          owf_t_4 = v (ttv_mtpole(p12*p12), p4, s_OS(4))
 
-      owf_A_12 = pr_feynman(p12, v_ff (qlep, owf_e_2, owf_e_1))
-      owf_Z_12 = pr_unitarity(p12, mass(23), wd_tl (p12, width(23)), &
-         + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
+          owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
+          owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
+               + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
 
-      owf_wb_35 = pr_psibar (p35, ttv_mtpole (p12*p12), wd_tl (p35, width(6)), &
-         + f_fvl (gccq33, owf_b_5, owf_Wm_3))
-      owf_wb_46 = pr_psi(p46, ttv_mtpole(p12*p12), wd_tl (p46, width(6)), &
-         + f_vlf (gccq33, owf_Wp_4, owf_b_6))
+          blob_Z_vec = gncup(1) * ttv_formfactor (p3, p4, 1)
+          blob_Z_ax = gncup(2) * ttv_formfactor (p3, p4, 2)
 
-      blob_Z_vec = gncup(1) * ttv_formfactor (p35, p46, 1)
-      blob_Z_ax = gncup(2) * ttv_formfactor (p35, p46, 2)
+          amp_Z_av_tree(hi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_t_3, owf_t_4)
+          amp_Z_av_blob(hi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
 
-      amp_Z_av_tree(hi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_wb_35, owf_wb_46)
-      amp_Z_av_blob(hi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
+          amp_A_v_tree(hi) = owf_A_12 * v_ff (qup, owf_t_3, owf_t_4)
+          amp_A_v_blob(hi) = amp_A_v_tree(hi) * ttv_formfactor (p35, p46, 1)
+       end do
+    else
+       do hi = 1, n_hel
+          s = table_spin_states(:,hi)
+          owf_e_1 = u (mass(11), - p1, s(1))
+          owf_e_2 = vbar (mass(11), - p2, s(2))
+          owf_Wm_3 = conjg (eps (mass(24), p3, s(3)))
+          owf_Wp_4 = conjg (eps (mass(24), p4, s(4)))
+          owf_b_5 = ubar (mass(5), p5, s(5))
+          owf_b_6 = v (mass(5), p6, s(6))
 
-      amp_A_v_tree(hi) = owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46)
-      amp_A_v_blob(hi) = amp_A_v_tree(hi) * ttv_formfactor (p35, p46, 1)
-    end do
+          owf_A_12 = pr_feynman(p12, v_ff (qlep, owf_e_2, owf_e_1))
+          owf_Z_12 = pr_unitarity(p12, mass(23), wd_tl (p12, width(23)), &
+               + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
+
+          owf_wb_35 = pr_psibar (p35, ttv_mtpole (p12*p12), wd_tl (p35, width(6)), &
+               + f_fvl (gccq33, owf_b_5, owf_Wm_3))
+          owf_wb_46 = pr_psi (p46, ttv_mtpole(p12*p12), wd_tl (p46, width(6)), &
+               + f_vlf (gccq33, owf_Wp_4, owf_b_6))
+
+          blob_Z_vec = gncup(1) * ttv_formfactor (p35, p46, 1)
+          blob_Z_ax = gncup(2) * ttv_formfactor (p35, p46, 2)
+
+          amp_Z_av_tree(hi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_wb_35, owf_wb_46)
+          amp_Z_av_blob(hi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
+
+          amp_A_v_tree(hi) = owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46)
+          amp_A_v_blob(hi) = amp_A_v_tree(hi) * ttv_formfactor (p35, p46, 1)
+       end do
+       print *, 'THIS SHOULDNT HAPPEN' !!! Debugging
+       stop 1 !!! Debugging
+    end if
     amp_ff = amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob
   end subroutine calculate_amplitudes
 
@@ -306,8 +356,8 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   implicit none
   real(c_default_float), intent(out) :: amp2
   real(c_default_float), dimension(0:3,*), intent(in) :: p
-  complex(default) :: amp_sm
-  integer :: hi, i
+  !complex(default) :: amp_sm
+  !integer :: hi
   !call sm_new_event (p)
   call calculate_amplitudes (p)
   amp2 = 0.0_default
@@ -318,23 +368,19 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
                  amp_A_v_tree * conjg (amp_Z_av_tree) + &
                  amp_A_v_tree * conjg (amp_Z_av_blob) + &
                  amp_A_v_blob * conjg (amp_A_v_tree) + &
-                 ! amp_A_v_blob * conjg (amp_A_v_blob) + &
                  amp_A_v_blob * conjg (amp_Z_av_tree) + &
-                 ! amp_A_v_blob * conjg (amp_Z_av_blob) + &
                  amp_Z_av_tree * conjg (amp_A_v_tree) + &
                  amp_Z_av_tree * conjg (amp_A_v_blob) + &
                  amp_Z_av_tree * conjg (amp_Z_av_tree) + &
                  amp_Z_av_tree * conjg (amp_Z_av_blob) + &
                  amp_Z_av_blob * conjg (amp_A_v_tree) + &
-                 ! amp_Z_av_blob * conjg (amp_A_v_blob) + &
                  amp_Z_av_blob * conjg (amp_Z_av_tree))
-                 ! amp_Z_av_blob * conjg (amp_Z_av_blob) + &
   case default
      !do hi = 1, n_hel
         !amp_sm = sm_get_amplitude (1, hi, 1)
         !amp2 = amp2 + real(amp_sm * conjg(amp_ff(hi)))
         !amp2 = amp2 + real(amp_ff(hi) * conjg(amp_ff(hi)))
-     !end do 
+     !end do
      amp2 = sum ((amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob) * &
            conjg (amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob))
   end select

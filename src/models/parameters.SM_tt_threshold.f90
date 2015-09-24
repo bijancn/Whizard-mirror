@@ -53,7 +53,8 @@ module parameters_sm_tt_threshold
   integer, public :: FF
 
   public :: import_from_whizard, model_update_alpha_s, &
-       ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole
+       ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole, &
+       onshell_tops
 
 contains
 
@@ -257,6 +258,15 @@ contains
     !!! subtract tree level contribution ~ 1 already included in SM couplings
     c = c - 1.0_default
   end function ttv_formfactor
+
+  !pure
+  function onshell_tops (p, k) result (onshell)
+    logical :: onshell
+    type(momentum), intent(in) :: p, k
+    type(phase_space_point_t) :: ps
+    call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
+    onshell = ps%onshell
+  end function onshell_tops
 
   !pure
   function va_ilc_tta (p, k, i) result (c)

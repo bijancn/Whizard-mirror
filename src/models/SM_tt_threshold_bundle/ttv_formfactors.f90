@@ -36,6 +36,7 @@ module ttv_formfactors
   use interpolation
   use nr_tools
   use io_units, only: free_unit
+  use unit_tests, only: nearly_equal
   use iso_varying_string, string_t => varying_string
   use system_dependencies
   use, intrinsic :: iso_fortran_env !NODEP!
@@ -254,8 +255,6 @@ contains
     complex(default) :: c
     c = one
     if (.not. init_pars) return
-    !!! on-shell veto
-    if (ps%onshell) return
     select case (ff_type)
       case (0)
         c = matched_formfactor (ps, i)
@@ -370,8 +369,12 @@ contains
        p0 = ps%p0
     end if
     shift_from_hard_current = - two * CF / pi
-    contrib_from_potential = imago * CF * m * &
-         log ((p + m * v + p0) / (-p + m * v + p0) + ieps) / (two * p)
+    if (ps%onshell) then
+       contrib_from_potential = CF * m * Pi / (4 * p)
+    else
+       contrib_from_potential = imago * CF * m * &
+            log ((p + m * v + p0) / (-p + m * v + p0) + ieps) / (two * p)
+    end if
     c = one + alphas * (contrib_from_potential + shift_from_hard_current)
   end function nonrelativistic_formfactor
 
@@ -479,7 +482,7 @@ contains
     real(default), intent(in) :: sqrts
     real(default) :: nusoft
     if (.not. nustar_dynamic .and. mtpole > 0.0_default) return
-    if (init_pars .and. is_equal (sqrts, sqrts_ref)) return
+    if (init_pars .and. nearly_equal (sqrts, sqrts_ref, rel_smallness=1E-6_default)) return
     sqrts_ref = sqrts
     !!! (ultra)soft scales and alphas values required by threshold code
     nusoft = f * nustar (sqrts)
@@ -885,15 +888,15 @@ contains
   end function sqrts_iter
 
   ! TODO: (bcn 2015-07-31) this is unstable for small b. Take nearly_equal instead
-  pure function is_equal (a, b) result (flag)
-    real(default), intent(in) :: a
-    real(default), intent(in) :: b
-    logical :: flag
-    real(single) :: val, acc
-    acc = 1.e-6
-    val = abs( a/b - 1.0_single )
-    flag = ( val < acc )
-  end function is_equal
+  !pure function nearly_equal (a, b) result (flag)
+    !real(default), intent(in) :: a
+    !real(default), intent(in) :: b
+    !logical :: flag
+    !real(single) :: val, acc
+    !acc = 1.e-6
+    !val = abs( a/b - 1.0_single )
+    !flag = ( val < acc )
+  !end function nearly_equal
 
   function scan_formfactor_over_p_LL_analytic (a_soft, sqrts, i) result (ff_analytic)
     real(default), intent(in) :: a_soft
@@ -990,7 +993,7 @@ contains
     else
       !!! TOPPIK output p-grid scales with en above ~ 4 GeV:
       !!! interpolate for global sqrts/p grid
-      if (.not. is_equal (p_toppik(42), p_grid(42))) then
+      if (.not. nearly_equal (p_toppik(42), p_grid(42), rel_smallness=1E-6_default)) then
         call toppik_spline%init (p_toppik, ff_toppik)
         ff_toppik(2:n_p) = [(toppik_spline%interpolate (p_grid(i_p)), i_p=2, n_p)]
         call toppik_spline%dealloc ()
@@ -1562,13 +1565,6 @@ contains
 !                 + 0.5_default*( dF1 + dF2 + m*( dM1 + dM2 ) )
   end function formfactor_ttv_relativistic_nlo
 
-  !pure function p_onshell (en) result (p)
-    !real(default), intent(in) :: en
-    !real(default) :: p
-    !p = 1.d-3
-    !if ( en > 0. ) p = sqrt( en**2/4. + en*mtpole )
-  !end function p_onshell
-
   subroutine scan_J0_over_phase_space_grid ()
     integer :: i_sq, i_p, i_p0
     type(phase_space_point_t) :: ps
@@ -1644,7 +1640,7 @@ contains
     character(len=len(trim(real2fixed(aimag(z))))) :: im
     re = real_to_char (real(z))
     im = real_to_char (aimag(z))
-    if ( is_equal(aimag(z), 0.0_default) ) then
+    if ( nearly_equal(aimag(z), 0.0_default) ) then
       c = re
     else
       c = re // " + " // im // "*I"
@@ -1719,10 +1715,12 @@ contains
     if ( present(m) ) ps_point%onshell = ps_point%is_onshell (m)
   end subroutine phase_space_point_init_nonrel
 
-  pure function phase_space_point_is_onshell (ps_point, m) result (flag)
+  !pure
+  function phase_space_point_is_onshell (ps_point, m) result (flag)
     logical :: flag
     class(phase_space_point_t), intent(in) :: ps_point
     real(default), intent(in) :: m
-    flag = is_equal (ps_point%p2 , m**2) .and. is_equal (ps_point%k2 , m**2)
+    flag = nearly_equal (ps_point%p2 , m**2, rel_smallness=1E-5_default) .and. &
+         nearly_equal (ps_point%k2 , m**2, rel_smallness=1E-5_default)
   end function phase_space_point_is_onshell
 end module ttv_formfactors
