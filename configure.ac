@@ -452,6 +452,8 @@ WO_PROG_HEPMC()
 WO_CONFIGURE_SECTION([STDHEP])
 
 AC_MSG_NOTICE([StdHEP v5.06.01 is included internally])
+LDFLAGS_STDHEP=-lstdc++
+AC_SUBST([LDFLAGS_STDHEP])
 
 ###---------------------------------------------------------------------
 ### LCIO

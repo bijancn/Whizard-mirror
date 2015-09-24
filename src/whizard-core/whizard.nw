@@ -1553,6 +1553,21 @@ so the latter is always available (and kept global).
     call var_list_append_log &
          (global%var_list, var_str ("?debug_verbose"), .true., &
           intrinsic=.true.)
+    call var_list_append_string &
+         (global%var_list, var_str ("$dump_extension"), var_str ("pset"), &
+          intrinsic=.true.)
+    call var_list_append_log &
+         (global%var_list, var_str ("?dump_compressed"), .true., &
+          intrinsic=.true.)
+    call var_list_append_log &
+         (global%var_list, var_str ("?dump_weights"), .false., &
+          intrinsic=.true.)
+    call var_list_append_log &
+         (global%var_list, var_str ("?dump_summary"), .false., &
+          intrinsic=.true.)
+    call var_list_append_log &
+         (global%var_list, var_str ("?dump_screen"), .false., &
+          intrinsic=.true.)
     call var_list_append_log &
          (global%var_list, var_str ("?hepevt_ensure_order"), .false., &
           intrinsic=.true.)
@@ -3658,6 +3673,7 @@ module dispatch
   use eio_stdhep
   use eio_ascii
   use eio_weights
+  use eio_dump
   use shower_base
   use shower_core
   use shower
@@ -5035,13 +5051,15 @@ structure-function chain.
     logical :: write_sqme_prc, write_sqme_ref, write_sqme_alt
     logical :: output_cross_section, ensure_order
     type(string_t) :: lhef_version, lhef_extension, raw_version
-    type(string_t) :: extension_default, debug_extension, extension_hepmc, &
+    type(string_t) :: extension_default, debug_extension, dump_extension, &
+         extension_hepmc, &
          extension_lha, extension_hepevt, extension_ascii_short, &
          extension_ascii_long, extension_athena, extension_mokka, &
          extension_stdhep, extension_stdhep_up, extension_raw, &
          extension_hepevt_verb, extension_lha_verb, extension_lcio
     integer :: checkpoint
     logical :: show_process, show_transforms, show_decay, verbose, pacified
+    logical :: dump_weights, dump_compressed, dump_summary, dump_screen
     keep_beams = &
          global%var_list%get_lval (var_str ("?keep_beams"))
     keep_remnants = &
@@ -5181,6 +5199,30 @@ structure-function chain.
                show_transforms = show_transforms, &
                show_decay = show_decay, &
                verbose = verbose)
+       end select
+    case ("dump")   
+       allocate (eio_dump_t :: eio)
+       select type (eio)
+       type is (eio_dump_t)
+          dump_extension = &
+               global%var_list%get_sval (var_str ("$dump_extension"))          
+          pacified = &
+               global%var_list%get_lval (var_str ("?pacify"))
+          dump_weights = &
+               global%var_list%get_lval (var_str ("?dump_weights"))
+          dump_compressed = &
+               global%var_list%get_lval (var_str ("?dump_compressed"))
+          dump_summary = &
+               global%var_list%get_lval (var_str ("?dump_summary"))
+          dump_screen = &
+               global%var_list%get_lval (var_str ("?dump_screen"))
+          call eio%set_parameters ( &
+               extension = dump_extension, &
+               pacify = pacified, &
+               weights = dump_weights, &
+               compressed = dump_compressed, &
+               summary = dump_summary, &
+               screen = dump_screen)
        end select
     case ("hepevt")
        allocate (eio_ascii_hepevt_t :: eio)
@@ -20608,6 +20650,7 @@ the [[unstable]] and by the [[show]] command.
     type(process_component_def_t), pointer :: prc_def
     type(string_t), dimension(:), allocatable :: prt_out, prt_out_str
     integer :: i, j
+    logical :: opened
     call flv%init (pdg, global%model)
     call flv%get_decays (decay)
     if (.not. allocated (decay))  return
@@ -20649,11 +20692,15 @@ the [[unstable]] and by the [[show]] command.
              write (u, "(2x,A)")  "Decay options: helicity treated exactly"
           end if
        else
+          inquire (unit = u, opened = opened)
+          if (opened .and. .not. mask_fatal_errors)  close (u)
           call msg_fatal ("Unstable particle " &
                // char (flv%get_name ()) &
                // ": partial width vanishes for all decay channels")
        end if
     else
+       inquire (unit = u, opened = opened)       
+       if (opened .and. .not. mask_fatal_errors)  close (u)
        call msg_fatal ("Unstable particle " &
                // char (flv%get_name ()) &
                // ": partial width is negative")
@@ -28951,6 +28998,15 @@ This is for developers only, but needs a well-defined interface.
      call eio_weights_test (u, results)
 <<Main: all tests>>=
   call eio_weights_test (u, results)
+@
+\subsubsection{EIO Dump}
+<<Main: use tests>>=
+  use eio_dump_ut, only: eio_dump_test
+<<Main: test cases>>=
+  case ("eio_dump")
+     call eio_dump_test (u, results)
+<<Main: all tests>>=
+  call eio_dump_test (u, results)
 @
 \subsubsection{Iterations}
 <<Main: use tests>>=

@@ -14,12 +14,19 @@ TESTS = \
 XFAIL_TESTS =
 
 BUILT_SOURCES = \
-    OCAML_FLAG
+    OCAML_FLAG \
+    QUAD_FLAG
 
 OCAML_FLAG:
 if OCAML_AVAILABLE
 	touch $@
 endif
+
+QUAD_FLAG:
+if FC_QUAD
+	touch $@
+endif
+
 
 EXTRA_DIST = $(TESTS:.run=.sh)
 
@@ -33,7 +40,7 @@ SUFFIXES = .sh .run
 
 ## Remove generated files
 clean-local:
-	rm -f *.output *.run *.circe2 OCAML_FLAG
+	rm -f *.output *.run *.circe2 OCAML_FLAG QUAD_FLAG
 
 maintainer-clean-local:
 	-rm -f *~

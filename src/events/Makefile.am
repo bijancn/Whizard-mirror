@@ -38,6 +38,7 @@ libevents_la_SOURCES = \
   eio_base.f90 \
   eio_checkpoints.f90 \
   eio_weights.f90 \
+  eio_dump.f90 \
   hep_common.f90 \
   hepmc_interface.f90 \
   lcio_interface.f90 \
@@ -53,6 +54,7 @@ libevents_ut_la_SOURCES = \
   eio_base_uti.f90 eio_base_ut.f90 \
   eio_checkpoints_uti.f90 eio_checkpoints_ut.f90 \
   eio_weights_uti.f90 eio_weights_ut.f90 \
+  eio_dump_uti.f90 eio_dump_ut.f90 \
   hepmc_interface_uti.f90 hepmc_interface_ut.f90 \
   lcio_interface_uti.f90 lcio_interface_ut.f90 \
   hep_events_uti.f90 hep_events_ut.f90 \
