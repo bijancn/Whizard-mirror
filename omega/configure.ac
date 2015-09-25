@@ -245,23 +245,13 @@ user_FCFLAGS="${FCFLAGS}"
 AC_PROG_FC
 AC_FC_SRCEXT([f90])
 WO_FC_GET_VENDOR_AND_VERSION
-### Work around the `-g' vs. `-g90' confusion at NAG:
-### (NB: apparently `echo -n' is not portable (OSX).
-###      Let's hope that tr is ...)
-if test X"${user_FCFLAGS}" = X; then
-  if test X"${FC_VENDOR}" = X"NAG"; then
-    FCFLAGS="`for f in ${FCFLAGS}; do case $f in "-g") echo "-g90";; *) echo $f;; esac; done | tr '\n\r' '  '`"
-  fi
-fi
 AC_OPENMP
 WO_FC_PARAMETERS()
 WO_FC_LIBRARY_LDFLAGS()
 WO_FC_CHECK_F95()
 WO_FC_CHECK_TR19767()
 WO_FC_MODULE_FILE([FC_MODULE_NAME], [FC_MODULE_EXT], [$FC], [f90])
-WO_FC_CHECK_EXTENDED()
-WO_FC_CHECK_EXTENDED_C()
-WO_FC_SET_PRECISION()
+WO_FC_CONFIGURE_KINDS([src/kinds.f90])
 WO_FC_SET_OPENMP()
 WO_FC_SET_PROFILING()
 WO_FC_SET_OMEGA_IMPURE()
@@ -334,8 +324,6 @@ case "$srcdir" in
 esac
 
 dnl ***********************************************************************
-
-AC_CONFIG_FILES([src/kinds.f90])
 
 AC_CONFIG_FILES([
   Makefile
