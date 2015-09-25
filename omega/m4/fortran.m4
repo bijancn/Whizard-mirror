@@ -1167,11 +1167,18 @@ contains
        print *, " !!! ERROR: the requested default real kind '" // &
                request // "' is not available in this environment"
        print *, ""
-    else if (trim (request) == "real128") then
-       if (default_real%max_prec < 2 * double_real%max_prec) then
-          print *, " !!! WARNING: the requested default real kind 'real128'", &
+    else
+       if (trim (default_real%c_name) == "-1" .or. &
+         trim (default_real%c_name_complex) == "-1") then
+       	   print *, " !!! ERROR: for the requested default real kind '" // &
+           	     request // "' there is no supported C analogue"
+           print *, ""
+       else if (trim (request) == "real128") then
+          if (default_real%max_prec < 2 * double_real%max_prec) then
+             print *, " !!! WARNING: the requested default real kind 'real128'", &
                " does NOT provide quadruple precision in this environment"
-          print *, ""
+             print *, ""
+          end if
        end if
     end if
     print *, "end module kinds"
@@ -1276,6 +1283,9 @@ AC_DEFUN([WO_FC_CONFIGURE_KINDS_RUN_OK],
 [dnl
   $INSTALL -d `AS_DIRNAME(["$1"])`
   ./conftest$EXEEXT "$wo_cv_fc_requested_precision" >$1
+  if test X"$KEEP_KINDLY" != X; then
+     cp -a ./conftest.f90 "$KEEP_KINDLY"
+  fi
   if test ! -s $1; then
      WO_FC_MSG_ERROR_BOX([./conftest$EXEEXT produced no output])
   fi
@@ -1291,6 +1301,9 @@ AC_DEFUN([WO_FC_CONFIGURE_KINDS_RUN_OK],
 dnl#  report failure
 AC_DEFUN([WO_FC_CONFIGURE_KINDS_RUN_FAIL],
 [rm -f $1
+ if test X"$KEEP_KINDLY" != X; then
+    cp -a ./conftest.f90 "$KEEP_KINDLY"
+ fi
  WO_FC_MSG_ERROR_BOX([could not compile kinds selection program])])
 
 ########################################################################
@@ -1345,7 +1358,7 @@ if test "x$wo_cv_fc_iso_fortran_env_2008" = xyes; then
       WO_FC_ISO_C_BINDING_GFORTRAN_EMPTY
       WO_FC_CONFIGURE_KINDS_SOURCE],
      [WO_FC_CONFIGURE_KINDS_RUN_OK([$1])],
-     [WO_FC_CONFIGURE_KINDS_RUN_FAIL],
+     [WO_FC_CONFIGURE_KINDS_RUN_FAIL([$1])],
      [WO_FC_CONFIGURE_KINDS_CROSS_COMPILING])
   else
     AC_RUN_IFELSE(dnl
@@ -1353,7 +1366,7 @@ if test "x$wo_cv_fc_iso_fortran_env_2008" = xyes; then
       WO_FC_ISO_C_BINDING_GFORTRAN_DUMMY
       WO_FC_CONFIGURE_KINDS_SOURCE],
      [WO_FC_CONFIGURE_KINDS_RUN_OK([$1])],
-     [WO_FC_CONFIGURE_KINDS_RUN_FAIL],
+     [WO_FC_CONFIGURE_KINDS_RUN_FAIL([$1])],
      [WO_FC_CONFIGURE_KINDS_CROSS_COMPILING])
   fi
 else
@@ -1363,7 +1376,7 @@ else
       WO_FC_ISO_C_BINDING_GFORTRAN_EMPTY
       WO_FC_CONFIGURE_KINDS_SOURCE],
      [WO_FC_CONFIGURE_KINDS_RUN_OK([$1])],
-     [WO_FC_CONFIGURE_KINDS_RUN_FAIL],
+     [WO_FC_CONFIGURE_KINDS_RUN_FAIL([$1])],
      [WO_FC_CONFIGURE_KINDS_CROSS_COMPILING])
   else
     AC_RUN_IFELSE(dnl
@@ -1371,15 +1384,32 @@ else
       WO_FC_ISO_C_BINDING_GFORTRAN_DUMMY
       WO_FC_CONFIGURE_KINDS_SOURCE],
      [WO_FC_CONFIGURE_KINDS_RUN_OK([$1])],
-     [WO_FC_CONFIGURE_KINDS_RUN_FAIL],
+     [WO_FC_CONFIGURE_KINDS_RUN_FAIL([$1])],
      [WO_FC_CONFIGURE_KINDS_CROSS_COMPILING])
   fi
 fi
+rm -f iso_c_binding_gfortran.*
+rm -f iso_fortran_env_2008.*
+rm -f query_kinds.*
+rm -f report_kinds.*
 
 dnl  cross_compiling=$save_cross_compiling
 
-AC_SUBST([FC_PRECISION], [$wo_cv_fc_requested_precision])
+if test "$wo_cv_fc_requested_precision" = "real128" -a "$FC_VENDOR" = "gfortran"; then
+  FC_PRECISION="extended"
+elif test "$wo_cv_fc_requested_precision" = "real128" -a "$FC_VENDOR" = "Intel"; then
+  FC_PRECISION="quadruple"
+elif test "$wo_cv_fc_requested_precision" = "real64"; then
+  FC_PRECISION="double"
+elif test "$wo_cv_fc_requested_precision" = "real32"; then
+  FC_PRECISION="single"
+else
+  FC_PRECISION=$wo_cv_fc_requested_precision
+fi
+AC_SUBST([FC_PRECISION])
+AM_CONDITIONAL([FC_PREC], [test "$FC_PRECISION" = "extended" || test "$FC_PRECISION" = "quadruple"])
 AM_CONDITIONAL([FC_EXT], [test "$FC_PRECISION" = "extended"])
+AM_CONDITIONAL([FC_QUAD], [test "$FC_PRECISION" = "quadruple"])
 ])
 
 ########################################################################

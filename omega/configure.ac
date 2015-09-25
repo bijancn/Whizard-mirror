@@ -245,14 +245,6 @@ user_FCFLAGS="${FCFLAGS}"
 AC_PROG_FC
 AC_FC_SRCEXT([f90])
 WO_FC_GET_VENDOR_AND_VERSION
-### Work around the `-g' vs. `-g90' confusion at NAG:
-### (NB: apparently `echo -n' is not portable (OSX).
-###      Let's hope that tr is ...)
-if test X"${user_FCFLAGS}" = X; then
-  if test X"${FC_VENDOR}" = X"NAG"; then
-    FCFLAGS="`for f in ${FCFLAGS}; do case $f in "-g") echo "-g90";; *) echo $f;; esac; done | tr '\n\r' '  '`"
-  fi
-fi
 AC_OPENMP
 WO_FC_PARAMETERS()
 WO_FC_LIBRARY_LDFLAGS()
