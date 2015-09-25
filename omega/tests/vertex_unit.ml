@@ -35,11 +35,12 @@ let _ =
   and verbose = ref false
   and usage = "usage: " ^ my_name ^ " ..." in
   Arg.parse
-    [ ("-skip-tests", Arg.Set skip_tests, "");
-      ("-skip-example", Arg.Set skip_example, "");
-      ("-timing", Arg.Set timing, "");
-      ("-v", Arg.Set verbose, "");
-      ("-verbose", Arg.Set verbose, "") ]
+    (Arg.align 
+       [ ("-skip-tests", Arg.Set skip_tests, " skip the tests");
+	 ("-skip-example", Arg.Set skip_example, " skip the example");
+	 ("-timing", Arg.Set timing, " provide timing information");
+	 ("-v", Arg.Set verbose, " be more verbose");
+	 ("-verbose", Arg.Set verbose, " be more verbose") ])
     (fun s -> raise (Arg.Bad s))
     usage;
   if not !skip_tests then begin
