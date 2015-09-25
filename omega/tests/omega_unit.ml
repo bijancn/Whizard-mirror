@@ -168,10 +168,19 @@ let selftest_suite =
     [trivial_test;
      ilistset_test]
 
+module Permutation_Test_Using_Lists =
+  Permutation.Test(Permutation.Using_Lists)
+
+module Permutation_Test_Using_Arrays =
+  Permutation.Test(Permutation.Using_Arrays)
+
 let suite = 
   "omega" >:::
     [selftest_suite;
-     ThoList_Unit_Tests.suite; 
+     ThoList_Unit_Tests.suite;
+     Partial.Test.suite;
+     Permutation_Test_Using_Lists.suite;
+     Permutation_Test_Using_Arrays.suite;
      Combinatorics_Unit_Tests.suite]
 
 let _ =
