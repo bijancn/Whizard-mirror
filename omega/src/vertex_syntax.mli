@@ -1,4 +1,4 @@
-(* $Id: vertex_syntax.mli 7278 2015-09-25 13:28:57Z ohl $
+(* $Id: vertex_syntax.mli 7279 2015-09-25 13:36:04Z ohl $
 
    Copyright (C) 1999-2015 by
 
