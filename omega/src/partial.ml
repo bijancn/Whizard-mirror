@@ -1,6 +1,6 @@
 (* $Id: partial.ml 4015 2013-01-03 16:04:18Z jr_reuter $
 
-   Copyright (C) 1999-2014 by
+   Copyright (C) 1999-2015 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -95,28 +95,28 @@ module Test : sig val suite : OUnit.test end =
 	  let p = P.of_lists [0; 1; 2] ["a"; "b"; "c"]
 	  and l = [ 0; 1; 2 ] in
 	  assert_equal [ "a"; "b"; "c" ] (List.map (P.apply p) l))
-	
+
     let apply_shadowed =
       "apply/shadowed" >::
 	(fun () ->
 	  let p = P.of_list [ (0,"a"); (1,"b"); (2,"c"); (1,"d") ]
 	  and l = [ 0; 1; 2 ] in
 	  assert_equal [ "a"; "d"; "c" ] (List.map (P.apply p) l))
-	
+
     let apply_shadowed2 =
       "apply/shadowed2" >::
 	(fun () ->
 	  let p = P.of_lists [0; 1; 2; 1] ["a"; "b"; "c"; "d"]
 	  and l = [ 0; 1; 2 ] in
 	  assert_equal [ "a"; "d"; "c" ] (List.map (P.apply p) l))
-	
+
     let apply_mismatch =
       "apply/mismatch" >::
 	(fun () ->
 	  assert_raises
 	    (Invalid_argument "Partial.of_lists: length mismatch")
 	    (fun () -> P.of_lists [0; 1; 2] ["a"; "b"; "c"; "d"]))
-	
+
     let suite_apply =
       "apply" >:::
 	[apply_ok;
@@ -131,7 +131,7 @@ module Test : sig val suite : OUnit.test end =
 	  let p = P.of_list [ (0,10); (1,11)]
 	  and l = [ 0; 1; 2 ] in
 	  assert_equal [ 10; 11; 2 ] (List.map (P.auto p) l))
-	
+
     let suite_auto =
       "auto" >:::
 	[auto_ok]
@@ -143,7 +143,7 @@ module Test : sig val suite : OUnit.test end =
 	  and l = [ 0; 1; 2 ] in
 	  assert_equal
 	    [ 10; 11; -2 ] (List.map (P.apply_with_fallback (fun n -> - n) p) l))
-	
+
     let suite_apply_with_fallback =
       "apply_with_fallback" >:::
 	[apply_with_fallback_ok]
@@ -158,4 +158,3 @@ module Test : sig val suite : OUnit.test end =
       ()
 
   end
-

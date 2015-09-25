@@ -1,6 +1,6 @@
 (* $Id: partial.mli 4015 2013-01-03 16:04:18Z jr_reuter $
 
-   Copyright (C) 1999-2014 by
+   Copyright (C) 1999-2015 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -37,7 +37,7 @@ module type T =
        precedence. *)
     val of_list : (domain * 'a) list -> 'a t
 
-    (* Two lists of arguments and values (both must have the 
+    (* Two lists of arguments and values (both must have the
        same length) are mapped to a partial map.  Again the
        later value takes precedence. *)
     val of_lists : domain list -> 'a list -> 'a t
