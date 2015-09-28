@@ -324,8 +324,6 @@ contains
           amp_A_v_tree(hi) = owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46)
           amp_A_v_blob(hi) = amp_A_v_tree(hi) * ttv_formfactor (p35, p46, 1)
        end do
-       print *, 'THIS SHOULDNT HAPPEN' !!! Debugging
-       stop 1 !!! Debugging
     end if
     amp_ff = amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob
   end subroutine calculate_amplitudes
