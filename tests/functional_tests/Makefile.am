@@ -216,6 +216,7 @@ TESTS_REQ_OCAML = \
     mlm_matching_fsr.run \
     user_cuts.run \
     user_prc.run \
+    user_prc_2.run \
     $(TESTS_USER_STRFUN) 
 
 XFAIL_TESTS_REQ_OCAML = \

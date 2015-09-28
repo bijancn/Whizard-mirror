@@ -531,6 +531,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/cuts.ref \
     functional_tests/ref-output/user_cuts.ref \
     functional_tests/ref-output/user_prc.ref \
+    functional_tests/ref-output/user_prc_2.ref \
     functional_tests/ref-output/qedtest_1.ref \
     functional_tests/ref-output/qedtest_2.ref \
     functional_tests/ref-output/qedtest_5.ref \
@@ -960,6 +961,7 @@ MISC_TESTS_SIN = \
     functional_tests/static_2.exe.sin \
     functional_tests/user_cuts.sin \
     functional_tests/user_prc.sin \
+    functional_tests/user_prc_2.sin \
     functional_tests/user_strfun.sin \
     ilc_ext.sin
 
@@ -1006,6 +1008,7 @@ SHOWER_EXT_SIN = \
 NLO_EXT_SIN = \
     extra_nlo_tt.sin \
     extra_nlo_tt_powheg.sin \
+    extra_nlo_tt_powheg_sudakov.sin \
     extra_nlo_uu.sin \
     extra_nlo_uu_powheg.sin
 

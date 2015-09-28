@@ -54,9 +54,6 @@ subroutine init_external_parameters (par) bind (C)
   sqrts_it = par(31)
   mpole_fixed = par(34) > 0.0_default
   sw     = par(37)
-  mpole_fixed = par(34) > 0.0_default
-  sw     = par(37)
-  print *, 'sw =    ', sw !!! Debugging
   call ttv_formfactors_init_parameters (mpole, wtop, m1s, Vtb, wt_inv, aemi, &
                         sw, alphas, mZ, mW, mb, sh, sf, nloop, FF, v1, v2, &
                         sqrts_min, sqrts_max, sqrts_it, mpole_fixed)

@@ -26,7 +26,7 @@ with open(filename, 'r') as infile:
         m = re.search("\[([A-Za-z0-9_]+)\]", line)
         tmp.append (m.group(1))
         k += 1
-           
+
     if 'Process components' in line:
         read = True
         tmp = []

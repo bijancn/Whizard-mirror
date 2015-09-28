@@ -37,6 +37,7 @@ WHIZARD_DRIVER = run_whizard.sh
 TESTS_EXTENDED = \
 	extra_nlo_tt.run \
 	extra_nlo_tt_powheg.run \
+	extra_nlo_tt_powheg_sudakov.run \
 	extra_nlo_uu.run \
 	extra_nlo_uu_powheg.run \
 	extra_nlo_methods.run
