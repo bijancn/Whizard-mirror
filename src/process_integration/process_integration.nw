@@ -6235,6 +6235,7 @@ a pointer.
      logical :: f_allocated = .false.
      integer :: nlo_type
      integer :: emitter
+     logical :: only_cm_frame = .false.
    contains
    <<Processes: kinematics: TBP>>
   end type kinematics_t
@@ -6305,6 +6306,7 @@ a pointer.
     integer, intent(in) :: nlo_type
     integer, intent(in), optional :: emitter
     k%nlo_type = nlo_type
+    if (nlo_type == NLO_VIRTUAL) k%only_cm_frame = .true.
     if (present (emitter)) then
       k%emitter = emitter
     end if
@@ -6421,6 +6423,10 @@ parameter arrays for the selected channel.
          call k%phs%get_outgoing_momenta (p(k%n_in+1:))
          k%phs_factor = k%phs%get_overall_factor ()
          success = .true.
+         if (k%only_cm_frame) then
+            if (.not. k%lab_is_cm_frame()) &
+               call k%boost_to_cm_frame (p)
+         end if
       else
          k%phs_factor = 0
          success = .false.
@@ -6561,6 +6567,29 @@ current [[sf_chain]] to their source.  This is a side effect.
   end subroutine kinematics_return_beam_momenta
   
 @ %def kinematics_return_beam_momenta
+@ Check wether the phase space is configured in the center-of-mass frame. 
+Relevant for using the proper momenta input for BLHA matrix elements.
+<<Processes: kinematics: TBP>>=
+  procedure :: lab_is_cm_frame => kinematics_lab_is_cm_frame
+<<Processes: procedures>>=
+  function kinematics_lab_is_cm_frame (k) result (cm_frame)
+     logical :: cm_frame
+     class(kinematics_t), intent(in) :: k
+     cm_frame = k%phs%config%cm_frame
+  end function kinematics_lab_is_cm_frame
+
+@ %def kinematics_lab_is_cm_frame
+@ Boost to center-of-mass frame
+<<Processes: kinematics: TBP>>=
+  procedure :: boost_to_cm_frame => kinematics_boost_to_cm_frame
+<<Processes: procedures>>=
+  subroutine kinematics_boost_to_cm_frame (k, p)
+     class(kinematics_t), intent(in) :: k
+     type(vector4_t), intent(inout), dimension(:) :: p
+     p = inverse (k%phs%lt_cm_to_lab) * p
+  end subroutine kinematics_boost_to_cm_frame
+
+@ %def kinematics_boost_to_cm_frame
 @
 \subsubsection{Process component instance}
 The actual calculation of a sampling point is done from here.
@@ -6966,40 +6995,10 @@ stored in the kinematics subobject to their source.  This is a side effect.
         call core%compute_sqme_born (i_flv, term%int_hard%get_momenta (), &
            term%ren_scale, sqme, bad_point)
      end if
+
+     call core%apply_structure_functions (component%k_seed%sf_chain, term%config%data%flv_state (1:2,i_flv)) 
+     sqme = sqme * core%get_sf_value ()
     
-     call apply_pdfs (term%config%data%flv_state (:,i_flv), component, sqme) 
-  contains 
-     subroutine apply_pdfs (flavors, component, sqme)
-        integer, dimension(:), intent(in) :: flavors
-        type(component_instance_t), intent(in) :: component
-        real(default), intent(inout) :: sqme
-        integer :: flv, k, i
-        real(default), dimension(:), allocatable :: ff
-        real(default), dimension(2) :: pdf
-
-        do i = 1, 2
-           flv = flavors(i)
-           if (is_quark (abs(flv)) .or. is_gluon(flv)) then
-              k = get_particle_position (flv)
-              call component%k_seed%sf_chain%get_matrix_elements (i, ff)
-              pdf(i) = ff(k)
-           else
-              pdf(i) = one
-           end if
-        end do
-        sqme = sqme * pdf(1) * pdf(2)
-     end subroutine apply_pdfs
-
-     function get_particle_position (i_pdg) result (k)
-        integer :: k
-        integer, intent(in) :: i_pdg
-        integer, parameter :: n_flv_light = 6
-        if (i_pdg == GLUON) then
-           k = n_flv_light + 1
-        else
-           k = n_flv_light + 1 + i_pdg
-        end if
-    end function get_particle_position
   end function component_instance_compute_sqme_born_from_blha
 
 @ %def component_instance_compute_sqme_born_from_blha
@@ -7090,12 +7089,14 @@ imaginary part of the terms, which should be zero anyway.
         select type (core => component%config%core)
         class is (prc_user_defined_base_t)
            do i_flv = 1, core%get_nflv()
-              if (debug_active (D_VIRTUAL)) call msg_debug (D_VIRTUAL, "i_flv", i_flv)
               call core%update_alpha_s (component%core_state, term%fac_scale)
               call core%compute_sqme_virt (i_flv, &
                          term%int_hard%get_momenta (), &
                          term%ren_scale, &
                          sqme_virt, bad_point)
+              call core%apply_structure_functions (component%k_seed%sf_chain, &
+                 term%config%data%flv_state (1:2,i_flv))
+              sqme_virt = sqme_virt * core%get_sf_value ()
 
               if (debug_active (D_VIRTUAL)) then
                  call msg_debug (D_VIRTUAL, "OLP output: ")
@@ -8660,7 +8661,7 @@ to subobject of [[instance]].
           end associate
        end if
     end do
-
+    
     call instance%process%pcm%allocate_instance (instance%pcm)
     if (.not. instance%has_nlo_component ()) then
        do i = 1, size (instance%component)
@@ -8676,6 +8677,8 @@ to subobject of [[instance]].
        call instance%init_nlo_configuration &
             (cc_flag, combined_integration)
     end if
+    
+    call instance%setup_blha_structure_functions ()
 
     allocate (instance%term (process%config%n_terms))
     do i = 1, size (instance%term)
@@ -8799,6 +8802,25 @@ to subobject of [[instance]].
   end subroutine process_instance_init_nlo_configuration
   
 @ %def process_instance_init_nlo_configuration
+@
+<<Processes: process instance: TBP>>=
+  procedure :: setup_blha_structure_functions => &
+     process_instance_setup_blha_structure_functions
+<<Processes: procedures>>=
+  subroutine process_instance_setup_blha_structure_functions (instance)
+     class(process_instance_t), intent(inout) :: instance
+     integer :: i
+     do i = 1, size (instance%component)
+        if (associated (instance%component(i)%config)) then
+           select type (core => instance%component(i)%config%core)
+           class is (prc_user_defined_base_t)
+              call core%init_sf_handler (instance%component(i)%k_seed%sf_chain)
+           end select
+        end if
+     end do
+   end subroutine process_instance_setup_blha_structure_functions
+
+@ %def process_instance_setup_blha_structure_functions
 @ Subroutine of the initialization above: initialize the beam and
 structure-function chain template.  We establish pointers to the
 configuration data, so [[beam_config]] must have a [[target]]
@@ -10136,8 +10158,8 @@ and directly set the coupling value that comes together with a particle set.
        if (.not. associated (instance%component(i)%config)) cycle
        select type (core => instance%component(i)%config%core)
        class is (prc_blha_t)
-          val = instance%process%is_active_nlo_component (i)
-          if (val) exit
+          val = .true.
+          exit
        end select
     end do
   end function process_instance_has_blha_component
@@ -10174,6 +10196,7 @@ and directly set the coupling value that comes together with a particle set.
     type(string_t) :: real_tree_me_method
     type(string_t) :: loop_me_method
     type(string_t) :: correlation_me_method
+    integer :: openloops_phs_tolerance
 
     associate (process => instance%process)
        associate (var_list => process%meta%var_list)
@@ -10185,6 +10208,7 @@ and directly set the coupling value that comes together with a particle set.
                                            var_str ('alpha_power'))
           alphas_power = var_list%get_ival (&
                                            var_str ('alphas_power'))
+          openloops_phs_tolerance = var_list%get_ival (var_str ('openloops_phs_tolerance'))
        end associate
        do i = 1, size (process%term)
           if (instance%component(i)%nlo_type == BORN) then
@@ -10231,6 +10255,7 @@ and directly set the coupling value that comes together with a particle set.
                               use_external_correlations, use_external_real_trees, &
                               alpha_power, alphas_power, &
                               flv_born, flv_real)
+       call blha_master%setup_additional_features (openloops_phs_tolerance)
        call blha_master%generate (process%meta%id)
     end associate 
   end subroutine process_instance_create_blha_interface 
@@ -10250,7 +10275,6 @@ and directly set the coupling value that comes together with a particle set.
     do i = 1, size (instance%component)
        component_config => instance%component(i)%config
        if (associated (component_config)) then
-          if (.not. instance%process%is_active_nlo_component (i)) cycle
           select type (core => component_config%core)
           type is (prc_gosam_t)
              libname = instance%process%get_library_name ()

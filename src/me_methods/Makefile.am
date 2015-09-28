@@ -125,7 +125,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../matrix_elements -I../particles -I../beams -I../fastjet
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../matrix_elements -I../particles -I../beams -I../fastjet -I../pdf_builtin -I../lhapdf
 
 
 ########################################################################

@@ -116,7 +116,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = $(include_modules) -I../fastjet 
+AM_FCFLAGS = $(include_modules) -I../fastjet -I../pdf_builtin -I../lhapdf
 
 ########################################################################
 ## Default Fortran compiler options

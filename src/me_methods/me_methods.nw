@@ -4538,10 +4538,17 @@ module prc_user_defined
   use prclib_interfaces
   use prc_core_def
   use prc_core
+
+  use sf_base
+  use sf_pdf_builtin, only: pdf_builtin_t
+  use sf_lhapdf, only: lhapdf_t
+  use pdg_arrays, only: is_gluon, is_quark
  
 <<Standard module head>>
 
 <<Prc User: public>>
+
+<<Prc User: parameters>>
 
 <<Prc User: types>>
 
@@ -4553,6 +4560,114 @@ contains
 
 end module prc_user_defined
 @ %def prc_user_defined
+@
+\subsection{Handling of structure functions}
+User-defined matrix elements do not have access to the structure functions
+stored in the evaluators. The current solution to this problem is to 
+just apply them explicitly after the computation of the matrix element.
+<<Prc User: parameters>>=
+  integer, parameter :: LEPTONS = 1
+  integer, parameter :: HADRONS = 2
+<<Prc User: types>>=
+  type :: sf_handler_t
+     integer :: initial_state_type = 0
+     integer :: n_sf = -1
+     real(default) :: val = one
+  contains
+  <<Prc User: sf handler: TBP>>
+  end type sf_handler_t
+
+@ %def sf_handler_t
+@
+<<Prc User: sf handler: TBP>>=
+  procedure :: init => sf_handler_init
+<<Prc User: procedures>>=
+  subroutine sf_handler_init (sf_handler, sf_chain)
+    class(sf_handler_t), intent(out) :: sf_handler
+    type(sf_chain_instance_t), intent(in) :: sf_chain
+    integer :: i
+    sf_handler%n_sf = size (sf_chain%sf) 
+    if (sf_handler%n_sf == 0) then
+       sf_handler%initial_state_type = LEPTONS
+    else
+       do i = 1, sf_handler%n_sf
+          select type (int => sf_chain%sf(i)%int)
+          type is (pdf_builtin_t)
+             sf_handler%initial_state_type = HADRONS
+          type is (lhapdf_t)
+             sf_handler%initial_state_type = HADRONS
+          class default
+             sf_handler%initial_state_type = LEPTONS
+          end select
+       end do
+     end if
+  end subroutine sf_handler_init
+
+@ %def sf_handler_init
+@
+<<Prc User: sf handler: TBP>>=
+  procedure :: init_dummy => sf_handler_init_dummy
+<<Prc User: procedures>>=
+  subroutine sf_handler_init_dummy (sf_handler)
+    class(sf_handler_t), intent(out) :: sf_handler
+    sf_handler%n_sf = 0
+    sf_handler%initial_state_type = LEPTONS
+  end subroutine sf_handler_init_dummy
+
+@ %def sf_handler_init_dummy
+@
+<<Prc User: sf handler: TBP>>=
+  procedure :: apply_structure_functions => sf_handler_apply_structure_functions
+<<Prc User: procedures>>=
+  subroutine sf_handler_apply_structure_functions (sf_handler, sf_chain, flavors)
+     class(sf_handler_t), intent(inout) :: sf_handler
+     type(sf_chain_instance_t), intent(in) :: sf_chain
+     integer, intent(in), dimension(2) :: flavors
+     integer :: i
+     real(default), dimension(:), allocatable :: f
+     if (sf_handler%n_sf < 0) call msg_fatal ("sf_handler not initialized")
+     sf_handler%val = one
+     do i = 1, sf_handler%n_sf
+        select case (sf_handler%initial_state_type)
+        case (HADRONS)
+           sf_handler%val = sf_handler%val * sf_handler%get_pdf (sf_chain, i, flavors(i))
+        case (LEPTONS)
+           call sf_chain%get_matrix_elements (i, f)
+           sf_handler%val = sf_handler%val * f(1)
+        case default
+           call msg_fatal ("sf_handler not initialized")
+        end select
+     end do
+  end subroutine sf_handler_apply_structure_functions
+
+@ %def sf_handler_apply_structure_functions
+@
+<<Prc User: sf handler: TBP>>=
+  procedure :: get_pdf => sf_handler_get_pdf
+<<Prc User: procedures>>=
+  function sf_handler_get_pdf (sf_handler, sf_chain, i, flavor) result (f)
+     real(default) :: f
+     class(sf_handler_t), intent(in) :: sf_handler
+     type(sf_chain_instance_t), intent(in) :: sf_chain
+     integer, intent(in) :: i, flavor
+     integer :: k
+     real(default), dimension(:), allocatable :: ff
+     integer, parameter :: n_flv_light = 6
+     
+     call sf_chain%get_matrix_elements (i, ff)
+
+     if (is_gluon (flavor)) then
+        k = n_flv_light + 1
+     else if (is_quark (abs(flavor))) then
+        k = n_flv_light + 1 + flavor
+     else
+        call msg_fatal ("Not a colored particle")
+     end if
+
+     f = ff(k)
+   end function sf_handler_get_pdf
+
+@ %def sf_handler_get_pdf
 @
 \subsection{Abstract user defined processes}
 This process class allows us to factor out common necessities of user
@@ -4610,6 +4725,7 @@ driver.
     type(qcd_t) :: qcd
     integer :: n_flv = 1
     real(default), dimension(:), allocatable :: par
+    type(sf_handler_t) :: sf_handler
   contains
   <<Prc User: prc user defined base: TBP>>
   end type prc_user_defined_base_t
@@ -4842,6 +4958,54 @@ Used for testing.
   end subroutine prc_user_defined_base_update_alpha_s
 
 @ %def prc_user_defined_base_update_alpha_s
+@
+<<Prc User: prc user defined base: TBP>>=
+  procedure :: init_sf_handler => prc_user_defined_base_init_sf_handler
+<<Prc User: procedures>>=
+  subroutine prc_user_defined_base_init_sf_handler (core, sf_chain)
+     class(prc_user_defined_base_t), intent(inout) :: core
+     type(sf_chain_instance_t), intent(in) :: sf_chain
+     if (allocated (sf_chain%sf)) then
+        call core%sf_handler%init (sf_chain)
+     else
+        call core%sf_handler%init_dummy ()
+     end if
+  end subroutine prc_user_defined_base_init_sf_handler
+
+@ %def prc_user_defined_base_init_sf_handler
+@
+<<Prc User: prc user defined base: TBP>>=
+  procedure :: init_sf_handler_dummy => prc_user_defined_base_init_sf_handler_dummy
+<<Prc User: procedures>>=
+  subroutine prc_user_defined_base_init_sf_handler_dummy (core)
+     class(prc_user_defined_base_t), intent(inout) :: core
+     call core%sf_handler%init_dummy ()
+  end subroutine prc_user_defined_base_init_sf_handler_dummy
+
+@ %def prc_user_defined_base_init_sf_handler_dummy
+@
+<<Prc User: prc user defined base: TBP>>=
+  procedure :: apply_structure_functions => prc_user_defined_base_apply_structure_functions
+<<Prc User: procedures>>=
+  subroutine prc_user_defined_base_apply_structure_functions (core, sf_chain, flavors)
+    class(prc_user_defined_base_t), intent(inout) :: core
+    type(sf_chain_instance_t), intent(in) :: sf_chain
+    integer, dimension(2), intent(in) :: flavors 
+    call core%sf_handler%apply_structure_functions (sf_chain, flavors)
+  end subroutine prc_user_defined_base_apply_structure_functions
+
+@ %def prc_user_defined_base_apply_structure_functions
+@
+<<Prc User: prc user defined base: TBP>>=
+  procedure :: get_sf_value => prc_user_defined_base_get_sf_value
+<<Prc User: procedures>>=
+  function prc_user_defined_base_get_sf_value (core) result (val)
+    real(default) :: val
+    class(prc_user_defined_base_t), intent(in) :: core
+    val = core%sf_handler%val
+  end function prc_user_defined_base_get_sf_value
+
+@ %def prc_user_defined_base_get_sf_value
 @
 \subsubsection{Configuration}
 This is the abstract user defined process definition

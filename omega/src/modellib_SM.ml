@@ -1,4 +1,4 @@
-(* $Id: modellib_SM.ml 6759 2015-03-23 13:42:37Z fbach $
+(* $Id: modellib_SM.ml 7283 2015-09-27 15:12:43Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -24,9 +24,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
-    { RCS.revision = "$Revision: 6759 $";
-      RCS.date = "$Date: 2015-03-23 14:42:37 +0100 (Mon, 23 Mar 2015) $";
-      RCS.author = "$Author: fbach $";
+    { RCS.revision = "$Revision: 7283 $";
+      RCS.date = "$Date: 2015-09-27 17:12:43 +0200 (Sun, 27 Sep 2015) $";
+      RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_SM.ml $" }
 
@@ -527,6 +527,7 @@ module type SM_flags =
     val triple_anom : bool
     val quartic_anom : bool
     val higgs_anom : bool
+    val dim6 : bool
     val k_matrix : bool
     val ckm_present : bool
     val top_anom : bool
@@ -541,6 +542,7 @@ module SM_no_anomalous : SM_flags =
     let triple_anom = false
     let quartic_anom = false
     let higgs_anom = false
+    let dim6 = false
     let k_matrix = false
     let ckm_present = false
     let top_anom = false
@@ -555,6 +557,7 @@ module SM_no_anomalous_ckm : SM_flags =
     let triple_anom = false
     let quartic_anom = false
     let higgs_anom = false
+    let dim6 = false
     let k_matrix = false
     let ckm_present = true
     let top_anom = false
@@ -569,6 +572,7 @@ module SM_anomalous : SM_flags =
     let triple_anom = true
     let quartic_anom = true
     let higgs_anom = true
+    let dim6 = false
     let k_matrix = false
     let ckm_present = false
     let top_anom = false
@@ -583,6 +587,7 @@ module SM_anomalous_ckm : SM_flags =
     let triple_anom = true
     let quartic_anom = true
     let higgs_anom = true
+    let dim6 = false
     let k_matrix = false
     let ckm_present = true
     let top_anom = false
@@ -597,6 +602,7 @@ module SM_k_matrix : SM_flags =
     let triple_anom = false
     let quartic_anom = true
     let higgs_anom = false
+    let dim6 = false
     let k_matrix = true
     let ckm_present = false
     let top_anom = false
@@ -611,6 +617,7 @@ module SM_Higgs : SM_flags =
     let triple_anom = false
     let quartic_anom = false
     let higgs_anom = false
+    let dim6 = false
     let k_matrix = false
     let ckm_present = false
     let top_anom = false
@@ -625,6 +632,7 @@ module SM_anomalous_top : SM_flags =
     let triple_anom = false
     let quartic_anom = false
     let higgs_anom = false
+    let dim6 = false
     let k_matrix = false
     let ckm_present = false
     let top_anom = true
@@ -639,12 +647,28 @@ module SM_tt_threshold : SM_flags =
     let triple_anom = false
     let quartic_anom = false
     let higgs_anom = false
+    let dim6 = false
     let k_matrix = false
     let ckm_present = true
     let top_anom = false
     let top_anom_4f = false
     let tt_threshold = true
   end
+
+module SM_dim6 : SM_flags =
+  struct
+    let higgs_triangle = false
+    let higgs_hmm = false
+    let triple_anom = false
+    let quartic_anom = false
+    let higgs_anom = false
+    let dim6 = true
+    let k_matrix = false
+    let ckm_present = false
+    let top_anom = false
+    let top_anom_4f = false
+    let tt_threshold = false
+  end  
 
 (* \thocwmodulesection{Complete Minimal Standard Model (including some extensions)} *)
 

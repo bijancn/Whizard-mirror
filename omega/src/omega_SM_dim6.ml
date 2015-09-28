@@ -1,4 +1,4 @@
-(* $Id: vertex.mli 7279 2015-09-25 13:36:04Z ohl $
+(* $Id: omega_SM_dim6.ml 7283 2015-09-27 15:12:43Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -7,6 +7,7 @@
        Juergen Reuter <juergen.reuter@desy.de>
        with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
+       So-young Shim (only this file) <soyoung.shim@desy.de>
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -22,41 +23,14 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-val parse_string : string -> Vertex_syntax.File.t
-val parse_file : string -> Vertex_syntax.File.t
-
-module type Test =
-  sig
-    val example : unit -> unit
-    val suite : OUnit.test
-  end
-
-module Test (M : Model.T) : Test
-
-module Parser_Test : Test
-module Model_Test : Test
+module O = Omega.Make(Fusion.Mixed23)(Targets.Fortran)
+    (Modellib_SM.SM(Modellib_SM.SM_dim6))
+let _ = O.main ()
 
 (*i
-module Symbol :
-  sig
-    type table
-    val load : Vertex_syntax.File.t -> table
-  end
-
-module Vertex :
-  sig
-
-    type factor =
-      { stem : Vertex_syntax.Token.t;
-	prefix : string list;
-	particle : Vertex_syntax.Token.t list;
-	color : Vertex_syntax.Token.t list;
-	lorentz : Vertex_syntax.Token.t list;
-	flavor : Vertex_syntax.Token.t list;
-	other : Vertex_syntax.Token.t list }
-
-    val factor_of_token : Symbol.table -> Vertex_syntax.Token.scripted -> factor
-
-  end
+ *  Local Variables:
+ *  mode:caml
+ *  indent-tabs-mode:nil
+ *  page-delimiter:"^(\\* .*\n"
+ *  End:
 i*)
-

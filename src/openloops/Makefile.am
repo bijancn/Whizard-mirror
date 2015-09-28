@@ -114,7 +114,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../fks -I../variables -I../blha -I../fastjet
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../fks -I../variables -I../blha -I../fastjet -I../pdf_builtin -I../lhapdf
 
 ########################################################################
 ## Default Fortran compiler options

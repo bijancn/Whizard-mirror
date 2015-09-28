@@ -1283,6 +1283,9 @@ AC_DEFUN([WO_FC_CONFIGURE_KINDS_RUN_OK],
 [dnl
   $INSTALL -d `AS_DIRNAME(["$1"])`
   ./conftest$EXEEXT "$wo_cv_fc_requested_precision" >$1
+  if test X"$KEEP_KINDLY" != X; then
+     cp -a ./conftest.f90 "$KEEP_KINDLY"
+  fi
   if test ! -s $1; then
      WO_FC_MSG_ERROR_BOX([./conftest$EXEEXT produced no output])
   fi
@@ -1298,6 +1301,9 @@ AC_DEFUN([WO_FC_CONFIGURE_KINDS_RUN_OK],
 dnl#  report failure
 AC_DEFUN([WO_FC_CONFIGURE_KINDS_RUN_FAIL],
 [rm -f $1
+ if test X"$KEEP_KINDLY" != X; then
+    cp -a ./conftest.f90 "$KEEP_KINDLY"
+ fi
  WO_FC_MSG_ERROR_BOX([could not compile kinds selection program])])
 
 ########################################################################
@@ -1352,7 +1358,7 @@ if test "x$wo_cv_fc_iso_fortran_env_2008" = xyes; then
       WO_FC_ISO_C_BINDING_GFORTRAN_EMPTY
       WO_FC_CONFIGURE_KINDS_SOURCE],
      [WO_FC_CONFIGURE_KINDS_RUN_OK([$1])],
-     [WO_FC_CONFIGURE_KINDS_RUN_FAIL],
+     [WO_FC_CONFIGURE_KINDS_RUN_FAIL([$1])],
      [WO_FC_CONFIGURE_KINDS_CROSS_COMPILING])
   else
     AC_RUN_IFELSE(dnl
@@ -1360,7 +1366,7 @@ if test "x$wo_cv_fc_iso_fortran_env_2008" = xyes; then
       WO_FC_ISO_C_BINDING_GFORTRAN_DUMMY
       WO_FC_CONFIGURE_KINDS_SOURCE],
      [WO_FC_CONFIGURE_KINDS_RUN_OK([$1])],
-     [WO_FC_CONFIGURE_KINDS_RUN_FAIL],
+     [WO_FC_CONFIGURE_KINDS_RUN_FAIL([$1])],
      [WO_FC_CONFIGURE_KINDS_CROSS_COMPILING])
   fi
 else
@@ -1370,7 +1376,7 @@ else
       WO_FC_ISO_C_BINDING_GFORTRAN_EMPTY
       WO_FC_CONFIGURE_KINDS_SOURCE],
      [WO_FC_CONFIGURE_KINDS_RUN_OK([$1])],
-     [WO_FC_CONFIGURE_KINDS_RUN_FAIL],
+     [WO_FC_CONFIGURE_KINDS_RUN_FAIL([$1])],
      [WO_FC_CONFIGURE_KINDS_CROSS_COMPILING])
   else
     AC_RUN_IFELSE(dnl
@@ -1378,7 +1384,7 @@ else
       WO_FC_ISO_C_BINDING_GFORTRAN_DUMMY
       WO_FC_CONFIGURE_KINDS_SOURCE],
      [WO_FC_CONFIGURE_KINDS_RUN_OK([$1])],
-     [WO_FC_CONFIGURE_KINDS_RUN_FAIL],
+     [WO_FC_CONFIGURE_KINDS_RUN_FAIL([$1])],
      [WO_FC_CONFIGURE_KINDS_CROSS_COMPILING])
   fi
 fi

@@ -43,8 +43,6 @@ libWOStdHep_la_SOURCES = \
 	WOStdHepRdr.cpp \
 	$(FC_SOURCE)
 
-libWOStdHep_la_CPPFLAGS = 
-
 libWOStdHep_Modules = ${FC_SOURCE:.f90=}
 Modules: Makefile
 	@for module in $(libWOStdHep_Modules); do \

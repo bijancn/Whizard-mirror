@@ -1,4 +1,4 @@
-(* $Id: coupling.mli 6943 2015-05-01 10:53:21Z msekulla $
+(* $Id: coupling.mli 7283 2015-09-27 15:12:43Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -280,7 +280,22 @@ type 'a vertex3 =
       $T^{\alpha\beta} ((\ii\partial^\mu V_1^\nu)
                           \ii\overleftrightarrow\partial_\alpha
                           \ii\overleftrightarrow\partial_\beta
-                        (\ii\partial_\nu V_{2,\mu})) $ *)
+					    (\ii\partial_\nu V_{2,\mu})) $ *)
+  (* Dim-6 operator a la Grzadkowski et al. *)      
+  | Dim6_HZZ_V3 of int   
+  | Dim6_Scalar_Vector_Vector_D of int 
+  | Dim6_Scalar_Vector_Vector_DP of int 
+  | Dim6_HAZ_D of int 
+  | Dim6_HAZ_DP of int
+  | Dim6_GGG of int 
+  | Dim6_AWW_DP of int 
+  | Dim6_AWW_DW of int 
+  | Dim6_HHH of int 
+  | Dim6_Gauge_Gauge_Gauge_i of int 
+  | Gauge_Gauge_Gauge_i of int 
+  | Dim6_WWZ_DPWDW of int
+  | Dim6_WWZ_DW of int
+  | Dim6_WWZ_D of int 
   | TensorVector_Vector_Vector of int
   | TensorVector_Vector_Vector_cf of int
   | TensorVector_Scalar_Scalar of int
@@ -389,6 +404,24 @@ type 'a vertex4 =
   | Vector4_K_Matrix_jr of int * (int * contract4) list
   | DScalar2_Vector2_K_Matrix_ms of int * (int * contract4) list
   | DScalar4_K_Matrix_ms of int * (int * contract4) list
+      (* Dim-6 operators a la Grzadkowski et al. *)
+  | Dim6_H4_P2 of int 
+  | Dim6_AHWW_DPB of int 
+  | Dim6_AHWW_DPW of int 
+  | Dim6_AHWW_DW of int 
+  | Dim6_Vector4_DW of int
+  | Dim6_Vector4_W of int
+  | Dim6_Scalar2_Vector2_D of int 
+  | Dim6_Scalar2_Vector2_DP of int
+  | Dim6_Scalar2_Vector2_PB of int  
+  | Dim6_HHZZ_T of int 
+  | Dim6_HWWZ_DW of int 
+  | Dim6_HWWZ_DPB of int 
+  | Dim6_HWWZ_DDPW of int 
+  | Dim6_HWWZ_DPW of int 
+  | Dim6_AHHZ_D of int 
+  | Dim6_AHHZ_DP of int 
+  | Dim6_AHHZ_PB of int 
 
 
 type 'a vertexn = unit

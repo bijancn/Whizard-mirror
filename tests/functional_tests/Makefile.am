@@ -154,18 +154,18 @@ TESTS_REQ_OCAML = \
     smtest_13.run \
     smtest_14.run \
     smtest_15.run \
-    smtest_16.run \
-    smtest_17.run \
     mssmtest.run \
     nlo_1.run \
     nlo_2.run \
     nlo_3.run \
+    nlo_4.run \
     powheg_1.run \
     spincor_1.run \
     show_1.run \
     show_2.run \
     show_3.run \
     show_4.run \
+    method_ovm_1.run \
     multi_comp_1.run \
     multi_comp_2.run \
     multi_comp_3.run \

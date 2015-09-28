@@ -611,14 +611,14 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/smtest_13.ref \
     functional_tests/ref-output/smtest_14.ref \
     functional_tests/ref-output/smtest_15.ref \
-    functional_tests/ref-output/smtest_16.ref \
-    functional_tests/ref-output/smtest_17.ref \
+    functional_tests/ref-output/nlo_1.ref \
     functional_tests/ref-output/mssmtest.ref \
     functional_tests/ref-output/spincor_1.ref \
     functional_tests/ref-output/show_1.ref \
     functional_tests/ref-output/show_2.ref \
     functional_tests/ref-output/show_3.ref \
     functional_tests/ref-output/show_4.ref \
+    functional_tests/ref-output/method_ovm_1.ref \
     functional_tests/ref-output/multi_comp_4.ref \
     functional_tests/ref-output/flvsum_1.ref \
     functional_tests/ref-output/decay_err_1.ref \
@@ -649,9 +649,9 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/qcdtest_3.ref \
     functional_tests/ref-output-double/smtest_2.ref \
     functional_tests/ref-output-double/smtest_8.ref \
-    functional_tests/ref-output-double/nlo_1.ref \
     functional_tests/ref-output-double/nlo_2.ref \
     functional_tests/ref-output-double/nlo_3.ref \
+    functional_tests/ref-output-double/nlo_4.ref \
     functional_tests/ref-output-double/powheg_1.ref \
     functional_tests/ref-output-double/defaultcuts.ref \
     functional_tests/ref-output-double/parton_shower_2.ref \
@@ -695,9 +695,9 @@ REF_OUTPUT_FILES_PREC = \
     functional_tests/ref-output-prec/qcdtest_3.ref \
     functional_tests/ref-output-prec/smtest_2.ref \
     functional_tests/ref-output-prec/smtest_8.ref \
-    functional_tests/ref-output-prec/nlo_1.ref \
     functional_tests/ref-output-prec/nlo_2.ref \
     functional_tests/ref-output-prec/nlo_3.ref \
+    functional_tests/ref-output-prec/nlo_4.ref \
     functional_tests/ref-output-prec/defaultcuts.ref \
     functional_tests/ref-output-prec/parton_shower_2.ref \
     functional_tests/ref-output-prec/helicity.ref \
@@ -895,11 +895,10 @@ MISC_TESTS_SIN = \
     functional_tests/smtest_13.sin \
     functional_tests/smtest_14.sin \
     functional_tests/smtest_15.sin \
-    functional_tests/smtest_16.sin \
-    functional_tests/smtest_17.sin \
     functional_tests/nlo_1.sin \
     functional_tests/nlo_2.sin \
     functional_tests/nlo_3.sin \
+    functional_tests/nlo_4.sin \
     functional_tests/powheg_1.sin \
     functional_tests/mssmtest.sin \
     functional_tests/spincor_1.sin \
@@ -907,6 +906,7 @@ MISC_TESTS_SIN = \
     functional_tests/show_2.sin \
     functional_tests/show_3.sin \
     functional_tests/show_4.sin \
+    functional_tests/method_ovm_1.sin \
     functional_tests/multi_comp_1.sin \
     functional_tests/multi_comp_2.sin \
     functional_tests/multi_comp_3.sin \
