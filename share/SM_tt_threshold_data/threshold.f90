@@ -294,7 +294,7 @@ contains
           amp_Z_av_blob(hi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
 
           amp_A_v_tree(hi) = owf_A_12 * v_ff (qup, owf_t_3, owf_t_4)
-          amp_A_v_blob(hi) = amp_A_v_tree(hi) * ttv_formfactor (p35, p46, 1)
+          amp_A_v_blob(hi) = amp_A_v_tree(hi) * ttv_formfactor (p3, p4, 1)
        end do
     else
        do hi = 1, n_hel

@@ -233,7 +233,7 @@ contains
 
     init_pars = .true.
   end subroutine init_parameters
-  
+
   subroutine init_threshold_grids (test)
     real(default), intent(in) :: test
     if ( test > 0.0_default ) then
