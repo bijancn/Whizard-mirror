@@ -3730,7 +3730,9 @@ singularities are included).
     integer :: i_call, i_bin, alr, emitter
     real(default) :: alpha_s, kT2, weight
     real(default) :: pt2_min, s, random_jacobian
-    real(default), dimension(n_bins) :: histo1, histo2, histo1sq
+    real(default), dimension(n_bins) :: histo1, histo2, histo1sq, histo2sq
+    real(default), dimension(n_bins) :: tmp
+    integer :: i_strip, n_in_strip, n_strips
     real(default), dimension(n_bins) :: average, average_sq, error
     real(default), dimension(n_bins) :: &
          sudakov_0, sudakov_p, sudakov_m, rel_error
@@ -3741,8 +3743,32 @@ singularities are included).
     s = powheg%event_deps%s_hat
     pt2_min = powheg%settings%pt2_min
     n_calls1 = 100000; n_calls2 = 1000000
-    histo1 = zero; histo2 = zero; histo1sq = zero
+    histo1 = zero; histo2 = zero; histo1sq = zero; histo2sq = zero
+    n_strips = 10
 
+    call compute_integrals ()
+    call generate_emissions ()
+    call write_to_screen_and_file ()
+
+  contains
+
+  <<POWHEG matching: powheg test sudakov: procedures>>
+
+  end subroutine powheg_test_sudakov
+
+@ %def powheg_test_sudakov
+@
+<<POWHEG matching: powheg test sudakov: procedures>>=
+  pure function binning (i) result (pt2)
+    real(default) :: pt2
+    integer, intent(in) :: i
+    !pt2 = pt2_min + (s-pt2_min) * (i-1) / (n_bins-1)
+    pt2 = pt2_min * exp (log (s / pt2_min) * (i-1) / (n_bins-1))
+  end function
+
+@
+<<POWHEG matching: powheg test sudakov: procedures>>=
+  subroutine compute_integrals ()
     write (msg_buffer, "(A)") "POWHEG: test_sudakov: Computing integrals"
     call msg_message ()
     select type (pcm => powheg%process_instance%pcm)
@@ -3756,7 +3782,7 @@ singularities are included).
                call powheg%copy_momenta ()
                call fks%get_radiation_variables (emitter, xi, y, phi)
                kT2 = powheg%sudakov(alr)%s%kt2(xi, y)
-               if (kT2 > pt2_min .and. xi < one - 1000*tiny_07) then
+               if (kT2 >= pt2_min .and. xi < one - tiny_07) then
                   alpha_s = get_alpha (powheg%qcd, kT2)
                   sqme_real_x_jacobian = powheg%compute_sqme_real (alr, alpha_s)
                   random_jacobian = pcm%controller%real_kinematics%jac_rand (emitter)
@@ -3782,24 +3808,40 @@ singularities are included).
     sudakov_m = exp(-(average - error))
     rel_error = (sudakov_0 - sudakov_p + sudakov_m - sudakov_0) / &
          (2 * sudakov_0) * 100
+  end subroutine compute_integrals
 
+@
+<<POWHEG matching: powheg test sudakov: procedures>>=
+  subroutine generate_emissions ()
     write (msg_buffer, "(A)") "POWHEG: test_sudakov: Generating emissions"
     call msg_message ()
-    do i_call = 1, n_calls2
-       if (signal_is_pending ())  return
-       call powheg%generate_emission (pt2_generated = kT2)
-       do i_bin = 1, n_bins
-          if (kT2 > binning(i_bin)) then
-              histo2(i_bin) = histo2(i_bin) + one
-          end if
+    do i_strip = 1, n_strips
+       tmp = 0
+       n_in_strip = n_calls2 / n_strips
+       do i_call = 1, n_in_strip
+          if (signal_is_pending ())  return
+          call powheg%generate_emission (pt2_generated = kT2)
+          do i_bin = 1, n_bins
+             if (kT2 > binning(i_bin)) then
+                tmp(i_bin) = tmp(i_bin) + 1
+             end if
+          end do
        end do
-       call msg_show_progress (i_call, n_calls2)
+       tmp = one - (one * tmp) / n_in_strip
+       histo2 = histo2 + tmp
+       histo2sq = histo2sq + tmp**2
+       call msg_show_progress (i_strip, n_strips)
     end do
-    histo2 = histo2 / n_calls2
-    histo2 = one - histo2
+    average = histo2 / n_strips
+    average_sq = histo2sq / n_strips
+    error = sqrt ((average_sq - average**2) / n_strips)
+  end subroutine generate_emissions
 
+@
+<<POWHEG matching: powheg test sudakov: procedures>>=
+  subroutine write_to_screen_and_file ()
     u = free_unit ()
-    open (file='test_sudakov_data', unit=u, action='write')
+    open (file='integrated_sudakov.dat', unit=u, action='write')
     print *, 'exp(-Integrated R/B)-distribution: '
     print *, 'pT2  sudakov_+  sudakov_0  sudakov_-  rel_err[%]: '
     do i_bin = 1, n_bins
@@ -3811,20 +3853,14 @@ singularities are included).
             histo2 (i_bin)
     end do
     close (u)
+    open (file='generated_sudakov.dat', unit=u, action='write')
     print *, '*******************************'
     print *, 'Noemission probability: '
     do i_bin = 1, n_bins
-       print *, binning (i_bin), histo2 (i_bin)
+       print *, binning (i_bin), average (i_bin), error(i_bin)
+       write (u, "(3(" // FMT_16 // ",2X))") binning (i_bin), &
+            average(i_bin), error(i_bin)
     end do
-
-  contains
-
-    pure function binning (i) result (pt2)
-      real(default) :: pt2
-      integer, intent(in) :: i
-      !pt2 = pt2_min + (s-pt2_min) * (i-1) / (n_bins-1)
-      pt2 = pt2_min * exp (log (s / pt2_min) * (i-1) / (n_bins-1))
-    end function
-  end subroutine powheg_test_sudakov
-
-@ %def powheg_test_sudakov
+    close (u)
+  end subroutine write_to_screen_and_file
+@
