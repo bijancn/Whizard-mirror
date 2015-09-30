@@ -221,14 +221,14 @@ endif OCAML_AVAILABLE
 
 if NOWEB_AVAILABLE
 maintainer-clean-noweb:
-	-rm -f *.f90
+	-rm -f $(SOURCE_FILES)
 endif
 .PHONY: maintainer-clean-noweb
 
 ## Remove those sources also if builddir and srcdir are different
 if NOWEB_AVAILABLE
 clean-noweb:
-	test "$(srcdir)" != "." && rm -f *.f90 || true
+	test "$(srcdir)" != "." && rm -f $(SOURCE_FILES) || true
 endif
 .PHONY: clean-noweb
 

@@ -81,10 +81,6 @@ LT_INIT
 LT_PREREQ([2.2.8b])
 AC_PATH_PROG([M4],[m4])
 
-dnl ***********************************************************************
-
-AM_CONDITIONAL([STANDALONE_OMEGA_BUILD], [test "yes" = "yes"])
-
 ########################################################################
 ### Location of installed libraries and such
 ### capitalized version is internal, the other
