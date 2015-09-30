@@ -215,8 +215,7 @@ TESTS_REQ_OCAML = \
     parton_shower_2.run \
     mlm_matching_fsr.run \
     user_cuts.run \
-    user_prc_1.run \
-    user_prc_2.run \
+    user_prc_threshold.run \
     $(TESTS_USER_STRFUN) 
 
 XFAIL_TESTS_REQ_OCAML = \
