@@ -253,7 +253,7 @@ contains
 
   subroutine init (par)
     real(kind=default), dimension(*), intent(in) :: par
-    call import_from_whizard (par, process="@ID@")
+    call import_from_whizard (par)
   end subroutine init
 
   subroutine calculate_amplitudes (k)
