@@ -58,8 +58,9 @@ module parameters_sm_tt_threshold
 
 contains
 
-  subroutine import_from_whizard (par_array)
+  subroutine import_from_whizard (par_array, process)
     real(default), dimension(40), intent(in) :: par_array
+    character(*), intent(in), optional :: process
     type :: parameter_set
        real(default) :: mZ
        real(default) :: mW
@@ -237,7 +238,7 @@ contains
           mass(5), par%sh, par%sf, par%nloop, par%FF, &
           par%v1, par%v2, par%scan_sqrts_min, par%scan_sqrts_max, &
           par%scan_sqrts_stepsize, mpole_fixed)
-    call ttv_formfactors_init_threshold_grids (par%test)
+    call ttv_formfactors_init_threshold_grids (par%test, process)
   end subroutine import_from_whizard
 
   subroutine model_update_alpha_s (alpha_s)

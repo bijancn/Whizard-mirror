@@ -234,17 +234,18 @@ contains
     init_pars = .true.
   end subroutine init_parameters
 
-  subroutine init_threshold_grids (test)
+  subroutine init_threshold_grids (test, process)
     real(default), intent(in) :: test
-    if ( test > 0.0_default ) then
+    character(*), intent(in), optional :: process
+    if (test > 0.0_default) then
       call msg_message ("TESTING ONLY: Skip threshold initialization and use tree-level SM.")
       return
     end if
-    if ( .not.init_pars ) call msg_fatal ("init_threshold_grid: parameters not initialized!")
-    if ( parameters_ref == parameters_string () ) return
+    if (.not. init_pars) call msg_fatal ("init_threshold_grid: parameters not initialized!")
+    if (parameters_ref == parameters_string ()) return
     call dealloc_grids ()
-    if ( need_ff ) call init_formfactor_grid ()
-    if ( need_J0 ) call scan_J0_over_phase_space_grid ()
+    if (need_ff) call init_formfactor_grid (process)
+    if (need_J0) call scan_J0_over_phase_space_grid ()
     parameters_ref = parameters_string ()
   end subroutine init_threshold_grids
 
@@ -378,11 +379,16 @@ contains
     c = one + alphas * (contrib_from_potential + shift_from_hard_current)
   end function nonrelativistic_formfactor
 
-  subroutine init_formfactor_grid ()
+  subroutine init_formfactor_grid (process)
+    character(*), intent(in), optional :: process
     type(string_t) :: ff_file
     call msg_debug (D_THRESHOLD, "init_formfactor_grid")
     init_ff = .false.
-    ff_file = "SM_tt_threshold.grid"
+    if (present (process)) then
+       ff_file = process // ".SM_tt_threshold.grid"
+    else
+       ff_file = "SM_tt_threshold.grid"
+    end if
     call msg_message ()
     call msg_message ("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
     call msg_message (" Initialize e+e- => ttbar threshold resummation:")
