@@ -272,7 +272,7 @@ contains
     p35 = p3 + p5
     p46 = p4 + p6
     amp_Z_av_tree = zero
-    amp_Z_av_tree = zero
+    amp_Z_av_blob = zero
     amp_A_v_tree = zero
     amp_A_v_blob = zero
     if (onshell_tops (p3, p4)) then
