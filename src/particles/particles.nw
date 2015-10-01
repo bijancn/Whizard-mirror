@@ -2645,16 +2645,31 @@ in the correlated state matrix.
 @ %def particle_set_final
 @
 <<Particles: particle set: TBP>>=
-  procedure :: get_momenta => particle_set_get_momenta
+  generic :: get_momenta => get_momenta_all
+  generic :: get_momenta => get_momenta_indices
+  procedure :: get_momenta_all => particle_set_get_momenta_all
+  procedure :: get_momenta_indices => particle_set_get_momenta_indices
 <<Particles: procedures>>=
-  function particle_set_get_momenta (particle_set) result (p)
+  function particle_set_get_momenta_all (particle_set) result (p)
     class(particle_set_t), intent(in) :: particle_set
     type(vector4_t), dimension(:), allocatable :: p
     allocate (p (size (particle_set%prt)))
     p = particle_set%prt%p
-  end function particle_set_get_momenta
+  end function particle_set_get_momenta_all
 
-@ %def particle_set_get_momenta
+@ %def particle_set_get_momenta_all
+@
+<<Particles: procedures>>=
+  function particle_set_get_momenta_indices (particle_set, indices) result (p)
+     type(vector4_t), dimension(:), allocatable :: p
+     class(particle_set_t), intent(in) :: particle_set
+     integer, intent(in), dimension(:), allocatable :: indices
+     integer :: i
+     allocate (p (size (indices)))
+     p = particle_set%prt(indices)%p
+  end function particle_set_get_momenta_indices
+
+@ %def particle_set_get_momenta_indices
 @
 <<Particles: particle set: TBP>>=
   procedure :: set_momenta => particle_set_set_momenta
@@ -2698,66 +2713,105 @@ the [[particle_set]].
      real(default), intent(in) :: r_color
      type(particle_set_t) :: new_particle_set
      type(particle_t) :: new_particle
-     integer :: i, n_particles
+     integer :: i
      integer :: pdg_index_emitter, pdg_index_radiation
-     integer :: n_in, n_vir, n_out, n_tot
+     !integer :: n_in, n_vir, n_out, n_tot
+     !integer :: n_vir_new
+     !integer :: n_vir, n_vir_new, n_in, n_out
      integer, dimension(:), allocatable :: parents, children
      type(flavor_t) :: new_flv
+     logical, dimension(:), allocatable :: status_mask
+     integer, dimension(:), allocatable :: i_in1, i_beam1, i_remnant1, i_virt1, i_out1
+     integer, dimension(:), allocatable :: i_in2, i_beam2, i_remnant2, i_virt2, i_out2
+     integer :: n_in1, n_beam1, n_remnant1, n_virt1, n_out1
+     integer :: n_in2, n_beam2, n_remnant2, n_virt2, n_out2
+     integer :: n_tot
+     integer :: i_emitter
+     
+     allocate (status_mask (particle_set%get_n_tot()))
+     status_mask = particle_set%prt%get_status () == PRT_INCOMING
+     n_in1 = count (status_mask)
+     i_in1 = particle_set%get_indices (status_mask)
+     status_mask = particle_set%prt%get_status () == PRT_BEAM
+     n_beam1 = count (status_mask)
+     i_beam1 = particle_set%get_indices (status_mask)
+     status_mask = particle_set%prt%get_status () == PRT_BEAM_REMNANT
+     n_remnant1 = count (status_mask)
+     i_remnant1 = particle_set%get_indices (status_mask)
+     status_mask = particle_set%prt%get_status () == PRT_VIRTUAL
+     n_virt1 = count (status_mask)
+     i_virt1 = particle_set%get_indices (status_mask)
+     status_mask = particle_set%prt%get_status () == PRT_OUTGOING
+     n_out1 = count (status_mask)
+     i_out1 = particle_set%get_indices (status_mask)
 
-     n_particles = size (particle_set%prt)
-     if (n_particles+1 /= size (p_radiated))  call msg_fatal &
-        ("Number of particles does not equal number of momenta")
+     n_in2 = n_in1; n_beam2 = n_beam1; n_remnant2 = n_remnant1
+     n_virt2 = n_virt1 + n_out1
+     n_out2 = n_out1 + 1
+     n_tot = n_in2 + n_beam2 + n_remnant2 + n_virt2 + n_out2
 
-     new_particle_set%n_beam = particle_set%n_beam
-     new_particle_set%n_in = particle_set%n_in
-     new_particle_set%n_vir = particle_set%n_vir + new_particle_set%n_in
-     new_particle_set%n_out = particle_set%n_out+1
-     new_particle_set%n_tot = new_particle_set%n_in + &
-        new_particle_set%n_vir + new_particle_set%n_out
+     allocate (i_in2 (n_in2), i_beam2 (n_beam2), i_remnant2 (n_remnant2))
+     i_in2 = i_in1; i_beam2 = i_beam1; i_remnant2 = i_remnant1
+
+     allocate (i_virt2 (n_virt2))
+     i_virt2(1:n_virt1) = i_virt1
+     i_virt2(n_virt1+1:n_virt2) = i_out1 
+
+     allocate (i_out2 (n_out2))
+     i_out2(1:n_out1) = i_out1(1:n_out1) + n_out1
+     i_out2(n_out2) = n_tot 
+ 
+     new_particle_set%n_beam = n_beam2
+     new_particle_set%n_in = n_in2
+     new_particle_set%n_vir = n_virt2
+     new_particle_set%n_out = n_out2
+     new_particle_set%n_tot = n_tot
      new_particle_set%correlated_state = particle_set%correlated_state
-     allocate (new_particle_set%prt (new_particle_set%n_tot))
-     n_in = new_particle_set%n_in; n_vir = new_particle_set%n_vir
-     n_out = new_particle_set%n_out; n_tot = new_particle_set%n_tot
-     do i = 1, n_in
-        new_particle_set%prt(i) = particle_set%prt(i)
-        call new_particle_set%prt(i)%set_momentum (p_radiated(i))
-        call new_particle_set%prt(i)%reset_status (PRT_INCOMING)
-     end  do
-     do i = n_in+1, n_in+n_vir
-        new_particle_set%prt(i) = particle_set%prt(i)
-        call new_particle_set%prt(i)%set_momentum (particle_set%prt(i)%p)
-        call new_particle_set%prt(i)%reset_status (PRT_VIRTUAL)
+     allocate (new_particle_set%prt (n_tot))
+     new_particle_set%prt(i_beam2) = particle_set%prt(i_beam1)
+     new_particle_set%prt(i_remnant2) = particle_set%prt(i_remnant1)
+     new_particle_set%prt(i_virt2(1:n_virt1)) = particle_set%prt(i_virt1) 
+
+     do i = n_virt1 + 1, n_virt2
+        new_particle_set%prt(i_virt2(i)) = particle_set%prt(i_out1(i-n_virt1))
+        call new_particle_set%prt(i_virt2(i))%reset_status (PRT_VIRTUAL)
      end do
-     !!! Parents correct, care for children
-     allocate (children (n_out))
-     do i = 1, n_out
-        children(i) = n_in+n_vir+i
+     
+     do i = 1, n_in2
+        new_particle_set%prt(i_in2(i)) = particle_set%prt(i_in1(i))
+        new_particle_set%prt(i_in2(i))%p = p_radiated (i)
      end do
-     do i = n_in+1, n_in+n_vir
-        call new_particle_set%prt(i)%set_children (children)
+
+     do i = 1, n_out2-1
+        new_particle_set%prt(i_out2(i)) = particle_set%prt(i_out1(i))
+        new_particle_set%prt(i_out2(i))%p = p_radiated(i + n_in2)
+        call new_particle_set%prt(i_out2(i))%reset_status (PRT_OUTGOING)
      end do
-     do i = n_in+n_vir+1, n_tot-1
-        new_particle_set%prt(i) = particle_set%prt(i-n_vir)
-        call new_particle_set%prt(i)%set_momentum (p_radiated(i-n_vir))
-        call new_particle_set%prt(i)%reset_status (PRT_OUTGOING)
-     end do
+ 
      call new_particle%reset_status (PRT_OUTGOING)
-     call new_particle%set_momentum (p_radiated (n_tot-n_vir))
+     call new_particle%set_momentum (p_radiated (n_in2 + n_out2))
+
      !!! Helicity and polarization handling is missing at this point
-     pdg_index_emitter = flv_radiated (emitter)
-     pdg_index_radiation = flv_radiated (n_tot-n_vir)
-     call new_flv%init (pdg_index_radiation, model)
-     call reassign_colors (new_particle, new_particle_set%prt(n_vir+emitter), &
-                           pdg_index_radiation, pdg_index_emitter, r_color)
      !!! Also, no helicities or polarizations yet
+     pdg_index_emitter = flv_radiated (emitter)
+     pdg_index_radiation = flv_radiated (n_in2 + n_out2)
+     call new_flv%init (pdg_index_radiation, model)
+     i_emitter = emitter + n_virt2 + n_remnant2 + n_beam2
+     call reassign_colors (new_particle, new_particle_set%prt(i_emitter), &
+                           pdg_index_radiation, pdg_index_emitter, r_color)
      call new_particle%set_flavor (new_flv)
      new_particle_set%prt(n_tot) = new_particle
-     !!! Set proper parents for outgoing particles
-     allocate (parents (n_in))
-     do i = 1, n_in
-        parents(i) = n_in+i
+
+     allocate (children (n_out2))
+     children = i_out2
+     do i = n_in2 + n_beam2 + n_remnant2 + n_virt1 + 1, n_in2 + n_beam2 + n_remnant2 + n_virt2
+        call new_particle_set%prt(i)%set_children (children)
      end do
-     do i = n_in+n_vir+1, n_tot
+          
+     !!! Set proper parents for outgoing particles
+     allocate (parents (n_out1))
+     parents = i_out1
+     do i = n_in2 + n_beam2 + n_remnant2 + n_virt2 + 1, n_tot
         call new_particle_set%prt(i)%set_parents (parents)
      end do
      !!! Overwrite old particle set

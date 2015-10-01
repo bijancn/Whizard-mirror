@@ -1,4 +1,4 @@
-(* $Id: coupling.mli 7283 2015-09-27 15:12:43Z jr_reuter $
+(* $Id: coupling.mli 7298 2015-09-30 16:42:15Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -296,6 +296,7 @@ type 'a vertex3 =
   | Dim6_WWZ_DPWDW of int
   | Dim6_WWZ_DW of int
   | Dim6_WWZ_D of int 
+  (* End of list of dim-6 operator a la Grzadkowski et al., part I *)      
   | TensorVector_Vector_Vector of int
   | TensorVector_Vector_Vector_cf of int
   | TensorVector_Scalar_Scalar of int
@@ -404,7 +405,7 @@ type 'a vertex4 =
   | Vector4_K_Matrix_jr of int * (int * contract4) list
   | DScalar2_Vector2_K_Matrix_ms of int * (int * contract4) list
   | DScalar4_K_Matrix_ms of int * (int * contract4) list
-      (* Dim-6 operators a la Grzadkowski et al. *)
+      (* Dim-6 operators a la Grzadkowski et al., part II *)
   | Dim6_H4_P2 of int 
   | Dim6_AHWW_DPB of int 
   | Dim6_AHWW_DPW of int 
