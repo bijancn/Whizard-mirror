@@ -184,6 +184,7 @@ libwhizard_test_la_LIBADD = \
   matching/libmatching_ut.la \
   fks/libfks_ut.la \
   process_integration/libprocess_integration_ut.la \
+  blha/libblha_ut.la \
   model_features/libmodel_features_ut.la \
   mci/libmci_ut.la \
   phase_space/libphase_space_ut.la \
