@@ -69,6 +69,9 @@ module_lists = \
   ../qft/Modules \
   ../expr_base/Modules \
   ../types/Modules \
+  ../user/Modules \
+  ../variables/Modules \
+  ../model_features/Modules \
   ../matrix_elements/Modules \
   ../particles/Modules \
   ../beams/Modules \
