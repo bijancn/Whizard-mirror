@@ -68,6 +68,7 @@ UNIT_TESTS = \
     models.run \
     auto_components.run \
     radiation_generator.run \
+    blha.run \
     particles.run \
     beam_structures.run \
     sf_aux.run \

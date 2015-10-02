@@ -1558,6 +1558,17 @@ This types control the creation of BLHA-interface files
 
 @ %def blha_master_set_openloops
 @
+<<BLHA config: blha master: TBP>>=
+  procedure :: reset_olp_modes => blha_master_reset_olp_modes
+<<BLHA config: procedures>>=
+  subroutine blha_master_reset_olp_modes (master, i)
+    class(blha_master_t), intent(inout) :: master
+    integer, intent(in) :: i
+    master%blha_cfg(i)%mode = master%blha_mode(i)
+  end subroutine blha_master_reset_olp_modes
+
+@ %def blha_master_reset_olp_modes
+@
 <<BLHA config: procedures>>=
   subroutine blha_init_born (blha_cfg, blha_flavor, n_in, &
         ap, asp, basename, model, blha_mode)
@@ -3143,3 +3154,152 @@ Init the [[blha_olp_t]] object and try to dlopen the library.
   end subroutine blha_test
 
 @ %def blha_test
+@
+\subsection{Unit tests}
+Test module, followed by the corresponding implementation module.
+<<[[blha_ut.f90]]>>=
+<<File header>>
+
+module blha_ut
+  use unit_tests
+  use blha_uti
+
+<<Standard module head>>
+
+<<BLHA: public tests>>
+
+contains
+
+<<BLHA: test driver>>
+
+end module blha_ut
+
+@ %def blha_ut
+@
+<<[[blha_uti.f90]]>>=
+<<File header>>
+
+module blha_uti
+
+<<Use strings>>
+  use format_utils, only: write_separator
+  use os_interface
+  use models
+  use blha_config
+  
+
+<<Standard module head>>
+
+<<BLHA: test declarations>>
+
+contains
+
+<<BLHA: tests>>
+
+end module blha_uti
+
+@ %def blha_uti
+@ API: driver for the unit tests below.
+<<BLHA: public tests>>=
+  public :: blha_test
+<<BLHA: test driver>>=
+  subroutine blha_test (u, results)
+    integer, intent(in) :: u
+    type(test_results_t), intent(inout) :: results
+    call test(blha_1, "blha_1", "Test the creation of BLHA-OLP files", u, results)
+  end subroutine blha_test
+
+@ %def blha_test
+@
+<<BLHA: test declarations>>=
+  public :: blha_1
+<<BLHA: tests>>=
+  subroutine blha_1 (u)
+    integer, intent(in) :: u
+    type(blha_master_t) :: blha_master
+    integer :: i
+    integer :: n_in, n_out
+    integer :: alpha_power, alphas_power
+    integer, dimension(:,:), allocatable :: flv_born, flv_real
+    type(string_t) :: proc_id
+    type(os_data_t) :: os_data
+    type(model_list_t) :: model_list
+    type(model_t), pointer :: model => null ()
+    integer :: openloops_phs_tolerance
+    
+    write (u, "(A)") "* Test output: blha_1"
+    write (u, "(A)") "* Purpose: Test the creation of olp-files"
+    write (u, "(A)")
+
+    write (u, "(A)") "* Process: e+ e- -> W+ W- b b~"
+    n_in = 2; n_out = 4
+    alpha_power = 4; alphas_power = 0
+    allocate (flv_born (n_in + n_out, 1))
+    allocate (flv_real (n_in + n_out + 1, 1))
+    flv_born(1,1) = 11; flv_born(2,1) = -11
+    flv_born(3,1) = 24; flv_born(4,1) = -24  
+    flv_born(5,1) = 5; flv_born(6,1) = -5   
+    flv_real(1:6,1) = flv_born(:,1)
+    flv_real(7,1) = 21
+    proc_id = var_str ("BLHA_Test")
+
+    call syntax_model_file_init ()
+    call os_data_init (os_data)
+    call model_list%read_model &
+       (var_str ("SM"), var_str ("SM.mdl"), os_data, model) 
+
+    write (u, "(A)") "* BLHA matrix elements assumed for all process components"
+    write (u, "(A)") "* Mode: GoSam"
+
+    do i = 1, 4
+       call blha_master%set_gosam (i)
+    end do 
+    call blha_master%init (proc_id, model, n_in, n_out, .true., .true., &
+       .true., .true., alpha_power, alphas_power, flv_born, flv_real) 
+     
+    do i = 1, 4
+       call write_separator(u)
+       call write_component_type (i, u)
+       call write_separator(u)
+       call blha_configuration_write (blha_master%blha_cfg(i), u)
+    end do
+
+    write (u, "(A)") "* Switch to OpenLoops"
+    openloops_phs_tolerance = 7
+    do i = 1, 4
+       call blha_master%set_openloops (i)
+       call blha_master%reset_olp_modes (i)
+       call blha_master%setup_additional_features (openloops_phs_tolerance)
+       call write_separator(u)
+       call write_component_type (i, u)
+       call write_separator(u)
+       call blha_configuration_write (blha_master%blha_cfg(i), u)
+    end do
+     
+  contains
+    subroutine write_component_type (i, u)
+      integer, intent(in) :: i, u
+      type(string_t) :: message, component_type
+      message = var_str ("OLP-File content for ")
+      select case (i)
+      case (1)
+         component_type = var_str ("loop")
+      case (2) 
+         component_type = var_str ("subtraction")
+      case (3) 
+         component_type = var_str ("real")
+      case (4) 
+         component_type = var_str ("born")
+      end select
+      message = message // component_type // " matrix elements"
+      write (u, "(A)") char (message) 
+    end subroutine write_component_type
+  end subroutine blha_1
+
+@ %def blha_1
+@
+
+
+
+
+
