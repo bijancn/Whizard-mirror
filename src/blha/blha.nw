@@ -1331,16 +1331,110 @@ Those are the default pdg codes for massive particles in BLHA programs
   integer, parameter, public :: OLP_N_MASSIVE_PARTICLES = 10
   integer, dimension(OLP_N_MASSIVE_PARTICLES), public :: &
     OLP_MASSIVE_PARTICLES = [5,-5,6,-6,15,-15,23,24,-24,25]
+  integer, parameter :: OLP_HEL_UNPOLARIZED = 0
+  integer, parameter :: OLP_HEL_LEFT = -1
+  integer, parameter :: OLP_HEL_RIGHT = 1
+  integer, parameter :: OLP_HEL_LONG = 2
 
 @ %def OLP_MASSIVE_PARTICLES
+@ This type contains the pdg code of the particle to be written in the process
+specification string and an optional additional information about the polarization 
+of the particles. Note that the output can only be processed by OpenLoops.
+<<BLHA config: types>>=
+  type :: blha_particle_string_element_t
+     integer :: pdg = 0
+     integer :: hel = OLP_HEL_UNPOLARIZED
+     logical :: polarized = .false. 
+  contains
+  <<BLHA config: blha particle string element: TBP>>
+  end type blha_particle_string_element_t
+
+@ %def blha_particle_string_element_t
 @
-This type encapsulates a BLHA request.
+<<BLHA config: blha particle string element: TBP>>=
+  generic :: init => init_default
+  generic :: init => init_polarized
+  procedure :: init_default => blha_particle_string_element_init_default
+  procedure :: init_polarized => blha_particle_string_element_init_polarized
+<<BLHA config: procedures>>=
+  subroutine blha_particle_string_element_init_default (blha_p, id)
+    class(blha_particle_string_element_t), intent(out) :: blha_p
+    integer, intent(in) :: id
+    blha_p%pdg = id
+  end subroutine blha_particle_string_element_init_default
+
+@ %def blha_particle_string_element_init_default
+@
+<<BLHA config: procedures>>=
+  subroutine blha_particle_string_element_init_polarized (blha_p, id, hel)
+    class(blha_particle_string_element_t), intent(out) :: blha_p
+    integer, intent(in) :: id, hel
+    blha_p%polarized = .true.
+    blha_p%pdg = id
+    blha_p%hel = hel
+  end subroutine blha_particle_string_element_init_polarized
+
+@ %def blha_particle_string_element_init_polarized
+@
+<<BLHA config: blha particle string element: TBP>>=
+  generic :: write_pdg => write_pdg_unit
+  generic :: write_pdg => write_pdg_character
+  procedure :: write_pdg_unit => blha_particle_string_element_write_pdg_unit
+  procedure :: write_pdg_character &
+     => blha_particle_string_element_write_pdg_character
+<<BLHA config: procedures>>=
+  subroutine blha_particle_string_element_write_pdg_unit (blha_p, unit)
+    class(blha_particle_string_element_t), intent(in) :: blha_p
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, '(I3)') blha_p%pdg
+  end subroutine blha_particle_string_element_write_pdg_unit
+
+@ %def blha_particle_string_element_write_pdg_unit
+@
+<<BLHA config: procedures>>=
+  subroutine blha_particle_string_element_write_pdg_character (blha_p, c)
+    class(blha_particle_string_element_t), intent(in) :: blha_p
+    character(3), intent(inout) :: c
+    write (c, '(I3)') blha_p%pdg
+  end subroutine blha_particle_string_element_write_pdg_character
+
+@ %def blha_particle_string_element_write_pdg_character 
+@
+<<BLHA config: blha particle string element: TBP>>=
+  generic :: write_helicity => write_helicity_unit
+  generic :: write_helicity => write_helicity_character
+  procedure :: write_helicity_unit &
+     => blha_particle_string_element_write_helicity_unit
+  procedure :: write_helicity_character &
+     => blha_particle_string_element_write_helicity_character
+<<BLHA config: procedures>>=
+  subroutine blha_particle_string_element_write_helicity_unit (blha_p, unit)
+    class(blha_particle_string_element_t), intent(in) :: blha_p
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, '(A1,I1,A1)') '(', blha_p%hel, ')'
+  end subroutine blha_particle_string_element_write_helicity_unit
+
+@ %def blha_particle_string_element_write_helicity_unit
+@ 
+<<BLHA config: procedures>>=
+  subroutine blha_particle_string_element_write_helicity_character (blha_p, c)
+    class(blha_particle_string_element_t), intent(in) :: blha_p
+    character(3), intent(inout) :: c
+    write (c, '(A1,I1,A1)') '(', blha_p%hel, ')'
+  end subroutine blha_particle_string_element_write_helicity_character
+
+@ %def blha_particle_string_element_write_helicity_character
+@ This type encapsulates a BLHA request.
 <<BLHA config: public>>=
   public :: blha_configuration_t
   public :: blha_cfg_process_node_t
 <<BLHA config: types>>=
   type :: blha_cfg_process_node_t
-     integer, dimension(:), allocatable :: pdg_in, pdg_out
+     type(blha_particle_string_element_t), dimension(:), allocatable :: pdg_in, pdg_out
      integer, dimension(:), allocatable :: fingerprint
      integer :: nsub
      integer, dimension(:), allocatable :: ids
@@ -1897,8 +1991,8 @@ Create an array of massive particle indices, to be used by the
                        "No processes allocated!")
     end if
     do
-       call check_pdg_list (current_process%pdg_in)
-       call check_pdg_list (current_process%pdg_out)
+       call check_pdg_list (current_process%pdg_in%pdg)
+       call check_pdg_list (current_process%pdg_out%pdg)
        if (k > max_particles) &
           call msg_fatal ("BLHA, massive particles: " // &
                           "Max. number of particles exceeded!")
@@ -1983,11 +2077,17 @@ eliminates any duplicates.
           allocate (node%ids(size (ids)))
           node%ids = ids
        end if
-       forall (j=1:size(ilist_i)) &
-          node%pdg_in(j) = ilist_i(j)%i(i_in(j))
-       forall (j=1:size(ilist_o)) &
-          node%pdg_out(j) = ilist_o(j)%i(i_out(j))
-       node%fingerprint = [ node%pdg_in, sort (node%pdg_out) ]
+       do j = 1, size (ilist_i)
+          call node%pdg_in(j)%init (ilist_i(j)%i(i_in(j)))
+       end do
+       do j = 1, size (ilist_o)
+          call node%pdg_out(j)%init (ilist_o(j)%i(i_out(j)))
+       end do
+       !forall (j=1:size(ilist_i)) &
+       !   node%pdg_in(j) = ilist_i(j)%i(i_in(j))
+       !forall (j=1:size(ilist_o)) &
+       !   node%pdg_out(j) = ilist_o(j)%i(i_out(j))
+       node%fingerprint = [ node%pdg_in%pdg, sort (node%pdg_out%pdg) ]
        nproc = nproc + 1
        inc = .false.
        ! ... and increment the multiindex
@@ -2076,8 +2176,10 @@ eliminates any duplicates.
        do i_process = 1, flavor(i_flv)%flv_mult
           pdg_in = flavor_state (1:n_in)
           pdg_out = flavor_state (n_in+1:)
-          current_node%pdg_in = pdg_in
-          current_node%pdg_out = pdg_out
+          allocate (current_node%pdg_in (size (pdg_in)))
+          allocate (current_node%pdg_out (size (pdg_out)))
+          current_node%pdg_in%pdg = pdg_in
+          current_node%pdg_out%pdg = pdg_out
           current_node%amplitude_type = amp_type (proc_offset+i_process)
           if (proc_offset+i_process /= n_proc_tot) then
             allocate (current_node%next)
@@ -2222,7 +2324,7 @@ Write the BLHA file. Internal mode is intented for md5summing only.
     type(string_t) :: buf
     type(blha_cfg_process_node_t), pointer :: node
     integer :: i
-    character(3) :: pdg_char
+    character(3) :: pdg_char, hel_char
     character(6) :: accuracy
     character(len=25), parameter :: pad = ""
     integer, dimension(:), allocatable :: i_massive
@@ -2381,12 +2483,19 @@ Write the BLHA file. Internal mode is intented for md5summing only.
    
           buf = ""
           do i = 1, size (node%pdg_in)
-             write (pdg_char,'(I3)') node%pdg_in(i)
-             buf = (buf // pdg_char) // " "
+             !!!write (pdg_char,'(I3)') node%pdg_in(i)
+             call node%pdg_in(i)%write_pdg (pdg_char)
+             if (node%pdg_in(i)%polarized) then
+                call node%pdg_in(i)%write_helicity (hel_char)
+                buf = (buf // pdg_char // hel_char) // " "
+             else
+                buf = (buf // pdg_char) // " "
+             end if
           end do
           buf = buf // "-> "
           do i = 1, size (node%pdg_out)
-             write (pdg_char,'(I3)') node%pdg_out(i)
+             !!!write (pdg_char,'(I3)') node%pdg_out(i)
+             call node%pdg_out(i)%write_pdg (pdg_char)
              buf = (buf // pdg_char) // " "
           end do
           write (u,'(A)') char (trim (buf))
