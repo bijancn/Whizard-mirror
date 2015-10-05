@@ -190,7 +190,11 @@ module Fortran =
       printf "                  s**2/cmplx(s-m(1)**2,m(1)*wkm(1),default) "; nl ();
       printf "      end if"; nl ();
       printf "      !!! Scalar isoquintet"; nl ();
-      printf "      a00(2) = -5*cc(2)**2 * s0stu(s,m(2))/12.0_default"; nl ();
+      printf "      a00(2) = -7*cc(2)**2 * s0stu(s,m(2))/8.0_default"; nl ();
+      printf "      if (cc(2) /= 0) then"; nl ();
+      printf "        a00(2) = a00(2) - 1/16.0_default *cc(2)**2 * &"; nl (); 
+      printf "                  s**2/cmplx(s-m(2)**2,m(2)*wkm(2),default) "; nl ();
+      printf "      end if"; nl ();
       printf "      !!! Vector isotriplet"; nl ();
       printf "      a00(3) = -cc(3)**2*(4*p0stu(s,m(3)) + 6*s/m(3)**2)"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();
@@ -234,7 +238,7 @@ module Fortran =
       printf "          amp_00 = - a00_a - a00_f - part_r * (sum(a00) - a00(3)) &"; nl ();
       printf "            + 1/(real(1/amp_00,default)-ii)"; nl();
       printf "      !!! Validation !!!"; nl ();
-      printf "      !!!    amp_00 = - a00_a - a00_f - part_r * (sum(a00) - a00(3))"; nl();
+      printf "      !!! amp_00 = - a00_a - a00_f - part_r * (sum(a00) - a00(3))"; nl();
       printf "        end if"; nl ();
       printf "      else"; nl ();
       printf "        amp_00 = (1-part_r) * sum(a00) + part_r * a00(3)"; nl ();
@@ -264,7 +268,7 @@ module Fortran =
       printf "      !!! Scalar  isosinglet"; nl ();
       printf "      a02(1) = -cc(1)**2/2.0_default * s2stu(s,m(1))"; nl ();
       printf "      !!! Scalar isoquintet"; nl ();
-      printf "      a02(2) = -5*cc(2)**2 * s2stu(s,m(2)) / 12.0_default"; nl ();
+      printf "      a02(2) = -7*cc(2)**2 * s2stu(s,m(2)) / 8.0_default"; nl ();
       printf "      !!! Vector isotriplet"; nl (); 
       printf "      a02(3) = -4*cc(3)**2*(2*s+m(3)**2)*s2stu(s,m(3))/m(3)**4"; nl ();
       printf "      !!! Tensor isosinglet"; nl (); 
@@ -338,7 +342,7 @@ module Fortran =
       printf "      !!! Scalar isosinglet"; nl ();
       printf "      a11(1) = - cc(1)**2/2.0_default * s1stu(s,m(1))"; nl ();
       printf "      !!! Scalar isoquintet"; nl ();
-      printf "      a11(2) = 5*cc(2)**2 * s1stu(s,m(2)) / 24.0_default"; nl ();
+      printf "      a11(2) = 3*cc(2)**2 * s1stu(s,m(2)) / 8.0_default"; nl ();
       printf "      !!! Vector isotriplet"; nl ();
       printf "      a11(3) = - cc(3)**2 * &"; nl ();
       printf "                 (s/m(3)**2 + 2 * p1stu(s,m(3)))"; nl ();
@@ -406,9 +410,9 @@ module Fortran =
       printf "      !!! Longitudinal"; nl ();
       printf "      a20(1) = -cc(1)**2/2.0_default * s0stu(s,m(1))"; nl ();
       printf "      !!! Scalar isoquintet"; nl ();
-      printf "      a20(2) = - cc(2)**2 * s0stu(s,m(2)) /24.0_default"; nl ();
+      printf "      a20(2) = - cc(2)**2 * s0stu(s,m(2)) /8.0_default"; nl ();
       printf "      if (cc(2) /= 0) then"; nl ();
-      printf "        a20(2) = a20(2) - cc(2)**2 /8.0_default *&"; nl (); 
+      printf "        a20(2) = a20(2) - cc(2)**2 /4.0_default *&"; nl (); 
       printf "                 s**2/cmplx(s-m(2)**2,m(2)*wkm(2),default)"; nl ();
       printf "      end if"; nl ();
       printf "      !!! Vector isotriplet"; nl ();
@@ -475,7 +479,7 @@ module Fortran =
       printf "      !!! Scalar isosinglet"; nl ();
       printf "      a22(1) = - cc(1)**2/2.0_default * s2stu(s,m(1))"; nl ();
       printf "      !!! Scalar isoquintet"; nl ();
-      printf "      a22(2) = - cc(2)**2 * s2stu(s,m(2))/ 24.0_default"; nl ();
+      printf "      a22(2) = - cc(2)**2 * s2stu(s,m(2))/ 8.0_default"; nl ();
       printf "      !!! Vector triplet"; nl ();
       printf "      a22(3) = 2*cc(3)**2*(2*s+m(3)**2)*s2stu(s,m(3))/m(3)**4"; nl ();
       printf "      !!! Tensor isosinglet"; nl ();

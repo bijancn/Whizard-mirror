@@ -43,6 +43,7 @@ module parameters_ssc_2
        iqw, igzww, igwww, gw4, gzzww, gazww, gaaww, &
        gszz, gszzt, gsww, gswwt, gssww, gsszz, &
        gpnww, gpnzz, gpwz, gpww, &
+       gpsnww, gpsnzz, gpsnhh, &
        gfww, gfzz, gfwwt, gfzzt, &
        gcf, gfwwcf, gfzzcf, &
        gtnww, gtnzz, gtwz, gtww, &
@@ -246,6 +247,8 @@ contains
     width(47) = par%wkm_p
     mass(48) = par%mkm_p
     width(48) = par%wkm_p
+    mass(49) = par%mkm_p
+    width(49) = par%wkm_p
     mass(52) = par%mkm_f
     width(52) = par%wkm_f
     mass(53) = par%mkm_t
@@ -360,10 +363,13 @@ contains
     gshh = - gkm(1) * gkm(14)
     gswwt = gkm(6) * g**3 / mass(24) / (16.0 * PI) 
     gszzt = gkm(6) * g**3 / costhw**3 / mass(23) /(16.0 * PI)
-    gpnww = - gkm(2) * mass(24) ** 2 / sqrt(12.0_default)
-    gpnzz = gkm(2) * mass(23) ** 2  / sqrt(3.0_default)
-    gpwz = gkm(2) * mass(23) ** 2  / 2.0_default
-    gpww = gkm(2) * mass(24) ** 2  / sqrt(2.0_default)
+    gpnww = - gkm(2) * mass(24) ** 2 / sqrt(6.0_default)
+    gpnzz = gkm(2) * mass(23) ** 2  * 2.0_default / sqrt(6.0_default)
+    gpsnww = gkm(2) * mass(24) ** 2 / sqrt(12.0_default)
+    gpsnzz = gkm(2) * mass(23) ** 2  / sqrt(12.0_default)
+    gpsnhh = gkm(2) * gkm(14) * sqrt(3.0_default)/ 2.0_default
+    gpwz = gkm(2) * mass(23) * mass(24)  / sqrt(2.0_default)
+    gpww = gkm(2) * mass(24) ** 2  
     gfww = gkm(4) * mass(24) ** 2  / 2.0_default
     gfwwcf = gfww * gcf
     gfzz = gkm(4) * mass(23) ** 2 / 2.0_default
