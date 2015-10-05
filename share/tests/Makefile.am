@@ -494,6 +494,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/hepmc_interface_1.ref \
     unit_tests/ref-output/lcio_interface_1.ref \
     unit_tests/ref-output/blha_1.ref \
+    unit_tests/ref-output/blha_3.ref \
     functional_tests/ref-output/structure_1.ref \
     functional_tests/ref-output/structure_2.ref \
     functional_tests/ref-output/structure_3.ref \
