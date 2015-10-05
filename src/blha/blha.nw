@@ -1189,6 +1189,7 @@ module blha_config
   use syntax_rules
   use ifiles
 
+  use beam_structures, only: beam_structure_t
   use fks_regions, only: flv_structure_t
 
 <<Standard module head>>
@@ -1489,9 +1490,10 @@ This types control the creation of BLHA-interface files
   type :: blha_master_t
     integer, dimension(4) :: blha_mode
     integer :: n_in, n_out
+    logical :: compute_borns = .false.
+    logical :: compute_real_trees = .false.
     logical :: compute_loops = .true.
     logical :: compute_correlations = .false.
-    logical :: compute_real_trees = .false.
     integer :: alpha_power, alphas_power
     type(string_t) :: basename
     type(string_t), dimension(:), allocatable :: suffix
@@ -1504,19 +1506,46 @@ This types control the creation of BLHA-interface files
 @ %def blha_flv_state_t, blha_master_t
 @ Master-Routines
 <<BLHA config: blha master: TBP>>=
+  procedure :: set_methods => blha_master_set_methods
+<<BLHA config: procedures>>=
+  subroutine blha_master_set_methods (master, cmp_born, &
+     cmp_real, cmp_loop, cmp_corr)
+    class(blha_master_t), intent(inout) :: master
+    logical, intent(in) :: cmp_born, cmp_loop, cmp_corr, cmp_real
+    master%n_files = count ([cmp_born, cmp_real, cmp_loop, cmp_corr])
+    master%compute_borns = cmp_born
+    master%compute_real_trees = cmp_real
+    master%compute_loops = cmp_loop
+    master%compute_correlations = cmp_corr
+  end subroutine blha_master_set_methods
+
+@ %def blha_master_set_methods
+@
+<<BLHA config: blha master: TBP>>=
+  procedure :: allocate_config_files => blha_master_allocate_config_files
+<<BLHA config: procedures>>=
+  subroutine blha_master_allocate_config_files (master)
+    class(blha_master_t), intent(inout) :: master
+    allocate (master%blha_cfg (master%n_files))
+    allocate (master%suffix (master%n_files))
+  end subroutine blha_master_allocate_config_files
+
+@ %def blha_master_allocate_config_files
+@
+<<BLHA config: blha master: TBP>>=
   procedure :: init => blha_master_init 
 <<BLHA config: procedures>>=
   subroutine blha_master_init (master, basename, model, &
                                n_in, n_out, &
-                               cmp_borns, cmp_loops, &
-                               cmp_corr, cmp_real, &
+                               !cmp_borns, cmp_loops, &
+                               !cmp_corr, cmp_real, &
                                alpha_power, alphas_power, &
                                flv_born, flv_real)
     class(blha_master_t), intent(inout) :: master
     type(string_t), intent(in) :: basename
     class(model_data_t), intent(in), target :: model
     integer, intent(in) :: n_in, n_out
-    logical, intent(in) :: cmp_borns, cmp_loops, cmp_corr, cmp_real
+    !logical, intent(in) :: cmp_borns, cmp_loops, cmp_corr, cmp_real
     integer, intent(in) :: alpha_power, alphas_power
     integer, dimension(:,:), allocatable, intent(in) :: &
                              flv_born, flv_real
@@ -1527,23 +1556,18 @@ This types control the creation of BLHA-interface files
     integer, dimension(:), allocatable :: amp_type
     integer :: n_flv_born 
 
+    if (master%n_files < 1) &
+       call msg_fatal ("Attempting to generate OLP-files, but none are specified!")
     n_proc = 0; n_flv = 1; n_proc_real = 0
     n_flv_born = size (flv_born, 2)
-    master%compute_real_trees = cmp_real
-    if (cmp_borns) master%n_files = master%n_files+1
-    if (cmp_loops) master%n_files = master%n_files+1
-    if (cmp_corr) master%n_files = master%n_files+1
-    if (cmp_real) then
+    if (master%compute_real_trees) then
        if (allocated (flv_real)) then
-         master%n_files = master%n_files+1
          n_proc_real = size (flv_real, 2)
          n_flv = n_flv + n_proc_real
        end if
     end if
-    allocate (master%blha_cfg (master%n_files))
-    allocate (master%suffix (master%n_files))
     i_file = 1          
-    if (cmp_loops) then
+    if (master%compute_loops) then
        if (allocated (flv_born)) then
           allocate (blha_flavor (size (flv_born, 2)))
           do i_flv = 1, size (flv_born, 2)
@@ -1561,7 +1585,7 @@ This types control the creation of BLHA-interface files
         end if
     end if
     if (allocated (blha_flavor)) deallocate (blha_flavor)
-    if (cmp_corr) then
+    if (master%compute_correlations) then
        if (allocated (flv_born)) then
           allocate (blha_flavor (size (flv_born, 2)))
           do i_flv = 1, size (flv_born, 2)
@@ -1579,7 +1603,7 @@ This types control the creation of BLHA-interface files
        end if
     end if
     if (allocated (blha_flavor)) deallocate (blha_flavor)
-    if (cmp_real) then
+    if (master%compute_real_trees) then
        if (allocated (flv_real)) then
           allocate (blha_flavor (size (flv_real, 2)))
           do i_flv = 1, size (flv_real, 2)
@@ -1597,7 +1621,7 @@ This types control the creation of BLHA-interface files
        end if
     end if
     if (allocated (blha_flavor)) deallocate (blha_flavor)
-    if (cmp_borns) then
+    if (master%compute_borns) then
        if (allocated (flv_born)) then
           allocate (blha_flavor (n_flv_born))
           do i_flv = 1, n_flv_born
@@ -1617,16 +1641,37 @@ This types control the creation of BLHA-interface files
 <<BLHA config: blha master: TBP>>=
   procedure :: setup_additional_features => blha_master_setup_additional_features
 <<BLHA config: procedures>>=
-  subroutine blha_master_setup_additional_features (master, phs_tolerance)
+  subroutine blha_master_setup_additional_features (master, phs_tolerance, beam_structure)
      class(blha_master_t), intent(inout) :: master
      integer, intent(in) :: phs_tolerance
+     type(beam_structure_t), intent(in), optional :: beam_structure
      integer :: i_file
+     logical :: polarized
+     
+     polarized = .false.
+     if (present (beam_structure)) polarized = beam_structure%has_polarized_beams ()
+
      if (phs_tolerance > 0) then
         do i_file = 1, master%n_files
-           if (master%blha_mode(i_file) == BLHA_MODE_OPENLOOPS) &
+           select case (master%blha_mode(i_file))
+           case (BLHA_MODE_GOSAM)
+              if (polarized) &
+                 call gosam_error_message () 
+           case (BLHA_MODE_OPENLOOPS)
               master%blha_cfg(i_file)%openloops_phs_tolerance = phs_tolerance
+              master%blha_cfg(i_file)%polarized = polarized
+           end select
         end do
      end if
+  contains
+     subroutine gosam_error_message ()
+        type(string_t) :: message
+        message = "You are trying to evaluate a process at NLO " &
+           // "which involves polarized beams using GoSam. " &
+           // "This feature is not supported yet. " &
+           // "Please use OpenLoops instead"
+        call msg_fatal (char (message))
+     end subroutine gosam_error_message
   end subroutine blha_master_setup_additional_features
 
 @ %def blha_master_setup_additional_features
@@ -2196,9 +2241,15 @@ eliminates any duplicates.
        do i_process = 1, flavor(i_flv)%flv_mult
           pdg_in = flavor_state (1:n_in)
           pdg_out = flavor_state (n_in+1:)
-          if (cfg%polarized .and. cfg%mode == BLHA_MODE_OPENLOOPS) then
-              call allocate_and_init_pdg_and_helicities (current_node, &
-                 pdg_in, pdg_out, amp_type (proc_offset+i_process))
+          if (cfg%polarized) then
+             select case (cfg%mode)
+             case (BLHA_MODE_OPENLOOPS)
+                call allocate_and_init_pdg_and_helicities (current_node, &
+                   pdg_in, pdg_out, amp_type (proc_offset+i_process))
+             case (BLHA_MODE_GOSAM)
+                !!! Nothing special for GoSam yet. This exception is already caught
+                !!! in blha_master_setup_additional_features
+             end select
           else
              call allocate_and_init_pdg (current_node, pdg_in, pdg_out, &
                 amp_type (proc_offset+i_process)) 
@@ -3421,8 +3472,11 @@ end module blha_uti
     do i = 1, 4
        call blha_master%set_gosam (i)
     end do 
-    call blha_master%init (proc_id, model, n_in, n_out, .true., .true., &
-       .true., .true., alpha_power, alphas_power, flv_born, flv_real) 
+
+    call blha_master%set_methods (.true., .true., .true., .true.)
+    call blha_master%allocate_config_files ()
+    call blha_master%init (proc_id, model, n_in, n_out, &
+       alpha_power, alphas_power, flv_born, flv_real) 
      
     do i = 1, 4
        call write_separator(u)
@@ -3439,8 +3493,10 @@ end module blha_uti
        call blha_master%set_openloops (i)
     end do
 
-    call blha_master%init (proc_id, model, n_in, n_out, .true., .true., &
-       .true., .true., alpha_power, alphas_power, flv_born, flv_real)
+    call blha_master%set_methods (.true., .true., .true., .true.)
+    call blha_master%allocate_config_files ()
+    call blha_master%init (proc_id, model, n_in, n_out, &
+       alpha_power, alphas_power, flv_born, flv_real)
 
     if (yorn) then
        do i = 1, 4
