@@ -41,6 +41,7 @@ module parameters_alth
        iqw, igzww, igwww, gw4, gzzww, gazww, gaaww, &
        gszz, gszzt, gsww, gswwt, gssww, gsszz, &
        gpnww, gpnzz, gpwz, gpww, &
+       gpsnww, gpsnzz, gpsnhh, &
        gfww, gfzz, gfwwt, gfzzt, &
        gtnww, gtnzz, gtwz, gtww
   real(default), public :: vev
@@ -229,6 +230,8 @@ contains
     width(47) = par%wkm_p
     mass(48) = par%mkm_p
     width(48) = par%wkm_p
+    mass(49) = par%mkm_p
+    width(49) = par%wkm_p
     mass(52) = par%mkm_f
     width(52) = par%wkm_f
     mass(53) = par%mkm_t
@@ -326,6 +329,9 @@ contains
     gszzt = gkm(6) * g**3 / costhw**3 / mass(23) /(16.0 * PI)
     gpnww = - gkm(2) * mass(24) * g / 2 / sqrt(3.0_default)
     gpnzz = gkm(2) * mass(23) * g / costhw  / sqrt(3.0_default)
+    gpsnww = 0
+    gpsnzz = 0
+    gpsnhh = 0
     gpwz = gkm(2) * mass(23) * g / 2
     gpww = gkm(2) * mass(24) * g / sqrt(2.0_default)
     gfww = gkm(4) * mass(24) * g / 2

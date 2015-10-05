@@ -1,4 +1,4 @@
-(* $Id: modellib_BSM.ml 6943 2015-05-01 10:53:21Z msekulla $
+(* $Id: modellib_BSM.ml 7305 2015-10-03 12:32:42Z msekulla $
 
    Copyright (C) 1999-2015 by
 
@@ -25,8 +25,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_BSM" ["BSM Models"]
-    { RCS.revision = "$Revision: 6943 $";
-      RCS.date = "$Date: 2015-05-01 12:53:21 +0200 (Fri, 01 May 2015) $";
+    { RCS.revision = "$Revision: 7305 $";
+      RCS.date = "$Date: 2015-10-03 14:32:42 +0200 (Sat, 03 Oct 2015) $";
       RCS.author = "$Author: msekulla $";
       RCS.source
         = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_BSM.ml $" }
@@ -8124,7 +8124,7 @@ module SSC (Flags : SSC_flags) =
     type matter_field = L of int | N of int | U of int | D of int
     type gauge_boson = Ga | Wp | Wm | Z | Gl
     type other = Phip | Phim | Phi0 | H
-                 | Rsigma | Rphin | Rphip | Rphim | Rphipp | Rphimm 
+                 | Rsigma | Rphin | Rphisn | Rphip | Rphim | Rphipp | Rphimm 
                  | Rf | Rtn | Rtp | Rtm | Rtpp | Rtmm 
                  | Aux_top of int*int*int*bool*f_aux_top    (*i lorentz*color*charge*top-side*flavor *)
     type flavor = M of matter_field | G of gauge_boson | O of other
@@ -8163,7 +8163,7 @@ module SSC (Flags : SSC_flags) =
         "3rd Generation", ThoList.flatmap family [3; -3];
         "Gauge Bosons", List.map gauge_boson [Ga; Z; Wp; Wm; Gl];
         "Higgs", List.map other [H];
-	"Scalar Resonances", List.map other [Rsigma; Rphin; Rphip; Rphim; Rphipp; Rphimm];
+	"Scalar Resonances", List.map other [Rsigma; Rphin; Rphisn; Rphip; Rphim; Rphipp; Rphimm];
 	"Tensor Resonances", List.map other [Rf; Rtn; Rtp; Rtm; Rtpp; Rtmm];
         "Goldstone Bosons", List.map other [Phip; Phim; Phi0] ]
 
@@ -8237,7 +8237,7 @@ module SSC (Flags : SSC_flags) =
           begin match f with
           | Phip | Phim | Phi0 -> Only_Insertion
           | H | Rsigma -> Prop_Scalar
-          | Rphin | Rphip | Rphim | Rphipp | Rphimm -> Prop_Scalar
+          | Rphin | Rphisn | Rphip | Rphim | Rphipp | Rphimm -> Prop_Scalar
           | Rf -> Prop_Tensor_2
           | Rtn | Rtp | Rtm | Rtpp | Rtmm -> Prop_Tensor_2
           | Aux_top (l,_,_,_,_) -> prop_aux l
@@ -8279,7 +8279,7 @@ module SSC (Flags : SSC_flags) =
           O (begin match f with
           | Phip -> Phim | Phim -> Phip | Phi0 -> Phi0
           | H -> H |  Rsigma -> Rsigma
-          | Rphin -> Rphin | Rphip -> Rphim | Rphim -> Rphip
+          | Rphin -> Rphin | Rphisn-> Rphisn | Rphip -> Rphim | Rphim -> Rphip
           | Rphipp -> Rphimm | Rphimm -> Rphipp
           | Rf -> Rf
           | Rtn -> Rtn | Rtp -> Rtm | Rtm -> Rtp
@@ -8340,7 +8340,7 @@ module SSC (Flags : SSC_flags) =
           end
       | O f ->
           begin match f with
-          | H | Rsigma | Phi0 | Rphin | Rf | Rtn ->  0//1
+          | H | Rsigma | Phi0 | Rphin | Rphisn | Rf | Rtn ->  0//1
           | Phip | Rphip | Rtp ->  1//1
           | Phim | Rphim | Rtm -> -1//1
           | Rphipp | Rtpp ->  2//1
@@ -8418,6 +8418,7 @@ module SSC (Flags : SSC_flags) =
       | G_SWW | G_SWW_T | G_SSWW | G_SZZ 
       | G_SZZ_T | G_SSZZ | G_SHH
       | G_PNWW | G_PNZZ | G_PWZ | G_PWW
+      | G_PSNWW | G_PSNZZ | G_PSNHH
       | G_FWW | G_FZZ | G_FWW_CF | G_FZZ_CF 
       | G_FWW_T | G_FZZ_T | G_FHH | G_FHH_CF
       | G_TNWW | G_TNZZ | G_TWZ | G_TWW
@@ -9254,10 +9255,15 @@ i*)
     let rphi3 =
       [ ((O Rphin, G Wp, G Wm), Scalar_Vector_Vector 1, G_PNWW);
         ((O Rphin, G Z, G Z), Scalar_Vector_Vector 1, G_PNZZ) ;
+        ((O Rphisn, G Wp, G Wm), Scalar_Vector_Vector 1, G_PSNWW);
+        ((O Rphisn, G Z, G Z), Scalar_Vector_Vector 1, G_PSNZZ) ;
         ((O Rphip, G Z, G Wm), Scalar_Vector_Vector 1, G_PWZ) ;
         ((O Rphipp, G Wm, G Wm), Scalar_Vector_Vector 1, G_PWW) ;
         ((O Rphim, G Wp, G Z), Scalar_Vector_Vector 1, G_PWZ) ;
         ((O Rphimm, G Wp, G Wp), Scalar_Vector_Vector 1, G_PWW) ]
+
+    let rphi3h =
+      [ ((O Rphisn, O H, O H), Dim5_Scalar_Scalar2 1, G_PSNHH) ]
 
 (* Tensor IsoScalar
 *)
@@ -9568,7 +9574,7 @@ effective operators:
 	    (rf3 @ rt3) ) @
        rf3t @ 
        ( if Flags.higgs_matrix then
-	    (rsigma3h @ rf3h )
+	    (rsigma3h @ rphi3h @ rf3h )
 	 else
 	    [] ) @
        anomalous_ttA @ anomalous_bbA @
@@ -9612,6 +9618,7 @@ effective operators:
       | "W+" -> G Wp | "W-" -> G Wm
       | "H" -> O H | "Rsigma" -> O Rsigma
       | "Rphi0" -> O Rphin
+      | "Rphis0" -> O Rphisn
       | "Rphi+" -> O Rphip |  "Rphi-" -> O Rphim
       | "Rphi++" -> O Rphip |  "Rphi--" -> O Rphimm
       | "Rf" -> O Rf
@@ -9672,7 +9679,8 @@ effective operators:
           begin match f with
           | Phip -> "phi+" | Phim -> "phi-" | Phi0 -> "phi0" 
           | H -> "H" | Rsigma -> "Rsigma"
-          | Rphin -> "Rphin" | Rphip -> "Rphi+" | Rphim -> "Rphi-"
+          | Rphin -> "Rphin"  | Rphisn -> "Rphisn"
+          | Rphip -> "Rphi+" | Rphim -> "Rphi-"
           | Rphipp -> "Rphi++" | Rphimm -> "Rphi--"
           | Rf -> "Rf"
           | Rtn -> "Rtn" | Rtp -> "Rt+" | Rtm -> "Rt-"
@@ -9721,6 +9729,7 @@ effective operators:
           | Phip -> "\\phi^+" | Phim -> "\\phi^-" | Phi0 -> "\\phi^0" 
           | H -> "H" | Rsigma -> "\\sigma"
           | Rphip -> "\\phi^+" | Rphim -> "\\phi^-" | Rphin -> "\\phi^0" 
+          | Rphisn -> "\\phi_s^0" 
           | Rphipp -> "\\phi^{++}" | Rphimm -> "\\phi^{--}"
           | Rf -> "f"
           | Rtp -> "t^+" | Rtm -> "t^-" | Rtn -> "t^0" 
@@ -9757,6 +9766,7 @@ effective operators:
           | Phip -> "pp" | Phim -> "pm" | Phi0 -> "p0" 
           | H -> "h" | Rsigma -> "rsi"
           | Rphip -> "rpp" | Rphim -> "rpm" | Rphin -> "rpn"
+          | Rphisn -> "rpsn"
           | Rphipp -> "rppp" | Rphimm -> "rpmm"
           | Rf -> "rf"
           | Rtp -> "rtp" | Rtm -> "rtm" | Rtn -> "rtn"
@@ -9796,6 +9806,7 @@ effective operators:
           | H -> 25 | Rsigma -> 45
           | Rphin -> 46 | Rphip | Rphim -> 47 
           | Rphipp | Rphimm -> 48
+          | Rphisn -> 49   
           | Rf -> 52
           | Rtn -> 53 | Rtp | Rtm -> 54 
           | Rtpp | Rtmm -> 55
@@ -9890,6 +9901,8 @@ effective operators:
       | G_SHH -> "gshh"
       | G_SWW_T -> "gswwt" | G_SZZ_T -> "gszzt"
       | G_PNWW -> "gpnww" | G_PNZZ -> "gpnzz"
+      | G_PSNWW -> "gpsnww" | G_PSNZZ -> "gpsnzz"
+      | G_PSNHH -> "gpsnhh"
       | G_PWZ -> "gpwz" | G_PWW -> "gpww"
       | G_FWW -> "gfww" | G_FZZ -> "gfzz"
       | G_FWW_CF -> "gfwwcf" | G_FZZ_CF -> "gfzzcf"
@@ -9944,7 +9957,7 @@ module SSC_AltT (Flags : SSC_flags) =
     type matter_field = L of int | N of int | U of int | D of int
     type gauge_boson = Ga | Wp | Wm | Z | Gl
     type other = Phip | Phim | Phi0 | H
-                 | Rsigma | Rphin | Rphip | Rphim | Rphipp | Rphimm 
+                 | Rsigma | Rphin | Rphisn | Rphip | Rphim | Rphipp | Rphimm 
                  | Rf | Rtn | Rtp | Rtm | Rtpp | Rtmm
                  | Rff | Rfv | Rfphi
                  | Aux_top of int*int*int*bool*f_aux_top    (*i lorentz*color*charge*top-side*flavor *)
@@ -9984,7 +9997,7 @@ module SSC_AltT (Flags : SSC_flags) =
         "3rd Generation", ThoList.flatmap family [3; -3];
         "Gauge Bosons", List.map gauge_boson [Ga; Z; Wp; Wm; Gl];
         "Higgs", List.map other [H];
-	"Scalar Resonances", List.map other [Rsigma; Rphin; Rphip; Rphim; Rphipp; Rphimm];
+	"Scalar Resonances", List.map other [Rsigma; Rphin; Rphisn; Rphip; Rphim; Rphipp; Rphimm];
 	"Tensor Resonances", List.map other [Rf; Rtn; Rtp; Rtm; Rtpp; Rtmm];
 	"Alternate Tensor", List.map other [Rff; Rfv; Rfphi];
         "Goldstone Bosons", List.map other [Phip; Phim; Phi0] ]
@@ -10061,7 +10074,7 @@ module SSC_AltT (Flags : SSC_flags) =
           begin match f with
           | Phip | Phim | Phi0 -> Only_Insertion
           | H | Rsigma -> Prop_Scalar
-          | Rphin | Rphip | Rphim | Rphipp | Rphimm -> Prop_Scalar
+          | Rphin | Rphisn  | Rphip | Rphim | Rphipp | Rphimm -> Prop_Scalar
           | Rf -> Prop_Tensor_2
 	  | Rff -> Prop_Tensor_pure
 	  | Rfv -> Prop_Vector_pure
@@ -10107,6 +10120,7 @@ module SSC_AltT (Flags : SSC_flags) =
           | Phip -> Phim | Phim -> Phip | Phi0 -> Phi0
           | H -> H |  Rsigma -> Rsigma
           | Rphin -> Rphin | Rphip -> Rphim | Rphim -> Rphip
+          | Rphisn -> Rphisn
           | Rphipp -> Rphimm | Rphimm -> Rphipp
           | Rf -> Rf
           | Rff -> Rff | Rfv -> Rfv | Rfphi -> Rfphi
@@ -10168,7 +10182,7 @@ module SSC_AltT (Flags : SSC_flags) =
           end
       | O f ->
           begin match f with
-          | H | Rsigma | Phi0 | Rphin | Rf | Rff | Rfv | Rfphi | Rtn ->  0//1
+          | H | Rsigma | Phi0 | Rphin | Rphisn | Rf | Rff | Rfv | Rfphi | Rtn ->  0//1
           | Phip | Rphip | Rtp ->  1//1
           | Phim | Rphim | Rtm -> -1//1
           | Rphipp | Rtpp ->  2//1
@@ -10246,6 +10260,7 @@ module SSC_AltT (Flags : SSC_flags) =
       | G_SWW | G_SWW_T | G_SSWW | G_SZZ 
       | G_SZZ_T | G_SSZZ | G_SHH
       | G_PNWW | G_PNZZ | G_PWZ | G_PWW
+      | G_PSNWW | G_PSNZZ | G_PSNHH
       | G_FWW | G_FZZ | G_FWW_CF | G_FZZ_CF 
       | G_FWW_T | G_FZZ_T | G_FHH | G_FHH_CF
       | G_FFWW | G_FFZZ | G_FFWW_CF | G_FFZZ_CF 
@@ -11087,10 +11102,15 @@ i*)
     let rphi3 =
       [ ((O Rphin, G Wp, G Wm), Scalar_Vector_Vector 1, G_PNWW);
         ((O Rphin, G Z, G Z), Scalar_Vector_Vector 1, G_PNZZ) ;
+        ((O Rphisn, G Wp, G Wm), Scalar_Vector_Vector 1, G_PSNWW);
+        ((O Rphisn, G Z, G Z), Scalar_Vector_Vector 1, G_PSNZZ) ;
         ((O Rphip, G Z, G Wm), Scalar_Vector_Vector 1, G_PWZ) ;
         ((O Rphipp, G Wm, G Wm), Scalar_Vector_Vector 1, G_PWW) ;
         ((O Rphim, G Wp, G Z), Scalar_Vector_Vector 1, G_PWZ) ;
         ((O Rphimm, G Wp, G Wp), Scalar_Vector_Vector 1, G_PWW) ]
+
+    let rphi3h =
+      [ ((O Rphisn, O H, O H), Dim5_Scalar_Scalar2 1, G_PSNHH) ]
 
 (* Tensor IsoScalar
 *)
@@ -11477,6 +11497,7 @@ effective operators:
       | "W+" -> G Wp | "W-" -> G Wm
       | "H" -> O H | "Rsigma" -> O Rsigma
       | "Rphi0" -> O Rphin
+      | "Rphis0" -> O Rphisn
       | "Rphi+" -> O Rphip |  "Rphi-" -> O Rphim
       | "Rphi++" -> O Rphip |  "Rphi--" -> O Rphimm
       | "Rf" -> O Rf
@@ -11542,6 +11563,7 @@ effective operators:
           | H -> "H" | Rsigma -> "Rsigma"
           | Rphin -> "Rphin" | Rphip -> "Rphi+" | Rphim -> "Rphi-"
           | Rphipp -> "Rphi++" | Rphimm -> "Rphi--"
+          | Rphisn -> "Rphisn"
           | Rf -> "Rf" 
           | Rff -> "Rff" | Rfv -> "Rfv" | Rfphi -> "Rfphi"
           | Rtn -> "Rtn" | Rtp -> "Rt+" | Rtm -> "Rt-"
@@ -11590,6 +11612,7 @@ effective operators:
           | Phip -> "\\phi^+" | Phim -> "\\phi^-" | Phi0 -> "\\phi^0" 
           | H -> "H" | Rsigma -> "\\sigma"
           | Rphip -> "\\phi^+" | Rphim -> "\\phi^-" | Rphin -> "\\phi^0" 
+          | Rphisn -> "\\phi_s^0" 
           | Rphipp -> "\\phi^{++}" | Rphimm -> "\\phi^{--}"
           | Rf -> "f"
           | Rff -> "f^f" | Rfv -> "f^v" | Rfphi -> "f^s"
@@ -11627,6 +11650,7 @@ effective operators:
           | Phip -> "pp" | Phim -> "pm" | Phi0 -> "p0" 
           | H -> "h" | Rsigma -> "rsi"
           | Rphip -> "rpp" | Rphim -> "rpm" | Rphin -> "rpn"
+          | Rphisn -> "rpsn"
           | Rphipp -> "rppp" | Rphimm -> "rpmm"
           | Rf -> "rf"
           | Rff -> "rff" | Rfv -> "rfv" | Rfphi -> "rfphi" 
@@ -11667,6 +11691,7 @@ effective operators:
           | H -> 25 | Rsigma -> 45
           | Rphin -> 46 | Rphip | Rphim -> 47 
           | Rphipp | Rphimm -> 48
+          | Rphisn -> 49
           | Rf -> 52
           | Rtn -> 53 | Rtp | Rtm -> 54 
           | Rtpp | Rtmm -> 55
@@ -11762,6 +11787,8 @@ effective operators:
       | G_SHH -> "gshh"
       | G_SWW_T -> "gswwt" | G_SZZ_T -> "gszzt"
       | G_PNWW -> "gpnww" | G_PNZZ -> "gpnzz"
+      | G_PSNWW -> "gpsnww" | G_PSNZZ -> "gpsnzz"
+      | G_PSNHH -> "gpsnhh"
       | G_PWZ -> "gpwz" | G_PWW -> "gpww"
       | G_FWW -> "gfww" | G_FZZ -> "gfzz"
       | G_FWW_CF -> "gfwwcf" | G_FZZ_CF -> "gfzzcf"
