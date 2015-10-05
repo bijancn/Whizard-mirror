@@ -1415,7 +1415,7 @@ of the particles. Note that the output can only be processed by OpenLoops.
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit)
-    write (u, '(A1,I1,A1)') '(', blha_p%hel, ')'
+    write (u, '(A1,I0,A1)') '(', blha_p%hel, ')'
   end subroutine blha_particle_string_element_write_helicity_unit
 
 @ %def blha_particle_string_element_write_helicity_unit
@@ -1423,8 +1423,8 @@ of the particles. Note that the output can only be processed by OpenLoops.
 <<BLHA config: procedures>>=
   subroutine blha_particle_string_element_write_helicity_character (blha_p, c)
     class(blha_particle_string_element_t), intent(in) :: blha_p
-    character(3), intent(inout) :: c
-    write (c, '(A1,I1,A1)') '(', blha_p%hel, ')'
+    character(4), intent(inout) :: c
+    write (c, '(A1,I0,A1)') '(', blha_p%hel, ')'
   end subroutine blha_particle_string_element_write_helicity_character
 
 @ %def blha_particle_string_element_write_helicity_character
@@ -1831,7 +1831,18 @@ This types control the creation of BLHA-interface files
 
 @ %def blha_master_generate
 @    
-Initializer.
+<<BLHA config: blha master: TBP>>=
+  procedure :: final => blha_master_final
+<<BLHA config: procedures>>=
+  subroutine blha_master_final (master)
+    class(blha_master_t), intent(inout) :: master
+    master%n_files = 0
+    deallocate (master%suffix)
+    deallocate (master%blha_cfg)
+  end subroutine blha_master_final
+
+@ %def blha_master_final
+@ Initializer.
 <<BLHA config: public>>=
   public :: blha_configuration_init
 <<BLHA config: procedures>>=
@@ -2083,10 +2094,6 @@ eliminates any duplicates.
        do j = 1, size (ilist_o)
           call node%pdg_out(j)%init (ilist_o(j)%i(i_out(j)))
        end do
-       !forall (j=1:size(ilist_i)) &
-       !   node%pdg_in(j) = ilist_i(j)%i(i_in(j))
-       !forall (j=1:size(ilist_o)) &
-       !   node%pdg_out(j) = ilist_o(j)%i(i_out(j))
        node%fingerprint = [ node%pdg_in%pdg, sort (node%pdg_out%pdg) ]
        nproc = nproc + 1
        inc = .false.
@@ -2161,6 +2168,7 @@ eliminates any duplicates.
     integer, dimension(:), allocatable :: pdg_in, pdg_out
     integer, dimension(:), allocatable :: flavor_state
     integer :: proc_offset, n_proc_tot
+    integer :: h1, h2
     proc_offset = 0; n_proc_tot = 0
     do i_flv = 1, size (flavor)
        n_proc_tot = n_proc_tot + flavor(i_flv)%flv_mult
@@ -2176,11 +2184,28 @@ eliminates any duplicates.
        do i_process = 1, flavor(i_flv)%flv_mult
           pdg_in = flavor_state (1:n_in)
           pdg_out = flavor_state (n_in+1:)
-          allocate (current_node%pdg_in (size (pdg_in)))
-          allocate (current_node%pdg_out (size (pdg_out)))
-          current_node%pdg_in%pdg = pdg_in
-          current_node%pdg_out%pdg = pdg_out
-          current_node%amplitude_type = amp_type (proc_offset+i_process)
+          print *, 'polarized: ', cfg%polarized
+          print *, 'Mode: ', cfg%mode
+          if (cfg%polarized .and. cfg%mode == BLHA_MODE_OPENLOOPS) then
+              do h1 = -1, 1
+                 do h2 = -1, 1
+                    if (h1 == 0 .or. h2 == 0) cycle
+                    call allocate_and_init_pdg (current_node, pdg_in, pdg_out, &
+                       amp_type (proc_offset+i_process)) 
+                    current_node%pdg_in(1)%polarized = .true.
+                    current_node%pdg_in(2)%polarized = .true.
+                    current_node%pdg_in(1)%hel = h1
+                    current_node%pdg_in(2)%hel = h2
+                    if (h1 + h2 /= 2) then
+                       allocate (current_node%next)
+                       current_node => current_node%next
+                    end if
+                 end do
+              end do
+          else
+             call allocate_and_init_pdg (current_node, pdg_in, pdg_out, &
+                amp_type (proc_offset+i_process)) 
+          end if
           if (proc_offset+i_process /= n_proc_tot) then
             allocate (current_node%next)
             current_node => current_node%next
@@ -2191,6 +2216,17 @@ eliminates any duplicates.
        deallocate (pdg_in, pdg_out)
        deallocate (flavor_state)
     end do
+  contains
+    subroutine allocate_and_init_pdg (node, pdg_in, pdg_out, amp_type)
+      type(blha_cfg_process_node_t), intent(inout), pointer :: node
+      integer, intent(in), dimension(:), allocatable :: pdg_in, pdg_out
+      integer :: amp_type
+      allocate (node%pdg_in (size (pdg_in)))
+      allocate (node%pdg_out (size (pdg_out)))
+      node%pdg_in%pdg = pdg_in
+      node%pdg_out%pdg = pdg_out
+      node%amplitude_type = amp_type  
+    end subroutine allocate_and_init_pdg
   end subroutine blha_configuration_append_processes
 
 @ %def blha_configuration_append_processes
@@ -2324,7 +2360,8 @@ Write the BLHA file. Internal mode is intented for md5summing only.
     type(string_t) :: buf
     type(blha_cfg_process_node_t), pointer :: node
     integer :: i
-    character(3) :: pdg_char, hel_char
+    character(3) :: pdg_char
+    character(4) :: hel_char
     character(6) :: accuracy
     character(len=25), parameter :: pad = ""
     integer, dimension(:), allocatable :: i_massive
@@ -3375,10 +3412,18 @@ end module blha_uti
 
     write (u, "(A)") "* Switch to OpenLoops"
     openloops_phs_tolerance = 7
+    call blha_master%final ()
+    
     do i = 1, 4
        call blha_master%set_openloops (i)
-       call blha_master%reset_olp_modes (i)
-       call blha_master%setup_additional_features (openloops_phs_tolerance)
+       !call blha_master%reset_olp_modes (i)
+    end do
+
+    call blha_master%init (proc_id, model, n_in, n_out, .true., .true., &
+       .true., .true., alpha_power, alphas_power, flv_born, flv_real)
+    call blha_master%setup_additional_features (openloops_phs_tolerance)
+
+    do i = 1, 4
        call write_separator(u)
        call write_component_type (i, u)
        call write_separator(u)
