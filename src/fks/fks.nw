@@ -2276,7 +2276,7 @@ depending on whether the particles involved in the radiation process are massive
     type(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: i_flv
     real(default), intent(in) :: alpha_s
-    type(vector4_t), intent(inout), dimension(:), allocatable :: p_born
+    type(vector4_t), intent(in), dimension(:)  :: p_born
     real(default), intent(in) :: born
     real(default), intent(in), dimension(:,:,:), allocatable :: b_ij
     integer :: i, j, alr
@@ -3169,7 +3169,7 @@ it is necessary to expand with $z$ once.
     type(isr_kinematics_t), pointer :: isr_kinematics => null()
     integer :: current_alr = 0
     real(default), dimension(:), pointer :: sqme_real_non_sub => null ()
-    real(default), dimension(:), pointer :: sqme_born => null ()
+    real(default), dimension(:,:), pointer :: sqme_born => null ()
     real(default), dimension(:,:,:), pointer :: sqme_born_cc => null ()
     complex(default), dimension(:), pointer :: sqme_born_sc => null()
     type(soft_subtraction_t) :: sub_soft
@@ -3423,7 +3423,7 @@ the corresponding jacobians.
        write (u,'(A,I3)') 'emitter: ', emitter
        write (u,'(A,F4.2)') 'xi_max: ', xi_max
        write (u,'(A,F4.2,2X,A,F4.2)') 'xi: ', xi, 'y: ', y
-       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn)
+       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn, 1)
        write (u,'(A,ES16.9)')  'sqme_real: ', sqme0
        write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
        write (u,'(A,ES16.9)')  'sqme_coll: ', sqme_coll
@@ -3542,7 +3542,7 @@ the corresponding jacobians.
        print *, 'xi: ', xi, 'y: ', y
        print *, 'phi: ', phi
        print *, 'xb1: ', rsub%isr_kinematics%x(1), 'xb2: ', rsub%isr_kinematics%x(2)
-       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn)
+       write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn, 1)
        write (u,'(A,ES16.9)')  'sqme_real: ', sqme0
        write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
        write (u,'(A,ES16.9)')  'sqme_coll_plus: ', sqme_coll_plus
@@ -3710,10 +3710,10 @@ the corresponding jacobians.
            sqme_sc = rsub%get_sc_matrix_element (alr, em, sregion%uborn_index)
           if (em <= 2) then
              call rsub%sub_coll%compute_isr (sregion, rsub%real_kinematics%p_born_lab, &
-                rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
+                rsub%sqme_born(sregion%uborn_index, 1), sqme_sc, xi, alpha_s, alr, em)
           else
              call rsub%sub_coll%compute_fsr (sregion, rsub%real_kinematics%p_born_cms, &
-                rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr)
+                rsub%sqme_born(sregion%uborn_index, 1), sqme_sc, xi, alpha_s, alr)
           end if
        else
           rsub%sub_coll%value(alr) = 0._default
@@ -3740,10 +3740,10 @@ the corresponding jacobians.
           sqme_sc = rsub%get_sc_matrix_element (alr, em, sregion%uborn_index)
           if (em <= 2) then
              call rsub%sub_coll%compute_soft_limit_isr (sregion, rsub%real_kinematics%p_born_lab, &
-                rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
+                rsub%sqme_born(sregion%uborn_index, 1), sqme_sc, xi, alpha_s, alr, em)
           else
              call rsub%sub_coll%compute_soft_limit_fsr (sregion, rsub%real_kinematics%p_born_cms, &
-                rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr)
+                rsub%sqme_born(sregion%uborn_index, 1), sqme_sc, xi, alpha_s, alr)
           end if
        else
           rsub%sub_coll%value_soft(alr) = 0._default
@@ -5142,8 +5142,8 @@ one to determine this.
     real(default), dimension(:,:,:), allocatable :: sqme_born_cc
     complex(default), dimension(:), allocatable :: sqme_born_sc
     real(default) :: sqme_real_sum
-    real(default), dimension(:), allocatable :: sqme_born_list
-    real(default), dimension(:), allocatable :: sqme_virt_list
+    real(default), dimension(:,:), allocatable :: sqme_born_list
+    real(default), dimension(:,:), allocatable :: sqme_virt_list
   contains
   <<nlo data: sqme collector: TBP>>
   end type sqme_collector_t
@@ -5173,11 +5173,16 @@ one to determine this.
 <<nlo data: sqme collector: TBP>>=
   procedure :: get_sqme_born => sqme_collector_get_sqme_born
 <<nlo data: procedures>>=
-  function sqme_collector_get_sqme_born (collector, i_flv) result (sqme)
+  function sqme_collector_get_sqme_born (collector, i_flv, i_hel) result (sqme)
     class(sqme_collector_t), intent(in) :: collector
     integer, intent(in) :: i_flv
+    integer, intent(in), optional :: i_hel
     real(default) :: sqme
-    sqme = collector%sqme_born_list (i_flv)
+    if (present (i_hel)) then
+       sqme = collector%sqme_born_list (i_flv, i_hel)
+    else
+       sqme = collector%sqme_born_list (i_flv, 1)
+    end if
   end function sqme_collector_get_sqme_born
 
 @ %def sqme_collector_get_sqme_born
@@ -5346,6 +5351,39 @@ process.
 @ %def nlo_controller_init_polarization_data       
 @
 <<nlo controller: nlo controller: TBP>>=
+  procedure :: beams_are_polarized => nlo_controller_beams_are_polarized 
+<<nlo controller: procedures>>=
+  elemental function nlo_controller_beams_are_polarized (nlo_controller) result (val)
+    logical :: val
+    class(nlo_controller_t), intent(in) :: nlo_controller
+    val = nlo_controller%pol_data%active
+  end function nlo_controller_beams_are_polarized
+
+@ %def nlo_controller_beams_are_polarized
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: get_weighted_helicity_sum => nlo_controller_get_weighted_helicity_sum
+<<nlo controller: procedures>>=
+  function nlo_controller_get_weighted_helicity_sum (nlo_controller) result (sqme)
+     real(default) :: sqme
+     class(nlo_controller_t), intent(in) :: nlo_controller
+     integer :: i_hel, i1, i2
+     real(default) :: factor
+     sqme = 0
+     do i2 = 1, 2
+        do i1 = 1, 2
+           i_hel = i1 + i2
+           associate (f => nlo_controller%pol_data%pol_frac)
+              factor = f(1,i1) * f(1,i2)
+              sqme = sqme + factor * sum (nlo_controller%sqme_collector%sqme_virt_list (:,i_hel))
+           end associate
+        end do
+     end do
+  end function nlo_controller_get_weighted_helicity_sum
+
+@ %def nlo_controller_get_weighted_helicity_sum
+@
+<<nlo controller: nlo controller: TBP>>=
   procedure :: set_flv_states => nlo_controller_set_flv_states
 <<nlo controller: procedures>>=
   subroutine nlo_controller_set_flv_states (nlo_controller, prc_constants)
@@ -5398,13 +5436,19 @@ process.
 <<nlo controller: nlo controller: TBP>>=
   procedure :: setup_matrix_elements => nlo_controller_setup_matrix_elements
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_setup_matrix_elements (nlo_controller)
+  subroutine nlo_controller_setup_matrix_elements (nlo_controller, n_hel)
     class(nlo_controller_t), intent(inout) :: nlo_controller
+    integer, intent(in), optional :: n_hel
     integer :: n_tot_born
     associate (collector => nlo_controller%sqme_collector, &
          particle_data => nlo_controller%particle_data)
-      allocate (collector%sqme_born_list (particle_data%n_flv_born))
-      allocate (collector%sqme_virt_list (particle_data%n_flv_born))
+      if (present (n_hel)) then
+         allocate (collector%sqme_born_list (particle_data%n_flv_born, n_hel))
+         allocate (collector%sqme_virt_list (particle_data%n_flv_born, n_hel))
+      else
+         allocate (collector%sqme_born_list (particle_data%n_flv_born, 1))
+         allocate (collector%sqme_virt_list (particle_data%n_flv_born, 1))
+      end if
       allocate (collector%sqme_real_non_sub (particle_data%n_flv_real))
       allocate (collector%sqme_real_per_emitter &
            (nlo_controller%reg_data%n_flv_real, &
@@ -5971,26 +6015,27 @@ process.
   procedure :: compute_virt => nlo_controller_compute_virt
 <<nlo controller: procedures>>=
   function nlo_controller_compute_virt &
-       (nlo_controller, i_flv, int_born) result(sqme_virt)
+       (nlo_controller, i_flv, i_hel, p_born) result(sqme_virt)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer, intent(in) :: i_flv
-    type(interaction_t), intent(in) :: int_born
+    integer, intent(in) :: i_flv, i_hel
+    !!!type(interaction_t), intent(in) :: int_born
+    type(vector4_t), intent(in), dimension(:) :: p_born
     real(default) :: sqme_virt
-    type(vector4_t), dimension(:), allocatable :: p_born
-    allocate (p_born (size (int_born%get_momenta ())))
-    p_born = int_born%get_momenta ()
+    !!!type(vector4_t), dimension(:), allocatable :: p_born
+    !!!allocate (p_born (size (int_born%get_momenta ())))
+    !!!p_born = int_born%get_momenta ()
     associate (collector => nlo_controller%sqme_collector)
        if (nlo_controller%use_internal_color_correlations) then
           call nlo_controller%virtual_terms%evaluate &
                (nlo_controller%reg_data, &
                i_flv, nlo_controller%alpha_s_born, &
-               p_born, collector%sqme_born_list (i_flv), &
+               p_born, collector%sqme_born_list (i_flv, i_hel), &
                nlo_controller%color_data%beta_ij)
        else
           call nlo_controller%virtual_terms%evaluate &
                (nlo_controller%reg_data, &
                i_flv, nlo_controller%alpha_s_born, &
-               p_born, collector%sqme_born_list (i_flv), &
+               p_born, collector%sqme_born_list (i_flv, i_hel), &
                collector%sqme_born_cc)
        end if
     end associate
@@ -8010,7 +8055,7 @@ end module pdf_subtraction
     integer, dimension(2) :: flv_in
     type(pdf_container_t), dimension(2) :: pdf_scaled
     type(pdf_container_t), dimension(2) :: pdf_born
-    real(default), dimension(:), pointer :: sqme_born => null ()
+    real(default), dimension(:,:), pointer :: sqme_born => null ()
     real(default), dimension(:), allocatable :: value
   contains
   <<pdf subtraction: pdf subtraction: TBP>>
