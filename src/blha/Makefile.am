@@ -33,8 +33,6 @@ check_LTLIBRARIES = libblha_ut.la
 
 libblha_la_SOURCES = \
   blha_config.f90 \
-  blha_interface.f90 \
-  blha_driver.f90 \
   blha_olp_interfaces.f90
 
 libblha_ut_la_SOURCES = \
