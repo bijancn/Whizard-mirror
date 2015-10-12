@@ -107,6 +107,8 @@ execmoddir = $(pkglibdir)/mod/models
 nodist_execmod_HEADERS = \
 	interpolation.$(FC_MODULE_EXT) \
 	nr_tools.$(FC_MODULE_EXT) \
+	nr.$(FC_MODULE_EXT) \
+	nrtype.$(FC_MODULE_EXT) \
 	ttv_formfactors.$(FC_MODULE_EXT)
 
 SUFFIXES = .lo .$(FC_MODULE_EXT)
