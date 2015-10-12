@@ -228,9 +228,6 @@ module @ID@_threshold
   data table_spin_states(:, 143) /  1,  1,  1,  1,  1, -1 /
   data table_spin_states(:, 144) /  1,  1,  1,  1,  1,  1 /
 
-  integer, dimension(n_prt,n_flv), save, protected :: table_flavor_states
-  data table_flavor_states(:,   1) /  11, -11,  24, -24,   5,  -5 / ! e- e+ W+ W- b bbar
-
   complex(default), dimension(n_hel), save, public :: amp_ff, &
        amp_A_v_tree, amp_A_v_blob, amp_Z_av_tree, amp_Z_av_blob
 
@@ -347,10 +344,12 @@ end subroutine threshold_init
 subroutine threshold_get_amp_squared (amp2, p) bind(C)
   use iso_c_binding
   use kinds
-  use opr_@ID@, sm_new_event => new_event
-  use opr_@ID@, sm_get_amplitude => get_amplitude
+  !use opr_@ID@, sm_new_event => new_event
+  !use opr_@ID@, sm_get_amplitude => get_amplitude
   use @ID@_threshold
   use parameters_sm_tt_threshold
+  use ttv_formfactors
+  use constants
   implicit none
   real(c_default_float), intent(out) :: amp2
   real(c_default_float), dimension(0:3,*), intent(in) :: p
@@ -373,6 +372,9 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
                  amp_Z_av_tree * conjg (amp_Z_av_blob) + &
                  amp_Z_av_blob * conjg (amp_A_v_tree) + &
                  amp_Z_av_blob * conjg (amp_Z_av_tree))
+  case (MATCHED)
+     !amp2_1 = zero ! - nonrel_expanded_formfactor (HARD, ps, i)
+     !amp2 = amp2_1 + amp2_2 + amp2_3
   case default
      !do hi = 1, n_hel
         !amp_sm = sm_get_amplitude (1, hi, 1)
