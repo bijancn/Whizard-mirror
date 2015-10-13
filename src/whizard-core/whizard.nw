@@ -8369,7 +8369,7 @@ applies to a single process.
     type(string_t) :: history_filename
     type(string_t) :: log_filename
     logical :: combined_integration = .false.
-    type(iteration_multipliers_t) :: it_multipliers
+    type(iteration_multipliers_t) :: iteration_multipliers
    contains
    <<Integrations: integration: TBP>> 
   end type integration_t
@@ -8827,7 +8827,7 @@ for each component, which is done by the subroutine [[integration_apply_multipli
     type(rt_data_t), intent(in) :: local
     integer :: n_pass, pass
     n_pass = local%it_list%get_n_pass ()
-    associate (it_multipliers => intg%it_multipliers)
+    associate (it_multipliers => intg%iteration_multipliers)
        allocate (it_multipliers%n_calls0 (n_pass))
        do pass = 1, n_pass
           it_multipliers%n_calls0(pass) = local%it_list%get_n_calls (pass)
@@ -8853,18 +8853,25 @@ for each component, which is done by the subroutine [[integration_apply_multipli
     integer :: nlo_type
     integer :: n_calls0, n_calls
     integer :: pass
+    real(default) :: multiplier
     nlo_type = intg%process%get_component_nlo_type (i_component)
-    if (nlo_type == BORN) return
     do pass = 1, n_pass
-       n_calls0 = intg%it_multipliers%n_calls0 (pass)
-       select case (nlo_type)
-       case (NLO_REAL)
-          n_calls = floor (intg%it_multipliers%mult_real * n_calls0)
-       case (NLO_VIRTUAL)
-          n_calls = floor (intg%it_multipliers%mult_virt * n_calls0)
-       case (NLO_PDF)
-          n_calls = floor (intg%it_multipliers%mult_pdf * n_calls0)
-       end select
+       n_calls0 = intg%iteration_multipliers%n_calls0 (pass)
+       associate (multipliers => intg%iteration_multipliers)
+          select case (nlo_type)
+          case (NLO_REAL)
+             multiplier = multipliers%mult_real
+          case (NLO_VIRTUAL)
+             multiplier = multipliers%mult_virt
+          case (NLO_PDF)
+             multiplier = multipliers%mult_pdf
+          case (NLO_THRESHOLD_RESUMMATION)
+             multiplier = multipliers%mult_threshold
+          case default
+             return
+          end select
+       end associate
+       n_calls = floor (multiplier * n_calls0)
        call it_list%set_n_calls (pass, n_calls)
     end do
   end subroutine integration_apply_call_multipliers
@@ -16991,6 +16998,9 @@ particle-specifier expression which we can process further.
             cmd%active_component = .true.
          case ('NLL_matched')
             cmd%active_component = .true.
+            global%nlo_threshold_matching = .true.
+         case ('NLL_only')
+            cmd%active_component(4) = .true.
             global%nlo_threshold_matching = .true.
          case default
             call msg_fatal ("Invalid NLO mode! &
