@@ -345,6 +345,7 @@ EXTRA_DIST += compare_driver_VM.sh compare_driver_VM_wrappers.sh
 EXTRA_DIST += comparisons_VM.list
 
 compare_amplitude_VM.f90: comparisons_VM.list comparisons_VM.wrappers.o
+	rm *.hbc
 	$(SHELL) $(srcdir)/compare_driver_VM.sh \
 	"$(OMEGA_XXX) " "$(OMEGA_XXX_VM) " "$(OMEGA_XXX_VM_PARAMS_OPTS)" < $< > $@
 
