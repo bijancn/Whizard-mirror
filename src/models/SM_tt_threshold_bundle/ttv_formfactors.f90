@@ -58,19 +58,25 @@ module ttv_formfactors
   !!! gam_m1s is only used for the scale nustar
   real(default) :: M1S, GAM, GAM_M1S
   integer :: NLOOP
-  real(default) :: MTPOLE = -1.0_default
+  real(default) :: MTPOLE = - one
   real(default) :: mtpole_init
-  real(default) :: H, MU_H, AH
-  real(default) :: MU_U, AU
+  real(default) :: RESCALE_H, MU_HARD, AS_HARD
+  real(default) :: MU_USOFT, AS_USOFT
   !!! NUSTAR_FIXED is normally not used
-  real(default) :: RESCALE_F, mu_s, as, asLL, NUSTAR_FIXED
-  real(default), parameter :: nustar_offset = 0.05_default
+  real(default) :: RESCALE_F, MU_SOFT, AS_SOFT, AS_LL_SOFT, NUSTAR_FIXED
   logical :: NUSTAR_DYNAMIC, NEED_FF_GRID, NEED_P0_GRID !, match_to_NLO, need_J0
-  real(default), parameter :: nf = 5.0_default
-  real(default) :: a1, a2, b0, b1
+  real(default), parameter :: NF = 5.0_default
+
+  real(default), parameter :: z3 = 1.20205690315959428539973816151_default
+  real(default), parameter :: A1 = 31./9.*CA - 20./9.*TR*NF
+  real(default), parameter :: A2 = (4343./162. + 4.*pi**2 - pi**4/4. + &
+       22./3.*z3)*CA**2 - (1798./81. + 56./3.*z3)*CA*TR*NF - &
+         (55./3. - 16.*z3)*CF*TR*NF + (20./9.*TR*NF)**2
+  real(default) :: B0
+  real(default) :: B1
+
   real(default), dimension(2) :: aa2, aa3, aa4, aa5, aa8, aa0
-  real(default) :: sqrts_ref = -1.0_default
-  complex(default) :: ieps = imago*tiny_10, ximo = 0.0_default
+  complex(default), parameter :: ieps = imago*tiny_10
   integer :: ff_type, matching_version
   character(len=200) :: parameters_ref = ""
   type(nr_spline_t) :: ff_p_spline
@@ -168,7 +174,6 @@ contains
     real(default), intent(in) :: scan_sqrts_max
     real(default), intent(in) :: scan_sqrts_stepsize
     logical, intent(in) :: mpole_fixed
-    real(default) :: z3
     !!! possibly (re-)enable these as user parameters:
     !real(default) :: nu_in = -1
     INITIALIZED_PARS = .false.
@@ -188,43 +193,37 @@ contains
     sqrts_it = scan_sqrts_stepsize
 
     !!! global hard parameters incl. hard alphas used in *all* form factors
-    H    = h_in
-    MU_H = M1S * H
-    AH   = running_as (MU_H, az, mz, 2, nf)
+    RESCALE_H    = h_in
+    MU_HARD = M1S * RESCALE_H
+    AS_HARD   = running_as (MU_HARD, az, mz, 2, NF)
     !!! auxiliary numbers needed later
-    z3 = 1.20205690315959428539973816151_default
-    b0 = coeff_b0(nf) * (4.*pi)
-    b1 = coeff_b1(nf) * (4.*pi)**2
-    a1 = 31./9.*CA - 20./9.*TR*nf
-    a2 = ((4343./162. + 4.*pi**2 - pi**4/4. + 22./3.*z3)*CA**2 - &
-         (1798./81. + 56./3.*z3)*CA*TR*nf - &
-         (55./3. - 16.*z3)*CF*TR*nf + &
-         (20./9.*TR*nf)**2)
     !!! current coefficients Ai(S,L,J), cf. arXiv:hep-ph/0609151, Eqs. (63)-(64)
     !!! 3S1 coefficients (s-wave, vector current)
+    B0 = coeff_b0(NF) * (4.*pi)
+    B1 = coeff_b1(NF) * (4.*pi)**2
     aa2(1) = (CF*(CA*CF*(9.*CA - 100.*CF) - &
-              b0*(26.*CA**2 + 19.*CA*CF - 32.*CF**2)))/(26.*b0**2 *CA)
-    aa3(1) = CF**2/( b0**2 *(6.*b0 - 13.*CA)*(b0 - 2.*CA)) * &
-              (CA**2 *(9.*CA - 100.*CF) + b0*CA*(74.*CF - CA*16.) - &
-              6.*b0**2 *(2.*CF - CA))
-    aa4(1) = (24.*CF**2 * (11.*CA - 3.*b0)*(5.*CA + 8.*CF)) / &
-              (13.*CA*(6.*b0 - 13.*CA)**2)
-    aa5(1) =  (CF**2 * (CA*(15.-28) + b0*5.))/(6.*(b0-2.*CA)**2)
-    aa8(1) = 0.0_default
-    aa0(1) = -((8.*CF*(CA + CF)*(CA + 2.*CF))/(3.*b0**2))
+              B0*(26.*CA**2 + 19.*CA*CF - 32.*CF**2)))/(26.*B0**2 *CA)
+    aa3(1) = CF**2/( B0**2 *(6.*B0 - 13.*CA)*(B0 - 2.*CA)) * &
+              (CA**2 *(9.*CA - 100.*CF) + B0*CA*(74.*CF - CA*16.) - &
+              6.*B0**2 *(2.*CF - CA))
+    aa4(1) = (24.*CF**2 * (11.*CA - 3.*B0)*(5.*CA + 8.*CF)) / &
+              (13.*CA*(6.*B0 - 13.*CA)**2)
+    aa5(1) =  (CF**2 * (CA*(15.-28) + B0*5.))/(6.*(B0-2.*CA)**2)
+    aa8(1) = zero
+    aa0(1) = -((8.*CF*(CA + CF)*(CA + 2.*CF))/(3.*B0**2))
     !!! 3P1 coefficients (p-wave, axial vector current)
-    aa2(2) = -1./3. * (CF*(CA+2.*CF)/b0 - CF**2/(4.*b0) )
-    aa3(2) =  0.0_default
-    aa4(2) =  0.0_default
-    aa5(2) =  1./3. * CF**2/(4.*(b0-2.*CA))
-    aa8(2) = -1./3. * CF**2/(b0-CA)
-    aa0(2) = -1./3. * 8.*CA*CF*(CA+4.*CF)/(3.*b0**2)
+    aa2(2) = -1./3. * (CF*(CA+2.*CF)/B0 - CF**2/(4.*B0) )
+    aa3(2) =  zero
+    aa4(2) =  zero
+    aa5(2) =  1./3. * CF**2/(4.*(B0-2.*CA))
+    aa8(2) = -1./3. * CF**2/(B0-CA)
+    aa0(2) = -1./3. * 8.*CA*CF*(CA+4.*CF)/(3.*B0**2)
 
     !!! soft parameters incl. mtpole (depend on sqrts: initialize with sqrts ~ 2*M1S)
     NUSTAR_FIXED = - one
     NUSTAR_DYNAMIC = NUSTAR_FIXED  < zero
     RESCALE_F = f_in
-    call update_soft_parameters (2. * M1S)
+    call update_global_sqrts_dependent_variables (2. * M1S)
     mtpole_init = MTPOLE
     mpole_out = mtpole_init
     !!! compute the total LO top width from t->bW decay plus optional invisible width
@@ -234,7 +233,7 @@ contains
     !!! flags
     ff_type = max (int(ff_in), 0)
     matching_version = 0
-    if ( ff_in < 0.0_default ) matching_version = int(-ff_in)
+    if ( ff_in < zero ) matching_version = int(-ff_in)
     !match_to_NLO = ( matching_version == 1 ) .or. ( matching_version == 2 )
     NEED_FF_GRID = ff_type <= 1
     !need_J0 = ff_type == 2 .or. (match_to_NLO .and. .not. EXT_NLO) .or. ff_type == 5
@@ -246,7 +245,7 @@ contains
 
   subroutine init_threshold_grids (test)
     real(default), intent(in) :: test
-    if (test > 0.0_default) then
+    if (test > zero) then
       call msg_message ("TESTING ONLY: Skip threshold initialization and use tree-level SM.")
       return
     end if
@@ -271,14 +270,14 @@ contains
       case (1)
         c = resummed_formfactor (ps, vec_type)
       case (2)
-        c = relativistic_formfactor_pure (AH, ps, vec_type)
+        c = relativistic_formfactor_pure (AS_HARD, ps, vec_type)
       case (3)
-        c = nonrel_expanded_formfactor (AH, ps, vec_type)
+        c = nonrel_expanded_formfactor (AS_HARD, ps, vec_type)
       case (4)
-        c = nonrel_expanded_formfactor (AH, ps, vec_type, no_p0=.true.)
+        c = nonrel_expanded_formfactor (AS_HARD, ps, vec_type, no_p0=.true.)
       !case (5)
-        !c = nonrel_expanded_formfactor (alphas_soft (ps%sqrts, NLOOP) - AH, ps, vec_type) &
-            !+ relativistic_formfactor_pure (AH, ps, vec_type) - one
+        !c = nonrel_expanded_formfactor (alphas_soft (ps%sqrts, NLOOP) - AS_HARD, ps, vec_type) &
+            !+ relativistic_formfactor_pure (AS_HARD, ps, vec_type) - one
       case (6)
         c = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts, NLOOP), ps, vec_type)
       case default
@@ -297,10 +296,10 @@ contains
       !if (ps%inside_grid) then
         !c = resummed_formfactor (ps, vec_type)
       !else if (match_to_NLO) then
-        !c = nonrel_expanded_formfactor (alphas_soft (ps%sqrts, NLOOP) - ah, ps, vec_type)
+        !c = nonrel_expanded_formfactor (alphas_soft (ps%sqrts, NLOOP) - AS_HARD, ps, vec_type)
       !end if
       !if (match_to_NLO .and. .not. EXT_NLO) c = c + &
-        !relativistic_formfactor_pure (ah, ps, vec_type) - one
+        !relativistic_formfactor_pure (AS_HARD, ps, vec_type) - one
     !else
       !c = resummed_formfactor (ps, vec_type)
     !end if
@@ -486,47 +485,48 @@ contains
 
   pure function parameters_string () result (str)
     character(len(parameters_ref)) :: str
-    str = char(M1S) // " " // char(GAM) // " " // char(NLOOP) // " " // char(H) &
+    str = char(M1S) // " " // char(GAM) // " " // char(NLOOP) // " " // char(RESCALE_H) &
            // " " // char(RESCALE_F) // " " // char(NEED_P0_GRID) // " " // char(ff_type) &
            // " " // char(matching_version) //  " " // char(sqrts_min) &
            // " " // char(sqrts_max) // " " // char(sqrts_it)
   end function parameters_string
 
-  subroutine update_soft_parameters (sqrts)
+  subroutine update_global_sqrts_dependent_variables (sqrts)
     real(default), intent(in) :: sqrts
-    real(default) :: nusoft
-    logical :: already_done
+    real(default) :: nu_soft
+    logical :: only_once_for_fixed_nu, already_done
+    real(default), save :: last_sqrts = - one
     already_done = INITIALIZED_PARS .and. &
-         nearly_equal (sqrts, sqrts_ref, rel_smallness=1E-6_default)
-    if ((.not. NUSTAR_DYNAMIC .and. MTPOLE > 0.0_default) .or. already_done) return
-    sqrts_ref = sqrts
+         nearly_equal (sqrts, last_sqrts, rel_smallness=1E-6_default)
+    only_once_for_fixed_nu = .not. NUSTAR_DYNAMIC .and. MTPOLE > zero
+    if (only_once_for_fixed_nu .or. already_done) return
+    last_sqrts = sqrts
     !!! (ultra)soft scales and alphas values required by threshold code
-    nusoft = RESCALE_F * nustar (sqrts)
-    mu_s = M1S * H * nusoft
-    MU_U = M1S * H * nusoft**2
-    as   = alphas_soft (sqrts, NLOOP)
-    asLL = alphas_soft (sqrts, 0)
-    AU   = running_as (MU_U, AH, MU_H, 0, nf) !!! LL here
-    !!! *global* pole mass (threshold code)
+    nu_soft = RESCALE_F * nustar (sqrts)
+    MU_SOFT = M1S * RESCALE_H * nu_soft
+    MU_USOFT = M1S * RESCALE_H * nu_soft**2
+    AS_SOFT = running_as (MU_SOFT, AS_HARD, MU_HARD, NLOOP, NF)
+    AS_LL_SOFT = running_as (MU_SOFT, AS_HARD, MU_HARD, 0, NF)
+    AS_USOFT = running_as (MU_USOFT, AS_HARD, MU_HARD, 0, NF) !!! LL here
     MTPOLE = m1s_to_mpole (sqrts)
-  end subroutine update_soft_parameters
+  end subroutine update_global_sqrts_dependent_variables
 
   !!! Coulomb potential coefficients needed by TOPPIK
   pure function xc (a_soft, i_xc) result (xci)
     real(default), intent(in) :: a_soft
     integer, intent(in) :: i_xc
     real(default) :: xci
-    xci = 0.0_default
+    xci = zero
     select case (i_xc)
       case (0)
         xci = one
-        if ( NLOOP>0 ) xci = xci + a_soft/(4.*pi) * a1
-        if ( NLOOP>1 ) xci = xci + (a_soft/(4.*pi))**2 * a2
+        if ( NLOOP>0 ) xci = xci + a_soft/(4.*pi) * A1
+        if ( NLOOP>1 ) xci = xci + (a_soft/(4.*pi))**2 * A2
       case (1)
-        if ( NLOOP>0 ) xci = xci + a_soft/(4.*pi) * b0
-        if ( NLOOP>1 ) xci = xci + (a_soft/(4.*pi))**2 * (b1 + 2*b0*a1)
+        if ( NLOOP>0 ) xci = xci + a_soft/(4.*pi) * B0
+        if ( NLOOP>1 ) xci = xci + (a_soft/(4.*pi))**2 * (B1 + 2*B0*A1)
       case (2)
-        if ( NLOOP>1 ) xci = xci + (a_soft/(4.*pi))**2 * b0**2
+        if ( NLOOP>1 ) xci = xci + (a_soft/(4.*pi))**2 * B0**2
       case default
         return
     end select
@@ -556,8 +556,8 @@ contains
     end select
     !!! current coefficient c1, cf. arXiv:hep-ph/0609151, Eq. (62)
     c1 = exp( a_hard * pi * ( aa2(i)*(1.-z) + aa3(i)*log(z) + &
-         aa4(i)*(1.-z**(1.-13.*CA/(6.*b0))) + aa5(i)*(1.-z**(1.-2.*CA/b0)) + &
-         aa8(i)*(1.-z**(1.-CA/b0)) + aa0(i)*(z-1.-log(w)/w) ))
+         aa4(i)*(1.-z**(1.-13.*CA/(6.*B0))) + aa5(i)*(1.-z**(1.-2.*CA/B0)) + &
+         aa8(i)*(1.-z**(1.-CA/B0)) + aa0(i)*(z-1.-log(w)/w) ))
     coeff = matching_c * c1
   end function current_coeff
 
@@ -615,8 +615,8 @@ contains
 !     v2 = 0.75_default
 !     v1 = 0.55_default !!! NLO v7
 !     v2 = 0.8_default
-    f1 = 1.0_default
-    f2 = 0.0_default
+    f1 = one
+    f2 = zero
     vm = (v1+v2) / 2.
     if ( v < v1 ) then
       fval = f1
@@ -627,7 +627,7 @@ contains
     else
       fval = f2
     end if
-!    fval = 0.0_default
+!    fval = zero
   end function f_switch_off
 
   !!! actual matching procedures:
@@ -662,15 +662,15 @@ contains
 !    real(default) :: fm, as_f
 !    complex(default) :: FFnr_exp_as, R
 !    fm = f_switch_off (v_matching (ps))
-!    as_f = alphas_soft (ps%sqrts, NLOOP, fm*AH)
-!    FFnr_exp_as = nonrel_expanded_formfactor (as, ps, vec_type)
+!    as_f = alphas_soft (ps%sqrts, NLOOP, fm*AS_HARD)
+!    FFnr_exp_as = nonrel_expanded_formfactor (AS_SOFT, ps, vec_type)
 !    if ( NLO_flag ) then
-!      R = ( ff - FFnr_exp_as ) / ( formfactor_LL_analytic (as, ps, vec_type) - FFnr_exp_as )
-!      ff = nonrel_expanded_formfactor ((as-AH), ps, vec_type) + &
+!      R = ( ff - FFnr_exp_as ) / ( formfactor_LL_analytic (AS_SOFT, ps, vec_type) - FFnr_exp_as )
+!      ff = nonrel_expanded_formfactor ((AS_SOFT-AS_HARD), ps, vec_type) + &
 !           R * (   formfactor_LL_analytic (as_f, ps, vec_type) &
 !                 - nonrel_expanded_formfactor (as_f, ps, vec_type) )
 !    else
-!      R = ( ff - one ) / ( formfactor_LL_analytic (as, ps, vec_type) - FFnr_exp_as )
+!      R = ( ff - one ) / ( formfactor_LL_analytic (AS_SOFT, ps, vec_type) - FFnr_exp_as )
 !      ff = one + R * (   formfactor_LL_analytic (as_f, ps, vec_type) &
 !                       - nonrel_expanded_formfactor (as_f, ps, vec_type) )
 !    end if
@@ -685,12 +685,12 @@ contains
 !    real(default) :: fm, as_f
 !    complex(default) :: FFnr_resum_f
 !    fm = f_switch_off (v_matching (ps))
-!    as_f = alphas_soft (ps%sqrts, NLOOP, fm*AH)
+!    as_f = alphas_soft (ps%sqrts, NLOOP, fm*AS_HARD)
 !    FFnr_resum_f = formfactor_LL_analytic (as_f, ps, vec_type)
 !    if ( NLOOP > 0 ) FFnr_resum_f = FFnr_resum_f + &
-!      fm**2 * ( ff - formfactor_LL_analytic (as, ps, vec_type) )
+!      fm**2 * ( ff - formfactor_LL_analytic (AS_SOFT, ps, vec_type) )
 !    if ( NLO_flag ) then
-!      ff = nonrel_expanded_formfactor ((as-AH), ps, vec_type) + &
+!      ff = nonrel_expanded_formfactor ((AS_SOFT-AS_HARD), ps, vec_type) + &
 !           FFnr_resum_f - nonrel_expanded_formfactor (as_f, ps, vec_type)
 !    else
 !      ff = FFnr_resum_f
@@ -827,6 +827,7 @@ contains
   function nustar (sqrts) result (nu)
     real(default), intent(in) :: sqrts
     real(default) :: nu
+    real(default), parameter :: nustar_offset = 0.05_default
     complex(default) :: arg
     if (NUSTAR_DYNAMIC) then
       !!! from [arXiv:1309.6323], Eq. (3.2) (other definitions possible)
@@ -845,10 +846,10 @@ contains
     real(default) :: a_soft
     real(default) :: mu_soft, a_hard, nusoft
     nusoft = RESCALE_F * nustar (sqrts)
-    mu_soft = M1S * H * nusoft
-    a_hard = AH
-    if ( present(a_hard_in) ) a_hard = a_hard_in
-    a_soft = running_as (mu_soft, a_hard, MU_H, nl, nf)
+    ! TODO: (bcn 2015-10-13) can we use the global MU_SOFT here?
+    mu_soft = M1S * RESCALE_H * nusoft
+    a_hard = AS_HARD; if ( present(a_hard_in) ) a_hard = a_hard_in
+    a_soft = running_as (mu_soft, a_hard, MU_HARD, nl, NF)
   end function alphas_soft
 
   !pure
@@ -881,7 +882,7 @@ contains
     del = ac**2 / 8.
     if ( NLOOP > 0 ) then
       del = del + ac**3 / (8. * pi * CF) * &
-           (b0 * (log (H * RESCALE_F * nustar (sqrts) / ac) + one) + a1 / 2.)
+           (B0 * (log (RESCALE_H * RESCALE_F * nustar (sqrts) / ac) + one) + A1 / 2.)
     end if
   end function deltaM
 
@@ -941,7 +942,7 @@ contains
     xtm     = mpole
     xtg     = GAM
     xalphas = a_soft
-    xscale  = mu_s
+    xscale  = MU_SOFT
     xcutn   = 175.E6
     xcutv   = 175.E6
     xc0     = xc (a_soft, 0)
@@ -999,28 +1000,26 @@ contains
         call toppik_spline%dealloc ()
       end if
       !!! TOPPIK output includes tree level ~ 1, a_soft @ LL in current coefficient!
-      ff_toppik = ff_toppik * current_coeff (ah, asLL, AU, vec_type)
+      ff_toppik = ff_toppik * current_coeff (AS_HARD, AS_LL_SOFT, AS_USOFT, vec_type)
     end if
   end subroutine scan_formfactor_over_p_TOPPIK
 
-  function scan_formfactor_over_p (a_soft, sqrts, vec_type) result (ff)
-    real(default), intent(in) :: a_soft
+  function scan_formfactor_over_p (sqrts, vec_type) result (ff)
     real(default), intent(in) :: sqrts
     integer, intent(in) :: vec_type
     complex(default), dimension(POINTS_P) :: ff
     select case (NLOOP)
       case (0)
 !        ff = scan_formfactor_over_p_LL_analytic (a_soft, vec_type, i_sq)
-        call scan_formfactor_over_p_TOPPIK (a_soft, sqrts, vec_type, ff_toppik=ff)
+        call scan_formfactor_over_p_TOPPIK (AS_SOFT, sqrts, vec_type, ff_toppik=ff)
       case (1)
-        call scan_formfactor_over_p_TOPPIK (a_soft, sqrts, vec_type, ff_toppik=ff)
+        call scan_formfactor_over_p_TOPPIK (AS_SOFT, sqrts, vec_type, ff_toppik=ff)
       case default
         call msg_fatal ("NLOOP = " // char(NLOOP))
     end select
   end function scan_formfactor_over_p
 
   subroutine scan_formfactor_over_phase_space_grid ()
-    real(default) :: a_soft
     integer :: i_sq, vec_type
     logical, dimension(:,:), allocatable :: ff_unstable
     real(default) :: t1, t2, t3, t_toppik, t_p0_dep
@@ -1035,13 +1034,12 @@ contains
     call msg_message ()
     ENERGY_SCAN: do i_sq = 1, POINTS_SQ
       if (signal_is_pending ())  return
-      call update_soft_parameters (sq_grid(i_sq))
-      a_soft = as
+      call update_global_sqrts_dependent_variables (sq_grid(i_sq))
       !!! vector and axial vector
-      do vec_type = 1, 2
+      do vec_type = VECTOR, AXIAL
         call cpu_time (t1)
         UNTIL_STABLE: do
-           ff_grid(i_sq,:,1,vec_type) = scan_formfactor_over_p (a_soft, sq_grid(i_sq), vec_type)
+           ff_grid(i_sq,:,1,vec_type) = scan_formfactor_over_p (sq_grid(i_sq), vec_type)
            ff_unstable(i_sq,vec_type) = abs(ff_grid(i_sq,1,1,vec_type)) > 1.d30
            if (ff_unstable(i_sq,vec_type)) then
               cycle
@@ -1052,7 +1050,7 @@ contains
         call cpu_time (t2)
         !!!  include p0 dependence by an integration over the p0-independent FF
         if (NEED_P0_GRID)  ff_grid(i_sq,1:n_p_p0dep,:,vec_type) = &
-             scan_formfactor_over_p_p0 (a_soft, sq_grid(i_sq), vec_type)
+             scan_formfactor_over_p_p0 (AS_SOFT, sq_grid(i_sq), vec_type)
         call cpu_time (t3)
         t_toppik = t_toppik + t2 - t1
         t_p0_dep = t_p0_dep + t3 - t2
@@ -1111,7 +1109,7 @@ contains
     if (.not. allocated (p_in))  call msg_fatal ("init_p0_grid: p_in not allocated!")
     if (allocated (p0_grid))  deallocate (p0_grid)
     allocate (p0_grid(n))
-    p0_grid(1) = 0.0_default
+    p0_grid(1) = zero
     p0_grid(2:n) = p_in(1:n-1)
   end subroutine init_p0_grid
 
@@ -1261,15 +1259,15 @@ contains
           case (0)
             v = CF*a * 2.*pi*(log_mppp-log_mmpm) * q/p
           case (1)
-            log_mu_s = 2.*log(mu_s)
-            v = CF*a * ( 2.*(4.*pi+a1*a)*(log_mppp-log_mmpm) &
-                      +b0*a*((log_mmpm-log_mu_s)**2-(log_mppp-log_mu_s)**2) ) * q/(4.*p)
+            log_mu_s = 2.*log(MU_SOFT)
+            v = CF*a * (2.*(4.*pi+A1*a)*(log_mppp-log_mmpm) &
+                      + B0*a*((log_mmpm-log_mu_s)**2-(log_mppp-log_mu_s)**2)) * q/(4.*p)
           case default
             call msg_fatal ("NLOOP = " // char(NLOOP))
         end select
       case (2)
         !!! not implemented yet
-        v = 0.0_default
+        v = zero
       case default
         call msg_fatal ("unknown ttZ/ttA vertex component, vec_type = " // char(vec_type))
     end select
@@ -1301,7 +1299,7 @@ contains
          case (0)
            Vmat = Vmatrix(0,vec_type,:,:,:) * a_soft
          case (1)
-           Vmat = Vmatrix(0,vec_type,:,:,:) * (a_soft + a_soft**2 *b0*log(mu_s)/(2*pi)) + &
+           Vmat = Vmatrix(0,vec_type,:,:,:) * (a_soft + a_soft**2 *B0*log(MU_SOFT)/(2*pi)) + &
                   Vmatrix(1,vec_type,:,:,:) * a_soft**2
          case default
            call msg_fatal ("NLOOP = " // char(NLOOP))
@@ -1314,7 +1312,7 @@ contains
       end do
     end if
     !!! a_soft @ LL in current coefficient!
-    current_c1 = current_coeff (ah, asLL, AU, vec_type)
+    current_c1 = current_coeff (AS_HARD, AS_LL_SOFT, AS_USOFT, vec_type)
     call msg_debug (D_THRESHOLD, "Integrate over q for each p, p0")
     do i_p = 1, n_p_p0dep
        p = p_grid(i_p)
@@ -1481,6 +1479,7 @@ contains
     complex(default) :: CCmsbar
     complex(default) :: dF1, dF2, dM1, dM2
     complex(default), dimension(12) :: P1
+    complex(default), parameter :: ximo = zero
     p2 = ps%p2
     k2 = ps%k2
     q2 = ps%q2
@@ -1526,7 +1525,7 @@ contains
             k2*(m2 - k2)*IA)
 
     !!! divergent part ~ 1/epsilon: depends on subtraction scheme
-    CCmsbar = -2.0_default * log(H)
+    CCmsbar = -2.0_default * log(RESCALE_H)
 
     ! real top mass in the loop numerators
 !    m2 = cmplx(real(m2), kind=default)
@@ -1593,7 +1592,7 @@ contains
   pure function J0_LoopTools_interpolate (ps) result (J0)
     type(phase_space_point_t), intent(in) :: ps
     complex(default) :: J0
-    J0 = 0.0_default
+    J0 = zero
     if (.not. INITIALIZED_J0) return
     if (.not. ps%inside_grid) return
     call interpolate_linear (sq_grid, p_grid_fine, p0_grid, J0_grid, &
@@ -1644,7 +1643,7 @@ contains
     character(len=len(trim(real2fixed(aimag(z))))) :: im
     re = real_to_char (real(z))
     im = real_to_char (aimag(z))
-    if (nearly_equal (aimag(z), 0.0_default)) then
+    if (nearly_equal (aimag(z), zero)) then
       c = re
     else
       c = re // " + " // im // "*I"
