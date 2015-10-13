@@ -269,8 +269,8 @@ contains
         !c = matched_formfactor (ps, vec_type)
       case (1)
         c = resummed_formfactor (ps, vec_type)
-      case (2)
-        c = relativistic_formfactor_pure (AS_HARD, ps, vec_type)
+      !case (2)
+        !c = relativistic_formfactor_pure (AS_HARD, ps, vec_type)
       case (3)
         c = nonrel_expanded_formfactor (AS_HARD, ps, vec_type)
       case (4)
@@ -1334,7 +1334,7 @@ contains
           end if
           !!! q_integral is a pure correction of O(alphas): add tree level ~ 1 again
           ff = current_c1 * (one + q_integral)
-          if (matching_version > 0)  call match_resummed_formfactor (ff, ps, vec_type)
+          !if (matching_version > 0)  call match_resummed_formfactor (ff, ps, vec_type)
           ff_p0(i_p,i_p0) = ff
        end do
     end do
