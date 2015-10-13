@@ -2,6 +2,7 @@ module @ID@_threshold
   use kinds
   use omega95
   use parameters_SM_tt_threshold
+  use ttv_formfactors
   implicit none
   private
   public :: init, md5sum, calculate_amplitudes
@@ -197,7 +198,7 @@ module @ID@_threshold
   data table_spin_states(:, 143) /  1,  1,  1,  1,  1, -1 /
   data table_spin_states(:, 144) /  1,  1,  1,  1,  1,  1 /
 
-  complex(default), dimension(n_hel), save, public :: amp_ff, &
+  complex(default), dimension(n_hel,0:3), save, public :: amp_ff, &
        amp_A_v_tree, amp_A_v_blob, amp_Z_av_tree, amp_Z_av_blob
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
@@ -224,10 +225,11 @@ contains
 
   subroutine calculate_amplitudes (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
-    complex(default) :: blob_Z_vec, blob_Z_ax
+    complex(default) :: blob_Z_vec, blob_Z_ax, ttv_vec, ttv_ax
     integer, dimension(n_prt) :: s
     integer, dimension(n_prt_OS) :: s_OS
-    integer :: hi
+    integer :: hi, ffi_end, ffi
+    integer, dimension(0:3) :: ff_modes, signs
     p1 = - k(:,1) ! incoming
     p2 = - k(:,2) ! incoming
     p3 =   k(:,3) ! outgoing
@@ -241,6 +243,9 @@ contains
     amp_Z_av_blob = zero
     amp_A_v_tree = zero
     amp_A_v_blob = zero
+    ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_P0CONSTANT, &
+                     EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
+    signs(0:3) = [+1, -1, +1, -1]
     if (onshell_tops (p3, p4)) then
        do hi = 1, n_hel_OS
           s_OS = table_spin_states_OS(:,hi)
@@ -253,14 +258,19 @@ contains
           owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
                + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
 
-          blob_Z_vec = gncup(1) * ttv_formfactor (p3, p4, 1)
-          blob_Z_ax = gncup(2) * ttv_formfactor (p3, p4, 2)
-
-          amp_Z_av_tree(hi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_t_3, owf_t_4)
-          amp_Z_av_blob(hi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
-
-          amp_A_v_tree(hi) = owf_A_12 * v_ff (qup, owf_t_3, owf_t_4)
-          amp_A_v_blob(hi) = amp_A_v_tree(hi) * ttv_formfactor (p3, p4, 1)
+          if (FF == MATCHED) then
+             ffi_end = 3
+          else
+             ffi_end = 0
+          end if
+          do ffi = 0, ffi_end
+             blob_Z_vec = gncup(1) * ttv_formfactor (p3, p4, 1)
+             blob_Z_ax = gncup(2) * ttv_formfactor (p3, p4, 2)
+             amp_Z_av_tree(hi,ffi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_t_3, owf_t_4)
+             amp_Z_av_blob(hi,ffi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
+             amp_A_v_tree(hi,ffi) = owf_A_12 * v_ff (qup, owf_t_3, owf_t_4)
+             amp_A_v_blob(hi,ffi) = amp_A_v_tree(hi,ffi) * ttv_formfactor (p3, p4, 1)
+          end do
        end do
     else
        do hi = 1, n_hel
@@ -281,17 +291,24 @@ contains
           owf_wb_46 = pr_psi (p46, ttv_mtpole(p12*p12), wd_tl (p46, width(6)), &
                + f_vlf (gccq33, owf_Wp_4, owf_b_6))
 
-          blob_Z_vec = gncup(1) * ttv_formfactor (p35, p46, 1)
-          blob_Z_ax = gncup(2) * ttv_formfactor (p35, p46, 2)
-
-          amp_Z_av_tree(hi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_wb_35, owf_wb_46)
-          amp_Z_av_blob(hi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
-
-          amp_A_v_tree(hi) = owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46)
-          amp_A_v_blob(hi) = amp_A_v_tree(hi) * ttv_formfactor (p35, p46, 1)
+          if (FF == MATCHED) then
+             ffi_end = 3
+          else
+             ffi_end = 0
+          end if
+          do ffi = 0, ffi_end
+             ttv_vec = ttv_formfactor (p35, p46, 1, ff_modes(ffi))
+             ttv_ax = ttv_formfactor (p35, p46, 2, ff_modes(ffi))
+             blob_Z_vec = gncup(1) * ttv_vec
+             blob_Z_ax = gncup(2) * ttv_ax
+             amp_Z_av_tree(hi,ffi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_wb_35, owf_wb_46)
+             amp_Z_av_blob(hi,ffi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
+             amp_A_v_tree(hi,ffi) = owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46)
+             amp_A_v_blob(hi,ffi) = amp_A_v_tree(hi,ffi) * ttv_vec
+          end do
        end do
     end if
-    amp_ff = amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob
+    !amp_ff = amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob
   end subroutine calculate_amplitudes
 
 end module @ID@_threshold
@@ -321,28 +338,25 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   use constants
   implicit none
   real(c_default_float), intent(out) :: amp2
+  real(default), dimension(3) :: amp2_array
   real(c_default_float), dimension(0:3,*), intent(in) :: p
   !complex(default) :: amp_sm
   !integer :: hi
+  integer :: i
   !call sm_new_event (p)
   call calculate_amplitudes (p)
   amp2 = 0.0_default
   select case (FF)
-  case (3,4)
-     amp2 = sum (amp_A_v_tree * conjg (amp_A_v_tree) + &
-                 amp_A_v_tree * conjg (amp_A_v_blob) + &
-                 amp_A_v_tree * conjg (amp_Z_av_tree) + &
-                 amp_A_v_tree * conjg (amp_Z_av_blob) + &
-                 amp_A_v_blob * conjg (amp_A_v_tree) + &
-                 amp_A_v_blob * conjg (amp_Z_av_tree) + &
-                 amp_Z_av_tree * conjg (amp_A_v_tree) + &
-                 amp_Z_av_tree * conjg (amp_A_v_blob) + &
-                 amp_Z_av_tree * conjg (amp_Z_av_tree) + &
-                 amp_Z_av_tree * conjg (amp_Z_av_blob) + &
-                 amp_Z_av_blob * conjg (amp_A_v_tree) + &
-                 amp_Z_av_blob * conjg (amp_Z_av_tree))
+  case (EXPANDED_HARD_P0DEPENDENT, EXPANDED_HARD_P0CONSTANT, &
+          EXPANDED_SOFT_P0CONSTANT, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
+     amp2 = expanded_amp2 (amp_A_v_tree(:,0), amp_A_v_blob(:,0), &
+          amp_Z_av_tree(:,0), amp_Z_av_blob(:,0))
   case (MATCHED)
-     !amp2 = amp2_1 + amp2_2 + amp2_3
+     do i = 1, 3
+        amp2_array(i) = expanded_amp2 (amp_A_v_tree(:,i), amp_A_v_blob(:,i), &
+             amp_Z_av_tree(:,i), amp_Z_av_blob(:,i))
+     end do
+     amp2 = sum (amp2_array)
   case default
      !do hi = 1, n_hel
         !amp_sm = sm_get_amplitude (1, hi, 1)

@@ -54,7 +54,7 @@ module parameters_sm_tt_threshold
 
   public :: import_from_whizard, model_update_alpha_s, &
        ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole, &
-       onshell_tops
+       onshell_tops, expanded_amp2
 
 contains
 
@@ -294,4 +294,24 @@ contains
     real(default) :: m
     m = m1s_to_mpole (sqrt (s))
   end function ttv_mtpole
+
+  !pure
+  function expanded_amp2 (amp_A_v_tree, amp_A_v_blob, &
+         amp_Z_av_tree, amp_Z_av_blob) result (amp2)
+    real(default) :: amp2
+    complex(default), dimension(:), intent(in) :: amp_A_v_tree, &
+         amp_A_v_blob, amp_Z_av_tree, amp_Z_av_blob
+    amp2 = sum (amp_A_v_tree * conjg (amp_A_v_tree) + &
+                 amp_A_v_tree * conjg (amp_A_v_blob) + &
+                 amp_A_v_tree * conjg (amp_Z_av_tree) + &
+                 amp_A_v_tree * conjg (amp_Z_av_blob) + &
+                 amp_A_v_blob * conjg (amp_A_v_tree) + &
+                 amp_A_v_blob * conjg (amp_Z_av_tree) + &
+                 amp_Z_av_tree * conjg (amp_A_v_tree) + &
+                 amp_Z_av_tree * conjg (amp_A_v_blob) + &
+                 amp_Z_av_tree * conjg (amp_Z_av_tree) + &
+                 amp_Z_av_tree * conjg (amp_Z_av_blob) + &
+                 amp_Z_av_blob * conjg (amp_A_v_tree) + &
+                 amp_Z_av_blob * conjg (amp_Z_av_tree))
+  end function expanded_amp2
 end module parameters_sm_tt_threshold

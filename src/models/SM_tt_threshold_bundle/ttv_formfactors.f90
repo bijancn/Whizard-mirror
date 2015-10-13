@@ -49,7 +49,8 @@ module ttv_formfactors
   integer, parameter :: VECTOR = 1
   integer, parameter :: AXIAL = 2
   ! Its important to be negative, otherwise we get no grid
-  integer, parameter, public :: MATCHED = -1, &
+  integer, parameter, public :: RESUMMED_SWITCHOFF_P0CONSTANT = - 2, &
+                                MATCHED = -1, &
                                 RESUMMED_P0DEPENDENT = 0, &
                                 RESUMMED_P0CONSTANT = 1, &
                                 EXPANDED_HARD_P0DEPENDENT = 3, &
