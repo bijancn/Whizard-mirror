@@ -52,6 +52,7 @@ module ttv_formfactors
   integer, parameter, public :: MATCHED = -17
   logical :: EXT_VINPUT = .true.
   !logical :: EXT_NLO = .false.
+  !integer :: ff_type, matching_version
 
   logical :: INITIALIZED_PARS, INITIALIZED_PS, INITIALIZED_FF, INITIALIZED_J0
   logical :: MPOLE_DYNAMIC
@@ -77,7 +78,6 @@ module ttv_formfactors
 
   real(default), dimension(2) :: aa2, aa3, aa4, aa5, aa8, aa0
   complex(default), parameter :: ieps = imago*tiny_10
-  integer :: ff_type, matching_version
   character(len=200) :: parameters_ref = ""
   type(nr_spline_t) :: ff_p_spline
   real(default) :: v1, v2
@@ -231,13 +231,12 @@ contains
     gam_out = gam
 
     !!! flags
-    ff_type = max (int(ff_in), 0)
-    matching_version = 0
-    if ( ff_in < zero ) matching_version = int(-ff_in)
+    !matching_version = 0
+    !if ( ff_in < zero ) matching_version = int(-ff_in)
     !match_to_NLO = ( matching_version == 1 ) .or. ( matching_version == 2 )
-    NEED_FF_GRID = ff_type <= 1
-    !need_J0 = ff_type == 2 .or. (match_to_NLO .and. .not. EXT_NLO) .or. ff_type == 5
-    NEED_P0_GRID = ff_type == 0 !.or. need_J0
+    !need_J0 = ff_in == 2 .or. (match_to_NLO .and. .not. EXT_NLO) .or. ff_in == 5
+    NEED_FF_GRID = ff_in <= 1
+    NEED_P0_GRID = ff_in == 0 !.or. need_J0
     EXT_VINPUT = EXT_VINPUT .and. NLOOP > 0
 
     INITIALIZED_PARS = .true.
@@ -486,9 +485,10 @@ contains
   pure function parameters_string () result (str)
     character(len(parameters_ref)) :: str
     str = char(M1S) // " " // char(GAM) // " " // char(NLOOP) // " " // char(RESCALE_H) &
-           // " " // char(RESCALE_F) // " " // char(NEED_P0_GRID) // " " // char(ff_type) &
-           // " " // char(matching_version) //  " " // char(sqrts_min) &
+           // " " // char(RESCALE_F) // " " // char(NEED_P0_GRID) &
+           //  " " // char(sqrts_min) &
            // " " // char(sqrts_max) // " " // char(sqrts_it)
+           !// " " // char(matching_version) // " " // char(ff_type) &
   end function parameters_string
 
   subroutine update_global_sqrts_dependent_variables (sqrts)
@@ -1084,7 +1084,7 @@ contains
     allocate (p_grid(POINTS_P))
     p_grid = p_grid_from_TOPPIK ()
     if (NEED_P0_GRID) then
-      if (ff_type == 0 .and. EXT_VINPUT) then
+      if (EXT_VINPUT) then
         ! This is only for setup of the p_grid not the form factor
         p_grid = p_grid_from_TOPPIK (173.0_default)
         call import_Vmatrices ()
@@ -1287,6 +1287,8 @@ contains
     complex(default) :: q_integral, ff
     real(default) :: current_c1
     if (vec_type==2) return
+    call msg_warning ("DEPRECATED FEAUTRE: " // &
+         "p0 dependence as implemented breaks gauge invariance!")
     call msg_debug (D_THRESHOLD, "scan_formfactor_over_p_p0")
     call msg_debug (D_THRESHOLD, "EXT_VINPUT", EXT_VINPUT)
     en = sqrts_to_en (sqrts, MTPOLE)
@@ -1334,6 +1336,7 @@ contains
           end if
           !!! q_integral is a pure correction of O(alphas): add tree level ~ 1 again
           ff = current_c1 * (one + q_integral)
+          ! TODO: (bcn 2015-10-13) do I have to change ff here?
           !if (matching_version > 0)  call match_resummed_formfactor (ff, ps, vec_type)
           ff_p0(i_p,i_p0) = ff
        end do
