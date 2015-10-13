@@ -49,7 +49,15 @@ module ttv_formfactors
   integer, parameter :: VECTOR = 1
   integer, parameter :: AXIAL = 2
   ! Its important to be negative, otherwise we get no grid
-  integer, parameter, public :: MATCHED = -17
+  integer, parameter, public :: MATCHED = -1, &
+                                RESUMMED_P0DEPENDENT = 0, &
+                                RESUMMED_P0CONSTANT = 1, &
+                                EXPANDED_HARD_P0DEPENDENT = 3, &
+                                EXPANDED_HARD_P0CONSTANT = 4, &
+                                EXPANDED_SOFT_P0CONSTANT = 5, &
+                                EXPANDED_SOFT_SWITCHOFF_P0CONSTANT = 6, &
+                                RESUMMED_ANALYTIC_LL = 7
+
   logical :: EXT_VINPUT = .true.
   !logical :: EXT_NLO = .false.
   !integer :: ff_type, matching_version
@@ -96,34 +104,10 @@ module ttv_formfactors
     module procedure int_to_char, real_to_char, complex_to_char, logical_to_char
   end interface char
 
-  interface formfactor_LL_analytic
-    module procedure formfactor_LL_analytic, formfactor_LL_analytic_p0
-  end interface formfactor_LL_analytic
-
-  interface ttv_formfactors_init_parameters
-    module procedure init_parameters
-  end interface ttv_formfactors_init_parameters
-  public :: ttv_formfactors_init_parameters
-
-  interface ttv_formfactors_init_threshold_grids
-    module procedure init_threshold_grids
-  end interface ttv_formfactors_init_threshold_grids
-  public :: ttv_formfactors_init_threshold_grids
-
-  interface ttv_formfactors_FF
-    module procedure FF_master
-  end interface ttv_formfactors_FF
-  public :: ttv_formfactors_FF
-
-  interface ttv_formfactors_m1s_to_mpole
-    module procedure m1s_to_mpole
-  end interface ttv_formfactors_m1s_to_mpole
-  public :: ttv_formfactors_m1s_to_mpole
-
-  interface ttv_formfactors_nonrel_expanded_formfactor
-     module procedure nonrel_expanded_formfactor
-  end interface ttv_formfactors_nonrel_expanded_formfactor
-  public :: ttv_formfactors_nonrel_expanded_formfactor
+  public :: init_parameters
+  public :: init_threshold_grids
+  public :: FF_master
+  public :: m1s_to_mpole
 
   type, public :: phase_space_point_t
     real(default) :: p2 = 0, k2 = 0, q2 = 0
@@ -257,28 +241,34 @@ contains
   end subroutine init_threshold_grids
 
   !pure 
-  function FF_master (ps, vec_type, FF_mode) result (c)
+  function FF_master (ps, vec_type, FF_mode) result (FF)
+    complex(default) :: FF
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: vec_type, FF_mode
-    complex(default) :: c
-    c = one
+    real(default) :: f
+    FF = one
     if (.not. INITIALIZED_PARS) return
     select case (FF_mode)
       !case (0)
-        !c = matched_formfactor (ps, vec_type)
-      case (1)
-        c = resummed_formfactor (ps, vec_type)
+        !FF = matched_formfactor (ps, vec_type)
       !case (2)
-        !c = relativistic_formfactor_pure (AS_HARD, ps, vec_type)
-      case (3)
-        c = nonrel_expanded_formfactor (AS_HARD, ps, vec_type)
-      case (4)
-        c = nonrel_expanded_formfactor (AS_HARD, ps, vec_type, no_p0=.true.)
+        !FF = relativistic_formfactor_pure (AS_HARD, ps, vec_type)
       !case (5)
-        !c = nonrel_expanded_formfactor (alphas_soft (ps%sqrts, NLOOP) - AS_HARD, ps, vec_type) &
+        !FF = nonrel_expanded_formfactor (alphas_soft (ps%sqrts, NLOOP) - AS_HARD, ps, vec_type) &
             !+ relativistic_formfactor_pure (AS_HARD, ps, vec_type) - one
-      case (6)
-        c = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts, NLOOP), ps, vec_type)
+      case (RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT)
+        FF = resummed_formfactor (ps, vec_type)
+      case (EXPANDED_HARD_P0DEPENDENT)
+        FF = nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type)
+      case (EXPANDED_HARD_P0CONSTANT)
+        FF = nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.)
+      case (EXPANDED_SOFT_P0CONSTANT)
+        FF = nonrel_expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts, NLOOP), ps, vec_type, no_p0=.true.)
+      case (EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
+        f = f_switch_off (v_matching (ps))
+        FF = nonrel_expanded_formfactor (f * AS_HARD, f * alphas_soft (ps%sqrts, NLOOP), ps, vec_type, no_p0=.true.)
+      case (RESUMMED_ANALYTIC_LL)
+        FF = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts, NLOOP), ps, vec_type)
       case default
         return
     end select
@@ -356,20 +346,18 @@ contains
   !!! leading nonrelativistic O(alphas^1) contribution (-> expansion of resummation)
   !!! nonrelativistic limit of module function 'relativistic_formfactor'
   !pure
-  function nonrel_expanded_formfactor (alphas, ps, vec_type, no_p0) result (c)
-    real(default), intent(in) :: alphas
+  function nonrel_expanded_formfactor (alphas_hard, alphas_soft, ps, vec_type, no_p0) result (FF)
+    complex(default) :: FF
+    real(default), intent(in) :: alphas_hard, alphas_soft
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: vec_type
     logical, optional, intent(in) :: no_p0
-    logical :: nop0
-    complex(default) :: c
-    real(default) :: m, p, p0, shift_from_hard_current
+    real(default) :: p0, shift_from_hard_current
     complex(default) :: v, contrib_from_potential
-    c = one
+    logical :: nop0
+    FF = one
     if (.not. INITIALIZED_PARS .or. vec_type==2) return
     nop0 = .false.; if (present (no_p0))  nop0 = no_p0
-    m = ps%mpole
-    p = ps%p
     v = sqrts_to_v (ps%sqrts)
     if (nop0) then
        p0 = zero
@@ -382,12 +370,13 @@ contains
        shift_from_hard_current = zero
     end if
     if (ps%onshell) then
-       contrib_from_potential = CF * m * Pi / (4 * p)
+       contrib_from_potential = CF * ps%mpole * Pi / (4 * ps%p)
     else
-       contrib_from_potential = imago * CF * m * &
-            log ((p + m * v + p0) / (-p + m * v + p0) + ieps) / (two * p)
+       contrib_from_potential = imago * CF * ps%mpole * &
+            log ((ps%p + ps%mpole * v + p0) / &
+                 (-ps%p + ps%mpole * v + p0) + ieps) / (two * ps%p)
     end if
-    c = one + alphas * (contrib_from_potential + shift_from_hard_current)
+    FF = one + alphas_soft * contrib_from_potential + alphas_hard * shift_from_hard_current
   end function nonrel_expanded_formfactor
 
   subroutine init_formfactor_grid ()
@@ -590,7 +579,6 @@ contains
     real(default), intent(in) :: v
     real(default) :: fval
     real(default) :: vm, f1, f2
-!     real(default) :: v1, v2
 !     v1 = 0.3_default !!! LO v1
 !     v2 = 0.5_default
 !     v1 = 0.2_default !!! LO v2
@@ -1050,7 +1038,7 @@ contains
         call cpu_time (t2)
         !!!  include p0 dependence by an integration over the p0-independent FF
         if (NEED_P0_GRID)  ff_grid(i_sq,1:n_p_p0dep,:,vec_type) = &
-             scan_formfactor_over_p_p0 (AS_SOFT, sq_grid(i_sq), vec_type)
+             scan_formfactor_over_p_p0 (sq_grid(i_sq), vec_type)
         call cpu_time (t3)
         t_toppik = t_toppik + t2 - t1
         t_p0_dep = t_p0_dep + t3 - t2
@@ -1273,8 +1261,7 @@ contains
     end select
   end function minus_q2_V
 
-  function scan_formfactor_over_p_p0 (a_soft, sqrts, vec_type) result (ff_p0)
-    real(default), intent(in) :: a_soft
+  function scan_formfactor_over_p_p0 (sqrts, vec_type) result (ff_p0)
     real(default), intent(in) :: sqrts
     complex(default), dimension(n_p_p0dep,POINTS_P0) :: ff_p0
     integer, intent(in) :: vec_type
@@ -1299,21 +1286,21 @@ contains
       allocate (Tvec(n_q))
       select case (NLOOP)
          case (0)
-           Vmat = Vmatrix(0,vec_type,:,:,:) * a_soft
+           Vmat = Vmatrix(0,vec_type,:,:,:) * AS_SOFT
          case (1)
-           Vmat = Vmatrix(0,vec_type,:,:,:) * (a_soft + a_soft**2 *B0*log(MU_SOFT)/(2*pi)) + &
-                  Vmatrix(1,vec_type,:,:,:) * a_soft**2
+           Vmat = Vmatrix(0,vec_type,:,:,:) * (AS_SOFT + AS_SOFT**2 *B0*log(MU_SOFT)/(2*pi)) + &
+                  Vmatrix(1,vec_type,:,:,:) * AS_SOFT**2
          case default
            call msg_fatal ("NLOOP = " // char(NLOOP))
       end select
       do i_q = 1, n_q
          Tvec(i_q) = ff_p_spline%interpolate(q_grid(i_q)) * &
               G0p_tree(en,q_grid(i_q),MTPOLE,GAM)
-!         Tvec(i_q) = formfactor_LL_analytic (a_soft, sqrts, q_grid(i_q), vec_type) * &
+!         Tvec(i_q) = formfactor_LL_analytic (AS_SOFT, sqrts, q_grid(i_q), vec_type) * &
 !                     G0p_tree(en,q_grid(i_q),MTPOLE,GAM)
       end do
     end if
-    !!! a_soft @ LL in current coefficient!
+    !!! AS_SOFT @ LL in current coefficient!
     current_c1 = current_coeff (AS_HARD, AS_LL_SOFT, AS_USOFT, vec_type)
     call msg_debug (D_THRESHOLD, "Integrate over q for each p, p0")
     do i_p = 1, n_p_p0dep
@@ -1328,11 +1315,11 @@ contains
              !!! numerical integration using NR's Gaussian summation
              call compute_support_points (en, i_p, i_p0, 10)
 !             q_integral = 1./(2.*pi)**2 * nr_qgaus (integrand, q_grid)
-             call q_integrand%update (a_soft, ps, vec_type)
+             call q_integrand%update (AS_SOFT, ps, vec_type)
              q_integral = 1./(2.*pi)**2 * solve_qgaus (q_integrand, q_grid)
           else
              !!! analytic FF incl. p0 dependence @ LL
-             q_integral = formfactor_LL_analytic (a_soft, ps, vec_type) - one
+             q_integral = formfactor_LL_analytic_p0 (AS_SOFT, ps, vec_type) - one
           end if
           !!! q_integral is a pure correction of O(alphas): add tree level ~ 1 again
           ff = current_c1 * (one + q_integral)

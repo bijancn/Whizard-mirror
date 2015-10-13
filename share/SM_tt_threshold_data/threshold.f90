@@ -1,34 +1,3 @@
-! File generated automatically by O'Mega
-!
-!   /scratch/bcho/trunk/_install/develop/bin/omega_SM_tt_threshold.opt -o ttbar_i1.f90 -target:whizard -target:parameter_module parameters_SM_tt_threshold -target:module opr_ttbar_i1 -target:md5sum 3C3BACDC1B40C40DB783E084F0B62DFC -fusion:progress -scatter "e- e+ -> W+ W- b bbar" -cascade "3+5~t && 4+6~tbar"
-!
-! with all scattering amplitudes for the process(es)
-!
-!   flavor combinations:
-!
-!       1: e- e+ -> W+ W- b bbar
-!
-!   color flows:
-!
-!       1: (  0,  0) (  0,  0) -> (  0,  0) (  0,  0) (  1,  0) (  0, -1)
-!
-!     NB: i.g. not all color flows contribute to all flavor
-!     combinations.  Consult the array FLV_COL_IS_ALLOWED
-!     below for the allowed combinations.
-!
-!   Color Factors:
-!
-!     (  1,  1): + N
-!
-!   vanishing or redundant flavor combinations:
-!
-!
-!   diagram selection (MIGHT BREAK GAUGE INVARIANCE!!!):
-!
-!     (3+5 ~ t) && (4+6 ~ tbar)  grouping {{3,5},{4,6}}
-!
-! in minimal electroweak standard model in unitarity gauge
-!
 module @ID@_threshold
   use kinds
   use omega95
@@ -373,7 +342,6 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
                  amp_Z_av_blob * conjg (amp_A_v_tree) + &
                  amp_Z_av_blob * conjg (amp_Z_av_tree))
   case (MATCHED)
-     !amp2_1 = zero ! - nonrel_expanded_formfactor (HARD, ps, i)
      !amp2 = amp2_1 + amp2_2 + amp2_3
   case default
      !do hi = 1, n_hel
