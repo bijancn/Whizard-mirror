@@ -73,7 +73,7 @@ module ttv_formfactors
   real(default) :: MU_USOFT, AS_USOFT
   !!! NUSTAR_FIXED is normally not used
   real(default) :: RESCALE_F, MU_SOFT, AS_SOFT, AS_LL_SOFT, NUSTAR_FIXED
-  logical :: NUSTAR_DYNAMIC, NEED_FF_GRID, NEED_P0_GRID !, match_to_NLO, need_J0
+  logical :: NUSTAR_DYNAMIC, SWITCHOFF, NEED_FF_GRID, NEED_P0_GRID !, match_to_NLO, need_J0
   real(default), parameter :: NF = 5.0_default
 
   real(default), parameter :: z3 = 1.20205690315959428539973816151_default
@@ -219,6 +219,7 @@ contains
     !if ( ff_in < zero ) matching_version = int(-ff_in)
     !match_to_NLO = ( matching_version == 1 ) .or. ( matching_version == 2 )
     !need_J0 = ff_in == 2 .or. (match_to_NLO .and. .not. EXT_NLO) .or. ff_in == 5
+    SWITCHOFF = ff_in < 0
     NEED_FF_GRID = ff_in <= 1
     NEED_P0_GRID = ff_in == 0 !.or. need_J0
     EXT_VINPUT = EXT_VINPUT .and. NLOOP > 0
@@ -254,7 +255,7 @@ contains
       !case (2)
         !FF = relativistic_formfactor_pure (AS_HARD, ps, vec_type)
       !case (5)
-        !FF = nonrel_expanded_formfactor (alphas_soft (ps%sqrts, NLOOP) - AS_HARD, ps, vec_type) &
+        !FF = nonrel_expanded_formfactor (alphas_soft (ps%sqrts) - AS_HARD, ps, vec_type) &
             !+ relativistic_formfactor_pure (AS_HARD, ps, vec_type) - one
       case (RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT)
         FF = resummed_formfactor (ps, vec_type)
@@ -263,12 +264,12 @@ contains
       case (EXPANDED_HARD_P0CONSTANT)
         FF = nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.)
       case (EXPANDED_SOFT_P0CONSTANT)
-        FF = nonrel_expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts, NLOOP), ps, vec_type, no_p0=.true.)
+        FF = nonrel_expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
       case (EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
-        f = f_switch_off (v_matching (ps))
-        FF = nonrel_expanded_formfactor (f * AS_HARD, f * alphas_soft (ps%sqrts, NLOOP), ps, vec_type, no_p0=.true.)
+        f = f_switch_off (v_matching (ps%sqrts))
+        FF = nonrel_expanded_formfactor (f * AS_HARD, f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
       case (RESUMMED_ANALYTIC_LL)
-        FF = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts, NLOOP), ps, vec_type)
+        FF = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts), ps, vec_type)
       case default
         return
     end select
@@ -285,7 +286,7 @@ contains
       !if (ps%inside_grid) then
         !c = resummed_formfactor (ps, vec_type)
       !else if (match_to_NLO) then
-        !c = nonrel_expanded_formfactor (alphas_soft (ps%sqrts, NLOOP) - AS_HARD, ps, vec_type)
+        !c = nonrel_expanded_formfactor (alphas_soft (ps%sqrts) - AS_HARD, ps, vec_type)
       !end if
       !if (match_to_NLO .and. .not. EXT_NLO) c = c + &
         !relativistic_formfactor_pure (AS_HARD, ps, vec_type) - one
@@ -309,8 +310,6 @@ contains
     else
       call interpolate_linear (sq_grid, p_grid, ff_grid(:,:,1,vec_type), ps%sqrts, ps%p, c)
     end if
-    !print *, 'alphas_soft (sqrts, NLOOP) =    ', alphas_soft (ps%sqrts, NLOOP) !!! Debugging
-    !print *, 'c =    ', c !!! Debugging
   end function resummed_formfactor
 
   !!! relativistic off-shell O(alphas^1) contribution (-> no resummation)
@@ -482,7 +481,7 @@ contains
 
   subroutine update_global_sqrts_dependent_variables (sqrts)
     real(default), intent(in) :: sqrts
-    real(default) :: nu_soft
+    real(default) :: nu_soft, f
     logical :: only_once_for_fixed_nu, already_done
     real(default), save :: last_sqrts = - one
     already_done = INITIALIZED_PARS .and. &
@@ -490,13 +489,18 @@ contains
     only_once_for_fixed_nu = .not. NUSTAR_DYNAMIC .and. MTPOLE > zero
     if (only_once_for_fixed_nu .or. already_done) return
     last_sqrts = sqrts
-    !!! (ultra)soft scales and alphas values required by threshold code
     nu_soft = RESCALE_F * nustar (sqrts)
     MU_SOFT = M1S * RESCALE_H * nu_soft
     MU_USOFT = M1S * RESCALE_H * nu_soft**2
     AS_SOFT = running_as (MU_SOFT, AS_HARD, MU_HARD, NLOOP, NF)
     AS_LL_SOFT = running_as (MU_SOFT, AS_HARD, MU_HARD, 0, NF)
     AS_USOFT = running_as (MU_USOFT, AS_HARD, MU_HARD, 0, NF) !!! LL here
+    if (SWITCHOFF) then 
+       f = f_switch_off (v_matching (sqrts))
+       AS_SOFT = AS_SOFT * f
+       AS_LL_SOFT = AS_LL_SOFT * f
+       AS_USOFT = AS_USOFT * f
+    end if
     MTPOLE = m1s_to_mpole (sqrts)
   end subroutine update_global_sqrts_dependent_variables
 
@@ -522,9 +526,7 @@ contains
   end function xc
 
   function current_coeff (a_hard, a_soft, a_usoft, i) result (coeff)
-    real(default), intent(in) :: a_hard
-    real(default), intent(in) :: a_soft
-    real(default), intent(in) :: a_usoft
+    real(default), intent(in) :: a_hard, a_soft, a_usoft
     integer, intent(in) :: i
     real(default) :: coeff
     real(default) :: matching_c, c1
@@ -552,14 +554,14 @@ contains
 
   !!! matching parameter as a function of the phase space point
   !pure
-  function v_matching (ps) result (v)
-    type(phase_space_point_t), intent(in) :: ps
+  function v_matching (sqrts) result (v)
+    real(default), intent(in) :: sqrts
     real(default) :: v
-!    v = real( sqrts_to_v (ps%sqrts) )
+    v = real (sqrts_to_v (sqrts))
     !!! Andre's proposal for the switch-off function:
-    v = max ( sqrt(abs(ps%p2-ps%m2)), sqrt(abs(ps%k2-ps%m2)), &
-              sqrt(abs(ps%q2/4.-ps%m2)), ps%p ) &
-        / ps%mpole
+    !v = max ( sqrt(abs(ps%p2-ps%m2)), sqrt(abs(ps%k2-ps%m2)), &
+              !sqrt(abs(ps%q2/4.-ps%m2)), ps%p ) &
+        !/ ps%mpole
   end function v_matching
 
   !!! measure for the validity of the nonrelativistic approximation
@@ -827,17 +829,14 @@ contains
   end function nustar
 
   !pure
-  function alphas_soft (sqrts, nl, a_hard_in) result (a_soft)
-    real(default), intent(in) :: sqrts
-    integer, intent(in) :: nl
-    real(default), intent(in), optional :: a_hard_in
+  function alphas_soft (sqrts) result (a_soft)
     real(default) :: a_soft
-    real(default) :: mu_soft, a_hard, nusoft
+    real(default), intent(in) :: sqrts
+    real(default) :: mu_soft, nusoft
     nusoft = RESCALE_F * nustar (sqrts)
     ! TODO: (bcn 2015-10-13) can we use the global MU_SOFT here?
     mu_soft = M1S * RESCALE_H * nusoft
-    a_hard = AS_HARD; if ( present(a_hard_in) ) a_hard = a_hard_in
-    a_soft = running_as (mu_soft, a_hard, MU_HARD, nl, NF)
+    a_soft = running_as (mu_soft, AS_HARD, MU_HARD, NLOOP, NF)
   end function alphas_soft
 
   !pure
@@ -866,7 +865,7 @@ contains
     real(default), intent(in) :: sqrts
     real(default) :: del
     real(default) :: ac
-    ac  = CF * alphas_soft (sqrts, NLOOP)
+    ac  = CF * alphas_soft (sqrts)
     del = ac**2 / 8.
     if ( NLOOP > 0 ) then
       del = del + ac**3 / (8. * pi * CF) * &
@@ -922,9 +921,7 @@ contains
     call msg_debug (D_THRESHOLD, "scan_formfactor_over_p_TOPPIK")
     if (POINTS_P > nmax-40) call msg_fatal ("TOPPIK: POINTS_P must be <=" // char(nmax-40))
     call msg_debug (D_THRESHOLD, "POINTS_P", POINTS_P)
-    if (present (ff_toppik)) then
-       ff_toppik = zero
-    end if
+    if (present (ff_toppik))  ff_toppik = zero
     mpole = MTPOLE;  if (present (mpole_in)) mpole = mpole_in
     xenergy = sqrts_to_en (sqrts, MTPOLE)
     xtm     = mpole
@@ -1323,7 +1320,6 @@ contains
           end if
           !!! q_integral is a pure correction of O(alphas): add tree level ~ 1 again
           ff = current_c1 * (one + q_integral)
-          ! TODO: (bcn 2015-10-13) do I have to change ff here?
           !if (matching_version > 0)  call match_resummed_formfactor (ff, ps, vec_type)
           ff_p0(i_p,i_p0) = ff
        end do
@@ -1609,7 +1605,7 @@ contains
     call msg_debug (D_THRESHOLD, "p_grid_from_TOPPIK")
     mpole = MTPOLE;  if (present (mpole_in))  mpole = mpole_in
     call scan_formfactor_over_p_TOPPIK &
-                 (alphas_soft(2. * M1S, NLOOP), 2. * M1S, 1, p_toppik, mpole)
+                 (alphas_soft(2. * M1S), 2. * M1S, 1, p_toppik, mpole)
     if (.not. strictly_monotonous (p_toppik)) &
       call msg_fatal ("p_grid NOT strictly monotonous!")
   end function p_grid_from_TOPPIK
