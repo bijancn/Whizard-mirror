@@ -229,7 +229,7 @@ contains
     integer, dimension(n_prt) :: s
     integer, dimension(n_prt_OS) :: s_OS
     integer :: hi, ffi_end, ffi
-    integer, dimension(0:3) :: ff_modes, signs
+    integer, dimension(0:3) :: ff_modes
     p1 = - k(:,1) ! incoming
     p2 = - k(:,2) ! incoming
     p3 =   k(:,3) ! outgoing
@@ -245,7 +245,6 @@ contains
     amp_A_v_blob = zero
     ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_P0CONSTANT, &
                      EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
-    signs(0:3) = [+1, -1, +1, -1]
     if (onshell_tops (p3, p4)) then
        do hi = 1, n_hel_OS
           s_OS = table_spin_states_OS(:,hi)
@@ -338,8 +337,9 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   use constants
   implicit none
   real(c_default_float), intent(out) :: amp2
-  real(default), dimension(3) :: amp2_array
+  real(default), dimension(0:3) :: amp2_array
   real(c_default_float), dimension(0:3,*), intent(in) :: p
+  integer, dimension(0:3) :: signs
   !complex(default) :: amp_sm
   !integer :: hi
   integer :: i
@@ -352,11 +352,16 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
      amp2 = expanded_amp2 (amp_A_v_tree(:,0), amp_A_v_blob(:,0), &
           amp_Z_av_tree(:,0), amp_Z_av_blob(:,0))
   case (MATCHED)
+     signs(0:3) = [+1, -1, +1, -1]
+     amp2_array(0) = sum ((amp_A_v_tree(:,0) + amp_A_v_blob(:,0) + &
+          amp_Z_av_tree(:,0) + amp_Z_av_blob(:,0)) * &
+          conjg (amp_A_v_tree(:,0) + amp_A_v_blob(:,0) + &
+          amp_Z_av_tree(:,0) + amp_Z_av_blob(:,0)))
      do i = 1, 3
         amp2_array(i) = expanded_amp2 (amp_A_v_tree(:,i), amp_A_v_blob(:,i), &
              amp_Z_av_tree(:,i), amp_Z_av_blob(:,i))
      end do
-     amp2 = sum (amp2_array)
+     amp2 = sum (signs * amp2_array)
   case default
      !do hi = 1, n_hel
         !amp_sm = sm_get_amplitude (1, hi, 1)
