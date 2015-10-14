@@ -62,9 +62,10 @@ SUBDIRS = \
   process_integration \
   matching \
   transforms \
+  models \
   whizard-core \
-  prebuilt \
-  models
+  prebuilt
+
 if MPOST_AVAILABLE
 SUBDIRS += gamelan feynmf
 endif
@@ -179,6 +180,7 @@ check_LTLIBRARIES = libwhizard_test.la
 libwhizard_test_la_SOURCES =
 
 libwhizard_test_la_LIBADD = \
+  models/SM_tt_threshold_bundle/libSM_tt_threshold_bundle_ut.la \
   whizard-core/libwhizard_core_ut.la \
   transforms/libtransforms_ut.la \
   matching/libmatching_ut.la \

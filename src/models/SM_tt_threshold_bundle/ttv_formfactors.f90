@@ -81,7 +81,7 @@ module ttv_formfactors
   real(default), parameter :: A1 = 31./9.*CA - 20./9.*TR*NF
   real(default), parameter :: A2 = (4343./162. + 4.*pi**2 - pi**4/4. + &
        22./3.*z3)*CA**2 - (1798./81. + 56./3.*z3)*CA*TR*NF - &
-         (55./3. - 16.*z3)*CF*TR*NF + (20./9.*TR*NF)**2
+       (55./3. - 16.*z3)*CF*TR*NF + (20./9.*TR*NF)**2
   real(default) :: B0
   real(default) :: B1
 
@@ -159,8 +159,6 @@ contains
     real(default), intent(in) :: scan_sqrts_max
     real(default), intent(in) :: scan_sqrts_stepsize
     logical, intent(in) :: mpole_fixed
-    !!! possibly (re-)enable these as user parameters:
-    !real(default) :: nu_in = -1
     INITIALIZED_PARS = .false.
     M1S = m1s_in
     MPOLE_DYNAMIC = .not. mpole_fixed

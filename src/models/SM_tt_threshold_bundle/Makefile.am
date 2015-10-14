@@ -33,6 +33,7 @@
 ## Build the objects required for the SM ttbar threshold model.
 
 noinst_LTLIBRARIES = libSM_tt_threshold_bundle.la
+check_LTLIBRARIES = libSM_tt_threshold_bundle_ut.la
 
 ## We need all in the distribution
 
@@ -46,15 +47,28 @@ libSM_tt_threshold_bundle_la_SOURCES = \
   toppik_axial.f \
   ttv_formfactors.f90
 
+libSM_tt_threshold_bundle_ut_la_SOURCES = \
+  ttv_formfactors_uti.f90 ttv_formfactors_ut.f90
+
+#@rm -f $@
+#echo SM_tt_threshold > $@
+#for module in $(libSM_tt_threshold_bundle_Modules); do \
+	#echo $$module >> $@; \
+#done
 # Dump module names into file Modules
 libSM_tt_threshold_bundle_Modules = \
-	${libSM_tt_threshold_bundle_la_SOURCES:.f90=}
+	${libSM_tt_threshold_bundle_la_SOURCES:.f90=} \
+	${libSM_tt_threshold_bundle_ut_la_SOURCES:.f90=}
 Modules: Makefile
-	@rm -f $@
-	echo SM_tt_threshold > $@
-	for module in $(libSM_tt_threshold_bundle_Modules); do \
-	  echo $$module >> $@; \
-	done
+	@for module in $(libSM_tt_threshold_bundle_Modules); do \
+          echo $$module >> $@.new; \
+        done
+	@if diff $@ $@.new -q >/dev/null; then \
+          rm $@.new; \
+	else \
+          mv $@.new $@; echo "Modules updated"; \
+        fi
+BUILT_SOURCES = Modules
 
 ## Fortran module dependencies
 # Get module lists from other directories
@@ -90,7 +104,9 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libSM_tt_threshold_bundle_la_SOURCES)
+Makefile.depend: \
+  $(libSM_tt_threshold_bundle_la_SOURCES) \
+  $(libSM_tt_threshold_bundle_ut_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -134,8 +150,52 @@ AM_FCFLAGS += $(FCFLAGS_OPENMP)
 endif
 
 ########################################################################
+## Non-standard targets and dependencies
+
+## (Re)create F90 sources from NOWEB source.
+if NOWEB_AVAILABLE
+
+PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
+POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
+
+SM_tt_threshold_bundle.stamp: $(PRELUDE) $(srcdir)/SM_tt_threshold_bundle.nw $(POSTLUDE)
+	@rm -f SM_tt_threshold_bundle.tmp
+	@touch SM_tt_threshold_bundle.tmp
+	for src in \
+          $(libSM_tt_threshold_bundle_la_SOURCES) \
+          $(libSM_tt_threshold_bundle_ut_la_SOURCES); do \
+	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
+        done
+	@mv -f SM_tt_threshold_bundle.tmp SM_tt_threshold_bundle.stamp
+
+$(libSM_tt_threshold_bundle_la_SOURCES) $(libSM_tt_threshold_bundle_ut_la_SOURCES): SM_tt_threshold_bundle.stamp
+## Recover from the removal of $@
+	@if test -f $@; then :; else \
+		rm -f SM_tt_threshold_bundle.stamp; \
+		$(MAKE) $(AM_MAKEFLAGS) SM_tt_threshold_bundle.stamp; \
+	fi
+
+endif
+
+########################################################################
 ## Non-standard cleanup tasks
-clean-local:
+## Remove sources that can be recreated using NOWEB
+if NOWEB_AVAILABLE
+maintainer-clean-noweb:
+	-rm -f *.f90
+endif
+.PHONY: maintainer-clean-noweb
+
+## Remove those sources also if builddir and srcdir are different
+if NOWEB_AVAILABLE
+clean-noweb:
+	test "$(srcdir)" != "." && rm -f *.f *.f90 || true
+endif
+.PHONY: clean-noweb
+
+## Remove F90 module files
+clean-local: clean-noweb
+	-rm -f *.stamp *.tmp
 	-rm -f *.$(FC_MODULE_EXT)
 if FC_SUBMODULES
 	-rm -f *.smod
@@ -144,3 +204,6 @@ endif
 ## Remove backup files
 maintainer-clean-local:
 	-rm -f *~
+
+## Register additional clean targets
+maintainer-clean-local: maintainer-clean-noweb maintainer-clean-backup

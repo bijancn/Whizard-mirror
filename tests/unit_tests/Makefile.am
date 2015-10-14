@@ -126,6 +126,7 @@ UNIT_TESTS = \
     process_configurations.run \
     event_streams.run \
     integrations.run \
+    ttv_formfactors.run \
     simulations.run
 
 XFAIL_UNIT_TESTS =
