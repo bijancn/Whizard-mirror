@@ -127,6 +127,8 @@ nodist_execmod_HEADERS = \
 	nrtype.$(FC_MODULE_EXT) \
 	ttv_formfactors.$(FC_MODULE_EXT)
 
+nrtype.$(FC_MODULE_EXT) nr.$(FC_MODULE_EXT): nr_tools.$(FC_MODULE_EXT)
+
 SUFFIXES = .lo .$(FC_MODULE_EXT)
 
 # Fortran90 module files are generated at the same time as object files
