@@ -86,6 +86,7 @@ libwhizard_la_LDFLAGS = $(LIBRARY_VERSION)
 
 ## Collect the various partial libraries
 libwhizard_la_LIBADD = \
+  models/SM_tt_threshold_bundle/libSM_tt_threshold_bundle.la \
   whizard-core/libwhizard_core.la \
   transforms/libtransforms.la \
   ../vamp/src/libvamp.la \
