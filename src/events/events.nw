@@ -30,6 +30,9 @@ These are the implementation modules:
 \item[eio\_checkpoints]
   Auxiliary output format.  The only purpose is to provide screen
   diagnostics during event output.
+\item[eio\_callback]
+  Auxiliary output format.  The only purpose is to execute a callback
+  procedure, so we have a hook for external access during event output.
 \item[eio\_weights]
   Print some event summary data, no details.  The main use if for
   testing purposes.
@@ -73,7 +76,9 @@ module event_base
   
   use system_defs, only: LF
 <<Use kinds>>
+  use kinds, only: i64
 <<Use strings>>
+  use io_units
   use string_utils, only: lower_case
   use diagnostics
   use model_data
@@ -856,6 +861,79 @@ data object.
   end subroutine event_normalization_update
   
 @ %def event_normalization_update
+@
+\subsection{Callback container}
+This derived type contains a callback procedure that can
+be executed during event I/O.  The callback procedure is given the
+event object (with class [[generic_event]]) and an event index.
+
+This is a simple wrapper.  The object is abstract, so the the actual
+procedure is introduced by overriding the deferred one.  We use the
+PASS attribute, so we may supplement runtime data in the callback object
+if desired.
+<<Event base: public>>=
+  public :: event_callback_t
+<<Event base: types>>=
+  type, abstract :: event_callback_t
+     private
+   contains
+     procedure(event_callback_write), deferred :: write
+     procedure(event_callback_proc), deferred :: proc
+  end type event_callback_t
+  
+@ %def event_callback_t
+@ Identify the callback procedure in output
+<<Event base: interfaces>>=
+  abstract interface
+     subroutine event_callback_write (event_callback, unit)
+       import
+       class(event_callback_t), intent(in) :: event_callback
+       integer, intent(in), optional :: unit
+     end subroutine event_callback_write
+  end interface
+  
+@ %def event_callback_write
+@ This is the procedure interface.
+<<Event base: interfaces>>=
+  abstract interface
+     subroutine event_callback_proc (event_callback, i, event)
+       import
+       class(event_callback_t), intent(in) :: event_callback
+       integer(i64), intent(in) :: i
+       class(generic_event_t), intent(in) :: event
+     end subroutine event_callback_proc
+  end interface
+  
+@ %def event_callback_proc
+@ A dummy implementation for testing and fallback.
+<<Event base: public>>=
+  public :: event_callback_nop_t
+<<Event base: types>>=
+  type, extends (event_callback_t) :: event_callback_nop_t
+     private
+   contains
+     procedure :: write => event_callback_nop_write
+     procedure :: proc => event_callback_nop
+  end type event_callback_nop_t
+  
+@ %def event_callback_t
+<<Event base: procedures>>=
+  subroutine event_callback_nop_write (event_callback, unit)
+    class(event_callback_nop_t), intent(in) :: event_callback
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, "(1x,A)")  "NOP"
+  end subroutine event_callback_nop_write
+  
+  subroutine event_callback_nop (event_callback, i, event)
+    class(event_callback_nop_t), intent(in) :: event_callback
+    integer(i64), intent(in) :: i
+    class(generic_event_t), intent(in) :: event
+  end subroutine event_callback_nop
+  
+@ %def event_callback_nop_write
+@ %def event_callback_nop
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Event Sample Data}
@@ -2343,6 +2421,197 @@ We test the implementation of all I/O methods.
   end subroutine eio_checkpoints_1
   
 @ %def eio_checkpoints_1
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+\section{Event Generation Callback}
+This is an output-only format.  Its only use is to write screen
+messages every $n$ events, to inform the user about progress.
+<<[[eio_callback.f90]]>>=
+<<File header>>
+
+module eio_callback
+  
+  use kinds, only: i64
+<<Use strings>>
+  use io_units
+  use diagnostics
+  use cputime
+  use event_base
+  use eio_data
+  use eio_base
+
+<<Standard module head>>
+
+<<EIO callback: public>>
+
+<<EIO callback: types>>
+
+contains
+  
+<<EIO callback: procedures>>
+
+end module eio_callback
+@ %def eio_callback
+@
+\subsection{Type}
+<<EIO callback: public>>=
+  public :: eio_callback_t
+<<EIO callback: types>>=
+  type, extends (eio_t) :: eio_callback_t
+     class(event_callback_t), allocatable :: callback
+     integer(i64) :: i_evt = 0
+     integer :: i_interval = 0
+     integer :: n_interval = 0
+!      type(timer_t) :: timer
+   contains
+   <<EIO callback: eio callback: TBP>>
+  end type eio_callback_t
+  
+@ %def eio_callback_t
+@
+\subsection{Specific Methods}
+Set parameters that are specifically used for callback: the procedure
+and the number of events to wait until the procedure is called (again).
+<<EIO callback: eio callback: TBP>>=
+  procedure :: set_parameters => eio_callback_set_parameters
+<<EIO callback: procedures>>=
+  subroutine eio_callback_set_parameters (eio, callback, count_interval)
+    class(eio_callback_t), intent(inout) :: eio
+    class(event_callback_t), intent(in) :: callback
+    integer, intent(in) :: count_interval
+    allocate (eio%callback, source = callback)
+    eio%n_interval = count_interval
+  end subroutine eio_callback_set_parameters
+  
+@ %def eio_callback_set_parameters
+@ 
+\subsection{Common Methods}
+Output.  This is not the actual event format, but a readable account
+of the current status.
+<<EIO callback: eio callback: TBP>>=
+  procedure :: write => eio_callback_write
+<<EIO callback: procedures>>=
+  subroutine eio_callback_write (object, unit)
+    class(eio_callback_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, "(1x,A)")  "Event-sample callback:"
+    write (u, "(3x,A,I0)")  "interval  = ", object%n_interval
+    write (u, "(3x,A,I0)")  "evt count = ", object%i_evt
+!        call object%timer%write (u)
+  end subroutine eio_callback_write
+  
+@ %def eio_callback_write
+@ Finalizer: trivial.
+<<EIO callback: eio callback: TBP>>=
+  procedure :: final => eio_callback_final
+<<EIO callback: procedures>>=
+  subroutine eio_callback_final (object)
+    class(eio_callback_t), intent(inout) :: object
+  end subroutine eio_callback_final
+  
+@ %def eio_callback_final
+@ Activate checkpointing for event generation or writing.
+<<EIO callback: eio callback: TBP>>=
+  procedure :: init_out => eio_callback_init_out
+<<EIO callback: procedures>>=
+  subroutine eio_callback_init_out (eio, sample, data, success, extension)
+    class(eio_callback_t), intent(inout) :: eio
+    type(string_t), intent(in) :: sample
+    type(string_t), intent(in), optional :: extension
+    type(event_sample_data_t), intent(in), optional :: data
+    logical, intent(out), optional :: success
+    eio%i_evt = 0
+    eiO%i_interval = 0
+    if (present (success))  success = .true.
+  end subroutine eio_callback_init_out
+    
+@ %def eio_callback_init_out
+@ No callback for event reading.
+<<EIO callback: eio callback: TBP>>=
+  procedure :: init_in => eio_callback_init_in
+<<EIO callback: procedures>>=
+  subroutine eio_callback_init_in (eio, sample, data, success, extension)
+    class(eio_callback_t), intent(inout) :: eio
+    type(string_t), intent(in) :: sample
+    type(string_t), intent(in), optional :: extension
+    type(event_sample_data_t), intent(inout), optional :: data
+    logical, intent(out), optional :: success
+    call msg_bug ("Event callback: event input not supported")
+    if (present (success))  success = .false.
+  end subroutine eio_callback_init_in
+    
+@ %def eio_callback_init_in
+@ Switch from input to output: also not supported.
+<<EIO callback: eio callback: TBP>>=
+  procedure :: switch_inout => eio_callback_switch_inout
+<<EIO callback: procedures>>=
+  subroutine eio_callback_switch_inout (eio, success)
+    class(eio_callback_t), intent(inout) :: eio
+    logical, intent(out), optional :: success
+    call msg_bug ("Event callback: in-out switch not supported")
+    if (present (success))  success = .false.
+  end subroutine eio_callback_switch_inout
+  
+@ %def eio_callback_switch_inout
+@ The actual callback.  First increment counters, then call the
+procedure if the counter hits the interval.
+<<EIO callback: eio callback: TBP>>=
+  procedure :: output => eio_callback_output
+<<EIO callback: procedures>>=
+  subroutine eio_callback_output (eio, event, i_prc, reading, passed, pacify)
+    class(eio_callback_t), intent(inout) :: eio
+    class(generic_event_t), intent(in), target :: event
+    integer, intent(in) :: i_prc
+    logical, intent(in), optional :: reading, passed, pacify
+    logical :: rd
+    eio%i_evt = eio%i_evt + 1
+    if (eio%n_interval > 0) then
+       eio%i_interval = eio%i_interval + 1
+       if (eio%i_interval >= eio%n_interval) then
+          call eio%callback%proc (eio%i_evt, event)
+          eio%i_interval = 0
+       end if
+    end if
+  end subroutine eio_callback_output
+
+@ %def eio_callback_output
+@ No input.
+<<EIO callback: eio callback: TBP>>=
+  procedure :: input_i_prc => eio_callback_input_i_prc
+  procedure :: input_event => eio_callback_input_event
+<<EIO callback: procedures>>=
+  subroutine eio_callback_input_i_prc (eio, i_prc, iostat)
+    class(eio_callback_t), intent(inout) :: eio
+    integer, intent(out) :: i_prc
+    integer, intent(out) :: iostat
+    call msg_bug ("Event callback: event input not supported")
+    i_prc = 0
+    iostat = 1
+  end subroutine eio_callback_input_i_prc
+
+  subroutine eio_callback_input_event (eio, event, iostat)
+    class(eio_callback_t), intent(inout) :: eio
+    class(generic_event_t), intent(inout), target :: event
+    integer, intent(out) :: iostat
+    call msg_bug ("Event callback: event input not supported")
+    iostat = 1
+  end subroutine eio_callback_input_event
+
+@ %def eio_callback_input_i_prc
+@ %def eio_callback_input_event
+@
+<<EIO callback: eio callback: TBP>>=
+  procedure :: skip => eio_callback_skip
+<<EIO callback: procedures>>=
+  subroutine eio_callback_skip (eio, iostat)
+    class(eio_callback_t), intent(inout) :: eio
+    integer, intent(out) :: iostat
+    iostat = 0
+  end subroutine eio_callback_skip
+
+@ %def eio_callback_skip
 @ 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 \section{Event Weight Output}
