@@ -10661,6 +10661,11 @@ end module ttv_formfactors
   real(default) :: MU_USOFT, AS_USOFT
 
 @ [[NUSTAR_FIXED]] is normally not used
+<<ttv formfactors: public>>=
+  public :: AS_SOFT
+  public :: AS_LL_SOFT
+  public :: AS_USOFT
+  public :: AS_HARD
 <<ttv formfactors: global variables>>=
   real(default) :: RESCALE_F, MU_SOFT, AS_SOFT, AS_LL_SOFT, NUSTAR_FIXED
   logical :: NUSTAR_DYNAMIC, SWITCHOFF, NEED_FF_GRID, NEED_P0_GRID !, match_to_NLO, need_J0
@@ -10849,7 +10854,7 @@ end module ttv_formfactors
       !case (5)
         !FF = nonrel_expanded_formfactor (alphas_soft (ps%sqrts) - AS_HARD, ps, vec_type) &
             !+ relativistic_formfactor_pure (AS_HARD, ps, vec_type) - one
-      case (RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT)
+      case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT)
         FF = resummed_formfactor (ps, vec_type)
       case (EXPANDED_HARD_P0DEPENDENT)
         FF = nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type)
@@ -10957,7 +10962,7 @@ end module ttv_formfactors
     complex(default) :: v, contrib_from_potential
     logical :: nop0
     FF = one
-    if (.not. INITIALIZED_PARS .or. vec_type==2) return
+    if (.not. INITIALIZED_PARS .or. vec_type == AXIAL) return
     nop0 = .false.; if (present (no_p0))  nop0 = no_p0
     v = sqrts_to_v (ps%sqrts)
     if (nop0) then
@@ -11167,6 +11172,8 @@ end module ttv_formfactors
   end function current_coeff
 
 @
+<<ttv formfactors: public>>=
+  public :: v_matching
 <<ttv formfactors: procedures>>=
   !!! matching parameter as a function of the phase space point
   !pure
@@ -11195,6 +11202,8 @@ end module ttv_formfactors
 !  end function A_matching
 
 @
+<<ttv formfactors: public>>=
+  public :: f_switch_off
 <<ttv formfactors: procedures>>=
   !!! smooth transition from f1 to f2 between v1 and v2 (2 combined parabolas)
   pure function f_switch_off (v) result (fval)
@@ -11226,7 +11235,7 @@ end module ttv_formfactors
 !     v1 = 0.55_default !!! NLO v7
 !     v2 = 0.8_default
     f1 = one
-    f2 = zero
+    f2 = zero + tiny_10
     vm = (v1+v2) / 2.
     if ( v < v1 ) then
       fval = f1
@@ -11562,7 +11571,7 @@ end module ttv_formfactors
     real(default), intent(in), optional :: mpole_in
     complex(default), dimension(POINTS_P), optional :: ff_toppik
     integer :: i_p
-    real(default) :: mpole
+    real(default) :: mpole, alphas_hard, f
     real(default), dimension(POINTS_P) :: p_toppik
     type(nr_spline_t) :: toppik_spline
     real*8 :: xenergy, xtm, xtg, xalphas, xscale, xc0, xc1, xc2, xim, xdi, &
@@ -11639,7 +11648,13 @@ end module ttv_formfactors
         call toppik_spline%dealloc ()
       end if
       !!! TOPPIK output includes tree level ~ 1, a_soft @ LL in current coefficient!
-      ff_toppik = ff_toppik * current_coeff (AS_HARD, AS_LL_SOFT, AS_USOFT, vec_type)
+      if (SWITCHOFF) then
+         f = f_switch_off (v_matching (sqrts))
+         alphas_hard = AS_HARD * f
+      else
+         alphas_hard = AS_HARD
+      end if
+      ff_toppik = ff_toppik * current_coeff (alphas_hard, AS_LL_SOFT, AS_USOFT, vec_type)
     end if
   end subroutine scan_formfactor_over_p_TOPPIK
 
@@ -11953,7 +11968,7 @@ end module ttv_formfactors
     type(phase_space_point_t) :: ps
     type(p0_q_integrand_t) :: q_integrand
     complex(default) :: q_integral, ff
-    real(default) :: current_c1
+    real(default) :: current_c1, alphas_hard, f
     if (vec_type==2) return
     call msg_warning ("DEPRECATED FEAUTRE: " // &
          "p0 dependence as implemented breaks gauge invariance!")
@@ -11981,8 +11996,14 @@ end module ttv_formfactors
 !                     G0p_tree(en,q_grid(i_q),MTPOLE,GAM)
       end do
     end if
+    if (SWITCHOFF) then
+       f = f_switch_off (v_matching (sqrts))
+       alphas_hard = AS_HARD * f
+    else
+       alphas_hard = AS_HARD
+    end if
     !!! AS_SOFT @ LL in current coefficient!
-    current_c1 = current_coeff (AS_HARD, AS_LL_SOFT, AS_USOFT, vec_type)
+    current_c1 = current_coeff (alphas_hard, AS_LL_SOFT, AS_USOFT, vec_type)
     call msg_debug (D_THRESHOLD, "Integrate over q for each p, p0")
     do i_p = 1, n_p_p0dep
        p = p_grid(i_p)
@@ -12451,6 +12472,8 @@ module ttv_formfactors_uti
 <<Use kinds>>
   use constants
   use ttv_formfactors
+  use diagnostics
+  use sm_physics, only: running_as
   use unit_tests
 
 <<Standard module head>>
@@ -12485,8 +12508,8 @@ end module ttv_formfactors_uti
   subroutine ttv_formfactors_1 (u)
     integer, intent(in) :: u
     real(default) :: m1s, Vtb, wt_inv, alphaemi, sw, alphas_mz, mz, &
-         mw, mb, sh, sf, nloop, FF, v1, v2, scan_sqrts_max, &
-         scan_sqrts_min, scan_sqrts_stepsize, test, gam_out, mpole_out
+         mw, mb, sh, sf, nloop, FF, v1, v2, scan_sqrts_max, sqrts, &
+         scan_sqrts_min, scan_sqrts_stepsize, test, gam_out, mpole
     type(phase_space_point_t) :: ps
     integer :: ff_mode
     logical :: mpole_fixed
@@ -12506,29 +12529,89 @@ end module ttv_formfactors_uti
     sh = one
     sf = one
     nloop = one
-    FF = one
+    !FF = RESUMMED_P0CONSTANT
+    FF = MATCHED
     v1 = 0.3
     v2 = 0.5
-    scan_sqrts_min = 2 * m1s
-    scan_sqrts_max = 2 * m1s
+    sqrts = 2 * m1s + 0.01_default
+    scan_sqrts_min = sqrts
+    scan_sqrts_max = sqrts
     scan_sqrts_stepsize = 0.1_default
     mpole_fixed = .true.
     test = - one
-    call init_parameters &
-         (mpole_out, gam_out, m1s, Vtb, wt_inv, &
-          alphaemi, sw, alphas_mz, mz, mz, &
-          mb, sh, sf, nloop, FF, &
-          v1, v2, scan_sqrts_min, scan_sqrts_max, &
-          scan_sqrts_stepsize, mpole_fixed)
-    call init_threshold_grids (test)
+    !msg_level(D_THRESHOLD) = DEBUG2
+  <<(re)start grid>>
 
-    call ps%init (m1s**2, m1s**2, (2*m1s)**2, mpole_out)
-    !!! care FF_master contains the tree level that we usually subtract again
-    !call assert (u, FF_master (ps, 1, 1) == FF_master (ps, 1, 2))
-    call assert (u, m1s_to_mpole (350.0_default) == m1s, "m1s_to_mpole (350.0_default) == m1s")
+    write (u, "(A)") "Check that the mass is fixed"
+    call ps%init (m1s**2, m1s**2, sqrts**2, mpole)
+    call assert (u, m1s_to_mpole (350.0_default) == m1s, &
+         "m1s_to_mpole (350.0_default) == m1s")
+    call assert (u, m1s_to_mpole (550.0_default) == m1s, &
+         "m1s_to_mpole (550.0_default) == m1s")
+    write (u, "(A)") ""
 
+    write (u, "(A)") "Check that the mass is not fixed"
+    mpole_fixed = .false.
+  <<(re)start grid>>
+    call assert (u, m1s_to_mpole (350.0_default) > m1s + 0.1_default, &
+         "m1s_to_mpole (350.0_default) > m1s")
     write (u, "(A)")
+
+    !!! care FF_master contains the tree level that we usually subtract again
+    write (u, "(A)") "Check low energy behavior"
+    mpole_fixed = .true.
+  <<(re)start grid>>
+    call assert_equal (u, f_switch_off (v_matching (ps%sqrts)), one, "f_switch_off (v_matching (ps%sqrts))")
+    !call assert_equal (u, &
+         !abs (FF_master (ps, 1, EXPANDED_HARD_P0CONSTANT)), &
+         !abs (FF_master (ps, 1, RESUMMED_P0CONSTANT)), &
+         !"expansion should be smaller than resummed?")
+    call assert_equal (u, &
+         FF_master (ps, 1, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT), &
+         FF_master (ps, 1, EXPANDED_SOFT_P0CONSTANT), &
+         "switchoff function should do nothing here")
+    write (u, "(A)") ""
+
+    write (u, "(A)") "Check high energy behavior"
+    sqrts = 500.0_default
+    scan_sqrts_min = sqrts
+    scan_sqrts_max = sqrts
+  <<(re)start grid>>
+    ! For simplicity we test on-shell back-to-back tops
+    !p = sqrt(sqrts / 4 - mpole**2)
+    call ps%init (m1s**2, m1s**2, sqrts**2, mpole)
+    call assert_equal (u, f_switch_off (v_matching (ps%sqrts)), tiny_10, &
+         "f_switch_off (v_matching (ps%sqrts))")
+    call assert (u, &
+         abs (FF_master (ps, 1, EXPANDED_HARD_P0CONSTANT)) > &
+         abs (FF_master (ps, 1, RESUMMED_P0CONSTANT)), &
+         "expansion with hard alphas should be larger " // &
+         "than resummed (with switchoff)")
+    call assert_equal (u, &
+         abs (FF_master (ps, 1, RESUMMED_P0CONSTANT)), one, &
+         "resummed (with switchoff) should be one (tree-level)")
+    call assert_equal (u, &
+         abs (FF_master (ps, 1, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)), one, &
+         "expanded (with switchoff) should be one (tree-level)")
+    write (u, "(A)") ""
+
+    write (u, "(A)") "Check global variables"
+    call assert_equal (u, AS_HARD, &
+         running_as (m1s, alphas_mz, mz, 2, 5.0_default), "hard alphas")
+    call assert_equal (u, AS_SOFT, zero, "soft alphas", abs_smallness=tiny_10)
+    call assert_equal (u, AS_USOFT, zero, "ultrasoft alphas", abs_smallness=tiny_10)
+    call assert_equal (u, AS_LL_SOFT, zero, "LL soft alphas", abs_smallness=tiny_10)
+
     write (u, "(A)")  "* Test output end: ttv_formfactors_1"
   end subroutine ttv_formfactors_1
 
 @ %def ttv_formfactors_1
+<<(re)start grid>>=
+  call init_parameters &
+       (mpole, gam_out, m1s, Vtb, wt_inv, &
+        alphaemi, sw, alphas_mz, mz, mw, &
+        mb, sh, sf, nloop, FF, &
+        v1, v2, scan_sqrts_min, scan_sqrts_max, &
+        scan_sqrts_stepsize, mpole_fixed)
+  call init_threshold_grids (test)
+@
