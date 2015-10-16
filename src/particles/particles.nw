@@ -2717,9 +2717,6 @@ the [[particle_set]].
      type(particle_t) :: new_particle
      integer :: i
      integer :: pdg_index_emitter, pdg_index_radiation
-     !integer :: n_in, n_vir, n_out, n_tot
-     !integer :: n_vir_new
-     !integer :: n_vir, n_vir_new, n_in, n_out
      integer, dimension(:), allocatable :: parents, children
      type(flavor_t) :: new_flv
      logical, dimension(:), allocatable :: status_mask
@@ -2819,8 +2816,10 @@ the [[particle_set]].
      pdg_index_radiation = flv_radiated (n_in2 + n_out2)
      call new_flv%init (pdg_index_radiation, model)
      i_emitter = emitter + n_virt2 + n_remnant2 + n_beam2
+
      call reassign_colors (new_particle, new_particle_set%prt(i_emitter), &
-                           pdg_index_radiation, pdg_index_emitter, r_color)
+        pdg_index_radiation, pdg_index_emitter, r_color)
+
      call new_particle%set_flavor (new_flv)
      new_particle_set%prt(n_tot) = new_particle
 
@@ -2842,6 +2841,8 @@ the [[particle_set]].
         particle_set = new_particle_set
      end select
   contains
+
+    <<build radiation: set color offset>>
     subroutine reassign_colors (prt_radiated, prt_emitter, i_rad, i_em, r_col)
       type(particle_t), intent(inout) :: prt_radiated, prt_emitter
       integer, intent(in) :: i_rad, i_em
@@ -2928,6 +2929,39 @@ the [[particle_set]].
   end subroutine particle_set_build_radiation
 
 @ %def particle_set_build_radiation   
+@ Increments the color indices of all particles by their maximal value to distinguish them
+from the record-keeping Born particles in the LHE-output if the virtual entries are kept. 
+<<build radiation: set color offset>>=
+  subroutine set_color_offset (particle_set)
+    type(particle_set_t), intent(inout) :: particle_set
+    integer, dimension(2) :: color
+    integer :: i, i_color_max
+    type(color_t) :: new_color
+
+    i_color_max = 0
+    do i = 1, size (particle_set%prt)
+       associate (prt => particle_set%prt(i))
+          if (prt%get_status () <= PRT_INCOMING) cycle
+          color = prt%get_color ()
+          i_color_max = maxval([i_color_max, color(1), color(2)])
+       end associate
+    end do
+
+    
+    do i = 1, size (particle_set%prt)
+       associate (prt => particle_set%prt(i))
+          if (prt%get_status () /= PRT_OUTGOING) cycle
+          color = prt%get_color ()
+          where (color /= 0) color = color + i_color_max
+          !if (color(1) /= 0) color(1) = color(1) + i_color_max
+          !if (color(2) /= 0) color(2) = color(2) + i_color_max
+          call new_color%init_col_acl (color(1), color(2))
+          call prt%set_color (new_color)
+       end associate
+    end do
+  end subroutine set_color_offset
+
+@ %def set_color_offset      
 @ Output (default format)
 <<Particles: particle set: TBP>>=
   procedure :: write => particle_set_write
@@ -3652,15 +3686,16 @@ The correlated state matrix, if any, is also ignored.
   procedure :: apply_keep_beams => particle_set_apply_keep_beams
 <<Particles: procedures>>=
   subroutine particle_set_apply_keep_beams &
-       (pset_in, pset_out, keep_beams, real_parents)
+       (pset_in, pset_out, keep_beams, real_parents, keep_virtuals)
     class(particle_set_t), intent(in) :: pset_in
     type(particle_set_t), intent(out) :: pset_out
-    logical, intent(in), optional :: keep_beams, real_parents
+    logical, intent(in), optional :: keep_beams, real_parents, keep_virtuals
     integer, dimension(:), allocatable :: status, map
     integer :: i, j
-    logical :: kb, rp
+    logical :: kb, rp, kv
     kb = .false.;  if (present (keep_beams))  kb = keep_beams
     rp = .false.; if (present (real_parents)) rp = real_parents
+    kv = .true.; if (present (keep_virtuals)) kv = keep_virtuals
     allocate (status (pset_in%n_tot))    
     !!! !!! !!! Workaround for ifort standard-semantics bug
     do i = 1, pset_in%n_tot
@@ -3669,13 +3704,18 @@ The correlated state matrix, if any, is also ignored.
     !!! status = particle_get_status (pset_in%prt)
     if (kb)  pset_out%n_beam  = count (status == PRT_BEAM)
     pset_out%n_in  = count (status == PRT_INCOMING)
-    if (kb) then
+    if (kb .and. kv) then
        pset_out%n_vir = count (status == PRT_VIRTUAL) + &
             count (status == PRT_RESONANT) + &
             count (status == PRT_BEAM_REMNANT)
-    else 
+    else if (kb .and. .not. kv) then
+       pset_out%n_vir = count (status == PRT_RESONANT) + &
+            count (status == PRT_BEAM_REMNANT)
+    else if (.not. kb .and. kv) then
        pset_out%n_vir = count (status == PRT_VIRTUAL) + &
             count (status == PRT_RESONANT)
+    else 
+       pset_out%n_vir = count (status == PRT_RESONANT)
     end if
     pset_out%n_out = count (status == PRT_OUTGOING)
     pset_out%n_tot = &
@@ -3688,7 +3728,7 @@ The correlated state matrix, if any, is also ignored.
     call copy_particles (PRT_INCOMING)
     if (kb) call copy_particles (PRT_BEAM_REMNANT)
     call copy_particles (PRT_RESONANT)
-    call copy_particles (PRT_VIRTUAL)
+    if (kv) call copy_particles (PRT_VIRTUAL)
     call copy_particles (PRT_OUTGOING)
     do i = 1, pset_in%n_tot
        if (map(i) == 0)  cycle
