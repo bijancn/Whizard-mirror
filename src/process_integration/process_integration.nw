@@ -8854,6 +8854,8 @@ to subobject of [[instance]].
                     end if
                   end associate
                case (NLO_VIRTUAL)
+                  if (process%beam_config%data%is_initialized ()) &
+                     call instance%setup_polarized_virtuals (process%beam_config)
                   i_born = component%config%config%get_associated_born ()
                   i_real = i_born + process%config%n_components / 3
                   component%nlo_type = NLO_VIRTUAL
@@ -8904,6 +8906,39 @@ to subobject of [[instance]].
    end subroutine process_instance_setup_blha_structure_functions
 
 @ %def process_instance_setup_blha_structure_functions
+@
+<<Processes: process instance: TBP>>=
+  procedure :: setup_polarized_virtuals => process_instance_setup_polarized_virtuals
+<<Processes: procedures>>=
+  subroutine process_instance_setup_polarized_virtuals (instance, config)
+     class(process_instance_t), intent(inout) :: instance
+     type(process_beam_config_t), intent(in) :: config
+     type(state_matrix_t) :: state_hel
+     integer, dimension(:), allocatable :: i_diag
+     real(default), dimension(:), allocatable :: f
+     integer :: n_flv
+     state_hel = config%data%get_helicity_state_matrix ()
+     call state_hel%get_diagonal_entries (i_diag) 
+     if (size (i_diag) == 4) then
+        f = state_hel%get_matrix_element (i_diag)
+        select type (pcm => instance%pcm)
+        type is (pcm_instance_nlo_t)
+           call pcm%controller%init_polarization_data (f)
+           associate (collector => pcm%controller%sqme_collector)
+              n_flv = size (collector%sqme_born_list, 1)
+              deallocate (collector%sqme_born_list)
+              deallocate (collector%sqme_virt_list)
+              allocate (collector%sqme_born_list (n_flv, 4))
+              allocate (collector%sqme_virt_list (n_flv, 4))
+           end associate
+        end select
+     else
+        call msg_fatal ("Polarized virtual matrix elements so far "&
+           &"only work with diagonal density matrices")
+     end if
+  end subroutine process_instance_setup_polarized_virtuals
+
+@ %def process_instance_setup_polarized_virtuals
 @ Subroutine of the initialization above: initialize the beam and
 structure-function chain template.  We establish pointers to the
 configuration data, so [[beam_config]] must have a [[target]]
@@ -10260,33 +10295,6 @@ and directly set the coupling value that comes together with a particle set.
   end function process_instance_get_fixed_emitter
 
 @ %def process_instance_get_fixed_emitter
-@
-<<Processes: process instance: TBP>>=
-  procedure :: init_pol_fractions_virtual &
-     => process_instance_init_pol_fractions_virtual 
-<<Processes: procedures>>=
-  subroutine process_instance_init_pol_fractions_virtual (instance, beam_structure)
-    class(process_instance_t), intent(inout) :: instance
-    type(beam_structure_t), intent(in) :: beam_structure
-    real(default), dimension(:), allocatable :: f
-    integer :: n_flv
-    if (.not. allocated (instance%pcm)) call msg_fatal &
-       ("Attempting to access non-allocated process component manager")
-    select type (pcm => instance%pcm)
-    type is (pcm_instance_nlo_t)
-       f = beam_structure%get_pol_f ()
-       call pcm%controller%init_polarization_data (f)
-       associate (collector => pcm%controller%sqme_collector)
-          n_flv = size (collector%sqme_born_list, 1)
-          deallocate (collector%sqme_born_list)
-          deallocate (collector%sqme_virt_list)
-          allocate (collector%sqme_born_list (n_flv, 4))
-          allocate (collector%sqme_virt_list (n_flv, 4))
-       end associate
-    end select
-  end subroutine process_instance_init_pol_fractions_virtual
-
-@ %def porcess_instance_init_pol_fractions_virtual
 @
 <<Processes: process instance: TBP>>=
   procedure :: create_blha_interface => process_instance_create_blha_interface
