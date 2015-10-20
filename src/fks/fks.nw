@@ -4285,7 +4285,11 @@ module nlo_controller
 
 <<nlo controller: public>>
 
+<<nlo controller: public operators>>
+
 <<nlo controller: types>>
+
+<<nlo controller: interfaces>>
 
 contains
 
@@ -5214,58 +5218,100 @@ one to determine this.
 @
 <<nlo controller: types>>=
   type :: polarization_data_t
-    logical :: active = .false.
-    real(default), dimension(:), allocatable :: pmatrix_diag
+    logical :: valid = .false.
+    real(default) :: value = zero
+    integer :: h1 = 0
+    integer :: h2 = 0
+    !!real(default), dimension(:), allocatable :: pmatrix_diag
   contains
   <<nlo controller: polarization data: TBP>>
   end type polarization_data_t
 
 @ %def polarization_data_t
 @
-<<nlo controller: polarization data: TBP>>=
-  procedure :: init => polarization_data_init
-<<nlo controller: procedures>>=
-  subroutine polarization_data_init (pol_data)
-    class(polarization_data_t), intent(inout) :: pol_data
-    allocate (pol_data%pmatrix_diag (4))
-    pol_data%pmatrix_diag = -1
-    pol_data%active = .true.
-  end subroutine polarization_data_init
+<<nlo controller: public operators>>=
+  public :: operator(*)
+<<nlo controller: interfaces>>=
+  interface operator(*)
+     module procedure polarization_data_multiply
+  end interface
 
-@ %def polarization_data_init
+@ %def multipliy_interface
+@
+<<nlo controller: procedures>>=
+  function polarization_data_multiply (p1, p2) result (prod)
+    real(default) :: prod
+    type(polarization_data_t), dimension(:), intent(in) :: p1, p2
+    integer :: i, j
+    prod = zero
+    do i = 1, size (p1)
+       do j = 1, size (p2)
+          if (p1(i)%h1 == p2(j)%h1 .and. p1(i)%h2 == p2(j)%h2) then
+             prod = prod + p1(i)%value * p2(j)%value
+             exit
+          end if
+       end do
+    end do
+  end function polarization_data_multiply
+
+@ %def polarization_data_multiply
 @
 <<nlo controller: polarization data: TBP>>=
-  procedure :: is_active => polarization_data_is_active
+  procedure :: set_helicities => polarization_data_set_helicities
 <<nlo controller: procedures>>=
-  elemental function polarization_data_is_active (pol_data) result (active)
-    logical :: active
+  subroutine polarization_data_set_helicities (pol_data, h1, h2)
+    class(polarization_data_t), intent(inout) :: pol_data
+    integer, intent(in) :: h1, h2
+    pol_data%h1 = h1; pol_data%h2 = h2
+    pol_data%valid = (pol_data%h1 == 1 .or. pol_data%h1 == -1) &
+                .and. (pol_data%h2 == 1 .or. pol_data%h2 == -1)
+  end subroutine polarization_data_set_helicities
+
+@ %def polarization_data_init_helicities
+@
+<<nlo controller: polarization data: TBP>>=
+  procedure :: set_value => polarization_data_set_value
+<<nlo controller: procedures>>=
+  subroutine polarization_data_set_value (pol_data, value)
+     class(polarization_data_t), intent(inout) :: pol_data
+     real(default), intent(in) :: value
+     pol_data%value = value
+  end subroutine polarization_data_set_value
+
+@ %def polarization_data_set_value
+@
+<<nlo controller: polarization data: TBP>>=
+  procedure :: is_active => polarization_data_is_valid
+<<nlo controller: procedures>>=
+  elemental function polarization_data_is_valid (pol_data) result (valid)
+    logical :: valid
     class(polarization_data_t), intent(in) :: pol_data
-    active = pol_data%active
-  end function polarization_data_is_active
+    valid = pol_data%valid
+  end function polarization_data_is_valid
 
-@ %def polarization_data_is_active
+@ %def polarization_data_is_valid
 @
 <<nlo controller: polarization data: TBP>>=
-  procedure :: set => polarization_data_set 
+!  procedure :: set => polarization_data_set 
 <<nlo controller: procedures>>=
-  subroutine polarization_data_set (pol_data, f)
-    class(polarization_data_t), intent(inout) :: pol_data
-    real(default), intent(in), dimension(4) :: f
-    pol_data%pmatrix_diag = f
-  end subroutine polarization_data_set
-
+!  subroutine polarization_data_set (pol_data, f)
+!    class(polarization_data_t), intent(inout) :: pol_data
+!    real(default), intent(in), dimension(4) :: f
+!    pol_data%pmatrix_diag = f
+!  end subroutine polarization_data_set
+!
 @ %def polarization_data_set
 @
 <<nlo controller: polarization data: TBP>>=
-  procedure :: get_factor => polarization_data_get_factor
+!  procedure :: get_factor => polarization_data_get_factor
 <<nlo controller: procedures>>=
-  function polarization_data_get_factor (pol_data, i) result (f)
-    real(default) :: f
-    class(polarization_data_t), intent(in) :: pol_data
-    integer, intent(in) :: i
-    f = pol_data%pmatrix_diag (i)
-  end function polarization_data_get_factor 
-
+!  function polarization_data_get_factor (pol_data, i) result (f)
+!    real(default) :: f
+!    class(polarization_data_t), intent(in) :: pol_data
+!    integer, intent(in) :: i
+!    f = pol_data%pmatrix_diag (i)
+!  end function polarization_data_get_factor 
+!
 @ %def polarization_data_get_factor 
 @ This data type governs the whole calculation. It contains information
 about color, spin and flavor as well as the information about the Born
@@ -5279,7 +5325,8 @@ process.
     type(nlo_particle_data_t) :: particle_data
     type(nlo_states_t) :: particle_states
     type(sqme_collector_t), pointer :: sqme_collector => null ()
-    type(polarization_data_t) :: pol_data 
+    type(polarization_data_t), dimension(:), allocatable :: pol_density_matrix
+    type(polarization_data_t), dimension(:), allocatable :: pol_sqme
     integer :: n_allowed_born
     integer :: active_emitter
     integer :: active_flavor_structure_real
@@ -5338,19 +5385,32 @@ process.
 @ %def nlo_controller_init
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: init_polarization_data => nlo_controller_init_polarization_data
+  procedure :: init_pol_density_matrix => nlo_controller_init_pol_density_matrix
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_init_polarization_data (nlo_controller, f)
+  subroutine nlo_controller_init_pol_density_matrix (nlo_controller, n_entries)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    real(default), intent(in), dimension(:), allocatable :: f
-    integer :: i
-    associate (pol_data => nlo_controller%pol_data)
-       call pol_data%init ()
-       call pol_data%set (f)
-    end associate
-  end subroutine nlo_controller_init_polarization_data
+    integer :: n_entries
+    allocate (nlo_controller%pol_density_matrix (n_entries))
+  end subroutine nlo_controller_init_pol_density_matrix
 
-@ %def nlo_controller_init_polarization_data       
+@ %def nlo_controller_init_pol_density_matrix
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: init_polarized_sqmes => nlo_controller_init_polarized_sqmes
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_init_polarized_sqmes (nlo_controller, n_sqme)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    integer, intent(in) :: n_sqme
+    allocate (nlo_controller%pol_sqme (n_sqme))
+    associate (pol_sqme => nlo_controller%pol_sqme)
+       call pol_sqme(1)%set_helicities (-1,-1)
+       call pol_sqme(2)%set_helicities (-1,1)
+       call pol_sqme(3)%set_helicities (1,-1)
+       call pol_sqme(4)%set_helicities (1,1)
+    end associate
+  end subroutine nlo_controller_init_polarized_sqmes
+
+@ %def nlo_controller_init_polarized_sqmes
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: beams_are_polarized => nlo_controller_beams_are_polarized 
@@ -5358,7 +5418,7 @@ process.
   elemental function nlo_controller_beams_are_polarized (nlo_controller) result (val)
     logical :: val
     class(nlo_controller_t), intent(in) :: nlo_controller
-    val = nlo_controller%pol_data%active
+    val = allocated (nlo_controller%pol_density_matrix)
   end function nlo_controller_beams_are_polarized
 
 @ %def nlo_controller_beams_are_polarized
@@ -5369,13 +5429,14 @@ process.
   function nlo_controller_get_weighted_helicity_sum (nlo_controller) result (sqme)
      real(default) :: sqme
      class(nlo_controller_t), intent(in) :: nlo_controller
-     integer :: i_hel
-     real(default) :: factor
-     sqme = 0
-     do i_hel = 1, 4
-        factor = nlo_controller%pol_data%get_factor (i_hel)
-        sqme = sqme + factor * sum (nlo_controller%sqme_collector%sqme_virt_list (:,i_hel))
-     end do
+     !integer :: i_hel
+     !real(default) :: factor
+     sqme = four * (nlo_controller%pol_sqme * nlo_controller%pol_density_matrix)
+     !sqme = 0
+     !do i_hel = 1, 4
+     !   factor = nlo_controller%pol_data%get_factor (i_hel)
+     !   sqme = sqme + factor * sum (nlo_controller%sqme_collector%sqme_virt_list (:,i_hel))
+     !end do
   end function nlo_controller_get_weighted_helicity_sum
 
 @ %def nlo_controller_get_weighted_helicity_sum
