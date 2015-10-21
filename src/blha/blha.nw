@@ -650,10 +650,11 @@ end module blha_olp_interfaces
 <<BLHA OLP interfaces: blha driver: TBP>>=
   procedure :: read_contract_file => blha_driver_read_contract_file
 <<BLHA OLP interfaces: procedures>>=
-  subroutine blha_driver_read_contract_file (driver, flavors, amp_type, flv_index, label)
+  subroutine blha_driver_read_contract_file (driver, flavors, amp_type, flv_index, label, helicities)
     class(blha_driver_t), intent(inout) :: driver
     integer, intent(in), dimension(:,:) :: flavors
     integer, intent(out), dimension(20) :: amp_type, flv_index, label
+    integer, intent(out), dimension(20,2) :: helicities
     integer :: unit, filestat
     character(len=LEN_MAX_FLAVOR_STRING) :: rd_line 
     logical :: read_flavor, born_found
@@ -661,10 +662,12 @@ end module blha_olp_interfaces
     integer :: i_hel
     integer :: i_next, n_entries
     integer, dimension(size(flavors, 1) + 2) :: i_array
+    integer, dimension(size(flavors, 1) + 2) :: hel_array
     integer, parameter :: NO_NUMBER = -1000
     integer, parameter :: PROC_NOT_FOUND = -1001
 
     amp_type = -1; flv_index = -1; label = -1
+    helicities = 0
     n_entries = size(flavors, 1) + 2
     unit = free_unit ()
     open (unit, file=char(driver%contract_file), status="old") 
@@ -695,6 +698,12 @@ end module blha_olp_interfaces
          else if (read_flavor) then
             born_found = .false.
             i_array = create_flavor_string (rd_line, n_entries)           
+            if (driver%include_polarizations) then
+               hel_array = create_helicity_string (rd_line, n_entries)
+               call check_helicity_array (hel_array, n_entries)
+            else
+               hel_array = 0
+            end if
             if (all (i_array == PROC_NOT_FOUND)) &
                call msg_fatal ("The desired process has not been found ",  &
                     [var_str ("by the OLP-Provider. Maybe the value of alpha_power "), &
@@ -707,9 +716,13 @@ end module blha_olp_interfaces
                       label(k) = i_array (n_entries)
                       print *, 'label(k): ', k, label(k)
                       flv_index (k) = i_flv + i_hel
-                      if (driver%include_polarizations) i_hel = i_hel + 1
+                      if (driver%include_polarizations) then
+                         helicities (label(k), 1) = hel_array (1)
+                         helicities (label(k), 2) = hel_array (2)
+                         i_hel = i_hel + 1
+                      end if
                       born_found = .true.
-                      k = k+1
+                      k = k + 1
                       read_flavor = .false.
                       exit
                    end if
@@ -909,6 +922,22 @@ end module blha_olp_interfaces
       end do
     end function find_next_word_index
 
+    subroutine check_helicity_array (hel_array, n_entries)
+      integer, intent(in), dimension(:) :: hel_array
+      integer, intent(in) :: n_entries
+      integer :: n_particles
+      logical :: valid
+      n_particles = n_entries - 2
+      print *, 'hel_array: ', hel_array
+      valid = all (hel_array (3:n_particles) == 0)
+      print *, 'first valid: ', valid
+      valid = valid .and. &
+         (hel_array(1) == 1 .or. hel_array(1) == -1) .and. &
+         (hel_array(2) == 1 .or. hel_array(2) == -1)
+      if (.not. valid) &
+         call msg_fatal ("Invalid helicities encountered!")
+    end subroutine check_helicity_array
+
   end subroutine blha_driver_read_contract_file
 
 @ %def blha_driver_read_contract_file
@@ -942,10 +971,11 @@ end module blha_olp_interfaces
     class(prc_blha_t), intent(inout) :: object
     integer, intent(in), dimension(:,:) :: flavors
     integer, dimension(20) :: amp_type, flv_index, label
+    integer, dimension(20,2) :: helicities
     integer :: i_proc
     select type (driver => object%driver)
     class is (blha_driver_t)
-       call driver%read_contract_file (flavors, amp_type, flv_index, label)
+       call driver%read_contract_file (flavors, amp_type, flv_index, label, helicities)
     end select
     do i_proc = 1, size (amp_type)
        if (amp_type (i_proc) < 0) exit
