@@ -49,7 +49,7 @@ AM_MAKE_INCLUDE
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Sep 30 2015"
+PACKAGE_DATE="Oct 31 2015"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
