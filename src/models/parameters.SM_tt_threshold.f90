@@ -296,22 +296,11 @@ contains
   end function ttv_mtpole
 
   !pure
-  function expanded_amp2 (amp_A_v_tree, amp_A_v_blob, &
-         amp_Z_av_tree, amp_Z_av_blob) result (amp2)
+  function expanded_amp2 (amp_tree, amp_blob) result (amp2)
     real(default) :: amp2
-    complex(default), dimension(:), intent(in) :: amp_A_v_tree, &
-         amp_A_v_blob, amp_Z_av_tree, amp_Z_av_blob
-    amp2 = sum (amp_A_v_tree * conjg (amp_A_v_tree) + &
-                 amp_A_v_tree * conjg (amp_A_v_blob) + &
-                 amp_A_v_tree * conjg (amp_Z_av_tree) + &
-                 amp_A_v_tree * conjg (amp_Z_av_blob) + &
-                 amp_A_v_blob * conjg (amp_A_v_tree) + &
-                 amp_A_v_blob * conjg (amp_Z_av_tree) + &
-                 amp_Z_av_tree * conjg (amp_A_v_tree) + &
-                 amp_Z_av_tree * conjg (amp_A_v_blob) + &
-                 amp_Z_av_tree * conjg (amp_Z_av_tree) + &
-                 amp_Z_av_tree * conjg (amp_Z_av_blob) + &
-                 amp_Z_av_blob * conjg (amp_A_v_tree) + &
-                 amp_Z_av_blob * conjg (amp_Z_av_tree))
+    complex(default), dimension(:), intent(in) :: amp_tree, amp_blob
+    amp2 = sum (amp_tree * conjg (amp_tree) + &
+         amp_tree * conjg (amp_blob) + &
+         amp_blob * conjg (amp_tree))
   end function expanded_amp2
 end module parameters_sm_tt_threshold

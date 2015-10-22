@@ -5,7 +5,7 @@ module @ID@_threshold
   use ttv_formfactors
   implicit none
   private
-  public :: init, md5sum, calculate_amplitudes
+  public :: init, md5sum, calculate_blobs
 
   ! DON'T EVEN THINK of removing the following!
   ! If the compiler complains about undeclared
@@ -198,8 +198,8 @@ module @ID@_threshold
   data table_spin_states(:, 143) /  1,  1,  1,  1,  1, -1 /
   data table_spin_states(:, 144) /  1,  1,  1,  1,  1,  1 /
 
-  complex(default), dimension(n_hel,0:3), save, public :: amp_ff, &
-       amp_A_v_tree, amp_A_v_blob, amp_Z_av_tree, amp_Z_av_blob
+  complex(default), dimension(n_hel,0:3), save, public :: amp_blob
+  complex(default), dimension(n_hel), save, public :: amp_tree
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p12, p35, p46
@@ -223,7 +223,7 @@ contains
     call import_from_whizard (par)
   end subroutine init
 
-  subroutine calculate_amplitudes (k)
+  subroutine calculate_blobs (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
     complex(default) :: blob_Z_vec, blob_Z_ax, ttv_vec, ttv_ax
     integer, dimension(n_prt) :: s
@@ -239,10 +239,7 @@ contains
     p12 = p1 + p2
     p35 = p3 + p5
     p46 = p4 + p6
-    amp_Z_av_tree = zero
-    amp_Z_av_blob = zero
-    amp_A_v_tree = zero
-    amp_A_v_blob = zero
+    amp_blob = zero
     ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_P0CONSTANT, &
                      EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
     if (onshell_tops (p3, p4)) then
@@ -265,10 +262,10 @@ contains
           do ffi = 0, ffi_end
              blob_Z_vec = gncup(1) * ttv_formfactor (p3, p4, 1)
              blob_Z_ax = gncup(2) * ttv_formfactor (p3, p4, 2)
-             amp_Z_av_tree(hi,ffi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_t_3, owf_t_4)
-             amp_Z_av_blob(hi,ffi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
-             amp_A_v_tree(hi,ffi) = owf_A_12 * v_ff (qup, owf_t_3, owf_t_4)
-             amp_A_v_blob(hi,ffi) = amp_A_v_tree(hi,ffi) * ttv_formfactor (p3, p4, 1)
+             amp_blob(hi,ffi) = owf_Z_12 * &
+                  va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
+             amp_blob(hi,ffi) = amp_blob(hi,ffi) + owf_A_12 * &
+                  v_ff (qup, owf_t_3, owf_t_4) * ttv_formfactor (p3, p4, 1)
           end do
        end do
     else
@@ -300,15 +297,15 @@ contains
              ttv_ax = ttv_formfactor (p35, p46, 2, ff_modes(ffi))
              blob_Z_vec = gncup(1) * ttv_vec
              blob_Z_ax = gncup(2) * ttv_ax
-             amp_Z_av_tree(hi,ffi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_wb_35, owf_wb_46)
-             amp_Z_av_blob(hi,ffi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
-             amp_A_v_tree(hi,ffi) = owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46)
-             amp_A_v_blob(hi,ffi) = amp_A_v_tree(hi,ffi) * ttv_vec
+             amp_blob(hi,ffi) = owf_Z_12 * &
+                  va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
+             amp_blob(hi,ffi) = amp_blob(hi,ffi) + owf_A_12 * &
+                  v_ff (qup, owf_wb_35, owf_wb_46) * ttv_vec
           end do
        end do
     end if
-    !amp_ff = amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob
-  end subroutine calculate_amplitudes
+    amp_blob = - amp_blob ! 4 vertices, 3 propagators
+  end subroutine calculate_blobs
 
 end module @ID@_threshold
 
@@ -329,8 +326,9 @@ end subroutine threshold_init
 subroutine threshold_get_amp_squared (amp2, p) bind(C)
   use iso_c_binding
   use kinds
-  !use opr_@ID@, sm_new_event => new_event
-  !use opr_@ID@, sm_get_amplitude => get_amplitude
+  use opr_@ID@, sm_new_event => new_event
+  use opr_@ID@, sm_get_amplitude => get_amplitude
+  use opr_@ID@, sm_number_spin_states => number_spin_states
   use @ID@_threshold
   use parameters_sm_tt_threshold
   use ttv_formfactors
@@ -340,36 +338,30 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   real(default), dimension(0:3) :: amp2_array
   real(c_default_float), dimension(0:3,*), intent(in) :: p
   integer, dimension(0:3) :: signs
-  !complex(default) :: amp_sm
-  !integer :: hi
-  integer :: i
-  !call sm_new_event (p)
-  call calculate_amplitudes (p)
-  amp2 = 0.0_default
+  complex(default) :: amp_sm
+  integer :: i, hi
+  amp_tree = zero
+  USE_FF = .false.
+  call sm_new_event (p)
+  do hi = 1, sm_number_spin_states()
+     amp_tree(hi) = sm_get_amplitude (1, hi, 1)
+  end do
+  USE_FF = .true.
+  call calculate_blobs (p)
   select case (FF)
   case (EXPANDED_HARD_P0DEPENDENT, EXPANDED_HARD_P0CONSTANT, &
           EXPANDED_SOFT_P0CONSTANT, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
-     amp2 = expanded_amp2 (amp_A_v_tree(:,0), amp_A_v_blob(:,0), &
-          amp_Z_av_tree(:,0), amp_Z_av_blob(:,0))
+     amp2 = expanded_amp2 (amp_tree, amp_blob(:,0))
   case (MATCHED)
      signs(0:3) = [+1, -1, +1, -1]
-     amp2_array(0) = sum ((amp_A_v_tree(:,0) + amp_A_v_blob(:,0) + &
-          amp_Z_av_tree(:,0) + amp_Z_av_blob(:,0)) * &
-          conjg (amp_A_v_tree(:,0) + amp_A_v_blob(:,0) + &
-          amp_Z_av_tree(:,0) + amp_Z_av_blob(:,0)))
+     amp2_array(0) = sum ((amp_tree + amp_blob(:,0)) * &
+          conjg (amp_tree + amp_blob(:,0)))
      do i = 1, 3
-        amp2_array(i) = expanded_amp2 (amp_A_v_tree(:,i), amp_A_v_blob(:,i), &
-             amp_Z_av_tree(:,i), amp_Z_av_blob(:,i))
+        amp2_array(i) = expanded_amp2 (amp_tree, amp_blob(:,i))
      end do
      amp2 = sum (signs * amp2_array)
   case default
-     !do hi = 1, n_hel
-        !amp_sm = sm_get_amplitude (1, hi, 1)
-        !amp2 = amp2 + real(amp_sm * conjg(amp_ff(hi)))
-        !amp2 = amp2 + real(amp_ff(hi) * conjg(amp_ff(hi)))
-     !end do
-     amp2 = sum ((amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob) * &
-           conjg (amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob))
+     amp2 = sum ((amp_tree + amp_blob(:,0)) * conjg (amp_tree + amp_blob(:,0)))
   end select
   amp2 = amp2 * N_ / 4.0_default
 end subroutine threshold_get_amp_squared
