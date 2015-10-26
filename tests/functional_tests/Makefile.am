@@ -356,9 +356,7 @@ user_strfun.f90: $(top_builddir)/share/tests/functional_tests/user_strfun.f90
 	cp $< $@
 
 model_test.run: tdefs.$(FC_MODULE_EXT) tglue.$(FC_MODULE_EXT) \
-	threeshl.$(FC_MODULE_EXT) tscript.$(FC_MODULE_EXT) \
-	ttv_formfactors.$(FC_MODULE_EXT) nr_tools.$(FC_MODULE_EXT) \
-	nr.$(FC_MODULE_EXT) nrtype.$(FC_MODULE_EXT) interpolation.$(FC_MODULE_EXT)
+	threeshl.$(FC_MODULE_EXT) tscript.$(FC_MODULE_EXT)
 tdefs.mod: $(top_builddir)/src/models/threeshl_bundle/tdefs.$(FC_MODULE_EXT)
 	cp $< $@
 tglue.mod: $(top_builddir)/src/models/threeshl_bundle/tglue.$(FC_MODULE_EXT)
