@@ -59,12 +59,13 @@ SUBDIRS = \
   gosam openloops \
   looptools \
   model_features \
+  SM_tt_threshold \
   process_integration \
   matching \
   transforms \
-  models \
   whizard-core \
-  prebuilt
+  prebuilt \
+  models
 
 if MPOST_AVAILABLE
 SUBDIRS += gamelan feynmf
@@ -86,7 +87,7 @@ libwhizard_la_LDFLAGS = $(LIBRARY_VERSION)
 
 ## Collect the various partial libraries
 libwhizard_la_LIBADD = \
-  models/SM_tt_threshold_bundle/libSM_tt_threshold_bundle.la \
+  SM_tt_threshold/libSM_tt_threshold.la \
   whizard-core/libwhizard_core.la \
   transforms/libtransforms.la \
   ../vamp/src/libvamp.la \
@@ -181,7 +182,7 @@ check_LTLIBRARIES = libwhizard_test.la
 libwhizard_test_la_SOURCES =
 
 libwhizard_test_la_LIBADD = \
-  models/SM_tt_threshold_bundle/libSM_tt_threshold_bundle_ut.la \
+  SM_tt_threshold/libSM_tt_threshold_ut.la \
   whizard-core/libwhizard_core_ut.la \
   transforms/libtransforms_ut.la \
   matching/libmatching_ut.la \

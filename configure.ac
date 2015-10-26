@@ -797,9 +797,9 @@ AC_CONFIG_FILES([src/sindarin/Makefile])
 AC_CONFIG_FILES([src/models/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/models/SM_tt_threshold_bundle
+### Subdirectory src/SM_tt_threshold
 
-AC_CONFIG_FILES([src/models/SM_tt_threshold_bundle/Makefile])
+AC_CONFIG_FILES([src/SM_tt_threshold/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/models/threeshl_bundle
