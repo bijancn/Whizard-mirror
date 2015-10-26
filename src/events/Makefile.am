@@ -37,6 +37,7 @@ libevents_la_SOURCES = \
   eio_data.f90 \
   eio_base.f90 \
   eio_checkpoints.f90 \
+  eio_callback.f90 \
   eio_weights.f90 \
   eio_dump.f90 \
   hep_common.f90 \

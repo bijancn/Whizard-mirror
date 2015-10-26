@@ -32,35 +32,30 @@
 
 ## Build the objects required for the SM ttbar threshold model.
 
-noinst_LTLIBRARIES = libSM_tt_threshold.la
-check_LTLIBRARIES = libSM_tt_threshold_ut.la
+noinst_LTLIBRARIES = libthreshold.la
+check_LTLIBRARIES = libthreshold_ut.la
 
 ## We need all in the distribution
 
 EXTRA_DIST = interpolation.f90  nr_tools.f90  \
 	toppik.f  toppik_axial.f  ttv_formfactors.f90
 
-libSM_tt_threshold_la_SOURCES = \
+libthreshold_la_SOURCES = \
   interpolation.f90 \
   nr_tools.f90 \
   toppik.f \
   toppik_axial.f \
   ttv_formfactors.f90
 
-libSM_tt_threshold_ut_la_SOURCES = \
+libthreshold_ut_la_SOURCES = \
   ttv_formfactors_uti.f90 ttv_formfactors_ut.f90
 
-#@rm -f $@
-#echo SM_tt_threshold > $@
-#for module in $(libSM_tt_threshold_Modules); do \
-	#echo $$module >> $@; \
-#done
 # Dump module names into file Modules
-libSM_tt_threshold_Modules = \
-	${libSM_tt_threshold_la_SOURCES:.f90=} \
-	${libSM_tt_threshold_ut_la_SOURCES:.f90=}
+libthreshold_Modules = \
+	${libthreshold_la_SOURCES:.f90=} \
+	${libthreshold_ut_la_SOURCES:.f90=}
 Modules: Makefile
-	@for module in $(libSM_tt_threshold_Modules); do \
+	@for module in $(libthreshold_Modules); do \
           echo $$module >> $@.new; \
         done
 	@if diff $@ $@.new -q >/dev/null; then \
@@ -105,8 +100,8 @@ DISTCLEANFILES = Module_dependencies.sed
 
 Makefile.depend: Module_dependencies.sed
 Makefile.depend: \
-  $(libSM_tt_threshold_la_SOURCES) \
-  $(libSM_tt_threshold_ut_la_SOURCES)
+  $(libthreshold_la_SOURCES) \
+  $(libthreshold_ut_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -118,15 +113,6 @@ Makefile.depend: \
 
 DISTCLEANFILES += Makefile.depend
 
-## Install the modules used by generated matrix element code
-execmoddir = $(pkglibdir)/mod/models
-nodist_execmod_HEADERS = \
-	interpolation.$(FC_MODULE_EXT) \
-	nr_tools.$(FC_MODULE_EXT) \
-	nr.$(FC_MODULE_EXT) \
-	nrtype.$(FC_MODULE_EXT) \
-	ttv_formfactors.$(FC_MODULE_EXT)
-
 nrtype.$(FC_MODULE_EXT) nr.$(FC_MODULE_EXT): nr_tools.$(FC_MODULE_EXT)
 
 SUFFIXES = .lo .$(FC_MODULE_EXT)
@@ -134,7 +120,6 @@ SUFFIXES = .lo .$(FC_MODULE_EXT)
 # Fortran90 module files are generated at the same time as object files
 .lo.$(FC_MODULE_EXT):
 	@:
-#       touch $@
 
 AM_FCFLAGS = -I../basics -I../testing -I../utilities -I../system -I../physics -I../combinatorics
 
@@ -154,27 +139,36 @@ endif
 ########################################################################
 ## Non-standard targets and dependencies
 
+## Install the modules used by generated matrix element code
+execmoddir = $(pkglibdir)/mod/threshold
+nodist_execmod_HEADERS = \
+	interpolation.$(FC_MODULE_EXT) \
+	nr_tools.$(FC_MODULE_EXT) \
+	nr.$(FC_MODULE_EXT) \
+	nrtype.$(FC_MODULE_EXT) \
+	ttv_formfactors.$(FC_MODULE_EXT)
+
 ## (Re)create F90 sources from NOWEB source.
 if NOWEB_AVAILABLE
 
 PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
 POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 
-SM_tt_threshold.stamp: $(PRELUDE) $(srcdir)/SM_tt_threshold.nw $(POSTLUDE)
-	@rm -f SM_tt_threshold.tmp
-	@touch SM_tt_threshold.tmp
+threshold.stamp: $(PRELUDE) $(srcdir)/threshold.nw $(POSTLUDE)
+	@rm -f threshold.tmp
+	@touch threshold.tmp
 	for src in \
-          $(libSM_tt_threshold_la_SOURCES) \
-          $(libSM_tt_threshold_ut_la_SOURCES); do \
+          $(libthreshold_la_SOURCES) \
+          $(libthreshold_ut_la_SOURCES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
-	@mv -f SM_tt_threshold.tmp SM_tt_threshold.stamp
+	@mv -f threshold.tmp threshold.stamp
 
-$(libSM_tt_threshold_la_SOURCES) $(libSM_tt_threshold_ut_la_SOURCES): SM_tt_threshold.stamp
+$(libthreshold_la_SOURCES) $(libthreshold_ut_la_SOURCES): threshold.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
-		rm -f SM_tt_threshold.stamp; \
-		$(MAKE) $(AM_MAKEFLAGS) SM_tt_threshold.stamp; \
+		rm -f threshold.stamp; \
+		$(MAKE) $(AM_MAKEFLAGS) threshold.stamp; \
 	fi
 
 endif

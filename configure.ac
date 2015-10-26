@@ -53,7 +53,7 @@ AC_MSG_NOTICE([**************************************************************])
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Sep 30 2015"
+PACKAGE_DATE="Oct 31 2015"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
@@ -797,9 +797,9 @@ AC_CONFIG_FILES([src/sindarin/Makefile])
 AC_CONFIG_FILES([src/models/Makefile])
 
 ###---------------------------------------------------------------------
-### Subdirectory src/SM_tt_threshold
+### Subdirectory src/threshold
 
-AC_CONFIG_FILES([src/SM_tt_threshold/Makefile])
+AC_CONFIG_FILES([src/threshold/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/models/threeshl_bundle

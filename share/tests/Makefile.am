@@ -457,6 +457,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/simulations_10.ref \
     unit_tests/ref-output/simulations_11.ref \
     unit_tests/ref-output/simulations_12.ref \
+    unit_tests/ref-output/simulations_13.ref \
     unit_tests/ref-output/commands_1.ref \
     unit_tests/ref-output/commands_2.ref \
     unit_tests/ref-output/commands_3.ref \
@@ -490,11 +491,14 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/commands_31.ref \
     unit_tests/ref-output/commands_32.ref \
     unit_tests/ref-output/commands_33.ref \
+    unit_tests/ref-output/commands_34.ref \
     unit_tests/ref-output/jets_1.ref \
     unit_tests/ref-output/hepmc_interface_1.ref \
     unit_tests/ref-output/lcio_interface_1.ref \
     unit_tests/ref-output/blha_1.ref \
     unit_tests/ref-output/ttv_formfactors_1.ref \
+    unit_tests/ref-output/blha_2.ref \
+    unit_tests/ref-output/blha_3.ref \
     functional_tests/ref-output/structure_1.ref \
     functional_tests/ref-output/structure_2.ref \
     functional_tests/ref-output/structure_3.ref \

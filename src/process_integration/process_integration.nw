@@ -1964,7 +1964,7 @@ module processes
 
 <<Use kinds>>
 <<Use strings>>
-  use constants, only: one
+  use constants, only: zero, one
   use io_units
   use format_utils, only: write_separator
   use unit_tests
@@ -7048,15 +7048,20 @@ imaginary part of the terms, which should be zero anyway.
 @ %def reset_nlo_components
 @
 <<Processes: procedures>>=
-  subroutine associate_sqme_born (component, summand, i)
+  subroutine associate_sqme_born (component, summand, i_flv, i_hel)
      type(component_instance_t), intent(inout) :: component
      real(default), intent(in) :: summand
-     integer, intent(in) :: i
+     integer, intent(in) :: i_flv
+     integer, intent(in), optional :: i_hel
      select case (component%config%config%get_nlo_type ())
      case (NLO_REAL, NLO_PDF)
         if (debug_active (D_SUBTRACTION)) &
-           call msg_debug (D_SUBTRACTION, "Associate Born matrix element", i)
-        component%nlo_controller%sqme_collector%sqme_born_list(i) = summand
+           call msg_debug (D_SUBTRACTION, "Associate Born matrix element", i_flv)
+        !if (present (i_hel)) then
+        !   component%nlo_controller%sqme_collector%sqme_born_list (i_flv, i_hel) = summand
+        !else
+           component%nlo_controller%sqme_collector%sqme_born_list(i_flv) = summand
+        !end if
      end select
   end subroutine associate_sqme_born
 
@@ -7068,7 +7073,7 @@ imaginary part of the terms, which should be zero anyway.
      class(component_instance_t), intent(inout) :: component
      type(term_instance_t), intent(inout) :: term
      real(default), dimension(4) :: sqme_virt 
-     integer :: i_flv
+     integer :: i_flv, i_hel
      logical :: bad_point
 
      if (term%nlo_type /= NLO_VIRTUAL) return
@@ -7089,39 +7094,93 @@ imaginary part of the terms, which should be zero anyway.
                    (term%int_hard%get_momenta (), term%fac_scale)
         select type (core => component%config%core)
         class is (prc_user_defined_base_t)
+           call core%update_alpha_s (component%core_state, term%fac_scale)
            do i_flv = 1, core%get_nflv()
-              call core%update_alpha_s (component%core_state, term%fac_scale)
-              call core%compute_sqme_virt (i_flv, &
-                         term%int_hard%get_momenta (), &
-                         term%ren_scale, &
-                         sqme_virt, bad_point)
-              call core%apply_structure_functions (component%k_seed%sf_chain, &
-                 term%config%data%flv_state (1:2,i_flv))
-              sqme_virt = sqme_virt * core%get_sf_value ()
-
-              if (debug_active (D_VIRTUAL)) then
-                 call msg_debug (D_VIRTUAL, "OLP output: ")
-                 print *, sqme_virt
-              end if
-
-              if (.not. nlo_controller%use_internal_color_correlations) &
-                 call core%compute_sqme_cc (i_flv, &
-                           term%int_hard%get_momenta (), &
-                           term%ren_scale, &
-                           born_cc = nlo_controller%sqme_collector%sqme_born_cc (:,:,i_flv), &
-                           bad_point = bad_point)
-              call nlo_controller%virtual_terms%set_vfin (sqme_virt(3))
-              call nlo_controller%virtual_terms%set_bad_point (bad_point)
-              nlo_controller%sqme_collector%sqme_born_list (i_flv) = sqme_virt (4)             
-              nlo_controller%sqme_collector%sqme_virt_list (i_flv) = &
-                  nlo_controller%compute_virt (i_flv, term%int_hard) * term%weight
-           end do
+                 if (nlo_controller%beams_are_polarized ()) then
+                   do i_hel = 0, 3
+                      call compute_sqme_virt_single_helicity (core, component, term, &
+                         i_flv, i_hel, sqme_virt, bad_point)
+                      call nlo_controller%virtual_terms%set_vfin (sqme_virt(3))
+                      call nlo_controller%virtual_terms%set_bad_point (bad_point)
+                      nlo_controller%sqme_collector%sqme_virt_born_list (i_flv, i_hel+1) = sqme_virt (4)
+                      nlo_controller%sqme_collector%sqme_virt_list (i_flv, i_hel+1) = &
+                         nlo_controller%compute_virt (i_flv, i_hel+1, term%int_hard%get_momenta ()) * term%weight
+                    end do
+                 else
+                    call compute_sqme_virt_all_helicities (core, component, term, &
+                       i_flv, sqme_virt, bad_point)
+                    call nlo_controller%virtual_terms%set_vfin (sqme_virt(3))
+                    call nlo_controller%virtual_terms%set_bad_point (bad_point)
+                    nlo_controller%sqme_collector%sqme_virt_born_list (i_flv, 1) = sqme_virt (4)             
+                    nlo_controller%sqme_collector%sqme_virt_list (i_flv, 1) = &
+                       nlo_controller%compute_virt (i_flv, 1, term%int_hard%get_momenta ()) * term%weight
+                 end if
+           end do   
         end select
-        component%sqme = component%sqme + sum (nlo_controller%sqme_collector%sqme_virt_list)
+
+        if (nlo_controller%beams_are_polarized ()) then
+           do i_hel = 1, 4
+              call nlo_controller%pol_sqme(i_hel)%set_value &
+                 (sum (nlo_controller%sqme_collector%sqme_virt_list (:,i_hel)))
+           end do
+           component%sqme = component%sqme + nlo_controller%get_weighted_helicity_sum ()
+        else
+           component%sqme = component%sqme + sum (nlo_controller%sqme_collector%sqme_virt_list)
+        end if
      end associate
   end subroutine component_instance_evaluate_sqme_virt
 
 @ %def component_instance_evaluate_sqme_virt
+@
+<<Processes: procedures>>=
+  subroutine compute_sqme_virt_single_helicity (core, component, term, &
+     i_flv, i_hel, sqme_virt, bad_point)
+     class(prc_user_defined_base_t), intent(inout) :: core
+     type(component_instance_t), intent(in) :: component
+     type(term_instance_t), intent(in) :: term
+     integer, intent(in) :: i_flv, i_hel
+     real(default), intent(out), dimension(4) :: sqme_virt
+     logical, intent(out) :: bad_point
+     type(vector4_t), dimension(:), allocatable :: p
+     real(default) :: ren_scale
+    
+     allocate (p (size (term%int_hard%get_momenta ())))
+     p = term%int_hard%get_momenta ()
+     ren_scale = term%ren_scale
+    
+     call core%compute_sqme_virt (i_flv + i_hel, p, ren_scale, &
+        sqme_virt, bad_point)
+     call core%apply_structure_functions (component%k_seed%sf_chain, &
+        term%config%data%flv_state (1:2,i_flv))
+
+     if (debug_active (D_VIRTUAL)) then
+     end if
+
+     associate (nlo_controller => component%nlo_controller)
+        if (.not. nlo_controller%use_internal_color_correlations) &
+           call core%compute_sqme_cc (i_flv + i_hel, p, ren_scale, &
+              born_cc = nlo_controller%sqme_collector%sqme_born_cc (:,:,i_flv), &
+              bad_point = bad_point)
+     end associate
+  end subroutine compute_sqme_virt_single_helicity
+        
+@ %def compute_sqme_virt_single_helicity
+@
+<<Processes: procedures>>=
+  subroutine compute_sqme_virt_all_helicities (core, component, term, &
+      i_flv, sqme_virt, bad_point)
+    class(prc_user_defined_base_t), intent(inout) :: core
+    type(component_instance_t), intent(in) :: component
+    type(term_instance_t), intent(in) :: term
+    integer, intent(in) :: i_flv
+    real(default), intent(out), dimension(4) :: sqme_virt
+    logical, intent(out) :: bad_point
+    
+    call compute_sqme_virt_single_helicity (core, component, term, &
+       i_flv, 0, sqme_virt, bad_point)
+  end subroutine compute_sqme_virt_all_helicities
+
+@ %def compute_sqme_virt_all_helicities
 @ Perform the matrix-element evaluation if the component is flagged as pdf
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_pdf => component_instance_evaluate_sqme_pdf 
@@ -7264,6 +7323,17 @@ imaginary part of the terms, which should be zero anyway.
   end function component_instance_get_n_particles
 
 @ %def component_instance_get_n_particles
+@
+<<Processes: component instance: TBP>>=
+  procedure :: get_lorentz_transformation => component_instance_get_lorentz_transformation
+<<Processes: procedures>>=
+  function component_instance_get_lorentz_transformation (component) result (lt)
+    type(lorentz_transformation_t) :: lt
+    class(component_instance_t), intent(in) :: component
+    lt = component%k_seed%phs%get_lorentz_transformation ()
+  end function component_instance_get_lorentz_transformation
+
+@ %def component_instance_get_lorentz_transformation
 @
 <<Processes: component instance: TBP>>=
   procedure :: set_component_type => &
@@ -7511,7 +7581,7 @@ relevant for a NLO algorithm.
           select case (phs%mode)
           case (PHS_MODE_ADDITIONAL_PARTICLE)
              term%nlo_controller%int_born = int_sav
-             term%nlo_controller%sf_born => sf_sav
+             term%nlo_controller%sf_born = sf_sav
              do j = 1, n_in
                 i = term%nlo_controller%sf_born%get_out_i (j)
                 call term%nlo_controller%int_born%set_source_link &
@@ -8783,6 +8853,9 @@ to subobject of [[instance]].
                     end if
                   end associate
                case (NLO_VIRTUAL)
+                  if (process%beam_config%data%is_initialized ()) then
+                     call instance%setup_polarized_beams_for_virtuals (process%beam_config)
+                  end if
                   i_born = component%config%config%get_associated_born ()
                   i_real = i_born + process%config%n_components / 3
                   component%nlo_type = NLO_VIRTUAL
@@ -8835,6 +8908,65 @@ to subobject of [[instance]].
    end subroutine process_instance_setup_blha_structure_functions
 
 @ %def process_instance_setup_blha_structure_functions
+@
+<<Processes: process instance: TBP>>=
+  procedure :: setup_polarized_beams_for_virtuals &
+     => process_instance_setup_polarized_beams_for_virtuals
+<<Processes: procedures>>=
+  subroutine process_instance_setup_polarized_beams_for_virtuals (instance, config)
+     class(process_instance_t), intent(inout) :: instance
+     type(process_beam_config_t), intent(in) :: config
+     type(state_matrix_t) :: state_hel
+     integer, dimension(:), allocatable :: i_diag
+     real(default), dimension(:), allocatable :: f
+     integer :: i, j, n_flv
+     type(quantum_numbers_t), dimension(:), allocatable :: qn
+     type(helicity_t) :: hel
+     integer, dimension(2) :: h
+     state_hel = config%data%get_helicity_state_matrix ()
+     call state_hel%get_diagonal_entries (i_diag) 
+     allocate (qn (state_hel%get_depth()))
+     select type (pcm => instance%pcm)
+     type is (pcm_instance_nlo_t)
+        call pcm%controller%init_pol_density_matrix (size (i_diag))
+        f = state_hel%get_matrix_element (i_diag)
+        do i = 1, size (i_diag)
+           qn = state_hel%get_quantum_numbers (i)
+           do j = 1, size (qn)
+              hel = qn(j)%get_helicity ()
+              call hel%get_indices (h(j), h(j))
+           end do
+           call pcm%controller%pol_density_matrix(i)%set_helicities (h(1), h(2))
+           call pcm%controller%pol_density_matrix(i)%set_value (f(i))
+        end do
+        associate (collector => pcm%controller%sqme_collector)
+           n_flv = size (collector%sqme_born_list)
+           deallocate (collector%sqme_virt_born_list)
+           deallocate (collector%sqme_virt_list)
+           allocate (collector%sqme_virt_born_list (n_flv, 4))
+           allocate (collector%sqme_virt_list (n_flv, 4))
+           collector%sqme_virt_born_list = zero
+           collector%sqme_virt_list = zero
+           !call pcm%controller%set_real_sqme_born_pointer (collector%sqme_born_list)
+        end associate
+     end select
+  end subroutine process_instance_setup_polarized_beams_for_virtuals
+
+@ %def process_instance_setup_polarized_beams_for_virtuals
+@
+<<Processes: process instance: TBP>>=
+  procedure :: transfer_helicities => process_instance_transfer_helicities
+<<Processes: procedures>>=
+  subroutine process_instance_transfer_helicities (instance, core)
+    class(process_instance_t), intent(inout) :: instance
+    type(prc_openloops_t), intent(in) :: core
+    select type (pcm => instance%pcm)
+    type is (pcm_instance_nlo_t)
+       call pcm%controller%init_polarized_sqmes (core%get_beam_helicities ())
+    end select
+  end subroutine process_instance_transfer_helicities
+
+@ %def process_instance_transfer_helicities
 @ Subroutine of the initialization above: initialize the beam and
 structure-function chain template.  We establish pointers to the
 configuration data, so [[beam_config]] must have a [[target]]
@@ -9290,7 +9422,7 @@ terms, iterating over all active process components.
        select type (pcm => instance%pcm)
        class is (pcm_instance_nlo_t)
           if (pcm%collect_matrix_elements .and. i_real > 0) &
-               call instance%evaluate_trace_real (instance%term(i_real), i_real)
+            call instance%evaluate_trace_real (instance%term(i_real), i_real)
        end select
     else
        ! failed kinematics, failed cuts: set sqme to zero
@@ -9389,14 +9521,14 @@ it from the MCI record.
                  call term%evaluate_trace ()
                  if (instance%component(i)%active) then
                     associate (component => instance%component(i))
-                      if (.not. pcm%collect_matrix_elements) then
-                         call component%evaluate_sqme_born (term)
-                         sqme_born = component%sqme
-                         if (debug_active (D_SUBTRACTION)) &
-                              call msg_debug (D_SUBTRACTION, "sqme_born", sqme_born)
-                      else
-                         sqme_born = pcm%collector%sqme_born_list (i_flv_born)
-                      end if
+                      !if (.not. pcm%collect_matrix_elements) then
+                      call component%evaluate_sqme_born (term)
+                      sqme_born = component%sqme
+                      if (debug_active (D_SUBTRACTION)) &
+                          call msg_debug (D_SUBTRACTION, "sqme_born", sqme_born)
+                      !else
+                      !   sqme_born = pcm%collector%sqme_born_list (i_flv_born)
+                      !end if
                       call associate_sqme_born (component, sqme_born*term%weight, i_flv_born)
                       call component%evaluate_sqme_real (term)
                       instance%sqme_real(i_flv_real, ireg) = &
@@ -9525,26 +9657,6 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
   end function process_instance_get_sqrts
 
 @ %def process_instance_get_sqrts
-@ 
-<<Processes: process instance: TBP>>=
-  procedure :: get_matrix_elements => process_instance_get_matrix_elements
-<<Processes: procedures>>=
-  subroutine process_instance_get_matrix_elements &
-       (instance, i_born, i_real, sqme_born, sqme_real)
-    class(process_instance_t), intent(inout) :: instance
-    integer, intent(in) :: i_born, i_real
-    real(default), intent(out) :: sqme_born, sqme_real
-    integer :: emitter
-    select type (pcm => instance%pcm)
-    type is (pcm_instance_nlo_t)
-       emitter = pcm%controller%active_emitter 
-       sqme_born = pcm%collector%sqme_born_list (i_born)
-       sqme_real = pcm%collector%sqme_real_per_emitter (i_real, emitter)
-    end select
-  end subroutine process_instance_get_matrix_elements
-
-@ %def process_instance_get_matrix_elements
-@
 @ For unweighted event generation, we should reset the reported event
 weight to unity (signed) or zero.  The latter case is appropriate for
 an event which failed for whatever reason.
@@ -10197,8 +10309,9 @@ and directly set the coupling value that comes together with a particle set.
 <<Processes: process instance: TBP>>=
   procedure :: create_blha_interface => process_instance_create_blha_interface
 <<Processes: procedures>>=
-  subroutine process_instance_create_blha_interface (instance)
+  subroutine process_instance_create_blha_interface (instance, beam_structure)
     class(process_instance_t), intent(inout) :: instance
+    type(beam_structure_t), intent(in) :: beam_structure
     logical :: use_external_borns
     logical :: use_external_real_trees
     logical :: use_external_loops
@@ -10265,13 +10378,16 @@ and directly set the coupling value that comes together with a particle set.
           call blha_master%set_openloops (4)
        end select
 
+       call blha_master%set_methods (use_external_borns, use_external_real_trees, &
+          use_external_loops, use_external_correlations)
+       call blha_master%allocate_config_files ()
+       call blha_master%setup_additional_features (openloops_phs_tolerance, beam_structure)
        call blha_master%init (process%meta%id, process%config%model, &
                               n_in, size (flv_born,1)-n_in, &
-                              use_external_borns, use_external_loops, &
-                              use_external_correlations, use_external_real_trees, &
+                              !use_external_borns, use_external_loops, &
+                              !use_external_correlations, use_external_real_trees, &
                               alpha_power, alphas_power, &
                               flv_born, flv_real)
-       call blha_master%setup_additional_features (openloops_phs_tolerance)
        call blha_master%generate (process%meta%id)
     end associate 
   end subroutine process_instance_create_blha_interface 
@@ -10307,6 +10423,7 @@ and directly set the coupling value that comes together with a particle set.
              call core%start ()
              call core%read_contract_file (instance%process%term(i)%data%flv_state)
              call core%print_parameter_file ()
+             if (core%includes_polarization ()) call instance%transfer_helicities (core)
           end select
        end if
     end do
@@ -10314,6 +10431,30 @@ and directly set the coupling value that comes together with a particle set.
   end subroutine process_instance_load_blha_libraries
 
 @ %def process_instance_load_blha_libraries
+@
+<<Processes: process instance: TBP>>=
+  procedure :: get_lorentz_transformation => process_instance_get_lorentz_transformation
+<<Processes: procedures>>=
+  function process_instance_get_lorentz_transformation (instance, i_component) result (lt)
+    type(lorentz_transformation_t) :: lt
+    class(process_instance_t), intent(in) :: instance
+    integer, intent(in) :: i_component
+    lt = instance%component(i_component)%get_lorentz_transformation ()
+  end function process_instance_get_lorentz_transformation
+
+@ %def process_instance_get_lorentz_transformation
+@
+<<Processes: process instance: TBP>>=
+  procedure :: is_cm_frame => process_instance_is_cm_frame
+<<Processes: procedures>>=
+  function process_instance_is_cm_frame (instance, i_component) result (cm_frame)
+    logical :: cm_frame
+    class(process_instance_t), intent(in) :: instance
+    integer, intent(in) :: i_component
+    cm_frame = instance%component(i_component)%k_seed%phs%is_cm_frame ()
+  end function process_instance_is_cm_frame
+
+@ %def protcess_instance_is_cm_frame
 @
 The [[pacify]] subroutine has the purpose of setting numbers to zero
 which are (by comparing with a [[tolerance]] parameter) considered
