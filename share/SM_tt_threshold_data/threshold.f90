@@ -1,41 +1,11 @@
-! File generated automatically by O'Mega
-!
-!   /scratch/bcho/trunk/_install/develop/bin/omega_SM_tt_threshold.opt -o ttbar_i1.f90 -target:whizard -target:parameter_module parameters_SM_tt_threshold -target:module opr_ttbar_i1 -target:md5sum 3C3BACDC1B40C40DB783E084F0B62DFC -fusion:progress -scatter "e- e+ -> W+ W- b bbar" -cascade "3+5~t && 4+6~tbar"
-!
-! with all scattering amplitudes for the process(es)
-!
-!   flavor combinations:
-!
-!       1: e- e+ -> W+ W- b bbar
-!
-!   color flows:
-!
-!       1: (  0,  0) (  0,  0) -> (  0,  0) (  0,  0) (  1,  0) (  0, -1)
-!
-!     NB: i.g. not all color flows contribute to all flavor
-!     combinations.  Consult the array FLV_COL_IS_ALLOWED
-!     below for the allowed combinations.
-!
-!   Color Factors:
-!
-!     (  1,  1): + N
-!
-!   vanishing or redundant flavor combinations:
-!
-!
-!   diagram selection (MIGHT BREAK GAUGE INVARIANCE!!!):
-!
-!     (3+5 ~ t) && (4+6 ~ tbar)  grouping {{3,5},{4,6}}
-!
-! in minimal electroweak standard model in unitarity gauge
-!
 module @ID@_threshold
   use kinds
   use omega95
   use parameters_SM_tt_threshold
+  use ttv_formfactors
   implicit none
   private
-  public :: init, md5sum, calculate_amplitudes
+  public :: init, md5sum, calculate_blobs
 
   ! DON'T EVEN THINK of removing the following!
   ! If the compiler complains about undeclared
@@ -228,11 +198,8 @@ module @ID@_threshold
   data table_spin_states(:, 143) /  1,  1,  1,  1,  1, -1 /
   data table_spin_states(:, 144) /  1,  1,  1,  1,  1,  1 /
 
-  integer, dimension(n_prt,n_flv), save, protected :: table_flavor_states
-  data table_flavor_states(:,   1) /  11, -11,  24, -24,   5,  -5 / ! e- e+ W+ W- b bbar
-
-  complex(default), dimension(n_hel), save, public :: amp_ff, &
-       amp_A_v_tree, amp_A_v_blob, amp_Z_av_tree, amp_Z_av_blob
+  complex(default), dimension(n_hel,0:3), save, public :: amp_blob
+  complex(default), dimension(n_hel), save, public :: amp_tree
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p12, p35, p46
@@ -256,12 +223,13 @@ contains
     call import_from_whizard (par)
   end subroutine init
 
-  subroutine calculate_amplitudes (k)
+  subroutine calculate_blobs (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
-    complex(default) :: blob_Z_vec, blob_Z_ax
+    complex(default) :: blob_Z_vec, blob_Z_ax, ttv_vec, ttv_ax
     integer, dimension(n_prt) :: s
     integer, dimension(n_prt_OS) :: s_OS
-    integer :: hi
+    integer :: hi, ffi_end, ffi
+    integer, dimension(0:3) :: ff_modes
     p1 = - k(:,1) ! incoming
     p2 = - k(:,2) ! incoming
     p3 =   k(:,3) ! outgoing
@@ -271,10 +239,9 @@ contains
     p12 = p1 + p2
     p35 = p3 + p5
     p46 = p4 + p6
-    amp_Z_av_tree = zero
-    amp_Z_av_blob = zero
-    amp_A_v_tree = zero
-    amp_A_v_blob = zero
+    amp_blob = zero
+    ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_P0CONSTANT, &
+                     EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
     if (onshell_tops (p3, p4)) then
        do hi = 1, n_hel_OS
           s_OS = table_spin_states_OS(:,hi)
@@ -287,14 +254,19 @@ contains
           owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
                + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
 
-          blob_Z_vec = gncup(1) * ttv_formfactor (p3, p4, 1)
-          blob_Z_ax = gncup(2) * ttv_formfactor (p3, p4, 2)
-
-          amp_Z_av_tree(hi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_t_3, owf_t_4)
-          amp_Z_av_blob(hi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
-
-          amp_A_v_tree(hi) = owf_A_12 * v_ff (qup, owf_t_3, owf_t_4)
-          amp_A_v_blob(hi) = amp_A_v_tree(hi) * ttv_formfactor (p3, p4, 1)
+          if (FF == MATCHED) then
+             ffi_end = 3
+          else
+             ffi_end = 0
+          end if
+          do ffi = 0, ffi_end
+             blob_Z_vec = gncup(1) * ttv_formfactor (p3, p4, 1)
+             blob_Z_ax = gncup(2) * ttv_formfactor (p3, p4, 2)
+             amp_blob(hi,ffi) = owf_Z_12 * &
+                  va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
+             amp_blob(hi,ffi) = amp_blob(hi,ffi) + owf_A_12 * &
+                  v_ff (qup, owf_t_3, owf_t_4) * ttv_formfactor (p3, p4, 1)
+          end do
        end do
     else
        do hi = 1, n_hel
@@ -315,18 +287,25 @@ contains
           owf_wb_46 = pr_psi (p46, ttv_mtpole(p12*p12), wd_tl (p46, width(6)), &
                + f_vlf (gccq33, owf_Wp_4, owf_b_6))
 
-          blob_Z_vec = gncup(1) * ttv_formfactor (p35, p46, 1)
-          blob_Z_ax = gncup(2) * ttv_formfactor (p35, p46, 2)
-
-          amp_Z_av_tree(hi) = owf_Z_12 * va_ff (gncup(1), gncup(2), owf_wb_35, owf_wb_46)
-          amp_Z_av_blob(hi) = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
-
-          amp_A_v_tree(hi) = owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46)
-          amp_A_v_blob(hi) = amp_A_v_tree(hi) * ttv_formfactor (p35, p46, 1)
+          if (FF == MATCHED) then
+             ffi_end = 3
+          else
+             ffi_end = 0
+          end if
+          do ffi = 0, ffi_end
+             ttv_vec = ttv_formfactor (p35, p46, 1, ff_modes(ffi))
+             ttv_ax = ttv_formfactor (p35, p46, 2, ff_modes(ffi))
+             blob_Z_vec = gncup(1) * ttv_vec
+             blob_Z_ax = gncup(2) * ttv_ax
+             amp_blob(hi,ffi) = owf_Z_12 * &
+                  va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
+             amp_blob(hi,ffi) = amp_blob(hi,ffi) + owf_A_12 * &
+                  v_ff (qup, owf_wb_35, owf_wb_46) * ttv_vec
+          end do
        end do
     end if
-    amp_ff = amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob
-  end subroutine calculate_amplitudes
+    amp_blob = - amp_blob ! 4 vertices, 3 propagators
+  end subroutine calculate_blobs
 
 end module @ID@_threshold
 
@@ -349,38 +328,40 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   use kinds
   use opr_@ID@, sm_new_event => new_event
   use opr_@ID@, sm_get_amplitude => get_amplitude
+  use opr_@ID@, sm_number_spin_states => number_spin_states
   use @ID@_threshold
   use parameters_sm_tt_threshold
+  use ttv_formfactors
+  use constants
   implicit none
   real(c_default_float), intent(out) :: amp2
+  real(default), dimension(0:3) :: amp2_array
   real(c_default_float), dimension(0:3,*), intent(in) :: p
-  !complex(default) :: amp_sm
-  !integer :: hi
-  !call sm_new_event (p)
-  call calculate_amplitudes (p)
-  amp2 = 0.0_default
+  integer, dimension(0:3) :: signs
+  complex(default) :: amp_sm
+  integer :: i, hi
+  amp_tree = zero
+  USE_FF = .false.
+  call sm_new_event (p)
+  do hi = 1, sm_number_spin_states()
+     amp_tree(hi) = sm_get_amplitude (1, hi, 1)
+  end do
+  USE_FF = .true.
+  call calculate_blobs (p)
   select case (FF)
-  case (3,4)
-     amp2 = sum (amp_A_v_tree * conjg (amp_A_v_tree) + &
-                 amp_A_v_tree * conjg (amp_A_v_blob) + &
-                 amp_A_v_tree * conjg (amp_Z_av_tree) + &
-                 amp_A_v_tree * conjg (amp_Z_av_blob) + &
-                 amp_A_v_blob * conjg (amp_A_v_tree) + &
-                 amp_A_v_blob * conjg (amp_Z_av_tree) + &
-                 amp_Z_av_tree * conjg (amp_A_v_tree) + &
-                 amp_Z_av_tree * conjg (amp_A_v_blob) + &
-                 amp_Z_av_tree * conjg (amp_Z_av_tree) + &
-                 amp_Z_av_tree * conjg (amp_Z_av_blob) + &
-                 amp_Z_av_blob * conjg (amp_A_v_tree) + &
-                 amp_Z_av_blob * conjg (amp_Z_av_tree))
+  case (EXPANDED_HARD_P0DEPENDENT, EXPANDED_HARD_P0CONSTANT, &
+          EXPANDED_SOFT_P0CONSTANT, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
+     amp2 = expanded_amp2 (amp_tree, amp_blob(:,0))
+  case (MATCHED)
+     signs(0:3) = [+1, -1, +1, -1]
+     amp2_array(0) = sum ((amp_tree + amp_blob(:,0)) * &
+          conjg (amp_tree + amp_blob(:,0)))
+     do i = 1, 3
+        amp2_array(i) = expanded_amp2 (amp_tree, amp_blob(:,i))
+     end do
+     amp2 = sum (signs * amp2_array)
   case default
-     !do hi = 1, n_hel
-        !amp_sm = sm_get_amplitude (1, hi, 1)
-        !amp2 = amp2 + real(amp_sm * conjg(amp_ff(hi)))
-        !amp2 = amp2 + real(amp_ff(hi) * conjg(amp_ff(hi)))
-     !end do
-     amp2 = sum ((amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob) * &
-           conjg (amp_A_v_tree + amp_A_v_blob + amp_Z_av_tree + amp_Z_av_blob))
+     amp2 = sum ((amp_tree + amp_blob(:,0)) * conjg (amp_tree + amp_blob(:,0)))
   end select
   amp2 = amp2 * N_ / 4.0_default
 end subroutine threshold_get_amp_squared

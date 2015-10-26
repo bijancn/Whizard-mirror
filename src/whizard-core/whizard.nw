@@ -606,7 +606,8 @@ temporarily override defaults.  The data set is transparent.
      logical :: quit = .false.
      integer :: quit_code = 0
      type(string_t) :: logfile 
-     logical :: nlo_calculation = .false.
+     logical :: nlo_fixed_order = .false.
+     logical :: nlo_threshold_matching = .false.
      logical, dimension(4) :: active_nlo_components
    contains
    <<RT data: rt data: TBP>>
@@ -3894,10 +3895,12 @@ intent(out).
             call core_def%init (id, model_name, prt_in, prt_out)
          end select 
       case ("threshold")
+         restrictions = var_list%get_sval (&
+              var_str ("$restrictions"))
          allocate (threshold_def_t :: core_def)
          select type (core_def)
          type is (threshold_def_t)
-            call core_def%init (id, model_name, prt_in, prt_out)
+            call core_def%init (id, model_name, prt_in, prt_out, restrictions)
          end select
       case default
          call msg_fatal ("Process configuration: method '" &
@@ -6979,19 +6982,21 @@ particles, and the number of components.
     integer, intent(in) :: n_components 
     type(rt_data_t), intent(in) :: global
     type(model_t), pointer :: model
+    logical :: nlo_process
     model => global%model
     config%id = prc_name
+    nlo_process = global%nlo_fixed_order .or. global%nlo_threshold_matching
     allocate (config%entry)
     if (global%var_list%is_known (var_str ("process_num_id"))) then
        config%num_id = &
             global%var_list%get_ival (var_str ("process_num_id"))
        call config%entry%init (prc_name, &
             model = model, n_in = n_in, n_components = n_components, &
-            num_id = config%num_id, nlo_process = global%nlo_calculation)
+            num_id = config%num_id, nlo_process = nlo_process)
     else
        call config%entry%init (prc_name, &
             model = model, n_in = n_in, n_components = n_components, &
-            nlo_process = global%nlo_calculation)
+            nlo_process = nlo_process)
     end if
   end subroutine process_configuration_init
     
@@ -8432,7 +8437,7 @@ applies to a single process.
     type(string_t) :: history_filename
     type(string_t) :: log_filename
     logical :: combined_integration = .false.
-    type(iteration_multipliers_t) :: it_multipliers
+    type(iteration_multipliers_t) :: iteration_multipliers
    contains
    <<Integrations: integration: TBP>> 
   end type integration_t
@@ -8708,6 +8713,11 @@ local changes to currently inactive models.
        case (GKS)
          call intg%process%init_component &
              (i_component, core_template, mci_template, phs_config_template) 
+       case (NLO_THRESHOLD_RESUMMATION)
+         call intg%process%init_component &
+             (i_component, core_template, mci_template, phs_config_template)
+         if (intg%combined_integration) &
+            call intg%process%set_component_type (i_component, COMP_RESUM)
        case default
          call msg_fatal ("setup_process: NLO type not implemented!")
        end select
@@ -8885,7 +8895,7 @@ for each component, which is done by the subroutine [[integration_apply_multipli
     type(rt_data_t), intent(in) :: local
     integer :: n_pass, pass
     n_pass = local%it_list%get_n_pass ()
-    associate (it_multipliers => intg%it_multipliers)
+    associate (it_multipliers => intg%iteration_multipliers)
        allocate (it_multipliers%n_calls0 (n_pass))
        do pass = 1, n_pass
           it_multipliers%n_calls0(pass) = local%it_list%get_n_calls (pass)
@@ -8911,18 +8921,25 @@ for each component, which is done by the subroutine [[integration_apply_multipli
     integer :: nlo_type
     integer :: n_calls0, n_calls
     integer :: pass
+    real(default) :: multiplier
     nlo_type = intg%process%get_component_nlo_type (i_component)
-    if (nlo_type == BORN) return
     do pass = 1, n_pass
-       n_calls0 = intg%it_multipliers%n_calls0 (pass)
-       select case (nlo_type)
-       case (NLO_REAL)
-          n_calls = floor (intg%it_multipliers%mult_real * n_calls0)
-       case (NLO_VIRTUAL)
-          n_calls = floor (intg%it_multipliers%mult_virt * n_calls0)
-       case (NLO_PDF)
-          n_calls = floor (intg%it_multipliers%mult_pdf * n_calls0)
-       end select
+       associate (multipliers => intg%iteration_multipliers)
+          select case (nlo_type)
+          case (NLO_REAL)
+             multiplier = multipliers%mult_real
+          case (NLO_VIRTUAL)
+             multiplier = multipliers%mult_virt
+          case (NLO_PDF)
+             multiplier = multipliers%mult_pdf
+          case (NLO_THRESHOLD_RESUMMATION)
+             multiplier = multipliers%mult_threshold
+          case default
+             return
+          end select
+       end associate
+       n_calls0 = intg%iteration_multipliers%n_calls0 (pass)
+       n_calls = floor (multiplier * n_calls0)
        call it_list%set_n_calls (pass, n_calls)
     end do
   end subroutine integration_apply_call_multipliers
@@ -16750,7 +16767,7 @@ or arrays which would make the expansion ambiguous.
     integer, dimension(:), allocatable :: pdg
     integer, dimension(:), allocatable :: i_term
     integer :: i, j, n_in, n_out, n_terms, n_components
-    logical :: nlo_calc
+    logical :: nlo_fixed_order, nlo_threshold_matching
     type(string_t), dimension(:), allocatable :: prt_in_nlo, prt_out_nlo
     type(radiation_generator_t) :: radiation_generator
     type(pdg_list_t) :: pl_in, pl_out
@@ -16771,8 +16788,10 @@ or arrays which would make the expansion ambiguous.
     integer :: i_real, n_real
     integer :: n_emitters
     integer, dimension(:), allocatable :: emitters
+    integer :: n_components_init
     
-    nlo_calc = cmd%local%nlo_calculation                 
+    nlo_fixed_order = cmd%local%nlo_fixed_order                
+    nlo_threshold_matching = cmd%local%nlo_threshold_matching
     combined_nlo_integration = &
        global%var_list%get_lval (var_str ('?combined_nlo_integration'))
     powheg_active = & 
@@ -16784,7 +16803,7 @@ or arrays which would make the expansion ambiguous.
            global%var_list%get_ival (var_str ('gks_multiplicity'))
     gks_active = gks_multiplicity > 2
 
-    call check_nlo_options (nlo_calc, combined_nlo_integration, powheg_active)
+    call check_nlo_options (nlo_fixed_order, combined_nlo_integration, powheg_active)
 
     var_list => cmd%local%get_var_list_ptr ()
 
@@ -16823,7 +16842,7 @@ or arrays which would make the expansion ambiguous.
        pdg_out_tab(n_components) = pdg_out
     end do SCAN_COMPONENTS
 
-    if (nlo_calc .or. gks_active) then
+    if (nlo_fixed_order .or. nlo_threshold_matching .or. gks_active) then
        call split_prt (prt_spec_in, n_in, pl_in)
        call split_prt (prt_spec_out, n_out, pl_out)
        call radiation_generator%init (pl_in, pl_out, qcd = .true., qed = .false.)
@@ -16844,7 +16863,7 @@ or arrays which would make the expansion ambiguous.
        n_emitters = size (emitters)
     end if
 
-    if (nlo_calc) then
+    if (nlo_fixed_order) then
        if (initial_state_colored) then
           if (has_structure_functions) then
              n_components_extra = 5
@@ -16857,23 +16876,36 @@ or arrays which would make the expansion ambiguous.
           n_components_extra = 4
        end if
        allocate (i_list (n_components_extra))
+    else if (nlo_threshold_matching) then
+       n_components_extra = 5
+       allocate (i_list (n_components_extra))
     else if (gks_active) then
        call radiation_generator%generate_multiple (gks_multiplicity)
        n_components_extra = radiation_generator%get_n_gks_states ()
     end if
 
-    if (nlo_calc .and..not. use_powheg_damping_factors) then
-       call prc_config%init (cmd%id, n_in, n_components*n_components_extra, cmd%local)
-    else if (nlo_calc .and. use_powheg_damping_factors) then
-       call prc_config%init (cmd%id, n_in, n_components*(n_components_extra), cmd%local)
+    
+    if (nlo_fixed_order .and..not. use_powheg_damping_factors) then
+       n_components_init = n_components * n_components_extra
+       !call prc_config%init (cmd%id, n_in, n_components*n_components_extra, cmd%local)
+    else if (nlo_fixed_order .and. use_powheg_damping_factors) then
+       !call prc_config%init (cmd%id, n_in, n_components*(n_components_extra), cmd%local)
+       n_components_init = n_components * n_components_extra
+    else if (nlo_threshold_matching) then
+       n_components_init = n_components * n_components_extra
     else if (gks_active) then
-       call prc_config%init (cmd%id, n_in, n_components*(n_components_extra+1), cmd%local)
+       !call prc_config%init (cmd%id, n_in, n_components*(n_components_extra+1), cmd%local)
+       n_components_init = n_components * (n_components_extra + 1)
     else
-       call prc_config%init (cmd%id, n_in, n_components, cmd%local)
+       !call prc_config%init (cmd%id, n_in, n_components, cmd%local)
+       n_components_init = n_components
     end if
+
+    call prc_config%init (cmd%id, n_in, n_components_init, cmd%local)
+
     do i = 1, n_components
        call prt_expr_out%term_to_array (prt_spec_out, i_term(i))
-       if (nlo_calc) then
+       if (nlo_fixed_order .or. nlo_threshold_matching) then
           associate (active_comp => cmd%local%active_nlo_components)
              i_list(1) = i
              i_list(2) = i + n_components
@@ -16915,18 +16947,26 @@ or arrays which would make the expansion ambiguous.
 
              call switch_method (current_me_method, loop_me_method)
 
-             i_real = n_real+1
+             i_real = n_real + 1
              call prc_config%setup_component (n_components*i_real+i, prt_spec_in, &
                   prt_spec_out, global, NLO_VIRTUAL, &
                   active_in = active_comp (3))
 
              call switch_method (current_me_method, correlation_me_method)
 
-             i_real = i_real+1
+             i_real = i_real + 1
              call prc_config%setup_component (n_components*i_real+i, prt_spec_in, &
                   prt_spec_out, global, NLO_SUBTRACTION, &
                   active_in = active_comp (4))
-
+             
+             i_real = i_real + 1
+             if (nlo_threshold_matching) then 
+                 i_list(5) = i + 4*n_components
+                 call global%set_me_method (var_str ("threshold"))
+                 call prc_config%setup_component (n_components*i_real + i, &
+                    prt_spec_in, prt_spec_out, global, NLO_THRESHOLD_RESUMMATION, &
+                    .true.)
+             end if
 
              if (initial_state_colored .and. has_structure_functions) then
                 if (current_me_method /= "omega") then
@@ -16937,6 +16977,7 @@ or arrays which would make the expansion ambiguous.
                      prt_spec_out, global, NLO_PDF, &
                      .false.)                     
              end if
+
              if (use_powheg_damping_factors) then
                 call prc_config%set_component_associations (i_list, 1, 3+n_emitters, &
                      4+n_emitters, 2, 3)
@@ -17207,10 +17248,17 @@ particle-specifier expression which we can process further.
             cmd%active_component(4) = .true.
          case ('Full')
             cmd%active_component = .true.
+         case ('Threshold_matched')
+            cmd%active_component = .true.
+            global%nlo_threshold_matching = .true.
+         case ('Threshold_only')
+            cmd%active_component(4) = .true.
+            global%nlo_threshold_matching = .true.
          case default
-            call msg_fatal ("Invalid NLO mode! &
-               &Valid inputs are: 'Born', 'Real', &
-               &'Virtual', 'Pdf' and 'Full'")
+            call msg_fatal ("Invalid NLO mode! " // &
+               "Valid inputs are: 'Born', 'Real', " // &
+               "'Virtual', 'Pdf', 'Full', 'Threshold_matched' and " // &
+               "'Threshold_only'")
          end select
          if (i >= 4) exit
          current_component => cmd%pn_components(i)%ptr
@@ -17219,9 +17267,9 @@ particle-specifier expression which we can process further.
          exit
       end if
     end do   
-    global%nlo_calculation = cmd%active_component(2) &
-                        .or. cmd%active_component(3) &
-                        .or. cmd%active_component(4)
+    global%nlo_fixed_order = (cmd%active_component(2) &
+      .or. cmd%active_component(3) .or. cmd%active_component(4)) & 
+      .and..not. global%nlo_threshold_matching
     global%active_nlo_components = cmd%active_component
   end subroutine cmd_nlo_execute
 
@@ -29523,6 +29571,15 @@ This is for developers only, but needs a well-defined interface.
 <<Main: all tests>>=
   call commands_test (u, results)
 @ 
+\subsubsection{$ttV$ formfactors}
+<<Main: use tests>>=
+  use ttv_formfactors_ut, only: ttv_formfactors_test
+<<Main: test cases>>=
+  case ("ttv_formfactors")
+     call ttv_formfactors_test (u, results)
+<<Main: all tests>>=
+  call ttv_formfactors_test (u, results)
+@
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 \section{Whizard-C-Interface}

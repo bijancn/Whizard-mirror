@@ -48,6 +48,7 @@ module blha_olp_interfaces
   use interactions
   use flavors
   use model_data
+  use pdg_arrays, only: is_gluon, is_quark
 
   use prclib_interfaces
   use process_libraries
@@ -937,13 +938,9 @@ end module blha_olp_interfaces
     class(prc_blha_t), intent(inout) :: object
     type(model_data_t), intent(in), target :: model
     real(default) :: alpha
-    real(default) :: GF, MZ, MW
-    real(default) :: sw2
-    GF = model%get_real (var_str ('GF'))
-    MZ = model%get_real (var_str ('mZ'))
-    MW = model%get_real (var_str ('mW'))
-    sw2 = one - MW**2/MZ**2
-    alpha = sqrt(two)/pi * sw2*MW**2*GF
+   
+    alpha = one / model%get_real (var_str ('alpha_em_i'))
+
     select type (driver => object%driver)
     class is (blha_driver_t)
        call driver%set_alpha_qed (alpha)
@@ -1243,6 +1240,7 @@ Hence, the interface is simpler than in the other routines.
     real(double) :: acc_dble
     real(default) :: acc
     real(default) :: born
+    integer, dimension(:), allocatable :: flavors
 
     mom = object%create_momentum_array (p)
     if (vanishes (ren_scale)) then
@@ -1252,6 +1250,8 @@ Hence, the interface is simpler than in the other routines.
     end if
     mu_dble = dble(mu)
     alpha_s = object%qcd%alpha%get (mu)
+    flavors = object%get_flv_state (i_flv)
+
     select type (driver => object%driver)
     class is (blha_driver_t)
        call driver%set_alpha_s (alpha_s)
@@ -1265,12 +1265,19 @@ Hence, the interface is simpler than in the other routines.
        call driver%blha_olp_eval2 (object%i_cc(i_flv), &
                                     mom, mu_dble, r, acc_dble)
     end select
+
     do j = 1, size (p)
       do i = 1, j
         if (i <= 2 .or. j <= 2) then
           born_cc (i,j) = 0._default
         else if (i == j) then
-          born_cc (i,j) = -cf*born
+          if (is_quark (abs(flavors (i)))) then
+             born_cc (i,j) = -cf*born 
+          else if (is_gluon (flavors (i))) then
+             born_cc (i,j) = -ca*born
+          else 
+             born_cc (i,j) = zero
+          end if
         else
           im1 = i-1; jm1 = j-1
           pos = im1 + jm1*(jm1-1)/2 + 1
@@ -1279,6 +1286,7 @@ Hence, the interface is simpler than in the other routines.
         born_cc (j,i) = born_cc (i,j)
       end do
     end do
+
     acc = acc_dble
     bad_point = bad_point2 .or. acc > object%maximum_accuracy
   end subroutine prc_blha_compute_sqme_cc
