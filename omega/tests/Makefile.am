@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 7326 2015-10-19 16:08:26Z jr_reuter $
+# $Id: Makefile.am 7334 2015-10-26 18:21:22Z bchokoufe $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
