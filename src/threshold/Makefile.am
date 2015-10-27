@@ -47,6 +47,9 @@ libthreshold_la_SOURCES = \
   toppik_axial.f \
   ttv_formfactors.f90
 
+## Omitting this would exclude it from the distribution
+dist_noinst_DATA = threshold.nw
+
 libthreshold_ut_la_SOURCES = \
   ttv_formfactors_uti.f90 ttv_formfactors_ut.f90
 
