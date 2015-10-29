@@ -28,7 +28,7 @@ let rcs_file = RCS.parse "Fusion" ["General Fusions"]
       RCS.date = "$Date: 2015-05-01 12:53:21 +0200 (Fri, 01 May 2015) $";
       RCS.author = "$Author: msekulla $";
       RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/fusion.ml $" }
+        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/fusion.ml $" }
 
 module type T =
   sig

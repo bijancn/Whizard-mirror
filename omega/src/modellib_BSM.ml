@@ -29,7 +29,7 @@ let rcs_file = RCS.parse "Modellib_BSM" ["BSM Models"]
       RCS.date = "$Date: 2015-10-25 20:45:47 +0100 (Sun, 25 Oct 2015) $";
       RCS.author = "$Author: msekulla $";
       RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_BSM.ml $" }
+        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_BSM.ml $" }
 
 (* \thocwmodulesection{Littlest Higgs Model} *)
 
