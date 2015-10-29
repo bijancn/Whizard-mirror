@@ -29,7 +29,7 @@ module parameters_ssc_2
   implicit none
   private
 
-  real(default), dimension(55), public :: mass, width
+  real(default), dimension(59), public :: mass, width
   real(default), public :: as
   complex(default), public :: gs, igs
 
@@ -48,6 +48,7 @@ module parameters_ssc_2
        gcf, gfwwcf, gfzzcf, &
        gtnww, gtnzz, gtwz, gtww, &
        gtnwwcf, gtnzzcf, gtwzcf, gtwwcf, &
+       gtsnww, gtsnzz, gtsnwwcf, gtsnzzcf, &
        fs0hhww, fs0hhzz, fs1hhww, fs1hhzz, fsh4, &
        gshh, gfhh, gfhhcf
   real(default), public :: vev
@@ -257,6 +258,8 @@ contains
     width(54) = par%wkm_t
     mass(55) = par%mkm_t
     width(55) = par%wkm_t
+    mass(59) = par%mkm_t
+    width(59) = par%wkm_t
     mkm(1) = par%mkm_s
     mkm(2) = par%mkm_p
     mkm(3) = par%mkm_r
@@ -295,31 +298,33 @@ contains
       if (w_res == 1 .and. wkm(i) == 0 .and. gkm(i) /= 0 ) then
         select case (i)
           case (1) !!! Scalar isosinglet
-            wkm(1) = (3 + gkm(14))*gkm(1)**2 /128.0_default/Pi * &
+            wkm(1) = (3 + gkm(14))*gkm(1)**2 /32.0_default/Pi * &
                  & mkm(1)**3 
             width(45) = wkm(1)
             write (*, "(1x,A,ES19.12)")  "Setting width: wkm_s =", wkm(1)
           case (2) !!! Scalar isoquintet
-            wkm(2) = gkm(2)**2 /256.0_default/Pi * mkm(2)**3 
+            wkm(2) = gkm(2)**2 /128.0_default/Pi * mkm(2)**3 
             width(46) = wkm(2)
             width(47) = wkm(2)
             width(48) = wkm(2)
+            width(49) = wkm(2)
             write (*, "(1x,A,ES19.12)")  "Setting width: wkm_p =", wkm(2)
           case (3) !!! Vector isotriplet
              wkm(3) = gkm(3)**2/48.0_default/Pi * mkm(3)
 !!            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_r =", wkm(3)
           case (4) !!! Tensor isosinglet
-            wkm(4) = (3 + gkm(14))*gkm(4)**2 /3840.0_default/Pi * &
+            wkm(4) = (3 + gkm(14))*gkm(4)**2 /960.0_default/Pi * &
                  & mkm(4)**3 
             width(52) = wkm(4)
            write (*, "(1x,A,ES19.12)")  "Setting width: wkm_f =", wkm(4)
            write (*, "(1x,A,ES19.12)")  "Setting width: mkm_f =", mkm(4)
            write (*, "(1x,A,ES19.12)")  "Setting width: gkm_f =", gkm(4)
           case (5) !!! Tensor isoquintet
-            wkm(5) = gkm(5)**2 /7680.0_default/Pi * mkm(5)**3 
+            wkm(5) = gkm(5)**2 /3840.0_default/Pi * mkm(5)**3 
             width(53) = wkm(5)
             width(54) = wkm(5)
             width(55) = wkm(5)
+            width(59) = wkm(5)
             write (*, "(1x,A,ES19.12)")  "Setting width: wkm_t =", wkm(5)
         end select
       end if
@@ -378,13 +383,17 @@ contains
     gfhhcf = gfhh * gcf
     gfwwt = gkm(9) * g**3 / mass(24) / (32.0 * PI) 
     gfzzt = gkm(9) * g**3 / costhw**3 / mass(23) /(32.0 * PI)
-    gtnww = - gkm(5) * mass(24) ** 2 / 4.0_default / sqrt(3.0_default)
+    gtnww = - gkm(5) * mass(24) ** 2 / 2.0_default / sqrt(6.0_default)
     gtnwwcf = gtnww * gcf
-    gtnzz = gkm(5) * mass(23) ** 2 / 2.0_default / sqrt(3.0_default)
+    gtnzz = gkm(5) * mass(23) ** 2 / sqrt(6.0_default)
     gtnzzcf = gtnzz * gcf
-    gtwz = gkm(5) * mass(23) ** 2 / 4.0_default
+    gtsnww = gkm(5) * mass(24) ** 2 / 4.0_default / sqrt(3.0_default)
+    gtsnwwcf = gtsnww * gcf
+    gtsnzz = gkm(5) * mass(23) ** 2 / 4.0_default / sqrt(3.0_default)
+    gtsnzzcf = gtsnzz * gcf
+    gtwz = gkm(5) * mass(23) * mass(24) / 2.0_default / sqrt(2.0_default)
     gtwzcf = gtwz * gcf
-    gtww = gkm(5) * mass(24) ** 2 / 2.0_default / sqrt(2.0_default)
+    gtww = gkm(5) * mass(24) ** 2 / 2.0_default 
     gtwwcf = gtww * gcf
     gssww = 0
     gsszz = 0

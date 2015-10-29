@@ -27,7 +27,7 @@ let rcs_file = RCS.parse "Comphep" ["Plagiarizing CompHEP models ..."]
       RCS.date = "$Date: 2015-01-10 16:22:31 +0100 (Sat, 10 Jan 2015) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
-        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/comphep.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/comphep.ml $" }
 
 (* A friendlier [String.sub] that returns an empty string instead of
    raising an exception.  Instead of the length, the second argument

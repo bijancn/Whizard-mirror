@@ -28,7 +28,7 @@ let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
       RCS.date = "$Date: 2015-09-27 17:12:43 +0200 (Sun, 27 Sep 2015) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
-        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_SM.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_SM.ml $" }
 
 (* \thocwmodulesection{$\phi^3$} *)
 
