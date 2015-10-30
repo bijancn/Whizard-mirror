@@ -29,7 +29,7 @@ module parameters_ssc
   implicit none
   private
 
-  real(default), dimension(55), public :: mass, width
+  real(default), dimension(59), public :: mass, width
   real(default), public :: as
   complex(default), public :: gs, igs
 
@@ -45,7 +45,8 @@ module parameters_ssc
        gpnww, gpnzz, gpwz, gpww, &
        gpsnww, gpsnzz, gpsnhh, &
        gfww, gfzz, gfwwt, gfzzt, &
-       gtnww, gtnzz, gtwz, gtww
+       gtnww, gtnzz, gtwz, gtww, &
+       gtsnww, gtsnzz
   real(default), public :: vev
   complex(default), dimension(2), public :: &
        gncneu, gnclep, gncup, gncdwn
@@ -249,6 +250,8 @@ contains
     width(54) = par%wkm_t
     mass(55) = par%mkm_t
     width(55) = par%wkm_t
+    mass(59) = par%mkm_t
+    width(59) = par%wkm_t
     mkm(1) = par%mkm_s
     mkm(2) = par%mkm_p
     mkm(3) = par%mkm_r
@@ -360,6 +363,8 @@ contains
     gfzzt = gkm(9) * g**3 / costhw**3 / mass(23) /(32.0 * PI)
     gtnww = - gkm(5) * mass(24) * g / 4 / sqrt(3.0_default)
     gtnzz = gkm(5) * mass(23) * g / costhw / 2 / sqrt(3.0_default)
+    gtsnww = 0
+    gtsnzz = 0
     gtwz = gkm(5) * mass(23) * g / 4
     gtww = gkm(5) * mass(24) * g / 2 / sqrt(2.0_default)
     gssww = 0

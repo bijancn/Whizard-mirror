@@ -2655,7 +2655,7 @@ parameterizing an s-channel resonance.
                     rebuild, ignore_mismatch, verbose=verbose)
             class is (pcm_nlo_t)
                select case (component%config%get_nlo_type ())
-               case (BORN, NLO_VIRTUAL, NLO_SUBTRACTION)
+               case (BORN, NLO_VIRTUAL, NLO_SUBTRACTION, NLO_THRESHOLD_RESUMMATION)
                   call component%configure_phs (sqrts, process%beam_config, &
                        rebuild, ignore_mismatch, verbose=verbose)
                   call check_and_extend_phs (component, combined_integration)
@@ -3513,7 +3513,7 @@ Return the current integral and error obtained by the integrator [[i_mci]].
     integer, intent(in) :: i_component
     logical :: active
     associate (component => process%component(i_component))
-       active = component%config%is_active_nlo_component () &
+       active = component%is_active_nlo_component () &
                 .and. component%component_type <= COMP_MASTER
     end associate
   end function process_is_active_nlo_component
@@ -4406,6 +4406,7 @@ status.  It is a part of the [[mci_entry]] component below.
   integer, parameter, public :: COMP_REAL_SING = 5
   integer, parameter, public :: COMP_PDF = 6
   integer, parameter, public :: COMP_SUB = 7
+  integer, parameter, public :: COMP_RESUM = 8
 
   integer, parameter :: DAMPING_NONE = 0
   integer, parameter :: DAMPING_SINGULAR = 1
@@ -6704,7 +6705,7 @@ matter of the process core.
       select case (nlo_type)
       case (NLO_REAL)
         allocate (component%p_seed (n_tot-1))
-      case (BORN, NLO_VIRTUAL, NLO_PDF)
+      case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_SUBTRACTION, NLO_THRESHOLD_RESUMMATION)
         allocate (component%p_seed (n_tot))
       end select
       call core%allocate_workspace (component%core_state)
@@ -7039,7 +7040,7 @@ imaginary part of the terms, which should be zero anyway.
   subroutine reset_nlo_components (component)
      type(component_instance_t), intent(inout) :: component
      select case (component%config%config%get_nlo_type ())
-     case (NLO_REAL, NLO_VIRTUAL, NLO_PDF)
+     case (NLO_REAL, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
         associate (collector => component%nlo_controller%sqme_collector)
            collector%sqme_real_non_sub = 0
         end associate
@@ -7363,6 +7364,17 @@ imaginary part of the terms, which should be zero anyway.
   end function process_component_needs_mci_entry
 
 @ %def process_component_needs_mci_entry
+@
+<<Processes: process component: TBP>>=
+  procedure :: is_active_nlo_component => process_component_is_active_nlo_component
+<<Processes: procedures>>=
+  elemental function process_component_is_active_nlo_component (component) result (active)
+    logical :: active
+    class(process_component_t), intent(in) :: component
+    active = component%config%is_active_nlo_component ()
+  end function process_component_is_active_nlo_component
+
+@ %def process_component_is_active_nlo_component
 @
 \subsubsection{Term instance}
 A [[term_instance_t]] object contains all data that describe a term.  Each
@@ -7758,7 +7770,7 @@ The quantum numbers mask of the incoming particle
     allocate (mask_in (n_in))
     mask_in = term%k_term%sf_chain%get_out_mask ()
     select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_PDF)
+    case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
       call term%isolated%setup_square_matrix (core, model, mask_in, &
          term%config%col)
       call term%isolated%setup_square_flows (core, model, mask_in)
@@ -7902,7 +7914,7 @@ kinematics to the evaluators and to the [[subevt]].
        i_term = term%config%i_term
       associate (core => component(i_component)%config%core)
          select case (term%nlo_type)
-         case (BORN, NLO_VIRTUAL, NLO_PDF)
+         case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
            call core%compute_eff_kinematics &
               (i_term, term%int_hard, term%isolated%int_eff, &
               component(i_component)%core_state)
@@ -7977,7 +7989,7 @@ method may modify the [[core_state]] workspace object.
     i_term = term%config%i_term
     term%p_hard = term%int_hard%get_momenta ()
     select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_PDF)
+    case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
        associate (core => component(i_component)%config%core)
           do i = 1, term%config%n_allowed
              term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
@@ -8026,7 +8038,7 @@ physical event.
   subroutine term_instance_evaluate_event_data (term)
     class(term_instance_t), intent(inout) :: term
     select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_PDF)
+    case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
       call term%isolated%evaluate_event_data ()
       call term%connected%evaluate_event_data ()
     case (NLO_REAL)
@@ -8862,6 +8874,8 @@ to subobject of [[instance]].
                   call component%nlo_controller%init_pdf_subtraction ()
                case (NLO_SUBTRACTION)
                   component%nlo_type = NLO_SUBTRACTION
+               case (NLO_THRESHOLD_RESUMMATION)
+                  component%nlo_type = NLO_THRESHOLD_RESUMMATION
                end select
                call component%setup_kinematics &
                     (instance%sf_chain, process%beam_config, &
@@ -9218,7 +9232,7 @@ components, from the seed kinematics.
        do i = 1, size (instance%component)
           if (instance%component(i)%active) then
             select case (instance%component(i)%config%config%get_nlo_type())
-            case (BORN, NLO_VIRTUAL, NLO_PDF)
+            case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
               real_phsp = .false.
             case (NLO_REAL)
               real_phsp = .true.
@@ -9394,7 +9408,7 @@ terms, iterating over all active process components.
                        i_real = i
                     end if
                  end select
-              case (BORN, NLO_VIRTUAL, NLO_PDF)
+              case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
                  call term%evaluate_interaction (instance%component)
                  call term%evaluate_trace ()
               end select
@@ -9405,7 +9419,7 @@ terms, iterating over all active process components.
           associate (component => instance%component(i))
             if (component%active) then
               select case (component%config%config%get_nlo_type())
-              case (BORN, NLO_VIRTUAL, NLO_PDF)
+              case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
                 call component%evaluate_sqme (instance%term)
                 instance%sqme = instance%sqme + component%sqme
                 instance%evaluation_status = STAT_EVALUATED_TRACE
@@ -9941,7 +9955,7 @@ component.
     integer, intent(in) :: i_term
     type(interaction_t), pointer :: ptr
     select case (instance%term(i_term)%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_PDF)
+    case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
       ptr => instance%term(i_term)%connected%get_matrix_int_ptr ()
     case (NLO_REAL)
       ptr => instance%term(i_term)%connected_real%get_matrix_int_ptr ()
@@ -9953,7 +9967,7 @@ component.
     integer, intent(in) :: i_term
     type(interaction_t), pointer :: ptr
     select case (instance%term(i_term)%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_PDF)
+    case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
       ptr => instance%term(i_term)%connected%get_flows_int_ptr ()
     case (NLO_REAL)
       ptr => instance%term(i_term)%connected_real%get_flows_int_ptr ()
@@ -10275,12 +10289,14 @@ and directly set the coupling value that comes together with a particle set.
     integer :: i
     val = .false.
     do i = 1, size (instance%component)
-       if (.not. associated (instance%component(i)%config)) cycle
-       select type (core => instance%component(i)%config%core)
-       class is (prc_blha_t)
-          val = .true.
-          exit
-       end select
+       if (associated (instance%component(i)%config)) then
+          if (.not. instance%component(i)%config%is_active_nlo_component ()) cycle
+          select type (core => instance%component(i)%config%core)
+          class is (prc_blha_t)
+             val = .true.
+             exit
+          end select
+       end if
     end do
   end function process_instance_has_blha_component
 

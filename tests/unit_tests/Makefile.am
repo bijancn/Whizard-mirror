@@ -126,6 +126,7 @@ UNIT_TESTS = \
     process_configurations.run \
     event_streams.run \
     integrations.run \
+    ttv_formfactors.run \
     simulations.run
 
 XFAIL_UNIT_TESTS =
@@ -334,6 +335,7 @@ clean-local:
 	rm -f core* 
 	rm -f *.f90 *.c *.$(FC_MODULE_EXT) *.o *.la
 	rm -f *.makefile
+	rm -f *.grid
 	rm -rf err-output
 	rm -rf ref-output
 	rm -f *.sin *.hbc 

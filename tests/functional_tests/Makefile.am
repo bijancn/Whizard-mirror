@@ -356,9 +356,7 @@ user_strfun.f90: $(top_builddir)/share/tests/functional_tests/user_strfun.f90
 	cp $< $@
 
 model_test.run: tdefs.$(FC_MODULE_EXT) tglue.$(FC_MODULE_EXT) \
-	threeshl.$(FC_MODULE_EXT) tscript.$(FC_MODULE_EXT) \
-	ttv_formfactors.$(FC_MODULE_EXT) nr_tools.$(FC_MODULE_EXT) \
-	nr.$(FC_MODULE_EXT) nrtype.$(FC_MODULE_EXT) interpolation.$(FC_MODULE_EXT)
+	threeshl.$(FC_MODULE_EXT) tscript.$(FC_MODULE_EXT)
 tdefs.mod: $(top_builddir)/src/models/threeshl_bundle/tdefs.$(FC_MODULE_EXT)
 	cp $< $@
 tglue.mod: $(top_builddir)/src/models/threeshl_bundle/tglue.$(FC_MODULE_EXT)
@@ -367,16 +365,6 @@ tscript.mod: $(top_builddir)/src/models/threeshl_bundle/tscript.$(FC_MODULE_EXT)
 	cp $< $@
 threeshl.mod: $(top_builddir)/src/models/threeshl_bundle/threeshl.$(FC_MODULE_EXT)
 	cp $< $@
-ttv_formfactors.mod: $(top_builddir)/src/models/SM_tt_threshold_bundle/ttv_formfactors.$(FC_MODULE_EXT)
-	cp $< $@
-nr_tools.mod: $(top_builddir)/src/models/SM_tt_threshold_bundle/nr_tools.$(FC_MODULE_EXT)
-	cp $< $@ 
-nr.mod: $(top_builddir)/src/models/SM_tt_threshold_bundle/nr.$(FC_MODULE_EXT)
-	cp $< $@ 
-nrtype.mod: $(top_builddir)/src/models/SM_tt_threshold_bundle/nrtype.$(FC_MODULE_EXT)
-	cp $< $@ 
-interpolation.mod: $(top_builddir)/src/models/SM_tt_threshold_bundle/interpolation.$(FC_MODULE_EXT)
-	cp $< $@ 
 
 TEST.mdl: $(top_srcdir)/share/tests/TEST.mdl
 	cp $< $@

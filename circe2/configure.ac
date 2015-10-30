@@ -194,5 +194,6 @@ AC_CONFIG_FILES([
 
 AC_CONFIG_FILES([tests/test_wrapper.sh], [chmod u+x tests/test_wrapper.sh])
 AC_CONFIG_FILES([tests/circe2_tool.sh], [chmod u+x tests/circe2_tool.sh])
+AC_CONFIG_FILES([tests/generate.sh], [chmod u+x tests/generate.sh])
 
 AC_OUTPUT

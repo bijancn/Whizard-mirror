@@ -939,65 +939,137 @@ if (lun > 99) lun = -1
 logical exists, isopen
 @ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Tests and Examples}
-<<[[sample.f90]]>>=
-! sample.f90 -- testing circe2
+<<[[circe2_generate.f90]]>>=
+! circe2_generate.f90 -- generate (x1,x2) pairs from circe2 parameterizations
 <<Copyleft notice>>
 <<Separator>>
-program sample
-  <<[[implicit none]]>>
-  external circe2_distribution
-  real(kind=default) :: circe2_distribution
-  integer :: i, n, ierror
-  integer, dimension(2) :: p, h
-  character(len=256) :: file, design, mode
-  real(kind=default) :: roots, x1, x2, w
-  read *, file, design, roots, p(1), h(1), p(2), h(2), mode, n
-  ierror = 0
-  call circe2_load (file, design, roots, ierror)
+@ We need the object oriented interface to [[tao_random_numbers]]
+to be able to talk to the WHIZARD
+<<[[circe2_generate.f90]]>>=
+module tao_random_objects
+  use kinds
+  use tao_random_numbers
+  use circe2
+  implicit none
+  private
+  <<[[tao_random_objects]] declarations>>
+contains
+  <<[[tao_random_objects]] implementation>>
+end module tao_random_objects
+@ 
+<<[[tao_random_objects]] declarations>>=
+public :: rng_tao
+type, extends (rng_type) :: rng_tao
+   integer :: seed = 0
+   integer :: n_calls = 0
+   type(tao_random_state) :: state
+ contains
+   procedure :: generate => rng_tao_generate
+   procedure :: init => rng_tao_init
+end type rng_tao
+@ 
+<<[[tao_random_objects]] implementation>>=
+subroutine rng_tao_generate (rng_obj, u)
+  class(rng_tao), intent(inout) :: rng_obj
+  real(default), intent(out) :: u
+  call tao_random_number (rng_obj%state, u)
+  rng_obj%n_calls = rng_obj%n_calls + 1
+end subroutine rng_tao_generate
+@ 
+<<[[tao_random_objects]] implementation>>=
+subroutine rng_tao_init (rng_obj, seed)
+  class(rng_tao), intent(inout) :: rng_obj
+  integer, intent(in) :: seed
+  rng_obj%seed = seed
+  call tao_random_create (rng_obj%state, seed)
+end subroutine rng_tao_init
+@
+<<[[circe2_generate.f90]]>>=
+program circe2_generate_program
+  use kinds
+  use circe2
+  use tao_random_objects 
+  implicit none
+  type(circe2_state) :: c2s
+  type(rng_tao), save :: rng
+  character(len=1024) :: filename, design, buffer
+  integer :: status, nevents, seed
+  real(kind=default) :: roots
+  real(kind=default), dimension(2) :: x
+  integer :: i, ierror
+  <<Process command line arguments for [[circe2_generate_program]]>>
+  call circe2_load (c2s, trim(filename), trim(design), roots, ierror)
   if (ierror /= 0) then
-     print *, 'sample: circe2_load failed!'
+     print *, "circe2_generate: failed to load design ", trim(design), &
+          " for ", real (roots, kind=single), &
+          " GeV from  ", trim(filename)
      stop
   end if
-  if (mode(1:1) == 'w' .or. mode(1:1) == 'W') then
-     <<Generate [[n]] weighted events>>
+  do i = 1, nevents
+     call circe2_generate (c2s, rng, x, [11, -11], [0, 0])
+     write (*, '(F12.10,1X,F12.10)') x
+  end do
+  contains
+     <<Module procedures for [[circe2_generate_program]]>>
+end program circe2_generate_program
+@
+<<Process command line arguments for [[circe2_generate_program]]>>=
+call get_command_argument (1, value = filename, status = status)
+if (status /= 0) filename = ""
+@
+<<Process command line arguments for [[circe2_generate_program]]>>=
+call get_command_argument (2, value = design, status = status)
+if (status /= 0) design = ""
+if (filename == "" .or. design == "") then
+   print *, "usage: circe2_generate filename design [roots] [#events] [seed]"
+   stop
+end if
+@
+<<Process command line arguments for [[circe2_generate_program]]>>=
+call get_command_argument (3, value = buffer, status = status)
+if (status == 0) then
+   read (buffer, *, iostat = status) roots
+   if (status /= 0) roots = 500
+else
+   roots = 500
+end if
+@
+<<Process command line arguments for [[circe2_generate_program]]>>=
+call get_command_argument (4, value = buffer, status = status)
+if (status == 0) then
+   read (buffer, *, iostat = status) nevents
+   if (status /= 0) nevents = 1000
+else
+   nevents = 1000
+end if
+@
+<<Process command line arguments for [[circe2_generate_program]]>>=
+call get_command_argument (5, value = buffer, status = status)
+if (status == 0) then
+   read (buffer, *, iostat = status) seed
+   if (status == 0) then
+      call random2_seed (rng, seed)
+   else
+      call random2_seed (rng)
+   end if
+else
+   call random2_seed (rng)
+end if
+@
+<<Module procedures for [[circe2_generate_program]]>>=
+subroutine random2_seed (rng, seed)
+  class(rng_tao), intent(inout) :: rng
+  integer, intent(in), optional:: seed
+  integer, dimension(8) :: date_time
+  integer :: seed_value
+  if (present (seed)) then
+     seed_value = seed
   else
-     <<Generate [[n]] unweighted events>>
-  end if
-end program sample
-<<Separator>>
-<<Sample procedures>>
-<<Separator>>
-@ Generation of unweighted events is \Kirke/'s home turf
-<<Generate [[n]] unweighted events>>=
-do i = 1, n    
-   call circe2_generate (p, [x1, x2], h)
-   call write3 (x1, x2, 1d0)
-end do
-@ while generation of weighted events without any importance sampling
-is slightly abusive and only useful for checking [[circe2_distribution]].
-<<Generate [[n]] weighted events>>=
-do i = 1, n
-   call random (x1)
-   call random (x2)
-   w = circe2_distribution (p, [x1, x2], h)
-   print *, x, y, w
-end do
-@ The following bare bones random number generator produces
-some correlations that have been observed in testing \KirkeTwo/
-<<Unused sample procedures>>=
-subroutine random (r)
-  real(kind=default) :: r
-  integer, parameter :: M = 259200, A = 7141, C = 54773
-  integer, save :: n = 0
-  n = mod (n*A + C, M)
-  r = dble (n) / dble (M)
-end subroutine random
-@ therfore, it makes sense to call a more sophisticated one:
-<<Sample procedures>>=
-subroutine random (u)
-  real(kind=default) :: u
-  call taornu (u)
-end subroutine random
+     call date_and_time (values = date_time)
+     seed_value = product (date_time)
+  endif
+  call rng%init (seed_value)
+end subroutine random2_seed
 @ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Listing File Contents}
 Here's a small utility program for listing the contents of \KirkeTwo/
