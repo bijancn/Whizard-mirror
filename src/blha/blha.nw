@@ -95,6 +95,11 @@ end module blha_olp_interfaces
 
 @ %def blha_template_t
 @
+<<BLHA OLP interfaces: parameters>>=
+  integer, parameter :: I_ALPHA = 1
+  integer, parameter :: I_GF = 2
+  integer, parameter :: I_SW2 = 3
+
 <<BLHA OLP interfaces: public>>=
   public :: prc_blha_t
 <<BLHA OLP interfaces: types>>=
@@ -105,6 +110,7 @@ end module blha_olp_interfaces
     integer, dimension(:), allocatable :: i_real
     integer, dimension(:), allocatable :: i_virt
     integer, dimension(:,:), allocatable :: i_hel
+    logical, dimension(3) :: ew_parameter_mask
   contains
   <<BLHA OLP interfaces: prc blha: TBP>>
   end type prc_blha_t
@@ -487,20 +493,20 @@ end module blha_olp_interfaces
   end function prc_blha_writer_get_n_proc
 
 @ %def prc_blha_writer_get_n_proc
-@
+@     
 <<BLHA OLP interfaces: blha driver: TBP>>=
-  procedure :: set_alpha_qed => blha_driver_set_alpha_qed
-<<BLHA OLP interfaces: procedures>>=
-  subroutine blha_driver_set_alpha_qed (driver, alpha)
-    class(blha_driver_t), intent(inout) :: driver
-    real(default), intent(in) :: alpha
-    integer :: ierr
-    call driver%blha_olp_set_parameter &
-       (c_char_'alpha_qed'//c_null_char, &
-        dble (alpha), 0._double, ierr)
-  end subroutine blha_driver_set_alpha_qed
+  procedure(blha_driver_set_GF), deferred :: &
+     set_GF
+<<BLHA OLP interfaces: interfaces>>=
+  abstract interface 
+    subroutine blha_driver_set_GF (driver, GF)
+      import
+      class(blha_driver_t), intent(inout) :: driver
+      real(default), intent(in) :: GF
+    end subroutine blha_driver_set_GF
+  end interface
 
-@ %def blha_driver_set_alpha_qed
+@ %def blha_driver_set_GF
 @
 <<BLHA OLP interfaces: blha driver: TBP>>=
   procedure(blha_driver_set_alpha_s), deferred :: &
@@ -517,6 +523,33 @@ end module blha_olp_interfaces
 @ %def set_alpha_s interface
 @
 <<BLHA OLP interfaces: blha driver: TBP>>=
+  procedure(blha_driver_set_weinberg_angle), deferred :: &
+     set_weinberg_angle
+<<BLHA OLP interfaces: interfaces>>=
+  abstract interface
+    subroutine blha_driver_set_weinberg_angle (driver, sw2)
+      import
+      class(blha_driver_t), intent(inout) :: driver
+      real(default), intent(in) :: sw2
+    end subroutine blha_driver_set_weinberg_angle
+  end interface
+
+@ %def blha_driver_set_weinberg_angle
+@
+<<BLHA OLP interfaces: blha driver: TBP>>=
+  procedure(blha_driver_set_alpha_qed), deferred :: set_alpha_qed
+<<BLHA OLP interfaces: interfaces>>=
+  abstract interface
+    subroutine blha_driver_set_alpha_qed (driver, alpha)
+      import
+      class(blha_driver_t), intent(inout) :: driver
+      real(default), intent(in) :: alpha
+    end subroutine blha_driver_set_alpha_qed
+  end interface
+
+@ %def blha_driver_set_alpha_qed
+@
+<<BLHA OLP interfaces: blha driver: TBP>>=
   procedure(blha_driver_print_alpha_s), deferred :: &
      print_alpha_s
 <<BLHA OLP interfaces: interfaces>>=
@@ -528,6 +561,21 @@ end module blha_olp_interfaces
   end interface
 
 @ %def print_alpha_s interface
+@
+<<BLHA OLP interfaces: public>>=
+  public :: parameter_error_message
+<<BLHA OLP interfaces: procedures>>=
+  subroutine parameter_error_message (par)
+     type(string_t), intent(in) :: par
+     type(string_t) :: message
+     message = "Setting of parameter " // par &
+        // "failed. This happens because the chosen " &
+        // "EWScheme in the BLHA file does not fit " &
+        // "your parameter choice"
+     call msg_fatal (char (message))
+  end subroutine parameter_error_message
+
+@ %def parameter_error_message
 @
 <<BLHA OLP interfaces: blha driver: TBP>>=
   procedure :: set_mass_and_width => blha_driver_set_mass_and_width
@@ -950,6 +998,54 @@ end module blha_olp_interfaces
 @ %def prc_blha_set_alpha_qed
 @
 <<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: set_GF => prc_blha_set_GF
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_set_GF (object, model)
+    class(prc_blha_t), intent(inout) :: object
+    type(model_data_t), intent(in), target :: model
+    real(default) :: GF
+    
+    GF = model%get_real (var_str ('GF'))
+    select type (driver => object%driver)
+    class is (blha_driver_t)
+      call driver%set_GF (GF)
+    end select
+  end subroutine prc_blha_set_GF
+
+@ %def prc_blha_set_GF
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: set_weinberg_angle => prc_blha_set_weinberg_angle
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_set_weinberg_angle (object, model)
+    class(prc_blha_t), intent(inout) :: object
+    type(model_data_t), intent(in), target :: model
+    real(default) :: sw2
+    
+    sw2 = model%get_real (var_str ('sw2'))
+    select type (driver => object%driver)
+    class is (blha_driver_t)
+      call driver%set_weinberg_angle (sw2)
+    end select
+  end subroutine prc_blha_set_weinberg_angle
+
+@ %def prc_blha_set_weinberg_angle
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: set_electroweak_parameters => &
+     prc_blha_set_electroweak_parameters
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_set_electroweak_parameters (object, model)
+     class(prc_blha_t), intent(inout) :: object
+     type(model_data_t), intent(in), target :: model
+     if (object%ew_parameter_mask (I_ALPHA)) call object%set_alpha_qed (model)
+     if (object%ew_parameter_mask (I_GF)) call object%set_GF (model)
+     if (object%ew_parameter_mask (I_SW2)) call object%set_weinberg_angle (model)
+  end subroutine prc_blha_set_electroweak_parameters
+
+@ %def prc_blha_set_electrweak_parameters
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
   procedure :: read_contract_file => prc_blha_read_contract_file
 <<BLHA OLP interfaces: procedures>>=
   subroutine prc_blha_read_contract_file (object, flavors)
@@ -1078,14 +1174,17 @@ end module blha_olp_interfaces
     else if (blha_template%compute_born ()) then
        allocate (object%i_born (object%n_flv))
     end if
+
+    call object%init_ew_parameters ()
+
     select type (driver => object%driver)
     class is (blha_driver_t)
        driver%include_polarizations = include_polarizations
     end select
   end subroutine prc_blha_init_blha
+
 @ %def prc_blha_init_blha
 @
-
 <<BLHA OLP interfaces: prc blha: TBP>>=
   procedure :: set_particle_properties => prc_blha_set_particle_properties
 <<BLHA OLP interfaces: procedures>>=
@@ -1112,6 +1211,19 @@ end module blha_olp_interfaces
   end subroutine prc_blha_set_particle_properties
 
 @ %def prc_blha_set_particle_properties
+@ This mask adapts which electroweak parameters are supposed to set according to
+the chosen BLHA EWScheme. This is only implemented for the default OLP method so far. 
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: init_ew_parameters => prc_blha_init_ew_parameters
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_init_ew_parameters (object)
+    class(prc_blha_t), intent(inout) :: object
+    object%ew_parameter_mask (I_ALPHA) = .true.
+    object%ew_parameter_mask (I_GF) = .true.
+    object%ew_parameter_mask (I_SW2) = .false.
+  end subroutine prc_blha_init_ew_parameters
+
+@ %def prc_blha_init_ew_parameters
 @
 <<BLHA OLP interfaces: prc blha: TBP>>=
   procedure :: set_bquark_mass => prc_blha_set_bquark_mass
