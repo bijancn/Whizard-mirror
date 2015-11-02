@@ -1014,7 +1014,9 @@ NLO_EXT_SIN = \
     extra_nlo_tt_powheg.sin \
     extra_nlo_tt_powheg_sudakov.sin \
     extra_nlo_uu.sin \
-    extra_nlo_uu_powheg.sin
+    extra_nlo_uu_powheg.sin \
+    extra_nlo_methods.sin \
+    extra_nlo_methods_gosam.sin
 
 all-local: $(TESTSUITES_SIN)
 
