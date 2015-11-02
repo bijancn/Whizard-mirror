@@ -54,7 +54,7 @@ AM_MAKE_INCLUDE
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Sep 30 2015"
+PACKAGE_DATE="Oct 31 2015"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
@@ -80,10 +80,6 @@ AC_PROG_MKDIR_P
 LT_INIT
 LT_PREREQ([2.2.8b])
 AC_PATH_PROG([M4],[m4])
-
-dnl ***********************************************************************
-
-AM_CONDITIONAL([STANDALONE_OMEGA_BUILD], [test "yes" = "yes"])
 
 ########################################################################
 ### Location of installed libraries and such
