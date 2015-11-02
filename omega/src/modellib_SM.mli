@@ -1,4 +1,4 @@
-(* $Id: modellib_SM.mli 6465 2015-01-10 15:22:31Z jr_reuter $
+(* $Id: modellib_SM.mli 7283 2015-09-27 15:12:43Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -35,6 +35,7 @@ module type SM_flags =
     val triple_anom : bool
     val quartic_anom : bool
     val higgs_anom : bool
+    val dim6 : bool  
     val k_matrix : bool
     val ckm_present : bool
     val top_anom : bool
@@ -50,7 +51,8 @@ module SM_anomalous_ckm : SM_flags
 module SM_Higgs : SM_flags
 module SM_anomalous_top : SM_flags
 module SM_tt_threshold : SM_flags
-
+module SM_dim6 : SM_flags
+  
 module SM : functor (F : SM_flags) -> Model.Gauge with module Ch = Charges.QQ
 
 module SM_Rxi : Model.T with module Ch = Charges.QQ
