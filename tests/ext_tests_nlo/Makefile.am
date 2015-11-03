@@ -213,6 +213,9 @@ clean-local:
 	rm -f *.$(WT_OMEGA_CACHE_SUFFIX)
 	rm -f *.olc *.olp *.olp_parameters
 	rm -rf stability_log
+	rm -rf *olp_modules
+	rm -rf Generated_Loops
+	rm -rf include lib golem.in
 if FC_SUBMODULES
 	rm -f *.smod
 endif
