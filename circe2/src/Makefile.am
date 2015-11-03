@@ -69,7 +69,7 @@ SOURCE_FILES += $(libtaorng_objs_la_SOURCES)
 bin_PROGRAMS = circe2_moments circe2_ls circe2_generate
 
 circe2_moments_SOURCES = circe2_moments.f90
-circe2_moments_LDADD = kinds.lo libcirce2.la libtaorng.la libtaorng_objs.la
+circe2_moments_LDADD = kinds.lo libcirce2.la libtaorng_objs.la libtaorng.la 
 circe2_moments.o: $(MODULE_FILES)
 
 circe2_ls_SOURCES = circe2_ls.f90
@@ -77,7 +77,7 @@ circe2_ls_LDADD = kinds.lo libcirce2.la libtaorng.la
 circe2_ls.o: $(MODULE_FILES)
 
 circe2_generate_SOURCES = circe2_generate.f90
-circe2_generate_LDADD = kinds.lo libcirce2.la libtaorng.la libtaorng_objs.la
+circe2_generate_LDADD = kinds.lo libcirce2.la libtaorng_objs.la libtaorng.la 
 circe2_generate.o: $(MODULE_FILES)
 
 bin_SCRIPTS =
