@@ -56,15 +56,20 @@ lib_LTLIBRARIES += libtaorng.la
 libtaorng_la_SOURCES = tao_random_numbers.f90
 MODULE_FILES += tao_random_numbers.$(FC_MODULE_EXT)
 SOURCE_FILES += $(libtaorng_la_SOURCES)
-NOWEB_FILES += circe2_moments.nw
+
+lib_LTLIBRARIES += libtaorng_objs.la
+libtaorng_objs_la_SOURCES = tao_random_objects.f90
+MODULE_FILES += tao_random_objects.$(FC_MODULE_EXT)
+SOURCE_FILES += $(libtaorng_objs_la_SOURCES)
 
 ########################################################################
 # Testing and tools
 ########################################################################
 
 bin_PROGRAMS = circe2_moments circe2_ls circe2_generate
+
 circe2_moments_SOURCES = circe2_moments.f90
-circe2_moments_LDADD = kinds.lo libcirce2.la libtaorng.la
+circe2_moments_LDADD = kinds.lo libcirce2.la libtaorng.la libtaorng_objs.la
 circe2_moments.o: $(MODULE_FILES)
 
 circe2_ls_SOURCES = circe2_ls.f90
@@ -72,7 +77,7 @@ circe2_ls_LDADD = kinds.lo libcirce2.la libtaorng.la
 circe2_ls.o: $(MODULE_FILES)
 
 circe2_generate_SOURCES = circe2_generate.f90
-circe2_generate_LDADD = kinds.lo libcirce2.la libtaorng.la
+circe2_generate_LDADD = kinds.lo libcirce2.la libtaorng.la libtaorng_objs.la
 circe2_generate.o: $(MODULE_FILES)
 
 bin_SCRIPTS =
@@ -148,7 +153,10 @@ circe2_ls.f90: circe2.nw
 circe2_generate.f90: circe2.nw
 	cat $(WEBS) | $(NOTANGLE) -R'[[$@]]' | $(CPIF) $@
 
-taorng.f90: postlude.nw
+circe2_moments.f90: circe2.nw
+	cat $(WEBS) | $(NOTANGLE) -R'[[$@]]' | $(CPIF) $@
+
+tao_random_objects.f90: circe2.nw
 	cat $(WEBS) | $(NOTANGLE) -R'[[$@]]' | $(CPIF) $@
 
 endif NOWEB_AVAILABLE
