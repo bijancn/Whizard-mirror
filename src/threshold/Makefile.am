@@ -32,39 +32,51 @@
 
 ## Build the objects required for the SM ttbar threshold model.
 
-noinst_LTLIBRARIES = libSM_tt_threshold_bundle.la
+noinst_LTLIBRARIES = libthreshold.la
+check_LTLIBRARIES = libthreshold_ut.la
 
 ## We need all in the distribution
 
 EXTRA_DIST = interpolation.f90  nr_tools.f90  \
 	toppik.f  toppik_axial.f  ttv_formfactors.f90
 
-libSM_tt_threshold_bundle_la_SOURCES = \
+libthreshold_la_SOURCES = \
   interpolation.f90 \
   nr_tools.f90 \
   toppik.f \
   toppik_axial.f \
   ttv_formfactors.f90
 
+## Omitting this would exclude it from the distribution
+dist_noinst_DATA = threshold.nw
+
+libthreshold_ut_la_SOURCES = \
+  ttv_formfactors_uti.f90 ttv_formfactors_ut.f90
+
 # Dump module names into file Modules
-libSM_tt_threshold_bundle_Modules = \
-	${libSM_tt_threshold_bundle_la_SOURCES:.f90=}
+libthreshold_Modules = \
+	${libthreshold_la_SOURCES:.f90=} \
+	${libthreshold_ut_la_SOURCES:.f90=}
 Modules: Makefile
-	@rm -f $@
-	echo SM_tt_threshold > $@
-	for module in $(libSM_tt_threshold_bundle_Modules); do \
-	  echo $$module >> $@; \
-	done
+	@for module in $(libthreshold_Modules); do \
+          echo $$module >> $@.new; \
+        done
+	@if diff $@ $@.new -q >/dev/null; then \
+          rm $@.new; \
+	else \
+          mv $@.new $@; echo "Modules updated"; \
+        fi
+BUILT_SOURCES = Modules
 
 ## Fortran module dependencies
 # Get module lists from other directories
 module_lists = \
-  ../../basics/Modules \
-  ../../testing/Modules \
-  ../../utilities/Modules \
-  ../../system/Modules \
-  ../../physics/Modules \
-  ../../combinatorics/Modules
+  ../basics/Modules \
+  ../testing/Modules \
+  ../utilities/Modules \
+  ../system/Modules \
+  ../physics/Modules \
+  ../combinatorics/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -90,7 +102,9 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libSM_tt_threshold_bundle_la_SOURCES)
+Makefile.depend: \
+  $(libthreshold_la_SOURCES) \
+  $(libthreshold_ut_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -102,21 +116,15 @@ Makefile.depend: $(libSM_tt_threshold_bundle_la_SOURCES)
 
 DISTCLEANFILES += Makefile.depend
 
-## Install the modules used by generated matrix element code
-execmoddir = $(pkglibdir)/mod/models
-nodist_execmod_HEADERS = \
-	interpolation.$(FC_MODULE_EXT) \
-	nr_tools.$(FC_MODULE_EXT) \
-	ttv_formfactors.$(FC_MODULE_EXT)
+nrtype.$(FC_MODULE_EXT) nr.$(FC_MODULE_EXT): nr_tools.$(FC_MODULE_EXT)
 
 SUFFIXES = .lo .$(FC_MODULE_EXT)
 
 # Fortran90 module files are generated at the same time as object files
 .lo.$(FC_MODULE_EXT):
 	@:
-#       touch $@
 
-AM_FCFLAGS = -I../../basics -I../../testing -I../../utilities -I../../system -I../../physics -I../../combinatorics
+AM_FCFLAGS = -I../basics -I../testing -I../utilities -I../system -I../physics -I../combinatorics
 
 ########################################################################
 ## Default Fortran compiler options
@@ -132,8 +140,61 @@ AM_FCFLAGS += $(FCFLAGS_OPENMP)
 endif
 
 ########################################################################
+## Non-standard targets and dependencies
+
+## Install the modules used by generated matrix element code
+execmoddir = $(pkglibdir)/mod/threshold
+nodist_execmod_HEADERS = \
+	interpolation.$(FC_MODULE_EXT) \
+	nr_tools.$(FC_MODULE_EXT) \
+	nr.$(FC_MODULE_EXT) \
+	nrtype.$(FC_MODULE_EXT) \
+	ttv_formfactors.$(FC_MODULE_EXT)
+
+## (Re)create F90 sources from NOWEB source.
+if NOWEB_AVAILABLE
+
+PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
+POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
+
+threshold.stamp: $(PRELUDE) $(srcdir)/threshold.nw $(POSTLUDE)
+	@rm -f threshold.tmp
+	@touch threshold.tmp
+	for src in \
+          $(libthreshold_la_SOURCES) \
+          $(libthreshold_ut_la_SOURCES); do \
+	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
+        done
+	@mv -f threshold.tmp threshold.stamp
+
+$(libthreshold_la_SOURCES) $(libthreshold_ut_la_SOURCES): threshold.stamp
+## Recover from the removal of $@
+	@if test -f $@; then :; else \
+		rm -f threshold.stamp; \
+		$(MAKE) $(AM_MAKEFLAGS) threshold.stamp; \
+	fi
+
+endif
+
+########################################################################
 ## Non-standard cleanup tasks
-clean-local:
+## Remove sources that can be recreated using NOWEB
+if NOWEB_AVAILABLE
+maintainer-clean-noweb:
+	-rm -f *.f90
+endif
+.PHONY: maintainer-clean-noweb
+
+## Remove those sources also if builddir and srcdir are different
+if NOWEB_AVAILABLE
+clean-noweb:
+	test "$(srcdir)" != "." && rm -f *.f *.f90 || true
+endif
+.PHONY: clean-noweb
+
+## Remove F90 module files
+clean-local: clean-noweb
+	-rm -f *.stamp *.tmp
 	-rm -f *.$(FC_MODULE_EXT)
 if FC_SUBMODULES
 	-rm -f *.smod
@@ -142,3 +203,6 @@ endif
 ## Remove backup files
 maintainer-clean-local:
 	-rm -f *~
+
+## Register additional clean targets
+maintainer-clean-local: maintainer-clean-noweb maintainer-clean-backup

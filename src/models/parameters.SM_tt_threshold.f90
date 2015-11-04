@@ -54,7 +54,7 @@ module parameters_sm_tt_threshold
 
   public :: import_from_whizard, model_update_alpha_s, &
        ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole, &
-       onshell_tops
+       onshell_tops, expanded_amp2
 
 contains
 
@@ -231,13 +231,13 @@ contains
     gs = sqrt(2.0_default*PI*par%alphas)
     igs = cmplx (0.0_default, 1.0_default, kind=default) * gs
     mpole_fixed = par%mpole_fixed > 0.0_default
-    call ttv_formfactors_init_parameters &
+    call init_parameters &
          (mass(6), width(6), par%m1s, par%Vtb, par%wt_inv, &
           par%alphaemi, par%sw, par%alphas, par%mZ, par%mW, &
           mass(5), par%sh, par%sf, par%nloop, par%FF, &
           par%v1, par%v2, par%scan_sqrts_min, par%scan_sqrts_max, &
           par%scan_sqrts_stepsize, mpole_fixed)
-    call ttv_formfactors_init_threshold_grids (par%test)
+    call init_threshold_grids (par%test)
   end subroutine import_from_whizard
 
   subroutine model_update_alpha_s (alpha_s)
@@ -247,13 +247,16 @@ contains
   end subroutine model_update_alpha_s
 
   !pure
-  function ttv_formfactor (p, k, i) result (c)
+  function ttv_formfactor (p, k, i, FF_mode) result (c)
     complex(default) :: c
     type(momentum), intent(in) :: p, k
     integer, intent(in) :: i
+    integer, intent(in), optional :: FF_mode
     type(phase_space_point_t) :: ps
+    integer :: this_FF
     call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
-    c = ttv_formfactors_FF (ps, i)
+    this_FF = FF; if (present (FF_mode))  this_FF = FF_mode
+    c = FF_master (ps, i, this_FF)
     !!! form factors include tree level: FF = 1 + O(alphas)
     !!! subtract tree level contribution ~ 1 already included in SM couplings
     c = c - 1.0_default
@@ -289,6 +292,15 @@ contains
   function ttv_mtpole (s) result (m)
     real(default), intent(in) :: s
     real(default) :: m
-    m = ttv_formfactors_m1s_to_mpole (sqrt (s))
+    m = m1s_to_mpole (sqrt (s))
   end function ttv_mtpole
+
+  !pure
+  function expanded_amp2 (amp_tree, amp_blob) result (amp2)
+    real(default) :: amp2
+    complex(default), dimension(:), intent(in) :: amp_tree, amp_blob
+    amp2 = sum (amp_tree * conjg (amp_tree) + &
+         amp_tree * conjg (amp_blob) + &
+         amp_blob * conjg (amp_tree))
+  end function expanded_amp2
 end module parameters_sm_tt_threshold
