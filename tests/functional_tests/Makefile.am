@@ -97,6 +97,7 @@ TESTS_REQ_OCAML = \
     beam_setup_2.run \
     beam_setup_3.run \
     beam_setup_4.run \
+    beam_setup_5.run \
     qcdtest_1.run \
     qcdtest_2.run \
     qcdtest_3.run \
