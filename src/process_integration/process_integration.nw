@@ -4100,14 +4100,17 @@ obvious.
 
 @ %def process_beam_config_t
 @ Here we write beam data only if they are actually used.
+
+The [[verbose]] flag is passed to the beam-data writer.
 <<Processes: process beam config: TBP>>=
   procedure :: write => process_beam_config_write
 <<Processes: procedures>>=
-  subroutine process_beam_config_write (object, u)
+  subroutine process_beam_config_write (object, u, verbose)
     class(process_beam_config_t), intent(in) :: object
     integer, intent(in) :: u
+    logical, intent(in), optional :: verbose
     integer :: i, c
-    call object%data%write (u)
+    call object%data%write (u, verbose=verbose)
     if (object%data%initialized) then
        write (u, "(3x,A,L1)")  "Azimuthal dependence    = ", &
             object%azimuthal_dependence
@@ -4358,7 +4361,7 @@ This is done only once, when the MD5 sum is still empty.
     if (beam_config%md5sum == "") then
        u = free_unit ()
        open (u, status = "scratch", action = "readwrite")
-       call beam_config%write (u)
+       call beam_config%write (u, verbose=.true.)
        rewind (u)
        beam_config%md5sum = md5sum (u)
        close (u)
@@ -7282,6 +7285,8 @@ imaginary part of the terms, which should be zero anyway.
                         nlo_controller%int_born%get_momenta(), &
                         0._default, nlo_controller%get_k_perp(), &
                         collector%sqme_born_sc(i_flv_born), bad_point)
+                  class is (prc_user_defined_base_t)
+                     collector%sqme_born_sc (i_flv_born) = zero
                   end select
                end if
             end do
@@ -10335,6 +10340,7 @@ and directly set the coupling value that comes together with a particle set.
     type(string_t) :: loop_me_method
     type(string_t) :: correlation_me_method
     integer :: openloops_phs_tolerance
+    logical :: openloops_top_signal
 
     associate (process => instance%process)
        associate (var_list => process%meta%var_list)
@@ -10347,6 +10353,7 @@ and directly set the coupling value that comes together with a particle set.
           alphas_power = var_list%get_ival (&
                                            var_str ('alphas_power'))
           openloops_phs_tolerance = var_list%get_ival (var_str ('openloops_phs_tolerance'))
+          openloops_top_signal = var_list%get_lval (var_str ('?openloops_top_signal'))
        end associate
        do i = 1, size (process%term)
           if (instance%component(i)%nlo_type == BORN) then
@@ -10358,9 +10365,9 @@ and directly set the coupling value that comes together with a particle set.
           end if
        end do
        use_external_borns = born_me_method /= 'omega'
-       use_external_real_trees = real_tree_me_method /= 'omega'
-       use_external_loops = loop_me_method /= 'omega'
-       use_external_correlations = correlation_me_method /= 'omega'
+       use_external_real_trees = instance%has_nlo_component () .and. (real_tree_me_method /= 'omega')
+       use_external_loops = instance%has_nlo_component () .and. (loop_me_method /= 'omega')
+       use_external_correlations = instance%has_nlo_component () .and. (correlation_me_method /= 'omega')
 
        select case (char (loop_me_method))
        case ('gosam')
@@ -10390,7 +10397,8 @@ and directly set the coupling value that comes together with a particle set.
        call blha_master%set_methods (use_external_borns, use_external_real_trees, &
           use_external_loops, use_external_correlations)
        call blha_master%allocate_config_files ()
-       call blha_master%setup_additional_features (openloops_phs_tolerance, beam_structure)
+       call blha_master%setup_additional_features (openloops_phs_tolerance, &
+          top_signal = openloops_top_signal, beam_structure = beam_structure)
        call blha_master%init (process%meta%id, process%config%model, &
                               n_in, size (flv_born,1)-n_in, &
                               !use_external_borns, use_external_loops, &
@@ -10424,7 +10432,7 @@ and directly set the coupling value that comes together with a particle set.
              call core%start ()
              call core%read_contract_file (instance%process%term(i)%data%flv_state)
              call core%set_particle_properties (instance%process%config%model)
-             call core%set_alpha_qed (instance%process%config%model)
+             call core%set_electroweak_parameters (instance%process%config%model)
              call core%print_parameter_file ()
           type is (prc_openloops_t)
              call core%set_n_external (instance%component(i)%get_n_particles ())

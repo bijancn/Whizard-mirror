@@ -654,6 +654,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/qcdtest_3.ref \
     functional_tests/ref-output-double/smtest_2.ref \
     functional_tests/ref-output-double/smtest_8.ref \
+    functional_tests/ref-output-double/beam_setup_5.ref \
     functional_tests/ref-output-double/nlo_2.ref \
     functional_tests/ref-output-double/nlo_3.ref \
     functional_tests/ref-output-double/nlo_4.ref \
@@ -700,6 +701,7 @@ REF_OUTPUT_FILES_PREC = \
     functional_tests/ref-output-prec/qcdtest_3.ref \
     functional_tests/ref-output-prec/smtest_2.ref \
     functional_tests/ref-output-prec/smtest_8.ref \
+    functional_tests/ref-output-prec/beam_setup_5.ref \
     functional_tests/ref-output-prec/nlo_2.ref \
     functional_tests/ref-output-prec/nlo_3.ref \
     functional_tests/ref-output-prec/nlo_4.ref \
@@ -821,6 +823,7 @@ MISC_TESTS_SIN = \
     functional_tests/beam_setup_2.sin \
     functional_tests/beam_setup_3.sin \
     functional_tests/beam_setup_4.sin \
+    functional_tests/beam_setup_5.sin \
     functional_tests/qcdtest_1.sin \
     functional_tests/qcdtest_2.sin \
     functional_tests/qcdtest_3.sin \
@@ -1014,7 +1017,9 @@ NLO_EXT_SIN = \
     extra_nlo_tt_powheg.sin \
     extra_nlo_tt_powheg_sudakov.sin \
     extra_nlo_uu.sin \
-    extra_nlo_uu_powheg.sin
+    extra_nlo_uu_powheg.sin \
+    extra_nlo_methods.sin \
+    extra_nlo_methods_gosam.sin
 
 all-local: $(TESTSUITES_SIN)
 

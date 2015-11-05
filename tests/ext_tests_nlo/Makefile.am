@@ -40,6 +40,7 @@ TESTS_EXTENDED = \
 	extra_nlo_tt_powheg_sudakov.run \
 	extra_nlo_uu.run \
 	extra_nlo_uu_powheg.run \
+	extra_nlo_methods_gosam.run \
 	extra_nlo_methods.run
 
 XFAIL_TESTS_EXTENDED =
@@ -102,6 +103,7 @@ BUILT_SOURCES = \
     PYTHON_FLAG \
     PYTHIA6_FLAG \
     OPENLOOPS_FLAG \
+    GOSAM_FLAG \
     STATIC_FLAG \
     ref-output
 
@@ -161,6 +163,11 @@ if OPENLOOPS_AVAILABLE
 	touch $@
 endif
 
+GOSAM_FLAG:
+if GOSAM_AVAILABLE
+	touch $@
+endif
+
 EVENT_ANALYSIS_FLAG:
 if EVENT_ANALYSIS_AVAILABLE
 	touch $@
@@ -185,9 +192,8 @@ notestflag:
 ## Remove generated files
 clean-local:
 	rm -f gamelan.sty TEST.mdl 
-	rm -f TESTFLAG GAMELAN_FLAG 
-	rm -f OCAML_FLAG PYTHON_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
-	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG OPENLOOPS_FLAG
+	rm -f TESTFLAG
+	rm -f *_FLAG
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
 	rm -f *.run *.log slha_test.out
 	rm -f core* stdhep_rd
@@ -207,6 +213,9 @@ clean-local:
 	rm -f *.$(WT_OMEGA_CACHE_SUFFIX)
 	rm -f *.olc *.olp *.olp_parameters
 	rm -rf stability_log
+	rm -rf *olp_modules
+	rm -rf Generated_Loops
+	rm -rf include lib golem.in
 if FC_SUBMODULES
 	rm -f *.smod
 endif

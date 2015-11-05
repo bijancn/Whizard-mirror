@@ -240,7 +240,7 @@ contains
     p35 = p3 + p5
     p46 = p4 + p6
     amp_blob = zero
-    ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_P0CONSTANT, &
+    ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_HARD_P0CONSTANT, &
                      EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
     if (onshell_tops (p3, p4)) then
        do hi = 1, n_hel_OS
@@ -350,7 +350,8 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   call calculate_blobs (p)
   select case (FF)
   case (EXPANDED_HARD_P0DEPENDENT, EXPANDED_HARD_P0CONSTANT, &
-          EXPANDED_SOFT_P0CONSTANT, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
+          EXPANDED_SOFT_P0CONSTANT, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT, &
+          EXPANDED_SOFT_HARD_P0CONSTANT)
      amp2 = expanded_amp2 (amp_tree, amp_blob(:,0))
   case (MATCHED)
      signs(0:3) = [+1, -1, +1, -1]
