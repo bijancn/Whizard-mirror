@@ -293,6 +293,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/mci_vamp_13.ref \
     unit_tests/ref-output/mci_vamp_14.ref \
     unit_tests/ref-output/mci_vamp_15.ref \
+    unit_tests/ref-output/mci_vamp_16.ref \
     unit_tests/ref-output/prclib_interfaces_1.ref \
     unit_tests/ref-output/prclib_interfaces_2.ref \
     unit_tests/ref-output/prclib_interfaces_3.ref \
@@ -444,6 +445,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/integrations_6.ref \
     unit_tests/ref-output/integrations_7.ref \
     unit_tests/ref-output/integrations_8.ref \
+    unit_tests/ref-output/integrations_9.ref \
     unit_tests/ref-output/integrations_history_1.ref \
     unit_tests/ref-output/simulations_1.ref \
     unit_tests/ref-output/simulations_2.ref \
