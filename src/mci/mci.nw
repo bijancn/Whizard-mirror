@@ -4799,14 +4799,12 @@ efficiency value.
             mci%max_known = .true.
          end if
          if (mci%max_abs /= 0) then
-            if (mci%integral == mci%integral_pos) then
+            if (mci%integral_neg == 0) then
                mci%efficiency = mci%integral / mci%max_abs
                mci%efficiency_known = .true.
             else if (mci%n_calls /= 0) then
                mci%efficiency = &
-                    (mci%n_calls_pos * mci%integral_pos &
-                    - mci%n_calls_neg * mci%integral_neg) &
-                    / mci%n_calls / mci%max_abs
+                    (mci%integral_pos - mci%integral_neg) / mci%max_abs
                mci%efficiency_known = .true.
             end if
          end if
@@ -7875,11 +7873,21 @@ averaged over all active channels.
     class(mci_vamp_instance_t), intent(in) :: mci
     real(default), dimension(:), allocatable :: efficiency
     allocate (efficiency (mci%mci%n_channel))
-    where (mci%grids%grids%f_max /= 0)
-       efficiency = mci%grids%grids%mu(1) / abs (mci%grids%grids%f_max)
-    elsewhere
-       efficiency = 0
-    end where
+    if (.not. mci%negative_weights) then
+       where (mci%grids%grids%f_max /= 0)
+          efficiency = mci%grids%grids%mu(1) / abs (mci%grids%grids%f_max)
+       elsewhere
+          efficiency = 0
+       end where
+    else
+       where (mci%grids%grids%f_max /= 0)
+          efficiency = &
+               (mci%grids%grids%mu_plus(1) - mci%grids%grids%mu_minus(1)) &
+               / abs (mci%grids%grids%f_max)
+       elsewhere
+          efficiency = 0
+       end where
+    end if
   end function mci_vamp_instance_get_efficiency_array
 
   function mci_vamp_instance_get_efficiency (mci) result (efficiency)
@@ -8212,6 +8220,12 @@ greater than one, the function is extended as a constant in the other
 dimension(s).
 
 In mode [[2]], the function is $11 x^{10}$, also with integral $1$.
+
+Mode [[4]] includes ranges of zero and negative function value, the
+integral is negative.  The results should be identical to the results
+of [[mci_midpoint_4]], where the same function is evaluated.  The
+function is $f(x) = (1 - 3 x^2)\,\theta(x-1/2)$ with integral
+$\int_0^1 f(x)\,dx=-3/8$, minimum $f(1)=-2$ and maximum $f(1/2)=1/4$.
 <<MCI vamp: test types>>=
   type, extends (mci_sampler_t) :: test_sampler_1_t
      real(default), dimension(:), allocatable :: x
@@ -8239,6 +8253,8 @@ In mode [[2]], the function is $11 x^{10}$, also with integral $1$.
        write (u, "(1x,A)") "Test sampler: f(x) = 11 x^10"
     case (3)
        write (u, "(1x,A)") "Test sampler: f(x) = 11 x^10 * 2 * cos^2 (2 pi y)"
+    case (4)
+       write (u, "(1x,A)") "Test sampler: f(x) = (1 - 3 x^2) theta(x - 1/2)"
     end select
   end subroutine test_sampler_1_write
   
@@ -8265,6 +8281,12 @@ In mode [[2]], the function is $11 x^{10}$, also with integral $1$.
        sampler%val = 11 * x_in(1) ** 10
     case (3)
        sampler%val = 11 * x_in(1) ** 10 * 2 * cos (twopi * x_in(2)) ** 2
+    case (4)
+       if (x_in(1) >= .5_default) then
+          sampler%val = 1 - 3 * x_in(1) ** 2
+       else
+          sampler%val = 0
+       end if
     end select
     call sampler%fetch (val, x, f)
   end subroutine test_sampler_1_evaluate
@@ -9671,7 +9693,7 @@ them in again and compare.
 
 @ %def mci_vamp_10
 @
-\subsubsection{Weighted events}
+\subsubsection{Weighted events with grid I/O}
 Construct an integrator and use it for a two-dimensional sampler with two
 channels.  Integrate, write grids, and generate a weighted event using
 the grids from file.
@@ -9750,10 +9772,9 @@ the grids from file.
 
 @ %def mci_vamp_11
 @
-\subsubsection{Weighted events}
+\subsubsection{Unweighted events with grid I/O}
 Construct an integrator and use it for a two-dimensional sampler with two
-channels.  Integrate, write grids, and generate a weighted event using
-the grids from file.
+channels.
 <<MCI vamp: execute tests>>=
  call test (mci_vamp_12, "mci_vamp_12", &
       "unweighted events with grid I/O", &
@@ -10216,3 +10237,92 @@ adaptation.  Then show the VAMP history.
   end subroutine mci_vamp_15
 
 @ %def mci_vamp_15
+@
+\subsubsection{One-dimensional integration with sign change}
+Construct an integrator and use it for a one-dimensional sampler.
+<<MCI vamp: execute tests>>=
+  call test (mci_vamp_16, "mci_vamp_16", &
+       "1-D integral with sign change", &
+       u, results)
+<<MCI vamp: test declarations>>=
+  public :: mci_vamp_16
+<<MCI vamp: tests>>=
+  subroutine mci_vamp_16 (u)
+    integer, intent(in) :: u
+    type(grid_parameters_t) :: grid_par
+    class(mci_t), allocatable, target :: mci
+    class(mci_instance_t), pointer :: mci_instance => null ()
+    class(mci_sampler_t), allocatable :: sampler
+    class(rng_t), allocatable :: rng
+    
+    write (u, "(A)")  "* Test output: mci_vamp_16"
+    write (u, "(A)")  "*   Purpose: integrate function in one dimension &
+         &(single channel)"
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Initialize integrator"
+    write (u, "(A)")
+
+    allocate (mci_vamp_t :: mci)
+    call mci%set_dimensions (1, 1)
+    select type (mci)
+    type is (mci_vamp_t)
+       grid_par%use_vamp_equivalences = .false.
+       call mci%set_grid_parameters (grid_par)
+       mci%negative_weights = .true.
+    end select
+    
+    allocate (rng_tao_t :: rng)
+    call rng%init ()
+    call mci%import_rng (rng)
+
+    call mci%write (u)
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Initialize instance"
+    write (u, "(A)")
+    
+    call mci%allocate_instance (mci_instance)
+    call mci_instance%init (mci)
+    
+    write (u, "(A)")  "* Initialize test sampler"
+    write (u, "(A)")
+    
+    allocate (test_sampler_1_t :: sampler)
+    select type (sampler)
+    type is (test_sampler_1_t)
+       sampler%mode = 4
+    end select
+    call sampler%write (u)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Integrate with n_calls = 1000"
+    write (u, "(A)")  "   (lower precision to avoid"
+    write (u, "(A)")  "      numerical noise)"
+    write (u, "(A)")
+    
+    select type (mci)
+    type is (mci_vamp_t)
+       call mci%add_pass ()
+    end select
+    call mci%integrate (mci_instance, sampler, 1, 1000, pacify = .true.)
+    call mci%write (u, .true.)
+ 
+    write (u, "(A)")
+    write (u, "(A)")  "* Contents of mci_instance:"
+    write (u, "(A)")
+    
+    call mci_instance%write (u, .true.)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Cleanup"
+
+    call mci_instance%final ()
+    call mci%final ()
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: mci_vamp_16"
+
+  end subroutine mci_vamp_16
+
+@ %def mci_vamp_16
