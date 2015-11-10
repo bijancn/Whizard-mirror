@@ -3186,7 +3186,8 @@ it is necessary to expand with $z$ once.
     logical :: radiation_active = .true.
     logical :: subtraction_active = .true.
     type(pdf_container_t), dimension(2) :: pdf_born, pdf_scaled
-    logical, dimension(:), pointer :: passed_cuts => null ()
+    logical, dimension(:), pointer :: passed_real_cuts => null ()
+    logical, pointer :: passed_born_cuts => null ()
   contains
   <<real subtraction: real subtraction: TBP>>
   end type real_subtraction_t
@@ -3205,7 +3206,7 @@ it is necessary to expand with $z$ once.
     integer :: alr, i_uborn
     rsub%reg_data = reg_data
     rsub%sqme_real_non_sub => sqme_collector%sqme_real_non_sub
-    rsub%sqme_born => sqme_collector%sqme_born_list
+    rsub%sqme_born => sqme_collector%sqme_subtraction_born_list
     rsub%sqme_born_cc => sqme_collector%sqme_born_cc
     rsub%sqme_born_sc => sqme_collector%sqme_born_sc
     allocate (rsub%sc_required (reg_data%n_regions))
@@ -3270,15 +3271,26 @@ it is necessary to expand with $z$ once.
 @ %def real_subtraction_set_real_kinematics
 @
 <<real subtraction: real subtraction: TBP>>=
-  procedure :: set_passed_cuts => real_subtraction_set_passed_cuts
+  procedure :: set_passed_real_cuts => real_subtraction_set_passed_real_cuts
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_set_passed_cuts (rsub, passed_cuts)
+  subroutine real_subtraction_set_passed_real_cuts (rsub, passed_cuts)
     class(real_subtraction_t), intent(inout) :: rsub
     logical, dimension(:), intent(in), target :: passed_cuts
-    rsub%passed_cuts => passed_cuts
-  end subroutine real_subtraction_set_passed_cuts
+    rsub%passed_real_cuts => passed_cuts
+  end subroutine real_subtraction_set_passed_real_cuts
 
-@ %def real_subtraction_set_passed_cuts
+@ %def real_subtraction_set_passed_real_cuts
+@
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: set_passed_born_cuts => real_subtraction_set_passed_born_cuts
+<<real subtraction: procedures>>=
+  subroutine real_subtraction_set_passed_born_cuts (rsub, passed_cuts)
+    class(real_subtraction_t), intent(inout) :: rsub
+    logical, intent(in), target :: passed_cuts
+    rsub%passed_born_cuts => passed_cuts
+  end subroutine real_subtraction_set_passed_born_cuts
+
+@ %def real_subtraction_set_passed_born_cuts
 @
 <<real subtraction: real subtraction: TBP>>=
   procedure :: set_isr_kinematics => real_subtraction_set_isr_kinematics
@@ -3384,11 +3396,15 @@ the corresponding jacobians.
     xi = xi_tilde * xi_max
     y = rsub%real_kinematics%y(emitter)
     onemy = one-y
-    phi = rsub%real_kinematics%phi
+    !!!phi = rsub%real_kinematics%phi
+    !print *, 'Evaluate final state region: ', emitter
     associate (region => rsub%reg_data%regions(rsub%current_alr))
-      if (rsub%radiation_active .and. rsub%passed_cuts (emitter)) then
+      !print *, 'radiation active: ', rsub%radiation_active
+      !print *, 'passed real cuts: ', rsub%passed_real_cuts (emitter)
+      if (rsub%radiation_active .and. rsub%passed_real_cuts (emitter)) then
          i_real = region%real_index
          sqme0 = rsub%sqme_real_non_sub (i_real)
+         !print *, 'sqme0: ', sqme0
          s_alpha = rsub%reg_data%get_svalue (rsub%real_kinematics%p_real_cms, rsub%current_alr, emitter)
          sqme0 = sqme0 * s_alpha
          sqme0 = sqme0 * region%mult
@@ -3401,18 +3417,21 @@ the corresponding jacobians.
             sqme0 = sqme0*rsub%real_kinematics%jac(emitter)%jac(1)*s/(8*twopi3)*xi
          end select
       end if
-      if (rsub%subtraction_active) then
+      !print *, 'subtraction active: ', rsub%subtraction_active
+      !print *, 'passed Born cuts: ', rsub%passed_born_cuts
+      if (rsub%subtraction_active .and. rsub%passed_born_cuts) then
          call rsub%evaluate_subtraction_terms_fsr (emitter, alpha_s, &
                    sqme_soft, sqme_coll, sqme_cs)
-         sqme_soft = sqme_soft/onemy/xi_tilde
-         sqme_coll = sqme_coll/onemy/xi_tilde
-         sqme_cs = sqme_cs/onemy/xi_tilde
+         sqme_soft = sqme_soft / onemy / xi_tilde
+         sqme_coll = sqme_coll / onemy / xi_tilde
+         sqme_cs = sqme_cs / onemy / xi_tilde
+         !print *, 'sqme_soft: ', sqme_soft
          associate (jac => rsub%real_kinematics%jac)
             sqme_soft = sqme_soft * jac(emitter)%jac(2)
             sqme_coll = sqme_coll * jac(emitter)%jac(3)
             sqme_cs = sqme_cs * jac(emitter)%jac(2)
          end associate
-         sqme_remn = (sqme_soft - sqme_cs)*log(xi_max)*xi_tilde
+         sqme_remn = (sqme_soft - sqme_cs) * log(xi_max) * xi_tilde
          select case (rsub%purpose)
          case (INTEGRATION)
             sqme = sqme0 - sqme_soft - sqme_coll + sqme_cs + sqme_remn
@@ -5084,8 +5103,10 @@ and virtual counterterms.
          (nlo_controller%real_kinematics)
     call nlo_controller%real_terms%set_isr_kinematics &
          (nlo_controller%isr_kinematics)
-    call nlo_controller%real_terms%set_passed_cuts &
-         (nlo_controller%passed_cuts)
+    call nlo_controller%real_terms%set_passed_real_cuts &
+         (nlo_controller%passed_real_cuts)
+    call nlo_controller%real_terms%set_passed_born_cuts &
+         (nlo_controller%passed_born_cuts)
     sqme_fin = nlo_controller%real_terms%compute &
          (emitter, i_flv, nlo_controller%alpha_s_born)
     sqme_fin = sqme_fin * weight
@@ -5193,6 +5214,7 @@ one to determine this.
     complex(default), dimension(:), allocatable :: sqme_born_sc
     real(default) :: sqme_real_sum
     real(default), dimension(:), allocatable :: sqme_born_list
+    real(default), dimension(:), allocatable :: sqme_subtraction_born_list
     real(default), dimension(:,:), allocatable :: sqme_virt_born_list
     real(default), dimension(:,:), allocatable :: sqme_virt_list
   contains
@@ -5256,9 +5278,9 @@ one to determine this.
 <<nlo data: procedures>>=
   subroutine sqme_collector_reset (collector)
     class(sqme_collector_t), intent(inout) :: collector
-       collector%sqme_born_list = 0._default
-       collector%sqme_real_sum = 0._default
-       collector%sqme_virt_list = 0._default
+       collector%sqme_born_list = zero
+       collector%sqme_real_sum = zero
+       collector%sqme_virt_list = zero
   end subroutine sqme_collector_reset
 
 @ %def sqme_collector_reset
@@ -5386,7 +5408,8 @@ process.
     logical :: use_internal_color_correlations = .true.
     logical :: use_internal_spin_correlations = .false.
     class(powheg_damping_t), allocatable :: powheg_damping
-    logical, dimension(:), allocatable :: passed_cuts
+    logical, dimension(:), allocatable :: passed_real_cuts
+    logical :: passed_born_cuts
   contains
   <<nlo controller: nlo controller: TBP>>
   end type nlo_controller_t
@@ -5421,8 +5444,9 @@ process.
      nlo_controller%counter_active = template%count_kinematics
      if (nlo_controller%counter_active) call nlo_controller%counter%init(20)
      allocate (powheg_damping_simple_t :: nlo_controller%powheg_damping)
-     allocate (nlo_controller%passed_cuts (n_tot_born))
-     nlo_controller%passed_cuts = .true.
+     allocate (nlo_controller%passed_real_cuts (n_tot_born))
+     nlo_controller%passed_real_cuts = .true.
+     nlo_controller%passed_born_cuts = .true.
    end subroutine nlo_controller_init
 
 @ %def nlo_controller_init
@@ -5550,6 +5574,7 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
          allocate (collector%sqme_virt_list (particle_data%n_flv_born, 1))
       end if
       allocate (collector%sqme_born_list (particle_data%n_flv_born))
+      allocate (collector%sqme_subtraction_born_list (particle_data%n_flv_born))
       allocate (collector%sqme_real_non_sub (particle_data%n_flv_real))
       allocate (collector%sqme_real_per_emitter &
            (nlo_controller%reg_data%n_flv_real, &
@@ -5557,15 +5582,16 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
       n_tot_born = particle_data%n_in + particle_data%n_out_born
       allocate (collector%sqme_born_cc (n_tot_born, n_tot_born, particle_data%n_flv_born))
       allocate (collector%sqme_born_sc (particle_data%n_flv_born))
-      collector%sqme_born_list = 0._default
-      collector%sqme_real_non_sub = 0._default
-      collector%sqme_real_per_emitter = 0._default
-      collector%sqme_born_cc = 0._default
-      collector%sqme_born_sc = cmplx (0._default, 0._default, kind=default)
-      collector%current_sqme_real = 0._default
-      collector%sqme_real_sum = 0._default
-      collector%sqme_virt_born_list = 0._default
-      collector%sqme_virt_list = 0._default
+      collector%sqme_born_list = zero
+      collector%sqme_subtraction_born_list = zero
+      collector%sqme_real_non_sub = zero
+      collector%sqme_real_per_emitter = zero
+      collector%sqme_born_cc = zero
+      collector%sqme_born_sc = cmplx (zero, zero, kind=default)
+      collector%current_sqme_real = zero
+      collector%sqme_real_sum = zero
+      collector%sqme_virt_born_list = zero
+      collector%sqme_virt_list = zero
     end associate
   end subroutine nlo_controller_setup_matrix_elements
 
@@ -8202,7 +8228,7 @@ end module pdf_subtraction
         is_quark(flv(2,1)), is_gluon(flv(1,1)), is_gluon(flv(2,1))])
     if (.not. pdf_sub%required) return
 
-    pdf_sub%sqme_born => sqme_collector%sqme_born_list
+    pdf_sub%sqme_born => sqme_collector%sqme_subtraction_born_list
     pdf_sub%isr_kinematics => isr_kinematics
     allocate (pdf_sub%value (n_alr))
     call pdf_sub%set_incoming_flavor (flv(1,1), flv(2,1))

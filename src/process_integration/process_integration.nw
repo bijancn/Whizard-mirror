@@ -6948,7 +6948,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
     logical :: bad_point
     if (term%nlo_type == NLO_VIRTUAL) return
     i_flv = 1
-    sqme = 0._default
+    sqme = zero
     if (term%nlo_type == NLO_REAL) then
        select type (core => component%config%core_sub_born)
        class is (prc_blha_t)
@@ -7053,20 +7053,22 @@ imaginary part of the terms, which should be zero anyway.
 @ %def reset_nlo_components
 @
 <<Processes: procedures>>=
-  subroutine associate_sqme_born (component, summand, i_flv, i_hel)
+  subroutine associate_sqme_born (component, summand, i_flv, include_total)
      type(component_instance_t), intent(inout) :: component
      real(default), intent(in) :: summand
      integer, intent(in) :: i_flv
-     integer, intent(in), optional :: i_hel
+     logical, intent(in), optional :: include_total
+     logical :: yorn
+     yorn = .true.; if (present (include_total)) yorn = include_total
      select case (component%config%config%get_nlo_type ())
      case (NLO_REAL, NLO_PDF)
+        !print *, 'summand: ', summand, 'yorn: ', yorn
         if (debug_active (D_SUBTRACTION)) &
            call msg_debug (D_SUBTRACTION, "Associate Born matrix element", i_flv)
-        !if (present (i_hel)) then
-        !   component%nlo_controller%sqme_collector%sqme_born_list (i_flv, i_hel) = summand
-        !else
-           component%nlo_controller%sqme_collector%sqme_born_list(i_flv) = summand
-        !end if
+        associate (collector => component%nlo_controller%sqme_collector)
+           collector%sqme_subtraction_born_list (i_flv) = summand
+           if (yorn) collector%sqme_born_list (i_flv) = summand
+       end associate
      end select
   end subroutine associate_sqme_born
 
@@ -7256,14 +7258,14 @@ imaginary part of the terms, which should be zero anyway.
                      call core_born%compute_sqme_cc (i_flv, &
                              nlo_controller%int_born%get_momenta (), &
                              0._default, &
-                             collector%sqme_born_list (i_flv_born), &
+                             collector%sqme_subtraction_born_list (i_flv_born), &
                              collector%sqme_born_cc (:,:,i_flv_born), &
                              bad_point)
                   else
                   !!! Implementation for color-correlations using color_data
                   end if
                type is (prc_omega_t)
-                  collector%sqme_born_cc (:,:,i_flv_born) = collector%sqme_born_list (i_flv_born) * &
+                  collector%sqme_born_cc (:,:,i_flv_born) = collector%sqme_subtraction_born_list (i_flv_born) * &
                        nlo_controller%color_data%beta_ij (:,:,i_flv_born)
                end select
 
@@ -8072,7 +8074,7 @@ physical event.
      if (debug_active (D_SUBTRACTION)) &
          call msg_debug (D_SUBTRACTION, "underlying Born: ", i_flv_born)
      call term%nlo_controller%set_fac_scale (term%fac_scale)
-     if (term%passed) then
+     !if (term%passed) then
         if (i_flv_real == 1) call component%core_state%reset_new_kinematics ()
         select type (core => component%config%core)
         type is (prc_omega_t)
@@ -8119,7 +8121,7 @@ physical event.
         end select 
         call term%nlo_controller%int_born%set_matrix_element &
              (term%nlo_controller%amp_born) 
-     end if
+     !end if
   end subroutine term_instance_evaluate_interaction_real
 
 @ %def term_instance_evaluate_interaction_real
@@ -9399,22 +9401,12 @@ terms, iterating over all active process components.
     integer :: i, i_real
     instance%sqme = 0
     i_real = 0
+    call instance%reset_nlo_matrix_elements ()
     if (instance%evaluation_status >= STAT_PASSED_CUTS) then
        do i = 1, size (instance%term)
           associate (term => instance%term(i))
             if (term%active .and. term%passed) then
               select case (term%nlo_type)
-              case (NLO_REAL)
-                 select type (pcm => instance%pcm)
-                 class is (pcm_instance_nlo_t)
-                    if (.not. pcm%collect_matrix_elements) then
-                       if (debug_active (D_SUBTRACTION)) &
-                            call msg_debug (D_SUBTRACTION, "Evaluate real trace")
-                       call instance%evaluate_trace_real (term, i)
-                    else
-                       i_real = i
-                    end if
-                 end select
               case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
                  call term%evaluate_interaction (instance%component)
                  call term%evaluate_trace ()
@@ -9434,15 +9426,34 @@ terms, iterating over all active process components.
             end if
           end associate
        end do
-       select type (pcm => instance%pcm)
-       class is (pcm_instance_nlo_t)
-          if (pcm%collect_matrix_elements .and. i_real > 0) &
-            call instance%evaluate_trace_real (instance%term(i_real), i_real)
-       end select
     else
        ! failed kinematics, failed cuts: set sqme to zero
        instance%sqme = 0
     end if
+    select type (pcm => instance%pcm)
+    class is (pcm_instance_nlo_t)
+       do i = 1, size (instance%term)
+          associate (term => instance%term(i))
+             if (term%active) then
+                select case (term%nlo_type)
+                case (NLO_REAL)
+                   pcm%controller%passed_born_cuts = term%passed
+                   if (.not. pcm%collect_matrix_elements) then
+                      if (debug_active (D_SUBTRACTION)) &
+                         call msg_debug (D_SUBTRACTION, "Evaluate real trace")
+                      !print *, 'Evaluate real trace: ', i
+                      call instance%evaluate_trace_real (term, i)
+                      !print *, 'sqme: ', instance%sqme
+                   else
+                      i_real = i
+                   end if
+                end select
+             end if
+          end associate
+       end do
+       if (pcm%collect_matrix_elements .and. i_real > 0) &
+          call instance%evaluate_trace_real (instance%term(i_real), i_real)
+    end select
   end subroutine process_instance_evaluate_trace
 
 @ %def process_instance_evaluate_trace
@@ -9527,12 +9538,12 @@ it from the MCI record.
                       call msg_debug (D_SUBTRACTION, "active real flavor", i_flv_real)
                  term%nlo_controller%active_flavor_structure_real = i_flv_real
                  call term%evaluate_interaction_real (instance%component(i), i)
-                 if (.not. term%passed) then
-                    !!! Cuts failed, leave subroutine
-                    instance%evaluation_status = STAT_FAILED_CUTS
-                    instance%sqme_real = 0
-                    return
-                 end if
+                 !if (.not. term%passed) then
+                 !   !!! Cuts failed, leave subroutine
+                 !   instance%evaluation_status = STAT_FAILED_CUTS
+                 !   instance%sqme_real = 0
+                 !   return
+                 !end if
                  call term%evaluate_trace ()
                  if (instance%component(i)%active) then
                     associate (component => instance%component(i))
@@ -9544,7 +9555,9 @@ it from the MCI record.
                       !else
                       !   sqme_born = pcm%collector%sqme_born_list (i_flv_born)
                       !end if
-                      call associate_sqme_born (component, sqme_born*term%weight, i_flv_born)
+                      !print *, 'Check 1'
+                      call associate_sqme_born (component, sqme_born*term%weight, i_flv_born, &
+                         include_total = pcm%controller%passed_born_cuts)
                       call component%evaluate_sqme_real (term)
                       instance%sqme_real(i_flv_real, ireg) = &
                            pcm%collector%current_sqme_real
@@ -10156,6 +10169,19 @@ term instance.
 @ %def process_instance_reset_counter
 @ %def process_instance_record_call
 @ %def process_instance_get_counter
+@
+<<Processes: process instance: TBP>>=
+  procedure :: reset_nlo_matrix_elements => process_instance_reset_nlo_matrix_elements
+<<Processes: procedures>>=
+  subroutine process_instance_reset_nlo_matrix_elements (instance)
+    class(process_instance_t), intent(inout) :: instance
+    select type (pcm => instance%pcm)
+    class is (pcm_instance_nlo_t)
+       call pcm%controller%sqme_collector%reset ()
+    end select
+  end subroutine process_instance_reset_nlo_matrix_elements
+
+@ %def process_instance_reset_nlo_matrix_elements
 @
 \subsection{NLO Stuff}
 [This should eventually be moved to a separate module.]
