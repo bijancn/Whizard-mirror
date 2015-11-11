@@ -33,10 +33,11 @@ module parameters_sm_tt_threshold
   private
 
   real(default), dimension(27), public :: mass, width
+  real(default) :: wt_inv
   real(default), public :: as
   complex(default), public :: gs, igs
 
-  real(default), public :: e, g, e_em
+  real(default), public :: e, g, Vtb, alphaemi
   real(default), public :: sinthw, costhw, sin2thw, tanthw
   real(default), public :: qelep, qeup, qedwn
   complex(default), public :: qlep, qup, qdwn, gcc, qw, &
@@ -53,7 +54,7 @@ module parameters_sm_tt_threshold
   integer, public :: FF
 
   public :: import_from_whizard, model_update_alpha_s, &
-       ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole, &
+       ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole, ttv_wtpole, &
        onshell_tops, expanded_amp2
 
 contains
@@ -103,12 +104,8 @@ contains
        real(default) :: wtop
     end type parameter_set
     type(parameter_set) :: par
-    !!! This corresponds to 1/alpha = 137.03598949333
-    real(default), parameter :: &
-         alpha = 1.0_default/137.03598949333_default
     logical :: no_pwave, mpole_fixed
     call msg_debug (D_THRESHOLD, "import_from_whizard")
-    e_em = sqrt(4.0_default * PI * alpha)
     par%mZ     = par_array(1)
     par%mW     = par_array(2)
     par%mH     = par_array(3)
@@ -169,6 +166,7 @@ contains
     width(26) = 0
     mass(27) = par%xipm * mass(24)
     width(27) = 0
+    wt_inv = par%wt_inv
     FF = par%FF
     vev = par%v
     e = par%ee
@@ -190,6 +188,7 @@ contains
     gccq31 = 0.0_default
     gccq32 = 0.0_default
     gccq33 = gcc * par%Vtb
+    Vtb = par%Vtb
     gncneu(1) = - g / 2 / costhw * ( + 0.5_default)
     gnclep(1) = - g / 2 / costhw * ( - 0.5_default - 2 * qelep * sin2thw)
     gncup(1)  = - g / 2 / costhw * ( + 0.5_default - 2 * qeup  * sin2thw)
@@ -231,6 +230,7 @@ contains
     gs = sqrt(2.0_default*PI*par%alphas)
     igs = cmplx (0.0_default, 1.0_default, kind=default) * gs
     mpole_fixed = par%mpole_fixed > 0.0_default
+    alphaemi = par%alphaemi
     call init_parameters &
          (mass(6), width(6), par%m1s, par%Vtb, par%wt_inv, &
           par%alphaemi, par%sw, par%alphas, par%mZ, par%mW, &
@@ -290,10 +290,27 @@ contains
 
   !pure
   function ttv_mtpole (s) result (m)
-    real(default), intent(in) :: s
     real(default) :: m
+    real(default), intent(in) :: s
     m = m1s_to_mpole (sqrt (s))
   end function ttv_mtpole
+
+  !pure
+  function ttv_wtpole (s, ff) result (w)
+    real(default) :: w
+    real(default), intent(in) :: s
+    integer, intent(in) :: ff
+    select case (ff)
+    case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
+          RESUMMED_SWITCHOFF_P0CONSTANT, RESUMMED_ANALYTIC_LL)
+       w = top_width_sm_lo (one / alphaemi, sinthw, Vtb, ttv_mtpole (s), mass(24), &
+            mass(5)) + wt_inv
+    case default
+       ! TODO: (bcn 2015-11-11) Vtb is not considered in NLO width
+       w = top_width_sm_qcd_nlo (one / alphaemi, sinthw, ttv_mtpole (s), &
+            mass(24), mass(5), AS_HARD) + wt_inv
+    end select
+  end function ttv_wtpole
 
   !pure
   function expanded_amp2 (amp_tree, amp_blob) result (amp2)

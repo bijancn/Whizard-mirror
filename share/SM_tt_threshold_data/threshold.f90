@@ -282,17 +282,18 @@ contains
           owf_Z_12 = pr_unitarity(p12, mass(23), wd_tl (p12, width(23)), &
                + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
 
-          owf_wb_35 = pr_psibar (p35, ttv_mtpole (p12*p12), wd_tl (p35, width(6)), &
-               + f_fvl (gccq33, owf_b_5, owf_Wm_3))
-          owf_wb_46 = pr_psi (p46, ttv_mtpole(p12*p12), wd_tl (p46, width(6)), &
-               + f_vlf (gccq33, owf_Wp_4, owf_b_6))
-
           if (FF == MATCHED) then
              ffi_end = 3
           else
              ffi_end = 0
           end if
           do ffi = 0, ffi_end
+             owf_wb_35 = pr_psibar (p35, ttv_mtpole (p12*p12), &
+                  wd_tl (p35, ttv_wtpole (p12*p12, ff_modes(ffi))), &
+                  + f_fvl (gccq33, owf_b_5, owf_Wm_3))
+             owf_wb_46 = pr_psi (p46, ttv_mtpole(p12*p12), &
+                  wd_tl (p46, ttv_wtpole (p12*p12, ff_modes(ffi))), &
+                  + f_vlf (gccq33, owf_Wp_4, owf_b_6))
              ttv_vec = ttv_formfactor (p35, p46, 1, ff_modes(ffi))
              ttv_ax = ttv_formfactor (p35, p46, 2, ff_modes(ffi))
              blob_Z_vec = gncup(1) * ttv_vec
