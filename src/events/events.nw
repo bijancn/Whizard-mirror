@@ -5049,6 +5049,7 @@ module hep_common
   
 <<Use kinds>>
   use kinds, only: double
+  use constants
 <<Use strings>>
   use io_units
   use diagnostics
@@ -5740,8 +5741,7 @@ parameters.
   end subroutine hepeup_set_event_parameters
 
 @ %def hepeup_init hepeup_set_event_parameters
-@ 
-Extract event information.  The caller determines the parameters.
+@ Extract event information.  The caller determines the parameters.
 <<HEP common: public>>=
   public :: hepeup_get_event_parameters
 <<HEP common: procedures>>=
@@ -5924,7 +5924,7 @@ use the PDG code for this.
 
 @ %def hepeup_get_particle
 @
-\subsection{The HEPEVT common block}
+\subsection{The HEPEVT and HEPEV4 common block}
 
 For the LEP Monte Carlos, a standard common block has been proposed
 in AKV89.  We strongly recommend its use.  (The description is an
@@ -6015,6 +6015,36 @@ particles:
 
 @ %def hepevt_pol  
 @
+By this variable the identity of the current process is given, defined
+via the LPRUP codes.
+<<HEP common: variables>>=
+  integer, public :: idruplh
+  
+@ %def idruplh
+This is the event weight, i.e. the cross section divided by the total
+number of generated events for the output of the parton shower programs.
+<<HEP common: variables>>=
+  double precision, public :: eventweightlh
+
+@ %def eventweightlh
+@ There are the values for the electromagnetic and the strong coupling
+constants, $\alpha_{em}$ and $\alpha_s$.
+<<HEP common: variables>>=
+  double precision, public :: alphaqedlh, alphaqcdlh
+
+@ %def alphaqedlh, alphaqcdlh
+@ This is the squared scale $Q$ of the event.
+<<HEP common: variables>>=
+  double precision, dimension(10), public :: scalelh
+
+@ %def scalelh
+@ Finally, these variables contain the spin information and the
+color/anticolor flow of the particles.
+<<HEP common: variables>>=
+  double precision, dimension (3,NMXHEP), public :: spinlh
+  integer, dimension (2,NMXHEP), public :: icolorflowlh
+  
+@ %def spinlh icolorflowlh
 By convention, [[SHEP(4,N)]] is always 1. All this is taken from StdHep
 4.06 manual and written using Fortran90 conventions.
 <<HEP common: common blocks>>=
@@ -6036,6 +6066,16 @@ are not part of the HEPEVT common block.
   double precision :: hepevt_function_ratio
   
 @ %def hepevt_weight hepevt_function_value
+@ The HEPEV4 common block is an extension of the HEPEVT common block
+to allow for partonic colored events, including especially the color
+flow etc.
+<<HEP common: common blocks>>=
+  common /HEPEV4/ &
+       eventweightlh, alphaqedlh, alphaqcdlh, scalelh, &
+       spinlh, icolorflowlh, idruplh
+  save /HEPEV4/
+       
+@ %def HEPEV4
 @ Filling HEPEVT: If the event count is not provided, set [[NEVHEP]]
 to zero.  If the event count is [[-1]] or [[-2]], the record
 corresponds to initialization and finalization, and the event is
@@ -6044,6 +6084,9 @@ irrelevant.
 Note that the event count may be larger than $2^{31}$ (2 GEvents).  In
 that case, cut off the upper bits since [[NEVHEP]] is probably limited
 to default integer. 
+
+For the HEPEV4 common block, it is unclear why the [[scalelh]] variable
+is 10-dimensional. We choose to only set the first value of the array.
 <<HEP common: public>>=
   public :: hepevt_init
   public :: hepevt_set_event_parameters
@@ -6052,24 +6095,38 @@ to default integer.
     integer, intent(in) :: n_tot, n_out
     NHEP              = n_tot
     NEVHEP            = 0
+    idruplh           = 0
     hepevt_n_out      = n_out
     hepevt_n_remnants = 0
     hepevt_weight     = 1
+    eventweightlh     = 1
     hepevt_function_value = 0
     hepevt_function_ratio = 1
+    alphaqcdlh        = -1
+    alphaqedlh        = -1
+    scalelh           = -1
   end subroutine hepevt_init
   
   subroutine hepevt_set_event_parameters &
-       (weight, function_value, function_ratio, i_evt)
+       (proc_id, weight, function_value, function_ratio, &
+       alpha_qcd, alpha_qed, scale, i_evt)
+    integer, intent(in), optional :: proc_id
     integer, intent(in), optional :: i_evt
     real(default), intent(in), optional :: weight, function_value, &
-       function_ratio
-    if (present (i_evt)) NEVHEP = i_evt
-    if (present (weight)) hepevt_weight = weight
+       function_ratio, alpha_qcd, alpha_qed, scale
+    if (present (proc_id))  idruplh = proc_id 
+    if (present (i_evt))  NEVHEP = i_evt
+    if (present (weight)) then
+       hepevt_weight = weight
+       eventweightlh = weight
+    end if
     if (present (function_value)) hepevt_function_value = &
          function_value
     if (present (function_ratio)) hepevt_function_ratio = &
          function_ratio
+    if (present (alpha_qcd))  alphaqcdlh = alpha_qcd
+    if (present (alpha_qed))  alphaqedlh = alpha_qed
+    if (present (scale))  scalelh(1) = scale
   end subroutine hepevt_set_event_parameters
 
 @ %def hepevt_init hepevt_set_event_parameters
@@ -6079,15 +6136,22 @@ the exception of lifetime and spin, where default values are stored.
   public :: hepevt_set_particle
 <<HEP common: procedures>>=
   subroutine hepevt_set_particle &
-       (i, pdg, status, parent, child, p, m2, hel, vtx)
+       (i, pdg, status, parent, child, p, m2, hel, vtx, &
+       col, pol, fill_hepev4)
     integer, intent(in) :: i
     integer, intent(in) :: pdg, status
     integer, dimension(:), intent(in) :: parent
     integer, dimension(:), intent(in) :: child
+    logical, intent(in), optional :: fill_hepev4
     type(vector4_t), intent(in) :: p
     real(default), intent(in) :: m2
+    integer, dimension(2), intent(in) :: col
     integer, intent(in) :: hel
+    type(polarization_t), intent(in), optional :: pol
     type(vector4_t), intent(in) :: vtx
+    logical :: hepev4
+    real(default) :: r, theta, phi
+    hepev4 = .false.; if (present (fill_hepev4))  hepev4 = fill_hepev4
     IDHEP(i) = pdg
     select case (status)
       case (PRT_BEAM);      ISTHEP(i) = 2
@@ -6113,6 +6177,33 @@ the exception of lifetime and spin, where default values are stored.
     VHEP(1:3,i) = vtx%p(1:3)
     VHEP(4,i) = vtx%p(0)
     hepevt_pol(i) = hel
+    if (hepev4) then
+       if (col(1) > 0) then
+          icolorflowlh(1,i) = 500 + col(1)
+       else
+          icolorflowlh(1,i) = 0
+       end if
+       if (col(2) > 0) then
+          icolorflowlh(2,i) = 500 + col(2)
+       else
+          icolorflowlh(2,i) = 0
+       end if
+       if (present (pol)) then
+          if (polarization_is_polarized (pol)) then
+             call polarization_to_angles (pol, r, theta, phi)
+             spinlh(:,i) = [r, theta, phi]
+          end if
+       else
+          select case (hel)
+          case (1:)
+             spinlh(:,i) = [one, zero, zero]
+          case (:-1)
+             spinlh(:,i) = [one, PI, zero]
+          case (0)
+             spinlh(:,i) = [one, PI/2, zero]
+          end select
+       end if
+    end if
   end subroutine hepevt_set_particle
 
 @ %def hepevt_set_particle
@@ -6524,12 +6615,13 @@ its polarization is fully defined.
   public :: hepevt_from_particle_set
 <<HEP common: procedures>>=
   subroutine hepevt_from_particle_set &
-       (particle_set, keep_beams, keep_remnants, ensure_order)
+       (particle_set, keep_beams, keep_remnants, ensure_order, fill_hepev4)
     type(particle_set_t), intent(in) :: particle_set
     type(particle_set_t), target :: pset_hepevt, pset_tmp
     logical, intent(in), optional :: keep_beams
     logical, intent(in), optional :: keep_remnants
     logical, intent(in), optional :: ensure_order
+    logical, intent(in), optional :: fill_hepev4
     integer :: i, status, n_tot
     logical :: activate_remnants, ensure
     activate_remnants = .true.
@@ -6552,14 +6644,31 @@ its polarization is fully defined.
               .and. status == PRT_BEAM_REMNANT &
               .and. prt%get_n_children () == 0) &
               status = PRT_OUTGOING
-         call hepevt_set_particle (i, &
-              prt%get_pdg (), status, &
-              prt%get_parents (), &
-              prt%get_children (), &
-              prt%get_momentum (), &
-              prt%get_p2 (), &
-              prt%get_helicity (), &
-              prt%get_vertex ())
+         select case (prt%get_polarization_status ())
+         case (PRT_GENERIC_POLARIZATION)
+            call hepevt_set_particle (i, &
+                 prt%get_pdg (), status, &
+                 prt%get_parents (), &
+                 prt%get_children (), &
+                 prt%get_momentum (), &
+                 prt%get_p2 (), &
+                 prt%get_helicity (), &
+                 prt%get_vertex (), &
+                 prt%get_color (), &
+                 pol = prt%get_polarization (), &
+                 fill_hepev4 = fill_hepev4)
+         case default
+            call hepevt_set_particle (i, &
+                 prt%get_pdg (), status, &
+                 prt%get_parents (), &
+                 prt%get_children (), &
+                 prt%get_momentum (), &
+                 prt%get_p2 (), &
+                 prt%get_helicity (), &
+                 prt%get_vertex (), &
+                 prt%get_color (), &
+                 fill_hepev4 = fill_hepev4)            
+         end select
        end associate
     end do
     call pset_hepevt%final ()
@@ -10088,7 +10197,7 @@ necessary for communication between [[hepmc_event_t]] and
 module hep_events
   
 <<Use kinds>>
-<<Use strings>>  
+<<Use strings>>
   use diagnostics
   use lorentz
   use unit_tests, only: vanishes
@@ -10141,7 +10250,7 @@ Fill the HEPEUP block, given a \whizard\ event object.
           call hepeup_set_event_parameters (scale = scale)
        end if
        alpha_qcd = event%get_alpha_s ()       
-       if (.not. vanishes(alpha_qcd)) then
+       if (.not. vanishes (alpha_qcd)) then
           call hepeup_set_event_parameters (alpha_qcd = alpha_qcd)
        end if
        if (event%weight_prc_is_known ()) then
@@ -10203,23 +10312,37 @@ Note: setting of scale or alpha is not yet supported by the
   public :: hepevt_from_event
 <<HEP events: procedures>>=
   subroutine hepevt_from_event  &
-         (event, i_evt, keep_beams, keep_remnants, ensure_order)
+         (event, process_index, i_evt, keep_beams, keep_remnants, &
+          ensure_order, fill_hepev4)
     class(generic_event_t), intent(in), target :: event
-    integer, intent(in), optional :: i_evt
+    integer, intent(in), optional :: i_evt, process_index    
     logical, intent(in), optional :: keep_beams  
     logical, intent(in), optional :: keep_remnants
     logical, intent(in), optional :: ensure_order
+    logical, intent(in), optional :: fill_hepev4
     type(particle_set_t), pointer :: particle_set
+    real(default) :: alpha_qcd, scale
     if (event%has_valid_particle_set ()) then
        particle_set => event%get_particle_set_ptr ()
        call hepevt_from_particle_set (particle_set, keep_beams, &
-            keep_remnants, ensure_order)
+            keep_remnants, ensure_order, fill_hepev4)
+       if (present (process_index)) then
+          call hepevt_set_event_parameters (proc_id = process_index)
+       end if       
        if (event%weight_prc_is_known ()) then
           call hepevt_set_event_parameters (weight = event%get_weight_prc ())
        end if
        if (event%sqme_prc_is_known ()) then
           call hepevt_set_event_parameters &
                (function_value = event%get_sqme_prc ())
+       end if
+       scale = event%get_fac_scale ()
+       if (.not. vanishes (scale)) then
+          call hepevt_set_event_parameters (scale = scale)
+       end if
+       alpha_qcd = event%get_alpha_s ()       
+       if (.not. vanishes (alpha_qcd)) then
+          call hepevt_set_event_parameters (alpha_qcd = alpha_qcd)
        end if
        if (present (i_evt)) then
           call hepevt_set_event_parameters (i_evt = i_evt)
@@ -13060,6 +13183,14 @@ end module eio_stdhep
   
 @ %def eio_stdhep_hepeup_t
 @
+<<EIO stdhep: public>>=
+  public :: eio_stdhep_hepev4_t
+<<EIO stdhep: types>>=
+  type, extends (eio_stdhep_t) :: eio_stdhep_hepev4_t
+  end type eio_stdhep_hepev4_t
+  
+@ %def eio_stdhep_hepev4_t
+@
 \subsection{Specific Methods}
 Set parameters that are specifically used with STDHEP file formats.
 <<EIO stdhep: eio stdhep: TBP>>=
@@ -13090,6 +13221,8 @@ Set parameters that are specifically used with STDHEP file formats.
        select type (eio)
        type is (eio_stdhep_hepevt_t)
           eio%extension = "hep"
+       type is (eio_stdhep_hepev4_t)
+          eio%extension = "ev4.hep"          
        type is (eio_stdhep_hepeup_t)
           eio%extension = "up.hep"
        end select
@@ -13201,10 +13334,14 @@ the common block contents are still intact.)
                "WHIZARD <<Version>>", eio%n_events_expected)
           call stdhep_write (100)
           call stdhep_write (STDHEP_HEPRUP)
-       type is (eio_stdhep_hepevt_t)
+       type is (eio_stdhep_hepevt_t) 
           call stdhep_init_out (char (eio%filename), &
                "WHIZARD <<Version>>", eio%n_events_expected) 
           call stdhep_write (100)
+       type is (eio_stdhep_hepev4_t)
+          call stdhep_init_out (char (eio%filename), &
+               "WHIZARD <<Version>>", eio%n_events_expected) 
+          call stdhep_write (100)          
        end select
     end if
   end subroutine eio_stdhep_split_out
@@ -13252,6 +13389,10 @@ the common block contents are still intact.)
        call stdhep_init_out (char (eio%filename), &
             "WHIZARD <<Version>>", eio%n_events_expected) 
        call stdhep_write (100)
+    type is (eio_stdhep_hepev4_t)
+       call stdhep_init_out (char (eio%filename), &
+            "WHIZARD <<Version>>", eio%n_events_expected) 
+       call stdhep_write (100)       
     end select    
     if (present (success))  success = .true.
   end subroutine eio_stdhep_init_out
@@ -13331,7 +13472,16 @@ squared matrix element, then the particle set.
                keep_beams = eio%keep_beams, &
                keep_remnants = eio%keep_remnants, &
                ensure_order = eio%ensure_order)
-          call stdhep_write (STDHEP_HEPEVT)                              
+          call stdhep_write (STDHEP_HEPEVT)
+       type is (eio_stdhep_hepev4_t)
+          call hepevt_from_event (event, &
+               process_index = eio%proc_num_id (i_prc), &               
+               i_evt = event%get_index (), &                         
+               keep_beams = eio%keep_beams, &
+               keep_remnants = eio%keep_remnants, &
+               ensure_order = eio%ensure_order, &
+               fill_hepev4 = .true.)
+          call stdhep_write (STDHEP_HEPEV4)          
        end select       
     else
        call eio%write ()
@@ -13361,6 +13511,9 @@ the HEPEVT common block as there is no control on the process ID.
           proc_num_id = eio%proc_num_id (1)
           call stdhep_read (ilbl, lok)
        end if
+    type is (eio_stdhep_hepev4_t)
+       call stdhep_read (ilbl, lok)
+       proc_num_id = idruplh
     type is (eio_stdhep_hepeup_t)
        call stdhep_read (ilbl, lok)
        if (lok /= 0)  call msg_error ("Events: STDHEP appears to be " // &
@@ -13463,7 +13616,8 @@ the HEPEVT common block as there is no control on the process ID.
 <<EIO stdhep: variables>>=
   integer, save :: istr, lok
   integer, parameter :: &
-       STDHEP_HEPEVT = 1, STDHEP_HEPEUP = 11, STDHEP_HEPRUP = 12
+       STDHEP_HEPEVT = 1, STDHEP_HEPEV4 = 4, &
+       STDHEP_HEPEUP = 11, STDHEP_HEPRUP = 12
 @
 @
 \subsection{Unit tests}

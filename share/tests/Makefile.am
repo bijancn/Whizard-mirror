@@ -293,6 +293,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/mci_vamp_13.ref \
     unit_tests/ref-output/mci_vamp_14.ref \
     unit_tests/ref-output/mci_vamp_15.ref \
+    unit_tests/ref-output/mci_vamp_16.ref \
     unit_tests/ref-output/prclib_interfaces_1.ref \
     unit_tests/ref-output/prclib_interfaces_2.ref \
     unit_tests/ref-output/prclib_interfaces_3.ref \
@@ -444,6 +445,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/integrations_6.ref \
     unit_tests/ref-output/integrations_7.ref \
     unit_tests/ref-output/integrations_8.ref \
+    unit_tests/ref-output/integrations_9.ref \
     unit_tests/ref-output/integrations_history_1.ref \
     unit_tests/ref-output/simulations_1.ref \
     unit_tests/ref-output/simulations_2.ref \
@@ -554,6 +556,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/observables_1.ref \
     functional_tests/ref-output/event_weights_1.ref \
     functional_tests/ref-output/event_weights_2.ref \
+    functional_tests/ref-output/event_eff_1.ref \
     functional_tests/ref-output/event_dump_1.ref \
     functional_tests/ref-output/reweight_1.ref \
     functional_tests/ref-output/reweight_2.ref \
@@ -832,6 +835,7 @@ MISC_TESTS_SIN = \
     functional_tests/observables_1.sin \
     functional_tests/event_weights_1.sin \
     functional_tests/event_weights_2.sin \
+    functional_tests/event_eff_1.sin \
     functional_tests/event_dump_1.sin \
     functional_tests/reweight_1.sin \
     functional_tests/reweight_2.sin \
