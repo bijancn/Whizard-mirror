@@ -1580,6 +1580,9 @@ so the latter is always available (and kept global).
          (global%var_list, var_str ("$extension_stdhep_up"), &
           var_str ("up.hep"), intrinsic=.true.)
     call var_list_append_string &
+         (global%var_list, var_str ("$extension_stdhep_ev4"), &
+          var_str ("ev4.hep"), intrinsic=.true.)    
+    call var_list_append_string &
          (global%var_list, var_str ("$extension_hepevt_verb"), &
           var_str ("hepevt.verb"), intrinsic=.true.)
     call var_list_append_string &
@@ -5142,8 +5145,9 @@ structure-function chain.
          extension_hepmc, &
          extension_lha, extension_hepevt, extension_ascii_short, &
          extension_ascii_long, extension_athena, extension_mokka, &
-         extension_stdhep, extension_stdhep_up, extension_raw, &
-         extension_hepevt_verb, extension_lha_verb, extension_lcio
+         extension_stdhep, extension_stdhep_up, extension_stdhep_ev4, &
+         extension_raw, extension_hepevt_verb, extension_lha_verb, &
+         extension_lcio
     integer :: checkpoint
     logical :: show_process, show_transforms, show_decay, verbose, pacified
     logical :: dump_weights, dump_compressed, dump_summary, dump_screen
@@ -5259,6 +5263,16 @@ structure-function chain.
           call eio%set_parameters (keep_beams, keep_remnants, ensure_order, &
                recover_beams, use_alpha_s_from_file, &
                use_scale_from_file, extension_stdhep_up)          
+       end select
+    case ("stdhep_ev4")
+       allocate (eio_stdhep_hepev4_t :: eio)
+       select type (eio)
+       type is (eio_stdhep_hepev4_t)                   
+          extension_stdhep_ev4 = &
+               global%var_list%get_sval (var_str ("$extension_stdhep_ev4"))
+          call eio%set_parameters &
+               (keep_beams, keep_remnants, ensure_order, recover_beams, &
+                use_alpha_s_from_file, use_scale_from_file, extension_stdhep_ev4)
        end select       
     case ("ascii")   
        allocate (eio_ascii_ascii_t :: eio)
@@ -12008,8 +12022,9 @@ the normalization procedure for the process components.
 <<Simulations: entry: TBP>>=
   procedure :: init_mci_selector => entry_init_mci_selector
 <<Simulations: procedures>>=
-  subroutine entry_init_mci_selector (entry)
+  subroutine entry_init_mci_selector (entry, negative_weights)
     class(entry_t), intent(inout), target :: entry
+    logical, intent(in), optional :: negative_weights
     type(entry_t), pointer :: current_entry
     integer :: i, j
     if (entry%has_integral) then
@@ -12018,7 +12033,8 @@ the normalization procedure for the process components.
           current_entry => entry
           do j = 1, current_entry%count_nlo_entries ()
              if (j > 1) current_entry => current_entry%get_next ()
-             call current_entry%mci_selector%init (current_entry%mci_set%integral)
+             call current_entry%mci_selector%init &
+                  (current_entry%mci_set%integral, negative_weights)
              do i = 1, current_entry%n_mci
                 current_entry%mci_set(i)%weight_mci = &
                    current_entry%mci_selector%get_weight (i)
@@ -12704,6 +12720,30 @@ choose the larger number.
   end subroutine simulation_compute_n_events
 
 @ %def simulation_compute_n_events
+@ Write the actual efficiency of the simulation run.  We get the total
+number of events stored in the simulation counter and compare this
+with the total number of calls stored in the event entries.
+
+In order not to miscount samples that are partly read from file, use
+the [[generated]] counter, not the [[total]] counter.
+<<Simulations: simulation: TBP>>=
+  procedure :: show_efficiency => simulation_show_efficiency
+<<Simulations: procedures>>=
+  subroutine simulation_show_efficiency (simulation)
+    class(simulation_t), intent(inout) :: simulation
+    integer :: n_events, n_calls
+    real(default) :: eff
+    n_events = simulation%counter%generated
+    n_calls = sum (simulation%entry%get_actual_calls_total ())
+    if (n_calls > 0) then
+       eff = real (n_events, kind=default) / n_calls
+       write (msg_buffer, "(A,1x,F6.2,1x,A)") &
+            "Events: actual unweighting efficiency =", 100 * eff, "%"
+       call msg_message ()
+    end if
+  end subroutine simulation_show_efficiency
+  
+@ %def simulation_show_efficiency
 @
 <<Simulations: simulation: TBP>>=
   procedure :: get_n_nlo_entries => simulation_get_n_nlo_entries
@@ -12784,7 +12824,8 @@ weights.
     class(simulation_t), intent(inout) :: simulation
     integer :: i
     if (simulation%has_integral) then
-       call simulation%process_selector%init (simulation%entry%integral)
+       call simulation%process_selector%init (simulation%entry%integral, &
+            negative_weights = simulation%negative_weights)
        do i = 1, simulation%n_prc
           associate (entry => simulation%entry(i))
             if (.not. entry%valid) then
@@ -12792,7 +12833,7 @@ weights.
                     "': matrix element vanishes, no events can be generated.")
                cycle
             end if
-            call entry%init_mci_selector ()
+            call entry%init_mci_selector (simulation%negative_weights)
             entry%process_weight = simulation%process_selector%get_weight (i)
           end associate
        end do
@@ -12961,6 +13002,7 @@ process instance will not be complete.  This should be fixed.
        end if
     end do
     call msg_message ("        ... event sample complete.")
+    if (simulation%unweighted)  call simulation%show_efficiency ()
     call simulation%counter%show_excess ()
   end subroutine simulation_generate
   

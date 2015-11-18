@@ -6394,13 +6394,12 @@ parameter arrays for the selected channel.
   procedure :: compute_selected_channel => kinematics_compute_selected_channel
 <<Processes: procedures>>=
   subroutine kinematics_compute_selected_channel &
-       (k, mci_work, phs_channel, p, success, nlo_controller)
+       (k, mci_work, phs_channel, p, success)
     class(kinematics_t), intent(inout) :: k
     type(mci_work_t), intent(in) :: mci_work
     integer, intent(in) :: phs_channel
     type(vector4_t), dimension(:), intent(out) :: p
     logical, intent(out) :: success
-    type(nlo_controller_t), intent(inout), optional :: nlo_controller
     integer :: sf_channel
     k%selected_channel = phs_channel
     sf_channel = k%phs%config%get_sf_channel (phs_channel)
@@ -6782,8 +6781,7 @@ postpone until we know the factorization scale), and we have a valid
     select type (phs => component%k_seed%phs)
     type is (phs_fks_t)
        call component%k_seed%compute_selected_channel &
-            (mci_work, phs_channel, component%p_seed, success, &
-            component%nlo_controller)
+            (mci_work, phs_channel, component%p_seed, success)
        sf_channel = component%k_seed%phs%config%get_sf_channel (phs_channel)
        call component%nlo_controller%sf_born%compute_kinematics (sf_channel, mci_work%get_x_strfun ())
        call component%nlo_controller%int_born%set_momenta &
@@ -6943,9 +6941,8 @@ stored in the kinematics subobject to their source.  This is a side effect.
   subroutine component_instance_evaluate_sqme_born (component, term)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout), target :: term
-    real(default) :: sqme, sqme_blha
+    real(default) :: sqme
     integer :: n_flv, i_flv
-    logical :: bad_point
     if (term%nlo_type == NLO_VIRTUAL) return
     i_flv = 1
     sqme = zero
@@ -7297,7 +7294,7 @@ imaginary part of the terms, which should be zero anyway.
        call nlo_controller%set_alpha_s_born &
             (component%config%core%get_alpha_s (component%core_state))
        nlo_controller%sqme_collector%current_sqme_real = &
-            nlo_controller%compute_sqme_real_fin (term%weight, p_real) 
+            nlo_controller%compute_sqme_real_fin (term%weight) 
      end associate
   end subroutine component_instance_evaluate_sqme_real
 
@@ -7555,7 +7552,6 @@ relevant for a NLO algorithm.
     integer :: n_in, n_vir, n_out, n_tot
     !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
     integer :: i, j, k
-    integer :: i_component
     type(quantum_numbers_t), dimension(:), allocatable :: qn
     type(interaction_t), pointer, save :: int_sav 
     type(sf_chain_instance_t), pointer, save :: sf_sav
@@ -7736,7 +7732,7 @@ parse trees.
          call term%connected%setup_weight (config%ef_weight)
     select case (term%nlo_type)
     case (NLO_REAL)
-       call term%setup_expressions_real (meta, config)
+       call term%setup_expressions_real (config)
     end select
   end subroutine term_instance_setup_expressions
     
@@ -7745,9 +7741,8 @@ parse trees.
 <<Processes: term instance: TBP>>=
   procedure :: setup_expressions_real => term_instance_setup_expressions_real
 <<Processes: procedures>>=
-  subroutine term_instance_setup_expressions_real (term, meta, config)
+  subroutine term_instance_setup_expressions_real (term, config)
     class(term_instance_t), intent(inout), target :: term
-    type(process_metadata_t), intent(in), target :: meta
     type(process_config_data_t), intent(in) :: config
     if (allocated (config%ef_cuts)) &
          call term%connected_real%setup_cuts (config%ef_cuts)
@@ -7827,7 +7822,7 @@ The quantum numbers mask of the incoming particle
     type is (phs_fks_t)
        n_in = term%nlo_controller%get_n_in ()
        if (emitter > n_in) then
-          call phs%generate_fsr (emitter, p_born, p_real)
+          call phs%generate_fsr (emitter, p_real)
        else
           call phs%generate_isr (p_born, p_real)
        end if
@@ -8408,7 +8403,7 @@ entry.  This also resets the counter.
     call mci_work%counter%record (status)
   end subroutine mci_work_record_call
     
-  function mci_work_get_counter (mci_work) result (counter)
+  pure function mci_work_get_counter (mci_work) result (counter)
     class(mci_work_t), intent(in) :: mci_work
     type(process_counter_t) :: counter
     counter = mci_work%counter
@@ -8814,10 +8809,10 @@ to subobject of [[instance]].
     logical, intent(in), optional :: cc_flag
     logical, intent(in), optional :: combined_integration
     type(process_t), pointer :: process
-    integer :: i, i_component
+    integer :: i_component
     type(process_constants_t), dimension(2), save :: prc_constants
     integer :: nlo_type
-    integer :: i_born, i_real
+    integer :: i_born
     logical :: use_internal_cc, use_internal_sc
 
     select type (pcm => instance%pcm)
@@ -8874,7 +8869,6 @@ to subobject of [[instance]].
                      call instance%setup_polarized_beams_for_virtuals (process%beam_config)
                   end if
                   i_born = component%config%config%get_associated_born ()
-                  i_real = i_born + process%config%n_components / 3
                   component%nlo_type = NLO_VIRTUAL
                   call component%nlo_controller%init_virtual ()
                case (NLO_PDF)
@@ -8902,7 +8896,6 @@ to subobject of [[instance]].
        end if
        
     end select
-
   end subroutine process_instance_init_nlo_configuration
   
 @ %def process_instance_init_nlo_configuration
@@ -10160,7 +10153,7 @@ term instance.
          (process_instance%evaluation_status)
   end subroutine process_instance_record_call
     
-  function process_instance_get_counter (process_instance) result (counter)
+  pure function process_instance_get_counter (process_instance) result (counter)
     class(process_instance_t), intent(in) :: process_instance
     type(process_counter_t) :: counter
     counter = process_instance%mci_work(process_instance%i_mci)%get_counter ()
@@ -10169,6 +10162,24 @@ term instance.
 @ %def process_instance_reset_counter
 @ %def process_instance_record_call
 @ %def process_instance_get_counter
+@ Sum up the total number of calls for all MCI records.
+<<Processes: process instance: TBP>>=
+  procedure :: get_actual_calls_total => process_instance_get_actual_calls_total
+<<Processes: procedures>>=
+  pure function process_instance_get_actual_calls_total (process_instance) &
+       result (n)
+    class(process_instance_t), intent(in) :: process_instance
+    integer :: n
+    integer :: i
+    type(process_counter_t) :: counter
+    n = 0
+    do i = 1, size (process_instance%mci_work)
+       counter = process_instance%mci_work(i)%get_counter ()
+       n = n + counter%total
+    end do
+  end function process_instance_get_actual_calls_total
+    
+@ %def process_instance_get_actual_calls_total
 @
 <<Processes: process instance: TBP>>=
   procedure :: reset_nlo_matrix_elements => process_instance_reset_nlo_matrix_elements
@@ -10427,10 +10438,7 @@ and directly set the coupling value that comes together with a particle set.
        call blha_master%setup_additional_features (openloops_phs_tolerance, &
           top_signal = openloops_top_signal, beam_structure = beam_structure)
        call blha_master%init (process%meta%id, process%config%model, &
-                              n_in, size (flv_born,1)-n_in, &
-                              !use_external_borns, use_external_loops, &
-                              !use_external_correlations, use_external_real_trees, &
-                              alpha_power, alphas_power, &
+                              n_in, alpha_power, alphas_power, &
                               flv_born, flv_real)
        call blha_master%generate (process%meta%id)
     end associate 
