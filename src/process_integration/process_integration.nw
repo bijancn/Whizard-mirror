@@ -6938,14 +6938,23 @@ stored in the kinematics subobject to their source.  This is a side effect.
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_born => component_instance_evaluate_sqme_born
 <<Processes: procedures>>=
-  subroutine component_instance_evaluate_sqme_born (component, term)
+  subroutine component_instance_evaluate_sqme_born (component, term, set_me)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout), target :: term
+    logical, intent(out) :: set_me
     real(default) :: sqme
     integer :: n_flv, i_flv
-    if (term%nlo_type == NLO_VIRTUAL) return
+
+    if (term%nlo_type == NLO_VIRTUAL) then
+       set_me = .false.
+       return
+    else
+       set_me = .true.
+    end if
+
     i_flv = 1
-    sqme = 0._default
+    sqme = zero
+
     if (term%nlo_type == NLO_REAL) then
        select type (core => component%config%core_sub_born)
        class is (prc_blha_t)
@@ -7015,16 +7024,18 @@ imaginary part of the terms, which should be zero anyway.
   subroutine component_instance_evaluate_sqme (component, term)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), dimension(:), intent(inout), target :: term
+    logical :: set_me
     integer :: j, i
 
-    component%sqme = 0
+    component%sqme = zero
     call reset_nlo_components (component)
     associate (i_term => component%config%i_term)
       do j = 1, size (i_term)
          i = i_term(j)
          if (term(i)%passed) then
-            call component%evaluate_sqme_born (term(i))
-            call associate_sqme_born (component, component%sqme*term(i)%weight, 1)
+            call component%evaluate_sqme_born (term(i), set_me)
+            if (set_me) &
+               call associate_sqme_born (component, component%sqme * term(i)%weight, 1)
             call component%evaluate_sqme_real (term(i))
             call component%evaluate_sqme_virt (term(i))
             call component%evaluate_sqme_pdf (term(i))
@@ -7055,12 +7066,10 @@ imaginary part of the terms, which should be zero anyway.
      real(default), intent(in) :: summand
      integer, intent(in) :: i_flv
      integer, intent(in), optional :: i_hel
-     select case (component%config%config%get_nlo_type ())
-     case (NLO_REAL, NLO_PDF)
-        if (debug_active (D_SUBTRACTION)) &
-           call msg_debug (D_SUBTRACTION, "Associate Born matrix element", i_flv)
+     if (debug_active (D_SUBTRACTION)) &
+        call msg_debug (D_SUBTRACTION, "Associate Born matrix element", i_flv)
+     if (associated (component%nlo_controller)) &
         component%nlo_controller%sqme_collector%sqme_born_list(i_flv) = summand
-     end select
   end subroutine associate_sqme_born
 
 @ Perform the matrix-element-evaluation if the component is flagged as virtual
@@ -9484,6 +9493,7 @@ it from the MCI record.
      class(process_instance_t), intent(inout) :: instance
      type(term_instance_t), intent(inout) :: term
      integer, intent(in) :: i
+     logical :: set_me
      integer :: j, ireg, i_flv_real, i_flv_born
      integer :: nlegs
      integer :: fixed_emitter
@@ -9524,15 +9534,10 @@ it from the MCI record.
                  call term%evaluate_trace ()
                  if (instance%component(i)%active) then
                     associate (component => instance%component(i))
-                      !if (.not. pcm%collect_matrix_elements) then
-                      call component%evaluate_sqme_born (term)
+                      call component%evaluate_sqme_born (term, set_me)
                       sqme_born = component%sqme
-                      if (debug_active (D_SUBTRACTION)) &
-                          call msg_debug (D_SUBTRACTION, "sqme_born", sqme_born)
-                      !else
-                      !   sqme_born = pcm%collector%sqme_born_list (i_flv_born)
-                      !end if
-                      call associate_sqme_born (component, sqme_born*term%weight, i_flv_born)
+                      if (set_me) &
+                         call associate_sqme_born (component, sqme_born * term%weight, i_flv_born)
                       call component%evaluate_sqme_real (term)
                       instance%sqme_real(i_flv_real, ireg) = &
                            pcm%collector%current_sqme_real
