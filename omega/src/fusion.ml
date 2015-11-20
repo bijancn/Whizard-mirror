@@ -1,4 +1,4 @@
-(* $Id: fusion.ml 6943 2015-05-01 10:53:21Z msekulla $
+(* $Id: fusion.ml 7367 2015-11-13 17:28:39Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -7,7 +7,7 @@
        Juergen Reuter <juergen.reuter@desy.de>
        with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
-       Marco Sekulla <sekulla@physik.uni-siegen.de>
+       Marco Sekulla <marco.sekulla@kit.edu>
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -24,9 +24,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Fusion" ["General Fusions"]
-    { RCS.revision = "$Revision: 6943 $";
-      RCS.date = "$Date: 2015-05-01 12:53:21 +0200 (Fri, 01 May 2015) $";
-      RCS.author = "$Author: msekulla $";
+    { RCS.revision = "$Revision: 7367 $";
+      RCS.date = "$Date: 2015-11-13 18:28:39 +0100 (Fri, 13 Nov 2015) $";
+      RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/fusion.ml $" }
 

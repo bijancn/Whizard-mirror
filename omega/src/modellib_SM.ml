@@ -1,4 +1,4 @@
-(* $Id: modellib_SM.ml 7283 2015-09-27 15:12:43Z jr_reuter $
+(* $Id: modellib_SM.ml 7372 2015-11-18 18:07:59Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -7,7 +7,8 @@
        Juergen Reuter <juergen.reuter@desy.de>
        with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
-       Fabian Bach <fabian.bach@desy.de> (only parts of this file)
+       Fabian Bach <fabian.bach@t-online.de> (only parts of this file)
+       Soyoung Shim <soyoung.shim@desy.de> (only parts of this file)
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -24,8 +25,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
-    { RCS.revision = "$Revision: 7283 $";
-      RCS.date = "$Date: 2015-09-27 17:12:43 +0200 (Sun, 27 Sep 2015) $";
+    { RCS.revision = "$Revision: 7372 $";
+      RCS.date = "$Date: 2015-11-18 19:07:59 +0100 (Wed, 18 Nov 2015) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_SM.ml $" }
@@ -668,7 +669,7 @@ module SM_dim6 : SM_flags =
     let top_anom = false
     let top_anom_4f = false
     let tt_threshold = false
-  end  
+  end
 
 (* \thocwmodulesection{Complete Minimal Standard Model (including some extensions)} *)
 
@@ -978,6 +979,25 @@ module SM (Flags : SM_flags) =
       | Gs | I_Gs | G2
       | Mass of flavor | Width of flavor
       | K_Matrix_Coeff of int | K_Matrix_Pole of int
+      | I_Dim6_AWW_Gauge | I_Dim6_AWW_GGG | I_Dim6_AWW_DP | I_Dim6_AWW_DW 
+      | I_Dim6_WWZ_W | I_Dim6_WWZ_DPWDW | I_Dim6_WWZ_DW | I_Dim6_WWZ_D 
+(*i      | I_Dim6_GGG_G | I_Dim6_GGG_CG  i*)
+      | G_HZZ6_V3 | G_HZZ6_D | G_HZZ6_DP | G_HZZ6_PB  
+      | G_HWW_6_D | G_HWW_6_DP 
+      | G_HGaZ6_D | G_HGaZ6_DP | G_HGaZ6_PB 
+      | G_HGaGa6 
+      | Dim6_vev3 | Dim6_Cphi | Anom_Dim6_AAWW_DW | Anom_Dim6_AAWW_W
+      | Anom_Dim6_H4_v2 | Anom_Dim6_H4_P2  
+      | Anom_Dim6_AHWW_DPB | Anom_Dim6_AHWW_DPW | Anom_Dim6_AHWW_DW 
+      | Anom_Dim6_HHWW_DW | Anom_Dim6_HHWW_DPW 
+      | Anom_Dim6_HWWZ_DW | Anom_Dim6_HWWZ_DDPW | Anom_Dim6_HWWZ_DPW
+      | Anom_Dim6_HWWZ_DPB 
+      | Anom_Dim6_AHHZ_D | Anom_Dim6_AHHZ_DP | Anom_Dim6_AHHZ_PB 
+      | Anom_Dim6_AZWW_W | Anom_Dim6_AZWW_DWDPW 
+      | Anom_Dim6_WWWW_W | Anom_Dim6_WWWW_DWDPW | Anom_Dim6_WWZZ_W
+      | Anom_Dim6_WWZZ_DWDPW
+      | Anom_Dim6_HHAA | Anom_Dim6_HHZZ_D | Anom_Dim6_HHZZ_DP
+      | Anom_Dim6_HHZZ_PB | Anom_Dim6_HHZZ_T
 	  
 (* Two integer counters for the QCD and EW order of the couplings. *)
 
@@ -1009,6 +1029,26 @@ module SM (Flags : SM_flags) =
       | G_VLR_qBuB | G_VLR_qBuB_u | G_VLR_qBuB_d
       | G_VLR_qBuB_e | G_VL_qBuB_n | G_VL_qW | G_VL_qW_u | G_VL_qW_d
       | G_SL_DttR | G_SR_DttR  | G_SL_DttL | G_SLR_DbtR | G_SL_DbtL
+      | G_HZZ6_V3 | G_HZZ6_D | G_HZZ6_DP | G_HZZ6_PB  
+      | G_HGaZ6_D | G_HGaZ6_DP | G_HGaZ6_PB 
+      | G_HWW_6_D | G_HWW_6_DP 
+      | G_HGaGa6   
+      | I_Dim6_AWW_Gauge | I_Dim6_AWW_GGG | I_Dim6_AWW_DP | I_Dim6_AWW_DW 
+      | I_Dim6_WWZ_W | I_Dim6_WWZ_DPWDW | I_Dim6_WWZ_DW | I_Dim6_WWZ_D 
+(*i      | I_Dim6_GGG_G | I_Dim6_GGG_CG  i*)
+      | Dim6_vev3 | Dim6_Cphi 
+      | Anom_Dim6_H4_v2 | Anom_Dim6_H4_P2 | Anom_Dim6_AAWW_DW
+      | Anom_Dim6_AAWW_W
+      | Anom_Dim6_AHWW_DPB | Anom_Dim6_AHWW_DPW | Anom_Dim6_AHWW_DW
+      | Anom_Dim6_HHWW_DW | Anom_Dim6_HHWW_DPW
+      | Anom_Dim6_HWWZ_DW | Anom_Dim6_HWWZ_DDPW | Anom_Dim6_HWWZ_DPW
+      | Anom_Dim6_HWWZ_DPB
+      | Anom_Dim6_AHHZ_D | Anom_Dim6_AHHZ_DP | Anom_Dim6_AHHZ_PB 
+      | Anom_Dim6_AZWW_W | Anom_Dim6_AZWW_DWDPW 
+      | Anom_Dim6_WWWW_W | Anom_Dim6_WWWW_DWDPW | Anom_Dim6_WWZZ_W
+      | Anom_Dim6_WWZZ_DWDPW
+      | Anom_Dim6_HHAA | Anom_Dim6_HHZZ_D | Anom_Dim6_HHZZ_DP
+      | Anom_Dim6_HHZZ_PB | Anom_Dim6_HHZZ_T
       | G_TVA_ttWW | G_TVA_bbWW | G_SP_ttH -> (0,1)
       | G_HHWW | G_HHZZ | G_H4
       | G_WWWW | G_ZZWW | G_AZWW | G_AAWW  
@@ -1325,11 +1365,35 @@ module SM (Flags : SM_flags) =
           ((Z, Wp, Wm), Dim6_Gauge_Gauge_Gauge_5 (-1),
            I_lambda5_ZWW) ]
 
+    let anomalous_dim6_triple_gauge =
+      List.map tgc
+        [ ((Ga, Wm, Wp), Dim6_Gauge_Gauge_Gauge_i 1, 
+           I_Dim6_AWW_GGG); 
+          ((Ga, Wm, Wp), Dim6_AWW_DP 1, 
+           I_Dim6_AWW_DP); 
+          ((Ga, Wm, Wp), Dim6_AWW_DW 1,  
+           I_Dim6_AWW_DW); 
+          ((Wm, Wp, Z), Dim6_Gauge_Gauge_Gauge_i 1,  
+           I_Dim6_WWZ_W); 
+          ((Wm, Wp, Z), Dim6_WWZ_DPWDW 1,  
+           I_Dim6_WWZ_DPWDW); 
+          ((Wm, Wp, Z), Dim6_WWZ_DW 1,  
+           I_Dim6_WWZ_DW); 
+          ((Wm, Wp, Z), Dim6_WWZ_D 1,  
+           I_Dim6_WWZ_D)(*i ;
+          ((G, G, G), Dim6_Glu_Glu_Glu 1, 
+           I_Dim6_GGG_G);
+          ((G, G, G), Gauge_Gauge_Gauge_I 1, 
+           I_Dim6_GGG_CG) i*) 
+	]
+
     let triple_gauge =
       if Flags.triple_anom then
         anomalous_triple_gauge
+      else if Flags.dim6 then
+        standard_triple_gauge @ anomalous_dim6_triple_gauge
       else
-        standard_triple_gauge
+	standard_triple_gauge
 
 (* \begin{equation}
      \mathcal{L}_{\textrm{QGC}} =
@@ -1420,6 +1484,29 @@ module SM (Flags : SM_flags) =
              Vector4 [(1, C_12_34); (1, C_13_42); (1, C_14_23)], Alpha_ZZZZ) ]
       else
         []
+	      
+    let anomalous_dim6_quartic_gauge =
+      if Flags.dim6 then
+	List.map qgc 
+          [ ((Ga, Ga, Wm, Wp),
+             Dim6_Vector4_DW 1, Anom_Dim6_AAWW_DW); 
+            ((Ga, Ga, Wm, Wp), 
+             Dim6_Vector4_W 1, Anom_Dim6_AAWW_W);  
+            ((Ga, Z, Wm, Wp),
+             Dim6_Vector4_W 1, Anom_Dim6_AZWW_W);
+            ((Ga, Z, Wm, Wp),
+             Dim6_Vector4_DW 1, Anom_Dim6_AZWW_DWDPW); 
+            ((Wm, Wp, Wm, Wp),
+             Dim6_Vector4_W 1, Anom_Dim6_WWWW_W);
+            ((Wm, Wp, Wm, Wp),
+             Dim6_Vector4_DW 1, Anom_Dim6_WWWW_DWDPW);
+            ((Z, Z, Wm, Wp),
+             Dim6_Vector4_W 1, Anom_Dim6_WWZZ_W); 
+            ((Z, Z, Wm, Wp),
+             Dim6_Vector4_DW 1, Anom_Dim6_WWZZ_DWDPW)
+     ]
+      else
+        []
 
 (* In any diagonal channel~$\chi$, the scattering amplitude~$a_\chi(s)$ is
    unitary iff\footnote{%
@@ -1440,7 +1527,6 @@ module SM (Flags : SM_flags) =
    \end{equation} 
 
 *)
-
 
     let k_matrix_quartic_gauge =
       if Flags.k_matrix then
@@ -1520,7 +1606,8 @@ module SM (Flags : SM_flags) =
 i*)
 
     let quartic_gauge =
-      standard_quartic_gauge @ anomalous_quartic_gauge @ k_matrix_quartic_gauge
+      standard_quartic_gauge @ anomalous_quartic_gauge @
+	anomalous_dim6_quartic_gauge @ k_matrix_quartic_gauge
 
     let standard_gauge_higgs =
       [ ((O H, G Wp, G Wm), Scalar_Vector_Vector 1, G_HWW);
@@ -1632,11 +1719,48 @@ i*)
         (O H, G Wp, G Wm), Dim5_Scalar_Vector_Vector_U 1, G_HWW_u
       ]
 
+    let anomalous_dim6_gauge_higgs =
+      [ (O H, G Z, G Z), Scalar_Vector_Vector 1, G_HZZ6_V3;
+        (O H, G Z, G Z), Dim6_Scalar_Vector_Vector_D 1, G_HZZ6_D;
+        (O H, G Z, G Z), Dim6_Scalar_Vector_Vector_DP 1, G_HZZ6_DP;
+        (O H, G Z, G Z), Scalar_Vector_Vector_t 1, G_HZZ6_PB;
+        (O H, G Ga, G Z), Dim6_HAZ_D 1, G_HGaZ6_D;
+        (O H, G Ga, G Z), Dim6_HAZ_DP 1, G_HGaZ6_DP;
+        (O H, G Ga, G Z), Scalar_Vector_Vector_t 1, G_HGaZ6_PB;
+        (O H, G Ga, G Ga), Scalar_Vector_Vector_t 1, G_HGaGa6;
+        (O H, G Wm, G Wp), Dim6_Scalar_Vector_Vector_D 1, G_HWW_6_D;
+        (O H, G Wm, G Wp), Dim6_Scalar_Vector_Vector_DP 1, G_HWW_6_DP
+      ]
+
     let anomalous_gauge_higgs4 =
       []
 
+    let anomalous_dim6_gauge_higgs4 = 
+      [(G Ga, O H, G Wm, G Wp), Dim6_AHWW_DPB 1, Anom_Dim6_AHWW_DPB;
+       (G Ga, O H, G Wm, G Wp), Dim6_AHWW_DPW 1, Anom_Dim6_AHWW_DPW;
+       (G Ga, O H, G Wm, G Wp), Dim6_AHWW_DW 1, Anom_Dim6_AHWW_DW;
+       (O H, G Wm, G Wp, G Z), Dim6_HWWZ_DW 1, Anom_Dim6_HWWZ_DW;
+       (O H, G Wm, G Wp, G Z), Dim6_HWWZ_DDPW 1, Anom_Dim6_HWWZ_DDPW;
+       (O H, G Wm, G Wp, G Z), Dim6_HWWZ_DPW 1, Anom_Dim6_HWWZ_DPW;
+       (O H, G Wm, G Wp, G Z), Dim6_HWWZ_DPB 1, Anom_Dim6_HWWZ_DPB;
+       (G Ga, O H, O H, G Z), Dim6_AHHZ_D 1, Anom_Dim6_AHHZ_D;
+       (G Ga, O H, O H, G Z), Dim6_AHHZ_DP 1, Anom_Dim6_AHHZ_DP;
+       (G Ga, O H, O H, G Z), Dim6_AHHZ_PB 1, Anom_Dim6_AHHZ_PB;
+       (O H, O H, G Ga, G Ga), Dim6_Scalar2_Vector2_PB 1, Anom_Dim6_HHAA;
+       (O H, O H, G Wm, G Wp), Dim6_Scalar2_Vector2_D 1, Anom_Dim6_HHWW_DW;
+       (O H, O H, G Wm, G Wp), Dim6_Scalar2_Vector2_DP 1, Anom_Dim6_HHWW_DPW;
+       (O H, O H, G Z, G Z), Dim6_HHZZ_T 1, Anom_Dim6_HHZZ_T;
+       (O H, O H, G Z, G Z), Dim6_Scalar2_Vector2_D 1, Anom_Dim6_HHZZ_D; 
+       (O H, O H, G Z, G Z), Dim6_Scalar2_Vector2_DP 1, Anom_Dim6_HHZZ_DP;
+       (O H, O H, G Z, G Z), Dim6_Scalar2_Vector2_PB 1, Anom_Dim6_HHZZ_PB
+      ]
+
     let anomalous_higgs =
       []
+
+    let anomalous_dim6_higgs =
+      [(O H, O H, O H), Scalar_Scalar_Scalar 1, Dim6_vev3;
+       (O H, O H, O H), Dim6_HHH 1, Dim6_Cphi ]
 
     let higgs_triangle_vertices = 
       if Flags.higgs_triangle then
@@ -1649,29 +1773,41 @@ i*)
     let anomalous_higgs4 =
       []
 
+    let anomalous_dim6_higgs4 = 
+      [(O H, O H, O H, O H), Scalar4 1, Anom_Dim6_H4_v2; 
+       (O H, O H, O H, O H), Dim6_H4_P2 1, Anom_Dim6_H4_P2]
+
     let gauge_higgs =
       if Flags.higgs_anom then
         standard_gauge_higgs @ anomalous_gauge_higgs
+      else if Flags.dim6 then
+        standard_gauge_higgs @ anomalous_dim6_gauge_higgs
       else
-        standard_gauge_higgs
+	standard_gauge_higgs
 
     let gauge_higgs4 =
       if Flags.higgs_anom then
         standard_gauge_higgs4 @ anomalous_gauge_higgs4
+      else if Flags.dim6 then
+        standard_gauge_higgs4 @ anomalous_dim6_gauge_higgs4
       else
-        standard_gauge_higgs4
+	standard_gauge_higgs4
 
     let higgs =
       if Flags.higgs_anom then
         standard_higgs @ anomalous_higgs
+      else if Flags.dim6 then
+        standard_higgs @ anomalous_dim6_higgs
       else
-        standard_higgs
+	standard_higgs
 
     let higgs4 =
       if Flags.higgs_anom then
         standard_higgs4 @ anomalous_higgs4
+      else if Flags.dim6 then
+        standard_higgs4 @ anomalous_dim6_higgs4
       else
-        standard_higgs4
+	standard_higgs4
 
     let goldstone_vertices =
       [ ((O Phi0, G Wm, G Wp), Scalar_Vector_Vector 1, I_G_ZWW);
@@ -2297,6 +2433,39 @@ effective operators:
       | Width f -> "width" ^ flavor_symbol f
       | K_Matrix_Coeff i -> "kc" ^ string_of_int i
       | K_Matrix_Pole i -> "kp" ^ string_of_int i
+      | G_HZZ6_V3 -> "ghzz6v3" | G_HZZ6_D ->"ghzz6d"
+      | G_HZZ6_DP ->"ghzz6dp" | G_HZZ6_PB ->"ghzz6pb"
+      | G_HGaZ6_D -> "ghaz6d" | G_HGaZ6_DP -> "ghaz6dp"
+      | G_HGaZ6_PB -> "ghaz6pb" | G_HGaGa6 -> "ghgaga6"
+      | G_HWW_6_D -> "ghww6d" | G_HWW_6_DP ->"ghww6dp"
+      | I_Dim6_AWW_Gauge -> "dim6awwgauge" | I_Dim6_AWW_GGG -> "dim6awwggg"
+      | I_Dim6_AWW_DP -> "dim6awwdp" | I_Dim6_AWW_DW -> "dim6awwdw"
+      | I_Dim6_WWZ_W -> "dim6wwzw" | I_Dim6_WWZ_DPWDW -> "dim6wwzdpwdw"
+      | I_Dim6_WWZ_DW -> "dim6wwzdw" | I_Dim6_WWZ_D -> "dim6wwzd"
+      | Dim6_vev3 -> "dim6vev3" | Dim6_Cphi -> "dim6cphi"
+(*i      | I_Dim6_GGG_G -> "dim6gggg" | I_Dim6_GGG_CG -> "dim6gggcg"  i*)
+      | Anom_Dim6_H4_v2 -> "adim6h4v2" | Anom_Dim6_H4_P2 -> "adim6h4p2"
+      | Anom_Dim6_AHWW_DPB -> "adim6ahwwdpb"
+      | Anom_Dim6_AHWW_DPW -> "adim6ahwwdpw"
+      | Anom_Dim6_AHWW_DW -> "adim6ahwwdw"
+      | Anom_Dim6_AAWW_DW -> "adim6aawwdw" | Anom_Dim6_AAWW_W -> "adim6aawww"
+      | Anom_Dim6_HHWW_DW -> "adim6hhwwdw"
+      | Anom_Dim6_HHWW_DPW -> "adim6hhwwdpw" 
+      | Anom_Dim6_HWWZ_DW -> "adim6hwwzdw"
+      | Anom_Dim6_HWWZ_DDPW -> "adim6hwwzddpw" 
+      | Anom_Dim6_HWWZ_DPW -> "adim6hwwzdpw"
+      | Anom_Dim6_HWWZ_DPB -> "adim6hwwzdpb"
+      | Anom_Dim6_AHHZ_D -> "adim6ahhzd" | Anom_Dim6_AHHZ_DP -> "adim6ahhzdp" 
+      | Anom_Dim6_AHHZ_PB -> "adim6ahhzpb"
+      | Anom_Dim6_AZWW_W -> "adim6azwww"
+      | Anom_Dim6_AZWW_DWDPW -> "adim6azwwdwdpw"
+      | Anom_Dim6_WWWW_W -> "adim6wwwww"
+      | Anom_Dim6_WWWW_DWDPW -> "adim6wwwwdwdpw"
+      | Anom_Dim6_WWZZ_W -> "adim6wwzzw"
+      | Anom_Dim6_WWZZ_DWDPW -> "adim6wwzzdwdpw"
+      | Anom_Dim6_HHAA -> "adim6hhaa"
+      | Anom_Dim6_HHZZ_D -> "adim6hhzzd" | Anom_Dim6_HHZZ_DP -> "adim6hhzzdp" 
+      | Anom_Dim6_HHZZ_PB -> "adim6hhzzpb" | Anom_Dim6_HHZZ_T -> "adim6hhzzt"
 
   end
 
@@ -2632,12 +2801,4 @@ module Groves (M : Model.Gauge) : Model.Gauge with module Ch = M.Ch =
 (* \thocwmodulesection{MSM With Cloned Families} *)
 
 module SM_clones = Groves(SM(SM_no_anomalous))
-
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  End:
-i*)
 

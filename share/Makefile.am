@@ -54,6 +54,7 @@ dist_models_DATA = \
   models/Simplest_univ.mdl \
   models/SM_ac_CKM.mdl \
   models/SM_ac.mdl \
+  models/SM_dim6.mdl \
   models/SM_CKM.mdl \
   models/SM_rx.mdl \
   models/SM_ul.mdl \
