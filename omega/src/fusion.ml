@@ -1,4 +1,4 @@
-(* $Id: fusion.ml 7367 2015-11-13 17:28:39Z jr_reuter $
+(* $Id: fusion.ml 7377 2015-11-20 15:59:02Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -24,8 +24,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Fusion" ["General Fusions"]
-    { RCS.revision = "$Revision: 7367 $";
-      RCS.date = "$Date: 2015-11-13 18:28:39 +0100 (Fri, 13 Nov 2015) $";
+    { RCS.revision = "$Revision: 7377 $";
+      RCS.date = "$Date: 2015-11-20 16:59:02 +0100 (Fri, 20 Nov 2015) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/fusion.ml $" }
@@ -2367,11 +2367,3 @@ i*)
         constraints = None }
 
   end
-
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  End:
-i*)
