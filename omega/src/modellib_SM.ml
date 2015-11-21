@@ -1,4 +1,4 @@
-(* $Id: modellib_SM.ml 7372 2015-11-18 18:07:59Z jr_reuter $
+(* $Id: modellib_SM.ml 7378 2015-11-20 16:08:49Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -25,8 +25,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modellib_SM" ["Lagragians"]
-    { RCS.revision = "$Revision: 7372 $";
-      RCS.date = "$Date: 2015-11-18 19:07:59 +0100 (Wed, 18 Nov 2015) $";
+    { RCS.revision = "$Revision: 7378 $";
+      RCS.date = "$Date: 2015-11-20 17:08:49 +0100 (Fri, 20 Nov 2015) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_SM.ml $" }
@@ -693,9 +693,10 @@ module SM (Flags : SM_flags) =
         "cancel_widths", Arg.Unit (fun () -> default_width := Vanishing),
         "use vanishing width"]
 
-    type f_aux_top = TTGG | TBWA | TBWZ | TTWW | BBWW |   (*i top auxiliary field "flavors" i*)
-                     QGUG | QBUB | QW | DL | DR |
-                     QUQD1L | QUQD1R | QUQD8L | QUQD8R
+    type f_aux_top = TTGG | TBWA | TBWZ | TTWW | BBWW 
+		     | TCGG  (*i top auxiliary field "flavors" i*)
+                     | QGUG | QBUB | QW | DL | DR 
+                     | QUQD1L | QUQD1R | QUQD8L | QUQD8R
 
     type matter_field = L of int | N of int | U of int | D of int
     type gauge_boson = Ga | Wp | Wm | Z | Gl
@@ -725,9 +726,11 @@ module SM (Flags : SM_flags) =
     let family n = List.map matter_field [ L n; N n; U n; D n ]
 
     let rec aux_top_flavors (f,l,co,ch) = List.append
-      ( List.map other [ Aux_top(l,co,ch/2,true,f); Aux_top(l,co,ch/2,false,f) ] )
+      ( List.map other [ Aux_top (l,co,ch/2,true,f); 
+			 Aux_top (l,co,ch/2,false,f) ] )
       ( if ch > 1 then List.append
-          ( List.map other [ Aux_top(l,co,-ch/2,true,f); Aux_top(l,co,-ch/2,false,f) ] )
+          ( List.map other [ Aux_top (l,co,-ch/2,true,f); 
+			     Aux_top (l,co,-ch/2,false,f) ] )
           ( aux_top_flavors (f,l,co,(ch-2)) )
         else [] )
 
@@ -742,7 +745,8 @@ module SM (Flags : SM_flags) =
     let flavors () = List.append
       ( ThoList.flatmap snd (external_flavors ()) )
       ( ThoList.flatmap aux_top_flavors
-         [ (TTGG,2,1,1); (TBWA,2,0,2); (TBWZ,2,0,2); (TTWW,2,0,1); (BBWW,2,0,1);
+         [ (TTGG,2,1,1); (TCGG,2,1,1); (TBWA,2,0,2); (TBWZ,2,0,2); 
+	   (TTWW,2,0,1); (BBWW,2,0,1);
            (QGUG,1,1,1); (QBUB,1,0,1); (QW,1,0,3); (DL,0,0,3); (DR,0,0,3);
            (QUQD1L,0,0,3); (QUQD1R,0,0,3); (QUQD8L,0,1,3); (QUQD8R,0,1,3) ] )
 
@@ -880,8 +884,13 @@ module SM (Flags : SM_flags) =
       | -3 -> [ 0//1;  0//1; -1//1]
       |  n -> invalid_arg ("SM.generation': " ^ string_of_int n)
 
+(* Generation is not a good quantum number for models with flavor mixing, 
+   i.e. if CKM mixing is present. Also, for the FCNC vertices implemented
+   in the SM variant with anomalous top couplings it is not a valid
+   symmetry. *)
+
     let generation f =
-      if Flags.ckm_present then
+      if (Flags.ckm_present || Flags.top_anom) then
         []
       else
         match f with
@@ -934,15 +943,15 @@ module SM (Flags : SM_flags) =
       | Sinthw | Costhw | E | G_weak | I_G_weak | Vev
       | Q_lepton | Q_up | Q_down | G_CC | G_CCQ of int*int
       | G_NC_neutrino | G_NC_lepton | G_NC_up | G_NC_down 
-      | G_TVA_ttA | G_TVA_bbA 
-      | G_VLR_ttZ | G_TVA_ttZ | G_TVA_bbZ 
+      | G_TVA_ttA | G_TVA_bbA | G_TVA_tcA | G_TVA_tcZ 
+      | G_VLR_ttZ | G_TVA_ttZ | G_VLR_tcZ | G_TVA_bbZ 
       | VA_ILC_ttA | VA_ILC_ttZ
       | G_VLR_btW | G_VLR_tbW
       | G_TLR_btW | G_TRL_tbW
       | G_TLR_btWZ | G_TRL_tbWZ
       | G_TLR_btWA | G_TRL_tbWA
       | G_TVA_ttWW | G_TVA_bbWW
-      | G_TVA_ttG | G_TVA_ttGG
+      | G_TVA_ttG | G_TVA_ttGG | G_TVA_tcG | G_TVA_tcGG
       | G_SP_ttH
       | G_VLR_qGuG | G_VLR_qBuB
       | G_VLR_qBuB_u | G_VLR_qBuB_d | G_VLR_qBuB_e | G_VL_qBuB_n
@@ -1021,8 +1030,8 @@ module SM (Flags : SM_flags) =
       | I_G1_minus_kappa_minus_G4_ZWW | I_kappa5_AWW 
       | I_kappa5_ZWW | G5_AWW | G5_ZWW 
       | I_lambda_AWW | I_lambda_ZWW | I_lambda5_AWW 
-      | I_lambda5_ZWW | G_TVA_ttA | G_TVA_bbA 
-      | G_VLR_ttZ | G_TVA_ttZ | G_TVA_bbZ 
+      | I_lambda5_ZWW | G_TVA_ttA | G_TVA_bbA | G_TVA_tcA
+      | G_VLR_ttZ | G_TVA_ttZ | G_VLR_tcZ | G_TVA_tcZ | G_TVA_bbZ 
       | VA_ILC_ttA | VA_ILC_ttZ
       | G_VLR_btW | G_VLR_tbW | G_TLR_btW | G_TRL_tbW
       | G_TLR_btWA | G_TRL_tbWA | G_TLR_btWZ | G_TRL_tbWZ	
@@ -1058,7 +1067,8 @@ module SM (Flags : SM_flags) =
       | D_Alpha_WWWW2_S | D_Alpha_WWWW2_T | D_Alpha_ZZWW0_S 
       | D_Alpha_ZZWW0_T | D_Alpha_ZZWW1_S | D_Alpha_ZZWW1_T
       | D_Alpha_ZZWW1_U | D_Alpha_ZZZZ_S | D_Alpha_ZZZZ_T -> (0,2)
-      | Gs | I_Gs | G_TVA_ttG | G_TVA_ttGG | G_VLR_qGuG 
+      | Gs | I_Gs | G_TVA_ttG | G_TVA_ttGG | G_TVA_tcG | G_TVA_tcGG
+      | G_VLR_qGuG 
       | C_quqd1R_bt | C_quqd1R_tb | C_quqd1L_bt | C_quqd1L_tb
       | C_quqd8R_bt | C_quqd8R_tb | C_quqd8L_bt | C_quqd8L_tb -> (1,0)
       | G2 | G_Hgg -> (2,0)
@@ -1821,11 +1831,19 @@ i*)
      \Delta\mathcal{L}_{tt\gamma} =
         - e \frac{\upsilon}{\Lambda^2}
             \bar{t} i\sigma^{\mu\nu} k_\nu (d_V(k^2) + i d_A(k^2) \gamma_5) t A_\mu
-   \end{equation} *)
+   \end{equation}
+   \begin{equation}
+     \Delta\mathcal{L}_{tc\gamma} =
+        - e \frac{\upsilon}{\Lambda^2}
+            \bar{t} i\sigma^{\mu\nu} k_\nu (d_V(k^2) + i d_A(k^2) \gamma_5) c A_\mu \,\text{+\,h.c.}
+   \end{equation}
+ *)
 
     let anomalous_ttA =
       if Flags.top_anom then
-        [ ((M (U (-3)), G Ga, M (U 3)), FBF (1, Psibar, TVAM, Psi), G_TVA_ttA) ]
+        [ ((M (U (-3)), G Ga, M (U 3)), FBF (1, Psibar, TVAM, Psi), G_TVA_ttA);
+	  ((M (U (-3)), G Ga, M (U 2)), FBF (1, Psibar, TVAM, Psi), G_TVA_tcA);
+	  ((M (U (-2)), G Ga, M (U 3)), FBF (1, Psibar, TVAM, Psi), G_TVA_tcA) ]
       else
         []
 
@@ -1852,11 +1870,20 @@ i*)
         - g_s \frac{\upsilon}{\Lambda^2}
             \bar{t}\lambda^a i\sigma^{\mu\nu}k_\nu
                 (d_V(k^2)+id_A(k^2)\gamma_5)tG^a_\mu
-   \end{equation} *)
+   \end{equation} 
+   \begin{equation}
+     \Delta\mathcal{L}_{tcg} =
+        - g_s \frac{\upsilon}{\Lambda^2}
+            \bar{t}\lambda^a i\sigma^{\mu\nu}k_\nu
+                (d_V(k^2)+id_A(k^2)\gamma_5)cG^a_\mu\,\text{+\,h.c.}
+   \end{equation} 
+*)
 
     let anomalous_ttG =
       if Flags.top_anom then
-        [ ((M (U (-3)), G Gl, M (U 3)), FBF (1, Psibar, TVAM, Psi), G_TVA_ttG) ]
+        [ ((M (U (-3)), G Gl, M (U 3)), FBF (1, Psibar, TVAM, Psi), G_TVA_ttG);
+	  ((M (U (-3)), G Gl, M (U 2)), FBF (1, Psibar, TVAM, Psi), G_TVA_tcG);
+	  ((M (U (-2)), G Gl, M (U 3)), FBF (1, Psibar, TVAM, Psi), G_TVA_tcG) ]
       else
         []
 
@@ -1866,12 +1893,24 @@ i*)
               \bar{t} \fmslash{Z} (X_L(k^2) P_L + X_R(k^2) P_R) t
             + \bar{t}\frac{i\sigma^{\mu\nu}k_\nu}{m_Z}
                   (d_V(k^2)+id_A(k^2)\gamma_5)tZ_\mu\right\rbrack
+   \end{equation}
+   \begin{equation}
+     \Delta\mathcal{L}_{tcZ} =
+        - \frac{g}{2 c_W} \frac{\upsilon^2}{\Lambda^2}\left\lbrack
+              \bar{t} \fmslash{Z} (X_L(k^2) P_L + X_R(k^2) P_R) c
+            + \bar{t}\frac{i\sigma^{\mu\nu}k_\nu}{m_Z}
+                  (d_V(k^2)+id_A(k^2)\gamma_5)cZ_\mu\right\rbrack
+                     \,\text{+\,h.c.}
    \end{equation} *)
 
     let anomalous_ttZ =
       if Flags.top_anom then
         [ ((M (U (-3)), G Z, M (U 3)), FBF (1, Psibar, VLRM, Psi), G_VLR_ttZ);
-          ((M (U (-3)), G Z, M (U 3)), FBF (1, Psibar, TVAM, Psi), G_TVA_ttZ) ]
+	  ((M (U (-3)), G Z, M (U 2)), FBF (1, Psibar, VLRM, Psi), G_VLR_tcZ);
+	  ((M (U (-2)), G Z, M (U 3)), FBF (1, Psibar, VLRM, Psi), G_VLR_tcZ);
+          ((M (U (-3)), G Z, M (U 3)), FBF (1, Psibar, TVAM, Psi), G_TVA_ttZ);
+	  ((M (U (-2)), G Z, M (U 3)), FBF (1, Psibar, TVAM, Psi), G_TVA_tcZ);
+	  ((M (U (-3)), G Z, M (U 2)), FBF (1, Psibar, TVAM, Psi), G_TVA_tcZ) ]
       else
         []
 
@@ -1900,7 +1939,7 @@ i*)
             \bar{b}\fmslash{W}^-(V_L(k^2) P_L+V_R(k^2) P_R) t
           + \bar{b}\frac{i\sigma^{\mu\nu}k_\nu}{m_W}
                 (g_L(k^2)P_L+g_R(k^2)P_R)tW^-_\mu\right\rbrack
-        + \textnormal{H.c.}
+          \,\text{+\,h.c.}
    \end{equation} *)
 
     let anomalous_tbW =
@@ -1930,12 +1969,28 @@ effective operators:
         - \frac{g_s^2}{2} f_{abc} \frac{\upsilon}{\Lambda^2}
             \bar{t} \lambda^a \sigma^{\mu\nu}
                 (d_V(k^2)+id_A(k^2)\gamma_5)t G^b_\mu G^c_\nu
-   \end{equation} *)
+   \end{equation}
+   \begin{equation}
+     \Delta\mathcal{L}_{tcgg} =
+        - \frac{g_s^2}{2} f_{abc} \frac{\upsilon}{\Lambda^2}
+            \bar{t} \lambda^a \sigma^{\mu\nu}
+                (d_V(k^2)+id_A(k^2)\gamma_5)c G^b_\mu G^c_\nu           
+                   \,\text{+\,h.c.}
+   \end{equation}
+*)
 
     let anomalous_ttGG =
       if Flags.top_anom then
-        [ ((M (U (-3)), O (Aux_top (2,1,0,true,TTGG)), M (U 3)), FBF (1, Psibar, TVA, Psi), G_TVA_ttGG);
-          ((O (Aux_top (2,1,0,false,TTGG)), G Gl, G Gl), Aux_Gauge_Gauge 1, I_Gs) ]
+        [ ((M (U (-3)), O (Aux_top (2,1,0,true,TTGG)), M (U 3)), 
+	      FBF (1, Psibar, TVA, Psi), G_TVA_ttGG);
+	  ((M (U (-3)), O (Aux_top (2,1,0,true,TCGG)), M (U 2)), 
+	      FBF (1, Psibar, TVA, Psi), G_TVA_tcGG);
+	  ((M (U (-2)), O (Aux_top (2,1,0,true,TCGG)), M (U 3)), 
+	      FBF (1, Psibar, TVA, Psi), G_TVA_tcGG);
+          ((O (Aux_top (2,1,0,false,TTGG)), G Gl, G Gl), 
+	      Aux_Gauge_Gauge 1, I_Gs);
+          ((O (Aux_top (2,1,0,false,TCGG)), G Gl, G Gl), 
+	      Aux_Gauge_Gauge 1, I_Gs) ]
       else
         []
 
@@ -1944,7 +1999,7 @@ effective operators:
         - i\sin\theta_w \frac{g^2}{2\sqrt{2}} \frac{\upsilon^2}{\Lambda^2}\left\lbrack
             \bar{b}\frac{\sigma^{\mu\nu}}{m_W}
                 (g_L(k^2)P_L+g_R(k^2)P_R)t A_\mu W^-_\nu \right\rbrack
-        + \textnormal{H.c.}
+           \,\text{+\,h.c.}
    \end{equation} *)
 
     let anomalous_tbWA =
@@ -1961,15 +2016,19 @@ effective operators:
         - i\cos\theta_w \frac{g^2}{2\sqrt{2}} \frac{\upsilon^2}{\Lambda^2}\left\lbrack
             \bar{b}\frac{\sigma^{\mu\nu}}{m_W}
                 (g_L(k^2)P_L+g_R(k^2)P_R)t Z_\mu W^-_\nu \right\rbrack
-        + \textnormal{H.c.}
+               \,\text{+\,h.c.}
    \end{equation} *)
 
     let anomalous_tbWZ =
       if Flags.top_anom then
-        [ ((M (D (-3)), O (Aux_top (2,0,-1,true,TBWZ)), M (U 3)), FBF (1, Psibar, TLR, Psi), G_TLR_btWZ);
-          ((O (Aux_top (2,0,1,false,TBWZ)), G Z, G Wm), Aux_Gauge_Gauge 1, I_G_weak);
-          ((M (U (-3)), O (Aux_top (2,0,1,true,TBWZ)), M (D 3)), FBF (1, Psibar, TRL, Psi), G_TRL_tbWZ);
-          ((O (Aux_top (2,0,-1,false,TBWZ)), G Wp, G Z), Aux_Gauge_Gauge 1, I_G_weak) ]
+        [ ((M (D (-3)), O (Aux_top (2,0,-1,true,TBWZ)), M (U 3)), 
+	      FBF (1, Psibar, TLR, Psi), G_TLR_btWZ);
+          ((O (Aux_top (2,0,1,false,TBWZ)), G Z, G Wm), 
+	      Aux_Gauge_Gauge 1, I_G_weak);
+          ((M (U (-3)), O (Aux_top (2,0,1,true,TBWZ)), M (D 3)), 
+	      FBF (1, Psibar, TRL, Psi), G_TRL_tbWZ);
+          ((O (Aux_top (2,0,-1,false,TBWZ)), G Wp, G Z), 
+	      Aux_Gauge_Gauge 1, I_G_weak) ]
       else
         []
 
@@ -2160,32 +2219,60 @@ effective operators:
       | "A" -> G Ga | "Z" | "Z0" -> G Z
       | "W+" -> G Wp | "W-" -> G Wm
       | "H" -> O H
-      | "Aux_t_ttGG0" -> O (Aux_top (2,1, 0,true,TTGG)) | "Aux_ttGG0" -> O (Aux_top (2,1, 0,false,TTGG))
-      | "Aux_t_tbWA+" -> O (Aux_top (2,0, 1,true,TBWA)) | "Aux_tbWA+" -> O (Aux_top (2,0, 1,false,TBWA))
-      | "Aux_t_tbWA-" -> O (Aux_top (2,0,-1,true,TBWA)) | "Aux_tbWA-" -> O (Aux_top (2,0,-1,false,TBWA))
-      | "Aux_t_tbWZ+" -> O (Aux_top (2,0, 1,true,TBWZ)) | "Aux_tbWZ+" -> O (Aux_top (2,0, 1,false,TBWZ))
-      | "Aux_t_tbWZ-" -> O (Aux_top (2,0,-1,true,TBWZ)) | "Aux_tbWZ-" -> O (Aux_top (2,0,-1,false,TBWZ))
-      | "Aux_t_ttWW0" -> O (Aux_top (2,0, 0,true,TTWW)) | "Aux_ttWW0" -> O (Aux_top (2,0, 0,false,TTWW))
-      | "Aux_t_bbWW0" -> O (Aux_top (2,0, 0,true,BBWW)) | "Aux_bbWW0" -> O (Aux_top (2,0, 0,false,BBWW))
-      | "Aux_t_qGuG0" -> O (Aux_top (1,1, 0,true,QGUG)) | "Aux_qGuG0" -> O (Aux_top (1,1, 0,false,QGUG))
-      | "Aux_t_qBuB0" -> O (Aux_top (1,0, 0,true,QBUB)) | "Aux_qBuB0" -> O (Aux_top (1,0, 0,false,QBUB))
-      | "Aux_t_qW0"   -> O (Aux_top (1,0, 0,true,QW))   | "Aux_qW0"   -> O (Aux_top (1,0, 0,false,QW))
-      | "Aux_t_qW+"   -> O (Aux_top (1,0, 1,true,QW))   | "Aux_qW+"   -> O (Aux_top (1,0, 1,false,QW))
-      | "Aux_t_qW-"   -> O (Aux_top (1,0,-1,true,QW))   | "Aux_qW-"   -> O (Aux_top (1,0,-1,false,QW))
-      | "Aux_t_dL0"   -> O (Aux_top (0,0, 0,true,DL))   | "Aux_dL0"   -> O (Aux_top (0,0, 0,false,DL))
-      | "Aux_t_dL+"   -> O (Aux_top (0,0, 1,true,DL))   | "Aux_dL+"   -> O (Aux_top (0,0, 1,false,DL))
-      | "Aux_t_dL-"   -> O (Aux_top (0,0,-1,true,DL))   | "Aux_dL-"   -> O (Aux_top (0,0,-1,false,DL))
-      | "Aux_t_dR0"   -> O (Aux_top (0,0, 0,true,DR))   | "Aux_dR0"   -> O (Aux_top (0,0, 0,false,DR))
-      | "Aux_t_dR+"   -> O (Aux_top (0,0, 1,true,DR))   | "Aux_dR+"   -> O (Aux_top (0,0, 1,false,DR))
-      | "Aux_t_dR-"   -> O (Aux_top (0,0,-1,true,DR))   | "Aux_dR-"   -> O (Aux_top (0,0,-1,false,DR))
-      | "Aux_t_quqd1L+" -> O (Aux_top (0,0, 1,true,QUQD1L)) | "Aux_quqd1L+" -> O (Aux_top (0,0, 1,false,QUQD1L))
-      | "Aux_t_quqd1L-" -> O (Aux_top (0,0,-1,true,QUQD1L)) | "Aux_quqd1L-" -> O (Aux_top (0,0,-1,false,QUQD1L))
-      | "Aux_t_quqd1R+" -> O (Aux_top (0,0, 1,true,QUQD1R)) | "Aux_quqd1R+" -> O (Aux_top (0,0, 1,false,QUQD1R))
-      | "Aux_t_quqd1R-" -> O (Aux_top (0,0,-1,true,QUQD1R)) | "Aux_quqd1R-" -> O (Aux_top (0,0,-1,false,QUQD1R))
-      | "Aux_t_quqd8L+" -> O (Aux_top (0,1, 1,true,QUQD8L)) | "Aux_quqd8L+" -> O (Aux_top (0,1, 1,false,QUQD8L))
-      | "Aux_t_quqd8L-" -> O (Aux_top (0,1,-1,true,QUQD8L)) | "Aux_quqd8L-" -> O (Aux_top (0,1,-1,false,QUQD8L))
-      | "Aux_t_quqd8R+" -> O (Aux_top (0,1, 1,true,QUQD8R)) | "Aux_quqd8R+" -> O (Aux_top (0,1, 1,false,QUQD8R))
-      | "Aux_t_quqd8R-" -> O (Aux_top (0,1,-1,true,QUQD8R)) | "Aux_quqd8R-" -> O (Aux_top (0,1,-1,false,QUQD8R))
+      | "Aux_t_ttGG0" -> O (Aux_top (2,1, 0,true,TTGG)) 
+      | "Aux_ttGG0" -> O (Aux_top (2,1, 0,false,TTGG))
+      | "Aux_t_tcGG0" -> O (Aux_top (2,1, 0,true,TCGG)) 
+      | "Aux_tcGG0" -> O (Aux_top (2,1, 0,false,TCGG))
+      | "Aux_t_tbWA+" -> O (Aux_top (2,0, 1,true,TBWA)) 
+      | "Aux_tbWA+" -> O (Aux_top (2,0, 1,false,TBWA))
+      | "Aux_t_tbWA-" -> O (Aux_top (2,0,-1,true,TBWA)) 
+      | "Aux_tbWA-" -> O (Aux_top (2,0,-1,false,TBWA))
+      | "Aux_t_tbWZ+" -> O (Aux_top (2,0, 1,true,TBWZ)) 
+      | "Aux_tbWZ+" -> O (Aux_top (2,0, 1,false,TBWZ))
+      | "Aux_t_tbWZ-" -> O (Aux_top (2,0,-1,true,TBWZ)) 
+      | "Aux_tbWZ-" -> O (Aux_top (2,0,-1,false,TBWZ))
+      | "Aux_t_ttWW0" -> O (Aux_top (2,0, 0,true,TTWW)) 
+      | "Aux_ttWW0" -> O (Aux_top (2,0, 0,false,TTWW))
+      | "Aux_t_bbWW0" -> O (Aux_top (2,0, 0,true,BBWW)) 
+      | "Aux_bbWW0" -> O (Aux_top (2,0, 0,false,BBWW))
+      | "Aux_t_qGuG0" -> O (Aux_top (1,1, 0,true,QGUG)) 
+      | "Aux_qGuG0" -> O (Aux_top (1,1, 0,false,QGUG))
+      | "Aux_t_qBuB0" -> O (Aux_top (1,0, 0,true,QBUB)) 
+      | "Aux_qBuB0" -> O (Aux_top (1,0, 0,false,QBUB))
+      | "Aux_t_qW0"   -> O (Aux_top (1,0, 0,true,QW))   
+      | "Aux_qW0"   -> O (Aux_top (1,0, 0,false,QW))
+      | "Aux_t_qW+"   -> O (Aux_top (1,0, 1,true,QW))   
+      | "Aux_qW+"   -> O (Aux_top (1,0, 1,false,QW))
+      | "Aux_t_qW-"   -> O (Aux_top (1,0,-1,true,QW))   
+      | "Aux_qW-"   -> O (Aux_top (1,0,-1,false,QW))
+      | "Aux_t_dL0"   -> O (Aux_top (0,0, 0,true,DL))   
+      | "Aux_dL0"   -> O (Aux_top (0,0, 0,false,DL))
+      | "Aux_t_dL+"   -> O (Aux_top (0,0, 1,true,DL))   
+      | "Aux_dL+"   -> O (Aux_top (0,0, 1,false,DL))
+      | "Aux_t_dL-"   -> O (Aux_top (0,0,-1,true,DL))   
+      | "Aux_dL-"   -> O (Aux_top (0,0,-1,false,DL))
+      | "Aux_t_dR0"   -> O (Aux_top (0,0, 0,true,DR))   
+      | "Aux_dR0"   -> O (Aux_top (0,0, 0,false,DR))
+      | "Aux_t_dR+"   -> O (Aux_top (0,0, 1,true,DR))   
+      | "Aux_dR+"   -> O (Aux_top (0,0, 1,false,DR))
+      | "Aux_t_dR-"   -> O (Aux_top (0,0,-1,true,DR))   
+      | "Aux_dR-"   -> O (Aux_top (0,0,-1,false,DR))
+      | "Aux_t_quqd1L+" -> O (Aux_top (0,0, 1,true,QUQD1L)) 
+      | "Aux_quqd1L+" -> O (Aux_top (0,0, 1,false,QUQD1L))
+      | "Aux_t_quqd1L-" -> O (Aux_top (0,0,-1,true,QUQD1L)) 
+      | "Aux_quqd1L-" -> O (Aux_top (0,0,-1,false,QUQD1L))
+      | "Aux_t_quqd1R+" -> O (Aux_top (0,0, 1,true,QUQD1R)) 
+      | "Aux_quqd1R+" -> O (Aux_top (0,0, 1,false,QUQD1R))
+      | "Aux_t_quqd1R-" -> O (Aux_top (0,0,-1,true,QUQD1R)) 
+      | "Aux_quqd1R-" -> O (Aux_top (0,0,-1,false,QUQD1R))
+      | "Aux_t_quqd8L+" -> O (Aux_top (0,1, 1,true,QUQD8L)) 
+      | "Aux_quqd8L+" -> O (Aux_top (0,1, 1,false,QUQD8L))
+      | "Aux_t_quqd8L-" -> O (Aux_top (0,1,-1,true,QUQD8L)) 
+      | "Aux_quqd8L-" -> O (Aux_top (0,1,-1,false,QUQD8L))
+      | "Aux_t_quqd8R+" -> O (Aux_top (0,1, 1,true,QUQD8R)) 
+      | "Aux_quqd8R+" -> O (Aux_top (0,1, 1,false,QUQD8R))
+      | "Aux_t_quqd8R-" -> O (Aux_top (0,1,-1,true,QUQD8R)) 
+      | "Aux_quqd8R-" -> O (Aux_top (0,1,-1,false,QUQD8R))
       | _ -> invalid_arg "Modellib.SM.flavor_of_string"
 
     let flavor_to_string = function
@@ -2225,7 +2312,7 @@ effective operators:
           | Aux_top (_,_,ch,n,v) -> "Aux_" ^ (if n then "t_" else "") ^ (
               begin match v with
               | TTGG -> "ttGG" | TBWA -> "tbWA" | TBWZ -> "tbWZ"
-              | TTWW -> "ttWW" | BBWW -> "bbWW"
+              | TTWW -> "ttWW" | BBWW -> "bbWW" | TCGG -> "tcgg"
               | QGUG -> "qGuG" | QBUB -> "qBuB"
               | QW   -> "qW"   | DL   -> "dL"   | DR   -> "dR"
               | QUQD1L -> "quqd1L" | QUQD1R -> "quqd1R"
@@ -2267,15 +2354,18 @@ effective operators:
           begin match f with
           | Phip -> "\\phi^+" | Phim -> "\\phi^-" | Phi0 -> "\\phi^0" 
           | H -> "H"
-          | Aux_top (_,_,ch,n,v) -> "\\textnormal{Aux_" ^ (if n then "t_" else "") ^ (
-              begin match v with
-              | TTGG -> "ttGG" | TBWA -> "tbWA" | TBWZ -> "tbWZ"
-              | TTWW -> "ttWW" | BBWW -> "bbWW"
-              | QGUG -> "qGuG" | QBUB -> "qBuB"
-              | QW   -> "qW"   | DL   -> "dL"   | DR   -> "dR"
-              | QUQD1L -> "quqd1L" | QUQD1R -> "quqd1R"
-              | QUQD8L -> "quqd8L" | QUQD8R -> "quqd8R"
-              end ) ^ ( if ch > 0 then "^+" else if ch < 0 then "^-" else "^0" ) ^ "}"
+          | Aux_top (_,_,ch,n,v) -> 
+	       "\\textnormal{Aux_" ^ (if n then "t_" else "") ^ (
+		 begin match v with
+		 | TTGG -> "ttGG" | TBWA -> "tbWA" | TBWZ -> "tbWZ"
+		 | TTWW -> "ttWW" | BBWW -> "bbWW" | TCGG -> "tcgg"
+		 | QGUG -> "qGuG" | QBUB -> "qBuB"
+		 | QW   -> "qW"   | DL   -> "dL"   | DR   -> "dR"
+		 | QUQD1L -> "quqd1L" | QUQD1R -> "quqd1R"
+		 | QUQD8L -> "quqd8L" | QUQD8R -> "quqd8R"
+		 end ) ^ 
+		 ( if ch > 0 then "^+" else if ch < 0 then 
+		     "^-" else "^0" ) ^ "}"
           end
 
     let flavor_symbol = function
@@ -2303,12 +2393,13 @@ effective operators:
           | Aux_top (_,_,ch,n,v) -> "aux_" ^ (if n then "t_" else "") ^ (
               begin match v with
               | TTGG -> "ttgg" | TBWA -> "tbwa" | TBWZ -> "tbwz"
-              | TTWW -> "ttww" | BBWW -> "bbww"
+              | TTWW -> "ttww" | BBWW -> "bbww" | TCGG -> "tcgg"
               | QGUG -> "qgug" | QBUB -> "qbub"
               | QW   -> "qw"   | DL   -> "dl"   | DR   -> "dr"
               | QUQD1L -> "quqd1l" | QUQD1R -> "quqd1r"
               | QUQD8L -> "quqd8l" | QUQD8R -> "quqd8r"
-              end ) ^ "_" ^ ( if ch > 0 then "p" else if ch < 0 then "m" else "0" )
+              end ) ^ "_" ^ ( if ch > 0 then "p" else 
+		  if ch < 0 then "m" else "0" )
           end
 
     let pdg = function
@@ -2361,7 +2452,9 @@ effective operators:
       | G_NC_lepton -> "gnclep" | G_NC_neutrino -> "gncneu"
       | G_NC_up -> "gncup" | G_NC_down -> "gncdwn"
       | G_TVA_ttA -> "gtva_tta" | G_TVA_bbA -> "gtva_bba" 
-      | G_VLR_ttZ -> "gvlr_ttz" | G_TVA_ttZ -> "gtva_ttz" | G_TVA_bbZ -> "gtva_bbz"
+      | G_VLR_ttZ -> "gvlr_ttz" | G_TVA_ttZ -> "gtva_ttz" 
+      | G_VLR_tcZ -> "gvlr_tcz" | G_TVA_tcZ -> "gtva_tcz"
+      | G_TVA_bbZ -> "gtva_bbz" | G_TVA_tcA -> "gtva_tca"
       | VA_ILC_ttA -> "va_ilc_tta" | VA_ILC_ttZ -> "va_ilc_ttz"
       | G_VLR_btW -> "gvlr_btw" | G_VLR_tbW -> "gvlr_tbw"
       | G_TLR_btW -> "gtlr_btw" | G_TRL_tbW -> "gtrl_tbw"
@@ -2369,6 +2462,7 @@ effective operators:
       | G_TLR_btWZ -> "gtlr_btwz" | G_TRL_tbWZ -> "gtrl_tbwz"
       | G_TVA_ttWW -> "gtva_ttww" | G_TVA_bbWW -> "gtva_bbww"
       | G_TVA_ttG -> "gtva_ttg" | G_TVA_ttGG -> "gtva_ttgg"
+      | G_TVA_tcG -> "gtva_tcg" | G_TVA_tcGG -> "gtva_tcgg"
       | G_SP_ttH -> "gsp_tth"
       | G_VLR_qGuG -> "gvlr_qgug"
       | G_VLR_qBuB -> "gvlr_qbub"
@@ -2376,7 +2470,8 @@ effective operators:
       | G_VLR_qBuB_e -> "gvlr_qbub_e" | G_VL_qBuB_n -> "gvl_qbub_n"
       | G_VL_qW -> "gvl_qw"
       | G_VL_qW_u -> "gvl_qw_u" | G_VL_qW_d -> "gvl_qw_d"
-      | G_SL_DttR -> "gsl_dttr" | G_SR_DttR -> "gsr_dttr" | G_SL_DttL -> "gsl_dttl"
+      | G_SL_DttR -> "gsl_dttr" | G_SR_DttR -> "gsr_dttr" 
+      | G_SL_DttL -> "gsl_dttl"
       | G_SLR_DbtR -> "gslr_dbtr" | G_SL_DbtL -> "gsl_dbtl"
       | C_quqd1R_bt -> "c_quqd1_1" | C_quqd1R_tb -> "conjg(c_quqd1_1)"
       | C_quqd1L_bt -> "conjg(c_quqd1_2)" | C_quqd1L_tb -> "c_quqd1_2"
