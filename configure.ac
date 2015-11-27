@@ -39,7 +39,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl 
 dnl *********************************************************************** 
 dnl Start configuration
-AC_INIT([WHIZARD],[2.2.8])
+AC_INIT([WHIZARD],[2.3.0])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AC_PREREQ([2.65])
 
@@ -53,7 +53,7 @@ AC_MSG_NOTICE([**************************************************************])
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Oct 31 2015"
+PACKAGE_DATE="Mar 31 2016"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
@@ -892,6 +892,11 @@ AC_CONFIG_FILES([share/interfaces/py_whiz_setup.py])
 ### Subdirectory share/SM_tt_threshold_data
 
 AC_CONFIG_FILES([share/SM_tt_threshold_data/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory share/gui
+
+AC_CONFIG_FILES([share/gui/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory tests

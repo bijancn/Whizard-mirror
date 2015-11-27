@@ -151,6 +151,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/models_3.ref \
     unit_tests/ref-output/models_4.ref \
     unit_tests/ref-output/models_5.ref \
+    unit_tests/ref-output/models_6.ref \
     unit_tests/ref-output/auto_components_1.ref \
     unit_tests/ref-output/auto_components_2.ref \
     unit_tests/ref-output/auto_components_3.ref \
