@@ -1,6 +1,6 @@
 ! $Id: parameters.SM_tt_threshold.f90,v 1.4 2006/06/16 13:31:48 kilian Exp $
 !
-! Copyright (C) 1999-2012 by 
+! Copyright (C) 1999-2012 by
 !     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 !     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 !     Juergen Reuter <juergen.reuter@desy.de>
@@ -8,13 +8,13 @@
 !     Fabian Bach <fabian.bach@desy.de> (only this file)
 !
 ! WHIZARD is free software; you can redistribute it and/or modify it
-! under the terms of the GNU General Public License as published by 
+! under the terms of the GNU General Public License as published by
 ! the Free Software Foundation; either version 2, or (at your option)
 ! any later version.
 !
 ! WHIZARD is distributed in the hope that it will be useful, but
 ! WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ! GNU General Public License for more details.
 !
 ! You should have received a copy of the GNU General Public License
@@ -42,7 +42,7 @@ module parameters_sm_tt_threshold
   real(default), public :: qelep, qeup, qedwn
   complex(default), public :: qlep, qup, qdwn, gcc, qw, &
        gzww, gwww, ghww, ghhww, ghzz, ghhzz, &
-       ghbb, ghtt, ghcc, ghtautau, gh3, gh4, ghmm, & 
+       ghbb, ghtt, ghcc, ghtautau, gh3, gh4, ghmm, &
        iqw, igzww, igwww, gw4, gzzww, gazww, gaaww
   complex(default), public :: &
        gccq11 = 0, gccq12 = 0, gccq13 = 0, gccq21 = 0, &
@@ -51,7 +51,7 @@ module parameters_sm_tt_threshold
   complex(default), dimension(2), public :: &
        gncneu, gnclep, gncup, gncdwn
 
-  integer, public :: FF
+  integer, public :: FF, offshell_strategy
 
   public :: import_from_whizard, model_update_alpha_s, &
        ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole, ttv_wtpole, &
@@ -60,7 +60,7 @@ module parameters_sm_tt_threshold
 contains
 
   subroutine import_from_whizard (par_array)
-    real(default), dimension(40), intent(in) :: par_array
+    real(default), dimension(41), intent(in) :: par_array
     type :: parameter_set
        real(default) :: mZ
        real(default) :: mW
@@ -88,6 +88,7 @@ contains
        real(default) :: sh
        real(default) :: sf
        real(default) :: FF
+       real(default) :: offshell_strategy
        real(default) :: v1
        real(default) :: v2
        real(default) :: scan_sqrts_min
@@ -132,20 +133,21 @@ contains
     par%sh     = par_array(24)
     par%sf     = par_array(25)
     par%FF     = par_array(26)
-    par%v1     = par_array(27)
-    par%v2     = par_array(28)
-    par%scan_sqrts_min = par_array(29)
-    par%scan_sqrts_max = par_array(30)
-    par%scan_sqrts_stepsize = par_array(31)
-    par%test   = par_array(32)
-    par%no_pwave = par_array(33)
-    par%mpole_fixed = par_array(34)
-    par%ee     = par_array(35)
-    par%cw     = par_array(36)
-    par%sw     = par_array(37)
-    par%v      = par_array(38)
-    par%mtpole = par_array(39)
-    par%wtop   = par_array(40)
+    par%offshell_strategy = par_array(27)
+    par%v1     = par_array(28)
+    par%v2     = par_array(29)
+    par%scan_sqrts_min = par_array(30)
+    par%scan_sqrts_max = par_array(31)
+    par%scan_sqrts_stepsize = par_array(32)
+    par%test   = par_array(33)
+    par%no_pwave = par_array(34)
+    par%mpole_fixed = par_array(35)
+    par%ee     = par_array(36)
+    par%cw     = par_array(37)
+    par%sw     = par_array(38)
+    par%v      = par_array(39)
+    par%mtpole = par_array(40)
+    par%wtop   = par_array(41)
     mass(1:27) = 0
     width(1:27) = 0
     mass(3) = par%ms
@@ -168,6 +170,7 @@ contains
     width(27) = 0
     wt_inv = par%wt_inv
     FF = par%FF
+    offshell_strategy = par%offshell_strategy
     vev = par%v
     e = par%ee
     sinthw = par%sw
@@ -235,8 +238,8 @@ contains
          (mass(6), width(6), par%m1s, par%Vtb, par%wt_inv, &
           par%alphaemi, par%sw, par%alphas, par%mZ, par%mW, &
           mass(5), par%sh, par%sf, par%nloop, par%FF, &
-          par%v1, par%v2, par%scan_sqrts_min, par%scan_sqrts_max, &
-          par%scan_sqrts_stepsize, mpole_fixed)
+          par%offshell_strategy, par%v1, par%v2, par%scan_sqrts_min, &
+          par%scan_sqrts_max, par%scan_sqrts_stepsize, mpole_fixed)
     call init_threshold_grids (par%test)
   end subroutine import_from_whizard
 

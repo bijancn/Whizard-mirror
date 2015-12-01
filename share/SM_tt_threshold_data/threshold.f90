@@ -275,8 +275,8 @@ contains
              s_OS = table_spin_states_OS(:,hi)
              owf_e_1 = u (mass(11), - p1, s_OS(1))
              owf_e_2 = vbar (mass(11), - p2, s_OS(2))
-             owf_t_3 = ubar (p35**1, p35, s_OS(3))
-             owf_t_4 = v (p46**1, p46, s_OS(4))
+             owf_t_3 = ubar (sqrt(p35*p35), p35, s_OS(3))
+             owf_t_4 = v (sqrt(p46*p46), p46, s_OS(4))
 
              owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
              owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
@@ -289,7 +289,7 @@ contains
              !end if
              ffi_end = 0
              do ffi = 0, ffi_end
-                blob_Z_vec = gncup(1) * ttv_formfactor (p35, pp46, 1, ff_modes(ffi))
+                blob_Z_vec = gncup(1) * ttv_formfactor (p35, p46, 1, ff_modes(ffi))
                 blob_Z_ax = gncup(2) * ttv_formfactor (p46, p46, 2, ff_modes(ffi))
                 amp_blob(hi,ffi) = owf_Z_12 * &
                      va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
@@ -297,9 +297,9 @@ contains
                      v_ff (qup, owf_t_3, owf_t_4) * ttv_formfactor (p35, p46, 1, ff_modes(ffi))
              end do
           end do
-          amp_blob = amp_blob * ttv_wtpole (p12*p12, ff_modes(ffi)) / (p35**2 - ttv_mtpole(p12*p12)**2 + &
+          amp_blob = amp_blob * ttv_wtpole (p12*p12, ff_modes(ffi)) / (p35*p35 - ttv_mtpole(p12*p12)**2 + &
                imago * ttv_mtpole(p12*p12) * ttv_wtpole (p12*p12, ff_modes(ffi)))
-          amp_blob = amp_blob * ttv_wtpole (p12*p12, ff_modes(ffi)) / (p46**2 - ttv_mtpole(p12*p12)**2 + &
+          amp_blob = amp_blob * ttv_wtpole (p12*p12, ff_modes(ffi)) / (p46*p46 - ttv_mtpole(p12*p12)**2 + &
                imago * ttv_mtpole(p12*p12) * ttv_wtpole (p12*p12, ff_modes(ffi)))
        else
           do hi = 1, n_hel
@@ -337,6 +337,7 @@ contains
                      v_ff (qup, owf_wb_35, owf_wb_46) * ttv_vec
              end do
           end do
+       end if
     end if
     amp_blob = - amp_blob ! 4 vertices, 3 propagators
   end subroutine calculate_blobs
