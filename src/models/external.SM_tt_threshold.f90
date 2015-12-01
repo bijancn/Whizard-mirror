@@ -59,6 +59,6 @@ subroutine init_external_parameters (par) bind (C)
                         sw, alphas, mZ, mW, mb, sh, sf, nloop, FF, &
                         offshell_strategy, v1, v2, &
                         sqrts_min, sqrts_max, sqrts_it, mpole_fixed)
-  par(39) = mpole
-  par(40) = wtop
+  par(40) = mpole
+  par(41) = wtop
 end subroutine init_external_parameters
