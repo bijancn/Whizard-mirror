@@ -230,7 +230,6 @@ contains
     integer, dimension(n_prt_OS) :: s_OS
     integer :: hi, ffi_end, ffi
     integer, dimension(0:3) :: ff_modes
-    logical, parameter :: andres_fudge = .true.
     p1 = - k(:,1) ! incoming
     p2 = - k(:,2) ! incoming
     p3 =   k(:,3) ! outgoing
@@ -270,7 +269,7 @@ contains
           end do
        end do
     else
-       if (andres_fudge) then
+       if (OFFSHELL_STRATEGY < 0) then
           do hi = 1, n_hel_OS
              s_OS = table_spin_states_OS(:,hi)
              owf_e_1 = u (mass(11), - p1, s_OS(1))
