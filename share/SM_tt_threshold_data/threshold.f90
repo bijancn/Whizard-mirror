@@ -225,10 +225,11 @@ contains
 
   subroutine calculate_blobs (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
-    complex(default) :: blob_Z_vec, blob_Z_ax, ttv_vec, ttv_ax
+    complex(default) :: blob_Z_vec, blob_Z_ax, ttv_vec, ttv_ax, tmp
+    real(default) :: m, w
     integer, dimension(n_prt) :: s
     integer, dimension(n_prt_OS) :: s_OS
-    integer :: hi, ffi_end, ffi
+    integer :: hi, ffi_end, ffi, h_t, h_tbar
     integer, dimension(0:3) :: ff_modes
     p1 = - k(:,1) ! incoming
     p2 = - k(:,2) ! incoming
@@ -270,36 +271,49 @@ contains
        end do
     else
        if (OFFSHELL_STRATEGY < 0) then
-          do hi = 1, n_hel_OS
-             s_OS = table_spin_states_OS(:,hi)
-             owf_e_1 = u (mass(11), - p1, s_OS(1))
-             owf_e_2 = vbar (mass(11), - p2, s_OS(2))
-             owf_t_3 = ubar (sqrt(p35*p35), p35, s_OS(3))
-             owf_t_4 = v (sqrt(p46*p46), p46, s_OS(4))
-
+          do hi = 1, n_hel
+             s = table_spin_states(:,hi)
+             owf_e_1 = u (mass(11), - p1, s(1))
+             owf_e_2 = vbar (mass(11), - p2, s(2))
+             owf_Wm_3 = conjg (eps (mass(24), p3, s(3)))
+             owf_Wp_4 = conjg (eps (mass(24), p4, s(4)))
+             owf_b_5 = ubar (mass(5), p5, s(5))
+             owf_b_6 = v (mass(5), p6, s(6))
              owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
              owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
                   + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
-
-             !if (FF == MATCHED) then
-                !ffi_end = 3
-             !else
-                !ffi_end = 0
-             !end if
-             ffi_end = 0
-             do ffi = 0, ffi_end
-                blob_Z_vec = gncup(1) * ttv_formfactor (p35, p46, 1, ff_modes(ffi))
-                blob_Z_ax = gncup(2) * ttv_formfactor (p46, p46, 2, ff_modes(ffi))
-                amp_blob(hi,ffi) = owf_Z_12 * &
-                     va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
-                amp_blob(hi,ffi) = amp_blob(hi,ffi) + owf_A_12 * &
-                     v_ff (qup, owf_t_3, owf_t_4) * ttv_formfactor (p35, p46, 1, ff_modes(ffi))
+             do h_t = -1, 1, 2
+                do h_tbar = -1, 1, 2
+                   tmp = zero
+                   owf_t_3 = ubar (sqrt(p35*p35), p35, h_t)
+                   owf_t_4 = v (sqrt(p46*p46), p46, h_tbar)
+                   ! TODO: (bcn 2015-12-02) Does this make sense in matched?
+                   if (FF == MATCHED) then
+                      ffi_end = 3
+                   else
+                      ffi_end = 0
+                   end if
+                   do ffi = 0, ffi_end
+                      ! we add here the tree level (1) because we don't want
+                      ! to interfere with the background diagrams
+                      ttv_vec = ttv_formfactor (p35, p46, 1, ff_modes(ffi)) + 1
+                      ttv_ax = ttv_formfactor (p35, p46, 2, ff_modes(ffi)) + 1
+                      blob_Z_vec = gncup(1) * ttv_vec
+                      blob_Z_ax = gncup(2) * ttv_ax
+                      tmp = tmp + owf_Z_12 * &
+                           va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
+                      tmp = tmp + owf_A_12 * &
+                           v_ff (qup, owf_t_3, owf_t_4) * ttv_vec
+                      m = ttv_mtpole (p12*p12)
+                      w = ttv_wtpole (p12*p12, ff_modes(ffi))
+                      tmp = tmp / cmplx (p35*p35 - m**2, m*w, kind=default)
+                      tmp = tmp / cmplx (p46*p46 - m**2, m*w, kind=default)
+                      tmp = tmp * decay_me(h_t, h_tbar)
+                      amp_blob(hi,ffi) = amp_blob(hi,ffi) + tmp
+                   end do
+                end do
              end do
           end do
-          amp_blob = amp_blob * ttv_wtpole (p12*p12, ff_modes(ffi)) / (p35*p35 - ttv_mtpole(p12*p12)**2 + &
-               imago * ttv_mtpole(p12*p12) * ttv_wtpole (p12*p12, ff_modes(ffi)))
-          amp_blob = amp_blob * ttv_wtpole (p12*p12, ff_modes(ffi)) / (p46*p46 - ttv_mtpole(p12*p12)**2 + &
-               imago * ttv_mtpole(p12*p12) * ttv_wtpole (p12*p12, ff_modes(ffi)))
        else
           do hi = 1, n_hel
              s = table_spin_states(:,hi)
@@ -341,6 +355,15 @@ contains
     amp_blob = - amp_blob ! 4 vertices, 3 propagators
   end subroutine calculate_blobs
 
+  function decay_me(h_t, h_tbar) result (me)
+    complex(default) :: me
+    integer, intent(in) :: h_t, h_tbar
+    owf_t_3 = vbar (sqrt(p46*p46), p46, h_tbar)
+    owf_t_4 = u (sqrt(p35*p35), p35, h_t)
+    me = (f_fvl (gccq33, owf_b_5, owf_Wm_3) * owf_t_4) * &
+         (owf_t_3 * f_vlf (gccq33, owf_Wp_4, owf_b_6))
+  end function decay_me
+
 end module @ID@_threshold
 
 ! alphas will be set in ttv_formfactors
@@ -372,14 +395,15 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   real(default), dimension(0:3) :: amp2_array
   real(c_default_float), dimension(0:3,*), intent(in) :: p
   integer, dimension(0:3) :: signs
-  complex(default) :: amp_sm
   integer :: i, hi
   amp_tree = zero
   USE_FF = .false.
-  call sm_new_event (p)
-  do hi = 1, sm_number_spin_states()
-     amp_tree(hi) = sm_get_amplitude (1, hi, 1)
-  end do
+  if (OFFSHELL_STRATEGY >= 0) then
+     call sm_new_event (p)
+     do hi = 1, sm_number_spin_states()
+        amp_tree(hi) = sm_get_amplitude (1, hi, 1)
+     end do
+  end if
   USE_FF = .true.
   call calculate_blobs (p)
   select case (FF)
