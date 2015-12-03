@@ -90,7 +90,7 @@ function fillModelList () {
 	modelList.push (new SindarinModel(modelName, description));
 
 	modelName = 'NMSSM';
-	description = 'Desperate attempt to save SUSY';
+	description = 'Next-to-Minimal supersymmetric standard model';
 	modelList.push (new SindarinModel(modelName, description));
 
 	modelName = 'NMSSM_CKM';
