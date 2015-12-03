@@ -3195,11 +3195,14 @@ it is necessary to expand with $z$ once.
   procedure :: init => real_subtraction_init
 <<real subtraction: procedures>>=
   subroutine real_subtraction_init (rsub, reg_data, n_in, &
-      nlegs_born, nlegs_real, sqme_collector)
+      nlegs_born, nlegs_real, sqme_collector, &
+      passed_born_cuts, passed_real_cuts)
     class(real_subtraction_t), intent(inout), target :: rsub
     type(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: n_in, nlegs_born, nlegs_real
     type(sqme_collector_t), intent(in), target :: sqme_collector
+    logical, intent(in), target :: passed_born_cuts
+    logical, intent(in), dimension(:), target :: passed_real_cuts
     integer :: alr, i_uborn
     rsub%reg_data = reg_data
     rsub%sqme_real_non_sub => sqme_collector%sqme_real_non_sub
@@ -3212,6 +3215,9 @@ it is necessary to expand with $z$ once.
        rsub%sc_required(alr) = &
           reg_data%flv_born(i_uborn)%count_particle (GLUON) > 0
     end do
+
+    rsub%passed_born_cuts => passed_born_cuts
+    rsub%passed_real_cuts => passed_real_cuts
 
     call rsub%sub_soft%init (reg_data, n_in, nlegs_born, nlegs_real)
     call rsub%sub_coll%init (reg_data%n_regions, n_in)
@@ -3268,24 +3274,24 @@ it is necessary to expand with $z$ once.
 @ %def real_subtraction_set_real_kinematics
 @
 <<real subtraction: real subtraction: TBP>>=
-  procedure :: set_passed_real_cuts => real_subtraction_set_passed_real_cuts
+  !procedure :: set_passed_real_cuts => real_subtraction_set_passed_real_cuts
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_set_passed_real_cuts (rsub, passed_cuts)
-    class(real_subtraction_t), intent(inout) :: rsub
-    logical, dimension(:), intent(in), target :: passed_cuts
-    rsub%passed_real_cuts => passed_cuts
-  end subroutine real_subtraction_set_passed_real_cuts
+  !subroutine real_subtraction_set_passed_real_cuts (rsub, passed_cuts)
+  !  class(real_subtraction_t), intent(inout), target :: rsub
+  !  logical, dimension(:), intent(in), target :: passed_cuts
+  !  rsub%passed_real_cuts => passed_cuts
+  !end subroutine real_subtraction_set_passed_real_cuts
 
 @ %def real_subtraction_set_passed_real_cuts
 @
 <<real subtraction: real subtraction: TBP>>=
-  procedure :: set_passed_born_cuts => real_subtraction_set_passed_born_cuts
+  !procedure :: set_passed_born_cuts => real_subtraction_set_passed_born_cuts
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_set_passed_born_cuts (rsub, passed_cuts)
-    class(real_subtraction_t), intent(inout) :: rsub
-    logical, intent(in), target :: passed_cuts
-    rsub%passed_born_cuts => passed_cuts
-  end subroutine real_subtraction_set_passed_born_cuts
+  !subroutine real_subtraction_set_passed_born_cuts (rsub, passed_cuts)
+  !  class(real_subtraction_t), intent(inout), target :: rsub
+  !  logical, intent(in), target :: passed_cuts
+  !  rsub%passed_born_cuts => passed_cuts
+  !end subroutine real_subtraction_set_passed_born_cuts
 
 @ %def real_subtraction_set_passed_born_cuts
 @
@@ -5090,10 +5096,10 @@ and virtual counterterms.
          (nlo_controller%real_kinematics)
     call nlo_controller%real_terms%set_isr_kinematics &
          (nlo_controller%isr_kinematics)
-    call nlo_controller%real_terms%set_passed_real_cuts &
-         (nlo_controller%passed_real_cuts)
-    call nlo_controller%real_terms%set_passed_born_cuts &
-         (nlo_controller%passed_born_cuts)
+    !!!call nlo_controller%real_terms%set_passed_real_cuts &
+    !!!     (nlo_controller%passed_real_cuts)
+    !!!call nlo_controller%real_terms%set_passed_born_cuts &
+    !!!     (nlo_controller%passed_born_cuts)
     sqme_fin = nlo_controller%real_terms%compute &
          (emitter, i_flv, nlo_controller%alpha_s_born)
     sqme_fin = sqme_fin * weight
@@ -5419,17 +5425,18 @@ process.
         n_in = particle_data%n_in
         n_tot_born = n_in + particle_data%n_out_born
         n_tot_real = n_in + particle_data%n_out_real
-        call nlo_controller%real_terms%init (nlo_controller%reg_data, &
-           n_in, n_tot_born, n_tot_real, nlo_controller%sqme_collector)
+
+        allocate (nlo_controller%passed_real_cuts (n_tot_born))
+        nlo_controller%passed_real_cuts = .true.
+        nlo_controller%passed_born_cuts = .true.
+
+        call nlo_controller%init_real_subtraction (n_in, n_tot_born, n_tot_real)
         if (template%subtraction_disabled) call nlo_controller%disable_subtraction ()
      end associate
      nlo_controller%counter_active = template%count_kinematics
      if (nlo_controller%counter_active) call nlo_controller%counter%init(20)
      allocate (powheg_damping_simple_t :: nlo_controller%powheg_damping)
-     allocate (nlo_controller%passed_real_cuts (n_tot_born))
-     nlo_controller%passed_real_cuts = .true.
-     nlo_controller%passed_born_cuts = .true.
-   end subroutine nlo_controller_init
+  end subroutine nlo_controller_init
 
 @ %def nlo_controller_init
 @
@@ -5494,6 +5501,20 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
   end function nlo_controller_get_weighted_helicity_sum
 
 @ %def nlo_controller_get_weighted_helicity_sum
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: init_real_subtraction => nlo_controller_init_real_subtraction 
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_init_real_subtraction (nlo_controller, &
+     n_in, n_tot_born, n_tot_real)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    integer, intent(in) :: n_in, n_tot_born, n_tot_real
+    call nlo_controller%real_terms%init (nlo_controller%reg_data, &
+       n_in, n_tot_born, n_tot_real, nlo_controller%sqme_collector, &
+       nlo_controller%passed_born_cuts, nlo_controller%passed_real_cuts)
+  end subroutine nlo_controller_init_real_subtraction
+
+@ %def nlo_controller_init_real_subtraction
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: set_flv_states => nlo_controller_set_flv_states
