@@ -6704,7 +6704,7 @@ matter of the process core.
       n_tot = n_in + core%data%n_out
       select case (nlo_type)
       case (NLO_REAL)
-        allocate (component%p_seed (n_tot-1))
+        allocate (component%p_seed (n_tot - 1))
       case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_SUBTRACTION, NLO_THRESHOLD_RESUMMATION)
         allocate (component%p_seed (n_tot))
       end select
@@ -6791,6 +6791,22 @@ postpone until we know the factorization scale), and we have a valid
   end subroutine component_instance_compute_seed_kinematics
     
 @ %def component_instance_compute_seed_kinematics
+@
+<<Processes: component instance: TBP>>=
+  procedure :: redo_sf_chain => component_instance_redo_sf_chain
+<<Processes: procedures>>=
+  subroutine component_instance_redo_sf_chain (component, mci_work, phs_channel)
+    class(component_instance_t), intent(inout) :: component
+    type(mci_work_t), intent(in) :: mci_work
+    integer, intent(in) :: phs_channel
+    integer :: sf_channel
+    associate (k => component%k_seed)
+       sf_channel = k%phs%config%get_sf_channel (phs_channel)
+       call k%sf_chain%compute_kinematics (sf_channel, mci_work%get_x_strfun ())
+    end associate
+  end subroutine component_instance_redo_sf_chain
+
+@ %def component_instance_redo_sf_chain
 @ Inverse: recover missing parts of the kinematics, given a complete
 set of seed momenta.  Select a channel and reconstruct the MC parameter set.
 <<Processes: component instance: TBP>>=
@@ -6920,13 +6936,16 @@ stored in the kinematics subobject to their source.  This is a side effect.
     real(default) :: E_gluon
     integer :: nlegs
     associate (nlo_controller => component%nlo_controller)
-       nlegs = nlo_controller%particle_data%n_in + nlo_controller%particle_data%n_out_real
-       E_gluon = nlo_controller%real_kinematics%p_real_lab(nlegs)%p(0)
        select case (component%config%component_type)
-       case (COMP_REAL_FIN)
-          sqme = sqme * (one - nlo_controller%powheg_damping%get_f (E_gluon))
-       case (COMP_REAL_SING)
-          sqme = sqme * nlo_controller%powheg_damping%get_f (E_gluon)
+       case (COMP_REAL_FIN, COMP_REAL_SING)
+          nlegs = nlo_controller%particle_data%n_in + nlo_controller%particle_data%n_out_real
+          E_gluon = nlo_controller%real_kinematics%p_real_lab(nlegs)%p(0)
+          select case (component%config%component_type)
+          case (COMP_REAL_FIN)
+             sqme = sqme * (one - nlo_controller%powheg_damping%get_f (E_gluon))
+          case (COMP_REAL_SING)
+             sqme = sqme * nlo_controller%powheg_damping%get_f (E_gluon)
+          end select
        end select
     end associate
   end subroutine component_instance_supply_damping_factor
@@ -6936,12 +6955,18 @@ stored in the kinematics subobject to their source.  This is a side effect.
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_born => component_instance_evaluate_sqme_born
 <<Processes: procedures>>=
-  subroutine component_instance_evaluate_sqme_born (component, term)
+  subroutine component_instance_evaluate_sqme_born (component, term, overwrite_born)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout), target :: term
+    logical, intent(out) :: overwrite_born
     real(default) :: sqme
     integer :: n_flv, i_flv
-    if (term%nlo_type == NLO_VIRTUAL) return
+    if (term%nlo_type == NLO_VIRTUAL) then
+       overwrite_born = .false.
+       return
+    else
+       overwrite_born = .true.
+    end if
     i_flv = 1
     sqme = zero
     if (term%nlo_type == NLO_REAL) then
@@ -7013,16 +7038,18 @@ imaginary part of the terms, which should be zero anyway.
   subroutine component_instance_evaluate_sqme (component, term)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), dimension(:), intent(inout), target :: term
+    logical :: set_me
     integer :: j, i
 
-    component%sqme = 0
+    component%sqme = zero
     call reset_nlo_components (component)
     associate (i_term => component%config%i_term)
       do j = 1, size (i_term)
          i = i_term(j)
          if (term(i)%passed) then
-            call component%evaluate_sqme_born (term(i))
-            call associate_sqme_born (component, component%sqme*term(i)%weight, 1)
+            call component%evaluate_sqme_born (term(i), set_me)
+            if (set_me) &
+               call associate_sqme_born (component, component%sqme * term(i)%weight, 1)
             call component%evaluate_sqme_real (term(i))
             call component%evaluate_sqme_virt (term(i))
             call component%evaluate_sqme_pdf (term(i))
@@ -7048,23 +7075,20 @@ imaginary part of the terms, which should be zero anyway.
 @ %def reset_nlo_components
 @
 <<Processes: procedures>>=
-  subroutine associate_sqme_born (component, summand, i_flv, include_total)
+  subroutine associate_sqme_born (component, sqme_born, i_flv, update_born)
      type(component_instance_t), intent(inout) :: component
-     real(default), intent(in) :: summand
+     real(default), intent(in) :: sqme_born
      integer, intent(in) :: i_flv
-     logical, intent(in), optional :: include_total
-     logical :: yorn
-     yorn = .true.; if (present (include_total)) yorn = include_total
-     select case (component%config%config%get_nlo_type ())
-     case (NLO_REAL, NLO_PDF)
-        !print *, 'summand: ', summand, 'yorn: ', yorn
-        if (debug_active (D_SUBTRACTION)) &
-           call msg_debug (D_SUBTRACTION, "Associate Born matrix element", i_flv)
+     logical, intent(in), optional :: update_born
+     logical :: ub
+     ub = .true.; if (present (update_born)) ub = update_born
+     call msg_debug (D_SUBTRACTION, "Associate Born matrix element", i_flv)
+     if (associated (component%nlo_controller)) then
         associate (collector => component%nlo_controller%sqme_collector)
-           collector%sqme_subtraction_born_list (i_flv) = summand
-           if (yorn) collector%sqme_born_list (i_flv) = summand
-       end associate
-     end select
+           collector%sqme_subtraction_born_list (i_flv) = sqme_born
+           if (ub) collector%sqme_born_list (i_flv) = sqme_born
+        end associate
+     end if
   end subroutine associate_sqme_born
 
 @ Perform the matrix-element-evaluation if the component is flagged as virtual
@@ -7236,7 +7260,8 @@ imaginary part of the terms, which should be zero anyway.
         component%nlo_controller%sqme_collector%sqme_real_non_sub (i_flv) = &
            core%compute_sqme (i_flv, p_real)
      end select 
-     call component%supply_damping_factor (component%nlo_controller%sqme_collector%sqme_real_non_sub (i_flv))
+     call component%supply_damping_factor &
+        (component%nlo_controller%sqme_collector%sqme_real_non_sub (i_flv))
      if (debug_active (D_SUBTRACTION)) &
         call msg_debug (D_SUBTRACTION, "non-subtracted real matrix element", &
                   component%nlo_controller%sqme_collector%sqme_real_non_sub(i_flv))
@@ -7589,7 +7614,7 @@ relevant for a NLO algorithm.
           select case (phs%mode)
           case (PHS_MODE_ADDITIONAL_PARTICLE)
              term%nlo_controller%int_born = int_sav
-             term%nlo_controller%sf_born = sf_sav
+             term%nlo_controller%sf_born => sf_sav
              do j = 1, n_in
                 i = term%nlo_controller%sf_born%get_out_i (j)
                 call term%nlo_controller%int_born%set_source_link &
@@ -9496,6 +9521,7 @@ it from the MCI record.
      class(process_instance_t), intent(inout) :: instance
      type(term_instance_t), intent(inout) :: term
      integer, intent(in) :: i
+     logical :: overwrite_born
      integer :: j, ireg, i_flv_real, i_flv_born
      integer :: nlegs
      integer :: fixed_emitter
@@ -9536,17 +9562,12 @@ it from the MCI record.
                  call term%evaluate_trace ()
                  if (instance%component(i)%active) then
                     associate (component => instance%component(i))
-                      !if (.not. pcm%collect_matrix_elements) then
-                      call component%evaluate_sqme_born (term)
+                      call component%evaluate_sqme_born (term, overwrite_born)
                       sqme_born = component%sqme
                       if (debug_active (D_SUBTRACTION)) &
                           call msg_debug (D_SUBTRACTION, "sqme_born", sqme_born)
-                      !else
-                      !   sqme_born = pcm%collector%sqme_born_list (i_flv_born)
-                      !end if
-                      !print *, 'Check 1'
                       call associate_sqme_born (component, sqme_born*term%weight, i_flv_born, &
-                         include_total = pcm%controller%nlo_cuts%passed_born)
+                         update_born = pcm%controller%nlo_cuts%passed_born .or. overwrite_born)
                       call component%evaluate_sqme_real (term)
                       instance%sqme_real(i_flv_real, ireg) = &
                            pcm%collector%current_sqme_real
@@ -9622,6 +9643,9 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
             i_real = config%config%get_associated_real_fin ()
          end select
        end associate
+
+       call instance%component(i_real)%redo_sf_chain &
+          (instance%mci_work(instance%i_mci), instance%selected_channel)
        
        associate (term => instance%term(i_real))
          call term%evaluate_interaction_real_rad (instance%component(i_real), &

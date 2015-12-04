@@ -9,10 +9,10 @@
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
 #     with contributions from
-#     Fabian Bach <fabian.bach@desy.de>
+#     Fabian Bach <fabian.bach@t-online.de>
 #     Bijan Chokoufe <bijan.chokoufe@desy.de>
 #     Christian Speckner <cnspeckn@googlemail.com>
-#     Marco Sekulla <marco.sekulla@desy.de>
+#     Marco Sekulla <marco.sekulla@kit.edu>
 #     Christian Weiss <christian.weiss@desy.de>
 #     Felix Braam, Sebastian Schmidt,
 #     Hans-Werner Boschmann, Daniel Wiesler
@@ -151,6 +151,8 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/models_3.ref \
     unit_tests/ref-output/models_4.ref \
     unit_tests/ref-output/models_5.ref \
+    unit_tests/ref-output/models_6.ref \
+    unit_tests/ref-output/models_7.ref \
     unit_tests/ref-output/auto_components_1.ref \
     unit_tests/ref-output/auto_components_2.ref \
     unit_tests/ref-output/auto_components_3.ref \
@@ -605,6 +607,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/stdhep_3.ref \
     functional_tests/ref-output/stdhep_4.ref \
     functional_tests/ref-output/stdhep_5.ref \
+    functional_tests/ref-output/stdhep_6.ref \
     functional_tests/ref-output/fatal_beam_decay.ref \
     functional_tests/ref-output/smtest_1.ref \
     functional_tests/ref-output/smtest_3.ref \
@@ -891,6 +894,7 @@ MISC_TESTS_SIN = \
     functional_tests/stdhep_3.sin \
     functional_tests/stdhep_4.sin \
     functional_tests/stdhep_5.sin \
+    functional_tests/stdhep_6.sin \
     functional_tests/fatal_beam_decay.sin \
     functional_tests/smtest_1.sin \
     functional_tests/smtest_2.sin \

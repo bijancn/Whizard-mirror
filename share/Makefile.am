@@ -6,7 +6,14 @@
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
-#     Christian Speckner <christian.speckner@googlemail.com>
+#     with contributions from
+#     Fabian Bach <fabian.bach@t-online.de>
+#     Bijan Chokoufe <bijan.chokoufe@desy.de>
+#     Christian Speckner <cnspeckn@googlemail.com>
+#     Marco Sekulla <marco.sekulla@kit.edu>
+#     Christian Weiss <christian.weiss@desy.de>
+#     Felix Braam, Sebastian Schmidt
+#     Hans-Werner Boschmann, Daniel Wiesler
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by 
@@ -25,7 +32,18 @@
 ########################################################################
 
 ## Subdirectories to configure
-SUBDIRS = doc susy models cuts beam-sim tests examples muli interfaces SM_tt_threshold_data
+SUBDIRS = \
+  doc \
+  susy \
+  models \
+  cuts \
+  beam-sim \
+  tests \
+  examples \
+  muli \
+  interfaces \
+  SM_tt_threshold_data \
+  gui
 
 ## Data files needed for running WHIZARD
 ## to be installed with the 'models' prefix kept
@@ -54,6 +72,7 @@ dist_models_DATA = \
   models/Simplest_univ.mdl \
   models/SM_ac_CKM.mdl \
   models/SM_ac.mdl \
+  models/SM_dim6.mdl \
   models/SM_CKM.mdl \
   models/SM_rx.mdl \
   models/SM_ul.mdl \
