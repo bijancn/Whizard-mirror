@@ -14,6 +14,12 @@ var path = require('path');
 var fs = require('fs'); // file storing
 var app = express();
 
+var bodyParser = require('body-parser');
+var errorHandler = require('error-handler');
+var favicon = require('favicon');
+var methodOverwrite = require('express-method-override');
+var router = require('app-router');
+
 /*
  * Functions in use
  */ 
@@ -42,19 +48,17 @@ if (typeof(environment.USE_PORT) !== "undefined") {
 }
 app.set('views', __dirname + '/views');
 app.set('view engine', 'ejs');
-app.use(express.favicon());
-app.use(express.logger('dev'));
-app.use(express.bodyParser());
-app.use(express.methodOverride());
-app.use(app.router);
+app.use(favicon);
+app.use (bodyParser.urlencoded({
+	extended: true
+}));
+app.use(methodOverwrite);
+app.use(router);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'output-whiz')));
 
 
-// development only
-if ('development' == app.get('env')) {
-  app.use(express.errorHandler());
-}
+app.use(errorHandler);
 
 /*
  *  Accessibility control
