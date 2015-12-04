@@ -101,7 +101,8 @@ include $(top_srcdir)/src/Makefile.ocaml
 include $(top_srcdir)/src/Makefile.sources
 
 EXTRA_DIST = $(NOWEB_FILES) $(SOURCE_FILES) $(CIRCE2_CAML) \
-	$(EXTRA_SOURCE_FILES)
+	$(EXTRA_SOURCE_FILES) $(circe2_moments_SOURCES) \
+	$(circe2_ls_SOURCES)  $(circe2_generate_SOURCES)
 
 MYPRECIOUS = $(CIRCE2_DERIVED)
 
@@ -236,14 +237,14 @@ endif OCAML_AVAILABLE
 
 if NOWEB_AVAILABLE
 maintainer-clean-noweb:
-	-rm -f $(SOURCE_FILES)
+	-rm -f $(SOURCE_FILES) $(circe2_moments_SOURCES) $(circe2_ls_SOURCES)  $(circe2_generate_SOURCES)
 endif
 .PHONY: maintainer-clean-noweb
 
 ## Remove those sources also if builddir and srcdir are different
 if NOWEB_AVAILABLE
 clean-noweb:
-	test "$(srcdir)" != "." && rm -f $(SOURCE_FILES) || true
+	test "$(srcdir)" != "." && rm -f $(SOURCE_FILES) $(circe2_moments_SOURCES) $(circe2_ls_SOURCES)  $(circe2_generate_SOURCES) || true
 endif
 .PHONY: clean-noweb
 

@@ -106,6 +106,7 @@ nodist_execmod_HEADERS = \
   parameters_sm.$(FC_MODULE_EXT) \
   parameters_sm_ac.$(FC_MODULE_EXT) \
   parameters_sm_ac_ckm.$(FC_MODULE_EXT) \
+  parameters_sm_dim6.$(FC_MODULE_EXT) \
   parameters_sm_ckm.$(FC_MODULE_EXT) \
   parameters_sm_top.$(FC_MODULE_EXT) \
   parameters_sm_top_anom.$(FC_MODULE_EXT) \

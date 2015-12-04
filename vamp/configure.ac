@@ -9,10 +9,10 @@ dnl     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 dnl     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 dnl     Juergen Reuter <juergen.reuter@desy.de>
 dnl     with contributions from
-dnl     Fabian Bach <fabian.bach@desy.de>
+dnl     Fabian Bach <fabian.bach@t-online.de>
 dnl     Bijan Chokoufe <bijan.chokoufe@desy.de>
 dnl     Christian Speckner <cnspeckn@googlemail.com>
-dnl     Marco Sekulla <marco.sekulla@desy.de>
+dnl     Marco Sekulla <marco.sekulla@kit.edu>
 dnl     Christian Weiss <christian.weiss@desy.de>
 dnl     Felix Braam, Sebastian Schmidt,
 dnl     Hans-Werner Boschmann, Daniel Wiesler
@@ -38,7 +38,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl =======================================================================
 dnl 
 dnl Start configuration
-AC_INIT([vamp],[2.2.8])
+AC_INIT([vamp],[2.3.0])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AM_MAKE_INCLUDE
@@ -49,7 +49,7 @@ AM_MAKE_INCLUDE
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Oct 31 2015"
+PACKAGE_DATE="Mar 31 2016"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)

@@ -9,10 +9,10 @@
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
 #     with contributions from
-#     Fabian Bach <fabian.bach@desy.de>
+#     Fabian Bach <fabian.bach@t-online.de>
 #     Bijan Chokoufe <bijan.chokoufe@desy.de>
 #     Christian Speckner <cnspeckn@googlemail.com>
-#     Marco Sekulla <marco.sekulla@desy.de>
+#     Marco Sekulla <marco.sekulla@kit.edu>
 #     Christian Weiss <christian.weiss@desy.de>
 #     Felix Braam, Sebastian Schmidt
 #
@@ -138,6 +138,7 @@ TESTS_REQ_OCAML = \
     stdhep_3.run \
     stdhep_4.run \
     stdhep_5.run \
+    stdhep_6.run \
     select_1.run \
     select_2.run \
     fatal_beam_decay.run \
@@ -406,6 +407,7 @@ endif
 
 stdhep_4.run: stdhep_rd
 stdhep_5.run: stdhep_rd
+stdhep_6.run: stdhep_rd
 stdhep_rd: $(top_builddir)/src/xdr/stdhep_rd
 	cp $< $@
 
