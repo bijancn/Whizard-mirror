@@ -303,16 +303,26 @@ contains
     real(default) :: w
     real(default), intent(in) :: s
     integer, intent(in) :: ff
-    select case (ff)
-    case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
-          RESUMMED_SWITCHOFF_P0CONSTANT, RESUMMED_ANALYTIC_LL)
-       w = top_width_sm_lo (one / alphaemi, sinthw, Vtb, ttv_mtpole (s), mass(24), &
-            mass(5)) + wt_inv
-    case default
+    logical :: nlo
+    if (OFFSHELL_STRATEGY == 0 .or. OFFSHELL_STRATEGY == -1) then
+       nlo = .false.
+    else
+       select case (ff)
+       case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
+             RESUMMED_SWITCHOFF_P0CONSTANT, RESUMMED_ANALYTIC_LL)
+          nlo = .false.
+       case default
+          nlo = .true.
+       end select
+    end if
+    if (nlo) then
        ! TODO: (bcn 2015-11-11) Vtb is not considered in NLO width
        w = top_width_sm_qcd_nlo (one / alphaemi, sinthw, ttv_mtpole (s), &
             mass(24), mass(5), AS_HARD) + wt_inv
-    end select
+    else
+       w = top_width_sm_lo (one / alphaemi, sinthw, Vtb, ttv_mtpole (s), mass(24), &
+            mass(5)) + wt_inv
+    end if
   end function ttv_wtpole
 
   !pure
