@@ -6875,18 +6875,58 @@ recoiling momenta.
     integer, intent(in) :: emitter
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(out), dimension(:), allocatable :: p_real
+    real(default) :: q0
+    integer :: i, nlegreal
+ 
+    nlegreal = size (p_born) + 1
+    allocate (p_real (nlegreal)); p_real = vector4_null
+
+    q0 = zero
+    do i = 1, generator%n_in
+       q0 = q0 + p_born(i)%p(0)
+    end do 
+    generator%real_kinematics%cms_energy2 = q0**2
+
+    call generator%generate_fsr_in (p_born, p_real)
+    call generator%generate_fsr_out (emitter, p_born, p_real, q0)
+  end subroutine phs_fks_generator_generate_fsr
+
+@ %def phs_fks_generator_generate_fsr
+@
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: generate_fsr_in => phs_fks_generator_generate_fsr_in
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_generate_fsr_in (generator, p_born, p_real)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    type(vector4_t), intent(in), dimension(:) :: p_born
+    type(vector4_t), intent(inout), dimension(:) :: p_real
+    integer :: i
+    do i = 1, generator%n_in 
+       p_real(i) = p_born(i)
+    end do
+  end subroutine phs_fks_generator_generate_fsr_in
+
+@ %def phs_fks_generator_generate_fsr_in
+@ 
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: generate_fsr_out => phs_fks_generator_generate_fsr_out
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_generate_fsr_out (generator, emitter, p_born, p_real, q0)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    integer, intent(in) :: emitter
+    type(vector4_t), intent(in), dimension(:) :: p_born
+    type(vector4_t), intent(inout), dimension(:) :: p_real
+    real(default), intent(in) :: q0
+    real(default) :: xi, y, phi
     integer :: nlegborn, nlegreal
-    type(vector4_t) :: q
-    real(default) :: q0, q2, uk_np1, uk_n
+    real(default) :: uk_np1, uk_n
     real(default) :: uk_rec, k_rec0
     type(vector3_t) :: k_n_born, k
-    real(default) :: uk_n_born
-    real(default) :: uk, k2, k0_n
+    real(default) :: uk_n_born, uk, k2, k0_n
     real(default) :: cpsi, beta
     type(vector3_t) :: vec, vec_orth
     type(lorentz_transformation_t) :: rot, lambda
-    integer :: i, n_in
-    real(default) :: xi, y, phi
+    integer :: i
 
     associate (rad_var => generator%real_kinematics)
        xi = rad_var%xi_tilde
@@ -6894,30 +6934,18 @@ recoiling momenta.
        y = rad_var%y(emitter)
        phi = rad_var%phi
     end associate
+
     nlegborn = size (p_born)
-    nlegreal = nlegborn+1
-    n_in = generator%n_in
-
-    call check_valid_emitter (emitter, nlegborn)
-    !call check_valid_reference_frame (p_born)
-        
-    allocate (p_real (nlegreal))
-
-    q = vector4_null
-    do i = 1, n_in
-       p_real(i) = p_born(i)
-       q = q + p_born(i)
-    end do 
-    q0 = q%p(0)
-    q2 = q**2
-    generator%real_kinematics%cms_energy2 = q2
+    nlegreal = nlegborn + 1
 
     generator%E_gluon = q0 * xi / two
     uk_np1 = generator%E_gluon
     k_n_born = p_born(emitter)%p(1:3)
     uk_n_born = k_n_born**1
 
-    generator%mrec2 = (q-p_born(emitter))**2
+    !!!generator%mrec2 = (q-p_born(emitter))**2
+    generator%mrec2 = (q0 - p_born(emitter)%p(0))**2 &
+       - space_part_norm(p_born(emitter))**2
     if (generator%is_massive(emitter)) then
        call generator%compute_emitter_kinematics (emitter, q0, k0_n, uk_n, uk)
     else
@@ -6930,19 +6958,19 @@ recoiling momenta.
     vec_orth = create_orthogonal (vec)
     p_real(emitter)%p(0) = k0_n
     p_real(emitter)%p(1:3) = vec%p(1:3)
-    cpsi = (uk_n**2 + uk**2 - uk_np1**2) / (2*(uk_n * uk))
+    cpsi = (uk_n**2 + uk**2 - uk_np1**2) / (two * uk_n * uk)
     !!! This is to catch the case where cpsi = 1, but numerically
     !!! turns out to be slightly larger than 1.
     call check_cpsi_bound (cpsi)
-    rot = rotation (cpsi, -sqrt (1._default-cpsi**2), vec_orth)
+    rot = rotation (cpsi, - sqrt (one - cpsi**2), vec_orth)
     p_real(emitter) = rot*p_real(emitter)
     vec = uk_np1 / uk_n_born * k_n_born
     vec_orth = create_orthogonal (vec)
     p_real(nlegreal)%p(0) = uk_np1
     p_real(nlegreal)%p(1:3) = vec%p(1:3)
-    cpsi = (uk_np1**2 + uk**2 - uk_n**2) / (2*(uk_np1 * uk))
+    cpsi = (uk_np1**2 + uk**2 - uk_n**2) / (two * uk_np1 * uk)
     call check_cpsi_bound (cpsi)
-    rot = rotation (cpsi, sqrt (1._default-cpsi**2), vec_orth)
+    rot = rotation (cpsi, sqrt (one - cpsi**2), vec_orth)
     p_real(nlegreal) = rot*p_real(nlegreal)
 @ Construction of the recoiling momenta. The reshuffling of momenta
 must not change the invariant mass of the recoiling system, which
@@ -6958,15 +6986,15 @@ is
     k_rec0 = q0 - p_real(emitter)%p(0) - p_real(nlegreal)%p(0)
     uk_rec = sqrt (k_rec0**2 - generator%mrec2)
     if (generator%is_massive(emitter)) then
-       beta = compute_beta (q2, k_rec0, uk_rec, &
+       beta = compute_beta (q0**2, k_rec0, uk_rec, &
                             p_born(emitter)%p(0), uk_n_born)
     else
-       beta = compute_beta (q2, k_rec0, uk_rec)
+       beta = compute_beta (q0**2, k_rec0, uk_rec)
     end if
     k = p_real(emitter)%p(1:3) + p_real(nlegreal)%p(1:3)
     vec%p(1:3) = 1/uk*k%p(1:3)
     lambda = boost (beta/sqrt(1-beta**2), vec)
-    do i = n_in+1, nlegborn
+    do i = generator%n_in + 1, nlegborn
       if (i /= emitter) then
         p_real(i) = lambda * p_born(i)
       end if
@@ -6992,19 +7020,6 @@ $\xi$.
        jac%jac(3) = one - xi/two * q0/uk_n_born
     end associate
   contains
-    subroutine check_valid_emitter (emitter, nlegborn)
-      integer, intent(in) :: emitter, nlegborn
-      if (emitter > nlegborn) then
-         call msg_fatal ("Emitter too large!")
-      end if
-    end subroutine check_valid_emitter
-
-    subroutine check_valid_reference_frame (p)
-      type(vector4_t), intent(in), dimension(:) :: p
-      if (.not. vector_set_is_cms (p)) &
-         call msg_fatal ("Input momenta have to be in center-of-mass frame")
-    end subroutine check_valid_reference_frame
- 
     subroutine check_cpsi_bound (cpsi)
       real(default), intent(inout) :: cpsi
       if (cpsi > one) then
@@ -7013,9 +7028,9 @@ $\xi$.
          cpsi = -one
       end if
     end subroutine check_cpsi_bound
-  end subroutine phs_fks_generator_generate_fsr
+  end subroutine phs_fks_generator_generate_fsr_out
 
-@ %def phs_fks_generator_generate_fsr
+@ %def phs_fks_generator_generate_fsr_out
 @
 <<phs fks: phs fks: TBP>>=
   procedure :: generate_fsr => phs_fks_generate_fsr
