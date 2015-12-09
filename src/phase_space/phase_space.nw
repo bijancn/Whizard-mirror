@@ -8173,8 +8173,6 @@ associated parameters where an additional pointer is stored for each
 cascade.  The keys are made from the relevant cascade data.  This hash
 is used for fast detection (and thus avoidance) of double entries in
 the cascade list.
-
-! TODO: (bcn 2015-12-09) what is the flv[:,:] array?
 <<Cascades: public>>=
   public :: cascade_set_t
 <<Cascades: types>>=
@@ -9873,6 +9871,23 @@ from this resonance.
   end function resonance_info_mapping
 
 @ %def resonance_info_mapping
+@
+<<Cascades: public>>=
+  public :: operator(==)
+<<Cascades: interfaces>>=
+  interface operator(==)
+     module procedure resonance_info_equal
+     module procedure resonance_history_equal
+  end interface
+<<Cascades: procedures>>=
+  function resonance_info_equal (r1, r2) result (equal)
+    logical :: equal
+    class(resonance_info_t), intent(in) :: r1, r2
+    equal = r1%flavor == r2%flavor .and. all(r1%contributors == r2%contributors)
+  end function resonance_info_equal
+
+@ %def resonance_info_equal
+>>>>>>> More progress on resonances and add debug to UT executable
 @ A resonance history is determined by the set of [[resonances]].
 <<Cascades: public>>=
   public :: resonance_history_t
@@ -9886,6 +9901,29 @@ from this resonance.
 
 @ %def resonance_history_t
 @
+%<Cascades: interfaces>>=
+%  interface operator(==)
+%  end interface
+<<Cascades: procedures>>=
+  function resonance_history_equal (rh1, rh2) result (equal)
+    logical :: equal
+    class(resonance_history_t), intent(in) :: rh1, rh2
+    integer :: i
+    equal = .false.
+    if (rh1%n_resonances == rh2%n_resonances) then
+       if (size (rh1%resonances) == size (rh2%resonances)) then
+          do i = 1, rh1%n_resonances
+             if (.not. rh1%resonances(i) == rh2%resonances(i)) then
+                return
+             end if
+          end do
+          equal = .true.
+       end if
+    end if
+  end function resonance_history_equal
+
+@ %def resonance_history_equal
+@
 <<Cascades: resonance history: TBP>>=
   procedure :: add_resonance => resonance_history_add_resonance
 <<Cascades: procedures>>=
@@ -9893,21 +9931,27 @@ from this resonance.
     class(resonance_history_t), intent(inout) :: res_hist
     type(resonance_info_t), intent(in) :: resonance
     type(resonance_info_t), dimension(:), allocatable :: tmp
-    integer :: i
+    call msg_debug (D_PHASESPACE, "resonance_history_add_resonance")
     res_hist%n_resonances = res_hist%n_resonances + 1
     if (res_hist%n_resonances > size(res_hist%resonances) .or. &
          .not. allocated (res_hist%resonances)) then
        if (allocated (res_hist%resonances)) then
-          allocate (tmp(res_hist%n_resonances + 10))
-          do i = 1, res_hist%n_resonances - 1
-             tmp(i) = res_hist%resonances(i)
-          end do
+          call copy (tmp, res_hist%resonances)
           deallocate (res_hist%resonances)
-          !allocate (res_hist%n_resonances)
-          tmp(res_hist%n_resonances) = resonance
        end if
-
+       call copy (res_hist%resonances, tmp)
     end if
+    res_hist%resonances(res_hist%n_resonances) = resonance
+    call msg_debug (D_PHASESPACE, "res_hist%n_resonances", res_hist%n_resonances)
+  contains
+    pure subroutine copy (A,B)
+      type(resonance_info_t), dimension(:), allocatable, intent(inout) :: A, B
+      integer :: i
+      allocate (A (res_hist%n_resonances + 10))
+      do i = 1, res_hist%n_resonances - 1
+         A(i) = B(i)
+      end do
+    end subroutine copy
   end subroutine resonance_history_add_resonance
 
 @ %def resonance_history_add_resonance
@@ -9921,24 +9965,19 @@ from this resonance.
     type(cascade_t), intent(in) :: cascade
     type(resonance_info_t) :: resonance
     integer :: i, mom_id, pdg
+    call msg_debug (D_PHASESPACE, "resonance_history_of_cascade")
     if (cascade%n_resonances > 0) then
-       !call cascade_write_graph_format (cascade, 0)
        if (cascade%has_children) then
+          call msg_debug2 (D_PHASESPACE, "cascade has resonances and children")
           do i = 1, size(cascade%tree_resonant)
              if (cascade%tree_resonant (i)) then
+                call msg_debug2 (D_PHASESPACE, "i", i)
                 mom_id = cascade%tree (i)
                 pdg = cascade%tree_pdg (i)
-                print *, 'mom_id =    ', mom_id !!! Debugging
-                print *, 'pdg =    ', pdg !!! Debugging
                 call resonance%of_ids (mom_id, pdg)
                 call res_hist%add_resonance (resonance)
              end if
           end do
-          !print *, 'tree =    ', cascade%tree !!! Debugging
-          !print *, 'tree_pdg =    ', cascade%tree_pdg !!! Debugging
-          !print *, 'tree_mapping =    ', cascade%tree_mapping !!! Debugging
-          !print *, 'tree_resonant =    ', cascade%tree_resonant !!! Debugging
-          !call resonance_of_nod
        end if
     end if
   end subroutine resonance_history_of_cascade
@@ -9946,28 +9985,65 @@ from this resonance.
 @ %def resonance_history_of_cascade
 @
 <<Cascades: public>>=
-  public :: cascade_set_get_resonance_histories
+  public :: cascade_set_get_n_trees
 <<Cascades: procedures>>=
-  subroutine cascade_set_get_resonance_histories (cascade_set, res_hists)
-    type(resonance_history_t), dimension(:), allocatable :: res_hists
+  function cascade_set_get_n_trees (cascade_set) result (n)
     type(cascade_set_t), intent(in), target :: cascade_set
+    integer :: n
     type(cascade_t), pointer :: cascade
-    type(resonance_history_t) :: res_hist
-    type(resonance_info_t), dimension(:), allocatable :: resonances
-    integer :: u, grove, n_hists
-    u = given_output_unit ();  if (u < 0)  return
-    n_hists = 0
+    integer :: grove
+    call msg_debug (D_PHASESPACE, "cascade_set_get_n_trees")
+    n = 0
     do grove = 1, cascade_set%n_groves
        cascade => cascade_set%first_k
        do while (associated (cascade))
           if (cascade%active .and. cascade%complete) then
              if (cascade%grove == grove) then
-                write (u, '(1x,A,I0)') 'grove #', grove
+                n = n + 1
+             end if
+          end if
+          cascade => cascade%next
+       end do
+    end do
+    call msg_debug (D_PHASESPACE, "n", n)
+  end function cascade_set_get_n_trees
+
+@ %def cascade_set_get_n_trees
+<<Cascades: public>>=
+  public :: cascade_set_get_resonance_histories
+<<Cascades: procedures>>=
+  subroutine cascade_set_get_resonance_histories (cascade_set, res_hists)
+    type(cascade_set_t), intent(in), target :: cascade_set
+    type(resonance_history_t), dimension(:), allocatable, intent(out) :: res_hists
+    type(resonance_history_t), dimension(:), allocatable :: tmp
+    type(cascade_t), pointer :: cascade
+    type(resonance_history_t) :: res_hist
+    type(resonance_info_t), dimension(:), allocatable :: resonances
+    integer :: grove, i, n_hists
+    logical :: included
+    call msg_debug (D_PHASESPACE, "cascade_set_get_resonance_histories")
+    n_hists = 0
+    allocate (tmp (cascade_set_get_n_trees (cascade_set)))
+    do grove = 1, cascade_set%n_groves
+       cascade => cascade_set%first_k
+       do while (associated (cascade))
+          if (cascade%active .and. cascade%complete) then
+             if (cascade%grove == grove) then
+                print *, 'grove =    ', grove !!! Debugging
                 call res_hist%of_cascade (cascade)
-                ! TODO: (bcn 2015-12-09) have to remove double counting?
                 if (res_hist%n_resonances > 0) then
-                   n_hists = n_hists + 1
-                   ! TODO: (bcn 2015-12-09) add to res_hists
+                   do i = 1, n_hists
+                      print *, 'i =    ', i !!! Debugging
+                      included = tmp (i) == res_hist
+                      if (included) then
+                         exit
+                      end if
+                   end do
+                   if (.not. included) then
+                      print *, 'adding hist' !!! Debugging
+                      n_hists = n_hists + 1
+                      tmp(n_hists) = res_hist
+                   end if
                 end if
              end if
           end if
@@ -9975,6 +10051,9 @@ from this resonance.
        end do
     end do
     allocate (res_hists (n_hists))
+    do i = 1, n_hists
+       res_hists(i) = tmp(i)
+    end do
     print *, 'n_hists =    ', n_hists !!! Debugging
   end subroutine cascade_set_get_resonance_histories
 
@@ -10006,6 +10085,7 @@ module cascades_uti
 
 <<Use kinds>>
 <<Use strings>>
+  use unit_tests
   use flavors
   use model_data
   use phs_forests, only: phs_parameters_t
@@ -10106,6 +10186,7 @@ end module cascades_uti
     type(cascade_set_t) :: cascade_set
     type(phs_parameters_t) :: phs_par
     type(resonance_history_t), dimension(:), allocatable :: res_hists
+    integer :: n
     write (u, "(A)")  "* Test output: cascades_2"
     write (u, "(A)")  "*   Purpose: Check resonance history"
     write (u, "(A)")
@@ -10132,6 +10213,8 @@ end module cascades_uti
     !call cascade_set_write_file_format (cascade_set, u)
     !call cascade_set_write_graph_format (cascade_set, var_str("test_casc"), var_str("test_casc"), u)
     call cascade_set_get_resonance_histories (cascade_set, res_hists)
+    n = cascade_set_get_n_trees (cascade_set)
+    call assert_equal (u, n, 24, "Number of trees")
 
     write (u, "(A)")  "* Cleanup"
     write (u, "(A)")
