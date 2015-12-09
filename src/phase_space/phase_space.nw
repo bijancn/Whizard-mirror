@@ -7897,7 +7897,7 @@ phase-space file:
   end subroutine cascade_write
 
 @ %def cascade_write
-@ 
+@
 \subsection{Creating new cascades}
 This initializes a single-particle cascade (external, final state).
 The PDG entry in the tree is set undefined because the cascade is not
@@ -8173,6 +8173,8 @@ associated parameters where an additional pointer is stored for each
 cascade.  The keys are made from the relevant cascade data.  This hash
 is used for fast detection (and thus avoidance) of double entries in
 the cascade list.
+
+! TODO: (bcn 2015-12-09) what is the flv[:,:] array?
 <<Cascades: public>>=
   public :: cascade_set_t
 <<Cascades: types>>=
@@ -9829,32 +9831,124 @@ possibly be any phase space.
   public :: resonance_t
 <<Cascades: types>>=
   type :: resonance_t
-     real(default) :: width   !!! Could be exchanged for PDG or flavor_t
-     real(default) :: mass
-     integer, dimension(:), allocatable :: contributors
-  !contains
-   !<<Cascades: resonance: TBP>>
+     !type(flavor_t) :: flavor
+     !integer, dimension(:), allocatable :: contributors
+     integer :: mom_id, pdg
+  contains
+   <<Cascades: resonance: TBP>>
   end type resonance_t
 
 @ %def resonance_t
+@
+<<Cascades: resonance: TBP>>=
+  procedure :: of_ids => resonance_of_ids
+<<Cascades: procedures>>=
+  pure subroutine resonance_of_ids (resonance, mom_id, pdg)
+    class(resonance_t), intent(out) :: resonance
+    integer, intent(in) :: mom_id, pdg
+    resonance%mom_id = mom_id
+    resonance%pdg = pdg
+  end subroutine resonance_of_ids
+
+@ %def resonance_of_ids
 @ A resonance history is determined by the set of [[resonances]].
 <<Cascades: public>>=
   public :: resonance_history_t
 <<Cascades: types>>=
   type :: resonance_history_t
      type(resonance_t), dimension(:), allocatable :: resonances
-  !contains
-   !<<Cascades: resonance history: TBP>>
+     integer :: n_resonances = 0
+  contains
+   <<Cascades: resonance history: TBP>>
   end type resonance_history_t
 
 @ %def resonance_history_t
+@
+<<Cascades: resonance history: TBP>>=
+  procedure :: add_resonance => resonance_history_add_resonance
+<<Cascades: procedures>>=
+  pure subroutine resonance_history_add_resonance (res_hist, resonance)
+    class(resonance_history_t), intent(inout) :: res_hist
+    type(resonance_t), intent(in) :: resonance
+    type(resonance_t), dimension(:), allocatable :: tmp
+    integer :: i
+    res_hist%n_resonances = res_hist%n_resonances + 1
+    if (res_hist%n_resonances > size(res_hist%resonances) .or. &
+         .not. allocated (res_hist%resonances)) then
+       allocate (tmp(res_hist%n_resonances + 10))
+       do i = 1, res_hist%n_resonances - 1
+          
+       end do
+    end if
+  end subroutine resonance_history_add_resonance
+
+@ %def resonance_history_add_resonance
+@
+<<Cascades: resonance history: TBP>>=
+  procedure :: of_cascade => resonance_history_of_cascade
+<<Cascades: procedures>>=
+  !pure
+  subroutine resonance_history_of_cascade (res_hist, cascade)
+    class(resonance_history_t), intent(out) :: res_hist
+    type(cascade_t), intent(in) :: cascade
+    type(resonance_t) :: resonance
+    integer :: i, mom_id, pdg
+    if (cascade%n_resonances > 0) then
+       !call cascade_write_graph_format (cascade, 0)
+       if (cascade%has_children) then
+          do i = 1, size(cascade%tree_resonant)
+             if (cascade%tree_resonant (i)) then
+                mom_id = cascade%tree (i)
+                pdg = cascade%tree_pdg (i)
+                print *, 'mom_id =    ', mom_id !!! Debugging
+                print *, 'pdg =    ', pdg !!! Debugging
+                call resonance%of_ids (mom_id, pdg)
+                call res_hist%add_resonance (resonance)
+             end if
+          end do
+          !print *, 'tree =    ', cascade%tree !!! Debugging
+          !print *, 'tree_pdg =    ', cascade%tree_pdg !!! Debugging
+          !print *, 'tree_mapping =    ', cascade%tree_mapping !!! Debugging
+          !print *, 'tree_resonant =    ', cascade%tree_resonant !!! Debugging
+          !call resonance_of_nod
+       end if
+    end if
+  end subroutine resonance_history_of_cascade
+
+@ %def resonance_history_of_cascade
+@
 <<Cascades: public>>=
   public :: cascade_set_get_resonance_histories
 <<Cascades: procedures>>=
-  function cascade_set_get_resonance_histories (cascade_set) result (res_hists)
+  subroutine cascade_set_get_resonance_histories (cascade_set, res_hists)
     type(resonance_history_t), dimension(:), allocatable :: res_hists
-    type(cascade_set_t) :: cascade_set
-  end function cascade_set_get_resonance_histories
+    type(cascade_set_t), intent(in), target :: cascade_set
+    type(cascade_t), pointer :: cascade
+    type(resonance_history_t) :: res_hist
+    type(resonance_t), dimension(:), allocatable :: resonances
+    integer :: u, grove, n_hists
+    u = given_output_unit ();  if (u < 0)  return
+    n_hists = 0
+    do grove = 1, cascade_set%n_groves
+       cascade => cascade_set%first_k
+       do while (associated (cascade))
+          if (cascade%active .and. cascade%complete) then
+             if (cascade%grove == grove) then
+                write (u, '(1x,A,I0)') 'grove #', grove
+                call res_hist%of_cascade (cascade)
+                ! TODO: (bcn 2015-12-09) have to remove double counting?
+                if (res_hist%n_resonances > 0) then
+                   n_hists = n_hists + 1
+                   ! TODO: (bcn 2015-12-09) add to res_hists
+                end if
+             end if
+          end if
+          cascade => cascade%next
+       end do
+    end do
+    allocate (res_hists (n_hists))
+    print *, 'n_hists =    ', n_hists !!! Debugging
+  end subroutine cascade_set_get_resonance_histories
 
 @ %def cascade_set_get_resonance_histories
 \subsection{Unit tests}
@@ -9883,6 +9977,7 @@ end module cascades_ut
 module cascades_uti
 
 <<Use kinds>>
+<<Use strings>>
   use flavors
   use model_data
   use phs_forests, only: phs_parameters_t
@@ -9913,20 +10008,20 @@ end module cascades_uti
 \subsubsection{Check cascade setup}
 @ Checking the basic setup up of the phase space cascade parameterizations. 
 <<Cascades: execute tests>>=
-  call test (cascade_1, "cascade_1", &
+  call test (cascades_1, "cascades_1", &
        "check cascade setup", &
        u, results)
 <<Cascades: test declarations>>=
-  public :: cascade_1
+  public :: cascades_1
 <<Cascades: tests>>=
-  subroutine cascade_1 (u)  
+  subroutine cascades_1 (u)  
     integer, intent(in) :: u
     type(model_data_t), target :: model
     type(flavor_t), dimension(5,2) :: flv
     type(cascade_set_t) :: cascade_set
     type(phs_parameters_t) :: phs_par
 
-    write (u, "(A)")  "* Test output: Cascades"
+    write (u, "(A)")  "* Test output: cascades_1"
     write (u, "(A)")  "*   Purpose: test cascade phase space functions"
     write (u, "(A)")
 
@@ -9963,11 +10058,11 @@ end module cascades_uti
     call model%final ()
 
     write (u, *)
-    write (u, "(A)")  "* Test output end: cascade_1"
+    write (u, "(A)")  "* Test output end: cascades_1"
 
-  end subroutine cascade_1
+  end subroutine cascades_1
 
-@ %def cascade_1
+@ %def cascades_1
 @
 \subsubsection{Check resonance history}
 <<Cascades: execute tests>>=
@@ -9982,13 +10077,9 @@ end module cascades_uti
     type(flavor_t), dimension(5,1) :: flv
     type(cascade_set_t) :: cascade_set
     type(phs_parameters_t) :: phs_par
+    type(resonance_history_t), dimension(:), allocatable :: res_hists
     write (u, "(A)")  "* Test output: cascades_2"
     write (u, "(A)")  "*   Purpose: Check resonance history"
-    write (u, "(A)")
-
-
-    write (u, "(A)")  "* Test output: Cascades"
-    write (u, "(A)")  "*   Purpose: test cascade phase space functions"
     write (u, "(A)")
 
     write (u, "(A)")  "* Initializing"
@@ -9996,11 +10087,11 @@ end module cascades_uti
 
     call model%init_sm_test ()
 
-    call flv(1,1)%init ( 11, model)
-    call flv(2,1)%init (-11, model)
-    call flv(3,1)%init (  5, model)
-    call flv(4,1)%init ( -5, model)
-    call flv(5,1)%init ( 22, model)
+    call flv(1,1)%init ( 2, model)
+    call flv(2,1)%init (-2, model)
+    call flv(3,1)%init ( 1, model)
+    call flv(4,1)%init (-1, model)
+    call flv(5,1)%init (22, model)
     phs_par%sqrts = 1000._default
     phs_par%off_shell = 2
 
@@ -10009,8 +10100,10 @@ end module cascades_uti
     write (u, "(A)")
 
     call cascade_set_generate (cascade_set, model, 2, 3, flv, phs_par,.true.)
-    call cascade_set_write (cascade_set, u)
-    call cascade_set_write_file_format (cascade_set, u)
+    !call cascade_set_write (cascade_set, u)
+    !call cascade_set_write_file_format (cascade_set, u)
+    !call cascade_set_write_graph_format (cascade_set, var_str("test_casc"), var_str("test_casc"), u)
+    call cascade_set_get_resonance_histories (cascade_set, res_hists)
 
     write (u, "(A)")  "* Cleanup"
     write (u, "(A)")

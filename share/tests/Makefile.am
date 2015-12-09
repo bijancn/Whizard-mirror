@@ -351,7 +351,8 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/process_stacks_2.ref \
     unit_tests/ref-output/process_stacks_3.ref \
     unit_tests/ref-output/process_stacks_4.ref \
-    unit_tests/ref-output/cascade_1.ref \
+    unit_tests/ref-output/cascades_1.ref \
+    unit_tests/ref-output/cascades_2.ref \
     unit_tests/ref-output/event_transforms_1.ref \
     unit_tests/ref-output/decays_1.ref \
     unit_tests/ref-output/decays_2.ref \
