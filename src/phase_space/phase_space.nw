@@ -9833,7 +9833,6 @@ Avoiding nameclash with similar but different [[resonance_t]] of
   type :: resonance_info_t
      type(flavor_t) :: flavor
      integer, dimension(:), allocatable :: contributors
-     integer :: mom_id, pdg
   contains
    <<Cascades: resonance info: TBP>>
   end type resonance_info_t
@@ -9841,16 +9840,43 @@ Avoiding nameclash with similar but different [[resonance_t]] of
 @ %def resonance_info_t
 @
 <<Cascades: resonance info: TBP>>=
-  procedure :: of_ids => resonance_info_of_ids
+  procedure :: write => resonance_info_write
 <<Cascades: procedures>>=
-  pure subroutine resonance_info_of_ids (resonance, mom_id, pdg)
-    class(resonance_info_t), intent(out) :: resonance
-    integer, intent(in) :: mom_id, pdg
-    resonance%mom_id = mom_id
-    resonance%pdg = pdg
-  end subroutine resonance_info_of_ids
+  subroutine resonance_info_write (resonance, unit)
+    class(resonance_info_t), intent(in) :: resonance
+    integer, optional, intent(in) :: unit
+    integer :: u, i
+    u = given_output_unit (unit);  if (u < 0)  return
+    write (u, '(A)', advance='no') "Resonance contributors: "
+    do i = 1, size(resonance%contributors)
+       write (u, '(I0,1X)', advance='no') resonance%contributors(i)
+    end do
+    call resonance%flavor%write (u)
+    write (u, '(A)')
+  end subroutine resonance_info_write
 
-@ %def resonance_info_of_ids
+@ %def resonance_info_write
+@
+<<Cascades: resonance info: TBP>>=
+  procedure :: init => resonance_info_init
+<<Cascades: procedures>>=
+  subroutine resonance_info_init (resonance, mom_id, pdg, model, n_out)
+    class(resonance_info_t), intent(out) :: resonance
+    integer, intent(in) :: mom_id, pdg, n_out
+    class(model_data_t), intent(in), target :: model
+    integer :: i
+    logical, dimension(n_out) :: contrib
+    call msg_debug (D_PHASESPACE, "resonance_info_init")
+    allocate (resonance%contributors(n_out))
+    do i = 1, n_out
+       resonance%contributors(i) = i
+    end do
+    contrib = btest (mom_id, resonance%contributors - 1)
+    resonance%contributors = pack (resonance%contributors, contrib)
+    call resonance%flavor%init (pdg, model)
+  end subroutine resonance_info_init
+
+@ %def resonance_info_init
 @ With each resonance region we associate a Breit-Wiegner function
 \begin{equation*}
   P = \frac{M_{res}^4}{(s - M_{res}^2)^2 + \Gamma_{res}^2 M_{res}^2},
@@ -9887,23 +9913,6 @@ from this resonance.
   end function resonance_info_equal
 
 @ %def resonance_info_equal
->>>>>>> More progress on resonances and add debug to UT executable
-@ A resonance history is determined by the set of [[resonances]].
-<<Cascades: public>>=
-  public :: resonance_history_t
-<<Cascades: types>>=
-  type :: resonance_history_t
-     type(resonance_info_t), dimension(:), allocatable :: resonances
-     integer :: n_resonances = 0
-  contains
-   <<Cascades: resonance history: TBP>>
-  end type resonance_history_t
-
-@ %def resonance_history_t
-@
-%<Cascades: interfaces>>=
-%  interface operator(==)
-%  end interface
 <<Cascades: procedures>>=
   function resonance_history_equal (rh1, rh2) result (equal)
     logical :: equal
@@ -9923,6 +9932,35 @@ from this resonance.
   end function resonance_history_equal
 
 @ %def resonance_history_equal
+@ A resonance history is determined by the set of [[resonances]].
+<<Cascades: public>>=
+  public :: resonance_history_t
+<<Cascades: types>>=
+  type :: resonance_history_t
+     type(resonance_info_t), dimension(:), allocatable :: resonances
+     integer :: n_resonances = 0
+  contains
+   <<Cascades: resonance history: TBP>>
+  end type resonance_history_t
+
+@ %def resonance_history_t
+@
+<<Cascades: resonance history: TBP>>=
+  procedure :: write => resonance_history_write
+<<Cascades: procedures>>=
+  subroutine resonance_history_write (res_hist, unit)
+    class(resonance_history_t), intent(in) :: res_hist
+    integer, optional, intent(in) :: unit
+    integer :: u, i
+    u = given_output_unit (unit);  if (u < 0)  return
+    write(u, '(A,I0,A)') "Resonance history with ", &
+         res_hist%n_resonances, " resonances:"
+    do i = 1, res_hist%n_resonances
+       call res_hist%resonances(i)%write (u)
+    end do
+  end subroutine resonance_history_write
+
+@ %def resonance_history_write
 @
 <<Cascades: resonance history: TBP>>=
   procedure :: add_resonance => resonance_history_add_resonance
@@ -9960,9 +9998,11 @@ from this resonance.
   procedure :: of_cascade => resonance_history_of_cascade
 <<Cascades: procedures>>=
   !pure
-  subroutine resonance_history_of_cascade (res_hist, cascade)
+  subroutine resonance_history_of_cascade (res_hist, cascade, model, n_out)
     class(resonance_history_t), intent(out) :: res_hist
-    type(cascade_t), intent(in) :: cascade
+    type(cascade_t), intent(in), target :: cascade
+    class(model_data_t), intent(in), target :: model
+    integer, intent(in) :: n_out
     type(resonance_info_t) :: resonance
     integer :: i, mom_id, pdg
     call msg_debug (D_PHASESPACE, "resonance_history_of_cascade")
@@ -9971,10 +10011,13 @@ from this resonance.
           call msg_debug2 (D_PHASESPACE, "cascade has resonances and children")
           do i = 1, size(cascade%tree_resonant)
              if (cascade%tree_resonant (i)) then
-                call msg_debug2 (D_PHASESPACE, "i", i)
                 mom_id = cascade%tree (i)
                 pdg = cascade%tree_pdg (i)
-                call resonance%of_ids (mom_id, pdg)
+                call resonance%init (mom_id, pdg, model, n_out)
+                if (debug2_active (D_PHASESPACE)) then
+                   print *, 'D: Adding resonance'
+                   call resonance%write ()
+                end if
                 call res_hist%add_resonance (resonance)
              end if
           end do
@@ -10029,18 +10072,19 @@ from this resonance.
        do while (associated (cascade))
           if (cascade%active .and. cascade%complete) then
              if (cascade%grove == grove) then
-                print *, 'grove =    ', grove !!! Debugging
-                call res_hist%of_cascade (cascade)
+                call msg_debug2 (D_PHASESPACE, "grove", grove)
+                call res_hist%of_cascade (cascade, cascade_set%model, cascade_set%n_out)
                 if (res_hist%n_resonances > 0) then
+                   included = .false.
+                   call msg_debug (D_PHASESPACE, "Checking if res_hist is already included")
                    do i = 1, n_hists
-                      print *, 'i =    ', i !!! Debugging
                       included = tmp (i) == res_hist
                       if (included) then
                          exit
                       end if
                    end do
+                   call msg_debug (D_PHASESPACE, "included", included)
                    if (.not. included) then
-                      print *, 'adding hist' !!! Debugging
                       n_hists = n_hists + 1
                       tmp(n_hists) = res_hist
                    end if
@@ -10054,7 +10098,6 @@ from this resonance.
     do i = 1, n_hists
        res_hists(i) = tmp(i)
     end do
-    print *, 'n_hists =    ', n_hists !!! Debugging
   end subroutine cascade_set_get_resonance_histories
 
 @ %def cascade_set_get_resonance_histories
@@ -10186,7 +10229,7 @@ end module cascades_uti
     type(cascade_set_t) :: cascade_set
     type(phs_parameters_t) :: phs_par
     type(resonance_history_t), dimension(:), allocatable :: res_hists
-    integer :: n
+    integer :: n, i
     write (u, "(A)")  "* Test output: cascades_2"
     write (u, "(A)")  "*   Purpose: Check resonance history"
     write (u, "(A)")
@@ -10209,12 +10252,12 @@ end module cascades_uti
     write (u, "(A)")
 
     call cascade_set_generate (cascade_set, model, 2, 3, flv, phs_par,.true.)
-    !call cascade_set_write (cascade_set, u)
-    !call cascade_set_write_file_format (cascade_set, u)
-    !call cascade_set_write_graph_format (cascade_set, var_str("test_casc"), var_str("test_casc"), u)
     call cascade_set_get_resonance_histories (cascade_set, res_hists)
     n = cascade_set_get_n_trees (cascade_set)
     call assert_equal (u, n, 24, "Number of trees")
+    do i = 1, size(res_hists)
+       call res_hists(i)%write (u)
+    end do
 
     write (u, "(A)")  "* Cleanup"
     write (u, "(A)")
