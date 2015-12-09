@@ -924,9 +924,55 @@ there is only a soft singularity if the radiated parton becomes soft.
 @ %def singular_region_has_collinear_divergence
 @
 <<fks regions: types>>=
+  type :: resonance_mapping_t
+    type(resonance_history_t) :: resonances
+    integer, dimension(:), allocatable :: alr_to_i_resonance
+  contains
+  <<fks regions: resonance mapping: TBP>>
+  end type resonance_mapping_t
+
+@ %def resonance_mapping_t
+@ Testing: Init resonance mapping for $\mu \mu b b$ final state.
+<<fks regions: resonance mapping: TBP>>=
+  procedure :: init => resonance_mapping_init
+<<fks regions: procedures>>=
+  subroutine resonance_mapping_init (res_map)
+    class(resonance_mapping_t), intent(inout) :: res_map
+    allocate (res_map%alr_to_i_resonance (4))
+    res_map%alr_to_i_resonance(1) = 1
+    res_map%alr_to_i_resonance(2) = 1
+    res_map%alr_to_i_resonance(3) = 2
+    res_map%alr_to_i_resonance(4) = 2
+    res_map%resonances%n_resonances = 2
+    !!! To be continued...
+  end subroutine resonance_mapping_init
+
+@ %def resonance_mapping_init
+@
+<<fks regions: resonance mapping: TBP>>=
+  procedure :: apply_resonance => resonance_mapping_apply_resonance
+<<fks regions: procedures>>=
+  function resonance_mapping_apply_resonance (res_map, alr, i_gluon, p) result (p_map)
+    real(default) :: p_map
+    class(resonance_mapping_t), intent(in) :: res_map
+    integer, intent(in) :: alr, i_gluon
+    type(vector4_t), intent(in), dimension(:) :: p
+    integer :: i_res
+    real(default) :: s
+    i_res = res_map%alr_to_i_resonance (alr)
+    associate (res => res_map%resonances%resonances(i_res))
+       s = compute_resonance_mass (p, res%contributors, i_gluon)
+       p_map = res%mapping (s)
+    end associate
+  end function resonance_mapping_apply_resonance
+
+@ %def resonance_mapping_apply_resonance
+@ 
+<<fks regions: types>>=
   type, abstract :: fks_mapping_t
      real(default) :: sumdij
      real(default) :: sumdij_soft
+     type(resonance_mapping_t), allocatable :: res_map
   contains
   <<fks regions: fks mapping: TBP>>
   end type fks_mapping_t
@@ -1096,6 +1142,8 @@ the flavor structure list.
     associate (map => reg_data%fks_mapping)
       map%sumdij = map%compute_sumdij (reg_data%regions(alr), p)
       sval = map%svalue (p, emitter, reg_data%nlegs_real)
+      if (allocated (map%res_map)) &
+         sval = sval * map%res_map%apply_resonance (alr, reg_data%nlegs_real, p)
     end associate
   end function region_data_get_svalue
 
@@ -1968,14 +2016,20 @@ of the mapping and are set to $1$ per default.
     class(fks_mapping_default_t), intent(in) :: map
     type(singular_region_t), intent(inout) :: sregion
     type(vector4_t), intent(in), dimension(:) :: p
-    real(default) :: d
-    integer :: i, k, l
+    real(default) :: d, dij
+    integer :: alr, i, j
+    integer :: nlegreal
 
     associate (ftuples => sregion%flst_allreg)
       d = zero
-      do i = 1, sregion%nregions
-        call ftuples(i)%get (k, l)
-        d = d + one / map%dij (p, k, l)
+      do alr = 1, sregion%nregions
+        call ftuples(alr)%get (i, j)
+        dij = map%dij (p, i, j)
+        if (allocated (map%res_map)) then
+           nlegreal = size (p)
+           dij = dij * map%res_map%apply_resonance (alr, nlegreal, p)
+        end if
+        d = d + one / dij
       end do
     end associate
 
@@ -7946,26 +8000,6 @@ its generation.
   end subroutine phs_fks_compute_isr_kinematics
 
 @ %def phs_fks_compute_isr_kinematics
-@
-<<phs fks: public>>=
-  public :: compute_resonance_mass
-<<phs fks: procedures>>=
-  function compute_resonance_mass (p, i_res_born, i_emitter) result (m)
-    real(default) :: m
-    type(vector4_t), intent(in), dimension(:) :: p
-    integer, intent(in), dimension(:) :: i_res_born
-    integer, intent(in), optional :: i_emitter
-    type(vector4_t) :: p_sum
-    integer :: i
-    p_sum = vector4_null
-    do i = 1, size (i_res_born)
-       p_sum = p_sum + p (i_res_born (i))
-    end do
-    if (present (i_emitter)) p_sum = p_sum + p (i_emitter)
-    m = p_sum**1
-  end function compute_resonance_mass
-
-@ %def compute_resonance_mass
 @
 \subsection{Unit tests}
 Test module, followed by the corresponding implementation module.
