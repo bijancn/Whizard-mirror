@@ -207,7 +207,7 @@ module fks_regions
   use pdg_arrays
   use model_data
   use physics_defs
-  use cascades, only: resonance_history_t
+  use cascades
 
 <<Standard module head>>
 
@@ -926,7 +926,7 @@ there is only a soft singularity if the radiated parton becomes soft.
 @
 <<fks regions: types>>=
   type :: resonance_mapping_t
-    type(resonance_history_t) :: resonances
+    type(resonance_history_t), dimension(:), allocatable :: resonances
     integer, dimension(:), allocatable :: alr_to_i_resonance
   contains
   <<fks regions: resonance mapping: TBP>>
@@ -937,15 +937,36 @@ there is only a soft singularity if the radiated parton becomes soft.
 <<fks regions: resonance mapping: TBP>>=
   procedure :: init => resonance_mapping_init
 <<fks regions: procedures>>=
-  subroutine resonance_mapping_init (res_map)
+  subroutine resonance_mapping_init (res_map, res_hist, flv)
     class(resonance_mapping_t), intent(inout) :: res_map
-    allocate (res_map%alr_to_i_resonance (4))
-    res_map%alr_to_i_resonance(1) = 1
-    res_map%alr_to_i_resonance(2) = 1
-    res_map%alr_to_i_resonance(3) = 2
-    res_map%alr_to_i_resonance(4) = 2
-    res_map%resonances%n_resonances = 2
-    !!! To be continued...
+    type(resonance_history_t), intent(in), dimension(:) :: res_hist
+    integer, intent(in), dimension(:) :: flv
+    type(resonance_history_t), dimension(:), allocatable :: res_hist_tmp
+    integer :: n_hist, i_hist, i_hist_colored, i_res
+    n_hist = size (res_hist)
+    allocate (res_hist_tmp (n_hist))
+    allocate (res_map%resonances (n_hist))
+    do i_hist = 1, n_hist
+       res_hist_tmp(i_hist) = res_hist(i_hist)
+       call res_hist_tmp(i_hist)%add_offset (2)
+       do i_res = 1, res_hist_tmp(i_hist)%n_resonances
+          associate (resonance => res_hist_tmp(i_hist)%resonances(i_res))
+             if (.not. any (is_colored (resonance%contributors))) &
+                call res_hist_tmp(i_hist)%remove_resonance (i_res)
+          end associate
+       end do
+       if (allocated (res_hist_tmp(i_hist)%resonances)) then
+          if (any (res_map%resonances == res_hist_tmp(i_hist))) then
+             cycle
+          else
+             do i_res = 1, res_hist_tmp(i_hist)%n_resonances
+                associate (resonance => res_hist_tmp(i_hist)%resonances(i_res))
+                   call res_map%resonances(i_hist)%add_resonance (resonance)
+                end associate
+             end do
+          end if
+       end if
+    end do
   end subroutine resonance_mapping_init
 
 @ %def resonance_mapping_init
@@ -960,11 +981,11 @@ there is only a soft singularity if the radiated parton becomes soft.
     type(vector4_t), intent(in), dimension(:) :: p
     integer :: i_res
     real(default) :: s
-    i_res = res_map%alr_to_i_resonance (alr)
-    associate (res => res_map%resonances%resonances(i_res))
-       s = compute_resonance_mass (p, res%contributors, i_gluon)
-       p_map = res%mapping (s)
-    end associate
+    !i_res = res_map%alr_to_i_resonance (alr)
+    !associate (res => res_map%resonances(i_res)%resonances(i_res))
+    !   s = compute_resonance_mass (p, res%contributors, i_gluon)
+    !   p_map = res%mapping (s)
+    !end associate
   end function resonance_mapping_apply_resonance
 
 @ %def resonance_mapping_apply_resonance
@@ -5810,6 +5831,11 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
     end associate
     select type (mapping => nlo_controller%reg_data%fks_mapping)
     type is (fks_mapping_default_t)
+       if (present (resonance_histories)) then
+          allocate (mapping%res_map)
+          call mapping%res_map%init (resonance_histories, &
+             nlo_controller%particle_states%flv_state_born (:,1))
+       end if
        call mapping%set_parameter (n_in, template%fks_dij_exp1, template%fks_dij_exp2)
     end select
   end subroutine nlo_controller_init_region_data
