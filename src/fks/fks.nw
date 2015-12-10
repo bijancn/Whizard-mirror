@@ -207,7 +207,7 @@ module fks_regions
   use pdg_arrays
   use model_data
   use physics_defs
-  use cascades
+  use cascades, only: resonance_history_t
 
 <<Standard module head>>
 
@@ -3941,6 +3941,7 @@ end module nlo_data
     logical :: count_kinematics = .false.
     real(default) :: fks_dij_exp1
     real(default) :: fks_dij_exp2
+    logical :: resonance_mappings = .false.
   contains
   <<nlo data: fks template: TBP>>
   end type fks_template_t
@@ -4004,6 +4005,16 @@ end module nlo_data
   end subroutine fks_template_disable_subtraction
 
 @ %def fks_template_disable_subtraction
+@
+<<nlo data: fks template: TBP>>=
+  procedure :: set_resonance_mappings => fks_template_set_resonance_mappings
+<<nlo data: procedures>>=
+  subroutine fks_template_set_resonance_mappings (object)
+     class(fks_template_t), intent(inout) :: object
+     object%resonance_mappings = .true.
+  end subroutine fks_template_set_resonance_mappings
+
+@ %def fks_template_set_resonance_mappings
 @
 <<nlo data: types>>=
   type :: real_jacobian_t
@@ -4373,7 +4384,9 @@ module nlo_controller
   use model_data
   use pdg_arrays
   use particle_specifiers
+  use phs_base
   use phs_single
+  use cascades, only: resonance_history_t
   use state_matrices
   use interactions
   use lorentz
@@ -5470,14 +5483,31 @@ process.
 <<nlo controller: nlo controller: TBP>>=
   procedure :: init => nlo_controller_init
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_init (nlo_controller, prc_constants, template, model)
+  subroutine nlo_controller_init (nlo_controller, prc_constants, template, &
+     phs_config, model)
      class(nlo_controller_t), intent(inout), target :: nlo_controller
      type(process_constants_t), intent(in), dimension(2) :: prc_constants
      type(fks_template_t), intent(in) :: template
+     class(phs_config_t), intent(in) :: phs_config
      type(model_data_t), intent(in) :: model
      integer :: n_in, n_tot_born, n_tot_real
+     type(resonance_history_t), dimension(:), allocatable :: resonance_histories 
      call nlo_controller%set_flv_states (prc_constants)
      call nlo_controller%set_particle_data (prc_constants)
+     if (template%resonance_mappings) then
+        select type (phs_config)
+        type is (phs_fks_config_t)
+           resonance_histories = phs_config%get_resonance_histories ()
+           do n_in = 1, size (resonance_histories)
+              call resonance_histories(n_in)%write()
+           end do
+           if (.not. allocated (resonance_histories)) &
+              call msg_fatal ("Failed to get resonance histories!")
+        end select 
+        call nlo_controller%init_region_data (template, model, resonance_histories)
+     else
+        call nlo_controller%init_region_data (template, model)
+     end if
      call nlo_controller%init_region_data (template, model)
      call nlo_controller%setup_matrix_elements ()
      if (nlo_controller%use_internal_color_correlations) &
@@ -5765,10 +5795,12 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
 <<nlo controller: nlo controller: TBP>>=
   procedure :: init_region_data => nlo_controller_init_region_data
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_init_region_data (nlo_controller, template, model)
+  subroutine nlo_controller_init_region_data (nlo_controller, template, &
+     model, resonance_histories)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     type(fks_template_t), intent(in) :: template
     type(model_data_t), intent(in) :: model
+    type(resonance_history_t), intent(in), dimension(:), optional :: resonance_histories
     integer :: n_in
     associate (states => nlo_controller%particle_states)
        n_in = nlo_controller%particle_data%n_in
@@ -6301,6 +6333,7 @@ module phs_fks
   use sf_base
   use phs_base
   use phs_wood
+  use cascades
   use process_constants
   use process_libraries
   use nlo_data
@@ -6456,9 +6489,23 @@ end module phs_fks
     allocate (phs_config%chain (size (phs_cfg_born%chain)))
     phs_config%chain = phs_cfg_born%chain
     phs_config%model => phs_cfg_born%model
+    allocate (phs_config%cascade_set, source = phs_cfg_born%cascade_set)
   end subroutine phs_fks_config_set_born_config
 
 @ %def phs_fks_config_set_born_config
+@
+<<phs fks: fks config: TBP>>=
+  procedure :: get_resonance_histories => phs_fks_config_get_resonance_histories
+<<phs fks: procedures>>=
+  function phs_fks_config_get_resonance_histories (phs_config) result (resonance_histories)
+    type(resonance_history_t), dimension(:), allocatable :: resonance_histories
+    class(phs_fks_config_t), intent(in) :: phs_config
+    if (allocated (phs_config%cascade_set)) &
+       call cascade_set_get_resonance_histories &
+          (phs_config%cascade_set, resonance_histories)   
+  end function phs_fks_config_get_resonance_histories
+
+@ %def phs_fks_config_get_resonance_histories
 @ [[xi_min]] should be set to a non-zero value in order to avoid
 phase-space points with [[p_real(emitter) = 0]].
 <<phs fks: public>>=
@@ -7044,7 +7091,6 @@ recoiling momenta.
       real(default) :: E
       type(vector4_t) :: p_boost 
       p_boost = boost_to_resonance * p_resonance
-      print *, 'p_boost: ', p_boost%p
       E = p_boost%p(0)
     end function boosted_energy
   end subroutine phs_fks_generator_generate_fsr_resonances
