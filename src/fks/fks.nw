@@ -938,11 +938,12 @@ there is only a soft singularity if the radiated parton becomes soft.
 <<fks regions: resonance mapping: TBP>>=
   procedure :: init => resonance_mapping_init
 <<fks regions: procedures>>=
-  subroutine resonance_mapping_init (res_map, res_hist, flv, n_in)
+  subroutine resonance_mapping_init (res_map, res_hist, flv, n_in, success)
     class(resonance_mapping_t), intent(inout) :: res_map
     type(resonance_history_t), intent(in), dimension(:) :: res_hist
     integer, intent(in), dimension(:) :: flv
     integer, intent(in) :: n_in
+    logical, intent(out) :: success
     type(resonance_history_t), dimension(:), allocatable :: res_hist_tmp
     type(resonance_history_t), dimension(:), allocatable :: res_hist_colored
     integer :: nleg_out
@@ -954,7 +955,6 @@ there is only a soft singularity if the radiated parton becomes soft.
     do i_hist = 1, n_hist
        res_hist_tmp(i_hist) = res_hist(i_hist)
        call res_hist_tmp(i_hist)%add_offset (n_in)
-       call res_hist_tmp(i_hist)%write ()
        n_removed = 0
        do i_res = 1, res_hist_tmp(i_hist)%n_resonances
           associate (resonance => res_hist_tmp(i_hist)%resonances(i_res - n_removed))
@@ -978,6 +978,12 @@ there is only a soft singularity if the radiated parton becomes soft.
        end if
     end do
     call contract_resonances (res_hist_colored, res_map%resonances)
+    if (size (res_map%resonances) == 0) then
+       call msg_warning ("No resonances found. Proceed in usual FKS mode.")
+       success = .false.
+    else
+       success = .true.
+    end if
   contains
     subroutine contract_resonances (res_history_in, res_history_out)
       type(resonance_history_t), intent(inout), dimension(:) :: res_history_in
@@ -1010,12 +1016,12 @@ there is only a soft singularity if the radiated parton becomes soft.
 <<fks regions: resonance mapping: TBP>>=
   procedure :: set_alr_to_i_res => resonance_mapping_set_alr_to_i_res
 <<fks regions: procedures>>=
-  subroutine resonance_mapping_set_alr_to_i_res (res_map, regions, n_alr_res)
+  subroutine resonance_mapping_set_alr_to_i_res (res_map, regions, alr_new_to_old)
      class(resonance_mapping_t), intent(inout) :: res_map
      type(singular_region_t), intent(in), dimension(:) :: regions
-     integer, intent(out) :: n_alr_res
+     integer, intent(out), dimension(:), allocatable :: alr_new_to_old
      integer :: alr, i_res
-     integer :: alr_new
+     integer :: alr_new, n_alr_res
      n_alr_res = 0
      do alr = 1, size (regions)
         do i_res = 1, size (res_map%resonances)
@@ -1027,6 +1033,7 @@ there is only a soft singularity if the radiated parton becomes soft.
      end do
    
      allocate (res_map%alr_to_i_res (n_alr_res))
+     allocate (alr_new_to_old (n_alr_res))
      alr_new = 1
      do alr = 1, size (regions)
         do i_res = 1, size (res_map%resonances)
@@ -1034,6 +1041,7 @@ there is only a soft singularity if the radiated parton becomes soft.
            !!!if (is_resonant_emitter (&
               !!!regions(alr)%emitter, res_map%resonances(i_res)%contributors)) then
               res_map%alr_to_i_res (alr_new) = i_res
+              alr_new_to_old (alr_new) = alr
               alr_new = alr_new  + 1
            end if
         end do
@@ -1041,6 +1049,18 @@ there is only a soft singularity if the radiated parton becomes soft.
   end subroutine resonance_mapping_set_alr_to_i_res
 
 @ %def resonance_mapping_set_alr_to_i_res
+@
+<<fks regions: resonance mapping: TBP>>=
+  procedure :: get_resonance_history => resonance_mapping_get_resonance_history
+<<fks regions: procedures>>=
+  function resonance_mapping_get_resonance_history (res_map, alr) result (res_hist)
+     type(resonance_history_t) :: res_hist
+     class(resonance_mapping_t), intent(in) :: res_map
+     integer, intent(in) :: alr
+     res_hist = res_map%resonances(res_map%alr_to_i_res (alr))
+  end function resonance_mapping_get_resonance_history
+
+@ %def resonance_mapping_get_resonance_history
 @
 <<fks regions: resonance mapping: TBP>>=
   procedure :: write => resonance_mapping_write 
@@ -1203,6 +1223,7 @@ there is only a soft singularity if the radiated parton becomes soft.
   subroutine region_data_set_resonance_mappings (reg_data)
     class(region_data_t), intent(inout) :: reg_data
     integer :: alr, i_res
+    integer, dimension(:), allocatable :: alr_new_to_old
     integer :: n_alr_new, n_alr_save
     integer, dimension(:,:), allocatable :: alr_to_i_res
     integer :: j, k
@@ -1215,8 +1236,22 @@ there is only a soft singularity if the radiated parton becomes soft.
     save_regions = reg_data%regions
  
     associate (res_map => reg_data%fks_mapping%res_map)
-       call res_map%set_alr_to_i_res (reg_data%regions, n_alr_new)
+       call res_map%set_alr_to_i_res (reg_data%regions, alr_new_to_old)
+
+       print *, 'alr_new_to_old: ', alr_new_to_old
+    
+       deallocate (reg_data%regions)
+       n_alr_new = size (alr_new_to_old)
+       reg_data%n_regions = n_alr_new
+       allocate (reg_data%regions (n_alr_new))
+    
+       do alr = 1, n_alr_new
+          reg_data%regions(alr) = save_regions (alr_new_to_old (alr))
+          allocate (reg_data%regions(alr)%res_hist, source = res_map%get_resonance_history (alr))
+       end do
     end associate
+       
+       
 
     !associate (res_map => reg_data%fks_mapping%res_map)
     !   allocate (res_map%alr_to_i_res (reg_data%n_regions, n_max_resonances))
@@ -1664,7 +1699,7 @@ of the present one is increased.
     do i = 1, reg_data%n_regions
        em = reg_data%regions(i)%emitter
        if (.not. any (em_count == em)) then
-          n = n+1
+          n = n + 1
           em_count(i) = em
        end if
     end do
@@ -5070,7 +5105,7 @@ and virtual counterterms.
           col2 = color_data%col_state_real (:, reg_data%nlegs_real, i)
           if (share_line (col1, col2)) then
              map_em_col_tmp(1,i1) = i
-             i1 = i1+1
+             i1 = i1 + 1
           end if
           col1 = color_data%col_state_real (:, em2, i)
           if (share_line (col1, col2)) then
@@ -5079,8 +5114,8 @@ and virtual counterterms.
           end if
        end do
        allocate (map_em_col1 (i1), map_em_col2 (i2))
-       map_em_col1 = map_em_col_tmp (1,1:i1-1)
-       map_em_col2 = map_em_col_tmp (2,1:i2-1)
+       map_em_col1 = map_em_col_tmp (1, 1 : i1 - 1)
+       map_em_col2 = map_em_col_tmp (2, 1 : i2 - 1)
 
        i_reg = 1
 
@@ -5088,14 +5123,14 @@ and virtual counterterms.
            if (uborn_index == reg_data%regions(i)%uborn_index) then
              if (em1 == reg_data%regions(i)%emitter .or. &
                   (em1 <= 2 .and. reg_data%regions(i)%emitter == 0)) then
-               reg(1,i_reg(1)) = reg_data%regions(i)
-               i_reg(1) = i_reg(1)+1
+               reg(1, i_reg(1)) = reg_data%regions(i)
+               i_reg(1) = i_reg(1) + 1
                found(1) = .true.
              end if
              if (em2 == reg_data%regions(i)%emitter .or. &
                  (em2 <= 2 .and. reg_data%regions(i)%emitter == 0)) then
-               reg(2,i_reg(2)) = reg_data%regions(i)
-               i_reg(2) = i_reg(2)+1
+               reg(2, i_reg(2)) = reg_data%regions(i)
+               i_reg(2) = i_reg(2) + 1
                found(2) = .true.
              end if
            end if
@@ -5105,8 +5140,8 @@ and virtual counterterms.
          return
        end if
 
-       do i = 1, i_reg(1)-1
-         do j = 1, i_reg(2)-1
+       do i = 1, i_reg(1) - 1
+         do j = 1, i_reg(2) - 1
            icm1 = color_data%icm (reg(1,i)%alr)
            icm2 = color_data%icm (reg(2,j)%alr)
 
@@ -5148,12 +5183,12 @@ and virtual counterterms.
                  end if
               end do
            end do
-        end do
-     end do
-     deallocate (iarray1, iarray2, iisec1, iisec2, cf_present)
-     !!! The real color factor always differs from the Born one
-     !!! by one vertex factor. Thus, apply the factor 1/2
-     bij = color_factor / (2 * color_factor_born)
+         deallocate (iarray1, iarray2, iisec1, iisec2, cf_present)
+         end do
+       end do
+       !!! The real color factor always differs from the Born one
+       !!! by one vertex factor. Thus, apply the factor 1/2
+       bij = color_factor / (2 * color_factor_born)
   end if
 
   contains
@@ -5981,6 +6016,7 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
     type(model_data_t), intent(in) :: model
     type(resonance_history_t), intent(in), dimension(:), optional :: resonance_histories
     integer :: n_in
+    logical :: success
 
     n_in = nlo_controller%particle_data%n_in
 
@@ -5991,7 +6027,8 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
        if (present (resonance_histories)) then
           allocate (mapping%res_map)
           call mapping%res_map%init (resonance_histories, &
-             nlo_controller%particle_states%flv_state_born (:,1), n_in)
+             nlo_controller%particle_states%flv_state_born (:,1), n_in, success)
+          if (.not. success) deallocate (mapping%res_map)
        end if
        call mapping%set_parameter (n_in, template%fks_dij_exp1, template%fks_dij_exp2)
     end select
