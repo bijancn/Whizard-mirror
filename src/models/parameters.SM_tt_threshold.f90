@@ -299,10 +299,12 @@ contains
   end function ttv_mtpole
 
   !pure
-  function ttv_wtpole (s, ff) result (w)
+  function ttv_wtpole (s, ff, minv) result (w)
     real(default) :: w
     real(default), intent(in) :: s
+    real(default), intent(in), optional :: minv
     integer, intent(in) :: ff
+    real(default) :: m
     logical :: nlo
     if (OFFSHELL_STRATEGY == 0 .or. OFFSHELL_STRATEGY == -1) then
        nlo = .false.
@@ -315,12 +317,17 @@ contains
           nlo = .true.
        end select
     end if
+    if (present (minv)) then
+       m = minv
+    else
+       m = ttv_mtpole (s)
+    end if
     if (nlo) then
        ! TODO: (bcn 2015-11-11) Vtb is not considered in NLO width
-       w = top_width_sm_qcd_nlo (one / alphaemi, sinthw, ttv_mtpole (s), &
+       w = top_width_sm_qcd_nlo (one / alphaemi, sinthw, m, &
             mass(24), mass(5), AS_HARD) + wt_inv
     else
-       w = top_width_sm_lo (one / alphaemi, sinthw, Vtb, ttv_mtpole (s), mass(24), &
+       w = top_width_sm_lo (one / alphaemi, sinthw, Vtb, m, mass(24), &
             mass(5)) + wt_inv
     end if
   end function ttv_wtpole
