@@ -287,17 +287,14 @@ contains
                    tmp = zero
                    owf_t_3 = ubar (sqrt(p35*p35), p35, h_t)
                    owf_t_4 = v (sqrt(p46*p46), p46, h_tbar)
-                   ! TODO: (bcn 2015-12-02) Does this make sense in matched?
                    if (FF == MATCHED) then
                       ffi_end = 3
                    else
                       ffi_end = 0
                    end if
                    do ffi = 0, ffi_end
-                      ! we add here the tree level (1) because we don't want
-                      ! to interfere with the background diagrams
-                      ttv_vec = ttv_formfactor (p35, p46, 1, ff_modes(ffi)) + 1
-                      ttv_ax = ttv_formfactor (p35, p46, 2, ff_modes(ffi)) + 1
+                      ttv_vec = ttv_formfactor (p35, p46, 1, ff_modes(ffi))
+                      ttv_ax = ttv_formfactor (p35, p46, 2, ff_modes(ffi))
                       blob_Z_vec = gncup(1) * ttv_vec
                       blob_Z_ax = gncup(2) * ttv_ax
                       tmp = tmp + owf_Z_12 * &
@@ -309,6 +306,7 @@ contains
                       tmp = tmp / cmplx (p35*p35 - m**2, m*w, kind=default)
                       tmp = tmp / cmplx (p46*p46 - m**2, m*w, kind=default)
                       tmp = tmp * decay_me(h_t, h_tbar)
+                      tmp = - tmp
                       amp_blob(hi,ffi) = amp_blob(hi,ffi) + tmp
                    end do
                 end do
@@ -358,10 +356,22 @@ contains
   function decay_me(h_t, h_tbar) result (me)
     complex(default) :: me
     integer, intent(in) :: h_t, h_tbar
-    owf_t_3 = vbar (sqrt(p46*p46), p46, h_tbar)
-    owf_t_4 = u (sqrt(p35*p35), p35, h_t)
-    me = (f_fvl (gccq33, owf_b_5, owf_Wm_3) * owf_t_4) * &
-         (owf_t_3 * f_vlf (gccq33, owf_Wp_4, owf_b_6))
+    select case (OFFSHELL_STRATEGY)
+    case (-1)
+       owf_t_3 = vbar (sqrt(p46*p46), p46, h_tbar)
+       owf_t_4 = u (sqrt(p35*p35), p35, h_t)
+       me = (f_fvl (gccq33, owf_b_5, owf_Wm_3) * owf_t_4) * &
+            (owf_t_3 * f_vlf (gccq33, owf_Wp_4, owf_b_6))
+    case (-2)
+       owf_t_3 = vbar (sqrt(p46*p46), p46, h_tbar)
+       owf_t_4 = u (sqrt(p35*p35), p35, h_t)
+       me = (f_fvl (gccq33, owf_b_5, owf_Wm_3) * owf_t_4) * &
+            (owf_t_3 * f_vlf (gccq33, owf_Wp_4, owf_b_6))
+       me = me * top_width_nlo (sqrt(p46*p46)) / top_width_lo (sqrt(p46*p46))
+       me = me * top_width_nlo (sqrt(p35*p35)) / top_width_lo (sqrt(p35*p35))
+    case default
+       
+    end select
   end function decay_me
 
 end module @ID@_threshold
@@ -398,12 +408,10 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
   integer :: i, hi
   amp_tree = zero
   USE_FF = .false.
-  if (OFFSHELL_STRATEGY >= 0) then
-     call sm_new_event (p)
-     do hi = 1, sm_number_spin_states()
-        amp_tree(hi) = sm_get_amplitude (1, hi, 1)
-     end do
-  end if
+  call sm_new_event (p)
+  do hi = 1, sm_number_spin_states()
+     amp_tree(hi) = sm_get_amplitude (1, hi, 1)
+  end do
   USE_FF = .true.
   call calculate_blobs (p)
   select case (FF)
@@ -413,14 +421,15 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
      amp2 = expanded_amp2 (amp_tree, amp_blob(:,0))
   case (MATCHED)
      signs(0:3) = [+1, -1, +1, -1]
-     amp2_array(0) = sum ((amp_tree + amp_blob(:,0)) * &
-          conjg (amp_tree + amp_blob(:,0)))
+     amp2_array(0) = real (sum ((amp_tree + amp_blob(:,0)) * &
+          conjg (amp_tree + amp_blob(:,0))))
      do i = 1, 3
         amp2_array(i) = expanded_amp2 (amp_tree, amp_blob(:,i))
      end do
      amp2 = sum (signs * amp2_array)
   case default
-     amp2 = sum ((amp_tree + amp_blob(:,0)) * conjg (amp_tree + amp_blob(:,0)))
+     amp2 = real (sum ((amp_tree + amp_blob(:,0)) * &
+          conjg (amp_tree + amp_blob(:,0))))
   end select
   amp2 = amp2 * N_ / 4.0_default
 end subroutine threshold_get_amp_squared
