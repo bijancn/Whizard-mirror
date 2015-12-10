@@ -833,6 +833,7 @@ structure if the particle at position \texttt{emitter} is removed
     logical :: double_fsr
     logical :: soft_divergence
     logical :: coll_divergence
+    type(resonance_history_t), allocatable :: res_hist
   contains
   <<fks regions: singular region: TBP>>
   end type singular_region_t
@@ -927,7 +928,7 @@ there is only a soft singularity if the radiated parton becomes soft.
 <<fks regions: types>>=
   type :: resonance_mapping_t
     type(resonance_history_t), dimension(:), allocatable :: resonances
-    integer, dimension(:), allocatable :: alr_to_i_resonance
+    integer, dimension(:), allocatable :: alr_to_i_res
   contains
   <<fks regions: resonance mapping: TBP>>
   end type resonance_mapping_t
@@ -1007,6 +1008,57 @@ there is only a soft singularity if the radiated parton becomes soft.
 @ %def resonance_mapping_init
 @
 <<fks regions: resonance mapping: TBP>>=
+  procedure :: set_alr_to_i_res => resonance_mapping_set_alr_to_i_res
+<<fks regions: procedures>>=
+  subroutine resonance_mapping_set_alr_to_i_res (res_map, regions, n_alr_res)
+     class(resonance_mapping_t), intent(inout) :: res_map
+     type(singular_region_t), intent(in), dimension(:) :: regions
+     integer, intent(out) :: n_alr_res
+     integer :: alr, i_res
+     integer :: alr_new
+     n_alr_res = 0
+     do alr = 1, size (regions)
+        do i_res = 1, size (res_map%resonances)
+           if (res_map%resonances(i_res)%contains (regions(alr)%emitter)) &
+           !!!if (is_resonant_emitter (&
+           !!!   regions(alr)%emitter, res_map%resonances(i_res)%contributors)) &
+              n_alr_res = n_alr_res + 1
+        end do
+     end do
+   
+     allocate (res_map%alr_to_i_res (n_alr_res))
+     alr_new = 1
+     do alr = 1, size (regions)
+        do i_res = 1, size (res_map%resonances)
+           if (res_map%resonances(i_res)%contains (regions(alr)%emitter)) then
+           !!!if (is_resonant_emitter (&
+              !!!regions(alr)%emitter, res_map%resonances(i_res)%contributors)) then
+              res_map%alr_to_i_res (alr_new) = i_res
+              alr_new = alr_new  + 1
+           end if
+        end do
+     end do
+  end subroutine resonance_mapping_set_alr_to_i_res
+
+@ %def resonance_mapping_set_alr_to_i_res
+@
+<<fks regions: resonance mapping: TBP>>=
+  procedure :: write => resonance_mapping_write 
+<<fks regions: procedures>>=
+  subroutine resonance_mapping_write (res_map)
+    class(resonance_mapping_t), intent(in) :: res_map
+    integer :: i_res
+    print *, 'Resonance mapping: '
+    do i_res = 1, size (res_map%resonances)
+       print *, 'Resonance history nr. ', i_res
+       call res_map%resonances(i_res)%write ()
+    end do
+    print *, 'alr_to_i_res: ', res_map%alr_to_i_res
+  end subroutine resonance_mapping_write
+
+@ %def resonance_mapping_write
+@
+<<fks regions: resonance mapping: TBP>>=
   procedure :: apply_resonance => resonance_mapping_apply_resonance
 <<fks regions: procedures>>=
   function resonance_mapping_apply_resonance (res_map, alr, i_gluon, p) result (p_map)
@@ -1080,25 +1132,42 @@ there is only a soft singularity if the radiated parton becomes soft.
 @ %def region_data_t
 @
 <<fks regions: reg data: TBP>>=
+  procedure :: allocate_fks_mappings => region_data_allocate_fks_mappings
+<<fks regions: procedures>>=
+  subroutine region_data_allocate_fks_mappings (reg_data, mapping_type)
+    class(region_data_t), intent(inout) :: reg_data
+    integer, intent(in) :: mapping_type
+    
+    select case (mapping_type)
+    case (1)
+       allocate (fks_mapping_default_t :: reg_data%fks_mapping)
+    case default
+       call msg_fatal ("Init region_data: FKS mapping not implemented!")
+    end select 
+  end subroutine region_data_allocate_fks_mappings
+
+@ %def region_data_allocate_fks_mappings
+@
+<<fks regions: reg data: TBP>>=
   procedure :: init => region_data_init
 <<fks regions: procedures>>=
   subroutine region_data_init (reg_data, n_in, model, flavor_born, &
-    flavor_real, mapping_type)
+    flavor_real)
     class(region_data_t), intent(inout) :: reg_data
     integer, intent(in) :: n_in
     type(model_data_t), intent(in) :: model
     integer, intent(inout), dimension(:,:), allocatable :: &
          flavor_born, flavor_real
-    integer, intent(in) :: mapping_type
     integer, dimension(:), allocatable :: current_flavor
     type(ftuple_list_t), dimension(:), allocatable :: ftuples
     integer, dimension(:), allocatable :: emitter
     type(flv_structure_t), dimension(:), allocatable :: flst_alr
     integer :: i
+    !!!print *, 'Check: ', allocated (reg_data%fks_mapping%res_map)
     reg_data%n_in = n_in
-    reg_data%n_flv_born = size(flavor_born(1,:))
-    reg_data%n_flv_real = size(flavor_real(1,:))
-    reg_data%nlegs_born = size(flavor_born(:,1))
+    reg_data%n_flv_born = size (flavor_born(1,:))
+    reg_data%n_flv_real = size (flavor_real(1,:))
+    reg_data%nlegs_born = size (flavor_born(:,1))
     reg_data%nlegs_real = reg_data%nlegs_born + 1
     allocate (reg_data%flv_born (reg_data%n_flv_born))
     allocate (reg_data%flv_real (reg_data%n_flv_real))
@@ -1114,18 +1183,12 @@ there is only a soft singularity if the radiated parton becomes soft.
        call reg_data%flv_real(i)%init (current_flavor)
     end do
 
-    select case (mapping_type)
-    case (1)
-       allocate (fks_mapping_default_t :: reg_data%fks_mapping)
-    case default
-       call msg_fatal ("Init region_data: FKS mapping not implemented!")
-    end select
-
     call reg_data%flv_extra%init &
          (reg_data%flv_real(1)%flst(reg_data%nlegs_real), &
          model)
     call reg_data%find_regions (model, ftuples, emitter, flst_alr)
     call reg_data%init_regions (ftuples, emitter, flst_alr)
+    call reg_data%set_resonance_mappings ()
     call reg_data%evaluate_flavors (model)
     call reg_data%set_splitting_info ()
     call reg_data%find_emitters ()
@@ -1133,6 +1196,67 @@ there is only a soft singularity if the radiated parton becomes soft.
   end subroutine region_data_init
 
 @ %def region_data_init
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: set_resonance_mappings => region_data_set_resonance_mappings
+<<fks regions: procedures>>=
+  subroutine region_data_set_resonance_mappings (reg_data)
+    class(region_data_t), intent(inout) :: reg_data
+    integer :: alr, i_res
+    integer :: n_alr_new, n_alr_save
+    integer, dimension(:,:), allocatable :: alr_to_i_res
+    integer :: j, k
+    integer, parameter :: n_max_resonances = 10
+    type(singular_region_t), dimension(:), allocatable :: save_regions
+
+    if (.not. allocated (reg_data%fks_mapping%res_map)) return
+
+    allocate (save_regions (reg_data%n_regions))
+    save_regions = reg_data%regions
+ 
+    associate (res_map => reg_data%fks_mapping%res_map)
+       call res_map%set_alr_to_i_res (reg_data%regions, n_alr_new)
+    end associate
+
+    !associate (res_map => reg_data%fks_mapping%res_map)
+    !   allocate (res_map%alr_to_i_res (reg_data%n_regions, n_max_resonances))
+    !   res_map%alr_to_i_res = 0
+    !   n_alr_res = 0; n_alr_save = reg_data%n_regions
+    !   do alr = 1, reg_data%n_regions
+    !      associate (region => reg_data%regions(alr))
+    !         do i_res = 1, size (res_map%resonances)
+    !            if (is_resonant_emitter (&
+    !                region%emitter, res_map%resonances(i_res)%contributors)) then
+    !               n_alr_res = n_alr_res + 1
+    !               alr_to_i_res (alr, j) = i_res
+    !               j = j + 1
+    !            end if 
+    !         end do
+    !      end associate
+    !   end do 
+    !   deallocate (reg_data%regions)
+    !   allocate (reg_data%regions (n_alr_res))
+    !   k = 1
+    !   do alr = 1, n_alr_save
+    !      do j = 1, n_max_resonances
+    !         i_res = alr_to_i_res (alr, j)
+    !         if (i_res == 0) exit
+    !         reg_data%regions(k) = save_regions (alr)
+    !         reg_data%regions(k)%res_hist = res_map(i_res)
+    !         k = k + 1
+    !      end do
+    !   end do 
+    !end associate
+  contains
+    function is_resonant_emitter (emitter, resonance_contributors) result (val)
+       logical :: val
+       integer, intent(in) :: emitter
+       integer, intent(in), dimension(:) :: resonance_contributors
+       val = any (emitter == resonance_contributors)
+    end function is_resonant_emitter 
+  end subroutine region_data_set_resonance_mappings
+
+@ %def region_data_set_resonance_mappings
 @
 <<fks regions: reg data: TBP>>=
   procedure :: evaluate_flavors => region_data_evaluate_flavors
@@ -1407,7 +1531,7 @@ of the present one is increased.
      j_first = 1
      j = 1
      SCAN_REGIONS: do l = 1, n_valid_ftuples
-        SCAN_FTUPLES: do i = i_first, i_first + ftuple_limits (l) -1
+        SCAN_FTUPLES: do i = i_first, i_first + ftuple_limits (l) - 1
            equiv = .false.
            if (i==i_first) then
               if (allocated (flst_alr2(j)%flst)) &
@@ -1419,7 +1543,7 @@ of the present one is increased.
               flst_emitter(j) = emitter(i)
               index (j) = region_to_index(ftuples, i)
               k_index (j) = region_to_ftuple(i)
-              j = j+1
+              j = j + 1
            else
               !!! Check for equivalent flavor structures
               do k = j_first, j - 1
@@ -1453,7 +1577,7 @@ of the present one is increased.
               flst_emitter(j) = emitter(i)
               index (j) = region_to_index (ftuples, i)
               k_index (j) = region_to_ftuple(i)
-              j = j+1
+              j = j + 1
            end if
         end if
      end do SCAN_FTUPLES
@@ -1505,7 +1629,7 @@ of the present one is increased.
      k = 1
      associate (regions => reg_data%regions)
         do i = 1, nregions
-           if (i==1) then
+           if (i == 1) then
               regions(i)%real_index = 1
               flst_save = flst_alr2(1)
               cycle
@@ -1513,7 +1637,7 @@ of the present one is increased.
            if (flst_alr2(i) == flst_save) then
               regions(i)%real_index = k
            else
-              k = k+1
+              k = k + 1
               regions(i)%real_index = k
               flst_save = flst_alr2(i)
            end if
@@ -5857,13 +5981,11 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
     type(model_data_t), intent(in) :: model
     type(resonance_history_t), intent(in), dimension(:), optional :: resonance_histories
     integer :: n_in
-    associate (states => nlo_controller%particle_states)
-       n_in = nlo_controller%particle_data%n_in
-       call nlo_controller%reg_data%init (n_in, model, &
-                     states%flv_state_born, states%flv_state_real, &
-                     template%mapping_type)
-       call nlo_controller%reg_data%write_to_file (template%id)
-    end associate
+
+    n_in = nlo_controller%particle_data%n_in
+
+    call nlo_controller%reg_data%allocate_fks_mappings (template%mapping_type)
+
     select type (mapping => nlo_controller%reg_data%fks_mapping)
     type is (fks_mapping_default_t)
        if (present (resonance_histories)) then
@@ -5873,6 +5995,12 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
        end if
        call mapping%set_parameter (n_in, template%fks_dij_exp1, template%fks_dij_exp2)
     end select
+
+    associate (states => nlo_controller%particle_states)
+       call nlo_controller%reg_data%init (n_in, model, &
+                     states%flv_state_born, states%flv_state_real)
+       call nlo_controller%reg_data%write_to_file (template%id)
+    end associate
   end subroutine nlo_controller_init_region_data
 
 @ %def nlo_controller_init_region_data
