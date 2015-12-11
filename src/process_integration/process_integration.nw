@@ -2007,7 +2007,7 @@ module processes
   use nlo_controller, only: nlo_controller_t
 
   use phs_wood, only: phs_wood_config_t, phs_wood_t
-  use phs_fks, only: phs_fks_config_t, phs_fks_t
+  use phs_fks, only: phs_point_set_t, phs_fks_config_t, phs_fks_t
   use phs_fks, only: PHS_MODE_ADDITIONAL_PARTICLE
   use phs_fks, only: PHS_MODE_COLLINEAR_REMNANT
 
@@ -7834,29 +7834,42 @@ The quantum numbers mask of the incoming particle
     class(term_instance_t), intent(inout) :: term
     integer :: emitter
     type(vector4_t), dimension(:), allocatable :: p_born
-    type(vector4_t), dimension(:), allocatable :: p_real
+    !!!type(vector4_t), dimension(:), allocatable :: p_real
     integer :: n_in
     integer, dimension(:), allocatable :: resonances
+    integer :: i_res, n_res
+    type(phs_point_set_t) :: p_real
     
     emitter = term%nlo_controller%get_active_emitter ()
     if (term%nlo_controller%settings%use_resonance_mappings) &
        resonances = term%nlo_controller%reg_data%get_associated_resonances (emitter)
     allocate (p_born(1:size(term%nlo_controller%int_born%get_momenta ())))
     p_born = term%nlo_controller%int_born%get_momenta ()
+
+    if (allocated (resonances)) then
+       n_res = size (resonances)
+    else
+       n_res = 1
+    end if
+
+    call p_real%init (term%nlo_controller%get_n_particles_real (), n_res)
+
     select type (phs => term%k_term%phs)
     type is (phs_fks_t)
        n_in = term%nlo_controller%get_n_in ()
        if (emitter > n_in) then
-          call phs%generate_fsr (emitter, p_real)
+          do i_res = 1, n_res
+             call phs%generate_fsr (emitter, p_real%phs_point(i_res))
+          end do
        else
-          call phs%generate_isr (p_born, p_real)
+          call phs%generate_isr (p_born, p_real%phs_point(1))
        end if
-       if (debug2_active (D_SUBTRACTION)) call debug_message_phase_space
+       if (debug2_active (D_SUBTRACTION)) call debug_message_phase_space (1)
     class default 
        call msg_fatal ("Evaluate real interaction: Phase space not of FKS-type!")
     end select
 
-    call term%int_hard_real%set_momenta (p_real)
+    call term%int_hard_real%set_momenta (p_real%get_momenta(1))
 
     call term%isolated_real%receive_kinematics ()
     call term%connected_real%receive_kinematics ()
@@ -7865,8 +7878,11 @@ The quantum numbers mask of the incoming particle
          term%scale, term%fac_scale, term%ren_scale, term%weight)
     term%nlo_controller%nlo_cuts%passed_real (emitter)  = term%passed
   contains
-    subroutine debug_message_phase_space ()
+    subroutine debug_message_phase_space (i_res)
+      integer, intent(in) :: i_res
       integer :: i, j, k
+      type(vector4_t), dimension(:), allocatable :: p
+      p = p_real%get_momenta(i_res)
       call msg_debug (D_SUBTRACTION, "Generated real phase space")
       call msg_debug (D_SUBTRACTION, "Born phase space:")
       call vector4_write_set (p_born, show_mass = .true.)
@@ -7880,17 +7896,25 @@ The quantum numbers mask of the incoming particle
       end do
       call msg_debug (D_SUBTRACTION, "emitter", emitter)
       call msg_debug (D_SUBTRACTION, "Real phase space:")
-      call vector4_write_set (p_real, show_mass = .true.)
+      !!!call vector4_write_set (p_real, show_mass = .true.)
+      !!! Writer for phs_point_set_t ?
+      call vector4_write_set (p, show_mass = .true.)
       call msg_debug (D_SUBTRACTION, "Invariant masses:")
-      do i = 1, size(p_real)
-         do j = 1, size(p_real)
+      !!!do i = 1, size(p_real(i_res)%p)
+         !!!do j = 1, size(p_real(i_res)%p)
+      do i = 1, size (p)
+         do j = 1, size (p)
             if (i < j) then
                print *, 'i, j =    ', i, j
-               print *, 'm_ij =    ', (p_real(i) + p_real(j))**1
-               do k = 1, size(p_real)
+               !!!print *, 'm_ij =    ', (p_real(i_res)%p(i) + p_real(i_res)%p(j))**1
+               print *, 'm_ij =    ', (p + p)**1
+               !!!do k = 1, size(p_real)
+               do k = 1, size (p)
                   if (k < i .and. k < j) then
                      print *, 'i, j, k =    ', i, j, k
-                     print *, 'm_ijk =    ', (p_real(i) + p_real(j) + p_real(k))**1
+                     print *, 'm_ijk =    ', &
+                        !!!(p_real(i_res)%p(i) + p_real(i_res)%p(j) + p_real(i_res)%p(k))**1
+                        (p(i) + p(j) + p(k))**1
                   end if
                end do
             end if
