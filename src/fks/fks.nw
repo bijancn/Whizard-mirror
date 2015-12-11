@@ -1387,6 +1387,37 @@ there is only a soft singularity if the radiated parton becomes soft.
 @ %def region_data_get_emitter_list
 @
 <<fks regions: reg data: TBP>>=
+  procedure :: get_associated_resonances => region_data_get_associated_resonances
+<<fks regions: procedures>>=
+  function region_data_get_associated_resonances (reg_data, emitter) result (res)
+    integer, dimension(:), allocatable :: res
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: emitter
+    integer :: alr, i
+    integer :: n_res
+    associate (res_map => reg_data%fks_mapping%res_map)
+       n_res = 0
+
+       do alr = 1, reg_data%n_regions
+          if (reg_data%regions(alr)%emitter == emitter) &
+             n_res = n_res + 1
+       end do 
+ 
+       allocate (res (n_res))
+       i = 1 
+      
+       do alr = 1, reg_data%n_regions
+          if (reg_data%regions(alr)%emitter == emitter) then
+             res (i) = res_map%alr_to_i_res (alr)
+             i = i + 1
+          end if
+       end do
+    end associate
+  end function region_data_get_associated_resonances
+
+@ %def region_data_get_associated_resonances
+@
+<<fks regions: reg data: TBP>>=
   procedure :: get_emitter => region_data_get_emitter
 <<fks regions: procedures>>=
   pure function region_data_get_emitter (reg_data, alr) result (emitter)
@@ -5605,6 +5636,20 @@ one to determine this.
 @
 \subsection{Putting it together}
 <<nlo data: public>>=
+  public :: nlo_settings_t
+<<nlo data: types>>=
+  type :: nlo_settings_t
+     logical :: use_internal_color_correlations = .true.
+     logical :: use_internal_spin_correlations = .false.
+     logical :: use_resonance_mappings = .false.
+     logical :: combined_integration
+  contains
+  <<nlo data: nlo settings: TBP>>
+  end type nlo_settings_t
+
+@ %def nlo_settings_t
+@
+<<nlo data: public>>=
   public :: nlo_particle_data_t
 <<nlo data: types>>=
   type :: nlo_particle_data_t
@@ -5815,6 +5860,7 @@ process.
     type(region_data_t) :: reg_data
     type(nlo_particle_data_t) :: particle_data
     type(nlo_states_t) :: particle_states
+    type(nlo_settings_t) :: settings
     type(sqme_collector_t), pointer :: sqme_collector => null ()
     type(polarization_data_t), dimension(:), allocatable :: pol_density_matrix
     type(polarization_data_t), dimension(:), allocatable :: pol_sqme
@@ -5835,8 +5881,6 @@ process.
     type(sf_chain_instance_t), pointer :: sf_born => null ()
     type(kinematics_counter_t), public :: counter
     logical, public :: counter_active = .false.
-    logical :: use_internal_color_correlations = .true.
-    logical :: use_internal_spin_correlations = .false.
     class(powheg_damping_t), allocatable :: powheg_damping
     type(nlo_cuts_t) :: nlo_cuts
   contains
@@ -5874,7 +5918,7 @@ process.
         call nlo_controller%init_region_data (template, model)
      end if
      call nlo_controller%setup_matrix_elements ()
-     if (nlo_controller%use_internal_color_correlations) &
+     if (nlo_controller%settings%use_internal_color_correlations) &
         call nlo_controller%color_data%init (nlo_controller%reg_data, prc_constants)
      nlo_controller%alpha_s_born_set = .false.
      call nlo_controller%init_real_and_isr_kinematics ()
@@ -6225,10 +6269,10 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
   subroutine nlo_controller_set_internal_procedures (nlo_controller, flag_color, flag_spin)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     logical, intent(in) :: flag_color, flag_spin
-    nlo_controller%use_internal_color_correlations = flag_color
+    nlo_controller%settings%use_internal_color_correlations = flag_color
     nlo_controller%real_terms%sub_soft%use_internal_color_correlations = flag_color
     nlo_controller%virtual_terms%use_internal_color_correlations = flag_color
-    nlo_controller%use_internal_spin_correlations = flag_spin
+    nlo_controller%settings%use_internal_spin_correlations = flag_spin
   end subroutine nlo_controller_set_internal_procedures
 
 @ %def nlo_controller_set_internal_procedures
@@ -6639,7 +6683,7 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
     type(vector4_t), intent(in), dimension(:) :: p_born
     real(default) :: sqme_virt
     associate (collector => nlo_controller%sqme_collector)
-       if (nlo_controller%use_internal_color_correlations) then
+       if (nlo_controller%settings%use_internal_color_correlations) then
           call nlo_controller%virtual_terms%evaluate &
                (nlo_controller%reg_data, &
                i_flv, nlo_controller%alpha_s_born, &
@@ -6741,6 +6785,32 @@ end module phs_fks
   integer, parameter, public :: PHS_MODE_COLLINEAR_REMNANT = 2
 
 @ %def parameters
+@
+<<phs fks: public>>=
+  public :: phs_point_set_t
+<<phs fks: types>>=
+  type :: phs_point_set_t
+     type(phs_point_t), dimension(:), allocatable :: phs_point
+  contains
+  <<phs fks: phs point set: TBP>>
+  end type phs_point_set_t
+
+@ %def phs_point_set_t
+@
+<<phs fks: phs point set: TBP>>=
+  procedure :: init => phs_point_set_init
+<<phs fks: procedures>>=
+  subroutine phs_point_set_init (phs_point_set, n_particles, n_resonances)
+    class(phs_point_set_t), intent(out) :: phs_point_set
+    integer, intent(in) :: n_particles, n_resonances
+    integer :: i_res
+    allocate (phs_point_set%phs_point (n_resonances))
+    do i_res = 1, n_resonances
+       call phs_point_set%phs_point(i_res)%init (n_particles)
+    end do
+  end subroutine phs_point_set_init
+
+@ %def phs_point_set_init
 @
 <<phs fks: public>>=
   public :: phs_fks_config_t

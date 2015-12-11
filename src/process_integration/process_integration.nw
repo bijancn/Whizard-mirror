@@ -2003,7 +2003,7 @@ module processes
 
   use pcm_base, only: pcm_t, pcm_instance_t
   use nlo_data, only: sqme_collector_t
-  use nlo_data, only: fks_template_t
+  use nlo_data, only: fks_template_t, nlo_settings_t
   use nlo_controller, only: nlo_controller_t
 
   use phs_wood, only: phs_wood_config_t, phs_wood_t
@@ -7184,7 +7184,7 @@ imaginary part of the terms, which should be zero anyway.
      end if
 
      associate (nlo_controller => component%nlo_controller)
-        if (.not. nlo_controller%use_internal_color_correlations) &
+        if (.not. nlo_controller%settings%use_internal_color_correlations) &
            call core%compute_sqme_cc (i_flv + i_hel, p, ren_scale, &
               born_cc = nlo_controller%sqme_collector%sqme_born_cc (:,:,i_flv), &
               bad_point = bad_point)
@@ -7272,7 +7272,7 @@ imaginary part of the terms, which should be zero anyway.
                i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv)
                select type (core_born => component%config%core_sub_born)
                class is (prc_user_defined_base_t)
-                  if (.not. nlo_controller%use_internal_color_correlations) then
+                  if (.not. nlo_controller%settings%use_internal_color_correlations) then
                      call core_born%update_alpha_s (component%core_state, term%fac_scale)
                      call core_born%compute_sqme_cc (i_flv, &
                              nlo_controller%int_born%get_momenta (), &
@@ -7836,8 +7836,11 @@ The quantum numbers mask of the incoming particle
     type(vector4_t), dimension(:), allocatable :: p_born
     type(vector4_t), dimension(:), allocatable :: p_real
     integer :: n_in
+    integer, dimension(:), allocatable :: resonances
     
     emitter = term%nlo_controller%get_active_emitter ()
+    if (term%nlo_controller%settings%use_resonance_mappings) &
+       resonances = term%nlo_controller%reg_data%get_associated_resonances (emitter)
     allocate (p_born(1:size(term%nlo_controller%int_born%get_momenta ())))
     p_born = term%nlo_controller%int_born%get_momenta ()
     select type (phs => term%k_term%phs)
@@ -7871,7 +7874,7 @@ The quantum numbers mask of the incoming particle
          do j = 1, size(p_born)
             if (i < j) then
                print *, 'i, j =    ', i, j
-               print *, 'm_ij =    ', (p_born(i)+p_born(j))**1
+               print *, 'm_ij =    ', (p_born(i) + p_born(j))**1
             end if
          end do
       end do
@@ -7883,11 +7886,11 @@ The quantum numbers mask of the incoming particle
          do j = 1, size(p_real)
             if (i < j) then
                print *, 'i, j =    ', i, j
-               print *, 'm_ij =    ', (p_real(i)+p_real(j))**1
+               print *, 'm_ij =    ', (p_real(i) + p_real(j))**1
                do k = 1, size(p_real)
                   if (k < i .and. k < j) then
                      print *, 'i, j, k =    ', i, j, k
-                     print *, 'm_ijk =    ', (p_real(i)+p_real(j)+p_real(k))**1
+                     print *, 'm_ijk =    ', (p_real(i) + p_real(j) + p_real(k))**1
                   end if
                end do
             end if
@@ -8777,11 +8780,10 @@ to subobject of [[instance]].
   procedure :: init => process_instance_init
 <<Processes: procedures>>=
   subroutine process_instance_init (instance, process, &
-       cc_flag, combined_integration)
+       nlo_settings)
     class(process_instance_t), intent(out), target :: instance
     type(process_t), intent(inout), target :: process
-    logical, intent(in), optional :: cc_flag
-    logical, intent(in), optional :: combined_integration
+    type(nlo_settings_t), intent(in), optional :: nlo_settings
     integer :: i, i_component
 
     instance%process => process
@@ -8808,13 +8810,12 @@ to subobject of [[instance]].
              associate (component => instance%component(i))
                call component%setup_kinematics &
                     (instance%sf_chain, process%beam_config, &
-                    combined_integration)
+                    nlo_settings%combined_integration)
              end associate
           end if
        end do
     else
-       call instance%init_nlo_configuration &
-            (cc_flag, combined_integration)
+       call instance%init_nlo_configuration (nlo_settings)
     end if
     
     call instance%setup_blha_structure_functions ()
@@ -8849,16 +8850,16 @@ to subobject of [[instance]].
        process_instance_init_nlo_configuration
 <<Processes: procedures>>=
   subroutine process_instance_init_nlo_configuration &
-       (instance, cc_flag, combined_integration)
+       (instance, nlo_settings)
     class(process_instance_t), intent(inout), target :: instance
-    logical, intent(in), optional :: cc_flag
-    logical, intent(in), optional :: combined_integration
+    type(nlo_settings_t), intent(in), optional :: nlo_settings
     type(process_t), pointer :: process
     integer :: i_component
     type(process_constants_t), dimension(2), save :: prc_constants
     integer :: nlo_type
     integer :: i_born
     logical :: use_internal_cc, use_internal_sc
+    logical :: use_resonance_mappings
 
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
@@ -8878,30 +8879,34 @@ to subobject of [[instance]].
                        (prc_constants(1))
                   call process%term(i_component)%fetch_constants &
                        (prc_constants(2))
-                  if (present (cc_flag)) then
-                     use_internal_cc = cc_flag
+                  if (present (nlo_settings)) then
+                     use_internal_cc = nlo_settings%use_internal_color_correlations
                      use_internal_sc = .false.
+                     use_resonance_mappings = nlo_settings%use_resonance_mappings
                   else
                      use_internal_cc = .true.
                      use_internal_sc = .false.
+                     use_resonance_mappings = .false.
                   end if
                   component%nlo_type = NLO_REAL
                   associate (nlo_controller => component%nlo_controller)
                     if (nlo_controller%needs_initialization) then
                        call nlo_controller%set_internal_procedures &
                             (use_internal_cc, use_internal_sc)
+                       nlo_controller%settings%use_resonance_mappings = &
+                          use_resonance_mappings
                        process%component(i_component)%fks_template%id = &
-                            prc_constants(1)%id
+                          prc_constants(1)%id
                        call nlo_controller%init (prc_constants, &
-                            process%component(i_component)%fks_template, &
-                            process%component(i_component)%phs_config, &
-                            process%config%model)
+                          process%component(i_component)%fks_template, &
+                          process%component(i_component)%phs_config, &
+                          process%config%model)
                        call nlo_controller%set_flv_born (process%term(i_born)%flv)
                        call nlo_controller%set_col_born (process%term(i_born)%col)
                        call nlo_controller%set_hel_born (process%term(i_born)%hel)
                        allocate (instance%sqme_real &
-                            (nlo_controller%reg_data%n_flv_real, &
-                            size (component%nlo_controller%reg_data%regions)))
+                          (nlo_controller%reg_data%n_flv_real, &
+                          size (component%nlo_controller%reg_data%regions)))
                        call nlo_controller%init_born_amps (process%get_n_allowed_born (i_born))
                        nlo_controller%needs_initialization = .false.
                     end if
@@ -8924,15 +8929,15 @@ to subobject of [[instance]].
                end select
                call component%setup_kinematics &
                     (instance%sf_chain, process%beam_config, &
-                    combined_integration)
+                    nlo_settings%combined_integration)
                if (nlo_type == NLO_REAL .or. nlo_type == NLO_PDF) &
                     call component%setup_fks_kinematics (process%meta%var_list)
              end associate
           end if
        end do
 
-       if (present (combined_integration)) then
-          if (combined_integration) then
+       if (present (nlo_settings)) then
+          if (nlo_settings%combined_integration) then
              pcm%collect_matrix_elements = .true.
           end if
        end if
