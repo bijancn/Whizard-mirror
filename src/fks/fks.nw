@@ -930,6 +930,7 @@ there is only a soft singularity if the radiated parton becomes soft.
   type :: resonance_mapping_t
     type(resonance_history_t), dimension(:), allocatable :: resonances
     integer, dimension(:), allocatable :: alr_to_i_res
+    integer, dimension(:,:), allocatable :: i_res_to_alr
   contains
   <<fks regions: resonance mapping: TBP>>
   end type resonance_mapping_t
@@ -949,6 +950,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     type(resonance_history_t), dimension(:), allocatable :: res_hist_colored
     integer :: nleg_out
     integer :: n_hist, i_hist, i_hist_colored, i_res, n_removed
+    integer :: n_hist_non_zero
     n_hist = size (res_hist)
     nleg_out = size (flv) - n_in
     allocate (res_hist_tmp (n_hist))
@@ -1023,6 +1025,7 @@ there is only a soft singularity if the radiated parton becomes soft.
      integer, intent(out), dimension(:), allocatable :: alr_new_to_old
      integer :: alr, i_res
      integer :: alr_new, n_alr_res
+     integer :: k
      n_alr_res = 0
      do alr = 1, size (regions)
         do i_res = 1, size (res_map%resonances)
@@ -1034,6 +1037,8 @@ there is only a soft singularity if the radiated parton becomes soft.
      end do
    
      allocate (res_map%alr_to_i_res (n_alr_res))
+     allocate (res_map%i_res_to_alr (size (res_map%resonances), 10))
+     res_map%i_res_to_alr = 0
      allocate (alr_new_to_old (n_alr_res))
      alr_new = 1
      do alr = 1, size (regions)
@@ -1047,6 +1052,19 @@ there is only a soft singularity if the radiated parton becomes soft.
            end if
         end do
      end do
+
+     do i_res = 1, size (res_map%resonances)
+        k = 1
+        do alr = 1, size (regions) 
+           if (res_map%resonances(i_res)%contains (regions(alr)%emitter)) then
+              res_map%i_res_to_alr (i_res, k) = alr
+              k = k + 1
+           end if
+        end do
+     end do
+     print *, 'Check i_res_to_alr: '
+     print *, res_map%i_res_to_alr (1, :)
+     print *, res_map%i_res_to_alr (2, :)
   end subroutine resonance_mapping_set_alr_to_i_res
 
 @ %def resonance_mapping_set_alr_to_i_res
@@ -1077,24 +1095,42 @@ there is only a soft singularity if the radiated parton becomes soft.
 @ %def resonance_mapping_write
 @
 <<fks regions: resonance mapping: TBP>>=
-  procedure :: apply_resonance => resonance_mapping_apply_resonance
+  procedure :: get_resonance_all => resonance_mapping_get_resonance_all
 <<fks regions: procedures>>=
-  function resonance_mapping_apply_resonance (res_map, alr, i_gluon, p) result (p_map)
+  function resonance_mapping_get_resonance_all (res_map, alr, p, i_gluon) result (p_map)
     real(default) :: p_map
     class(resonance_mapping_t), intent(in) :: res_map
-    integer, intent(in) :: alr, i_gluon
+    integer, intent(in) :: alr
     type(vector4_t), intent(in), dimension(:) :: p
+    integer, intent(in), optional :: i_gluon
     integer :: i_res
-    real(default) :: s
-    i_res = res_map%alr_to_i_res (alr)
-    associate (res => res_map%resonances(i_res))
-       !!!s = compute_resonance_mass (p, res%contributors, i_gluon)
-       p_map = res%mapping (p, i_gluon)
-    end associate
-  end function resonance_mapping_apply_resonance
+    p_map = zero
+    do i_res = 1, size (res_map%resonances)
+       associate (res => res_map%resonances(i_res))
+          if (any (res_map%i_res_to_alr (i_res, :) == alr)) &
+             p_map = p_map + res%mapping (p, i_gluon)
+       end associate
+    end do
+  end function resonance_mapping_get_resonance_all
 
-@ %def resonance_mapping_apply_resonance
+@ %def resonance_mapping_get_resonance_all
 @ 
+<<fks regions: resonance mapping: TBP>>=
+  procedure :: get_resonance_alr => resonance_mapping_get_resonance_alr 
+<<fks regions: procedures>>=
+  function resonance_mapping_get_resonance_alr (res_map, alr, p, i_gluon) result (p_map)
+    real(default) :: p_map
+    class(resonance_mapping_t), intent(in) :: res_map
+    integer, intent(in) :: alr
+    type(vector4_t), intent(in), dimension(:) :: p
+    integer, intent(in), optional :: i_gluon
+    integer :: i_res
+    i_res = res_map%alr_to_i_res (alr)
+    p_map = res_map%resonances(i_res)%mapping (p, i_gluon)
+  end function resonance_mapping_get_resonance_alr
+
+@ %def resonance_mapping_get_resonance_alr
+@
 <<fks regions: types>>=
   type, abstract :: fks_mapping_t
      real(default) :: sumdij
@@ -1378,8 +1414,9 @@ the flavor structure list.
       map%sumdij = map%compute_sumdij (reg_data%regions(alr), p)
       sval = map%svalue (p, emitter, reg_data%nlegs_real)
       if (allocated (map%res_map)) &
-         sval = sval * map%res_map%apply_resonance (alr, reg_data%nlegs_real, p)
+         sval = sval * map%res_map%get_resonance_alr (alr, p, reg_data%nlegs_real)
     end associate
+    print *, 'svalue: ', alr, sval
   end function region_data_get_svalue
 
 @ %def region_data_get_svalue
@@ -1398,6 +1435,8 @@ the flavor structure list.
       map%sumdij_soft = &
          map%compute_sumdij_soft (reg_data%regions(alr), p, p_soft)
       sval = map%svalue_soft (p, p_soft, emitter)
+      if (allocated (map%res_map)) &
+         sval = sval * map%res_map%get_resonance_alr (alr, p)
     end associate
   end function region_data_get_svalue_soft
 
@@ -2269,24 +2308,32 @@ of the mapping and are set to $1$ per default.
   procedure :: compute_sumdij => fks_mapping_default_compute_sumdij
 <<fks regions: procedures>>=
   function fks_mapping_default_compute_sumdij (map, sregion, p) result (d)
+    real(default) :: d
     class(fks_mapping_default_t), intent(in) :: map
     type(singular_region_t), intent(inout) :: sregion
     type(vector4_t), intent(in), dimension(:) :: p
-    real(default) :: d, dij
+    real(default) :: dij
     integer :: alr, i, j
     integer :: nlegreal
 
+    print *, 'Compute sumdij: '
+    call vector4_write_set (p, show_mass = .true.)
+    print *, 's567: ', (p(5) + p(6) + p(7))**2
     associate (ftuples => sregion%flst_allreg)
       d = zero
+      print *, 'nregions: ', sregion%nregions
       do alr = 1, sregion%nregions
         call ftuples(alr)%get (i, j)
+        print *, 'i: ', i, 'j: ', j
         dij = map%dij (p, i, j)
+        print *, 'dij: ', i, j, dij
         if (allocated (map%res_map)) then
            nlegreal = size (p)
-           dij = dij * map%res_map%apply_resonance (alr, nlegreal, p)
+           dij = dij / map%res_map%get_resonance_all (alr, p, nlegreal)
         end if
         d = d + one / dij
       end do
+      print *, 'd: ', d
     end associate
 
   end function fks_mapping_default_compute_sumdij
@@ -2370,20 +2417,24 @@ From these equations we can deduce the soft limit of $d$:
   procedure :: compute_sumdij_soft => fks_mapping_default_compute_sumdij_soft
 <<fks regions: procedures>>=
   function fks_mapping_default_compute_sumdij_soft (map, sregion, p_born, p_soft) result (d)
+    real(default) :: d
     class(fks_mapping_default_t), intent(in) :: map
     type(singular_region_t), intent(inout) :: sregion
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(in) :: p_soft
-    real(default) :: d
-    integer :: i, k, l
+    real(default) :: dij
+    integer :: alr, i, j
     integer :: nlegs
     d = zero
     nlegs = size (sregion%flst_real%flst)
     associate (ftuples => sregion%flst_allreg)
-      do i = 1, sregion%nregions
-        call ftuples(i)%get (k,l)
-        if (l == nlegs) then
-          d = d + one / map%dij_soft (p_born, p_soft, k)
+      do alr = 1, sregion%nregions
+        call ftuples(alr)%get (i ,j)
+        if (j == nlegs) then
+          dij = map%dij_soft (p_born, p_soft, i)
+          if (allocated (map%res_map)) &
+             dij = dij / map%res_map%get_resonance_all (alr, p_born)
+          d = d + one / dij 
         end if
       end do
     end associate
