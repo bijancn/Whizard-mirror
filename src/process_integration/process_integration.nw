@@ -2004,10 +2004,11 @@ module processes
   use pcm_base, only: pcm_t, pcm_instance_t
   use nlo_data, only: sqme_collector_t
   use nlo_data, only: fks_template_t, nlo_settings_t
+  use nlo_data, only: phs_point_set_t
   use nlo_controller, only: nlo_controller_t
 
   use phs_wood, only: phs_wood_config_t, phs_wood_t
-  use phs_fks, only: phs_point_set_t, phs_fks_config_t, phs_fks_t
+  use phs_fks, only: phs_fks_config_t, phs_fks_t
   use phs_fks, only: PHS_MODE_ADDITIONAL_PARTICLE
   use phs_fks, only: PHS_MODE_COLLINEAR_REMNANT
 
@@ -7238,6 +7239,7 @@ imaginary part of the terms, which should be zero anyway.
      type(vector4_t), dimension(:), allocatable :: p_real
      integer :: i_flv, i_flv_born
      logical :: bad_point
+     integer :: i_res
 
      if (term%nlo_type /= NLO_REAL) return
      if (component%config%component_type == COMP_REAL_FIN) &
@@ -7440,11 +7442,11 @@ has passed cuts, we calculate the various scale and weight expressions.
      type(kinematics_t) :: k_term
      complex(default), dimension(:), allocatable :: amp
      type(interaction_t) :: int_hard
-     type(interaction_t) :: int_hard_real
+     type(interaction_t), dimension(:), allocatable :: int_hard_real
      type(isolated_state_t) :: isolated
      type(connected_state_t) :: connected
-     type(isolated_state_t) :: isolated_real
-     type(connected_state_t) :: connected_real
+     type(isolated_state_t), dimension(:), allocatable :: isolated_real
+     type(connected_state_t), dimension(:), allocatable :: connected_real
      logical :: checked = .false.
      logical :: passed = .false.
      real(default) :: scale = 0
@@ -7836,22 +7838,14 @@ The quantum numbers mask of the incoming particle
     type(vector4_t), dimension(:), allocatable :: p_born
     !!!type(vector4_t), dimension(:), allocatable :: p_real
     integer :: n_in
-    integer, dimension(:), allocatable :: resonances
     integer :: i_res, n_res
     type(phs_point_set_t) :: p_real
     
     emitter = term%nlo_controller%get_active_emitter ()
-    if (term%nlo_controller%settings%use_resonance_mappings) &
-       resonances = term%nlo_controller%reg_data%get_associated_resonances (emitter)
     allocate (p_born(1:size(term%nlo_controller%int_born%get_momenta ())))
     p_born = term%nlo_controller%int_born%get_momenta ()
 
-    if (allocated (resonances)) then
-       n_res = size (resonances)
-    else
-       n_res = 1
-    end if
-
+    n_res = term%nlo_controller%get_n_res ()
     call p_real%init (term%nlo_controller%get_n_particles_real (), n_res)
 
     select type (phs => term%k_term%phs)
@@ -7860,24 +7854,30 @@ The quantum numbers mask of the incoming particle
        if (emitter > n_in) then
           do i_res = 1, n_res
              call phs%generate_fsr (emitter, p_real%phs_point(i_res))
+             call register_kinematics (i_res)
           end do
        else
           call phs%generate_isr (p_born, p_real%phs_point(1))
+          call register_kinematics (1)
        end if
        if (debug2_active (D_SUBTRACTION)) call debug_message_phase_space (1)
     class default 
        call msg_fatal ("Evaluate real interaction: Phase space not of FKS-type!")
     end select
 
-    call term%int_hard_real%set_momenta (p_real%get_momenta(1))
-
-    call term%isolated_real%receive_kinematics ()
-    call term%connected_real%receive_kinematics ()
-
-    call term%connected_real%evaluate_expressions (term%passed, &
-         term%scale, term%fac_scale, term%ren_scale, term%weight)
     term%nlo_controller%nlo_cuts%passed_real (emitter)  = term%passed
   contains
+    subroutine register_kinematics (i)
+      integer :: i
+             
+      call term%int_hard_real(i)%set_momenta (p_real%get_momenta(i))
+
+      call term%isolated_real(i)%receive_kinematics ()
+      call term%connected_real(i)%receive_kinematics ()
+      call term%connected_real(i)%evaluate_expressions (term%passed, &
+         term%scale, term%fac_scale, term%ren_scale, term%weight)
+    end subroutine register_kinematics
+
     subroutine debug_message_phase_space (i_res)
       integer, intent(in) :: i_res
       integer :: i, j, k
@@ -8097,9 +8097,7 @@ interaction, then compute the convolution with the initial state.
     call term%k_term%evaluate_sf_chain (term%fac_scale)
     select case (term%nlo_type)
     case (NLO_REAL)
-      call term%nlo_controller%sf_born%evaluate (term%fac_scale)
-      call term%isolated_real%evaluate_trace ()
-      call term%connected_real%evaluate_trace ()
+      call term%evaluate_trace_real () 
     end select
     call term%isolated%evaluate_sf_chain (term%fac_scale)
     call term%isolated%evaluate_trace ()
@@ -8107,6 +8105,24 @@ interaction, then compute the convolution with the initial state.
   end subroutine term_instance_evaluate_trace
   
 @ %def term_instance_evaluate_trace
+@
+<<Processes: term instance: TBP>>=
+  procedure :: evaluate_trace_real => term_instance_evaluate_trace_real
+<<Processes: procedures>>=
+  subroutine term_instance_evaluate_trace_real (term)
+     class(term_instance_t), intent(inout) :: term
+     integer :: i_res, n_res
+     
+     n_res = term%nlo_controller%get_n_res () 
+     call term%nlo_controller%sf_born%evaluate (term%fac_scale)
+
+     do i_res = 1, n_res
+        call term%isolated_real(i_res)%evaluate_trace ()
+        call term%connected_real(i_res)%evaluate_trace ()
+     end do
+  end subroutine term_instance_evaluate_trace_real
+
+@ %def term_instance_evaluate_trace_real
 @ Evaluate the extra data that we need for processing the object as a
 physical event.
 <<Processes: term instance: TBP>>=
@@ -8136,59 +8152,69 @@ physical event.
      integer, intent(in) :: i_term
      integer :: i
      integer :: i_flv_real, i_flv_born
+     integer :: emitter, i_res, n_res
+     integer, dimension(:), allocatable :: resonances
     
      i_flv_real = term%nlo_controller%active_flavor_structure_real
      i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real)
      call msg_debug2 (D_SUBTRACTION, "underlying Born: ", i_flv_born)
      call term%nlo_controller%set_fac_scale (term%fac_scale)
-     !if (term%passed) then
-        if (i_flv_real == 1) call component%core_state%reset_new_kinematics ()
+     if (i_flv_real == 1) call component%core_state%reset_new_kinematics ()
+
+     if (term%nlo_controller%settings%use_resonance_mappings) &
+        resonances = term%nlo_controller%reg_data%get_associated_resonances (emitter)
+     if (allocated (resonances)) then
+        n_res = size (resonances)
+     else
+        n_res = 1
+     end if
+
+     do i_res = 1, n_res
         select type (core => component%config%core)
         type is (prc_omega_t)
            do i = 1, term%config%n_allowed
               if (term%config%flv(i) == i_flv_real) then
                  term%amp(i) = core%compute_amplitude (i_term, &
-                    term%int_hard_real%get_momenta (), &
+                    term%int_hard_real(i_res)%get_momenta (), &
                     term%config%flv(i), term%config%hel(i), term%config%col(i), &
                     term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
                     component%core_state)
               else
-                 term%amp(i) = 0
+                 term%amp(i) = zero
               end if
            end do
         class is (prc_user_defined_base_t)
            call core%update_alpha_s (component%core_state, term%fac_scale)
-           term%amp = 0._default
+           term%amp = zero
         end select
-        call term%int_hard_real%set_matrix_element (term%amp)
-        if (i_flv_born == 1) call component%core_state%reset_new_kinematics ()
-        select type (core_sub_born => component%config%core_sub_born)
-        type is (prc_omega_t)
-           do i = 1, term%nlo_controller%n_allowed_born
-              if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
-                 term%nlo_controller%amp_born(i) = &
-                      core_sub_born%compute_amplitude (i_term, &
-                      term%nlo_controller%int_born%get_momenta (), &
-                      term%nlo_controller%get_flv_born(i), &
-                      term%nlo_controller%get_hel_born(i), &
-                      term%nlo_controller%get_col_born(i), &
-                      term%fac_scale, term%ren_scale, &
-                      term%alpha_qcd_forced, &
-                      component%core_state)
-              else
-                 term%nlo_controller%amp_born(i) = 0
-              end if
-           end do
-        class is (prc_user_defined_base_t)
-           call core_sub_born%update_alpha_s &
-                (component%core_state, term%fac_scale)
-           term%nlo_controller%amp_born = 0._default
-        class default
-           call msg_fatal ("Invalid core type set up for subtraction matrix elements")
-        end select 
-        call term%nlo_controller%int_born%set_matrix_element &
-             (term%nlo_controller%amp_born) 
-     !end if
+        call term%int_hard_real(i_res)%set_matrix_element (term%amp)
+     end do
+     if (i_flv_born == 1) call component%core_state%reset_new_kinematics ()
+     select type (core_sub_born => component%config%core_sub_born)
+     type is (prc_omega_t)
+        do i = 1, term%nlo_controller%n_allowed_born
+           if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
+              term%nlo_controller%amp_born(i) = &
+                  core_sub_born%compute_amplitude (i_term, &
+                  term%nlo_controller%int_born%get_momenta (), &
+                  term%nlo_controller%get_flv_born(i), &
+                  term%nlo_controller%get_hel_born(i), &
+                  term%nlo_controller%get_col_born(i), &
+                  term%fac_scale, term%ren_scale, &
+                  term%alpha_qcd_forced, &
+                  component%core_state)
+           else
+              term%nlo_controller%amp_born(i) = 0
+           end if
+        end do
+     class is (prc_user_defined_base_t)
+        call core_sub_born%update_alpha_s &
+           (component%core_state, term%fac_scale)
+        term%nlo_controller%amp_born = zero
+     class default
+        call msg_fatal ("Invalid core type set up for subtraction matrix elements")
+     end select 
+     call term%nlo_controller%int_born%set_matrix_element (term%nlo_controller%amp_born) 
   end subroutine term_instance_evaluate_interaction_real
 
 @ %def term_instance_evaluate_interaction_real
@@ -9599,12 +9625,6 @@ it from the MCI record.
                  call msg_debug2 (D_SUBTRACTION, "active real flavor", i_flv_real)
                  term%nlo_controller%active_flavor_structure_real = i_flv_real
                  call term%evaluate_interaction_real (instance%component(i), i)
-                 !if (.not. term%passed) then
-                 !   !!! Cuts failed, leave subroutine
-                 !   instance%evaluation_status = STAT_FAILED_CUTS
-                 !   instance%sqme_real = 0
-                 !   return
-                 !end if
                  call term%evaluate_trace ()
                  if (instance%component(i)%active) then
                     associate (component => instance%component(i))
