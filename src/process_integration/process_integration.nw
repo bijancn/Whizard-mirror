@@ -7730,7 +7730,7 @@ relevant for a NLO algorithm.
     end select
   contains
     subroutine allocate_real ()
-      integer :: i_res, n_res
+      integer :: n_res
 
       n_res = term%nlo_controller%reg_data%n_max_resonances
       allocate (term%int_hard_real (n_res))
@@ -9651,19 +9651,16 @@ it from the MCI record.
      class(process_instance_t), intent(inout) :: instance
      type(term_instance_t), intent(inout) :: term
      integer, intent(in) :: i
-     logical :: overwrite_born
-     integer :: j, ireg, i_flv_real, i_flv_born
+     integer :: j, i_reg
      integer :: nlegs
      integer :: fixed_emitter
-     real(default) :: sqme_born
-     integer :: i_res, n_res
 
      call msg_debug2 (D_SUBTRACTION, "process_instance_evaluate_trace_real")
 
      select type (pcm => instance%pcm)
      type is (pcm_instance_nlo_t)
         nlegs = term%nlo_controller%reg_data%nlegs_real
-        ireg = 1
+        i_reg = 1
         instance%sqme_real = 0
 
         fixed_emitter = instance%get_fixed_emitter (i)
@@ -9678,38 +9675,9 @@ it from the MCI record.
            if (any (term%nlo_controller%reg_data%emitters == j)) then
               call msg_debug2 (D_SUBTRACTION, "active emitter", j)
               call term%nlo_controller%set_active_emitter (j)
-              call term%evaluate_real_phase_space ()
-              do i_flv_real = 1, term%nlo_controller%reg_data%n_flv_real
-                 i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real) 
-                 call msg_debug2 (D_SUBTRACTION, "active real flavor", i_flv_real)
-                 term%nlo_controller%active_flavor_structure_real = i_flv_real
-                 call term%evaluate_interaction_real (instance%component(i), i)
-                 call term%evaluate_trace ()
-                 if (instance%component(i)%active) then
-                    associate (component => instance%component(i))
-                      call component%evaluate_sqme_born (term, overwrite_born)
-                      sqme_born = component%sqme
-                      call msg_debug2 (D_SUBTRACTION, "sqme_born", sqme_born)
-                      call associate_sqme_born (component, sqme_born*term%weight, i_flv_born, &
-                         update_born = pcm%controller%nlo_cuts%passed_born .and. overwrite_born)
-                      if (component%nlo_controller%settings%use_resonance_mappings) then
-                         n_res = component%nlo_controller%get_n_res (j)
-                         do i_res = 1, n_res
-                            call component%evaluate_sqme_real (term, i_res)
-                         end do
-                      else
-                         call component%evaluate_sqme_real (term, 1)
-                      end if
-                      instance%sqme_real(i_flv_real, ireg) = &
-                           pcm%collector%current_sqme_real
-                      if (pcm%collect_matrix_elements) then
-                         pcm%collector%sqme_real_per_emitter(i_flv_real,j) = &
-                              pcm%collector%current_sqme_real 
-                      end if
-                    end associate
-                 end if
-              end do
-              ireg = ireg + 1 
+              call instance%evaluate_trace_real_per_resonance (term, pcm, &
+                 i, i_reg)
+              i_reg = i_reg + 1 
            end if
         end do
         instance%sqme = instance%sqme + sum (instance%sqme_real)
@@ -9721,6 +9689,50 @@ it from the MCI record.
   end subroutine process_instance_evaluate_trace_real
 
 @ %def process_instance_evaluate_trace_real
+@
+<<Processes: process instance: TBP>>=
+  procedure :: evaluate_trace_real_per_resonance &
+      => process_instance_evaluate_trace_real_per_resonance
+<<Processes: procedures>>=
+  subroutine process_instance_evaluate_trace_real_per_resonance (instance, term, pcm, &
+                i_component, i_reg, i_res)
+    class(process_instance_t), intent(inout) :: instance
+    type(term_instance_t), intent(inout) :: term
+    type(pcm_instance_nlo_t), intent(inout) :: pcm
+    integer, intent(in) :: i_component, i_reg
+    integer, intent(in), optional :: i_res
+    integer :: i_flv_real, i_flv_born
+    logical :: overwrite_born
+    real(default) :: sqme_born
+
+    call term%evaluate_real_phase_space ()
+    do i_flv_real = 1, term%nlo_controller%reg_data%n_flv_real
+       i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real) 
+       call msg_debug2 (D_SUBTRACTION, "active real flavor", i_flv_real)
+       term%nlo_controller%active_flavor_structure_real = i_flv_real
+       associate (component => instance%component(i_component)) 
+          call term%evaluate_interaction_real (component, i_component)
+          call term%evaluate_trace ()
+          if (component%active) then
+             call component%evaluate_sqme_born (term, overwrite_born)
+             sqme_born = component%sqme
+             call msg_debug2 (D_SUBTRACTION, "sqme_born", sqme_born)
+             call associate_sqme_born (component, sqme_born * term%weight, i_flv_born, &
+                update_born = pcm%controller%nlo_cuts%passed_born .and. overwrite_born)
+             call component%evaluate_sqme_real (term, 1)
+             instance%sqme_real(i_flv_real, i_reg) = &
+                pcm%collector%current_sqme_real
+             if (pcm%collect_matrix_elements) then
+                pcm%collector%sqme_real_per_emitter (i_flv_real, &
+                   term%nlo_controller%active_emitter) = pcm%collector%current_sqme_real 
+             end if
+          end if
+       end associate
+    end do
+  end subroutine process_instance_evaluate_trace_real_per_resonance 
+ 
+@ %def process_instance_evaluate_trace_real_per_resonance
+@
 <<Processes: process instance: TBP>>=
   procedure :: evaluate_trace_real_rad => process_instance_evaluate_trace_real_rad
 <<Processes: procedures>>=
