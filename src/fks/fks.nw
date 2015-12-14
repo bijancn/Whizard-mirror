@@ -974,53 +974,72 @@ there is only a soft singularity if the radiated parton becomes soft.
     integer, intent(in), dimension(:) :: flv
     integer, intent(in) :: n_in
     logical, intent(out) :: success
-    type(resonance_history_t), dimension(:), allocatable :: res_hist_tmp
     type(resonance_history_t), dimension(:), allocatable :: res_hist_colored
     integer :: nleg_out
-    integer :: n_hist, i_hist, i_hist_colored, i_res, n_removed
+    integer :: n_hist, i_hist, i_res, n_removed
     integer :: n_hist_non_zero
-    n_hist = size (res_hist)
-    nleg_out = size (flv) - n_in
-    allocate (res_hist_tmp (n_hist))
-    allocate (res_hist_colored (n_hist))
-    do i_hist = 1, n_hist
-       res_hist_tmp(i_hist) = res_hist(i_hist)
-       call res_hist_tmp(i_hist)%add_offset (n_in)
-       n_removed = 0
-       do i_res = 1, res_hist_tmp(i_hist)%n_resonances
-          associate (resonance => res_hist_tmp(i_hist)%resonances(i_res - n_removed))
-             if (.not. any (is_colored (flv (resonance%contributors))) &
-                .or. size (resonance%contributors) == nleg_out) then
-                call res_hist_tmp(i_hist)%remove_resonance (i_res - n_removed)
-                n_removed = n_removed + 1
-             end if
-          end associate
+    call msg_debug (D_SUBTRACTION, "resonance_mapping_init")
+    if (debug_active (D_SUBTRACTION)) then
+       call msg_debug (D_SUBTRACTION, "Original resonances:")
+       do i_hist = 1, size(res_map%resonances)
+          call res_hist(i_hist)%write ()
        end do
-       if (allocated (res_hist_tmp(i_hist)%resonances)) then
-          if (any (res_hist_colored == res_hist_tmp(i_hist))) then
-             cycle
-          else
-             do i_res = 1, res_hist_tmp(i_hist)%n_resonances
-                associate (resonance => res_hist_tmp(i_hist)%resonances(i_res))
-                   call res_hist_colored(i_hist)%add_resonance (resonance)
-                end associate
-             end do
-          end if
-       end if
-    end do
+    end if
+    call remove_uncolored_resonances ()
     call contract_resonances (res_hist_colored, res_map%resonances)
+    if (debug_active (D_SUBTRACTION)) then
+       call msg_debug (D_SUBTRACTION, "Resonances after removing uncolored and duplicates:")
+       do i_hist = 1, size(res_map%resonances)
+          call res_map%resonances(i_hist)%write ()
+       end do
+    end if
     if (size (res_map%resonances) == 0) then
        call msg_warning ("No resonances found. Proceed in usual FKS mode.")
        success = .false.
     else
        success = .true.
     end if
+
   contains
+
+    subroutine remove_uncolored_resonances ()
+      type(resonance_history_t), dimension(:), allocatable :: res_hist_tmp
+      n_hist = size (res_hist)
+      nleg_out = size (flv) - n_in
+      allocate (res_hist_tmp (n_hist))
+      allocate (res_hist_colored (n_hist))
+      do i_hist = 1, n_hist
+         res_hist_tmp(i_hist) = res_hist(i_hist)
+         call res_hist_tmp(i_hist)%add_offset (n_in)
+         n_removed = 0
+         do i_res = 1, res_hist_tmp(i_hist)%n_resonances
+            associate (resonance => res_hist_tmp(i_hist)%resonances(i_res - n_removed))
+               if (.not. any (is_colored (flv (resonance%contributors))) &
+                  .or. size (resonance%contributors) == nleg_out) then
+                  call res_hist_tmp(i_hist)%remove_resonance (i_res - n_removed)
+                  n_removed = n_removed + 1
+               end if
+            end associate
+         end do
+         if (allocated (res_hist_tmp(i_hist)%resonances)) then
+            if (any (res_hist_colored == res_hist_tmp(i_hist))) then
+               cycle
+            else
+               do i_res = 1, res_hist_tmp(i_hist)%n_resonances
+                  associate (resonance => res_hist_tmp(i_hist)%resonances(i_res))
+                     call res_hist_colored(i_hist)%add_resonance (resonance)
+                  end associate
+               end do
+            end if
+         end if
+      end do
+    end subroutine remove_uncolored_resonances
+
     subroutine contract_resonances (res_history_in, res_history_out)
-      type(resonance_history_t), intent(inout), dimension(:) :: res_history_in
+      type(resonance_history_t), intent(in), dimension(:) :: res_history_in
       type(resonance_history_t), intent(out), dimension(:), allocatable :: res_history_out
       logical, dimension(:), allocatable :: i_non_zero
-      integer :: i_hist, n_hist_non_zero, n_hist
+      integer :: n_hist_non_zero, n_hist
       integer :: i_hist_new
       n_hist = size (res_history_in); n_hist_non_zero = 0
       allocate (i_non_zero (n_hist))
@@ -1040,6 +1059,7 @@ there is only a soft singularity if the radiated parton becomes soft.
          end if
       end do
     end subroutine contract_resonances
+
   end subroutine resonance_mapping_init
 
 @ %def resonance_mapping_init
@@ -3454,6 +3474,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   - \frac{32 \pi \alpha_s C_{em}}{s\xi^2} B_{f_b(\alpha_r)} (1-y)^{-1} 
     \left[e^{-\frac{2\bar{k}_{em} \cdot k_{res}}{k_{res}^2} \frac{k_\gamma^0}{k_{em}^0}} - e^{-\xi}\right]\right\rbrace.
 \end{align*}
+Keep in mind that [[sqme_born]] is $B_{f_b}(\alpha_r)$:
 <<real subtraction: soft sub: TBP>>=
   procedure :: compute_soft_mismatch => soft_subtraction_compute_soft_mismatch
 <<real subtraction: procedures>>=
@@ -3474,22 +3495,23 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     type(vector4_t) :: p_res, p_soft
     real(default) :: exp1
     real(default) :: sm1, sm2
-    
 
     s = (p_born(1) + p_born(2))**2
     p_res = vector4_null
     do i_res = 1, size (resonance_list)
        p_res = p_res + p_born(resonance_list(i_res))
     end do
-    
+
     exp1 = - two * p_gluon * p_res / p_res**2
     sm1 = sub_soft%value(alr) * ( exp(exp1) - exp(- xi) )
 
-    exp1 = - two * p_born(emitter) * p_res / p_res**2 * p_gluon%p(0) / p_born(emitter)%p(0)
-    sm2 = -32 * pi * alpha_s * cf / (s * xi**2) * sqme_born * ( exp(exp1) - exp(- xi) ) / (one - y)
+    exp1 = - two * p_born(emitter) * p_res / p_res**2 * &
+         p_gluon%p(0) / p_born(emitter)%p(0)
+    sm2 = - 32 * pi * alpha_s * cf / (s * xi**2) * sqme_born * &
+         (exp(exp1) - exp(- xi)) / (one - y)
 
     sqme_mismatch = s * xi / (4 * pi)**3 * ( sm1 - sm2 )
-    
+
   end function soft_subtraction_compute_soft_mismatch
 
 @ %def soft_subtraction_compute_soft_mismatch
@@ -6171,12 +6193,14 @@ process.
      class(nlo_controller_t), intent(inout), target :: nlo_controller
      type(process_constants_t), intent(in), dimension(2) :: prc_constants
      type(fks_template_t), intent(in) :: template
-     class(phs_config_t), intent(in) :: phs_config
+     class(phs_config_t), intent(inout) :: phs_config
      type(model_data_t), intent(in) :: model
      integer :: n_in, n_tot_born, n_tot_real
      type(resonance_history_t), dimension(:), allocatable :: resonance_histories 
+     call msg_debug (D_SUBTRACTION, "nlo_controller_init")
      call nlo_controller%set_flv_states (prc_constants)
      call nlo_controller%set_particle_data (prc_constants)
+     print *, 'template%resonance_mappings =    ', template%resonance_mappings !!! Debugging
      if (template%resonance_mappings) then
         select type (phs_config)
         type is (phs_fks_config_t)
@@ -6506,9 +6530,8 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
     type(resonance_history_t), intent(in), dimension(:), optional :: resonance_histories
     integer :: n_in
     logical :: success
-
+    call msg_debug (D_SUBTRACTION, "nlo_controller_init_region_data")
     n_in = nlo_controller%particle_data%n_in
-
     call nlo_controller%reg_data%allocate_fks_mappings (template%mapping_type)
 
     select type (mapping => nlo_controller%reg_data%fks_mapping)
@@ -7259,12 +7282,15 @@ end module phs_fks
 <<phs fks: procedures>>=
   function phs_fks_config_get_resonance_histories (phs_config) result (resonance_histories)
     type(resonance_history_t), dimension(:), allocatable :: resonance_histories
-    class(phs_fks_config_t), intent(in) :: phs_config
+    class(phs_fks_config_t), intent(inout) :: phs_config
     if (allocated (phs_config%cascade_set)) then
        call cascade_set_get_resonance_histories &
           (phs_config%cascade_set, resonance_histories)
     else
-       call msg_fatal ("Failed to get resonance histories!")
+       call msg_debug (D_PHASESPACE, "Have to rebuild phase space for resonance histories")
+       call phs_config%generate_phase_space ()
+       call cascade_set_get_resonance_histories &
+          (phs_config%cascade_set, resonance_histories)
     end if
   end function phs_fks_config_get_resonance_histories
 
@@ -7788,7 +7814,6 @@ recoiling momenta.
     integer :: n_resonant_particles
     real(default) :: m_inv_born, m_inv_real
 
-
     nlegborn = size (p_born); nlegreal = nlegborn + 1
     n_resonant_particles = size (resonance_list)
 
@@ -7803,11 +7828,8 @@ recoiling momenta.
     inv_resonance_list = &
         create_inverse_resonance_list (nlegborn, resonance_list)
 
-    !!!allocate (p_real (nlegreal)); p_real = vector4_null
-    allocate (p_tmp_born (n_resonant_particles)) 
+    allocate (p_tmp_born (n_resonant_particles))
     p_tmp_born = vector4_null
-    !!!allocate (p_tmp_real (n_resonant_particles + 1))
-    !!!p_tmp_real = vector4_null
     call p_tmp_real%init (n_resonant_particles + 1)
 
     call generator%generate_fsr_in (p_born, p_real)
@@ -7825,7 +7847,7 @@ recoiling momenta.
 
     generator%i_fsr_first = 1
     call generator%generate_fsr_out (emitter, p_tmp_born, p_tmp_real, q0, i_emitter)
-    
+
     p_tmp_real = inverse (boost_to_resonance) * p_tmp_real
 
     do i = generator%n_in + 1, nlegborn
