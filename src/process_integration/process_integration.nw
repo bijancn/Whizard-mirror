@@ -7869,8 +7869,9 @@ The quantum numbers mask of the incoming particle
 <<Processes: term instance: TBP>>=
   procedure :: evaluate_real_phase_space => term_instance_evaluate_real_phase_space
 <<Processes: procedures>>=
-  subroutine term_instance_evaluate_real_phase_space (term)
+  subroutine term_instance_evaluate_real_phase_space (term, i_res)
     class(term_instance_t), intent(inout) :: term
+    integer, intent(in), optional :: i_res
     integer :: emitter
     type(vector4_t), dimension(:), allocatable :: p_born
     !!!type(vector4_t), dimension(:), allocatable :: p_real
@@ -7878,7 +7879,7 @@ The quantum numbers mask of the incoming particle
     type(phs_point_set_t) :: p_real
     
     emitter = term%nlo_controller%get_active_emitter ()
-    allocate (p_born(1:size(term%nlo_controller%int_born%get_momenta ())))
+    allocate (p_born(1 : size(term%nlo_controller%int_born%get_momenta ())))
     p_born = term%nlo_controller%int_born%get_momenta ()
     call p_real%init (term%nlo_controller%get_n_particles_real (), 1)
 
@@ -7886,7 +7887,12 @@ The quantum numbers mask of the incoming particle
     type is (phs_fks_t)
        n_in = term%nlo_controller%get_n_in ()
        if (emitter > n_in) then
-          call phs%generate_fsr (emitter, p_real%phs_point(1))
+          if (present (i_res)) then
+             contributors = term%nlo_controller%get_resonance_contributors (i_res)
+             call phs%generate_fsr (emitter, p_real%phs_point(1), i_res, contributors)
+          else
+             call phs%generate_fsr (emitter, p_real%phs_point(1))
+          end if
        else
           call phs%generate_isr (p_born, p_real%phs_point(1))
        end if
@@ -8177,7 +8183,7 @@ physical event.
      integer, intent(in) :: i_term
      integer :: i
      integer :: i_flv_real, i_flv_born
-     integer :: emitter, i_res, n_res
+     integer :: emitter
      integer, dimension(:), allocatable :: resonances
     
      i_flv_real = term%nlo_controller%active_flavor_structure_real
@@ -8185,14 +8191,6 @@ physical event.
      call msg_debug2 (D_SUBTRACTION, "underlying Born: ", i_flv_born)
      call term%nlo_controller%set_fac_scale (term%fac_scale)
      if (i_flv_real == 1) call component%core_state%reset_new_kinematics ()
-
-     if (term%nlo_controller%settings%use_resonance_mappings) &
-        resonances = term%nlo_controller%reg_data%get_associated_resonances (emitter)
-     if (allocated (resonances)) then
-        n_res = size (resonances)
-     else
-        n_res = 1
-     end if
 
      select type (core => component%config%core)
      type is (prc_omega_t)
@@ -9616,9 +9614,11 @@ it from the MCI record.
      class(process_instance_t), intent(inout) :: instance
      type(term_instance_t), intent(inout) :: term
      integer, intent(in) :: i
-     integer :: j, i_reg
+     integer :: emitter, i_reg, i_res
      integer :: nlegs
      integer :: fixed_emitter
+     integer, dimension(:), allocatable :: resonances
+     logical :: loop_over_resonances 
 
      call msg_debug2 (D_SUBTRACTION, "process_instance_evaluate_trace_real")
 
@@ -9635,14 +9635,28 @@ it from the MCI record.
            print *, term%nlo_controller%reg_data%emitters
         end if
 
-        do j = 0, nlegs
-           if (fixed_emitter >= 0 .and. j /= fixed_emitter) cycle
-           if (any (term%nlo_controller%reg_data%emitters == j)) then
-              call msg_debug2 (D_SUBTRACTION, "active emitter", j)
-              call term%nlo_controller%set_active_emitter (j)
-              call instance%evaluate_trace_real_per_resonance (term, pcm, &
-                 i, i_reg)
-              i_reg = i_reg + 1 
+        do emitter = 0, nlegs
+           if (fixed_emitter >= 0 .and. emitter /= fixed_emitter) cycle
+           if (any (term%nlo_controller%reg_data%emitters == emitter)) then
+              call msg_debug2 (D_SUBTRACTION, "active emitter", emitter)
+              call term%nlo_controller%set_active_emitter (emitter)
+              loop_over_resonances = term%nlo_controller%uses_resonance_mappings ()
+              if (loop_over_resonances) then
+                 resonances = term%nlo_controller%reg_data%get_associated_resonances (emitter)
+                 loop_over_resonances = allocated (resonances)
+                 if (loop_over_resonances) then 
+                    do i_res = 1, size (resonances) 
+                       call instance%evaluate_trace_real_per_resonance (term, pcm, &
+                          i, i_reg, i_res)
+                       i_reg = i_reg + 1
+                    end do
+                 end if
+              end if
+              if (.not. loop_over_resonances) then
+                 call instance%evaluate_trace_real_per_resonance (term, pcm, &
+                    i, i_reg)
+                 i_reg = i_reg + 1 
+              end if
            end if
         end do
         instance%sqme = instance%sqme + sum (instance%sqme_real)
@@ -9670,15 +9684,19 @@ it from the MCI record.
     logical :: overwrite_born
     real(default) :: sqme_born
 
-    call term%evaluate_real_phase_space ()
+    call term%evaluate_real_phase_space (i_res)
     do i_flv_real = 1, term%nlo_controller%reg_data%n_flv_real
        i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real) 
        call msg_debug2 (D_SUBTRACTION, "active real flavor", i_flv_real)
        term%nlo_controller%active_flavor_structure_real = i_flv_real
        associate (component => instance%component(i_component)) 
-          call term%evaluate_interaction_real (component, i_component)
+          call term%evaluate_interaction_real (component, i_component, i_res)
           call term%evaluate_trace ()
           if (component%active) then
+             !!! Since this is now looped over we should extract this from the routine or 
+             !!! at least make sure that it is only evaluated once. Also, the loop over 
+             !!! real flavor structures has to be changed with the one over resonances
+             !!! in this case.
              call component%evaluate_sqme_born (term, overwrite_born)
              sqme_born = component%sqme
              call msg_debug2 (D_SUBTRACTION, "sqme_born", sqme_born)
