@@ -7869,35 +7869,31 @@ The quantum numbers mask of the incoming particle
 <<Processes: term instance: TBP>>=
   procedure :: evaluate_real_phase_space => term_instance_evaluate_real_phase_space
 <<Processes: procedures>>=
-  subroutine term_instance_evaluate_real_phase_space (term, i_res)
+  subroutine term_instance_evaluate_real_phase_space (term, emitter, i_res, contributors)
     class(term_instance_t), intent(inout) :: term
+    integer, intent(in) :: emitter
     integer, intent(in), optional :: i_res
-    integer :: emitter
+    integer, intent(in), dimension(:), optional :: contributors
     type(vector4_t), dimension(:), allocatable :: p_born
     !!!type(vector4_t), dimension(:), allocatable :: p_real
     integer :: n_in
-    type(phs_point_set_t) :: p_real
-    integer, dimension(:), allocatable :: contributors
+    type(phs_point_t) :: p_real
     
-    emitter = term%nlo_controller%get_active_emitter ()
+    !!!emitter = term%nlo_controller%get_active_emitter ()
     allocate (p_born(1 : size(term%nlo_controller%int_born%get_momenta ())))
     p_born = term%nlo_controller%int_born%get_momenta ()
-    call p_real%init (term%nlo_controller%get_n_particles_real (), 1)
+    call p_real%init (term%nlo_controller%get_n_particles_real ())
+    !!!call p_real%init (term%nlo_controller%get_n_particles_real (), 1)
 
     select type (phs => term%k_term%phs)
     type is (phs_fks_t)
        n_in = term%nlo_controller%get_n_in ()
        if (emitter > n_in) then
-          if (present (i_res)) then
-             contributors = term%nlo_controller%get_resonance_contributors (i_res)
-             call phs%generate_fsr (emitter, p_real%phs_point(1), i_res, contributors)
-          else
-             call phs%generate_fsr (emitter, p_real%phs_point(1))
-          end if
+           call phs%generate_fsr (emitter, p_real, i_res, contributors)
        else
-          call phs%generate_isr (p_born, p_real%phs_point(1))
+          call phs%generate_isr (p_born, p_real)
        end if
-       call register_kinematics (1)
+       call register_kinematics ()
        if (debug2_active (D_SUBTRACTION)) call debug_message_phase_space (1)
     class default 
        call msg_fatal ("Evaluate real interaction: Phase space not of FKS-type!")
@@ -7906,9 +7902,8 @@ The quantum numbers mask of the incoming particle
 
   contains
 
-    subroutine register_kinematics (i)
-      integer, intent(in) :: i
-      call term%int_hard_real%set_momenta (p_real%get_momenta(i))
+    subroutine register_kinematics ()
+      call term%int_hard_real%set_momenta (p_real%p)
       call term%isolated_real%receive_kinematics ()
       call term%connected_real%receive_kinematics ()
       call term%connected_real%evaluate_expressions (term%passed, &
@@ -7919,8 +7914,8 @@ The quantum numbers mask of the incoming particle
       integer, intent(in) :: i_res
       integer :: i, j, k
       type(vector4_t), dimension(:), allocatable :: p
-      allocate (p (p_real%get_n_momenta (i_res)))
-      p = p_real%get_momenta (i_res)
+      allocate (p (p_real%n_momenta))
+      p = p_real%p
       call msg_debug (D_SUBTRACTION, "Generated real phase space")
       call msg_debug (D_SUBTRACTION, "Born phase space:")
       call vector4_write_set (p_born, show_mass = .true.)
@@ -8110,7 +8105,7 @@ method may modify the [[core_state]] workspace object.
           if (associated (term%nlo_controller)) call term%nlo_controller%set_fac_scale (term%fac_scale)
        end associate 
     case (NLO_REAL)
-       call term%evaluate_real_phase_space ()
+       call term%evaluate_real_phase_space (term%nlo_controller%get_active_emitter ())
        call term%evaluate_interaction_real (component(i_component), i_term)
     end select  
   end subroutine term_instance_evaluate_interaction
@@ -9620,6 +9615,7 @@ it from the MCI record.
      integer :: fixed_emitter
      integer, dimension(:), allocatable :: resonances
      logical :: loop_over_resonances 
+     integer, dimension(:), allocatable :: contributors
 
      call msg_debug2 (D_SUBTRACTION, "process_instance_evaluate_trace_real")
 
@@ -9639,8 +9635,11 @@ it from the MCI record.
               resonances = reg_data%resonances 
               do i_res = 1, size (resonances)
                  do emitter = 0, nlegs
-                    if (reg_data%emitter_is_compatible_with_resonance (i_res, emitter)) then
-                       print *, 'i_res = ', i_res, ' is compatible with emitter = ', emitter
+                    if (reg_data%emitter_is_compatible_with_resonance &
+                        (resonances (i_res), emitter)) then
+                       contributors = reg_data%get_contributors (i_res, emitter)
+                       call term%evaluate_real_phase_space (emitter, i_res, contributors)
+                       print *, 'contributors: ', contributors
                     end if
                  end do
               end do
@@ -9706,7 +9705,7 @@ it from the MCI record.
     logical :: overwrite_born
     real(default) :: sqme_born
 
-    call term%evaluate_real_phase_space (i_res)
+    !!!call term%evaluate_real_phase_space (i_res)
     do i_flv_real = 1, term%nlo_controller%reg_data%n_flv_real
        i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real) 
        call msg_debug2 (D_SUBTRACTION, "active real flavor", i_flv_real)
