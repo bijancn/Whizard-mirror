@@ -1228,6 +1228,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     type(flavor_t) :: flv_extra
     class(fks_mapping_t), allocatable :: fks_mapping
     integer :: n_max_resonances
+    integer, dimension(:), allocatable :: resonances
   contains
   <<fks regions: reg data: TBP>>
   end type region_data_t
@@ -1294,7 +1295,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     call reg_data%set_resonance_mappings ()
     call reg_data%evaluate_flavors (model)
     call reg_data%set_splitting_info ()
-    call reg_data%find_emitters ()
+    call reg_data%find_emitters_and_resonances ()
     call reg_data%set_underlying_borns ()
     call reg_data%set_n_max_resonances ()
   end subroutine region_data_init
@@ -1471,6 +1472,28 @@ there is only a soft singularity if the radiated parton becomes soft.
 
 @ %def region_data_get_associated_resonances
 @
+<<fks regions: reg data: TBP>>=
+  procedure :: emitter_is_compatible_with_resonance => &
+     region_data_emitter_is_compatible_with_resonance 
+<<fks regions: procedures>>=
+  function region_data_emitter_is_compatible_with_resonance &
+     (reg_data, i_res, emitter) result (compatible)
+     logical :: compatible
+     class(region_data_t), intent(in) :: reg_data
+     integer, intent(in) :: i_res, emitter
+     integer :: alr
+     compatible = .false.
+     do alr = 1, reg_data%n_regions
+        if (reg_data%get_resonance_index (alr) == i_res &
+           .and. reg_data%get_emitter(alr) == emitter) then
+           compatible = .true.
+           exit
+        end if
+     end do
+  end function region_data_emitter_is_compatible_with_resonance
+
+@ %def region_data_emitter_is_compatible_with_resonance
+@ 
 <<fks regions: reg data: TBP>>=
   procedure :: get_emitter => region_data_get_emitter
 <<fks regions: procedures>>=
@@ -1826,44 +1849,61 @@ of the present one is increased.
   end subroutine region_data_init_singular_regions
 
 @ %def region_data_init_singular_regions
-@ Create an array containing all emitters of a singular region.
+@ Create an array containing all emitters and resonances of [[region_data]].
 <<fks regions: reg data: TBP>>=
-  procedure :: find_emitters => region_data_find_emitters
+  procedure :: find_emitters_and_resonances => region_data_find_emitters_and_resonances
 <<fks regions: procedures>>=
-  subroutine region_data_find_emitters (reg_data)
+  subroutine region_data_find_emitters_and_resonances (reg_data)
     class(region_data_t), intent(inout) :: reg_data
-    integer :: i, j, n
-    integer :: em
+    integer :: alr, j, n_em, n_res
+    integer :: em, res
     integer, dimension(10) :: em_count
-    em_count = -1
-    n = 0
+    integer, dimension(10) :: res_count
+    em_count = -1; res_count = -1
+    n_em = 0; n_res = 0
 
     !!! Count the number of different emitters
-    do i = 1, reg_data%n_regions
-       em = reg_data%regions(i)%emitter
+    do alr = 1, reg_data%n_regions
+       em = reg_data%regions(alr)%emitter
        if (.not. any (em_count == em)) then
-          n = n + 1
-          em_count(i) = em
+          n_em = n_em + 1
+          em_count(alr) = em
+       end if
+       res = reg_data%get_resonance_index (alr)
+       if (.not. any (res_count == res)) then
+          n_res = n_res + 1
+          res_count(alr) = res
        end if
     end do
 
-    if (n < 1) call msg_fatal ("region_data_find_emitters: No emitters found")
-    reg_data%n_emitters = n
+    if (n_em < 1) call msg_fatal ("region_data_find_emitters: No emitters found")
+    reg_data%n_emitters = n_em
     allocate (reg_data%emitters (reg_data%n_emitters))
+    if (n_res > 0) allocate (reg_data%resonances (n_res))
     reg_data%emitters = -1
 
     j = 1
-    do i = 1, size(reg_data%regions)
-       em = reg_data%regions(i)%emitter
+    do alr = 1, size (reg_data%regions)
+       em = reg_data%regions(alr)%emitter
        if (.not. any (reg_data%emitters == em)) then
           reg_data%emitters(j) = em
-          j = j+1
+          j = j + 1
        end if
     end do
-  end subroutine region_data_find_emitters
+    j = 1
+    if (allocated (reg_data%resonances)) then
+       do alr = 1, size (reg_data%regions)
+          res = reg_data%get_resonance_index (alr)
+          if (.not. any (reg_data%resonances == res)) then
+             reg_data%resonances(j) = res
+             j = j + 1
+          end if
+       end do
+    end if 
+  end subroutine region_data_find_emitters_and_resonances
 
-@ %def region_data_find_emitters
-@ Create the map real\_flavor -> underlying Born
+@ %def region_data_find_emitters_and_resonances
+@ Create the map real flavor -> underlying Born
 <<fks regions: reg data: TBP>>=
   procedure :: set_underlying_borns => region_data_set_underlying_borns
 <<fks regions: procedures>>=
@@ -2155,6 +2195,10 @@ writes it to a file.
        call msg_warning ("Copying region data without allocated FKS regions!")
     end if
     reg_data_out%n_max_resonances = reg_data_in%n_max_resonances
+    if (allocated (reg_data_in%resonances)) then
+       allocate (reg_data_out%resonances (size (reg_data_in%resonances)))
+       reg_data_out%resonances = reg_data_in%resonances
+    end if
   end subroutine region_data_copy
 
 @ %def region_data_copy
