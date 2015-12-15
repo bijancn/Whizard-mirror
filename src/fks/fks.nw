@@ -209,6 +209,7 @@ module fks_regions
   use model_data
   use physics_defs
   use cascades
+  use nlo_data, only: phs_identifier_t, check_for_phs_identifier
 
 <<Standard module head>>
 
@@ -1234,6 +1235,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     class(fks_mapping_t), allocatable :: fks_mapping
     integer :: n_max_resonances
     integer, dimension(:), allocatable :: resonances
+    integer :: n_phs
   contains
   <<fks regions: reg data: TBP>>
   end type region_data_t
@@ -1303,6 +1305,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     call reg_data%find_emitters_and_resonances ()
     call reg_data%set_underlying_borns ()
     call reg_data%set_n_max_resonances ()
+    call reg_data%compute_number_of_phase_spaces ()
   end subroutine region_data_init
 
 @ %def region_data_init
@@ -1943,6 +1946,44 @@ of the present one is increased.
   end subroutine region_data_set_n_max_resonances
 
 @ %def region_data_set_n_max_resonances
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: compute_number_of_phase_spaces &
+     => region_data_compute_number_of_phase_spaces
+<<fks regions: procedures>>=
+  subroutine region_data_compute_number_of_phase_spaces (reg_data)
+    class(region_data_t), intent(inout) :: reg_data
+    integer :: i_em, i_res, i_phs
+    integer :: emitter
+    integer, dimension(:), allocatable :: contributors
+    integer, parameter :: n_max_phs = 10
+    type(phs_identifier_t), dimension(n_max_phs) :: phs_id_tmp
+    logical :: phs_exist
+    if (allocated (reg_data%resonances)) then
+       reg_data%n_phs = 0
+       do i_em = 1, size (reg_data%emitters)
+          emitter = reg_data%emitters(i_em)
+          do i_res = 1, size (reg_data%resonances)
+             if (reg_data%emitter_is_compatible_with_resonance (i_res, emitter)) then 
+                contributors = reg_data%get_contributors (i_res, emitter)
+                call check_for_phs_identifier &
+                   (phs_id_tmp, emitter, contributors, phs_exist, i_phs)
+                if (.not. phs_exist) then
+                   reg_data%n_phs = reg_data%n_phs + 1
+                   if (reg_data%n_phs > n_max_phs) call msg_fatal &
+                      ("Buffer of phase space identifieres: Too much phase spaces!")
+                   call phs_id_tmp(i_phs)%init (emitter, contributors)
+                end if
+             end if
+             deallocate (contributors)
+          end do
+       end do
+    else
+       reg_data%n_phs = reg_data%n_emitters
+    end if
+  end subroutine region_data_compute_number_of_phase_spaces
+
+@ %def region_data_compute_number_of_phase_spaces
 @
 <<fks regions: reg data: TBP>>=
   procedure :: set_splitting_info => region_data_set_splitting_info
@@ -4707,16 +4748,6 @@ end module nlo_data
 @ %def phs_identifier_check
 @
 <<nlo data: phs identifier: TBP>>=
-  procedure :: reset => phs_identifier_reset
-<<nlo data: procedures>>=
-  subroutine phs_identifier_reset (phs_id)
-    class(phs_identifier_t), intent(inout) :: phs_id
-    phs_id%evaluated = .false.
-  end subroutine phs_identifier_reset
-
-@ %def phs_identifier_reset
-@
-<<nlo data: phs identifier: TBP>>=
   procedure :: write => phs_identifier_write
 <<nlo data: procedures>>=
   subroutine phs_identifier_write (phs_id, unit)
@@ -4737,6 +4768,35 @@ end module nlo_data
   end subroutine phs_identifier_write
 
 @ %def phs_identifier_write
+@
+<<nlo data: public>>=
+  public :: check_for_phs_identifier
+<<nlo data: procedures>>=
+  subroutine check_for_phs_identifier (phs_id, emitter, contributors, phs_exist, i_phs)
+     type(phs_identifier_t), intent(in), dimension(:) :: phs_id
+     integer, intent(in) :: emitter
+     integer, intent(in), dimension(:), optional :: contributors
+     logical, intent(out) :: phs_exist
+     integer, intent(out) :: i_phs
+     integer :: i
+     phs_exist = .false.
+     i_phs = -1
+     do i = 1, size (phs_id)
+        if (phs_id(i)%emitter < 0) then
+           i_phs = i
+           exit
+        end if 
+        phs_exist = phs_id(i)%emitter == emitter
+        if (present (contributors)) &
+           phs_exist = phs_exist .and. all (phs_id(i)%contributors == contributors)
+        if (phs_exist) then
+           i_phs = i
+           exit
+        end if
+     end do
+  end subroutine check_for_phs_identifier
+
+@ %def check_for_phs_identifier
 @
 <<nlo data: public>>=
   public :: phs_point_set_t
@@ -6982,13 +7042,13 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
 <<nlo controller: procedures>>=
   subroutine nlo_controller_init_real_and_isr_kinematics (nlo_controller)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer :: n_tot, n_max_resonances
+    integer :: n_tot
     n_tot = nlo_controller%particle_data%n_in + &
             nlo_controller%particle_data%n_out_born
-    n_max_resonances = nlo_controller%reg_data%n_max_resonances
     allocate (nlo_controller%real_kinematics)
     allocate (nlo_controller%isr_kinematics)
-    call nlo_controller%real_kinematics%init (n_tot, n_max_resonances)
+    call nlo_controller%real_kinematics%init (n_tot, &
+       nlo_controller%reg_data%n_phs)
     nlo_controller%isr_kinematics%n_in = nlo_controller%particle_data%n_in
   end subroutine nlo_controller_init_real_and_isr_kinematics
 
@@ -7859,73 +7919,26 @@ in the center-of-mass and lab frame.
     integer :: emitter
     integer :: n_phs_id
     integer, dimension(:), allocatable :: contributors
-    integer, parameter :: n_max_phs = 10
-    type(phs_identifier_t), dimension(n_max_phs) :: phs_id_tmp
     logical :: phs_exist
-    n_phs_id = 0
-    if (allocated (reg_data%resonances)) then
-       do i_em = 1, size (reg_data%emitters)
-          emitter = reg_data%emitters(i_em)
-          do i_res = 1, size (reg_data%resonances)
-             if (reg_data%emitter_is_compatible_with_resonance (i_res, emitter)) then 
-                contributors = reg_data%get_contributors (i_res, emitter)
-                call has_emitter_and_contributors &
-                   (phs_id_tmp, emitter, contributors, phs_exist, i_phs)
-                if (.not. phs_exist) then
-                   n_phs_id = n_phs_id + 1
-                   call phs_id_tmp(i_phs)%init (emitter, contributors)
-                end if
-             end if
-             deallocate (contributors)
-          end do
-       end do
-    else
-       n_phs_id = reg_data%n_emitters
-    end if
-    print *, 'n_phs_id: ', n_phs_id
-    allocate (phs%phs_identifiers (n_phs_id))
+    allocate (phs%phs_identifiers (reg_data%n_phs))
     do i_em = 1, size (reg_data%emitters)
        emitter = reg_data%emitters(i_em)
        if (allocated (reg_data%resonances)) then
           do i_res = 1, size (reg_data%resonances)
              contributors = reg_data%get_contributors (i_res, emitter)
-             call has_emitter_and_contributors &
+             call check_for_phs_identifier &
                 (phs%phs_identifiers, emitter, contributors, phs_exist, i_phs)
              if (.not. phs_exist) &
                 call phs%phs_identifiers(i_phs)%init (emitter, contributors)
              deallocate (contributors)
           end do 
        else
-          call has_emitter_and_contributors &
-             (phs%phs_identifiers, emitter, phs_exist = phs_exist, i_new = i_phs)
+          call check_for_phs_identifier &
+             (phs%phs_identifiers, emitter, phs_exist = phs_exist, i_phs = i_phs)
           if (.not. phs_exist) &
              call phs%phs_identifiers(i_phs)%init (emitter)
        end if
     end do
-  contains
-    subroutine has_emitter_and_contributors (phs_id, emitter, contributors, phs_exist, i_new)
-       type(phs_identifier_t), intent(in), dimension(:) :: phs_id
-       integer, intent(in) :: emitter
-       integer, intent(in), dimension(:), optional :: contributors
-       logical, intent(out) :: phs_exist
-       integer, intent(out) :: i_new
-       integer :: i_phs
-       phs_exist = .false.
-       i_new = -1
-       do i_phs = 1, size (phs_id)
-          if (phs_id(i_phs)%emitter < 0) then
-             i_new = i_phs
-             exit
-          end if 
-          phs_exist = phs_id_tmp(i_phs)%emitter == emitter
-          if (present (contributors)) &
-             phs_exist = phs_exist .and. all (phs_id_tmp(i_phs)%contributors == contributors)
-          if (phs_exist) then
-             i_new = i_phs
-             exit
-          end if
-       end do
-    end subroutine has_emitter_and_contributors
   end subroutine phs_fks_init_phs_identifiers
 
 @ %def phs_fks_init_phs_identifiers
