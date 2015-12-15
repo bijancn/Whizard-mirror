@@ -437,7 +437,7 @@ emitter-radiation pairs. This is coped with using the linked list
 <<fks regions: ftuple list: TBP>>=
   procedure :: get_entry => ftuple_list_get_entry
 <<fks regions: procedures>>=
-  function ftuple_list_get_entry(list, index) result(entry)
+  function ftuple_list_get_entry (list, index) result (entry)
    class(ftuple_list_t), intent(in), target :: list
    integer, intent(in) :: index
    type(ftuple_list_t), pointer :: entry
@@ -826,6 +826,7 @@ structure if the particle at position \texttt{emitter} is removed
 <<fks regions: types>>=
   type :: singular_region_t
     integer :: alr
+    integer :: i_res
     type(flv_structure_t) :: flst_real
     type(flv_structure_t) :: flst_uborn
     integer :: mult
@@ -843,6 +844,147 @@ structure if the particle at position \texttt{emitter} is removed
   end type singular_region_t
 
 @ %def singular_region_t
+@
+@
+<<fks regions: singular region: TBP>>=
+  procedure :: init => singular_region_init
+<<fks regions: procedures>>=
+  subroutine singular_region_init (sregion, alr, mult, i_res, &
+         flst_real, flst_uborn, flv_born, emitter, ftuples, index)
+    class(singular_region_t), intent(out) :: sregion
+    integer, intent(in) :: alr, mult, i_res
+    type(flv_structure_t), intent(in) :: flst_real
+    type(flv_structure_t), intent(in) :: flst_uborn
+    type(flv_structure_t), dimension(:), intent(in) :: flv_born
+    integer, intent(in) :: emitter
+    type(ftuple_list_t), intent(in), dimension(:) :: ftuples
+    integer, dimension(:), intent(in) :: index
+    type(ftuple_list_t), pointer :: current_region
+    integer :: i, i1, i2, nlegs
+    call msg_debug (D_SUBTRACTION, "singular_region_init")
+    call debug_input_values ()
+    sregion%alr = alr
+    sregion%mult = mult
+    sregion%i_res = i_res
+    sregion%flst_real = flst_real
+    sregion%flst_uborn = flst_uborn
+    sregion%emitter = emitter
+    sregion%nregions = ftuples (index(i))%get_n_tuples ()
+    nlegs = size (flst_real%flst)
+    allocate (sregion%flst_allreg (sregion%nregions))
+    do i = 1, sregion%nregions
+       current_region => ftuples (index(i))%get_entry (i)
+       if (.not. associated (current_region%equiv)) then
+          call current_region%ftuple%get (i1, i2)
+          if (i2 /= nlegs) &
+               call current_region%ftuple%set (i1, nlegs)
+       end if
+       sregion%flst_allreg (i) = current_region%ftuple
+    end do
+    do i = 1, size(flv_born)
+       if (flv_born (i) == sregion%flst_uborn) then
+          sregion%uborn_index = i
+          exit
+       end if
+    end do
+  contains
+    subroutine debug_input_values()
+      if (debug2_active (D_SUBTRACTION)) then
+         print *, 'alr =    ', alr
+         print *, 'mult =    ', mult
+         print *, 'i_res =    ', i_res
+         call flst_real%write ()
+         call flst_uborn%write ()
+         do i = 1, size (flv_born)
+            call flv_born(i)%write ()
+         end do
+         print *, 'emitter =    ', emitter
+         do i = 1, size (ftuples)
+            call ftuples(i)%write ()
+         end do
+         print *, 'index =    ', index
+      end if
+    end subroutine debug_input_values
+  end subroutine singular_region_init
+
+@ %def singular_region_init
+<<fks regions: singular region: TBP>>=
+  procedure :: write => singular_region_write
+<<fks regions: procedures>>=
+  subroutine singular_region_write (sregion, unit, maxnregions)
+    class(singular_region_t), intent(in) :: sregion
+    integer, intent(in), optional :: unit
+    integer, intent(in), optional :: maxnregions
+    character(len=7), parameter :: flst_format = "(I3,A1)"
+    character(len=16), parameter :: ireg_format = "(A1,I3,A1,I3,A2)"
+    character(len=7), parameter :: ireg_space_format = "(7X,A1)"
+    integer :: nreal, nborn, i, u, mr, i1, i2
+    integer :: nleft, nright, nreg, nreg_diff
+    u = given_output_unit (unit); if (u < 0) return
+    mr = sregion%nregions; if (present (maxnregions))  mr = maxnregions
+    nreal = size (sregion%flst_real%flst)
+    nborn = size (sregion%flst_uborn%flst)
+    call write_vline (u)
+    write (u, '(A1)', advance = 'no') '['
+    do i = 1, nreal - 1
+       write (u, flst_format, advance = 'no') sregion%flst_real%flst(i), ','
+    end do
+    write (u, flst_format, advance = 'no') sregion%flst_real%flst(nreal), ']'
+    call write_vline (u)
+    write (u, '(I3)', advance = 'no') sregion%emitter
+    call write_vline (u)
+    write (u, '(I3)', advance = 'no') sregion%mult
+    call write_vline (u)
+    write (u, '(I4)', advance = 'no') sregion%nregions
+    call write_vline (u)
+    if (sregion%i_res > 0) then
+       write (u, '(I3)', advance = 'no') sregion%i_res
+       call write_vline (u)
+    end if
+    nreg = sregion%nregions
+    if (nreg == mr) then
+       nleft = 0
+       nright = 0
+    else
+       nreg_diff = mr - nreg
+       nleft = nreg_diff / 2
+       if (mod(nreg_diff , 2) == 0) then
+          nright = nleft
+       else
+          nright = nleft + 1
+       end if
+    end if
+    if (nleft > 0) then
+       do i = 1, nleft
+          write(u, ireg_space_format, advance='no') ' '
+       end do
+    end if
+    write (u,'(A1)', advance = 'no') '{'
+    if (nreg > 1) then
+       do i = 1, nreg - 1
+          call sregion%flst_allreg(i)%get (i1, i2)
+          write(u, ireg_format, advance = 'no') '(', i1, ',', i2, '),'
+       end do
+    end if
+    call sregion%flst_allreg(nreg)%get (i1, i2)
+    write (u, ireg_format, advance = 'no') '(', i1, ',', i2, ')}'
+    if (nright > 0) then
+       do i = 1, nright
+          write(u, ireg_space_format, advance='no') ' '
+       end do
+    end if
+    call write_vline (u)
+    write (u,'(A1)',advance = 'no') '['
+    do i = 1, nborn - 1
+       write(u, flst_format, advance = 'no') sregion%flst_uborn%flst(i), ','
+    end do
+    write (u, flst_format, advance = 'no') sregion%flst_uborn%flst(nborn), ']'
+    call write_vline (u)
+    write (u, '(I7)', advance = 'no') sregion%uborn_index
+    write (u, '(A)')
+  end subroutine singular_region_write
+
+@ %def singular_region_write
 @ In case of a $g \rightarrow gg$ or $g \rightarrow qq$ splitting, the factor
 \begin{equation*}
  \frac{2E_{\rm{em}}}{E_{\rm{em}} + E_{\rm{rad}}}
@@ -1326,15 +1468,16 @@ there is only a soft singularity if the radiated parton becomes soft.
 
     associate (res_map => reg_data%fks_mapping%res_map)
        call res_map%set_alr_to_i_res (reg_data%regions, alr_new_to_old)
-
        deallocate (reg_data%regions)
        n_alr_new = size (alr_new_to_old)
        reg_data%n_regions = n_alr_new
        allocate (reg_data%regions (n_alr_new))
-
        do alr = 1, n_alr_new
           reg_data%regions(alr) = save_regions (alr_new_to_old (alr))
-          allocate (reg_data%regions(alr)%res_hist, source = res_map%get_resonance_history (alr))
+          resonance_history = res_map%get_resonance_history(alr)
+          !allocate (reg_data%regions(alr)%res_hist, source = res_map%get_resonance_history (alr))
+          allocate (reg_data%regions(alr)%res_hist)
+          reg_data%regions(alr)%res_hist = res_map%get_resonance_history (alr)
        end do
     end associate
 
@@ -1665,180 +1808,156 @@ of the present one is increased.
   procedure :: init_singular_regions => region_data_init_singular_regions
 <<fks regions: procedures>>=
   subroutine region_data_init_singular_regions &
-     (reg_data, ftuples, emitter, flst_alr)
-     class(region_data_t), intent(inout) :: reg_data
-     type(ftuple_list_t), intent(inout), dimension(:), allocatable :: ftuples
-     integer :: n_valid_ftuples
-     type(ftuple_list_t), pointer :: current_region
-     integer, intent(in), dimension(:), allocatable :: emitter
-     type(flv_structure_t), intent(in), dimension(:), allocatable :: flst_alr
-     type(flv_structure_t), dimension(:), allocatable :: flst_uborn, flst_alr2
-     integer, dimension(:), allocatable :: mult
-     integer, dimension(:), allocatable :: flst_emitter
-     integer :: nregions, maxregions
-     integer, dimension(:,:), allocatable :: perm_list
-     integer, dimension(:), allocatable :: index
-     integer :: i, j, k, l
-     integer :: nlegs
-     logical :: equiv
-     integer :: nreg, i1, i2
-     integer :: i_first, j_first
-     integer, dimension(:), allocatable :: &
-        region_to_ftuple, ftuple_limits, k_index
-     type(flv_structure_t) :: flst_save
+         (reg_data, ftuples, emitter, flst_alr)
+    class(region_data_t), intent(inout) :: reg_data
+    type(ftuple_list_t), intent(inout), dimension(:), allocatable :: ftuples
+    integer :: n_valid_ftuples
+    integer, intent(in), dimension(:), allocatable :: emitter
+    type(flv_structure_t), intent(in), dimension(:), allocatable :: flst_alr
+    type(flv_structure_t), dimension(:), allocatable :: flst_uborn, flst_alr2
+    integer, dimension(:), allocatable :: mult
+    integer, dimension(:), allocatable :: flst_emitter
+    integer :: nregions, maxregions
+    integer, dimension(:,:), allocatable :: perm_list
+    integer, dimension(:), allocatable :: index
+    integer :: i, j, k, l
+    integer :: nlegs
+    logical :: equiv
+    integer :: i_first, j_first, i_res
+    integer, dimension(:), allocatable :: &
+         region_to_ftuple, ftuple_limits, k_index
+    type(flv_structure_t) :: flst_save
 
-     maxregions = size (emitter)
-     nlegs = size (flst_alr(1)%flst)
+    maxregions = size (emitter)
+    nlegs = size (flst_alr(1)%flst)
 
-     allocate (flst_uborn (maxregions))
-     allocate (flst_alr2 (maxregions))
-     allocate (mult (maxregions))
-     allocate (flst_emitter (maxregions))
-     allocate (index (maxregions))
-     allocate (region_to_ftuple (maxregions))
-     allocate (k_index (maxregions))
+    allocate (flst_uborn (maxregions))
+    allocate (flst_alr2 (maxregions))
+    allocate (mult (maxregions))
+    allocate (flst_emitter (maxregions))
+    allocate (index (maxregions))
+    allocate (region_to_ftuple (maxregions))
+    allocate (k_index (maxregions))
 
-     mult = 0
-     n_valid_ftuples = 0
-     do i = 1, size (ftuples)
-        if (ftuples(i)%get_n_tuples() > 0) &
-           n_valid_ftuples = n_valid_ftuples + 1
-     end do
-     allocate (ftuple_limits (n_valid_ftuples))
+    mult = 0
+    n_valid_ftuples = 0
+    do i = 1, size (ftuples)
+       if (ftuples(i)%get_n_tuples() > 0) &
+            n_valid_ftuples = n_valid_ftuples + 1
+    end do
+    allocate (ftuple_limits (n_valid_ftuples))
 
-     j = 1
-     do i = 1, size (ftuples)
-        if (ftuples(i)%get_n_tuples() > 0) then
-           ftuple_limits(j) = ftuples(i)%get_n_tuples ()
-           j = j+ 1
-        end if
-     end do
-     if (.not. (sum (ftuple_limits) == maxregions)) &
-        call msg_fatal ("Too many regions!")
-     k = 1
-     do j = 1, n_valid_ftuples
-        do i = 1, ftuple_limits(j)
-           region_to_ftuple(k) = i
-           k = k + 1
-        end do
-     end do
-     i_first = 1
-     j_first = 1
-     j = 1
-     SCAN_REGIONS: do l = 1, n_valid_ftuples
-        SCAN_FTUPLES: do i = i_first, i_first + ftuple_limits (l) - 1
-           equiv = .false.
-           if (i==i_first) then
-              if (allocated (flst_alr2(j)%flst)) &
-                   deallocate (flst_alr2(j)%flst)
-              allocate (flst_alr2(j)%flst (size (flst_alr(i)%flst)))
-              flst_alr2(j)%flst = flst_alr(i)%flst
-              mult(j) = mult(j) + 1
-              flst_uborn(j) = flst_alr(i)%create_uborn (emitter(i))
-              flst_emitter(j) = emitter(i)
-              index (j) = region_to_index(ftuples, i)
-              k_index (j) = region_to_ftuple(i)
-              j = j + 1
-           else
-              !!! Check for equivalent flavor structures
-              do k = j_first, j - 1
-                 if (emitter(i) == emitter(k) .and. emitter(i) > reg_data%n_in) then
-                    if (flst_alr(i) == flst_alr2(k) .and. &
-                         flst_alr(i)%flst(nlegs-1) == flst_alr2(k)%flst(nlegs-1) &
-                         .and. flst_alr(i)%flst(nlegs) == flst_alr2(k)%flst(nlegs)) then
-                    mult(k) = mult(k) + 1
-                    equiv = .true.
-                    call ftuples (region_to_index(ftuples, i))%set_equiv &
-                         (k_index(k), region_to_ftuple(i))
-                    exit
-                 end if
-              else if (emitter(i) == emitter(k) .and. emitter(i) <= reg_data%n_in) then
-                 if (flst_alr(i) == flst_alr2(k)) then
-                    mult(k) = mult(k) + 1
-                    equiv = .true.
-                    call ftuples (region_to_index(ftuples,i))%set_equiv &
-                         (k_index(k), region_to_ftuple(i))
-                    exit
-                 end if
-              end if
-           end do
-           if (.not. equiv) then
-              if (allocated (flst_alr2(j)%flst)) &
-                   deallocate (flst_alr2(j)%flst)
-              allocate (flst_alr2(j)%flst (size (flst_alr(i)%flst)))
-              flst_alr2(j)%flst = flst_alr(i)%flst
-              mult(j) = mult(j) + 1
-              flst_uborn(j) = flst_alr(i)%create_uborn (emitter(i))
-              flst_emitter(j) = emitter(i)
-              index (j) = region_to_index (ftuples, i)
-              k_index (j) = region_to_ftuple(i)
-              j = j + 1
-           end if
-        end if
-     end do SCAN_FTUPLES
-     i_first = i_first + ftuple_limits(l)
-     j_first = j_first + j - 1
-  end do SCAN_REGIONS
-     nregions = j - 1
-     allocate (reg_data%regions (nregions))
-     do j = 1, nregions
-        do i = 1, reg_data%n_flv_born
-           if (reg_data%flv_born (i) == flst_uborn (j)) then
-              if (allocated (perm_list)) deallocate (perm_list)
-              call fks_permute_born &
-                   (reg_data%flv_born (i), reg_data%n_in, flst_uborn (j), perm_list)
-              call fks_apply_perm (flst_alr2(j), flst_emitter(j), perm_list)
-           end if
-        end do
-     end do
-     !!! Check if new emitters require a rearrangement of ftuples
-     do i = 1, nregions
-        reg_data%regions(i)%alr = i
-        reg_data%regions(i)%flst_real = flst_alr2(i)
-        reg_data%regions(i)%mult = mult(i)
-        reg_data%regions(i)%flst_uborn = flst_uborn(i)
-        reg_data%regions(i)%emitter = flst_emitter(i)
-        nreg = ftuples (index(i))%get_n_tuples ()
-        reg_data%regions(i)%nregions = nreg
-        allocate (reg_data%regions(i)%flst_allreg (nreg))
-        do j = 1, nreg
-           current_region => ftuples (index(i))%get_entry (j)
-           if (.not. associated (current_region%equiv)) then
-              call current_region%ftuple%get (i1, i2)
-              if (i2 /= nlegs) &
-                   call current_region%ftuple%set (i1, nlegs)
-           end if
-           reg_data%regions(i)%flst_allreg (j) = current_region%ftuple
-        end do
-     end do
-     !!! Find underlying Born index
-     do j = 1, nregions
-        do i = 1, reg_data%n_flv_born
-           if (reg_data%flv_born (i) == reg_data%regions(j)%flst_uborn) then
-              reg_data%regions(j)%uborn_index = i
-              exit
-           end if
-        end do
-     end do
-
-     k = 1
-     associate (regions => reg_data%regions)
-        do i = 1, nregions
-           if (i == 1) then
-              regions(i)%real_index = 1
-              flst_save = flst_alr2(1)
-              cycle
-           end if
-           if (flst_alr2(i) == flst_save) then
-              regions(i)%real_index = k
-           else
-              k = k + 1
-              regions(i)%real_index = k
-              flst_save = flst_alr2(i)
-           end if
-        end do
-     end associate
-     reg_data%n_regions = size (reg_data%regions)
+    j = 1
+    do i = 1, size (ftuples)
+       if (ftuples(i)%get_n_tuples() > 0) then
+          ftuple_limits(j) = ftuples(i)%get_n_tuples ()
+          j = j+ 1
+       end if
+    end do
+    if (.not. (sum (ftuple_limits) == maxregions)) &
+         call msg_fatal ("Too many regions!")
+    k = 1
+    do j = 1, n_valid_ftuples
+       do i = 1, ftuple_limits(j)
+          region_to_ftuple(k) = i
+          k = k + 1
+       end do
+    end do
+    i_first = 1
+    j_first = 1
+    j = 1
+    SCAN_REGIONS: do l = 1, n_valid_ftuples
+       SCAN_FTUPLES: do i = i_first, i_first + ftuple_limits (l) - 1
+          equiv = .false.
+          if (i==i_first) then
+             if (allocated (flst_alr2(j)%flst)) &
+                  deallocate (flst_alr2(j)%flst)
+             allocate (flst_alr2(j)%flst (size (flst_alr(i)%flst)))
+             flst_alr2(j)%flst = flst_alr(i)%flst
+             mult(j) = mult(j) + 1
+             flst_uborn(j) = flst_alr(i)%create_uborn (emitter(i))
+             flst_emitter(j) = emitter(i)
+             index (j) = region_to_index(ftuples, i)
+             k_index (j) = region_to_ftuple(i)
+             j = j + 1
+          else
+             !!! Check for equivalent flavor structures
+             do k = j_first, j - 1
+                if (emitter(i) == emitter(k) .and. emitter(i) > reg_data%n_in) then
+                   if (flst_alr(i) == flst_alr2(k) .and. &
+                        flst_alr(i)%flst(nlegs-1) == flst_alr2(k)%flst(nlegs-1) &
+                        .and. flst_alr(i)%flst(nlegs) == flst_alr2(k)%flst(nlegs)) then
+                   mult(k) = mult(k) + 1
+                   equiv = .true.
+                   call ftuples (region_to_index(ftuples, i))%set_equiv &
+                        (k_index(k), region_to_ftuple(i))
+                   exit
+                end if
+             else if (emitter(i) == emitter(k) .and. emitter(i) <= reg_data%n_in) then
+                if (flst_alr(i) == flst_alr2(k)) then
+                   mult(k) = mult(k) + 1
+                   equiv = .true.
+                   call ftuples (region_to_index(ftuples,i))%set_equiv &
+                        (k_index(k), region_to_ftuple(i))
+                   exit
+                end if
+             end if
+          end do
+          if (.not. equiv) then
+             if (allocated (flst_alr2(j)%flst)) &
+                  deallocate (flst_alr2(j)%flst)
+             allocate (flst_alr2(j)%flst (size (flst_alr(i)%flst)))
+             flst_alr2(j)%flst = flst_alr(i)%flst
+             mult(j) = mult(j) + 1
+             flst_uborn(j) = flst_alr(i)%create_uborn (emitter(i))
+             flst_emitter(j) = emitter(i)
+             index (j) = region_to_index (ftuples, i)
+             k_index (j) = region_to_ftuple(i)
+             j = j + 1
+          end if
+       end if
+    end do SCAN_FTUPLES
+    i_first = i_first + ftuple_limits(l)
+    j_first = j_first + j - 1
+    end do SCAN_REGIONS
+    nregions = j - 1
+    allocate (reg_data%regions (nregions))
+    reg_data%n_regions = nregions
+    do j = 1, nregions
+       do i = 1, reg_data%n_flv_born
+          if (reg_data%flv_born (i) == flst_uborn (j)) then
+             if (allocated (perm_list)) deallocate (perm_list)
+             call fks_permute_born &
+                  (reg_data%flv_born (i), reg_data%n_in, flst_uborn (j), perm_list)
+             call fks_apply_perm (flst_alr2(j), flst_emitter(j), perm_list)
+          end if
+       end do
+    end do
+    do i = 1, nregions
+       ! TODO: (bcn 2015-12-15) get i_res like in get_resonance_index
+       i_res = 1
+       call reg_data%regions(i)%init (i, mult(i), i_res, flst_alr2(i), &
+            flst_uborn(i), reg_data%flv_born, flst_emitter(i), ftuples, &
+            index)
+    end do
+    ! TODO: (bcn 2015-12-15) can this be put in singular_region_init?
+    k = 1
+    associate (regions => reg_data%regions)
+       do i = 1, nregions
+          if (i == 1) then
+             regions(i)%real_index = 1
+             flst_save = flst_alr2(1)
+             cycle
+          end if
+          if (flst_alr2(i) == flst_save) then
+             regions(i)%real_index = k
+          else
+             k = k + 1
+             regions(i)%real_index = k
+             flst_save = flst_alr2(i)
+          end if
+       end do
+    end associate
 
   end subroutine region_data_init_singular_regions
 
@@ -1983,15 +2102,12 @@ writes it to a file.
   subroutine region_data_write (reg_data, unit)
      class(region_data_t), intent(in) :: reg_data
      integer, intent(in), optional :: unit
-     integer :: i, j
-     integer :: nreal, nborn
-     integer :: i1, i2, nreg
-     integer :: maxnregions, nreg_diff
-     integer :: nleft, nright
+     integer :: j
+     integer :: maxnregions
      type(string_t) :: flst_title, ftuple_title
-     character(len=7) :: flst_format = "(I3,A1)"
-     character(len=16) :: ireg_format = "(A1,I3,A1,I3,A2)"
-     character(len=7) :: ireg_space_format = "(7X,A1)"
+     character(len=7), parameter :: flst_format = "(I3,A1)"
+     character(len=16), parameter :: ireg_format = "(A1,I3,A1,I3,A2)"
+     character(len=7), parameter :: ireg_space_format = "(7X,A1)"
      integer :: n_res, u
      u = given_output_unit (unit); if (u < 0) return
      maxnregions = 1
@@ -2003,89 +2119,28 @@ writes it to a file.
      ftuple_title = '(A' // ftuple_title_format() // ')'
      write (u,'(A,1X,I2)') 'Total number of regions: ', size(reg_data%regions)
      write (u, '(A3)', advance = 'no') 'alr'
-     call write_vline ()
+     call write_vline (u)
      write (u, char (flst_title), advance = 'no') 'flst_real'
-     call write_vline ()
+     call write_vline (u)
      write (u, '(A3)', advance = 'no') 'em'
-     call write_vline ()
+     call write_vline (u)
      write (u, '(A3)', advance = 'no') 'mult'
-     call write_vline ()
+     call write_vline (u)
      write (u, '(A4)', advance = 'no') 'nreg'
-     call write_vline ()
+     call write_vline (u)
      if (reg_data%uses_resonances () .and. allocated (reg_data%fks_mapping%res_map%alr_to_i_res)) then
         write (u, '(A3)', advance = 'no') 'res'
-        call write_vline ()
+        call write_vline (u)
      end if
      write (u, char (ftuple_title), advance = 'no') 'ftuples'
-     call write_vline ()
+     call write_vline (u)
      flst_title = '(A' // flst_title_format(reg_data%nlegs_born) // ')'
      write (u, char (flst_title), advance = 'no') 'flst_born'
-     call write_vline ()
+     call write_vline (u)
      write (u, '(A7)') 'i_uborn'
      do j = 1, reg_data%n_regions
-        associate (region => reg_data%regions(j))
-           nreal = size (region%flst_real%flst)
-           nborn = size (region%flst_uborn%flst)
-           write (u, '(I3)', advance = 'no') j
-           call write_vline ()
-           write (u, '(A1)', advance = 'no') '['
-           do i = 1, nreal - 1
-              write (u, flst_format, advance = 'no') region%flst_real%flst(i), ','
-           end do
-           write (u, flst_format, advance = 'no') region%flst_real%flst(nreal), ']'
-           call write_vline ()
-           write (u, '(I3)', advance = 'no') region%emitter
-           call write_vline ()
-           write (u, '(I3)', advance = 'no') region%mult
-           call write_vline ()
-           write (u, '(I4)', advance = 'no') region%nregions
-           call write_vline ()
-           if (reg_data%uses_resonances () .and. allocated (reg_data%fks_mapping%res_map%alr_to_i_res)) then
-              write (u, '(I3)', advance = 'no') reg_data%get_resonance_index (j)
-              call write_vline ()
-           end if
-           nreg = region%nregions
-           if (nreg == maxnregions) then
-              nleft = 0
-              nright = 0
-           else
-              nreg_diff = maxnregions - nreg
-              nleft = nreg_diff / 2
-              if (mod(nreg_diff , 2) == 0) then
-                 nright = nleft
-              else
-                 nright = nleft + 1
-              end if
-           end if
-           if (nleft > 0) then
-              do i = 1, nleft
-                 write(u, ireg_space_format, advance='no') ' '
-              end do
-           end if
-           write (u,'(A1)', advance = 'no') '{'
-           if (nreg > 1) then
-              do i = 1, nreg - 1
-                 call region%flst_allreg(i)%get (i1, i2)
-                 write(u, ireg_format, advance = 'no') '(', i1, ',', i2, '),'
-              end do
-           end if
-           call region%flst_allreg(nreg)%get (i1, i2)
-           write (u, ireg_format, advance = 'no') '(', i1, ',', i2, ')}'
-           if (nright > 0) then
-              do i = 1, nright
-                 write(u, ireg_space_format, advance='no') ' '
-              end do
-           end if
-           call write_vline ()
-           write (u,'(A1)',advance = 'no') '['
-           do i = 1, nborn - 1
-              write(u,flst_format,advance = 'no') region%flst_uborn%flst(i), ','
-           end do
-           write (u,flst_format, advance = 'no') region%flst_uborn%flst(nborn), ']'
-           call write_vline ()
-           write (u, '(I7)', advance = 'no') region%uborn_index
-           write(u, '(A)')
-        end associate
+        write (u, '(I3)', advance = 'no') j
+        call reg_data%regions(j)%write (u, maxnregions)
      end do
      call write_separator (u)
      if (reg_data%uses_resonances ()) then
@@ -2117,14 +2172,18 @@ writes it to a file.
        frmt = var_str (frmt_char)
     end function ftuple_title_format
 
-    subroutine write_vline ()
-       character(len=10) :: sep_format = "(1X,A2,1X)"
-       write (u, sep_format, advance = 'no') '||'
-    end subroutine write_vline
-
   end subroutine region_data_write
 
 @ %def region_data_write
+@
+<<fks regions: procedures>>=
+  subroutine write_vline (u)
+    integer, intent(in) :: u
+    character(len=10), parameter :: sep_format = "(1X,A2,1X)"
+    write (u, sep_format, advance = 'no') '||'
+  end subroutine write_vline
+
+@ %def write_vline
 @
 <<fks regions: reg data: TBP>>=
   procedure :: copy => region_data_copy
@@ -3537,7 +3596,7 @@ Keep in mind that [[sqme_born]] is $B_{f_b}(\alpha_r)$:
     integer, intent(in), dimension(:) :: resonance_list
     real(default) :: s
     integer :: i_res
-    type(vector4_t) :: p_res, p_soft
+    type(vector4_t) :: p_res
     real(default) :: exp1
     real(default) :: sm1, sm2
 
@@ -3636,6 +3695,16 @@ The equivalent expression for a $g \rightarrow qq$-splitting is given by
   \mathcal{M}^{(n)} \stackrel{i \parallel j}{\rightarrow} \frac{4\pi\alpha_s}{k_i \cdot k_j} P_{qg}(z)\mathcal{M}^{(n-1)} + \frac{16\pi\alpha_s}{k_i \cdot k_j} T_F z(1-z)\tilde{\mathcal{M}}^{(n-1)}.
   \label{coll2}
 \end{equation}
+The function obtains a flag to indicate whether the limit to be computed
+is also soft. Moreover, this consideration explains the structure of the
+code. In the soft limit, we find $z \rightarrow 0$ as well as $\xi
+\rightarrow 0$. However, the quantity $z/\xi$ is finite, because
+\begin{equation*}
+  \frac{z}{\xi} = \frac{p_{rad}^0}{\bar{p}_{em}^0} \frac{q^0}{2p_{em}^0} = \frac{q^0}{2\bar{p}^0_{em}}.
+\end{equation*}
+Thus, all expressions are written in terms of this well-behaved
+quantity. Recalling that there is a prefactor of $(\xi^2z)^{-1}$, it is
+necessary to expand with $z$ once.
 <<real subtraction: coll sub: TBP>>=
   procedure :: compute_fsr => coll_subtraction_compute_fsr
 <<real subtraction: procedures>>=
@@ -3649,15 +3718,6 @@ The equivalent expression for a $g \rightarrow qq$-splitting is given by
     real(default), intent(in) :: sqme_born_sc
     real(default), intent(in) :: xi, alpha_s
     integer, intent(in) :: alr
-@ The function obtains a flag to indicate whether the limit to be computed is also soft. Moreover, this consideration
-explains the structure of the code. In the soft limit, we find $z \rightarrow 0$ as well as $\xi \rightarrow 0$. However,
-the quantity $z/\xi$ is finite, because
-\begin{equation*}
-  \frac{z}{\xi} = \frac{p_{rad}^0}{\bar{p}_{em}^0} \frac{q^0}{2p_{em}^0} = \frac{q^0}{2\bar{p}^0_{em}}.
-\end{equation*}
-Thus, all expressions are written in terms of this well-behaved quantity. Recalling that there is a prefactor of $(\xi^2z)^{-1}$,
-it is necessary to expand with $z$ once.
-<<real subtraction: procedures>>=
     logical, intent(in), optional :: soft_in
     real(default) :: res
     real(default) :: q0, z, p0
@@ -3689,6 +3749,9 @@ it is necessary to expand with $z$ once.
        q0 = p_born(1)%p(0)
     case (2)
        q0 = p_born(1)%p(0) + p_born(2)%p(0)
+    case default
+       q0 = 0
+       call msg_bug ("coll_sub%n_in > 2")
     end select
     !!! Here, z corresponds to 1-z in the formulas of arXiv:1002.2581;
     !!! the integrand is symmetric under this variable change
@@ -3696,7 +3759,9 @@ it is necessary to expand with $z$ once.
     z = xi * zoxi; onemz = one - z
 
     if (is_gluon(flv_em) .and. is_gluon(flv_rad)) then
-@ Implementation of equation (\ref{coll1}). Note that an additional factor $z$, so that in the last step, the whole expression is divided by $z/\xi$.
+@ Implementation of equation (\ref{coll1}). Note that an additional
+factor $z$, so that in the last step, the whole expression is divided by
+$z/\xi$.
 <<real subtraction: procedures>>=
        pggz = two * CA * (z**2 * onemz + z**2 / onemz + onemz)
        res = pggz * sqme_born - 4 * CA * z**2 * onemz * sqme_born_sc
@@ -4103,6 +4168,10 @@ the corresponding jacobians.
             sqme = sqme0 - sqme_soft - sqme_coll + sqme_cs + sqme_remn
          case (FIXED_ORDER_EVENTS)
             sqme = - sqme_soft - sqme_coll + sqme_cs + sqme_remn
+         case default
+            sqme = 0
+            call msg_bug ("real_subtraction_evaluate_region_fsr: " // &
+                 "Undefined rsub%purpose")
          end select
       else
          sqme = sqme0
@@ -4113,8 +4182,7 @@ the corresponding jacobians.
     call debug_output ()
 
   contains
-    subroutine debug_output (unit)
-       integer, intent(in), optional :: unit
+    subroutine debug_output ()
        logical :: print_all
        if (debug_active (D_SUBTRACTION)) then
           print_all = debug2_active (D_SUBTRACTION)
@@ -4725,7 +4793,7 @@ end module nlo_data
     integer :: u, i
     u = given_output_unit (unit); if (u < 0) return
     write (u, '(A)') 'phs_identifier: '
-    write (u, '(A,1X,I1)') 'Emitter: ', phs_id%emitter 
+    write (u, '(A,1X,I1)') 'Emitter: ', phs_id%emitter
     if (allocated (phs_id%contributors)) then
        write (u, '(A)', advance = 'no') 'Resonance contributors: '
        do i = 1, size (phs_id%contributors)
@@ -7867,7 +7935,7 @@ in the center-of-mass and lab frame.
        do i_em = 1, size (reg_data%emitters)
           emitter = reg_data%emitters(i_em)
           do i_res = 1, size (reg_data%resonances)
-             if (reg_data%emitter_is_compatible_with_resonance (i_res, emitter)) then 
+             if (reg_data%emitter_is_compatible_with_resonance (i_res, emitter)) then
                 contributors = reg_data%get_contributors (i_res, emitter)
                 call has_emitter_and_contributors &
                    (phs_id_tmp, emitter, contributors, phs_exist, i_phs)
@@ -7894,7 +7962,7 @@ in the center-of-mass and lab frame.
              if (.not. phs_exist) &
                 call phs%phs_identifiers(i_phs)%init (emitter, contributors)
              deallocate (contributors)
-          end do 
+          end do
        else
           call has_emitter_and_contributors &
              (phs%phs_identifiers, emitter, phs_exist = phs_exist, i_new = i_phs)
@@ -7916,7 +7984,7 @@ in the center-of-mass and lab frame.
           if (phs_id(i_phs)%emitter < 0) then
              i_new = i_phs
              exit
-          end if 
+          end if
           phs_exist = phs_id_tmp(i_phs)%emitter == emitter
           if (present (contributors)) &
              phs_exist = phs_exist .and. all (phs_id_tmp(i_phs)%contributors == contributors)
@@ -8016,7 +8084,6 @@ recoiling momenta.
     integer :: i_emitter
     type(lorentz_transformation_t) :: boost_to_resonance
     integer :: n_resonant_particles
-    real(default) :: m_inv_born, m_inv_real
 
     nlegborn = size (p_born); nlegreal = nlegborn + 1
     n_resonant_particles = size (resonance_list)
@@ -9571,6 +9638,7 @@ module pdf_subtraction
 
 <<Use kinds with double>>
 <<Use strings>>
+  use unit_tests, only: vanishes
   use system_dependencies, only: LHAPDF6_AVAILABLE
   use diagnostics
   use constants
@@ -9807,7 +9875,7 @@ end module pdf_subtraction
           else if (is_quark(abs(pdf_sub%flv_in(emitter)))) then
              pdfs = pdf_sub%get_quark_pdf (emitter, pdf_sub%flv_in(emitter), scaled = .true.)
              pdfb = pdf_sub%get_quark_pdf (emitter, pdf_sub%flv_in(emitter), scaled = .false.)
-             if (pdfb == 0._default) then
+             if (vanishes (pdfb)) then
                 sqme_born = 0._default
                 return
              end if
