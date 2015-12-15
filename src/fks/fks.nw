@@ -4645,7 +4645,7 @@ end module nlo_data
 <<nlo data: types>>=
   type :: phs_identifier_t
      integer, dimension(:), allocatable :: contributors
-     integer :: emitter
+     integer :: emitter = -1
      logical :: evaluated = .false.
   contains
   <<nlo data: phs identifier: TBP>>
@@ -4676,6 +4676,56 @@ end module nlo_data
   end subroutine phs_identifier_init_from_emitter_and_contributors
 @ %def phs_identifier_init_from_emitter
 @ %def phs_identifier_init_from_emitter_and_contributors
+@
+<<nlo data: phs identifier: TBP>>=
+  procedure :: check => phs_identifier_check
+<<nlo data: procedures>>=
+  function phs_identifier_check (phs_id, emitter, contributors) result (check)
+    logical :: check
+    class(phs_identifier_t), intent(in) :: phs_id
+    integer, intent(in) :: emitter
+    integer, intent(in), dimension(:), optional :: contributors
+    check = phs_id%emitter == emitter
+    if (present (contributors)) then
+       if (.not. allocated (phs_id%contributors)) &
+          call msg_fatal ("Phs identifier: contributors not allocated!")
+       check = check .and. all (phs_id%contributors == contributors)
+    end if
+  end function phs_identifier_check
+
+@ %def phs_identifier_check
+@
+<<nlo data: phs identifier: TBP>>=
+  procedure :: reset => phs_identifier_reset
+<<nlo data: procedures>>=
+  subroutine phs_identifier_reset (phs_id)
+    class(phs_identifier_t), intent(inout) :: phs_id
+    phs_id%evaluated = .false.
+  end subroutine phs_identifier_reset
+
+@ %def phs_identifier_reset
+@
+<<nlo data: phs identifier: TBP>>=
+  procedure :: write => phs_identifier_write
+<<nlo data: procedures>>=
+  subroutine phs_identifier_write (phs_id, unit)
+    class(phs_identifier_t), intent(in) :: phs_id
+    integer, intent(in), optional :: unit
+    integer :: u, i
+    u = given_output_unit (unit); if (u < 0) return
+    write (u, '(A)') 'phs_identifier: '
+    write (u, '(A,1X,I1)') 'Emitter: ', phs_id%emitter 
+    if (allocated (phs_id%contributors)) then
+       write (u, '(A)', advance = 'no') 'Resonance contributors: '
+       do i = 1, size (phs_id%contributors)
+          write (u, '(I1,1X)', advance = 'no') phs_id%contributors(i)
+       end do
+    else
+       write (u, '(A)') 'No Contributors allocated'
+    end if
+  end subroutine phs_identifier_write
+
+@ %def phs_identifier_write
 @
 <<nlo data: public>>=
   public :: phs_point_set_t
@@ -7191,6 +7241,7 @@ module phs_fks
   use process_constants
   use process_libraries
   use nlo_data
+  use fks_regions, only: region_data_t
 
 <<Standard module head>>
 
@@ -7485,6 +7536,7 @@ channel with an emitter.
     !!! Not entirley suited for combined integration
     !!! TODO: Modifiy global r_real-array
     real(default) :: r_isr
+    type(phs_identifier_t), dimension(:), allocatable :: phs_identifiers
 
   contains
   <<phs fks: phs fks: TBP>>
@@ -7800,6 +7852,84 @@ in the center-of-mass and lab frame.
   end subroutine phs_fks_set_reference_frames
 
 @ %def phs_fks_set_reference_frames
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: init_phs_identifiers => phs_fks_init_phs_identifiers
+<<phs fks: procedures>>=
+  subroutine phs_fks_init_phs_identifiers (phs, reg_data)
+    class(phs_fks_t), intent(inout) :: phs
+    type(region_data_t), intent(in) :: reg_data
+    integer :: i_em, i_res, i_phs
+    integer :: emitter
+    integer :: n_phs_id
+    integer, dimension(:), allocatable :: contributors
+    integer, parameter :: n_max_phs = 10
+    type(phs_identifier_t), dimension(n_max_phs) :: phs_id_tmp
+    logical :: phs_exist
+    n_phs_id = 0
+    print *, 'Resonances allocated ? ', allocated (reg_data%resonances)
+    stop
+    if (allocated (reg_data%resonances)) then
+       do i_em = 1, size (reg_data%emitters)
+          emitter = reg_data%emitters(i_em)
+          do i_res = 1, size (reg_data%resonances)
+             if (reg_data%emitter_is_compatible_with_resonance (i_res, emitter)) then 
+                contributors = reg_data%get_contributors (i_res, emitter)
+                call has_emitter_and_contributors (emitter, contributors, phs_exist, i_phs)
+                if (.not. phs_exist) then
+                   n_phs_id = n_phs_id + 1
+                   call phs_id_tmp(i_phs)%init (emitter, contributors)
+                end if
+             end if
+             deallocate (contributors)
+          end do
+       end do
+    else
+       n_phs_id = reg_data%n_emitters
+    end if
+    allocate (phs%phs_identifiers (n_phs_id))
+    do i_em = 1, size (reg_data%emitters)
+       emitter = reg_data%emitters(i_em)
+       if (allocated (reg_data%resonances)) then
+          do i_res = 1, size (reg_data%resonances)
+             contributors = reg_data%get_contributors (i_res, emitter)
+             call has_emitter_and_contributors (emitter, contributors, phs_exist, i_phs)
+             if (.not. phs_exist) &
+                call phs%phs_identifiers(i_phs)%init (emitter, contributors)
+             deallocate (contributors)
+          end do 
+       else
+          call has_emitter_and_contributors (emitter, phs_exist = phs_exist, i_new = i_phs)
+          if (.not. phs_exist) &
+             call phs%phs_identifiers(i_phs)%init (emitter)
+       end if
+    end do
+  contains
+    subroutine has_emitter_and_contributors (emitter, contributors, phs_exist, i_new)
+       integer, intent(in) :: emitter
+       integer, intent(in), dimension(:), optional :: contributors
+       logical, intent(out) :: phs_exist
+       integer, intent(out) :: i_new
+       integer :: i_phs
+       phs_exist = .false.
+       i_new = -1
+       do i_phs = 1, n_max_phs
+          if (phs_id_tmp(i_phs)%emitter < 0) then
+             i_new = i_phs
+             exit
+          end if 
+          phs_exist = phs_id_tmp(i_phs)%emitter == emitter
+          if (present (contributors)) &
+             phs_exist = phs_exist .and. all (phs_id_tmp(i_phs)%contributors == contributors)
+          if (phs_exist) then
+             i_new = i_phs
+             exit
+          end if
+       end do
+    end subroutine has_emitter_and_contributors
+  end subroutine phs_fks_init_phs_identifiers
+
+@ %def phs_fks_init_phs_identifiers
 @
 \subsection{Creation of the real phase space - FSR}
 At this point, the Born phase space has been generated, as well as the
