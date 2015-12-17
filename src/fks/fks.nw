@@ -5001,6 +5001,39 @@ end module nlo_data
 @ %def phs_point_set_init
 @
 <<nlo data: phs point set: TBP>>=
+  procedure :: write => phs_point_set_write
+<<nlo data: procedures>>=
+  subroutine phs_point_set_write (phs_point_set, i_phs, contributors, unit)
+    class(phs_point_set_t), intent(in) :: phs_point_set
+    integer, intent(in), optional :: i_phs
+    integer, intent(in), dimension(:), optional :: contributors
+    integer, intent(in), optional :: unit
+    integer :: i, u
+    type(vector4_t) :: p_sum
+    u = given_output_unit (unit); if (u < 0) return
+    if (present (i_phs)) then
+       call phs_point_set%phs_point(i_phs)%write (u, show_mass = .true.)
+    else
+       do i = 1, size(phs_point_set%phs_point)
+          call phs_point_set%phs_point(i_phs)%write (u, show_mass = .true.)
+       end do
+    end if
+    if (present (contributors)) then
+       p_sum = vector4_null
+       call msg_debug (D_SUBTRACTION, "Invariant masses for real emission: ")
+       associate (p => phs_point_set%phs_point(i_phs)%p)
+          do i = 1, size (contributors)
+             p_sum = p_sum + p(contributors(i))
+          end do
+          p_sum = p_sum + p(size(p))
+          print *, 'm_real: ', p_sum**1
+       end associate
+    end if
+  end subroutine phs_point_set_write
+
+@ %def phs_point_set_write
+@
+<<nlo data: phs point set: TBP>>=
   procedure :: get_n_momenta => phs_point_set_get_n_momenta
 <<nlo data: procedures>>=
   elemental function phs_point_set_get_n_momenta (phs_point_set, i_res) result (n)
@@ -8220,6 +8253,10 @@ recoiling momenta.
 
     generator%i_fsr_first = generator%n_in + 1
     call generator%generate_fsr_out (emitter, p_born, p_real, q0)
+    if (debug_active (D_PHASESPACE)) then
+       call vector4_check_momentum_conservation (p_real%p, generator%n_in, &
+           rel_smallness = 1000 * tiny_07, abs_smallness = tiny_07)
+    end if
   end subroutine phs_fks_generator_generate_fsr_default
 
 @ %def phs_fks_generator_generate_fsr
@@ -8245,7 +8282,7 @@ recoiling momenta.
     integer :: i_emitter
     type(lorentz_transformation_t) :: boost_to_resonance
     integer :: n_resonant_particles
-
+    call msg_debug2 (D_PHASESPACE, "phs_fks_generator_generate_fsr_resonances")
     nlegborn = size (p_born); nlegreal = nlegborn + 1
     n_resonant_particles = size (resonance_list)
 
@@ -8290,6 +8327,10 @@ recoiling momenta.
        end if
     end do
     p_real%p(nlegreal) = p_tmp_real%p (n_resonant_particles + 1)
+    if (debug_active (D_PHASESPACE)) then
+       call vector4_check_momentum_conservation (p_real%p, generator%n_in, &
+           rel_smallness = 1000 * tiny_07, abs_smallness = tiny_07)
+    end if
 
   contains
     function create_inverse_resonance_list (nlegborn, resonance_list) &
@@ -8356,7 +8397,7 @@ recoiling momenta.
     integer :: i
     integer :: p_em
     p_em = emitter; if (present (p_emitter_index)) p_em = p_emitter_index
-    call msg_debug (D_PHASESPACE, "phs_fks_generator_generate_fsr_out")
+    call msg_debug2 (D_PHASESPACE, "phs_fks_generator_generate_fsr_out")
     call debug_input_values ()
     if (generator%i_fsr_first < 0) &
        call msg_fatal ("FSR generator is called for outgoing particles but "&

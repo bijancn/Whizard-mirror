@@ -62,7 +62,7 @@ fastjet.lo: \
   ../basics/kinds.$(FC_MODULE_EXT) \
   ../physics/lorentz.$(FC_MODULE_EXT)
 
-AM_FCFLAGS += -I../basics -I../utilities -I../system -I../physics
+AM_FCFLAGS += -I../basics -I../utilities -I../testing -I../system -I../physics
 
 MODULES= \
   cpp_strings.$(FC_MODULE_EXT) \
