@@ -1712,7 +1712,6 @@ the flavor structure list.
          sval = map%svalue_soft (p, p_soft, emitter)
          if (allocated (map%res_map)) then
             i_res = map%res_map%alr_to_i_res (alr)
-            print *, 'Resonance value: ', map%res_map%get_resonance_value (i_res, p)
             sval = sval * map%res_map%get_resonance_value (i_res, p)
          end if
        end select
@@ -2267,12 +2266,17 @@ writes it to a file.
 
 @ %def write_vline
 @
-<<fks regions: reg data: TBP>>=
-  procedure :: copy => region_data_copy
+<<fks regions: public>>=
+  public :: assignment(=)
+<<fks regions: interfaces>>=
+  interface assignment(=)
+     module procedure region_data_assign
+  end interface
+
 <<fks regions: procedures>>=
-  subroutine region_data_copy (reg_data_in, reg_data_out)
-    class(region_data_t), intent(in) :: reg_data_in
+  subroutine region_data_assign (reg_data_out, reg_data_in)
     type(region_data_t), intent(out) :: reg_data_out
+    type(region_data_t), intent(in) :: reg_data_in
     integer :: i
     if (allocated (reg_data_in%regions)) then
        allocate (reg_data_out%regions (size (reg_data_in%regions)))
@@ -2336,9 +2340,19 @@ writes it to a file.
        allocate (reg_data_out%resonances (size (reg_data_in%resonances)))
        reg_data_out%resonances = reg_data_in%resonances
     end if
-  end subroutine region_data_copy
+    reg_data_out%n_phs = reg_data_in%n_phs
+    if (allocated (reg_data_in%alr_contributors)) then
+       allocate (reg_data_out%alr_contributors (size (reg_data_in%alr_contributors)))
+       reg_data_out%alr_contributors = reg_data_in%alr_contributors
+    end if
+    if (allocated (reg_data_in%alr_to_i_contributor)) then
+       allocate (reg_data_out%alr_to_i_contributor &
+          (size (reg_data_in%alr_to_i_contributor)))
+       reg_data_out%alr_to_i_contributor = reg_data_in%alr_to_i_contributor
+    end if
+  end subroutine region_data_assign
 
-@ %def region_data_copy
+@ %def region_data_assign
 @ Returns the index of the real flavor structure an ftuple belogs to.
 <<fks regions: procedures>>=
   function region_to_index (list, i) result(index)
@@ -2704,9 +2718,7 @@ tuning the efficiency of the mapping and are set to $1$ per default.
     if (allocated (map%res_map)) then
        do i_res = 1, size (map%res_map%resonances)
           pfr = map%res_map%get_resonance_value (i_res, p, nlegreal)
-          print *, 'i_res: ', i_res, 'pfr: ', pfr
           associated_alrs = map%res_map%i_res_to_alr (i_res, :)
-          print *, 'i_res: ', i_res, 'alrs: ', associated_alrs
           dij = zero
           do i_alr = 1, size (associated_alrs)
              if (associated_alrs(i_alr) == 0) exit
@@ -2717,7 +2729,6 @@ tuning the efficiency of the mapping and are set to $1$ per default.
           end do
           d = d + pfr * dij
        end do 
-       print *, 'd: ', d
     else
        call msg_fatal ("No resonance history allocated")
     end if
@@ -2849,11 +2860,9 @@ From these equations we can deduce the soft limit of $d$:
 
     d = zero
     nlegs = size (sregion%flst_real%flst)
-    print *, 'Soft sumdij: '
     if (allocated (map%res_map)) then
        do i_res = 1, size (map%res_map%resonances)
           pfr = map%res_map%get_resonance_value (i_res, p_born)
-          print *, 'i_res: ', i_res, 'pfr: ', pfr
           associated_alrs = map%res_map%i_res_to_alr (i_res, :)
           dij = zero
           do i_alr = 1, size (associated_alrs)
@@ -2865,7 +2874,6 @@ From these equations we can deduce the soft limit of $d$:
           end do
           d = d + pfr * dij
        end do
-       print *, 'd: ', d
     else
        call msg_fatal ("No resonance history allocated")
     end if
@@ -3582,7 +3590,7 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     type(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: n_in, nlegs_born, nlegs_real
     call msg_debug (D_SUBTRACTION, "soft_subtraction_init")
-    call reg_data%copy (sub_soft%reg_data)
+    sub_soft%reg_data = reg_data
     sub_soft%n_in = n_in
     sub_soft%nlegs_born = nlegs_born
     sub_soft%nlegs_real = nlegs_real
@@ -3645,16 +3653,15 @@ with the same direction as the radiated particle.
   procedure :: compute => soft_subtraction_compute
 <<real subtraction: procedures>>=
   subroutine soft_subtraction_compute (sub_soft, p_born, &
-             born_ij, y, y_soft, phi, alpha_s, alr, emitter)
+             born_ij, y, y_soft, phi, q2, alpha_s, alr, emitter)
     class(soft_subtraction_t), intent(inout) :: sub_soft
     type(vector4_t), intent(in), dimension(:) :: p_born
     real(default), intent(in), dimension(:,:) :: born_ij
     real(default), intent(in) :: y, y_soft, phi
-    real(default), intent(in) :: alpha_s
+    real(default), intent(in) :: q2, alpha_s
     integer, intent(in) :: alr, emitter
     type(vector4_t) :: p_soft
     real(default) :: s_alpha_soft
-    real(default) :: q2
     real(default) :: kb
     integer :: i, j
 
@@ -3682,15 +3689,15 @@ with the same direction as the radiated particle.
     end do
     call msg_debug2 (D_SUBTRACTION, 'KB', kb)
     sub_soft%value(alr) = sub_soft%value(alr) * kb
-    select case (sub_soft%n_in)
-    case (1)
-       q2 = p_born(1)%p(0)**2
-    case (2)
-       q2 = 4 * p_born(1)%p(0) * p_born(2)%p(0)
-    case default
-       q2 = 0
-       call msg_bug ("soft_subtraction_compute: sub_soft%n_in > 2")
-    end select
+    !!!select case (sub_soft%n_in)
+    !!!case (1)
+    !!!   q2 = p_born(1)%p(0)**2
+    !!!case (2)
+    !!!   q2 = 4 * p_born(1)%p(0) * p_born(2)%p(0)
+    !!!case default
+    !!!   q2 = 0
+    !!!   call msg_bug ("soft_subtraction_compute: sub_soft%n_in > 2")
+    !!!end select
     if (emitter <= sub_soft%n_in) then
        sub_soft%value(alr) = 4 / q2 * (one - y**2) * sub_soft%value(alr)
     else
@@ -4102,7 +4109,7 @@ $z/\xi$.
 
     if (debug2_active (D_SUBTRACTION))  &
          call reg_data%write ()
-    call reg_data%copy (rsub%reg_data)
+    rsub%reg_data = reg_data
     rsub%sqme_real_non_sub => sqme_collector%sqme_real_non_sub
     rsub%sqme_born => sqme_collector%sqme_subtraction_born_list
     rsub%sqme_born_cc => sqme_collector%sqme_born_cc
@@ -4627,20 +4634,22 @@ the corresponding jacobians.
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: emitter
     real(default), intent(in) :: alpha_s
-    integer :: alr
+    integer :: alr, i_con
     integer :: y_index
+    real(default) :: q2
 
     y_index = emitter; if (emitter == 0) y_index = 1
     alr = rsub%current_alr
     associate (sregion => rsub%reg_data%regions(alr))
        if (sregion%has_soft_divergence ()) then
-          !!! Need to use Born momenta in the CMS, because xi, y, phi are defined there
+          i_con = rsub%reg_data%alr_to_i_contributor (alr)
+          q2 = rsub%real_kinematics%xi_ref_momenta (i_con)**2
           call rsub%sub_soft%compute (rsub%real_kinematics%p_born_cms%get_momenta(1), &
                                       rsub%sqme_born_cc(:,:,sregion%uborn_index), &
                                       rsub%real_kinematics%y(y_index), &
                                       rsub%real_kinematics%y_soft(y_index), &
                                       rsub%real_kinematics%phi, &
-                                      alpha_s, alr, emitter)
+                                      q2, alpha_s, alr, emitter)
        else
           rsub%sub_soft%value(alr) = zero
        end if
