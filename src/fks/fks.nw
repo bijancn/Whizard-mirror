@@ -5179,7 +5179,6 @@ end module nlo_data
     real(default), dimension(:), allocatable :: jac_rand
     real(default), dimension(:), allocatable :: y_soft
     real(default) :: cms_energy2
-    real(default), dimension(:), allocatable :: xi_ref_scale 
     type(vector4_t), dimension(:), allocatable :: k_perp
     type(vector4_t), dimension(:), allocatable :: xi_ref_momenta
   contains
@@ -5191,9 +5190,9 @@ end module nlo_data
 <<nlo data: real kinematics: TBP>>=
   procedure :: init => real_kinematics_init
 <<nlo data: procedures>>=
-  subroutine real_kinematics_init (r, n_tot, n_phs, n_alr, n_res)
+  subroutine real_kinematics_init (r, n_tot, n_phs, n_alr, n_contr)
     class(real_kinematics_t), intent(inout) :: r
-    integer, intent(in) :: n_tot, n_phs, n_alr, n_res
+    integer, intent(in) :: n_tot, n_phs, n_alr, n_contr
     allocate (r%xi_max (n_tot))
     allocate (r%y (n_tot))
     allocate (r%y_soft (n_tot))
@@ -5208,14 +5207,14 @@ end module nlo_data
     allocate (r%jac (n_tot), r%jac_rand (n_tot))
     allocate (r%k_perp (n_tot))
     allocate (r%alr_to_i_phs (n_alr))
-    allocate (r%xi_ref_scale (n_res))
+    allocate (r%xi_ref_momenta (n_contr))
     r%alr_to_i_phs = 0
     r%xi_tilde = zero
     r%xi_max = zero
     r%y = zero
     r%phi = zero
     r%cms_energy2 = zero
-    r%xi_ref_scale = zero
+    r%xi_ref_momenta = vector4_null
   end subroutine real_kinematics_init
 
 @ %def real_kinematics_init
@@ -8350,9 +8349,10 @@ recoiling momenta.
     call generator%generate_fsr_in (p_born, p_real)
 
     p_resonance = generator%real_kinematics%xi_ref_momenta(i_con)
+    q0 = p_resonance**1
+    print *, 'p_resonance: ', p_resonance%p
 
-    boost_to_resonance = inverse (boost (p_resonance, p_resonance**1))
-    q0 = boosted_energy ()
+    boost_to_resonance = inverse (boost (p_resonance, q0))
     p_tmp_born = boost_to_resonance * p_tmp_born
 
     generator%i_fsr_first = 1
@@ -9200,17 +9200,22 @@ with $\Lambda$.
   pure subroutine phs_fks_generator_compute_xi_ref_momenta &
          (generator, pborn, resonance_contributors)
     class(phs_fks_generator_t), intent(inout) :: generator
-    type(vector4_t), intent(in), dimension(:) :: pborn
-    type(resonance_contributors_t), dimension(:), intent(in) :: resonance_contributors
+    type(vector4_t), intent(in), dimension(:) :: p_born
+    type(resonance_contributors_t), intent(in), dimension(:), optional &
+       :: resonance_contributors
     integer :: i_con, n_contributors
-    n_contributors = size (resonance_contributors)
-    allocate (generator%real_kinematics%xi_ref_momenta (n_contributors))
-    allocate (generator%resonance_contributors (n_contributors))
-    do i_con = 1, n_contributors
-       generator%real_kinematics%xi_ref_momenta(i_con) = &
-            get_resonance_momentum (pborn, resonance_contributors(i_con)%c)
-       generator%resonance_contributors(i_con) = resonance_contributors(i_con)
-    end do
+    if (present (resonance_contributors)) then
+       n_contributors = size (resonance_contributors)
+       if (.not. allocated (generator%resonance_contributors)) &
+          allocate (generator%resonance_contributors (n_contributors))
+       do i_con = 1, n_contributors
+          generator%real_kinematics%xi_ref_momenta(i_con) = &
+               get_resonance_momentum (p_born, resonance_contributors(i_con)%c)
+          generator%resonance_contributors(i_con) = resonance_contributors(i_con)
+       end do
+    else
+       generator%real_kinematics%xi_ref_momenta(1) = sum (p_born(1:generator%n_in))
+    end if
   end subroutine phs_fks_generator_compute_xi_ref_momenta
 
 @ %def phs_fks_generator_compute_xi_ref_momenta
@@ -9227,13 +9232,16 @@ with $\Lambda$.
     type(vector4_t), dimension(:), allocatable :: pp
     type(vector4_t) :: p_res
     type(lorentz_transformation_t) :: L_to_resonance
+    integer :: ii_con
     if (.not. any (generator%emitters == emitter)) return
+    ii_con = 1; if (present (i_con)) ii_con = i_con
     allocate (pp (size (p)))
     associate (rad_var => generator%real_kinematics)
+       q0 = rad_var%xi_ref_momenta(ii_con)**1 
        select case (generator%n_in)
        case (1)
           if (emitter > 1) then
-             q0 = p(1)**1
+             !!!q0 = p(1)**1
              if (generator%is_massive(emitter)) then
                 rad_var%xi_max(emitter) = get_xi_max_fsr &
                    (p, q0, emitter, generator%m2(emitter), rad_var%y(emitter))
@@ -9245,12 +9253,13 @@ with $\Lambda$.
           end if
        case (2)
           if (present (i_con)) then
-             p_res = rad_var%xi_ref_momenta(i_con)
-             q0 = p_res**1
+             p_res = rad_var%xi_ref_momenta(ii_con)
+             !!!q0 = p_res**1
              L_to_resonance = inverse (boost (p_res, q0))
              pp = L_to_resonance * p
           else
-             q0 = (p(1) + p(2))**1; pp = p
+             !!q0 = (p(1) + p(2))**1; pp = p
+             pp = p
           end if
           if (generator%is_massive(emitter)) then
              if (emitter <= 2) then
@@ -9500,9 +9509,10 @@ module phs_fks_uti
 <<Use kinds>>
   use format_utils, only: write_separator, pac_fmt
   use format_defs, only: FMT_15, FMT_19
-  use constants, only: tiny_07
+  use constants, only: tiny_07, zero
   use lorentz
 
+  use cascades, only: resonance_contributors_t
   use phs_fks
 
 <<Standard module head>>
@@ -9588,11 +9598,12 @@ end module phs_fks_uti
     allocate (generator%emitters (2))
     generator%emitters(1) = 3; generator%emitters(2) = 4
     allocate (generator%m2 (4))
-    generator%m2 = 0._default
+    generator%m2 = zero
     allocate (generator%is_massive (4))
     generator%is_massive(1:2) = .false.
     generator%is_massive(3:4) = .true.
     call generator%generate_radiation_variables ([x1,x2,x3], p_born)
+    call generator%compute_xi_ref_momenta (p_born)
     do emitter = 3, 4
        call generator%compute_xi_max (emitter, p_born)
     end do
@@ -9680,6 +9691,7 @@ end module phs_fks_uti
     allocate (generator%is_massive (4))
     generator%is_massive = .false.
     call generator%generate_radiation_variables ([x1,x2,x3], p_born)
+    call generator%compute_xi_ref_momenta (p_born)
     do emitter = 1, 2
        call generator%compute_xi_max (emitter, p_born)
     end do
@@ -9770,6 +9782,7 @@ end module phs_fks_uti
     generator%is_massive = .true.
 
     call generator%generate_radiation_variables ([x1,x2,x3], p_born)
+    call generator%compute_xi_ref_momenta (p_born)
     do emitter = 1, 3
        call generator%compute_xi_max (emitter, p_born)
     end do
@@ -9876,7 +9889,7 @@ end module phs_fks_uti
        "x1: ", x1, "x2: ", x2, "x3: ", x3
 
     allocate (generator%real_kinematics)
-    call generator%real_kinematics%init (nlegborn, 1, 2, 1)
+    call generator%real_kinematics%init (nlegborn, 1, 2, 2)
 
     allocate (generator%emitters (2))
     generator%emitters(1) = 5; generator%emitters(2) = 6
@@ -9892,7 +9905,9 @@ end module phs_fks_uti
     resonance_lists (1,:) = [3,5]
     resonance_lists (2,:) = [4,6]
     emitters(1) = 5; emitters(2) = 6
-    alr_contributors(1:2)%c = resonance_lists(1:2,:)
+    do i = 1, 2
+       alr_contributors(i)%c = resonance_lists(i,:)
+    end do
     call p_real%init (nlegborn + 1)
     call generator%compute_xi_ref_momenta (p_born, alr_contributors)
     do i = 1, 2
