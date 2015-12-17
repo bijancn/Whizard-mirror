@@ -1968,7 +1968,6 @@ of the present one is increased.
        end do
     end do
     do i = 1, nregions
-       ! TODO: (bcn 2015-12-15) get i_res like in get_resonance_index
        i_res = 0
        call reg_data%regions(i)%init (i, mult(i), i_res, flst_alr2(i), &
             flst_uborn(i), reg_data%flv_born, flst_emitter(i), ftuples, &
@@ -5182,6 +5181,7 @@ end module nlo_data
     real(default) :: cms_energy2
     real(default), dimension(:), allocatable :: xi_ref_scale 
     type(vector4_t), dimension(:), allocatable :: k_perp
+    type(vector4_t), dimension(:), allocatable :: xi_ref_momenta
   contains
   <<nlo data: real kinematics: TBP>>
   end type real_kinematics_t
@@ -8584,26 +8584,28 @@ $\xi$.
 <<phs fks: phs fks: TBP>>=
   procedure :: generate_fsr => phs_fks_generate_fsr
 <<phs fks: procedures>>=
-  subroutine phs_fks_generate_fsr (phs, emitter, p_real, i_phs, contributors)
+  subroutine phs_fks_generate_fsr (phs, emitter, p_real, i_phs, i_con)
     class(phs_fks_t), intent(inout) :: phs
     integer, intent(in) :: emitter
     type(phs_point_t), intent(inout) :: p_real
     integer, intent(in) :: i_phs
-    integer, intent(in), dimension(:), optional :: contributors
+    integer, intent(in), optional :: i_con
     type(vector4_t), dimension(:), allocatable :: p
-    allocate (p (1 : phs%generator%real_kinematics%p_born_cms%get_n_particles()), &
-         source = phs%generator%real_kinematics%p_born_cms%phs_point(1)%p)
-    phs%generator%real_kinematics%supply_xi_max = .true.
-    call phs%generator%compute_xi_max (emitter, p, contributors)
-    if (present (contributors)) then
-       call phs%generator%generate_fsr (emitter, contributors, p, p_real)
-    else
-       call phs%generator%generate_fsr (emitter, p, p_real)
-    end if
-    phs%generator%real_kinematics%p_real_cms%phs_point(i_phs)%p = p_real%p
-    if (.not. phs%config%cm_frame) &
-          p_real = phs%lt_cm_to_lab * p_real
-    phs%generator%real_kinematics%p_real_lab%phs_point(i_phs)%p = p_real%p
+    associate (generator => phs%generator)
+       allocate (p (1 : generator%real_kinematics%p_born_cms%get_n_particles()), &
+            source = generator%real_kinematics%p_born_cms%phs_point(1)%p)
+       generator%real_kinematics%supply_xi_max = .true.
+       call generator%compute_xi_max (emitter, p, i_con)
+       if (present (i_con)) then
+          call generator%generate_fsr (emitter, p, p_real, i_con)
+       else
+          call generator%generate_fsr (emitter, p, p_real)
+       end if
+       generator%real_kinematics%p_real_cms%phs_point(i_phs)%p = p_real%p
+       if (.not. phs%config%cm_frame) &
+             p_real = phs%lt_cm_to_lab * p_real
+       generator%real_kinematics%p_real_lab%phs_point(i_phs)%p = p_real%p
+    end associate
   end subroutine phs_fks_generate_fsr
 
 @ %def phs_fks_generate_fsr
@@ -8845,7 +8847,6 @@ momentum vanishes. Thus we define
        (phs, p_born, p_real)
     class(phs_fks_t), intent(inout) :: phs
     type(vector4_t), intent(in), dimension(:) :: p_born
-    !!!type(vector4_t), intent(out), dimension(:), allocatable :: p_real
     type(phs_point_t), intent(inout) :: p_real
     type(vector4_t) :: p0, p1
     type(lorentz_transformation_t) :: lt
@@ -9190,58 +9191,38 @@ with $\Lambda$.
        rad_var%phi = r_in (I_PHI) * twopi
        rad_var%jac_rand = rad_var%jac_rand * twopi
        call generator%compute_y (r_in(I_Y), p_born)
-       !!! Does not need random numbers -> Moved to phase space evaluation
-       !!!
-       !!!do em = 1, size (p_born)
-       !!!   if (any (generator%emitters == em)) then
-       !!!      select case (generator%n_in)
-       !!!      case (1)
-       !!!         if (em > 1) then
-       !!!            if (generator%is_massive(em)) then
-       !!!               rad_var%xi_max(em) = get_xi_max_fsr &
-       !!!                  (p_born, em, generator%m2(em), rad_var%y(em), 1)
-       !!!            else
-       !!!               rad_var%xi_max(em) = get_xi_max_fsr (p_born, em, 1)
-       !!!            end if
-       !!!         else
-       !!!            rad_var%xi_max(em) = get_xi_max_isr_decay (p_born)
-       !!!         end if
-       !!!      case (2)
-       !!!         if (generator%is_massive(em)) then
-       !!!            if (em <= 2) then
-       !!!               call msg_fatal ("Massive emitters" // &
-       !!!                    "incompatible with IS scattering phase space")
-       !!!            else
-       !!!              rad_var%xi_max(em) = get_xi_max_fsr &
-       !!!                 (p_born, em, generator%m2(em), rad_var%y(em), 2)
-       !!!            end if
-       !!!         else
-       !!!            if (em <= 2) then
-       !!!               rad_var%xi_max(em) = get_xi_max_isr &
-       !!!                    (generator%isr_kinematics%x, rad_var%y(em))
-       !!!            else
-       !!!               rad_var%xi_max(em) = get_xi_max_fsr (p_born, em, 2)
-       !!!            end if
-       !!!         end if
-       !!!      case default
-       !!!         call msg_fatal ("Real phase space: " // &
-       !!!              "Only 1 or 2 initial state particles supported")
-       !!!      end select
-       !!!   end if
-       !!!end do
     end associate
   end subroutine phs_fks_generator_generate_radiation_variables
 
 @ %def phs_fks_generator_generate_radiation_variables
 @
 <<phs fks: phs fks generator: TBP>>=
+  procedure :: compute_xi_ref_momenta => phs_fks_generator_compute_xi_ref_momenta
+<<phs fks: procedures>>=
+  pure subroutine phs_fks_generator_compute_xi_ref_momenta &
+         (generator, pborn, alr_contributors)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    type(vector4_t), intent(in), dimension(:) :: pborn
+    type(resonance_contributors_t), dimension(:), intent(in) :: alr_contributors
+    integer :: i_con, n_contributors
+    n_contributors = size (resonance_contributors)
+    allocate (generator%real_kinematics%xi_ref_momenta (n_contributors))
+    do i_con = 1, n_contributors
+       generator%real_kinematics%xi_ref_momenta(i_con) = &
+            compute_resonance_momentum (pborn, alr_contributors%c)
+    end do
+  end subroutine phs_fks_generator_compute_xi_ref_momenta
+
+@ %def phs_fks_generator_compute_xi_ref_momenta
+@
+<<phs fks: phs fks generator: TBP>>=
   procedure :: compute_xi_max => phs_fks_generator_compute_xi_max
 <<phs fks: procedures>>=
-  subroutine phs_fks_generator_compute_xi_max (generator, emitter, p, contributors)
+  subroutine phs_fks_generator_compute_xi_max (generator, emitter, p, i_con)
     class(phs_fks_generator_t), intent(inout) :: generator
     integer, intent(in) :: emitter
     type(vector4_t), intent(in), dimension(:) :: p
-    integer, intent(in), dimension(:), optional :: contributors
+    integer, intent(in), optional :: i_con
     real(default) :: q0
     type(vector4_t), dimension(:), allocatable :: pp
     type(vector4_t) :: p_res
@@ -9263,9 +9244,8 @@ with $\Lambda$.
              rad_var%xi_max(emitter) = get_xi_max_isr_decay (p)
           end if
        case (2)
-          if (present (contributors)) then
-             p_res = get_resonance_momentum (p, contributors)
-             !!!q0 = compute_resonance_mass (p, contributors)
+          if (present (i_con)) then
+             p_res = rad_var%xi_ref_momenta(i_con)
              q0 = p_res**1
              L_to_resonance = inverse (boost (p_res, q0))
              pp = L_to_resonance * p
@@ -9276,7 +9256,7 @@ with $\Lambda$.
              if (emitter <= 2) then
                 call msg_fatal ("Massive emitters" // &
                    "incompatible with IS scattering phase space")
-             else 
+             else
                 rad_var%xi_max(emitter) = get_xi_max_fsr &
                    (pp, q0, emitter, generator%m2(emitter), rad_var%y(emitter)) 
              end if
@@ -9293,7 +9273,6 @@ with $\Lambda$.
              "Only 1 or 2 initial particles supported")
        end select
     end associate
-    deallocate (pp)
   end subroutine phs_fks_generator_compute_xi_max
 
 @ %def phs_fks_generator_compute_xi_max
@@ -9381,6 +9360,7 @@ with $\Lambda$.
     type(phs_point_t) :: p_real_phs
 
     call generator%generate_radiation_variables (r_in, p_born)
+    ! TODO: (bcn 2015-12-17) this will most likely need the correct i_con
     call generator%compute_xi_max (emitter, p_born)
     call p_real_phs%init (size (p_born) + 1)
     call generator%generate_fsr (emitter, p_born, p_real_phs)
@@ -9654,7 +9634,7 @@ end module phs_fks_uti
     integer :: emitter
     real(default) :: x1, x2, x3
     real(default), parameter :: sqrts_hadronic = 250.0_default
-    write (u, "(A)") "* Test output: phs_fks_generator_1"
+    write (u, "(A)") "* Test output: phs_fks_generator_2"
     write (u, "(A)") "* Purpose: Create massless ISR phase space"
     write (u, "(A)")
 
@@ -9737,7 +9717,6 @@ end module phs_fks_uti
     integer, intent(in) :: u
     type(phs_fks_generator_t) :: generator
     type(vector4_t), dimension(:), allocatable :: p_born
-    !!!type(vector4_t), dimension(:), allocatable :: p_real
     type(phs_point_t) :: p_real
     real(default) :: x1, x2, x3
     real(default) :: mB, mW, mT
@@ -9839,6 +9818,7 @@ end module phs_fks_uti
     type(phs_point_t) :: p_real
     integer, dimension(:), allocatable :: emitters
     integer, dimension(:,:), allocatable :: resonance_lists
+    type(resonance_contributors_t), dimension(2) :: alr_contributors
     real(default) :: x1, x2, x3
     real(default), parameter :: sqrts = 250.0_default
     integer, parameter :: nlegborn = 6
@@ -9912,14 +9892,15 @@ end module phs_fks_uti
     resonance_lists (1,:) = [3,5]
     resonance_lists (2,:) = [4,6]
     emitters(1) = 5; emitters(2) = 6
-
+    alr_contributors(1:2)%c = resonance_lists(1:2,:)
+    call p_real%init (nlegborn + 1)
+    call generator%compute_xi_ref_momenta (p_born, alr_contributors)
     do i = 1, 2
        write (u, "(A,1X,I1,A,I1,A,I1,A)") &
           "* Generate FSR phase space for emitter ", emitters(i), &
           "and resonance pair (",  resonance_lists (i,1), ",", &
           resonance_lists (i,2), ")"
-       call p_real%init (nlegborn + 1)
-       call generator%compute_xi_max (emitters(i), p_born, resonance_lists (i,:))
+       call generator%compute_xi_max (emitters(i), p_born, i)
        call generator%generate_fsr (emitters(i), resonance_lists (i,:), p_born, p_real)
        call vector4_write_set (p_real%p, u, testflag = .true., ultra = .true.)
        call write_separator(u)
@@ -9935,8 +9916,8 @@ end module phs_fks_uti
        end if
        call write_separator(u)
        call write_separator(u)
-       call p_real%final ()
     end do
+    call p_real%final ()
     write (u, "(A)")
     write (u, "(A)") "* Test output end: phs_fks_generator_4"
   end subroutine phs_fks_generator_4

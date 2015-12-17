@@ -7866,21 +7866,16 @@ The quantum numbers mask of the incoming particle
 <<Processes: term instance: TBP>>=
   procedure :: evaluate_real_phase_space => term_instance_evaluate_real_phase_space
 <<Processes: procedures>>=
-  subroutine term_instance_evaluate_real_phase_space (term, emitter, i_res, contributors)
+  subroutine term_instance_evaluate_real_phase_space (term, emitter, i_con)
     class(term_instance_t), intent(inout) :: term
     integer, intent(in) :: emitter
-    integer, intent(in), optional :: i_res
-    integer, intent(in), dimension(:), optional :: contributors
+    integer, intent(in), optional :: i_con
     type(vector4_t), dimension(:), allocatable :: p_born
     integer :: i_phs
-    !!!type(vector4_t), dimension(:), allocatable :: p_real
     integer :: n_in
     type(phs_point_set_t) :: p_real
-    
-    !!!emitter = term%nlo_controller%get_active_emitter ()
     allocate (p_born(1 : size(term%nlo_controller%int_born%get_momenta ())))
     p_born = term%nlo_controller%int_born%get_momenta ()
-    !!!call p_real%init (term%nlo_controller%get_n_particles_real (), 1)
 
     select type (phs => term%k_term%phs)
     type is (phs_fks_t)
@@ -7890,14 +7885,16 @@ The quantum numbers mask of the incoming particle
           size (phs%phs_identifiers))
        if (emitter > n_in) then
           do i_phs = 1, size (phs%phs_identifiers)
-              if (phs%phs_identifiers(i_phs)%check (emitter, contributors) &
-                 .and. .not. phs%phs_identifiers(i_phs)%evaluated) then
-                 call phs%generate_fsr (emitter, p_real%phs_point(i_phs), i_phs, contributors)
-                 phs%phs_identifiers(i_phs)%evaluated = .true.
-                 if (debug2_active (D_SUBTRACTION)) &
-                    call debug_message_phase_space (i_phs, contributors)
-                 exit
-              end if
+             associate (contributors => term%nlo_controller%reg_data%alr_contributors(i_con)%c)
+                if (phs%phs_identifiers(i_phs)%check (emitter, contributors) &
+                   .and. .not. phs%phs_identifiers(i_phs)%evaluated) then
+                   call phs%generate_fsr (emitter, p_real%phs_point(i_phs), i_phs, i_con)
+                   phs%phs_identifiers(i_phs)%evaluated = .true.
+                   if (debug2_active (D_SUBTRACTION)) &
+                      call debug_message_phase_space (i_phs, contributors)
+                   exit
+                end if
+             end associate
           end do
        else
           call phs%generate_isr (p_born, p_real%phs_point(1))
@@ -9595,10 +9592,11 @@ it from the MCI record.
   end subroutine process_instance_evaluate_event_data
 
 @ %def process_instance_evaluate_event_data
-@ For the real part of the process evaluation at NLO, trace evaluation is a 
-  bit more intricate because the phase-spaces for different emitters might
-  be treated differently by cuts. A phase-space point is discarded if it fails
-  the cuts for at least one emitter. 
+@ For the real part of the process evaluation at NLO, trace evaluation
+is a bit more intricate because the phase-spaces for different emitters
+might be treated differently by cuts. A phase-space point is discarded
+if it fails the cuts for at least one emitter.
+% TODO: (bcn 2015-12-17) Update this comment
 <<Processes: process instance: TBP>>=
   procedure :: evaluate_trace_real => process_instance_evaluate_trace_real
 <<Processes: procedures>>=
@@ -9606,13 +9604,12 @@ it from the MCI record.
      class(process_instance_t), intent(inout) :: instance
      type(term_instance_t), intent(inout) :: term
      integer, intent(in) :: i
-     integer :: emitter, i_reg, i_res, i_phs
+     integer :: emitter, i_reg, i_phs
      integer :: nlegs
      integer :: fixed_emitter
      integer, dimension(:), allocatable :: resonances
      logical :: loop_over_resonances 
-     !!!integer, dimension(:), allocatable :: contributors
-     type(resonance_contributors_t) :: contributors
+     type(vector4_t), dimension(:), allocatable :: p_born
 
      call msg_debug2 (D_SUBTRACTION, "process_instance_evaluate_trace_real")
 
@@ -9629,15 +9626,12 @@ it from the MCI record.
         loop_over_resonances = term%nlo_controller%uses_resonance_mappings ()
         if (loop_over_resonances) then
            associate (reg_data => term%nlo_controller%reg_data)
-              resonances = reg_data%resonances 
-              do i_res = 1, size (resonances)
-                 do emitter = 0, nlegs
-                    if (reg_data%emitter_is_compatible_with_resonance &
-                        (resonances (i_res), emitter)) then
-                       contributors = reg_data%get_contributors (i_res, emitter)
-                       call term%evaluate_real_phase_space (emitter, i_res, contributors%c)
-                    end if
-                 end do
+              allocate (p_born(1 : size(term%nlo_controller%int_born%get_momenta ())))
+              p_born = term%nlo_controller%int_born%get_momenta ()
+              call phs%generator%compute_xi_ref_momenta (pborn, reg_data%alr_contributors)
+              do alr = 1, reg_data%nregions
+                 call term%evaluate_real_phase_space (reg_data%get_emitter(alr), &
+                      reg_data%alr_to_i_contributors(alr))
               end do
            end associate
         end if
