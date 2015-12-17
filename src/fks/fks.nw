@@ -1479,6 +1479,7 @@ there is only a soft singularity if the radiated parton becomes soft.
        do alr = 1, n_alr_new
           call singular_region_copy (save_regions(alr_new_to_old (alr)), reg_data%regions(alr))
           allocate (reg_data%regions(alr)%res_hist, source = res_map%get_resonance_history (alr))
+          reg_data%regions(alr)%i_res = res_map%alr_to_i_res (alr)
        end do
     end associate
 
@@ -4214,21 +4215,28 @@ the corresponding jacobians.
     call debug_output ()
 
   contains
+
     subroutine debug_output ()
-       logical :: print_all
+       logical :: print_all, soft, collinear
+       type(vector4_t) :: p_gluon
        if (debug_active (D_SUBTRACTION)) then
           print_all = debug2_active (D_SUBTRACTION)
           call msg_debug2 (D_SUBTRACTION, "real_subtraction_evaluate_region_fsr")
           if (print_all) then
              call write_computation_status ()
           else
-             if (xi < 0.01) then
+             associate (p_real => rsub%real_kinematics%p_real_cms)
+                p_gluon = p_real%get_momentum (i_phs, p_real%get_n_momenta (i_phs))
+                soft = p_gluon%p(0) < 2.0_default
+             end associate
+             collinear = abs (y - 1) < 0.01_default
+             if (soft) then
                 if (abs (sqme0 - sqme_soft) > sqme0 .and. sqme_soft > tiny_10) then
                    call msg_warning ("Soft MEs do not match in soft region")
                    call write_computation_status ()
                 end if
              end if
-             if (abs (y - 1) < 0.01) then
+             if (collinear) then
                 if (abs (sqme0 - sqme_coll) > sqme0 .and. sqme_coll > tiny_10) then
                    call msg_warning ("Collinear MEs do not match in collinear region")
                    call write_computation_status ()
@@ -4910,6 +4918,18 @@ end module nlo_data
 
 @ %def phs_point_set_get_momenta
 @
+@
+<<nlo data: phs point set: TBP>>=
+  procedure :: get_momentum => phs_point_set_get_momentum
+<<nlo data: procedures>>=
+  pure function phs_point_set_get_momentum (phs_point_set, i_phs, i_mom) result (p)
+    type(vector4_t) :: p
+    class(phs_point_set_t), intent(in) :: phs_point_set
+    integer, intent(in) :: i_phs, i_mom
+    p = phs_point_set%phs_point(i_phs)%p(i_mom)
+  end function phs_point_set_get_momentum
+
+@ %def phs_point_set_get_momentum
 <<nlo data: phs point set: TBP>>=
   procedure :: set_momenta => phs_point_set_set_momenta
 <<nlo data: procedures>>=
@@ -6298,7 +6318,7 @@ one to determine this.
     sqme = sum (collector%sqme_born_list) + &
            collector%sqme_real_sum + &
            sum (collector%sqme_virt_list)
-    if (debug_active (D_SUBTRACTION)) then
+    if (debug2_active (D_SUBTRACTION)) then
        call msg_debug (D_SUBTRACTION, "Get content of sqme lists: ")
        print *, 'Born: ', collector%sqme_born_list
        print *, 'Real: ', collector%sqme_real_sum
