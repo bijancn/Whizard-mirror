@@ -7794,6 +7794,7 @@ phase-space points with [[p_real(emitter) = 0]].
     logical, dimension(:), allocatable :: is_massive
     logical :: singular_jacobian = .false.
     integer :: i_fsr_first = -1
+    type(resonance_contributors_t), dimension(:), allocatable :: resonance_contributors !!! Put somewhere else?
   contains
   <<phs fks: phs fks generator: TBP>>
   end type phs_fks_generator_t
@@ -8309,15 +8310,14 @@ recoiling momenta.
   procedure :: generate_fsr_resonances => phs_fks_generator_generate_fsr_resonances
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_generate_fsr_resonances (generator, &
-     emitter, resonance_list, p_born, p_real)
+       emitter, i_con, p_born, p_real)
     class(phs_fks_generator_t), intent(inout) :: generator
     integer, intent(in) :: emitter
-    integer, intent(in), dimension(:) :: resonance_list
+    integer, intent(in) :: i_con
     type(vector4_t), intent(in), dimension(:) :: p_born
-    !!!type(vector4_t), intent(out), dimension(:), allocatable :: p_real
     type(phs_point_t), intent(inout) :: p_real
+    integer, dimension(:), allocatable :: resonance_list
     integer, dimension(size(p_born)) :: inv_resonance_list
-    !!!type(vector4_t), dimension(:), allocatable :: p_tmp_born, p_tmp_real
     type(vector4_t), dimension(:), allocatable :: p_tmp_born
     type(phs_point_t) :: p_tmp_real
     type(vector4_t) :: p_resonance
@@ -8328,6 +8328,8 @@ recoiling momenta.
     integer :: n_resonant_particles
     call msg_debug2 (D_PHASESPACE, "phs_fks_generator_generate_fsr_resonances")
     nlegborn = size (p_born); nlegreal = nlegborn + 1
+    allocate (resonance_list (size (generator%resonance_contributors(i_con)%c)))
+    resonance_list = generator%resonance_contributors(i_con)%c
     n_resonant_particles = size (resonance_list)
 
     if (.not. any (resonance_list == emitter)) then
@@ -8347,12 +8349,7 @@ recoiling momenta.
 
     call generator%generate_fsr_in (p_born, p_real)
 
-    j = 1
-    do i = 1, n_resonant_particles
-       p_tmp_born(j) = p_born (resonance_list (i))
-       p_resonance = p_resonance + p_tmp_born(j)
-       j = j + 1
-    end do
+    p_resonance = generator%real_kinematics%xi_ref_momenta(i_con)
 
     boost_to_resonance = inverse (boost (p_resonance, p_resonance**1))
     q0 = boosted_energy ()
@@ -8360,7 +8357,6 @@ recoiling momenta.
 
     generator%i_fsr_first = 1
     call generator%generate_fsr_out (emitter, p_tmp_born, p_tmp_real, q0, i_emitter)
-
     p_tmp_real = inverse (boost_to_resonance) * p_tmp_real
 
     do i = generator%n_in + 1, nlegborn
@@ -8371,12 +8367,14 @@ recoiling momenta.
        end if
     end do
     p_real%p(nlegreal) = p_tmp_real%p (n_resonant_particles + 1)
+
     if (debug_active (D_PHASESPACE)) then
        call vector4_check_momentum_conservation (p_real%p, generator%n_in, &
            rel_smallness = 1000 * tiny_07, abs_smallness = tiny_07)
     end if
 
   contains
+
     function create_inverse_resonance_list (nlegborn, resonance_list) &
        result (inv_resonance_list)
        integer, intent(in) :: nlegborn
@@ -8597,7 +8595,7 @@ $\xi$.
        generator%real_kinematics%supply_xi_max = .true.
        call generator%compute_xi_max (emitter, p, i_con)
        if (present (i_con)) then
-          call generator%generate_fsr (emitter, p, p_real, i_con)
+          call generator%generate_fsr (emitter, i_con, p, p_real)
        else
           call generator%generate_fsr (emitter, p, p_real)
        end if
@@ -9200,16 +9198,18 @@ with $\Lambda$.
   procedure :: compute_xi_ref_momenta => phs_fks_generator_compute_xi_ref_momenta
 <<phs fks: procedures>>=
   pure subroutine phs_fks_generator_compute_xi_ref_momenta &
-         (generator, pborn, alr_contributors)
+         (generator, pborn, resonance_contributors)
     class(phs_fks_generator_t), intent(inout) :: generator
     type(vector4_t), intent(in), dimension(:) :: pborn
-    type(resonance_contributors_t), dimension(:), intent(in) :: alr_contributors
+    type(resonance_contributors_t), dimension(:), intent(in) :: resonance_contributors
     integer :: i_con, n_contributors
     n_contributors = size (resonance_contributors)
     allocate (generator%real_kinematics%xi_ref_momenta (n_contributors))
+    allocate (generator%resonance_contributors (n_contributors))
     do i_con = 1, n_contributors
        generator%real_kinematics%xi_ref_momenta(i_con) = &
-            compute_resonance_momentum (pborn, alr_contributors%c)
+            get_resonance_momentum (pborn, resonance_contributors(i_con)%c)
+       generator%resonance_contributors(i_con) = resonance_contributors(i_con)
     end do
   end subroutine phs_fks_generator_compute_xi_ref_momenta
 
@@ -9360,7 +9360,7 @@ with $\Lambda$.
     type(phs_point_t) :: p_real_phs
 
     call generator%generate_radiation_variables (r_in, p_born)
-    ! TODO: (bcn 2015-12-17) this will most likely need the correct i_con
+    ! TODO: (bcn 2015-12-17) this will most likely need the correct i_con?
     call generator%compute_xi_max (emitter, p_born)
     call p_real_phs%init (size (p_born) + 1)
     call generator%generate_fsr (emitter, p_born, p_real_phs)
@@ -9901,7 +9901,7 @@ end module phs_fks_uti
           "and resonance pair (",  resonance_lists (i,1), ",", &
           resonance_lists (i,2), ")"
        call generator%compute_xi_max (emitters(i), p_born, i)
-       call generator%generate_fsr (emitters(i), resonance_lists (i,:), p_born, p_real)
+       call generator%generate_fsr (emitters(i), i, p_born, p_real)
        call vector4_write_set (p_real%p, u, testflag = .true., ultra = .true.)
        call write_separator(u)
        write (u, "(A)") "* Check if resonance masses are conserved: "
