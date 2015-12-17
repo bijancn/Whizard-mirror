@@ -1632,15 +1632,16 @@ there is only a soft singularity if the radiated parton becomes soft.
   procedure :: get_contributors => region_data_get_contributors
 <<fks regions: procedures>>=
   function region_data_get_contributors (reg_data, i_res, emitter) result (contributors)
-    integer, dimension(:), allocatable :: contributors
+    !!!integer, dimension(:), allocatable :: contributors
+    type(resonance_contributors_t) :: contributors
     class(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: i_res, emitter
     integer :: i
     associate (res_history => reg_data%fks_mapping%res_map%resonances (i_res))
        do i = 1, res_history%n_resonances
           if (any (res_history%resonances(i)%contributors%c == emitter)) then
-             allocate (contributors (size (res_history%resonances(i)%contributors%c)))
-             contributors = res_history%resonances(i)%contributors%c
+             !!!allocate (contributors (size (res_history%resonances(i)%contributors%c)))
+             contributors = res_history%resonances(i)%contributors
              exit
           end if
        end do
@@ -2000,14 +2001,15 @@ of the present one is increased.
 <<fks regions: procedures>>=
   subroutine region_data_find_emitters_and_resonances (reg_data)
     class(region_data_t), intent(inout) :: reg_data
-    integer :: alr, j, n_em, n_res
+    integer :: alr, j, k, n_em, n_res, n_contr
     integer :: em, res
     integer, dimension(10) :: em_count
     integer, dimension(10) :: res_count
-    integer, dimension(:), allocatable :: contributors
+    type(resonance_contributors_t), dimension(10) :: contributors_count
+    type(resonance_contributors_t) :: contributors
     integer :: i_res, emitter
     em_count = -1; res_count = -1
-    n_em = 0; n_res = 0
+    n_em = 0; n_res = 0; n_contr = 0
 
     !!! Count the number of different emitters
     do alr = 1, reg_data%n_regions
@@ -2049,13 +2051,32 @@ of the present one is increased.
           end if
        end do
 
-       allocate (reg_data%alr_contributors (size (reg_data%regions)))
+       allocate (reg_data%alr_to_i_contributor (size (reg_data%regions)))
        do alr = 1, size (reg_data%regions)
           i_res = reg_data%fks_mapping%res_map%alr_to_i_res (alr)
           emitter = reg_data%regions(alr)%emitter
           contributors =  reg_data%get_contributors (i_res, emitter)
-          allocate (reg_data%alr_contributors(alr)%c (size (contributors)))
-          reg_data%alr_contributors(alr)%c = contributors
+          if (.not. any (contributors_count == contributors)) then 
+             n_contr = n_contr + 1
+             contributors_count(alr) = contributors
+          end if
+       end do
+       allocate (reg_data%alr_contributors (n_contr))
+       j = 1
+       do alr = 1, size (reg_data%regions)
+          i_res = reg_data%fks_mapping%res_map%alr_to_i_res (alr)
+          emitter = reg_data%regions(alr)%emitter
+          contributors =  reg_data%get_contributors (i_res, emitter)
+          if (.not. any (reg_data%alr_contributors == contributors)) then
+             reg_data%alr_contributors(j) = contributors
+             reg_data%alr_to_i_contributor (alr) = j
+             j = j + 1
+          else
+             do k = 1, size (reg_data%alr_contributors)
+                if (reg_data%alr_contributors(k) == contributors) exit
+             end do
+             reg_data%alr_to_i_contributor (alr) = k
+          end if
        end do
     end if
 
@@ -2095,7 +2116,8 @@ of the present one is increased.
     class(region_data_t), intent(inout) :: reg_data
     integer :: i_em, i_res, i_phs
     integer :: emitter
-    integer, dimension(:), allocatable :: contributors
+    !!!integer, dimension(:), allocatable :: contributors
+    type(resonance_contributors_t) :: contributors
     integer, parameter :: n_max_phs = 10
     type(phs_identifier_t), dimension(n_max_phs) :: phs_id_tmp
     logical :: phs_exist
@@ -2107,15 +2129,14 @@ of the present one is increased.
              if (reg_data%emitter_is_compatible_with_resonance (i_res, emitter)) then 
                 contributors = reg_data%get_contributors (i_res, emitter)
                 call check_for_phs_identifier &
-                   (phs_id_tmp, emitter, contributors, phs_exist, i_phs)
+                   (phs_id_tmp, emitter, contributors%c, phs_exist, i_phs)
                 if (.not. phs_exist) then
                    reg_data%n_phs = reg_data%n_phs + 1
                    if (reg_data%n_phs > n_max_phs) call msg_fatal &
                       ("Buffer of phase space identifieres: Too much phase spaces!")
-                   call phs_id_tmp(i_phs)%init (emitter, contributors)
+                   call phs_id_tmp(i_phs)%init (emitter, contributors%c)
                 end if
              end if
-             deallocate (contributors)
           end do
        end do
     else
@@ -5072,7 +5093,6 @@ end module nlo_data
 
 @ %def phs_point_set_get_momenta
 @
-@
 <<nlo data: phs point set: TBP>>=
   procedure :: get_momentum => phs_point_set_get_momentum
 <<nlo data: procedures>>=
@@ -5513,7 +5533,7 @@ module nlo_controller
   use particle_specifiers
   use phs_base
   use phs_single
-  use cascades, only: resonance_history_t
+  use cascades
   use state_matrices
   use interactions
   use lorentz
@@ -6372,7 +6392,8 @@ one to determine this.
     type(phs_identifier_t), intent(in), dimension(:) :: phs_identifiers
     integer :: alr, i_phs
     integer :: emitter, i_res
-    integer, dimension(:), allocatable :: contributors
+    !!!integer, dimension(:), allocatable :: contributors
+    type(resonance_contributors_t) :: contributors
     logical :: phs_exist
     do alr = 1, nlo_controller%reg_data%n_regions
        associate (region => nlo_controller%reg_data%regions(alr))
@@ -6380,10 +6401,9 @@ one to determine this.
           i_res = region%i_res
           if (i_res /= 0) &
              contributors = nlo_controller%reg_data%get_contributors (i_res, emitter) 
-          if (allocated (contributors)) then
+          if (allocated (contributors%c)) then
              call check_for_phs_identifier (phs_identifiers, &
-                emitter, contributors, phs_exist = phs_exist, i_phs = i_phs) 
-             deallocate (contributors)
+                emitter, contributors%c, phs_exist = phs_exist, i_phs = i_phs) 
           else
              call check_for_phs_identifier (phs_identifiers, &
                 emitter, phs_exist = phs_exist, i_phs = i_phs)
@@ -8195,7 +8215,8 @@ in the center-of-mass and lab frame.
     type(region_data_t), intent(in) :: reg_data
     integer :: i_em, i_res, i_phs
     integer :: emitter
-    integer, dimension(:), allocatable :: contributors
+    !!!integer, dimension(:), allocatable :: contributors
+    type(resonance_contributors_t) :: contributors
     logical :: phs_exist
     allocate (phs%phs_identifiers (reg_data%n_phs))
     do i_em = 1, size (reg_data%emitters)
@@ -8204,10 +8225,9 @@ in the center-of-mass and lab frame.
           do i_res = 1, size (reg_data%resonances)
              contributors = reg_data%get_contributors (i_res, emitter)
              call check_for_phs_identifier &
-                (phs%phs_identifiers, emitter, contributors, phs_exist, i_phs)
+                (phs%phs_identifiers, emitter, contributors%c, phs_exist, i_phs)
              if (.not. phs_exist) &
-                call phs%phs_identifiers(i_phs)%init (emitter, contributors)
-             deallocate (contributors)
+                call phs%phs_identifiers(i_phs)%init (emitter, contributors%c)
           end do
        else
           call check_for_phs_identifier &
