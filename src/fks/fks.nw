@@ -1293,6 +1293,20 @@ there is only a soft singularity if the radiated parton becomes soft.
 @ %def resonance_mapping_write
 @
 <<fks regions: resonance mapping: TBP>>=
+  procedure :: get_resonance_value => resonance_mapping_get_resonance_value
+<<fks regions: procedures>>=
+  function resonance_mapping_get_resonance_value (res_map, i_res, p, i_gluon) result (p_map)
+    real(default) :: p_map
+    class(resonance_mapping_t), intent(in) :: res_map
+    integer, intent(in) :: i_res
+    type(vector4_t), intent(in), dimension(:) :: p
+    integer, intent(in), optional :: i_gluon
+    p_map = res_map%resonances(i_res)%mapping (p, i_gluon)
+  end function resonance_mapping_get_resonance_value
+
+@ %def resonance_mapping_get_resonance_value
+@
+<<fks regions: resonance mapping: TBP>>=
   procedure :: get_resonance_all => resonance_mapping_get_resonance_all
 <<fks regions: procedures>>=
   function resonance_mapping_get_resonance_all (res_map, alr, p, i_gluon) result (p_map)
@@ -1659,11 +1673,18 @@ the flavor structure list.
     !!!type(phs_point_t), intent(in) :: p
     integer, intent(in) :: alr, emitter
     real(default) :: sval
+    integer :: i_res
     associate (map => reg_data%fks_mapping)
-      map%sumdij = map%compute_sumdij (reg_data%regions(alr), p)
-      sval = map%svalue (p, emitter, reg_data%nlegs_real)
-      if (allocated (map%res_map)) &
-         sval = sval * map%res_map%get_resonance_alr (alr, p, reg_data%nlegs_real)
+      !!!map%sumdij = map%compute_sumdij (reg_data%regions(alr), p)
+      select type (map)
+      type is (fks_mapping_default_t)
+         map%sumdij = map%compute_sumdij_resonance (reg_data%regions(alr), p)
+         sval = map%svalue (p, emitter, reg_data%nlegs_real)
+         if (allocated (map%res_map)) then
+            i_res = map%res_map%alr_to_i_res (alr)
+            sval = sval * map%res_map%get_resonance_value (i_res, p, reg_data%nlegs_real)
+         end if
+      end select
     end associate
   end function region_data_get_svalue
 
@@ -1679,12 +1700,19 @@ the flavor structure list.
     type(vector4_t), intent(in) :: p_soft
     integer, intent(in) :: alr, emitter
     real(default) :: sval
+    integer :: i_res
     associate (map => reg_data%fks_mapping)
-      map%sumdij_soft = &
-         map%compute_sumdij_soft (reg_data%regions(alr), p, p_soft)
-      sval = map%svalue_soft (p, p_soft, emitter)
-      if (allocated (map%res_map)) &
-         sval = sval * map%res_map%get_resonance_alr (alr, p)
+      select type (map)
+      type is (fks_mapping_default_t)
+         map%sumdij_soft = &
+            map%compute_sumdij_soft_resonance (reg_data%regions(alr), p, p_soft)
+         sval = map%svalue_soft (p, p_soft, emitter)
+         if (allocated (map%res_map)) then
+            i_res = map%res_map%alr_to_i_res (alr)
+            print *, 'Resonance value: ', map%res_map%get_resonance_value (i_res, p)
+            sval = sval * map%res_map%get_resonance_value (i_res, p)
+         end if
+       end select
     end associate
   end function region_data_get_svalue_soft
 
@@ -2612,10 +2640,10 @@ tuning the efficiency of the mapping and are set to $1$ per default.
       do alr = 1, sregion%nregions
         call ftuples(alr)%get (i, j)
         dij = map%dij (p, i, j)
-        if (allocated (map%res_map)) then
-           nlegreal = size (p)
-           dij = dij / map%res_map%get_resonance_all (alr, p, nlegreal)
-        end if
+        !!!if (allocated (map%res_map)) then
+        !!!   nlegreal = size (p)
+        !!!   dij = dij / map%res_map%get_resonance_all (alr, p, nlegreal)
+        !!!end if
         d = d + one / dij
       end do
     end associate
@@ -2623,6 +2651,45 @@ tuning the efficiency of the mapping and are set to $1$ per default.
   end function fks_mapping_default_compute_sumdij
 
 @ %def fks_mapping_default_compute_sumdij
+@
+<<fks regions: fks mapping default: TBP>>=
+  procedure :: compute_sumdij_resonance => fks_mapping_default_compute_sumdij_resonance
+<<fks regions: procedures>>=
+  function fks_mapping_default_compute_sumdij_resonance (map, sregion, p) result (d)
+    real(default) :: d
+    class(fks_mapping_default_t), intent(in) :: map
+    type(singular_region_t), intent(inout) :: sregion
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default) :: dij, pfr
+    integer :: i_res, i_alr, i, j
+    integer, dimension(:), allocatable :: associated_alrs
+    integer :: nlegreal
+    
+    nlegreal = size (p)
+    d = zero
+    if (allocated (map%res_map)) then
+       do i_res = 1, size (map%res_map%resonances)
+          pfr = map%res_map%get_resonance_value (i_res, p, nlegreal)
+          print *, 'i_res: ', i_res, 'pfr: ', pfr
+          associated_alrs = map%res_map%i_res_to_alr (i_res, :)
+          print *, 'i_res: ', i_res, 'alrs: ', associated_alrs
+          dij = zero
+          do i_alr = 1, size (associated_alrs)
+             if (associated_alrs(i_alr) == 0) exit
+             associate (ftuples => sregion%flst_allreg)
+                call ftuples(associated_alrs(i_alr))%get (i, j)
+             end associate
+             dij = dij + one / map%dij (p, i, j)
+          end do
+          d = d + pfr * dij
+       end do 
+       print *, 'd: ', d
+    else
+       call msg_fatal ("No resonance history allocated")
+    end if
+  end function fks_mapping_default_compute_sumdij_resonance
+
+@ %def fks_mapping_default_compute_sumdij_resonance
 @ Computes
 \begin{equation*}
   S_i = \frac{1}{\mathcal{D} d_{0i}}
@@ -2722,8 +2789,8 @@ From these equations we can deduce the soft limit of $d$:
         call ftuples(alr)%get (i ,j)
         if (j == nlegs) then
           dij = map%dij_soft (p_born, p_soft, i)
-          if (allocated (map%res_map)) &
-             dij = dij / map%res_map%get_resonance_all (alr, p_born)
+          !!!if (allocated (map%res_map)) &
+          !!!   dij = dij / map%res_map%get_resonance_all (alr, p_born)
           d = d + one / dij
         end if
       end do
@@ -2732,6 +2799,46 @@ From these equations we can deduce the soft limit of $d$:
 
 @ %def fks_mapping_default_compute_sumdij_soft
 @
+<<fks regions: fks mapping default: TBP>>=
+  procedure :: compute_sumdij_soft_resonance => fks_mapping_default_compute_sumdij_soft_resonance
+<<fks regions: procedures>>=
+  function fks_mapping_default_compute_sumdij_soft_resonance (map, sregion, p_born, p_soft) result (d)
+    real(default) :: d
+    class(fks_mapping_default_t), intent(in) :: map
+    type(singular_region_t), intent(inout) :: sregion
+    type(vector4_t), intent(in), dimension(:) :: p_born
+    type(vector4_t), intent(in) :: p_soft
+    real(default) :: dij, pfr
+    integer :: i_res, i_alr, i, j
+    integer, dimension(:), allocatable :: associated_alrs
+    integer :: nlegs
+
+    d = zero
+    nlegs = size (sregion%flst_real%flst)
+    print *, 'Soft sumdij: '
+    if (allocated (map%res_map)) then
+       do i_res = 1, size (map%res_map%resonances)
+          pfr = map%res_map%get_resonance_value (i_res, p_born)
+          print *, 'i_res: ', i_res, 'pfr: ', pfr
+          associated_alrs = map%res_map%i_res_to_alr (i_res, :)
+          dij = zero
+          do i_alr = 1, size (associated_alrs)
+             if (associated_alrs(i_alr) == 0) exit
+             associate (ftuples => sregion%flst_allreg)
+                call ftuples(associated_alrs(i_alr))%get (i, j)
+             end associate
+             if (j == nlegs) dij = dij + one / map%dij_soft (p_born, p_soft, i)
+          end do
+          d = d + pfr * dij
+       end do
+       print *, 'd: ', d
+    else
+       call msg_fatal ("No resonance history allocated")
+    end if
+  end function fks_mapping_default_compute_sumdij_soft_resonance
+
+@ %def fks_mapping_default_compute_sumdij_soft_resonance
+@                  
 <<fks regions: fks mapping default: TBP>>=
   procedure :: svalue_soft => fks_mapping_default_svalue_soft
 <<fks regions: procedures>>=
