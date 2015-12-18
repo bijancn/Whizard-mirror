@@ -3574,6 +3574,8 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     type(region_data_t) :: reg_data
     integer :: n_in, nlegs_born, nlegs_real
     real(default), dimension(:,:), allocatable :: momentum_matrix
+    logical :: use_resonance_mappings = .false.
+    type(vector4_t) :: p_soft = vector4_null
     logical :: use_internal_color_correlations = .true.
     logical :: use_internal_spin_correlations = .false.
     type(pdf_container_t), pointer :: pdf_born_plus => null ()
@@ -3614,43 +3616,61 @@ momentum is a unit vector, because $k^2 = \left(k^0\right)^2 -
 The soft momentum is constructed by first creating a unit vector
 parallel to the emitter's Born momentum. This unit vector is then
 rotated about the corresponding angles $y$ and $\phi$.
+<<real subtraction: soft sub: TBP>>=
+  procedure :: create_softvec_fsr => soft_subtraction_create_softvec_fsr 
 <<real subtraction: procedures>>=
-  function create_softvec_fsr (p_born, y, phi, emitter) result (p_soft)
+  subroutine soft_subtraction_create_softvec_fsr &
+     (sub_soft, p_born, y, phi, emitter, xi_ref_momentum)
+    class(soft_subtraction_t), intent(inout) :: sub_soft
     type(vector4_t), intent(in), dimension(:) :: p_born
     real(default), intent(in) :: y, phi
     integer, intent(in) :: emitter
-    type(vector4_t) :: p_soft
+    type(vector4_t), intent(in) :: xi_ref_momentum
     type(vector3_t) :: dir
+    type(vector4_t) :: p_em
     type(lorentz_transformation_t) :: rot
-    p_soft%p(0) = one
-    p_soft%p(1:3) = p_born(emitter)%p(1:3) / space_part_norm (p_born(emitter))
-    dir = create_orthogonal (space_part (p_born(emitter)))
-    rot = rotation (y, sqrt(one - y**2), dir)
-    p_soft = rot * p_soft
-    if (.not. vanishes (phi)) then
-      dir = space_part (p_born(emitter)) / &
-            space_part_norm (p_born(emitter))
-      rot = rotation (cos(phi), sin(phi), dir)
-      p_soft = rot * p_soft
+    type(lorentz_transformation_t) :: boost_to_rest_frame
+    sub_soft%p_soft%p(0) = one
+    if (sub_soft%use_resonance_mappings) then
+       print *, 'Boost to rest frame: '
+       boost_to_rest_frame = inverse (boost (xi_ref_momentum, xi_ref_momentum**1))
+       p_em = boost_to_rest_frame * p_born(emitter)
+    else
+       p_em = p_born(emitter)
     end if
-  end function create_softvec_fsr
+    !!!p_soft%p(1:3) = p_born(emitter)%p(1:3) / space_part_norm (p_born(emitter))
+    sub_soft%p_soft%p(1:3) = p_em%p(1:3) / space_part_norm (p_em)
+    !!!dir = create_orthogonal (space_part (p_born(emitter)))
+    dir = create_orthogonal (space_part (p_em))
+    rot = rotation (y, sqrt(one - y**2), dir)
+    sub_soft%p_soft = rot * sub_soft%p_soft
+    if (.not. vanishes (phi)) then
+      !!!dir = space_part (p_born(emitter)) / &
+      !!!     space_part_norm (p_born(emitter))
+      dir = space_part (p_em) / space_part_norm (p_em)
+      rot = rotation (cos(phi), sin(phi), dir)
+      sub_soft%p_soft = rot * sub_soft%p_soft
+    end if
+  end subroutine soft_subtraction_create_softvec_fsr
 
-@ %def create_softvec_fsr
+@ %def soft_subtraction_create_softvec_fsr
 @ For initial-state emissions, the soft vector is just a unit vector
 with the same direction as the radiated particle.
+<<real subtraction: soft sub: TBP>>=
+  procedure :: create_softvec_isr => soft_subtraction_create_softvec_isr
 <<real subtraction: procedures>>=
-  function create_softvec_isr (y, phi) result (p_soft)
+  subroutine soft_subtraction_create_softvec_isr (sub_soft, y, phi)
+    class(soft_subtraction_t), intent(inout) :: sub_soft
     real(default), intent(in) :: y, phi
-    type(vector4_t) :: p_soft
     real(default) :: sin_theta
     sin_theta = sqrt(one - y**2)
-    p_soft%p(0) = one
-    p_soft%p(1) = sin_theta * sin(phi)
-    p_soft%p(2) = sin_theta * cos(phi)
-    p_soft%p(3) = y
-  end function create_softvec_isr
+    sub_soft%p_soft%p(0) = one
+    sub_soft%p_soft%p(1) = sin_theta * sin(phi)
+    sub_soft%p_soft%p(2) = sin_theta * cos(phi)
+    sub_soft%p_soft%p(3) = y
+  end subroutine soft_subtraction_create_softvec_isr
 
-@ %def create_softvec_isr
+@ %def soft_subtraction_create_softvec_isr
 @ Computation of $\mathcal{R}_{\rm{soft}}$:
 <<real subtraction: soft sub: TBP>>=
   procedure :: compute => soft_subtraction_compute
@@ -3663,7 +3683,6 @@ with the same direction as the radiated particle.
     real(default), intent(in) :: y, y_soft, phi
     real(default), intent(in) :: q2, alpha_s
     integer, intent(in) :: alr, emitter
-    type(vector4_t) :: p_soft
     real(default) :: s_alpha_soft
     real(default) :: kb
     integer :: i, j
@@ -3674,14 +3693,15 @@ with the same direction as the radiated particle.
        call msg_fatal ("Soft subtraction: phase space point must be in CMS")
     end if
 
-    if (emitter > sub_soft%n_in) then
-       p_soft = create_softvec_fsr (p_born, y_soft, phi, emitter)
-    else
-       p_soft = create_softvec_isr (y_soft, phi)
-    end if
+    !!!if (emitter > sub_soft%n_in) then
+    !!!   p_soft = create_softvec_fsr (p_born, y_soft, phi, emitter)
+    !!!else
+    !!!   p_soft = create_softvec_isr (y_soft, phi)
+    !!!end if
     s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
-         (p_born, p_soft, alr, emitter)
-    call sub_soft%compute_momentum_matrix (p_born, p_soft)
+         (p_born, sub_soft%p_soft, alr, emitter)
+    print *, 's_alpha_soft: ', s_alpha_soft
+    call sub_soft%compute_momentum_matrix (p_born, sub_soft%p_soft)
     sub_soft%value(alr) = 4 * pi * alpha_s * s_alpha_soft
     kb = zero
     do i = 1, size (p_born)
@@ -4172,6 +4192,17 @@ $z/\xi$.
 @ %def real_subtraction_init_pdfs
 @
 <<real subtraction: real subtraction: TBP>>=
+  procedure :: set_resonance_mappings => real_subtraction_set_resonance_mappings
+<<real subtraction: procedures>>=
+  subroutine real_subtraction_set_resonance_mappings (rsub, use_mappings)
+    class(real_subtraction_t), intent(inout) :: rsub
+    logical, intent(in) :: use_mappings
+    rsub%sub_soft%use_resonance_mappings = use_mappings
+  end subroutine real_subtraction_set_resonance_mappings
+
+@ %def real_subtraction_set_resonance_mappings
+@
+<<real subtraction: real subtraction: TBP>>=
   procedure :: set_real_kinematics => real_subtraction_set_real_kinematics
 <<real subtraction: procedures>>=
   subroutine real_subtraction_set_real_kinematics (rsub, real_kinematics)
@@ -4647,6 +4678,17 @@ the corresponding jacobians.
        if (sregion%has_soft_divergence ()) then
           i_con = rsub%reg_data%alr_to_i_contributor (alr)
           q2 = rsub%real_kinematics%xi_ref_momenta (i_con)**2
+          if (emitter > rsub%sub_soft%n_in) then
+             call rsub%sub_soft%create_softvec_fsr &
+                (rsub%real_kinematics%p_born_cms%get_momenta(1), &
+                 rsub%real_kinematics%y_soft(y_index), &
+                 rsub%real_kinematics%phi, emitter, &
+                 rsub%real_kinematics%xi_ref_momenta(i_con))
+          else
+             call rsub%sub_soft%create_softvec_isr &
+                (rsub%real_kinematics%y_soft(y_index), &
+                 rsub%real_kinematics%phi)
+          end if
           call rsub%sub_soft%compute (rsub%real_kinematics%p_born_cms%get_momenta(1), &
                                       rsub%sqme_born_cc(:,:,sregion%uborn_index), &
                                       rsub%real_kinematics%y(y_index), &
@@ -6802,6 +6844,8 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
     call nlo_controller%real_terms%init (nlo_controller%reg_data, &
        n_in, n_tot_born, n_tot_real, nlo_controller%sqme_collector, &
        nlo_controller%nlo_cuts)
+    call nlo_controller%real_terms%set_resonance_mappings &
+       (nlo_controller%settings%use_resonance_mappings)
   end subroutine nlo_controller_init_real_subtraction
 
 @ %def nlo_controller_init_real_subtraction
@@ -8581,15 +8625,15 @@ $\xi$.
   subroutine generate_jacobians ()
     associate (jac => generator%real_kinematics%jac(emitter))
        if (generator%is_massive(emitter)) then
-          jac%jac(1) = jac%jac(1)*4/q0/uk_n_born/xi
+          jac%jac(1) = jac%jac(1)*4 / q0 / uk_n_born / xi
        else
           k2 = two * uk_n * uk_np1* (one - y)
-          jac%jac(1) = uk_n**2/uk_n_born / (uk_n - k2/(2*q0))
+          jac%jac(1) = uk_n**2 / uk_n_born / (uk_n - k2 / (two * q0))
        end if
        !!! Soft jacobian
        jac%jac(2) = one
        !!! Collinear jacobian
-       jac%jac(3) = one - xi/two * q0/uk_n_born
+       jac%jac(3) = one - xi / two * q0 / uk_n_born
     end associate
   end subroutine generate_jacobians
 
