@@ -7874,6 +7874,7 @@ The quantum numbers mask of the incoming particle
     integer :: i_phs
     integer :: n_in
     type(phs_point_set_t) :: p_real
+    logical :: evaluate_phs, resonance_contributors_exist
     allocate (p_born(1 : size(term%nlo_controller%int_born%get_momenta ())))
     p_born = term%nlo_controller%int_born%get_momenta ()
 
@@ -7883,18 +7884,31 @@ The quantum numbers mask of the incoming particle
        n_in = term%nlo_controller%get_n_in ()
        call p_real%init (term%nlo_controller%get_n_particles_real (), &
           size (phs%phs_identifiers))
+       resonance_contributors_exist = allocated (term%nlo_controller%reg_data%alr_contributors)
        if (emitter > n_in) then
           do i_phs = 1, size (phs%phs_identifiers)
-             associate (contributors => term%nlo_controller%reg_data%alr_contributors(i_con)%c)
-                if (phs%phs_identifiers(i_phs)%check (emitter, contributors) &
-                   .and. .not. phs%phs_identifiers(i_phs)%evaluated) then
-                   call phs%generate_fsr (emitter, p_real%phs_point(i_phs), i_phs, i_con)
-                   phs%phs_identifiers(i_phs)%evaluated = .true.
-                   if (debug2_active (D_SUBTRACTION)) &
-                      call debug_message_phase_space (i_phs, contributors)
-                   exit
+             if (resonance_contributors_exist) then
+                associate (contributors => term%nlo_controller%reg_data%alr_contributors(i_con)%c)
+                   evaluate_phs = phs%phs_identifiers(i_phs)%check (emitter, contributors) &
+                      .and. .not. phs%phs_identifiers(i_phs)%evaluated
+                end associate
+             else
+                evaluate_phs = phs%phs_identifiers(i_phs)%check (emitter) &
+                   .and. .not. phs%phs_identifiers(i_phs)%evaluated
+             end if 
+             if (evaluate_phs) then
+                call phs%generate_fsr (emitter, p_real%phs_point(i_phs), i_phs, i_con)
+                phs%phs_identifiers(i_phs)%evaluated = .true.
+                if (debug2_active (D_SUBTRACTION)) then
+                   if (resonance_contributors_exist) then
+                      call debug_message_phase_space &
+                         (i_phs, term%nlo_controller%reg_data%alr_contributors(i_con)%c)
+                   else
+                      call debug_message_phase_space (i_phs)
+                   end if
                 end if
-             end associate
+                exit
+             end if
           end do
        else
           call phs%generate_isr (p_born, p_real%phs_point(1))
@@ -9608,7 +9622,7 @@ if it fails the cuts for at least one emitter.
      integer :: nlegs
      integer :: fixed_emitter
      integer, dimension(:), allocatable :: resonances
-     logical :: loop_over_resonances 
+     logical :: use_contributors 
      type(vector4_t), dimension(:), allocatable :: p_born
 
      call msg_debug2 (D_SUBTRACTION, "process_instance_evaluate_trace_real")
@@ -9623,28 +9637,27 @@ if it fails the cuts for at least one emitter.
         !!! TODO: 
         !!!fixed_resonance = instance%get_fixed_resonace ()
 
-        loop_over_resonances = term%nlo_controller%uses_resonance_mappings ()
-        if (loop_over_resonances) then
-           associate (reg_data => term%nlo_controller%reg_data)
-              allocate (p_born(1 : size(term%nlo_controller%int_born%get_momenta ())))
-              p_born = term%nlo_controller%int_born%get_momenta ()
-              select type (phs => term%k_term%phs)
-              type is (phs_fks_t)
+        associate (reg_data => term%nlo_controller%reg_data)
+           use_contributors = allocated (reg_data%alr_contributors)
+           allocate (p_born(1 : size(term%nlo_controller%int_born%get_momenta ())))
+           p_born = term%nlo_controller%int_born%get_momenta ()
+           select type (phs => term%k_term%phs)
+           type is (phs_fks_t)
+              if (use_contributors) then
                  call phs%generator%compute_xi_ref_momenta (p_born, reg_data%alr_contributors)
-              end select 
-              do alr = 1, reg_data%n_regions
+              else
+                 call phs%generator%compute_xi_ref_momenta (p_born)
+              end if
+           end select 
+           do alr = 1, reg_data%n_regions
+              if (use_contributors) then
                  call term%evaluate_real_phase_space (reg_data%get_emitter(alr), &
-                      reg_data%alr_to_i_contributor(alr))
-              end do
-           end associate
-        end if
-
-        if (.not. loop_over_resonances) then
-           do emitter = 0, nlegs
-              if (any (term%nlo_controller%reg_data%emitters == emitter)) &
-                 call term%evaluate_real_phase_space (emitter)
+                    reg_data%alr_to_i_contributor(alr))
+              else
+                 call term%evaluate_real_phase_space (reg_data%get_emitter(alr))
+              end if
            end do
-        end if
+        end associate
 
         !!!if (debug2_active (D_SUBTRACTION)) then
         !!!   call msg_debug (D_SUBTRACTION, "Loop over emitters:")
