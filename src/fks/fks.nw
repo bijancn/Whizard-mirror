@@ -210,6 +210,7 @@ module fks_regions
   use physics_defs
   use cascades
   use nlo_data, only: phs_identifier_t, check_for_phs_identifier
+  use nlo_data, only: FKS_DEFAULT, FKS_RESONANCES
 
 <<Standard module head>>
 
@@ -1351,7 +1352,6 @@ there is only a soft singularity if the radiated parton becomes soft.
   type, abstract :: fks_mapping_t
      real(default) :: sumdij
      real(default) :: sumdij_soft
-     type(resonance_mapping_t), allocatable :: res_map
   contains
   <<fks regions: fks mapping: TBP>>
   end type fks_mapping_t
@@ -1375,7 +1375,7 @@ there is only a soft singularity if the radiated parton becomes soft.
 <<fks regions: types>>=
   type, extends (fks_mapping_t) :: fks_mapping_resonances_t
     real(default) :: exp_1, exp_2
-    integer :: i_res = 0
+    type(resonance_mapping_t) :: res_map
   contains
   <<fks regions: fks mapping resonances: TBP>>
   end type  fks_mapping_resonances_t
@@ -1425,8 +1425,10 @@ there is only a soft singularity if the radiated parton becomes soft.
     integer, intent(in) :: mapping_type
 
     select case (mapping_type)
-    case (1)
+    case (FKS_DEFAULT)
        allocate (fks_mapping_default_t :: reg_data%fks_mapping)
+    case (FKS_RESONANCES)
+       allocate (fks_mapping_resonances_t :: reg_data%fks_mapping)
     case default
        call msg_fatal ("Init region_data: FKS mapping not implemented!")
     end select
@@ -1495,25 +1497,28 @@ there is only a soft singularity if the radiated parton becomes soft.
     type(singular_region_t), dimension(:), allocatable :: save_regions
     call msg_debug (D_SUBTRACTION, "region_data_enlarge_singular_regions_with_resonances")
     call debug_input_values ()
-    if (.not. allocated (reg_data%fks_mapping%res_map)) return
-
-    allocate (save_regions (reg_data%n_regions))
-    do alr = 1, reg_data%n_regions
-       save_regions(alr) = reg_data%regions(alr)
-    end do
-
-    associate (res_map => reg_data%fks_mapping%res_map)
-       call res_map%set_alr_to_i_res (reg_data%regions, alr_new_to_old)
-       deallocate (reg_data%regions)
-       n_alr_new = size (alr_new_to_old)
-       reg_data%n_regions = n_alr_new
-       allocate (reg_data%regions (n_alr_new))
-       do alr = 1, n_alr_new
-          reg_data%regions(alr) = save_regions(alr_new_to_old (alr))
-          allocate (reg_data%regions(alr)%res_hist, source = res_map%get_resonance_history (alr))
-          reg_data%regions(alr)%i_res = res_map%alr_to_i_res (alr)
+    select type (fks_mapping => reg_data%fks_mapping)
+    type is (fks_mapping_default_t)
+       return
+    type is (fks_mapping_resonances_t) 
+       allocate (save_regions (reg_data%n_regions))
+       do alr = 1, reg_data%n_regions
+          save_regions(alr) = reg_data%regions(alr)
        end do
-    end associate
+
+       associate (res_map => fks_mapping%res_map)
+          call res_map%set_alr_to_i_res (reg_data%regions, alr_new_to_old)
+          deallocate (reg_data%regions)
+          n_alr_new = size (alr_new_to_old)
+          reg_data%n_regions = n_alr_new
+          allocate (reg_data%regions (n_alr_new))
+          do alr = 1, n_alr_new
+             reg_data%regions(alr) = save_regions(alr_new_to_old (alr))
+             allocate (reg_data%regions(alr)%res_hist, source = res_map%get_resonance_history (alr))
+             reg_data%regions(alr)%i_res = res_map%alr_to_i_res (alr)
+          end do
+       end associate
+    end select
 
   contains
 
@@ -1556,21 +1561,30 @@ there is only a soft singularity if the radiated parton becomes soft.
   function region_data_uses_resonances (reg_data) result (val)
     logical :: val
     class(region_data_t), intent(in) :: reg_data
-    val = allocated (reg_data%fks_mapping%res_map)
+    select type (fks_mapping => reg_data%fks_mapping)
+    type is (fks_mapping_resonances_t)
+       val = .true.
+    class default
+       val = .false.
+    end select
   end function region_data_uses_resonances
 
 @ %def region_data_uses_resonances
 @
 <<fks regions: reg data: TBP>>=
-  procedure :: get_resonance_index => region_data_get_resonance_index
+!!!  procedure :: get_resonance_index => region_data_get_resonance_index
 <<fks regions: procedures>>=
-  function region_data_get_resonance_index (reg_data, alr) result (i_res)
-    integer :: i_res
-    class(region_data_t), intent(in) :: reg_data
-    integer, intent(in) :: alr
-    i_res = reg_data%fks_mapping%res_map%alr_to_i_res (alr)
-  end function region_data_get_resonance_index
-
+!!!  function region_data_get_resonance_index (reg_data, alr) result (i_res)
+!!!    integer :: i_res
+!!!    class(region_data_t), intent(in) :: reg_data
+!!!    integer, intent(in) :: alr
+!!!    i_res = 0
+!!!    select type (fks_mapping => reg_data%fks_mapping)
+!!!    type is (fks_mapping_resonances_t)
+!!!       i_res = fks_mapping%res_map%alr_to_i_res (alr)
+!!!    end select
+!!!  end function region_data_get_resonance_index
+!!!
 @ %def region_data_get_resonance_index
 @ Creates a list containing the emitter of each singular region.
 <<fks regions: reg data: TBP>>=
@@ -1597,7 +1611,8 @@ there is only a soft singularity if the radiated parton becomes soft.
     integer, intent(in) :: emitter
     integer :: alr, i
     integer :: n_res
-    associate (res_map => reg_data%fks_mapping%res_map)
+    select type (fks_mapping => reg_data%fks_mapping)
+    type is (fks_mapping_resonances_t)
        n_res = 0
 
        do alr = 1, reg_data%n_regions
@@ -1614,11 +1629,11 @@ there is only a soft singularity if the radiated parton becomes soft.
 
        do alr = 1, reg_data%n_regions
           if (reg_data%regions(alr)%emitter == emitter) then
-             res (i) = res_map%alr_to_i_res (alr)
+             res (i) = fks_mapping%res_map%alr_to_i_res (alr)
              i = i + 1
           end if
        end do
-    end associate
+    end select
   end function region_data_get_associated_resonances
 
 @ %def region_data_get_associated_resonances
@@ -1632,15 +1647,18 @@ there is only a soft singularity if the radiated parton becomes soft.
      logical :: compatible
      class(region_data_t), intent(in) :: reg_data
      integer, intent(in) :: i_res, emitter
-     integer :: alr
+     integer :: i_res_alr, alr
      compatible = .false.
-     do alr = 1, reg_data%n_regions
-        if (reg_data%get_resonance_index (alr) == i_res &
-           .and. reg_data%get_emitter(alr) == emitter) then
-           compatible = .true.
-           exit
-        end if
-     end do
+     select type (fks_mapping => reg_data%fks_mapping)
+     type is (fks_mapping_resonances_t)
+        do alr = 1, reg_data%n_regions
+           i_res_alr = fks_mapping%res_map%alr_to_i_res (alr)
+           if (i_res_alr == i_res .and. reg_data%get_emitter(alr) == emitter) then
+              compatible = .true.
+              exit
+           end if
+        end do
+     end select
   end function region_data_emitter_is_compatible_with_resonance
 
 @ %def region_data_emitter_is_compatible_with_resonance
@@ -1649,20 +1667,21 @@ there is only a soft singularity if the radiated parton becomes soft.
   procedure :: get_contributors => region_data_get_contributors
 <<fks regions: procedures>>=
   function region_data_get_contributors (reg_data, i_res, emitter) result (contributors)
-    !!!integer, dimension(:), allocatable :: contributors
     type(resonance_contributors_t) :: contributors
     class(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: i_res, emitter
     integer :: i
-    associate (res_history => reg_data%fks_mapping%res_map%resonances (i_res))
-       do i = 1, res_history%n_resonances
-          if (any (res_history%resonances(i)%contributors%c == emitter)) then
-             !!!allocate (contributors (size (res_history%resonances(i)%contributors%c)))
-             contributors = res_history%resonances(i)%contributors
-             exit
-          end if
-       end do
-    end associate
+    select type (fks_mapping => reg_data%fks_mapping)
+    type is (fks_mapping_resonances_t)
+       associate (res_history => fks_mapping%res_map%resonances (i_res))
+          do i = 1, res_history%n_resonances
+             if (any (res_history%resonances(i)%contributors%c == emitter)) then
+                contributors = res_history%resonances(i)%contributors
+                exit
+             end if
+          end do
+       end associate
+    end select
   end function region_data_get_contributors
 
 @ %def region_data_get_contributors
@@ -1689,21 +1708,15 @@ the flavor structure list.
   function region_data_get_svalue (reg_data, p, alr, emitter) result (sval)
     class(region_data_t), intent(inout) :: reg_data
     type(vector4_t), intent(in), dimension(:) :: p
-    !!!type(phs_point_t), intent(in) :: p
     integer, intent(in) :: alr, emitter
     real(default) :: sval
     integer :: i_res
     associate (map => reg_data%fks_mapping)
-      !!!map%sumdij = map%compute_sumdij (reg_data%regions(alr), p)
-      select type (map)
-      type is (fks_mapping_default_t)
-         map%sumdij = map%compute_sumdij_resonance (reg_data%regions(alr), p)
-         sval = map%svalue (p, emitter, reg_data%nlegs_real)
-         if (allocated (map%res_map)) then
-            i_res = map%res_map%alr_to_i_res (alr)
-            sval = sval * map%res_map%get_resonance_value (i_res, p, reg_data%nlegs_real)
-         end if
-      end select
+    !!!  select type (map)
+    !!!  type is (fks_mapping_default_t)
+       map%sumdij = map%compute_sumdij (reg_data%regions(alr), p)
+       sval = map%svalue (p, emitter, reg_data%nlegs_real)
+    !!!  end select
     end associate
   end function region_data_get_svalue
 
@@ -1721,16 +1734,12 @@ the flavor structure list.
     real(default) :: sval
     integer :: i_res
     associate (map => reg_data%fks_mapping)
-      select type (map)
-      type is (fks_mapping_default_t)
-         map%sumdij_soft = &
-            map%compute_sumdij_soft_resonance (reg_data%regions(alr), p, p_soft)
-         sval = map%svalue_soft (p, p_soft, emitter)
-         if (allocated (map%res_map)) then
-            i_res = map%res_map%alr_to_i_res (alr)
-            sval = sval * map%res_map%get_resonance_value (i_res, p)
-         end if
-       end select
+      !!!select type (map)
+      !!!type is (fks_mapping_default_t)
+      map%sumdij_soft = &
+         map%compute_sumdij_soft (reg_data%regions(alr), p, p_soft)
+      sval = map%svalue_soft (p, p_soft, emitter)
+      !!!end select
     end associate
   end function region_data_get_svalue_soft
 
@@ -2033,13 +2042,15 @@ of the present one is increased.
           n_em = n_em + 1
           em_count(alr) = em
        end if
-       if (allocated (reg_data%fks_mapping%res_map)) then
-          res = reg_data%get_resonance_index (alr)
+       !!!if (allocated (reg_data%fks_mapping%res_map)) then
+       select type (fks_mapping => reg_data%fks_mapping)
+       type is (fks_mapping_resonances_t)
+          res = fks_mapping%res_map%alr_to_i_res (alr)
           if (.not. any (res_count == res)) then
              n_res = n_res + 1
              res_count(alr) = res
           end if
-       end if
+       end select
     end do
 
     if (n_em < 1) call msg_fatal ("region_data_find_emitters: No emitters found")
@@ -2057,9 +2068,10 @@ of the present one is increased.
        end if
     end do
     j = 1
-    if (allocated (reg_data%resonances)) then
+    select type (fks_mapping => reg_data%fks_mapping)
+    type is (fks_mapping_resonances_t)
        do alr = 1, size (reg_data%regions)
-          res = reg_data%get_resonance_index (alr)
+          res = fks_mapping%res_map%alr_to_i_res (alr)
           if (.not. any (reg_data%resonances == res)) then
              reg_data%resonances(j) = res
              j = j + 1
@@ -2068,7 +2080,7 @@ of the present one is increased.
 
        allocate (reg_data%alr_to_i_contributor (size (reg_data%regions)))
        do alr = 1, size (reg_data%regions)
-          i_res = reg_data%fks_mapping%res_map%alr_to_i_res (alr)
+          i_res = fks_mapping%res_map%alr_to_i_res (alr)
           emitter = reg_data%regions(alr)%emitter
           contributors =  reg_data%get_contributors (i_res, emitter)
           if (.not. any (contributors_count == contributors)) then 
@@ -2079,7 +2091,7 @@ of the present one is increased.
        allocate (reg_data%alr_contributors (n_contr))
        j = 1
        do alr = 1, size (reg_data%regions)
-          i_res = reg_data%fks_mapping%res_map%alr_to_i_res (alr)
+          i_res = fks_mapping%res_map%alr_to_i_res (alr)
           emitter = reg_data%regions(alr)%emitter
           contributors =  reg_data%get_contributors (i_res, emitter)
           if (.not. any (reg_data%alr_contributors == contributors)) then
@@ -2093,7 +2105,7 @@ of the present one is increased.
              reg_data%alr_to_i_contributor (alr) = k
           end if
        end do
-    end if
+    end select
     
   end subroutine region_data_find_emitters_and_resonances
 
@@ -2225,10 +2237,11 @@ writes it to a file.
      call write_vline (u)
      write (u, '(A4)', advance = 'no') 'nreg'
      call write_vline (u)
-     if (reg_data%uses_resonances () .and. allocated (reg_data%fks_mapping%res_map%alr_to_i_res)) then
+     select type (fks_mapping => reg_data%fks_mapping)
+     type is (fks_mapping_resonances_t)
         write (u, '(A3)', advance = 'no') 'res'
         call write_vline (u)
-     end if
+     end select
      write (u, char (ftuple_title), advance = 'no') 'ftuples'
      call write_vline (u)
      flst_title = '(A' // flst_title_format(reg_data%nlegs_born) // ')'
@@ -2240,17 +2253,18 @@ writes it to a file.
         call reg_data%regions(j)%write (u, maxnregions)
      end do
      call write_separator (u)
-     if (reg_data%uses_resonances ()) then
+     select type (fks_mapping => reg_data%fks_mapping)
+     type is (fks_mapping_resonances_t)
         write (u, '(A)')
         write (u, '(A)') "The FKS regions are combined with resonance information: "
-        n_res = size (reg_data%fks_mapping%res_map%resonances)
+        n_res = size (fks_mapping%res_map%resonances)
         write (u, '(A,1X,I1)') "Number of QCD resonance histories: ", n_res
         do j = 1, n_res
            write (u, '(A,1X,I1)') "i_res = ", j
-           call reg_data%fks_mapping%res_map%resonances(j)%write (u)
+           call fks_mapping%res_map%resonances(j)%write (u)
            call write_separator (u)
         end do
-     end if
+     end select
 
    contains
 
@@ -2721,42 +2735,6 @@ tuning the efficiency of the mapping and are set to $1$ per default.
   end function fks_mapping_default_compute_sumdij
 
 @ %def fks_mapping_default_compute_sumdij
-@
-<<fks regions: fks mapping default: TBP>>=
-  procedure :: compute_sumdij_resonance => fks_mapping_default_compute_sumdij_resonance
-<<fks regions: procedures>>=
-  function fks_mapping_default_compute_sumdij_resonance (map, sregion, p) result (d)
-    real(default) :: d
-    class(fks_mapping_default_t), intent(in) :: map
-    type(singular_region_t), intent(inout) :: sregion
-    type(vector4_t), intent(in), dimension(:) :: p
-    real(default) :: dij, pfr
-    integer :: i_res, i_alr, i, j
-    integer, dimension(:), allocatable :: associated_alrs
-    integer :: nlegreal
-    
-    nlegreal = size (p)
-    d = zero
-    if (allocated (map%res_map)) then
-       do i_res = 1, size (map%res_map%resonances)
-          pfr = map%res_map%get_resonance_value (i_res, p, nlegreal)
-          associated_alrs = map%res_map%i_res_to_alr (i_res, :)
-          dij = zero
-          do i_alr = 1, size (associated_alrs)
-             if (associated_alrs(i_alr) == 0) exit
-             associate (ftuples => sregion%flst_allreg)
-                call ftuples(associated_alrs(i_alr))%get (i, j)
-             end associate
-             dij = dij + one / map%dij (p, i, j)
-          end do
-          d = d + pfr * dij
-       end do 
-    else
-       call msg_fatal ("No resonance history allocated")
-    end if
-  end function fks_mapping_default_compute_sumdij_resonance
-
-@ %def fks_mapping_default_compute_sumdij_resonance
 @ Computes
 \begin{equation*}
   S_i = \frac{1}{\mathcal{D} d_{0i}}
@@ -2870,43 +2848,6 @@ From these equations we can deduce the soft limit of $d$:
 @ %def fks_mapping_default_compute_sumdij_soft
 @
 <<fks regions: fks mapping default: TBP>>=
-  procedure :: compute_sumdij_soft_resonance => fks_mapping_default_compute_sumdij_soft_resonance
-<<fks regions: procedures>>=
-  function fks_mapping_default_compute_sumdij_soft_resonance (map, sregion, p_born, p_soft) result (d)
-    real(default) :: d
-    class(fks_mapping_default_t), intent(in) :: map
-    type(singular_region_t), intent(inout) :: sregion
-    type(vector4_t), intent(in), dimension(:) :: p_born
-    type(vector4_t), intent(in) :: p_soft
-    real(default) :: dij, pfr
-    integer :: i_res, i_alr, i, j
-    integer, dimension(:), allocatable :: associated_alrs
-    integer :: nlegs
-
-    d = zero
-    nlegs = size (sregion%flst_real%flst)
-    if (allocated (map%res_map)) then
-       do i_res = 1, size (map%res_map%resonances)
-          pfr = map%res_map%get_resonance_value (i_res, p_born)
-          associated_alrs = map%res_map%i_res_to_alr (i_res, :)
-          dij = zero
-          do i_alr = 1, size (associated_alrs)
-             if (associated_alrs(i_alr) == 0) exit
-             associate (ftuples => sregion%flst_allreg)
-                call ftuples(associated_alrs(i_alr))%get (i, j)
-             end associate
-             if (j == nlegs) dij = dij + one / map%dij_soft (p_born, p_soft, i)
-          end do
-          d = d + pfr * dij
-       end do
-    else
-       call msg_fatal ("No resonance history allocated")
-    end if
-  end function fks_mapping_default_compute_sumdij_soft_resonance
-
-@ %def fks_mapping_default_compute_sumdij_soft_resonance
-@                  
-<<fks regions: fks mapping default: TBP>>=
   procedure :: svalue_soft => fks_mapping_default_svalue_soft
 <<fks regions: procedures>>=
   function fks_mapping_default_svalue_soft (map, p_born, p_soft, em, i_res) result (value)
@@ -2927,10 +2868,6 @@ From these equations we can deduce the soft limit of $d$:
   subroutine fks_mapping_default_copy (fks_map_in, fks_map_out)
     class(fks_mapping_default_t), intent(in) :: fks_map_in
     type(fks_mapping_default_t), intent(inout) :: fks_map_out
-    if (allocated (fks_map_in%res_map)) then
-       allocate (fks_map_out%res_map)
-       fks_map_out%res_map = fks_map_in%res_map
-    end if
     fks_map_out%exp_1 = fks_map_in%exp_1
     fks_map_out%exp_2 = fks_map_in%exp_2
     fks_map_out%n_in = fks_map_in%n_in
@@ -3011,7 +2948,10 @@ From these equations we can deduce the soft limit of $d$:
     type(vector4_t), intent(in), dimension(:) :: p
     integer, intent(in) :: i, j
     integer, intent(in), optional :: i_res
-    value = one / (map%dij (p, i, j, i_res) * map%sumdij)
+    integer :: i_gluon
+    i_gluon = size (p)
+    value = one / (map%dij (p, i, j, i_res) * map%sumdij) &
+       * map%res_map%get_resonance_value (i_res, p, i_gluon)
   end function fks_mapping_resonances_svalue
 
 @ %def fks_mapping_resonances_svalue
@@ -3085,7 +3025,8 @@ From these equations we can deduce the soft limit of $d$:
     type(vector4_t), intent(in) :: p_soft
     integer, intent(in) :: em
     integer, intent(in), optional :: i_res
-    value = one / (map%sumdij_soft * map%dij_soft (p_born, p_soft, em, i_res))
+    value = one / (map%sumdij_soft * map%dij_soft (p_born, p_soft, em, i_res)) &
+       * map%res_map%get_resonance_value (i_res, p_born)
   end function fks_mapping_resonances_svalue_soft
 
 @ %def fks_mapping_resonances_svalue_soft
@@ -4412,8 +4353,12 @@ $z/\xi$.
   subroutine real_subtraction_set_i_res (rsub, alr)
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: alr
-    if (allocated (rsub%reg_data%fks_mapping%res_map)) &
-       rsub%current_i_res = rsub%reg_data%fks_mapping%res_map%alr_to_i_res (alr)
+    select type (fks_mapping => rsub%reg_data%fks_mapping)
+    type is (fks_mapping_resonances_t)
+       rsub%current_i_res = fks_mapping%res_map%alr_to_i_res (alr)
+    class default
+       rsub%current_i_res = 0
+    end select
   end subroutine real_subtraction_set_i_res
 
 @ %def real_subtraction_set_i_res
@@ -4481,12 +4426,13 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
     if (emitter <= rsub%isr_kinematics%n_in) then
        sqme = sqme + rsub%evaluate_region_isr (emitter, alpha_s)
     else
-       if (allocated (rsub%reg_data%fks_mapping%res_map)) then
+       select type (fks_mapping => rsub%reg_data%fks_mapping)
+       type is (fks_mapping_resonances_t)
           sqme = sqme + rsub%evaluate_region_fsr (emitter, rsub%current_i_res, alpha_s)
-       else
+       class default
           i_phs = rsub%real_kinematics%alr_to_i_phs (rsub%current_alr)
           sqme = sqme + rsub%evaluate_region_fsr (emitter, i_phs, alpha_s)
-       end if
+       end select
     end if
   end subroutine real_subtraction_evaluate_emitter_region
 
@@ -5044,13 +4990,19 @@ end module nlo_data
 
 @ %def parameters
 @
+<<nlo data: parameters>>=
+  integer, parameter, public :: FKS_DEFAULT = 1
+  integer, parameter, public :: FKS_RESONANCES = 2
+
+@ %def parameters
+@
 <<nlo data: public>>=
   public :: fks_template_t
 <<nlo data: types>>=
   type :: fks_template_t
     type(string_t) :: id
     logical :: subtraction_disabled = .false.
-    integer :: mapping_type
+    integer :: mapping_type = FKS_DEFAULT
     logical :: count_kinematics = .false.
     real(default) :: fks_dij_exp1
     real(default) :: fks_dij_exp2
@@ -7258,6 +7210,8 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
           if (.not. success) deallocate (mapping%res_map)
        end if
        call mapping%set_parameter (n_in, template%fks_dij_exp1, template%fks_dij_exp2)
+    type is (fks_mapping_resonances_t)
+       if (present (resonance_histories)
     end select
 
     associate (states => nlo_controller%particle_states)
