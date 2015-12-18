@@ -88,6 +88,7 @@ dist_models_DATA = \
   models/SSC_AltT.mdl \
   models/Template.mdl \
   models/UED.mdl \
+  models/WZW.mdl \
   models/Xdim.mdl \
   models/Zprime.mdl \
   models/Threeshl.mdl \

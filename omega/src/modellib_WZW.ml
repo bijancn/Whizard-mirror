@@ -1,4 +1,4 @@
-(* $Id: modellib_Zprime.ml 4926 2013-12-04 12:35:06Z jr_reuter $
+(* $Id: modellib_WZW.ml 4926 2013-12-04 12:35:06Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -22,14 +22,14 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-let rcs_file = RCS.parse "omega_Zprime" ["Standard Model with Additional Vectors"]
+let rcs_file = RCS.parse "omega_WZW" ["Standard Model with WZW-type pseudoscalars"]
     { RCS.revision = "$Revision: 4926 $";
       RCS.date = "$Date: 2013-12-04 13:35:06 +0100 (Wed, 04 Dec 2013) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
-        = "$Source: /home/sources/ohl/ml/omega/src/omega_Zprime.ml,v $" }
+        = "$Source: /home/sources/ohl/ml/omega/src/omega_WZW.ml,v $" }
 
-(* \thocwmodulesection{SM with additional Z'} *)
+(* \thocwmodulesection{SM with WZW-type pseudoscalars} *)
 
 module type SM_flags =
   sig
@@ -43,7 +43,7 @@ module SM_no_anomalous : SM_flags =
     let k_matrix = false
   end
 
-module Zprime (Flags : SM_flags) =
+module WZW (Flags : SM_flags) =
   struct
     let rcs = rcs_file
 
@@ -65,8 +65,8 @@ module Zprime (Flags : SM_flags) =
 (* We do not introduce the Goldstones for the heavy vectors here. *)
 
     type matter_field = L of int | N of int | U of int | D of int
-    type gauge_boson = Ga | Wp | Wm | Z | Gl | ZH
-    type other = Phip | Phim | Phi0 | H
+    type gauge_boson = Ga | Wp | Wm | Z | Gl 
+    type other = Phip | Phim | Phi0 | H | Psi | Eta
     type flavor = M of matter_field | G of gauge_boson | O of other
 
     let matter_field f = M f
@@ -86,7 +86,7 @@ module Zprime (Flags : SM_flags) =
     type gauge = unit
 
     let gauge_symbol () =
-      failwith "Models.Zprime.gauge_symbol: internal error"
+      failwith "Models.WZW.gauge_symbol: internal error"
 
     let family n = List.map matter_field [ L n; N n; U n; D n ]
 
@@ -94,8 +94,8 @@ module Zprime (Flags : SM_flags) =
       [ "1st Generation", ThoList.flatmap family [1; -1];
         "2nd Generation", ThoList.flatmap family [2; -2];
         "3rd Generation", ThoList.flatmap family [3; -3];
-        "Gauge Bosons", List.map gauge_boson [Ga; Z; Wp; Wm; Gl; ZH];
-        "Higgs", [O H];
+        "Gauge Bosons", List.map gauge_boson [Ga; Z; Wp; Wm; Gl];
+        "Higgs", [O H; O Psi; O Eta];
         "Goldstone Bosons", List.map other [Phip; Phim; Phi0] ]
 
     let flavors () = ThoList.flatmap snd (external_flavors ())
@@ -115,7 +115,7 @@ module Zprime (Flags : SM_flags) =
       | G f ->
           begin match f with
           | Ga | Gl -> Vector
-          | Wp | Wm | Z | ZH -> Massive_Vector
+          | Wp | Wm | Z  -> Massive_Vector
           end
       | O f ->
           Scalar
@@ -141,12 +141,12 @@ module Zprime (Flags : SM_flags) =
       | G f ->
           begin match f with
           | Ga | Gl -> Prop_Feynman
-          | Wp | Wm | Z | ZH -> Prop_Unitarity
+          | Wp | Wm | Z -> Prop_Unitarity
           end
       | O f ->
           begin match f with
           | Phip | Phim | Phi0 -> Only_Insertion
-          | H  -> Prop_Scalar
+          | H | Psi | Eta -> Prop_Scalar
           end
 
 (* Optionally, ask for the fudge factor treatment for the widths of
@@ -179,12 +179,12 @@ module Zprime (Flags : SM_flags) =
       | G f ->
           G (begin match f with
           | Gl -> Gl | Ga -> Ga | Z -> Z
-          | Wp -> Wm | Wm -> Wp | ZH -> ZH
+          | Wp -> Wm | Wm -> Wp
           end)
       | O f ->
           O (begin match f with
           | Phip -> Phim | Phim -> Phip | Phi0 -> Phi0
-          | H -> H
+          | H -> H | Psi -> Psi | Eta -> Eta
           end)
 
     let fermion = function
@@ -197,7 +197,7 @@ module Zprime (Flags : SM_flags) =
           end
       | G f ->
           begin match f with
-          | Gl | Ga | Z | Wp | Wm | ZH -> 0
+          | Gl | Ga | Z | Wp | Wm -> 0
           end
       | O _ -> 0
 
@@ -215,7 +215,7 @@ module Zprime (Flags : SM_flags) =
       | -1 -> [-1//1;  0//1;  0//1]
       | -2 -> [ 0//1; -1//1;  0//1]
       | -3 -> [ 0//1;  0//1; -1//1]
-      |  n -> invalid_arg ("Zprime.generation': " ^ string_of_int n)
+      |  n -> invalid_arg ("WZW.generation': " ^ string_of_int n)
 
     let generation f =
       match f with
@@ -232,13 +232,13 @@ module Zprime (Flags : SM_flags) =
           end
       | G f ->
           begin match f with
-          | Gl | Ga | Z | ZH -> 0//1
+          | Gl | Ga | Z -> 0//1
           | Wp ->  1//1
           | Wm -> -1//1
           end
       | O f ->
           begin match f with
-          | H | Phi0 ->  0//1
+          | H | Phi0 | Psi | Eta ->  0//1
           | Phip ->  1//1
           | Phim -> -1//1
           end
@@ -270,7 +270,9 @@ module Zprime (Flags : SM_flags) =
       | G_NC_h_neutrino | G_NC_h_lepton | G_NC_h_up | G_NC_h_down
       | I_Q_W | I_G_ZWW | I_G_WWW
       | G_WWWW | G_ZZWW | G_AZWW | G_AAWW
-      | G_HWW | G_HHWW | G_HZZ | G_HHZZ
+      | G_HWW | G_HHWW | G_HZZ | G_HHZZ | G_EtaGG | G_EtaWW
+      | G_PsiWW | G_PsiZZ | G_PsiAA | G_PsiAZ | G_PsiGG
+      | G_EtaZZ | G_EtaAZ | G_EtaAA
       | G_Htt | G_Hbb | G_Hcc | G_Htautau | G_H3 | G_H4
       | Gs | I_Gs | G2
       | Mass of flavor | Width of flavor
@@ -352,19 +354,6 @@ module Zprime (Flags : SM_flags) =
           ((U (-n), Z, U n), FBF (1, Psibar, VA, Psi), G_NC_up);
           ((D (-n), Z, D n), FBF (1, Psibar, VA, Psi), G_NC_down) ]
 
-(* We want to allow for (almost) completely general couplings but maintain
-   universality (generation independence). Maybe we should also separate the
-   coupling to the top quark since the third generation is somewhat special.
- *)
-
-    let neutral_heavy_currents n =
-      List.map mgm
-        [ ((L (-n), ZH, L n), FBF (1, Psibar, VA, Psi), G_NC_h_lepton);
-          ((N (-n), ZH, N n), FBF (1, Psibar, VA, Psi), G_NC_h_neutrino);
-          ((U (-n), ZH, U n), FBF (1, Psibar, VA, Psi), G_NC_h_up);
-          ((D (-n), ZH, D n), FBF (1, Psibar, VA, Psi), G_NC_h_down);
-         ]
-
 (* \begin{equation}
      \mathcal{L}_{\textrm{CC}} =
         - \frac{g}{2\sqrt2} \sum_i \bar\psi_i
@@ -412,8 +401,18 @@ module Zprime (Flags : SM_flags) =
 
     let gauge_higgs =
       [ ((O H, G Wp, G Wm), Scalar_Vector_Vector 1, G_HWW);
-        ((O H, G Z, G Z), Scalar_Vector_Vector 1, G_HZZ) ]
-
+        ((O H, G Z, G Z), Scalar_Vector_Vector 1, G_HZZ);
+	((O Psi, G Wp, G Wm), Dim5_Scalar_Gauge2_Skew 1, G_PsiWW);
+	((O Psi, G Z, G Z), Dim5_Scalar_Gauge2_Skew 1, G_PsiZZ);
+	((O Psi, G Ga, G Ga), Dim5_Scalar_Gauge2_Skew 1, G_PsiAA);
+	((O Psi, G Z, G Ga), Dim5_Scalar_Gauge2_Skew 1, G_PsiAZ);
+	((O Psi, G Gl, G Gl), Dim5_Scalar_Gauge2_Skew 1, G_PsiGG);
+	((O Eta, G Gl, G Gl), Dim5_Scalar_Gauge2_Skew 1, G_EtaGG);	
+	((O Eta, G Wp, G Wm), Dim5_Scalar_Gauge2_Skew 1, G_EtaWW);	
+	((O Eta, G Z, G Z), Dim5_Scalar_Gauge2_Skew 1, G_EtaZZ);
+	((O Eta, G Z, G Ga), Dim5_Scalar_Gauge2_Skew 1, G_EtaAZ);
+	((O Eta, G Ga, G Ga), Dim5_Scalar_Gauge2_Skew 1, G_EtaAA)]
+	 
     let gauge_higgs4 =
       [ (O H, O H, G Wp, G Wm), Scalar2_Vector2 1, G_HHWW;
         (O H, O H, G Z, G Z), Scalar2_Vector2 1, G_HHZZ ]
@@ -435,7 +434,6 @@ module Zprime (Flags : SM_flags) =
       (ThoList.flatmap electromagnetic_currents [1;2;3] @
        ThoList.flatmap color_currents [1;2;3] @
        ThoList.flatmap neutral_currents [1;2;3] @
-       ThoList.flatmap neutral_heavy_currents [1;2;3] @
        ThoList.flatmap charged_currents [1;2;3] @
        yukawa @ triple_gauge @
        gauge_higgs @ higgs @ goldstone_vertices)
@@ -469,10 +467,10 @@ module Zprime (Flags : SM_flags) =
       | "b" -> M (D 3) | "bbar" -> M (D (-3))
       | "g" | "gl" -> G Gl
       | "A" -> G Ga | "Z" | "Z0" -> G Z
-      | "ZH" | "ZH0" | "Zh" | "Zh0" -> G ZH
       | "W+" -> G Wp | "W-" -> G Wm
+      | "Psi" -> O Psi | "Eta" -> O Eta
       | "H" -> O H
-      | _ -> invalid_arg "Models.Zprime.flavor_of_string"
+      | _ -> invalid_arg "Models.WZW.flavor_of_string"
 
     let flavor_to_string = function
       | M f ->
@@ -481,34 +479,33 @@ module Zprime (Flags : SM_flags) =
           | L 2 -> "mu-" | L (-2) -> "mu+"
           | L 3 -> "tau-" | L (-3) -> "tau+"
           | L _ -> invalid_arg
-                "Models.Zprime.flavor_to_string: invalid lepton"
+                "Models.WZW.flavor_to_string: invalid lepton"
           | N 1 -> "nue" | N (-1) -> "nuebar"
           | N 2 -> "numu" | N (-2) -> "numubar"
           | N 3 -> "nutau" | N (-3) -> "nutaubar"
           | N _ -> invalid_arg
-                "Models.Zprime.flavor_to_string: invalid neutrino"
+                "Models.WZW.flavor_to_string: invalid neutrino"
           | U 1 -> "u" | U (-1) -> "ubar"
           | U 2 -> "c" | U (-2) -> "cbar"
           | U 3 -> "t" | U (-3) -> "tbar"
           | U _ -> invalid_arg
-                "Models.Zprime.flavor_to_string: invalid up type quark"
+                "Models.WZW.flavor_to_string: invalid up type quark"
           | D 1 -> "d" | D (-1) -> "dbar"
           | D 2 -> "s" | D (-2) -> "sbar"
           | D 3 -> "b" | D (-3) -> "bbar"
           | D _ -> invalid_arg
-                "Models.Zprime.flavor_to_string: invalid down type quark"
+                "Models.WZW.flavor_to_string: invalid down type quark"
           end
       | G f ->
           begin match f with
           | Gl -> "g"
           | Ga -> "A" | Z -> "Z"
           | Wp -> "W+" | Wm -> "W-"
-          | ZH -> "ZH"
           end
       | O f ->
           begin match f with
           | Phip -> "phi+" | Phim -> "phi-" | Phi0 -> "phi0"
-          | H -> "H"
+          | H -> "H" | Psi -> "psi" | Eta -> "eta"
           end
 
     let flavor_to_TeX = function
@@ -518,34 +515,33 @@ module Zprime (Flags : SM_flags) =
           | L 2 -> "\\mu-" | L (-2) -> "\\mu^+"
           | L 3 -> "\\tau^-" | L (-3) -> "\\tau^+"
           | L _ -> invalid_arg
-                "Models.Zprime.flavor_to_TeX: invalid lepton"
+                "Models.WZW.flavor_to_TeX: invalid lepton"
           | N 1 -> "\\nu_e" | N (-1) -> "\\bar{\\nu}_e"
           | N 2 -> "\\nu_\\mu" | N (-2) -> "\\bar{\\nu}_\\mu"
           | N 3 -> "\\nu_\\tau" | N (-3) -> "\\bar{\\nu}_\\tau"
           | N _ -> invalid_arg
-                "Models.Zprime.flavor_to_TeX: invalid neutrino"
+                "Models.WZW.flavor_to_TeX: invalid neutrino"
           | U 1 -> "u" | U (-1) -> "\\bar{u}"
           | U 2 -> "c" | U (-2) -> "\\bar{c}"
           | U 3 -> "t" | U (-3) -> "\\bar{t}"
           | U _ -> invalid_arg
-                "Models.Zprime.flavor_to_TeX: invalid up type quark"
+                "Models.WZW.flavor_to_TeX: invalid up type quark"
           | D 1 -> "d" | D (-1) -> "\\bar{d}"
           | D 2 -> "s" | D (-2) -> "\\bar{s}"
           | D 3 -> "b" | D (-3) -> "\\bar{b}"
           | D _ -> invalid_arg
-                "Models.Zprime.flavor_to_TeX: invalid down type quark"
+                "Models.WZW.flavor_to_TeX: invalid down type quark"
           end
       | G f ->
           begin match f with
           | Gl -> "g"
           | Ga -> "\\gamma" | Z -> "Z"
           | Wp -> "W^+" | Wm -> "W^-"
-          | ZH -> "Z_H"
           end
       | O f ->
           begin match f with
           | Phip -> "phi+" | Phim -> "phi-" | Phi0 -> "phi0"
-          | H -> "H"
+          | H -> "H" | Psi -> "\\Psi" | Eta -> "\\eta"
           end
 
     let flavor_symbol = function
@@ -565,12 +561,11 @@ module Zprime (Flags : SM_flags) =
           | Gl -> "gl"
           | Ga -> "a" | Z -> "z"
           | Wp -> "wp" | Wm -> "wm"
-          | ZH -> "zh"
           end
       | O f ->
           begin match f with
           | Phip -> "pp" | Phim -> "pm" | Phi0 -> "p0"
-          | H -> "h"
+          | H -> "h" | Psi -> "psi" | Eta -> "eta"
           end
 
 (* There are PDG numbers for Z', Z'', W', 32-34, respectively.
@@ -595,12 +590,11 @@ module Zprime (Flags : SM_flags) =
           | Gl -> 21
           | Ga -> 22 | Z -> 23
           | Wp -> 24 | Wm -> (-24)
-          | ZH -> 32
           end
       | O f ->
           begin match f with
           | Phip | Phim -> 27 | Phi0 -> 26
-          | H -> 25
+          | H -> 25 | Psi -> 28 | Eta -> 29
           end
 
     let mass_symbol f =
@@ -624,6 +618,10 @@ module Zprime (Flags : SM_flags) =
       | G_AZWW -> "gazww" | G_AAWW -> "gaaww"
       | G_HWW -> "ghww" | G_HZZ -> "ghzz"
       | G_HHWW -> "ghhww" | G_HHZZ -> "ghhzz"
+      | G_PsiWW -> "gpsiww" | G_PsiZZ -> "gpsizz" | G_PsiAA -> "gpsiaa"
+      | G_PsiAZ -> "gpsiaz" | G_PsiGG -> "gpsigg" | G_EtaGG -> "getagg"
+      | G_EtaZZ -> "getazz" | G_EtaAA -> "getaaa" | G_EtaAZ -> "getaaz"
+      | G_EtaWW -> "getaww"
       | G_Htt -> "ghtt" | G_Hbb -> "ghbb"
       | G_Htautau -> "ghtautau" | G_Hcc -> "ghcc"
       | G_H3 -> "gh3" | G_H4 -> "gh4"
