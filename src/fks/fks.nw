@@ -1737,16 +1737,17 @@ the flavor structure list.
 <<fks regions: reg data: TBP>>=
   procedure :: get_svalue => region_data_get_svalue
 <<fks regions: procedures>>=
-  function region_data_get_svalue (reg_data, p, alr, emitter) result (sval)
+  function region_data_get_svalue (reg_data, p, alr, emitter, i_res) result (sval)
     class(region_data_t), intent(inout) :: reg_data
     type(vector4_t), intent(in), dimension(:) :: p
     integer, intent(in) :: alr, emitter
+    integer, intent(in) :: i_res
     real(default) :: sval
     associate (map => reg_data%fks_mapping)
     !!!  select type (map)
     !!!  type is (fks_mapping_default_t)
        map%sumdij = map%compute_sumdij (reg_data%regions(alr), p)
-       sval = map%svalue (p, emitter, reg_data%nlegs_real)
+       sval = map%svalue (p, emitter, reg_data%nlegs_real, i_res)
     !!!  end select
     end associate
   end function region_data_get_svalue
@@ -1757,19 +1758,18 @@ the flavor structure list.
   procedure :: get_svalue_soft => region_data_get_svalue_soft
 <<fks regions: procedures>>=
   function region_data_get_svalue_soft &
-       (reg_data, p, p_soft, alr, emitter) result (sval)
+       (reg_data, p, p_soft, alr, emitter, i_res) result (sval)
     class(region_data_t), intent(inout) :: reg_data
     type(vector4_t), intent(in), dimension(:) :: p
     type(vector4_t), intent(in) :: p_soft
-    integer, intent(in) :: alr, emitter
+    integer, intent(in) :: alr, emitter, i_res
     real(default) :: sval
-    integer :: i_res
     associate (map => reg_data%fks_mapping)
       !!!select type (map)
       !!!type is (fks_mapping_default_t)
       map%sumdij_soft = &
          map%compute_sumdij_soft (reg_data%regions(alr), p, p_soft)
-      sval = map%svalue_soft (p, p_soft, emitter)
+      sval = map%svalue_soft (p, p_soft, emitter, i_res)
       !!!end select
     end associate
   end function region_data_get_svalue_soft
@@ -2894,7 +2894,7 @@ From these equations we can deduce the soft limit of $d$:
     type(vector4_t), intent(in) :: p_soft
     integer, intent(in) :: em
     integer, intent(in), optional :: i_res
-    value = one / (map%sumdij_soft * map%dij_soft (p_born, p_soft, em, i_res))
+    value = one / (map%sumdij_soft * map%dij_soft (p_born, p_soft, em))
   end function fks_mapping_default_svalue_soft
 
 @ %def fks_mapping_default_svalue_soft
@@ -3071,6 +3071,17 @@ From these equations we can deduce the soft limit of $d$:
 
 @ %def fks_mapping_resonances_svalue_soft
 @ 
+<<fks regions: fks mapping resonances: TBP>>=
+  procedure :: set_resonance_momentum => fks_mapping_resonances_set_resonance_momentum
+<<fks regions: procedures>>=
+  subroutine fks_mapping_resonances_set_resonance_momentum (map, p)
+    class(fks_mapping_resonances_t), intent(inout) :: map
+    type(vector4_t), intent(in) :: p
+    map%res_map%p_res = p
+  end subroutine fks_mapping_resonances_set_resonance_momentum
+
+@ %def fks_mapping_resonances_set_resonance_momentum
+@
 <<fks regions: interfaces>>=
   interface assignment(=)
      module procedure fks_mapping_resonances_assign
@@ -3847,13 +3858,13 @@ with the same direction as the radiated particle.
   procedure :: compute => soft_subtraction_compute
 <<real subtraction: procedures>>=
   subroutine soft_subtraction_compute (sub_soft, p_born, &
-             born_ij, y, y_soft, phi, q2, alpha_s, alr, emitter)
+             born_ij, y, y_soft, phi, q2, alpha_s, alr, emitter, i_res)
     class(soft_subtraction_t), intent(inout) :: sub_soft
     type(vector4_t), intent(in), dimension(:) :: p_born
     real(default), intent(in), dimension(:,:) :: born_ij
     real(default), intent(in) :: y, y_soft, phi
     real(default), intent(in) :: q2, alpha_s
-    integer, intent(in) :: alr, emitter
+    integer, intent(in) :: alr, emitter, i_res
     real(default) :: s_alpha_soft
     real(default) :: kb
     integer :: i, j
@@ -3870,7 +3881,7 @@ with the same direction as the radiated particle.
     !!!   p_soft = create_softvec_isr (y_soft, phi)
     !!!end if
     s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
-         (p_born, sub_soft%p_soft, alr, emitter)
+         (p_born, sub_soft%p_soft, alr, emitter, i_res)
     call sub_soft%compute_momentum_matrix (p_born, sub_soft%p_soft)
     sub_soft%value(alr) = 4 * pi * alpha_s * s_alpha_soft
     kb = zero
@@ -4484,6 +4495,8 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
     else
        select type (fks_mapping => rsub%reg_data%fks_mapping)
        type is (fks_mapping_resonances_t)
+          call fks_mapping%set_resonance_momentum &
+             (rsub%real_kinematics%xi_ref_momenta (rsub%current_i_res))
           sqme = sqme + rsub%evaluate_region_fsr (emitter, rsub%current_i_res, alpha_s)
        class default
           i_phs = rsub%real_kinematics%alr_to_i_phs (rsub%current_alr)
@@ -4527,7 +4540,7 @@ the corresponding jacobians.
          i_real = region%real_index
          sqme0 = rsub%sqme_real_non_sub (i_real, i_phs)
          s_alpha = rsub%reg_data%get_svalue (rsub%real_kinematics%p_real_cms%get_momenta(i_phs), &
-             rsub%current_alr, emitter)
+             rsub%current_alr, emitter, rsub%current_i_res)
          sqme0 = sqme0 * s_alpha
          sqme0 = sqme0 * region%mult
          sqme0 = sqme0 * region%double_fsr_factor (rsub%real_kinematics%p_real_cms%get_momenta(i_phs))
@@ -4669,7 +4682,7 @@ the corresponding jacobians.
       i_real = region%real_index
       sqme0 = rsub%sqme_real_non_sub (i_real, 1)
       s_alpha = rsub%reg_data%get_svalue (rsub%real_kinematics%p_real_cms%get_momenta(1), &
-          rsub%current_alr, emitter)
+          rsub%current_alr, emitter, rsub%current_i_res)
       sqme0 = sqme0 * s_alpha
       sqme0 = sqme0 * region%mult
       if (proc_scatter) then
@@ -4871,7 +4884,7 @@ the corresponding jacobians.
                                       rsub%real_kinematics%y(y_index), &
                                       rsub%real_kinematics%y_soft(y_index), &
                                       rsub%real_kinematics%phi, &
-                                      q2, alpha_s, alr, emitter)
+                                      q2, alpha_s, alr, emitter, rsub%current_i_res)
        else
           rsub%sub_soft%value(alr) = zero
        end if
