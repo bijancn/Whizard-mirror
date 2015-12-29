@@ -4515,13 +4515,13 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
     integer, intent(in) :: emitter
     real(default), intent(in) :: alpha_s
     integer :: i_phs, i_con
+    i_phs = rsub%real_kinematics%alr_to_i_phs (rsub%current_alr)
     if (emitter <= rsub%isr_kinematics%n_in) then
-       sqme = rsub%evaluate_region_isr (emitter, alpha_s)
+       sqme = rsub%evaluate_region_isr (emitter, i_phs, alpha_s)
     else
        select type (fks_mapping => rsub%reg_data%fks_mapping)
        type is (fks_mapping_resonances_t)
           i_con = rsub%reg_data%alr_to_i_contributor (rsub%current_alr)
-          i_phs = rsub%real_kinematics%alr_to_i_phs (rsub%current_alr)
           call fks_mapping%set_resonance_momentum &
              (rsub%real_kinematics%xi_ref_momenta (i_con))
           sqme = rsub%evaluate_region_fsr (emitter, i_phs, alpha_s)
@@ -4558,9 +4558,9 @@ the corresponding jacobians.
     sqme0 = zero; sqme_soft = zero; sqme_coll = zero
     sqme_cs = zero; sqme_remn = zero
     xi_tilde = rsub%real_kinematics%xi_tilde
-    xi_max = rsub%real_kinematics%xi_max(emitter)
+    xi_max = rsub%real_kinematics%xi_max(i_phs)
     xi = xi_tilde * xi_max
-    y = rsub%real_kinematics%y(emitter)
+    y = rsub%real_kinematics%y(i_phs)
     onemy = one - y
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       if (rsub%radiation_active .and. rsub%passed_real_cuts (i_phs)) then
@@ -4573,10 +4573,10 @@ the corresponding jacobians.
          sqme0 = sqme0 * region%double_fsr_factor (rsub%real_kinematics%p_real_cms%get_momenta(i_phs))
          select case (rsub%purpose)
          case (INTEGRATION, FIXED_ORDER_EVENTS)
-            sqme0 = sqme0 * xi**2 / xi_tilde * rsub%real_kinematics%jac(emitter)%jac(1)
+            sqme0 = sqme0 * xi**2 / xi_tilde * rsub%real_kinematics%jac(i_phs)%jac(1)
          case (POWHEG)
             s = rsub%real_kinematics%cms_energy2
-            sqme0 = sqme0*rsub%real_kinematics%jac(emitter)%jac(1) * s / (8 * twopi3) * xi
+            sqme0 = sqme0*rsub%real_kinematics%jac(i_phs)%jac(1) * s / (8 * twopi3) * xi
          end select
       end if
       if (rsub%subtraction_active .and. rsub%passed_born_cuts) then
@@ -4586,9 +4586,9 @@ the corresponding jacobians.
          sqme_coll = sqme_coll / onemy / xi_tilde
          sqme_cs = sqme_cs / onemy / xi_tilde
          associate (jac => rsub%real_kinematics%jac)
-            sqme_soft = sqme_soft * jac(emitter)%jac(2)
-            sqme_coll = sqme_coll * jac(emitter)%jac(3)
-            sqme_cs = sqme_cs * jac(emitter)%jac(2)
+            sqme_soft = sqme_soft * jac(i_phs)%jac(2)
+            sqme_coll = sqme_coll * jac(i_phs)%jac(3)
+            sqme_cs = sqme_cs * jac(i_phs)%jac(2)
          end associate
          sqme_remn = (sqme_soft - sqme_cs) * log(xi_max) * xi_tilde
          select case (rsub%purpose)
@@ -4604,7 +4604,7 @@ the corresponding jacobians.
       else
          sqme = sqme0
       end if
-      sqme = sqme * rsub%real_kinematics%jac_rand(emitter)
+      sqme = sqme * rsub%real_kinematics%jac_rand(i_phs)
       !!!if (rsub%purpose == INTEGRATION .or. rsub%purpose == FIXED_ORDER_EVENTS) &
       !!!   sqme = sqme * rsub%get_phs_factor ()
     end associate
@@ -4669,9 +4669,10 @@ the corresponding jacobians.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: evaluate_region_isr => real_subtraction_evaluate_region_isr
 <<real subtraction: procedures>>=
-  function real_subtraction_evaluate_region_isr (rsub, emitter, alpha_s) result (sqme)
+  function real_subtraction_evaluate_region_isr (rsub, emitter, i_phs, alpha_s) &
+     result (sqme)
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
     real(default) :: sqme
     real(default) :: xi_max, xi_max_plus, xi_max_minus
@@ -4688,7 +4689,7 @@ the corresponding jacobians.
     proc_scatter = rsub%isr_kinematics%n_in == 2
 
     xi_tilde = rsub%real_kinematics%xi_tilde
-    xi_max = rsub%real_kinematics%xi_max(1)
+    xi_max = rsub%real_kinematics%xi_max(i_phs)
     xi = xi_tilde * xi_max
     if (proc_scatter) then
        xi_max_plus = one - rsub%isr_kinematics%x(I_PLUS)
@@ -4701,7 +4702,7 @@ the corresponding jacobians.
        xi_plus =  xi
        xi_minus = xi
     end if
-    y = rsub%real_kinematics%y(1)
+    y = rsub%real_kinematics%y(i_phs)
     onemy = one - y; onepy = one + y
     phi = rsub%real_kinematics%phi
 
@@ -4727,7 +4728,7 @@ the corresponding jacobians.
       end select
 
       if (rsub%subtraction_active) then
-         call rsub%evaluate_subtraction_terms_isr (emitter, alpha_s, &
+         call rsub%evaluate_subtraction_terms_isr (emitter, i_phs, alpha_s, &
             sqme_soft, sqme_coll_plus, sqme_coll_minus, sqme_cs_plus, sqme_cs_minus)
          if (proc_scatter) then
             call rsub%reweight_pdfs (sqme_coll_plus, i_real, I_PLUS)
@@ -4790,16 +4791,16 @@ the corresponding jacobians.
                        real_subtraction_evaluate_subtraction_terms_fsr
 <<real subtraction: procedures>>=
   subroutine real_subtraction_evaluate_subtraction_terms_fsr (rsub, &
-                  emitter, i_res, alpha_s, &
+                  emitter, i_phs, alpha_s, &
                   sqme_soft, sqme_coll, sqme_cs)
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter, i_res
+    integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
     real(default), intent(out) :: sqme_soft, sqme_coll, sqme_cs
     integer :: alr
     alr = rsub%current_alr
-    call rsub%compute_sub_soft (emitter, alpha_s)
-    call rsub%compute_sub_coll (emitter, alpha_s)
+    call rsub%compute_sub_soft (emitter, i_phs, alpha_s)
+    call rsub%compute_sub_coll (emitter, i_phs, alpha_s)
     call rsub%compute_sub_coll_soft (emitter, alpha_s)
     sqme_soft = rsub%sub_soft%value(alr)
     sqme_coll = rsub%sub_coll%value(alr)
@@ -4813,21 +4814,21 @@ the corresponding jacobians.
                        real_subtraction_evaluate_subtraction_terms_isr
 <<real subtraction: procedures>>=
   subroutine real_subtraction_evaluate_subtraction_terms_isr (rsub, &
-    emitter, alpha_s, sqme_soft, sqme_coll_plus, sqme_coll_minus, &
+    emitter, i_phs, alpha_s, sqme_soft, sqme_coll_plus, sqme_coll_minus, &
     sqme_cs_plus, sqme_cs_minus)
 
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
     real(default), intent(out) :: sqme_soft
     real(default), intent(out) :: sqme_coll_plus, sqme_coll_minus
     real(default), intent(out) :: sqme_cs_plus, sqme_cs_minus
     integer :: alr
     alr = rsub%current_alr
-    call rsub%compute_sub_soft (emitter, alpha_s)
+    call rsub%compute_sub_soft (emitter, i_phs, alpha_s)
     sqme_soft = rsub%sub_soft%value(alr)
     if (emitter /= 2) then
-       call rsub%compute_sub_coll (1, alpha_s)
+       call rsub%compute_sub_coll (1, i_phs, alpha_s)
        call rsub%compute_sub_coll_soft (1, alpha_s)
        sqme_coll_plus = rsub%sub_coll%value(alr)
        sqme_cs_plus = rsub%sub_coll%value_soft(alr)
@@ -4836,7 +4837,7 @@ the corresponding jacobians.
        sqme_cs_plus = zero
     end if
     if (emitter /= 1) then
-       call rsub%compute_sub_coll (2, alpha_s)
+       call rsub%compute_sub_coll (2, i_phs, alpha_s)
        call rsub%compute_sub_coll_soft (2, alpha_s)
        sqme_coll_minus = rsub%sub_coll%value(alr)
        sqme_cs_minus = rsub%sub_coll%value_soft(alr)
@@ -4882,15 +4883,15 @@ the corresponding jacobians.
   procedure :: compute_sub_soft => real_subtraction_compute_sub_soft
 <<real subtraction: procedures>>=
   subroutine real_subtraction_compute_sub_soft &
-                             (rsub, emitter, alpha_s)
+     (rsub, emitter, i_phs, alpha_s)
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
     integer :: alr, i_con
-    integer :: y_index
+    !!!integer :: y_index
     real(default) :: q2
 
-    y_index = emitter; if (emitter == 0) y_index = 1
+    !!!y_index = emitter; if (emitter == 0) y_index = 1
     alr = rsub%current_alr
     associate (sregion => rsub%reg_data%regions(alr))
        if (sregion%has_soft_divergence ()) then
@@ -4903,18 +4904,22 @@ the corresponding jacobians.
           if (emitter > rsub%sub_soft%n_in) then
              call rsub%sub_soft%create_softvec_fsr &
                 (rsub%real_kinematics%p_born_cms%get_momenta(1), &
-                 rsub%real_kinematics%y_soft(y_index), &
+                 !!!rsub%real_kinematics%y_soft(y_index), &
+                 rsub%real_kinematics%y_soft (i_phs), &
                  rsub%real_kinematics%phi, emitter, &
                  rsub%real_kinematics%xi_ref_momenta(i_con))
           else
              call rsub%sub_soft%create_softvec_isr &
-                (rsub%real_kinematics%y_soft(y_index), &
+                !!!(rsub%real_kinematics%y_soft(y_index), &
+                 (rsub%real_kinematics%y_soft(i_phs), &
                  rsub%real_kinematics%phi)
           end if
           call rsub%sub_soft%compute (rsub%real_kinematics%p_born_cms%get_momenta(1), &
                                       rsub%sqme_born_cc(:,:,sregion%uborn_index), &
-                                      rsub%real_kinematics%y(y_index), &
-                                      rsub%real_kinematics%y_soft(y_index), &
+                                      !!!rsub%real_kinematics%y(y_index), &
+                                      !!!rsub%real_kinematics%y_soft(y_index), &
+                                      rsub%real_kinematics%y(i_phs), &
+                                      rsub%real_kinematics%y_soft(i_phs), &
                                       rsub%real_kinematics%phi, &
                                       q2, alpha_s, alr, emitter, rsub%current_i_res)
        else
@@ -4949,15 +4954,15 @@ the corresponding jacobians.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: compute_sub_coll => real_subtraction_compute_sub_coll
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_compute_sub_coll (rsub, em, alpha_s)
+  subroutine real_subtraction_compute_sub_coll (rsub, em, i_phs, alpha_s)
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: em
+    integer, intent(in) :: em, i_phs
     real(default), intent(in) :: alpha_s
     real(default) :: xi
     real(default) :: sqme_sc
     integer :: alr
     alr = rsub%current_alr
-    xi = rsub%real_kinematics%xi_tilde * rsub%real_kinematics%xi_max (em)
+    xi = rsub%real_kinematics%xi_tilde * rsub%real_kinematics%xi_max (i_phs)
     associate (sregion => rsub%reg_data%regions(alr))
        if (sregion%has_collinear_divergence ()) then
           sqme_sc = rsub%get_sc_matrix_element (alr, em, sregion%uborn_index)
@@ -5474,18 +5479,22 @@ end module nlo_data
   subroutine real_kinematics_init (r, n_tot, n_phs, n_alr, n_contr)
     class(real_kinematics_t), intent(inout) :: r
     integer, intent(in) :: n_tot, n_phs, n_alr, n_contr
-    allocate (r%xi_max (n_tot))
-    allocate (r%y (n_tot))
-    allocate (r%y_soft (n_tot))
+    !!!allocate (r%xi_max (n_tot))
+    !!!allocate (r%y (n_tot))
+    !!!allocate (r%y_soft (n_tot))
+    allocate (r%xi_max (n_phs))
+    allocate (r%y (n_phs))
+    allocate (r%y_soft (n_phs))
     call r%p_born_cms%init (n_tot, 1)
     call r%p_born_lab%init (n_tot, 1)
     call r%p_real_cms%init (n_tot + 1, n_phs)
     call r%p_real_lab%init (n_tot + 1, n_phs)
-    !allocate (r%p_born_cms (n_tot), &
-    !          r%p_born_lab (n_tot), &
-    !          r%p_real_cms (n_tot+1), &
-    !          r%p_real_lab (n_tot+1))
-    allocate (r%jac (n_tot), r%jac_rand (n_tot))
+    !!!allocate (r%p_born_cms (n_tot), &
+    !!!          r%p_born_lab (n_tot), &
+    !!!          r%p_real_cms (n_tot+1), &
+    !!!          r%p_real_lab (n_tot+1))
+    !!!allocate (r%jac (n_tot), r%jac_rand (n_tot))
+    allocate (r%jac (n_phs), r%jac_rand (n_phs))
     allocate (r%k_perp (n_tot))
     allocate (r%alr_to_i_phs (n_alr))
     allocate (r%xi_ref_momenta (n_contr))
@@ -7485,14 +7494,26 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
   procedure :: get_emitter => nlo_controller_get_emitter
 <<nlo controller: procedures>>=
   pure function nlo_controller_get_emitter (nlo_controller, alr) result (emitter)
+    integer :: emitter
     class(nlo_controller_t), intent(in) :: nlo_controller
     integer, intent(in) :: alr
-    integer :: emitter
     emitter = nlo_controller%reg_data%get_emitter (alr)
   end function nlo_controller_get_emitter
 
 @ %def nlo_controller_get_emitter
 @
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: get_i_phs => nlo_controller_get_i_phs 
+<<nlo controller: procedures>>=
+  pure function nlo_controller_get_i_phs (nlo_controller, alr) result (i_phs)
+    integer :: i_phs
+    class(nlo_controller_t), intent(in) :: nlo_controller
+    integer, intent(in) :: alr
+    i_phs = nlo_controller%real_kinematics%alr_to_i_phs (alr)
+  end function nlo_controller_get_i_phs
+
+@ %def nlo_controller_get_i_phs
+@ 
 <<nlo controller: nlo controller: TBP>>=
   procedure :: set_active_emitter => nlo_controller_set_active_emitter
 <<nlo controller: procedures>>=
@@ -7711,25 +7732,25 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
 @ %def nlo_controller_set_real_kinematics
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: get_real_kinematics => nlo_controller_get_real_kinematics
+  !!!procedure :: get_real_kinematics => nlo_controller_get_real_kinematics
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_get_real_kinematics &
-       (nlo_controller, em, xi_tilde, y, xi_max, jac, phi, jac_rand)
-    class(nlo_controller_t), intent(in) :: nlo_controller
-    integer, intent(in) :: em
-    real(default), intent(out) :: xi_tilde, y, xi_max
-    real(default), intent(out), dimension(4), optional :: jac
-    !!! For most applications, phi is not relevant. Thus, it is not
-    !!! always transferred as a dummy-variable
-    real(default), intent(out), optional :: phi
-    real(default), intent(out), dimension(:), optional :: jac_rand
-    xi_tilde = nlo_controller%real_kinematics%xi_tilde
-    y = nlo_controller%real_kinematics%y(em)
-    xi_max = nlo_controller%real_kinematics%xi_max (em)
-    if (present (jac)) jac = nlo_controller%real_kinematics%jac(1)%jac
-    if (present (phi)) phi = nlo_controller%real_kinematics%phi
-    if (present (jac_rand)) jac_rand = nlo_controller%real_kinematics%jac_rand
-  end subroutine nlo_controller_get_real_kinematics
+  !!!subroutine nlo_controller_get_real_kinematics &
+  !!!     (nlo_controller, em, xi_tilde, y, xi_max, jac, phi, jac_rand)
+  !!!  class(nlo_controller_t), intent(in) :: nlo_controller
+  !!!  integer, intent(in) :: em
+  !!!  real(default), intent(out) :: xi_tilde, y, xi_max
+  !!!  real(default), intent(out), dimension(4), optional :: jac
+  !!!  !!! For most applications, phi is not relevant. Thus, it is not
+  !!!  !!! always transferred as a dummy-variable
+  !!!  real(default), intent(out), optional :: phi
+  !!!  real(default), intent(out), dimension(:), optional :: jac_rand
+  !!!  xi_tilde = nlo_controller%real_kinematics%xi_tilde
+  !!!  y = nlo_controller%real_kinematics%y(em)
+  !!!  xi_max = nlo_controller%real_kinematics%xi_max (em)
+  !!!  if (present (jac)) jac = nlo_controller%real_kinematics%jac(1)%jac
+  !!!  if (present (phi)) phi = nlo_controller%real_kinematics%phi
+  !!!  if (present (jac_rand)) jac_rand = nlo_controller%real_kinematics%jac_rand
+  !!!end subroutine nlo_controller_get_real_kinematics
 
 @ %def nlo_controller_get_real_kinematics
 @
@@ -8340,8 +8361,8 @@ calculated from the Born momenta.
           phs%p_born_tot (n_in + 1 :) = phs%q_born
           call phs%set_reference_frames ()
           call phs%set_isr_kinematics ()
-          call phs%generate_radiation_variables &
-             (r_in(phs%n_r_born + 1 : phs%n_r_born + 3))
+          !!!call phs%generate_radiation_variables &
+             !!!(r_in(phs%n_r_born + 1 : phs%n_r_born + 3))
        case (PHS_MODE_COLLINEAR_REMNANT)
           call phs%compute_isr_kinematics (r_in(phs%n_r_born + 1))
           phs%r_isr = r_in(phs%n_r_born + 1)
@@ -8382,18 +8403,18 @@ calculated from the Born momenta.
 @ %def phs_fks_get_mcpar
 @
 <<phs fks: phs fks: TBP>>=
-  procedure :: get_real_kinematics => phs_fks_get_real_kinematics
+  !!!procedure :: get_real_kinematics => phs_fks_get_real_kinematics
 <<phs fks: procedures>>=
-  subroutine phs_fks_get_real_kinematics (phs, xi_tilde, y, phi, xi_max, jac, jac_rand)
-    class(phs_fks_t), intent(inout) :: phs
-    real(default), intent(out), dimension(:), allocatable :: xi_max
-    real(default), intent(out) :: xi_tilde
-    real(default), intent(out), dimension(:), allocatable :: y
-    real(default), intent(out) :: phi
-    real(default), intent(out), dimension(4) :: jac
-    real(default), intent(out), dimension(:), allocatable :: jac_rand
-    call phs%generator%get_real_kinematics (xi_tilde, y, phi, xi_max, jac, jac_rand)
-  end subroutine phs_fks_get_real_kinematics
+  !!!subroutine phs_fks_get_real_kinematics (phs, xi_tilde, y, phi, xi_max, jac, jac_rand)
+  !!!  class(phs_fks_t), intent(inout) :: phs
+  !!!  real(default), intent(out), dimension(:), allocatable :: xi_max
+  !!!  real(default), intent(out) :: xi_tilde
+  !!!  real(default), intent(out), dimension(:), allocatable :: y
+  !!!  real(default), intent(out) :: phi
+  !!!  real(default), intent(out), dimension(4) :: jac
+  !!!  real(default), intent(out), dimension(:), allocatable :: jac_rand
+  !!!  call phs%generator%get_real_kinematics (xi_tilde, y, phi, xi_max, jac, jac_rand)
+  !!!end subroutine phs_fks_get_real_kinematics
 
 @ %def phs_fks_get_real_kinematics
 @
@@ -8505,7 +8526,8 @@ calculated from the Born momenta.
     real(default), intent(in), dimension(:) :: r_in
     if (size (r_in) /= 3) call msg_fatal &
          ("Real kinematics need to be generated using three random numbers!")
-    call phs%generator%generate_radiation_variables (r_in, phs%p_born_tot)
+    call phs%generator%generate_radiation_variables (r_in, phs%p_born_tot, &
+       phs%phs_identifiers)
     phs%r_real = r_in
   end subroutine phs_fks_generate_radiation_variables
 
@@ -8605,10 +8627,10 @@ recoiling momenta.
 <<phs fks: phs fks generator: TBP>>=
   procedure :: generate_fsr_default => phs_fks_generator_generate_fsr_default
 <<phs fks: procedures>>=
-  subroutine phs_fks_generator_generate_fsr_default (generator, emitter, p_born, p_real)
+  subroutine phs_fks_generator_generate_fsr_default (generator, emitter, i_phs, p_born, p_real)
     !!! Important: Momenta must be input in the center-of-mass frame
     class(phs_fks_generator_t), intent(inout) :: generator
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_phs
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_point_t), intent(inout) :: p_real
     real(default) :: q0
@@ -8620,7 +8642,7 @@ recoiling momenta.
     generator%real_kinematics%cms_energy2 = q0**2
 
     generator%i_fsr_first = generator%n_in + 1
-    call generator%generate_fsr_out (emitter, p_born, p_real, q0)
+    call generator%generate_fsr_out (emitter, i_phs, p_born, p_real, q0)
     if (debug_active (D_PHASESPACE)) then
        call vector4_check_momentum_conservation (p_real%p, generator%n_in, &
            rel_smallness = 1000 * tiny_07, abs_smallness = tiny_07)
@@ -8633,9 +8655,9 @@ recoiling momenta.
   procedure :: generate_fsr_resonances => phs_fks_generator_generate_fsr_resonances
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_generate_fsr_resonances (generator, &
-       emitter, i_con, p_born, p_real)
+       emitter, i_phs, i_con, p_born, p_real)
     class(phs_fks_generator_t), intent(inout) :: generator
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_phs
     integer, intent(in) :: i_con
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_point_t), intent(inout) :: p_real
@@ -8684,7 +8706,7 @@ recoiling momenta.
     p_tmp_born = boost_to_resonance * p_tmp_born
 
     generator%i_fsr_first = 1
-    call generator%generate_fsr_out (emitter, p_tmp_born, p_tmp_real, q0, i_emitter)
+    call generator%generate_fsr_out (emitter, i_phs, p_tmp_born, p_tmp_real, q0, i_emitter)
     p_tmp_real = inverse (boost_to_resonance) * p_tmp_real
 
     do i = generator%n_in + 1, nlegborn
@@ -8748,9 +8770,9 @@ recoiling momenta.
   procedure :: generate_fsr_out => phs_fks_generator_generate_fsr_out
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_generate_fsr_out (generator, &
-      emitter, p_born, p_real, q0, p_emitter_index)
+      emitter, i_phs, p_born, p_real, q0, p_emitter_index)
     class(phs_fks_generator_t), intent(inout) :: generator
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_phs
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_point_t), intent(inout) :: p_real
     real(default), intent(in) :: q0
@@ -8775,8 +8797,8 @@ recoiling momenta.
 
     associate (rad_var => generator%real_kinematics)
        xi = rad_var%xi_tilde
-       if (rad_var%supply_xi_max) xi = xi*rad_var%xi_max(emitter)
-       y = rad_var%y(emitter)
+       if (rad_var%supply_xi_max) xi = xi*rad_var%xi_max(i_phs)
+       y = rad_var%y(i_phs)
        phi = rad_var%phi
     end associate
 
@@ -8790,9 +8812,10 @@ recoiling momenta.
     generator%mrec2 = (q0 - p_born(p_em)%p(0))**2 &
          - space_part_norm(p_born(p_em))**2
     if (generator%is_massive(emitter)) then
-       call generator%compute_emitter_kinematics (emitter, q0, k0_n, uk_n, uk)
+       call generator%compute_emitter_kinematics &
+          (y, emitter, i_phs, q0, k0_n, uk_n, uk)
     else
-       call generator%compute_emitter_kinematics (emitter, q0, uk_n, uk)
+       call generator%compute_emitter_kinematics (y, q0, uk_n, uk)
        generator%real_kinematics%y_soft = y
        k0_n = uk_n
     end if
@@ -8892,7 +8915,7 @@ supplied during phase space generation. Also, we already divide by
 $\xi$.
 <<phs fks: generator generate fsr out procedures>>=
   subroutine generate_jacobians ()
-    associate (jac => generator%real_kinematics%jac(emitter))
+    associate (jac => generator%real_kinematics%jac(i_phs))
        if (generator%is_massive(emitter)) then
           jac%jac(1) = jac%jac(1) * 4 / q0 / uk_n_born / xi
        else
@@ -8910,22 +8933,21 @@ $\xi$.
 <<phs fks: phs fks: TBP>>=
   procedure :: generate_fsr => phs_fks_generate_fsr
 <<phs fks: procedures>>=
-  subroutine phs_fks_generate_fsr (phs, emitter, p_real, i_phs, i_con)
+  subroutine phs_fks_generate_fsr (phs, emitter, i_phs, p_real, i_con)
     class(phs_fks_t), intent(inout) :: phs
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_phs
     type(phs_point_t), intent(inout) :: p_real
-    integer, intent(in) :: i_phs
     integer, intent(in), optional :: i_con
     type(vector4_t), dimension(:), allocatable :: p
     associate (generator => phs%generator)
        allocate (p (1 : generator%real_kinematics%p_born_cms%get_n_particles()), &
             source = generator%real_kinematics%p_born_cms%phs_point(1)%p)
        generator%real_kinematics%supply_xi_max = .true.
-       call generator%compute_xi_max (emitter, p, i_con)
+       call generator%compute_xi_max (i_phs, emitter, p, i_con)
        if (present (i_con)) then
-          call generator%generate_fsr (emitter, i_con, p, p_real)
+          call generator%generate_fsr (emitter, i_phs, i_con, p, p_real)
        else
-          call generator%generate_fsr (emitter, p, p_real)
+          call generator%generate_fsr (emitter, i_phs, p, p_real)
        end if
        generator%real_kinematics%p_real_cms%phs_point(i_phs)%p = p_real%p
        if (.not. phs%config%cm_frame) &
@@ -8946,14 +8968,14 @@ $\xi$.
                     phs_fks_generator_compute_emitter_kinematics_massive
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_compute_emitter_kinematics_massless &
-                                    (generator, em, q0, uk_em, uk)
+                                    (generator, y, q0, uk_em, uk)
     class(phs_fks_generator_t), intent(inout) :: generator
-    integer, intent(in) :: em
-    real(default), intent(in) :: q0
+    !!!integer, intent(in) :: em
+    real(default), intent(in) :: y, q0
     real(default), intent(out) :: uk_em, uk
-    real(default) :: y, k0_np1, q2
+    real(default) :: k0_np1, q2
 
-    y = generator%real_kinematics%y(em)
+    !!!y = generator%real_kinematics%y(em)
     k0_np1 = generator%E_gluon
     q2 = q0**2
 
@@ -8962,16 +8984,17 @@ $\xi$.
   end subroutine phs_fks_generator_compute_emitter_kinematics_massless
 
   subroutine phs_fks_generator_compute_emitter_kinematics_massive &
-                                    (generator, em, q0, k0_em, uk_em, uk)
+                                    (generator, y, em, i_phs, q0, k0_em, uk_em, uk)
     class(phs_fks_generator_t), intent(inout) :: generator
-    integer, intent(in) :: em
+    real(default), intent(in) :: y
+    integer, intent(in) :: em, i_phs
     real(default), intent(in) :: q0
     real(default), intent(inout) :: k0_em, uk_em, uk
-    real(default) :: y, k0_np1, q2, mrec2, m2
+    real(default) :: k0_np1, q2, mrec2, m2
     real(default) :: k0_rec_max, k0_em_max, k0_rec, uk_rec
     real(default) :: z, z1, z2
 
-    y = generator%real_kinematics%y(em)
+    !!!y = generator%real_kinematics%y(em)
     k0_np1 = generator%E_gluon
     q2 = q0**2
     mrec2 = generator%mrec2
@@ -8988,8 +9011,8 @@ $\xi$.
     uk_rec = sqrt(k0_rec**2 - mrec2)
     uk = uk_rec
     generator%real_kinematics%cms_energy2 = q2
-    generator%real_kinematics%jac(em)%jac = q0 * (z1 - z2) / 4 * k0_np1
-    generator%real_kinematics%y_soft(em) = &
+    generator%real_kinematics%jac(i_phs)%jac = q0 * (z1 - z2) / 4 * k0_np1
+    generator%real_kinematics%y_soft(i_phs) = &
        (two * q2 * z - q2 - mrec2 + m2) / (sqrt(k0_em_max**2 - m2) * q0) / two
   end subroutine phs_fks_generator_compute_emitter_kinematics_massive
 
@@ -9170,8 +9193,9 @@ momentum vanishes. Thus we define
   procedure :: generate_isr => phs_fks_generate_isr
 <<phs fks: procedures>>=
   subroutine phs_fks_generate_isr &
-       (phs, p_born, p_real)
+       (phs, i_phs, p_born, p_real)
     class(phs_fks_t), intent(inout) :: phs
+    integer, intent(in) :: i_phs
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_point_t), intent(inout) :: p_real
     type(vector4_t) :: p0, p1
@@ -9181,12 +9205,12 @@ momentum vanishes. Thus we define
     associate (generator => phs%generator)
        select case (generator%n_in)
        case (1)
-          call generator%compute_xi_max (1, p_born)
+          call generator%compute_xi_max (i_phs, 1, p_born)
           call generator%generate_isr_decay (p_born, p_real)
           phs%config%cm_frame = .true.
        case (2)
-          call generator%compute_xi_max (1, p_born)
-          call generator%compute_xi_max (2, p_born)
+          call generator%compute_xi_max (i_phs, 1, p_born)
+          call generator%compute_xi_max (i_phs, 2, p_born)
           call generator%generate_isr (p_born, p_real)
        end select
        phs%generator%real_kinematics%p_real_lab%phs_point(1)%p = p_real%p
@@ -9430,7 +9454,8 @@ with $\Lambda$.
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_point_t) :: p_real_phs
 
-    call generator%generate_radiation_variables (r_in, p_born)
+    ! TODO: (cw-2015-12-29) Adapt this with phs_identifiers
+    !!!call generator%generate_radiation_variables (r_in, p_born)
     call p_real_phs%init (size (p_born) + 1)
     call generator%generate_isr (p_born, p_real_phs)
     allocate (p_real (p_real_phs%n_momenta), source = p_real_phs%p)
@@ -9502,10 +9527,11 @@ with $\Lambda$.
                        phs_fks_generator_generate_radiation_variables
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_generate_radiation_variables &
-                    (generator, r_in, p_born)
+                    (generator, r_in, p_born, phs_identifiers)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in), dimension(:) :: r_in
     type(vector4_t), intent(in), dimension(:) :: p_born
+    type(phs_identifier_t), intent(in), dimension(:) :: phs_identifiers
 
     if (any (generator%emitters <= 2) .and. generator%n_in > 1) &
         call generator%set_isr_kinematics &
@@ -9516,7 +9542,7 @@ with $\Lambda$.
        call generator%compute_xi_tilde (r_in(I_XI))
        rad_var%phi = r_in (I_PHI) * twopi
        rad_var%jac_rand = rad_var%jac_rand * twopi
-       call generator%compute_y (r_in(I_Y), p_born)
+       call generator%compute_y (r_in(I_Y), p_born, phs_identifiers)
     end associate
   end subroutine phs_fks_generator_generate_radiation_variables
 
@@ -9551,9 +9577,9 @@ with $\Lambda$.
 <<phs fks: phs fks generator: TBP>>=
   procedure :: compute_xi_max => phs_fks_generator_compute_xi_max
 <<phs fks: procedures>>=
-  subroutine phs_fks_generator_compute_xi_max (generator, emitter, p, i_con)
+  subroutine phs_fks_generator_compute_xi_max (generator, i_phs, emitter, p, i_con)
     class(phs_fks_generator_t), intent(inout) :: generator
-    integer, intent(in) :: emitter
+    integer, intent(in) :: i_phs, emitter
     type(vector4_t), intent(in), dimension(:) :: p
     integer, intent(in), optional :: i_con
     real(default) :: q0
@@ -9571,13 +9597,13 @@ with $\Lambda$.
           if (emitter > 1) then
              !!!q0 = p(1)**1
              if (generator%is_massive(emitter)) then
-                rad_var%xi_max(emitter) = get_xi_max_fsr &
-                   (p, q0, emitter, generator%m2(emitter), rad_var%y(emitter))
+                rad_var%xi_max(i_phs) = get_xi_max_fsr &
+                   (p, q0, emitter, generator%m2(emitter), rad_var%y(i_phs))
              else
-                rad_var%xi_max(emitter) = get_xi_max_fsr (p, q0, emitter)
+                rad_var%xi_max(i_phs) = get_xi_max_fsr (p, q0, emitter)
              end if
           else
-             rad_var%xi_max(emitter) = get_xi_max_isr_decay (p)
+             rad_var%xi_max(i_phs) = get_xi_max_isr_decay (p)
           end if
        case (2)
           if (present (i_con)) then
@@ -9594,15 +9620,15 @@ with $\Lambda$.
                 call msg_fatal ("Massive emitters" // &
                    "incompatible with IS scattering phase space")
              else
-                rad_var%xi_max(emitter) = get_xi_max_fsr &
-                   (pp, q0, emitter, generator%m2(emitter), rad_var%y(emitter)) 
+                rad_var%xi_max(i_phs) = get_xi_max_fsr &
+                   (pp, q0, emitter, generator%m2(emitter), rad_var%y(i_phs)) 
              end if
           else
              if (emitter <= 2) then
-                rad_var%xi_max(emitter) = get_xi_max_isr &
-                   (generator%isr_kinematics%x, rad_var%y(emitter))
+                rad_var%xi_max(i_phs) = get_xi_max_isr &
+                   (generator%isr_kinematics%x, rad_var%y(i_phs))
              else
-                rad_var%xi_max(emitter) = get_xi_max_fsr (pp, q0, emitter)
+                rad_var%xi_max(i_phs) = get_xi_max_fsr (pp, q0, emitter)
              end if
           end if
        case default
@@ -9617,30 +9643,50 @@ with $\Lambda$.
 <<phs fks: phs fks generator: TBP>>=
   procedure :: compute_y => phs_fks_generator_compute_y
 <<phs fks: procedures>>=
-  subroutine phs_fks_generator_compute_y (generator, r_y, p)
+  subroutine phs_fks_generator_compute_y (generator, r_y, p, phs_identifiers)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: r_y
+    type(phs_identifier_t), intent(in), dimension(:) :: phs_identifiers
     type(vector4_t), dimension(:) :: p
-    integer :: em
+    integer :: emitter, i_phs
     real(default) :: beta, one_p_beta, one_m_beta
+    type(lorentz_transformation_t) :: boost_to_resonance
+    real(default) :: q0
+    type(vector4_t) :: p_res, p_em
+    integer :: i
+    p_res = vector4_null
     associate (rad_var => generator%real_kinematics)
-       do em = 1, size (p)
-          if (any (generator%emitters == em)) then
-             if (generator%is_massive (em) .and. em > generator%n_in) then
-                generator%m2(em) = p(em)**2
-                beta = beta_emitter (generator%sqrts, p(em))
+       do i_phs = 1, size (phs_identifiers)
+          emitter = phs_identifiers(i_phs)%emitter 
+          if (any (generator%emitters == emitter)) then
+             if (generator%is_massive (emitter) .and. emitter > generator%n_in) then
+                generator%m2(emitter) = p(emitter)**2
+                if (allocated (phs_identifiers(i_phs)%contributors)) then
+                   associate (contributors => phs_identifiers(i_phs)%contributors)
+                      do i = 1, size (contributors)
+                         p_res = p_res + p(contributors(i))
+                      end do
+                      q0 = p_res**1
+                      boost_to_resonance = inverse (boost (p_res, q0))
+                      p_em = boost_to_resonance * p(emitter)
+                   end associate
+                else
+                   q0 = generator%sqrts
+                   p_em = p(emitter)
+                end if
+                beta = beta_emitter (q0, p_em)
                 one_m_beta = one - beta
                 one_p_beta = one + beta
-                rad_var%y(em) = one / beta * (one - one_p_beta * &
+                rad_var%y(i_phs) = one / beta * (one - one_p_beta * &
                     exp ( - r_y * log(one_p_beta / one_m_beta)))
-                rad_var%jac_rand(em) = rad_var%jac_rand(em) * &
-                    (1 - beta * rad_var%y(em)) * log(one_p_beta / one_m_beta) / beta
+                rad_var%jac_rand(i_phs) = rad_var%jac_rand(i_phs) * &
+                    (1 - beta * rad_var%y(i_phs)) * log(one_p_beta / one_m_beta) / beta
              else
-                rad_var%y(em) = (one - two * r_y) * generator%y_max
-                rad_var%jac_rand(em) = rad_var%jac_rand(em) * 3 * (one - rad_var%y(em)**2)
-                rad_var%y(em) = 1.5_default * (rad_var%y(em) - rad_var%y(em)**3/3)
+                rad_var%y(i_phs) = (one - two * r_y) * generator%y_max
+                rad_var%jac_rand(i_phs) = rad_var%jac_rand(i_phs) * 3 * (one - rad_var%y(i_phs)**2)
+                rad_var%y(i_phs) = 1.5_default * (rad_var%y(i_phs) - rad_var%y(i_phs)**3/3)
              end if
-          end if
+           end if
        end do
     end associate
   end subroutine phs_fks_generator_compute_y
@@ -9688,19 +9734,21 @@ with $\Lambda$.
   procedure :: generate_fsr_from_x => phs_fks_generator_generate_fsr_from_x
 <<phs fks: procedures>>=
   function phs_fks_generator_generate_fsr_from_x (generator, &
-                    r_in, emitter, p_born) result  (p_real)
+                    r_in, i_phs, emitter, p_born) result  (p_real)
     type(vector4_t), dimension(:), allocatable :: p_real
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in), dimension(:) :: r_in
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_phs
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_point_t) :: p_real_phs
 
-    call generator%generate_radiation_variables (r_in, p_born)
+    ! TODO: (cw 2015-12-29) Here we need the phase space identifiers. 
+    !                       The event generation must work with them. 
+    !!!call generator%generate_radiation_variables (r_in, p_born)
     ! TODO: (bcn 2015-12-17) this will most likely need the correct i_con?
-    call generator%compute_xi_max (emitter, p_born)
+    call generator%compute_xi_max (i_phs, emitter, p_born)
     call p_real_phs%init (size (p_born) + 1)
-    call generator%generate_fsr (emitter, p_born, p_real_phs)
+    call generator%generate_fsr (emitter, i_phs, p_born, p_real_phs)
     allocate (p_real (p_real_phs%n_momenta), source = p_real_phs%p)
   end function phs_fks_generator_generate_fsr_from_x
 
@@ -9714,22 +9762,22 @@ has already been taken into account during its generation.
                         phs_fks_generator_generate_fsr_from_xi_and_y
 <<phs fks: procedures>>=
   function phs_fks_generator_generate_fsr_from_xi_and_y (generator, xi, y, &
-                                         phi, emitter, p_born) result (p_real)
+     phi, emitter, i_phs, p_born) result (p_real)
     type(vector4_t), dimension(:), allocatable :: p_real
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: xi, y, phi
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_phs
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_point_t) :: p_real_phs
     associate (rad_var => generator%real_kinematics)
        rad_var%supply_xi_max = .false.
        rad_var%xi_tilde = xi
-       rad_var%y(emitter) = y
+       rad_var%y(i_phs) = y
        rad_var%phi = phi
     end associate
     call generator%set_beam_energy (p_born(1)%p(0) + p_born(2)%p(0))
     call p_real_phs%init (size (p_born) + 1)
-    call generator%generate_fsr (emitter, p_born, p_real_phs)
+    call generator%generate_fsr (emitter, i_phs, p_born, p_real_phs)
     allocate (p_real (p_real_phs%n_momenta), source = p_real_phs%p)
   end function phs_fks_generator_generate_fsr_from_xi_and_y
 
@@ -9746,6 +9794,7 @@ has already been taken into account during its generation.
     real(default), intent(out) :: xi, y
     real(default), intent(out), optional :: phi
     associate (rad_var => generator%real_kinematics)
+       ! TODO: (cw 2015-12-29) Use i_phs instead
        xi = rad_var%xi_max(emitter) * rad_var%xi_tilde
        y = rad_var%y(emitter)
        if (present (phi)) phi = rad_var%phi
@@ -9930,8 +9979,9 @@ end module phs_fks_uti
     allocate (generator%is_massive (4))
     generator%is_massive(1:2) = .false.
     generator%is_massive(3:4) = .true.
-    call generator%generate_radiation_variables ([x1,x2,x3], p_born)
     call generator%compute_xi_ref_momenta (p_born)
+    ! TODO: (cw 2015-12-29) Adapt this test with phs_identifiers 
+    !!!call generator%generate_radiation_variables ([x1,x2,x3], p_born)
     do emitter = 3, 4
        call generator%compute_xi_max (emitter, p_born)
     end do
@@ -10018,7 +10068,7 @@ end module phs_fks_uti
     generator%m2(1) = 0._default; generator%m2(2) = 0._default
     allocate (generator%is_massive (4))
     generator%is_massive = .false.
-    call generator%generate_radiation_variables ([x1,x2,x3], p_born)
+    !!!call generator%generate_radiation_variables ([x1,x2,x3], p_born)
     call generator%compute_xi_ref_momenta (p_born)
     do emitter = 1, 2
        call generator%compute_xi_max (emitter, p_born)
@@ -10109,7 +10159,7 @@ end module phs_fks_uti
     generator%m2(3) = mB**2
     generator%is_massive = .true.
 
-    call generator%generate_radiation_variables ([x1,x2,x3], p_born)
+    !!!call generator%generate_radiation_variables ([x1,x2,x3], p_born)
     call generator%compute_xi_ref_momenta (p_born)
     do emitter = 1, 3
        call generator%compute_xi_max (emitter, p_born)
@@ -10226,7 +10276,7 @@ end module phs_fks_uti
     allocate (generator%is_massive (nlegborn))
     generator%is_massive (1:2) = .false.
     generator%is_massive (3:6) = .true.
-    call generator%generate_radiation_variables ([x1, x2, x3], p_born)
+    !!!call generator%generate_radiation_variables ([x1, x2, x3], p_born)
 
     allocate (resonance_lists (2, 2))
     allocate (emitters (2))
