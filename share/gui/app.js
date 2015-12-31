@@ -30,22 +30,13 @@ var mkdirSync = function (path) {
     if ( e.code != 'EEXIST' ) throw e;
   }
 }
-
+app.set('port', guiconf.port);
 /*
  * Logical variables
  */
 var DEFAULT_PORT = guiconf.PORT;
 var WhizRunning = false; 
   
-// all environments
-// ***Setup the port which is to be used.
-// Take care that if no port if specified in the json-script, or if the app 
-// is started not using npm but node, the default-port is used.
-if (typeof(environment.USE_PORT) !== "undefined") {
-	app.set('port', process.env.PORT || environment.USE_PORT);
-} else {
-	app.set('port', process.env.PORT || DEFAULT_PORT);
-}
 app.set('views', __dirname + '/views');
 app.set('view engine', 'ejs');
 app.use(favicon);
@@ -100,7 +91,6 @@ app.post('/runwhiz', function (req, res) {
 	var exec = require('child_process').exec,
 		child;
 
-	//child = exec('cd output-whiz && ' + environment.WHIZ_BIN + '/whizard -r ../output/gui-generated',
 	WhizRunning = true;
 	
 	if (guiconf.DEBUG)
