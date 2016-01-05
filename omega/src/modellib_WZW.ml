@@ -66,7 +66,7 @@ module WZW (Flags : SM_flags) =
 
     type matter_field = L of int | N of int | U of int | D of int
     type gauge_boson = Ga | Wp | Wm | Z | Gl 
-    type other = Phip | Phim | Phi0 | H | Psi | Eta
+    type other = Phip | Phim | Phi0 | H | Psi0 | Eta
     type flavor = M of matter_field | G of gauge_boson | O of other
 
     let matter_field f = M f
@@ -95,7 +95,7 @@ module WZW (Flags : SM_flags) =
         "2nd Generation", ThoList.flatmap family [2; -2];
         "3rd Generation", ThoList.flatmap family [3; -3];
         "Gauge Bosons", List.map gauge_boson [Ga; Z; Wp; Wm; Gl];
-        "Higgs", [O H; O Psi; O Eta];
+        "Higgs", [O H; O Psi0; O Eta];
         "Goldstone Bosons", List.map other [Phip; Phim; Phi0] ]
 
     let flavors () = ThoList.flatmap snd (external_flavors ())
@@ -146,7 +146,7 @@ module WZW (Flags : SM_flags) =
       | O f ->
           begin match f with
           | Phip | Phim | Phi0 -> Only_Insertion
-          | H | Psi | Eta -> Prop_Scalar
+          | H | Psi0 | Eta -> Prop_Scalar
           end
 
 (* Optionally, ask for the fudge factor treatment for the widths of
@@ -184,7 +184,7 @@ module WZW (Flags : SM_flags) =
       | O f ->
           O (begin match f with
           | Phip -> Phim | Phim -> Phip | Phi0 -> Phi0
-          | H -> H | Psi -> Psi | Eta -> Eta
+          | H -> H | Psi0 -> Psi0 | Eta -> Eta
           end)
 
     let fermion = function
@@ -238,7 +238,7 @@ module WZW (Flags : SM_flags) =
           end
       | O f ->
           begin match f with
-          | H | Phi0 | Psi | Eta ->  0//1
+          | H | Phi0 | Psi0 | Eta ->  0//1
           | Phip ->  1//1
           | Phim -> -1//1
           end
@@ -402,11 +402,11 @@ module WZW (Flags : SM_flags) =
     let gauge_higgs =
       [ ((O H, G Wp, G Wm), Scalar_Vector_Vector 1, G_HWW);
         ((O H, G Z, G Z), Scalar_Vector_Vector 1, G_HZZ);
-	((O Psi, G Wp, G Wm), Dim5_Scalar_Gauge2_Skew 1, G_PsiWW);
-	((O Psi, G Z, G Z), Dim5_Scalar_Gauge2_Skew 1, G_PsiZZ);
-	((O Psi, G Ga, G Ga), Dim5_Scalar_Gauge2_Skew 1, G_PsiAA);
-	((O Psi, G Z, G Ga), Dim5_Scalar_Gauge2_Skew 1, G_PsiAZ);
-	((O Psi, G Gl, G Gl), Dim5_Scalar_Gauge2_Skew 1, G_PsiGG);
+	((O Psi0, G Wp, G Wm), Dim5_Scalar_Gauge2_Skew 1, G_PsiWW);
+	((O Psi0, G Z, G Z), Dim5_Scalar_Gauge2_Skew 1, G_PsiZZ);
+	((O Psi0, G Ga, G Ga), Dim5_Scalar_Gauge2_Skew 1, G_PsiAA);
+	((O Psi0, G Z, G Ga), Dim5_Scalar_Gauge2_Skew 1, G_PsiAZ);
+	((O Psi0, G Gl, G Gl), Dim5_Scalar_Gauge2_Skew 1, G_PsiGG);
 	((O Eta, G Gl, G Gl), Dim5_Scalar_Gauge2_Skew 1, G_EtaGG);	
 	((O Eta, G Wp, G Wm), Dim5_Scalar_Gauge2_Skew 1, G_EtaWW);	
 	((O Eta, G Z, G Z), Dim5_Scalar_Gauge2_Skew 1, G_EtaZZ);
@@ -468,7 +468,7 @@ module WZW (Flags : SM_flags) =
       | "g" | "gl" -> G Gl
       | "A" -> G Ga | "Z" | "Z0" -> G Z
       | "W+" -> G Wp | "W-" -> G Wm
-      | "Psi" -> O Psi | "Eta" -> O Eta
+      | "Psi" -> O Psi0 | "Eta" -> O Eta
       | "H" -> O H
       | _ -> invalid_arg "Models.WZW.flavor_of_string"
 
@@ -505,7 +505,7 @@ module WZW (Flags : SM_flags) =
       | O f ->
           begin match f with
           | Phip -> "phi+" | Phim -> "phi-" | Phi0 -> "phi0"
-          | H -> "H" | Psi -> "psi" | Eta -> "eta"
+          | H -> "H" | Psi0 -> "psi" | Eta -> "eta"
           end
 
     let flavor_to_TeX = function
@@ -541,7 +541,7 @@ module WZW (Flags : SM_flags) =
       | O f ->
           begin match f with
           | Phip -> "phi+" | Phim -> "phi-" | Phi0 -> "phi0"
-          | H -> "H" | Psi -> "\\Psi" | Eta -> "\\eta"
+          | H -> "H" | Psi0 -> "\\Psi" | Eta -> "\\eta"
           end
 
     let flavor_symbol = function
@@ -565,7 +565,7 @@ module WZW (Flags : SM_flags) =
       | O f ->
           begin match f with
           | Phip -> "pp" | Phim -> "pm" | Phi0 -> "p0"
-          | H -> "h" | Psi -> "psi" | Eta -> "eta"
+          | H -> "h" | Psi0 -> "psi" | Eta -> "eta"
           end
 
 (* There are PDG numbers for Z', Z'', W', 32-34, respectively.
@@ -594,7 +594,7 @@ module WZW (Flags : SM_flags) =
       | O f ->
           begin match f with
           | Phip | Phim -> 27 | Phi0 -> 26
-          | H -> 25 | Psi -> 28 | Eta -> 29
+          | H -> 25 | Psi0 -> 28 | Eta -> 29
           end
 
     let mass_symbol f =

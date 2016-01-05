@@ -36,6 +36,7 @@ module parameters_wzw
        ghgaga, ghgaz, ghgg, ghmm, & 		
        iqw, igzww, igwww, gw4, gzzww, gazww, gaaww
   complex(default), public :: getagg, gpsigg, getaww, gpsiww, getazz, gpsizz
+  complex(default), public :: getaaa, gpsiaa, getaaz, gpsiaz
   real(default), public :: vev
   complex(default), dimension(2), public :: &
        gncneu, gnclep, gncup, gncdwn
@@ -186,10 +187,14 @@ contains
     !!!
     getagg = par%ketag * par%alphas / PI / par%feta
     getaww = par%ketaw * g**2 / 4 / PI**2 / par%feta
-    getazz = g**2 * (par%ketaw * costhw**2 + par%ketab * sinthw**2) / 4 / PI**2 / par%feta
+    getazz = g**2 * (par%ketaw * costhw**2 + par%ketab * sinthw**4/costhw**2) / 4 / PI**2 / par%feta
+    getaaa = e**2 * (par%ketaw + par%ketab) / 4 / PI**2 / par%feta
+    getaaz = e * g * (par%ketaw * costhw - par%ketab * sinthw**2/costhw) / 4 / PI**2 / par%feta
     gpsigg = par%kpsig * par%alphas / PI / par%fpsi
     gpsiww = par%kpsiw * g**2 / 4 / PI**2 / par%fpsi
-    gpsizz = g**2 * (par%kpsiw * costhw**2 + par%kpsib * sinthw**2) / 4 / PI**2 / par%fpsi
+    gpsizz = g**2 * (par%kpsiw * costhw**2 + par%kpsib * sinthw**4/costhw**2) / 4 / PI**2 / par%fpsi
+    gpsiaa = e**2 * (par%kpsiw + par%kpsib) / 4 / PI**2 / par%fpsi
+    gpsiaz = e * g * (par%kpsiw * costhw - par%kpsib * sinthw**2/costhw) / 4 / PI**2 / par%fpsi    
   end subroutine import_from_whizard
 
   subroutine model_update_alpha_s (alpha_s)
