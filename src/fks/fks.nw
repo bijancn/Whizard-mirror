@@ -7178,23 +7178,25 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
   procedure :: setup_generator => nlo_controller_setup_generator
 <<nlo controller: procedures>>=
   subroutine nlo_controller_setup_generator &
-         (nlo_controller, generator, sqrts, singular_jacobian)
+         (nlo_controller, generator, sqrts, singular_jacobian, mode)
     class(nlo_controller_t), intent(in) :: nlo_controller
     type(phs_fks_generator_t), intent(out) :: generator
     real(default), intent(in) :: sqrts
     logical, intent(in), optional :: singular_jacobian
+    integer, intent(in), optional :: mode
     logical :: yorn
     yorn = .false.; if (present (singular_jacobian)) yorn = singular_jacobian
     call generator%connect_kinematics (nlo_controller%isr_kinematics, &
-         nlo_controller%real_kinematics, &
-         nlo_controller%has_massive_emitter ())
+       nlo_controller%real_kinematics, &
+       nlo_controller%has_massive_emitter ())
     generator%n_in = nlo_controller%particle_data%n_in
     call generator%set_beam_energy (sqrts)
     call generator%set_emitters (nlo_controller%reg_data%emitters)
     call generator%setup_masses (nlo_controller%particle_data%n_in + &
-                           nlo_controller%particle_data%n_out_born)
+       nlo_controller%particle_data%n_out_born)
     generator%is_massive = nlo_controller%get_mass_info(1)
     generator%singular_jacobian = yorn
+    if (present (mode)) generator%mode = mode
   end subroutine nlo_controller_setup_generator
 
 @ %def nlo_controller_setup_generator
@@ -8128,8 +8130,8 @@ end module phs_fks
 @ %def phs_fks_config_get_resonance_histories
 @
 <<phs fks: parameters>>=
-  integer, parameter :: REAL_PHASE_SPACE = 1
-  integer, parameter :: SOFT_MISMATCH = 2
+  integer, parameter, public :: GEN_REAL_PHASE_SPACE = 1
+  integer, parameter, public :: GEN_SOFT_MISMATCH = 2
 
 @ 
 @ [[xi_min]] should be set to a non-zero value in order to avoid
@@ -8153,7 +8155,7 @@ phase-space points with [[p_real(emitter) = 0]].
     logical :: singular_jacobian = .false.
     integer :: i_fsr_first = -1
     type(resonance_contributors_t), dimension(:), allocatable :: resonance_contributors !!! Put somewhere else?
-    integer :: mode = REAL_PHASE_SPACE 
+    integer :: mode = GEN_REAL_PHASE_SPACE 
   contains
   <<phs fks: phs fks generator: TBP>>
   end type phs_fks_generator_t
@@ -9672,35 +9674,42 @@ with $\Lambda$.
     associate (rad_var => generator%real_kinematics)
        do i_phs = 1, size (phs_identifiers)
           emitter = phs_identifiers(i_phs)%emitter 
-          if (any (generator%emitters == emitter)) then
-             if (generator%is_massive (emitter) .and. emitter > generator%n_in) then
-                generator%m2(emitter) = p(emitter)**2
-                if (allocated (phs_identifiers(i_phs)%contributors)) then
-                   associate (contributors => phs_identifiers(i_phs)%contributors)
-                      do i = 1, size (contributors)
-                         p_res = p_res + p(contributors(i))
-                      end do
-                      q0 = p_res**1
-                      boost_to_resonance = inverse (boost (p_res, q0))
-                      p_em = boost_to_resonance * p(emitter)
-                   end associate
+          select case (generator%mode)
+          case (GEN_REAL_PHASE_SPACE)
+             if (any (generator%emitters == emitter)) then
+                if (generator%is_massive (emitter) .and. emitter > generator%n_in) then
+                   generator%m2(emitter) = p(emitter)**2
+                   if (allocated (phs_identifiers(i_phs)%contributors)) then
+                      associate (contributors => phs_identifiers(i_phs)%contributors)
+                         do i = 1, size (contributors)
+                            p_res = p_res + p(contributors(i))
+                         end do
+                         q0 = p_res**1
+                         boost_to_resonance = inverse (boost (p_res, q0))
+                         p_em = boost_to_resonance * p(emitter)
+                      end associate
+                   else
+                      q0 = generator%sqrts
+                      p_em = p(emitter)
+                   end if
+                   beta = beta_emitter (q0, p_em)
+                   one_m_beta = one - beta
+                   one_p_beta = one + beta
+                   rad_var%y(i_phs) = one / beta * (one - one_p_beta * &
+                       exp ( - r_y * log(one_p_beta / one_m_beta)))
+                   rad_var%jac_rand(i_phs) = rad_var%jac_rand(i_phs) * &
+                       (one - beta * rad_var%y(i_phs)) * log(one_p_beta / one_m_beta) / beta
                 else
-                   q0 = generator%sqrts
-                   p_em = p(emitter)
+                   rad_var%y(i_phs) = (one - two * r_y) * generator%y_max
+                   rad_var%jac_rand(i_phs) = rad_var%jac_rand(i_phs) * 3 * (one - rad_var%y(i_phs)**2)
+                   rad_var%y(i_phs) = 1.5_default * (rad_var%y(i_phs) - rad_var%y(i_phs)**3/3)
                 end if
-                beta = beta_emitter (q0, p_em)
-                one_m_beta = one - beta
-                one_p_beta = one + beta
-                rad_var%y(i_phs) = one / beta * (one - one_p_beta * &
-                    exp ( - r_y * log(one_p_beta / one_m_beta)))
-                rad_var%jac_rand(i_phs) = rad_var%jac_rand(i_phs) * &
-                    (one - beta * rad_var%y(i_phs)) * log(one_p_beta / one_m_beta) / beta
-             else
-                rad_var%y(i_phs) = (one - two * r_y) * generator%y_max
-                rad_var%jac_rand(i_phs) = rad_var%jac_rand(i_phs) * 3 * (one - rad_var%y(i_phs)**2)
-                rad_var%y(i_phs) = 1.5_default * (rad_var%y(i_phs) - rad_var%y(i_phs)**3/3)
              end if
-           end if
+          case (GEN_SOFT_MISMATCH)
+             rad_var%y(i_phs) = (one - two * r_y) * generator%y_max
+             rad_var%jac_rand(i_phs) = rad_var%jac_rand(i_phs) * 3 * (one - rad_var%y(i_phs)**2)
+             rad_var%y(i_phs) = 1.5_default * (rad_var%y(i_phs) - rad_var%y(i_phs)**3/3)
+          end select
        end do
     end associate
   end subroutine phs_fks_generator_compute_y
@@ -9732,7 +9741,7 @@ with $\Lambda$.
     real(default) :: deno
     associate (rad_var => generator%real_kinematics)
        select case (generator%mode)
-       case (REAL_PHASE_SPACE) 
+       case (GEN_REAL_PHASE_SPACE) 
           if (generator%singular_jacobian) then
              rad_var%xi_tilde = (one - generator%xi_min) - (one - r)**2 *&
                 (one - two * generator%xi_min)
@@ -9742,10 +9751,11 @@ with $\Lambda$.
              rad_var%xi_tilde = generator%xi_min + r * (one - generator%xi_min)
              rad_var%jac_rand = rad_var%jac_rand * (one - generator%xi_min)
           end if
-       case (SOFT_MISMATCH)
+       case (GEN_SOFT_MISMATCH)
           deno = one - r
           if (deno < tiny_13) deno = tiny_13
           rad_var%xi_tilde = generator%xi_min + r / deno
+          rad_var%jac_rand = rad_var%jac_rand / (one - r**2)
        end select
     end associate
   end subroutine phs_fks_generator_compute_xi_tilde
