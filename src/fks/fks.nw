@@ -8013,7 +8013,7 @@ end module phs_fks
     class(phs_fks_config_t), intent(inout) :: phs_config
     integer, intent(in) :: mode
     select case (mode)
-    case (NLO_REAL)
+    case (NLO_REAL, NLO_MISMATCH)
        phs_config%mode = PHS_MODE_ADDITIONAL_PARTICLE
     case (NLO_PDF)
        phs_config%mode = PHS_MODE_COLLINEAR_REMNANT
@@ -8037,8 +8037,10 @@ end module phs_fks
     logical, intent(in), optional :: ignore_mismatch
     integer, intent(inout), optional :: nlo_type
     if (present (nlo_type)) then
-      if (.not. (nlo_type == NLO_REAL .or. nlo_type == NLO_PDF)) &
-        call msg_fatal ("FKS config has to be called with nlo_type = 'Real' or nlo_type = 'Pdf'")
+      if (.not. (nlo_type == NLO_REAL .or. nlo_type == NLO_PDF &
+         .or. nlo_type == NLO_MISMATCH)) &
+        call msg_fatal ("FKS config has to be called with nlo_type = "& 
+           &" 'Real', nlo_type = 'Pdf' or nlo_type = 'mismatch'")
     end if
     if (.not. phs_config%extended_phs) then
        select case (phs_config%mode)
@@ -8124,6 +8126,12 @@ end module phs_fks
   end function phs_fks_config_get_resonance_histories
 
 @ %def phs_fks_config_get_resonance_histories
+@
+<<phs fks: parameters>>=
+  integer, parameter :: REAL_PHASE_SPACE = 1
+  integer, parameter :: SOFT_MISMATCH = 2
+
+@ 
 @ [[xi_min]] should be set to a non-zero value in order to avoid
 phase-space points with [[p_real(emitter) = 0]].
 <<phs fks: public>>=
@@ -8145,6 +8153,7 @@ phase-space points with [[p_real(emitter) = 0]].
     logical :: singular_jacobian = .false.
     integer :: i_fsr_first = -1
     type(resonance_contributors_t), dimension(:), allocatable :: resonance_contributors !!! Put somewhere else?
+    integer :: mode = REAL_PHASE_SPACE 
   contains
   <<phs fks: phs fks generator: TBP>>
   end type phs_fks_generator_t
@@ -9720,16 +9729,24 @@ with $\Lambda$.
   pure subroutine phs_fks_generator_compute_xi_tilde (generator, r)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: r
+    real(default) :: deno
     associate (rad_var => generator%real_kinematics)
-       if (generator%singular_jacobian) then
-          rad_var%xi_tilde = (one - generator%xi_min) - (one - r)**2 *&
-             (one - two * generator%xi_min)
-          rad_var%jac_rand = rad_var%jac_rand * two * (one - r) * &
-             (one - two * generator%xi_min)
-       else
-          rad_var%xi_tilde = generator%xi_min + r * (one - generator%xi_min)
-          rad_var%jac_rand = rad_var%jac_rand * (one - generator%xi_min)
-       end if
+       select case (generator%mode)
+       case (REAL_PHASE_SPACE) 
+          if (generator%singular_jacobian) then
+             rad_var%xi_tilde = (one - generator%xi_min) - (one - r)**2 *&
+                (one - two * generator%xi_min)
+             rad_var%jac_rand = rad_var%jac_rand * two * (one - r) * &
+                (one - two * generator%xi_min)
+          else
+             rad_var%xi_tilde = generator%xi_min + r * (one - generator%xi_min)
+             rad_var%jac_rand = rad_var%jac_rand * (one - generator%xi_min)
+          end if
+       case (SOFT_MISMATCH)
+          deno = one - r
+          if (deno < tiny_13) deno = tiny_13
+          rad_var%xi_tilde = generator%xi_min + r / deno
+       end select
     end associate
   end subroutine phs_fks_generator_compute_xi_tilde
 

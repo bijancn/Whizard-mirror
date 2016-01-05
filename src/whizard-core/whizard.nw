@@ -608,7 +608,7 @@ temporarily override defaults.  The data set is transparent.
      type(string_t) :: logfile 
      logical :: nlo_fixed_order = .false.
      logical :: nlo_threshold_matching = .false.
-     logical, dimension(4) :: active_nlo_components
+     logical, dimension(5) :: active_nlo_components = .false.
    contains
    <<RT data: rt data: TBP>>
   end type rt_data_t
@@ -4149,7 +4149,7 @@ Allocate a phase-space object according to the variable [[$phs_method]].
   public :: dispatch_phs
 <<Dispatch: procedures>>=
   subroutine dispatch_phs (phs, global, process_id, mapping_defaults, phs_par, &
-                           phs_method_in)
+     phs_method_in)
     
     class(phs_config_t), allocatable, intent(inout) :: phs
     type(rt_data_t), intent(in) :: global
@@ -8725,6 +8725,12 @@ local changes to currently inactive models.
                call intg%process%set_component_type (i_component, COMP_REAL)
             end if
          end if
+       case (NLO_MISMATCH)
+         call dispatch_phs (phs_config_template_other, local, &
+            intg%process_id, mapping_defs, phs_par, var_str ('fks')) 
+         call intg%process%init_component & 
+            (i_component, core_template, mci_template, &
+            phs_config_template_other)
        case (NLO_PDF)
          call dispatch_phs (phs_config_template_other, local, &
              intg%process_id, mapping_defs, phs_par, &
@@ -16964,6 +16970,8 @@ or arrays which would make the expansion ambiguous.
     integer :: n_emitters
     integer, dimension(:), allocatable :: emitters
     integer :: n_components_init
+    logical :: requires_soft_mismatch = .false.
+    type(string_t) :: fks_method
     
     nlo_fixed_order = cmd%local%nlo_fixed_order                
     nlo_threshold_matching = cmd%local%nlo_threshold_matching
@@ -17039,6 +17047,10 @@ or arrays which would make the expansion ambiguous.
     end if
 
     if (nlo_fixed_order) then
+
+       fks_method = var_list%get_sval (var_str ('$fks_mapping_type'))
+       requires_soft_mismatch = fks_method == var_str ('resonances')
+
        if (initial_state_colored) then
           if (has_structure_functions) then
              n_components_extra = 5
@@ -17047,6 +17059,8 @@ or arrays which would make the expansion ambiguous.
           end if
        else if (use_powheg_damping_factors) then
           n_components_extra = 4 + n_emitters
+       else if (requires_soft_mismatch) then
+          n_components_extra = 5
        else
           n_components_extra = 4
        end if
@@ -17084,14 +17098,15 @@ or arrays which would make the expansion ambiguous.
           associate (active_comp => cmd%local%active_nlo_components)
              i_list(1) = i
              i_list(2) = i + n_components
-             i_list(3) = i + 2*n_components
-             i_list(4) = i + 3*n_components
-             if (initial_state_colored .and. has_structure_functions) then
-                i_list(5) = i + 4*n_components
+             i_list(3) = i + 2 * n_components
+             i_list(4) = i + 3 * n_components
+             if (initial_state_colored .and. has_structure_functions &
+                 .or. requires_soft_mismatch) then
+                i_list(5) = i + 4 * n_components
              else if (use_powheg_damping_factors) then
                 component_offset = 4
                 do j = component_offset, component_offset + n_emitters - 1
-                   i_list(j+1) = i + 4*n_components
+                   i_list(j + 1) = i + 4 * n_components
                 end do
              end if
              born_me_method = var_list%get_sval (var_str ("$born_me_method"))
@@ -17111,34 +17126,31 @@ or arrays which would make the expansion ambiguous.
 
              n_real = 1; if (use_powheg_damping_factors) n_real = n_emitters + 1
              do i_real = 1, n_real
-                call prc_config%setup_component (n_components*i_real+i, &
-                     new_prt_spec (prt_in_nlo), &
-                     new_prt_spec (prt_out_nlo),&
-                     cmd%local, NLO_REAL, &
-                     active_in = active_comp (2))
+                call prc_config%setup_component (n_components * i_real + i, &
+                   new_prt_spec (prt_in_nlo), new_prt_spec (prt_out_nlo), &
+                     cmd%local, NLO_REAL, active_in = active_comp (2))
                 if (i_real > 1) &
-                     call prc_config%set_fixed_emitter (n_components*i_real+i, emitters(i_real-1))
+                   call prc_config%set_fixed_emitter (n_components * i_real + i, &
+                      emitters(i_real-1))
              end do
 
              call switch_method (current_me_method, loop_me_method)
 
              i_real = n_real + 1
-             call prc_config%setup_component (n_components*i_real+i, prt_spec_in, &
-                  prt_spec_out, global, NLO_VIRTUAL, &
-                  active_in = active_comp (3))
+             call prc_config%setup_component (n_components * i_real + i, prt_spec_in, &
+                prt_spec_out, global, NLO_VIRTUAL, active_in = active_comp (3))
 
              call switch_method (current_me_method, correlation_me_method)
 
              i_real = i_real + 1
-             call prc_config%setup_component (n_components*i_real+i, prt_spec_in, &
-                  prt_spec_out, global, NLO_SUBTRACTION, &
-                  active_in = active_comp (4))
+             call prc_config%setup_component (n_components * i_real + i, prt_spec_in, &
+                prt_spec_out, global, NLO_SUBTRACTION, active_in = active_comp (4))
              
              i_real = i_real + 1
              if (nlo_threshold_matching) then 
-                 i_list(5) = i + 4*n_components
+                 i_list(5) = i + 4 * n_components
                  call global%set_me_method (var_str ("threshold"))
-                 call prc_config%setup_component (n_components*i_real + i, &
+                 call prc_config%setup_component (n_components * i_real + i, &
                     prt_spec_in, prt_spec_out, global, NLO_THRESHOLD_RESUMMATION, &
                     .true.)
              end if
@@ -17148,15 +17160,26 @@ or arrays which would make the expansion ambiguous.
                    call global%set_me_method (var_str ("omega"))
                    current_me_method = "omega"
                 end if
-                call prc_config%setup_component (n_components*4+i, prt_spec_in, &
-                     prt_spec_out, global, NLO_PDF, &
-                     .false.)                     
+                call prc_config%setup_component (n_components * 4 + i, prt_spec_in, &
+                   prt_spec_out, global, NLO_PDF, .false.)                     
+             end if
+
+             if (requires_soft_mismatch) then
+                if (current_me_method /= "omega") then
+                   call global%set_me_method (var_str ("omega"))
+                   current_me_method = "omega"
+                end if
+                call prc_config%setup_component (n_components * 4 + i, &
+                   new_prt_spec (prt_in_nlo), new_prt_spec (prt_out_nlo), &
+                   global, NLO_MISMATCH, active_in = active_comp (5))
              end if
 
              if (use_powheg_damping_factors) then
                 call prc_config%set_component_associations (i_list, 1, 3+n_emitters, &
-                     4+n_emitters, 2, 3)
+                     4 + n_emitters, 2, 3)
              else if (initial_state_colored .and. has_structure_functions) then
+                call prc_config%set_component_associations (i_list, 5)
+             else if (requires_soft_mismatch) then
                 call prc_config%set_component_associations (i_list, 5)
              else
                 call prc_config%set_component_associations (i_list)
@@ -17169,11 +17192,9 @@ or arrays which would make the expansion ambiguous.
           call radiation_generator%reset_queue ()
           do j = 1, n_components_extra
              prt_out_nlo =  radiation_generator%get_next_state ()
-             call prc_config%setup_component (i+j, &
-                  new_prt_spec (prt_in), &
-                  new_prt_spec (prt_out_nlo), &
-                  cmd%local, GKS, &
-                  active_in = .false.)
+             call prc_config%setup_component (i + j, &
+                new_prt_spec (prt_in), new_prt_spec (prt_out_nlo), &
+                cmd%local, GKS, active_in = .false.)
           end do  
        else
           current_me_method = var_str ('omega')
@@ -17353,7 +17374,7 @@ particle-specifier expression which we can process further.
   type, extends (command_t) :: cmd_nlo_t
     private
     type(parse_node_p), dimension(3) :: pn_components
-    logical, dimension(4) :: active_component  
+    logical, dimension(5) :: active_component = .false.
   contains
     <<Commands: cmd nlo: TBP>>
   end type cmd_nlo_t
@@ -17421,6 +17442,8 @@ particle-specifier expression which we can process further.
             cmd%active_component(3) = .true.
          case ('Pdf')
             cmd%active_component(4) = .true.
+         case ('Mismatch')
+            cmd%active_component(5) = .true.
          case ('Full')
             cmd%active_component = .true.
          case ('Threshold_matched')
@@ -17435,15 +17458,16 @@ particle-specifier expression which we can process further.
                "'Virtual', 'Pdf', 'Full', 'Threshold_matched' and " // &
                "'Threshold_only'")
          end select
-         if (i >= 4) exit
+         if (i >= 5) exit
          current_component => cmd%pn_components(i)%ptr
-         i = i+1
+         i = i + 1
       else
          exit
       end if
     end do   
-    global%nlo_fixed_order = (cmd%active_component(2) &
-      .or. cmd%active_component(3) .or. cmd%active_component(4)) & 
+    !!!global%nlo_fixed_order = (cmd%active_component(2) &
+    !!!  .or. cmd%active_component(3) .or. cmd%active_component(4)) & 
+    global%nlo_fixed_order = any (cmd%active_component(2:5)) &
       .and..not. global%nlo_threshold_matching
     global%active_nlo_components = cmd%active_component
   end subroutine cmd_nlo_execute
