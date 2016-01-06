@@ -380,17 +380,16 @@ end module @ID@_threshold
 ! warning: this only works with SM_tt_threshold. As this model will
 !        also be used for the full diagrams, we should disable the
 !        va_ilc_tta/z there
-subroutine threshold_init (par) bind(C)
+subroutine @ID@_threshold_init (par) bind(C)
   use iso_c_binding
   use kinds
   use @ID@_threshold
   implicit none
   real(c_default_float), dimension(*), intent(in) :: par
   call init (par)
-end subroutine threshold_init
+end subroutine @ID@_threshold_init
 
-!subroutine @ID@_threshold_get_amplitude_squared (p) bind(C)
-subroutine threshold_get_amp_squared (amp2, p) bind(C)
+subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   use iso_c_binding
   use kinds
   use opr_@ID@, sm_new_event => new_event
@@ -432,5 +431,4 @@ subroutine threshold_get_amp_squared (amp2, p) bind(C)
           conjg (amp_tree + amp_blob(:,0))))
   end select
   amp2 = amp2 * N_ / 4.0_default
-end subroutine threshold_get_amp_squared
-!end subroutine @ID@_threshold_get_amplitude_squared
+end subroutine @ID@_threshold_get_amp_squared
