@@ -6410,6 +6410,7 @@ indicate this fact.
        end if
        call phs%generate_radiation_variables & 
           (r_in(phs%n_r_born + 1 : phs%n_r_born + 3))
+       call phs%generator%compute_cms_energy (phs%p_born_tot)
     end select
   end subroutine kinematics_evaluate_radiation_kinematics
 
@@ -7009,7 +7010,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
     end if
     i_flv = 1
     sqme = zero
-    if (term%nlo_type == NLO_REAL) then
+    if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) then
        select type (core => component%config%core_sub_born)
        class is (prc_blha_t)
           sqme = component%compute_sqme_born_from_blha (core, i_flv, term, .true.)
@@ -8078,13 +8079,13 @@ kinematics to the evaluators and to the [[subevt]].
             call core%compute_eff_kinematics &
                (i_term, term%int_hard, term%isolated%int_eff, &
                component(i_component)%core_state)
-         case (NLO_REAL)
+         case (NLO_REAL, NLO_MISMATCH)
             call component(i_component)%config%core_sub_born%compute_eff_kinematics & 
                (i_term, term%nlo_controller%int_born, term%isolated%int_eff, &
                component(i_component)%core_state)
          end select
         select case (term%nlo_type)
-        case (NLO_REAL)
+        case (NLO_REAL, NLO_MISMATCH)
            call core%compute_eff_kinematics &
               (i_term, term%int_hard_real, &
                term%isolated_real%int_eff, &
@@ -8164,6 +8165,8 @@ method may modify the [[core_state]] workspace object.
     case (NLO_REAL)
        call term%evaluate_real_phase_space (term%nlo_controller%get_active_emitter ())
        call term%evaluate_interaction_real (component(i_component), i_term)
+    case (NLO_MISMATCH)
+       call term%evaluate_interaction_sub (component(i_component), 1, 1)
     end select  
   end subroutine term_instance_evaluate_interaction
   
@@ -8211,7 +8214,8 @@ physical event.
   subroutine term_instance_evaluate_event_data (term)
     class(term_instance_t), intent(inout) :: term
     select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
+    case (BORN, NLO_VIRTUAL, NLO_MISMATCH, &
+       NLO_PDF, NLO_THRESHOLD_RESUMMATION)
        call term%isolated%evaluate_event_data ()
        call term%connected%evaluate_event_data ()
     case (NLO_REAL)
@@ -8262,10 +8266,48 @@ physical event.
      end select
      call term%int_hard_real%set_matrix_element (term%amp)
      if (i_flv_born == 1) call component%core_state%reset_new_kinematics ()
-     select type (core_sub_born => component%config%core_sub_born)
-     type is (prc_omega_t)
-        do i = 1, term%nlo_controller%n_allowed_born
-           if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
+     call term%evaluate_interaction_sub (component, i_term, i_flv_born)
+     !!!select type (core_sub_born => component%config%core_sub_born)
+     !!!type is (prc_omega_t)
+     !!!   do i = 1, term%nlo_controller%n_allowed_born
+     !!!      if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
+     !!!         term%nlo_controller%amp_born(i) = &
+     !!!             core_sub_born%compute_amplitude (i_term, &
+     !!!             term%nlo_controller%int_born%get_momenta (), &
+     !!!             term%nlo_controller%get_flv_born(i), &
+     !!!             term%nlo_controller%get_hel_born(i), &
+     !!!             term%nlo_controller%get_col_born(i), &
+     !!!             term%fac_scale, term%ren_scale, &
+     !!!             term%alpha_qcd_forced, &
+     !!!             component%core_state)
+     !!!      else
+     !!!         term%nlo_controller%amp_born(i) = 0
+     !!!      end if
+     !!!   end do
+     !!!class is (prc_user_defined_base_t)
+     !!!   call core_sub_born%update_alpha_s &
+     !!!      (component%core_state, term%fac_scale)
+     !!!   term%nlo_controller%amp_born = zero
+     !!!class default
+     !!!   call msg_fatal ("Invalid core type set up for subtraction matrix elements")
+     !!!end select 
+     !!!call term%nlo_controller%int_born%set_matrix_element (term%nlo_controller%amp_born) 
+  end subroutine term_instance_evaluate_interaction_real
+
+@ %def term_instance_evaluate_interaction_real
+@
+<<Processes: term instance: TBP>>=
+  procedure :: evaluate_interaction_sub => term_instance_evaluate_interaction_sub
+<<Processes: procedures>>=
+  subroutine term_instance_evaluate_interaction_sub (term, component, i_term, i_flv_born)
+    class(term_instance_t), intent(inout) :: term
+    type(component_instance_t), intent(inout) :: component
+    integer, intent(in) :: i_term, i_flv_born
+    integer :: i
+    select type (core_sub_born => component%config%core_sub_born)
+    type is (prc_omega_t)
+       do i = 1, term%nlo_controller%n_allowed_born
+          if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
               term%nlo_controller%amp_born(i) = &
                   core_sub_born%compute_amplitude (i_term, &
                   term%nlo_controller%int_born%get_momenta (), &
@@ -8278,24 +8320,25 @@ physical event.
            else
               term%nlo_controller%amp_born(i) = 0
            end if
-        end do
-     class is (prc_user_defined_base_t)
-        call core_sub_born%update_alpha_s &
-           (component%core_state, term%fac_scale)
-        term%nlo_controller%amp_born = zero
-     class default
-        call msg_fatal ("Invalid core type set up for subtraction matrix elements")
-     end select 
-     call term%nlo_controller%int_born%set_matrix_element (term%nlo_controller%amp_born) 
-  end subroutine term_instance_evaluate_interaction_real
+       end do
+    class is (prc_user_defined_base_t)
+       call core_sub_born%update_alpha_s &
+          (component%core_state, term%fac_scale)
+       term%nlo_controller%amp_born = zero
+    class default
+       call msg_fatal ("Invalid core type set up for subtraction matrix elements")
+    end select
+    call term%nlo_controller%int_born%set_matrix_element (term%nlo_controller%amp_born)
+  end subroutine term_instance_evaluate_interaction_sub
 
-@ %def term_instance_evaluate_interaction_real
+@ %def term_instance_evaluate_interaction_sub
+@
 <<Processes: term instance: TBP>>=
   procedure :: evaluate_interaction_real_rad => &
-                        term_instance_evaluate_interaction_real_rad
+     term_instance_evaluate_interaction_real_rad
 <<Processes: procedures>>=
   subroutine term_instance_evaluate_interaction_real_rad (term, &
-                          component, p_born, p_real, i_term, alpha_s_external)
+     component, p_born, p_real, i_term, alpha_s_external)
     class(term_instance_t), intent(inout) :: term
     type(component_instance_t), intent(inout) :: component
     type(vector4_t), intent(in), dimension(:) :: p_born, p_real
@@ -9590,7 +9633,7 @@ terms, iterating over all active process components.
           associate (term => instance%term(i))
             if (term%active .and. term%passed) then
               select case (term%nlo_type)
-              case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
+              case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
                  call term%evaluate_interaction (instance%component)
                  call term%evaluate_trace ()
               end select
@@ -9601,7 +9644,7 @@ terms, iterating over all active process components.
           associate (component => instance%component(i))
             if (component%active) then
               select case (component%config%config%get_nlo_type())
-              case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
+              case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_PDF, NLO_THRESHOLD_RESUMMATION)
                 call component%evaluate_sqme (instance%term)
                 instance%sqme = instance%sqme + component%sqme
                 instance%evaluation_status = STAT_EVALUATED_TRACE
@@ -10815,7 +10858,7 @@ apply this to the phase space subobject of the process instance.
 
     do i_component = 1, n_components
        select case (process%get_component_nlo_type (i_component))
-       case (NLO_REAL, NLO_VIRTUAL)
+       case (NLO_REAL, NLO_VIRTUAL, NLO_MISMATCH)
           associate (component => process%component (i_component))
              component%core_sub_born => process%component(i_sub)%core 
           end associate
