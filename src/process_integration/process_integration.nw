@@ -7267,23 +7267,9 @@ imaginary part of the terms, which should be zero anyway.
           associate (collector => nlo_controller%sqme_collector)
             do i_flv = 1, nlo_controller%get_n_flv_born ()
                i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv)
-               select type (core_born => component%config%core_sub_born)
-               class is (prc_user_defined_base_t)
-                  if (.not. nlo_controller%use_internal_color_correlations) then
-                     call core_born%update_alpha_s (component%core_state, term%fac_scale)
-                     call core_born%compute_sqme_cc (i_flv, &
-                             nlo_controller%int_born%get_momenta (), &
-                             0._default, &
-                             collector%sqme_subtraction_born_list (i_flv_born), &
-                             collector%sqme_born_cc (:,:,i_flv_born), &
-                             bad_point)
-                  else
-                  !!! Implementation for color-correlations using color_data
-                  end if
-               type is (prc_omega_t)
-                  collector%sqme_born_cc (:,:,i_flv_born) = collector%sqme_subtraction_born_list (i_flv_born) * &
-                       nlo_controller%color_data%beta_ij (:,:,i_flv_born)
-               end select
+               call term%nlo_controller%evaluate_color_correlations &
+                  (component%config%core_sub_born, component%core_state, &
+                  term%fac_scale, i_flv, i_flv_born, bad_point)
 
                if (nlo_controller%requires_spin_correlation (i_flv)) then
                   select type (core_born => component%config%core_sub_born)
@@ -8082,63 +8068,76 @@ physical event.
      integer, intent(in) :: i_term
      integer :: i
      integer :: i_flv_real, i_flv_born
-    
+
      i_flv_real = term%nlo_controller%active_flavor_structure_real
      i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real)
      if (debug_active (D_SUBTRACTION)) &
          call msg_debug (D_SUBTRACTION, "underlying Born: ", i_flv_born)
      call term%nlo_controller%set_fac_scale (term%fac_scale)
-     !if (term%passed) then
-        if (i_flv_real == 1) call component%core_state%reset_new_kinematics ()
-        select type (core => component%config%core)
-        type is (prc_omega_t)
-           do i = 1, term%config%n_allowed
-              if (term%config%flv(i) == i_flv_real) then
-                 term%amp(i) = core%compute_amplitude (i_term, &
-                    term%int_hard_real%get_momenta (), &
-                    term%config%flv(i), term%config%hel(i), term%config%col(i), &
-                    term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
-                    component%core_state)
-              else
-                 term%amp(i) = 0
-              end if
-           end do
-        class is (prc_user_defined_base_t)
-           call core%update_alpha_s (component%core_state, term%fac_scale)
-           term%amp = 0._default
-        end select
-        call term%int_hard_real%set_matrix_element (term%amp)
-        if (i_flv_born == 1) call component%core_state%reset_new_kinematics ()
-        select type (core_sub_born => component%config%core_sub_born)
-        type is (prc_omega_t)
-           do i = 1, term%nlo_controller%n_allowed_born
-              if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
-                 term%nlo_controller%amp_born(i) = &
-                      core_sub_born%compute_amplitude (i_term, &
-                      term%nlo_controller%int_born%get_momenta (), &
-                      term%nlo_controller%get_flv_born(i), &
-                      term%nlo_controller%get_hel_born(i), &
-                      term%nlo_controller%get_col_born(i), &
-                      term%fac_scale, term%ren_scale, &
-                      term%alpha_qcd_forced, &
-                      component%core_state)
-              else
-                 term%nlo_controller%amp_born(i) = 0
-              end if
-           end do
-        class is (prc_user_defined_base_t)
-           call core_sub_born%update_alpha_s &
-                (component%core_state, term%fac_scale)
-           term%nlo_controller%amp_born = 0._default
-        class default
-           call msg_fatal ("Invalid core type set up for subtraction matrix elements")
-        end select 
-        call term%nlo_controller%int_born%set_matrix_element &
-             (term%nlo_controller%amp_born) 
-     !end if
+     if (i_flv_real == 1) call component%core_state%reset_new_kinematics ()
+
+     select type (core => component%config%core)
+     type is (prc_omega_t)
+        do i = 1, term%config%n_allowed
+           if (term%config%flv(i) == i_flv_real) then
+              term%amp(i) = core%compute_amplitude (i_term, &
+                 term%int_hard_real%get_momenta (), &
+                 term%config%flv(i), term%config%hel(i), term%config%col(i), &
+                 term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
+                 component%core_state)
+           else
+              term%amp(i) = 0
+           end if
+        end do
+     class is (prc_user_defined_base_t)
+        call core%update_alpha_s (component%core_state, term%fac_scale)
+        term%amp = 0._default
+     end select
+     call term%int_hard_real%set_matrix_element (term%amp)
+     if (i_flv_born == 1) call component%core_state%reset_new_kinematics ()
+     call term%evaluate_interaction_sub (component, i_term, i_flv_born)
   end subroutine term_instance_evaluate_interaction_real
 
 @ %def term_instance_evaluate_interaction_real
+@
+<<Processes: term instance: TBP>>=
+  procedure :: evaluate_interaction_sub => term_instance_evaluate_interaction_sub
+<<Processes: procedures>>=
+  subroutine term_instance_evaluate_interaction_sub (term, component, i_term, i_flv_born)
+    class(term_instance_t), intent(inout) :: term
+    type(component_instance_t), intent(inout) :: component
+    integer, intent(in) :: i_term, i_flv_born
+    integer :: i
+    select type (core_sub_born => component%config%core_sub_born)
+    type is (prc_omega_t)
+       do i = 1, term%nlo_controller%n_allowed_born
+          if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
+             term%nlo_controller%amp_born(i) = &
+                  core_sub_born%compute_amplitude (i_term, &
+                  term%nlo_controller%int_born%get_momenta (), &
+                  term%nlo_controller%get_flv_born(i), &
+                  term%nlo_controller%get_hel_born(i), &
+                  term%nlo_controller%get_col_born(i), &
+                  term%fac_scale, term%ren_scale, &
+                  term%alpha_qcd_forced, &
+                  component%core_state)
+          else
+             term%nlo_controller%amp_born(i) = 0
+          end if
+       end do
+    class is (prc_user_defined_base_t)
+       call core_sub_born%update_alpha_s &
+            (component%core_state, term%fac_scale)
+       term%nlo_controller%amp_born = 0._default
+    class default
+       call msg_fatal ("Invalid core type set up for subtraction matrix elements")
+    end select
+    call term%nlo_controller%int_born%set_matrix_element &
+         (term%nlo_controller%amp_born)
+  end subroutine term_instance_evaluate_interaction_sub
+
+@ %def term_intstance_evaluate_interaction_sub
+@
 <<Processes: term instance: TBP>>=
   procedure :: evaluate_interaction_real_rad => &
                         term_instance_evaluate_interaction_real_rad
