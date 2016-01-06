@@ -3782,6 +3782,7 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     logical :: use_internal_spin_correlations = .false.
     type(pdf_container_t), pointer :: pdf_born_plus => null ()
     type(pdf_container_t), pointer :: pdf_born_minus => null ()
+    logical :: xi2_expanded = .true.
   contains
   <<real subtraction: soft sub: TBP>>
   end type soft_subtraction_t
@@ -3867,19 +3868,43 @@ with the same direction as the radiated particle.
     real(default), intent(in) :: y, phi
     real(default) :: sin_theta
     sin_theta = sqrt(one - y**2)
-    sub_soft%p_soft%p(0) = one
-    sub_soft%p_soft%p(1) = sin_theta * sin(phi)
-    sub_soft%p_soft%p(2) = sin_theta * cos(phi)
-    sub_soft%p_soft%p(3) = y
+    associate (p => sub_soft%p_soft%p)
+       p(0) = one
+       p(1) = sin_theta * sin(phi)
+       p(2) = sin_theta * cos(phi)
+       p(3) = y
+    end associate
   end subroutine soft_subtraction_create_softvec_isr
 
 @ %def soft_subtraction_create_softvec_isr
+@
+<<real subtraction: soft sub: TBP>>=
+  procedure :: create_softvec_mismatch => &
+     soft_subtraction_create_softvec_mismatch
+<<real subtraction: procedures>>=
+  subroutine soft_subtraction_create_softvec_mismatch (sub_soft, E, y, phi, p_em)
+    class(soft_subtraction_t), intent(inout) :: sub_soft
+    real(default), intent(in) :: E, phi, y
+    type(vector4_t), intent(in) :: p_em
+    real(default) :: sin_theta
+    type(lorentz_transformation_t) :: rot_em_to_3_axis
+    sin_theta = sqrt (one - y**2)
+    associate (p => sub_soft%p_soft%p)
+       p(0) = E
+       p(1) = E * sin_theta * sin(phi)
+       p(2) = E * sin_theta * cos(phi)
+       p(3) = E * y
+    end associate
+    rot_em_to_3_axis = inverse (rotation_to_2nd (3, space_part (p_em)))
+  end subroutine soft_subtraction_create_softvec_mismatch
+
+@ %def soft_subtraction_create_softvec_mismatch
 @ Computation of $\mathcal{R}_{\rm{soft}}$:
 <<real subtraction: soft sub: TBP>>=
   procedure :: compute => soft_subtraction_compute
 <<real subtraction: procedures>>=
   subroutine soft_subtraction_compute (sub_soft, p_born, &
-             born_ij, y, y_soft, phi, q2, alpha_s, alr, emitter, i_res)
+     born_ij, y, y_soft, phi, q2, alpha_s, alr, emitter, i_res)
     class(soft_subtraction_t), intent(inout) :: sub_soft
     type(vector4_t), intent(in), dimension(:) :: p_born
     real(default), intent(in), dimension(:,:) :: born_ij
@@ -3889,6 +3914,7 @@ with the same direction as the radiated particle.
     real(default) :: s_alpha_soft
     real(default) :: kb
     integer :: i, j
+    real(default) :: xi2_factor
 
     if (.not. vector_set_is_cms (p_born)) then
        call vector4_write_set (p_born, show_mass = .true., &
@@ -3923,10 +3949,15 @@ with the same direction as the radiated particle.
     !!!   q2 = 0
     !!!   call msg_bug ("soft_subtraction_compute: sub_soft%n_in > 2")
     !!!end select
-    if (emitter <= sub_soft%n_in) then
-       sub_soft%value(alr) = 4 / q2 * (one - y**2) * sub_soft%value(alr)
+    if (sub_soft%xi2_expanded) then
+       xi2_factor = 4 / q2
     else
-       sub_soft%value(alr) = 4 / q2 * (one - y) * sub_soft%value(alr)
+       xi2_factor = one
+    end if
+    if (emitter <= sub_soft%n_in) then
+       sub_soft%value(alr) = xi2_factor * (one - y**2) * sub_soft%value(alr)
+    else
+       sub_soft%value(alr) = xi2_factor * (one - y) * sub_soft%value(alr)
     end if
   end subroutine soft_subtraction_compute
 
@@ -3964,6 +3995,85 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   end subroutine soft_subtraction_compute_momentum_matrix
 
 @ %def soft_subtraction_compute_momentum_matrx
+@
+\subsection{Soft mismatch}
+<<real subtraction: public>>=
+  public :: soft_mismatch_t
+<<real subtraction: types>>=
+  type :: soft_mismatch_t
+    type(region_data_t), pointer :: reg_data => null ()
+    real(default), dimension(:), pointer :: sqme_born => null ()
+    real(default), dimension(:,:,:), pointer :: sqme_born_cc => null ()
+    type(real_kinematics_t), pointer :: real_kinematics => null ()
+    type(soft_subtraction_t) :: sub_soft
+  contains
+  <<real subtraction: soft mismatch: TBP>>
+  end type soft_mismatch_t
+
+@ %def soft_mismatch_t
+@
+<<real subtraction: soft mismatch: TBP>>=
+  procedure :: init => soft_mismatch_init
+<<real subtraction: procedures>>=
+  subroutine soft_mismatch_init (soft_mismatch, n_in, nlegs_born, &
+     reg_data, sqme_collector, real_kinematics)
+    class(soft_mismatch_t), intent(inout) :: soft_mismatch
+    integer, intent(in) :: n_in, nlegs_born
+    type(region_data_t), intent(in), target :: reg_data
+    type(sqme_collector_t), intent(in), target :: sqme_collector
+    type(real_kinematics_t), intent(in), target :: real_kinematics
+    soft_mismatch%reg_data => reg_data
+    soft_mismatch%sqme_born => sqme_collector%sqme_subtraction_born_list
+    soft_mismatch%sqme_born_cc => sqme_collector%sqme_born_cc
+    call soft_mismatch%sub_soft%init (reg_data, n_in, nlegs_born, nlegs_born + 1)
+    soft_mismatch%sub_soft%xi2_expanded = .false.
+    soft_mismatch%real_kinematics => real_kinematics
+  end subroutine soft_mismatch_init
+
+@ %def soft_mismatch_init
+@
+<<real subtraction: soft mismatch: TBP>>=
+  procedure :: evaluate => soft_mismatch_evaluate 
+<<real subtraction: procedures>>=
+  function soft_mismatch_evaluate (soft_mismatch, alpha_s) result (sqme_mismatch)
+    real(default) :: sqme_mismatch
+    class(soft_mismatch_t), intent(inout) :: soft_mismatch
+    real(default), intent(in) :: alpha_s
+    integer :: alr, i_uborn, emitter, i_res, i_phs, i_con
+    real(default) :: xi, q2, s
+    real(default) :: E_gluon
+    type(vector4_t) :: p_em
+    real(default) :: sqme_alr
+    sqme_mismatch = zero
+    associate (real_kinematics => soft_mismatch%real_kinematics)
+       xi = real_kinematics%xi_tilde
+       do alr = 1, soft_mismatch%reg_data%n_regions
+          i_phs = real_kinematics%alr_to_i_phs (alr)
+          i_con = soft_mismatch%reg_data%alr_to_i_contributor (alr)
+          q2 = real_kinematics%xi_ref_momenta(i_con)**2
+          s = real_kinematics%cms_energy2
+          emitter = soft_mismatch%reg_data%regions(alr)%emitter
+          E_gluon = sqrt (s) * xi / two
+          p_em = real_kinematics%p_born_cms%get_momentum (1, emitter)
+          i_res = soft_mismatch%reg_data%regions(alr)%i_res
+          call soft_mismatch%sub_soft%create_softvec_mismatch &
+             (E_gluon, real_kinematics%y(i_phs), real_kinematics%phi, p_em) 
+          i_uborn = soft_mismatch%reg_data%regions(alr)%uborn_index
+          call soft_mismatch%sub_soft%compute (real_kinematics%p_born_cms%get_momenta(1), &
+             soft_mismatch%sqme_born_cc(:,:,i_uborn), real_kinematics%y(i_phs), &
+             real_kinematics%y_soft(i_phs), real_kinematics%phi, &
+             q2, alpha_s, alr, emitter, i_res)
+       !!! evaluate mismatch
+          sqme_alr = soft_mismatch%compute (alr, xi, real_kinematics%y(i_phs), &
+             p_em, real_kinematics%xi_ref_momenta(i_con), soft_mismatch%sub_soft%p_soft, &
+             soft_mismatch%sqme_born(i_uborn), soft_mismatch%sub_soft%value(alr), &
+             alpha_s, s)
+          sqme_mismatch = sqme_mismatch + sqme_alr
+       end do
+    end associate
+  end function soft_mismatch_evaluate
+
+@ %def soft_mismatch_evaluate
 @ Computes the soft mismatch
 \begin{align*}
   I_{s+,\alpha_r} &= \int d\Phi_B \int_0^\infty d\xi \int_{-1}^1 dy \int_0^{2\pi} d\phi
@@ -3973,45 +4083,39 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   - \frac{32 \pi \alpha_s C_{em}}{s\xi^2} B_{f_b(\alpha_r)} (1-y)^{-1}
     \left[e^{-\frac{2\bar{k}_{em} \cdot k_{res}}{k_{res}^2} \frac{k_\gamma^0}{k_{em}^0}} - e^{-\xi}\right]\right\rbrace.
 \end{align*}
-Keep in mind that [[sqme_born]] is $B_{f_b}(\alpha_r)$:
-<<real subtraction: soft sub: TBP>>=
-  procedure :: compute_soft_mismatch => soft_subtraction_compute_soft_mismatch
+<<real subtraction: soft mismatch: TBP>>=
+  procedure :: compute => soft_mismatch_compute
 <<real subtraction: procedures>>=
-  function soft_subtraction_compute_soft_mismatch (sub_soft, alr, xi, y, p_em, p_res, sqme_born, &
-     alpha_s, s) result (sqme_mismatch)
+  function soft_mismatch_compute (soft_mismatch, alr, xi, y, p_em, p_res, p_soft, &
+     sqme_born, sqme_soft, alpha_s, s) result (sqme_mismatch)
     real(default) :: sqme_mismatch
-    class(soft_subtraction_t), intent(in) :: sub_soft
+    class(soft_mismatch_t), intent(in) :: soft_mismatch
     integer, intent(in) :: alr
     real(default), intent(in) :: xi, y
-    type(vector4_t), intent(in) :: p_em, p_res
-    real(default), intent(in) :: sqme_born
+    type(vector4_t), intent(in) :: p_em, p_res, p_soft
+    real(default), intent(in) :: sqme_born, sqme_soft
     real(default), intent(in) :: alpha_s, s
-    real(default) :: q2, E_gluon
+    real(default) :: q2
     integer :: i_res
-    real(default) :: exp1
+    real(default) :: expo
     real(default) :: sm1, sm2
-    type(vector4_t) :: p_gluon
     type(lorentz_transformation_t) :: rot_em_to_3_axis
 
     q2 = p_res**2
-    E_gluon = sqrt (q2) * xi / two
-    p_gluon = E_gluon * sub_soft%p_soft
-    rot_em_to_3_axis = inverse (rotation_to_2nd (3, space_part(p_em)))
-    p_gluon = rot_em_to_3_axis * p_gluon
 
-    exp1 = - two * p_gluon * p_res / q2
-    sm1 = sub_soft%value(alr) * ( exp(exp1) - exp(- xi) )
+    expo = - two * p_soft * p_res / q2
+    sm1 = sqme_soft * ( exp(expo) - exp(- xi) )
 
-    exp1 = - two * p_em * p_res / q2 * &
-         E_gluon / p_em%p(0)
+    expo = - two * p_em * p_res / q2 * &
+         p_soft%p(0) / p_em%p(0)
     sm2 = - 32 * pi * alpha_s * cf / (s * xi**2) * sqme_born * &
-         (exp(exp1) - exp(- xi)) / (one - y)
+         (exp(expo) - exp(- xi)) / (one - y)
 
     sqme_mismatch = sm1 - sm2
 
-  end function soft_subtraction_compute_soft_mismatch
+  end function soft_mismatch_compute
 
-@ %def soft_subtraction_compute_soft_mismatch
+@ %def soft_mismatch_compute
 @
 \subsection{Collinear and soft-collinear subtraction terms}
 This data type deals with the calculation of the collinear and
@@ -4887,41 +4991,36 @@ the corresponding jacobians.
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
-    integer :: alr, i_con
+    integer :: alr, i_con, i_uborn
     !!!integer :: y_index
     real(default) :: q2
 
     !!!y_index = emitter; if (emitter == 0) y_index = 1
     alr = rsub%current_alr
-    associate (sregion => rsub%reg_data%regions(alr))
-       if (sregion%has_soft_divergence ()) then
+    !!!associate (sregion => rsub%reg_data%regions(alr))
+       associate (real_kinematics => rsub%real_kinematics)
+       if (rsub%reg_data%regions(alr)%has_soft_divergence ()) then
           if (rsub%sub_soft%use_resonance_mappings) then
              i_con = rsub%reg_data%alr_to_i_contributor (alr)
           else
              i_con = 1
           end if
-          q2 = rsub%real_kinematics%xi_ref_momenta (i_con)**2
+          q2 = real_kinematics%xi_ref_momenta (i_con)**2
           if (emitter > rsub%sub_soft%n_in) then
              call rsub%sub_soft%create_softvec_fsr &
-                (rsub%real_kinematics%p_born_cms%get_momenta(1), &
-                 !!!rsub%real_kinematics%y_soft(y_index), &
-                 rsub%real_kinematics%y_soft (i_phs), &
-                 rsub%real_kinematics%phi, emitter, &
-                 rsub%real_kinematics%xi_ref_momenta(i_con))
+                (real_kinematics%p_born_cms%get_momenta(1), &
+                real_kinematics%y_soft (i_phs), &
+                real_kinematics%phi, emitter, &
+                real_kinematics%xi_ref_momenta(i_con))
           else
              call rsub%sub_soft%create_softvec_isr &
-                !!!(rsub%real_kinematics%y_soft(y_index), &
-                 (rsub%real_kinematics%y_soft(i_phs), &
-                 rsub%real_kinematics%phi)
+                (real_kinematics%y_soft(i_phs), real_kinematics%phi)
           end if
-          call rsub%sub_soft%compute (rsub%real_kinematics%p_born_cms%get_momenta(1), &
-                                      rsub%sqme_born_cc(:,:,sregion%uborn_index), &
-                                      !!!rsub%real_kinematics%y(y_index), &
-                                      !!!rsub%real_kinematics%y_soft(y_index), &
-                                      rsub%real_kinematics%y(i_phs), &
-                                      rsub%real_kinematics%y_soft(i_phs), &
-                                      rsub%real_kinematics%phi, &
-                                      q2, alpha_s, alr, emitter, rsub%current_i_res)
+          i_uborn = rsub%reg_data%regions(alr)%uborn_index
+          call rsub%sub_soft%compute (real_kinematics%p_born_cms%get_momenta(1), &
+             rsub%sqme_born_cc(:,:,i_uborn), real_kinematics%y(i_phs), &
+             real_kinematics%y_soft(i_phs), real_kinematics%phi, &
+             q2, alpha_s, alr, emitter, rsub%current_i_res)
        else
           rsub%sub_soft%value(alr) = zero
        end if
@@ -6949,6 +7048,7 @@ process.
     type(isr_kinematics_t), pointer :: isr_kinematics => null()
     type(virtual_t) :: virtual_terms
     type(real_subtraction_t) :: real_terms
+    type(soft_mismatch_t) :: soft_mismatch
     type(pdf_subtraction_t) :: pdf_terms
     real(default) :: alpha_s_born
     logical :: alpha_s_born_set
