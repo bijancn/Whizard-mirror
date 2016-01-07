@@ -10362,6 +10362,31 @@ and directly set the coupling value that comes together with a particle set.
 @ %def process_instance_has_nlo_component
 @
 <<Processes: process instance: TBP>>=
+  procedure :: needs_extra_code => process_instance_needs_extra_code
+<<Processes: procedures>>=
+  function process_instance_needs_extra_code (instance) result (val)
+    logical :: val
+    class(process_instance_t), intent(in) :: instance
+    integer :: i
+    val = .false.
+    do i = 1, size (instance%component)
+       if (associated (instance%component(i)%config)) then
+          if (.not. instance%component(i)%config%is_active_component ()) cycle
+          select type (core => instance%component(i)%config%core)
+          class is (prc_blha_t)
+             val = .true.
+             exit
+          class is (prc_threshold_t)
+             val = .true.
+             exit
+          end select
+       end if
+    end do
+  end function process_instance_needs_extra_code
+
+@ %def process_instance_has_nlo_component
+@
+<<Processes: process instance: TBP>>=
   procedure :: get_fixed_emitter => process_instance_get_fixed_emitter
 <<Processes: procedures>>=
   function process_instance_get_fixed_emitter (instance, i) result (emitter)
@@ -10457,20 +10482,24 @@ and directly set the coupling value that comes together with a particle set.
                               flv_born, flv_real)
        call blha_master%generate (process%meta%id)
     end associate 
-  end subroutine process_instance_create_blha_interface 
+  end subroutine process_instance_create_blha_interface
 
 @ %def process_instance_create_blha_interface
-@
+@ Would be better to do this at the level of the writer of the core but
+one has to bring NLO information there.
 <<Processes: process instance: TBP>>=
-  procedure :: load_blha_libraries => process_instance_load_blha_libraries
+  procedure :: create_and_load_extra_libraries => process_instance_create_and_load_extra_libraries
 <<Processes: procedures>>=
-  subroutine process_instance_load_blha_libraries (instance, os_data)
+  subroutine process_instance_create_and_load_extra_libraries (instance, beam_structure, os_data)
     class(process_instance_t), intent(inout), target :: instance
+    type(beam_structure_t), intent(in) :: beam_structure
     type(os_data_t), intent(in) :: os_data
     type(string_t) :: libname
     integer :: i
     type(process_component_t), pointer :: component_config => null ()
-    
+
+    if (instance%has_blha_component ())  &
+         call instance%create_blha_interface (beam_structure)
     do i = 1, size (instance%component)
        component_config => instance%component(i)%config
        if (associated (component_config)) then
@@ -10492,13 +10521,16 @@ and directly set the coupling value that comes together with a particle set.
              call core%read_contract_file (instance%process%term(i)%data%flv_state)
              call core%print_parameter_file ()
              if (core%includes_polarization ()) call instance%transfer_helicities (core)
+          type is (prc_threshold_t)
+             if (instance%has_nlo_component ()) then
+                call core%load_extra_libraries ()
+             end if
           end select
        end if
     end do
-    nullify (component_config)
-  end subroutine process_instance_load_blha_libraries
+  end subroutine process_instance_create_and_load_extra_libraries
 
-@ %def process_instance_load_blha_libraries
+@ %def process_instance_create_and_load_extra_libraries
 @
 <<Processes: process instance: TBP>>=
   procedure :: get_lorentz_transformation => process_instance_get_lorentz_transformation
