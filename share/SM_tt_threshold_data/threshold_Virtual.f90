@@ -1,6 +1,7 @@
-program main
+function @ID@_compute_virtual() result (amp)
   use openloops
   implicit none
+  complex(8) :: amp
   integer :: id, error, k
   real(8) :: m2_tree, m2_loop(0:2), acc
   real(8) :: p_ex(0:3,5)
@@ -67,5 +68,4 @@ program main
 
   ! finish
   call finish()
-
-end program main
+end function @ID@_compute_virtual
