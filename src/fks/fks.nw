@@ -3905,11 +3905,11 @@ with the same direction as the radiated particle.
   procedure :: compute => soft_subtraction_compute
 <<real subtraction: procedures>>=
   subroutine soft_subtraction_compute (sub_soft, p_born, &
-     born_ij, y, y_soft, phi, q2, alpha_s, alr, emitter, i_res)
+     born_ij, y, q2, alpha_s, alr, emitter, i_res)
     class(soft_subtraction_t), intent(inout) :: sub_soft
     type(vector4_t), intent(in), dimension(:) :: p_born
     real(default), intent(in), dimension(:,:) :: born_ij
-    real(default), intent(in) :: y, y_soft, phi
+    real(default), intent(in) :: y
     real(default), intent(in) :: q2, alpha_s
     integer, intent(in) :: alr, emitter, i_res
     real(default) :: s_alpha_soft
@@ -4044,13 +4044,14 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     class(soft_mismatch_t), intent(inout) :: soft_mismatch
     real(default), intent(in) :: alpha_s
     integer :: alr, i_uborn, emitter, i_res, i_phs, i_con
-    real(default) :: xi, q2, s
+    real(default) :: xi, y, q2, s
     real(default) :: E_gluon
     type(vector4_t) :: p_em
     real(default) :: sqme_alr
     sqme_mismatch = zero
     associate (real_kinematics => soft_mismatch%real_kinematics)
-       xi = real_kinematics%xi_tilde
+       xi = real_kinematics%xi_mismatch
+       y = real_kinematics%y_mismatch
        s = real_kinematics%cms_energy2
        E_gluon = sqrt (s) * xi / two
      
@@ -4059,10 +4060,11 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
           print *, 'Phase space: '
           call vector4_write_set (real_kinematics%p_born_cms%get_momenta(1), &
              show_mass = .true.)
-          print *, 'xi: ', xi, 's: ', s, 'E_gluon: ', E_gluon
+          print *, 'xi: ', xi, 'y: ', y, 's: ', s, 'E_gluon: ', E_gluon
        end if
 
        do alr = 1, soft_mismatch%reg_data%n_regions
+
           i_phs = real_kinematics%alr_to_i_phs (alr)
           i_con = soft_mismatch%reg_data%alr_to_i_contributor (alr)
           q2 = real_kinematics%xi_ref_momenta(i_con)**2
@@ -4070,30 +4072,32 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
           p_em = real_kinematics%p_born_cms%get_momentum (1, emitter)
           i_res = soft_mismatch%reg_data%regions(alr)%i_res
           i_uborn = soft_mismatch%reg_data%regions(alr)%uborn_index
+
           call print_debug_alr ()
+
           call soft_mismatch%sub_soft%create_softvec_mismatch &
-             (E_gluon, real_kinematics%y(i_phs), real_kinematics%phi, p_em) 
+             (E_gluon, y, real_kinematics%phi, p_em) 
           if (debug_active (D_MISMATCH)) &
              print *, 'Created soft vector: ', soft_mismatch%sub_soft%p_soft%p 
+
           select type (fks_mapping => soft_mismatch%reg_data%fks_mapping)
           type is (fks_mapping_resonances_t)
              call fks_mapping%set_resonance_momentum &
                 (real_kinematics%xi_ref_momenta(i_con))
           end select 
+
           call soft_mismatch%sub_soft%compute (real_kinematics%p_born_cms%get_momenta(1), &
-             soft_mismatch%sqme_born_cc(:,:,i_uborn), real_kinematics%y(i_phs), &
-             real_kinematics%y_soft(i_phs), real_kinematics%phi, &
-             q2, alpha_s, alr, emitter, i_res)
-       !!! evaluate mismatch
-          sqme_alr = soft_mismatch%compute (alr, xi, real_kinematics%y(i_phs), &
-             p_em, real_kinematics%xi_ref_momenta(i_con), soft_mismatch%sub_soft%p_soft, &
+             soft_mismatch%sqme_born_cc(:,:,i_uborn), y, q2, alpha_s, alr, emitter, i_res)
+
+          sqme_alr = soft_mismatch%compute (alr, xi, y, p_em, &
+             real_kinematics%xi_ref_momenta(i_con), soft_mismatch%sub_soft%p_soft, &
              soft_mismatch%sqme_born(i_uborn), soft_mismatch%sub_soft%value(alr), &
              alpha_s, s)
+
+          call msg_debug (D_MISMATCH, 'sqme_alr: ', sqme_alr)
           sqme_mismatch = sqme_mismatch + sqme_alr
-          !print *, 'alr: ', alr, 'sqme: ', sqme_alr
+
        end do
-       !print *, 'sqme_mismatch: ', sqme_mismatch
-       !print *, '*********************************************'
     end associate
   contains
     subroutine print_debug_alr ()
@@ -4152,7 +4156,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
           ( exp(expo) - exp(- xi) ) / (one - y)
     end if
 
-    jacobian = soft_mismatch%real_kinematics%jac_rand (1) * s * xi / (8 * twopi3)
+    jacobian = soft_mismatch%real_kinematics%jac_mismatch * s * xi / (8 * twopi3)
     sqme_mismatch = (sm1 - sm2) * jacobian
 
   end function soft_mismatch_compute
@@ -5061,7 +5065,6 @@ the corresponding jacobians.
           i_uborn = rsub%reg_data%regions(alr)%uborn_index
           call rsub%sub_soft%compute (real_kinematics%p_born_cms%get_momenta(1), &
              rsub%sqme_born_cc(:,:,i_uborn), real_kinematics%y(i_phs), &
-             real_kinematics%y_soft(i_phs), real_kinematics%phi, &
              q2, alpha_s, alr, emitter, rsub%current_i_res)
        else
           rsub%sub_soft%value(alr) = zero
@@ -5592,7 +5595,9 @@ end module nlo_data
     real(default) :: xi_tilde
     real(default) :: phi
     real(default), dimension(:), allocatable :: xi_max, y
+    real(default) :: xi_mismatch, y_mismatch
     type(real_jacobian_t), dimension(:), allocatable :: jac
+    real(default) :: jac_mismatch
     !!!type(vector4_t), dimension(:), allocatable :: p_born_cms
     !!!type(vector4_t), dimension(:), allocatable :: p_born_lab
     !!!type(vector4_t), dimension(:), allocatable :: p_real_cms
@@ -5640,13 +5645,14 @@ end module nlo_data
     allocate (r%alr_to_i_phs (n_alr))
     allocate (r%xi_ref_momenta (n_contr))
     r%alr_to_i_phs = 0
-    r%xi_tilde = zero
+    r%xi_tilde = zero; r%xi_mismatch = zero
     r%xi_max = zero
-    r%y = zero
+    r%y = zero; r%y_mismatch = zero
     r%y_soft = zero
     r%phi = zero
     r%cms_energy2 = zero
     r%xi_ref_momenta = vector4_null
+    r%jac_mismatch = one
   end subroutine real_kinematics_init
 
 @ %def real_kinematics_init
@@ -9746,10 +9752,15 @@ with $\Lambda$.
              (generator%real_kinematics%p_born_lab%phs_point(1)%p(1:2))
 
     associate (rad_var => generator%real_kinematics)
-       rad_var%jac_rand = one
+       rad_var%jac_rand = one; rad_var%jac_mismatch = one
        call generator%compute_xi_tilde (r_in(I_XI))
        rad_var%phi = r_in (I_PHI) * twopi
-       rad_var%jac_rand = rad_var%jac_rand * twopi
+       select case (generator%mode)
+       case (GEN_REAL_PHASE_SPACE)
+          rad_var%jac_rand = rad_var%jac_rand * twopi
+       case (GEN_SOFT_MISMATCH)
+          rad_var%jac_mismatch = rad_var%jac_mismatch * twopi
+       end select
        call generator%compute_y (r_in(I_Y), p_born, phs_identifiers)
     end associate
   end subroutine phs_fks_generator_generate_radiation_variables
@@ -9875,12 +9886,14 @@ with $\Lambda$.
     real(default) :: q0
     type(vector4_t) :: p_res, p_em
     integer :: i
+    real(default), parameter :: tiny_scale = 0.01_default
+    real(default) :: theta2_min
     p_res = vector4_null
     associate (rad_var => generator%real_kinematics)
-       do i_phs = 1, size (phs_identifiers)
-          emitter = phs_identifiers(i_phs)%emitter 
-          select case (generator%mode)
-          case (GEN_REAL_PHASE_SPACE)
+       select case (generator%mode)
+       case (GEN_REAL_PHASE_SPACE)
+          do i_phs = 1, size (phs_identifiers)
+             emitter = phs_identifiers(i_phs)%emitter 
              if (any (generator%emitters == emitter)) then
                 if (generator%is_massive (emitter) .and. emitter > generator%n_in) then
                    generator%m2(emitter) = p(emitter)**2
@@ -9910,13 +9923,13 @@ with $\Lambda$.
                    rad_var%y(i_phs) = 1.5_default * (rad_var%y(i_phs) - rad_var%y(i_phs)**3/3)
                 end if
              end if
-          case (GEN_SOFT_MISMATCH)
-             rad_var%y(i_phs) = (one - two * r_y) * generator%y_max
-             rad_var%jac_rand(i_phs) = rad_var%jac_rand(i_phs) * 3 * (one - rad_var%y(i_phs)**2)
-             rad_var%y(i_phs) = 1.5_default * (rad_var%y(i_phs) - rad_var%y(i_phs)**3 / 3)
-             rad_var%y_soft(i_phs) = rad_var%y(i_phs)
-          end select
-       end do
+          end do
+       case (GEN_SOFT_MISMATCH)
+          rad_var%y_mismatch = (one - two * r_y) * generator%y_max
+          rad_var%jac_mismatch = rad_var%jac_mismatch * 3 * (one - rad_var%y_mismatch**2)
+          rad_var%y_mismatch = 1.5_default * (rad_var%y_mismatch - rad_var%y_mismatch**3 / 3)
+          rad_var%y_soft = rad_var%y_mismatch
+       end select
     end associate
   end subroutine phs_fks_generator_compute_y
 
@@ -9960,8 +9973,8 @@ with $\Lambda$.
        case (GEN_SOFT_MISMATCH)
           deno = one - r
           if (deno < tiny_13) deno = tiny_13
-          rad_var%xi_tilde = generator%xi_min + r / deno
-          rad_var%jac_rand = rad_var%jac_rand / (one - r)**2
+          rad_var%xi_mismatch = generator%xi_min + r / deno
+          rad_var%jac_mismatch = rad_var%jac_mismatch / deno**2
        end select
     end associate
   end subroutine phs_fks_generator_compute_xi_tilde
