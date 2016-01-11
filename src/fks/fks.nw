@@ -5241,7 +5241,10 @@ end module nlo_data
   !!!end subroutine fks_template_set_resonance_mappings
 
 @ %def fks_template_set_resonance_mappings
-@
+@ A resonance phase space is uniquely specified via the resonance contributors and the
+corresponding emitters. The [[phs_identifier]] type also checks whether 
+the given contributor-emitter configuration has already been evaluated to 
+avoid duplicate computations.
 <<nlo data: public>>=
   public :: phs_identifier_t
 <<nlo data: types>>=
@@ -5369,7 +5372,8 @@ end module nlo_data
     integer :: i_phs
     allocate (phs_point_set%phs_point (n_phs))
     do i_phs = 1, n_phs
-       call phs_point_set%phs_point(i_phs)%init (n_particles)
+       phs_point_set%phs_point(i_phs) = n_particles
+       !!!call phs_point_set%phs_point(i_phs)%init (n_particles)
     end do
     phs_point_set%initialized = .true.
   end subroutine phs_point_set_init
@@ -5444,6 +5448,19 @@ end module nlo_data
   end function phs_point_set_get_momentum
 
 @ %def phs_point_set_get_momentum
+@
+<<nlo data: phs point set: TBP>>=
+  procedure :: get_energy => phs_point_set_get_energy
+<<nlo data: procedures>>=
+  function phs_point_set_get_energy (phs_point_set, i_phs, i_mom) result (E)
+    real(default) :: E
+    class(phs_point_set_t), intent(in) :: phs_point_set
+    integer, intent(in) :: i_phs, i_mom
+    E = phs_point_set%phs_point(i_phs)%p(i_mom)%p(0)
+  end function phs_point_set_get_energy
+
+@ %def phs_point_set_get_energy
+@ 
 <<nlo data: phs point set: TBP>>=
   procedure :: set_momenta => phs_point_set_set_momenta
 <<nlo data: procedures>>=
@@ -8920,7 +8937,8 @@ recoiling momenta.
     inv_resonance_list = &
         create_inverse_resonance_list (nlegborn, resonance_list)
 
-    call p_tmp_real%init (n_resonant_particles + 1)
+    !!!call p_tmp_real%init (n_resonant_particles + 1)
+    p_tmp_real = n_resonant_particles + 1
     allocate (p_tmp_born (n_resonant_particles))
     p_tmp_born = vector4_null
     j = 1
@@ -9690,7 +9708,8 @@ with $\Lambda$.
 
     ! TODO: (cw-2015-12-29) Adapt this with phs_identifiers
     !!!call generator%generate_radiation_variables (r_in, p_born)
-    call p_real_phs%init (size (p_born) + 1)
+    !!!call p_real_phs%init (size (p_born) + 1)
+    p_real_phs = size (p_born) + 1
     call generator%generate_isr (i_phs, p_born, p_real_phs)
     allocate (p_real (p_real_phs%n_momenta), source = p_real_phs%p)
   end function phs_fks_generator_generate_isr_from_x
@@ -10001,27 +10020,47 @@ with $\Lambda$.
 @ %def phs_fks_generator_compute_xi_tilde
 @
 <<phs fks: phs fks generator: TBP>>=
-  procedure :: generate_fsr_from_x => phs_fks_generator_generate_fsr_from_x
+  generic :: generate_fsr_from_x => generate_fsr_from_x_default, &
+     generate_fsr_from_x_resonances
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: generate_fsr_from_x_default => phs_fks_generator_generate_fsr_from_x_default
 <<phs fks: procedures>>=
-  function phs_fks_generator_generate_fsr_from_x (generator, &
-                    r_in, emitter, i_phs, p_born, phs_identifiers) result  (p_real)
-    type(vector4_t), dimension(:), allocatable :: p_real
+  subroutine phs_fks_generator_generate_fsr_from_x_default (generator, &
+     r_in, emitter, i_phs, p_born, phs_identifiers, p_real)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in), dimension(:) :: r_in
     integer, intent(in) :: emitter, i_phs
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_identifier_t), intent(in), dimension(:) :: phs_identifiers
+    type(phs_point_t), intent(inout) :: p_real
     type(phs_point_t) :: p_real_phs
+    real(default) :: q0
 
+    call generator%generate_fsr_in (p_born, p_real)
+
+    q0 = generator%real_kinematics%xi_ref_momenta(1)**1 
     call generator%generate_radiation_variables (r_in, p_born, phs_identifiers)
-    ! TODO: (bcn 2015-12-17) this will most likely need the correct i_con?
     call generator%compute_xi_max (emitter, i_phs, p_born)
-    call p_real_phs%init (size (p_born) + 1)
-    call generator%generate_fsr (emitter, i_phs, p_born, p_real_phs)
-    allocate (p_real (p_real_phs%n_momenta), source = p_real_phs%p)
-  end function phs_fks_generator_generate_fsr_from_x
 
-@ %def phs_fks_generator_generate_fsr_from_x
+    call generator%generate_fsr_out (emitter, i_phs, p_born, p_real, q0)
+  end subroutine phs_fks_generator_generate_fsr_from_x_default
+
+@ %def phs_fks_generator_generate_fsr_from_x_default
+@
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: generate_fsr_from_x_resonances &
+     => phs_fks_generator_generate_fsr_from_x_resonances
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_generate_fsr_from_x_resonances (generator, &
+     r_in, emitter, i_phs, i_con, p_born, p_real)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    real(default), intent(in), dimension(:) :: r_in
+    integer, intent(in) :: emitter, i_phs, i_con
+    type(vector4_t), intent(in), dimension(:) :: p_born
+    type (phs_point_t), intent(inout) :: p_real
+  end subroutine phs_fks_generator_generate_fsr_from_x_resonances
+
+@ %def phs_fks_generator_generate_fsr_from_x_resonances
 @ Get [[xi]] and [[y]] from an external routine (e.g. [[powheg]]) and
 generate an FSR phase space. Note that the flag [[supply\_xi\_max]] is
 set to [[.false.]] because it is assumed that the upper bound on [[xi]]
@@ -10045,7 +10084,8 @@ has already been taken into account during its generation.
        rad_var%phi = phi
     end associate
     call generator%set_beam_energy (p_born(1)%p(0) + p_born(2)%p(0))
-    call p_real_phs%init (size (p_born) + 1)
+    !!!call p_real_phs%init (size (p_born) + 1)
+    p_real_phs = size (p_born) + 1
     call generator%generate_fsr (emitter, i_phs, p_born, p_real_phs)
     allocate (p_real (p_real_phs%n_momenta), source = p_real_phs%p)
   end function phs_fks_generator_generate_fsr_from_xi_and_y

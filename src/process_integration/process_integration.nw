@@ -2007,6 +2007,7 @@ module processes
   use pcm_base, only: pcm_t, pcm_instance_t
   use nlo_data, only: sqme_collector_t
   use nlo_data, only: fks_template_t, nlo_settings_t
+  use nlo_data, only: phs_point_set_t, phs_identifier_t
   use nlo_controller, only: nlo_controller_t
 
   use phs_wood, only: phs_wood_config_t, phs_wood_t
@@ -8350,24 +8351,21 @@ physical event.
      term_instance_evaluate_interaction_real_rad
 <<Processes: procedures>>=
   subroutine term_instance_evaluate_interaction_real_rad (term, &
-     component, p_born, p_real, i_term, alpha_s_external)
+     component, i_term, i_phs, alpha_s_external)
     class(term_instance_t), intent(inout) :: term
     type(component_instance_t), intent(inout) :: component
-    type(vector4_t), intent(in), dimension(:) :: p_born, p_real
-    integer, intent(in) :: i_term
+    integer, intent(in) :: i_term, i_phs 
     real(default), intent(in), optional :: alpha_s_external
     integer :: i
     real(default), allocatable :: alpha_qcd_forced
 
-    call term%nlo_controller%int_born%set_momenta (p_born)
-    call term%int_hard_real%set_momenta (p_real)
-
-    call term%isolated_real%receive_kinematics ()
-    call term%connected_real%receive_kinematics ()
+    call term%update_real_interactions (i_phs)
+    select type (phs => term%k_term%phs)
+    type is (phs_fks_t)
+       call term%nlo_controller%set_active_emitter &
+          (phs%phs_identifiers(i_phs)%emitter)
+    end select
     
-    call term%connected_real%evaluate_expressions (term%passed, &
-         term%scale, term%fac_scale, term%ren_scale, term%weight)
-
     call component%core_state%reset_new_kinematics ()
     select type (core => component%config%core)
     type is (prc_omega_t)
@@ -8400,7 +8398,7 @@ physical event.
               alpha_qcd_forced, component%core_state)
        end do
     class is (prc_user_defined_base_t)
-       term%nlo_controller%amp_born = 0._default
+       term%nlo_controller%amp_born = zero
        call core_sub_born%update_alpha_s (component%core_state, term%fac_scale)
     end select 
     call term%nlo_controller%int_born%set_matrix_element &
@@ -8959,6 +8957,25 @@ selected MCI parameter set.
   end subroutine process_instance_disable_virtual_components
           
 @ %def process_instance_disable_virtual_components
+@
+<<Processes: process instance: TBP>>=
+  procedure :: get_phs_identifiers => process_instance_get_phs_identifiers
+<<Processes: procedures>>=
+  function process_instance_get_phs_identifiers (instance) result (phs_identifiers)
+    type(phs_identifier_t), dimension(:), allocatable :: phs_identifiers
+    class(process_instance_t), intent(in) :: instance
+    integer :: i_term
+    do i_term = 1, size (instance%term)
+       select type (phs => instance%term(i_term)%k_term%phs)
+       type is (phs_fks_t)
+          allocate (phs_identifiers (size (phs%phs_identifiers)))
+          phs_identifiers = phs%phs_identifiers
+          exit
+       end select
+    end do
+  end function process_instance_get_phs_identifiers
+
+@ %def process_instance_get_phs_identifiers
 @ Initialization connects the instance with a process.  All initial
 information is transferred from the process object.  The process
 object contains templates for the interaction subobjects (beam and
@@ -9846,7 +9863,7 @@ if it fails the cuts for at least one emitter.
       => process_instance_evaluate_trace_real_per_resonance
 <<Processes: procedures>>=
   subroutine process_instance_evaluate_trace_real_per_resonance (instance, term, pcm, &
-                i_component, i_reg, i_phs)
+     i_component, i_reg, i_phs)
     class(process_instance_t), intent(inout) :: instance
     type(term_instance_t), intent(inout) :: term
     type(pcm_instance_nlo_t), intent(inout) :: pcm
@@ -9891,10 +9908,10 @@ if it fails the cuts for at least one emitter.
 <<Processes: process instance: TBP>>=
   procedure :: evaluate_trace_real_rad => process_instance_evaluate_trace_real_rad
 <<Processes: procedures>>=
-  subroutine process_instance_evaluate_trace_real_rad (instance, term, i)
+  subroutine process_instance_evaluate_trace_real_rad (instance, term, i, i_phs)
     class(process_instance_t), intent(inout) :: instance
     type(term_instance_t), intent(inout) :: term
-    integer, intent(in) :: i
+    integer, intent(in) :: i, i_phs
     integer :: emitter
     call msg_debug2 (D_SUBTRACTION, "process_instance_evaluate_trace_real_rad")
     select type (pcm => instance%pcm)
@@ -9903,9 +9920,9 @@ if it fails the cuts for at least one emitter.
        call term%evaluate_trace ()
        emitter = term%nlo_controller%active_emitter
        associate (component => instance%component(i))
-         call component%evaluate_sqme_real (term, 1)
-         pcm%collector%sqme_real_per_emitter (1, emitter) = &
-              pcm%collector%current_sqme_real
+          call component%evaluate_sqme_real (term, i_phs)
+          pcm%collector%sqme_real_per_emitter (1, emitter) = &
+             pcm%collector%current_sqme_real
        end associate
     end select
   end subroutine process_instance_evaluate_trace_real_rad
@@ -9917,20 +9934,18 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
   procedure :: compute_sqme_real_rad => process_instance_compute_sqme_real_rad
 <<Processes: procedures>>=
   subroutine process_instance_compute_sqme_real_rad &
-       (instance, emitter, p_born, p_real, alpha_s_external)
+       (instance, i_phs, alpha_s_external)
     class(process_instance_t), intent(inout) :: instance
-    integer, intent(in) :: emitter
-    type(vector4_t), intent(in), dimension(:) :: p_born 
-    type(vector4_t), intent(in), dimension(:) :: p_real
+    integer, intent(in) :: i_phs
     real(default), intent(in), optional :: alpha_s_external
     integer :: i_real
     
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
        if (.not. pcm%collect_matrix_elements) &
-            call msg_fatal ("Compute radiation matrix elements: " // &
-            "Sqme collector must be allocated!")
-       call pcm%controller%set_active_emitter (emitter)
+          call msg_fatal ("Compute radiation matrix elements: " // &
+             "Sqme collector must be allocated!")
+       !!!call pcm%controller%set_active_emitter (emitter)
        call pcm%controller%disable_subtraction () 
        associate (config => instance%component(pcm%active_real_component)%config)
          select case (config%component_type)
@@ -9947,8 +9962,8 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
        
        associate (term => instance%term(i_real))
          call term%evaluate_interaction_real_rad (instance%component(i_real), &
-              p_born, p_real, i_real, alpha_s_external)
-         call instance%evaluate_trace_real_rad (term, i_real)
+            i_real, i_phs, alpha_s_external)
+         call instance%evaluate_trace_real_rad (term, i_real, i_phs)
        end associate
        associate (component => instance%component(i_real))
          call component%apply_damping_factor (component%sqme)
@@ -9962,24 +9977,22 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
   procedure :: compute_sqme_real_sub => process_instance_compute_sqme_real_sub
 <<Processes: procedures>>=
   subroutine process_instance_compute_sqme_real_sub &
-       (instance, emitter, p_born, p_real, alpha_s_external)
+       (instance, i_phs, alpha_s_external)
     class(process_instance_t), intent(inout) :: instance
-    integer, intent(in) :: emitter
-    type(vector4_t), intent(in), dimension(:) :: p_born
-    type(vector4_t), intent(in), dimension(:) :: p_real
+    integer, intent(in) :: i_phs
     real(default), intent(in), optional :: alpha_s_external
     integer :: i_real
 
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
-       call pcm%controller%set_active_emitter (emitter)
+       !!!call pcm%controller%set_active_emitter (emitter)
        call pcm%controller%disable_sqme_np1 ()
        i_real = instance%component(1)%config%config%get_associated_real ()
 
        associate (term => instance%term(i_real))
          call term%evaluate_interaction_real_rad (instance%component(i_real), &
-              p_born, p_real, i_real, alpha_s_external)
-         call instance%evaluate_trace_real_rad (term, i_real)
+            i_real, i_phs, alpha_s_external)
+         call instance%evaluate_trace_real_rad (term, i_real, i_phs)
        end associate
     end select
   end subroutine process_instance_compute_sqme_real_sub
