@@ -33,17 +33,18 @@ subroutine @ID@_start_openloops () bind(C)
 
 end subroutine @ID@_start_openloops
 
-subroutine @ID@_compute_virtual() result (amp) bind(C)
+subroutine @ID@_compute_virtual(amp2, p) bind(C)
   use iso_c_binding
   use openloops
   use @ID@_threshold
   implicit none
-  complex(8) :: amp
+  real(c_default_float), intent(out) :: amp2
+  real(c_default_float), dimension(0:3,*), intent(in) :: p
   integer :: k, i
   real(8) :: m2_tree, m2_loop(0:2), acc
   real(8) :: p_ex(0:3,5)
   real(8) :: mu = 100, alpha_s = 0.1
-
+  print *, 'size(p,dim=2) =    ', size(p,dim=2) !!! Debugging
   do i = 1, 2
      id = id(i)
      if (id > 0) then
