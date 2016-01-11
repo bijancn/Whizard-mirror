@@ -1119,99 +1119,15 @@ there is only a soft singularity if the radiated parton becomes soft.
 <<fks regions: resonance mapping: TBP>>=
   procedure :: init => resonance_mapping_init
 <<fks regions: procedures>>=
-  subroutine resonance_mapping_init (res_map, res_hist, flv, n_in, success)
+  subroutine resonance_mapping_init (res_map, res_hist)
     class(resonance_mapping_t), intent(inout) :: res_map
     type(resonance_history_t), intent(in), dimension(:) :: res_hist
-    integer, intent(in), dimension(:) :: flv
-    integer, intent(in) :: n_in
-    logical, intent(out) :: success
-    type(resonance_history_t), dimension(:), allocatable :: res_hist_colored
     integer :: nleg_out
     integer :: n_hist, i_hist, i_res, n_removed
-    call msg_debug (D_SUBTRACTION, "resonance_mapping_init")
-    if (debug_active (D_SUBTRACTION)) then
-       call msg_debug (D_SUBTRACTION, "Original resonances:")
-       do i_hist = 1, size(res_hist)
-          call res_hist(i_hist)%write ()
-       end do
-    end if
-    call remove_uncolored_resonances ()
-    call contract_resonances (res_hist_colored, res_map%resonances)
-    if (debug_active (D_SUBTRACTION)) then
-       call msg_debug (D_SUBTRACTION, "Resonances after removing uncolored and duplicates:")
-       do i_hist = 1, size(res_map%resonances)
-          call res_map%resonances(i_hist)%write ()
-       end do
-    end if
-    if (size (res_map%resonances) == 0) then
-       call msg_warning ("No resonances found. Proceed in usual FKS mode.")
-       success = .false.
-    else
-       success = .true.
-    end if
-    allocate (res_map%p_res (size (res_map%resonances)))
+    allocate (res_map%resonances (size (res_hist)), &
+       res_map%p_res (size (res_hist)))
+    res_map%resonances = res_hist
     res_map%p_res = vector4_null
-
-  contains
-
-    subroutine remove_uncolored_resonances ()
-      type(resonance_history_t), dimension(:), allocatable :: res_hist_tmp
-      n_hist = size (res_hist)
-      nleg_out = size (flv) - n_in
-      allocate (res_hist_tmp (n_hist))
-      allocate (res_hist_colored (n_hist))
-      do i_hist = 1, n_hist
-         res_hist_tmp(i_hist) = res_hist(i_hist)
-         call res_hist_tmp(i_hist)%add_offset (n_in)
-         n_removed = 0
-         do i_res = 1, res_hist_tmp(i_hist)%n_resonances
-            associate (resonance => res_hist_tmp(i_hist)%resonances(i_res - n_removed))
-               if (.not. any (is_colored (flv (resonance%contributors%c))) &
-                  .or. size (resonance%contributors%c) == nleg_out) then
-                  call res_hist_tmp(i_hist)%remove_resonance (i_res - n_removed)
-                  n_removed = n_removed + 1
-               end if
-            end associate
-         end do
-         if (allocated (res_hist_tmp(i_hist)%resonances)) then
-            if (any (res_hist_colored == res_hist_tmp(i_hist))) then
-               cycle
-            else
-               do i_res = 1, res_hist_tmp(i_hist)%n_resonances
-                  associate (resonance => res_hist_tmp(i_hist)%resonances(i_res))
-                     call res_hist_colored(i_hist)%add_resonance (resonance)
-                  end associate
-               end do
-            end if
-         end if
-      end do
-    end subroutine remove_uncolored_resonances
-
-    subroutine contract_resonances (res_history_in, res_history_out)
-      type(resonance_history_t), intent(in), dimension(:) :: res_history_in
-      type(resonance_history_t), intent(out), dimension(:), allocatable :: res_history_out
-      logical, dimension(:), allocatable :: i_non_zero
-      integer :: n_hist_non_zero, n_hist
-      integer :: i_hist_new
-      n_hist = size (res_history_in); n_hist_non_zero = 0
-      allocate (i_non_zero (n_hist))
-      i_non_zero = .false.
-      do i_hist = 1, n_hist
-         if (res_history_in(i_hist)%n_resonances /= 0) then
-            n_hist_non_zero = n_hist_non_zero + 1
-            i_non_zero(i_hist) = .true.
-         end if
-      end do
-      allocate (res_history_out (n_hist_non_zero))
-      i_hist_new = 1
-      do i_hist = 1, n_hist
-         if (i_non_zero (i_hist)) then
-            res_history_out (i_hist_new) = res_history_in (i_hist)
-            i_hist_new = i_hist_new + 1
-         end if
-      end do
-    end subroutine contract_resonances
-
   end subroutine resonance_mapping_init
 
 @ %def resonance_mapping_init
@@ -3992,6 +3908,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   public :: soft_mismatch_t
 <<real subtraction: types>>=
   type :: soft_mismatch_t
+    logical :: active = .true.
     type(region_data_t), pointer :: reg_data => null ()
     real(default), dimension(:), pointer :: sqme_born => null ()
     real(default), dimension(:,:,:), pointer :: sqme_born_cc => null ()
@@ -4013,12 +3930,17 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     type(region_data_t), intent(in), target :: reg_data
     type(sqme_collector_t), intent(in), target :: sqme_collector
     type(real_kinematics_t), intent(in), target :: real_kinematics
-    soft_mismatch%reg_data => reg_data
-    soft_mismatch%sqme_born => sqme_collector%sqme_subtraction_born_list
-    soft_mismatch%sqme_born_cc => sqme_collector%sqme_born_cc
-    call soft_mismatch%sub_soft%init (reg_data, n_in, nlegs_born, nlegs_born + 1)
-    soft_mismatch%sub_soft%xi2_expanded = .false.
-    soft_mismatch%real_kinematics => real_kinematics
+    select type (mapping => reg_data%fks_mapping)
+    type is (fks_mapping_default_t)
+       soft_mismatch%active = .false.
+    type is (fks_mapping_resonances_t)
+       soft_mismatch%reg_data => reg_data
+       soft_mismatch%sqme_born => sqme_collector%sqme_subtraction_born_list
+       soft_mismatch%sqme_born_cc => sqme_collector%sqme_born_cc
+       call soft_mismatch%sub_soft%init (reg_data, n_in, nlegs_born, nlegs_born + 1)
+       soft_mismatch%sub_soft%xi2_expanded = .false.
+       soft_mismatch%real_kinematics => real_kinematics
+    end select
   end subroutine soft_mismatch_init
 
 @ %def soft_mismatch_init
@@ -4036,6 +3958,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     type(vector4_t) :: p_em
     real(default) :: sqme_alr
     sqme_mismatch = zero
+    if (.not. soft_mismatch%active) return
     associate (real_kinematics => soft_mismatch%real_kinematics)
        xi = real_kinematics%xi_mismatch
        y = real_kinematics%y_mismatch
@@ -7157,7 +7080,7 @@ process.
      phs_config, model)
      class(nlo_controller_t), intent(inout), target :: nlo_controller
      type(process_constants_t), intent(in), dimension(2) :: prc_constants
-     type(fks_template_t), intent(in) :: template
+     type(fks_template_t), intent(inout) :: template
      !!! intent(inout) because the phase space might have to be generated new
      class(phs_config_t), intent(inout) :: phs_config
      type(model_data_t), intent(in) :: model
@@ -7489,22 +7412,34 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
   subroutine nlo_controller_init_region_and_color_data (nlo_controller, &
      template, model, prc_constants, phs_config)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    type(fks_template_t), intent(in) :: template
+    type(fks_template_t), intent(inout) :: template
     type(model_data_t), intent(in) :: model
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
     class(phs_config_t), intent(inout) :: phs_config
     type(resonance_history_t), dimension(:), allocatable :: resonance_histories
+    type(resonance_history_t), dimension(:), allocatable :: resonance_histories_clean
+    logical :: success
+    integer :: mapping_type
+    mapping_type = template%mapping_type
+    select case (mapping_type)
+    case (FKS_RESONANCES) 
+       select type (phs_config)
+       type is (phs_fks_config_t)
+          resonance_histories = phs_config%get_resonance_histories ()
+          call clean_resonance_histories (resonance_histories, &
+             nlo_controller%particle_data%n_in, &
+             nlo_controller%particle_states%flv_state_born (:,1), &
+             resonance_histories_clean, success)
+          if (.not. success) &
+             template%mapping_type = FKS_DEFAULT
+       end select
+    end select
     call nlo_controller%init_region_data (template, model)
     if (nlo_controller%settings%use_internal_color_correlations) &
        call nlo_controller%color_data%init (nlo_controller%reg_data, prc_constants)
     select case (template%mapping_type)
     case (FKS_RESONANCES)
-       select type (phs_config)
-       type is (phs_fks_config_t)
-          resonance_histories = phs_config%get_resonance_histories ()
-       end select
-       !!!call nlo_controller%init_region_data (template, model)
-       call nlo_controller%init_resonance_info (resonance_histories)
+       call nlo_controller%init_resonance_info (resonance_histories_clean)
        nlo_controller%settings%use_resonance_mappings = .true.
     end select
     call nlo_controller%reg_data%write_to_file (template%id)
@@ -7512,6 +7447,104 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
   end subroutine nlo_controller_init_region_and_color_data
 
 @ %def nlo_controller_init_region_and_color_data
+@
+<<nlo controller: procedures>>=
+  subroutine clean_resonance_histories (res_hist, n_in, flv, res_hist_clean, success)
+    type(resonance_history_t), intent(in), dimension(:) :: res_hist
+    integer, intent(in) :: n_in
+    integer, intent(in), dimension(:) :: flv
+    type(resonance_history_t), intent(out), dimension(:), allocatable :: res_hist_clean
+    logical, intent(out) :: success
+    integer :: i_hist
+    type(resonance_history_t), dimension(:), allocatable :: res_hist_colored
+
+    call msg_debug (D_SUBTRACTION, "resonance_mapping_init")
+    if (debug_active (D_SUBTRACTION)) then
+       call msg_debug (D_SUBTRACTION, "Original resonances:")
+       do i_hist = 1, size(res_hist)
+          call res_hist(i_hist)%write ()
+       end do
+    end if
+
+    call remove_uncolored_resonances ()
+    call contract_resonances (res_hist_colored, res_hist_clean)
+    if (debug_active (D_SUBTRACTION)) then
+       call msg_debug (D_SUBTRACTION, "Resonances after removing uncolored and duplicates: ")
+       do i_hist = 1, size (res_hist_clean)
+          call res_hist_clean(i_hist)%write ()
+       end do
+    end if
+    if (size (res_hist_clean) == 0) then
+       call msg_warning ("No resonances found. Proceed in usual FKS mode.")
+       success = .false.
+    else
+       success = .true.
+    end if
+   
+  contains
+    subroutine remove_uncolored_resonances ()
+      type(resonance_history_t), dimension(:), allocatable :: res_hist_tmp
+      integer :: n_hist, nleg_out, n_removed
+      integer :: i_res, i_hist
+      n_hist = size (res_hist)
+      nleg_out = size (flv) - n_in
+      allocate (res_hist_tmp (n_hist))
+      allocate (res_hist_colored (n_hist))
+      do i_hist = 1, n_hist
+         res_hist_tmp(i_hist) = res_hist(i_hist)
+         call res_hist_tmp(i_hist)%add_offset (n_in)
+         n_removed = 0
+         do i_res = 1, res_hist_tmp(i_hist)%n_resonances
+            associate (resonance => res_hist_tmp(i_hist)%resonances(i_res - n_removed))
+               if (.not. any (is_colored (flv (resonance%contributors%c))) &
+                  .or. size (resonance%contributors%c) == nleg_out) then
+                  call res_hist_tmp(i_hist)%remove_resonance (i_res - n_removed)
+                  n_removed = n_removed + 1
+               end if
+            end associate
+         end do
+         if (allocated (res_hist_tmp(i_hist)%resonances)) then
+            if (any (res_hist_colored == res_hist_tmp(i_hist))) then
+               cycle
+            else
+               do i_res = 1, res_hist_tmp(i_hist)%n_resonances
+                  associate (resonance => res_hist_tmp(i_hist)%resonances(i_res))
+                     call res_hist_colored(i_hist)%add_resonance (resonance)
+                  end associate
+               end do
+            end if
+         end if
+      end do
+    end subroutine remove_uncolored_resonances
+
+    subroutine contract_resonances (res_history_in, res_history_out)
+      type(resonance_history_t), intent(in), dimension(:) :: res_history_in
+      type(resonance_history_t), intent(out), dimension(:), allocatable :: res_history_out
+      logical, dimension(:), allocatable :: i_non_zero
+      integer :: n_hist_non_zero, n_hist
+      integer :: i_hist_new
+      n_hist = size (res_history_in); n_hist_non_zero = 0
+      allocate (i_non_zero (n_hist))
+      i_non_zero = .false.
+      do i_hist = 1, n_hist
+         if (res_history_in(i_hist)%n_resonances /= 0) then
+            n_hist_non_zero = n_hist_non_zero + 1
+            i_non_zero(i_hist) = .true.
+         end if
+      end do
+      allocate (res_history_out (n_hist_non_zero))
+      i_hist_new = 1
+      do i_hist = 1, n_hist
+         if (i_non_zero (i_hist)) then
+            res_history_out (i_hist_new) = res_history_in (i_hist)
+            i_hist_new = i_hist_new + 1
+         end if
+      end do
+    end subroutine contract_resonances
+
+  end subroutine clean_resonance_histories
+
+@ %def clean_resonance_histories
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: init_region_data => nlo_controller_init_region_data
@@ -7558,10 +7591,7 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
     logical :: success
     select type (map => nlo_controller%reg_data%fks_mapping)
     type is (fks_mapping_resonances_t)
-       call map%res_map%init (resonance_histories, &
-          nlo_controller%particle_states%flv_state_born (:,1), &
-          nlo_controller%particle_data%n_in, &
-          success)
+       call map%res_map%init (resonance_histories)
     end select
     call nlo_controller%reg_data%init_resonance_information ()
   end subroutine nlo_controller_init_resonance_info
