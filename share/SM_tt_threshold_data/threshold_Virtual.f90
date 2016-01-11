@@ -27,7 +27,7 @@ subroutine @ID@_start_openloops () bind(C)
   ! 11 for loop, 12 for loop^2
   id(1) = register_process("6 -> 24 5", 11)
   id(2) = register_process("-6 -> -24 -5", 11)
-  id(1) = register_process("6 -> 24 5", 11)
+  !id(1) = register_process("6 -> 24 5", 11)
 
   call start()
 
