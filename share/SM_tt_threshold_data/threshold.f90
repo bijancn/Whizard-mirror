@@ -370,7 +370,6 @@ contains
        me = me * top_width_nlo (sqrt(p46*p46)) / top_width_lo (sqrt(p46*p46))
        me = me * top_width_nlo (sqrt(p35*p35)) / top_width_lo (sqrt(p35*p35))
     case default
-       
     end select
   end function decay_me
 
