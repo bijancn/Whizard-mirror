@@ -4768,6 +4768,7 @@ end module evt_nlo
      type(phs_point_set_t) :: p_real_cms
      type(phs_point_set_t) :: p_real_lab
      type(phs_identifier_t), dimension(:), allocatable :: phs_identifiers
+     integer, dimension(:), allocatable :: i_evaluation_to_i_phs
   contains
   <<Evt Nlo: event deps: TBP>>
   end type nlo_event_deps_t
@@ -4860,6 +4861,7 @@ is distributed over the real and Born subevents.
     class(evt_nlo_t), intent(inout) :: evt
     real(default), intent(inout) :: probability
     real(default) :: weight
+    integer :: i_phs
     call msg_debug (D_TRANSFORMS, "evt_nlo_generate_weighted")
     call msg_debug (D_TRANSFORMS, "probability (before)", probability)
     call msg_debug (D_TRANSFORMS, "evt%i_evaluation", evt%i_evaluation)
@@ -4869,7 +4871,8 @@ is distributed over the real and Born subevents.
        weight = evt%compute_subtraction_weights ()
        probability = probability + weight
     else
-       call evt%compute_real (evt%i_evaluation)
+       i_phs = evt%event_deps%i_evaluation_to_i_phs (evt%i_evaluation)
+       call evt%compute_real (i_phs)
        probability = evt%sqme_rad
     end if
     probability = probability * (size (evt%event_deps%phs_identifiers) + 1)
@@ -4905,6 +4908,7 @@ mother-daughter relations and color information.
     type(vector4_t), dimension(:), allocatable :: p_new
     integer, dimension(:), allocatable :: flv_radiated
     real(default) :: r_col
+    integer :: i_phs
     call msg_debug (D_TRANSFORMS, "evt_nlo_build_radiated_particle_set")
     call msg_debug (D_TRANSFORMS, "evt%i_evaluation", evt%i_evaluation)
     select type (pcm => evt%process_instance%pcm)
@@ -4916,13 +4920,14 @@ mother-daughter relations and color information.
           call evt%rng%generate (r_col)
           call msg_debug2 (D_TRANSFORMS, "r_col", r_col)
           if (debug2_active (D_TRANSFORMS))  print *, 'flv_radiated =    ', flv_radiated
-          emitter = evt%event_deps%phs_identifiers(evt%i_evaluation)%emitter
+          i_phs = evt%event_deps%i_evaluation_to_i_phs (evt%i_evaluation)
+          emitter = evt%event_deps%phs_identifiers(i_phs)%emitter
           call msg_debug (D_TRANSFORMS, "emitter", emitter)
           allocate (p_new (size (pcm%controller%get_momenta &
-             (born_phsp = .false., i_phs = evt%i_evaluation))))
-          p_new = pcm%controller%get_momenta (born_phsp = .false., i_phs = evt%i_evaluation)
+             (born_phsp = .false., i_phs = i_phs))))
+          p_new = pcm%controller%get_momenta (born_phsp = .false., i_phs = i_phs)
           call evt%particle_set_radiated(i_event)%build_radiation (p_new, emitter, flv_radiated, &
-               evt%process_instance%process%get_model_ptr (), r_col)
+             evt%process_instance%process%get_model_ptr (), r_col)
        end if
        evt%i_evaluation = evt%i_evaluation + 1
     end select
@@ -5114,6 +5119,7 @@ emission matrix elements.
     class(evt_nlo_t), intent(inout) :: evt
     type(process_instance_t), intent(in) :: process_instance
     integer :: n_born, n_real, n_phs 
+    integer :: i_real
     associate (event_deps => evt%event_deps)
        event_deps%cm_frame = process_instance%is_cm_frame (1)
        select type (pcm => process_instance%pcm)
@@ -5127,10 +5133,19 @@ emission matrix elements.
        !!!allocate (event_deps%p_real_lab (n_real))
        call event_deps%p_born_cms%init (n_born, 1)
        call event_deps%p_born_lab%init (n_born, 1)
-       event_deps%phs_identifiers = process_instance%get_phs_identifiers ()
+       i_real = process_instance%get_associated_real ()
+       select type (phs => process_instance%term(i_real)%k_term%phs)
+       type is (phs_fks_t)
+          event_deps%phs_identifiers = phs%phs_identifiers
+       end select
        n_phs = size (event_deps%phs_identifiers)
        call event_deps%p_real_cms%init (n_real, n_phs)
        call event_deps%p_real_lab%init (n_real, n_phs)
+       associate (nlo_controller => process_instance%component(i_real)%nlo_controller)
+          allocate (event_deps%i_evaluation_to_i_phs &
+             (size (nlo_controller%real_kinematics%alr_to_i_phs)))
+          event_deps%i_evaluation_to_i_phs = nlo_controller%real_kinematics%alr_to_i_phs
+       end associate
     end associate
   end subroutine evt_nlo_setup_event_kinematics
 
