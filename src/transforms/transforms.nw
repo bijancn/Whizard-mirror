@@ -4740,6 +4740,7 @@ module evt_nlo
   use event_transforms
 
   use nlo_data, only: sqme_collector_t, phs_identifier_t, phs_point_set_t
+  use cascades, only: resonance_contributors_t
   use phs_fks
 
 <<Standard module head>>
@@ -4767,8 +4768,10 @@ end module evt_nlo
      type(phs_point_set_t) :: p_born_lab
      type(phs_point_set_t) :: p_real_cms
      type(phs_point_set_t) :: p_real_lab
+     type(resonance_contributors_t), dimension(:), allocatable :: contributors
      type(phs_identifier_t), dimension(:), allocatable :: phs_identifiers
      integer, dimension(:), allocatable :: i_evaluation_to_i_phs
+     integer, dimension(:), allocatable :: alr_to_i_con
   contains
   <<Evt Nlo: event deps: TBP>>
   end type nlo_event_deps_t
@@ -4867,6 +4870,7 @@ is distributed over the real and Born subevents.
     call msg_debug (D_TRANSFORMS, "evt%i_evaluation", evt%i_evaluation)
     evt%particle_set = evt%previous%particle_set
     if (evt%i_evaluation == 0) then
+       call evt%reset_phs_identifiers ()
        call evt%evaluate_real_kinematics ()
        weight = evt%compute_subtraction_weights ()
        probability = probability + weight
@@ -4881,6 +4885,16 @@ is distributed over the real and Born subevents.
   end subroutine evt_nlo_generate_weighted
 
 @ %def evt_nlo_generate_weighted
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: reset_phs_identifiers => evt_nlo_reset_phs_identifiers
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_reset_phs_identifiers (evt)
+     class(evt_nlo_t), intent(inout) :: evt
+     evt%event_deps%phs_identifiers%evaluated = .false.
+  end subroutine evt_nlo_reset_phs_identifiers
+
+@ %def evt_nlo_reset_phs_identifiers
 @
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: make_particle_set => evt_nlo_make_particle_set
@@ -4940,8 +4954,9 @@ mother-daughter relations and color information.
 <<Evt Nlo: procedures>>=
   subroutine evt_nlo_evaluate_real_kinematics (evt)
     class(evt_nlo_t), intent(inout) :: evt
-    integer :: i_phs, emitter
+    integer :: alr, i_phs, i_con, emitter
     real(default), dimension(3) :: x_rad
+    logical :: use_contributors
 
     select type (pcm => evt%process_instance%pcm)
     class is (pcm_instance_nlo_t)
@@ -4951,16 +4966,32 @@ mother-daughter relations and color information.
           event_deps%p_born_cms%phs_point(1) = evt%boost_to_cms (event_deps%p_born_lab%phs_point(1)) 
           call evt%phs_fks_generator%set_beam_energy &
              (event_deps%p_born_cms%get_energy (1, 1))
-          do i_phs = 1, size (event_deps%phs_identifiers)
+          !!!do i_phs = 1, size (event_deps%phs_identifiers)
+          use_contributors = allocated (event_deps%contributors)
+          do alr = 1, size (event_deps%i_evaluation_to_i_phs)
+             i_phs = event_deps%i_evaluation_to_i_phs(alr)
+             if (event_deps%phs_identifiers(i_phs)%evaluated) cycle
              emitter = event_deps%phs_identifiers(i_phs)%emitter 
+             i_con = event_deps%alr_to_i_con(alr)
              if (emitter <= 2) then
                 call msg_fatal ("NLO Events only supply final-state emissions")
              else
-                call evt%phs_fks_generator%prepare_generation (x_rad, i_phs, emitter, &
-                   event_deps%p_born_cms%phs_point(1)%p, event_deps%phs_identifiers)
-                call evt%phs_fks_generator%generate_fsr (emitter, i_phs, &
-                   event_deps%p_born_cms%phs_point(1)%p, &
-                   event_deps%p_real_cms%phs_point(i_phs))
+                associate (generator => evt%phs_fks_generator)
+                   if (use_contributors) then
+                      call generator%prepare_generation (x_rad, i_phs, emitter, &
+                         event_deps%p_born_cms%phs_point(1)%p, &
+                         event_deps%phs_identifiers, event_deps%contributors, i_con)
+                      call generator%generate_fsr (emitter, i_phs, i_con, &
+                         event_deps%p_born_cms%phs_point(1)%p, &
+                         event_deps%p_real_cms%phs_point(i_phs))
+                   else
+                      call generator%prepare_generation (x_rad, i_phs, emitter, &
+                         event_deps%p_born_cms%phs_point(1)%p, event_deps%phs_identifiers)
+                      call generator%generate_fsr (emitter, i_phs, &
+                         event_deps%p_born_cms%phs_point(1)%p, &
+                         event_deps%p_real_cms%phs_point(i_phs))
+                   end if
+                end associate
              end if
              event_deps%p_real_lab%phs_point(i_phs) &
                 = evt%boost_to_lab (event_deps%p_real_cms%phs_point(i_phs))
@@ -4970,6 +5001,7 @@ mother-daughter relations and color information.
              call pcm%controller%set_momenta &
                 (event_deps%p_born_cms%phs_point(1)%p, &
                 event_deps%p_real_cms%phs_point(1)%p, i_phs, cms = .true.)
+             event_deps%phs_identifiers(i_phs)%evaluated = .true.
           end do
        end associate
     end select
@@ -5145,6 +5177,15 @@ emission matrix elements.
           allocate (event_deps%i_evaluation_to_i_phs &
              (size (nlo_controller%real_kinematics%alr_to_i_phs)))
           event_deps%i_evaluation_to_i_phs = nlo_controller%real_kinematics%alr_to_i_phs
+          if (allocated (nlo_controller%reg_data%alr_contributors)) then
+             allocate (event_deps%contributors (size (nlo_controller%reg_data%alr_contributors)))
+             event_deps%contributors = nlo_controller%reg_data%alr_contributors
+          end if
+          if (allocated (nlo_controller%reg_data%alr_to_i_contributor)) then
+             allocate (event_deps%alr_to_i_con &
+                (size (nlo_controller%reg_data%alr_to_i_contributor)))
+             event_deps%alr_to_i_con = nlo_controller%reg_data%alr_to_i_contributor
+          end if
        end associate
     end associate
   end subroutine evt_nlo_setup_event_kinematics
