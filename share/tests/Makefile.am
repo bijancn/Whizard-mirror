@@ -39,7 +39,7 @@ EXTRA_DIST = \
     $(REF_OUTPUT_FILES) \
     functional_tests/structure_2_inc.sin functional_tests/testproc_3.phs \
     functional_tests/user_cuts.f90 functional_tests/user_strfun.f90 \
-    functional_tests/susyhit.in TEST.mdl
+    functional_tests/susyhit.in TEST.mdl nmssm.slha
 
 TESTSUITE_MACROS = testsuite.m4
 TESTSUITE_TOOLS = \
@@ -1019,7 +1019,8 @@ SHOWER_EXT_SIN = \
     extra_shower_3_z_nu.sin \
     extra_shower_3_z_tau.sin \
     extra_shower_4_ee.sin \
-    extra_shower_5.sin
+    extra_shower_5.sin \
+    extra_shower_6.sin
 
 NLO_EXT_SIN = \
     extra_nlo_tt.sin \

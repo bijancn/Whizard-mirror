@@ -1,4 +1,4 @@
-(* $Id: modellib_Zprime.mli 6264 2014-11-14 15:40:49Z fbach $
+(* $Id: omega_WZW.ml 7405 2015-12-17 17:56:41Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -22,17 +22,9 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-(* \thocwmodulesection{Hardcoded Models} *)
-
-module type SM_flags =
-  sig
-    val include_anomalous : bool
-    val k_matrix : bool
-  end
-
-module SM_no_anomalous : SM_flags
-
-module Zprime : functor (F : SM_flags) -> Model.Gauge with module Ch = Charges.QQ
+module O = Omega.Make(Fusion.Mixed23)(Targets.Fortran)
+                     (Modellib_WZW.WZW(Modellib_WZW.SM_no_anomalous))
+let _ = O.main ()
 
 (*i
  *  Local Variables:

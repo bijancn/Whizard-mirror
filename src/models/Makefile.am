@@ -73,6 +73,7 @@ libmodels_la_SOURCES = \
   parameters.SSC_2.f90 \
   parameters.SSC_AltT.f90 \
   parameters.Xdim.f90 \
+  parameters.WZW.f90 \
   parameters.Zprime.f90 \
   parameters.Threeshl.f90 \
   parameters.Threeshl_nohf.f90 \
@@ -120,6 +121,7 @@ nodist_execmod_HEADERS = \
   parameters_ssc_2.$(FC_MODULE_EXT) \
   parameters_ssc_altt.$(FC_MODULE_EXT) \
   parameters_xdim.$(FC_MODULE_EXT) \
+  parameters_wzw.$(FC_MODULE_EXT) \
   parameters_zprime.$(FC_MODULE_EXT) \
   parameters_threeshl.$(FC_MODULE_EXT) \
   parameters_threeshl_nohf.$(FC_MODULE_EXT) \
@@ -297,6 +299,9 @@ parameters_ssc_altt.$(FC_MODULE_EXT): parameters.SSC_AltT.lo
 	@:
 
 parameters_xdim.$(FC_MODULE_EXT): parameters.Xdim.lo
+	@:
+
+parameters_wzw.$(FC_MODULE_EXT): parameters.WZW.lo
 	@:
 
 parameters_zprime.$(FC_MODULE_EXT): parameters.Zprime.lo

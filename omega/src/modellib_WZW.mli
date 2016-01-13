@@ -1,4 +1,4 @@
-(* $Id: modellib_Zprime.mli 6264 2014-11-14 15:40:49Z fbach $
+(* $Id: modellib_WZW.mli 6264 2014-11-14 15:40:49Z fbach $
 
    Copyright (C) 1999-2015 by
 
@@ -32,7 +32,7 @@ module type SM_flags =
 
 module SM_no_anomalous : SM_flags
 
-module Zprime : functor (F : SM_flags) -> Model.Gauge with module Ch = Charges.QQ
+module WZW : functor (F : SM_flags) -> Model.Gauge with module Ch = Charges.QQ
 
 (*i
  *  Local Variables:
