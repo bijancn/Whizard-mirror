@@ -89,6 +89,7 @@ end module blha_olp_interfaces
     integer :: I_SUB = 3
     logical, dimension(0:3) :: compute_component
     logical :: include_polarizations = .false.
+    logical :: switch_off_muon_yukawas = .false.
   contains
   <<BLHA OLP interfaces: blha template: TBP>>
   end type blha_template_t
@@ -122,6 +123,7 @@ end module blha_olp_interfaces
   type, abstract, extends (user_defined_driver_t) :: blha_driver_t 
     type(string_t) :: contract_file
     logical :: include_polarizations = .false.
+    logical :: switch_off_muon_yukawas = .false.
     procedure(olp_start),nopass,  pointer :: &
               blha_olp_start => null ()
     procedure(olp_eval), nopass, pointer :: &
@@ -370,11 +372,13 @@ end module blha_olp_interfaces
 <<BLHA OLP interfaces: blha template: TBP>>=
   procedure :: init => blha_template_init
 <<BLHA OLP interfaces: procedures>>=
-  subroutine blha_template_init (template, requires_polarizations)
+  subroutine blha_template_init (template, requires_polarizations, &
+       switch_off_muon_yukawas)
     class(blha_template_t), intent(inout) :: template
-    logical, intent(in) :: requires_polarizations
+    logical, intent(in) :: requires_polarizations, switch_off_muon_yukawas
     template%compute_component = .false.
     template%include_polarizations = requires_polarizations
+    template%switch_off_muon_yukawas = switch_off_muon_yukawas
   end subroutine blha_template_init
 
 @ %def blha_template_init
@@ -732,13 +736,13 @@ end module blha_olp_interfaces
          if (rd_line(1:13) == 'AmplitudeType') then
             if (i_hel > 3) i_hel = 0
             i_next = find_next_word_index (rd_line, 13) 
-            if (rd_line(i_next:i_next+4) == 'Loop') then
+            if (rd_line(i_next : i_next + 4) == 'Loop') then
                amp_type(k) = BLHA_AMP_LOOP
-            else if (rd_line(i_next:i_next+4) == 'Tree') then
+            else if (rd_line(i_next : i_next + 4) == 'Tree') then
                amp_type(k) = BLHA_AMP_TREE
-            else if (rd_line(i_next:i_next+6) == 'ccTree') then
+            else if (rd_line(i_next : i_next + 6) == 'ccTree') then
                amp_type(k) = BLHA_AMP_CC
-            else if (rd_line(i_next:i_next+6) == 'scTree') then
+            else if (rd_line(i_next : i_next + 6) == 'scTree') then
                amp_type(k) = BLHA_AMP_SC
             else
                call msg_fatal ("AmplitudeType present but &
@@ -762,7 +766,7 @@ end module blha_olp_interfaces
                      var_str ("openloops_verbosity to a value larger than 1 to obtain "),  &
                      var_str ("more information")])
                do i_flv = 1, size (flavors, 2)
-                   if (all (i_array (1:n_entries-2) == flavors (:,i_flv))) then
+                   if (all (i_array (1 : n_entries - 2) == flavors (:,i_flv))) then
                       label(k) = i_array (n_entries)
                       flv_index (k) = i_flv + i_hel
                       if (driver%include_polarizations) then
@@ -1178,6 +1182,7 @@ end module blha_olp_interfaces
     select type (driver => object%driver)
     class is (blha_driver_t)
        driver%include_polarizations = include_polarizations
+       driver%switch_off_muon_yukawas = blha_template%switch_off_muon_yukawas
     end select
   end subroutine prc_blha_init_blha
 
@@ -1195,15 +1200,20 @@ end module blha_olp_interfaces
     integer :: ierr
     do i = 1, OLP_N_MASSIVE_PARTICLES
        i_pdg = OLP_MASSIVE_PARTICLES(i)
+       if (i_pdg < 0) cycle
        call flv%init (i_pdg, model)
        mass = flv%get_mass (); width = flv%get_width ()
        select type (driver => object%driver)
        class is (blha_driver_t)
-          call driver%set_mass_and_width (i_pdg, mass=mass, width=width)
+          call driver%set_mass_and_width (i_pdg, mass = mass, width = width)
           if (i_pdg == 5) call driver%blha_olp_set_parameter &
              ('yuk(5)'//c_null_char, dble(mass), 0._double, ierr)
           if (i_pdg == 6) call driver%blha_olp_set_parameter &
              ('yuk(6)'//c_null_char, dble(mass), 0._double, ierr)
+          if (driver%switch_off_muon_yukawas) then
+             if (i_pdg == 13) call driver%blha_olp_set_parameter &
+                ('yuk(13)' //c_null_char, 0._double, 0._double, ierr)
+          end if
        end select
     end do
   end subroutine prc_blha_set_particle_properties
@@ -1224,23 +1234,23 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
 @ %def prc_blha_init_ew_parameters
 @
 <<BLHA OLP interfaces: prc blha: TBP>>=
-  procedure :: set_bquark_mass => prc_blha_set_bquark_mass
+  !!!procedure :: set_bquark_mass => prc_blha_set_bquark_mass
 <<BLHA OLP interfaces: procedures>>=
-  subroutine prc_blha_set_bquark_mass (object, model)
-    class(prc_blha_t), intent(inout) :: object
-    class(model_data_t), intent(in), target :: model
-    type(flavor_t) :: flv
-    real(default) :: mass, width
-    integer :: ierr
-    call flv%init (5, model)
-    mass = flv%get_mass (); width = flv%get_width ()
-    select type (driver => object%driver)
-    class is (blha_driver_t)
-       call driver%set_mass_and_width (5, mass=mass, width=width)
-       call driver%blha_olp_set_parameter ('yuk(5)'//c_null_char, &
-          dble(mass), 0._double, ierr)
-    end select
-  end subroutine prc_blha_set_bquark_mass
+  !!!subroutine prc_blha_set_bquark_mass (object, model)
+  !!!  class(prc_blha_t), intent(inout) :: object
+  !!!  class(model_data_t), intent(in), target :: model
+  !!!  type(flavor_t) :: flv
+  !!!  real(default) :: mass, width
+  !!!  integer :: ierr
+  !!!  call flv%init (5, model)
+  !!!  mass = flv%get_mass (); width = flv%get_width ()
+  !!!  select type (driver => object%driver)
+  !!!  class is (blha_driver_t)
+  !!!     call driver%set_mass_and_width (5, mass=mass, width=width)
+  !!!     call driver%blha_olp_set_parameter ('yuk(5)'//c_null_char, &
+  !!!        dble(mass), 0._double, ierr)
+  !!!  end select
+  !!!end subroutine prc_blha_set_bquark_mass
 
 @ %def prc_blha_set_bquark_mass
 @
@@ -1545,9 +1555,9 @@ Parameters to enumerate the different options in the order.
 @ 
 Those are the default pdg codes for massive particles in BLHA programs
 <<BLHA config: parameters>>=
-  integer, parameter, public :: OLP_N_MASSIVE_PARTICLES = 10
+  integer, parameter, public :: OLP_N_MASSIVE_PARTICLES = 12
   integer, dimension(OLP_N_MASSIVE_PARTICLES), public :: &
-    OLP_MASSIVE_PARTICLES = [5,-5,6,-6,15,-15,23,24,-24,25]
+    OLP_MASSIVE_PARTICLES = [5,-5,6,-6,13,-13,15,-15,23,24,-24,25]
   integer, parameter :: OLP_HEL_UNPOLARIZED = 0
   integer, parameter :: OLP_HEL_LEFT = -1
   integer, parameter :: OLP_HEL_RIGHT = 1
@@ -2353,9 +2363,8 @@ Write the BLHA file. Internal mode is intented for md5summing only.
     character(4) :: hel_char
     character(len=25), parameter :: pad = ""
     logical :: write_process, no_v
-    if (present (no_version))  no_v = no_version
-    
-    u = given_output_unit (unit)
+    no_v = .false. ; if (present (no_version))  no_v = no_version
+    u = given_output_unit (unit); if (u < 0) return
     full = .true.; if (present (internal)) full = .not. internal
     if (full .and. cfg%dirty) call msg_bug ( &
        "BUG: attempted to write out a dirty BLHA configuration")

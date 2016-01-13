@@ -217,10 +217,11 @@ matrix element.
   integer, parameter, public :: BORN = 0
   integer, parameter, public :: NLO_REAL = 1
   integer, parameter, public :: NLO_VIRTUAL = 2
-  integer, parameter, public :: NLO_PDF = 3
-  integer, parameter, public :: NLO_SUBTRACTION = 4
-  integer, parameter, public :: NLO_FULL = 5
-  integer, parameter, public :: GKS = 6
+  integer, parameter, public :: NLO_MISMATCH = 3
+  integer, parameter, public :: NLO_PDF = 4
+  integer, parameter, public :: NLO_SUBTRACTION = 5
+  integer, parameter, public :: NLO_FULL = 6
+  integer, parameter, public :: GKS = 7
   integer, parameter, public :: COMPONENT_UNDEFINED = 99
 
 @ % def BORN, NLO_REAL, NLO_VIRTUAL, NLO_SUBTRACTION, GKS
@@ -244,6 +245,8 @@ convenient.
        i = NLO_REAL
     case ("Virtual")
        i = NLO_VIRTUAL
+    case ("Mismatch")
+       i = NLO_MISMATCH
     case ("PDF")
        i = NLO_PDF
     case ("Subtraction")
@@ -267,6 +270,8 @@ convenient.
        string = "Real"
     case (NLO_VIRTUAL)
        string = "Virtual"
+    case (NLO_MISMATCH)
+       string = "Mismatch"
     case (NLO_PDF)
        string = "PDF"
     case (NLO_SUBTRACTION)
@@ -385,6 +390,7 @@ elemental (or pure, if this is not possible).
 module lorentz
 
 <<Use kinds with double>>
+  use unit_tests, only: nearly_equal
   use io_units
   use constants, only: pi, twopi, degree, zero, one, two, eps0, tiny_07
   use format_defs, only: FMT_11, FMT_13, FMT_15, FMT_19
@@ -779,8 +785,8 @@ the time-critical applications do not involve four-vector operations.
     if (comp) then
        write (u, "(4(F12.3,1X))", advance="no")  p%p(0:3)
     else
-       write(u, "(1x,A,1x," // fmt // ")") 'E = ', p%p(0)
-       write(u, "(1x,A,3(1x," // fmt // "))") 'P = ', p%p(1:)
+       write (u, "(1x,A,1x," // fmt // ")") 'E = ', p%p(0)
+       write (u, "(1x,A,3(1x," // fmt // "))") 'P = ', p%p(1:)
        if (sm) then
           m = p**1
           if (tf)  call pacify (m, tolerance = 1E-6_default)
@@ -1237,6 +1243,121 @@ optional mass-squared value instead.
   end function vector4_to_c_prt
 
 @ %def vector4_to_c_prt
+@
+<<Lorentz: public>>=
+  public :: phs_point_t
+<<Lorentz: types>>=
+  type :: phs_point_t
+     type(vector4_t), dimension(:), allocatable :: p
+     integer :: n_momenta = 0
+  contains
+  <<Lorentz: phs point: TBP>>
+  end type phs_point_t
+
+@ %def phs_point_t
+@
+<<Lorentz: interfaces>>=
+  interface operator(==)
+     module procedure phs_point_eq
+  end interface
+<<Lorentz: procedures>>=
+  elemental function phs_point_eq (phs_point_1, phs_point_2) result (eq)
+    logical :: eq
+    type(phs_point_t), intent(in) :: phs_point_1, phs_point_2
+    eq = all (phs_point_1%p == phs_point_2%p)
+  end function phs_point_eq
+
+@ %def phs_point_eq
+@
+<<Lorentz: interfaces>>=
+  interface operator(*)
+     module procedure prod_LT_phs_point
+  end interface
+<<Lorentz: procedures>>=
+  elemental function prod_LT_phs_point (L, phs_point) result (phs_point_LT)
+    type(phs_point_t) :: phs_point_LT
+    type(lorentz_transformation_t), intent(in) :: L
+    type(phs_point_t), intent(in) :: phs_point
+    phs_point_LT%p = L * phs_point%p
+  end function prod_LT_phs_point
+
+@ %def prod_LT_phs_point
+@
+<<Lorentz: interfaces>>=
+  interface assignment(=)
+     module procedure phs_point_from_n, phs_point_from_vector4, &
+                      phs_point_from_phs_point
+  end interface
+<<Lorentz: phs point: TBP>>=
+  !!!generic :: init => init_from_n, init_from_p
+<<Lorentz: phs point: TBP>>=
+  !!!procedure :: init_from_n => phs_point_init_from_n
+<<Lorentz: procedures>>=
+  !!!subroutine phs_point_init_from_n (phs_point, n_particles)
+  subroutine phs_point_from_n (phs_point, n_particles)
+    type(phs_point_t), intent(out) :: phs_point
+    integer, intent(in) :: n_particles
+    allocate (phs_point%p (n_particles))
+    phs_point%n_momenta = n_particles
+    phs_point%p = vector4_null
+  !!!end subroutine phs_point_init_from_n
+  end subroutine phs_point_from_n
+
+@ %def phs_point_init_from_n
+@ 
+<<Lorentz: phs point: TBP>>=
+  !!!procedure :: init_from_p => phs_point_init_from_p
+<<Lorentz: procedures>>=
+  !!!subroutine phs_point_init_from_p (phs_point, p)
+  subroutine phs_point_from_vector4 (phs_point, p)
+    type(phs_point_t), intent(out) :: phs_point
+    type(vector4_t), intent(in), dimension(:) :: p
+    phs_point%n_momenta = size (p)
+    allocate (phs_point%p (phs_point%n_momenta), source = p)
+  !!!end subroutine phs_point_init_from_p
+  end subroutine phs_point_from_vector4
+
+@ %def phs_point_init_from_p
+@
+<<Lorentz: procedures>>=
+  subroutine phs_point_from_phs_point (phs_point, phs_point_in)
+    type(phs_point_t), intent(out) :: phs_point
+    type(phs_point_t), intent(in) :: phs_point_in
+    phs_point%n_momenta = phs_point_in%n_momenta
+    allocate (phs_point%p (phs_point%n_momenta))
+    phs_point%p = phs_point_in%p
+  end subroutine phs_point_from_phs_point
+
+@ %def phs_point_from_phs_point
+@
+<<Lorentz: phs point: TBP>>=
+  procedure :: final => phs_point_final
+<<Lorentz: procedures>>=
+  subroutine phs_point_final (phs_point)
+    class(phs_point_t), intent(inout) :: phs_point
+    deallocate (phs_point%p)
+    phs_point%n_momenta = 0
+  end subroutine phs_point_final
+
+@ %def phs_point_final
+@
+<<Lorentz: phs point: TBP>>=
+  procedure :: write => phs_point_write 
+<<Lorentz: procedures>>=
+  subroutine phs_point_write (phs_point, unit, show_mass, testflag, &
+      check_conservation, ultra, n_in)
+    class(phs_point_t), intent(in) :: phs_point
+    integer, intent(in), optional :: unit
+    logical, intent(in), optional :: show_mass
+    logical, intent(in), optional :: testflag, ultra
+    logical, intent(in), optional :: check_conservation
+    integer, intent(in), optional :: n_in
+    call vector4_write_set (phs_point%p, unit = unit, show_mass = show_mass, &
+       testflag = testflag, check_conservation = check_conservation, &
+       ultra = ultra, n_in = n_in)
+  end subroutine phs_point_write
+
+@ %def phs_point_write
 @
 \subsection{Angles}
 Return the angles in a canonical system.  The angle $\phi$ is defined
@@ -1926,10 +2047,44 @@ epsilon.
     type(vector3_t), intent(inout) :: p
     real(default) :: abs
     abs = sqrt (p%p(1)**2 + p%p(2)**2 + p%p(3)**2)
-    p = p/abs
+    p = p / abs
   end subroutine normalize
 
 @ %def normalize
+@ Computes the invariant mass of the momenta sum given by the indices in
+[[i_res_born]] and the optional argument [[i_emitter]].
+<<Lorentz: public>>=
+  public :: compute_resonance_mass
+<<Lorentz: procedures>>=
+  pure function compute_resonance_mass (p, i_res_born, i_emitter) result (m)
+    real(default) :: m
+    type(vector4_t), intent(in), dimension(:) :: p
+    integer, intent(in), dimension(:) :: i_res_born
+    integer, intent(in), optional :: i_emitter
+    type(vector4_t) :: p_res
+    p_res = get_resonance_momentum (p, i_res_born, i_emitter)
+    m = p_res**1
+  end function compute_resonance_mass
+
+@ %def compute_resonance_mass
+@
+<<Lorentz: public>>=
+  public :: get_resonance_momentum
+<<Lorentz: procedures>>=
+  pure function get_resonance_momentum (p, i_res_born, i_emitter) result (p_res)
+    type(vector4_t) :: p_res
+    type(vector4_t), intent(in), dimension(:) :: p
+    integer, intent(in), dimension(:) :: i_res_born
+    integer, intent(in), optional :: i_emitter
+    integer :: i
+    p_res = vector4_null
+    do i = 1, size (i_res_born)
+       p_res = p_res + p (i_res_born(i))
+    end do
+    if (present (i_emitter)) p_res = p_res + p (i_emitter)
+  end function get_resonance_momentum
+
+@ %def get_resonance_momentum
 @
 \subsection{Boosts}
 We build Lorentz transformations from boosts and rotations.  In both
@@ -2520,6 +2675,36 @@ transformations.
   end subroutine vector4_write_set
 
 @ %def vector4_write_set
+@
+<<Lorentz: public>>=
+  public :: vector4_check_momentum_conservation
+<<Lorentz: procedures>>=
+  subroutine vector4_check_momentum_conservation (p, n_in, unit, abs_smallness, rel_smallness)
+    type(vector4_t), dimension(:), intent(in) :: p
+    integer, intent(in) :: n_in
+    integer, intent(in), optional :: unit
+    real(default), intent(in), optional :: abs_smallness, rel_smallness
+    integer :: u, i
+    type(vector4_t) :: psum_in, psum_out
+    u = given_output_unit (unit);  if (u < 0)  return
+    psum_in = vector4_null
+    do i = 1, n_in
+       psum_in = psum_in + p(i)
+    end do
+    psum_out = vector4_null
+    do i = n_in + 1, size (p)
+       psum_out = psum_out + p(i)
+    end do
+    if (.not. all (nearly_equal (psum_in%p, psum_out%p, abs_smallness, rel_smallness))) then
+       call msg_warning ("Momentum conservation violated!")
+       write (u, "(A)") "Incoming:"
+       call vector4_write (psum_in, u)
+       write (u, "(A)") "Outgoing:"
+       call vector4_write (psum_out, u)
+    end if
+  end subroutine vector4_check_momentum_conservation
+
+@ %def vector4_check_momentum_conservation
 @ This computes the quantities
 \begin{align*}
   \langle ij \rangle &= \sqrt{|S_{ij}|} e^{i\phi_{ij}},
@@ -4214,7 +4399,7 @@ value.  By default, this is the value at $M_Z$.
     class(alpha_qcd_fixed_t), intent(in) :: object
     integer, intent(in), optional :: unit
     integer :: u
-    u = given_output_unit (unit)
+    u = given_output_unit (unit);  if (u < 0)  return
     write (u, "(3x,A)")  "QCD parameters (fixed coupling):"
     write (u, "(5x,A," // FMT_12 // ")")  "alpha = ", object%val
   end subroutine alpha_qcd_fixed_write
@@ -4260,7 +4445,7 @@ approximation.
     class(alpha_qcd_from_scale_t), intent(in) :: object
     integer, intent(in), optional :: unit
     integer :: u
-    u = given_output_unit (unit)
+    u = given_output_unit (unit);  if (u < 0)  return
     write (u, "(3x,A)")  "QCD parameters (running coupling):"
     write (u, "(5x,A," // FMT_12 // ")")  "Scale mu  = ", object%mu_ref
     write (u, "(5x,A," // FMT_12 // ")")  "alpha(mu) = ", object%ref
@@ -4310,7 +4495,7 @@ the order of the approximation.
     class(alpha_qcd_from_lambda_t), intent(in) :: object
     integer, intent(in), optional :: unit
     integer :: u
-    u = given_output_unit (unit)
+    u = given_output_unit (unit);  if (u < 0)  return
     write (u, "(3x,A)")  "QCD parameters (Lambda_QCD as input):"
     write (u, "(5x,A," // FMT_12 // ")")  "Lambda_QCD = ", object%lambda
     write (u, "(5x,A,I0)")      "LL order   = ", object%order
@@ -4362,7 +4547,7 @@ then any extra components.
     logical, intent(in), optional :: show_md5sum
     logical :: show_md5
     integer :: u
-    u = given_output_unit (unit)
+    u = given_output_unit (unit);  if (u < 0)  return
     show_md5 = .true.;  if (present (show_md5sum))  show_md5 = show_md5sum
     if (allocated (qcd%alpha)) then
        call qcd%alpha%write (u)
