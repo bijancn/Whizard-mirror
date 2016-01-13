@@ -41,7 +41,8 @@ TESTS_EXTENDED = \
 	extra_nlo_uu.run \
 	extra_nlo_uu_powheg.run \
 	extra_nlo_methods_gosam.run \
-	extra_nlo_methods.run
+	extra_nlo_methods.run \
+	extra_nlo_threshold.run
 
 XFAIL_TESTS_EXTENDED =
 
