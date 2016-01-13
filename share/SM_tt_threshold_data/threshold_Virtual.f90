@@ -6,6 +6,7 @@ end module @ID@_virtual
 
 subroutine @ID@_start_openloops () bind(C)
   use iso_c_binding
+  use kinds
   use @ID@_virtual
   use openloops
   real(8) :: mZ = 91.2
@@ -33,21 +34,31 @@ subroutine @ID@_start_openloops () bind(C)
 
 end subroutine @ID@_start_openloops
 
-subroutine @ID@_compute_virtual(amp2, p) bind(C)
+subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
+       sqme_c, acc_c) bind(C)
   use iso_c_binding
+  use kinds
   use openloops
   use @ID@_threshold
+  use @ID@_virtual
   implicit none
-  real(c_default_float), intent(out) :: amp2
-  real(c_default_float), dimension(0:3,*), intent(in) :: p
+  integer(c_int), intent(in) :: i_flv
+  real(c_default_float), intent(in) :: alpha_s_c
+  real(c_default_float), dimension(0:3,*), intent(in) :: parray
+  real(c_default_float), intent(in) :: mu_c
+  real(c_default_float), dimension(4), intent(out) :: sqme_c
+  real(c_default_float), intent(out) :: acc_c
   integer :: k, i
-  real(8) :: m2_tree, m2_loop(0:2), acc
-  real(8) :: p_ex(0:3,5)
-  real(8) :: mu = 100, alpha_s = 0.1
-  print *, 'size(p,dim=2) =    ', size(p,dim=2) !!! Debugging
+  real(double) :: m2_tree, m2_loop(0:2), acc
+  real(double) :: p_ex(0:3,6)
+  real(double) :: mu, alpha_s
+  alpha_s = alpha_s_c
+  mu = mu_c
+  do i = 1, 6
+     p_ex(:,i) = parray(:,i)
+  end do
   do i = 1, 2
-     id = id(i)
-     if (id > 0) then
+     if (id(i) > 0) then
         call set_parameter("alpha_s", alpha_s)
         call set_parameter("mu", mu)
 
@@ -55,12 +66,12 @@ subroutine @ID@_compute_virtual(amp2, p) bind(C)
           print *, 'P[', int(k,1), '] =', p_ex(:,k)
         end do
 
-        call evaluate_tree(id, p_ex, m2_tree)
+        call evaluate_tree(id(i), p_ex, m2_tree)
         print *
         print *, "evaluate_tree"
         print *, "Tree:       ", m2_tree
 
-        call evaluate_loop(id, p_ex, m2_tree, m2_loop(0:2), acc)
+        call evaluate_loop(id(i), p_ex, m2_tree, m2_loop(0:2), acc)
         print *
         print *, "evaluate_loop"
         print *, "Tree:       ", m2_tree
@@ -70,15 +81,15 @@ subroutine @ID@_compute_virtual(amp2, p) bind(C)
         print *, "accuracy:   ", acc
         print *
      else
-        print *, "Could not load process ", id
+        print *, "Could not load process ", id(i)
         stop 1
      end if
   end do
 
-end subroutine @ID@_compute_virtual
+end subroutine @ID@_olp_eval2
 
 subroutine @ID@_stop_openloops () bind(C)
   use iso_c_binding
   use openloops
   call finish()
-end subroutine @ID@
+end subroutine @ID@_stop_openloops

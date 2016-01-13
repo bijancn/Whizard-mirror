@@ -4726,6 +4726,7 @@ driver.
     integer :: n_flv = 1
     real(default), dimension(:), allocatable :: par
     type(sf_handler_t) :: sf_handler
+    real(default) :: maximum_accuracy = 10000.0
   contains
   <<Prc User: prc user defined base: TBP>>
   end type prc_user_defined_base_t
@@ -4771,6 +4772,7 @@ Used for testing.
     real(default), intent(in) :: ren_scale
     logical, intent(out) :: bad_point
     real(default), dimension(4), intent(out) :: sqme
+    call msg_debug (D_VIRTUAL, "prc_user_defined_base_compute_sqme_virt")
     sqme(1) = 0.001_default
     sqme(2) = 0.001_default
     sqme(3) = 0.001_default
@@ -4792,11 +4794,12 @@ Used for testing.
     real(default), intent(out), optional :: born_out
     real(default), intent(inout), dimension(:,:) :: born_cc
     logical, intent(out) :: bad_point
+    call msg_debug (D_SUBTRACTION, "prc_user_defined_base_compute_sqme_cc")
     if (present (born_out))  born_out = 0.0015_default
     born_cc = 0._default
-    born_cc(3,3) = -CF*born_out
-    born_cc(4,4) = -CF*born_out
-    born_cc(3,4) = CF*born_out
+    born_cc(3,3) = - CF * born_out
+    born_cc(4,4) = - CF * born_out
+    born_cc(3,4) = CF * born_out
     born_cc(4,3) = born_cc(3,4)
     bad_point = .false.
   end subroutine prc_user_defined_base_compute_sqme_cc
@@ -5592,6 +5595,7 @@ module prc_threshold
 
   use kinds
   use constants
+  use unit_tests, only: vanishes
   use io_units
 <<Use strings>>
   use physics_defs
@@ -5623,6 +5627,7 @@ contains
 
 end module prc_threshold
 @ %def prc_threshold
+@
 \subsubsection{Writer}
 <<Prc Threshold: public>>=
   public :: threshold_writer_t
@@ -5682,11 +5687,10 @@ end module prc_threshold
     type(os_data_t), intent(in) :: os_data
     logical, intent(in), optional :: testflag
     call writer%base_write_makefile_code (unit, id, os_data, testflag)
-    call writer%write_makefile_extra (unit, id, os_data, writer%nlo_type)
-    !if (OPENLOOPS_AVAILABLE) then
-       !call writer%write_makefile_extra (unit, id, os_data, NLO_REAL)
-       !call writer%write_makefile_extra (unit, id, os_data, NLO_VIRTUAL)
-    !end if
+    call writer%write_makefile_extra (unit, id, os_data, BORN)
+    if (writer%nlo_type == NLO_REAL .or. writer%nlo_type == NLO_VIRTUAL) then
+       call writer%write_makefile_extra (unit, id, os_data, writer%nlo_type)
+    end if
   end subroutine threshold_writer_write_makefile_code
 
 @ %def threshold_writer_write_makefile_code
@@ -5716,6 +5720,24 @@ end module prc_threshold
 @ %def threshold_get_amp_squared
 @
 <<Prc Threshold: public>>=
+  public :: threshold_olp_eval2
+<<Prc Threshold: interfaces>>=
+  interface
+    subroutine threshold_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
+           sqme_c, acc_c) bind(C)
+      import
+      integer(c_int), intent(in) :: i_flv
+      real(c_default_float), intent(in) :: alpha_s_c
+      real(c_default_float), dimension(0:3,*), intent(in) :: parray
+      real(c_default_float), intent(in) :: mu_c
+      real(c_default_float), dimension(4), intent(out) :: sqme_c
+      real(c_default_float), intent(out) :: acc_c
+    end subroutine threshold_olp_eval2
+  end interface
+
+@ %def threshold_olp_eval2
+@
+<<Prc Threshold: public>>=
   public :: threshold_init
 <<Prc Threshold: interfaces>>=
   interface
@@ -5728,11 +5750,26 @@ end module prc_threshold
 @ %def threshold_init
 @
 <<Prc Threshold: public>>=
+  public :: threshold_start_openloops
+<<Prc Threshold: interfaces>>=
+  interface
+   subroutine threshold_start_openloops () bind(C)
+      import
+    end subroutine threshold_start_openloops
+  end interface
+
+@ %def threshold_start_openloops
+@
+<<Prc Threshold: public>>=
   public :: threshold_driver_t
 <<Prc Threshold: types>>=
   type, extends (user_defined_driver_t) :: threshold_driver_t
+    procedure(threshold_olp_eval2), nopass, pointer :: &
+         olp_eval2 => null ()
     procedure(threshold_get_amp_squared), nopass, pointer :: &
          get_amp_squared => null ()
+    procedure(threshold_start_openloops), nopass, pointer :: &
+         start_openloops => null ()
     procedure(threshold_init), nopass, pointer :: &
          init => null ()
     type(string_t) :: id
@@ -5759,19 +5796,33 @@ end module prc_threshold
   subroutine threshold_driver_load (threshold_driver, dlaccess)
     class(threshold_driver_t), intent(inout) :: threshold_driver
     type(dlaccess_t), intent(inout) :: dlaccess
-    logical :: success
     type(c_funptr) :: c_fptr
     c_fptr = dlaccess_get_c_funptr (dlaccess, threshold_driver%id // "_threshold_get_amp_squared")
     call c_f_procpointer (c_fptr, threshold_driver%get_amp_squared)
-    success = .not. dlaccess_has_error (dlaccess)
+    call check_for_error (threshold_driver%id // "_threshold_get_amp_squared")
     c_fptr = dlaccess_get_c_funptr (dlaccess, threshold_driver%id // "_threshold_init")
     call c_f_procpointer (c_fptr, threshold_driver%init)
-    success = success .and. .not. dlaccess_has_error (dlaccess)
-    if (.not. success) then
-       call msg_fatal ("Loading of extra threshold functions has failed!")
-    else
-       call msg_message ("Loaded extra threshold functions")
-    end if
+    call check_for_error (threshold_driver%id // "_threshold_init")
+    select type (threshold_driver)
+    type is (threshold_driver_t)
+       if (threshold_driver%nlo_type == NLO_VIRTUAL .or. threshold_driver%nlo_type == NLO_REAL) then
+          c_fptr = dlaccess_get_c_funptr (dlaccess, threshold_driver%id // "_start_openloops")
+          call c_f_procpointer (c_fptr, threshold_driver%start_openloops)
+          call check_for_error (threshold_driver%id // "_start_openloops")
+          if (threshold_driver%nlo_type == NLO_VIRTUAL) then
+             c_fptr = dlaccess_get_c_funptr (dlaccess, threshold_driver%id // "_olp_eval2")
+             call c_f_procpointer (c_fptr, threshold_driver%olp_eval2)
+             call check_for_error (threshold_driver%id // "_olp_eval2")
+          end if
+       end if
+    end select
+    call msg_message ("Loaded extra threshold functions")
+    contains
+      subroutine check_for_error (function_name)
+        type(string_t), intent(in) :: function_name
+        if (dlaccess_has_error (dlaccess)) &
+           call msg_fatal (char ("Loading of " // function_name // " failed!"))
+     end subroutine check_for_error
   end subroutine threshold_driver_load
 
 @ %def threshold_driver_load
@@ -5941,24 +5992,67 @@ end module prc_threshold
   procedure :: compute_sqme => prc_threshold_compute_sqme
 <<Prc Threshold: procedures>>=
   function prc_threshold_compute_sqme (object, i_flv, p) result (sqme)
-     real(default) :: sqme
-     class(prc_threshold_t), intent(in) :: object
-     integer, intent(in) :: i_flv
-     type(vector4_t), dimension(:), intent(in) :: p
-     integer :: n_tot, i
-     real(c_default_float), dimension(:,:), allocatable, save :: parray
-     n_tot = size (p)
-     if (.not. allocated (parray)) then
-        allocate (parray (0:3, n_tot))
-     end if
-     forall (i = 1:n_tot)  parray(:,i) = p(i)%p
-     select type (driver => object%driver)
-     class is (threshold_driver_t)
-        call driver%get_amp_squared (sqme, parray)
-     end select
+    real(default) :: sqme
+    class(prc_threshold_t), intent(in) :: object
+    integer, intent(in) :: i_flv
+    type(vector4_t), dimension(:), intent(in) :: p
+    integer :: n_tot, i
+    real(c_default_float), dimension(:,:), allocatable, save :: parray
+    n_tot = size (p)
+    if (.not. allocated (parray)) then
+       allocate (parray (0:3, n_tot))
+    end if
+    forall (i = 1:n_tot)  parray(:,i) = p(i)%p
+    select type (driver => object%driver)
+    class is (threshold_driver_t)
+       call driver%get_amp_squared (sqme, parray)
+    end select
   end function prc_threshold_compute_sqme
 
 @ %def prc_threshold_compute_sqme
+@
+<<Prc Threshold: prc threshold: TBP>>=
+  procedure :: compute_sqme_virt => prc_threshold_compute_sqme_virt
+<<Prc Threshold: procedures>>=
+  subroutine prc_threshold_compute_sqme_virt (object, i_flv, &
+         p, ren_scale, sqme, bad_point)
+    class(prc_threshold_t), intent(inout) :: object
+    integer, intent(in) :: i_flv
+    type(vector4_t), dimension(:), intent(in) :: p
+    real(default), intent(in) :: ren_scale
+    real(default), dimension(4), intent(out) :: sqme
+    logical, intent(out) :: bad_point
+    integer :: n_tot, i
+    real(c_default_float), dimension(:,:), allocatable, save :: parray
+    real(default) :: mu
+    real(c_default_float), dimension(4) :: sqme_c
+    real(c_default_float) :: mu_c, acc_c, alpha_s_c
+    integer(c_int) :: i_flv_c
+    print *, 'i_flv =    ', i_flv !!! Debugging
+    n_tot = size (p)
+    if (.not. allocated (parray)) then
+       allocate (parray (0:3, n_tot))
+    end if
+    forall (i = 1:n_tot)  parray(:,i) = p(i)%p
+
+    if (vanishes (ren_scale)) then
+      mu = sqrt (2* (p(1)*p(2)))
+    else
+      mu = ren_scale
+    end if
+    mu_c = mu
+    alpha_s_c = object%qcd%alpha%get (mu)
+    i_flv_c = i_flv
+    select type (driver => object%driver)
+    class is (threshold_driver_t)
+      call driver%olp_eval2 (i_flv_c, & !object%i_virt(i_flv), &
+                                  alpha_s_c, parray, mu_c, sqme_c, acc_c)
+    end select
+    bad_point = real(acc_c, kind=default) > object%maximum_accuracy
+    sqme = sqme_c
+  end subroutine prc_threshold_compute_sqme_virt
+
+@ %def prc_threshold_compute_sqme_virt
 @
 <<Prc Threshold: prc threshold: TBP>>=
   procedure :: init => prc_threshold_init
