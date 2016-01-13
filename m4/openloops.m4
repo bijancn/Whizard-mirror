@@ -17,9 +17,6 @@ unset OPENLOOPS_DIR
 
 if test "$enable_openloops" = "yes"; then
 
-  save_path=$PATH
-  save_ld_library_path=$LD_LIBRARY_PATH
-
   unset OPENLOOPS_DIR
   if test -n "$with_openloops"; then
     WO_PATH_LIB(openloops_lib, [openloops], [libopenloops.${SHRLIB_EXT}], ${with_openloops}/lib)
@@ -40,12 +37,22 @@ fi
 
 AC_SUBST([OPENLOOPS_DIR])
 
+if test -n "$OPENLOOPS_DIR"; then
+  wo_openloops_includes="-I$OPENLOOPS_DIR/lib_src/openloops/mod"
+  wo_openloops_ldflags="-L$OPENLOOPS_DIR/lib -lopenloops"
+fi
+
 if test "$enable_openloops" = "yes"; then
    OPENLOOPS_AVAILABLE_FLAG=".true."
+   OPENLOOPS_INCLUDES=$wo_openloops_includes
+   LDFLAGS_OPENLOOPS=$wo_openloops_ldflags
 else
    OPENLOOPS_AVAILABLE_FLAG=".false."
 fi
+
 AC_SUBST([OPENLOOPS_AVAILABLE_FLAG])
+AC_SUBST([OPENLOOPS_INCLUDES])
+AC_SUBST([LDFLAGS_OPENLOOPS])
 
 AM_CONDITIONAL([OPENLOOPS_AVAILABLE], [test "$enable_openloops" = "yes"])
 

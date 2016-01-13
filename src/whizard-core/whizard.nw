@@ -607,7 +607,6 @@ temporarily override defaults.  The data set is transparent.
      integer :: quit_code = 0
      type(string_t) :: logfile 
      logical :: nlo_fixed_order = .false.
-     logical :: nlo_threshold_matching = .false.
      logical, dimension(5) :: active_nlo_components = .false.
    contains
    <<RT data: rt data: TBP>>
@@ -3817,7 +3816,8 @@ intent(out).
     logical :: diags, diags_color
     type(string_t) :: extra_options
     type(model_t), pointer :: model
-
+    integer :: nlo
+    nlo = BORN;  if (present (nlo_type))  nlo = nlo_type
     model => global%model
     associate (var_list => global%get_var_list_ptr ())
       method = var_list%get_sval (var_str ("$method"))
@@ -3844,12 +3844,12 @@ intent(out).
          select type (core_def)
          type is (template_me_def_t)
             call core_def%init (model, prt_in, prt_out, unity = .true.)
-         end select                  
+         end select
       case ("omega")
          diags = var_list%get_lval (&
               var_str ("?vis_diags"))
          diags_color = var_list%get_lval (&
-              var_str ("?vis_diags_color"))         
+              var_str ("?vis_diags_color"))
          restrictions = var_list%get_sval (&
               var_str ("$restrictions"))
          openmp_support = var_list%get_lval (&
@@ -3884,19 +3884,14 @@ intent(out).
             call core_def%init (model_name, prt_in, prt_out, &
                  restrictions, openmp_support, report_progress, &
                  extra_options, diags, diags_color)
-         end select         
+         end select
       case ("gosam")
         allocate (gosam_def_t :: core_def)
         select type (core_def)
         type is (gosam_def_t)
           if (present (id)) then
-             if (present (nlo_type)) then
-                call core_def%init (id, model_name, prt_in, &
-                   prt_out, nlo_type, var_list)
-             else
-                call core_def%init (id, model_name, prt_in, &
-                   prt_out, BORN, var_list)
-             end if
+             call core_def%init (id, model_name, prt_in, &
+                prt_out, nlo, var_list)
           else
              call msg_fatal ("Dispatch GoSam def: No id!")
           end if
@@ -3906,13 +3901,8 @@ intent(out).
          select type (core_def)
          type is (openloops_def_t)
             if (present (id)) then
-               if (present (nlo_type)) then
-                  call core_def%init (id, model_name, prt_in, &
-                     prt_out, nlo_type)
-               else
-                  call core_def%init (id, model_name, prt_in, &
-                     prt_out, BORN)
-               end if
+               call core_def%init (id, model_name, prt_in, &
+                  prt_out, nlo)
             else
                call msg_fatal ("Dispatch OpenLoops def: No id!")
             end if
@@ -3921,7 +3911,11 @@ intent(out).
          allocate (user_defined_test_def_t :: core_def)
          select type (core_def)
          type is (user_defined_test_def_t)
-            call core_def%init (id, model_name, prt_in, prt_out)
+            if (present (id)) then
+               call core_def%init (id, model_name, prt_in, prt_out)
+            else
+               call msg_fatal ("Dispatch User-Defined Test def: No id!")
+            end if
          end select 
       case ("threshold")
          restrictions = var_list%get_sval (&
@@ -3929,7 +3923,12 @@ intent(out).
          allocate (threshold_def_t :: core_def)
          select type (core_def)
          type is (threshold_def_t)
-            call core_def%init (id, model_name, prt_in, prt_out, restrictions)
+            if (present (id)) then
+               call core_def%init (id, model_name, prt_in, prt_out, &
+                    nlo, restrictions)
+            else
+               call msg_fatal ("Dispatch Threshold def: No id!")
+            end if
          end select
       case default
          call msg_fatal ("Process configuration: method '" &
@@ -3937,7 +3936,7 @@ intent(out).
       end select
     end associate
   end subroutine dispatch_core_def
-    
+
 @ %def dispatch_core_def
 @
 \subsection{Process core allocation}
@@ -7035,7 +7034,7 @@ particles, and the number of components.
     logical :: nlo_process
     model => global%model
     config%id = prc_name
-    nlo_process = global%nlo_fixed_order .or. global%nlo_threshold_matching
+    nlo_process = global%nlo_fixed_order
     allocate (config%entry)
     if (global%var_list%is_known (var_str ("process_num_id"))) then
        config%num_id = &
@@ -8569,9 +8568,9 @@ local changes to currently inactive models.
          local%prclib, &
          local%os_data, intg%qcd, rng_factory, model_instance)
   end subroutine integration_init_process
-    
+
 @ %def integration_init_process
-@ Initialization, third part: complete process configuration.   
+@ Initialization, third part: complete process configuration.
 <<Integrations: integration: TBP>>=
   procedure :: setup_process => integration_setup_process
 <<Integrations: procedures>>=
@@ -8605,9 +8604,8 @@ local changes to currently inactive models.
     type(eval_tree_factory_t) :: expr_factory
     logical :: use_powheg_damping_factors
     integer :: i = 0
-  
+
     verb = .true.; if (present (verbose))  verb = verbose
-    
     call intg%process%set_var_list (local%get_var_list_ptr ())
     var_list => intg%process%get_var_list_ptr ()
 
@@ -8668,14 +8666,14 @@ local changes to currently inactive models.
           call msg_message ("Run ID = " // '"' // char (intg%run_id) // '"')
        end if
     end if
-    
+
     helicity_selection = local%get_helicity_selection ()
 
     intg%vis_history = &
          var_list%get_lval (var_str ("?vis_history"))
     use_color_factors = var_list%get_lval &
          (var_str ("?read_color_factors"))
-    
+
     n_components = intg%process%get_n_components ()
     n_in = intg%process%get_n_in ()
 
@@ -8772,12 +8770,7 @@ local changes to currently inactive models.
             call intg%process%set_component_type (i_component, COMP_SUB)
        case (GKS)
          call intg%process%init_component &
-             (i_component, core_template, mci_template, phs_config_template) 
-       case (NLO_THRESHOLD_RESUMMATION)
-         call intg%process%init_component &
              (i_component, core_template, mci_template, phs_config_template)
-         if (intg%combined_integration) &
-            call intg%process%set_component_type (i_component, COMP_RESUM)
        case default
          call msg_fatal ("setup_process: NLO type not implemented!")
        end select
@@ -8787,13 +8780,13 @@ local changes to currently inactive models.
     end do
 
     if (verb)  call intg%process%write (screen = .true.)
-    
+
     intg%process_has_me = intg%process%has_matrix_element ()
     if (.not. intg%process_has_me) then
        call msg_warning ("Process '" &
             // char (intg%process_id) // "': matrix element vanishes")
     end if
-    
+
     sqrts = local%get_sqrts ()
     decay_rest_frame = &
          var_list%get_lval (var_str ("?decay_rest_frame"))    
@@ -8806,7 +8799,7 @@ local changes to currently inactive models.
        call intg%process%beams_startup_message &
             (beam_structure = local%beam_structure)
     end if
-    
+
     if (intg%process_has_me) then
        call intg%process%get_pdg_in (pdg_prc)
     else
@@ -8844,7 +8837,7 @@ local changes to currently inactive models.
        call phs_channel_collection%final ()
        if (verb)  call intg%process%sf_startup_message (sf_string)    
     end if
-    
+
     call intg%setup_process_mci ()
     call intg%process%setup_terms ()
 
@@ -8854,7 +8847,7 @@ local changes to currently inactive models.
        call intg%process%set_cuts (expr_factory)
     else
        if (verb)  call msg_warning ("No cuts have been defined.")
-    end if    
+    end if
     if (associated (local%pn%scale_expr)) then
        if (verb) call msg_message ("Using user-defined general scale.")
        call expr_factory%init (local%pn%scale_expr)
@@ -8992,15 +8985,15 @@ for each component, which is done by the subroutine [[integration_apply_multipli
              multiplier = multipliers%mult_virt
           case (NLO_PDF)
              multiplier = multipliers%mult_pdf
-          case (NLO_THRESHOLD_RESUMMATION)
-             multiplier = multipliers%mult_threshold
           case default
              return
           end select
        end associate
-       n_calls0 = intg%iteration_multipliers%n_calls0 (pass)
-       n_calls = floor (multiplier * n_calls0)
-       call it_list%set_n_calls (pass, n_calls)
+       if (n_pass <= size (intg%iteration_multipliers%n_calls0)) then
+          n_calls0 = intg%iteration_multipliers%n_calls0 (pass)
+          n_calls = floor (multiplier * n_calls0)
+          call it_list%set_n_calls (pass, n_calls)
+       end if
     end do
   end subroutine integration_apply_call_multipliers
 
@@ -9052,20 +9045,22 @@ of the integration history.
     integer :: i_component
     integer :: nlo_type
     logical :: display_summed
+    logical :: nlo_active
     type(string_t) :: color_method
     type(nlo_settings_t) :: nlo_settings
 
     var_list => intg%process%get_var_list_ptr ()
     color_method = var_list%get_sval (var_str ('$correlation_me_method'))
-    nlo_settings%use_internal_color_correlations = color_method == 'omega'
+    nlo_settings%use_internal_color_correlations = color_method == 'omega' & 
+       .or. color_method == 'threshold'
     nlo_settings%combined_integration = intg%combined_integration
 
     allocate (process_instance)
     call process_instance%init (intg%process, nlo_settings)
 
-    if (process_instance%has_blha_component ()) then
-       call process_instance%create_blha_interface (local%beam_structure)
-       call process_instance%load_blha_libraries (local%os_data)
+    if (process_instance%needs_extra_code ()) then
+       call process_instance%create_and_load_extra_libraries &
+               (local%beam_structure, local%os_data)
     end if
 
     call openmp_set_num_threads_verbose &
@@ -9083,57 +9078,66 @@ of the integration history.
     end if
     call intg%setup_component_cores ()
 
+    nlo_active = any (intg%process%get_component_nlo_type &
+         ([(i_mci, i_mci = 1, n_mci)]) /= BORN)
     do i_mci = 1, n_mci
        i_component = intg%process%i_mci_to_i_component (i_mci)
-       if (intg%process%is_active_nlo_component (i_component)) then
+       nlo_type = intg%process%get_component_nlo_type (i_mci)
+       if (intg%process%is_active_component (i_component)) then
           select type (pcm => process_instance%pcm)
           class is (pcm_instance_nlo_t)
              if (pcm%collect_matrix_elements)  call pcm%collector%reset ()
           end select
-         if (n_mci > 1) then
-            write (msg_buffer, "(A,A,A,I0)") &
-                 "Starting integration for process '", &
-                 char (intg%process%get_id ()), "' part ", i_mci
-            call msg_message ()
-         end if
-         n_pass = local%it_list%get_n_pass ()
-         if (n_pass == 0) then
-            call msg_message ("Integrate: iterations not specified, &
-                 &using default")
-            call intg%make_iterations_list (it_list)
-            n_pass = it_list%get_n_pass ()
-         else
-            it_list = local%it_list
-         end if
-         call intg%apply_call_multipliers (n_pass, i_mci, it_list)
-         call msg_message ("Integrate: " // char (it_list%to_string ()))
-         do pass = 1, n_pass
-            call intg%evaluate (process_instance, i_mci, pass, it_list, pacify)
-            if (signal_is_pending ())  return
-         end do
-         call intg%process%final_integration (i_mci)       
-         if (intg%vis_history) then
-            call intg%process%display_integration_history &
-                 (i_mci, intg%history_filename, local%os_data, eff_reset)
-         end if       
-         if (local%logfile == intg%log_filename) then
-            if (intg%run_id /= "") then
-               log_filename = intg%process_id // "." // intg%run_id // &
-                    ".var.log"
-            else
-               log_filename = intg%process_id // ".var.log"
-            end if
-            call msg_message ("Name clash for global logfile and process log: ", &
-                 arr =[var_str ("| Renaming log file from ") // local%logfile, &
-                       var_str ("|   to ") // log_filename // var_str (" .")])
-         else
-            log_filename = intg%log_filename
-         end if
-         call intg%process%write_logfile (i_mci, log_filename)    
+          if (n_mci > 1) then
+             if (nlo_active) then
+                write (msg_buffer, "(A,A,A,A,A)") &
+                     "Starting integration for process '", &
+                     char (intg%process%get_id ()), "' part '", &
+                     char (component_status (nlo_type)), "'"
+             else
+                write (msg_buffer, "(A,A,A,I0)") &
+                     "Starting integration for process '", &
+                     char (intg%process%get_id ()), "' part ", i_mci
+             end if
+             call msg_message ()
+          end if
+          n_pass = local%it_list%get_n_pass ()
+          if (n_pass == 0) then
+             call msg_message ("Integrate: iterations not specified, &
+                  &using default")
+             call intg%make_iterations_list (it_list)
+             n_pass = it_list%get_n_pass ()
+          else
+             it_list = local%it_list
+          end if
+          call intg%apply_call_multipliers (n_pass, i_mci, it_list)
+          call msg_message ("Integrate: " // char (it_list%to_string ()))
+          do pass = 1, n_pass
+             call intg%evaluate (process_instance, i_mci, pass, it_list, pacify)
+             if (signal_is_pending ())  return
+          end do
+          call intg%process%final_integration (i_mci)       
+          if (intg%vis_history) then
+             call intg%process%display_integration_history &
+                  (i_mci, intg%history_filename, local%os_data, eff_reset)
+          end if
+          if (local%logfile == intg%log_filename) then
+             if (intg%run_id /= "") then
+                log_filename = intg%process_id // "." // intg%run_id // &
+                     ".var.log"
+             else
+                log_filename = intg%process_id // ".var.log"
+             end if
+             call msg_message ("Name clash for global logfile and process log: ", &
+                  arr =[var_str ("| Renaming log file from ") // local%logfile, &
+                        var_str ("|   to ") // log_filename // var_str (" .")])
+          else
+             log_filename = intg%log_filename
+          end if
+          call intg%process%write_logfile (i_mci, log_filename)
        else
-         nlo_type = intg%process%get_component_nlo_type (i_mci)
-         if (nlo_type /= NLO_SUBTRACTION) display_summed = .false.
-       end if          
+          if (nlo_type /= NLO_SUBTRACTION) display_summed = .false.
+       end if
     end do
 
     if (n_mci > 1 .and. display_summed) then
@@ -9178,7 +9182,7 @@ has no matrix element).  The result is zero.
     class(integration_t), intent(inout) :: intg
     call intg%process%integrate_dummy ()
   end subroutine integration_integrate_dummy
-     
+
 @ %def integration_integrate_dummy
 @ Just sample the matrix element under realistic conditions (but no
 cuts); throw away the results.
@@ -11757,10 +11761,9 @@ does not affect parameters.
     if (process%is_nlo_calculation ()) then
        nlo_settings%combined_integration = combined_integration
        call process_instance%init (process, nlo_settings)
-       if (process_instance%has_blha_component () .and. present (local)) then
-          call process_instance%create_blha_interface (local%beam_structure)
-          call process_instance%load_blha_libraries (local%os_data)
-       end if
+       if (process_instance%needs_extra_code () .and. present (local)) &
+          call process_instance%create_and_load_extra_libraries &
+               (local%beam_structure, local%os_data)
        call setup_nlo_component_cores (process)
     else
        call process_instance%init (process)
@@ -16957,7 +16960,7 @@ or arrays which would make the expansion ambiguous.
     integer, dimension(:), allocatable :: pdg
     integer, dimension(:), allocatable :: i_term
     integer :: i, j, n_in, n_out, n_terms, n_components
-    logical :: nlo_fixed_order, nlo_threshold_matching
+    logical :: nlo_fixed_order
     type(string_t), dimension(:), allocatable :: prt_in_nlo, prt_out_nlo
     type(radiation_generator_t) :: radiation_generator
     type(pdg_list_t) :: pl_in, pl_out
@@ -16983,7 +16986,6 @@ or arrays which would make the expansion ambiguous.
     type(string_t) :: fks_method
     
     nlo_fixed_order = cmd%local%nlo_fixed_order                
-    nlo_threshold_matching = cmd%local%nlo_threshold_matching
     combined_nlo_integration = &
        global%var_list%get_lval (var_str ('?combined_nlo_integration'))
     powheg_active = & 
@@ -17007,7 +17009,7 @@ or arrays which would make the expansion ambiguous.
        prt_in(i) = make_flavor_string (pdg_in, cmd%local%model)
        prt_spec_in(i) = new_prt_spec (prt_in(i))
     end do
-    
+
     call compile_prt_expr &
          (prt_expr_out, cmd%pn_out, var_list, cmd%local%model)
     call prt_expr_out%expand ()
@@ -17034,7 +17036,7 @@ or arrays which would make the expansion ambiguous.
        pdg_out_tab(n_components) = pdg_out
     end do SCAN_COMPONENTS
 
-    if (nlo_fixed_order .or. nlo_threshold_matching .or. gks_active) then
+    if (nlo_fixed_order .or. gks_active) then
        call split_prt (prt_spec_in, n_in, pl_in)
        call split_prt (prt_spec_out, n_out, pl_out)
        call radiation_generator%init (pl_in, pl_out, qcd = .true., qed = .false.)
@@ -17074,28 +17076,18 @@ or arrays which would make the expansion ambiguous.
           n_components_extra = 4
        end if
        allocate (i_list (n_components_extra))
-    else if (nlo_threshold_matching) then
-       n_components_extra = 5
-       allocate (i_list (n_components_extra))
     else if (gks_active) then
        call radiation_generator%generate_multiple (gks_multiplicity)
        n_components_extra = radiation_generator%get_n_gks_states ()
     end if
 
-    
     if (nlo_fixed_order .and..not. use_powheg_damping_factors) then
        n_components_init = n_components * n_components_extra
-       !call prc_config%init (cmd%id, n_in, n_components*n_components_extra, cmd%local)
     else if (nlo_fixed_order .and. use_powheg_damping_factors) then
-       !call prc_config%init (cmd%id, n_in, n_components*(n_components_extra), cmd%local)
-       n_components_init = n_components * n_components_extra
-    else if (nlo_threshold_matching) then
        n_components_init = n_components * n_components_extra
     else if (gks_active) then
-       !call prc_config%init (cmd%id, n_in, n_components*(n_components_extra+1), cmd%local)
        n_components_init = n_components * (n_components_extra + 1)
     else
-       !call prc_config%init (cmd%id, n_in, n_components, cmd%local)
        n_components_init = n_components
     end if
 
@@ -17103,7 +17095,7 @@ or arrays which would make the expansion ambiguous.
 
     do i = 1, n_components
        call prt_expr_out%term_to_array (prt_spec_out, i_term(i))
-       if (nlo_fixed_order .or. nlo_threshold_matching) then
+       if (nlo_fixed_order) then
           associate (active_comp => cmd%local%active_nlo_components)
              i_list(1) = i
              i_list(2) = i + n_components
@@ -17155,15 +17147,6 @@ or arrays which would make the expansion ambiguous.
              call prc_config%setup_component (n_components * i_real + i, prt_spec_in, &
                 prt_spec_out, global, NLO_SUBTRACTION, active_in = active_comp (4))
              
-             i_real = i_real + 1
-             if (nlo_threshold_matching) then 
-                 i_list(5) = i + 4 * n_components
-                 call global%set_me_method (var_str ("threshold"))
-                 call prc_config%setup_component (n_components * i_real + i, &
-                    prt_spec_in, prt_spec_out, global, NLO_THRESHOLD_RESUMMATION, &
-                    .true.)
-             end if
-
              if (initial_state_colored .and. has_structure_functions) then
                 if (current_me_method /= "omega") then
                    call global%set_me_method (var_str ("omega"))
@@ -17219,10 +17202,9 @@ or arrays which would make the expansion ambiguous.
       logical, intent(in) :: nlo, combined, powheg
       logical :: case_lo_but_any_other
       logical :: case_nlo_powheg_but_not_combined
-      case_lo_but_any_other = .not. nlo .and. &
-                              any ([combined, powheg])
+      case_lo_but_any_other = .not. nlo .and. any ([combined, powheg])
       case_nlo_powheg_but_not_combined = &
-                              nlo .and. powheg .and. .not. combined
+           nlo .and. powheg .and. .not. combined
       if (case_lo_but_any_other) then
           call msg_fatal ("Option mismatch: Leading order process is selected &
                           &but either powheg_matching or combined_nlo_integration &
@@ -17260,20 +17242,20 @@ or arrays which would make the expansion ambiguous.
            call split (prt_string, prt_tmp, ":")
            if (prt_tmp /= "") then
              i_particle(n) = cmd%local%model%get_pdg (prt_tmp)
-             n=n+1
+             n = n + 1
            else
              exit
            end if
          end do
-         call pdg_array_init (pdg, n-1)
-         do j = 1, n-1 
+         call pdg_array_init (pdg, n - 1)
+         do j = 1, n - 1
            call pdg%set (j, i_particle(j))
          end do
          call pl%set (i, pdg)
          call pdg_array_delete (pdg)
       end do
     end subroutine split_prt
-             
+
   end subroutine cmd_process_execute
 
 @ %def cmd_process_execute
@@ -17433,51 +17415,34 @@ particle-specifier expression which we can process further.
     type(rt_data_t), intent(inout), target :: global
     type(parse_node_t), pointer :: current_component
     type(string_t) :: component_type
-    integer :: i
+    type(string_t) :: string
+    integer :: i, comp, j
 
     cmd%active_component = .false.
 
     current_component => cmd%pn_components(1)%ptr
     i = 2
-    do 
-      if (associated (current_component)) then
-         component_type = eval_string (current_component, global%var_list)
-         select case (char (component_type))
-         case ('Born')
-            cmd%active_component(1) = .true.
-         case ('Real')
-            cmd%active_component(2) = .true.
-         case ('Virtual')
-            cmd%active_component(3) = .true.
-         case ('Pdf')
-            cmd%active_component(4) = .true.
-         case ('Mismatch')
-            cmd%active_component(5) = .true.
-         case ('Full')
-            cmd%active_component = .true.
-         case ('Threshold_matched')
-            cmd%active_component = .true.
-            global%nlo_threshold_matching = .true.
-         case ('Threshold_only')
-            cmd%active_component(4) = .true.
-            global%nlo_threshold_matching = .true.
-         case default
-            call msg_fatal ("Invalid NLO mode! " // &
-               "Valid inputs are: 'Born', 'Real', " // &
-               "'Virtual', 'Pdf', 'Full', 'Threshold_matched' and " // &
-               "'Threshold_only'")
-         end select
-         if (i >= 5) exit
-         current_component => cmd%pn_components(i)%ptr
-         i = i + 1
-      else
-         exit
-      end if
-    end do   
-    !!!global%nlo_fixed_order = (cmd%active_component(2) &
-    !!!  .or. cmd%active_component(3) .or. cmd%active_component(4)) & 
-    global%nlo_fixed_order = any (cmd%active_component(2:5)) &
-      .and..not. global%nlo_threshold_matching
+    do while (associated (current_component))
+       component_type = eval_string (current_component, global%var_list)
+       comp = component_status (component_type)
+       select case (comp)
+       case (BORN : NLO_PDF)
+          cmd%active_component(comp + 1) = .true.
+       case (NLO_FULL)
+          cmd%active_component = .true.
+       case default
+          string = var_str ("")
+          do j = BORN, NLO_PDF
+             string = string // component_status (j) // ", "
+          end do
+          string = string // component_status (NLO_FULL)
+          call msg_fatal (char("Invalid NLO mode! Valid inputs are: " // string))
+       end select
+       if (i >= 5) exit
+       current_component => cmd%pn_components(i)%ptr
+       i = i + 1
+    end do
+    global%nlo_fixed_order = any (cmd%active_component(2:5))
     global%active_nlo_components = cmd%active_component
   end subroutine cmd_nlo_execute
 
@@ -29912,12 +29877,11 @@ This is for developers only, but needs a well-defined interface.
     logical :: look_for_options
     logical :: interactive
     logical :: banner
-    type(string_t) :: files, this, model, default_lib, library, libraries
+    type(string_t) :: files, model, default_lib, library, libraries
 !     type(string_t) :: check, checks
     type(string_t) :: logfile
     type(test_results_t) :: test_results
     logical :: success
-    logical :: user_code_enable = .false.
     integer :: n_user_src = 0, n_user_lib = 0
     type(string_t) :: user_src, user_lib
     type(paths_t) :: paths
@@ -29929,7 +29893,6 @@ This is for developers only, but needs a well-defined interface.
     type(whizard_t), pointer :: whizard_instance
     
     ! Exit status
-    logical :: quit = .false.
     integer :: quit_code = 0
   
     ! Initial values
@@ -30200,7 +30163,6 @@ This is for developers only, but needs a well-defined interface.
     type(command_list_t), pointer :: cmd_list
     type(whizard_t), pointer :: whizard_instance
    
-    integer :: i_evt
     type(simulation_t), target :: sim
    
     character(kind=c_char), intent(in) :: c_id(*)

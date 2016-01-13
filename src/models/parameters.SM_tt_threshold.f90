@@ -55,7 +55,7 @@ module parameters_sm_tt_threshold
 
   public :: import_from_whizard, model_update_alpha_s, &
        ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole, ttv_wtpole, &
-       onshell_tops, expanded_amp2
+       onshell_tops, expanded_amp2, top_width_lo, top_width_nlo
 
 contains
 
@@ -249,7 +249,6 @@ contains
     igs = cmplx (0.0_default, 1.0_default, kind=default) * gs
   end subroutine model_update_alpha_s
 
-  !pure
   function ttv_formfactor (p, k, i, FF_mode) result (c)
     complex(default) :: c
     type(momentum), intent(in) :: p, k
@@ -265,8 +264,7 @@ contains
     c = c - 1.0_default
   end function ttv_formfactor
 
-  !pure
-  function onshell_tops (p, k) result (onshell)
+  pure function onshell_tops (p, k) result (onshell)
     logical :: onshell
     type(momentum), intent(in) :: p, k
     type(phase_space_point_t) :: ps
@@ -274,7 +272,6 @@ contains
     onshell = ps%onshell
   end function onshell_tops
 
-  !pure
   function va_ilc_tta (p, k, i) result (c)
     complex(default) :: c
     type(momentum), intent(in) :: p, k
@@ -283,7 +280,6 @@ contains
     if (i==1) c = qup * ttv_formfactor (p, k, 1)
   end function va_ilc_tta
 
-  !pure
   function va_ilc_ttz (p, k, i) result (c)
     complex(default) :: c
     type(momentum), intent(in) :: p, k
@@ -291,22 +287,25 @@ contains
     c = gncup(i) * ttv_formfactor (p, k, i)
   end function va_ilc_ttz
 
-  !pure
-  function ttv_mtpole (s) result (m)
+  pure function ttv_mtpole (s) result (m)
     real(default) :: m
     real(default), intent(in) :: s
     m = m1s_to_mpole (sqrt (s))
   end function ttv_mtpole
 
-  !pure
-  function ttv_wtpole (s, ff) result (w)
+  pure function ttv_wtpole (s, ff, minv) result (w)
     real(default) :: w
     real(default), intent(in) :: s
+    real(default), intent(in), optional :: minv
     integer, intent(in) :: ff
+    real(default) :: m
     logical :: nlo
-    if (OFFSHELL_STRATEGY == 0 .or. OFFSHELL_STRATEGY == -1) then
+    select case (OFFSHELL_STRATEGY)
+    case (0, -1)
        nlo = .false.
-    else
+    case (-2)
+       nlo = .true.
+    case default
        select case (ff)
        case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
              RESUMMED_SWITCHOFF_P0CONSTANT, RESUMMED_ANALYTIC_LL)
@@ -314,19 +313,37 @@ contains
        case default
           nlo = .true.
        end select
+    end select
+    if (present (minv)) then
+       m = minv
+    else
+       m = ttv_mtpole (s)
     end if
     if (nlo) then
        ! TODO: (bcn 2015-11-11) Vtb is not considered in NLO width
-       w = top_width_sm_qcd_nlo (one / alphaemi, sinthw, ttv_mtpole (s), &
+       w = top_width_sm_qcd_nlo (one / alphaemi, sinthw, m, &
             mass(24), mass(5), AS_HARD) + wt_inv
     else
-       w = top_width_sm_lo (one / alphaemi, sinthw, Vtb, ttv_mtpole (s), mass(24), &
+       w = top_width_sm_lo (one / alphaemi, sinthw, Vtb, m, mass(24), &
             mass(5)) + wt_inv
     end if
   end function ttv_wtpole
 
-  !pure
-  function expanded_amp2 (amp_tree, amp_blob) result (amp2)
+  pure function top_width_nlo (minv) result (w)
+    real(default) :: w
+    real(default), intent(in) :: minv
+    w = top_width_sm_qcd_nlo (one / alphaemi, sinthw, minv, &
+         mass(24), mass(5), AS_HARD) + wt_inv
+  end function top_width_nlo
+
+  pure function top_width_lo (minv) result (w)
+    real(default) :: w
+    real(default), intent(in) :: minv
+    w = top_width_sm_lo (one / alphaemi, sinthw, Vtb, minv, mass(24), &
+         mass(5)) + wt_inv
+  end function top_width_lo
+
+  pure function expanded_amp2 (amp_tree, amp_blob) result (amp2)
     real(default) :: amp2
     complex(default), dimension(:), intent(in) :: amp_tree, amp_blob
     amp2 = sum (amp_tree * conjg (amp_tree) + &
