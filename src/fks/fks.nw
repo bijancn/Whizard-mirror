@@ -4541,10 +4541,10 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
 <<real subtraction: real subtraction: TBP>>=
   procedure :: compute => real_subtraction_compute
 <<real subtraction: procedures>>=
-  function real_subtraction_compute (rsub, emitter, i_flv, alpha_s) result (sqme)
+  function real_subtraction_compute (rsub, emitter, i_phs, i_flv, alpha_s) result (sqme)
     real(default) :: sqme
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter, i_flv
+    integer, intent(in) :: emitter, i_phs, i_flv
     real(default) :: sqme_alr, alpha_s
     integer :: alr, i_con
 
@@ -4552,10 +4552,11 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
     do alr = 1, size (rsub%reg_data%regions)
        sqme_alr = zero
        if (emitter == rsub%reg_data%regions(alr)%emitter .and. &
+          i_phs == rsub%real_kinematics%alr_to_i_phs (alr) .and. &
           i_flv == rsub%reg_data%regions(alr)%real_index) then
           call rsub%set_alr (alr)
           call rsub%set_i_res (alr)
-          sqme_alr = rsub%evaluate_emitter_region (emitter, alpha_s)
+          sqme_alr = rsub%evaluate_emitter_region (emitter, i_phs, alpha_s)
           i_con = rsub%get_i_contributor (alr)
           if (rsub%purpose == INTEGRATION .or. rsub%purpose == FIXED_ORDER_EVENTS) &
              sqme_alr = sqme_alr * rsub%get_phs_factor (i_con)
@@ -4569,14 +4570,13 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
 <<real subtraction: real subtraction: TBP>>=
   procedure :: evaluate_emitter_region => real_subtraction_evaluate_emitter_region
 <<real subtraction: procedures>>=
-  function real_subtraction_evaluate_emitter_region (rsub, emitter, alpha_s) &
+  function real_subtraction_evaluate_emitter_region (rsub, emitter, i_phs, alpha_s) &
      result (sqme)
     real(default) :: sqme
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
-    integer :: i_phs, i_con
-    i_phs = rsub%real_kinematics%alr_to_i_phs (rsub%current_alr)
+    integer :: i_con
     if (emitter <= rsub%isr_kinematics%n_in) then
        sqme = rsub%evaluate_region_isr (emitter, i_phs, alpha_s)
     else
@@ -4587,7 +4587,7 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
              (rsub%real_kinematics%xi_ref_momenta (i_con))
           sqme = rsub%evaluate_region_fsr (emitter, i_phs, alpha_s)
        class default
-          i_phs = rsub%real_kinematics%alr_to_i_phs (rsub%current_alr)
+          !!!i_phs = rsub%real_kinematics%alr_to_i_phs (rsub%current_alr)
           sqme = rsub%evaluate_region_fsr (emitter, i_phs, alpha_s)
        end select
     end if
@@ -4606,7 +4606,7 @@ the corresponding jacobians.
   procedure :: evaluate_region_fsr => real_subtraction_evaluate_region_fsr
 <<real subtraction: procedures>>=
   function real_subtraction_evaluate_region_fsr (rsub, emitter, i_phs, &
-                                             alpha_s) result (sqme)
+     alpha_s) result (sqme)
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
@@ -6736,18 +6736,20 @@ and virtual counterterms.
     class(nlo_controller_t), intent(inout) :: nlo_controller
     real(default), intent(in) :: weight
     real(default) :: sqme_fin
-    integer :: emitter, i_flv
+    integer :: emitter, i_flv, i_phs
     call msg_debug2 (D_SUBTRACTION, "nlo_controller_compute_sqme_real_fin")
     if (.not. nlo_controller%alpha_s_born_set) &
       call msg_fatal ("Strong coupling not set for real calculation")
     emitter = nlo_controller%get_active_emitter ()
+    i_phs = nlo_controller%get_active_phase_space ()
+    !!!print *, 'active phase space: ', i_phs
     i_flv = nlo_controller%active_flavor_structure_real
     call nlo_controller%real_terms%set_real_kinematics &
          (nlo_controller%real_kinematics)
     call nlo_controller%real_terms%set_isr_kinematics &
          (nlo_controller%isr_kinematics)
     sqme_fin = nlo_controller%real_terms%compute &
-         (emitter, i_flv, nlo_controller%alpha_s_born)
+         (emitter, i_phs, i_flv, nlo_controller%alpha_s_born)
     sqme_fin = sqme_fin * weight
   end function nlo_controller_compute_sqme_real_fin
 
@@ -7084,7 +7086,7 @@ process.
     type(polarization_data_t), dimension(:), allocatable :: pol_density_matrix
     type(polarization_data_t), dimension(:), allocatable :: pol_sqme
     integer :: n_allowed_born
-    integer :: active_emitter
+    integer :: active_emitter, active_phase_space
     integer :: active_flavor_structure_real
     complex(default), dimension(:), allocatable :: amp_born
     type(color_data_t) :: color_data
@@ -7785,15 +7787,37 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
 @ %def nlo_controller_set_active_emitter
 @
 <<nlo controller: nlo controller: TBP>>=
+  procedure :: set_active_phase_space => nlo_controller_set_active_phase_space
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_set_active_phase_space (nlo_controller, i_phs)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    integer, intent(in) :: i_phs
+    nlo_controller%active_phase_space = i_phs
+  end subroutine 
+
+@ %def nlo_controller_set_active_phase_spac
+@
+<<nlo controller: nlo controller: TBP>>=
   procedure :: get_active_emitter => nlo_controller_get_active_emitter
 <<nlo controller: procedures>>=
-  function nlo_controller_get_active_emitter (nlo_controller) result(emitter)
-    class(nlo_controller_t), intent(in) :: nlo_controller
+  function nlo_controller_get_active_emitter (nlo_controller) result (emitter)
     integer :: emitter
+    class(nlo_controller_t), intent(in) :: nlo_controller
     emitter = nlo_controller%active_emitter
   end function nlo_controller_get_active_emitter
 
 @ %def nlo_controller_get_active_emitter
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: get_active_phase_space => nlo_controller_get_active_phase_space
+<<nlo controller: procedures>>=
+  function nlo_controller_get_active_phase_space (nlo_controller) result (i_phs)
+    integer :: i_phs
+    class(nlo_controller_t), intent(in) :: nlo_controller
+    i_phs = nlo_controller%active_phase_space
+  end function nlo_controller_get_active_phase_space
+
+@ %def nlo_controller_get_active_phase_space
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: disable_subtraction => nlo_controller_disable_subtraction
