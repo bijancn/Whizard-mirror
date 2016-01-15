@@ -5,7 +5,6 @@ module @ID@_virtual
   use parameters_sm_tt_threshold
   implicit none
   integer, dimension(2) :: id
-contains
 end module @ID@_virtual
 
 subroutine @ID@_start_openloops () bind(C)
@@ -27,7 +26,7 @@ subroutine @ID@_start_openloops () bind(C)
         call set_parameter("width(" // trim (adjustl (buffer)) // ")", width(pdgs(i)))
      end if
   end do
-  call set_parameter("alpha", one / alphaemi)
+  call set_parameter("alpha", real(1 / alphaemi, kind=double))
 
   ! Increase verbosity level to list loaded libraries
   call set_parameter("verbose", 3)
@@ -36,17 +35,12 @@ subroutine @ID@_start_openloops () bind(C)
   call set_parameter("use_cms", 0)
   call set_parameter("me_cache", 0)
 
-  ! register one-loop amplitude for process d dbar -> Z u ubar
-  ! The "ppzjj" process library must be installed before via
-  ! $ ./scons auto=ppzjj
-  !
-  ! second argument of register_process:
   ! 1 for tree-like matrix elements (tree, color and spin correlations),
   ! 11 for loop, 12 for loop^2
   !id(1) = register_process("6(-1) -> 24 5", 11)
   !id(2) = register_process("6(+1) -> 24 5", 11)
-  id(2) = 0
   id(1) = register_process("11 -11 -> 24 -24 5 -5", 11)
+  id(2) = 0
   !id(2) = register_process("-6 -> -24 -5", 11)
   !id(1) = register_process("6 -> 24 5", 11)
 
@@ -56,9 +50,6 @@ end subroutine @ID@_start_openloops
 
 subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
        sqme_c, acc_c) bind(C)
-  use iso_c_binding
-  use kinds
-  use openloops
   use @ID@_threshold
   use @ID@_virtual
   implicit none
@@ -68,7 +59,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   real(c_default_float), intent(in) :: mu_c
   real(c_default_float), dimension(4), intent(out) :: sqme_c
   real(c_default_float), intent(out) :: acc_c
-  integer :: k, i
+  integer :: i
   real(double) :: m2_tree, m2_loop(0:2), acc
   real(double) :: p_ex(0:3,6)
   real(double) :: mu, alpha_s
@@ -85,7 +76,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
      if (id(i) > 0) then
         call set_parameter("alpha_s", alpha_s)
         call set_parameter("mu", mu)
-        call evaluate_loop(id(i), p_ex, m2_tree, m2_loop(0:2), acc)
+        call evaluate_loop(id(i), p_ex, m2_tree, m2_loop, acc)
      else
         !print *, "Could not load process ", id(i)
         !stop 1
