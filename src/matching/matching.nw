@@ -1469,19 +1469,6 @@ used to decide which ubf object is allocated.
 
 @ %def powheg_settings_write
 @
-To be able to test the powheg class independently, we set up a type that
-contains the necessary dummy information:
-<<POWHEG matching: public>>=
-  public :: powheg_testing_t
-<<POWHEG matching: types>>=
-  type :: powheg_testing_t
-     integer :: n_alr, n_in, n_out_born, n_out_real
-     real(default) :: sqme_born
-     logical :: active = .false.
-  end type powheg_testing_t
-
-@ %def powheg_testing_t
-@
 <<POWHEG matching: public>>=
   public :: radiation_t
 <<POWHEG matching: types>>=
@@ -2723,7 +2710,6 @@ Implements the function $G(a,b,\xi)$ given in eq. (\ref{GPlusMassiveFSR}) and eq
      type(grid_t) :: grid
      type(phs_fks_generator_t) :: phs_fks_generator
      type(powheg_settings_t) :: settings
-     type(powheg_testing_t) :: testing
      type(event_deps_t) :: event_deps
      type(process_deps_t) :: process_deps
      type(sudakov_wrapper_t), dimension(:), allocatable :: sudakov
@@ -2915,13 +2901,8 @@ Implements the function $G(a,b,\xi)$ given in eq. (\ref{GPlusMassiveFSR}) and eq
           ubf_type = powheg%settings%upper_bound_func
           select type (pcm => powheg%process_instance%pcm)
           class is (pcm_instance_nlo_t)
-             if (.not. powheg%testing%active) then
-                emitter = pcm%controller%get_emitter (alr)
-                is_massive = powheg%phs_fks_generator%is_massive (emitter)
-             else
-                emitter = 1
-                is_massive = .false.
-             end if
+             emitter = pcm%controller%get_emitter (alr)
+             is_massive = powheg%phs_fks_generator%is_massive (emitter)
           end select
           if (is_massive) ubf_type = UBF_MASSIVE
           select case (ubf_type)
@@ -3006,13 +2987,8 @@ Implements the function $G(a,b,\xi)$ given in eq. (\ref{GPlusMassiveFSR}) and eq
     type(lorentz_transformation_t), intent(in), optional :: lt_lab_to_cms
     select type (pcm => powheg%process_instance%pcm)
     class is (pcm_instance_nlo_t)
-       if (.not. powheg%testing%active) then
-          call powheg%event_deps%update &
-               (pcm%collector%get_sqme_born(1), p_born, lt_lab_to_cms)
-       else
-          call powheg%event_deps%update &
-               (powheg%testing%sqme_born, p_born, lt_lab_to_cms)
-       end if
+       call powheg%event_deps%update &
+          (pcm%collector%get_sqme_born(1), p_born, lt_lab_to_cms)
     end select
   end subroutine powheg_matching_update_event_deps
 
@@ -3108,15 +3084,11 @@ Jacobian.
     real(default) :: sqme
     select type (pcm => powheg%process_instance%pcm)
     class is (pcm_instance_nlo_t)
-       if (.not. powheg%testing%active) then
-          i_phs = powheg%process_deps%alr_to_i_phs (alr)
-          associate (instance => powheg%process_instance)
-             call instance%compute_sqme_real_rad (i_phs)
-          end associate
-          sqme = pcm%collector%sqme_real_per_phs (1, i_phs)
-       else
-          sqme = one
-       end if
+       i_phs = powheg%process_deps%alr_to_i_phs (alr)
+       associate (instance => powheg%process_instance)
+          call instance%compute_sqme_real_rad (i_phs)
+       end associate
+       sqme = pcm%collector%sqme_real_per_phs (1, i_phs)
     end select
   end function powheg_matching_compute_sqme_real
 
@@ -3229,27 +3201,23 @@ The following is valid for one underlying Born.
     integer :: emitter, i_phs
     select type (pcm => powheg%process_instance%pcm)
     class is (pcm_instance_nlo_t)
-       if (.not. powheg%testing%active) then
-          associate (fks => powheg%phs_fks_generator)
-             i_phs = powheg%process_deps%alr_to_i_phs (alr)
-             emitter = powheg%process_deps%phs_identifiers(i_phs)%emitter
-             associate (generator => powheg%phs_fks_generator)
-                call generator%prepare_generation (radiation_randoms, &
-                   i_phs, emitter, powheg%event_deps%p_born_cms%phs_point(1)%p, &
-                   powheg%process_deps%phs_identifiers)
-                call generator%generate_fsr (emitter, i_phs, &
-                   powheg%event_deps%p_born_cms%phs_point(1)%p, &
-                   powheg%event_deps%p_real_cms%phs_point(i_phs))
-                call generator%get_radiation_variables (i_phs, xi, y)
-             end associate
-             call powheg%boost_preal_to_lab_frame (i_phs)
-             call powheg%copy_momenta ()
+       associate (fks => powheg%phs_fks_generator)
+          i_phs = powheg%process_deps%alr_to_i_phs (alr)
+          emitter = powheg%process_deps%phs_identifiers(i_phs)%emitter
+          associate (generator => powheg%phs_fks_generator)
+             print *, 'prepare generation: ', i_phs, emitter
+             call generator%prepare_generation (radiation_randoms, &
+                i_phs, emitter, powheg%event_deps%p_born_cms%phs_point(1)%p, &
+                powheg%process_deps%phs_identifiers)
+             call generator%generate_fsr (emitter, i_phs, &
+                powheg%event_deps%p_born_cms%phs_point(1)%p, &
+                powheg%event_deps%p_real_cms%phs_point(i_phs))
+             call generator%get_radiation_variables (i_phs, xi, y)
           end associate
-       else
-          xi = radiation_randoms (I_XI)
-          y = radiation_randoms (I_Y)
-       end if
-    end select
+          call powheg%boost_preal_to_lab_frame (i_phs)
+          call powheg%copy_momenta ()
+       end associate
+     end select
   end subroutine powheg_matching_generate_xi_and_y_for_grids
 
 @ %def powheg_matching_generate_xi_and_y_for_grids
@@ -3261,26 +3229,30 @@ The following is valid for one underlying Born.
      radiation_randoms)
     real(default), dimension(3), intent(out) :: radiation_randoms
     class(powheg_matching_t), intent(inout) :: powheg
+    integer :: alr, i_phs, emitter
     select type (pcm => powheg%process_instance%pcm)
     class is (pcm_instance_nlo_t)
-       if (.not. powheg%testing%active) then
-          associate ( &
-               fks => powheg%phs_fks_generator, &
-               process => powheg%process_instance%process)
-            do
-               call process%generate_weighted_event (powheg%process_instance, 1)
-               call powheg%update (pcm%controller%int_born%get_momenta ())
-               call powheg%rng%generate (radiation_randoms)
-               call fks%generate_radiation_variables &
-                  (radiation_randoms, powheg%event_deps%p_born_lab%get_momenta(1), &
-                     powheg%process_deps%phs_identifiers)
-               call powheg%update_sudakovs (fks%real_kinematics%y)
-               if (powheg%above_pt2_min ()) exit
-            end do
-          end associate
-       else
-          call powheg%rng%generate (radiation_randoms)
-       end if
+       associate ( &
+            fks => powheg%phs_fks_generator, &
+            process => powheg%process_instance%process)
+          do
+             call process%generate_weighted_event (powheg%process_instance, 1)
+             call powheg%update (pcm%controller%int_born%get_momenta ())
+             call powheg%rng%generate (radiation_randoms)
+             do alr = 1, powheg%process_deps%n_alr
+             !!!call fks%generate_radiation_variables &
+             !!!   (radiation_randoms, powheg%event_deps%p_born_lab%get_momenta(1), &
+             !!!      powheg%process_deps%phs_identifiers)
+                i_phs = powheg%process_deps%alr_to_i_phs (alr)
+                emitter = powheg%sudakov(alr)%s%associated_emitter ()
+                call fks%prepare_generation (radiation_randoms, i_phs, &
+                   emitter, powheg%event_deps%p_born_lab%get_momenta(1), &
+                   powheg%process_deps%phs_identifiers)
+                call powheg%update_sudakovs (alr, i_phs, emitter, fks%real_kinematics%y(i_phs))
+             end do
+             if (powheg%above_pt2_min ()) exit
+          end do
+       end associate
     end select
   end subroutine powheg_matching_prepare_momenta_for_fill_grids
 
@@ -3314,28 +3286,23 @@ The following is valid for one underlying Born.
 <<POWHEG matching: powheg matching: TBP>>=
   procedure :: update_sudakovs => powheg_matching_update_sudakovs
 <<POWHEG matching: procedures>>=
-  subroutine powheg_matching_update_sudakovs (powheg, y)
+  subroutine powheg_matching_update_sudakovs (powheg, alr, i_phs, emitter, y)
     class(powheg_matching_t), intent(inout) :: powheg
-    real(default), dimension(:), intent(in) :: y
-    integer :: alr, emitter
+    integer, intent(in) :: alr, i_phs, emitter
+    real(default), intent(in) :: y
     real(default) :: q0, m2, mrec2, k0_rec_max
     type(vector4_t) :: p_emitter
-    integer :: i_phs
-    do alr = 1, powheg%process_deps%n_alr
-       i_phs = powheg%process_deps%alr_to_i_phs (alr)
-       select type (s => powheg%sudakov(alr)%s)
-       type is (sudakov_massive_fsr_t)
-          emitter = s%associated_emitter ()
-          q0 = sqrt (s%event_deps%s_hat)
-          p_emitter = s%event_deps%p_born_lab%get_momentum (1, emitter)
-          associate (p => p_emitter%p)
-             mrec2 = (q0 - p(0))**2 - p(1)**2 - p(2)**2 - p(3)**2
-          end associate
-          m2 = p_emitter**2
-          call compute_dalitz_bounds (q0, m2, mrec2, s%z1, s%z2, k0_rec_max)
-          s%z = s%z2 - (s%z2 - s%z1) * (one + y(i_phs)) / two
-       end select
-    end do
+    select type (s => powheg%sudakov(alr)%s)
+    type is (sudakov_massive_fsr_t)
+       q0 = sqrt (s%event_deps%s_hat)
+       p_emitter = s%event_deps%p_born_lab%get_momentum (1, emitter)
+       associate (p => p_emitter%p)
+          mrec2 = (q0 - p(0))**2 - p(1)**2 - p(2)**2 - p(3)**2
+       end associate
+       m2 = p_emitter**2
+       call compute_dalitz_bounds (q0, m2, mrec2, s%z1, s%z2, k0_rec_max)
+       s%z = s%z2 - (s%z2 - s%z1) * (one + y) / two
+    end select
   end subroutine powheg_matching_update_sudakovs
 
 @ %def powheg_matching_update_sudakovs
@@ -3605,22 +3572,15 @@ $p_{T,\text{min}}^2$.
     call msg_debug (D_MATCHING, "powheg_matching_setup_nlo_environment")
     select type (pcm => matching%process_instance%pcm)
     class is (pcm_instance_nlo_t)
-       if (.not. matching%testing%active) then
-          matching%process_deps%n_alr = pcm%controller%get_n_alr ()
-          n_in = pcm%controller%particle_data%n_in
-          n_out_born = pcm%controller%particle_data%n_out_born
-          n_out_real = pcm%controller%particle_data%n_out_real
-          matching%process_deps%sqrts = matching%process_instance%get_sqrts ()
-          call pcm%controller%setup_generator &
-               (matching%phs_fks_generator, &
-               matching%process_deps%sqrts, &
-               matching%settings%singular_jacobian)
-       else
-          matching%process_deps%n_alr = matching%testing%n_alr
-          n_in = matching%testing%n_in
-          n_out_born = matching%testing%n_out_born
-          n_out_real = matching%testing%n_out_real
-       end if
+       matching%process_deps%n_alr = pcm%controller%get_n_alr ()
+       n_in = pcm%controller%particle_data%n_in
+       n_out_born = pcm%controller%particle_data%n_out_born
+       n_out_real = pcm%controller%particle_data%n_out_real
+       matching%process_deps%sqrts = matching%process_instance%get_sqrts ()
+       call pcm%controller%setup_generator &
+            (matching%phs_fks_generator, &
+            matching%process_deps%sqrts, &
+            matching%settings%singular_jacobian)
        !!!allocate (matching%event_deps%p_born_lab (n_in + n_out_born))
        !!!allocate (matching%event_deps%p_born_cms (n_in + n_out_born))
        !!!allocate (matching%event_deps%p_real_lab (n_in + n_out_real))
