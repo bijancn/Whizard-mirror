@@ -198,7 +198,7 @@ clean-local:
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
 	rm -f *.run *.log slha_test.out
 	rm -f core* stdhep_rd
-	rm -f *.f90 *.c *.$(FC_MODULE_EXT) *.o *.la
+	rm -f *.f90 *.c *.$(FC_MODULE_EXT) *.o *.la *.f90.in
 	rm -f *.makefile
 	rm -rf ref-output
 	rm -f *.sin *.hbc 
@@ -217,6 +217,7 @@ clean-local:
 	rm -rf *olp_modules
 	rm -rf Generated_Loops
 	rm -rf include lib golem.in
+	rm -f SM_tt_threshold.grid
 if FC_SUBMODULES
 	rm -f *.smod
 endif
