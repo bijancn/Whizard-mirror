@@ -8312,14 +8312,23 @@ physical event.
      term_instance_evaluate_interaction_real_rad
 <<Processes: procedures>>=
   subroutine term_instance_evaluate_interaction_real_rad (term, &
-     component, i_term, i_phs, alpha_s_external)
+     component, i_term, i_phs, alpha_s_external, only_born)
     class(term_instance_t), intent(inout) :: term
     type(component_instance_t), intent(inout) :: component
     integer, intent(in) :: i_term, i_phs 
     real(default), intent(in), optional :: alpha_s_external
+    logical, intent(in), optional :: only_born
     integer :: i
     real(default), allocatable :: alpha_qcd_forced
+    logical :: yorn
 
+    yorn = .false.; if (present (only_born)) yorn = only_born
+    if (present (alpha_s_external)) then
+       allocate (alpha_qcd_forced, source = alpha_s_external)
+    else
+       if (allocated (term%alpha_qcd_forced)) &
+          allocate (alpha_qcd_forced, source = term%alpha_qcd_forced)
+    end if
     call term%update_real_interactions (i_phs)
     select type (phs => term%k_term%phs)
     type is (phs_fks_t)
@@ -8328,29 +8337,25 @@ physical event.
           (phs%phs_identifiers(i_phs)%emitter)
     end select
 
+    if (.not. yorn) then
+       call component%core_state%reset_new_kinematics ()
+       select type (core => component%config%core)
+       type is (prc_omega_t)
+          do i = 1, term%config%n_allowed
+             term%amp(i) = core%compute_amplitude (i_term, &
+                term%int_hard_real%get_momenta (), &
+                term%config%flv(i), term%config%hel(i), term%config%col(i), &
+                term%fac_scale, term%ren_scale, alpha_qcd_forced, &
+                component%core_state)
+          end do
+       class is (prc_user_defined_base_t)
+          call core%update_alpha_s (component%core_state, term%fac_scale)
+          term%amp = zero
+       end select
+       call term%int_hard_real%set_matrix_element (term%amp)
+    end if
     call component%nlo_controller%int_born%set_momenta &
        (component%nlo_controller%real_kinematics%p_born_cms%phs_point(1)%p)
-    call component%core_state%reset_new_kinematics ()
-    select type (core => component%config%core)
-    type is (prc_omega_t)
-       if (present (alpha_s_external)) then
-          allocate (alpha_qcd_forced, source = alpha_s_external)
-       else
-          if (allocated (term%alpha_qcd_forced)) &
-             allocate (alpha_qcd_forced, source = term%alpha_qcd_forced)
-       end if
-       do i = 1, term%config%n_allowed
-          term%amp(i) = core%compute_amplitude (i_term, &
-             term%int_hard_real%get_momenta (), &
-             term%config%flv(i), term%config%hel(i), term%config%col(i), &
-             term%fac_scale, term%ren_scale, alpha_qcd_forced, &
-             component%core_state)
-       end do
-    class is (prc_user_defined_base_t)
-       call core%update_alpha_s (component%core_state, term%fac_scale)
-       term%amp = zero
-    end select
-    call term%int_hard_real%set_matrix_element (term%amp)
     call component%core_state%reset_new_kinematics ()
     select type (core_sub_born => component%config%core_sub_born)
     type is (prc_omega_t)
@@ -9944,7 +9949,7 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
 
        associate (term => instance%term(i_real))
          call term%evaluate_interaction_real_rad (instance%component(i_real), &
-            i_real, i_phs, alpha_s_external)
+            i_real, i_phs, alpha_s_external, only_born = .true.)
          call instance%evaluate_trace_real_rad (term, i_real, i_phs)
        end associate
     end select
