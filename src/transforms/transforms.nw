@@ -4772,6 +4772,7 @@ end module evt_nlo
      type(phs_identifier_t), dimension(:), allocatable :: phs_identifiers
      integer, dimension(:), allocatable :: i_evaluation_to_i_phs
      integer, dimension(:), allocatable :: alr_to_i_con
+     integer :: n_phs
   contains
   <<Evt Nlo: event deps: TBP>>
   end type nlo_event_deps_t
@@ -4875,7 +4876,9 @@ is distributed over the real and Born subevents.
        weight = evt%compute_subtraction_weights ()
        probability = probability + weight
     else
-       i_phs = evt%event_deps%i_evaluation_to_i_phs (evt%i_evaluation)
+       !!!i_phs = evt%event_deps%i_evaluation_to_i_phs (evt%i_evaluation)
+       !!!print *, 'Generate real weight: ', i_phs
+       i_phs = evt%i_evaluation
        call evt%compute_real (i_phs)
        probability = evt%sqme_rad
     end if
@@ -4934,7 +4937,8 @@ mother-daughter relations and color information.
           call evt%rng%generate (r_col)
           call msg_debug2 (D_TRANSFORMS, "r_col", r_col)
           if (debug2_active (D_TRANSFORMS))  print *, 'flv_radiated =    ', flv_radiated
-          i_phs = evt%event_deps%i_evaluation_to_i_phs (evt%i_evaluation)
+          !!!i_phs = evt%event_deps%i_evaluation_to_i_phs (evt%i_evaluation)
+          i_phs = evt%i_evaluation
           emitter = evt%event_deps%phs_identifiers(i_phs)%emitter
           call msg_debug (D_TRANSFORMS, "emitter", emitter)
           allocate (p_new (size (pcm%controller%get_momenta &
@@ -4972,12 +4976,12 @@ mother-daughter relations and color information.
              i_phs = event_deps%i_evaluation_to_i_phs(alr)
              if (event_deps%phs_identifiers(i_phs)%evaluated) cycle
              emitter = event_deps%phs_identifiers(i_phs)%emitter 
-             i_con = event_deps%alr_to_i_con(alr)
              if (emitter <= 2) then
                 call msg_fatal ("NLO Events only supply final-state emissions")
              else
                 associate (generator => evt%phs_fks_generator)
                    if (use_contributors) then
+                      i_con = event_deps%alr_to_i_con(alr)
                       call generator%prepare_generation (x_rad, i_phs, emitter, &
                          event_deps%p_born_cms%phs_point(1)%p, &
                          event_deps%phs_identifiers, event_deps%contributors, i_con)
@@ -5018,7 +5022,7 @@ subtraction terms.
     real(default) :: weight
     integer, dimension(:), allocatable :: emitters
     real(default), dimension(3) :: x_rad
-    integer :: alr, emitter, i_phs
+    integer :: i_phs
     call msg_debug (D_TRANSFORMS, "evt_nlo_compute_subtraction_weights")
     weight = zero
     select type (pcm => evt%process_instance%pcm)
@@ -5032,10 +5036,12 @@ subtraction terms.
 
           !!!call evt%phs_fks_generator%set_beam_energy &
           !!!   (event_deps%p_born_cms%get_energy (1, 1))
-          do alr = 1, pcm%controller%get_n_alr()
+          do i_phs = 1, evt%event_deps%n_phs 
+          !!!do alr = 1, pcm%controller%get_n_alr()
              !!!emitter = emitters(i)
-             emitter = pcm%controller%reg_data%regions(alr)%emitter
-             i_phs = pcm%controller%real_kinematics%alr_to_i_phs (alr) 
+             !!!emitter = pcm%controller%reg_data%regions(alr)%emitter
+             !!!emitter = evt%event_deps%phs_identifiers(i_phs)%emitter
+             !!!i_phs = pcm%controller%real_kinematics%alr_to_i_phs (alr) 
              !!!if (emitter <= 2) then
              !!!   call msg_fatal ("NLO Events are only implemented for lepton collisions")
              !!!else
@@ -5050,9 +5056,9 @@ subtraction terms.
           
              call evt%process_instance%compute_sqme_real_sub (i_phs)
              call msg_debug (D_TRANSFORMS, &
-                  "instance%sqme_collector%sqme_real_per_emitter(1, emitter)", &
-                  pcm%collector%sqme_real_per_emitter(1, emitter))
-             weight = weight + pcm%collector%sqme_real_per_emitter (1, emitter)
+                  "instance%sqme_collector%sqme_real_per_phs(1, i_phs)", &
+                  pcm%collector%sqme_real_per_phs(1, i_phs))
+             weight = weight + pcm%collector%sqme_real_per_phs (1, i_phs)
              !!!deallocate (p_real)
           end do
        end associate
@@ -5068,7 +5074,6 @@ emission matrix elements.
   subroutine evt_nlo_compute_real (evt, i_phs)
     class(evt_nlo_t), intent(inout) :: evt
     integer, intent(in) :: i_phs
-    integer :: emitter
     real(default), dimension(3) :: x_rad
     call msg_debug (D_TRANSFORMS, "evt_nlo_compute_real")
     select type (pcm => evt%process_instance%pcm)
@@ -5093,14 +5098,13 @@ emission matrix elements.
           !!!   (event_deps%p_born_lab, event_deps%p_real_lab, 1)
           !!!call pcm%controller%set_momenta &
           !!!   (event_deps%p_born_cms, event_deps%p_real_cms, 1, cms = .true.)
-          emitter = event_deps%phs_identifiers(i_phs)%emitter
 
           call evt%process_instance%compute_sqme_real_rad (i_phs)
 
           call msg_debug (D_TRANSFORMS, &
-               "instance%sqme_collector%sqme_real_per_emitter(1,emitter)", &
-               pcm%collector%sqme_real_per_emitter(1,emitter))
-          evt%sqme_rad = pcm%collector%sqme_real_per_emitter (1, emitter)
+               "instance%sqme_collector%sqme_real_per_phs(1,i_phs)", &
+               pcm%collector%sqme_real_per_phs(1,i_phs))
+          evt%sqme_rad = pcm%collector%sqme_real_per_phs (1, i_phs)
        end associate
     end select
   end subroutine evt_nlo_compute_real
@@ -5168,6 +5172,8 @@ emission matrix elements.
        i_real = process_instance%get_associated_real ()
        select type (phs => process_instance%term(i_real)%k_term%phs)
        type is (phs_fks_t)
+          !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+          allocate (event_deps%phs_identifiers (size (phs%phs_identifiers)))
           event_deps%phs_identifiers = phs%phs_identifiers
        end select
        n_phs = size (event_deps%phs_identifiers)
@@ -6024,9 +6030,10 @@ for deterministic testing.
        call event%instance%evaluate_event_data ()
        call event%instance%normalize_weight ()
     else
-       if (event%is_nlo_event()) &
-          call event%process%deactivate_real_component ()
-       if (generate_new) call event%process%generate_weighted_event (event%instance, i_mci)
+       !!!if (event%is_nlo_event()) &
+       !!!   call event%process%deactivate_real_component ()
+       if (generate_new) &
+          call event%process%generate_weighted_event (event%instance, i_mci)
        if (signal_is_pending ()) return
        call event%instance%evaluate_event_data ()
     end if

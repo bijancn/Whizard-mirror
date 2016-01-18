@@ -360,7 +360,6 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/decays_4.ref \
     unit_tests/ref-output/decays_5.ref \
     unit_tests/ref-output/decays_6.ref \
-    unit_tests/ref-output/powheg_1.ref \
     unit_tests/ref-output/shower_1.ref \
     unit_tests/ref-output/shower_2.ref \
     unit_tests/ref-output/events_1.ref \

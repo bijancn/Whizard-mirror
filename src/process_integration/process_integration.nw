@@ -2820,9 +2820,9 @@ if there are structure functions.
   subroutine process_deactivate_real_component (process)
     class(process_t), intent(inout) :: process
     integer :: i
+    call process%mci_entry(1)%deactivate_real_component &
+       (process%component(1))
     do i = 1, process%meta%n_components
-       call process%mci_entry(1)%deactivate_real_component &
-          (process%component(i))
        select case (process%component(i)%component_type)
        case (COMP_REAL)
           process%component(i)%active = .false.
@@ -4645,7 +4645,7 @@ restriction should be relaxed.
                      process_mci_entry_create_component_list
 <<Processes: procedures>>=
   subroutine process_mci_entry_create_component_list (mci_entry, &
-                                     i_component, component)
+     i_component, component)
     class (process_mci_entry_t), intent(inout) :: mci_entry
     integer, intent(in) :: i_component
     type(process_component_t), intent(in), target :: component
@@ -4700,13 +4700,20 @@ restriction should be relaxed.
     class(process_mci_entry_t), intent(inout) :: mci_entry
     type(process_component_t), intent(in), target :: component
     integer, dimension(:), allocatable :: i_list
+    integer :: n_component_old, i, j
     if (allocated (mci_entry%i_component)) then
+       n_component_old = size (mci_entry%i_component)
        deallocate (mci_entry%i_component)
-       allocate (mci_entry%i_component (2))
+       allocate (mci_entry%i_component (n_component_old - 1))
        allocate (i_list (size (component%config%get_association_list ())))
        i_list = component%config%get_association_list ()
-       mci_entry%i_component(1) = i_list(1)
-       mci_entry%i_component(2) = i_list(3)
+       j = 1
+       do i = 1, n_component_old
+          if (i_list(i) /= 2) then
+             mci_entry%i_component(j) = i_list(i)
+             j = j + 1
+          end if
+       end do
     else
        call msg_fatal ("Trying to reset deallocated component list")
     end if
@@ -5183,7 +5190,7 @@ configuration finalizer may include closing an open scratch file.
     component%active = component%core%has_matrix_element ()
     if (component%active) then
        if (allocated (mci_template)) &
-            allocate (component%mci_template, source=mci_template)
+          allocate (component%mci_template, source=mci_template)
        allocate (component%phs_config, source=phs_config_template)
        call component%phs_config%init (component%core%data, config%model)
     end if
@@ -7107,7 +7114,7 @@ imaginary part of the terms, which should be zero anyway.
      select case (component%config%config%get_nlo_type ())
      case (NLO_REAL, NLO_VIRTUAL, NLO_PDF)
         associate (collector => component%nlo_controller%sqme_collector)
-           collector%sqme_real_non_sub = 0
+           collector%sqme_real_non_sub = zero
         end associate
      end select
   end subroutine reset_nlo_components
@@ -7301,7 +7308,7 @@ imaginary part of the terms, which should be zero anyway.
      if (component%config%component_type == COMP_REAL_FIN) &
         call component%nlo_controller%disable_subtraction ()
      allocate (p_real &
-          (1 : term%nlo_controller%get_n_particles_real ()))
+        (1 : term%nlo_controller%get_n_particles_real ()))
      p_real = term%nlo_controller%get_momenta (born_phsp = .false., i_phs = i_phs)
      i_flv = term%nlo_controller%active_flavor_structure_real
      select type (core => component%config%core)
@@ -7348,7 +7355,7 @@ imaginary part of the terms, which should be zero anyway.
                      call core_born%compute_sqme_sc (i_flv_born, &
                         nlo_controller%get_active_emitter(), &
                         nlo_controller%int_born%get_momenta(), &
-                        0._default, nlo_controller%get_k_perp(), &
+                        zero, nlo_controller%get_k_perp(), &
                         collector%sqme_born_sc(i_flv_born), bad_point)
                   class is (prc_user_defined_base_t)
                      collector%sqme_born_sc (i_flv_born) = zero
@@ -7992,6 +7999,8 @@ The quantum numbers mask of the incoming particle
     class(term_instance_t), intent(inout) :: term
     integer, intent(in) :: i_phs
     type(vector4_t), dimension(:), allocatable :: p
+    !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug      
+    allocate (p (term%nlo_controller%get_n_particles_real()))
     p = term%nlo_controller%get_momenta (born_phsp = .false., i_phs = i_phs)
     call term%int_hard_real%set_momenta (p)
     call term%isolated_real%receive_kinematics ()
@@ -8223,7 +8232,7 @@ physical event.
 @ Evaluate interaction for an $N+1$-particle phase space
 <<Processes: term instance: TBP>>=
   procedure :: evaluate_interaction_real &
-               => term_instance_evaluate_interaction_real
+     => term_instance_evaluate_interaction_real
 <<Processes: procedures>>=
   subroutine term_instance_evaluate_interaction_real (term, component, i_term)
      class(term_instance_t), intent(inout) :: term
@@ -8305,44 +8314,50 @@ physical event.
      term_instance_evaluate_interaction_real_rad
 <<Processes: procedures>>=
   subroutine term_instance_evaluate_interaction_real_rad (term, &
-     component, i_term, i_phs, alpha_s_external)
+     component, i_term, i_phs, alpha_s_external, only_born)
     class(term_instance_t), intent(inout) :: term
     type(component_instance_t), intent(inout) :: component
     integer, intent(in) :: i_term, i_phs 
     real(default), intent(in), optional :: alpha_s_external
+    logical, intent(in), optional :: only_born
     integer :: i
     real(default), allocatable :: alpha_qcd_forced
+    logical :: yorn
 
+    yorn = .false.; if (present (only_born)) yorn = only_born
+    if (present (alpha_s_external)) then
+       allocate (alpha_qcd_forced, source = alpha_s_external)
+    else
+       if (allocated (term%alpha_qcd_forced)) &
+          allocate (alpha_qcd_forced, source = term%alpha_qcd_forced)
+    end if
     call term%update_real_interactions (i_phs)
     select type (phs => term%k_term%phs)
     type is (phs_fks_t)
+       call term%nlo_controller%set_active_phase_space (i_phs)
        call term%nlo_controller%set_active_emitter &
           (phs%phs_identifiers(i_phs)%emitter)
     end select
 
+    if (.not. yorn) then
+       call component%core_state%reset_new_kinematics ()
+       select type (core => component%config%core)
+       type is (prc_omega_t)
+          do i = 1, term%config%n_allowed
+             term%amp(i) = core%compute_amplitude (i_term, &
+                term%int_hard_real%get_momenta (), &
+                term%config%flv(i), term%config%hel(i), term%config%col(i), &
+                term%fac_scale, term%ren_scale, alpha_qcd_forced, &
+                component%core_state)
+          end do
+       class is (prc_user_defined_base_t)
+          call core%update_alpha_s (component%core_state, term%fac_scale)
+          term%amp = zero
+       end select
+       call term%int_hard_real%set_matrix_element (term%amp)
+    end if
     call component%nlo_controller%int_born%set_momenta &
        (component%nlo_controller%real_kinematics%p_born_cms%phs_point(1)%p)
-    call component%core_state%reset_new_kinematics ()
-    select type (core => component%config%core)
-    type is (prc_omega_t)
-       if (present (alpha_s_external)) then
-          allocate (alpha_qcd_forced, source = alpha_s_external)
-       else
-          if (allocated (term%alpha_qcd_forced)) &
-             allocate (alpha_qcd_forced, source = term%alpha_qcd_forced)
-       end if
-       do i = 1, term%config%n_allowed
-          term%amp(i) = core%compute_amplitude (i_term, &
-             term%int_hard_real%get_momenta (), &
-             term%config%flv(i), term%config%hel(i), term%config%col(i), &
-             term%fac_scale, term%ren_scale, alpha_qcd_forced, &
-             component%core_state)
-       end do
-    class is (prc_user_defined_base_t)
-       call core%update_alpha_s (component%core_state, term%fac_scale)
-       term%amp = zero
-    end select
-    call term%int_hard_real%set_matrix_element (term%amp)
     call component%core_state%reset_new_kinematics ()
     select type (core_sub_born => component%config%core_sub_born)
     type is (prc_omega_t)
@@ -8887,28 +8902,28 @@ selected MCI parameter set.
 @ %def process_instance_activate
 @
 <<Processes: process instance: TBP>>=
-  procedure :: disable_virtual_components => &
-               process_instance_disable_virtual_components
+  !!!procedure :: disable_virtual_components => &
+  !!!   process_instance_disable_virtual_components
 <<Processes: procedures>>=
-  subroutine process_instance_disable_virtual_components (instance)
-    class(process_instance_t), intent(inout) :: instance
-    integer :: i
-    select type (pcm => instance%pcm)
-    class is (pcm_instance_nlo_t)
-       if (.not. pcm%collect_matrix_elements) &
-            call msg_fatal ("Sqme collector must be allocated to prepare for&
-            &component selection")
-       do i = 1, size (instance%component)
-          associate (component => instance%component(i))
-            if (component%config%component_type == COMP_VIRT) then
-               component%active = .false.
-               instance%term(component%config%i_term)%active = .false.
-            end if
-          end associate
-       end do
-    end select
-  end subroutine process_instance_disable_virtual_components
-          
+  !!!subroutine process_instance_disable_virtual_components (instance)
+  !!!  class(process_instance_t), intent(inout) :: instance
+  !!!  integer :: i
+  !!!  select type (pcm => instance%pcm)
+  !!!  class is (pcm_instance_nlo_t)
+  !!!     if (.not. pcm%collect_matrix_elements) &
+  !!!          call msg_fatal ("Sqme collector must be allocated to prepare for&
+  !!!          &component selection")
+  !!!     do i = 1, size (instance%component)
+  !!!        associate (component => instance%component(i))
+  !!!          if (component%config%component_type == COMP_VIRT) then
+  !!!             component%active = .false.
+  !!!             instance%term(component%config%i_term)%active = .false.
+  !!!          end if
+  !!!        end associate
+  !!!     end do
+  !!!  end select
+  !!!end subroutine process_instance_disable_virtual_components
+  !!!        
 @ %def process_instance_disable_virtual_components
 @
 <<Processes: process instance: TBP>>=
@@ -9769,6 +9784,7 @@ if it fails the cuts for at least one emitter.
               term%nlo_controller%nlo_cuts%passed_real (i_phs)  = term%passed
               call term%nlo_controller%set_active_emitter &
                  (phs%phs_identifiers(i_phs)%emitter)
+              call term%nlo_controller%set_active_phase_space (i_phs)
               call instance%evaluate_trace_real_per_resonance (term, pcm, &
                  i, i_reg, i_phs) 
               i_reg = i_reg + 1
@@ -9849,8 +9865,8 @@ if it fails the cuts for at least one emitter.
              instance%sqme_real(i_flv_real, i_reg) = &
                 pcm%collector%current_sqme_real
              if (pcm%collect_matrix_elements) then
-                pcm%collector%sqme_real_per_emitter (i_flv_real, &
-                   term%nlo_controller%active_emitter) = pcm%collector%current_sqme_real 
+                pcm%collector%sqme_real_per_phs (i_flv_real, i_phs) &
+                   = pcm%collector%current_sqme_real 
              end if
           end if
        end associate
@@ -9866,16 +9882,14 @@ if it fails the cuts for at least one emitter.
     class(process_instance_t), intent(inout) :: instance
     type(term_instance_t), intent(inout) :: term
     integer, intent(in) :: i, i_phs
-    integer :: emitter
     call msg_debug2 (D_SUBTRACTION, "process_instance_evaluate_trace_real_rad")
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
        term%nlo_controller%active_flavor_structure_real = 1
        call term%evaluate_trace ()
-       emitter = term%nlo_controller%active_emitter
        associate (component => instance%component(i))
           call component%evaluate_sqme_real (term, i_phs)
-          pcm%collector%sqme_real_per_emitter (1, emitter) = &
+          pcm%collector%sqme_real_per_phs (1, i_phs) = &
              pcm%collector%current_sqme_real
        end associate
     end select
@@ -9937,7 +9951,7 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
 
        associate (term => instance%term(i_real))
          call term%evaluate_interaction_real_rad (instance%component(i_real), &
-            i_real, i_phs, alpha_s_external)
+            i_real, i_phs, alpha_s_external, only_born = .true.)
          call instance%evaluate_trace_real_rad (term, i_real, i_phs)
        end associate
     end select
@@ -10699,9 +10713,17 @@ and directly set the coupling value that comes together with a particle set.
        end associate
        do i = 1, size (process%term)
           if (instance%component(i)%nlo_type == BORN) then
+             !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+             if (.not. allocated (flv_born)) &
+                allocate (flv_born (size (process%term(i)%data%flv_state, 1), &
+                   size (process%term(i)%data%flv_state, 2)))
              flv_born = process%term(i)%data%flv_state
              n_in = process%term(i)%data%n_in
           else if (instance%component(i)%nlo_type == NLO_REAL) then
+             !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+             if (.not. allocated (flv_real)) &
+                allocate (flv_real (size (process%term(i)%data%flv_state, 1), &
+                   size (process%term(i)%data%flv_state, 2)))
              flv_real = process%term(i)%data%flv_state
              n_in = process%term(i)%data%n_in
           end if

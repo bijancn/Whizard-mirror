@@ -1632,17 +1632,20 @@ there is only a soft singularity if the radiated parton becomes soft.
 <<fks regions: reg data: TBP>>=
   procedure :: get_contributors => region_data_get_contributors
 <<fks regions: procedures>>=
-  function region_data_get_contributors (reg_data, i_res, emitter) result (contributors)
-    type(resonance_contributors_t) :: contributors
+  function region_data_get_contributors (reg_data, i_res, emitter) result (c)
+    integer, dimension(:), allocatable :: c
     class(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: i_res, emitter
+    !!!type(resonance_contributors_t) :: contributors
     integer :: i
     select type (fks_mapping => reg_data%fks_mapping)
     type is (fks_mapping_resonances_t)
        associate (res_history => fks_mapping%res_map%resonances (i_res))
           do i = 1, res_history%n_resonances
              if (any (res_history%resonances(i)%contributors%c == emitter)) then
-                contributors = res_history%resonances(i)%contributors
+                allocate (c (size (res_history%resonances(i)%contributors%c)))
+                c = res_history%resonances(i)%contributors%c
+                !!!contributors = res_history%resonances(i)%contributors
                 exit
              end if
           end do
@@ -1696,9 +1699,9 @@ the flavor structure list.
     integer, intent(in) :: alr, emitter, i_res
     real(default) :: sval
     associate (map => reg_data%fks_mapping)
-      map%sumdij_soft = &
-         map%compute_sumdij_soft (reg_data%regions(alr), p, p_soft)
-      sval = map%svalue_soft (p, p_soft, emitter, i_res)
+       map%sumdij_soft = &
+          map%compute_sumdij_soft (reg_data%regions(alr), p, p_soft)
+       sval = map%svalue_soft (p, p_soft, emitter, i_res)
     end associate
   end function region_data_get_svalue_soft
 
@@ -2058,18 +2061,23 @@ of the present one is increased.
        do alr = 1, size (reg_data%regions)
           i_res = fks_mapping%res_map%alr_to_i_res (alr)
           emitter = reg_data%regions(alr)%emitter
-          contributors =  reg_data%get_contributors (i_res, emitter)
+          !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+          allocate (contributors%c (size (reg_data%get_contributors (i_res, emitter))))
+          contributors%c =  reg_data%get_contributors (i_res, emitter)
           if (.not. any (contributors_count == contributors)) then 
              n_contr = n_contr + 1
              contributors_count(alr) = contributors
           end if
+          if (allocated (contributors%c)) deallocate (contributors%c)
        end do
        allocate (reg_data%alr_contributors (n_contr))
        j = 1
        do alr = 1, size (reg_data%regions)
           i_res = fks_mapping%res_map%alr_to_i_res (alr)
           emitter = reg_data%regions(alr)%emitter
-          contributors =  reg_data%get_contributors (i_res, emitter)
+          !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+          allocate (contributors%c (size (reg_data%get_contributors (i_res, emitter))))
+          contributors%c =  reg_data%get_contributors (i_res, emitter)
           if (.not. any (reg_data%alr_contributors == contributors)) then
              reg_data%alr_contributors(j) = contributors
              reg_data%alr_to_i_contributor (alr) = j
@@ -2080,6 +2088,7 @@ of the present one is increased.
              end do
              reg_data%alr_to_i_contributor (alr) = k
           end if
+          if (allocated (contributors%c)) deallocate (contributors%c)
        end do
     end select
     
@@ -2129,7 +2138,9 @@ of the present one is increased.
           emitter = reg_data%emitters(i_em)
           do i_res = 1, size (reg_data%resonances)
              if (reg_data%emitter_is_compatible_with_resonance (i_res, emitter)) then 
-                contributors = reg_data%get_contributors (i_res, emitter)
+                !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+                allocate (contributors%c (size (reg_data%get_contributors (i_res, emitter))))
+                contributors%c = reg_data%get_contributors (i_res, emitter)
                 call check_for_phs_identifier &
                    (phs_id_tmp, emitter, contributors%c, phs_exist, i_phs)
                 if (.not. phs_exist) then
@@ -2139,6 +2150,7 @@ of the present one is increased.
                    call phs_id_tmp(i_phs)%init (emitter, contributors%c)
                 end if
              end if
+             if (allocated (contributors%c)) deallocate (contributors%c)
           end do
        end do
     else
@@ -2903,6 +2915,9 @@ From these equations we can deduce the soft limit of $d$:
     d = zero
     do i_res = 1, size (map%res_map%resonances)
        pfr = map%res_map%get_resonance_value (i_res, p, nlegreal)
+       !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+       if (.not. allocated (associated_alrs)) &
+          allocate (associated_alrs (size (map%res_map%i_res_to_alr (i_res, :))))
        associated_alrs = map%res_map%i_res_to_alr (i_res, :)
        dij = zero
        do i_alr = 1, size (associated_alrs)
@@ -2979,6 +2994,9 @@ From these equations we can deduce the soft limit of $d$:
     nlegs = size (sregion%flst_real%flst)
     do i_res = 1, size (map%res_map%resonances)
        pfr = map%res_map%get_resonance_value (i_res, p_born)
+       !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+       if (.not. allocated (associated_alrs)) &
+          allocate (associated_alrs (size (map%res_map%i_res_to_alr (i_res, :))))
        associated_alrs = map%res_map%i_res_to_alr (i_res, :)
        dij = zero
        do i_alr = 1, size (associated_alrs)
@@ -4532,10 +4550,10 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
 <<real subtraction: real subtraction: TBP>>=
   procedure :: compute => real_subtraction_compute
 <<real subtraction: procedures>>=
-  function real_subtraction_compute (rsub, emitter, i_flv, alpha_s) result (sqme)
+  function real_subtraction_compute (rsub, emitter, i_phs, i_flv, alpha_s) result (sqme)
     real(default) :: sqme
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter, i_flv
+    integer, intent(in) :: emitter, i_phs, i_flv
     real(default) :: sqme_alr, alpha_s
     integer :: alr, i_con
 
@@ -4543,10 +4561,11 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
     do alr = 1, size (rsub%reg_data%regions)
        sqme_alr = zero
        if (emitter == rsub%reg_data%regions(alr)%emitter .and. &
+          i_phs == rsub%real_kinematics%alr_to_i_phs (alr) .and. &
           i_flv == rsub%reg_data%regions(alr)%real_index) then
           call rsub%set_alr (alr)
           call rsub%set_i_res (alr)
-          sqme_alr = rsub%evaluate_emitter_region (emitter, alpha_s)
+          sqme_alr = rsub%evaluate_emitter_region (emitter, i_phs, alpha_s)
           i_con = rsub%get_i_contributor (alr)
           if (rsub%purpose == INTEGRATION .or. rsub%purpose == FIXED_ORDER_EVENTS) &
              sqme_alr = sqme_alr * rsub%get_phs_factor (i_con)
@@ -4560,14 +4579,13 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
 <<real subtraction: real subtraction: TBP>>=
   procedure :: evaluate_emitter_region => real_subtraction_evaluate_emitter_region
 <<real subtraction: procedures>>=
-  function real_subtraction_evaluate_emitter_region (rsub, emitter, alpha_s) &
+  function real_subtraction_evaluate_emitter_region (rsub, emitter, i_phs, alpha_s) &
      result (sqme)
     real(default) :: sqme
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter
+    integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
-    integer :: i_phs, i_con
-    i_phs = rsub%real_kinematics%alr_to_i_phs (rsub%current_alr)
+    integer :: i_con
     if (emitter <= rsub%isr_kinematics%n_in) then
        sqme = rsub%evaluate_region_isr (emitter, i_phs, alpha_s)
     else
@@ -4578,7 +4596,7 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
              (rsub%real_kinematics%xi_ref_momenta (i_con))
           sqme = rsub%evaluate_region_fsr (emitter, i_phs, alpha_s)
        class default
-          i_phs = rsub%real_kinematics%alr_to_i_phs (rsub%current_alr)
+          !!!i_phs = rsub%real_kinematics%alr_to_i_phs (rsub%current_alr)
           sqme = rsub%evaluate_region_fsr (emitter, i_phs, alpha_s)
        end select
     end if
@@ -4597,7 +4615,7 @@ the corresponding jacobians.
   procedure :: evaluate_region_fsr => real_subtraction_evaluate_region_fsr
 <<real subtraction: procedures>>=
   function real_subtraction_evaluate_region_fsr (rsub, emitter, i_phs, &
-                                             alpha_s) result (sqme)
+     alpha_s) result (sqme)
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
@@ -4633,7 +4651,7 @@ the corresponding jacobians.
       end if
       if (rsub%subtraction_active .and. rsub%passed_born_cuts) then
          call rsub%evaluate_subtraction_terms_fsr (emitter, i_phs, alpha_s, &
-                   sqme_soft, sqme_coll, sqme_cs)
+            sqme_soft, sqme_coll, sqme_cs)
          sqme_soft = sqme_soft / onemy / xi_tilde
          sqme_coll = sqme_coll / onemy / xi_tilde
          sqme_cs = sqme_cs / onemy / xi_tilde
@@ -5508,6 +5526,17 @@ avoid duplicate computations.
 @ %def phs_point_set_get_n_particles
 @
 <<nlo data: phs point set: TBP>>=
+  procedure :: get_n_phs => phs_point_set_get_n_phs
+<<nlo data: procedures>>=
+  function phs_point_set_get_n_phs (phs_point_set) result (n_phs)
+    integer :: n_phs
+    class(phs_point_set_t), intent(in) :: phs_point_set
+    n_phs = size (phs_point_set%phs_point)
+  end function phs_point_set_get_n_phs
+
+@ %def phs_point_set_get_n_phs
+@
+<<nlo data: phs point set: TBP>>=
   procedure :: get_invariant_mass => phs_point_set_get_invariant_mass
 <<nlo data: procedures>>=
   function phs_point_set_get_invariant_mass (phs_point_set, i_phs, i_part) result (m2)
@@ -5665,10 +5694,10 @@ four-momentum of the emitter.
   procedure :: kt2 => real_kinematics_kt2
 <<nlo data: procedures>>=
   function real_kinematics_kt2 &
-         (real_kinematics, emitter, kt2_type, xi, y) result (kt2)
+     (real_kinematics, i_phs, emitter, kt2_type, xi, y) result (kt2)
     real(default) :: kt2
     class(real_kinematics_t), intent(in) :: real_kinematics
-    integer, intent(in) :: emitter, kt2_type
+    integer, intent(in) :: emitter, i_phs, kt2_type
     real(default), intent(in), optional :: xi, y
     real(default) :: xii, yy
     real(default) :: q, E_em, z, z1, z2, m2, mrec2, k0_rec_max
@@ -5676,16 +5705,16 @@ four-momentum of the emitter.
     if (present (y)) then
        yy = y
     else
-       yy = real_kinematics%y (emitter)
+       yy = real_kinematics%y (i_phs)
     end if
     if (present (xi)) then
        xii = xi
     else
-       xii = real_kinematics%xi_tilde * real_kinematics%xi_max (emitter)
+       xii = real_kinematics%xi_tilde * real_kinematics%xi_max (i_phs)
     end if
     select case (kt2_type)
     case (FSR_SIMPLE)
-       kt2 = real_kinematics%cms_energy2 / 2 * xii**2 * (1 - yy)
+       kt2 = real_kinematics%cms_energy2 / two * xii**2 * (1 - yy)
     case (FSR_MASSIVE)
        q = sqrt (real_kinematics%cms_energy2)
        p_emitter = real_kinematics%p_born_cms%phs_point(1)%p(emitter)
@@ -5695,11 +5724,11 @@ four-momentum of the emitter.
        call compute_dalitz_bounds (q, m2, mrec2, z1, z2, k0_rec_max)
        z = z2 - (z2 - z1) * (one + yy) / two
        kt2 = xii**2 * q**3 * (one - z) / &
-            (2 * E_em - z * xii * q)
+          (two * E_em - z * xii * q)
     case (FSR_MASSLESS_RECOILER)
-       kt2 = real_kinematics%cms_energy2 / 2 * xii**2 * (1 - yy**2) / 2
+       kt2 = real_kinematics%cms_energy2 / two * xii**2 * (1 - yy**2) / two
     case default
-       kt2 = 0.0
+       kt2 = zero
        call msg_bug ("kt2_type must be set to a known value")
     end select
   end function real_kinematics_kt2
@@ -6755,18 +6784,20 @@ and virtual counterterms.
     class(nlo_controller_t), intent(inout) :: nlo_controller
     real(default), intent(in) :: weight
     real(default) :: sqme_fin
-    integer :: emitter, i_flv
+    integer :: emitter, i_flv, i_phs
     call msg_debug2 (D_SUBTRACTION, "nlo_controller_compute_sqme_real_fin")
     if (.not. nlo_controller%alpha_s_born_set) &
       call msg_fatal ("Strong coupling not set for real calculation")
     emitter = nlo_controller%get_active_emitter ()
+    i_phs = nlo_controller%get_active_phase_space ()
+    !!!print *, 'active phase space: ', i_phs
     i_flv = nlo_controller%active_flavor_structure_real
     call nlo_controller%real_terms%set_real_kinematics &
          (nlo_controller%real_kinematics)
     call nlo_controller%real_terms%set_isr_kinematics &
          (nlo_controller%isr_kinematics)
     sqme_fin = nlo_controller%real_terms%compute &
-         (emitter, i_flv, nlo_controller%alpha_s_born)
+         (emitter, i_phs, i_flv, nlo_controller%alpha_s_born)
     sqme_fin = sqme_fin * weight
   end function nlo_controller_compute_sqme_real_fin
 
@@ -6851,8 +6882,11 @@ one to determine this.
        associate (region => nlo_controller%reg_data%regions(alr))
           emitter = region%emitter
           i_res = region%i_res
-          if (i_res /= 0) &
-             contributors = nlo_controller%reg_data%get_contributors (i_res, emitter) 
+          if (i_res /= 0) then
+             !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+             allocate (contributors%c (size (nlo_controller%reg_data%get_contributors (i_res, emitter))))
+             contributors%c = nlo_controller%reg_data%get_contributors (i_res, emitter) 
+          end if
           if (allocated (contributors%c)) then
              call check_for_phs_identifier (phs_identifiers, &
                 emitter, contributors%c, phs_exist = phs_exist, i_phs = i_phs) 
@@ -6864,6 +6898,7 @@ one to determine this.
              call msg_fatal ("phs identifiers are not set up correctly!")
           nlo_controller%real_kinematics%alr_to_i_phs(alr) = i_phs
        end associate
+       if (allocated (contributors%c)) deallocate (contributors%c)
     end do
   end subroutine nlo_controller_set_alr_to_i_phs
 
@@ -6913,7 +6948,7 @@ one to determine this.
 <<nlo data: types>>=
   type :: sqme_collector_t
     real(default) :: current_sqme_real
-    real(default), dimension(:,:), allocatable :: sqme_real_per_emitter
+    real(default), dimension(:,:), allocatable :: sqme_real_per_phs
     real(default), dimension(:,:), allocatable :: sqme_real_non_sub
     real(default), dimension(:,:,:), allocatable :: sqme_born_cc
     complex(default), dimension(:), allocatable :: sqme_born_sc
@@ -6951,10 +6986,7 @@ one to determine this.
            collector%sqme_mismatch
     if (debug2_active (D_SUBTRACTION)) then
        call msg_debug (D_SUBTRACTION, "Get content of sqme lists: ")
-       print *, 'Born: ', collector%sqme_born_list
-       print *, 'Real: ', collector%sqme_real_sum
-       print *, 'Virt: ', collector%sqme_virt_list
-       print *, 'Mismatch: ', collector%sqme_mismatch
+       call collector%write ()
        print *, 'Sum: ', sqme
     end if
   end function sqme_collector_get_sqme_sum
@@ -6974,15 +7006,15 @@ one to determine this.
 @ %def sqme_collector_get_sqme_born
 @
 <<nlo data: sqme collector: TBP>>=
-  procedure :: setup_sqme_real => sqme_collector_setup_sqme_real
+  !!!procedure :: setup_sqme_real => sqme_collector_setup_sqme_real
 <<nlo data: procedures>>=
-  subroutine sqme_collector_setup_sqme_real (collector, n_flv, n_particles)
-    class(sqme_collector_t), intent(inout) :: collector
-    integer, intent(in) :: n_flv, n_particles
-    if (.not. allocated (collector%sqme_real_per_emitter)) &
-       allocate (collector%sqme_real_per_emitter (n_flv, n_particles))
-    collector%sqme_real_per_emitter = 0._default
-  end subroutine sqme_collector_setup_sqme_real
+  !!!subroutine sqme_collector_setup_sqme_real (collector, n_flv, n_phs)
+  !!!  class(sqme_collector_t), intent(inout) :: collector
+  !!!  integer, intent(in) :: n_flv, n_phs
+  !!!  if (.not. allocated (collector%sqme_real_per_phs)) &
+  !!!     allocate (collector%sqme_real_per_phs (n_flv, n_phs))
+  !!!  collector%sqme_real_per_phs = zero
+  !!!end subroutine sqme_collector_setup_sqme_real
 
 @ %def sqme_collector_setup_sqme_real
 @
@@ -6994,9 +7026,23 @@ one to determine this.
        collector%sqme_born_list = zero
        collector%sqme_real_sum = zero
        collector%sqme_virt_list = zero
+       collector%sqme_mismatch = zero
   end subroutine sqme_collector_reset
 
 @ %def sqme_collector_reset
+@
+<<nlo data: sqme collector: TBP>>=
+  procedure :: write => sqme_collector_write
+<<nlo data: procedures>>=
+  subroutine sqme_collector_write (collector)
+    class(sqme_collector_t), intent(in) :: collector
+    print *, 'Born: ', collector%sqme_born_list 
+    print *, 'Real: ', collector%sqme_real_sum
+    print *, 'Virt: ', collector%sqme_virt_list
+    print *, 'Mismatch: ', collector%sqme_mismatch
+  end subroutine sqme_collector_write
+
+@ %def sqme_collector_write
 @
 <<nlo controller: types>>=
   type :: polarization_data_t
@@ -7103,7 +7149,7 @@ process.
     type(polarization_data_t), dimension(:), allocatable :: pol_density_matrix
     type(polarization_data_t), dimension(:), allocatable :: pol_sqme
     integer :: n_allowed_born
-    integer :: active_emitter
+    integer :: active_emitter, active_phase_space
     integer :: active_flavor_structure_real
     complex(default), dimension(:), allocatable :: amp_born
     type(color_data_t) :: color_data
@@ -7318,16 +7364,15 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
       allocate (collector%sqme_subtraction_born_list (particle_data%n_flv_born))
       allocate (collector%sqme_real_non_sub (particle_data%n_flv_real, &
          nlo_controller%reg_data%n_phs))
-      allocate (collector%sqme_real_per_emitter &
-           (nlo_controller%reg_data%n_flv_real, &
-           particle_data%n_in + particle_data%n_out_born))
+      allocate (collector%sqme_real_per_phs &
+         (nlo_controller%reg_data%n_flv_real, nlo_controller%reg_data%n_phs))
       n_tot_born = particle_data%n_in + particle_data%n_out_born
       allocate (collector%sqme_born_cc (n_tot_born, n_tot_born, particle_data%n_flv_born))
       allocate (collector%sqme_born_sc (particle_data%n_flv_born))
       collector%sqme_born_list = zero
       collector%sqme_subtraction_born_list = zero
       collector%sqme_real_non_sub = zero
-      collector%sqme_real_per_emitter = zero
+      collector%sqme_real_per_phs = zero
       collector%sqme_born_cc = zero
       collector%sqme_born_sc = cmplx (zero, zero, kind=default)
       collector%current_sqme_real = zero
@@ -7480,6 +7525,8 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
     case (FKS_RESONANCES) 
        select type (phs_config)
        type is (phs_fks_config_t)
+          !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+          allocate (resonance_histories (size (phs_config%get_resonance_histories ())))          
           resonance_histories = phs_config%get_resonance_histories ()
           call clean_resonance_histories (resonance_histories, &
              nlo_controller%particle_data%n_in, &
@@ -7660,9 +7707,9 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
     class(nlo_controller_t), intent(in) :: nlo_controller
     integer, intent(in) :: alr
     real(default) :: xi_max
-    integer :: emitter
-    emitter = nlo_controller%get_emitter (alr)
-    xi_max = nlo_controller%real_kinematics%xi_max (emitter)
+    integer :: i_phs
+    i_phs = nlo_controller%real_kinematics%alr_to_i_phs (alr)
+    xi_max = nlo_controller%real_kinematics%xi_max (i_phs)
   end function nlo_controller_get_xi_max
 
 @ %def nlo_controller_get_xi_max
@@ -7804,15 +7851,37 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
 @ %def nlo_controller_set_active_emitter
 @
 <<nlo controller: nlo controller: TBP>>=
+  procedure :: set_active_phase_space => nlo_controller_set_active_phase_space
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_set_active_phase_space (nlo_controller, i_phs)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    integer, intent(in) :: i_phs
+    nlo_controller%active_phase_space = i_phs
+  end subroutine 
+
+@ %def nlo_controller_set_active_phase_spac
+@
+<<nlo controller: nlo controller: TBP>>=
   procedure :: get_active_emitter => nlo_controller_get_active_emitter
 <<nlo controller: procedures>>=
-  function nlo_controller_get_active_emitter (nlo_controller) result(emitter)
-    class(nlo_controller_t), intent(in) :: nlo_controller
+  function nlo_controller_get_active_emitter (nlo_controller) result (emitter)
     integer :: emitter
+    class(nlo_controller_t), intent(in) :: nlo_controller
     emitter = nlo_controller%active_emitter
   end function nlo_controller_get_active_emitter
 
 @ %def nlo_controller_get_active_emitter
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: get_active_phase_space => nlo_controller_get_active_phase_space
+<<nlo controller: procedures>>=
+  function nlo_controller_get_active_phase_space (nlo_controller) result (i_phs)
+    integer :: i_phs
+    class(nlo_controller_t), intent(in) :: nlo_controller
+    i_phs = nlo_controller%active_phase_space
+  end function nlo_controller_get_active_phase_space
+
+@ %def nlo_controller_get_active_phase_space
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: disable_subtraction => nlo_controller_disable_subtraction
@@ -8859,11 +8928,14 @@ in the center-of-mass and lab frame.
        emitter = reg_data%emitters(i_em)
        if (allocated (reg_data%resonances)) then
           do i_res = 1, size (reg_data%resonances)
-             contributors = reg_data%get_contributors (i_res, emitter)
+             !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+             allocate (contributors%c (size (reg_data%get_contributors (i_res, emitter))))
+             contributors%c = reg_data%get_contributors (i_res, emitter)
              call check_for_phs_identifier &
                 (phs%phs_identifiers, emitter, contributors%c, phs_exist, i_phs)
              if (.not. phs_exist) &
                 call phs%phs_identifiers(i_phs)%init (emitter, contributors%c)
+             if (allocated (contributors%c)) deallocate (contributors%c)
           end do
        else
           call check_for_phs_identifier &
@@ -9096,7 +9168,7 @@ recoiling momenta.
     uk_n_born = k_n_born**1
 
     generator%mrec2 = (q0 - p_born(p_em)%p(0))**2 &
-         - space_part_norm(p_born(p_em))**2
+       - space_part_norm(p_born(p_em))**2
     if (generator%is_massive(emitter)) then
        call generator%compute_emitter_kinematics &
           (y, emitter, i_phs, q0, k0_n, uk_n, uk)
@@ -9193,7 +9265,7 @@ is
         p_real%p(i) = lambda * p_born(i)
       end if
     end do
-    vec%p(1:3) = p_born(p_em)%p(1:3)/uk_n_born
+    vec%p(1:3) = p_born(p_em)%p(1:3) / uk_n_born
     rot = rotation (cos(phi), sin(phi), vec)
     p_real%p(nlegreal) = rot * p_real%p(nlegreal)
     p_real%p(p_em) = rot * p_real%p(p_em)
@@ -9230,7 +9302,7 @@ $\xi$.
     type(vector4_t), dimension(:), allocatable :: p
     associate (generator => phs%generator)
        allocate (p (1 : generator%real_kinematics%p_born_cms%get_n_particles()), &
-            source = generator%real_kinematics%p_born_cms%phs_point(1)%p)
+          source = generator%real_kinematics%p_born_cms%phs_point(1)%p)
        generator%real_kinematics%supply_xi_max = .true.
        call generator%compute_xi_max (emitter, i_phs, p, i_con)
        if (present (i_con)) then
@@ -10127,16 +10199,15 @@ set to [[.false.]] because it is assumed that the upper bound on [[xi]]
 has already been taken into account during its generation.
 <<phs fks: phs fks generator: TBP>>=
   procedure :: generate_fsr_from_xi_and_y => &
-                        phs_fks_generator_generate_fsr_from_xi_and_y
+     phs_fks_generator_generate_fsr_from_xi_and_y
 <<phs fks: procedures>>=
-  function phs_fks_generator_generate_fsr_from_xi_and_y (generator, xi, y, &
-     phi, emitter, i_phs, p_born) result (p_real)
-    type(vector4_t), dimension(:), allocatable :: p_real
+  subroutine phs_fks_generator_generate_fsr_from_xi_and_y (generator, xi, y, &
+     phi, emitter, i_phs, p_born, p_real)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: xi, y, phi
     integer, intent(in) :: emitter, i_phs
     type(vector4_t), intent(in), dimension(:) :: p_born
-    type(phs_point_t) :: p_real_phs
+    type(phs_point_t), intent(inout) :: p_real
     associate (rad_var => generator%real_kinematics)
        rad_var%supply_xi_max = .false.
        rad_var%xi_tilde = xi
@@ -10144,17 +10215,14 @@ has already been taken into account during its generation.
        rad_var%phi = phi
     end associate
     call generator%set_beam_energy (p_born(1)%p(0) + p_born(2)%p(0))
-    !!!call p_real_phs%init (size (p_born) + 1)
-    p_real_phs = size (p_born) + 1
-    call generator%generate_fsr (emitter, i_phs, p_born, p_real_phs)
-    allocate (p_real (p_real_phs%n_momenta), source = p_real_phs%p)
-  end function phs_fks_generator_generate_fsr_from_xi_and_y
+    call generator%generate_fsr (emitter, i_phs, p_born, p_real)
+  end subroutine phs_fks_generator_generate_fsr_from_xi_and_y
 
 @ %def phs_fks_generator_generate_fsr_from_xi_and_y
 @
 <<phs fks: phs fks generator: TBP>>=
   procedure :: get_radiation_variables => &
-                   phs_fks_generator_get_radiation_variables
+     phs_fks_generator_get_radiation_variables
 <<phs fks: procedures>>=
   pure subroutine phs_fks_generator_get_radiation_variables (generator, &
      i_phs, xi, y, phi)
@@ -10371,11 +10439,6 @@ end module phs_fks_uti
     call generator%generate_fsr (emitter, i_phs, p_born, p_real)
     call vector4_write_set (p_real%p, u, testflag = .true., ultra = .true.)
     call write_separator (u)
-    !!!write (u, "(A)")  &
-    !!!     "Test direct interface via phs_fks_generator_generate_from_x"
-    !!!call generator%generate_fsr_from_x ([x1,x2,x3], emitter, i_phs, &
-    !!!  p_born, phs_identifiers, p_real)
-    !!!call vector4_write_set (p_real%p, u, testflag = .true., ultra = .true.)
     write (u, "(A)")
     write (u, "(A)") "* Test output end: phs_fks_generator_1"
 
@@ -10672,6 +10735,7 @@ end module phs_fks_uti
        phs_identifiers(i_phs)%contributors = resonance_lists(i_phs,:)
     end do
     do i_con = 1, 2
+       allocate (alr_contributors(i_con)%c (size (resonance_lists(i_con,:))))
        alr_contributors(i_con)%c = resonance_lists(i_con,:)
     end do
     call generator%generate_radiation_variables &

@@ -107,7 +107,6 @@ UNIT_TESTS = \
     cascades.run \
     event_transforms.run \
     decays.run \
-    powheg.run \
     shower.run \
     events.run \
     hep_events.run \
