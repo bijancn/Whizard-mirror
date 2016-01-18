@@ -5,7 +5,8 @@ module @ID@_threshold
   use ttv_formfactors
   implicit none
   private
-  public :: init, md5sum, calculate_blob, compute_born
+  public :: init, md5sum, calculate_blob, compute_born, &
+       set_production_momenta, init_workspace, compute_owfs
 
   ! DON'T EVEN THINK of removing the following!
   ! If the compiler complains about undeclared
@@ -200,6 +201,7 @@ module @ID@_threshold
 
   complex(default), dimension(n_hel,0:3), save, public :: amp_blob
   complex(default), dimension(n_hel), save, public :: amp_tree
+  integer, public :: nhel_max, ffi_end
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p12, p35, p46
@@ -314,29 +316,9 @@ contains
 
   subroutine compute_born (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
-    integer :: hi, nhel_max, ffi, ffi_end, h_t, h_tbar
-    p1 = - k(:,1) ! incoming
-    p2 = - k(:,2) ! incoming
-    p3 =   k(:,3) ! outgoing
-    p4 =   k(:,4) ! outgoing
-    p5 =   k(:,5) ! outgoing
-    p6 =   k(:,6) ! outgoing
-    p12 = p1 + p2
-    p35 = p3 + p5
-    p46 = p4 + p6
-    amp_blob = zero
-    ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_HARD_P0CONSTANT, &
-                     EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
-    if (FF == MATCHED) then
-       ffi_end = 3
-    else
-       ffi_end = 0
-    end if
-    if (onshell_tops (p3, p4)) then
-       nhel_max = n_hel_OS
-    else
-       nhel_max = n_hel
-    end if
+    integer :: hi, ffi, h_t, h_tbar
+    call set_production_momenta (k)
+    call init_workspace ()
     do hi = 1, nhel_max
        call compute_owfs (hi)
        if (OFFSHELL_STRATEGY < 0) then
@@ -355,9 +337,338 @@ contains
        end if
     end do
     amp_blob = - amp_blob ! 4 vertices, 3 propagators
-  end subroutine compute_born 
+  end subroutine compute_born
+
+  subroutine init_workspace ()
+    amp_blob = zero
+    ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_HARD_P0CONSTANT, &
+                     EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
+    if (FF == MATCHED) then
+       ffi_end = 3
+    else
+       ffi_end = 0
+    end if
+    if (onshell_tops (p3, p4)) then
+       nhel_max = n_hel_OS
+    else
+       nhel_max = n_hel
+    end if
+
+  end subroutine init_workspace 
+
+  subroutine set_production_momenta (k)
+    real(kind=default), dimension(0:3,*), intent(in) :: k
+    p1 = - k(:,1) ! incoming
+    p2 = - k(:,2) ! incoming
+    p3 =   k(:,3) ! outgoing
+    p4 =   k(:,4) ! outgoing
+    p5 =   k(:,5) ! outgoing
+    p6 =   k(:,6) ! outgoing
+    p12 = p1 + p2
+    p35 = p3 + p5
+    p46 = p4 + p6
+  end subroutine set_production_momenta
 
 end module @ID@_threshold
+
+module @ID@_real_decay
+  use kinds
+  use omega95
+  use omega_color, OCF => omega_color_factor
+  use parameters_SM
+  implicit none
+  private
+  public :: number_particles_in, number_particles_out, number_color_indices, &
+    reset_helicity_selection, new_event, is_allowed, get_amplitude, &
+    color_sum, openmp_supported, number_spin_states, spin_states, &
+    number_flavor_states, flavor_states, number_color_flows, color_flows, &
+    number_color_factors, color_factors, init, final, update_alpha_s, md5sum
+
+  ! DON'T EVEN THINK of removing the following!
+  ! If the compiler complains about undeclared
+  ! or undefined variables, you are compiling
+  ! against an incompatible omega95 module!
+  integer, dimension(7), parameter, private :: require = &
+    (/ omega_spinors_2010_01_A, omega_spinor_cpls_2010_01_A, &
+       omega_vectors_2010_01_A, omega_polarizations_2010_01_A, &
+       omega_couplings_2010_01_A, omega_color_2010_01_A, &
+       omega_utils_2010_01_A /)
+
+  integer, parameter :: n_prt = 4
+  integer, parameter :: n_in = 1
+  integer, parameter :: n_out = 3
+  integer, parameter :: n_cflow = 2
+  integer, parameter :: n_cindex = 2
+  integer, parameter :: n_flv = 1
+  integer, parameter :: n_hel = 24
+
+  ! NB: you MUST NOT change the value of N_ here!!!
+  !     It is defined here for convenience only and must be
+  !     compatible with hardcoded values in the amplitude!
+  real(kind=default), parameter :: N_ = 3
+  logical, parameter :: F = .false.
+  logical, parameter :: T = .true.
+
+  integer, dimension(n_prt,n_hel), save, protected :: table_spin_states
+  data table_spin_states(:,   1) / -1, -1, -1, -1 /
+  data table_spin_states(:,   2) / -1, -1, -1,  1 /
+  data table_spin_states(:,   3) / -1, -1,  1, -1 /
+  data table_spin_states(:,   4) / -1, -1,  1,  1 /
+  data table_spin_states(:,   5) / -1,  0, -1, -1 /
+  data table_spin_states(:,   6) / -1,  0, -1,  1 /
+  data table_spin_states(:,   7) / -1,  0,  1, -1 /
+  data table_spin_states(:,   8) / -1,  0,  1,  1 /
+  data table_spin_states(:,   9) / -1,  1, -1, -1 /
+  data table_spin_states(:,  10) / -1,  1, -1,  1 /
+  data table_spin_states(:,  11) / -1,  1,  1, -1 /
+  data table_spin_states(:,  12) / -1,  1,  1,  1 /
+  data table_spin_states(:,  13) /  1, -1, -1, -1 /
+  data table_spin_states(:,  14) /  1, -1, -1,  1 /
+  data table_spin_states(:,  15) /  1, -1,  1, -1 /
+  data table_spin_states(:,  16) /  1, -1,  1,  1 /
+  data table_spin_states(:,  17) /  1,  0, -1, -1 /
+  data table_spin_states(:,  18) /  1,  0, -1,  1 /
+  data table_spin_states(:,  19) /  1,  0,  1, -1 /
+  data table_spin_states(:,  20) /  1,  0,  1,  1 /
+  data table_spin_states(:,  21) /  1,  1, -1, -1 /
+  data table_spin_states(:,  22) /  1,  1, -1,  1 /
+  data table_spin_states(:,  23) /  1,  1,  1, -1 /
+  data table_spin_states(:,  24) /  1,  1,  1,  1 /
+
+  integer, dimension(n_prt,n_flv), save, protected :: table_flavor_states
+  data table_flavor_states(:,   1) /   6,  24,   5,  21 / ! t W+ b gl
+
+  integer, dimension(n_cindex,n_prt,n_cflow), save, protected :: table_color_flows
+  data table_color_flows(:,:,   1) / 1,0,  0,0,  1,0,  0,0 /
+  data table_color_flows(:,:,   2) / 2,0,  0,0,  1,0,  2,-1 /
+
+  logical, dimension(n_prt,n_cflow), save, protected :: table_ghost_flags
+  data table_ghost_flags(:,   1) / F,  F,  F,  T /
+  data table_ghost_flags(:,   2) / F,  F,  F,  F /
+
+  integer, parameter :: n_cfactors = 2
+  type(OCF), dimension(n_cfactors), save, protected :: table_color_factors
+  real(kind=default), parameter, private :: color_factor_000001 = -one
+  data table_color_factors(     1) / OCF(1,1,color_factor_000001) /
+  real(kind=default), parameter, private :: color_factor_000002 = +N_**2
+  data table_color_factors(     2) / OCF(2,2,color_factor_000002) /
+
+  logical, dimension(n_flv, n_cflow), save, protected ::  flv_col_is_allowed
+  data flv_col_is_allowed(:,   1) / T /
+  data flv_col_is_allowed(:,   2) / T /
+
+  complex(kind=default), dimension(n_flv, n_cflow, n_hel), save :: amp
+
+  logical, dimension(n_hel), save :: hel_is_allowed = T
+  real(kind=default), dimension(n_hel), save :: hel_max_abs = 0
+  real(kind=default), save :: hel_sum_abs = 0, hel_threshold = 1E10
+  integer, save :: hel_count = 0, hel_cutoff = 100
+  integer :: i
+  integer, save, dimension(n_hel) :: hel_map = (/(i, i = 1, n_hel)/)
+  integer, save :: hel_finite = n_hel
+
+    type(momentum) :: p1, p2, p3, p4
+    type(momentum) :: p12, p14
+    type(spinor) :: owf_u3_2__1_0, owf_u3_1__1_0
+    type(conjspinor) :: owf_d3b__1_3_0
+    type(vector) :: owf_gl___4_0, owf_gl_1_2_4_0, owf_wm_2_0
+    type(spinor) :: owf_d3_2__12_0, owf_d3_1__12_0, owf_u3_1__14_0_X1, &
+      owf_u3_1__14_0_X2
+    complex(kind=default) :: oks_u3_2_wpd3_1_gl_2_1, oks_u3_1_wpd3_1_gl__
+
+contains
+
+  pure function md5sum ()
+    character(len=32) :: md5sum
+    ! DON'T EVEN THINK of modifying the following line!
+    md5sum = "CC564AA882B2456F7BE6449F8C4BC713"
+  end function md5sum
+
+  subroutine init (par)
+    real(kind=default), dimension(*), intent(in) :: par
+    call import_from_whizard (par)
+  end subroutine init
+
+  subroutine final ()
+  end subroutine final
+
+  subroutine update_alpha_s (alpha_s)
+    real(kind=default), intent(in) :: alpha_s
+    call model_update_alpha_s (alpha_s)
+  end subroutine update_alpha_s
+
+  pure function number_particles_in () result (n)
+    integer :: n
+    n = n_in
+  end function number_particles_in
+
+  pure function number_particles_out () result (n)
+    integer :: n
+    n = n_out
+  end function number_particles_out
+
+  pure function number_spin_states () result (n)
+    integer :: n
+    n = size (table_spin_states, dim=2)
+  end function number_spin_states
+
+  pure subroutine spin_states (a)
+    integer, dimension(:,:), intent(out) :: a
+    a = table_spin_states
+  end subroutine spin_states
+
+  pure function number_flavor_states () result (n)
+    integer :: n
+    n = size (table_flavor_states, dim=2)
+  end function number_flavor_states
+
+  pure subroutine flavor_states (a)
+    integer, dimension(:,:), intent(out) :: a
+    a = table_flavor_states
+  end subroutine flavor_states
+
+  pure function openmp_supported () result (status)
+    logical :: status
+    status = .false.
+  end function openmp_supported
+
+  pure function number_color_indices () result (n)
+    integer :: n
+    n = size (table_color_flows, dim=1)
+  end function number_color_indices
+
+  pure function number_color_flows () result (n)
+    integer :: n
+    n = size (table_color_flows, dim=3)
+  end function number_color_flows
+
+  pure subroutine color_flows (a, g)
+    integer, dimension(:,:,:), intent(out) :: a
+    logical, dimension(:,:), intent(out) :: g
+    a = table_color_flows
+    g = table_ghost_flags
+  end subroutine color_flows
+
+  pure function number_color_factors () result (n)
+    integer :: n
+    n = size (table_color_factors)
+  end function number_color_factors
+
+  pure subroutine color_factors (cf)
+    type(OCF), dimension(:), intent(out) :: cf
+    cf = table_color_factors
+  end subroutine color_factors
+
+  function color_sum (flv, hel) result (amp2)
+    integer, intent(in) :: flv, hel
+    real(kind=default) :: amp2
+    amp2 = real (omega_color_sum (flv, hel, amp, table_color_factors))
+  end function color_sum
+
+  subroutine new_event (p)
+    real(kind=default), dimension(0:3,*), intent(in) :: p
+    logical :: mask_dirty
+    integer :: hel
+    call calculate_amplitudes (amp, p, hel_is_allowed)
+    if ((hel_threshold .gt. 0) .and. (hel_count .le. hel_cutoff)) then
+      call omega_update_helicity_selection (hel_count, amp, hel_max_abs, &
+              hel_sum_abs, hel_is_allowed, hel_threshold, hel_cutoff, &
+              mask_dirty)
+      if (mask_dirty) then
+        hel_finite = 0
+        do hel = 1, n_hel
+          if (hel_is_allowed(hel)) then
+            hel_finite = hel_finite + 1
+            hel_map(hel_finite) = hel
+          end if
+        end do
+      end if
+    end if
+  end subroutine new_event
+
+  subroutine reset_helicity_selection (threshold, cutoff)
+    real(kind=default), intent(in) :: threshold
+    integer, intent(in) :: cutoff
+    integer :: i
+    hel_is_allowed = T
+    hel_max_abs = 0
+    hel_sum_abs = 0
+    hel_count = 0
+    hel_threshold = threshold
+    hel_cutoff = cutoff
+    hel_map = (/(i, i = 1, n_hel)/)
+    hel_finite = n_hel
+  end subroutine reset_helicity_selection
+
+  pure function is_allowed (flv, hel, col) result (yorn)
+    logical :: yorn
+    integer, intent(in) :: flv, hel, col
+    yorn = hel_is_allowed(hel) .and. flv_col_is_allowed(flv,col)
+  end function is_allowed
+
+  pure function get_amplitude (flv, hel, col) result (amp_result)
+    complex(kind=default) :: amp_result
+    integer, intent(in) :: flv, hel, col
+    amp_result = amp(flv, col, hel)
+  end function get_amplitude
+
+  subroutine calculate_amplitudes (amp, k, mask)
+    complex(kind=default), dimension(:,:,:), intent(out) :: amp
+    real(kind=default), dimension(0:3,*), intent(in) :: k
+    logical, dimension(:), intent(in) :: mask
+    integer, dimension(n_prt) :: s
+    integer :: h, hi
+    p1 = - k(:,1) ! incoming
+    p2 =   k(:,2) ! outgoing
+    p3 =   k(:,3) ! outgoing
+    p4 =   k(:,4) ! outgoing
+    p12 = p1 + p2
+    p14 = p1 + p4
+    amp = 0
+    if (hel_finite == 0) return
+    do hi = 1, hel_finite
+      h = hel_map(hi)
+      s = table_spin_states(:,h)
+      owf_u3_2__1_0 = u (mass(6), - p1, s(1))
+      owf_wm_2_0 = conjg (eps (mass(24), p2, s(2)))
+      owf_d3b__1_3_0 = ubar (mass(5), p3, s(3))
+      owf_gl_1_2_4_0 = conjg (eps (mass(21), p4, s(4)))
+      owf_u3_1__1_0 = u (mass(6), - p1, s(1))
+      owf_gl___4_0 = conjg (eps (mass(21), p4, s(4)))
+      call compute_fusions_0001 ()
+      call compute_brakets_0001 ()
+      amp(1,1,h) = oks_u3_1_wpd3_1_gl__
+      amp(1,2,h) = oks_u3_2_wpd3_1_gl_2_1
+    end do
+  end subroutine calculate_amplitudes
+  subroutine compute_fusions_0001 ()
+      owf_d3_2__12_0 = pr_psi(p12,mass(5),wd_tl(p12,width(5)), &
+         + f_vlf(gcc,owf_wm_2_0,owf_u3_2__1_0))
+      owf_u3_1__14_0_X2 = pr_psi(p14,mass(6),wd_tl(p14,width(6)), &
+         + f_vf((-gs),owf_gl_1_2_4_0,owf_u3_2__1_0))
+      owf_d3_1__12_0 = pr_psi(p12,mass(5),wd_tl(p12,width(5)), &
+         + f_vlf(gcc,owf_wm_2_0,owf_u3_1__1_0))
+      owf_u3_1__14_0_X1 = pr_psi(p14,mass(6),wd_tl(p14,width(6)), &
+         + f_vf((-gs),owf_gl___4_0,owf_u3_1__1_0))
+  end subroutine compute_fusions_0001
+  subroutine compute_brakets_0001 ()
+      oks_u3_2_wpd3_1_gl_2_1 = 0
+      oks_u3_2_wpd3_1_gl_2_1 = oks_u3_2_wpd3_1_gl_2_1 + ( &
+         + f_fv((-gs),owf_d3b__1_3_0,owf_gl_1_2_4_0))*owf_d3_2__12_0
+      oks_u3_2_wpd3_1_gl_2_1 = oks_u3_2_wpd3_1_gl_2_1 + ( &
+         + f_fvl(gcc,owf_d3b__1_3_0,owf_wm_2_0))*owf_u3_1__14_0_X2
+      oks_u3_2_wpd3_1_gl_2_1 = &
+         - oks_u3_2_wpd3_1_gl_2_1 ! 2 vertices, 1 propagators
+      oks_u3_1_wpd3_1_gl__ = 0
+      oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
+         + f_fv((-gs),owf_d3b__1_3_0,owf_gl___4_0))*owf_d3_1__12_0
+      oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
+         + f_fvl(gcc,owf_d3b__1_3_0,owf_wm_2_0))*owf_u3_1__14_0_X1
+      oks_u3_1_wpd3_1_gl__ = &
+         - oks_u3_1_wpd3_1_gl__ ! 2 vertices, 1 propagators
+  end subroutine compute_brakets_0001
+
+end module @ID@_real_decay
 
 ! alphas will be set in ttv_formfactors
 ! warning: this only works with SM_tt_threshold. As this model will
@@ -372,12 +683,64 @@ subroutine @ID@_threshold_init (par) bind(C)
   call init (par)
 end subroutine @ID@_threshold_init
 
+subroutine @ID@_compute_real (amp2, k)
+  use kinds
+  use constants
+  use @ID@_real_decay, real_decay_new_event => new_event
+  use @ID@_real_decay, real_decay_get_amplitude => get_amplitude
+  use @ID@_threshold
+  !use ttv_formfactors
+  use parameters_SM_tt_threshold
+  implicit none
+  real(c_default_float), intent(out) :: amp2
+  real(kind=default), dimension(0:3,*), intent(in) :: k
+  real(kind=default), dimension(0:3,6) :: k_production
+  real(kind=default), dimension(0:3,4) :: k_decay
+  integer, dimension(2), parameter :: ass_quark = [5, 6]
+  integer, dimension(2), parameter :: ass_boson = [3, 4]
+  integer :: i, hi, legs, ffi, h_t, h_tbar
+  k_decay = zero
+  k_production = zero
+  k_decay(:,4) = k(:,7)
+  do i = 1, 6
+     k_production(:,i) = k(:,i)
+  end do
+  do legs = 1, 2
+     k_production(:,ass_quark(legs)) = k(:,ass_quark(legs)) + k(:,7)
+     k_decay(:,3) = k(:,ass_quark(legs))
+     k_decay(:,2) = k(:,ass_boson(legs))
+     k_decay(:,1) = sum(k_decay,2)
+     call set_production_momenta (k_production)
+     call real_decay_new_event (k_decay)
+  end do
+
+  do hi = 1, nhel_max
+     call compute_owfs (hi)
+     if (OFFSHELL_STRATEGY < 0) then
+        do ffi = 0, ffi_end
+           do h_t = -1, 1, 2
+              do h_tbar = -1, 1, 2
+                 amp_blob(hi,ffi) = amp_blob(hi,ffi) + &
+                      calculate_blob (hi, ffi, h_t, h_tbar) !* decay_me (h_t, h_tbar)
+              end do
+           end do
+        end do
+     else
+        do ffi = 0, ffi_end
+           amp_blob(hi,ffi) = calculate_blob (hi, ffi)
+        end do
+     end if
+  end do
+  amp_blob = - amp_blob ! 4 vertices, 3 propagators
+end subroutine @ID@_compute_real 
+
 subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   use iso_c_binding
   use kinds
-  use opr_@ID@, sm_new_event => new_event
-  use opr_@ID@, sm_get_amplitude => get_amplitude
-  use opr_@ID@, sm_number_spin_states => number_spin_states
+  use opr_@ID@, full_proc_new_event => new_event
+  use opr_@ID@, full_proc_get_amplitude => get_amplitude
+  use opr_@ID@, full_proc_number_spin_states => number_spin_states
+  use opr_@ID@, full_proc_number_particles_out => number_particles_out
   use @ID@_threshold
   use parameters_sm_tt_threshold
   use ttv_formfactors
@@ -387,31 +750,38 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   real(default), dimension(0:3) :: amp2_array
   real(c_default_float), dimension(0:3,*), intent(in) :: p
   integer, dimension(0:3) :: signs
+  logical :: real_computation
   integer :: i, hi
   amp_tree = zero
-  USE_FF = .false.
-  call sm_new_event (p)
-  do hi = 1, sm_number_spin_states()
-     amp_tree(hi) = sm_get_amplitude (1, hi, 1)
-  end do
-  USE_FF = .true.
-  call compute_born (p)
-  select case (FF)
-  case (EXPANDED_HARD_P0DEPENDENT, EXPANDED_HARD_P0CONSTANT, &
-          EXPANDED_SOFT_P0CONSTANT, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT, &
-          EXPANDED_SOFT_HARD_P0CONSTANT)
-     amp2 = expanded_amp2 (amp_tree, amp_blob(:,0))
-  case (MATCHED)
-     signs(0:3) = [+1, -1, +1, -1]
-     amp2_array(0) = real (sum ((amp_tree + amp_blob(:,0)) * &
-          conjg (amp_tree + amp_blob(:,0))))
-     do i = 1, 3
-        amp2_array(i) = expanded_amp2 (amp_tree, amp_blob(:,i))
+  real_computation = full_proc_number_particles_out () == 5
+  if (real_computation) then
+     USE_FF = .true.
+     call @ID@_compute_real (amp2, p)
+  else
+     USE_FF = .false.
+     call full_proc_new_event (p)
+     do hi = 1, full_proc_number_spin_states()
+        amp_tree(hi) = full_proc_get_amplitude (1, hi, 1)
      end do
-     amp2 = sum (signs * amp2_array)
-  case default
-     amp2 = real (sum ((amp_tree + amp_blob(:,0)) * &
-          conjg (amp_tree + amp_blob(:,0))))
-  end select
-  amp2 = amp2 * N_ / 4.0_default
+     USE_FF = .true.
+     call compute_born (p)
+     select case (FF)
+     case (EXPANDED_HARD_P0DEPENDENT, EXPANDED_HARD_P0CONSTANT, &
+             EXPANDED_SOFT_P0CONSTANT, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT, &
+             EXPANDED_SOFT_HARD_P0CONSTANT)
+        amp2 = expanded_amp2 (amp_tree, amp_blob(:,0))
+     case (MATCHED)
+        signs(0:3) = [+1, -1, +1, -1]
+        amp2_array(0) = real (sum ((amp_tree + amp_blob(:,0)) * &
+             conjg (amp_tree + amp_blob(:,0))))
+        do i = 1, 3
+           amp2_array(i) = expanded_amp2 (amp_tree, amp_blob(:,i))
+        end do
+        amp2 = sum (signs * amp2_array)
+     case default
+        amp2 = real (sum ((amp_tree + amp_blob(:,0)) * &
+             conjg (amp_tree + amp_blob(:,0))))
+     end select
+     amp2 = amp2 * N_ / 4.0_default
+  end if
 end subroutine @ID@_threshold_get_amp_squared
