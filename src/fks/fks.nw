@@ -1608,11 +1608,13 @@ there is only a soft singularity if the radiated parton becomes soft.
 <<fks regions: reg data: TBP>>=
   procedure :: get_contributors => region_data_get_contributors
 <<fks regions: procedures>>=
-  function region_data_get_contributors (reg_data, i_res, emitter) result (c)
-    integer, dimension(:), allocatable :: c
+  subroutine region_data_get_contributors (reg_data, i_res, emitter, c, success)
     class(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: i_res, emitter
+    integer, intent(inout), dimension(:), allocatable :: c
+    logical, intent(out) :: success
     integer :: i
+    success = .false.
     select type (fks_mapping => reg_data%fks_mapping)
     type is (fks_mapping_resonances_t)
        associate (res_history => fks_mapping%res_map%resonances (i_res))
@@ -1620,12 +1622,13 @@ there is only a soft singularity if the radiated parton becomes soft.
              if (any (res_history%resonances(i)%contributors%c == emitter)) then
                 allocate (c (size (res_history%resonances(i)%contributors%c)))
                 c = res_history%resonances(i)%contributors%c
+                success = .true.
                 exit
              end if
           end do
        end associate
     end select
-  end function region_data_get_contributors
+  end subroutine region_data_get_contributors
 
 @ %def region_data_get_contributors
 @
@@ -2003,6 +2006,7 @@ of the present one is increased.
     type(resonance_contributors_t), dimension(10) :: contributors_count
     type(resonance_contributors_t) :: contributors
     integer :: i_res, emitter
+    logical :: share_emitter
     res_count = -1
     n_res = 0; n_contr = 0
 
@@ -2036,8 +2040,8 @@ of the present one is increased.
           i_res = fks_mapping%res_map%alr_to_i_res (alr)
           emitter = reg_data%regions(alr)%emitter
           !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-          allocate (contributors%c (size (reg_data%get_contributors (i_res, emitter))))
-          contributors%c =  reg_data%get_contributors (i_res, emitter)
+          call reg_data%get_contributors (i_res, emitter, contributors%c, share_emitter)
+          if (.not. share_emitter) cycle
           if (.not. any (contributors_count == contributors)) then 
              n_contr = n_contr + 1
              contributors_count(alr) = contributors
@@ -2050,8 +2054,8 @@ of the present one is increased.
           i_res = fks_mapping%res_map%alr_to_i_res (alr)
           emitter = reg_data%regions(alr)%emitter
           !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-          allocate (contributors%c (size (reg_data%get_contributors (i_res, emitter))))
-          contributors%c =  reg_data%get_contributors (i_res, emitter)
+          call reg_data%get_contributors (i_res, emitter, contributors%c, share_emitter)
+          if (.not. share_emitter) cycle
           if (.not. any (reg_data%alr_contributors == contributors)) then
              reg_data%alr_contributors(j) = contributors
              reg_data%alr_to_i_contributor (alr) = j
@@ -2101,11 +2105,10 @@ of the present one is increased.
     class(region_data_t), intent(inout) :: reg_data
     integer :: i_em, i_res, i_phs
     integer :: emitter
-    !!!integer, dimension(:), allocatable :: contributors
     type(resonance_contributors_t) :: contributors
     integer, parameter :: n_max_phs = 10
     type(phs_identifier_t), dimension(n_max_phs) :: phs_id_tmp
-    logical :: phs_exist
+    logical :: share_emitter, phs_exist
     if (allocated (reg_data%resonances)) then
        reg_data%n_phs = 0
        do i_em = 1, size (reg_data%emitters)
@@ -2113,8 +2116,8 @@ of the present one is increased.
           do i_res = 1, size (reg_data%resonances)
              if (reg_data%emitter_is_compatible_with_resonance (i_res, emitter)) then 
                 !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-                allocate (contributors%c (size (reg_data%get_contributors (i_res, emitter))))
-                contributors%c = reg_data%get_contributors (i_res, emitter)
+                call reg_data%get_contributors (i_res, emitter, contributors%c, share_emitter)
+                if (.not. share_emitter) cycle
                 call check_for_phs_identifier &
                    (phs_id_tmp, emitter, contributors%c, phs_exist, i_phs)
                 if (.not. phs_exist) then
@@ -4566,7 +4569,6 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
              (rsub%real_kinematics%xi_ref_momenta (i_con))
           sqme = rsub%evaluate_region_fsr (emitter, i_phs, alpha_s)
        class default
-          !!!i_phs = rsub%real_kinematics%alr_to_i_phs (rsub%current_alr)
           sqme = rsub%evaluate_region_fsr (emitter, i_phs, alpha_s)
        end select
     end if
@@ -4645,8 +4647,6 @@ the corresponding jacobians.
          sqme = sqme0
       end if
       sqme = sqme * rsub%real_kinematics%jac_rand(i_phs)
-      !!!if (rsub%purpose == INTEGRATION .or. rsub%purpose == FIXED_ORDER_EVENTS) &
-      !!!   sqme = sqme * rsub%get_phs_factor ()
     end associate
 
     call debug_output ()
@@ -5207,16 +5207,6 @@ end module nlo_data
   end subroutine fks_template_disable_subtraction
 
 @ %def fks_template_disable_subtraction
-@
-<<nlo data: fks template: TBP>>=
-  !!!procedure :: set_resonance_mappings => fks_template_set_resonance_mappings
-<<nlo data: procedures>>=
-  !!!subroutine fks_template_set_resonance_mappings (object)
-  !!!   class(fks_template_t), intent(inout) :: object
-  !!!   object%resonance_mappings = .true.
-  !!!end subroutine fks_template_set_resonance_mappings
-
-@ %def fks_template_set_resonance_mappings
 @ A resonance phase space is uniquely specified via the resonance contributors and the
 corresponding emitters. The [[phs_identifier]] type also checks whether 
 the given contributor-emitter configuration has already been evaluated to 
@@ -6715,7 +6705,6 @@ and virtual counterterms.
       call msg_fatal ("Strong coupling not set for real calculation")
     emitter = nlo_controller%get_active_emitter ()
     i_phs = nlo_controller%get_active_phase_space ()
-    !!!print *, 'active phase space: ', i_phs
     i_flv = nlo_controller%active_flavor_structure_real
     call nlo_controller%real_terms%set_real_kinematics &
          (nlo_controller%real_kinematics)
@@ -6801,15 +6790,16 @@ one to determine this.
     integer :: alr, i_phs
     integer :: emitter, i_res
     type(resonance_contributors_t) :: contributors
-    logical :: phs_exist
+    logical :: share_emitter, phs_exist
     do alr = 1, nlo_controller%reg_data%n_regions
        associate (region => nlo_controller%reg_data%regions(alr))
           emitter = region%emitter
           i_res = region%i_res
           if (i_res /= 0) then
              !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-             allocate (contributors%c (size (nlo_controller%reg_data%get_contributors (i_res, emitter))))
-             contributors%c = nlo_controller%reg_data%get_contributors (i_res, emitter) 
+             call nlo_controller%reg_data%get_contributors &
+                (i_res, emitter, contributors%c, share_emitter)
+             if (.not. share_emitter) cycle
           end if
           if (allocated (contributors%c)) then
              call check_for_phs_identifier (phs_identifiers, &
