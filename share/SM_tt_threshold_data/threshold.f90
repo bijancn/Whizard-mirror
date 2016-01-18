@@ -200,6 +200,7 @@ module @ID@_threshold
 
   complex(default), dimension(n_hel,0:3), save, public :: amp_blob
   complex(default), dimension(n_hel), save, public :: amp_tree
+  integer, public :: nhel_max, ffi_end
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p12, p35, p46
@@ -314,29 +315,9 @@ contains
 
   subroutine compute_born (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
-    integer :: hi, nhel_max, ffi, ffi_end, h_t, h_tbar
-    p1 = - k(:,1) ! incoming
-    p2 = - k(:,2) ! incoming
-    p3 =   k(:,3) ! outgoing
-    p4 =   k(:,4) ! outgoing
-    p5 =   k(:,5) ! outgoing
-    p6 =   k(:,6) ! outgoing
-    p12 = p1 + p2
-    p35 = p3 + p5
-    p46 = p4 + p6
-    amp_blob = zero
-    ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_HARD_P0CONSTANT, &
-                     EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
-    if (FF == MATCHED) then
-       ffi_end = 3
-    else
-       ffi_end = 0
-    end if
-    if (onshell_tops (p3, p4)) then
-       nhel_max = n_hel_OS
-    else
-       nhel_max = n_hel
-    end if
+    integer :: hi, ffi, h_t, h_tbar
+    call set_production_momenta (k)
+    call init_workspace ()
     do hi = 1, nhel_max
        call compute_owfs (hi)
        if (OFFSHELL_STRATEGY < 0) then
@@ -356,6 +337,35 @@ contains
     end do
     amp_blob = - amp_blob ! 4 vertices, 3 propagators
   end subroutine compute_born
+
+  subroutine init_workspace ()
+    amp_blob = zero
+    ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_HARD_P0CONSTANT, &
+                     EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
+    if (FF == MATCHED) then
+       ffi_end = 3
+    else
+       ffi_end = 0
+    end if
+    if (onshell_tops (p3, p4)) then
+       nhel_max = n_hel_OS
+    else
+       nhel_max = n_hel
+    end if
+
+  end subroutine init_workspace 
+
+  subroutine set_production_momenta(k)
+    p1 = - k(:,1) ! incoming
+    p2 = - k(:,2) ! incoming
+    p3 =   k(:,3) ! outgoing
+    p4 =   k(:,4) ! outgoing
+    p5 =   k(:,5) ! outgoing
+    p6 =   k(:,6) ! outgoing
+    p12 = p1 + p2
+    p35 = p3 + p5
+    p46 = p4 + p6
+  end subroutine set_production_momenta
 
 end module @ID@_threshold
 
@@ -600,8 +610,6 @@ contains
     amp_result = amp(flv, col, hel)
   end function get_amplitude
 
-
-
   subroutine calculate_amplitudes (amp, k, mask)
     complex(kind=default), dimension(:,:,:), intent(out) :: amp
     real(kind=default), dimension(0:3,*), intent(in) :: k
@@ -678,6 +686,7 @@ subroutine @ID@_compute_real (amp2, k)
   use constants
   use @ID@_real_decay, real_decay_new_event => new_event
   use @ID@_real_decay, real_decay_get_amplitude => get_amplitude
+  use @ID@_threshold
   implicit none
   real(c_default_float), intent(out) :: amp2
   real(kind=default), dimension(0:3,*), intent(in) :: k
@@ -697,39 +706,27 @@ subroutine @ID@_compute_real (amp2, k)
      k_decay(:,3) = k(:,ass_quark(legs))
      k_decay(:,2) = k(:,ass_boson(legs))
      k_decay(:,1) = sum(k_decay,2)
+     call real_decay_new_event (k_decay)
   end do
 
-  !amp_blob = zero
-  !ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_HARD_P0CONSTANT, &
-                   !EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
-  !if (FF == MATCHED) then
-     !ffi_end = 3
-  !else
-     !ffi_end = 0
-  !end if
-  !if (onshell_tops (p3, p4)) then
-     !nhel_max = n_hel_OS
-  !else
-     !nhel_max = n_hel
-  !end if
-  !do hi = 1, nhel_max
-     !call compute_owfs (hi)
-     !if (OFFSHELL_STRATEGY < 0) then
-        !do ffi = 0, ffi_end
-           !do h_t = -1, 1, 2
-              !do h_tbar = -1, 1, 2
-                 !amp_blob(hi,ffi) = amp_blob(hi,ffi) + &
-                      !calculate_blob (hi, ffi, h_t, h_tbar) * decay_me (h_t, h_tbar)
-              !end do
-           !end do
-        !end do
-     !else
-        !do ffi = 0, ffi_end
-           !amp_blob(hi,ffi) = calculate_blob (hi, ffi)
-        !end do
-     !end if
-  !end do
-  !amp_blob = - amp_blob ! 4 vertices, 3 propagators
+  do hi = 1, nhel_max
+     call compute_owfs (hi)
+     if (OFFSHELL_STRATEGY < 0) then
+        do ffi = 0, ffi_end
+           do h_t = -1, 1, 2
+              do h_tbar = -1, 1, 2
+                 amp_blob(hi,ffi) = amp_blob(hi,ffi) + &
+                      calculate_blob (hi, ffi, h_t, h_tbar) * decay_me (h_t, h_tbar)
+              end do
+           end do
+        end do
+     else
+        do ffi = 0, ffi_end
+           amp_blob(hi,ffi) = calculate_blob (hi, ffi)
+        end do
+     end if
+  end do
+  amp_blob = - amp_blob ! 4 vertices, 3 propagators
 end subroutine @ID@_compute_real 
 
 subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
