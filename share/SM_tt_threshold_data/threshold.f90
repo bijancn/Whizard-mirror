@@ -5,7 +5,8 @@ module @ID@_threshold
   use ttv_formfactors
   implicit none
   private
-  public :: init, md5sum, calculate_blob, compute_born
+  public :: init, md5sum, calculate_blob, compute_born, &
+       set_production_momenta, init_workspace, compute_owfs
 
   ! DON'T EVEN THINK of removing the following!
   ! If the compiler complains about undeclared
@@ -355,7 +356,8 @@ contains
 
   end subroutine init_workspace 
 
-  subroutine set_production_momenta(k)
+  subroutine set_production_momenta (k)
+    real(kind=default), dimension(0:3,*), intent(in) :: k
     p1 = - k(:,1) ! incoming
     p2 = - k(:,2) ! incoming
     p3 =   k(:,3) ! outgoing
@@ -687,6 +689,8 @@ subroutine @ID@_compute_real (amp2, k)
   use @ID@_real_decay, real_decay_new_event => new_event
   use @ID@_real_decay, real_decay_get_amplitude => get_amplitude
   use @ID@_threshold
+  !use ttv_formfactors
+  use parameters_SM_tt_threshold
   implicit none
   real(c_default_float), intent(out) :: amp2
   real(kind=default), dimension(0:3,*), intent(in) :: k
@@ -694,7 +698,7 @@ subroutine @ID@_compute_real (amp2, k)
   real(kind=default), dimension(0:3,4) :: k_decay
   integer, dimension(2), parameter :: ass_quark = [5, 6]
   integer, dimension(2), parameter :: ass_boson = [3, 4]
-  integer :: i, legs
+  integer :: i, hi, legs, ffi, h_t, h_tbar
   k_decay = zero
   k_production = zero
   k_decay(:,4) = k(:,7)
@@ -706,6 +710,7 @@ subroutine @ID@_compute_real (amp2, k)
      k_decay(:,3) = k(:,ass_quark(legs))
      k_decay(:,2) = k(:,ass_boson(legs))
      k_decay(:,1) = sum(k_decay,2)
+     call set_production_momenta (k_production)
      call real_decay_new_event (k_decay)
   end do
 
@@ -716,7 +721,7 @@ subroutine @ID@_compute_real (amp2, k)
            do h_t = -1, 1, 2
               do h_tbar = -1, 1, 2
                  amp_blob(hi,ffi) = amp_blob(hi,ffi) + &
-                      calculate_blob (hi, ffi, h_t, h_tbar) * decay_me (h_t, h_tbar)
+                      calculate_blob (hi, ffi, h_t, h_tbar) !* decay_me (h_t, h_tbar)
               end do
            end do
         end do
