@@ -2011,11 +2011,7 @@ module processes
   use nlo_controller, only: nlo_controller_t
 
   use phs_wood, only: phs_wood_config_t, phs_wood_t
-  use phs_fks, only: phs_fks_config_t, phs_fks_t
-  use phs_fks, only: PHS_MODE_ADDITIONAL_PARTICLE
-  use phs_fks, only: PHS_MODE_COLLINEAR_REMNANT
-  use phs_fks, only: GEN_SOFT_MISMATCH
-  
+  use phs_fks
   use fks_regions, only: region_data_t
 
   use prc_gosam, only: prc_gosam_t
@@ -8994,6 +8990,8 @@ to subobject of [[instance]].
     integer :: i_born
     logical :: use_internal_cc, use_internal_sc
     logical :: use_resonance_mappings
+    logical :: test_soft_limit, test_coll_limit
+    integer :: generator_mode
 
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
@@ -9017,18 +9015,25 @@ to subobject of [[instance]].
                      use_internal_cc = nlo_settings%use_internal_color_correlations
                      use_internal_sc = .false.
                      use_resonance_mappings = nlo_settings%use_resonance_mappings
+                     test_soft_limit = nlo_settings%test_soft_limit
+                     test_coll_limit = nlo_settings%test_coll_limit
                   else
                      use_internal_cc = .true.
                      use_internal_sc = .false.
                      use_resonance_mappings = .false.
+                     test_soft_limit = .false.
+                     test_coll_limit = .false.
                   end if
                   component%nlo_type = NLO_REAL
                   associate (nlo_controller => component%nlo_controller)
                     if (nlo_controller%needs_initialization) then
                        call nlo_controller%set_internal_procedures &
                             (use_internal_cc, use_internal_sc)
-                       nlo_controller%settings%use_resonance_mappings = &
-                          use_resonance_mappings
+                       associate (settings => nlo_controller%settings)
+                          settings%use_resonance_mappings = use_resonance_mappings
+                          settings%test_soft_limit = test_soft_limit
+                          settings%test_coll_limit = test_coll_limit
+                       end associate
                        process%component(i_component)%fks_template%id = &
                           prc_constants(1)%id
                        call nlo_controller%init (prc_constants, &
@@ -9064,11 +9069,16 @@ to subobject of [[instance]].
                call component%setup_kinematics &
                   (instance%sf_chain, process%beam_config, &
                      nlo_settings%combined_integration)
-               if (nlo_type == NLO_REAL .or. nlo_type == NLO_PDF) then
+               if (nlo_type == NLO_REAL) then
+                  generator_mode = check_generator_mode (GEN_REAL_PHASE_SPACE)
+                  call component%setup_fks_kinematics (process%meta%var_list, &
+                     generator_mode)
+               else if (nlo_type == NLO_PDF) then
                   call component%setup_fks_kinematics (process%meta%var_list)
                else if (nlo_type == NLO_MISMATCH) then
+                  generator_mode = check_generator_mode (GEN_SOFT_MISMATCH)
                   call component%setup_fks_kinematics (process%meta%var_list, &
-                     GEN_SOFT_MISMATCH) 
+                     generator_mode) 
                end if
              end associate
           end if
@@ -9081,6 +9091,20 @@ to subobject of [[instance]].
        end if
        
     end select
+  contains
+    function check_generator_mode (gen_mode_default) result (gen_mode)
+       integer :: gen_mode
+       integer, intent(in) :: gen_mode_default
+       if (nlo_settings%test_soft_limit .and..not. nlo_settings%test_coll_limit) then
+          gen_mode = GEN_SOFT_LIMIT_TEST
+       else if (.not. nlo_settings%test_soft_limit .and. nlo_settings%test_coll_limit) then
+          gen_mode = GEN_COLL_LIMIT_TEST
+       else if (nlo_settings%test_soft_limit .and. nlo_settings%test_coll_limit) then
+          gen_mode = GEN_SOFT_COLL_LIMIT_TEST
+       else
+          gen_mode = gen_mode_default
+       end if
+    end function check_generator_mode
   end subroutine process_instance_init_nlo_configuration
   
 @ %def process_instance_init_nlo_configuration
