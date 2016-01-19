@@ -305,6 +305,7 @@ contains
     owf_t_4 = u (sqrt(p35*p35), p35, h_t)
     me = (f_fvl (gccq33, owf_b_5, owf_Wm_3) * owf_t_4) * &
          (owf_t_3 * f_vlf (gccq33, owf_Wp_4, owf_b_6))
+    ! TODO: (bcn 2016-01-18) should this be multiplied with N_ ?
     if (OFFSHELL_STRATEGY == -2) then
        me = (f_fvl (gccq33, owf_b_5, owf_Wm_3) * owf_t_4) * &
             (owf_t_3 * f_vlf (gccq33, owf_Wp_4, owf_b_6))
@@ -354,7 +355,7 @@ contains
        nhel_max = n_hel
     end if
 
-  end subroutine init_workspace 
+  end subroutine init_workspace
 
   subroutine set_production_momenta (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
@@ -378,16 +379,9 @@ module @ID@_real_decay
   use parameters_SM
   implicit none
   private
-  public :: number_particles_in, number_particles_out, number_color_indices, &
-    reset_helicity_selection, new_event, is_allowed, get_amplitude, &
-    color_sum, openmp_supported, number_spin_states, spin_states, &
-    number_flavor_states, flavor_states, number_color_flows, color_flows, &
-    number_color_factors, color_factors, init, final, update_alpha_s, md5sum
+  public :: reset_helicity_selection, calculate_amplitude, is_allowed, get_amplitude, &
+    number_spin_states, spin_states, init, update_alpha_s, md5sum
 
-  ! DON'T EVEN THINK of removing the following!
-  ! If the compiler complains about undeclared
-  ! or undefined variables, you are compiling
-  ! against an incompatible omega95 module!
   integer, dimension(7), parameter, private :: require = &
     (/ omega_spinors_2010_01_A, omega_spinor_cpls_2010_01_A, &
        omega_vectors_2010_01_A, omega_polarizations_2010_01_A, &
@@ -402,9 +396,6 @@ module @ID@_real_decay
   integer, parameter :: n_flv = 1
   integer, parameter :: n_hel = 24
 
-  ! NB: you MUST NOT change the value of N_ here!!!
-  !     It is defined here for convenience only and must be
-  !     compatible with hardcoded values in the amplitude!
   real(kind=default), parameter :: N_ = 3
   logical, parameter :: F = .false.
   logical, parameter :: T = .true.
@@ -489,23 +480,10 @@ contains
     call import_from_whizard (par)
   end subroutine init
 
-  subroutine final ()
-  end subroutine final
-
   subroutine update_alpha_s (alpha_s)
     real(kind=default), intent(in) :: alpha_s
     call model_update_alpha_s (alpha_s)
   end subroutine update_alpha_s
-
-  pure function number_particles_in () result (n)
-    integer :: n
-    n = n_in
-  end function number_particles_in
-
-  pure function number_particles_out () result (n)
-    integer :: n
-    n = n_out
-  end function number_particles_out
 
   pure function number_spin_states () result (n)
     integer :: n
@@ -516,75 +494,6 @@ contains
     integer, dimension(:,:), intent(out) :: a
     a = table_spin_states
   end subroutine spin_states
-
-  pure function number_flavor_states () result (n)
-    integer :: n
-    n = size (table_flavor_states, dim=2)
-  end function number_flavor_states
-
-  pure subroutine flavor_states (a)
-    integer, dimension(:,:), intent(out) :: a
-    a = table_flavor_states
-  end subroutine flavor_states
-
-  pure function openmp_supported () result (status)
-    logical :: status
-    status = .false.
-  end function openmp_supported
-
-  pure function number_color_indices () result (n)
-    integer :: n
-    n = size (table_color_flows, dim=1)
-  end function number_color_indices
-
-  pure function number_color_flows () result (n)
-    integer :: n
-    n = size (table_color_flows, dim=3)
-  end function number_color_flows
-
-  pure subroutine color_flows (a, g)
-    integer, dimension(:,:,:), intent(out) :: a
-    logical, dimension(:,:), intent(out) :: g
-    a = table_color_flows
-    g = table_ghost_flags
-  end subroutine color_flows
-
-  pure function number_color_factors () result (n)
-    integer :: n
-    n = size (table_color_factors)
-  end function number_color_factors
-
-  pure subroutine color_factors (cf)
-    type(OCF), dimension(:), intent(out) :: cf
-    cf = table_color_factors
-  end subroutine color_factors
-
-  function color_sum (flv, hel) result (amp2)
-    integer, intent(in) :: flv, hel
-    real(kind=default) :: amp2
-    amp2 = real (omega_color_sum (flv, hel, amp, table_color_factors))
-  end function color_sum
-
-  subroutine new_event (p)
-    real(kind=default), dimension(0:3,*), intent(in) :: p
-    logical :: mask_dirty
-    integer :: hel
-    call calculate_amplitudes (amp, p, hel_is_allowed)
-    if ((hel_threshold .gt. 0) .and. (hel_count .le. hel_cutoff)) then
-      call omega_update_helicity_selection (hel_count, amp, hel_max_abs, &
-              hel_sum_abs, hel_is_allowed, hel_threshold, hel_cutoff, &
-              mask_dirty)
-      if (mask_dirty) then
-        hel_finite = 0
-        do hel = 1, n_hel
-          if (hel_is_allowed(hel)) then
-            hel_finite = hel_finite + 1
-            hel_map(hel_finite) = hel
-          end if
-        end do
-      end if
-    end if
-  end subroutine new_event
 
   subroutine reset_helicity_selection (threshold, cutoff)
     real(kind=default), intent(in) :: threshold
@@ -612,11 +521,10 @@ contains
     amp_result = amp(flv, col, hel)
   end function get_amplitude
 
-  subroutine calculate_amplitudes (amp, k, mask)
-    complex(kind=default), dimension(:,:,:), intent(out) :: amp
+  function calculate_amplitude (k, s) result (amp)
+    complex(kind=default) :: amp
     real(kind=default), dimension(0:3,*), intent(in) :: k
-    logical, dimension(:), intent(in) :: mask
-    integer, dimension(n_prt) :: s
+    integer, dimension(n_prt), intent(in) :: s
     integer :: h, hi
     p1 = - k(:,1) ! incoming
     p2 =   k(:,2) ! outgoing
@@ -626,46 +534,19 @@ contains
     p14 = p1 + p4
     amp = 0
     if (hel_finite == 0) return
-    do hi = 1, hel_finite
-      h = hel_map(hi)
-      s = table_spin_states(:,h)
-      owf_u3_2__1_0 = u (mass(6), - p1, s(1))
-      owf_wm_2_0 = conjg (eps (mass(24), p2, s(2)))
-      owf_d3b__1_3_0 = ubar (mass(5), p3, s(3))
-      owf_gl_1_2_4_0 = conjg (eps (mass(21), p4, s(4)))
-      owf_u3_1__1_0 = u (mass(6), - p1, s(1))
-      owf_gl___4_0 = conjg (eps (mass(21), p4, s(4)))
-      call compute_fusions_0001 ()
-      call compute_brakets_0001 ()
-      amp(1,1,h) = oks_u3_1_wpd3_1_gl__
-      amp(1,2,h) = oks_u3_2_wpd3_1_gl_2_1
-    end do
-  end subroutine calculate_amplitudes
-  subroutine compute_fusions_0001 ()
-      owf_d3_2__12_0 = pr_psi(p12,mass(5),wd_tl(p12,width(5)), &
-         + f_vlf(gcc,owf_wm_2_0,owf_u3_2__1_0))
-      owf_u3_1__14_0_X2 = pr_psi(p14,mass(6),wd_tl(p14,width(6)), &
-         + f_vf((-gs),owf_gl_1_2_4_0,owf_u3_2__1_0))
-      owf_d3_1__12_0 = pr_psi(p12,mass(5),wd_tl(p12,width(5)), &
-         + f_vlf(gcc,owf_wm_2_0,owf_u3_1__1_0))
-      owf_u3_1__14_0_X1 = pr_psi(p14,mass(6),wd_tl(p14,width(6)), &
-         + f_vf((-gs),owf_gl___4_0,owf_u3_1__1_0))
-  end subroutine compute_fusions_0001
-  subroutine compute_brakets_0001 ()
-      oks_u3_2_wpd3_1_gl_2_1 = 0
-      oks_u3_2_wpd3_1_gl_2_1 = oks_u3_2_wpd3_1_gl_2_1 + ( &
-         + f_fv((-gs),owf_d3b__1_3_0,owf_gl_1_2_4_0))*owf_d3_2__12_0
-      oks_u3_2_wpd3_1_gl_2_1 = oks_u3_2_wpd3_1_gl_2_1 + ( &
-         + f_fvl(gcc,owf_d3b__1_3_0,owf_wm_2_0))*owf_u3_1__14_0_X2
-      oks_u3_2_wpd3_1_gl_2_1 = &
-         - oks_u3_2_wpd3_1_gl_2_1 ! 2 vertices, 1 propagators
-      oks_u3_1_wpd3_1_gl__ = 0
-      oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
-         + f_fv((-gs),owf_d3b__1_3_0,owf_gl___4_0))*owf_d3_1__12_0
-      oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
-         + f_fvl(gcc,owf_d3b__1_3_0,owf_wm_2_0))*owf_u3_1__14_0_X1
-      oks_u3_1_wpd3_1_gl__ = &
-         - oks_u3_1_wpd3_1_gl__ ! 2 vertices, 1 propagators
+    owf_u3_1__1_0 = u (mass(6), - p1, s(1))
+    owf_wm_2_0 = conjg (eps (mass(24), p2, s(2)))
+    owf_d3b__1_3_0 = ubar (mass(5), p3, s(3))
+    owf_gl___4_0 = conjg (eps (mass(21), p4, s(4)))
+    owf_d3_1__12_0 = pr_psi(p12,mass(5),wd_tl(p12,width(5)), &
+       + f_vlf(gcc,owf_wm_2_0,owf_u3_1__1_0))
+    owf_u3_1__14_0_X1 = pr_psi(p14,mass(6),wd_tl(p14,width(6)), &
+       + f_vf((-gs),owf_gl___4_0,owf_u3_1__1_0))
+    oks_u3_1_wpd3_1_gl__ = ( &
+       + f_fv((-gs),owf_d3b__1_3_0,owf_gl___4_0))*owf_d3_1__12_0
+    oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
+       + f_fvl(gcc,owf_d3b__1_3_0,owf_wm_2_0))*owf_u3_1__14_0_X1
+    amp = - oks_u3_1_wpd3_1_gl__ ! 2 vertices, 1 propagators
   end subroutine compute_brakets_0001
 
 end module @ID@_real_decay
@@ -686,8 +567,8 @@ end subroutine @ID@_threshold_init
 subroutine @ID@_compute_real (amp2, k)
   use kinds
   use constants
-  use @ID@_real_decay, real_decay_new_event => new_event
-  use @ID@_real_decay, real_decay_get_amplitude => get_amplitude
+  use @ID@_real_decay, real_decay_calculate_amplitude => calculate_amplitude
+  use @ID@_real_decay, real_decay_spin_states => spin_states
   use @ID@_threshold
   !use ttv_formfactors
   use parameters_SM_tt_threshold
@@ -695,44 +576,62 @@ subroutine @ID@_compute_real (amp2, k)
   real(c_default_float), intent(out) :: amp2
   real(kind=default), dimension(0:3,*), intent(in) :: k
   real(kind=default), dimension(0:3,6) :: k_production
-  real(kind=default), dimension(0:3,4) :: k_decay
+  real(kind=default), dimension(0:3,4) :: k_decay_real
+  real(kind=default), dimension(0:3,3) :: k_decay_born
+  complex(default) :: production_me
   integer, dimension(2), parameter :: ass_quark = [5, 6]
   integer, dimension(2), parameter :: ass_boson = [3, 4]
-  integer :: i, hi, legs, ffi, h_t, h_tbar
-  k_decay = zero
-  k_production = zero
-  k_decay(:,4) = k(:,7)
-  do i = 1, 6
-     k_production(:,i) = k(:,i)
-  end do
-  do legs = 1, 2
-     k_production(:,ass_quark(legs)) = k(:,ass_quark(legs)) + k(:,7)
-     k_decay(:,3) = k(:,ass_quark(legs))
-     k_decay(:,2) = k(:,ass_boson(legs))
-     k_decay(:,1) = sum(k_decay,2)
-     call set_production_momenta (k_production)
-     call real_decay_new_event (k_decay)
-  end do
-
-  do hi = 1, nhel_max
-     call compute_owfs (hi)
-     if (OFFSHELL_STRATEGY < 0) then
-        do ffi = 0, ffi_end
-           do h_t = -1, 1, 2
-              do h_tbar = -1, 1, 2
-                 amp_blob(hi,ffi) = amp_blob(hi,ffi) + &
-                      calculate_blob (hi, ffi, h_t, h_tbar) !* decay_me (h_t, h_tbar)
+  integer :: i, hi, leg, other_leg, ffi, h_t, h_tbar
+  call init_decay_and_production_momenta ()
+  do leg = 1, 2
+     other_leg = 3 - leg
+     call set_decay_and_production_momenta ()
+     do hi = 1, nhel_max
+        call compute_owfs (hi)
+        if (OFFSHELL_STRATEGY < 0) then
+           do ffi = 0, ffi_end
+              do h_t = -1, 1, 2
+                 do h_tbar = -1, 1, 2
+                    production_me = calculate_blob (hi, ffi, h_t, h_tbar) * &
+                         (N_**2 - 1) / N_
+                    do h_gl = -1, 1, 2
+                       amp_blob(hi,ffi) = amp_blob(hi,ffi) + &
+                            real_decay_calculate_amplitude (k_decay_real, [h_t,h_W,h_b,h_gl])
+                    end do
+                 end do
               end do
            end do
-        end do
-     else
-        do ffi = 0, ffi_end
-           amp_blob(hi,ffi) = calculate_blob (hi, ffi)
-        end do
-     end if
+        else
+           print *, 'OFFSHELL_STRATEGY should be < 0'
+           stop 1
+        end if
+     end do
   end do
   amp_blob = - amp_blob ! 4 vertices, 3 propagators
-end subroutine @ID@_compute_real 
+
+contains
+
+  subroutine init_decay_and_production_momenta ()
+    k_decay_real = zero
+    k_production = zero
+    k_decay_real(:,4) = k(:,7)
+    do i = 1, 6
+       k_production(:,i) = k(:,i)
+    end do
+  end subroutine init_decay_and_production_momenta
+
+  subroutine set_decay_and_production_momenta ()
+     k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
+     k_decay_real(:,3) = k(:,ass_quark(leg))
+     k_decay_real(:,2) = k(:,ass_boson(leg))
+     k_decay_real(:,1) = sum(k_decay_real,2)     !!! momentum conservation
+     k_decay_born(:,3) = k(:,ass_quark(other_leg))
+     k_decay_born(:,2) = k(:,ass_boson(other_leg))
+     k_decay_born(:,1) = sum(k_decay_born,2)     !!! momentum conservation
+     call set_production_momenta (k_production)
+  end subroutine set_decay_and_production_momenta
+
+end subroutine @ID@_compute_real
 
 subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   use iso_c_binding
