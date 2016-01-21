@@ -646,8 +646,8 @@ NAG)
   ;;
 Intel)
   wo_cv_fc_openmp="yes"
-  wo_cv_fcflags_openmp="-openmp"
-  wo_cv_fc_openmp_header="use :: omp_lib"
+  wo_cv_fcflags_openmp="-qopenmp"
+  wo_cv_fc_openmp_header="use :: omp_lib !NODEP!"
   ;;
 PGI)
   wo_cv_fc_openmp="yes"

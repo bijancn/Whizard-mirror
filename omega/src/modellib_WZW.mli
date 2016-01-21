@@ -1,4 +1,4 @@
-(* $Id: omega_SM_rx.ml 7367 2015-11-13 17:28:39Z jr_reuter $
+(* $Id: modellib_WZW.mli 6264 2014-11-14 15:40:49Z fbach $
 
    Copyright (C) 1999-2015 by
 
@@ -6,7 +6,6 @@
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
        with contributions from
-       Marco Sekulla <marco.sekulla@kit.edu>
        Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
@@ -23,9 +22,17 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-module O = Omega.Make(Fusion.Mixed23)(Targets.Fortran)
-    (Modellib_SM.SM(Modellib_SM.SM_k_matrix))
-let _ = O.main ()
+(* \thocwmodulesection{Hardcoded Models} *)
+
+module type SM_flags =
+  sig
+    val include_anomalous : bool
+    val k_matrix : bool
+  end
+
+module SM_no_anomalous : SM_flags
+
+module WZW : functor (F : SM_flags) -> Model.Gauge with module Ch = Charges.QQ
 
 (*i
  *  Local Variables:
