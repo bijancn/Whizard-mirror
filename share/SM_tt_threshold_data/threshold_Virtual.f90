@@ -4,7 +4,7 @@ module @ID@_virtual
   use openloops
   use parameters_sm_tt_threshold
   implicit none
-  integer, dimension(2) :: id
+  integer, dimension(4) :: id
 end module @ID@_virtual
 
 subroutine @ID@_start_openloops () bind(C)
@@ -13,8 +13,8 @@ subroutine @ID@_start_openloops () bind(C)
   character(32) :: buffer
   integer :: i
   ! coupling order alpha_ew^1, implies QCD correction for loop process
-  !call set_parameter("order_ew", 1)
-  call set_parameter("order_ew", 4)
+  call set_parameter("order_ew", 1)
+  !call set_parameter("order_ew", 4)
   !call set_parameter("order_qcd", 1)
 
   call set_parameter("model", "sm")
@@ -37,12 +37,12 @@ subroutine @ID@_start_openloops () bind(C)
 
   ! 1 for tree-like matrix elements (tree, color and spin correlations),
   ! 11 for loop, 12 for loop^2
-  !id(1) = register_process("6(-1) -> 24 5", 11)
-  !id(2) = register_process("6(+1) -> 24 5", 11)
-  id(1) = register_process("11 -11 -> 24 -24 5 -5", 11)
-  id(2) = 0
-  !id(2) = register_process("-6 -> -24 -5", 11)
-  !id(1) = register_process("6 -> 24 5", 11)
+  id(1) = register_process("6(-1) -> 24 5", 11)
+  id(2) = register_process("6(+1) -> 24 5", 11)
+  id(3) = register_process("-6(-1) -> -24 -5", 11)
+  id(4) = register_process("-6(+1) -> -24 -5", 11)
+  !id(1) = register_process("11 -11 -> 24 -24 5 -5", 11)
+  !id(2) = 0
 
   call start()
 
@@ -59,30 +59,56 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   real(c_default_float), intent(in) :: mu_c
   real(c_default_float), dimension(4), intent(out) :: sqme_c
   real(c_default_float), intent(out) :: acc_c
-  integer :: i
+  integer :: h_el, h_pos, h_t, h_tbar
+  integer :: i, leg, other_leg, ffi, this_id
   real(double) :: m2_tree, m2_loop(0:2), acc
-  real(double) :: p_ex(0:3,6)
-  real(double) :: mu, alpha_s
-  if (i_flv /= 1) then
-     print *, 'i_flv /= 1, threshold interface was not built for this'
-     stop 1
-  end if
+  real(double) :: p_decay(0:3,4)
+  real(double) :: mu, alpha_s, virtual_decay_me
+  call msg_debug (D_ME_METHODS, "@ID@_olp_eval2")
+  if (i_flv /= 1)  call msg_fatal ("i_flv /= 1, threshold interface was not built for this")
+  if (any (id <= 0))  call msg_fatal ("Could not register process in OpenLoops")
+  if (OFFSHELL_STRATEGY >= 0)  call msg_fatal ("OFFSHELL_STRATEGY should be < 0")
   alpha_s = alpha_s_c
   mu = mu_c
-  do i = 1, 6
-     p_ex(:,i) = parray(:,i)
+  call init_workspace ()
+  call set_parameter("alpha_s", alpha_s)
+  call set_parameter("mu", mu)
+  total_m2_loop = 0
+  total_m2_tree = 0
+  do leg = 1, 2
+     other_leg = 3 - leg
+     call set_decay_and_production_momenta ()
+     do h_el = -1, 1, 2  do h_pos = -1, 1, 2
+        call compute_owfs ([h_el, h_pos])
+           do ffi = 0, ffi_end
+              do h_t = -1, 1, 2
+                 do h_tbar = -1, 1, 2
+                    production_me = calculate_blob (ffi, h_t, h_tbar)
+                    if (leg == 1) then
+                       born_decay_me = anti_top_decay_born (h_tbar)
+                       this_id = (3 + h_t) / 2
+                    else
+                       born_decay_me = top_decay_born (h_t)
+                       this_id = (3 + h_t) / 2 + 2
+                    end if
+    dynamic_top_mass = sqrt (p1 * p1)
+    top_width = ttv_wtpole (p1*p1, ff_modes(ffi))
+                    call set_parameter("mass(" // trim (adjustl (buffer)) // ")", mass(pdgs(i)))
+                    call set_parameter("width(" // trim (adjustl (buffer)) // ")", width(pdgs(i)))
+                    call evaluate_loop(id(this_id), p_decay, m2_tree, m2_loop, acc)
+                    ! i guess its summed over color but not divided by N_ ?
+                    virtual_decay_me = virtual_decay_me / N_
+                    total_m2_loop = total_m2_loop + production_me * &
+                          virtual_decay_me * born_decay_me * top_propagators (ffi)
+                    total_m2_tree = total_m2_tree + production_me * &
+                          virtual_decay_me * born_decay_me * top_propagators (ffi)
+                    call debug_computation_status ()
+                 end do
+              end do
+           end do
+     end do
   end do
-  do i = 1, 2
-     if (id(i) > 0) then
-        call set_parameter("alpha_s", alpha_s)
-        call set_parameter("mu", mu)
-        call evaluate_loop(id(i), p_ex, m2_tree, m2_loop, acc)
-     else
-        !print *, "Could not load process ", id(i)
-        !stop 1
-     end if
-  end do
-  sqme_c = [m2_loop(2), m2_loop(1), m2_loop(0), m2_tree]
+  sqme_c = [total_m2_loop(2), total_m2_loop(1), total_m2_loop(0), total_m2_tree]
 
 end subroutine @ID@_olp_eval2
 

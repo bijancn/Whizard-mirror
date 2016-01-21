@@ -8,7 +8,7 @@ module @ID@_threshold
   private
   public :: init, calculate_blob, compute_born, &
        set_production_momenta, init_workspace, compute_owfs, table_spin_states, &
-       top_decay_born, anti_top_decay_born, top_propagators
+       top_decay_born, anti_top_decay_born, top_propagators, ff_modes
 
   ! DON'T EVEN THINK of removing the following!
   ! If the compiler complains about undeclared
@@ -221,8 +221,9 @@ contains
     call import_from_whizard (par)
   end subroutine init
 
-  subroutine compute_owfs (hi)
-    integer, intent(in) :: hi
+  subroutine compute_owfs (hi, spins)
+    integer, intent(in), optional :: hi
+    integer, dimension(2), intent(in), optional :: spins
     integer, dimension(n_prt_OS) :: s_OS
     integer, dimension(n_prt) :: s
     call msg_debug2 (D_ME_METHODS, "compute_owfs")
@@ -236,22 +237,29 @@ contains
        owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
             + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
     else
-       s = table_spin_states(:,hi)
-       owf_e_1 = u (mass(11), - p1, s(1))
-       owf_e_2 = vbar (mass(11), - p2, s(2))
-       owf_Wm_3 = conjg (eps (mass(24), p3, s(3)))
-       owf_Wp_4 = conjg (eps (mass(24), p4, s(4)))
-       owf_b_5 = ubar (mass(5), p5, s(5))
-       owf_b_6 = v (mass(5), p6, s(6))
+       if (present (hi)) then
+          s = table_spin_states(:,hi)
+          owf_e_1 = u (mass(11), - p1, s(1))
+          owf_e_2 = vbar (mass(11), - p2, s(2))
+          owf_Wm_3 = conjg (eps (mass(24), p3, s(3)))
+          owf_Wp_4 = conjg (eps (mass(24), p4, s(4)))
+          owf_b_5 = ubar (mass(5), p5, s(5))
+          owf_b_6 = v (mass(5), p6, s(6))
+       else if (present (spins))
+          owf_e_1 = u (mass(11), - p1, spins(1))
+          owf_e_2 = vbar (mass(11), - p2, spins(2))
+       else
+          call msg_fatal ("compute_owfs: Please give either helicity index or spins")
+       end if
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
        owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
             + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
     end if
   end subroutine compute_owfs
 
-  function calculate_blob (hi, ffi, h_t, h_tbar) result (amp)
+  function calculate_blob (ffi, h_t, h_tbar) result (amp)
     complex(default) :: amp
-    integer, intent(in) :: hi, ffi
+    integer, intent(in) :: ffi
     integer, intent(in), optional :: h_t, h_tbar
     complex(default) :: blob_Z_vec, blob_Z_ax, ttv_vec, ttv_ax
     real(default) :: mtop, wtop
@@ -268,14 +276,10 @@ contains
        blob_Z_vec = gncup(1) * ttv_vec
        blob_Z_ax = gncup(2) * ttv_ax
        if (OFFSHELL_STRATEGY < 0) then
-          call msg_debug (D_ME_METHODS, "sqrt(p35*p35)", sqrt(p35*p35))
-          call msg_debug (D_ME_METHODS, "sqrt(p46*p46)", sqrt(p46*p46))
           owf_t_3 = ubar (sqrt (p35 * p35), p35, h_t)
           owf_t_4 = v (sqrt (p46 * p46), p46, h_tbar)
           amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
-          print *, 'amp =    ', amp !!! Debugging
           amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * ttv_vec
-          print *, 'amp =    ', amp !!! Debugging
           amp = - amp
        else
           mtop = ttv_mtpole (p12*p12)
@@ -288,8 +292,7 @@ contains
           amp = amp + owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46) * ttv_vec
        end if
     end if
-    call msg_debug2 (D_ME_METHODS, "Re(amp)", real(real(amp),default))
-    call msg_debug2 (D_ME_METHODS, "Im(amp)", real(aimag(amp),default))
+    call msg_debug2 (D_ME_METHODS, "amp", amp)
   end function calculate_blob
 
   pure function top_propagators (ffi) result(one_over_p)
@@ -327,7 +330,7 @@ contains
           do ffi = 0, ffi_end
              do h_t = -1, 1, 2
                 do h_tbar = -1, 1, 2
-                   production_me = calculate_blob (hi, ffi, h_t, h_tbar) 
+                   production_me = calculate_blob (ffi, h_t, h_tbar)
                    amp_blob(hi,ffi) = amp_blob(hi,ffi) + &
                         production_me * top_propagators (ffi) * &
                         top_decay_born (h_t) * anti_top_decay_born (h_tbar)
@@ -336,7 +339,7 @@ contains
           end do
        else
           do ffi = 0, ffi_end
-             amp_blob(hi,ffi) = calculate_blob (hi, ffi)
+             amp_blob(hi,ffi) = calculate_blob (ffi)
           end do
        end if
     end do
@@ -364,8 +367,10 @@ contains
 
   subroutine set_production_momenta (k)
     real(kind=default), dimension(0:3,*), intent(in) :: k
-    call msg_debug (D_ME_METHODS, "set_production_momenta")
-    print *, 'k =    ', k(0:3,1:6) !!! Debugging
+    if (debug2_active (D_ME_METHODS)) then
+       call msg_debug (D_ME_METHODS, "set_production_momenta")
+       print *, 'k =    ', k(0:3,1:6)
+    end if
     p1 = - k(:,1) ! incoming
     p2 = - k(:,2) ! incoming
     p3 =   k(:,3) ! outgoing
@@ -384,7 +389,8 @@ module @ID@_top_real_decay
   use diagnostics
   use omega95
   use omega_color, OCF => omega_color_factor
-  use parameters_SM
+  use @ID@_threshold, only : ff_modes
+  use parameters_SM_tt_threshold
   implicit none
   private
   public :: calculate_amplitude, init, update_alpha_s
@@ -399,9 +405,8 @@ module @ID@_top_real_decay
   type(momentum) :: p12, p14
   type(spinor) :: owf_u3_2__1_0, owf_u3_1__1_0
   type(conjspinor) :: owf_d3b__1_3_0
-  type(vector) :: owf_gl___4_0, owf_gl_1_2_4_0, owf_wm_2_0
-  type(spinor) :: owf_d3_2__12_0, owf_d3_1__12_0, owf_u3_1__14_0_X1, &
-    owf_u3_1__14_0_X2
+  type(vector) :: owf_gl___4_0, owf_wm_2_0
+  type(spinor) :: owf_d3_1__12_0, owf_u3_1__14_0_X1
   complex(kind=default) :: oks_u3_2_wpd3_1_gl_2_1, oks_u3_1_wpd3_1_gl__
 
 contains
@@ -416,31 +421,39 @@ contains
     call model_update_alpha_s (alpha_s)
   end subroutine update_alpha_s
 
-  function calculate_amplitude (k, s) result (amp)
+  function calculate_amplitude (k, s, ffi) result (amp)
     complex(kind=default) :: amp
     real(kind=default), dimension(0:3,*), intent(in) :: k
     integer, dimension(n_prt), intent(in) :: s
+    integer, intent(in) :: ffi
+    real(default) :: dynamic_top_mass, top_width
     call msg_debug2 (D_ME_METHODS, "top_real_decay_calculate_amplitude")
-    !print *, 'k =    ', k(0:3,1:4) !!! Debugging
     p1 = - k(:,1) ! incoming
     p2 =   k(:,2) ! outgoing
     p3 =   k(:,3) ! outgoing
     p4 =   k(:,4) ! outgoing
     p12 = p1 + p2
     p14 = p1 + p4
-    owf_u3_1__1_0 = u (mass(6), - p1, s(1))
+    dynamic_top_mass = sqrt (p1 * p1)
+    top_width = ttv_wtpole (p1*p1, ff_modes(ffi))
+    owf_u3_1__1_0 = u (dynamic_top_mass, - p1, s(1))
     owf_wm_2_0 = conjg (eps (mass(24), p2, s(2)))
     owf_d3b__1_3_0 = ubar (mass(5), p3, s(3))
     owf_gl___4_0 = conjg (eps (mass(21), p4, s(4)))
     owf_d3_1__12_0 = pr_psi(p12,mass(5),wd_tl(p12,width(5)), &
        + f_vlf(gcc,owf_wm_2_0,owf_u3_1__1_0))
-    owf_u3_1__14_0_X1 = pr_psi(p14,mass(6),wd_tl(p14,width(6)), &
+    owf_u3_1__14_0_X1 = pr_psi(p14,dynamic_top_mass,wd_tl(p14,top_width), &
        + f_vf((-gs),owf_gl___4_0,owf_u3_1__1_0))
     oks_u3_1_wpd3_1_gl__ = ( &
        + f_fv((-gs),owf_d3b__1_3_0,owf_gl___4_0))*owf_d3_1__12_0
     oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
        + f_fvl(gcc,owf_d3b__1_3_0,owf_wm_2_0))*owf_u3_1__14_0_X1
     amp = - oks_u3_1_wpd3_1_gl__ ! 2 vertices, 1 propagators
+    if (debug_active (D_ME_METHODS)) then
+       print *, 'spin =    ', s
+       print *, 'sqrt(p1*p1) =    ', sqrt(p1*p1)
+       print *, 'amp =    ', amp
+    end if
   end function calculate_amplitude
 
 end module @ID@_top_real_decay
@@ -450,7 +463,8 @@ module @ID@_anti_top_real_decay
   use diagnostics
   use omega95
   use omega_color, OCF => omega_color_factor
-  use parameters_SM
+  use @ID@_threshold, only : ff_modes
+  use parameters_SM_tt_threshold
   implicit none
   private
   public :: calculate_amplitude, init, update_alpha_s
@@ -467,7 +481,7 @@ module @ID@_anti_top_real_decay
   type(conjspinor) :: owf_u3b__1_1_0
   type(vector) :: owf_gl_1_2_4_0, owf_wp_2_0
   type(conjspinor) :: owf_d3b__1_12_0, owf_u3b__2_14_0
-  complex(kind=default) :: oks_u3b__1wmd3b__2gl_2_1, oks_u3b__1wmd3b__1gl__
+  complex(kind=default) :: oks_u3b__1wmd3b__2gl_2_1
 
 contains
 
@@ -481,31 +495,39 @@ contains
     call model_update_alpha_s (alpha_s)
   end subroutine update_alpha_s
 
-  function calculate_amplitude (k, s) result (amp)
+  function calculate_amplitude (k, s, ffi) result (amp)
     complex(kind=default) :: amp
     real(kind=default), dimension(0:3,*), intent(in) :: k
     integer, dimension(n_prt), intent(in) :: s
+    integer, intent(in) :: ffi
+    real(default) :: dynamic_top_mass, top_width
     call msg_debug2 (D_ME_METHODS, "anti_top_real_decay_calculate_amplitude")
-    !print *, 'k =    ', k(0:3,1:4) !!! Debugging
     p1 = - k(:,1) ! incoming
     p2 =   k(:,2) ! outgoing
     p3 =   k(:,3) ! outgoing
     p4 =   k(:,4) ! outgoing
     p12 = p1 + p2
     p14 = p1 + p4
-    owf_u3b__1_1_0 = vbar (mass(6), - p1, s(1))
+    dynamic_top_mass = sqrt (p1 * p1)
+    top_width = ttv_wtpole (p1*p1, ff_modes(ffi))
+    owf_u3b__1_1_0 = vbar (dynamic_top_mass, - p1, s(1))
     owf_wp_2_0 = conjg (eps (mass(24), p2, s(2)))
     owf_d3_2__3_0 = v (mass(5), p3, s(3))
     owf_gl_1_2_4_0 = conjg (eps (mass(21), p4, s(4)))
     owf_d3b__1_12_0 = pr_psibar(p12,mass(5),wd_tl(p12,width(5)), &
        + f_fvl(gcc,owf_u3b__1_1_0,owf_wp_2_0))
-    owf_u3b__2_14_0 = pr_psibar(p14,mass(6),wd_tl(p14,width(6)), &
+    owf_u3b__2_14_0 = pr_psibar(p14,dynamic_top_mass,wd_tl(p14,top_width), &
        + f_fv((-gs),owf_u3b__1_1_0,owf_gl_1_2_4_0))
     oks_u3b__1wmd3b__2gl_2_1 = owf_d3b__1_12_0 * &
        f_vf((-gs),owf_gl_1_2_4_0,owf_d3_2__3_0)
     oks_u3b__1wmd3b__2gl_2_1 = oks_u3b__1wmd3b__2gl_2_1 + owf_u3b__2_14_0*( &
        + f_vlf(gcc,owf_wp_2_0,owf_d3_2__3_0))
     amp = - oks_u3b__1wmd3b__2gl_2_1 ! 2 vertices, 1 propagators
+    if (debug_active (D_ME_METHODS)) then
+       print *, 'spin =    ', s
+       print *, 'sqrt(p1*p1) =    ', sqrt(p1*p1)
+       print *, 'amp =    ', amp
+    end if
   end function calculate_amplitude
 
 end module @ID@_anti_top_real_decay
@@ -543,13 +565,13 @@ subroutine @ID@_compute_real (k)
   integer, dimension(n_prt) :: s
   integer, dimension(4) :: real_decay_spin
   integer :: i, hi, leg, other_leg, ffi, h_t, h_tbar, h_gl
-  call init_decay_and_production_momenta ()
   call msg_debug (D_ME_METHODS, "@ID@_compute_real")
+  call init_decay_and_production_momenta ()
+  call init_workspace ()
   do leg = 1, 2
      call msg_debug (D_ME_METHODS, "leg", leg)
      other_leg = 3 - leg
      call set_decay_and_production_momenta ()
-     call init_workspace ()
      do hi = 1, nhel_max
         s = table_spin_states(:,hi)
         call compute_owfs (hi)
@@ -557,7 +579,7 @@ subroutine @ID@_compute_real (k)
            do ffi = 0, ffi_end
               do h_t = -1, 1, 2
                  do h_tbar = -1, 1, 2
-                    production_me = calculate_blob (hi, ffi, h_t, h_tbar)
+                    production_me = calculate_blob (ffi, h_t, h_tbar)
                     if (leg == 1) then
                        born_decay_me = anti_top_decay_born (h_tbar)
                     else
@@ -568,12 +590,12 @@ subroutine @ID@_compute_real (k)
                           real_decay_spin = [h_t, s(ass_boson(leg)), &
                                              s(ass_quark(leg)), h_gl]
                           real_decay_me = top_real_decay_calculate_amplitude &
-                               (k_decay_real, real_decay_spin)
+                               (k_decay_real, real_decay_spin, ffi)
                        else
                           real_decay_spin = [h_tbar, s(ass_boson(leg)), &
                                              s(ass_quark(leg)), h_gl]
                           real_decay_me = anti_top_real_decay_calculate_amplitude &
-                               (k_decay_real, real_decay_spin)
+                               (k_decay_real, real_decay_spin, ffi)
                        end if
                        real_decay_me = real_decay_me * (N_**2 - one) / N_
                        amp_blob(hi,ffi) = amp_blob(hi,ffi) + production_me * &
@@ -590,13 +612,14 @@ subroutine @ID@_compute_real (k)
      end do
   end do
   amp_blob = - amp_blob ! 4 vertices, 3 propagators
-  do hi = 1, nhel_max
-     do ffi = 0, ffi_end
-        !print *, 'hi, ffi =    ', hi, ffi !!! Debugging
-        !call msg_debug2 (D_ME_METHODS, "Re(amp)", real(real(amp_blob(hi,ffi)),default))
-        !call msg_debug2 (D_ME_METHODS, "Im(amp)", real(aimag(amp_blob(hi,ffi)),default))
+  if (debug2_active (D_ME_METHODS)) then
+     do hi = 1, nhel_max
+        do ffi = 0, ffi_end
+           print *, 'hi, ffi =    ', hi, ffi
+           call msg_debug2 (D_ME_METHODS, "amp", amp_blob(hi,ffi))
+        end do
      end do
-  end do
+  end if
 
 contains
 
@@ -610,18 +633,20 @@ contains
   end subroutine init_decay_and_production_momenta
 
   subroutine set_decay_and_production_momenta ()
-     k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
-     k_decay_real(:,3) = k(:,ass_quark(leg))
-     k_decay_real(:,2) = k(:,ass_boson(leg))
-     k_decay_real(:,1) = sum(k_decay_real,2)     !!! momentum conservation
-     k_decay_born(:,3) = k(:,ass_quark(other_leg))
-     k_decay_born(:,2) = k(:,ass_boson(other_leg))
-     k_decay_born(:,1) = sum(k_decay_born,2)     !!! momentum conservation
-     call set_production_momenta (k_production)
+    call msg_debug (D_ME_METHODS, "set_decay_and_production_momenta")
+    k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
+    k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
+    k_decay_real(:,3) = k(:,ass_quark(leg))
+    k_decay_real(:,2) = k(:,ass_boson(leg))
+    k_decay_real(:,1) = sum(k_decay_real,2)     !!! momentum conservation
+    k_decay_born(:,3) = k(:,ass_quark(other_leg))
+    k_decay_born(:,2) = k(:,ass_boson(other_leg))
+    k_decay_born(:,1) = sum(k_decay_born,2)     !!! momentum conservation
+    call set_production_momenta (k_production)
   end subroutine set_decay_and_production_momenta
 
   subroutine debug_computation_status ()
-    if (debug2_active(D_ME_METHODS)) then
+    if (debug2_active (D_ME_METHODS)) then
        print *, 'born_spin =    ', s
        print *, 'real_decay_spin =    ', real_decay_spin
        call msg_debug2 (D_ME_METHODS, "production_me", production_me)
@@ -630,7 +655,7 @@ contains
        call msg_debug2 (D_ME_METHODS, "top_propagators (ffi)", top_propagators (ffi))
        call msg_debug2 (D_ME_METHODS, "amp_blob(hi,ffi)", amp_blob(hi,ffi))
     end if
-  end subroutine debug_computation_status 
+  end subroutine debug_computation_status
 
 end subroutine @ID@_compute_real
 
@@ -657,7 +682,6 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   amp_tree = zero
   real_computation = full_proc_number_particles_out () == 5
   i = full_proc_number_particles_out () + 2
-  print *, 'k(0,1:2+full_proc_number_particles_out()) =    ', p(0,1:i) !!! Debugging
   if (real_computation) then
      USE_FF = .true.
      call @ID@_compute_real (p)
