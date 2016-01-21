@@ -1,4 +1,4 @@
-(* $Id: omega_SM_rx.ml 7367 2015-11-13 17:28:39Z jr_reuter $
+(* $Id: omega_WZW.ml 7405 2015-12-17 17:56:41Z jr_reuter $
 
    Copyright (C) 1999-2015 by
 
@@ -6,7 +6,6 @@
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
        with contributions from
-       Marco Sekulla <marco.sekulla@kit.edu>
        Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
@@ -24,7 +23,7 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 module O = Omega.Make(Fusion.Mixed23)(Targets.Fortran)
-    (Modellib_SM.SM(Modellib_SM.SM_k_matrix))
+                     (Modellib_WZW.WZW(Modellib_WZW.SM_no_anomalous))
 let _ = O.main ()
 
 (*i
