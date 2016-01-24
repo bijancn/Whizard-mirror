@@ -35,7 +35,7 @@ The structure is kept simple for now but might evolve more towards MVC later on:
 ├── package.json        # states the package dependencies for npm
 ├── server.js           # main that starts the server
 ├── controllers         # logic should be put here
-│   ├── gui.config.js     # user configuration
+│   ├── guiconfig.js     # user configuration
 │   └── index.js          # express routes to serve sites
 ├── helpers             # folder for reusable js functions
 │   └── utils.js          # utility functions
