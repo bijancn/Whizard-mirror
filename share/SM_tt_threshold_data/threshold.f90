@@ -36,6 +36,9 @@ module @ID@_threshold
   logical, parameter :: F = .false.
   logical, parameter :: T = .true.
 
+  integer, dimension(2), parameter, public :: ass_quark = [5, 6]
+  integer, dimension(2), parameter, public :: ass_boson = [3, 4]
+
   integer, dimension(n_prt_OS,n_hel_OS), save, protected :: table_spin_states_OS
   data table_spin_states_OS(:,   1) / -1, -1, -1, -1 /
   data table_spin_states_OS(:,   2) / -1, -1, -1,  1 /
@@ -245,11 +248,13 @@ contains
           owf_Wp_4 = conjg (eps (mass(24), p4, s(4)))
           owf_b_5 = ubar (mass(5), p5, s(5))
           owf_b_6 = v (mass(5), p6, s(6))
-       else if (present (spins))
-          owf_e_1 = u (mass(11), - p1, spins(1))
-          owf_e_2 = vbar (mass(11), - p2, spins(2))
        else
-          call msg_fatal ("compute_owfs: Please give either helicity index or spins")
+          if (present (spins)) then
+             owf_e_1 = u (mass(11), - p1, spins(1))
+             owf_e_2 = vbar (mass(11), - p2, spins(2))
+          else
+             call msg_fatal ("compute_owfs: Please give either helicity index or spins")
+          end if
        end if
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
        owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
@@ -262,7 +267,7 @@ contains
     integer, intent(in) :: ffi
     integer, intent(in), optional :: h_t, h_tbar
     complex(default) :: blob_Z_vec, blob_Z_ax, ttv_vec, ttv_ax
-    real(default) :: mtop, wtop
+    real(default) :: mtop, top_width
     call msg_debug2 (D_ME_METHODS, "calculate_blob")
     if (onshell_tops (p3, p4)) then
        blob_Z_vec = gncup(1) * ttv_formfactor (p3, p4, 1)
@@ -283,10 +288,10 @@ contains
           amp = - amp
        else
           mtop = ttv_mtpole (p12*p12)
-          wtop = ttv_wtpole (p12*p12, ff_modes(ffi))
-          owf_wb_35 = pr_psibar (p35, ttv_mtpole (p12*p12), wd_tl (p35, wtop), &
+          top_width = ttv_wtpole (p12*p12, ff_modes(ffi))
+          owf_wb_35 = pr_psibar (p35, mtop, wd_tl (p35, top_width), &
                + f_fvl (gccq33, owf_b_5, owf_Wm_3))
-          owf_wb_46 = pr_psi (p46, ttv_mtpole(p12*p12), wd_tl (p46, wtop), &
+          owf_wb_46 = pr_psi (p46, mtop, wd_tl (p46, top_width), &
                + f_vlf (gccq33, owf_Wp_4, owf_b_6))
           amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
           amp = amp + owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46) * ttv_vec
@@ -305,15 +310,25 @@ contains
     one_over_p = one_over_p / cmplx (p46*p46 - m**2, m*w, kind=default)
   end function top_propagators
 
-  pure function top_decay_born (h_t) result (me)
+  function top_decay_born (h_t, h_Wm, h_b) result (me)
     complex(default) :: me
     integer, intent(in) :: h_t
+    integer, intent(in), optional :: h_Wm, h_b
+    if (present (h_Wm) .and. present (h_b)) then
+       owf_Wm_3 = conjg (eps (mass(24), p3, h_Wm))
+       owf_b_5 = ubar (mass(5), p5, h_b)
+    end if
     me = f_fvl (gccq33, owf_b_5, owf_Wm_3) * u (sqrt(p35*p35), p35, h_t)
   end function top_decay_born
 
-  pure function anti_top_decay_born (h_tbar) result(me)
+  function anti_top_decay_born (h_tbar, h_Wp, h_bbar) result(me)
     complex(default) :: me
     integer, intent(in) :: h_tbar
+    integer, intent(in), optional :: h_Wp, h_bbar
+    if (present (h_Wp) .and. present (h_bbar)) then
+       owf_Wp_4 = conjg (eps (mass(24), p4, h_Wp))
+       owf_b_6 = v (mass(5), p6, h_bbar)
+    end if
     me = vbar (sqrt(p46*p46), p46, h_tbar) * f_vlf (gccq33, owf_Wp_4, owf_b_6)
   end function anti_top_decay_born
 
@@ -435,7 +450,7 @@ contains
     p12 = p1 + p2
     p14 = p1 + p4
     dynamic_top_mass = sqrt (p1 * p1)
-    top_width = ttv_wtpole (p1*p1, ff_modes(ffi))
+    top_width = ttv_wtpole (zero, ff_modes(ffi), dynamic_top_mass)
     owf_u3_1__1_0 = u (dynamic_top_mass, - p1, s(1))
     owf_wm_2_0 = conjg (eps (mass(24), p2, s(2)))
     owf_d3b__1_3_0 = ubar (mass(5), p3, s(3))
@@ -509,7 +524,7 @@ contains
     p12 = p1 + p2
     p14 = p1 + p4
     dynamic_top_mass = sqrt (p1 * p1)
-    top_width = ttv_wtpole (p1*p1, ff_modes(ffi))
+    top_width = ttv_wtpole (zero, ff_modes(ffi), dynamic_top_mass)
     owf_u3b__1_1_0 = vbar (dynamic_top_mass, - p1, s(1))
     owf_wp_2_0 = conjg (eps (mass(24), p2, s(2)))
     owf_d3_2__3_0 = v (mass(5), p3, s(3))
@@ -560,8 +575,6 @@ subroutine @ID@_compute_real (k)
   real(kind=default), dimension(0:3,4) :: k_decay_real
   real(kind=default), dimension(0:3,3) :: k_decay_born
   complex(default) :: production_me, born_decay_me, real_decay_me
-  integer, dimension(2), parameter :: ass_quark = [5, 6]
-  integer, dimension(2), parameter :: ass_boson = [3, 4]
   integer, dimension(n_prt) :: s
   integer, dimension(4) :: real_decay_spin
   integer :: i, hi, leg, other_leg, ffi, h_t, h_tbar, h_gl
@@ -624,9 +637,6 @@ subroutine @ID@_compute_real (k)
 contains
 
   subroutine init_decay_and_production_momenta ()
-    k_decay_real = zero
-    k_production = zero
-    k_decay_real(:,4) = k(:,7)
     do i = 1, 6
        k_production(:,i) = k(:,i)
     end do
@@ -636,11 +646,14 @@ contains
     call msg_debug (D_ME_METHODS, "set_decay_and_production_momenta")
     k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
     k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
+    k_decay_real = zero
+    k_decay_real(:,4) = k(:,7)
     k_decay_real(:,3) = k(:,ass_quark(leg))
     k_decay_real(:,2) = k(:,ass_boson(leg))
     k_decay_real(:,1) = sum(k_decay_real,2)     !!! momentum conservation
-    k_decay_born(:,3) = k(:,ass_quark(other_leg))
+    k_decay_born = zero
     k_decay_born(:,2) = k(:,ass_boson(other_leg))
+    k_decay_born(:,3) = k(:,ass_quark(other_leg))
     k_decay_born(:,1) = sum(k_decay_born,2)     !!! momentum conservation
     call set_production_momenta (k_production)
   end subroutine set_decay_and_production_momenta

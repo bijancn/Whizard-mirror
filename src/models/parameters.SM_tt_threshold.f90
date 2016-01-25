@@ -297,8 +297,8 @@ contains
   pure function ttv_wtpole (s, ff, minv) result (w)
     real(default) :: w
     real(default), intent(in) :: s
-    real(default), intent(in), optional :: minv
     integer, intent(in) :: ff
+    real(default), intent(in), optional :: minv
     real(default) :: m
     logical :: nlo
     select case (OFFSHELL_STRATEGY)
