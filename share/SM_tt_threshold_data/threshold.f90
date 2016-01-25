@@ -7,7 +7,8 @@ module @ID@_threshold
   implicit none
   private
   public :: init, calculate_blob, compute_born, &
-       set_production_momenta, init_workspace, compute_owfs, table_spin_states, &
+       set_production_momenta, init_workspace, compute_production_owfs, &
+       compute_decay_owfs, table_spin_states, &
        top_decay_born, anti_top_decay_born, top_propagators, ff_modes
 
   ! DON'T EVEN THINK of removing the following!
@@ -224,12 +225,12 @@ contains
     call import_from_whizard (par)
   end subroutine init
 
-  subroutine compute_owfs (hi, spins)
+  subroutine compute_production_owfs (hi, spins)
     integer, intent(in), optional :: hi
     integer, dimension(2), intent(in), optional :: spins
     integer, dimension(n_prt_OS) :: s_OS
-    integer, dimension(n_prt) :: s
-    call msg_debug2 (D_ME_METHODS, "compute_owfs")
+    integer, dimension(2) :: s
+    call msg_debug2 (D_ME_METHODS, "compute_production_owfs")
     if (onshell_tops (p3, p4)) then
        s_OS = table_spin_states_OS(:,hi)
        owf_e_1 = u (mass(11), - p1, s_OS(1))
@@ -241,26 +242,42 @@ contains
             + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
     else
        if (present (hi)) then
-          s = table_spin_states(:,hi)
-          owf_e_1 = u (mass(11), - p1, s(1))
-          owf_e_2 = vbar (mass(11), - p2, s(2))
-          owf_Wm_3 = conjg (eps (mass(24), p3, s(3)))
-          owf_Wp_4 = conjg (eps (mass(24), p4, s(4)))
-          owf_b_5 = ubar (mass(5), p5, s(5))
-          owf_b_6 = v (mass(5), p6, s(6))
+          s = table_spin_states(1:2,hi)
        else
           if (present (spins)) then
-             owf_e_1 = u (mass(11), - p1, spins(1))
-             owf_e_2 = vbar (mass(11), - p2, spins(2))
+             s = spins
           else
-             call msg_fatal ("compute_owfs: Please give either helicity index or spins")
+             call msg_fatal ("compute_production_owfs: " // &
+                  "Please give either helicity index or spins")
           end if
        end if
+       owf_e_1 = u (mass(11), - p1, s(1))
+       owf_e_2 = vbar (mass(11), - p2, s(2))
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
        owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
             + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
     end if
-  end subroutine compute_owfs
+  end subroutine compute_production_owfs
+
+  subroutine compute_decay_owfs (hi, spins)
+    integer, intent(in), optional :: hi
+    integer, dimension(3:6), intent(in), optional :: spins
+    integer, dimension(3:6) :: s
+    if (present (hi)) then
+       s = table_spin_states(3:6,hi)
+    else
+       if (present (spins)) then
+          s = spins
+       else
+          call msg_fatal ("compute_decay_owfs: " // &
+               "Please give either helicity index or spins")
+       end if
+    end if
+    owf_Wm_3 = conjg (eps (mass(24), p3, s(3)))
+    owf_Wp_4 = conjg (eps (mass(24), p4, s(4)))
+    owf_b_5 = ubar (mass(5), p5, s(5))
+    owf_b_6 = v (mass(5), p6, s(6))
+  end subroutine compute_decay_owfs
 
   function calculate_blob (ffi, h_t, h_tbar) result (amp)
     complex(default) :: amp
@@ -340,7 +357,8 @@ contains
     call set_production_momenta (k)
     call init_workspace ()
     do hi = 1, nhel_max
-       call compute_owfs (hi)
+       call compute_production_owfs (hi)
+       if (.not. onshell_tops (p3, p4))  call compute_decay_owfs (hi)
        if (OFFSHELL_STRATEGY < 0) then
           do ffi = 0, ffi_end
              do h_t = -1, 1, 2
@@ -574,10 +592,11 @@ subroutine @ID@_compute_real (k)
   real(kind=default), dimension(0:3,6) :: k_production
   real(kind=default), dimension(0:3,4) :: k_decay_real
   real(kind=default), dimension(0:3,3) :: k_decay_born
-  complex(default) :: production_me, born_decay_me, real_decay_me
+  complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
+  complex(default) :: born_decay_me, real_decay_me
   integer, dimension(n_prt) :: s
   integer, dimension(4) :: real_decay_spin
-  integer :: i, hi, leg, other_leg, ffi, h_t, h_tbar, h_gl
+  integer :: i, hi, leg, other_leg, ffi, h_t, h_tbar, h_gl, h_W, h_b, h_el, h_pos
   call msg_debug (D_ME_METHODS, "@ID@_compute_real")
   call init_decay_and_production_momenta ()
   call init_workspace ()
@@ -585,42 +604,55 @@ subroutine @ID@_compute_real (k)
      call msg_debug (D_ME_METHODS, "leg", leg)
      other_leg = 3 - leg
      call set_decay_and_production_momenta ()
+     ! TODO: (bcn 2016-01-25) is this enough?
+     ffi = 0
+     do h_t = -1, 1, 2
+     do h_tbar = -1, 1, 2
+     do h_el = -1, 1, 2
+     do h_pos = -1, 1, 2
+        call compute_production_owfs (spins = [h_el, h_pos])
+        production_me(h_el, h_pos, h_t, h_tbar) = calculate_blob (ffi, h_t, h_tbar)
+     end do
+     end do
+     end do
+     end do
      do hi = 1, nhel_max
         s = table_spin_states(:,hi)
-        call compute_owfs (hi)
         if (OFFSHELL_STRATEGY < 0) then
            do ffi = 0, ffi_end
               do h_t = -1, 1, 2
-                 do h_tbar = -1, 1, 2
-                    production_me = calculate_blob (ffi, h_t, h_tbar)
+              do h_tbar = -1, 1, 2
+                 h_W = s(ass_boson(leg))
+                 h_b = s(ass_quark(leg))
+                 if (leg == 1) then
+                    ! this recomputes owf_W and owf_b for every h_t, h_tbar
+                    born_decay_me = anti_top_decay_born (h_tbar, h_W, h_b)
+                 else
+                    born_decay_me = top_decay_born (h_t, h_W, h_b)
+                 end if
+                 do h_gl = -1, 1, 2
                     if (leg == 1) then
-                       born_decay_me = anti_top_decay_born (h_tbar)
+                       real_decay_spin = [h_t, s(ass_boson(leg)), &
+                                          s(ass_quark(leg)), h_gl]
+                       real_decay_me = top_real_decay_calculate_amplitude &
+                            (k_decay_real, real_decay_spin, ffi)
                     else
-                       born_decay_me = top_decay_born (h_t)
+                       real_decay_spin = [h_tbar, s(ass_boson(leg)), &
+                                          s(ass_quark(leg)), h_gl]
+                       real_decay_me = anti_top_real_decay_calculate_amplitude &
+                            (k_decay_real, real_decay_spin, ffi)
                     end if
-                    do h_gl = -1, 1, 2
-                       if (leg == 1) then
-                          real_decay_spin = [h_t, s(ass_boson(leg)), &
-                                             s(ass_quark(leg)), h_gl]
-                          real_decay_me = top_real_decay_calculate_amplitude &
-                               (k_decay_real, real_decay_spin, ffi)
-                       else
-                          real_decay_spin = [h_tbar, s(ass_boson(leg)), &
-                                             s(ass_quark(leg)), h_gl]
-                          real_decay_me = anti_top_real_decay_calculate_amplitude &
-                               (k_decay_real, real_decay_spin, ffi)
-                       end if
-                       real_decay_me = real_decay_me * (N_**2 - one) / N_
-                       amp_blob(hi,ffi) = amp_blob(hi,ffi) + production_me * &
-                             real_decay_me * born_decay_me * top_propagators (ffi)
-                       call debug_computation_status ()
-                    end do
+                    real_decay_me = real_decay_me * (N_**2 - one) / N_
+                    amp_blob(hi,ffi) = amp_blob(hi,ffi) + &
+                         production_me(s(1), s(2), h_t, h_tbar)* &
+                         real_decay_me * born_decay_me * top_propagators (ffi)
+                    call debug_computation_status ()
                  end do
+              end do
               end do
            end do
         else
-           print *, 'OFFSHELL_STRATEGY should be < 0'
-           stop 1
+           call msg_fatal ('OFFSHELL_STRATEGY should be < 0')
         end if
      end do
   end do
@@ -662,7 +694,7 @@ contains
     if (debug2_active (D_ME_METHODS)) then
        print *, 'born_spin =    ', s
        print *, 'real_decay_spin =    ', real_decay_spin
-       call msg_debug2 (D_ME_METHODS, "production_me", production_me)
+       print *, "production_me", production_me
        call msg_debug2 (D_ME_METHODS, "real_decay_me", real_decay_me)
        call msg_debug2 (D_ME_METHODS, "born_decay_me", born_decay_me)
        call msg_debug2 (D_ME_METHODS, "top_propagators (ffi)", top_propagators (ffi))

@@ -93,7 +93,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
         production_me = zero
         do h_el = -1, 1, 2
         do h_pos = -1, 1, 2
-           call compute_owfs (spins = [h_el, h_pos])
+           call compute_production_owfs (spins = [h_el, h_pos])
            production_me = production_me + calculate_blob (ffi, h_t, h_tbar)
         end do
         end do
