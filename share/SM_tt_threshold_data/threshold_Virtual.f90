@@ -68,7 +68,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   real(double) :: p_decay(0:3,3,2)
   real(double) :: mu, alpha_s
   real(double) :: dynamic_top_mass, top_width
-  complex(default) :: production_me, born_decay_me
+  complex(default) :: production_me, born_decay_me, bw
   call msg_debug (D_ME_METHODS, "@ID@_olp_eval2")
   if (i_flv /= 1)  call msg_fatal ("i_flv /= 1, threshold interface was not built for this")
   if (any (id <= 0))  call msg_fatal ("Could not register process in OpenLoops")
@@ -126,10 +126,11 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
            call evaluate_loop(id(this_id), p_decay(:,:,leg), m2_tree, m2_loop, acc)
            ! i guess its summed over color but not divided by N_ ?
            !virtual_decay_me = virtual_decay_me / N_
+           bw = top_propagators (ffi)
            total_m2_loop = total_m2_loop + real((production_me * conjg (production_me)) * &
-                 (born_decay_me * conjg (born_decay_me)) * m2_loop * top_propagators (ffi))
+                 (born_decay_me * conjg (born_decay_me)) * m2_loop * (bw * conjg (bw)))
            total_m2_tree = total_m2_tree + real((production_me * conjg (production_me)) * &
-                 (born_decay_me * conjg (born_decay_me)) * m2_tree * top_propagators (ffi))
+                 (born_decay_me * conjg (born_decay_me)) * m2_tree * (bw * conjg (bw)))
         end do
      end do
      end do
