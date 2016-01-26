@@ -294,15 +294,17 @@ contains
     m = m1s_to_mpole (sqrt (s))
   end function ttv_mtpole
 
-  pure function ttv_wtpole (s, ff, minv) result (w)
+  pure function ttv_wtpole (s_or_minv, ff, use_as_minv) result (w)
     real(default) :: w
-    real(default), intent(in) :: s
+    real(default), intent(in) :: s_or_minv
     integer, intent(in) :: ff
-    real(default), intent(in), optional :: minv
+    logical, intent(in), optional :: use_as_minv
+    logical :: uam
     real(default) :: m
     logical :: nlo
+    uam = .false.;  if (present (use_as_minv))  uam = use_as_minv
     select case (OFFSHELL_STRATEGY)
-    case (0, -1)
+    case (0, -1, -3)
        nlo = .false.
     case (-2)
        nlo = .true.
@@ -315,21 +317,19 @@ contains
           nlo = .true.
        end select
     end select
-    if (present (minv)) then
-       m = minv
+    if (uam) then
+       m = s_or_minv
     else
-       m = ttv_mtpole (s)
+       m = ttv_mtpole (s_or_minv)
     end if
     if (nlo) then
-       ! TODO: (bcn 2015-11-11) Vtb is not considered in NLO width
-       w = top_width_sm_qcd_nlo (one / alphaemi, sinthw, m, &
-            mass(24), mass(5), AS_HARD) + wt_inv
+       w = top_width_nlo (m)
     else
-       w = top_width_sm_lo (one / alphaemi, sinthw, Vtb, m, mass(24), &
-            mass(5)) + wt_inv
+       w = top_width_lo (m)
     end if
   end function ttv_wtpole
 
+ ! TODO: (bcn 2015-11-11) Vtb is not considered in NLO width
   pure function top_width_nlo (minv) result (w)
     real(default) :: w
     real(default), intent(in) :: minv

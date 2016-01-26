@@ -116,9 +116,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
               this_id = (3 + h_tbar) / 2 + 2
            end if
            dynamic_top_mass = sqrt (p_top(leg) * p_top(leg))
-           ! TODO: (bcn 2016-01-22) what is more consistent? use m_top or m_inv to compute width?
-           !top_width = ttv_wtpole (p12*p12, ff_modes(ffi))
-           top_width = ttv_wtpole (0.0_default, ff_modes(ffi), dynamic_top_mass)
+           top_width = ttv_wtpole (dynamic_top_mass, ff_modes(ffi), use_as_minv=.true.)
            call set_parameter("mass(6)", dynamic_top_mass)
            call set_parameter("width(6)", top_width)
            ! TODO: (bcn 2016-01-22) handle acc

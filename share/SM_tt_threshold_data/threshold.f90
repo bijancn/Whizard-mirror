@@ -324,11 +324,11 @@ contains
   pure function top_propagators (ffi) result(one_over_p)
     complex(default) :: one_over_p
     integer, intent(in) :: ffi
-    real(default) :: m, w
-    m = ttv_mtpole (p12*p12)
-    w = ttv_wtpole (p12*p12, ff_modes(ffi))
-    one_over_p = one / cmplx (p35*p35 - m**2, m*w, kind=default)
-    one_over_p = one_over_p / cmplx (p46*p46 - m**2, m*w, kind=default)
+    real(default) :: top_mass, top_width
+    top_mass = ttv_mtpole (p12*p12)
+    top_width = ttv_wtpole (p12*p12, ff_modes(ffi))
+    one_over_p = one / cmplx (p35*p35 - top_mass**2, top_mass*top_width, kind=default)
+    one_over_p = one_over_p / cmplx (p46*p46 - top_mass**2, top_mass*top_width, kind=default)
   end function top_propagators
 
   function top_decay_born (h_t, h_Wm, h_b) result (me)
@@ -472,7 +472,7 @@ contains
     p12 = p1 + p2
     p14 = p1 + p4
     dynamic_top_mass = sqrt (p1 * p1)
-    top_width = ttv_wtpole (zero, ff_modes(ffi), dynamic_top_mass)
+    top_width = ttv_wtpole (dynamic_top_mass, ff_modes(ffi), use_as_minv=.true.)
     owf_u3_1__1_0 = u (dynamic_top_mass, - p1, s(1))
     owf_wm_2_0 = conjg (eps (mass(24), p2, s(2)))
     owf_d3b__1_3_0 = ubar (mass(5), p3, s(3))
@@ -546,7 +546,7 @@ contains
     p12 = p1 + p2
     p14 = p1 + p4
     dynamic_top_mass = sqrt (p1 * p1)
-    top_width = ttv_wtpole (zero, ff_modes(ffi), dynamic_top_mass)
+    top_width = ttv_wtpole (dynamic_top_mass, ff_modes(ffi), use_as_minv=.true.)
     owf_u3b__1_1_0 = vbar (dynamic_top_mass, - p1, s(1))
     owf_wp_2_0 = conjg (eps (mass(24), p2, s(2)))
     owf_d3_2__3_0 = v (mass(5), p3, s(3))
@@ -734,15 +734,18 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   if (real_computation) then
      USE_FF = .true.
      call @ID@_compute_real (p)
-     ! TODO: (bcn 2016-01-19) do we need other FF modes for the real?
-     amp2 = real (sum ((amp_tree + amp_blob(:,0)) * &
-          conjg (amp_tree + amp_blob(:,0)))) * (N_**2 - one) / N_
+     ! TODO: (bcn 2016-01-26) this actually neglects some helicity correlations
+     ! but its consistent with the virtual. Try out if exchanging sum and abs^2
+     ! gives different results. Same further down below
+     amp2 = real (sum ((amp_blob(:,0)) * conjg (amp_blob(:,0)))) * (N_**2 - one) / N_
   else
-     USE_FF = .false.
-     call full_proc_new_event (p)
-     do hi = 1, full_proc_number_spin_states()
-        amp_tree(hi) = full_proc_get_amplitude (1, hi, 1)
-     end do
+     if (OFFSHELL_STRATEGY /= 3) then
+        USE_FF = .false.
+        call full_proc_new_event (p)
+        do hi = 1, full_proc_number_spin_states()
+           amp_tree(hi) = full_proc_get_amplitude (1, hi, 1)
+        end do
+     end if
      USE_FF = .true.
      call compute_born (p)
      select case (FF)
@@ -759,8 +762,12 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
         end do
         amp2 = sum (signs * amp2_array)
      case default
-        amp2 = real (sum ((amp_tree + amp_blob(:,0)) * &
-             conjg (amp_tree + amp_blob(:,0))))
+        if (OFFSHELL_STRATEGY == -3) then
+           amp2 = real (sum (amp_blob(:,0) * conjg (amp_blob(:,0))))
+        else
+           amp2 = real (sum ((amp_tree + amp_blob(:,0)) * &
+                conjg (amp_tree + amp_blob(:,0))))
+        end if
      end select
   end if
   amp2 = amp2 * production_factors
