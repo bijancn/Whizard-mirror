@@ -1,6 +1,7 @@
 module @ID@_threshold
   use kinds
   use diagnostics
+  use constants
   use omega95
   use parameters_SM_tt_threshold
   use ttv_formfactors
@@ -33,9 +34,12 @@ module @ID@_threshold
   ! NB: you MUST NOT change the value of N_ here!!!
   !     It is defined here for convenience only and must be
   !     compatible with hardcoded values in the amplitude!
-  real(kind=default), parameter, public :: N_ = 3
+  real(default), parameter, public :: N_ = 3
   logical, parameter :: F = .false.
   logical, parameter :: T = .true.
+  !!! Colour factors: N_ quarks can be produced
+  !!! Helicity factors: Mean over incoming helicities
+  real(default), parameter, public :: production_factors = N_ / four
 
   integer, dimension(2), parameter, public :: ass_quark = [5, 6]
   integer, dimension(2), parameter, public :: ass_boson = [3, 4]
@@ -221,7 +225,7 @@ module @ID@_threshold
 contains
 
   subroutine init (par)
-    real(kind=default), dimension(*), intent(in) :: par
+    real(default), dimension(*), intent(in) :: par
     call import_from_whizard (par)
   end subroutine init
 
@@ -230,7 +234,7 @@ contains
     integer, dimension(2), intent(in), optional :: spins
     integer, dimension(n_prt_OS) :: s_OS
     integer, dimension(2) :: s
-    call msg_debug2 (D_ME_METHODS, "compute_production_owfs")
+    !call msg_debug2 (D_ME_METHODS, "compute_production_owfs")
     if (onshell_tops (p3, p4)) then
        s_OS = table_spin_states_OS(:,hi)
        owf_e_1 = u (mass(11), - p1, s_OS(1))
@@ -285,7 +289,7 @@ contains
     integer, intent(in), optional :: h_t, h_tbar
     complex(default) :: blob_Z_vec, blob_Z_ax, ttv_vec, ttv_ax
     real(default) :: mtop, top_width
-    call msg_debug2 (D_ME_METHODS, "calculate_blob")
+    !call msg_debug2 (D_ME_METHODS, "calculate_blob")
     if (onshell_tops (p3, p4)) then
        blob_Z_vec = gncup(1) * ttv_formfactor (p3, p4, 1)
        blob_Z_ax = gncup(2) * ttv_formfactor (p3, p4, 2)
@@ -314,7 +318,7 @@ contains
           amp = amp + owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46) * ttv_vec
        end if
     end if
-    call msg_debug2 (D_ME_METHODS, "amp", amp)
+    !call msg_debug2 (D_ME_METHODS, "amp", amp)
   end function calculate_blob
 
   pure function top_propagators (ffi) result(one_over_p)
@@ -350,10 +354,10 @@ contains
   end function anti_top_decay_born
 
   subroutine compute_born (k)
-    real(kind=default), dimension(0:3,*), intent(in) :: k
+    real(default), dimension(0:3,*), intent(in) :: k
     complex(default) :: production_me
     integer :: hi, ffi, h_t, h_tbar
-    call msg_debug (D_ME_METHODS, "compute_born")
+    !call msg_debug (D_ME_METHODS, "compute_born")
     call set_production_momenta (k)
     call init_workspace ()
     do hi = 1, nhel_max
@@ -380,7 +384,7 @@ contains
   end subroutine compute_born
 
   subroutine init_workspace ()
-    call msg_debug (D_ME_METHODS, "init_workspace")
+    !call msg_debug (D_ME_METHODS, "init_workspace")
     amp_blob = zero
     ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_HARD_P0CONSTANT, &
                      EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
@@ -394,12 +398,12 @@ contains
     else
        nhel_max = n_hel
     end if
-    call msg_debug (D_ME_METHODS, "ffi_end", ffi_end)
-    call msg_debug (D_ME_METHODS, "nhel_max", nhel_max)
+    !call msg_debug (D_ME_METHODS, "ffi_end", ffi_end)
+    !call msg_debug (D_ME_METHODS, "nhel_max", nhel_max)
   end subroutine init_workspace
 
   subroutine set_production_momenta (k)
-    real(kind=default), dimension(0:3,*), intent(in) :: k
+    real(default), dimension(0:3,*), intent(in) :: k
     if (debug2_active (D_ME_METHODS)) then
        call msg_debug (D_ME_METHODS, "set_production_momenta")
        print *, 'k =    ', k(0:3,1:6)
@@ -440,27 +444,27 @@ module @ID@_top_real_decay
   type(conjspinor) :: owf_d3b__1_3_0
   type(vector) :: owf_gl___4_0, owf_wm_2_0
   type(spinor) :: owf_d3_1__12_0, owf_u3_1__14_0_X1
-  complex(kind=default) :: oks_u3_2_wpd3_1_gl_2_1, oks_u3_1_wpd3_1_gl__
+  complex(default) :: oks_u3_2_wpd3_1_gl_2_1, oks_u3_1_wpd3_1_gl__
 
 contains
 
   subroutine init (par)
-    real(kind=default), dimension(*), intent(in) :: par
+    real(default), dimension(*), intent(in) :: par
     call import_from_whizard (par)
   end subroutine init
 
   subroutine update_alpha_s (alpha_s)
-    real(kind=default), intent(in) :: alpha_s
+    real(default), intent(in) :: alpha_s
     call model_update_alpha_s (alpha_s)
   end subroutine update_alpha_s
 
   function calculate_amplitude (k, s, ffi) result (amp)
-    complex(kind=default) :: amp
-    real(kind=default), dimension(0:3,*), intent(in) :: k
+    complex(default) :: amp
+    real(default), dimension(0:3,*), intent(in) :: k
     integer, dimension(n_prt), intent(in) :: s
     integer, intent(in) :: ffi
     real(default) :: dynamic_top_mass, top_width
-    call msg_debug2 (D_ME_METHODS, "top_real_decay_calculate_amplitude")
+    !call msg_debug2 (D_ME_METHODS, "top_real_decay_calculate_amplitude")
     p1 = - k(:,1) ! incoming
     p2 =   k(:,2) ! outgoing
     p3 =   k(:,3) ! outgoing
@@ -514,27 +518,27 @@ module @ID@_anti_top_real_decay
   type(conjspinor) :: owf_u3b__1_1_0
   type(vector) :: owf_gl_1_2_4_0, owf_wp_2_0
   type(conjspinor) :: owf_d3b__1_12_0, owf_u3b__2_14_0
-  complex(kind=default) :: oks_u3b__1wmd3b__2gl_2_1
+  complex(default) :: oks_u3b__1wmd3b__2gl_2_1
 
 contains
 
   subroutine init (par)
-    real(kind=default), dimension(*), intent(in) :: par
+    real(default), dimension(*), intent(in) :: par
     call import_from_whizard (par)
   end subroutine init
 
   subroutine update_alpha_s (alpha_s)
-    real(kind=default), intent(in) :: alpha_s
+    real(default), intent(in) :: alpha_s
     call model_update_alpha_s (alpha_s)
   end subroutine update_alpha_s
 
   function calculate_amplitude (k, s, ffi) result (amp)
-    complex(kind=default) :: amp
-    real(kind=default), dimension(0:3,*), intent(in) :: k
+    complex(default) :: amp
+    real(default), dimension(0:3,*), intent(in) :: k
     integer, dimension(n_prt), intent(in) :: s
     integer, intent(in) :: ffi
     real(default) :: dynamic_top_mass, top_width
-    call msg_debug2 (D_ME_METHODS, "anti_top_real_decay_calculate_amplitude")
+    !call msg_debug2 (D_ME_METHODS, "anti_top_real_decay_calculate_amplitude")
     p1 = - k(:,1) ! incoming
     p2 =   k(:,2) ! outgoing
     p3 =   k(:,3) ! outgoing
@@ -588,20 +592,20 @@ subroutine @ID@_compute_real (k)
   !use ttv_formfactors
   use parameters_SM_tt_threshold
   implicit none
-  real(kind=default), dimension(0:3,*), intent(in) :: k
-  real(kind=default), dimension(0:3,6) :: k_production
-  real(kind=default), dimension(0:3,4) :: k_decay_real
-  real(kind=default), dimension(0:3,3) :: k_decay_born
+  real(default), dimension(0:3,*), intent(in) :: k
+  real(default), dimension(0:3,6) :: k_production
+  real(default), dimension(0:3,4) :: k_decay_real
+  real(default), dimension(0:3,3) :: k_decay_born
   complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
   complex(default) :: born_decay_me, real_decay_me
   integer, dimension(n_prt) :: s
   integer, dimension(4) :: real_decay_spin
   integer :: i, hi, leg, other_leg, ffi, h_t, h_tbar, h_gl, h_W, h_b, h_el, h_pos
-  call msg_debug (D_ME_METHODS, "@ID@_compute_real")
+  !call msg_debug (D_ME_METHODS, "@ID@_compute_real")
   call init_decay_and_production_momenta ()
   call init_workspace ()
   do leg = 1, 2
-     call msg_debug (D_ME_METHODS, "leg", leg)
+     !call msg_debug (D_ME_METHODS, "leg", leg)
      other_leg = 3 - leg
      call set_decay_and_production_momenta ()
      ! TODO: (bcn 2016-01-25) is this enough?
@@ -642,7 +646,7 @@ subroutine @ID@_compute_real (k)
                        real_decay_me = anti_top_real_decay_calculate_amplitude &
                             (k_decay_real, real_decay_spin, ffi)
                     end if
-                    real_decay_me = real_decay_me * (N_**2 - one) / N_
+                    real_decay_me = real_decay_me
                     amp_blob(hi,ffi) = amp_blob(hi,ffi) + &
                          production_me(s(1), s(2), h_t, h_tbar)* &
                          real_decay_me * born_decay_me * top_propagators (ffi)
@@ -675,7 +679,7 @@ contains
   end subroutine init_decay_and_production_momenta
 
   subroutine set_decay_and_production_momenta ()
-    call msg_debug (D_ME_METHODS, "set_decay_and_production_momenta")
+    !call msg_debug (D_ME_METHODS, "set_decay_and_production_momenta")
     k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
     k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
     k_decay_real = zero
@@ -723,7 +727,7 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   integer, dimension(0:3) :: signs
   logical :: real_computation
   integer :: i, hi
-  call msg_debug (D_ME_METHODS, "@ID@_threshold_get_amp_squared")
+  !call msg_debug (D_ME_METHODS, "@ID@_threshold_get_amp_squared")
   amp_tree = zero
   real_computation = full_proc_number_particles_out () == 5
   i = full_proc_number_particles_out () + 2
@@ -732,7 +736,7 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
      call @ID@_compute_real (p)
      ! TODO: (bcn 2016-01-19) do we need other FF modes for the real?
      amp2 = real (sum ((amp_tree + amp_blob(:,0)) * &
-          conjg (amp_tree + amp_blob(:,0))))
+          conjg (amp_tree + amp_blob(:,0)))) * (N_**2 - one) / N_
   else
      USE_FF = .false.
      call full_proc_new_event (p)
@@ -759,6 +763,6 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
              conjg (amp_tree + amp_blob(:,0))))
      end select
   end if
-  amp2 = amp2 * N_ / 4.0_default
-  call msg_debug (D_ME_METHODS, "amp2", amp2)
+  amp2 = amp2 * production_factors
+  !call msg_debug (D_ME_METHODS, "amp2", amp2)
 end subroutine @ID@_threshold_get_amp_squared

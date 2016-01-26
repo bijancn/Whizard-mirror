@@ -258,7 +258,7 @@ contains
     integer :: this_FF
     call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
     this_FF = FF; if (present (FF_mode))  this_FF = FF_mode
-    call msg_debug2 (D_THRESHOLD, "this_FF", this_FF)
+    !call msg_debug2 (D_THRESHOLD, "this_FF", this_FF)
     c = FF_master (ps, i, this_FF)
     !!! form factors include tree level: FF = 1 + O(alphas)
     !!! subtract tree level contribution ~ 1 already included in SM couplings

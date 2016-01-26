@@ -116,7 +116,6 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
               this_id = (3 + h_tbar) / 2 + 2
            end if
            dynamic_top_mass = sqrt (p_top(leg) * p_top(leg))
-           print *, 'dynamic_top_mass =    ', dynamic_top_mass !!! Debugging
            ! TODO: (bcn 2016-01-22) what is more consistent? use m_top or m_inv to compute width?
            !top_width = ttv_wtpole (p12*p12, ff_modes(ffi))
            top_width = ttv_wtpole (0.0_default, ff_modes(ffi), dynamic_top_mass)
@@ -124,8 +123,6 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
            call set_parameter("width(6)", top_width)
            ! TODO: (bcn 2016-01-22) handle acc
            call evaluate_loop(id(this_id), p_decay(:,:,leg), m2_tree, m2_loop, acc)
-           ! i guess its summed over color but not divided by N_ ?
-           !virtual_decay_me = virtual_decay_me / N_
            bw = top_propagators (ffi)
            total_m2_loop = total_m2_loop + real((production_me * conjg (production_me)) * &
                  (born_decay_me * conjg (born_decay_me)) * m2_loop * (bw * conjg (bw)))
@@ -135,8 +132,10 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
      end do
      end do
   end do
+  !!! Production = N_ / four
+  total_m2_tree = total_m2_tree * production_factors
+  total_m2_loop = total_m2_loop * production_factors
   sqme_c = [total_m2_loop(2), total_m2_loop(1), total_m2_loop(0), total_m2_tree]
-
 end subroutine @ID@_olp_eval2
 
 subroutine @ID@_stop_openloops () bind(C)
