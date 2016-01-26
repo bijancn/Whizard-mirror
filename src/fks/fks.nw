@@ -8438,13 +8438,7 @@ end module phs_fks
     logical, intent(in), optional :: azimuthal_dependence
     logical, intent(in), optional :: rebuild
     logical, intent(in), optional :: ignore_mismatch
-    integer, intent(inout), optional :: nlo_type
-    if (present (nlo_type)) then
-      if (.not. (nlo_type == NLO_REAL .or. nlo_type == NLO_PDF &
-         .or. nlo_type == NLO_MISMATCH)) &
-        call msg_fatal ("FKS config has to be called with nlo_type = "& 
-           &" 'Real', nlo_type = 'Pdf' or nlo_type = 'mismatch'")
-    end if
+    integer, intent(in), optional :: nlo_type
     if (.not. phs_config%extended_phs) then
        select case (phs_config%mode)
        case (PHS_MODE_ADDITIONAL_PARTICLE)
@@ -8479,6 +8473,40 @@ end module phs_fks
   end subroutine phs_fks_config_allocate_instance
 
 @ %def phs_fks_config_allocate_instance
+@ If the phase space is generated from file, but we want to have resonance
+histories, we must force the cascade sets to be generated. However, it must
+be assured that Born flavors are used for this.
+<<phs fks: fks config: TBP>>=
+  procedure :: generate_phase_space_extra => phs_fks_config_generate_phase_space_extra
+<<phs fks: procedures>>=
+  subroutine phs_fks_config_generate_phase_space_extra (phs_config)
+    class(phs_fks_config_t), intent(inout) :: phs_config
+    integer :: off_shell, extra_off_shell
+    type(flavor_t), dimension(:,:), allocatable :: flv_born
+    integer :: i, j
+    integer :: n_state, n_flv_born
+    allocate (phs_config%cascade_set)
+    n_flv_born = size (phs_config%flv, 1) - 1
+    n_state = size (phs_config%flv, 2)
+    allocate (flv_born (n_flv_born, n_state))
+    do i = 1, n_flv_born
+       do j = 1, n_state
+          flv_born(i, j) = phs_config%flv(i, j)
+       end do
+    end do
+    off_shell = phs_config%par%off_shell
+    do extra_off_shell = 0, max (n_flv_born - 2, 0)
+       phs_config%par%off_shell = off_shell + extra_off_shell
+       call cascade_set_generate (phs_config%cascade_set, &
+          phs_config%model, phs_config%n_in, phs_config%n_out - 1, &
+          flv_born, phs_config%par, phs_config%fatal_beam_decay)
+       if (cascade_set_is_valid (phs_config%cascade_set)) exit
+    end do
+    if (.not. cascade_set_is_valid (phs_config%cascade_set)) &
+       call msg_fatal ("Resonance extraction: Phase space generation failed")
+  end subroutine phs_fks_config_generate_phase_space_extra
+
+@ %def phs_fks_config_generate_phase_space_extra
 @
 <<phs fks: fks config: TBP>>=
   procedure :: set_born_config => phs_fks_config_set_born_config
@@ -8522,7 +8550,7 @@ end module phs_fks
           (phs_config%cascade_set, n_filter = 2, res_hists = resonance_histories)
     else
        call msg_debug (D_PHASESPACE, "Have to rebuild phase space for resonance histories")
-       call phs_config%generate_phase_space ()
+       call phs_config%generate_phase_space_extra ()
        call cascade_set_get_resonance_histories &
           (phs_config%cascade_set, n_filter = 2, res_hists = resonance_histories)
     end if
@@ -10327,7 +10355,7 @@ end module phs_fks_uti
               u, results)
     call test(phs_fks_generator_4, "phs_fks_generator_4", &
               "Test the generation of an FSR phase space with "&
-       &"conserved invariant resonance masses", u, results)
+       & "conserved invariant resonance masses", u, results)
   end subroutine phs_fks_generator_test
 
 @ %def phs_fks_generator_test
