@@ -1642,6 +1642,27 @@ there is only a soft singularity if the radiated parton becomes soft.
 @ %def region_data_emitter_is_compatible_with_resonance
 @
 <<fks regions: reg data: TBP>>=
+  procedure :: emitter_is_in_resonance => region_data_emitter_is_in_resonance
+<<fks regions: procedures>>=
+  function region_data_emitter_is_in_resonance (reg_data, i_res, emitter) result (exist)
+    logical :: exist
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: i_res, emitter
+    integer :: i
+    exist = .false.
+    select type (fks_mapping => reg_data%fks_mapping)
+    type is (fks_mapping_resonances_t)
+       associate (res_history => fks_mapping%res_map%resonances(i_res))
+          do i = 1, res_history%n_resonances
+             exist = exist .or. any (res_history%resonances(i)%contributors%c == emitter)
+          end do
+      end associate
+    end select
+  end function region_data_emitter_is_in_resonance
+
+@ %def region_data_emitter_is_in_resonance
+@
+<<fks regions: reg data: TBP>>=
   procedure :: get_contributors => region_data_get_contributors
 <<fks regions: procedures>>=
   subroutine region_data_get_contributors (reg_data, i_res, emitter, c, success)
@@ -2138,7 +2159,6 @@ of the present one is increased.
               i_em = get_emitter_index (i1, i2, reg_data%nlegs_real)
               i_res = sregion%ftuples(i_reg)%i_res
               call reg_data%get_contributors (i_res, i_em, contributors, share_emitter)
-              !!! TODO: (cw 2016-01-21) What happens when .not. share_emitter ?
 	      !!! Lookup contributor index
               do i_con = 1, size (reg_data%alr_contributors)
                  if (all (reg_data%alr_contributors(i_con)%c == contributors)) then
@@ -2172,30 +2192,55 @@ resonances are possible for all ftuples
     class(region_data_t), intent(inout) :: reg_data
     integer, intent(in) :: n_res
     integer :: alr, n_reg_save
-    integer :: i, j, k
+    integer :: i_reg, i_res, i_em, k
     type(ftuple_t), dimension(:), allocatable :: ftuple_save
+    integer :: n_new
     do alr = 1, size (reg_data%regions)
        associate (sregion => reg_data%regions(alr))
           n_reg_save = sregion%nregions
           allocate (ftuple_save (n_reg_save))
           ftuple_save = sregion%ftuples 
+          n_new = count_n_new_ftuples (sregion, n_res)
           deallocate (sregion%ftuples)
-          allocate (sregion%ftuples (n_reg_save * n_res))
-          sregion%nregions = n_reg_save * n_res
+          !!!allocate (sregion%ftuples (n_reg_save * n_res))
+          !!!sregion%nregions = n_reg_save * n_res
+          sregion%nregions = n_new
+          !!!print *, 'n_new: ', n_new
+          !!!stop
+          allocate (sregion%ftuples (n_new))
           k = 1
-          do j = 1, n_res
-             do i = 1, n_reg_save
+          do i_res = 1, n_res
+             do i_reg = 1, n_reg_save
                 associate (ftuple_new => sregion%ftuples(k))
-                   call ftuple_new%set (ftuple_save(i)%ireg(1), ftuple_save(i)%ireg(2))
-                   ftuple_new%i_res = j
-                   ftuple_new%splitting_type = ftuple_save(i)%splitting_type
+                   i_em = ftuple_save(i_reg)%ireg(1)
+                   if (reg_data%emitter_is_in_resonance (i_res, i_em)) then
+                      call ftuple_new%set (i_em, ftuple_save(i_reg)%ireg(2))
+                      ftuple_new%i_res = i_res
+                      ftuple_new%splitting_type = ftuple_save(i_reg)%splitting_type
+                      k = k + 1
+                   end if
                 end associate
-                k = k + 1
              end do
           end do    
        end associate
        deallocate (ftuple_save)
     end do
+  contains
+    function count_n_new_ftuples (sregion, n_res) result (n_new)
+      integer :: n_new
+      type(singular_region_t), intent(in) :: sregion
+      integer, intent(in) :: n_res
+      integer :: i_reg, i_res, i_em
+      n_new = 0
+      do i_reg = 1, sregion%nregions
+         do i_res = 1, n_res 
+            i_em = sregion%ftuples(i_reg)%ireg(1)
+            !!!print *, i_res, i_em, reg_data%emitter_is_in_resonance (i_res, i_em)
+            if (reg_data%emitter_is_in_resonance (i_res, i_em)) &
+               n_new = n_new + 1
+         end do
+      end do
+    end function count_n_new_ftuples
   end subroutine region_data_extend_ftuples
 
 @ %def region_data_extend_ftuples
@@ -7753,6 +7798,32 @@ supplies the averaging factor $1/4$ regardless whether the matrix elements are p
          end if
       end do
     end subroutine remove_subresonances
+
+    subroutine remove_multiple_resonances (res_history_in, res_history_out)
+      type(resonance_history_t), intent(in), dimension(:) :: res_history_in
+      type(resonance_history_t), intent(out), dimension(:), allocatable :: res_history_out
+      integer :: n_hist, n_hist_single
+      logical, dimension(:), allocatable :: i_hist_single
+      integer :: i_hist, j
+      n_hist = size (res_history_in)
+      n_hist_single = 0
+      allocate (i_hist_single (n_hist)); i_hist_single = .false.
+      do i_hist = 1, n_hist
+         if (res_history_in(i_hist)%n_resonances == 1) then
+            n_hist_single = n_hist_single + 1 
+            i_hist_single(i_hist) = .true.
+         end if
+      end do
+  
+      allocate (res_history_out (n_hist_single))
+      j = 1
+      do i_hist = 1, n_hist
+         if (i_hist_single(i_hist)) then
+            res_history_out(j) = res_history_in(i_hist)
+            j = j + 1
+         end if
+      end do
+    end subroutine remove_multiple_resonances 
   end subroutine clean_resonance_histories
 
 @ %def clean_resonance_histories
