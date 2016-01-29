@@ -3281,7 +3281,7 @@ particles involved in the radiation process are massive or massless.
 
     if (debug2_active (D_VIRTUAL)) then
        call msg_debug2 (D_VIRTUAL, "virtual-subtracted matrix element: ")
-       print *, 'Q*born: ', object%Q*born
+       print *, 'Q * born: ', object%Q * born
        print *, 'BI: ', BI
        print *, 'vfin: ', object%vfin
        print *, 'Result: ', object%sqme_virt
@@ -6397,6 +6397,16 @@ and virtual counterterms.
     end associate
     call check_color_conservation (color_data%beta_ij (:,:,uborn_index), &
          n_legs, color_data%color_is_conserved)
+    if (debug_active (D_SUBTRACTION)) then
+       call msg_debug (D_SUBTRACTION, "color_data_fill_betaij_matrix")
+       print *, 'uborn_index =    ', uborn_index
+       do em1 = 1, n_legs
+          do em2 = 1, n_legs
+             print *, 'em1, em2, color_data%beta_ij(em1,em2,uborn_index) = ', &
+                  em1, em2, color_data%beta_ij(em1,em2,uborn_index)
+          end do
+       end do
+    end if
   contains
     subroutine check_color_conservation (bij_matrix, n_legs, success)
       real(default), intent(in), dimension(:,:) :: bij_matrix
@@ -6440,7 +6450,7 @@ and virtual counterterms.
   end subroutine color_data_fill_betaij_matrix
 
 @ %def color_data_fill_betaij_matrix
-@ Explain
+@
 <<nlo controller: color data: TBP>>=
   procedure :: compute_bij => color_data_compute_bij
 <<nlo controller: procedures>>=
@@ -6803,7 +6813,6 @@ and virtual counterterms.
       call msg_fatal ("Strong coupling not set for real calculation")
     emitter = nlo_controller%get_active_emitter ()
     i_phs = nlo_controller%get_active_phase_space ()
-    !!!print *, 'active phase space: ', i_phs
     i_flv = nlo_controller%active_flavor_structure_real
     call nlo_controller%real_terms%set_real_kinematics &
          (nlo_controller%real_kinematics)
@@ -7061,8 +7070,7 @@ one to determine this.
   type :: polarization_data_t
     logical :: valid = .false.
     real(default) :: value = zero
-    integer :: h1 = 0
-    integer :: h2 = 0
+    integer, dimension(:), allocatable :: h
     !!real(default), dimension(:), allocatable :: pmatrix_diag
   contains
   <<nlo controller: polarization data: TBP>>
@@ -7087,7 +7095,7 @@ one to determine this.
     prod = zero
     do i = 1, size (p1)
        do j = 1, size (p2)
-          if (p1(i)%h1 == p2(j)%h1 .and. p1(i)%h2 == p2(j)%h2) then
+          if (all (p1(i)%h == p2(j)%h)) then
              prod = prod + p1(i)%value * p2(j)%value
              exit
           end if
@@ -7100,12 +7108,17 @@ one to determine this.
 <<nlo controller: polarization data: TBP>>=
   procedure :: set_helicities => polarization_data_set_helicities
 <<nlo controller: procedures>>=
-  subroutine polarization_data_set_helicities (pol_data, h1, h2)
+  subroutine polarization_data_set_helicities (pol_data, h)
     class(polarization_data_t), intent(inout) :: pol_data
-    integer, intent(in) :: h1, h2
-    pol_data%h1 = h1; pol_data%h2 = -h2
-    pol_data%valid = (pol_data%h1 == 1 .or. pol_data%h1 == -1) &
-                .and. (pol_data%h2 == 1 .or. pol_data%h2 == -1)
+    integer, dimension(:), intent(in) :: h
+    integer :: i
+    pol_data%h = h
+    if (size (pol_data%h) == 2)  pol_data%h(2) = - pol_data%h(2) !!! why?
+    pol_data%valid = .true.
+    do i = 1, size (pol_data%h)
+       pol_data%valid = pol_data%valid .and. &
+                (pol_data%h(i) == 1 .or. pol_data%h(i) == -1)
+    end do
   end subroutine polarization_data_set_helicities
 
 @ %def polarization_data_init_helicities
@@ -7138,11 +7151,18 @@ one to determine this.
   subroutine polarization_data_write (pol_data, unit)
     class(polarization_data_t), intent(in) :: pol_data
     integer, intent(in), optional :: unit
-    integer :: u
+    integer :: u, i
     u = given_output_unit (unit)
     write (u, "(A,1x,L1)") "valid: ", pol_data%valid
     write (u, "(A,1x,F7.5)") "value: ", pol_data%value
-    write (u, "(A,1x,I0,1x,I0)") "helicities: ", pol_data%h1, pol_data%h2
+    if (allocated (pol_data%h)) then
+       write (u, "(A,1x)") "helicities: "
+       do i = 1, size(pol_data%h)
+          write (u, "(I0,1x)") pol_data%h(i)
+       end do
+    else
+       write (u, "(A,1x)") "no helicities allocated "
+    end if
   end subroutine polarization_data_write
 
 @ %def polarization_data_write
@@ -7246,21 +7266,20 @@ process.
   subroutine nlo_controller_init_polarized_sqmes (nlo_controller, helicities)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     integer, intent(in), dimension(:,:) :: helicities
-    integer :: i_sqme, n_sqme
-    integer :: h1, h2
-    integer, dimension(2) :: flavor_sign
+    integer :: i_sqme, n_sqme, i_h
+    integer, dimension(size(helicities, dim=2)) :: h
+    integer, dimension(size(helicities, dim=2)) :: flavor_sign
 
     associate (flv => nlo_controller%particle_states%flv_state_born (:,1))
-       flavor_sign(1:2) = sign (1, flv(1:2))
+       flavor_sign(:) = sign (1, flv(1:size(flavor_sign)))
     end associate
 
     n_sqme = size (helicities, dim=1)
     allocate (nlo_controller%pol_sqme (n_sqme))
     associate (pol_sqme => nlo_controller%pol_sqme)
        do i_sqme = 1, n_sqme
-          h1 = flavor_sign(1) * helicities (i_sqme, 1)
-          h2 = flavor_sign(2) * helicities (i_sqme, 2)
-          call pol_sqme(i_sqme)%set_helicities (h1, h2)
+          h = flavor_sign * helicities (i_sqme, :)
+          call pol_sqme(i_sqme)%set_helicities (h)
        end do
     end associate
   end subroutine nlo_controller_init_polarized_sqmes
@@ -7277,9 +7296,11 @@ process.
   end function nlo_controller_beams_are_polarized
 
 @ %def nlo_controller_beams_are_polarized
-@ This subroutine combines the outer product of the spin density matrices with the polarized
-matrix elements. Note that there is a factor of four to account for the fact that \texttt{OpenLoops}
-supplies the averaging factor $1/4$ regardless whether the matrix elements are polarized or not.
+@ This subroutine combines the outer product of the spin density
+matrices with the polarized matrix elements. Note that there is a factor
+of four to account for the fact that \texttt{OpenLoops} supplies the
+averaging factor $1/4$ regardless whether the matrix elements are
+polarized or not.
 <<nlo controller: nlo controller: TBP>>=
   procedure :: get_weighted_helicity_sum => nlo_controller_get_weighted_helicity_sum
 <<nlo controller: procedures>>=

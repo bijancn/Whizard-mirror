@@ -29,6 +29,7 @@ module parameters_sm_tt_threshold
   use omega_vectors
   use ttv_formfactors
   use diagnostics
+  use unit_tests, only: nearly_equal
   implicit none
   private
 
@@ -294,38 +295,46 @@ contains
     m = m1s_to_mpole (sqrt (s))
   end function ttv_mtpole
 
-  pure function ttv_wtpole (s_or_minv, ff, use_as_minv) result (w)
+  function ttv_wtpole (s_or_minv, ff, use_as_minv) result (w)
     real(default) :: w
     real(default), intent(in) :: s_or_minv
     integer, intent(in) :: ff
     logical, intent(in), optional :: use_as_minv
+    real(default), save :: last_m = zero, last_w = zero
     logical :: uam
     real(default) :: m
     logical :: nlo
     uam = .false.;  if (present (use_as_minv))  uam = use_as_minv
-    select case (OFFSHELL_STRATEGY)
-    case (0, -1, -3)
-       nlo = .false.
-    case (-2)
-       nlo = .true.
-    case default
-       select case (ff)
-       case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
-             RESUMMED_SWITCHOFF_P0CONSTANT, RESUMMED_ANALYTIC_LL)
-          nlo = .false.
-       case default
-          nlo = .true.
-       end select
-    end select
     if (uam) then
        m = s_or_minv
     else
        m = ttv_mtpole (s_or_minv)
     end if
-    if (nlo) then
-       w = top_width_nlo (m)
+    if (nearly_equal (m, last_m)) then
+       w = last_w
+       return
     else
-       w = top_width_lo (m)
+       select case (OFFSHELL_STRATEGY)
+       case (0, -1, -3)
+          nlo = .false.
+       case (-2, -4)
+          nlo = .true.
+       case default
+          select case (ff)
+          case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
+                RESUMMED_SWITCHOFF_P0CONSTANT, RESUMMED_ANALYTIC_LL)
+             nlo = .false.
+          case default
+             nlo = .true.
+          end select
+       end select
+       if (nlo) then
+          w = top_width_nlo (m)
+       else
+          w = top_width_lo (m)
+       end if
+       last_m = m
+       last_w = w
     end if
   end function ttv_wtpole
 
@@ -347,8 +356,11 @@ contains
   pure function expanded_amp2 (amp_tree, amp_blob) result (amp2)
     real(default) :: amp2
     complex(default), dimension(:), intent(in) :: amp_tree, amp_blob
-    amp2 = sum (amp_tree * conjg (amp_tree) + &
-         amp_tree * conjg (amp_blob) + &
-         amp_blob * conjg (amp_tree))
+    complex(default) :: amp_tree_summed, amp_blob_summed
+    amp_tree_summed = sum (amp_tree)
+    amp_blob_summed = sum (amp_blob)
+    amp2 = amp_tree_summed * conjg (amp_tree_summed) + &
+           amp_tree_summed * conjg (amp_blob_summed) + &
+           amp_blob_summed * conjg (amp_tree_summed)
   end function expanded_amp2
 end module parameters_sm_tt_threshold
