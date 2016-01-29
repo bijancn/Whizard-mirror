@@ -7357,7 +7357,7 @@ imaginary part of the terms, which should be zero anyway.
             end do
           end associate
        end if
-       call component%apply_subtraction (nlo_controller, term%weight)
+       call component%apply_subtraction (nlo_controller)
      end associate
   end subroutine component_instance_evaluate_sqme_real
 
@@ -7366,14 +7366,12 @@ imaginary part of the terms, which should be zero anyway.
 <<Processes: component instance: TBP>>=
   procedure :: apply_subtraction => component_instance_apply_subtraction
 <<Processes: procedures>>=
-  subroutine component_instance_apply_subtraction (component, nlo_controller, weight)
+  subroutine component_instance_apply_subtraction (component, nlo_controller)
     class(component_instance_t), intent(inout) :: component
     type(nlo_controller_t), intent(inout) :: nlo_controller
-    real(default), intent(in) :: weight
     call nlo_controller%set_alpha_s_born &
        (component%config%core%get_alpha_s (component%core_state))
-    nlo_controller%sqme_collector%current_sqme_real = &
-       nlo_controller%compute_sqme_real_fin (weight) 
+    nlo_controller%sqme_collector%current_sqme_real = nlo_controller%compute_sqme_real_fin () 
   end subroutine component_instance_apply_subtraction
 
 @ %def component_instance_apply_subtraction
@@ -7977,8 +7975,11 @@ The quantum numbers mask of the incoming particle
     call term%int_hard_real%set_momenta (p)
     call term%isolated_real%receive_kinematics ()
     call term%connected_real%receive_kinematics ()
-    call term%connected_real%evaluate_expressions (term%passed, &
-       term%scale, term%fac_scale, term%ren_scale, term%weight)
+    associate (scales => term%nlo_controller%real_terms%scales)
+       call term%connected_real%evaluate_expressions (term%passed, &
+          scales%scale, scales%fac_scale, scales%ren_scale, &
+          term%weight)
+    end associate
   end subroutine term_instance_update_real_interactions
 
 @ %def term_instance_update_interactions
@@ -8100,8 +8101,8 @@ kinematics, enabling structure-function evaluation.
     class(term_instance_t), intent(inout) :: term
     real(default), intent(in), allocatable, optional :: scale_forced
     call term%connected%evaluate_expressions (term%passed, &
-         term%scale, term%fac_scale, term%ren_scale, term%weight, &
-         scale_forced)
+       term%scale, term%fac_scale, term%ren_scale, term%weight, &
+       scale_forced)
     term%checked = .true.
   end subroutine term_instance_evaluate_expressions
        
@@ -8213,6 +8214,7 @@ physical event.
      integer, intent(in) :: i_term
      integer :: i
      integer :: i_flv_real, i_flv_born
+     real(default) :: ren_scale, fac_scale
 
      i_flv_real = term%nlo_controller%active_flavor_structure_real
      i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real)
@@ -8220,6 +8222,10 @@ physical event.
      call term%nlo_controller%set_fac_scale (term%fac_scale)
      if (i_flv_real == 1) call component%core_state%reset_new_kinematics ()
 
+     associate (scales => term%nlo_controller%real_terms%scales)
+        fac_scale = scales%fac_scale
+        ren_scale = scales%ren_scale
+     end associate
      select type (core => component%config%core)
      type is (prc_omega_t)
         do i = 1, term%config%n_allowed
@@ -8227,14 +8233,16 @@ physical event.
               term%amp(i) = core%compute_amplitude (i_term, &
                  term%int_hard_real%get_momenta (), &
                  term%config%flv(i), term%config%hel(i), term%config%col(i), &
-                 term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
+                 !!!term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
+                 fac_scale, ren_scale, term%alpha_qcd_forced, &
                  component%core_state)
            else
               term%amp(i) = zero
            end if
         end do
      class is (prc_user_defined_base_t)
-        call core%update_alpha_s (component%core_state, term%fac_scale)
+        !!!call core%update_alpha_s (component%core_state, term%fac_scale)
+        call core%update_alpha_s (component%core_state, fac_scale)
         term%amp = zero
      end select
      call term%int_hard_real%set_matrix_element (term%amp)
@@ -8664,10 +8672,6 @@ selected by the [[i_mci]] index above.
      type(term_instance_t), dimension(:), allocatable :: term
      type(mci_work_t), dimension(:), allocatable :: mci_work
      class(pcm_instance_t), allocatable :: pcm
-!     class(pcm_instance_t), allocatable :: sqme_collector
-!     type(nlo_controller_t), pointer :: nlo_controller => null()
-!     logical :: collect_matrix_elements = .false.
-!     integer :: active_real_component = 1
    contains
    <<Processes: process instance: TBP>>
   end type process_instance_t
@@ -9641,7 +9645,9 @@ terms, iterating over all active process components.
              if (term%active) then
                 select case (term%nlo_type)
                 case (NLO_REAL)
-                   pcm%controller%nlo_cuts%passed_born = term%passed
+                   !!!pcm%controller%nlo_cuts%passed_born = term%passed
+                   pcm%controller%nlo_cuts%passed_born = &
+                      instance%evaluation_status >= STAT_PASSED_CUTS
                    if (.not. pcm%collect_matrix_elements) then
                       call msg_debug2 (D_SUBTRACTION, "Evaluate real trace")
                       call instance%evaluate_trace_real (term, i)
@@ -9743,13 +9749,13 @@ if it fails the cuts for at least one emitter.
            do i_phs = 1, size (phs%phs_identifiers)
               call term%update_real_interactions (i_phs)
               term%nlo_controller%nlo_cuts%passed_real (i_phs)  = term%passed
-              if (term%passed) then
+              !!!if (term%passed) then
                  call term%nlo_controller%set_active_emitter &
                     (phs%phs_identifiers(i_phs)%emitter)
                  call term%nlo_controller%set_active_phase_space (i_phs)
                  call instance%evaluate_trace_real_per_resonance (term, pcm, &
                     i, i_phs) 
-              end if
+              !!!end if
            end do
         end select 
 
@@ -9783,18 +9789,22 @@ if it fails the cuts for at least one emitter.
        call msg_debug2 (D_SUBTRACTION, "active real flavor", i_flv_real)
        term%nlo_controller%active_flavor_structure_real = i_flv_real
        associate (component => instance%component(i_component)) 
-          call term%evaluate_interaction_real (component, i_component)
-          call term%evaluate_trace ()
+          if (term%nlo_controller%nlo_cuts%passed_real(i_phs)) then
+             call term%evaluate_interaction_real (component, i_component)
+             call term%evaluate_trace ()
+          end if
           if (component%active) then
              !!! Since this is now looped over we should extract this from the routine or 
              !!! at least make sure that it is only evaluated once. Also, the loop over 
              !!! real flavor structures has to be changed with the one over resonances
              !!! in this case.
-             call component%evaluate_sqme_born (term, overwrite_born)
-             sqme_born = component%sqme
-             call msg_debug2 (D_SUBTRACTION, "sqme_born", sqme_born)
-             call associate_sqme_born (component, sqme_born * term%weight, i_flv_born, &
-                update_born = pcm%controller%nlo_cuts%passed_born .and. overwrite_born)
+             if (term%nlo_controller%nlo_cuts%passed_born) then
+                call component%evaluate_sqme_born (term, overwrite_born)
+                sqme_born = component%sqme
+                call msg_debug2 (D_SUBTRACTION, "sqme_born", sqme_born)
+                call associate_sqme_born (component, sqme_born * term%weight, i_flv_born, &
+                   update_born = pcm%controller%nlo_cuts%passed_born .and. overwrite_born)
+             end if
              call component%evaluate_sqme_real (term, i_phs)
              instance%sqme_real(i_flv_real, i_phs) = pcm%collector%current_sqme_real
              if (pcm%collect_matrix_elements) then
