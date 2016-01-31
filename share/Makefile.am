@@ -93,7 +93,8 @@ dist_models_DATA = \
   models/Zprime.mdl \
   models/Threeshl.mdl \
   models/Threeshl_nohf.mdl \
-  models/Test.mdl 
+  models/Test.mdl \
+  models/Test_schemes.mdl
 
 ## SLHA parameter input files
 ## to be installed with the 'susy' prefix kept
