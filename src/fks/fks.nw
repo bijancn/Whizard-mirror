@@ -629,12 +629,12 @@ permutation of the final-state particles
     else
        allocate (present(n))
        allocate (checked(n))
-       do i=1,n
+       do i = 1 , n
           present(i) = .false.
           checked(i) = .false.
        end do
-       do i=1,n
-          do j=1,n
+       do i = 1 , n
+          do j = 1 ,n
              if (flv1%flst(i) == flv2%flst(j) .and. .not. checked(j)) then
                 present(i) = .true.
                 checked(j) = .true.
@@ -642,8 +642,8 @@ permutation of the final-state particles
              end if
           end do
        end do
-       do i=1,n
-          if(.not.present(i)) equiv = .false.
+       do i = 1 , n
+          if (.not.present(i)) equiv = .false.
        end do
     end if
   end function flv_structure_equivalent
@@ -830,7 +830,23 @@ structure if the particle at position \texttt{emitter} is removed
   end subroutine flv_structure_evaluate
 
 @ %def flv_structure_evaluate
-@
+@ A singular region is a partition of phase space which is associated with
+an individual emitter and, if relevant, resonance. It is associated with 
+an $\alpha_r$- and resonance-index, with a real flavor structure and 
+its underlying Born flavor structure. To compute the FKS weights, it is 
+relevant to know all the other particle indices which can result in a 
+divergenent phase space configuration, which are collected in the 
+[[ftuples]]-array.\\
+Some singular regions might behave physically identical. E.g. a real
+flavor structure associated with three-jet production is $[11,-11,0,2-2,0]$.
+Here, there are two possible [[ftuples]] which contribute to the same
+$u \rightarrow u g$ splitting, namely $(3,4)$ and $(4,6)$. The resulting 
+singular regions will be identical. To avoid this, one singular region
+is associated with the multiplicity factor [[mult]]. When computing the
+subtraction terms for each singular region, the result is then simply 
+multiplied by this factor.\\
+The [[double_fsr]]-flag indicates whether the singular region should
+also be supplied by a symmetry factor, explained below.
 <<fks regions: public>>=
   public :: singular_region_t
 <<fks regions: types>>=
@@ -854,7 +870,6 @@ structure if the particle at position \texttt{emitter} is removed
   end type singular_region_t
 
 @ %def singular_region_t
-@
 @
 <<fks regions: singular region: TBP>>=
   procedure :: init => singular_region_init
@@ -1478,7 +1493,10 @@ there is only a soft singularity if the radiated parton becomes soft.
   end subroutine region_data_init_resonance_information
 
 @ %def region_data_init_resonance_information
-@  
+@ So far, we have only created singular regions for a non-resonant case. When
+resonance mappings are required, we have more singular regions, since they
+must now be identified by their emitter-resonance pair index, where the emitter
+must be compatible with the resonance.
 <<fks regions: reg data: TBP>>=
   procedure :: enlarge_singular_regions_with_resonances &
      => region_data_enlarge_singular_regions_with_resonances
@@ -2816,7 +2834,7 @@ tuning the efficiency of the mapping and are set to $1$ per default.
                  call get_emitter_variables (2, i, j, p, E1, y)
                  d = (2 * E1**2 * (one + y) )**map%exp_2
               else
-                 !!! case i,j <= 2 for scattering not yet implemented
+                 call msg_fatal ("FKS: Region with i, j <= 2 encountered")
               end if
            end select
         end if
@@ -3007,7 +3025,15 @@ From these equations we can deduce the soft limit of $d$:
   end subroutine fks_mapping_default_assign
 
 @ %def fks_mapping_default_assign
-@
+@ The $d_{ij,k}$-functions for the resonance mapping are basically the same
+as in the default case, but the kinematical values here must be evaluated
+in the resonance frame of reference. The energy of parton $i$ in a given
+resonance frame with momentum $p_{res}$ is
+\begin{equation*}
+   E_i = \frac{p_i^0 \cdot p_{res}}{m_{res}}.
+\end{equation*}
+However, since the expressions only depend on ratios of four-momenta, we 
+leave out the denominator because it will cancel out anyway.
 <<fks regions: fks mapping resonances: TBP>>=
   procedure :: dij => fks_mapping_resonances_dij
 <<fks regions: procedures>>=
@@ -3039,7 +3065,11 @@ From these equations we can deduce the soft limit of $d$:
   end function fks_mapping_resonances_dij
 
 @ %def fks_mapping_resonances_dij
-@
+@ Computes
+\begin{equation*}
+  S_\alpha = \frac{P^{f_r(\alpha)}d^{-1}(\alpha)}
+     {\sum_{f_r' \in T(F_r(\alpha))}P^{f_r'}\sum_{\alpha' \in Sr(f_r')}d^{-1}(\alpha)}.
+\end{equation*}
 <<fks regions: fks mapping resonances: TBP>>=
   procedure :: compute_sumdij => fks_mapping_resonances_compute_sumdij
 <<fks regions: procedures>>=
@@ -3096,7 +3126,8 @@ From these equations we can deduce the soft limit of $d$:
   end function fks_mapping_resonances_svalue
 
 @ %def fks_mapping_resonances_svalue
-@ 
+@ As above, the soft limit of $d_{ij,k}$ must be computed in the resonance frame of
+reference. 
 <<fks regions: fks mapping resonances: TBP>>=
   procedure :: dij_soft => fks_mapping_resonances_dij_soft
 <<fks regions: procedures>>=
@@ -3140,15 +3171,15 @@ From these equations we can deduce the soft limit of $d$:
 
     d = zero
     nlegs = size (sregion%flst_real%flst)
-       do i_reg = 1, sregion%nregions
-          associate (ftuple => sregion%ftuples(i_reg))
-             call ftuple%get(i, j)
-             i_res = ftuple%i_res 
-          end associate
-          pfr = map%res_map%get_resonance_value (i_res, p_born) 
-          i_con = sregion%i_reg_to_i_con (i_reg)
-          if (j == nlegs) d = d + pfr / map%dij_soft (p_born, p_soft, i, i_con)
-       end do
+    do i_reg = 1, sregion%nregions
+       associate (ftuple => sregion%ftuples(i_reg))
+          call ftuple%get(i, j)
+          i_res = ftuple%i_res 
+       end associate
+       pfr = map%res_map%get_resonance_value (i_res, p_born) 
+       i_con = sregion%i_reg_to_i_con (i_reg)
+       if (j == nlegs) d = d + pfr / map%dij_soft (p_born, p_soft, i, i_con)
+    end do
   end function fks_mapping_resonances_compute_sumdij_soft
 
 @ %def fks_mapping_resonances_compute_sumdij_soft
@@ -3266,25 +3297,25 @@ end module virtual
 <<virtual: virtual: TBP>>=
   procedure :: init => virtual_init
 <<virtual: procedures>>=
- subroutine virtual_init (object, flv_born, n_in)
-    class(virtual_t), intent(inout) :: object
+ subroutine virtual_init (virt, flv_born, n_in)
+    class(virtual_t), intent(inout) :: virt
     integer, intent(in), dimension(:,:) :: flv_born
     integer, intent(in) :: n_in
     integer :: i_flv
-    object%nlegs = size (flv_born, 1); object%nflv = size (flv_born, 2)
-    object%n_in = n_in
-    allocate (object%I (object%nlegs, object%nlegs))
-    allocate (object%gamma_0 (object%nlegs, object%nflv), &
-              object%gamma_p (object%nlegs, object%nflv), &
-              object%c_flv (object%nlegs, object%nflv))
-    call object%init_constants (flv_born)
-    allocate (object%n_is_neutrinos (object%nflv))
-    object%n_is_neutrinos = 0
-    do i_flv = 1, object%nflv
+    virt%nlegs = size (flv_born, 1); virt%nflv = size (flv_born, 2)
+    virt%n_in = n_in
+    allocate (virt%I (virt%nlegs, virt%nlegs))
+    allocate (virt%gamma_0 (virt%nlegs, virt%nflv), &
+              virt%gamma_p (virt%nlegs, virt%nflv), &
+              virt%c_flv (virt%nlegs, virt%nflv))
+    call virt%init_constants (flv_born)
+    allocate (virt%n_is_neutrinos (virt%nflv))
+    virt%n_is_neutrinos = 0
+    do i_flv = 1, virt%nflv
        if (is_neutrino (flv_born(1, i_flv))) &
-          object%n_is_neutrinos(i_flv) = object%n_is_neutrinos(i_flv) + 1
+          virt%n_is_neutrinos(i_flv) = virt%n_is_neutrinos(i_flv) + 1
        if (is_neutrino (flv_born(2, i_flv))) &
-          object%n_is_neutrinos(i_flv) = object%n_is_neutrinos(i_flv) + 1
+          virt%n_is_neutrinos(i_flv) = virt%n_is_neutrinos(i_flv) + 1
     end do
   contains
     function is_neutrino (flv) result (neutrino)
@@ -3299,25 +3330,26 @@ end module virtual
 <<virtual: virtual: TBP>>=
   procedure :: init_constants => virtual_init_constants
 <<virtual: procedures>>=
-  subroutine virtual_init_constants (object, flv_born)
-    class(virtual_t), intent(inout) :: object
+  subroutine virtual_init_constants (virt, flv_born)
+    class(virtual_t), intent(inout) :: virt
     integer, intent(in), dimension(:,:) :: flv_born
     integer :: i_part, i_flv
     integer, parameter :: nf = 1
     do i_flv = 1, size (flv_born, 2)
        do i_part = 1, size (flv_born, 1)
           if (is_gluon (flv_born(i_part, i_flv))) then
-             object%gamma_0(i_part, i_flv) = (11 * ca - 2 * nf) / 6
-             object%gamma_p(i_part, i_flv) = (67.0 / 9 - 2 * pi**2 / 3) * ca - 23.0 / 18 * nf
-             object%c_flv(i_part, i_flv) = ca
+             virt%gamma_0(i_part, i_flv) = (11 * ca - 2 * nf) / 6
+             virt%gamma_p(i_part, i_flv) = (67.0 / 9 - 2 * pi**2 / 3) * ca &
+                - 23.0 / 18 * nf
+             virt%c_flv(i_part, i_flv) = ca
           else if (is_quark (abs(flv_born(i_part, i_flv)))) then
-             object%gamma_0(i_part, i_flv) = 1.5 * cf
-             object%gamma_p(i_part, i_flv) = (6.5 - 2 * pi**2 / 3) * cf
-             object%c_flv(i_part, i_flv) = cf
+             virt%gamma_0(i_part, i_flv) = 1.5 * cf
+             virt%gamma_p(i_part, i_flv) = (6.5 - 2 * pi**2 / 3) * cf
+             virt%c_flv(i_part, i_flv) = cf
           else
-             object%gamma_0(i_part, i_flv) = zero
-             object%gamma_p(i_part, i_flv) = zero
-             object%c_flv(i_part, i_flv) = zero
+             virt%gamma_0(i_part, i_flv) = zero
+             virt%gamma_p(i_part, i_flv) = zero
+             virt%c_flv(i_part, i_flv) = zero
           end if
        end do
     end do
@@ -3329,14 +3361,14 @@ center-of-mass energy.
 <<virtual: virtual: TBP>>=
   procedure :: set_ren_scale => virtual_set_ren_scale
 <<virtual: procedures>>=
-  subroutine virtual_set_ren_scale (object, p, ren_scale)
-    class(virtual_t), intent(inout) :: object
-    type(vector4_t), dimension(:), intent(in) :: p
+  subroutine virtual_set_ren_scale (virt, p, ren_scale)
+    class(virtual_t), intent(inout) :: virt
+    type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: ren_scale
     if (ren_scale > 0) then
-      object%ren_scale2 = ren_scale**2
+      virt%ren_scale2 = ren_scale**2
     else
-      object%ren_scale2 = (p(1) + p(2))**2
+      virt%ren_scale2 = (p(1) + p(2))**2
     end if
   end subroutine virtual_set_ren_scale
 
@@ -3345,14 +3377,14 @@ center-of-mass energy.
 <<virtual: virtual: TBP>>=
   procedure :: set_fac_scale => virtual_set_fac_scale
 <<virtual: procedures>>=
-  subroutine virtual_set_fac_scale (object, p, fac_scale)
-    class(virtual_t), intent(inout) :: object
+  subroutine virtual_set_fac_scale (virt, p, fac_scale)
+    class(virtual_t), intent(inout) :: virt
     type(vector4_t), dimension(:), intent(in) :: p
     real(default), optional :: fac_scale
     if (present (fac_scale)) then
-       object%fac_scale = fac_scale
+       virt%fac_scale = fac_scale
     else
-       object%fac_scale = (p(1) + p(2))**1
+       virt%fac_scale = (p(1) + p(2))**1
     end if
   end subroutine virtual_set_fac_scale
 
@@ -3381,8 +3413,8 @@ particles involved in the radiation process are massive or massless.
   procedure :: evaluate => virtual_evaluate
 <<virtual: procedures>>=
   subroutine virtual_evaluate &
-       (object, reg_data, i_flv, alpha_s, p_born, born, b_ij)
-    class(virtual_t), intent(inout) :: object
+       (virt, reg_data, i_flv, alpha_s, p_born, born, b_ij)
+    class(virtual_t), intent(inout) :: virt
     type(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: i_flv
     real(default), intent(in) :: alpha_s
@@ -3391,8 +3423,8 @@ particles involved in the radiation process are massive or massless.
     real(default), intent(in), dimension(:,:,:), allocatable :: b_ij
     integer :: i, j, alr
     real(default) :: BI
-    object%sqme_virt = zero
-    if (object%bad_point) return
+    virt%sqme_virt = zero
+    if (virt%bad_point) return
     BI = zero
     alr = find_first_matching_uborn (reg_data, i_flv)
 
@@ -3404,44 +3436,43 @@ particles involved in the radiation process are massive or massless.
     end if
 
     associate (flst_born => reg_data%regions(alr)%flst_uborn)
-       call object%compute_Q (p_born, i_flv, flst_born%massive)
+       call virt%compute_Q (p_born, i_flv, flst_born%massive)
 
        if (debug2_active (D_VIRTUAL)) then
          call msg_debug2 (D_VIRTUAL, "Compute Q")
          print *, 'massive flavors: ', flst_born%massive
-         print *, 'Q: ', object%Q
+         print *, 'Q: ', virt%Q
       end if
 
-      do i = 1, object%nlegs
-        do j = 1, object%nlegs
+      do i = 1, virt%nlegs
+        do j = 1, virt%nlegs
           if (i /= j) then
              if (flst_born%colored(i) .and. flst_born%colored(j)) then
-               call object%compute_I (p_born, flst_born%massive, i, j)
-               BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * &
-                               object%I(i, j)
+               call virt%compute_I (p_born, flst_born%massive, i, j)
+               BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
 
                if (debug2_active (D_VIRTUAL)) &
                    print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
-                            'I_ij: ', object%I(i,j)
+                            'I_ij: ', virt%I(i,j)
              end if
           end if
         end do
       end do
     end associate
-    if (object%use_internal_color_correlations) BI = BI * born
+    if (virt%use_internal_color_correlations) BI = BI * born
     !!! A factor of alpha_s/twopi is assumed to be included in vfin
-    object%sqme_virt = alpha_s / twopi * (object%Q * born + BI) + object%vfin
+    virt%sqme_virt = alpha_s / twopi * (virt%Q * born + BI) + virt%vfin
 
     if (debug2_active (D_VIRTUAL)) then
        call msg_debug2 (D_VIRTUAL, "virtual-subtracted matrix element: ")
-       print *, 'Q*born: ', object%Q*born
+       print *, 'Q*born: ', virt%Q*born
        print *, 'BI: ', BI
-       print *, 'vfin: ', object%vfin
-       print *, 'Result: ', object%sqme_virt
+       print *, 'vfin: ', virt%vfin
+       print *, 'Result: ', virt%sqme_virt
     end if
 
-    if (object%n_is_neutrinos(i_flv) > 0) &
-        object%sqme_virt = object%sqme_virt * object%n_is_neutrinos(i_flv) * two
+    if (virt%n_is_neutrinos(i_flv) > 0) &
+        virt%sqme_virt = virt%sqme_virt * virt%n_is_neutrinos(i_flv) * two
   contains
     function find_first_matching_uborn (reg_data, i_proc) result (alr_out)
        type(region_data_t), intent(in) :: reg_data
@@ -3462,10 +3493,10 @@ particles involved in the radiation process are massive or massless.
 <<virtual: virtual: TBP>>=
   procedure :: set_vfin => virtual_set_vfin
 <<virtual: procedures>>=
-  subroutine virtual_set_vfin (object, vfin)
-    class(virtual_t), intent(inout) :: object
+  subroutine virtual_set_vfin (virt, vfin)
+    class(virtual_t), intent(inout) :: virt
     real(default) :: vfin
-    object%vfin = vfin
+    virt%vfin = vfin
   end subroutine virtual_set_vfin
 
 @ %def virtual_set_vfin
@@ -3473,10 +3504,10 @@ particles involved in the radiation process are massive or massless.
 <<virtual: virtual: TBP>>=
   procedure :: set_bad_point => virtual_set_bad_point
 <<virtual: procedures>>=
-  subroutine virtual_set_bad_point (object, value)
-     class(virtual_t), intent(inout) :: object
+  subroutine virtual_set_bad_point (virt, value)
+     class(virtual_t), intent(inout) :: virt
      logical, intent(in) :: value
-     object%bad_point = value
+     virt%bad_point = value
   end subroutine virtual_set_bad_point
 
 @  %def virtual_set_bad_point
@@ -3485,8 +3516,8 @@ summand containing $\log\left(s/q^2\right)$ and the $\gamma$-factors vanish.
 <<virtual: virtual: TBP>>=
   procedure :: compute_Q => virtual_compute_Q
 <<virtual: procedures>>=
-  subroutine virtual_compute_Q (object, p_born, i_flv, massive)
-    class(virtual_t), intent(inout) :: object
+  subroutine virtual_compute_Q (virt, p_born, i_flv, massive)
+    class(virtual_t), intent(inout) :: virt
     type(vector4_t), dimension(:), intent(in) :: p_born
     integer, intent(in) :: i_flv
     logical, dimension(:), intent(in) :: massive
@@ -3494,37 +3525,49 @@ summand containing $\log\left(s/q^2\right)$ and the $\gamma$-factors vanish.
     real(default) :: s1, s2, s3, s4
     integer :: i
     real(default) :: twoE
-    sqrts = sum (p_born(1:object%n_in))**1
-    object%Q = 0
+    sqrts = sum (p_born(1:virt%n_in))**1
+    virt%Q = 0
 
-    if (object%n_in == 2) then
-       do i = 1, object%n_in
-          object%Q = object%Q - object%gamma_0(i, i_flv) * &
-             two * log(object%fac_scale / sqrts)
+    if (virt%n_in == 2) then
+       do i = 1, virt%n_in
+          virt%Q = virt%Q - virt%gamma_0(i, i_flv) * &
+             two * log(virt%fac_scale / sqrts)
        end do
     end if
 
-    do i = 1, object%nlegs
+    do i = 1, virt%nlegs
        !!! Not a colored particle
-       if (vanishes (object%c_flv(i, i_flv))) cycle
+       if (vanishes (virt%c_flv(i, i_flv))) cycle
        if (.not. massive (i)) then
-          s1 = object%gamma_p(i, i_flv)
+          s1 = virt%gamma_p(i, i_flv)
           E = p_born(i)%p(0); twoE = two * E
-          s2 = log (sqrts**2 / object%ren_scale2)* &
-             (object%gamma_0(i, i_flv) - &
-              two * object%c_flv(i, i_flv) * log (twoE / sqrts))
-          s3 = two * log(twoE / sqrts)**2 * object%c_flv(i, i_flv)
-          s4 = two * log(twoE / sqrts) * object%gamma_0(i, i_flv)
-          object%Q = object%Q + s1 - s2 + s3 - s4
+          s2 = log (sqrts**2 / virt%ren_scale2)* &
+             (virt%gamma_0(i, i_flv) - &
+              two * virt%c_flv(i, i_flv) * log (twoE / sqrts))
+          s3 = two * log(twoE / sqrts)**2 * virt%c_flv(i, i_flv)
+          s4 = two * log(twoE / sqrts) * virt%gamma_0(i, i_flv)
+          virt%Q = virt%Q + s1 - s2 + s3 - s4
        else
-          s1 = log(sqrts**2 / object%ren_scale2)
+          s1 = log(sqrts**2 / virt%ren_scale2)
           s2 = 0.5 * I_m_eps (p_born(i))
-          object%Q = object%Q - object%c_flv(i, i_flv) * (s1 - s2)
+          virt%Q = virt%Q - virt%c_flv(i, i_flv) * (s1 - s2)
        end if
     end do
   end subroutine virtual_compute_Q
 
 @ %def virtual_compute_Q
+@
+<<virtual: virtual: TBP>>=
+  procedure :: compute_massive_self_eikonals => virtual_compute_massive_self_eikonals
+<<virtual: procedures>>=
+  subroutine virtual_compute_massive_self_eikonals (virt, p_born, i_flv, massive)
+    class(virtual_t), intent(inout) :: virt
+    type(vector4_t), intent(in), dimension(:) :: p_born
+    integer, intent(in) :: i_flv
+    logical, intent(in), dimension(:) :: massive
+  end subroutine virtual_compute_massive_self_eikonals
+
+@ %def virtual_compute_massive_self_eikonals
 @ The following code implements the $\mathcal{I}_{ij}$-function appearing in eq. blub.
 They are defined as follows:
 \begin{itemize}
@@ -3587,21 +3630,21 @@ They are defined as follows:
 <<virtual: virtual: TBP>>=
   procedure :: compute_I => virtual_compute_I
 <<virtual: procedures>>=
-  subroutine virtual_compute_I (object, p_born, massive, i, j)
-    class(virtual_t), intent(inout) :: object
+  subroutine virtual_compute_I (virt, p_born, massive, i, j)
+    class(virtual_t), intent(inout) :: virt
     type(vector4_t), intent(in), dimension(:) :: p_born
     logical, dimension(:), intent(in) :: massive
     integer, intent(in) :: i, j
     real(default) :: somu2
-    somu2  = sum (p_born(1:object%n_in))**2 / object%ren_scale2
+    somu2  = sum (p_born(1:virt%n_in))**2 / virt%ren_scale2
     if (massive(i) .and. massive(j)) then
-       object%I(i,j) = compute_Imm (p_born(i), p_born(j), somu2)
+       virt%I(i,j) = compute_Imm (p_born(i), p_born(j), somu2)
     else if (.not.massive(i) .and. massive(j)) then
-       object%I(i,j) = compute_I0m (p_born(i), p_born(j), somu2)
+       virt%I(i,j) = compute_I0m (p_born(i), p_born(j), somu2)
     else if (massive(i) .and. .not.massive(j)) then
-       object%I(i,j) = compute_I0m (p_born(j), p_born(i), somu2)
+       virt%I(i,j) = compute_I0m (p_born(j), p_born(i), somu2)
     else
-       object%I(i,j) = compute_I00 (p_born(i), p_born(j), somu2)
+       virt%I(i,j) = compute_I00 (p_born(i), p_born(j), somu2)
     end if
   end subroutine virtual_compute_I
 
@@ -3953,7 +3996,15 @@ with the same direction as the radiated particle.
   end subroutine soft_subtraction_create_softvec_isr
 
 @ %def soft_subtraction_create_softvec_isr
-@
+@ The soft vector for the real mismatch is basically the same as for usual FSR, 
+except for the scaling with the total gluon energy. Moreover, the resulting
+vector is rotated into the frame where the 3-axis points along the direction
+of the emitter. This is necessary because in the collinear limit, the approximation
+\begin{equation*}
+  k_i = \frac{k_i^0}{\bar{k}_j^0} \bar{k}_j = \frac{\xi\sqrt{s}}{2\bar{k}_j^0}\bar{k}_j
+\end{equation*}
+is used. The collinear limit is not included in the soft mismatch yet, but we keep
+the rotation for future usage here already (the performance loss is negligible).
 <<real subtraction: soft sub: TBP>>=
   procedure :: create_softvec_mismatch => &
      soft_subtraction_create_softvec_mismatch
@@ -3976,7 +4027,23 @@ with the same direction as the radiated particle.
   end subroutine soft_subtraction_create_softvec_mismatch
 
 @ %def soft_subtraction_create_softvec_mismatch
-@ Computation of $\mathcal{R}_{\rm{soft}}$:
+@ Computation of the soft limit of $R_\alpha$. Note that what we are
+actually integrating (in the case of final-state radiation) is the
+quantity $f(0,y) / \xi$, where
+\begin{equation*}
+  f(\xi,y) = \frac{J(\xi,y,\phi)}{\xi} \xi^2 R_\alpha.
+\end{equation*}
+$J/\xi$ is computed by the phase space generator. The additional factor
+of $\xi^{-1}$ is supplied in the [[evaluate_region_fsr]]-routine. Thus,
+we are left with at factor of $\xi^2$. A look on expression for the
+soft limit of $R_\alpha$ below reveals that we are factoring out the gluon
+energy $E_i$ in the denominator. Therefore, we have a factor 
+$\xi^2 / E_i^2 = q^2 / 4$.\\
+Note that the same routine is used also for the computation of the soft
+mismatch. There, the gluon energy is not factored out from the soft vector,
+so that we are left with the $\xi^2$-factor, which will eventually be
+cancelled out again. So, we just multiply with 1. Both cases are 
+distinguished by the flag [[xi2_expanded]].
 <<real subtraction: soft sub: TBP>>=
   procedure :: compute => soft_subtraction_compute
 <<real subtraction: procedures>>=
@@ -4028,7 +4095,6 @@ with the same direction as the radiated particle.
 @ We have to multiply this with $\xi^2(1-y)$. Further, when applying
 the soft $\mathcal{S}$-function, the energy of the radiated particle
 is factored out. Thus we have $\xi^2/E_{em}^2(1-y) = 4/q_0^2(1-y)$.
-
 Computes the quantity $\mathcal{K}_{ij} = \frac{k_i \cdot
 k_j}{(k_i\cdot k)(k_j\cdot k)}$.
 <<real subtraction: soft sub: TBP>>=
@@ -4100,7 +4166,9 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   end subroutine soft_mismatch_init
 
 @ %def soft_mismatch_init
-@
+@ Main routine to compute the soft mismatch. Loops over all singular regions.
+There, it first creates the soft vector, then the necessary soft real matrix element. 
+These inputs are then used to get the numerical value of the soft mismatch.
 <<real subtraction: soft mismatch: TBP>>=
   procedure :: evaluate => soft_mismatch_evaluate 
 <<real subtraction: procedures>>=
@@ -4180,7 +4248,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   end function soft_mismatch_evaluate
 
 @ %def soft_mismatch_evaluate
-@ Computes the soft mismatch
+@ Computes the soft mismatch in a given $\alpha_r$,
 \begin{align*}
   I_{s+,\alpha_r} &= \int d\Phi_B \int_0^\infty d\xi \int_{-1}^1 dy \int_0^{2\pi} d\phi
      \frac{s\xi}{(4\pi)^3} \\
@@ -4725,7 +4793,8 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
   end function real_subtraction_compute
 
 @ %def real_subtraction_compute
-@
+@ The emitter is fixed. We now have to decide whether we evaluate in ISR or FSR
+region, and also if resonances are used.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: evaluate_emitter_region => real_subtraction_evaluate_emitter_region
 <<real subtraction: procedures>>=
@@ -5097,7 +5166,12 @@ the corresponding jacobians.
   end subroutine real_subtraction_evaluate_subtraction_terms_isr
 
 @ %def real_subtraction_evaluate_subtraction_terms_isr
-@
+@ This is basically the part of the real jacobian corresponding to 
+\begin{equation*}
+  \frac{q^2}{8 (2\pi)^3}.
+\end{equation*}
+We interpret it as the additional phase space factor of the real component, 
+to be more consistent with the evaluation of the Born phase space.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: get_phs_factor => real_subtraction_get_phs_factor
 <<real subtraction: procedures>>=
@@ -5361,14 +5435,15 @@ end module nlo_data
 <<nlo data: fks template: TBP>>=
   procedure :: write => fks_template_write
 <<nlo data: procedures>>=
-  subroutine fks_template_write (object, unit)
-    class(fks_template_t), intent(in) :: object
+  subroutine fks_template_write (template, unit)
+    class(fks_template_t), intent(in) :: template
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit)
     write (u,'(1x,A)') 'FKS Template: '
-    write (u,'(1x,A,I0)') 'Mapping Type: ', object%mapping_type
-    write (u,'(1x,A,ES4.3,ES4.3)') 'd_ij exponentials: ', object%fks_dij_exp1, object%fks_dij_exp2
+    write (u,'(1x,A,I0)') 'Mapping Type: ', template%mapping_type
+    write (u,'(1x,A,ES4.3,ES4.3)') 'd_ij exponentials: ', &
+       template%fks_dij_exp1, template%fks_dij_exp2
   end subroutine fks_template_write
 
 @ %def fks_template_write
@@ -5376,11 +5451,11 @@ end module nlo_data
 <<nlo data: fks template: TBP>>=
   procedure :: set_dij_exp => fks_template_set_dij_exp
 <<nlo data: procedures>>=
-  subroutine fks_template_set_dij_exp (object, exp1, exp2)
-    class(fks_template_t), intent(inout) :: object
+  subroutine fks_template_set_dij_exp (template, exp1, exp2)
+    class(fks_template_t), intent(inout) :: template
     real(default), intent(in) :: exp1, exp2
-    object%fks_dij_exp1 = exp1
-    object%fks_dij_exp2 = exp2
+    template%fks_dij_exp1 = exp1
+    template%fks_dij_exp2 = exp2
   end subroutine fks_template_set_dij_exp
 
 @ %def fks_template_set_dij_exp
@@ -5388,10 +5463,10 @@ end module nlo_data
 <<nlo data: fks template: TBP>>=
   procedure :: set_mapping_type => fks_template_set_mapping_type
 <<nlo data: procedures>>=
-  subroutine fks_template_set_mapping_type (object, val)
-    class(fks_template_t), intent(inout) :: object
+  subroutine fks_template_set_mapping_type (template, val)
+    class(fks_template_t), intent(inout) :: template
     integer, intent(in) :: val
-    object%mapping_type = val
+    template%mapping_type = val
   end subroutine fks_template_set_mapping_type
 
 @ %def fks_template_set_mapping_type
@@ -5399,9 +5474,9 @@ end module nlo_data
 <<nlo data: fks template: TBP>>=
   procedure :: set_counter => fks_template_set_counter
 <<nlo data: procedures>>=
-  subroutine fks_template_set_counter (object)
-    class(fks_template_t), intent(inout) :: object
-    object%count_kinematics = .true.
+  subroutine fks_template_set_counter (template)
+    class(fks_template_t), intent(inout) :: template
+    template%count_kinematics = .true.
   end subroutine fks_template_set_counter
 
 @ %def fks_template_set_counter
@@ -5409,9 +5484,9 @@ end module nlo_data
 <<nlo data: fks template: TBP>>=
   procedure :: disable_subtraction => fks_template_disable_subtraction
 <<nlo data: procedures>>=
-  subroutine fks_template_disable_subtraction (object)
-    class(fks_template_t), intent(inout) :: object
-    object%subtraction_disabled = .true.
+  subroutine fks_template_disable_subtraction (template)
+    class(fks_template_t), intent(inout) :: template
+    template%subtraction_disabled = .true.
   end subroutine fks_template_disable_subtraction
 
 @ %def fks_template_disable_subtraction
