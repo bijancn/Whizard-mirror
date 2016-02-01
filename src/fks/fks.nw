@@ -3422,8 +3422,9 @@ particles involved in the radiation process are massive or massless.
     real(default), intent(in) :: born
     real(default), intent(in), dimension(:,:,:), allocatable :: b_ij
     integer :: i, j, alr
-    real(default) :: BI
+    real(default) :: s, BI
     virt%sqme_virt = zero
+    virt%Q = zero
     if (virt%bad_point) return
     BI = zero
     alr = find_first_matching_uborn (reg_data, i_flv)
@@ -3436,7 +3437,13 @@ particles involved in the radiation process are massive or massless.
     end if
 
     associate (flst_born => reg_data%regions(alr)%flst_uborn)
-       call virt%compute_Q (p_born, i_flv, flst_born%massive)
+       s = sum(p_born(1:virt%n_in))**2
+       call virt%evaluate_initial_state (sqrt(s), i_flv)
+       call virt%compute_collinear_contribution &
+          (p_born, sqrt(s), i_flv, flst_born%massive) 
+       call virt%compute_massive_self_eikonals &
+          (p_born, s, i_flv, flst_born%massive)
+      
 
        if (debug2_active (D_VIRTUAL)) then
          call msg_debug2 (D_VIRTUAL, "Compute Q")
@@ -3448,7 +3455,7 @@ particles involved in the radiation process are massive or massless.
         do j = 1, virt%nlegs
           if (i /= j) then
              if (flst_born%colored(i) .and. flst_born%colored(j)) then
-               call virt%compute_I (p_born, flst_born%massive, i, j)
+               call virt%compute_eikonal_factors (p_born, flst_born%massive, i, j)
                BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
 
                if (debug2_active (D_VIRTUAL)) &
@@ -3512,59 +3519,78 @@ particles involved in the radiation process are massive or massless.
 
 @  %def virtual_set_bad_point
 @ Note that this implementation only works for lepton collisions. This implies that both the
-summand containing $\log\left(s/q^2\right)$ and the $\gamma$-factors vanish.
+summand containing $\log\left(s/q^2\right)$ and the $\gamma$-factors vanish.\\
+The loop over the initial-state particles obviously is only executed if we are 
+dealing with a scattering process, because for decays there are no virtual
+initial-initial interactions.
 <<virtual: virtual: TBP>>=
-  procedure :: compute_Q => virtual_compute_Q
+  procedure :: evaluate_initial_state => virtual_evaluate_initial_state
 <<virtual: procedures>>=
-  subroutine virtual_compute_Q (virt, p_born, i_flv, massive)
+  subroutine virtual_evaluate_initial_state (virt, sqrts, i_flv)
     class(virtual_t), intent(inout) :: virt
-    type(vector4_t), dimension(:), intent(in) :: p_born
+    real(default), intent(in) :: sqrts
     integer, intent(in) :: i_flv
-    logical, dimension(:), intent(in) :: massive
-    real(default) :: sqrts, E
-    real(default) :: s1, s2, s3, s4
     integer :: i
-    real(default) :: twoE
-    sqrts = sum (p_born(1:virt%n_in))**1
-    virt%Q = 0
-
     if (virt%n_in == 2) then
        do i = 1, virt%n_in
-          virt%Q = virt%Q - virt%gamma_0(i, i_flv) * &
+          virt%Q = virt%Q - virt%gamma_0 (i, i_flv) * &
              two * log(virt%fac_scale / sqrts)
        end do
     end if
+  end subroutine virtual_evaluate_initial_state
+
+@ %def virtual_evaluate_initial_state
+@
+<<virtual: virtual: TBP>>=
+  procedure :: compute_collinear_contribution &
+     => virtual_compute_collinear_contribution
+<<virtual: procedures>>=
+  subroutine virtual_compute_collinear_contribution (virt, p_born, sqrts, i_flv, massive)
+    class(virtual_t), intent(inout) :: virt
+    type(vector4_t), dimension(:), intent(in) :: p_born
+    real(default), intent(in) :: sqrts
+    integer, intent(in) :: i_flv
+    logical, dimension(:), intent(in) :: massive
+    real(default) :: s1, s2, s3, s4
+    integer :: i
+    real(default) :: twoE
 
     do i = 1, virt%nlegs
        !!! Not a colored particle
        if (vanishes (virt%c_flv(i, i_flv))) cycle
-       if (.not. massive (i)) then
-          s1 = virt%gamma_p(i, i_flv)
-          E = p_born(i)%p(0); twoE = two * E
-          s2 = log (sqrts**2 / virt%ren_scale2)* &
-             (virt%gamma_0(i, i_flv) - &
-              two * virt%c_flv(i, i_flv) * log (twoE / sqrts))
-          s3 = two * log(twoE / sqrts)**2 * virt%c_flv(i, i_flv)
-          s4 = two * log(twoE / sqrts) * virt%gamma_0(i, i_flv)
-          virt%Q = virt%Q + s1 - s2 + s3 - s4
-       else
-          s1 = log(sqrts**2 / virt%ren_scale2)
-          s2 = 0.5 * I_m_eps (p_born(i))
-          virt%Q = virt%Q - virt%c_flv(i, i_flv) * (s1 - s2)
-       end if
+       !!! Collinear terms only for massless particles
+       if (massive(i)) cycle
+       s1 = virt%gamma_p(i, i_flv)
+       twoE = two * p_born(i)%p(0)
+       s2 = log (sqrts**2 / virt%ren_scale2)* &
+          (virt%gamma_0(i, i_flv) - &
+           two * virt%c_flv(i, i_flv) * log (twoE / sqrts))
+       s3 = two * log(twoE / sqrts)**2 * virt%c_flv(i, i_flv)
+       s4 = two * log(twoE / sqrts) * virt%gamma_0(i, i_flv)
+       virt%Q = virt%Q + s1 - s2 + s3 - s4
     end do
-  end subroutine virtual_compute_Q
+  end subroutine virtual_compute_collinear_contribution
 
-@ %def virtual_compute_Q
+@ %def virtual_compute_collinear_contribution
 @
 <<virtual: virtual: TBP>>=
   procedure :: compute_massive_self_eikonals => virtual_compute_massive_self_eikonals
 <<virtual: procedures>>=
-  subroutine virtual_compute_massive_self_eikonals (virt, p_born, i_flv, massive)
+  subroutine virtual_compute_massive_self_eikonals (virt, p_born, s, i_flv, massive)
     class(virtual_t), intent(inout) :: virt
     type(vector4_t), intent(in), dimension(:) :: p_born
+    real(default), intent(in) :: s
     integer, intent(in) :: i_flv
     logical, intent(in), dimension(:) :: massive
+    real(default) :: term1, term2
+    integer :: i
+    do i = 1, virt%nlegs
+       if (massive(i)) then
+          term1 = log(s / virt%ren_scale2)
+          term2 = 0.5_default * I_m_eps (p_born(i))
+          virt%Q = virt%Q - virt%c_flv (i, i_flv) * (term1 - term2)
+       end if
+    end do  
   end subroutine virtual_compute_massive_self_eikonals
 
 @ %def virtual_compute_massive_self_eikonals
@@ -3628,9 +3654,9 @@ They are defined as follows:
 \end{itemize}
 
 <<virtual: virtual: TBP>>=
-  procedure :: compute_I => virtual_compute_I
+  procedure :: compute_eikonal_factors => virtual_compute_eikonal_factors
 <<virtual: procedures>>=
-  subroutine virtual_compute_I (virt, p_born, massive, i, j)
+  subroutine virtual_compute_eikonal_factors (virt, p_born, massive, i, j)
     class(virtual_t), intent(inout) :: virt
     type(vector4_t), intent(in), dimension(:) :: p_born
     logical, dimension(:), intent(in) :: massive
@@ -3646,7 +3672,7 @@ They are defined as follows:
     else
        virt%I(i,j) = compute_I00 (p_born(i), p_born(j), somu2)
     end if
-  end subroutine virtual_compute_I
+  end subroutine virtual_compute_eikonal_factors
 
   function compute_I00 (pi, pj, somu2) result (I)
     type(vector4_t), intent(in) :: pi, pj
