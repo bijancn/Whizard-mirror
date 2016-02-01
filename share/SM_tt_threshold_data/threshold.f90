@@ -208,8 +208,8 @@ module @ID@_threshold
   data table_spin_states(:, 143) /  1,  1,  1,  1,  1, -1 /
   data table_spin_states(:, 144) /  1,  1,  1,  1,  1,  1 /
 
-  complex(default), dimension(n_hel,0:3), save, public :: amp_blob
-  complex(default), dimension(n_hel), save, public :: amp_tree
+  complex(default), dimension(:,:), allocatable, save, public :: amp_blob
+  complex(default), dimension(:), allocatable, save, public :: amp_tree
   integer, public :: nhel_max, ffi_end
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
@@ -354,7 +354,6 @@ contains
     real(default), dimension(0:3,*), intent(in) :: k
     complex(default) :: production_me
     integer :: hi, ffi, h_t, h_tbar
-    !call msg_debug (D_ME_METHODS, "compute_born")
     call set_production_momenta (k)
     call init_workspace ()
     do hi = 1, nhel_max
@@ -381,8 +380,6 @@ contains
   end subroutine compute_born
 
   subroutine init_workspace ()
-    !call msg_debug (D_ME_METHODS, "init_workspace")
-    amp_blob = zero
     ff_modes(0:3) = [FF, EXPANDED_HARD_P0CONSTANT, EXPANDED_SOFT_HARD_P0CONSTANT, &
                      EXPANDED_SOFT_SWITCHOFF_P0CONSTANT]
     if (FF == MATCHED) then
@@ -395,8 +392,10 @@ contains
     else
        nhel_max = n_hel
     end if
-    !call msg_debug (D_ME_METHODS, "ffi_end", ffi_end)
-    !call msg_debug (D_ME_METHODS, "nhel_max", nhel_max)
+    if (allocated (amp_tree) .and. allocated(amp_blob)) then
+       amp_blob = zero
+       amp_tree = zero
+    end if
   end subroutine init_workspace
 
   subroutine set_production_momenta (k)
@@ -461,7 +460,6 @@ contains
     integer, dimension(n_prt), intent(in) :: s
     integer, intent(in) :: ffi
     real(default) :: dynamic_top_mass, top_width
-    !call msg_debug2 (D_ME_METHODS, "top_real_decay_calculate_amplitude")
     p1 = - k(:,1) ! incoming
     p2 =   k(:,2) ! outgoing
     p3 =   k(:,3) ! outgoing
@@ -469,8 +467,6 @@ contains
     p12 = p1 + p2
     p14 = p1 + p4
     dynamic_top_mass = sqrt (p1 * p1)
-    !top_width = ttv_wtpole (dynamic_top_mass, ff_modes(ffi), use_as_minv=.true.)
-    ! width should be zero in decay?!
     top_width = zero
     owf_u3_1__1_0 = u (dynamic_top_mass, - p1, s(1))
     owf_wm_2_0 = conjg (eps (mass(24), p2, s(2)))
@@ -485,11 +481,6 @@ contains
     oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
        + f_fvl(gcc,owf_d3b__1_3_0,owf_wm_2_0))*owf_u3_1__14_0_X1
     amp = - oks_u3_1_wpd3_1_gl__ ! 2 vertices, 1 propagators
-    if (debug_active (D_ME_METHODS)) then
-       print *, 'spin =    ', s
-       print *, 'sqrt(p1*p1) =    ', sqrt(p1*p1)
-       print *, 'amp =    ', amp
-    end if
   end function calculate_amplitude
 
 end module @ID@_top_real_decay
@@ -537,7 +528,6 @@ contains
     integer, dimension(n_prt), intent(in) :: s
     integer, intent(in) :: ffi
     real(default) :: dynamic_top_mass, top_width
-    !call msg_debug2 (D_ME_METHODS, "anti_top_real_decay_calculate_amplitude")
     p1 = - k(:,1) ! incoming
     p2 =   k(:,2) ! outgoing
     p3 =   k(:,3) ! outgoing
@@ -545,8 +535,6 @@ contains
     p12 = p1 + p2
     p14 = p1 + p4
     dynamic_top_mass = sqrt (p1 * p1)
-    !top_width = ttv_wtpole (dynamic_top_mass, ff_modes(ffi), use_as_minv=.true.)
-    ! width should be zero in decay?!
     top_width = zero
     owf_u3b__1_1_0 = vbar (dynamic_top_mass, - p1, s(1))
     owf_wp_2_0 = conjg (eps (mass(24), p2, s(2)))
@@ -561,19 +549,10 @@ contains
     oks_u3b__1wmd3b__2gl_2_1 = oks_u3b__1wmd3b__2gl_2_1 + owf_u3b__2_14_0*( &
        + f_vlf(gcc,owf_wp_2_0,owf_d3_2__3_0))
     amp = - oks_u3b__1wmd3b__2gl_2_1 ! 2 vertices, 1 propagators
-    if (debug_active (D_ME_METHODS)) then
-       print *, 'spin =    ', s
-       print *, 'sqrt(p1*p1) =    ', sqrt(p1*p1)
-       print *, 'amp =    ', amp
-    end if
   end function calculate_amplitude
 
 end module @ID@_anti_top_real_decay
 
-! alphas will be set in ttv_formfactors
-! warning: this only works with SM_tt_threshold. As this model will
-!        also be used for the full diagrams, we should disable the
-!        va_ilc_tta/z there
 subroutine @ID@_threshold_init (par) bind(C)
   use iso_c_binding
   use kinds
@@ -605,7 +584,6 @@ subroutine @ID@_compute_real (k)
   integer, dimension(2) :: h_ass_t
   integer, dimension(n_prt) :: s
   integer :: i, hi, leg, other_leg, ffi, h_t, h_tbar, h_gl, h_W, h_b, h_el, h_pos
-  !call msg_debug (D_ME_METHODS, "@ID@_compute_real")
   if (OFFSHELL_STRATEGY >= 0)  call msg_fatal ('OFFSHELL_STRATEGY should be < 0')
   call init_decay_and_production_momenta ()
   call init_workspace ()
@@ -624,7 +602,7 @@ subroutine @ID@_compute_real (k)
               do h_gl = -1, 1, 2
                  real_ = real_decay_me(h_gl, s(ass_quark(leg)), &
                       s(ass_boson(leg)), h_ass_t(leg), leg)
-                 amp_blob(hi,ffi) = amp_blob(hi,ffi) + &
+                 amp_blob(hi * (h_gl + 3) / 2, ffi) = amp_blob(hi,ffi) + &
                       prod_ * real_ * born_ * top_propagators_ (leg)
               end do
            end do
@@ -645,7 +623,7 @@ contains
 
   subroutine compute_amplitudes ()
     procedure(top_real_decay_calculate_amplitude), pointer :: top_decay_real
-    procedure(top_decay_born), pointer :: top_decay_born
+    procedure(top_decay_born), pointer :: top_decay_born_
     do leg = 1, 2
        other_leg = 3 - leg
        call set_decay_and_production_momenta ()
@@ -663,15 +641,15 @@ contains
        end do
        if (leg == 1) then
           top_decay_real => top_real_decay_calculate_amplitude
-          top_decay_born => anti_top_decay_born
+          top_decay_born_ => anti_top_decay_born
        else
           top_decay_real => anti_top_real_decay_calculate_amplitude
-          top_decay_born => top_decay_born
+          top_decay_born_ => top_decay_born
        end if
        do h_t = -1, 1, 2
        do h_W = -1, 1, 1
        do h_b = -1, 1, 2
-          born_decay_me(h_b, h_W, h_t, leg) = top_decay_born (h_t, h_W, h_b)
+          born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (h_t, h_W, h_b)
           do h_gl = -1, 1, 2
              real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
                   (k_decay_real, [h_t, h_W, h_b, h_gl], ffi)
@@ -722,20 +700,26 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   real(c_default_float), intent(out) :: amp2
   real(default), dimension(0:3) :: amp2_array
   real(c_default_float), dimension(0:3,*), intent(in) :: p
-  complex(default) :: amp_summed
+  complex(default), dimension(:), allocatable, save :: amp_summed
   integer, dimension(0:3) :: signs
   logical :: real_computation, no_interference
-  integer :: i, hi
-  amp_tree = zero
+  integer :: i, hi, n_total_hel
   real_computation = full_proc_number_particles_out () == 5
   no_interference = OFFSHELL_STRATEGY == -3 .or. OFFSHELL_STRATEGY == -4
   i = full_proc_number_particles_out () + 2
   if (real_computation) then
+     if (.not. allocated (amp_tree)) then
+        n_total_hel = n_hel * 2 ! times 2 helicities due to the gluon
+        call allocate_amps ()
+     end if
      USE_FF = .true.
      call @ID@_compute_real (p)
-     amp_summed = sum (amp_blob(:,0))
-     amp2 = real (amp_summed * conjg (amp_summed)) * (N_**2 - one) / N_
+     amp2 = real (sum (amp_blob(:,0) * conjg (amp_blob(:,0)))) * (N_**2 - one) / N_
   else
+     if (.not. allocated (amp_tree)) then
+        n_total_hel = n_hel
+        call allocate_amps ()
+     end if
      if (.not. no_interference) then
         USE_FF = .false.
         call full_proc_new_event (p)
@@ -752,20 +736,29 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
         amp2 = expanded_amp2 (amp_tree, amp_blob(:,0))
      case (MATCHED)
         signs(0:3) = [+1, -1, +1, -1]
-        amp_summed = sum (amp_tree + amp_blob(:,0))
-        amp2_array(0) = real (amp_summed * conjg (amp_summed))
+        amp_summed = amp_tree + amp_blob(:,0)
+        amp2_array(0) = real (sum (amp_summed * conjg (amp_summed)))
         do i = 1, 3
            amp2_array(i) = expanded_amp2 (amp_tree, amp_blob(:,i))
         end do
         amp2 = sum (signs * amp2_array)
      case default
         if (no_interference) then
-           amp_summed = sum (amp_blob(:,0))
+           amp_summed = amp_blob(:,0)
         else
-           amp_summed = sum (amp_tree + amp_blob(:,0))
+           amp_summed = amp_tree + amp_blob(:,0)
         end if
-        amp2 = real (amp_summed * conjg (amp_summed))
+        amp2 = real (sum (amp_summed * conjg(amp_summed)))
      end select
   end if
   amp2 = amp2 * production_factors
+
+contains
+
+  subroutine allocate_amps ()
+    allocate (amp_blob(n_total_hel,0:3))
+    allocate (amp_tree(n_total_hel))
+    allocate (amp_summed(n_total_hel))
+  end subroutine allocate_amps
+
 end subroutine @ID@_threshold_get_amp_squared

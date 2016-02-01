@@ -259,7 +259,6 @@ contains
     integer :: this_FF
     call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
     this_FF = FF; if (present (FF_mode))  this_FF = FF_mode
-    !call msg_debug2 (D_THRESHOLD, "this_FF", this_FF)
     c = FF_master (ps, i, this_FF)
     !!! form factors include tree level: FF = 1 + O(alphas)
     !!! subtract tree level contribution ~ 1 already included in SM couplings
@@ -356,11 +355,8 @@ contains
   pure function expanded_amp2 (amp_tree, amp_blob) result (amp2)
     real(default) :: amp2
     complex(default), dimension(:), intent(in) :: amp_tree, amp_blob
-    complex(default) :: amp_tree_summed, amp_blob_summed
-    amp_tree_summed = sum (amp_tree)
-    amp_blob_summed = sum (amp_blob)
-    amp2 = amp_tree_summed * conjg (amp_tree_summed) + &
-           amp_tree_summed * conjg (amp_blob_summed) + &
-           amp_blob_summed * conjg (amp_tree_summed)
+    amp2 = sum (amp_tree * conjg (amp_tree) + &
+                amp_tree * conjg (amp_blob) + &
+                amp_blob * conjg (amp_tree))
   end function expanded_amp2
 end module parameters_sm_tt_threshold
