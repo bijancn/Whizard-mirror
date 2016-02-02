@@ -2022,7 +2022,7 @@ module processes
 
   use blha_config, only: blha_master_t
   use blha_olp_interfaces, only: blha_template_t, prc_blha_t
-  
+
 <<Standard module head>>
 
 <<Processes: public>>
@@ -5187,8 +5187,8 @@ configuration finalizer may include closing an open scratch file.
           if (present (blha_template)) then
              call core%init_blha (blha_template)
           else
-             call msg_bug ("process_component_init: BLHA core cannot be initialized - &
-                           & missing template")
+             call msg_bug ("process_component_init: BLHA core cannot " // &
+                  "be initialized - missing template")
           end if
           call core%init_driver (config%os_data)
        end if
@@ -7018,11 +7018,11 @@ stored in the kinematics subobject to their source.  This is a side effect.
        class is (prc_blha_t)
           sqme = component%compute_sqme_born_from_blha (core, i_flv, term, .true.)
        class is (prc_user_defined_base_t)
-          sqme = core%compute_sqme (i_flv, term%int_hard%get_momenta ())
+          sqme = core%compute_sqme (i_flv, term%nlo_controller%int_born%get_momenta ())
        class default
           sqme = real (term%connected%trace%get_matrix_element (1))
        end select
-    else 
+    else
        select type (core => component%config%core)
        class is (prc_blha_t)
           n_flv = term%config%data%n_flv
@@ -7040,7 +7040,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
        end select
     end if
     component%sqme = sqme * term%weight
-  end subroutine component_instance_evaluate_sqme_born    
+  end subroutine component_instance_evaluate_sqme_born
 
 @ %def component_instance_evaluate_sqme_born
 @
@@ -7066,9 +7066,9 @@ stored in the kinematics subobject to their source.  This is a side effect.
            term%ren_scale, sqme, bad_point)
      end if
 
-     call core%apply_structure_functions (component%k_seed%sf_chain, term%config%data%flv_state (1:2,i_flv)) 
+     call core%apply_structure_functions (component%k_seed%sf_chain, &
+          term%config%data%flv_state (1:2,i_flv))
      sqme = sqme * core%get_sf_value ()
-    
   end function component_instance_compute_sqme_born_from_blha
 
 @ %def component_instance_compute_sqme_born_from_blha
@@ -7168,7 +7168,7 @@ imaginary part of the terms, which should be zero anyway.
            call core%update_alpha_s (component%core_state, term%fac_scale)
            do i_flv = 1, core%get_nflv()
               if (nlo_controller%beams_are_polarized ()) then
-                do i_hel = 0, 3
+                do i_hel = 0, nlo_controller%particle_data%n_in * 2 - 1
                    call compute_sqme_virt_single_helicity (core, component, term, &
                       i_flv, i_hel, sqme_virt, bad_point)
                    call nlo_controller%virtual_terms%set_vfin (sqme_virt(3))
@@ -7182,15 +7182,15 @@ imaginary part of the terms, which should be zero anyway.
                     i_flv, sqme_virt, bad_point)
                  call nlo_controller%virtual_terms%set_vfin (sqme_virt(3))
                  call nlo_controller%virtual_terms%set_bad_point (bad_point)
-                 nlo_controller%sqme_collector%sqme_virt_born_list (i_flv, 1) = sqme_virt (4)             
+                 nlo_controller%sqme_collector%sqme_virt_born_list (i_flv, 1) = sqme_virt (4)
                  nlo_controller%sqme_collector%sqme_virt_list (i_flv, 1) = &
                     nlo_controller%compute_virt (i_flv, 1, term%int_hard%get_momenta ()) * term%weight
               end if
-           end do   
+           end do
         end select
 
         if (nlo_controller%beams_are_polarized ()) then
-           do i_hel = 1, 4
+           do i_hel = 1, nlo_controller%particle_data%n_in * 2
               call nlo_controller%pol_sqme(i_hel)%set_value &
                  (sum (nlo_controller%sqme_collector%sqme_virt_list (:,i_hel)))
            end do
@@ -7303,34 +7303,32 @@ imaginary part of the terms, which should be zero anyway.
      logical :: bad_point
      call msg_debug2 (D_SUBTRACTION, "component_instance_evaluate_sqme_real")
      if (term%nlo_type /= NLO_REAL) return
-     if (component%config%component_type == COMP_REAL_FIN) &
-        call component%nlo_controller%disable_subtraction ()
-     allocate (p_real &
-        (1 : term%nlo_controller%get_n_particles_real ()))
-     p_real = term%nlo_controller%get_momenta (born_phsp = .false., i_phs = i_phs)
-     i_flv = term%nlo_controller%active_flavor_structure_real
-     select type (core => component%config%core)
-     type is (prc_omega_t)
-        component%nlo_controller%sqme_collector%sqme_real_non_sub (i_flv, i_phs) = &
-           real (term%connected_real%trace%get_matrix_element (1))
-     class is (prc_blha_t)
-        call core%update_alpha_s (component%core_state, term%fac_scale)
-        call core%compute_sqme_real (i_flv, p_real, 0._default, &
-           component%nlo_controller%sqme_collector%sqme_real_non_sub(i_flv, i_phs), &
-           bad_point)
-     class is (prc_user_defined_base_t)
-        call core%update_alpha_s (component%core_state, term%fac_scale)
-        component%nlo_controller%sqme_collector%sqme_real_non_sub (i_flv, i_phs) = &
-           core%compute_sqme (i_flv, p_real)
-     end select 
-     call component%apply_damping_factor &
-        (component%nlo_controller%sqme_collector%sqme_real_non_sub (i_flv, i_phs))
-     call msg_debug2 (D_SUBTRACTION, "non-subtracted real matrix element", &
-          component%nlo_controller%sqme_collector%sqme_real_non_sub(i_flv, i_phs))
-     !!! Get the subtraction matrix elements.
-     associate (nlo_controller => component%nlo_controller)
+     associate (nlo_controller => component%nlo_controller, &
+                collector => component%nlo_controller%sqme_collector)
+        if (component%config%component_type == COMP_REAL_FIN) &
+           call nlo_controller%disable_subtraction ()
+        allocate (p_real (1 : term%nlo_controller%get_n_particles_real ()))
+        p_real = term%nlo_controller%get_momenta (born_phsp = .false., i_phs = i_phs)
+        i_flv = term%nlo_controller%active_flavor_structure_real
+        select type (core => component%config%core)
+        type is (prc_omega_t)
+           collector%sqme_real_non_sub (i_flv, i_phs) = &
+              real (term%connected_real%trace%get_matrix_element (1))
+        class is (prc_blha_t)
+           call core%update_alpha_s (component%core_state, term%fac_scale)
+           call core%compute_sqme_real (i_flv, p_real, 0._default, &
+              collector%sqme_real_non_sub(i_flv, i_phs), bad_point)
+        class is (prc_user_defined_base_t)
+           call core%update_alpha_s (component%core_state, term%fac_scale)
+           collector%sqme_real_non_sub (i_flv, i_phs) = &
+              core%compute_sqme (i_flv, p_real)
+        end select
+        call component%apply_damping_factor &
+           (collector%sqme_real_non_sub (i_flv, i_phs))
+        call msg_debug2 (D_SUBTRACTION, "non-subtracted real matrix element", &
+             collector%sqme_real_non_sub(i_flv, i_phs))
+       !!! Get the subtraction matrix elements.
        if (nlo_controller%is_subtraction_active ()) then
-          associate (collector => nlo_controller%sqme_collector)
             do i_flv = 1, nlo_controller%get_n_flv_born ()
                i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv)
                call term%nlo_controller%evaluate_color_correlations &
@@ -7340,7 +7338,8 @@ imaginary part of the terms, which should be zero anyway.
                if (nlo_controller%requires_spin_correlation (i_flv)) then
                   select type (core_born => component%config%core_sub_born)
                   type is (prc_omega_t)
-                     call msg_fatal ("Computation of spin-correlated matrix elements not possible with O'Mega!")
+                     call msg_fatal ("Computation of spin-correlated " // &
+                          "matrix elements not possible with O'Mega!")
                   type is (prc_gosam_t)
                      call core_born%update_alpha_s (component%core_state, term%fac_scale)
                      call core_born%compute_sqme_sc (i_flv_born, &
@@ -7360,7 +7359,6 @@ imaginary part of the terms, which should be zero anyway.
                   end select
                end if
             end do
-          end associate
        end if
        call component%apply_subtraction (nlo_controller)
      end associate
@@ -7376,7 +7374,8 @@ imaginary part of the terms, which should be zero anyway.
     type(nlo_controller_t), intent(inout) :: nlo_controller
     call nlo_controller%set_alpha_s_born &
        (component%config%core%get_alpha_s (component%core_state))
-    nlo_controller%sqme_collector%current_sqme_real = nlo_controller%compute_sqme_real_fin () 
+    nlo_controller%sqme_collector%current_sqme_real = &
+       nlo_controller%compute_sqme_real_fin ()
   end subroutine component_instance_apply_subtraction
 
 @ %def component_instance_apply_subtraction
@@ -9117,13 +9116,13 @@ to subobject of [[instance]].
              pcm%collect_matrix_elements = .true.
           end if
        end if
-       
+
     end select
   contains
     function check_generator_mode (gen_mode_default) result (gen_mode)
        integer :: gen_mode
        integer, intent(in) :: gen_mode_default
-       if (nlo_settings%test_soft_limit .and..not. nlo_settings%test_coll_limit) then
+       if (nlo_settings%test_soft_limit .and. .not. nlo_settings%test_coll_limit) then
           gen_mode = GEN_SOFT_LIMIT_TEST
        else if (.not. nlo_settings%test_soft_limit .and. nlo_settings%test_coll_limit) then
           gen_mode = GEN_COLL_LIMIT_TEST
@@ -9169,12 +9168,13 @@ to subobject of [[instance]].
      integer :: i, j, n_flv
      type(quantum_numbers_t), dimension(:), allocatable :: qn
      type(helicity_t) :: hel
-     integer, dimension(2) :: h
+     integer, dimension(:), allocatable :: h
      state_hel = config%data%get_helicity_state_matrix ()
-     call state_hel%get_diagonal_entries (i_diag) 
+     call state_hel%get_diagonal_entries (i_diag)
      allocate (qn (state_hel%get_depth()))
      select type (pcm => instance%pcm)
      type is (pcm_instance_nlo_t)
+        allocate (h (pcm%controller%particle_data%n_in))
         call pcm%controller%init_pol_density_matrix (size (i_diag))
         f = state_hel%get_matrix_element (i_diag)
         do i = 1, size (i_diag)
@@ -9183,7 +9183,7 @@ to subobject of [[instance]].
               hel = qn(j)%get_helicity ()
               call hel%get_indices (h(j), h(j))
            end do
-           call pcm%controller%pol_density_matrix(i)%set_helicities (h(1), h(2))
+           call pcm%controller%pol_density_matrix(i)%set_helicities (h)
            call pcm%controller%pol_density_matrix(i)%set_value (f(i))
         end do
         associate (collector => pcm%controller%sqme_collector)
