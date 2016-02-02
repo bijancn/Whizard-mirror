@@ -602,7 +602,7 @@ subroutine @ID@_compute_real (k)
               do h_gl = -1, 1, 2
                  real_ = real_decay_me(h_gl, s(ass_quark(leg)), &
                       s(ass_boson(leg)), h_ass_t(leg), leg)
-                 amp_blob(hi * (h_gl + 3) / 2, ffi) = amp_blob(hi,ffi) + &
+                 amp_blob(hi + nhel_max * (h_gl + 1) / 2, ffi) = amp_blob(hi,ffi) + &
                       prod_ * real_ * born_ * top_propagators_ (leg)
               end do
            end do
