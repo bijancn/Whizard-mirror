@@ -538,6 +538,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/fatal.ref \
     functional_tests/ref-output/model_change_1.ref \
     functional_tests/ref-output/model_change_2.ref \
+    functional_tests/ref-output/model_scheme_1.ref \
     functional_tests/ref-output/model_test.ref \
     functional_tests/ref-output/cuts.ref \
     functional_tests/ref-output/user_cuts.ref \
@@ -786,6 +787,7 @@ MISC_TESTS_SIN = \
     functional_tests/cuts.sin \
     functional_tests/model_change_1.sin \
     functional_tests/model_change_2.sin \
+    functional_tests/model_scheme_1.sin \
     functional_tests/model_test.sin \
     functional_tests/structure_1.sin \
     functional_tests/structure_2.sin \

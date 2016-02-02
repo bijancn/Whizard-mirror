@@ -1976,14 +1976,19 @@ The local variables are also kept.
     class(rt_data_t), intent(inout), target :: local
     class(rt_data_t), intent(inout), optional, target :: global
     logical, intent(in), optional :: keep_local
-    type(string_t) :: global_model, local_model
+    type(string_t) :: local_model, local_scheme
     logical :: same_model, delete
     delete = .true.;  if (present (keep_local))  delete = .not. keep_local
     if (present (global)) then
        if (associated (global%model) .and. associated (local%model)) then 
-          global_model = global%model%get_name ()
           local_model = local%model%get_name ()
-          same_model = global_model == local_model
+          if (global%model%has_schemes ()) then
+             local_scheme = local%model%get_scheme ()
+             same_model = &
+                  global%model%matches (local_model, local_scheme)
+          else
+             same_model = global%model%matches (local_model)
+          end if
        else
           same_model = .false.
        end if
@@ -1994,8 +1999,15 @@ The local variables are also kept.
        else if (associated (local%model)) then
           call local%ensure_model_copy ()
        end if
-       if (.not. same_model .and. global_model /= "") then
-          call msg_message ("Restoring model '" // char (global_model) // "'")
+       if (.not. same_model .and. associated (global%model)) then
+          if (global%model%has_schemes ()) then
+             call msg_message ("Restoring model '" // &
+                  char (global%model%get_name ()) // "', scheme '" // &
+                  char (global%model%get_scheme ()) // "'")
+          else
+             call msg_message ("Restoring model '" // &
+                  char (global%model%get_name ()) // "'")
+          end if
        end if
        if (associated (global%model)) then
           call global%model%link_var_list (global%var_list)
@@ -2078,14 +2090,15 @@ global context.
 <<RT data: rt data: TBP>>=
   procedure :: read_model => rt_data_read_model
 <<RT data: procedures>>=
-  subroutine rt_data_read_model (global, name, model)
+  subroutine rt_data_read_model (global, name, model, scheme)
     class(rt_data_t), intent(inout) :: global
     type(string_t), intent(in) :: name
+    type(string_t), intent(in), optional :: scheme
     type(model_t), pointer, intent(out) :: model
     type(string_t) :: filename
     filename = name // ".mdl"
     call global%model_list%read_model &
-         (name, filename, global%os_data, model)
+         (name, filename, global%os_data, model, scheme)
   end subroutine rt_data_read_model
     
 @ %def rt_data_read_model 
@@ -2126,23 +2139,25 @@ variable list to the model variable list.
 <<RT data: rt data: TBP>>=
   procedure :: select_model => rt_data_select_model
 <<RT data: procedures>>=
-  subroutine rt_data_select_model (global, name)
+  subroutine rt_data_select_model (global, name, scheme)
     class(rt_data_t), intent(inout), target :: global
     type(string_t), intent(in) :: name
+    type(string_t), intent(in), optional :: scheme
     logical :: same_model
     if (associated (global%model)) then
-       same_model = global%model%get_name () == name
+       same_model = global%model%matches (name, scheme)
     else
        same_model = .false.
     end if
     if (.not. same_model) then
-       global%model => global%model_list%get_model_ptr (name)
+       global%model => global%model_list%get_model_ptr (name, scheme)
        if (.not. associated (global%model)) then
           call global%read_model (name, global%model)
           global%model_is_copy = .false.
        else if (associated (global%context)) then
           global%model_is_copy = &
-               global%model_list%model_exists (name, follow_link=.false.)
+               global%model_list%model_exists (name, scheme, &
+               follow_link=.false.)
        else
           global%model_is_copy = .false.
        end if
@@ -2151,7 +2166,12 @@ variable list to the model variable list.
        call global%model%link_var_list (global%var_list)
        call global%var_list%set_string (var_str ("$model_name"), &
             name, is_known = .true.)
-       call msg_message ("Switching to model '" // char (name) // "'")
+       if (global%model%has_schemes ()) then
+          call msg_message ("Switching to model '" // char (name) // "', " &
+               // "scheme '" // char (global%model%get_scheme ()) // "'")
+       else
+          call msg_message ("Switching to model '" // char (name) // "'")
+       end if
     else
        call global%var_list%set_string (var_str ("$model_name"), &
             var_str (""), is_known = .false.)
@@ -16725,6 +16745,7 @@ it.
   type, extends (command_t) :: cmd_model_t
      private
      type(string_t) :: name
+     type(string_t) :: scheme
    contains
    <<Commands: cmd model: TBP>>
   end type cmd_model_t
@@ -16758,22 +16779,36 @@ Assign the model pointer in the [[global]] record, so it can be used for
     type(parse_node_t), pointer :: pn_name
     type(model_t), pointer :: model
     pn_name => parse_node_get_sub_ptr (cmd%pn, 3)
+! Handle model scheme!
+!    call cmd%compile_options (global)
     cmd%name = parse_node_get_string (pn_name)
-    model => null ()
-    if (associated (global%model)) then
-       if (global%model%get_name () == cmd%name)  model => global%model
-    end if
-    if (.not. associated (model)) then
-       if (global%model_list%model_exists (cmd%name)) then
-          model => global%model_list%get_model_ptr (cmd%name)
-       else
-          call global%read_model (cmd%name, model)
-       end if
+    cmd%scheme = ""
+    if (cmd%scheme /= "") then
+       call get_model (model, cmd%name, cmd%scheme)
+    else
+       call get_model (model, cmd%name)
     end if
     global%model => model
     if (associated (global%model)) then
        call global%model%link_var_list (global%var_list)
     end if
+  contains
+    subroutine get_model (model, name, scheme)
+      type(model_t), pointer, intent(out) :: model
+      type(string_t), intent(in) :: name
+      type(string_t), intent(in), optional :: scheme
+      model => null ()
+      if (associated (global%model)) then
+         if (global%model%matches (name, scheme))  model => global%model
+      end if
+      if (.not. associated (model)) then
+         if (global%model_list%model_exists (name, scheme)) then
+            model => global%model_list%get_model_ptr (name, scheme)
+         else
+            call global%read_model (name, model, scheme)
+         end if
+      end if
+    end subroutine get_model
   end subroutine cmd_model_compile
 
 @ %def cmd_model_compile
@@ -16785,7 +16820,11 @@ the variable list.
   subroutine cmd_model_execute (cmd, global)
     class(cmd_model_t), intent(inout) :: cmd
     type(rt_data_t), intent(inout), target :: global
-    call global%select_model (cmd%name)
+    if (cmd%scheme /= "") then
+       call global%select_model (cmd%name, cmd%scheme)
+    else
+       call global%select_model (cmd%name)
+    end if
     if (.not. associated (global%model)) &
          call msg_fatal ("Switching to model '" &
          // char (cmd%name) // "': model not found")
@@ -23578,7 +23617,7 @@ Also here, after each command we set a breakpoint.
          // "cmd_analysis | cmd_alt_setup | " &
          // "cmd_open_out | cmd_close_out | cmd_printf | " &
          // "cmd_write_analysis | cmd_compile_analysis | cmd_nlo | cmd_components")
-    call ifile_append (ifile, "SEQ cmd_model = model '=' model_name")
+    call ifile_append (ifile, "SEQ cmd_model = model '=' model_name options?")
     call ifile_append (ifile, "KEY model")
     call ifile_append (ifile, "ALT model_name = model_id | string_literal")
     call ifile_append (ifile, "IDE model_id")

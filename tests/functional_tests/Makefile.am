@@ -57,13 +57,15 @@ TESTS_DEFAULT = \
     testproc_8.run \
     testproc_9.run \
     testproc_10.run \
+    model_scheme_1.run \
     rebuild_1.run \
     rebuild_4.run \
     susyhit.run \
     helicity.run \
     libraries_4.run
 
-XFAIL_TESTS_DEFAULT =
+XFAIL_TESTS_DEFAULT = \
+    model_scheme_1.run
 
 TESTS_USER_STRFUN = \
     user_strfun.run 
