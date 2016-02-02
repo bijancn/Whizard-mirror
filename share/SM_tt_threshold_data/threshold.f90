@@ -394,7 +394,6 @@ contains
     end if
     if (allocated (amp_tree) .and. allocated(amp_blob)) then
        amp_blob = zero
-       amp_tree = zero
     end if
   end subroutine init_workspace
 
@@ -712,6 +711,8 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
         n_total_hel = n_hel * 2 ! times 2 helicities due to the gluon
         call allocate_amps ()
      end if
+     amp_tree = zero
+     amp_summed = zero
      USE_FF = .true.
      call @ID@_compute_real (p)
      amp2 = real (sum (amp_blob(:,0) * conjg (amp_blob(:,0)))) * (N_**2 - one) / N_
@@ -720,6 +721,8 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
         n_total_hel = n_hel
         call allocate_amps ()
      end if
+     amp_tree = zero
+     amp_summed = zero
      if (.not. no_interference) then
         USE_FF = .false.
         call full_proc_new_event (p)
