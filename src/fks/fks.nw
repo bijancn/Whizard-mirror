@@ -3288,6 +3288,7 @@ end module virtual
     integer :: n_in, nlegs, nflv
     logical :: bad_point
     logical :: use_internal_color_correlations
+    logical :: only_self_correlations = .false.
   contains
   <<virtual: virtual: TBP>>
   end type virtual_t
@@ -3451,20 +3452,21 @@ particles involved in the radiation process are massive or massless.
          print *, 'Q: ', virt%Q
       end if
 
-      do i = 1, virt%nlegs
-        do j = 1, virt%nlegs
-          if (i /= j) then
-             if (flst_born%colored(i) .and. flst_born%colored(j)) then
-               call virt%compute_eikonal_factors (p_born, flst_born%massive, i, j)
-               BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
-
-               if (debug2_active (D_VIRTUAL)) &
-                   print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
-                            'I_ij: ', virt%I(i,j)
-             end if
-          end if
-        end do
-      end do
+      if (.not. virt%only_self_correlations) then
+         do i = 1, virt%nlegs
+            do j = 1, virt%nlegs
+               if (i /= j) then
+                  if (flst_born%colored(i) .and. flst_born%colored(j)) then
+                     call virt%compute_eikonal_factors (p_born, flst_born%massive, i, j)
+                     BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
+                     if (debug2_active (D_VIRTUAL)) &
+                        print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
+                               'I_ij: ', virt%I(i,j)
+                  end if
+               end if
+            end do
+         end do
+      end if
     end associate
     if (virt%use_internal_color_correlations) BI = BI * born
     !!! A factor of alpha_s/twopi is assumed to be included in vfin
@@ -3933,6 +3935,7 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     type(pdf_container_t), pointer :: pdf_born_plus => null ()
     type(pdf_container_t), pointer :: pdf_born_minus => null ()
     logical :: xi2_expanded = .true.
+    logical :: only_self_correlations = .false.
   contains
   <<real subtraction: soft sub: TBP>>
   end type soft_subtraction_t
@@ -4100,6 +4103,7 @@ distinguished by the flag [[xi2_expanded]].
     kb = zero
     do i = 1, size (p_born)
        do j = 1, size (p_born)
+          if (sub_soft%only_self_correlations .and. i /= j) cycle
           kb = kb + sub_soft%momentum_matrix (i, j) * &
              born_ij (i, j)
        end do
@@ -6233,6 +6237,7 @@ module nlo_controller
   use phs_base
   use phs_single
   use cascades
+  use prc_threshold, only: prc_threshold_t
   use state_matrices
   use interactions
   use lorentz
@@ -7186,6 +7191,7 @@ one to determine this.
      logical :: test_soft_limit = .false.
      logical :: test_coll_limit = .false.
      integer :: fixed_alr = -1
+     logical :: only_self_correlations = .false.
   contains
   <<nlo data: nlo settings: TBP>>
   end type nlo_settings_t
@@ -7487,6 +7493,20 @@ process.
 @ %def nlo_controller_init
 @
 <<nlo controller: nlo controller: TBP>>=
+  procedure :: check_if_threshold_method => nlo_controller_check_if_threshold_method
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_check_if_threshold_method (nlo_controller, core)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    class(prc_core_t), intent(in) :: core
+    select type (core)
+    type is (prc_threshold_t)
+       nlo_controller%settings%only_self_correlations = .true.
+    end select
+  end subroutine nlo_controller_check_if_threshold_method
+
+@ %def nlo_controller_check_if_threshold_method
+@
+<<nlo controller: nlo controller: TBP>>=
   procedure :: init_pol_density_matrix => nlo_controller_init_pol_density_matrix
 <<nlo controller: procedures>>=
   subroutine nlo_controller_init_pol_density_matrix (nlo_controller, n_entries)
@@ -7565,6 +7585,8 @@ polarized or not.
        nlo_controller%real_terms%test_limit = &
           settings%test_soft_limit .or. settings%test_coll_limit
        nlo_controller%real_terms%fixed_alr = settings%fixed_alr
+       nlo_controller%real_terms%sub_soft%only_self_correlations &
+          = settings%only_self_correlations
     end associate
   end subroutine nlo_controller_init_real_subtraction
 
@@ -8088,6 +8110,8 @@ polarized or not.
     class(nlo_controller_t), intent(inout) :: nlo_controller
     call nlo_controller%virtual_terms%init (nlo_controller%particle_states%flv_state_born, &
        nlo_controller%particle_data%n_in)
+    nlo_controller%virtual_terms%only_self_correlations &
+       = nlo_controller%settings%only_self_correlations
   end subroutine nlo_controller_init_virtual
 
 @ %def nlo_controller_init_virtual
