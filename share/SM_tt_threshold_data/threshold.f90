@@ -1,3 +1,117 @@
+module @ID@_top_real_decay
+  use kinds
+  use diagnostics
+  use omega95
+  use omega_color, OCF => omega_color_factor
+  use parameters_SM_tt_threshold
+  implicit none
+  private
+  public :: calculate_amplitude
+
+  integer, parameter :: n_prt = 4
+  integer, parameter :: n_flv = 1
+
+  integer, dimension(n_prt,n_flv), save, protected :: table_flavor_states
+  data table_flavor_states(:,   1) /   6,  24,   5,  21 / ! t W+ b gl
+
+  type(momentum) :: p1, p2, p3, p4
+  type(momentum) :: p12, p14
+  type(spinor) :: owf_u3_2__1_0, owf_u3_1__1_0
+  type(conjspinor) :: owf_d3b__1_3_0
+  type(vector) :: owf_gl___4_0, owf_wm_2_0
+  type(spinor) :: owf_d3_1__12_0, owf_u3_1__14_0_X1
+  complex(default) :: oks_u3_2_wpd3_1_gl_2_1, oks_u3_1_wpd3_1_gl__
+
+contains
+
+  function calculate_amplitude (k, s, ffi) result (amp)
+    complex(default) :: amp
+    real(default), dimension(0:3,*), intent(in) :: k
+    integer, dimension(n_prt), intent(in) :: s
+    integer, intent(in) :: ffi
+    real(default) :: dynamic_top_mass, top_width
+    p1 = - k(:,1) ! incoming
+    p2 =   k(:,2) ! outgoing
+    p3 =   k(:,3) ! outgoing
+    p4 =   k(:,4) ! outgoing
+    p12 = p1 + p2
+    p14 = p1 + p4
+    dynamic_top_mass = sqrt (p1 * p1)
+    top_width = zero
+    owf_u3_1__1_0 = u (dynamic_top_mass, - p1, s(1))
+    owf_wm_2_0 = conjg (eps (mass(24), p2, s(2)))
+    owf_d3b__1_3_0 = ubar (mass(5), p3, s(3))
+    owf_gl___4_0 = conjg (eps (mass(21), p4, s(4)))
+    owf_d3_1__12_0 = pr_psi(p12,mass(5),wd_tl(p12,width(5)), &
+       + f_vlf(gcc,owf_wm_2_0,owf_u3_1__1_0))
+    owf_u3_1__14_0_X1 = pr_psi(p14,dynamic_top_mass,wd_tl(p14,top_width), &
+       + f_vf((-gs),owf_gl___4_0,owf_u3_1__1_0))
+    oks_u3_1_wpd3_1_gl__ = ( &
+       + f_fv((-gs),owf_d3b__1_3_0,owf_gl___4_0))*owf_d3_1__12_0
+    oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
+       + f_fvl(gcc,owf_d3b__1_3_0,owf_wm_2_0))*owf_u3_1__14_0_X1
+    amp = - oks_u3_1_wpd3_1_gl__ ! 2 vertices, 1 propagators
+  end function calculate_amplitude
+
+end module @ID@_top_real_decay
+
+module @ID@_anti_top_real_decay
+  use kinds
+  use diagnostics
+  use omega95
+  use omega_color, OCF => omega_color_factor
+  use parameters_SM_tt_threshold
+  implicit none
+  private
+  public :: calculate_amplitude
+
+  integer, parameter :: n_prt = 4
+  integer, parameter :: n_flv = 1
+
+  integer, dimension(n_prt,n_flv), save, protected :: table_flavor_states
+  data table_flavor_states(:,   1) /  -6, -24,  -5,  21 / ! tbar W- bbar gl
+
+  type(momentum) :: p1, p2, p3, p4
+  type(momentum) :: p12, p14
+  type(spinor) :: owf_d3_2__3_0
+  type(conjspinor) :: owf_u3b__1_1_0
+  type(vector) :: owf_gl_1_2_4_0, owf_wp_2_0
+  type(conjspinor) :: owf_d3b__1_12_0, owf_u3b__2_14_0
+  complex(default) :: oks_u3b__1wmd3b__2gl_2_1
+
+contains
+
+  function calculate_amplitude (k, s, ffi) result (amp)
+    complex(default) :: amp
+    real(default), dimension(0:3,*), intent(in) :: k
+    integer, dimension(n_prt), intent(in) :: s
+    integer, intent(in) :: ffi
+    real(default) :: dynamic_top_mass, top_width
+    p1 = - k(:,1) ! incoming
+    p2 =   k(:,2) ! outgoing
+    p3 =   k(:,3) ! outgoing
+    p4 =   k(:,4) ! outgoing
+    p12 = p1 + p2
+    p14 = p1 + p4
+    dynamic_top_mass = sqrt (p1 * p1)
+    top_width = zero
+    owf_u3b__1_1_0 = vbar (dynamic_top_mass, - p1, s(1))
+    owf_wp_2_0 = conjg (eps (mass(24), p2, s(2)))
+    owf_d3_2__3_0 = v (mass(5), p3, s(3))
+    owf_gl_1_2_4_0 = conjg (eps (mass(21), p4, s(4)))
+    owf_d3b__1_12_0 = pr_psibar(p12,mass(5),wd_tl(p12,width(5)), &
+       + f_fvl(gcc,owf_u3b__1_1_0,owf_wp_2_0))
+    owf_u3b__2_14_0 = pr_psibar(p14,dynamic_top_mass,wd_tl(p14,top_width), &
+       + f_fv((-gs),owf_u3b__1_1_0,owf_gl_1_2_4_0))
+    oks_u3b__1wmd3b__2gl_2_1 = owf_d3b__1_12_0 * &
+       f_vf((-gs),owf_gl_1_2_4_0,owf_d3_2__3_0)
+    oks_u3b__1wmd3b__2gl_2_1 = oks_u3b__1wmd3b__2gl_2_1 + owf_u3b__2_14_0*( &
+       + f_vlf(gcc,owf_wp_2_0,owf_d3_2__3_0))
+    amp = - oks_u3b__1wmd3b__2gl_2_1 ! 2 vertices, 1 propagators
+  end function calculate_amplitude
+
+end module @ID@_anti_top_real_decay
+
 module @ID@_threshold
   use kinds
   use diagnostics
@@ -5,12 +119,14 @@ module @ID@_threshold
   use omega95
   use parameters_SM_tt_threshold
   use ttv_formfactors
+  use @ID@_top_real_decay, top_real_decay_calculate_amplitude => calculate_amplitude
+  use @ID@_anti_top_real_decay, anti_top_real_decay_calculate_amplitude => calculate_amplitude
   implicit none
   private
   public :: init, calculate_blob, compute_born, &
        set_production_momenta, init_workspace, compute_production_owfs, &
        compute_decay_owfs, table_spin_states, &
-       top_decay_born, anti_top_decay_born, top_propagators, ff_modes
+       top_decay_born, anti_top_decay_born, top_propagators, ff_modes, compute_real
 
   ! DON'T EVEN THINK of removing the following!
   ! If the compiler complains about undeclared
@@ -392,7 +508,7 @@ contains
     else
        nhel_max = n_hel
     end if
-    if (allocated (amp_tree) .and. allocated(amp_blob)) then
+    if (allocated (amp_blob)) then
        amp_blob = zero
     end if
   end subroutine init_workspace
@@ -414,143 +530,131 @@ contains
     p46 = p4 + p6
   end subroutine set_production_momenta
 
+  elemental function abs2 (c) result (c2)
+    real(default) :: c2
+    complex(default), intent(in) :: c
+    c2 = real (c * conjg(c))
+  end function abs2
+
+  function compute_real (k) result (amp2)
+    real(default) :: amp2
+    real(default), dimension(0:3,*), intent(in) :: k
+    real(default), dimension(0:3,6) :: k_production
+    real(default), dimension(0:3,4) :: k_decay_real
+    real(default), dimension(0:3,3) :: k_decay_born
+    complex(default), dimension(-1:1,-1:1,-1:1,-1:1,1:2) :: production_me
+    complex(default), dimension(-1:1,-1:1,-1:1,-1:1,1:2) :: real_decay_me
+    complex(default), dimension(-1:1,-1:1,-1:1,1:2) :: born_decay_me
+    complex(default), dimension(1:2) :: top_propagators_
+    complex(default) :: real_, born_, prod_
+    real(default) :: total
+    integer, dimension(2) :: h_ass_t
+    integer, dimension(n_prt) :: s
+    integer :: i, hi, leg, other_leg, ffi, h_t, h_tbar, h_gl, h_W, h_b, h_el, h_pos
+    if (OFFSHELL_STRATEGY >= 0)  call msg_fatal ('OFFSHELL_STRATEGY should be < 0')
+    call init_decay_and_production_momenta ()
+    call init_workspace ()
+    call compute_amplitudes ()
+    total = zero
+    do hi = 1, nhel_max
+       s = table_spin_states(:,hi)
+       !do ffi = 0, ffi_end
+          do h_t = -1, 1, 2
+          do h_tbar = -1, 1, 2
+             h_ass_t = [h_t, h_tbar]
+             do leg = 1, 2
+                other_leg = 3 - leg
+                prod_ = production_me(s(1), s(2), h_t, h_tbar, leg)
+                born_ = born_decay_me(s(ass_quark(other_leg)), &
+                     s(ass_boson(other_leg)), h_ass_t(other_leg), other_leg)
+                do h_gl = -1, 1, 2
+                   real_ = real_decay_me(h_gl, s(ass_quark(leg)), &
+                        s(ass_boson(leg)), h_ass_t(leg), leg)
+                   total = total + abs2 (prod_) * abs2 (real_) * abs2 (born_) * &
+                        abs2(top_propagators_ (leg))
+                end do
+             end do
+          end do
+          end do
+       !end do
+    end do
+    amp2 = total * (N_**2 - one) / N_
+    if (debug2_active (D_ME_METHODS)) then
+       do hi = 1, nhel_max * 2
+          do ffi = 0, ffi_end
+             print *, 'hi, ffi =    ', hi, ffi
+             call msg_debug2 (D_ME_METHODS, "amp", amp_blob(hi,ffi))
+          end do
+       end do
+    end if
+
+  contains
+
+    subroutine compute_amplitudes ()
+      procedure(top_real_decay_calculate_amplitude), pointer :: top_decay_real
+      procedure(top_decay_born), pointer :: top_decay_born_
+      do leg = 1, 2
+         other_leg = 3 - leg
+         call set_decay_and_production_momenta ()
+         ! TODO: (bcn 2016-01-25) is ffi = 0 enough?
+         ffi = 0
+         do h_tbar = -1, 1, 2
+         do h_t = -1, 1, 2
+         do h_pos = -1, 1, 2
+         do h_el = -1, 1, 2
+            call compute_production_owfs (spins = [h_el, h_pos])
+            production_me(h_el, h_pos, h_t, h_tbar, leg) = calculate_blob (ffi, h_t, h_tbar)
+         end do
+         end do
+         end do
+         end do
+         if (leg == 1) then
+            top_decay_real => top_real_decay_calculate_amplitude
+            top_decay_born_ => anti_top_decay_born
+         else
+            top_decay_real => anti_top_real_decay_calculate_amplitude
+            top_decay_born_ => top_decay_born
+         end if
+         do h_t = -1, 1, 2
+         do h_W = -1, 1, 1
+         do h_b = -1, 1, 2
+            born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (h_t, h_W, h_b)
+            do h_gl = -1, 1, 2
+               real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
+                    (k_decay_real, [h_t, h_W, h_b, h_gl], ffi)
+            end do
+         end do
+         end do
+         end do
+         top_propagators_(leg) = top_propagators (ffi)
+      end do
+    end subroutine compute_amplitudes
+
+    subroutine init_decay_and_production_momenta ()
+      do i = 1, 6
+         k_production(:,i) = k(:,i)
+      end do
+    end subroutine init_decay_and_production_momenta
+
+    subroutine set_decay_and_production_momenta ()
+      !call msg_debug (D_ME_METHODS, "set_decay_and_production_momenta")
+      k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
+      k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
+      k_decay_real = zero
+      k_decay_real(:,4) = k(:,7)
+      k_decay_real(:,3) = k(:,ass_quark(leg))
+      k_decay_real(:,2) = k(:,ass_boson(leg))
+      k_decay_real(:,1) = sum(k_decay_real,2)     !!! momentum conservation
+      k_decay_born = zero
+      k_decay_born(:,2) = k(:,ass_boson(other_leg))
+      k_decay_born(:,3) = k(:,ass_quark(other_leg))
+      k_decay_born(:,1) = sum(k_decay_born,2)     !!! momentum conservation
+      call set_production_momenta (k_production)
+    end subroutine set_decay_and_production_momenta
+
+  end function compute_real
+
 end module @ID@_threshold
-
-module @ID@_top_real_decay
-  use kinds
-  use diagnostics
-  use omega95
-  use omega_color, OCF => omega_color_factor
-  use @ID@_threshold, only : ff_modes
-  use parameters_SM_tt_threshold
-  implicit none
-  private
-  public :: calculate_amplitude, init, update_alpha_s
-
-  integer, parameter :: n_prt = 4
-  integer, parameter :: n_flv = 1
-
-  integer, dimension(n_prt,n_flv), save, protected :: table_flavor_states
-  data table_flavor_states(:,   1) /   6,  24,   5,  21 / ! t W+ b gl
-
-  type(momentum) :: p1, p2, p3, p4
-  type(momentum) :: p12, p14
-  type(spinor) :: owf_u3_2__1_0, owf_u3_1__1_0
-  type(conjspinor) :: owf_d3b__1_3_0
-  type(vector) :: owf_gl___4_0, owf_wm_2_0
-  type(spinor) :: owf_d3_1__12_0, owf_u3_1__14_0_X1
-  complex(default) :: oks_u3_2_wpd3_1_gl_2_1, oks_u3_1_wpd3_1_gl__
-
-contains
-
-  subroutine init (par)
-    real(default), dimension(*), intent(in) :: par
-    call import_from_whizard (par)
-  end subroutine init
-
-  subroutine update_alpha_s (alpha_s)
-    real(default), intent(in) :: alpha_s
-    call model_update_alpha_s (alpha_s)
-  end subroutine update_alpha_s
-
-  function calculate_amplitude (k, s, ffi) result (amp)
-    complex(default) :: amp
-    real(default), dimension(0:3,*), intent(in) :: k
-    integer, dimension(n_prt), intent(in) :: s
-    integer, intent(in) :: ffi
-    real(default) :: dynamic_top_mass, top_width
-    p1 = - k(:,1) ! incoming
-    p2 =   k(:,2) ! outgoing
-    p3 =   k(:,3) ! outgoing
-    p4 =   k(:,4) ! outgoing
-    p12 = p1 + p2
-    p14 = p1 + p4
-    dynamic_top_mass = sqrt (p1 * p1)
-    top_width = zero
-    owf_u3_1__1_0 = u (dynamic_top_mass, - p1, s(1))
-    owf_wm_2_0 = conjg (eps (mass(24), p2, s(2)))
-    owf_d3b__1_3_0 = ubar (mass(5), p3, s(3))
-    owf_gl___4_0 = conjg (eps (mass(21), p4, s(4)))
-    owf_d3_1__12_0 = pr_psi(p12,mass(5),wd_tl(p12,width(5)), &
-       + f_vlf(gcc,owf_wm_2_0,owf_u3_1__1_0))
-    owf_u3_1__14_0_X1 = pr_psi(p14,dynamic_top_mass,wd_tl(p14,top_width), &
-       + f_vf((-gs),owf_gl___4_0,owf_u3_1__1_0))
-    oks_u3_1_wpd3_1_gl__ = ( &
-       + f_fv((-gs),owf_d3b__1_3_0,owf_gl___4_0))*owf_d3_1__12_0
-    oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
-       + f_fvl(gcc,owf_d3b__1_3_0,owf_wm_2_0))*owf_u3_1__14_0_X1
-    amp = - oks_u3_1_wpd3_1_gl__ ! 2 vertices, 1 propagators
-  end function calculate_amplitude
-
-end module @ID@_top_real_decay
-
-module @ID@_anti_top_real_decay
-  use kinds
-  use diagnostics
-  use omega95
-  use omega_color, OCF => omega_color_factor
-  use @ID@_threshold, only : ff_modes
-  use parameters_SM_tt_threshold
-  implicit none
-  private
-  public :: calculate_amplitude, init, update_alpha_s
-
-  integer, parameter :: n_prt = 4
-  integer, parameter :: n_flv = 1
-
-  integer, dimension(n_prt,n_flv), save, protected :: table_flavor_states
-  data table_flavor_states(:,   1) /  -6, -24,  -5,  21 / ! tbar W- bbar gl
-
-  type(momentum) :: p1, p2, p3, p4
-  type(momentum) :: p12, p14
-  type(spinor) :: owf_d3_2__3_0
-  type(conjspinor) :: owf_u3b__1_1_0
-  type(vector) :: owf_gl_1_2_4_0, owf_wp_2_0
-  type(conjspinor) :: owf_d3b__1_12_0, owf_u3b__2_14_0
-  complex(default) :: oks_u3b__1wmd3b__2gl_2_1
-
-contains
-
-  subroutine init (par)
-    real(default), dimension(*), intent(in) :: par
-    call import_from_whizard (par)
-  end subroutine init
-
-  subroutine update_alpha_s (alpha_s)
-    real(default), intent(in) :: alpha_s
-    call model_update_alpha_s (alpha_s)
-  end subroutine update_alpha_s
-
-  function calculate_amplitude (k, s, ffi) result (amp)
-    complex(default) :: amp
-    real(default), dimension(0:3,*), intent(in) :: k
-    integer, dimension(n_prt), intent(in) :: s
-    integer, intent(in) :: ffi
-    real(default) :: dynamic_top_mass, top_width
-    p1 = - k(:,1) ! incoming
-    p2 =   k(:,2) ! outgoing
-    p3 =   k(:,3) ! outgoing
-    p4 =   k(:,4) ! outgoing
-    p12 = p1 + p2
-    p14 = p1 + p4
-    dynamic_top_mass = sqrt (p1 * p1)
-    top_width = zero
-    owf_u3b__1_1_0 = vbar (dynamic_top_mass, - p1, s(1))
-    owf_wp_2_0 = conjg (eps (mass(24), p2, s(2)))
-    owf_d3_2__3_0 = v (mass(5), p3, s(3))
-    owf_gl_1_2_4_0 = conjg (eps (mass(21), p4, s(4)))
-    owf_d3b__1_12_0 = pr_psibar(p12,mass(5),wd_tl(p12,width(5)), &
-       + f_fvl(gcc,owf_u3b__1_1_0,owf_wp_2_0))
-    owf_u3b__2_14_0 = pr_psibar(p14,dynamic_top_mass,wd_tl(p14,top_width), &
-       + f_fv((-gs),owf_u3b__1_1_0,owf_gl_1_2_4_0))
-    oks_u3b__1wmd3b__2gl_2_1 = owf_d3b__1_12_0 * &
-       f_vf((-gs),owf_gl_1_2_4_0,owf_d3_2__3_0)
-    oks_u3b__1wmd3b__2gl_2_1 = oks_u3b__1wmd3b__2gl_2_1 + owf_u3b__2_14_0*( &
-       + f_vlf(gcc,owf_wp_2_0,owf_d3_2__3_0))
-    amp = - oks_u3b__1wmd3b__2gl_2_1 ! 2 vertices, 1 propagators
-  end function calculate_amplitude
-
-end module @ID@_anti_top_real_decay
 
 subroutine @ID@_threshold_init (par) bind(C)
   use iso_c_binding
@@ -560,129 +664,6 @@ subroutine @ID@_threshold_init (par) bind(C)
   real(c_default_float), dimension(*), intent(in) :: par
   call init (par)
 end subroutine @ID@_threshold_init
-
-subroutine @ID@_compute_real (k)
-  use kinds
-  use constants
-  use diagnostics
-  use @ID@_top_real_decay, top_real_decay_calculate_amplitude => calculate_amplitude
-  use @ID@_anti_top_real_decay, anti_top_real_decay_calculate_amplitude => calculate_amplitude
-  use @ID@_threshold
-  !use ttv_formfactors
-  use parameters_SM_tt_threshold
-  implicit none
-  real(default), dimension(0:3,*), intent(in) :: k
-  real(default), dimension(0:3,6) :: k_production
-  real(default), dimension(0:3,4) :: k_decay_real
-  real(default), dimension(0:3,3) :: k_decay_born
-  complex(default), dimension(-1:1,-1:1,-1:1,-1:1,1:2) :: production_me
-  complex(default), dimension(-1:1,-1:1,-1:1,-1:1,1:2) :: real_decay_me
-  complex(default), dimension(-1:1,-1:1,-1:1,1:2) :: born_decay_me
-  complex(default), dimension(1:2) :: top_propagators_
-  complex(default) :: real_, born_, prod_
-  integer, dimension(2) :: h_ass_t
-  integer, dimension(n_prt) :: s
-  integer :: i, hi, leg, other_leg, ffi, h_t, h_tbar, h_gl, h_W, h_b, h_el, h_pos
-  if (OFFSHELL_STRATEGY >= 0)  call msg_fatal ('OFFSHELL_STRATEGY should be < 0')
-  call init_decay_and_production_momenta ()
-  call init_workspace ()
-  call compute_amplitudes ()
-  do hi = 1, nhel_max
-     s = table_spin_states(:,hi)
-     do ffi = 0, ffi_end
-        do h_t = -1, 1, 2
-        do h_tbar = -1, 1, 2
-           h_ass_t = [h_t, h_tbar]
-           do leg = 1, 2
-              other_leg = 3 - leg
-              prod_ = production_me(s(1), s(2), h_t, h_tbar, leg)
-              born_ = born_decay_me(s(ass_quark(other_leg)), &
-                   s(ass_boson(other_leg)), h_ass_t(other_leg), other_leg)
-              do h_gl = -1, 1, 2
-                 real_ = real_decay_me(h_gl, s(ass_quark(leg)), &
-                      s(ass_boson(leg)), h_ass_t(leg), leg)
-                 amp_blob(hi + nhel_max * (h_gl + 1) / 2, ffi) = amp_blob(hi,ffi) + &
-                      prod_ * real_ * born_ * top_propagators_ (leg)
-              end do
-           end do
-        end do
-        end do
-     end do
-  end do
-  if (debug2_active (D_ME_METHODS)) then
-     do hi = 1, nhel_max
-        do ffi = 0, ffi_end
-           print *, 'hi, ffi =    ', hi, ffi
-           call msg_debug2 (D_ME_METHODS, "amp", amp_blob(hi,ffi))
-        end do
-     end do
-  end if
-
-contains
-
-  subroutine compute_amplitudes ()
-    procedure(top_real_decay_calculate_amplitude), pointer :: top_decay_real
-    procedure(top_decay_born), pointer :: top_decay_born_
-    do leg = 1, 2
-       other_leg = 3 - leg
-       call set_decay_and_production_momenta ()
-       ! TODO: (bcn 2016-01-25) is ffi = 0 enough?
-       ffi = 0
-       do h_tbar = -1, 1, 2
-       do h_t = -1, 1, 2
-       do h_pos = -1, 1, 2
-       do h_el = -1, 1, 2
-          call compute_production_owfs (spins = [h_el, h_pos])
-          production_me(h_el, h_pos, h_t, h_tbar, leg) = calculate_blob (ffi, h_t, h_tbar)
-       end do
-       end do
-       end do
-       end do
-       if (leg == 1) then
-          top_decay_real => top_real_decay_calculate_amplitude
-          top_decay_born_ => anti_top_decay_born
-       else
-          top_decay_real => anti_top_real_decay_calculate_amplitude
-          top_decay_born_ => top_decay_born
-       end if
-       do h_t = -1, 1, 2
-       do h_W = -1, 1, 1
-       do h_b = -1, 1, 2
-          born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (h_t, h_W, h_b)
-          do h_gl = -1, 1, 2
-             real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
-                  (k_decay_real, [h_t, h_W, h_b, h_gl], ffi)
-          end do
-       end do
-       end do
-       end do
-       top_propagators_(leg) = top_propagators (ffi)
-    end do
-  end subroutine compute_amplitudes
-
-  subroutine init_decay_and_production_momenta ()
-    do i = 1, 6
-       k_production(:,i) = k(:,i)
-    end do
-  end subroutine init_decay_and_production_momenta
-
-  subroutine set_decay_and_production_momenta ()
-    !call msg_debug (D_ME_METHODS, "set_decay_and_production_momenta")
-    k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
-    k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
-    k_decay_real = zero
-    k_decay_real(:,4) = k(:,7)
-    k_decay_real(:,3) = k(:,ass_quark(leg))
-    k_decay_real(:,2) = k(:,ass_boson(leg))
-    k_decay_real(:,1) = sum(k_decay_real,2)     !!! momentum conservation
-    k_decay_born = zero
-    k_decay_born(:,2) = k(:,ass_boson(other_leg))
-    k_decay_born(:,3) = k(:,ass_quark(other_leg))
-    k_decay_born(:,1) = sum(k_decay_born,2)     !!! momentum conservation
-    call set_production_momenta (k_production)
-  end subroutine set_decay_and_production_momenta
-
-end subroutine @ID@_compute_real
 
 subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   use iso_c_binding
@@ -714,8 +695,7 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
      amp_tree = zero
      amp_summed = zero
      USE_FF = .true.
-     call @ID@_compute_real (p)
-     amp2 = real (sum (amp_blob(:,0) * conjg (amp_blob(:,0)))) * (N_**2 - one) / N_
+     amp2 = compute_real (p)
   else
      if (.not. allocated (amp_tree)) then
         n_total_hel = n_hel
