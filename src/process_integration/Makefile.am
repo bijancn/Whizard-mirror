@@ -90,7 +90,8 @@ module_lists = \
   ../fks/Modules \
   ../variables/Modules \
   ../parsing/Modules \
-  ../shower/Modules
+  ../shower/Modules \
+  ../threshold/Modules
 
 include_modules_bare = ${module_lists:/Modules=}
 include_modules = ${include_modules_bare:../%=-I../%}
