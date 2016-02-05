@@ -3909,6 +3909,9 @@ end module real_subtraction
   integer, parameter, public :: FIXED_ORDER_EVENTS = 1
   integer, parameter, public :: POWHEG = 2
 
+  integer, parameter, public :: INTERFERENCE_DEFAULT = 0
+  integer, parameter, public :: INTERFERENCE_THRESHOLD = 1
+
 @ %def real subtraction parameters
 @
 In the soft limit, the real matrix element behaves as
@@ -3932,6 +3935,7 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     type(pdf_container_t), pointer :: pdf_born_plus => null ()
     type(pdf_container_t), pointer :: pdf_born_minus => null ()
     logical :: xi2_expanded = .true.
+    integer :: interference_mode = INTERFERENCE_DEFAULT
   contains
   <<real subtraction: soft sub: TBP>>
   end type soft_subtraction_t
@@ -3952,8 +3956,7 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     sub_soft%nlegs_born = nlegs_born
     sub_soft%nlegs_real = nlegs_real
     allocate (sub_soft%value (reg_data%n_regions))
-    allocate (sub_soft%momentum_matrix &
-              (nlegs_born, nlegs_born))
+    allocate (sub_soft%momentum_matrix (nlegs_born, nlegs_born))
   end subroutine soft_subtraction_init
 
 @ %def soft_subtraction_init
@@ -4083,7 +4086,6 @@ distinguished by the flag [[xi2_expanded]].
     integer, intent(in) :: alr, emitter, i_res
     real(default) :: s_alpha_soft
     real(default) :: kb
-    !!!integer :: i, j
     real(default) :: xi2_factor
 
     if (.not. vector_set_is_cms (p_born)) then
@@ -4095,15 +4097,12 @@ distinguished by the flag [[xi2_expanded]].
     s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
         (p_born, sub_soft%p_soft, alr, emitter, i_res)
     sub_soft%value(alr) = 4 * pi * alpha_s * s_alpha_soft
-    kb = sub_soft%evaluate_color_and_momentum_interferance (p_born, born_ij)
-    !!!call sub_soft%compute_momentum_matrix (p_born, sub_soft%p_soft)
-    !!!kb = zero
-    !!!do i = 1, size (p_born)
-    !!!   do j = 1, size (p_born)
-    !!!      kb = kb + sub_soft%momentum_matrix (i, j) * &
-    !!!         born_ij (i, j)
-    !!!   end do
-    !!!end do
+    select case (sub_soft%interference_mode)
+    case (INTERFERENCE_DEFAULT)
+       kb = sub_soft%evaluate_interference_default (p_born, born_ij)
+    case (INTERFERENCE_THRESHOLD)
+       kb = sub_soft%evaluate_interference_threshold (p_born, born_ij)
+    end select
     call msg_debug2 (D_SUBTRACTION, 'KB', kb)
     sub_soft%value(alr) = sub_soft%value(alr) * kb
     if (sub_soft%xi2_expanded) then
@@ -4123,10 +4122,10 @@ distinguished by the flag [[xi2_expanded]].
 ones because [[born_ij]] is constructed in such a way that it is only
 non-zero for colored entries.
 <<real subtraction: soft sub: TBP>>=
-  procedure :: evaluate_color_and_momentum_interferance => &
-     soft_subtraction_evaluate_color_and_momentum_interferance
+  procedure :: evaluate_interference_default => &
+     soft_subtraction_evaluate_interference_default
 <<real subtraction: procedures>>=
-  function soft_subtraction_evaluate_color_and_momentum_interferance &
+  function soft_subtraction_evaluate_interference_default &
      (sub_soft, p, born_ij) result (kb)
     real(default) :: kb
     class(soft_subtraction_t), intent(inout) :: sub_soft
@@ -4140,9 +4139,9 @@ non-zero for colored entries.
           kb = kb + sub_soft%momentum_matrix (i, j) * born_ij (i, j)
        end do
     end do
-  end function soft_subtraction_evaluate_color_and_momentum_interferance
+  end function soft_subtraction_evaluate_interference_default
 
-@ %def soft_subtraction_evaluate_color_and_momentum_interferance 
+@ %def soft_subtraction_evaluate_interference_default
 @ We have to multiply this with $\xi^2(1-y)$. Further, when applying
 the soft $\mathcal{S}$-function, the energy of the radiated particle
 is factored out. Thus we have $\xi^2/E_{em}^2(1-y) = 4/q_0^2(1-y)$.
@@ -4175,6 +4174,45 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   end subroutine soft_subtraction_compute_momentum_matrix
 
 @ %def soft_subtraction_compute_momentum_matrx
+@
+<<real subtraction: soft sub: TBP>>=
+  procedure :: evaluate_interference_threshold =>
+     soft_subtraction_evaluate_interference_threshold
+<<real subtraction: procedures>>=
+  function soft_subtraction_evaluate_interference_threshold &
+     (sub_soft, p_born, born_ij) result (kb)
+    real(default) :: kb
+    class(soft_subtraction_t), intent(inout) :: sub_soft
+    type(vector4_t), intent(in), dimension(:) :: p_born
+    real(default), intent(in), dimension(:,:) :: born_ij
+    type(vector4_t), dimension(4) :: p
+    integer :: i, j
+    p(1) = p_born(THR_POS_WP) + p_born(THR_POS_B)
+    p(2) = p_born(THR_POS_B)
+    p(3) = p_born(THR_POS_WM) + p_born(THR_POS_BBAR)
+    p(4) = p_born(THR_POS_BBAR)
+    kb = zero
+    kb = kb + evaluate_leg_pair (1) + evaluate_leg_pair (3)
+    
+  contains
+    function evaluate_leg_pair (i_start) result (kbb)
+      real(default) :: kbb
+      integer, intent(in) :: i_start
+      integer :: i1, i2
+      real(default) :: numerator, deno1, deno2
+      kbb = zero
+      do i1 = i_start, i_start + 1
+         do i2 = i_start, i_start + 1
+            numerator = p(i1) * p(i2)
+            deno1 = p(i1) * sub_soft%p_soft
+            deno2 = p(i2) * sub_soft%p_soft
+            kbb = kbb +  numerator * born_ij (i1, i2) / deno1 / deno2
+         end do
+      end do
+    end function evaluate_leg_pair
+  end function soft_subtraction_evaluate_interference_threshold
+
+@ %def soft_subtraction_evaluate_interference_threshold
 @
 \subsection{Soft mismatch}
 <<real subtraction: public>>=
