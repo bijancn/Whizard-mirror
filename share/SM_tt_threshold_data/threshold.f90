@@ -333,7 +333,7 @@ module @ID@_threshold
   type(momentum) :: p12, p35, p46
   type(spinor) :: owf_t_4, owf_b_6, owf_e_1
   type(conjspinor) :: owf_t_3, owf_b_5, owf_e_2
-  type(vector) :: owf_Wm_3, owf_Wp_4
+  type(vector) :: owf_Wp_3, owf_Wm_4
   type(spinor) :: owf_wb_46
   type(conjspinor) :: owf_wb_35
   type(vector) :: owf_A_12, owf_Z_12
@@ -393,10 +393,10 @@ contains
                "Please give either helicity index or spins")
        end if
     end if
-    owf_Wm_3 = conjg (eps (mass(24), p3, s(3)))
-    owf_Wp_4 = conjg (eps (mass(24), p4, s(4)))
-    owf_b_5 = ubar (mass(5), p5, s(5))
-    owf_b_6 = v (mass(5), p6, s(6))
+    owf_Wp_3 = conjg (eps (mass(24), p3, s(THR_POS_WP)))
+    owf_Wm_4 = conjg (eps (mass(24), p4, s(THR_POS_WM)))
+    owf_b_5 = ubar (mass(5), p5, s(THR_POS_B))
+    owf_b_6 = v (mass(5), p6, s(THR_POS_BBAR))
   end subroutine compute_decay_owfs
 
   function calculate_blob (ffi, h_t, h_tbar) result (amp)
@@ -426,9 +426,9 @@ contains
           mtop = ttv_mtpole (p12*p12)
           top_width = ttv_wtpole (p12*p12, ff_modes(ffi))
           owf_wb_35 = pr_psibar (p35, mtop, wd_tl (p35, top_width), &
-               + f_fvl (gccq33, owf_b_5, owf_Wm_3))
+               + f_fvl (gccq33, owf_b_5, owf_Wp_3))
           owf_wb_46 = pr_psi (p46, mtop, wd_tl (p46, top_width), &
-               + f_vlf (gccq33, owf_Wp_4, owf_b_6))
+               + f_vlf (gccq33, owf_Wm_4, owf_b_6))
           amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
           amp = amp + owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46) * ttv_vec
        end if
@@ -450,10 +450,10 @@ contains
     integer, intent(in) :: h_t
     integer, intent(in), optional :: h_Wm, h_b
     if (present (h_Wm) .and. present (h_b)) then
-       owf_Wm_3 = conjg (eps (mass(24), p3, h_Wm))
+       owf_Wp_3 = conjg (eps (mass(24), p3, h_Wm))
        owf_b_5 = ubar (mass(5), p5, h_b)
     end if
-    me = f_fvl (gccq33, owf_b_5, owf_Wm_3) * u (sqrt(p35*p35), p35, h_t)
+    me = f_fvl (gccq33, owf_b_5, owf_Wp_3) * u (sqrt(p35*p35), p35, h_t)
   end function top_decay_born
 
   function anti_top_decay_born (h_tbar, h_Wp, h_bbar) result(me)
@@ -461,10 +461,10 @@ contains
     integer, intent(in) :: h_tbar
     integer, intent(in), optional :: h_Wp, h_bbar
     if (present (h_Wp) .and. present (h_bbar)) then
-       owf_Wp_4 = conjg (eps (mass(24), p4, h_Wp))
+       owf_Wm_4 = conjg (eps (mass(24), p4, h_Wp))
        owf_b_6 = v (mass(5), p6, h_bbar)
     end if
-    me = vbar (sqrt(p46*p46), p46, h_tbar) * f_vlf (gccq33, owf_Wp_4, owf_b_6)
+    me = vbar (sqrt(p46*p46), p46, h_tbar) * f_vlf (gccq33, owf_Wm_4, owf_b_6)
   end function anti_top_decay_born
 
   subroutine compute_born (k)
