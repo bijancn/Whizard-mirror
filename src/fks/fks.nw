@@ -3288,7 +3288,7 @@ end module virtual
     integer :: n_in, nlegs, nflv
     logical :: bad_point
     logical :: use_internal_color_correlations
-    logical :: only_self_correlations = .false.
+    logical :: interference_mode = INTERFERENCE_DEFAULT
   contains
   <<virtual: virtual: TBP>>
   end type virtual_t
@@ -3444,29 +3444,31 @@ particles involved in the radiation process are massive or massless.
           (p_born, sqrt(s), i_flv, flst_born%massive) 
        call virt%compute_massive_self_eikonals &
           (p_born, s, i_flv, flst_born%massive)
-      
 
        if (debug2_active (D_VIRTUAL)) then
          call msg_debug2 (D_VIRTUAL, "Compute Q")
          print *, 'massive flavors: ', flst_born%massive
          print *, 'Q: ', virt%Q
-      end if
+       end if
 
-      if (.not. virt%only_self_correlations) then
-         do i = 1, virt%nlegs
-            do j = 1, virt%nlegs
-               if (i /= j) then
-                  if (flst_born%colored(i) .and. flst_born%colored(j)) then
-                     call virt%compute_eikonal_factors (p_born, flst_born%massive, i, j)
-                     BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
-                     if (debug2_active (D_VIRTUAL)) &
-                        print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
-                               'I_ij: ', virt%I(i,j)
-                  end if
-               end if
-            end do
-         end do
-      end if
+       select case (virt%interference_mode)
+       case (INTERFERENCE_THRESHOLD)
+          call msg_fatal ("virtual_evaluate: Implement me")
+       case default
+          do i = 1, virt%nlegs
+             do j = 1, virt%nlegs
+                if (i /= j) then
+                   if (flst_born%colored(i) .and. flst_born%colored(j)) then
+                      call virt%compute_eikonal_factors (p_born, flst_born%massive, i, j)
+                      BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
+                      if (debug2_active (D_VIRTUAL)) &
+                         print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
+                                'I_ij: ', virt%I(i,j)
+                   end if
+                end if
+             end do
+          end do
+       end select
     end associate
     if (virt%use_internal_color_correlations) BI = BI * born
     !!! A factor of alpha_s/twopi is assumed to be included in vfin
@@ -3592,7 +3594,7 @@ initial-initial interactions.
           term2 = 0.5_default * I_m_eps (p_born(i))
           virt%Q = virt%Q - virt%c_flv (i, i_flv) * (term1 - term2)
        end if
-    end do  
+    end do
   end subroutine virtual_compute_massive_self_eikonals
 
 @ %def virtual_compute_massive_self_eikonals
@@ -3935,7 +3937,6 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     type(pdf_container_t), pointer :: pdf_born_plus => null ()
     type(pdf_container_t), pointer :: pdf_born_minus => null ()
     logical :: xi2_expanded = .true.
-    logical :: only_self_correlations = .false.
   contains
   <<real subtraction: soft sub: TBP>>
   end type soft_subtraction_t
@@ -4065,14 +4066,14 @@ quantity $f(0,y) / \xi$, where
 \end{equation*}
 $J/\xi$ is computed by the phase space generator. The additional factor
 of $\xi^{-1}$ is supplied in the [[evaluate_region_fsr]]-routine. Thus,
-we are left with at factor of $\xi^2$. A look on expression for the
+we are left with a factor of $\xi^2$. A look on the expression for the
 soft limit of $R_\alpha$ below reveals that we are factoring out the gluon
-energy $E_i$ in the denominator. Therefore, we have a factor 
+energy $E_i$ in the denominator. Therefore, we have a factor
 $\xi^2 / E_i^2 = q^2 / 4$.\\
 Note that the same routine is used also for the computation of the soft
 mismatch. There, the gluon energy is not factored out from the soft vector,
 so that we are left with the $\xi^2$-factor, which will eventually be
-cancelled out again. So, we just multiply with 1. Both cases are 
+cancelled out again. So, we just multiply with 1. Both cases are
 distinguished by the flag [[xi2_expanded]].
 <<real subtraction: soft sub: TBP>>=
   procedure :: compute => soft_subtraction_compute
@@ -4201,7 +4202,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
 There, it first creates the soft vector, then the necessary soft real matrix element. 
 These inputs are then used to get the numerical value of the soft mismatch.
 <<real subtraction: soft mismatch: TBP>>=
-  procedure :: evaluate => soft_mismatch_evaluate 
+  procedure :: evaluate => soft_mismatch_evaluate
 <<real subtraction: procedures>>=
   function soft_mismatch_evaluate (soft_mismatch, alpha_s) result (sqme_mismatch)
     real(default) :: sqme_mismatch
@@ -4219,7 +4220,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
        y = real_kinematics%y_mismatch
        s = real_kinematics%cms_energy2
        E_gluon = sqrt (s) * xi / two
-     
+
        if (debug_active (D_MISMATCH)) then
           print *, 'Evaluating soft mismatch: '
           print *, 'Phase space: '
@@ -4249,7 +4250,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
           type is (fks_mapping_resonances_t)
              call fks_mapping%set_resonance_momentum &
                 (real_kinematics%xi_ref_momenta(i_con))
-          end select 
+          end select
 
           call soft_mismatch%sub_soft%compute (real_kinematics%p_born_cms%get_momenta(1), &
              soft_mismatch%sqme_born_cc(:,:,i_uborn), y, q2, alpha_s, alr, emitter, i_res)
@@ -7191,7 +7192,7 @@ one to determine this.
      logical :: test_soft_limit = .false.
      logical :: test_coll_limit = .false.
      integer :: fixed_alr = -1
-     logical :: only_self_correlations = .false.
+     integer :: interference_mode = INTERFERENCE_DEFAULT
   contains
   <<nlo data: nlo settings: TBP>>
   end type nlo_settings_t
@@ -7500,7 +7501,7 @@ process.
     class(prc_core_t), intent(in) :: core
     select type (core)
     type is (prc_threshold_t)
-       nlo_controller%settings%only_self_correlations = .true.
+       nlo_controller%settings%interference_mode = INTERFERENCE_THRESHOLD
     end select
   end subroutine nlo_controller_check_if_threshold_method
 
@@ -7585,8 +7586,8 @@ polarized or not.
        nlo_controller%real_terms%test_limit = &
           settings%test_soft_limit .or. settings%test_coll_limit
        nlo_controller%real_terms%fixed_alr = settings%fixed_alr
-       nlo_controller%real_terms%sub_soft%only_self_correlations &
-          = settings%only_self_correlations
+       nlo_controller%real_terms%sub_soft%interference_mode &
+          = settings%interference_mode
     end associate
   end subroutine nlo_controller_init_real_subtraction
 
@@ -8110,8 +8111,8 @@ polarized or not.
     class(nlo_controller_t), intent(inout) :: nlo_controller
     call nlo_controller%virtual_terms%init (nlo_controller%particle_states%flv_state_born, &
        nlo_controller%particle_data%n_in)
-    nlo_controller%virtual_terms%only_self_correlations &
-       = nlo_controller%settings%only_self_correlations
+    nlo_controller%virtual_terms%interference_mode &
+       = nlo_controller%settings%interference_mode
   end subroutine nlo_controller_init_virtual
 
 @ %def nlo_controller_init_virtual

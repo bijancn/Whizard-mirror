@@ -56,11 +56,11 @@ SUBDIRS = \
   mci variables \
   muli shower \
   user \
+  threshold \
   fks blha \
   gosam openloops \
   looptools \
   model_features \
-  threshold \
   process_integration \
   matching \
   transforms \

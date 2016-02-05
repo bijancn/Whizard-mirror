@@ -24,12 +24,12 @@ module @ID@_top_real_decay
 
 contains
 
-  function calculate_amplitude (k, s, ffi) result (amp)
+  function calculate_amplitude (k, s, top_width) result (amp)
     complex(default) :: amp
     real(default), dimension(0:3,*), intent(in) :: k
     integer, dimension(n_prt), intent(in) :: s
-    integer, intent(in) :: ffi
-    real(default) :: dynamic_top_mass, top_width
+    real(default), intent(in) :: top_width
+    real(default) :: dynamic_top_mass
     p1 = - k(:,1) ! incoming
     p2 =   k(:,2) ! outgoing
     p3 =   k(:,3) ! outgoing
@@ -37,7 +37,7 @@ contains
     p12 = p1 + p2
     p14 = p1 + p4
     dynamic_top_mass = sqrt (p1 * p1)
-    top_width = zero
+    !top_width = zero
     owf_u3_1__1_0 = u (dynamic_top_mass, - p1, s(1))
     owf_wm_2_0 = conjg (eps (mass(24), p2, s(2)))
     owf_d3b__1_3_0 = ubar (mass(5), p3, s(3))
@@ -81,12 +81,12 @@ module @ID@_anti_top_real_decay
 
 contains
 
-  function calculate_amplitude (k, s, ffi) result (amp)
+  function calculate_amplitude (k, s, top_width) result (amp)
     complex(default) :: amp
     real(default), dimension(0:3,*), intent(in) :: k
     integer, dimension(n_prt), intent(in) :: s
-    integer, intent(in) :: ffi
-    real(default) :: dynamic_top_mass, top_width
+    real(default), intent(in) :: top_width
+    real(default) :: dynamic_top_mass
     p1 = - k(:,1) ! incoming
     p2 =   k(:,2) ! outgoing
     p3 =   k(:,3) ! outgoing
@@ -94,7 +94,8 @@ contains
     p12 = p1 + p2
     p14 = p1 + p4
     dynamic_top_mass = sqrt (p1 * p1)
-    top_width = zero
+    !top_width = zero
+    !top_width = ttv_wtpole (p12*p12, ff_modes(ffi))
     owf_u3b__1_1_0 = vbar (dynamic_top_mass, - p1, s(1))
     owf_wp_2_0 = conjg (eps (mass(24), p2, s(2)))
     owf_d3_2__3_0 = v (mass(5), p3, s(3))
@@ -621,7 +622,7 @@ contains
             born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (h_t, h_W, h_b)
             do h_gl = -1, 1, 2
                real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
-                    (k_decay_real, [h_t, h_W, h_b, h_gl], ffi)
+                    (k_decay_real, [h_t, h_W, h_b, h_gl], zero)
             end do
          end do
          end do
