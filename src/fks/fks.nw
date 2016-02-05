@@ -3423,8 +3423,9 @@ particles involved in the radiation process are massive or massless.
     type(vector4_t), intent(in), dimension(:)  :: p_born
     real(default), intent(in) :: born
     real(default), intent(in), dimension(:,:,:), allocatable :: b_ij
+    type(vector4_t), dimension(4) :: p
     integer :: i, j, alr
-    real(default) :: s, BI
+    real(default) :: s, BI, s_o_mu2
     virt%sqme_virt = zero
     virt%Q = zero
     if (virt%bad_point) return
@@ -3439,7 +3440,8 @@ particles involved in the radiation process are massive or massless.
     end if
 
     associate (flst_born => reg_data%regions(alr)%flst_uborn)
-       s = sum(p_born(1:virt%n_in))**2
+       s = sum (p_born(1:virt%n_in))**2
+       s_o_mu2 = s / virt%ren_scale2
        call virt%evaluate_initial_state (sqrt(s), i_flv)
        call virt%compute_collinear_contribution &
           (p_born, sqrt(s), i_flv, flst_born%massive) 
@@ -3454,13 +3456,17 @@ particles involved in the radiation process are massive or massless.
 
        select case (virt%interference_mode)
        case (INTERFERENCE_THRESHOLD)
-          call msg_fatal ("virtual_evaluate: Implement me")
+          p(1) = p_born(THR_POS_WP) + p_born(THR_POS_B)
+          p(2) = p_born(THR_POS_B)
+          p(3) = p_born(THR_POS_WM) + p_born(THR_POS_BBAR)
+          p(4) = p_born(THR_POS_BBAR)
+          BI = evaluate_leg_pair (1) + evaluate_leg_pair (3)
        case default
           do i = 1, virt%nlegs
              do j = 1, virt%nlegs
                 if (i /= j) then
                    if (flst_born%colored(i) .and. flst_born%colored(j)) then
-                      call virt%compute_eikonal_factors (p_born, flst_born%massive, i, j)
+                      call virt%compute_eikonal_factor (p_born, flst_born%massive, i, j, s_o_mu2)
                       BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
                       if (debug2_active (D_VIRTUAL)) &
                          print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
@@ -3485,7 +3491,9 @@ particles involved in the radiation process are massive or massless.
 
     if (virt%n_is_neutrinos(i_flv) > 0) &
         virt%sqme_virt = virt%sqme_virt * virt%n_is_neutrinos(i_flv) * two
+
   contains
+
     function find_first_matching_uborn (reg_data, i_proc) result (alr_out)
        type(region_data_t), intent(in) :: reg_data
        integer, intent(in) :: i_proc
@@ -3497,6 +3505,20 @@ particles involved in the radiation process are massive or massless.
           if (reg_data%regions(k)%uborn_index == i_proc) exit
        end do
     end function find_first_matching_uborn
+
+    function evaluate_leg_pair (i_start) result (b_ij_times_I)
+      real(default) :: b_ij_times_I
+      integer, intent(in) :: i_start
+      integer :: i1, i2
+      b_ij_times_I = zero
+      do i1 = i_start, i_start + 1
+         do i2 = i_start, i_start + 1
+            call virt%compute_eikonal_factor (p, [.true., .true., .true., .true.], i, j, s_o_mu2)
+            b_ij_times_I = b_ij_times_I + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
+         end do
+      end do
+    end function evaluate_leg_pair
+
   end subroutine virtual_evaluate
 
 @ %def virtual_evaluate
@@ -3659,41 +3681,39 @@ They are defined as follows:
 \end{itemize}
 
 <<virtual: virtual: TBP>>=
-  procedure :: compute_eikonal_factors => virtual_compute_eikonal_factors
+  procedure :: compute_eikonal_factor => virtual_compute_eikonal_factor
 <<virtual: procedures>>=
-  subroutine virtual_compute_eikonal_factors (virt, p_born, massive, i, j)
+  subroutine virtual_compute_eikonal_factor (virt, p_born, massive, i, j, s_o_mu2)
     class(virtual_t), intent(inout) :: virt
     type(vector4_t), intent(in), dimension(:) :: p_born
     logical, dimension(:), intent(in) :: massive
     integer, intent(in) :: i, j
-    real(default) :: somu2
-    somu2  = sum (p_born(1:virt%n_in))**2 / virt%ren_scale2
+    real(default), intent(in) :: s_o_mu2
     if (massive(i) .and. massive(j)) then
-       virt%I(i,j) = compute_Imm (p_born(i), p_born(j), somu2)
-    else if (.not.massive(i) .and. massive(j)) then
-       virt%I(i,j) = compute_I0m (p_born(i), p_born(j), somu2)
-    else if (massive(i) .and. .not.massive(j)) then
-       virt%I(i,j) = compute_I0m (p_born(j), p_born(i), somu2)
+       virt%I(i,j) = compute_Imm (p_born(i), p_born(j), s_o_mu2)
+    else if (.not. massive(i) .and. massive(j)) then
+       virt%I(i,j) = compute_I0m (p_born(i), p_born(j), s_o_mu2)
+    else if (massive(i) .and. .not. massive(j)) then
+       virt%I(i,j) = compute_I0m (p_born(j), p_born(i), s_o_mu2)
     else
-       virt%I(i,j) = compute_I00 (p_born(i), p_born(j), somu2)
+       virt%I(i,j) = compute_I00 (p_born(i), p_born(j), s_o_mu2)
     end if
-  end subroutine virtual_compute_eikonal_factors
+  end subroutine virtual_compute_eikonal_factor
 
-  function compute_I00 (pi, pj, somu2) result (I)
+  function compute_I00 (pi, pj, s_o_mu2) result (I)
     type(vector4_t), intent(in) :: pi, pj
-    real(default), intent(in) :: somu2
+    real(default), intent(in) :: s_o_mu2
     real(default) :: I
     real(default) :: Ei, Ej
     real(default) :: pij, Eij
     real(default) :: s1, s2, s3, s4, s5
     real(default) :: arglog
     real(default), parameter :: tiny_value = epsilon(1.0)
-
     s1 = 0; s2 = 0; s3 = 0; s4 = 0; s5 = 0
     Ei = pi%p(0); Ej = pj%p(0)
     pij = pi * pj; Eij = Ei * Ej
-    s1 = 0.5 * log(somu2)**2
-    s2 = log(somu2) * log(pij / (two * Eij))
+    s1 = 0.5 * log(s_o_mu2)**2
+    s2 = log(s_o_mu2) * log(pij / (two * Eij))
     s3 = Li2 (pij / (two * Eij))
     s4 = 0.5 * log (pij / (two * Eij))**2
     arglog = one - pij / (2*Eij)
@@ -3705,26 +3725,26 @@ They are defined as follows:
     I = s1 + s2 - s3 + s4 - s5
   end function compute_I00
 
-  function compute_I0m (ki, kj, somu2) result (I)
+  function compute_I0m (ki, kj, s_o_mu2) result (I)
     type(vector4_t), intent(in) :: ki, kj
-    real(default), intent(in) :: somu2
+    real(default), intent(in) :: s_o_mu2
     real(default) :: I
     real(default) :: logsomu
     real(default) :: s1, s2, s3
     s1 = 0; s2 = 0; s3 = 0
-    logsomu = log(somu2)
+    logsomu = log(s_o_mu2)
     s1 = 0.5 * (0.5 * logsomu**2 - pi**2 / 6)
     s2 = 0.5 * I_0m_0 (ki, kj) * logsomu
     s3 = 0.5 * I_0m_eps (ki, kj)
     I = s1 + s2 - s3
   end function compute_I0m
 
-  function compute_Imm (pi, pj, somu2) result (I)
+  function compute_Imm (pi, pj, s_o_mu2) result (I)
     type(vector4_t), intent(in) :: pi, pj
-    real(default), intent(in) :: somu2
+    real(default), intent(in) :: s_o_mu2
     real(default) :: I
     real(default) :: s1, s2
-    s1 = 0.5 * log(somu2) * I_mm_0(pi, pj)
+    s1 = 0.5 * log(s_o_mu2) * I_mm_0(pi, pj)
     s2 = 0.5 * I_mm_eps(pi, pj)
     I = s1 - s2
   end function compute_Imm
@@ -4161,7 +4181,6 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
        (sub_soft, p_born)
     class(soft_subtraction_t), intent(inout) :: sub_soft
     type(vector4_t), intent(in), dimension(:) :: p_born
-    !!!type(vector4_t), intent(in) :: p_soft
     real(default) :: num, deno1, deno2
     integer :: i, j
     do i = 1, sub_soft%nlegs_born
@@ -4197,10 +4216,10 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     p(2) = p_born(THR_POS_B)
     p(3) = p_born(THR_POS_WM) + p_born(THR_POS_BBAR)
     p(4) = p_born(THR_POS_BBAR)
-    kb = zero
-    kb = kb + evaluate_leg_pair (1) + evaluate_leg_pair (3)
-    
+    kb = evaluate_leg_pair (1) + evaluate_leg_pair (3)
+
   contains
+
     function evaluate_leg_pair (i_start) result (kbb)
       real(default) :: kbb
       integer, intent(in) :: i_start
@@ -4216,6 +4235,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
          end do
       end do
     end function evaluate_leg_pair
+
   end function soft_subtraction_evaluate_interference_threshold
 
 @ %def soft_subtraction_evaluate_interference_threshold
@@ -4307,7 +4327,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
           call soft_mismatch%sub_soft%create_softvec_mismatch &
              (E_gluon, y, real_kinematics%phi, p_em)
           if (debug_active (D_MISMATCH)) &
-             print *, 'Created soft vector: ', soft_mismatch%sub_soft%p_soft%p 
+             print *, 'Created soft vector: ', soft_mismatch%sub_soft%p_soft%p
 
           select type (fks_mapping => soft_mismatch%reg_data%fks_mapping)
           type is (fks_mapping_resonances_t)
