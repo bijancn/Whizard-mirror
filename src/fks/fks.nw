@@ -4083,7 +4083,7 @@ distinguished by the flag [[xi2_expanded]].
     integer, intent(in) :: alr, emitter, i_res
     real(default) :: s_alpha_soft
     real(default) :: kb
-    integer :: i, j
+    !!!integer :: i, j
     real(default) :: xi2_factor
 
     if (.not. vector_set_is_cms (p_born)) then
@@ -4094,15 +4094,16 @@ distinguished by the flag [[xi2_expanded]].
 
     s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
         (p_born, sub_soft%p_soft, alr, emitter, i_res)
-    call sub_soft%compute_momentum_matrix (p_born, sub_soft%p_soft)
     sub_soft%value(alr) = 4 * pi * alpha_s * s_alpha_soft
-    kb = zero
-    do i = 1, size (p_born)
-       do j = 1, size (p_born)
-          kb = kb + sub_soft%momentum_matrix (i, j) * &
-             born_ij (i, j)
-       end do
-    end do
+    kb = sub_soft%evaluate_color_and_momentum_interferance (p_born, born_ij)
+    !!!call sub_soft%compute_momentum_matrix (p_born, sub_soft%p_soft)
+    !!!kb = zero
+    !!!do i = 1, size (p_born)
+    !!!   do j = 1, size (p_born)
+    !!!      kb = kb + sub_soft%momentum_matrix (i, j) * &
+    !!!         born_ij (i, j)
+    !!!   end do
+    !!!end do
     call msg_debug2 (D_SUBTRACTION, 'KB', kb)
     sub_soft%value(alr) = sub_soft%value(alr) * kb
     if (sub_soft%xi2_expanded) then
@@ -4118,6 +4119,30 @@ distinguished by the flag [[xi2_expanded]].
   end subroutine soft_subtraction_compute
 
 @ %def soft_subtraction_compute
+@ We loop over all external legs and do not take care to leave out non-colored
+ones because [[born_ij]] is constructed in such a way that it is only
+non-zero for colored entries.
+<<real subtraction: soft sub: TBP>>=
+  procedure :: evaluate_color_and_momentum_interferance => &
+     soft_subtraction_evaluate_color_and_momentum_interferance
+<<real subtraction: procedures>>=
+  function soft_subtraction_evaluate_color_and_momentum_interferance &
+     (sub_soft, p, born_ij) result (kb)
+    real(default) :: kb
+    class(soft_subtraction_t), intent(inout) :: sub_soft
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default), intent(in), dimension(:,:) :: born_ij
+    integer :: i, j
+    kb = zero
+    call sub_soft%compute_momentum_matrix (p)
+    do i = 1, size (p)
+       do j = 1, size (p)
+          kb = kb + sub_soft%momentum_matrix (i, j) * born_ij (i, j)
+       end do
+    end do
+  end function soft_subtraction_evaluate_color_and_momentum_interferance
+
+@ %def soft_subtraction_evaluate_color_and_momentum_interferance 
 @ We have to multiply this with $\xi^2(1-y)$. Further, when applying
 the soft $\mathcal{S}$-function, the energy of the radiated particle
 is factored out. Thus we have $\xi^2/E_{em}^2(1-y) = 4/q_0^2(1-y)$.
@@ -4128,18 +4153,18 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
        soft_subtraction_compute_momentum_matrix
 <<real subtraction: procedures>>=
   subroutine soft_subtraction_compute_momentum_matrix &
-       (sub_soft, p_born, p_soft)
+       (sub_soft, p_born)
     class(soft_subtraction_t), intent(inout) :: sub_soft
     type(vector4_t), intent(in), dimension(:) :: p_born
-    type(vector4_t), intent(in) :: p_soft
+    !!!type(vector4_t), intent(in) :: p_soft
     real(default) :: num, deno1, deno2
     integer :: i, j
     do i = 1, sub_soft%nlegs_born
       do j = 1, sub_soft%nlegs_born
         if (i <= j) then
            num = p_born(i) * p_born(j)
-           deno1 = p_born(i) * p_soft
-           deno2 = p_born(j) * p_soft
+           deno1 = p_born(i) * sub_soft%p_soft
+           deno2 = p_born(j) * sub_soft%p_soft
            sub_soft%momentum_matrix(i,j) = num / (deno1 * deno2)
         else
            !!! momentum matrix is symmetric.
