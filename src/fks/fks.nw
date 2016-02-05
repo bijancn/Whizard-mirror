@@ -4336,7 +4336,7 @@ soft-collinear contribution to the cross section.
     real(default), dimension(:), allocatable :: value
     real(default), dimension(:), allocatable :: value_soft
     integer :: n_in, n_alr
-    real(default), dimension(0:3,0:3) :: b_munu
+    logical :: use_resonance_mappings = .false.
     type(pdf_container_t), pointer :: pdf_born_plus => null ()
     type(pdf_container_t), pointer :: pdf_born_minus => null ()
     type(pdf_container_t), pointer :: pdf_scaled_plus => null ()
@@ -4417,19 +4417,19 @@ necessary to expand with $z$ once.
   procedure :: compute_fsr => coll_subtraction_compute_fsr
 <<real subtraction: procedures>>=
   subroutine coll_subtraction_compute_fsr &
-       (coll_sub, sregion, p_born, sqme_born, sqme_born_sc, &
+       (coll_sub, sregion, p_res, p_born, sqme_born, sqme_born_sc, &
         xi, alpha_s, alr, soft_in)
     class(coll_subtraction_t), intent(inout) :: coll_sub
     type(singular_region_t), intent(in) :: sregion
+    type(vector4_t), intent(in) :: p_res
     type(vector4_t), intent(in), dimension(:) :: p_born
-    real(default), intent(in) :: sqme_born
-    real(default), intent(in) :: sqme_born_sc
+    real(default), intent(in) :: sqme_born, sqme_born_sc
     real(default), intent(in) :: xi, alpha_s
     integer, intent(in) :: alr
     logical, intent(in), optional :: soft_in
-    real(default) :: res
+    real(default) :: value
     real(default) :: q0, z, p0
-    real(default) :: zoxi, onemz
+    real(default) :: z_o_xi, onemz
     real(default) :: pggz, pqgz
     integer :: nlegs, emitter
     integer :: flv_em, flv_rad
@@ -4451,20 +4451,13 @@ necessary to expand with $z$ once.
     emitter = sregion%emitter
     flv_rad = sregion%flst_real%flst(nlegs)
     flv_em = sregion%flst_real%flst(emitter)
-    p0 = p_born(emitter)%p(0)
-    select case (coll_sub%n_in)
-    case (1)
-       q0 = p_born(1)%p(0)
-    case (2)
-       q0 = p_born(1)%p(0) + p_born(2)%p(0)
-    case default
-       q0 = 0
-       call msg_bug ("coll_sub%n_in > 2")
-    end select
+    !!!p0 = p_born(emitter)%p(0)
+    q0 = p_res**1
+    p0 = p_res * p_born(emitter) / q0
     !!! Here, z corresponds to 1-z in the formulas of arXiv:1002.2581;
     !!! the integrand is symmetric under this variable change
-    zoxi = q0 / (two * p0)
-    z = xi * zoxi; onemz = one - z
+    z_o_xi = q0 / (two * p0)
+    z = xi * z_o_xi; onemz = one - z
 
     if (is_gluon(flv_em) .and. is_gluon(flv_rad)) then
 @ Implementation of equation (\ref{coll1}). Note that an additional
@@ -4472,27 +4465,26 @@ factor $z$, so that in the last step, the whole expression is divided by
 $z/\xi$.
 <<real subtraction: procedures>>=
        pggz = two * CA * (z**2 * onemz + z**2 / onemz + onemz)
-       res = pggz * sqme_born - 4 * CA * z**2 * onemz * sqme_born_sc
-       res = res / zoxi
+       value = pggz * sqme_born - 4 * CA * z**2 * onemz * sqme_born_sc
+       value = value / z_o_xi
     else if (is_quark(abs(flv_em)) .and. is_quark (abs(flv_rad))) then
 @ Equation \ref{coll2}
 <<real subtraction: procedures>>=
        pqgz = TR * z * (one - two * z * onemz)
-       res = pqgz * sqme_born + 4 * TR * z**2 * onemz * sqme_born_sc
-       res = res / zoxi
+       value = pqgz * sqme_born + 4 * TR * z**2 * onemz * sqme_born_sc
+       value = value / z_o_xi
     else if (is_quark (abs(flv_em)) .and. is_gluon (flv_rad)) then
-       res = sqme_born * CF * (one + onemz**2) / zoxi
+       value = sqme_born * CF * (one + onemz**2) / z_o_xi
     else
-       res = 0
        call msg_fatal ('Impossible flavor structure in collinear counterterm!')
     end if
-    res = res / (p0**2 * onemz * zoxi)
-    res = res * 4*pi * alpha_s
+    value = value / (p0**2 * onemz * z_o_xi)
+    value = value * 4*pi * alpha_s
 
     if (soft) then
-      coll_sub%value_soft (alr) = res
+      coll_sub%value_soft (alr) = value
     else
-      coll_sub%value (alr) = res
+      coll_sub%value (alr) = value
     end if
   end subroutine coll_subtraction_compute_fsr
 
@@ -4502,17 +4494,18 @@ $z/\xi$.
   procedure :: compute_soft_limit_fsr => coll_subtraction_compute_soft_limit_fsr
 <<real subtraction: procedures>>=
   subroutine coll_subtraction_compute_soft_limit_fsr &
-       (coll_sub, sregion, p_born, sqme_born, &
+       (coll_sub, sregion, p_res, p_born, sqme_born, &
         sqme_born_sc, xi, alpha_s, alr)
     class(coll_subtraction_t), intent(inout) :: coll_sub
     type(singular_region_t), intent(in) :: sregion
+    type(vector4_t), intent(in) :: p_res
     type(vector4_t), intent(in), dimension(:) :: p_born
     real(default), intent(in) :: sqme_born
     real(default), intent(in) :: sqme_born_sc
     real(default), intent(in) :: xi, alpha_s
     integer, intent(in) :: alr
-    call coll_sub%compute_fsr (sregion, p_born, sqme_born, &
-                           sqme_born_sc, xi, alpha_s, alr, .true.)
+    call coll_sub%compute_fsr (sregion, p_res, p_born, sqme_born, &
+       sqme_born_sc, xi, alpha_s, alr, .true.)
   end subroutine coll_subtraction_compute_soft_limit_fsr
 
 @ %def coll_subtraction_compute_soft_limit_fsr
@@ -4716,6 +4709,7 @@ $z/\xi$.
     class(real_subtraction_t), intent(inout) :: rsub
     logical, intent(in) :: use_mappings
     rsub%sub_soft%use_resonance_mappings = use_mappings
+    rsub%sub_coll%use_resonance_mappings = use_mappings
   end subroutine real_subtraction_set_resonance_mappings
 
 @ %def real_subtraction_set_resonance_mappings
@@ -5330,13 +5324,17 @@ to be more consistent with the evaluation of the Born phase space.
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: em, i_phs
     real(default), intent(in) :: alpha_s
-    real(default) :: xi
-    real(default) :: sqme_sc
-    integer :: alr
+    real(default) :: xi, sqme_sc
+    integer :: alr, i_con
     alr = rsub%current_alr
-    xi = rsub%real_kinematics%xi_tilde * rsub%real_kinematics%xi_max (i_phs)
     associate (sregion => rsub%reg_data%regions(alr))
        if (sregion%has_collinear_divergence ()) then
+          xi = rsub%real_kinematics%xi_tilde * rsub%real_kinematics%xi_max (i_phs)
+          if (rsub%sub_coll%use_resonance_mappings) then
+             i_con = rsub%reg_data%alr_to_i_contributor (alr)
+          else
+             i_con = 1
+          end if
           sqme_sc = rsub%get_sc_matrix_element (alr, em, sregion%uborn_index)
           if (em <= rsub%sub_coll%n_in) then
              call rsub%sub_coll%compute_isr (sregion, &
@@ -5344,7 +5342,8 @@ to be more consistent with the evaluation of the Born phase space.
                   rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
           else
              call rsub%sub_coll%compute_fsr (sregion, &
-                  rsub%real_kinematics%p_born_cms%phs_point(1)%p, &
+                  rsub%real_kinematics%xi_ref_momenta (i_con), &
+                  rsub%real_kinematics%p_born_cms%get_momenta(1), &
                   rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr)
           end if
        else
@@ -5364,11 +5363,16 @@ to be more consistent with the evaluation of the Born phase space.
     real(default), intent(in) :: alpha_s
     real(default) :: sqme_sc
     real(default) :: xi
-    integer :: alr
+    integer :: alr, i_con
     alr = rsub%current_alr
     xi = zero
     associate (sregion => rsub%reg_data%regions(alr))
        if (sregion%has_collinear_divergence ()) then
+          if (rsub%sub_coll%use_resonance_mappings) then
+             i_con = rsub%reg_data%alr_to_i_contributor (alr)
+          else
+             i_con = 1
+          end if
           sqme_sc = rsub%get_sc_matrix_element (alr, em, sregion%uborn_index)
           if (em <= rsub%sub_coll%n_in) then
              call rsub%sub_coll%compute_soft_limit_isr (sregion, &
@@ -5376,7 +5380,8 @@ to be more consistent with the evaluation of the Born phase space.
                   rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
           else
              call rsub%sub_coll%compute_soft_limit_fsr &
-                  (sregion, rsub%real_kinematics%p_born_cms%phs_point(1)%p, &
+                  (sregion, rsub%real_kinematics%xi_ref_momenta(i_con), &
+                  rsub%real_kinematics%p_born_cms%phs_point(1)%p, &
                   rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr)
           end if
        else
