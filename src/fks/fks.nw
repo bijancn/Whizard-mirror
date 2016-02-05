@@ -6623,10 +6623,12 @@ and virtual counterterms.
 <<nlo controller: color data: TBP>>=
   procedure :: init => color_data_init
 <<nlo controller: procedures>>=
-  subroutine color_data_init (color_data, reg_data, prc_constants)
+  subroutine color_data_init (color_data, reg_data, prc_constants, &
+     interference_mode)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
+    integer, intent(in) :: interference_mode
     integer :: nlegs_real
     integer :: i, n_in
     nlegs_real = reg_data%nlegs_real
@@ -6661,7 +6663,7 @@ and virtual counterterms.
              color_data%col_state_real)
       end associate
     end do
-    call color_data%init_betaij (reg_data)
+    call color_data%init_betaij (reg_data, interference_mode)
   end subroutine color_data_init
 
 @ %def color_data_init
@@ -6669,16 +6671,22 @@ and virtual counterterms.
 <<nlo controller: color data: TBP>>=
   procedure :: init_betaij => color_data_init_betaij
 <<nlo controller: procedures>>=
-  subroutine color_data_init_betaij (color_data, reg_data)
+  subroutine color_data_init_betaij (color_data, reg_data, interference_mode)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
+    integer, intent(in) :: interference_mode
     integer :: i
     allocate (color_data%beta_ij (reg_data%nlegs_born, &
          reg_data%nlegs_born, reg_data%n_flv_born))
-    do i = 1, reg_data%n_flv_born
-      call color_data%fill_betaij_matrix (reg_data%nlegs_born, i, &
-           reg_data%regions(1)%flst_real, reg_data)
-    end do
+    select case (interference_mode)
+    case (INTERFERENCE_DEFAULT)
+       do i = 1, reg_data%n_flv_born
+          call color_data%fill_betaij_matrix (reg_data%nlegs_born, i, &
+             reg_data%regions(1)%flst_real, reg_data)
+       end do
+    case (INTERFERENCE_THRESHOLD)
+       call color_data%fill_betaij_matrix_threshold ()
+    end select
   end subroutine color_data_init_betaij
 
 @ %def color_data_init_betaij
@@ -6774,6 +6782,25 @@ and virtual counterterms.
 
 @ %def color_data_fill_betaij_matrix
 @
+<<nlo controller: color data: TBP>>=
+  procedure :: fill_betaij_matrix_threshold &
+     => color_data_fill_betaij_matrix_threshold
+<<nlo controller: procedures>>=
+  subroutine color_data_fill_betaij_matrix_threshold (color_data)
+    class(color_data_t), intent(inout) :: color_data
+    integer :: i
+    color_data%beta_ij = zero
+    associate (beta_ij => color_data%beta_ij (:,:,1))
+       do i = 1, 4
+          beta_ij (i,i) = -CF
+       end do
+       beta_ij (1,2) = CF; beta_ij (2,1) = CF
+       beta_ij (3,4) = CF; beta_ij (4,3) = CF
+    end associate
+  end subroutine color_data_fill_betaij_matrix_threshold
+
+@ %def color_data_fill_betaij_matrix_threshold
+@ 
 <<nlo controller: color data: TBP>>=
   procedure :: compute_bij => color_data_compute_bij
 <<nlo controller: procedures>>=
@@ -7903,7 +7930,8 @@ polarized or not.
     end select
     call nlo_controller%init_region_data (template, model)
     if (nlo_controller%settings%use_internal_color_correlations) &
-       call nlo_controller%color_data%init (nlo_controller%reg_data, prc_constants)
+       call nlo_controller%color_data%init (nlo_controller%reg_data, &
+          prc_constants, nlo_controller%settings%interference_mode)
     select case (template%mapping_type)
     case (FKS_RESONANCES)
        call nlo_controller%init_resonance_info (resonance_histories_clean)
