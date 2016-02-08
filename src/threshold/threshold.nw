@@ -10640,7 +10640,8 @@ end module ttv_formfactors
 <<ttv formfactors: parameters>>=
   integer, parameter :: VECTOR = 1
   integer, parameter :: AXIAL = 2
-  integer, parameter, public :: RESUMMED_SWITCHOFF_P0CONSTANT = - 2, &
+  integer, parameter, public :: MATCHED_EXPANDED = - 3, &
+                                RESUMMED_SWITCHOFF_P0CONSTANT = - 2, &
                                 MATCHED = -1, &
                                 RESUMMED_P0DEPENDENT = 0, &
                                 RESUMMED_P0CONSTANT = 1, &
@@ -11020,6 +11021,13 @@ end module ttv_formfactors
     select case (FF_mode)
     case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, RESUMMED_SWITCHOFF_P0CONSTANT)
        FF = resummed_formfactor (ps, vec_type)
+    case (MATCHED_EXPANDED)
+       f = f_switch_off (v_matching (ps%sqrts))
+       ! TODO: (bcn 2016-02-08) can be simplified
+       FF = - nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.) &
+            + nonrel_expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
+              (1-f) * AS_HARD, ps, vec_type, no_p0=.true.) &
+            - nonrel_expanded_formfactor (f * AS_HARD, f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
     case (EXPANDED_HARD_P0DEPENDENT)
        FF = nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type)
     case (EXPANDED_HARD_P0CONSTANT)
@@ -11050,28 +11058,6 @@ end module ttv_formfactors
 
 @
 <<ttv formfactors: procedures>>=
-  !!! matched formfactor (-> resummation in threshold region, smooth continuation above)
-  !pure
-  !function matched_formfactor (ps, vec_type) result (c)
-    !type(phase_space_point_t), intent(in) :: ps
-    !integer, intent(in) :: vec_type
-    !complex(default) :: c
-    !c = one
-    !if (matching_version > 0) then
-      !if (ps%inside_grid) then
-        !c = resummed_formfactor (ps, vec_type)
-      !else if (match_to_NLO) then
-        !c = nonrel_expanded_formfactor (alphas_soft (ps%sqrts) - AS_HARD, ps, vec_type)
-      !end if
-      !if (match_to_NLO .and. .not. EXT_NLO) c = c + &
-        !relativistic_formfactor_pure (AS_HARD, ps, vec_type) - one
-    !else
-      !c = resummed_formfactor (ps, vec_type)
-    !end if
-  !end function matched_formfactor
-
-@
-<<ttv formfactors: procedures>>=
   !!! LL/NLL resummation of nonrelativistic Coulomb potential
   pure function resummed_formfactor (ps, vec_type) result (c)
     type(phase_space_point_t), intent(in) :: ps
@@ -11090,42 +11076,7 @@ end module ttv_formfactors
 
 @
 <<ttv formfactors: procedures>>=
-  !!! relativistic off-shell O(alphas^1) contribution (-> no resummation)
-  function relativistic_formfactor (alphas, ps, vec_type) result (c)
-    real(default), intent(in) :: alphas
-    type(phase_space_point_t), intent(in) :: ps
-    integer, intent(in) :: vec_type
-    complex(default) :: c
-    complex(default) :: J0
-    complex(default) :: J0_LoopTools
-    external J0_LoopTools
-    c = one
-    if (.not. INITIALIZED_PARS .or. vec_type==2) return
-    J0 = J0_LoopTools (ps%p2, ps%k2, ps%q2, ps%m2)
-    c = formfactor_ttv_relativistic_nlo (alphas, ps, J0)
-  end function relativistic_formfactor
-
-@
-<<ttv formfactors: procedures>>=
-  !!! relativistic off-shell O(alphas^1) contribution (-> no resummation)
-  !!! pure version requiring an existing J0 grid to avoid non-pure LoopTools calls
-  pure function relativistic_formfactor_pure (alphas, ps, vec_type) result (c)
-    real(default), intent(in) :: alphas
-    type(phase_space_point_t), intent(in) :: ps
-    integer, intent(in) :: vec_type
-    complex(default) :: c
-!    complex(default) :: J0
-    c = one
-    if ( vec_type==2 ) return
-!    J0 = J0_LoopTools_interpolate (ps)
-!    c = formfactor_ttv_relativistic_nlo (alphas, ps, J0)
-    c = one + alphas * J0_LoopTools_interpolate (ps)
-  end function relativistic_formfactor_pure
-
-@
-<<ttv formfactors: procedures>>=
   !!! leading nonrelativistic O(alphas^1) contribution (-> expansion of resummation)
-  !!! nonrelativistic limit of module function 'relativistic_formfactor'
   pure function nonrel_expanded_formfactor (alphas_hard, alphas_soft, ps, vec_type, no_p0) result (FF)
     complex(default) :: FF
     real(default), intent(in) :: alphas_hard, alphas_soft
@@ -11363,20 +11314,6 @@ end module ttv_formfactors
   end function v_matching
 
 @
-<<ttv formfactors: procedures>>=
-  !!! measure for the validity of the nonrelativistic approximation
-  !pure
-!  function A_matching (alphas, ps) result (A)
-!    real(default), intent(in) :: alphas
-!    type(phase_space_point_t), intent(in) :: ps
-!    real(default) :: A
-!    complex(default) :: FF_relat, FF_nonrel
-!    FF_relat = relativistic_formfactor_pure (alphas, ps, 1)
-!    FF_nonrel = nonrel_expanded_formfactor (alphas, ps, 1)
-!    A = abs( (FF_relat-FF_nonrel) / (FF_relat+FF_nonrel) )
-!  end function A_matching
-
-@
 <<ttv formfactors: public>>=
   public :: f_switch_off
 <<ttv formfactors: procedures>>=
@@ -11397,79 +11334,7 @@ end module ttv_formfactors
     else
       fval = f2
     end if
-!    fval = zero
   end function f_switch_off
-
-@
-<<ttv formfactors: procedures>>=
-  !!! actual matching procedures:
-!  subroutine match_resummed_formfactor (ff, ps, vec_type)
-!    complex(default), intent(inout) :: ff
-!    type(phase_space_point_t), intent(in) :: ps
-!    integer, intent(in) :: vec_type
-!    call msg_debug (D_THRESHOLD, "match_resummed_formfactor")
-!    select case (matching_version)
-!      case (0)
-!        return
-!      case (1)
-!        call match_resummed_formfactor_Andre (ff, ps, vec_type, match_to_NLO)
-!      case (2)
-!        call match_resummed_formfactor_Max (ff, ps, vec_type, match_to_NLO)
-!      case (3)
-!        call match_resummed_formfactor_Andre (ff, ps, vec_type, match_to_NLO)
-!      case (4)
-!        call match_resummed_formfactor_Max (ff, ps, vec_type, match_to_NLO)
-!      case default
-!        call msg_fatal ("match_resummed_formfactor: invalid matching_version = " &
-!                          // char(matching_version))
-!    end select
-!  end subroutine match_resummed_formfactor
-
-  !!! Max's proposal
-!  subroutine match_resummed_formfactor_Max (ff, ps, vec_type, NLO_flag)
-!    complex(default), intent(inout) :: ff
-!    type(phase_space_point_t), intent(in) :: ps
-!    integer, intent(in) :: vec_type
-!    logical, intent(in) :: NLO_flag
-!    real(default) :: fm, as_f
-!    complex(default) :: FFnr_exp_as, R
-!    fm = f_switch_off (v_matching (ps))
-!    as_f = alphas_soft (ps%sqrts, NLOOP, fm*AS_HARD)
-!    FFnr_exp_as = nonrel_expanded_formfactor (AS_SOFT, ps, vec_type)
-!    if ( NLO_flag ) then
-!      R = ( ff - FFnr_exp_as ) / ( formfactor_LL_analytic (AS_SOFT, ps, vec_type) - FFnr_exp_as )
-!      ff = nonrel_expanded_formfactor ((AS_SOFT-AS_HARD), ps, vec_type) + &
-!           R * (   formfactor_LL_analytic (as_f, ps, vec_type) &
-!                 - nonrel_expanded_formfactor (as_f, ps, vec_type) )
-!    else
-!      R = ( ff - one ) / ( formfactor_LL_analytic (AS_SOFT, ps, vec_type) - FFnr_exp_as )
-!      ff = one + R * (   formfactor_LL_analytic (as_f, ps, vec_type) &
-!                       - nonrel_expanded_formfactor (as_f, ps, vec_type) )
-!    end if
-!  end subroutine match_resummed_formfactor_Max
-
-@
-<<ttv formfactors: procedures>>=
-  !!! Andre's proposal
-!  subroutine match_resummed_formfactor_Andre (ff, ps, vec_type, NLO_flag)
-!    complex(default), intent(inout) :: ff
-!    type(phase_space_point_t), intent(in) :: ps
-!    integer, intent(in) :: vec_type
-!    logical, intent(in) :: NLO_flag
-!    real(default) :: fm, as_f
-!    complex(default) :: FFnr_resum_f
-!    fm = f_switch_off (v_matching (ps))
-!    as_f = alphas_soft (ps%sqrts, NLOOP, fm*AS_HARD)
-!    FFnr_resum_f = formfactor_LL_analytic (as_f, ps, vec_type)
-!    if ( NLOOP > 0 ) FFnr_resum_f = FFnr_resum_f + &
-!      fm**2 * ( ff - formfactor_LL_analytic (AS_SOFT, ps, vec_type) )
-!    if ( NLO_flag ) then
-!      ff = nonrel_expanded_formfactor ((AS_SOFT-AS_HARD), ps, vec_type) + &
-!           FFnr_resum_f - nonrel_expanded_formfactor (as_f, ps, vec_type)
-!    else
-!      ff = FFnr_resum_f
-!    end if
-!  end subroutine match_resummed_formfactor_Andre
 
 @
 <<ttv formfactors: procedures>>=
