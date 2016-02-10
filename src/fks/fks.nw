@@ -3080,7 +3080,6 @@ leave out the denominator because it will cancel out anyway.
     type(vector4_t), intent(in), dimension(:) :: p
     real(default) :: dij, pfr
     integer :: i_res, i_reg, i, j, i_con, i_em
-    integer, dimension(:), allocatable :: associated_alrs
     integer :: nlegreal
 
     nlegreal = size (p)
@@ -3166,7 +3165,6 @@ reference.
     type(vector4_t), intent(in) :: p_soft
     real(default) :: pfr
     integer :: i_res, i_alr, i, j, i_reg, i_con
-    integer, dimension(:), allocatable :: associated_alrs
     integer :: nlegs
 
     d = zero
@@ -3425,59 +3423,39 @@ particles involved in the radiation process are massive or massless.
     type(vector4_t), intent(in), dimension(:)  :: p_born
     real(default), intent(in) :: born
     real(default), intent(in), dimension(:,:,:), allocatable :: b_ij
-    type(vector4_t), dimension(4) :: p
-    integer :: i, j, alr
+    integer :: alr
     real(default) :: s, BI, s_o_mu2
     virt%sqme_virt = zero
     virt%Q = zero
     if (virt%bad_point) return
-    BI = zero
     alr = find_first_matching_uborn (reg_data, i_flv)
-
     if (debug2_active (D_VIRTUAL)) then
        print *, 'Compute virtual component using phase space point: '
        call vector4_write_set (p_born, show_mass = .true., &
           check_conservation = .true.)
        print *, 'Compute virtual component using alpha_s = ', alpha_s
     end if
-
     associate (flst_born => reg_data%regions(alr)%flst_uborn)
        s = sum (p_born(1:virt%n_in))**2
        s_o_mu2 = s / virt%ren_scale2
        call virt%evaluate_initial_state (sqrt(s), i_flv)
        call virt%compute_collinear_contribution &
           (p_born, sqrt(s), i_flv, flst_born%massive) 
-       call virt%compute_massive_self_eikonals &
-          (p_born, s, i_flv, flst_born%massive)
+
+       select case (virt%interference_mode)
+       case (INTERFERENCE_THRESHOLD)
+          BI = virt%compute_eikonals_threshold (p_born, s, s_o_mu2, &
+               i_flv, alr, reg_data, flst_born, b_ij)
+       case default
+          BI = virt%compute_eikonals (p_born, s, s_o_mu2, &
+               i_flv, alr, reg_data, flst_born, b_ij)
+       end select
 
        if (debug2_active (D_VIRTUAL)) then
          call msg_debug2 (D_VIRTUAL, "Compute Q")
          print *, 'massive flavors: ', flst_born%massive
          print *, 'Q: ', virt%Q
        end if
-
-       select case (virt%interference_mode)
-       case (INTERFERENCE_THRESHOLD)
-          p(1) = p_born(THR_POS_WP) + p_born(THR_POS_B)
-          p(2) = p_born(THR_POS_B)
-          p(3) = p_born(THR_POS_WM) + p_born(THR_POS_BBAR)
-          p(4) = p_born(THR_POS_BBAR)
-          BI = evaluate_leg_pair (1) + evaluate_leg_pair (3)
-       case default
-          do i = 1, virt%nlegs
-             do j = 1, virt%nlegs
-                if (i /= j) then
-                   if (flst_born%colored(i) .and. flst_born%colored(j)) then
-                      call virt%compute_eikonal_factor (p_born, flst_born%massive, i, j, s_o_mu2)
-                      BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
-                      if (debug2_active (D_VIRTUAL)) &
-                         print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
-                                'I_ij: ', virt%I(i,j)
-                   end if
-                end if
-             end do
-          end do
-       end select
     end associate
     if (virt%use_internal_color_correlations) BI = BI * born
     !!! A factor of alpha_s/twopi is assumed to be included in vfin
@@ -3508,24 +3486,98 @@ particles involved in the radiation process are massive or massless.
        end do
     end function find_first_matching_uborn
 
-    function evaluate_leg_pair (i_start) result (b_ij_times_I)
-      real(default) :: b_ij_times_I
-      integer, intent(in) :: i_start
-      integer :: i1, i2
-      b_ij_times_I = zero
-      do i1 = i_start, i_start + 1
-         do i2 = i_start, i_start + 1
-            call virt%compute_eikonal_factor (p, [.true., .true., .true., .true.], i, j, s_o_mu2)
-            b_ij_times_I = b_ij_times_I + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
-         end do
-      end do
-    end function evaluate_leg_pair
-
   end subroutine virtual_evaluate
 
 @ %def virtual_evaluate
 @
+@
+<<virtual: virtual: TBP>>=
+  procedure :: compute_eikonals => virtual_compute_eikonals
+<<virtual: procedures>>=
+  function virtual_compute_eikonals (virtual, p_born, s, s_o_mu2, i_flv, &
+         alr, reg_data, flst_born, b_ij) result (BI)
+    real(default) :: BI
+    class(virtual_t), intent(inout) :: virtual
+    type(vector4_t), intent(in), dimension(:)  :: p_born
+    real(default), intent(in) :: s, s_o_mu2
+    integer, intent(in) :: i_flv, alr
+    type(region_data_t), intent(in) :: reg_data
+    type(flv_structure_t), intent(in) :: flst_born
+    real(default), intent(in), dimension(:,:,:), allocatable :: b_ij
+    integer :: i, j
+    BI = zero
+    call virtual%compute_massive_self_eikonals &
+         (p_born, s, i_flv, flst_born%massive)
+    do i = 1, virtual%nlegs
+       do j = 1, virtual%nlegs
+          if (i /= j) then
+             if (flst_born%colored(i) .and. flst_born%colored(j)) then
+                call virtual%compute_eikonal_factor (p_born, flst_born%massive, i, j, s_o_mu2)
+                BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virtual%I(i, j)
+                if (debug2_active (D_VIRTUAL)) &
+                   print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
+                          'I_ij: ', virtual%I(i,j)
+             end if
+          end if
+       end do
+    end do
+  end function virtual_compute_eikonals
 
+@ %def virtual_compute_eikonals
+@
+<<virtual: virtual: TBP>>=
+  procedure :: compute_eikonals_threshold => virtual_compute_eikonals_threshold
+<<virtual: procedures>>=
+  function virtual_compute_eikonals_threshold (virtual, p_born, s, &
+         s_o_mu2, i_flv, alr, reg_data, flst_born, b_ij) result (BI)
+    real(default) :: BI
+    class(virtual_t), intent(inout) :: virtual
+    type(vector4_t), intent(in), dimension(:)  :: p_born
+    real(default), intent(in) :: s, s_o_mu2
+    integer, intent(in) :: i_flv, alr
+    type(region_data_t), intent(in) :: reg_data
+    type(flv_structure_t), intent(in) :: flst_born
+    real(default), intent(in), dimension(:,:,:), allocatable :: b_ij
+    type(vector4_t), dimension(4) :: p
+    integer :: i, j
+    p(1) = p_born(THR_POS_WP) + p_born(THR_POS_B)
+    p(2) = p_born(THR_POS_B)
+    p(3) = p_born(THR_POS_WM) + p_born(THR_POS_BBAR)
+    p(4) = p_born(THR_POS_BBAR)
+    BI = evaluate_leg_pair (1) + evaluate_leg_pair (3)
+
+  contains
+
+    function evaluate_leg_pair (i_start) result (b_ij_times_I)
+      real(default) :: b_ij_times_I
+      integer, intent(in) :: i_start
+      real(default) :: term1, term2
+      b_ij_times_I = zero
+      do i = i_start, i_start + 1
+         do j = i_start, i_start + 1
+            if (i /= j) then
+               call virtual%compute_eikonal_factor (p, [.true., .true., .true., .true.], i, j, s_o_mu2)
+               b_ij_times_I = b_ij_times_I + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virtual%I(i, j)
+               if (debug2_active (D_VIRTUAL)) &
+                  print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
+                         'I_ij: ', virtual%I(i,j)
+            else
+               !!! massive self eikonals
+               term1 = log(s_o_mu2)
+               term2 = 0.5_default * I_m_eps (p(i))
+               virtual%Q = virtual%Q - cf * (term1 - term2)
+            end if
+         end do
+      end do
+      if (debug2_active (D_VIRTUAL)) then
+         print *, 'b_ij_times_I =    ', b_ij_times_I
+         print *, 'virtual%Q =    ', virtual%Q
+      end if
+    end function evaluate_leg_pair
+
+  end function virtual_compute_eikonals_threshold
+
+@ %def virtual_compute_eikonals_threshold
 <<virtual: virtual: TBP>>=
   procedure :: set_vfin => virtual_set_vfin
 <<virtual: procedures>>=
@@ -6716,6 +6768,10 @@ and virtual counterterms.
     type(region_data_t), intent(inout) :: reg_data
     integer, intent(in) :: interference_mode
     integer :: i
+    if (debug_active (D_SUBTRACTION)) then
+       call msg_print_color ("color_data_init_betaij", COL_AQUA)
+       call msg_print_color ("interference_mode", interference_mode, COL_AQUA)
+    end if
     allocate (color_data%beta_ij (reg_data%nlegs_born, &
          reg_data%nlegs_born, reg_data%n_flv_born))
     select case (interference_mode)
