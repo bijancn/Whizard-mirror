@@ -123,7 +123,7 @@ module @ID@_threshold
   private
   public :: init, calculate_blob, compute_born, &
        set_production_momenta, init_workspace, compute_production_owfs, &
-       compute_decay_owfs, table_spin_states, &
+       compute_decay_owfs, table_spin_states, compute_production_me, &
        top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2
 
   ! DON'T EVEN THINK of removing the following!
@@ -467,22 +467,28 @@ contains
     real(default), dimension(0:3,*), intent(in) :: k
     integer, intent(in) :: ffi
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
-    complex(default) :: prod_
+    complex(default), dimension(-1:1,-1:1,-1:1,1:2) :: born_decay_me
+    complex(default) :: prod, dec1, dec2
     integer, dimension(n_prt) :: s
     integer :: hi, h_t, h_tbar
     call set_production_momenta (k)
     call init_workspace ()
-    if (OFFSHELL_STRATEGY < 0)  production_me = compute_production_me (ffi)
+    if (OFFSHELL_STRATEGY < 0) then
+       production_me = compute_production_me (ffi)
+       born_decay_me = compute_decay_me ()
+    end if
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
        ! TODO: (bcn 2016-02-08) even with OS < 0, we will need interference terms in the Born
        if (OFFSHELL_STRATEGY < 0) then
           do h_t = -1, 1, 2
              do h_tbar = -1, 1, 2
-                prod_ = production_me(s(1), s(2), h_t, h_tbar)
+                prod = production_me(s(1), s(2), h_t, h_tbar)
+                dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+                dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
                 amp_blob(hi) = amp_blob(hi) + &
-                     abs2 (prod_) * abs2 (top_propagators (ffi)) * &
-                     abs2 (top_decay_born (h_t)) * abs2 (anti_top_decay_born (h_tbar))
+                     abs2 (prod) * abs2 (top_propagators (ffi)) * &
+                     abs2 (dec1) * abs2 (dec2)
              end do
           end do
        else
@@ -492,6 +498,26 @@ contains
        end if
     end do
   end subroutine compute_born
+
+  function compute_decay_me () result (born_decay_me)
+    complex(default), dimension(-1:1,-1:1,-1:1,1:2) :: born_decay_me
+    procedure(top_decay_born), pointer :: top_decay_born_
+    integer :: h_t, h_W, h_b, leg
+    do leg = 1, 2
+       if (leg == 1) then
+          top_decay_born_ => anti_top_decay_born
+       else
+          top_decay_born_ => top_decay_born
+       end if
+       do h_t = -1, 1, 2
+          do h_W = -1, 1, 1
+             do h_b = -1, 1, 2
+                born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (h_t, h_W, h_b)
+             end do
+          end do
+       end do
+    end do
+  end function compute_decay_me 
 
   subroutine init_workspace ()
     if (onshell_tops (p3, p4)) then

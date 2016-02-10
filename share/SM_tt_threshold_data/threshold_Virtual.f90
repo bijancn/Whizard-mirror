@@ -56,14 +56,15 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   real(c_default_float), intent(in) :: mu_c
   real(c_default_float), dimension(4), intent(out) :: sqme_c
   real(c_default_float), intent(out) :: acc_c
+  complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
   type(momentum), dimension(2) :: p_top
   integer :: h_el, h_pos, h_t, h_tbar
-  integer :: leg, ffi, this_id, h_b, h_W
+  integer :: leg, this_id, h_b, h_W
   real(double) :: virt_decay(0:3), total(0:3), acc
   real(double) :: p_decay(0:3,3,2)
   real(double) :: mu, alpha_s, dynamic_top_mass
-  complex(default) :: production_me, born_decay_me, bw
-  real(default) :: production_me2, born_decay_me2
+  complex(default) :: born_decay_me, bw
+  real(default) :: prod2, born_decay_me2
   call msg_debug (D_ME_METHODS, "@ID@_olp_eval2")
   if (i_flv /= 1)  call msg_fatal ("i_flv /= 1, threshold interface was not built for this")
   if (any (id <= 0))  call msg_fatal ("Could not register process in OpenLoops")
@@ -83,16 +84,14 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   call set_production_momenta (parray)
   call set_parameter("width(6)", zero)
   call set_parameter("width(24)", zero)
-  ffi = 0
-  bw = top_propagators (ffi)
+  bw = top_propagators (FF)
+  production_me = compute_production_me (FF)
   do h_t = -1, 1, 2
   do h_tbar = -1, 1, 2
-     production_me2 = zero
+     prod2 = 0
      do h_el = -1, 1, 2
      do h_pos = -1, 1, 2
-        call compute_production_owfs (spins = [h_el, h_pos])
-        production_me = calculate_blob (ffi, h_t, h_tbar)
-        production_me2 = production_me2 + real(production_me * conjg (production_me))
+        prod2 = prod2 + abs2 (production_me(h_el, h_pos, h_t, h_tbar))
      end do
      end do
      do leg = 1, 2
@@ -108,14 +107,13 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
               born_decay_me = top_decay_born (h_t, h_W, h_b)
               this_id = (3 + h_tbar) / 2 + 2
            end if
-           born_decay_me2 = born_decay_me2 + (born_decay_me * conjg (born_decay_me))
+           born_decay_me2 = born_decay_me2 + abs2 (born_decay_me)
         end do
         end do
         ! TODO: (bcn 2016-01-22) handle acc
         call evaluate_loop (id(this_id), p_decay(:,:,leg), virt_decay(3), &
              virt_decay(0:2), acc)
-        total = total + production_me2 * born_decay_me2 * &
-             virt_decay * (bw * conjg (bw))
+        total = total + prod2 * born_decay_me2 * virt_decay * abs2 (bw)
      end do
   end do
   end do
@@ -123,6 +121,9 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   !!! the MEs are polarized or not
   total = total * production_factors * four
   sqme_c = [total(2), total(1), total(0), total(3)]
+  if (debug2_active (D_ME_METHODS)) then
+     print *, 'sqme_c =    ', sqme_c !!! Debugging
+  end if
 end subroutine @ID@_olp_eval2
 
 subroutine @ID@_stop_openloops () bind(C)
