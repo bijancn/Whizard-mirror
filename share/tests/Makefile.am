@@ -1025,6 +1025,7 @@ SHOWER_EXT_SIN = \
     extra_shower_6.sin
 
 NLO_EXT_SIN = \
+    extra_nlo_decay.sin \
     extra_nlo_tt.sin \
     extra_nlo_tt_powheg.sin \
     extra_nlo_tt_powheg_sudakov.sin \
