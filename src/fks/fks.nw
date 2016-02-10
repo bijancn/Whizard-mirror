@@ -3258,6 +3258,7 @@ module virtual
   use sm_physics
   use lorentz
   use flavors
+  use nlo_data, only: INTERFERENCE_DEFAULT, INTERFERENCE_THRESHOLD
   use fks_regions
 
 <<Standard module head>>
@@ -3288,7 +3289,7 @@ end module virtual
     integer :: n_in, nlegs, nflv
     logical :: bad_point
     logical :: use_internal_color_correlations
-    logical :: only_self_correlations = .false.
+    integer :: interference_mode = INTERFERENCE_DEFAULT
   contains
   <<virtual: virtual: TBP>>
   end type virtual_t
@@ -3444,29 +3445,31 @@ particles involved in the radiation process are massive or massless.
           (p_born, sqrt(s), i_flv, flst_born%massive) 
        call virt%compute_massive_self_eikonals &
           (p_born, s, i_flv, flst_born%massive)
-      
 
        if (debug2_active (D_VIRTUAL)) then
          call msg_debug2 (D_VIRTUAL, "Compute Q")
          print *, 'massive flavors: ', flst_born%massive
          print *, 'Q: ', virt%Q
-      end if
+       end if
 
-      if (.not. virt%only_self_correlations) then
-         do i = 1, virt%nlegs
-            do j = 1, virt%nlegs
-               if (i /= j) then
-                  if (flst_born%colored(i) .and. flst_born%colored(j)) then
-                     call virt%compute_eikonal_factors (p_born, flst_born%massive, i, j)
-                     BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
-                     if (debug2_active (D_VIRTUAL)) &
-                        print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
-                               'I_ij: ', virt%I(i,j)
-                  end if
-               end if
-            end do
-         end do
-      end if
+       select case (virt%interference_mode)
+       case (INTERFERENCE_THRESHOLD)
+          call msg_fatal ("virtual_evaluate: Implement me")
+       case default
+          do i = 1, virt%nlegs
+             do j = 1, virt%nlegs
+                if (i /= j) then
+                   if (flst_born%colored(i) .and. flst_born%colored(j)) then
+                      call virt%compute_eikonal_factors (p_born, flst_born%massive, i, j)
+                      BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virt%I(i, j)
+                      if (debug2_active (D_VIRTUAL)) &
+                         print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
+                                'I_ij: ', virt%I(i,j)
+                   end if
+                end if
+             end do
+          end do
+       end select
     end associate
     if (virt%use_internal_color_correlations) BI = BI * born
     !!! A factor of alpha_s/twopi is assumed to be included in vfin
@@ -3592,7 +3595,7 @@ initial-initial interactions.
           term2 = 0.5_default * I_m_eps (p_born(i))
           virt%Q = virt%Q - virt%c_flv (i, i_flv) * (term1 - term2)
        end if
-    end do  
+    end do
   end subroutine virtual_compute_massive_self_eikonals
 
 @ %def virtual_compute_massive_self_eikonals
@@ -3890,6 +3893,8 @@ module real_subtraction
   use flavors
   use fks_regions
   use nlo_data
+  use ttv_formfactors, only: THR_POS_B, THR_POS_BBAR
+  use ttv_formfactors, only: THR_POS_WP, THR_POS_WM
 
 <<Standard module head>>
 
@@ -3911,6 +3916,7 @@ end module real_subtraction
   integer, parameter, public :: INTEGRATION = 0
   integer, parameter, public :: FIXED_ORDER_EVENTS = 1
   integer, parameter, public :: POWHEG = 2
+
 
 @ %def real subtraction parameters
 @
@@ -3935,7 +3941,7 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     type(pdf_container_t), pointer :: pdf_born_plus => null ()
     type(pdf_container_t), pointer :: pdf_born_minus => null ()
     logical :: xi2_expanded = .true.
-    logical :: only_self_correlations = .false.
+    integer :: interference_mode = INTERFERENCE_DEFAULT
   contains
   <<real subtraction: soft sub: TBP>>
   end type soft_subtraction_t
@@ -3956,8 +3962,7 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     sub_soft%nlegs_born = nlegs_born
     sub_soft%nlegs_real = nlegs_real
     allocate (sub_soft%value (reg_data%n_regions))
-    allocate (sub_soft%momentum_matrix &
-              (nlegs_born, nlegs_born))
+    allocate (sub_soft%momentum_matrix (nlegs_born, nlegs_born))
   end subroutine soft_subtraction_init
 
 @ %def soft_subtraction_init
@@ -4065,14 +4070,14 @@ quantity $f(0,y) / \xi$, where
 \end{equation*}
 $J/\xi$ is computed by the phase space generator. The additional factor
 of $\xi^{-1}$ is supplied in the [[evaluate_region_fsr]]-routine. Thus,
-we are left with at factor of $\xi^2$. A look on expression for the
+we are left with a factor of $\xi^2$. A look on the expression for the
 soft limit of $R_\alpha$ below reveals that we are factoring out the gluon
-energy $E_i$ in the denominator. Therefore, we have a factor 
+energy $E_i$ in the denominator. Therefore, we have a factor
 $\xi^2 / E_i^2 = q^2 / 4$.\\
 Note that the same routine is used also for the computation of the soft
 mismatch. There, the gluon energy is not factored out from the soft vector,
 so that we are left with the $\xi^2$-factor, which will eventually be
-cancelled out again. So, we just multiply with 1. Both cases are 
+cancelled out again. So, we just multiply with 1. Both cases are
 distinguished by the flag [[xi2_expanded]].
 <<real subtraction: soft sub: TBP>>=
   procedure :: compute => soft_subtraction_compute
@@ -4087,7 +4092,6 @@ distinguished by the flag [[xi2_expanded]].
     integer, intent(in) :: alr, emitter, i_res
     real(default) :: s_alpha_soft
     real(default) :: kb
-    integer :: i, j
     real(default) :: xi2_factor
 
     if (.not. vector_set_is_cms (p_born)) then
@@ -4098,16 +4102,13 @@ distinguished by the flag [[xi2_expanded]].
 
     s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
         (p_born, sub_soft%p_soft, alr, emitter, i_res)
-    call sub_soft%compute_momentum_matrix (p_born, sub_soft%p_soft)
     sub_soft%value(alr) = 4 * pi * alpha_s * s_alpha_soft
-    kb = zero
-    do i = 1, size (p_born)
-       do j = 1, size (p_born)
-          if (sub_soft%only_self_correlations .and. i /= j) cycle
-          kb = kb + sub_soft%momentum_matrix (i, j) * &
-             born_ij (i, j)
-       end do
-    end do
+    select case (sub_soft%interference_mode)
+    case (INTERFERENCE_DEFAULT)
+       kb = sub_soft%evaluate_interference_default (p_born, born_ij)
+    case (INTERFERENCE_THRESHOLD)
+       kb = sub_soft%evaluate_interference_threshold (p_born, born_ij)
+    end select
     call msg_debug2 (D_SUBTRACTION, 'KB', kb)
     sub_soft%value(alr) = sub_soft%value(alr) * kb
     if (sub_soft%xi2_expanded) then
@@ -4123,6 +4124,30 @@ distinguished by the flag [[xi2_expanded]].
   end subroutine soft_subtraction_compute
 
 @ %def soft_subtraction_compute
+@ We loop over all external legs and do not take care to leave out non-colored
+ones because [[born_ij]] is constructed in such a way that it is only
+non-zero for colored entries.
+<<real subtraction: soft sub: TBP>>=
+  procedure :: evaluate_interference_default => &
+     soft_subtraction_evaluate_interference_default
+<<real subtraction: procedures>>=
+  function soft_subtraction_evaluate_interference_default &
+     (sub_soft, p, born_ij) result (kb)
+    real(default) :: kb
+    class(soft_subtraction_t), intent(inout) :: sub_soft
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default), intent(in), dimension(:,:) :: born_ij
+    integer :: i, j
+    kb = zero
+    call sub_soft%compute_momentum_matrix (p)
+    do i = 1, size (p)
+       do j = 1, size (p)
+          kb = kb + sub_soft%momentum_matrix (i, j) * born_ij (i, j)
+       end do
+    end do
+  end function soft_subtraction_evaluate_interference_default
+
+@ %def soft_subtraction_evaluate_interference_default
 @ We have to multiply this with $\xi^2(1-y)$. Further, when applying
 the soft $\mathcal{S}$-function, the energy of the radiated particle
 is factored out. Thus we have $\xi^2/E_{em}^2(1-y) = 4/q_0^2(1-y)$.
@@ -4133,18 +4158,18 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
        soft_subtraction_compute_momentum_matrix
 <<real subtraction: procedures>>=
   subroutine soft_subtraction_compute_momentum_matrix &
-       (sub_soft, p_born, p_soft)
+       (sub_soft, p_born)
     class(soft_subtraction_t), intent(inout) :: sub_soft
     type(vector4_t), intent(in), dimension(:) :: p_born
-    type(vector4_t), intent(in) :: p_soft
+    !!!type(vector4_t), intent(in) :: p_soft
     real(default) :: num, deno1, deno2
     integer :: i, j
     do i = 1, sub_soft%nlegs_born
       do j = 1, sub_soft%nlegs_born
         if (i <= j) then
            num = p_born(i) * p_born(j)
-           deno1 = p_born(i) * p_soft
-           deno2 = p_born(j) * p_soft
+           deno1 = p_born(i) * sub_soft%p_soft
+           deno2 = p_born(j) * sub_soft%p_soft
            sub_soft%momentum_matrix(i,j) = num / (deno1 * deno2)
         else
            !!! momentum matrix is symmetric.
@@ -4155,6 +4180,45 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   end subroutine soft_subtraction_compute_momentum_matrix
 
 @ %def soft_subtraction_compute_momentum_matrx
+@
+<<real subtraction: soft sub: TBP>>=
+  procedure :: evaluate_interference_threshold => &
+     soft_subtraction_evaluate_interference_threshold
+<<real subtraction: procedures>>=
+  function soft_subtraction_evaluate_interference_threshold &
+     (sub_soft, p_born, born_ij) result (kb)
+    real(default) :: kb
+    class(soft_subtraction_t), intent(inout) :: sub_soft
+    type(vector4_t), intent(in), dimension(:) :: p_born
+    real(default), intent(in), dimension(:,:) :: born_ij
+    type(vector4_t), dimension(4) :: p
+    integer :: i, j
+    p(1) = p_born(THR_POS_WP) + p_born(THR_POS_B)
+    p(2) = p_born(THR_POS_B)
+    p(3) = p_born(THR_POS_WM) + p_born(THR_POS_BBAR)
+    p(4) = p_born(THR_POS_BBAR)
+    kb = zero
+    kb = kb + evaluate_leg_pair (1) + evaluate_leg_pair (3)
+    
+  contains
+    function evaluate_leg_pair (i_start) result (kbb)
+      real(default) :: kbb
+      integer, intent(in) :: i_start
+      integer :: i1, i2
+      real(default) :: numerator, deno1, deno2
+      kbb = zero
+      do i1 = i_start, i_start + 1
+         do i2 = i_start, i_start + 1
+            numerator = p(i1) * p(i2)
+            deno1 = p(i1) * sub_soft%p_soft
+            deno2 = p(i2) * sub_soft%p_soft
+            kbb = kbb +  numerator * born_ij (i1, i2) / deno1 / deno2
+         end do
+      end do
+    end function evaluate_leg_pair
+  end function soft_subtraction_evaluate_interference_threshold
+
+@ %def soft_subtraction_evaluate_interference_threshold
 @
 \subsection{Soft mismatch}
 <<real subtraction: public>>=
@@ -4201,7 +4265,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
 There, it first creates the soft vector, then the necessary soft real matrix element. 
 These inputs are then used to get the numerical value of the soft mismatch.
 <<real subtraction: soft mismatch: TBP>>=
-  procedure :: evaluate => soft_mismatch_evaluate 
+  procedure :: evaluate => soft_mismatch_evaluate
 <<real subtraction: procedures>>=
   function soft_mismatch_evaluate (soft_mismatch, alpha_s) result (sqme_mismatch)
     real(default) :: sqme_mismatch
@@ -4219,7 +4283,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
        y = real_kinematics%y_mismatch
        s = real_kinematics%cms_energy2
        E_gluon = sqrt (s) * xi / two
-     
+
        if (debug_active (D_MISMATCH)) then
           print *, 'Evaluating soft mismatch: '
           print *, 'Phase space: '
@@ -4249,7 +4313,7 @@ These inputs are then used to get the numerical value of the soft mismatch.
           type is (fks_mapping_resonances_t)
              call fks_mapping%set_resonance_momentum &
                 (real_kinematics%xi_ref_momenta(i_con))
-          end select 
+          end select
 
           call soft_mismatch%sub_soft%compute (real_kinematics%p_born_cms%get_momenta(1), &
              soft_mismatch%sqme_born_cc(:,:,i_uborn), y, q2, alpha_s, alr, emitter, i_res)
@@ -5477,6 +5541,9 @@ end module nlo_data
   integer, parameter, public :: FKS_DEFAULT = 1
   integer, parameter, public :: FKS_RESONANCES = 2
 
+  integer, parameter, public :: INTERFERENCE_DEFAULT = 0
+  integer, parameter, public :: INTERFERENCE_THRESHOLD = 1
+
 @ %def parameters
 @
 <<nlo data: public>>=
@@ -6561,10 +6628,12 @@ and virtual counterterms.
 <<nlo controller: color data: TBP>>=
   procedure :: init => color_data_init
 <<nlo controller: procedures>>=
-  subroutine color_data_init (color_data, reg_data, prc_constants)
+  subroutine color_data_init (color_data, reg_data, prc_constants, &
+     interference_mode)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
+    integer, intent(in) :: interference_mode
     integer :: nlegs_real
     integer :: i, n_in
     nlegs_real = reg_data%nlegs_real
@@ -6599,7 +6668,7 @@ and virtual counterterms.
              color_data%col_state_real)
       end associate
     end do
-    call color_data%init_betaij (reg_data)
+    call color_data%init_betaij (reg_data, interference_mode)
   end subroutine color_data_init
 
 @ %def color_data_init
@@ -6607,16 +6676,22 @@ and virtual counterterms.
 <<nlo controller: color data: TBP>>=
   procedure :: init_betaij => color_data_init_betaij
 <<nlo controller: procedures>>=
-  subroutine color_data_init_betaij (color_data, reg_data)
+  subroutine color_data_init_betaij (color_data, reg_data, interference_mode)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
+    integer, intent(in) :: interference_mode
     integer :: i
     allocate (color_data%beta_ij (reg_data%nlegs_born, &
          reg_data%nlegs_born, reg_data%n_flv_born))
-    do i = 1, reg_data%n_flv_born
-      call color_data%fill_betaij_matrix (reg_data%nlegs_born, i, &
-           reg_data%regions(1)%flst_real, reg_data)
-    end do
+    select case (interference_mode)
+    case (INTERFERENCE_DEFAULT)
+       do i = 1, reg_data%n_flv_born
+          call color_data%fill_betaij_matrix (reg_data%nlegs_born, i, &
+             reg_data%regions(1)%flst_real, reg_data)
+       end do
+    case (INTERFERENCE_THRESHOLD)
+       call color_data%fill_betaij_matrix_threshold ()
+    end select
   end subroutine color_data_init_betaij
 
 @ %def color_data_init_betaij
@@ -6712,6 +6787,25 @@ and virtual counterterms.
 
 @ %def color_data_fill_betaij_matrix
 @
+<<nlo controller: color data: TBP>>=
+  procedure :: fill_betaij_matrix_threshold &
+     => color_data_fill_betaij_matrix_threshold
+<<nlo controller: procedures>>=
+  subroutine color_data_fill_betaij_matrix_threshold (color_data)
+    class(color_data_t), intent(inout) :: color_data
+    integer :: i
+    color_data%beta_ij = zero
+    associate (beta_ij => color_data%beta_ij (:,:,1))
+       do i = 1, 4
+          beta_ij (i,i) = -CF
+       end do
+       beta_ij (1,2) = CF; beta_ij (2,1) = CF
+       beta_ij (3,4) = CF; beta_ij (4,3) = CF
+    end associate
+  end subroutine color_data_fill_betaij_matrix_threshold
+
+@ %def color_data_fill_betaij_matrix_threshold
+@ 
 <<nlo controller: color data: TBP>>=
   procedure :: compute_bij => color_data_compute_bij
 <<nlo controller: procedures>>=
@@ -7196,7 +7290,7 @@ one to determine this.
      logical :: test_soft_limit = .false.
      logical :: test_coll_limit = .false.
      integer :: fixed_alr = -1
-     logical :: only_self_correlations = .false.
+     integer :: interference_mode = INTERFERENCE_DEFAULT
   contains
   <<nlo data: nlo settings: TBP>>
   end type nlo_settings_t
@@ -7505,7 +7599,7 @@ process.
     class(prc_core_t), intent(in) :: core
     select type (core)
     type is (prc_threshold_t)
-       nlo_controller%settings%only_self_correlations = .true.
+       nlo_controller%settings%interference_mode = INTERFERENCE_THRESHOLD
     end select
   end subroutine nlo_controller_check_if_threshold_method
 
@@ -7590,8 +7684,8 @@ polarized or not.
        nlo_controller%real_terms%test_limit = &
           settings%test_soft_limit .or. settings%test_coll_limit
        nlo_controller%real_terms%fixed_alr = settings%fixed_alr
-       nlo_controller%real_terms%sub_soft%only_self_correlations &
-          = settings%only_self_correlations
+       nlo_controller%real_terms%sub_soft%interference_mode &
+          = settings%interference_mode
     end associate
   end subroutine nlo_controller_init_real_subtraction
 
@@ -7841,7 +7935,8 @@ polarized or not.
     end select
     call nlo_controller%init_region_data (template, model)
     if (nlo_controller%settings%use_internal_color_correlations) &
-       call nlo_controller%color_data%init (nlo_controller%reg_data, prc_constants)
+       call nlo_controller%color_data%init (nlo_controller%reg_data, &
+          prc_constants, nlo_controller%settings%interference_mode)
     select case (template%mapping_type)
     case (FKS_RESONANCES)
        call nlo_controller%init_resonance_info (resonance_histories_clean)
@@ -8115,8 +8210,8 @@ polarized or not.
     class(nlo_controller_t), intent(inout) :: nlo_controller
     call nlo_controller%virtual_terms%init (nlo_controller%particle_states%flv_state_born, &
        nlo_controller%particle_data%n_in)
-    nlo_controller%virtual_terms%only_self_correlations &
-       = nlo_controller%settings%only_self_correlations
+    nlo_controller%virtual_terms%interference_mode &
+       = nlo_controller%settings%interference_mode
   end subroutine nlo_controller_init_virtual
 
 @ %def nlo_controller_init_virtual
