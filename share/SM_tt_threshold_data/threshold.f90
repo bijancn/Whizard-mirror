@@ -512,11 +512,13 @@ contains
     p2 = - k(:,2) ! incoming
     p3 =   k(:,3) ! outgoing
     p4 =   k(:,4) ! outgoing
-    p5 =   k(:,5) ! outgoing
-    p6 =   k(:,6) ! outgoing
     p12 = p1 + p2
-    p35 = p3 + p5
-    p46 = p4 + p6
+    if (.not. onshell_tops (p3, p4)) then
+       p5 =   k(:,5) ! outgoing
+       p6 =   k(:,6) ! outgoing
+       p35 = p3 + p5
+       p46 = p4 + p6
+    end if
   end subroutine set_production_momenta
 
   elemental function abs2 (c) result (c2)
