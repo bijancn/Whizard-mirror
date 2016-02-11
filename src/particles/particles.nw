@@ -1674,9 +1674,15 @@ it has a generic polarization, the [[pol]] component is defined.  For
 each particle we store the four-momentum and the invariant mass
 squared, i.e., the squared norm of the four-momentum.  There is also
 an optional list of parent and child particles, for bookkeeping in
-physical events. The vertex is an optional component that consists of
+physical events. The [[vertex]] is an optional component that consists of
 a Lorentz 4-vector, denoting the position and time of the vertex
-(displaced vertex/time).
+(displaced vertex/time). [[lifetime]] is an optional component that
+accounts for the finite lifetime $\tau$ of a decaying particle. In
+case there is no magnetic field etc., the true decay vertex of a
+particle in the detector would be $\vec{v}^\prime = \vec{v} + \tau
+\times \vec{p}/p^0$, where $p^0$ and $\vec{p}$ are the energy and
+3-momentum of the particle.
+
 <<Particles: public>>=
   public :: particle_t
 <<Particles: types>>=
@@ -1691,6 +1697,7 @@ a Lorentz 4-vector, denoting the position and time of the vertex
      type(vector4_t) :: p = vector4_null
      real(default) :: p2 = 0
      type(vector4_t), allocatable :: vertex
+     real(default), allocatable :: lifetime
      integer, dimension(:), allocatable :: parent
      integer, dimension(:), allocatable :: child
    contains
@@ -1717,6 +1724,8 @@ relations.
     prt_out%p2 = prt_in%p2
     if (allocated (prt_in%vertex))  &
        allocate (prt_out%vertex, source=prt_in%vertex)
+    if (allocated (prt_in%lifetime))  &
+         allocate (prt_out%lifetime, source=prt_in%lifetime)
   end subroutine particle_init_particle
 
 @ %def particle_init_particle
@@ -1782,6 +1791,7 @@ polarization.  This mode is translated into the polarization status.
     class(particle_t), intent(inout) :: prt
     call polarization_final (prt%pol)
     if (allocated (prt%vertex))  deallocate (prt%vertex)
+    if (allocated (prt%lifetime))  deallocate (prt%lifetime)
   end subroutine particle_final
 
 @ %def particle_final
@@ -1858,6 +1868,10 @@ polarization.  This mode is translated into the polarization status.
           write (u, "(1x,A,1x," // fmt // ")")  "Vtx y = ", prt%vertex%p(2)
           write (u, "(1x,A,1x," // fmt // ")")  "Vtx z = ", prt%vertex%p(3)
        end if
+       if (allocated (prt%lifetime)) then
+          write (u, "(1x,A,1x," // fmt // ")")  "Lifetime = ", &
+               prt%lifetime
+       end if
     end if
   end subroutine particle_write
 
@@ -1895,13 +1909,18 @@ polarization.  This mode is translated into the polarization status.
     if (allocated (prt%vertex)) then
        call vector4_write_raw (prt%vertex, u)
     end if    
+    write (u) allocated (prt%lifetime)
+    if (allocated (prt%lifetime)) then
+       write (u) prt%lifetime
+    end if
   end subroutine particle_write_raw
 
   subroutine particle_read_raw (prt, u, iostat)
     class(particle_t), intent(out) :: prt
     integer, intent(in) :: u
     integer, intent(out) :: iostat
-    logical :: allocated_parent, allocated_child, allocated_vertex
+    logical :: allocated_parent, allocated_child
+    logical :: allocated_vertex, allocated_lifetime
     integer :: size_parent, size_child
     read (u, iostat=iostat) prt%status, prt%polarization
     call prt%flv%read_raw (u, iostat=iostat)
@@ -1930,6 +1949,11 @@ polarization.  This mode is translated into the polarization status.
     if (allocated_vertex) then
        allocate (prt%vertex)
        read (u, iostat=iostat) prt%vertex%p
+    end if
+    read (u, iostat=iostat) allocated_lifetime
+    if (allocated_lifetime) then
+       allocate (prt%lifetime)
+       read (u, iostat=iostat) prt%lifetime
     end if
   end subroutine particle_read_raw
 
@@ -2189,6 +2213,18 @@ particles.
 @ %def particle_set_vertex_from_vector4
 @ %def particle_set_vertex_from_xyz
 @ %def particle_set_vertex_from_xyzt
+@ Set the lifetime of a particle.
+<<Particles: particle: TBP>>=
+  procedure :: set_lifetime => particle_set_lifetime
+<<Particles: procedures>>=
+  elemental subroutine particle_set_lifetime (prt, lifetime)
+    class(particle_t), intent(inout) :: prt
+    real(default), intent(in) :: lifetime
+    if (allocated (prt%lifetime))  deallocate (prt%lifetime)
+    allocate (prt%lifetime, source=lifetime)
+  end subroutine particle_set_lifetime
+
+@ %def particle_set_lifetime
 @
 \subsubsection{Accessing contents}
 The status code.
@@ -2462,6 +2498,21 @@ The status code.
   end function particle_get_vertex
 
 @ %def particle_get_vertex
+@ Return the lifetime of a particle.
+<<Particles: particle: TBP>>=
+  procedure :: get_lifetime => particle_get_lifetime
+<<Particles: procedures>>=
+  elemental function particle_get_lifetime (prt) result (lifetime)
+    real(default) :: lifetime
+    class(particle_t), intent(in) :: prt
+    if (allocated (prt%lifetime)) then
+       lifetime = prt%lifetime
+    else
+       lifetime = 0
+    end if
+  end function particle_get_lifetime
+
+@ %def particle_get_lifetime
 @
 <<Particles: particle: TBP>>=
   procedure :: momentum_to_pythia6 => particle_momentum_to_pythia6
@@ -2501,7 +2552,6 @@ HepMC event record.
 <<Particles: particle set: TBP>>=
   generic :: init => init_interaction
   procedure :: init_interaction => particle_set_init_interaction
-@ %def particle_set_init 
 @ When a particle set is initialized from a given interaction, we have
 to determine the branch within the original state matrix that fixes
 the particle quantum numbers.  This is done with the appropriate
@@ -2621,6 +2671,29 @@ possible, in particular if the squared matrix element is zero.
   end subroutine particle_set_init_interaction
 
 @ %def particle_set_init_interaction
+<<Particles: particle set: TBP>>=
+  generic :: init => init_particle_set
+  procedure :: init_particle_set => particle_set_init_particle_set
+<<Particles: procedures>>=
+  subroutine particle_set_init_particle_set (pset_out, pset_in)
+    class(particle_set_t), intent(out) :: pset_out
+    type(particle_set_t), intent(in) :: pset_in
+    integer :: i
+    pset_out%n_beam = pset_in%n_beam
+    pset_out%n_in   = pset_in%n_in
+    pset_out%n_vir  = pset_in%n_vir
+    pset_out%n_out  = pset_in%n_out
+    pset_out%n_tot  = pset_in%n_tot
+    if (allocated (pset_in%prt)) then
+       allocate (pset_out%prt (size (pset_in%prt)))
+       do i = 1, size (pset_in%prt)
+          pset_out%prt(i) = pset_in%prt(i)
+       end do
+    end if
+    pset_out%correlated_state = pset_in%correlated_state      
+  end subroutine particle_set_init_particle_set
+
+@ %def particle_set_init_particle_set
 @ Manually set the model for the stored particles.
 <<Particles: particle set: TBP>>=
   procedure :: set_model => particle_set_set_model
@@ -2800,7 +2873,9 @@ the [[particle_set]].
      allocate (new_particle_set%prt (n_tot))
      new_particle_set%prt(i_beam2) = particle_set%prt(i_beam1)
      new_particle_set%prt(i_remnant2) = particle_set%prt(i_remnant1)
-     new_particle_set%prt(i_virt2(1:n_virt1)) = particle_set%prt(i_virt1) 
+     do i = 1, n_virt1
+        new_particle_set%prt(i_virt2(i)) = particle_set%prt(i_virt1(i))
+     end do
 
      do i = n_virt1 + 1, n_virt2
         new_particle_set%prt(i_virt2(i)) = particle_set%prt(i_out1(i-n_virt1))
@@ -2846,11 +2921,7 @@ the [[particle_set]].
      do i = n_in2 + n_beam2 + n_remnant2 + n_virt2 + 1, n_tot
         call new_particle_set%prt(i)%set_parents (parents)
      end do
-     !!! Overwrite old particle set
-     select type (particle_set)
-     type is (particle_set_t)
-        particle_set = new_particle_set
-     end select
+     call particle_set%init (new_particle_set)
   contains
 
     <<build radiation: set color offset>>
