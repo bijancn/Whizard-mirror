@@ -1173,7 +1173,7 @@ end module blha_olp_interfaces
        allocate (object%i_born (object%n_flv), &
                  object%i_cc (object%n_flv) , &
                  object%i_sc (object%n_flv))
-       object%i_virt = 0
+       object%i_born = 0
        object%i_cc = 0
        object%i_sc = 0
     else if (blha_template%compute_real_trees ()) then
@@ -1241,27 +1241,6 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
 @ %def prc_blha_init_ew_parameters
 @
 <<BLHA OLP interfaces: prc blha: TBP>>=
-  !!!procedure :: set_bquark_mass => prc_blha_set_bquark_mass
-<<BLHA OLP interfaces: procedures>>=
-  !!!subroutine prc_blha_set_bquark_mass (object, model)
-  !!!  class(prc_blha_t), intent(inout) :: object
-  !!!  class(model_data_t), intent(in), target :: model
-  !!!  type(flavor_t) :: flv
-  !!!  real(default) :: mass, width
-  !!!  integer :: ierr
-  !!!  call flv%init (5, model)
-  !!!  mass = flv%get_mass (); width = flv%get_width ()
-  !!!  select type (driver => object%driver)
-  !!!  class is (blha_driver_t)
-  !!!     call driver%set_mass_and_width (5, mass=mass, width=width)
-  !!!     call driver%blha_olp_set_parameter ('yuk(5)'//c_null_char, &
-  !!!        dble(mass), 0._double, ierr)
-  !!!  end select
-  !!!end subroutine prc_blha_set_bquark_mass
-
-@ %def prc_blha_set_bquark_mass
-@
-<<BLHA OLP interfaces: prc blha: TBP>>=
   procedure :: compute_sqme_virt => prc_blha_compute_sqme_virt
 <<BLHA OLP interfaces: procedures>>=
   subroutine prc_blha_compute_sqme_virt (object, &
@@ -1276,7 +1255,6 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
     real(double), dimension(blha_result_array_size (object%n_particles, &
                                                     BLHA_AMP_LOOP)) :: r
     real(double) :: mu_dble
-    real(default) :: mu
     real(double) :: acc_dble
     real(default) :: acc
     real(default) :: alpha_s
@@ -1284,13 +1262,10 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
     call msg_debug2 (D_VIRTUAL, "i_flv", i_flv)
     call msg_debug2 (D_VIRTUAL, "object%i_virt(i_flv)", object%i_virt(i_flv))
     mom = object%create_momentum_array (p)
-    if (vanishes (ren_scale)) then
-      mu = sqrt (2* (p(1)*p(2)))
-    else
-      mu = ren_scale
-    end if
-    mu_dble = dble(mu)
-    alpha_s = object%qcd%alpha%get (mu)
+    if (vanishes (ren_scale)) &
+       call msg_fatal ("prc_blha_compute_sqme_real: ren_scale vanishes")
+    mu_dble = dble(ren_scale)
+    alpha_s = object%qcd%alpha%get (ren_scale)
     select type (driver => object%driver)
     class is (blha_driver_t)
       call driver%set_alpha_s (alpha_s)
@@ -1360,7 +1335,6 @@ Hence, the interface is simpler than in the other routines.
     real(double), dimension(5*object%n_particles) :: mom
     real(double), dimension(blha_result_array_size (object%n_particles, &
                                               BLHA_AMP_CC)) :: r
-    real(default) :: mu
     real(double) :: mu_dble
     real(default) :: alpha_s
     integer :: i, j, pos
@@ -1372,34 +1346,29 @@ Hence, the interface is simpler than in the other routines.
     integer, dimension(:), allocatable :: flavors
 
     mom = object%create_momentum_array (p)
-    if (vanishes (ren_scale)) then
-       mu = sqrt (2*p(1)*p(2))
-    else
-       mu = ren_scale
-    end if
-    mu_dble = dble(mu)
-    alpha_s = object%qcd%alpha%get (mu)
+    if (vanishes (ren_scale)) &
+       call msg_fatal ("prc_blha_compute_sqme_cc: ren_scale vanishes")
+    mu_dble = dble(ren_scale)
+    alpha_s = object%qcd%alpha%get (ren_scale)
     flavors = object%get_flv_state (i_flv)
 
     select type (driver => object%driver)
     class is (blha_driver_t)
        call driver%set_alpha_s (alpha_s)
        if (allocated (object%i_born)) then
-          call object%compute_sqme_born (i_flv, p, mu, born, bad_point2)
+          call object%compute_sqme_born (i_flv, p, ren_scale, born, bad_point2)
        else
-          born = 0._default
-          acc = 0._default
+          born = zero
+          acc = zero
        end if
        if (present (born_out)) born_out = born
        call driver%blha_olp_eval2 (object%i_cc(i_flv), &
-                                    mom, mu_dble, r, acc_dble)
+          mom, mu_dble, r, acc_dble)
     end select
 
     do j = 1, size (p)
       do i = 1, j
-        if (i <= 2 .or. j <= 2) then
-          born_cc (i,j) = 0._default
-        else if (i == j) then
+        if (i == j) then
           if (is_quark (abs(flavors (i)))) then
              born_cc (i,j) = -cf*born 
           else if (is_gluon (flavors (i))) then
@@ -1408,8 +1377,8 @@ Hence, the interface is simpler than in the other routines.
              born_cc (i,j) = zero
           end if
         else
-          im1 = i-1; jm1 = j-1
-          pos = im1 + jm1*(jm1-1)/2 + 1
+          im1 = i - 1; jm1 = j - 1
+          pos = im1 + jm1 * (jm1 - 1) / 2 + 1
           born_cc (i,j) = - r(pos)
         end if
         born_cc (j,i) = born_cc (i,j)
