@@ -211,6 +211,7 @@ module fks_regions
   use cascades
   use nlo_data, only: phs_identifier_t, check_for_phs_identifier
   use nlo_data, only: FKS_DEFAULT, FKS_RESONANCES
+  use nlo_data, only: NO_FACTORIZATION, FACTORIZATION_THRESHOLD
 
   use ttv_formfactors, only: THR_POS_B, THR_POS_BBAR
   use ttv_formfactors, only: THR_POS_WP, THR_POS_WM
@@ -250,6 +251,7 @@ the [[ftuple]]-object.
     integer, dimension(2) :: ireg
     integer :: i_res = 0
     integer :: splitting_type
+    logical :: pseudo_isr = .false.
   contains
   <<fks regions: ftuple: TBP>>
   end type ftuple_t
@@ -868,6 +870,7 @@ also be supplied by a symmetry factor, explained below.
     logical :: soft_divergence
     logical :: coll_divergence
     integer, dimension(:), allocatable :: i_reg_to_i_con
+    logical :: pseudo_isr = .false.
   contains
   <<fks regions: singular region: TBP>>
   end type singular_region_t
@@ -944,13 +947,14 @@ also be supplied by a symmetry factor, explained below.
     integer, intent(in), optional :: unit
     integer, intent(in), optional :: maxnregions
     character(len=7), parameter :: flst_format = "(I3,A1)"
-    character(len=16), parameter :: ireg_format = "(A1,I1,A1,I1,A2)"
+    character(len=16), parameter :: ireg_format = "(A1,I1,A1,I1,A3)"
     character(len=22), parameter :: &
-       ireg_format_resonant = "(A1,I1,A1,I1,A1,I1,A2)"
+       ireg_format_resonant = "(A1,I1,A1,I1,A1,I1,A3)"
     character(len=7), parameter :: ireg_space_format = "(7X,A1)"
     integer :: nreal, nborn, i, u, mr, i1, i2
     integer :: nleft, nright, nreg, nreg_diff
     integer :: i_res
+    character(len=3) :: closing_bracket
     u = given_output_unit (unit); if (u < 0) return
     mr = sregion%nregions; if (present (maxnregions))  mr = maxnregions
     nreal = size (sregion%flst_real%flst)
@@ -994,22 +998,32 @@ also be supplied by a symmetry factor, explained below.
     if (nreg > 1) then
        do i = 1, nreg - 1
           call sregion%ftuples(i)%get (i1, i2)
+          if (sregion%ftuples(i)%pseudo_isr) then
+             closing_bracket = ')*'
+          else
+             closing_bracket = ')'
+          end if
           i_res = sregion%ftuples(i)%i_res
           if (i_res > 0) then
              write (u, ireg_format_resonant, advance = 'no') &
-                '(', i1, ',', i2, ';', i_res, ')'
+                '(', i1, ',', i2, ';', i_res, closing_bracket
           else
-             write(u, ireg_format, advance = 'no') '(', i1, ',', i2, '),'
+             write(u, ireg_format, advance = 'no') '(', i1, ',', i2, closing_bracket
           end if
        end do
     end if
     call sregion%ftuples(nreg)%get (i1, i2)
     i_res = sregion%ftuples(nreg)%i_res
+    if (sregion%ftuples(nreg)%pseudo_isr) then
+       closing_bracket = ')*}'
+    else
+       closing_bracket = ')}'
+    end if
     if (i_res > 0) then
        write (u, ireg_format_resonant, advance = 'no') &
-          '(', i1, ',', i2, '; ', i_res, ')}'
+          '(', i1, ',', i2, '; ', i_res, closing_bracket
     else
-       write (u, ireg_format, advance = 'no') '(', i1, ',', i2, ')}'
+       write (u, ireg_format, advance = 'no') '(', i1, ',', i2, closing_bracket
     end if
     if (nright > 0) then
        do i = 1, nright
@@ -1485,14 +1499,17 @@ there is only a soft singularity if the radiated parton becomes soft.
 <<fks regions: reg data: TBP>>=
   procedure :: init_resonance_information => region_data_init_resonance_information
 <<fks regions: procedures>>=
-  subroutine region_data_init_resonance_information (reg_data)
+  subroutine region_data_init_resonance_information (reg_data, factorization_mode)
     class(region_data_t), intent(inout) :: reg_data
+    integer, intent(in) :: factorization_mode
     call reg_data%enlarge_singular_regions_with_resonances ()
     call reg_data%find_resonances ()
     select type (map => reg_data%fks_mapping)
     type is (fks_mapping_resonances_t)
        call map%res_map%write ()
     end select
+    if (factorization_mode == FACTORIZATION_THRESHOLD) &
+       call reg_data%set_isr_pseudo_regions ()
   end subroutine region_data_init_resonance_information
 
 @ %def region_data_init_resonance_information
@@ -1546,6 +1563,57 @@ must be compatible with the resonance.
   end subroutine region_data_enlarge_singular_regions_with_resonances
 
 @ %def region_data_enlarge_singular_regions_with_resonances
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: set_isr_pseudo_regions => region_data_set_isr_pseudo_regions
+<<fks regions: procedures>>=
+  subroutine region_data_set_isr_pseudo_regions (reg_data)
+    class(region_data_t), intent(inout) :: reg_data
+    integer :: alr
+    integer :: n_alr_new
+    !!! Subroutine called for threshold factorization ->
+    !!! Size of singular regions at this point is fixed
+    type(singular_region_t), dimension(2) :: save_regions 
+    integer, dimension(4) :: alr_new_to_old
+    do alr = 1, reg_data%n_regions
+       save_regions(alr) = reg_data%regions(alr)
+    end do
+    n_alr_new = reg_data%n_regions * 2
+    alr_new_to_old = [1, 1, 2, 2]
+    deallocate (reg_data%regions)
+    allocate (reg_data%regions (n_alr_new))
+    reg_data%n_regions = n_alr_new
+    print *, 'n_regions: ', n_alr_new
+    do alr = 1, n_alr_new
+       reg_data%regions(alr) = save_regions(alr_new_to_old (alr))
+       call add_pseudo_emitters (reg_data%regions(alr))
+       if (mod (alr, 2) == 0) reg_data%regions(alr)%pseudo_isr = .true.
+    end do
+    select type (fks_mapping => reg_data%fks_mapping)
+    type is (fks_mapping_resonances_t)
+       deallocate (fks_mapping%res_map%alr_to_i_res)
+       allocate (fks_mapping%res_map%alr_to_i_res (4))
+       fks_mapping%res_map%alr_to_i_res = [1, 1, 1, 1]
+    end select
+  contains
+    subroutine add_pseudo_emitters (sregion)
+      type(singular_region_t), intent(inout) :: sregion
+      type(ftuple_t), dimension(2) :: ftuples_save
+      integer :: alr
+      do alr = 1, 2
+         ftuples_save(alr) = sregion%ftuples(alr)
+      end do
+      deallocate (sregion%ftuples)
+      sregion%nregions = sregion%nregions * 2
+      allocate (sregion%ftuples (sregion%nregions))
+      do alr = 1, sregion%nregions
+         sregion%ftuples(alr) = ftuples_save (alr_new_to_old(alr))
+         if (mod (alr, 2) == 0) sregion%ftuples(alr)%pseudo_isr = .true.
+      end do
+    end subroutine add_pseudo_emitters
+  end subroutine region_data_set_isr_pseudo_regions
+
+@ %def region_data_set_isr_pseudo_regions
 @
 <<fks regions: reg data: TBP>>=
   procedure :: evaluate_flavors => region_data_evaluate_flavors
@@ -8057,8 +8125,8 @@ polarized or not.
              if (.not. success) &
                 template%mapping_type = FKS_DEFAULT
           case (FACTORIZATION_THRESHOLD)
-             allocate (resonance_histories (1))
-             resonance_histories = create_resonance_histories_for_threshold ()
+             allocate (resonance_histories_clean (1))
+             resonance_histories_clean = create_resonance_histories_for_threshold ()
           end select
        end select
     end select
@@ -8271,7 +8339,8 @@ polarized or not.
     type is (fks_mapping_resonances_t)
        call map%res_map%init (resonance_histories)
     end select
-    call nlo_controller%reg_data%init_resonance_information ()
+    call nlo_controller%reg_data%init_resonance_information &
+       (nlo_controller%settings%factorization_mode)
   end subroutine nlo_controller_init_resonance_info
 
 @ %def nlo_controller_init_resonance_info
