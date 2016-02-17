@@ -68,6 +68,9 @@ module type T =
 
     val coupling_tag : rhs -> string option
 
+    type exclusions
+    val no_exclusions : exclusions
+
 (* In renormalized perturbation theory, couplings come in different orders
    of the loop expansion.  Be prepared: [val order : rhs -> int] *)
 
@@ -101,7 +104,7 @@ module type T =
    identities. *)
     type amplitude
     type selectors
-    val amplitudes : bool -> selectors ->
+    val amplitudes : bool -> exclusions -> selectors ->
       flavor_sans_color list -> flavor_sans_color list -> amplitude list
 
     val dependencies : amplitude -> wf -> (wf, coupling) Tree2.t
@@ -237,11 +240,14 @@ module type Multi =
     type amplitude
     type fusion
     type wf
+    type exclusions
+    val no_exclusions : exclusions
     type selectors
     type amplitudes
 
     (* Construct all possible color flow amplitudes for a given process. *)
-    val amplitudes : bool -> int option -> selectors -> process list -> amplitudes
+    val amplitudes : bool -> int option ->
+      exclusions -> selectors -> process list -> amplitudes
     val empty : amplitudes
 
     (* Precompute the vertex table cache. *)

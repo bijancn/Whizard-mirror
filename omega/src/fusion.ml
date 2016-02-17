@@ -50,6 +50,8 @@ module type T =
     val sign : rhs -> int
     val coupling : rhs -> constant Coupling.t
     val coupling_tag : rhs -> string option
+    type exclusions
+    val no_exclusions : exclusions
     val children : rhs -> wf list
     type fusion
     val lhs : fusion -> wf
@@ -59,7 +61,7 @@ module type T =
     val ket : braket -> rhs list
     type amplitude
     type selectors
-    val amplitudes : bool -> selectors ->
+    val amplitudes : bool -> exclusions -> selectors ->
       flavor_sans_color list -> flavor_sans_color list -> amplitude list
     val dependencies : amplitude -> wf -> (wf, coupling) Tree2.t
     val incoming : amplitude -> flavor list
@@ -417,6 +419,9 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
         val sign : rhs -> int
         val coupling : rhs -> constant Coupling.t
         val coupling_tag : rhs -> string option
+	type exclusions
+	val no_exclusions : exclusions
+	    
         val children : rhs -> wf list
 
         type fusion = wf * rhs list
@@ -552,6 +557,10 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
         let sign (c, _) = Tagged_Coupling.sign c
         let coupling (c, _) = Tagged_Coupling.coupling c
         let coupling_tag (c, _) = Tagged_Coupling.coupling_tag c
+	type exclusions =
+	  { x_flavors : flavor list;
+	    x_couplings : coupling list }
+	let no_exclusions = { x_flavors = []; x_couplings = [] }
         let children (_, wfs) = PT.to_list wfs
 
         type fusion = wf * rhs list
@@ -1545,7 +1554,7 @@ i*)
             amps)
         [] (CM.amplitude a.A.incoming a.A.outgoing)
 
-    let amplitudes goldstones selectors fin fout =
+    let amplitudes goldstones exclusions selectors fin fout =
       colorize_amplitudes (amplitude goldstones selectors fin fout)
 
     type flavor = CA.flavor
@@ -1564,6 +1573,8 @@ i*)
     let sign = CA.sign
     let coupling = CA.coupling
     let coupling_tag = CA.coupling_tag
+    type exclusions = CA.exclusions
+    let no_exclusions = CA.no_exclusions
 
     type 'a children = 'a CA.children
     type rhs = CA.rhs
@@ -1977,9 +1988,12 @@ module type Multi =
     type amplitude
     type fusion
     type wf
+    type exclusions
+    val no_exclusions : exclusions
     type selectors
     type amplitudes
-    val amplitudes : bool -> int option -> selectors -> process list -> amplitudes
+    val amplitudes : bool -> int option ->
+      exclusions -> selectors -> process list -> amplitudes
     val empty : amplitudes
     val initialize_cache : string -> unit
     val set_cache_name : string -> unit
@@ -2037,6 +2051,8 @@ module Multi (Fusion_Maker : Maker) (P : Momentum.T) (M : Model.T) =
     type amplitude = F.amplitude
     type fusion = F.fusion
     type wf = F.wf
+    type exclusions = F.exclusions
+    let no_exclusions = F.no_exclusions
     type selectors = F.selectors
 
     type flavors = flavor list array
@@ -2260,7 +2276,7 @@ i*)
 
 (* \thocwmodulesubsection{Calculate All The Amplitudes} *)
 
-    let amplitudes goldstones unphysical select_wf processes =
+    let amplitudes goldstones unphysical exclusions select_wf processes =
 
 (* \begin{dubious}
      Eventually, we might want to support inhomogeneous helicities.  However,
@@ -2284,7 +2300,7 @@ i*)
         ThoList.flatmap
           (fun (fi, fo) ->
             Progress.begin_step progress (process_to_string fi fo);
-            let amps = F.amplitudes goldstones select_wf fi fo in
+            let amps = F.amplitudes goldstones exclusions select_wf fi fo in
             begin match amps with
             | [] -> Progress.end_step progress "forbidden"
             | _ -> Progress.end_step progress "allowed"
