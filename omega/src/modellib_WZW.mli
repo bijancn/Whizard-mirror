@@ -1,6 +1,6 @@
 (* $Id: modellib_WZW.mli 6264 2014-11-14 15:40:49Z fbach $
 
-   Copyright (C) 1999-2015 by
+   Copyright (C) 1999-2016 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>

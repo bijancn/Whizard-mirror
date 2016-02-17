@@ -1,6 +1,6 @@
-(* $Id: fusion.ml 7377 2015-11-20 15:59:02Z jr_reuter $
+(* $Id: fusion.ml 7444 2016-02-17 15:37:20Z jr_reuter $
 
-   Copyright (C) 1999-2015 by
+   Copyright (C) 1999-2016 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -24,8 +24,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Fusion" ["General Fusions"]
-    { RCS.revision = "$Revision: 7377 $";
-      RCS.date = "$Date: 2015-11-20 16:59:02 +0100 (Fri, 20 Nov 2015) $";
+    { RCS.revision = "$Revision: 7444 $";
+      RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/fusion.ml $" }

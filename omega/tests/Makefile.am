@@ -1,11 +1,11 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 7334 2015-10-26 18:21:22Z bchokoufe $
+# $Id: Makefile.am 7444 2016-02-17 15:37:20Z jr_reuter $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
 ########################################################################
 #
-# Copyright (C) 1999-2015 by
+# Copyright (C) 1999-2016 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
