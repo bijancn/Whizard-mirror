@@ -35,7 +35,8 @@ libutilities_la_SOURCES = \
   file_registries.f90 \
   string_utils.f90 \
   format_utils.f90 \
-  format_defs.f90
+  format_defs.f90 \
+  numeric_utils.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = utilities.nw
