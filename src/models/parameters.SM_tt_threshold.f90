@@ -29,7 +29,7 @@ module parameters_sm_tt_threshold
   use omega_vectors
   use ttv_formfactors
   use diagnostics
-  use unit_tests, only: nearly_equal
+  use numeric_utils
   implicit none
   private
 
