@@ -568,7 +568,7 @@ splitting.
   procedure :: valid_pair => flv_structure_valid_pair
 <<fks regions: procedures>>=
   function flv_structure_valid_pair &
-       (flv_real,i,j, flv_born, model) result (valid)
+       (flv_real, i, j, flv_born, model) result (valid)
     class(flv_structure_t), intent(in) :: flv_real
     integer, intent(in) :: i,j
     type(flv_structure_t), intent(in) :: flv_born
@@ -600,9 +600,9 @@ If the resulting Born configuration is equal to the underlying Born
 configuration, up to a permutation of final-state particles, the tuple
 $(i,j)$ is accepted as valid.
 <<fks regions: procedures>>=
-      allocate (flv_orig2 (2*n_orig))
+      allocate (flv_orig2 (2 * n_orig))
       flv_orig2 (1:n_orig) = flv_orig
-      flv_orig2 (n_orig+1 : 2*n_orig) = -flv_orig
+      flv_orig2 (n_orig + 1 : 2 * n_orig) = -flv_orig
       do k = 1, 2 * n_orig
         flv_test = flv_real%insert_particle (i, j, flv_orig2(k))
         valid = flv_born == flv_test
@@ -1798,87 +1798,99 @@ are therefore equivalent.
     integer :: nreg, nborn, nreal
     integer :: nlegreal
     integer, parameter :: maxnregions = 200
-    integer :: i, j, k, l, m, n
-    logical :: valid1, valid2
+    integer :: i_real
 
-    associate (flv_born => reg_data%flv_born)
-      associate (flv_real => reg_data%flv_real)
-        nborn = size (flv_born)
-        nreal = size (flv_real)
-        nlegreal = size (flv_real(1)%flst)
-        allocate (ftuples (nreal))
-        allocate (emitter_tmp (maxnregions))
-        allocate (flst_alr_tmp (maxnregions))
-        n = 0
+    nborn = size (reg_data%flv_born)
+    nreal = size (reg_data%flv_real)
+    nlegreal = size (reg_data%flv_real(1)%flst)
+    allocate (ftuples (nreal))
+    allocate (emitter_tmp (maxnregions))
+    allocate (flst_alr_tmp (maxnregions))
+    nreg = 0
 
-        ITERATE_REAL_FLAVOR: do l = 1, nreal
-         <<fks: check final state emissions>>
-         <<fks: check initial state emissions>>
-        end do ITERATE_REAL_FLAVOR
-
-        nreg = n
-
-      end associate
-    end associate
+    do i_real = 1, nreal
+       call check_final_state_emissions (i_real, nreg)
+       call check_initial_state_emissions (i_real, nreg)
+    end do
 
     allocate (flst_alr (nreg))
     allocate (emitter (nreg))
     flst_alr(1:nreg) = flst_alr_tmp(1:nreg)
     emitter(1:nreg) = emitter_tmp(1:nreg)
+  contains
+    subroutine check_final_state_emissions (i_real, i_reg)
+      integer, intent(in) :: i_real
+      integer, intent(inout) :: i_reg
+      integer :: leg1, leg2, i_born
+      type(flv_structure_t) :: born_flavor
+      do leg1 = reg_data%n_in + 1, nlegreal
+         do leg2 = leg1 + 1, nlegreal
+            do i_born = 1, nborn
+               born_flavor = reg_data%flv_born(i_born)
+               associate (flv_real => reg_data%flv_real(i_real))
+                  if (flv_real%valid_pair(leg1, leg2, born_flavor, model) &
+                       .or. flv_real%valid_pair(leg2, leg1, born_flavor, model)) then
+                     i_reg = i_reg + 1
+                     if(flv_real%valid_pair(leg1, leg2, born_flavor, model)) then
+                        flst_alr_tmp(i_reg) = &
+                           create_alr (flv_real, reg_data%n_in, leg1, leg2)
+                     else
+                        flst_alr_tmp(i_reg) = &
+                           create_alr (flv_real, reg_data%n_in, leg2, leg1)
+                     end if
+                     call current_ftuple%set (leg1, leg2)
+                     call current_ftuple%determine_splitting_type_fsr &
+                        (flv_real, leg1, leg2)
+                     call ftuples(i_real)%append (current_ftuple)
+                     emitter_tmp(i_reg) = nlegreal - 1
+                     exit
+                  end if
+               end associate
+            end do
+         end do
+      end do
+    end subroutine check_final_state_emissions
+
+    subroutine check_initial_state_emissions (i_real, i_reg)
+      integer, intent(in) :: i_real
+      integer, intent(inout) :: i_reg
+      integer :: leg, i_born, emitter
+      type(flv_structure_t) :: born_flavor
+      logical :: valid1, valid2
+      do leg = reg_data%n_in + 1, nlegreal
+         do i_born = 1, nborn 
+            born_flavor = reg_data%flv_born (i_born)
+            associate (flv_real => reg_data%flv_real(i_real))
+               valid1 = flv_real%valid_pair(1, leg, born_flavor, model)
+               if (reg_data%n_in > 1) then
+                  valid2 = flv_real%valid_pair(2, leg, born_flavor, model)
+               else
+                  valid2 = .false.
+               end if
+               if (valid1 .and. valid2) then
+                  emitter = 0
+               else if (valid1 .and. .not. valid2) then
+                  emitter = 1
+               else if (.not. valid1 .and. valid2) then
+                  emitter = 2
+               end if
+               if (valid1 .or. valid2) then
+                  i_reg = i_reg + 1
+                  call current_ftuple%set(emitter, leg)
+                  call current_ftuple%determine_splitting_type_isr &
+                     (flv_real, emitter, leg)
+                  call ftuples(i_real)%append (current_ftuple)
+                  emitter_tmp(i_reg) = emitter
+                  flst_alr_tmp(i_reg) = &
+                     create_alr (flv_real, reg_data%n_in, emitter, leg)
+               end if
+            end associate
+         end do
+      end do
+    end subroutine check_initial_state_emissions
   end subroutine region_data_find_regions
 
 @ %def region_data_find_regions
-@
-<<fks: check final state emissions>>=
-  do i = reg_data%n_in + 1, nlegreal
-     do j = i+1, nlegreal
-        do k = 1, nborn
-           if (flv_real(l)%valid_pair(i, j, flv_born(k), model) &
-                .or. flv_real(l)%valid_pair(j, i, flv_born(k), model)) then
-              n = n + 1
-              if(flv_real(l)%valid_pair(i, j, flv_born(k), model)) then
-                 flst_alr_tmp(n) = create_alr (flv_real(l), reg_data%n_in, i, j)
-              else
-                 flst_alr_tmp(n) = create_alr (flv_real(l), reg_data%n_in, j, i)
-              end if
-              call current_ftuple%set (i, j)
-              call current_ftuple%determine_splitting_type_fsr (flv_real(l), i, j)
-              call ftuples(l)%append (current_ftuple)
-              emitter_tmp(n) = nlegreal - 1
-              exit
-           end if
-        end do
-     end do
-  end do
-@ It suffices to just check the final-state of the first and the
-initial-state of the second array.
-<<fks: check initial state emissions>>=
-  do i = reg_data%n_in + 1, nlegreal
-     do k = 1, nborn
-        valid1 = flv_real(l)%valid_pair(1, i, flv_born(k), model)
-        if (reg_data%n_in > 1) then
-           valid2 = flv_real(l)%valid_pair(2, i, flv_born(k), model)
-        else
-           valid2 = .false.
-        end if
-        if (valid1 .and. valid2) then
-           m = 0
-        else if (valid1 .and. .not. valid2) then
-           m = 1
-        else if (.not. valid1 .and. valid2) then
-           m = 2
-        end if
-        if (valid1 .or. valid2) then
-           n = n + 1
-           call current_ftuple%set(m, i)
-           call current_ftuple%determine_splitting_type_isr (flv_real(l), m, i)
-           call ftuples(l)%append (current_ftuple)
-           emitter_tmp(n) = m
-           flst_alr_tmp(n) = create_alr (flv_real(l), reg_data%n_in, m, i)
-           exit
-        end if
-     end do
-  end do
 @ Creates singular regions according to table \ref{table:singular
 regions}. It scans all regions in table \ref{table:ftuples and
 flavors} and records the real flavor structures. If they are
@@ -1931,7 +1943,7 @@ of the present one is increased.
     do i = 1, size (ftuples)
        if (ftuples(i)%get_n_tuples() > 0) then
           ftuple_limits(j) = ftuples(i)%get_n_tuples ()
-          j = j+ 1
+          j = j + 1
        end if
     end do
     if (.not. (sum (ftuple_limits) == maxregions)) &
