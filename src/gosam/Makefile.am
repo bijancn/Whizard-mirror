@@ -31,7 +31,6 @@
 noinst_LTLIBRARIES = libgosam.la
 
 libgosam_la_SOURCES = \
-  loop_archive.f90 \
   prc_gosam.f90
 
 ## Omitting this would exclude it from the distribution
