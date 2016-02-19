@@ -92,12 +92,6 @@ Makefile.depend: $(libtesting_la_SOURCES)
 
 DISTCLEANFILES += Makefile.depend 
 
-## Install the modules used by generated matrix element code
-## and by the user code library
-execmoddir = $(pkglibdir)/mod/testing
-nodist_execmod_HEADERS = \
-  unit_tests.$(FC_MODULE_EXT)
-
 # Fortran90 module files are generated at the same time as object files
 .lo.$(FC_MODULE_EXT):
 	@:
