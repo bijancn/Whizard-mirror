@@ -311,7 +311,6 @@ parameters_zprime.$(FC_MODULE_EXT): parameters.Zprime.lo
 ## Dependency on O'Mega modules
 
 basicsdir = $(top_builddir)/src/basics
-testingdir = $(top_builddir)/src/testing
 utilitiesdir = $(top_builddir)/src/utilities
 systemdir = $(top_builddir)/src/system
 physicsdir = $(top_builddir)/src/physics
@@ -342,7 +341,7 @@ $(libmodels_la_OBJECTS) $(external_SM_tt_threshold_la_OBJECTS) $(external_Threes
   threeshl_bundle/threeshl.$(FC_MODULE_EXT) \
   threeshl_bundle/tglue.$(FC_MODULE_EXT)
 
-AM_FCFLAGS = -I$(basicsdir) -I$(testingdir) -I$(utilitiesdir) -I$(systemdir) -I$(physicsdir) -I$(combinatoricsdir) -I$(omegadir) -I../threshold -Ithreeshl_bundle
+AM_FCFLAGS = -I$(basicsdir) -I$(utilitiesdir) -I$(systemdir) -I$(physicsdir) -I$(combinatoricsdir) -I$(omegadir) -I../threshold -Ithreeshl_bundle
 
 ########################################################################
 ## Default Fortran compiler options
