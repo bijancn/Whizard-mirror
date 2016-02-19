@@ -666,6 +666,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/nlo_2.ref \
     functional_tests/ref-output-double/nlo_3.ref \
     functional_tests/ref-output-double/nlo_4.ref \
+    functional_tests/ref-output-double/openloops_1.ref \
     functional_tests/ref-output-double/powheg_1.ref \
     functional_tests/ref-output-double/defaultcuts.ref \
     functional_tests/ref-output-double/parton_shower_2.ref \
@@ -713,6 +714,7 @@ REF_OUTPUT_FILES_PREC = \
     functional_tests/ref-output-prec/nlo_2.ref \
     functional_tests/ref-output-prec/nlo_3.ref \
     functional_tests/ref-output-prec/nlo_4.ref \
+    functional_tests/ref-output-prec/openloops_1.ref \
     functional_tests/ref-output-prec/defaultcuts.ref \
     functional_tests/ref-output-prec/parton_shower_2.ref \
     functional_tests/ref-output-prec/helicity.ref \
@@ -918,6 +920,7 @@ MISC_TESTS_SIN = \
     functional_tests/nlo_2.sin \
     functional_tests/nlo_3.sin \
     functional_tests/nlo_4.sin \
+    functional_tests/openloops_1.sin \
     functional_tests/powheg_1.sin \
     functional_tests/mssmtest.sin \
     functional_tests/spincor_1.sin \
