@@ -128,7 +128,8 @@ nodist_execmod_HEADERS = \
   file_utils.$(FC_MODULE_EXT) \
   string_utils.$(FC_MODULE_EXT) \
   format_utils.$(FC_MODULE_EXT) \
-  format_defs.$(FC_MODULE_EXT)
+  format_defs.$(FC_MODULE_EXT) \
+  numeric_utils.$(FC_MODULE_EXT)
 
 ## (Re)create F90 sources from NOWEB source.
 if NOWEB_AVAILABLE
