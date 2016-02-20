@@ -5085,10 +5085,10 @@ the corresponding jacobians.
          sqme_soft = sqme_soft / onemy / xi_tilde
          sqme_coll = sqme_coll / onemy / xi_tilde
          sqme_cs = sqme_cs / onemy / xi_tilde
-         associate (jac => rsub%real_kinematics%jac)
-            sqme_soft = sqme_soft * jac(i_phs)%jac(2)
-            sqme_coll = sqme_coll * jac(i_phs)%jac(3)
-            sqme_cs = sqme_cs * jac(i_phs)%jac(2)
+         associate (jac => rsub%real_kinematics%jac(i_phs))
+            sqme_soft = sqme_soft * jac%jac(2)
+            sqme_coll = sqme_coll * jac%jac(3)
+            sqme_cs = sqme_cs * jac%jac(2)
          end associate
          sqme_remn = (sqme_soft - sqme_cs) * log(xi_max) * xi_tilde
          select case (rsub%purpose)
@@ -5292,7 +5292,7 @@ the corresponding jacobians.
        logical :: soft, collinear
        type(vector4_t) :: p_gluon
        if (debug_active (D_SUBTRACTION)) then
-          call msg_debug2 (D_SUBTRACTION, "real_subtraction_evaluate_region_fsr")
+          call msg_debug2 (D_SUBTRACTION, "real_subtraction_evaluate_region_isr")
           if (debug2_active (D_SUBTRACTION)) then
              call write_computation_status ()
           else
@@ -10222,7 +10222,7 @@ with $\Lambda$.
     integer, intent(in) :: i_phs
     type(vector4_t), intent(in) , dimension(:) :: p_born
     type(phs_point_t), intent(inout) :: p_real
-    real(default) :: xi_max, xi, y, phi
+    real(default) :: xi_max, xi_tilde, xi, y, phi
     integer :: nlegborn, nlegreal
     real(default) :: sqrts_real
     real(default) :: k0_np1
@@ -10235,7 +10235,8 @@ with $\Lambda$.
 
     associate (rad_var => generator%real_kinematics)
       xi_max = rad_var%xi_max(i_phs)
-      xi = rad_var%xi_tilde * xi_max
+      xi_tilde = rad_var%xi_tilde
+      xi = xi_tilde * xi_max
       y = rad_var%y(i_phs)
       phi = rad_var%phi
       rad_var%y_soft(i_phs) = y
@@ -10250,17 +10251,17 @@ with $\Lambda$.
     xb_minus = generator%isr_kinematics%x(I_MINUS)
     x_plus = xb_plus / sqrt(one - xi) * sqrt ((two - xi * (one - y)) / (two - xi * (one + y)))
     x_minus = xb_minus / sqrt(one - xi) * sqrt ((two - xi * (one + y)) / (two - xi * (one - y)))
-    p_real%p(I_PLUS) = x_plus/xb_plus * p_born(I_PLUS)
-    p_real%p(I_MINUS) = x_minus/xb_minus * p_born(I_MINUS)
-    generator%isr_kinematics%z(I_PLUS) = x_plus/generator%isr_kinematics%x(I_PLUS)
-    generator%isr_kinematics%z(I_MINUS) = x_minus/generator%isr_kinematics%x(I_MINUS)
+    p_real%p(I_PLUS) = x_plus / xb_plus * p_born(I_PLUS)
+    p_real%p(I_MINUS) = x_minus / xb_minus * p_born(I_MINUS)
+    generator%isr_kinematics%z(I_PLUS) = x_plus / generator%isr_kinematics%x(I_PLUS)
+    generator%isr_kinematics%z(I_MINUS) = x_minus / generator%isr_kinematics%x(I_MINUS)
 
     !!! Create radiation momentum
     sqrts_real = generator%isr_kinematics%sqrts_born / sqrt(one - xi)
     k0_np1 = sqrts_real * xi / two
     p_real%p(nlegreal)%p(0) = k0_np1
-    p_real%p(nlegreal)%p(1) = k0_np1 * sqrt (one - y**2)*sin(phi)
-    p_real%p(nlegreal)%p(2) = k0_np1 * sqrt(one - y**2)*cos(phi)
+    p_real%p(nlegreal)%p(1) = k0_np1 * sqrt (one - y**2) * sin(phi)
+    p_real%p(nlegreal)%p(2) = k0_np1 * sqrt (one - y**2) * cos(phi)
     p_real%p(nlegreal)%p(3) = k0_np1 * y
 
     call get_boost_parameters (p_real%p, beta_gamma, beta_vec)
@@ -10269,25 +10270,27 @@ with $\Lambda$.
 
     call get_boost_parameters (p_born, beta_gamma, beta_vec)
     lambda_longit = create_longitudinal_boost (beta_gamma, beta_vec, inverse = .false.)
-    forall (i=3:nlegborn) &
+    forall (i = 3 : nlegborn) &
         p_real%p(i) = lambda_longit * p_born(i)
 
     lambda_transv = create_transversal_boost (p_real%p(nlegreal), xi, sqrts_real)
-    forall (i=3:nlegborn) &
+    forall (i = 3 : nlegborn) &
          p_real%p(i) = lambda_transv * p_real%p(i)
 
     lambda_longit_inv = create_longitudinal_boost (beta_gamma, beta_vec, inverse = .true.)
-    forall (i=3:nlegborn) &
+    forall (i = 3 : nlegborn) &
          p_real%p(i) = lambda_longit_inv * p_real%p(i)
 
     !!! Compute jacobians
     associate (jac => generator%real_kinematics%jac(i_phs))
-       xi_plus = xi_max * (one - xb_plus)
-       xi_minus = xi_max * (one - xb_minus)
-       jac%jac(1) = one / (one - xi)
+       xi_plus = xi_tilde * (one - xb_plus)
+       xi_minus = xi_tilde * (one - xb_minus)
+       !!! Additional 1 / (1 -xi) factor because in the real jacobian,
+       !!! there is s_real in the jacobian
+       jac%jac(1) = one / (one - xi)**2
        jac%jac(2) = one
-       jac%jac(3) = xi_plus / (one - xi_plus)
-       jac%jac(4) = xi_minus / (one - xi_minus)
+       jac%jac(3) = one / (one - xi_plus)**2
+       jac%jac(4) = one / (one - xi_minus)**2
     end associate
   contains
     subroutine get_boost_parameters (p, beta_gamma, beta_vec)
@@ -10383,7 +10386,7 @@ with $\Lambda$.
        p = generator%real_kinematics%p_born_lab%phs_point(1)%p(1:2)
     end if
 
-    generator%isr_kinematics%x = p%p(0) / (generator%sqrts/two)
+    generator%isr_kinematics%x = p%p(0) / (generator%sqrts / two)
   end subroutine phs_fks_generator_set_isr_kinematics
 
 @ %def phs_fks_generator_set_isr_kinematics
