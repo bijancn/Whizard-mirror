@@ -5245,8 +5245,8 @@ the corresponding jacobians.
       sqme0 = sqme0 * s_alpha
       sqme0 = sqme0 * region%mult
       if (proc_scatter) then
-         call rsub%reweight_pdfs (sqme0, i_real, region%uborn_index, I_PLUS)
-         call rsub%reweight_pdfs (sqme0, i_real, region%uborn_index, I_MINUS)
+         call rsub%scale_pdfs_real (sqme0, i_real, I_PLUS)
+         call rsub%scale_pdfs_real (sqme0, i_real, I_MINUS)
       end if
 
       select case (rsub%purpose)
@@ -5260,10 +5260,10 @@ the corresponding jacobians.
          call rsub%evaluate_subtraction_terms_isr (emitter, i_phs, alpha_s, &
             sqme_soft, sqme_coll_plus, sqme_coll_minus, sqme_cs_plus, sqme_cs_minus)
          if (proc_scatter) then
-            call rsub%reweight_pdfs (sqme_coll_plus, i_real, region%uborn_index, &
-               I_PLUS, collinear = .true.)
-            call rsub%reweight_pdfs (sqme_coll_minus, i_real, region%uborn_index, &
-               I_MINUS, collinear = .true.)
+            call rsub%scale_pdfs_collinear (sqme_coll_plus, i_real, &
+               region%uborn_index, I_PLUS)
+            call rsub%scale_pdfs_collinear (sqme_coll_minus, i_real, &
+               region%uborn_index, I_MINUS)
          end if
          associate (jac => rsub%real_kinematics%jac(i_phs))
             sqme_soft = sqme_soft / (one - y**2) / xi_tilde * jac%jac(2)
@@ -5602,44 +5602,62 @@ delivers $x \cdot f(x)$ as output, so that $x$ has to be factored out.
        x_scaled_coll = x / z_coll
        call rsub%pdf_data%evolve (dble(x), dble(Q), f_dble)
        rsub%pdf_born(i)%f = f_dble / dble(x)
+       !!!print *, 'pdf_born: ', i, rsub%pdf_born(i)%f
        call rsub%pdf_data%evolve (dble(x_scaled), dble(Q), f_dble)
        rsub%pdf_scaled(i)%f = f_dble / dble(x_scaled)
+       !!!print *, 'pdf_real: ', i, rsub%pdf_scaled(i)%f
        call rsub%pdf_data%evolve (dble(x_scaled_coll), dble(Q), f_dble)
        rsub%pdf_scaled_coll(i)%f = f_dble / dble(x_scaled_coll) 
     end do
   end subroutine real_subtraction_compute_pdfs
 
 @ %def real_subtraction_compute_pdfs
-@
+@ The real matrix element is evaluated already multiplied with the parton densities
+at Born level, but with the real flavor structure. We multiply out the Born
+contribution and use the real one instead.
 <<real subtraction: real subtraction: TBP>>=
-  procedure :: reweight_pdfs => real_subtraction_reweight_pdfs
+  procedure :: scale_pdfs_real => real_subtraction_scale_pdfs_real
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_reweight_pdfs &
-     (rsub, sqme, i_real, i_born, i_part, collinear)
+  subroutine real_subtraction_scale_pdfs_real (rsub, sqme, i_real, i_part)
     class(real_subtraction_t), intent(inout) :: rsub
     real(default), intent(inout) :: sqme
-    integer, intent(in) :: i_real, i_born
-    integer, intent(in) :: i_part
-    logical, intent(in), optional :: collinear
+    integer, intent(in) :: i_real, i_part
+    integer :: flv
+    real(default) :: pdfs, pdfb
+    flv = rsub%reg_data%flv_real(i_real)%flst(i_part)
+    !!! Gluon has index 0 in the pdf array
+    if (flv == GLUON) flv = 0
+    pdfb = rsub%pdf_born(i_part)%f(flv)
+    pdfs = rsub%pdf_scaled(i_part)%f(flv)
+    sqme = sqme * pdfs / pdfb
+  end subroutine real_subtraction_scale_pdfs_real
+
+@ %def real_subtraction_scale_pdfs_real
+@ The same as above, but for the collinear subtraction terms. They are
+proportional to the Born matrix element so they enter the subroutine
+with pdfs evaluated for the Born flavor structure. Therefore, we
+additionally have to take the flavor of the underlying Born particle
+when dividing out the Born contribution.
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: scale_pdfs_collinear => real_subtraction_scale_pdfs_collinear
+<<real subtraction: procedures>>=
+  subroutine real_subtraction_scale_pdfs_collinear &
+     (rsub, sqme, i_real, i_born, i_part)
+    class(real_subtraction_t), intent(inout) :: rsub
+    real(default), intent(inout) :: sqme
+    integer, intent(in) :: i_real, i_born, i_part
     integer :: flv_born, flv_real
     real(default) :: pdfs, pdfb
-    logical :: yorn
-    yorn = .false.; if (present (collinear)) yorn = collinear
     flv_born = rsub%reg_data%flv_born(i_born)%flst(i_part)
     flv_real = rsub%reg_data%flv_real(i_real)%flst(i_part)
     if (flv_born == GLUON) flv_born = 0
     if (flv_real == GLUON) flv_real = 0
-    !!!pdfb = rsub%pdf_born(i_part)%f(flv)
-    pdfb = rsub%pdf_born(i_part)%f(flv_born) 
-    if (yorn) then
-       pdfs = rsub%pdf_scaled_coll(i_part)%f(flv_real)
-    else
-       pdfs = rsub%pdf_scaled(i_part)%f(flv_real)
-    end if
+    pdfb = rsub%pdf_born(i_part)%f(flv_born)
+    pdfs = rsub%pdf_scaled_coll(i_part)%f(flv_real)
     sqme = sqme * pdfs / pdfb
-  end subroutine real_subtraction_reweight_pdfs
+  end subroutine real_subtraction_scale_pdfs_collinear
 
-@ %def real_subtraction_reweight_pdfs
+@ %def real_subtraction_scale_pdfs_collinear
 @
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
