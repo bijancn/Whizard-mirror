@@ -7,6 +7,7 @@ if test -f OCAML_FLAG; then
     cat ${script}_p1.hepevt >> $script.log
     echo "STDHEP EV4 version:" >> $script.log
     ./stdhep_rd polarized_1_p1.ev4.hep 1 >> $script.log
+    sed -i '/date/d' $script.log
     diff ref-output/$script.ref $script.log
 else
     echo "|=============================================================================|"
