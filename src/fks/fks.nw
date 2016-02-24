@@ -211,6 +211,11 @@ module fks_regions
   use cascades
   use nlo_data, only: phs_identifier_t, check_for_phs_identifier
   use nlo_data, only: FKS_DEFAULT, FKS_RESONANCES
+  use nlo_data, only: NO_FACTORIZATION, FACTORIZATION_THRESHOLD
+
+  use ttv_formfactors, only: THR_POS_B, THR_POS_BBAR
+  use ttv_formfactors, only: THR_POS_WP, THR_POS_WM
+
 
 <<Standard module head>>
 
@@ -246,6 +251,7 @@ the [[ftuple]]-object.
     integer, dimension(2) :: ireg
     integer :: i_res = 0
     integer :: splitting_type
+    logical :: pseudo_isr = .false.
   contains
   <<fks regions: ftuple: TBP>>
   end type ftuple_t
@@ -885,6 +891,7 @@ also be supplied by a symmetry factor, explained below.
     logical :: soft_divergence
     logical :: coll_divergence
     integer, dimension(:), allocatable :: i_reg_to_i_con
+    logical :: pseudo_isr = .false.
   contains
   <<fks regions: singular region: TBP>>
   end type singular_region_t
@@ -961,13 +968,14 @@ also be supplied by a symmetry factor, explained below.
     integer, intent(in), optional :: unit
     integer, intent(in), optional :: maxnregions
     character(len=7), parameter :: flst_format = "(I3,A1)"
-    character(len=16), parameter :: ireg_format = "(A1,I1,A1,I1,A2)"
+    character(len=16), parameter :: ireg_format = "(A1,I1,A1,I1,A3)"
     character(len=22), parameter :: &
-       ireg_format_resonant = "(A1,I1,A1,I1,A1,I1,A2)"
+       ireg_format_resonant = "(A1,I1,A1,I1,A1,I1,A3)"
     character(len=7), parameter :: ireg_space_format = "(7X,A1)"
     integer :: nreal, nborn, i, u, mr, i1, i2
     integer :: nleft, nright, nreg, nreg_diff
     integer :: i_res
+    character(len=3) :: closing_bracket
     u = given_output_unit (unit); if (u < 0) return
     mr = sregion%nregions; if (present (maxnregions))  mr = maxnregions
     nreal = size (sregion%flst_real%flst)
@@ -1011,22 +1019,32 @@ also be supplied by a symmetry factor, explained below.
     if (nreg > 1) then
        do i = 1, nreg - 1
           call sregion%ftuples(i)%get (i1, i2)
+          if (sregion%ftuples(i)%pseudo_isr) then
+             closing_bracket = ')*'
+          else
+             closing_bracket = ')'
+          end if
           i_res = sregion%ftuples(i)%i_res
           if (i_res > 0) then
              write (u, ireg_format_resonant, advance = 'no') &
-                '(', i1, ',', i2, ';', i_res, ')'
+                '(', i1, ',', i2, ';', i_res, closing_bracket
           else
-             write(u, ireg_format, advance = 'no') '(', i1, ',', i2, '),'
+             write(u, ireg_format, advance = 'no') '(', i1, ',', i2, closing_bracket
           end if
        end do
     end if
     call sregion%ftuples(nreg)%get (i1, i2)
     i_res = sregion%ftuples(nreg)%i_res
+    if (sregion%ftuples(nreg)%pseudo_isr) then
+       closing_bracket = ')*}'
+    else
+       closing_bracket = ')}'
+    end if
     if (i_res > 0) then
        write (u, ireg_format_resonant, advance = 'no') &
-          '(', i1, ',', i2, '; ', i_res, ')}'
+          '(', i1, ',', i2, '; ', i_res, closing_bracket
     else
-       write (u, ireg_format, advance = 'no') '(', i1, ',', i2, ')}'
+       write (u, ireg_format, advance = 'no') '(', i1, ',', i2, closing_bracket
     end if
     if (nright > 0) then
        do i = 1, nright
@@ -1392,6 +1410,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     type(resonance_mapping_t) :: res_map
     integer :: emitter = -1
     integer :: i_con = 0
+    logical :: pseudo_isr = .false.
   contains
   <<fks regions: fks mapping resonances: TBP>>
   end type fks_mapping_resonances_t
@@ -1506,14 +1525,17 @@ there is only a soft singularity if the radiated parton becomes soft.
 <<fks regions: reg data: TBP>>=
   procedure :: init_resonance_information => region_data_init_resonance_information
 <<fks regions: procedures>>=
-  subroutine region_data_init_resonance_information (reg_data)
+  subroutine region_data_init_resonance_information (reg_data, factorization_mode)
     class(region_data_t), intent(inout) :: reg_data
+    integer, intent(in) :: factorization_mode
     call reg_data%enlarge_singular_regions_with_resonances ()
     call reg_data%find_resonances ()
     select type (map => reg_data%fks_mapping)
     type is (fks_mapping_resonances_t)
        call map%res_map%write ()
     end select
+    if (factorization_mode == FACTORIZATION_THRESHOLD) &
+       call reg_data%set_isr_pseudo_regions ()
   end subroutine region_data_init_resonance_information
 
 @ %def region_data_init_resonance_information
@@ -1567,6 +1589,57 @@ must be compatible with the resonance.
   end subroutine region_data_enlarge_singular_regions_with_resonances
 
 @ %def region_data_enlarge_singular_regions_with_resonances
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: set_isr_pseudo_regions => region_data_set_isr_pseudo_regions
+<<fks regions: procedures>>=
+  subroutine region_data_set_isr_pseudo_regions (reg_data)
+    class(region_data_t), intent(inout) :: reg_data
+    integer :: alr
+    integer :: n_alr_new
+    !!! Subroutine called for threshold factorization ->
+    !!! Size of singular regions at this point is fixed
+    type(singular_region_t), dimension(2) :: save_regions 
+    integer, dimension(4) :: alr_new_to_old
+    do alr = 1, reg_data%n_regions
+       save_regions(alr) = reg_data%regions(alr)
+    end do
+    n_alr_new = reg_data%n_regions * 2
+    alr_new_to_old = [1, 1, 2, 2]
+    deallocate (reg_data%regions)
+    allocate (reg_data%regions (n_alr_new))
+    reg_data%n_regions = n_alr_new
+    print *, 'n_regions: ', n_alr_new
+    do alr = 1, n_alr_new
+       reg_data%regions(alr) = save_regions(alr_new_to_old (alr))
+       call add_pseudo_emitters (reg_data%regions(alr))
+       if (mod (alr, 2) == 0) reg_data%regions(alr)%pseudo_isr = .true.
+    end do
+    select type (fks_mapping => reg_data%fks_mapping)
+    type is (fks_mapping_resonances_t)
+       deallocate (fks_mapping%res_map%alr_to_i_res)
+       allocate (fks_mapping%res_map%alr_to_i_res (4))
+       fks_mapping%res_map%alr_to_i_res = [1, 1, 1, 1]
+    end select
+  contains
+    subroutine add_pseudo_emitters (sregion)
+      type(singular_region_t), intent(inout) :: sregion
+      type(ftuple_t), dimension(2) :: ftuples_save
+      integer :: alr
+      do alr = 1, 2
+         ftuples_save(alr) = sregion%ftuples(alr)
+      end do
+      deallocate (sregion%ftuples)
+      sregion%nregions = sregion%nregions * 2
+      allocate (sregion%ftuples (sregion%nregions))
+      do alr = 1, sregion%nregions
+         sregion%ftuples(alr) = ftuples_save (alr_new_to_old(alr))
+         if (mod (alr, 2) == 0) sregion%ftuples(alr)%pseudo_isr = .true.
+      end do
+    end subroutine add_pseudo_emitters
+  end subroutine region_data_set_isr_pseudo_regions
+
+@ %def region_data_set_isr_pseudo_regions
 @
 <<fks regions: reg data: TBP>>=
   procedure :: evaluate_flavors => region_data_evaluate_flavors
@@ -1757,12 +1830,14 @@ the flavor structure list.
     integer, intent(in) :: i_res
     real(default) :: sval
     associate (map => reg_data%fks_mapping)
+       !!!map%sumdij = map%compute_sumdij (reg_data%regions(alr), p)
+       call map%compute_sumdij (reg_data%regions(alr), p)
        select type (map)
        type is (fks_mapping_resonances_t)
           map%emitter = emitter
           map%i_con = reg_data%alr_to_i_contributor (alr)
+          map%pseudo_isr = reg_data%regions(alr)%pseudo_isr
        end select
-       map%sumdij = map%compute_sumdij (reg_data%regions(alr), p)
        sval = map%svalue (p, emitter, reg_data%nlegs_real, i_res)
     end associate
   end function region_data_get_svalue
@@ -1780,12 +1855,14 @@ the flavor structure list.
     integer, intent(in) :: alr, emitter, i_res
     real(default) :: sval
     associate (map => reg_data%fks_mapping)
+       !!!map%sumdij_soft = &
+       !!!   map%compute_sumdij_soft (reg_data%regions(alr), p, p_soft)
+       call map%compute_sumdij_soft (reg_data%regions(alr), p, p_soft)
        select type (map)
        type is (fks_mapping_resonances_t)
           map%i_con = reg_data%alr_to_i_contributor (alr)
+          map%pseudo_isr = reg_data%regions(alr)%pseudo_isr
        end select
-       map%sumdij_soft = &
-          map%compute_sumdij_soft (reg_data%regions(alr), p, p_soft)
        sval = map%svalue_soft (p, p_soft, emitter, i_res)
     end associate
   end function region_data_get_svalue_soft
@@ -2731,13 +2808,15 @@ position.
   procedure (fks_mapping_compute_sumdij), deferred :: compute_sumdij
 <<fks regions: interfaces>>=
   abstract interface
-    function fks_mapping_compute_sumdij (map, sregion, p) result (d)
+    !!!function fks_mapping_compute_sumdij (map, sregion, p) result (d)
+    subroutine fks_mapping_compute_sumdij (map, sregion, p)
       import
-      class(fks_mapping_t), intent(in) :: map
-      type(singular_region_t), intent(inout) :: sregion
+      class(fks_mapping_t), intent(inout) :: map
+      type(singular_region_t), intent(in) :: sregion
       type(vector4_t), intent(in), dimension(:) :: p
-      real(default) :: d
-    end function fks_mapping_compute_sumdij
+      !!!real(default) :: d
+    !!!end function fks_mapping_compute_sumdij
+    end subroutine fks_mapping_compute_sumdij
   end interface
 
 @ %def fks_mapping_compute_sumdij
@@ -2778,14 +2857,16 @@ position.
   procedure (fks_mapping_compute_sumdij_soft), deferred :: compute_sumdij_soft
 <<fks regions: interfaces>>=
   abstract interface
-    function fks_mapping_compute_sumdij_soft (map, sregion, p_born, p_soft) result (d)
+    !!!function fks_mapping_compute_sumdij_soft (map, sregion, p_born, p_soft) result (d)
+    subroutine fks_mapping_compute_sumdij_soft (map, sregion, p_born, p_soft)
       import
-      class(fks_mapping_t), intent(in) :: map
-      type(singular_region_t), intent(inout) :: sregion
+      class(fks_mapping_t), intent(inout) :: map
+      type(singular_region_t), intent(in) :: sregion
       type(vector4_t), intent(in), dimension(:) :: p_born
       type(vector4_t), intent(in) :: p_soft
-      real(default) :: d
-    end function
+      !!!real(default) :: d
+    !!!end function
+    end subroutine fks_mapping_compute_sumdij_soft
   end interface
 @ %def fks_mapping_compute_sumdij_soft
 @
@@ -2894,12 +2975,11 @@ tuning the efficiency of the mapping and are set to $1$ per default.
 <<fks regions: fks mapping default: TBP>>=
   procedure :: compute_sumdij => fks_mapping_default_compute_sumdij
 <<fks regions: procedures>>=
-  function fks_mapping_default_compute_sumdij (map, sregion, p) result (d)
-    real(default) :: d
-    class(fks_mapping_default_t), intent(in) :: map
-    type(singular_region_t), intent(inout) :: sregion
+  subroutine fks_mapping_default_compute_sumdij (map, sregion, p)
+    class(fks_mapping_default_t), intent(inout) :: map
+    type(singular_region_t), intent(in) :: sregion
     type(vector4_t), intent(in), dimension(:) :: p
-    real(default) :: dij
+    real(default) :: d, dij
     integer :: alr, i, j
     integer :: nlegreal
 
@@ -2911,8 +2991,8 @@ tuning the efficiency of the mapping and are set to $1$ per default.
         d = d + one / dij
       end do
     end associate
-
-  end function fks_mapping_default_compute_sumdij
+    map%sumdij = d
+  end subroutine fks_mapping_default_compute_sumdij
 
 @ %def fks_mapping_default_compute_sumdij
 @ Computes
@@ -3000,13 +3080,12 @@ From these equations we can deduce the soft limit of $d$:
 <<fks regions: fks mapping default: TBP>>=
   procedure :: compute_sumdij_soft => fks_mapping_default_compute_sumdij_soft
 <<fks regions: procedures>>=
-  function fks_mapping_default_compute_sumdij_soft (map, sregion, p_born, p_soft) result (d)
-    real(default) :: d
-    class(fks_mapping_default_t), intent(in) :: map
-    type(singular_region_t), intent(inout) :: sregion
+  subroutine fks_mapping_default_compute_sumdij_soft (map, sregion, p_born, p_soft)
+    class(fks_mapping_default_t), intent(inout) :: map
+    type(singular_region_t), intent(in) :: sregion
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(in) :: p_soft
-    real(default) :: dij
+    real(default) :: d, dij
     integer :: alr, i, j
     integer :: nlegs
     d = zero
@@ -3020,7 +3099,9 @@ From these equations we can deduce the soft limit of $d$:
         end if
       end do
     end associate
-  end function fks_mapping_default_compute_sumdij_soft
+    map%sumdij_soft = d
+  !!!end function fks_mapping_default_compute_sumdij_soft
+  end subroutine fks_mapping_default_compute_sumdij_soft
 
 @ %def fks_mapping_default_compute_sumdij_soft
 @
@@ -3080,15 +3161,22 @@ leave out the denominator because it will cancel out anyway.
        call msg_fatal ("Resonance mappings require resonance index as input!")
     end if
     d = 0
-    if (i /= j) then
-       if (i > 2 .and. j > 2) then
-          associate (p_res => map%res_map%p_res (ii_con))
-             E1 = p(i) * p_res
-             E2 = p(j) * p_res
-             d = two * p(i) * p(j) * E1 * E2 / (E1 + E2)**2 
-          end associate
-       else
-          call msg_fatal ("Resonance mappings are not implemented for ISR")
+    if (map%pseudo_isr) then
+       associate (p_res => map%res_map%p_res (ii_con))
+          E1 = p_res**2; E2 = p(j) * p_res
+          d = two * p_res * p(j) * E1 * E2 / (E1 + E2)**2
+       end associate
+    else
+       if (i /= j) then
+          if (i > 2 .and. j > 2) then
+             associate (p_res => map%res_map%p_res (ii_con))
+                E1 = p(i) * p_res
+                E2 = p(j) * p_res
+                d = two * p(i) * p(j) * E1 * E2 / (E1 + E2)**2 
+             end associate
+          else
+             call msg_fatal ("Resonance mappings are not implemented for ISR")
+          end if
        end if
     end if
   end function fks_mapping_resonances_dij
@@ -3102,12 +3190,11 @@ leave out the denominator because it will cancel out anyway.
 <<fks regions: fks mapping resonances: TBP>>=
   procedure :: compute_sumdij => fks_mapping_resonances_compute_sumdij
 <<fks regions: procedures>>=
-  function fks_mapping_resonances_compute_sumdij (map, sregion, p) result (d)
-    real(default) :: d
-    class(fks_mapping_resonances_t), intent(in) :: map
-    type(singular_region_t), intent(inout) :: sregion
+  subroutine fks_mapping_resonances_compute_sumdij (map, sregion, p)
+    class(fks_mapping_resonances_t), intent(inout) :: map
+    type(singular_region_t), intent(in) :: sregion
     type(vector4_t), intent(in), dimension(:) :: p
-    real(default) :: dij, pfr
+    real(default) :: d, dij, pfr
     integer :: i_res, i_reg, i, j, i_con, i_em
     integer :: nlegreal
 
@@ -3121,8 +3208,10 @@ leave out the denominator because it will cancel out anyway.
        i_em = get_emitter_index (i, j, nlegreal)
        pfr = map%res_map%get_resonance_value (i_res, p, i_em, nlegreal) 
        i_con = sregion%i_reg_to_i_con (i_reg) 
+       map%pseudo_isr = sregion%pseudo_isr
        d = d + pfr / map%dij (p, i, j, i_con)
     end do
+    map%sumdij = d
   contains
     function get_emitter_index (i1, i2, n) result (i_em)
        integer :: i_em
@@ -3133,7 +3222,7 @@ leave out the denominator because it will cancel out anyway.
           i_em = i1
        end if
     end function get_emitter_index
-  end function fks_mapping_resonances_compute_sumdij
+  end subroutine fks_mapping_resonances_compute_sumdij
 
 @ %def fks_mapping_resonances_compute_sumdij
 @
@@ -3169,15 +3258,21 @@ reference.
      real(default) :: E1, E2
      integer :: ii_con
      integer :: i
+     type(vector4_t) :: pb
      if (present (i_con)) then
         ii_con = i_con
      else
         call msg_fatal ("fks_mapping_resonances requires resonance index")
      end if
      associate (p_res => map%res_map%p_res(ii_con))
-        E1 = p_born(em) * p_res
+        if (map%pseudo_isr) then
+           pb = p_res
+        else
+           pb = p_born(em)
+        end if
+        E1 = pb * p_res
         E2 = p_soft * p_res
-        d = two * p_born(em) * p_soft * E1 * E2 / E1**2
+        d = two * pb * p_soft * E1 * E2 / E1**2
      end associate
   end function fks_mapping_resonances_dij_soft
 
@@ -3186,12 +3281,13 @@ reference.
 <<fks regions: fks mapping resonances: TBP>>=
   procedure :: compute_sumdij_soft => fks_mapping_resonances_compute_sumdij_soft
 <<fks regions: procedures>>=
-  function fks_mapping_resonances_compute_sumdij_soft (map, sregion, p_born, p_soft) result (d)
-    real(default) :: d
-    class(fks_mapping_resonances_t), intent(in) :: map
-    type(singular_region_t), intent(inout) :: sregion
+  !!!function fks_mapping_resonances_compute_sumdij_soft (map, sregion, p_born, p_soft) result (d)
+  subroutine fks_mapping_resonances_compute_sumdij_soft (map, sregion, p_born, p_soft)
+    class(fks_mapping_resonances_t), intent(inout) :: map
+    type(singular_region_t), intent(in) :: sregion
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(in) :: p_soft
+    real(default) :: d
     real(default) :: pfr
     integer :: i_res, i_alr, i, j, i_reg, i_con
     integer :: nlegs
@@ -3205,9 +3301,11 @@ reference.
        end associate
        pfr = map%res_map%get_resonance_value (i_res, p_born) 
        i_con = sregion%i_reg_to_i_con (i_reg)
+       map%pseudo_isr = sregion%pseudo_isr
        if (j == nlegs) d = d + pfr / map%dij_soft (p_born, p_soft, i, i_con)
     end do
-  end function fks_mapping_resonances_compute_sumdij_soft
+    map%sumdij = d
+  end subroutine fks_mapping_resonances_compute_sumdij_soft
 
 @ %def fks_mapping_resonances_compute_sumdij_soft
 @
@@ -3266,6 +3364,21 @@ reference.
 
 @ %def fks_mapping_resonances_assign
 @ 
+<<fks regions: public>>=
+  public :: create_resonance_histories_for_threshold
+<<fks regions: procedures>>=
+  function create_resonance_histories_for_threshold () result (res_history)
+    type(resonance_history_t) :: res_history
+    res_history%n_resonances = 2  
+    allocate (res_history%resonances (2))
+    allocate (res_history%resonances(1)%contributors%c(2))
+    allocate (res_history%resonances(2)%contributors%c(2))
+    res_history%resonances(1)%contributors%c = [THR_POS_WP, THR_POS_B]
+    res_history%resonances(2)%contributors%c = [THR_POS_WM, THR_POS_BBAR]
+  end function create_resonance_histories_for_threshold
+    
+@ %def create_resonance_histories_for_threshold
+@
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Virtual contribution to the cross section}
@@ -3276,7 +3389,7 @@ module virtual
 
 <<Use kinds>>
 <<Use strings>>
-  use unit_tests, only: vanishes
+  use numeric_utils
   use constants
   use diagnostics
   use pdg_arrays
@@ -3285,7 +3398,7 @@ module virtual
   use sm_physics
   use lorentz
   use flavors
-  use nlo_data, only: INTERFERENCE_DEFAULT, INTERFERENCE_THRESHOLD
+  use nlo_data, only: NO_FACTORIZATION, FACTORIZATION_THRESHOLD
   use ttv_formfactors, only: THR_POS_B, THR_POS_BBAR
   use ttv_formfactors, only: THR_POS_WP, THR_POS_WM
   use fks_regions
@@ -3318,7 +3431,7 @@ end module virtual
     integer :: n_in, nlegs, nflv
     logical :: bad_point
     logical :: use_internal_color_correlations
-    integer :: interference_mode = INTERFERENCE_DEFAULT
+    integer :: factorization_mode = NO_FACTORIZATION
   contains
   <<virtual: virtual: TBP>>
   end type virtual_t
@@ -3471,8 +3584,8 @@ particles involved in the radiation process are massive or massless.
        call virt%compute_collinear_contribution &
           (p_born, sqrt(s), i_flv, flst_born%massive) 
 
-       select case (virt%interference_mode)
-       case (INTERFERENCE_THRESHOLD)
+       select case (virt%factorization_mode)
+       case (FACTORIZATION_THRESHOLD)
           BI = virt%compute_eikonals_threshold (p_born, s, s_o_mu2, &
                i_flv, alr, reg_data, flst_born, b_ij)
        case default
@@ -3982,7 +4095,7 @@ module real_subtraction
   use system_dependencies, only: LHAPDF6_AVAILABLE
   use string_utils
   use constants
-  use unit_tests
+  use numeric_utils
   use diagnostics
   use pdg_arrays
   use model_data
@@ -4042,7 +4155,7 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     type(pdf_container_t), pointer :: pdf_born_plus => null ()
     type(pdf_container_t), pointer :: pdf_born_minus => null ()
     logical :: xi2_expanded = .true.
-    integer :: interference_mode = INTERFERENCE_DEFAULT
+    integer :: factorization_mode = NO_FACTORIZATION
   contains
   <<real subtraction: soft sub: TBP>>
   end type soft_subtraction_t
@@ -4207,11 +4320,11 @@ distinguished by the flag [[xi2_expanded]].
     s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
         (p_born, sub_soft%p_soft, alr, emitter, i_res)
     sub_soft%value(alr) = 4 * pi * alpha_s * s_alpha_soft
-    select case (sub_soft%interference_mode)
-    case (INTERFERENCE_DEFAULT)
-       kb = sub_soft%evaluate_interference_default (p_born, born_ij)
-    case (INTERFERENCE_THRESHOLD)
-       kb = sub_soft%evaluate_interference_threshold (p_born, born_ij)
+    select case (sub_soft%factorization_mode)
+    case (NO_FACTORIZATION)
+       kb = sub_soft%evaluate_factorization_default (p_born, born_ij)
+    case (FACTORIZATION_THRESHOLD)
+       kb = sub_soft%evaluate_factorization_threshold (p_born, born_ij)
     end select
     call msg_debug2 (D_SUBTRACTION, 'KB', kb)
     sub_soft%value(alr) = sub_soft%value(alr) * kb
@@ -4232,10 +4345,10 @@ distinguished by the flag [[xi2_expanded]].
 ones because [[born_ij]] is constructed in such a way that it is only
 non-zero for colored entries.
 <<real subtraction: soft sub: TBP>>=
-  procedure :: evaluate_interference_default => &
-     soft_subtraction_evaluate_interference_default
+  procedure :: evaluate_factorization_default => &
+     soft_subtraction_evaluate_factorization_default
 <<real subtraction: procedures>>=
-  function soft_subtraction_evaluate_interference_default &
+  function soft_subtraction_evaluate_factorization_default &
      (sub_soft, p, born_ij) result (kb)
     real(default) :: kb
     class(soft_subtraction_t), intent(inout) :: sub_soft
@@ -4249,9 +4362,9 @@ non-zero for colored entries.
           kb = kb + sub_soft%momentum_matrix (i, j) * born_ij (i, j)
        end do
     end do
-  end function soft_subtraction_evaluate_interference_default
+  end function soft_subtraction_evaluate_factorization_default
 
-@ %def soft_subtraction_evaluate_interference_default
+@ %def soft_subtraction_evaluate_factorization_default
 @ We have to multiply this with $\xi^2(1-y)$. Further, when applying
 the soft $\mathcal{S}$-function, the energy of the radiated particle
 is factored out. Thus we have $\xi^2/E_{em}^2(1-y) = 4/q_0^2(1-y)$.
@@ -4285,17 +4398,16 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
 @ %def soft_subtraction_compute_momentum_matrx
 @
 <<real subtraction: soft sub: TBP>>=
-  procedure :: evaluate_interference_threshold => &
-     soft_subtraction_evaluate_interference_threshold
+  procedure :: evaluate_factorization_threshold => &
+     soft_subtraction_evaluate_factorization_threshold
 <<real subtraction: procedures>>=
-  function soft_subtraction_evaluate_interference_threshold &
+  function soft_subtraction_evaluate_factorization_threshold &
      (sub_soft, p_born, born_ij) result (kb)
     real(default) :: kb
     class(soft_subtraction_t), intent(inout) :: sub_soft
     type(vector4_t), intent(in), dimension(:) :: p_born
     real(default), intent(in), dimension(:,:) :: born_ij
     type(vector4_t), dimension(4) :: p
-    integer :: i, j
     p(1) = p_born(THR_POS_WP) + p_born(THR_POS_B)
     p(2) = p_born(THR_POS_B)
     p(3) = p_born(THR_POS_WM) + p_born(THR_POS_BBAR)
@@ -4335,16 +4447,17 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     end function evaluate_leg_pair
 
     subroutine show_debug ()
-      call msg_print_color ('soft_subtraction_evaluate_interference_threshold', COL_GREEN)
+      integer :: i
+      call msg_print_color ('soft_subtraction_evaluate_factorization_threshold', COL_GREEN)
       do i = 1, 4
          print *, 'sqrt(p(i)**2) =    ', sqrt(p(i)**2)
       end do
       print *, 'p_soft =    ', sub_soft%p_soft
     end subroutine show_debug
 
-  end function soft_subtraction_evaluate_interference_threshold
+  end function soft_subtraction_evaluate_factorization_threshold
 
-@ %def soft_subtraction_evaluate_interference_threshold
+@ %def soft_subtraction_evaluate_factorization_threshold
 @
 \subsection{Soft mismatch}
 <<real subtraction: public>>=
@@ -4636,31 +4749,28 @@ necessary to expand with $z$ once.
     emitter = sregion%emitter
     flv_rad = sregion%flst_real%flst(nlegs)
     flv_em = sregion%flst_real%flst(emitter)
-    !!!p0 = p_born(emitter)%p(0)
     q0 = p_res**1
     p0 = p_res * p_born(emitter) / q0
     !!! Here, z corresponds to 1-z in the formulas of arXiv:1002.2581;
     !!! the integrand is symmetric under this variable change
     z_o_xi = q0 / (two * p0)
     z = xi * z_o_xi; onemz = one - z
-
     if (is_gluon(flv_em) .and. is_gluon(flv_rad)) then
-@ Implementation of equation (\ref{coll1}). Note that an additional
-factor $z$, so that in the last step, the whole expression is divided by
-$z/\xi$.
-<<real subtraction: procedures>>=
+       !!! Implementation of equation (\ref{coll1}). Note that an
+       !!! additional factor $z$, so that in the last step, the whole
+       !!! expression is divided by $z/\xi$.
        pggz = two * CA * (z**2 * onemz + z**2 / onemz + onemz)
        value = pggz * sqme_born - 4 * CA * z**2 * onemz * sqme_born_sc
        value = value / z_o_xi
     else if (is_quark(abs(flv_em)) .and. is_quark (abs(flv_rad))) then
-@ Equation \ref{coll2}
-<<real subtraction: procedures>>=
+       !!! Equation \ref{coll2}
        pqgz = TR * z * (one - two * z * onemz)
        value = pqgz * sqme_born + 4 * TR * z**2 * onemz * sqme_born_sc
        value = value / z_o_xi
     else if (is_quark (abs(flv_em)) .and. is_gluon (flv_rad)) then
        value = sqme_born * CF * (one + onemz**2) / z_o_xi
     else
+       value = zero
        call msg_fatal ('Impossible flavor structure in collinear counterterm!')
     end if
     value = value / (p0**2 * onemz * z_o_xi)
@@ -5698,8 +5808,8 @@ end module nlo_data
   integer, parameter, public :: FKS_DEFAULT = 1
   integer, parameter, public :: FKS_RESONANCES = 2
 
-  integer, parameter, public :: INTERFERENCE_DEFAULT = 0
-  integer, parameter, public :: INTERFERENCE_THRESHOLD = 1
+  integer, parameter, public :: NO_FACTORIZATION = 0
+  integer, parameter, public :: FACTORIZATION_THRESHOLD = 1
 
 @ %def parameters
 @
@@ -6458,7 +6568,7 @@ module nlo_controller
 <<Use kinds>>
   use io_units
   use constants
-  use unit_tests
+  use numeric_utils
   use diagnostics
   use physics_defs
   use process_constants !NODEP!
@@ -6790,11 +6900,11 @@ and virtual counterterms.
   procedure :: init => color_data_init
 <<nlo controller: procedures>>=
   subroutine color_data_init (color_data, reg_data, prc_constants, &
-     interference_mode)
+     factorization_mode)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
-    integer, intent(in) :: interference_mode
+    integer, intent(in) :: factorization_mode
     integer :: nlegs_real
     integer :: i, n_in
     nlegs_real = reg_data%nlegs_real
@@ -6829,7 +6939,7 @@ and virtual counterterms.
              color_data%col_state_real)
       end associate
     end do
-    call color_data%init_betaij (reg_data, interference_mode)
+    call color_data%init_betaij (reg_data, factorization_mode)
   end subroutine color_data_init
 
 @ %def color_data_init
@@ -6837,24 +6947,24 @@ and virtual counterterms.
 <<nlo controller: color data: TBP>>=
   procedure :: init_betaij => color_data_init_betaij
 <<nlo controller: procedures>>=
-  subroutine color_data_init_betaij (color_data, reg_data, interference_mode)
+  subroutine color_data_init_betaij (color_data, reg_data, factorization_mode)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
-    integer, intent(in) :: interference_mode
+    integer, intent(in) :: factorization_mode
     integer :: i
     if (debug_active (D_SUBTRACTION)) then
        call msg_print_color ("color_data_init_betaij", COL_AQUA)
-       call msg_print_color ("interference_mode", interference_mode, COL_AQUA)
+       call msg_print_color ("factorization_mode", factorization_mode, COL_AQUA)
     end if
     allocate (color_data%beta_ij (reg_data%nlegs_born, &
          reg_data%nlegs_born, reg_data%n_flv_born))
-    select case (interference_mode)
-    case (INTERFERENCE_DEFAULT)
+    select case (factorization_mode)
+    case (NO_FACTORIZATION)
        do i = 1, reg_data%n_flv_born
           call color_data%fill_betaij_matrix (reg_data%nlegs_born, i, &
              reg_data%regions(1)%flst_real, reg_data)
        end do
-    case (INTERFERENCE_THRESHOLD)
+    case (FACTORIZATION_THRESHOLD)
        call color_data%fill_betaij_matrix_threshold ()
     end select
   end subroutine color_data_init_betaij
@@ -7461,7 +7571,7 @@ one to determine this.
      logical :: test_soft_limit = .false.
      logical :: test_coll_limit = .false.
      integer :: fixed_alr = -1
-     integer :: interference_mode = INTERFERENCE_DEFAULT
+     integer :: factorization_mode = NO_FACTORIZATION
   contains
   <<nlo data: nlo settings: TBP>>
   end type nlo_settings_t
@@ -7770,7 +7880,7 @@ process.
     class(prc_core_t), intent(in) :: core
     select type (core)
     type is (prc_threshold_t)
-       nlo_controller%settings%interference_mode = INTERFERENCE_THRESHOLD
+       nlo_controller%settings%factorization_mode = FACTORIZATION_THRESHOLD
     end select
   end subroutine nlo_controller_check_if_threshold_method
 
@@ -7855,8 +7965,8 @@ polarized or not.
        nlo_controller%real_terms%test_limit = &
           settings%test_soft_limit .or. settings%test_coll_limit
        nlo_controller%real_terms%fixed_alr = settings%fixed_alr
-       nlo_controller%real_terms%sub_soft%interference_mode &
-          = settings%interference_mode
+       nlo_controller%real_terms%sub_soft%factorization_mode &
+          = settings%factorization_mode
     end associate
   end subroutine nlo_controller_init_real_subtraction
 
@@ -8094,20 +8204,26 @@ polarized or not.
        select type (phs_config)
        type is (phs_fks_config_t)
           !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-          allocate (resonance_histories (size (phs_config%get_resonance_histories ())))          
-          resonance_histories = phs_config%get_resonance_histories ()
-          call clean_resonance_histories (resonance_histories, &
-             nlo_controller%particle_data%n_in, &
-             nlo_controller%particle_states%flv_state_born (:,1), &
-             resonance_histories_clean, success)
-          if (.not. success) &
-             template%mapping_type = FKS_DEFAULT
+	  select case (nlo_controller%settings%factorization_mode)
+          case (NO_FACTORIZATION)
+             allocate (resonance_histories (size (phs_config%get_resonance_histories ())))          
+             resonance_histories = phs_config%get_resonance_histories ()
+             call clean_resonance_histories (resonance_histories, &
+                nlo_controller%particle_data%n_in, &
+                nlo_controller%particle_states%flv_state_born (:,1), &
+                resonance_histories_clean, success)
+             if (.not. success) &
+                template%mapping_type = FKS_DEFAULT
+          case (FACTORIZATION_THRESHOLD)
+             allocate (resonance_histories_clean (1))
+             resonance_histories_clean = create_resonance_histories_for_threshold ()
+          end select
        end select
     end select
     call nlo_controller%init_region_data (template, model)
     if (nlo_controller%settings%use_internal_color_correlations) &
        call nlo_controller%color_data%init (nlo_controller%reg_data, &
-          prc_constants, nlo_controller%settings%interference_mode)
+          prc_constants, nlo_controller%settings%factorization_mode)
     select case (template%mapping_type)
     case (FKS_RESONANCES)
        call nlo_controller%init_resonance_info (resonance_histories_clean)
@@ -8313,7 +8429,8 @@ polarized or not.
     type is (fks_mapping_resonances_t)
        call map%res_map%init (resonance_histories)
     end select
-    call nlo_controller%reg_data%init_resonance_information ()
+    call nlo_controller%reg_data%init_resonance_information &
+       (nlo_controller%settings%factorization_mode)
   end subroutine nlo_controller_init_resonance_info
 
 @ %def nlo_controller_init_resonance_info
@@ -8380,8 +8497,8 @@ polarized or not.
     class(nlo_controller_t), intent(inout) :: nlo_controller
     call nlo_controller%virtual_terms%init (nlo_controller%particle_states%flv_state_born, &
        nlo_controller%particle_data%n_in)
-    nlo_controller%virtual_terms%interference_mode &
-       = nlo_controller%settings%interference_mode
+    nlo_controller%virtual_terms%factorization_mode &
+       = nlo_controller%settings%factorization_mode
   end subroutine nlo_controller_init_virtual
 
 @ %def nlo_controller_init_virtual
@@ -8868,6 +8985,8 @@ module phs_fks
   use cascades
   use process_constants
   use process_libraries
+  use ttv_formfactors, only: THR_POS_WP, THR_POS_WM
+  use ttv_formfactors, only: THR_POS_B, THR_POS_BBAR
   use nlo_data
   use fks_regions, only: region_data_t
 
@@ -10155,8 +10274,7 @@ momentum vanishes. Thus we define
 <<phs fks: phs fks: TBP>>=
   procedure :: generate_isr => phs_fks_generate_isr
 <<phs fks: procedures>>=
-  subroutine phs_fks_generate_isr &
-       (phs, i_phs, p_born, p_real)
+  subroutine phs_fks_generate_isr (phs, i_phs, p_born, p_real)
     class(phs_fks_t), intent(inout) :: phs
     integer, intent(in) :: i_phs
     type(vector4_t), intent(in), dimension(:) :: p_born
@@ -10288,6 +10406,58 @@ with $\Lambda$.
   end subroutine phs_fks_generator_generate_isr_decay
 
 @ %def phs_fks_generator_generate_isr_decay
+@
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: generate_isr_factorized => phs_fks_generator_generate_isr_factorized
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_generate_isr_factorized (generator, i_phs, emitter, p_born, p_real)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    integer, intent(in) :: i_phs, emitter
+    type(vector4_t), intent(in), dimension(:) :: p_born
+    type(phs_point_t), intent(inout) :: p_real
+    type(vector4_t), dimension(:), allocatable :: p_tmp_born
+    type(phs_point_t) :: p_tmp_real
+    type(vector4_t) :: p_top
+    type(lorentz_transformation_t) :: boost_to_rest_frame
+    integer, parameter :: nlegreal = 7 !!! Factorized phase space so far only required for ee -> bwbw
+     
+    allocate (p_tmp_born (3)); p_tmp_born = vector4_null
+    p_tmp_real = 4
+    p_real%p(1:2) = p_born(1:2)
+    if (emitter == THR_POS_B) then
+       p_top = p_born (THR_POS_WP) + p_born (THR_POS_B)
+       p_tmp_born(2) = p_born (THR_POS_WP)
+       p_tmp_born(3) = p_born (THR_POS_B)
+    else if (emitter == THR_POS_BBAR) then
+       p_top = p_born (THR_POS_WM) + p_born (THR_POS_BBAR) 
+       p_tmp_born(2) = p_born (THR_POS_WM)
+       p_tmp_born(3) = p_born (THR_POS_BBAR)
+    else
+       call msg_fatal ("Threshold computation requires emitters to be at position 5 and 6 " // &
+          "Please check if your process specification fulfills this requirement.")
+    end if
+    p_tmp_born (1) = p_top
+    boost_to_rest_frame = inverse (boost (p_top, p_top**1))
+    p_tmp_born = boost_to_rest_frame * p_tmp_born
+    call generator%compute_xi_max_isr_factorized (i_phs, p_tmp_born)
+    call generator%generate_isr_decay (i_phs, p_tmp_born, p_tmp_real)
+    p_tmp_real = inverse (boost_to_rest_frame) * p_tmp_real
+    if (emitter == THR_POS_B) then
+       p_real%p(THR_POS_WP) = p_tmp_real%p (2)
+       p_real%p(THR_POS_B) = p_tmp_real%p (3)
+       p_real%p(THR_POS_WM) = p_born (THR_POS_WM)
+       p_real%p(THR_POS_BBAR) = p_born (THR_POS_BBAR)
+    !!! Exception has been handled above
+    else
+       p_real%p(THR_POS_WM) = p_tmp_real%p (2)
+       p_real%p(THR_POS_BBAR) = p_tmp_real%p (3)
+       p_real%p(THR_POS_WP) = p_born (THR_POS_WP)
+       p_real%p(THR_POS_B) = p_born (THR_POS_B)
+    end if
+    p_real%p(nlegreal) = p_tmp_real%p (4)
+  end subroutine phs_fks_generator_generate_isr_factorized
+       
+@ %def phs_fks_generator_generate_isr_factorized
 @
 <<phs fks: phs fks generator: TBP>>=
   procedure :: generate_isr => phs_fks_generator_generate_isr
@@ -10606,6 +10776,20 @@ with $\Lambda$.
 @ %def phs_fks_generator_compute_xi_max
 @
 <<phs fks: phs fks generator: TBP>>=
+  procedure :: compute_xi_max_isr_factorized &
+     => phs_fks_generator_compute_xi_max_isr_factorized
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_compute_xi_max_isr_factorized &
+     (generator, i_phs, p)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    integer, intent(in) :: i_phs
+    type(vector4_t), intent(in), dimension(:) :: p
+    generator%real_kinematics%xi_max(i_phs) = get_xi_max_isr_decay (p)
+  end subroutine phs_fks_generator_compute_xi_max_isr_factorized
+
+@ %def phs_fks_generator_compute_xi_max_isr_factorized
+@
+<<phs fks: phs fks generator: TBP>>=
   procedure :: set_masses => phs_fks_generator_set_masses
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_set_masses (generator, p, phs_identifiers)
@@ -10737,11 +10921,14 @@ with $\Lambda$.
           rad_var%xi_mismatch = generator%xi_min + r / deno
           rad_var%jac_mismatch = rad_var%jac_mismatch / deno**2
        case (GEN_SOFT_LIMIT_TEST)
-          rad_var%xi_tilde = xi_tilde_test_soft
+          rad_var%xi_tilde = r * two * xi_tilde_test_soft
+          rad_var%jac_rand = two * xi_tilde_test_soft
        case (GEN_COLL_LIMIT_TEST)
           rad_var%xi_tilde = xi_tilde_test_coll
+          rad_var%jac_rand = xi_tilde_test_coll
        case (GEN_SOFT_COLL_LIMIT_TEST)
-          rad_var%xi_tilde = xi_tilde_test_soft
+          rad_var%xi_tilde = r * two * xi_tilde_test_soft
+          rad_var%jac_rand = two * xi_tilde_test_soft
        end select
     end associate
   end subroutine phs_fks_generator_compute_xi_tilde
@@ -10898,6 +11085,8 @@ module phs_fks_uti
   use constants, only: tiny_07, zero
   use lorentz
 
+  use ttv_formfactors, only: THR_POS_B, THR_POS_BBAR
+
   use cascades, only: resonance_contributors_t
   use phs_fks
   use nlo_data, only: phs_identifier_t
@@ -10920,15 +11109,18 @@ end module phs_fks_uti
     integer, intent(in) :: u
     type(test_results_t), intent(inout) :: results
     call test(phs_fks_generator_1, "phs_fks_generator_1", &
-              "Test the generation of FKS phase spaces", u, results)
+       "Test the generation of FKS phase spaces", u, results)
     call test(phs_fks_generator_2, "phs_fks_generator_2", &
-              "Test the generation of an ISR FKS phase space", u, results)
+       "Test the generation of an ISR FKS phase space", u, results)
     call test(phs_fks_generator_3, "phs_fks_generator_3", &
-              "Test the generation of a real phase space for decays", &
-              u, results)
+       "Test the generation of a real phase space for decays", &
+       u, results)
     call test(phs_fks_generator_4, "phs_fks_generator_4", &
-              "Test the generation of an FSR phase space with "&
+       "Test the generation of an FSR phase space with "&
        &"conserved invariant resonance masses", u, results)
+    call test(phs_fks_generator_5, "phs_fks_generator_5", &
+       "Test the phase space generation for the factorized threshold computation", &
+       u, results)       
   end subroutine phs_fks_generator_test
 
 @ %def phs_fks_generator_test
@@ -11349,6 +11541,93 @@ end module phs_fks_uti
 
 @ %def phs_fks_generator_4
 @
+<<phs fks: test declarations>>=
+  public :: phs_fks_generator_5
+<<phs fks: tests>>=
+  subroutine phs_fks_generator_5 (u)
+    integer, intent(in) :: u
+    type(phs_fks_generator_t) :: generator
+    type(vector4_t), dimension(:), allocatable :: p_born
+    type(phs_point_t) :: p_real
+    integer, dimension(:), allocatable :: emitters
+    real(default) :: x1, x2, x3
+    integer, parameter :: nlegborn = 6
+    integer, parameter :: n_phs = 4, n_alr = 4, n_contr = 1
+    integer :: i_phs, emitter
+    type(phs_identifier_t), dimension(n_phs) :: phs_identifiers
+    write (u, "(A)") "* Test output: phs_fks_generator_5"
+    write (u, "(A)") "* Purpose: Create FSR phase space with fixed resonances"
+    write (u, "(A)")
+
+    allocate (p_born (nlegborn))
+    p_born(1)%p(0) = 250._default
+    p_born(1)%p(1) = 0._default
+    p_born(1)%p(2) = 0._default
+    p_born(1)%p(3) = 250._default
+    p_born(2)%p(0) = 250._default
+    p_born(2)%p(1) = 0._default
+    p_born(2)%p(2) = 0._default
+    p_born(2)%p(3) = -250._default
+    p_born(3)%p(0) = 145.91184486_default
+    p_born(3)%p(1) = 50.39727589_default
+    p_born(3)%p(2) = 86.74156041_default
+    p_born(3)%p(3) = -69.03608748_default
+    p_born(4)%p(0) = 208.1064784_default
+    p_born(4)%p(1) = -44.07610020_default
+    p_born(4)%p(2) = -186.34264578_default
+    p_born(4)%p(3) = 13.48038407_default
+    p_born(5)%p(0) = 26.25614471_default
+    p_born(5)%p(1) = -25.12258068_default
+    p_born(5)%p(2) = -1.09540228_default
+    p_born(5)%p(3) = -6.27703505_default
+    p_born(6)%p(0) = 119.72553196_default
+    p_born(6)%p(1) = 18.80140499_default
+    p_born(6)%p(2) = 100.69648766_default
+    p_born(6)%p(3) = 61.83273846_default
+
+    allocate (generator%isr_kinematics)
+    generator%n_in = 2
+    p_real = nlegborn + 1
+
+    call generator%set_beam_energy (250._default)
+
+    write (u, "(A)") "* Test process: e+ e- -> W+ W- b b~"
+    write (u, "(A)") "* Use four-particle phase space containing: "
+    call vector4_write_set (p_born, u, testflag = .true., ultra = .true.)
+    write (u, "(A)") "******************************"
+    write (u, "(A)")
+
+    x1 = 0.5_default; x2 = 0.25_default; x3 = 0.75_default
+    write (u, "(A)") "* Use random numbers: "
+    write (u, "(A,F3.2,1X,A,F3.2,1X,A,F3.2)") &
+       "x1: ", x1, "x2: ", x2, "x3: ", x3
+
+    allocate (generator%real_kinematics)
+    call generator%real_kinematics%init (nlegborn, n_phs, n_alr, n_contr)
+    allocate (generator%emitters (n_phs))
+    generator%emitters([1,3]) = THR_POS_B; generator%emitters([2,4]) = THR_POS_BBAR
+    allocate (generator%m2 (nlegborn))
+    generator%m2 = p_born**2
+    allocate (generator%is_massive (nlegborn))
+    generator%is_massive (1:2) = .false.
+    generator%is_massive (3:6) = .true.
+    phs_identifiers([1,3])%emitter = THR_POS_B
+    phs_identifiers([2,4])%emitter = THR_POS_BBAR
+    call generator%generate_radiation_variables &
+       ([x1, x2, x3], p_born, phs_identifiers)
+    call generator%generate_isr_factorized &
+       (3, phs_identifiers(3)%emitter, p_born, p_real)
+    call vector4_write_set (p_real%p, u, ultra = .true.)
+    call write_separator (u)
+    call generator%generate_isr_factorized &
+       (4, phs_identifiers(4)%emitter, p_born, p_real)
+    call vector4_write_set (p_real%p, u, ultra = .true.)
+    call write_separator (u)
+    
+  end subroutine phs_fks_generator_5
+
+@ %def phs_fks_generator_5
+@
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Subtraction of initial-state divergences}
@@ -11399,7 +11678,7 @@ module pdf_subtraction
 
 <<Use kinds with double>>
 <<Use strings>>
-  use unit_tests, only: vanishes
+  use numeric_utils
   use system_dependencies, only: LHAPDF6_AVAILABLE
   use diagnostics
   use constants

@@ -1879,7 +1879,7 @@ module shower_core
   use io_units
   use constants
   use format_utils, only: write_separator
-  use unit_tests, only: vanishes, nearly_equal
+  use numeric_utils
   use system_defs, only: TAB
   use diagnostics
   use physics_defs
@@ -6289,6 +6289,7 @@ module shower_pythia6
   use model_data
   use hep_common
   use pdf
+  use helicities
 
 <<Standard module head>>
 
@@ -6475,9 +6476,14 @@ contains
     call pygive ("MSTP(171)=1")     !!! Allow variable energies
 
     if (shower%initialized_for_NPRUP >= NPRUP) then
+       ! TODO: (bcn 2016-02-23) unclear whether this is actually necessary
        call msg_debug (D_SHOWER, "calling upinit")
-       call upinit
+       call upinit ()
     else
+       !!! This is called the first time for a process and sets most of
+       !!! the settings
+       ! TODO: (bcn 2016-02-23) why are these only given once but the
+       !                        others for every event?
        write (buffer, "(F10.5)") sqrt (abs (shower%settings%min_virtuality))
        call pygive ("PARJ(82)=" // buffer)
        write (buffer, "(F10.5)") shower%settings%isr_tscalefactor
@@ -6524,6 +6530,11 @@ contains
        call pygive ("MRPY(1)=" // buffer)
        call pygive ("MRPY(2)=0")
        call pythia6_set_config (shower%settings%pythia6_pygive)
+       if (pythia6_tauola_active()) then
+          ! TODO: (bcn 2016-02-23) activate when we add tauola folder
+          !this should only be called once
+          !call ilc_tauola_init_call ()
+       end if
        shower%initialized_for_NPRUP = NPRUP
     end if
   end subroutine shower_pythia6_transfer_settings
@@ -6580,12 +6591,10 @@ added back in by Pythia.
     class(model_data_t), pointer :: model
     type(vector4_t) :: momentum
     type(particle_t), dimension(:), allocatable :: particles, beams
-    type(particle_t), dimension(2) :: incomings
     integer :: dangling_col, dangling_anti_col, color, anti_color
     integer :: i, j, py_entries, next_color, n_tot_old, parent, real_parent
     integer :: pdg, status, child, hadro_start, i_py, i_whz
-    integer, allocatable, dimension(:) :: py_index, whz_index, &
-         backup_parents, incoming_ids
+    integer, allocatable, dimension(:) :: py_index, whz_index
     logical, allocatable, dimension(:) :: valid
     real(default), parameter :: py_tiny = 1E-10_default
     integer :: N, NPAD, K
@@ -6692,6 +6701,8 @@ added back in by Pythia.
   subroutine add_particles_of_pythia ()
     integer :: whizard_status
     integer :: pset_idx, start_in_py
+    integer :: ihelicity
+    type(helicity_t) :: hel
     dangling_col = 0
     dangling_anti_col = 0
     next_color = 500
@@ -6720,6 +6731,15 @@ added back in by Pythia.
           end if
           call particles(n_tot_old+i_whz)%init &
                (whizard_status, pdg, model, color, anti_color, momentum)
+          ! Set tau helicity set by TAUOLA
+          if (abs (pdg) == 15) then
+             ! TODO: (bcn 2016-02-23) activate when we add tauola folder
+            !call ilc_tauola_get_helicity(i_py, ihelicity)
+            ihelicity = 1 !!! Dummy value, replace by the subroutine above
+            call hel%init(ihelicity)
+            call particles(n_tot_old+i_whz)%set_helicity(hel)
+            call particles(n_tot_old+i_whz)%set_polarization(PRT_DEFINITE_HELICITY)
+          end if
           py_index(i_whz) = i_py
           whz_index(i_py) = n_tot_old + i_whz
           i_whz = i_whz + 1
@@ -7290,6 +7310,20 @@ with the ordering of the color string but am not sure.
   end function pythia6_get_error
 
 @ %def pythia6_get_error
+@
+<<Shower pythia6: public>>=
+  public :: pythia6_tauola_active
+<<Shower pythia6: procedures>>=
+  function pythia6_tauola_active () result (active)
+    IMPLICIT DOUBLE PRECISION(A-H, O-Z)
+    IMPLICIT INTEGER(I-N)
+    COMMON/PYDAT1/MSTU(200),PARU(200),MSTJ(200),PARJ(200)
+    SAVE/PYDAT1/
+    logical :: active
+    active = MSTJ(28) == 2
+  end function pythia6_tauola_active
+
+@ %def pythia6_tauola_active
 @
 <<Shower pythia6: public>>=
   public :: pythia6_handle_errors

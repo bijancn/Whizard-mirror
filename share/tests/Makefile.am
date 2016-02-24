@@ -4,7 +4,7 @@
 ##
 ########################################################################
 #
-# Copyright (C) 1999-2015 by 
+# Copyright (C) 1999-2016 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -261,6 +261,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/phs_fks_generator_2.ref \
     unit_tests/ref-output/phs_fks_generator_3.ref \
     unit_tests/ref-output/phs_fks_generator_4.ref \
+    unit_tests/ref-output/phs_fks_generator_5.ref \
     unit_tests/ref-output/rng_base_1.ref \
     unit_tests/ref-output/rng_base_2.ref \
     unit_tests/ref-output/rng_tao_1.ref \
@@ -636,6 +637,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/flvsum_1.ref \
     functional_tests/ref-output/decay_err_1.ref \
     functional_tests/ref-output/decay_err_2.ref \
+    functional_tests/ref-output/polarized_1.ref \
     functional_tests/ref-output/circe1_1.ref \
     functional_tests/ref-output/circe1_2.ref \
     functional_tests/ref-output/circe1_3.ref \
@@ -933,6 +935,7 @@ MISC_TESTS_SIN = \
     functional_tests/flvsum_1.sin \
     functional_tests/decay_err_1.sin \
     functional_tests/decay_err_2.sin \
+    functional_tests/polarized_1.sin \
     functional_tests/pdf_builtin.sin \
     functional_tests/lhapdf5.sin \
     functional_tests/lhapdf6.sin \
