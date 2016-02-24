@@ -178,6 +178,7 @@ TESTS_REQ_OCAML = \
     flvsum_1.run \
     decay_err_1.run \
     decay_err_2.run \
+    polarized_1.run \
     pdf_builtin.run \
     ep_1.run \
     ep_2.run \
@@ -410,6 +411,7 @@ endif
 stdhep_4.run: stdhep_rd
 stdhep_5.run: stdhep_rd
 stdhep_6.run: stdhep_rd
+polarized_1.run: stdhep_rd
 stdhep_rd: $(top_builddir)/src/xdr/stdhep_rd
 	cp $< $@
 
