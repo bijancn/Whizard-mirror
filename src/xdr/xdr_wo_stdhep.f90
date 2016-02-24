@@ -1,8 +1,8 @@
-!$Id: xdr_stdhep.f90 6133 2014-09-17 14:42:33Z kilian $
+!$Id: xdr_wo_stdhep.f90 6133 2014-09-17 14:42:33Z kilian $
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-! Copyright (C) 1999-2015 by 
+! Copyright (C) 1999-2016 by 
 !     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 !     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 !     Juergen Reuter <juergen.reuter@desy.de>
@@ -29,7 +29,7 @@
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-module xdr_stdhep
+module xdr_wo_stdhep
 
   use, intrinsic :: iso_c_binding
   use iso_varying_string, string_t => varying_string
@@ -56,5 +56,5 @@ contains
           char (outfile) // c_null_char, int (maxevt, c_int))
   end subroutine write_stdhep_event
   
-end module xdr_stdhep
+end module xdr_wo_stdhep
 

@@ -5,7 +5,7 @@ dnl ************************************************************************
 dnl configure -- Main configuration script for WHIZARD
 dnl configure.ac -- WHIZARD configuration
 dnl 
-dnl Copyright (C) 1999-2015 by 
+dnl Copyright (C) 1999-2016 by 
 dnl     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 dnl     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 dnl     Juergen Reuter <juergen.reuter@desy.de>
@@ -145,7 +145,7 @@ WO_CONFIGURE_SECTION([Generic tools])
 ### Initialize LIBTOOL
 LT_INIT(dlopen)
 
-LT_PREREQ([2.2.8b])
+LT_PREREQ([2.3.0b])
 
 AX_CHECK_GNU_MAKE()
 
