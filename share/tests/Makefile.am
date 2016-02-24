@@ -261,6 +261,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/phs_fks_generator_2.ref \
     unit_tests/ref-output/phs_fks_generator_3.ref \
     unit_tests/ref-output/phs_fks_generator_4.ref \
+    unit_tests/ref-output/phs_fks_generator_5.ref \
     unit_tests/ref-output/rng_base_1.ref \
     unit_tests/ref-output/rng_base_2.ref \
     unit_tests/ref-output/rng_tao_1.ref \
