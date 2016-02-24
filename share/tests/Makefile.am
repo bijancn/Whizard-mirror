@@ -636,6 +636,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/flvsum_1.ref \
     functional_tests/ref-output/decay_err_1.ref \
     functional_tests/ref-output/decay_err_2.ref \
+    functional_tests/ref-output/polarized_1.ref \
     functional_tests/ref-output/circe1_1.ref \
     functional_tests/ref-output/circe1_2.ref \
     functional_tests/ref-output/circe1_3.ref \
@@ -933,6 +934,7 @@ MISC_TESTS_SIN = \
     functional_tests/flvsum_1.sin \
     functional_tests/decay_err_1.sin \
     functional_tests/decay_err_2.sin \
+    functional_tests/polarized_1.sin \
     functional_tests/pdf_builtin.sin \
     functional_tests/lhapdf5.sin \
     functional_tests/lhapdf6.sin \

@@ -6075,7 +6075,7 @@ flow etc.
        eventweightlh, alphaqedlh, alphaqcdlh, scalelh, &
        spinlh, icolorflowlh, idruplh
   save /HEPEV4/
-       
+
 @ %def HEPEV4
 @ Filling HEPEVT: If the event count is not provided, set [[NEVHEP]]
 to zero.  If the event count is [[-1]] or [[-2]], the record
@@ -6192,23 +6192,11 @@ the exception of lifetime and spin, where default values are stored.
        end if
        if (present (pol) .and. &
             pol_status == PRT_GENERIC_POLARIZATION) then
-          if (polarization_is_polarized (pol)) then
-             call polarization_to_angles (pol, r, theta, phi)
-             spinlh(:,i) = [r, theta, phi]
-          end if
+          if (polarization_is_polarized (pol)) &
+             spinlh(:,i) = polarization_get_axis (pol)
        else
-          if (pol_status == PRT_DEFINITE_HELICITY) then
-             select case (hel)
-             case (1:)
-                spinlh(:,i) = [one, zero, zero]
-             case (:-1)
-                spinlh(:,i) = [one, PI, zero]
-             case (0)
-                spinlh(:,i) = [one, PI/2, zero]
-             end select
-          else
-             spinlh(:,i) = [zero, zero, zero]
-          end if
+          spinlh(:,i) = zero
+          spinlh(3,i) = hel
        end if
     end if
   end subroutine hepevt_set_particle
@@ -6492,20 +6480,25 @@ From this set we fill the common block.  Event information such as
 process ID and weight is not transferred here; this has to be done by
 the caller.  The spin information is set only if the particle has a
 unique mother, and if its polarization is fully defined.
+
+We use this routine also to hand over information to Pythia which lets
+Tauola access SPINUP. Tauola expects in SPINUP the helicity and not the
+LHA convention. We switch to this mode with [[tauola_convention]].
 <<HEP common: public>>=
   public :: hepeup_from_particle_set
 <<HEP common: procedures>>=
   subroutine hepeup_from_particle_set (pset_in, &
-     keep_beams, keep_remnants)
+     keep_beams, keep_remnants, tauola_convention)
     type(particle_set_t), intent(in) :: pset_in
     type(particle_set_t), target :: pset
     logical, intent(in), optional :: keep_beams
     logical, intent(in), optional :: keep_remnants
+    logical, intent(in), optional :: tauola_convention
     integer :: i, n_parents, status, n_tot
     integer, dimension(1) :: i_mother
-    logical :: activate_remnants
-    activate_remnants = .true.
-    if (present (keep_remnants))  activate_remnants = keep_remnants
+    logical :: kr, tc
+    kr = .true.;  if (present (keep_remnants))  kr = keep_remnants
+    tc = .false.;  if (present (tauola_convention))  tc = tauola_convention
     call pset_in%filter_particles (pset, real_parents = .true. , &
        keep_beams = keep_beams, keep_virtuals = .false.)
     n_tot = pset%get_n_tot ()
@@ -6513,9 +6506,8 @@ unique mother, and if its polarization is fully defined.
     do i = 1, n_tot
        associate (prt => pset%prt(i))
          status = prt%get_status ()
-         if (activate_remnants &
-              .and. status == PRT_BEAM_REMNANT &
-              .and. prt%get_n_children () == 0) &
+         if (kr .and. status == PRT_BEAM_REMNANT &
+                .and. prt%get_n_children () == 0) &
               status = PRT_OUTGOING
          call hepeup_set_particle (i, &
               prt%get_pdg (), &
@@ -6525,14 +6517,21 @@ unique mother, and if its polarization is fully defined.
               prt%get_momentum (), &
               prt%get_p2 ())
          n_parents = prt%get_n_parents ()
-         if (n_parents == 1) then
-            i_mother = prt%get_parents ()
+         if (.not. tc) then
+            if (n_parents == 1) then
+               i_mother = prt%get_parents ()
+               select case (prt%get_polarization_status ())
+               case (PRT_GENERIC_POLARIZATION)
+                  call hepeup_set_particle_spin (i, &
+                       prt%get_momentum (), &
+                       prt%get_polarization (), &
+                       pset%prt(i_mother(1))%get_momentum ())
+               end select
+            end if
+         else
             select case (prt%get_polarization_status ())
-            case (PRT_GENERIC_POLARIZATION)
-               call hepeup_set_particle_spin (i, &
-                    prt%get_momentum (), &
-                    prt%get_polarization (), &
-                    pset%prt(i_mother(1))%get_momentum ())
+            case (PRT_DEFINITE_HELICITY)
+              SPINUP(i) = prt%get_helicity()
             end select
          end if
        end associate
@@ -6676,7 +6675,7 @@ its polarization is fully defined.
                  prt%get_vertex (), &
                  prt%get_color (), &
                  prt%get_polarization_status (), &
-                 fill_hepev4 = fill_hepev4)            
+                 fill_hepev4 = fill_hepev4)
          end select
        end associate
     end do
@@ -13231,7 +13230,7 @@ Set parameters that are specifically used with STDHEP file formats.
        type is (eio_stdhep_hepevt_t)
           eio%extension = "hep"
        type is (eio_stdhep_hepev4_t)
-          eio%extension = "ev4.hep"          
+          eio%extension = "ev4.hep"
        type is (eio_stdhep_hepeup_t)
           eio%extension = "up.hep"
        end select
@@ -13349,8 +13348,8 @@ the common block contents are still intact.)
           call stdhep_write (100)
        type is (eio_stdhep_hepev4_t)
           call stdhep_init_out (char (eio%filename), &
-               "WHIZARD <<Version>>", eio%n_events_expected) 
-          call stdhep_write (100)          
+               "WHIZARD <<Version>>", eio%n_events_expected)
+          call stdhep_write (100)
        end select
     end if
   end subroutine eio_stdhep_split_out
@@ -13400,9 +13399,9 @@ the common block contents are still intact.)
        call stdhep_write (100)
     type is (eio_stdhep_hepev4_t)
        call stdhep_init_out (char (eio%filename), &
-            "WHIZARD <<Version>>", eio%n_events_expected) 
-       call stdhep_write (100)       
-    end select    
+            "WHIZARD <<Version>>", eio%n_events_expected)
+       call stdhep_write (100)
+    end select
     if (present (success))  success = .true.
   end subroutine eio_stdhep_init_out
     
@@ -13477,20 +13476,20 @@ squared matrix element, then the particle set.
           call stdhep_write (STDHEP_HEPEUP)
        type is (eio_stdhep_hepevt_t)
           call hepevt_from_event (event, &
-               i_evt = event%get_index (), &                         
+               i_evt = event%get_index (), &
                keep_beams = eio%keep_beams, &
                keep_remnants = eio%keep_remnants, &
                ensure_order = eio%ensure_order)
           call stdhep_write (STDHEP_HEPEVT)
        type is (eio_stdhep_hepev4_t)
           call hepevt_from_event (event, &
-               process_index = eio%proc_num_id (i_prc), &               
-               i_evt = event%get_index (), &                         
+               process_index = eio%proc_num_id (i_prc), &
+               i_evt = event%get_index (), &
                keep_beams = eio%keep_beams, &
                keep_remnants = eio%keep_remnants, &
                ensure_order = eio%ensure_order, &
                fill_hepev4 = .true.)
-          call stdhep_write (STDHEP_HEPEV4)          
+          call stdhep_write (STDHEP_HEPEV4)
        end select       
     else
        call eio%write ()
