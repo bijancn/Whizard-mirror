@@ -129,7 +129,6 @@ if FC_USE_OPENMP
 AM_FCFLAGS += $(FCFLAGS_OPENMP)
 endif
 
-# TODO: (cw 2015-03-26) Fix this
 if OPENLOOPS_AVAILABLE
 AM_FCFLAGS += -L$(OPENLOOPS_DIR)/lib -lcuttools -lopenloops -loneloop -lolcommon -lrambo
 endif
