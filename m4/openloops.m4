@@ -43,7 +43,18 @@ if test -n "$OPENLOOPS_DIR"; then
 fi
 
 if test "$enable_openloops" = "yes"; then
-   OPENLOOPS_AVAILABLE_FLAG=".true."
+    AC_MSG_CHECKING([for standard OpenLoops process])
+    if test -f "$OPENLOOPS_DIR/proclib/libopenloops_ppll_lt.info"; then
+       AC_MSG_RESULT([ OpenLoops process ppll is installed])
+       OPENLOOPS_AVAILABLE_FLAG=".true."
+    else
+       AC_MSG_RESULT([ OpenLoops process ppll is not installed])
+       AC_MSG_NOTICE([error: *************************************************************])
+       AC_MSG_NOTICE([error: OpenLoops standard process is not installed, please install  ])
+       AC_MSG_NOTICE([error:    ppll                                                      ])
+       AC_MSG_NOTICE([error: *************************************************************])
+       OPENLOOPS_AVAILABLE_FLAG=".false."
+    fi
    OPENLOOPS_INCLUDES=$wo_openloops_includes
    LDFLAGS_OPENLOOPS=$wo_openloops_ldflags
 else
