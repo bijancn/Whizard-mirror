@@ -574,7 +574,7 @@ splitting.
   procedure :: valid_pair => flv_structure_valid_pair
 <<fks regions: procedures>>=
   function flv_structure_valid_pair &
-       (flv_real,i,j, flv_born, model) result (valid)
+       (flv_real, i, j, flv_born, model) result (valid)
     class(flv_structure_t), intent(in) :: flv_real
     integer, intent(in) :: i,j
     type(flv_structure_t), intent(in) :: flv_born
@@ -606,9 +606,9 @@ If the resulting Born configuration is equal to the underlying Born
 configuration, up to a permutation of final-state particles, the tuple
 $(i,j)$ is accepted as valid.
 <<fks regions: procedures>>=
-      allocate (flv_orig2 (2*n_orig))
+      allocate (flv_orig2 (2 * n_orig))
       flv_orig2 (1:n_orig) = flv_orig
-      flv_orig2 (n_orig+1 : 2*n_orig) = -flv_orig
+      flv_orig2 (n_orig + 1 : 2 * n_orig) = -flv_orig
       do k = 1, 2 * n_orig
         flv_test = flv_real%insert_particle (i, j, flv_orig2(k))
         valid = flv_born == flv_test
@@ -654,6 +654,27 @@ permutation of the final-state particles
   end function flv_structure_equivalent
 
 @ %def flv_structure_equivalent
+@
+<<fks regions: procedures>>=
+  subroutine flv_structure_assign (flv_out, flv_in)
+    type(flv_structure_t), intent(out) :: flv_out
+    type(flv_structure_t), intent(in) :: flv_in
+    flv_out%nlegs = flv_in%nlegs
+    if (allocated (flv_in%flst)) then
+       allocate (flv_out%flst (size (flv_in%flst)))
+       flv_out%flst = flv_in%flst
+    end if
+    if (allocated (flv_in%massive)) then
+       allocate (flv_out%massive (size (flv_in%massive)))
+       flv_out%massive = flv_in%massive
+    end if
+    if (allocated (flv_in%colored)) then
+       allocate (flv_out%colored (size (flv_in%colored)))
+       flv_out%colored = flv_in%colored
+    end if
+  end subroutine flv_structure_assign
+
+@ %def flv_structure_assign
 @ Returs a new flavor array with the particle at position
 \texttt{index} removed.
 <<fks regions: flv structure: TBP>>=
@@ -904,7 +925,7 @@ also be supplied by a symmetry factor, explained below.
     nlegs = size (flst_real%flst)
     allocate (sregion%ftuples (sregion%nregions))
     do i = 1, sregion%nregions
-       current_region => ftuples (index(i))%get_entry (i)
+       current_region => ftuples (index(alr))%get_entry (i)
        if (.not. associated (current_region%equiv)) then
           call current_region%ftuple%get (i1, i2)
           if (i2 /= nlegs) &
@@ -1400,6 +1421,10 @@ there is only a soft singularity if the radiated parton becomes soft.
   interface operator(==)
     module procedure flv_structure_equivalent
   end interface
+  
+  interface assignment(=)
+    module procedure flv_structure_assign
+  end interface
 
 @ %def operator_equiv
 @
@@ -1876,87 +1901,99 @@ are therefore equivalent.
     integer :: nreg, nborn, nreal
     integer :: nlegreal
     integer, parameter :: maxnregions = 200
-    integer :: i, j, k, l, m, n
-    logical :: valid1, valid2
+    integer :: i_real
 
-    associate (flv_born => reg_data%flv_born)
-      associate (flv_real => reg_data%flv_real)
-        nborn = size (flv_born)
-        nreal = size (flv_real)
-        nlegreal = size (flv_real(1)%flst)
-        allocate (ftuples (nreal))
-        allocate (emitter_tmp (maxnregions))
-        allocate (flst_alr_tmp (maxnregions))
-        n = 0
+    nborn = size (reg_data%flv_born)
+    nreal = size (reg_data%flv_real)
+    nlegreal = size (reg_data%flv_real(1)%flst)
+    allocate (ftuples (nreal))
+    allocate (emitter_tmp (maxnregions))
+    allocate (flst_alr_tmp (maxnregions))
+    nreg = 0
 
-        ITERATE_REAL_FLAVOR: do l = 1, nreal
-         <<fks: check final state emissions>>
-         <<fks: check initial state emissions>>
-        end do ITERATE_REAL_FLAVOR
-
-        nreg = n
-
-      end associate
-    end associate
+    do i_real = 1, nreal
+       call check_final_state_emissions (i_real, nreg)
+       call check_initial_state_emissions (i_real, nreg)
+    end do
 
     allocate (flst_alr (nreg))
     allocate (emitter (nreg))
     flst_alr(1:nreg) = flst_alr_tmp(1:nreg)
     emitter(1:nreg) = emitter_tmp(1:nreg)
+  contains
+    subroutine check_final_state_emissions (i_real, i_reg)
+      integer, intent(in) :: i_real
+      integer, intent(inout) :: i_reg
+      integer :: leg1, leg2, i_born
+      type(flv_structure_t) :: born_flavor
+      do leg1 = reg_data%n_in + 1, nlegreal
+         do leg2 = leg1 + 1, nlegreal
+            do i_born = 1, nborn
+               born_flavor = reg_data%flv_born(i_born)
+               associate (flv_real => reg_data%flv_real(i_real))
+                  if (flv_real%valid_pair(leg1, leg2, born_flavor, model) &
+                       .or. flv_real%valid_pair(leg2, leg1, born_flavor, model)) then
+                     i_reg = i_reg + 1
+                     if(flv_real%valid_pair(leg1, leg2, born_flavor, model)) then
+                        flst_alr_tmp(i_reg) = &
+                           create_alr (flv_real, reg_data%n_in, leg1, leg2)
+                     else
+                        flst_alr_tmp(i_reg) = &
+                           create_alr (flv_real, reg_data%n_in, leg2, leg1)
+                     end if
+                     call current_ftuple%set (leg1, leg2)
+                     call current_ftuple%determine_splitting_type_fsr &
+                        (flv_real, leg1, leg2)
+                     call ftuples(i_real)%append (current_ftuple)
+                     emitter_tmp(i_reg) = nlegreal - 1
+                     exit
+                  end if
+               end associate
+            end do
+         end do
+      end do
+    end subroutine check_final_state_emissions
+
+    subroutine check_initial_state_emissions (i_real, i_reg)
+      integer, intent(in) :: i_real
+      integer, intent(inout) :: i_reg
+      integer :: leg, i_born, emitter
+      type(flv_structure_t) :: born_flavor
+      logical :: valid1, valid2
+      do leg = reg_data%n_in + 1, nlegreal
+         do i_born = 1, nborn 
+            born_flavor = reg_data%flv_born (i_born)
+            associate (flv_real => reg_data%flv_real(i_real))
+               valid1 = flv_real%valid_pair(1, leg, born_flavor, model)
+               if (reg_data%n_in > 1) then
+                  valid2 = flv_real%valid_pair(2, leg, born_flavor, model)
+               else
+                  valid2 = .false.
+               end if
+               if (valid1 .and. valid2) then
+                  emitter = 0
+               else if (valid1 .and. .not. valid2) then
+                  emitter = 1
+               else if (.not. valid1 .and. valid2) then
+                  emitter = 2
+               end if
+               if (valid1 .or. valid2) then
+                  i_reg = i_reg + 1
+                  call current_ftuple%set(emitter, leg)
+                  call current_ftuple%determine_splitting_type_isr &
+                     (flv_real, emitter, leg)
+                  call ftuples(i_real)%append (current_ftuple)
+                  emitter_tmp(i_reg) = emitter
+                  flst_alr_tmp(i_reg) = &
+                     create_alr (flv_real, reg_data%n_in, emitter, leg)
+               end if
+            end associate
+         end do
+      end do
+    end subroutine check_initial_state_emissions
   end subroutine region_data_find_regions
 
 @ %def region_data_find_regions
-@
-<<fks: check final state emissions>>=
-  do i = reg_data%n_in + 1, nlegreal
-     do j = i+1, nlegreal
-        do k = 1, nborn
-           if (flv_real(l)%valid_pair(i, j, flv_born(k), model) &
-                .or. flv_real(l)%valid_pair(j, i, flv_born(k), model)) then
-              n = n + 1
-              if(flv_real(l)%valid_pair(i, j, flv_born(k), model)) then
-                 flst_alr_tmp(n) = create_alr (flv_real(l), reg_data%n_in, i, j)
-              else
-                 flst_alr_tmp(n) = create_alr (flv_real(l), reg_data%n_in, j, i)
-              end if
-              call current_ftuple%set (i, j)
-              call current_ftuple%determine_splitting_type_fsr (flv_real(l), i, j)
-              call ftuples(l)%append (current_ftuple)
-              emitter_tmp(n) = nlegreal - 1
-              exit
-           end if
-        end do
-     end do
-  end do
-@ It suffices to just check the final-state of the first and the
-initial-state of the second array.
-<<fks: check initial state emissions>>=
-  do i = reg_data%n_in + 1, nlegreal
-     do k = 1, nborn
-        valid1 = flv_real(l)%valid_pair(1, i, flv_born(k), model)
-        if (reg_data%n_in > 1) then
-           valid2 = flv_real(l)%valid_pair(2, i, flv_born(k), model)
-        else
-           valid2 = .false.
-        end if
-        if (valid1 .and. valid2) then
-           m = 0
-        else if (valid1 .and. .not. valid2) then
-           m = 1
-        else if (.not. valid1 .and. valid2) then
-           m = 2
-        end if
-        if (valid1 .or. valid2) then
-           n = n + 1
-           call current_ftuple%set(m, i)
-           call current_ftuple%determine_splitting_type_isr (flv_real(l), m, i)
-           call ftuples(l)%append (current_ftuple)
-           emitter_tmp(n) = m
-           flst_alr_tmp(n) = create_alr (flv_real(l), reg_data%n_in, m, i)
-           exit
-        end if
-     end do
-  end do
 @ Creates singular regions according to table \ref{table:singular
 regions}. It scans all regions in table \ref{table:ftuples and
 flavors} and records the real flavor structures. If they are
@@ -1970,8 +2007,8 @@ of the present one is increased.
     class(region_data_t), intent(inout) :: reg_data
     type(ftuple_list_t), intent(inout), dimension(:), allocatable :: ftuples
     integer :: n_valid_ftuples
-    integer, intent(in), dimension(:), allocatable :: emitter
-    type(flv_structure_t), intent(in), dimension(:), allocatable :: flst_alr
+    integer, intent(in), dimension(:) :: emitter
+    type(flv_structure_t), intent(in), dimension(:) :: flst_alr
     type(flv_structure_t), dimension(:), allocatable :: flst_uborn, flst_alr2
     integer, dimension(:), allocatable :: mult
     integer, dimension(:), allocatable :: flst_emitter
@@ -2009,7 +2046,7 @@ of the present one is increased.
     do i = 1, size (ftuples)
        if (ftuples(i)%get_n_tuples() > 0) then
           ftuple_limits(j) = ftuples(i)%get_n_tuples ()
-          j = j+ 1
+          j = j + 1
        end if
     end do
     if (.not. (sum (ftuple_limits) == maxregions)) &
@@ -2028,10 +2065,7 @@ of the present one is increased.
        SCAN_FTUPLES: do i = i_first, i_first + ftuple_limits (l) - 1
           equiv = .false.
           if (i == i_first) then
-             if (allocated (flst_alr2(j)%flst)) &
-                deallocate (flst_alr2(j)%flst)
-             allocate (flst_alr2(j)%flst (size (flst_alr(i)%flst)))
-             flst_alr2(j)%flst = flst_alr(i)%flst
+             flst_alr2(j) = flst_alr(i)
              mult(j) = mult(j) + 1
              flst_uborn(j) = flst_alr(i)%create_uborn (emitter(i))
              flst_emitter(j) = emitter(i)
@@ -2062,10 +2096,7 @@ of the present one is increased.
                 end if
              end do
           if (.not. equiv) then
-             if (allocated (flst_alr2(j)%flst)) &
-                  deallocate (flst_alr2(j)%flst)
-             allocate (flst_alr2(j)%flst (size (flst_alr(i)%flst)))
-             flst_alr2(j)%flst = flst_alr(i)%flst
+             flst_alr2(j) = flst_alr(i)
              mult(j) = mult(j) + 1
              flst_uborn(j) = flst_alr(i)%create_uborn (emitter(i))
              flst_emitter(j) = emitter(i)
@@ -2092,8 +2123,7 @@ of the present one is increased.
        end do
     end do
     do i = 1, nregions
-       i_res = 0
-       call reg_data%regions(i)%init (i, mult(i), i_res, flst_alr2(i), &
+       call reg_data%regions(i)%init (i, mult(i), 0, flst_alr2(i), &
           flst_uborn(i), reg_data%flv_born, flst_emitter(i), ftuples, &
           index)
     end do
@@ -3457,7 +3487,7 @@ end module virtual
              virt%gamma_p(i_part, i_flv) = (67.0 / 9 - 2 * pi**2 / 3) * ca &
                 - 23.0 / 18 * nf
              virt%c_flv(i_part, i_flv) = ca
-          else if (is_quark (abs(flv_born(i_part, i_flv)))) then
+          else if (is_quark (flv_born(i_part, i_flv))) then
              virt%gamma_0(i_part, i_flv) = 1.5 * cf
              virt%gamma_p(i_part, i_flv) = (6.5 - 2 * pi**2 / 3) * cf
              virt%c_flv(i_part, i_flv) = cf
@@ -3712,9 +3742,7 @@ particles involved in the radiation process are massive or massless.
   end subroutine virtual_set_bad_point
 
 @  %def virtual_set_bad_point
-@ Note that this implementation only works for lepton collisions. This implies that both the
-summand containing $\log\left(s/q^2\right)$ and the $\gamma$-factors vanish.\\
-The loop over the initial-state particles obviously is only executed if we are 
+@ The loop over the initial-state particles is only executed if we are 
 dealing with a scattering process, because for decays there are no virtual
 initial-initial interactions.
 <<virtual: virtual: TBP>>=
@@ -4747,7 +4775,7 @@ necessary to expand with $z$ once.
        call msg_fatal ('Impossible flavor structure in collinear counterterm!')
     end if
     value = value / (p0**2 * onemz * z_o_xi)
-    value = value * 4*pi * alpha_s
+    value = value * 4 * pi * alpha_s
 
     if (soft) then
       coll_sub%value_soft (alr) = value
@@ -4820,12 +4848,12 @@ necessary to expand with $z$ once.
     p02 = p_born(1)%p(0) * p_born(2)%p(0) / two
     z = one - xi; onemz = xi
 
-    if (is_quark(abs(flv_em)) .and. is_gluon(flv_rad)) then
+    if (is_quark(flv_em) .and. is_gluon(flv_rad)) then
        res = CF * (one + z**2) * sqme_born
-    else if (is_gluon(flv_em) .and. is_quark (abs(flv_rad))) then
-       res = TR* (z**2 + onemz**2) * onemz * sqme_born
+    else if (is_gluon(flv_em) .and. is_quark (flv_rad)) then
+       res = TR * (z**2 + onemz**2) * onemz * sqme_born
     else
-       res = 0
+       res = zero
        call msg_bug ("coll_subtraction_compute_isr: result undefined")
     end if
     res = res * z / p02
@@ -4880,7 +4908,7 @@ necessary to expand with $z$ once.
     integer :: purpose = INTEGRATION
     logical :: radiation_active = .true.
     logical :: subtraction_active = .true.
-    type(pdf_container_t), dimension(2) :: pdf_born, pdf_scaled
+    type(pdf_container_t), dimension(2) :: pdf_born, pdf_scaled, pdf_scaled_coll
     logical, dimension(:), pointer :: passed_real_cuts => null ()
     logical, pointer :: passed_born_cuts => null ()
     logical :: test_limit = .false.
@@ -4964,7 +4992,7 @@ necessary to expand with $z$ once.
           pdf_data%qmax = sqrt (pdf_data%pdf%getq2max ())
        end associate
     else
-       call msg_fatal ("Real subtraction: PDFs must be initialized")
+       call msg_fatal ("Real subtraction: PDF method must be LHAPDF6")
     end if
   end subroutine real_subtraction_init_pdfs
 
@@ -5166,10 +5194,10 @@ the corresponding jacobians.
          sqme_soft = sqme_soft / onemy / xi_tilde
          sqme_coll = sqme_coll / onemy / xi_tilde
          sqme_cs = sqme_cs / onemy / xi_tilde
-         associate (jac => rsub%real_kinematics%jac)
-            sqme_soft = sqme_soft * jac(i_phs)%jac(2)
-            sqme_coll = sqme_coll * jac(i_phs)%jac(3)
-            sqme_cs = sqme_cs * jac(i_phs)%jac(2)
+         associate (jac => rsub%real_kinematics%jac(i_phs))
+            sqme_soft = sqme_soft * jac%jac(2)
+            sqme_coll = sqme_coll * jac%jac(3)
+            sqme_cs = sqme_cs * jac%jac(2)
          end associate
          sqme_remn = (sqme_soft - sqme_cs) * log(xi_max) * xi_tilde
          select case (rsub%purpose)
@@ -5288,7 +5316,7 @@ the corresponding jacobians.
     real(default) :: sqme
     real(default) :: xi_max, xi_max_plus, xi_max_minus
     real(default) :: xi_tilde, xi, xi_plus, xi_minus
-    real(default) :: y, phi
+    real(default) :: y
     integer :: i_real
     real(default) :: sqme0, sqme_soft, sqme_coll_plus, sqme_coll_minus
     real(default) :: sqme_cs_plus, sqme_cs_minus
@@ -5315,7 +5343,6 @@ the corresponding jacobians.
     end if
     y = rsub%real_kinematics%y(i_phs)
     onemy = one - y; onepy = one + y
-    phi = rsub%real_kinematics%phi
 
     if (proc_scatter) call rsub%compute_pdfs ()
 
@@ -5327,13 +5354,13 @@ the corresponding jacobians.
       sqme0 = sqme0 * s_alpha
       sqme0 = sqme0 * region%mult
       if (proc_scatter) then
-         call rsub%reweight_pdfs (sqme0, i_real, I_PLUS)
-         call rsub%reweight_pdfs (sqme0, i_real, I_MINUS)
+         call rsub%scale_pdfs_real (sqme0, i_real, I_PLUS)
+         call rsub%scale_pdfs_real (sqme0, i_real, I_MINUS)
       end if
 
       select case (rsub%purpose)
       case (INTEGRATION, FIXED_ORDER_EVENTS)
-         sqme0 = sqme0 * xi**2 / xi_tilde * rsub%real_kinematics%jac(emitter)%jac(1)
+         sqme0 = sqme0 * xi**2 / xi_tilde * rsub%real_kinematics%jac(i_phs)%jac(1)
       case (POWHEG)
          call msg_fatal ("POWHEG with initial-state radiation not implemented yet")
       end select
@@ -5342,15 +5369,17 @@ the corresponding jacobians.
          call rsub%evaluate_subtraction_terms_isr (emitter, i_phs, alpha_s, &
             sqme_soft, sqme_coll_plus, sqme_coll_minus, sqme_cs_plus, sqme_cs_minus)
          if (proc_scatter) then
-            call rsub%reweight_pdfs (sqme_coll_plus, i_real, I_PLUS)
-            call rsub%reweight_pdfs (sqme_coll_minus, i_real, I_MINUS)
+            call rsub%scale_pdfs_collinear (sqme_coll_plus, i_real, &
+               region%uborn_index, I_PLUS)
+            call rsub%scale_pdfs_collinear (sqme_coll_minus, i_real, &
+               region%uborn_index, I_MINUS)
          end if
          associate (jac => rsub%real_kinematics%jac(i_phs))
-           sqme_soft = sqme_soft / (one - y**2) / xi_tilde * jac%jac(2)
-           sqme_coll_plus = sqme_coll_plus / onemy / xi_tilde / two * jac%jac(3)
-           sqme_coll_minus = sqme_coll_minus / onepy / xi_tilde / two * jac%jac(4)
-           sqme_cs_plus = sqme_cs_plus / onemy / xi_tilde / two * jac%jac(2)
-           sqme_cs_minus = sqme_cs_minus / onepy / xi_tilde / two * jac%jac(2)
+            sqme_soft = sqme_soft / (one - y**2) / xi_tilde * jac%jac(2)
+            sqme_coll_plus = sqme_coll_plus / onemy / xi_tilde / two * jac%jac(3)
+            sqme_coll_minus = sqme_coll_minus / onepy / xi_tilde / two * jac%jac(4)
+            sqme_cs_plus = sqme_cs_plus / onemy / xi_tilde / two * jac%jac(2)
+            sqme_cs_minus = sqme_cs_minus / onepy / xi_tilde / two * jac%jac(2)
          end associate
          sqme_remn = log(xi_max) * xi_tilde * sqme_soft
          sqme_remn = sqme_remn - log (xi_max_plus) * xi_tilde * sqme_cs_plus &
@@ -5373,7 +5402,7 @@ the corresponding jacobians.
        logical :: soft, collinear
        type(vector4_t) :: p_gluon
        if (debug_active (D_SUBTRACTION)) then
-          call msg_debug2 (D_SUBTRACTION, "real_subtraction_evaluate_region_fsr")
+          call msg_debug2 (D_SUBTRACTION, "real_subtraction_evaluate_region_isr")
           if (debug2_active (D_SUBTRACTION)) then
              call write_computation_status ()
           else
@@ -5409,7 +5438,6 @@ the corresponding jacobians.
        write (u,'(A,I2)') 'emitter: ', emitter
        write (u,'(A,F4.2)') 'xi_max: ', xi_max
        print *, 'xi: ', xi, 'y: ', y
-       print *, 'phi: ', phi
        print *, 'xb1: ', rsub%isr_kinematics%x(1), 'xb2: ', rsub%isr_kinematics%x(2)
        write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn)
        write (u,'(A,ES16.9)')  'sqme_real: ', sqme0
@@ -5593,7 +5621,8 @@ to be more consistent with the evaluation of the Born phase space.
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: em, i_phs
     real(default), intent(in) :: alpha_s
-    real(default) :: xi, sqme_sc
+    real(default) :: xi, xi_max, xi_max_pm
+    real(default) :: sqme_sc
     integer :: alr, i_con
     alr = rsub%current_alr
     associate (sregion => rsub%reg_data%regions(alr))
@@ -5606,6 +5635,8 @@ to be more consistent with the evaluation of the Born phase space.
           end if
           sqme_sc = rsub%get_sc_matrix_element (alr, em, sregion%uborn_index)
           if (em <= rsub%sub_coll%n_in) then
+             xi_max_pm = one - rsub%isr_kinematics%x(em)
+             xi = rsub%real_kinematics%xi_tilde * xi_max_pm
              call rsub%sub_coll%compute_isr (sregion, &
                   rsub%real_kinematics%p_born_lab%phs_point(1)%p, &
                   rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
@@ -5668,40 +5699,72 @@ delivers $x \cdot f(x)$ as output, so that $x$ has to be factored out.
   subroutine real_subtraction_compute_pdfs (rsub)
     class(real_subtraction_t), intent(inout) :: rsub
     integer :: i
-    real(default) :: z, x, Q
-    real(default) :: x_scaled
+    real(default) :: z, z_coll, x, Q
+    real(default) :: x_scaled, x_scaled_coll
     real(double), dimension(-6:6) :: f_dble = 0._double
     Q = rsub%isr_kinematics%fac_scale
     do i = 1, 2
        x = rsub%isr_kinematics%x(i)
        z = rsub%isr_kinematics%z(i)
-       x_scaled = x / z
+       z_coll = rsub%isr_kinematics%z_coll(i)
+       x_scaled = x * z
+       x_scaled_coll = x * z_coll
        call rsub%pdf_data%evolve (dble(x), dble(Q), f_dble)
        rsub%pdf_born(i)%f = f_dble / dble(x)
        call rsub%pdf_data%evolve (dble(x_scaled), dble(Q), f_dble)
        rsub%pdf_scaled(i)%f = f_dble / dble(x_scaled)
+       call rsub%pdf_data%evolve (dble(x_scaled_coll), dble(Q), f_dble)
+       rsub%pdf_scaled_coll(i)%f = f_dble / dble(x_scaled_coll) 
     end do
   end subroutine real_subtraction_compute_pdfs
 
 @ %def real_subtraction_compute_pdfs
-@
+@ The real matrix element is evaluated already multiplied with the parton densities
+at Born level, but with the real flavor structure. We multiply out the Born
+contribution and use the real one instead.
 <<real subtraction: real subtraction: TBP>>=
-  procedure :: reweight_pdfs => real_subtraction_reweight_pdfs
+  procedure :: scale_pdfs_real => real_subtraction_scale_pdfs_real
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_reweight_pdfs (rsub, sqme, i_real, i_part)
+  subroutine real_subtraction_scale_pdfs_real (rsub, sqme, i_real, i_part)
     class(real_subtraction_t), intent(inout) :: rsub
     real(default), intent(inout) :: sqme
-    integer, intent(in) :: i_part, i_real
+    integer, intent(in) :: i_real, i_part
     integer :: flv
     real(default) :: pdfs, pdfb
     flv = rsub%reg_data%flv_real(i_real)%flst(i_part)
+    !!! Gluon has index 0 in the pdf array
     if (flv == GLUON) flv = 0
     pdfb = rsub%pdf_born(i_part)%f(flv)
     pdfs = rsub%pdf_scaled(i_part)%f(flv)
-    sqme = sqme*pdfs/pdfb
-  end subroutine real_subtraction_reweight_pdfs
+    sqme = sqme * pdfs / pdfb
+  end subroutine real_subtraction_scale_pdfs_real
 
-@ %def real_subtraction_reweight_pdfs
+@ %def real_subtraction_scale_pdfs_real
+@ The same as above, but for the collinear subtraction terms. They are
+proportional to the Born matrix element so they enter the subroutine
+with pdfs evaluated for the Born flavor structure. Therefore, we
+additionally have to take the flavor of the underlying Born particle
+when dividing out the Born contribution.
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: scale_pdfs_collinear => real_subtraction_scale_pdfs_collinear
+<<real subtraction: procedures>>=
+  subroutine real_subtraction_scale_pdfs_collinear &
+     (rsub, sqme, i_real, i_born, i_part)
+    class(real_subtraction_t), intent(inout) :: rsub
+    real(default), intent(inout) :: sqme
+    integer, intent(in) :: i_real, i_born, i_part
+    integer :: flv_born, flv_real
+    real(default) :: pdfs, pdfb
+    flv_born = rsub%reg_data%flv_born(i_born)%flst(i_part)
+    flv_real = rsub%reg_data%flv_real(i_real)%flst(i_part)
+    if (flv_born == GLUON) flv_born = 0
+    if (flv_real == GLUON) flv_real = 0
+    pdfb = rsub%pdf_born(i_part)%f(flv_born)
+    pdfs = rsub%pdf_scaled_coll(i_part)%f(flv_real)
+    sqme = sqme * pdfs / pdfb
+  end subroutine real_subtraction_scale_pdfs_collinear
+
+@ %def real_subtraction_scale_pdfs_collinear
 @
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -6320,6 +6383,9 @@ initial-state phase spaces.
      real(default) :: scale
      real(default) :: ren_scale
      real(default) :: fac_scale
+     real(default) :: scale_born
+     real(default) :: fac_scale_born
+     real(default) :: ren_scale_born
   end type real_scales_t
 
 @ %def real_scales_t
@@ -6329,12 +6395,13 @@ initial-state phase spaces.
 <<nlo data: types>>=
   type :: isr_kinematics_t
     integer :: n_in
-    real(default), dimension(2) :: x = 1._default
-    real(default), dimension(2) :: z = 0._default
-    real(default) :: sqrts_born = 0._default
-    real(default) :: beam_energy = 0._default
-    real(default) :: fac_scale = 0._default
-    real(default), dimension(2) :: jacobian = 1._default
+    real(default), dimension(2) :: x = one
+    real(default), dimension(2) :: z = zero
+    real(default), dimension(2) :: z_coll = zero
+    real(default) :: sqrts_born = zero
+    real(default) :: beam_energy = zero
+    real(default) :: fac_scale = zero
+    real(default), dimension(2) :: jacobian = one
   end type isr_kinematics_t
 
 @ %def type isr_kinematics_t
@@ -9442,11 +9509,11 @@ calculated from the Born momenta.
     type(vector4_t), intent(out), dimension(:) :: p
     select case (phs%mode)
     case (PHS_MODE_ADDITIONAL_PARTICLE)
-       p(1:phs%config%n_in) = phs%p_born
-       p(phs%config%n_in+1:) = phs%q_born
+       p(1 : phs%config%n_in) = phs%p_born
+       p(phs%config%n_in + 1 :) = phs%q_born
     case (PHS_MODE_COLLINEAR_REMNANT)
        p(1:phs%config%n_in) = phs%phs_wood_t%p
-       p(phs%config%n_in+1:) = phs%phs_wood_t%q
+       p(phs%config%n_in + 1 : ) = phs%phs_wood_t%q
     end select
     if (.not. phs%config%cm_frame) p = phs%lt_cm_to_lab * p
   end subroutine phs_fks_get_born_momenta
@@ -9510,12 +9577,42 @@ calculated from the Born momenta.
     real(default), intent(in), dimension(:) :: r_in
     if (size (r_in) /= 3) call msg_fatal &
          ("Real kinematics need to be generated using three random numbers!")
-    call phs%generator%generate_radiation_variables (r_in, phs%p_born_tot, &
-       phs%phs_identifiers)
-    phs%r_real = r_in
+    select case (phs%mode)
+    case (PHS_MODE_ADDITIONAL_PARTICLE)
+       call phs%generator%generate_radiation_variables (r_in, phs%p_born_tot, &
+          phs%phs_identifiers)
+       phs%r_real = r_in
+    end select
   end subroutine phs_fks_generate_radiation_variables
 
 @ %def phs_fks_generate_radiation_variables
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: compute_xi_ref_momenta => phs_fks_compute_xi_ref_momenta
+<<phs fks: procedures>>=
+  subroutine phs_fks_compute_xi_ref_momenta (phs, contributors)
+    class(phs_fks_t), intent(inout) :: phs
+    type(resonance_contributors_t), intent(in), dimension(:), optional :: contributors
+    select case (phs%mode)
+    case (PHS_MODE_ADDITIONAL_PARTICLE)
+       call phs%generator%compute_xi_ref_momenta (phs%p_born_tot, contributors)
+    end select
+  end subroutine phs_fks_compute_xi_ref_momenta
+    
+@ %def phs_fks_compute_xi_ref_momenta
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: compute_cms_energy => phs_fks_compute_cms_energy
+<<phs fks: procedures>>=
+  subroutine phs_fks_compute_cms_energy (phs)
+    class(phs_fks_t), intent(inout) :: phs
+    select case (phs%mode)
+    case (PHS_MODE_ADDITIONAL_PARTICLE)
+       call phs%generator%compute_cms_energy (phs%p_born_tot)
+    end select
+  end subroutine phs_fks_compute_cms_energy
+
+@ %def phs_fks_compute_cms_energy
 @ When initial-state radiation is involved, either due to beamnstrahlung or
 QCD corrections, it is important to have access to both the phase space points
 in the center-of-mass and lab frame.
@@ -9574,6 +9671,18 @@ in the center-of-mass and lab frame.
   end subroutine phs_fks_init_phs_identifiers
 
 @ %def phs_fks_init_phs_identifiers
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: i_phs_is_isr => phs_fks_i_phs_is_isr
+<<phs fks: procedures>>=
+  function phs_fks_i_phs_is_isr (phs, i_phs) result (is_isr)
+    logical :: is_isr
+    class(phs_fks_t), intent(in) :: phs
+    integer, intent(in) :: i_phs
+    is_isr = phs%phs_identifiers(i_phs)%emitter <= phs%generator%n_in
+  end function phs_fks_i_phs_is_isr
+
+@ %def phs_fks_i_phs_is_isr
 @
 \subsection{Creation of the real phase space - FSR}
 At this point, the Born phase space has been generated, as well as the
@@ -9878,7 +9987,7 @@ is
     uk_rec = sqrt (k_rec0**2 - generator%mrec2)
     if (generator%is_massive(emitter)) then
        beta = compute_beta (q0**2, k_rec0, uk_rec, &
-                            p_born(p_em)%p(0), uk_n_born)
+          p_born(p_em)%p(0), uk_n_born)
     else
        beta = compute_beta (q0**2, k_rec0, uk_rec)
     end if
@@ -9908,9 +10017,7 @@ $\xi$.
           k2 = two * uk_n * uk_np1* (one - y)
           jac%jac(1) = uk_n**2 / uk_n_born / (uk_n - k2 / (two * q0))
        end if
-       !!! Soft jacobian
        jac%jac(2) = one
-       !!! Collinear jacobian
        jac%jac(3) = one - xi / two * q0 / uk_n_born
     end associate
   end subroutine generate_jacobians
@@ -9945,12 +10052,12 @@ $\xi$.
 @
 <<phs fks: phs fks generator: TBP>>=
   generic :: compute_emitter_kinematics => &
-                    compute_emitter_kinematics_massless, &
-                    compute_emitter_kinematics_massive
+     compute_emitter_kinematics_massless, &
+     compute_emitter_kinematics_massive
   procedure :: compute_emitter_kinematics_massless => &
-                    phs_fks_generator_compute_emitter_kinematics_massless
+     phs_fks_generator_compute_emitter_kinematics_massless
   procedure :: compute_emitter_kinematics_massive => &
-                    phs_fks_generator_compute_emitter_kinematics_massive
+     phs_fks_generator_compute_emitter_kinematics_massive
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_compute_emitter_kinematics_massless &
      (generator, y, q0, uk_em, uk)
@@ -10146,7 +10253,7 @@ momentum vanishes. Thus we define
                + onemy * (one - xb_plus**2))
     minus_val = two * onemy * xb_minus**2 / &
                 (sqrt ((one + xb_minus**2)**2 * onepy**2 - 16 * y * xb_minus**2) &
-               + onemy * (one - xb_minus**2))
+               + onepy * (one - xb_minus**2))
     xi_max = one - max (plus_val, minus_val)
   end function get_xi_max_isr
 
@@ -10363,12 +10470,13 @@ with $\Lambda$.
     integer, intent(in) :: i_phs
     type(vector4_t), intent(in) , dimension(:) :: p_born
     type(phs_point_t), intent(inout) :: p_real
-    real(default) :: xi_max, xi, y, phi
+    real(default) :: xi_max, xi_tilde, xi, y, phi
     integer :: nlegborn, nlegreal
     real(default) :: sqrts_real
     real(default) :: k0_np1
     type(lorentz_transformation_t) :: lambda_transv, lambda_longit, lambda_longit_inv
     real(default) :: x_plus, x_minus, xb_plus, xb_minus
+    real(default) :: onemy, onepy
     integer :: i
     real(default) :: xi_plus, xi_minus
     real(default) :: beta_gamma
@@ -10376,32 +10484,40 @@ with $\Lambda$.
 
     associate (rad_var => generator%real_kinematics)
       xi_max = rad_var%xi_max(i_phs)
-      xi = rad_var%xi_tilde * xi_max
+      xi_tilde = rad_var%xi_tilde
+      xi = xi_tilde * xi_max
       y = rad_var%y(i_phs)
+      onemy = one - y; onepy = one + y
       phi = rad_var%phi
       rad_var%y_soft(i_phs) = y
     end associate
 
     nlegborn = size (p_born)
     nlegreal = nlegborn + 1
-    generator%isr_kinematics%sqrts_born = sqrt ((p_born(1) + p_born(2))**2)
+    generator%isr_kinematics%sqrts_born = (p_born(1) + p_born(2))**1
 
     !!! Initial state real momenta
     xb_plus = generator%isr_kinematics%x(I_PLUS)
     xb_minus = generator%isr_kinematics%x(I_MINUS)
-    x_plus = xb_plus / sqrt(one - xi) * sqrt ((two - xi * (one - y)) / (two - xi * (one + y)))
-    x_minus = xb_minus / sqrt(one - xi) * sqrt ((two - xi * (one + y)) / (two - xi * (one - y)))
-    p_real%p(I_PLUS) = x_plus/xb_plus * p_born(I_PLUS)
-    p_real%p(I_MINUS) = x_minus/xb_minus * p_born(I_MINUS)
-    generator%isr_kinematics%z(I_PLUS) = x_plus/generator%isr_kinematics%x(I_PLUS)
-    generator%isr_kinematics%z(I_MINUS) = x_minus/generator%isr_kinematics%x(I_MINUS)
+    x_plus = xb_plus / sqrt(one - xi) * sqrt ((two - xi * onemy) / (two - xi * onepy))
+    x_minus = xb_minus / sqrt(one - xi) * sqrt ((two - xi * onepy) / (two - xi * onemy))
+    xi_plus = xi_tilde * (one - xb_plus)
+    xi_minus = xi_tilde * (one - xb_minus)
+    p_real%p(I_PLUS) = x_plus / xb_plus * p_born(I_PLUS)
+    p_real%p(I_MINUS) = x_minus / xb_minus * p_born(I_MINUS)
+    !!!generator%isr_kinematics%z(I_PLUS) = x_plus / generator%isr_kinematics%x(I_PLUS)
+    !!!generator%isr_kinematics%z(I_MINUS) = x_minus / generator%isr_kinematics%x(I_MINUS)
+    generator%isr_kinematics%z(I_PLUS) = x_plus / xb_plus
+    generator%isr_kinematics%z(I_MINUS) = x_minus / xb_minus
+    generator%isr_kinematics%z_coll(I_PLUS) = one / (one - xi_plus)
+    generator%isr_kinematics%z_coll(I_MINUS) = one / (one - xi_minus)
 
     !!! Create radiation momentum
-    sqrts_real = generator%isr_kinematics%sqrts_born / sqrt(one - xi)
+    sqrts_real = generator%isr_kinematics%sqrts_born / sqrt (one - xi)
     k0_np1 = sqrts_real * xi / two
     p_real%p(nlegreal)%p(0) = k0_np1
-    p_real%p(nlegreal)%p(1) = k0_np1 * sqrt (one - y**2)*sin(phi)
-    p_real%p(nlegreal)%p(2) = k0_np1 * sqrt(one - y**2)*cos(phi)
+    p_real%p(nlegreal)%p(1) = k0_np1 * sqrt (one - y**2) * sin(phi)
+    p_real%p(nlegreal)%p(2) = k0_np1 * sqrt (one - y**2) * cos(phi)
     p_real%p(nlegreal)%p(3) = k0_np1 * y
 
     call get_boost_parameters (p_real%p, beta_gamma, beta_vec)
@@ -10410,25 +10526,28 @@ with $\Lambda$.
 
     call get_boost_parameters (p_born, beta_gamma, beta_vec)
     lambda_longit = create_longitudinal_boost (beta_gamma, beta_vec, inverse = .false.)
-    forall (i=3:nlegborn) &
+    forall (i = 3 : nlegborn) &
         p_real%p(i) = lambda_longit * p_born(i)
 
     lambda_transv = create_transversal_boost (p_real%p(nlegreal), xi, sqrts_real)
-    forall (i=3:nlegborn) &
+    forall (i = 3 : nlegborn) &
          p_real%p(i) = lambda_transv * p_real%p(i)
 
     lambda_longit_inv = create_longitudinal_boost (beta_gamma, beta_vec, inverse = .true.)
-    forall (i=3:nlegborn) &
+    forall (i = 3 : nlegborn) &
          p_real%p(i) = lambda_longit_inv * p_real%p(i)
 
     !!! Compute jacobians
     associate (jac => generator%real_kinematics%jac(i_phs))
-       xi_plus = xi_max * (one - xb_plus)
-       xi_minus = xi_max * (one - xb_minus)
+       !!! Additional 1 / (1 -xi) factor because in the real jacobian,
+       !!! there is s_real in the numerator
+       !!!jac%jac(1) = one / (one - xi)**2
+       !!! We also have to adapt the flux factor, which is 1/2s_real for the real component
+       !!! The reweighting factor is s_born / s_real, cancelling the (1-x) factor from above
        jac%jac(1) = one / (one - xi)
        jac%jac(2) = one
-       jac%jac(3) = xi_plus / (one - xi_plus)
-       jac%jac(4) = xi_minus / (one - xi_minus)
+       jac%jac(3) = one / (one - xi_plus)**2
+       jac%jac(4) = one / (one - xi_minus)**2
     end associate
   contains
     subroutine get_boost_parameters (p, beta_gamma, beta_vec)
@@ -10458,7 +10577,7 @@ with $\Lambda$.
        type(lorentz_transformation_t) :: lambda
        type(vector3_t) :: vec_transverse
        real(default) :: pt2, beta, beta_gamma
-       pt2 = transverse_part(p_rad)**2
+       pt2 = transverse_part (p_rad)**2
        beta = one / sqrt (one + sqrts_real**2 * (one - xi) / pt2)
        beta_gamma = beta / sqrt (one - beta**2)
        vec_transverse%p(1:2) = p_rad%p(1:2)
@@ -10524,7 +10643,7 @@ with $\Lambda$.
        p = generator%real_kinematics%p_born_lab%phs_point(1)%p(1:2)
     end if
 
-    generator%isr_kinematics%x = p%p(0) / (generator%sqrts/two)
+    generator%isr_kinematics%x = p%p(0) / (generator%sqrts / two)
   end subroutine phs_fks_generator_set_isr_kinematics
 
 @ %def phs_fks_generator_set_isr_kinematics
@@ -10637,18 +10756,13 @@ with $\Lambda$.
           else
              pp = p
           end if
-          if (generator%is_massive(emitter)) then
-             if (emitter <= 2) then
-                call msg_fatal ("Massive emitters" // &
-                   "incompatible with IS scattering phase space")
-             else
+          if (emitter <= 2) then
+             rad_var%xi_max(i_phs) = get_xi_max_isr &
+                (generator%isr_kinematics%x, rad_var%y(i_phs))
+          else
+             if (generator%is_massive(emitter)) then
                 rad_var%xi_max(i_phs) = get_xi_max_fsr &
                    (pp, q0, emitter, generator%m2(emitter), rad_var%y(i_phs)) 
-             end if
-          else
-             if (emitter <= 2) then
-                rad_var%xi_max(i_phs) = get_xi_max_isr &
-                   (generator%isr_kinematics%x, rad_var%y(i_phs))
              else
                 rad_var%xi_max(i_phs) = get_xi_max_fsr (pp, q0, emitter)
              end if
@@ -10686,7 +10800,7 @@ with $\Lambda$.
     integer :: emitter, i_phs
     do i_phs = 1, size (phs_identifiers)
        emitter = phs_identifiers(i_phs)%emitter
-       if (any (generator%emitters == emitter)) then
+       if (any (generator%emitters == emitter) .and. emitter > 0) then
           if (generator%is_massive (emitter) .and. emitter > generator%n_in) &
              generator%m2(emitter) = p(emitter)**2
        end if
@@ -10711,6 +10825,7 @@ with $\Lambda$.
     integer :: i
     real(default), parameter :: tiny_scale = 0.01_default
     real(default) :: theta2_min
+    logical :: construct_massive_fsr = .false.
     associate (rad_var => generator%real_kinematics)
        select case (generator%mode)
        case (GEN_REAL_PHASE_SPACE)
@@ -10718,7 +10833,10 @@ with $\Lambda$.
              emitter = phs_identifiers(i_phs)%emitter 
              p_res = vector4_null
              if (any (generator%emitters == emitter)) then
-                if (generator%is_massive (emitter) .and. emitter > generator%n_in) then
+                construct_massive_fsr = emitter > generator%n_in
+                if (construct_massive_fsr) construct_massive_fsr = &
+                   construct_massive_fsr .and. generator%is_massive (emitter)
+                if (construct_massive_fsr) then
                    if (allocated (phs_identifiers(i_phs)%contributors)) then
                       associate (contributors => phs_identifiers(i_phs)%contributors)
                          do i = 1, size (contributors)
@@ -10742,7 +10860,7 @@ with $\Lambda$.
                 else
                    rad_var%y(i_phs) = (one - two * r_y) * generator%y_max
                    rad_var%jac_rand(i_phs) = rad_var%jac_rand(i_phs) * 3 * (one - rad_var%y(i_phs)**2)
-                   rad_var%y(i_phs) = 1.5_default * (rad_var%y(i_phs) - rad_var%y(i_phs)**3/3)
+                   rad_var%y(i_phs) = 1.5_default * (rad_var%y(i_phs) - rad_var%y(i_phs)**3 / 3)
                 end if
              end if
           end do
@@ -10932,7 +11050,7 @@ has already been taken into account during its generation.
   subroutine phs_fks_compute_isr_kinematics (phs, r)
     class(phs_fks_t), intent(inout) :: phs
     real(default), intent(in) :: r
-    call phs%generator%compute_isr_kinematics (r)
+    call phs%generator%compute_isr_kinematics (r, phs%phs_wood_t%p)
   end subroutine phs_fks_compute_isr_kinematics
 
 @ %def phs_fks_compute_isr_kinematics
@@ -11696,7 +11814,7 @@ end module pdf_subtraction
        Q = pdf_sub%isr_kinematics%fac_scale
        call pdf_sub%pdf_data%evolve (dble(x), dble(Q), f_dble)
        pdf_sub%pdf_born(i)%f = f_dble
-       call pdf_sub%pdf_data%evolve (dble(x/z), dble(Q), f_dble)
+       call pdf_sub%pdf_data%evolve (dble(x / z), dble(Q), f_dble)
        pdf_sub%pdf_scaled(i)%f = f_dble
     end do
   end subroutine pdf_subtraction_compute_pdfs
@@ -11769,9 +11887,9 @@ end module pdf_subtraction
     real(default) :: sb, xb, onemz
     real(default) :: fac_scale2, jac
 
-    pdf_sub%value = 0._default
+    pdf_sub%value = zero
     sb = pdf_sub%isr_kinematics%sqrts_born**2
-    tmp = 0._default
+    tmp = zero
     fac_scale2 = pdf_sub%isr_kinematics%fac_scale**2
 
     call pdf_sub%compute_pdfs ()
@@ -11789,30 +11907,30 @@ end module pdf_subtraction
           if (is_gluon(pdf_sub%flv_in(emitter))) then
              pdfs = pdf_sub%get_gluon_pdf (emitter, scaled = .true.)
              pdfb = pdf_sub%get_gluon_pdf (emitter, scaled = .false.)
-             tmp(emitter) = p_hat_gg(z) * factor/z * pdfs/pdfb * jac &
+             tmp(emitter) = p_hat_gg(z) * factor / z * pdfs / pdfb * jac &
                   - p_hat_gg(one) * factor_soft * jac &
                   + p_hat_gg(one) * remnant
              pdfs = pdf_sub%get_summed_quark_pdf (emitter)
              tmp(emitter) = tmp(emitter) + &
-                  (p_hat_qg(z)*factor - p_derived_qg(z))/z * pdfs/pdfb * jac
-          else if (is_quark(abs(pdf_sub%flv_in(emitter)))) then
+                  (p_hat_qg(z) * factor - p_derived_qg(z)) / z * pdfs / pdfb * jac
+          else if (is_quark(pdf_sub%flv_in(emitter))) then
              pdfs = pdf_sub%get_quark_pdf (emitter, pdf_sub%flv_in(emitter), scaled = .true.)
              pdfb = pdf_sub%get_quark_pdf (emitter, pdf_sub%flv_in(emitter), scaled = .false.)
              if (vanishes (pdfb)) then
-                sqme_born = 0._default
+                sqme_born = zero
                 return
              end if
-             tmp(emitter) = p_hat_qq(z) * factor/z * pdfs/pdfb * jac &
-                  - p_derived_qq(z)/z * pdfs/pdfb * jac &
+             tmp(emitter) = p_hat_qq(z) * factor / z * pdfs / pdfb * jac &
+                  - p_derived_qq(z) / z * pdfs / pdfb * jac &
                   - p_hat_qq(one) * factor_soft * jac &
                   + p_hat_qq(one) * remnant
              pdfs = pdf_sub%get_gluon_pdf (emitter, scaled = .true.)
              tmp(emitter) = tmp(emitter) + &
-                  (p_hat_gq(z)*factor - p_derived_gq(z))/z * pdfs/pdfb * jac
+                  (p_hat_gq(z) * factor - p_derived_gq(z)) / z * pdfs / pdfb * jac
           end if
        end associate
     end do
-    sqme_born = alpha_s/twopi * (tmp(1)+tmp(2)) * sqme_born
+    sqme_born = alpha_s / twopi * (tmp(1) + tmp(2)) * sqme_born
   end subroutine pdf_subtraction_evaluate
 
 @ %def pdf_subtraction_evaluate

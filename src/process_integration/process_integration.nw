@@ -6406,14 +6406,13 @@ indicate this fact.
     select type (phs => k%phs)
     type is (phs_fks_t)
        if (use_contributors) then
-          call phs%generator%compute_xi_ref_momenta &
-             (phs%p_born_tot, reg_data%alr_contributors)
+          call phs%compute_xi_ref_momenta (reg_data%alr_contributors)
        else
-          call phs%generator%compute_xi_ref_momenta (phs%p_born_tot)
+          call phs%compute_xi_ref_momenta ()
        end if
        call phs%generate_radiation_variables & 
           (r_in(phs%n_r_born + 1 : phs%n_r_born + 3))
-       call phs%generator%compute_cms_energy (phs%p_born_tot)
+       call phs%compute_cms_energy ()
     end select
   end subroutine kinematics_evaluate_radiation_kinematics
 
@@ -6657,7 +6656,7 @@ type and contents depend on the process variant.
      type(kinematics_t) :: k_seed
      type(vector4_t), dimension(:), allocatable :: p_seed
      logical :: sqme_known = .false.
-     real(default) :: sqme = 0
+     real(default) :: sqme = zero
      class(prc_core_state_t), allocatable :: core_state
      type(nlo_controller_t), pointer :: nlo_controller => null ()
      integer :: nlo_type = BORN
@@ -7961,6 +7960,7 @@ The quantum numbers mask of the incoming particle
     class(term_instance_t), intent(inout) :: term
     integer, intent(in) :: i_phs
     type(vector4_t), dimension(:), allocatable :: p
+    real(default) :: xi
     !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug      
     allocate (p (term%nlo_controller%get_n_particles_real()))
     p = term%nlo_controller%get_momenta (born_phsp = .false., i_phs = i_phs)
@@ -7971,6 +7971,20 @@ The quantum numbers mask of the incoming particle
        call term%connected_real%evaluate_expressions (term%passed, &
           scales%scale, scales%fac_scale, scales%ren_scale, &
           term%weight)
+       scales%scale_born = scales%scale
+       scales%fac_scale_born = scales%fac_scale
+       scales%ren_scale_born = scales%ren_scale
+       select type (phs => term%k_term%phs)
+       type is (phs_fks_t)
+          if (phs%i_phs_is_isr (i_phs)) then
+             associate (rad_var => term%nlo_controller%real_kinematics)
+                xi = rad_var%xi_tilde * rad_var%xi_max (i_phs)
+             end associate
+             scales%scale = scales%scale / sqrt (one - xi)
+             scales%fac_scale = scales%fac_scale / sqrt (one - xi)
+             scales%ren_scale = scales%ren_scale / sqrt (one - xi)
+          end if
+       end select
     end associate
   end subroutine term_instance_update_real_interactions
 
@@ -8215,8 +8229,8 @@ physical event.
      associate (scales => term%nlo_controller%real_terms%scales)
         fac_scale = scales%fac_scale
         ren_scale = scales%ren_scale
+        call term%nlo_controller%set_fac_scale (scales%fac_scale_born)
      end associate
-     call term%nlo_controller%set_fac_scale (fac_scale)
      if (i_flv_real == 1) call component%core_state%reset_new_kinematics ()
 
      select type (core => component%config%core)
@@ -8256,8 +8270,8 @@ physical event.
     select case (term%nlo_type)
     case (NLO_REAL) 
        associate (scales => term%nlo_controller%real_terms%scales)
-          fac_scale = scales%fac_scale
-          ren_scale = scales%ren_scale
+          fac_scale = scales%fac_scale_born
+          ren_scale = scales%ren_scale_born
        end associate
     case default
        fac_scale = term%fac_scale
@@ -9784,7 +9798,7 @@ if it fails the cuts for at least one emitter.
     type(term_instance_t), intent(inout) :: term
     type(pcm_instance_nlo_t), intent(inout) :: pcm
     integer, intent(in) :: i_component
-    integer, intent(in), optional :: i_phs
+    integer, intent(in) :: i_phs
     integer :: i_flv_real, i_flv_born
     logical :: overwrite_born
     real(default) :: sqme_born
@@ -9810,7 +9824,8 @@ if it fails the cuts for at least one emitter.
                 call associate_sqme_born (component, sqme_born * term%weight, i_flv_born, &
                    update_born = pcm%controller%nlo_cuts%passed_born .and. overwrite_born)
              end if
-             call component%evaluate_sqme_real (term, i_phs)
+             if (term%nlo_controller%nlo_cuts%passed_real(i_phs)) &
+                call component%evaluate_sqme_real (term, i_phs)
              instance%sqme_real(i_flv_real, i_phs) = pcm%collector%current_sqme_real
              if (pcm%collect_matrix_elements) then
                 pcm%collector%sqme_real_per_phs (i_flv_real, i_phs) &
