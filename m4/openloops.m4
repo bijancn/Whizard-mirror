@@ -42,7 +42,7 @@ if test -n "$OPENLOOPS_DIR"; then
   wo_openloops_ldflags="-L$OPENLOOPS_DIR/lib -lopenloops"
 fi
 
-if test "$enable_openloops" = "yes"; then
+if test "$enable_openloops" = "yes" -a "$openloops_lib" != "no"; then
     AC_MSG_CHECKING([for standard OpenLoops process])
     if test -f "$OPENLOOPS_DIR/proclib/libopenloops_ppll_lt.info"; then
        AC_MSG_RESULT([ OpenLoops process ppll is installed])
@@ -54,11 +54,13 @@ if test "$enable_openloops" = "yes"; then
        AC_MSG_NOTICE([error:    ppll                                                      ])
        AC_MSG_NOTICE([error: *************************************************************])
        OPENLOOPS_AVAILABLE_FLAG=".false."
+       enable_openloops="no"
     fi
-   OPENLOOPS_INCLUDES=$wo_openloops_includes
-   LDFLAGS_OPENLOOPS=$wo_openloops_ldflags
+    OPENLOOPS_INCLUDES=$wo_openloops_includes
+    LDFLAGS_OPENLOOPS=$wo_openloops_ldflags
 else
    OPENLOOPS_AVAILABLE_FLAG=".false."
+   enable_openloops="no"
 fi
 
 AC_SUBST([OPENLOOPS_AVAILABLE_FLAG])

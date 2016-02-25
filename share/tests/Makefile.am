@@ -716,7 +716,6 @@ REF_OUTPUT_FILES_PREC = \
     functional_tests/ref-output-prec/nlo_2.ref \
     functional_tests/ref-output-prec/nlo_3.ref \
     functional_tests/ref-output-prec/nlo_4.ref \
-    functional_tests/ref-output-prec/openloops_1.ref \
     functional_tests/ref-output-prec/defaultcuts.ref \
     functional_tests/ref-output-prec/parton_shower_2.ref \
     functional_tests/ref-output-prec/helicity.ref \
@@ -752,7 +751,8 @@ REF_OUTPUT_FILES_EXT = \
     functional_tests/ref-output-ext/beam_events_2.ref \
     functional_tests/ref-output-ext/beam_events_3.ref \
     functional_tests/ref-output-ext/mlm_matching_isr.ref \
-    functional_tests/ref-output-ext/hepmc_8.ref
+    functional_tests/ref-output-ext/hepmc_8.ref \
+    functional_tests/ref-output-ext/openloops_1.ref
 
 REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/circe1_4.ref \
@@ -768,7 +768,8 @@ REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/beam_events_2.ref \
     functional_tests/ref-output-quad/beam_events_3.ref \
     functional_tests/ref-output-quad/mlm_matching_isr.ref \
-    functional_tests/ref-output-quad/hepmc_8.ref
+    functional_tests/ref-output-quad/hepmc_8.ref \
+    functional_tests/ref-output-quad/openloops_1.ref
 
 TESTSUITES_M4 = \
     $(MISC_TESTS_M4) \
