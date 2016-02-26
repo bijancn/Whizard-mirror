@@ -136,6 +136,8 @@ module @ID@_threshold
        omega_couplings_2010_01_A, omega_color_2010_01_A, &
        omega_utils_2010_01_A /)
 
+  logical, parameter, public :: test_ward = .false.
+
   integer, parameter, public :: n_prt = 6
   integer, parameter :: n_prt_OS = 4
   integer, parameter, public :: n_in = 2
@@ -632,10 +634,17 @@ contains
          do h_W = -1, 1, 1
          do h_b = -1, 1, 2
             born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (h_t, h_W, h_b)
-            do h_gl = -1, 1, 2
-               real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
-                    (k_decay_real, [h_t, h_W, h_b, h_gl], zero)
-            end do
+            if (.not. test_ward) then
+               do h_gl = -1, 1, 2
+                  real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
+                       (k_decay_real, [h_t, h_W, h_b, h_gl], zero)
+               end do
+            else
+               do h_gl = -1, 1, 2
+                  real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
+                       (k_decay_real, [h_t, h_W, h_b, 4], zero)
+               end do
+            end if
          end do
          end do
          end do
@@ -739,6 +748,7 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
            amp2 = real (sum (abs2 (amp_tree + amp_blob)))
         end if
      end select
+     if (test_ward)  amp2 = 0
   end if
   amp2 = amp2 * production_factors
 
