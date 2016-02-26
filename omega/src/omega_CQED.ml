@@ -1,6 +1,6 @@
-(* $Id: omega_CQED.ml 6465 2015-01-10 15:22:31Z jr_reuter $
+(* $Id: omega_CQED.ml 7444 2016-02-17 15:37:20Z jr_reuter $
 
-   Copyright (C) 1999-2015 by
+   Copyright (C) 1999-2016 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -24,8 +24,8 @@
 
 
 let rcs_file = RCS.parse "F90_CQED" ["QED with contact terms"]
-    { RCS.revision = "$Revision: 6465 $";
-      RCS.date = "$Date: 2015-01-10 16:22:31 +0100 (Sat, 10 Jan 2015) $";
+    { RCS.revision = "$Revision: 7444 $";
+      RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
         = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/omega_CQED.ml $" }

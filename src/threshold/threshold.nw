@@ -10600,12 +10600,13 @@ module ttv_formfactors
 
   use kinds
   use constants
+  use numeric_utils
   use physics_defs, only: CF, CA, TR
   use sm_physics
   use interpolation
   use nr_tools
-  use io_units, only: free_unit
-  use unit_tests, only: nearly_equal
+  use io_units, only: free_unit, given_output_unit
+  use string_utils
   use iso_varying_string, string_t => varying_string
   use system_dependencies
   use, intrinsic :: iso_fortran_env !NODEP!
@@ -10631,9 +10632,15 @@ contains
 end module ttv_formfactors
 @ %def ttv_formfactors
 <<ttv formfactors: parameters>>=
+  integer, parameter, public :: THR_POS_WP = 3
+  integer, parameter, public :: THR_POS_WM = 4
+  integer, parameter, public :: THR_POS_B = 5
+  integer, parameter, public :: THR_POS_BBAR = 6
+<<ttv formfactors: parameters>>=
   integer, parameter :: VECTOR = 1
   integer, parameter :: AXIAL = 2
-  integer, parameter, public :: RESUMMED_SWITCHOFF_P0CONSTANT = - 2, &
+  integer, parameter, public :: MATCHED_EXPANDED = - 3, &
+                                RESUMMED_SWITCHOFF_P0CONSTANT = - 2, &
                                 MATCHED = -1, &
                                 RESUMMED_P0DEPENDENT = 0, &
                                 RESUMMED_P0CONSTANT = 1, &
@@ -10642,7 +10649,8 @@ end module ttv_formfactors
                                 EXPANDED_SOFT_P0CONSTANT = 5, &
                                 EXPANDED_SOFT_SWITCHOFF_P0CONSTANT = 6, &
                                 RESUMMED_ANALYTIC_LL = 7, &
-                                EXPANDED_SOFT_HARD_P0CONSTANT = 8
+                                EXPANDED_SOFT_HARD_P0CONSTANT = 8, &
+                                EXTRA_TREE = 9
   real(default), parameter :: NF = 5.0_default
 
   real(default), parameter :: z3 = 1.20205690315959428539973816151_default
@@ -10656,6 +10664,7 @@ end module ttv_formfactors
   logical :: EXT_VINPUT = .true.
   logical :: INITIALIZED_PARS, INITIALIZED_PS, INITIALIZED_FF, INITIALIZED_J0
   logical :: MPOLE_DYNAMIC
+  integer :: OFFSHELL_STRATEGY
 
 @ [[gam_m1s]] is only used for the scale nustar
 <<ttv formfactors: global variables>>=
@@ -10707,8 +10716,9 @@ end module ttv_formfactors
 @
 <<ttv formfactors: public>>=
   public :: init_parameters
+<<ttv formfactors: public>>=
   public :: init_threshold_grids
-  public :: FF_master
+<<ttv formfactors: public>>=
   public :: m1s_to_mpole
 @
 <<ttv formfactors: types>>=
@@ -10719,12 +10729,127 @@ end module ttv_formfactors
     complex(default) :: m2 = 0
     logical :: inside_grid = .false., onshell = .false.
   contains
-    procedure :: init => phase_space_point_init_rel
-    procedure :: init_nonrel => phase_space_point_init_nonrel
-    procedure :: is_onshell => phase_space_point_is_onshell
+  <<ttv formfactors: phase space point: TBP>>
   end type phase_space_point_t
 
 @
+<<ttv formfactors: phase space point: TBP>>=
+  procedure :: init => phase_space_point_init_rel
+<<ttv formfactors: procedures>>=
+  pure subroutine phase_space_point_init_rel (ps_point, p2, k2, q2, m)
+    class(phase_space_point_t), intent(inout) :: ps_point
+    real(default), intent(in) :: p2
+    real(default), intent(in) :: k2
+    real(default), intent(in) :: q2
+    real(default), intent(in), optional :: m
+    ps_point%p2 = p2
+    ps_point%k2 = k2
+    ps_point%q2 = q2
+    call rel_to_nonrel (p2, k2, q2, ps_point%sqrts, ps_point%p, ps_point%p0)
+    ps_point%mpole = m1s_to_mpole (ps_point%sqrts)
+    ps_point%en = sqrts_to_en (ps_point%sqrts)
+    ps_point%inside_grid = sqrts_within_range (ps_point%sqrts)
+    ps_point%m2 = complex_m2 (ps_point%mpole, GAM)
+    if ( present(m) ) ps_point%onshell = ps_point%is_onshell (m)
+  end subroutine phase_space_point_init_rel
+
+@
+<<ttv formfactors: phase space point: TBP>>=
+  procedure :: init_nonrel => phase_space_point_init_nonrel
+<<ttv formfactors: procedures>>=
+  pure subroutine phase_space_point_init_nonrel (ps_point, sqrts, p, p0, m)
+    class(phase_space_point_t), intent(inout) :: ps_point
+    real(default), intent(in) :: sqrts
+    real(default), intent(in) :: p
+    real(default), intent(in) :: p0
+    real(default), intent(in), optional :: m
+    ps_point%sqrts = sqrts
+    ps_point%p = p
+    ps_point%p0 = p0
+    call nonrel_to_rel (sqrts, p, p0, ps_point%p2, ps_point%k2, ps_point%q2)
+    ps_point%mpole = m1s_to_mpole (sqrts)
+    ps_point%en = sqrts_to_en (sqrts, ps_point%mpole)
+    ps_point%inside_grid = sqrts_within_range (sqrts)
+    ps_point%m2 = complex_m2 (ps_point%mpole, GAM)
+    if ( present(m) ) ps_point%onshell = ps_point%is_onshell (m)
+  end subroutine phase_space_point_init_nonrel
+
+@
+<<ttv formfactors: procedures>>=
+  !!! convert squared 4-momenta into sqrts, p0 = E_top-sqrts/2 and abs. 3-momentum p
+  pure subroutine rel_to_nonrel (p2, k2, q2, sqrts, p, p0)
+    real(default), intent(in) :: p2
+    real(default), intent(in) :: k2
+    real(default), intent(in) :: q2
+    real(default), intent(out) :: sqrts
+    real(default), intent(out) :: p
+    real(default), intent(out) :: p0
+    sqrts = sqrt(q2)
+    p0 = abs(p2 - k2) / (2. * sqrts)
+    p = sqrt (0.5_default * (- p2 - k2 + sqrts**2/2. + 2.* p0**2))
+  end subroutine rel_to_nonrel
+
+@
+<<ttv formfactors: procedures>>=
+  !!! convert sqrts, p0 = E_top-sqrts/2 and abs. 3-momentum p into squared 4-momenta
+  pure subroutine nonrel_to_rel (sqrts, p, p0, p2, k2, q2, m2)
+    real(default), intent(in) :: sqrts
+    real(default), intent(in) :: p
+    real(default), intent(in) :: p0
+    real(default), intent(out) :: p2
+    real(default), intent(out) :: k2
+    real(default), intent(out) :: q2
+    complex(default), intent(out), optional :: m2
+    p2 = (sqrts/2.+p0)**2 - p**2
+    k2 = (sqrts/2.-p0)**2 - p**2
+    q2 = sqrts**2
+    if (present (m2)) m2 = complex_m2 (m1s_to_mpole (sqrts), GAM)
+  end subroutine nonrel_to_rel
+
+@
+<<ttv formfactors: procedures>>=
+  pure function complex_m2 (m, w) result (m2c)
+    real(default), intent(in) :: m
+    real(default), intent(in) :: w
+    complex(default) :: m2c
+    m2c = m**2 - imago*m*w
+  end function complex_m2
+
+@
+<<ttv formfactors: phase space point: TBP>>=
+  procedure :: is_onshell => phase_space_point_is_onshell
+<<ttv formfactors: procedures>>=
+  pure function phase_space_point_is_onshell (ps_point, m) result (flag)
+    logical :: flag
+    class(phase_space_point_t), intent(in) :: ps_point
+    real(default), intent(in) :: m
+    flag = nearly_equal (ps_point%p2 , m**2, rel_smallness=1E-5_default) .and. &
+         nearly_equal (ps_point%k2 , m**2, rel_smallness=1E-5_default)
+  end function phase_space_point_is_onshell
+
+@
+<<ttv formfactors: phase space point: TBP>>=
+  procedure :: write => phase_space_point_write
+<<ttv formfactors: procedures>>=
+  subroutine phase_space_point_write (psp, unit)
+    class(phase_space_point_t), intent(in) :: psp
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, '(A)') char ("p2 = " // str (psp%p2))
+    write (u, '(A)') char ("k2 = " // str (psp%k2))
+    write (u, '(A)') char ("q2 = " // str (psp%q2))
+    write (u, '(A)') char ("sqrts = " // str (psp%sqrts))
+    write (u, '(A)') char ("p = " // str (psp%p))
+    write (u, '(A)') char ("p0 = " // str (psp%p0))
+    write (u, '(A)') char ("mpole = " // str (psp%mpole))
+    write (u, '(A)') char ("en = " // str (psp%en))
+    write (u, '(A)') char ("m2 = " // str (psp%m2))
+    write (u, '(A)') char ("inside_grid = " // str (psp%inside_grid))
+    write (u, '(A)') char ("onshell = " // str (psp%onshell))
+  end subroutine phase_space_point_write
+
+@ %def phase_space_point_write
 <<ttv formfactors: types>>=
   type, extends (solver_function_t) :: p0_q_integrand_t
     real(default) :: a = 0
@@ -10739,7 +10864,7 @@ end module ttv_formfactors
 <<ttv formfactors: procedures>>=
   subroutine init_parameters (mpole_out, gam_out, m1s_in, Vtb, gam_inv, &
          aemi, sw, az, mz, mw, &
-         mb, h_in, f_in, nloop_in, ff_in, &
+         mb, h_in, f_in, nloop_in, ff_in, offshell_strategy_in, &
          v1_in, v2_in, scan_sqrts_min, scan_sqrts_max, scan_sqrts_stepsize, &
          mpole_fixed)
     real(default), intent(out) :: mpole_out
@@ -10757,16 +10882,40 @@ end module ttv_formfactors
     real(default), intent(in) :: f_in
     real(default), intent(in) :: nloop_in
     real(default), intent(in) :: ff_in
+    real(default), intent(in) :: offshell_strategy_in
     real(default), intent(in) :: v1_in
     real(default), intent(in) :: v2_in
     real(default), intent(in) :: scan_sqrts_min
     real(default), intent(in) :: scan_sqrts_max
     real(default), intent(in) :: scan_sqrts_stepsize
     logical, intent(in) :: mpole_fixed
+    logical :: use_lo_width
+    if (debug_active (D_THRESHOLD)) then
+       call msg_debug (D_THRESHOLD, "init_parameters")
+       call msg_debug (D_THRESHOLD, "m1s_in", m1s_in)
+       call msg_debug (D_THRESHOLD, "Vtb", Vtb)
+       call msg_debug (D_THRESHOLD, "gam_inv", gam_inv)
+       call msg_debug (D_THRESHOLD, "aemi", aemi)
+       call msg_debug (D_THRESHOLD, "sw", sw)
+       call msg_debug (D_THRESHOLD, "az", az)
+       call msg_debug (D_THRESHOLD, "mz", mz)
+       call msg_debug (D_THRESHOLD, "mw", mw)
+       call msg_debug (D_THRESHOLD, "mb", mb)
+       call msg_debug (D_THRESHOLD, "h_in", h_in)
+       call msg_debug (D_THRESHOLD, "f_in", f_in)
+       call msg_debug (D_THRESHOLD, "nloop_in", nloop_in)
+       call msg_debug (D_THRESHOLD, "ff_in", ff_in)
+       call msg_debug (D_THRESHOLD, "offshell_strategy_in", offshell_strategy_in)
+       call msg_debug (D_THRESHOLD, "v1_in", v1_in)
+       call msg_debug (D_THRESHOLD, "v2_in", v2_in)
+       call msg_debug (D_THRESHOLD, "scan_sqrts_min", scan_sqrts_min)
+       call msg_debug (D_THRESHOLD, "scan_sqrts_max", scan_sqrts_max)
+       call msg_debug (D_THRESHOLD, "scan_sqrts_stepsize", scan_sqrts_stepsize)
+    end if
     INITIALIZED_PARS = .false.
     M1S = m1s_in
     MPOLE_DYNAMIC = .not. mpole_fixed
-    GAM_M1S = top_width_sm_lo (one / aemi, sw, Vtb, m1s, mw, mb) + gam_inv
+    OFFSHELL_STRATEGY = int (offshell_strategy_in)
     NLOOP = 1
     if ( int(nloop_in) > NLOOP ) then
       call msg_warning ("reset to highest available nloop = " // char(NLOOP))
@@ -10783,6 +10932,12 @@ end module ttv_formfactors
     RESCALE_H    = h_in
     MU_HARD = M1S * RESCALE_H
     AS_HARD   = running_as (MU_HARD, az, mz, 2, NF)
+    use_lo_width = OFFSHELL_STRATEGY == 0 .or. OFFSHELL_STRATEGY == -1 .or. OFFSHELL_STRATEGY == -3
+    if (use_lo_width) then
+       GAM_M1S = top_width_sm_lo (one / aemi, sw, Vtb, m1s, mw, mb) + gam_inv
+    else
+       GAM_M1S = top_width_sm_qcd_nlo (one / aemi, sw, m1s, mw, mb, AS_HARD) + gam_inv
+    end if
     !!! auxiliary numbers needed later
     !!! current coefficients Ai(S,L,J), cf. arXiv:hep-ph/0609151, Eqs. (63)-(64)
     !!! 3S1 coefficients (s-wave, vector current)
@@ -10813,18 +10968,18 @@ end module ttv_formfactors
     call update_global_sqrts_dependent_variables (2. * M1S)
     mtpole_init = MTPOLE
     mpole_out = mtpole_init
-    !!! compute the total LO top width from t->bW decay plus optional invisible width
-    GAM = top_width_sm_lo (one / aemi, sw, Vtb, MTPOLE, mw, mb) + gam_inv
-    gam_out = gam
+    !!! compute the total top width from t->bW decay plus optional invisible width
+    if (use_lo_width) then
+       GAM = top_width_sm_lo (one / aemi, sw, Vtb, MTPOLE, mw, mb) + gam_inv
+    else
+       GAM = top_width_sm_qcd_nlo (one / aemi, sw, MTPOLE, mw, mb, AS_HARD) + gam_inv
+    end if
+    gam_out = GAM
 
     !!! flags
-    !matching_version = 0
-    !if ( ff_in < zero ) matching_version = int(-ff_in)
-    !match_to_NLO = ( matching_version == 1 ) .or. ( matching_version == 2 )
-    !need_J0 = ff_in == 2 .or. (match_to_NLO .and. .not. EXT_NLO) .or. ff_in == 5
     SWITCHOFF = ff_in < 0
     NEED_FF_GRID = ff_in <= 1
-    NEED_P0_GRID = ff_in == 0 !.or. need_J0
+    NEED_P0_GRID = vanishes (ff_in)
     EXT_VINPUT = EXT_VINPUT .and. NLOOP > 0
 
     INITIALIZED_PARS = .true.
@@ -10834,8 +10989,10 @@ end module ttv_formfactors
 <<ttv formfactors: procedures>>=
   subroutine init_threshold_grids (test)
     real(default), intent(in) :: test
-    call msg_debug (D_THRESHOLD, "init_threshold_grids")
-    call msg_debug (D_THRESHOLD, "NEED_FF_GRID", NEED_FF_GRID)
+    if (debug_active (D_THRESHOLD)) then
+       call msg_debug (D_THRESHOLD, "init_threshold_grids")
+       call msg_debug (D_THRESHOLD, "NEED_FF_GRID", NEED_FF_GRID)
+    end if
     if (test > zero) then
       call msg_message ("TESTING ONLY: Skip threshold initialization and use tree-level SM.")
       return
@@ -10850,8 +11007,9 @@ end module ttv_formfactors
   end subroutine init_threshold_grids
 
 @
+<<ttv formfactors: public>>=
+  public :: FF_master
 <<ttv formfactors: procedures>>=
-  !pure 
   function FF_master (ps, vec_type, FF_mode) result (FF)
     complex(default) :: FF
     type(phase_space_point_t), intent(in) :: ps
@@ -10860,61 +11018,47 @@ end module ttv_formfactors
     FF = one
     if (.not. INITIALIZED_PARS .or. .not. USE_FF) return
     select case (FF_mode)
-      !case (0)
-        !FF = matched_formfactor (ps, vec_type)
-      !case (2)
-        !FF = relativistic_formfactor_pure (AS_HARD, ps, vec_type)
-      !case (5)
-        !FF = nonrel_expanded_formfactor (alphas_soft (ps%sqrts) - AS_HARD, ps, vec_type) &
-            !+ relativistic_formfactor_pure (AS_HARD, ps, vec_type) - one
-      case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, RESUMMED_SWITCHOFF_P0CONSTANT)
-        FF = resummed_formfactor (ps, vec_type)
-      case (EXPANDED_HARD_P0DEPENDENT)
-        FF = nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type)
-      case (EXPANDED_HARD_P0CONSTANT)
-        FF = nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.)
-      case (EXPANDED_SOFT_HARD_P0CONSTANT)
-        f = f_switch_off (v_matching (ps%sqrts))
-        FF = nonrel_expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + (1-f) * AS_HARD, ps, vec_type, no_p0=.true.)
-      case (EXPANDED_SOFT_P0CONSTANT)
-        FF = nonrel_expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
-      case (EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
-        f = f_switch_off (v_matching (ps%sqrts))
-        FF = nonrel_expanded_formfactor (f * AS_HARD, f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
-      case (RESUMMED_ANALYTIC_LL)
-        FF = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts), ps, vec_type)
-      case default
-        return
+    case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, RESUMMED_SWITCHOFF_P0CONSTANT)
+       FF = resummed_formfactor (ps, vec_type)
+    case (MATCHED_EXPANDED)
+       f = f_switch_off (v_matching (ps%sqrts))
+       ! TODO: (bcn 2016-02-08) can be simplified
+       FF = - nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.) &
+            + nonrel_expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
+              (1-f) * AS_HARD, ps, vec_type, no_p0=.true.) &
+            - nonrel_expanded_formfactor (f * AS_HARD, f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
+    case (EXPANDED_HARD_P0DEPENDENT)
+       FF = nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type)
+    case (EXPANDED_HARD_P0CONSTANT)
+       FF = nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.)
+    case (EXPANDED_SOFT_HARD_P0CONSTANT)
+       f = f_switch_off (v_matching (ps%sqrts))
+       FF = nonrel_expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + (1-f) * AS_HARD, ps, vec_type, no_p0=.true.)
+    case (EXPANDED_SOFT_P0CONSTANT)
+       FF = nonrel_expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
+    case (EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
+       f = f_switch_off (v_matching (ps%sqrts))
+       FF = nonrel_expanded_formfactor (f * AS_HARD, f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
+    case (RESUMMED_ANALYTIC_LL)
+       FF = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts), ps, vec_type)
+    case (EXTRA_TREE)
+       FF = 2
+    case default
+       !!! FF = one gives tree level result in modes with tree level interference
     end select
+    if (debug2_active (D_THRESHOLD)) then
+       call msg_debug2 (D_THRESHOLD, "INITIALIZED_PARS", INITIALIZED_PARS)
+       call msg_debug2 (D_THRESHOLD, "USE_FF", USE_FF)
+       call msg_debug2 (D_THRESHOLD, "FF_mode", FF_mode)
+       call msg_debug2 (D_THRESHOLD, "FF", FF)
+       call ps%write ()
+    end if
   end function FF_master
 
 @
 <<ttv formfactors: procedures>>=
-  !!! matched formfactor (-> resummation in threshold region, smooth continuation above)
-  !pure
-  !function matched_formfactor (ps, vec_type) result (c)
-    !type(phase_space_point_t), intent(in) :: ps
-    !integer, intent(in) :: vec_type
-    !complex(default) :: c
-    !c = one
-    !if (matching_version > 0) then
-      !if (ps%inside_grid) then
-        !c = resummed_formfactor (ps, vec_type)
-      !else if (match_to_NLO) then
-        !c = nonrel_expanded_formfactor (alphas_soft (ps%sqrts) - AS_HARD, ps, vec_type)
-      !end if
-      !if (match_to_NLO .and. .not. EXT_NLO) c = c + &
-        !relativistic_formfactor_pure (AS_HARD, ps, vec_type) - one
-    !else
-      !c = resummed_formfactor (ps, vec_type)
-    !end if
-  !end function matched_formfactor
-
-@
-<<ttv formfactors: procedures>>=
   !!! LL/NLL resummation of nonrelativistic Coulomb potential
-  !pure
-  function resummed_formfactor (ps, vec_type) result (c)
+  pure function resummed_formfactor (ps, vec_type) result (c)
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: vec_type
     complex(default) :: c
@@ -10931,44 +11075,8 @@ end module ttv_formfactors
 
 @
 <<ttv formfactors: procedures>>=
-  !!! relativistic off-shell O(alphas^1) contribution (-> no resummation)
-  function relativistic_formfactor (alphas, ps, vec_type) result (c)
-    real(default), intent(in) :: alphas
-    type(phase_space_point_t), intent(in) :: ps
-    integer, intent(in) :: vec_type
-    complex(default) :: c
-    complex(default) :: J0
-    complex(default) :: J0_LoopTools
-    external J0_LoopTools
-    c = one
-    if (.not. INITIALIZED_PARS .or. vec_type==2) return
-    J0 = J0_LoopTools (ps%p2, ps%k2, ps%q2, ps%m2)
-    c = formfactor_ttv_relativistic_nlo (alphas, ps, J0)
-  end function relativistic_formfactor
-
-@
-<<ttv formfactors: procedures>>=
-  !!! relativistic off-shell O(alphas^1) contribution (-> no resummation)
-  !!! pure version requiring an existing J0 grid to avoid non-pure LoopTools calls
-  pure function relativistic_formfactor_pure (alphas, ps, vec_type) result (c)
-    real(default), intent(in) :: alphas
-    type(phase_space_point_t), intent(in) :: ps
-    integer, intent(in) :: vec_type
-    complex(default) :: c
-!    complex(default) :: J0
-    c = one
-    if ( vec_type==2 ) return
-!    J0 = J0_LoopTools_interpolate (ps)
-!    c = formfactor_ttv_relativistic_nlo (alphas, ps, J0)
-    c = one + alphas * J0_LoopTools_interpolate (ps)
-  end function relativistic_formfactor_pure
-
-@
-<<ttv formfactors: procedures>>=
   !!! leading nonrelativistic O(alphas^1) contribution (-> expansion of resummation)
-  !!! nonrelativistic limit of module function 'relativistic_formfactor'
-  !pure
-  function nonrel_expanded_formfactor (alphas_hard, alphas_soft, ps, vec_type, no_p0) result (FF)
+  pure function nonrel_expanded_formfactor (alphas_hard, alphas_soft, ps, vec_type, no_p0) result (FF)
     complex(default) :: FF
     real(default), intent(in) :: alphas_hard, alphas_soft
     type(phase_space_point_t), intent(in) :: ps
@@ -11015,7 +11123,7 @@ end module ttv_formfactors
     call msg_message (" and axial vector couplings (S/P-wave) in the threshold region.")
     call msg_message (" Cf. threshold shapes from A. Hoang et al.: [arXiv:hep-ph/0107144],")
     call msg_message (" [arXiv:1309.6323].")
-    if ( NLOOP > 0 ) then
+    if (NLOOP > 0) then
       call msg_message (" Numerical NLL solutions calculated with TOPPIK [arXiv:hep-ph/9904468]")
       call msg_message (" by M. Jezabek, T. Teubner.")
     end if
@@ -11056,10 +11164,12 @@ end module ttv_formfactors
     call msg_message ("Threshold setup unchanged: reusing existing threshold grid.")
     POINTS_SQ = ff_shape(1)
     POINTS_P = ff_shape(2)
-    call msg_debug (D_THRESHOLD, "ff_shape(1) (POINTS_SQ)", ff_shape(1))
-    call msg_debug (D_THRESHOLD, "ff_shape(2)", ff_shape(2))
-    call msg_debug (D_THRESHOLD, "ff_shape(3) (POINTS_P0)", ff_shape(3))
-    call msg_debug (D_THRESHOLD, "ff_shape(4) (==2)", ff_shape(4))
+    if (debug_active (D_THRESHOLD)) then
+       call msg_debug (D_THRESHOLD, "ff_shape(1) (POINTS_SQ)", ff_shape(1))
+       call msg_debug (D_THRESHOLD, "ff_shape(2)", ff_shape(2))
+       call msg_debug (D_THRESHOLD, "ff_shape(3) (POINTS_P0)", ff_shape(3))
+       call msg_debug (D_THRESHOLD, "ff_shape(4) (==2)", ff_shape(4))
+    end if
     allocate (sq_grid(POINTS_SQ))
     read (u) sq_grid
     allocate (p_grid(POINTS_P))
@@ -11168,7 +11278,7 @@ end module ttv_formfactors
     real(default) :: z, w
     call msg_debug (D_THRESHOLD, "current_coeff")
     coeff = one
-    if ( NLOOP == 0 ) return
+    if (NLOOP == 0) return
     z = a_soft / a_hard
     w = a_usoft / a_soft
     !!! hard s/p-wave 1-loop matching coefficients, cf. arXiv:hep-ph/0604072
@@ -11192,8 +11302,7 @@ end module ttv_formfactors
   public :: v_matching
 <<ttv formfactors: procedures>>=
   !!! matching parameter as a function of the phase space point
-  !pure
-  function v_matching (sqrts) result (v)
+  pure function v_matching (sqrts) result (v)
     real(default), intent(in) :: sqrts
     real(default) :: v
     v = real (sqrts_to_v (sqrts))
@@ -11204,20 +11313,6 @@ end module ttv_formfactors
   end function v_matching
 
 @
-<<ttv formfactors: procedures>>=
-  !!! measure for the validity of the nonrelativistic approximation
-  !pure
-!  function A_matching (alphas, ps) result (A)
-!    real(default), intent(in) :: alphas
-!    type(phase_space_point_t), intent(in) :: ps
-!    real(default) :: A
-!    complex(default) :: FF_relat, FF_nonrel
-!    FF_relat = relativistic_formfactor_pure (alphas, ps, 1)
-!    FF_nonrel = nonrel_expanded_formfactor (alphas, ps, 1)
-!    A = abs( (FF_relat-FF_nonrel) / (FF_relat+FF_nonrel) )
-!  end function A_matching
-
-@
 <<ttv formfactors: public>>=
   public :: f_switch_off
 <<ttv formfactors: procedures>>=
@@ -11226,30 +11321,6 @@ end module ttv_formfactors
     real(default), intent(in) :: v
     real(default) :: fval
     real(default) :: vm, f1, f2
-!     v1 = 0.3_default !!! LO v1
-!     v2 = 0.5_default
-!     v1 = 0.2_default !!! LO v2
-!     v2 = 0.7_default
-!     v1 = 0.25_default !!! LO v3
-!     v2 = 0.75_default
-!     v1 = 0.25_default !!! LO v4
-!     v2 = 0.7_default
-!     v1 = 0.5_default !!! LO v5
-!     v2 = 0.8_default
-!     v1 = 0.5_default !!! NLO v1
-!     v2 = 0.8_default
-!     v1 = 0.45_default !!! NLO v2
-!     v2 = 0.65_default
-!     v1 = 0.35_default !!! NLO v3
-!     v2 = 0.65_default
-!     v1 = 0.5_default !!! NLO v4
-!     v2 = 0.65_default
-!     v1 = 0.45_default !!! NLO v5
-!     v2 = 0.8_default
-!     v1 = 0.4_default !!! NLO v6
-!     v2 = 0.75_default
-!     v1 = 0.55_default !!! NLO v7
-!     v2 = 0.8_default
     f1 = one
     f2 = zero + tiny_10
     vm = (v1+v2) / 2.
@@ -11262,79 +11333,7 @@ end module ttv_formfactors
     else
       fval = f2
     end if
-!    fval = zero
   end function f_switch_off
-
-@
-<<ttv formfactors: procedures>>=
-  !!! actual matching procedures:
-!  subroutine match_resummed_formfactor (ff, ps, vec_type)
-!    complex(default), intent(inout) :: ff
-!    type(phase_space_point_t), intent(in) :: ps
-!    integer, intent(in) :: vec_type
-!    call msg_debug (D_THRESHOLD, "match_resummed_formfactor")
-!    select case (matching_version)
-!      case (0)
-!        return
-!      case (1)
-!        call match_resummed_formfactor_Andre (ff, ps, vec_type, match_to_NLO)
-!      case (2)
-!        call match_resummed_formfactor_Max (ff, ps, vec_type, match_to_NLO)
-!      case (3)
-!        call match_resummed_formfactor_Andre (ff, ps, vec_type, match_to_NLO)
-!      case (4)
-!        call match_resummed_formfactor_Max (ff, ps, vec_type, match_to_NLO)
-!      case default
-!        call msg_fatal ("match_resummed_formfactor: invalid matching_version = " &
-!                          // char(matching_version))
-!    end select
-!  end subroutine match_resummed_formfactor
-
-  !!! Max's proposal
-!  subroutine match_resummed_formfactor_Max (ff, ps, vec_type, NLO_flag)
-!    complex(default), intent(inout) :: ff
-!    type(phase_space_point_t), intent(in) :: ps
-!    integer, intent(in) :: vec_type
-!    logical, intent(in) :: NLO_flag
-!    real(default) :: fm, as_f
-!    complex(default) :: FFnr_exp_as, R
-!    fm = f_switch_off (v_matching (ps))
-!    as_f = alphas_soft (ps%sqrts, NLOOP, fm*AS_HARD)
-!    FFnr_exp_as = nonrel_expanded_formfactor (AS_SOFT, ps, vec_type)
-!    if ( NLO_flag ) then
-!      R = ( ff - FFnr_exp_as ) / ( formfactor_LL_analytic (AS_SOFT, ps, vec_type) - FFnr_exp_as )
-!      ff = nonrel_expanded_formfactor ((AS_SOFT-AS_HARD), ps, vec_type) + &
-!           R * (   formfactor_LL_analytic (as_f, ps, vec_type) &
-!                 - nonrel_expanded_formfactor (as_f, ps, vec_type) )
-!    else
-!      R = ( ff - one ) / ( formfactor_LL_analytic (AS_SOFT, ps, vec_type) - FFnr_exp_as )
-!      ff = one + R * (   formfactor_LL_analytic (as_f, ps, vec_type) &
-!                       - nonrel_expanded_formfactor (as_f, ps, vec_type) )
-!    end if
-!  end subroutine match_resummed_formfactor_Max
-
-@
-<<ttv formfactors: procedures>>=
-  !!! Andre's proposal
-!  subroutine match_resummed_formfactor_Andre (ff, ps, vec_type, NLO_flag)
-!    complex(default), intent(inout) :: ff
-!    type(phase_space_point_t), intent(in) :: ps
-!    integer, intent(in) :: vec_type
-!    logical, intent(in) :: NLO_flag
-!    real(default) :: fm, as_f
-!    complex(default) :: FFnr_resum_f
-!    fm = f_switch_off (v_matching (ps))
-!    as_f = alphas_soft (ps%sqrts, NLOOP, fm*AS_HARD)
-!    FFnr_resum_f = formfactor_LL_analytic (as_f, ps, vec_type)
-!    if ( NLOOP > 0 ) FFnr_resum_f = FFnr_resum_f + &
-!      fm**2 * ( ff - formfactor_LL_analytic (AS_SOFT, ps, vec_type) )
-!    if ( NLO_flag ) then
-!      ff = nonrel_expanded_formfactor ((AS_SOFT-AS_HARD), ps, vec_type) + &
-!           FFnr_resum_f - nonrel_expanded_formfactor (as_f, ps, vec_type)
-!    else
-!      ff = FFnr_resum_f
-!    end if
-!  end subroutine match_resummed_formfactor_Andre
 
 @
 <<ttv formfactors: procedures>>=
@@ -11458,7 +11457,7 @@ end module ttv_formfactors
     complex(default) :: c
     complex(default) :: k, la, z1, z2
     complex(default) :: aa, bb, cc, dd
-    real(default) :: eps = 1.E-3
+    real(default), parameter :: eps = 1.E-3
     k  = sqrt( -m*en -imago*m*w )
     la = a * m / 2. / k
     aa = eps
@@ -11476,8 +11475,7 @@ end module ttv_formfactors
 
 @
 <<ttv formfactors: procedures>>=
-  !pure
-  function nustar (sqrts) result (nu)
+  pure function nustar (sqrts) result (nu)
     real(default), intent(in) :: sqrts
     real(default) :: nu
     real(default), parameter :: nustar_offset = 0.05_default
@@ -11493,8 +11491,7 @@ end module ttv_formfactors
 
 @
 <<ttv formfactors: procedures>>=
-  !pure
-  function alphas_soft (sqrts) result (a_soft)
+  pure function alphas_soft (sqrts) result (a_soft)
     real(default) :: a_soft
     real(default), intent(in) :: sqrts
     real(default) :: mu_soft, nusoft
@@ -11506,8 +11503,7 @@ end module ttv_formfactors
 
 @
 <<ttv formfactors: procedures>>=
-  !pure
-  function m1s_to_mpole (sqrts) result (mpole)
+  pure function m1s_to_mpole (sqrts) result (mpole)
     real(default), intent(in) :: sqrts
     real(default) :: mpole
     mpole = mtpole_init
@@ -11531,14 +11527,13 @@ end module ttv_formfactors
 
 @
 <<ttv formfactors: procedures>>=
-  !pure
-  function deltaM (sqrts) result (del)
+  pure function deltaM (sqrts) result (del)
     real(default), intent(in) :: sqrts
     real(default) :: del
     real(default) :: ac
     ac  = CF * alphas_soft (sqrts)
     del = ac**2 / 8.
-    if ( NLOOP > 0 ) then
+    if (NLOOP > 0) then
       del = del + ac**3 / (8. * pi * CF) * &
            (B0 * (log (RESCALE_H * RESCALE_F * nustar (sqrts) / ac) + one) + A1 / 2.)
     end if
@@ -11680,6 +11675,7 @@ end module ttv_formfactors
     real(default), intent(in) :: sqrts
     integer, intent(in) :: vec_type
     complex(default), dimension(POINTS_P) :: ff
+    call msg_debug (D_THRESHOLD, "scan_formfactor_over_p")
     select case (NLOOP)
       case (0)
 !        ff = scan_formfactor_over_p_LL_analytic (a_soft, vec_type, i_sq)
@@ -11694,7 +11690,7 @@ end module ttv_formfactors
 @
 <<ttv formfactors: procedures>>=
   subroutine scan_formfactor_over_phase_space_grid ()
-    integer :: i_sq, vec_type
+    integer :: i_sq, vec_type, unstable_loop
     logical, dimension(:,:), allocatable :: ff_unstable
     real(default) :: t1, t2, t3, t_toppik, t_p0_dep
     call msg_debug (D_THRESHOLD, "scan_formfactor_over_phase_space_grid")
@@ -11712,10 +11708,12 @@ end module ttv_formfactors
       !!! vector and axial vector
       do vec_type = VECTOR, AXIAL
         call cpu_time (t1)
+        unstable_loop = 0
         UNTIL_STABLE: do
            ff_grid(i_sq,:,1,vec_type) = scan_formfactor_over_p (sq_grid(i_sq), vec_type)
            ff_unstable(i_sq,vec_type) = abs(ff_grid(i_sq,1,1,vec_type)) > 1.d30
-           if (ff_unstable(i_sq,vec_type)) then
+           unstable_loop = unstable_loop + 1
+           if (ff_unstable(i_sq,vec_type) .and. unstable_loop < 10) then
               cycle
            else
               exit
@@ -11737,7 +11735,6 @@ end module ttv_formfactors
        print *, "time for p0 dependence: ", t3 - t2, " seconds."
     end if
     if (any (ff_unstable))  call handle_TOPPIK_instabilities (ff_grid, ff_unstable)
-    deallocate (ff_unstable)
     if (allocated(Vmatrix))  deallocate(Vmatrix)
     if (allocated(q_grid))  deallocate(q_grid)
     if (NEED_P0_GRID)  call trim_p_grid (n_p_p0dep)
@@ -11876,8 +11873,7 @@ end module ttv_formfactors
 
 @
 <<ttv formfactors: procedures>>=
-  !pure
-  function sqrts_to_v (sqrts) result (v)
+  pure function sqrts_to_v (sqrts) result (v)
     real(default), intent(in) :: sqrts
     complex(default) :: v
     real(default) :: m
@@ -11894,49 +11890,6 @@ end module ttv_formfactors
     m = mtpole_init
     sqrts = 2.*m + m*v**2
   end function v_to_sqrts
-
-@
-<<ttv formfactors: procedures>>=
-  !!! convert squared 4-momenta into sqrts, p0 = E_top-sqrts/2 and abs. 3-momentum p
-  !pure
-  subroutine rel_to_nonrel (p2, k2, q2, sqrts, p, p0)
-    real(default), intent(in) :: p2
-    real(default), intent(in) :: k2
-    real(default), intent(in) :: q2
-    real(default), intent(out) :: sqrts
-    real(default), intent(out) :: p
-    real(default), intent(out) :: p0
-    sqrts = sqrt(q2)
-    p0 = abs(p2 - k2) / (2. * sqrts)
-    p = sqrt (0.5_default * (- p2 - k2 + sqrts**2/2. + 2.* p0**2))
-  end subroutine rel_to_nonrel
-
-@
-<<ttv formfactors: procedures>>=
-  !!! convert sqrts, p0 = E_top-sqrts/2 and abs. 3-momentum p into squared 4-momenta
-  !pure
-  subroutine nonrel_to_rel (sqrts, p, p0, p2, k2, q2, m2)
-    real(default), intent(in) :: sqrts
-    real(default), intent(in) :: p
-    real(default), intent(in) :: p0
-    real(default), intent(out) :: p2
-    real(default), intent(out) :: k2
-    real(default), intent(out) :: q2
-    complex(default), intent(out), optional :: m2
-    p2 = (sqrts/2.+p0)**2 - p**2
-    k2 = (sqrts/2.-p0)**2 - p**2
-    q2 = sqrts**2
-    if (present (m2)) m2 = complex_m2 (m1s_to_mpole (sqrts), GAM)
-  end subroutine nonrel_to_rel
-
-@
-<<ttv formfactors: procedures>>=
-  pure function complex_m2 (m, w) result (m2c)
-    real(default), intent(in) :: m
-    real(default), intent(in) :: w
-    complex(default) :: m2c
-    m2c = m**2 - imago*m*w
-  end function complex_m2
 
 @
 <<ttv formfactors: procedures>>=
@@ -11986,7 +11939,7 @@ end module ttv_formfactors
     complex(default) :: q_integral, ff
     real(default) :: current_c1, alphas_hard, f
     if (vec_type==2) return
-    call msg_warning ("DEPRECATED FEAUTRE: " // &
+    call msg_warning ("DEPRECATED FEATURE: " // &
          "p0 dependence as implemented breaks gauge invariance!")
     call msg_debug (D_THRESHOLD, "scan_formfactor_over_p_p0")
     call msg_debug (D_THRESHOLD, "EXT_VINPUT", EXT_VINPUT)
@@ -12318,8 +12271,7 @@ end module ttv_formfactors
 
 @
 <<ttv formfactors: procedures>>=
-  !pure
-  function sqrts_to_en (sqrts, mpole_in) result (en)
+  pure function sqrts_to_en (sqrts, mpole_in) result (en)
     real(default), intent(in) :: sqrts
     real(default), intent(in), optional :: mpole_in
     real(default) :: mpole, en
@@ -12409,57 +12361,6 @@ end module ttv_formfactors
   end function p0_q_integrand_evaluate
 
 @
-<<ttv formfactors: procedures>>=
-  !pure
-  subroutine phase_space_point_init_rel (ps_point, p2, k2, q2, m)
-    class(phase_space_point_t), intent(inout) :: ps_point
-    real(default), intent(in) :: p2
-    real(default), intent(in) :: k2
-    real(default), intent(in) :: q2
-    real(default), intent(in), optional :: m
-    ps_point%p2 = p2
-    ps_point%k2 = k2
-    ps_point%q2 = q2
-    call rel_to_nonrel (p2, k2, q2, ps_point%sqrts, ps_point%p, ps_point%p0)
-    ps_point%mpole = m1s_to_mpole (ps_point%sqrts)
-    ps_point%en = sqrts_to_en (ps_point%sqrts)
-    ps_point%inside_grid = sqrts_within_range (ps_point%sqrts)
-    ps_point%m2 = complex_m2 (ps_point%mpole, GAM)
-    if ( present(m) ) ps_point%onshell = ps_point%is_onshell (m)
-  end subroutine phase_space_point_init_rel
-
-@
-<<ttv formfactors: procedures>>=
-  !pure
-  subroutine phase_space_point_init_nonrel (ps_point, sqrts, p, p0, m)
-    class(phase_space_point_t), intent(inout) :: ps_point
-    real(default), intent(in) :: sqrts
-    real(default), intent(in) :: p
-    real(default), intent(in) :: p0
-    real(default), intent(in), optional :: m
-    ps_point%sqrts = sqrts
-    ps_point%p = p
-    ps_point%p0 = p0
-    call nonrel_to_rel (sqrts, p, p0, ps_point%p2, ps_point%k2, ps_point%q2)
-    ps_point%mpole = m1s_to_mpole (sqrts)
-    ps_point%en = sqrts_to_en (sqrts, ps_point%mpole)
-    ps_point%inside_grid = sqrts_within_range (sqrts)
-    ps_point%m2 = complex_m2 (ps_point%mpole, GAM)
-    if ( present(m) ) ps_point%onshell = ps_point%is_onshell (m)
-  end subroutine phase_space_point_init_nonrel
-
-@
-<<ttv formfactors: procedures>>=
-  !pure
-  function phase_space_point_is_onshell (ps_point, m) result (flag)
-    logical :: flag
-    class(phase_space_point_t), intent(in) :: ps_point
-    real(default), intent(in) :: m
-    flag = nearly_equal (ps_point%p2 , m**2, rel_smallness=1E-5_default) .and. &
-         nearly_equal (ps_point%k2 , m**2, rel_smallness=1E-5_default)
-  end function phase_space_point_is_onshell
-
-@
 \subsection{Unit tests}
 Test module, followed by the corresponding implementation module.
 <<[[ttv_formfactors_ut.f90]]>>=
@@ -12490,7 +12391,7 @@ module ttv_formfactors_uti
   use ttv_formfactors
   use diagnostics
   use sm_physics, only: running_as
-  use unit_tests
+  use numeric_utils
 
 <<Standard module head>>
 
@@ -12524,8 +12425,9 @@ end module ttv_formfactors_uti
   subroutine ttv_formfactors_1 (u)
     integer, intent(in) :: u
     real(default) :: m1s, Vtb, wt_inv, alphaemi, sw, alphas_mz, mz, &
-         mw, mb, sh, sf, nloop, FF, v1, v2, scan_sqrts_max, sqrts, &
-         scan_sqrts_min, scan_sqrts_stepsize, test, gam_out, mpole
+         mw, mb, sh, sf, nloop, FF, offshell_strategy, v1, v2, &
+         scan_sqrts_max, sqrts, scan_sqrts_min, scan_sqrts_stepsize, &
+         test, gam_out, mpole
     type(phase_space_point_t) :: ps
     integer :: ff_mode
     logical :: mpole_fixed
@@ -12545,17 +12447,16 @@ end module ttv_formfactors_uti
     sh = one
     sf = one
     nloop = one
-    !FF = RESUMMED_P0CONSTANT
     FF = MATCHED
-    v1 = 0.3
-    v2 = 0.5
+    offshell_strategy = 0
+    v1 = 0.3_default
+    v2 = 0.5_default
     sqrts = 2 * m1s + 0.01_default
     scan_sqrts_min = sqrts
     scan_sqrts_max = sqrts
     scan_sqrts_stepsize = 0.1_default
     mpole_fixed = .true.
     test = - one
-    !msg_level(D_THRESHOLD) = DEBUG2
   <<(re)start grid>>
 
     write (u, "(A)") "Check that the mass is fixed"
@@ -12626,7 +12527,7 @@ end module ttv_formfactors_uti
   call init_parameters &
        (mpole, gam_out, m1s, Vtb, wt_inv, &
         alphaemi, sw, alphas_mz, mz, mw, &
-        mb, sh, sf, nloop, FF, &
+        mb, sh, sf, nloop, FF, offshell_strategy, &
         v1, v2, scan_sqrts_min, scan_sqrts_max, &
         scan_sqrts_stepsize, mpole_fixed)
   call init_threshold_grids (test)

@@ -4,7 +4,7 @@
 ##
 ########################################################################
 #
-# Copyright (C) 1999-2015 by 
+# Copyright (C) 1999-2016 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -39,7 +39,7 @@ EXTRA_DIST = \
     $(REF_OUTPUT_FILES) \
     functional_tests/structure_2_inc.sin functional_tests/testproc_3.phs \
     functional_tests/user_cuts.f90 functional_tests/user_strfun.f90 \
-    functional_tests/susyhit.in TEST.mdl
+    functional_tests/susyhit.in TEST.mdl nmssm.slha
 
 TESTSUITE_MACROS = testsuite.m4
 TESTSUITE_TOOLS = \
@@ -151,6 +151,8 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/models_3.ref \
     unit_tests/ref-output/models_4.ref \
     unit_tests/ref-output/models_5.ref \
+    unit_tests/ref-output/models_6.ref \
+    unit_tests/ref-output/models_7.ref \
     unit_tests/ref-output/auto_components_1.ref \
     unit_tests/ref-output/auto_components_2.ref \
     unit_tests/ref-output/auto_components_3.ref \
@@ -258,6 +260,8 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/phs_fks_generator_1.ref \
     unit_tests/ref-output/phs_fks_generator_2.ref \
     unit_tests/ref-output/phs_fks_generator_3.ref \
+    unit_tests/ref-output/phs_fks_generator_4.ref \
+    unit_tests/ref-output/phs_fks_generator_5.ref \
     unit_tests/ref-output/rng_base_1.ref \
     unit_tests/ref-output/rng_base_2.ref \
     unit_tests/ref-output/rng_tao_1.ref \
@@ -349,7 +353,8 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/process_stacks_2.ref \
     unit_tests/ref-output/process_stacks_3.ref \
     unit_tests/ref-output/process_stacks_4.ref \
-    unit_tests/ref-output/cascade_1.ref \
+    unit_tests/ref-output/cascades_1.ref \
+    unit_tests/ref-output/cascades_2.ref \
     unit_tests/ref-output/event_transforms_1.ref \
     unit_tests/ref-output/decays_1.ref \
     unit_tests/ref-output/decays_2.ref \
@@ -357,7 +362,6 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/decays_4.ref \
     unit_tests/ref-output/decays_5.ref \
     unit_tests/ref-output/decays_6.ref \
-    unit_tests/ref-output/powheg_1.ref \
     unit_tests/ref-output/shower_1.ref \
     unit_tests/ref-output/shower_2.ref \
     unit_tests/ref-output/events_1.ref \
@@ -535,6 +539,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/fatal.ref \
     functional_tests/ref-output/model_change_1.ref \
     functional_tests/ref-output/model_change_2.ref \
+    functional_tests/ref-output/model_scheme_1.ref \
     functional_tests/ref-output/model_test.ref \
     functional_tests/ref-output/cuts.ref \
     functional_tests/ref-output/user_cuts.ref \
@@ -632,6 +637,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/flvsum_1.ref \
     functional_tests/ref-output/decay_err_1.ref \
     functional_tests/ref-output/decay_err_2.ref \
+    functional_tests/ref-output/polarized_1.ref \
     functional_tests/ref-output/circe1_1.ref \
     functional_tests/ref-output/circe1_2.ref \
     functional_tests/ref-output/circe1_3.ref \
@@ -662,6 +668,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/nlo_2.ref \
     functional_tests/ref-output-double/nlo_3.ref \
     functional_tests/ref-output-double/nlo_4.ref \
+    functional_tests/ref-output-double/openloops_1.ref \
     functional_tests/ref-output-double/powheg_1.ref \
     functional_tests/ref-output-double/defaultcuts.ref \
     functional_tests/ref-output-double/parton_shower_2.ref \
@@ -744,7 +751,8 @@ REF_OUTPUT_FILES_EXT = \
     functional_tests/ref-output-ext/beam_events_2.ref \
     functional_tests/ref-output-ext/beam_events_3.ref \
     functional_tests/ref-output-ext/mlm_matching_isr.ref \
-    functional_tests/ref-output-ext/hepmc_8.ref
+    functional_tests/ref-output-ext/hepmc_8.ref \
+    functional_tests/ref-output-ext/openloops_1.ref
 
 REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/circe1_4.ref \
@@ -760,7 +768,8 @@ REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/beam_events_2.ref \
     functional_tests/ref-output-quad/beam_events_3.ref \
     functional_tests/ref-output-quad/mlm_matching_isr.ref \
-    functional_tests/ref-output-quad/hepmc_8.ref
+    functional_tests/ref-output-quad/hepmc_8.ref \
+    functional_tests/ref-output-quad/openloops_1.ref
 
 TESTSUITES_M4 = \
     $(MISC_TESTS_M4) \
@@ -783,6 +792,7 @@ MISC_TESTS_SIN = \
     functional_tests/cuts.sin \
     functional_tests/model_change_1.sin \
     functional_tests/model_change_2.sin \
+    functional_tests/model_scheme_1.sin \
     functional_tests/model_test.sin \
     functional_tests/structure_1.sin \
     functional_tests/structure_2.sin \
@@ -913,6 +923,7 @@ MISC_TESTS_SIN = \
     functional_tests/nlo_2.sin \
     functional_tests/nlo_3.sin \
     functional_tests/nlo_4.sin \
+    functional_tests/openloops_1.sin \
     functional_tests/powheg_1.sin \
     functional_tests/mssmtest.sin \
     functional_tests/spincor_1.sin \
@@ -928,6 +939,7 @@ MISC_TESTS_SIN = \
     functional_tests/flvsum_1.sin \
     functional_tests/decay_err_1.sin \
     functional_tests/decay_err_2.sin \
+    functional_tests/polarized_1.sin \
     functional_tests/pdf_builtin.sin \
     functional_tests/lhapdf5.sin \
     functional_tests/lhapdf6.sin \
@@ -1016,15 +1028,18 @@ SHOWER_EXT_SIN = \
     extra_shower_3_z_nu.sin \
     extra_shower_3_z_tau.sin \
     extra_shower_4_ee.sin \
-    extra_shower_5.sin
+    extra_shower_5.sin \
+    extra_shower_6.sin
 
 NLO_EXT_SIN = \
+    extra_nlo_decay.sin \
     extra_nlo_tt.sin \
     extra_nlo_tt_powheg.sin \
     extra_nlo_tt_powheg_sudakov.sin \
     extra_nlo_uu.sin \
     extra_nlo_uu_powheg.sin \
     extra_nlo_methods.sin \
+    extra_nlo_threshold.sin \
     extra_nlo_methods_gosam.sin
 
 all-local: $(TESTSUITES_SIN)

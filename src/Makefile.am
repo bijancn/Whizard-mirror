@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2015 by 
+# Copyright (C) 1999-2016 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -13,6 +13,7 @@
 #     Marco Sekulla <marco.sekulla@kit.edu>
 #     Christian Weiss <christian.weiss@desy.de>
 #     Felix Braam, Sebastian Schmidt
+#     Hans-Werner Boschmann, Daniel Wiesler
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by 
@@ -55,11 +56,11 @@ SUBDIRS = \
   mci variables \
   muli shower \
   user \
+  threshold \
   fks blha \
   gosam openloops \
   looptools \
   model_features \
-  threshold \
   process_integration \
   matching \
   transforms \

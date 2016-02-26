@@ -4,7 +4,7 @@
 ##
 ########################################################################
 #
-# Copyright (C) 1999-2015 by 
+# Copyright (C) 1999-2016 by 
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -57,13 +57,15 @@ TESTS_DEFAULT = \
     testproc_8.run \
     testproc_9.run \
     testproc_10.run \
+    model_scheme_1.run \
     rebuild_1.run \
     rebuild_4.run \
     susyhit.run \
     helicity.run \
     libraries_4.run
 
-XFAIL_TESTS_DEFAULT =
+XFAIL_TESTS_DEFAULT = \
+    model_scheme_1.run
 
 TESTS_USER_STRFUN = \
     user_strfun.run 
@@ -162,6 +164,7 @@ TESTS_REQ_OCAML = \
     nlo_2.run \
     nlo_3.run \
     nlo_4.run \
+    openloops_1.run \
     powheg_1.run \
     spincor_1.run \
     show_1.run \
@@ -176,6 +179,7 @@ TESTS_REQ_OCAML = \
     flvsum_1.run \
     decay_err_1.run \
     decay_err_2.run \
+    polarized_1.run \
     pdf_builtin.run \
     ep_1.run \
     ep_2.run \
@@ -408,6 +412,7 @@ endif
 stdhep_4.run: stdhep_rd
 stdhep_5.run: stdhep_rd
 stdhep_6.run: stdhep_rd
+polarized_1.run: stdhep_rd
 stdhep_rd: $(top_builddir)/src/xdr/stdhep_rd
 	cp $< $@
 
@@ -425,6 +430,7 @@ BUILT_SOURCES = \
     EVENT_ANALYSIS_FLAG \
     OCAML_FLAG \
     PYTHIA6_FLAG \
+    OPENLOOPS_FLAG \
     STATIC_FLAG \
     ref-output
 
@@ -474,6 +480,11 @@ if PYTHIA6_AVAILABLE
 	touch $@
 endif
 
+OPENLOOPS_FLAG:
+if OPENLOOPS_AVAILABLE
+	touch $@
+endif
+
 EVENT_ANALYSIS_FLAG:
 if EVENT_ANALYSIS_AVAILABLE
 	touch $@
@@ -516,7 +527,7 @@ notestflag:
 clean-local:
 	rm -f gamelan.sty TEST.mdl 
 	rm -f TESTFLAG GAMELAN_FLAG 
-	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
+	rm -f OCAML_FLAG OPENLOOPS_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG
 	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe static_2.exe
 	rm -f *.run *.log slha_test.out
@@ -526,7 +537,8 @@ clean-local:
 	rm -f *.grid
 	rm -rf err-output
 	rm -rf ref-output
-	rm -f *.sin *.hbc 
+	rm -f *.sin *.hbc
+	rm -f *.olc *.olp *.olp_parameters
 	rm -f *.phs *.vg *.vgb *.evt *.evx *.lhe *.hepmc *.dat *.debug 
 	rm -f *.tmp *.hepevt *.hepevt.verb *.lha *.lha.verb *.slcio
 	rm -f prc_omega_diags_1_p_i1_diags.out prc_omega_diags_1_p_i1_diags.toc

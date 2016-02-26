@@ -1,6 +1,6 @@
-(* $Id: coupling.mli 7372 2015-11-18 18:07:59Z jr_reuter $
+(* $Id: coupling.mli 7444 2016-02-17 15:37:20Z jr_reuter $
 
-   Copyright (C) 1999-2015 by
+   Copyright (C) 1999-2016 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -238,7 +238,7 @@ type 'a vertex3 =
       \phi (\ii \partial_{[\mu,} V_{1,\nu]})(\ii \partial^{[\mu,} V_2^{\nu]})$ *)
   | Dim5_Scalar_Gauge2_Skew of int 
       (* %
-      $\frac12 \phi F_{1,\mu\nu} \tilde{F}_2^{\mu\nu} = -
+      $\frac14 \phi F_{1,\mu\nu} \tilde{F}_2^{\mu\nu} = -
       \phi (\ii \partial_\mu V_{1,\nu})(\ii \partial_\rho V_{2,\sigma})\epsilon^{\mu\nu\rho\sigma}$ *) 
   | Dim5_Scalar_Scalar2 of int (* %
     $\phi_1 \partial_\mu \phi_2 \partial^\mu \phi_3$ *)

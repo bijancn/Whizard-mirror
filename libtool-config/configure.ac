@@ -4,7 +4,7 @@ dnl =======================================================================
 dnl Process this file with autoconf to produce a configure script.
 dnl =======================================================================
 dnl 
-dnl Copyright (C) 1999-2015 by 
+dnl Copyright (C) 1999-2016 by 
 dnl     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 dnl     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 dnl     Juergen Reuter <juergen.reuter@desy.de>
@@ -38,10 +38,10 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl =======================================================================
 dnl 
 dnl Start configuration
-AC_INIT([libtool-config],[2.2.8])
+AC_INIT([libtool-config],[2.3.0])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AM_MAKE_INCLUDE
 LT_INIT
-LT_PREREQ([2.2.8b])
+LT_PREREQ([2.3.0b])
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

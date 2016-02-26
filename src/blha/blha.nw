@@ -37,7 +37,7 @@ module blha_olp_interfaces
   use kinds
 <<Use strings>>
   use constants
-  use unit_tests, only: vanishes
+  use numeric_utils
   use io_units
   use string_utils
   use physics_defs
@@ -89,6 +89,7 @@ end module blha_olp_interfaces
     integer :: I_SUB = 3
     logical, dimension(0:3) :: compute_component
     logical :: include_polarizations = .false.
+    logical :: switch_off_muon_yukawas = .false.
   contains
   <<BLHA OLP interfaces: blha template: TBP>>
   end type blha_template_t
@@ -105,7 +106,6 @@ end module blha_olp_interfaces
 <<BLHA OLP interfaces: types>>=
   type, abstract, extends (prc_user_defined_base_t) :: prc_blha_t
     integer :: n_particles
-    real(default) :: maximum_accuracy = 10000.0
     integer, dimension(:), allocatable :: i_born, i_sc, i_cc
     integer, dimension(:), allocatable :: i_real
     integer, dimension(:), allocatable :: i_virt
@@ -123,6 +123,7 @@ end module blha_olp_interfaces
   type, abstract, extends (user_defined_driver_t) :: blha_driver_t 
     type(string_t) :: contract_file
     logical :: include_polarizations = .false.
+    logical :: switch_off_muon_yukawas = .false.
     procedure(olp_start),nopass,  pointer :: &
               blha_olp_start => null ()
     procedure(olp_eval), nopass, pointer :: &
@@ -332,18 +333,16 @@ end module blha_olp_interfaces
        case (BLHA_AMP_LOOP)
           rsize = 4
        case (BLHA_AMP_CC)
-          rsize = n_part*(n_part-1)/2
+          rsize = n_part * (n_part - 1) / 2
        case (BLHA_AMP_SC)
-          rsize = 2*n_part**2
+          rsize = 2 * n_part**2
        case default
           rsize = 0
      end select
   end function blha_result_array_size
 
 @ %def blha_result_array_size
-@     
-<<BLHA OLP interfaces: public>>=
-!  public :: create_blha_momentum_array
+@
 <<BLHA OLP interfaces: prc blha: TBP>>=
   procedure :: create_momentum_array => prc_blha_create_momentum_array
 <<BLHA OLP interfaces: procedures>>=
@@ -356,14 +355,13 @@ end module blha_olp_interfaces
     n = size (p)
     if (n > 10) call msg_fatal ("Number of external particles exceeds" &
                                  // "size of BLHA-internal momentum array")
-    mom = 0._default
+    mom = zero
     k = 1
     do i = 1, n
-       mom(k:k+3) = vector4_get_components (p(i))
-       mom(k+4) = invariant_mass (p(i))
-       k = k+5
+       mom(k : k + 3) = vector4_get_components (p(i))
+       mom(k + 4) = invariant_mass (p(i))
+       k = k + 5
     end do
-!    mom (k:50) = 0.0
   end function prc_blha_create_momentum_array
 
 @ %def prc_blha_create_momentum_array
@@ -371,11 +369,13 @@ end module blha_olp_interfaces
 <<BLHA OLP interfaces: blha template: TBP>>=
   procedure :: init => blha_template_init
 <<BLHA OLP interfaces: procedures>>=
-  subroutine blha_template_init (template, requires_polarizations)
+  subroutine blha_template_init (template, requires_polarizations, &
+       switch_off_muon_yukawas)
     class(blha_template_t), intent(inout) :: template
-    logical, intent(in) :: requires_polarizations
+    logical, intent(in) :: requires_polarizations, switch_off_muon_yukawas
     template%compute_component = .false.
     template%include_polarizations = requires_polarizations
+    template%switch_off_muon_yukawas = switch_off_muon_yukawas
   end subroutine blha_template_init
 
 @ %def blha_template_init
@@ -591,7 +591,7 @@ end module blha_olp_interfaces
     integer :: ierr
     if (present (mass)) then
        buf = 'mass(' // str (abs(i_pdg)) // ')'
-       c_string = char(buf)//c_null_char
+       c_string = char(buf) // c_null_char
        call driver%blha_olp_set_parameter &
                 (c_string, dble(mass), 0._double, ierr)
        if (ierr == 0) then
@@ -705,24 +705,24 @@ end module blha_olp_interfaces
     class(blha_driver_t), intent(inout) :: driver
     integer, intent(in), dimension(:,:) :: flavors
     integer, intent(out), dimension(N_MAX_FLAVORS) :: amp_type, flv_index, label
-    integer, intent(out), dimension(N_MAX_FLAVORS,2) :: helicities
+    integer, intent(out), dimension(:,:) :: helicities
     integer :: unit, filestat
     character(len=LEN_MAX_FLAVOR_STRING) :: rd_line 
     logical :: read_flavor, born_found
     integer :: k, i_flv
-    integer :: i_hel
+    integer :: i_hel, n_in
     integer :: i_next, n_entries
     integer, dimension(size(flavors, 1) + 2) :: i_array
     integer, dimension(size(flavors, 1) + 2) :: hel_array
     integer, parameter :: NO_NUMBER = -1000
     integer, parameter :: PROC_NOT_FOUND = -1001
-
     amp_type = -1; flv_index = -1; label = -1
     helicities = 0
-    n_entries = size(flavors, 1) + 2
+    n_in = size (helicities, dim=2)
+    n_entries = size (flavors, 1) + 2
     unit = free_unit ()
-    open (unit, file=char(driver%contract_file), status="old") 
-    read_flavor=.false.
+    open (unit, file = char (driver%contract_file), status="old")
+    read_flavor = .false.
     k = 1
     i_hel = 0
     do
@@ -731,15 +731,15 @@ end module blha_olp_interfaces
          exit
       else
          if (rd_line(1:13) == 'AmplitudeType') then
-            if (i_hel > 3) i_hel = 0
+            if (i_hel > 2 * n_in - 1) i_hel = 0
             i_next = find_next_word_index (rd_line, 13) 
-            if (rd_line(i_next:i_next+4) == 'Loop') then
+            if (rd_line(i_next : i_next + 4) == 'Loop') then
                amp_type(k) = BLHA_AMP_LOOP
-            else if (rd_line(i_next:i_next+4) == 'Tree') then
+            else if (rd_line(i_next : i_next + 4) == 'Tree') then
                amp_type(k) = BLHA_AMP_TREE
-            else if (rd_line(i_next:i_next+6) == 'ccTree') then
+            else if (rd_line(i_next : i_next + 6) == 'ccTree') then
                amp_type(k) = BLHA_AMP_CC
-            else if (rd_line(i_next:i_next+6) == 'scTree') then
+            else if (rd_line(i_next : i_next + 6) == 'scTree') then
                amp_type(k) = BLHA_AMP_SC
             else
                call msg_fatal ("AmplitudeType present but &
@@ -748,10 +748,10 @@ end module blha_olp_interfaces
             read_flavor = .true.
          else if (read_flavor) then
             born_found = .false.
-            i_array = create_flavor_string (rd_line, n_entries)           
+            i_array = create_flavor_string (rd_line, n_entries)
             if (driver%include_polarizations) then
                hel_array = create_helicity_string (rd_line, n_entries)
-               call check_helicity_array (hel_array, n_entries)
+               call check_helicity_array (hel_array, n_entries, n_in)
             else
                hel_array = 0
             end if
@@ -763,12 +763,11 @@ end module blha_olp_interfaces
                      var_str ("openloops_verbosity to a value larger than 1 to obtain "),  &
                      var_str ("more information")])
                do i_flv = 1, size (flavors, 2)
-                   if (all (i_array (1:n_entries-2) == flavors (:,i_flv))) then
+                   if (all (i_array (1 : n_entries - 2) == flavors (:,i_flv))) then
                       label(k) = i_array (n_entries)
                       flv_index (k) = i_flv + i_hel
                       if (driver%include_polarizations) then
-                         helicities (label(k), 1) = hel_array (1)
-                         helicities (label(k), 2) = hel_array (2)
+                         helicities (label(k), :) = hel_array (1:n_in)
                          i_hel = i_hel + 1
                       end if
                       born_found = .true.
@@ -777,12 +776,13 @@ end module blha_olp_interfaces
                       exit
                    end if
                end do
-            if (.not. born_found) call msg_fatal & 
+            if (.not. born_found) call msg_fatal &
                      ("No underlying Born found")
-         end if   
+         end if
       end if
     end do
     close(unit)
+
   contains
 
     function create_flavor_string (s, n_entries) result (i_array)
@@ -807,7 +807,7 @@ end module blha_olp_interfaces
                end if
             else if (i_entry == PROC_NOT_FOUND) then
                i_array = PROC_NOT_FOUND
-               return 
+               return
             else
                call increment_current_position (s, current_position)
             end if
@@ -824,7 +824,7 @@ end module blha_olp_interfaces
       integer :: k, current_position
       integer :: hel
       k = 1; current_position = 1
-      do 
+      do
          if (current_position > LEN_MAX_FLAVOR_STRING) &
             call msg_fatal ("Read OLC File: Current position exceeds maximum value")
          if (s(current_position:current_position) /= " ") then
@@ -923,7 +923,7 @@ end module blha_olp_interfaces
       else if (buf(i_last-3:i_last) == "(-1)") then
          i = i - 4
       end if
-    end subroutine strip_helicity  
+    end subroutine strip_helicity
 
     subroutine strip_flavor (buf, i, helicity, success)
       character(len=10), intent(in) :: buf
@@ -944,7 +944,7 @@ end module blha_olp_interfaces
          success = .false.
       end if
     end subroutine strip_flavor
-         
+
     function find_next_word_index (word, i_start) result (i_next)
       character(len=LEN_MAX_FLAVOR_STRING), intent(in) :: word
       integer, intent(in) :: i_start
@@ -961,16 +961,17 @@ end module blha_olp_interfaces
       end do
     end function find_next_word_index
 
-    subroutine check_helicity_array (hel_array, n_entries)
+    subroutine check_helicity_array (hel_array, n_entries, n_in)
       integer, intent(in), dimension(:) :: hel_array
-      integer, intent(in) :: n_entries
-      integer :: n_particles
+      integer, intent(in) :: n_entries, n_in
+      integer :: n_particles, i
       logical :: valid
       n_particles = n_entries - 2
-      valid = all (hel_array (3:n_particles) == 0)
-      valid = valid .and. &
-         (hel_array(1) == 1 .or. hel_array(1) == -1) .and. &
-         (hel_array(2) == 1 .or. hel_array(2) == -1)
+      !!! only allow polarisations for incoming fermions for now
+      valid = all (hel_array (n_in+1:n_particles) == 0)
+      do i = 1, n_in
+         valid = valid .and. (hel_array(i) == 1 .or. hel_array(i) == -1)
+      end do
       if (.not. valid) &
          call msg_fatal ("Invalid helicities encountered!")
     end subroutine check_helicity_array
@@ -1052,8 +1053,9 @@ end module blha_olp_interfaces
     class(prc_blha_t), intent(inout) :: object
     integer, intent(in), dimension(:,:) :: flavors
     integer, dimension(N_MAX_FLAVORS) :: amp_type, flv_index, label
-    integer, dimension(N_MAX_FLAVORS,2) :: helicities
+    integer, dimension(:,:), allocatable :: helicities
     integer :: i_proc
+    allocate (helicities (N_MAX_FLAVORS, object%data%n_in))
     select type (driver => object%driver)
     class is (blha_driver_t)
        call driver%read_contract_file (flavors, amp_type, flv_index, label, helicities)
@@ -1064,10 +1066,9 @@ end module blha_olp_interfaces
        case (BLHA_AMP_TREE)
           if (allocated (object%i_born)) then
              object%i_born(flv_index(i_proc)) = label(i_proc)
-          
           else if (allocated (object%i_real)) then
              object%i_real(flv_index(i_proc)) = label(i_proc)
-          else 
+          else
              call msg_fatal ("Tree matrix element present, &
                   &but neither Born nor real indices are allocated!")
           end if
@@ -1158,21 +1159,29 @@ end module blha_olp_interfaces
     include_polarizations = blha_template%include_polarizations
     if (blha_template%compute_loop ()) then
        if (include_polarizations) then
-          allocate (object%i_virt (object%n_flv * 4), &
-                    object%i_cc (object%n_flv * 4))
-          allocate (object%i_hel (object%n_flv * 4, 2))
+          allocate (object%i_virt (object%n_flv * object%data%n_in * 2), &
+                    object%i_cc (object%n_flv * object%data%n_in * 2))
+          allocate (object%i_hel (object%n_flv * object%data%n_in * 2, &
+               object%data%n_in))
        else
           allocate (object%i_virt (object%n_flv), &
                     object%i_cc (object%n_flv))
        end if
+       object%i_virt = 0
+       object%i_cc = 0
     else if (blha_template%compute_subtraction ()) then
        allocate (object%i_born (object%n_flv), &
                  object%i_cc (object%n_flv) , &
                  object%i_sc (object%n_flv))
+       object%i_born = 0
+       object%i_cc = 0
+       object%i_sc = 0
     else if (blha_template%compute_real_trees ()) then
        allocate (object%i_real (object%n_flv))
+       object%i_real = 0
     else if (blha_template%compute_born ()) then
        allocate (object%i_born (object%n_flv))
+       object%i_born = 0
     end if
 
     call object%init_ew_parameters ()
@@ -1180,6 +1189,7 @@ end module blha_olp_interfaces
     select type (driver => object%driver)
     class is (blha_driver_t)
        driver%include_polarizations = include_polarizations
+       driver%switch_off_muon_yukawas = blha_template%switch_off_muon_yukawas
     end select
   end subroutine prc_blha_init_blha
 
@@ -1197,15 +1207,20 @@ end module blha_olp_interfaces
     integer :: ierr
     do i = 1, OLP_N_MASSIVE_PARTICLES
        i_pdg = OLP_MASSIVE_PARTICLES(i)
+       if (i_pdg < 0) cycle
        call flv%init (i_pdg, model)
        mass = flv%get_mass (); width = flv%get_width ()
        select type (driver => object%driver)
        class is (blha_driver_t)
-          call driver%set_mass_and_width (i_pdg, mass=mass, width=width)
+          call driver%set_mass_and_width (i_pdg, mass = mass, width = width)
           if (i_pdg == 5) call driver%blha_olp_set_parameter &
              ('yuk(5)'//c_null_char, dble(mass), 0._double, ierr)
           if (i_pdg == 6) call driver%blha_olp_set_parameter &
              ('yuk(6)'//c_null_char, dble(mass), 0._double, ierr)
+          if (driver%switch_off_muon_yukawas) then
+             if (i_pdg == 13) call driver%blha_olp_set_parameter &
+                ('yuk(13)' //c_null_char, 0._double, 0._double, ierr)
+          end if
        end select
     end do
   end subroutine prc_blha_set_particle_properties
@@ -1226,27 +1241,6 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
 @ %def prc_blha_init_ew_parameters
 @
 <<BLHA OLP interfaces: prc blha: TBP>>=
-  procedure :: set_bquark_mass => prc_blha_set_bquark_mass
-<<BLHA OLP interfaces: procedures>>=
-  subroutine prc_blha_set_bquark_mass (object, model)
-    class(prc_blha_t), intent(inout) :: object
-    class(model_data_t), intent(in), target :: model
-    type(flavor_t) :: flv
-    real(default) :: mass, width
-    integer :: ierr
-    call flv%init (5, model)
-    mass = flv%get_mass (); width = flv%get_width ()
-    select type (driver => object%driver)
-    class is (blha_driver_t)
-       call driver%set_mass_and_width (5, mass=mass, width=width)
-       call driver%blha_olp_set_parameter ('yuk(5)'//c_null_char, &
-          dble(mass), 0._double, ierr)
-    end select
-  end subroutine prc_blha_set_bquark_mass
-
-@ %def prc_blha_set_bquark_mass
-@
-<<BLHA OLP interfaces: prc blha: TBP>>=
   procedure :: compute_sqme_virt => prc_blha_compute_sqme_virt
 <<BLHA OLP interfaces: procedures>>=
   subroutine prc_blha_compute_sqme_virt (object, &
@@ -1255,25 +1249,23 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
     integer, intent(in) :: i_flv
     type(vector4_t), dimension(:), intent(in) :: p
     real(default), intent(in) :: ren_scale
-    logical, intent(out) :: bad_point
     real(default), dimension(4), intent(out) :: sqme
+    logical, intent(out) :: bad_point
     real(double), dimension(5*object%n_particles) :: mom
     real(double), dimension(blha_result_array_size (object%n_particles, &
                                                     BLHA_AMP_LOOP)) :: r
     real(double) :: mu_dble
-    real(default) :: mu
     real(double) :: acc_dble
     real(default) :: acc
     real(default) :: alpha_s
-
+    call msg_debug2 (D_VIRTUAL, "prc_blha_compute_sqme_virt")
+    call msg_debug2 (D_VIRTUAL, "i_flv", i_flv)
+    call msg_debug2 (D_VIRTUAL, "object%i_virt(i_flv)", object%i_virt(i_flv))
     mom = object%create_momentum_array (p)
-    if (vanishes (ren_scale)) then
-      mu = sqrt (2* (p(1)*p(2)))
-    else
-      mu = ren_scale
-    end if
-    mu_dble = dble(mu)
-    alpha_s = object%qcd%alpha%get (mu)
+    if (vanishes (ren_scale)) &
+       call msg_fatal ("prc_blha_compute_sqme_real: ren_scale vanishes")
+    mu_dble = dble(ren_scale)
+    alpha_s = object%qcd%alpha%get (ren_scale)
     select type (driver => object%driver)
     class is (blha_driver_t)
       call driver%set_alpha_s (alpha_s)
@@ -1343,7 +1335,6 @@ Hence, the interface is simpler than in the other routines.
     real(double), dimension(5*object%n_particles) :: mom
     real(double), dimension(blha_result_array_size (object%n_particles, &
                                               BLHA_AMP_CC)) :: r
-    real(default) :: mu
     real(double) :: mu_dble
     real(default) :: alpha_s
     integer :: i, j, pos
@@ -1355,34 +1346,29 @@ Hence, the interface is simpler than in the other routines.
     integer, dimension(:), allocatable :: flavors
 
     mom = object%create_momentum_array (p)
-    if (vanishes (ren_scale)) then
-       mu = sqrt (2*p(1)*p(2))
-    else
-       mu = ren_scale
-    end if
-    mu_dble = dble(mu)
-    alpha_s = object%qcd%alpha%get (mu)
+    if (vanishes (ren_scale)) &
+       call msg_fatal ("prc_blha_compute_sqme_cc: ren_scale vanishes")
+    mu_dble = dble(ren_scale)
+    alpha_s = object%qcd%alpha%get (ren_scale)
     flavors = object%get_flv_state (i_flv)
 
     select type (driver => object%driver)
     class is (blha_driver_t)
        call driver%set_alpha_s (alpha_s)
        if (allocated (object%i_born)) then
-          call object%compute_sqme_born (i_flv, p, mu, born, bad_point2)
+          call object%compute_sqme_born (i_flv, p, ren_scale, born, bad_point2)
        else
-          born = 0._default
-          acc = 0._default
+          born = zero
+          acc = zero
        end if
        if (present (born_out)) born_out = born
        call driver%blha_olp_eval2 (object%i_cc(i_flv), &
-                                    mom, mu_dble, r, acc_dble)
+          mom, mu_dble, r, acc_dble)
     end select
 
     do j = 1, size (p)
       do i = 1, j
-        if (i <= 2 .or. j <= 2) then
-          born_cc (i,j) = 0._default
-        else if (i == j) then
+        if (i == j) then
           if (is_quark (abs(flavors (i)))) then
              born_cc (i,j) = -cf*born 
           else if (is_gluon (flavors (i))) then
@@ -1391,9 +1377,9 @@ Hence, the interface is simpler than in the other routines.
              born_cc (i,j) = zero
           end if
         else
-          im1 = i-1; jm1 = j-1
-          pos = im1 + jm1*(jm1-1)/2 + 1
-          born_cc (i,j) = -r(pos)
+          im1 = i - 1; jm1 = j - 1
+          pos = im1 + jm1 * (jm1 - 1) / 2 + 1
+          born_cc (i,j) = - r(pos)
         end if
         born_cc (j,i) = born_cc (i,j)
       end do
@@ -1412,9 +1398,10 @@ Hence, the interface is simpler than in the other routines.
   procedure :: get_beam_helicities_array => prc_blha_get_beam_helicities_array
 <<BLHA OLP interfaces: procedures>>=
   function prc_blha_get_beam_helicities_single (object, i) result (hel)
-    integer, dimension(2) :: hel
+    integer, dimension(:), allocatable :: hel
     class(prc_blha_t), intent(in) :: object
     integer, intent(in) :: i
+    allocate (hel (object%data%n_in))
     hel = object%i_hel (i, :)
   end function prc_blha_get_beam_helicities_single
 
@@ -1439,9 +1426,9 @@ Hence, the interface is simpler than in the other routines.
     integer, dimension(:,:), allocatable :: hel
     class(prc_blha_t), intent(in) :: object
     integer :: i, n_hel
-    n_hel = object%n_flv * 4
-    allocate (hel (n_hel, 2))
-    do i = 1, n_hel 
+    n_hel = object%n_flv * (2 * object%data%n_in)
+    allocate (hel (n_hel, object%data%n_in))
+    do i = 1, n_hel
        hel(i,:) = object%get_beam_helicities (i)
     end do
   end function prc_blha_get_beam_helicities_array
@@ -1547,9 +1534,9 @@ Parameters to enumerate the different options in the order.
 @ 
 Those are the default pdg codes for massive particles in BLHA programs
 <<BLHA config: parameters>>=
-  integer, parameter, public :: OLP_N_MASSIVE_PARTICLES = 10
+  integer, parameter, public :: OLP_N_MASSIVE_PARTICLES = 12
   integer, dimension(OLP_N_MASSIVE_PARTICLES), public :: &
-    OLP_MASSIVE_PARTICLES = [5,-5,6,-6,15,-15,23,24,-24,25]
+    OLP_MASSIVE_PARTICLES = [5,-5,6,-6,13,-13,15,-15,23,24,-24,25]
   integer, parameter :: OLP_HEL_UNPOLARIZED = 0
   integer, parameter :: OLP_HEL_LEFT = -1
   integer, parameter :: OLP_HEL_RIGHT = 1
@@ -2206,7 +2193,6 @@ This types control the creation of BLHA-interface files
     integer, dimension(:), allocatable :: pdg_in, pdg_out
     integer, dimension(:), allocatable :: flavor_state
     integer :: proc_offset, n_proc_tot
-    integer :: h1, h2
     proc_offset = 0; n_proc_tot = 0
     do i_flv = 1, size (flavor)
        n_proc_tot = n_proc_tot + flavor(i_flv)%flv_mult
@@ -2233,7 +2219,7 @@ This types control the creation of BLHA-interface files
              end select
           else
              call allocate_and_init_pdg (current_node, pdg_in, pdg_out, &
-                amp_type (proc_offset + i_process)) 
+                amp_type (proc_offset + i_process))
           end if
           if (proc_offset+i_process /= n_proc_tot) then
             allocate (current_node%next)
@@ -2245,7 +2231,9 @@ This types control the creation of BLHA-interface files
        deallocate (pdg_in, pdg_out)
        deallocate (flavor_state)
     end do
+
   contains
+
     subroutine allocate_and_init_pdg (node, pdg_in, pdg_out, amp_type)
       type(blha_cfg_process_node_t), intent(inout), pointer :: node
       integer, intent(in), dimension(:), allocatable :: pdg_in, pdg_out
@@ -2262,22 +2250,33 @@ This types control the creation of BLHA-interface files
       integer, intent(in), dimension(:), allocatable :: pdg_in, pdg_out
       integer, intent(in) :: amp_type
       integer :: h1, h2
-      do h1 = -1, 1
-         do h2 = -1, 1
-            if (h1 == 0 .or. h2 == 0) cycle 
-            call allocate_and_init_pdg (current_node, pdg_in, pdg_out, amp_type) 
+      if (size (pdg_in) == 2) then
+         do h1 = -1, 1, 2
+            do h2 = -1, 1, 2
+               call allocate_and_init_pdg (current_node, pdg_in, pdg_out, amp_type) 
+               current_node%pdg_in(1)%polarized = .true.
+               current_node%pdg_in(2)%polarized = .true.
+               current_node%pdg_in(1)%hel = h1
+               current_node%pdg_in(2)%hel = h2
+               if (h1 + h2 /= 2) then !!! not end of loop
+                  allocate (current_node%next)
+                  current_node => current_node%next
+               end if
+            end do
+         end do
+      else
+         do h1 = -1, 1, 2
+            call allocate_and_init_pdg (current_node, pdg_in, pdg_out, amp_type)
             current_node%pdg_in(1)%polarized = .true.
-            current_node%pdg_in(2)%polarized = .true.
             current_node%pdg_in(1)%hel = h1
-            current_node%pdg_in(2)%hel = h2
-            if (h1 + h2 /= 2) then
+            if (h1 /= 1) then !!! not end of loop
                allocate (current_node%next)
                current_node => current_node%next
             end if
          end do
-      end do
+      end if
     end subroutine allocate_and_init_pdg_and_helicities
-      
+
   end subroutine blha_configuration_append_processes
 
 @ %def blha_configuration_append_processes
@@ -2355,9 +2354,8 @@ Write the BLHA file. Internal mode is intented for md5summing only.
     character(4) :: hel_char
     character(len=25), parameter :: pad = ""
     logical :: write_process, no_v
-    if (present (no_version))  no_v = no_version
-    
-    u = given_output_unit (unit)
+    no_v = .false. ; if (present (no_version))  no_v = no_version
+    u = given_output_unit (unit); if (u < 0) return
     full = .true.; if (present (internal)) full = .not. internal
     if (full .and. cfg%dirty) call msg_bug ( &
        "BUG: attempted to write out a dirty BLHA configuration")
@@ -2476,7 +2474,6 @@ Write the BLHA file. Internal mode is intented for md5summing only.
        end select
        if (write_process) then
           write (u, '(A25, A)') "AmplitudeType " // pad, char (buf)
-   
           buf = ""
           do i = 1, size (node%pdg_in)
              call node%pdg_in(i)%write_pdg (pdg_char)
