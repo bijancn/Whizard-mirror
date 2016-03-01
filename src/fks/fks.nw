@@ -5327,6 +5327,11 @@ the corresponding jacobians.
 
     proc_scatter = rsub%isr_kinematics%n_in == 2
 
+    sqme0 = zero; sqme_soft = zero;
+    sqme_coll_plus = zero; sqme_coll_minus = zero
+    sqme_cs_plus = zero; sqme_cs_minus = zero
+    sqme_remn = zero
+
     xi_tilde = rsub%real_kinematics%xi_tilde
     xi_max = rsub%real_kinematics%xi_max(i_phs)
     xi = xi_tilde * xi_max
@@ -5343,29 +5348,28 @@ the corresponding jacobians.
     end if
     y = rsub%real_kinematics%y(i_phs)
     onemy = one - y; onepy = one + y
-
     if (proc_scatter) call rsub%compute_pdfs ()
-
     associate (region => rsub%reg_data%regions(rsub%current_alr))
-      i_real = region%real_index
-      sqme0 = rsub%sqme_real_non_sub (i_real, i_phs)
-      s_alpha = rsub%reg_data%get_svalue (rsub%real_kinematics%p_real_cms%get_momenta(i_phs), &
-          rsub%current_alr, emitter, rsub%current_i_res)
-      sqme0 = sqme0 * s_alpha
-      sqme0 = sqme0 * region%mult
-      if (proc_scatter) then
-         call rsub%scale_pdfs_real (sqme0, i_real, I_PLUS)
-         call rsub%scale_pdfs_real (sqme0, i_real, I_MINUS)
+      if (rsub%radiation_active .and. rsub%passed_real_cuts (i_phs)) then 
+         i_real = region%real_index
+         sqme0 = rsub%sqme_real_non_sub (i_real, i_phs)
+         s_alpha = rsub%reg_data%get_svalue (rsub%real_kinematics%p_real_cms%get_momenta(i_phs), &
+             rsub%current_alr, emitter, rsub%current_i_res)
+         sqme0 = sqme0 * s_alpha
+         sqme0 = sqme0 * region%mult
+         if (proc_scatter) then
+            call rsub%scale_pdfs_real (sqme0, i_real, I_PLUS)
+            call rsub%scale_pdfs_real (sqme0, i_real, I_MINUS)
+         end if
+
+         select case (rsub%purpose)
+         case (INTEGRATION, FIXED_ORDER_EVENTS)
+            sqme0 = sqme0 * xi**2 / xi_tilde * rsub%real_kinematics%jac(i_phs)%jac(1)
+         case (POWHEG)
+            call msg_fatal ("POWHEG with initial-state radiation not implemented yet")
+         end select
       end if
-
-      select case (rsub%purpose)
-      case (INTEGRATION, FIXED_ORDER_EVENTS)
-         sqme0 = sqme0 * xi**2 / xi_tilde * rsub%real_kinematics%jac(i_phs)%jac(1)
-      case (POWHEG)
-         call msg_fatal ("POWHEG with initial-state radiation not implemented yet")
-      end select
-
-      if (rsub%subtraction_active) then
+      if (rsub%subtraction_active .and. rsub%passed_born_cuts) then
          call rsub%evaluate_subtraction_terms_isr (emitter, i_phs, alpha_s, &
             sqme_soft, sqme_coll_plus, sqme_coll_minus, sqme_cs_plus, sqme_cs_minus)
          if (proc_scatter) then
