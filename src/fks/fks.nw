@@ -10152,13 +10152,30 @@ momentum vanishes. Thus we define
 @ %def get_xi_max_isr
 @
 <<phs fks: procedures>>=
-  function get_xi_max_isr_decay (p) result (xi_max)
+  recursive function get_xi_max_isr_decay (p) result (xi_max)
      real(default) :: xi_max
      type(vector4_t), dimension(:), intent(in) :: p
-     real(default) :: m_in, m_out1, m_out2
-     m_in = p(1)**1
-     m_out1 = p(2)**1; m_out2 = p(3)**1
-     xi_max = one - (m_out1 + m_out2)**2 / m_in**2
+     integer :: n_tot
+     type(vector4_t), dimension(:), allocatable :: p_dec_new
+     n_tot = size (p)
+     if (n_tot == 3) then
+        xi_max = xi_max_one_to_two (p(1), p(2), p(3))
+     else
+        allocate (p_dec_new (n_tot - 1))
+        p_dec_new(1) = sum (p (3 : ))
+        p_dec_new(2 : n_tot - 1) = p (3 : n_tot)
+        xi_max = min (xi_max_one_to_two (p(1), p(2), sum(p(3 : ))), &
+           get_xi_max_isr_decay (p_dec_new))
+     end if 
+  contains
+    function xi_max_one_to_two (p_in, p_out1, p_out2) result (xi_max)
+      real(default) :: xi_max
+      type(vector4_t), intent(in) :: p_in, p_out1, p_out2
+      real(default) :: m_out1, m_out2
+      m_in = p_in**1
+      m_out1 = p_out1**1; m_out2 = p_out2**1
+      xi_max = one - (m_out1 + m_out2)**2 / m_in**2
+    end function xi_max_one_to_two
   end function get_xi_max_isr_decay
 
 @ %def get_xi_max_isr_decay
@@ -10254,6 +10271,9 @@ with $\Lambda$.
 
     nlegborn = size (p_born)
     nlegreal = nlegborn + 1
+         
+    msq_in = p_born(1)**2
+    generator%real_kinematics%jac(i_phs)%jac = one
 
     p_real%p(1) = p_born(1)
     k0_np1 = p_real%p(1)%p(0) * xi / two
@@ -10266,15 +10286,6 @@ with $\Lambda$.
     call evaluate_splittings (p_virt, p_born(2 : nlegborn), &
        p_real%p(2 : nlegreal - 1), 1)
 
-    associate (jac => generator%real_kinematics%jac(i_phs))
-       jac%jac(1) = rlda / msq
-       msq_in = p_born(1)**2
-       rlda_soft = sqrt (lambda (msq_in, msq1, msq2))
-       !!! We have to undo the Jacobian which has already been
-       !!! supplied by the Born phase space.
-       jac%jac(1) = jac%jac(1) * msq_in / rlda_soft
-       jac%jac(2) = one
-    end associate
   contains
 
     recursive subroutine evaluate_splittings (p_dec, p_in, p_out, i_real)
@@ -10302,7 +10313,7 @@ with $\Lambda$.
       type(lorentz_transformation_t) :: L, L_rest
       type(vector4_t) :: p1_rest, p2_rest
       real(default) :: msq, msq1, msq2, m
-      real(default) :: E, p, rlda
+      real(default) :: E, p
       type(vector3_t) :: vec
 
       L = boost (p_origin, p_origin**1)
@@ -10320,13 +10331,23 @@ with $\Lambda$.
       E = sqrt (msq1 + p**2)
       vec = p1_rest%p(1:3) / space_part_norm (p1_rest)
       p1_out = vector4_moving (E, p * vec) 
-
+  
       E = sqrt (msq2 + p**2)
       vec = p2_rest%p(1:3) / space_part_norm (p2_rest)
       p2_out = vector4_moving (E, p * vec) 
 
       p1_out = L  * p1_out
       p2_out = L  * p2_out
+
+      associate (jac => generator%real_kinematics%jac(i_phs))
+         jac%jac(1) = jac%jac(1) * rlda / msq
+         rlda_soft = sqrt (lambda (msq_in, msq1, msq2))
+         !!! We have to undo the Jacobian which has already been
+         !!! supplied by the Born phase space.
+         jac%jac(1) = jac%jac(1) * msq_in / rlda_soft
+         jac%jac(2) = one
+      end associate
+
     end subroutine evaluate_one_to_two_splitting
   end subroutine phs_fks_generator_generate_isr_decay
 
