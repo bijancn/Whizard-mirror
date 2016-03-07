@@ -38,8 +38,8 @@ type ('flavor, 'p) t =
   | Gauss of 'flavor list * 'p
   | Gauss_not of 'flavor list * 'p
   | Any_flavor of 'p
-  | Or of ('flavor, 'p) t list
   | And of ('flavor, 'p) t list
+  | Exclude of 'flavor list
 
 let mk_true () = True
 let mk_false () = False
@@ -51,14 +51,6 @@ let mk_gauss f p = Gauss (f, p)
 let mk_gauss_not f p = Gauss_not (f, p)
 let mk_any_flavor p = Any_flavor p
 
-let mk_or c1 c2 =
-  match c1, c2 with
-  | _, True | True, _ -> True
-  | c, False | False, c -> c
-  | Or cs, Or cs' -> Or (cs @ cs')
-  | Or cs, c | c, Or cs -> Or (c::cs)
-  | c, c' -> Or [c; c']
-
 let mk_and c1 c2 =
   match c1, c2 with
   | c, True | True, c -> c
@@ -67,34 +59,37 @@ let mk_and c1 c2 =
   | And cs, c | c, And cs -> And (c::cs)
   | c, c' -> And [c; c']
 
+let mk_exclude f = Exclude f
+
+
 let to_string flavor_to_string momentum_to_string cascades =
+  let flavors_to_string fs =
+    String.concat ":" (List.map flavor_to_string fs) in
   let rec to_string' = function
     | True -> "true"
     | False -> "false"
     | On_shell (fs, p) ->
-        momentum_to_string p ^ " = " ^ (String.concat ":" (List.map flavor_to_string fs))
+        momentum_to_string p ^ " = " ^ flavors_to_string fs
     | On_shell_not (fs, p) ->
-        momentum_to_string p ^ " = !" ^ (String.concat ":" (List.map flavor_to_string fs))
+        momentum_to_string p ^ " = !" ^ flavors_to_string fs
     | Off_shell (fs, p) ->
-        momentum_to_string p  ^ " ~ " ^
-        (String.concat ":" (List.map flavor_to_string fs))
+        momentum_to_string p  ^ " ~ " ^ flavors_to_string fs
     | Off_shell_not (fs, p) ->
-        momentum_to_string p  ^ " ~ !" ^
-        (String.concat ":" (List.map flavor_to_string fs))
+        momentum_to_string p  ^ " ~ !" ^ flavors_to_string fs
     | Gauss (fs, p) ->
-        momentum_to_string p ^ " # " ^ (String.concat ":" (List.map flavor_to_string fs))
+        momentum_to_string p ^ " # " ^ flavors_to_string fs
     | Gauss_not (fs, p) ->
-        momentum_to_string p ^ " # !" ^ (String.concat ":" (List.map flavor_to_string fs))
+        momentum_to_string p ^ " # !" ^ flavors_to_string fs
     | Any_flavor p ->
         momentum_to_string p ^ " ~ ?"
-    | Or cs ->
-        String.concat " || " (List.map (fun c -> "(" ^ to_string' c ^ ")") cs)
     | And cs ->
-        String.concat " && " (List.map (fun c -> "(" ^ to_string' c ^ ")") cs) in
+        String.concat " && " (List.map (fun c -> "(" ^ to_string' c ^ ")") cs)
+    | Exclude fs ->
+        "!" ^ String.concat ":" (List.map flavor_to_string fs) in
   to_string' cascades
 
 let int_list_to_string p =
-  String.concat "+" (List.map string_of_int (Sort.list (<) p))
+  String.concat "+" (List.map string_of_int (List.sort compare p))
 
 exception Syntax_Error of string * int * int
 

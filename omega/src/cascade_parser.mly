@@ -31,10 +31,9 @@ let parse_error msg =
 %token < string > FLAVOR
 %token < int > INT
 %token LPAREN RPAREN
-%token AND OR PLUS COLON NOT
+%token AND PLUS COLON NOT
 %token ONSHELL OFFSHELL GAUSS
 %token END
-%left OR
 %left AND
 %left PLUS COLON
 %left NOT
@@ -50,10 +49,14 @@ main:
 ;
 
 cascades:
-    cascade                         { $1 }
+    exclusion                       { $1 }
+  | cascade                         { $1 }
   | LPAREN cascades RPAREN          { $2 }
   | cascades AND cascades           { mk_and $1 $3 }
-  | cascades OR cascades            { mk_or $1 $3 }
+;
+
+exclusion:
+    NOT flavor_list                 { mk_exclude $2 }
 ;
 
 cascade:

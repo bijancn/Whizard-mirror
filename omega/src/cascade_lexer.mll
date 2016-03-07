@@ -47,7 +47,6 @@ rule token = parse
   | '#'        { GAUSS }
   | '!'        { NOT }
   | '&' '&'?   { AND }
-  | '|' '|'?   { OR }
   | '('        { LPAREN }
   | ')'        { RPAREN }
   | char [^ ' ' '\t' '\n' '|' '&' '(' ')' ':']*

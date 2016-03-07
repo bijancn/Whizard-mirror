@@ -104,6 +104,7 @@ module Make (M : Model.T) (P : Momentum.T) :
       | Gauss_not of flavor list * P.t
       | Any_flavor of P.t
       | And of t list
+      | Exclude of flavor list
 
     let of_string s = 
       Cascade_parser.main Cascade_lexer.token (Lexing.from_string s)
@@ -134,9 +135,11 @@ module Make (M : Model.T) (P : Momentum.T) :
             Gauss (List.map M.flavor_of_string f, P.of_ints dim p)
         | CS.Any_flavor p ->
             Any_flavor (P.of_ints dim p)
-        | CS.Or cs ->
-            invalid_arg "Cascade: OR patterns (||) not supported in this version!"
-        | CS.And cs -> And (List.map import' cs) in
+        | CS.And cs -> And (List.map import' cs)
+        | CS.Exclude fs ->
+            let fs = List.map M.flavor_of_string fs in
+            Exclude (fs @ List.map M.conjugate fs)
+      in
       import' cascades
 
     let of_string_list dim strings =
@@ -172,6 +175,7 @@ module Make (M : Model.T) (P : Momentum.T) :
           momentum_to_string p ^ " ~ ?"
       | And cs ->
           String.concat " && " (List.map (fun c -> "(" ^ to_string c ^ ")") cs)
+      | Exclude fs -> "!" ^ flavors_to_string fs
 
     type selectors =
         { select_p : p -> p list -> bool;
@@ -205,7 +209,8 @@ module Make (M : Model.T) (P : Momentum.T) :
         | Gauss (_, momentum) | Gauss_not (_, momentum)
         | Any_flavor momentum -> all_compatible p p_in momentum
         | And [] -> false
-        | And cs -> List.for_all to_select_p' cs in
+        | And cs -> List.for_all to_select_p' cs
+        | Exclude _ -> true in
       to_select_p' cascades
 
     let to_select_wf cascades is_timelike f p p_in =
@@ -250,7 +255,8 @@ module Make (M : Model.T) (P : Momentum.T) :
         | Any_flavor momentum ->
             one_compatible p momentum && all_compatible p p_in momentum
         | And [] -> false
-        | And cs -> List.for_all to_select_wf' cs in
+        | And cs -> List.for_all to_select_wf' cs
+        | Exclude flavors -> not (List.mem f flavors) in
       to_select_wf' cascades
 
 
@@ -260,7 +266,7 @@ module Make (M : Model.T) (P : Momentum.T) :
     let to_on_shell cascades f p =
       let f' = M.conjugate f in
       let rec to_on_shell' = function
-        | True | False | Any_flavor _ 
+        | True | False | Any_flavor _ | Exclude _
         | Off_shell (_, _) | Off_shell_not (_, _)
         | Gauss (_, _) | Gauss_not (_, _) -> false
         | On_shell (flavors, momentum) ->
@@ -275,7 +281,7 @@ module Make (M : Model.T) (P : Momentum.T) :
     let to_gauss cascades f p =
       let f' = M.conjugate f in
       let rec to_gauss' = function
-        | True | False | Any_flavor _ 
+        | True | False | Any_flavor _ | Exclude _
         | Off_shell (_, _) | Off_shell_not (_, _)
         | On_shell (_, _) | On_shell_not (_, _) -> false
         | Gauss (flavors, momentum) ->
@@ -301,6 +307,7 @@ module Make (M : Model.T) (P : Momentum.T) :
         | Any_flavor momentum -> IPowSet.of_lists [P.to_ints momentum]
         | And [] -> IPowSet.empty
         | And cs -> IPowSet.basis (IPowSet.union (List.map coarsest_partition' cs))
+        | Exclude _ -> IPowSet.empty
 
     let coarsest_partition cascades =
       let p = coarsest_partition' cascades in

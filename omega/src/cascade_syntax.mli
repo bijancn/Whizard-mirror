@@ -32,8 +32,8 @@ type ('flavor, 'p) t =
   | Gauss of 'flavor list * 'p
   | Gauss_not of 'flavor list * 'p
   | Any_flavor of 'p
-  | Or of ('flavor, 'p) t list
   | And of ('flavor, 'p) t list
+  | Exclude of 'flavor list
 
 val mk_true : unit -> ('flavor, 'p) t
 val mk_false : unit -> ('flavor, 'p) t
@@ -44,8 +44,8 @@ val mk_off_shell_not : 'flavor list -> 'p -> ('flavor, 'p) t
 val mk_gauss : 'flavor list -> 'p -> ('flavor, 'p) t
 val mk_gauss_not : 'flavor list -> 'p -> ('flavor, 'p) t
 val mk_any_flavor : 'p -> ('flavor, 'p) t
-val mk_or : ('flavor, 'p) t -> ('flavor, 'p) t -> ('flavor, 'p) t
 val mk_and : ('flavor, 'p) t -> ('flavor, 'p) t -> ('flavor, 'p) t
+val mk_exclude : 'flavor list -> ('flavor, 'p) t
 
 val to_string : ('flavor -> string) -> ('p -> string) -> ('flavor, 'p) t -> string
 
