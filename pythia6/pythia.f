@@ -68320,12 +68320,13 @@ C...and rotate it to sit along +z axis.
 C...Call tau decay routine (if meaningful) and fill extra info.
         IF(KFORIG.NE.0.OR.MSTJ(28).EQ.2) THEN
           CALL PYTAUD(ITAU,IORIG,KFORIG,NDECAY)
-          DO 200 II=NSAV+1,NSAV+NDECAY
-            K(II,1)=1
-            K(II,3)=IP
-            K(II,4)=0
-            K(II,5)=0
-  200     CONTINUE
+CAM   K() array should be set in PYTAUD in order to keep decayed particles in the list
+CAM           DO 200 II=NSAV+1,NSAV+NDECAY
+CAM             K(II,1)=1
+CAM             K(II,3)=IP
+CAM             K(II,4)=0
+CAM             K(II,5)=0
+CAM   200     CONTINUE
           N=NSAV+NDECAY
         ENDIF
  
@@ -81088,30 +81089,30 @@ C...in positions N+1 through N+NDECAY. For each product I you must
 C...give the flavour codes K(I,2) and the five-momenta P(I,1), P(I,2),
 C...P(I,3), P(I,4) and P(I,5). The rest will be stored automatically.
  
-      SUBROUTINE PYTAUD(ITAU,IORIG,KFORIG,NDECAY)
- 
-C...Double precision and integer declarations.
-      IMPLICIT DOUBLE PRECISION(A-H, O-Z)
-      IMPLICIT INTEGER(I-N)
-      INTEGER PYK,PYCHGE,PYCOMP
-C...Commonblocks.
-      COMMON/PYJETS/N,NPAD,K(4000,5),P(4000,5),V(4000,5)
-      COMMON/PYDAT1/MSTU(200),PARU(200),MSTJ(200),PARJ(200)
-      SAVE /PYJETS/,/PYDAT1/
- 
-C...Stop program if this routine is ever called.
-C...You should not copy these lines to your own routine.
-      NDECAY=ITAU+IORIG+KFORIG
-      WRITE(MSTU(11),5000)
-      CALL PYSTOP(10)
- 
-C...Format for error printout.
- 5000 FORMAT(1X,'Error: you did not link your PYTAUD routine ',
-     &'correctly.'/1X,'Dummy routine in PYTHIA file called instead.'/
-     &1X,'Execution stopped!')
- 
-      RETURN
-      END
+CAM      SUBROUTINE PYTAUD(ITAU,IORIG,KFORIG,NDECAY)
+CAM 
+CAMC...Double precision and integer declarations.
+CAM      IMPLICIT DOUBLE PRECISION(A-H, O-Z)
+CAM      IMPLICIT INTEGER(I-N)
+CAM      INTEGER PYK,PYCHGE,PYCOMP
+CAMC...Commonblocks.
+CAM      COMMON/PYJETS/N,NPAD,K(4000,5),P(4000,5),V(4000,5)
+CAM      COMMON/PYDAT1/MSTU(200),PARU(200),MSTJ(200),PARJ(200)
+CAM      SAVE /PYJETS/,/PYDAT1/
+CAM 
+CAMC...Stop program if this routine is ever called.
+CAMC...You should not copy these lines to your own routine.
+CAM      NDECAY=ITAU+IORIG+KFORIG
+CAM      WRITE(MSTU(11),5000)
+CAM      CALL PYSTOP(10)
+CAM 
+CAMC...Format for error printout.
+CAM 5000 FORMAT(1X,'Error: you did not link your PYTAUD routine ',
+CAM     &'correctly.'/1X,'Dummy routine in PYTHIA file called instead.'/
+CAM     &1X,'Execution stopped!')
+CAM 
+CAM      RETURN
+CAM      END
  
 C*********************************************************************
  
