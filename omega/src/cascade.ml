@@ -25,6 +25,7 @@
 module type T =
   sig
 
+    type constant
     type flavor
     type p
 
@@ -41,17 +42,21 @@ module type T =
     val on_shell : selectors -> flavor -> p -> bool
     val is_gauss : selectors -> flavor -> p -> bool
 
+    val select_vtx : selectors -> constant Coupling.t ->
+      flavor -> flavor list -> bool
+
     val partition : selectors -> int list list
     val description : selectors -> string option
 
   end
 
 module Make (M : Model.T) (P : Momentum.T) :
-    (T with type flavor = M.flavor and type p = P.t) =
+    (T with type flavor = M.flavor and type constant = M.constant and type p = P.t) =
   struct
 
     module CS = Cascade_syntax
 
+    type constant = M.constant
     type flavor = M.flavor
     type p = P.t
 
@@ -182,6 +187,7 @@ module Make (M : Model.T) (P : Momentum.T) :
           select_wf : (p -> bool) -> flavor -> p -> p list -> bool;
           on_shell : flavor -> p -> bool;
           is_gauss : flavor -> p -> bool;
+          select_vtx : constant Coupling.t -> flavor -> flavor list -> bool;
           partition : int list list;
           description : string option }
 
@@ -190,6 +196,7 @@ module Make (M : Model.T) (P : Momentum.T) :
         select_wf = (fun _ _ _ _ -> true);
         on_shell = (fun _ _ -> false);
         is_gauss = (fun _ _ -> false);
+        select_vtx = (fun _ _ _ -> true);
         partition = [];
         description = None }
 
@@ -197,6 +204,7 @@ module Make (M : Model.T) (P : Momentum.T) :
     let select_wf s = s.select_wf
     let on_shell s = s.on_shell
     let is_gauss s = s.is_gauss
+    let select_vtx s = s.select_vtx
     let partition s = s.partition
     let description s = s.description
 
@@ -292,6 +300,9 @@ module Make (M : Model.T) (P : Momentum.T) :
         | And cs -> List.for_all to_gauss' cs in
       to_gauss' cascades
 
+    let to_select_vtx cascades c f fs =
+      true
+        
 (* \begin{dubious}
      Not a working implementation yet, but it isn't used either \ldots 
    \end{dubious} *)
@@ -332,6 +343,7 @@ module Make (M : Model.T) (P : Momentum.T) :
             select_wf = to_select_wf c;
             on_shell = to_on_shell c;
             is_gauss = to_gauss c;
+            select_vtx = to_select_vtx c;
             partition = partition;
             description = Some (to_string c ^ partition_to_string partition) }
 

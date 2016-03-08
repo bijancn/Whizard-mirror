@@ -977,7 +977,7 @@ i*)
           List.fold_left
             (fun acc (f, c) ->
               if select_wf f p (PT.to_list momenta)
-		&& select_vtx c f flavors
+		&& select_vtx c f (PT.to_list flavors)
 		&& kmatrix_cuts c momenta then
                 let s = stat_fuse ss f in
                 let flip =
@@ -1282,7 +1282,7 @@ i*)
         match fin with
         | [_] -> C.select_wf selectors P.Decay.timelike
         | _ -> C.select_wf selectors P.Scattering.timelike in
-      let select_vtx c f fs = true in
+      let select_vtx = C.select_vtx selectors in
 
       (* Build the full fusion tower (including nodes that are never
          needed in the amplitude). *)
