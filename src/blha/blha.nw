@@ -1672,6 +1672,7 @@ of the particles. Note that the output can only be processed by OpenLoops.
      integer :: alphas_power = -1, alpha_power = -1
      integer :: ew_scheme = BLHA_EW_DEFAULT
      integer :: width_scheme = BLHA_WIDTH_DEFAULT
+     logical :: openloops_use_cms = .false.
      integer :: openloops_phs_tolerance = 0
      logical :: openloops_top_signal = .false.
   end type blha_configuration_t
@@ -1840,9 +1841,11 @@ This types control the creation of BLHA-interface files
 <<BLHA config: blha master: TBP>>=
   procedure :: setup_additional_features => blha_master_setup_additional_features
 <<BLHA config: procedures>>=
-  subroutine blha_master_setup_additional_features (master, phs_tolerance, top_signal, beam_structure)
+  subroutine blha_master_setup_additional_features (master, &
+     phs_tolerance, use_cms, top_signal, beam_structure)
      class(blha_master_t), intent(inout) :: master
      integer, intent(in) :: phs_tolerance
+     logical, intent(in) :: use_cms
      logical, intent(in), optional :: top_signal
      type(beam_structure_t), intent(in), optional :: beam_structure
      integer :: i_file
@@ -1853,6 +1856,8 @@ This types control the creation of BLHA-interface files
      polarized = .false.
      if (present (beam_structure)) polarized = beam_structure%has_polarized_beams ()
 
+     if (use_cms .and. any (master%blha_mode /= BLHA_MODE_OPENLOOPS)) &
+        call cms_warning ()
      do i_file = 1, master%n_files
         if (phs_tolerance > 0) then
            select case (master%blha_mode(i_file))
@@ -1860,6 +1865,7 @@ This types control the creation of BLHA-interface files
               if (polarized) &
                  call gosam_error_message () 
            case (BLHA_MODE_OPENLOOPS)
+              master%blha_cfg(i_file)%openloops_use_cms = use_cms
               master%blha_cfg(i_file)%openloops_phs_tolerance = phs_tolerance
               master%blha_cfg(i_file)%polarized = polarized
            end select
@@ -1867,6 +1873,13 @@ This types control the creation of BLHA-interface files
         master%blha_cfg(i_file)%openloops_top_signal = yorn
      end do
   contains
+     subroutine cms_warning ()
+        call msg_warning ("You have set ?openloops_use_cms = true, but not all matrix ", &
+           [var_str ("element methods are set to OpenLoops. Note that other "), &
+            var_str ("methods might not necessarily support the complex mass "), &
+            var_str ("scheme. This can yield inconsistencies in your NLO results!")])
+     end subroutine cms_warning
+
      subroutine gosam_error_message ()
         call msg_fatal ("You are trying to evaluate a process at NLO ", &
            [var_str ("which involves polarized beams using GoSam. "), &
@@ -2443,7 +2456,11 @@ Write the BLHA file. Internal mode is intented for md5summing only.
        end do
        write (u,*) 
     case (BLHA_MODE_OPENLOOPS)
-       write (u, '(A25,I1)') "extra use_cms " // pad, 0
+       if (cfg%openloops_use_cms) then
+          write (u, '(A25,I1)') "extra use_cms " // pad, 1
+       else 
+          write (u, '(A25,I1)') "extra use_cms " // pad, 0
+       end if
        write (u, '(A25,I1)') "extra me_cache " // pad, 0
        if (cfg%openloops_phs_tolerance > 0) then
           write (u, '(A25,A4,I0)') "extra psp_tolerance " // pad, "10e-", &
@@ -2650,7 +2667,8 @@ end module blha_uti
           call blha_master%set_polarization (i)
        end do
     end if
-    call blha_master%setup_additional_features (openloops_phs_tolerance)
+    call blha_master%setup_additional_features &
+       (openloops_phs_tolerance, .false.)
 
     do i = 1, 4
        call write_separator(u)
