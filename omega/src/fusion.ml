@@ -965,7 +965,7 @@ i*)
    Record only the the sign \emph{relative} to the children.
    (The type annotation is only for documentation.) *)
 
-    let fuse select_wf wfss : (A.wf * stat * A.rhs) list =
+    let fuse select_wf select_vtx wfss : (A.wf * stat * A.rhs) list =
       if PT.for_all (fun (wf, _) -> is_source wf) wfss then
         try
           let wfs, ss = PT.split wfss in
@@ -976,7 +976,9 @@ i*)
 (*i	  let wft = PT.fold_left Tags.fuse wf_tags in i*)
           List.fold_left
             (fun acc (f, c) ->
-              if select_wf f p (PT.to_list momenta) && kmatrix_cuts c momenta then
+              if select_wf f p (PT.to_list momenta)
+		&& select_vtx c f flavors
+		&& kmatrix_cuts c momenta then
                 let s = stat_fuse ss f in
                 let flip =
                   PT.fold_left (fun acc s' -> acc * stat_sign s') (stat_sign s) ss in
@@ -1066,11 +1068,11 @@ i*)
      expected that no element appears twice and that this ordering is
      not necessary \ldots
    \end{dubious} *)
-    let grow select_wf tower =
+    let grow select_wf select_vtx tower =
       let rank = succ (Array.length tower) in
       List.sort Pervasives.compare
         (PT.graded_sym_power_fold rank
-           (fun wfs acc -> fuse select_wf wfs @ acc) tower [])
+           (fun wfs acc -> fuse select_wf select_vtx wfs @ acc) tower [])
 
     let add_offspring dag (wf, _, rhs) =
       A.D.add_offspring wf rhs dag
@@ -1078,12 +1080,12 @@ i*)
     let filter_offspring fusions =
       List.map (fun (wf, s, _) -> (wf, s)) fusions
 
-    let rec fusion_tower' n_max select_wf tower dag : (A.wf * stat) list array * A.D.t =
+    let rec fusion_tower' n_max select_wf select_vtx tower dag : (A.wf * stat) list array * A.D.t =
       if Array.length tower >= n_max then
         (tower, dag)
       else
-        let tower' = grow select_wf tower in
-        fusion_tower' n_max select_wf
+        let tower' = grow select_wf select_vtx tower in
+        fusion_tower' n_max select_wf select_vtx
           (Array.append tower [|filter_offspring tower'|])
           (List.fold_left add_offspring dag tower')
 
@@ -1099,9 +1101,9 @@ i*)
     module Stat_Map =
       Map.Make (struct type t = A.wf let compare = A.order_wf end)
 
-    let fusion_tower height select_wf wfs : (A.wf -> stat) * A.D.t =
+    let fusion_tower height select_wf select_vtx wfs : (A.wf -> stat) * A.D.t =
       let tower, dag =
-        fusion_tower' height select_wf [|wfs|] (make_external_dag wfs) in
+        fusion_tower' height select_wf select_vtx [|wfs|] (make_external_dag wfs) in
       let stats = mixed_fold_left
           (fun m (wf, s) -> Stat_Map.add wf s m) Stat_Map.empty tower in
       ((fun wf -> Stat_Map.find wf stats), dag)
@@ -1109,13 +1111,13 @@ i*)
 (* Calculate the minimal tower of fusions that suffices for calculating
    the amplitude.  *)
 
-    let minimal_fusion_tower n select_wf wfs : (A.wf -> stat) * A.D.t =
-      fusion_tower (T.max_subtree n) select_wf wfs
+    let minimal_fusion_tower n select_wf select_vtx wfs : (A.wf -> stat) * A.D.t =
+      fusion_tower (T.max_subtree n) select_wf select_vtx wfs
 
 (* Calculate the complete tower of fusions.  It is much larger than required,
    but it allows a complete set of gauge checks.  *)
-    let complete_fusion_tower select_wf wfs : (A.wf -> stat) * A.D.t =
-      fusion_tower (List.length wfs - 1) select_wf wfs
+    let complete_fusion_tower select_wf select_vtx wfs : (A.wf -> stat) * A.D.t =
+      fusion_tower (List.length wfs - 1) select_wf select_vtx wfs
 
 (* \begin{dubious}
      There is a natural product of two DAGs using [fuse].  Can this be
@@ -1280,15 +1282,16 @@ i*)
         match fin with
         | [_] -> C.select_wf selectors P.Decay.timelike
         | _ -> C.select_wf selectors P.Scattering.timelike in
+      let select_vtx c f fs = true in
 
       (* Build the full fusion tower (including nodes that are never
          needed in the amplitude). *)
       let stats, tower =
 
         if goldstones then
-          complete_fusion_tower select_wf wfs
+          complete_fusion_tower select_wf select_vtx wfs
         else
-          minimal_fusion_tower n select_wf wfs in
+          minimal_fusion_tower n select_wf select_vtx wfs in
 
       (* Find all vertices for which \emph{all} off shell wavefunctions
          are defined by the tower. *)
