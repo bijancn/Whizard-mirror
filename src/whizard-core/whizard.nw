@@ -11621,7 +11621,7 @@ base type by the [[connect]] method, so we can reference them later.
     type(process_instance_t), pointer :: process_instance
     integer :: i
     logical :: combined_integration
-    integer :: fixed_grid_component = 0
+    integer :: fixed_mci = 0
 
     call prepare_process &
          (master_process, process_id, use_process, integrate, local, global)
@@ -11687,15 +11687,15 @@ base type by the [[connect]] method, so we can reference them later.
     combined_integration = local%get_lval (var_str ("?combined_nlo_integration"))
     if (.not. combined_integration &
        .and. local%get_lval (var_str ("?nlo_fixed_order"))) then
-       fixed_grid_component = process%extract_active_component ()
+       fixed_mci = process%extract_active_component ()
     end if
     call prepare_process_instance (process_instance, process, local%model, &
        combined_integration = combined_integration, local = local)
     if (generate) then
-       if (fixed_grid_component > 0) then
-          call process%prepare_simulation (fixed_grid_component)
+       if (fixed_mci > 0) then
+          call process%prepare_simulation (fixed_mci)
           call process_instance%init_simulation &
-             (fixed_grid_component, entry%config%safety_factor)
+             (fixed_mci, entry%config%safety_factor)
        else
           do i = 1, entry%n_mci
              call process%prepare_simulation (i)
@@ -11875,6 +11875,17 @@ objects and store them.
   end subroutine entry_prepare_expressions
 
 @ %def entry_prepare_expressions
+@ Checks if event generation from a single grid is performed and sets [[fixed_mci]]
+@ correspondingly
+<<Simulations: entry: TBP>>=
+  procedure :: set_fixed_mci => entry_set_fixed_mci
+<<Simulations: procedures>>=
+  subroutine entry_set_fixed_mci (entry)
+     class(entry_t), intent(inout) :: entry
+     entry%nlo_info%fixed_mci = entry%process%extract_active_component ()
+  end subroutine entry_set_fixed_mci
+
+@ %def entry_set_fixed_mci
 @ Initializes the list of additional NLO entries.  The routine gets the
 information about how many entries to associate from [[region_data]].
 <<Simulations: entry: TBP>>=
@@ -12109,7 +12120,11 @@ the normalization procedure for the process components.
   function entry_select_mci (entry) result (i_mci)
     class(entry_t), intent(inout) :: entry
     integer :: i_mci
-    call entry%mci_selector%generate (entry%rng, i_mci)
+    if (entry%nlo_info%fixed_mci > 0) then
+       i_mci = entry%nlo_info%fixed_mci
+    else
+       call entry%mci_selector%generate (entry%rng, i_mci)
+    end if
   end function entry_select_mci
   
 @ %def entry_select_mci
@@ -12675,8 +12690,11 @@ we may only read and rescan events.
                local, global)
           call simulation%entry(i)%determine_if_powheg_matching ()
           if (signal_is_pending ())  return          
-          if (simulation%entry(i)%is_nlo_event()) &
+          if (simulation%entry(i)%is_nlo_event()) then
+             if (.not. simulation%local%get_lval (var_str ("?combined_nlo_integration"))) &
+                call simulation%entry(i)%set_fixed_mci ()
              call simulation%entry(i)%setup_additional_entries ()
+          end if
        end do
        simulation%valid = any (simulation%entry%valid)
        if (.not. simulation%valid) then
@@ -12989,7 +13007,8 @@ process instance will not be complete.  This should be fixed.
           simulation%i_prc = simulation%select_prc ()
           simulation%i_mci = simulation%select_mci ()
           associate (entry => simulation%entry(simulation%i_prc))
-            call entry%set_active_real_components (simulation%i_mci)
+            !!!What does it do?
+            !!!call entry%set_active_real_components (simulation%i_mci)
             current_entry => entry%get_first ()
             do k = 1, current_entry%count_nlo_entries ()
                if (k > 1) then
