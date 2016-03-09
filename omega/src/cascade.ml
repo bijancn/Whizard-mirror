@@ -149,6 +149,9 @@ module Make (M : Model.T) (P : Momentum.T) :
       | [wf] -> wf
       | wfs -> And wfs
 
+    let uniq l =
+      ThoList.uniq (List.sort compare l)
+
     let import dim cascades =
       let rec import' = function
         | CS.True ->
@@ -177,18 +180,14 @@ module Make (M : Model.T) (P : Momentum.T) :
             only_wf (Any_flavor (P.of_ints dim p))
         | CS.And cs ->
             let cs = List.map import' cs in
-            let wf = and_cascades_wf cs in
-            let flavors =
-              ThoList.uniq (List.concat (List.map (fun c -> c.flavors) cs))
-            and vertices =
-              ThoList.uniq (List.concat (List.map (fun c -> c.vertices) cs)) in
-            { wf = wf;
-              flavors = flavors;
-              vertices = vertices }
+            { wf = and_cascades_wf cs;
+              flavors = uniq (List.concat
+                                (List.map (fun c -> c.flavors) cs));
+              vertices = uniq (List.concat
+                                 (List.map (fun c -> c.vertices) cs)) }
         | CS.X_Flavor fs ->
             let fs = List.map M.flavor_of_string fs in
-            { default with
-              flavors = ThoList.uniq (fs @ List.map M.conjugate fs) }
+            { default with flavors = uniq (fs @ List.map M.conjugate fs) }
         | CS.X_Vertex (cs, fss) ->
             { default with vertices = [] }
       in
