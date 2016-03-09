@@ -98,7 +98,7 @@ module Make (M : Model.T) (P : Momentum.T) :
 (* The following assumes that the [flavor list] is always very short.  Otherwise
    one should use an efficient set implementation. *)
 
-    type t =
+    type wf =
       | True
       | False
       | On_shell of flavor list * P.t
@@ -108,8 +108,21 @@ module Make (M : Model.T) (P : Momentum.T) :
       | Gauss of flavor list * P.t
       | Gauss_not of flavor list * P.t
       | Any_flavor of P.t
-      | And of t list
-      | Exclude of flavor list
+      | And of wf list
+
+    type vtx =
+        { coupling : constant;
+          fields : flavor list }
+
+    type t =
+        { wf : wf;
+          flavors : flavor list;
+          vertices : vtx list }
+
+    let default =
+      { wf = True;
+        flavors = [];
+        vertices = [] }
 
     let of_string s = 
       Cascade_parser.main Cascade_lexer.token (Lexing.from_string s)
@@ -120,36 +133,54 @@ module Make (M : Model.T) (P : Momentum.T) :
      and not the antiparticle.  Right now, we don't have this information.
    \end{dubious} *)
 
+    let only_wf wf = { default with wf = wf }
+
     let import dim cascades =
       let rec import' = function
         | CS.True ->
-            True
+            only_wf True
         | CS.False ->
-            False
+            only_wf False
         | CS.On_shell (f, p) ->
-            On_shell (List.map M.flavor_of_string f, P.of_ints dim p)
+            only_wf
+              (On_shell (List.map M.flavor_of_string f, P.of_ints dim p))
         | CS.On_shell_not (f, p) ->
-            On_shell_not (List.map M.flavor_of_string f, P.of_ints dim p)
+            only_wf
+              (On_shell_not (List.map M.flavor_of_string f, P.of_ints dim p))
         | CS.Off_shell (fs, p) ->
-            Off_shell (List.map M.flavor_of_string fs, P.of_ints dim p)
+            only_wf
+              (Off_shell (List.map M.flavor_of_string fs, P.of_ints dim p))
         | CS.Off_shell_not (fs, p) ->
-            Off_shell_not (List.map M.flavor_of_string fs, P.of_ints dim p)
+            only_wf
+              (Off_shell_not (List.map M.flavor_of_string fs, P.of_ints dim p))
         | CS.Gauss (f, p) ->
-            Gauss (List.map M.flavor_of_string f, P.of_ints dim p)
+            only_wf
+              (Gauss (List.map M.flavor_of_string f, P.of_ints dim p))
         | CS.Gauss_not (f, p) ->
-            Gauss (List.map M.flavor_of_string f, P.of_ints dim p)
+            only_wf
+              (Gauss (List.map M.flavor_of_string f, P.of_ints dim p))
         | CS.Any_flavor p ->
-            Any_flavor (P.of_ints dim p)
-        | CS.And cs -> And (List.map import' cs)
-        | CS.Exclude fs ->
+            only_wf (Any_flavor (P.of_ints dim p))
+        | CS.And cs ->
+            let cs = List.map import' cs in
+            { wf = And (List.map (fun c -> c.wf) cs);
+              (* TODO: The following lists should be sets for efficiency. *)
+              flavors =
+              ThoList.uniq (List.concat (List.map (fun c -> c.flavors) cs));
+              vertices =
+              ThoList.uniq (List.concat (List.map (fun c -> c.vertices) cs)) }
+        | CS.X_Flavor fs ->
             let fs = List.map M.flavor_of_string fs in
-            Exclude (fs @ List.map M.conjugate fs)
+            { default with
+              flavors = ThoList.uniq (fs @ List.map M.conjugate fs) }
+        | CS.X_Vertex (cs, fss) ->
+            { default with vertices = [] }
       in
       import' cascades
 
     let of_string_list dim strings =
       match List.map of_string strings with
-      | [] -> True
+      | [] -> default
       | first :: next ->
           import dim (List.fold_right CS.mk_and next first)
 
@@ -159,7 +190,7 @@ module Make (M : Model.T) (P : Momentum.T) :
     let momentum_to_string p =
       String.concat "+" (List.map string_of_int (P.to_ints p))
 
-    let rec to_string = function
+    let rec wf_to_string = function
       | True ->
           "true"
       | False ->
@@ -179,8 +210,15 @@ module Make (M : Model.T) (P : Momentum.T) :
       | Any_flavor p ->
           momentum_to_string p ^ " ~ ?"
       | And cs ->
-          String.concat " && " (List.map (fun c -> "(" ^ to_string c ^ ")") cs)
-      | Exclude fs -> "!" ^ flavors_to_string fs
+          String.concat " && " (List.map (fun c -> "(" ^ wf_to_string c ^ ")") cs)
+
+    let to_string = function
+      | { wf = True; flavors = fs; vertices = vs } ->
+          "!" ^ flavors_to_string fs
+      | { wf = wf; flavors = []; vertices = vs } ->
+          wf_to_string wf
+      | { wf = wf; flavors = fs; vertices = vs } ->
+          "!" ^ flavors_to_string fs ^ " && " ^ wf_to_string wf
 
     type selectors =
         { select_p : p -> p list -> bool;
@@ -217,8 +255,7 @@ module Make (M : Model.T) (P : Momentum.T) :
         | Gauss (_, momentum) | Gauss_not (_, momentum)
         | Any_flavor momentum -> all_compatible p p_in momentum
         | And [] -> false
-        | And cs -> List.for_all to_select_p' cs
-        | Exclude _ -> true in
+        | And cs -> List.for_all to_select_p' cs in
       to_select_p' cascades
 
     let to_select_wf cascades is_timelike f p p_in =
@@ -263,9 +300,8 @@ module Make (M : Model.T) (P : Momentum.T) :
         | Any_flavor momentum ->
             one_compatible p momentum && all_compatible p p_in momentum
         | And [] -> false
-        | And cs -> List.for_all to_select_wf' cs
-        | Exclude flavors -> not (List.mem f flavors) in
-      to_select_wf' cascades
+        | And cs -> List.for_all to_select_wf' cs in
+      not (List.mem f cascades.flavors) && to_select_wf' cascades.wf
 
 
 (* In case you're wondering: [to_on_shell f p] and [is_gauss f p] only search
@@ -274,7 +310,7 @@ module Make (M : Model.T) (P : Momentum.T) :
     let to_on_shell cascades f p =
       let f' = M.conjugate f in
       let rec to_on_shell' = function
-        | True | False | Any_flavor _ | Exclude _
+        | True | False | Any_flavor _
         | Off_shell (_, _) | Off_shell_not (_, _)
         | Gauss (_, _) | Gauss_not (_, _) -> false
         | On_shell (flavors, momentum) ->
@@ -289,13 +325,15 @@ module Make (M : Model.T) (P : Momentum.T) :
     let to_gauss cascades f p =
       let f' = M.conjugate f in
       let rec to_gauss' = function
-        | True | False | Any_flavor _ | Exclude _
+        | True | False | Any_flavor _
         | Off_shell (_, _) | Off_shell_not (_, _)
         | On_shell (_, _) | On_shell_not (_, _) -> false
         | Gauss (flavors, momentum) ->
-            (p = momentum || p = P.neg momentum) && (List.mem f flavors || List.mem f' flavors)
+            (p = momentum || p = P.neg momentum) &&
+            (List.mem f flavors || List.mem f' flavors)
         | Gauss_not (flavors, momentum) ->
-            (p = momentum || p = P.neg momentum) && not (List.mem f flavors || List.mem f' flavors)
+            (p = momentum || p = P.neg momentum) &&
+            not (List.mem f flavors || List.mem f' flavors)
         | And [] -> false
         | And cs -> List.for_all to_gauss' cs in
       to_gauss' cascades
@@ -318,7 +356,6 @@ module Make (M : Model.T) (P : Momentum.T) :
         | Any_flavor momentum -> IPowSet.of_lists [P.to_ints momentum]
         | And [] -> IPowSet.empty
         | And cs -> IPowSet.basis (IPowSet.union (List.map coarsest_partition' cs))
-        | Exclude _ -> IPowSet.empty
 
     let coarsest_partition cascades =
       let p = coarsest_partition' cascades in
@@ -336,14 +373,14 @@ module Make (M : Model.T) (P : Momentum.T) :
           "  grouping {" ^ String.concat "," (List.map part_to_string parts) ^ "}"
 
     let to_selectors = function
-      | True -> no_cascades
+      | { wf = True; flavors = []; vertices = [] } -> no_cascades
       | c ->
-          let partition = coarsest_partition c in
-          { select_p = to_select_p c;
+          let partition = coarsest_partition c.wf in
+          { select_p = to_select_p c.wf;
             select_wf = to_select_wf c;
-            on_shell = to_on_shell c;
-            is_gauss = to_gauss c;
-            select_vtx = to_select_vtx c;
+            on_shell = to_on_shell c.wf;
+            is_gauss = to_gauss c.wf;
+            select_vtx = to_select_vtx c.wf;
             partition = partition;
             description = Some (to_string c ^ partition_to_string partition) }
 

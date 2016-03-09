@@ -28,18 +28,18 @@ let parse_error msg =
   raise (Syntax_Error (msg, symbol_start (), symbol_end ()))
 %}
 
-%token < string > FLAVOR
+%token < string > STRING
 %token < int > INT
-%token LPAREN RPAREN
-%token AND PLUS COLON NOT
+%token LPAREN RPAREN LBRACKET RBRACKET
+%token AND PLUS COLON COMMA NOT HAT
 %token ONSHELL OFFSHELL GAUSS
 %token END
 %left AND
-%left PLUS COLON
-%left NOT
+%left PLUS COLON COMMA
+%left NOT HAT
 
 %start main
-%type < (string, int list) Cascade_syntax.t > main
+%type < (string, int list, string) Cascade_syntax.t > main
 
 %%
 
@@ -50,27 +50,38 @@ main:
 
 cascades:
     exclusion                       { $1 }
+  | vertex                          { $1 }
   | cascade                         { $1 }
   | LPAREN cascades RPAREN          { $2 }
   | cascades AND cascades           { mk_and $1 $3 }
 ;
 
 exclusion:
-    NOT flavor_list                 { mk_exclude $2 }
+    NOT string_list                 { mk_x_flavor $2 }
+;
+
+vertex:
+    HAT string_list                 { mk_x_vertex $2 [] }
+  | HAT string_list LBRACKET RBRACKET
+                                    { mk_x_vertex $2 [] }
+  | HAT LBRACKET string_lists RBRACKET
+                                    { mk_x_vertex [] $3 }
+  | HAT string_list LBRACKET string_lists RBRACKET
+                                    { mk_x_vertex $2 $4 }
 ;
 
 cascade:
     momentum_list                   { mk_any_flavor $1 }
-  | momentum_list ONSHELL flavor_list
+  | momentum_list ONSHELL string_list
                                     { mk_on_shell $3 $1 }
-  | momentum_list ONSHELL NOT flavor_list
+  | momentum_list ONSHELL NOT string_list
                                     { mk_on_shell_not $4 $1 }
-  | momentum_list OFFSHELL flavor_list
+  | momentum_list OFFSHELL string_list
                                     { mk_off_shell $3 $1 }
-  | momentum_list OFFSHELL NOT flavor_list
+  | momentum_list OFFSHELL NOT string_list
                                     { mk_off_shell_not $4 $1 }
-  | momentum_list GAUSS flavor_list { mk_gauss $3 $1 }
-  | momentum_list GAUSS NOT flavor_list
+  | momentum_list GAUSS string_list { mk_gauss $3 $1 }
+  | momentum_list GAUSS NOT string_list
                                     { mk_gauss_not $4 $1 }
 ;
 
@@ -83,7 +94,13 @@ momentum:
     INT                             { $1 }
 ;
 
-flavor_list:
-    FLAVOR                          { [$1] }
-  | flavor_list COLON FLAVOR        { $3 :: $1 }
+string_list:
+    STRING                          { [$1] }
+  | string_list COLON STRING        { $3 :: $1 }
 ;
+
+string_lists:
+    string_list                     { [$1] }
+  | string_lists COMMA string_list  { $3 :: $1 }
+;
+

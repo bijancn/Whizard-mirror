@@ -28,7 +28,7 @@
    determining the significance of a specified intermediate state. 
    So we select them in the same manner as on-shell states. *)
 
-type ('flavor, 'p) t =
+type ('flavor, 'p, 'constant) t =
   | True
   | False
   | On_shell of 'flavor list * 'p
@@ -38,8 +38,9 @@ type ('flavor, 'p) t =
   | Gauss of 'flavor list * 'p
   | Gauss_not of 'flavor list * 'p
   | Any_flavor of 'p
-  | And of ('flavor, 'p) t list
-  | Exclude of 'flavor list
+  | And of ('flavor, 'p, 'constant) t list
+  | X_Flavor of 'flavor list
+  | X_Vertex of 'constant list * 'flavor list list
 
 let mk_true () = True
 let mk_false () = False
@@ -59,12 +60,14 @@ let mk_and c1 c2 =
   | And cs, c | c, And cs -> And (c::cs)
   | c, c' -> And [c; c']
 
-let mk_exclude f = Exclude f
-
-
-let to_string flavor_to_string momentum_to_string cascades =
+let mk_x_flavor f = X_Flavor f
+let mk_x_vertex c fs = X_Vertex (c, fs)
+    
+let to_string flavor_to_string momentum_to_string coupling_to_string cascades =
   let flavors_to_string fs =
-    String.concat ":" (List.map flavor_to_string fs) in
+    String.concat ":" (List.map flavor_to_string fs)
+  and couplings_to_string cs =
+    String.concat ":" (List.map coupling_to_string cs) in
   let rec to_string' = function
     | True -> "true"
     | False -> "false"
@@ -84,8 +87,12 @@ let to_string flavor_to_string momentum_to_string cascades =
         momentum_to_string p ^ " ~ ?"
     | And cs ->
         String.concat " && " (List.map (fun c -> "(" ^ to_string' c ^ ")") cs)
-    | Exclude fs ->
-        "!" ^ String.concat ":" (List.map flavor_to_string fs) in
+    | X_Flavor fs ->
+        "!" ^ String.concat ":" (List.map flavor_to_string fs)
+    | X_Vertex (cs, fss) ->
+        "^" ^ couplings_to_string cs ^
+        "[" ^ (String.concat "," (List.map flavors_to_string fss)) ^ "]"
+  in
   to_string' cascades
 
 let int_list_to_string p =
