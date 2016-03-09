@@ -116,6 +116,7 @@ module Make (M : Model.T) (P : Momentum.T) :
 
     type t =
         { wf : wf;
+          (* TODO: The following lists should be sets for efficiency. *)
           flavors : flavor list;
           vertices : vtx list }
 
@@ -134,6 +135,19 @@ module Make (M : Model.T) (P : Momentum.T) :
    \end{dubious} *)
 
     let only_wf wf = { default with wf = wf }
+
+    let cons_and_wf c wfs =
+      match c.wf, wfs with
+      | True, wfs -> wfs
+      | False, _ -> [False]
+      | wf, [] -> [wf]
+      | wf, wfs -> wf :: wfs
+
+    let and_cascades_wf c =
+      match List.fold_right cons_and_wf c [] with
+      | [] -> True
+      | [wf] -> wf
+      | wfs -> And wfs
 
     let import dim cascades =
       let rec import' = function
@@ -163,12 +177,14 @@ module Make (M : Model.T) (P : Momentum.T) :
             only_wf (Any_flavor (P.of_ints dim p))
         | CS.And cs ->
             let cs = List.map import' cs in
-            { wf = And (List.map (fun c -> c.wf) cs);
-              (* TODO: The following lists should be sets for efficiency. *)
-              flavors =
-              ThoList.uniq (List.concat (List.map (fun c -> c.flavors) cs));
-              vertices =
-              ThoList.uniq (List.concat (List.map (fun c -> c.vertices) cs)) }
+            let wf = and_cascades_wf cs in
+            let flavors =
+              ThoList.uniq (List.concat (List.map (fun c -> c.flavors) cs))
+            and vertices =
+              ThoList.uniq (List.concat (List.map (fun c -> c.vertices) cs)) in
+            { wf = wf;
+              flavors = flavors;
+              vertices = vertices }
         | CS.X_Flavor fs ->
             let fs = List.map M.flavor_of_string fs in
             { default with

@@ -28,6 +28,8 @@
    determining the significance of a specified intermediate state. 
    So we select them in the same manner as on-shell states. *)
 
+(* [False] is probably redundant.  *)
+
 type ('flavor, 'p, 'constant) t =
   | True
   | False
