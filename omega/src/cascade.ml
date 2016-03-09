@@ -110,9 +110,16 @@ module Make (M : Model.T) (P : Momentum.T) :
       | Any_flavor of P.t
       | And of wf list
 
+    (* The [coupling] field must be a predicate, because there is
+       no [Model.constant_of_string], unfortunately.  This means
+       that we can not compare it \ldots *)
     type vtx =
-        { coupling : constant;
+        { coupling : string;
+          coupling_p : constant -> bool;
           fields : flavor list }
+
+    let match_constant_symbol s c=
+      s = M.constant_symbol c
 
     type t =
         { wf : wf;
@@ -183,13 +190,19 @@ module Make (M : Model.T) (P : Momentum.T) :
             { wf = and_cascades_wf cs;
               flavors = uniq (List.concat
                                 (List.map (fun c -> c.flavors) cs));
-              vertices = uniq (List.concat
-                                 (List.map (fun c -> c.vertices) cs)) }
+              vertices = List.concat (List.map (fun c -> c.vertices) cs) }
         | CS.X_Flavor fs ->
             let fs = List.map M.flavor_of_string fs in
             { default with flavors = uniq (fs @ List.map M.conjugate fs) }
         | CS.X_Vertex (cs, fss) ->
-            { default with vertices = [] }
+            let fss = List.map (List.map M.flavor_of_string) fss in
+            let expanded =
+              Product.list2
+                (fun c fs -> { coupling = c;
+                               coupling_p = match_constant_symbol c;
+                               fields = fs })
+                cs (Product.list (fun fs -> fs) fss) in
+            { default with vertices = expanded }
       in
       import' cascades
 
@@ -227,13 +240,32 @@ module Make (M : Model.T) (P : Momentum.T) :
       | And cs ->
           String.concat " && " (List.map (fun c -> "(" ^ wf_to_string c ^ ")") cs)
 
+    let vertex_to_string v =
+      "^" ^ v.coupling ^
+      "[" ^ String.concat "," (List.map M.flavor_to_string v.fields) ^ "]"
+
+    let vertices_to_string vs =
+      (String.concat " && " (List.map vertex_to_string vs))
+
     let to_string = function
-      | { wf = True; flavors = fs; vertices = vs } ->
+      | { wf = True; flavors = []; vertices = [] } ->
+          ""
+      | { wf = True; flavors = fs; vertices = [] } ->
           "!" ^ flavors_to_string fs
-      | { wf = wf; flavors = []; vertices = vs } ->
+      | { wf = True; flavors = []; vertices = vs } ->
+          vertices_to_string vs
+      | { wf = True; flavors = fs; vertices = vs } ->
+          "!" ^ flavors_to_string fs ^ " && " ^ vertices_to_string vs
+      | { wf = wf; flavors = []; vertices = [] } ->
           wf_to_string wf
-      | { wf = wf; flavors = fs; vertices = vs } ->
+      | { wf = wf; flavors = []; vertices = vs } ->
+          vertices_to_string vs ^ " && " ^ wf_to_string wf
+      | { wf = wf; flavors = fs; vertices = [] } ->
           "!" ^ flavors_to_string fs ^ " && " ^ wf_to_string wf
+      | { wf = wf; flavors = fs; vertices = vs } ->
+          "!" ^ flavors_to_string fs ^
+          " && " ^ vertices_to_string vs ^
+          " && " ^ wf_to_string wf
 
     type selectors =
         { select_p : p -> p list -> bool;
@@ -354,6 +386,7 @@ module Make (M : Model.T) (P : Momentum.T) :
       to_gauss' cascades
 
     let to_select_vtx cascades c f fs =
+      (* TODO *)
       true
         
 (* \begin{dubious}
