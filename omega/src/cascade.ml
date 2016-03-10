@@ -402,36 +402,42 @@ module Make (M : Model.T) (P : Momentum.T) :
       match unpack_constant cs with
       | [] -> true
       | cs -> List.mem (M.constant_symbol c) cs
+
+    let match_coupling_unpacked c cs =
+      match cs with
+      | [] -> true
+      | cs -> List.mem (M.constant_symbol c) cs
         
     let translate_vertices vertices =
       List.fold_left
-        (fun (v3, v4, vn as acc) v ->
+        (fun (cs, (v3, v4, vn) as acc) v ->
           match v.fields with
-          | [] -> failwith "Cascade.translate_vertices: incomplete"
+          | [] -> (v.couplings @ cs, (v3, v4, vn))
           | [_] | [_;_] -> acc
           | [f1; f2; f3] ->
-              (((f1, f2, f3), dummy3, v.couplings)::v3, v4, vn)
+              (cs, (((f1, f2, f3), dummy3, v.couplings)::v3, v4, vn))
           | [f1; f2; f3; f4] ->
-              (v3, ((f1, f2, f3, f4), dummy4, v.couplings)::v4, vn)
-          | fs -> (v3, v4, (fs, dummyn, v.couplings)::vn))
-        ([], [], []) vertices
+              (cs, (v3, ((f1, f2, f3, f4), dummy4, v.couplings)::v4, vn))
+          | fs -> (cs, (v3, v4, (fs, dummyn, v.couplings)::vn)))
+        ([], ([], [], [])) vertices
 
 (* Combining vertex patterns without fields with patterns with fields
    is tricky. *)
-    let to_select_vtx cascades c f fs =
-      let c = unpack_constant c in
+    let to_select_vtx cascades =
       match cascades.vertices with
-      | [] -> true
+      | [] -> (fun c f fs -> true)
       | vertices ->
-          begin
-            let fusions = Fusions.of_vertices (translate_vertices vertices) in
+          (fun c f fs ->
+            let couplings, vertices = translate_vertices vertices in
+            let fusions = Fusions.of_vertices vertices in
             match Fusions.fuse fusions fs with
             | [] -> true
             | fcs ->
+                let c = unpack_constant c in
+                (* not (match_coupling_unpacked c couplings) && *)
                 List.for_all
                   (fun (f', cs') -> f <> f' || not (match_coupling c cs'))
-                  fcs
-          end
+                  fcs)
         
 (* \begin{dubious}
      Not a working implementation yet, but it isn't used either \ldots 
