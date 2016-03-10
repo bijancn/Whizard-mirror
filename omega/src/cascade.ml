@@ -389,35 +389,44 @@ module Make (M : Model.T) (P : Momentum.T) :
 
     module Fusions = Modeltools.Fusions (Fields)
 
+    let dummy3 = Coupling.Scalar_Scalar_Scalar 1
+    let dummy4 = Coupling.Scalar4 1
+    let dummyn = ()
+
+    let unpack_constant = function
+      | Coupling.V3 (_, _, cs) -> cs
+      | Coupling.V4 (_, _, cs) -> cs
+      | Coupling.Vn (_, _, cs) -> cs
+
+    let match_coupling cs c =
+      List.mem (M.constant_symbol c) (unpack_constant cs)
+        
+    let translate_vertices vertices =
+      List.fold_left
+        (fun (v3, v4, vn as acc) v ->
+          match v.fields with
+          | [] | [_] | [_;_] -> acc
+          | [f1; f2; f3] ->
+              (((f1, f2, f3), dummy3, v.couplings)::v3, v4, vn)
+          | [f1; f2; f3; f4] ->
+              (v3, ((f1, f2, f3, f4), dummy4, v.couplings)::v4, vn)
+          | fs -> (v3, v4, (fs, dummyn, v.couplings)::vn))
+        ([], [], []) vertices
+
     let to_select_vtx cascades c f fs =
+      let c = unpack_constant c in
       match cascades.vertices with
       | [] -> true
-      | [{ couplings = x_cs; fields = x_fs }] ->
+      | vertices ->
           begin
-            match x_fs with
-            | [f1; f2; f3] ->
-                let fusions =
-                  Fusions.of_vertices
-                    ([((f1, f2, f3), Coupling.Scalar_Scalar_Scalar 1, x_cs)],
-                     [],
-                     []) in
-                false
-            | [f1; f2; f3; f4] ->
-                let fusions =
-                  Fusions.of_vertices
-                    ([],
-                     [((f1, f2, f3, f4), Coupling.Scalar4 1, x_cs)],
-                     []) in
-                false
-            | fs ->
-                let fusions =
-                  Fusions.of_vertices
-                    ([],
-                     [],
-                     [(fs, (), x_cs)]) in
-                false
+            let fusions = Fusions.of_vertices (translate_vertices vertices) in
+            match Fusions.fuse fusions fs with
+            | [] -> true
+            | fcs ->
+                List.exists
+                  (fun (f', cs) -> f' = f && match_coupling cs c)
+                  fcs
           end
-      | _ -> failwith "Cascades.to_select_vtx: incomplete"
         
 (* \begin{dubious}
      Not a working implementation yet, but it isn't used either \ldots 
