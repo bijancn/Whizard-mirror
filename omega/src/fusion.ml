@@ -751,9 +751,30 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
    caching, because the restrictions \emph{must not} influence the
    cache (unless we tag the cache with model and restrictions).  *)
 
+    (* A.flavor * (constant Coupling.t * A.flavor PT.t) list *)
+
+    let unpack_constant = function
+      | Coupling.V3 (_, _, cs) -> cs
+      | Coupling.V4 (_, _, cs) -> cs
+      | Coupling.Vn (_, _, cs) -> cs
+
+    let coupling_and_flavors_to_string (c, fs) =
+      M.constant_symbol (unpack_constant c) ^ "[" ^
+	String.concat ", " (List.map M.flavor_to_string (PT.to_list fs)) ^ "]"
+
+    let fusions_to_string (f, cfs) =
+      M.flavor_to_string f ^ " <- { " ^
+	String.concat " | " (List.map coupling_and_flavors_to_string cfs) ^
+	" }"
+
+    let vertices_to_string vertices =
+      String.concat "; " (List.map fusions_to_string vertices)
+
     let filter_vertices select_vtx vertices =
+      let vertices' =
       List.fold_left
 	(fun acc (f, cfs) ->
+	  let cfs_old = cfs in
 	  let f' = M.conjugate f in
 	  let cfs =
 	    List.filter
@@ -761,9 +782,29 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
 	      cfs
 	  in
 	  match cfs with
-	  | [] -> acc
-	  | cfs -> (f, cfs) :: acc)
+	  | [] ->
+	     begin
+	       prerr_endline ("dropping fusions: " ^
+				 fusions_to_string (f, cfs));
+	       acc
+	     end
+	  | cfs ->
+	     begin
+	       if cfs <> cfs_old then begin
+		 prerr_endline ("reducing fusions: " ^
+				   fusions_to_string (f, cfs_old));
+		 prerr_endline ("                  " ^
+				   fusions_to_string (f, cfs))
+	       end;
+	       (f, cfs) :: acc
+	     end)
 	[] vertices
+      in
+(*    prerr_endline "filtering vertices:";
+      prerr_endline ("<<< " ^ vertices_to_string vertices);
+      prerr_endline (">>> " ^ vertices_to_string vertices'); *)
+      flush stderr;
+      vertices'
 
 (* \thocwmodulesubsection{Partitions} *)
 
