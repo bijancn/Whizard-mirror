@@ -399,7 +399,9 @@ module Make (M : Model.T) (P : Momentum.T) :
       | Coupling.Vn (_, _, cs) -> cs
 
     let match_coupling cs c =
-      List.mem (M.constant_symbol c) (unpack_constant cs)
+      match unpack_constant cs with
+      | [] -> true
+      | cs -> List.mem (M.constant_symbol c) cs
         
     let translate_vertices vertices =
       List.fold_left
@@ -423,9 +425,9 @@ module Make (M : Model.T) (P : Momentum.T) :
             match Fusions.fuse fusions fs with
             | [] -> true
             | fcs ->
-                List.exists
-                  (fun (f', cs) -> f' = f && match_coupling cs c)
-                  fcs
+                not (List.exists
+                       (fun (f', cs) -> f' = f && match_coupling cs c)
+                       fcs)
           end
         
 (* \begin{dubious}
