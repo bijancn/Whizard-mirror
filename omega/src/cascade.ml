@@ -110,16 +110,11 @@ module Make (M : Model.T) (P : Momentum.T) :
       | Any_flavor of P.t
       | And of wf list
 
-    (* The [coupling] field must be a predicate, because there is
-       no [Model.constant_of_string], unfortunately.  This means
-       that we can not compare it \ldots *)
+    (* The [coupling] field must be a string, because there is
+       no [Model.constant_of_string], unfortunately. *)
     type vtx =
         { coupling : string;
-          coupling_p : constant -> bool;
           fields : flavor list }
-
-    let match_constant_symbol s c=
-      s = M.constant_symbol c
 
     type t =
         { wf : wf;
@@ -190,7 +185,8 @@ module Make (M : Model.T) (P : Momentum.T) :
             { wf = and_cascades_wf cs;
               flavors = uniq (List.concat
                                 (List.map (fun c -> c.flavors) cs));
-              vertices = List.concat (List.map (fun c -> c.vertices) cs) }
+              vertices = uniq (List.concat
+                                 (List.map (fun c -> c.vertices) cs)) }
         | CS.X_Flavor fs ->
             let fs = List.map M.flavor_of_string fs in
             { default with flavors = uniq (fs @ List.map M.conjugate fs) }
@@ -198,9 +194,7 @@ module Make (M : Model.T) (P : Momentum.T) :
             let fss = List.map (List.map M.flavor_of_string) fss in
             let expanded =
               Product.list2
-                (fun c fs -> { coupling = c;
-                               coupling_p = match_constant_symbol c;
-                               fields = fs })
+                (fun c fs -> { coupling = c; fields = fs })
                 cs (Product.list (fun fs -> fs) fss) in
             { default with vertices = expanded }
       in
