@@ -425,9 +425,9 @@ module Make (M : Model.T) (P : Momentum.T) :
             match Fusions.fuse fusions fs with
             | [] -> true
             | fcs ->
-                not (List.exists
-                       (fun (f', cs) -> f' = f && match_coupling cs c)
-                       fcs)
+                List.for_all
+                  (fun (f', cs) -> f' <> f || not (match_coupling cs c))
+                  fcs
           end
         
 (* \begin{dubious}
