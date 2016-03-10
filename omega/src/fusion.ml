@@ -747,6 +747,24 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
           end
       | Some result -> result
 
+(* Note that we must perform any filtering of the vertices \emph{after}
+   caching, because the restrictions \emph{must not} influence the
+   cache (unless we tag the cache with model and restrictions).  *)
+
+    let filter_vertices select_vtx vertices =
+      List.fold_left
+	(fun acc (f, cfs) ->
+	  let f' = M.conjugate f in
+	  let cfs =
+	    List.filter
+	      (fun (c, fs) -> select_vtx c f' (PT.to_list fs))
+	      cfs
+	  in
+	  match cfs with
+	  | [] -> acc
+	  | cfs -> (f, cfs) :: acc)
+	[] vertices
+
 (* \thocwmodulesubsection{Partitions} *)
 
 (* Vertices that are not crossing invariant need special treatment so
@@ -1298,7 +1316,8 @@ i*)
 
       let brakets =
         flavor_keystones (filter_keystone stats tower) select_p n
-          (vertices (M.max_degree ()) (M.flavors ()))
+          (filter_vertices select_vtx
+	     (vertices (M.max_degree ()) (M.flavors ())))
           (T.keystones (ThoList.range 1 n)) in
 
       (* Remove the part of the DAG that is never needed in the amplitude. *)
