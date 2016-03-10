@@ -398,7 +398,7 @@ module Make (M : Model.T) (P : Momentum.T) :
       | Coupling.V4 (_, _, cs) -> cs
       | Coupling.Vn (_, _, cs) -> cs
 
-    let match_coupling cs c =
+    let match_coupling c cs =
       match unpack_constant cs with
       | [] -> true
       | cs -> List.mem (M.constant_symbol c) cs
@@ -407,7 +407,8 @@ module Make (M : Model.T) (P : Momentum.T) :
       List.fold_left
         (fun (v3, v4, vn as acc) v ->
           match v.fields with
-          | [] | [_] | [_;_] -> acc
+          | [] -> failwith "Cascade.translate_vertices: incomplete"
+          | [_] | [_;_] -> acc
           | [f1; f2; f3] ->
               (((f1, f2, f3), dummy3, v.couplings)::v3, v4, vn)
           | [f1; f2; f3; f4] ->
@@ -415,6 +416,8 @@ module Make (M : Model.T) (P : Momentum.T) :
           | fs -> (v3, v4, (fs, dummyn, v.couplings)::vn))
         ([], [], []) vertices
 
+(* Combining vertex patterns without fields with patterns with fields
+   is tricky. *)
     let to_select_vtx cascades c f fs =
       let c = unpack_constant c in
       match cascades.vertices with
@@ -426,7 +429,7 @@ module Make (M : Model.T) (P : Momentum.T) :
             | [] -> true
             | fcs ->
                 List.for_all
-                  (fun (f', cs) -> f' <> f || not (match_coupling cs c))
+                  (fun (f', cs') -> f <> f' || not (match_coupling c cs'))
                   fcs
           end
         
