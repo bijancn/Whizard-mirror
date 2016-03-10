@@ -195,7 +195,9 @@ module Make (M : Model.T) (P : Momentum.T) :
             let expanded =
               List.map
                 (fun fs -> { couplings = cs; fields = fs })
-                (Product.list (fun fs -> fs) fss) in
+                (match fss with
+                | [] -> [[]] (* Subtle: \emph{not} an empty list! *)
+                | fss -> Product.list (fun fs -> fs) fss) in
             { default with vertices = expanded }
       in
       import' cascades
@@ -405,7 +407,7 @@ module Make (M : Model.T) (P : Momentum.T) :
 
     let match_coupling_unpacked c cs =
       match cs with
-      | [] -> true
+      | [] -> false
       | cs -> List.mem (M.constant_symbol c) cs
         
     let translate_vertices vertices =
@@ -421,8 +423,9 @@ module Make (M : Model.T) (P : Momentum.T) :
           | fs -> (cs, (v3, v4, (fs, dummyn, v.couplings)::vn)))
         ([], ([], [], [])) vertices
 
-(* Combining vertex patterns without fields with patterns with fields
-   is tricky. *)
+(* TODO: make sure that [Fusions.of_vertices] is onlyt evaluated
+   once for efficiency. *)
+
     let to_select_vtx cascades =
       match cascades.vertices with
       | [] -> (fun c f fs -> true)
@@ -430,14 +433,14 @@ module Make (M : Model.T) (P : Momentum.T) :
           (fun c f fs ->
             let couplings, vertices = translate_vertices vertices in
             let fusions = Fusions.of_vertices vertices in
-            match Fusions.fuse fusions fs with
+            let c = unpack_constant c in
+            not (match_coupling_unpacked c couplings) &&
+            (match Fusions.fuse fusions fs with
             | [] -> true
             | fcs ->
-                let c = unpack_constant c in
-                (* not (match_coupling_unpacked c couplings) && *)
                 List.for_all
                   (fun (f', cs') -> f <> f' || not (match_coupling c cs'))
-                  fcs)
+                  fcs))
         
 (* \begin{dubious}
      Not a working implementation yet, but it isn't used either \ldots 
