@@ -379,10 +379,45 @@ module Make (M : Model.T) (P : Momentum.T) :
         | And cs -> List.for_all to_gauss' cs in
       to_gauss' cascades
 
+    module Fields =
+      struct
+        type f = M.flavor
+        type c = string list
+        let compare = compare
+        let conjugate = M.conjugate
+      end
+
+    module Fusions = Modeltools.Fusions (Fields)
+
     let to_select_vtx cascades c f fs =
       match cascades.vertices with
       | [] -> true
-      | _ -> false
+      | [{ couplings = x_cs; fields = x_fs }] ->
+          begin
+            match x_fs with
+            | [f1; f2; f3] ->
+                let fusions =
+                  Fusions.of_vertices
+                    ([((f1, f2, f3), Coupling.Scalar_Scalar_Scalar 1, x_cs)],
+                     [],
+                     []) in
+                false
+            | [f1; f2; f3; f4] ->
+                let fusions =
+                  Fusions.of_vertices
+                    ([],
+                     [((f1, f2, f3, f4), Coupling.Scalar4 1, x_cs)],
+                     []) in
+                false
+            | fs ->
+                let fusions =
+                  Fusions.of_vertices
+                    ([],
+                     [],
+                     [(fs, (), x_cs)]) in
+                false
+          end
+      | _ -> failwith "Cascades.to_select_vtx: incomplete"
         
 (* \begin{dubious}
      Not a working implementation yet, but it isn't used either \ldots 
