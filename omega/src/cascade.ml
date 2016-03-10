@@ -113,7 +113,7 @@ module Make (M : Model.T) (P : Momentum.T) :
     (* The [coupling] field must be a string, because there is
        no [Model.constant_of_string], unfortunately. *)
     type vtx =
-        { coupling : string;
+        { couplings : string list;
           fields : flavor list }
 
     type t =
@@ -193,9 +193,9 @@ module Make (M : Model.T) (P : Momentum.T) :
         | CS.X_Vertex (cs, fss) ->
             let fss = List.map (List.map M.flavor_of_string) fss in
             let expanded =
-              Product.list2
-                (fun c fs -> { coupling = c; fields = fs })
-                cs (Product.list (fun fs -> fs) fss) in
+              List.map
+                (fun fs -> { couplings = cs; fields = fs })
+                (Product.list (fun fs -> fs) fss) in
             { default with vertices = expanded }
       in
       import' cascades
@@ -235,7 +235,7 @@ module Make (M : Model.T) (P : Momentum.T) :
           String.concat " && " (List.map (fun c -> "(" ^ wf_to_string c ^ ")") cs)
 
     let vertex_to_string v =
-      "^" ^ v.coupling ^
+      "^" ^ String.concat ":" v.couplings ^
       "[" ^ String.concat "," (List.map M.flavor_to_string v.fields) ^ "]"
 
     let vertices_to_string vs =
@@ -380,8 +380,9 @@ module Make (M : Model.T) (P : Momentum.T) :
       to_gauss' cascades
 
     let to_select_vtx cascades c f fs =
-      (* TODO *)
-      true
+      match cascades.vertices with
+      | [] -> true
+      | _ -> false
         
 (* \begin{dubious}
      Not a working implementation yet, but it isn't used either \ldots 
@@ -422,7 +423,7 @@ module Make (M : Model.T) (P : Momentum.T) :
             select_wf = to_select_wf c;
             on_shell = to_on_shell c.wf;
             is_gauss = to_gauss c.wf;
-            select_vtx = to_select_vtx c.wf;
+            select_vtx = to_select_vtx c;
             partition = partition;
             description = Some (to_string c ^ partition_to_string partition) }
 
