@@ -110,8 +110,6 @@ module Make (M : Model.T) (P : Momentum.T) :
       | Any_flavor of P.t
       | And of wf list
 
-    (* The [coupling] field must be a string, because there is
-       no [Model.constant_of_string], unfortunately. *)
     type vtx =
         { couplings : string list;
           fields : flavor list }
@@ -390,6 +388,7 @@ module Make (M : Model.T) (P : Momentum.T) :
       end
 
     module Fusions = Modeltools.Fusions (Fields)
+    module Constant = Modeltools.Constant (M)
 
     let dummy3 = Coupling.Scalar_Scalar_Scalar 1
     let dummy4 = Coupling.Scalar4 1

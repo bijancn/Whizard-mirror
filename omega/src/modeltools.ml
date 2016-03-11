@@ -244,24 +244,39 @@ module Fusions (F : Flavor) : Fusions with type f = F.f and type c = F.c =
 
 module type Constant =
   sig
-    type table
-    type f
-    type c
-    val table_of_vertices :
-        (((f * f * f) * c Coupling.vertex3 * c) list
-           * ((f * f * f * f) * c Coupling.vertex4 * c) list
-           * (f list * c Coupling.vertexn * c) list) -> table
-    val of_string : table -> string -> c
+    type t
+    val of_string : string -> t
   end
 
-module Constant (F : Flavor) : Constant with type f = F.f and type c = F.c =
+module Constant (M : Model.T) : Constant with type t = M.constant =
   struct
 
-    type f = F.f
-    type c = F.c
-    type table = unit
-    let table_of_vertices _ = ()
-    let of_string _ _ = failwith "Constant().of_string: incomplete"
+    type t = M.constant
+
+    module String_Key =
+      struct
+        type t = string
+        let hash = Hashtbl.hash
+        let equal = (=)
+      end
+    module String_Hash = Hashtbl.Make (String_Key)
+
+    let table = String_Hash.create 37
+
+    let fill_table table vs =
+      List.iter
+        (fun (_, _, c) ->
+          String_Hash.add table (M.constant_symbol c) c)
+        vs
+          
+    let _ =
+      let (v3, v4, vn) = M.vertices () in
+      fill_table table v3;
+      fill_table table v4;
+      fill_table table vn
+
+    let of_string name =
+      String_Hash.find table name
 
   end
 

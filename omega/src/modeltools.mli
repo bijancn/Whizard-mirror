@@ -49,20 +49,19 @@ module type Fusions =
 module Fusions : functor (F : Flavor) ->
   Fusions with type f = F.f and type c = F.c
 
+(* \thocwmodulesection{Coupling Constants} *)
+
+(* There is no [Model.constant_of_string] function, but we can
+   construct one by inverting [Model.constant_symbol] on the set
+   of all coupling constants appearing in the vertices. *)
+
 module type Constant =
   sig
-    type table
-    type f
-    type c
-    val table_of_vertices :
-        (((f * f * f) * c Coupling.vertex3 * c) list
-           * ((f * f * f * f) * c Coupling.vertex4 * c) list
-           * (f list * c Coupling.vertexn * c) list) -> table
-    val of_string : table -> string -> c
+    type t
+    val of_string : string -> t
   end
 
-module Constant : functor (F : Flavor) ->
-  Constant with type f = F.f and type c = F.c
+module Constant : functor (M : Model.T) -> Constant with type t = M.constant
 
 (* \thocwmodulesection{Mutable Models} *)
 
