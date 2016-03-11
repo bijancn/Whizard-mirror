@@ -68320,13 +68320,6 @@ C...and rotate it to sit along +z axis.
 C...Call tau decay routine (if meaningful) and fill extra info.
         IF(KFORIG.NE.0.OR.MSTJ(28).EQ.2) THEN
           CALL PYTAUD(ITAU,IORIG,KFORIG,NDECAY)
-CAM   K() array should be set in PYTAUD in order to keep decayed particles in the list
-CAM           DO 200 II=NSAV+1,NSAV+NDECAY
-CAM             K(II,1)=1
-CAM             K(II,3)=IP
-CAM             K(II,4)=0
-CAM             K(II,5)=0
-CAM   200     CONTINUE
           N=NSAV+NDECAY
         ENDIF
  

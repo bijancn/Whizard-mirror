@@ -1,25 +1,3 @@
-! WHIZARD 1.13 Aug 06 2001
-! 
-! (C) 1999-2001 by Wolfgang Kilian <kilian@particle.uni-karlsruhe.de>
-!
-! WHIZARD is free software; you can redistribute it and/or modify it
-! under the terms of the GNU General Public License as published by 
-! the Free Software Foundation; either version 2, or (at your option)
-! any later version.
-!
-! WHIZARD is distributed in the hope that it will be useful, but
-! WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
-! GNU General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with this program; if not, write to the Free Software
-! Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! This file has been stripped of most comments.  For documentation, refer
-! to the source 'whizard.nw'
-
 ! For the LEP Monte Carlos, a standard common block has been proposed
 ! in AKV89.  We strongly recommend its use.  (The description is an
 ! abbreviated transcription of AKV89, Vol. 3, pp. 327-330).
@@ -82,9 +60,9 @@
 ! -------------------------------------------------------------
 ! hepev4 holds generator level information
 !
-! idruplh            : The identity of the current process, 
+! idruplh            : The identity of the current process,
 !                      as given by the LPRUP codes.
-! eventweightlh      : The event weight:  
+! eventweightlh      : The event weight:
 !                      Equal to (total cross section)/(total generated)
 !                      for the output of Pythia, Herwig, etc.
 ! alphaqedlh         : QED coupling alpha_em.
@@ -108,10 +86,7 @@
 !
 
 module hepevt_include_common
-
-  !use kinds, only: double !NODEP!
   use hepeup_include_common
-!   use diagnostics, only: msg_level
   implicit none
 
   public
@@ -119,24 +94,18 @@ module hepevt_include_common
   integer, parameter :: nmxhep = 4000
   integer, dimension(nmxhep) :: ialhep
   integer :: nhide
-  real, dimension(nmxhep) :: p3hide
-  !real(kind=double), dimension(nmxhep) :: p3hide
+  double precision, dimension(nmxhep) :: p3hide
   integer :: nevhep, nhep
   integer, dimension(nmxhep) :: isthep, idhep
   integer, dimension(2, nmxhep) :: jmohep, jdahep
-  !real(kind=double), dimension(5, nmxhep) :: phep
-  !real(kind=double), dimension(4, nmxhep) :: vhep
-  real, dimension(5, nmxhep) :: phep
-  real, dimension(4, nmxhep) :: vhep
+  double precision, dimension(5, nmxhep) :: phep
+  double precision, dimension(4, nmxhep) :: vhep
   common /HEPEVT/ nevhep, nhep, isthep, idhep, &
        & jmohep, jdahep, phep, vhep
 
-  real :: eventweightlh, alphaqedlh, alphaqcdlh
-  real, dimension(10) :: scalelh
-  real, dimension(3, nmxhep) :: spinlh
-  !real(kind=double) eventweightlh, alphaqedlh, alphaqcdlh
-  !real(kind=double), dimension(10) :: scalelh
-  !real(kind=double), dimension(3, nmxhep) :: spinlh
+  double precision :: eventweightlh, alphaqedlh, alphaqcdlh
+  double precision, dimension(10) :: scalelh
+  double precision, dimension(3, nmxhep) :: spinlh
   integer, dimension(2, nmxhep) :: icolorflowlh
   integer :: idruplh
 
@@ -150,29 +119,19 @@ module hepevt_include_common
 contains
 
   subroutine hepev4_fill
-
     integer :: i
     integer :: j
-    !real(kind=double)  :: sumdiff
-    real  :: sumdiff
-
-    nhepev4_call=nhepev4_call+1
-
-    spinlh(:,1:nhep_original)=0.
-    icolorflowlh(:,1:nhep_original)=0.
-
-    loop_i: do i=1,nhep_original
-       loop_j: do j=1,nup
-          check_consist: if(idup(j).eq.idhep(i)) then
-             sumdiff=sum((pup(1:3,j)-phep(1:3,i))**2)
-!             if(nhepev4_call.le.20 .and. msg_level > 2 ) print *, " idup(j),idhep(i),sumdiff= ", idup(j),idhep(i),sumdiff
-             check_sumdiff: if(sumdiff.lt.1.d-6) then
-                spinlh(3,i)=spinup(j)
-                icolorflowlh(:,i)=icolup(:,j)
-!                check_nhepev4: if(nhepev4_call.le.20 .and. msg_level > 2 ) then 
-!                   print *, " i,idhep(i),spinlh(3,i)= ", i,idhep(i),spinlh(3,i)
-!                   print *, " i,idhep(i),icolorflowlh(:,i)= ", i,idhep(i),icolorflowlh(:,i)
-!                end if check_nhepev4
+    double precision  :: sumdiff
+    nhepev4_call = nhepev4_call + 1
+    spinlh(:,1:nhep_original) = 0.
+    icolorflowlh(:,1:nhep_original) = 0.
+    loop_i: do i = 1,nhep_original
+       loop_j: do j = 1,nup
+          check_consist: if(idup(j) == idhep(i)) then
+             sumdiff = sum((pup(1:3,j) - phep(1:3,i))**2)
+             check_sumdiff: if(sumdiff < 1.d-6) then
+                spinlh(3,i) = spinup(j)
+                icolorflowlh(:,i) = icolup(:,j)
                exit loop_j
              end if check_sumdiff
           end if check_consist
@@ -182,22 +141,11 @@ contains
   end subroutine hepev4_fill
 
   subroutine hepev4_update(tauspin_pyjets)
-
-    !real(kind=double), dimension(:), intent(in) :: tauspin_pyjets
-    real, dimension(:), intent(in) :: tauspin_pyjets
+    double precision, dimension(:), intent(in) :: tauspin_pyjets
     integer :: i
-
-    spinlh(1:2,nhep_original+1:nhep)=0.
-    spinlh(3,nhep_original+1:nhep)=tauspin_pyjets(nhep_original+1:nhep)
-    icolorflowlh(:,nhep_original+1:nhep)=0.
-
-!    check_nhepev4: if(nhepev4_call.le.20 .and. msg_level > 2 ) then
-!       loop_i: do i=nhep_original+1,nhep
-!          if(abs(spinlh(3,i)).gt.epsilon(0.d0)) print *, " i,idhep(i),spinlh(3,i)= ", i,idhep(i),spinlh(3,i)
-!       end do loop_i
-!    endif check_nhepev4
-
-
+    spinlh(1:2,nhep_original+1:nhep) = 0.
+    spinlh(3,nhep_original+1:nhep) = tauspin_pyjets(nhep_original+1:nhep)
+    icolorflowlh(:,nhep_original+1:nhep) = 0.
   end subroutine hepev4_update
 
 end module hepevt_include_common

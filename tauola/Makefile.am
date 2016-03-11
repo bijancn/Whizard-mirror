@@ -44,11 +44,10 @@ endif
 noinst_LTLIBRARIES = libtauola_wo.la
 
 libtauola_wo_la_SOURCES = pytaud.f \
-  tauface-jetset.f formf.f  photos.f  tauola.f  heplst.F  tauola_photos_ini.f \
-  pyjets_common.f90 pyr_inter.f90 \
-  hepeup_include_common.f90  momdec_include_common.f90 \
-  hepevt_include_common.f90 pycomp_inter.f90 jaki_include_common.f90 taupos_include_common.f90 \
-  ilc_tauola_mod2.f90 handle_pytaud.f90
+  tauface-jetset.f formf.f photos.f tauola.f tauola_photos_ini.f \
+  hepeup_include_common.f90  \
+  hepevt_include_common.f90 \
+  ilc_tauola_mod2.f90
 
 else
 
@@ -62,10 +61,9 @@ endif
 # Explicit dependencies
 hepevt_include_common.lo: hepeup_include_common.lo
 
-ilc_tauola_mod2.lo: hepevt_include_common.lo hepeup_include_common.lo \
-  taupos_include_common.lo momdec_include_common.lo pyr_inter.lo \
-  pycomp_inter.lo pyjets_common.lo
-handle_pytaud.lo: ilc_tauola_mod2.lo
+ilc_tauola_mod2.lo: hepevt_include_common.lo hepeup_include_common.lo
+
+pytaud.lo: ilc_tauola_mod2.lo
 
 ## Profiling
 if FC_USE_PROFILING

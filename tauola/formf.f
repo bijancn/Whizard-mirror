@@ -1,5 +1,3 @@
-
-
       FUNCTION FORMOM(XMAA,XMOM)
 C     ==================================================================
 C     formfactorfor pi-pi0 gamma final state

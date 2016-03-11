@@ -709,30 +709,25 @@ c
  1    p(i)=pp(i)
       amv=(v(4)**2-v(1)**2-v(2)**2-v(3)**2)
       if (amv.le.0d0) then
-        write(6,*) 'bosstv: warning amv**2=',amv
-      endif
-      amv=sqrt(abs(amv))
-      if (idir.eq.-1) then
-        q(4)=( p(1)*v(1)+p(2)*v(2)+p(3)*v(3)+p(4)*v(4))/amv
-        wsp =(q(4)+p(4))/(v(4)+amv)
-      elseif (idir.eq.1) then
-        q(4)=(-p(1)*v(1)-p(2)*v(2)-p(3)*v(3)+p(4)*v(4))/amv
-        wsp =-(q(4)+p(4))/(v(4)+amv)
+        write(6,*) 'bostdq: warning amv**2=',amv
+        write(6,*) 'Skipping boost'
+        q(1:4) = p(1:4)
       else
-        write(nout,*)' >>> boostv: wrong value of idir = ',idir
+        amv=sqrt(abs(amv))
+        if (idir.eq.-1) then
+          q(4)=( p(1)*v(1)+p(2)*v(2)+p(3)*v(3)+p(4)*v(4))/amv
+          wsp =(q(4)+p(4))/(v(4)+amv)
+        elseif (idir.eq.1) then
+          q(4)=(-p(1)*v(1)-p(2)*v(2)-p(3)*v(3)+p(4)*v(4))/amv
+          wsp =-(q(4)+p(4))/(v(4)+amv)
+        else
+          write(nout,*)' >>> boostv: wrong value of idir = ',idir
+        endif
+        q(1)=p(1)+wsp*v(1)
+        q(2)=p(2)+wsp*v(2)
+        q(3)=p(3)+wsp*v(3)
       endif
-      q(1)=p(1)+wsp*v(1)
-      q(2)=p(2)+wsp*v(2)
-      q(3)=p(3)+wsp*v(3)
       end
-        
-
-
-
-
-
-
-
 
       FUNCTION DILOGY(X)
 C     *****************
