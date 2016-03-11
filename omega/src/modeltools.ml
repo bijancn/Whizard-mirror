@@ -242,6 +242,29 @@ module Fusions (F : Flavor) : Fusions with type f = F.f and type c = F.c =
 
   end
 
+module type Constant =
+  sig
+    type table
+    type f
+    type c
+    val table_of_vertices :
+        (((f * f * f) * c Coupling.vertex3 * c) list
+           * ((f * f * f * f) * c Coupling.vertex4 * c) list
+           * (f list * c Coupling.vertexn * c) list) -> table
+    val of_string : table -> string -> c
+  end
+
+module Constant (F : Flavor) : Constant with type f = F.f and type c = F.c =
+  struct
+
+    type f = F.f
+    type c = F.c
+    type table = unit
+    let table_of_vertices _ = ()
+    let of_string _ _ = failwith "Constant().of_string: incomplete"
+
+  end
+
 (* \thocwmodulesection{Mutable Models} *)
 
 module Mutable (FGC : sig type f and g and c end) =

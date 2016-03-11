@@ -423,7 +423,7 @@ module Make (M : Model.T) (P : Momentum.T) :
           | fs -> (cs, (v3, v4, (fs, dummyn, v.couplings)::vn)))
         ([], ([], [], [])) vertices
 
-(* TODO: make sure that [Fusions.of_vertices] is onlyt evaluated
+(* TODO: make sure that [Fusions.of_vertices] is only evaluated
    once for efficiency. *)
 
     let to_select_vtx cascades =

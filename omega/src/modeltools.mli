@@ -49,6 +49,21 @@ module type Fusions =
 module Fusions : functor (F : Flavor) ->
   Fusions with type f = F.f and type c = F.c
 
+module type Constant =
+  sig
+    type table
+    type f
+    type c
+    val table_of_vertices :
+        (((f * f * f) * c Coupling.vertex3 * c) list
+           * ((f * f * f * f) * c Coupling.vertex4 * c) list
+           * (f list * c Coupling.vertexn * c) list) -> table
+    val of_string : table -> string -> c
+  end
+
+module Constant : functor (F : Flavor) ->
+  Constant with type f = F.f and type c = F.c
+
 (* \thocwmodulesection{Mutable Models} *)
 
 module Mutable : functor (FGC : sig type f and g and c end) ->
