@@ -110,8 +110,10 @@ module Make (M : Model.T) (P : Momentum.T) :
       | Any_flavor of P.t
       | And of wf list
 
+    module Constant = Modeltools.Constant (M)
+
     type vtx =
-        { couplings : string list;
+        { couplings : M.constant list;
           fields : flavor list }
 
     type t =
@@ -192,7 +194,8 @@ module Make (M : Model.T) (P : Momentum.T) :
             let fss = List.map (List.map M.flavor_of_string) fss in
             let expanded =
               List.map
-                (fun fs -> { couplings = cs; fields = fs })
+                (fun fs -> { couplings = List.map Constant.of_string cs;
+                             fields = fs })
                 (match fss with
                 | [] -> [[]] (* Subtle: \emph{not} an empty list! *)
                 | fss -> Product.list (fun fs -> fs) fss) in
@@ -235,7 +238,7 @@ module Make (M : Model.T) (P : Momentum.T) :
           String.concat " && " (List.map (fun c -> "(" ^ wf_to_string c ^ ")") cs)
 
     let vertex_to_string v =
-      "^" ^ String.concat ":" v.couplings ^
+      "^" ^ String.concat ":" (List.map M.constant_symbol v.couplings) ^
       "[" ^ String.concat "," (List.map M.flavor_to_string v.fields) ^ "]"
 
     let vertices_to_string vs =
@@ -382,13 +385,12 @@ module Make (M : Model.T) (P : Momentum.T) :
     module Fields =
       struct
         type f = M.flavor
-        type c = string list
+        type c = M.constant list
         let compare = compare
         let conjugate = M.conjugate
       end
 
     module Fusions = Modeltools.Fusions (Fields)
-    module Constant = Modeltools.Constant (M)
 
     let dummy3 = Coupling.Scalar_Scalar_Scalar 1
     let dummy4 = Coupling.Scalar4 1
@@ -399,16 +401,14 @@ module Make (M : Model.T) (P : Momentum.T) :
       | Coupling.V4 (_, _, cs) -> cs
       | Coupling.Vn (_, _, cs) -> cs
 
-    let match_coupling c cs =
-      match unpack_constant cs with
-      | [] -> true
-      | cs -> List.mem (M.constant_symbol c) cs
-
     let match_coupling_unpacked c cs =
       match cs with
       | [] -> false
-      | cs -> List.mem (M.constant_symbol c) cs
-        
+      | cs -> List.mem c cs
+
+    let match_coupling c cs =
+      match_coupling_unpacked c (unpack_constant cs)
+
     let translate_vertices vertices =
       List.fold_left
         (fun (cs, (v3, v4, vn) as acc) v ->

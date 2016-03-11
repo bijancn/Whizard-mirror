@@ -276,7 +276,12 @@ module Constant (M : Model.T) : Constant with type t = M.constant =
       fill_table table vn
 
     let of_string name =
-      String_Hash.find table name
+      try
+        String_Hash.find table name
+      with
+      | Not_found ->
+          invalid_arg
+            ("Constant(Model).of_string: unknown coupling constant: " ^ name)
 
   end
 
