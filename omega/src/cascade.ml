@@ -401,10 +401,15 @@ module Make (M : Model.T) (P : Momentum.T) :
       | Coupling.V4 (_, _, cs) -> cs
       | Coupling.Vn (_, _, cs) -> cs
 
-    let match_coupling c cs =
-      match cs with
-      | [] -> false
+(* The empty list is a wildcard and matches any coupling: *)
+
+    let match_coupling c = function
+      | [] -> true
       | cs -> List.mem c cs
+
+(* Translate the vertices in a pair of lists: the first is the list
+   of always rejected couplings and the second the remaining
+   vertices suitable as input to [Fusions.of_vertices]. *)
 
     let translate_vertices vertices =
       List.fold_left
@@ -419,25 +424,28 @@ module Make (M : Model.T) (P : Momentum.T) :
           | fs -> (cs, (v3, v4, (fs, dummyn, v.couplings)::vn)))
         ([], ([], [], [])) vertices
 
-(* Thic makes sure that [Fusions.of_vertices] is only evaluated
+(* The following makes sure that [Fusions.of_vertices] is only evaluated
    once for efficiency. *)
 
     let to_select_vtx cascades =
       match cascades.vertices with
-      | [] -> (fun c f fs -> true)
+      | [] ->
+          (* No vertex contraints means that we always accept. *)
+          (fun c f fs -> true)
       | vertices ->
           let couplings, vertices = translate_vertices vertices in
           let fusions = Fusions.of_vertices vertices in
           (fun c f fs ->
             let c = unpack_constant c in
-            not (match_coupling c couplings) &&
-            (match Fusions.fuse fusions fs with
-            | [] -> true
-            | fcs ->
-                List.for_all
-                  (fun (f', cs') ->
-                    f <> f' && not (match_coupling c (unpack_constant cs')))
-                  fcs))
+            not (match_coupling c couplings &&
+                 match Fusions.fuse fusions fs with
+                 | [] -> true
+                 | fcs ->
+                     List.exists
+                       (fun (f', cs') ->
+                         let cs' = unpack_constant cs' in
+                         f = f' && match_coupling c cs')
+                       fcs))
         
 (* \begin{dubious}
      Not a working implementation yet, but it isn't used either \ldots 
