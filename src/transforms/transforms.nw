@@ -4838,6 +4838,8 @@ module evt_nlo
 
 <<Evt Nlo: public>>
 
+<<Evt Nlo: public parameters>>
+
 <<Evt Nlo: types>>
 
 contains
@@ -4871,6 +4873,11 @@ element, evaluated with the phase space corresponding to the emitter of the $\al
 All NLO event objects share the same event transformation. For this reason, we save the
 particle set of the current $\alpha$-region in the array [[particle_set_radiated]]. Otherwise
 it would be unretrievable if the usual particle set of the event object was used.@
+<<Evt Nlo: public parameters>>=
+  integer, parameter, public :: EVT_NLO_UNDEFINED = 0
+  integer, parameter, public :: EVT_NLO_SEPARATE_BORNLIKE = 1
+  integer, parameter, public :: EVT_NLO_SEPARATE_REAL = 2
+  integer, parameter, public :: EVT_NLO_COMBINED = 3
 <<Evt Nlo: public>>=
   public :: evt_nlo_t
 <<Evt Nlo: types>>=
@@ -4881,6 +4888,7 @@ it would be unretrievable if the usual particle set of the event object was used
     type(particle_set_t), dimension(:), allocatable :: particle_set_radiated
     type(qcd_t), pointer :: qcd => null ()
     type(nlo_event_deps_t) :: event_deps
+    integer :: mode = EVT_NLO_UNDEFINED
   contains
   <<Evt Nlo: evt nlo: TBP>>
   end type evt_nlo_t
@@ -4930,7 +4938,10 @@ object in [[nlo_controller]].
          sqrts = process_instance%get_sqrts ()
          call pcm%controller%setup_generator (generator, sqrts)
        end associate
+       print *, 'combined integration: '
+       print *, pcm%controller%settings%combined_integration
     end select
+    call evt%set_mode (process_instance) 
     call evt%setup_event_kinematics (process_instance)
   end subroutine evt_nlo_connect
 
@@ -4971,8 +4982,16 @@ is distributed over the real and Born subevents.
     if (evt%i_evaluation == 0) then
        call evt%reset_phs_identifiers ()
        call evt%evaluate_real_kinematics ()
-       weight = evt%compute_subtraction_weights ()
-       probability = probability + weight
+       if (evt%mode > EVT_NLO_SEPARATE_BORNLIKE) then
+          weight = evt%compute_subtraction_weights ()
+          if (evt%mode == EVT_NLO_SEPARATE_REAL) then
+             print *, 'Separate real'
+             probability = weight
+          else
+             print *, 'Combined'
+             probability = probability + weight
+          end if
+       end if
     else
        i_phs = evt%i_evaluation
        call evt%compute_real (i_phs)
@@ -5238,6 +5257,36 @@ emission matrix elements.
   end subroutine evt_nlo_setup_event_kinematics
 
 @ %def evt_nlo_setup_event_kinematics
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: set_mode => evt_nlo_set_mode
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_set_mode (evt, process_instance)
+    class(evt_nlo_t), intent(inout) :: evt
+    type(process_instance_t), intent(in) :: process_instance
+    integer :: i_real
+    select type (pcm => process_instance%pcm)
+    type is (pcm_instance_nlo_t)
+       associate (nlo_settings => pcm%controller%settings)
+          if (nlo_settings%combined_integration) then
+             print *, 'Mode -> Combined'
+             evt%mode = EVT_NLO_COMBINED
+          else
+             i_real = evt%process_instance%get_associated_real ()
+             if (i_real == evt%process%extract_active_component ()) then
+                print *, 'Mode -> separate real'
+                evt%mode = EVT_NLO_SEPARATE_REAL
+             else
+                print *, 'Mode -> separate Born'
+                evt%mode = EVT_NLO_SEPARATE_BORNLIKE
+             end if
+          end if
+       end associate
+    end select
+    !!!stop 'Set mode'
+  end subroutine evt_nlo_set_mode
+
+@ %def evt_nlo_set_mode
 @
 \section{Complete Events}
 
