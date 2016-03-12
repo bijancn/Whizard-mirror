@@ -224,6 +224,23 @@ ects_LDADD = $(KINDS) $(top_builddir)/src/libomega_core.la
 
 ########################################################################
 
+CASCADE_TESTS = \
+	bhabha-s-channel bhabha-t-channel
+
+cascade: cascade_driver.sh
+	$(SED) -e 's|%%cascade_tests%%|$(CASCADE_TESTS)|' \
+	  -e 's|%%srcdir%%|$(srcdir)|' \
+	  -e 's|%%SED%%|$(SED)|' \
+	  -e 's|%%top_builddir%%|$(top_builddir)|' \
+	  -e 's|%%OCAML_NATIVE_EXT%%|$(OCAML_NATIVE_EXT)|' $< >$@
+	chmod +x $@
+
+TESTS += cascade
+# EXTRA_PROGRAMS +=
+# EXTRA_DIST += $(CASCADE_TESTS)
+
+########################################################################
+
 TESTS += ward
 EXTRA_PROGRAMS += ward
 EXTRA_DIST += ward_driver.sh
