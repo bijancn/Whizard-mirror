@@ -24,7 +24,7 @@ for name in $cascade_tests; do
   cascade="`$SED -n 2p $file`"
   $SED -n '3,$p' $file >$name.expected
   $omega_SM -scatter "$process" -cascade "$cascade" \
-	    -summary -forest -quiet -summary 2>$name.result
+	    -summary -forest -quiet 2>$name.result
   diff $name.expected $name.result
   rc=$?
   if test "$rc" -ne 0; then

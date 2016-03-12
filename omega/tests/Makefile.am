@@ -227,9 +227,10 @@ ects_LDADD = $(KINDS) $(top_builddir)/src/libomega_core.la
 TESTS += cascade
 
 CASCADE_TESTS = \
-	bhabha-s-channel.cascade bhabha-t-channel.cascade
+	bhabha-s-channel.cascade bhabha-t-channel.cascade \
+	ww-onlycc.cascade ww-notgc.cascade
 
-cascade: cascade_driver.sh
+cascade: cascade_driver.sh Makefile
 	$(SED) -e 's|%%cascade_tests%%|$(CASCADE_TESTS)|' \
 	  -e 's|%%srcdir%%|$(srcdir)|' \
 	  -e 's|%%SED%%|$(SED)|' \
