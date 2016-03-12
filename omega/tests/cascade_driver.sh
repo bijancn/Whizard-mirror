@@ -19,7 +19,7 @@ omega_SM="$top_builddir/bin/omega_SM$OCAML_NATIVE_EXT"
 
 # Run the tests:
 for name in $cascade_tests; do
-  file="$srcdir/$name.cascade"
+  file="$srcdir/$name"
   process="`$SED -n 1p $file`"
   cascade="`$SED -n 2p $file`"
   $SED -n '3,$p' $file >$name.expected
