@@ -25,6 +25,7 @@
 module type T =
   sig
 
+    type constant
     type flavor
     type p
 
@@ -62,6 +63,9 @@ module type T =
 (* [is_gauss s p] *)
     val is_gauss : selectors -> flavor -> p -> bool
 
+    val select_vtx : selectors -> constant Coupling.t ->
+      flavor -> flavor list -> bool
+
 (* [partition s] returns a partition of the external particles that can not
    be reordered without violating the cascade constraints. *)
     val partition : selectors -> int list list
@@ -72,7 +76,9 @@ module type T =
   end
 
 module Make (M : Model.T) (P : Momentum.T) :
-    T with type flavor = M.flavor and type p = P.t
+    T with type flavor = M.flavor
+       and type constant = M.constant
+       and type p = P.t
 
 (*i
  *  Local Variables:

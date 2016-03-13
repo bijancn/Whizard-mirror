@@ -47,11 +47,14 @@ rule token = parse
   | '#'        { GAUSS }
   | '!'        { NOT }
   | '&' '&'?   { AND }
-  | '|' '|'?   { OR }
   | '('        { LPAREN }
   | ')'        { RPAREN }
-  | char [^ ' ' '\t' '\n' '|' '&' '(' ')' ':']*
-               { FLAVOR (Lexing.lexeme lexbuf) }
+  | '^'        { HAT }
+  | ','        { COMMA }
+  | '['        { LBRACKET }
+  | ']'        { RBRACKET }
+  | char [^ ' ' '\t' '\n' '&' '(' ')' '[' ']' ':' ',' ]*
+               { STRING (Lexing.lexeme lexbuf) }
   | '"' [^ '"']* '"'
-               { FLAVOR (unquote (Lexing.lexeme lexbuf)) }
+               { STRING (unquote (Lexing.lexeme lexbuf)) }
   | eof        { END }

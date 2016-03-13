@@ -242,6 +242,49 @@ module Fusions (F : Flavor) : Fusions with type f = F.f and type c = F.c =
 
   end
 
+module type Constant =
+  sig
+    type t
+    val of_string : string -> t
+  end
+
+module Constant (M : Model.T) : Constant with type t = M.constant =
+  struct
+
+    type t = M.constant
+
+    module String_Key =
+      struct
+        type t = string
+        let hash = Hashtbl.hash
+        let equal = (=)
+      end
+    module String_Hash = Hashtbl.Make (String_Key)
+
+    let table = String_Hash.create 37
+
+    let fill_table table vs =
+      List.iter
+        (fun (_, _, c) ->
+          String_Hash.add table (M.constant_symbol c) c)
+        vs
+          
+    let _ =
+      let (v3, v4, vn) = M.vertices () in
+      fill_table table v3;
+      fill_table table v4;
+      fill_table table vn
+
+    let of_string name =
+      try
+        String_Hash.find table name
+      with
+      | Not_found ->
+          invalid_arg
+            ("Constant(Model).of_string: unknown coupling constant: " ^ name)
+
+  end
+
 (* \thocwmodulesection{Mutable Models} *)
 
 module Mutable (FGC : sig type f and g and c end) =

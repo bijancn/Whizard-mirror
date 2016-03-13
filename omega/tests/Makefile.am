@@ -224,6 +224,24 @@ ects_LDADD = $(KINDS) $(top_builddir)/src/libomega_core.la
 
 ########################################################################
 
+TESTS += cascade
+
+CASCADE_TESTS = \
+	bhabha-s-channel.cascade bhabha-t-channel.cascade \
+	ww-onlycc.cascade ww-notgc.cascade
+
+cascade: cascade_driver.sh Makefile
+	$(SED) -e 's|%%cascade_tests%%|$(CASCADE_TESTS)|' \
+	  -e 's|%%srcdir%%|$(srcdir)|' \
+	  -e 's|%%SED%%|$(SED)|' \
+	  -e 's|%%top_builddir%%|$(top_builddir)|' \
+	  -e 's|%%OCAML_NATIVE_EXT%%|$(OCAML_NATIVE_EXT)|' $< >$@
+	chmod +x $@
+
+EXTRA_DIST += cascade_driver.sh $(CASCADE_TESTS)
+
+########################################################################
+
 TESTS += ward
 EXTRA_PROGRAMS += ward
 EXTRA_DIST += ward_driver.sh
@@ -537,7 +555,7 @@ clean-local: clean-macosx
 		*.o *.cmi *.cmo *.cmx amplitude_*.f90 *.$(OMEGA_CACHE_SUFFIX) \
 		$(EXTRA_PROGRAMS) ects.f90 ward.f90 compare_*.f90 \
 		omega_testtools.f90 test_omega95*.f90 benchmark*.f90 \
-		*.hbc *wrappers.f90
+		*.hbc *wrappers.f90 cascade
 if FC_SUBMODULES
 	-rm -f *.smod
 endif
