@@ -191,11 +191,11 @@ module Make (M : Model.T) (P : Momentum.T) :
             let fs = List.map M.flavor_of_string fs in
             { default with flavors = uniq (fs @ List.map M.conjugate fs) }
         | CS.X_Vertex (cs, fss) ->
-            let fss = List.map (List.map M.flavor_of_string) fss in
+            let cs = List.map Constant.of_string cs
+            and fss = List.map (List.map M.flavor_of_string) fss in
             let expanded =
               List.map
-                (fun fs -> { couplings = List.map Constant.of_string cs;
-                             fields = fs })
+                (fun fs -> { couplings = cs; fields = fs })
                 (match fss with
                 | [] -> [[]] (* Subtle: \emph{not} an empty list! *)
                 | fss -> Product.list (fun fs -> fs) fss) in
@@ -424,28 +424,68 @@ module Make (M : Model.T) (P : Momentum.T) :
           | fs -> (cs, (v3, v4, (fs, dummyn, v.couplings)::vn)))
         ([], ([], [], [])) vertices
 
-(* The following makes sure that [Fusions.of_vertices] is only evaluated
-   once for efficiency. *)
+(*i
+    let fusion_to_string c f fs =
+      M.flavor_to_string f ^ " <- " ^ M.constant_symbol c ^ "[" ^
+      String.concat " , " (List.map M.flavor_to_string fs) ^ "]"
+i*)
 
     let to_select_vtx cascades =
       match cascades.vertices with
       | [] ->
-          (* No vertex contraints means that we always accept. *)
+          (* No vertex constraints means that we always accept. *)
           (fun c f fs -> true)
       | vertices ->
-          let couplings, vertices = translate_vertices vertices in
-          let fusions = Fusions.of_vertices vertices in
-          (fun c f fs ->
-            let c = unpack_constant c in
-            not (match_coupling c couplings &&
-                 match Fusions.fuse fusions fs with
-                 | [] -> true
-                 | fcs ->
-                     List.exists
-                       (fun (f', cs') ->
-                         let cs' = unpack_constant cs' in
-                         f = f' && match_coupling c cs')
-                       fcs))
+          match translate_vertices vertices with
+          | [], ([],[],[]) ->
+              (* If [cascades.vertices] is not empty, we mustn't
+                 get here \ldots *)
+              failwith "Cascade.to_select_vtx: unexpected"
+          | couplings, ([],[],[]) ->
+              (* No constraints on the fields.  Just make sure that the
+		 coupling [c] doesn't appear in the vetoed [couplings]. *)
+              (fun c f fs ->
+                let c = unpack_constant c in
+                not (List.mem c couplings))
+          | [], vertices ->
+              (* Make sure that [Fusions.of_vertices] is only evaluated
+		 once for efficiency. *)
+              let fusions = Fusions.of_vertices vertices in
+              (fun c f fs ->
+                let c = unpack_constant c in
+                match Fusions.fuse fusions fs with
+                | [] ->
+                    (* None of the vetoed [vertices] can match.  *)
+                    true
+                | fcs ->
+                    (* Make sure that none of the vetoed [vertices]
+			matches.  *)
+                    not (List.exists
+			   (fun (f', cs') ->
+                             let cs' = unpack_constant cs' in
+                             f = f' && match_coupling c cs')
+			   fcs))
+          | couplings, vertices ->
+              (* Make sure that [Fusions.of_vertices] is only evaluated
+		 once for efficiency. *)
+              let fusions = Fusions.of_vertices vertices in
+              (fun c f fs ->
+                let c = unpack_constant c in
+                if List.mem c couplings then
+		  false
+		else
+                  match Fusions.fuse fusions fs with
+                  | [] ->
+		      (* None of the vetoed [vertices] can match.  *)
+		      true
+                  | fcs ->
+		      (* Make sure that none of the vetoed [vertices]
+			 matches.  *)
+                      not (List.exists
+                             (fun (f', cs') ->
+                               let cs' = unpack_constant cs' in
+                               f = f' && match_coupling c cs')
+                             fcs))
         
 (* \begin{dubious}
      Not a working implementation yet, but it isn't used either \ldots 
@@ -490,6 +530,11 @@ module Make (M : Model.T) (P : Momentum.T) :
             partition = partition;
             description = Some (to_string c ^ partition_to_string partition) }
 
+(*i
+    let to_selectors cascades =
+      prerr_endline (">>> " ^ to_string cascades);
+      to_selectors cascades
+i*)
   end
 
 (*i
