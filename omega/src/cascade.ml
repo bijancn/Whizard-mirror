@@ -396,17 +396,6 @@ module Make (M : Model.T) (P : Momentum.T) :
     let dummy4 = Coupling.Scalar4 1
     let dummyn = ()
 
-    let unpack_constant = function
-      | Coupling.V3 (_, _, cs) -> cs
-      | Coupling.V4 (_, _, cs) -> cs
-      | Coupling.Vn (_, _, cs) -> cs
-
-(* The empty list is a wildcard and matches any coupling: *)
-
-    let match_coupling c = function
-      | [] -> true
-      | cs -> List.mem c cs
-
 (* Translate the vertices in a pair of lists: the first is the list
    of always rejected couplings and the second the remaining
    vertices suitable as input to [Fusions.of_vertices]. *)
@@ -430,6 +419,20 @@ module Make (M : Model.T) (P : Momentum.T) :
       String.concat " , " (List.map M.flavor_to_string fs) ^ "]"
 i*)
 
+    let unpack_constant = function
+      | Coupling.V3 (_, _, cs) -> cs
+      | Coupling.V4 (_, _, cs) -> cs
+      | Coupling.Vn (_, _, cs) -> cs
+
+(* Sometimes, the empty list is a wildcard and matches any coupling: *)
+
+    let match_coupling c cs =
+      List.mem c cs
+
+    let match_coupling_wildcard c = function
+      | [] -> true
+      | cs -> match_coupling c cs
+
     let to_select_vtx cascades =
       match cascades.vertices with
       | [] ->
@@ -446,46 +449,27 @@ i*)
 		 coupling [c] doesn't appear in the vetoed [couplings]. *)
               (fun c f fs ->
                 let c = unpack_constant c in
-                not (List.mem c couplings))
-          | [], vertices ->
-              (* Make sure that [Fusions.of_vertices] is only evaluated
-		 once for efficiency. *)
-              let fusions = Fusions.of_vertices vertices in
-              (fun c f fs ->
-                let c = unpack_constant c in
-                match Fusions.fuse fusions fs with
-                | [] ->
-                    (* None of the vetoed [vertices] can match.  *)
-                    true
-                | fcs ->
-                    (* Make sure that none of the vetoed [vertices]
-			matches.  *)
-                    not (List.exists
-			   (fun (f', cs') ->
-                             let cs' = unpack_constant cs' in
-                             f = f' && match_coupling c cs')
-			   fcs))
+                not (match_coupling c couplings))
           | couplings, vertices ->
               (* Make sure that [Fusions.of_vertices] is only evaluated
 		 once for efficiency. *)
               let fusions = Fusions.of_vertices vertices in
               (fun c f fs ->
                 let c = unpack_constant c in
-                if List.mem c couplings then
+		(* Make sure that none of the vetoed [couplings] matches.
+		   Here an empty [couplings] list is \emph{not} a
+		   wildcard. *)
+                if match_coupling c couplings then
 		  false
 		else
-                  match Fusions.fuse fusions fs with
-                  | [] ->
-		      (* None of the vetoed [vertices] can match.  *)
-		      true
-                  | fcs ->
-		      (* Make sure that none of the vetoed [vertices]
-			 matches.  *)
-                      not (List.exists
-                             (fun (f', cs') ->
-                               let cs' = unpack_constant cs' in
-                               f = f' && match_coupling c cs')
-                             fcs))
+		  (* Also make sure that none of the vetoed [vertices]
+		     matches.  Here an empty [couplings] list \emph{is}
+		     a wildcard. *)
+                  not (List.exists
+                         (fun (f', cs') ->
+                           let cs' = unpack_constant cs' in
+                           f = f' && match_coupling_wildcard c cs')
+                         (Fusions.fuse fusions fs)))
         
 (* \begin{dubious}
      Not a working implementation yet, but it isn't used either \ldots 
