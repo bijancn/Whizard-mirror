@@ -4817,6 +4817,7 @@ This procedure is implemented using the [[evt_nlo]] transform.
 module evt_nlo
 
 <<Use kinds>>
+<<Use strings>>
   use io_units, only: given_output_unit
   use constants
   use lorentz
@@ -4859,7 +4860,7 @@ end module evt_nlo
      type(phs_identifier_t), dimension(:), allocatable :: phs_identifiers
      integer, dimension(:), allocatable :: i_evaluation_to_i_phs
      integer, dimension(:), allocatable :: alr_to_i_con
-     integer :: n_phs
+     integer :: n_phs = 0
   end type nlo_event_deps_t
 
 @ %def nlo_event_deps_t
@@ -4973,36 +4974,53 @@ is distributed over the real and Born subevents.
     integer :: i_phs
     call print_debug_info ()
     evt%particle_set = evt%previous%particle_set
-    if (evt%i_evaluation == 0) then
-       call evt%reset_phs_identifiers ()
-       call evt%evaluate_real_kinematics ()
-       if (evt%mode > EVT_NLO_SEPARATE_BORNLIKE) then
+    if (evt%mode > EVT_NLO_SEPARATE_BORNLIKE) then
+       if (evt%i_evaluation == 0) then
+          call evt%reset_phs_identifiers ()
+          call evt%evaluate_real_kinematics ()
           weight = evt%compute_subtraction_weights ()
           if (evt%mode == EVT_NLO_SEPARATE_REAL) then
              probability = weight
           else
              probability = probability + weight
           end if
+       else
+          i_phs = evt%i_evaluation
+          call evt%compute_real (i_phs)
+          probability = evt%sqme_rad
        end if
-    else
-       i_phs = evt%i_evaluation
-       call evt%compute_real (i_phs)
-       probability = evt%sqme_rad
+       probability = probability * (size (evt%event_deps%phs_identifiers) + 1)
     end if
-    probability = probability * (size (evt%event_deps%phs_identifiers) + 1)
     call msg_debug (D_TRANSFORMS, "probability (after)", probability)
     evt%particle_set_exists = .true.
   contains
+    function status_code_to_string (mode) result (smode)
+      type(string_t) :: smode
+      integer, intent(in) :: mode
+      select case (mode)
+      case (EVT_NLO_UNDEFINED)
+         smode = var_str ("Undefined")
+      case (EVT_NLO_SEPARATE_BORNLIKE)
+         smode = var_str ("Born-like")
+      case (EVT_NLO_SEPARATE_REAL)
+         smode = var_str ("Real")
+      case (EVT_NLO_COMBINED)
+         smode = var_str ("Combined")
+      end select  
+    end function status_code_to_string
+
     subroutine print_debug_info ()
        call msg_debug (D_TRANSFORMS, "evt_nlo_generate_weighted")
-       call msg_debug (D_TRANSFORMS, "mode", evt%mode)
+       call msg_debug (D_TRANSFORMS, char ("mode: " // status_code_to_string (evt%mode)))
        call msg_debug (D_TRANSFORMS, "probability (before)", probability)
        call msg_debug (D_TRANSFORMS, "evt%i_evaluation", evt%i_evaluation)
        if (debug2_active (D_TRANSFORMS)) then
-          if (evt%i_evaluation == 0) then
-             print *, 'Evaluate subtraction component'
-          else
-             print *, 'Evaluate radiation component'
+          if (evt%mode > EVT_NLO_SEPARATE_BORNLIKE) then
+             if (evt%i_evaluation == 0) then
+                print *, 'Evaluate subtraction component'
+             else
+                print *, 'Evaluate radiation component'
+             end if
           end if
        end if
     end subroutine print_debug_info
