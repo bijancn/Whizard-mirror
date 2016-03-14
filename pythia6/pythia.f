@@ -68320,6 +68320,12 @@ C...and rotate it to sit along +z axis.
 C...Call tau decay routine (if meaningful) and fill extra info.
         IF(KFORIG.NE.0.OR.MSTJ(28).EQ.2) THEN
           CALL PYTAUD(ITAU,IORIG,KFORIG,NDECAY)
+          DO 200 II=NSAV+1,NSAV+NDECAY
+            K(II,1)=1
+            K(II,3)=IP
+            K(II,4)=0
+            K(II,5)=0
+  200     CONTINUE
           N=NSAV+NDECAY
         ENDIF
  

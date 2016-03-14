@@ -65,7 +65,6 @@ C store daughter pointers
       DATA NCN/0/
       DATA NCNMX/50/
       SAVE NCN,NCNMX
-
       IF(MODE.EQ.-1) THEN
 C     ***********************
 

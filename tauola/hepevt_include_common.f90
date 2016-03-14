@@ -92,14 +92,15 @@ module hepevt_include_common
   public
 
   integer, parameter :: nmxhep = 4000
-  integer, dimension(nmxhep) :: ialhep
-  integer :: nhide
-  double precision, dimension(nmxhep) :: p3hide
+  !integer, dimension(nmxhep) :: ialhep
+  !integer :: nhide
+  !double precision, dimension(nmxhep) :: p3hide
+
   integer :: nevhep, nhep
   integer, dimension(nmxhep) :: isthep, idhep
   integer, dimension(2, nmxhep) :: jmohep, jdahep
-  double precision, dimension(5, nmxhep) :: phep
-  double precision, dimension(4, nmxhep) :: vhep
+  real*8, dimension(5, nmxhep) :: phep
+  real*8, dimension(4, nmxhep) :: vhep
   common /HEPEVT/ nevhep, nhep, isthep, idhep, &
        & jmohep, jdahep, phep, vhep
 
