@@ -278,9 +278,6 @@ contains
        nproducts = nproducts + 1
        psum = psum + phep(:,i)
        p(n+nproducts,:) = phep(:,i)
-       !!! BCN: Pythia does not like these status codes, i.e. it cannot produce
-       !!! momenta with momentum conservation. We reactivate automatic status
-       !!! code setting in pythia
        if ( isthep(i) == 1 ) then
           k(n+nproducts,1) = 1
           k(n+nproducts,4) = 0
