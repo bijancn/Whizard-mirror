@@ -584,7 +584,6 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/parton_shower_1.ref \
     functional_tests/ref-output/pythia6_1.ref \
     functional_tests/ref-output/pythia6_2.ref \
-    functional_tests/ref-output/tauola_1.ref \
     functional_tests/ref-output/mlm_matching_fsr.ref \
     functional_tests/ref-output/mlm_pythia6_isr.ref \
     functional_tests/ref-output/hepmc_1.ref \
@@ -698,6 +697,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/circe1_photons_5.ref \
     functional_tests/ref-output-double/pythia6_3.ref \
     functional_tests/ref-output-double/pythia6_4.ref \
+    functional_tests/ref-output-double/tauola_1.ref \
     functional_tests/ref-output-double/mlm_matching_isr.ref \
     functional_tests/ref-output-double/ewa_1.ref \
     functional_tests/ref-output-double/ewa_2.ref \
@@ -747,6 +747,7 @@ REF_OUTPUT_FILES_EXT = \
     functional_tests/ref-output-ext/powheg_1.ref \
     functional_tests/ref-output-ext/pythia6_3.ref \
     functional_tests/ref-output-ext/pythia6_4.ref \
+    functional_tests/ref-output-ext/tauola_1.ref \
     functional_tests/ref-output-ext/ewa_2.ref \
     functional_tests/ref-output-ext/ewa_3.ref \
     functional_tests/ref-output-ext/ilc.ref \
@@ -764,6 +765,7 @@ REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/powheg_1.ref \
     functional_tests/ref-output-quad/pythia6_3.ref \
     functional_tests/ref-output-quad/pythia6_4.ref \
+    functional_tests/ref-output-quad/tauola_1.ref \
     functional_tests/ref-output-quad/ewa_2.ref \
     functional_tests/ref-output-quad/ewa_3.ref \
     functional_tests/ref-output-quad/ilc.ref \
