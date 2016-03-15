@@ -5233,10 +5233,11 @@ configuration finalizer may include closing an open scratch file.
     class(phs_config_t), intent(in), allocatable :: phs_config_template
     type(blha_template_t), intent(inout), optional :: blha_template
     type(fks_template_t), intent(in), optional :: fks_template
+    logical :: activate_blha
 
     component%index = i_component
     component%config => meta%lib%get_component_def_ptr (meta%id, i_component)
-    allocate (component%core, source=core_template)
+    allocate (component%core, source = core_template)
     call component%core%init (component%config%get_core_def_ptr (), &
          meta%lib, meta%id, i_component)
     if (present (fks_template)) then
@@ -5244,7 +5245,9 @@ configuration finalizer may include closing an open scratch file.
     end if
     select type (core => component%core)
     class is (prc_blha_t)
-       if (component%config%is_active_component()) then
+       activate_blha = component%config%is_active_component () &
+          .or. component%config%get_nlo_type () == NLO_SUBTRACTION
+       if (activate_blha) then
           if (present (blha_template)) then
              call core%init_blha (blha_template)
           else
@@ -7335,8 +7338,13 @@ imaginary part of the terms, which should be zero anyway.
     logical :: bad_point
     if (term%nlo_type /= NLO_MISMATCH) return
     associate (nlo_controller => component%nlo_controller)
+       select type (core_sub_born => component%config%core_sub_born)
+       class is (prc_blha_t)
+          call core_sub_born%update_alpha_s &
+             (component%core_state, term%fac_scale)
+       end select
        call nlo_controller%set_alpha_s_born &
-          (component%config%core%get_alpha_s (component%core_state))
+          (component%config%core_sub_born%get_alpha_s (component%core_state))
        call term%nlo_controller%evaluate_color_correlations &
           (component%config%core_sub_born, component%core_state, &
           term%fac_scale, 1, 1, bad_point)
@@ -10761,18 +10769,24 @@ and directly set the coupling value that comes together with a particle set.
     logical :: val
     class(process_instance_t), intent(in) :: instance
     integer :: i
+    logical :: skip
     val = .false.
     do i = 1, size (instance%component)
        if (associated (instance%component(i)%config)) then
-          if (.not. instance%component(i)%config%is_active_component ()) cycle
-          select type (core => instance%component(i)%config%core)
-          class is (prc_blha_t)
-             val = .true.
-             exit
-          class is (prc_threshold_t)
-             val = .true.
-             exit
-          end select
+          !!! Always take into account the subtraction component
+          associate (config => instance%component(i)%config)
+             skip = (.not. config%get_nlo_type () == NLO_SUBTRACTION) &
+                .and. (.not. config%is_active_component ())
+             if (skip) cycle
+             select type (core => config%core)
+             class is (prc_blha_t)
+                val = .true.
+                exit
+             class is (prc_threshold_t)
+                val = .true.
+                exit
+             end select
+          end associate
        end if
     end do
   end function process_instance_needs_extra_code
@@ -10911,13 +10925,18 @@ one has to bring NLO information there.
     type(string_t) :: libname
     integer :: i
     type(process_component_t), pointer :: component_config => null ()
+    logical :: skip
 
     if (instance%has_blha_component ())  &
          call instance%create_blha_interface (beam_structure)
     do i = 1, size (instance%component)
        component_config => instance%component(i)%config
        if (associated (component_config)) then
-          if (.not. component_config%config%is_active_component ()) cycle
+          !!! Always load libraries for the subtraction component so that
+          !!! other components can use it
+          skip = (.not. component_config%get_nlo_type () == NLO_SUBTRACTION) &
+             .and. (.not. component_config%config%is_active_component ())
+          if (skip) cycle
           select type (core => component_config%core)
           type is (prc_gosam_t)
              libname = instance%process%get_library_name ()
