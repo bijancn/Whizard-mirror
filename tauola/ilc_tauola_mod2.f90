@@ -221,7 +221,6 @@ contains
   subroutine do_dexay (itau, p_dexay, id_dexay)
     integer, intent(in) :: itau, id_dexay
     double precision, dimension(5), intent(in) :: p_dexay
-    double precision, dimension(5) :: psum
     integer   :: i
     tauspin_pyjets(itau) = spin_dexay
     nhep = 2
@@ -273,10 +272,8 @@ contains
     end if check_tau_sign
 
     nproducts = 0
-    psum = 0
     loop_products: do i = 3, nhep
        nproducts = nproducts + 1
-       psum = psum + phep(:,i)
        p(n+nproducts,:) = phep(:,i)
        if ( isthep(i) == 1 ) then
           k(n+nproducts,1) = 1
@@ -294,7 +291,6 @@ contains
           k(n+nproducts,3) = itau
        endif
     end do loop_products
-    print *, 'psum =    ', psum !!! Debugging
   end subroutine do_dexay
 
   function ilc_tauola_get_helicity_mod (itau) result (the_helicity)
