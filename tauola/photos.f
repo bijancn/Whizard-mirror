@@ -2843,11 +2843,9 @@ C.
 C.    Author(s):  Z. Was                          Created at:  11/12/00
 C.						  Modified  :  
 C.----------------------------------------------------------------------
-      INTEGER IPHQRK,MODCOR,MODOP
-      INTEGER PHLUN
+      INTEGER IPHQRK
+      INTEGER PHLUN,MODCOR,MODOP
       COMMON/PHOLUN/PHLUN
-
-      SAVE MODOP
       DATA MODOP  /0/
       IF (MODCOR.NE.0) THEN 
 C       INITIALIZATION

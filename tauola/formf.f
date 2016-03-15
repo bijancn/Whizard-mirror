@@ -153,22 +153,23 @@ C     P-WAVE BREIT-WIGNER  FOR RHO
 C **********************************************************
       REAL S,M,G,XM1,XM2
       REAL PI,QS,QM,W,GS
+      SAVE PI
       DATA INIT /0/
 C ------------ PARAMETERS --------------------
       IF (INIT.EQ.0) THEN
-      INIT=1
-      PI=3.141592654
+        INIT=1
+        PI=3.141592654
 C -------  BREIT-WIGNER -----------------------
-         ENDIF
-       IF (S.GT.(XM1+XM2)**2) THEN
-         QS=SQRT(ABS((S   -(XM1+XM2)**2)*(S   -(XM1-XM2)**2)))/SQRT(S)
-         QM=SQRT(ABS((M**2-(XM1+XM2)**2)*(M**2-(XM1-XM2)**2)))/M
-         W=SQRT(S)
-         GS=G*(M/W)**2*(QS/QM)**3
-       ELSE
-         GS=0.0
-       ENDIF
-         BWIGM=M**2/CMPLX(M**2-S,-SQRT(S)*GS)
+      ENDIF
+      IF (S.GT.(XM1+XM2)**2) THEN
+        QS=SQRT(ABS((S   -(XM1+XM2)**2)*(S   -(XM1-XM2)**2)))/SQRT(S)
+        QM=SQRT(ABS((M**2-(XM1+XM2)**2)*(M**2-(XM1-XM2)**2)))/M
+        W=SQRT(S)
+        GS=G*(M/W)**2*(QS/QM)**3
+      ELSE
+        GS=0.0
+      ENDIF
+      BWIGM=M**2/CMPLX(M**2-S,-SQRT(S)*GS)
       RETURN
       END
       COMPLEX FUNCTION FPIKM(W,XM1,XM2)
@@ -177,6 +178,7 @@ C     PION FORM FACTOR
 C **********************************************************
       COMPLEX BWIGM
       REAL ROM,ROG,ROM1,ROG1,BETA1,PI,PIM,S,W
+      SAVE PI,PIM,ROM,ROG,ROM1,ROG1,BETA1
       EXTERNAL BWIG
       DATA  INIT /0/
 C
@@ -203,6 +205,7 @@ C     PION FORM FACTOR
 C **********************************************************
       COMPLEX BWIGM
       REAL ROM,ROG,ROM1,ROG1,PI,PIM,S,W
+      SAVE PI,PIM,ROM,ROG,ROM1,ROG1,ROG2,ROM2,BETA,DELTA
       EXTERNAL BWIG
       DATA  INIT /0/
 C
@@ -285,14 +288,14 @@ C ------------  3 pi hadronic state (a1)
         XM1=AMPIZ
         XM2=AMRO
         M  =AMPIP
-         IF (S.GT.(XM1+XM2)**2) THEN
-           QS=SQRT(ABS((S   -(XM1+XM2)**2)*(S   -(XM1-XM2)**2)))/SQRT(S)
-           QM=SQRT(ABS((M**2-(XM1+XM2)**2)*(M**2-(XM1-XM2)**2)))/M
-           W=SQRT(S)
-           GS=G*(M/W)**2*(QS/QM)**5
-         ELSE
-           GS=0.0
-         ENDIF
+        W=SQRT(S)
+        IF (S.GT.(XM1+XM2)**2) THEN
+          QS=SQRT(ABS((S   -(XM1+XM2)**2)*(S   -(XM1-XM2)**2)))/SQRT(S)
+          QM=SQRT(ABS((M**2-(XM1+XM2)**2)*(M**2-(XM1-XM2)**2)))/M
+          GS=G*(M/W)**2*(QS/QM)**5
+        ELSE
+          GS=0.0
+        ENDIF
         GAMX=GS*W/M
         FORM4=G1*G2*FPIP/AMRO**4/AMPIP**2
      $       *AMPIP**2*WIGNER(QQ,AMPIP,GAMX)
