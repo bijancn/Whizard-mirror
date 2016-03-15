@@ -1,4 +1,5 @@
       SUBROUTINE JAKER(JAK)
+        IMPLICIT double precision (A-H,O-Z)
 C     *********************
 C
 C **********************************************************************
@@ -40,10 +41,7 @@ C
 C     called by : DEXAY
 C ----------------------------------------------------------------------
       COMMON / TAUBRA / GAMPRT(30),JLIST(30),NCHAN
-
-
-
-
+      logical :: condition
       double precision   CUMUL(30),RRR(1)
 C
       IF(NCHAN.LE.0.OR.NCHAN.GT.30) GOTO 902
@@ -53,7 +51,12 @@ C
       SUM=SUM+GAMPRT(I)
   20  CUMUL(I)=SUM
       DO 25 I=NCHAN,1,-1
-      IF(RRR(1).LT.CUMUL(I)/CUMUL(NCHAN)) JI=I
+      if(cumul(nchan) > 0) then
+         condition = RRR(1).LT.CUMUL(I)/CUMUL(NCHAN)
+      else
+         condition = .true.
+      end if
+      IF(condition) JI=I
   25  CONTINUE
       JAK=JLIST(JI)
       RETURN
@@ -1012,7 +1015,7 @@ C
       double precision RRR(6)
       LOGICAL IHARD
       DATA PI /3.141592653589793238462643D0/
-      XLAM(X,Y,Z)=SQRT((X-Y-Z)**2-4.0*Y*Z)
+      !XLAM(X,Y,Z)=SQRT((X-Y-Z)**2-4.0*Y*Z)
 C AMRO, GAMRO IS ONLY A PARAMETER FOR GETING HIGHT EFFICIENCY
 C
 C THREE BODY PHASE SPACE NORMALISED AS IN BJORKEN-DRELL
@@ -1186,7 +1189,7 @@ C
       ENDIF
       RETURN
       END
-      FUNCTION SQM2(ITDKRC,QP,XN,XA,XK,AK0,HV)
+      double precision FUNCTION SQM2(ITDKRC,QP,XN,XA,XK,AK0,HV)
 C
 C **********************************************************************
 C     REAL PHOTON MATRIX ELEMENT SQUARED                               *
@@ -1264,7 +1267,7 @@ C
   5     HV(I)=S0(I)/S1-1.D0
       RETURN
       END
-      FUNCTION THB(ITDKRC,QP,XN,XA,AK0,HV)
+      double precision FUNCTION THB(ITDKRC,QP,XN,XA,AK0,HV)
 C
 C **********************************************************************
 C     BORN +VIRTUAL+SOFT PHOTON MATRIX ELEMENT**2  O(ALPHA)            *
@@ -1541,7 +1544,8 @@ C
       double precision  HV(4),PRO(4),PNU(4),PIC(4),PIZ(4)
       double precision  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4)
       double precision RRR(3)
-      double precision SWT, SSWT
+      double precision WT, SWT, SSWT
+      SAVE NEVRAW, NEVACC, NEVOVR, WT, SWT, SSWT, WTMAX
       DATA PI /3.141592653589793238462643/
       DATA IWARM/0/
 C
@@ -2188,8 +2192,8 @@ C
       double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       double precision  HV(4),PT(4),PN(4),PKS(4),
      *                  PKK(4),PPI(4),QQ(4),RR1(1)
-cam   COMPLEX BWIGS
-      COMPLEX BWIGM
+cam   double complex BWIGS
+      double complex BWIGM
       DATA PI /3.141592653589793238462643/
 C
       DATA ICONT /0/
@@ -2264,8 +2268,8 @@ C AMPLITUDE
         BRAK=(GV**2+GA**2)*(2*PRODPQ*PRODNQ-PRODPN*QQ2)
      &      +(GV**2-GA**2)*AMTAU*AMNUTA*QQ2
 C A SIMPLE BREIT-WIGNER IS CHOSEN FOR K* RESONANCE
-cam     FKS=CABS(BWIGS(AMX2,AMKST,GAMKST))**2
-        FKS=CABS(BWIGM(AMX2,AMKST,GAMKST,AMPI,AMKZ))**2
+cam     FKS=ABS(BWIGS(AMX2,AMKST,GAMKST))**2
+        FKS=ABS(BWIGM(AMX2,AMKST,GAMKST,AMPI,AMKZ))**2
         AMPLIT=(GFERMI*SCABIB)**2*BRAK*2*FKS
         DGAMT=1/(2.*AMTAU)*AMPLIT*PHSPAC
         DO 40 I=1,3
@@ -2333,8 +2337,8 @@ C AMPLITUDE
         BRAK=(GV**2+GA**2)*(2*PRODPQ*PRODNQ-PRODPN*QQ2)
      &      +(GV**2-GA**2)*AMTAU*AMNUTA*QQ2
 C A SIMPLE BREIT-WIGNER IS CHOSEN FOR THE K* RESONANCE
-cam     FKS=CABS(BWIGS(AMX2,AMKST,GAMKST))**2
-        FKS=CABS(BWIGM(AMX2,AMKST,GAMKST,AMK,AMPIZ))**2
+cam     FKS=ABS(BWIGS(AMX2,AMKST,GAMKST))**2
+        FKS=ABS(BWIGM(AMX2,AMKST,GAMKST,AMK,AMPIZ))**2
         AMPLIT=(GFERMI*SCABIB)**2*BRAK*2*FKS
         DGAMT=1/(2.*AMTAU)*AMPLIT*PHSPAC
         DO 70 I=1,3
@@ -2493,7 +2497,7 @@ C
             HV(1)=0.
       RETURN
       END
-      FUNCTION SIGEE(Q2,JNP)
+      double precision FUNCTION SIGEE(Q2,JNP)
 C ----------------------------------------------------------------------
 C  e+e- cross section in the (1.GEV2,AMTAU**2) region
 C  normalised to sig0 = 4/3 pi alfa2
@@ -2587,7 +2591,7 @@ C
       RETURN
       END
 
-      FUNCTION SIGOLD(Q2,JNPI)
+      double precision FUNCTION SIGOLD(Q2,JNPI)
 C ----------------------------------------------------------------------
 C  e+e- cross section in the (1.GEV2,AMTAU**2) region
 C  normalised to sig0 = 4/3 pi alfa2
@@ -2957,7 +2961,7 @@ C
       double precision  HV(4),PT(4),PN(4),PIM1(4),PIM2(4),PIPL(4)
       double precision  PAA(4),VEC1(4),VEC2(4)
       double precision  PIVEC(4),PIAKS(4),HVM(4)
-      COMPLEX BWIGN,HADCUR(4),FPIK
+      double complex BWIGN,HADCUR(4),FPIK
       DATA ICONT /1/
 C
 * F CONSTANTS FOR A1, A1-RHO-PI, AND RHO-PI-PI
@@ -3023,7 +3027,7 @@ C HV IS DEFINED FOR TAU-    WITH GAMMA=B+HV*POL
  90   CONTINUE
       END
 
-      FUNCTION GFUN(QKWA)
+      double precision FUNCTION GFUN(QKWA)
 C ****************************************************************
 C     G-FUNCTION USED TO INRODUCE ENERGY DEPENDENCE IN A1 WIDTH
 C ****************************************************************
@@ -3043,7 +3047,7 @@ C
           GFUN=QKWA*(1.623+10.38/QKWA-9.32/QKWA**2+0.65/QKWA**3)
        ENDIF
       END
-      COMPLEX FUNCTION BWIGS(S,M,G)
+      double complex FUNCTION BWIGS(S,M,G)
 C **********************************************************
 C     P-WAVE BREIT-WIGNER  FOR K*
 C **********************************************************
@@ -3073,7 +3077,7 @@ C -------  BREIT-WIGNER -----------------------
       BWIGS=M**2/CMPLX(M**2-S,-M*GS)
       RETURN
       END
-      COMPLEX FUNCTION BWIG(S,M,G)
+      double complex FUNCTION BWIG(S,M,G)
 C **********************************************************
 C     P-WAVE BREIT-WIGNER  FOR RHO
 C **********************************************************
@@ -3102,12 +3106,12 @@ C -------  BREIT-WIGNER -----------------------
         BWIG=M**2/CMPLX(M**2-S,-M*GS)
         RETURN
       END
-      COMPLEX FUNCTION FPIK(W)
+      double complex FUNCTION FPIK(W)
 C **********************************************************
 C     PION FORM FACTOR
 C **********************************************************
         IMPLICIT double precision (A-H,O-Z)
-      COMPLEX BWIG
+        double complex BWIG
       double precision ROM,ROG,ROM1,ROG1,BETA1,PI,PIM,S,W
       SAVE PI,PIM,ROM,ROG,ROM1,ROG1,BETA1
       EXTERNAL BWIG
@@ -3130,14 +3134,14 @@ C -----------------------------------------------
      & /(1+BETA1)
       RETURN
       END
-      FUNCTION FPIRHO(W)
+      double precision FUNCTION FPIRHO(W)
 C **********************************************************
 C     SQUARE OF PION FORM FACTOR
 C **********************************************************
         IMPLICIT double precision (A-H,O-Z)
-        double precision :: w, fpirho
-      COMPLEX FPIK
-      FPIRHO=CABS(FPIK(W))**2
+        double precision :: w
+        double complex FPIK
+      FPIRHO=ABS(FPIK(W))**2
       END
       SUBROUTINE CLVEC(HJ,PN,PIV)
 C ----------------------------------------------------------------------
@@ -3148,7 +3152,7 @@ C     called by : DAMPAA
 C ----------------------------------------------------------------------
         IMPLICIT double precision (A-H,O-Z)
         double precision PIV(4),PN(4)
-      COMPLEX HJ(4),HN
+        double complex HJ(4),HN
 C
       HN= HJ(4)*CMPLX(PN(4))-HJ(3)*CMPLX(PN(3))
       HH= REAL(HJ(4)*CONJG(HJ(4))-HJ(3)*CONJG(HJ(3))
@@ -3168,7 +3172,7 @@ C ----------------------------------------------------------------------
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
       COMMON / IDFC  / IDFF
       double precision PIA(4),PN(4)
-      COMPLEX HJ(4),HJC(4)
+      double complex HJ(4),HJC(4)
 C     DET2(I,J)=AIMAG(HJ(I)*HJC(J)-HJ(J)*HJC(I))
 C -- here was an error (ZW, 21.11.1991)
       DET2(I,J)=AIMAG(HJC(I)*HJ(J)-HJC(J)*HJ(I))
@@ -3203,7 +3207,7 @@ C
 C     called by : DAMPAA
 C ----------------------------------------------------------------------
         IMPLICIT double precision (A-H,O-Z)
-      COMPLEX HJ(4)
+        double complex HJ(4)
       double precision HV(4),P(4)
       DATA P /3*0.,1.0/
 C
@@ -3236,10 +3240,10 @@ C
       double precision  HV(4),PT(4),PN(4),PIM1(4),PIM2(4),PIPL(4)
       double precision  PAA(4),VEC1(4),VEC2(4)
       double precision  PIVEC(4),PIAKS(4),HVM(4)
-      COMPLEX BWIGN,HADCUR(4),FNORM,FORMOM
+      double complex BWIGN,HADCUR(4),FNORM,FORMOM
       DATA ICONT /1/
 * THIS INLINE FUNCT. CALCULATES THE SCALAR PART OF THE PROPAGATOR
-      BWIGN(XM,AM,GAMMA)=1./CMPLX(XM**2-AM**2,GAMMA*AM)
+      !BWIGN(XM,AM,GAMMA)=1./CMPLX(XM**2-AM**2,GAMMA*AM)
 C
 * FOUR MOMENTUM OF A1
       DO 10 I=1,4
@@ -3344,7 +3348,7 @@ C
       double precision  PAA(4),VEC1(4),VEC2(4),VEC3(4),VEC4(4),VEC5(4)
       double precision  PIVEC(4),PIAKS(4),HVM(4)
       double precision FNORM(0:7),COEF(1:5,0:7)
-      COMPLEX HADCUR(4),FORM1,FORM2,FORM3,FORM4,FORM5,UROJ
+      double complex HADCUR(4),FORM1,FORM2,FORM3,FORM4,FORM5,UROJ
       EXTERNAL FORM1,FORM2,FORM3,FORM4,FORM5
       SAVE UROJ,DWAPI0,FNORM,COEF
       DATA PI /3.141592653589793238462643/
@@ -4032,7 +4036,7 @@ C
       double precision  HV(4),PT(4),PN(4),PIM1(4),
      *                  PIM2(4),PIM3(4),PIM4(4)
       double precision  PIVEC(4),PIAKS(4),HVM(4)
-      COMPLEX HADCUR(4),FORM1,FORM2,FORM3,FORM4,FORM5
+      double complex HADCUR(4),FORM1,FORM2,FORM3,FORM4,FORM5
       EXTERNAL FORM1,FORM2,FORM3,FORM4,FORM5
       DATA PI /3.141592653589793238462643/
       DATA ICONT /0/
@@ -4088,7 +4092,7 @@ C
       DATA ICONT /0/
       data fpi /93.3e-3/
 c
-      COMPLEX BWIGN
+      double complex BWIGN
 C
       BWIGN(XM,AM,GAMMAB)=XM**2/CMPLX(XM**2-AM**2,GAMMAB*AM)
 
@@ -4299,7 +4303,7 @@ C
       QXN=PAA(4)*PN(4)-PAA(1)*PN(1)-PAA(2)*PN(2)-PAA(3)*PN(3)
       BRAK=2*(GV**2+GA**2)*(2*PXQ*QXN+AM5SQ*PXN)
      &    -6*(GV**2-GA**2)*AMTAU*AMNUTA*AM5SQ
-      fompp = cabs(bwign(am3,amom,gamom))**2
+      fompp = abs(bwign(am3,amom,gamom))**2
 c normalisation factor (to some numerical undimensioned factor;
 c cf R.Fischer et al ZPhys C3, 313 (1980))
       fnorm = 1/fpi**6
@@ -4429,7 +4433,7 @@ C AMPLITUDE
  77   continue
       RETURN
       END
-      FUNCTION FPIRK(W)
+      double precision FUNCTION FPIRK(W)
 C ----------------------------------------------------------
 c     square of pion form factor
 C ----------------------------------------------------------
@@ -4441,21 +4445,21 @@ C
       double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
-c     COMPLEX FPIKMK
-      COMPLEX FPIKM
-      FPIRK=CABS(FPIKM(W,AMK,AMKZ))**2
-c     FPIRK=CABS(FPIKMK(W,AMK,AMKZ))**2
+c     double complex FPIKMK
+      double complex FPIKM
+      FPIRK=ABS(FPIKM(W,AMK,AMKZ))**2
+c     FPIRK=ABS(FPIKMK(W,AMK,AMKZ))**2
       END
-      COMPLEX FUNCTION FPIKMK(W,XM1,XM2)
+      double complex FUNCTION FPIKMK(W,XM1,XM2)
 C **********************************************************
 C     Kaon form factor
 C **********************************************************
         IMPLICIT double precision (A-H,O-Z)
-      COMPLEX BWIGM
+        double complex BWIGM
       double precision XM1, XM2
       double precision ROM,ROG,ROM1,ROG1,BETA1,PI,PIM,S,W
       SAVE PI,PIM,ROM,ROG,ROM1,ROG1,BETA1
-      COMPLEX BWIG
+      double complex BWIG
       EXTERNAL BWIG
       DATA  INIT /0/
 C
@@ -4906,7 +4910,7 @@ C        IF(KFPI.NE.111)KFPI=KFPI*ISGN
 C
       RETURN
       END
-      FUNCTION AMAST(PP)
+      double precision FUNCTION AMAST(PP)
 C ----------------------------------------------------------------------
 C CALCULATES MASS OF PP (DOUBLE PRECISION)
 C
@@ -4920,7 +4924,7 @@ C
       AMAST=AAA
       RETURN
       END
-      FUNCTION AMAS4(PP)
+      double precision FUNCTION AMAS4(PP)
 C     ******************
 C ----------------------------------------------------------------------
 C CALCULATES MASS OF PP
@@ -4934,7 +4938,7 @@ C ----------------------------------------------------------------------
       AMAS4=AAA
       RETURN
       END
-      FUNCTION ANGXY(X,Y)
+      double precision FUNCTION ANGXY(X,Y)
 C ----------------------------------------------------------------------
 C
 C     USED BY : KORALZ RADKOR
@@ -4951,7 +4955,7 @@ C
       ANGXY=THE
       RETURN
       END
-      FUNCTION ANGFI(X,Y)
+      double precision FUNCTION ANGFI(X,Y)
 C ----------------------------------------------------------------------
 * CALCULATES ANGLE IN (0,2*PI) RANGE OUT OF X-Y
 C
@@ -5200,7 +5204,7 @@ C
   100 CONTINUE
       RETURN
       END
-      FUNCTION DILOGT(X)
+      double precision FUNCTION DILOGT(X)
 C     *****************
         IMPLICIT double precision(A-H,O-Z)
 CERN      C304      VERSION    29/07/71 DILOG        59                C

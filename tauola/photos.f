@@ -382,6 +382,7 @@ C--   Print info
      & ,T81,'*')
       END
       SUBROUTINE PHOTOS(ID)
+        IMPLICIT double precision(A-H,O-Z)
 C.----------------------------------------------------------------------
 C.
 C.    PHOTOS:  General search routine + _GET + _SET
@@ -442,7 +443,7 @@ C.----------------------------------------------------------------------
       IMPLICIT NONE
       INTEGER  d_h_nmxhep         ! maximum number of particles
       PARAMETER (d_h_NMXHEP=4000)
-      double precision  d_h_phep,  d_h_vhep ! to be real*4/ *8  depending on host
+      double precision  d_h_phep,  d_h_vhep
       INTEGER d_h_nevhep,d_h_nhep,d_h_isthep,d_h_idhep,d_h_jmohep,
      $        d_h_jdahep
       COMMON /hepevt/
@@ -505,7 +506,7 @@ C.----------------------------------------------------------------------
       IMPLICIT NONE
       INTEGER  d_h_nmxhep         ! maximum number of particles
       PARAMETER (d_h_NMXHEP=4000)
-      double precision  d_h_phep,  d_h_vhep ! to be real*4/ *8  depending on host
+      double precision  d_h_phep,  d_h_vhep
       INTEGER d_h_nevhep,d_h_nhep,d_h_isthep,d_h_idhep,d_h_jmohep,
      $        d_h_jdahep
       COMMON /hepevt/
@@ -3297,7 +3298,7 @@ C      IMPLICIT NONE
 C this is the hepevt class in old style. No d_h_ class pre-name
       INTEGER NMXHEP
       PARAMETER (NMXHEP=4000)
-      double precision  phep,  vhep ! to be real*4/ *8  depending on host
+      double precision  phep,  vhep
       INTEGER nevhep,nhep,isthep,idhep,jmohep,
      $        jdahep
       COMMON /hepevt/

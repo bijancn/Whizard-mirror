@@ -34,6 +34,7 @@ C
      $     *(BWIGN( 0.0D0,AMRO,GAMRO)+ELPHA*BWIGN( 0.0D0,AMROP,GAMROP))
       END
       FUNCTION FORM1(MNUM,QQ,S1,SDWA)
+        IMPLICIT double precision(A-H,O-Z)
 C     ==================================================================
 C     formfactorfor F1 for 3 scalar final state
 C     R. Fisher, J. Wess and F. Wagner Z. Phys C3 (1980) 313
@@ -43,7 +44,6 @@ C     R. Decker, E. Mirkes, R. Sauer, Z. Was Karlsruhe preprint TTP92-25
 C     and erratum !!!!!!
 C     ==================================================================
 C
-        IMPLICIT double precision(A-H,O-Z)
         double complex FORM1,WIGNER,WIGFOR,FPIKM,BWIGM
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
@@ -91,6 +91,7 @@ C -------------- eta pi- pi0 final state
       ENDIF
       END
       FUNCTION FORM2(MNUM,QQ,S1,SDWA)
+        IMPLICIT double precision (A-H,O-Z)
 C     ==================================================================
 C     formfactorfor F2 for 3 scalar final state
 C     R. Fisher, J. Wess and F. Wagner Z. Phys C3 (1980) 313
@@ -100,7 +101,6 @@ C     R. Decker, E. Mirkes, R. Sauer, Z. Was Karlsruhe preprint TTP92-25
 C     and erratum !!!!!!
 C     ==================================================================
 C
-        IMPLICIT double precision (A-H,O-Z)
         double complex FORM2,WIGNER,WIGFOR,FPIKM,BWIGM
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
@@ -151,6 +151,7 @@ C -------------- eta pi- pi0 final state
 C
       END
       double complex FUNCTION BWIGM(S,M,G,XM1,XM2)
+        IMPLICIT double precision (A-H,O-Z)
 C **********************************************************
 C     P-WAVE BREIT-WIGNER  FOR RHO
 C **********************************************************
@@ -247,6 +248,7 @@ C     R. Decker, E. Mirkes, R. Sauer, Z. Was Karlsruhe preprint TTP92-25
 C     and erratum !!!!!!
 C     ==================================================================
 C
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST

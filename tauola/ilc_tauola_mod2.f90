@@ -246,9 +246,9 @@ contains
        p1 = phep(1:4,1)
        p2 = phep(1:4,2)
        q1 = p1 + p2
-       print *, " antiparticle decay q1= ", q1
-       print *, " antiparticle decay p1= ", p1
-       print *, " antiparticle decay p2= ", p2
+       !print *, " antiparticle decay q1= ", q1
+       !print *, " antiparticle decay p1= ", p1
+       !print *, " antiparticle decay p2= ", p2
        ! ==========================================================
        ! TAUOLA is called here
        ! ==========================================================
@@ -261,9 +261,9 @@ contains
        p2 = phep(1:4,1)
        p1 = phep(1:4,2)
        q1 = p1 + p2
-       print *, " particle decay q1= ", q1
-       print *, " particle decay p1= ", p1
-       print *, " particle decay p2= ", p2
+       !print *, " particle decay q1= ", q1
+       !print *, " particle decay p1= ", p1
+       !print *, " particle decay p2= ", p2
        ! ==========================================================
        ! TAUOLA is called here
        ! ==========================================================

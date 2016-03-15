@@ -391,6 +391,7 @@ C     *****
       CALL TAUPI0(0,2,ION)
       END
       FUNCTION wthiggs(IFPSEUDO,HH1,HH2)
+        IMPLICIT double precision(A-H,O-Z)
       LOGICAL IFPSEUDO
       common /pseudocoup/ csc,ssc
       double precision csc,ssc
@@ -429,6 +430,7 @@ C     *****
       END
 
       FUNCTION PLZAPX(HOPEin,IM0,NP1,NP2)
+        IMPLICIT double precision(A-H,O-Z)
 C     IM0 NP1 NP2 are the positions of Z/gamma tau tau in hepevt common block.
 C     the purpose of this routine is to calculate polarization of Z along tau direction.
 C     this is highly non-trivial due to necessity of reading infromation from hard process
@@ -860,6 +862,7 @@ C out of effective momenta we calculate COSTHE and later polarization
       END
 
       SUBROUTINE ANGULU(PD1,PD2,Q1,Q2,COSTHE)
+        IMPLICIT double precision(A-H,O-Z)
       double precision PD1(4),PD2(4),Q1(4),Q2(4),COSTHE,P(4),QQ(4),QT(4)
 C take effective beam which is less massive, it should be irrelevant
 C but in case HEPEVT is particulary dirty may help.
@@ -905,6 +908,7 @@ C calculate costhe
       END
 
       FUNCTION PLZAP0(IDE,IDF,SVAR,COSTH0)
+        IMPLICIT double precision(A-H,O-Z)
 C this function calculates probability for the helicity +1 +1 configuration
 C of taus for given Z/gamma transfer and COSTH0 cosine of scattering angle
         double precision PLZAP0,SVAR,COSTHE,COSTH0
@@ -1216,6 +1220,7 @@ C** XOUPZ=(SIZO3-CHARGE*SWSQ)/SQRT(SWSQ*(1-SWSQ))
       STOP
       END
       SUBROUTINE PHYFIX(NSTOP,NSTART)
+        IMPLICIT double precision(A-H,O-Z)
       COMMON/LUJETS/N,K(4000,5),P(4000,5),V(4000,5)
       SAVE /LUJETS/
 C NSTOP NSTART : when PHYTIA history ends and event starts.
@@ -1331,6 +1336,7 @@ C
 
 
       FUNCTION IHEPDIM(DUM)
+        IMPLICIT double precision(A-H,O-Z)
 C this is the hepevt class in old style. No d_h_ class pre-name
 C this is the hepevt class in old style. No d_h_ class pre-name
       INTEGER NMXHEP
@@ -1368,6 +1374,7 @@ C this is the hepevt class in old style. No d_h_ class pre-name
       END
 
       SUBROUTINE TAUPI0(MODE,JAK,ION)
+        IMPLICIT double precision(A-H,O-Z)
 C no initialization required. Must be called once after every:
 C   1)    CALL DEKAY(1+10,...)
 C   2)    CALL DEKAY(2+10,...)
@@ -1456,6 +1463,7 @@ C to hepevt
 C
       END
       SUBROUTINE TAUETA(JAK)
+        IMPLICIT double precision(A-H,O-Z)
 C subroutine to decay etas's from taus.
 C this routine belongs to tauola universal interface, but uses
 C routines from tauola utilities. Just flat phase space, but 4 channels.
@@ -1619,6 +1627,7 @@ C to hepevt
 C
       END
       SUBROUTINE TAUK0S(JAK)
+        IMPLICIT double precision(A-H,O-Z)
 C subroutine to decay K0S's from taus.
 C this routine belongs to tauola universal interface, but uses
 C routines from tauola utilities. Just flat phase space, but 4 channels.

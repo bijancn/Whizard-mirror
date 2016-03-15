@@ -7,6 +7,7 @@ C replace  TRALO4
 C rename INIPHY to INIPHX
 
       SUBROUTINE INIETC(jakk1,jakk2,itd,ifpho)
+      implicit DOUBLE PRECISION (a-h,o-z)
       COMMON / IDFC  / IDFF
       COMMON / TAURAD / XK0DEC,ITDKRC
       DOUBLE PRECISION            XK0DEC
@@ -27,6 +28,7 @@ C photos activation switch
       end
 
       SUBROUTINE TRALO4(KTOS,PHOI,PHOF,AM)
+      implicit DOUBLE PRECISION (a-h,o-z)
 !! Corrected 11.10.96 (ZW) tralor for KORALW.
 !! better treatment is to  cascade from tau rest-frame through W
 !! restframe down to LAB. 
@@ -102,6 +104,7 @@ c       IF(P2QQ(2).LT.0D0) PHI=2*PI-PHI
 
       SUBROUTINE CHOICE(MNUM,RR,ICHAN,PROB1,PROB2,PROB3,
      $            AMRX,GAMRX,AMRA,GAMRA,AMRB,GAMRB)
+      implicit DOUBLE PRECISION (a-h,o-z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -245,6 +248,7 @@ C
       PROB3=1.0-PROB1-PROB2
       END
       SUBROUTINE INITDK
+      implicit DOUBLE PRECISION (a-h,o-z)
 * ----------------------------------------------------------------------
 *     INITIALISATION OF TAU DECAY PARAMETERS  and routines
 *
@@ -444,7 +448,8 @@ C
 *
       RETURN
       END
-      FUNCTION DCDMAS(IDENT)
+      double precision FUNCTION DCDMAS(IDENT)
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -482,7 +487,8 @@ C
       ENDIF
       DCDMAS=APKMAS
       END
-      FUNCTION LUNPIK(ID,ISGN)
+      double precision FUNCTION LUNPIK(ID,ISGN)
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / TAUKLE / BRA1,BRK0,BRK0B,BRKS
       double precision  BRA1,BRK0,BRK0B,BRKS
       double precision XIO(1)
@@ -535,6 +541,7 @@ C
 
 
       SUBROUTINE TAURDF(KTO)
+      implicit DOUBLE PRECISION (a-h,o-z)
 * THIS ROUTINE CAN BE CALLED BEFORE ANY TAU+ OR TAU- EVENT IS GENERATED
 * IT CAN BE USED TO GENERATE TAU+ AND TAU- SAMPLES OF DIFFERENT
 * CONTENTS
@@ -632,6 +639,7 @@ C
       END
 
       SUBROUTINE INIPHX(XK00)
+      implicit DOUBLE PRECISION (a-h,o-z)
 * ----------------------------------------------------------------------
 *     INITIALISATION OF PARAMETERS
 *     USED IN QED and/or GSW ROUTINES
@@ -647,6 +655,7 @@ C
       END
 
       SUBROUTINE INIMAS
+      implicit DOUBLE PRECISION (a-h,o-z)
 C ----------------------------------------------------------------------
 C     INITIALISATION OF MASSES
 C
@@ -729,7 +738,7 @@ c
       endif
       end
 
-      FUNCTION DILOGY(X)
+      double precision FUNCTION DILOGY(X)
 C     *****************
         IMPLICIT double precision(A-H,O-Z)
 CERN      C304      VERSION    29/07/71 DILOG        59                C
