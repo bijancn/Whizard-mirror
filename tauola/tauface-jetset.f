@@ -7,9 +7,10 @@ C only longitudinal spin effects are included.
 C in W decay v-a vertex is assumed
 C date: 12 DEC 1998. date: 21 June 1999. date: 24 Jan 2001 date: 24 Aug 2001
 C this is the hepevt class in old style. No d_h_ class pre-name
+      IMPLICIT double precision(A-H,O-Z)
       INTEGER NMXHEP
       PARAMETER (NMXHEP=4000)
-      REAL*8  phep,  vhep ! to be real*4/ *8  depending on host
+      double precision  phep,  vhep
       INTEGER nevhep,nhep,isthep,idhep,jmohep,
      $        jdahep
       COMMON /hepevt/
@@ -30,26 +31,26 @@ C this is the hepevt class in old style. No d_h_ class pre-name
 
 
       COMMON /TAUPOS/ NP1, NP2
-      REAL*4 PHOI(4),PHOF(4)
+      double precision PHOI(4),PHOF(4)
       double precision Q1(4),Q2(4),P1(4),P2(4),P3(4),P4(4)
       COMMON / MOMDEC / Q1,Q2,P1,P2,P3,P4
 * tauola, photos and jetset overall switches
       COMMON /LIBRA/ JAK1,JAK2,ITDKRC,IFPHOT,IFHADM,IFHADP
-      REAL*4 RRR(1)
+      double precision RRR(1)
       LOGICAL IFPSEUDO
       common /pseudocoup/ csc,ssc
-      REAL*4 csc,ssc
+      double precision csc,ssc
       save pseudocoup
       COMMON / INOUT / INUT,IOUT
 
-      REAL*8 PLZAPX
+      double precision PLZAPX
 
 C to switch tau polarization OFF in taus
       DIMENSION POL1(4), POL2(4)
       double precision POL1x(4), POL2x(4)
       INTEGER ION(3)
-      DATA  POL1 /0.0,0.0,0.0,0.0/
-      DATA  POL2 /0.0,0.0,0.0,0.0/
+      DATA  POL1 /0.0D0,0.0D0,0.0D0,0.0D0/
+      DATA  POL2 /0.0D0,0.0D0,0.0D0,0.0D0/
       DATA PI /3.141592653589793238462643D0/
 
 C store decay vertexes
@@ -371,8 +372,9 @@ C     *****
       END
 
       SUBROUTINE SPINHIGGS(IM,NP1,NP2,IFPSEUDO,Pol1,Pol2)
+        IMPLICIT double precision(A-H,O-Z)
       LOGICAL IFPSEUDO
-      REAL*8 HH1,HH2,wthiggs
+      double precision HH1,HH2,wthiggs
       DIMENSION POL1(4), POL2(4),HH1(4),HH2(4), RRR(1)
 !             CALL DEXAY(1,POL1)  ! Kept for tests
 !             CALL DEXAY(2,POL2)  ! Kept for tests
@@ -391,9 +393,9 @@ C     *****
       FUNCTION wthiggs(IFPSEUDO,HH1,HH2)
       LOGICAL IFPSEUDO
       common /pseudocoup/ csc,ssc
-      REAL*4 csc,ssc
+      double precision csc,ssc
       save pseudocoup
-      REAL*8 HH1(4),HH2(4),R(4,4),wthiggs
+      double precision HH1(4),HH2(4),R(4,4),wthiggs
       DO K=1,4
        DO L=1,4
         R(K,L)=0
@@ -431,7 +433,7 @@ C     IM0 NP1 NP2 are the positions of Z/gamma tau tau in hepevt common block.
 C     the purpose of this routine is to calculate polarization of Z along tau direction.
 C     this is highly non-trivial due to necessity of reading infromation from hard process
 C     history in HEPEVT, which is often written not up to the gramatic rules.
-      REAL*8 PLZAPX,PLZAP0,SVAR,COSTHE,sini,sfin,ZPROP2,
+        double precision PLZAPX,PLZAP0,SVAR,COSTHE,sini,sfin,ZPROP2,
      $       P1(4),P2(4),Q1(4),Q2(4),QQ(4),PH(4),PD1(4),PD2(4),
      $       PQ1(4),PQ2(4),PB(4),PA(4)
       INTEGER IM
@@ -439,7 +441,7 @@ C     history in HEPEVT, which is often written not up to the gramatic rules.
 C this is the hepevt class in old style. No d_h_ class pre-name
       INTEGER NMXHEP
       PARAMETER (NMXHEP=4000)
-      REAL*8  phep,  vhep ! to be real*4/ *8  depending on host
+      double precision  phep,  vhep
       INTEGER nevhep,nhep,isthep,idhep,jmohep,
      $        jdahep
       COMMON /hepevt/
@@ -858,7 +860,7 @@ C out of effective momenta we calculate COSTHE and later polarization
       END
 
       SUBROUTINE ANGULU(PD1,PD2,Q1,Q2,COSTHE)
-      REAL*8 PD1(4),PD2(4),Q1(4),Q2(4),COSTHE,P(4),QQ(4),QT(4)
+      double precision PD1(4),PD2(4),Q1(4),Q2(4),COSTHE,P(4),QQ(4),QT(4)
 C take effective beam which is less massive, it should be irrelevant
 C but in case HEPEVT is particulary dirty may help.
 C this routine calculate reduced system transver and cosine of scattering
@@ -905,8 +907,8 @@ C calculate costhe
       FUNCTION PLZAP0(IDE,IDF,SVAR,COSTH0)
 C this function calculates probability for the helicity +1 +1 configuration
 C of taus for given Z/gamma transfer and COSTH0 cosine of scattering angle
-      REAL*8 PLZAP0,SVAR,COSTHE,COSTH0
-      REAL*8 T_BORN
+        double precision PLZAP0,SVAR,COSTHE,COSTH0
+        double precision T_BORN
 
       COSTHE=COSTH0
 C >>>>>      IF (IDE*IDF.LT.0) COSTHE=-COSTH0 ! this is probably not needed ID
@@ -935,19 +937,19 @@ C                       TA,TB   -- helicity states of tau+ tau-
 C
 C     called by : BORNY, BORAS, BORNV, WAGA, WEIGHT
 C ----------------------------------------------------------------------
-      IMPLICIT REAL*8(A-H,O-Z)
+        IMPLICIT double precision(A-H,O-Z)
       COMMON / T_BEAMPM / ENE ,AMIN,AMFIN,IDE,IDF
-      REAL*8              ENE ,AMIN,AMFIN
+      double precision              ENE ,AMIN,AMFIN
       COMMON / T_GAUSPM /SS,POLN,T3E,QE,T3F,QF
      &                  ,XUPGI   ,XUPZI   ,XUPGF   ,XUPZF
      &                  ,NDIAG0,NDIAGA,KEYA,KEYZ
      &                  ,ITCE,JTCE,ITCF,JTCF,KOLOR
-      REAL*8             SS,POLN,T3E,QE,T3F,QF
+      double precision             SS,POLN,T3E,QE,T3F,QF
      &                  ,XUPGI(2),XUPZI(2),XUPGF(2),XUPZF(2)
-      REAL*8            SEPS1,SEPS2
+      double precision            SEPS1,SEPS2
 C=====================================================================
       COMMON / T_GSWPRM /SWSQ,AMW,AMZ,AMH,AMTOP,GAMMZ
-      REAL*8             SWSQ,AMW,AMZ,AMH,AMTOP,GAMMZ
+      double precision             SWSQ,AMW,AMZ,AMH,AMTOP,GAMMZ
 C     SWSQ        = sin2 (theta Weinberg)
 C     AMW,AMZ     = W & Z boson masses respectively
 C     AMH         = the Higgs mass
@@ -1047,17 +1049,17 @@ C ZW HERE WAS AN ERROR 19. 05. 1989
 
       SUBROUTINE INITWK(IDEX,IDFX,SVAR)
 ! initialization routine coupling masses etc.
-      IMPLICIT REAL*8 (A-H,O-Z)
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / T_BEAMPM / ENE ,AMIN,AMFIN,IDE,IDF
-      REAL*8              ENE ,AMIN,AMFIN
+      double precision              ENE ,AMIN,AMFIN
       COMMON / T_GAUSPM /SS,POLN,T3E,QE,T3F,QF
      &                  ,XUPGI   ,XUPZI   ,XUPGF   ,XUPZF
      &                  ,NDIAG0,NDIAGA,KEYA,KEYZ
      &                  ,ITCE,JTCE,ITCF,JTCF,KOLOR
-      REAL*8             SS,POLN,T3E,QE,T3F,QF
+      double precision             SS,POLN,T3E,QE,T3F,QF
      &                  ,XUPGI(2),XUPZI(2),XUPGF(2),XUPZF(2)
       COMMON / T_GSWPRM /SWSQ,AMW,AMZ,AMH,AMTOP,GAMMZ
-      REAL*8             SWSQ,AMW,AMZ,AMH,AMTOP,GAMMZ
+      double precision             SWSQ,AMW,AMZ,AMH,AMTOP,GAMMZ
 C     SWSQ        = sin2 (theta Weinberg)
 C     AMW,AMZ     = W & Z boson masses respectively
 C     AMH         = the Higgs mass
@@ -1095,16 +1097,16 @@ C
         AMIN=0.105659
       ELSEIF (IDEX.EQ.  1) then      !d
         IDE= 4
-        AMIN=0.05
+        AMIN=0.05D0
       ELSEIF (IDEX.EQ.- 1) then      !d~
         IDE=-4
-        AMIN=0.05
+        AMIN=0.05D0
       ELSEIF (IDEX.EQ.  2) then      !u
         IDE= 3
-        AMIN=0.02
+        AMIN=0.02D0
       ELSEIF (IDEX.EQ.- 2) then      !u~
         IDE=-3
-        AMIN=0.02
+        AMIN=0.02D0
       ELSEIF (IDEX.EQ.  3) then      !s
         IDE= 4
         AMIN=0.3
@@ -1195,7 +1197,7 @@ C KOLOR IS A QCD COLOUR, 1 FOR LEPTON, 3 FOR QUARKS
 C
 C     called by : EVENTE, EVENTM, FUNTIH, .....
 C ----------------------------------------------------------------------
-      IMPLICIT REAL*8(A-H,O-Z)
+        IMPLICIT double precision(A-H,O-Z)
 C
       IF(IDFERM.EQ.0.OR.IABS(IDFERM).GT.4) GOTO 901
       IF(IABS(IHELIC).NE.1)                GOTO 901
@@ -1240,14 +1242,18 @@ C ----------------------------------------------------------------------
 C
 C this is the hepevt class in old style. No d_h_ class pre-name
 C this is the hepevt class in old style. No d_h_ class pre-name
+      implicit none
+      integer n, ist, id, jmo1, jmo2, jda1, jda2
+      integer ihep, i, ip
+      double precision pinv
       INTEGER NMXHEP
       PARAMETER (NMXHEP=4000)
-      REAL*8  phep,  vhep ! to be real*4/ *8  depending on host
+      double precision  phep,  vhep
       INTEGER nevhep,nhep,isthep,idhep,jmohep,
      $        jdahep
       COMMON /hepevt/
-     $      nevhep,               ! serial number
-     $      nhep,                 ! number of particles
+     $      nevhep,           ! serial number
+     $      nhep,             ! number of particles
      $      isthep(nmxhep),   ! status code
      $      idhep(nmxhep),    ! particle ident KF
      $      jmohep(2,nmxhep), ! parent particles
@@ -1259,12 +1265,10 @@ C this is the hepevt class in old style. No d_h_ class pre-name
       COMMON /phoqed/
      $     qedrad(nmxhep)    ! Photos flag
 * ----------------------------------------------------------------------
-      SAVE hepevt,phoqed
-
 
       LOGICAL PHFLAG
 C
-      REAL*4  P4(4)
+      double precision  P4(4)
 C
 C check address mode
       IF (N.EQ.0) THEN
@@ -1299,7 +1303,7 @@ C
         PHEP(I,IHEP)=P4(I)
 C
 C KORAL-B and KORAL-Z do not provide vertex and/or lifetime informations
-        VHEP(I,IHEP)=0.0
+        VHEP(I,IHEP)=0.0D0
       END DO
       PHEP(5,IHEP)=PINV
 C FLAG FOR PHOTOS...
@@ -1331,7 +1335,7 @@ C this is the hepevt class in old style. No d_h_ class pre-name
 C this is the hepevt class in old style. No d_h_ class pre-name
       INTEGER NMXHEP
       PARAMETER (NMXHEP=4000)
-      REAL*8  phep,  vhep ! to be real*4/ *8  depending on host
+      double precision  phep,  vhep
       INTEGER nevhep,nhep,isthep,idhep,jmohep,
      $        jdahep
       COMMON /hepevt/
@@ -1354,7 +1358,7 @@ C this is the hepevt class in old style. No d_h_ class pre-name
       IHEPDIM=NHEP
       END
       FUNCTION ZPROP2(S)
-      IMPLICIT REAL*8(A-H,O-Z)
+        IMPLICIT double precision(A-H,O-Z)
       COMPLEX*16 CPRZ0,CPRZ0M
       AMZ=91.1882
       GAMMZ=2.49
@@ -1378,7 +1382,7 @@ C routines from >tauola< utilities as well.  25.08.2005
 C this is the hepevt class in old style. No d_h_ class pre-name
       INTEGER NMXHEP
       PARAMETER (NMXHEP=4000)
-      REAL*8  phep,  vhep ! to be real*4/ *8  depending on host
+      double precision  phep,  vhep
       INTEGER nevhep,nhep,isthep,idhep,jmohep,
      $        jdahep
       COMMON /hepevt/
@@ -1402,8 +1406,8 @@ C this is the hepevt class in old style. No d_h_ class pre-name
 C position of taus, must be defined by host program:
       COMMON /TAUPOS/ NP1,NP2
 c
-      REAL  PHOT1(4),PHOT2(4)
-      REAL*8  R,X(4),Y(4),PI0(4)
+      double precision  PHOT1(4),PHOT2(4)
+      double precision  R,X(4),Y(4),PI0(4)
       INTEGER JEZELI(3),ION(3)
       DATA JEZELI /0,0,0/
       SAVE JEZELI
@@ -1437,7 +1441,7 @@ C position of decaying particle:
         Y(1)=-X(1)
         Y(2)=-X(2)
         Y(3)=-X(3)
-! boost to lab and to real*4
+! boost to lab
         CALL bostdq(-1,PI0,X,X)
         CALL bostdq(-1,PI0,Y,Y)
         DO L=1,4
@@ -1445,8 +1449,8 @@ C position of decaying particle:
          PHOT2(L)=Y(L)
         ENDDO
 C to hepevt
-        CALL FILHEP(0,1,22,K,K,0,0,PHOT1,0.0,.TRUE.)
-        CALL FILHEP(0,1,22,K,K,0,0,PHOT2,0.0,.TRUE.)
+        CALL FILHEP(0,1,22,K,K,0,0,PHOT1,0.0D0,.TRUE.)
+        CALL FILHEP(0,1,22,K,K,0,0,PHOT2,0.0D0,.TRUE.)
        ENDIF
       ENDDO
 C
@@ -1460,7 +1464,7 @@ C and as far as hepevt search it is basically the same as TAUPI0.  25.08.2005
 C this is the hepevt class in old style. No d_h_ class pre-name
       INTEGER NMXHEP
       PARAMETER (NMXHEP=4000)
-      REAL*8  phep,  vhep ! to be real*4/ *8  depending on host
+      double precision  phep,  vhep
       INTEGER nevhep,nhep,isthep,idhep,jmohep,
      $        jdahep
       COMMON /hepevt/
@@ -1484,19 +1488,19 @@ C this is the hepevt class in old style. No d_h_ class pre-name
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 *
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 
 C position of taus, must be defined by host program:
       COMMON /TAUPOS/ NP1,NP2
 c
-      REAL  RRR(1),BRSUM(3), RR(2)
-      REAL  PHOT1(4),PHOT2(4),PHOT3(4)
-      REAL*8    X(4),    Y(4),    Z(4)
-      REAL                                YM1,YM2,YM3
-      REAL*8  R,RU,PETA(4),XM1,XM2,XM3,XM,XLAM,AM2
-      REAL*8 a,b,c
+      double precision  RRR(1),BRSUM(3), RR(2)
+      double precision  PHOT1(4),PHOT2(4),PHOT3(4)
+      double precision    X(4),    Y(4),    Z(4)
+      double precision                                YM1,YM2,YM3
+      double precision  R,RU,PETA(4),XM1,XM2,XM3,XM,XLAM,AM2
+      double precision a,b,c
       XLAM(a,b,c)=SQRT(ABS((a-b-c)**2-4.0*b*c))
 C position of decaying particle:
       IF((KTO.EQ. 1).OR.(KTO.EQ.11)) THEN
@@ -1526,7 +1530,7 @@ C       eta cumulated branching ratios:
          Y(1)=-X(1)
          Y(2)=-X(2)
          Y(3)=-X(3)
-! boost to lab and to real*4
+! boost to lab
          CALL bostdq(-1,PETA,X,X)
          CALL bostdq(-1,PETA,Y,Y)
          DO L=1,4
@@ -1534,8 +1538,8 @@ C       eta cumulated branching ratios:
           PHOT2(L)=Y(L)
          ENDDO
 C to hepevt
-         CALL FILHEP(0,1,22,K,K,0,0,PHOT1,0.0,.TRUE.)
-         CALL FILHEP(0,1,22,K,K,0,0,PHOT2,0.0,.TRUE.)
+         CALL FILHEP(0,1,22,K,K,0,0,PHOT1,0.0D0,.TRUE.)
+         CALL FILHEP(0,1,22,K,K,0,0,PHOT2,0.0D0,.TRUE.)
         ELSE ! 3 body channels
          IF(RRR(1).LT.BRSUM(2)) THEN  ! 3 pi0
           ID1= 111
@@ -1557,7 +1561,7 @@ C to hepevt
           ID3=  22
           XM1=AMPI ! masses
           XM2=AMPI
-          XM3=0.0
+          XM3=0.0D0
          ENDIF
  7       CONTINUE  ! we generate mass of the first pair:
           CALL RANMAR(RR,2)
@@ -1592,7 +1596,7 @@ C redefine Z(4) to 4-momentum of the last decay product:
          Z(2)=-Z(2)
          Z(3)=-Z(3)
          Z(4)=SQRT(RU**2+XM3**2)
-C boost all to lab and move to real*4; also masses
+C boost all to lab; also masses
          CALL bostdq(-1,PETA,X,X)
          CALL bostdq(-1,PETA,Y,Y)
          CALL bostdq(-1,PETA,Z,Z)
@@ -1623,7 +1627,7 @@ C and as far as hepevt search it is basically the same as TAUPI0.  25.08.2005
 C this is the hepevt class in old style. No d_h_ class pre-name
       INTEGER NMXHEP
       PARAMETER (NMXHEP=4000)
-      REAL*8  phep,  vhep ! to be real*4/ *8  depending on host
+      double precision  phep,  vhep
       INTEGER nevhep,nhep,isthep,idhep,jmohep,
      $        jdahep
       COMMON /hepevt/
@@ -1648,19 +1652,19 @@ C this is the hepevt class in old style. No d_h_ class pre-name
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 *
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 
 C position of taus, must be defined by host program:
       COMMON /TAUPOS/ NP1,NP2
 c
-      REAL  RRR(1),BRSUM(3), RR(2)
-      REAL  PHOT1(4),PHOT2(4),PHOT3(4)
-      REAL*8    X(4),    Y(4),    Z(4)
-      REAL                                YM1,YM2,YM3
-      REAL*8  R,RU,PETA(4),XM1,XM2,XM3,XM,XLAM
-      REAL*8 a,b,c
+      double precision  RRR(1),BRSUM(3), RR(2)
+      double precision  PHOT1(4),PHOT2(4),PHOT3(4)
+      double precision    X(4),    Y(4),    Z(4)
+      double precision                                YM1,YM2,YM3
+      double precision  R,RU,PETA(4),XM1,XM2,XM3,XM,XLAM
+      double precision a,b,c
       XLAM(a,b,c)=SQRT(ABS((a-b-c)**2-4.0*b*c))
 C position of decaying particle:
       IF((KTO.EQ. 1).OR.(KTO.EQ.11)) THEN
@@ -1695,8 +1699,8 @@ C       K0S cumulated branching ratios:
          ELSE                            ! gamma gamma unused !!!
           ID1= 22
           ID2= 22
-          XM1= 0.0 ! masses
-          XM2= 0.0
+          XM1= 0.0D0 ! masses
+          XM2= 0.0D0
          ENDIF
 
 ! random 3 vector on the sphere, of equal mass !!
@@ -1710,7 +1714,7 @@ C       K0S cumulated branching ratios:
          Y(1)=-X(1)
          Y(2)=-X(2)
          Y(3)=-X(3)
-! boost to lab and to real*4
+! boost to lab
          CALL bostdq(-1,PETA,X,X)
          CALL bostdq(-1,PETA,Y,Y)
          DO L=1,4

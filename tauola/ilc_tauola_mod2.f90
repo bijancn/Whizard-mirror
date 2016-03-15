@@ -34,7 +34,7 @@ module ilc_tauola_mod2
   double precision                          :: spin_dexay
   double precision, dimension(n_pyjets_max) :: tauspin_pyjets
 
-  real, dimension(4)  :: pol
+  double precision, dimension(4)  :: pol
 
   double precision, parameter            :: a_tau=0.15
   double precision, parameter            :: prob_tau_left_z=(a_tau+1.)/2.
@@ -328,7 +328,6 @@ subroutine ilc_tauola_init_call
   call tauola(-1,1)
   JAK1 = MSTP(198)
   JAK2 = MSTP(199)
-  !print *,"!!! INIT TAUOLA user fragment init jak1,jak2= ",jak1,jak2
 end subroutine ilc_tauola_init_call
 
 subroutine ilc_tauola_get_helicity (itau, the_helicity)

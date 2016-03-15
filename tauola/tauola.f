@@ -44,7 +44,7 @@ C ----------------------------------------------------------------------
 
 
 
-      REAL   CUMUL(30),RRR(1)
+      double precision   CUMUL(30),RRR(1)
 C
       IF(NCHAN.LE.0.OR.NCHAN.GT.30) GOTO 902
       CALL RANMAR(RRR,1)
@@ -88,23 +88,25 @@ C JAK=14-19 KKpi & Kpipi modes
 C JAK=20-21 eta pi pi; gamma pi pi modes
 C JAK=0 INCLUSIVE:  JAK=1-21
 
-      REAL  H(4)
-      REAL*8 HX(4)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision  H(4)
+      double precision HX(4)
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
 
       COMMON / IDFC  / IDFF
 
       COMMON /TAUPOS/ NP1,NP2
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       PARAMETER (NMODE=15,NM1=0,NM2=1,NM3=8,NM4=2,NM5=1,NM6=3)
 
       COMMON / TAUDCD /IDFFIN(9,NMODE),MULPIK(NMODE)
      &                ,NAMES
       CHARACTER NAMES(NMODE)*31
       COMMON / INOUT / INUT,IOUT
-      REAL  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4),PDUM5(4),HDUM(4),PDUM(4)
-      REAL  PDUMX(4,9)
+      double precision  PDUM1(4),PDUM2(4),PDUM3(4),
+     *                  PDUM4(4),PDUM5(4),HDUM(4),PDUM(4)
+      double precision  PDUMX(4,9)
       DATA IWARM/0/
       H=0.0
       KTOM=KTO
@@ -246,21 +248,22 @@ C     =====
       SUBROUTINE DEKAY1(IMOD,HH,ISGN)
 C     *******************************
 C THIS ROUTINE  SIMULATES TAU+  DECAY
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / DECP4 / PP1(4),PP2(4),KFF1,KFF2
-      REAL*4           PP1   ,PP2
+      double precision           PP1   ,PP2
       INTEGER                        KFF1,KFF2
-      REAL  HH(4)
-      REAL  HV(4),PNU(4),PPI(4)
-      REAL  PWB(4),PMU(4),PNM(4)
-      REAL  PRHO(4),PIC(4),PIZ(4)
-      REAL  PAA(4),PIM1(4),PIM2(4),PIPL(4)
-      REAL  PKK(4),PKS(4)
-      REAL  PNPI(4,9)
-      REAL  PHOT(4)
-      REAL  PDUM(4)
+      double precision  HH(4)
+      double precision  HV(4),PNU(4),PPI(4)
+      double precision  PWB(4),PMU(4),PNM(4)
+      double precision  PRHO(4),PIC(4),PIZ(4)
+      double precision  PAA(4),PIM1(4),PIM2(4),PIPL(4)
+      double precision  PKK(4),PKS(4)
+      double precision  PNPI(4,9)
+      double precision  PHOT(4)
+      double precision  PDUM(4)
       DATA NEV,NPRIN/0,10/
       KTO=1
       IF(JAK1.EQ.-1) RETURN
@@ -345,21 +348,22 @@ C     =====
       SUBROUTINE DEKAY2(IMOD,HH,ISGN)
 C     *******************************
 C THIS ROUTINE  SIMULATES TAU-  DECAY
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / DECP4 / PP1(4),PP2(4),KFF1,KFF2
-      REAL*4           PP1   ,PP2
+      double precision           PP1   ,PP2
       INTEGER                        KFF1,KFF2
-      REAL  HH(4)
-      REAL  HV(4),PNU(4),PPI(4)
-      REAL  PWB(4),PMU(4),PNM(4)
-      REAL  PRHO(4),PIC(4),PIZ(4)
-      REAL  PAA(4),PIM1(4),PIM2(4),PIPL(4)
-      REAL  PKK(4),PKS(4)
-      REAL  PNPI(4,9)
-      REAL  PHOT(4)
-      REAL  PDUM(4)
+      double precision  HH(4)
+      double precision  HV(4),PNU(4),PPI(4)
+      double precision  PWB(4),PMU(4),PNM(4)
+      double precision  PRHO(4),PIC(4),PIZ(4)
+      double precision  PAA(4),PIM1(4),PIM2(4),PIPL(4)
+      double precision  PKK(4),PKS(4)
+      double precision  PNPI(4,9)
+      double precision  PHOT(4)
+      double precision  PDUM(4)
       DATA NEV,NPRIN/0,10/
       KTO=2
       IF(JAK2.EQ.-1) RETURN
@@ -454,8 +458,9 @@ C KTO=100, PRINT FINAL REPORT (OPTIONAL).
 C
 C     called by : KORALZ
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
       COMMON / IDFC  / IDFF
       COMMON /TAUPOS/ NP1,NP2
@@ -464,10 +469,10 @@ C ----------------------------------------------------------------------
      &                ,NAMES
       CHARACTER NAMES(NMODE)*31
       COMMON / INOUT / INUT,IOUT
-      REAL  POL(4)
-      REAL  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4),PDUM5(4)
-      REAL  PDUM(4)
-      REAL  PDUMI(4,9)
+      double precision  POL(4)
+      double precision  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4),PDUM5(4)
+      double precision  PDUM(4)
+      double precision  PDUMI(4,9)
       DATA IWARM/0/
       KTOM=KTO
 C
@@ -597,18 +602,19 @@ C THIS ROUTINE  SIMULATES TAU+-  DECAY
 C
 C     called by : DEXAY
 C ---------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / INOUT / INUT,IOUT
-      REAL  POL(4),POLAR(4)
-      REAL  PNU(4),PPI(4)
-      REAL  PRHO(4),PIC(4),PIZ(4)
-      REAL  PWB(4),PMU(4),PNM(4)
-      REAL  PAA(4),PIM1(4),PIM2(4),PIPL(4)
-      REAL  PKK(4),PKS(4)
-      REAL  PNPI(4,9)
-      REAL PHOT(4)
-      REAL PDUM(4)
+      double precision  POL(4),POLAR(4)
+      double precision  PNU(4),PPI(4)
+      double precision  PRHO(4),PIC(4),PIZ(4)
+      double precision  PWB(4),PMU(4),PNM(4)
+      double precision  PAA(4),PIM1(4),PIM2(4),PIPL(4)
+      double precision  PKK(4),PKS(4)
+      double precision  PNPI(4,9)
+      double precision PHOT(4)
+      double precision PDUM(4)
 C
       IF(JAKIN.EQ.-1) RETURN
       DO 33 I=1,3
@@ -656,7 +662,9 @@ C INTO ELECTRON AND TWO NEUTRINOS
 C
 C     called by : DEXAY,DEXAY1
 C ----------------------------------------------------------------------
-      REAL  POL(4),HV(4),PWB(4),PNU(4),Q1(4),Q2(4),PH(4),RN(1)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision  POL(4),HV(4),PWB(4),PNU(4),Q1(4),
+     *                    Q2(4),PH(4),RN(1)
       DATA IWARM/0/
 C
       IF(MODE.EQ.-1) THEN
@@ -695,8 +703,10 @@ C                      PWB   W-BOSON
 C                      Q1    MUON
 C                      Q2    MUON-NEUTRINO
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / INOUT / INUT,IOUT
-      REAL  POL(4),HV(4),PWB(4),PNU(4),Q1(4),Q2(4),PH(4),RN(1)
+      double precision POL(4),HV(4),PWB(4),PNU(4)
+      double precision Q1(4),Q2(4),PH(4),RN(1)
       DATA IWARM/0/
 C
       IF(MODE.EQ.-1) THEN
@@ -731,23 +741,24 @@ C ----------------------------------------------------------------------
 C
 C     called by : DEXEL,(DEKAY,DEKAY1)
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / INOUT / INUT,IOUT
-      REAL*4         PHX(4)
-      REAL  HHV(4),HV(4),PWB(4),PNU(4),Q1(4),Q2(4)
-      REAL  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4),PDUM5(4)
-      REAL*4 RRR(3)
-      REAL*8 SWT, SSWT
+      double precision         PHX(4)
+      double precision  HHV(4),HV(4),PWB(4),PNU(4),Q1(4),Q2(4)
+      double precision  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4),PDUM5(4)
+      double precision RRR(3)
+      double precision SWT, SSWT
       DATA PI /3.141592653589793238462643/
       DATA IWARM/0/
 C
@@ -833,23 +844,24 @@ C     =====
       END
       SUBROUTINE DADMMU(MODE,ISGN,HHV,PNU,PWB,Q1,Q2,PHX)
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision  AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / INOUT / INUT,IOUT
-      REAL*4         PHX(4)
-      REAL  HHV(4),HV(4),PNU(4),PWB(4),Q1(4),Q2(4)
-      REAL  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4),PDUM5(4)
-      REAL*4 RRR(3)
-      REAL*8 SWT, SSWT
+      double precision         PHX(4)
+      double precision  HHV(4),HV(4),PNU(4),PWB(4),Q1(4),Q2(4)
+      double precision  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4),PDUM5(4)
+      double precision RRR(3)
+      double precision SWT, SSWT
       DATA PI /3.141592653589793238462643/
       DATA IWARM /0/
 C
@@ -936,10 +948,11 @@ C XNX,XNA was flipped in parameters of dphsel and dphsmu
 C *********************************************************************
 C *   ELECTRON DECAY MODE                                             *
 C *********************************************************************
-      REAL*4         PHX(4)
-      REAL*4  HVX(4),PAAX(4),XAX(4),QPX(4),XNX(4)
-      REAL*8  HV(4),PH(4),PAA(4),XA(4),QP(4),XN(4)
-      REAL*8  DGAMT
+        IMPLICIT double precision (A-H,O-Z)
+        double precision         PHX(4)
+        double precision  HVX(4),PAAX(4),XAX(4),QPX(4),XNX(4)
+        double precision  HV(4),PH(4),PAA(4),XA(4),QP(4),XN(4)
+        double precision  DGAMT
       IELMU=1
       CALL DRCMU(DGAMT,HV,PH,PAA,XA,QP,XN,IELMU)
       DO 7 K=1,4
@@ -957,10 +970,11 @@ C XNX,XNA was flipped in parameters of dphsel and dphsmu
 C *********************************************************************
 C *   MUON     DECAY MODE                                             *
 C *********************************************************************
-      REAL*4         PHX(4)
-      REAL*4  HVX(4),PAAX(4),XAX(4),QPX(4),XNX(4)
-      REAL*8  HV(4),PH(4),PAA(4),XA(4),QP(4),XN(4)
-      REAL*8  DGAMT
+        IMPLICIT double precision (A-H,O-Z)
+        double precision         PHX(4)
+      double precision  HVX(4),PAAX(4),XAX(4),QPX(4),XNX(4)
+      double precision  HV(4),PH(4),PAA(4),XA(4),QP(4),XN(4)
+      double precision  DGAMT
       IELMU=2
       CALL DRCMU(DGAMT,HV,PH,PAA,XA,QP,XN,IELMU)
       DO 7 K=1,4
@@ -974,7 +988,7 @@ C *********************************************************************
       DGAMX=DGAMT
       END
       SUBROUTINE DRCMU(DGAMT,HV,PH,PAA,XA,QP,XN,IELMU)
-      IMPLICIT REAL*8 (A-H,O-Z)
+        IMPLICIT double precision (A-H,O-Z)
 C ----------------------------------------------------------------------
 * IT SIMULATES E,MU CHANNELS OF TAU  DECAY IN ITS REST FRAME WITH
 * QED ORDER ALPHA CORRECTIONS
@@ -983,19 +997,19 @@ C ----------------------------------------------------------------------
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / INOUT / INUT,IOUT
       COMMON / TAURAD / XK0DEC,ITDKRC
-      REAL*8            XK0DEC
-      REAL*8  HV(4),PT(4),PH(4),PAA(4),XA(4),QP(4),XN(4)
-      REAL*8  PR(4)
-      REAL*4 RRR(6)
+      double precision            XK0DEC
+      double precision  HV(4),PT(4),PH(4),PAA(4),XA(4),QP(4),XN(4)
+      double precision  PR(4)
+      double precision RRR(6)
       LOGICAL IHARD
       DATA PI /3.141592653589793238462643D0/
       XLAM(X,Y,Z)=SQRT((X-Y-Z)**2-4.0*Y*Z)
@@ -1148,7 +1162,7 @@ C PARTIAL WIDTH CONSISTS OF PHASE SPACE AND AMPLITUDE
       DGAMT=1/(2.*AMTAX)*AMPLIT*PHSPAC
       END
       SUBROUTINE DAMPRY(ITDKRC,XK0DEC,XK,XA,QP,XN,AMPLIT,HV)
-      IMPLICIT REAL*8 (A-H,O-Z)
+        IMPLICIT double precision (A-H,O-Z)
 C ----------------------------------------------------------------------
 C IT CALCULATES MATRIX ELEMENT FOR THE
 C TAU --> MU(E) NU NUBAR DECAY MODE
@@ -1158,10 +1172,10 @@ C ----------------------------------------------------------------------
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
-      REAL*8  HV(4),QP(4),XN(4),XA(4),XK(4)
+      double precision  HV(4),QP(4),XN(4),XA(4),XK(4)
 C
       HV(4)=1.D0
       AK0=XK0DEC*AMTAU
@@ -1185,22 +1199,22 @@ C     SQM2 - value for S=0                                             *
 C     see Eqs. (2.9)-(2.10) from CJK ( Nucl.Phys.B(1991) )             *
 C **********************************************************************
 C
-      IMPLICIT REAL*8(A-H,O-Z)
+        IMPLICIT double precision(A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / QEDPRM /ALFINV,ALFPI,XK0
-      REAL*8           ALFINV,ALFPI,XK0
-      REAL*8    QP(4),XN(4),XA(4),XK(4)
-      REAL*8    R(4)
-      REAL*8   HV(4)
-      REAL*8 S0(3),RXA(3),RXK(3),RQP(3)
+      double precision           ALFINV,ALFPI,XK0
+      double precision    QP(4),XN(4),XA(4),XK(4)
+      double precision    R(4)
+      double precision   HV(4)
+      double precision S0(3),RXA(3),RXK(3),RQP(3)
       DATA PI /3.141592653589793238462643D0/
 C
       TMASS=AMTAU
@@ -1264,23 +1278,23 @@ C     SEE EQS. (2.2),(2.4)-(2.5) FROM CJK (NUCL.PHYS.B351(1991)70      *
 C     AND (C.2) FROM JK (NUCL.PHYS.B320(1991)20 )                      *
 C **********************************************************************
 C
-      IMPLICIT REAL*8(A-H,O-Z)
+        IMPLICIT double precision(A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / QEDPRM /ALFINV,ALFPI,XK0
-      REAL*8           ALFINV,ALFPI,XK0
+      double precision           ALFINV,ALFPI,XK0
       DIMENSION QP(4),XN(4),XA(4)
-      REAL*8 HV(4)
+      double precision HV(4)
       DIMENSION R(4)
-      REAL*8 RXA(3),RXN(3),RQP(3)
-      REAL*8 BORNPL(3),AM3POL(3),XM3POL(3)
+      double precision RXA(3),RXN(3),RQP(3)
+      double precision BORNPL(3),AM3POL(3),XM3POL(3)
       DATA PI /3.141592653589793238462643D0/
 C
       TMASS=AMTAU
@@ -1366,7 +1380,8 @@ C IN TAU REST FRAME
 C OUTPUT FOUR MOMENTA: PNU   TAUNEUTRINO,
 C                      PPI   PION CHARGED
 C ----------------------------------------------------------------------
-      REAL  POL(4),HV(4),PNU(4),PPI(4),RN(1)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision  POL(4),HV(4),PNU(4),PPI(4),RN(1)
 CC
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1392,19 +1407,20 @@ C     =====
       END
       SUBROUTINE DADMPI(MODE,ISGN,HV,PPI,PNU)
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / INOUT / INUT,IOUT
-      REAL  PPI(4),PNU(4),HV(4)
+      double precision  PPI(4),PNU(4),HV(4)
       DATA PI /3.141592653589793238462643/
 C
       IF(MODE.EQ.-1) THEN
@@ -1470,8 +1486,9 @@ C                      PRO   RHO
 C                      PIC   PION CHARGED
 C                      PIZ   PION ZERO
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / INOUT / INUT,IOUT
-      REAL  POL(4),HV(4),PRO(4),PNU(4),PIC(4),PIZ(4),RN(1)
+      double precision  POL(4),HV(4),PRO(4),PNU(4),PIC(4),PIZ(4),RN(1)
       DATA IWARM/0/
 C
       IF(MODE.EQ.-1) THEN
@@ -1507,23 +1524,24 @@ C     =====
       END
       SUBROUTINE DADMRO(MODE,ISGN,HHV,PNU,PRO,PIC,PIZ)
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / INOUT / INUT,IOUT
-      REAL  HHV(4)
-      REAL  HV(4),PRO(4),PNU(4),PIC(4),PIZ(4)
-      REAL  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4)
-      REAL*4 RRR(3)
-      REAL*8 SWT, SSWT
+      double precision  HHV(4)
+      double precision  HV(4),PRO(4),PNU(4),PIC(4),PIZ(4)
+      double precision  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4)
+      double precision RRR(3)
+      double precision SWT, SSWT
       DATA PI /3.141592653589793238462643/
       DATA IWARM/0/
 C
@@ -1611,16 +1629,18 @@ C ----------------------------------------------------------------------
 C IT SIMULATES RHO DECAY IN TAU REST FRAME WITH
 C Z-AXIS ALONG RHO MOMENTUM
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL  HV(4),PT(4),PN(4),PR(4),PIC(4),PIZ(4),QQ(4),RR1(1)
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision  HV(4),PT(4),PN(4),PR(4),
+     *                  PIC(4),PIZ(4),QQ(4),RR1(1)
       DATA PI /3.141592653589793238462643/
       DATA ICONT /0/
 C
@@ -1706,8 +1726,10 @@ C ----------------------------------------------------------------------
 *                      PIPL  PION PLUS  (OR PI-)
 *                      (PIPL,PIM1) FORM A RHO
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / INOUT / INUT,IOUT
-      REAL  POL(4),HV(4),PAA(4),PNU(4),PIM1(4),PIM2(4),PIPL(4),RN(1)
+      double precision  POL(4),HV(4),PAA(4),PNU(4),
+     *                  PIM1(4),PIM2(4),PIPL(4),RN(1)
       DATA IWARM/0/
 C
       IF(MODE.EQ.-1) THEN
@@ -1741,23 +1763,24 @@ C     =====
 C ----------------------------------------------------------------------
 * A1 DECAY UNWEIGHTED EVENTS
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / INOUT / INUT,IOUT
-      REAL  HHV(4)
-      REAL  HV(4),PAA(4),PNU(4),PIM1(4),PIM2(4),PIPL(4)
-      REAL  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4),PDUM5(4)
-      REAL*4 RRR(3)
-      REAL*8 SWT, SSWT
+      double precision  HHV(4)
+      double precision  HV(4),PAA(4),PNU(4),PIM1(4),PIM2(4),PIPL(4)
+      double precision  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4),PDUM5(4)
+      double precision RRR(3)
+      double precision SWT, SSWT
       SAVE IWARM,NEVRAW,NEVACC,NEVOVR,SWT,SSWT,WTMAX
       DATA PI /3.141592653589793238462643/
       DATA IWARM/0/
@@ -1841,19 +1864,20 @@ C ----------------------------------------------------------------------
 * IT SIMULATES A1  DECAY IN TAU REST FRAME WITH
 * Z-AXIS ALONG A1  MOMENTUM
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / TAUKLE / BRA1,BRK0,BRK0B,BRKS
-      REAL*4            BRA1,BRK0,BRK0B,BRKS
-      REAL  HV(4),PN(4),PAA(4),PIM1(4),PIM2(4),PIPL(4)
+      double precision            BRA1,BRK0,BRK0B,BRKS
+      double precision  HV(4),PN(4),PAA(4),PIM1(4),PIM2(4),PIPL(4)
 
 
-      REAL*4 RRR(1)
+      double precision RRR(1)
 C MATRIX ELEMENT NUMBER:
       MNUM=0
 C TYPE OF THE GENERATION:
@@ -1881,7 +1905,8 @@ C IN TAU REST FRAME
 C OUTPUT FOUR MOMENTA: PNU   TAUNEUTRINO,
 C                      PKK   KAON CHARGED
 C ----------------------------------------------------------------------
-      REAL  POL(4),HV(4),PNU(4),PKK(4),RN(1)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision  POL(4),HV(4),PNU(4),PKK(4),RN(1)
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1908,19 +1933,20 @@ C     =====
       SUBROUTINE DADMKK(MODE,ISGN,HV,PKK,PNU)
 C ----------------------------------------------------------------------
 C FZ
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / INOUT / INUT,IOUT
-      REAL  PKK(4),PNU(4),HV(4)
+      double precision  PKK(4),PNU(4),HV(4)
       DATA PI /3.141592653589793238462643/
 C
       IF(MODE.EQ.-1) THEN
@@ -1992,8 +2018,9 @@ C                      PKC   K CHARGED
 C                      PIC   PION CHARGED
 C                      PIZ   PION ZERO
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / INOUT / INUT,IOUT
-      REAL  POL(4),HV(4),PKS(4),PNU(4),PKK(4),PPI(4),RN(1)
+      double precision  POL(4),HV(4),PKS(4),PNU(4),PKK(4),PPI(4),RN(1)
       DATA IWARM/0/
 C
       IF(MODE.EQ.-1) THEN
@@ -2030,25 +2057,26 @@ C     =====
       END
       SUBROUTINE DADMKS(MODE,ISGN,HHV,PNU,PKS,PKK,PPI,JKST)
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       COMMON / TAUKLE / BRA1,BRK0,BRK0B,BRKS
-      REAL*4            BRA1,BRK0,BRK0B,BRKS
+      double precision            BRA1,BRK0,BRK0B,BRKS
       COMMON / INOUT / INUT,IOUT
-      REAL  HHV(4)
-      REAL  HV(4),PKS(4),PNU(4),PKK(4),PPI(4)
-      REAL  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4)
-      REAL*4 RRR(3),RMOD(1)
-      REAL*8 SWT, SSWT
+      double precision  HHV(4)
+      double precision  HV(4),PKS(4),PNU(4),PKK(4),PPI(4)
+      double precision  PDUM1(4),PDUM2(4),PDUM3(4),PDUM4(4)
+      double precision RRR(3),RMOD(1)
+      double precision SWT, SSWT
       DATA PI /3.141592653589793238462643/
       DATA IWARM/0/
 C
@@ -2148,16 +2176,18 @@ C Z-AXIS ALONG KAON* MOMENTUM
 C     JKST=10 FOR K* --->K0 + PI+-
 C     JKST=20 FOR K* --->K+- + PI0
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL  HV(4),PT(4),PN(4),PKS(4),PKK(4),PPI(4),QQ(4),RR1(1)
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision  HV(4),PT(4),PN(4),PKS(4),
+     *                  PKK(4),PPI(4),QQ(4),RR1(1)
 cam   COMPLEX BWIGS
       COMPLEX BWIGM
       DATA PI /3.141592653589793238462643/
@@ -2320,24 +2350,25 @@ C ----------------------------------------------------------------------
 C IT SIMULATES MULTIPI DECAY IN TAU REST FRAME WITH
 C Z-AXIS OPPOSITE TO NEUTRINO MOMENTUM
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       PARAMETER (NMODE=15,NM1=0,NM2=1,NM3=8,NM4=2,NM5=1,NM6=3)
       COMMON / TAUDCD /IDFFIN(9,NMODE),MULPIK(NMODE)
      &                ,NAMES
       CHARACTER NAMES(NMODE)*31
 C
-      REAL  PN(4),PR(4),PPI(4,9),HV(4)
-      REAL  PV(5,9),PT(4),UE(3),BE(3)
-      REAL*4 RRR(9),RORD(9),RR1(1)
-      real dpar(8)
+      double precision  PN(4),PR(4),PPI(4,9),HV(4)
+      double precision  PV(5,9),PT(4),UE(3),BE(3)
+      double precision RRR(9),RORD(9),RR1(1)
+      double precision dpar(8)
 C
       DATA PI /3.141592653589793238462643/
       DATA DPAR/2.,5.,15.,60.,250.,1500.,1.2E4,1.2E5/
@@ -2481,14 +2512,15 @@ C  5-pion contribution related to 4-pion cross section
 C
 C     Called by DPHNPI
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
-        REAL*4 DATSIG(17,6)
+      double precision DATSIG(17,6)
 C
       DATA DATSIG/
      1  7.40,12.00,16.15,21.25,24.90,29.55,34.15,37.40,37.85,37.40,
@@ -2574,14 +2606,15 @@ C  5-pion contribution related to 4-pion cross section
 C
 C     Called by DPHNPI
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
-      REAL*4 DATSIG(17,4)
+      double precision DATSIG(17,4)
 C
       DATA DATSIG/
      1  7.40,12.00,16.15,21.25,24.90,29.55,34.15,37.40,37.85,37.40,
@@ -2646,12 +2679,14 @@ C ----------------------------------------------------------------------
 * IT SIMULATES THREE PI (K) DECAY IN THE TAU REST FRAME
 * Z-AXIS ALONG HADRONIC SYSTEM
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       PARAMETER (NMODE=15,NM1=0,NM2=1,NM3=8,NM4=2,NM5=1,NM6=3)
       COMMON / TAUDCD /IDFFIN(9,NMODE),MULPIK(NMODE)
      &                ,NAMES
       CHARACTER NAMES(NMODE)*31
 
-      REAL  HV(4),PN(4),PAA(4),PIM1(4),PIM2(4),PIPL(4),PNPI(4,9)
+      double precision  HV(4),PN(4),PAA(4),PIM1(4),
+     *                  PIM2(4),PIPL(4),PNPI(4,9)
 C MATRIX ELEMENT NUMBER:
       MNUM=JAA
 C TYPE OF THE GENERATION:
@@ -2691,18 +2726,19 @@ C ----------------------------------------------------------------------
 * 1-6  - matrix element for K pi pi, K K pi decay modes
 *  7   - pi- pi0 gamma matrix element
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL  HV(4),PT(4),PN(4),PAA(4),PIM1(4),PIM2(4),PIPL(4)
-      REAL  PR(4)
-      REAL*4 RRR(5)
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision  HV(4),PT(4),PN(4),PAA(4),PIM1(4),PIM2(4),PIPL(4)
+      double precision  PR(4)
+      double precision RRR(5)
       DATA PI /3.141592653589793238462643/
       DATA ICONT /0/
       XLAM(X,Y,Z)=SQRT(ABS((X-Y-Z)**2-4.0*Y*Z))
@@ -2907,19 +2943,20 @@ C ----------------------------------------------------------------------
 C
 C     called by : DPHSAA
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON /TESTA1/ KEYA1
-      REAL  HV(4),PT(4),PN(4),PIM1(4),PIM2(4),PIPL(4)
-      REAL  PAA(4),VEC1(4),VEC2(4)
-      REAL  PIVEC(4),PIAKS(4),HVM(4)
+      double precision  HV(4),PT(4),PN(4),PIM1(4),PIM2(4),PIPL(4)
+      double precision  PAA(4),VEC1(4),VEC2(4)
+      double precision  PIVEC(4),PIAKS(4),HVM(4)
       COMPLEX BWIGN,HADCUR(4),FPIK
       DATA ICONT /1/
 C
@@ -2990,11 +3027,12 @@ C HV IS DEFINED FOR TAU-    WITH GAMMA=B+HV*POL
 C ****************************************************************
 C     G-FUNCTION USED TO INRODUCE ENERGY DEPENDENCE IN A1 WIDTH
 C ****************************************************************
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
@@ -3009,8 +3047,9 @@ C
 C **********************************************************
 C     P-WAVE BREIT-WIGNER  FOR K*
 C **********************************************************
-      REAL S,M,G
-      REAL PI,PIM,QS,QM,W,GS,MK
+        IMPLICIT double precision (A-H,O-Z)
+        double precision S,M,G
+        double precision PI,PIM,QS,QM,W,GS,MK
       SAVE PI,PIM,MK
       DATA INIT /0/
       P(A,B,C)=SQRT(ABS(ABS(((A+B-C)**2-4.*A*B)/4./A)
@@ -3038,8 +3077,9 @@ C -------  BREIT-WIGNER -----------------------
 C **********************************************************
 C     P-WAVE BREIT-WIGNER  FOR RHO
 C **********************************************************
-        REAL S,M,G
-        REAL PI,PIM,QS,QM,W,GS,radicand
+        IMPLICIT double precision (A-H,O-Z)
+        double precision S,M,G
+        double precision PI,PIM,QS,QM,W,GS,radicand
         DATA INIT /0/
         SAVE PI, PIM
 C ------------ PARAMETERS --------------------
@@ -3066,8 +3106,9 @@ C -------  BREIT-WIGNER -----------------------
 C **********************************************************
 C     PION FORM FACTOR
 C **********************************************************
+        IMPLICIT double precision (A-H,O-Z)
       COMPLEX BWIG
-      REAL ROM,ROG,ROM1,ROG1,BETA1,PI,PIM,S,W
+      double precision ROM,ROG,ROM1,ROG1,BETA1,PI,PIM,S,W
       SAVE PI,PIM,ROM,ROG,ROM1,ROG1,BETA1
       EXTERNAL BWIG
       DATA  INIT /0/
@@ -3093,6 +3134,8 @@ C -----------------------------------------------
 C **********************************************************
 C     SQUARE OF PION FORM FACTOR
 C **********************************************************
+        IMPLICIT double precision (A-H,O-Z)
+        double precision :: w, fpirho
       COMPLEX FPIK
       FPIRHO=CABS(FPIK(W))**2
       END
@@ -3103,7 +3146,8 @@ C ----------------------------------------------------------------------
 C
 C     called by : DAMPAA
 C ----------------------------------------------------------------------
-      REAL PIV(4),PN(4)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision PIV(4),PN(4)
       COMPLEX HJ(4),HN
 C
       HN= HJ(4)*CMPLX(PN(4))-HJ(3)*CMPLX(PN(3))
@@ -3120,9 +3164,10 @@ C ----------------------------------------------------------------------
 C SIGN is chosen +/- for decay of TAU +/- respectively
 C     called by : DAMPAA, CLNUT
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
       COMMON / IDFC  / IDFF
-      REAL PIA(4),PN(4)
+      double precision PIA(4),PN(4)
       COMPLEX HJ(4),HJC(4)
 C     DET2(I,J)=AIMAG(HJ(I)*HJC(J)-HJ(J)*HJC(I))
 C -- here was an error (ZW, 21.11.1991)
@@ -3157,8 +3202,9 @@ C ----------------------------------------------------------------------
 C
 C     called by : DAMPAA
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMPLEX HJ(4)
-      REAL HV(4),P(4)
+      double precision HV(4),P(4)
       DATA P /3*0.,1.0/
 C
       CALL CLAXI(HJ,P,HV)
@@ -3176,19 +3222,20 @@ C ----------------------------------------------------------------------
 C
 C     called by : DPHTRE
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON /TESTA1/ KEYA1
-      REAL  HV(4),PT(4),PN(4),PIM1(4),PIM2(4),PIPL(4)
-      REAL  PAA(4),VEC1(4),VEC2(4)
-      REAL  PIVEC(4),PIAKS(4),HVM(4)
+      double precision  HV(4),PT(4),PN(4),PIM1(4),PIM2(4),PIPL(4)
+      double precision  PAA(4),VEC1(4),VEC2(4)
+      double precision  PIVEC(4),PIAKS(4),HVM(4)
       COMPLEX BWIGN,HADCUR(4),FNORM,FORMOM
       DATA ICONT /1/
 * THIS INLINE FUNCT. CALCULATES THE SCALAR PART OF THE PROPAGATOR
@@ -3283,19 +3330,20 @@ C MNUM DECAY MODE IDENTIFIER.
 C
 C     called by : DPHTRE
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL  HV(4),PT(4),PN(4),PIM1(4),PIM2(4),PIM3(4)
-      REAL  PAA(4),VEC1(4),VEC2(4),VEC3(4),VEC4(4),VEC5(4)
-      REAL  PIVEC(4),PIAKS(4),HVM(4)
-      REAL FNORM(0:7),COEF(1:5,0:7)
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision  HV(4),PT(4),PN(4),PIM1(4),PIM2(4),PIM3(4)
+      double precision  PAA(4),VEC1(4),VEC2(4),VEC3(4),VEC4(4),VEC5(4)
+      double precision  PIVEC(4),PIAKS(4),HVM(4)
+      double precision FNORM(0:7),COEF(1:5,0:7)
       COMPLEX HADCUR(4),FORM1,FORM2,FORM3,FORM4,FORM5,UROJ
       EXTERNAL FORM1,FORM2,FORM3,FORM4,FORM5
       SAVE UROJ,DWAPI0,FNORM,COEF
@@ -3439,9 +3487,10 @@ C external product of P1, P2, P3 4-momenta.
 C SIGN is chosen +/- for decay of TAU +/- respectively
 C     called by : DAMPAA, CLNUT
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
       COMMON / IDFC  / IDFF
-      REAL PIA(4),P1(4),P2(4),P3(4)
+      double precision PIA(4),P1(4),P2(4),P3(4)
       DET2(I,J)=P1(I)*P2(J)-P2(I)*P1(J)
 * -----------------------------------
       IF     (KTOM.EQ.1.OR.KTOM.EQ.-1) THEN
@@ -3473,8 +3522,9 @@ C ----------------------------------------------------------------------
 *                      PNPI  final state particles
 *                      JNPI  decay type
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / INOUT / INUT,IOUT
-      REAL  POL(4),HV(4),PAA(4),PNU(4),PNPI(4,9),RN(1)
+      double precision  POL(4),HV(4),PAA(4),PNU(4),PNPI(4,9),RN(1)
       DATA IWARM/0/
 C
       IF(MODE.EQ.-1) THEN
@@ -3506,28 +3556,29 @@ C     =====
       END
       SUBROUTINE DADNEW(MODE,ISGN,HV,PNU,PWB,PNPI,JNPI)
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
-      REAL*4            GAMPMC    ,GAMPER
+      double precision            GAMPMC    ,GAMPER
       PARAMETER (NMODE=15,NM1=0,NM2=1,NM3=8,NM4=2,NM5=1,NM6=3)
       COMMON / TAUDCD /IDFFIN(9,NMODE),MULPIK(NMODE)
      &                ,NAMES
       CHARACTER NAMES(NMODE)*31
       COMMON / INOUT / INUT,IOUT
 
-      REAL*4 PNU(4),PWB(4),PNPI(4,9),HV(4),HHV(4)
-      REAL*4 PDUM1(4),PDUM2(4),PDUMI(4,9)
-      REAL*4 RRR(3)
-      REAL*4 WTMAX(NMODE)
-      REAL*8              SWT(NMODE),SSWT(NMODE)
+      double precision PNU(4),PWB(4),PNPI(4,9),HV(4),HHV(4)
+      double precision PDUM1(4),PDUM2(4),PDUMI(4,9)
+      double precision RRR(3)
+      double precision WTMAX(NMODE)
+      double precision              SWT(NMODE),SSWT(NMODE)
       DIMENSION NEVRAW(NMODE),NEVOVR(NMODE),NEVACC(NMODE)
 C
       DATA PI /3.141592653589793238462643/
@@ -3670,25 +3721,28 @@ C ----------------------------------------------------------------------
 * IT SIMULATES 4pi DECAY IN TAU REST FRAME WITH
 * Z-AXIS ALONG 4pi MOMENTUM
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       PARAMETER (NMODE=15,NM1=0,NM2=1,NM3=8,NM4=2,NM5=1,NM6=3)
       COMMON / TAUDCD /IDFFIN(9,NMODE),MULPIK(NMODE)
      &                ,NAMES
       CHARACTER NAMES(NMODE)*31
-      REAL  HV(4),PT(4),PN(4),PAA(4),PIM1(4),PIM2(4),PIPL(4),PMULT(4,9)
-      REAL  PR(4),PIZ(4)
-      REAL*4 RRR(9)
-      REAL*8 UU,FF,FF1,FF2,FF3,FF4,GG1,GG2,GG3,GG4,RR
+      double precision  HV(4),PT(4),PN(4),PAA(4),PIM1(4),
+     *                  PIM2(4),PIPL(4),PMULT(4,9)
+      double precision  PR(4),PIZ(4)
+      double precision RRR(9)
+      double precision UU,FF,FF1,FF2,FF3,FF4,GG1,GG2,GG3,GG4,RR
       DATA PI /3.141592653589793238462643/
       DATA ICONT /0/
+      integer k
       XLAM(X,Y,Z)=SQRT(ABS((X-Y-Z)**2-4.0*Y*Z))
 C AMRO, GAMRO IS ONLY A PARAMETER FOR GETING HIGHT EFFICIENCY
 C
@@ -3949,10 +4003,10 @@ C DISTRIBUTION IN HADRONIC SYSTEM
 C PHASE SPACE CHECK
 C      DGAMT=PHSPAC
       DO 77 K=1,4
-        PMULT(K,1)=PIM1(K)
-        PMULT(K,2)=PIM2(K)
-        PMULT(K,3)=PIZ (K)
-        PMULT(K,4)=PIPL(K)
+        PMULT(K,1) = PIM1(K)
+        PMULT(K,2) = PIM2(K)
+        PMULT(K,3) = PIZ (K)
+        PMULT(K,4) = PIPL(K)
  77   CONTINUE
       END
       SUBROUTINE DAM4PI(MNUM,PT,PN,PIM1,PIM2,PIM3,PIM4,AMPLIT,HV)
@@ -3965,17 +4019,19 @@ C MNUM DECAY MODE IDENTIFIER.
 C
 C     called by : DPH4PI
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL  HV(4),PT(4),PN(4),PIM1(4),PIM2(4),PIM3(4),PIM4(4)
-      REAL  PIVEC(4),PIAKS(4),HVM(4)
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision  HV(4),PT(4),PN(4),PIM1(4),
+     *                  PIM2(4),PIM3(4),PIM4(4)
+      double precision  PIVEC(4),PIAKS(4),HVM(4)
       COMPLEX HADCUR(4),FORM1,FORM2,FORM3,FORM4,FORM5
       EXTERNAL FORM1,FORM2,FORM3,FORM4,FORM5
       DATA PI /3.141592653589793238462643/
@@ -4005,28 +4061,29 @@ C ----------------------------------------------------------------------
 * IT SIMULATES 5pi DECAY IN TAU REST FRAME WITH
 * Z-AXIS ALONG 5pi MOMENTUM
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
 
 
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       PARAMETER (NMODE=15,NM1=0,NM2=1,NM3=8,NM4=2,NM5=1,NM6=3)
       COMMON / TAUDCD /IDFFIN(9,NMODE),MULPIK(NMODE)
      &                ,NAMES
       CHARACTER NAMES(NMODE)*31
-      REAL  HV(4),PT(4),PN(4),PAA(4),PMULT(4,9)
-      REAL*4 PR(4),PI1(4),PI2(4),PI3(4),PI4(4),PI5(4)
-      REAL*8 AMP1,AMP2,AMP3,AMP4,AMP5,ams1,ams2,amom,gamom
-      REAL*8 AM5SQ,AM4SQ,AM3SQ,AM2SQ,AM5,AM4,AM3
-      REAL*4 RRR(10)
-      REAL*8 gg1,gg2,gg3,ff1,ff2,ff3,ff4,alp,alp1,alp2
-      REAL*8 XM,AM,GAMMAB
+      double precision  HV(4),PT(4),PN(4),PAA(4),PMULT(4,9)
+      double precision PR(4),PI1(4),PI2(4),PI3(4),PI4(4),PI5(4)
+      double precision AMP1,AMP2,AMP3,AMP4,AMP5,ams1,ams2,amom,gamom
+      double precision AM5SQ,AM4SQ,AM3SQ,AM2SQ,AM5,AM4,AM3
+      double precision RRR(10)
+      double precision gg1,gg2,gg3,ff1,ff2,ff3,ff4,alp,alp1,alp2
+      double precision XM,AM,GAMMAB
       DATA PI /3.141592653589793238462643/
       DATA ICONT /0/
       data fpi /93.3e-3/
@@ -4275,17 +4332,19 @@ C IT SIMULATES RHO DECAY IN TAU REST FRAME WITH
 C Z-AXIS ALONG RHO MOMENTUM
 C Rho decays to K Kbar
 C ----------------------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL  HV(4),PT(4),PN(4),PR(4),PKC(4),PKZ(4),QQ(4),PMULT(4,9)
-      REAL*4 RR1(1)
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision  HV(4),PT(4),PN(4),PR(4),PKC(4),
+     *                  PKZ(4),QQ(4),PMULT(4,9)
+      double precision RR1(1)
       DATA PI /3.141592653589793238462643/
       DATA ICONT /0/
 C
@@ -4374,11 +4433,12 @@ C AMPLITUDE
 C ----------------------------------------------------------
 c     square of pion form factor
 C ----------------------------------------------------------
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 c     COMPLEX FPIKMK
@@ -4390,9 +4450,10 @@ c     FPIRK=CABS(FPIKMK(W,AMK,AMKZ))**2
 C **********************************************************
 C     Kaon form factor
 C **********************************************************
+        IMPLICIT double precision (A-H,O-Z)
       COMPLEX BWIGM
-      REAL XM1, XM2
-      REAL ROM,ROG,ROM1,ROG1,BETA1,PI,PIM,S,W
+      double precision XM1, XM2
+      double precision ROM,ROG,ROM1,ROG1,BETA1,PI,PIM,S,W
       SAVE PI,PIM,ROM,ROG,ROM1,ROG1,BETA1
       COMPLEX BWIG
       EXTERNAL BWIG
@@ -4419,6 +4480,7 @@ C -----------------------------------------------
       SUBROUTINE RESLUX
 C     ****************
 C INITIALIZE LUND COMMON
+        IMPLICIT double precision (A-H,O-Z)
       PARAMETER (NMXHEP=2000)
       COMMON/HEPEVTX/NEVHEP,NHEP,ISTHEP(NMXHEP),IDHEP(NMXHEP),
      &JMOHEP(2,NMXHEP),JDAHEP(2,NMXHEP),PHEP(5,NMXHEP),VHEP(4,NMXHEP)
@@ -4429,9 +4491,9 @@ C INITIALIZE LUND COMMON
 C
 C -------------------------
 C
-      IMPLICIT REAL*8 (A-H,O-Z)
-      REAL*4         PHX(4)
-      REAL*4 QHOT(4)
+        IMPLICIT double precision (A-H,O-Z)
+      double precision         PHX(4)
+      double precision QHOT(4)
 C
       DO  9 K=1,4
       QHOT(K)  =0.0
@@ -4453,8 +4515,9 @@ C
 C used when radiative corrections in decays are generated
 C---------------------------------------------------------------------
 C
+        IMPLICIT double precision (A-H,O-Z)
       COMMON /TAUPOS/ NP1,NP2
-      REAL  PHOT(4)
+      double precision  PHOT(4)
 C
 C check energy
       IF (PHOT(4).LE.0.0) RETURN
@@ -4470,7 +4533,7 @@ C
       IF(KTOS.GT.10) KTOS=KTOS-10
 C boost and append photon (gamma is 22)
       CALL TRALO4(KTOS,PHOT,PHOT,AM)
-      CALL FILHEP(0,1,22,NPS,NPS,0,0,PHOT,0.0,.TRUE.)
+      CALL FILHEP(0,1,22,NPS,NPS,0,0,PHOT,0.0D0,.TRUE.)
 C
       RETURN
       END
@@ -4485,8 +4548,9 @@ C
 C     called by : DEXAY,(DEKAY1,DEKAY2)
 C ----------------------------------------------------------------------
 C
+        IMPLICIT double precision (A-H,O-Z)
       COMMON /TAUPOS/ NP1,NP2
-      REAL  PNU(4),PWB(4),PEL(4),PNE(4)
+      double precision  PNU(4),PWB(4),PEL(4),PNE(4)
 C
 C position of decaying particle:
       IF(KTO.EQ. 1) THEN
@@ -4523,8 +4587,9 @@ C
 C     called by : DEXAY,(DEKAY1,DEKAY2)
 C ----------------------------------------------------------------------
 C
+        IMPLICIT double precision (A-H,O-Z)
       COMMON /TAUPOS/ NP1,NP2
-      REAL  PNU(4),PWB(4),PMU(4),PNM(4)
+      double precision  PNU(4),PWB(4),PMU(4),PNM(4)
 C
 C position of decaying particle:
       IF(KTO.EQ. 1) THEN
@@ -4561,7 +4626,8 @@ C
 C     called by : DEXAY,(DEKAY1,DEKAY2)
 C ----------------------------------------------------------------------
 C
-      REAL  PNU(4),PPI(4)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision  PNU(4),PPI(4)
       COMMON /TAUPOS/ NP1,NP2
 C
 C position of decaying particle:
@@ -4591,8 +4657,9 @@ C
 C     called by : DEXAY,(DEKAY1,DEKAY2)
 C ----------------------------------------------------------------------
 C
+        IMPLICIT double precision (A-H,O-Z)
       COMMON /TAUPOS/ NP1,NP2
-      REAL  PNU(4),PRHO(4),PIC(4),PIZ(4)
+      double precision  PNU(4),PRHO(4),PIC(4),PIZ(4)
 C
 C position of decaying particle:
       IF(KTO.EQ. 1) THEN
@@ -4630,8 +4697,9 @@ C
 C     called by : DEXAY,(DEKAY1,DEKAY2)
 C ----------------------------------------------------------------------
 C
+        IMPLICIT double precision (A-H,O-Z)
       COMMON /TAUPOS/ NP1,NP2
-      REAL  PNU(4),PAA(4),PIM1(4),PIM2(4),PIPL(4)
+      double precision  PNU(4),PAA(4),PIM1(4),PIM2(4),PIPL(4)
 C
 C position of decaying particle:
       IF(KTO.EQ. 1) THEN
@@ -4694,7 +4762,8 @@ C ISGN = 1/-1 for tau-/tau+
 C
 C ----------------------------------------------------------------------
 C
-      REAL PKK(4),PNU(4)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision PKK(4),PNU(4)
       COMMON /TAUPOS/ NP1,NP2
 C
 C position of decaying particle
@@ -4715,10 +4784,11 @@ C
       RETURN
       END
       SUBROUTINE DWLUKS(KTO,ISGN,PNU,PKS,PKK,PPI,JKST)
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / TAUKLE / BRA1,BRK0,BRK0B,BRKS
-      REAL*4            BRA1,BRK0,BRK0B,BRKS
+      double precision            BRA1,BRK0,BRK0B,BRKS
       COMMON /TAUPOS/ NP1,NP2
-      REAL*4 XIO(1)
+      double precision XIO(1)
 C ----------------------------------------------------------------------
 C Lorentz transformation to CMsystem and
 C Updating of HEPEVT record
@@ -4728,7 +4798,7 @@ C JKST=10 (20) corresponds to K0B pi- (K- pi0) decay
 C
 C ----------------------------------------------------------------------
 C
-      REAL  PNU(4),PKS(4),PKK(4),PPI(4)
+      double precision  PNU(4),PKS(4),PKK(4),PPI(4)
 C
 C position of decaying particle
       IF(KTO.EQ. 1) THEN
@@ -4793,13 +4863,14 @@ C
 C     called by : DEXAY,(DEKAY1,DEKAY2)
 C ----------------------------------------------------------------------
 C
+        IMPLICIT double precision (A-H,O-Z)
       PARAMETER (NMODE=15,NM1=0,NM2=1,NM3=8,NM4=2,NM5=1,NM6=3)
       COMMON / TAUDCD /IDFFIN(9,NMODE),MULPIK(NMODE)
      &                ,NAMES
       COMMON /TAUPOS/ NP1,NP2
       CHARACTER NAMES(NMODE)*31
-      REAL  PNU(4),PWB(4),PNPI(4,9)
-      REAL  PPI(4)
+      double precision  PNU(4),PWB(4),PNPI(4,9)
+      double precision  PPI(4)
 C
       JNPI=MODE-7
 C position of decaying particle
@@ -4841,8 +4912,8 @@ C CALCULATES MASS OF PP (DOUBLE PRECISION)
 C
 C     USED BY : RADKOR
 C ----------------------------------------------------------------------
-      IMPLICIT REAL*8 (A-H,O-Z)
-      REAL*8  PP(4)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision  PP(4)
       AAA=PP(4)**2-PP(3)**2-PP(2)**2-PP(1)**2
 C
       IF(AAA.NE.0.0) AAA=AAA/SQRT(ABS(AAA))
@@ -4856,7 +4927,8 @@ C CALCULATES MASS OF PP
 C
 C     USED BY :
 C ----------------------------------------------------------------------
-      REAL  PP(4)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision  PP(4)
       AAA=PP(4)**2-PP(3)**2-PP(2)**2-PP(1)**2
       IF(AAA.NE.0.0) AAA=AAA/SQRT(ABS(AAA))
       AMAS4=AAA
@@ -4959,7 +5031,8 @@ C BOOST ALONG Z AXIS, EXE=EXP(ETA), ETA= HIPERBOLIC VELOCITY.
 C
 C     USED BY : TAUOLA KORALZ (?)
 C ----------------------------------------------------------------------
-      REAL*4 PVEC(4),QVEC(4),RVEC(4)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision PVEC(4),QVEC(4),RVEC(4)
 C
       DO 10 I=1,4
   10  RVEC(I)=PVEC(I)
@@ -4998,7 +5071,8 @@ C ----------------------------------------------------------------------
 C
 C     called by :
 C ----------------------------------------------------------------------
-      REAL*4 PVEC(4),QVEC(4),RVEC(4)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision PVEC(4),QVEC(4),RVEC(4)
 C
       PHI=PH1
       CS=COS(PHI)
@@ -5015,8 +5089,8 @@ C ----------------------------------------------------------------------
 C
 C     USED BY : TAUOLA
 C ----------------------------------------------------------------------
-      IMPLICIT REAL*4(A-H,O-Z)
-      REAL*4 PVEC(4),QVEC(4),RVEC(4)
+        IMPLICIT double precision(A-H,O-Z)
+        double precision PVEC(4),QVEC(4),RVEC(4)
 C
       PHI=PH1
       CS=COS(PHI)
@@ -5033,7 +5107,8 @@ C ----------------------------------------------------------------------
 C
 C     USED BY : TAUOLA
 C ----------------------------------------------------------------------
-      REAL*4 PVEC(4),QVEC(4),RVEC(4)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision PVEC(4),QVEC(4),RVEC(4)
 C
       CS=COS(PHI)
       SN=SIN(PHI)
@@ -5049,8 +5124,8 @@ C ----------------------------------------------------------------------
 C GENERATES UNIFORMLY THREE-VECTOR X ON SPHERE  OF RADIUS R
 C DOUBLE PRECISON VERSION OF SPHERA
 C ----------------------------------------------------------------------
-      REAL*8  R,X(4),PI,COSTH,SINTH
-      REAL*4 RRR(2)
+        double precision  R,X(4),PI,COSTH,SINTH
+      double precision RRR(2)
       DATA PI /3.141592653589793238462643D0/
 C
       CALL RANMAR(RRR,2)
@@ -5062,7 +5137,7 @@ C
       RETURN
       END
       SUBROUTINE ROTPOX(THET,PHI,PP)
-      IMPLICIT REAL*8 (A-H,O-Z)
+        IMPLICIT double precision (A-H,O-Z)
 C ----------------------------------------------------------------------
 C double precison version of ROTPOL
 C ----------------------------------------------------------------------
@@ -5078,8 +5153,9 @@ C GENERATES UNIFORMLY THREE-VECTOR X ON SPHERE  OF RADIUS R
 C
 C     called by : DPHSxx,DADMPI,DADMKK
 C ----------------------------------------------------------------------
-      REAL  X(4)
-      REAL*4 RRR(2)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision  R,X(4)
+      double precision RRR(2)
       DATA PI /3.141592653589793238462643/
 C
       CALL RANMAR(RRR,2)
@@ -5095,7 +5171,8 @@ C ----------------------------------------------------------------------
 C
 C     called by : DADMAA,DPHSAA
 C ----------------------------------------------------------------------
-      REAL  PP(4)
+        IMPLICIT double precision (A-H,O-Z)
+        double precision  PP(4)
 C
       CALL ROTOR2(THET,PP,PP)
       CALL ROTOR3( PHI,PP,PP)
@@ -5114,9 +5191,9 @@ C
       SUBROUTINE RANMAR(RVEC,LENV)
       IMPLICIT NONE
       INTEGER LENV
-      REAL*4 RVEC
+      double precision RVEC
       DIMENSION RVEC(*)
-      REAL*8 PYR
+      double precision PYR
       INTEGER IVEC
       DO 100 IVEC= 1, LENV
       RVEC(IVEC) = PYR(0)
@@ -5125,7 +5202,7 @@ C
       END
       FUNCTION DILOGT(X)
 C     *****************
-      IMPLICIT REAL*8(A-H,O-Z)
+        IMPLICIT double precision(A-H,O-Z)
 CERN      C304      VERSION    29/07/71 DILOG        59                C
       Z=-1.64493406684822
       IF(X .LT.-1.0) GO TO 1

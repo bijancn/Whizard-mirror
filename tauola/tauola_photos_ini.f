@@ -36,7 +36,7 @@ C photos activation switch
       double precision P1QQ(4),P2QQ(4)
       double precision PIN(4),POUT(4),PBST(4),PBS1(4),QQ(4),PI
       double precision THET,PHI,EXE
-      REAL*4 PHOI(4),PHOF(4)
+      double precision PHOI(4),PHOF(4)
       SAVE
       DATA PI /3.141592653589793238462643D0/
       AM=SQRT(ABS
@@ -106,7 +106,7 @@ c       IF(P2QQ(2).LT.0D0) PHI=2*PI-PHI
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
@@ -252,17 +252,17 @@ C
 * ----------------------------------------------------------------------
 
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision  GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 *
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision  AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / TAUBRA / GAMPRT(30),JLIST(30),NCHAN
       COMMON / TAUKLE / BRA1,BRK0,BRK0B,BRKS
-      REAL*4            BRA1,BRK0,BRK0B,BRKS
+      double precision  BRA1,BRK0,BRK0B,BRKS
 
       PARAMETER (NMODE=15,NM1=0,NM2=1,NM3=8,NM4=2,NM5=1,NM6=3)
       COMMON / TAUDCD /IDFFIN(9,NMODE),MULPIK(NMODE)
@@ -279,7 +279,7 @@ C
       PARAMETER (
      $  bxINIT ='(1x,1h*,g17.8,            16x, a31,a4,a4, 1x,1h*)'
      $ )
-      REAL*4 PI,POL1(4)
+      double precision PI,POL1(4)
 *
 *
 * LIST OF BRANCHING RATIOS
@@ -449,7 +449,7 @@ C
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 *
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision  AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       IF      (IDENT.EQ. 1) THEN
@@ -484,8 +484,8 @@ C
       END
       FUNCTION LUNPIK(ID,ISGN)
       COMMON / TAUKLE / BRA1,BRK0,BRK0B,BRKS
-      REAL*4            BRA1,BRK0,BRK0B,BRKS
-      REAL*4 XIO(1)
+      double precision  BRA1,BRK0,BRK0B,BRKS
+      double precision XIO(1)
       IDENT=ID*ISGN
       IF      (IDENT.EQ. 1) THEN
         IPKDEF= 211
@@ -539,7 +539,7 @@ C
 * IT CAN BE USED TO GENERATE TAU+ AND TAU- SAMPLES OF DIFFERENT
 * CONTENTS
       COMMON / TAUKLE / BRA1,BRK0,BRK0B,BRKS
-      REAL*4            BRA1,BRK0,BRK0B,BRKS
+      double precision  BRA1,BRK0,BRK0B,BRKS
       COMMON / TAUBRA / GAMPRT(30),JLIST(30),NCHAN
       IF (KTO.EQ.1) THEN
 *     ==================
@@ -637,8 +637,8 @@ C
 *     USED IN QED and/or GSW ROUTINES
 * ----------------------------------------------------------------------
       COMMON / QEDPRM /ALFINV,ALFPI,XK0
-      REAL*8           ALFINV,ALFPI,XK0
-      REAL*8 PI8,XK00
+      double precision ALFINV,ALFPI,XK0
+      double precision PI8,XK00
 *
       PI8    = 4.D0*DATAN(1.D0)
       ALFINV = 137.03604D0
@@ -656,7 +656,7 @@ C ----------------------------------------------------------------------
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 *
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision  AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
@@ -731,7 +731,7 @@ c
 
       FUNCTION DILOGY(X)
 C     *****************
-      IMPLICIT REAL*8(A-H,O-Z)
+        IMPLICIT double precision(A-H,O-Z)
 CERN      C304      VERSION    29/07/71 DILOG        59                C
       Z=-1.64493406684822
       IF(X .LT.-1.0) GO TO 1

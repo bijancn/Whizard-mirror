@@ -168,19 +168,19 @@ C.----------------------------------------------------------------------
       COMMON/PHOQED/QEDRAD(d_h_NMXHEP)
       INTEGER PHLUN
       COMMON/PHOLUN/PHLUN
-      REAL*8 ALPHA,XPHCUT
+      double precision ALPHA,XPHCUT
       COMMON/PHOCOP/ALPHA,XPHCUT
-      REAL*8 PI,TWOPI
+      double precision PI,TWOPI
       COMMON/PHPICO/PI,TWOPI
       INTEGER ISEED,I97,J97
-      REAL*8 URAN,CRAN,CDRAN,CMRAN
+      double precision URAN,CRAN,CDRAN,CMRAN
       COMMON/PHSEED/ISEED(2),I97,J97,URAN(97),CRAN,CDRAN,CMRAN
       INTEGER PHOMES
       PARAMETER (PHOMES=10)
       INTEGER STATUS
       COMMON/PHOSTA/STATUS(PHOMES)
       LOGICAL INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
-      REAL*8 FINT,FSEC,EXPEPS
+      double precision FINT,FSEC,EXPEPS
       COMMON /PHOKEY/ FSEC,FINT,EXPEPS,INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
       INTEGER INIT,I
       SAVE INIT
@@ -293,9 +293,9 @@ C.----------------------------------------------------------------------
       INTEGER PHLUN
       COMMON/PHOLUN/PHLUN
       LOGICAL INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
-      REAL*8 FINT,FSEC,EXPEPS
+      double precision FINT,FSEC,EXPEPS
       COMMON /PHOKEY/ FSEC,FINT,EXPEPS,INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
-      REAL*8 ALPHA,XPHCUT
+      double precision ALPHA,XPHCUT
       COMMON/PHOCOP/ALPHA,XPHCUT
 C--
 C--   PHOTOS version number and release date
@@ -442,7 +442,7 @@ C.----------------------------------------------------------------------
       IMPLICIT NONE
       INTEGER  d_h_nmxhep         ! maximum number of particles
       PARAMETER (d_h_NMXHEP=4000)
-      REAL*8  d_h_phep,  d_h_vhep ! to be real*4/ *8  depending on host
+      double precision  d_h_phep,  d_h_vhep ! to be real*4/ *8  depending on host
       INTEGER d_h_nevhep,d_h_nhep,d_h_isthep,d_h_idhep,d_h_jmohep,
      $        d_h_jdahep
       COMMON /hepevt/
@@ -461,7 +461,7 @@ C.----------------------------------------------------------------------
       INTEGER NMXHEP
       PARAMETER (NMXHEP=10000)
       INTEGER IDHEP,ISTHEP,JDAHEP,JMOHEP,NEVHEP,NHEP
-      REAL*8 PHEP,VHEP
+      double precision PHEP,VHEP
       COMMON/PH_HEPEVT/NEVHEP,NHEP,ISTHEP(NMXHEP),IDHEP(NMXHEP),
      &JMOHEP(2,NMXHEP),JDAHEP(2,NMXHEP),PHEP(5,NMXHEP),VHEP(4,NMXHEP)
       LOGICAL QEDRAD
@@ -505,7 +505,7 @@ C.----------------------------------------------------------------------
       IMPLICIT NONE
       INTEGER  d_h_nmxhep         ! maximum number of particles
       PARAMETER (d_h_NMXHEP=4000)
-      REAL*8  d_h_phep,  d_h_vhep ! to be real*4/ *8  depending on host
+      double precision  d_h_phep,  d_h_vhep ! to be real*4/ *8  depending on host
       INTEGER d_h_nevhep,d_h_nhep,d_h_isthep,d_h_idhep,d_h_jmohep,
      $        d_h_jdahep
       COMMON /hepevt/
@@ -524,7 +524,7 @@ C.----------------------------------------------------------------------
       INTEGER NMXHEP
       PARAMETER (NMXHEP=10000)
       INTEGER IDHEP,ISTHEP,JDAHEP,JMOHEP,NEVHEP,NHEP
-      REAL*8 PHEP,VHEP
+      double precision PHEP,VHEP
       COMMON/PH_HEPEVT/NEVHEP,NHEP,ISTHEP(NMXHEP),IDHEP(NMXHEP),
      &JMOHEP(2,NMXHEP),JDAHEP(2,NMXHEP),PHEP(5,NMXHEP),VHEP(4,NMXHEP)
       LOGICAL QEDRAD
@@ -570,7 +570,7 @@ C.                                                Last Update: 30/08/93
 C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
-      REAL*8 PHOTON(5)
+      double precision PHOTON(5)
       INTEGER IP,IPARR,IPPAR,I,J,K,L,NLAST
       DOUBLE PRECISION DATA
       INTEGER MOTHER,POSPHO
@@ -578,7 +578,7 @@ C.----------------------------------------------------------------------
       INTEGER NMXHEP
       PARAMETER (NMXHEP=10000)
       INTEGER IDHEP,ISTHEP,JDAHEP,JMOHEP,NEVHEP,NHEP
-      REAL*8 PHEP,VHEP
+      double precision PHEP,VHEP
       COMMON/PH_HEPEVT/NEVHEP,NHEP,ISTHEP(NMXHEP),IDHEP(NMXHEP),
      &JMOHEP(2,NMXHEP),JDAHEP(2,NMXHEP),PHEP(5,NMXHEP),VHEP(4,NMXHEP)
       LOGICAL QEDRAD
@@ -587,7 +587,7 @@ C.----------------------------------------------------------------------
       PARAMETER (NMXPHO=10000)
       INTEGER ISTACK(0:NMXPHO),NUMIT,NTRY,KK,LL,II,NA,FIRST,LAST
       INTEGER FIRSTA,LASTA,IPP,IDA1,IDA2,MOTHER2,IDPHO,ISPHO
-      REAL*8 PORIG(5,NMXPHO)
+      double precision PORIG(5,NMXPHO)
 C--
       IPPAR=ABS(IPARR)
 C--   Store pointers for cascade treatement...
@@ -742,11 +742,11 @@ C.----------------------------------------------------------------------
       INTEGER I,J,FIRST,LAST,MAXSTA,NSTACK,IP
       PARAMETER (MAXSTA=10000)
       INTEGER STACK(MAXSTA)
-      REAL*8 PBOOS1(5),PBOOS2(5)
+      double precision PBOOS1(5),PBOOS2(5)
       INTEGER NMXHEP
       PARAMETER (NMXHEP=10000)
       INTEGER IDHEP,ISTHEP,JDAHEP,JMOHEP,NEVHEP,NHEP
-      REAL*8 PHEP,VHEP
+      double precision PHEP,VHEP
       COMMON/PH_HEPEVT/NEVHEP,NHEP,ISTHEP(NMXHEP),IDHEP(NMXHEP),
      &JMOHEP(2,NMXHEP),JDAHEP(2,NMXHEP),PHEP(5,NMXHEP),VHEP(4,NMXHEP)
       IF ((LAST.EQ.0).OR.(LAST.LT.FIRST)) RETURN
@@ -816,13 +816,13 @@ C.----------------------------------------------------------------------
       INTEGER NMXHEP
       PARAMETER (NMXHEP=10000)
       INTEGER IDHEP,ISTHEP,JDAHEP,JMOHEP,NEVHEP,NHEP
-      REAL*8 PHEP,VHEP
+      double precision PHEP,VHEP
       COMMON/PH_HEPEVT/NEVHEP,NHEP,ISTHEP(NMXHEP),IDHEP(NMXHEP),
      &JMOHEP(2,NMXHEP),JDAHEP(2,NMXHEP),PHEP(5,NMXHEP),VHEP(4,NMXHEP)
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       INTEGER IP,IP2,I,FIRST,LAST,LL,NA
@@ -831,7 +831,7 @@ C.----------------------------------------------------------------------
       DOUBLE PRECISION BET(3),GAM,PB
       COMMON /PHOCMS/ BET,GAM
       LOGICAL INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
-      REAL*8 FINT,FSEC,EXPEPS
+      double precision FINT,FSEC,EXPEPS
       COMMON /PHOKEY/ FSEC,FINT,EXPEPS,INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
 C--
 C let-s calculate size of the little common entry
@@ -940,13 +940,13 @@ C.----------------------------------------------------------------------
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       DOUBLE PRECISION BET(3),GAM
       COMMON /PHOCMS/ BET,GAM
       INTEGER I,MODE
-      REAL*8 MPASQR
+      double precision MPASQR
       LOGICAL IFRAD
 C logical IFRAD is used to tag cases when two mothers may be 
 C merged to the sole one. 
@@ -1002,13 +1002,13 @@ C.----------------------------------------------------------------------
       INTEGER NMXHEP
       PARAMETER (NMXHEP=10000)
       INTEGER IDHEP,ISTHEP,JDAHEP,JMOHEP,NEVHEP,NHEP
-      REAL*8 PHEP,VHEP
+      double precision PHEP,VHEP
       COMMON/PH_HEPEVT/NEVHEP,NHEP,ISTHEP(NMXHEP),IDHEP(NMXHEP),
      &JMOHEP(2,NMXHEP),JDAHEP(2,NMXHEP),PHEP(5,NMXHEP),VHEP(4,NMXHEP)
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       INTEGER IP,LL,FIRST,LAST,I
@@ -1078,7 +1078,7 @@ C     ********************
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       LOGICAL CHKIF
@@ -1091,7 +1091,7 @@ C     ********************
       LOGICAL F
       INTEGER IDABS,NLAST,I,IPPAR
       LOGICAL INTERF,ISEC,ITRE,IEXP,IFTOP,IFW,IFNPI0,IFKL
-      REAL*8 FINT,FSEC,EXPEPS
+      double precision FINT,FSEC,EXPEPS
       COMMON /PHOKEY/ FSEC,FINT,EXPEPS,INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
       LOGICAL IFRAD
       INTEGER IDENT,K,IQRK,IPHQRK,IEKL,IPHEKL
@@ -1201,21 +1201,21 @@ C.----------------------------------------------------------------------
       INTEGER NMXHEP
       PARAMETER (NMXHEP=10000)
       INTEGER IDHEP,ISTHEP,JDAHEP,JMOHEP,NEVHEP,NHEP
-      REAL*8 PHEP,VHEP
+      double precision PHEP,VHEP
       COMMON/PH_HEPEVT/NEVHEP,NHEP,ISTHEP(NMXHEP),IDHEP(NMXHEP),
      &JMOHEP(2,NMXHEP),JDAHEP(2,NMXHEP),PHEP(5,NMXHEP),VHEP(4,NMXHEP)
       LOGICAL INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
-      REAL*8 FINT,FSEC,EXPEPS
+      double precision FINT,FSEC,EXPEPS
       COMMON /PHOKEY/ FSEC,FINT,EXPEPS,INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
       LOGICAL EXPINI
       INTEGER NX,K,NCHAN
       PARAMETER (NX=10)
-      REAL*8 PRO,PRSUM,ESU
+      double precision PRO,PRSUM,ESU
       COMMON /PHOEXP/ PRO(NX),NCHAN,EXPINI
 
       INTEGER ID,NHEP0
       LOGICAL IPAIR
-      REAL*8 RN,PHORAN,SUM
+      double precision RN,PHORAN,SUM
       INTEGER WTDUM
       LOGICAL IFOUR
 C--
@@ -1323,20 +1323,20 @@ C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
       DOUBLE PRECISION DATA
-      REAL*8 PHORAN
+      double precision PHORAN
       INTEGER IP,IPPAR,NCHARG
       INTEGER WTDUM,IDUM,NHEP0
       INTEGER NCHARB,NEUDAU
-      REAL*8 RN,WT,PHINT
+      double precision RN,WT,PHINT
       LOGICAL BOOST
       INTEGER NMXHEP
       PARAMETER (NMXHEP=10000)
       INTEGER IDHEP,ISTHEP,JDAHEP,JMOHEP,NEVHEP,NHEP
-      REAL*8 PHEP,VHEP
+      double precision PHEP,VHEP
       COMMON/PH_HEPEVT/NEVHEP,NHEP,ISTHEP(NMXHEP),IDHEP(NMXHEP),
      &JMOHEP(2,NMXHEP),JDAHEP(2,NMXHEP),PHEP(5,NMXHEP),VHEP(4,NMXHEP)
       LOGICAL INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
-      REAL*8 FINT,FSEC,EXPEPS
+      double precision FINT,FSEC,EXPEPS
       COMMON /PHOKEY/ FSEC,FINT,EXPEPS,INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
 C--
       IP=IPPAR
@@ -1384,22 +1384,22 @@ C.
 C.----------------------------------------------------------------------
 
       IMPLICIT NONE
-      REAL*8 PHINT,phint1
-      REAL*8 PHOCHA
+      double precision PHINT,phint1
+      double precision PHOCHA
       INTEGER IDUM
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       DOUBLE PRECISION MCHSQR,MNESQR
-      REAL*8 PNEUTR
+      double precision PNEUTR
       COMMON/PHOMOM/MCHSQR,MNESQR,PNEUTR(5)
       DOUBLE PRECISION COSTHG,SINTHG
-      REAL*8 XPHMAX,XPHOTO
+      double precision XPHMAX,XPHOTO
       COMMON/PHOPHS/XPHMAX,XPHOTO,COSTHG,SINTHG
-      REAL*8 MPASQR,XX,BETA
+      double precision MPASQR,XX,BETA
       LOGICAL IFINT
       INTEGER K,IDENT 
 C
@@ -1452,23 +1452,23 @@ C.
 C.----------------------------------------------------------------------
 
       IMPLICIT NONE
-      REAL*8 PHINT,PHINT1,PHINT2
-      REAL*8 PHOCHA
+      double precision PHINT,PHINT1,PHINT2
+      double precision PHOCHA
       INTEGER IDUM
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       DOUBLE PRECISION MCHSQR,MNESQR
-      REAL*8 PNEUTR
+      double precision PNEUTR
       COMMON/PHOMOM/MCHSQR,MNESQR,PNEUTR(5)
       DOUBLE PRECISION COSTHG,SINTHG
-      REAL*8 XPHMAX,XPHOTO
+      double precision XPHMAX,XPHOTO
       COMMON/PHOPHS/XPHMAX,XPHOTO,COSTHG,SINTHG
-      REAL*8 MPASQR,XX,BETA,PQ1(4),PQ2(4),PPHOT(4)
-      REAL*8 SS,PP2,PP,E1,E2,Q1,Q2,COSTHE
+      double precision MPASQR,XX,BETA,PQ1(4),PQ2(4),PPHOT(4)
+      double precision SS,PP2,PP,E1,E2,Q1,Q2,COSTHE
       LOGICAL IFINT
       INTEGER K,IDENT 
 C
@@ -1562,34 +1562,34 @@ C.----------------------------------------------------------------------
       IMPLICIT NONE
       DOUBLE PRECISION MINMAS,MPASQR,MCHREN
       DOUBLE PRECISION BETA,EPS,DEL1,DEL2,DATA,BIGLOG
-      REAL*8 PHOCHA,PHOSPI,PHORAN,PHOCOR,MASSUM
+      double precision PHOCHA,PHOSPI,PHORAN,PHOCOR,MASSUM
       INTEGER IP,IPARR,IPPAR,I,J,ME,NCHARG,NEUPOI,NLAST,THEDUM
       INTEGER IDABS,IDUM
       INTEGER NCHARB,NEUDAU
-      REAL*8 WT,WGT
+      double precision WT,WGT
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       LOGICAL CHKIF
       COMMON/PHOIF/CHKIF(NMXPHO)
       INTEGER CHAPOI(NMXPHO)
       DOUBLE PRECISION MCHSQR,MNESQR
-      REAL*8 PNEUTR
+      double precision PNEUTR
       COMMON/PHOMOM/MCHSQR,MNESQR,PNEUTR(5)
       DOUBLE PRECISION COSTHG,SINTHG
-      REAL*8 XPHMAX,XPHOTO
+      double precision XPHMAX,XPHOTO
       COMMON/PHOPHS/XPHMAX,XPHOTO,COSTHG,SINTHG
-      REAL*8 ALPHA,XPHCUT
+      double precision ALPHA,XPHCUT
       COMMON/PHOCOP/ALPHA,XPHCUT
       INTEGER IREP
-      REAL*8 PROBH,CORWT,XF
+      double precision PROBH,CORWT,XF
       COMMON/PHOPRO/PROBH,CORWT,XF,IREP
 C may be it is not the best place, but ...
       LOGICAL INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
-      REAL*8 FINT,FSEC,EXPEPS
+      double precision FINT,FSEC,EXPEPS
       COMMON /PHOKEY/ FSEC,FINT,EXPEPS,INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
 
 C--
@@ -1766,11 +1766,11 @@ C.----------------------------------------------------------------------
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       INTEGER IFIRST,ILAST,I,J,BUFPOI,POINTR(NMXPHO)
-      REAL*8 BUFMAS,MASS(NMXPHO)
+      double precision BUFMAS,MASS(NMXPHO)
       IF (IFIRST.EQ.ILAST) RETURN
 C--
 C--   Copy particle masses
@@ -1816,29 +1816,29 @@ C.----------------------------------------------------------------------
       IMPLICIT NONE
       DOUBLE PRECISION MPASQR,MCHREN,BIGLOG,BETA,DATA
       INTEGER IWT1,IRN,IWT2
-      REAL*8 PRSOFT,PRHARD,PHORAN,PHOFAC
+      double precision PRSOFT,PRHARD,PHORAN,PHOFAC
       DOUBLE PRECISION MCHSQR,MNESQR
-      REAL*8 PNEUTR
+      double precision PNEUTR
       INTEGER IDENT
-      REAL*8 PHOCHA,PRKILL,RRR
+      double precision PHOCHA,PRKILL,RRR
       COMMON/PHOMOM/MCHSQR,MNESQR,PNEUTR(5)
       DOUBLE PRECISION COSTHG,SINTHG
-      REAL*8 XPHMAX,XPHOTO
+      double precision XPHMAX,XPHOTO
       COMMON/PHOPHS/XPHMAX,XPHOTO,COSTHG,SINTHG
-      REAL*8 ALPHA,XPHCUT
+      double precision ALPHA,XPHCUT
       COMMON/PHOCOP/ALPHA,XPHCUT
-      REAL*8 PI,TWOPI
+      double precision PI,TWOPI
       COMMON/PHPICO/PI,TWOPI
       INTEGER IREP
-      REAL*8 PROBH,CORWT,XF
+      double precision PROBH,CORWT,XF
       COMMON/PHOPRO/PROBH,CORWT,XF,IREP
       LOGICAL INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
-      REAL*8 FINT,FSEC,EXPEPS
+      double precision FINT,FSEC,EXPEPS
       COMMON /PHOKEY/ FSEC,FINT,EXPEPS,INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
       INTEGER NX,NCHAN,K
       PARAMETER (NX=10)
       LOGICAL EXPINI
-      REAL*8 PRO,PRSUM
+      double precision PRO,PRSUM
       COMMON /PHOEXP/ PRO(NX),NCHAN,EXPINI
 C--
       IF (XPHMAX.LE.XPHCUT) THEN
@@ -1953,15 +1953,15 @@ C.----------------------------------------------------------------------
       IMPLICIT NONE
       DOUBLE PRECISION MPASQR,MCHREN,BETA,XX,YY,DATA
       INTEGER ME
-      REAL*8 PHOCOR,PHOFAC,WT1,WT2,WT3
+      double precision PHOCOR,PHOFAC,WT1,WT2,WT3
       DOUBLE PRECISION MCHSQR,MNESQR
-      REAL*8 PNEUTR
+      double precision PNEUTR
       COMMON/PHOMOM/MCHSQR,MNESQR,PNEUTR(5)
       DOUBLE PRECISION COSTHG,SINTHG
-      REAL*8 XPHMAX,XPHOTO
+      double precision XPHMAX,XPHOTO
       COMMON/PHOPHS/XPHMAX,XPHOTO,COSTHG,SINTHG
       INTEGER IREP
-      REAL*8 PROBH,CORWT,XF
+      double precision PROBH,CORWT,XF
       COMMON/PHOPRO/PROBH,CORWT,XF,IREP
 C--
 C--   Shaping (modified by ZW)...
@@ -2026,13 +2026,13 @@ C.                B. van Eijk, P.Golonka          Last Update: 26/06/04
 C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
-      REAL*8 PHOFAC,FF,PRX
+      double precision PHOFAC,FF,PRX
       INTEGER MODE
       INTEGER IREP
-      REAL*8 PROBH,CORWT,XF
+      double precision PROBH,CORWT,XF
       COMMON/PHOPRO/PROBH,CORWT,XF,IREP
       LOGICAL INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
-      REAL*8 FINT,FSEC,EXPEPS
+      double precision FINT,FSEC,EXPEPS
       COMMON /PHOKEY/ FSEC,FINT,EXPEPS,INTERF,ISEC,ITRE,IEXP,IFTOP,IFW
       SAVE PRX,FF
       DATA PRX,FF/ 0.D0, 0.D0/
@@ -2087,7 +2087,7 @@ C.----------------------------------------------------------------------
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       INTEGER I
@@ -2153,21 +2153,21 @@ C.----------------------------------------------------------------------
       DOUBLE PRECISION PARNE,QNEW,QOLD,DATA
       INTEGER IP,FI3DUM,I,J,NEUDAU,FIRST,LAST
       INTEGER NCHARB
-      REAL*8 EPHOTO,PMAVIR,PHOTRI
-      REAL*8 GNEUT,PHORAN,CCOSTH,SSINTH,PVEC(4)
+      double precision EPHOTO,PMAVIR,PHOTRI
+      double precision GNEUT,PHORAN,CCOSTH,SSINTH,PVEC(4)
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       DOUBLE PRECISION MCHSQR,MNESQR
-      REAL*8 PNEUTR
+      double precision PNEUTR
       COMMON/PHOMOM/MCHSQR,MNESQR,PNEUTR(5)
       DOUBLE PRECISION COSTHG,SINTHG
-      REAL*8 XPHMAX,XPHOTO
+      double precision XPHMAX,XPHOTO
       COMMON/PHOPHS/XPHMAX,XPHOTO,COSTHG,SINTHG
-      REAL*8 PI,TWOPI
+      double precision PI,TWOPI
       COMMON/PHPICO/PI,TWOPI
 C--
       EPHOTO=XPHOTO*PPHO(5,IP)/2.D0
@@ -2324,7 +2324,7 @@ C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
       DOUBLE PRECISION DA,DB,DC,DAPB,DAMB,DTRIAN
-      REAL*8 A,B,C,PHOTRI
+      double precision A,B,C,PHOTRI
       DA=A
       DB=B
       DC=C
@@ -2351,8 +2351,8 @@ C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
       DOUBLE PRECISION PHOAN1
-      REAL*8 X,Y
-      REAL*8 PI,TWOPI
+      double precision X,Y
+      double precision PI,TWOPI
       COMMON/PHPICO/PI,TWOPI
       IF (ABS(Y).LT.ABS(X)) THEN
         PHOAN1=ATAN(ABS(Y/X))
@@ -2380,8 +2380,8 @@ C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
       DOUBLE PRECISION PHOAN2
-      REAL*8 X,Y
-      REAL*8 PI,TWOPI
+      double precision X,Y
+      double precision PI,TWOPI
       COMMON/PHPICO/PI,TWOPI
       IF (ABS(Y).LT.ABS(X)) THEN
         PHOAN2=ATAN(ABS(Y/X))
@@ -2409,7 +2409,7 @@ C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
       DOUBLE PRECISION QPL,QMI,ANGLE
-      REAL*8 PVEC(4)
+      double precision PVEC(4)
       QPL=(PVEC(4)+PVEC(3))*ANGLE
       QMI=(PVEC(4)-PVEC(3))/ANGLE
       PVEC(3)=(QPL-QMI)/2.D0
@@ -2434,7 +2434,7 @@ C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
       DOUBLE PRECISION CS,SN,ANGLE
-      REAL*8 PVEC(4)
+      double precision PVEC(4)
       CS=COS(ANGLE)*PVEC(1)+SIN(ANGLE)*PVEC(3)
       SN=-SIN(ANGLE)*PVEC(1)+COS(ANGLE)*PVEC(3)
       PVEC(1)=CS
@@ -2459,7 +2459,7 @@ C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
       DOUBLE PRECISION CS,SN,ANGLE
-      REAL*8 PVEC(4)
+      double precision PVEC(4)
       CS=COS(ANGLE)*PVEC(1)-SIN(ANGLE)*PVEC(2)
       SN=SIN(ANGLE)*PVEC(1)+COS(ANGLE)*PVEC(2)
       PVEC(1)=CS
@@ -2471,9 +2471,9 @@ C.----------------------------------------------------------------------
       END
       FUNCTION PHORAN(IDUM)
       IMPLICIT NONE
-      REAL*8 PHORAN
+      double precision PHORAN
       INTEGER IDUM
-      REAL*8 PYR
+      double precision PYR
       PHORAN=PYR(IDUM)
       RETURN
       END
@@ -2496,12 +2496,12 @@ C.                                                Last update: 02/01/90
 C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
-      REAL*8 PHOCHA
+      double precision PHOCHA
       INTEGER IDHEP,IDABS,Q1,Q2,Q3
 C--
 C--   Array 'CHARGE' contains the charge  of the first 101 particles ac-
 C--   cording  to  the PDG particle code... (0 is added for convenience)
-      REAL*8 CHARGE(0:100)
+      double precision CHARGE(0:100)
       DATA CHARGE/ 0.D0,
      &-0.3333333333D0,  0.6666666667D0, -0.3333333333D0, 0.6666666667D0,
      &-0.3333333333D0,  0.6666666667D0, -0.3333333333D0, 0.6666666667D0,
@@ -2558,12 +2558,12 @@ C.                                                Last update: 02/01/90
 C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
-      REAL*8 PHOSPI
+      double precision PHOSPI
       INTEGER IDHEP,IDABS
 C--
 C--   Array 'SPIN' contains the spin  of  the first 100 particles accor-
 C--   ding to the PDG particle code...
-      REAL*8 SPIN(100)
+      double precision SPIN(100)
       DATA SPIN/ 8*.5D0, 1.D0, 0.D0, 8*.5D0, 2*0.D0, 4*1.D0, 76*0.D0/
       IDABS=ABS(IDHEP)
 C--
@@ -2599,7 +2599,7 @@ C.----------------------------------------------------------------------
       IMPLICIT NONE
       DOUBLE PRECISION DATA
       INTEGER IMES,IERROR
-      REAL*8 SDATA
+      double precision SDATA
       INTEGER PHLUN
       COMMON/PHOLUN/PHLUN
       INTEGER PHOMES
@@ -2776,7 +2776,7 @@ C.----------------------------------------------------------------------
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO,I,J,IPOINT
       INTEGER IPOIN,IPOIN0,IPOINM,IEV
       INTEGER IOUT
-      REAL*8 PPHO,VPHO,SUM
+      double precision PPHO,VPHO,SUM
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       COMMON /PHNUM/ IEV
@@ -2955,10 +2955,10 @@ C.----------------------------------------------------------------------
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       
-      REAL*8 M,P2,PX,PY,PZ,E,EN,MCUT,XMS
+      double precision M,P2,PX,PY,PZ,E,EN,MCUT,XMS
       INTEGER MODCOR,MODOP,I,IEV,IPRINT,K
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
 
@@ -3181,19 +3181,19 @@ C.                                                Last Update: 25/01/05
 C.
 C.----------------------------------------------------------------------
       IMPLICIT NONE
-      REAL*8 PHINT,PHINT2
+      double precision PHINT,PHINT2
       INTEGER IDUM
       INTEGER NMXPHO
       PARAMETER (NMXPHO=10000)
       INTEGER IDPHO,ISTPHO,JDAPHO,JMOPHO,NEVPHO,NPHO
-      REAL*8 PPHO,VPHO
+      double precision PPHO,VPHO
       COMMON/PHOEVT/NEVPHO,NPHO,ISTPHO(NMXPHO),IDPHO(NMXPHO),
      &JMOPHO(2,NMXPHO),JDAPHO(2,NMXPHO),PPHO(5,NMXPHO),VPHO(4,NMXPHO)
       INTEGER I,K,L
       DOUBLE PRECISION EMU,MCHREN,BETA,COSTHG,MPASQR,XPH, XC1, XC2,XDENO
       DOUBLE PRECISION XNUM1,XNUM2
       DOUBLE PRECISION EPS1(4),EPS2(4),PH(4),PL(4)
-      REAL*8 PHOCHA
+      double precision PHOCHA
 C--
 
 C       Calculate polarimetric vector: ph, eps1, eps2 are orthogonal
@@ -3297,7 +3297,7 @@ C      IMPLICIT NONE
 C this is the hepevt class in old style. No d_h_ class pre-name
       INTEGER NMXHEP
       PARAMETER (NMXHEP=4000)
-      REAL*8  phep,  vhep ! to be real*4/ *8  depending on host
+      double precision  phep,  vhep ! to be real*4/ *8  depending on host
       INTEGER nevhep,nhep,isthep,idhep,jmohep,
      $        jdahep
       COMMON /hepevt/

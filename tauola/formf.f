@@ -1,4 +1,5 @@
       FUNCTION FORMOM(XMAA,XMOM)
+        IMPLICIT double precision(A-H,O-Z)
 C     ==================================================================
 C     formfactorfor pi-pi0 gamma final state
 C      R. Decker, Z. Phys C36 (1987) 487.
@@ -7,13 +8,13 @@ C     ==================================================================
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON /TESTA1/ KEYA1
-      COMPLEX BWIGN,FORMOM
+      double complex BWIGN,FORMOM
       DATA ICONT /1/
 * THIS INLINE FUNCT. CALCULATES THE SCALAR PART OF THE PROPAGATOR
       BWIGN(XM,AM,GAMMA)=1./CMPLX(XM**2-AM**2,GAMMA*AM)
@@ -30,7 +31,7 @@ C
       FQED  =SQRT(4.0*3.1415926535/137.03604)
       FORMOM=FQED*FRO**2/SQRT(2.0)*GCOUP**2*BWIGN(XMOM,AMOM,GAMOM)
      $     *(BWIGN(XMAA,AMRO,GAMRO)+ELPHA*BWIGN(XMAA,AMROP,GAMROP))
-     $     *(BWIGN( 0.0,AMRO,GAMRO)+ELPHA*BWIGN( 0.0,AMROP,GAMROP))
+     $     *(BWIGN( 0.0D0,AMRO,GAMRO)+ELPHA*BWIGN( 0.0D0,AMROP,GAMROP))
       END
       FUNCTION FORM1(MNUM,QQ,S1,SDWA)
 C     ==================================================================
@@ -42,15 +43,16 @@ C     R. Decker, E. Mirkes, R. Sauer, Z. Was Karlsruhe preprint TTP92-25
 C     and erratum !!!!!!
 C     ==================================================================
 C
-      COMPLEX FORM1,WIGNER,WIGFOR,FPIKM,BWIGM
+        IMPLICIT double precision(A-H,O-Z)
+        double complex FORM1,WIGNER,WIGFOR,FPIKM,BWIGM
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
-      WIGNER(A,B,C)= CMPLX(1.0,0.0)/CMPLX(A-B**2,B*C)
+      WIGNER(A,B,C)= CMPLX(1.0,0.0D0)/CMPLX(A-B**2,B*C)
       IF     (MNUM.EQ.0) THEN
 C ------------  3 pi hadronic state (a1)
        GAMAX=GAMA1*GFUN(QQ)/GFUN(AMA1**2)
@@ -67,7 +69,7 @@ C ------------ K0 pi- K0B
        FORM1=AMA1**2*WIGNER(QQ,AMA1,GAMAX)*FORM1
       ELSEIF (MNUM.EQ.3) THEN
 C ------------ K- K0 pi0
-       FORM1=0.0
+       FORM1=0.0D0
          GAMAX=GAMA1*GFUN(QQ)/GFUN(AMA1**2)
        FORM1=AMA1**2*WIGNER(QQ,AMA1,GAMAX)*FORM1
       ELSEIF (MNUM.EQ.4) THEN
@@ -82,10 +84,10 @@ C ------------ K- pi- pi+
        GAM2=0.174
        FORM1=WIGFOR(QQ,XM2,GAM2)*FPIKM(SQRT(S1),AMPI,AMPI)
       ELSEIF (MNUM.EQ.6) THEN
-       FORM1=0.0
+       FORM1=0.0D0
       ELSEIF (MNUM.EQ.7) THEN
 C -------------- eta pi- pi0 final state
-       FORM1=0.0
+       FORM1=0.0D0
       ENDIF
       END
       FUNCTION FORM2(MNUM,QQ,S1,SDWA)
@@ -98,15 +100,16 @@ C     R. Decker, E. Mirkes, R. Sauer, Z. Was Karlsruhe preprint TTP92-25
 C     and erratum !!!!!!
 C     ==================================================================
 C
-      COMPLEX FORM2,WIGNER,WIGFOR,FPIKM,BWIGM
+        IMPLICIT double precision (A-H,O-Z)
+        double complex FORM2,WIGNER,WIGFOR,FPIKM,BWIGM
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
-      WIGNER(A,B,C)= CMPLX(1.0,0.0)/CMPLX(A-B**2,B*C)
+      WIGNER(A,B,C)= CMPLX(1.0,0.0D0)/CMPLX(A-B**2,B*C)
       IF     (MNUM.EQ.0) THEN
 C ------------  3 pi hadronic state (a1)
        GAMAX=GAMA1*GFUN(QQ)/GFUN(AMA1**2)
@@ -143,16 +146,16 @@ C
 C
       ELSEIF (MNUM.EQ.7) THEN
 C -------------- eta pi- pi0 final state
-       FORM2=0.0
+       FORM2=0.0D0
       ENDIF
 C
       END
-      COMPLEX FUNCTION BWIGM(S,M,G,XM1,XM2)
+      double complex FUNCTION BWIGM(S,M,G,XM1,XM2)
 C **********************************************************
 C     P-WAVE BREIT-WIGNER  FOR RHO
 C **********************************************************
-      REAL S,M,G,XM1,XM2
-      REAL PI,QS,QM,W,GS
+        double precision S,M,G,XM1,XM2
+        double precision PI,QS,QM,W,GS
       SAVE PI
       DATA INIT /0/
 C ------------ PARAMETERS --------------------
@@ -167,17 +170,18 @@ C -------  BREIT-WIGNER -----------------------
         W=SQRT(S)
         GS=G*(M/W)**2*(QS/QM)**3
       ELSE
-        GS=0.0
+        GS=0.0D0
       ENDIF
       BWIGM=M**2/CMPLX(M**2-S,-SQRT(S)*GS)
       RETURN
       END
-      COMPLEX FUNCTION FPIKM(W,XM1,XM2)
+      double complex FUNCTION FPIKM(W,XM1,XM2)
 C **********************************************************
 C     PION FORM FACTOR
 C **********************************************************
-      COMPLEX BWIGM
-      REAL ROM,ROG,ROM1,ROG1,BETA1,PI,PIM,S,W
+        IMPLICIT double precision (A-H,O-Z)
+      double complex BWIGM
+      double precision ROM,ROG,ROM1,ROG1,BETA1,PI,PIM,S,W
       SAVE PI,PIM,ROM,ROG,ROM1,ROG1,BETA1
       EXTERNAL BWIG
       DATA  INIT /0/
@@ -199,12 +203,13 @@ C -----------------------------------------------
      & /(1+BETA1)
       RETURN
       END
-      COMPLEX FUNCTION FPIKMD(W,XM1,XM2)
+      double complex FUNCTION FPIKMD(W,XM1,XM2)
 C **********************************************************
 C     PION FORM FACTOR
 C **********************************************************
-      COMPLEX BWIGM
-      REAL ROM,ROG,ROM1,ROG1,PI,PIM,S,W
+        IMPLICIT double precision (A-H,O-Z)
+      double complex BWIGM
+      double precision ROM,ROG,ROM1,ROG1,PI,PIM,S,W
       SAVE PI,PIM,ROM,ROG,ROM1,ROG1,ROG2,ROM2,BETA,DELTA
       EXTERNAL BWIG
       DATA  INIT /0/
@@ -246,14 +251,14 @@ C
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
-      COMPLEX FORM3
+      double complex FORM3
       IF (MNUM.EQ.6) THEN
-       FORM3=CMPLX(0.0)
+       FORM3=CMPLX(0.0D0)
       ELSE
-       FORM3=CMPLX(0.0)
+       FORM3=CMPLX(0.0D0)
       ENDIF
         FORM3=0
 
@@ -266,16 +271,17 @@ C     R. Decker, E. Mirkes, R. Sauer, Z. Was Karlsruhe preprint TTP92-25
 C     and erratum !!!!!!
 C     ==================================================================
 C
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
-      COMPLEX FORM4,WIGNER,FPIKM
-      REAL*4 M
-      WIGNER(A,B,C)=CMPLX(1.0,0.0) /CMPLX(A-B**2,B*C)
+      double complex FORM4,WIGNER,FPIKM
+      double precision M
+      WIGNER(A,B,C)=CMPLX(1.0,0.0D0) /CMPLX(A-B**2,B*C)
       IF (MNUM.EQ.0) THEN
 C ------------  3 pi hadronic state (a1)
         G1=5.8
@@ -294,7 +300,7 @@ C ------------  3 pi hadronic state (a1)
           QM=SQRT(ABS((M**2-(XM1+XM2)**2)*(M**2-(XM1-XM2)**2)))/M
           GS=G*(M/W)**2*(QS/QM)**5
         ELSE
-          GS=0.0
+          GS=0.0D0
         ENDIF
         GAMX=GS*W/M
         FORM4=G1*G2*FPIP/AMRO**4/AMPIP**2
@@ -319,7 +325,7 @@ C ------------ K- pi- K+
            W=SQRT(S)
            GS=G*(M/W)**2*(QS/QM)**5
          ELSE
-           GS=0.0
+           GS=0.0D0
          ENDIF
         GAMX=GS*W/M
         FORM4=G1*G2*FPIP/AMRO**4/AMPIP**2
@@ -327,10 +333,10 @@ C ------------ K- pi- K+
      $       *( S1*(S2-S3)*FPIKM(SQRT(S1),AMPIZ,AMPIZ)
      $         +S2*(S1-S3)*FPIKM(SQRT(S2),AMPIZ,AMPIZ) )
       ELSE
-        FORM4=CMPLX(0.0,0.0)
+        FORM4=CMPLX(0.0D0,0.0D0)
       ENDIF
 C ---- this formfactor is switched off .. .
-cam    FORM4=CMPLX(0.0,0.0)
+cam    FORM4=CMPLX(0.0D0,0.0D0)
       END
       FUNCTION FORM5(MNUM,QQ,S1,S2)
 C     ==================================================================
@@ -341,18 +347,19 @@ C     R. Decker, E. Mirkes, R. Sauer, Z. Was Karlsruhe preprint TTP92-25
 C     and erratum !!!!!!
 C     ==================================================================
 C
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
-      COMPLEX FORM5,WIGNER,FPIKM,FPIKMD,BWIGM
-      WIGNER(A,B,C)=CMPLX(1.0,0.0)/CMPLX(A-B**2,B*C)
+      double complex FORM5,WIGNER,FPIKM,FPIKMD,BWIGM
+      WIGNER(A,B,C)=CMPLX(1.0,0.0D0)/CMPLX(A-B**2,B*C)
       IF     (MNUM.EQ.0) THEN
 C ------------  3 pi hadronic state (a1)
-        FORM5=0.0
+        FORM5=0.0D0
       ELSEIF (MNUM.EQ.1) THEN
 C ------------ K- pi- K+
          ELPHA=-0.2
@@ -367,10 +374,10 @@ C ------------ K0 pi- K0B
      $          +ELPHA*BWIGM(S1,AMKST,GAMKST,AMPI,AMK))
       ELSEIF (MNUM.EQ.3) THEN
 C ------------ K- K0 pi0
-        FORM5=0.0
+        FORM5=0.0D0
       ELSEIF (MNUM.EQ.4) THEN
 C ------------ pi0 pi0 K-
-        FORM5=0.0
+        FORM5=0.0D0
       ELSEIF (MNUM.EQ.5) THEN
 C ------------ K- pi- pi+
         ELPHA=-0.2
@@ -397,21 +404,22 @@ C     R. Decker Z. Phys C36 (1987) 487.
 C     M. Gell-Mann, D. Sharp, W. Wagner Phys. Rev. Lett 8 (1962) 261.
 C     ==================================================================
  
+        IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
 C
-      REAL*4            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
+      double precision            AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL*4            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
-      REAL  PIM1(4),PIM2(4),PIM3(4),PIM4(4),PAA(4)
-cam   COMPLEX HADCUR(4),FORM1,FORM2,FORM3,FPIKM
-      COMPLEX HADCUR(4),FORM1,FORM2,FORM3,WIGFOR
-      COMPLEX BWIGN
-      REAL PA(4),PB(4)
-      REAL AA(4,4),PP(4,4)
+      double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
+      double precision  PIM1(4),PIM2(4),PIM3(4),PIM4(4),PAA(4)
+cam   double complex HADCUR(4),FORM1,FORM2,FORM3,FPIKM
+      double complex HADCUR(4),FORM1,FORM2,FORM3,WIGFOR
+      double complex BWIGN
+      double precision PA(4),PB(4)
+      double precision AA(4,4),PP(4,4)
       DATA PI /3.141592653589793238462643/
       DATA  FPI /93.3E-3/
       BWIGN(A,XM,XG)=1.0/CMPLX(A-XM**2,XM*XG)
@@ -441,8 +449,8 @@ C
 C --- initialization of four vectors
       DO 7 K=1,4
       DO 8 L=1,4
- 8    AA(K,L)=0.0
-      HADCUR(K)=CMPLX(0.0)
+ 8    AA(K,L)=0.0D0
+      HADCUR(K)=CMPLX(0.0D0)
       PAA(K)=PIM1(K)+PIM2(K)+PIM3(K)+PIM4(K)
       PP(1,K)=PIM1(K)
       PP(2,K)=PIM2(K)
@@ -462,7 +470,7 @@ C -- definition of AA matrix
 C -- cronecker delta
         DO 202 I=1,4
          DO 203 J=1,4
- 203     AA(I,J)=0.0
+ 203     AA(I,J)=0.0D0
  202    AA(I,I)=1.0
 C ... and the rest ...
         DO 204 L=1,3
@@ -502,16 +510,16 @@ C --- PA PB are corresponding first and second pi-s
          PB(I)=PP(3-KK,I)
  302    CONTINUE
 C --- lorentz invariants
-         QQA=0.0
-         SS23=0.0
-         SS24=0.0
-         SS34=0.0
-         QP1P2=0.0
-         QP1P3=0.0
-         QP1P4=0.0
-         P1P2 =0.0
-         P1P3 =0.0
-         P1P4 =0.0
+         QQA=0.0D0
+         SS23=0.0D0
+         SS24=0.0D0
+         SS34=0.0D0
+         QP1P2=0.0D0
+         QP1P3=0.0D0
+         QP1P4=0.0D0
+         P1P2 =0.0D0
+         P1P3 =0.0D0
+         P1P4 =0.0D0
         DO 303 K=1,4
                      SIGN=-1.0
          IF (K.EQ.4) SIGN= 1.0
@@ -553,7 +561,7 @@ C -- definition of AA matrix
 C -- cronecker delta
         DO 102 I=1,4
          DO 103 J=1,4
- 103     AA(I,J)=0.0
+ 103     AA(I,J)=0.0D0
  102    AA(I,I)=1.0
 C
 C ... and the rest ...
@@ -584,7 +592,8 @@ C --- end of the non omega current (3 possibilities)
       ENDIF
       END
       FUNCTION WIGFOR(S,XM,XGAM)
-      COMPLEX WIGFOR,WIGNOR
+        IMPLICIT double precision (A-H,O-Z)
+        double complex WIGFOR,WIGNOR
       WIGNOR=CMPLX(-XM**2,XM*XGAM)
       WIGFOR=WIGNOR/CMPLX(S-XM**2,XM*XGAM)
       END

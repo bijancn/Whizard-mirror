@@ -99,8 +99,8 @@ module hepevt_include_common
   integer :: nevhep, nhep
   integer, dimension(nmxhep) :: isthep, idhep
   integer, dimension(2, nmxhep) :: jmohep, jdahep
-  real*8, dimension(5, nmxhep) :: phep
-  real*8, dimension(4, nmxhep) :: vhep
+  double precision, dimension(5, nmxhep) :: phep
+  double precision, dimension(4, nmxhep) :: vhep
   common /HEPEVT/ nevhep, nhep, isthep, idhep, &
        & jmohep, jdahep, phep, vhep
 
@@ -124,8 +124,8 @@ contains
     integer :: j
     double precision  :: sumdiff
     nhepev4_call = nhepev4_call + 1
-    spinlh(:,1:nhep_original) = 0.
-    icolorflowlh(:,1:nhep_original) = 0.
+    spinlh(:,1:nhep_original) = 0.0D0
+    icolorflowlh(:,1:nhep_original) = 0
     loop_i: do i = 1,nhep_original
        loop_j: do j = 1,nup
           check_consist: if(idup(j) == idhep(i)) then
@@ -143,10 +143,9 @@ contains
 
   subroutine hepev4_update(tauspin_pyjets)
     double precision, dimension(:), intent(in) :: tauspin_pyjets
-    integer :: i
-    spinlh(1:2,nhep_original+1:nhep) = 0.
+    spinlh(1:2,nhep_original+1:nhep) = 0.0D0
     spinlh(3,nhep_original+1:nhep) = tauspin_pyjets(nhep_original+1:nhep)
-    icolorflowlh(:,nhep_original+1:nhep) = 0.
+    icolorflowlh(:,nhep_original+1:nhep) = 0
   end subroutine hepev4_update
 
 end module hepevt_include_common
