@@ -1838,7 +1838,6 @@ the flavor structure list.
     integer, intent(in) :: i_res
     real(default) :: sval
     associate (map => reg_data%fks_mapping)
-       !!!map%sumdij = map%compute_sumdij (reg_data%regions(alr), p)
        call map%compute_sumdij (reg_data%regions(alr), p)
        select type (map)
        type is (fks_mapping_resonances_t)
@@ -2816,14 +2815,11 @@ position.
   procedure (fks_mapping_compute_sumdij), deferred :: compute_sumdij
 <<fks regions: interfaces>>=
   abstract interface
-    !!!function fks_mapping_compute_sumdij (map, sregion, p) result (d)
     subroutine fks_mapping_compute_sumdij (map, sregion, p)
       import
       class(fks_mapping_t), intent(inout) :: map
       type(singular_region_t), intent(in) :: sregion
       type(vector4_t), intent(in), dimension(:) :: p
-      !!!real(default) :: d
-    !!!end function fks_mapping_compute_sumdij
     end subroutine fks_mapping_compute_sumdij
   end interface
 
@@ -2865,15 +2861,12 @@ position.
   procedure (fks_mapping_compute_sumdij_soft), deferred :: compute_sumdij_soft
 <<fks regions: interfaces>>=
   abstract interface
-    !!!function fks_mapping_compute_sumdij_soft (map, sregion, p_born, p_soft) result (d)
     subroutine fks_mapping_compute_sumdij_soft (map, sregion, p_born, p_soft)
       import
       class(fks_mapping_t), intent(inout) :: map
       type(singular_region_t), intent(in) :: sregion
       type(vector4_t), intent(in), dimension(:) :: p_born
       type(vector4_t), intent(in) :: p_soft
-      !!!real(default) :: d
-    !!!end function
     end subroutine fks_mapping_compute_sumdij_soft
   end interface
 @ %def fks_mapping_compute_sumdij_soft
@@ -3108,7 +3101,6 @@ From these equations we can deduce the soft limit of $d$:
       end do
     end associate
     map%sumdij_soft = d
-  !!!end function fks_mapping_default_compute_sumdij_soft
   end subroutine fks_mapping_default_compute_sumdij_soft
 
 @ %def fks_mapping_default_compute_sumdij_soft
@@ -3289,7 +3281,6 @@ reference.
 <<fks regions: fks mapping resonances: TBP>>=
   procedure :: compute_sumdij_soft => fks_mapping_resonances_compute_sumdij_soft
 <<fks regions: procedures>>=
-  !!!function fks_mapping_resonances_compute_sumdij_soft (map, sregion, p_born, p_soft) result (d)
   subroutine fks_mapping_resonances_compute_sumdij_soft (map, sregion, p_born, p_soft)
     class(fks_mapping_resonances_t), intent(inout) :: map
     type(singular_region_t), intent(in) :: sregion
@@ -5163,67 +5154,43 @@ the corresponding jacobians.
   procedure :: evaluate_region_fsr => real_subtraction_evaluate_region_fsr
 <<real subtraction: procedures>>=
   function real_subtraction_evaluate_region_fsr (rsub, emitter, i_phs, &
-     alpha_s) result (sqme)
+     alpha_s) result (sqme_tot)
+    real(default) :: sqme_tot
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
-    real(default) :: sqme
     integer :: i_real
-    real(default) :: sqme0, sqme_soft, sqme_coll, sqme_cs, sqme_remn
-    real(default) :: s_alpha
-    real(default) :: xi, xi_max, xi_tilde, y, onemy
-    real(default) :: s
-    sqme0 = zero; sqme_soft = zero; sqme_coll = zero
+    real(default) :: sqme_rad, sqme_soft, sqme_coll, sqme_cs, sqme_remn
+    sqme_rad = zero; sqme_soft = zero; sqme_coll = zero
     sqme_cs = zero; sqme_remn = zero
-    xi_tilde = rsub%real_kinematics%xi_tilde
-    xi_max = rsub%real_kinematics%xi_max(i_phs)
-    xi = xi_tilde * xi_max
-    y = rsub%real_kinematics%y(i_phs)
-    onemy = one - y
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       if (rsub%radiation_active .and. rsub%passed_real_cuts (i_phs)) then
          i_real = region%real_index
-         sqme0 = rsub%sqme_real_non_sub (i_real, i_phs)
-         s_alpha = rsub%reg_data%get_svalue (rsub%real_kinematics%p_real_cms%get_momenta(i_phs), &
-             rsub%current_alr, emitter, rsub%current_i_res)
-         if (debug2_active (D_SUBTRACTION)) call msg_print_color('s_alpha', s_alpha, COL_YELLOW)
-         sqme0 = sqme0 * s_alpha
-         sqme0 = sqme0 * region%mult
-         sqme0 = sqme0 * region%double_fsr_factor (rsub%real_kinematics%p_real_cms%get_momenta(i_phs))
-         select case (rsub%purpose)
-         case (INTEGRATION, FIXED_ORDER_EVENTS)
-            sqme0 = sqme0 * xi**2 / xi_tilde * rsub%real_kinematics%jac(i_phs)%jac(1)
-         case (POWHEG)
-            s = rsub%real_kinematics%cms_energy2
-            sqme0 = sqme0*rsub%real_kinematics%jac(i_phs)%jac(1) * s / (8 * twopi3) * xi
-         end select
+         sqme_rad = rsub%sqme_real_non_sub (i_real, i_phs)
+         call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, rsub%current_alr, &
+            i_phs, emitter, rsub%current_i_res)
+         call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, rsub%real_kinematics, i_phs, .false.)
       end if
       if (rsub%subtraction_active .and. rsub%passed_born_cuts) then
          call rsub%evaluate_subtraction_terms_fsr (emitter, i_phs, alpha_s, &
             sqme_soft, sqme_coll, sqme_cs)
-         sqme_soft = sqme_soft / onemy / xi_tilde
-         sqme_coll = sqme_coll / onemy / xi_tilde
-         sqme_cs = sqme_cs / onemy / xi_tilde
-         associate (jac => rsub%real_kinematics%jac(i_phs))
-            sqme_soft = sqme_soft * jac%jac(2)
-            sqme_coll = sqme_coll * jac%jac(3)
-            sqme_cs = sqme_cs * jac%jac(2)
-         end associate
-         sqme_remn = (sqme_soft - sqme_cs) * log(xi_max) * xi_tilde
+         call apply_kinematic_factors_subtraction_fsr (sqme_soft, sqme_coll, sqme_cs, &
+            rsub%real_kinematics, i_phs)
+         sqme_remn = compute_sqme_remnant_fsr (sqme_soft, sqme_cs, rsub%real_kinematics, i_phs)
          select case (rsub%purpose)
          case (INTEGRATION)
-            sqme = sqme0 - sqme_soft - sqme_coll + sqme_cs + sqme_remn
+            sqme_tot = sqme_rad - sqme_soft - sqme_coll + sqme_cs + sqme_remn
          case (FIXED_ORDER_EVENTS)
-            sqme = - sqme_soft - sqme_coll + sqme_cs + sqme_remn
+            sqme_tot = - sqme_soft - sqme_coll + sqme_cs + sqme_remn
          case default
-            sqme = zero
+            sqme_tot = zero
             call msg_bug ("real_subtraction_evaluate_region_fsr: " // &
                  "Undefined rsub%purpose")
          end select
       else
-         sqme = sqme0
+         sqme_tot = sqme_rad
       end if
-      sqme = sqme * rsub%real_kinematics%jac_rand(i_phs)
+      sqme_tot = sqme_tot * rsub%real_kinematics%jac_rand(i_phs)
     end associate
 
     call debug_output ()
@@ -5235,6 +5202,8 @@ the corresponding jacobians.
        type(vector4_t) :: p_gluon
        integer, save :: n_soft = 0, passed_soft = 0, n_coll = 0, passed_coll = 0
        logical :: write_histo = .true.
+       real(default) :: y
+       y = rsub%real_kinematics%y(i_phs)
        if (debug_active (D_SUBTRACTION)) then
           print_all = debug2_active (D_SUBTRACTION)
           if (print_all) then
@@ -5245,12 +5214,13 @@ the corresponding jacobians.
                 p_gluon = p_real%get_momentum (i_phs, p_real%get_n_momenta (i_phs))
                 soft = p_gluon%p(0) < 0.1_default
              end associate
-             collinear = abs (y - 1) < 0.01_default
+             collinear = abs (rsub%real_kinematics%y (i_phs)- one) < 0.01_default
              if (soft) then
-                if (write_histo)  call write_point_to_file (p_gluon%p(0), sqme0, sqme_soft)
+                if (write_histo)  call write_point_to_file (p_gluon%p(0), sqme_rad, sqme_soft)
                 n_soft = n_soft + 1
                 if (sqme_soft < zero)  call msg_warning ("Soft < 0")
-                if (abs (sqme0 - sqme_soft) > sqme0 .and. sqme_soft > tiny_10 .and. sqme0 > tiny_10) then
+                if (abs (sqme_rad - sqme_soft) > sqme_rad .and. sqme_soft > tiny_10 &
+                   .and. sqme_rad > tiny_10) then
                    call msg_warning ("Soft MEs do not match in this soft region")
                    call write_computation_status (passed_soft, n_soft, "soft")
                 else
@@ -5259,7 +5229,8 @@ the corresponding jacobians.
              end if
              if (collinear) then
                 n_coll = n_coll + 1
-                if (abs (sqme0 - sqme_coll) > sqme0 .and. sqme_coll > tiny_10 .and. sqme0 > tiny_10) then
+                if (abs (sqme_rad - sqme_coll) > sqme_rad .and. &
+                   sqme_coll > tiny_10 .and. sqme_rad > tiny_10) then
                    call msg_warning ("Collinear MEs do not match in this collinear region")
                    call write_computation_status (passed_coll, n_coll, "collinear")
                 else
@@ -5275,29 +5246,31 @@ the corresponding jacobians.
        character(*), intent(in), optional :: region_type
        integer :: i_uborn
        integer :: u
+       real(default) :: xi
        u = given_output_unit (); if (u < 0) return
        i_uborn = rsub%reg_data%regions(rsub%current_alr)%uborn_index
+       xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
        write (u,'(A,I2)') 'rsub%purpose: ', rsub%purpose
        write (u,'(A,I3)') 'alr: ', rsub%current_alr
        write (u,'(A,I3)') 'emitter: ', emitter
        write (u,'(A,I3)') 'i_phs: ', i_phs 
-       write (u,'(A,F6.4)') 'xi_max: ', xi_max
-       write (u,'(A,F6.4,2X,A,F6.4)') 'xi: ', xi, 'y: ', y
+       write (u,'(A,F6.4)') 'xi_max: ', rsub%real_kinematics%xi_max (i_phs)
+       write (u,'(A,F6.4,2X,A,F6.4)') 'xi: ', xi, 'y: ', rsub%real_kinematics%y (i_phs)
        write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn)
-       write (u,'(A,ES16.9)')  'sqme_real: ', sqme0
+       write (u,'(A,ES16.9)')  'sqme_real: ', sqme_rad
        write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
        write (u,'(A,ES16.9)')  'sqme_coll: ', sqme_coll
        write (u,'(A,ES16.9)')  'sqme_coll-soft: ', sqme_cs
        write (u,'(A,ES16.9)')  'sqme_remn: ', sqme_remn
-       write (u,'(A,ES16.9)')  'sqme_tot: ', sqme
+       write (u,'(A,ES16.9)')  'sqme_tot: ', sqme_tot
        if (present (passed) .and. present (total) .and. &
             present (region_type)) &
           write (u,'(A)') char (str (passed) // " of " // str (total) // &
                " " // region_type // " points passed in total")
     end subroutine write_computation_status
 
-    subroutine write_point_to_file (E_gluon, sqme0, sqme_soft)
-      real(default), intent(in) :: E_gluon, sqme0, sqme_soft
+    subroutine write_point_to_file (E_gluon, sqme_rad, sqme_soft)
+      real(default), intent(in) :: E_gluon, sqme_rad, sqme_soft
       integer, save :: funit = 0
       type(string_t) :: filename
       filename = var_str ("soft.log")
@@ -5306,7 +5279,7 @@ the corresponding jacobians.
          open (funit, file=char(filename), action = "write", status="replace")
          write (funit, "(A,5X,A,5X,A)") "# E_gluon", "Real", "Soft Approx"
       end if
-      write (funit,'(3(ES16.9,1X))') E_gluon, sqme0, sqme_soft
+      write (funit,'(3(ES16.9,1X))') E_gluon, sqme_rad, sqme_soft
     end subroutine write_point_to_file
 
   end function real_subtraction_evaluate_region_fsr
@@ -5317,65 +5290,39 @@ the corresponding jacobians.
   procedure :: evaluate_region_isr => real_subtraction_evaluate_region_isr
 <<real subtraction: procedures>>=
   function real_subtraction_evaluate_region_isr (rsub, emitter, i_phs, alpha_s) &
-     result (sqme)
+     result (sqme_tot)
+    real(default) :: sqme_tot
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
-    real(default) :: sqme
-    real(default) :: xi_max, xi_max_plus, xi_max_minus
-    real(default) :: xi_tilde, xi, xi_plus, xi_minus
-    real(default) :: y
     integer :: i_real
-    real(default) :: sqme0, sqme_soft, sqme_coll_plus, sqme_coll_minus
+    real(default) :: sqme_rad, sqme_soft, sqme_coll_plus, sqme_coll_minus
     real(default) :: sqme_cs_plus, sqme_cs_minus
     real(default) :: sqme_remn
-    real(default) :: s_alpha
     real(default) :: onemy, onepy
     logical :: proc_scatter
 
     proc_scatter = rsub%isr_kinematics%n_in == 2
 
-    sqme0 = zero; sqme_soft = zero;
+    sqme_rad = zero; sqme_soft = zero;
     sqme_coll_plus = zero; sqme_coll_minus = zero
     sqme_cs_plus = zero; sqme_cs_minus = zero
     sqme_remn = zero
 
-    xi_tilde = rsub%real_kinematics%xi_tilde
-    xi_max = rsub%real_kinematics%xi_max(i_phs)
-    xi = xi_tilde * xi_max
-    if (proc_scatter) then
-       xi_max_plus = one - rsub%isr_kinematics%x(I_PLUS)
-       xi_max_minus = one - rsub%isr_kinematics%x(I_MINUS)
-       xi_plus = xi_max_plus * xi_tilde
-       xi_minus = xi_max_minus * xi_tilde
-    else
-       xi_max_plus = xi_max
-       xi_max_minus = xi_max
-       xi_plus =  xi
-       xi_minus = xi
-    end if
-    y = rsub%real_kinematics%y(i_phs)
-    onemy = one - y; onepy = one + y
     if (proc_scatter) call rsub%compute_pdfs ()
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       if (rsub%radiation_active .and. rsub%passed_real_cuts (i_phs)) then 
          i_real = region%real_index
-         sqme0 = rsub%sqme_real_non_sub (i_real, i_phs)
-         s_alpha = rsub%reg_data%get_svalue (rsub%real_kinematics%p_real_cms%get_momenta(i_phs), &
-             rsub%current_alr, emitter, rsub%current_i_res)
-         sqme0 = sqme0 * s_alpha
-         sqme0 = sqme0 * region%mult
+         sqme_rad = rsub%sqme_real_non_sub (i_real, i_phs)
+         call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, &
+            rsub%current_alr, i_phs, emitter, rsub%current_i_res)
          if (proc_scatter) then
-            call rsub%scale_pdfs_real (sqme0, i_real, I_PLUS)
-            call rsub%scale_pdfs_real (sqme0, i_real, I_MINUS)
+            call rsub%scale_pdfs_real (sqme_rad, i_real, I_PLUS)
+            call rsub%scale_pdfs_real (sqme_rad, i_real, I_MINUS)
          end if
 
-         select case (rsub%purpose)
-         case (INTEGRATION, FIXED_ORDER_EVENTS)
-            sqme0 = sqme0 * xi**2 / xi_tilde * rsub%real_kinematics%jac(i_phs)%jac(1)
-         case (POWHEG)
-            call msg_fatal ("POWHEG with initial-state radiation not implemented yet")
-         end select
+         call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, rsub%real_kinematics, &
+            i_phs, .true.)
       end if
       if (rsub%subtraction_active .and. rsub%passed_born_cuts) then
          call rsub%evaluate_subtraction_terms_isr (emitter, i_phs, alpha_s, &
@@ -5386,25 +5333,19 @@ the corresponding jacobians.
             call rsub%scale_pdfs_collinear (sqme_coll_minus, i_real, &
                region%uborn_index, I_MINUS)
          end if
-         associate (jac => rsub%real_kinematics%jac(i_phs))
-            sqme_soft = sqme_soft / (one - y**2) / xi_tilde * jac%jac(2)
-            sqme_coll_plus = sqme_coll_plus / onemy / xi_tilde / two * jac%jac(3)
-            sqme_coll_minus = sqme_coll_minus / onepy / xi_tilde / two * jac%jac(4)
-            sqme_cs_plus = sqme_cs_plus / onemy / xi_tilde / two * jac%jac(2)
-            sqme_cs_minus = sqme_cs_minus / onepy / xi_tilde / two * jac%jac(2)
-         end associate
-         sqme_remn = log(xi_max) * xi_tilde * sqme_soft
-         sqme_remn = sqme_remn - log (xi_max_plus) * xi_tilde * sqme_cs_plus &
-                               - log (xi_max_minus) * xi_tilde * sqme_cs_minus
+         call apply_kinematic_factors_subtraction_isr (sqme_soft, sqme_coll_plus, &
+            sqme_coll_minus, sqme_cs_plus, sqme_cs_minus, rsub%real_kinematics, i_phs)
+         sqme_remn = compute_sqme_remnant_isr (proc_scatter, sqme_soft, sqme_cs_plus, &
+            sqme_cs_minus, rsub%isr_kinematics, rsub%real_kinematics, i_phs)
 
-         sqme = sqme0 - sqme_soft - sqme_coll_plus - sqme_coll_minus &
+         sqme_tot = sqme_rad - sqme_soft - sqme_coll_plus - sqme_coll_minus &
               + sqme_cs_plus + sqme_cs_minus + sqme_remn
       else
-         sqme = sqme0
+         sqme_tot = sqme_rad
       end if
     end associate
 
-    sqme = sqme * rsub%real_kinematics%jac_rand (i_phs)
+    sqme_tot = sqme_tot * rsub%real_kinematics%jac_rand (i_phs)
 
     call debug_output ()
 
@@ -5422,16 +5363,16 @@ the corresponding jacobians.
                 p_gluon = p_real%get_momentum (i_phs, p_real%get_n_momenta (i_phs))
                 soft = p_gluon%p(0) < 2.0_default
              end associate
-             collinear = abs (y - 1) < 0.01_default
+             collinear = abs (rsub%real_kinematics%y (i_phs) - one) < 0.01_default
              if (soft) then
-                if (abs (sqme0 - sqme_soft) > sqme0 .and. sqme_soft > tiny_10) then
+                if (abs (sqme_rad - sqme_soft) > sqme_rad .and. sqme_soft > tiny_10) then
                    call msg_warning ("Soft MEs do not match in soft region")
                    call write_computation_status ()
                 end if
              end if
              ! TODO: (bcn 2016-01-13) check coll_plus and coll_minus
              !if (collinear) then
-                !if (abs (sqme0 - sqme_coll) > sqme0 .and. sqme_coll > tiny_10) then
+                !if (abs (sqme_rad - sqme_coll) > sqme_rad .and. sqme_coll > tiny_10) then
                    !call msg_warning ("Collinear MEs do not match in collinear region")
                    !call write_computation_status ()
                 !end if
@@ -5444,21 +5385,24 @@ the corresponding jacobians.
        integer, intent(in), optional :: unit
        integer :: i_uborn
        integer :: u
+       real(default) :: xi
        u = given_output_unit (unit); if (u < 0) return
        i_uborn = rsub%reg_data%regions(rsub%current_alr)%uborn_index
+       xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
        write (u,'(A,I2)') 'alr: ', rsub%current_alr
        write (u,'(A,I2)') 'emitter: ', emitter
-       write (u,'(A,F4.2)') 'xi_max: ', xi_max
-       print *, 'xi: ', xi, 'y: ', y
+       write (u,'(A,F4.2)') 'xi_max: ', rsub%real_kinematics%xi_max (i_phs)
+       print *, 'xi: ', xi, 'y: ', rsub%real_kinematics%y (i_phs)
        print *, 'xb1: ', rsub%isr_kinematics%x(1), 'xb2: ', rsub%isr_kinematics%x(2)
        write (u,'(A,ES16.9)')  'sqme_born: ', rsub%sqme_born(i_uborn)
-       write (u,'(A,ES16.9)')  'sqme_real: ', sqme0
+       write (u,'(A,ES16.9)')  'sqme_real: ', sqme_rad
        write (u,'(A,ES16.9)')  'sqme_soft: ', sqme_soft
        write (u,'(A,ES16.9)')  'sqme_coll_plus: ', sqme_coll_plus
        write (u,'(A,ES16.9)')  'sqme_coll_minus: ', sqme_coll_minus
        write (u,'(A,ES16.9)')  'sqme_cs_plus: ', sqme_cs_plus
        write (u,'(A,ES16.9)')  'sqme_cs_minus: ', sqme_cs_minus
        write (u,'(A,ES16.9)')  'sqme_remn: ', sqme_remn
+       write (u,'(A,ES16.9)')  'sqme_tot: ', sqme_tot
     end subroutine write_computation_status
 
   end function real_subtraction_evaluate_region_isr
@@ -5487,6 +5431,138 @@ the corresponding jacobians.
   end subroutine real_subtraction_evaluate_subtraction_terms_fsr
 
 @ %def real_subtraction_evaluate_subtraction_terms_fsr
+@
+<<real subtraction: procedures>>=
+  subroutine evaluate_fks_factors &
+     (sqme, reg_data, real_kinematics, alr, i_phs, emitter, i_res)
+    real(default), intent(inout) :: sqme
+    type(region_data_t), intent(inout) :: reg_data
+    type(real_kinematics_t), intent(in) :: real_kinematics
+    integer, intent(in) :: alr, i_phs, emitter, i_res
+    real(default) :: s_alpha
+    s_alpha = reg_data%get_svalue (real_kinematics%p_real_cms%get_momenta(i_phs), &
+        alr, emitter, i_res)
+    if (debug2_active (D_SUBTRACTION)) call msg_print_color('s_alpha', s_alpha, COL_YELLOW)
+    sqme = sqme * s_alpha
+    associate (region => reg_data%regions(alr))
+       sqme = sqme * region%mult
+       if (emitter > reg_data%n_in) &
+          sqme = sqme * region%double_fsr_factor (real_kinematics%p_real_cms%get_momenta(i_phs))
+    end associate
+  end subroutine evaluate_fks_factors
+
+@ %def evaluate_fks_factors
+@   
+<<real subtraction: procedures>>=
+  subroutine apply_kinematic_factors_radiation (sqme, purpose, real_kinematics, i_phs, isr)
+    real(default), intent(inout) :: sqme
+    integer, intent(in) :: purpose
+    type(real_kinematics_t), intent(in) :: real_kinematics
+    integer, intent(in) :: i_phs
+    logical, intent(in) :: isr
+    real(default) :: xi, xi_tilde, s
+    xi_tilde = real_kinematics%xi_tilde
+    xi = xi_tilde * real_kinematics%xi_max (i_phs)
+    select case (purpose)
+    case (INTEGRATION, FIXED_ORDER_EVENTS)
+       sqme = sqme * xi**2 / xi_tilde * real_kinematics%jac(i_phs)%jac(1)
+    case (POWHEG)
+       if (.not. isr) then
+          s = real_kinematics%cms_energy2
+          sqme = sqme * real_kinematics%jac(i_phs)%jac(1) * s / (8 * twopi3) * xi
+       else
+          call msg_fatal ("POWHEG with initial-state radiation not implemented yet")
+       end if
+    end select
+  end subroutine apply_kinematic_factors_radiation
+
+@ %def apply_kinematics_factors_radiation
+@
+<<real subtraction: procedures>>=
+  subroutine apply_kinematic_factors_subtraction_fsr &
+     (sqme_soft, sqme_coll, sqme_cs, real_kinematics, i_phs)
+    real(default), intent(inout) :: sqme_soft, sqme_coll, sqme_cs
+    type(real_kinematics_t), intent(in) :: real_kinematics
+    integer, intent(in) :: i_phs
+    real(default) :: xi_tilde, onemy
+    xi_tilde = real_kinematics%xi_tilde
+    onemy = one - real_kinematics%y(i_phs)  
+    sqme_soft = sqme_soft / onemy / xi_tilde
+    sqme_coll = sqme_coll / onemy / xi_tilde
+    sqme_cs = sqme_cs / onemy / xi_tilde
+    associate (jac => real_kinematics%jac(i_phs)%jac)
+       sqme_soft = sqme_soft * jac(2)
+       sqme_coll = sqme_coll * jac(3)
+       sqme_cs = sqme_cs * jac(2)
+    end associate
+  end subroutine apply_kinematic_factors_subtraction_fsr
+
+@ %def apply_kinematic_factors_subtraction_fsr
+@ For final state radiation, the subtraction remnant cross section is
+\begin{equation}
+  \sigma_{\text{remn}} = \left(\sigma_{\text{soft}} - \sigma_{\text{coll}}\right)
+      \log\xi_{\text{max}} \cdot \tilde{\xi}.
+\end{equation}
+<<real subtraction: procedures>>=
+  function compute_sqme_remnant_fsr (sqme_soft, sqme_cs, &
+     real_kinematics, i_phs) result (sqme_remn)
+    real(default) :: sqme_remn
+    real(default), intent(in) :: sqme_soft, sqme_cs
+    type(real_kinematics_t), intent(in) :: real_kinematics
+    integer, intent(in) :: i_phs
+    sqme_remn = (sqme_soft - sqme_cs) * &
+       log (real_kinematics%xi_max (i_phs)) * real_kinematics%xi_tilde
+  end function compute_sqme_remnant_fsr
+
+@ %def compute_sqme_remnant_fsr
+@
+<<real subtraction: procedures>>=
+  subroutine apply_kinematic_factors_subtraction_isr &
+     (sqme_soft, sqme_coll_plus, sqme_coll_minus, sqme_cs_plus, &
+      sqme_cs_minus, real_kinematics, i_phs)
+    real(default), intent(inout) :: sqme_soft, sqme_coll_plus, sqme_coll_minus
+    real(default), intent(inout) :: sqme_cs_plus, sqme_cs_minus
+    type(real_kinematics_t), intent(in) :: real_kinematics
+    integer, intent(in) :: i_phs
+    real(default) :: xi_tilde, y, onemy, onepy
+    xi_tilde = real_kinematics%xi_tilde
+    y = real_kinematics%y (i_phs)
+    onemy = one - y; onepy = one + y
+    associate (jac => real_kinematics%jac(i_phs)%jac)
+       sqme_soft = sqme_soft / (one - y**2) / xi_tilde * jac(2)
+       sqme_coll_plus = sqme_coll_plus / onemy / xi_tilde / two * jac(3)
+       sqme_coll_minus = sqme_coll_minus / onepy / xi_tilde / two * jac(4)
+       sqme_cs_plus = sqme_cs_plus / onemy / xi_tilde / two * jac(2)
+       sqme_cs_minus = sqme_cs_minus / onepy / xi_tilde / two * jac(2)
+    end associate
+  end subroutine apply_kinematic_factors_subtraction_isr
+
+@ %def apply_kinematic_factors_subtraction_isr
+@
+<<real subtraction: procedures>>=
+  function compute_sqme_remnant_isr (proc_scatter, sqme_soft, sqme_cs_plus, sqme_cs_minus, &
+     isr_kinematics, real_kinematics, i_phs) result (sqme_remn)
+    real(default) :: sqme_remn
+    logical, intent(in) :: proc_scatter
+    real(default), intent(in) :: sqme_soft, sqme_cs_plus, sqme_cs_minus
+    type(isr_kinematics_t), intent(in) :: isr_kinematics
+    type(real_kinematics_t), intent(in) :: real_kinematics
+    integer, intent(in) :: i_phs
+    real(default) :: xi_tilde, xi_max, xi_max_plus, xi_max_minus
+    if (proc_scatter) then
+       xi_max_plus = one - isr_kinematics%x(I_PLUS)
+       xi_max_minus = one - isr_kinematics%x(I_MINUS)
+    else
+       xi_max_plus = real_kinematics%xi_max (i_phs)
+       xi_max_minus = real_kinematics%xi_max (i_phs)
+    end if
+    xi_tilde = real_kinematics%xi_tilde
+    sqme_remn = log(xi_max) * xi_tilde * sqme_soft
+    sqme_remn = sqme_remn - log (xi_max_plus) * xi_tilde * sqme_cs_plus &
+                          - log (xi_max_minus) * xi_tilde * sqme_cs_minus
+  end function compute_sqme_remnant_isr
+
+@ %def compute_sqme_remnant_isr
 @
 <<real subtraction: real subtraction: TBP>>=
   procedure :: evaluate_subtraction_terms_isr => &
@@ -7489,6 +7565,7 @@ one to determine this.
      logical :: use_internal_spin_correlations = .false.
      logical :: use_resonance_mappings = .false.
      logical :: combined_integration = .false.
+     logical :: nlo_event_generation = .false.
      logical :: test_soft_limit = .false.
      logical :: test_coll_limit = .false.
      integer :: fixed_alr = -1
@@ -8396,13 +8473,16 @@ polarized or not.
 <<nlo controller: nlo controller: TBP>>=
   procedure :: set_x_rad => nlo_controller_set_x_rad
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_set_x_rad (controller, x_rad)
+  subroutine nlo_controller_set_x_rad (controller, x_tot)
     class(nlo_controller_t), intent(inout) :: controller
-    real(default), intent(in), dimension(:) :: x_rad
+    real(default), intent(in), dimension(:) :: x_tot
     integer :: n_par
-    n_par = size (x_rad)
-    if (associated (controller%real_kinematics)) &
-       controller%real_kinematics%x_rad = x_rad (n_par-2:n_par)
+    n_par = size (x_tot)
+    if (n_par < 3) then
+       controller%real_kinematics%x_rad = zero
+    else
+       controller%real_kinematics%x_rad = x_tot (n_par - 2 : n_par)
+    end if
   end subroutine nlo_controller_set_x_rad
 
 @ %def nlo_controller_set_x_rad
@@ -11304,12 +11384,11 @@ end module phs_fks_uti
     generator%sqrts = mT
 
     write (u, "(A)") "* Use three-particle phase space containing: "
-    call vector4_write_set (p_born, u, testflag = .true., &
-       show_mass = .true., ultra = .true.)
+    call vector4_write_set (p_born, u, testflag = .true., ultra = .true.)
     write (u, "(A)") "**********************"
     write (u, "(A)")
 
-    x1=0.5_default; x2=0.25_default; x3=0.6_default
+    x1 = 0.5_default; x2 = 0.25_default; x3 = 0.6_default
     write (u, "(A)") "* Use random numbers: "
     write (u, "(A,F3.2,1X,A,F3.2,A,1X,F3.2)") &
        "x1: ", x1, "x2: ", x2, "x3: ", x3
@@ -11353,16 +11432,14 @@ end module phs_fks_uti
     p_real = 4
     call generator%generate_isr_decay (i_phs, p_born, p_real)
     call pacify (p_real%p, 1E-6_default)
-    call vector4_write_set (p_real%p, u, testflag = .true., &
-         show_mass = .true., ultra = .true.)
+    call vector4_write_set (p_real%p, u, testflag = .true., ultra = .true.)
     call write_separator(u)
     write (u, "(A)") "Produce real momenta via final-state emisson: "
     i_phs = 2; emitter = phs_identifiers(i_phs)%emitter
     write (u, "(A,I1)") "emitter: ", emitter
     call generator%generate_fsr (emitter, i_phs, p_born, p_real)
     call pacify (p_real%p, 1E-6_default)
-    call vector4_write_set (p_real%p, u, testflag = .true., &
-         show_mass = .true., ultra = .true.)
+    call vector4_write_set (p_real%p, u, testflag = .true., ultra = .true.)
     write (u, "(A)")
     write (u, "(A)") "* Test output end: phs_fks_generator_3"
 
@@ -11634,8 +11711,7 @@ end module phs_fks_uti
     generator%sqrts = mT
 
     write (u, "(A)") "* Use four-particle phase space containing: "
-    call vector4_write_set (p_born, u, testflag = .true., &
-       show_mass = .true., ultra = .true.)
+    call vector4_write_set (p_born, u, testflag = .true., ultra = .true.)
     write (u, "(A)") "**********************"
     write (u, "(A)")
 
@@ -11685,16 +11761,14 @@ end module phs_fks_uti
     p_real = 5
     call generator%generate_isr_decay (i_phs, p_born, p_real)
     call pacify (p_real%p, 1E-6_default)
-    call vector4_write_set (p_real%p, u, testflag = .true., &
-         show_mass = .true., ultra = .true.)
+    call vector4_write_set (p_real%p, u, testflag = .true., ultra = .true.)
     call write_separator(u)
     write (u, "(A)") "Produce real momenta via final-state emisson: "
     i_phs = 2; emitter = phs_identifiers(i_phs)%emitter
     write (u, "(A,I1)") "emitter: ", emitter
     call generator%generate_fsr (emitter, i_phs, p_born, p_real)
     call pacify (p_real%p, 1E-6_default)
-    call vector4_write_set (p_real%p, u, testflag = .true., &
-         show_mass = .true., ultra = .true.)
+    call vector4_write_set (p_real%p, u, testflag = .true., ultra = .true.)
     write (u, "(A)")
     write (u, "(A)") "* Test output end: phs_fks_generator_6"
 
