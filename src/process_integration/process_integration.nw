@@ -7070,18 +7070,15 @@ stored in the kinematics subobject to their source.  This is a side effect.
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_born => component_instance_evaluate_sqme_born
 <<Processes: procedures>>=
-  subroutine component_instance_evaluate_sqme_born (component, term, overwrite_born)
+  subroutine component_instance_evaluate_sqme_born (component, term, not_virtual, pure_born)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout), target :: term
-    logical, intent(out) :: overwrite_born
+    logical, intent(out) :: not_virtual, pure_born
     real(default) :: sqme
     integer :: n_flv, i_flv
-    if (term%nlo_type == NLO_VIRTUAL) then
-       overwrite_born = .false.
-       return
-    else
-       overwrite_born = .true.
-    end if
+    not_virtual = term%nlo_type /= NLO_VIRTUAL
+    pure_born = term%nlo_type == BORN
+    if (.not. not_virtual) return
     i_flv = 1
     sqme = zero
     if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) then
@@ -7153,7 +7150,7 @@ imaginary part of the terms, which should be zero anyway.
   subroutine component_instance_evaluate_sqme (component, term)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), dimension(:), intent(inout), target :: term
-    logical :: set_me
+    logical :: not_virtual, pure_born
     integer :: j, i
 
     component%sqme = zero
@@ -7162,9 +7159,11 @@ imaginary part of the terms, which should be zero anyway.
       do j = 1, size (i_term)
          i = i_term(j)
          if (term(i)%passed) then
-            call component%evaluate_sqme_born (term(i), set_me)
-            if (set_me) &
-               call associate_sqme_born (component, component%sqme * term(i)%weight, 1)
+            call component%evaluate_sqme_born (term(i), not_virtual, pure_born)
+            if (pure_born) &
+               call set_pure_born (component, component%sqme * term(i)%weight, 1) 
+            if (not_virtual) &
+               call set_subtraction_born (component, component%sqme * term(i)%weight, 1)
             call component%evaluate_sqme_real (term(i), 1)
             call component%evaluate_sqme_virt (term(i))
             call component%evaluate_sqme_mismatch (term(i))
@@ -7191,22 +7190,27 @@ imaginary part of the terms, which should be zero anyway.
 @ %def reset_nlo_components
 @
 <<Processes: procedures>>=
-  subroutine associate_sqme_born (component, sqme_born, i_flv, update_born)
-     type(component_instance_t), intent(inout) :: component
-     real(default), intent(in) :: sqme_born
-     integer, intent(in) :: i_flv
-     logical, intent(in), optional :: update_born
-     logical :: ub
-     ub = .true.; if (present (update_born)) ub = update_born
-     call msg_debug2 (D_SUBTRACTION, "Associate Born matrix element", i_flv)
-     if (associated (component%nlo_controller)) then
-        associate (collector => component%nlo_controller%sqme_collector)
-           collector%sqme_subtraction_born_list (i_flv) = sqme_born
-           if (ub) collector%sqme_born_list (i_flv) = sqme_born
-        end associate
-     end if
-  end subroutine associate_sqme_born
+  subroutine set_subtraction_born (component, sqme_born, i_flv)
+    type(component_instance_t), intent(inout) :: component
+    real(default), intent(in) :: sqme_born
+    integer, intent(in) :: i_flv
+    if (associated (component%nlo_controller)) &
+        component%nlo_controller%sqme_collector%sqme_subtraction_born_list (i_flv) &
+           = sqme_born
+  end subroutine set_subtraction_born
 
+@ %def set_subtraction_born
+@
+<<Processes: procedures>>=
+  subroutine set_pure_born (component, sqme_born, i_flv)
+    type(component_instance_t), intent(inout) :: component
+    real(default), intent(in) :: sqme_born
+    integer, intent(in) :: i_flv
+    if (associated (component%nlo_controller)) &
+       component%nlo_controller%sqme_collector%sqme_born_list (i_flv) = sqme_born
+  end subroutine set_pure_born
+
+@ %def set_pure_born
 @ Perform the matrix-element-evaluation if the component is flagged as virtual
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_virt => component_instance_evaluate_sqme_virt
@@ -9902,7 +9906,7 @@ if it fails the cuts for at least one emitter.
     integer, intent(in) :: i_component
     integer, intent(in) :: i_phs
     integer :: i_flv_real, i_flv_born
-    logical :: overwrite_born
+    logical :: not_virtual, pure_born
     real(default) :: sqme_born
 
     do i_flv_real = 1, term%nlo_controller%reg_data%n_flv_real
@@ -9920,11 +9924,12 @@ if it fails the cuts for at least one emitter.
              !!! real flavor structures has to be changed with the one over resonances
              !!! in this case.
              if (term%nlo_controller%nlo_cuts%passed_born) then
-                call component%evaluate_sqme_born (term, overwrite_born)
+                call component%evaluate_sqme_born (term, not_virtual, pure_born)
                 sqme_born = component%sqme
                 call msg_debug2 (D_SUBTRACTION, "sqme_born", sqme_born)
-                call associate_sqme_born (component, sqme_born * term%weight, i_flv_born, &
-                   update_born = pcm%controller%nlo_cuts%passed_born .and. overwrite_born)
+                if (pcm%controller%nlo_cuts%passed_born .and. not_virtual) &
+                   call set_subtraction_born (component, sqme_born * term%weight, i_flv_born)
+                call set_pure_born (component, sqme_born * term%weight, i_flv_born)
              end if
              if (term%nlo_controller%nlo_cuts%passed_real(i_phs)) &
                 call component%evaluate_sqme_real (term, i_phs)
