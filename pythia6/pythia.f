@@ -10102,7 +10102,8 @@ C...Construct 'trivial' kinematical variables needed.
         KFL2=IDUP(2)
         VINT(41)=PUP(4,1)/EBMUP(1)
         VINT(42)=PUP(4,2)/EBMUP(2)
-        IF (VINT(41).GT.1.000001.OR.VINT(42).GT.1.000001) THEN
+        !!! BCN: Relaxing the Pythia warnings that are frequent for beam events
+        IF (VINT(41).GT.1.1.OR.VINT(42).GT.1.1) THEN
           CALL PYERRM(9,'(PYRAND:) x > 1 in external event '//
      &        '(listing follows):') 
           CALL PYLIST(7)
@@ -68208,6 +68209,8 @@ C...Local arrays.
      &WTCOR(10),PTAU(4),PCMTAU(4),DBETAU(3)
       CHARACTER CIDC*4
       DATA WTCOR/2D0,5D0,15D0,60D0,250D0,1500D0,1.2D4,1.2D5,150D0,16D0/
+      logical :: first, second
+      integer :: idx
  
 C...Functions: momentum in two-particle decays and four-product.
       PAWT(A,B,C)=SQRT((A**2-(B+C)**2)*(A**2-(B-C)**2))/(2D0*A)
@@ -68265,13 +68268,26 @@ C...If no known origin then impossible to do anything further.
           KFORIG=0
           IORIG=0
  
-        ELSEIF(K(IMTAU,2).EQ.K(ITAU,2)) THEN
+        ELSEIF(K(IMTAU,2) == K(ITAU,2)) THEN
 C...If tau -> tau + gamma then add gamma energy and loop.
-          IF(K(K(IMTAU,4),2).EQ.22) THEN
+!!! BCN: Catching invalid access to K(0,2)
+          idx = K(IMTAU,4)
+          IF(idx > 0) THEN
+            first = K(idx,2) == 22
+          ELSE
+            first = .false.
+          END IF
+          idx = K(IMTAU,5)
+          IF(idx > 0) THEN
+            second = K(idx,2) == 22
+          ELSE
+            second = .false.
+          END IF
+          IF(first) THEN
             DO 130 J=1,4
               PCMTAU(J)=PCMTAU(J)+P(K(IMTAU,4),J)
   130       CONTINUE
-          ELSEIF(K(K(IMTAU,5),2).EQ.22) THEN
+          ELSEIF(second) THEN
             DO 140 J=1,4
               PCMTAU(J)=PCMTAU(J)+P(K(IMTAU,5),J)
   140       CONTINUE
