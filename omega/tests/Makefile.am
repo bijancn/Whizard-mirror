@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 7444 2016-02-17 15:37:20Z jr_reuter $
+# $Id: Makefile.am 7469 2016-03-13 16:44:17Z ohl $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -221,6 +221,26 @@ ects_SOURCES = color_test_lib.f90 \
 	parameters_SM.f90 parameters_QED.f90 parameters_QCD.f90 parameters_SYM.f90
 nodist_ects_SOURCES = ects.f90
 ects_LDADD = $(KINDS) $(top_builddir)/src/libomega_core.la
+
+########################################################################
+
+TESTS += cascade
+
+CASCADE_TESTS = \
+	bhabha-s-channel.cascade bhabha-t-channel.cascade bhabha-full.cascade \
+	ww-onlycc.cascade ww-notgc.cascade \
+	jjj-notgc.cascade \
+	vbf-noh.cascade
+
+cascade: cascade_driver.sh Makefile
+	$(SED) -e 's|%%cascade_tests%%|$(CASCADE_TESTS)|' \
+	  -e 's|%%srcdir%%|$(srcdir)|' \
+	  -e 's|%%SED%%|$(SED)|' \
+	  -e 's|%%top_builddir%%|$(top_builddir)|' \
+	  -e 's|%%OCAML_NATIVE_EXT%%|$(OCAML_NATIVE_EXT)|' $< >$@
+	chmod +x $@
+
+EXTRA_DIST += cascade_driver.sh $(CASCADE_TESTS)
 
 ########################################################################
 
@@ -537,7 +557,7 @@ clean-local: clean-macosx
 		*.o *.cmi *.cmo *.cmx amplitude_*.f90 *.$(OMEGA_CACHE_SUFFIX) \
 		$(EXTRA_PROGRAMS) ects.f90 ward.f90 compare_*.f90 \
 		omega_testtools.f90 test_omega95*.f90 benchmark*.f90 \
-		*.hbc *wrappers.f90
+		*.hbc *wrappers.f90 cascade
 if FC_SUBMODULES
 	-rm -f *.smod
 endif
