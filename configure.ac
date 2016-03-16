@@ -567,6 +567,11 @@ AC_CONFIG_FILES([src/lcio/Makefile])
 AC_CONFIG_FILES([pythia6/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory tauola: WHIZARD's internal TAUOLA version
+
+AC_CONFIG_FILES([tauola/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory stdhep: WHIZARD's internal StdHep version
 
 AC_CONFIG_FILES([mcfio/Makefile])

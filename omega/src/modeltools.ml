@@ -27,7 +27,7 @@ let rcs_file = RCS.parse "Modeltools" ["Lagragians"]
       RCS.date = "$Date: 2016-03-13 17:44:17 +0100 (Sun, 13 Mar 2016) $";
       RCS.author = "$Author: ohl $";
       RCS.source
-        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modeltools.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modeltools.ml $" }
 
 (* \thocwmodulesection{Compilation} *)
 
