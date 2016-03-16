@@ -6407,6 +6407,10 @@ contains
     rewind (u_W2P)
     call pythia6_set_last_treated_line(6)
     call shower%transfer_settings ()
+    if (debug_active (D_SHOWER)) then
+       print *, ' Before pyevnt, before boosting :'
+       call pylist(2)
+    end if
     call msg_debug (D_SHOWER, "calling pyevnt")
     ! TODO: (bcn 2015-04-24) doesnt change anything I think
     ! P(1,1:5) = pset_reduced%prt(1)%momentum_to_pythia6 ()
@@ -6459,31 +6463,28 @@ contains
     class(shower_pythia6_t), intent(inout) :: shower
     character(len=10) :: buffer
     real(default) :: rand
-    if (shower%settings%isr_active) then
-       call pygive ("MSTP(61)=1")
-    else
-       call pygive ("MSTP(61)=0")  !!! switch off ISR
-    end if
-    if (shower%settings%fsr_active) then
-       call pygive ("MSTP(71)=1")
-    else
-       call pygive ("MSTP(71)=0")   !!! switch off FSR
-    end if
-    call pygive ("MSTP(111)=1")     !!! Allow hadronization and decays
-    call pygive ("MSTJ(1)=0")       !!! No jet fragmentation
-    call pygive ("MSTJ(21)=1")      !!! Allow decays but no jet fragmentation
-    call pygive ("MSTP(11)=0")      !!! Disable Pythias QED-ISR per default
-    call pygive ("MSTP(171)=1")     !!! Allow variable energies
-
+    logical, save :: tauola_initialized = .false.
+    call msg_debug (D_SHOWER, "shower_pythia6_transfer_settings")
     if (shower%initialized_for_NPRUP >= NPRUP) then
-       ! TODO: (bcn 2016-02-23) unclear whether this is actually necessary
-       call msg_debug (D_SHOWER, "calling upinit")
-       call upinit ()
+      call msg_debug (D_SHOWER, "calling upinit")
+      call upinit ()
     else
-       !!! This is called the first time for a process and sets most of
-       !!! the settings
-       ! TODO: (bcn 2016-02-23) why are these only given once but the
-       !                        others for every event?
+       if (shower%settings%isr_active) then
+          call pygive ("MSTP(61)=1")
+       else
+          call pygive ("MSTP(61)=0")  !!! switch off ISR
+       end if
+       if (shower%settings%fsr_active) then
+          call pygive ("MSTP(71)=1")
+       else
+          call pygive ("MSTP(71)=0")   !!! switch off FSR
+       end if
+       call pygive ("MSTP(111)=1")     !!! Allow hadronization and decays
+       call pygive ("MSTJ(1)=0")       !!! No jet fragmentation
+       call pygive ("MSTJ(21)=1")      !!! Allow decays but no jet fragmentation
+       call pygive ("MSTP(11)=0")      !!! Disable Pythias QED-ISR per default
+       call pygive ("MSTP(171)=1")     !!! Allow variable energies
+
        write (buffer, "(F10.5)") sqrt (abs (shower%settings%min_virtuality))
        call pygive ("PARJ(82)=" // buffer)
        write (buffer, "(F10.5)") shower%settings%isr_tscalefactor
@@ -6530,12 +6531,11 @@ contains
        call pygive ("MRPY(1)=" // buffer)
        call pygive ("MRPY(2)=0")
        call pythia6_set_config (shower%settings%pythia6_pygive)
-       if (pythia6_tauola_active()) then
-          ! TODO: (bcn 2016-02-23) activate when we add tauola folder
-          !this should only be called once
-          !call ilc_tauola_init_call ()
-       end if
        shower%initialized_for_NPRUP = NPRUP
+    end if
+    if (pythia6_tauola_active() .and. .not. tauola_initialized) then
+       call ilc_tauola_init_call ()
+       tauola_initialized = .true.
     end if
   end subroutine shower_pythia6_transfer_settings
 
@@ -6734,7 +6734,7 @@ added back in by Pythia.
           ! Set tau helicity set by TAUOLA
           if (abs (pdg) == 15) then
              ! TODO: (bcn 2016-02-23) activate when we add tauola folder
-            !call ilc_tauola_get_helicity(i_py, ihelicity)
+            call ilc_tauola_get_helicity(i_py, ihelicity)
             ihelicity = 1 !!! Dummy value, replace by the subroutine above
             call hel%init(ihelicity)
             call particles(n_tot_old+i_whz)%set_helicity(hel)
@@ -7050,187 +7050,6 @@ with the ordering of the color string but am not sure.
 @ %def shower_pythia6_get_final_colored_ME_momenta
 @
 <<Shower pythia6: public>>=
-  public :: pylheo
-<<Shower pythia6: procedures>>=
-!!!!!!!!!!PYTHIA STYLE!!!!!!!!!!!!!
-!!! originally PYLHEF subroutine from PYTHIA 6.4.22
-
-  !C...Write out the showered event to a Les Houches Event File.
-
-  subroutine pylheo (u_P2W)
-
-  !C...Double precision and integer declarations.
-    IMPLICIT DOUBLE PRECISION(A-H, O-Z)
-    IMPLICIT INTEGER(I-N)
-    integer, intent(in) :: u_P2W
-
-    !C...PYTHIA commonblock: only used to provide read/write units and version.
-    common /PYPARS/ MSTP(200), PARP(200), MSTI(200), PARI(200)
-    common /PYJETS/ N, NPAD, K(4000,5), P(4000,5), V(4000,5)
-    save /PYPARS/
-    save /PYJETS/
-
-    !C...User process initialization commonblock.
-    !C...User process event common block.
-    integer, parameter :: MAXPUP = 100, MAXNUP = 500
-    integer :: IDBMUP, PDFGUP, PDFSUP, IDWTUP, NPRUP, LPRUP
-    integer :: NUP, IDPRUP, IDUP, ISTUP, MOTHUP, ICOLUP
-    real(double) :: EBMUP, XSECUP, XERRUP, XMAXUP
-    real(double) :: XWGTUP, SCALUP, AQEDUP, AQCDUP, PUP, VTIMUP, SPINUP
-    integer, parameter :: KSUSY1 = 1000000, KSUSY2 = 2000000
-    common /HEPRUP/ &
-         IDBMUP(2), EBMUP(2), PDFGUP(2), PDFSUP(2), IDWTUP, NPRUP, &
-         XSECUP(MAXPUP), XERRUP(MAXPUP), XMAXUP(MAXPUP), LPRUP(MAXPUP)
-    save /HEPRUP/
-    common /HEPEUP/ &
-         NUP, IDPRUP, XWGTUP, SCALUP, AQEDUP, AQCDUP, IDUP(MAXNUP), &
-         ISTUP(MAXNUP), MOTHUP(2,MAXNUP), ICOLUP(2,MAXNUP), &
-         PUP(5,MAXNUP), VTIMUP(MAXNUP), SPINUP(MAXNUP)
-    save /HEPEUP/
-
-    !C...Lines to read in assumed never longer than 200 characters.
-    PARAMETER (MAXLEN=200)
-    character(len=maxlen) :: string
-
-    integer :: LEN, ndangling_color, ndangling_antic, ncolor
-
-    !C...Format for reading lines.
-    character(len=6) :: strfmt
-    STRFMT='(A000)'
-    write (STRFMT(3:5),'(I3)') MAXLEN
-
-    !C...Rewind initialization and event files.
-    rewind MSTP(161)
-    rewind MSTP(162)
-
-    !C...Write header info.
-    write (u_P2W, "(A)")  '<LesHouchesEvents version="1.0">'
-    write (u_P2W, "(A)")  "<!--"
-    write (u_P2W, "(A,I1,A1,I3)")  "File generated with PYTHIA ", &
-         MSTP(181), ".", MSTP(182)
-    write (u_P2W, "(A)")  " and the WHIZARD2 interface"
-    write (u_P2W, "(A)")  "-->"
-
-    !C...Loop until finds line beginning with "<init>" or "<init ".
-100 READ(MSTP(161),STRFMT,END=400,ERR=400) STRING
-    IBEG=0
-110 IBEG=IBEG+1
-    !C...Allow indentation.
-    IF(STRING(IBEG:IBEG).EQ.' '.AND.IBEG.LT.MAXLEN-5) GOTO 110
-    IF(STRING(IBEG:IBEG+5).NE.'<init>'.AND.STRING(IBEG:IBEG+5).NE.'<init ') GOTO 100
-
-    !C...Read first line of initialization info and get number of processes.
-    READ(MSTP(161),'(A)',END=400,ERR=400) STRING
-    READ(STRING,*,ERR=400) IDBMUP(1),IDBMUP(2),EBMUP(1),EBMUP(2),PDFGUP(1),PDFGUP(2),PDFSUP(1),PDFSUP(2),IDWTUP,NPRUP
-
-    !C...Copy initialization lines, omitting trailing blanks.
-    !C...Embed in <init> ... </init> block.
-    WRITE(u_P2W,'(A)') '<init>'
-    do IPR = 0, NPRUP
-       IF(IPR.GT.0) READ(MSTP(161),'(A)',END=400,ERR=400) STRING
-       LEN=MAXLEN+1
-120    LEN=LEN-1
-       IF(LEN.GT.1.AND.STRING(LEN:LEN).EQ.' ') GOTO 120
-       WRITE(u_P2W,'(A)',ERR=400) STRING(1:LEN)
-    end DO
-    write (u_P2W, "(A)")  "</init>"
-
-    !!! Find the numbers of entries of the <event block>
-    NENTRIES = 0
-    do I = 1, N
-       if (K(I,1) == 1 .or. K(I,1) == 2 .or. K(I,1) == 21) then
-          NENTRIES = NENTRIES + 1
-       end if
-    end do
-
-    !C...Begin an <event> block. Copy event lines, omitting trailing blanks.
-    write (u_P2W, "(A)")  "<event>"
-    write (u_P2W, *)  NENTRIES, IDPRUP, XWGTUP, SCALUP, AQEDUP, AQCDUP
-
-    ndangling_color = 0
-    ncolor = 0
-    ndangling_antic = 0
-    NANTIC = 0
-    NNEXTC = 1   ! TODO find next free color number ??
-    do I = 1, N
-       if (signal_is_pending ()) return
-       if ((K(I,1) >= 1 .and. K(I,1) <= 15) .or. (K(I,1) == 21)) then
-          if ((K(I,2).eq.21) .or. (IABS(K(I,2)) <= 8) .or. &
-               (IABS(K(I,2)) >= KSUSY1+1 .and. IABS(K(I,2)) <= KSUSY1+8) &
-               .or. &
-               (IABS(K(I,2)) >= KSUSY2+1 .and. IABS(K(I,2)) <= KSUSY2+8) .or. &
-               (IABS(K(I,2)) >= 1000 .and. IABS(K(I,2)) <= 9999) ) then
-             if (ndangling_color.eq.0 .and. ndangling_antic.eq.0) then
-                ! new color string
-                ! Gluon and gluino only color octets implemented so far
-                if (K(I,2).eq.21 .or. K(I,2).eq.1000021) then
-                   ncolor = NNEXTC
-                   ndangling_color = ncolor
-                   NNEXTC = NNEXTC + 1
-                   NANTIC = NNEXTC
-                   ndangling_antic = NANTIC
-                   NNEXTC = NNEXTC + 1
-                else if (K(I,2) .gt. 0) then  ! particles to have color
-                   ncolor = NNEXTC
-                   ndangling_color = ncolor
-                   NANTIC = 0
-                   NNEXTC = NNEXTC + 1
-                else if (K(I,2) .lt. 0) then  ! antiparticles to have anticolor
-                   NANTIC = NNEXTC
-                   ndangling_antic = NANTIC
-                   ncolor = 0
-                   NNEXTC = NNEXTC + 1
-                end if
-             else if(K(I,1).eq.1) then
-                ! end of string
-                ncolor = ndangling_antic
-                NANTIC = ndangling_color
-                ndangling_color = 0
-                ndangling_antic = 0
-             else
-                ! inside the string
-                if(ndangling_color .ne. 0) then
-                   NANTIC = ndangling_color
-                   ncolor = NNEXTC
-                   ndangling_color = NNEXTC
-                   NNEXTC = NNEXTC +1
-                else if(ndangling_antic .ne. 0) then
-                   ncolor = ndangling_antic
-                   NANTIC = NNEXTC
-                   ndangling_antic = NNEXTC
-                   NNEXTC = NNEXTC +1
-                else
-                   print *, "ERROR IN PYLHEO"
-                end if
-             end if
-          else
-             ncolor = 0
-             NANTIC = 0
-          end if
-       !!! As no intermediate are given out here, assume the
-       !!!   incoming partons to be the mothers
-          write (u_P2W,*)  K(I,2), K(I,1), K(I,3), K(I,3), &
-               ncolor, NANTIC, (P(I,J),J=1,5), 0, -9
-       end if
-    end do
-
-    !C..End the <event> block. Loop back to look for next event.
-    write (MSTP(163), "(A)")  "</event>"
-
-    !C...Successfully reached end of event loop: write closing tag
-    !C...and remove temporary intermediate files (unless asked not to).
-    write (MSTP(163), "(A)")  "</LesHouchesEvents>"
-    return
-
-    !!C...Error exit.
-400 write(*,*) ' PYLHEO file joining failed!'
-
-    return
-  end subroutine pylheo
-
-@ %def pylheo
-@
-<<Shower pythia6: public>>=
   public :: pythia6_setup_lhe_io_units
 <<Shower pythia6: procedures>>=
   subroutine pythia6_setup_lhe_io_units (u_W2P, u_P2W)
@@ -7364,62 +7183,6 @@ with the ordering of the color string but am not sure.
 @ %def pythia6_set_last_treated_line
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-<<[[pythia6_up.f]]>>=
-C*********************************************************************
-C*********************************************************************
-C*                                                                  **
-C*                                                       Mar 2011   **
-C*                                                                  **
-C*                       The Lund Monte Carlo                       **
-C*                                                                  **
-C*                        PYTHIA version 6.4                        **
-C*                                                                  **
-C*                        Torbjorn Sjostrand                        **
-C*                 Department of Theoretical Physics                **
-C*                         Lund University                          **
-C*               Solvegatan 14A, S-223 62 Lund, Sweden              **
-C*                    E-mail torbjorn@thep.lu.se                    **
-C*                                                                  **
-C*                  SUSY and Technicolor parts by                   **
-C*                         Stephen Mrenna                           **
-C*                       Computing Division                         **
-C*            Generators and Detector Simulation Group              **
-C*              Fermi National Accelerator Laboratory               **
-C*                 MS 234, Batavia, IL  60510, USA                  **
-C*                   phone + 1 - 630 - 840 - 2556                   **
-C*                      E-mail mrenna@fnal.gov                      **
-C*                                                                  **
-C*         New multiple interactions and more SUSY parts by         **
-C*                          Peter Skands                            **
-C*               CERN/PH, CH-1211 Geneva, Switzerland               **
-C*                    phone +41 - 22 - 767 2447                     **
-C*                   E-mail peter.skands@cern.ch                    **
-C*                                                                  **
-C*         Several parts are written by Hans-Uno Bengtsson          **
-C*          PYSHOW is written together with Mats Bengtsson          **
-C*               PYMAEL is written by Emanuel Norrbin               **
-C*     advanced popcorn baryon production written by Patrik Eden    **
-C*    code for virtual photons mainly written by Christer Friberg   **
-C*    code for low-mass strings mainly written by Emanuel Norrbin   **
-C*        Bose-Einstein code mainly written by Leif Lonnblad        **
-C*      CTEQ  parton distributions are by the CTEQ collaboration    **
-C*      GRV 94 parton distributions are by Glueck, Reya and Vogt    **
-C*   SaS photon parton distributions together with Gerhard Schuler  **
-C*     g + g and q + qbar -> t + tbar + H code by Zoltan Kunszt     **
-C*         MSSM Higgs mass calculation code by M. Carena,           **
-C*           J.R. Espinosa, M. Quiros and C.E.M. Wagner             **
-C*  UED implementation by M. Elkacimi, D. Goujdami, H. Przysiezniak **
-C*         PYGAUS adapted from CERN library (K.S. Kolbig)           **
-C*        NRQCD/colour octet production of onium by S. Wolf         **
-C*                                                                  **
-C*   The latest program version and documentation is found on WWW   **
-C*            http://www.thep.lu.se/~torbjorn/Pythia.html           **
-C*                                                                  **
-C*              Copyright Torbjorn Sjostrand, Lund 2010             **
-C*                                                                  **
-C*********************************************************************
-C*********************************************************************
-
 @
 <<[[pythia6_up.f]]>>=
 C...UPINIT

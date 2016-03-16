@@ -1418,11 +1418,11 @@ parameters.
     integer :: i
     allocate (pol (beam_data%n))
     do i = 1, beam_data%n
-       call polarization_init_pmatrix (pol(i), beam_data%pmatrix(i))
+       call pol(i)%init_pmatrix (beam_data%pmatrix(i))
     end do
     call combine_polarization_states (pol, state_hel)
     do i = 1, beam_data%n
-       call polarization_final (pol(i))
+       call pol(i)%final ()
     end do
   end function beam_data_get_helicity_state_matrix
 
@@ -7865,11 +7865,15 @@ only be performed after the interaction object got its final shape, i.e.,
 redundant helicities have been eliminated by matching with beams and process.
 
 The default implementation does nothing.
+
+The [[target]] attribute is formally required since some overriding
+implementations use a temporary pointer (iterator) to the state-matrix
+component.  It doesn't appear to make a real difference, though.
 <<SF base: sf int: TBP>>=
   procedure :: setup_constants => sf_int_setup_constants
 <<SF base: procedures>>=
   subroutine sf_int_setup_constants (sf_int)
-    class(sf_int_t), intent(inout) :: sf_int
+    class(sf_int_t), intent(inout), target :: sf_int
   end subroutine sf_int_setup_constants
   
 @ %def sf_int_setup_constants
@@ -9820,6 +9824,7 @@ splitting, 3 otherwise.
   subroutine sf_test_data_allocate_sf_int (data, sf_int)
     class(sf_test_data_t), intent(in) :: data
     class(sf_int_t), intent(inout), allocatable :: sf_int
+    if (allocated (sf_int)) deallocate (sf_int)
     allocate (sf_test_t :: sf_int)
   end subroutine sf_test_data_allocate_sf_int
     
@@ -12717,7 +12722,6 @@ module sf_isr
   use flavors
   use colors
   use quantum_numbers
-  use state_matrices
   use polarizations
   use sf_mappings
   use sf_base
@@ -13312,12 +13316,12 @@ current sampling point (but maybe another channel).
     class(sf_data_t), intent(in), target :: data
     type(quantum_numbers_mask_t), dimension(3) :: mask
     integer, dimension(3) :: hel_lock
-    type(polarization_t) :: pol
-    type(quantum_numbers_t), dimension(1) :: qn_fc, qn_hel
+    type(polarization_t), target :: pol
+    type(quantum_numbers_t), dimension(1) :: qn_fc
     type(flavor_t) :: flv_photon
     type(color_t) :: col_photon
-    type(quantum_numbers_t) :: qn_photon, qn
-    type(state_iterator_t) :: it_hel
+    type(quantum_numbers_t) :: qn_hel, qn_photon, qn
+    type(polarization_iterator_t) :: it_hel
     real(default) :: m2
     integer :: i
     mask = quantum_numbers_mask (.false., .false., &
@@ -13334,18 +13338,18 @@ current sampling point (but maybe another channel).
        call qn_photon%init (flv_photon, col_photon)
        call qn_photon%tag_radiated ()
        do i = 1, size (data%flv_in)
-          call polarization_init_generic (pol, data%flv_in(i))
+          call pol%init_generic (data%flv_in(i))
           call qn_fc(1)%init (&
                flv = data%flv_in(i), &
                col = color_from_flavor (data%flv_in(i), 1))
-          call it_hel%init (pol%state)
+          call it_hel%init (pol)
           do while (it_hel%is_valid ())
              qn_hel = it_hel%get_quantum_numbers ()
-             qn = qn_hel(1) .merge. qn_fc(1)
+             qn = qn_hel .merge. qn_fc(1)
              call sf_int%add_state ([qn, qn_photon, qn])
              call it_hel%advance ()
           end do
-          call polarization_final (pol)
+          call pol%final ()
        end do
        call sf_int%freeze ()
        call sf_int%set_incoming ([1])
@@ -14528,12 +14532,12 @@ elements for all flavor and helicity combinations.
     class(sf_data_t), intent(in), target :: data
     type(quantum_numbers_mask_t), dimension(3) :: mask
     integer, dimension(3) :: hel_lock
-    type(polarization_t) :: pol
-    type(quantum_numbers_t), dimension(1) :: qn_fc, qn_hel
+    type(polarization_t), target :: pol
+    type(quantum_numbers_t), dimension(1) :: qn_fc
     type(flavor_t) :: flv_photon
     type(color_t) :: col_photon
-    type(quantum_numbers_t) :: qn_photon, qn, qn_rad
-    type(state_iterator_t) :: it_hel
+    type(quantum_numbers_t) :: qn_hel, qn_photon, qn, qn_rad
+    type(polarization_iterator_t) :: it_hel
     integer :: i
     mask = quantum_numbers_mask (.false., .false., &
          mask_h = [.false., .false., .true.])
@@ -14547,20 +14551,20 @@ elements for all flavor and helicity combinations.
        call col_photon%init ()
        call qn_photon%init (flv_photon, col_photon)
        do i = 1, size (data%flv_in)
-          call polarization_init_generic (pol, data%flv_in(i))
+          call pol%init_generic (data%flv_in(i))
           call qn_fc(1)%init ( &
                flv = data%flv_in(i), &
                col = color_from_flavor (data%flv_in(i), 1))
-          call it_hel%init (pol%state)
+          call it_hel%init (pol)
           do while (it_hel%is_valid ())
              qn_hel = it_hel%get_quantum_numbers ()
-             qn = qn_hel(1) .merge. qn_fc(1)
+             qn = qn_hel .merge. qn_fc(1)
              qn_rad = qn
              call qn_rad%tag_radiated ()
              call sf_int%add_state ([qn, qn_rad, qn_photon])
              call it_hel%advance ()
           end do
-          call polarization_final (pol)
+          call pol%final ()
        end do
        call sf_int%freeze ()
        call sf_int%set_incoming ([1])
@@ -14576,7 +14580,7 @@ the state matrix may be helicity-contracted.
   procedure :: setup_constants => epa_setup_constants
 <<SF epa: procedures>>=
   subroutine epa_setup_constants (sf_int)
-    class(epa_t), intent(inout) :: sf_int
+    class(epa_t), intent(inout), target :: sf_int
     type(state_iterator_t) :: it
     type(flavor_t) :: flv
     integer :: i, n_me
@@ -15870,12 +15874,12 @@ particles, therefore we need to probe only the first one.
     class(sf_data_t), intent(in), target :: data
     type(quantum_numbers_mask_t), dimension(3) :: mask
     integer, dimension(3) :: hel_lock
-    type(polarization_t) :: pol
-    type(quantum_numbers_t), dimension(1) :: qn_fc, qn_hel, qn_fc_fin
+    type(polarization_t), target :: pol
+    type(quantum_numbers_t), dimension(1) :: qn_fc, qn_fc_fin
     type(flavor_t) :: flv_z, flv_wp, flv_wm
     type(color_t) :: col0
-    type(quantum_numbers_t) :: qn_z, qn_wp, qn_wm, qn, qn_rad, qn_w
-    type(state_iterator_t) :: it_hel
+    type(quantum_numbers_t) :: qn_hel, qn_z, qn_wp, qn_wm, qn, qn_rad, qn_w
+    type(polarization_iterator_t) :: it_hel
     integer :: i, isospin
     select type (data)
     type is (ewa_data_t)   
@@ -15892,20 +15896,20 @@ particles, therefore we need to probe only the first one.
           call flv_z%init (Z_BOSON, data%model)
           call qn_z%init (flv_z, col0)
           do i = 1, size (data%flv_in)
-             call polarization_init_generic (pol, data%flv_in(i))
+             call pol%init_generic (data%flv_in(i))
              call qn_fc(1)%init ( &
                   flv = data%flv_in(i), &
                   col = color_from_flavor (data%flv_in(i), 1))
-             call it_hel%init (pol%state)
+             call it_hel%init (pol)
              do while (it_hel%is_valid ())
                 qn_hel = it_hel%get_quantum_numbers ()
-                qn = qn_hel(1) .merge. qn_fc(1)
+                qn = qn_hel .merge. qn_fc(1)
                 qn_rad = qn
                 call qn_rad%tag_radiated ()
                 call sf_int%add_state ([qn, qn_rad, qn_z])
                 call it_hel%advance ()
              end do
-             call polarization_final (pol)
+             call pol%final ()
           end do
        case (24)    
           call sf_int%base_init (mask, [data%mass**2], [data%m_out**2], &
@@ -15932,23 +15936,23 @@ particles, therefore we need to probe only the first one.
                    qn_w = qn_wm
                 end if
              end if
-             call polarization_init_generic (pol, data%flv_in(i))
+             call pol%init_generic (data%flv_in(i))
              call qn_fc(1)%init ( &
                   flv = data%flv_in(i), &
                   col = color_from_flavor (data%flv_in(i), 1))
              call qn_fc_fin(1)%init ( &
                   flv = data%flv_out(i), &
                   col = color_from_flavor (data%flv_out(i), 1))
-             call it_hel%init (pol%state)
+             call it_hel%init (pol)
              do while (it_hel%is_valid ())
                 qn_hel = it_hel%get_quantum_numbers ()
-                qn = qn_hel(1) .merge. qn_fc(1)
-                qn_rad = qn_hel(1) .merge. qn_fc_fin(1)
+                qn = qn_hel .merge. qn_fc(1)
+                qn_rad = qn_hel .merge. qn_fc_fin(1)
                 call qn_rad%tag_radiated ()
                 call sf_int%add_state ([qn, qn_rad, qn_w])
                 call it_hel%advance ()
              end do
-             call polarization_final (pol)    
+             call pol%final ()    
           end do
        case default
           call msg_fatal ("EWA initialization failed: wrong particle type.")
@@ -15979,7 +15983,7 @@ the state matrix may be helicity-contracted.
   procedure :: setup_constants => ewa_setup_constants
 <<SF ewa: procedures>>=
   subroutine ewa_setup_constants (sf_int)
-    class(ewa_t), intent(inout) :: sf_int
+    class(ewa_t), intent(inout), target :: sf_int
     type(state_iterator_t) :: it
     type(flavor_t) :: flv
     real(default) :: q, t3
@@ -17067,8 +17071,8 @@ are always using only one beam parameter.
     real(default), dimension(2) :: m2
     real(default), dimension(0) :: mr2
     type(quantum_numbers_t), dimension(4) :: qn_fc, qn_hel, qn
-    type(polarization_t) :: pol1, pol2
-    type(state_iterator_t) :: it_hel1, it_hel2
+    type(polarization_t), target :: pol1, pol2
+    type(polarization_iterator_t) :: it_hel1, it_hel2
     integer :: j1, j2
     select type (data)
     type is (escan_data_t)
@@ -17083,7 +17087,7 @@ are always using only one beam parameter.
           call qn_fc(3)%init ( &
                flv = data%flv_in(j1,1), &
                col = color_from_flavor (data%flv_in(j1,1)))
-          call polarization_init_generic (pol1, data%flv_in(j1,1))
+          call pol1%init_generic (data%flv_in(j1,1))
           do j2 = 1, data%n_flv(2)
              call qn_fc(2)%init ( &
                   flv = data%flv_in(j2,2), &
@@ -17091,24 +17095,24 @@ are always using only one beam parameter.
              call qn_fc(4)%init ( &
                   flv = data%flv_in(j2,2), &
                   col = color_from_flavor (data%flv_in(j2,2)))
-             call polarization_init_generic (pol2, data%flv_in(j2,2))
-             call it_hel1%init (pol1%state)
+             call pol2%init_generic (data%flv_in(j2,2))
+             call it_hel1%init (pol1)
              do while (it_hel1%is_valid ())
-                qn_hel(1:1) = it_hel1%get_quantum_numbers ()
-                qn_hel(3:3) = it_hel1%get_quantum_numbers ()
-                call it_hel2%init (pol2%state)
+                qn_hel(1) = it_hel1%get_quantum_numbers ()
+                qn_hel(3) = it_hel1%get_quantum_numbers ()
+                call it_hel2%init (pol2)
                 do while (it_hel2%is_valid ())
-                   qn_hel(2:2) = it_hel2%get_quantum_numbers ()
-                   qn_hel(4:4) = it_hel2%get_quantum_numbers ()
+                   qn_hel(2) = it_hel2%get_quantum_numbers ()
+                   qn_hel(4) = it_hel2%get_quantum_numbers ()
                    qn = qn_hel .merge. qn_fc
                    call sf_int%add_state (qn)
                    call it_hel2%advance ()
                 end do
                 call it_hel1%advance ()
              end do
-             call polarization_final (pol2)
+             call pol2%final ()
           end do
-          call polarization_final (pol1)
+          call pol1%final ()
        end do
        call sf_int%set_incoming ([1,2])
        call sf_int%set_outgoing ([3,4])
@@ -17654,8 +17658,8 @@ needs a random-number generator, obviously.
     type(quantum_numbers_mask_t), dimension(4) :: mask
     integer, dimension(4) :: hel_lock
     type(quantum_numbers_t), dimension(4) :: qn_fc, qn_hel, qn
-    type(polarization_t) :: pol1, pol2
-    type(state_iterator_t) :: it_hel1, it_hel2
+    type(polarization_t), target :: pol1, pol2
+    type(polarization_iterator_t) :: it_hel1, it_hel2
     integer :: i
     select type (data)
     type is (gaussian_data_t)
@@ -17672,24 +17676,24 @@ needs a random-number generator, obviously.
                flv = data%flv_in(i), &
                col = color_from_flavor (data%flv_in(i)))
        end do
-       call polarization_init_generic (pol1, data%flv_in(1))
-       call it_hel1%init (pol1%state)
+       call pol1%init_generic (data%flv_in(1))
+       call it_hel1%init (pol1)
        do while (it_hel1%is_valid ())
-          qn_hel(1:1) = it_hel1%get_quantum_numbers ()
-          qn_hel(3:3) = it_hel1%get_quantum_numbers ()
-          call polarization_init_generic (pol2, data%flv_in(2))
-          call it_hel2%init (pol2%state)
+          qn_hel(1) = it_hel1%get_quantum_numbers ()
+          qn_hel(3) = it_hel1%get_quantum_numbers ()
+          call pol2%init_generic (data%flv_in(2))
+          call it_hel2%init (pol2)
           do while (it_hel2%is_valid ())
-             qn_hel(2:2) = it_hel2%get_quantum_numbers ()
-             qn_hel(4:4) = it_hel2%get_quantum_numbers ()
+             qn_hel(2) = it_hel2%get_quantum_numbers ()
+             qn_hel(4) = it_hel2%get_quantum_numbers ()
              qn = qn_hel .merge. qn_fc
              call sf_int%add_state (qn)
              call it_hel2%advance ()
           end do
-          call polarization_final (pol2)
+          call pol2%final ()
           call it_hel1%advance ()
        end do
-       call polarization_final (pol2)
+       call pol1%final ()
        call sf_int%freeze ()
        call sf_int%set_incoming ([1,2])
        call sf_int%set_outgoing ([3,4])
@@ -18318,8 +18322,8 @@ Flavor and polarization carried through, no radiated particles.
     type(quantum_numbers_mask_t), dimension(4) :: mask
     integer, dimension(4) :: hel_lock
     type(quantum_numbers_t), dimension(4) :: qn_fc, qn_hel, qn
-    type(polarization_t) :: pol1, pol2
-    type(state_iterator_t) :: it_hel1, it_hel2
+    type(polarization_t), target :: pol1, pol2
+    type(polarization_iterator_t) :: it_hel1, it_hel2
     integer :: i
     select type (data)
     type is (beam_events_data_t)
@@ -18336,24 +18340,24 @@ Flavor and polarization carried through, no radiated particles.
                flv = data%flv_in(i), &
                col = color_from_flavor (data%flv_in(i)))
        end do
-       call polarization_init_generic (pol1, data%flv_in(1))
-       call it_hel1%init (pol1%state)
+       call pol1%init_generic (data%flv_in(1))
+       call it_hel1%init (pol1)
        do while (it_hel1%is_valid ())
-          qn_hel(1:1) = it_hel1%get_quantum_numbers ()
-          qn_hel(3:3) = it_hel1%get_quantum_numbers ()
-          call polarization_init_generic (pol2, data%flv_in(2))
-          call it_hel2%init (pol2%state)
+          qn_hel(1) = it_hel1%get_quantum_numbers ()
+          qn_hel(3) = it_hel1%get_quantum_numbers ()
+          call pol2%init_generic (data%flv_in(2))
+          call it_hel2%init (pol2)
           do while (it_hel2%is_valid ())
-             qn_hel(2:2) = it_hel2%get_quantum_numbers ()
-             qn_hel(4:4) = it_hel2%get_quantum_numbers ()
+             qn_hel(2) = it_hel2%get_quantum_numbers ()
+             qn_hel(4) = it_hel2%get_quantum_numbers ()
              qn = qn_hel .merge. qn_fc
              call sf_int%add_state (qn)
              call it_hel2%advance ()
           end do
-          call polarization_final (pol2)
+          call pol2%final ()
           call it_hel1%advance ()
        end do
-       call polarization_final (pol2)
+       call pol1%final ()
        call sf_int%freeze ()
        call sf_int%set_incoming ([1,2])
        call sf_int%set_outgoing ([3,4])
@@ -19210,14 +19214,14 @@ depends. Hence, a dummy routine.
     logical, dimension(6) :: mask_h
     type(quantum_numbers_mask_t), dimension(6) :: mask 
     integer, dimension(6) :: hel_lock 
-    type(polarization_t) :: pol1, pol2
-    type(quantum_numbers_t), dimension(1) :: qn_fc1, qn_hel1, qn_fc2, qn_hel2
+    type(polarization_t), target :: pol1, pol2
+    type(quantum_numbers_t), dimension(1) :: qn_fc1, qn_fc2
     type(flavor_t) :: flv_photon
     type(color_t) :: col0
     real(default), dimension(2) :: mi2, mr2, mo2
-    type(quantum_numbers_t) :: qn_photon, qn1, qn2
+    type(quantum_numbers_t) :: qn_hel1, qn_hel2, qn_photon, qn1, qn2
     type(quantum_numbers_t), dimension(6) :: qn
-    type(state_iterator_t) :: it_hel1, it_hel2
+    type(polarization_iterator_t) :: it_hel1, it_hel2
     hel_lock = 0
     mask_h = .false.
     select type (data)
@@ -19249,25 +19253,25 @@ depends. Hence, a dummy routine.
           call flv_photon%init (PHOTON, data%model)
           call col0%init ()
           call qn_photon%init (flv_photon, col0)
-          call polarization_init_generic (pol1, data%flv_in(1))
+          call pol1%init_generic (data%flv_in(1))
           call qn_fc1(1)%init (flv = data%flv_in(1), col = col0)
-          call polarization_init_generic (pol2, data%flv_in(2))
+          call pol2%init_generic (data%flv_in(2))
           call qn_fc2(1)%init (flv = data%flv_in(2), col = col0)
-          call it_hel1%init (pol1%state)
+          call it_hel1%init (pol1)
           
           do while (it_hel1%is_valid ()) 
              qn_hel1 = it_hel1%get_quantum_numbers ()
-             qn1 = qn_hel1(1) .merge. qn_fc1(1) 
+             qn1 = qn_hel1 .merge. qn_fc1(1) 
              qn(1) = qn1
              if (data%photon(1)) then
                 qn(3) = qn1;  qn(5) = qn_photon
              else
                 qn(3) = qn_photon;  qn(5) = qn1
              end if
-             call it_hel2%init (pol2%state) 
+             call it_hel2%init (pol2) 
              do while (it_hel2%is_valid ()) 
                 qn_hel2 = it_hel2%get_quantum_numbers () 
-                qn2 = qn_hel2(1) .merge. qn_fc2(1) 
+                qn2 = qn_hel2 .merge. qn_fc2(1) 
                 qn(2) = qn2
                 if (data%photon(2)) then
                    qn(4) = qn2;  qn(6) = qn_photon
@@ -19280,8 +19284,8 @@ depends. Hence, a dummy routine.
              end do
              call it_hel1%advance ()
           end do
-          call polarization_final (pol1)
-          call polarization_final (pol2)
+          call pol1%final ()
+          call pol2%final ()
           call sf_int%freeze () 
           call sf_int%set_incoming ([1,2])
           call sf_int%set_radiated ([3,4])
@@ -19308,25 +19312,25 @@ depends. Hence, a dummy routine.
           call flv_photon%init (PHOTON, data%model)
           call col0%init ()
           call qn_photon%init (flv_photon, col0)
-          call polarization_init_generic (pol1, data%flv_in(1))
+          call pol1%init_generic (data%flv_in(1))
           call qn_fc1(1)%init (flv = data%flv_in(1), col = col0)
-          call polarization_init_generic (pol2, data%flv_in(2))
+          call pol2%init_generic (data%flv_in(2))
           call qn_fc2(1)%init (flv = data%flv_in(2), col = col0)
-          call it_hel1%init (pol1%state)
+          call it_hel1%init (pol1)
           
           do while (it_hel1%is_valid ()) 
              qn_hel1 = it_hel1%get_quantum_numbers ()
-             qn1 = qn_hel1(1) .merge. qn_fc1(1) 
+             qn1 = qn_hel1 .merge. qn_fc1(1) 
              qn(1) = qn1
              if (data%photon(1)) then
                 qn(3) = qn_photon
              else
                 qn(3) = qn1
              end if
-             call it_hel2%init (pol2%state) 
+             call it_hel2%init (pol2) 
              do while (it_hel2%is_valid ()) 
                 qn_hel2 = it_hel2%get_quantum_numbers () 
-                qn2 = qn_hel2(1) .merge. qn_fc2(1) 
+                qn2 = qn_hel2 .merge. qn_fc2(1) 
                 qn(2) = qn2
                 if (data%photon(2)) then
                    qn(4) = qn_photon
@@ -19338,8 +19342,8 @@ depends. Hence, a dummy routine.
              end do
              call it_hel1%advance ()
           end do
-          call polarization_final (pol1)
-          call polarization_final (pol2)
+          call pol1%final ()
+          call pol2%final ()
           call sf_int%freeze () 
           call sf_int%set_incoming ([1,2])
           call sf_int%set_outgoing ([3,4])
