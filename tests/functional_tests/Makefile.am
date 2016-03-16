@@ -260,6 +260,7 @@ TESTS_REQ_PYTHIA6 = \
     pythia6_2.run \
     pythia6_3.run \
     pythia6_4.run \
+    tauola_1.run \
     mlm_matching_isr.run \
     mlm_pythia6_isr.run
 XFAIL_TESTS_REQ_PYTHIA6 = 
@@ -413,6 +414,7 @@ stdhep_4.run: stdhep_rd
 stdhep_5.run: stdhep_rd
 stdhep_6.run: stdhep_rd
 polarized_1.run: stdhep_rd
+tauola_1.run: stdhep_rd
 stdhep_rd: $(top_builddir)/src/xdr/stdhep_rd
 	cp $< $@
 

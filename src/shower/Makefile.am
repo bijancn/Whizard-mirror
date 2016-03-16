@@ -120,9 +120,9 @@ Makefile.depend: $(libshower_la_SOURCES)
 DISTCLEANFILES += Makefile.depend
 
 if PYTHIA6_AVAILABLE
-libshower_la_LIBADD = ../../pythia6/libpythia6_wo.la
+libshower_la_LIBADD = ../../pythia6/libpythia6_wo.la ../../tauola/libtauola_wo.la
 else
-libshower_la_LIBADD = ../../pythia6/libpythia6_wo_dummy.la
+libshower_la_LIBADD = ../../pythia6/libpythia6_wo_dummy.la ../../tauola/libtauola_wo_dummy.la
 endif
 
 # Fortran90 module files are generated at the same time as object files
@@ -130,7 +130,7 @@ endif
 	@:
 #	touch $@
 
-AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../fastjet -I../lhapdf -I ../pdf_builtin -I../../pythia6
+AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../fastjet -I../lhapdf -I ../pdf_builtin -I../../pythia6 -I../../tauola
 AM_FFLAGS =
 
 ########################################################################

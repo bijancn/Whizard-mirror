@@ -9070,6 +9070,8 @@ of the integration history.
     nlo_settings%use_internal_color_correlations = color_method == 'omega' & 
        .or. color_method == 'threshold'
     nlo_settings%combined_integration = intg%combined_integration
+    nlo_settings%nlo_event_generation = &
+       var_list%get_lval (var_str ('?nlo_fixed_order'))
     nlo_settings%test_soft_limit = var_list%get_lval (var_str ('?test_soft_limit'))
     nlo_settings%test_coll_limit = var_list%get_lval (var_str ('?test_coll_limit'))
     nlo_settings%fixed_alr = var_list%get_ival (var_str ('fixed_alpha_region'))
@@ -11621,6 +11623,7 @@ base type by the [[connect]] method, so we can reference them later.
     type(process_instance_t), pointer :: process_instance
     integer :: i
     logical :: combined_integration
+    integer :: fixed_mci = 0
 
     call prepare_process &
          (master_process, process_id, use_process, integrate, local, global)
@@ -11684,13 +11687,24 @@ base type by the [[connect]] method, so we can reference them later.
     call entry%prepare_expressions (local)
 
     combined_integration = local%get_lval (var_str ("?combined_nlo_integration"))
+    if (.not. combined_integration &
+       .and. local%get_lval (var_str ("?nlo_fixed_order"))) then
+       fixed_mci = process%extract_active_component ()
+    end if
     call prepare_process_instance (process_instance, process, local%model, &
-       combined_integration = combined_integration, local = local)
+       local = local)
+
     if (generate) then
-       do i = 1, entry%n_mci
-          call process%prepare_simulation (i)
-          call process_instance%init_simulation (i, entry%config%safety_factor)
-       end do
+       if (fixed_mci > 0) then
+          call process%prepare_simulation (fixed_mci)
+          call process_instance%init_simulation &
+             (fixed_mci, entry%config%safety_factor)
+       else
+          do i = 1, entry%n_mci
+             call process%prepare_simulation (i)
+             call process_instance%init_simulation (i, entry%config%safety_factor)
+          end do
+       end if
     end if
     call entry%setup_event_transforms (process, local)
     call dispatch_qcd (entry%qcd, local)
@@ -11746,8 +11760,13 @@ base type by the [[connect]] method, so we can reference them later.
           end select
        end if
     end select
-    if (entry%is_nlo_event()) &
-       call entry%process%deactivate_real_component ()
+    if (entry%is_nlo_event()) then
+       if (entry%get_fixed_mci () > 0) then 
+          call entry%process%deactivate_components (entry%get_fixed_mci ())
+       else
+          call entry%process%deactivate_real_component ()
+       end if
+    end if
     entry%requires_real_switch_off = .false.
   end subroutine entry_set_active_real_components
 
@@ -11774,17 +11793,27 @@ The model that we can provide as an extra argument can modify particle
 settings (polarization) in the density matrices that will be constructed.  It
 does not affect parameters.
 <<Simulations: procedures>>=
-  subroutine prepare_process_instance (process_instance, process, model, combined_integration, local)
+  subroutine prepare_process_instance &
+    (process_instance, process, model, local)
     type(process_instance_t), pointer, intent(inout) :: process_instance
     type(process_t), intent(inout), target :: process
     class(model_data_t), intent(in), optional :: model
-    logical, intent(in), optional :: combined_integration
     type(rt_data_t), intent(in), optional, target :: local
     type(nlo_settings_t) :: nlo_settings
     allocate (process_instance)
     if (process%is_nlo_calculation ()) then
-       nlo_settings%combined_integration = combined_integration
-       call process_instance%init (process, nlo_settings)
+       associate (var_list => local%var_list)
+          nlo_settings%combined_integration = &
+             var_list%get_lval (var_str("?combined_nlo_integration"))
+          nlo_settings%nlo_event_generation = &
+             var_list%get_lval (var_str("?nlo_fixed_order"))
+       end associate
+       call process_instance%init (process, nlo_settings)    
+       select type (pcm => process_instance%pcm)
+       type is (pcm_instance_nlo_t)
+          pcm%collect_matrix_elements = .true.
+          if (.not. nlo_settings%combined_integration) call pcm%controller%disable_subtraction ()
+       end select
        if (process_instance%needs_extra_code () .and. present (local)) &
           call process_instance%create_and_load_extra_libraries &
                (local%beam_structure, local%os_data)
@@ -11864,6 +11893,17 @@ objects and store them.
   end subroutine entry_prepare_expressions
 
 @ %def entry_prepare_expressions
+@ Checks if event generation from a single grid is performed and sets [[fixed_mci]]
+@ correspondingly
+<<Simulations: entry: TBP>>=
+  procedure :: set_fixed_mci => entry_set_fixed_mci
+<<Simulations: procedures>>=
+  subroutine entry_set_fixed_mci (entry)
+     class(entry_t), intent(inout) :: entry
+     entry%nlo_info%fixed_mci = entry%process%extract_active_component ()
+  end subroutine entry_set_fixed_mci
+
+@ %def entry_set_fixed_mci
 @ Initializes the list of additional NLO entries.  The routine gets the
 information about how many entries to associate from [[region_data]].
 <<Simulations: entry: TBP>>=
@@ -11874,6 +11914,7 @@ information about how many entries to associate from [[region_data]].
     type(entry_t), pointer :: current_entry
     integer :: i, n_phs
     type(evt_nlo_t), pointer :: evt
+    integer :: mode
     evt => null ()
     select type (pcm => entry%instance%pcm)
     class is (pcm_instance_nlo_t)
@@ -11883,22 +11924,27 @@ information about how many entries to associate from [[region_data]].
     type is (entry_t)
        current_entry => entry
        current_entry%first => entry
-       evt => get_nlo_evt_ptr (current_entry)
-       allocate (evt%particle_set_radiated (n_phs + 1))
-       evt%event_deps%n_phs = n_phs
-       evt%qcd => entry%qcd
-       do i = 1, n_phs
-          allocate (current_entry%next)
-          current_entry%next%first => current_entry%first
-          current_entry => current_entry%next
-          call entry%copy_entry (current_entry)
-          current_entry%i_event = i
-       end do
+       call get_nlo_evt_ptr (current_entry, evt, mode)
+       if (mode > EVT_NLO_SEPARATE_BORNLIKE) then
+          allocate (evt%particle_set_radiated (n_phs + 1))
+          evt%event_deps%n_phs = n_phs
+          evt%qcd => entry%qcd
+          do i = 1, n_phs
+             allocate (current_entry%next)
+             current_entry%next%first => current_entry%first
+             current_entry => current_entry%next
+             call entry%copy_entry (current_entry)
+             current_entry%i_event = i
+          end do
+       else
+          allocate (evt%particle_set_radiated (1))
+       end if
     end select
   contains
-    function get_nlo_evt_ptr (entry) result (evt)
+    subroutine get_nlo_evt_ptr (entry, evt, mode)
       type(entry_t), intent(in), target :: entry
-      type(evt_nlo_t), pointer :: evt
+      type(evt_nlo_t), intent(out), pointer :: evt
+      integer, intent(out) :: mode
       class(evt_t), pointer :: current_evt
       evt => null ()
       current_evt => entry%transform_first
@@ -11906,6 +11952,7 @@ information about how many entries to associate from [[region_data]].
          select type (current_evt)
          type is (evt_nlo_t)
             evt => current_evt 
+            mode = evt%mode
             exit
          end select
          if (associated (current_evt%next)) then 
@@ -11914,7 +11961,7 @@ information about how many entries to associate from [[region_data]].
             call msg_fatal ("evt_nlo not in list of event transforms")
          end if
       end do
-    end function get_nlo_evt_ptr
+    end subroutine get_nlo_evt_ptr
   end subroutine entry_setup_additional_entries
 
 @ %def entry_setup_additional_entries      
@@ -12098,7 +12145,11 @@ the normalization procedure for the process components.
   function entry_select_mci (entry) result (i_mci)
     class(entry_t), intent(inout) :: entry
     integer :: i_mci
-    call entry%mci_selector%generate (entry%rng, i_mci)
+    if (entry%nlo_info%fixed_mci > 0) then
+       i_mci = entry%nlo_info%fixed_mci
+    else
+       call entry%mci_selector%generate (entry%rng, i_mci)
+    end if
   end function entry_select_mci
   
 @ %def entry_select_mci
@@ -12664,8 +12715,11 @@ we may only read and rescan events.
                local, global)
           call simulation%entry(i)%determine_if_powheg_matching ()
           if (signal_is_pending ())  return          
-          if (simulation%entry(i)%is_nlo_event()) &
+          if (simulation%entry(i)%is_nlo_event()) then
+             if (.not. simulation%local%get_lval (var_str ("?combined_nlo_integration"))) &
+                call simulation%entry(i)%set_fixed_mci ()
              call simulation%entry(i)%setup_additional_entries ()
+          end if
        end do
        simulation%valid = any (simulation%entry%valid)
        if (.not. simulation%valid) then
