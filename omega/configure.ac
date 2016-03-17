@@ -284,7 +284,9 @@ fi
 
 AC_ARG_ENABLE([model-files],
   [AS_HELP_STRING([--enable-model-files],
-    [build the development code for model files (developers only) [[no]]])])
+    [build the development code for model files (developers only) [[yes]]])],
+    [],
+    [enable_model_files=yes])
 
 AC_CACHE_CHECK([whether we want to build the development code for model files], 
 [wo_cv_model_files],
