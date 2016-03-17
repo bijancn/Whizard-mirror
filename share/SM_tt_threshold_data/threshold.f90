@@ -532,6 +532,9 @@ contains
 
   subroutine set_production_momenta (k)
     real(default), dimension(0:3,*), intent(in) :: k
+    real(default) :: sqrts, scale_factor, mtop
+    real(default), dimension(1:3) :: unit_vec
+    logical, parameter :: onshell_projection = .true.
     if (debug2_active (D_ME_METHODS)) then
        call msg_debug (D_ME_METHODS, "set_production_momenta")
        print *, 'k =    ', k(0:3,1:6)
@@ -546,6 +549,27 @@ contains
        p6 =   k(:,6) ! outgoing
        p35 = p3 + p5
        p46 = p4 + p6
+    end if
+    if (onshell_projection) then
+       ! these are the top momenta
+       mtop = ttv_mtpole (p12*p12)
+       !print *, 'mtop =    ', mtop !!! Debugging
+       !print *, 'mtop**2 =    ', mtop**2 !!! Debugging
+       sqrts = - p12%t
+       !print *, 'sqrts =    ', sqrts !!! Debugging
+       scale_factor = sqrt(sqrts**2 - 4 * mtop**2)/2
+       !print *, 'scale_factor =    ', scale_factor !!! Debugging
+       unit_vec = p35%x / sqrt(dot_product(p35%x, p35%x))
+       !print *, 'unit_vec =    ', unit_vec !!! Debugging
+       !print *, 'dot_product(unit_vec,unit_vec) =    ',&
+        !dot_product(unit_vec,unit_vec) !!! Debugging
+       p35_onshell = [sqrts / 2, scale_factor * unit_vec]
+       !print *, 'p35 =    ', p35 !!! Debugging
+       !print *, 'p35**2 =    ', p35*p35 !!! Debugging
+       p46_onshell = [sqrts / 2, - scale_factor * unit_vec]
+       !print *, 'p46 =    ', p46 !!! Debugging
+       !print *, 'p46**2 =    ', p46*p46 !!! Debugging
+       !print *, 'p35 + p46 =    ', p35 + p46 !!! Debugging
     end if
   end subroutine set_production_momenta
 
