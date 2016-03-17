@@ -1,6 +1,6 @@
-(* $Id: modeltools.ml 6465 2015-01-10 15:22:31Z jr_reuter $
+(* $Id: modeltools.ml 7469 2016-03-13 16:44:17Z ohl $
 
-   Copyright (C) 1999-2015 by
+   Copyright (C) 1999-2016 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
@@ -23,9 +23,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modeltools" ["Lagragians"]
-    { RCS.revision = "$Revision: 6465 $";
-      RCS.date = "$Date: 2015-01-10 16:22:31 +0100 (Sat, 10 Jan 2015) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 7469 $";
+      RCS.date = "$Date: 2016-03-13 17:44:17 +0100 (Sun, 13 Mar 2016) $";
+      RCS.author = "$Author: ohl $";
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modeltools.ml $" }
 
@@ -239,6 +239,49 @@ module Fusions (F : Flavor) : Fusions with type f = F.f and type c = F.c =
           List.iter (add_vertex4 table) vlist4;
           table
       | _ -> failwith "Models.Fusions.of_vertices: incomplete"
+
+  end
+
+module type Constant =
+  sig
+    type t
+    val of_string : string -> t
+  end
+
+module Constant (M : Model.T) : Constant with type t = M.constant =
+  struct
+
+    type t = M.constant
+
+    module String_Key =
+      struct
+        type t = string
+        let hash = Hashtbl.hash
+        let equal = (=)
+      end
+    module String_Hash = Hashtbl.Make (String_Key)
+
+    let table = String_Hash.create 37
+
+    let fill_table table vs =
+      List.iter
+        (fun (_, _, c) ->
+          String_Hash.add table (M.constant_symbol c) c)
+        vs
+          
+    let _ =
+      let (v3, v4, vn) = M.vertices () in
+      fill_table table v3;
+      fill_table table v4;
+      fill_table table vn
+
+    let of_string name =
+      try
+        String_Hash.find table name
+      with
+      | Not_found ->
+          invalid_arg
+            ("Constant(Model).of_string: unknown coupling constant: " ^ name)
 
   end
 

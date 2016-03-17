@@ -1,6 +1,6 @@
-(* $Id: vertex_syntax.mli 7279 2015-09-25 13:36:04Z ohl $
+(* $Id: vertex_syntax.mli 7444 2016-02-17 15:37:20Z jr_reuter $
 
-   Copyright (C) 1999-2015 by
+   Copyright (C) 1999-2016 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
