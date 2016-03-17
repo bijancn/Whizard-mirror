@@ -91,8 +91,8 @@ C JAK=14-19 KKpi & Kpipi modes
 C JAK=20-21 eta pi pi; gamma pi pi modes
 C JAK=0 INCLUSIVE:  JAK=1-21
 
-        IMPLICIT double precision (A-H,O-Z)
-        double precision  H(4)
+      IMPLICIT double precision (A-H,O-Z)
+      double precision  H(4)
       double precision HX(4)
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
 
@@ -251,7 +251,7 @@ C     =====
       SUBROUTINE DEKAY1(IMOD,HH,ISGN)
 C     *******************************
 C THIS ROUTINE  SIMULATES TAU+  DECAY
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
       double precision            GAMPMC    ,GAMPER
@@ -351,7 +351,7 @@ C     =====
       SUBROUTINE DEKAY2(IMOD,HH,ISGN)
 C     *******************************
 C THIS ROUTINE  SIMULATES TAU-  DECAY
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
       double precision            GAMPMC    ,GAMPER
@@ -461,7 +461,7 @@ C KTO=100, PRINT FINAL REPORT (OPTIONAL).
 C
 C     called by : KORALZ
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
       double precision            GAMPMC    ,GAMPER
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
@@ -605,7 +605,7 @@ C THIS ROUTINE  SIMULATES TAU+-  DECAY
 C
 C     called by : DEXAY
 C ---------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
       double precision            GAMPMC    ,GAMPER
       COMMON / INOUT / INUT,IOUT
@@ -706,7 +706,7 @@ C                      PWB   W-BOSON
 C                      Q1    MUON
 C                      Q2    MUON-NEUTRINO
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / INOUT / INUT,IOUT
       double precision POL(4),HV(4),PWB(4),PNU(4)
       double precision Q1(4),Q2(4),PH(4),RN(1)
