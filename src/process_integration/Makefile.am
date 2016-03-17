@@ -73,6 +73,7 @@ module_lists = \
   ../testing/Modules \
   ../system/Modules \
   ../combinatorics/Modules \
+  ../user/Modules \
   ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
@@ -82,6 +83,7 @@ module_lists = \
   ../particles/Modules \
   ../beams/Modules \
   ../me_methods/Modules \
+  ../model_features/Modules \
   ../phase_space/Modules \
   ../mci/Modules \
   ../blha/Modules \
