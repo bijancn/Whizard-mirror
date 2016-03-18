@@ -554,7 +554,8 @@ emitter-radiation pairs. This is coped with using the linked list
 <<fks regions: types>>=
   type :: flv_structure_t
     integer, dimension(:), allocatable :: flst
-    integer :: nlegs, n_in
+    integer :: nlegs = 0
+    integer :: n_in = 0
     logical, dimension(:), allocatable :: massive
     logical, dimension(:), allocatable :: colored
   contains
@@ -631,16 +632,22 @@ permutation of the final-state particles
     equiv = .true.
     if (n /= size (flv2%flst)) then
        call msg_fatal &
-            ('flv_structure_equivalent: flavor arrays do not have equal lengths')
+          ('flv_structure_equivalent: flavor arrays do not have equal lengths')
+    else if (flv1%n_in /= flv2%n_in) then
+       call msg_fatal &
+          ('flv_structure_equivalent: flavor arrays do not have equal n_in')
     else
        allocate (present(n))
        allocate (checked(n))
-       do i = 1 , n
-          present(i) = .false.
-          checked(i) = .false.
+       present = .false.; checked = .false.
+       do i = 1, flv1%n_in
+          if (flv1%flst(i) /= flv2%flst(i)) then
+             equiv = .false.
+             return
+          end if
        end do
-       do i = 1 , n
-          do j = 1 ,n
+       do i = flv1%n_in + 1 , n
+          do j = flv1%n_in + 1 ,n
              if (flv1%flst(i) == flv2%flst(j) .and. .not. checked(j)) then
                 present(i) = .true.
                 checked(j) = .true.
@@ -648,7 +655,7 @@ permutation of the final-state particles
              end if
           end do
        end do
-       do i = 1 , n
+       do i = flv1%n_in + 1 , n
           if (.not.present(i)) equiv = .false.
        end do
     end if
@@ -661,6 +668,7 @@ permutation of the final-state particles
     type(flv_structure_t), intent(out) :: flv_out
     type(flv_structure_t), intent(in) :: flv_in
     flv_out%nlegs = flv_in%nlegs
+    flv_out%n_in = flv_in%n_in
     if (allocated (flv_in%flst)) then
        allocate (flv_out%flst (size (flv_in%flst)))
        flv_out%flst = flv_in%flst
@@ -699,10 +707,9 @@ permutation of the final-state particles
     integer :: n1, n2
     n1 = size (flv%flst)
     n2 = n1 - 1
-    if (allocated (flv_new%flst)) then
-      deallocate (flv_new%flst)
-    end if
     allocate (flv_new%flst (n2))
+    flv_new%nlegs = n2
+    flv_new%n_in = flv%n_in
     if (index == 1) then
       flv_new%flst(1 : n2) = flv%flst(2 : n1)
     else if (index == n1) then
@@ -760,6 +767,8 @@ particle at position i1.
     n1 = size (flv%flst)
     n2 = n1 - 1
     allocate (flv_new%flst(n2))
+    flv_new%nlegs = n2
+    flv_new%n_in = flv%n_in
     if (i1 < i2) then
       flv_tmp = flv%remove_particle (i1)
       flv_tmp = flv_tmp%remove_particle (i2 - 1)
@@ -846,62 +855,57 @@ structure if the particle at position \texttt{emitter} is removed
 <<fks regions: flv structure: TBP>>=
   procedure :: create_uborn => flv_structure_create_uborn
 <<fks regions: procedures>>=
-  function flv_structure_create_uborn (flst_alr, emitter) result(flst_uborn)
-    class(flv_structure_t), intent(in) :: flst_alr
+  function flv_structure_create_uborn (flv, emitter) result(flv_uborn)
+    type(flv_structure_t) :: flv_uborn
+    class(flv_structure_t), intent(in) :: flv
     integer, intent(in) :: emitter
-    type(flv_structure_t) :: flst_uborn
-    integer n_alr, n_uborn
-    n_alr = size(flst_alr%flst)
-    n_uborn = n_alr-1
-    allocate (flst_uborn%flst (n_uborn))
-    if (emitter > 2) then
-      if (flst_alr%flst(n_alr) == 21) then
-         !!! Emitted particle is a gluon => just remove it
-         flst_uborn = flst_alr%remove_particle(n_alr)
-         !!! Emission type is a gluon splitting into two quars
-      else if (is_quark (abs(flst_alr%flst(n_alr))) .and. &
-               is_quark (abs(flst_alr%flst(n_alr-1))) .and. &
-               flst_alr%flst(n_alr) + flst_alr%flst(n_alr-1) == 0) then
-         flst_uborn = flst_alr%insert_particle(n_alr-1,n_alr,21)
-      else
-         call msg_fatal ("Create underlying Born: Unsupported splitting type.")
-      end if
-     else
-        if (flst_alr%flst(n_alr) == 21) then
-           flst_uborn = flst_alr%remove_particle(n_alr)
-        else if (is_quark (abs(flst_alr%flst(n_alr))) .and. &
-                  is_gluon (abs(flst_alr%flst(emitter)))) then
-           flst_uborn = &
-                flst_alr%insert_particle (emitter,n_alr,-flst_alr%flst(n_alr))
-        else if (is_quark (abs(flst_alr%flst(n_alr))) .and. &
-                  is_quark (abs(flst_alr%flst(emitter))) .and. &
-                  flst_alr%flst(n_alr) == flst_alr%flst(emitter)) then
-           flst_uborn = flst_alr%insert_particle(emitter,n_alr,21)
-        end if
-     end if
+    integer n_legs
+    integer :: f1, f2
+    n_legs = size(flv%flst)
+    allocate (flv_uborn%flst (n_legs - 1))
+    if (emitter > flv%n_in) then
+       f1 = flv%flst(n_legs); f2 = flv%flst(n_legs - 1)
+       if (f1 == 21) then
+          !!! Emitted particle is a gluon => just remove it
+          flv_uborn = flv%remove_particle(n_legs)
+       else if (is_quark (f1) .and. is_quark (f2) .and. f1 + f2 == 0) then
+          !!! Emission type is a gluon splitting into two quars
+          flv_uborn = flv%insert_particle(n_legs - 1, n_legs, 21)
+       else
+          call msg_fatal ("Create underlying Born: Unsupported splitting type.")
+       end if
+    else
+       f1 = flv%flst(n_legs); f2 = flv%flst(emitter)
+       if (f1 == 21) then
+          flv_uborn = flv%remove_particle(n_legs)
+       else if (is_quark (f1) .and. is_gluon (f2)) then
+          flv_uborn = flv%insert_particle (emitter, n_legs, -f1)
+       else if (is_quark (f1) .and. is_quark (f2) .and. f1 == f2) then
+          flv_uborn = flv%insert_particle(emitter, n_legs, 21)
+       end if
+    end if
   end function flv_structure_create_uborn
 
 @ %def flv_structure_create_uborn
 @
 <<fks regions: flv structure: TBP>>=
-  procedure :: evaluate => flv_structure_evaluate
+  procedure :: init_mass_and_color => flv_structure_init_mass_and_color
 <<fks regions: procedures>>=
-  subroutine flv_structure_evaluate (flv, n, model)
+  subroutine flv_structure_init_mass_and_color (flv, model)
     class(flv_structure_t), intent(inout) :: flv
-    integer, intent(in) :: n
     type(model_t), intent(in) :: model
     integer :: i
     type(flavor_t) :: flavor
-    allocate (flv%massive (n), flv%colored(n))
-    do i = 1, n
+    allocate (flv%massive (flv%nlegs), flv%colored(flv%nlegs))
+    do i = 1, flv%nlegs
        call flavor%init (flv%flst(i), model)
        flv%massive(i) = flavor%get_mass () > 0
-       flv%colored(i) = is_quark (abs(flv%flst(i))) .or. &
-                        is_gluon (flv%flst(i))
+       flv%colored(i) = &
+          is_quark (flv%flst(i)) .or. is_gluon (flv%flst(i))
     end do
-  end subroutine flv_structure_evaluate
+  end subroutine flv_structure_init_mass_and_color
 
-@ %def flv_structure_evaluate
+@ %def flv_structure_init_mass_and_color
 @
 <<fks regions: flv structure: TBP>>=
   procedure :: final => flv_structure_final
@@ -1709,15 +1713,15 @@ must be compatible with the resonance.
     integer :: i
     do i = 1, reg_data%n_regions
        associate (region => reg_data%regions(i))
-          call region%flst_uborn%evaluate (reg_data%nlegs_born, model)
-          call region%flst_real%evaluate (reg_data%nlegs_real, model)
+          call region%flst_uborn%init_mass_and_color (model)
+          call region%flst_real%init_mass_and_color (model)
        end associate
     end do
     do i = 1, reg_data%n_flv_born
-       call reg_data%flv_born(i)%evaluate (reg_data%nlegs_born, model)
+       call reg_data%flv_born(i)%init_mass_and_color (model)
     end do
     do i = 1, reg_data%n_flv_real
-       call reg_data%flv_real(i)%evaluate (reg_data%nlegs_real, model)
+       call reg_data%flv_real(i)%init_mass_and_color (model)
     end do
   end subroutine region_data_evaluate_flavors
 
@@ -2063,13 +2067,13 @@ of the present one is increased.
   procedure :: init_singular_regions => region_data_init_singular_regions
 <<fks regions: procedures>>=
   subroutine region_data_init_singular_regions &
-         (reg_data, ftuples, emitter, flst_alr)
+         (reg_data, ftuples, emitter, flv_alr)
     class(region_data_t), intent(inout) :: reg_data
     type(ftuple_list_t), intent(inout), dimension(:), allocatable :: ftuples
     integer :: n_valid_ftuples
     integer, intent(in), dimension(:) :: emitter
-    type(flv_structure_t), intent(in), dimension(:) :: flst_alr
-    type(flv_structure_t), dimension(:), allocatable :: flst_uborn, flst_alr2
+    type(flv_structure_t), intent(in), dimension(:) :: flv_alr
+    type(flv_structure_t), dimension(:), allocatable :: flv_uborn, flv_alr2
     integer, dimension(:), allocatable :: mult
     integer, dimension(:), allocatable :: flst_emitter
     integer :: nregions, maxregions
@@ -2081,13 +2085,13 @@ of the present one is increased.
     integer :: i_first, j_first, i_res
     integer, dimension(:), allocatable :: &
          region_to_ftuple, ftuple_limits, k_index
-    type(flv_structure_t) :: flst_save
+    type(flv_structure_t) :: flv_save
 
     maxregions = size (emitter)
-    nlegs = size (flst_alr(1)%flst)
+    nlegs = flv_alr(1)%nlegs
 
-    allocate (flst_uborn (maxregions))
-    allocate (flst_alr2 (maxregions))
+    allocate (flv_uborn (maxregions))
+    allocate (flv_alr2 (maxregions))
     allocate (mult (maxregions))
     allocate (flst_emitter (maxregions))
     allocate (index (maxregions))
@@ -2125,9 +2129,9 @@ of the present one is increased.
        SCAN_FTUPLES: do i = i_first, i_first + ftuple_limits (l) - 1
           equiv = .false.
           if (i == i_first) then
-             flst_alr2(j) = flst_alr(i)
+             flv_alr2(j) = flv_alr(i)
              mult(j) = mult(j) + 1
-             flst_uborn(j) = flst_alr(i)%create_uborn (emitter(i))
+             flv_uborn(j) = flv_alr(i)%create_uborn (emitter(i))
              flst_emitter(j) = emitter(i)
              index (j) = region_to_index(ftuples, i)
              k_index (j) = region_to_ftuple(i)
@@ -2136,9 +2140,9 @@ of the present one is increased.
              !!! Check for equivalent flavor structures
              do k = j_first, j - 1
                 if (emitter(i) == emitter(k) .and. emitter(i) > reg_data%n_in) then
-                   if (flst_alr(i) == flst_alr2(k) .and. &
-                      flst_alr(i)%flst(nlegs-1) == flst_alr2(k)%flst(nlegs-1) &
-                      .and. flst_alr(i)%flst(nlegs) == flst_alr2(k)%flst(nlegs)) then
+                   if (flv_alr(i) == flv_alr2(k) .and. &
+                      flv_alr(i)%flst(nlegs-1) == flv_alr2(k)%flst(nlegs-1) &
+                      .and. flv_alr(i)%flst(nlegs) == flv_alr2(k)%flst(nlegs)) then
                       mult(k) = mult(k) + 1
                       equiv = .true.
                       call ftuples (region_to_index(ftuples, i))%set_equiv &
@@ -2146,7 +2150,7 @@ of the present one is increased.
                       exit
                    end if
                 else if (emitter(i) == emitter(k) .and. emitter(i) <= reg_data%n_in) then
-                   if (flst_alr(i) == flst_alr2(k)) then
+                   if (flv_alr(i) == flv_alr2(k)) then
                       mult(k) = mult(k) + 1
                       equiv = .true.
                       call ftuples (region_to_index(ftuples,i))%set_equiv &
@@ -2156,9 +2160,9 @@ of the present one is increased.
                 end if
              end do
           if (.not. equiv) then
-             flst_alr2(j) = flst_alr(i)
+             flv_alr2(j) = flv_alr(i)
              mult(j) = mult(j) + 1
-             flst_uborn(j) = flst_alr(i)%create_uborn (emitter(i))
+             flv_uborn(j) = flv_alr(i)%create_uborn (emitter(i))
              flst_emitter(j) = emitter(i)
              index (j) = region_to_index (ftuples, i)
              k_index (j) = region_to_ftuple(i)
@@ -2174,17 +2178,17 @@ of the present one is increased.
     reg_data%n_regions = nregions
     do j = 1, nregions
        do i = 1, reg_data%n_flv_born
-          if (reg_data%flv_born (i) == flst_uborn (j)) then
+          if (reg_data%flv_born (i) == flv_uborn (j)) then
              if (allocated (perm_list)) deallocate (perm_list)
              call fks_permute_born &
-                (reg_data%flv_born (i), reg_data%n_in, flst_uborn (j), perm_list)
-             call fks_apply_perm (flst_alr2(j), flst_emitter(j), perm_list)
+                (reg_data%flv_born (i), reg_data%n_in, flv_uborn (j), perm_list)
+             call fks_apply_perm (flv_alr2(j), flst_emitter(j), perm_list)
           end if
        end do
     end do
     do i = 1, nregions
-       call reg_data%regions(i)%init (i, mult(i), 0, flst_alr2(i), &
-          flst_uborn(i), reg_data%flv_born, flst_emitter(i), ftuples, &
+       call reg_data%regions(i)%init (i, mult(i), 0, flv_alr2(i), &
+          flv_uborn(i), reg_data%flv_born, flst_emitter(i), ftuples, &
           index)
     end do
     ! TODO: (bcn 2015-12-15) can this be put in singular_region_init?
@@ -2193,15 +2197,15 @@ of the present one is increased.
        do i = 1, nregions
           if (i == 1) then
              regions(i)%real_index = 1
-             flst_save = flst_alr2(1)
+             flv_save = flv_alr2(1)
              cycle
           end if
-          if (flst_alr2(i) == flst_save) then
+          if (flv_alr2(i) == flv_save) then
              regions(i)%real_index = k
           else
              k = k + 1
              regions(i)%real_index = k
-             flst_save = flst_alr2(i)
+             flv_save = flv_alr2(i)
           end if
        end do
     end associate
@@ -2753,13 +2757,15 @@ position.
     integer :: n
     n = size (flv1%flst)
     allocate (flv2%flst (n))
+    flv2%nlegs = n
+    flv2%n_in = n_in
     if (i_em > n_in) then
-       flv2%flst(1:2) = flv1%flst(1:2)
-       flv2%flst(n-1) = flv1%flst(i_em)
+       flv2%flst(1 : 2) = flv1%flst(1 : 2)
+       flv2%flst(n - 1) = flv1%flst(i_em)
        flv2%flst(n) = flv1%flst(i_rad)
        call fill_remaining_flavors (n_in, .true.)
     else
-       flv2%flst(1:2) = flv1%flst(1:2)
+       flv2%flst(1 : 2) = flv1%flst(1 : 2)
        flv2%flst(n) = flv1%flst(i_rad)
        call fill_remaining_flavors (n_in, .false.)
     end if
@@ -2780,7 +2786,7 @@ position.
          end if
          if (check) then
             flv2%flst(j) = flv1%flst(i)
-            j = j+1
+            j = j + 1
          end if
       end do
     end subroutine fill_remaining_flavors
