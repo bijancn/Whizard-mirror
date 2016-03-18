@@ -595,25 +595,30 @@ $(i,j)$ is accepted as valid.
     logical :: valid
     integer :: k, n_orig
     type(flv_structure_t) :: flv_test
-    integer, dimension(:), allocatable :: flv_orig, flv_orig2
+    integer, dimension(:), allocatable :: flv_orig
     valid = .false.
-    print *, 'Share vertex? ', flv_real%flst(i), flv_real%flst(j)
     call model%match_vertex &
          (flv_real%flst(i), flv_real%flst(j), flv_orig)
-    print *, 'Common vertices: ', flv_orig
+    call invert_quark_flavors (flv_orig)
     n_orig = size (flv_orig)
     if (n_orig == 0) then
       return
     else
-      allocate (flv_orig2 (2 * n_orig))
-      flv_orig2 (1 : n_orig) = flv_orig
-      flv_orig2 (n_orig + 1 : 2 * n_orig) = -flv_orig
-      do k = 1, 2 * n_orig
-        flv_test = flv_real%insert_particle (i, j, flv_orig2(k))
-        valid = flv_born == flv_test
-        if (valid) return
+      do k = 1, n_orig
+         flv_test = flv_real%insert_particle (i, j, flv_orig(k))
+         valid = flv_born == flv_test
+         if (valid) return
       end do
     end if
+    deallocate (flv_orig)
+  contains
+    subroutine invert_quark_flavors (flv)
+      integer, intent(inout), dimension(:) :: flv
+      integer :: i
+      do i = 1, size (flv)
+         if (is_quark (flv(i))) flv(i) = -flv(i)
+      end do
+    end subroutine invert_quark_flavors 
   end function flv_structure_valid_pair
 
 @ %def flv_structure_valid_pair
@@ -655,7 +660,7 @@ permutation of the final-state particles
 @ %def flv_structure_equivalent
 @
 <<fks regions: procedures>>=
-  subroutine flv_structure_assign (flv_out, flv_in)
+  subroutine flv_structure_assign_flv (flv_out, flv_in)
     type(flv_structure_t), intent(out) :: flv_out
     type(flv_structure_t), intent(in) :: flv_in
     flv_out%nlegs = flv_in%nlegs
@@ -671,9 +676,20 @@ permutation of the final-state particles
        allocate (flv_out%colored (size (flv_in%colored)))
        flv_out%colored = flv_in%colored
     end if
-  end subroutine flv_structure_assign
+  end subroutine flv_structure_assign_flv
 
-@ %def flv_structure_assign
+@ %def flv_structure_assign_flv
+@
+<<fks regions: procedures>>=
+  subroutine flv_structure_assign_integer (flv_out, iarray)
+    type(flv_structure_t), intent(out) :: flv_out
+    integer, intent(in), dimension(:) :: iarray
+    flv_out%nlegs = size (iarray)
+    allocate (flv_out%flst (flv_out%nlegs))
+    flv_out%flst = iarray
+  end subroutine flv_structure_assign_integer
+
+@ %def flv_structure_assign_integer
 @ Returs a new flavor array with the particle at position
 \texttt{index} removed.
 <<fks regions: flv structure: TBP>>=
@@ -772,7 +788,7 @@ flavor array
     integer :: n
     n = size (aval)
     allocate (flv%flst (n))
-    flv%flst(1:n) = aval(1:n)
+    flv%flst(1 : n) = aval(1 : n)
     flv%nlegs = n
   end subroutine flv_structure_init
 
@@ -855,6 +871,18 @@ structure if the particle at position \texttt{emitter} is removed
   end subroutine flv_structure_evaluate
 
 @ %def flv_structure_evaluate
+@
+<<fks regions: flv structure: TBP>>=
+  procedure :: final => flv_structure_final
+<<fks regions: procedures>>=
+  subroutine flv_structure_final (flv)
+    class(flv_structure_t), intent(inout) :: flv
+    deallocate (flv%flst)
+    deallocate (flv%massive)
+    deallocate (flv%colored)
+  end subroutine flv_structure_final
+
+@ %def flv_structure_final
 @ A singular region is a partition of phase space which is associated with
 an individual emitter and, if relevant, resonance. It is associated with 
 an $\alpha_r$- and resonance-index, with a real flavor structure and 
@@ -1422,7 +1450,8 @@ there is only a soft singularity if the radiated parton becomes soft.
   end interface
   
   interface assignment(=)
-    module procedure flv_structure_assign
+    module procedure flv_structure_assign_flv
+    module procedure flv_structure_assign_integer
   end interface
 
 @ %def operator_equiv
@@ -3430,9 +3459,11 @@ end module fks_regions_uti
     integer, intent(in) :: u
     type(test_results_t), intent(inout) :: results
     call test(fks_regions_1, "fks_regions_1", &
+       "Test flavor structure utilities", u, results)
+    call test(fks_regions_2, "fks_regions_2", &
        "Test the creation of singular regions for dijet production at lepton colliders", &
        u, results)
-    call test(fks_regions_2, "fks_regions_2", &
+    call test(fks_regions_3, "fks_regions_3", &
        "Test the creation of singular regions for Drell Yan", &
        u, results)
   end subroutine fks_regions_test
@@ -3444,6 +3475,39 @@ end module fks_regions_uti
 <<fks regions: tests>>=
   subroutine fks_regions_1 (u)
     integer, intent(in) :: u
+    type(flv_structure_t) :: flv_born, flv_real
+    type(os_data_t) :: os_data
+    type(model_list_t) :: model_list
+    type(model_t), pointer :: test_model => null ()
+    write (u, "(A)") "* Test output: fks_regions_1"
+    write (u, "(A)") "* Purpose: Test utilities of flavor structure manipulation"
+    write (u, "(A)")
+    write (u, "(A)") "* Valid splittings of ee -> uu"
+
+    call syntax_model_file_init ()
+    call os_data_init (os_data)
+    call model_list%read_model &
+       (var_str ("SM_rad"), var_str ("SM_rad.mdl"), os_data, test_model)
+
+    flv_born = [11, -11, 2, -2]
+    flv_real = [11, -11, 2, -2, 21]
+    write (u, "(A,L1)") "2, -2 : ", flv_real%valid_pair (3, 4, flv_born, test_model)
+    write (u, "(A,L1)") "-2, 2 : ", flv_real%valid_pair (4, 3, flv_born, test_model)
+    write (u, "(A,L1)") "2, 21 : ", flv_real%valid_pair (3, 5, flv_born, test_model)
+    write (u, "(A,L1)") "21, 2 : ", flv_real%valid_pair (5, 3, flv_born, test_model)
+    write (u, "(A,L1)") "-2, 21: ", flv_real%valid_pair (4, 5, flv_born, test_model)
+    write (u, "(A,L1)") "21, -2: ", flv_real%valid_pair (5, 4, flv_born, test_model)
+    
+
+  end subroutine fks_regions_1
+
+@ %def fks_regions_1
+@
+<<fks regions: test declarations>>=
+  public :: fks_regions_2
+<<fks regions: tests>>=
+  subroutine fks_regions_2 (u)
+    integer, intent(in) :: u
     integer, parameter :: n_flv_born = 1
     integer, parameter :: n_flv_real = 1
     integer, parameter :: n_legs_born = 4
@@ -3454,7 +3518,7 @@ end module fks_regions_uti
     type(model_t), pointer :: test_model => null ()
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     type(region_data_t) :: reg_data
-    write (u, "(A)") "* Test output: fks_regions_1"
+    write (u, "(A)") "* Test output: fks_regions_2"
     write (u, "(A)") "* Purpose: Create table of singular regions for ee -> qq"
     write (u, "(A)")
 
@@ -3471,14 +3535,14 @@ end module fks_regions_uti
     call reg_data%init (n_in, test_model, flv_born, flv_real)
     call reg_data%write (u)
     
-  end subroutine fks_regions_1
+  end subroutine fks_regions_2
 
-@ %def fks_regions_1
+@ %def fks_regions_2
 @
 <<fks regions: test declarations>>=
-  public :: fks_regions_2
+  public :: fks_regions_3
 <<fks regions: tests>>=
-  subroutine fks_regions_2 (u)
+  subroutine fks_regions_3 (u)
     integer, intent(in) :: u
     integer, parameter :: n_flv_born = 10
     integer, parameter :: n_flv_real = 30
@@ -3492,7 +3556,7 @@ end module fks_regions_uti
     type(region_data_t) :: reg_data
     integer :: i, j
     integer, dimension(10) :: flavors
-    write (u, "(A)") "* Test output: fks_regions_2"
+    write (u, "(A)") "* Test output: fks_regions_3"
     write (u, "(A)") "* Purpose: Create table of singular regions for Drell Yan"
     write (u, "(A)")
 
@@ -3535,9 +3599,9 @@ end module fks_regions_uti
     call reg_data%init (n_in, test_model, flv_born, flv_real)
     call reg_data%write (u)
     
-  end subroutine fks_regions_2
+  end subroutine fks_regions_3
 
-@ %def fks_regions_2
+@ %def fks_regions_3
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Virtual contribution to the cross section}
