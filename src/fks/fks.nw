@@ -554,7 +554,7 @@ emitter-radiation pairs. This is coped with using the linked list
 <<fks regions: types>>=
   type :: flv_structure_t
     integer, dimension(:), allocatable :: flst
-    integer :: nlegs
+    integer :: nlegs, n_in
     logical, dimension(:), allocatable :: massive
     logical, dimension(:), allocatable :: colored
   contains
@@ -587,38 +587,35 @@ $(i,j)$ is accepted as valid.
   procedure :: valid_pair => flv_structure_valid_pair
 <<fks regions: procedures>>=
   function flv_structure_valid_pair &
-       (flv_real, i, j, flv_born, model) result (valid)
-    class(flv_structure_t), intent(in) :: flv_real
-    integer, intent(in) :: i,j
-    type(flv_structure_t), intent(in) :: flv_born
-    type(model_t), intent(in) :: model
+     (flv, i, j, flv_ref, model) result (valid)
     logical :: valid
+    class(flv_structure_t), intent(in) :: flv
+    integer, intent(in) :: i,j
+    type(flv_structure_t), intent(in) :: flv_ref
+    type(model_t), intent(in) :: model
     integer :: k, n_orig
     type(flv_structure_t) :: flv_test
     integer, dimension(:), allocatable :: flv_orig
     valid = .false.
+    if (all ([i, j] <= flv%n_in)) return
     call model%match_vertex &
-         (flv_real%flst(i), flv_real%flst(j), flv_orig)
-    call invert_quark_flavors (flv_orig)
+         (flv%flst(i), flv%flst(j), flv_orig)
     n_orig = size (flv_orig)
     if (n_orig == 0) then
       return
     else
       do k = 1, n_orig
-         flv_test = flv_real%insert_particle (i, j, flv_orig(k))
-         valid = flv_born == flv_test
+         if (any ([i, j] <= flv%n_in)) then
+            flv_test = flv%insert_particle_isr (i, j, flv_orig(k))
+         else
+            flv_test = flv%insert_particle_fsr (i, j, flv_orig(k))
+         end if
+         valid = flv_ref == flv_test
+         call flv_test%final ()
          if (valid) return
       end do
     end if
     deallocate (flv_orig)
-  contains
-    subroutine invert_quark_flavors (flv)
-      integer, intent(inout), dimension(:) :: flv
-      integer :: i
-      do i = 1, size (flv)
-         if (is_quark (flv(i))) flv(i) = -flv(i)
-      end do
-    end subroutine invert_quark_flavors 
   end function flv_structure_valid_pair
 
 @ %def flv_structure_valid_pair
@@ -626,8 +623,8 @@ $(i,j)$ is accepted as valid.
 permutation of the final-state particles
 <<fks regions: procedures>>=
   function flv_structure_equivalent (flv1, flv2) result(equiv)
-    type(flv_structure_t), intent(in) :: flv1, flv2
     logical :: equiv
+    type(flv_structure_t), intent(in) :: flv1, flv2
     integer :: i, j, n
     logical, dimension(:), allocatable :: present, checked
     n = size (flv1%flst)
@@ -695,61 +692,93 @@ permutation of the final-state particles
 <<fks regions: flv structure: TBP>>=
   procedure :: remove_particle => flv_structure_remove_particle
 <<fks regions: procedures>>=
-  function flv_structure_remove_particle (flv1, index) result(flv2)
-    class(flv_structure_t), intent(in) :: flv1
+  function flv_structure_remove_particle (flv, index) result(flv_new)
+    type(flv_structure_t) :: flv_new
+    class(flv_structure_t), intent(in) :: flv
     integer, intent(in) :: index
-    type(flv_structure_t) :: flv2
     integer :: n1, n2
-    n1 = size (flv1%flst)
+    n1 = size (flv%flst)
     n2 = n1 - 1
-    if (allocated (flv2%flst)) then
-      deallocate (flv2%flst)
+    if (allocated (flv_new%flst)) then
+      deallocate (flv_new%flst)
     end if
-    allocate (flv2%flst (n2))
+    allocate (flv_new%flst (n2))
     if (index == 1) then
-      flv2%flst(1 : n2) = flv1%flst(2 : n1)
+      flv_new%flst(1 : n2) = flv%flst(2 : n1)
     else if (index == n1) then
-      flv2%flst(1 : n2) = flv1%flst(1 : n2)
+      flv_new%flst(1 : n2) = flv%flst(1 : n2)
     else
-      flv2%flst(1 : index - 1) = flv1%flst(1 : index - 1)
-      flv2%flst(index : n2) = flv1%flst(index + 1 : n1)
+      flv_new%flst(1 : index - 1) = flv%flst(1 : index - 1)
+      flv_new%flst(index : n2) = flv%flst(index + 1 : n1)
     end if
   end function flv_structure_remove_particle
 
 @ %def flv_structure_remove_particle
+@
+<<fks regions: flv structure: TBP>>=
+  procedure :: insert_particle_fsr => flv_structure_insert_particle_fsr
+<<fks regions: procedures>>=
+  function flv_structure_insert_particle_fsr (flv, i1, i2, flv_add) result (flv_new)
+    type(flv_structure_t) :: flv_new
+    class(flv_structure_t), intent(in) :: flv
+    integer, intent(in) :: i1, i2, flv_add
+    if (flv%flst(i1) + flv_add == 0 .or. flv%flst(i2) + flv_add == 0) then
+       flv_new = flv%insert_particle (i1, i2, -flv_add)
+    else
+       flv_new = flv%insert_particle (i1, i2, flv_add)
+    end if
+  end function flv_structure_insert_particle_fsr
+    
+@ %def flv_structure_insert_particle_fsr
+@ For ISR, the two particles are not exchangable.
+<<fks regions: flv structure: TBP>>=
+  procedure :: insert_particle_isr => flv_structure_insert_particle_isr
+<<fks regions: procedures>>=
+  function flv_structure_insert_particle_isr (flv, i_in, i_out, flv_add) result (flv_new)
+    type(flv_structure_t) :: flv_new
+    class(flv_structure_t), intent(in) :: flv
+    integer, intent(in) :: i_in, i_out, flv_add
+    if (flv%flst(i_in) + flv_add == 0) then
+       flv_new = flv%insert_particle (i_in, i_out, -flv_add)
+    else
+       flv_new = flv%insert_particle (i_in, i_out, flv_add)
+    end if
+  end function flv_structure_insert_particle_isr
+    
+@ %def flv_structure_insert_particle_isr
 @ Removes the paritcles at position i1 and i2 and inserts a new
 particle at position i1.
 <<fks regions: flv structure: TBP>>=
   procedure :: insert_particle => flv_structure_insert_particle
 <<fks regions: procedures>>=
-  function flv_structure_insert_particle (flv1, i1, i2, particle) result (flv2)
-    class(flv_structure_t), intent(in) :: flv1
+  function flv_structure_insert_particle (flv, i1, i2, particle) result (flv_new)
+    type(flv_structure_t) :: flv_new
+    class(flv_structure_t), intent(in) :: flv
     integer, intent(in) :: i1, i2, particle
-    type(flv_structure_t) :: flv2
     type(flv_structure_t) :: flv_tmp
     integer :: n1, n2
-    n1 = size (flv1%flst)
+    n1 = size (flv%flst)
     n2 = n1 - 1
-    allocate (flv2%flst(n2))
+    allocate (flv_new%flst(n2))
     if (i1 < i2) then
-      flv_tmp = flv1%remove_particle (i1)
+      flv_tmp = flv%remove_particle (i1)
       flv_tmp = flv_tmp%remove_particle (i2 - 1)
     else if(i2 < i1) then
-      flv_tmp = flv1%remove_particle(i2)
+      flv_tmp = flv%remove_particle(i2)
       flv_tmp = flv_tmp%remove_particle(i1 - 1)
     else
-      call msg_fatal ("Trying to set ftuple with i1 = i2!")
+      call msg_fatal ("flv_structure_insert_particle: Indices are identical!")
     end if
     if (i1 == 1) then
-      flv2%flst(1) = particle
-      flv2%flst(2 : n2) = flv_tmp%flst(1 : n2 - 1)
+      flv_new%flst(1) = particle
+      flv_new%flst(2 : n2) = flv_tmp%flst(1 : n2 - 1)
     else if (i1 == n1 .or. i1 == n2) then
-      flv2%flst(1 : n2 - 1) = flv_tmp%flst(1 : n2 - 1)
-      flv2%flst(n2) = particle
+      flv_new%flst(1 : n2 - 1) = flv_tmp%flst(1 : n2 - 1)
+      flv_new%flst(n2) = particle
     else
-      flv2%flst(1 : i1 - 1) = flv_tmp%flst(1 : i1 - 1)
-      flv2%flst(i1) = particle
-      flv2%flst(i1 + 1 : n2) = flv_tmp%flst(i1 : n2 - 1)
+      flv_new%flst(1 : i1 - 1) = flv_tmp%flst(1 : i1 - 1)
+      flv_new%flst(i1) = particle
+      flv_new%flst(i1 + 1 : n2) = flv_tmp%flst(i1 : n2 - 1)
     end if
   end function flv_structure_insert_particle
 
@@ -782,14 +811,16 @@ flavor array
 <<fks regions: flv structure: TBP>>=
   procedure :: init => flv_structure_init
 <<fks regions: procedures>>=
-  subroutine flv_structure_init (flv, aval)
+  subroutine flv_structure_init (flv, aval, n_in)
     class(flv_structure_t), intent(inout) :: flv
     integer, intent(in), dimension(:) :: aval
+    integer, intent(in) :: n_in
     integer :: n
     n = size (aval)
     allocate (flv%flst (n))
     flv%flst(1 : n) = aval(1 : n)
     flv%nlegs = n
+    flv%n_in = n_in
   end subroutine flv_structure_init
 
 @ %def flv_structure_init
@@ -877,9 +908,9 @@ structure if the particle at position \texttt{emitter} is removed
 <<fks regions: procedures>>=
   subroutine flv_structure_final (flv)
     class(flv_structure_t), intent(inout) :: flv
-    deallocate (flv%flst)
-    deallocate (flv%massive)
-    deallocate (flv%colored)
+    if (allocated (flv%flst)) deallocate (flv%flst)
+    if (allocated (flv%flst)) deallocate (flv%massive)
+    if (allocated (flv%flst)) deallocate (flv%colored)
   end subroutine flv_structure_final
 
 @ %def flv_structure_final
@@ -1513,7 +1544,6 @@ there is only a soft singularity if the radiated parton becomes soft.
     type(model_t), intent(in) :: model
     integer, intent(in), dimension(:,:), allocatable :: &
          flavor_born, flavor_real
-    integer, dimension(:), allocatable :: current_flavor
     type(ftuple_list_t), dimension(:), allocatable :: ftuples
     integer, dimension(:), allocatable :: emitter
     type(flv_structure_t), dimension(:), allocatable :: flst_alr
@@ -1525,21 +1555,15 @@ there is only a soft singularity if the radiated parton becomes soft.
     reg_data%nlegs_real = reg_data%nlegs_born + 1
     allocate (reg_data%flv_born (reg_data%n_flv_born))
     allocate (reg_data%flv_real (reg_data%n_flv_real))
-    allocate (current_flavor (reg_data%nlegs_born))
     do i = 1, reg_data%n_flv_born
-       current_flavor = flavor_born(:, i)
-       call reg_data%flv_born(i)%init (current_flavor)
+       call reg_data%flv_born(i)%init (flavor_born (:, i), n_in)
     end do
-    deallocate (current_flavor)
-    allocate (current_flavor (reg_data%nlegs_real))
     do i = 1, reg_data%n_flv_real
-       current_flavor = flavor_real(:, i)
-       call reg_data%flv_real(i)%init (current_flavor)
+       call reg_data%flv_real(i)%init (flavor_real (:, i), n_in)
     end do
 
     call reg_data%flv_extra%init &
-         (reg_data%flv_real(1)%flst(reg_data%nlegs_real), &
-         model)
+       (reg_data%flv_real(1)%flst(reg_data%nlegs_real), model)
     call reg_data%find_regions (model, ftuples, emitter, flst_alr)
     call reg_data%init_singular_regions (ftuples, emitter, flst_alr)
     call reg_data%find_emitters ()
@@ -3436,6 +3460,7 @@ end module fks_regions_ut
 module fks_regions_uti
 
 <<Use strings>>
+  use format_utils, only: write_separator
   use os_interface
   use models
 
@@ -3482,7 +3507,6 @@ end module fks_regions_uti
     write (u, "(A)") "* Test output: fks_regions_1"
     write (u, "(A)") "* Purpose: Test utilities of flavor structure manipulation"
     write (u, "(A)")
-    write (u, "(A)") "* Valid splittings of ee -> uu"
 
     call syntax_model_file_init ()
     call os_data_init (os_data)
@@ -3491,13 +3515,101 @@ end module fks_regions_uti
 
     flv_born = [11, -11, 2, -2]
     flv_real = [11, -11, 2, -2, 21]
-    write (u, "(A,L1)") "2, -2 : ", flv_real%valid_pair (3, 4, flv_born, test_model)
-    write (u, "(A,L1)") "-2, 2 : ", flv_real%valid_pair (4, 3, flv_born, test_model)
-    write (u, "(A,L1)") "2, 21 : ", flv_real%valid_pair (3, 5, flv_born, test_model)
-    write (u, "(A,L1)") "21, 2 : ", flv_real%valid_pair (5, 3, flv_born, test_model)
-    write (u, "(A,L1)") "-2, 21: ", flv_real%valid_pair (4, 5, flv_born, test_model)
-    write (u, "(A,L1)") "21, -2: ", flv_real%valid_pair (5, 4, flv_born, test_model)
-    
+    flv_born%n_in = 2; flv_real%n_in = 2
+    write (u, "(A)") "* Valid splittings of ee -> uu"
+    write (u, "(A)") "Born Flavors: "
+    call flv_born%write (u)
+    write (u, "(A)") "Real Flavors: "
+    call flv_real%write (u)
+    write (u, "(A,L1)") "3, 4 (2, -2) : ", flv_real%valid_pair (3, 4, flv_born, test_model)
+    write (u, "(A,L1)") "4, 3 (-2, 2) : ", flv_real%valid_pair (4, 3, flv_born, test_model)
+    write (u, "(A,L1)") "3, 5 (2, 21) : ", flv_real%valid_pair (3, 5, flv_born, test_model)
+    write (u, "(A,L1)") "5, 3 (21, 2) : ", flv_real%valid_pair (5, 3, flv_born, test_model)
+    write (u, "(A,L1)") "4, 5 (-2, 21): ", flv_real%valid_pair (4, 5, flv_born, test_model)
+    write (u, "(A,L1)") "5, 4 (21, -2): ", flv_real%valid_pair (5, 4, flv_born, test_model)
+    call write_separator (u)
+
+    call flv_born%final ()
+    call flv_real%final ()
+
+    flv_born = [2, -2, 11, -11]
+    flv_real = [2, -2, 11, -11, 21] 
+    flv_born%n_in = 2; flv_real%n_in = 2
+    write (u, "(A)") "* Valid splittings of uu -> ee"
+    write (u, "(A)") "Born Flavors: "
+    call flv_born%write (u)
+    write (u, "(A)") "Real Flavors: "
+    call flv_real%write (u)
+    write (u, "(A,L1)") "1, 2 (2, -2) : " , flv_real%valid_pair (1, 2, flv_born, test_model)
+    write (u, "(A,L1)") "2, 1 (-2, 2) : " , flv_real%valid_pair (2, 1, flv_born, test_model)
+    write (u, "(A,L1)") "5, 2 (21, -2): " , flv_real%valid_pair (5, 2, flv_born, test_model)
+    write (u, "(A,L1)") "2, 5 (-2, 21): " , flv_real%valid_pair (2, 5, flv_born, test_model)
+    write (u, "(A,L1)") "1, 5 (21, 2) : " , flv_real%valid_pair (5, 1, flv_born, test_model)
+    write (u, "(A,L1)") "5, 1 (2, 21) : " , flv_real%valid_pair (1, 5, flv_born, test_model)
+    call flv_real%final ()
+    flv_real = [21, -2, 11, -11, -2]  
+    flv_real%n_in = 2
+    write (u, "(A)") "Real Flavors: "
+    call flv_real%write (u)
+    write (u, "(A,L1)") "1, 2 (21, -2): " , flv_real%valid_pair (1, 2, flv_born, test_model)
+    write (u, "(A,L1)") "2, 1 (-2, 21): " , flv_real%valid_pair (2, 1, flv_born, test_model)
+    write (u, "(A,L1)") "5, 2 (-2, -2): " , flv_real%valid_pair (5, 2, flv_born, test_model)
+    write (u, "(A,L1)") "2, 5 (-2, -2): " , flv_real%valid_pair (2, 5, flv_born, test_model)
+    write (u, "(A,L1)") "5, 1 (-2, 21): " , flv_real%valid_pair (5, 1, flv_born, test_model)
+    write (u, "(A,L1)") "1, 5 (21, -2): " , flv_real%valid_pair (1, 5, flv_born, test_model)
+    call flv_real%final ()
+    flv_real = [2, 21, 11, -11, 2]  
+    flv_real%n_in = 2
+    write (u, "(A)") "Real Flavors: "
+    call flv_real%write (u)
+    write (u, "(A,L1)") "1, 2 (2, 21) : " , flv_real%valid_pair (1, 2, flv_born, test_model)
+    write (u, "(A,L1)") "2, 1 (21, 2) : " , flv_real%valid_pair (2, 1, flv_born, test_model)
+    write (u, "(A,L1)") "5, 2 (2, 21) : " , flv_real%valid_pair (5, 2, flv_born, test_model)
+    write (u, "(A,L1)") "2, 5 (21, 2) : " , flv_real%valid_pair (2, 5, flv_born, test_model)
+    write (u, "(A,L1)") "5, 1 (2, 2)  : " , flv_real%valid_pair (5, 1, flv_born, test_model)
+    write (u, "(A,L1)") "1, 5 (2, 2)  : " , flv_real%valid_pair (1, 5, flv_born, test_model)
+    call write_separator (u)
+
+    call flv_born%final ()
+    call flv_real%final ()
+
+    flv_born = [11, -11, 2, -2, 21]
+    flv_real = [11, -11, 2, -2, 21, 21]
+    flv_born%n_in = 2; flv_real%n_in = 2
+    write (u, "(A)") "* Valid splittings of ee -> uug"
+    write (u, "(A)") "Born Flavors: "
+    call flv_born%write (u)
+    write (u, "(A)") "Real Flavors: "
+    call flv_real%write (u)
+    write (u, "(A,L1)") "3, 4 (2, -2) : " , flv_real%valid_pair (3, 4, flv_born, test_model)
+    write (u, "(A,L1)") "4, 3 (-2, 2) : " , flv_real%valid_pair (4, 3, flv_born, test_model)
+    write (u, "(A,L1)") "3, 5 (2, 21) : " , flv_real%valid_pair (3, 5, flv_born, test_model)
+    write (u, "(A,L1)") "5, 3 (21, 2) : " , flv_real%valid_pair (5, 3, flv_born, test_model)
+    write (u, "(A,L1)") "4, 5 (-2, 21): " , flv_real%valid_pair (4, 5, flv_born, test_model)
+    write (u, "(A,L1)") "5, 4 (21, -2): " , flv_real%valid_pair (5, 4, flv_born, test_model)
+    write (u, "(A,L1)") "3, 6 (2, 21) : " , flv_real%valid_pair (3, 6, flv_born, test_model)
+    write (u, "(A,L1)") "6, 3 (21, 2) : " , flv_real%valid_pair (6, 3, flv_born, test_model)
+    write (u, "(A,L1)") "4, 6 (-2, 21): " , flv_real%valid_pair (4, 6, flv_born, test_model)
+    write (u, "(A,L1)") "6, 4 (21, -2): " , flv_real%valid_pair (6, 4, flv_born, test_model)
+    write (u, "(A,L1)") "5, 6 (21, 21): " , flv_real%valid_pair (5, 6, flv_born, test_model)
+    write (u, "(A,L1)") "6, 5 (21, 21): " , flv_real%valid_pair (6, 5, flv_born, test_model)
+    call flv_real%final ()
+    flv_real = [11, -11, 2, -2, 1, -1]
+    flv_real%n_in = 2
+    write (u, "(A)") "Real Flavors (exemplary g -> dd splitting): "
+    call flv_real%write (u)
+    write (u, "(A,L1)") "3, 4 (2, -2) : " , flv_real%valid_pair (3, 4, flv_born, test_model)
+    write (u, "(A,L1)") "4, 3 (-2, 2) : " , flv_real%valid_pair (4, 3, flv_born, test_model)
+    write (u, "(A,L1)") "3, 5 (2, 1)  : " , flv_real%valid_pair (3, 5, flv_born, test_model)
+    write (u, "(A,L1)") "5, 3 (1, 2)  : " , flv_real%valid_pair (5, 3, flv_born, test_model)
+    write (u, "(A,L1)") "4, 5 (-2, 1) : " , flv_real%valid_pair (4, 5, flv_born, test_model)
+    write (u, "(A,L1)") "5, 4 (1, -2) : " , flv_real%valid_pair (5, 4, flv_born, test_model)
+    write (u, "(A,L1)") "3, 6 (2, -1) : " , flv_real%valid_pair (3, 6, flv_born, test_model)
+    write (u, "(A,L1)") "6, 3 (-1, 2) : " , flv_real%valid_pair (6, 3, flv_born, test_model)
+    write (u, "(A,L1)") "4, 6 (-2, -1): " , flv_real%valid_pair (4, 6, flv_born, test_model)
+    write (u, "(A,L1)") "6, 4 (-1, -2): " , flv_real%valid_pair (6, 4, flv_born, test_model)
+    write (u, "(A,L1)") "5, 6 (1, -1) : " , flv_real%valid_pair (5, 6, flv_born, test_model)
+    write (u, "(A,L1)") "6, 5 (-1, 1) : " , flv_real%valid_pair (6, 5, flv_born, test_model)
 
   end subroutine fks_regions_1
 
