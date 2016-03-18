@@ -329,7 +329,7 @@ module @ID@_threshold
   integer, public :: nhel_max
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
-  type(momentum) :: p12, p35, p46
+  type(momentum) :: p12, p35, p46, ptop_onshell, ptopbar_onshell
   type(spinor) :: owf_t_4, owf_b_6, owf_e_1
   type(conjspinor) :: owf_t_3, owf_b_5, owf_e_2
   type(vector) :: owf_Wp_3, owf_Wm_4
@@ -410,13 +410,19 @@ contains
        amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * &
             ttv_formfactor (p3, p4, 1)
     else
+       ! TODO: (bcn 2016-03-18) use onshell_projection here?
        ttv_vec = ttv_formfactor (p35, p46, 1, ffi)
        ttv_ax = ttv_formfactor (p35, p46, 2, ffi)
        blob_Z_vec = gncup(1) * ttv_vec
        blob_Z_ax = gncup(2) * ttv_ax
-       if (OFFSHELL_STRATEGY < 0) then
-          owf_t_3 = ubar (sqrt (p35 * p35), p35, h_t)
-          owf_t_4 = v (sqrt (p46 * p46), p46, h_tbar)
+       if (factorized_computation) then
+          if (onshell_projection) then
+             owf_t_3 = ubar (sqrt (ptop_onshell * ptop_onshell), ptop_onshell, h_t)
+             owf_t_4 = v (sqrt (ptopbar_onshell * ptopbar_onshell), ptopbar_onshell, h_tbar)
+          else
+             owf_t_3 = ubar (sqrt (p35 * p35), p35, h_t)
+             owf_t_4 = v (sqrt (p46 * p46), p46, h_tbar)
+          end if
           amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
           amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * ttv_vec
           amp = - amp
@@ -451,7 +457,12 @@ contains
        owf_Wp_3 = conjg (eps (mass(24), p3, h_Wm))
        owf_b_5 = ubar (mass(5), p5, h_b)
     end if
-    me = f_fvl (gccq33, owf_b_5, owf_Wp_3) * u (sqrt(p35*p35), p35, h_t)
+    if (onshell_projection) then
+       me = f_fvl (gccq33, owf_b_5, owf_Wp_3) * &
+            u (sqrt(ptop_onshell*ptop_onshell), ptop_onshell, h_t)
+    else
+       me = f_fvl (gccq33, owf_b_5, owf_Wp_3) * u (sqrt(p35*p35), p35, h_t)
+    end if
   end function top_decay_born
 
   function anti_top_decay_born (h_tbar, h_Wp, h_bbar) result(me)
@@ -462,7 +473,12 @@ contains
        owf_Wm_4 = conjg (eps (mass(24), p4, h_Wp))
        owf_b_6 = v (mass(5), p6, h_bbar)
     end if
-    me = vbar (sqrt(p46*p46), p46, h_tbar) * f_vlf (gccq33, owf_Wm_4, owf_b_6)
+    if (onshell_projection) then
+       me = vbar (sqrt(ptopbar_onshell*ptopbar_onshell), &
+            ptopbar_onshell, h_tbar) * f_vlf (gccq33, owf_Wm_4, owf_b_6)
+    else
+       me = vbar (sqrt(p46*p46), p46, h_tbar) * f_vlf (gccq33, owf_Wm_4, owf_b_6)
+    end if
   end function anti_top_decay_born
 
   subroutine compute_born (k, ffi)
@@ -475,14 +491,14 @@ contains
     integer :: hi, h_t, h_tbar
     call set_production_momenta (k)
     call init_workspace ()
-    if (OFFSHELL_STRATEGY < 0) then
+    if (factorized_computation) then
        production_me = compute_production_me (ffi)
        born_decay_me = compute_decay_me ()
     end if
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
        ! TODO: (bcn 2016-02-08) even with OS < 0, we will need interference terms in the Born
-       if (OFFSHELL_STRATEGY < 0) then
+       if (factorized_computation) then
           do h_t = -1, 1, 2
              do h_tbar = -1, 1, 2
                 prod = production_me(s(1), s(2), h_t, h_tbar)
@@ -534,7 +550,6 @@ contains
     real(default), dimension(0:3,*), intent(in) :: k
     real(default) :: sqrts, scale_factor, mtop
     real(default), dimension(1:3) :: unit_vec
-    logical, parameter :: onshell_projection = .true.
     if (debug2_active (D_ME_METHODS)) then
        call msg_debug (D_ME_METHODS, "set_production_momenta")
        print *, 'k =    ', k(0:3,1:6)
@@ -563,10 +578,10 @@ contains
        !print *, 'unit_vec =    ', unit_vec !!! Debugging
        !print *, 'dot_product(unit_vec,unit_vec) =    ',&
         !dot_product(unit_vec,unit_vec) !!! Debugging
-       p35_onshell = [sqrts / 2, scale_factor * unit_vec]
+       ptop_onshell = [sqrts / 2, scale_factor * unit_vec]
        !print *, 'p35 =    ', p35 !!! Debugging
        !print *, 'p35**2 =    ', p35*p35 !!! Debugging
-       p46_onshell = [sqrts / 2, - scale_factor * unit_vec]
+       ptopbar_onshell = [sqrts / 2, - scale_factor * unit_vec]
        !print *, 'p46 =    ', p46 !!! Debugging
        !print *, 'p46**2 =    ', p46*p46 !!! Debugging
        !print *, 'p35 + p46 =    ', p35 + p46 !!! Debugging
@@ -611,7 +626,7 @@ contains
     integer, dimension(2) :: h_ass_t
     integer, dimension(n_prt) :: s
     integer :: i, hi, leg, other_leg, h_t, h_tbar, h_gl, h_W, h_b
-    if (OFFSHELL_STRATEGY >= 0)  call msg_fatal ('OFFSHELL_STRATEGY should be < 0')
+    if (.not. factorized_computation)  call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not factorized')
     call init_decay_and_production_momenta ()
     call init_workspace ()
     call compute_amplitudes ()
@@ -728,7 +743,6 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   logical :: real_computation, no_interference
   integer :: i, hi, n_total_hel
   real_computation = full_proc_number_particles_out () == 5
-  no_interference = OFFSHELL_STRATEGY == -3 .or. OFFSHELL_STRATEGY == -4
   i = full_proc_number_particles_out () + 2
   if (real_computation) then
      if (.not. allocated (amp_tree)) then

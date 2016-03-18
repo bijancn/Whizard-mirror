@@ -85,7 +85,7 @@ contains
        real(default) :: m1s
        real(default) :: Vtb
        real(default) :: wt_inv
-       real(default) :: nloop
+       real(default) :: nrqcd_order
        real(default) :: sh
        real(default) :: sf
        real(default) :: FF
@@ -130,7 +130,7 @@ contains
     par%m1s    = par_array(20)
     par%Vtb    = par_array(21)
     par%wt_inv = par_array(22)
-    par%nloop  = par_array(23)
+    par%nrqcd_order  = par_array(23)
     par%sh     = par_array(24)
     par%sf     = par_array(25)
     par%FF     = par_array(26)
@@ -238,7 +238,7 @@ contains
     call init_parameters &
          (mass(6), width(6), par%m1s, par%Vtb, par%wt_inv, &
           par%alphaemi, par%sw, par%alphas, par%mZ, par%mW, &
-          mass(5), par%sh, par%sf, par%nloop, par%FF, &
+          mass(5), par%sh, par%sf, par%nrqcd_order, par%FF, &
           par%offshell_strategy, par%v1, par%v2, par%scan_sqrts_min, &
           par%scan_sqrts_max, par%scan_sqrts_stepsize, mpole_fixed)
     call init_threshold_grids (par%test)
