@@ -57,10 +57,11 @@ SUBDIRS = \
   muli shower \
   user \
   threshold \
-  fks blha \
+  blha \
   gosam openloops \
   looptools \
   model_features \
+  fks \
   process_integration \
   matching \
   transforms \
