@@ -92,7 +92,12 @@ C once in Z/gamma/Higgs rest frame we control further kinematics by P2QQ for KTO
 c       PHI=0D0
 c       PHI=ACOS(P2QQ(1)/SQRT(P2QQ(2)**2+P2QQ(1)**2))
 c       IF(P2QQ(2).LT.0D0) PHI=2*PI-PHI
-        PHI=ATAN2(P2QQ(2),P2QQ(1))
+c       JRR: Catch numerical exceptions in boosts.
+        if (ABS(P2QQ(1)) < 1D-11 .AND. ABS(P2QQ(1)) < 1D-11) then
+           PHI=0
+        ELSE
+           PHI=ATAN2(P2QQ(2),P2QQ(1))
+        ENDIF
 
         CALL ROTPOX(THET,PHI,POUT)
         CALL BOSTDQ(-1,QQ,POUT,POUT)

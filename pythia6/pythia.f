@@ -42101,7 +42101,10 @@ C...Double precision declaration.
          AF(I) = 0.D0
          SBX = 1.D0
          DO 100 K = 0, MLFVEC(IFL)
-            AF(I) = AF(I) + SBX*AM(I,K,IFL)
+C...JRR: Catching arithmetic exception
+            IF(MEXVEC(IFL) .GE. I) THEN
+               AF(I) = AF(I) + SBX*AM(I,K,IFL)
+            ENDIF
             SBX = SB1*SBX
   100    CONTINUE
   110 CONTINUE
@@ -42356,7 +42359,10 @@ C...Double precision declaration.
          AF(I) = 0.D0
          SBX = 1.D0
          DO 100 K = 0, MLFVEC(IFL)
-            AF(I) = AF(I) + SBX*AM(I,K,IFL)
+C...JRR: Catching arithmetic exception
+            IF (MEXVEC(IFL) .GE. I) THEN
+               AF(I) = AF(I) + SBX*AM(I,K,IFL)
+            ENDIF
             SBX = SB1*SBX
   100    CONTINUE
   110 CONTINUE

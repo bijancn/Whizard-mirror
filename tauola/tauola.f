@@ -1,5 +1,5 @@
       SUBROUTINE JAKER(JAK)
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
 C     *********************
 C
 C **********************************************************************
@@ -91,8 +91,8 @@ C JAK=14-19 KKpi & Kpipi modes
 C JAK=20-21 eta pi pi; gamma pi pi modes
 C JAK=0 INCLUSIVE:  JAK=1-21
 
-        IMPLICIT double precision (A-H,O-Z)
-        double precision  H(4)
+      IMPLICIT double precision (A-H,O-Z)
+      double precision  H(4)
       double precision HX(4)
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
 
@@ -251,7 +251,7 @@ C     =====
       SUBROUTINE DEKAY1(IMOD,HH,ISGN)
 C     *******************************
 C THIS ROUTINE  SIMULATES TAU+  DECAY
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
       double precision            GAMPMC    ,GAMPER
@@ -351,7 +351,7 @@ C     =====
       SUBROUTINE DEKAY2(IMOD,HH,ISGN)
 C     *******************************
 C THIS ROUTINE  SIMULATES TAU-  DECAY
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
       double precision            GAMPMC    ,GAMPER
@@ -461,7 +461,7 @@ C KTO=100, PRINT FINAL REPORT (OPTIONAL).
 C
 C     called by : KORALZ
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
       double precision            GAMPMC    ,GAMPER
       COMMON / JAKI   /  JAK1,JAK2,JAKP,JAKM,KTOM
@@ -605,7 +605,7 @@ C THIS ROUTINE  SIMULATES TAU+-  DECAY
 C
 C     called by : DEXAY
 C ---------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / TAUBMC / GAMPMC(30),GAMPER(30),NEVDEC(30)
       double precision            GAMPMC    ,GAMPER
       COMMON / INOUT / INUT,IOUT
@@ -665,8 +665,8 @@ C INTO ELECTRON AND TWO NEUTRINOS
 C
 C     called by : DEXAY,DEXAY1
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
-        double precision  POL(4),HV(4),PWB(4),PNU(4),Q1(4),
+      IMPLICIT double precision (A-H,O-Z)
+      double precision  POL(4),HV(4),PWB(4),PNU(4),Q1(4),
      *                    Q2(4),PH(4),RN(1)
       DATA IWARM/0/
 C
@@ -706,7 +706,7 @@ C                      PWB   W-BOSON
 C                      Q1    MUON
 C                      Q2    MUON-NEUTRINO
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / INOUT / INUT,IOUT
       double precision POL(4),HV(4),PWB(4),PNU(4)
       double precision Q1(4),Q2(4),PH(4),RN(1)
@@ -744,7 +744,7 @@ C ----------------------------------------------------------------------
 C
 C     called by : DEXEL,(DEKAY,DEKAY1)
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / DECPAR / GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       double precision            GFERMI,GV,GA,CCABIB,SCABIB,GAMEL
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
@@ -847,7 +847,7 @@ C     =====
       END
       SUBROUTINE DADMMU(MODE,ISGN,HHV,PNU,PWB,Q1,Q2,PHX)
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -951,11 +951,11 @@ C XNX,XNA was flipped in parameters of dphsel and dphsmu
 C *********************************************************************
 C *   ELECTRON DECAY MODE                                             *
 C *********************************************************************
-        IMPLICIT double precision (A-H,O-Z)
-        double precision         PHX(4)
-        double precision  HVX(4),PAAX(4),XAX(4),QPX(4),XNX(4)
-        double precision  HV(4),PH(4),PAA(4),XA(4),QP(4),XN(4)
-        double precision  DGAMT
+      IMPLICIT double precision (A-H,O-Z)
+      double precision         PHX(4)
+      double precision  HVX(4),PAAX(4),XAX(4),QPX(4),XNX(4)
+      double precision  HV(4),PH(4),PAA(4),XA(4),QP(4),XN(4)
+      double precision  DGAMT
       IELMU=1
       CALL DRCMU(DGAMT,HV,PH,PAA,XA,QP,XN,IELMU)
       DO 7 K=1,4
@@ -973,8 +973,8 @@ C XNX,XNA was flipped in parameters of dphsel and dphsmu
 C *********************************************************************
 C *   MUON     DECAY MODE                                             *
 C *********************************************************************
-        IMPLICIT double precision (A-H,O-Z)
-        double precision         PHX(4)
+      IMPLICIT double precision (A-H,O-Z)
+      double precision         PHX(4)
       double precision  HVX(4),PAAX(4),XAX(4),QPX(4),XNX(4)
       double precision  HV(4),PH(4),PAA(4),XA(4),QP(4),XN(4)
       double precision  DGAMT
@@ -991,7 +991,7 @@ C *********************************************************************
       DGAMX=DGAMT
       END
       SUBROUTINE DRCMU(DGAMT,HV,PH,PAA,XA,QP,XN,IELMU)
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
 C ----------------------------------------------------------------------
 * IT SIMULATES E,MU CHANNELS OF TAU  DECAY IN ITS REST FRAME WITH
 * QED ORDER ALPHA CORRECTIONS
@@ -1165,7 +1165,7 @@ C PARTIAL WIDTH CONSISTS OF PHASE SPACE AND AMPLITUDE
       DGAMT=1/(2.*AMTAX)*AMPLIT*PHSPAC
       END
       SUBROUTINE DAMPRY(ITDKRC,XK0DEC,XK,XA,QP,XN,AMPLIT,HV)
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
 C ----------------------------------------------------------------------
 C IT CALCULATES MATRIX ELEMENT FOR THE
 C TAU --> MU(E) NU NUBAR DECAY MODE
@@ -1202,7 +1202,7 @@ C     SQM2 - value for S=0                                             *
 C     see Eqs. (2.9)-(2.10) from CJK ( Nucl.Phys.B(1991) )             *
 C **********************************************************************
 C
-        IMPLICIT double precision(A-H,O-Z)
+      IMPLICIT double precision(A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -1281,7 +1281,7 @@ C     SEE EQS. (2.2),(2.4)-(2.5) FROM CJK (NUCL.PHYS.B351(1991)70      *
 C     AND (C.2) FROM JK (NUCL.PHYS.B320(1991)20 )                      *
 C **********************************************************************
 C
-        IMPLICIT double precision(A-H,O-Z)
+      IMPLICIT double precision(A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -1383,8 +1383,8 @@ C IN TAU REST FRAME
 C OUTPUT FOUR MOMENTA: PNU   TAUNEUTRINO,
 C                      PPI   PION CHARGED
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
-        double precision  POL(4),HV(4),PNU(4),PPI(4),RN(1)
+      IMPLICIT double precision (A-H,O-Z)
+      double precision  POL(4),HV(4),PNU(4),PPI(4),RN(1)
 CC
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1410,7 +1410,7 @@ C     =====
       END
       SUBROUTINE DADMPI(MODE,ISGN,HV,PPI,PNU)
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -1489,7 +1489,7 @@ C                      PRO   RHO
 C                      PIC   PION CHARGED
 C                      PIZ   PION ZERO
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / INOUT / INUT,IOUT
       double precision  POL(4),HV(4),PRO(4),PNU(4),PIC(4),PIZ(4),RN(1)
       DATA IWARM/0/
@@ -1527,7 +1527,7 @@ C     =====
       END
       SUBROUTINE DADMRO(MODE,ISGN,HHV,PNU,PRO,PIC,PIZ)
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -1633,7 +1633,7 @@ C ----------------------------------------------------------------------
 C IT SIMULATES RHO DECAY IN TAU REST FRAME WITH
 C Z-AXIS ALONG RHO MOMENTUM
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -1730,7 +1730,7 @@ C ----------------------------------------------------------------------
 *                      PIPL  PION PLUS  (OR PI-)
 *                      (PIPL,PIM1) FORM A RHO
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / INOUT / INUT,IOUT
       double precision  POL(4),HV(4),PAA(4),PNU(4),
      *                  PIM1(4),PIM2(4),PIPL(4),RN(1)
@@ -1767,7 +1767,7 @@ C     =====
 C ----------------------------------------------------------------------
 * A1 DECAY UNWEIGHTED EVENTS
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -1868,7 +1868,7 @@ C ----------------------------------------------------------------------
 * IT SIMULATES A1  DECAY IN TAU REST FRAME WITH
 * Z-AXIS ALONG A1  MOMENTUM
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -1909,8 +1909,8 @@ C IN TAU REST FRAME
 C OUTPUT FOUR MOMENTA: PNU   TAUNEUTRINO,
 C                      PKK   KAON CHARGED
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
-        double precision  POL(4),HV(4),PNU(4),PKK(4),RN(1)
+      IMPLICIT double precision (A-H,O-Z)
+      double precision  POL(4),HV(4),PNU(4),PKK(4),RN(1)
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1937,7 +1937,7 @@ C     =====
       SUBROUTINE DADMKK(MODE,ISGN,HV,PKK,PNU)
 C ----------------------------------------------------------------------
 C FZ
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -2022,7 +2022,7 @@ C                      PKC   K CHARGED
 C                      PIC   PION CHARGED
 C                      PIZ   PION ZERO
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / INOUT / INUT,IOUT
       double precision  POL(4),HV(4),PKS(4),PNU(4),PKK(4),PPI(4),RN(1)
       DATA IWARM/0/
@@ -2061,7 +2061,7 @@ C     =====
       END
       SUBROUTINE DADMKS(MODE,ISGN,HHV,PNU,PKS,PKK,PPI,JKST)
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -2180,7 +2180,7 @@ C Z-AXIS ALONG KAON* MOMENTUM
 C     JKST=10 FOR K* --->K0 + PI+-
 C     JKST=20 FOR K* --->K+- + PI0
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -2354,7 +2354,7 @@ C ----------------------------------------------------------------------
 C IT SIMULATES MULTIPI DECAY IN TAU REST FRAME WITH
 C Z-AXIS OPPOSITE TO NEUTRINO MOMENTUM
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -2516,7 +2516,7 @@ C  5-pion contribution related to 4-pion cross section
 C
 C     Called by DPHNPI
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -2610,7 +2610,7 @@ C  5-pion contribution related to 4-pion cross section
 C
 C     Called by DPHNPI
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -2683,7 +2683,7 @@ C ----------------------------------------------------------------------
 * IT SIMULATES THREE PI (K) DECAY IN THE TAU REST FRAME
 * Z-AXIS ALONG HADRONIC SYSTEM
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       PARAMETER (NMODE=15,NM1=0,NM2=1,NM3=8,NM4=2,NM5=1,NM6=3)
       COMMON / TAUDCD /IDFFIN(9,NMODE),MULPIK(NMODE)
      &                ,NAMES
@@ -2730,7 +2730,7 @@ C ----------------------------------------------------------------------
 * 1-6  - matrix element for K pi pi, K K pi decay modes
 *  7   - pi- pi0 gamma matrix element
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -2947,7 +2947,7 @@ C ----------------------------------------------------------------------
 C
 C     called by : DPHSAA
 C ----------------------------------------------------------------------
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -3031,7 +3031,7 @@ C HV IS DEFINED FOR TAU-    WITH GAMMA=B+HV*POL
 C ****************************************************************
 C     G-FUNCTION USED TO INRODUCE ENERGY DEPENDENCE IN A1 WIDTH
 C ****************************************************************
-        IMPLICIT double precision (A-H,O-Z)
+      IMPLICIT double precision (A-H,O-Z)
       COMMON / PARMAS / AMTAU,AMNUTA,AMEL,AMNUE,AMMU,AMNUMU
      *                 ,AMPIZ,AMPI,AMRO,GAMRO,AMA1,GAMA1
      *                 ,AMK,AMKZ,AMKST,GAMKST
@@ -3051,9 +3051,9 @@ C
 C **********************************************************
 C     P-WAVE BREIT-WIGNER  FOR K*
 C **********************************************************
-        IMPLICIT double precision (A-H,O-Z)
-        double precision S,M,G
-        double precision PI,PIM,QS,QM,W,GS,MK
+      IMPLICIT double precision (A-H,O-Z)
+      double precision S,M,G
+      double precision PI,PIM,QS,QM,W,GS,MK
       SAVE PI,PIM,MK
       DATA INIT /0/
       P(A,B,C)=SQRT(ABS(ABS(((A+B-C)**2-4.*A*B)/4./A)
@@ -3081,11 +3081,11 @@ C -------  BREIT-WIGNER -----------------------
 C **********************************************************
 C     P-WAVE BREIT-WIGNER  FOR RHO
 C **********************************************************
-        IMPLICIT double precision (A-H,O-Z)
-        double precision S,M,G
-        double precision PI,PIM,QS,QM,W,GS,radicand
-        DATA INIT /0/
-        SAVE PI, PIM
+      IMPLICIT double precision (A-H,O-Z)
+      double precision S,M,G
+      double precision PI,PIM,QS,QM,W,GS,radicand
+      DATA INIT /0/
+      SAVE PI, PIM
 C ------------ PARAMETERS --------------------
         IF (INIT.EQ.0) THEN
            INIT=1

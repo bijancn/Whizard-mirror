@@ -41,7 +41,8 @@ libfks_la_SOURCES = \
   phs_fks.f90
 
 libfks_ut_la_SOURCES = \
-  phs_fks_uti.f90 phs_fks_ut.f90
+  phs_fks_uti.f90 phs_fks_ut.f90 \
+  fks_regions_uti.f90 fks_regions_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = fks.nw
@@ -67,9 +68,11 @@ module_lists = \
   ../testing/Modules \
   ../system/Modules \
   ../parsing/Modules \
+  ../user/Modules \
   ../rng/Modules \
   ../physics/Modules \
   ../qft/Modules \
+  ../model_features/Modules \
   ../types/Modules \
   ../particles/Modules \
   ../matrix_elements/Modules \
@@ -121,7 +124,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../phase_space -I../variables -I../threshold -I../lhapdf -I../pdf_builtin -I../fastjet
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../user -I../rng -I../physics -I../qft -I../model_features -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../phase_space -I../variables -I../threshold -I../lhapdf -I../pdf_builtin -I../fastjet
 
 
 ########################################################################

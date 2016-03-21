@@ -382,7 +382,7 @@ C--   Print info
      & ,T81,'*')
       END
       SUBROUTINE PHOTOS(ID)
-        IMPLICIT double precision(A-H,O-Z)
+      IMPLICIT double precision(A-H,O-Z)
 C.----------------------------------------------------------------------
 C.
 C.    PHOTOS:  General search routine + _GET + _SET
