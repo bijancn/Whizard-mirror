@@ -113,12 +113,14 @@ end module @ID@_anti_top_real_decay
 module @ID@_threshold
   use kinds
   use diagnostics
+  use numeric_utils
   use constants
   use omega95
   use parameters_SM_tt_threshold
   use ttv_formfactors
   use @ID@_top_real_decay, top_real_decay_calculate_amplitude => calculate_amplitude
   use @ID@_anti_top_real_decay, anti_top_real_decay_calculate_amplitude => calculate_amplitude
+  use, intrinsic :: iso_fortran_env, only: output_unit
   implicit none
   private
   public :: init, calculate_blob, compute_born, &
@@ -454,8 +456,12 @@ contains
     integer, intent(in) :: h_t
     integer, intent(in), optional :: h_Wm, h_b
     if (present (h_Wm) .and. present (h_b)) then
-       owf_Wp_3 = conjg (eps (mass(24), p3, h_Wm))
-       owf_b_5 = ubar (mass(5), p5, h_b)
+       if (onshell_projection) then
+          call msg_bug ("implement me")
+       else
+          owf_Wp_3 = conjg (eps (mass(24), p3, h_Wm))
+          owf_b_5 = ubar (mass(5), p5, h_b)
+       end if
     end if
     if (onshell_projection) then
        me = f_fvl (gccq33, owf_b_5, owf_Wp_3) * &
@@ -497,8 +503,10 @@ contains
     end if
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
-       ! TODO: (bcn 2016-02-08) even with OS < 0, we will need interference terms in the Born
+       ! TODO: (bcn 2016-02-08) in the matched factorized computation we might
+       !        need interference terms in the Born
        if (factorized_computation) then
+          ! THIS GIVES BIG DIFFERENCES  !!! debugging
           do h_t = -1, 1, 2
              do h_tbar = -1, 1, 2
                 prod = production_me(s(1), s(2), h_t, h_tbar)
@@ -510,6 +518,7 @@ contains
              end do
           end do
        else
+          ! THIS WORKS  !!! debugging
           call compute_production_owfs (hi)
           if (.not. onshell_tops (p3, p4))  call compute_decay_owfs (hi)
           amp_blob(hi) = - calculate_blob (ffi) ! 4 vertices, 3 propagators
@@ -535,7 +544,7 @@ contains
           end do
        end do
     end do
-  end function compute_decay_me 
+  end function compute_decay_me
 
   subroutine init_workspace ()
     if (onshell_tops (p3, p4)) then
@@ -548,10 +557,8 @@ contains
 
   subroutine set_production_momenta (k)
     real(default), dimension(0:3,*), intent(in) :: k
-    real(default) :: sqrts, scale_factor, mtop
-    real(default), dimension(1:3) :: unit_vec
-    if (debug2_active (D_ME_METHODS)) then
-       call msg_debug (D_ME_METHODS, "set_production_momenta")
+    if (debug2_active (D_THRESHOLD)) then
+       call msg_debug (D_THRESHOLD, "set_production_momenta")
        print *, 'k =    ', k(0:3,1:6)
     end if
     p1 = - k(:,1) ! incoming
@@ -565,28 +572,29 @@ contains
        p35 = p3 + p5
        p46 = p4 + p6
     end if
-    if (onshell_projection) then
-       ! these are the top momenta
-       mtop = ttv_mtpole (p12*p12)
-       !print *, 'mtop =    ', mtop !!! Debugging
-       !print *, 'mtop**2 =    ', mtop**2 !!! Debugging
-       sqrts = - p12%t
-       !print *, 'sqrts =    ', sqrts !!! Debugging
-       scale_factor = sqrt(sqrts**2 - 4 * mtop**2)/2
-       !print *, 'scale_factor =    ', scale_factor !!! Debugging
-       unit_vec = p35%x / sqrt(dot_product(p35%x, p35%x))
-       !print *, 'unit_vec =    ', unit_vec !!! Debugging
-       !print *, 'dot_product(unit_vec,unit_vec) =    ',&
-        !dot_product(unit_vec,unit_vec) !!! Debugging
-       ptop_onshell = [sqrts / 2, scale_factor * unit_vec]
-       !print *, 'p35 =    ', p35 !!! Debugging
-       !print *, 'p35**2 =    ', p35*p35 !!! Debugging
-       ptopbar_onshell = [sqrts / 2, - scale_factor * unit_vec]
-       !print *, 'p46 =    ', p46 !!! Debugging
-       !print *, 'p46**2 =    ', p46*p46 !!! Debugging
-       !print *, 'p35 + p46 =    ', p35 + p46 !!! Debugging
-    end if
+    if (onshell_projection)  call project_momenta_onshell (p12)
   end subroutine set_production_momenta
+
+  subroutine project_momenta_onshell (p12)
+    type(momentum), intent(in) :: p12
+    real(default) :: sqrts, scale_factor, mtop
+    real(default), dimension(1:3) :: unit_vec
+    integer :: u
+    u = output_unit
+    mtop = ttv_mtpole (p12*p12)
+    sqrts = - p12%t
+    scale_factor = sqrt (sqrts**2 - 4 * mtop**2) / 2
+    unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
+    ptop_onshell = [sqrts / 2, scale_factor * unit_vec]
+    ptopbar_onshell = [sqrts / 2, - scale_factor * unit_vec]
+    if (debug_active (D_THRESHOLD)) then
+       call assert (u, p12 == - (ptop_onshell + ptopbar_onshell), &
+            "momentum conservation with a flip")
+       call assert_equal (u, ptop_onshell * ptop_onshell, mtop**2, "mass onshell")
+       call assert_equal (u, ptopbar_onshell * ptopbar_onshell, mtop**2, "mass onshell")
+       call assert_equal (u, dot_product(unit_vec, unit_vec), one, "unit vector length")
+    end if
+  end subroutine project_momenta_onshell
 
   elemental function abs2 (c) result (c2)
     real(default) :: c2
@@ -740,7 +748,7 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   real(c_default_float), intent(out) :: amp2
   real(c_default_float), dimension(0:3,*), intent(in) :: p
   complex(default), dimension(:), allocatable, save :: amp_summed
-  logical :: real_computation, no_interference
+  logical :: real_computation
   integer :: i, hi, n_total_hel
   real_computation = full_proc_number_particles_out () == 5
   i = full_proc_number_particles_out () + 2
@@ -760,7 +768,7 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
      end if
      amp_tree = zero
      amp_summed = zero
-     if (.not. no_interference) then
+     if (INTERFERENCE) then
         USE_FF = .false.
         call full_proc_new_event (p)
         do hi = 1, full_proc_number_spin_states()
@@ -780,10 +788,10 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
         call compute_born (p, MATCHED_EXPANDED)
         amp2 = amp2 + expanded_amp2 (amp_tree, amp_blob)
      case default
-        if (no_interference) then
-           amp2 = real (sum (amp_blob))
-        else
+        if (INTERFERENCE) then
            amp2 = real (sum (abs2 (amp_tree + amp_blob)))
+        else
+           amp2 = real (sum (abs2 (amp_blob)))
         end if
      end select
      if (test_ward)  amp2 = 0
