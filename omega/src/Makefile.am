@@ -96,6 +96,9 @@ comphep_lexer.mli: comphep_lexer.ml comphep_parser.cmi
 vertex_lexer.mli: vertex_lexer.ml vertex_parser.cmi
 	$(OCAMLC) -i $< | $(EGREP) 'val (token|init_position)' >$@
 
+uFO_lexer.mli: uFO_lexer.ml uFO_parser.cmi
+	$(OCAMLC) -i $< | $(EGREP) 'val (token|init_position)' >$@
+
 endif
 
 MYPRECIOUS = $(OMEGA_DERIVED_CAML)
@@ -161,7 +164,7 @@ if OCAML_AVAILABLE
 
 @am__include@ @am__quote@Makefile.depend_ocaml@am__quote@
 
-PARSERS = cascade comphep vertex
+PARSERS = cascade comphep vertex uFO
 
 Makefile.depend_ocaml: $(OMEGA_CAML_PRIMARY)
 	@rm -f $@
