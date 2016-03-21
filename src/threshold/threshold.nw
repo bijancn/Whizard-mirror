@@ -10683,12 +10683,12 @@ end module ttv_formfactors
   public :: AS_LL_SOFT
   public :: AS_USOFT
   public :: AS_HARD
-  public :: P0_DEPENDENT
-  public :: SWITCHOFF
+  public :: P0_DEPENDENT_RESUMMED
+  public :: SWITCHOFF_RESUMMED
   public :: TOPPIK_RESUMMED
 <<ttv formfactors: global variables>>=
   real(default) :: RESCALE_F, MU_SOFT, AS_SOFT, AS_LL_SOFT, NUSTAR_FIXED
-  logical :: NUSTAR_DYNAMIC, SWITCHOFF, TOPPIK_RESUMMED, P0_DEPENDENT !, match_to_NLO, need_J0
+  logical :: NUSTAR_DYNAMIC, SWITCHOFF_RESUMMED, TOPPIK_RESUMMED, P0_DEPENDENT_RESUMMED !, match_to_NLO, need_J0
   real(default) :: B0
   real(default) :: B1
 
@@ -10995,14 +10995,25 @@ end module ttv_formfactors
 <<ttv formfactors: procedures>>=
   subroutine setup_flags (ff_in, offshell_strategy_in)
     integer, intent(in) :: ff_in, offshell_strategy_in
-    SWITCHOFF                          = ff_in < 0
+    SWITCHOFF_RESUMMED                 = ff_in < 0
     TOPPIK_RESUMMED                    = ff_in <= 1
-    P0_DEPENDENT                       = ff_in == 0
+    P0_DEPENDENT_RESUMMED              = ff_in == 0
     NLO                                = btest(offshell_strategy_in, 0)
     FACTORIZED_COMPUTATION             = btest(offshell_strategy_in, 1)
     INTERFERENCE                       = btest(offshell_strategy_in, 2)
     ONSHELL_PROJECTION                 = btest(offshell_strategy_in, 3)
     NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS = btest(offshell_strategy_in, 4)
+    call msg_debug (D_THRESHOLD, "SWITCHOFF_RESUMMED", SWITCHOFF_RESUMMED)
+    call msg_debug (D_THRESHOLD, "TOPPIK_RESUMMED", TOPPIK_RESUMMED)
+    call msg_debug (D_THRESHOLD, "P0_DEPENDENT_RESUMMED", P0_DEPENDENT_RESUMMED)
+    call msg_debug (D_THRESHOLD, "NLO", NLO)
+    call msg_debug (D_THRESHOLD, "FACTORIZED_COMPUTATION", &
+         FACTORIZED_COMPUTATION)
+    call msg_debug (D_THRESHOLD, "INTERFERENCE", INTERFERENCE)
+    call msg_debug (D_THRESHOLD, "ONSHELL_PROJECTION", &
+         ONSHELL_PROJECTION)
+    call msg_debug (D_THRESHOLD, "NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS", &
+         NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS)
   end subroutine setup_flags
 
 @ %def setup_flags
@@ -11035,40 +11046,44 @@ end module ttv_formfactors
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: vec_type, FF_mode
     real(default) :: f
-    if (.not. INITIALIZED_PARS .or. .not. USE_FF) then
-       FF = one
-    else
+    if (INITIALIZED_PARS .and. USE_FF) then
        select case (FF_mode)
-       case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, RESUMMED_SWITCHOFF_P0CONSTANT)
+       case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
+          RESUMMED_SWITCHOFF_P0CONSTANT)
           FF = resummed_formfactor (ps, vec_type)
        case (MATCHED_EXPANDED)
           f = f_switch_off (v_matching (ps%sqrts))
           ! TODO: (bcn 2016-02-08) can be simplified
-          FF = - nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.) &
-               + nonrel_expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
+          FF = - expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.) &
+               + expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
                  (1-f) * AS_HARD, ps, vec_type, no_p0=.true.) &
-               - nonrel_expanded_formfactor (f * AS_HARD, f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
+               - expanded_formfactor (f * AS_HARD, &
+                 f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
        case (EXPANDED_HARD_P0DEPENDENT)
-          FF = nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type)
+          FF = expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type)
        case (EXPANDED_HARD_P0CONSTANT)
-          FF = nonrel_expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.)
+          FF = expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.)
        case (EXPANDED_SOFT_HARD_P0CONSTANT)
           f = f_switch_off (v_matching (ps%sqrts))
-          FF = nonrel_expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + (1-f) * AS_HARD, ps, vec_type, no_p0=.true.)
+          FF = expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
+               (1-f) * AS_HARD, ps, vec_type, no_p0=.true.)
        case (EXPANDED_SOFT_P0CONSTANT)
-          FF = nonrel_expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
+          FF = expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
        case (EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
           f = f_switch_off (v_matching (ps%sqrts))
-          FF = nonrel_expanded_formfactor (f * AS_HARD, f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
+          FF = expanded_formfactor (f * AS_HARD, &
+               f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
        case (RESUMMED_ANALYTIC_LL)
           FF = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts), ps, vec_type)
        case (EXTRA_TREE)
-          FF = 2
+          FF = two
        case default
-          !!! disables signal component and thus gives tree level result in
-          !!! modes with tree level interference
+          !!! disables signal component and thus gives tree level result
+          !!! in modes with tree level interference
           FF = one
        end select
+    else
+       FF = one
     end if
     if (debug2_active (D_THRESHOLD)) then
        call msg_debug2 (D_THRESHOLD, "INITIALIZED_PARS", INITIALIZED_PARS)
@@ -11088,7 +11103,7 @@ end module ttv_formfactors
     complex(default) :: c
     c = one
     if (.not. INITIALIZED_FF .or. .not. ps%inside_grid) return
-    if (P0_DEPENDENT) then
+    if (P0_DEPENDENT_RESUMMED) then
       if (vec_type == 2) return
       call interpolate_linear (sq_grid, p_grid, p0_grid, ff_grid(:,:,:,vec_type), &
         ps%sqrts, ps%p, ps%p0, c)
@@ -11100,7 +11115,7 @@ end module ttv_formfactors
 @
 <<ttv formfactors: procedures>>=
   !!! leading nonrelativistic O(alphas^1) contribution (-> expansion of resummation)
-  pure function nonrel_expanded_formfactor (alphas_hard, alphas_soft, ps, vec_type, no_p0) result (FF)
+  pure function expanded_formfactor (alphas_hard, alphas_soft, ps, vec_type, no_p0) result (FF)
     complex(default) :: FF
     real(default), intent(in) :: alphas_hard, alphas_soft
     type(phase_space_point_t), intent(in) :: ps
@@ -11131,7 +11146,7 @@ end module ttv_formfactors
                  (-ps%p + ps%mpole * v + p0) + ieps) / (two * ps%p)
     end if
     FF = one + alphas_soft * contrib_from_potential + alphas_hard * shift_from_hard_current
-  end function nonrel_expanded_formfactor
+  end function expanded_formfactor
 
 @
 <<ttv formfactors: procedures>>=
@@ -11199,7 +11214,7 @@ end module ttv_formfactors
     allocate (p_grid(POINTS_P))
     read (u) p_grid
     POINTS_P0 = ff_shape(3)
-    if (P0_DEPENDENT) then
+    if (P0_DEPENDENT_RESUMMED) then
        call init_p0_grid (p_grid, POINTS_P0)
     end if
     allocate (ff_grid_sp(POINTS_SQ,POINTS_P,POINTS_P0,2))
@@ -11238,7 +11253,7 @@ end module ttv_formfactors
   pure function parameters_string () result (str)
     character(len(parameters_ref)) :: str
     str = char(M1S) // " " // char(GAM) // " " // char(NRQCD_ORDER) // " " // char(RESCALE_H) &
-           // " " // char(RESCALE_F) // " " // char(P0_DEPENDENT) &
+           // " " // char(RESCALE_F) // " " // char(P0_DEPENDENT_RESUMMED) &
            //  " " // char(sqrts_min) &
            // " " // char(sqrts_max) // " " // char(sqrts_it)
            !// " " // char(matching_version) // " " // char(ff_type) &
@@ -11262,7 +11277,7 @@ end module ttv_formfactors
     AS_SOFT = running_as (MU_SOFT, AS_HARD, MU_HARD, NRQCD_ORDER, NF)
     AS_LL_SOFT = running_as (MU_SOFT, AS_HARD, MU_HARD, 0, NF)
     AS_USOFT = running_as (MU_USOFT, AS_HARD, MU_HARD, 0, NF) !!! LL here
-    if (SWITCHOFF) then 
+    if (SWITCHOFF_RESUMMED) then
        f = f_switch_off (v_matching (sqrts))
        AS_SOFT = AS_SOFT * f
        AS_LL_SOFT = AS_LL_SOFT * f
@@ -11592,7 +11607,7 @@ end module ttv_formfactors
     complex(default), dimension(POINTS_P) :: ff_analytic
     integer :: i_p
     ff_analytic = [(formfactor_LL_analytic (a_soft, sqrts, p_grid(i_p), vec_type), i_p=1, POINTS_P)]
-    if (P0_DEPENDENT) call ff_p_spline%init (p_grid, ff_analytic)
+    if (P0_DEPENDENT_RESUMMED) call ff_p_spline%init (p_grid, ff_analytic)
   end function scan_formfactor_over_p_LL_analytic
 
 @
@@ -11672,7 +11687,7 @@ end module ttv_formfactors
     end if
     p_toppik = xpp(1:POINTS_P)
     ff_toppik = zff(1:POINTS_P)
-    if (P0_DEPENDENT) then
+    if (P0_DEPENDENT_RESUMMED) then
       call ff_p_spline%init (p_toppik, ff_toppik)
     else
       !!! TOPPIK output p-grid scales with en above ~ 4 GeV:
@@ -11683,7 +11698,7 @@ end module ttv_formfactors
         call toppik_spline%dealloc ()
       end if
       !!! TOPPIK output includes tree level ~ 1, a_soft @ LL in current coefficient!
-      if (SWITCHOFF) then
+      if (SWITCHOFF_RESUMMED) then
          f = f_switch_off (v_matching (sqrts))
          alphas_hard = AS_HARD * f
       else
@@ -11745,12 +11760,12 @@ end module ttv_formfactors
         end do UNTIL_STABLE
         call cpu_time (t2)
         !!!  include p0 dependence by an integration over the p0-independent FF
-        if (P0_DEPENDENT)  ff_grid(i_sq,1:n_p_p0dep,:,vec_type) = &
+        if (P0_DEPENDENT_RESUMMED)  ff_grid(i_sq,1:n_p_p0dep,:,vec_type) = &
              scan_formfactor_over_p_p0 (sq_grid(i_sq), vec_type)
         call cpu_time (t3)
         t_toppik = t_toppik + t2 - t1
         t_p0_dep = t_p0_dep + t3 - t2
-        if (P0_DEPENDENT)  call ff_p_spline%dealloc ()
+        if (P0_DEPENDENT_RESUMMED)  call ff_p_spline%dealloc ()
       end do
       call msg_show_progress (i_sq, POINTS_SQ)
     end do ENERGY_SCAN
@@ -11761,7 +11776,7 @@ end module ttv_formfactors
     if (any (ff_unstable))  call handle_TOPPIK_instabilities (ff_grid, ff_unstable)
     if (allocated(Vmatrix))  deallocate(Vmatrix)
     if (allocated(q_grid))  deallocate(q_grid)
-    if (P0_DEPENDENT)  call trim_p_grid (n_p_p0dep)
+    if (P0_DEPENDENT_RESUMMED)  call trim_p_grid (n_p_p0dep)
     INITIALIZED_FF = .true.
   end subroutine scan_formfactor_over_phase_space_grid
 
@@ -11780,7 +11795,7 @@ end module ttv_formfactors
     POINTS_P = 360
     allocate (p_grid(POINTS_P))
     p_grid = p_grid_from_TOPPIK ()
-    if (P0_DEPENDENT) then
+    if (P0_DEPENDENT_RESUMMED) then
       if (EXT_VINPUT) then
         ! This is only for setup of the p_grid not the form factor
         p_grid = p_grid_from_TOPPIK (173.0_default)
@@ -11989,7 +12004,7 @@ end module ttv_formfactors
 !                     G0p_tree(en,q_grid(i_q),MTPOLE,GAM)
       end do
     end if
-    if (SWITCHOFF) then
+    if (SWITCHOFF_RESUMMED) then
        f = f_switch_off (v_matching (sqrts))
        alphas_hard = AS_HARD * f
     else
@@ -12561,44 +12576,76 @@ end module ttv_formfactors_uti
     write (u, "(A)")  "* Test output: ttv_formfactors_2"
     write (u, "(A)")  "*   Purpose: Test flags"
     write (u, "(A)")
-    ! RESUMMED_SWITCHOFF_P0CONSTANT + NLO
+
+    write (u, "(A)") "RESUMMED_SWITCHOFF_P0CONSTANT + NLO"
     call setup_flags (-2, 1)
-    call assert (u, SWITCHOFF)
-    call assert (u, TOPPIK_RESUMMED)
-    call assert (u, .not. P0_DEPENDENT)
-    call assert (u, NLO)
-    call assert (u, .not. FACTORIZED_COMPUTATION)
-    call assert (u, .not. INTERFERENCE)
-    call assert (u, .not. ONSHELL_PROJECTION)
-    call assert (u, .not. NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS)
+    call assert (u, SWITCHOFF_RESUMMED, "SWITCHOFF_RESUMMED")
+    call assert (u, TOPPIK_RESUMMED, "TOPPIK_RESUMMED")
+    call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
+    call assert (u, NLO, "NLO")
+    call assert (u, .not. FACTORIZED_COMPUTATION, ".not. FACTORIZED_COMPUTATION")
+    call assert (u, .not. INTERFERENCE, ".not. INTERFERENCE")
+    call assert (u, .not. ONSHELL_PROJECTION, ".not. ONSHELL_PROJECTION")
+    call assert (u, .not. NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS, ".not. NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS")
 
-    ! MATCHED + FACTORIZATION
+    write (u, "(A)") "MATCHED + FACTORIZATION"
     call setup_flags (-1, 0+2)
-    call assert (u, .not. NLO)
-    call assert (u, TOPPIK_RESUMMED)
-    call assert (u, FACTORIZED_COMPUTATION)
+    call assert (u, .not. NLO, ".not. NLO")
+    call assert (u, TOPPIK_RESUMMED, "TOPPIK_RESUMMED")
+    call assert (u, FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
 
-    ! RESUMMED_P0DEPENDENT + NLO + FACTORIZATION
+    write (u, "(A)") "RESUMMED_P0DEPENDENT + NLO + FACTORIZATION"
     call setup_flags (0, 1+2)
-    call assert (u, .not. SWITCHOFF)
-    call assert (u, TOPPIK_RESUMMED)
-    call assert (u, P0_DEPENDENT)
-    call assert (u, NLO)
-    call assert (u, FACTORIZED_COMPUTATION)
+    call assert (u, .not. SWITCHOFF_RESUMMED, ".not. SWITCHOFF_RESUMMED")
+    call assert (u, TOPPIK_RESUMMED, "TOPPIK_RESUMMED")
+    call assert (u, P0_DEPENDENT_RESUMMED, "P0_DEPENDENT_RESUMMED")
+    call assert (u, NLO, "NLO")
+    call assert (u, FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
 
-    ! RESUMMED_P0CONSTANT + INTERFERENCE
+    write (u, "(A)") "RESUMMED_P0CONSTANT + INTERFERENCE"
     call setup_flags (1, 0+0+4)
-    call assert (u, .not. SWITCHOFF)
-    call assert (u, TOPPIK_RESUMMED)
-    call assert (u, .not. P0_DEPENDENT)
-    call assert (u, .not. NLO)
-    call assert (u, .not. FACTORIZED_COMPUTATION)
-    call assert (u, INTERFERENCE)
+    call assert (u, .not. SWITCHOFF_RESUMMED, ".not. SWITCHOFF_RESUMMED")
+    call assert (u, TOPPIK_RESUMMED, "TOPPIK_RESUMMED")
+    call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
+    call assert (u, .not. NLO, ".not. NLO")
+    call assert (u, .not. FACTORIZED_COMPUTATION, ".not. FACTORIZED_COMPUTATION")
+    call assert (u, INTERFERENCE, "INTERFERENCE")
 
+    write (u, "(A)") "EXPANDED_HARD_P0DEPENDENT"
     call setup_flags (3, 1+0+4)
+    call assert (u, .not. SWITCHOFF_RESUMMED, ".not. SWITCHOFF_RESUMMED")
+    call assert (u, .not. TOPPIK_RESUMMED, ".not. TOPPIK_RESUMMED")
+    call assert (u, .not. P0_DEPENDENT_RESUMMED, "P0_DEPENDENT_RESUMMED")
+    call assert (u, NLO, "NLO")
+    call assert (u, .not. FACTORIZED_COMPUTATION, ".not. FACTORIZED_COMPUTATION")
+    call assert (u, INTERFERENCE, "INTERFERENCE")
+
+    write (u, "(A)") "EXPANDED_HARD_P0CONSTANT"
     call setup_flags (4, 0+2+4)
+    call assert (u, .not. SWITCHOFF_RESUMMED, ".not. SWITCHOFF_RESUMMED")
+    call assert (u, .not. TOPPIK_RESUMMED, ".not. TOPPIK_RESUMMED")
+    call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
+    call assert (u, .not. NLO, ".not. NLO")
+    call assert (u, FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
+    call assert (u, INTERFERENCE, "INTERFERENCE")
+
+    write (u, "(A)") "EXPANDED_SOFT_P0CONSTANT"
     call setup_flags (5, 1+2+4)
+    call assert (u, .not. SWITCHOFF_RESUMMED, ".not. SWITCHOFF_RESUMMED")
+    call assert (u, .not. TOPPIK_RESUMMED, ".not. TOPPIK_RESUMMED")
+    call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
+    call assert (u, NLO, "NLO")
+    call assert (u, FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
+    call assert (u, INTERFERENCE, "INTERFERENCE")
+
+    write (u, "(A)") "EXPANDED_SOFT_SWITCHOFF_P0CONSTANT"
     call setup_flags (6, 0+0+0+8)
+    call assert (u, SWITCHOFF_RESUMMED, "SWITCHOFF_RESUMMED")
+    call assert (u, .not. TOPPIK_RESUMMED, ".not. TOPPIK_RESUMMED")
+    call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
+    call assert (u, NLO, "NLO")
+    call assert (u, FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
+    call assert (u, INTERFERENCE, "INTERFERENCE")
     call setup_flags (7, 0+0+4+8)
     call setup_flags (8, 0+2+0+8)
     call setup_flags (9, 1+0+0+8)
