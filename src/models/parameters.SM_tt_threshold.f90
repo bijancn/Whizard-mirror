@@ -56,7 +56,7 @@ module parameters_sm_tt_threshold
 
   public :: import_from_whizard, model_update_alpha_s, &
        ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole, ttv_wtpole, &
-       onshell_tops, expanded_amp2, top_width_lo, top_width_nlo
+       onshell_tops, expanded_amp2, top_width_lo, top_width_nlo, abs2
 
 contains
 
@@ -313,12 +313,10 @@ contains
        w = last_w
        return
     else
-       select case (OFFSHELL_STRATEGY)
-       case (0, -1, -3)
-          nlo = .false.
-       case (-2, -4)
-          nlo = .true.
-       case default
+       if (threshold%settings%factorized_computation) then
+          nlo = threshold%settings%nlo
+       else
+          ! TODO: (bcn 2016-03-21) is this really what we want?
           select case (ff)
           case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
                 RESUMMED_SWITCHOFF_P0CONSTANT, RESUMMED_ANALYTIC_LL)
@@ -326,7 +324,7 @@ contains
           case default
              nlo = .true.
           end select
-       end select
+       end if
        if (nlo) then
           w = top_width_nlo (m)
        else
@@ -359,4 +357,11 @@ contains
                 amp_tree * conjg (amp_blob) + &
                 amp_blob * conjg (amp_tree))
   end function expanded_amp2
+
+  elemental function abs2 (c) result (c2)
+    real(default) :: c2
+    complex(default), intent(in) :: c
+    c2 = real (c * conjg(c))
+  end function abs2
+
 end module parameters_sm_tt_threshold

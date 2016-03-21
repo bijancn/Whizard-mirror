@@ -412,13 +412,13 @@ contains
        amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * &
             ttv_formfactor (p3, p4, 1)
     else
-       ! TODO: (bcn 2016-03-18) use onshell_projection here?
+       ! TODO: (bcn 2016-03-18) use onshell_projection for form factor?
        ttv_vec = ttv_formfactor (p35, p46, 1, ffi)
        ttv_ax = ttv_formfactor (p35, p46, 2, ffi)
        blob_Z_vec = gncup(1) * ttv_vec
        blob_Z_ax = gncup(2) * ttv_ax
-       if (factorized_computation) then
-          if (onshell_projection) then
+       if (threshold%settings%factorized_computation) then
+          if (threshold%settings%onshell_projection) then
              owf_t_3 = ubar (sqrt (ptop_onshell * ptop_onshell), ptop_onshell, h_t)
              owf_t_4 = v (sqrt (ptopbar_onshell * ptopbar_onshell), ptopbar_onshell, h_tbar)
           else
@@ -456,14 +456,14 @@ contains
     integer, intent(in) :: h_t
     integer, intent(in), optional :: h_Wm, h_b
     if (present (h_Wm) .and. present (h_b)) then
-       if (onshell_projection) then
+       if (threshold%settings%onshell_projection) then
           call msg_bug ("implement me")
        else
           owf_Wp_3 = conjg (eps (mass(24), p3, h_Wm))
           owf_b_5 = ubar (mass(5), p5, h_b)
        end if
     end if
-    if (onshell_projection) then
+    if (threshold%settings%onshell_projection) then
        me = f_fvl (gccq33, owf_b_5, owf_Wp_3) * &
             u (sqrt(ptop_onshell*ptop_onshell), ptop_onshell, h_t)
     else
@@ -479,7 +479,7 @@ contains
        owf_Wm_4 = conjg (eps (mass(24), p4, h_Wp))
        owf_b_6 = v (mass(5), p6, h_bbar)
     end if
-    if (onshell_projection) then
+    if (threshold%settings%onshell_projection) then
        me = vbar (sqrt(ptopbar_onshell*ptopbar_onshell), &
             ptopbar_onshell, h_tbar) * f_vlf (gccq33, owf_Wm_4, owf_b_6)
     else
@@ -497,7 +497,7 @@ contains
     integer :: hi, h_t, h_tbar
     call set_production_momenta (k)
     call init_workspace ()
-    if (factorized_computation) then
+    if (threshold%settings%factorized_computation) then
        production_me = compute_production_me (ffi)
        born_decay_me = compute_decay_me ()
     end if
@@ -505,18 +505,32 @@ contains
        s = table_spin_states(:,hi)
        ! TODO: (bcn 2016-02-08) in the matched factorized computation we might
        !        need interference terms in the Born
-       if (factorized_computation) then
-          ! THIS GIVES BIG DIFFERENCES  !!! debugging
-          do h_t = -1, 1, 2
-             do h_tbar = -1, 1, 2
-                prod = production_me(s(1), s(2), h_t, h_tbar)
-                dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
-                dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
-                amp_blob(hi) = amp_blob(hi) + &
-                     abs2 (prod) * abs2 (top_propagators (ffi)) * &
-                     abs2 (dec1) * abs2 (dec2)
+       if (threshold%settings%factorized_computation) then
+          if (threshold%settings%helicity_approximated) then
+             ! THIS GIVES BIG DIFFERENCES  !!! debugging
+             do h_t = -1, 1, 2
+                do h_tbar = -1, 1, 2
+                   print *, 'h_t, h_tbar, hi, s =    ', h_t, h_tbar, hi, s !!! Debugging
+                   prod = production_me(s(1), s(2), h_t, h_tbar)
+                   dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+                   dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
+                   amp_blob(hi) = amp_blob(hi) + &
+                        abs2 (prod) * abs2 (top_propagators (ffi)) * &
+                        abs2 (dec1) * abs2 (dec2)
+                end do
              end do
-          end do
+          else
+             do h_t = -1, 1, 2
+                do h_tbar = -1, 1, 2
+                   prod = production_me(s(1), s(2), h_t, h_tbar)
+                   dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+                   dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
+                   amp_blob(hi) = amp_blob(hi) + &
+                        prod * top_propagators (ffi) * &
+                        dec1 * dec2
+                end do
+             end do
+          end if
        else
           ! THIS WORKS  !!! debugging
           call compute_production_owfs (hi)
@@ -572,7 +586,7 @@ contains
        p35 = p3 + p5
        p46 = p4 + p6
     end if
-    if (onshell_projection)  call project_momenta_onshell (p12)
+    if (threshold%settings%onshell_projection)  call project_momenta_onshell (p12)
   end subroutine set_production_momenta
 
   subroutine project_momenta_onshell (p12)
@@ -595,12 +609,6 @@ contains
        call assert_equal (u, dot_product(unit_vec, unit_vec), one, "unit vector length")
     end if
   end subroutine project_momenta_onshell
-
-  elemental function abs2 (c) result (c2)
-    real(default) :: c2
-    complex(default), intent(in) :: c
-    c2 = real (c * conjg(c))
-  end function abs2
 
   function compute_production_me (ffi) result (production_me)
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
@@ -634,7 +642,7 @@ contains
     integer, dimension(2) :: h_ass_t
     integer, dimension(n_prt) :: s
     integer :: i, hi, leg, other_leg, h_t, h_tbar, h_gl, h_W, h_b
-    if (.not. factorized_computation)  call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not factorized')
+    if (.not. threshold%settings%factorized_computation)  call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not factorized')
     call init_decay_and_production_momenta ()
     call init_workspace ()
     call compute_amplitudes ()
@@ -768,7 +776,7 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
      end if
      amp_tree = zero
      amp_summed = zero
-     if (INTERFERENCE) then
+     if (threshold%settings%interference) then
         USE_FF = .false.
         call full_proc_new_event (p)
         do hi = 1, full_proc_number_spin_states()
@@ -788,10 +796,14 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
         call compute_born (p, MATCHED_EXPANDED)
         amp2 = amp2 + expanded_amp2 (amp_tree, amp_blob)
      case default
-        if (INTERFERENCE) then
+        if (threshold%settings%interference) then
            amp2 = real (sum (abs2 (amp_tree + amp_blob)))
         else
-           amp2 = real (sum (abs2 (amp_blob)))
+           if (.not. threshold%settings%helicity_approximated) then
+              amp2 = real (sum (abs2 (amp_blob)))
+           else
+              amp2 = real (sum (amp_blob))
+           end if
         end if
      end select
      if (test_ward)  amp2 = 0

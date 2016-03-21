@@ -10619,9 +10619,9 @@ module ttv_formfactors
 
 <<ttv formfactors: parameters>>
 
-<<ttv formfactors: global variables>>
-
 <<ttv formfactors: types>>
+
+<<ttv formfactors: global variables>>
 
 <<ttv formfactors: interfaces>>
 
@@ -10631,6 +10631,57 @@ contains
 
 end module ttv_formfactors
 @ %def ttv_formfactors
+<<ttv formfactors: public>>=
+  public :: settings_t
+<<ttv formfactors: types>>=
+  type :: settings_t
+     logical :: helicity_approximated
+     logical :: ext_vinput
+     ! look what is set by initialized_parameters, bundle them in a class and rename to initialized
+     logical :: initialized_parameters
+     ! this belongs to init_threshold_phase_space_grid in phase_space_grid_t
+     logical :: initialized_ps
+     ! this belongs to the ff_grid_t, its usefulness is doubtful
+     logical :: initialized_ff
+     logical :: mpole_dynamic
+     integer :: offshell_strategy
+     logical :: factorized_computation
+     logical :: interference
+     logical :: onshell_projection
+     logical :: nlo
+     logical :: no_nlo_width_in_signal_propagators
+  contains
+   <<ttv formfactors: settings: TBP>>
+  end type settings_t
+
+
+@ %def settings_t
+@
+@ Use singleton pattern instead of global variables. At least shows
+where the variables are from.
+<<ttv formfactors: public>>=
+  public :: threshold
+<<ttv formfactors: global variables>>=
+  type(threshold_t) :: threshold
+<<ttv formfactors: public>>=
+  public :: threshold_t
+<<ttv formfactors: types>>=
+  type :: threshold_t
+     type(settings_t) :: settings
+  contains
+   <<ttv formfactors: threshold: TBP>>
+  end type threshold_t
+
+@ %def threshold_t
+@
+<<ttv formfactors: threshold: TBP>>=
+  procedure :: init => threshold_init
+<<ttv formfactors: procedures>>=
+  pure subroutine threshold_init (threshold)
+    class(threshold_t), intent(out) :: threshold
+  end subroutine threshold_init
+
+@ %def threshold_init
 <<ttv formfactors: parameters>>=
   integer, parameter, public :: THR_POS_WP = 3
   integer, parameter, public :: THR_POS_WM = 4
@@ -10660,14 +10711,6 @@ end module ttv_formfactors
        (55./3. - 16.*z3)*CF*TR*NF + (20./9.*TR*NF)**2
   complex(default), parameter :: ieps = imago*tiny_10
 
-<<ttv formfactors: global variables>>=
-  logical :: EXT_VINPUT = .true.
-  logical :: INITIALIZED_PARS, INITIALIZED_PS, INITIALIZED_FF, INITIALIZED_J0
-  logical :: MPOLE_DYNAMIC
-  integer :: OFFSHELL_STRATEGY
-  logical, public :: FACTORIZED_COMPUTATION, INTERFERENCE
-  logical, public :: ONSHELL_PROJECTION, NLO, NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS
-
 @ [[gam_m1s]] is only used for the scale nustar
 <<ttv formfactors: global variables>>=
   real(default) :: M1S, GAM, GAM_M1S
@@ -10688,7 +10731,7 @@ end module ttv_formfactors
   public :: TOPPIK_RESUMMED
 <<ttv formfactors: global variables>>=
   real(default) :: RESCALE_F, MU_SOFT, AS_SOFT, AS_LL_SOFT, NUSTAR_FIXED
-  logical :: NUSTAR_DYNAMIC, SWITCHOFF_RESUMMED, TOPPIK_RESUMMED, P0_DEPENDENT_RESUMMED !, match_to_NLO, need_J0
+  logical :: NUSTAR_DYNAMIC, SWITCHOFF_RESUMMED, TOPPIK_RESUMMED, P0_DEPENDENT_RESUMMED
   real(default) :: B0
   real(default) :: B1
 
@@ -10700,7 +10743,6 @@ end module ttv_formfactors
   integer :: POINTS_SQ, POINTS_P, POINTS_P0, n_p_p0dep, n_q
   real(default), dimension(:), allocatable :: sq_grid, p_grid, p0_grid, q_grid, p_grid_fine
   complex(default), dimension(:,:,:,:), allocatable :: ff_grid
-  complex(default), dimension(:,:,:), allocatable :: J0_grid
   complex(single), dimension(:,:,:,:,:), allocatable :: Vmatrix
 
 @ Explicit range and step size of the sqrts-grid relative to 2*M1S:
@@ -10721,8 +10763,6 @@ end module ttv_formfactors
 @
 <<ttv formfactors: public>>=
   public :: init_parameters
-<<ttv formfactors: public>>=
-  public :: init_threshold_grids
 <<ttv formfactors: public>>=
   public :: m1s_to_mpole
 @
@@ -10894,17 +10934,17 @@ end module ttv_formfactors
     real(default), intent(in) :: scan_sqrts_stepsize
     logical, intent(in) :: mpole_fixed
     if (debug_active (D_THRESHOLD))  call show_input()
-    INITIALIZED_PARS = .false.
+    threshold%settings%initialized_parameters = .false.
     M1S = m1s_in
-    MPOLE_DYNAMIC = .not. mpole_fixed
-    OFFSHELL_STRATEGY = int (offshell_strategy_in)
+    threshold%settings%mpole_dynamic = .not. mpole_fixed
+    threshold%settings%offshell_strategy = int (offshell_strategy_in)
     NRQCD_ORDER = 1
     if ( int(nrqcd_order_in) > NRQCD_ORDER ) then
       call msg_warning ("reset to highest available NRQCD_ORDER = " // char(NRQCD_ORDER))
     else
       NRQCD_ORDER = int(nrqcd_order_in)
     end if
-    EXT_VINPUT = EXT_VINPUT .and. NRQCD_ORDER > 0
+    threshold%settings%ext_vinput = threshold%settings%ext_vinput .and. NRQCD_ORDER > 0
     v1 = v1_in
     v2 = v2_in
     sqrts_min = scan_sqrts_min
@@ -10915,8 +10955,8 @@ end module ttv_formfactors
     RESCALE_H    = h_in
     MU_HARD = M1S * RESCALE_H
     AS_HARD   = running_as (MU_HARD, az, mz, 2, NF)
-    call setup_flags (int(ff_in), OFFSHELL_STRATEGY)
-    if (NLO) then
+    call setup_flags (int(ff_in), threshold%settings%offshell_strategy)
+    if (threshold%settings%nlo) then
        GAM_M1S = top_width_sm_qcd_nlo (one / aemi, sw, m1s, mw, mb, AS_HARD) + gam_inv
     else
        GAM_M1S = top_width_sm_lo (one / aemi, sw, Vtb, m1s, mw, mb) + gam_inv
@@ -10952,14 +10992,14 @@ end module ttv_formfactors
     mtpole_init = MTPOLE
     mpole_out = mtpole_init
     !!! compute the total top width from t->bW decay plus optional invisible width
-    if (NLO) then
+    if (threshold%settings%nlo) then
        GAM = top_width_sm_qcd_nlo (one / aemi, sw, MTPOLE, mw, mb, AS_HARD) + gam_inv
     else
        GAM = top_width_sm_lo (one / aemi, sw, Vtb, MTPOLE, mw, mb) + gam_inv
     end if
     gam_out = GAM
 
-    INITIALIZED_PARS = .true.
+    threshold%settings%initialized_parameters = .true.
   contains
     <<ttv formfactors: init parameters: subroutines>>
   end subroutine init_parameters
@@ -10993,30 +11033,34 @@ end module ttv_formfactors
 <<ttv formfactors: public>>=
   public :: setup_flags
 <<ttv formfactors: procedures>>=
+  ! TODO: (bcn 2016-03-21) break this up into a part regarding the
+  ! FF grid and a part regarding the settings => TBP that shit
   subroutine setup_flags (ff_in, offshell_strategy_in)
     integer, intent(in) :: ff_in, offshell_strategy_in
     SWITCHOFF_RESUMMED                 = ff_in < 0
     TOPPIK_RESUMMED                    = ff_in <= 1
     P0_DEPENDENT_RESUMMED              = ff_in == 0
-    NLO                                = btest(offshell_strategy_in, 0)
-    FACTORIZED_COMPUTATION             = btest(offshell_strategy_in, 1)
-    INTERFERENCE                       = btest(offshell_strategy_in, 2)
-    ONSHELL_PROJECTION                 = btest(offshell_strategy_in, 3)
-    NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS = btest(offshell_strategy_in, 4)
+    threshold%settings%nlo                                = btest(offshell_strategy_in, 0)
+    threshold%settings%factorized_computation             = btest(offshell_strategy_in, 1)
+    threshold%settings%interference                       = btest(offshell_strategy_in, 2)
+    threshold%settings%onshell_projection                 = btest(offshell_strategy_in, 3)
+    threshold%settings%no_nlo_width_in_signal_propagators = btest(offshell_strategy_in, 4)
     call msg_debug (D_THRESHOLD, "SWITCHOFF_RESUMMED", SWITCHOFF_RESUMMED)
     call msg_debug (D_THRESHOLD, "TOPPIK_RESUMMED", TOPPIK_RESUMMED)
     call msg_debug (D_THRESHOLD, "P0_DEPENDENT_RESUMMED", P0_DEPENDENT_RESUMMED)
-    call msg_debug (D_THRESHOLD, "NLO", NLO)
-    call msg_debug (D_THRESHOLD, "FACTORIZED_COMPUTATION", &
-         FACTORIZED_COMPUTATION)
-    call msg_debug (D_THRESHOLD, "INTERFERENCE", INTERFERENCE)
-    call msg_debug (D_THRESHOLD, "ONSHELL_PROJECTION", &
-         ONSHELL_PROJECTION)
-    call msg_debug (D_THRESHOLD, "NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS", &
-         NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS)
+    call msg_debug (D_THRESHOLD, "threshold%settings%nlo", threshold%settings%nlo)
+    call msg_debug (D_THRESHOLD, "threshold%settings%factorized_computation", &
+         threshold%settings%factorized_computation)
+    call msg_debug (D_THRESHOLD, "threshold%settings%interference", threshold%settings%interference)
+    call msg_debug (D_THRESHOLD, "threshold%settings%onshell_projection", &
+         threshold%settings%onshell_projection)
+    call msg_debug (D_THRESHOLD, "threshold%settings%no_nlo_width_in_signal_propagators", &
+         threshold%settings%no_nlo_width_in_signal_propagators)
   end subroutine setup_flags
 
 @ %def setup_flags
+<<ttv formfactors: public>>=
+  public :: init_threshold_grids
 <<ttv formfactors: procedures>>=
   subroutine init_threshold_grids (test)
     real(default), intent(in) :: test
@@ -11028,12 +11072,11 @@ end module ttv_formfactors
       call msg_message ("TESTING ONLY: Skip threshold initialization and use tree-level SM.")
       return
     end if
-    if (.not. INITIALIZED_PARS) call msg_fatal ("init_threshold_grid: parameters not initialized!")
+    if (.not. threshold%settings%initialized_parameters) call msg_fatal ("init_threshold_grid: parameters not initialized!")
     !!! !!! !!! MAC OS X and BSD don't load the global module with parameter values stored
     !!! if (parameters_ref == parameters_string ()) return
     call dealloc_grids ()
     if (TOPPIK_RESUMMED) call init_formfactor_grid ()
-    ! if (need_J0) call scan_J0_over_phase_space_grid ()
     parameters_ref = parameters_string ()
   end subroutine init_threshold_grids
 
@@ -11046,7 +11089,7 @@ end module ttv_formfactors
     type(phase_space_point_t), intent(in) :: ps
     integer, intent(in) :: vec_type, FF_mode
     real(default) :: f
-    if (INITIALIZED_PARS .and. USE_FF) then
+    if (threshold%settings%initialized_parameters .and. USE_FF) then
        select case (FF_mode)
        case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
           RESUMMED_SWITCHOFF_P0CONSTANT)
@@ -11086,7 +11129,7 @@ end module ttv_formfactors
        FF = one
     end if
     if (debug2_active (D_THRESHOLD)) then
-       call msg_debug2 (D_THRESHOLD, "INITIALIZED_PARS", INITIALIZED_PARS)
+       call msg_debug2 (D_THRESHOLD, "threshold%settings%initialized_parameters", threshold%settings%initialized_parameters)
        call msg_debug2 (D_THRESHOLD, "USE_FF", USE_FF)
        call msg_debug2 (D_THRESHOLD, "FF_mode", FF_mode)
        call msg_debug2 (D_THRESHOLD, "FF", FF)
@@ -11102,7 +11145,7 @@ end module ttv_formfactors
     integer, intent(in) :: vec_type
     complex(default) :: c
     c = one
-    if (.not. INITIALIZED_FF .or. .not. ps%inside_grid) return
+    if (.not. threshold%settings%initialized_ff .or. .not. ps%inside_grid) return
     if (P0_DEPENDENT_RESUMMED) then
       if (vec_type == 2) return
       call interpolate_linear (sq_grid, p_grid, p0_grid, ff_grid(:,:,:,vec_type), &
@@ -11125,7 +11168,7 @@ end module ttv_formfactors
     complex(default) :: v, contrib_from_potential
     logical :: nop0
     FF = one
-    if (.not. INITIALIZED_PARS .or. vec_type == AXIAL) return
+    if (.not. threshold%settings%initialized_parameters .or. vec_type == AXIAL) return
     nop0 = .false.; if (present (no_p0))  nop0 = no_p0
     v = sqrts_to_v (ps%sqrts)
     if (nop0) then
@@ -11153,7 +11196,7 @@ end module ttv_formfactors
   subroutine init_formfactor_grid ()
     type(string_t) :: ff_file
     call msg_debug (D_THRESHOLD, "init_formfactor_grid")
-    INITIALIZED_FF = .false.
+    threshold%settings%initialized_ff = .false.
     ff_file = "SM_tt_threshold.grid"
     call msg_message ()
     call msg_message ("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
@@ -11169,8 +11212,8 @@ end module ttv_formfactors
     call msg_message ("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
     call msg_message ()
     call read_formfactor_grid (ff_file)
-    if (.not. INITIALIZED_FF) then
-      if (.not. INITIALIZED_PS) call init_threshold_phase_space_grid ()
+    if (.not. threshold%settings%initialized_ff) then
+      if (.not. threshold%settings%initialized_ps) call init_threshold_phase_space_grid ()
       call scan_formfactor_over_phase_space_grid ()
       call write_formfactor_grid (ff_file)
     end if
@@ -11223,8 +11266,8 @@ end module ttv_formfactors
     ff_grid = cmplx (ff_grid_sp, kind=default)
     close (u, iostat=st)
     if (st > 0)  call msg_fatal ("close " // char(ff_file) // ": iostat = " // char(st))
-    INITIALIZED_PS = .true.
-    INITIALIZED_FF = .true.
+    threshold%settings%initialized_ps = .true.
+    threshold%settings%initialized_ff = .true.
   end subroutine read_formfactor_grid
 
 @
@@ -11232,7 +11275,7 @@ end module ttv_formfactors
   subroutine write_formfactor_grid (ff_file)
     type(string_t), intent(in) :: ff_file
     integer :: u, st
-    if (.not. INITIALIZED_FF) then
+    if (.not. threshold%settings%initialized_ff) then
       call msg_warning ("write_formfactor_grid: no grids initialized!")
       return
     end if
@@ -11266,7 +11309,7 @@ end module ttv_formfactors
     real(default) :: nu_soft, f
     logical :: only_once_for_fixed_nu, already_done
     real(default), save :: last_sqrts = - one
-    already_done = INITIALIZED_PARS .and. &
+    already_done = threshold%settings%initialized_parameters .and. &
          nearly_equal (sqrts, last_sqrts, rel_smallness=1E-6_default)
     only_once_for_fixed_nu = .not. NUSTAR_DYNAMIC .and. MTPOLE > zero
     if (only_once_for_fixed_nu .or. already_done) return
@@ -11384,7 +11427,7 @@ end module ttv_formfactors
     complex(default) :: c
     real(default) :: en
     c = one
-    if (.not. INITIALIZED_PARS) return
+    if (.not. threshold%settings%initialized_parameters) return
     en = sqrts_to_en (sqrts, MTPOLE)
     select case (vec_type)
       case (1)
@@ -11471,7 +11514,7 @@ end module ttv_formfactors
     integer, intent(in) :: vec_type
     complex(default) :: c
     c = one
-    if (.not. INITIALIZED_PARS) return
+    if (.not. threshold%settings%initialized_parameters) return
     select case (vec_type)
       case (1)
         c = formfactor_LL_analytic_p0_swave (CF*a_soft, ps%en, ps%p, ps%p0, ps%mpole, GAM)
@@ -11546,7 +11589,7 @@ end module ttv_formfactors
     real(default), intent(in) :: sqrts
     real(default) :: mpole
     mpole = mtpole_init
-    if (MPOLE_DYNAMIC) then
+    if (threshold%settings%mpole_dynamic) then
        mpole = M1S * ( 1. + deltaM(sqrts) )
     else
        mpole = M1S
@@ -11777,7 +11820,7 @@ end module ttv_formfactors
     if (allocated(Vmatrix))  deallocate(Vmatrix)
     if (allocated(q_grid))  deallocate(q_grid)
     if (P0_DEPENDENT_RESUMMED)  call trim_p_grid (n_p_p0dep)
-    INITIALIZED_FF = .true.
+    threshold%settings%initialized_ff = .true.
   end subroutine scan_formfactor_over_phase_space_grid
 
 @
@@ -11796,7 +11839,7 @@ end module ttv_formfactors
     allocate (p_grid(POINTS_P))
     p_grid = p_grid_from_TOPPIK ()
     if (P0_DEPENDENT_RESUMMED) then
-      if (EXT_VINPUT) then
+      if (threshold%settings%ext_vinput) then
         ! This is only for setup of the p_grid not the form factor
         p_grid = p_grid_from_TOPPIK (173.0_default)
         call import_Vmatrices ()
@@ -11808,8 +11851,7 @@ end module ttv_formfactors
     else
       POINTS_P0 = 1
     end if
-    !if (need_J0) call finer_grid (p_grid(1:n_p_p0dep), p_grid_fine)
-    INITIALIZED_PS = .true.
+    threshold%settings%initialized_ps = .true.
   end subroutine init_threshold_phase_space_grid
 
 @
@@ -11858,10 +11900,8 @@ end module ttv_formfactors
     if ( allocated( p_grid) ) deallocate(  p_grid )
     if ( allocated(p0_grid) ) deallocate( p0_grid )
     if ( allocated(ff_grid) ) deallocate( ff_grid )
-    if ( allocated(J0_grid) ) deallocate( J0_grid )
-    INITIALIZED_PS = .false.
-    INITIALIZED_FF = .false.
-    INITIALIZED_J0 = .false.
+    threshold%settings%initialized_ps = .false.
+    threshold%settings%initialized_ff = .false.
   end subroutine dealloc_grids
 
 @
@@ -11981,10 +12021,11 @@ end module ttv_formfactors
     call msg_warning ("DEPRECATED FEATURE: " // &
          "p0 dependence as implemented breaks gauge invariance!")
     call msg_debug (D_THRESHOLD, "scan_formfactor_over_p_p0")
-    call msg_debug (D_THRESHOLD, "EXT_VINPUT", EXT_VINPUT)
+    call msg_debug (D_THRESHOLD, "threshold%settings%ext_vinput", &
+         threshold%settings%ext_vinput)
     en = sqrts_to_en (sqrts, MTPOLE)
     call msg_debug (D_THRESHOLD, "en", en)
-    if (EXT_VINPUT) then
+    if (threshold%settings%ext_vinput) then
        call msg_debug (D_THRESHOLD, "Allocate and compute Vmat and Tvec")
       allocate (Vmat(POINTS_P0,n_p_p0dep,n_q))
       allocate (Tvec(n_q))
@@ -12018,7 +12059,7 @@ end module ttv_formfactors
        do i_p0 = 1, POINTS_P0
           p0 = p0_grid(i_p0)
           call ps%init_nonrel (sqrts, p, p0)
-          if (EXT_VINPUT) then
+          if (threshold%settings%ext_vinput) then
              !!! Andre's matrix summation
              q_integral = sum (Vmat(i_p0,i_p,:) * Tvec)
           else if (NRQCD_ORDER > 0) then
@@ -12123,7 +12164,7 @@ end module ttv_formfactors
                  call msg_message ("and restart WHIZARD.")
                  call msg_terminate ()
                case ("c")
-                 EXT_VINPUT = .false.
+                 threshold%settings%ext_vinput = .false.
                  return
                case default
                  call msg_fatal ("unknown option " // flag)
@@ -12268,41 +12309,6 @@ end module ttv_formfactors
                  !!! on-shell subtraction: UV divergence cancels
 !                 + 0.5_default*( dF1 + dF2 + m*( dM1 + dM2 ) )
   end function formfactor_ttv_relativistic_nlo
-
-@
-<<ttv formfactors: procedures>>=
-  subroutine scan_J0_over_phase_space_grid ()
-    integer :: i_sq, i_p, i_p0
-    type(phase_space_point_t) :: ps
-    complex(default) :: J0
-    complex(default) :: J0_LoopTools
-    external J0_LoopTools
-    if (.not. INITIALIZED_PS)  call init_threshold_phase_space_grid ()
-    if (.not. allocated (J0_grid))  allocate (J0_grid(POINTS_SQ,size (p_grid_fine),POINTS_P0))
-    do i_sq = 1, POINTS_SQ
-      do i_p = 1, size(p_grid_fine)
-        do i_p0 = 1, POINTS_P0
-          call ps%init_nonrel (sq_grid(i_sq), p_grid_fine(i_p), p0_grid(i_p0))
-!          J0_grid(i_sq,i_p,i_p0) = J0_LoopTools (ps%p2, ps%k2, ps%q2, ps%m2)
-          J0 = J0_LoopTools (ps%p2, ps%k2, ps%q2, ps%m2)
-          J0_grid(i_sq,i_p,i_p0) = formfactor_ttv_relativistic_nlo (one, ps, J0) - one
-        end do
-      end do
-    end do
-    INITIALIZED_J0 = .true.
-  end subroutine scan_J0_over_phase_space_grid
-
-@
-<<ttv formfactors: procedures>>=
-  pure function J0_LoopTools_interpolate (ps) result (J0)
-    type(phase_space_point_t), intent(in) :: ps
-    complex(default) :: J0
-    J0 = zero
-    if (.not. INITIALIZED_J0) return
-    if (.not. ps%inside_grid) return
-    call interpolate_linear (sq_grid, p_grid_fine, p0_grid, J0_grid, &
-                               ps%sqrts, ps%p, ps%p0, J0)
-  end function J0_LoopTools_interpolate
 
 @
 <<ttv formfactors: procedures>>=
@@ -12582,102 +12588,102 @@ end module ttv_formfactors_uti
     call assert (u, SWITCHOFF_RESUMMED, "SWITCHOFF_RESUMMED")
     call assert (u, TOPPIK_RESUMMED, "TOPPIK_RESUMMED")
     call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
-    call assert (u, NLO, "NLO")
-    call assert (u, .not. FACTORIZED_COMPUTATION, ".not. FACTORIZED_COMPUTATION")
-    call assert (u, .not. INTERFERENCE, ".not. INTERFERENCE")
-    call assert (u, .not. ONSHELL_PROJECTION, ".not. ONSHELL_PROJECTION")
-    call assert (u, .not. NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS, ".not. NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS")
+    call assert (u, threshold%settings%nlo, "threshold%settings%nlo")
+    call assert (u, .not. threshold%settings%factorized_computation, ".not. threshold%settings%factorized_computation")
+    call assert (u, .not. threshold%settings%interference, ".not. threshold%settings%interference")
+    call assert (u, .not. threshold%settings%onshell_projection, ".not. threshold%settings%onshell_projection")
+    call assert (u, .not. threshold%settings%no_nlo_width_in_signal_propagators, ".not. threshold%settings%no_nlo_width_in_signal_propagators")
 
     write (u, "(A)") "MATCHED + FACTORIZATION"
     call setup_flags (-1, 0+2)
-    call assert (u, .not. NLO, ".not. NLO")
+    call assert (u, .not. threshold%settings%nlo, ".not. threshold%settings%nlo")
     call assert (u, TOPPIK_RESUMMED, "TOPPIK_RESUMMED")
-    call assert (u, FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
+    call assert (u, threshold%settings%factorized_computation, "threshold%settings%factorized_computation")
 
     write (u, "(A)") "RESUMMED_P0DEPENDENT + NLO + FACTORIZATION"
     call setup_flags (0, 1+2)
     call assert (u, .not. SWITCHOFF_RESUMMED, ".not. SWITCHOFF_RESUMMED")
     call assert (u, TOPPIK_RESUMMED, "TOPPIK_RESUMMED")
     call assert (u, P0_DEPENDENT_RESUMMED, "P0_DEPENDENT_RESUMMED")
-    call assert (u, NLO, "NLO")
-    call assert (u, FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
+    call assert (u, threshold%settings%nlo, "threshold%settings%nlo")
+    call assert (u, threshold%settings%factorized_computation, "threshold%settings%factorized_computation")
 
     write (u, "(A)") "RESUMMED_P0CONSTANT + INTERFERENCE"
     call setup_flags (1, 0+0+4)
     call assert (u, .not. SWITCHOFF_RESUMMED, ".not. SWITCHOFF_RESUMMED")
     call assert (u, TOPPIK_RESUMMED, "TOPPIK_RESUMMED")
     call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
-    call assert (u, .not. NLO, ".not. NLO")
-    call assert (u, .not. FACTORIZED_COMPUTATION, ".not. FACTORIZED_COMPUTATION")
-    call assert (u, INTERFERENCE, "INTERFERENCE")
+    call assert (u, .not. threshold%settings%nlo, ".not. threshold%settings%nlo")
+    call assert (u, .not. threshold%settings%factorized_computation, ".not. threshold%settings%factorized_computation")
+    call assert (u, threshold%settings%interference, "threshold%settings%interference")
 
     write (u, "(A)") "EXPANDED_HARD_P0DEPENDENT"
     call setup_flags (3, 1+0+4)
     call assert (u, .not. SWITCHOFF_RESUMMED, ".not. SWITCHOFF_RESUMMED")
     call assert (u, .not. TOPPIK_RESUMMED, ".not. TOPPIK_RESUMMED")
     call assert (u, .not. P0_DEPENDENT_RESUMMED, "P0_DEPENDENT_RESUMMED")
-    call assert (u, NLO, "NLO")
-    call assert (u, .not. FACTORIZED_COMPUTATION, ".not. FACTORIZED_COMPUTATION")
-    call assert (u, INTERFERENCE, "INTERFERENCE")
+    call assert (u, threshold%settings%nlo, "threshold%settings%nlo")
+    call assert (u, .not. threshold%settings%factorized_computation, ".not. threshold%settings%factorized_computation")
+    call assert (u, threshold%settings%interference, "threshold%settings%interference")
 
     write (u, "(A)") "EXPANDED_HARD_P0CONSTANT"
     call setup_flags (4, 0+2+4)
     call assert (u, .not. SWITCHOFF_RESUMMED, ".not. SWITCHOFF_RESUMMED")
     call assert (u, .not. TOPPIK_RESUMMED, ".not. TOPPIK_RESUMMED")
     call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
-    call assert (u, .not. NLO, ".not. NLO")
-    call assert (u, FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
-    call assert (u, INTERFERENCE, "INTERFERENCE")
+    call assert (u, .not. threshold%settings%nlo, ".not. threshold%settings%nlo")
+    call assert (u, threshold%settings%factorized_computation, "threshold%settings%factorized_computation")
+    call assert (u, threshold%settings%interference, "threshold%settings%interference")
 
     write (u, "(A)") "EXPANDED_SOFT_P0CONSTANT"
     call setup_flags (5, 1+2+4)
     call assert (u, .not. SWITCHOFF_RESUMMED, ".not. SWITCHOFF_RESUMMED")
     call assert (u, .not. TOPPIK_RESUMMED, ".not. TOPPIK_RESUMMED")
     call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
-    call assert (u, NLO, "NLO")
-    call assert (u, FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
-    call assert (u, INTERFERENCE, "INTERFERENCE")
+    call assert (u, threshold%settings%nlo, "threshold%settings%nlo")
+    call assert (u, threshold%settings%factorized_computation, "threshold%settings%factorized_computation")
+    call assert (u, threshold%settings%interference, "threshold%settings%interference")
 
     write (u, "(A)") "EXPANDED_SOFT_SWITCHOFF_P0CONSTANT"
     call setup_flags (6, 0+0+0+8)
     call assert (u, .not. SWITCHOFF_RESUMMED, "SWITCHOFF_RESUMMED")
     call assert (u, .not. TOPPIK_RESUMMED, ".not. TOPPIK_RESUMMED")
     call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
-    call assert (u, .not. NLO, "NLO")
-    call assert (u, .not. FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
-    call assert (u, .not. INTERFERENCE, "INTERFERENCE")
-    call assert (u, ONSHELL_PROJECTION, "ONSHELL_PROJECTION")
+    call assert (u, .not. threshold%settings%nlo, "threshold%settings%nlo")
+    call assert (u, .not. threshold%settings%factorized_computation, "threshold%settings%factorized_computation")
+    call assert (u, .not. threshold%settings%interference, "threshold%settings%interference")
+    call assert (u, threshold%settings%onshell_projection, "threshold%settings%onshell_projection")
 
     write (u, "(A)") "RESUMMED_ANALYTIC_LL"
     call setup_flags (7, 0+0+4+8)
     call assert (u, .not. SWITCHOFF_RESUMMED, "SWITCHOFF_RESUMMED")
     call assert (u, .not. TOPPIK_RESUMMED, ".not. TOPPIK_RESUMMED")
     call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
-    call assert (u, .not. NLO, "NLO")
-    call assert (u, .not. FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
-    call assert (u, INTERFERENCE, "INTERFERENCE")
-    call assert (u, ONSHELL_PROJECTION, "ONSHELL_PROJECTION")
+    call assert (u, .not. threshold%settings%nlo, "threshold%settings%nlo")
+    call assert (u, .not. threshold%settings%factorized_computation, "threshold%settings%factorized_computation")
+    call assert (u, threshold%settings%interference, "threshold%settings%interference")
+    call assert (u, threshold%settings%onshell_projection, "threshold%settings%onshell_projection")
 
     write (u, "(A)") "EXPANDED_SOFT_HARD_P0CONSTANT"
     call setup_flags (8, 0+2+0+8)
     call assert (u, .not. SWITCHOFF_RESUMMED, "SWITCHOFF_RESUMMED")
     call assert (u, .not. TOPPIK_RESUMMED, ".not. TOPPIK_RESUMMED")
     call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
-    call assert (u, .not. NLO, "NLO")
-    call assert (u, FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
-    call assert (u, .not. INTERFERENCE, "INTERFERENCE")
-    call assert (u, ONSHELL_PROJECTION, "ONSHELL_PROJECTION")
+    call assert (u, .not. threshold%settings%nlo, "threshold%settings%nlo")
+    call assert (u, threshold%settings%factorized_computation, "threshold%settings%factorized_computation")
+    call assert (u, .not. threshold%settings%interference, "threshold%settings%interference")
+    call assert (u, threshold%settings%onshell_projection, "threshold%settings%onshell_projection")
 
     write (u, "(A)") "EXTRA_TREE"
     call setup_flags (9, 1+0+0+16)
     call assert (u, .not. SWITCHOFF_RESUMMED, "SWITCHOFF_RESUMMED")
     call assert (u, .not. TOPPIK_RESUMMED, ".not. TOPPIK_RESUMMED")
     call assert (u, .not. P0_DEPENDENT_RESUMMED, ".not. P0_DEPENDENT_RESUMMED")
-    call assert (u, NLO, "NLO")
-    call assert (u, .not. FACTORIZED_COMPUTATION, "FACTORIZED_COMPUTATION")
-    call assert (u, .not. INTERFERENCE, "INTERFERENCE")
-    call assert (u, .not. ONSHELL_PROJECTION, "ONSHELL_PROJECTION")
-    call assert (u, NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS, "NO_NLO_WIDTH_IN_SIGNAL_PROPAGATORS")
+    call assert (u, threshold%settings%nlo, "threshold%settings%nlo")
+    call assert (u, .not. threshold%settings%factorized_computation, "threshold%settings%factorized_computation")
+    call assert (u, .not. threshold%settings%interference, "threshold%settings%interference")
+    call assert (u, .not. threshold%settings%onshell_projection, "threshold%settings%onshell_projection")
+    call assert (u, threshold%settings%no_nlo_width_in_signal_propagators, "threshold%settings%no_nlo_width_in_signal_propagators")
 
 
     write (u, "(A)")
