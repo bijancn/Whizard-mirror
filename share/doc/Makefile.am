@@ -24,6 +24,8 @@
 #
 ########################################################################
 
+## The primary targets
+if DISTRIBUTION
 ## The manual source has to be distributed
 dist_noinst_DATA = manual.tex $(PACKAGE).tex \
 	book.hva custom.hva fancysection.hva Whizard-Logo.jpg \
@@ -42,8 +44,6 @@ MANUAL_PICS = \
    lep_higgs_2.eps lep_higgs_2.pdf lep_higgs_3.eps \
    lep_higgs_3.pdf circe2-smoothing.eps circe2-smoothing.pdf
 
-## The primary targets
-if DISTRIBUTION
 if NOWEB_AVAILABLE
 dist_pdf_DATA = manual.pdf $(PACKAGE).pdf gamelan_manual.pdf
 else
