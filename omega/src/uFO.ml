@@ -147,6 +147,16 @@ let name_attrib name attribs =
   | S.Name n -> String.concat "." (List.rev n)
   | _ -> invalid_arg name
 
+let dictionary_attrib name attribs =
+  match find_attrib name attribs with
+  | S.Dictionary d -> d
+  | _ -> invalid_arg name
+
+let order_attrib name attribs =
+  List.map
+    (function S.Order (s, i) -> (s, i) | _ -> invalid_arg name)
+    (dictionary_attrib name attribs)
+
 let find_particle symbol particles =
   List.find (fun p -> symbol = p.p_symbol) particles
 
@@ -201,10 +211,25 @@ let pass2_particle acc d =
 let pass2_particles particles =
   List.fold_left pass2_particle [] particles
 
-type coupling = unit
+type coupling =
+  { c_symbol : string;
+    c_name : string;
+    c_value : string;
+    c_order : (string * int) list }
+
 type couplings = coupling list
 
-let pass2_couplings _ = []
+let pass2_coupling d =
+  match d.S.kind, d.S.attribs with
+  | [ ( "Coupling" | "coupling" ) ], attribs ->
+     { c_symbol = d.S.name;
+       c_name = string_attrib "name" attribs;
+       c_value = string_attrib "name" attribs;
+       c_order = order_attrib "order" attribs }
+  | _ -> invalid_arg ("pass2_coupling:" ^ String.concat "." (List.rev d.S.kind))
+
+let pass2_couplings couplings =
+  List.map pass2_coupling couplings
 
 type coupling_order = unit
 type coupling_orders = coupling_order list
