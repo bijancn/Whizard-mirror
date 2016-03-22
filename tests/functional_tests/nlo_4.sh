@@ -2,8 +2,8 @@
 ### Check WHIZARD POWHEG matching with dummy virtual matrix-elements
 echo "Running script $0"
 if test -f OCAML_FLAG; then
-    (time -p ( {
     name=`basename @script@`
+    (time -p ( {
     ./run_whizard.sh @script@ --no-logging
     echo "Contents of ${name}_p1.debug:" >> $name.log
     cat ${name}_p1.debug >> $name.log

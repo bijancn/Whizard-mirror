@@ -10727,6 +10727,8 @@ where the variables are from.
   complex(default), parameter :: ieps = imago*tiny_10
 
 @ [[gam_m1s]] is only used for the scale nustar
+<<ttv formfactors: public>>=
+  public :: GAM
 <<ttv formfactors: global variables>>=
   real(default) :: M1S, GAM, GAM_M1S
   integer :: NRQCD_ORDER
@@ -11003,7 +11005,6 @@ where the variables are from.
     NUSTAR_FIXED = - one
     NUSTAR_DYNAMIC = NUSTAR_FIXED  < zero
     RESCALE_F = f_in
-    call update_global_sqrts_dependent_variables (2. * M1S)
     mtpole_init = MTPOLE
     mpole_out = mtpole_init
     !!! compute the total top width from t->bW decay plus optional invisible width
@@ -11012,6 +11013,8 @@ where the variables are from.
     else
        GAM = top_width_sm_lo (one / aemi, sw, Vtb, MTPOLE, mw, mb) + gam_inv
     end if
+    call update_global_sqrts_dependent_variables (2. * M1S)
+    call msg_debug (D_THRESHOLD, "GAM", GAM)
     gam_out = GAM
 
     threshold%settings%initialized_parameters = .true.
@@ -11112,7 +11115,7 @@ where the variables are from.
           RESUMMED_SWITCHOFF_P0CONSTANT)
           FF = resummed_formfactor (ps, vec_type)
        case (MATCHED_EXPANDED)
-          f = f_switch_off (v_matching (ps%sqrts))
+          f = f_switch_off (v_matching (ps%sqrts, GAM))
           ! TODO: (bcn 2016-02-08) can be simplified
           FF = - expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.) &
                + expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
@@ -11124,13 +11127,13 @@ where the variables are from.
        case (EXPANDED_HARD_P0CONSTANT)
           FF = expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.)
        case (EXPANDED_SOFT_HARD_P0CONSTANT)
-          f = f_switch_off (v_matching (ps%sqrts))
+          f = f_switch_off (v_matching (ps%sqrts, GAM))
           FF = expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
                (1-f) * AS_HARD, ps, vec_type, no_p0=.true.)
        case (EXPANDED_SOFT_P0CONSTANT)
           FF = expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
        case (EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
-          f = f_switch_off (v_matching (ps%sqrts))
+          f = f_switch_off (v_matching (ps%sqrts, GAM))
           FF = expanded_formfactor (f * AS_HARD, &
                f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
        case (RESUMMED_ANALYTIC_LL)
@@ -11187,7 +11190,7 @@ where the variables are from.
     FF = one
     if (.not. threshold%settings%initialized_parameters .or. vec_type == AXIAL) return
     nop0 = .false.; if (present (no_p0))  nop0 = no_p0
-    v = sqrts_to_v (ps%sqrts)
+    v = sqrts_to_v (ps%sqrts, GAM)
     if (nop0) then
        p0 = zero
     else
@@ -11326,9 +11329,14 @@ where the variables are from.
     real(default) :: nu_soft, f
     logical :: only_once_for_fixed_nu, already_done
     real(default), save :: last_sqrts = - one
+    call msg_debug (D_THRESHOLD, "update_global_sqrts_dependent_variables")
+    call msg_debug (D_THRESHOLD, "sqrts", sqrts)
+    call msg_debug (D_THRESHOLD, "last_sqrts", last_sqrts)
     already_done = threshold%settings%initialized_parameters .and. &
          nearly_equal (sqrts, last_sqrts, rel_smallness=1E-6_default)
+    call msg_debug (D_THRESHOLD, "already_done", already_done)
     only_once_for_fixed_nu = .not. NUSTAR_DYNAMIC .and. MTPOLE > zero
+    call msg_debug (D_THRESHOLD, "only_once_for_fixed_nu", only_once_for_fixed_nu)
     if (only_once_for_fixed_nu .or. already_done) return
     last_sqrts = sqrts
     nu_soft = RESCALE_F * nustar (sqrts)
@@ -11338,7 +11346,7 @@ where the variables are from.
     AS_LL_SOFT = running_as (MU_SOFT, AS_HARD, MU_HARD, 0, NF)
     AS_USOFT = running_as (MU_USOFT, AS_HARD, MU_HARD, 0, NF) !!! LL here
     if (SWITCHOFF_RESUMMED) then
-       f = f_switch_off (v_matching (sqrts))
+       f = f_switch_off (v_matching (sqrts, GAM))
        AS_SOFT = AS_SOFT * f
        AS_LL_SOFT = AS_LL_SOFT * f
        AS_USOFT = AS_USOFT * f
@@ -11401,10 +11409,10 @@ where the variables are from.
   public :: v_matching
 <<ttv formfactors: procedures>>=
   !!! matching parameter as a function of the phase space point
-  pure function v_matching (sqrts) result (v)
-    real(default), intent(in) :: sqrts
+  pure function v_matching (sqrts, gamma) result (v)
+    real(default), intent(in) :: sqrts, gamma
     real(default) :: v
-    v = real (sqrts_to_v (sqrts))
+    v = real (sqrts_to_v (sqrts, gamma))
     !!! Andre's proposal for the switch-off function:
     !v = max ( sqrt(abs(ps%p2-ps%m2)), sqrt(abs(ps%k2-ps%m2)), &
               !sqrt(abs(ps%q2/4.-ps%m2)), ps%p ) &
@@ -11759,7 +11767,7 @@ where the variables are from.
       end if
       !!! TOPPIK output includes tree level ~ 1, a_soft @ LL in current coefficient!
       if (SWITCHOFF_RESUMMED) then
-         f = f_switch_off (v_matching (sqrts))
+         f = f_switch_off (v_matching (sqrts, GAM))
          alphas_hard = AS_HARD * f
       else
          alphas_hard = AS_HARD
@@ -11969,12 +11977,12 @@ where the variables are from.
 
 @
 <<ttv formfactors: procedures>>=
-  pure function sqrts_to_v (sqrts) result (v)
-    real(default), intent(in) :: sqrts
+  pure function sqrts_to_v (sqrts, gamma) result (v)
+    real(default), intent(in) :: sqrts, gamma
     complex(default) :: v
     real(default) :: m
     m = m1s_to_mpole (sqrts)
-    v = sqrt ((sqrts - two * m + imago * GAM) / m)
+    v = sqrt ((sqrts - two * m + imago * gamma) / m)
   end function sqrts_to_v
 
 @
@@ -12063,7 +12071,7 @@ where the variables are from.
       end do
     end if
     if (SWITCHOFF_RESUMMED) then
-       f = f_switch_off (v_matching (sqrts))
+       f = f_switch_off (v_matching (sqrts, GAM))
        alphas_hard = AS_HARD * f
     else
        alphas_hard = AS_HARD
@@ -12536,7 +12544,7 @@ end module ttv_formfactors_uti
     write (u, "(A)") "Check low energy behavior"
     mpole_fixed = .true.
   <<(re)start grid>>
-    call assert_equal (u, f_switch_off (v_matching (ps%sqrts)), one, "f_switch_off (v_matching (ps%sqrts))")
+    call assert_equal (u, f_switch_off (v_matching (ps%sqrts, GAM)), one, "f_switch_off (v_matching (ps%sqrts, GAM))")
     call assert_equal (u, &
          FF_master (ps, 1, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT), &
          FF_master (ps, 1, EXPANDED_SOFT_P0CONSTANT), &
@@ -12551,8 +12559,8 @@ end module ttv_formfactors_uti
     ! For simplicity we test on-shell back-to-back tops
     !p = sqrt(sqrts / 4 - mpole**2)
     call ps%init (m1s**2, m1s**2, sqrts**2, mpole)
-    call assert_equal (u, f_switch_off (v_matching (ps%sqrts)), tiny_10, &
-         "f_switch_off (v_matching (ps%sqrts))")
+    call assert_equal (u, f_switch_off (v_matching (ps%sqrts, GAM)), tiny_10, &
+         "f_switch_off (v_matching (ps%sqrts, GAM))")
     call assert (u, &
          abs (FF_master (ps, 1, EXPANDED_HARD_P0CONSTANT)) > &
          abs (FF_master (ps, 1, RESUMMED_P0CONSTANT)), &
@@ -12608,8 +12616,10 @@ end module ttv_formfactors_uti
     call assert (u, threshold%settings%nlo, "threshold%settings%nlo")
     call assert (u, .not. threshold%settings%factorized_computation, ".not. threshold%settings%factorized_computation")
     call assert (u, .not. threshold%settings%interference, ".not. threshold%settings%interference")
-    call assert (u, .not. threshold%settings%onshell_projection, ".not. threshold%settings%onshell_projection")
-    call assert (u, .not. threshold%settings%no_nlo_width_in_signal_propagators, ".not. threshold%settings%no_nlo_width_in_signal_propagators")
+    call assert (u, .not. threshold%settings%onshell_projection, &
+         ".not. threshold%settings%onshell_projection")
+    call assert (u, .not. threshold%settings%no_nlo_width_in_signal_propagators, &
+         ".not. threshold%settings%no_nlo_width_in_signal_propagators")
 
     write (u, "(A)") "MATCHED + FACTORIZATION"
     call setup_flags (-1, 0+2)
@@ -12700,7 +12710,8 @@ end module ttv_formfactors_uti
     call assert (u, .not. threshold%settings%factorized_computation, "threshold%settings%factorized_computation")
     call assert (u, .not. threshold%settings%interference, "threshold%settings%interference")
     call assert (u, .not. threshold%settings%onshell_projection, "threshold%settings%onshell_projection")
-    call assert (u, threshold%settings%no_nlo_width_in_signal_propagators, "threshold%settings%no_nlo_width_in_signal_propagators")
+    call assert (u, threshold%settings%no_nlo_width_in_signal_propagators, &
+         "threshold%settings%no_nlo_width_in_signal_propagators")
 
 
     write (u, "(A)")
