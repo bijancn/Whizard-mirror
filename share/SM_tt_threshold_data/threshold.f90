@@ -799,10 +799,10 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
         if (threshold%settings%interference) then
            amp2 = real (sum (abs2 (amp_tree + amp_blob)))
         else
-           if (.not. threshold%settings%helicity_approximated) then
-              amp2 = real (sum (abs2 (amp_blob)))
-           else
+           if (threshold%settings%helicity_approximated) then
               amp2 = real (sum (amp_blob))
+           else
+              amp2 = real (sum (abs2 (amp_blob)))
            end if
         end if
      end select

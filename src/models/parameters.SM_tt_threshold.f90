@@ -265,6 +265,7 @@ contains
     c = c - 1.0_default
   end function ttv_formfactor
 
+  ! TODO: (bcn 2016-03-22) put in threshold
   pure function onshell_tops (p, k) result (onshell)
     logical :: onshell
     type(momentum), intent(in) :: p, k
@@ -350,6 +351,7 @@ contains
          mass(5)) + wt_inv
   end function top_width_lo
 
+  ! TODO: (bcn 2016-03-22) put in numeric_utils?
   pure function expanded_amp2 (amp_tree, amp_blob) result (amp2)
     real(default) :: amp2
     complex(default), dimension(:), intent(in) :: amp_tree, amp_blob
@@ -358,6 +360,7 @@ contains
                 amp_blob * conjg (amp_tree))
   end function expanded_amp2
 
+  ! TODO: (bcn 2016-03-22) put in numeric_utils?
   elemental function abs2 (c) result (c2)
     real(default) :: c2
     complex(default), intent(in) :: c
