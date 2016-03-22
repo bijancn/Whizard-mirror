@@ -25,8 +25,27 @@
 val parse_string : string -> UFO_syntax.t
 val parse_file : string -> UFO_syntax.t
 
-type files
-val parse_directory : string -> files
+module type Files =
+  sig
+    
+    type t =
+      { particles : UFO_syntax.t;
+	couplings : UFO_syntax.t;
+	coupling_orders : UFO_syntax.t;
+	vertices : UFO_syntax.t;
+	lorentz : UFO_syntax.t;
+	parameters : UFO_syntax.t;
+	propagators : UFO_syntax.t;
+	decays : UFO_syntax.t }
+
+    val parse_directory : string -> t
+
+  end
+
+module Files : Files
+
+type t
+val parse_directory : string -> t
   
 module type Test =
   sig
