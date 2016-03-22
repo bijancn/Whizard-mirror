@@ -64,6 +64,9 @@ declarations:
 ;
 
 declaration:
+ | ID EQUAL name LPAREN RPAREN            { { U.name = $1;
+					      U.kind = $3;
+					      U.attribs = [] } }
  | ID EQUAL name LPAREN attributes RPAREN { { U.name = $1;
 					      U.kind = $3;
 					      U.attribs = $5 } }
@@ -75,32 +78,41 @@ name:
 ;
 
 attributes:
- |                            { [] }
+ | attribute                  { [$1] }
  | attribute COMMA attributes { $1 :: $3 }
 ;
 
 attribute:
- | ID EQUAL INT                       { { U.a_name = $1;
-					  U.a_value = U.Integer $3 } }
- | ID EQUAL STRING                    { { U.a_name = $1;
-					  U.a_value = U.String $3 } }
- | ID EQUAL name                      { { U.a_name = $1;
-					  U.a_value = U.Name $3 } }
- | ID EQUAL LBRACKET RBRACKET 	      { { U.a_name = $1;
-					  U.a_value = U.List [] } }
- | ID EQUAL LBRACKET names RBRACKET   { { U.a_name = $1;
-					  U.a_value = U.List $4 } }
- | ID EQUAL LBRACKET strings RBRACKET { { U.a_name = $1;
-					  U.a_value = U.List $4 } }
- | ID EQUAL LBRACE orders RBRACE      { { U.a_name = $1;
-					  U.a_value = U.Dictionary $4 } }
- | ID EQUAL LBRACE couplings RBRACE   { { U.a_name = $1;
-					  U.a_value = U.Dictionary $4 } }
+ | ID EQUAL INT                        { { U.a_name = $1;
+					   U.a_value = U.Integer $3 } }
+ | ID EQUAL INT DIV INT                { { U.a_name = $1;
+					   U.a_value = U.Fraction ($3, $5) } }
+ | ID EQUAL STRING                     { { U.a_name = $1;
+					   U.a_value = U.String $3 } }
+ | ID EQUAL name                       { { U.a_name = $1;
+					   U.a_value = U.Name $3 } }
+ | ID EQUAL LBRACKET RBRACKET 	       { { U.a_name = $1;
+					   U.a_value = U.List [] } }
+ | ID EQUAL LBRACKET names RBRACKET    { { U.a_name = $1;
+					   U.a_value = U.List $4 } }
+ | ID EQUAL LBRACKET strings RBRACKET  { { U.a_name = $1;
+					   U.a_value = U.List $4 } }
+ | ID EQUAL LBRACKET integers RBRACKET { { U.a_name = $1;
+					   U.a_value = U.List $4 } }
+ | ID EQUAL LBRACE orders RBRACE       { { U.a_name = $1;
+					   U.a_value = U.Dictionary $4 } }
+ | ID EQUAL LBRACE couplings RBRACE    { { U.a_name = $1;
+					   U.a_value = U.Dictionary $4 } }
 ;
 
 names:
  | name             { [U.Name $1] }
  | name COMMA names { U.Name $1 :: $3 }
+;
+
+integers:
+ | INT                { [U.Integer $1] }
+ | INT COMMA integers { U.Integer $1 :: $3 }
 ;
 
 strings:

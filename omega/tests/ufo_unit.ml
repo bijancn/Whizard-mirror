@@ -23,6 +23,7 @@
 let _ =
   let my_name = Sys.argv.(0) in
   let file = ref None
+  and line = ref None
   and skip_tests = ref false
   and skip_example = ref false
   and timing = ref false
@@ -32,6 +33,8 @@ let _ =
     (Arg.align 
        [ ("-file", Arg.String (fun s -> file := Some s),
 	  "name UFO output file");
+	 ("-line", Arg.String (fun s -> line := Some s),
+	  "line UFO fragment");
 	 ("-skip-tests", Arg.Set skip_tests, " skip the tests");
 	 ("-skip-example", Arg.Set skip_example, " skip the example");
 	 ("-timing", Arg.Set timing, " provide timing information");
@@ -42,5 +45,9 @@ let _ =
   begin match !file with
   | None -> ()
   | Some name -> ignore (UFO.parse_file name)
+  end;
+  begin match !line with
+  | None -> ()
+  | Some s -> ignore (UFO.parse_string s)
   end;
   exit 0

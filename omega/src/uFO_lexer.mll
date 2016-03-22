@@ -56,6 +56,9 @@ rule token = parse
   | '\n'              { new_line lexbuf; token lexbuf }
   | "from" [^'\n']*   { token lexbuf }     (* skip imports *)
   | "import" [^'\n']* { token lexbuf }     (* skip imports (for now) *)
+  | "try:" [^'\n']*   { token lexbuf }     (* skip imports (for now) *)
+  | "except" [^'\n']* { token lexbuf }     (* skip imports (for now) *)
+  | "pass"            { token lexbuf }     (* skip imports (for now) *)
   | '('        	      { LPAREN }
   | ')'        	      { RPAREN }
   | '{'        	      { LBRACE }
