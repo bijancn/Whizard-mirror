@@ -115,6 +115,7 @@ module @ID@_threshold
   use diagnostics
   use numeric_utils
   use constants
+  use lorentz, only: lambda
   use omega95
   use parameters_SM_tt_threshold
   use ttv_formfactors
@@ -331,7 +332,9 @@ module @ID@_threshold
   integer, public :: nhel_max
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
-  type(momentum) :: p12, p35, p46, ptop_onshell, ptopbar_onshell
+  type(momentum) :: p12, p35, p46
+  type(momentum) :: ptop_onshell, ptop_onshell_cms, pwp_onshell, pb_onshell
+  type(momentum) :: ptopbar_onshell, pwm_onshell, pbbar_onshell
   type(spinor) :: owf_t_4, owf_b_6, owf_e_1
   type(conjspinor) :: owf_t_3, owf_b_5, owf_e_2
   type(vector) :: owf_Wp_3, owf_Wm_4
@@ -451,37 +454,43 @@ contains
     one_over_p = one_over_p / cmplx (p46*p46 - top_mass**2, top_mass*top_width, kind=default)
   end function top_propagators
 
-  function top_decay_born (h_t, h_Wm, h_b) result (me)
+  function top_decay_born (h_t, h_W, h_b) result (me)
     complex(default) :: me
     integer, intent(in) :: h_t
-    integer, intent(in), optional :: h_Wm, h_b
-    if (present (h_Wm) .and. present (h_b)) then
+    integer, intent(in), optional :: h_W, h_b
+    if (present (h_W) .and. present (h_b)) then
        if (threshold%settings%onshell_projection) then
-          call msg_bug ("implement me")
+          owf_Wp_3 = conjg (eps (mass(24), pwp_onshell, h_W))
+          owf_b_5 = ubar (mass(5), pb_onshell, h_b)
        else
-          owf_Wp_3 = conjg (eps (mass(24), p3, h_Wm))
+          owf_Wp_3 = conjg (eps (mass(24), p3, h_W))
           owf_b_5 = ubar (mass(5), p5, h_b)
        end if
     end if
     if (threshold%settings%onshell_projection) then
        me = f_fvl (gccq33, owf_b_5, owf_Wp_3) * &
-            u (sqrt(ptop_onshell*ptop_onshell), ptop_onshell, h_t)
+            u (sqrt(ptop_onshell_cms*ptop_onshell_cms), ptop_onshell_cms, h_t)
     else
        me = f_fvl (gccq33, owf_b_5, owf_Wp_3) * u (sqrt(p35*p35), p35, h_t)
     end if
   end function top_decay_born
 
-  function anti_top_decay_born (h_tbar, h_Wp, h_bbar) result(me)
+  function anti_top_decay_born (h_tbar, h_W, h_b) result(me)
     complex(default) :: me
     integer, intent(in) :: h_tbar
-    integer, intent(in), optional :: h_Wp, h_bbar
-    if (present (h_Wp) .and. present (h_bbar)) then
-       owf_Wm_4 = conjg (eps (mass(24), p4, h_Wp))
-       owf_b_6 = v (mass(5), p6, h_bbar)
+    integer, intent(in), optional :: h_W, h_b
+    if (present (h_W) .and. present (h_b)) then
+       if (threshold%settings%onshell_projection) then
+          owf_Wm_4 = conjg (eps (mass(24), pwm_onshell, h_W))
+          owf_b_6 = v (mass(5), pb_onshell, h_b)
+       else
+          owf_Wm_4 = conjg (eps (mass(24), p4, h_W))
+          owf_b_6 = v (mass(5), p6, h_b)
+       end if
     end if
     if (threshold%settings%onshell_projection) then
-       me = vbar (sqrt(ptopbar_onshell*ptopbar_onshell), &
-            ptopbar_onshell, h_tbar) * f_vlf (gccq33, owf_Wm_4, owf_b_6)
+       me = vbar (sqrt(ptop_onshell_cms*ptop_onshell_cms), &
+            ptop_onshell_cms, h_tbar) * f_vlf (gccq33, owf_Wm_4, owf_b_6)
     else
        me = vbar (sqrt(p46*p46), p46, h_tbar) * f_vlf (gccq33, owf_Wm_4, owf_b_6)
     end if
@@ -586,10 +595,13 @@ contains
        p35 = p3 + p5
        p46 = p4 + p6
     end if
-    if (threshold%settings%onshell_projection)  call project_momenta_onshell (p12)
+    if (threshold%settings%onshell_projection) then
+       call compute_projected_top_momenta (p12)
+       call compute_projected_top_decay_products (p12)
+    end if
   end subroutine set_production_momenta
 
-  subroutine project_momenta_onshell (p12)
+  subroutine compute_projected_top_momenta (p12)
     type(momentum), intent(in) :: p12
     real(default) :: sqrts, scale_factor, mtop
     real(default), dimension(1:3) :: unit_vec
@@ -600,15 +612,52 @@ contains
     scale_factor = sqrt (sqrts**2 - 4 * mtop**2) / 2
     unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
     ptop_onshell = [sqrts / 2, scale_factor * unit_vec]
+    ptop_onshell_cms = [mtop, zero, zero, zero]
     ptopbar_onshell = [sqrts / 2, - scale_factor * unit_vec]
     if (debug_active (D_THRESHOLD)) then
        call assert (u, p12 == - (ptop_onshell + ptopbar_onshell), &
             "momentum conservation with a flip")
        call assert_equal (u, ptop_onshell * ptop_onshell, mtop**2, "mass onshell")
        call assert_equal (u, ptopbar_onshell * ptopbar_onshell, mtop**2, "mass onshell")
+       call assert_equal (u, ptop_onshell_cms * ptop_onshell_cms, mtop**2, "mass onshell")
        call assert_equal (u, dot_product(unit_vec, unit_vec), one, "unit vector length")
     end if
-  end subroutine project_momenta_onshell
+  end subroutine compute_projected_top_momenta
+
+  subroutine compute_projected_top_decay_products (p12)
+    type(momentum), intent(in) :: p12
+    real(default) :: sqrts, scale_factor, mtop, mw2, mb2, en_w, en_b, p_three_mag
+    real(default), dimension(1:3) :: unit_vec_wp, unit_vec_wm
+    integer :: u
+    u = output_unit
+    mtop = ttv_mtpole (p12*p12)
+    mw2 = mass(24)**2
+    mb2 = mass(5)**2
+    en_w = (mtop**2 + mw2 - mb2) / (2 * mtop)
+    en_b = (mtop**2 - mw2 + mb2) / (2 * mtop)
+    p_three_mag = sqrt (lambda (mtop**2, mw2, mb2)) / (2 * mtop)
+    unit_vec_wp = p3%x / sqrt (dot_product(p3%x, p3%x))
+    pwp_onshell = [en_w, p_three_mag * unit_vec_wp]
+    pb_onshell = [en_b, - p_three_mag * unit_vec_wp]
+    unit_vec_wm = p4%x / sqrt (dot_product(p4%x, p4%x))
+    pwm_onshell = [en_w, p_three_mag * unit_vec_wm]
+    pbbar_onshell = [en_b, - p_three_mag * unit_vec_wm]
+    if (debug_active (D_THRESHOLD)) then
+       call assert_equal(u, en_w + en_b, mtop, "top energy")
+       call assert (u, (pwp_onshell + pb_onshell + pwm_onshell + pbbar_onshell) &
+            == 2 * ptop_onshell_cms, "overall: momentum conservation")
+       call assert (u, (pwp_onshell + pb_onshell) == ptop_onshell_cms, &
+            "top: momentum conservation")
+       call assert (u, (pwm_onshell + pbbar_onshell) == ptop_onshell_cms, &
+            "topbar: momentum conservation")
+       call assert_equal (u, pwp_onshell * pwp_onshell, mw2, "mass onshell")
+       call assert_equal (u, pwm_onshell * pwm_onshell, mw2, "mass onshell")
+       call assert_equal (u, pb_onshell * pb_onshell, mb2, "mass onshell")
+       call assert_equal (u, pbbar_onshell * pbbar_onshell, mb2, "mass onshell")
+       call assert_equal (u, dot_product(unit_vec_wp, unit_vec_wp), one, "unit vector length")
+       call assert_equal (u, dot_product(unit_vec_wm, unit_vec_wm), one, "unit vector length")
+    end if
+  end subroutine compute_projected_top_decay_products
 
   function compute_production_me (ffi) result (production_me)
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
@@ -745,6 +794,7 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
   use iso_c_binding
   use kinds
   use constants
+  use numeric_utils
   use opr_@ID@, full_proc_new_event => new_event
   use opr_@ID@, full_proc_get_amplitude => get_amplitude
   use opr_@ID@, full_proc_number_spin_states => number_spin_states
