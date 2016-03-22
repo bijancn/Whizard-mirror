@@ -222,7 +222,8 @@ TESTS_REQ_OCAML = \
     parton_shower_2.run \
     mlm_matching_fsr.run \
     user_cuts.run \
-    user_prc_threshold.run \
+    user_prc_threshold_1.run \
+    user_prc_threshold_2.run \
     $(TESTS_USER_STRFUN) 
 
 XFAIL_TESTS_REQ_OCAML = \
@@ -326,17 +327,17 @@ EXTRA_DIST = $(TEST_DRIVERS_SH) \
 
 VPATH = $(srcdir)
 
-SUFFIXES = .sh .run 
+SUFFIXES = .sh .run
 
 .sh.run:
 	@rm -f $@
 	@if test -f $(top_builddir)/share/tests/functional_tests/$*.sin; then \
-	  $(SED) 's|@script@|$(top_builddir)/share/tests/functional_tests/$*|g' $< > $@; \
+		$(SED) 's|@script@|$(top_builddir)/share/tests/functional_tests/$*|g' $< > $@; \
 	elif test -f $(top_srcdir)/share/tests/functional_tests/$*.sin; then \
-	  $(SED) 's|@script@|$(top_srcdir)/share/tests/functional_tests/$*|g' $< > $@; \
+		$(SED) 's|@script@|$(top_srcdir)/share/tests/functional_tests/$*|g' $< > $@; \
 	else \
-	  echo "$*.sin not found!" 1>&2; \
-	  exit 2; \
+		echo "$*.sin not found!" 1>&2; \
+		exit 2; \
 	fi
 	@chmod +x $@
 
@@ -537,6 +538,7 @@ clean-local:
 	rm -f *.f90 *.f90.in *.c *.$(FC_MODULE_EXT) *.o *.la
 	rm -f *.makefile
 	rm -f *.grid
+	rm -f *.timing
 	rm -rf err-output
 	rm -rf ref-output
 	rm -f *.sin *.hbc
@@ -555,10 +557,14 @@ if FC_SUBMODULES
 	rm -f *.smod
 endif
 
+show-timings:
+	@echo '* +-------------------------------------------------------------+ *'
+	@echo '* | Timings where available:                                    | *'
+	@echo '* +-------------------------------------------------------------+ *'
+	@echo ''
+	@for i in *timing; do printf "%30s%30s\n" "$$i" "`grep real $$i` sec"; done
+
 ## Remove backup files
 maintainer-clean-local: maintainer-clean-fc
 	-rm -f *~
 .PHONY: maintainer-clean-local
-
-
-

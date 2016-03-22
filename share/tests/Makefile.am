@@ -548,7 +548,8 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/model_test.ref \
     functional_tests/ref-output/cuts.ref \
     functional_tests/ref-output/user_cuts.ref \
-    functional_tests/ref-output/user_prc_threshold.ref \
+    functional_tests/ref-output/user_prc_threshold_1.ref \
+    functional_tests/ref-output/user_prc_threshold_2.ref \
     functional_tests/ref-output/qedtest_1.ref \
     functional_tests/ref-output/qedtest_2.ref \
     functional_tests/ref-output/qedtest_5.ref \
@@ -995,7 +996,8 @@ MISC_TESTS_SIN = \
     functional_tests/static_2.sin \
     functional_tests/static_2.exe.sin \
     functional_tests/user_cuts.sin \
-    functional_tests/user_prc_threshold.sin \
+    functional_tests/user_prc_threshold_1.sin \
+    functional_tests/user_prc_threshold_2.sin \
     functional_tests/user_strfun.sin \
     ilc_ext.sin
 
