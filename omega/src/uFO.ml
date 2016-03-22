@@ -100,8 +100,8 @@ let dump_file pfx f =
     (UFO_syntax.to_strings f)
 
 type charge =
-  | Integer of int
-  | Fraction of int * int
+  | Q_Integer of int
+  | Q_Fraction of int * int
 
 type particle =
   { p_symbol : string;
@@ -131,15 +131,31 @@ let integer_attrib name attribs =
   | S.Integer i -> i
   | _ -> invalid_arg name
 
-let fraction_attrib name attribs =
+let charge_attrib name attribs =
   match find_attrib name attribs with
-  | S.Integer i -> Integer i
-  | S.Fraction (n, d) -> Fraction (n, d)
+  | S.Integer i -> Q_Integer i
+  | S.Fraction (n, d) -> Q_Fraction (n, d)
   | _ -> invalid_arg name
 
 let string_attrib name attribs =
   match find_attrib name attribs with
   | S.String s -> s
+  | _ -> invalid_arg name
+
+type value =
+  | Integer of int
+  | Fraction of int * int
+  | Float of float
+  | String of string
+  | Name of string list
+
+let value_attrib name attribs =
+  match find_attrib name attribs with
+  | S.Integer i -> Integer i
+  | S.Fraction (n, d) -> Fraction (n, d)
+  | S.Float x -> Float x
+  | S.String s -> String s
+  | S.Name n -> Name n
   | _ -> invalid_arg name
 
 let list_attrib name attribs =
@@ -194,8 +210,8 @@ let find_particle symbol particles =
   List.find (fun p -> symbol = p.p_symbol) particles
 
 let conjugate_charge = function
-  | Integer i -> Integer (-i)
-  | Fraction (n, d) -> Fraction (-n, d)
+  | Q_Integer i -> Q_Integer (-i)
+  | Q_Fraction (n, d) -> Q_Fraction (-n, d)
 
 let conjugate symbol p =
   { p_symbol = symbol;
@@ -226,7 +242,7 @@ let pass2_particle acc d =
        p_width = name_attrib "width" attribs;
        p_texname = string_attrib "texname" attribs;
        p_antitexname = string_attrib "antitexname" attribs;
-       p_charge = fraction_attrib "charge" attribs;
+       p_charge = charge_attrib "charge" attribs;
        p_GhostNumber = integer_attrib "GhostNumber" attribs;
        p_LeptonNumber = integer_attrib "LeptonNumber" attribs;
        p_Y = integer_attrib "Y" attribs } :: acc
@@ -331,15 +347,70 @@ let pass2_lorentz1 d =
 let pass2_lorentz lorentz =
   List.map pass2_lorentz1 lorentz
 
-type parameter = unit
+type parameter =
+  { pa_symbol : string;
+    pa_name : string;
+    pa_nature : string;
+    pa_type : string;
+    pa_value : value;
+    pa_texname : string;
+    pa_lhablock : string option;
+    pa_lhacode : int list option }
+
 type parameters = parameter list
 
-let pass2_parameters _ = []
+let pass2_parameter d =
+  match d.S.kind, d.S.attribs with
+  | [ "Parameter" ], attribs ->
+     { pa_symbol = d.S.name;
+       pa_name = string_attrib "name" attribs;
+       pa_nature = string_attrib "nature" attribs;
+       pa_type = string_attrib "type" attribs;
+       pa_value = value_attrib "value" attribs;
+       pa_texname = string_attrib "texname" attribs;
+       pa_lhablock =
+	 (try Some (string_attrib "lhablock" attribs) with
+	   Not_found -> None);
+       pa_lhacode =
+	 (try Some (integer_list_attrib "lhacode" attribs) with
+	   Not_found -> None) }
+  | _ -> invalid_arg ("pass2_parameter:" ^
+			 String.concat "." (List.rev d.S.kind))
+    
+let pass2_parameters parameters =
+  List.map pass2_parameter parameters
 
-type propagator = unit
+type propagator =
+  { pr_symbol : string;
+    pr_name : string;
+    pr_numerator : string;
+    pr_denominator : string }
+
 type propagators = propagator list
 
-let pass2_propagators _ = []
+let pass2_propagator (map, acc) d =
+  match d.S.kind, d.S.attribs with
+  | [ "Propagator" ], attribs ->
+     let denominator =
+       begin match find_attrib "denominator" attribs with
+       | S.String s -> s
+       | S.Name [n] -> List.assoc n map
+       | _ -> invalid_arg "denominator..."
+       end in
+     (map,
+      { pr_symbol = d.S.name;
+	pr_name = string_attrib "name" attribs;
+	pr_numerator = string_attrib "numerator" attribs;
+	pr_denominator = denominator } :: acc)
+  | [ "$"; s ], [] ->
+     ((d.S.name, s) :: map, acc)
+  | _ -> invalid_arg ("pass2_propagator:" ^
+			 String.concat "." (List.rev d.S.kind))
+       
+let pass2_propagators propagators =
+  let _, propagators' =
+    List.fold_left pass2_propagator ([], []) propagators in
+  propagators'
 
 type decay = unit
 type decays = decay list
