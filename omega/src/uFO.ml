@@ -103,6 +103,10 @@ type charge =
   | Q_Integer of int
   | Q_Fraction of int * int
 
+let charge_to_string = function
+  | Q_Integer i -> Printf.sprintf "%d" i
+  | Q_Fraction (n, d) -> Printf.sprintf "%d/%d" n d
+
 type particle =
   { p_symbol : string;
     p_pdg_code : int;
@@ -118,6 +122,19 @@ type particle =
     p_GhostNumber : int;
     p_LeptonNumber : int;
     p_Y : int }
+
+let particle_to_string p =
+  Printf.sprintf
+    "particle: %s => [ pdg = %d, name = '%s'/'%s', \
+                       spin = %d, color = %d, \
+                       mass = %s, width = %s, \
+                       Q = %s, G = %d, L = %d, Y = %d, \
+                       TeX = '%s'/'%s' ]"
+    p.p_symbol p.p_pdg_code p.p_name p.p_antiname
+    p.p_spin p.p_color p.p_mass p.p_width
+    (charge_to_string p.p_charge)
+    p.p_GhostNumber p.p_LeptonNumber p.p_Y
+    p.p_texname p.p_antitexname
 
 type particles = particle list
 
@@ -266,6 +283,16 @@ type coupling =
     c_value : string;
     c_order : (string * int) list }
 
+let order_to_string orders =
+  String.concat ", "
+    (List.map (fun (s, i) -> Printf.sprintf "'%s':%d" s i) orders)
+
+let coupling_to_string c =
+  Printf.sprintf
+    "coupling: %s => [ name = '%s', value = '%s', order = [ %s ] ]"
+    c.c_symbol c.c_name c.c_value
+    (order_to_string c.c_order)
+
 type couplings = coupling list
 
 let pass2_coupling d =
@@ -273,7 +300,7 @@ let pass2_coupling d =
   | [ "Coupling" ], attribs ->
      { c_symbol = d.S.name;
        c_name = string_attrib "name" attribs;
-       c_value = string_attrib "name" attribs;
+       c_value = string_attrib "value" attribs;
        c_order = order_attrib "order" attribs }
   | _ -> invalid_arg ("pass2_coupling:" ^ String.concat "." (List.rev d.S.kind))
 
@@ -439,7 +466,13 @@ let pass2 u =
 
 let parse_directory dir =
   let result = parse_directory dir in
-  ignore (pass2 result);
+  let result' = pass2 result in
+  List.iter
+    (fun p -> print_endline (particle_to_string p))
+    result'.particles;
+  List.iter
+    (fun p -> print_endline (coupling_to_string p))
+    result'.couplings;
   result
 
 module type Test =
