@@ -87,28 +87,29 @@ attributes:
 ;
 
 attribute:
- | ID EQUAL INT                        { { U.a_name = $1;
-					   U.a_value = U.Integer $3 } }
- | ID EQUAL INT DIV INT                { { U.a_name = $1;
-					   U.a_value = U.Fraction ($3, $5) } }
- | ID EQUAL FLOAT                      { { U.a_name = $1;
-					   U.a_value = U.Float $3 } }
- | ID EQUAL STRING                     { { U.a_name = $1;
-					   U.a_value = U.String $3 } }
- | ID EQUAL name                       { { U.a_name = $1;
-					   U.a_value = U.Name $3 } }
- | ID EQUAL LBRACKET RBRACKET 	       { { U.a_name = $1;
-					   U.a_value = U.List [] } }
- | ID EQUAL LBRACKET names RBRACKET    { { U.a_name = $1;
-					   U.a_value = U.List $4 } }
- | ID EQUAL LBRACKET strings RBRACKET  { { U.a_name = $1;
-					   U.a_value = U.List $4 } }
- | ID EQUAL LBRACKET integers RBRACKET { { U.a_name = $1;
-					   U.a_value = U.List $4 } }
- | ID EQUAL LBRACE orders RBRACE       { { U.a_name = $1;
-					   U.a_value = U.Dictionary $4 } }
- | ID EQUAL LBRACE couplings RBRACE    { { U.a_name = $1;
-					   U.a_value = U.Dictionary $4 } }
+ | ID EQUAL value      { { U.a_name = $1; U.a_value = $3 } }
+ | ID EQUAL list       { { U.a_name = $1; U.a_value = U.List $3 } }
+ | ID EQUAL dictionary { { U.a_name = $1; U.a_value = U.Dictionary $3 } }
+;
+
+value:
+ | INT         { U.Integer $1 }
+ | INT DIV INT { U.Fraction ($1, $3) }
+ | FLOAT       { U.Float $1 }
+ | STRING      { U.String $1 }
+ | name        { U.Name $1 }
+;
+
+list:
+ | LBRACKET RBRACKET 	      { [] }
+ | LBRACKET names RBRACKET    { $2 }
+ | LBRACKET strings RBRACKET  { $2 }
+ | LBRACKET integers RBRACKET { $2 }
+;
+
+dictionary:
+ | LBRACE orders RBRACE    { $2 }
+ | LBRACE couplings RBRACE { $2 }
 ;
 
 names:
