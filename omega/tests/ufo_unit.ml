@@ -24,6 +24,7 @@ let _ =
   let my_name = Sys.argv.(0) in
   let file = ref None
   and line = ref None
+  and dir = ref None
   and skip_tests = ref false
   and skip_example = ref false
   and timing = ref false
@@ -31,7 +32,9 @@ let _ =
   and usage = "usage: " ^ my_name ^ " ..." in
   Arg.parse
     (Arg.align 
-       [ ("-file", Arg.String (fun s -> file := Some s),
+       [ ("-dir", Arg.String (fun s -> dir := Some s),
+	  "name UFO output files");
+	 ("-file", Arg.String (fun s -> file := Some s),
 	  "name UFO output file");
 	 ("-line", Arg.String (fun s -> line := Some s),
 	  "line UFO fragment");
@@ -49,5 +52,9 @@ let _ =
   begin match !line with
   | None -> ()
   | Some s -> ignore (UFO.parse_string s)
+  end;
+  begin match !dir with
+  | None -> ()
+  | Some s -> ignore (UFO.parse_directory s)
   end;
   exit 0

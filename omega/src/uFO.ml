@@ -79,6 +79,19 @@ let parse_file name =
   close_in ic;
   result
 
+let parse_directory dir =
+  List.map
+    (fun stem ->
+      (stem, parse_file (Filename.concat dir (stem ^ ".py"))))
+    [ "particles";
+      "couplings";
+      "coupling_orders";
+      "vertices";
+      "lorentz";
+      "parameters";
+      "propagators";
+      (* "decays"; NOT supported by the parser (yet?) *) ]
+
 let dump_file pfx f =
   List.iter
     (fun s -> print_endline (pfx ^ ": " ^ s))

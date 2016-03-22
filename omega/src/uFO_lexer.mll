@@ -72,9 +72,14 @@ rule token = parse
   | '.'        	      { DOT }
   | ','        	      { COMMA }
   | ':'        	      { COLON }
+  | '-'? ( digit+ '.' digit* | digit* '.' digit+ )
+         ( ['E''e'] '-'? digit+ )? as x
+                      { FLOAT (float_of_string x) }
   | '-'? digit+ as i  { INT (int_of_string i) }
   | char word* as s   { ID s }
   | '\'' ([^'\'']+ as s) '\''
+                      { STRING s }
+  | '"' ([^'"']+ as s) '"'
                       { STRING s }
   | _ as c            { failwith ("invalid character at `" ^
 				    string_of_char c ^ "'") }

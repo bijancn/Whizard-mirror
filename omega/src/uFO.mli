@@ -24,6 +24,7 @@
 
 val parse_string : string -> UFO_syntax.t
 val parse_file : string -> UFO_syntax.t
+val parse_directory : string -> (string * UFO_syntax.t) list
   
 module type Test =
   sig

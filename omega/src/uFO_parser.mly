@@ -40,6 +40,7 @@ let invalid_parameter_attr () =
 %}
 
 %token < int > INT
+%token < float > FLOAT
 %token < string > STRING ID
 %token DOT COMMA COLON
 %token EQUAL PLUS MINUS DIV
@@ -70,6 +71,9 @@ declaration:
  | ID EQUAL name LPAREN attributes RPAREN { { U.name = $1;
 					      U.kind = $3;
 					      U.attribs = $5 } }
+ | ID EQUAL STRING                        { { U.name = $1;
+					      U.kind = ["$"; $3]; (* HACK! *)
+					      U.attribs = [] } }
 ;
 
 name:
@@ -87,6 +91,8 @@ attribute:
 					   U.a_value = U.Integer $3 } }
  | ID EQUAL INT DIV INT                { { U.a_name = $1;
 					   U.a_value = U.Fraction ($3, $5) } }
+ | ID EQUAL FLOAT                      { { U.a_name = $1;
+					   U.a_value = U.Float $3 } }
  | ID EQUAL STRING                     { { U.a_name = $1;
 					   U.a_value = U.String $3 } }
  | ID EQUAL name                       { { U.a_name = $1;

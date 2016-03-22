@@ -37,6 +37,7 @@ type dictionary = entry list
 type value =
   | Name of name
   | Integer of int
+  | Float of float
   | Fraction of int * int
   | String of string
   | Dictionary of dictionary
