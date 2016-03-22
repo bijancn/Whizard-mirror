@@ -27,3 +27,59 @@ module type Test =
     val example : unit -> unit
     val suite : OUnit.test
   end
+
+let error_in_string text start_pos end_pos =
+  let i = start_pos.Lexing.pos_cnum
+  and j = end_pos.Lexing.pos_cnum in
+  String.sub text i (j - i)
+
+let error_in_file name start_pos end_pos =
+  Printf.sprintf
+    "%s:%d.%d-%d.%d"
+    name
+    start_pos.Lexing.pos_lnum
+    (start_pos.Lexing.pos_cnum - start_pos.Lexing.pos_bol)
+    end_pos.Lexing.pos_lnum
+    (end_pos.Lexing.pos_cnum - end_pos.Lexing.pos_bol)
+
+let parse_string text =
+  try
+    UFO_parser.file
+      UFO_lexer.token
+      (UFO_lexer.init_position "" (Lexing.from_string text))
+  with
+  | UFO_syntax.Syntax_Error (msg, start_pos, end_pos) ->
+     invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
+                    msg  (error_in_string text start_pos end_pos))
+  | Parsing.Parse_error ->
+     invalid_arg ("parse error: " ^ text)
+
+let parse_file name =
+  let ic = open_in name in
+  let result =
+    begin
+      try
+	UFO_parser.file
+	  UFO_lexer.token
+	  (UFO_lexer.init_position name (Lexing.from_channel ic))
+      with
+      | UFO_syntax.Syntax_Error (msg, start_pos, end_pos) ->
+	 begin
+	   close_in ic;
+	   invalid_arg (Printf.sprintf
+			  "%s: syntax error (%s)"
+			  (error_in_file name start_pos end_pos) msg)
+	 end
+      | Parsing.Parse_error ->
+	 begin
+	   close_in ic;
+	   invalid_arg ("parse error: " ^ name)
+	 end
+    end in
+  close_in ic;
+  result
+
+let dump_file pfx f =
+  List.iter
+    (fun s -> print_endline (pfx ^ ": " ^ s))
+    (UFO_syntax.to_strings f)

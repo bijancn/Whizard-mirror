@@ -26,3 +26,31 @@
 
 exception Syntax_Error of string * Lexing.position * Lexing.position
 
+type name = string list
+
+type entry =
+  | Order of string * int
+  | Coupling of int * int * name
+
+type dictionary = entry list
+  
+type value =
+  | Name of name
+  | Integer of int
+  | String of string
+  | Dictionary of dictionary
+  | List of value list
+
+type attrib =
+  { a_name : string;
+    a_value : value }
+  
+type declaration =
+  { name : string;
+    kind : name;
+    attribs : attrib list }
+
+type t = declaration list
+
+let to_strings declarations =
+  []

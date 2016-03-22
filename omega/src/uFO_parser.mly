@@ -28,8 +28,10 @@
    prefering left recursion. */
 
 %{
+module U = UFO_syntax
+
 let parse_error msg =
-  raise (Vertex_syntax.Syntax_Error
+  raise (UFO_syntax.Syntax_Error
 	   (msg, symbol_start_pos (), symbol_end_pos ()))
 
 let invalid_parameter_attr () =
@@ -38,16 +40,89 @@ let invalid_parameter_attr () =
 %}
 
 %token < int > INT
-%token < string > STRING
-%token PLUS
+%token < string > STRING ID
+%token DOT COMMA COLON
+%token EQUAL PLUS MINUS DIV
+%token LPAREN RPAREN
+%token LBRACE RBRACE
+%token LBRACKET RBRACKET
 
 %token END
 
 %start file
-%type < unit > file
+%type < UFO_syntax.t > file
 
 %%
 
 file:
- | END { () }
+ | declarations END { $1 }
 ;
+
+declarations:
+ |                          { [] }
+ | declaration declarations { $1 :: $2 }
+;
+
+declaration:
+ | ID EQUAL name LPAREN attributes RPAREN { { U.name = $1;
+					      U.kind = $3;
+					      U.attribs = $5 } }
+;
+
+name:
+ | ID          { [$1] }
+ | name DOT ID { $3 :: $1 }
+;
+
+attributes:
+ |                            { [] }
+ | attribute COMMA attributes { $1 :: $3 }
+;
+
+attribute:
+ | ID EQUAL INT                       { { U.a_name = $1;
+					  U.a_value = U.Integer $3 } }
+ | ID EQUAL STRING                    { { U.a_name = $1;
+					  U.a_value = U.String $3 } }
+ | ID EQUAL name                      { { U.a_name = $1;
+					  U.a_value = U.Name $3 } }
+ | ID EQUAL LBRACKET RBRACKET 	      { { U.a_name = $1;
+					  U.a_value = U.List [] } }
+ | ID EQUAL LBRACKET names RBRACKET   { { U.a_name = $1;
+					  U.a_value = U.List $4 } }
+ | ID EQUAL LBRACKET strings RBRACKET { { U.a_name = $1;
+					  U.a_value = U.List $4 } }
+ | ID EQUAL LBRACE orders RBRACE      { { U.a_name = $1;
+					  U.a_value = U.Dictionary $4 } }
+ | ID EQUAL LBRACE couplings RBRACE   { { U.a_name = $1;
+					  U.a_value = U.Dictionary $4 } }
+;
+
+names:
+ | name             { [U.Name $1] }
+ | name COMMA names { U.Name $1 :: $3 }
+;
+
+strings:
+ | STRING               { [U.String $1] }
+ | STRING COMMA strings { U.String $1 :: $3 }
+;
+
+orders:
+ | order              { [$1] }
+ | order COMMA orders { $1 :: $3 }
+;
+
+order:
+ | STRING COLON INT { U.Order ($1, $3) }
+;
+
+couplings:
+ | coupling                 { [$1] }
+ | coupling COMMA couplings { $1 :: $3 }
+;
+
+coupling:
+ | LPAREN INT COMMA INT RPAREN COLON name { U.Coupling ($2, $4, $7) }
+;
+

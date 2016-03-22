@@ -22,12 +22,34 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-(* The concrete syntax described below is modelled on \LaTeX{}
-   and correct model descriptions should be correct \LaTeX-input
-   (provided a few simple macros have been loaded. *)
-
-
 (* \thocwmodulesection{Abstract Syntax} *)
 
 exception Syntax_Error of string * Lexing.position * Lexing.position
 
+type name = string list
+
+type entry =
+  | Order of string * int
+  | Coupling of int * int * name
+
+type dictionary = entry list
+  
+type value =
+  | Name of name
+  | Integer of int
+  | String of string
+  | Dictionary of dictionary
+  | List of value list
+
+type attrib =
+  { a_name : string;
+    a_value : value }
+  
+type declaration =
+  { name : string;
+    kind : name;
+    attribs : attrib list }
+
+type t = declaration list
+
+val to_strings : t -> string list

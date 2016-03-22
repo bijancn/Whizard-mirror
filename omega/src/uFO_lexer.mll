@@ -24,7 +24,7 @@
 
 {
 open Lexing
-open Vertex_parser
+open UFO_parser
 
 let string_of_char c =
   String.make 1 c
@@ -47,13 +47,32 @@ let digit = ['0'-'9']
 let upper = ['A'-'Z']
 let lower = ['a'-'z']
 let char = upper | lower
+let word = char | digit | '_'
 let white = [' ' '\t']
 
 rule token = parse
     white             { token lexbuf }     (* skip blanks *)
   | '#' [^'\n']*      { token lexbuf }     (* skip comments *)
   | '\n'              { new_line lexbuf; token lexbuf }
+  | "from" [^'\n']*   { token lexbuf }     (* skip imports *)
+  | "import" [^'\n']* { token lexbuf }     (* skip imports (for now) *)
+  | '('        	      { LPAREN }
+  | ')'        	      { RPAREN }
+  | '{'        	      { LBRACE }
+  | '}'        	      { RBRACE }
+  | '['        	      { LBRACKET }
+  | ']'        	      { RBRACKET }
   | '='        	      { EQUAL }
+  | '+'        	      { PLUS }
+  | '-'        	      { MINUS }
+  | '/'        	      { DIV }
+  | '.'        	      { DOT }
+  | ','        	      { COMMA }
+  | ':'        	      { COLON }
+  | '-'? digit+ as i  { INT (int_of_string i) }
+  | char word* as s   { ID s }
+  | '\'' ([^'\'']+ as s) '\''
+                      { STRING s }
   | _ as c            { failwith ("invalid character at `" ^
 				    string_of_char c ^ "'") }
   | eof               { END }
