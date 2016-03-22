@@ -291,7 +291,7 @@ type vertex =
     v_particles : string list list;
     v_color : string list;
     v_lorentz : string list list;
-    v_couplings : (int * int * string list) list}
+    v_couplings : (int * int * string list) list }
 
 type vertices = vertex list
 
@@ -310,10 +310,26 @@ let pass2_vertex d =
 let pass2_vertices vertices =
   List.map pass2_vertex vertices
 
-type lorentz1 = unit
+type lorentz1 =
+  { l_symbol : string;
+    l_name : string;
+    l_spins : int list;
+    l_structure : string }
+
 type lorentz = lorentz1 list
 
-let pass2_lorentz _ = []
+let pass2_lorentz1 d =
+  match d.S.kind, d.S.attribs with
+  | [ "Lorentz" ], attribs ->
+     { l_symbol = d.S.name;
+       l_name = string_attrib "name" attribs;
+       l_spins = integer_list_attrib "spins" attribs;
+       l_structure = string_attrib "structure" attribs }
+  | _ -> invalid_arg ("pass2_lorentz:" ^
+			 String.concat "." (List.rev d.S.kind))
+
+let pass2_lorentz lorentz =
+  List.map pass2_lorentz1 lorentz
 
 type parameter = unit
 type parameters = parameter list
