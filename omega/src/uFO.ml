@@ -142,6 +142,32 @@ let string_attrib name attribs =
   | S.String s -> s
   | _ -> invalid_arg name
 
+let list_attrib name attribs =
+  match find_attrib name attribs with
+  | S.List l -> l
+  | _ -> invalid_arg name
+
+let string_list_attrib name attribs =
+  List.map
+    (function
+    | S.String s -> s
+    | _ ->  invalid_arg name)
+    (list_attrib name attribs)
+
+let name_list_attrib name attribs =
+  List.map
+    (function
+    | S.Name n -> n
+    | _ ->  invalid_arg name)
+    (list_attrib name attribs)
+
+let integer_list_attrib name attribs =
+  List.map
+    (function
+    | S.Integer n -> n
+    | _ ->  invalid_arg name)
+    (list_attrib name attribs)
+
 let name_attrib name attribs =
   match find_attrib name attribs with
   | S.Name n -> String.concat "." (List.rev n)
@@ -155,6 +181,13 @@ let dictionary_attrib name attribs =
 let order_attrib name attribs =
   List.map
     (function S.Order (s, i) -> (s, i) | _ -> invalid_arg name)
+    (dictionary_attrib name attribs)
+
+let coupling_list_attrib name attribs =
+  List.map
+    (function
+    | S.Coupling (i, j, n) -> (i, j, n)
+    | _ ->  invalid_arg name)
     (dictionary_attrib name attribs)
 
 let find_particle symbol particles =
@@ -182,7 +215,7 @@ let conjugate symbol p =
 
 let pass2_particle acc d =
   match d.S.kind, d.S.attribs with
-  | [ ( "Particle" | "particle" ) ], attribs ->
+  | [ "Particle" ], attribs ->
      { p_symbol = d.S.name;
        p_pdg_code = integer_attrib "pdg_code" attribs;
        p_name = string_attrib "name" attribs;
@@ -221,7 +254,7 @@ type couplings = coupling list
 
 let pass2_coupling d =
   match d.S.kind, d.S.attribs with
-  | [ ( "Coupling" | "coupling" ) ], attribs ->
+  | [ "Coupling" ], attribs ->
      { c_symbol = d.S.name;
        c_name = string_attrib "name" attribs;
        c_value = string_attrib "name" attribs;
@@ -231,14 +264,51 @@ let pass2_coupling d =
 let pass2_couplings couplings =
   List.map pass2_coupling couplings
 
-type coupling_order = unit
+type coupling_order =
+  { o_symbol : string;
+    o_name : string;
+    o_expansion_order : int;
+    o_hierarchy : int }
+
 type coupling_orders = coupling_order list
 
-let pass2_coupling_orders _ = []
+let pass2_coupling_order d =
+  match d.S.kind, d.S.attribs with
+  | [ "CouplingOrder" ], attribs ->
+     { o_symbol = d.S.name;
+       o_name = string_attrib "name" attribs;
+       o_expansion_order = integer_attrib "expansion_order" attribs;
+       o_hierarchy = integer_attrib "hierarchy" attribs }
+  | _ -> invalid_arg ("pass2_coupling_order:" ^
+			 String.concat "." (List.rev d.S.kind))
 
-type vertex = unit
+let pass2_coupling_orders coupling_orders =
+  List.map pass2_coupling_order coupling_orders
+
+type vertex =
+  { v_symbol : string;
+    v_name : string;
+    v_particles : string list list;
+    v_color : string list;
+    v_lorentz : string list list;
+    v_couplings : (int * int * string list) list}
+
 type vertices = vertex list
-let pass2_vertices _ = []
+
+let pass2_vertex d =
+  match d.S.kind, d.S.attribs with
+  | [ "Vertex" ], attribs ->
+     { v_symbol = d.S.name;
+       v_name = string_attrib "name" attribs;
+       v_particles = name_list_attrib "particles" attribs;
+       v_color = string_list_attrib "color" attribs;
+       v_lorentz = name_list_attrib "lorentz" attribs;
+       v_couplings = coupling_list_attrib "couplings" attribs }
+  | _ -> invalid_arg ("pass2_vertex:" ^
+			 String.concat "." (List.rev d.S.kind))
+
+let pass2_vertices vertices =
+  List.map pass2_vertex vertices
 
 type lorentz1 = unit
 type lorentz = lorentz1 list
