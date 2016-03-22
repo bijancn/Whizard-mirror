@@ -107,37 +107,6 @@ let charge_to_string = function
   | Q_Integer i -> Printf.sprintf "%d" i
   | Q_Fraction (n, d) -> Printf.sprintf "%d/%d" n d
 
-type particle =
-  { p_symbol : string;
-    p_pdg_code : int;
-    p_name : string;
-    p_antiname : string;
-    p_spin : int;
-    p_color : int;
-    p_mass : string;
-    p_width : string;
-    p_texname : string;
-    p_antitexname : string;
-    p_charge : charge;
-    p_GhostNumber : int;
-    p_LeptonNumber : int;
-    p_Y : int }
-
-let particle_to_string p =
-  Printf.sprintf
-    "particle: %s => [ pdg = %d, name = '%s'/'%s', \
-                       spin = %d, color = %d, \
-                       mass = %s, width = %s, \
-                       Q = %s, G = %d, L = %d, Y = %d, \
-                       TeX = '%s'/'%s' ]"
-    p.p_symbol p.p_pdg_code p.p_name p.p_antiname
-    p.p_spin p.p_color p.p_mass p.p_width
-    (charge_to_string p.p_charge)
-    p.p_GhostNumber p.p_LeptonNumber p.p_Y
-    p.p_texname p.p_antitexname
-
-type particles = particle list
-
 module S = UFO_syntax
 
 let find_attrib name attribs =
@@ -223,60 +192,94 @@ let coupling_list_attrib name attribs =
     | _ ->  invalid_arg name)
     (dictionary_attrib name attribs)
 
-let find_particle symbol particles =
-  List.find (fun p -> symbol = p.p_symbol) particles
+module Particle =
+  struct
+    
+    type t =
+      { symbol : string;
+	pdg_code : int;
+	name : string;
+	antiname : string;
+	spin : int;
+	color : int;
+	mass : string;
+	width : string;
+	texname : string;
+	antitexname : string;
+	charge : charge;
+	ghost_number : int;
+	lepton_number : int;
+	y : int }
 
-let conjugate_charge = function
-  | Q_Integer i -> Q_Integer (-i)
-  | Q_Fraction (n, d) -> Q_Fraction (-n, d)
+    let to_string p =
+      Printf.sprintf
+	"particle: %s => [ pdg = %d, name = '%s'/'%s', \
+                           spin = %d, color = %d, \
+                           mass = %s, width = %s, \
+                           Q = %s, G = %d, L = %d, Y = %d, \
+                           TeX = '%s'/'%s' ]"
+	p.symbol p.pdg_code p.name p.antiname
+	p.spin p.color p.mass p.width
+	(charge_to_string p.charge)
+	p.ghost_number p.lepton_number p.y
+	p.texname p.antitexname
 
-let conjugate symbol p =
-  { p_symbol = symbol;
-    p_pdg_code = - p.p_pdg_code;
-    p_name = p.p_antiname;
-    p_antiname = p.p_name;
-    p_spin = p.p_spin;
-    p_color = - p.p_color;
-    p_mass = p.p_mass;
-    p_width = p.p_width;
-    p_texname = p.p_antitexname;
-    p_antitexname = p.p_texname;
-    p_charge = conjugate_charge p.p_charge;
-    p_GhostNumber = p.p_GhostNumber;
-    p_LeptonNumber = p.p_LeptonNumber;
-    p_Y = p.p_Y }
+    let find_particle symbol particles =
+      List.find (fun p -> symbol = p.symbol) particles
 
-let pass2_particle acc d =
-  match d.S.kind, d.S.attribs with
-  | [ "Particle" ], attribs ->
-     { p_symbol = d.S.name;
-       p_pdg_code = integer_attrib "pdg_code" attribs;
-       p_name = string_attrib "name" attribs;
-       p_antiname = string_attrib "antiname" attribs;
-       p_spin = integer_attrib "spin" attribs;
-       p_color = integer_attrib "color" attribs;
-       p_mass = name_attrib "mass" attribs;
-       p_width = name_attrib "width" attribs;
-       p_texname = string_attrib "texname" attribs;
-       p_antitexname = string_attrib "antitexname" attribs;
-       p_charge = charge_attrib "charge" attribs;
-       p_GhostNumber = integer_attrib "GhostNumber" attribs;
-       p_LeptonNumber = integer_attrib "LeptonNumber" attribs;
-       p_Y = integer_attrib "Y" attribs } :: acc
-  | [ "anti"; p ], [] ->
-     begin
-       try
-	 let anti = find_particle p acc in
-	 conjugate d.S.name anti :: acc
-       with
-       | Not_found ->
-	  failwith ("UFO.pass2_particle: " ^ p ^ ".anti() not yet defined!")
-     end
-  | _ -> invalid_arg ("pass2_particle:" ^ String.concat "." (List.rev d.S.kind))
+    let conjugate_charge = function
+      | Q_Integer i -> Q_Integer (-i)
+      | Q_Fraction (n, d) -> Q_Fraction (-n, d)
 
-let pass2_particles particles =
-  List.fold_left pass2_particle [] particles
+    let conjugate symbol p =
+      { symbol = symbol;
+	pdg_code = - p.pdg_code;
+	name = p.antiname;
+	antiname = p.name;
+	spin = p.spin;
+	color = - p.color;
+	mass = p.mass;
+	width = p.width;
+	texname = p.antitexname;
+	antitexname = p.texname;
+	charge = conjugate_charge p.charge;
+	ghost_number = p.ghost_number;
+	lepton_number = p.lepton_number;
+	y = p.y }
 
+    let pass2_particle acc d =
+      match d.S.kind, d.S.attribs with
+      | [ "Particle" ], attribs ->
+	 { symbol = d.S.name;
+	   pdg_code = integer_attrib "pdg_code" attribs;
+	   name = string_attrib "name" attribs;
+	   antiname = string_attrib "antiname" attribs;
+	   spin = integer_attrib "spin" attribs;
+	   color = integer_attrib "color" attribs;
+	   mass = name_attrib "mass" attribs;
+	   width = name_attrib "width" attribs;
+	   texname = string_attrib "texname" attribs;
+	   antitexname = string_attrib "antitexname" attribs;
+	   charge = charge_attrib "charge" attribs;
+	   ghost_number = integer_attrib "GhostNumber" attribs;
+	   lepton_number = integer_attrib "LeptonNumber" attribs;
+	   y = integer_attrib "Y" attribs } :: acc
+      | [ "anti"; p ], [] ->
+	 begin
+	   try
+	     let anti = find_particle p acc in
+	     conjugate d.S.name anti :: acc
+	   with
+	   | Not_found ->
+	      failwith ("UFO.pass2_particle: " ^ p ^ ".anti() not yet defined!")
+	 end
+      | _ -> invalid_arg ("pass2_particle:" ^ String.concat "." (List.rev d.S.kind))
+
+    let pass2 particles =
+      List.fold_left pass2_particle [] particles
+
+  end
+    
 type coupling =
   { c_symbol : string;
     c_name : string;
@@ -445,7 +448,7 @@ type decays = decay list
 let pass2_decays _ = []
 
 type t =
-  { particles : particles;
+  { particles : Particle.t list;
     couplings : couplings;
     coupling_orders : coupling_orders;
     vertices : vertices;
@@ -455,7 +458,7 @@ type t =
     decays : decays }
 
 let pass2 u =
-  { particles = pass2_particles u.raw_particles;
+  { particles = Particle.pass2 u.raw_particles;
     couplings = pass2_couplings u.raw_couplings;
     coupling_orders = pass2_coupling_orders u.raw_coupling_orders;
     vertices = pass2_vertices u.raw_vertices;
@@ -468,7 +471,7 @@ let parse_directory dir =
   let result = parse_directory dir in
   let result' = pass2 result in
   List.iter
-    (fun p -> print_endline (particle_to_string p))
+    (fun p -> print_endline (Particle.to_string p))
     result'.particles;
   List.iter
     (fun p -> print_endline (coupling_to_string p))
