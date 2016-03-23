@@ -25,6 +25,7 @@ let _ =
   let file = ref None
   and line = ref None
   and dir = ref None
+  and expr = ref None
   and skip_tests = ref false
   and skip_example = ref false
   and timing = ref false
@@ -38,6 +39,8 @@ let _ =
 	  "name UFO output file");
 	 ("-line", Arg.String (fun s -> line := Some s),
 	  "line UFO fragment");
+	 ("-expr", Arg.String (fun s -> expr := Some s),
+	  "expr UFO fragment");
 	 ("-skip-tests", Arg.Set skip_tests, " skip the tests");
 	 ("-skip-example", Arg.Set skip_example, " skip the example");
 	 ("-timing", Arg.Set timing, " provide timing information");
@@ -56,5 +59,9 @@ let _ =
   begin match !dir with
   | None -> ()
   | Some s -> ignore (UFO.parse_directory s)
+  end;
+  begin match !expr with
+  | None -> ()
+  | Some s -> ignore (UFOx.parse s)
   end;
   exit 0

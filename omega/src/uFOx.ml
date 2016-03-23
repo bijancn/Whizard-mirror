@@ -23,8 +23,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let error_in_string text start_pos end_pos =
-  let i = start_pos.Lexing.pos_cnum
-  and j = end_pos.Lexing.pos_cnum in
+  let i = max 0 start_pos.Lexing.pos_cnum in
+  let j = min (String.length text) (max (i + 1) end_pos.Lexing.pos_cnum) in
   String.sub text i (j - i)
 
 let error_in_file name start_pos end_pos =
@@ -35,6 +35,19 @@ let error_in_file name start_pos end_pos =
     (start_pos.Lexing.pos_cnum - start_pos.Lexing.pos_bol)
     end_pos.Lexing.pos_lnum
     (end_pos.Lexing.pos_cnum - end_pos.Lexing.pos_bol)
+
+let parse text =
+  try
+    UFOx_parser.input
+      UFOx_lexer.token
+      (UFOx_lexer.init_position "" (Lexing.from_string text))
+  with
+  | UFOx_syntax.Syntax_Error (msg, start_pos, end_pos) ->
+     invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
+                    msg  (error_in_string text start_pos end_pos))
+  | Parsing.Parse_error ->
+     invalid_arg ("parse error: " ^ text)
+
 
 module type Test =
   sig

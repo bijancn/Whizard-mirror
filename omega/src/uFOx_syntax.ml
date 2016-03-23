@@ -25,3 +25,42 @@
 (* \thocwmodulesection{Abstract Syntax} *)
 
 exception Syntax_Error of string * Lexing.position * Lexing.position
+
+type expr =
+  | Integer of int
+  | Float of float
+  | Variable of string
+  | Sum of expr list
+  | Difference of expr * expr
+  | Product of expr list
+  | Quotient of expr * expr
+  | Power of expr * int
+  | Application of string * expr list
+
+let integer i =
+  Integer i
+
+let float x =
+  Float x
+
+let variable s =
+  Variable s
+
+let add e1 e2 =
+  Sum [e1; e2]
+    
+let subtract e1 e2 =
+  Difference (e1, e2)
+    
+let multiply e1 e2 =
+  Product [e1; e2]
+    
+let divide e1 e2 =
+  Quotient (e1, e2)
+    
+let power e p =
+  Power (e, p)
+
+let apply f args =
+  Application (f, args)
+    

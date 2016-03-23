@@ -28,10 +28,10 @@
    prefering left recursion. */
 
 %{
-module U = UFO_syntax
+module X = UFOx_syntax
 
 let parse_error msg =
-  raise (UFO_syntax.Syntax_Error
+  raise (UFOx_syntax.Syntax_Error
 	   (msg, symbol_start_pos (), symbol_end_pos ()))
 
 let invalid_parameter_attr () =
@@ -42,17 +42,42 @@ let invalid_parameter_attr () =
 %token < int > INT
 %token < float > FLOAT
 %token < string > ID
-%token EQUAL PLUS MINUS DIV
-%token LPAREN RPAREN
+%token PLUS MINUS TIMES POWER DIV
+%token LPAREN RPAREN COMMA DOT
 
 %token END
 
-%start file
-%type < unit > file
+%left PLUS MINUS
+%left TIMES DIV
+%left POWER
+%nonassoc UNARY
+
+%start input
+%type < UFOx_syntax.expr > input
 
 %%
 
-file:
- | END { () }
+input:
+ | expr END { $1 }
 ;
 
+expr:
+ | INT             	  { X.integer $1 }
+ | FLOAT           	  { X.float $1 }
+ | ID              	  { X.variable $1 }
+ | PLUS expr  %prec UNARY { $2 }
+ | MINUS expr %prec UNARY { X.multiply (X.integer (-1)) $2 }
+ | expr PLUS expr  	  { X.add $1 $3 }
+ | expr MINUS expr 	  { X.subtract $1 $3 }
+ | expr TIMES expr 	  { X.multiply $1 $3 }
+ | expr DIV expr   	  { X.divide $1 $3 }
+ | expr POWER INT  	  { X.power $1 $3 }
+ | LPAREN expr RPAREN     { $2 }
+ | ID LPAREN RPAREN       { X.apply $1 [] }
+ | ID LPAREN args RPAREN  { X.apply $1 $3 }
+;
+
+args:
+ | expr            { [$1] }
+ | expr COMMA args { $1 :: $3 }
+;

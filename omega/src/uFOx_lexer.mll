@@ -48,20 +48,24 @@ let upper = ['A'-'Z']
 let lower = ['a'-'z']
 let char = upper | lower
 let word = char | digit | '_'
-let white = [' ' '\t']
+let white = [' ' '\t' '\n']
 
 rule token = parse
     white             { token lexbuf }     (* skip blanks *)
   | '('        	      { LPAREN }
   | ')'        	      { RPAREN }
+  | ','        	      { COMMA }
   | '+'        	      { PLUS }
   | '-'        	      { MINUS }
+  | '*'        	      { TIMES }
   | '/'        	      { DIV }
+  | '*' '*'    	      { POWER }
   | '-'? ( digit+ '.' digit* | digit* '.' digit+ )
          ( ['E''e'] '-'? digit+ )? as x
                       { FLOAT (float_of_string x) }
   | '-'? digit+ as i  { INT (int_of_string i) }
-  | char word* as s   { ID s }
+  | char word* ('.' char word+ )? as s
+                      { ID s }
   | _ as c            { failwith ("invalid character at `" ^
 				    string_of_char c ^ "'") }
   | eof               { END }

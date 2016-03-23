@@ -439,7 +439,7 @@ module Lorentz =
 	l.symbol l.name
 	(String.concat ", " (List.map string_of_int l.spins))
 	l.structure
-      
+
     let pass2' d =
       match d.S.kind, d.S.attribs with
       | [ "Lorentz" ], attribs ->
@@ -632,16 +632,20 @@ let parse_directory dir =
     (fun p -> print_endline (Particle.to_string p))
     result.particles;
   List.iter
-    (fun p -> print_endline (Coupling.to_string p))
+    (fun c ->
+      print_endline (Coupling.to_string c);
+      ignore (UFOx.parse c.Coupling.value))
     result.couplings;
   List.iter
-    (fun p -> print_endline (Coupling_Order.to_string p))
+    (fun o -> print_endline (Coupling_Order.to_string o))
     result.coupling_orders;
   List.iter
-    (fun p -> print_endline (Vertex.to_string p))
+    (fun v -> print_endline (Vertex.to_string v))
     result.vertices;
   List.iter
-    (fun p -> print_endline (Lorentz.to_string p))
+    (fun l ->
+      print_endline (Lorentz.to_string l);
+      ignore (UFOx.parse l.Lorentz.structure))
     result.lorentz;
   List.iter
     (fun p -> print_endline (Parameter.to_string p))
@@ -650,7 +654,9 @@ let parse_directory dir =
     (fun p -> print_endline (Propagator.to_string p))
     result.propagators;
   List.iter
-    (fun p -> print_endline (Decay.to_string p))
+    (fun d ->
+      print_endline (Decay.to_string d);
+      List.iter (fun (_, w) -> ignore (UFOx.parse w)) d.Decay.widths)
     result.decays;
   result
 
