@@ -543,10 +543,8 @@ contains
        !        need interference terms in the Born
        if (threshold%settings%factorized_computation) then
           if (threshold%settings%helicity_approximated) then
-             ! THIS GIVES BIG DIFFERENCES  !!! debugging
              do h_t = -1, 1, 2
                 do h_tbar = -1, 1, 2
-                   print *, 'h_t, h_tbar, hi, s =    ', h_t, h_tbar, hi, s !!! Debugging
                    prod = production_me(s(1), s(2), h_t, h_tbar)
                    dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
                    dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
@@ -568,7 +566,6 @@ contains
              end do
           end if
        else
-          ! THIS WORKS  !!! debugging
           call compute_production_owfs (hi)
           if (.not. onshell_tops (p3, p4))  call compute_decay_owfs (hi)
           amp_blob(hi) = - calculate_blob (ffi) ! 4 vertices, 3 propagators
