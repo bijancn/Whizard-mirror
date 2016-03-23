@@ -41,7 +41,10 @@ type value =
   | Fraction of int * int
   | String of string
   | Dictionary of dictionary
-  | List of value list
+  | Empty_List
+  | Name_List of name list
+  | Integer_List of int list
+  | String_List of string list
 
 type attrib =
   { a_name : string;

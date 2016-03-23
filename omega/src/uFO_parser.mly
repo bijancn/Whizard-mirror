@@ -88,8 +88,8 @@ attributes:
 
 attribute:
  | ID EQUAL value      { { U.a_name = $1; U.a_value = $3 } }
- | ID EQUAL list       { { U.a_name = $1; U.a_value = U.List $3 } }
- | ID EQUAL dictionary { { U.a_name = $1; U.a_value = U.Dictionary $3 } }
+ | ID EQUAL list       { { U.a_name = $1; U.a_value = $3 } }
+ | ID EQUAL dictionary { { U.a_name = $1; U.a_value = $3 } }
 ;
 
 value:
@@ -101,30 +101,30 @@ value:
 ;
 
 list:
- | LBRACKET RBRACKET 	      { [] }
- | LBRACKET names RBRACKET    { $2 }
- | LBRACKET strings RBRACKET  { $2 }
- | LBRACKET integers RBRACKET { $2 }
+ | LBRACKET RBRACKET 	      { U.Empty_List }
+ | LBRACKET names RBRACKET    { U.Name_List $2 }
+ | LBRACKET strings RBRACKET  { U.String_List $2 }
+ | LBRACKET integers RBRACKET { U.Integer_List $2 }
 ;
 
 dictionary:
- | LBRACE orders RBRACE    { $2 }
- | LBRACE couplings RBRACE { $2 }
+ | LBRACE orders RBRACE    { U.Dictionary $2 }
+ | LBRACE couplings RBRACE { U.Dictionary $2 }
 ;
 
 names:
- | name             { [U.Name $1] }
- | name COMMA names { U.Name $1 :: $3 }
+ | name             { [$1] }
+ | name COMMA names { $1 :: $3 }
 ;
 
 integers:
- | INT                { [U.Integer $1] }
- | INT COMMA integers { U.Integer $1 :: $3 }
+ | INT                { [$1] }
+ | INT COMMA integers { $1 :: $3 }
 ;
 
 strings:
- | STRING               { [U.String $1] }
- | STRING COMMA strings { U.String $1 :: $3 }
+ | STRING               { [$1] }
+ | STRING COMMA strings { $1 :: $3 }
 ;
 
 orders:

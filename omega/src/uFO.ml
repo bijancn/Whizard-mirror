@@ -166,31 +166,20 @@ let value_attrib name attribs =
   | S.Name n -> Name n
   | _ -> invalid_arg name
 
-let list_attrib name attribs =
+let string_list_attrib name attribs =
   match find_attrib name attribs with
-  | S.List l -> l
+  | S.String_List l -> l
   | _ -> invalid_arg name
 
-let string_list_attrib name attribs =
-  List.map
-    (function
-    | S.String s -> s
-    | _ ->  invalid_arg name)
-    (list_attrib name attribs)
-
 let name_list_attrib name attribs =
-  List.map
-    (function
-    | S.Name n -> n
-    | _ ->  invalid_arg name)
-    (list_attrib name attribs)
+  match find_attrib name attribs with
+  | S.Name_List l -> l
+  | _ -> invalid_arg name
 
 let integer_list_attrib name attribs =
-  List.map
-    (function
-    | S.Integer n -> n
-    | _ ->  invalid_arg name)
-    (list_attrib name attribs)
+  match find_attrib name attribs with
+  | S.Integer_List l -> l
+  | _ -> invalid_arg name
 
 let name_attrib name attribs =
   match find_attrib name attribs with
