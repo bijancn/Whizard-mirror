@@ -240,7 +240,10 @@ module Particle =
 	charge : charge;
 	ghost_number : int;
 	lepton_number : int;
-	y : int }
+	y : int;
+	goldstone : bool;    (* NOT HANDLED YET! *)
+	propagating : bool;  (* NOT HANDLED YET! *)
+	line : string option (* NOT HANDLED YET! *) }
 
     let to_string p =
       Printf.sprintf
@@ -276,7 +279,10 @@ module Particle =
 	charge = conjugate_charge p.charge;
 	ghost_number = p.ghost_number;
 	lepton_number = p.lepton_number;
-	y = p.y }
+	y = p.y;
+	goldstone = p.goldstone;
+	propagating = p.propagating;
+	line = p.line }
 
     let pass2' acc d =
       match d.S.kind, d.S.attribs with
@@ -294,7 +300,10 @@ module Particle =
 	   charge = charge_attrib "charge" attribs;
 	   ghost_number = integer_attrib "GhostNumber" attribs;
 	   lepton_number = integer_attrib "LeptonNumber" attribs;
-	   y = integer_attrib "Y" attribs } :: acc
+	   y = integer_attrib "Y" attribs;
+	   goldstone = false;
+	   propagating = true;
+	   line = None } :: acc
       | [ "anti"; p ], [] ->
 	 begin
 	   try
