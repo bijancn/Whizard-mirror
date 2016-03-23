@@ -108,8 +108,8 @@ list:
 ;
 
 dictionary:
- | LBRACE orders RBRACE    { U.Dictionary $2 }
- | LBRACE couplings RBRACE { U.Dictionary $2 }
+ | LBRACE orders RBRACE    { U.Order_Dictionary $2 }
+ | LBRACE couplings RBRACE { U.Coupling_Dictionary $2 }
 ;
 
 names:
@@ -133,7 +133,7 @@ orders:
 ;
 
 order:
- | STRING COLON INT { U.Order ($1, $3) }
+ | STRING COLON INT { ($1, $3) }
 ;
 
 couplings:
@@ -142,6 +142,6 @@ couplings:
 ;
 
 coupling:
- | LPAREN INT COMMA INT RPAREN COLON name { U.Coupling ($2, $4, $7) }
+ | LPAREN INT COMMA INT RPAREN COLON name { ($2, $4, $7) }
 ;
 

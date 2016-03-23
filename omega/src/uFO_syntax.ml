@@ -28,23 +28,18 @@ exception Syntax_Error of string * Lexing.position * Lexing.position
 
 type name = string list
 
-type entry =
-  | Order of string * int
-  | Coupling of int * int * name
-
-type dictionary = entry list
-  
 type value =
   | Name of name
   | Integer of int
   | Float of float
   | Fraction of int * int
   | String of string
-  | Dictionary of dictionary
   | Empty_List
   | Name_List of name list
   | Integer_List of int list
   | String_List of string list
+  | Order_Dictionary of (string * int) list
+  | Coupling_Dictionary of (int * int * name) list
 
 type attrib =
   { a_name : string;

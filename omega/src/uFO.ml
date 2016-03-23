@@ -134,6 +134,11 @@ module S = UFO_syntax
 let find_attrib name attribs =
   (List.find (fun a -> name = a.S.a_name) attribs).S.a_value
 
+let name_attrib name attribs =
+  match find_attrib name attribs with
+  | S.Name n -> String.concat "." (List.rev n)
+  | _ -> invalid_arg name
+
 let integer_attrib name attribs =
   match find_attrib name attribs with
   | S.Integer i -> i
@@ -181,27 +186,15 @@ let integer_list_attrib name attribs =
   | S.Integer_List l -> l
   | _ -> invalid_arg name
 
-let name_attrib name attribs =
+let order_dictionary_attrib name attribs =
   match find_attrib name attribs with
-  | S.Name n -> String.concat "." (List.rev n)
+  | S.Order_Dictionary d -> d
   | _ -> invalid_arg name
 
-let dictionary_attrib name attribs =
+let coupling_dictionary_attrib name attribs =
   match find_attrib name attribs with
-  | S.Dictionary d -> d
+  | S.Coupling_Dictionary d -> d
   | _ -> invalid_arg name
-
-let order_attrib name attribs =
-  List.map
-    (function S.Order (s, i) -> (s, i) | _ -> invalid_arg name)
-    (dictionary_attrib name attribs)
-
-let coupling_list_attrib name attribs =
-  List.map
-    (function
-    | S.Coupling (i, j, n) -> (i, j, n)
-    | _ ->  invalid_arg name)
-    (dictionary_attrib name attribs)
 
 module Particle =
   struct
@@ -315,7 +308,7 @@ module Coupling =
 	 { symbol = d.S.name;
 	   name = string_attrib "name" attribs;
 	   value = string_attrib "value" attribs;
-	   order = order_attrib "order" attribs }
+	   order = order_dictionary_attrib "order" attribs }
       | _ -> invalid_arg ("pass2_coupling:" ^ String.concat "." (List.rev d.S.kind))
 
     let pass2 couplings =
@@ -393,7 +386,7 @@ module Vertex =
 	   particles = name_list_attrib "particles" attribs;
 	   color = string_list_attrib "color" attribs;
 	   lorentz = name_list_attrib "lorentz" attribs;
-	   couplings = coupling_list_attrib "couplings" attribs }
+	   couplings = coupling_dictionary_attrib "couplings" attribs }
       | _ -> invalid_arg ("pass2_vertex:" ^
 			     String.concat "." (List.rev d.S.kind))
 
