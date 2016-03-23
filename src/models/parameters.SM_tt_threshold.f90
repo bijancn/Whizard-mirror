@@ -242,6 +242,7 @@ contains
           par%offshell_strategy, par%v1, par%v2, par%scan_sqrts_min, &
           par%scan_sqrts_max, par%scan_sqrts_stepsize, mpole_fixed)
     call init_threshold_grids (par%test)
+    call threshold%formfactor%activate ()
   end subroutine import_from_whizard
 
   subroutine model_update_alpha_s (alpha_s)
@@ -260,9 +261,9 @@ contains
     integer :: this_FF
     call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
     this_FF = FF; if (present (FF_mode))  this_FF = FF_mode
-    c = FF_master (ps, i, this_FF)
+    c = threshold%formfactor%compute (ps, i, this_FF)
     !!! form factors include tree level: FF = 1 + O(alphas)
-    !!! subtract tree level contribution ~ 1 already included in SM couplings
+    !!! subtract tree level contribution (1) already included in SM couplings
     c = c - 1.0_default
   end function ttv_formfactor
 

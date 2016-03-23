@@ -822,7 +822,7 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
      end if
      amp_tree = zero
      amp_summed = zero
-     USE_FF = .true.
+     call threshold%formfactor%activate ()
      amp2 = compute_real (p, FF)
   else
      if (.not. allocated (amp_tree)) then
@@ -832,13 +832,13 @@ subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
      amp_tree = zero
      amp_summed = zero
      if (threshold%settings%interference) then
-        USE_FF = .false.
+        call threshold%formfactor%disable ()
         call full_proc_new_event (p)
         do hi = 1, full_proc_number_spin_states()
            amp_tree(hi) = full_proc_get_amplitude (1, hi, 1)
         end do
      end if
-     USE_FF = .true.
+     call threshold%formfactor%activate ()
      call compute_born (p, FF)
      select case (FF)
      case (EXPANDED_HARD_P0DEPENDENT, EXPANDED_HARD_P0CONSTANT, &

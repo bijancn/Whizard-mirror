@@ -10654,7 +10654,6 @@ end module ttv_formfactors
    <<ttv formfactors: settings: TBP>>
   end type settings_t
 
-
 @ %def settings_t
 @
 <<ttv formfactors: settings: TBP>>=
@@ -10676,10 +10675,101 @@ end module ttv_formfactors
     !      nlo = .true.
     !   end select
     !end if
-       nlo = settings%nlo
+    nlo = settings%nlo
   end function settings_use_nlo_width
 
 @ %def settings_use_nlo_width
+@
+<<ttv formfactors: public>>=
+  public :: formfactor_t
+<<ttv formfactors: types>>=
+  type :: formfactor_t
+     logical :: active
+  contains
+   <<ttv formfactors: formfactor: TBP>>
+  end type formfactor_t
+
+@ %def formfactor_t
+@
+<<ttv formfactors: formfactor: TBP>>=
+  procedure :: activate => formfactor_activate
+<<ttv formfactors: procedures>>=
+  pure subroutine formfactor_activate (formfactor)
+    class(formfactor_t), intent(inout) :: formfactor
+    formfactor%active = .true.
+  end subroutine formfactor_activate
+
+@ %def formfactor_activate
+@
+<<ttv formfactors: formfactor: TBP>>=
+  procedure :: disable => formfactor_disable
+<<ttv formfactors: procedures>>=
+  pure subroutine formfactor_disable (formfactor)
+    class(formfactor_t), intent(inout) :: formfactor
+    formfactor%active = .false.
+  end subroutine formfactor_disable
+
+@ %def formfactor_disable
+@
+<<ttv formfactors: formfactor: TBP>>=
+  procedure :: compute => formfactor_compute
+<<ttv formfactors: procedures>>=
+  function formfactor_compute (formfactor, ps, vec_type, FF_mode) result (FF)
+    complex(default) :: FF
+    class(formfactor_t), intent(in) :: formfactor
+    type(phase_space_point_t), intent(in) :: ps
+    integer, intent(in) :: vec_type, FF_mode
+    real(default) :: f
+    !!! this cries for polymorphism OTOH we have multiple formfactors active at once
+    if (threshold%settings%initialized_parameters .and. formfactor%active) then
+       select case (FF_mode)
+       case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
+          RESUMMED_SWITCHOFF_P0CONSTANT)
+          FF = resummed_formfactor (ps, vec_type)
+       case (MATCHED_EXPANDED)
+          f = f_switch_off (v_matching (ps%sqrts, GAM))
+          ! TODO: (bcn 2016-02-08) can be simplified
+          FF = - expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.) &
+               + expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
+                 (1-f) * AS_HARD, ps, vec_type, no_p0=.true.) &
+               - expanded_formfactor (f * AS_HARD, &
+                 f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
+       case (EXPANDED_HARD_P0DEPENDENT)
+          FF = expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type)
+       case (EXPANDED_HARD_P0CONSTANT)
+          FF = expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.)
+       case (EXPANDED_SOFT_HARD_P0CONSTANT)
+          f = f_switch_off (v_matching (ps%sqrts, GAM))
+          FF = expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
+               (1-f) * AS_HARD, ps, vec_type, no_p0=.true.)
+       case (EXPANDED_SOFT_P0CONSTANT)
+          FF = expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
+       case (EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
+          f = f_switch_off (v_matching (ps%sqrts, GAM))
+          FF = expanded_formfactor (f * AS_HARD, &
+               f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
+       case (RESUMMED_ANALYTIC_LL)
+          FF = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts), ps, vec_type)
+       case (EXTRA_TREE)
+          FF = two
+       case default
+          !!! disables signal component and thus gives tree level result
+          !!! in modes with tree level interference
+          FF = one
+       end select
+    else
+       FF = one
+    end if
+    if (debug2_active (D_THRESHOLD)) then
+       call msg_debug2 (D_THRESHOLD, "threshold%settings%initialized_parameters", threshold%settings%initialized_parameters)
+       call msg_debug2 (D_THRESHOLD, "formfactor%active", formfactor%active)
+       call msg_debug2 (D_THRESHOLD, "FF_mode", FF_mode)
+       call msg_debug2 (D_THRESHOLD, "FF", FF)
+       call ps%write ()
+    end if
+  end function formfactor_compute
+
+@ %def formfactor_compute
 @ Use singleton pattern instead of global variables. At least shows
 where the variables are from.
 <<ttv formfactors: public>>=
@@ -10691,6 +10781,7 @@ where the variables are from.
 <<ttv formfactors: types>>=
   type :: threshold_t
      type(settings_t) :: settings
+     type(formfactor_t) :: formfactor
   contains
    <<ttv formfactors: threshold: TBP>>
   end type threshold_t
@@ -10772,11 +10863,6 @@ where the variables are from.
     module procedure int_to_char, real_to_char, complex_to_char, logical_to_char
   end interface char
 
-@ Master switch to en-/disable the form factor
-<<ttv formfactors: public>>=
-  public :: USE_FF
-<<ttv formfactors: global variables>>=
-  logical :: USE_FF = .true.
 @
 <<ttv formfactors: public>>=
   public :: init_parameters
@@ -11099,63 +11185,6 @@ where the variables are from.
     if (TOPPIK_RESUMMED) call init_formfactor_grid ()
     parameters_ref = parameters_string ()
   end subroutine init_threshold_grids
-
-@
-<<ttv formfactors: public>>=
-  public :: FF_master
-<<ttv formfactors: procedures>>=
-  function FF_master (ps, vec_type, FF_mode) result (FF)
-    complex(default) :: FF
-    type(phase_space_point_t), intent(in) :: ps
-    integer, intent(in) :: vec_type, FF_mode
-    real(default) :: f
-    if (threshold%settings%initialized_parameters .and. USE_FF) then
-       select case (FF_mode)
-       case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
-          RESUMMED_SWITCHOFF_P0CONSTANT)
-          FF = resummed_formfactor (ps, vec_type)
-       case (MATCHED_EXPANDED)
-          f = f_switch_off (v_matching (ps%sqrts, GAM))
-          ! TODO: (bcn 2016-02-08) can be simplified
-          FF = - expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.) &
-               + expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
-                 (1-f) * AS_HARD, ps, vec_type, no_p0=.true.) &
-               - expanded_formfactor (f * AS_HARD, &
-                 f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
-       case (EXPANDED_HARD_P0DEPENDENT)
-          FF = expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type)
-       case (EXPANDED_HARD_P0CONSTANT)
-          FF = expanded_formfactor (AS_HARD, AS_HARD, ps, vec_type, no_p0=.true.)
-       case (EXPANDED_SOFT_HARD_P0CONSTANT)
-          f = f_switch_off (v_matching (ps%sqrts, GAM))
-          FF = expanded_formfactor (AS_HARD, f * alphas_soft (ps%sqrts) + &
-               (1-f) * AS_HARD, ps, vec_type, no_p0=.true.)
-       case (EXPANDED_SOFT_P0CONSTANT)
-          FF = expanded_formfactor (AS_HARD, alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
-       case (EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)
-          f = f_switch_off (v_matching (ps%sqrts, GAM))
-          FF = expanded_formfactor (f * AS_HARD, &
-               f * alphas_soft (ps%sqrts), ps, vec_type, no_p0=.true.)
-       case (RESUMMED_ANALYTIC_LL)
-          FF = formfactor_LL_analytic_p0 (alphas_soft (ps%sqrts), ps, vec_type)
-       case (EXTRA_TREE)
-          FF = two
-       case default
-          !!! disables signal component and thus gives tree level result
-          !!! in modes with tree level interference
-          FF = one
-       end select
-    else
-       FF = one
-    end if
-    if (debug2_active (D_THRESHOLD)) then
-       call msg_debug2 (D_THRESHOLD, "threshold%settings%initialized_parameters", threshold%settings%initialized_parameters)
-       call msg_debug2 (D_THRESHOLD, "USE_FF", USE_FF)
-       call msg_debug2 (D_THRESHOLD, "FF_mode", FF_mode)
-       call msg_debug2 (D_THRESHOLD, "FF", FF)
-       call ps%write ()
-    end if
-  end function FF_master
 
 @
 <<ttv formfactors: procedures>>=
@@ -12494,8 +12523,8 @@ end module ttv_formfactors_uti
          mw, mb, sh, sf, NRQCD_ORDER, FF, offshell_strategy, v1, v2, &
          scan_sqrts_max, sqrts, scan_sqrts_min, scan_sqrts_stepsize, &
          test, gam_out, mpole
+    type(formfactor_t) :: formfactor
     type(phase_space_point_t) :: ps
-    integer :: ff_mode
     logical :: mpole_fixed
     write (u, "(A)")  "* Test output: ttv_formfactors_1"
     write (u, "(A)")  "*   Purpose: Basic setup"
@@ -12524,6 +12553,7 @@ end module ttv_formfactors_uti
     mpole_fixed = .true.
     test = - one
   <<(re)start grid>>
+    call threshold%formfactor%activate ()
 
     write (u, "(A)") "Check that the mass is fixed"
     call ps%init (m1s**2, m1s**2, sqrts**2, mpole)
@@ -12540,14 +12570,20 @@ end module ttv_formfactors_uti
          "m1s_to_mpole (350.0_default) > m1s")
     write (u, "(A)")
 
-    !!! care FF_master contains the tree level that we usually subtract again
+    !!! care: the formfactor contains the tree level that we usually subtract again
     write (u, "(A)") "Check low energy behavior"
     mpole_fixed = .true.
   <<(re)start grid>>
     call assert_equal (u, f_switch_off (v_matching (ps%sqrts, GAM)), one, "f_switch_off (v_matching (ps%sqrts, GAM))")
+    call formfactor%disable ()
     call assert_equal (u, &
-         FF_master (ps, 1, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT), &
-         FF_master (ps, 1, EXPANDED_SOFT_P0CONSTANT), &
+         abs(formfactor%compute (ps, 1, 1)), &
+         one, &
+         "disabled formfactor should return one")
+    call formfactor%activate ()
+    call assert_equal (u, &
+         formfactor%compute (ps, 1, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT), &
+         formfactor%compute (ps, 1, EXPANDED_SOFT_P0CONSTANT), &
          "switchoff function should do nothing here")
     write (u, "(A)") ""
 
@@ -12557,20 +12593,19 @@ end module ttv_formfactors_uti
     scan_sqrts_max = sqrts
   <<(re)start grid>>
     ! For simplicity we test on-shell back-to-back tops
-    !p = sqrt(sqrts / 4 - mpole**2)
     call ps%init (m1s**2, m1s**2, sqrts**2, mpole)
     call assert_equal (u, f_switch_off (v_matching (ps%sqrts, GAM)), tiny_10, &
          "f_switch_off (v_matching (ps%sqrts, GAM))")
     call assert (u, &
-         abs (FF_master (ps, 1, EXPANDED_HARD_P0CONSTANT)) > &
-         abs (FF_master (ps, 1, RESUMMED_P0CONSTANT)), &
+         abs (formfactor%compute (ps, 1, EXPANDED_HARD_P0CONSTANT)) > &
+         abs (formfactor%compute (ps, 1, RESUMMED_P0CONSTANT)), &
          "expansion with hard alphas should be larger " // &
          "than resummed (with switchoff)")
     call assert_equal (u, &
-         abs (FF_master (ps, 1, RESUMMED_P0CONSTANT)), one, &
+         abs (formfactor%compute (ps, 1, RESUMMED_P0CONSTANT)), one, &
          "resummed (with switchoff) should be one (tree-level)")
     call assert_equal (u, &
-         abs (FF_master (ps, 1, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)), one, &
+         abs (formfactor%compute (ps, 1, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT)), one, &
          "expanded (with switchoff) should be one (tree-level)")
     write (u, "(A)") ""
 
