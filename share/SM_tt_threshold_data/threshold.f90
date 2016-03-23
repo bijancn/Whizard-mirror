@@ -115,7 +115,7 @@ module @ID@_threshold
   use diagnostics
   use numeric_utils
   use constants
-  use lorentz, only: lambda
+  use lorentz
   use omega95
   use parameters_SM_tt_threshold
   use ttv_formfactors
@@ -335,6 +335,8 @@ module @ID@_threshold
   type(momentum) :: p12, p35, p46
   type(momentum) :: ptop_onshell, ptop_onshell_cms, pwp_onshell, pb_onshell
   type(momentum) :: ptopbar_onshell, pwm_onshell, pbbar_onshell
+  type(vector4_t) :: ptop_onshell_v4, ptop_onshell_cms_v4, pwp_onshell_v4, pb_onshell_v4
+  type(vector4_t) :: ptopbar_onshell_v4, pwm_onshell_v4, pbbar_onshell_v4
   type(spinor) :: owf_t_4, owf_b_6, owf_e_1
   type(conjspinor) :: owf_t_3, owf_b_5, owf_e_2
   type(vector) :: owf_Wp_3, owf_Wm_4
@@ -605,6 +607,7 @@ contains
     type(momentum), intent(in) :: p12
     real(default) :: sqrts, scale_factor, mtop
     real(default), dimension(1:3) :: unit_vec
+    real(default), dimension(4) :: tmp
     integer :: u
     u = output_unit
     mtop = ttv_mtpole (p12*p12)
@@ -612,6 +615,8 @@ contains
     scale_factor = sqrt (sqrts**2 - 4 * mtop**2) / 2
     unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
     ptop_onshell = [sqrts / 2, scale_factor * unit_vec]
+    tmp = ptop_onshell
+    ptop_onshell_v4 = tmp
     ptop_onshell_cms = [mtop, zero, zero, zero]
     ptopbar_onshell = [sqrts / 2, - scale_factor * unit_vec]
     if (debug_active (D_THRESHOLD)) then
