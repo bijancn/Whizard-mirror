@@ -640,7 +640,8 @@ let parse_directory dir =
     (fun o -> print_endline (Coupling_Order.to_string o))
     result.coupling_orders;
   List.iter
-    (fun v -> print_endline (Vertex.to_string v))
+    (fun v -> print_endline (Vertex.to_string v);
+      List.iter (fun c -> ignore (UFOx.parse c)) v.Vertex.color)
     result.vertices;
   List.iter
     (fun l ->

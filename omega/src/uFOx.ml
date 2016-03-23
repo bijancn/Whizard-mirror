@@ -49,6 +49,108 @@ let parse text =
      invalid_arg ("parse error: " ^ text)
 
 
+let positive integers =
+  List.filter (fun i -> i > 0) integers
+
+module Lorentz =
+  struct
+
+    type tensor =
+      | C of int * int
+      | Epsilon of int * int * int * int
+      | Gamma of int * int * int
+      | Gamma5 of int * int
+      | Identity of int * int
+      | Metric of int * int
+      | P of int * int
+      | ProjP of int * int
+      | ProjM of int * int
+      | Sigma of int * int * int * int
+
+    type index_types =
+      { vector : int list;
+	spinor : int list;
+	conj_spinor : int list }
+
+    let index_types vector conj_spinor spinor =
+      { vector = positive vector;
+	conj_spinor = positive conj_spinor;
+	spinor = positive spinor }
+
+    let classify_indices = function
+      | C (i, j) -> index_types [] [i] [j] (* ??? *)
+      | Gamma5 (i, j) | Identity (i, j)
+      | ProjP (i, j) | ProjM (i, j) -> index_types [] [i] [j]
+      | Epsilon (mu, nu, ka, la) -> index_types [mu; nu; ka; la] [] []
+      | Gamma (mu, i, j) -> index_types [mu] [i] [j]
+      | Metric (mu, nu) -> index_types [mu; nu] [] []
+      | P (mu, _) -> index_types [mu] [] []
+      | Sigma (mu, nu, i, j) -> index_types [mu; nu] [i] [j]
+
+    let classify_indices_list tensors =
+      List.fold_right
+	(fun v acc ->
+	  let i = classify_indices v in
+	  { vector = i.vector @ acc.vector;
+	    spinor = i.spinor @ acc.spinor;
+	    conj_spinor = i.conj_spinor @ acc.conj_spinor })
+	tensors { vector = []; conj_spinor = []; spinor = [] }
+  end
+
+module Color =
+  struct
+
+    type tensor =
+      | Unit
+      | Identity of int * int
+      | T of int * int * int
+      | F of int * int * int
+      | D of int * int * int
+      | Epsilon of int * int * int
+      | EpsilonBar of int * int * int
+      | T6 of int * int * int
+      | K6 of int * int * int
+      | K6Bar of int * int * int
+
+    type index_types =
+      { fundamental : int list;
+	conjugate : int list;
+	adjoint : int list }
+
+    let index_types fundamental conjugate adjoint =
+      { fundamental = positive fundamental;
+	conjugate = positive conjugate;
+	adjoint = positive adjoint }
+
+    let classify_indices = function
+      | Unit -> index_types [] [] []
+      | Identity (i, j) -> index_types [i] [j] []
+      | T (a, i, j) -> index_types [i] [j] [a]
+      | F (a, b, c) | D (a, b, c) -> index_types [] [] [a; b; c]
+      | Epsilon (i, j, k) -> index_types [i; j; k] [] []
+      | EpsilonBar (i, j, k) -> index_types [] [i; j; k] []
+      | T6 (a, i', j') ->
+	 failwith "UFOx.Color: sextets not supported yet!"
+      | K6 (i', j, k) ->
+	 failwith "UFOx.Color: sextets not supported yet!"
+      | K6Bar (i', j, k) ->
+	 failwith "UFOx.Color: sextets not supported yet!"
+
+    let classify_indices_list tensors =
+      List.fold_right
+	(fun v acc ->
+	  let i = classify_indices v in
+	  { fundamental = i.fundamental @ acc.fundamental;
+	    conjugate = i.conjugate @ acc.conjugate;
+	    adjoint = i.adjoint @ acc.adjoint })
+	tensors { fundamental = []; conjugate = []; adjoint = [] }
+
+  end
+
+module Value =
+  struct
+  end
+
 module type Test =
   sig
     val example : unit -> unit
