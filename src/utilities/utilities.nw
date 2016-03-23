@@ -445,7 +445,8 @@ and variable format for integers.
   public :: str
 <<String utils: interfaces>>=
   interface str
-     module procedure str_log, str_int, str_real, str_complex
+     module procedure str_log, str_logs, str_int, str_ints, &
+            str_real, str_reals, str_complex, str_complexs
   end interface
 <<String utils: procedures>>=
   function str_log (l) result (s)
@@ -458,6 +459,11 @@ and variable format for integers.
     end if
   end function str_log
 
+  function str_logs (x) result (s)
+    logical, dimension(:), intent(in) :: x
+    <<concatenate strings>>
+  end function str_logs
+
   function str_int (i) result (s)
     integer, intent(in) :: i
     type(string_t) :: s
@@ -465,6 +471,11 @@ and variable format for integers.
     write (buffer, "(I0)")  i
     s = var_str (trim (adjustl (buffer)))
   end function str_int
+
+  function str_ints (x) result (s)
+    integer, dimension(:), intent(in) :: x
+    <<concatenate strings>>
+  end function str_ints
 
   function str_real (x) result (s)
     real(default), intent(in) :: x
@@ -474,13 +485,32 @@ and variable format for integers.
     s = var_str (trim (adjustl (buffer)))
   end function str_real
 
+  function str_reals (x) result (s)
+    real(default), dimension(:), intent(in) :: x
+    <<concatenate strings>>
+  end function str_reals
+
   function str_complex (x) result (s)
     complex(default), intent(in) :: x
     type(string_t) :: s
     s = str_real (real (x)) // " + i " // str_real (aimag (x))
   end function str_complex
 
+  function str_complexs (x) result (s)
+    complex(default), dimension(:), intent(in) :: x
+    <<concatenate strings>>
+  end function str_complexs
+
 @ %def str
+<<concatenate strings>>=
+type(string_t) :: s
+integer :: i
+s = '['
+do i = 1, size(x) - 1
+   s = s // str(x(i)) // ', '
+end do
+s = s // str(x(size(x))) // ']'
+@
 @ Auxiliary: Read real, integer, string value.
 <<String utils: public>>=
   public :: read_rval
@@ -784,6 +814,8 @@ end module format_defs
 module numeric_utils
 
 <<Use kinds>>
+<<Use strings>>
+  use string_utils
   use constants
   use format_defs
 
@@ -807,16 +839,20 @@ end module numeric_utils
 <<Numeric utils: public>>=
   public :: assert
 <<Numeric utils: procedures>>=
-  subroutine assert (unit, ok, description)
+  subroutine assert (unit, ok, description, exit_on_fail)
     integer, intent(in) :: unit
     logical, intent(in) :: ok
     character(*), intent(in), optional :: description
+    logical, intent(in), optional :: exit_on_fail
+    logical :: ef
+    ef = .false.;  if (present (exit_on_fail)) ef = exit_on_fail
     if (.not. ok) then
        if (present(description)) then
           write (unit, "(A)") "* FAIL: " // description
        else
           write (unit, "(A)") "* FAIL: Assertion error"
        end if
+       if (ef)  stop 1
     end if
   end subroutine assert
 
@@ -825,83 +861,111 @@ end module numeric_utils
 <<Numeric utils: public>>=
   public:: assert_equal
   interface assert_equal
-     module procedure assert_equal_real, assert_equal_complex, assert_equal_integer
+     module procedure assert_equal_integer, assert_equal_integers, &
+            assert_equal_real, assert_equal_reals, &
+            assert_equal_complex, assert_equal_complexs
   end interface
 
 @
 <<Numeric utils: procedures>>=
+  subroutine assert_equal_integer (unit, lhs, rhs, description, exit_on_fail)
+    integer, intent(in) :: unit
+    integer, intent(in) :: lhs, rhs
+    character(*), intent(in), optional :: description
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
+    logical :: ok
+    ok = lhs == rhs
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
+  end subroutine assert_equal_integer
+
+@ %def assert_equal_integer
+@
+<<Numeric utils: procedures>>=
+  subroutine assert_equal_integers (unit, lhs, rhs, description, exit_on_fail)
+    integer, intent(in) :: unit
+    integer, dimension(:), intent(in) :: lhs, rhs
+    character(*), intent(in), optional :: description
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
+    logical :: ok
+    ok = all(lhs == rhs)
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
+  end subroutine assert_equal_integers
+
+@ %def assert_equal_integers
+@
+<<Numeric utils: procedures>>=
   subroutine assert_equal_real (unit, lhs, rhs, description, &
-                                abs_smallness, rel_smallness)
+                                abs_smallness, rel_smallness, exit_on_fail)
     integer, intent(in) :: unit
     real(default), intent(in) :: lhs, rhs
     character(*), intent(in), optional :: description
     real(default), intent(in), optional :: abs_smallness, rel_smallness
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
     logical :: ok
     ok = nearly_equal (lhs, rhs, abs_smallness, rel_smallness)
-    if (.not. ok) then
-       if (present(description)) then
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: " // description // ": ", lhs, " /= ", rhs
-       else
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: Assertion error: ", lhs, " /= ", rhs
-       end if
-    end if
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
   end subroutine assert_equal_real
 
 @ %def assert_equal_real
 @
 <<Numeric utils: procedures>>=
+  subroutine assert_equal_reals (unit, lhs, rhs, description, &
+                                abs_smallness, rel_smallness, exit_on_fail)
+    integer, intent(in) :: unit
+    real(default), dimension(:), intent(in) :: lhs, rhs
+    character(*), intent(in), optional :: description
+    real(default), intent(in), optional :: abs_smallness, rel_smallness
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
+    logical :: ok
+    ok = all(nearly_equal (lhs, rhs, abs_smallness, rel_smallness))
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
+  end subroutine assert_equal_reals
+
+@ %def assert_equal_reals
+@
+<<Numeric utils: procedures>>=
   subroutine assert_equal_complex (unit, lhs, rhs, description, &
-                                abs_smallness, rel_smallness)
+                                abs_smallness, rel_smallness, exit_on_fail)
     integer, intent(in) :: unit
     complex(default), intent(in) :: lhs, rhs
     character(*), intent(in), optional :: description
     real(default), intent(in), optional :: abs_smallness, rel_smallness
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
     logical :: ok
-    ok = nearly_equal (real(lhs), real(rhs), abs_smallness, rel_smallness)
-    if (.not. ok) then
-       if (present(description)) then
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: " // description // ": ", real(lhs), " /= ", real(rhs)
-       else
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: Assertion error: ", real(lhs), " /= ", real(rhs)
-       end if
-    end if
-    ok = nearly_equal (aimag(lhs), aimag(rhs), abs_smallness, rel_smallness)
-    if (.not. ok) then
-       if (present(description)) then
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: " // description // ": ", aimag(lhs), " /= ", aimag(rhs)
-       else
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: Assertion error: ", aimag(lhs), " /= ", aimag(rhs)
-       end if
-    end if
+    ok = nearly_equal (real(lhs), real(rhs), abs_smallness, rel_smallness) &
+         .and. nearly_equal (aimag(lhs), aimag(rhs), abs_smallness, rel_smallness)
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
   end subroutine assert_equal_complex
 
 @ %def assert_equal_complex
 @
 <<Numeric utils: procedures>>=
-  subroutine assert_equal_integer (unit, lhs, rhs, description)
+  subroutine assert_equal_complexs (unit, lhs, rhs, description, &
+                                abs_smallness, rel_smallness, exit_on_fail)
     integer, intent(in) :: unit
-    integer, intent(in) :: lhs, rhs
+    complex(default), dimension(:), intent(in) :: lhs, rhs
     character(*), intent(in), optional :: description
+    real(default), intent(in), optional :: abs_smallness, rel_smallness
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
     logical :: ok
-    ok = lhs == rhs
-    if (.not. ok) then
-       if (present(description)) then
-          write (unit, "(A,I0,A,I0)") &
-               "* FAIL: " // description // ": ", lhs, " /= ", rhs
-       else
-          write (unit, "(A,I0,A,I0)") &
-               "* FAIL: Assertion error: ", lhs, " /= ", rhs
-       end if
-    end if
-  end subroutine assert_equal_integer
+    ok = all (nearly_equal (real(lhs), real(rhs), abs_smallness, rel_smallness)) &
+         .and. all (nearly_equal (aimag(lhs), aimag(rhs), abs_smallness, rel_smallness))
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
+  end subroutine assert_equal_complexs
 
-@ %def assert_equal_integer
+@ %def assert_equal_complexs
 @ Note that this poor man's check will be disabled if someone compiles
 with [[-ffast-math]] or similar optimizations.
 <<Numeric utils: procedures>>=
