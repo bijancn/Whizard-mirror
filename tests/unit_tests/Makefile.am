@@ -39,6 +39,8 @@ UNIT_TESTS = \
     pdg_arrays.run \
     expressions.run \
     beams.run \
+    su_algebra.run \
+    bloch_vectors.run \
     polarizations.run \
     md5.run \
     cputime.run \

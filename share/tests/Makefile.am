@@ -65,11 +65,22 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/expressions_2.ref \
     unit_tests/ref-output/expressions_3.ref \
     unit_tests/ref-output/expressions_4.ref \
+    unit_tests/ref-output/su_algebra_1.ref \
+    unit_tests/ref-output/su_algebra_2.ref \
+    unit_tests/ref-output/su_algebra_3.ref \
+    unit_tests/ref-output/su_algebra_4.ref \
+    unit_tests/ref-output/bloch_vectors_1.ref \
+    unit_tests/ref-output/bloch_vectors_2.ref \
+    unit_tests/ref-output/bloch_vectors_3.ref \
+    unit_tests/ref-output/bloch_vectors_4.ref \
+    unit_tests/ref-output/bloch_vectors_5.ref \
+    unit_tests/ref-output/bloch_vectors_6.ref \
+    unit_tests/ref-output/bloch_vectors_7.ref \
+    unit_tests/ref-output/polarization_1.ref \
+    unit_tests/ref-output/polarization_2.ref \
     unit_tests/ref-output/beam_1.ref \
     unit_tests/ref-output/beam_2.ref \
     unit_tests/ref-output/beam_3.ref \
-    unit_tests/ref-output/polarization_1.ref \
-    unit_tests/ref-output/polarization_2.ref \
     unit_tests/ref-output/md5_1.ref \
     unit_tests/ref-output/cputime_1.ref \
     unit_tests/ref-output/cputime_2.ref \

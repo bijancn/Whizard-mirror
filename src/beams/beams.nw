@@ -1421,9 +1421,9 @@ parameters.
        call pol(i)%init_pmatrix (beam_data%pmatrix(i))
     end do
     call combine_polarization_states (pol, state_hel)
-    do i = 1, beam_data%n
-       call pol(i)%final ()
-    end do
+    ! do i = 1, beam_data%n   !!! Obsolete
+       ! call pol(i)%final ()
+    ! end do
   end function beam_data_get_helicity_state_matrix
 
 @ %def beam_data_get_helicity_state_matrix
@@ -1714,22 +1714,31 @@ of the two particles (where flavor and color are unique, while several
 helicity states are possible).  Then, we transfer this state together
 with the associated values from the spin density matrix into the
 [[interaction_t]] object.
+
+Calling the [[add_state]] method of the interaction object, we keep
+the entries of the helicity density matrix without adding them up.
+This ensures that for unpolarized states, we do not normalize but end
+up with an $1/N$ entry, where $N$ is the initial-state multiplicity.
 <<Beams: public>>=
   public :: beam_init
 <<Beams: procedures>>=
   subroutine beam_init (beam, beam_data)
     type(beam_t), intent(out) :: beam
     type(beam_data_t), intent(in), target :: beam_data
-    type(quantum_numbers_mask_t), dimension(beam_data%n) :: mask
+    logical, dimension(beam_data%n) :: polarized, diagonal
+    type(quantum_numbers_mask_t), dimension(beam_data%n) :: mask, mask_d
     type(state_matrix_t), target :: state_hel, state_fc, state_tmp
     type(state_iterator_t) :: it_hel, it_tmp
     type(quantum_numbers_t), dimension(:), allocatable :: qn
-    !type(polarization_t), dimension(:), allocatable :: pol
-    integer :: i
-    real(default), dimension(:,:), allocatable :: pol_matrix
+    complex(default) :: value
+    real(default), parameter :: tolerance = 100 * epsilon (1._default)
+    polarized = beam_data%pmatrix%is_polarized () 
+    diagonal = beam_data%pmatrix%is_diagonal ()
     mask = quantum_numbers_mask (.false., .false., &
-         .not. beam_data%pmatrix%is_polarized (), &
-         mask_hd = beam_data%pmatrix%is_diagonal ())
+         mask_h = .not. polarized, &
+         mask_hd = diagonal)
+    mask_d = quantum_numbers_mask (.false., .false., .false., &
+         mask_hd = polarized .and. diagonal)
     call beam%int%basic_init &
          (0, 0, beam_data%n, mask=mask, store_values=.true.)
     state_hel = beam_data%get_helicity_state_matrix ()
@@ -1741,8 +1750,15 @@ with the associated values from the spin density matrix into the
     call it_hel%init (state_hel)
     call it_tmp%init (state_tmp)
     do while (it_hel%is_valid ())
-       call beam%int%add_state (it_tmp%get_quantum_numbers (), &
-            value=it_hel%get_matrix_element ())
+       qn = it_tmp%get_quantum_numbers ()
+       value = it_hel%get_matrix_element ()
+       if (any (qn%are_redundant (mask_d))) then
+          ! skip off-diagonal elements for diagonal polarization
+       else if (abs (value) <= tolerance) then
+          ! skip zero entries
+       else
+          call beam%int%add_state (qn, value = value)
+       end if
        call it_hel%advance ()
        call it_tmp%advance ()
     end do
@@ -1927,9 +1943,58 @@ end module beams_uti
 
     call model%init_sm_test ()
 
-    write (u, "(A)")  "* 1: Scattering process"
+    write (u, "(A)")  "* Unpolarized scattering, massless fermions"
     write (u, "(A)")
     
+    call reset_interaction_counter ()
+    sqrts = 500
+    call flv%init ([1,-1], model)
+
+    call beam_data%init_sqrts (sqrts, flv)
+    call beam_data%write (u)
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    call beam_final (beam)
+    call beam_data%final ()
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Unpolarized scattering, massless bosons"
+    write (u, "(A)")
+    
+    call reset_interaction_counter ()
+    sqrts = 500
+    call flv%init ([22,22], model)
+
+    call beam_data%init_sqrts (sqrts, flv)
+    call beam_data%write (u)
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    call beam_final (beam)
+    call beam_data%final ()
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Unpolarized scattering, massive bosons"
+    write (u, "(A)")
+    
+    call reset_interaction_counter ()
+    sqrts = 500
+    call flv%init ([24,-24], model)
+
+    call beam_data%init_sqrts (sqrts, flv)
+    call beam_data%write (u)
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    call beam_final (beam)
+    call beam_data%final ()
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Polarized scattering, massless fermions"
+    write (u, "(A)")
+    
+    call reset_interaction_counter ()
     sqrts = 500
     call flv%init ([1,-1], model)
 
@@ -1937,17 +2002,12 @@ end module beams_uti
     call smatrix(1)%set_entry (1, [1,1], (1._default, 0._default))
     pol_f(1) = 0.5_default
 
-    !!! 2.1 version:
-    ! call polarization_init_circular (pol(1), flv(1), 0.5_default)
-
     call smatrix(2)%init (2, 3)
     call smatrix(2)%set_entry (1, [1,1], (1._default, 0._default))
     call smatrix(2)%set_entry (2, [-1,-1], (1._default, 0._default))
     call smatrix(2)%set_entry (3, [-1,1], (1._default, 0._default))
     pol_f(2) = 1._default
 
-    !!! 2.1 version:
-    ! call polarization_init_transversal (pol(2), flv(2), 0._default, 1._default)
     call beam_data%init_sqrts (sqrts, flv, smatrix, pol_f)
     call beam_data%write (u)
     write (u, "(A)")
@@ -1957,15 +2017,74 @@ end module beams_uti
     call beam_data%final ()
     
     write (u, "(A)")
-    write (u, "(A)")  "* 2: Decay"
+    write (u, "(A)")  "* Semi-polarized scattering, massless bosons"
     write (u, "(A)")
+    
+    call reset_interaction_counter ()
+    sqrts = 500
+    call flv%init ([22,22], model)
+
+    call smatrix(1)%init (2, 0)
+    pol_f(1) = 0._default
+
+    call smatrix(2)%init (2, 1)
+    call smatrix(2)%set_entry (1, [1,1], (1._default, 0._default))
+    pol_f(2) = 1._default
+
+    call beam_data%init_sqrts (sqrts, flv, smatrix, pol_f)
+    call beam_data%write (u)
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    call beam_final (beam)
+    call beam_data%final ()
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Semi-polarized scattering, massive bosons"
+    write (u, "(A)")
+    
+    call reset_interaction_counter ()
+    sqrts = 500
+    call flv%init ([24,-24], model)
+
+    call smatrix(1)%init (2, 0)
+    pol_f(1) = 0._default
+
+    call smatrix(2)%init (2, 1)
+    call smatrix(2)%set_entry (1, [0,0], (1._default, 0._default))
+    pol_f(2) = 1._default
+
+    call beam_data%init_sqrts (sqrts, flv, smatrix, pol_f)
+    call beam_data%write (u)
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    call beam_final (beam)
+    call beam_data%final ()
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Unpolarized decay, massive boson"
+    write (u, "(A)")
+
+    call reset_interaction_counter ()
+    call flv(1)%init (23, model)
+
+    call beam_data%init_decay (flv(1:1))
+    call beam_data%write (u)
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Polarized decay, massive boson"
+    write (u, "(A)")
+
+    call reset_interaction_counter ()
     call flv(1)%init (23, model)
     call smatrix(1)%init (2, 1)
     call smatrix(1)%set_entry (1, [0,0], (1._default, 0._default))
     pol_f(1) = 0.4_default
 
-    !!! 2.1 version:
-    ! call polarization_init_longitudinal (pol(1), flv(1), 0.4_default)
     call beam_data%init_decay (flv(1:1), smatrix(1:1), pol_f(1:1))
     call beam_data%write (u)
     write (u, "(A)")
@@ -2012,17 +2131,83 @@ end module beams_uti
     write (u, "(A)")  "* Reading model file"
     write (u, "(A)") 
 
-    call reset_interaction_counter ()
-
     call model%init_sm_test ()
 
-    write (u, "(A)")  "* 1: Scattering process"
+    write (u, "(A)")  "* Unpolarized scattering, massless fermions"
     write (u, "(A)")
     
+    call reset_interaction_counter ()
     sqrts = 500
     call flv%init ([1,-1], model)
     call beam_structure%init_sf (flv%get_name (), no_records)
+    call beam_structure%final_pol ()
 
+    call beam_structure%write (u)
+    write (u, *)
+    
+    call beam_data%init_structure (beam_structure, sqrts, model)
+    call beam_data%write (u)
+
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    call beam_final (beam)
+    call beam_data%final ()
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Unpolarized scattering, massless bosons"
+    write (u, "(A)")
+    
+    call reset_interaction_counter ()
+    sqrts = 500
+    call flv%init ([22,22], model)
+
+    call beam_structure%init_sf (flv%get_name (), no_records)
+    call beam_structure%final_pol ()
+
+    call beam_structure%write (u)
+    write (u, *)
+    
+    call beam_data%init_structure (beam_structure, sqrts, model)
+    call beam_data%write (u)
+
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    call beam_final (beam)
+    call beam_data%final ()
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Unpolarized scattering, massive bosons"
+    write (u, "(A)")
+    
+    call reset_interaction_counter ()
+    sqrts = 500
+    call flv%init ([24,-24], model)
+
+    call beam_structure%init_sf (flv%get_name (), no_records)
+    call beam_structure%final_pol ()
+
+    call beam_structure%write (u)
+    write (u, *)
+    
+    call beam_data%init_structure (beam_structure, sqrts, model)
+    call beam_data%write (u)
+
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    call beam_final (beam)
+    call beam_data%final ()
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Polarized scattering, massless fermions"
+    write (u, "(A)")
+    
+    call reset_interaction_counter ()
+    sqrts = 500
+    call flv%init ([1,-1], model)
+    call beam_structure%init_sf (flv%get_name (), no_records)
     call beam_structure%init_pol (2)
 
     call beam_structure%init_smatrix (1, 1)
@@ -2050,9 +2235,85 @@ end module beams_uti
     call beam_structure%final_sf ()
     
     write (u, "(A)")
-    write (u, "(A)")  "* 2: Decay"
+    write (u, "(A)")  "* Semi-polarized scattering, massless bosons"
+    write (u, "(A)")
+    
+    call reset_interaction_counter ()
+    sqrts = 500
+    call flv%init ([22,22], model)
+
+    call beam_structure%init_sf (flv%get_name (), no_records)
+    call beam_structure%init_pol (2)
+
+    call beam_structure%init_smatrix (1, 0)
+
+    call beam_structure%init_smatrix (2, 1)
+    call beam_structure%set_sentry (2, 1, [1,1], (1._default, 0._default))
+
+    call beam_structure%set_pol_f ([0._default, 1._default])
+    call beam_structure%write (u)
+    write (u, *)
+    
+    call beam_data%init_structure (beam_structure, sqrts, model)
+    call beam_data%write (u)
+ 
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    call beam_final (beam)
+    call beam_data%final ()
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Semi-polarized scattering, massive bosons"
+    write (u, "(A)")
+    
+    call reset_interaction_counter ()
+    sqrts = 500
+    call flv%init ([24,-24], model)
+
+    call beam_structure%init_sf (flv%get_name (), no_records)
+    call beam_structure%init_pol (2)
+
+    call beam_structure%init_smatrix (1, 0)
+
+    call beam_structure%init_smatrix (2, 1)
+    call beam_structure%set_sentry (2, 1, [0,0], (1._default, 0._default))
+    call beam_structure%write (u)
+
+    write (u, "(A)")
+    call beam_data%init_structure (beam_structure, sqrts, model)
+    call beam_data%write (u)
+ 
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    call beam_final (beam)
+    call beam_data%final ()
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Unpolarized decay, massive boson"
     write (u, "(A)")
 
+    call reset_interaction_counter ()
+    call flv(1)%init (23, model)
+
+    call beam_structure%init_sf ([flv(1)%get_name ()], no_records)
+    call beam_structure%final_pol ()
+    call beam_structure%write (u)
+
+    write (u, "(A)")
+    call beam_data%init_structure (beam_structure, sqrts, model)
+    call beam_data%write (u)
+
+    write (u, "(A)")
+    call beam_init (beam, beam_data)
+    call beam_write (beam, u)
+    
+    write (u, "(A)")
+    write (u, "(A)")  "* Polarized decay, massive boson"
+    write (u, "(A)")
+
+    call reset_interaction_counter ()
     call flv(1)%init (23, model)
     call beam_structure%init_sf ([flv(1)%get_name ()], no_records)
 
@@ -13349,7 +13610,7 @@ current sampling point (but maybe another channel).
              call sf_int%add_state ([qn, qn_photon, qn])
              call it_hel%advance ()
           end do
-          call pol%final ()
+          ! call pol%final ()  !!! Obsolete
        end do
        call sf_int%freeze ()
        call sf_int%set_incoming ([1])
@@ -14564,7 +14825,7 @@ elements for all flavor and helicity combinations.
              call sf_int%add_state ([qn, qn_rad, qn_photon])
              call it_hel%advance ()
           end do
-          call pol%final ()
+          !  call pol%final ()
        end do
        call sf_int%freeze ()
        call sf_int%set_incoming ([1])
@@ -15909,7 +16170,7 @@ particles, therefore we need to probe only the first one.
                 call sf_int%add_state ([qn, qn_rad, qn_z])
                 call it_hel%advance ()
              end do
-             call pol%final ()
+             !  call pol%final ()
           end do
        case (24)    
           call sf_int%base_init (mask, [data%mass**2], [data%m_out**2], &
@@ -15952,7 +16213,7 @@ particles, therefore we need to probe only the first one.
                 call sf_int%add_state ([qn, qn_rad, qn_w])
                 call it_hel%advance ()
              end do
-             call pol%final ()    
+             ! call pol%final ()    
           end do
        case default
           call msg_fatal ("EWA initialization failed: wrong particle type.")
@@ -17110,9 +17371,9 @@ are always using only one beam parameter.
                 end do
                 call it_hel1%advance ()
              end do
-             call pol2%final ()
+             ! call pol2%final ()
           end do
-          call pol1%final ()
+          ! call pol1%final ()
        end do
        call sf_int%set_incoming ([1,2])
        call sf_int%set_outgoing ([3,4])
@@ -17690,10 +17951,10 @@ needs a random-number generator, obviously.
              call sf_int%add_state (qn)
              call it_hel2%advance ()
           end do
-          call pol2%final ()
+          ! call pol2%final ()
           call it_hel1%advance ()
        end do
-       call pol1%final ()
+       ! call pol1%final ()
        call sf_int%freeze ()
        call sf_int%set_incoming ([1,2])
        call sf_int%set_outgoing ([3,4])
@@ -18354,10 +18615,10 @@ Flavor and polarization carried through, no radiated particles.
              call sf_int%add_state (qn)
              call it_hel2%advance ()
           end do
-          call pol2%final ()
+          ! call pol2%final ()
           call it_hel1%advance ()
        end do
-       call pol1%final ()
+       ! call pol1%final ()
        call sf_int%freeze ()
        call sf_int%set_incoming ([1,2])
        call sf_int%set_outgoing ([3,4])
@@ -19284,8 +19545,8 @@ depends. Hence, a dummy routine.
              end do
              call it_hel1%advance ()
           end do
-          call pol1%final ()
-          call pol2%final ()
+!           call pol1%final ()
+!           call pol2%final ()
           call sf_int%freeze () 
           call sf_int%set_incoming ([1,2])
           call sf_int%set_radiated ([3,4])
@@ -19342,8 +19603,8 @@ depends. Hence, a dummy routine.
              end do
              call it_hel1%advance ()
           end do
-          call pol1%final ()
-          call pol2%final ()
+!           call pol1%final ()
+!           call pol2%final ()
           call sf_int%freeze () 
           call sf_int%set_incoming ([1,2])
           call sf_int%set_outgoing ([3,4])
