@@ -134,12 +134,22 @@ module S = UFO_syntax
 let find_attrib name attribs =
   (List.find (fun a -> name = a.S.a_name) attribs).S.a_value
 
-let name_to_string n =
-  String.concat "." (List.rev n)
+let name_to_string ?strip name =
+  let stripped =
+    begin match strip, List.rev name with
+    | Some pfx, head :: tail ->
+       if pfx = head then
+	 tail
+       else
+	 failwith ("UFO.name_to_string: expected prefix '" ^ pfx ^
+		      "', got '" ^ head ^ "'")
+    | _, name -> name
+    end in
+  String.concat "." stripped
 
-let name_attrib name attribs =
+let name_attrib ~strip name attribs =
   match find_attrib name attribs with
-  | S.Name n -> name_to_string n
+  | S.Name n -> name_to_string ~strip n
   | _ -> invalid_arg name
 
 let integer_attrib name attribs =
@@ -186,9 +196,9 @@ let string_list_attrib name attribs =
   | S.String_List l -> l
   | _ -> invalid_arg name
 
-let name_list_attrib name attribs =
+let name_list_attrib ~strip name attribs =
   match find_attrib name attribs with
-  | S.Name_List l -> l
+  | S.Name_List l -> List.map (name_to_string ~strip) l
   | _ -> invalid_arg name
 
 let integer_list_attrib name attribs =
@@ -201,9 +211,10 @@ let order_dictionary_attrib name attribs =
   | S.Order_Dictionary d -> d
   | _ -> invalid_arg name
 
-let coupling_dictionary_attrib name attribs =
+let coupling_dictionary_attrib ~strip name attribs =
   match find_attrib name attribs with
-  | S.Coupling_Dictionary d -> d
+  | S.Coupling_Dictionary d ->
+     List.map (fun (i, j, c) -> (i, j, name_to_string ~strip c)) d
   | _ -> invalid_arg name
 
 let decay_dictionary_attrib name attribs =
@@ -276,8 +287,8 @@ module Particle =
 	   antiname = string_attrib "antiname" attribs;
 	   spin = integer_attrib "spin" attribs;
 	   color = integer_attrib "color" attribs;
-	   mass = name_attrib "mass" attribs;
-	   width = name_attrib "width" attribs;
+	   mass = name_attrib ~strip:"Param" "mass" attribs;
+	   width = name_attrib ~strip:"Param" "width" attribs;
 	   texname = string_attrib "texname" attribs;
 	   antitexname = string_attrib "antitexname" attribs;
 	   charge = charge_attrib "charge" attribs;
@@ -367,10 +378,10 @@ module Vertex =
     type t =
       { symbol : string;
 	name : string;
-	particles : string list list;
+	particles : string list;
 	color : string list;
-	lorentz : string list list;
-	couplings : (int * int * string list) list }
+	lorentz : string list;
+	couplings : (int * int * string) list }
 
     let to_string c =
       Printf.sprintf
@@ -378,19 +389,12 @@ module Vertex =
                          color = [ %s ], lorentz = [ %s ], \
                          couplings = [ %s ] ]"
 	c.symbol c.name
-	(String.concat ", "
-	   (* We can strip the leading "P" *)
-	   (List.map name_to_string c.particles))
+	(String.concat ", " c.particles)
 	(String.concat ", " c.color)
+	(String.concat ", " c.lorentz)
 	(String.concat ", "
-	   (* We can strip the leading "L" *)
-	   (List.map name_to_string c.lorentz))
-	(String.concat ", "
-	   (* We can strip the leading "C" *)
 	   (List.map
-	      (fun (i, j, n) ->
-		Printf.sprintf "(%d,%d):" i j ^
-		  String.concat "." (List.rev n))
+	      (fun (i, j, n) -> Printf.sprintf "(%d,%d): %s" i j n)
 	      c.couplings))
 
     let pass2' d =
@@ -398,10 +402,11 @@ module Vertex =
       | [ "Vertex" ], attribs ->
 	 { symbol = d.S.name;
 	   name = string_attrib "name" attribs;
-	   particles = name_list_attrib "particles" attribs;
+	   particles = name_list_attrib ~strip:"P" "particles" attribs;
 	   color = string_list_attrib "color" attribs;
-	   lorentz = name_list_attrib "lorentz" attribs;
-	   couplings = coupling_dictionary_attrib "couplings" attribs }
+	   lorentz = name_list_attrib ~strip:"L" "lorentz" attribs;
+	   couplings =
+	     coupling_dictionary_attrib ~strip:"C" "couplings" attribs }
       | _ -> invalid_arg ("pass2_vertex:" ^ name_to_string d.S.kind)
 
     let pass2 vertices =
@@ -583,7 +588,7 @@ module Decay =
       | [ "Decay" ], attribs ->
 	 { symbol = d.S.name;
 	   name = string_attrib "name" attribs;
-	   particle = name_attrib "particle" attribs;
+	   particle = name_attrib ~strip:"P" "particle" attribs;
 	   widths = decay_dictionary_attrib "partial_widths" attribs }
       | _ -> invalid_arg ("pass2_decay:" ^ name_to_string d.S.kind)
 
