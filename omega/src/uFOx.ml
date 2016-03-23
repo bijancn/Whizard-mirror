@@ -67,6 +67,19 @@ module Lorentz =
       | ProjM of int * int
       | Sigma of int * int * int * int
 
+    type t = (int * int * tensor list) list
+
+    module S = UFOx_syntax
+
+    let of_expr = function
+      | S.Integer i -> (i, 1, [])
+      | S.Application ("C", [S.Integer i; S.Integer j]) ->
+	 (1, 1, [C (i, j)])
+      | S.Application ("Epsilon",
+		       [S.Integer mu; S.Integer nu;
+			S.Integer ka; S.Integer la]) ->
+	 (1, 1, [Epsilon (mu, nu, ka, la)])
+
     type index_types =
       { vector : int list;
 	spinor : int list;
@@ -95,6 +108,7 @@ module Lorentz =
 	    spinor = i.spinor @ acc.spinor;
 	    conj_spinor = i.conj_spinor @ acc.conj_spinor })
 	tensors { vector = []; conj_spinor = []; spinor = [] }
+
   end
 
 module Color =
