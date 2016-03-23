@@ -110,6 +110,7 @@ list:
 dictionary:
  | LBRACE orders RBRACE    { U.Order_Dictionary $2 }
  | LBRACE couplings RBRACE { U.Coupling_Dictionary $2 }
+ | LBRACE decays RBRACE    { U.Decay_Dictionary $2 }
 ;
 
 names:
@@ -143,5 +144,14 @@ couplings:
 
 coupling:
  | LPAREN INT COMMA INT RPAREN COLON name { ($2, $4, $7) }
+;
+
+decays:
+ | decay              { [$1] }
+ | decay COMMA decays { $1 :: $3 }
+;
+
+decay:
+ | LPAREN names RPAREN COLON STRING { ($2, $5) }
 ;
 

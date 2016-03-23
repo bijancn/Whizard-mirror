@@ -40,6 +40,7 @@ type value =
   | String_List of string list
   | Order_Dictionary of (string * int) list
   | Coupling_Dictionary of (int * int * name) list
+  | Decay_Dictionary of (name list * string) list
 
 type attrib =
   { a_name : string;

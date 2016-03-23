@@ -112,7 +112,7 @@ module Files : Files =
 	lorentz = parse "lorentz";
 	parameters = parse "parameters";
 	propagators = parse "propagators";
-	decays = [] (* parse "decays" *) }
+	decays = parse "decays" }
 
   end
 
@@ -134,9 +134,12 @@ module S = UFO_syntax
 let find_attrib name attribs =
   (List.find (fun a -> name = a.S.a_name) attribs).S.a_value
 
+let name_to_string n =
+  String.concat "." (List.rev n)
+
 let name_attrib name attribs =
   match find_attrib name attribs with
-  | S.Name n -> String.concat "." (List.rev n)
+  | S.Name n -> name_to_string n
   | _ -> invalid_arg name
 
 let integer_attrib name attribs =
@@ -194,6 +197,12 @@ let order_dictionary_attrib name attribs =
 let coupling_dictionary_attrib name attribs =
   match find_attrib name attribs with
   | S.Coupling_Dictionary d -> d
+  | _ -> invalid_arg name
+
+let decay_dictionary_attrib name attribs =
+  match find_attrib name attribs with
+  | S.Decay_Dictionary d ->
+     List.map (fun (p, w) -> (List.map List.hd p, w)) d
   | _ -> invalid_arg name
 
 module Particle =
@@ -277,7 +286,7 @@ module Particle =
 	   | Not_found ->
 	      failwith ("UFO.pass2_particle: " ^ p ^ ".anti() not yet defined!")
 	 end
-      | _ -> invalid_arg ("pass2_particle:" ^ String.concat "." (List.rev d.S.kind))
+      | _ -> invalid_arg ("pass2_particle:" ^ name_to_string d.S.kind)
 
     let pass2 particles =
       List.fold_left pass2' [] particles
@@ -309,7 +318,7 @@ module Coupling =
 	   name = string_attrib "name" attribs;
 	   value = string_attrib "value" attribs;
 	   order = order_dictionary_attrib "order" attribs }
-      | _ -> invalid_arg ("pass2_coupling:" ^ String.concat "." (List.rev d.S.kind))
+      | _ -> invalid_arg ("pass2_coupling:" ^ name_to_string d.S.kind)
 
     let pass2 couplings =
       List.map pass2' couplings
@@ -339,8 +348,7 @@ module Coupling_Order =
 	   name = string_attrib "name" attribs;
 	   expansion_order = integer_attrib "expansion_order" attribs;
 	   hierarchy = integer_attrib "hierarchy" attribs }
-      | _ -> invalid_arg ("pass2_coupling_order:" ^
-			     String.concat "." (List.rev d.S.kind))
+      | _ -> invalid_arg ("pass2_coupling_order:" ^ name_to_string d.S.kind)
 
     let pass2 coupling_orders =
       List.map pass2' coupling_orders
@@ -365,11 +373,11 @@ module Vertex =
 	c.symbol c.name
 	(String.concat ", "
 	   (* We can strip the leading "P" *)
-	   (List.map (fun n -> String.concat "." (List.rev n)) c.particles))
+	   (List.map name_to_string c.particles))
 	(String.concat ", " c.color)
 	(String.concat ", "
 	   (* We can strip the leading "L" *)
-	   (List.map (fun n -> String.concat "." (List.rev n)) c.lorentz))
+	   (List.map name_to_string c.lorentz))
 	(String.concat ", "
 	   (* We can strip the leading "C" *)
 	   (List.map
@@ -387,8 +395,7 @@ module Vertex =
 	   color = string_list_attrib "color" attribs;
 	   lorentz = name_list_attrib "lorentz" attribs;
 	   couplings = coupling_dictionary_attrib "couplings" attribs }
-      | _ -> invalid_arg ("pass2_vertex:" ^
-			     String.concat "." (List.rev d.S.kind))
+      | _ -> invalid_arg ("pass2_vertex:" ^ name_to_string d.S.kind)
 
     let pass2 vertices =
       List.map pass2' vertices
@@ -411,8 +418,7 @@ module Lorentz =
 	   name = string_attrib "name" attribs;
 	   spins = integer_list_attrib "spins" attribs;
 	   structure = string_attrib "structure" attribs }
-      | _ -> invalid_arg ("pass2_lorentz:" ^
-			     String.concat "." (List.rev d.S.kind))
+      | _ -> invalid_arg ("pass2_lorentz:" ^ name_to_string d.S.kind)
 
     let pass2 lorentz =
       List.map pass2' lorentz
@@ -447,8 +453,7 @@ module Parameter =
 	   lhacode =
 	     (try Some (integer_list_attrib "lhacode" attribs) with
 	       Not_found -> None) }
-      | _ -> invalid_arg ("pass2_parameter:" ^
-			     String.concat "." (List.rev d.S.kind))
+      | _ -> invalid_arg ("pass2_parameter:" ^ name_to_string d.S.kind)
     
     let pass2 parameters =
       List.map pass2' parameters
@@ -486,8 +491,7 @@ module Propagator =
 	    denominator = denominator } :: acc)
       | [ "$"; s ], [] ->
 	 ((d.S.name, s) :: map, acc)
-      | _ -> invalid_arg ("pass2_propagator:" ^
-			     String.concat "." (List.rev d.S.kind))
+      | _ -> invalid_arg ("pass2_propagator:" ^ name_to_string d.S.kind)
        
     let pass2 propagators =
       let _, propagators' =
@@ -499,9 +503,32 @@ module Propagator =
 module Decay =
   struct
 
-    type t = unit
+    type t =
+      { symbol : string;
+	name : string;
+	particle : string;
+	widths : (string list * string) list }
 
-    let pass2' _ = ()
+    let width_to_string ws =
+      String.concat ", "
+	(List.map
+	   (fun (ps, w) ->
+	     "(" ^ String.concat ", " ps ^ ") -> '" ^ w ^ "'")
+	   ws)
+
+    let to_string d =
+      Printf.sprintf
+	"decay: %s => [ name = '%s', particle = '%s', widths = [ %s ] ]"
+	d.symbol d.name d.particle (width_to_string d.widths)
+
+    let pass2' d =
+      match d.S.kind, d.S.attribs with
+      | [ "Decay" ], attribs ->
+	 { symbol = d.S.name;
+	   name = string_attrib "name" attribs;
+	   particle = name_attrib "particle" attribs;
+	   widths = decay_dictionary_attrib "partial_widths" attribs }
+      | _ -> invalid_arg ("pass2_decay:" ^ name_to_string d.S.kind)
 
     let pass2 decays =
       List.map pass2' decays
@@ -542,6 +569,9 @@ let parse_directory dir =
   List.iter
     (fun p -> print_endline (Vertex.to_string p))
     result.vertices;
+  List.iter
+    (fun p -> print_endline (Decay.to_string p))
+    result.decays;
   result
 
 module type Test =
