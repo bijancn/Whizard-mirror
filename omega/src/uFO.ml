@@ -464,6 +464,12 @@ module Propagator =
 	numerator : string;
 	denominator : string }
 
+    (* The parser will turn [foo = "bar"] into [foo = "bar"."$"],
+       which will be interpreted as a macro definition
+       for [foo] expanding to ["bar"].   The dollar is used to
+       distinguish it from an empty attribute list.  This
+       could also be implemented with a union. *)
+
     let pass2' (map, acc) d =
       match d.S.kind, d.S.attribs with
       | [ "Propagator" ], attribs ->
