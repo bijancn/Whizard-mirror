@@ -165,6 +165,13 @@ type value =
   | String of string
   | Name of string list
 
+let value_to_string = function
+  | Integer i -> Printf.sprintf "%d" i
+  | Fraction (n, d) -> Printf.sprintf "%d/%d" n d
+  | Float x -> Printf.sprintf "%f" x
+  | String s -> Printf.sprintf "'%s'" s
+  | Name n -> name_to_string n
+
 let value_attrib name attribs =
   match find_attrib name attribs with
   | S.Integer i -> Integer i
@@ -411,6 +418,14 @@ module Lorentz =
 	spins : int list;
 	structure : string }
 
+    let to_string l =
+      Printf.sprintf
+	"lorentz: %s => [ name = '%s', spins = [ %s ], \
+                          structure = %s ]"
+	l.symbol l.name
+	(String.concat ", " (List.map string_of_int l.spins))
+	l.structure
+      
     let pass2' d =
       match d.S.kind, d.S.attribs with
       | [ "Lorentz" ], attribs ->
@@ -427,24 +442,60 @@ module Lorentz =
 
 module Parameter =
   struct
-    
+
+    type nature = Internal | External
+	
+    let nature_to_string = function
+      | Internal -> "internal"
+      | External -> "external"
+
+    let nature_of_string = function
+      | "internal" -> Internal
+      | "external" -> External
+      | s -> invalid_arg ("Parameter.nature_of_string: " ^ s)
+	 
+    type ptype = Real | Complex
+
+    let ptype_to_string = function
+      | Real -> "real"
+      | Complex -> "complex"
+
+    let ptype_of_string = function
+      | "real" -> Real
+      | "complex" -> Complex
+      | s -> invalid_arg ("Parameter.ptype_of_string: " ^ s)
+
     type t =
       { symbol : string;
 	name : string;
-	nature : string;
-	ptype : string;
+	nature : nature;
+	ptype : ptype;
 	value : value;
 	texname : string;
 	lhablock : string option;
 	lhacode : int list option }
 
+    let to_string p =
+      Printf.sprintf
+	"parameter: %s => [ name = '%s', nature = %s, type = %s, \
+                            value = %s, texname = '%s', \
+                            lhablock = %s, lhacode = [ %s ] ]"
+	p.symbol p.name
+	(nature_to_string p.nature)
+	(ptype_to_string p.ptype)
+	(value_to_string p.value) p.texname
+	(match p.lhablock with None -> "???" | Some s -> s)
+	(match p.lhacode with
+	| None -> ""
+	| Some c -> String.concat ", " (List.map string_of_int c))
+      
     let pass2' d =
       match d.S.kind, d.S.attribs with
       | [ "Parameter" ], attribs ->
 	 { symbol = d.S.name;
 	   name = string_attrib "name" attribs;
-	   nature = string_attrib "nature" attribs;
-	   ptype = string_attrib "type" attribs;
+	   nature = nature_of_string (string_attrib "nature" attribs);
+	   ptype = ptype_of_string (string_attrib "type" attribs);
 	   value = value_attrib "value" attribs;
 	   texname = string_attrib "texname" attribs;
 	   lhablock =
@@ -469,6 +520,12 @@ module Propagator =
 	numerator : string;
 	denominator : string }
 
+    let to_string p =
+      Printf.sprintf
+	"propagator: %s => [ name = '%s', numerator = '%s', \
+                             denominator = '%s' ]"
+	p.symbol p.name p.numerator p.denominator
+      
     (* The parser will turn [foo = "bar"] into [foo = "bar"."$"],
        which will be interpreted as a macro definition
        for [foo] expanding to ["bar"].   The dollar is used to
@@ -569,6 +626,15 @@ let parse_directory dir =
   List.iter
     (fun p -> print_endline (Vertex.to_string p))
     result.vertices;
+  List.iter
+    (fun p -> print_endline (Lorentz.to_string p))
+    result.lorentz;
+  List.iter
+    (fun p -> print_endline (Parameter.to_string p))
+    result.parameters;
+  List.iter
+    (fun p -> print_endline (Propagator.to_string p))
+    result.propagators;
   List.iter
     (fun p -> print_endline (Decay.to_string p))
     result.decays;
