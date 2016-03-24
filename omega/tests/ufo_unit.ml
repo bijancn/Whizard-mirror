@@ -65,14 +65,10 @@ let _ =
   end;
   begin match !color with
   | None -> ()
-  | Some s ->
-     print_endline
-       (UFOx.Color.to_string (UFOx.Color.of_expr (UFOx.parse s)))
+  | Some s -> print_endline (UFOx.Color.to_string (UFOx.Color.of_string s))
   end;
   begin match !lorentz with
   | None -> ()
-  | Some s ->
-     print_endline
-       (UFOx.Lorentz.to_string (UFOx.Lorentz.of_expr (UFOx.parse s)))
+  | Some s -> print_endline (UFOx.Lorentz.to_string (UFOx.Lorentz.of_string s))
   end;
   exit 0

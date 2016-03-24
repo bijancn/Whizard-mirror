@@ -636,7 +636,7 @@ let parse_directory dir =
   List.iter
     (fun c ->
       print_endline (Coupling.to_string c);
-      ignore (UFOx.parse c.Coupling.value))
+      ignore (UFOx.Expr.of_string c.Coupling.value))
     result.couplings;
   List.iter
     (fun o -> print_endline (Coupling_Order.to_string o))
@@ -656,7 +656,7 @@ let parse_directory dir =
   List.iter
     (fun d ->
       print_endline (Decay.to_string d);
-      List.iter (fun (_, w) -> ignore (UFOx.parse w)) d.Decay.widths)
+      List.iter (fun (_, w) -> ignore (UFOx.Expr.of_string w)) d.Decay.widths)
     result.decays;
   result
 

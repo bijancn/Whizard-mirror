@@ -36,18 +36,21 @@ let error_in_file name start_pos end_pos =
     end_pos.Lexing.pos_lnum
     (end_pos.Lexing.pos_cnum - end_pos.Lexing.pos_bol)
 
-let parse text =
-  try
-    UFOx_parser.input
-      UFOx_lexer.token
-      (UFOx_lexer.init_position "" (Lexing.from_string text))
-  with
-  | UFOx_syntax.Syntax_Error (msg, start_pos, end_pos) ->
-     invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
-                    msg  (error_in_string text start_pos end_pos))
-  | Parsing.Parse_error ->
-     invalid_arg ("parse error: " ^ text)
-
+module Expr =
+  struct
+    type t = UFOx_syntax.expr
+    let of_string text =
+      try
+	UFOx_parser.input
+	  UFOx_lexer.token
+	  (UFOx_lexer.init_position "" (Lexing.from_string text))
+      with
+      | UFOx_syntax.Syntax_Error (msg, start_pos, end_pos) ->
+	 invalid_arg (Printf.sprintf "syntax error (%s) at: `%s'"
+			msg  (error_in_string text start_pos end_pos))
+      | Parsing.Parse_error ->
+	 invalid_arg ("parse error: " ^ text)
+  end
 
 let positive integers =
   List.filter (fun i -> i > 0) integers
@@ -125,7 +128,7 @@ module Tensor (A : Atomic_Tensor) : Tensor with type tensor = A.t =
 	 end
 
     let of_string s =
-      of_expr (parse s)
+      of_expr (Expr.of_string s)
 
     let term_to_string (tensors, c) =
       if Q.is_null c then

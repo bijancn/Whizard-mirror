@@ -22,12 +22,16 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-val parse : string -> UFOx_syntax.expr
+module Expr :
+  sig
+    type t
+    val of_string : string -> t
+  end
 
 module Lorentz :
   sig
     type t
-    val of_expr : UFOx_syntax.expr -> t
+    val of_expr : Expr.t -> t
     val of_string : string -> t
     val to_string : t -> string
   end
@@ -35,7 +39,7 @@ module Lorentz :
 module Color :
   sig
     type t
-    val of_expr : UFOx_syntax.expr -> t
+    val of_expr : Expr.t -> t
     val of_string : string -> t
     val to_string : t -> string
   end
