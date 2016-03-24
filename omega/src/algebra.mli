@@ -49,6 +49,8 @@ module type Rational =
     val is_negative : t -> bool
     val make : int -> int -> t
     val abs : t -> t
+    val inv : t -> t
+    val div : t -> t -> t
     val to_ratio : t -> int * int
     val to_float : t -> float
   end

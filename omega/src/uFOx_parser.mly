@@ -65,12 +65,12 @@ expr:
  | INT             	  { X.integer $1 }
  | FLOAT           	  { X.float $1 }
  | ID              	  { X.variable $1 }
- | PLUS expr  %prec UNARY { $2 }
- | MINUS expr %prec UNARY { X.multiply (X.integer (-1)) $2 }
  | expr PLUS expr  	  { X.add $1 $3 }
  | expr MINUS expr 	  { X.subtract $1 $3 }
  | expr TIMES expr 	  { X.multiply $1 $3 }
  | expr DIV expr   	  { X.divide $1 $3 }
+ | PLUS expr  %prec UNARY { $2 }
+ | MINUS expr %prec UNARY { X.multiply (X.integer (-1)) $2 }
  | expr POWER INT  	  { X.power $1 $3 }
  | LPAREN expr RPAREN     { $2 }
  | ID LPAREN RPAREN       { X.apply $1 [] }

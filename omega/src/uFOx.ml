@@ -113,7 +113,28 @@ module Lorentz =
 
     module S = UFOx_syntax
 
-    let rec of_expr = function
+    let rec pow q p =
+      if p = 0 then
+	Q.unit
+      else if p < 0 then
+	pow (Q.inv q) p
+      else
+	Q.mul q (pow q (pred p))
+
+    let sum qs =
+      List.fold_right Q.add qs Q.null
+
+    let compress terms =
+      List.map (fun (t, cs) -> (t, sum cs)) (ThoList.factorize terms)
+
+    let tensor name args =
+      match name, args with
+      | _ -> ()
+
+    let rec of_expr e =
+      compress (of_expr' e)
+
+    and of_expr' = function
       | S.Integer i ->
 	 [([], Q.make i 1)]
       | S.Float _ ->
@@ -170,17 +191,26 @@ module Lorentz =
 	 invalid_arg ("UFOx.Lorentz.of_expr: invalid tensor '" ^ name ^ "'")
       | S.Sum terms ->
 	 ThoList.flatmap of_expr terms
-      | S.Difference (_, _) ->
-	 failwith "UFOx.Lorentz.of_expr"
+      | S.Difference (e1, e2) ->
+	 of_expr (S.Sum [e1; S.Product [S.Integer (-1); e2]])
       | S.Product factors ->
 	 List.fold_right
 	   (fun e acc -> Product.list2 multiply (of_expr e) acc)
 	   factors [([], Q.unit)]
       | S.Quotient (n, d) ->
-	 let d' = of_expr d in
-	 failwith "UFOx.Lorentz.of_expr"
-      | S.Power (_, _) ->
-	 failwith "UFOx.Lorentz.of_expr"
+	 begin match of_expr d with
+	 | [([], q)] ->
+	    List.map (fun (t, c) -> (t, Q.div c q)) (of_expr n)
+	 | [] ->
+	    failwith "UFOx.Lorentz.of_expr: zero denominator"
+	 | _ ->
+	    failwith "UFOx.Lorentz.of_expr: only integer denominators allowed"
+	 end
+      | S.Power (e, p) ->
+	 begin match of_expr e with
+	 | [([], q)] -> [([], pow q p)]
+	 | _ -> failwith "UFOx.Lorentz.of_expr: power of tensor"
+	 end
 	 
     type index_types =
       { vector : int list;

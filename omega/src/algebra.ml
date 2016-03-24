@@ -54,6 +54,8 @@ module type Rational =
     val is_negative : t -> bool
     val make : int -> int -> t
     val abs : t -> t
+    val inv : t -> t
+    val div : t -> t -> t
     val to_ratio : t -> int * int
     val to_float : t -> float
   end
@@ -88,7 +90,9 @@ module Small_Rational : Rational =
       let c = gcd n d in
       (n / c, d / c)
     let abs (n, d) = (abs n, abs d)
+    let inv (n, d) = (d, n)
     let mul (n1, d1) (n2, d2) = make (n1 * n2) (d1 * d2)
+    let div q1 q2 = mul q1 (inv q2)
     let add (n1, d1) (n2, d2) = make (n1 * d2 + n2 * d1) (d1 * d2)
     let sub (n1, d1) (n2, d2) = make (n1 * d2 - n2 * d1) (d1 * d2)
     let neg (n, d) = (- n, d)
@@ -102,6 +106,7 @@ module Small_Rational : Rational =
       if d = 1 then
         Printf.sprintf "%d" n
       else
+        let n, d = to_ratio (n, d) in
         Printf.sprintf "(%d/%d)" n d
   end
 
