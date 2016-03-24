@@ -28,6 +28,7 @@ module Lorentz :
   sig
     type t
     val of_expr : UFOx_syntax.expr -> t
+    val of_string : string -> t
     val to_string : t -> string
   end
 
@@ -35,6 +36,7 @@ module Color :
   sig
     type t
     val of_expr : UFOx_syntax.expr -> t
+    val of_string : string -> t
     val to_string : t -> string
   end
 

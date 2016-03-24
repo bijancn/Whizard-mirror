@@ -388,7 +388,7 @@ module Vertex =
       { symbol : string;
 	name : string;
 	particles : string list;
-	color : string list;
+	color : UFOx.Color.t list;
 	lorentz : string list;
 	couplings : (int * int * string) list }
 
@@ -399,7 +399,7 @@ module Vertex =
                          couplings = [ %s ] ]"
 	c.symbol c.name
 	(String.concat ", " c.particles)
-	(String.concat ", " c.color)
+	(String.concat ", " (List.map UFOx.Color.to_string c.color))
 	(String.concat ", " c.lorentz)
 	(String.concat ", "
 	   (List.map
@@ -412,7 +412,8 @@ module Vertex =
 	 { symbol = d.S.name;
 	   name = string_attrib "name" attribs;
 	   particles = name_list_attrib ~strip:"P" "particles" attribs;
-	   color = string_list_attrib "color" attribs;
+	   color =
+	     List.map UFOx.Color.of_string (string_list_attrib "color" attribs);
 	   lorentz = name_list_attrib ~strip:"L" "lorentz" attribs;
 	   couplings =
 	     coupling_dictionary_attrib ~strip:"C" "couplings" attribs }
@@ -430,7 +431,7 @@ module Lorentz =
       { symbol : string;
 	name : string;
 	spins : int list;
-	structure : string }
+	structure : UFOx.Lorentz.t }
 
     let to_string l =
       Printf.sprintf
@@ -438,7 +439,7 @@ module Lorentz =
                           structure = %s ]"
 	l.symbol l.name
 	(String.concat ", " (List.map string_of_int l.spins))
-	l.structure
+	(UFOx.Lorentz.to_string l.structure)
 
     let pass2' d =
       match d.S.kind, d.S.attribs with
@@ -446,7 +447,8 @@ module Lorentz =
 	 { symbol = d.S.name;
 	   name = string_attrib "name" attribs;
 	   spins = integer_list_attrib "spins" attribs;
-	   structure = string_attrib "structure" attribs }
+	   structure =
+	     UFOx.Lorentz.of_string (string_attrib "structure" attribs) }
       | _ -> invalid_arg ("pass2_lorentz:" ^ name_to_string d.S.kind)
 
     let pass2 lorentz =
@@ -640,20 +642,10 @@ let parse_directory dir =
     (fun o -> print_endline (Coupling_Order.to_string o))
     result.coupling_orders;
   List.iter
-    (fun v -> print_endline (Vertex.to_string v);
-      List.iter
-	(fun c ->
-	  print_endline (">>> " ^
-			    UFOx.Color.to_string
-                        (UFOx.Color.of_expr (UFOx.parse c))))
-	v.Vertex.color)
+    (fun v -> print_endline (Vertex.to_string v))
     result.vertices;
   List.iter
-    (fun l ->
-      print_endline (Lorentz.to_string l);
-      print_endline (">>> " ^
-			UFOx.Lorentz.to_string
-                        (UFOx.Lorentz.of_expr (UFOx.parse l.Lorentz.structure))))
+    (fun l -> print_endline (Lorentz.to_string l))
     result.lorentz;
   List.iter
     (fun p -> print_endline (Parameter.to_string p))

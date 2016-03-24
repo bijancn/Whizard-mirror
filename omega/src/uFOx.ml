@@ -68,6 +68,7 @@ module type Tensor =
     type tensor
     type t = (tensor list * Q.t) list
     val of_expr : UFOx_syntax.expr -> t
+    val of_string : string -> t
     val to_string : t -> string
   end
 
@@ -122,7 +123,10 @@ module Tensor (A : Atomic_Tensor) : Tensor with type tensor = A.t =
 	    failwith "UFOx.Tensor.of_expr: non-numeric power"
 	 | _ -> failwith "UFOx.Tensor.of_expr: power of tensor"
 	 end
-	 
+
+    let of_string s =
+      of_expr (parse s)
+
     let term_to_string (tensors, c) =
       if Q.is_null c then
 	""
@@ -272,6 +276,7 @@ module Lorentz =
     type t = L.t
       
     let of_expr = L.of_expr
+    let of_string = L.of_string
     let to_string = L.to_string
 
   end
@@ -378,6 +383,7 @@ module Color =
     type t = C.t
       
     let of_expr = C.of_expr
+    let of_string = C.of_string
     let to_string = C.to_string
 
   end
