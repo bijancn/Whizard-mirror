@@ -64,6 +64,7 @@ module type Atomic_Tensor =
     val to_string : t -> string
     type index_classes
     val classify_indices : t list -> index_classes
+    val index_classes_to_string : index_classes -> string
   end
 
 module type Tensor =
@@ -73,9 +74,13 @@ module type Tensor =
     val of_expr : UFOx_syntax.expr -> t
     val of_string : string -> t
     val to_string : t -> string
+    type index_classes
+    val classify_indices : t -> index_classes
+    val index_classes_to_string : index_classes -> string
   end
 
-module Tensor (A : Atomic_Tensor) : Tensor with type tensor = A.t =
+module Tensor (A : Atomic_Tensor) : Tensor
+  with type tensor = A.t and type index_classes = A.index_classes =
   struct
 
     module S = UFOx_syntax
@@ -84,7 +89,7 @@ module Tensor (A : Atomic_Tensor) : Tensor with type tensor = A.t =
     type t = (tensor list * Q.t) list
 
     let multiply (t1, c1) (t2, c2) =
-      (t1 @ t2, Q.mul c1 c2)
+      (List.sort compare (t1 @ t2), Q.mul c1 c2)
 
     let compress terms =
       List.map (fun (t, cs) -> (t, Q.sum cs)) (ThoList.factorize terms)
@@ -124,6 +129,24 @@ module Tensor (A : Atomic_Tensor) : Tensor with type tensor = A.t =
 	    failwith "UFOx.Tensor.of_expr: non-numeric power"
 	 | _ -> failwith "UFOx.Tensor.of_expr: power of tensor"
 	 end
+
+    type index_classes = A.index_classes
+    let index_classes_to_string = A.index_classes_to_string
+
+    let classify_indices tensors =
+      let index_classes =
+	ThoList.uniq
+	  (List.sort compare
+	     (List.map (fun (t, c) -> A.classify_indices t) tensors)) in
+      match index_classes with
+      | [] -> failwith "UFOx.Tensor.classify_indices: can't happen!"
+      | [index_classes] -> index_classes
+      | _ -> invalid_arg "UFOx.Tensor.classify_indices: incompatible indices!"
+
+    let of_expr e =
+      let t = of_expr e in
+      ignore (classify_indices t);
+      t
 
     let of_string s =
       of_expr (Expr.of_string s)
@@ -263,10 +286,19 @@ module Atomic_Lorentz =
       List.fold_right
 	(fun v acc ->
 	  let i = classify_indices1 v in
-	  { vector = i.vector @ acc.vector;
-	    spinor = i.spinor @ acc.spinor;
-	    conj_spinor = i.conj_spinor @ acc.conj_spinor })
+	  { vector = List.sort compare (i.vector @ acc.vector);
+	    spinor = List.sort compare (i.spinor @ acc.spinor);
+	    conj_spinor = List.sort compare (i.conj_spinor @ acc.conj_spinor) })
 	tensors { vector = []; conj_spinor = []; spinor = [] }
+
+    let int_list_to_string is =
+      "[" ^ String.concat ", " (List.map string_of_int is) ^ "]"
+	
+    let index_classes_to_string c =
+      Printf.sprintf "v=%s, s=%s, c=%s"
+	(int_list_to_string c.vector)
+	(int_list_to_string c.spinor)
+	(int_list_to_string c.conj_spinor)
 
   end
     
@@ -279,6 +311,10 @@ module Lorentz =
     let of_expr = L.of_expr
     let of_string = L.of_string
     let to_string = L.to_string
+
+    type index_classes = L.index_classes
+    let classify_indices = L.classify_indices
+    let index_classes_to_string = L.index_classes_to_string
 
   end
 
@@ -370,10 +406,19 @@ module Atomic_Color =
       List.fold_right
 	(fun v acc ->
 	  let i = classify_indices1 v in
-	  { fundamental = i.fundamental @ acc.fundamental;
-	    conjugate = i.conjugate @ acc.conjugate;
-	    adjoint = i.adjoint @ acc.adjoint })
+	  { fundamental = List.sort compare (i.fundamental @ acc.fundamental);
+	    conjugate = List.sort compare (i.conjugate @ acc.conjugate);
+	    adjoint = List.sort compare (i.adjoint @ acc.adjoint) })
 	tensors { fundamental = []; conjugate = []; adjoint = [] }
+
+    let int_list_to_string is =
+      "[" ^ String.concat ", " (List.map string_of_int is) ^ "]"
+	
+    let index_classes_to_string c =
+      Printf.sprintf "3=%s, 3bar=%s, 8=%s"
+	(int_list_to_string c.fundamental)
+	(int_list_to_string c.conjugate)
+	(int_list_to_string c.adjoint)
 
   end
 
@@ -386,6 +431,10 @@ module Color =
     let of_expr = C.of_expr
     let of_string = C.of_string
     let to_string = C.to_string
+
+    type index_classes = C.index_classes
+    let classify_indices = C.classify_indices
+    let index_classes_to_string = C.index_classes_to_string
 
   end
 

@@ -34,6 +34,9 @@ module Lorentz :
     val of_expr : Expr.t -> t
     val of_string : string -> t
     val to_string : t -> string
+    type index_classes
+    val classify_indices : t -> index_classes
+    val index_classes_to_string : index_classes -> string
   end
 
 module Color :
@@ -42,6 +45,9 @@ module Color :
     val of_expr : Expr.t -> t
     val of_string : string -> t
     val to_string : t -> string
+    type index_classes
+    val classify_indices : t -> index_classes
+    val index_classes_to_string : index_classes -> string
   end
 
 module type Test =

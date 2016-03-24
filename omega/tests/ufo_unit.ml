@@ -65,10 +65,18 @@ let _ =
   end;
   begin match !color with
   | None -> ()
-  | Some s -> print_endline (UFOx.Color.to_string (UFOx.Color.of_string s))
+  | Some s ->
+     let t = UFOx.Color.of_string s in
+     print_endline (UFOx.Color.to_string t);
+     print_endline (UFOx.Color.index_classes_to_string
+		      (UFOx.Color.classify_indices t))
   end;
   begin match !lorentz with
   | None -> ()
-  | Some s -> print_endline (UFOx.Lorentz.to_string (UFOx.Lorentz.of_string s))
+  | Some s ->
+     let t = UFOx.Lorentz.of_string s in
+     print_endline (UFOx.Lorentz.to_string t);
+     print_endline (UFOx.Lorentz.index_classes_to_string
+		      (UFOx.Lorentz.classify_indices t))
   end;
   exit 0
