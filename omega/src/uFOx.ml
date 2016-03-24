@@ -99,13 +99,11 @@ module Tensor (A : Atomic_Tensor) : Tensor with type tensor = A.t =
 	 invalid_arg ("UFOx.Tensor.of_expr: unexpected variable '" ^
 			 name ^ "'")
       | S.Application (name, args) -> [([A.of_expr name args], Q.unit)]
-      | S.Sum terms -> ThoList.flatmap of_expr terms
+      | S.Sum (e1, e2) ->
+	 of_expr e1 @ of_expr e2
       | S.Difference (e1, e2) ->
-	 of_expr (S.Sum [e1; S.Product [S.Integer (-1); e2]])
-      | S.Product factors ->
-	 List.fold_right
-	   (fun e acc -> Product.list2 multiply (of_expr e) acc)
-	   factors [([], Q.unit)]
+	 of_expr e1 @ of_expr (S.Product (S.Integer (-1), e2))
+      | S.Product (e1, e2) -> Product.list2 multiply (of_expr e1) (of_expr e2)
       | S.Quotient (n, d) ->
 	 begin match of_expr d with
 	 | [([], q)] ->

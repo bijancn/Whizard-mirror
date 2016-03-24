@@ -30,9 +30,9 @@ type expr =
   | Integer of int
   | Float of float
   | Variable of string
-  | Sum of expr list
+  | Sum of expr * expr
   | Difference of expr * expr
-  | Product of expr list
+  | Product of expr * expr
   | Quotient of expr * expr
   | Power of expr * expr
   | Application of string * expr list
