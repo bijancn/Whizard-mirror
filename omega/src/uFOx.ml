@@ -329,21 +329,7 @@ module Atomic_Lorentz =
 
   end
     
-module Lorentz =
-  struct
-
-    module L = Tensor(Atomic_Lorentz)
-    type t = L.t
-      
-    let of_expr = L.of_expr
-    let of_string = L.of_string
-    let to_string = L.to_string
-
-    type r = L.r
-    let classify_indices = L.classify_indices
-    let rep_to_string = L.rep_to_string
-
-  end
+module Lorentz = Tensor(Atomic_Lorentz)
 
 module Atomic_Color =
   struct
@@ -434,21 +420,7 @@ module Atomic_Color =
 
   end
 
-module Color =
-  struct
-
-    module C = Tensor(Atomic_Color)
-    type t = C.t
-      
-    let of_expr = C.of_expr
-    let of_string = C.of_string
-    let to_string = C.to_string
-
-    type r = C.r
-    let classify_indices = C.classify_indices
-    let rep_to_string = C.rep_to_string
-
-  end
+module Color = Tensor(Atomic_Color)
 
 module Value =
   struct
