@@ -52,57 +52,10 @@ let parse text =
 let positive integers =
   List.filter (fun i -> i > 0) integers
 
-(* \thocwmodulesubsection{Naive Rational Arithmetic} *)
-
-(* \begin{dubious}
-     This \emph{is} dangerous and will overflow even for simple
-     applications.  The production code will have to be linked to
-     a library for large integer arithmetic.
-   \end{dubious} *)
-
-(* Anyway, here's Euclid's algorithm: *)
-let rec gcd i1 i2 =
-  if i2 = 0 then
-    abs i1
-  else
-    gcd i2 (i1 mod i2)
-
-let lcm i1 i2 = (i1 / gcd i1 i2) * i2
-
-(* This is a small extension of [Algebra.Small_Rational] *)
-  
-module Q =
-  struct
-    type t = int * int
-    let is_null (n, _) = (n = 0)
-    let is_unit (n, d) = (n <> 0) && (n = d)
-    let null = (0, 1)
-    let unit = (1, 1)
-    let make n d =
-      let c = gcd n d in
-      (n / c, d / c)
-    let abs (n, d) = (abs n, abs d)
-    let is_positive (n, d) = n * d > 0
-    let is_negative (n, d) = n * d < 0
-    let mul (n1, d1) (n2, d2) = make (n1 * n2) (d1 * d2)
-    let add (n1, d1) (n2, d2) = make (n1 * d2 + n2 * d1) (d1 * d2)
-    let sub (n1, d1) (n2, d2) = make (n1 * d2 - n2 * d1) (d1 * d2)
-    let neg (n, d) = (- n, d)
-    let to_ratio (n, d) =
-      if d < 0 then
-        (-n, -d)
-      else
-        (n, d)
-    let to_float (n, d) = float n /. float d
-    let to_string (n, d) =
-      if d = 1 then
-        Printf.sprintf "%d" n
-      else
-        Printf.sprintf "(%d/%d)" n d
-  end
-
 module Lorentz =
   struct
+
+    module Q = Algebra.Small_Rational
 
     type tensor =
       | C of int * int

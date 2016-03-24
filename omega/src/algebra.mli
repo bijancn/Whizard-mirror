@@ -45,7 +45,10 @@ module type Rational =
     include CRing
     val is_null : t -> bool
     val is_unit : t -> bool
+    val is_positive : t -> bool
+    val is_negative : t -> bool
     val make : int -> int -> t
+    val abs : t -> t
     val to_ratio : t -> int * int
     val to_float : t -> float
   end

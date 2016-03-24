@@ -50,7 +50,10 @@ module type Rational =
     include CRing
     val is_null : t -> bool
     val is_unit : t -> bool
+    val is_positive : t -> bool
+    val is_negative : t -> bool
     val make : int -> int -> t
+    val abs : t -> t
     val to_ratio : t -> int * int
     val to_float : t -> float
   end
@@ -77,11 +80,14 @@ module Small_Rational : Rational =
     type t = int * int
     let is_null (n, _) = (n = 0)
     let is_unit (n, d) = (n <> 0) && (n = d)
+    let is_positive (n, d) = n * d > 0
+    let is_negative (n, d) = n * d < 0
     let null = (0, 1)
     let unit = (1, 1)
     let make n d =
       let c = gcd n d in
       (n / c, d / c)
+    let abs (n, d) = (abs n, abs d)
     let mul (n1, d1) (n2, d2) = make (n1 * n2) (d1 * d2)
     let add (n1, d1) (n2, d2) = make (n1 * d2 + n2 * d1) (d1 * d2)
     let sub (n1, d1) (n2, d2) = make (n1 * d2 - n2 * d1) (d1 * d2)
