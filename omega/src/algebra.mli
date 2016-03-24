@@ -47,6 +47,7 @@ module type Rational =
     val is_unit : t -> bool
     val is_positive : t -> bool
     val is_negative : t -> bool
+    val is_integer : t -> bool
     val make : int -> int -> t
     val abs : t -> t
     val inv : t -> t
@@ -55,6 +56,7 @@ module type Rational =
     val sum : t list -> t
     val to_ratio : t -> int * int
     val to_float : t -> float
+    val to_integer : t -> int
   end
 
 (* \thocwmodulesection{Naive Rational Arithmetic} *)

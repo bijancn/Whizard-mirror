@@ -34,7 +34,7 @@ type expr =
   | Difference of expr * expr
   | Product of expr list
   | Quotient of expr * expr
-  | Power of expr * int
+  | Power of expr * expr
   | Application of string * expr list
 
 val integer : int -> expr
@@ -44,5 +44,5 @@ val add : expr -> expr -> expr
 val subtract : expr -> expr -> expr
 val multiply : expr -> expr -> expr
 val divide : expr -> expr -> expr
-val power : expr -> int -> expr
+val power : expr -> expr -> expr
 val apply : string -> expr list -> expr

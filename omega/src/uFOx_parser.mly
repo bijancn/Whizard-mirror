@@ -71,7 +71,7 @@ expr:
  | expr DIV expr   	  { X.divide $1 $3 }
  | PLUS expr  %prec UNARY { $2 }
  | MINUS expr %prec UNARY { X.multiply (X.integer (-1)) $2 }
- | expr POWER INT  	  { X.power $1 $3 }
+ | expr POWER expr  	  { X.power $1 $3 }
  | LPAREN expr RPAREN     { $2 }
  | ID LPAREN RPAREN       { X.apply $1 [] }
  | ID LPAREN args RPAREN  { X.apply $1 $3 }

@@ -52,6 +52,7 @@ module type Rational =
     val is_unit : t -> bool
     val is_positive : t -> bool
     val is_negative : t -> bool
+    val is_integer : t -> bool
     val make : int -> int -> t
     val abs : t -> t
     val inv : t -> t
@@ -60,6 +61,7 @@ module type Rational =
     val sum : t list -> t
     val to_ratio : t -> int * int
     val to_float : t -> float
+    val to_integer : t -> int
   end
 
 (* \thocwmodulesection{Naive Rational Arithmetic} *)
@@ -86,6 +88,7 @@ module Small_Rational : Rational =
     let is_unit (n, d) = (n <> 0) && (n = d)
     let is_positive (n, d) = n * d > 0
     let is_negative (n, d) = n * d < 0
+    let is_integer (n, d) = (gcd n d = d)
     let null = (0, 1)
     let unit = (1, 1)
     let make n d =
@@ -102,7 +105,7 @@ module Small_Rational : Rational =
       if p = 0 then
 	unit
       else if p < 0 then
-	pow (inv q) p
+	pow (inv q) (-p)
       else
 	mul q (pow q (pred p))
     let sum qs =
@@ -119,6 +122,11 @@ module Small_Rational : Rational =
       else
         let n, d = to_ratio (n, d) in
         Printf.sprintf "(%d/%d)" n d
+    let to_integer (n, d) =
+      if is_integer (n, d) then
+        n
+      else
+        invalid_arg "Algebra.Small_Rational.to_integer"
   end
 
 (* \thocwmodulesection{Expressions: Terms, Rings and Linear Combinations} *)

@@ -34,7 +34,7 @@ type expr =
   | Difference of expr * expr
   | Product of expr list
   | Quotient of expr * expr
-  | Power of expr * int
+  | Power of expr * expr
   | Application of string * expr list
 
 let integer i =

@@ -52,6 +52,77 @@ let parse text =
 let positive integers =
   List.filter (fun i -> i > 0) integers
 
+module Tensor =
+  struct
+
+    module Q = Algebra.Small_Rational
+
+    let multiply (t1, c1) (t2, c2) =
+      (t1 @ t2, Q.mul c1 c2)
+
+    module S = UFOx_syntax
+
+    let compress terms =
+      List.map (fun (t, cs) -> (t, Q.sum cs)) (ThoList.factorize terms)
+
+    let rec of_expr tensor e =
+      compress (of_expr' tensor e)
+
+    and of_expr' tensor = function
+      | S.Integer i -> [([], Q.make i 1)]
+      | S.Float _ -> invalid_arg "UFOx.Tensor.of_expr: unexpected float"
+      | S.Variable name ->
+	 invalid_arg ("UFOx.Tensor.of_expr: unexpected variable '" ^
+			 name ^ "'")
+      | S.Application (name, args) -> tensor name args
+      | S.Sum terms -> ThoList.flatmap (of_expr tensor) terms
+      | S.Difference (e1, e2) ->
+	 of_expr tensor (S.Sum [e1; S.Product [S.Integer (-1); e2]])
+      | S.Product factors ->
+	 List.fold_right
+	   (fun e acc -> Product.list2 multiply (of_expr tensor e) acc)
+	   factors [([], Q.unit)]
+      | S.Quotient (n, d) ->
+	 begin match of_expr tensor d with
+	 | [([], q)] ->
+	    List.map (fun (t, c) -> (t, Q.div c q)) (of_expr tensor n)
+	 | [] ->
+	    failwith "UFOx.Tensor.of_expr: zero denominator"
+	 | _ ->
+	    failwith "UFOx.Tensor.of_expr: only integer denominators allowed"
+	 end
+      | S.Power (e, p) ->
+	 begin match of_expr tensor e, of_expr tensor p with
+	 | [([], q)], [([], p)] ->
+	    if Q.is_integer p then
+	      [([], Q.pow q (Q.to_integer p))]
+	    else
+	      failwith "UFOx.Tensor.of_expr: rational power"
+	 | [([], q)], _ ->
+	    failwith "UFOx.Tensor.of_expr: non-numeric power"
+	 | _ -> failwith "UFOx.Tensor.of_expr: power of tensor"
+	 end
+	 
+    let term_to_string tensor_to_string (tensors, c) =
+      if Q.is_null c then
+	""
+      else
+	(if Q.is_negative c then " - " else " + ") ^
+	  (let c = Q.abs c in
+	   if Q.is_unit c then
+	     ""
+	   else
+	     Q.to_string c) ^
+	  (match tensors with
+	  | [] -> ""
+	  | tensors ->
+	     "*" ^ String.concat "*" (List.map tensor_to_string tensors))
+
+    let to_string tensor_to_string terms =
+      String.concat "" (List.map (term_to_string tensor_to_string) terms)
+      
+  end
+
 module Lorentz =
   struct
 
@@ -91,30 +162,9 @@ module Lorentz =
       | Sigma (mu, nu, i, j) ->
 	 Printf.sprintf "Sigma(%d,%d,%d,%d)" mu nu i j
 
-    let term_to_string (tensors, c) =
-      if Q.is_null c then
-	""
-      else
-	(if Q.is_negative c then " - " else " + ") ^
-	  (let c = Q.abs c in
-	   if Q.is_unit c then
-	     ""
-	   else
-	     Q.to_string c ^ "*") ^
-	  String.concat "*" (List.map tensor_to_string tensors)
-
     type t = (tensor list * Q.t) list
 
-    let to_string terms =
-      String.concat "" (List.map term_to_string terms)
-      
-    let multiply (t1, c1) (t2, c2) =
-      (t1 @ t2, Q.mul c1 c2)
-
     module S = UFOx_syntax
-
-    let compress terms =
-      List.map (fun (t, cs) -> (t, Q.sum cs)) (ThoList.factorize terms)
 
     let tensor name args =
       match name, args with
@@ -161,38 +211,9 @@ module Lorentz =
       | name, _ ->
 	 invalid_arg ("UFOx.Lorentz.of_expr: invalid tensor '" ^ name ^ "'")
 
-    let rec of_expr e =
-      compress (of_expr' e)
+    let of_expr = Tensor.of_expr tensor
+    let to_string = Tensor.to_string tensor_to_string
 
-    and of_expr' = function
-      | S.Integer i -> [([], Q.make i 1)]
-      | S.Float _ -> invalid_arg "UFOx.Lorentz.of_expr: unexpected float"
-      | S.Variable name ->
-	 invalid_arg ("UFOx.Lorentz.of_expr: unexpected variable '" ^
-			 name ^ "'")
-      | S.Application (name, args) -> tensor name args
-      | S.Sum terms -> ThoList.flatmap of_expr terms
-      | S.Difference (e1, e2) ->
-	 of_expr (S.Sum [e1; S.Product [S.Integer (-1); e2]])
-      | S.Product factors ->
-	 List.fold_right
-	   (fun e acc -> Product.list2 multiply (of_expr e) acc)
-	   factors [([], Q.unit)]
-      | S.Quotient (n, d) ->
-	 begin match of_expr d with
-	 | [([], q)] ->
-	    List.map (fun (t, c) -> (t, Q.div c q)) (of_expr n)
-	 | [] ->
-	    failwith "UFOx.Lorentz.of_expr: zero denominator"
-	 | _ ->
-	    failwith "UFOx.Lorentz.of_expr: only integer denominators allowed"
-	 end
-      | S.Power (e, p) ->
-	 begin match of_expr e with
-	 | [([], q)] -> [([], Q.pow q p)]
-	 | _ -> failwith "UFOx.Lorentz.of_expr: power of tensor"
-	 end
-	 
     type index_types =
       { vector : int list;
 	spinor : int list;
