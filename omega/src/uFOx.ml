@@ -53,10 +53,10 @@ module Expr =
   end
 
 let positive integers =
-  List.filter (fun i -> i > 0) integers
+  List.filter (fun (i, _) -> i > 0) integers
 
 let not_positive integers =
-  List.filter (fun i -> i <= 0) integers
+  List.filter (fun (i, _) -> i <= 0) integers
 
 module Q = Algebra.Small_Rational
 
@@ -65,11 +65,11 @@ module type Atomic_Tensor =
     type t
     val of_expr : string -> UFOx_syntax.expr list -> t
     val to_string : t -> string
-    type index_classes
-    val classify_indices : t list -> index_classes
-    val index_classes_to_string : index_classes -> string
-    val free : index_classes -> index_classes
-    val summation : index_classes -> index_classes
+    type r
+    val classify_indices : t list -> (int * r) list
+    val index_classes_to_string : (int * r) list -> string
+    val free : (int * r) list -> (int * r) list
+    val summation : (int * r) list -> (int * r) list
   end
 
 module type Tensor =
@@ -79,15 +79,15 @@ module type Tensor =
     val of_expr : UFOx_syntax.expr -> t
     val of_string : string -> t
     val to_string : t -> string
-    type index_classes
-    val classify_indices : t -> index_classes
-    val index_classes_to_string : index_classes -> string
-    val free : index_classes -> index_classes
-    val summation : index_classes -> index_classes
+    type r
+    val classify_indices : t -> (int * r) list 
+    val index_classes_to_string : (int * r) list -> string
+    val free : (int * r) list -> (int * r) list 
+    val summation : (int * r) list -> (int * r) list
   end
 
 module Tensor (A : Atomic_Tensor) : Tensor
-  with type tensor = A.t and type index_classes = A.index_classes =
+  with type tensor = A.t and type r = A.r =
   struct
 
     module S = UFOx_syntax
@@ -137,7 +137,7 @@ module Tensor (A : Atomic_Tensor) : Tensor
 	 | _ -> failwith "UFOx.Tensor.of_expr: power of tensor"
 	 end
 
-    type index_classes = A.index_classes
+    type r = A.r
     let index_classes_to_string = A.index_classes_to_string
     let free = A.free
     let summation = A.summation
@@ -278,53 +278,44 @@ module Atomic_Lorentz =
       | name, _ ->
 	 invalid_arg ("UFOx.Lorentz.of_expr: invalid tensor '" ^ name ^ "'")
 
-    type index_classes =
-      { vector : int list;
-	spinor : int list;
-	conj_spinor : int list }
-
-    let index_classes vector conj_spinor spinor =
-      { vector = vector;
-	conj_spinor = conj_spinor;
-	spinor = spinor }
+    type r = V | Sp | CSp
 
     let classify_indices1 = function
-      | C (i, j) -> index_classes [] [i] [j] (* ??? *)
+      | C (i, j) -> [(i, CSp); (j, Sp)] (* ??? *)
       | Gamma5 (i, j) | Identity (i, j)
-      | ProjP (i, j) | ProjM (i, j) -> index_classes [] [i] [j]
-      | Epsilon (mu, nu, ka, la) -> index_classes [mu; nu; ka; la] [] []
-      | Gamma (mu, i, j) -> index_classes [mu] [i] [j]
-      | Metric (mu, nu) -> index_classes [mu; nu] [] []
-      | P (mu, _) -> index_classes [mu] [] []
-      | Sigma (mu, nu, i, j) -> index_classes [mu; nu] [i] [j]
+      | ProjP (i, j) | ProjM (i, j) -> [(i, CSp); (j, Sp)]
+      | Epsilon (mu, nu, ka, la) -> [(mu, V); (nu, V); (ka, V); (la, V)]
+      | Gamma (mu, i, j) -> [(mu, V); (i, CSp); (j, Sp)]
+      | Metric (mu, nu) -> [(mu, V); (nu, V)]
+      | P (mu, n) ->  [(mu, V)]
+      | Sigma (mu, nu, i, j) -> [(mu, V); (nu, V); (i, CSp); (j, Sp)]
 
     let classify_indices tensors =
-      List.fold_right
-	(fun v acc ->
-	  let i = classify_indices1 v in
-	  { vector = List.sort compare (i.vector @ acc.vector);
-	    spinor = List.sort compare (i.spinor @ acc.spinor);
-	    conj_spinor = List.sort compare (i.conj_spinor @ acc.conj_spinor) })
-	tensors { vector = []; conj_spinor = []; spinor = [] }
+      List.sort compare
+	(List.fold_right
+	   (fun v acc -> classify_indices1 v @ acc)
+	   tensors [])
 
     let free i =
-      { vector = positive i.vector;
-	spinor = positive i.spinor;
-	conj_spinor = positive i.conj_spinor }
-      
+      positive i
+
     let summation i =
-      { vector = not_positive i.vector;
-	spinor = not_positive i.spinor;
-	conj_spinor = not_positive i.conj_spinor }
-      
+      not_positive i
+	
     let int_list_to_string is =
       "[" ^ String.concat ", " (List.map string_of_int is) ^ "]"
 	
-    let index_classes_to_string c =
+    let index_classes_to_string i =
       Printf.sprintf "v=%s, s=%s, c=%s"
-	(int_list_to_string c.vector)
-	(int_list_to_string c.spinor)
-	(int_list_to_string c.conj_spinor)
+	(int_list_to_string
+	   (List.map fst
+	      (List.filter (function (_, V) -> true | _ -> false) i)))
+	(int_list_to_string
+	   (List.map fst
+	      (List.filter (function (_, Sp) -> true | _ -> false) i)))
+	(int_list_to_string
+	   (List.map fst
+	      (List.filter (function (_, CSp) -> true | _ -> false) i)))
 
   end
     
@@ -338,7 +329,7 @@ module Lorentz =
     let of_string = L.of_string
     let to_string = L.to_string
 
-    type index_classes = L.index_classes
+    type r = L.r
     let classify_indices = L.classify_indices
     let index_classes_to_string = L.index_classes_to_string
     let free = L.free
@@ -407,22 +398,14 @@ module Atomic_Color =
       | K6 (i', j, k) -> Printf.sprintf "K6(%d,%d,%d)" i' j k
       | K6Bar (i', j, k) -> Printf.sprintf "K6Bar(%d,%d,%d)" i' j k
 
-    type index_classes =
-      { fundamental : int list;
-	conjugate : int list;
-	adjoint : int list }
-
-    let index_classes fundamental conjugate adjoint =
-      { fundamental = fundamental;
-	conjugate = conjugate;
-	adjoint = adjoint }
+    type r = F | C | A
 
     let classify_indices1 = function
-      | Identity (i, j) -> index_classes [i] [j] []
-      | T (a, i, j) -> index_classes [i] [j] [a]
-      | F (a, b, c) | D (a, b, c) -> index_classes [] [] [a; b; c]
-      | Epsilon (i, j, k) -> index_classes [i; j; k] [] []
-      | EpsilonBar (i, j, k) -> index_classes [] [i; j; k] []
+      | Identity (i, j) -> [(i, F); (j, C)]
+      | T (a, i, j) -> [(i, F); (j, C); (a, A)]
+      | F (a, b, c) | D (a, b, c) -> [(a, A); (b, A); (c, A)]
+      | Epsilon (i, j, k) -> [(i, F); (j, F); (k, F)]
+      | EpsilonBar (i, j, k) -> [(i, C); (j, C); (k, C)]
       | T6 (a, i', j') ->
 	 failwith "UFOx.Color: sextets not supported yet!"
       | K6 (i', j, k) ->
@@ -431,32 +414,31 @@ module Atomic_Color =
 	 failwith "UFOx.Color: sextets not supported yet!"
 
     let classify_indices tensors =
-      List.fold_right
-	(fun v acc ->
-	  let i = classify_indices1 v in
-	  { fundamental = List.sort compare (i.fundamental @ acc.fundamental);
-	    conjugate = List.sort compare (i.conjugate @ acc.conjugate);
-	    adjoint = List.sort compare (i.adjoint @ acc.adjoint) })
-	tensors { fundamental = []; conjugate = []; adjoint = [] }
+      List.sort compare
+	(List.fold_right
+	   (fun v acc -> classify_indices1 v @ acc)
+	   tensors [])
 
     let free i =
-      { fundamental = positive i.fundamental;
-	conjugate = positive i.conjugate;
-	adjoint = positive i.adjoint }
-      
+      positive i
+
     let summation i =
-      { fundamental = not_positive i.fundamental;
-	conjugate = not_positive i.conjugate;
-	adjoint = not_positive i.adjoint }
-      
+      not_positive i
+	
     let int_list_to_string is =
       "[" ^ String.concat ", " (List.map string_of_int is) ^ "]"
 	
-    let index_classes_to_string c =
-      Printf.sprintf "3=%s, 3bar=%s, 8=%s"
-	(int_list_to_string c.fundamental)
-	(int_list_to_string c.conjugate)
-	(int_list_to_string c.adjoint)
+    let index_classes_to_string i =
+      Printf.sprintf "8=%s, 3=%s, 3bar=%s"
+	(int_list_to_string
+	   (List.map fst
+	      (List.filter (function (_, A) -> true | _ -> false) i)))
+	(int_list_to_string
+	   (List.map fst
+	      (List.filter (function (_, F) -> true | _ -> false) i)))
+	(int_list_to_string
+	   (List.map fst
+	      (List.filter (function (_, C) -> true | _ -> false) i)))
 
   end
 
@@ -470,7 +452,7 @@ module Color =
     let of_string = C.of_string
     let to_string = C.to_string
 
-    type index_classes = C.index_classes
+    type r = C.r
     let classify_indices = C.classify_indices
     let index_classes_to_string = C.index_classes_to_string
     let free = C.free
