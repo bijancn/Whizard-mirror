@@ -641,12 +641,19 @@ let parse_directory dir =
     result.coupling_orders;
   List.iter
     (fun v -> print_endline (Vertex.to_string v);
-      List.iter (fun c -> ignore (UFOx.parse c)) v.Vertex.color)
+      List.iter
+	(fun c ->
+	  print_endline (">>> " ^
+			    UFOx.Color.to_string
+                        (UFOx.Color.of_expr (UFOx.parse c))))
+	v.Vertex.color)
     result.vertices;
   List.iter
     (fun l ->
       print_endline (Lorentz.to_string l);
-      ignore (UFOx.parse l.Lorentz.structure))
+      print_endline (">>> " ^
+			UFOx.Lorentz.to_string
+                        (UFOx.Lorentz.of_expr (UFOx.parse l.Lorentz.structure))))
     result.lorentz;
   List.iter
     (fun p -> print_endline (Parameter.to_string p))

@@ -54,20 +54,30 @@ let positive integers =
 
 module Q = Algebra.Small_Rational
 
-module type Tensor =
+module type Atomic_Tensor =
   sig
-    type 'a t = ('a list * Q.t) list
-    val of_expr : (string -> UFOx_syntax.expr list -> 'a) ->
-      UFOx_syntax.expr -> 'a t
-    val to_string : ('a -> string) -> 'a t -> string
+    type t
+    val of_expr : string -> UFOx_syntax.expr list -> t
+    val to_string : t -> string
+    type index_classes
+    val classify_indices : t list -> index_classes
   end
 
-module Tensor : Tensor =
+module type Tensor =
+  sig
+    type tensor
+    type t = (tensor list * Q.t) list
+    val of_expr : UFOx_syntax.expr -> t
+    val to_string : t -> string
+  end
+
+module Tensor (A : Atomic_Tensor) : Tensor with type tensor = A.t =
   struct
 
     module S = UFOx_syntax
 
-    type 'a t = ('a list * Q.t) list
+    type tensor = A.t
+    type t = (tensor list * Q.t) list
 
     let multiply (t1, c1) (t2, c2) =
       (t1 @ t2, Q.mul c1 c2)
@@ -75,34 +85,34 @@ module Tensor : Tensor =
     let compress terms =
       List.map (fun (t, cs) -> (t, Q.sum cs)) (ThoList.factorize terms)
 
-    let rec of_expr tensor e =
-      compress (of_expr' tensor e)
+    let rec of_expr e =
+      compress (of_expr' e)
 
-    and of_expr' tensor = function
+    and of_expr' = function
       | S.Integer i -> [([], Q.make i 1)]
       | S.Float _ -> invalid_arg "UFOx.Tensor.of_expr: unexpected float"
       | S.Variable name ->
 	 invalid_arg ("UFOx.Tensor.of_expr: unexpected variable '" ^
 			 name ^ "'")
-      | S.Application (name, args) -> [([tensor name args], Q.unit)]
-      | S.Sum terms -> ThoList.flatmap (of_expr tensor) terms
+      | S.Application (name, args) -> [([A.of_expr name args], Q.unit)]
+      | S.Sum terms -> ThoList.flatmap of_expr terms
       | S.Difference (e1, e2) ->
-	 of_expr tensor (S.Sum [e1; S.Product [S.Integer (-1); e2]])
+	 of_expr (S.Sum [e1; S.Product [S.Integer (-1); e2]])
       | S.Product factors ->
 	 List.fold_right
-	   (fun e acc -> Product.list2 multiply (of_expr tensor e) acc)
+	   (fun e acc -> Product.list2 multiply (of_expr e) acc)
 	   factors [([], Q.unit)]
       | S.Quotient (n, d) ->
-	 begin match of_expr tensor d with
+	 begin match of_expr d with
 	 | [([], q)] ->
-	    List.map (fun (t, c) -> (t, Q.div c q)) (of_expr tensor n)
+	    List.map (fun (t, c) -> (t, Q.div c q)) (of_expr n)
 	 | [] ->
 	    failwith "UFOx.Tensor.of_expr: zero denominator"
 	 | _ ->
 	    failwith "UFOx.Tensor.of_expr: only integer denominators allowed"
 	 end
       | S.Power (e, p) ->
-	 begin match of_expr tensor e, of_expr tensor p with
+	 begin match of_expr e, of_expr p with
 	 | [([], q)], [([], p)] ->
 	    if Q.is_integer p then
 	      [([], Q.pow q (Q.to_integer p))]
@@ -113,30 +123,44 @@ module Tensor : Tensor =
 	 | _ -> failwith "UFOx.Tensor.of_expr: power of tensor"
 	 end
 	 
-    let term_to_string tensor_to_string (tensors, c) =
+    let term_to_string (tensors, c) =
       if Q.is_null c then
 	""
       else
 	(if Q.is_negative c then " - " else " + ") ^
 	  (let c = Q.abs c in
-	   if Q.is_unit c then
+	   if Q.is_unit c && tensors = [] then
 	     ""
 	   else
 	     Q.to_string c) ^
 	  (match tensors with
 	  | [] -> ""
 	  | tensors ->
-	     "*" ^ String.concat "*" (List.map tensor_to_string tensors))
+	     (if Q.is_unit (Q.abs c) then "" else "*") ^
+	       String.concat "*" (List.map A.to_string tensors))
 
-    let to_string tensor_to_string terms =
-      String.concat "" (List.map (term_to_string tensor_to_string) terms)
+    let term_to_string (tensors, c) =
+      if Q.is_null c then
+	""
+      else
+	(if Q.is_negative c then " - " else " + ") ^
+	  (let c = Q.abs c in
+	   match tensors with
+	   | [] -> Q.to_string c
+	   | tensors ->
+	      String.concat "*"
+		((if Q.is_unit c then [] else [Q.to_string c]) @
+		    List.map A.to_string tensors))
+
+    let to_string terms =
+      String.concat "" (List.map term_to_string terms)
       
   end
 
-module Lorentz =
+module Atomic_Lorentz =
   struct
-
-    type tensor =
+	
+    type t =
       | C of int * int
       | Epsilon of int * int * int * int
       | Gamma of int * int * int
@@ -148,7 +172,7 @@ module Lorentz =
       | ProjM of int * int
       | Sigma of int * int * int * int
 
-    let tensor_to_string = function
+    let to_string = function
       | C (i, j) ->
 	 Printf.sprintf "C(%d,%d)" i j
       | Epsilon (mu, nu, ka, la) ->
@@ -170,11 +194,9 @@ module Lorentz =
       | Sigma (mu, nu, i, j) ->
 	 Printf.sprintf "Sigma(%d,%d,%d,%d)" mu nu i j
 
-    type t = (tensor list * Q.t) list
-
     module S = UFOx_syntax
 
-    let tensor name args =
+    let of_expr name args =
       match name, args with
       | "C", [S.Integer i; S.Integer j] -> C (i, j)
       | "C", _ ->
@@ -212,45 +234,52 @@ module Lorentz =
       | name, _ ->
 	 invalid_arg ("UFOx.Lorentz.of_expr: invalid tensor '" ^ name ^ "'")
 
-    let of_expr = Tensor.of_expr tensor
-    let to_string = Tensor.to_string tensor_to_string
-
-    type index_types =
+    type index_classes =
       { vector : int list;
 	spinor : int list;
 	conj_spinor : int list }
 
-    let index_types vector conj_spinor spinor =
+    let index_classes vector conj_spinor spinor =
       { vector = positive vector;
 	conj_spinor = positive conj_spinor;
 	spinor = positive spinor }
 
-    let classify_indices = function
-      | C (i, j) -> index_types [] [i] [j] (* ??? *)
+    let classify_indices1 = function
+      | C (i, j) -> index_classes [] [i] [j] (* ??? *)
       | Gamma5 (i, j) | Identity (i, j)
-      | ProjP (i, j) | ProjM (i, j) -> index_types [] [i] [j]
-      | Epsilon (mu, nu, ka, la) -> index_types [mu; nu; ka; la] [] []
-      | Gamma (mu, i, j) -> index_types [mu] [i] [j]
-      | Metric (mu, nu) -> index_types [mu; nu] [] []
-      | P (mu, _) -> index_types [mu] [] []
-      | Sigma (mu, nu, i, j) -> index_types [mu; nu] [i] [j]
+      | ProjP (i, j) | ProjM (i, j) -> index_classes [] [i] [j]
+      | Epsilon (mu, nu, ka, la) -> index_classes [mu; nu; ka; la] [] []
+      | Gamma (mu, i, j) -> index_classes [mu] [i] [j]
+      | Metric (mu, nu) -> index_classes [mu; nu] [] []
+      | P (mu, _) -> index_classes [mu] [] []
+      | Sigma (mu, nu, i, j) -> index_classes [mu; nu] [i] [j]
 
-    let classify_indices_list tensors =
+    let classify_indices tensors =
       List.fold_right
 	(fun v acc ->
-	  let i = classify_indices v in
+	  let i = classify_indices1 v in
 	  { vector = i.vector @ acc.vector;
 	    spinor = i.spinor @ acc.spinor;
 	    conj_spinor = i.conj_spinor @ acc.conj_spinor })
 	tensors { vector = []; conj_spinor = []; spinor = [] }
 
   end
-
-module Color =
+    
+module Lorentz =
   struct
 
-    type tensor =
-      | Unit
+    module L = Tensor(Atomic_Lorentz)
+    type t = L.t
+      
+    let of_expr = L.of_expr
+    let to_string = L.to_string
+
+  end
+
+module Atomic_Color =
+  struct
+
+    type t =
       | Identity of int * int
       | T of int * int * int
       | F of int * int * int
@@ -261,23 +290,69 @@ module Color =
       | K6 of int * int * int
       | K6Bar of int * int * int
 
-    type index_types =
+    module S = UFOx_syntax
+
+    let of_expr name args =
+      match name, args with
+      | "Identity", [S.Integer i; S.Integer j] -> Identity (i, j)
+      | "Identity", _ ->
+	 invalid_arg "UFOx.Color.of_expr: invalid arguments to Identity()"
+      | "T", [S.Integer a; S.Integer i; S.Integer j] -> T (a, i, j)
+      | "T", _ ->
+	 invalid_arg "UFOx.Color.of_expr: invalid arguments to T()"
+      | "f", [S.Integer a; S.Integer b; S.Integer c] -> F (a, b, c)
+      | "f", _ ->
+	 invalid_arg "UFOx.Color.of_expr: invalid arguments to f()"
+      | "d", [S.Integer a; S.Integer b; S.Integer c] -> D (a, b, c)
+      | "d", _ ->
+	 invalid_arg "UFOx.Color.of_expr: invalid arguments to d()"
+      | "Epsilon", [S.Integer i; S.Integer j; S.Integer k] ->
+	 Epsilon (i, j, k)
+      | "Epsilon", _ ->
+	 invalid_arg "UFOx.Color.of_expr: invalid arguments to Epsilon()"
+      | "EpsilonBar", [S.Integer i; S.Integer j; S.Integer k] ->
+	 EpsilonBar (i, j, k)
+      | "EpsilonBar", _ ->
+	 invalid_arg "UFOx.Color.of_expr: invalid arguments to EpsilonBar()"
+      | "T6", [S.Integer a; S.Integer i'; S.Integer j'] -> T6 (a, i', j')
+      | "T6", _ ->
+	 invalid_arg "UFOx.Color.of_expr: invalid arguments to T6()"
+      | "K6", [S.Integer i'; S.Integer j; S.Integer k] -> K6 (i', j, k)
+      | "K6", _ ->
+	 invalid_arg "UFOx.Color.of_expr: invalid arguments to K6()"
+      | "K6Bar", [S.Integer i'; S.Integer j; S.Integer k] -> K6Bar (i', j, k)
+      | "K6Bar", _ ->
+	 invalid_arg "UFOx.Color.of_expr: invalid arguments to K6Bar()"
+      | name, _ ->
+	 invalid_arg ("UFOx.Color.of_expr: invalid tensor '" ^ name ^ "'")
+	
+    let to_string = function
+      | Identity (i, j) -> Printf.sprintf "Identity(%d,%d)" i j
+      | T (a, i, j) -> Printf.sprintf "T(%d,%d,%d)" a i j
+      | F (a, b, c) -> Printf.sprintf "f(%d,%d,%d)" a b c
+      | D (a, b, c) -> Printf.sprintf "d(%d,%d,%d)" a b c
+      | Epsilon (i, j, k) -> Printf.sprintf "Epsilon(%d,%d,%d)" i j k
+      | EpsilonBar (i, j, k) -> Printf.sprintf "EpsilonBar(%d,%d,%d)" i j k
+      | T6 (a, i', j') -> Printf.sprintf "T6(%d,%d,%d)" a i' j'
+      | K6 (i', j, k) -> Printf.sprintf "K6(%d,%d,%d)" i' j k
+      | K6Bar (i', j, k) -> Printf.sprintf "K6Bar(%d,%d,%d)" i' j k
+
+    type index_classes =
       { fundamental : int list;
 	conjugate : int list;
 	adjoint : int list }
 
-    let index_types fundamental conjugate adjoint =
+    let index_classes fundamental conjugate adjoint =
       { fundamental = positive fundamental;
 	conjugate = positive conjugate;
 	adjoint = positive adjoint }
 
-    let classify_indices = function
-      | Unit -> index_types [] [] []
-      | Identity (i, j) -> index_types [i] [j] []
-      | T (a, i, j) -> index_types [i] [j] [a]
-      | F (a, b, c) | D (a, b, c) -> index_types [] [] [a; b; c]
-      | Epsilon (i, j, k) -> index_types [i; j; k] [] []
-      | EpsilonBar (i, j, k) -> index_types [] [i; j; k] []
+    let classify_indices1 = function
+      | Identity (i, j) -> index_classes [i] [j] []
+      | T (a, i, j) -> index_classes [i] [j] [a]
+      | F (a, b, c) | D (a, b, c) -> index_classes [] [] [a; b; c]
+      | Epsilon (i, j, k) -> index_classes [i; j; k] [] []
+      | EpsilonBar (i, j, k) -> index_classes [] [i; j; k] []
       | T6 (a, i', j') ->
 	 failwith "UFOx.Color: sextets not supported yet!"
       | K6 (i', j, k) ->
@@ -285,14 +360,25 @@ module Color =
       | K6Bar (i', j, k) ->
 	 failwith "UFOx.Color: sextets not supported yet!"
 
-    let classify_indices_list tensors =
+    let classify_indices tensors =
       List.fold_right
 	(fun v acc ->
-	  let i = classify_indices v in
+	  let i = classify_indices1 v in
 	  { fundamental = i.fundamental @ acc.fundamental;
 	    conjugate = i.conjugate @ acc.conjugate;
 	    adjoint = i.adjoint @ acc.adjoint })
 	tensors { fundamental = []; conjugate = []; adjoint = [] }
+
+  end
+
+module Color =
+  struct
+
+    module C = Tensor(Atomic_Color)
+    type t = C.t
+      
+    let of_expr = C.of_expr
+    let to_string = C.to_string
 
   end
 

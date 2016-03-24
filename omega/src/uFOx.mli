@@ -31,6 +31,13 @@ module Lorentz :
     val to_string : t -> string
   end
 
+module Color :
+  sig
+    type t
+    val of_expr : UFOx_syntax.expr -> t
+    val to_string : t -> string
+  end
+
 module type Test =
   sig
     val example : unit -> unit

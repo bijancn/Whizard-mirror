@@ -25,7 +25,8 @@ let _ =
   let file = ref None
   and line = ref None
   and dir = ref None
-  and expr = ref None
+  and lorentz = ref None
+  and color = ref None
   and skip_tests = ref false
   and skip_example = ref false
   and timing = ref false
@@ -39,8 +40,10 @@ let _ =
 	  "name UFO output file");
 	 ("-line", Arg.String (fun s -> line := Some s),
 	  "line UFO fragment");
-	 ("-expr", Arg.String (fun s -> expr := Some s),
-	  "expr UFO fragment");
+	 ("-lorentz", Arg.String (fun s -> lorentz := Some s),
+	  "expr UFO Lorentz tensor");
+	 ("-color", Arg.String (fun s -> color := Some s),
+	  "expr UFO color tensor");
 	 ("-skip-tests", Arg.Set skip_tests, " skip the tests");
 	 ("-skip-example", Arg.Set skip_example, " skip the example");
 	 ("-timing", Arg.Set timing, " provide timing information");
@@ -60,7 +63,13 @@ let _ =
   | None -> ()
   | Some s -> ignore (UFO.parse_directory s)
   end;
-  begin match !expr with
+  begin match !color with
+  | None -> ()
+  | Some s ->
+     print_endline
+       (UFOx.Color.to_string (UFOx.Color.of_expr (UFOx.parse s)))
+  end;
+  begin match !lorentz with
   | None -> ()
   | Some s ->
      print_endline
