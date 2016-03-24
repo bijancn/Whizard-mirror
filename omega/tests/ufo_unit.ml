@@ -62,6 +62,8 @@ let _ =
   end;
   begin match !expr with
   | None -> ()
-  | Some s -> ignore (UFOx.parse s)
+  | Some s ->
+     print_endline
+       (UFOx.Lorentz.to_string (UFOx.Lorentz.of_expr (UFOx.parse s)))
   end;
   exit 0

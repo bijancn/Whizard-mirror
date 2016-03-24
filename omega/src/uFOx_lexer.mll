@@ -55,15 +55,15 @@ rule token = parse
   | '('        	      { LPAREN }
   | ')'        	      { RPAREN }
   | ','        	      { COMMA }
-  | '+'        	      { PLUS }
-  | '-'        	      { MINUS }
+  | '*' '*'    	      { POWER }
   | '*'        	      { TIMES }
   | '/'        	      { DIV }
-  | '*' '*'    	      { POWER }
-  | '-'? ( digit+ '.' digit* | digit* '.' digit+ )
-         ( ['E''e'] '-'? digit+ )? as x
+  | '+'        	      { PLUS }
+  | '-'        	      { MINUS }
+  | '-'? digit* '.' digit+ ( ['E''e'] '-'? digit+ )? as x
                       { FLOAT (float_of_string x) }
-  | '-'? digit+ as i  { INT (int_of_string i) }
+  | ( '-'? digit+ as i ) '.'? '0'*
+                      { INT (int_of_string i) }
   | char word* ('.' char word+ )? as s
                       { ID s }
   | _ as c            { failwith ("invalid character at `" ^

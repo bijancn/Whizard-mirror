@@ -24,6 +24,13 @@
 
 val parse : string -> UFOx_syntax.expr
 
+module Lorentz :
+  sig
+    type t
+    val of_expr : UFOx_syntax.expr -> t
+    val to_string : t -> string
+  end
+
 module type Test =
   sig
     val example : unit -> unit
