@@ -52,15 +52,25 @@ let parse text =
 let positive integers =
   List.filter (fun i -> i > 0) integers
 
-module Tensor =
+module Q = Algebra.Small_Rational
+
+module type Tensor =
+  sig
+    type 'a t = ('a list * Q.t) list
+    val of_expr : (string -> UFOx_syntax.expr list -> 'a t) ->
+      UFOx_syntax.expr -> 'a t
+    val to_string : ('a -> string) -> 'a t -> string
+  end
+
+module Tensor : Tensor =
   struct
 
-    module Q = Algebra.Small_Rational
+    module S = UFOx_syntax
+
+    type 'a t = ('a list * Q.t) list
 
     let multiply (t1, c1) (t2, c2) =
       (t1 @ t2, Q.mul c1 c2)
-
-    module S = UFOx_syntax
 
     let compress terms =
       List.map (fun (t, cs) -> (t, Q.sum cs)) (ThoList.factorize terms)
@@ -125,8 +135,6 @@ module Tensor =
 
 module Lorentz =
   struct
-
-    module Q = Algebra.Small_Rational
 
     type tensor =
       | C of int * int
