@@ -60,6 +60,18 @@ let not_positive integers =
 
 module Q = Algebra.Small_Rational
 
+module type Index =
+  sig
+    val free : (int * 'r) list -> (int * 'r) list
+    val summation : (int * 'r) list -> (int * 'r) list
+  end
+
+module Index : Index =
+  struct
+    let free i = positive i
+    let summation i = not_positive i
+  end
+
 module type Atomic_Tensor =
   sig
     type t
@@ -68,8 +80,6 @@ module type Atomic_Tensor =
     type r
     val classify_indices : t list -> (int * r) list
     val index_classes_to_string : (int * r) list -> string
-    val free : (int * r) list -> (int * r) list
-    val summation : (int * r) list -> (int * r) list
   end
 
 module type Tensor =
@@ -82,8 +92,6 @@ module type Tensor =
     type r
     val classify_indices : t -> (int * r) list 
     val index_classes_to_string : (int * r) list -> string
-    val free : (int * r) list -> (int * r) list 
-    val summation : (int * r) list -> (int * r) list
   end
 
 module Tensor (A : Atomic_Tensor) : Tensor
@@ -139,8 +147,6 @@ module Tensor (A : Atomic_Tensor) : Tensor
 
     type r = A.r
     let index_classes_to_string = A.index_classes_to_string
-    let free = A.free
-    let summation = A.summation
 
     let classify_indices' filter tensors =
       ThoList.uniq
@@ -148,8 +154,8 @@ module Tensor (A : Atomic_Tensor) : Tensor
 	   (List.map (fun (t, c) -> filter (A.classify_indices t)) tensors))
 
     let classify_indices tensors =
-      let free_indices = classify_indices' free tensors
-      and summation_indices = classify_indices' summation tensors in
+      let free_indices = classify_indices' Index.free tensors
+      and summation_indices = classify_indices' Index.summation tensors in
       match free_indices, summation_indices with
       | [], _ -> failwith "UFOx.Tensor.classify_indices: can't happen!"
       | [f], [s] -> f
@@ -296,12 +302,6 @@ module Atomic_Lorentz =
 	   (fun v acc -> classify_indices1 v @ acc)
 	   tensors [])
 
-    let free i =
-      positive i
-
-    let summation i =
-      not_positive i
-	
     let int_list_to_string is =
       "[" ^ String.concat ", " (List.map string_of_int is) ^ "]"
 	
@@ -332,8 +332,6 @@ module Lorentz =
     type r = L.r
     let classify_indices = L.classify_indices
     let index_classes_to_string = L.index_classes_to_string
-    let free = L.free
-    let summation = L.summation
 
   end
 
@@ -419,12 +417,6 @@ module Atomic_Color =
 	   (fun v acc -> classify_indices1 v @ acc)
 	   tensors [])
 
-    let free i =
-      positive i
-
-    let summation i =
-      not_positive i
-	
     let int_list_to_string is =
       "[" ^ String.concat ", " (List.map string_of_int is) ^ "]"
 	
@@ -455,8 +447,6 @@ module Color =
     type r = C.r
     let classify_indices = C.classify_indices
     let index_classes_to_string = C.index_classes_to_string
-    let free = C.free
-    let summation = C.summation
 
   end
 
