@@ -51,6 +51,8 @@ module type Rational =
     val abs : t -> t
     val inv : t -> t
     val div : t -> t -> t
+    val pow : t -> int -> t
+    val sum : t list -> t
     val to_ratio : t -> int * int
     val to_float : t -> float
   end

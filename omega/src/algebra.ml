@@ -56,6 +56,8 @@ module type Rational =
     val abs : t -> t
     val inv : t -> t
     val div : t -> t -> t
+    val pow : t -> int -> t
+    val sum : t list -> t
     val to_ratio : t -> int * int
     val to_float : t -> float
   end
@@ -96,6 +98,15 @@ module Small_Rational : Rational =
     let add (n1, d1) (n2, d2) = make (n1 * d2 + n2 * d1) (d1 * d2)
     let sub (n1, d1) (n2, d2) = make (n1 * d2 - n2 * d1) (d1 * d2)
     let neg (n, d) = (- n, d)
+    let rec pow q p =
+      if p = 0 then
+	unit
+      else if p < 0 then
+	pow (inv q) p
+      else
+	mul q (pow q (pred p))
+    let sum qs =
+      List.fold_right add qs null
     let to_ratio (n, d) =
       if d < 0 then
         (-n, -d)
