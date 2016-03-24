@@ -58,18 +58,38 @@ let positive integers =
 let not_positive integers =
   List.filter (fun (i, _) -> i <= 0) integers
 
+let int_list_to_string is =
+  "[" ^ String.concat ", " (List.map string_of_int is) ^ "]"
+	
 module Q = Algebra.Small_Rational
 
 module type Index =
   sig
     val free : (int * 'r) list -> (int * 'r) list
     val summation : (int * 'r) list -> (int * 'r) list
+    val classes_to_string : ('r -> string) -> (int * 'r) list -> string
   end
 
 module Index : Index =
   struct
+
     let free i = positive i
     let summation i = not_positive i
+
+    let classes_to_string rep_to_string index_classes =
+      let reps =
+	ThoList.uniq (List.sort compare (List.map snd index_classes)) in
+      "[" ^
+	String.concat ", "
+	(List.map
+	   (fun r ->
+	     (rep_to_string r) ^ "=" ^
+	       (int_list_to_string
+		  (List.map
+		     fst
+		     (List.filter (fun (_, r') -> r = r') index_classes))))
+	   reps) ^ "]"
+      
   end
 
 module type Atomic_Tensor =
@@ -79,7 +99,7 @@ module type Atomic_Tensor =
     val to_string : t -> string
     type r
     val classify_indices : t list -> (int * r) list
-    val index_classes_to_string : (int * r) list -> string
+    val rep_to_string : r -> string
   end
 
 module type Tensor =
@@ -91,7 +111,7 @@ module type Tensor =
     val to_string : t -> string
     type r
     val classify_indices : t -> (int * r) list 
-    val index_classes_to_string : (int * r) list -> string
+    val rep_to_string : r -> string
   end
 
 module Tensor (A : Atomic_Tensor) : Tensor
@@ -146,7 +166,7 @@ module Tensor (A : Atomic_Tensor) : Tensor
 	 end
 
     type r = A.r
-    let index_classes_to_string = A.index_classes_to_string
+    let rep_to_string = A.rep_to_string
 
     let classify_indices' filter tensors =
       ThoList.uniq
@@ -286,6 +306,11 @@ module Atomic_Lorentz =
 
     type r = V | Sp | CSp
 
+    let rep_to_string = function
+      | V -> "V"
+      | Sp -> "Sp"
+      | CSp-> "CSp"
+
     let classify_indices1 = function
       | C (i, j) -> [(i, CSp); (j, Sp)] (* ??? *)
       | Gamma5 (i, j) | Identity (i, j)
@@ -302,21 +327,6 @@ module Atomic_Lorentz =
 	   (fun v acc -> classify_indices1 v @ acc)
 	   tensors [])
 
-    let int_list_to_string is =
-      "[" ^ String.concat ", " (List.map string_of_int is) ^ "]"
-	
-    let index_classes_to_string i =
-      Printf.sprintf "v=%s, s=%s, c=%s"
-	(int_list_to_string
-	   (List.map fst
-	      (List.filter (function (_, V) -> true | _ -> false) i)))
-	(int_list_to_string
-	   (List.map fst
-	      (List.filter (function (_, Sp) -> true | _ -> false) i)))
-	(int_list_to_string
-	   (List.map fst
-	      (List.filter (function (_, CSp) -> true | _ -> false) i)))
-
   end
     
 module Lorentz =
@@ -331,7 +341,7 @@ module Lorentz =
 
     type r = L.r
     let classify_indices = L.classify_indices
-    let index_classes_to_string = L.index_classes_to_string
+    let rep_to_string = L.rep_to_string
 
   end
 
@@ -398,6 +408,11 @@ module Atomic_Color =
 
     type r = F | C | A
 
+    let rep_to_string = function
+      | F -> "3"
+      | C -> "3bar"
+      | A-> "8"
+
     let classify_indices1 = function
       | Identity (i, j) -> [(i, F); (j, C)]
       | T (a, i, j) -> [(i, F); (j, C); (a, A)]
@@ -417,21 +432,6 @@ module Atomic_Color =
 	   (fun v acc -> classify_indices1 v @ acc)
 	   tensors [])
 
-    let int_list_to_string is =
-      "[" ^ String.concat ", " (List.map string_of_int is) ^ "]"
-	
-    let index_classes_to_string i =
-      Printf.sprintf "8=%s, 3=%s, 3bar=%s"
-	(int_list_to_string
-	   (List.map fst
-	      (List.filter (function (_, A) -> true | _ -> false) i)))
-	(int_list_to_string
-	   (List.map fst
-	      (List.filter (function (_, F) -> true | _ -> false) i)))
-	(int_list_to_string
-	   (List.map fst
-	      (List.filter (function (_, C) -> true | _ -> false) i)))
-
   end
 
 module Color =
@@ -446,7 +446,7 @@ module Color =
 
     type r = C.r
     let classify_indices = C.classify_indices
-    let index_classes_to_string = C.index_classes_to_string
+    let rep_to_string = C.rep_to_string
 
   end
 

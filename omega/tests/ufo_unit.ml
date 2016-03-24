@@ -68,7 +68,8 @@ let _ =
   | Some s ->
      let t = UFOx.Color.of_string s in
      print_endline (UFOx.Color.to_string t);
-     print_endline (UFOx.Color.index_classes_to_string
+     print_endline (UFOx.Index.classes_to_string
+		      UFOx.Color.rep_to_string
 		      (UFOx.Color.classify_indices t))
   end;
   begin match !lorentz with
@@ -76,7 +77,8 @@ let _ =
   | Some s ->
      let t = UFOx.Lorentz.of_string s in
      print_endline (UFOx.Lorentz.to_string t);
-     print_endline (UFOx.Lorentz.index_classes_to_string
+     print_endline (UFOx.Index.classes_to_string
+		      UFOx.Lorentz.rep_to_string
 		      (UFOx.Lorentz.classify_indices t))
   end;
   exit 0

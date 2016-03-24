@@ -28,6 +28,13 @@ module Expr :
     val of_string : string -> t
   end
 
+module Index :
+  sig
+    val free : (int * 'r) list -> (int * 'r) list
+    val summation : (int * 'r) list -> (int * 'r) list
+    val classes_to_string : ('r -> string) -> (int * 'r) list -> string
+  end
+
 module Lorentz :
   sig
     type t
@@ -36,7 +43,7 @@ module Lorentz :
     val to_string : t -> string
     type r
     val classify_indices : t -> (int * r) list
-    val index_classes_to_string : (int * r) list -> string
+    val rep_to_string : r -> string
   end
 
 module Color :
@@ -47,7 +54,7 @@ module Color :
     val to_string : t -> string
     type r
     val classify_indices : t -> (int * r) list
-    val index_classes_to_string : (int * r) list -> string
+    val rep_to_string : r -> string
   end
 
 module type Test =
