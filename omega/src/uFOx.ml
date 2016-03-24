@@ -69,6 +69,8 @@ let rec gcd i1 i2 =
 
 let lcm i1 i2 = (i1 / gcd i1 i2) * i2
 
+(* This is a small extension of [Algebra.Small_Rational] *)
+  
 module Q =
   struct
     type t = int * int
@@ -79,6 +81,9 @@ module Q =
     let make n d =
       let c = gcd n d in
       (n / c, d / c)
+    let abs (n, d) = (abs n, abs d)
+    let is_positive (n, d) = n * d > 0
+    let is_negative (n, d) = n * d < 0
     let mul (n1, d1) (n2, d2) = make (n1 * n2) (d1 * d2)
     let add (n1, d1) (n2, d2) = make (n1 * d2 + n2 * d1) (d1 * d2)
     let sub (n1, d1) (n2, d2) = make (n1 * d2 - n2 * d1) (d1 * d2)
@@ -133,84 +138,79 @@ module Lorentz =
       | Sigma (mu, nu, i, j) ->
 	 Printf.sprintf "Sigma(%d,%d,%d,%d)" mu nu i j
 
-    let term_to_string (n, d, tensors) =
-      if n = 0 then
+    let term_to_string (tensors, c) =
+      if Q.is_null c then
 	""
       else
-	(if n < 0 then " - " else " + ") ^
-	  (let n = abs n in
-	   if n = 1 && d = 1 then
+	(if Q.is_negative c then " - " else " + ") ^
+	  (let c = Q.abs c in
+	   if Q.is_unit c then
 	     ""
 	   else
-	     string_of_int n ^
-	       (if d = 1 then "" else "/" ^ string_of_int d) ^ "*") ^
+	     Q.to_string c ^ "*") ^
 	  String.concat "*" (List.map tensor_to_string tensors)
 
-    let term_to_string' (n, d, tensors) =
-      string_of_int n ^ "/" ^ string_of_int d ^ "*" ^
-	String.concat "*" (List.map tensor_to_string tensors)
-
-    type t = (int * int * tensor list) list
+    type t = (tensor list * Q.t) list
 
     let to_string terms =
       String.concat "" (List.map term_to_string terms)
       
-    let multiply (n1, d1, t1) (n2, d2, t2) =
-      let n', d' = Q.mul (n1, d1) (n2, d2) in
-      (n', d', t1 @ t2)
+    let multiply (t1, c1) (t2, c2) =
+      (t1 @ t2, Q.mul c1 c2)
 
     module S = UFOx_syntax
 
     let rec of_expr = function
       | S.Integer i ->
-	 [(i, 1, [])]
+	 [([], Q.make i 1)]
       | S.Float _ ->
 	 invalid_arg "UFOx.Lorentz.of_expr: unexpected float"
       | S.Variable name ->
-	 invalid_arg ("UFOx.Lorentz.of_expr: unexpected variable '" ^ name ^ "'")
+	 invalid_arg ("UFOx.Lorentz.of_expr: unexpected variable '" ^
+			 name ^ "'")
       | S.Application ("C", [S.Integer i; S.Integer j]) ->
-	 [(1, 1, [C (i, j)])]
+	 [([C (i, j)], Q.unit)]
       | S.Application ("C", _) ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to C()"
       | S.Application ("Epsilon",
 		       [S.Integer mu; S.Integer nu;
 			S.Integer ka; S.Integer la]) ->
-	 [(1, 1, [Epsilon (mu, nu, ka, la)])]
+	 [([Epsilon (mu, nu, ka, la)], Q.unit)]
       | S.Application ("Epsilon", _) ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Epsilon()"
       | S.Application ("Gamma",
 		       [S.Integer mu; S.Integer i; S.Integer j]) ->
-	 [(1, 1, [Gamma (mu, i, j)])]
+	 [([Gamma (mu, i, j)], Q.unit)]
       | S.Application ("Gamma", _) ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Gamma()"
       | S.Application ("Gamma5", [S.Integer i; S.Integer j]) ->
-	 [(1, 1, [Gamma5 (i, j)])]
+	 [([Gamma5 (i, j)], Q.unit)]
       | S.Application ("Gamma5", _) ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Gamma5()"
       | S.Application ("Identity", [S.Integer i; S.Integer j]) ->
-	 [(1, 1, [Identity (i, j)])]
+	 [([Identity (i, j)], Q.unit)]
       | S.Application ("Identity", _) ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Identity()"
       | S.Application ("Metric", [S.Integer mu; S.Integer nu]) ->
-	 [(1, 1, [Metric (mu, nu)])]
+	 [([Metric (mu, nu)], Q.unit)]
       | S.Application ("Metric", _) ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Metric()"
       | S.Application ("P", [S.Integer mu; S.Integer n]) ->
-	 [(1, 1, [P (mu, n)])]
+	 [([P (mu, n)], Q.unit)]
       | S.Application ("P", _) ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to P()"
       | S.Application ("ProjP", [S.Integer i; S.Integer j]) ->
-	 [(1, 1, [ProjP (i, j)])]
+	 [([ProjP (i, j)], Q.unit)]
       | S.Application ("ProjP", _) ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to ProjP()"
       | S.Application ("ProjM", [S.Integer i; S.Integer j]) ->
-	 [(1, 1, [ProjM (i, j)])]
+	 [([ProjM (i, j)], Q.unit)]
       | S.Application ("ProjM", _) ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to ProjM()"
       | S.Application ("Sigma",
 		       [S.Integer mu; S.Integer nu;
 			S.Integer i; S.Integer j]) ->
-	 [(1, 1, [Sigma (mu, nu, i, j)])]
+	 [([Sigma (mu, nu, i, j)], Q.unit)]
       | S.Application ("Sigma", _) ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Sigma()"
       | S.Application (name, _) ->
@@ -222,7 +222,7 @@ module Lorentz =
       | S.Product factors ->
 	 List.fold_right
 	   (fun e acc -> Product.list2 multiply (of_expr e) acc)
-	   factors [(1, 1, [])]
+	   factors [([], Q.unit)]
       | S.Quotient (n, d) ->
 	 let d' = of_expr d in
 	 failwith "UFOx.Lorentz.of_expr"
