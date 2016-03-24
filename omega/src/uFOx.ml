@@ -57,7 +57,7 @@ module Q = Algebra.Small_Rational
 module type Tensor =
   sig
     type 'a t = ('a list * Q.t) list
-    val of_expr : (string -> UFOx_syntax.expr list -> 'a t) ->
+    val of_expr : (string -> UFOx_syntax.expr list -> 'a) ->
       UFOx_syntax.expr -> 'a t
     val to_string : ('a -> string) -> 'a t -> string
   end
@@ -84,7 +84,7 @@ module Tensor : Tensor =
       | S.Variable name ->
 	 invalid_arg ("UFOx.Tensor.of_expr: unexpected variable '" ^
 			 name ^ "'")
-      | S.Application (name, args) -> tensor name args
+      | S.Application (name, args) -> [([tensor name args], Q.unit)]
       | S.Sum terms -> ThoList.flatmap (of_expr tensor) terms
       | S.Difference (e1, e2) ->
 	 of_expr tensor (S.Sum [e1; S.Product [S.Integer (-1); e2]])
@@ -176,44 +176,37 @@ module Lorentz =
 
     let tensor name args =
       match name, args with
-      | "C", [S.Integer i; S.Integer j] ->
-	 [([C (i, j)], Q.unit)]
+      | "C", [S.Integer i; S.Integer j] -> C (i, j)
       | "C", _ ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to C()"
       | "Epsilon", [S.Integer mu; S.Integer nu; S.Integer ka; S.Integer la] ->
-	 [([Epsilon (mu, nu, ka, la)], Q.unit)]
+	 Epsilon (mu, nu, ka, la)
       | "Epsilon", _ ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Epsilon()"
       | "Gamma", [S.Integer mu; S.Integer i; S.Integer j] ->
-	 [([Gamma (mu, i, j)], Q.unit)]
+	 Gamma (mu, i, j)
       | "Gamma", _ ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Gamma()"
-      | "Gamma5", [S.Integer i; S.Integer j] ->
-	 [([Gamma5 (i, j)], Q.unit)]
+      | "Gamma5", [S.Integer i; S.Integer j] -> Gamma5 (i, j)
       | "Gamma5", _ ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Gamma5()"
-      | "Identity", [S.Integer i; S.Integer j] ->
-	 [([Identity (i, j)], Q.unit)]
+      | "Identity", [S.Integer i; S.Integer j] -> Identity (i, j)
       | "Identity", _ ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Identity()"
-      | "Metric", [S.Integer mu; S.Integer nu] ->
-	 [([Metric (mu, nu)], Q.unit)]
+      | "Metric", [S.Integer mu; S.Integer nu] -> Metric (mu, nu)
       | "Metric", _ ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Metric()"
-      | "P", [S.Integer mu; S.Integer n] ->
-	 [([P (mu, n)], Q.unit)]
+      | "P", [S.Integer mu; S.Integer n] -> P (mu, n)
       | "P", _ ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to P()"
-      | "ProjP", [S.Integer i; S.Integer j] ->
-	 [([ProjP (i, j)], Q.unit)]
+      | "ProjP", [S.Integer i; S.Integer j] -> ProjP (i, j)
       | "ProjP", _ ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to ProjP()"
-      | "ProjM", [S.Integer i; S.Integer j] ->
-	 [([ProjM (i, j)], Q.unit)]
+      | "ProjM", [S.Integer i; S.Integer j] -> ProjM (i, j)
       | "ProjM", _ ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to ProjM()"
       | "Sigma", [S.Integer mu; S.Integer nu; S.Integer i; S.Integer j] ->
-	 [([Sigma (mu, nu, i, j)], Q.unit)]
+	 Sigma (mu, nu, i, j)
       | "Sigma", _ ->
 	 invalid_arg "UFOx.Lorentz.of_expr: invalid arguments to Sigma()"
       | name, _ ->
