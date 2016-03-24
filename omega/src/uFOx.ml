@@ -55,6 +55,9 @@ module Expr =
 let positive integers =
   List.filter (fun i -> i > 0) integers
 
+let not_positive integers =
+  List.filter (fun i -> i <= 0) integers
+
 module Q = Algebra.Small_Rational
 
 module type Atomic_Tensor =
@@ -65,6 +68,8 @@ module type Atomic_Tensor =
     type index_classes
     val classify_indices : t list -> index_classes
     val index_classes_to_string : index_classes -> string
+    val free : index_classes -> index_classes
+    val summation : index_classes -> index_classes
   end
 
 module type Tensor =
@@ -77,6 +82,8 @@ module type Tensor =
     type index_classes
     val classify_indices : t -> index_classes
     val index_classes_to_string : index_classes -> string
+    val free : index_classes -> index_classes
+    val summation : index_classes -> index_classes
   end
 
 module Tensor (A : Atomic_Tensor) : Tensor
@@ -132,20 +139,29 @@ module Tensor (A : Atomic_Tensor) : Tensor
 
     type index_classes = A.index_classes
     let index_classes_to_string = A.index_classes_to_string
+    let free = A.free
+    let summation = A.summation
+
+    let classify_indices' filter tensors =
+      ThoList.uniq
+	(List.sort compare
+	   (List.map (fun (t, c) -> filter (A.classify_indices t)) tensors))
 
     let classify_indices tensors =
-      let index_classes =
-	ThoList.uniq
-	  (List.sort compare
-	     (List.map (fun (t, c) -> A.classify_indices t) tensors)) in
-      match index_classes with
-      | [] -> failwith "UFOx.Tensor.classify_indices: can't happen!"
-      | [index_classes] -> index_classes
-      | _ -> invalid_arg "UFOx.Tensor.classify_indices: incompatible indices!"
+      let free_indices = classify_indices' free tensors
+      and summation_indices = classify_indices' summation tensors in
+      match free_indices, summation_indices with
+      | [], _ -> failwith "UFOx.Tensor.classify_indices: can't happen!"
+      | [f], [s] -> f
+      | [_], _ ->
+	 invalid_arg
+	   "UFOx.Tensor.classify_indices: superfluous summation indices!"
+      | _, _ ->
+	 invalid_arg "UFOx.Tensor.classify_indices: incompatible free indices!"
 
     let of_expr e =
       let t = of_expr e in
-      ignore (classify_indices t);
+      let free = classify_indices t in
       t
 
     let of_string s =
@@ -268,9 +284,9 @@ module Atomic_Lorentz =
 	conj_spinor : int list }
 
     let index_classes vector conj_spinor spinor =
-      { vector = positive vector;
-	conj_spinor = positive conj_spinor;
-	spinor = positive spinor }
+      { vector = vector;
+	conj_spinor = conj_spinor;
+	spinor = spinor }
 
     let classify_indices1 = function
       | C (i, j) -> index_classes [] [i] [j] (* ??? *)
@@ -291,6 +307,16 @@ module Atomic_Lorentz =
 	    conj_spinor = List.sort compare (i.conj_spinor @ acc.conj_spinor) })
 	tensors { vector = []; conj_spinor = []; spinor = [] }
 
+    let free i =
+      { vector = positive i.vector;
+	spinor = positive i.spinor;
+	conj_spinor = positive i.conj_spinor }
+      
+    let summation i =
+      { vector = not_positive i.vector;
+	spinor = not_positive i.spinor;
+	conj_spinor = not_positive i.conj_spinor }
+      
     let int_list_to_string is =
       "[" ^ String.concat ", " (List.map string_of_int is) ^ "]"
 	
@@ -315,6 +341,8 @@ module Lorentz =
     type index_classes = L.index_classes
     let classify_indices = L.classify_indices
     let index_classes_to_string = L.index_classes_to_string
+    let free = L.free
+    let summation = L.summation
 
   end
 
@@ -385,9 +413,9 @@ module Atomic_Color =
 	adjoint : int list }
 
     let index_classes fundamental conjugate adjoint =
-      { fundamental = positive fundamental;
-	conjugate = positive conjugate;
-	adjoint = positive adjoint }
+      { fundamental = fundamental;
+	conjugate = conjugate;
+	adjoint = adjoint }
 
     let classify_indices1 = function
       | Identity (i, j) -> index_classes [i] [j] []
@@ -411,6 +439,16 @@ module Atomic_Color =
 	    adjoint = List.sort compare (i.adjoint @ acc.adjoint) })
 	tensors { fundamental = []; conjugate = []; adjoint = [] }
 
+    let free i =
+      { fundamental = positive i.fundamental;
+	conjugate = positive i.conjugate;
+	adjoint = positive i.adjoint }
+      
+    let summation i =
+      { fundamental = not_positive i.fundamental;
+	conjugate = not_positive i.conjugate;
+	adjoint = not_positive i.adjoint }
+      
     let int_list_to_string is =
       "[" ^ String.concat ", " (List.map string_of_int is) ^ "]"
 	
@@ -435,6 +473,8 @@ module Color =
     type index_classes = C.index_classes
     let classify_indices = C.classify_indices
     let index_classes_to_string = C.index_classes_to_string
+    let free = C.free
+    let summation = C.summation
 
   end
 

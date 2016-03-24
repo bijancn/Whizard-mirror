@@ -1,6 +1,6 @@
 (* $Id: omega_unit.ml 4015 2013-01-03 16:04:18Z jr_reuter $
 
-   Copyright (C) 1999-2014 by
+   Copyright (C) 1999-2016 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
