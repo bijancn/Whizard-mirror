@@ -5,7 +5,7 @@
       promisify = require('es6-promisify'),
       log = require('js-logger'),
       utils = require('./helpers/utils'),
-      guiconf = require('./controllers/guiconfig'); // This should parse a settings JSON
+      guiconf = require('./controllers/guiconfig'); // This should parse a settings JSON/YAML
   var app = express();
   var mongoPort = 27017;
 
