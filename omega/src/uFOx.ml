@@ -100,18 +100,22 @@ module type Atomic_Tensor =
     type r
     val classify_indices : t list -> (int * r) list
     val rep_to_string : r -> string
+    val rep_of_int : int -> r
+    val rep_conjugate : r -> r
   end
 
 module type Tensor =
   sig
     type tensor
-    type t = (tensor list * Q.t) list
+    type t
     val of_expr : UFOx_syntax.expr -> t
     val of_string : string -> t
     val to_string : t -> string
     type r
     val classify_indices : t -> (int * r) list 
     val rep_to_string : r -> string
+    val rep_of_int : int -> r
+    val rep_conjugate : r -> r
   end
 
 module Tensor (A : Atomic_Tensor) : Tensor
@@ -167,6 +171,8 @@ module Tensor (A : Atomic_Tensor) : Tensor
 
     type r = A.r
     let rep_to_string = A.rep_to_string
+    let rep_of_int = A.rep_of_int
+    let rep_conjugate = A.rep_conjugate
 
     let classify_indices' filter tensors =
       ThoList.uniq
@@ -304,12 +310,28 @@ module Atomic_Lorentz =
       | name, _ ->
 	 invalid_arg ("UFOx.Lorentz.of_expr: invalid tensor '" ^ name ^ "'")
 
-    type r = V | Sp | CSp
+    type r = S | V | Sp | CSp | Ghost
 
     let rep_to_string = function
-      | V -> "V"
-      | Sp -> "Sp"
-      | CSp-> "CSp"
+      | S -> "0"
+      | V -> "1"
+      | Sp -> "1/2"
+      | CSp-> "1/2bar"
+      | Ghost -> "Ghost"
+
+    let rep_of_int = function
+      | -1 -> Ghost
+      | 1 -> S
+      | 2 -> Sp
+      | 3 -> V
+      | _ -> invalid_arg "UFOx.Lorentz: impossible representation!"
+	 
+    let rep_conjugate = function
+      | S -> S
+      | V -> V
+      | Sp -> CSp (* ??? *)
+      | CSp -> Sp (* ??? *)
+      | Ghost -> Ghost
 
     let classify_indices1 = function
       | C (i, j) -> [(i, CSp); (j, Sp)] (* ??? *)
@@ -392,12 +414,30 @@ module Atomic_Color =
       | K6 (i', j, k) -> Printf.sprintf "K6(%d,%d,%d)" i' j k
       | K6Bar (i', j, k) -> Printf.sprintf "K6Bar(%d,%d,%d)" i' j k
 
-    type r = F | C | A
+    type r = S | Sbar | F | C | A
 
     let rep_to_string = function
+      | S -> "1"
+      | Sbar -> "1bar"
       | F -> "3"
       | C -> "3bar"
       | A-> "8"
+
+    let rep_of_int = function
+      | 1 -> S
+      | -1 -> Sbar (* UFO appears to use this for colorless antiparticles!. *)
+      | 3 -> F
+      | -3 -> C
+      | 8 -> A
+      | 6 | -6 -> failwith "UFOx.Color: sextets not supported yet!"
+      | _ -> invalid_arg "UFOx.Color: impossible representation!"
+	 
+    let rep_conjugate = function
+      | Sbar -> S
+      | S -> Sbar
+      | C -> F
+      | F -> C
+      | A -> A
 
     let classify_indices1 = function
       | Identity (i, j) -> [(i, F); (j, C)]

@@ -232,8 +232,8 @@ module Particle =
       { pdg_code : int;
 	name : string;
 	antiname : string;
-	spin : int;
-	color : int;
+	spin : UFOx.Lorentz.r;
+	color : UFOx.Color.r;
 	mass : string;
 	width : string;
 	texname : string;
@@ -249,12 +249,14 @@ module Particle =
     let to_string symbol p =
       Printf.sprintf
 	"particle: %s => [ pdg = %d, name = '%s'/'%s', \
-                           spin = %d, color = %d, \
+                           spin = %s, color = %s, \
                            mass = %s, width = %s, \
                            Q = %s, G = %d, L = %d, Y = %d, \
                            TeX = '%s'/'%s' ]"
 	symbol p.pdg_code p.name p.antiname
-	p.spin p.color p.mass p.width
+	(UFOx.Lorentz.rep_to_string p.spin)
+	(UFOx.Color.rep_to_string p.color)
+	p.mass p.width
 	(charge_to_string p.charge)
 	p.ghost_number p.lepton_number p.y
 	p.texname p.antitexname
@@ -267,8 +269,8 @@ module Particle =
       { pdg_code = - p.pdg_code;
 	name = p.antiname;
 	antiname = p.name;
-	spin = p.spin;
-	color = - p.color;
+	spin = UFOx.Lorentz.rep_conjugate p.spin;
+	color = UFOx.Color.rep_conjugate p.color;
 	mass = p.mass;
 	width = p.width;
 	texname = p.antitexname;
@@ -289,8 +291,8 @@ module Particle =
 	   { pdg_code = integer_attrib "pdg_code" attribs;
 	     name = string_attrib "name" attribs;
 	     antiname = string_attrib "antiname" attribs;
-	     spin = integer_attrib "spin" attribs;
-	     color = integer_attrib "color" attribs;
+	     spin = UFOx.Lorentz.rep_of_int (integer_attrib "spin" attribs);
+	     color = UFOx.Color.rep_of_int (integer_attrib "color" attribs);
 	     mass = name_attrib ~strip:"Param" "mass" attribs;
 	     width = name_attrib ~strip:"Param" "width" attribs;
 	     texname = string_attrib "texname" attribs;

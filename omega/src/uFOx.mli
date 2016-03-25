@@ -35,27 +35,22 @@ module Index :
     val classes_to_string : ('r -> string) -> (int * 'r) list -> string
   end
 
-module Lorentz :
+module type Tensor =
   sig
+    type tensor
     type t
-    val of_expr : Expr.t -> t
+    val of_expr : UFOx_syntax.expr -> t
     val of_string : string -> t
     val to_string : t -> string
     type r
-    val classify_indices : t -> (int * r) list
+    val classify_indices : t -> (int * r) list 
     val rep_to_string : r -> string
+    val rep_of_int : int -> r
+    val rep_conjugate : r -> r
   end
 
-module Color :
-  sig
-    type t
-    val of_expr : Expr.t -> t
-    val of_string : string -> t
-    val to_string : t -> string
-    type r
-    val classify_indices : t -> (int * r) list
-    val rep_to_string : r -> string
-  end
+module Lorentz : Tensor
+module Color : Tensor
 
 module type Test =
   sig
