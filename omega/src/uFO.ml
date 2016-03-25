@@ -704,7 +704,14 @@ let (@@@) f g x y =
 let parse_directory dir =
   let model = of_file (Files.parse_directory dir) in
   SMap.iter (print_endline @@@ Particle.to_string) model.particles;
-  SMap.iter (print_endline @@@ Coupling.to_string) model.couplings;
+  (* SMap.iter (print_endline @@@ Coupling.to_string) model.couplings; *)
+  SMap.iter
+    (fun symbol c ->
+      (print_endline @@@ Coupling.to_string) symbol c;
+      print_endline
+	(UFOx.Value.to_string
+	   (UFOx.Value.of_expr (UFOx.Expr.of_string c.Coupling.value))))
+    model.couplings;
   SMap.iter (print_endline @@@ Coupling_Order.to_string) model.coupling_orders;
   (* SMap.iter (print_endline @@@ Vertex.to_string) model.vertices; *)
   SMap.iter

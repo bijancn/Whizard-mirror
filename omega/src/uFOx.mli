@@ -55,6 +55,13 @@ module type Tensor =
 module Lorentz : Tensor
 module Color : Tensor
 
+module Value :
+  sig
+    type t
+    val of_expr : Expr.t -> t
+    val to_string : t -> string
+  end
+
 module type Test =
   sig
     val example : unit -> unit

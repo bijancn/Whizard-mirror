@@ -489,6 +489,109 @@ module Color = Tensor(Atomic_Color)
 
 module Value =
   struct
+
+    module S = UFOx_syntax
+
+    type builtin =
+      | Sqrt
+      | Conj
+
+    let builtin_to_string = function
+      | Sqrt -> "sqrt"
+      | Conj -> "conj"
+
+    let builtin_of_string = function
+      | "cname.sqrt" -> Sqrt
+      | "complexconjugate" -> Conj
+      | name -> failwith ("UFOx.Value: unsupported function: " ^ name)
+
+    type t =
+      | Integer of int
+      | Rational of Q.t
+      | Real of float
+      | Complex of float * float
+      | Variable of string
+      | Sum of t list
+      | Difference of t * t
+      | Product of t list
+      | Quotient of t * t
+      | Power of t * t
+      | Application of builtin * t list
+
+    let rec to_string = function
+      | Integer i ->
+	 string_of_int i
+      | Rational q ->
+	 Q.to_string q
+      | Real x ->
+	 string_of_float x
+      | Complex (r, i) ->
+	 Printf.sprintf "%f+I*%f" r i
+      | Variable s -> s
+      | Sum es ->
+	 "(" ^ String.concat "+" (List.map to_string es) ^ ")"
+      | Difference (e1, e2) ->
+	 "(" ^ to_string e1 ^ "-(" ^ to_string e2 ^ "))"
+      | Product es ->
+	 String.concat "*" (List.map to_string es)
+      | Quotient (e1, e2) ->
+	 to_string e1 ^ "/(" ^ to_string e2 ^ ")"
+      | Power (e1, e2) ->
+	 "(" ^ to_string e1 ^ ")^(" ^ to_string e2 ^ ")"
+      | Application (f, es) ->
+	 builtin_to_string f ^
+	   "(" ^ String.concat "," (List.map to_string es) ^ ")"
+	 
+    let compress terms = terms
+
+    let rec of_expr e =
+      compress (of_expr' e)
+
+    and of_expr' = function
+      | S.Integer i -> Integer i
+      | S.Float x -> Real x
+      | S.Variable name -> Variable name
+      | S.Sum (e1, e2) ->
+	 begin match of_expr e1, of_expr e2 with
+	 | Sum e1, Sum e2 -> Sum (e1 @ e2)
+	 | e1, Sum e2 -> Sum (e1 :: e2)
+	 | Sum e1, e2 -> Sum (e2 :: e1)
+	 | e1, e2 -> Sum [e1; e2]
+	 end
+      | S.Difference (e1, e2) ->
+	 Difference (of_expr e1, of_expr e2)
+      | S.Product (e1, e2) ->
+	 begin match of_expr e1, of_expr e2 with
+	 | Product e1, Product e2 -> Product (e1 @ e2)
+	 | e1, Product e2 -> Product (e1 :: e2)
+	 | Product e1, e2 -> Product (e2 :: e1)
+	 | e1, e2 -> Product [e1; e2]
+	 end
+      | S.Quotient (e1, e2) ->
+	 Quotient (of_expr e1, of_expr e2)
+      | S.Power (e, p) ->
+	 Power (of_expr e, of_expr p)
+      | S.Application ("complex", [r; i]) ->
+	 begin match of_expr r, of_expr i with
+	 | Real r, Real i -> Complex (r, i)
+	 | Integer r, Real i -> Complex (float_of_int r, i)
+	 | Real r, Integer i -> Complex (r, float_of_int i)
+	 | Integer r, Integer i -> Complex (float_of_int r, float_of_int i)
+	 | _ -> invalid_arg "UFOx.Value: complex expects two numeric arguments"
+	 end
+      | S.Application ("complex", _) ->
+	 invalid_arg "UFOx.Value: complex expects two arguments"
+      | S.Application ("complexconjugate", [e]) ->
+	 Application (Conj, [of_expr e])
+      | S.Application ("complexconjugate", _) ->
+	 invalid_arg "UFOx.Value: complexconjugate expects single argument"
+      | S.Application ("cmath.sqrt", [e]) ->
+	 Application (Sqrt, [of_expr e])
+      | S.Application ("cmath.sqrt", _) ->
+	 invalid_arg "UFOx.Value: sqrt expects single argument"
+      | S.Application (name, args) ->
+	 Application (builtin_of_string name, List.map of_expr args)
+
   end
 
 module type Test =
