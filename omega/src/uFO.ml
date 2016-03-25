@@ -248,11 +248,11 @@ module Particle =
 
     let to_string symbol p =
       Printf.sprintf
-	"particle: %s => [ pdg = %d, name = '%s'/'%s', \
-                           spin = %s, color = %s, \
-                           mass = %s, width = %s, \
-                           Q = %s, G = %d, L = %d, Y = %d, \
-                           TeX = '%s'/'%s' ]"
+	"particle: %s => [pdg = %d, name = '%s'/'%s', \
+                          spin = %s, color = %s, \
+                          mass = %s, width = %s, \
+                          Q = %s, G = %d, L = %d, Y = %d, \
+                          TeX = '%s'/'%s']"
 	symbol p.pdg_code p.name p.antiname
 	(UFOx.Lorentz.rep_to_string p.spin)
 	(UFOx.Color.rep_to_string p.color)
@@ -334,7 +334,7 @@ module Coupling =
 
     let to_string symbol c =
       Printf.sprintf
-	"coupling: %s => [ name = '%s', value = '%s', order = [ %s ] ]"
+	"coupling: %s => [name = '%s', value = '%s', order = [%s]]"
 	symbol c.name c.value (order_to_string c.order)
 
     let of_file1 map d =
@@ -362,9 +362,9 @@ module Coupling_Order =
 
     let to_string symbol c =
       Printf.sprintf
-	"coupling_order: %s => [ name = '%s', \
-                                 expansion_order = '%d', \
-                                 hierarchy = %d ]"
+	"coupling_order: %s => [name = '%s', \
+                                expansion_order = '%d', \
+                                hierarchy = %d]"
 	symbol c.name c.expansion_order c.hierarchy
 
     let of_file1 map d =
@@ -389,13 +389,13 @@ module Vertex =
 	particles : string array;
 	color : UFOx.Color.t array;
 	lorentz : string array;
-	couplings : (int * int * string) list }
+	couplings : string option array array }
 
     let to_string symbol c =
       Printf.sprintf
-	"vertex: %s => [ name = '%s', particles = [ %s ], \
-                         color = [ %s ], lorentz = [ %s ], \
-                         couplings = [ %s ] ]"
+	"vertex: %s => [name = '%s', particles = [%s], \
+                        color = [%s], lorentz = [%s], \
+                        couplings = [%s]]"
 	symbol c.name
 	(String.concat ", " (Array.to_list c.particles))
 	(String.concat ", "
@@ -403,25 +403,37 @@ module Vertex =
 	(String.concat ", " (Array.to_list c.lorentz))
 	(String.concat ", "
 	   (List.map
-	      (fun (i, j, n) -> Printf.sprintf "(%d,%d): %s" i j n)
-	      c.couplings))
+	      (fun column ->
+		"[" ^ (String.concat ", "
+			 (List.map
+			    (function Some s -> s | None -> "0")
+			    (Array.to_list column))) ^ "]")
+	      (Array.to_list c.couplings)))
 
     let of_file1 map d =
       let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Vertex" ], attribs ->
+	 let color =
+	   Array.of_list
+	     (List.map
+		UFOx.Color.of_string (string_list_attrib "color" attribs))
+	 and lorentz =
+	   Array.of_list (name_list_attrib ~strip:"L" "lorentz" attribs)
+	 and couplings_alist =
+	   coupling_dictionary_attrib ~strip:"C" "couplings" attribs in
+	 let couplings =
+	   Array.make_matrix (Array.length color) (Array.length lorentz) None in
+	 List.iter
+	   (fun (i, j, c) -> couplings.(i).(j) <- Some c)
+	   couplings_alist;
 	 SMap.add symbol
 	   { name = string_attrib "name" attribs;
 	     particles =
 	       Array.of_list (name_list_attrib ~strip:"P" "particles" attribs);
-	     color =
-	       Array.of_list
-		 (List.map
-		    UFOx.Color.of_string (string_list_attrib "color" attribs));
-	     lorentz =
-	       Array.of_list (name_list_attrib ~strip:"L" "lorentz" attribs);
-	     couplings =
-	       coupling_dictionary_attrib ~strip:"C" "couplings" attribs } map
+	     color = color;
+	     lorentz = lorentz;
+	     couplings = couplings } map
       | _ -> invalid_arg ("Vertex.of_file: " ^ name_to_string d.S.kind)
 
     let of_file vertices =
@@ -439,8 +451,8 @@ module Lorentz =
 
     let to_string symbol l =
       Printf.sprintf
-	"lorentz: %s => [ name = '%s', spins = [ %s ], \
-                          structure = %s ]"
+	"lorentz: %s => [name = '%s', spins = [%s], \
+                         structure = %s]"
 	symbol l.name
 	(String.concat ", " (List.map string_of_int l.spins))
 	(UFOx.Lorentz.to_string l.structure)
@@ -497,9 +509,9 @@ module Parameter =
 
     let to_string symbol p =
       Printf.sprintf
-	"parameter: %s => [ name = '%s', nature = %s, type = %s, \
-                            value = %s, texname = '%s', \
-                            lhablock = %s, lhacode = [ %s ] ]"
+	"parameter: %s => [name = '%s', nature = %s, type = %s, \
+                           value = %s, texname = '%s', \
+                           lhablock = %s, lhacode = [%s]]"
 	symbol p.name
 	(nature_to_string p.nature)
 	(ptype_to_string p.ptype)
@@ -542,8 +554,8 @@ module Propagator =
 
     let to_string symbol p =
       Printf.sprintf
-	"propagator: %s => [ name = '%s', numerator = '%s', \
-                             denominator = '%s' ]"
+	"propagator: %s => [name = '%s', numerator = '%s', \
+                            denominator = '%s']"
 	symbol p.name p.numerator p.denominator
       
     (* The parser will turn [foo = "bar"] into [foo = "bar"."$"],
@@ -596,7 +608,7 @@ module Decay =
 
     let to_string symbol d =
       Printf.sprintf
-	"decay: %s => [ name = '%s', particle = '%s', widths = [ %s ] ]"
+	"decay: %s => [name = '%s', particle = '%s', widths = [%s]]"
 	symbol d.name d.particle (width_to_string d.widths)
 
     let of_file1 map d =
