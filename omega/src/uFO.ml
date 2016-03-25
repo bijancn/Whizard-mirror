@@ -641,9 +641,30 @@ let alist_of_list predicate offset list =
 let lorentz_reps_of_vertex model v =
   alist_of_list (fun r -> not (UFOx.Lorentz.rep_trivial r)) 1
     (List.map
-       (fun p -> (SMap.find p model.particles).Particle.spin)
+       (fun p ->
+	 (* Why do we need to conjugate??? *)
+	 UFOx.Lorentz.rep_conjugate
+	   (SMap.find p model.particles).Particle.spin)
        v.Vertex.particles)
 
+let check_lorentz_reps_of_vertex model v =
+  let reps_particles = List.sort compare (lorentz_reps_of_vertex model v) in
+  List.iter
+    (fun reps_vertex ->
+      if reps_vertex <> reps_particles then begin
+	Printf.printf "%s <> %s\n"
+	  (UFOx.Index.classes_to_string
+	     UFOx.Lorentz.rep_to_string reps_particles)
+	  (UFOx.Index.classes_to_string
+	     UFOx.Lorentz.rep_to_string reps_vertex);
+	invalid_arg "check_lorentz_reps_of_vertex"
+      end)
+    (List.map
+       (fun l ->
+	 let l = (SMap.find l model.lorentz).Lorentz.structure in
+	 List.sort compare (UFOx.Lorentz.classify_indices l))
+       v.Vertex.lorentz)
+  
 let color_reps_of_vertex model v =
   alist_of_list (fun r -> not (UFOx.Color.rep_trivial r)) 1
     (List.map
@@ -662,7 +683,7 @@ let check_color_reps_of_vertex model v =
      end)
     (List.map
        (fun c -> List.sort compare (UFOx.Color.classify_indices c))
-       v.color)
+       v.Vertex.color)
   
 let (@@@) f g x y =
   f (g x y)
@@ -676,7 +697,8 @@ let parse_directory dir =
   SMap.iter
     (fun symbol v ->
       (print_endline @@@ Vertex.to_string) symbol v;
-      check_color_reps_of_vertex model v)
+      check_color_reps_of_vertex model v;
+      check_lorentz_reps_of_vertex model v)
     model.vertices;
   SMap.iter (print_endline @@@ Lorentz.to_string) model.lorentz;
   SMap.iter (print_endline @@@ Parameter.to_string) model.parameters;
