@@ -223,12 +223,13 @@ let decay_dictionary_attrib name attribs =
      List.map (fun (p, w) -> (List.map List.hd p, w)) d
   | _ -> invalid_arg name
 
+module SMap = Map.Make (struct type t = string let compare = compare end)
+
 module Particle =
   struct
     
     type t =
-      { symbol : string;
-	pdg_code : int;
+      { pdg_code : int;
 	name : string;
 	antiname : string;
 	spin : int;
@@ -245,29 +246,25 @@ module Particle =
 	propagating : bool;  (* NOT HANDLED YET! *)
 	line : string option (* NOT HANDLED YET! *) }
 
-    let to_string p =
+    let to_string symbol p =
       Printf.sprintf
 	"particle: %s => [ pdg = %d, name = '%s'/'%s', \
                            spin = %d, color = %d, \
                            mass = %s, width = %s, \
                            Q = %s, G = %d, L = %d, Y = %d, \
                            TeX = '%s'/'%s' ]"
-	p.symbol p.pdg_code p.name p.antiname
+	symbol p.pdg_code p.name p.antiname
 	p.spin p.color p.mass p.width
 	(charge_to_string p.charge)
 	p.ghost_number p.lepton_number p.y
 	p.texname p.antitexname
 
-    let find_particle symbol particles =
-      List.find (fun p -> symbol = p.symbol) particles
-
     let conjugate_charge = function
       | Q_Integer i -> Q_Integer (-i)
       | Q_Fraction (n, d) -> Q_Fraction (-n, d)
 
-    let conjugate symbol p =
-      { symbol = symbol;
-	pdg_code = - p.pdg_code;
+    let conjugate p =
+      { pdg_code = - p.pdg_code;
 	name = p.antiname;
 	antiname = p.name;
 	spin = p.spin;
@@ -284,31 +281,31 @@ module Particle =
 	propagating = p.propagating;
 	line = p.line }
 
-    let pass2' acc d =
+    let pass2' map d =
+      let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Particle" ], attribs ->
-	 { symbol = d.S.name;
-	   pdg_code = integer_attrib "pdg_code" attribs;
-	   name = string_attrib "name" attribs;
-	   antiname = string_attrib "antiname" attribs;
-	   spin = integer_attrib "spin" attribs;
-	   color = integer_attrib "color" attribs;
-	   mass = name_attrib ~strip:"Param" "mass" attribs;
-	   width = name_attrib ~strip:"Param" "width" attribs;
-	   texname = string_attrib "texname" attribs;
-	   antitexname = string_attrib "antitexname" attribs;
-	   charge = charge_attrib "charge" attribs;
-	   ghost_number = integer_attrib "GhostNumber" attribs;
-	   lepton_number = integer_attrib "LeptonNumber" attribs;
-	   y = integer_attrib "Y" attribs;
-	   goldstone = false;
-	   propagating = true;
-	   line = None } :: acc
+	 SMap.add symbol
+	   { pdg_code = integer_attrib "pdg_code" attribs;
+	     name = string_attrib "name" attribs;
+	     antiname = string_attrib "antiname" attribs;
+	     spin = integer_attrib "spin" attribs;
+	     color = integer_attrib "color" attribs;
+	     mass = name_attrib ~strip:"Param" "mass" attribs;
+	     width = name_attrib ~strip:"Param" "width" attribs;
+	     texname = string_attrib "texname" attribs;
+	     antitexname = string_attrib "antitexname" attribs;
+	     charge = charge_attrib "charge" attribs;
+	     ghost_number = integer_attrib "GhostNumber" attribs;
+	     lepton_number = integer_attrib "LeptonNumber" attribs;
+	     y = integer_attrib "Y" attribs;
+	     goldstone = false;
+	     propagating = true;
+	     line = None } map
       | [ "anti"; p ], [] ->
 	 begin
 	   try
-	     let anti = find_particle p acc in
-	     conjugate d.S.name anti :: acc
+	     SMap.add symbol (conjugate (SMap.find p map)) map
 	   with
 	   | Not_found ->
 	      failwith ("UFO.pass2_particle: " ^ p ^ ".anti() not yet defined!")
@@ -316,7 +313,7 @@ module Particle =
       | _ -> invalid_arg ("pass2_particle:" ^ name_to_string d.S.kind)
 
     let pass2 particles =
-      List.fold_left pass2' [] particles
+      List.fold_left pass2' SMap.empty particles
 
   end
 
@@ -609,7 +606,7 @@ module Decay =
   end
 
 type t =
-  { particles : Particle.t list;
+  { particles : Particle.t SMap.t;
     couplings : Coupling.t list;
     coupling_orders : Coupling_Order.t list;
     vertices : Vertex.t list;
@@ -628,11 +625,12 @@ let pass2 u =
     propagators = Propagator.pass2 u.Files.propagators;
     decays = Decay.pass2 u.Files.decays }
 
+let (@@@) f g x y =
+  f (g x y)
+
 let parse_directory dir =
   let result = pass2 (Files.parse_directory dir) in
-  List.iter
-    (fun p -> print_endline (Particle.to_string p))
-    result.particles;
+  SMap.iter (print_endline @@@ Particle.to_string) result.particles;
   List.iter
     (fun c ->
       print_endline (Coupling.to_string c);
