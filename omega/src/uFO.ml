@@ -321,8 +321,7 @@ module Coupling =
   struct
     
     type t =
-      { symbol : string;
-	name : string;
+      { name : string;
 	value : string;
 	order : (string * int) list }
 
@@ -330,22 +329,23 @@ module Coupling =
       String.concat ", "
 	(List.map (fun (s, i) -> Printf.sprintf "'%s':%d" s i) orders)
 
-    let to_string c =
+    let to_string symbol c =
       Printf.sprintf
 	"coupling: %s => [ name = '%s', value = '%s', order = [ %s ] ]"
-	c.symbol c.name c.value (order_to_string c.order)
+	symbol c.name c.value (order_to_string c.order)
 
-    let pass2' d =
+    let pass2' map d =
+      let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Coupling" ], attribs ->
-	 { symbol = d.S.name;
-	   name = string_attrib "name" attribs;
-	   value = string_attrib "value" attribs;
-	   order = order_dictionary_attrib "order" attribs }
+	 SMap.add symbol
+	   { name = string_attrib "name" attribs;
+	     value = string_attrib "value" attribs;
+	     order = order_dictionary_attrib "order" attribs } map
       | _ -> invalid_arg ("pass2_coupling:" ^ name_to_string d.S.kind)
 
     let pass2 couplings =
-      List.map pass2' couplings
+      List.fold_left pass2' SMap.empty couplings
 
   end
 
@@ -353,48 +353,47 @@ module Coupling_Order =
   struct
 
     type t =
-      { symbol : string;
-	name : string;
+      { name : string;
 	expansion_order : int;
 	hierarchy : int }
 
-    let to_string c =
+    let to_string symbol c =
       Printf.sprintf
 	"coupling_order: %s => [ name = '%s', \
                                  expansion_order = '%d', \
                                  hierarchy = %d ]"
-	c.symbol c.name c.expansion_order c.hierarchy
+	symbol c.name c.expansion_order c.hierarchy
 
-    let pass2' d =
+    let pass2' map d =
+      let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "CouplingOrder" ], attribs ->
-	 { symbol = d.S.name;
-	   name = string_attrib "name" attribs;
-	   expansion_order = integer_attrib "expansion_order" attribs;
-	   hierarchy = integer_attrib "hierarchy" attribs }
+	 SMap.add symbol
+	   { name = string_attrib "name" attribs;
+	     expansion_order = integer_attrib "expansion_order" attribs;
+	     hierarchy = integer_attrib "hierarchy" attribs } map
       | _ -> invalid_arg ("pass2_coupling_order:" ^ name_to_string d.S.kind)
 
     let pass2 coupling_orders =
-      List.map pass2' coupling_orders
+      List.fold_left pass2' SMap.empty coupling_orders
   end
 
 module Vertex =
   struct
     
     type t =
-      { symbol : string;
-	name : string;
+      { name : string;
 	particles : string list;
 	color : UFOx.Color.t list;
 	lorentz : string list;
 	couplings : (int * int * string) list }
 
-    let to_string c =
+    let to_string symbol c =
       Printf.sprintf
 	"vertex: %s => [ name = '%s', particles = [ %s ], \
                          color = [ %s ], lorentz = [ %s ], \
                          couplings = [ %s ] ]"
-	c.symbol c.name
+	symbol c.name
 	(String.concat ", " c.particles)
 	(String.concat ", " (List.map UFOx.Color.to_string c.color))
 	(String.concat ", " c.lorentz)
@@ -403,21 +402,23 @@ module Vertex =
 	      (fun (i, j, n) -> Printf.sprintf "(%d,%d): %s" i j n)
 	      c.couplings))
 
-    let pass2' d =
+    let pass2' map d =
+      let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Vertex" ], attribs ->
-	 { symbol = d.S.name;
-	   name = string_attrib "name" attribs;
-	   particles = name_list_attrib ~strip:"P" "particles" attribs;
-	   color =
-	     List.map UFOx.Color.of_string (string_list_attrib "color" attribs);
-	   lorentz = name_list_attrib ~strip:"L" "lorentz" attribs;
-	   couplings =
-	     coupling_dictionary_attrib ~strip:"C" "couplings" attribs }
+	 SMap.add symbol
+	   { name = string_attrib "name" attribs;
+	     particles = name_list_attrib ~strip:"P" "particles" attribs;
+	     color =
+	       List.map
+		 UFOx.Color.of_string (string_list_attrib "color" attribs);
+	     lorentz = name_list_attrib ~strip:"L" "lorentz" attribs;
+	     couplings =
+	       coupling_dictionary_attrib ~strip:"C" "couplings" attribs } map
       | _ -> invalid_arg ("pass2_vertex:" ^ name_to_string d.S.kind)
 
     let pass2 vertices =
-      List.map pass2' vertices
+      List.fold_left pass2' SMap.empty vertices
 
   end
 
@@ -425,31 +426,31 @@ module Lorentz =
   struct
     
     type t =
-      { symbol : string;
-	name : string;
+      { name : string;
 	spins : int list;
 	structure : UFOx.Lorentz.t }
 
-    let to_string l =
+    let to_string symbol l =
       Printf.sprintf
 	"lorentz: %s => [ name = '%s', spins = [ %s ], \
                           structure = %s ]"
-	l.symbol l.name
+	symbol l.name
 	(String.concat ", " (List.map string_of_int l.spins))
 	(UFOx.Lorentz.to_string l.structure)
 
-    let pass2' d =
+    let pass2' map d =
+      let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Lorentz" ], attribs ->
-	 { symbol = d.S.name;
-	   name = string_attrib "name" attribs;
-	   spins = integer_list_attrib "spins" attribs;
-	   structure =
-	     UFOx.Lorentz.of_string (string_attrib "structure" attribs) }
+	 SMap.add symbol
+	   { name = string_attrib "name" attribs;
+	     spins = integer_list_attrib "spins" attribs;
+	     structure =
+	       UFOx.Lorentz.of_string (string_attrib "structure" attribs) } map
       | _ -> invalid_arg ("pass2_lorentz:" ^ name_to_string d.S.kind)
 
     let pass2 lorentz =
-      List.map pass2' lorentz
+      List.fold_left pass2' SMap.empty lorentz
 
   end
 
@@ -479,8 +480,7 @@ module Parameter =
       | s -> invalid_arg ("Parameter.ptype_of_string: " ^ s)
 
     type t =
-      { symbol : string;
-	name : string;
+      { name : string;
 	nature : nature;
 	ptype : ptype;
 	value : value;
@@ -488,12 +488,12 @@ module Parameter =
 	lhablock : string option;
 	lhacode : int list option }
 
-    let to_string p =
+    let to_string symbol p =
       Printf.sprintf
 	"parameter: %s => [ name = '%s', nature = %s, type = %s, \
                             value = %s, texname = '%s', \
                             lhablock = %s, lhacode = [ %s ] ]"
-	p.symbol p.name
+	symbol p.name
 	(nature_to_string p.nature)
 	(ptype_to_string p.ptype)
 	(value_to_string p.value) p.texname
@@ -502,25 +502,26 @@ module Parameter =
 	| None -> ""
 	| Some c -> String.concat ", " (List.map string_of_int c))
       
-    let pass2' d =
+    let pass2' map d =
+      let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Parameter" ], attribs ->
-	 { symbol = d.S.name;
-	   name = string_attrib "name" attribs;
-	   nature = nature_of_string (string_attrib "nature" attribs);
-	   ptype = ptype_of_string (string_attrib "type" attribs);
-	   value = value_attrib "value" attribs;
-	   texname = string_attrib "texname" attribs;
-	   lhablock =
-	     (try Some (string_attrib "lhablock" attribs) with
-	       Not_found -> None);
-	   lhacode =
-	     (try Some (integer_list_attrib "lhacode" attribs) with
-	       Not_found -> None) }
+	 SMap.add symbol
+	   { name = string_attrib "name" attribs;
+	     nature = nature_of_string (string_attrib "nature" attribs);
+	     ptype = ptype_of_string (string_attrib "type" attribs);
+	     value = value_attrib "value" attribs;
+	     texname = string_attrib "texname" attribs;
+	     lhablock =
+	       (try Some (string_attrib "lhablock" attribs) with
+		 Not_found -> None);
+	     lhacode =
+	       (try Some (integer_list_attrib "lhacode" attribs) with
+		 Not_found -> None) } map
       | _ -> invalid_arg ("pass2_parameter:" ^ name_to_string d.S.kind)
     
     let pass2 parameters =
-      List.map pass2' parameters
+      List.fold_left pass2' SMap.empty parameters
 
   end
 
@@ -528,44 +529,45 @@ module Propagator =
   struct
 
     type t =
-      { symbol : string;
-	name : string;
+      { name : string;
 	numerator : string;
 	denominator : string }
 
-    let to_string p =
+    let to_string symbol p =
       Printf.sprintf
 	"propagator: %s => [ name = '%s', numerator = '%s', \
                              denominator = '%s' ]"
-	p.symbol p.name p.numerator p.denominator
+	symbol p.name p.numerator p.denominator
       
     (* The parser will turn [foo = "bar"] into [foo = "bar"."$"],
        which will be interpreted as a macro definition
        for [foo] expanding to ["bar"].   The dollar is used to
        distinguish it from an empty attribute list.  This
-       could also be implemented with a union. *)
+       could also be implemented with a union type for the
+       declarations.  *)
 
-    let pass2' (map, acc) d =
+    let pass2' (macros, map) d =
+      let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Propagator" ], attribs ->
 	 let denominator =
 	   begin match find_attrib "denominator" attribs with
 	   | S.String s -> s
-	   | S.Name [n] -> List.assoc n map
+	   | S.Name [n] -> SMap.find n macros
 	   | _ -> invalid_arg "denominator..."
 	   end in
-	 (map,
-	  { symbol = d.S.name;
-	    name = string_attrib "name" attribs;
-	    numerator = string_attrib "numerator" attribs;
-	    denominator = denominator } :: acc)
+	 (macros,
+	  SMap.add symbol
+	    { name = string_attrib "name" attribs;
+	      numerator = string_attrib "numerator" attribs;
+	      denominator = denominator } map)
       | [ "$"; s ], [] ->
-	 ((d.S.name, s) :: map, acc)
+	 (SMap.add symbol s macros, map)
       | _ -> invalid_arg ("pass2_propagator:" ^ name_to_string d.S.kind)
        
     let pass2 propagators =
       let _, propagators' =
-	List.fold_left pass2' ([], []) propagators in
+	List.fold_left pass2' (SMap.empty, SMap.empty) propagators in
       propagators'
 
   end
@@ -574,8 +576,7 @@ module Decay =
   struct
 
     type t =
-      { symbol : string;
-	name : string;
+      { name : string;
 	particle : string;
 	widths : (string list * string) list }
 
@@ -586,34 +587,35 @@ module Decay =
 	     "(" ^ String.concat ", " ps ^ ") -> '" ^ w ^ "'")
 	   ws)
 
-    let to_string d =
+    let to_string symbol d =
       Printf.sprintf
 	"decay: %s => [ name = '%s', particle = '%s', widths = [ %s ] ]"
-	d.symbol d.name d.particle (width_to_string d.widths)
+	symbol d.name d.particle (width_to_string d.widths)
 
-    let pass2' d =
+    let pass2' map d =
+      let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Decay" ], attribs ->
-	 { symbol = d.S.name;
-	   name = string_attrib "name" attribs;
-	   particle = name_attrib ~strip:"P" "particle" attribs;
-	   widths = decay_dictionary_attrib "partial_widths" attribs }
+	 SMap.add symbol
+	   { name = string_attrib "name" attribs;
+	     particle = name_attrib ~strip:"P" "particle" attribs;
+	     widths = decay_dictionary_attrib "partial_widths" attribs } map
       | _ -> invalid_arg ("pass2_decay:" ^ name_to_string d.S.kind)
 
     let pass2 decays =
-      List.map pass2' decays
+      List.fold_left pass2' SMap.empty decays
 
   end
 
 type t =
   { particles : Particle.t SMap.t;
-    couplings : Coupling.t list;
-    coupling_orders : Coupling_Order.t list;
-    vertices : Vertex.t list;
-    lorentz : Lorentz.t list;
-    parameters : Parameter.t list;
-    propagators : Propagator.t list;
-    decays : Decay.t list }
+    couplings : Coupling.t SMap.t;
+    coupling_orders : Coupling_Order.t SMap.t;
+    vertices : Vertex.t SMap.t;
+    lorentz : Lorentz.t SMap.t;
+    parameters : Parameter.t SMap.t;
+    propagators : Propagator.t SMap.t;
+    decays : Decay.t SMap.t}
 
 let pass2 u =
   { particles = Particle.pass2 u.Files.particles;
@@ -631,29 +633,19 @@ let (@@@) f g x y =
 let parse_directory dir =
   let result = pass2 (Files.parse_directory dir) in
   SMap.iter (print_endline @@@ Particle.to_string) result.particles;
-  List.iter
-    (fun c ->
-      print_endline (Coupling.to_string c);
+  SMap.iter
+    (fun symbol c ->
+      (print_endline @@@ Coupling.to_string) symbol c;
       ignore (UFOx.Expr.of_string c.Coupling.value))
     result.couplings;
-  List.iter
-    (fun o -> print_endline (Coupling_Order.to_string o))
-    result.coupling_orders;
-  List.iter
-    (fun v -> print_endline (Vertex.to_string v))
-    result.vertices;
-  List.iter
-    (fun l -> print_endline (Lorentz.to_string l))
-    result.lorentz;
-  List.iter
-    (fun p -> print_endline (Parameter.to_string p))
-    result.parameters;
-  List.iter
-    (fun p -> print_endline (Propagator.to_string p))
-    result.propagators;
-  List.iter
-    (fun d ->
-      print_endline (Decay.to_string d);
+  SMap.iter (print_endline @@@ Coupling_Order.to_string) result.coupling_orders;
+  SMap.iter (print_endline @@@ Vertex.to_string) result.vertices;
+  SMap.iter (print_endline @@@ Lorentz.to_string) result.lorentz;
+  SMap.iter (print_endline @@@ Parameter.to_string) result.parameters;
+  SMap.iter (print_endline @@@ Propagator.to_string) result.propagators;
+  SMap.iter
+    (fun symbol d ->
+      print_endline (Decay.to_string symbol d);
       List.iter (fun (_, w) -> ignore (UFOx.Expr.of_string w)) d.Decay.widths)
     result.decays;
   result
