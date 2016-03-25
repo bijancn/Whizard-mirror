@@ -386,9 +386,9 @@ module Vertex =
     
     type t =
       { name : string;
-	particles : string list;
-	color : UFOx.Color.t list;
-	lorentz : string list;
+	particles : string array;
+	color : UFOx.Color.t array;
+	lorentz : string array;
 	couplings : (int * int * string) list }
 
     let to_string symbol c =
@@ -397,9 +397,10 @@ module Vertex =
                          color = [ %s ], lorentz = [ %s ], \
                          couplings = [ %s ] ]"
 	symbol c.name
-	(String.concat ", " c.particles)
-	(String.concat ", " (List.map UFOx.Color.to_string c.color))
-	(String.concat ", " c.lorentz)
+	(String.concat ", " (Array.to_list c.particles))
+	(String.concat ", "
+	   (List.map UFOx.Color.to_string (Array.to_list c.color)))
+	(String.concat ", " (Array.to_list c.lorentz))
 	(String.concat ", "
 	   (List.map
 	      (fun (i, j, n) -> Printf.sprintf "(%d,%d): %s" i j n)
@@ -411,11 +412,14 @@ module Vertex =
       | [ "Vertex" ], attribs ->
 	 SMap.add symbol
 	   { name = string_attrib "name" attribs;
-	     particles = name_list_attrib ~strip:"P" "particles" attribs;
+	     particles =
+	       Array.of_list (name_list_attrib ~strip:"P" "particles" attribs);
 	     color =
-	       List.map
-		 UFOx.Color.of_string (string_list_attrib "color" attribs);
-	     lorentz = name_list_attrib ~strip:"L" "lorentz" attribs;
+	       Array.of_list
+		 (List.map
+		    UFOx.Color.of_string (string_list_attrib "color" attribs));
+	     lorentz =
+	       Array.of_list (name_list_attrib ~strip:"L" "lorentz" attribs);
 	     couplings =
 	       coupling_dictionary_attrib ~strip:"C" "couplings" attribs } map
       | _ -> invalid_arg ("Vertex.of_file: " ^ name_to_string d.S.kind)
@@ -645,12 +649,14 @@ let lorentz_reps_of_vertex model v =
 	 (* Why do we need to conjugate??? *)
 	 UFOx.Lorentz.rep_conjugate
 	   (SMap.find p model.particles).Particle.spin)
-       v.Vertex.particles)
+       (Array.to_list v.Vertex.particles))
 
 let check_lorentz_reps_of_vertex model v =
   let reps_particles = List.sort compare (lorentz_reps_of_vertex model v) in
-  List.iter
-    (fun reps_vertex ->
+  Array.iter
+    (fun l ->
+      let l = (SMap.find l model.lorentz).Lorentz.structure in
+      let reps_vertex = List.sort compare (UFOx.Lorentz.classify_indices l) in
       if reps_vertex <> reps_particles then begin
 	Printf.printf "%s <> %s\n"
 	  (UFOx.Index.classes_to_string
@@ -659,31 +665,26 @@ let check_lorentz_reps_of_vertex model v =
 	     UFOx.Lorentz.rep_to_string reps_vertex);
 	invalid_arg "check_lorentz_reps_of_vertex"
       end)
-    (List.map
-       (fun l ->
-	 let l = (SMap.find l model.lorentz).Lorentz.structure in
-	 List.sort compare (UFOx.Lorentz.classify_indices l))
-       v.Vertex.lorentz)
+    v.Vertex.lorentz
   
 let color_reps_of_vertex model v =
   alist_of_list (fun r -> not (UFOx.Color.rep_trivial r)) 1
     (List.map
        (fun p -> (SMap.find p model.particles).Particle.color)
-       v.Vertex.particles)
+       (Array.to_list v.Vertex.particles))
 
 let check_color_reps_of_vertex model v =
   let reps_particles = List.sort compare (color_reps_of_vertex model v) in
-  List.iter
-    (fun reps_vertex ->
+  Array.iter
+    (fun c ->
+      let reps_vertex = List.sort compare (UFOx.Color.classify_indices c) in
       if reps_vertex <> reps_particles then begin
 	Printf.printf "%s <> %s\n"
 	  (UFOx.Index.classes_to_string UFOx.Color.rep_to_string reps_particles)
 	  (UFOx.Index.classes_to_string UFOx.Color.rep_to_string reps_vertex);
 	invalid_arg "check_color_reps_of_vertex"
      end)
-    (List.map
-       (fun c -> List.sort compare (UFOx.Color.classify_indices c))
-       v.Vertex.color)
+    v.Vertex.color
   
 let (@@@) f g x y =
   f (g x y)
