@@ -38,7 +38,9 @@ let error_in_file name start_pos end_pos =
 
 module Expr =
   struct
+
     type t = UFOx_syntax.expr
+
     let of_string text =
       try
 	UFOx_parser.input
@@ -50,6 +52,14 @@ module Expr =
 			msg  (error_in_string text start_pos end_pos))
       | Parsing.Parse_error ->
 	 invalid_arg ("parse error: " ^ text)
+
+    let of_strings = function
+      | [] -> UFOx_syntax.integer 0
+      | string :: strings ->
+	 List.fold_right
+	   (fun s acc -> UFOx_syntax.add (of_string s) acc)
+	   strings (of_string string)
+
   end
 
 let positive integers =
@@ -102,6 +112,7 @@ module type Atomic_Tensor =
     val rep_to_string : r -> string
     val rep_of_int : int -> r
     val rep_conjugate : r -> r
+    val rep_trivial : r -> bool
   end
 
 module type Tensor =
@@ -110,12 +121,14 @@ module type Tensor =
     type t
     val of_expr : UFOx_syntax.expr -> t
     val of_string : string -> t
+    val of_strings : string list -> t
     val to_string : t -> string
     type r
     val classify_indices : t -> (int * r) list 
     val rep_to_string : r -> string
     val rep_of_int : int -> r
     val rep_conjugate : r -> r
+    val rep_trivial : r -> bool
   end
 
 module Tensor (A : Atomic_Tensor) : Tensor
@@ -173,6 +186,7 @@ module Tensor (A : Atomic_Tensor) : Tensor
     let rep_to_string = A.rep_to_string
     let rep_of_int = A.rep_of_int
     let rep_conjugate = A.rep_conjugate
+    let rep_trivial = A.rep_trivial
 
     let classify_indices' filter tensors =
       ThoList.uniq
@@ -198,6 +212,9 @@ module Tensor (A : Atomic_Tensor) : Tensor
 
     let of_string s =
       of_expr (Expr.of_string s)
+
+    let of_strings s =
+      of_expr (Expr.of_strings s)
 
     let term_to_string (tensors, c) =
       if Q.is_null c then
@@ -312,6 +329,10 @@ module Atomic_Lorentz =
 
     type r = S | V | Sp | CSp | Ghost
 
+    let rep_trivial = function
+      | S | Ghost -> true
+      | V | Sp | CSp-> false
+
     let rep_to_string = function
       | S -> "0"
       | V -> "1"
@@ -416,6 +437,10 @@ module Atomic_Color =
 
     type r = S | Sbar | F | C | A
 
+    let rep_trivial = function
+      | S | Sbar -> true
+      | F | C | A-> false
+
     let rep_to_string = function
       | S -> "1"
       | Sbar -> "1bar"
@@ -440,7 +465,7 @@ module Atomic_Color =
       | A -> A
 
     let classify_indices1 = function
-      | Identity (i, j) -> [(i, F); (j, C)]
+      | Identity (i, j) -> [(i, C); (j, F)]
       | T (a, i, j) -> [(i, F); (j, C); (a, A)]
       | F (a, b, c) | D (a, b, c) -> [(a, A); (b, A); (c, A)]
       | Epsilon (i, j, k) -> [(i, F); (j, F); (k, F)]

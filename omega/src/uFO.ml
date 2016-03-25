@@ -630,27 +630,66 @@ let of_file u =
     propagators = Propagator.of_file u.Files.propagators;
     decays = Decay.of_file u.Files.decays }
 
+let alist_of_list predicate offset list =
+  let _, alist =
+    List.fold_left
+      (fun (n, acc) x ->
+	(succ n, if predicate x then (n, x) :: acc else acc))
+      (offset, []) list in
+  alist
+
+let lorentz_reps_of_vertex model v =
+  alist_of_list (fun r -> not (UFOx.Lorentz.rep_trivial r)) 1
+    (List.map
+       (fun p -> (SMap.find p model.particles).Particle.spin)
+       v.Vertex.particles)
+
+let color_reps_of_vertex model v =
+  alist_of_list (fun r -> not (UFOx.Color.rep_trivial r)) 1
+    (List.map
+       (fun p -> (SMap.find p model.particles).Particle.color)
+       v.Vertex.particles)
+
+let check_color_reps_of_vertex model v =
+  let reps_particles = List.sort compare (color_reps_of_vertex model v) in
+  List.iter
+    (fun reps_vertex ->
+      if reps_vertex <> reps_particles then begin
+	Printf.printf "%s <> %s\n"
+	  (UFOx.Index.classes_to_string UFOx.Color.rep_to_string reps_particles)
+	  (UFOx.Index.classes_to_string UFOx.Color.rep_to_string reps_vertex);
+	invalid_arg "check_color_reps_of_vertex"
+     end)
+    (List.map
+       (fun c -> List.sort compare (UFOx.Color.classify_indices c))
+       v.color)
+  
 let (@@@) f g x y =
   f (g x y)
 
 let parse_directory dir =
-  let result = of_file (Files.parse_directory dir) in
-  SMap.iter (print_endline @@@ Particle.to_string) result.particles;
-  SMap.iter (print_endline @@@ Coupling.to_string) result.couplings;
-  SMap.iter (print_endline @@@ Coupling_Order.to_string) result.coupling_orders;
-  SMap.iter (print_endline @@@ Vertex.to_string) result.vertices;
-  SMap.iter (print_endline @@@ Lorentz.to_string) result.lorentz;
-  SMap.iter (print_endline @@@ Parameter.to_string) result.parameters;
-  SMap.iter (print_endline @@@ Propagator.to_string) result.propagators;
-  SMap.iter (print_endline @@@ Decay.to_string) result.decays;
+  let model = of_file (Files.parse_directory dir) in
+  SMap.iter (print_endline @@@ Particle.to_string) model.particles;
+  SMap.iter (print_endline @@@ Coupling.to_string) model.couplings;
+  SMap.iter (print_endline @@@ Coupling_Order.to_string) model.coupling_orders;
+  (* SMap.iter (print_endline @@@ Vertex.to_string) model.vertices; *)
+  SMap.iter
+    (fun symbol v ->
+      (print_endline @@@ Vertex.to_string) symbol v;
+      check_color_reps_of_vertex model v)
+    model.vertices;
+  SMap.iter (print_endline @@@ Lorentz.to_string) model.lorentz;
+  SMap.iter (print_endline @@@ Parameter.to_string) model.parameters;
+  SMap.iter (print_endline @@@ Propagator.to_string) model.propagators;
+  SMap.iter (print_endline @@@ Decay.to_string) model.decays;
   SMap.iter
     (fun symbol c -> ignore (UFOx.Expr.of_string c.Coupling.value))
-    result.couplings;
+    model.couplings;
   SMap.iter
     (fun symbol d ->
       List.iter (fun (_, w) -> ignore (UFOx.Expr.of_string w)) d.Decay.widths)
-    result.decays;
-  result
+    model.decays;
+  model
 
 module type Test =
   sig

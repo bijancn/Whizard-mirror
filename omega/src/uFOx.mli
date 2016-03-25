@@ -26,6 +26,7 @@ module Expr :
   sig
     type t
     val of_string : string -> t
+    val of_strings : string list -> t
   end
 
 module Index :
@@ -41,12 +42,14 @@ module type Tensor =
     type t
     val of_expr : UFOx_syntax.expr -> t
     val of_string : string -> t
+    val of_strings : string list -> t
     val to_string : t -> string
     type r
     val classify_indices : t -> (int * r) list 
     val rep_to_string : r -> string
     val rep_of_int : int -> r
     val rep_conjugate : r -> r
+    val rep_trivial : r -> bool
   end
 
 module Lorentz : Tensor
