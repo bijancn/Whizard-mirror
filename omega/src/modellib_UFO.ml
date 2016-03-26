@@ -22,124 +22,12 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-let rcs_file = RCS.parse "Comphep" ["Plagiarizing CompHEP models ..."]
-    { RCS.revision = "$Revision: 7444 $";
-      RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
-      RCS.author = "$Author: jr_reuter $";
+let rcs_file = RCS.parse "modellib_UFO" ["Reading UFO Files"]
+    { RCS.revision = "$Revision: 0$";
+      RCS.date = "$Date: 2016-03-26 00:00:00 +0100 (Sat, 26 Mar 2016) $";
+      RCS.author = "$Author: ohl $";
       RCS.source
-        = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/comphep.ml $" }
-
-(* A friendlier [String.sub] that returns an empty string instead of
-   raising an exception.  Instead of the length, the second argument
-   denotes the last position. *)
-
-let substring buffer i1 i2 =
-  let imax = String.length buffer - 1 in
-  let i1 = max i1 0
-  and i2 = min i2 imax in
-  let len = i2 - i1 + 1 in
-  if len > 0 then
-    String.sub buffer i1 len
-  else
-    ""
-
-let first_non_white buffer =
-  let len = String.length buffer in
-  let rec skip_white i =
-    if i >= len then
-      i
-    else if buffer.[i] <> ' ' && buffer.[i] <> '\t' then
-      i
-    else
-      skip_white (succ i) in
-  skip_white 0
-      
-let last_non_white buffer =
-  let len = String.length buffer in
-  let rec skip_white i =
-    if i < 0 then
-      i
-    else if buffer.[i] <> ' ' && buffer.[i] <> '\t' then
-      i
-    else
-      skip_white (pred i) in
-  skip_white (pred len)
-      
-let gobble_white buffer =
-  substring buffer (first_non_white buffer) (last_non_white buffer)
-
-let gobble_arrows buffer =
-  let imax = String.length buffer - 1 in
-  if imax >= 0 then
-    gobble_white
-      (substring buffer
-         (if buffer.[0] = '>' then 1 else 0)
-         (if buffer.[imax] = '<' then pred imax else imax))
-  else
-    ""
-
-let fold_lines ic f init =
-  let rec fold_lines' acc =
-    let continue =
-      try
-        let acc' = f (input_line ic) acc in
-        fun () -> fold_lines' acc'
-      with
-      | End_of_file -> fun () -> acc in
-    continue () in
-  fold_lines' init
-
-let column_tabs line =
-  let len = String.length line in
-  let rec tabs' acc i =
-    if i >= len then
-      List.rev acc
-    else if line.[i] = '|' then
-      tabs' (i :: acc) (succ i)
-    else
-      tabs' acc (succ i)
-  in
-  tabs' [] 0
-
-let columns tabs line =
-  let imax = String.length line - 1 in
-  let rec columns' acc i = function
-    | [] -> List.rev_map gobble_white (substring line i imax :: acc)
-    | tab :: rest ->
-        if tab < i then
-          invalid_arg "columns: clash"
-        else if (match rest with [] -> false | _ -> true)
-            && line.[tab] <> '|' then
-          invalid_arg "columns: expecting '|'"
-        else
-          columns' (substring line i (pred tab) :: acc) (succ tab) rest
-  in
-  columns' [] 0 tabs
-
-let input_table name =
-  let ic = open_in name in
-  let model = input_line ic in
-  let table = input_line ic in
-  let line = input_line ic in
-  let tabs = column_tabs line in
-  let titles = columns tabs line in
-  let rows = fold_lines ic (fun line acc ->
-    if String.length line > 0 && line.[0] = '=' then
-      acc
-    else
-      columns tabs line :: acc) [] in
-  close_in ic;
-  (gobble_white model, gobble_white table, List.map gobble_arrows titles, rows)
-
-let substitute_char (cold, cnew) s =
-  for i = 0 to String.length s - 1 do
-    if s.[i] = cold then
-      s.[i] <- cnew
-  done;
-  s
-
-let sanitize_symbol s =
-  List.fold_right substitute_char [('+', 'p'); ('-', 'm')] (String.copy s)
+        = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_UFO.ml $" }
 
 (* \begin{dubious}
      Fodder for a future [Coupling] module \ldots
@@ -160,22 +48,6 @@ let rec conjugate_lorentz = function
   | Coupling.ConjSpinor -> Coupling.Spinor
   | Coupling.BRS f -> Coupling.BRS (conjugate_lorentz f) 
   | f -> f
-
-(* \begin{dubious}
-     Currently, this operates on the sanitized symbol names.
-   \end{dubious} *)
-
-let pdg_heuristic name =
-  match name with
-  | "e1" -> 11 | "E1" -> -11 | "n1" -> 12 | "N1" -> -12
-  | "e2" -> 13 | "E2" -> -13 | "n2" -> 14 | "N2" -> -14
-  | "e3" -> 15 | "E3" -> -15 | "n3" -> 16 | "N3" -> -16
-  | "u" -> 2 | "U" -> -2 | "d" -> 1 | "D" -> -1
-  | "c" -> 4 | "C" -> -4 | "s" -> 3 | "S" -> -3
-  | "t" -> 6 | "T" -> -6 | "b" -> 5 | "B" -> -5
-  | "G" -> 21 | "A" -> 22 | "Z" -> 23
-  | "Wp" -> 24 | "Wm" -> -24 | "H" -> 25
-  | _ -> invalid_arg ("pdg_heuristic failed: " ^ name)
 
 module Model =
   struct
@@ -248,9 +120,6 @@ module Model =
           f_color : Color.t;
           f_aux : string option }
 
-    let real_variable = function
-      | _ -> invalid_arg "real_variable"
-
     let dummy_flavor =
       { f_name = "";
         f_conjugate = -1;
@@ -259,8 +128,8 @@ module Model =
         f_spin = Coupling.Scalar;
         f_propagator = Coupling.Prop_Scalar;
         f_fermion = 0;
-        f_mass = real_variable (0);
-        f_width = real_variable (0);
+        f_mass = "0.0_default";
+        f_width = "0.0_default";
         f_color = Color.Singlet;
         f_aux = None }
 
@@ -269,27 +138,30 @@ module Model =
       | Coupling.Spinor -> Coupling.Prop_Spinor
       | Coupling.ConjSpinor -> Coupling.Prop_ConjSpinor
       | Coupling.Majorana -> Coupling.Prop_Majorana
-      | Coupling.Maj_Ghost -> invalid_arg 
-            "propagator_of_lorentz: SUSY ghosts do not propagate"
+      | Coupling.Maj_Ghost ->
+          invalid_arg "propagator_of_lorentz: SUSY ghosts do not propagate"
       | Coupling.Vector -> Coupling.Prop_Feynman
       | Coupling.Massive_Vector -> Coupling.Prop_Unitarity
       | Coupling.Vectorspinor -> 
           invalid_arg "propagator_of_lorentz: Vectorspinor"
-      | Coupling.Tensor_1 -> invalid_arg "propagator_of_lorentz: Tensor_1"
-      | Coupling.Tensor_2 -> invalid_arg "propagator_of_lorentz: Tensor_2"
-      | Coupling.BRS _ -> invalid_arg "propagator_of_lorentz: no BRST"
+      | Coupling.Tensor_1 ->
+          invalid_arg "propagator_of_lorentz: Tensor_1"
+      | Coupling.Tensor_2 ->
+          invalid_arg "propagator_of_lorentz: Tensor_2"
+      | Coupling.BRS _ ->
+          invalid_arg "propagator_of_lorentz: no BRST"
 
     let flavor_of_particle symbol conjg particle =
       let spin = particle.p_spin in
       { f_name = particle.p_name;
         f_conjugate = conjg;
         f_symbol = symbol;
-        f_pdg = pdg_heuristic symbol;
+        f_pdg = 0;
         f_spin = spin;
         f_propagator = propagator_of_lorentz spin;
         f_fermion = fermion_of_lorentz spin;
-        f_mass = real_variable particle.p_mass;
-        f_width = real_variable particle.p_width;
+        f_mass = "0.0_default";
+        f_width = "0.0_default";
         f_color = particle.p_color;
         f_aux = particle.p_aux }
 
@@ -298,12 +170,12 @@ module Model =
       { f_name = "anti-" ^ particle.p_name;
         f_conjugate = conjg;
         f_symbol = symbol;
-        f_pdg = pdg_heuristic symbol;
+        f_pdg = 0;
         f_spin = spin;
         f_propagator = propagator_of_lorentz spin;
         f_fermion = fermion_of_lorentz spin;
-        f_mass = real_variable particle.p_mass;
-        f_width = real_variable particle.p_width;
+        f_mass = "0.0_default";
+        f_width = "0.0_default";
         f_color = Color.conjugate particle.p_color;
         f_aux = particle.p_aux }
   
@@ -324,9 +196,9 @@ module Model =
 
     let parse_symbol s1 s2 =
       if s1 = s2 then
-        Selfconjugate (sanitize_symbol s1)
+        Selfconjugate (s1)
       else
-        Conjugates (sanitize_symbol s1, sanitize_symbol s2)
+        Conjugates (s1, s2)
 
     let parse_spin spin =
       match int_of_string spin with
@@ -358,22 +230,6 @@ module Model =
       | name :: value :: comment :: _ ->
           (name, float_of_string value, comment)
       | _ -> invalid_arg "parse_variable_row"
-
-    let parse_table parse_row name =
-      let model, table, titles, rows = input_table name in
-      (model, table, titles, List.rev_map parse_row rows)
-
-    let input_functions = parse_table parse_function_row
-    let input_lagrangian = parse_table parse_lagragian_row
-    let input_particles = parse_table parse_particle_row
-    let input_variables = parse_table parse_variable_row
-
-    let input_model dir idx =
-      let idx = string_of_int idx in
-      (input_particles (dir ^ "/prtcls" ^ idx ^ ".mdl"),
-       input_variables (dir ^ "/vars" ^ idx ^ ".mdl"),
-       input_functions (dir ^ "/func" ^ idx ^ ".mdl"),
-       input_lagrangian (dir ^ "/lgrng" ^ idx ^ ".mdl"))
 
     let flavors_of_particles particles =
       let flavors = Array.make (count_flavors particles) dummy_flavor in
@@ -430,7 +286,7 @@ module Model =
       let all_vertices () = (vertices3, vertices4, []) in
       let table = F.of_vertices (all_vertices ()) in
       let input_parameters = 
-        (real_variable (0), 0.0) ::
+        ("0.0_default", 0.0) ::
         (List.map (fun (n, v, _) -> (n, v)) variables) in
       let derived_parameters =
         List.map (fun (n, f, _) -> (Coupling.Real n, Coupling.Const 0))
@@ -467,26 +323,15 @@ module Model =
           flavors.(clamp_flavor "width_symbol" f).f_width)
         ~constant_symbol:(fun c -> failwith "constant_symbol")
 
-    let particles_file = ref "prtcls1.mdl"
-    let variables_file = ref "vars1.mdl"
-    let functions_file = ref "func1.mdl"
-    let lagrangian_file = ref "lgrng1.mdl"
+    let ufo_directory =
+      ref "/home/ohl/physics/feynrules/Standard_Model_UFO"
 
     let load () =
-      let (_, _, _, p), v, f, l =
-        (input_particles !particles_file, input_variables !variables_file,
-         input_functions !functions_file, input_lagrangian !lagrangian_file) in
-      init (flavors_of_particles p) [] [] []
+      init [| |] [] [] []
 
     let options = Options.create
-        [ ("p", Arg.String (fun name -> particles_file := name),
-           "CompHEP particles file (default: " ^ !particles_file ^ ")");
-          ("v", Arg.String (fun name -> variables_file := name),
-           "CompHEP variables file (default: " ^ !variables_file ^ ")");
-          ("f", Arg.String (fun name -> functions_file := name),
-           "CompHEP functions file (default: " ^ !functions_file ^ ")");
-          ("l", Arg.String (fun name -> lagrangian_file := name),
-           "CompHEP lagrangian file (default: " ^ !lagrangian_file ^ ")");
+        [ ("p", Arg.String (fun name -> ufo_directory := name),
+           "UFO model directory (default: " ^ !ufo_directory ^ ")");
           ("exec", Arg.Unit load,
            "load the model files (required _before_ any particle)");
           ("help", Arg.Unit (fun () ->
@@ -496,11 +341,3 @@ module Model =
             "print information on the model")]
 
   end
-
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  End:
-i*)
