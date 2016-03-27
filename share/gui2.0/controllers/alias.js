@@ -1,13 +1,13 @@
-var ExternalSindarinList = [];
+const ExternalSindarinList = [];
+
+function SindarinAliasToString () {
+  return "alias " + this.name + " = " + this.alias;
+}
 
 function SindarinAlias(str, alias) {
   this.name = str;
   this.alias = alias;
   this.toString = SindarinAliasToString;
-}
-
-function SindarinAliasToString () {
-  return "alias " + this.name + " = " + this.alias;
 }
 
 function SindarinWriteAliases () {
