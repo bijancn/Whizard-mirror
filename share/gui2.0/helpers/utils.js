@@ -1,17 +1,24 @@
-(function () {
-  'use strict';
-  var promisify = require("es6-promisify"),
-      fs = require('fs');
-  var mkdir = promisify(fs.mkdir, function (err) {
+(function iife() {
+  // 'use strict';
+  const promisify = require('es6-promisify');
+  const fs = require('fs');
+  const mkdir = promisify(fs.mkdir, function cb(err) {
     if (err) {
       if (err.code === 'EEXIST') {
         return this.resolve('Folder ' + err.path + ' already exists');
-      } else {
-        return this.reject(err);
       }
-    } else {
-      return this.resolve('Successfully created folder');
+      return this.reject(err);
     }
+    return this.resolve('Successfully created folder');
   });
-  module.exports = { "mkdir": mkdir};
-})();
+  const rmdir = promisify(fs.rmdir, function cb(err) {
+    if (err) {
+      if (err.code === 'ENOENT') {
+        return this.resolve('Folder ' + err.path + ' does not exist');
+      }
+      return this.reject(err);
+    }
+    return this.resolve('Successfully removed folder');
+  });
+  module.exports = {mkdir, rmdir};
+}());
