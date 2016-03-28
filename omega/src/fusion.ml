@@ -665,6 +665,19 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
       VSet.fold (fun f rhs v -> (f, rhs) :: v)
         (PT.power_fold collect_vertices flavors VSet.empty) []
 
+    let vertices = vertices_nocache
+
+    let cache_name =
+      ref (Config.cache_prefix ^ "." ^ Config.cache_suffix)
+
+    let set_cache_name name = 
+      cache_name := name
+
+    let initialize_cache dir =
+      ()
+
+(*i ********************************************************************
+
 (* Performance hack: *)
 
     type vertex_table =
@@ -755,6 +768,8 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
               result
           end
       | Some result -> result
+
+  ******************************************************************** i*)
 
 (* Note that we must perform any filtering of the vertices \emph{after}
    caching, because the restrictions \emph{must not} influence the
