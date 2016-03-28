@@ -48,6 +48,12 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
     module Proc = Process.Make(M)
 
 (* \begin{dubious}
+     We must have initialized the vertices \emph{before}
+     applying [Fusion_Maker], at least if we want to continue
+     using the vertex cache!
+   \end{dubious} *)
+
+(* \begin{dubious}
      NB: this causes the constant initializers in [Fusion_Maker] more than once.
      Such side effects must be avoided if the initializers involve expensive
      computations.   \emph{Relying on the fact that the functor will be

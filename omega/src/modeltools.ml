@@ -332,7 +332,7 @@ module Mutable (FGC : sig type f and g and c end) =
     let set_max_degree, max_degree =
       declare (fun () -> unitialized "max_degree")
     let set_vertices, vertices =
-      declare (fun () -> unitialized "vertices")
+      declare (fun () -> (* ([], [], []) *) unitialized "vertices" )
     let set_fuse2, fuse2 =
       declare (fun f1 f2 -> unitialized "fuse2")
     let set_fuse3, fuse3 =
@@ -396,12 +396,3 @@ module Mutable (FGC : sig type f and g and c end) =
 
     let rcs = RCS.rename rcs_file "Models.Mutable" ["Mutable Model"]
   end
-
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  End:
-i*)
-
