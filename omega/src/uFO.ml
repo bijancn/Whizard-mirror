@@ -740,22 +740,6 @@ let parse_directory dir =
     model.decays;
   model
 
-let rec fermion_of_lorentz = function
-  | Coupling.Spinor -> 1
-  | Coupling.ConjSpinor -> -1
-  | Coupling.Majorana -> 1
-  | Coupling.Maj_Ghost -> 1
-  | Coupling.Vectorspinor -> 1
-  | Coupling.Vector | Coupling.Massive_Vector -> 0
-  | Coupling.Scalar | Coupling.Tensor_1 | Coupling.Tensor_2 -> 0 
-  | Coupling.BRS f -> fermion_of_lorentz f
-
-let rec conjugate_lorentz = function
-  | Coupling.Spinor -> Coupling.ConjSpinor
-  | Coupling.ConjSpinor -> Coupling.Spinor
-  | Coupling.BRS f -> Coupling.BRS (conjugate_lorentz f) 
-  | f -> f
-
 module Model =
   struct
 
@@ -795,50 +779,21 @@ module Model =
 
     let rcs = rcs_file
 
-    type symbol =
-      | Selfconjugate of string
-      | Conjugates of string * string
+    let rec fermion_of_lorentz = function
+      | Coupling.Spinor -> 1
+      | Coupling.ConjSpinor -> -1
+      | Coupling.Majorana -> 1
+      | Coupling.Maj_Ghost -> 1
+      | Coupling.Vectorspinor -> 1
+      | Coupling.Vector | Coupling.Massive_Vector -> 0
+      | Coupling.Scalar | Coupling.Tensor_1 | Coupling.Tensor_2 -> 0 
+      | Coupling.BRS f -> fermion_of_lorentz f
 
-    type particle =
-        { p_name : string;
-          p_symbol : symbol;
-          p_spin : Coupling.lorentz;
-          p_mass : unit;
-          p_width : unit;
-          p_color : Color.t;
-          p_aux : string option }
-
-    let count_flavors particles =
-      List.fold_left (fun n p -> n +
-        match p.p_symbol with
-        | Selfconjugate _ -> 1
-        | Conjugates _ -> 2) 0 particles
-
-    type particle_flavor =
-        { f_name : string;
-          f_conjugate : int;
-          f_symbol : string;
-          f_pdg : int;
-          f_spin : Coupling.lorentz;
-          f_propagator : gauge Coupling.propagator;
-          f_fermion : int;
-          f_mass : string;
-          f_width : string;
-          f_color : Color.t;
-          f_aux : string option }
-
-    let dummy_flavor =
-      { f_name = "";
-        f_conjugate = -1;
-        f_symbol = "";
-        f_pdg = 0;
-        f_spin = Coupling.Scalar;
-        f_propagator = Coupling.Prop_Scalar;
-        f_fermion = 0;
-        f_mass = "0.0_default";
-        f_width = "0.0_default";
-        f_color = Color.Singlet;
-        f_aux = None }
+    let rec conjugate_lorentz = function
+      | Coupling.Spinor -> Coupling.ConjSpinor
+      | Coupling.ConjSpinor -> Coupling.Spinor
+      | Coupling.BRS f -> Coupling.BRS (conjugate_lorentz f) 
+      | f -> f
 
     let propagator_of_lorentz = function
       | Coupling.Scalar -> Coupling.Prop_Scalar
@@ -857,99 +812,6 @@ module Model =
           invalid_arg "propagator_of_lorentz: Tensor_2"
       | Coupling.BRS _ ->
           invalid_arg "propagator_of_lorentz: no BRST"
-
-    let flavor_of_particle symbol conjg particle =
-      let spin = particle.p_spin in
-      { f_name = particle.p_name;
-        f_conjugate = conjg;
-        f_symbol = symbol;
-        f_pdg = 0;
-        f_spin = spin;
-        f_propagator = propagator_of_lorentz spin;
-        f_fermion = fermion_of_lorentz spin;
-        f_mass = "0.0_default";
-        f_width = "0.0_default";
-        f_color = particle.p_color;
-        f_aux = particle.p_aux }
-
-    let flavor_of_antiparticle symbol conjg particle =
-      let spin = conjugate_lorentz particle.p_spin in
-      { f_name = "anti-" ^ particle.p_name;
-        f_conjugate = conjg;
-        f_symbol = symbol;
-        f_pdg = 0;
-        f_spin = spin;
-        f_propagator = propagator_of_lorentz spin;
-        f_fermion = fermion_of_lorentz spin;
-        f_mass = "0.0_default";
-        f_width = "0.0_default";
-        f_color = Color.conjugate particle.p_color;
-        f_aux = particle.p_aux }
-  
-    let parse_expr text =
-      try
-        ()
-      with
-      | Parsing.Parse_error -> invalid_arg ("parse error: " ^ text)
-
-    let parse_function_row = function
-      | name :: fct :: comment :: _ -> (name, parse_expr fct, comment)
-      | _ -> invalid_arg "parse_function_row"
-
-    let parse_lagragian_row = function
-      | p1 :: p2 :: p3 :: p4 :: c :: t :: _ ->
-          ((p1, p2, p3, p4), parse_expr c, parse_expr t)
-      | _ -> invalid_arg "parse_lagragian_row"
-
-    let parse_symbol s1 s2 =
-      if s1 = s2 then
-        Selfconjugate (s1)
-      else
-        Conjugates (s1, s2)
-
-    let parse_spin spin =
-      match int_of_string spin with
-      | 0 -> Coupling.Scalar
-      | 1 -> Coupling.Spinor
-      | 2 -> Coupling.Vector
-      | _ -> invalid_arg ("parse_spin: spin = " ^ spin)
-
-    let parse_color color =
-      match int_of_string color with
-      | 1 -> Color.Singlet
-      | 3 -> Color.SUN 3
-      | 8 -> Color.AdjSUN 3
-      | _ -> invalid_arg ("parse_color: color = " ^ color)
-
-    let parse_particle_row = function
-      | name :: symbol :: symbol_cc :: spin :: mass :: width :: color ::
-        aux :: _ ->
-          { p_name = name;
-            p_symbol = parse_symbol symbol symbol_cc;
-            p_spin = parse_spin spin;
-            p_mass = parse_expr mass;
-            p_width = parse_expr width;
-            p_color = parse_color color;
-            p_aux = match aux with "" -> None | _ -> Some aux }
-      | _ -> invalid_arg "parse_particle_row"
-
-    let parse_variable_row = function
-      | name :: value :: comment :: _ ->
-          (name, float_of_string value, comment)
-      | _ -> invalid_arg "parse_variable_row"
-
-    let flavors_of_particles particles =
-      let flavors = Array.make (count_flavors particles) dummy_flavor in
-      ignore (List.fold_left (fun n p ->
-        match p.p_symbol with
-        | Selfconjugate f ->
-            flavors.(n) <- flavor_of_particle f n p;
-            n + 1
-        | Conjugates (f1, f2) ->
-            flavors.(n) <- flavor_of_particle f1 (n + 1) p;
-            flavors.(n+1) <- flavor_of_antiparticle f2 n p;
-            n + 2) 0 particles);
-      flavors
 
     module F = Modeltools.Fusions (struct
       type f = flavor
