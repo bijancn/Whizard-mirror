@@ -42,11 +42,11 @@ module type Files =
 
   end
 
-module Files : Files
-
 type t
 val parse_directory : string -> t
   
+module Model : Model.T
+
 module type Test =
   sig
     val example : unit -> unit

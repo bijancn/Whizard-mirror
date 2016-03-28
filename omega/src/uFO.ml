@@ -22,6 +22,13 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
+let rcs_file = RCS.parse "UFO" ["Reading UFO Files"]
+    { RCS.revision = "$Revision: 0$";
+      RCS.date = "$Date: 2016-03-26 00:00:00 +0100 (Sat, 26 Mar 2016) $";
+      RCS.author = "$Author: ohl $";
+      RCS.source
+        = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/UFO.ml $" }
+
 let error_in_string text start_pos end_pos =
   let i = start_pos.Lexing.pos_cnum
   and j = end_pos.Lexing.pos_cnum in
@@ -320,7 +327,7 @@ module Particle =
 
   end
 
-module Coupling =
+module UFO_Coupling =
   struct
     
     type t =
@@ -345,7 +352,7 @@ module Coupling =
 	   { name = string_attrib "name" attribs;
 	     value = string_attrib "value" attribs;
 	     order = order_dictionary_attrib "order" attribs } map
-      | _ -> invalid_arg ("Coupling.of_file: " ^ name_to_string d.S.kind)
+      | _ -> invalid_arg ("UFO_Coupling.of_file: " ^ name_to_string d.S.kind)
 
     let of_file couplings =
       List.fold_left of_file1 SMap.empty couplings
@@ -628,7 +635,7 @@ module Decay =
 
 type t =
   { particles : Particle.t SMap.t;
-    couplings : Coupling.t SMap.t;
+    couplings : UFO_Coupling.t SMap.t;
     coupling_orders : Coupling_Order.t SMap.t;
     vertices : Vertex.t SMap.t;
     lorentz : Lorentz.t SMap.t;
@@ -638,7 +645,7 @@ type t =
 
 let of_file u =
   { particles = Particle.of_file u.Files.particles;
-    couplings = Coupling.of_file u.Files.couplings;
+    couplings = UFO_Coupling.of_file u.Files.couplings;
     coupling_orders = Coupling_Order.of_file u.Files.coupling_orders;
     vertices = Vertex.of_file u.Files.vertices;
     lorentz = Lorentz.of_file u.Files.lorentz;
@@ -704,13 +711,13 @@ let (@@@) f g x y =
 let parse_directory dir =
   let model = of_file (Files.parse_directory dir) in
   SMap.iter (print_endline @@@ Particle.to_string) model.particles;
-  (* SMap.iter (print_endline @@@ Coupling.to_string) model.couplings; *)
+  (* SMap.iter (print_endline @@@ UFO_Coupling.to_string) model.couplings; *)
   SMap.iter
     (fun symbol c ->
-      (print_endline @@@ Coupling.to_string) symbol c;
+      (print_endline @@@ UFO_Coupling.to_string) symbol c;
       print_endline
 	(UFOx.Value.to_string
-	   (UFOx.Value.of_expr (UFOx.Expr.of_string c.Coupling.value))))
+	   (UFOx.Value.of_expr (UFOx.Expr.of_string c.UFO_Coupling.value))))
     model.couplings;
   SMap.iter (print_endline @@@ Coupling_Order.to_string) model.coupling_orders;
   (* SMap.iter (print_endline @@@ Vertex.to_string) model.vertices; *)
@@ -725,13 +732,314 @@ let parse_directory dir =
   SMap.iter (print_endline @@@ Propagator.to_string) model.propagators;
   SMap.iter (print_endline @@@ Decay.to_string) model.decays;
   SMap.iter
-    (fun symbol c -> ignore (UFOx.Expr.of_string c.Coupling.value))
+    (fun symbol c -> ignore (UFOx.Expr.of_string c.UFO_Coupling.value))
     model.couplings;
   SMap.iter
     (fun symbol d ->
       List.iter (fun (_, w) -> ignore (UFOx.Expr.of_string w)) d.Decay.widths)
     model.decays;
   model
+
+let rec fermion_of_lorentz = function
+  | Coupling.Spinor -> 1
+  | Coupling.ConjSpinor -> -1
+  | Coupling.Majorana -> 1
+  | Coupling.Maj_Ghost -> 1
+  | Coupling.Vectorspinor -> 1
+  | Coupling.Vector | Coupling.Massive_Vector -> 0
+  | Coupling.Scalar | Coupling.Tensor_1 | Coupling.Tensor_2 -> 0 
+  | Coupling.BRS f -> fermion_of_lorentz f
+
+let rec conjugate_lorentz = function
+  | Coupling.Spinor -> Coupling.ConjSpinor
+  | Coupling.ConjSpinor -> Coupling.Spinor
+  | Coupling.BRS f -> Coupling.BRS (conjugate_lorentz f) 
+  | f -> f
+
+module Model =
+  struct
+
+    type flavor = int
+    type constant = string
+    type gauge = unit
+
+    module M = Modeltools.Mutable
+        (struct type f = flavor type g = gauge type c = constant end)
+
+    let flavors = M.flavors
+    let external_flavors = M.external_flavors
+    let lorentz = M.lorentz
+    let color = M.color
+    let propagator = M.propagator
+    let width = M.width
+    let goldstone = M.goldstone
+    let conjugate = M.conjugate
+    let fermion = M.fermion
+    let vertices = M.vertices
+    let fuse2 = M.fuse2
+    let fuse3 = M.fuse3
+    let fuse = M.fuse
+    let max_degree = M.max_degree
+    let parameters = M.parameters
+    let flavor_of_string = M.flavor_of_string
+    let flavor_to_string = M.flavor_to_string
+    let flavor_to_TeX = M.flavor_to_TeX
+    let flavor_symbol = M.flavor_symbol
+    let gauge_symbol = M.gauge_symbol
+    let pdg = M.pdg
+    let mass_symbol = M.mass_symbol
+    let width_symbol = M.width_symbol
+    let constant_symbol = M.constant_symbol
+    module Ch = M.Ch
+    let charges = M.charges
+
+    let rcs = rcs_file
+
+    type symbol =
+      | Selfconjugate of string
+      | Conjugates of string * string
+
+    type particle =
+        { p_name : string;
+          p_symbol : symbol;
+          p_spin : Coupling.lorentz;
+          p_mass : unit;
+          p_width : unit;
+          p_color : Color.t;
+          p_aux : string option }
+
+    let count_flavors particles =
+      List.fold_left (fun n p -> n +
+        match p.p_symbol with
+        | Selfconjugate _ -> 1
+        | Conjugates _ -> 2) 0 particles
+
+    type particle_flavor =
+        { f_name : string;
+          f_conjugate : int;
+          f_symbol : string;
+          f_pdg : int;
+          f_spin : Coupling.lorentz;
+          f_propagator : gauge Coupling.propagator;
+          f_fermion : int;
+          f_mass : string;
+          f_width : string;
+          f_color : Color.t;
+          f_aux : string option }
+
+    let dummy_flavor =
+      { f_name = "";
+        f_conjugate = -1;
+        f_symbol = "";
+        f_pdg = 0;
+        f_spin = Coupling.Scalar;
+        f_propagator = Coupling.Prop_Scalar;
+        f_fermion = 0;
+        f_mass = "0.0_default";
+        f_width = "0.0_default";
+        f_color = Color.Singlet;
+        f_aux = None }
+
+    let propagator_of_lorentz = function
+      | Coupling.Scalar -> Coupling.Prop_Scalar
+      | Coupling.Spinor -> Coupling.Prop_Spinor
+      | Coupling.ConjSpinor -> Coupling.Prop_ConjSpinor
+      | Coupling.Majorana -> Coupling.Prop_Majorana
+      | Coupling.Maj_Ghost ->
+          invalid_arg "propagator_of_lorentz: SUSY ghosts do not propagate"
+      | Coupling.Vector -> Coupling.Prop_Feynman
+      | Coupling.Massive_Vector -> Coupling.Prop_Unitarity
+      | Coupling.Vectorspinor -> 
+          invalid_arg "propagator_of_lorentz: Vectorspinor"
+      | Coupling.Tensor_1 ->
+          invalid_arg "propagator_of_lorentz: Tensor_1"
+      | Coupling.Tensor_2 ->
+          invalid_arg "propagator_of_lorentz: Tensor_2"
+      | Coupling.BRS _ ->
+          invalid_arg "propagator_of_lorentz: no BRST"
+
+    let flavor_of_particle symbol conjg particle =
+      let spin = particle.p_spin in
+      { f_name = particle.p_name;
+        f_conjugate = conjg;
+        f_symbol = symbol;
+        f_pdg = 0;
+        f_spin = spin;
+        f_propagator = propagator_of_lorentz spin;
+        f_fermion = fermion_of_lorentz spin;
+        f_mass = "0.0_default";
+        f_width = "0.0_default";
+        f_color = particle.p_color;
+        f_aux = particle.p_aux }
+
+    let flavor_of_antiparticle symbol conjg particle =
+      let spin = conjugate_lorentz particle.p_spin in
+      { f_name = "anti-" ^ particle.p_name;
+        f_conjugate = conjg;
+        f_symbol = symbol;
+        f_pdg = 0;
+        f_spin = spin;
+        f_propagator = propagator_of_lorentz spin;
+        f_fermion = fermion_of_lorentz spin;
+        f_mass = "0.0_default";
+        f_width = "0.0_default";
+        f_color = Color.conjugate particle.p_color;
+        f_aux = particle.p_aux }
+  
+    let parse_expr text =
+      try
+        ()
+      with
+      | Parsing.Parse_error -> invalid_arg ("parse error: " ^ text)
+
+    let parse_function_row = function
+      | name :: fct :: comment :: _ -> (name, parse_expr fct, comment)
+      | _ -> invalid_arg "parse_function_row"
+
+    let parse_lagragian_row = function
+      | p1 :: p2 :: p3 :: p4 :: c :: t :: _ ->
+          ((p1, p2, p3, p4), parse_expr c, parse_expr t)
+      | _ -> invalid_arg "parse_lagragian_row"
+
+    let parse_symbol s1 s2 =
+      if s1 = s2 then
+        Selfconjugate (s1)
+      else
+        Conjugates (s1, s2)
+
+    let parse_spin spin =
+      match int_of_string spin with
+      | 0 -> Coupling.Scalar
+      | 1 -> Coupling.Spinor
+      | 2 -> Coupling.Vector
+      | _ -> invalid_arg ("parse_spin: spin = " ^ spin)
+
+    let parse_color color =
+      match int_of_string color with
+      | 1 -> Color.Singlet
+      | 3 -> Color.SUN 3
+      | 8 -> Color.AdjSUN 3
+      | _ -> invalid_arg ("parse_color: color = " ^ color)
+
+    let parse_particle_row = function
+      | name :: symbol :: symbol_cc :: spin :: mass :: width :: color ::
+        aux :: _ ->
+          { p_name = name;
+            p_symbol = parse_symbol symbol symbol_cc;
+            p_spin = parse_spin spin;
+            p_mass = parse_expr mass;
+            p_width = parse_expr width;
+            p_color = parse_color color;
+            p_aux = match aux with "" -> None | _ -> Some aux }
+      | _ -> invalid_arg "parse_particle_row"
+
+    let parse_variable_row = function
+      | name :: value :: comment :: _ ->
+          (name, float_of_string value, comment)
+      | _ -> invalid_arg "parse_variable_row"
+
+    let flavors_of_particles particles =
+      let flavors = Array.make (count_flavors particles) dummy_flavor in
+      ignore (List.fold_left (fun n p ->
+        match p.p_symbol with
+        | Selfconjugate f ->
+            flavors.(n) <- flavor_of_particle f n p;
+            n + 1
+        | Conjugates (f1, f2) ->
+            flavors.(n) <- flavor_of_particle f1 (n + 1) p;
+            flavors.(n+1) <- flavor_of_antiparticle f2 n p;
+            n + 2) 0 particles);
+      flavors
+
+    module F = Modeltools.Fusions (struct
+      type f = flavor
+      type c = constant
+      let compare = compare
+      let conjugate = conjugate
+    end)
+
+    let translate_tensor3 _ = Coupling.Scalar_Scalar_Scalar 1
+    let translate_tensor4 _ = Coupling.Scalar4 1
+    let translate_constant _ = ""
+
+    let ufo_directory =
+      ref "/home/ohl/physics/feynrules/Standard_Model_UFO"
+
+    let init () =
+      let model = parse_directory !ufo_directory in
+      let flavor_of_string_map =
+	SMap.fold
+	  (fun symbol particle map ->
+	    SMap.add particle.Particle.name symbol map)
+	  model.particles SMap.empty in
+      let flavor_of_string name =
+	SMap.find name flavor_of_string_map in
+      let flavor_of_string name =
+	0 in
+      let functions = [] in
+      let variables = [] in
+      let vertices = [] in
+      let vertices3, vertices4 =
+        List.fold_left (fun (v3, v4) ((p1, p2, p3, p4), c, t) ->
+          if p4 = "" then
+            (((flavor_of_string p1, flavor_of_string p2, flavor_of_string p3),
+              translate_tensor3 t, translate_constant c) :: v3, v4)
+          else
+            (v3, ((flavor_of_string p1, flavor_of_string p2,
+                   flavor_of_string p3, flavor_of_string p4),
+                  translate_tensor4 t, translate_constant c) :: v4))
+          ([], []) vertices in
+      let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
+      let all_vertices () = (vertices3, vertices4, []) in
+      let all_vertices () = ([], [], []) in
+      let table = F.of_vertices (all_vertices ()) in
+      let input_parameters = 
+        ("0.0_default", 0.0) ::
+        (List.map (fun (n, v, _) -> (n, v)) variables) in
+      let derived_parameters =
+        List.map (fun (n, f, _) -> (Coupling.Real n, Coupling.Const 0))
+          functions in
+      M.setup
+        ~color:(fun f -> Singlet)
+        ~pdg:(fun f -> 0)
+        ~lorentz:(fun f -> Scalar)
+        ~propagator:(fun f -> Prop_Scalar)
+        ~width:(fun f -> Coupling.Constant)
+        ~goldstone:(fun f -> None)
+        ~conjugate:(fun f -> f)
+        ~fermion:(fun f -> 0)
+        ~max_degree
+        ~vertices:all_vertices
+        ~fuse:(F.fuse2 table, F.fuse3 table, F.fuse table)
+        ~flavors:([("All Flavors", [])])
+        ~parameters:(fun () ->
+          { Coupling.input = input_parameters;
+            Coupling.derived = derived_parameters;
+            Coupling.derived_arrays = [] })
+        ~flavor_of_string
+        ~flavor_to_string:(fun f -> "")
+        ~flavor_to_TeX:(fun f -> "")
+        ~flavor_symbol:(fun f -> "")
+        ~gauge_symbol:(fun () -> "")
+        ~mass_symbol:(fun f -> "")
+        ~width_symbol:(fun f -> "")
+        ~constant_symbol:(fun c -> failwith "constant_symbol")
+
+    let load () =
+      init ()
+
+    let options = Options.create
+        [ ("p", Arg.String (fun name -> ufo_directory := name),
+           "UFO model directory (default: " ^ !ufo_directory ^ ")");
+          ("exec", Arg.Unit load,
+           "load the model files (required _before_ any particle)");
+          ("help", Arg.Unit (fun () ->
+            print_endline
+              ("[" ^ String.concat "|"
+                       (List.map M.flavor_to_string (M.flavors ())) ^ "]")),
+            "print information on the model")]
+
+  end
 
 module type Test =
   sig
