@@ -1876,6 +1876,25 @@ must be compatible with the resonance.
   end function region_data_get_emitter
 
 @ %def region_data_get_emitter
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: get_underlying_born_index => region_data_get_underlying_born_index
+<<fks regions: procedures>>=
+  function region_data_get_underlying_born_index (reg_data, real_index) result (uborn_index)
+    integer :: uborn_index
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: real_index
+    integer :: alr
+    uborn_index = 0
+    do alr = 1, size (reg_data%regions)
+       if (reg_data%regions(alr)%real_index == real_index) then
+          uborn_index = reg_data%regions(alr)%uborn_index
+          exit
+       end if
+    end do
+  end function region_data_get_underlying_born_index
+
+@ %def region_data_get_underlying_born_index
 @ Returns $S_i = \frac{1}{\mathcal{D}d_i}$ or $S_{ij} =
 \frac{1}{\mathcal{D}d_{ij}}$ for one particular singular region.  At
 this point, the flavor array should be rearranged in such a way that
@@ -7337,11 +7356,12 @@ and virtual counterterms.
   procedure :: init => color_data_init
 <<nlo controller: procedures>>=
   subroutine color_data_init (color_data, reg_data, prc_constants, &
-     factorization_mode)
+     factorization_mode, included_color_structures)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
     integer, intent(in) :: factorization_mode
+    integer, intent(in), dimension(:) :: included_color_structures
     integer :: nlegs_real
     integer :: i, n_in
     nlegs_real = reg_data%nlegs_real
@@ -7349,8 +7369,9 @@ and virtual counterterms.
     call prc_constants(2)%get_col_state (color_data%col_state_real)
     call prc_constants(2)%get_cf_index (color_data%cf_index_real)
     call prc_constants(1)%get_color_factors (color_data%color_factors_born)
-    color_data%n_col_born = size (color_data%col_state_born(1,1,:))
-    color_data%n_col_real = size (color_data%col_state_real(1,1,:))
+    color_data%n_col_born = size (color_data%col_state_born(1, 1, :))
+    !!!color_data%n_col_real = size (color_data%col_state_real(1 ,1, :))
+    color_data%n_col_real = size (included_color_structures)
     allocate (color_data%ghost_flag_born &
          (size (prc_constants(1)%get_ghost_flag (), 1), &
           size (prc_constants(1)%get_ghost_flag ())))
@@ -7373,7 +7394,7 @@ and virtual counterterms.
       associate (region => reg_data%regions(i))
         call color_data%icm(i)%create_map (region%flst_real, region%emitter, &
              region%ftuples, color_data%col_state_born, &
-             color_data%col_state_real)
+             color_data%col_state_real (:, :, included_color_structures))
       end associate
     end do
     call color_data%init_betaij (reg_data, factorization_mode)
@@ -8271,22 +8292,33 @@ process.
 @ %def nlo_controller_t
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: init => nlo_controller_init
+  procedure :: init_regions_and_resonances &
+     => nlo_controller_init_regions_and_resonances
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_init (nlo_controller, prc_constants, template, &
-     phs_config, model)
+  subroutine nlo_controller_init_regions_and_resonances &
+     (nlo_controller, prc_constants, template, phs_config, model)
      class(nlo_controller_t), intent(inout), target :: nlo_controller
      type(process_constants_t), intent(in), dimension(2) :: prc_constants
      type(fks_template_t), intent(inout) :: template
      !!! intent(inout) because the phase space might have to be generated new
      class(phs_config_t), intent(inout) :: phs_config
      type(model_t), intent(in) :: model
-     integer :: n_in, n_tot_born, n_tot_real
      call msg_debug (D_SUBTRACTION, "nlo_controller_init")
      call nlo_controller%set_flv_states (prc_constants)
      call nlo_controller%set_particle_data (prc_constants)
      call nlo_controller%init_region_and_color_data (template, model, &
         prc_constants, phs_config)
+  end subroutine nlo_controller_init_regions_and_resonances
+
+@ %def nlo_controller_init_regions_and_resonances
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: setup_real_terms => nlo_controller_setup_real_terms
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_setup_real_terms (nlo_controller, template)
+     class(nlo_controller_t), intent(inout) :: nlo_controller
+     type(fks_template_t), intent(in) :: template
+     integer :: n_in, n_tot_born, n_tot_real
      call nlo_controller%setup_matrix_elements ()
      nlo_controller%alpha_s_born_set = .false.
      call nlo_controller%init_real_and_isr_kinematics ()
@@ -8305,9 +8337,9 @@ process.
            nlo_controller%sqme_collector, nlo_controller%real_kinematics)
      end associate
      allocate (powheg_damping_simple_t :: nlo_controller%powheg_damping)
-  end subroutine nlo_controller_init
+  end subroutine nlo_controller_setup_real_terms
 
-@ %def nlo_controller_init
+@ %def nlo_controller_setup_real_terms
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: check_if_threshold_method => nlo_controller_check_if_threshold_method
@@ -8658,9 +8690,6 @@ polarized or not.
        end select
     end select
     call nlo_controller%init_region_data (template, model)
-    if (nlo_controller%settings%use_internal_color_correlations) &
-       call nlo_controller%color_data%init (nlo_controller%reg_data, &
-          prc_constants, nlo_controller%settings%factorization_mode)
     select case (template%mapping_type)
     case (FKS_RESONANCES)
        call nlo_controller%init_resonance_info (resonance_histories_clean)
@@ -8671,6 +8700,105 @@ polarized or not.
   end subroutine nlo_controller_init_region_and_color_data
 
 @ %def nlo_controller_init_region_and_color_data
+@
+<<nlo controller: types>>=
+  type :: color_index_list
+     integer, dimension(:), allocatable :: col
+  end type color_index_list
+
+@ %def color_index_list
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: init_color_data => nlo_controller_init_color_data
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_init_color_data (nlo_controller, prc_constants, &
+     flavor_indices, color_indices)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    type(process_constants_t), intent(in), dimension(2) :: prc_constants
+    integer, intent(in), dimension(:) :: flavor_indices, color_indices
+    integer, dimension(10) :: checked_uborns
+    integer, dimension(:), allocatable :: i_uniqe
+    integer, dimension(:), allocatable :: i_flv
+    type(color_index_list), dimension(:), allocatable :: i_col
+    integer, dimension(:), allocatable :: i_flavor
+    integer, dimension(:), allocatable :: i_limit
+    integer :: n_flv, i, j, alr
+    integer :: i_uborn
+    call evaluate_flavors (n_flv, i_flv, i_limit)
+    i_col = evaluate_colors (n_flv, i_flv, i_limit)
+    do i = 1, size (i_col)
+       print *, 'i_col: ', i_col(i)%col
+    end do
+    checked_uborns = 0
+    do i = 1, size (i_flv)
+       i_uborn = nlo_controller%reg_data%get_underlying_born_index (i_flv(i))
+       if (.not. any (checked_uborns == i_uborn)) then
+          i_unique = i_col(i_flv)%col
+          checked_borns(i) = i_uborn
+       end if
+    end do
+    if (nlo_controller%settings%use_internal_color_correlations) then
+       call nlo_controller%color_data%init (nlo_controller%reg_data, &
+          prc_constants, nlo_controller%settings%factorization_mode, &
+          i_unique)
+    end if
+  contains
+    subroutine evaluate_flavors (n_flv, i_flavor, i_limit)
+      integer, intent(out) :: n_flv
+      integer, intent(out), dimension(:), allocatable :: i_flavor
+      integer, intent(out), dimension(:), allocatable :: i_limit
+      integer :: i, current_flavor
+      n_flv = 0; current_flavor = 0
+      do i = 1, size (flavor_indices)
+         if (flavor_indices (i) /= current_flavor) then
+            n_flv = n_flv + 1
+            current_flavor = flavor_indices(i)
+         end if
+      end do
+      allocate (i_flavor (n_flv), i_limit (n_flv))
+      current_flavor = 0; i_limit(1) = 1
+      do i = 1, size (flavor_indices)
+         if (flavor_indices(i) /= current_flavor) then
+           i_limit(current_flavor + 1) = i
+           current_flavor = flavor_indices(i)
+           i_flavor(current_flavor) = current_flavor
+         end if
+      end do
+    end subroutine evaluate_flavors
+
+    function evaluate_colors (n_flv, i_flavor, col_limit) result (i_color)
+      type(color_index_list), dimension(:), allocatable :: i_color
+      integer, intent(in) :: n_flv
+      integer, intent(in), dimension(:) :: i_flavor, col_limit
+      integer :: i, j, k, col_first
+      integer :: count_n_col
+      allocate (i_color (n_flv)) 
+      j = 1
+      do i = 1, n_flv
+         col_first = color_indices(col_limit (i))
+         count_n_col = 1
+         k = col_limit(i) + 1
+         do while (color_indices(k) /= col_first)
+            count_n_col = count_n_col + 1
+            k = k + 1
+         end do
+         allocate (i_color(i)%col(count_n_col))
+      end do
+      do i = 1, n_flv
+         j = 1
+         col_first = color_indices(col_limit (i))
+         i_color(i)%col(1) = color_indices (col_limit(i))
+         k = col_limit(i) + 1
+         do while (color_indices(k) /= col_first)
+            j = j + 1
+            i_color(i)%col(j) = color_indices (k)
+            k = k + 1
+         end do
+      end do
+    end function evaluate_colors
+  end subroutine nlo_controller_init_color_data
+
+@ %def nlo_controller_init_color_data
 @
 <<nlo controller: procedures>>=
   subroutine clean_resonance_histories (res_hist, n_in, flv, res_hist_clean, success)
