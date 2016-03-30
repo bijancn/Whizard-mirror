@@ -268,15 +268,24 @@ module Constant (M : Model.T) : Constant with type t = M.constant =
         (fun (_, _, c) ->
           String_Hash.add table (M.constant_symbol c) c)
         vs
-          
-    let _ =
-      let (v3, v4, vn) = M.vertices () in
-      fill_table table v3;
-      fill_table table v4;
-      fill_table table vn
+
+    (* Delay loading of the tables until the first use, so that
+       [M.vertices] can be initialized from a file.  *)
+
+    let tables_filled = ref false
+
+    let fill_tables () =
+      if not !tables_filled then begin
+	let (v3, v4, vn) = M.vertices () in
+	fill_table table v3;
+	fill_table table v4;
+	fill_table table vn;
+	tables_filled := true
+      end
 
     let of_string name =
       try
+	fill_tables ();
         String_Hash.find table name
       with
       | Not_found ->
