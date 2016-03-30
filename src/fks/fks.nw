@@ -7238,13 +7238,15 @@ end module nlo_controller
   procedure :: create_map => ftuple_color_map_create_map
 <<nlo controller: procedures>>=
   recursive subroutine ftuple_color_map_create_map (icm, flst, &
-       emitter, allreg, color_states_born, color_states_real, p_rad_in)
+       emitter, allreg, color_states_born, color_states_real, &
+       included_color_structures, p_rad_in)
     class(ftuple_color_map_t), intent(inout) :: icm
     type(flv_structure_t), intent(in) :: flst
     integer, intent(in) :: emitter
     type(ftuple_t), intent(in), dimension(:) :: allreg
     integer, intent(in), dimension(:,:,:) :: color_states_born
     integer, intent(in), dimension(:,:,:) :: color_states_real
+    integer, intent(in), dimension(:) :: included_color_structures
     integer, intent(in), optional :: p_rad_in
     integer :: nreg, region
     integer :: p1, p2, p_rad
@@ -7274,15 +7276,18 @@ end module nlo_controller
           flv_em = flst%flst (emitter)
         else
           call icm%create_map &
-               (flst, 1, allreg, color_states_born, color_states_real, p_rad)
+               (flst, 1, allreg, color_states_born, color_states_real, &
+               included_color_structures, p_rad)
           call icm%create_map &
-               (flst, 2, allreg, color_states_born, color_states_real, p_rad)
+               (flst, 2, allreg, color_states_born, color_states_real, &
+               included_color_structures, p_rad)
           return
         end if
         flv_rad = flst%flst (p_rad)
-        if (is_quark (abs(flv_em)) .and. is_gluon (flv_rad)) then
+        if (is_quark (flv_em) .and. is_gluon (flv_rad) .or. &
+            is_gluon (flv_em) .and. is_quark (flv_rad)) then
            splitting_type_flv = 1
-        else if (is_quark (abs(flv_em)) .and. flv_em + flv_rad == 0) then
+        else if (is_quark (flv_em) .and. flv_em + flv_rad == 0) then
            splitting_type_flv = 2
         else if (is_gluon (flv_em) .and. is_gluon (flv_rad)) then
            splitting_type_flv = 3
@@ -7290,6 +7295,7 @@ end module nlo_controller
           splitting_type_flv = 0
         end if
         do i = 1, n_col_real
+           if (.not. (any (i == included_color_structures))) cycle
            col_em = color_states_real(:,emitter,i)
            col_rad = color_states_real(:,p_rad,i)
           if (is_color_singlet (col_em(1), col_em(2)) &
@@ -7365,13 +7371,14 @@ and virtual counterterms.
     integer :: nlegs_real
     integer :: i, n_in
     nlegs_real = reg_data%nlegs_real
+    print *, 'included_color_structures: ', included_color_structures
     call prc_constants(1)%get_col_state (color_data%col_state_born)
     call prc_constants(2)%get_col_state (color_data%col_state_real)
     call prc_constants(2)%get_cf_index (color_data%cf_index_real)
     call prc_constants(1)%get_color_factors (color_data%color_factors_born)
     color_data%n_col_born = size (color_data%col_state_born(1, 1, :))
-    !!!color_data%n_col_real = size (color_data%col_state_real(1 ,1, :))
-    color_data%n_col_real = size (included_color_structures)
+    color_data%n_col_real = size (color_data%col_state_real(1 ,1, :))
+    !!!color_data%n_col_real = size (included_color_structures)
     allocate (color_data%ghost_flag_born &
          (size (prc_constants(1)%get_ghost_flag (), 1), &
           size (prc_constants(1)%get_ghost_flag ())))
@@ -7394,10 +7401,10 @@ and virtual counterterms.
       associate (region => reg_data%regions(i))
         call color_data%icm(i)%create_map (region%flst_real, region%emitter, &
              region%ftuples, color_data%col_state_born, &
-             color_data%col_state_real (:, :, included_color_structures))
+             color_data%col_state_real, included_color_structures)
       end associate
     end do
-    call color_data%init_betaij (reg_data, factorization_mode)
+    call color_data%init_betaij (reg_data, factorization_mode, included_color_structures)
   end subroutine color_data_init
 
 @ %def color_data_init
@@ -7405,10 +7412,12 @@ and virtual counterterms.
 <<nlo controller: color data: TBP>>=
   procedure :: init_betaij => color_data_init_betaij
 <<nlo controller: procedures>>=
-  subroutine color_data_init_betaij (color_data, reg_data, factorization_mode)
+  subroutine color_data_init_betaij (color_data, reg_data, factorization_mode, &
+     included_color_structures)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
     integer, intent(in) :: factorization_mode
+    integer, intent(in), dimension(:) :: included_color_structures
     integer :: i
     if (debug_active (D_SUBTRACTION)) then
        call msg_print_color ("color_data_init_betaij", COL_AQUA)
@@ -7420,7 +7429,7 @@ and virtual counterterms.
     case (NO_FACTORIZATION)
        do i = 1, reg_data%n_flv_born
           call color_data%fill_betaij_matrix (reg_data%nlegs_born, i, &
-             reg_data%regions(1)%flst_real, reg_data)
+             reg_data%regions(1)%flst_real, reg_data, included_color_structures)
        end do
     case (FACTORIZATION_THRESHOLD)
        call color_data%fill_betaij_matrix_threshold ()
@@ -7433,11 +7442,12 @@ and virtual counterterms.
   procedure :: fill_betaij_matrix => color_data_fill_betaij_matrix
 <<nlo controller: procedures>>=
   subroutine color_data_fill_betaij_matrix &
-       (color_data, n_legs, uborn_index, flst_real, reg_data)
+       (color_data, n_legs, uborn_index, flst_real, reg_data, included_color_structures)
     class(color_data_t), intent(inout) :: color_data
     integer, intent(in) :: n_legs, uborn_index
     type(flv_structure_t), intent(in) :: flst_real
     type(region_data_t), intent(inout) :: reg_data
+    integer, intent(in), dimension(:) :: included_color_structures
     integer :: em1, em2
     associate (flv_born => reg_data%flv_born (uborn_index))
        do em1 = 1, n_legs
@@ -7446,7 +7456,8 @@ and virtual counterterms.
                 if (em1 < em2) then
                    color_data%beta_ij (em1, em2, uborn_index) &
                       = color_data%compute_bij &
-                      (reg_data, uborn_index, flst_real, em1, em2)
+                      (reg_data, uborn_index, flst_real, em1, em2, &
+                       included_color_structures)
                 else if (em1 > em2) then
                    !!! B_ij is symmetric
                    color_data%beta_ij (em1, em2, uborn_index) = &
@@ -7548,14 +7559,15 @@ and virtual counterterms.
 <<nlo controller: color data: TBP>>=
   procedure :: compute_bij => color_data_compute_bij
 <<nlo controller: procedures>>=
-  function color_data_compute_bij &
-       (color_data, reg_data, uborn_index, flst_real, em1, em2) result (bij)
+  function color_data_compute_bij (color_data, reg_data, uborn_index, flst_real, &
+      em1, em2, included_color_structures) result (bij)
+    real(default) :: bij
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
     integer, intent(in) :: uborn_index
     type(flv_structure_t), intent(in) :: flst_real
     integer, intent(in) :: em1, em2
-    real(default) :: bij
+    integer, intent(in), dimension(:) :: included_color_structures
     logical, dimension(:,:), allocatable :: cf_present
     type(singular_region_t), dimension(2,100) :: reg
     integer ::  i, j, k, l
@@ -7577,14 +7589,9 @@ and virtual counterterms.
        color_factor_born = color_factor_born + &
           real (color_data%color_factors_born (i))
     end do
-    i1 = 1
-    i2 = 1
-    !!! Catch case em = 0
-    if (em1 == 0 .or. em2 == 0) then
-       !!! What to do?
-       bij = zero
-    else
-       do i = 1, color_data%n_col_real
+    i1 = 1; i2 = 1
+    do i = 1, color_data%n_col_real
+       if (any (included_color_structures == i)) then
           col1 = color_data%col_state_real (:, em1, i)
           col2 = color_data%col_state_real (:, reg_data%nlegs_real, i)
           if (share_line (col1, col2)) then
@@ -7596,84 +7603,84 @@ and virtual counterterms.
              map_em_col_tmp(2, i2) = i
              i2 = i2 + 1
           end if
-       end do
-       allocate (map_em_col1 (i1), map_em_col2 (i2))
-       map_em_col1 = map_em_col_tmp (1, 1 : i1 - 1)
-       map_em_col2 = map_em_col_tmp (2, 1 : i2 - 1)
-
-       i_reg = 1
-
-       do i = 1, reg_data%n_regions
-           if (uborn_index == reg_data%regions(i)%uborn_index) then
-              if (em1 == reg_data%regions(i)%emitter .or. &
-                 (em1 <= 2 .and. reg_data%regions(i)%emitter == 0)) then
-                 reg(1, i_reg(1)) = reg_data%regions(i)
-                 i_reg(1) = i_reg(1) + 1
-                 found(1) = .true.
-              end if
-              if (em2 == reg_data%regions(i)%emitter .or. &
-                 (em2 <= 2 .and. reg_data%regions(i)%emitter == 0)) then
-                 reg(2, i_reg(2)) = reg_data%regions(i)
-                 i_reg(2) = i_reg(2) + 1
-                 found(2) = .true.
-              end if
-           end if
-       end do
-       if (.not. (found(1) .and. found(2))) then
-          bij = 0
-          return
        end if
+    end do
+    allocate (map_em_col1 (i1), map_em_col2 (i2))
+    map_em_col1 = map_em_col_tmp (1, 1 : i1 - 1)
+    map_em_col2 = map_em_col_tmp (2, 1 : i2 - 1)
 
-       do i = 1, i_reg(1) - 1
-          do j = 1, i_reg(2) - 1
-             icm1 = color_data%icm (reg(1,i)%alr)
-             icm2 = color_data%icm (reg(2,j)%alr)
+    i_reg = 1
 
-             allocate (iarray1 (size (icm1%get_index_array ())))
-             allocate (iarray2 (size (icm2%get_index_array ())))
+    do i = 1, reg_data%n_regions
+        if (uborn_index == reg_data%regions(i)%uborn_index) then
+           if (em1 == reg_data%regions(i)%emitter .or. &
+              (em1 <= 2 .and. reg_data%regions(i)%emitter == 0)) then
+              reg(1, i_reg(1)) = reg_data%regions(i)
+              i_reg(1) = i_reg(1) + 1
+              found(1) = .true.
+           end if
+           if (em2 == reg_data%regions(i)%emitter .or. &
+              (em2 <= 2 .and. reg_data%regions(i)%emitter == 0)) then
+              reg(2, i_reg(2)) = reg_data%regions(i)
+              i_reg(2) = i_reg(2) + 1
+              found(2) = .true.
+           end if
+        end if
+    end do
+    if (.not. (found(1) .and. found(2))) then
+       bij = zero
+       return
+    end if
 
-             iarray1 = icm1%get_index_array ()
-             iarray2 = icm2%get_index_array ()
+    do i = 1, i_reg(1) - 1
+       do j = 1, i_reg(2) - 1
+          icm1 = color_data%icm (reg(1,i)%alr)
+          icm2 = color_data%icm (reg(2,j)%alr)
 
-             allocate (iisec1 (count (iarray1 == map_em_col1)))
-             allocate (iisec2 (count (iarray2 == map_em_col2)))
+          allocate (iarray1 (size (icm1%get_index_array ())))
+          allocate (iarray2 (size (icm2%get_index_array ())))
 
-             iisec1 = pack (iarray1, [ (any(iarray1(i) == map_em_col1), &
-                  i = 1, size(iarray1)) ])
-             iisec2 = pack (iarray2, [ (any(iarray2(i) == map_em_col2), &
-                  i = 1, size(iarray2)) ])
+          iarray1 = icm1%get_index_array ()
+          iarray2 = icm2%get_index_array ()
 
-             allocate (cf_present (size (color_index_present &
-                (color_data%cf_index_real), 1), size (color_index_present &
-                (color_data%cf_index_real), 2)))
+          allocate (iisec1 (count (iarray1 == map_em_col1)))
+          allocate (iisec2 (count (iarray2 == map_em_col2)))
 
-             cf_present = color_index_present (color_data%cf_index_real)
+          iisec1 = pack (iarray1, [ (any(iarray1(i) == map_em_col1), &
+               i = 1, size(iarray1)) ])
+          iisec2 = pack (iarray2, [ (any(iarray2(i) == map_em_col2), &
+               i = 1, size(iarray2)) ])
 
-             do k = 1, size (iisec1)
-                do l = 1, size (iisec2)
-                   i1 = iisec1(k)
-                   i2 = iisec2(l)
-                   if (cf_present (i1, i2)) then
-                      if (is_gluon (flst_real%flst (em1)) .or. &
-                         is_gluon (flst_real%flst (em2))) then
-                         sign = get_sign (color_data%col_state_real (:, :, i1)) * &
-                            get_sign (color_data%col_state_real (:, :, i2))
-                      else
-                         sign = 1
-                      end if
-                      color_factor = color_factor + sign*compute_color_factor &
-                         (color_data%color_real(:, i1), &
-                         color_data%color_real(:, i2))
+          allocate (cf_present (size (color_index_present &
+             (color_data%cf_index_real), 1), size (color_index_present &
+             (color_data%cf_index_real), 2)))
+
+          cf_present = color_index_present (color_data%cf_index_real)
+
+          do k = 1, size (iisec1)
+             do l = 1, size (iisec2)
+                i1 = iisec1(k)
+                i2 = iisec2(l)
+                if (cf_present (i1, i2)) then
+                   if (is_gluon (flst_real%flst (em1)) .or. &
+                      is_gluon (flst_real%flst (em2))) then
+                      sign = get_sign (color_data%col_state_real (:, :, i1)) * &
+                         get_sign (color_data%col_state_real (:, :, i2))
+                   else
+                      sign = 1
                    end if
-                end do
+                   color_factor = color_factor + sign*compute_color_factor &
+                      (color_data%color_real(:, i1), &
+                      color_data%color_real(:, i2))
+                end if
              end do
-          deallocate (iarray1, iarray2, iisec1, iisec2, cf_present)
           end do
+       deallocate (iarray1, iarray2, iisec1, iisec2, cf_present)
        end do
-       !!! The real color factor always differs from the Born one
-       !!! by one vertex factor. Thus, apply the factor 1/2
-       bij = color_factor / (two * color_factor_born)
-  end if
+    end do
+    !!! The real color factor always differs from the Born one
+    !!! by one vertex factor. Thus, apply the factor 1/2
+    bij = color_factor / (two * color_factor_born)
 
   contains
     function share_line (col1, col2) result (share)
@@ -8717,7 +8724,7 @@ polarized or not.
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
     integer, intent(in), dimension(:) :: flavor_indices, color_indices
     integer, dimension(10) :: checked_uborns
-    integer, dimension(:), allocatable :: i_uniqe
+    integer, dimension(:), allocatable :: i_unique
     integer, dimension(:), allocatable :: i_flv
     type(color_index_list), dimension(:), allocatable :: i_col
     integer, dimension(:), allocatable :: i_flavor
@@ -8733,8 +8740,8 @@ polarized or not.
     do i = 1, size (i_flv)
        i_uborn = nlo_controller%reg_data%get_underlying_born_index (i_flv(i))
        if (.not. any (checked_uborns == i_uborn)) then
-          i_unique = i_col(i_flv)%col
-          checked_borns(i) = i_uborn
+          i_unique = i_col(i)%col
+          checked_uborns(i) = i_uborn
        end if
     end do
     if (nlo_controller%settings%use_internal_color_correlations) then
