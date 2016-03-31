@@ -677,7 +677,7 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
       Cache.Make (struct type t = vertex_table end) (struct type t = RCS.t * vertices end)
 
     let vertices_cache = ref None
-    let hash = VCache.hash (M.vertices ())
+    let hash ()= VCache.hash (M.vertices ())
 
 (* \begin{dubious}
      Can we do better than the executable name provided by [Config.cache_prefix]???
@@ -696,7 +696,7 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
         " >>> Initializing vertex table for model %s.  This may take some time ... "
         (RCS.name M.rcs);
       flush stderr;
-      VCache.write_dir hash dir !cache_name
+      VCache.write_dir (hash ()) dir !cache_name
         (M.rcs, vertices_nocache  (M.max_degree ()) (M.flavors()));
       Printf.eprintf "done. <<< \n"
 
@@ -705,7 +705,7 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
       | None -> 
           begin match !cache_option with
           | Cache_Use ->
-              begin match VCache.maybe_read hash !cache_name with
+              begin match VCache.maybe_read (hash ()) !cache_name with
               | VCache.Hit (rcs, result) ->
                   result
               | VCache.Miss ->
@@ -714,7 +714,7 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
                     (RCS.name M.rcs);
                   flush stderr;
                   let result = vertices_nocache max_degree flavors in
-                  VCache.write hash !cache_name (M.rcs, result);
+                  VCache.write (hash ()) !cache_name (M.rcs, result);
                   vertices_cache := Some result;
                   Printf.eprintf "done. <<< \n";
                   flush stderr;
@@ -726,7 +726,7 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
                   Printf.eprintf "This may take some time ... ";
                   flush stderr;
                   let result = vertices_nocache max_degree flavors in
-                  VCache.write hash !cache_name (M.rcs, result);
+                  VCache.write (hash ()) !cache_name (M.rcs, result);
                   vertices_cache := Some result;
                   Printf.eprintf "done. <<< \n";
                   flush stderr;
@@ -738,7 +738,7 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
                 (RCS.name M.rcs);
               flush stderr;
               let result = vertices_nocache max_degree flavors in
-              VCache.write hash !cache_name (M.rcs, result);
+              VCache.write (hash ()) !cache_name (M.rcs, result);
               vertices_cache := Some result;
               Printf.eprintf "done. <<< \n";
               flush stderr;
