@@ -133,6 +133,8 @@ module type Mutable =
   sig
     include T
 
+    val init : unit -> unit
+
 (* Export only one big initialization function to discourage
    partial initializations.  Labels make this usable. *)
 

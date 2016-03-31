@@ -302,6 +302,8 @@ module Mutable (FGC : sig type f and g and c end) =
     type gauge = FGC.g
     type constant = FGC.c
 
+    let init () = ()
+
     let options = Options.empty
 
     module Ch = Charges.Null
@@ -404,4 +406,47 @@ module Mutable (FGC : sig type f and g and c end) =
       set_constant_symbol constant_symbol
 
     let rcs = RCS.rename rcs_file "Models.Mutable" ["Mutable Model"]
+  end
+
+module Static (M : Model.T) =
+  struct
+    type flavor = M.flavor
+    type gauge = M.gauge
+    type constant = M.constant
+    module Ch = M.Ch
+    let color = M.color
+    let charges = M.charges
+    let pdg = M.pdg
+    let lorentz = M.lorentz
+    let propagator = M.propagator
+    let width = M.width
+    let conjugate = M.conjugate
+    let fermion = M.fermion
+    let max_degree = M.max_degree
+    let vertices = M.vertices
+    let fuse2 = M.fuse2
+    let fuse3 = M.fuse3
+    let fuse = M.fuse
+    let flavors = M.flavors
+    let external_flavors = M.external_flavors
+    let goldstone = M.goldstone
+    let parameters = M.parameters
+    let flavor_of_string = M.flavor_of_string
+    let flavor_to_string = M.flavor_to_string
+    let flavor_to_TeX = M.flavor_to_TeX
+    let flavor_symbol = M.flavor_symbol
+    let gauge_symbol = M.gauge_symbol
+    let mass_symbol = M.mass_symbol
+    let width_symbol = M.width_symbol
+    let constant_symbol = M.constant_symbol
+    let options = M.options
+    let rcs = M.rcs
+    let init () = ()
+    let setup ~color ~pdg ~lorentz ~propagator ~width ~goldstone
+        ~conjugate ~fermion ~max_degree ~vertices 
+        ~fuse:(fuse2, fuse3, fusen)
+        ~flavors ~parameters ~flavor_of_string ~flavor_to_string
+        ~flavor_to_TeX ~flavor_symbol
+        ~gauge_symbol ~mass_symbol ~width_symbol ~constant_symbol =
+      ()
   end

@@ -69,6 +69,8 @@ module Mutable : functor (FGC : sig type f and g and c end) ->
   Model.Mutable with type flavor = FGC.f and type gauge = FGC.g 
   and type constant = FGC.c
 
+module Static (M : Model.T) : Model.Mutable
+
 (*i
  *  Local Variables:
  *  mode:caml
