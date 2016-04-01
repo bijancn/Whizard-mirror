@@ -428,7 +428,7 @@ contains
        blob_Z_vec = gncup(1) * ttv_vec
        blob_Z_ax = gncup(2) * ttv_ax
        mtop = ttv_mtpole (p12*p12)
-       if (threshold%settings%onshell_projection) then
+       if (threshold%settings%onshell_projection%production) then
           if (debug_active (D_THRESHOLD)) then
              call assert_equal (u, sqrt (ptop_onshell * ptop_onshell), mtop, "ptop is projected")
              call assert_equal (u, sqrt (ptopbar_onshell * ptopbar_onshell), mtop, "ptop is projected")
@@ -482,7 +482,7 @@ contains
 
   subroutine set_top_decay_momenta (pw, pb, ptop)
     type(momentum), intent(out) :: pw, pb, ptop
-    if (threshold%settings%onshell_projection) then
+    if (threshold%settings%onshell_projection%decay) then
        pw = pwp_onshell
        pb = pb_onshell
        ptop = ptop_onshell_cms
@@ -510,7 +510,7 @@ contains
 
   subroutine set_anti_top_decay_momenta (pw, pb, ptop)
     type(momentum), intent(out) :: pw, pb, ptop
-    if (threshold%settings%onshell_projection) then
+    if (threshold%settings%onshell_projection%decay) then
        pw = pwm_onshell
        pb = pbbar_onshell
        ptop = ptop_onshell_cms
@@ -619,7 +619,7 @@ contains
        p35 = p3 + p5
        p46 = p4 + p6
     end if
-    if (threshold%settings%onshell_projection) then
+    if (threshold%settings%onshell_projection%active ()) then
        call compute_projected_top_momenta (p12)
        call compute_projected_top_decay_products (p12)
     end if
