@@ -33,9 +33,11 @@ module parameters_qcd
   public :: import_from_whizard, model_update_alpha_s
 contains
   subroutine import_from_whizard (par_array)
-    real(default), dimension(6), intent(in) :: par_array
+    real(default), dimension(8), intent(in) :: par_array
     type :: parameter_set
        real(default) :: alphas
+       real(default) :: md = 0 !!! par_array(1) locked in default scheme
+       real(default) :: mu = 0 !!! par_array(2) locked in default scheme
        real(default) :: ms
        real(default) :: mc
        real(default) :: mb
@@ -44,13 +46,17 @@ contains
     end type parameter_set
     type(parameter_set) :: par
     par%alphas = par_array(1)
-    par%ms = par_array(2)
-    par%mc = par_array(3)
-    par%mb = par_array(4)
-    par%mtop = par_array(5)
-    par%wtop = par_array(6)
+    ! par%md = par_array(2)
+    ! par%mu = par_array(3)
+    par%ms = par_array(4)
+    par%mc = par_array(5)
+    par%mb = par_array(6)
+    par%mtop = par_array(7)
+    par%wtop = par_array(8)
     mass(1:21) = 0
     width(1:21) = 0
+    mass(1) = par%md
+    mass(2) = par%mu
     mass(3) = par%ms
     mass(4) = par%mc
     mass(5) = par%mb
