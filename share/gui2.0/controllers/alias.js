@@ -1,5 +1,6 @@
 (function iife() {
   // 'use strict';
+  /* TODO: (bcn 2016-04-01) where is this used? why externalsindarinlist?
   let ExternalSindarinList = [];
 
   function SindarinAliasToString() {
