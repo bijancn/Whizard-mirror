@@ -11436,11 +11436,11 @@ The [[pn]] component is a pointer to the parameter definition inside the
 model parse tree.  It allows us to recreate the [[eval_tree]] when making
 copies (instances) of the parameter object.
 <<Models: parameters>>=
-  integer, parameter :: PAR_NONE = 0
+  integer, parameter :: PAR_NONE = 0, PAR_UNUSED = -1
   integer, parameter :: PAR_INDEPENDENT = 1, PAR_DERIVED = 2
   integer, parameter :: PAR_EXTERNAL = 3
 
-@ %def PAR_NONE PAR_INDEPENDENT PAR_DERIVED PAR_EXTERNAL
+@ %def PAR_NONE PAR_INDEPENDENT PAR_DERIVED PAR_EXTERNAL PAR_UNUSED
 <<Models: types>>= 
   type :: parameter_t
      private
@@ -11466,6 +11466,7 @@ This implementation supports only real parameters and real values.
   procedure :: init_independent => parameter_init_independent
   procedure :: init_derived => parameter_init_derived
   procedure :: init_external => parameter_init_external
+  procedure :: init_unused => parameter_init_unused
 <<Models: procedures>>=
   subroutine parameter_init_independent_value (par, par_data, name, value)
     class(parameter_t), intent(out) :: par
@@ -11520,10 +11521,20 @@ This implementation supports only real parameters and real values.
     call par%data%init (name, 0._default)
   end subroutine parameter_init_external
 
+  subroutine parameter_init_unused (par, par_data, name)
+    class(parameter_t), intent(out) :: par
+    class(modelpar_data_t), intent(in), target :: par_data
+    type(string_t), intent(in) :: name
+    par%type = PAR_UNUSED
+    par%data => par_data
+    call par%data%init (name, 0._default)
+  end subroutine parameter_init_unused
+
 @ %def parameter_init_independent_value
 @ %def parameter_init_independent
 @ %def parameter_init_derived
 @ %def parameter_init_external
+@ %def parameter_init_unused
 @ The finalizer is needed for the evaluation tree in the definition.
 <<Models: parameter: TBP>>=
   procedure :: final => parameter_final
@@ -11567,12 +11578,17 @@ suitable for input and output!]
     select case (par%type)
     case (PAR_INDEPENDENT)
        write (u, "(3x,A)", advance="no")  "parameter"
+       call par%data%write (u)
     case (PAR_DERIVED)
        write (u, "(3x,A)", advance="no")  "derived"
+       call par%data%write (u)
     case (PAR_EXTERNAL)
        write (u, "(3x,A)", advance="no")  "external"
+       call par%data%write (u)
+    case (PAR_UNUSED)
+       write (u, "(3x,A)", advance="no")  "unused"
+       write (u, "(1x,A)", advance="no")  char (par%data%get_name ())
     end select
-    call par%data%write (u)
     select case (par%type)
     case (PAR_DERIVED)
        if (defs) then
@@ -11813,7 +11829,7 @@ tree) is displayed, and the vertex hash table is shown.
     u = given_output_unit (unit)
     write (u, "(A,1x,A)")  "Model:", char (model%get_name ())
     if (model%has_schemes ()) then
-       write (u, "(2x,A,1x,A,A,I0,A)")  "Scheme: '", &
+       write (u, "(2x,A,A,A,I0,A)")  "Scheme: '", &
             char (model%get_scheme ()), "' (", model%get_scheme_num (), ")"
     end if
     l = model%max_field_name_length
@@ -11835,6 +11851,12 @@ tree) is displayed, and the vertex hash table is shown.
        write (u, "(2x,A)")  "External parameters:"
        do i = 1, size (model%par)
           call model%par(i)%show (l, u, PAR_EXTERNAL)
+       end do
+    end if
+    if (any (model%par%type == PAR_UNUSED)) then
+       write (u, "(2x,A)")  "Unused parameters:"
+       do i = 1, size (model%par)
+          call model%par(i)%show (l, u, PAR_UNUSED)
        end do
     end if
   end subroutine model_show
@@ -11980,6 +12002,8 @@ directly as argument.
        set_parameter_parse_node => model_set_parameter_parse_node
   procedure :: &
        set_parameter_external => model_set_parameter_external
+  procedure :: &
+       set_parameter_unused => model_set_parameter_unused
 <<Models: procedures>>=
   subroutine model_set_parameter_constant (model, i, name, value)
     class(model_t), intent(inout), target :: model
@@ -12036,6 +12060,18 @@ directly as argument.
     model%max_par_name_length = max (model%max_par_name_length, len (name))
   end subroutine model_set_parameter_external
 
+  subroutine model_set_parameter_unused (model, i, name)
+    class(model_t), intent(inout), target :: model
+    integer, intent(in) :: i
+    type(string_t), intent(in) :: name
+    class(modelpar_data_t), pointer :: par_data
+    par_data => model%get_par_real_ptr (i)
+    call model%par(i)%init_unused (par_data, name)
+    call var_list_append_real (model%var_list, &
+         name, locked=.true., intrinsic=.true.)
+    model%max_par_name_length = max (model%max_par_name_length, len (name))
+  end subroutine model_set_parameter_unused
+
 @ %def model_set_parameter
 @ Make a copy of a parameter.  We assume that the [[model_data_t]]
 parameter arrays have already been copied, so names and values are
@@ -12067,6 +12103,8 @@ which also take care of the building a new variable list.
             constant = .false.)
     case (PAR_EXTERNAL)
        call model%set_parameter_external (i, name)
+    case (PAR_UNUSED)
+       call model%set_parameter_unused (i, name)
     end select
   end subroutine model_copy_parameter
   
@@ -12364,7 +12402,7 @@ expression syntax, so we exclude them here.
     call ifile_append (ifile, "QUO scheme_name = '""'...'""'")
     call ifile_append (ifile, "SEQ parameters = generic_par_def*")
     call ifile_append (ifile, "ALT generic_par_def = &
-         &parameter_def | derived_def | scheme_block")
+         &parameter_def | derived_def | unused_def | scheme_block")
     call ifile_append (ifile, "SEQ parameter_def = parameter par_name " // &
          "'=' any_real_value")
     call ifile_append (ifile, "ALT any_real_value = " &
@@ -12377,6 +12415,8 @@ expression syntax, so we exclude them here.
     call ifile_append (ifile, "SEQ derived_def = derived par_name " // &
          "'=' expr")
     call ifile_append (ifile, "KEY derived")
+    call ifile_append (ifile, "SEQ unused_def = unused par_name")
+    call ifile_append (ifile, "KEY unused")
     call ifile_append (ifile, "SEQ external_pars = external_def*")
     call ifile_append (ifile, "SEQ external_def = external par_name")
     call ifile_append (ifile, "KEY external")
@@ -12709,7 +12749,7 @@ module variables:
       do i = 1, n_parblock
          nd_par_key => nd_par_def%get_sub_ptr ()
          select case (char (nd_par_key%get_rule_key ()))
-         case ("parameter", "derived")
+         case ("parameter", "derived", "unused")
             n_par = n_par + 1
          case ("scheme_block_beg")
             call select_scheme (nd_par_def, n_parblock_sub, nd_par_def_sub)
@@ -12742,6 +12782,9 @@ module variables:
          case ("derived")
             i_par = i_par + 1
             call model%read_derived (i_par, nd_par_def)
+         case ("unused")
+            i_par = i_par + 1
+            call model%read_unused (i_par, nd_par_def)
          case ("scheme_block_beg")
             call select_scheme (nd_par_def, n_parblock_sub, nd_par_def_sub)
             if (n_parblock_sub > 0) then
@@ -12841,6 +12884,20 @@ external library.
   end subroutine model_read_external
 
 @ %def model_read_external
+@ Ditto for unused parameters, they are there just for reserving the name.
+<<Models: model: TBP>>=
+  procedure, private :: read_unused => model_read_unused
+<<Models: procedures>>=
+  subroutine model_read_unused (model, i, node)
+    class(model_t), intent(inout), target :: model
+    integer, intent(in) :: i
+    type(parse_node_t), intent(in), target :: node
+    type(string_t) :: name
+    name = parse_node_get_string (parse_node_get_sub_ptr (node, 2))
+    call model%set_parameter_unused (i, name)
+  end subroutine model_read_unused
+
+@ %def model_read_unused
 <<Models: model: TBP>>=
   procedure, private :: read_field => model_read_field
 <<Models: procedures>>=
@@ -13198,7 +13255,7 @@ modified, we should first allocate a local copy.
     class(model_list_t), pointer :: global_model_list
     type(model_entry_t), pointer :: current
     logical :: exist
-    if (.not. model_list%model_exists (name, follow_link=.true.)) then
+    if (.not. model_list%model_exists (name, scheme, follow_link=.true.)) then
        allocate (current)
        call current%read (filename, os_data, exist, scheme=scheme)
        if (.not. exist)  return
@@ -13215,7 +13272,7 @@ modified, we should first allocate a local copy.
        end do
        call global_model_list%import (current, model)
     else
-       model => model_list%get_model_ptr (name)
+       model => model_list%get_model_ptr (name, scheme)
     end if
   end subroutine model_list_read_model
 
@@ -13355,30 +13412,6 @@ part of the [[model_data_t]] base type and are copied afterwards via its
   end subroutine model_copy
   
 @ %def model_copy
-@ (Obsolete:) Turn a pointer to a model into a true copy, i.e., a new instance.
-Reset: delete this instance.
-<<Models: public>>=
-!   public :: model_pointer_to_instance
-!   public :: model_pointer_delete_instance
-<<Models: procedures>>=
-!   subroutine model_pointer_to_instance (model)
-!     type(model_t), pointer, intent(inout) :: model
-!     type(model_t), pointer :: model_tmp
-!     model_tmp => model
-!     allocate (model)
-!     call model%init_instance (model_tmp)
-!   end subroutine model_pointer_to_instance
-    
-!   subroutine model_pointer_delete_instance (model)
-!     type(model_t), pointer, intent(inout) :: model
-!     if (associated (model)) then
-!        call model%final ()
-!        deallocate (model)
-!     end if
-!   end subroutine model_pointer_delete_instance
-    
-@ %def model_pointer_to_instance
-@ %def model_pointer_delete_instance
 @
 \subsection{Unit tests}
 Test module, followed by the corresponding implementation module.
@@ -13808,6 +13841,7 @@ parameters is non-canonical.
     write (um, "(A)")  '   parameter a =  1.000000000000E+00'
     write (um, "(A)")  '   derived   b =  2 * a'
     write (um, "(A)")  '   parameter c =  3.000000000000E+00'
+    write (um, "(A)")  '   unused    d'
 
     rewind (um)
     do
@@ -13886,7 +13920,7 @@ parameter list.
     write (um, "(A)")  '  scheme "foo", "gee"'
     write (um, "(A)")  '    derived   d = b + c'
     write (um, "(A)")  '  scheme other'
-    write (um, "(A)")  '    parameter d = 6'
+    write (um, "(A)")  '    unused    d'
     write (um, "(A)")  '  end select'
 
     rewind (um)
@@ -13907,6 +13941,7 @@ parameter list.
     call model_list%read_model (var_str ("Test7"), var_str ("Test7.mdl"), &
          os_data, model)
     call model%write (u, show_md5sum=.false.)
+    call show_par_array ()
 
     write (u, *)
     write (u, "(A)")  "* Variable list, scheme foo"
@@ -13918,17 +13953,24 @@ parameter list.
 
     var_list => model%get_var_list_ptr ()
     call var_list%write (u)
+    call show_par_array ()
 
     write (u, *)
-    write (u, "(A)")  "* Variable list, scheme bar"
+    write (u, "(A)")  "* Model output, scheme bar"
     write (u, *)
     
     call model_list%final ()
     call model_list%read_model (var_str ("Test7"), var_str ("Test7.mdl"), &
          os_data, model, scheme = var_str ("bar"))
+    call model%write (u, show_md5sum=.false.)
 
+    write (u, *)
+    write (u, "(A)")  "* Variable list, scheme bar"
+    write (u, *)
+    
     var_list => model%get_var_list_ptr ()
     call var_list%write (u)
+    call show_par_array ()
 
     write (u, *)
     write (u, "(A)")  "* Model output, scheme gee"
@@ -13938,6 +13980,7 @@ parameter list.
     call model_list%read_model (var_str ("Test7"), var_str ("Test7.mdl"), &
          os_data, model, scheme = var_str ("gee"))
     call model%write (u, show_md5sum=.false.)
+    call show_par_array ()
 
     write (u, *)
     write (u, "(A)")  "* Cleanup"
@@ -13947,6 +13990,21 @@ parameter list.
 
     write (u, *)
     write (u, "(A)")  "* Test output end: models_7"
+
+  contains
+    
+    subroutine show_par_array ()
+      real(default), dimension(:), allocatable :: par
+      integer :: n
+      write (u, *)
+      write (u, "(A)")  "* Parameter array"
+      write (u, *)
+      n = model%get_n_real ()
+      allocate (par (n))
+      call model%real_parameters_to_array (par)
+      write (u, 1)  par
+1     format (1X,F6.3)
+    end subroutine show_par_array
 
   end subroutine models_7
 
