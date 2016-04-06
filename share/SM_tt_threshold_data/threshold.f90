@@ -41,10 +41,10 @@ contains
     owf_wm_2_0 = conjg (eps (mass(24), p2, s(2)))
     owf_d3b__1_3_0 = ubar (mass(5), p3, s(3))
     owf_gl___4_0 = conjg (eps (mass(21), p4, s(4)))
-    owf_d3_1__12_0 = pr_psi(p12,mass(5),wd_tl(p12,width(5)), &
+    owf_d3_1__12_0 = pr_psi(p12,mass(5),wd_tl(p12,width(5)), .false., &
        + f_vlf(gcc,owf_wm_2_0,owf_u3_1__1_0))
     owf_u3_1__14_0_X1 = pr_psi(p14,dynamic_top_mass,wd_tl(p14,top_width), &
-       + f_vf((-gs),owf_gl___4_0,owf_u3_1__1_0))
+       .false., + f_vf((-gs),owf_gl___4_0,owf_u3_1__1_0))
     oks_u3_1_wpd3_1_gl__ = ( &
        + f_fv((-gs),owf_d3b__1_3_0,owf_gl___4_0))*owf_d3_1__12_0
     oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
@@ -97,10 +97,10 @@ contains
     owf_wp_2_0 = conjg (eps (mass(24), p2, s(2)))
     owf_d3_2__3_0 = v (mass(5), p3, s(3))
     owf_gl_1_2_4_0 = conjg (eps (mass(21), p4, s(4)))
-    owf_d3b__1_12_0 = pr_psibar(p12,mass(5),wd_tl(p12,width(5)), &
+    owf_d3b__1_12_0 = pr_psibar(p12,mass(5),wd_tl(p12,width(5)), .false., &
        + f_fvl(gcc,owf_u3b__1_1_0,owf_wp_2_0))
     owf_u3b__2_14_0 = pr_psibar(p14,dynamic_top_mass,wd_tl(p14,top_width), &
-       + f_fv((-gs),owf_u3b__1_1_0,owf_gl_1_2_4_0))
+       .false., + f_fv((-gs),owf_u3b__1_1_0,owf_gl_1_2_4_0))
     oks_u3b__1wmd3b__2gl_2_1 = owf_d3b__1_12_0 * &
        f_vf((-gs),owf_gl_1_2_4_0,owf_d3_2__3_0)
     oks_u3b__1wmd3b__2gl_2_1 = oks_u3b__1wmd3b__2gl_2_1 + owf_u3b__2_14_0*( &
@@ -337,9 +337,10 @@ module @ID@_threshold
 
 contains
 
-  subroutine init (par)
+  subroutine init (par, scheme)
     real(default), dimension(*), intent(in) :: par
-    call import_from_whizard (par)
+    integer, intent(in) :: scheme
+    call import_from_whizard (par, scheme)
   end subroutine init
 
   subroutine compute_production_owfs (hi, spins)
@@ -355,7 +356,7 @@ contains
        owf_t_4 = v (ttv_mtpole(p12*p12), p4, s_OS(4))
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
        owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
-            + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
+            .false., + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
     else
        if (present (hi)) then
           s = table_spin_states(1:2,hi)
@@ -371,7 +372,7 @@ contains
        owf_e_2 = vbar (mass(11), - p2, s(2))
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
        owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
-            + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
+            .false., + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
     end if
   end subroutine compute_production_owfs
 
@@ -421,9 +422,9 @@ contains
        else
           mtop = ttv_mtpole (p12*p12)
           top_width = ttv_wtpole (p12*p12, ffi)
-          owf_wb_35 = pr_psibar (p35, mtop, wd_tl (p35, top_width), &
+          owf_wb_35 = pr_psibar (p35, mtop, wd_tl (p35, top_width), .false., &
                + f_fvl (gccq33, owf_b_5, owf_Wp_3))
-          owf_wb_46 = pr_psi (p46, mtop, wd_tl (p46, top_width), &
+          owf_wb_46 = pr_psi (p46, mtop, wd_tl (p46, top_width), .false., &
                + f_vlf (gccq33, owf_Wm_4, owf_b_6))
           amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
           amp = amp + owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46) * ttv_vec
@@ -668,13 +669,14 @@ contains
 
 end module @ID@_threshold
 
-subroutine @ID@_threshold_init (par) bind(C)
+subroutine @ID@_threshold_init (par, scheme) bind(C)
   use iso_c_binding
   use kinds
   use @ID@_threshold
   implicit none
   real(c_default_float), dimension(*), intent(in) :: par
-  call init (par)
+  integer(c_int), intent(in) :: scheme
+  call init (par, scheme)
 end subroutine @ID@_threshold_init
 
 subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)

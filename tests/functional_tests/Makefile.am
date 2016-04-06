@@ -226,7 +226,6 @@ TESTS_REQ_OCAML = \
     $(TESTS_USER_STRFUN) 
 
 XFAIL_TESTS_REQ_OCAML = \
-    qcdtest_6.run \
     colors_hgg.run \
     user_cuts.run \
     $(TESTS_USER_STRFUN)

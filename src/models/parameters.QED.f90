@@ -34,8 +34,9 @@ module parameters_qed
   complex(default), public :: qlep
 
 contains
-  subroutine import_from_whizard (par_array)
+  subroutine import_from_whizard (par_array, scheme)
     real(default), dimension(4), intent(in) :: par_array
+    integer, intent(in) :: scheme
     real(default) :: e, qelep
     type :: parameter_set
        real(default) :: ee
