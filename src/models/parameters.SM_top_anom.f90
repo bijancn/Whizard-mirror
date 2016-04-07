@@ -66,8 +66,9 @@ module parameters_sm_top_anom
 
 contains
 
-  subroutine import_from_whizard (par_array)
+  subroutine import_from_whizard (par_array, scheme)
     real(default), dimension(65), intent(in) :: par_array
+    integer, intent(in) :: scheme
     type :: parameter_set
        real(default) :: gf
        real(default) :: mZ

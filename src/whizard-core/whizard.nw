@@ -1433,6 +1433,10 @@ so the latter is always available (and kept global).
     call var_list_append_log &
          (global%var_list, var_str ("?polarized_events"), .false., &
             intrinsic=.true.)
+    call var_list_append_string &
+         (global%var_list, var_str ("$polarization_mode"), &
+         var_str ("helicity"), &
+         intrinsic=.true.)
     call set_shower_defaults ()
     call set_hadronization_defaults ()
     call set_mlm_matching_defaults ()
@@ -3991,7 +3995,7 @@ grab it from the model.
       if (.not. allocated (core)) allocate (prc_user_defined_test_t :: core)
       select type (core)
       type is (prc_user_defined_test_t)
-         call core%set_parameters (qcd, use_color_factors)
+         call core%set_parameters (qcd, use_color_factors, model)
       end select
     type is (threshold_def_t)
       if (.not. allocated (core)) allocate (prc_threshold_t :: core)
@@ -4017,8 +4021,8 @@ second routine restores the original from the save.
   public :: dispatch_core_update
   public :: dispatch_core_restore
 <<Dispatch: procedures>>=
-  subroutine dispatch_core_update (core, model, helicity_selection, qcd, &
-       saved_core)
+  subroutine dispatch_core_update &
+       (core, model, helicity_selection, qcd, saved_core)
     
     class(prc_core_t), allocatable, intent(inout) :: core
     class(model_data_t), intent(in), optional, target :: model
@@ -5916,7 +5920,8 @@ end module dispatch_uti
          10, is_known = .true.)
     
     call dispatch_core (core, core_def, &
-         global%model, global%get_helicity_selection ())
+         global%model, &
+         global%get_helicity_selection ())
     call core_def%allocate_driver (core%driver, var_str (""))
 
     select type (core)
@@ -6661,7 +6666,8 @@ then restores the original.
          var_str ("helicity_selection_cutoff"), &
          5, is_known = .true.)
     
-    call dispatch_core_update (core, global%model, &
+    call dispatch_core_update (core, &
+         global%model, &
          global%get_helicity_selection (), &
          saved_core = saved_core)
     select type (core)
@@ -8697,7 +8703,8 @@ local changes to currently inactive models.
     do i_component = 1, n_components
        config => intg%process%get_component_def_ptr (i_component)
        call dispatch_core (core_template, config%get_core_def_ptr (), &
-            intg%process%get_model_ptr (), helicity_selection, intg%qcd, &
+            intg%process%get_model_ptr (), &
+            helicity_selection, intg%qcd, &
             use_color_factors)
        select case (config%get_nlo_type ())
        case (NLO_VIRTUAL)
@@ -11692,7 +11699,7 @@ base type by the [[connect]] method, so we can reference them later.
        fixed_mci = process%extract_active_component ()
     end if
     call prepare_process_instance (process_instance, process, local%model, &
-       local = local)
+         local = local)
 
     if (generate) then
        if (fixed_mci > 0) then
@@ -12179,7 +12186,8 @@ parameters stored in the process object.
   procedure :: update_process => entry_update_process
   procedure :: restore_process => entry_restore_process
 <<Simulations: procedures>>=
-  subroutine entry_update_process (entry, model, qcd, helicity_selection)
+  subroutine entry_update_process &
+       (entry, model, qcd, helicity_selection)
     class(entry_t), intent(inout) :: entry
     class(model_data_t), intent(in), optional, target :: model
     type(qcd_t), intent(in), optional :: qcd
@@ -13268,7 +13276,8 @@ original versions using [[dispatch_core_restore]].
     type(helicity_selection_t), intent(in), optional :: helicity_selection
     integer :: i
     do i = 1, simulation%n_prc
-       call simulation%entry(i)%update_process (model, qcd, helicity_selection)
+       call simulation%entry(i)%update_process &
+            (model, qcd, helicity_selection)
     end do
   end subroutine simulation_update_processes
   
@@ -16005,8 +16014,8 @@ functionality.
     call reset_interaction_counter ()
 
     allocate (process)
-    call process%init &
-         (procname, run_id, lib, os_data, qcd, rng_factory, model) 
+    call process%init (procname, run_id, &
+         lib, os_data, qcd, rng_factory, model) 
 
     call var_list_append_real &
          (var_list, var_str ("tolerance"), 0._default)
@@ -16220,8 +16229,8 @@ functionality.
     call reset_interaction_counter ()
 
     allocate (process)
-    call process%init &
-         (procname, run_id, lib, os_data, qcd, rng_factory, model) 
+    call process%init (procname, run_id, &
+         lib, os_data, qcd, rng_factory, model) 
 
     call process%set_var_list (var_list)
     call var_list%final ()
@@ -16812,7 +16821,8 @@ it.
 
 @ %def cmd_model_write
 @ Compile.  Get the model name and read the model from file, so it is
-readily available when the command list is executed.
+readily available when the command list is executed.  If the model has a
+scheme argument, take this into account.
 
 Assign the model pointer in the [[global]] record, so it can be used for
 (read-only) variable lookup while compiling further commands.
@@ -16822,30 +16832,37 @@ Assign the model pointer in the [[global]] record, so it can be used for
   subroutine cmd_model_compile (cmd, global)
     class(cmd_model_t), intent(inout) :: cmd
     type(rt_data_t), intent(inout), target :: global
-    type(parse_node_t), pointer :: pn_name
+    type(parse_node_t), pointer :: pn_name, pn_arg, pn_scheme
     type(model_t), pointer :: model
-    pn_name => parse_node_get_sub_ptr (cmd%pn, 3)
-! Handle model scheme!
-!    call cmd%compile_options (global)
-    cmd%name = parse_node_get_string (pn_name)
-    cmd%scheme = ""
-    if (cmd%scheme /= "") then
-       call get_model (model, cmd%name, cmd%scheme)
+    pn_name => cmd%pn%get_sub_ptr (3)
+    pn_arg => pn_name%get_next_ptr ()
+    if (associated (pn_arg)) then
+       pn_scheme => pn_arg%get_sub_ptr ()
     else
-       call get_model (model, cmd%name)
+       pn_scheme => null ()
+    end if
+    cmd%name = pn_name%get_string ()
+    if (associated (pn_scheme)) then
+       cmd%scheme = pn_scheme%get_string ()
+       call preload_model (model, cmd%name, cmd%scheme)
+    else
+       cmd%scheme = ""
+       call preload_model (model, cmd%name)
     end if
     global%model => model
     if (associated (global%model)) then
        call global%model%link_var_list (global%var_list)
     end if
   contains
-    subroutine get_model (model, name, scheme)
+    subroutine preload_model (model, name, scheme)
       type(model_t), pointer, intent(out) :: model
       type(string_t), intent(in) :: name
       type(string_t), intent(in), optional :: scheme
       model => null ()
       if (associated (global%model)) then
-         if (global%model%matches (name, scheme))  model => global%model
+         if (global%model%matches (name, scheme)) then
+            model => global%model
+         end if
       end if
       if (.not. associated (model)) then
          if (global%model_list%model_exists (name, scheme)) then
@@ -16854,7 +16871,7 @@ Assign the model pointer in the [[global]] record, so it can be used for
             call global%read_model (name, model, scheme)
          end if
       end if
-    end subroutine get_model
+    end subroutine preload_model
   end subroutine cmd_model_compile
 
 @ %def cmd_model_compile
@@ -16866,6 +16883,7 @@ the variable list.
   subroutine cmd_model_execute (cmd, global)
     class(cmd_model_t), intent(inout) :: cmd
     type(rt_data_t), intent(inout), target :: global
+    type(model_t), pointer :: model
     if (cmd%scheme /= "") then
        call global%select_model (cmd%name, cmd%scheme)
     else
@@ -23718,10 +23736,13 @@ Also here, after each command we set a breakpoint.
          // "cmd_analysis | cmd_alt_setup | " &
          // "cmd_open_out | cmd_close_out | cmd_printf | " &
          // "cmd_write_analysis | cmd_compile_analysis | cmd_nlo | cmd_components")
-    call ifile_append (ifile, "SEQ cmd_model = model '=' model_name options?")
+    call ifile_append (ifile, "SEQ cmd_model = model '=' model_name model_arg?")
     call ifile_append (ifile, "KEY model")
     call ifile_append (ifile, "ALT model_name = model_id | string_literal")
     call ifile_append (ifile, "IDE model_id")
+    call ifile_append (ifile, "ARG model_arg = ( model_scheme? )")
+    call ifile_append (ifile, "ALT model_scheme = scheme_id | string_literal")
+    call ifile_append (ifile, "IDE scheme_id")
     call ifile_append (ifile, "SEQ cmd_library = library '=' lib_name")
     call ifile_append (ifile, "KEY library")
     call ifile_append (ifile, "ALT lib_name = lib_id | string_literal")

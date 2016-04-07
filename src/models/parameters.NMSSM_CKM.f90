@@ -264,8 +264,9 @@ module parameters_nmssm_ckm
   integer :: i,j,sfm1,sfm2
 
 contains
-  subroutine import_from_whizard (par_array)
+  subroutine import_from_whizard (par_array, scheme)
     real(default), dimension(177), intent(in) :: par_array
+    integer, intent(in) :: scheme
     type :: parameter_set
        real(default) :: gf
        real(default) :: mZ

@@ -65,8 +65,9 @@ module parameters_sm_ul
   public :: import_from_whizard, model_update_alpha_s
 
 contains
-  subroutine import_from_whizard (par_array)
+  subroutine import_from_whizard (par_array, scheme)
     real(default), dimension(73), intent(in) :: par_array
+    integer, intent(in) :: scheme
     type :: parameter_set
        real(default) :: gf
        real(default) :: mZ

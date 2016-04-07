@@ -570,6 +570,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/qedtest_10.ref \
     functional_tests/ref-output/qcdtest_4.ref \
     functional_tests/ref-output/qcdtest_5.ref \
+    functional_tests/ref-output/qcdtest_6.ref \
     functional_tests/ref-output/beam_setup_1.ref \
     functional_tests/ref-output/beam_setup_2.ref \
     functional_tests/ref-output/beam_setup_3.ref \
@@ -864,6 +865,7 @@ MISC_TESTS_SIN = \
     functional_tests/qcdtest_3.sin \
     functional_tests/qcdtest_4.sin \
     functional_tests/qcdtest_5.sin \
+    functional_tests/qcdtest_6.sin \
     functional_tests/observables_1.sin \
     functional_tests/event_weights_1.sin \
     functional_tests/event_weights_2.sin \

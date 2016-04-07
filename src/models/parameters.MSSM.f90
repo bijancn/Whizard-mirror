@@ -414,8 +414,9 @@ module parameters_mssm
 
 contains
 
-  subroutine import_from_whizard (par_array)
+  subroutine import_from_whizard (par_array, scheme)
     real(default), dimension(135), intent(in) :: par_array
+    integer, intent(in) :: scheme
     type :: parameter_set 
        !!! DON'T EVEN THINK OF CHANGING THE ORDER
        real(default) :: gf

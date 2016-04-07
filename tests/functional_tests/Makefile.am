@@ -64,8 +64,7 @@ TESTS_DEFAULT = \
     helicity.run \
     libraries_4.run
 
-XFAIL_TESTS_DEFAULT = \
-    model_scheme_1.run
+XFAIL_TESTS_DEFAULT =
 
 TESTS_USER_STRFUN = \
     user_strfun.run 
@@ -105,6 +104,7 @@ TESTS_REQ_OCAML = \
     qcdtest_3.run \
     qcdtest_4.run \
     qcdtest_5.run \
+    qcdtest_6.run \
     observables_1.run \
     event_weights_1.run \
     event_weights_2.run \
@@ -382,12 +382,12 @@ WT_OMEGA_CACHE_SUFFIX=vertices
 WT_OCAML_NATIVE_EXT=opt
 
 if OCAML_AVAILABLE
-qedtest_1.run qedtest_2.run qedtest_3.run qedtest_4.run qedtest_5.run qedtest_6.run: omega_QED.$(WT_OMEGA_CACHE_SUFFIX)
+qedtest_1.run qedtest_2.run qedtest_3.run qedtest_4.run qedtest_5.run qedtest_6.run qedtest_7.run qedtest_8.run qedtest_9.run qedtest_10.run: omega_QED.$(WT_OMEGA_CACHE_SUFFIX)
 OMEGA_QED = $(top_builddir)/omega/bin/omega_QED.$(WT_OCAML_NATIVE_EXT)
 omega_QED.$(WT_OMEGA_CACHE_SUFFIX): $(OMEGA_QED)
 	$(OMEGA_QED) -initialize .
 
-qcdtest_1.run qcdtest_2.run: omega_QCD.$(WT_OMEGA_CACHE_SUFFIX)
+qcdtest_1.run qcdtest_2.run qcdtest_3.run qcdtest_4.run qcdtest_5.run qcdtest_6.run: omega_QCD.$(WT_OMEGA_CACHE_SUFFIX)
 OMEGA_QCD = $(top_builddir)/omega/bin/omega_QCD.$(WT_OCAML_NATIVE_EXT)
 omega_QCD.$(WT_OMEGA_CACHE_SUFFIX): $(OMEGA_QCD)
 	$(OMEGA_QCD) -initialize .
