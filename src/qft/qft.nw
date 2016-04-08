@@ -1554,12 +1554,18 @@ This type collects the model data as defined above.
 
 We deliberately implement the parameter arrays as pointer arrays.  We
 thus avoid keeping track of TARGET attributes.
+
+The [[scheme]] identifier provides meta information.  It doesn't give the
+client code an extra parameter, but it tells something about the
+interpretation of the parameters.  If the scheme ID is left as default (zero),
+it is ignored.
 <<Model data: public>>=
   public :: model_data_t
 <<Model data: types>>=
   type :: model_data_t
      private
      type(string_t) :: name
+     integer :: scheme = 0
      type(modelpar_real_t), dimension(:), pointer :: par_real => null ()
      type(modelpar_complex_t), dimension(:), pointer :: par_complex => null ()
      type(field_data_t), dimension(:), allocatable :: field
@@ -1588,7 +1594,7 @@ thus avoid keeping track of TARGET attributes.
 <<Model data: procedures>>=
   subroutine model_data_write (model, unit, verbose, &
        show_md5sum, show_variables, show_parameters, &
-       show_particles, show_vertices)
+       show_particles, show_vertices, show_scheme)
     class(model_data_t), intent(in) :: model
     integer, intent(in), optional :: unit
     logical, intent(in), optional :: verbose
@@ -1597,15 +1603,21 @@ thus avoid keeping track of TARGET attributes.
     logical, intent(in), optional :: show_parameters
     logical, intent(in), optional :: show_particles
     logical, intent(in), optional :: show_vertices
-    logical :: show_par, show_prt, show_vtx
+    logical, intent(in), optional :: show_scheme
+    logical :: show_sch, show_par, show_prt, show_vtx
     integer :: u, i
     u = given_output_unit (unit)
+    show_sch = .false.;  if (present (show_scheme)) &
+         show_sch = show_scheme
     show_par = .true.;  if (present (show_parameters)) &
          show_par = show_parameters
     show_prt = .true.;  if (present (show_particles)) &
          show_prt = show_particles
     show_vtx = .true.;  if (present (show_vertices)) &
          show_vtx = show_vertices
+    if (show_sch) then
+       write (u, "(3x,A,1X,I0)")  "scheme =", model%scheme
+    end if
     if (show_par) then
        do i = 1, size (model%par_real)
           call model%par_real(i)%write (u)
@@ -1648,6 +1660,17 @@ deep copy.
   end subroutine model_data_init
   
 @ %def model_data_init
+@ Set the scheme ID.
+<<Model data: model data: TBP>>=
+  procedure :: set_scheme_num => model_data_set_scheme_num
+<<Model data: procedures>>=
+  subroutine model_data_set_scheme_num (model, scheme)
+    class(model_data_t), intent(inout) :: model
+    integer, intent(in) :: scheme
+    model%scheme = scheme
+  end subroutine model_data_set_scheme_num
+  
+@ %def model_data_set_scheme_num
 @ Complete model data initialization.
 <<Model data: model data: TBP>>=
   procedure :: freeze_fields => model_data_freeze_fields
@@ -1668,6 +1691,7 @@ not allocate memory.
     class(model_data_t), intent(in), target :: src
     class(modelpar_data_t), pointer :: data, src_data
     integer :: i
+    model%scheme = src%scheme
     model%par_real = src%par_real
     model%par_complex = src%par_complex
     do i = 1, size (src%field)
@@ -1694,9 +1718,10 @@ not allocate memory.
   end subroutine model_data_copy
 
 @ %def model_data_copy
-@ Return the model name.
+@ Return the model name and numeric scheme.
 <<Model data: model data: TBP>>=
   procedure :: get_name => model_data_get_name
+  procedure :: get_scheme_num => model_data_get_scheme_num
 <<Model data: procedures>>=
   function model_data_get_name (model) result (name)
     class(model_data_t), intent(in) :: model
@@ -1704,10 +1729,18 @@ not allocate memory.
     name = model%name
   end function model_data_get_name
   
+  function model_data_get_scheme_num (model) result (scheme)
+    class(model_data_t), intent(in) :: model
+    integer :: scheme
+    scheme = model%scheme
+  end function model_data_get_scheme_num
+  
 @ %def model_data_get_name
+@ %def model_data_get_scheme
 @ Retrieve a MD5 sum for the current model parameter values and
 decay/polarization settings.  This is
-done by writing them to a temporary file, using a standard format.
+done by writing them to a temporary file, using a standard format.  If the
+model scheme is nonzero, it is also written.
 <<Model data: model data: TBP>>=
   procedure :: get_parameters_md5sum => model_data_get_parameters_md5sum
 <<Model data: procedures>>=
@@ -1721,6 +1754,7 @@ done by writing them to a temporary file, using a standard format.
     call model%real_parameters_to_array (par)
     unit = free_unit ()
     open (unit, status="scratch", action="readwrite")
+    if (model%scheme /= 0)  write (unit, "(I0)")  model%scheme
     write (unit, "(" // FMT_19 // ")")  par
     do i = 1, model%get_n_field ()
        field => model%get_field_ptr_by_index (i)

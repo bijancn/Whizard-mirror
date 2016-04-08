@@ -126,8 +126,9 @@ module parameters_littlest_tpar
 
 contains
 
-  subroutine import_from_whizard (par_array)
+  subroutine import_from_whizard (par_array, scheme)
     real(default), dimension(46), intent(in) :: par_array
+    integer, intent(in) :: scheme
     !!! This corresponds to 1/alpha = 137.03598949333
     real(default), parameter :: &
          alpha = 1.0_default/137.03598949333_default

@@ -32,8 +32,10 @@ module parameters_qcd
   complex(default), public :: gs, igs
   public :: import_from_whizard, model_update_alpha_s
 contains
-  subroutine import_from_whizard (par_array)
+  subroutine import_from_whizard (par_array, scheme)
     real(default), dimension(8), intent(in) :: par_array
+    integer, intent(in) :: scheme
+    integer, parameter :: scheme_massive = 2
     type :: parameter_set
        real(default) :: alphas
        real(default) :: md = 0 !!! par_array(1) locked in default scheme
@@ -46,8 +48,11 @@ contains
     end type parameter_set
     type(parameter_set) :: par
     par%alphas = par_array(1)
-    ! par%md = par_array(2)
-    ! par%mu = par_array(3)
+    select case (scheme)
+    case (scheme_massive)
+       par%md = par_array(2)
+       par%mu = par_array(3)
+    end select
     par%ms = par_array(4)
     par%mc = par_array(5)
     par%mb = par_array(6)

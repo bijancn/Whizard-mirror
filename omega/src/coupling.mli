@@ -1,4 +1,4 @@
-(* $Id: coupling.mli 7444 2016-02-17 15:37:20Z jr_reuter $
+(* $Id: coupling.mli 7506 2016-04-05 14:39:23Z jr_reuter $
 
    Copyright (C) 1999-2016 by
 
@@ -179,6 +179,7 @@ type width =
   | Timelike
   | Running
   | Fudged
+  | Complex_Mass
   | Custom of string
 
 (* \thocwmodulesection{Vertices}

@@ -1,4 +1,4 @@
-! $Id: parameters.Threeshl.f90 7444 2016-02-17 15:37:20Z jr_reuter $
+! $Id: parameters.Threeshl.f90 7505 2016-04-05 08:01:54Z kilian $
 !
 ! Copyright (C) 1999-2016 by 
 !     Wolfgang Kilian <kilian@physik.uni-siegen.de>
@@ -34,10 +34,11 @@ private :: default, free_unit
 
 contains
 
-subroutine import_from_whizard (par)
-real(default), dimension(49), intent(in) :: par
-real(default) :: alphas, mhw, mbulk, eps_l, nideloc, dump, nlow
-integer :: u
+subroutine import_from_whizard (par, scheme)
+  real(default), dimension(49), intent(in) :: par
+  integer, intent(in) :: scheme
+  real(default) :: alphas, mhw, mbulk, eps_l, nideloc, dump, nlow
+  integer :: u
 
 	me_pdg =    par(1)
 	mmu_pdg =   par(2)

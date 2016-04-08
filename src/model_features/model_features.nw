@@ -11638,7 +11638,6 @@ the instances).
      character(32) :: md5sum = ""
      type(string_t), dimension(:), allocatable :: schemes
      type(string_t), allocatable :: selected_scheme
-     integer :: selected_scheme_num = 0
      type(parameter_t), dimension(:), allocatable :: par
      integer :: max_par_name_length = 0
      integer :: max_field_name_length = 0
@@ -11668,6 +11667,10 @@ parameters.
 @ Initialization: Specify the number of parameters, particles,
 vertices and allocate memory.  If an associated DL library is
 specified, load this library.
+
+The model may already carry scheme information, so we have to save and
+restore the scheme number when actually initializing the [[model_data_t]]
+base.
 <<Models: model: TBP>>=
   generic :: init => model_init
   procedure, private :: model_init
@@ -11680,7 +11683,10 @@ specified, load this library.
     integer, intent(in) :: n_par, n_prt, n_vtx
     type(c_funptr) :: c_fptr
     type(string_t) :: libpath
+    integer :: scheme_num
+    scheme_num = model%get_scheme_num ()
     call model%basic_init (name, n_par, n_prt, n_vtx)
+    call model%set_scheme_num (scheme_num)
     if (libname /= "") then
        if (.not. os_data%use_testfiles) then
           libpath = os_data%whizard_models_libpath_local
@@ -11764,7 +11770,7 @@ tree) is displayed, and the vertex hash table is shown.
 <<Models: procedures>>=
   subroutine model_write (model, unit, verbose, &
        show_md5sum, show_variables, show_parameters, &
-       show_particles, show_vertices)
+       show_particles, show_vertices, show_scheme)
     class(model_t), intent(in) :: model
     integer, intent(in), optional :: unit
     logical, intent(in), optional :: verbose
@@ -11773,6 +11779,7 @@ tree) is displayed, and the vertex hash table is shown.
     logical, intent(in), optional :: show_parameters
     logical, intent(in), optional :: show_particles
     logical, intent(in), optional :: show_vertices
+    logical, intent(in), optional :: show_scheme
     logical :: verb, show_md5, show_par, show_var
     integer :: u, i
     u = given_output_unit (unit);  if (u < 0)  return
@@ -11810,7 +11817,8 @@ tree) is displayed, and the vertex hash table is shown.
          show_md5sum, show_variables, &
          show_parameters=.false., &
          show_particles=show_particles, &
-         show_vertices=show_vertices)
+         show_vertices=show_vertices, &
+         show_scheme=show_scheme)
     if (show_var) then
        write (u, "(A)")
        call var_list_write (model%var_list, unit, follow_link=.false.)
@@ -12289,8 +12297,12 @@ Enable schemes: fix the list of allowed schemes.
   
 @ %def model_enable_schemes
 @
-Fix the scheme.  Check if the scheme is allowed.  If no argument is given,
-select the first scheme.
+Find the scheme.  Check if the scheme is allowed.  The numeric index of the
+selected scheme is stored in the [[model_data_t]] base object.
+
+If no argument is given,
+select the first scheme.  The numeric scheme ID will then be $1$, while a
+model without schemes retains $0$.
 <<Models: model: TBP>>=
   procedure :: set_scheme => model_set_scheme
 <<Models: procedures>>=
@@ -12305,7 +12317,7 @@ select the first scheme.
           CHECK_SCHEME: do i = 1, size (model%schemes)
              if (scheme == model%schemes(i)) then
                 allocate (model%selected_scheme, source = scheme)
-                model%selected_scheme_num = i
+                call model%set_scheme_num (i)
                 ok = .true.
                 exit CHECK_SCHEME
              end if
@@ -12317,7 +12329,7 @@ select the first scheme.
           end if
        else
           allocate (model%selected_scheme, source = model%schemes(1))
-          model%selected_scheme_num = 1
+          call model%set_scheme_num (1)
        end if
     else
        if (present (scheme)) then
@@ -12330,10 +12342,10 @@ select the first scheme.
   
 @ %def model_set_scheme
 @
-Get the scheme.
+Get the scheme.  Note that the base [[model_data_t]] provides a
+[[get_scheme_num]] getter function.
 <<Models: model: TBP>>=
   procedure :: get_scheme => model_get_scheme
-  procedure :: get_scheme_num => model_get_scheme_num
 <<Models: procedures>>=
   function model_get_scheme (model) result (scheme)
     class(model_t), intent(in) :: model
@@ -12345,14 +12357,7 @@ Get the scheme.
     end if
   end function model_get_scheme
   
-  function model_get_scheme_num (model) result (n)
-    class(model_t), intent(in) :: model
-    integer :: n
-    n = model%selected_scheme_num
-  end function model_get_scheme_num
-  
 @ %def model_get_scheme
-@ %def model_get_scheme_num
 @
 Check if a model has been set up with a specific name and (if
 applicable) scheme.  This helps in determining whether we need a new
@@ -12668,8 +12673,8 @@ module variables:
       type(parse_node_t), pointer, intent(in) :: nd_scheme_decl
       type(string_t), intent(in), optional :: scheme
       type(parse_node_t), pointer :: nd_list, nd_entry
-      integer :: i, n_schemes
       type(string_t), dimension(:), allocatable :: schemes
+      integer :: i, n_schemes
       nd_list => nd_scheme_decl%get_sub_ptr (3)
       nd_entry => nd_list%get_sub_ptr ()
       n_schemes = nd_list%get_n_sub ()
@@ -12678,6 +12683,14 @@ module variables:
          schemes(i) = nd_entry%get_string ()
          nd_entry => nd_entry%get_next_ptr ()
       end do
+      if (present (scheme)) then
+         do i = 1, n_schemes
+            if (schemes(i) == scheme)  goto 10   ! block exit
+         end do
+         call msg_fatal ("Scheme '" // char (scheme) &
+              // "' is not supported by model '" // char (model_name) // "'")
+      end if
+10    continue
       call model%enable_schemes (schemes)
       call model%set_scheme (scheme)
     end subroutine handle_schemes
@@ -13401,6 +13414,15 @@ part of the [[model_data_t]] base type and are copied afterwards via its
     n_prt = orig%get_n_field ()
     n_vtx = orig%get_n_vtx ()
     call model%basic_init (orig%get_name (), n_par, n_prt, n_vtx)
+    if (allocated (orig%schemes)) then
+       allocate (model%schemes (size (orig%schemes)))
+       model%schemes(:) = orig%schemes(:)
+       if (allocated (orig%selected_scheme)) then
+          allocate (model%selected_scheme)
+          model%selected_scheme = orig%selected_scheme
+          call model%set_scheme_num (orig%get_scheme_num ())
+       end if
+    end if
     model%md5sum = orig%md5sum
     do i = 1, n_par
        call model%copy_parameter (i, orig%par(i))
@@ -13941,45 +13963,43 @@ parameter list.
     call model_list%read_model (var_str ("Test7"), var_str ("Test7.mdl"), &
          os_data, model)
     call model%write (u, show_md5sum=.false.)
+    call show_var_list ()
     call show_par_array ()
 
+    call model_list%final ()
+
     write (u, *)
-    write (u, "(A)")  "* Variable list, scheme foo"
+    write (u, "(A)")  "* Model output, scheme foo"
     write (u, *)
     
-    call model_list%final ()
     call model_list%read_model (var_str ("Test7"), var_str ("Test7.mdl"), &
          os_data, model, scheme = var_str ("foo"))
-
-    var_list => model%get_var_list_ptr ()
-    call var_list%write (u)
+    call model%write (u, show_md5sum=.false.)
+    call show_var_list ()
     call show_par_array ()
+
+    call model_list%final ()
 
     write (u, *)
     write (u, "(A)")  "* Model output, scheme bar"
     write (u, *)
     
-    call model_list%final ()
     call model_list%read_model (var_str ("Test7"), var_str ("Test7.mdl"), &
          os_data, model, scheme = var_str ("bar"))
     call model%write (u, show_md5sum=.false.)
-
-    write (u, *)
-    write (u, "(A)")  "* Variable list, scheme bar"
-    write (u, *)
-    
-    var_list => model%get_var_list_ptr ()
-    call var_list%write (u)
+    call show_var_list ()
     call show_par_array ()
+
+    call model_list%final ()
 
     write (u, *)
     write (u, "(A)")  "* Model output, scheme gee"
     write (u, *)
     
-    call model_list%final ()
     call model_list%read_model (var_str ("Test7"), var_str ("Test7.mdl"), &
          os_data, model, scheme = var_str ("gee"))
     call model%write (u, show_md5sum=.false.)
+    call show_var_list ()
     call show_par_array ()
 
     write (u, *)
@@ -13993,6 +14013,14 @@ parameter list.
 
   contains
     
+    subroutine show_var_list ()
+      write (u, *)
+      write (u, "(A)")  "* Variable list"
+      write (u, *)
+      var_list => model%get_var_list_ptr ()
+      call var_list%write (u)
+    end subroutine show_var_list
+
     subroutine show_par_array ()
       real(default), dimension(:), allocatable :: par
       integer :: n
