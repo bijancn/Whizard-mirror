@@ -3299,7 +3299,6 @@ leave out the denominator because it will cancel out anyway.
           call ftuple%get (i, j)
           i_res = ftuple%i_res
        end associate
-       print *, 'Get_resonance_value: ', i_reg
        pfr = map%res_map%get_resonance_value (i_res, p, nlegreal) 
        i_con = sregion%i_reg_to_i_con (i_reg) 
        map%pseudo_isr = sregion%pseudo_isr
@@ -6362,6 +6361,7 @@ end module nlo_data
     logical :: count_kinematics = .false.
     real(default) :: fks_dij_exp1
     real(default) :: fks_dij_exp2
+    type(string_t), dimension(:), allocatable :: excluded_resonances
   contains
   <<nlo data: fks template: TBP>>
   end type fks_template_t
@@ -7009,6 +7009,7 @@ initial-state phase spaces.
 module nlo_controller
 
 <<Use kinds>>
+<<Use strings>>
   use io_units
   use constants
   use numeric_utils
@@ -8568,6 +8569,8 @@ process.
      (nlo_controller, prc_constants, template, phs_config, model)
      class(nlo_controller_t), intent(inout), target :: nlo_controller
      type(process_constants_t), intent(in), dimension(2) :: prc_constants
+     !!! intent(inout) because the mapping type might  be reset to defeault
+     !!! if no resonances are found
      type(fks_template_t), intent(inout) :: template
      !!! intent(inout) because the phase space might have to be generated new
      class(phs_config_t), intent(inout) :: phs_config
@@ -8933,7 +8936,8 @@ polarized or not.
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
     class(phs_config_t), intent(inout) :: phs_config
     type(resonance_history_t), dimension(:), allocatable :: resonance_histories
-    type(resonance_history_t), dimension(:), allocatable :: resonance_histories_clean
+    type(resonance_history_t), dimension(:), allocatable :: &
+       resonance_histories_clean, resonance_histories_filtered
     logical :: success
     integer :: mapping_type
     mapping_type = template%mapping_type
@@ -8950,18 +8954,20 @@ polarized or not.
                 nlo_controller%particle_data%n_in, &
                 nlo_controller%particle_states%flv_state_born (:,1), &
                 resonance_histories_clean, success)
+             if (success) call filter_particles_from_resonances (resonance_histories_clean, &
+                template%excluded_resonances, model, success, resonance_histories_filtered)
              if (.not. success) &
                 template%mapping_type = FKS_DEFAULT
           case (FACTORIZATION_THRESHOLD)
              allocate (resonance_histories_clean (1))
-             resonance_histories_clean = create_resonance_histories_for_threshold ()
+             resonance_histories_filtered = create_resonance_histories_for_threshold ()
           end select
        end select
     end select
     call nlo_controller%init_region_data (template, model)
     select case (template%mapping_type)
     case (FKS_RESONANCES)
-       call nlo_controller%init_resonance_info (resonance_histories_clean)
+       call nlo_controller%init_resonance_info (resonance_histories_filtered)
        nlo_controller%settings%use_resonance_mappings = .true.
     end select
     call nlo_controller%reg_data%compute_number_of_phase_spaces ()
@@ -9226,6 +9232,37 @@ polarized or not.
   end subroutine clean_resonance_histories
 
 @ %def clean_resonance_histories
+@
+<<nlo controller: procedures>>=
+  subroutine filter_particles_from_resonances (res_hist, exclusion_list, &
+    model, success, res_hist_filtered)
+    type(resonance_history_t), intent(in), dimension(:) :: res_hist
+    type(string_t), intent(in), dimension(:) :: exclusion_list
+    type(model_t), intent(in) :: model
+    logical, intent(out) :: success
+    type(resonance_history_t), intent(out), dimension(:), allocatable :: res_hist_filtered
+    integer :: i_hist, i_flv, i_new, n_orig
+    logical, dimension(size (res_hist)) :: to_filter 
+    type(flavor_t) :: flv 
+    to_filter = .false.
+    n_orig = size (res_hist)
+    do i_flv = 1, size (exclusion_list)
+       call flv%init (exclusion_list (i_flv), model)
+       do i_hist = 1, size (res_hist)
+          if (res_hist(i_hist)%has_flavor (flv)) to_filter (i_hist) = .true.
+       end do 
+    end do
+    allocate (res_hist_filtered (n_orig - count (to_filter)))
+    i_new = 1
+    do i_hist = 1, size (res_hist)
+       if (.not. to_filter (i_hist)) then
+          res_hist_filtered (i_new) = res_hist (i_hist)
+          i_new = i_new + 1
+       end if
+    end do 
+  end subroutine filter_particles_from_resonances
+
+@ %def filter_particles_from_resonances
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: init_region_data => nlo_controller_init_region_data
