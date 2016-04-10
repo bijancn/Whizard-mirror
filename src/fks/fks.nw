@@ -234,6 +234,11 @@ contains
 
 end module fks_regions
 @ %def fks_regions
+@ We need these parameters for various temporary buffers
+<<fks regions: parameters>>=
+  integer, parameter, public :: N_MAX_ALR = 200
+  integer, parameter, public :: N_MAX_FLV = 50
+
 @ There are three fundamental splitting types: $q \rightarrow qg$, $g \rightarrow gg$ and
 $g \rightarrow qq$.
 <<fks regions: parameters>>=
@@ -1891,6 +1896,62 @@ must be compatible with the resonance.
   end function region_data_get_underlying_born_index
 
 @ %def region_data_get_underlying_born_index
+@ Creates a list of $\alpha_r$ which share the same underlying Born index.
+<<fks regions: reg data: TBP>>=
+  procedure :: get_uborn_group => region_data_get_uborn_group
+<<fks regions: procedures>>=
+  function region_data_get_uborn_group (reg_data, uborn_index) result (uborn_group)
+    integer, dimension(:), allocatable :: uborn_group
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: uborn_index
+    integer :: alr, n_uborn, i_uborn
+    n_uborn = 0
+    print *, 'Count n_uborn'
+    print *, 'All uborn indices: ', reg_data%underlying_borns
+    print *, 'uborn_index: ', uborn_index
+    do alr = 1, reg_data%n_regions
+       if (reg_data%regions(alr)%uborn_index == uborn_index) n_uborn = n_uborn + 1
+    end do
+    print *, 'n_uborn: ', n_uborn
+    if (n_uborn > 0) then
+       allocate (uborn_group (n_uborn))
+       i_uborn = 1
+       do alr = 1, reg_data%n_regions
+          if (reg_data%regions(alr)%uborn_index == uborn_index) then
+             uborn_group (i_uborn) = alr
+             i_uborn = i_uborn + 1
+          end if
+       end do
+    end if
+  end function region_data_get_uborn_group
+
+@ %def region_data_get_uborn_group
+@ Creates a list of $\alpha_r$ which share the same underlying Born index
+<<fks regions: reg data: TBP>>=
+  procedure :: get_emitter_group => region_data_get_emitter_group
+<<fks regions: procedures>>=
+  function region_data_get_emitter_group (reg_data, emitter) result (emitter_group)
+    integer, dimension(:), allocatable :: emitter_group
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: emitter
+    integer :: alr, n_emitter, i_emitter
+    n_emitter = 0
+    do alr = 1, reg_data%n_regions
+       if (reg_data%regions(alr)%emitter == emitter) n_emitter = n_emitter + 1
+    end do
+    if (n_emitter > 0) then
+       allocate (emitter_group (n_emitter))
+       i_emitter = 1
+       do alr = 1, reg_data%n_regions
+          if (reg_data%regions(alr)%emitter == emitter) then
+             emitter_group (i_emitter) = alr
+             i_emitter = i_emitter + 1
+          end if
+       end do
+    end if
+  end function region_data_get_emitter_group
+
+@ %def region_data_get_emitter_group
 @ Returns $S_i = \frac{1}{\mathcal{D}d_i}$ or $S_{ij} =
 \frac{1}{\mathcal{D}d_{ij}}$ for one particular singular region.  At
 this point, the flavor array should be rearranged in such a way that
@@ -2232,7 +2293,7 @@ of the present one is increased.
   subroutine region_data_find_emitters (reg_data)
     class(region_data_t), intent(inout) :: reg_data
     integer :: alr, j, n_em, em
-    integer, dimension(10) :: em_count
+    integer, dimension(N_MAX_ALR) :: em_count
     em_count = -1
     n_em = 0
 
@@ -7343,6 +7404,7 @@ and virtual counterterms.
     real(default), dimension(:,:,:), allocatable :: beta_ij
     logical :: beta_ij_evaluated = .false.
     logical :: color_is_conserved = .false.
+    integer, dimension(:), allocatable :: equivalent_color_up_to_sign
   contains
   <<nlo controller: color data: TBP>>
   end type color_data_t
@@ -7366,11 +7428,12 @@ and virtual counterterms.
     call prc_constants(2)%get_col_state (color_data%col_state_real)
     call prc_constants(2)%get_cf_index (color_data%cf_index_real)
     call prc_constants(1)%get_color_factors (color_data%color_factors_born)
-    color_data%n_col_born = size (color_data%col_state_born(1, 1, :))
-    color_data%n_col_real = size (color_data%col_state_real(1 ,1, :))
+    color_data%n_col_born = size (color_data%col_state_born (1, 1, :))
+    color_data%n_col_real = size (color_data%col_state_real (1 ,1, :))
     call color_data%init_ghost_flags &
        (prc_constants(1)%get_ghost_flag(), prc_constants(2)%get_ghost_flag())
     call color_data%init_color (reg_data, included_color_structures)
+    call color_data%check_equivalences ()
     call color_data%init_betaij (reg_data, factorization_mode, included_color_structures)
   end subroutine color_data_init
 
@@ -7391,6 +7454,45 @@ and virtual counterterms.
   end subroutine color_data_init_ghost_flags
 
 @ %def color_data_init_ghost_flags
+@
+<<nlo controller: color data: TBP>>=
+  procedure :: check_equivalences => color_data_check_equivalences
+<<nlo controller: procedures>>=
+  subroutine color_data_check_equivalences (color_data)
+    class(color_data_t), intent(inout) :: color_data
+    integer :: i_col1, i_col2
+    allocate (color_data%equivalent_color_up_to_sign (color_data%n_col_born))
+    color_data%equivalent_color_up_to_sign (1) = 1
+    do i_col1 = 1, color_data%n_col_born
+       do i_col2 = 1, i_col1 - 1 
+          if (is_equivalent (color_data%col_state_born (:, :, i_col1), &
+             color_data%col_state_born (:, :, i_col2))) then
+             color_data%equivalent_color_up_to_sign (i_col1) = i_col2
+          else
+             color_data%equivalent_color_up_to_sign (i_col1) = i_col1
+          end if
+       end do
+    end do
+    print *, 'EQUIVALENT COLORS: ' 
+    print *, color_data%equivalent_color_up_to_sign
+  contains
+    function is_equivalent (col1, col2) result (equiv)
+      logical :: equiv
+      integer, intent(in), dimension(:,:) :: col1, col2
+      integer :: leg
+      integer, dimension(2) :: c1, c2, c3
+      equiv = .true.
+      do leg = 1, size (col1, dim = 2)
+         c1 = col1(:, leg); c2 = col2(:, leg)
+         c3(1) = -c2(2); c3(2) = -c2(1)
+         print *, 'c1: ', c1, 'c2: ', c2, 'c3: ', c3
+         equiv = equiv .and. (all (c1 == c2) .or. all (c1 == c3))
+         if (.not. equiv) exit
+      end do
+    end function is_equivalent
+  end subroutine color_data_check_equivalences
+    
+@ %def color_data_check_equivalences
 @
 <<nlo controller: color data: TBP>>=
   procedure :: init_color => color_data_init_color
@@ -7582,7 +7684,7 @@ and virtual counterterms.
     logical, dimension(:,:), allocatable :: cf_present
     type(singular_region_t), dimension(2,100) :: reg
     integer ::  i, j, k, l
-    integer :: alr
+    integer :: alr, n_alr
     type(ftuple_color_map_t) :: icm1, icm2
     integer :: i1, i2
     real(default) :: color_factor, color_factor_born
@@ -7596,14 +7698,29 @@ and virtual counterterms.
     integer :: sign
     integer, dimension(reg_data%n_regions) :: found_uborn_indices
     logical, dimension(reg_data%n_flv_born, reg_data%n_regions) :: found_alrs
+    integer, dimension(:), allocatable :: uborn_group, em1_group, em2_group
+    integer, dimension(:), allocatable :: compute_alrs
+    bij = zero
     color_factor = zero; color_factor_born = zero
     found_uborn_indices = 0
     found_alrs = .false.
     found = .false.
+    uborn_group = reg_data%get_uborn_group (uborn_index)
+    em1_group = reg_data%get_emitter_group (em1)
+    em2_group = reg_data%get_emitter_group (em2)
+    n_alr = 0
+    do i = 1, size (uborn_group)
+       n_alr = n_alr + count (uborn_group(i) == em1_group) + count (uborn_group(i) == em2_group)
+    end do
+    if (n_alr == 0) return
+    allocate (compute_alrs (n_alr))
+    compute_alrs = &
+       pack (uborn_group, [(any (uborn_group(i) == em1_group) .or. any (uborn_group(i) == em2_group), &
+       i = 1, size (uborn_group))])
     !!! Include distinction between Born flavors
     do i = 1, size (color_data%color_factors_born)
-       color_factor_born = color_factor_born + &
-          real (color_data%color_factors_born (i))
+       if (color_data%equivalent_color_up_to_sign (i) == i) &
+          color_factor_born = color_factor_born + real (color_data%color_factors_born (i))
     end do
     i1 = 1; i2 = 1
     do i = 1, color_data%n_col_real
@@ -7628,37 +7745,28 @@ and virtual counterterms.
     i_reg = 1
 
     do alr = 1, reg_data%n_regions
-        if (uborn_index == reg_data%regions(alr)%uborn_index) then
-           if (any (uborn_index == found_uborn_indices) .and. &
-              all (found_alrs (uborn_index, :))) then
-              cycle
-           else
-              found_uborn_indices(alr) = uborn_index
-              found_alrs (uborn_index, alr) = .true.
-           end if
-           if (em1 == reg_data%regions(alr)%emitter .or. &
-              (em1 <= 2 .and. reg_data%regions(alr)%emitter == 0)) then
-              reg(1, i_reg(1)) = reg_data%regions(alr)
-              i_reg(1) = i_reg(1) + 1
-              found(1) = .true.
-           end if
-           if (em2 == reg_data%regions(alr)%emitter .or. &
-              (em2 <= 2 .and. reg_data%regions(alr)%emitter == 0)) then
-              reg(2, i_reg(2)) = reg_data%regions(alr)
-              i_reg(2) = i_reg(2) + 1
-              found(2) = .true.
-           end if
+        if (.not. any (compute_alrs == alr)) cycle
+        if (em1 == reg_data%regions(alr)%emitter .or. &
+           (em1 <= 2 .and. reg_data%regions(alr)%emitter == 0)) then
+           reg(1, i_reg(1)) = reg_data%regions(alr)
+           i_reg(1) = i_reg(1) + 1
+           found(1) = .true.
+        end if
+        if (em2 == reg_data%regions(alr)%emitter .or. &
+           (em2 <= 2 .and. reg_data%regions(alr)%emitter == 0)) then
+           reg(2, i_reg(2)) = reg_data%regions(alr)
+           i_reg(2) = i_reg(2) + 1
+           found(2) = .true.
         end if
     end do
     if (.not. (found(1) .and. found(2))) then
-       bij = zero
        return
     end if
 
     do i = 1, i_reg(1) - 1
        do j = 1, i_reg(2) - 1
-          icm1 = color_data%icm (reg(1,i)%alr)
-          icm2 = color_data%icm (reg(2,j)%alr)
+          icm1 = color_data%icm (reg(1, i)%alr)
+          icm2 = color_data%icm (reg(2, j)%alr)
 
           allocate (iarray1 (size (icm1%get_index_array ())))
           allocate (iarray2 (size (icm2%get_index_array ())))
@@ -8109,6 +8217,9 @@ end module nlo_controller_uti
     call test(nlo_color_data_2, "nlo_color_data_2", &
        "Test creation of the beta_ij-matrix for ISR", &
        u, results)
+    call test(nlo_color_data_3, "nlo_color_data_3", &
+       "Test creation of the beta_ij-matrix for ISR and multiple Born structures (Drell Yan)", &
+       u, results)
   end subroutine nlo_color_data_test
 
 @ %def nlo_color_data_test
@@ -8180,6 +8291,7 @@ end module nlo_controller_uti
    allocate (included_color_structures (2))
    included_color_structures = [1, 2]
    call color_data%init_color (reg_data, included_color_structures)
+   call color_data%check_equivalences ()
    call color_data%init_betaij (reg_data, NO_FACTORIZATION, included_color_structures)
    call color_data%write (u, verbose = .true.)
   end subroutine nlo_color_data_1
@@ -8284,11 +8396,145 @@ end module nlo_controller_uti
    allocate (included_color_structures (2))
    included_color_structures = [2, 6]
    call color_data%init_color (reg_data, included_color_structures)
+   call color_data%check_equivalences ()
    call color_data%init_betaij (reg_data, NO_FACTORIZATION, included_color_structures)
    call color_data%write (u, verbose = .true.)
   end subroutine nlo_color_data_2
 
 @ %def nlo_color_data_2
+@
+<<nlo controller: test declarations>>=
+  public :: nlo_color_data_3
+<<nlo controller: tests>>=
+  subroutine nlo_color_data_3 (u)
+    integer, intent(in) :: u
+    type(color_data_t) :: color_data
+    integer :: n_legs_born, n_legs_real
+    integer :: n_flv_born, n_flv_real
+    integer :: n_col_born, n_col_real
+    integer :: n_in
+    integer, dimension(:,:), allocatable :: flv_born, flv_real
+    type(region_data_t) :: reg_data
+    logical, dimension(:, :), allocatable :: ghost_flag_born, ghost_flag_real
+    integer, dimension(:), allocatable :: included_color_structures
+    integer :: i_col, i_flv, pdg1, pdg2
+    write (u, "(A)") "* Test output: nlo_color_data_2"
+    write (u, "(A)") "* Purpose: Test internal computation of color-correlated matrix elements"
+    write (u, "(A)") "* in the color-flow scheme"
+    write (u, "(A)")
+    write (u, "(A)") "* Process: u u~ -> Z Z"
+  
+    print *, 'Entering nlo_color_data_3'
+   
+    n_legs_born = 4; n_legs_real = 5
+    n_flv_born = 10; n_flv_real = 30
+    n_col_born = 2; n_col_real = 12
+    print *, 'Check 0'
+    allocate (color_data%col_state_born (2, n_legs_born, n_col_born))
+    associate (col_state_born => color_data%col_state_born)
+       do i_col = 1, n_col_born
+          col_state_born (:, 1, i_col) = [1, 0]
+          col_state_born (:, 2, i_col) = [0, -1]
+          col_state_born (:, 3, i_col) = [0, 0]
+          col_state_born (:, 4, i_col) = [0, 0]
+       end do
+    end associate
+    allocate (color_data%col_state_real (2, n_legs_real, n_col_real))
+    associate (col_state_real => color_data%col_state_real)
+       do i_col = 1, n_col_real, 6
+          col_state_real (:, 1, i_col) = [0, 0]
+          col_state_real (:, 2, i_col) = [0, -2]
+          col_state_real (:, 3, i_col) = [0, 0]
+          col_state_real (:, 4, i_col) = [0, 0]
+          col_state_real (:, 5, i_col) = [0, -2]
+          col_state_real (:, 1, i_col + 1) = [1, 0]
+          col_state_real (:, 2, i_col + 1) = [0, -1]
+          col_state_real (:, 3, i_col + 1) = [0, 0]
+          col_state_real (:, 4, i_col + 1) = [0, 0]
+          col_state_real (:, 5, i_col + 1) = [0, 0]
+          col_state_real (:, 1, i_col + 2) = [1, 0]
+          col_state_real (:, 2, i_col + 2) = [2, -1]
+          col_state_real (:, 3, i_col + 2) = [0, 0]
+          col_state_real (:, 4, i_col + 2) = [0, 0]
+          col_state_real (:, 5, i_col + 2) = [2, 0]
+          col_state_real (:, 1, i_col + 3) = [2, -1]
+          col_state_real (:, 2, i_col + 3) = [0, -2]
+          col_state_real (:, 3, i_col + 3) = [0, 0]
+          col_state_real (:, 4, i_col + 3) = [0, 0]
+          col_state_real (:, 5, i_col + 3) = [0, -1]
+          col_state_real (:, 1, i_col + 4) = [2, 0]
+          col_state_real (:, 2, i_col + 4) = [0, 0]
+          col_state_real (:, 3, i_col + 4) = [0, 0]
+          col_state_real (:, 4, i_col + 4) = [0, 0]
+          col_state_real (:, 5, i_col + 4) = [2, 0]
+          col_state_real (:, 1, i_col + 5) = [2, 0]
+          col_state_real (:, 2, i_col + 5) = [0, -1]
+          col_state_real (:, 3, i_col + 5) = [0, 0]
+          col_state_real (:, 4, i_col + 5) = [0, 0]
+          col_state_real (:, 5, i_col + 5) = [2, -1]
+      end do
+   end associate
+   print *, 'Check 1'
+   allocate (color_data%cf_index_real (2, n_col_real))
+   do i_col = 1, n_col_real
+      color_data%cf_index_real(:, i_col) = [i_col, i_col]
+   end do
+   allocate (color_data%color_factors_born (n_col_born))
+   color_data%color_factors_born (:) = cmplx (3, 0)
+   color_data%n_col_born = n_col_born
+   color_data%n_col_real = n_col_real
+
+   print *, 'Check 2'
+   n_in = 2
+   allocate (flv_born (n_legs_born, n_flv_born))
+   allocate (flv_real (n_legs_real, n_flv_real))
+   pdg1 = -5; pdg2 = 5
+   do i_flv = 1, n_flv_born
+      if (pdg1 == 0 .and. pdg2 == 0) then
+         pdg1 = pdg1 + 1; pdg2 = pdg2 - 1 
+      end if
+      flv_born (:, i_flv) = [pdg1, pdg2, 23, 23]
+      pdg1 = pdg1 + 1; pdg2 = pdg2 - 1 
+   end do
+   pdg1 = -5; pdg2 = 5
+   do i_flv = 1, n_flv_real, 3  
+      if (pdg1 == 0 .and. pdg2 == 0) then
+         pdg1 = pdg1 + 1; pdg2 = pdg2 - 1 
+      end if
+      flv_real (:, i_flv) = [pdg1, pdg2, 23, 23, 21]
+      flv_real (:, i_flv + 1) = [pdg1, 21, 23, 23, pdg1]
+      flv_real (:, i_flv + 2) = [21, pdg2, 23, 23, pdg2]
+      pdg1 = pdg1 + 1; pdg2 = pdg2 - 1 
+   end do
+   call setup_region_data_for_test (n_in, flv_born, flv_real, reg_data)
+   allocate (ghost_flag_born (n_legs_born, n_col_born))
+   allocate (ghost_flag_real (n_legs_real, n_col_real))
+   do i_col = 1, n_col_born
+      ghost_flag_born (:, i_col) = .false.
+   end do
+   do i_col = 1, n_col_real, 6
+      ghost_flag_real (1, i_col) = .true.
+      ghost_flag_real (2 : n_legs_real, i_col) = .false.
+      ghost_flag_real (1 : n_legs_born, i_col + 1) = .false.
+      ghost_flag_real (n_legs_real, i_col + 1) = .true.
+      ghost_flag_real (:, i_col + 2) = .false.
+      ghost_flag_real (:, i_col + 3) = .false.
+      ghost_flag_real (1, i_col + 4) = .false.
+      ghost_flag_real (2, i_col + 4) = .false.
+      ghost_flag_real (3 : n_legs_real, i_col + 4) = .true.
+      ghost_flag_real (:, i_col + 5) = .false.
+   end do
+   call color_data%init_ghost_flags (ghost_flag_born, ghost_flag_real)
+   allocate (included_color_structures (2))
+   included_color_structures = [2, 6]
+   call color_data%init_color (reg_data, included_color_structures)
+   call color_data%check_equivalences ()
+   call color_data%init_betaij (reg_data, NO_FACTORIZATION, included_color_structures)
+   print *, 'Done: init_betaij'
+   call color_data%write (u, verbose = .true.)
+  end subroutine nlo_color_data_3
+
+@ %def nlo_color_data_3
 @
 \subsection{Putting it together}
 <<nlo data: public>>=
@@ -8991,7 +9237,7 @@ polarized or not.
     class(nlo_controller_t), intent(inout) :: nlo_controller
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
     integer, intent(in), dimension(:) :: flavor_indices, color_indices
-    integer, dimension(10) :: checked_uborns
+    integer, dimension(N_MAX_FLV) :: checked_uborns
     integer, dimension(:), allocatable :: i_unique
     integer, dimension(:), allocatable :: i_flv
     type(color_index_list), dimension(:), allocatable :: i_col
