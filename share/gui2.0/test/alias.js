@@ -1,5 +1,4 @@
-require('babel-polyfill');
-const alias = require('../controllers/alias.js');
+const alias = require('../dist/alias.js');
 const expect = require('chai').expect;
 const chai = require('chai');
 const chaiAsPromised = require('chai-as-promised');

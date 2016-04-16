@@ -5,7 +5,7 @@
   var promisify = require('es6-promisify');
   var log = require('js-logger');
   var utils = require('./helpers/utils');
-  var guiconf = require('./controllers/guiconfig'); // This should parse a settings JSON/YAML
+  var guiconf = require('./guiconfig'); // This should parse a settings JSON/YAML
   var es6Promise = require('es6-promise');
   var app = express();
   var mongoPort = 27017;
@@ -24,8 +24,8 @@
   var startServer = function(db) {
     console.log('MongoDB successfully connected on port: ' + mongoPort);
     app.set('view engine', 'ejs');
-    app.use('/public', express.static(process.cwd() + '/public'));
-    app.use('/controllers', express.static(process.cwd() + '/controllers'));
+    app.use('/public', express.static(process.cwd() + '/../public'));
+    app.use('/controllers', express.static(process.cwd()));
     app.get('/', function(req, res) {
       res.render('index');
     });
