@@ -1,5 +1,4 @@
-require('babel-polyfill');
-const utils = require('../helpers/utils');
+const utils = require('../dist/utils');
 const expect = require('chai').expect;
 const chai = require('chai');
 const chaiAsPromised = require('chai-as-promised');
