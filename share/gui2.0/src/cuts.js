@@ -1,5 +1,5 @@
-function SindarinCutsToString () {
-  return "cuts = " + this.CutsData;
+function SindarinCutsToString() {
+  return 'cuts = ' + this.CutsData;
 }
 
 function SindarinCuts(cuts) {
@@ -7,9 +7,9 @@ function SindarinCuts(cuts) {
   this.toString = SindarinCutsToString;
 }
 
-function SindarinWriteCuts () {
-  for(var i = 0; i < this.list.length; i++) {
-    var elem = this.list[i];
+function SindarinWriteCuts() {
+  for (let i = 0; i < this.list.length; i++) {
+    const elem = this.list[i];
     if (elem instanceof SindarinCuts) {
       if (elem.CutsData.length > 0) {
         this.src += elem.toString() + '\n';
@@ -194,69 +194,74 @@ var cuts = (function() {
 }());
 
 
-/*
- * Clicking on Cuts->Particles
- * Input is added for the last active input field
- */
-$(document).on("click", ".cuts-particles-click", function() {
-  //var oldList = ActiveInputParticleElement.val();
-  var oldList = cuts.getLastActiveInputElement().val();
-  cuts.getLastActiveInputElement().val(oldList + ' ' + $(this).text());
-});
+// TODO: (bcn 2016-04-17) these statements used to be directly called in cuts.js
+// this function has to be called on the frontend
+function setupDocument() {
+  /*
+   * Clicking on Cuts->Particles
+   * Input is added for the last active input field
+   */
+  $(document).on("click", ".cuts-particles-click", function() {
+    //var oldList = ActiveInputParticleElement.val();
+    var oldList = cuts.getLastActiveInputElement().val();
+    cuts.getLastActiveInputElement().val(oldList + ' ' + $(this).text());
+  });
 
-/*
- *  Clicking on the input field making it active
- */
-$(document).on("click", ".cuts-particles-active", function() {
-  //ActiveInputParticleElement = $(this);
-  cuts.setLastActiveInputElement($(this));
-});
+  /*
+   *  Clicking on the input field making it active
+   */
+  $(document).on("click", ".cuts-particles-active", function() {
+    //ActiveInputParticleElement = $(this);
+    cuts.setLastActiveInputElement($(this));
+  });
 
-/*
- *  Checking focus to show/hide particle Cuts -> Particles List
- */
-$(document).on("click", "body", function() {
-  if ($(".cuts-particles-active").is(":focus") || $(".cuts-particles-click").is(":focus"))
-    $("#cuts-html-particles").fadeIn("fast");
-  else
-    $("#cuts-html-particles").fadeOut("fast");
+  /*
+   *  Checking focus to show/hide particle Cuts -> Particles List
+   */
+  $(document).on("click", "body", function() {
+    if ($(".cuts-particles-active").is(":focus") || $(".cuts-particles-click").is(":focus"))
+      $("#cuts-html-particles").fadeIn("fast");
+    else
+      $("#cuts-html-particles").fadeOut("fast");
 
-});
+  });
 
-/*
- * Selecting cut name (Pt, M)
- */
-$(document).on("click", ".cut-name", function() {
-  cuts.setLastClickedCutName($(this));
-});
+  /*
+   * Selecting cut name (Pt, M)
+   */
+  $(document).on("click", ".cut-name", function() {
+    cuts.setLastClickedCutName($(this));
+  });
 
-$(document).on("click", ".cuts-select-name", function() {
-  cuts.getLastClickedCutName().html($(this).text() + ' <span class="caret"></span>');
-});
+  $(document).on("click", ".cuts-select-name", function() {
+    cuts.getLastClickedCutName().html($(this).text() + ' <span class="caret"></span>');
+  });
 
-/*
- * Selecting cut inequality sign (>, <)
- */
-$(document).on("click", ".cut-eq", function() {
-  cuts.setLastClickedCutEq($(this));
-});
+  /*
+   * Selecting cut inequality sign (>, <)
+   */
+  $(document).on("click", ".cut-eq", function() {
+    cuts.setLastClickedCutEq($(this));
+  });
 
-$(document).on("click", ".cuts-select-eq", function() {
-  cuts.getLastClickedCutEq().html($(this).text() + ' <span class="caret"></span>');
-});
+  $(document).on("click", ".cuts-select-eq", function() {
+    cuts.getLastClickedCutEq().html($(this).text() + ' <span class="caret"></span>');
+  });
 
-/*
- * Selecting to remove cut
- */
-$(document).on("click", ".cuts-select-delete", function() {
-  cuts.getLastClickedCutName().parent().parent().unbind().remove();
-});
+  /*
+   * Selecting to remove cut
+   */
+  $(document).on("click", ".cuts-select-delete", function() {
+    cuts.getLastClickedCutName().parent().parent().unbind().remove();
+  });
 
-/*
- * Button: Cuts > New Cut
- */
-$(".cuts-newcut").click(function() {
-  //default
-  cuts.AddNewCut('Pt', '>', '', '');
-});
+  /*
+   * Button: Cuts > New Cut
+   */
+  $(".cuts-newcut").click(function() {
+    //default
+    cuts.AddNewCut('Pt', '>', '', '');
+  });
+}
 
+module.exports = {SindarinWriteCuts};
