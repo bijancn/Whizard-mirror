@@ -5,14 +5,14 @@ function SindarinAliasToString() {
   return 'alias ' + this.name + ' = ' + this.alias;
 }
 
-let SindarinAlias = function (str, alias) {
+function SindarinAlias(str, alias) {
   this.name = str;
   this.alias = alias;
   this.toString = SindarinAliasToString;
-  this.test = () => "fooo";
 }
 
 /* TODO: (bcn 2016-03-27) it is very unclear what *this* will be for this function */
+// it is not even testable at this level
 function SindarinWriteAliases() {
   for (let i = 0; i < this.nElements; i++) {
     if (this.list[i] instanceof SindarinAlias) {
@@ -34,13 +34,12 @@ function rebuildAliasList() {
           + i + '><span class="glyphicon glyphicon-remove-sign" ' +
           'aria-hidden="true"></span></a></div>');
     }
-    $("#pop_aliases").append('</div>');
+    $('#pop_aliases').append('</div>');
   }
 }
 
-/*
- * Add new alias, useful with examples
- */
+// TODO: (bcn 2016-04-16) why is this capitalized? does it build a class?
+// Add new alias, useful with examples
 function AddAlias(name, str) {
   ExternalSindarinList.push(new SindarinAlias(name, str));
   rebuildAliasList();
@@ -51,4 +50,5 @@ function CleanAlias() {
   rebuildAliasList();
 }
 
-module.exports = {SindarinAlias, AddAlias, SindarinWriteAliases, CleanAlias};
+module.exports = {SindarinAlias, AddAlias, SindarinWriteAliases, CleanAlias,
+  rebuildAliasList};

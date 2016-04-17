@@ -194,3 +194,5 @@ function SindarinWriteProcesses () {
     ProcessList = [];
     rebuildProcessList();
   }
+
+module.exports = {SindarinWriteProcesses};

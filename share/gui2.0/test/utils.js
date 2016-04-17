@@ -1,4 +1,4 @@
-const utils = require('../dist/utils');
+const utils = require('../lib/utils');
 const expect = require('chai').expect;
 const chai = require('chai');
 const chaiAsPromised = require('chai-as-promised');
