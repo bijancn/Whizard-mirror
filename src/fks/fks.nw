@@ -3958,7 +3958,7 @@ end module virtual
     real(default) :: sqme_cc
     real(default) :: sqme_virt
     real(default), dimension(:,:), allocatable :: gamma_0, gamma_p, c_flv
-    real(default) :: ren_scale2, fac_scale
+    real(default) :: ren_scale2, fac_scale, es_scale2
     integer, dimension(:), allocatable :: n_is_neutrinos
     integer :: n_in, nlegs, nflv
     logical :: bad_point
@@ -4065,6 +4065,21 @@ center-of-mass energy.
   end subroutine virtual_set_fac_scale
 
 @ %def virtual_set_fac_scale
+<<virtual: virtual: TBP>>=
+  procedure :: set_ellis_sexton_scale => virtual_set_ellis_sexton_scale
+<<virtual: procedures>>=
+  subroutine virtual_set_ellis_sexton_scale (virt, Q2)
+    class(virtual_t), intent(inout) :: virt
+    real(default), intent(in), optional :: Q2
+    if (present (Q2)) then
+       virt%es_scale2 = Q2
+    else
+       virt%es_scale2 = virt%ren_scale2
+    end if
+  end subroutine virtual_set_ellis_sexton_scale
+
+@ %def virtual_set_ellis_sexton_scale
+
 @ The virtual-subtracted matrix element is given by the equation
 \begin{equation}
   \label{virt_sub}
@@ -4098,7 +4113,7 @@ particles involved in the radiation process are massive or massless.
     real(default), intent(in) :: born
     real(default), intent(in), dimension(:,:,:), allocatable :: b_ij
     integer :: alr
-    real(default) :: s, BI, s_o_mu2
+    real(default) :: s, BI, s_o_Q2
     virt%sqme_virt = zero
     virt%Q = zero
     if (virt%bad_point) return
@@ -4111,17 +4126,17 @@ particles involved in the radiation process are massive or massless.
     end if
     associate (flst_born => reg_data%regions(alr)%flst_uborn)
        s = sum (p_born(1 : virt%n_in))**2
-       s_o_mu2 = s / virt%ren_scale2
+       s_o_Q2 = s / virt%es_scale2
        call virt%evaluate_initial_state (sqrt(s), i_flv)
        call virt%compute_collinear_contribution &
           (p_born, sqrt(s), i_flv, flst_born%massive) 
 
        select case (virt%factorization_mode)
        case (FACTORIZATION_THRESHOLD)
-          BI = virt%compute_eikonals_threshold (p_born, s, s_o_mu2, &
+          BI = virt%compute_eikonals_threshold (p_born, s, s_o_Q2, &
                i_flv, alr, reg_data, flst_born, b_ij)
        case default
-          BI = virt%compute_eikonals (p_born, s, s_o_mu2, &
+          BI = virt%compute_eikonals (p_born, s, s_o_Q2, &
                i_flv, alr, reg_data, flst_born, b_ij)
        end select
 
@@ -4168,12 +4183,12 @@ particles involved in the radiation process are massive or massless.
 <<virtual: virtual: TBP>>=
   procedure :: compute_eikonals => virtual_compute_eikonals
 <<virtual: procedures>>=
-  function virtual_compute_eikonals (virtual, p_born, s, s_o_mu2, i_flv, &
+  function virtual_compute_eikonals (virtual, p_born, s, s_o_Q2, i_flv, &
          alr, reg_data, flst_born, b_ij) result (BI)
     real(default) :: BI
     class(virtual_t), intent(inout) :: virtual
     type(vector4_t), intent(in), dimension(:)  :: p_born
-    real(default), intent(in) :: s, s_o_mu2
+    real(default), intent(in) :: s, s_o_Q2
     integer, intent(in) :: i_flv, alr
     type(region_data_t), intent(in) :: reg_data
     type(flv_structure_t), intent(in) :: flst_born
@@ -4186,7 +4201,7 @@ particles involved in the radiation process are massive or massless.
        do j = 1, virtual%nlegs
           if (i /= j) then
              if (flst_born%colored(i) .and. flst_born%colored(j)) then
-                call virtual%compute_eikonal_factor (p_born, flst_born%massive, i, j, s_o_mu2)
+                call virtual%compute_eikonal_factor (p_born, flst_born%massive, i, j, s_o_Q2)
                 BI = BI + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virtual%I(i, j)
                 if (debug2_active (D_VIRTUAL)) &
                    print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
@@ -4203,11 +4218,11 @@ particles involved in the radiation process are massive or massless.
   procedure :: compute_eikonals_threshold => virtual_compute_eikonals_threshold
 <<virtual: procedures>>=
   function virtual_compute_eikonals_threshold (virtual, p_born, s, &
-         s_o_mu2, i_flv, alr, reg_data, flst_born, b_ij) result (BI)
+         s_o_Q2, i_flv, alr, reg_data, flst_born, b_ij) result (BI)
     real(default) :: BI
     class(virtual_t), intent(inout) :: virtual
     type(vector4_t), intent(in), dimension(:)  :: p_born
-    real(default), intent(in) :: s, s_o_mu2
+    real(default), intent(in) :: s, s_o_Q2
     integer, intent(in) :: i_flv, alr
     type(region_data_t), intent(in) :: reg_data
     type(flv_structure_t), intent(in) :: flst_born
@@ -4230,14 +4245,14 @@ particles involved in the radiation process are massive or massless.
       do i = i_start, i_start + 1
          do j = i_start, i_start + 1
             if (i /= j) then
-               call virtual%compute_eikonal_factor (p, [.true., .true., .true., .true.], i, j, s_o_mu2)
+               call virtual%compute_eikonal_factor (p, [.true., .true., .true., .true.], i, j, s_o_Q2)
                b_ij_times_I = b_ij_times_I + b_ij (i, j, reg_data%regions(alr)%uborn_index) * virtual%I(i, j)
                if (debug2_active (D_VIRTUAL)) &
                   print *, 'b_ij: ', b_ij (i,j, reg_data%regions(alr)%uborn_index), &
                          'I_ij: ', virtual%I(i,j)
             else
                !!! massive self eikonals
-               term1 = log(s_o_mu2)
+               term1 = log(s_o_Q2)
                term2 = 0.5_default * I_m_eps (p(i))
                virtual%Q = virtual%Q - cf * (term1 - term2)
             end if
@@ -4287,7 +4302,7 @@ initial-initial interactions.
     if (virt%n_in == 2) then
        do i = 1, virt%n_in
           virt%Q = virt%Q - virt%gamma_0 (i, i_flv) * &
-             log(virt%fac_scale**2 / virt%ren_scale2)
+             log(virt%fac_scale**2 / virt%es_scale2)
        end do
     end if
   end subroutine virtual_evaluate_initial_state
@@ -4315,7 +4330,7 @@ initial-initial interactions.
        if (massive(i)) cycle
        s1 = virt%gamma_p(i, i_flv)
        twoE = two * p_born(i)%p(0)
-       s2 = log (sqrts**2 / virt%ren_scale2)* &
+       s2 = log (sqrts**2 / virt%es_scale2)* &
           (virt%gamma_0(i, i_flv) - &
            two * virt%c_flv(i, i_flv) * log (twoE / sqrts))
        s3 = two * log(twoE / sqrts)**2 * virt%c_flv(i, i_flv)
@@ -4339,7 +4354,7 @@ initial-initial interactions.
     integer :: i
     do i = 1, virt%nlegs
        if (massive(i)) then
-          term1 = log(s / virt%ren_scale2)
+          term1 = log(s / virt%es_scale2)
           term2 = 0.5_default * I_m_eps (p_born(i))
           virt%Q = virt%Q - virt%c_flv (i, i_flv) * (term1 - term2)
        end if
@@ -4409,26 +4424,26 @@ They are defined as follows:
 <<virtual: virtual: TBP>>=
   procedure :: compute_eikonal_factor => virtual_compute_eikonal_factor
 <<virtual: procedures>>=
-  subroutine virtual_compute_eikonal_factor (virt, p_born, massive, i, j, s_o_mu2)
+  subroutine virtual_compute_eikonal_factor (virt, p_born, massive, i, j, s_o_Q2)
     class(virtual_t), intent(inout) :: virt
     type(vector4_t), intent(in), dimension(:) :: p_born
     logical, dimension(:), intent(in) :: massive
     integer, intent(in) :: i, j
-    real(default), intent(in) :: s_o_mu2
+    real(default), intent(in) :: s_o_Q2
     if (massive(i) .and. massive(j)) then
-       virt%I(i,j) = compute_Imm (p_born(i), p_born(j), s_o_mu2)
+       virt%I(i,j) = compute_Imm (p_born(i), p_born(j), s_o_Q2)
     else if (.not. massive(i) .and. massive(j)) then
-       virt%I(i,j) = compute_I0m (p_born(i), p_born(j), s_o_mu2)
+       virt%I(i,j) = compute_I0m (p_born(i), p_born(j), s_o_Q2)
     else if (massive(i) .and. .not. massive(j)) then
-       virt%I(i,j) = compute_I0m (p_born(j), p_born(i), s_o_mu2)
+       virt%I(i,j) = compute_I0m (p_born(j), p_born(i), s_o_Q2)
     else
-       virt%I(i,j) = compute_I00 (p_born(i), p_born(j), s_o_mu2)
+       virt%I(i,j) = compute_I00 (p_born(i), p_born(j), s_o_Q2)
     end if
   end subroutine virtual_compute_eikonal_factor
 
-  function compute_I00 (pi, pj, s_o_mu2) result (I)
+  function compute_I00 (pi, pj, s_o_Q2) result (I)
     type(vector4_t), intent(in) :: pi, pj
-    real(default), intent(in) :: s_o_mu2
+    real(default), intent(in) :: s_o_Q2
     real(default) :: I
     real(default) :: Ei, Ej
     real(default) :: pij, Eij
@@ -4438,8 +4453,8 @@ They are defined as follows:
     s1 = 0; s2 = 0; s3 = 0; s4 = 0; s5 = 0
     Ei = pi%p(0); Ej = pj%p(0)
     pij = pi * pj; Eij = Ei * Ej
-    s1 = 0.5 * log(s_o_mu2)**2
-    s2 = log(s_o_mu2) * log(pij / (two * Eij))
+    s1 = 0.5 * log(s_o_Q2)**2
+    s2 = log(s_o_Q2) * log(pij / (two * Eij))
     s3 = Li2 (pij / (two * Eij))
     s4 = 0.5 * log (pij / (two * Eij))**2
     arglog = one - pij / (2*Eij)
@@ -4451,26 +4466,26 @@ They are defined as follows:
     I = s1 + s2 - s3 + s4 - s5
   end function compute_I00
 
-  function compute_I0m (ki, kj, s_o_mu2) result (I)
+  function compute_I0m (ki, kj, s_o_Q2) result (I)
     type(vector4_t), intent(in) :: ki, kj
-    real(default), intent(in) :: s_o_mu2
+    real(default), intent(in) :: s_o_Q2
     real(default) :: I
     real(default) :: logsomu
     real(default) :: s1, s2, s3
     s1 = 0; s2 = 0; s3 = 0
-    logsomu = log(s_o_mu2)
+    logsomu = log(s_o_Q2)
     s1 = 0.5 * (0.5 * logsomu**2 - pi**2 / 6)
     s2 = 0.5 * I_0m_0 (ki, kj) * logsomu
     s3 = 0.5 * I_0m_eps (ki, kj)
     I = s1 + s2 - s3
   end function compute_I0m
 
-  function compute_Imm (pi, pj, s_o_mu2) result (I)
+  function compute_Imm (pi, pj, s_o_Q2) result (I)
     type(vector4_t), intent(in) :: pi, pj
-    real(default), intent(in) :: s_o_mu2
+    real(default), intent(in) :: s_o_Q2
     real(default) :: I
     real(default) :: s1, s2
-    s1 = 0.5 * log(s_o_mu2) * I_mm_0(pi, pj)
+    s1 = 0.5 * log(s_o_Q2) * I_mm_0(pi, pj)
     s2 = 0.5 * I_mm_eps(pi, pj)
     I = s1 - s2
   end function compute_Imm
@@ -13242,7 +13257,7 @@ end module pdf_subtraction
           end if
        end associate
     end do
-    sqme_born = alpha_s / twopi * (tmp(1) + tmp(2)) * sqme_born
+    !!!sqme_born = alpha_s / twopi * (tmp(1) + tmp(2)) * sqme_born
   end subroutine pdf_subtraction_evaluate
 
 @ %def pdf_subtraction_evaluate
