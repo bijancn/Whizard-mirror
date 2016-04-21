@@ -78,7 +78,7 @@ function DisplayProcessList (ProcessList) {
 function CleanAll() {
   $('input[type="text"]').val('');
   $('#conf-additional').val('');
-  CleanAlias();
+  cleanAlias();
   cuts.Clean();
   Scan.Clean();
   ProcessList = [];

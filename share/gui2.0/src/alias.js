@@ -45,10 +45,10 @@ function AddAlias(name, str) {
   rebuildAliasList();
 }
 
-function CleanAlias() {
+function cleanAlias() {
   ExternalSindarinList = [];
   rebuildAliasList();
 }
 
-module.exports = {SindarinAlias, AddAlias, SindarinWriteAliases, CleanAlias,
+module.exports = {SindarinAlias, AddAlias, SindarinWriteAliases, cleanAlias,
   rebuildAliasList};
