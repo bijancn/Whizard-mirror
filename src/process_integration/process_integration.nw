@@ -2658,7 +2658,7 @@ parameterizing an s-channel resonance.
                   call component%configure_phs (sqrts, process%beam_config, &
                        rebuild, ignore_mismatch, verbose=verbose)
                   call check_and_extend_phs (component, combined_integration)
-               case (NLO_REAL, NLO_MISMATCH, NLO_PDF)
+               case (NLO_REAL, NLO_MISMATCH, NLO_DGLAP)
                   i_born = component%config%get_associated_born ()
                   call check_and_extend_phs (component, combined_integration)
                   call process%component(i_born)%extract_phs_config (phs_config_born)
@@ -4935,7 +4935,7 @@ is hardcoded.
     call mci_entry%results%new_pass ()
     associate (mci_instance => instance%mci_work(mci_entry%i_mci)%mci)
       select case (nlo_type)
-      case (NLO_VIRTUAL, NLO_REAL, NLO_MISMATCH, NLO_PDF)
+      case (NLO_VIRTUAL, NLO_REAL, NLO_MISMATCH, NLO_DGLAP)
          mci_instance%negative_weights = .true.
       end select
       call mci_entry%mci%add_pass (adapt_grids, adapt_weights, final)
@@ -6819,7 +6819,7 @@ matter of the process core.
       select case (nlo_type)
       case (NLO_REAL, NLO_MISMATCH)
         allocate (component%p_seed (n_tot - 1))
-      case (BORN, NLO_VIRTUAL, NLO_PDF, NLO_SUBTRACTION)
+      case (BORN, NLO_VIRTUAL, NLO_DGLAP, NLO_SUBTRACTION)
         allocate (component%p_seed (n_tot))
       end select
       call core%allocate_workspace (component%core_state)
@@ -7175,7 +7175,7 @@ imaginary part of the terms, which should be zero anyway.
             call component%evaluate_sqme_real (term(i), 1)
             call component%evaluate_sqme_virt (term(i))
             call component%evaluate_sqme_mismatch (term(i))
-            call component%evaluate_sqme_pdf (term(i))
+            call component%evaluate_sqme_dglap (term(i))
          end if
       end do
     end associate
@@ -7188,7 +7188,7 @@ imaginary part of the terms, which should be zero anyway.
   subroutine reset_nlo_components (component)
      type(component_instance_t), intent(inout) :: component
      select case (component%config%config%get_nlo_type ())
-     case (NLO_REAL, NLO_VIRTUAL, NLO_PDF, NLO_MISMATCH)
+     case (NLO_REAL, NLO_VIRTUAL, NLO_DGLAP, NLO_MISMATCH)
         associate (collector => component%nlo_controller%sqme_collector)
            collector%sqme_real_non_sub = zero
         end associate
@@ -7363,26 +7363,26 @@ imaginary part of the terms, which should be zero anyway.
   end subroutine component_instance_evaluate_sqme_mismatch
 
 @ %def component_instance_evaluate_sqme_mismatch
-@ Perform the matrix-element evaluation if the component is flagged as pdf
+@ Perform the matrix-element evaluation if the component is a DGLAP remnant
 <<Processes: component instance: TBP>>=
-  procedure :: evaluate_sqme_pdf => component_instance_evaluate_sqme_pdf 
+  procedure :: evaluate_sqme_dglap => component_instance_evaluate_sqme_dglap 
 <<Processes: procedures>>=
-  subroutine component_instance_evaluate_sqme_pdf (component, term)
+  subroutine component_instance_evaluate_sqme_dglap (component, term)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout) :: term
-    if (term%nlo_type /= NLO_PDF) return
+    if (term%nlo_type /= NLO_DGLAP) return
     associate (nlo_controller => component%nlo_controller)
-       if (.not. nlo_controller%pdf_subtraction_is_required ()) then
+       if (.not. nlo_controller%dglap_remnant_is_required ()) then
           component%sqme = zero
           return
        end if
        call nlo_controller%set_alpha_s_born &
                  (component%config%core%get_alpha_s (component%core_state))
-       call nlo_controller%evaluate_pdf_subtraction (component%sqme)
+       call nlo_controller%evaluate_dglap_remnant (component%sqme)
     end associate
-  end subroutine component_instance_evaluate_sqme_pdf
+  end subroutine component_instance_evaluate_sqme_dglap
 
-@ %def component_instance_evaluate_sqme_pdf
+@ %def component_instance_evaluate_sqme_dglap
 @ Perform the matrix-element evaluation if the component is flagged as real
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_real => component_instance_evaluate_sqme_real
@@ -7947,7 +7947,7 @@ The quantum numbers mask of the incoming particle
     allocate (mask_in (n_in))
     mask_in = term%k_term%sf_chain%get_out_mask ()
     select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_PDF)
+    case (BORN, NLO_VIRTUAL, NLO_DGLAP)
       call setup_isolated (term%isolated, core, model, mask_in, term%config%col)
       call setup_connected (term%connected, term%isolated)
       call extract_born_color_configuration ()
@@ -8174,7 +8174,7 @@ kinematics to the evaluators and to the [[subevt]].
        i_term = term%config%i_term
        associate (core => component(i_component)%config%core)
           select case (term%nlo_type)
-          case (BORN, NLO_VIRTUAL, NLO_PDF)
+          case (BORN, NLO_VIRTUAL, NLO_DGLAP)
              call core%compute_eff_kinematics &
                 (i_term, term%int_hard, term%isolated%int_eff, &
                 component(i_component)%core_state)
@@ -8250,7 +8250,7 @@ method may modify the [[core_state]] workspace object.
     i_term = term%config%i_term
     term%p_hard = term%int_hard%get_momenta ()
     select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_PDF)
+    case (BORN, NLO_VIRTUAL, NLO_DGLAP)
        associate (core => component(i_component)%config%core)
           do i = 1, term%config%n_allowed
              term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
@@ -8314,7 +8314,7 @@ physical event.
   subroutine term_instance_evaluate_event_data (term)
     class(term_instance_t), intent(inout) :: term
     select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_PDF)
+    case (BORN, NLO_VIRTUAL, NLO_DGLAP)
       call term%isolated%evaluate_event_data ()
       call term%connected%evaluate_event_data ()
     case (NLO_REAL, NLO_MISMATCH)
@@ -9224,10 +9224,10 @@ to subobject of [[instance]].
                   call component%nlo_controller%init_virtual ()
                case (NLO_MISMATCH)
                   component%nlo_type = NLO_MISMATCH
-               case (NLO_PDF)
+               case (NLO_DGLAP)
                   i_born = component%config%config%get_associated_born ()
-                  component%nlo_type = NLO_PDF
-                  call component%nlo_controller%init_pdf_subtraction ()
+                  component%nlo_type = NLO_DGLAP
+                  call component%nlo_controller%init_dglap_remnant ()
                case (NLO_SUBTRACTION)
                   component%nlo_type = NLO_SUBTRACTION
                end select
@@ -9238,7 +9238,7 @@ to subobject of [[instance]].
                   generator_mode = check_generator_mode (GEN_REAL_PHASE_SPACE)
                   call component%setup_fks_kinematics (process%meta%var_list, &
                      generator_mode)
-               else if (nlo_type == NLO_PDF) then
+               else if (nlo_type == NLO_DGLAP) then
                   call component%setup_fks_kinematics (process%meta%var_list)
                else if (nlo_type == NLO_MISMATCH) then
                   generator_mode = check_generator_mode (GEN_SOFT_MISMATCH)
@@ -9611,7 +9611,7 @@ components, from the seed kinematics.
        do i = 1, size (instance%component)
           if (instance%component(i)%active) then
             select case (instance%component(i)%config%config%get_nlo_type())
-            case (BORN, NLO_VIRTUAL, NLO_PDF)
+            case (BORN, NLO_VIRTUAL, NLO_DGLAP)
               real_phsp = .false.
             case (NLO_REAL)
               real_phsp = .true.
@@ -9777,7 +9777,7 @@ terms, iterating over all active process components.
           associate (term => instance%term(i))
             if (term%active .and. term%passed) then
               select case (term%nlo_type)
-              case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_PDF)
+              case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP)
                  call term%evaluate_interaction (instance%component)
                  call term%evaluate_trace ()
               end select
@@ -9788,7 +9788,7 @@ terms, iterating over all active process components.
           associate (component => instance%component(i))
             if (component%active) then
               select case (component%config%config%get_nlo_type())
-              case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_PDF)
+              case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP)
                  call component%evaluate_sqme (instance%term)
                  instance%sqme = instance%sqme + component%sqme
                  instance%evaluation_status = STAT_EVALUATED_TRACE
