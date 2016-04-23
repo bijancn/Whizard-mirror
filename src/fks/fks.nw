@@ -8872,13 +8872,14 @@ process.
 <<nlo controller: nlo controller: TBP>>=
   procedure :: setup_real_terms => nlo_controller_setup_real_terms
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_setup_real_terms (nlo_controller, template)
+  subroutine nlo_controller_setup_real_terms (nlo_controller, template, sqrts)
      class(nlo_controller_t), intent(inout), target :: nlo_controller
      type(fks_template_t), intent(in) :: template
+     real(default), intent(in) :: sqrts
      integer :: n_in, n_tot_born, n_tot_real
      call nlo_controller%setup_matrix_elements ()
      nlo_controller%alpha_s_born_set = .false.
-     call nlo_controller%init_real_and_isr_kinematics ()
+     call nlo_controller%init_real_and_isr_kinematics (sqrts)
      associate (particle_data => nlo_controller%particle_data)
         n_in = particle_data%n_in
         n_tot_born = n_in + particle_data%n_out_born
@@ -9103,7 +9104,7 @@ polarized or not.
        nlo_controller%real_kinematics, &
        nlo_controller%has_massive_emitter ())
     generator%n_in = nlo_controller%particle_data%n_in
-    call generator%set_beam_energy (sqrts)
+    call generator%set_sqrts_hat (sqrts)
     call generator%set_emitters (nlo_controller%reg_data%emitters)
     call generator%setup_masses (nlo_controller%particle_data%n_in + &
        nlo_controller%particle_data%n_out_born)
@@ -9925,8 +9926,9 @@ polarized or not.
   procedure :: init_real_and_isr_kinematics &
      => nlo_controller_init_real_and_isr_kinematics
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_init_real_and_isr_kinematics (nlo_controller)
+  subroutine nlo_controller_init_real_and_isr_kinematics (nlo_controller, sqrts)
     class(nlo_controller_t), intent(inout) :: nlo_controller
+    real(default), intent(in) :: sqrts
     integer :: n_tot, n_contr
     n_tot = nlo_controller%particle_data%n_in + &
             nlo_controller%particle_data%n_out_born
@@ -9942,6 +9944,7 @@ polarized or not.
           reg_data%n_phs, reg_data%n_regions, n_contr)
     end associate
     nlo_controller%isr_kinematics%n_in = nlo_controller%particle_data%n_in
+    nlo_controller%isr_kinematics%beam_energy = sqrts / two
   end subroutine nlo_controller_init_real_and_isr_kinematics
 
 @ %def nlo_controller_init_real_and_isr_kinematics
@@ -10422,7 +10425,7 @@ phase-space points with [[p_real(emitter) = 0]].
 <<phs fks: phs fks generator: TBP>>=
   procedure :: compute_isr_kinematics => phs_fks_generator_compute_isr_kinematics
 <<phs fks: procedures>>=
-  pure subroutine phs_fks_generator_compute_isr_kinematics (generator, r, p_in)
+  subroutine phs_fks_generator_compute_isr_kinematics (generator, r, p_in)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: r
     type(vector4_t), dimension(2), intent(in), optional :: p_in
@@ -11744,7 +11747,6 @@ with $\Lambda$.
     associate (jac => generator%real_kinematics%jac(i_phs))
        !!! Additional 1 / (1 -xi) factor because in the real jacobian,
        !!! there is s_real in the numerator
-       !!!jac%jac(1) = one / (one - xi)**2
        !!! We also have to adapt the flux factor, which is 1/2s_real for the real component
        !!! The reweighting factor is s_born / s_real, cancelling the (1-x) factor from above
        jac%jac(1) = one / (one - xi)
@@ -11793,16 +11795,16 @@ with $\Lambda$.
 @ %def phs_fks_generator_generate_isr
 @
 <<phs fks: phs fks generator: TBP>>=
-  procedure :: set_beam_energy => phs_fks_generator_set_beam_energy
+  procedure :: set_sqrts_hat => phs_fks_generator_set_sqrts_hat
 <<phs fks: procedures>>=
-  pure subroutine phs_fks_generator_set_beam_energy (generator, sqrts)
+  subroutine phs_fks_generator_set_sqrts_hat (generator, sqrts)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: sqrts
     generator%sqrts = sqrts
-    generator%isr_kinematics%beam_energy = sqrts / two
-  end subroutine phs_fks_generator_set_beam_energy
+    !generator%isr_kinematics%beam_energy = sqrts / two
+  end subroutine phs_fks_generator_set_sqrts_hat
 
-@ %def phs_fks_generator_set_beam_energy
+@ %def phs_fks_generator_set_sqrts_hat
 @
 <<phs fks: phs fks generator: TBP>>=
   procedure :: set_emitters => phs_fks_generator_set_emitters
@@ -11846,7 +11848,8 @@ with $\Lambda$.
        p = generator%real_kinematics%p_born_lab%phs_point(1)%p(1:2)
     end if
 
-    generator%isr_kinematics%x = p%p(0) / (generator%sqrts / two)
+    !generator%isr_kinematics%x = p%p(0) / (generator%sqrts / two)
+    generator%isr_kinematics%x = p%p(0) / generator%isr_kinematics%beam_energy
   end subroutine phs_fks_generator_set_isr_kinematics
 
 @ %def phs_fks_generator_set_isr_kinematics
@@ -12188,7 +12191,7 @@ has already been taken into account during its generation.
        rad_var%y(i_phs) = y
        rad_var%phi = phi
     end associate
-    call generator%set_beam_energy (p_born(1)%p(0) + p_born(2)%p(0))
+    call generator%set_sqrts_hat (p_born(1)%p(0) + p_born(2)%p(0))
     call generator%generate_fsr (emitter, i_phs, p_born, p_real)
   end subroutine phs_fks_generator_generate_fsr_from_xi_and_y
 
@@ -12381,7 +12384,7 @@ end module phs_fks_uti
     allocate (generator%isr_kinematics)
     generator%n_in = 2
 
-    call generator%set_beam_energy (sqrts)
+    call generator%set_sqrts_hat (sqrts)
 
     write (u, "(A)") "* Use four-particle phase space containing: "
     call vector4_write_set (p_born, u, testflag = .true., ultra = .true.)
@@ -12472,7 +12475,7 @@ end module phs_fks_uti
     allocate (generator%isr_kinematics)
     generator%n_in = 2
     generator%emitters(1) = 1; generator%emitters(2) = 2
-    call generator%set_beam_energy (sqrts_hadronic)
+    call generator%set_sqrts_hat (sqrts_hadronic)
     call generator%set_isr_kinematics (p_born)
 
     write (u, "(A)") "* Use four-particle phase space containing: "
@@ -12681,7 +12684,7 @@ end module phs_fks_uti
     allocate (generator%isr_kinematics)
     generator%n_in = 2
 
-    call generator%set_beam_energy (sqrts)
+    call generator%set_sqrts_hat (sqrts)
 
     write (u, "(A)") "* Test process: e+ e- -> W+ W- b b~"
     write (u, "(A)") "* Resonance pairs: (3,5) and (4,6)"
@@ -12808,7 +12811,7 @@ end module phs_fks_uti
     generator%n_in = 2
     p_real = nlegborn + 1
 
-    call generator%set_beam_energy (250._default)
+    call generator%set_sqrts_hat (250._default)
 
     write (u, "(A)") "* Test process: e+ e- -> W+ W- b b~"
     write (u, "(A)") "* Use four-particle phase space containing: "
