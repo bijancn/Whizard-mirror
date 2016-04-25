@@ -4833,6 +4833,7 @@ module evt_nlo
   use nlo_data, only: sqme_collector_t, phs_identifier_t, phs_point_set_t
   use cascades, only: resonance_contributors_t
   use phs_fks
+  use nlo_controller, only: nlo_controller_t
 
 <<Standard module head>>
 
@@ -4889,6 +4890,7 @@ it would be unretrievable if the usual particle set of the event object was used
     type(qcd_t), pointer :: qcd => null ()
     type(nlo_event_deps_t) :: event_deps
     integer :: mode = EVT_NLO_UNDEFINED
+    integer, dimension(:), allocatable :: i_evaluation_to_i_phs
   contains
   <<Evt Nlo: evt nlo: TBP>>
   end type evt_nlo_t
@@ -4938,6 +4940,7 @@ object in [[nlo_controller]].
          sqrts = process_instance%get_sqrts ()
          call pcm%controller%setup_generator (generator, sqrts)
        end associate
+       call evt%set_i_evaluation_to_i_phs (pcm%controller)
     end select
     call evt%set_mode (process_instance) 
     if (evt%mode > EVT_NLO_SEPARATE_BORNLIKE) &
@@ -4946,6 +4949,50 @@ object in [[nlo_controller]].
   end subroutine evt_nlo_connect
 
 @ %def evt_nlo_connect
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: set_i_evaluation_to_i_phs => evt_nlo_set_i_evaluation_to_i_phs
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_set_i_evaluation_to_i_phs (evt, controller)
+    class(evt_nlo_t), intent(inout) :: evt
+    type(nlo_controller_t), intent(in) :: controller
+    integer :: n_flv, n_phs, alr
+    integer :: i_evaluation, i_phs, i_flv
+    integer, parameter :: N_MAX_PHS = 10, N_MAX_FLV = 100
+    integer, dimension(N_MAX_PHS) :: checked_phs
+    integer, dimension(N_MAX_FLV) :: checked_flv
+    logical :: checked
+    checked_phs = 0; checked_flv = 0
+    i_evaluation = 1
+    associate (reg_data => controller%reg_data)
+       n_phs = reg_data%n_phs; n_flv = reg_data%n_flv_real
+       allocate (evt%i_evaluation_to_i_phs (n_phs * n_flv))
+       do alr = 1, reg_data%n_regions
+          i_phs = controller%real_kinematics%alr_to_i_phs (alr)
+          i_flv = reg_data%regions(alr)%real_index 
+          checked = any (checked_phs == i_phs) .and. any (checked_flv == i_flv)
+          if (.not. checked) then
+             evt%i_evaluation_to_i_phs (i_evaluation) = i_phs
+             checked_phs (i_evaluation) = i_phs
+             checked_flv (i_evaluation) = i_flv
+             i_evaluation = i_evaluation + 1
+          end if
+       end do 
+    end associate
+  end subroutine evt_nlo_set_i_evaluation_to_i_phs
+
+@ %def evt_nlo_set_i_evaluation_to_i_phs
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: get_i_phs => evt_nlo_get_i_phs
+<<Evt Nlo: procedures>>=
+  function evt_nlo_get_i_phs (evt) result (i_phs)
+    integer :: i_phs
+    class(evt_nlo_t), intent(in) :: evt
+    i_phs = evt%i_evaluation_to_i_phs (evt%i_evaluation)
+  end function evt_nlo_get_i_phs
+
+@ %def evt_nlo_get_i_phs
 @
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: prepare_new_event => evt_nlo_prepare_new_event
@@ -4974,7 +5021,6 @@ is distributed over the real and Born subevents.
     class(evt_nlo_t), intent(inout) :: evt
     real(default), intent(inout) :: probability
     real(default) :: weight
-    integer :: i_phs
     call print_debug_info ()
     evt%particle_set = evt%previous%particle_set
     if (evt%mode > EVT_NLO_SEPARATE_BORNLIKE) then
@@ -4988,8 +5034,7 @@ is distributed over the real and Born subevents.
              probability = probability + weight
           end if
        else
-          i_phs = evt%i_evaluation
-          call evt%compute_real (i_phs)
+          call evt%compute_real ()
           probability = evt%sqme_rad
        end if
        call msg_debug2 (D_TRANSFORMS, "apply phase space weight", &
@@ -5081,7 +5126,7 @@ mother-daughter relations and color information.
           call evt%rng%generate (r_col)
           call msg_debug2 (D_TRANSFORMS, "r_col", r_col)
           if (debug2_active (D_TRANSFORMS))  print *, 'flv_radiated =    ', flv_radiated
-          i_phs = evt%i_evaluation
+          i_phs = evt%get_i_phs()
           emitter = evt%event_deps%phs_identifiers(i_phs)%emitter
           if (emitter == 0) emitter = choose_in_or_out ()
           call msg_debug (D_TRANSFORMS, "emitter", emitter)
@@ -5137,14 +5182,11 @@ mother-daughter relations and color information.
              associate (generator => evt%phs_fks_generator)
                 if (emitter <= 2) then
                    !!!call msg_fatal ("NLO Events only supply final-state emissions")
-                   print *, 'Prepare generation'
                    call generator%prepare_generation (x_rad, i_phs, emitter, &
                       event_deps%p_born_cms%phs_point(1)%p, event_deps%phs_identifiers)
-                   print *, 'Generate ISR'
                    call generator%generate_isr (i_phs, &
                       event_deps%p_born_lab%phs_point(1)%p, &
                       event_deps%p_real_lab%phs_point(i_phs))
-                   print *, 'Done'
                    event_deps%p_real_cms%phs_point(i_phs) &
                       = evt%boost_to_cms (event_deps%p_real_lab%phs_point(i_phs))
                 else
@@ -5211,10 +5253,11 @@ emission matrix elements.
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: compute_real => evt_nlo_compute_real
 <<Evt Nlo: procedures>>=
-  subroutine evt_nlo_compute_real (evt, i_phs)
+  subroutine evt_nlo_compute_real (evt)
     class(evt_nlo_t), intent(inout) :: evt
-    integer, intent(in) :: i_phs
+    integer :: i_phs
     call msg_debug (D_TRANSFORMS, "evt_nlo_compute_real")
+    i_phs = evt%get_i_phs ()
     select type (pcm => evt%process_instance%pcm)
     class is (pcm_instance_nlo_t)
        associate (event_deps => evt%event_deps)
@@ -5353,7 +5396,7 @@ emission matrix elements.
           if (evt%i_evaluation == 0) then
              valid = nlo_cuts%passed_born 
           else
-             valid = nlo_cuts%passed_real (evt%i_evaluation)
+             valid = nlo_cuts%passed_real (evt%get_i_phs ())
           end if
        end associate
     end select
