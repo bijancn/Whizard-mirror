@@ -8433,16 +8433,16 @@ physical event.
      term_instance_evaluate_interaction_real_rad
 <<Processes: procedures>>=
   subroutine term_instance_evaluate_interaction_real_rad (term, &
-     component, i_term, i_phs, alpha_s_external, only_born)
+     component, i_term, i_phs, i_flv_real, alpha_s_external, only_born)
     class(term_instance_t), intent(inout) :: term
     type(component_instance_t), intent(inout) :: component
-    integer, intent(in) :: i_term, i_phs 
+    integer, intent(in) :: i_term, i_phs, i_flv_real
     real(default), intent(in), optional :: alpha_s_external
     logical, intent(in), optional :: only_born
     integer :: i
     real(default), allocatable :: alpha_qcd_forced
     logical :: yorn
-    real(default) :: ren_scale, fac_scale
+    integer :: i_flv_born
 
     yorn = .false.; if (present (only_born)) yorn = only_born
     if (present (alpha_s_external)) then
@@ -8459,21 +8459,23 @@ physical event.
           (phs%phs_identifiers(i_phs)%emitter)
     end select
 
-    associate (scales => term%nlo_controller%real_terms%scales)
-       fac_scale = scales%fac_scale
-       ren_scale = scales%ren_scale
-    end associate
+    i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real)
+    if (i_flv_real == 1) call component%core_state%reset_new_kinematics ()
 
     if (.not. yorn) then
        call component%core_state%reset_new_kinematics ()
        select type (core => component%config%core)
        type is (prc_omega_t)
           do i = 1, term%config%n_allowed
-             term%amp(i) = core%compute_amplitude (i_term, &
-                term%int_hard_real%get_momenta (), &
-                term%config%flv(i), term%config%hel(i), term%config%col(i), &
-                term%fac_scale, term%ren_scale, alpha_qcd_forced, &
-                component%core_state)
+             if (term%config%flv(i) == i_flv_real) then
+                term%amp(i) = core%compute_amplitude (i_term, &
+                   term%int_hard_real%get_momenta (), &
+                   term%config%flv(i), term%config%hel(i), term%config%col(i), &
+                   term%fac_scale, term%ren_scale, alpha_qcd_forced, &
+                   component%core_state)
+             else
+                term%amp(i) = zero
+             end if
           end do
        class is (prc_user_defined_base_t)
           call core%update_alpha_s (component%core_state, term%fac_scale)
@@ -8483,15 +8485,21 @@ physical event.
     end if
     call component%nlo_controller%int_born%set_momenta &
        (component%nlo_controller%real_kinematics%p_born_cms%phs_point(1)%p)
-    call component%core_state%reset_new_kinematics ()
+    if (i_flv_born == 1) call component%core_state%reset_new_kinematics ()
     select type (core_sub_born => component%config%core_sub_born)
     type is (prc_omega_t)
        do i = 1, term%nlo_controller%n_allowed_born
-          term%nlo_controller%amp_born(i) = core_sub_born%compute_amplitude (i_term, &
-              term%nlo_controller%int_born%get_momenta (), &
-              term%nlo_controller%get_flv_born(i), term%nlo_controller%get_hel_born(i), &
-              term%nlo_controller%get_col_born(i), term%fac_scale, term%ren_scale, &
-              alpha_qcd_forced, component%core_state)
+          if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
+             term%nlo_controller%amp_born(i) = core_sub_born%compute_amplitude (i_term, &
+                 term%nlo_controller%int_born%get_momenta (), &
+                 term%nlo_controller%get_flv_born(i), &
+                 term%nlo_controller%get_hel_born(i), &
+                 term%nlo_controller%get_col_born(i), &
+                 term%fac_scale, term%ren_scale, &
+                 alpha_qcd_forced, component%core_state)
+          else
+             term%nlo_controller%amp_born(i) = zero
+          end if
        end do
     class is (prc_user_defined_base_t)
        term%nlo_controller%amp_born = zero
@@ -9987,20 +9995,20 @@ if it fails the cuts for at least one emitter.
 <<Processes: process instance: TBP>>=
   procedure :: evaluate_trace_real_rad => process_instance_evaluate_trace_real_rad
 <<Processes: procedures>>=
-  subroutine process_instance_evaluate_trace_real_rad (instance, term, i, i_phs)
+  subroutine process_instance_evaluate_trace_real_rad (instance, term, i, i_phs, i_flv)
     class(process_instance_t), intent(inout) :: instance
     type(term_instance_t), intent(inout) :: term
-    integer, intent(in) :: i, i_phs
+    integer, intent(in) :: i, i_phs, i_flv
     call msg_debug2 (D_SUBTRACTION, "process_instance_evaluate_trace_real_rad")
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
        !!! TODO: (cw 2016-03-01) This must become more flexible even for simple Drell-Yan
-       term%nlo_controller%active_flavor_structure_real = 1
+       term%nlo_controller%active_flavor_structure_real = i_flv
        call term%evaluate_trace ()
        associate (component => instance%component(i))
           call component%evaluate_sqme_real (term, i_phs)
           call component%apply_subtraction (term)
-          pcm%collector%sqme_real_per_phs (1, i_phs) = &
+          pcm%collector%sqme_real_per_phs (i_flv, i_phs) = &
              pcm%collector%current_sqme_real
        end associate
     end select
@@ -10054,9 +10062,9 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
   procedure :: compute_sqme_real_rad => process_instance_compute_sqme_real_rad
 <<Processes: procedures>>=
   subroutine process_instance_compute_sqme_real_rad &
-       (instance, i_phs, alpha_s_external)
+       (instance, i_phs, i_flv, alpha_s_external)
     class(process_instance_t), intent(inout) :: instance
-    integer, intent(in) :: i_phs
+    integer, intent(in) :: i_phs, i_flv
     real(default), intent(in), optional :: alpha_s_external
     integer :: i_real
     
@@ -10073,8 +10081,8 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
        
        associate (term => instance%term(i_real))
          call term%evaluate_interaction_real_rad (instance%component(i_real), &
-            i_real, i_phs, alpha_s_external)
-         call instance%evaluate_trace_real_rad (term, i_real, i_phs)
+            i_real, i_phs, i_flv, alpha_s_external)
+         call instance%evaluate_trace_real_rad (term, i_real, i_phs, i_flv)
        end associate
        associate (component => instance%component(i_real))
          call component%apply_damping_factor (component%sqme)
@@ -10101,7 +10109,7 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
 
        associate (term => instance%term(i_real))
          call term%evaluate_interaction_real_rad (instance%component(i_real), &
-            i_real, i_phs, alpha_s_external, only_born = .true.)
+            i_real, i_phs, 1, alpha_s_external, only_born = .true.)
          call instance%evaluate_trace_real_rad_sub (term, i_real, i_phs)
        end associate
        call pcm%controller%disable_subtraction ()
