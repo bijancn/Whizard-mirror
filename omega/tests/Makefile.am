@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 7469 2016-03-13 16:44:17Z ohl $
+# $Id: Makefile.am 7475 2016-03-16 09:17:25Z bchokoufe $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -367,7 +367,6 @@ EXTRA_DIST += compare_driver_VM.sh compare_driver_VM_wrappers.sh
 EXTRA_DIST += comparisons_VM.list
 
 compare_amplitude_VM.f90: comparisons_VM.list comparisons_VM.wrappers.o
-	rm -f *.hbc
 	$(SHELL) $(srcdir)/compare_driver_VM.sh \
 	"$(OMEGA_XXX) " "$(OMEGA_XXX_VM) " "$(OMEGA_XXX_VM_PARAMS_OPTS)" < $< > $@
 
