@@ -8646,6 +8646,7 @@ end module nlo_controller_uti
     real(default), dimension(:,:), allocatable :: sqme_virt_born_list
     real(default), dimension(:,:), allocatable :: sqme_virt_list
     real(default) :: sqme_mismatch
+    real(default), dimension(:), allocatable :: sqme_dglap_list
   contains
   <<nlo data: sqme collector: TBP>>
   end type sqme_collector_t
@@ -8671,7 +8672,8 @@ end module nlo_controller_uti
     sqme = sum (collector%sqme_born_list) + &
            collector%sqme_real_sum + &
            sum (collector%sqme_virt_list) + &
-           collector%sqme_mismatch
+           collector%sqme_mismatch + &
+           sum (collector%sqme_dglap_list)
     if (debug2_active (D_SUBTRACTION)) then
        call msg_debug (D_SUBTRACTION, "Get content of sqme lists: ")
        call collector%write ()
@@ -8702,6 +8704,7 @@ end module nlo_controller_uti
        collector%sqme_real_sum = zero
        collector%sqme_virt_list = zero
        collector%sqme_mismatch = zero
+       collector%sqme_dglap_list = zero
   end subroutine sqme_collector_reset
 
 @ %def sqme_collector_reset
@@ -8714,6 +8717,7 @@ end module nlo_controller_uti
     print *, 'Born: ', collector%sqme_born_list 
     print *, 'Real: ', collector%sqme_real_sum
     print *, 'Virt: ', collector%sqme_virt_list
+    print *, 'Dglap: ', collector%sqme_dglap_list
     print *, 'Mismatch: ', collector%sqme_mismatch
   end subroutine sqme_collector_write
 
@@ -9084,6 +9088,7 @@ polarized or not.
       n_tot_born = particle_data%n_in + particle_data%n_out_born
       allocate (collector%sqme_born_cc (n_tot_born, n_tot_born, particle_data%n_flv_born))
       allocate (collector%sqme_born_sc (particle_data%n_flv_born))
+      allocate (collector%sqme_dglap_list (particle_data%n_flv_born))
       collector%sqme_born_list = zero
       collector%sqme_subtraction_born_list = zero
       collector%sqme_real_non_sub = zero
@@ -9094,6 +9099,7 @@ polarized or not.
       collector%sqme_real_sum = zero
       collector%sqme_virt_born_list = zero
       collector%sqme_virt_list = zero
+      collector%sqme_dglap_list = zero
       collector%sqme_mismatch = zero
     end associate
   end subroutine nlo_controller_setup_matrix_elements
@@ -9706,10 +9712,12 @@ polarized or not.
 <<nlo controller: procedures>>=
   subroutine nlo_controller_evaluate_dglap_remnant (nlo_controller, sqme)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    real(default), intent(inout) :: sqme
+    real(default), intent(in) :: sqme
     if (.not. nlo_controller%alpha_s_born_set) &
         call msg_fatal ("Strong coupling not set for dglap remnant")
-    call nlo_controller%dglap_remnant%evaluate (nlo_controller%alpha_s_born, sqme)
+    !!! TODO (cw 2016-04-26): Use correct i_flv_born
+    nlo_controller%sqme_collector%sqme_dglap_list (1) =  &
+       nlo_controller%dglap_remnant%evaluate (nlo_controller%alpha_s_born, sqme)
   end subroutine nlo_controller_evaluate_dglap_remnant
 
 @ %def evaluate_dglap_remnant
@@ -13276,10 +13284,11 @@ end module dglap_remnant
 <<dglap remnant: dglap remnant: TBP>>=
   procedure :: evaluate => dglap_remnant_evaluate
 <<dglap remnant: procedures>>=
-  subroutine dglap_remnant_evaluate (dglap, alpha_s, sqme_born)
+  function dglap_remnant_evaluate (dglap, alpha_s, sqme_born) result (sqme_dglap)
+    real(default) :: sqme_dglap
     class(dglap_remnant_t), intent(inout) :: dglap
     real(default), intent(in) :: alpha_s
-    real(default), intent(inout) :: sqme_born
+    real(default), intent(in) :: sqme_born
     real(default) :: factor, factor_soft, remnant
     real(default) :: pdfs, pdfb
     integer :: emitter
@@ -13317,7 +13326,7 @@ end module dglap_remnant
              pdfs = dglap%get_quark_pdf (emitter, dglap%flv_in(emitter), scaled = .true.)
              pdfb = dglap%get_quark_pdf (emitter, dglap%flv_in(emitter), scaled = .false.)
              if (vanishes (pdfb)) then
-                sqme_born = zero
+                sqme_dglap = zero
                 return
              end if
              tmp(emitter) = p_hat_qq(z) * factor / z * pdfs / pdfb * jac &
@@ -13330,8 +13339,8 @@ end module dglap_remnant
           end if
        end associate
     end do
-    sqme_born = alpha_s / twopi * (tmp(1) + tmp(2)) * sqme_born
-  end subroutine dglap_remnant_evaluate
+    sqme_dglap = alpha_s / twopi * (tmp(1) + tmp(2)) * sqme_born
+  end function dglap_remnant_evaluate
 
 @ %def dglap_remnant_evaluate
 @ 
