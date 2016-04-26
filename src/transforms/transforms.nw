@@ -4890,7 +4890,8 @@ it would be unretrievable if the usual particle set of the event object was used
     type(qcd_t), pointer :: qcd => null ()
     type(nlo_event_deps_t) :: event_deps
     integer :: mode = EVT_NLO_UNDEFINED
-    integer, dimension(:), allocatable :: i_evaluation_to_i_phs, i_evaluation_to_i_flv
+    integer, dimension(:), allocatable :: &
+       i_evaluation_to_i_phs, i_evaluation_to_i_flv, i_evaluation_to_emitter
   contains
   <<Evt Nlo: evt nlo: TBP>>
   end type evt_nlo_t
@@ -4940,7 +4941,7 @@ object in [[nlo_controller]].
          sqrts = process_instance%get_sqrts ()
          call pcm%controller%setup_generator (generator, sqrts)
        end associate
-       call evt%set_i_evaluation_to_i_phs_and_i_flv (pcm%controller)
+       call evt%set_i_evaluation_mappings (pcm%controller)
     end select
     call evt%set_mode (process_instance) 
     if (evt%mode > EVT_NLO_SEPARATE_BORNLIKE) &
@@ -4951,40 +4952,45 @@ object in [[nlo_controller]].
 @ %def evt_nlo_connect
 @
 <<Evt Nlo: evt nlo: TBP>>=
-  procedure :: set_i_evaluation_to_i_phs_and_i_flv &
-     => evt_nlo_set_i_evaluation_to_i_phs_and_i_flv
+  procedure :: set_i_evaluation_mappings => evt_nlo_set_i_evaluation_mappings
 <<Evt Nlo: procedures>>=
-  subroutine evt_nlo_set_i_evaluation_to_i_phs_and_i_flv (evt, controller)
+  subroutine evt_nlo_set_i_evaluation_mappings (evt, controller)
     class(evt_nlo_t), intent(inout) :: evt
     type(nlo_controller_t), intent(in) :: controller
     integer :: n_flv, n_phs, alr
-    integer :: i_evaluation, i_phs, i_flv
-    integer, parameter :: N_MAX_PHS = 10, N_MAX_FLV = 100
+    integer :: i_evaluation, i_phs, i_flv, emitter
+    integer, parameter :: N_MAX_PHS = 10, N_MAX_FLV = 100, N_MAX_EMITTER = 10
     integer, dimension(N_MAX_PHS) :: checked_phs
     integer, dimension(N_MAX_FLV) :: checked_flv
+    integer, dimension(N_MAX_EMITTER) :: checked_emitter
     logical :: checked
-    checked_phs = 0; checked_flv = 0
+    checked_phs = 0; checked_flv = 0; checked_emitter = -1
     i_evaluation = 1
     associate (reg_data => controller%reg_data)
        n_phs = reg_data%n_phs; n_flv = reg_data%n_flv_real
        allocate (evt%i_evaluation_to_i_phs (n_phs * n_flv))
        allocate (evt%i_evaluation_to_i_flv (n_phs * n_flv))
+       allocate (evt%i_evaluation_to_emitter (n_phs * n_flv))
        do alr = 1, reg_data%n_regions
           i_phs = controller%real_kinematics%alr_to_i_phs (alr)
           i_flv = reg_data%regions(alr)%real_index 
-          checked = any (checked_phs == i_phs) .and. any (checked_flv == i_flv)
+          emitter = reg_data%regions(alr)%emitter 
+          checked = any (checked_phs == i_phs) .and. any (checked_flv == i_flv) &
+             .and. any (checked_emitter == emitter)
           if (.not. checked) then
              evt%i_evaluation_to_i_phs (i_evaluation) = i_phs
              evt%i_evaluation_to_i_flv (i_evaluation) = i_flv
+             evt%i_evaluation_to_emitter (i_evaluation) = emitter
              checked_phs (i_evaluation) = i_phs
              checked_flv (i_evaluation) = i_flv
+             checked_emitter (i_evaluation) = emitter
              i_evaluation = i_evaluation + 1
           end if
        end do 
     end associate
-  end subroutine evt_nlo_set_i_evaluation_to_i_phs_and_i_flv
+  end subroutine evt_nlo_set_i_evaluation_mappings
 
-@ %def evt_nlo_set_i_evaluation_to_i_phs_and_i_flv
+@ %def evt_nlo_set_i_evaluation_mappings
 @
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: get_i_phs => evt_nlo_get_i_phs
@@ -5007,6 +5013,17 @@ object in [[nlo_controller]].
   end function evt_nlo_get_i_flv
 
 @ %def evt_nlo_get_i_flv
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: get_emitter => evt_nlo_get_emitter
+<<Evt Nlo: procedures>>=
+  function evt_nlo_get_emitter (evt) result (emitter)
+    integer :: emitter
+    class(evt_nlo_t), intent(in) :: evt
+    emitter = evt%i_evaluation_to_emitter (evt%i_evaluation)
+  end function evt_nlo_get_emitter
+
+@ %def evt_nlo_get_emitter
 @
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: prepare_new_event => evt_nlo_prepare_new_event
@@ -5142,7 +5159,7 @@ mother-daughter relations and color information.
           call msg_debug2 (D_TRANSFORMS, "r_col", r_col)
           if (debug2_active (D_TRANSFORMS))  print *, 'flv_radiated =    ', flv_radiated
           i_phs = evt%get_i_phs()
-          emitter = evt%event_deps%phs_identifiers(i_phs)%emitter
+          emitter = evt%get_emitter ()
           if (emitter == 0) emitter = choose_in_or_out ()
           call msg_debug (D_TRANSFORMS, "emitter", emitter)
           allocate (p_new (size (pcm%controller%get_momenta &
