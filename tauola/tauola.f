@@ -41,7 +41,7 @@ C
 C     called by : DEXAY
 C ----------------------------------------------------------------------
       COMMON / TAUBRA / GAMPRT(30),JLIST(30),NCHAN
-      logical :: condition
+      logical condition
       double precision   CUMUL(30),RRR(1)
 C
       IF(NCHAN.LE.0.OR.NCHAN.GT.30) GOTO 902
@@ -111,7 +111,12 @@ C JAK=0 INCLUSIVE:  JAK=1-21
      *                  PDUM4(4),PDUM5(4),HDUM(4),PDUM(4)
       double precision  PDUMX(4,9)
       DATA IWARM/0/
-      H=0.0
+      save iwarn, nevtot, nev1, nev2
+      save h, hk
+
+      do 51 i=1, 4
+        H(i)=0.0
+51    continue
       KTOM=KTO
       IDF = IDFF
 
@@ -268,6 +273,12 @@ C THIS ROUTINE  SIMULATES TAU+  DECAY
       double precision  PHOT(4)
       double precision  PDUM(4)
       DATA NEV,NPRIN/0,10/
+      save  nev, nprin, kto
+      save  hv, pnu, ppi, pwb, pmu, pnm
+      save  prho, pic, piz, paa, pim1, pim2, pipl
+      save  pkk, pks, pnpi, phot, pdum
+      save  jak, imd
+
       KTO=1
       IF(JAK1.EQ.-1) RETURN
       IMD=IMOD
@@ -368,6 +379,12 @@ C THIS ROUTINE  SIMULATES TAU-  DECAY
       double precision  PHOT(4)
       double precision  PDUM(4)
       DATA NEV,NPRIN/0,10/
+      save nev, nprin, kto
+      save hhm hv, pnu, ppi, pwb, pmu, pnm
+      save prho, pic, piz, paa, pim1, pim2, pipl
+      save pkk, pks, pnpi, phot, pdum
+      save jak, imd
+
       KTO=2
       IF(JAK2.EQ.-1) RETURN
       IMD=IMOD
@@ -477,6 +494,12 @@ C ----------------------------------------------------------------------
       double precision  PDUM(4)
       double precision  PDUMI(4,9)
       DATA IWARM/0/
+
+      save iwarn
+      save pdum1, pdum2, pdum3, pdum4, pdum5
+      save pdum, pdumi
+      save nevtot, nev1, nev2
+
       KTOM=KTO
 C
       IF(KTO.EQ.-1) THEN
@@ -619,6 +642,9 @@ C ---------------------------------------------------------------------
       double precision PHOT(4)
       double precision PDUM(4)
 C
+      save polar, pnu, ppi, prho, pic, piz, pwb, pmu, pnm
+      save paa, pim1, pim2, pipl, pkk, pks, pnpi, phot, pdum
+
       IF(JAKIN.EQ.-1) RETURN
       DO 33 I=1,3
  33   POLAR(I)=POL(I)
@@ -669,6 +695,8 @@ C ----------------------------------------------------------------------
       double precision  POL(4),HV(4),PWB(4),PNU(4),Q1(4),
      *                    Q2(4),PH(4),RN(1)
       DATA IWARM/0/
+      save iwarn
+      save hv
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -711,6 +739,7 @@ C ----------------------------------------------------------------------
       double precision POL(4),HV(4),PWB(4),PNU(4)
       double precision Q1(4),Q2(4),PH(4),RN(1)
       DATA IWARM/0/
+      save iwarn, hv
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -764,6 +793,8 @@ C
       double precision SWT, SSWT
       DATA PI /3.141592653589793238462643/
       DATA IWARM/0/
+      save  iwarn, nevraw, nevacc, nevovr, swt, sswt, wtmax
+      save  hv, pdum1, pdum2, pdum3, pdum4, pdum5
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -867,6 +898,7 @@ C
       double precision SWT, SSWT
       DATA PI /3.141592653589793238462643/
       DATA IWARM /0/
+      save iwarn, nevraw, nevacc, nevovr, swt, sswt, wtmax, hv
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1385,6 +1417,7 @@ C                      PPI   PION CHARGED
 C ----------------------------------------------------------------------
       IMPLICIT double precision (A-H,O-Z)
       double precision  POL(4),HV(4),PNU(4),PPI(4),RN(1)
+      save hv
 CC
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1425,6 +1458,7 @@ C
       COMMON / INOUT / INUT,IOUT
       double precision  PPI(4),PNU(4),HV(4)
       DATA PI /3.141592653589793238462643/
+      save nevtot
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1493,6 +1527,7 @@ C ----------------------------------------------------------------------
       COMMON / INOUT / INUT,IOUT
       double precision  POL(4),HV(4),PRO(4),PNU(4),PIC(4),PIZ(4),RN(1)
       DATA IWARM/0/
+      save iwarn, hv
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1548,6 +1583,7 @@ C
       SAVE NEVRAW, NEVACC, NEVOVR, WT, SWT, SSWT, WTMAX
       DATA PI /3.141592653589793238462643/
       DATA IWARM/0/
+      save iwarn, hv
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1735,6 +1771,7 @@ C ----------------------------------------------------------------------
       double precision  POL(4),HV(4),PAA(4),PNU(4),
      *                  PIM1(4),PIM2(4),PIPL(4),RN(1)
       DATA IWARM/0/
+      save iwarn, hv
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1788,6 +1825,7 @@ C
       SAVE IWARM,NEVRAW,NEVACC,NEVOVR,SWT,SSWT,WTMAX
       DATA PI /3.141592653589793238462643/
       DATA IWARM/0/
+      save hv
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1911,6 +1949,7 @@ C                      PKK   KAON CHARGED
 C ----------------------------------------------------------------------
       IMPLICIT double precision (A-H,O-Z)
       double precision  POL(4),HV(4),PNU(4),PKK(4),RN(1)
+      save hv
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -1952,6 +1991,7 @@ C
       COMMON / INOUT / INUT,IOUT
       double precision  PKK(4),PNU(4),HV(4)
       DATA PI /3.141592653589793238462643/
+      save nevtot
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -2026,6 +2066,7 @@ C ----------------------------------------------------------------------
       COMMON / INOUT / INUT,IOUT
       double precision  POL(4),HV(4),PKS(4),PNU(4),PKK(4),PPI(4),RN(1)
       DATA IWARM/0/
+      save iwarn, hv
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -2083,6 +2124,8 @@ C
       double precision SWT, SSWT
       DATA PI /3.141592653589793238462643/
       DATA IWARM/0/
+      save iwarn, nevraw, nevacc, nevovr, swt, sswt, wtmax
+      save hv
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -2197,6 +2240,7 @@ cam   double complex BWIGS
       DATA PI /3.141592653589793238462643/
 C
       DATA ICONT /0/
+      save icont, pt, qq
 C THREE BODY PHASE SPACE NORMALISED AS IN BJORKEN-DRELL
       PHSPAC=1./2**11/PI**5
 C TAU MOMENTUM
@@ -2538,6 +2582,8 @@ C
       DATA SIG0 / 86.8 /
       DATA PI /3.141592653589793238462643/
       DATA INIT / 0 /
+      save init, jnpi, ampi2, fpi, datsig
+      save s,fact,s2,t,t2
 C
         JNPI=JNP
         IF(JNP.EQ.4) JNPI=3
@@ -2630,6 +2676,7 @@ C
       DATA SIG0 / 86.8 /
       DATA PI /3.141592653589793238462643/
       DATA INIT / 0 /
+      save init, ampi2, fpi, datsig, s, fact, s2, t, t2
 C
       IF(INIT.EQ.0) THEN
         INIT=1
@@ -2745,6 +2792,8 @@ C
       double precision RRR(5)
       DATA PI /3.141592653589793238462643/
       DATA ICONT /0/
+
+      save icont
       XLAM(X,Y,Z)=SQRT(ABS((X-Y-Z)**2-4.0*Y*Z))
 C AMRO, GAMRO IS ONLY A PARAMETER FOR GETING HIGHT EFFICIENCY
 C
@@ -2963,6 +3012,7 @@ C
       double precision  PIVEC(4),PIAKS(4),HVM(4)
       double complex BWIGN,HADCUR(4),FPIK
       DATA ICONT /1/
+      save icont
 C
 * F CONSTANTS FOR A1, A1-RHO-PI, AND RHO-PI-PI
 *
@@ -3058,6 +3108,7 @@ C **********************************************************
       DATA INIT /0/
       P(A,B,C)=SQRT(ABS(ABS(((A+B-C)**2-4.*A*B)/4./A)
      $                    +(((A+B-C)**2-4.*A*B)/4./A))/2.0)
+      save init
 C ------------ PARAMETERS --------------------
       IF (INIT.EQ.0) THEN
       INIT=1
@@ -3086,6 +3137,7 @@ C **********************************************************
       double precision PI,PIM,QS,QM,W,GS,radicand
       DATA INIT /0/
       SAVE PI, PIM
+      save init
 C ------------ PARAMETERS --------------------
         IF (INIT.EQ.0) THEN
            INIT=1
@@ -3242,6 +3294,7 @@ C
       double precision  PIVEC(4),PIAKS(4),HVM(4)
       double complex BWIGN,HADCUR(4),FNORM,FORMOM
       DATA ICONT /1/
+      save icont
 * THIS INLINE FUNCT. CALCULATES THE SCALAR PART OF THE PROPAGATOR
       !BWIGN(XM,AM,GAMMA)=1./CMPLX(XM**2-AM**2,GAMMA*AM)
 C
@@ -3353,6 +3406,7 @@ C
       SAVE UROJ,DWAPI0,FNORM,COEF
       DATA PI /3.141592653589793238462643/
       DATA ICONT /0/
+      save icont
 C
       DATA  FPI /93.3E-3/
       IF (ICONT.EQ.0) THEN
@@ -3530,6 +3584,7 @@ C ----------------------------------------------------------------------
       COMMON / INOUT / INUT,IOUT
       double precision  POL(4),HV(4),PAA(4),PNU(4),PNPI(4,9),RN(1)
       DATA IWARM/0/
+      save iwarn
 C
       IF(MODE.EQ.-1) THEN
 C     ===================
@@ -3584,6 +3639,10 @@ C
       double precision WTMAX(NMODE)
       double precision              SWT(NMODE),SSWT(NMODE)
       DIMENSION NEVRAW(NMODE),NEVOVR(NMODE),NEVACC(NMODE)
+
+      save wtmax, nevraw, nevovr, nevacc, swt, sswt
+      save hhv, rrr, iwarn
+
 C
       DATA PI /3.141592653589793238462643/
       DATA IWARM/0/
@@ -3746,6 +3805,7 @@ C
       double precision UU,FF,FF1,FF2,FF3,FF4,GG1,GG2,GG3,GG4,RR
       DATA PI /3.141592653589793238462643/
       DATA ICONT /0/
+      save icont
       integer k
       XLAM(X,Y,Z)=SQRT(ABS((X-Y-Z)**2-4.0*Y*Z))
 C AMRO, GAMRO IS ONLY A PARAMETER FOR GETING HIGHT EFFICIENCY
