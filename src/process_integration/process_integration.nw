@@ -1990,6 +1990,7 @@ module processes
   use phs_base
   use rng_base
   use mci_base
+  use mci_vamp, only: mci_vamp_instance_t
   use process_libraries
   use prc_test
 
@@ -2874,9 +2875,10 @@ make a random-number generator instance for each MCI group.
 <<Processes: process: TBP>>=
   procedure :: setup_mci => process_setup_mci
 <<Processes: procedures>>=
-  subroutine process_setup_mci (process, combined_integration)
+  subroutine process_setup_mci (process, combined_integration, debug_events)
     class(process_t), intent(inout) :: process
     logical, intent(in), optional :: combined_integration
+    logical, intent(in), optional :: debug_events
     integer :: n_mci, i_mci
     integer :: i
     logical :: powheg_damping_active
@@ -2922,6 +2924,8 @@ make a random-number generator instance for each MCI group.
     end do
     do i_mci = 1, size (process%mci_entry)
        call process%mci_entry(i_mci)%set_parameters (process%meta%var_list)
+       if (present (debug_events)) &
+          process%mci_entry(i_mci)%check_weighted_events = debug_events
     end do
   end subroutine process_setup_mci
   
@@ -4592,6 +4596,10 @@ The [[results]] object records results, broken down in passes and iterations.
      logical :: combined_integration = .false.
      integer :: powheg_damping_type = DAMPING_NONE
      integer :: associated_real_component = 0
+     logical :: check_weighted_events = .false.
+     real(default) :: mean = 0
+     real(default) :: varsq = 0
+     integer :: n_events = 0
    contains
    <<Processes: process mci entry: TBP>>
   end type process_mci_entry_t
@@ -4604,6 +4612,7 @@ The [[results]] object records results, broken down in passes and iterations.
   subroutine process_mci_entry_final (object)
     class(process_mci_entry_t), intent(inout) :: object
     if (allocated (object%mci))  call object%mci%final ()
+    if (object%check_weighted_events) call object%evaluate_event_statistics()
   end subroutine process_mci_entry_final
   
 @ %def process_mci_entry_final
@@ -5029,7 +5038,15 @@ unweighting routine should already take care of this.
          if (signal_is_pending ())  return
          if (instance%is_valid ())  exit REJECTION
       end do REJECTION
+      if (mci_entry%check_weighted_events) call check_weighted_events ()
     end associate
+  contains
+    subroutine check_weighted_events ()
+       select type (mci_instance => instance%mci_work(mci_entry%i_mci)%mci)
+       type is (mci_vamp_instance_t)
+           call mci_entry%record_weights (mci_instance%vamp_weight)
+       end select
+    end subroutine check_weighted_events
   end subroutine process_mci_entry_generate_weighted_event
   
   subroutine process_mci_entry_generate_unweighted_event (mci_entry, instance)
@@ -5117,6 +5134,36 @@ state of the integrator (adaptation).
   end function process_mci_entry_get_md5sum
   
 @ %def process_mci_entry_get_md5sum
+@
+<<Processes: process mci entry: TBP>>=
+  procedure :: record_weights => process_mci_entry_record_weights
+<<Processes: procedures>>=
+  subroutine process_mci_entry_record_weights (mci_entry, weight)
+    class(process_mci_entry_t), intent(inout) :: mci_entry
+    real(default), intent(in) :: weight
+    real(default) :: mean_new
+    integer :: n
+    mci_entry%n_events = mci_entry%n_events + 1
+    n = mci_entry%n_events
+    mean_new = mci_entry%mean + (weight - mci_entry%mean) / n
+    if (n > 1) &
+       mci_entry%varsq = mci_entry%varsq - mci_entry%varsq / (n - 1)+ &
+          n * (mean_new - mci_entry%mean)**2
+    mci_entry%mean = mean_new 
+  end subroutine process_mci_entry_record_weights
+
+@ %def process_mci_entry_record_weights
+@
+<<Processes: process mci entry: TBP>>=
+  procedure :: evaluate_event_statistics => process_mci_entry_evaluate_event_statistics
+<<Processes: procedures>>=
+  subroutine process_mci_entry_evaluate_event_statistics (mci_entry)
+    class(process_mci_entry_t), intent(in) :: mci_entry
+    print *, 'Reconstructed total cross section with ', mci_entry%n_events, ' events: '
+    print *, mci_entry%mean, ' +- ' , sqrt (mci_entry%varsq / mci_entry%n_events)
+  end subroutine process_mci_entry_evaluate_event_statistics
+
+@ %def process_mci_entry_evaluate_event_statistics
 @
 \subsection{Process Components}
 A process component is an individual contribution to a process

@@ -203,6 +203,7 @@ contains
        ip = itau
        do while (k(ip,3) .ne. 0 .or. ip .le. 0 )
           ip = k(ip,3)
+          pyjets_spin_data(itau)%helicity=pyjets_spin_data(ip)%helicity
        end do
        id_dexay = k(itau,2)
        p_dexay = p(itau,1:5)
