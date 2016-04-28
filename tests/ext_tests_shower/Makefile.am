@@ -47,7 +47,7 @@ TESTS_EXTENDED = \
 	extra_shower_5.run \
 	extra_shower_6.run
 
-XFAIL_TESTS_EXTENDED =
+XFAIL_TESTS_EXTENDED = \
 	extra_shower_4_ee.run
 
 TESTS_REQ_GAMELAN = \
