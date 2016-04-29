@@ -61,7 +61,8 @@ tauola_interface.lo: ../system/diagnostics.$(FC_MODULE_EXT)
 AM_FCFLAGS += -I../basics -I../utilities -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../types -I../fastjet -I../particles -I../events -I../variables
 
 MODULES= \
-  tauola_interface.$(FC_MODULE_EXT)
+  tauola_interface.$(FC_MODULE_EXT) \
+  hepev4_aux.$(FC_MODULE_EXT)
 
 ########################################################################
 ## Non-standard cleanup tasks
