@@ -1,15 +1,20 @@
 !
 !  WHIZARD Tauola interface
 !  Adapted from ilc_tauola_mod.f90
-!  for Whizard1 developped by Timothy Barklow (SLAC)
+!  for Whizard1 developed by Timothy Barklow (SLAC)
 !
 !    Akiya Miyamoto
 !
 
-module ilc_tauola_mod2
+module tauola_interface
 
   use hep_common
   use hepev4_aux
+  use variables
+  use model_data
+  use kinds
+  use iso_varying_string, string_t => varying_string
+  use diagnostics
 
   implicit none
 
@@ -18,6 +23,8 @@ module ilc_tauola_mod2
   public :: ilc_tauola_pytaud
   public :: tauspin_pyjets
   public :: ilc_tauola_get_helicity_mod
+  public :: ilc_tauola_init_call
+  public :: ilc_tauola_get_helicity
 
   !!! THIS COMMON BLOCK IS USED FOR COMMUNICATION WITH TAUOLA
   common/taupos/np1,np2
@@ -40,6 +47,21 @@ module ilc_tauola_mod2
 
   double precision, parameter            :: a_tau=0.15
   double precision, parameter            :: prob_tau_left_z=(a_tau+1.)/2.
+
+  public :: taudec_settings_t
+
+  type :: taudec_settings_t
+    logical :: photos
+    logical :: transverse
+    logical :: dec_rad_cor
+    integer :: dec_mode1
+    integer :: dec_mode2
+    real(default) :: mh
+    real(default) :: mix_angle
+    real(default) :: mtau
+  contains
+    procedure :: init => taudec_settings_init
+  end type taudec_settings_t
 
   type, public :: pyjets_spin
     integer           :: index_to_hepeup  ! =-1, if no matching entry in hepeup
@@ -333,55 +355,75 @@ contains
     end if
   end function ilc_tauola_get_helicity_mod
 
-end module ilc_tauola_mod2
+  subroutine taudec_settings_init (taudec_settings, var_list, model)
+    class(taudec_settings_t), intent(out) :: taudec_settings
+    type(var_list_t), intent(in) :: var_list
+    class(model_data_t), intent(in) :: model
+    type(field_data_t), pointer :: field
+    taudec_settings%photos = &
+         var_list%get_lval (var_str ("?ps_tauola_photos"))
+    taudec_settings%transverse = &
+         var_list%get_lval (var_str ("?ps_tauola_transverse"))
+    taudec_settings%dec_rad_cor = &
+         var_list%get_lval (var_str ("?ps_tauola_dec_rad_cor"))
+    taudec_settings%dec_mode1 = &
+         var_list%get_ival (var_str ("?ps_tauola_dec_mode1"))
+    taudec_settings%dec_mode2 = &
+         var_list%get_ival (var_str ("?ps_tauola_dec_mode2"))
+    taudec_settings%mh = &
+         var_list%get_rval (var_str ("?ps_tauola_mh"))
+    taudec_settings%mix_angle = &
+         var_list%get_rval (var_str ("?ps_tauola_mix_angle"))
+    select case (char (model%get_name ()))
+    case ("QCD", "Test")
+       call msg_fatal ("taudec_settings_init: Model has no tau.")
+    case default
+       field => model%get_field_ptr (15)
+       taudec_settings%mtau = field%get_mass ()
+    end select
+  end subroutine taudec_settings_init
 
-subroutine ilc_tauola_init_call
+  subroutine ilc_tauola_init_call (taudec_settings)
+    ! Tauola initialization.  Should be called once at the begining of a job.
+    ! TAUOLA and PHOTOS parameters are read in from a file, tauola.input, if
+    ! it exists in the current directory, or read in from a file defined by
+    ! the environment parameter, TAUOLA_PARAMETER_FILE.  If they do not exist,
+    ! default parameters defined here are used.
+    !
+    ! Contents of taupla.input should be
+    !  jak1   ! (0) decay mode of first tau
+    !  jak2   ! (0) decay mode of second tau
+    !  itdkrc ! (1) switch off radiative corrections in decay
+    !  ifphot ! (1) PHOTOS switch
+    !  gCorrelateTransverseSpin ! (1) Correlate(1)/not correlate(0) transverse spin of tau+ tau- from Higgs
+    !  xmtau  ! (1.777 ) tau mass
+    !  xmh    ! (125.0) Higgs mass
+    !  mixing_angle_in_degree ! (90.0) Scalor and Psuedo_Scalar mixing angle
+    type(taudec_settings_t), intent(in) :: taudec_settings
+    integer, dimension(200) :: mstp
+    double precision, dimension(200) :: parp
+    integer, dimension(200) :: msti
+    double precision, dimension(200) :: pari
+    common/pypars/mstp,parp,msti,pari
+    INTEGER JAK1, JAK2, JAKP, JAKM, KTOM
+    COMMON /JAKI/ JAK1, JAK2, JAKP, JAKM, KTOM
+    call tauola (-1,1)
+    JAK1 = MSTP(198)
+    JAK2 = MSTP(199)
+  end subroutine ilc_tauola_init_call
 
-! Tauola initialization.  Should be called once at the begining of a job.
-! TAUOLA and PHOTOS parameters are read in from a file, tauola.input, if
-! it exists in the current directory, or read in from a file defined by
-! the environment parameter, TAUOLA_PARAMETER_FILE.  If they do not exist,
-! default parameters defined here are used.
-!
-! Contents of taupla.input should be
-!  jak1   ! (0) decay mode of first tau
-!  jak2   ! (0) decay mode of second tau
-!  itdkrc ! (1) switch of radiative corrections in decay
-!  ifphot ! (1) PHOTOS switch
-!  gCorrelateTransverseSpin ! (1) Correlate(1)/not correlate(0) transverse spin of tau+ tau- from Higgs
-!  xmtau  ! (1.777 ) tau mass
-!  xmh    ! (125.0) Higgs mass
-!  mixing_angle_in_degree ! (90.0) Scalor and Psuedo_Scalar mixing angle
+  subroutine ilc_tauola_get_helicity (ip, the_helicity)
+    integer, intent(in)  :: ip
+    integer, intent(out) :: the_helicity
+    the_helicity=ilc_tauola_get_helicity_mod(ip)
+    if ( abs(the_helicity) .gt. 1 ) then
+      print *,'%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
+      print *,'Warning : stored helicity information is wrong. ',the_helicity,' ip=',ip
+      print *,'%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
+    endif
+  end subroutine ilc_tauola_get_helicity
 
-  use hep_common
-
-  use ilc_tauola_mod2
-  use hep_common
-  integer, dimension(200) :: mstp
-  double precision, dimension(200) :: parp
-  integer, dimension(200) :: msti
-  double precision, dimension(200) :: pari
-  common/pypars/mstp,parp,msti,pari
-  INTEGER JAK1, JAK2, JAKP, JAKM, KTOM
-  COMMON /JAKI/ JAK1, JAK2, JAKP, JAKM, KTOM
-  call tauola(-1,1)
-  JAK1 = MSTP(198)
-  JAK2 = MSTP(199)
-end subroutine ilc_tauola_init_call
-
-subroutine ilc_tauola_get_helicity (ip, the_helicity)
-  use ilc_tauola_mod2
-  implicit none
-  integer, intent(in)  :: ip
-  integer, intent(out) :: the_helicity
-  the_helicity=ilc_tauola_get_helicity_mod(ip)
-  if ( abs(the_helicity) .gt. 1 ) then
-    print *,'%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
-    print *,'Warning : stored helicity information is wrong. ',the_helicity,' ip=',ip
-    print *,'%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
-  endif
-
-end subroutine ilc_tauola_get_helicity
+end module tauola_interface
 
 !*********************************************************************
 !...PYTAUD
@@ -402,7 +444,7 @@ end subroutine ilc_tauola_get_helicity
 !...give the flavour codes K(I,2) and the five-momenta P(I,1), P(I,2),
 !...P(I,3), P(I,4) and P(I,5). The rest will be stored automatically.
 subroutine pytaud (itau,iorig,kforig,ndecay)
-  use ilc_tauola_mod2
+  use tauola_interface
   implicit none
   integer itau,iorig,kforig
   integer ndecay

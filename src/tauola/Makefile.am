@@ -51,12 +51,17 @@ endif
 ## Explicit dependencies
 
 tauola_interface.lo: ../events/hep_common.$(FC_MODULE_EXT)
-tauola_interface.lo: hepev4_aux.$(FC_MODULE_EXT)
+tauola_interface.lo: hepev4_aux.lo
+tauola_interface.lo: ../variables/variables.$(FC_MODULE_EXT)
+tauola_interface.lo: ../qft/model_data.$(FC_MODULE_EXT)
+tauola_interface.lo: ../basics/kinds.$(FC_MODULE_EXT)
+tauola_interface.lo: ../basics/iso_varying_string.$(FC_MODULE_EXT)
+tauola_interface.lo: ../system/diagnostics.$(FC_MODULE_EXT)
 
-AM_FCFLAGS += -I../basics -I../utilities -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../types -I../fastjet -I../particles -I../events
+AM_FCFLAGS += -I../basics -I../utilities -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../types -I../fastjet -I../particles -I../events -I../variables
 
 MODULES= \
-  ilc_tauola_mod2.$(FC_MODULE_EXT)
+  tauola_interface.$(FC_MODULE_EXT)
 
 ########################################################################
 ## Non-standard cleanup tasks
