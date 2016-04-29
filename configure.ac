@@ -598,6 +598,11 @@ AC_CONFIG_FILES([src/lhapdf/Makefile])
 AC_CONFIG_FILES([src/pdf_builtin/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/tauola
+
+AC_CONFIG_FILES([src/tauola/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory src/xdr: XDR reader 
 
 AC_CONFIG_FILES([src/xdr/Makefile])
