@@ -58,7 +58,7 @@ tauola_interface.lo: ../basics/kinds.$(FC_MODULE_EXT)
 tauola_interface.lo: ../basics/iso_varying_string.$(FC_MODULE_EXT)
 tauola_interface.lo: ../system/diagnostics.$(FC_MODULE_EXT)
 
-AM_FCFLAGS += -I../basics -I../utilities -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../types -I../fastjet -I../particles -I../events -I../variables
+AM_FCFLAGS += -I../basics -I../utilities -I../system -I../expr_base -I../combinatorics -I../parsing -I../physics -I../qft -I../types -I../fastjet -I../particles -I../events -I../variables
 
 MODULES= \
   tauola_interface.$(FC_MODULE_EXT) \
