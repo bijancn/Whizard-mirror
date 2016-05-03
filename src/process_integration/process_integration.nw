@@ -566,7 +566,7 @@ default values.
   procedure :: evaluate => parton_expr_evaluate
 <<Subevt expr: procedures>>=
   subroutine parton_expr_evaluate &
-       (expr, passed, scale, fac_scale, ren_scale, weight, scale_forced)
+       (expr, passed, scale, fac_scale, ren_scale, weight, scale_forced, force_evaluation)
     class(parton_expr_t), intent(inout) :: expr
     logical, intent(out) :: passed
     real(default), intent(out) :: scale
@@ -574,11 +574,13 @@ default values.
     real(default), intent(out) :: ren_scale
     real(default), intent(out) :: weight
     real(default), intent(in), allocatable, optional :: scale_forced
-    logical :: force_scale
-    force_scale = .false.
+    logical, intent(in), optional :: force_evaluation
+    logical :: force_scale, force_eval
+    force_scale = .false.; force_eval = .false.
     if (present (scale_forced))  force_scale = allocated (scale_forced)
+    if (present (force_evaluation)) force_eval = force_evaluation
     call expr%base_evaluate (passed)
-    if (passed) then
+    if (passed .or. force_eval) then
        if (force_scale) then
           scale = scale_forced
        else if (expr%has_scale) then
@@ -1693,14 +1695,15 @@ are defined, default values are inserted.
   procedure :: evaluate_expressions => connected_state_evaluate_expressions
 <<Parton states: procedures>>=
   subroutine connected_state_evaluate_expressions (state, passed, &
-       scale, fac_scale, ren_scale, weight, scale_forced)
+       scale, fac_scale, ren_scale, weight, scale_forced, force_evaluation)
     class(connected_state_t), intent(inout) :: state
     logical, intent(out) :: passed
     real(default), intent(out) :: scale, fac_scale, ren_scale, weight
     real(default), intent(in), allocatable, optional :: scale_forced
+    logical, intent(in), optional :: force_evaluation
     if (state%has_expr) then
        call state%expr%evaluate (passed, scale, fac_scale, ren_scale, weight, &
-            scale_forced)
+            scale_forced, force_evaluation)
     end if
   end subroutine connected_state_evaluate_expressions
     
@@ -1987,6 +1990,7 @@ module processes
   use phs_base
   use rng_base
   use mci_base
+  use mci_vamp, only: mci_vamp_instance_t
   use process_libraries
   use prc_test
 
@@ -2871,9 +2875,10 @@ make a random-number generator instance for each MCI group.
 <<Processes: process: TBP>>=
   procedure :: setup_mci => process_setup_mci
 <<Processes: procedures>>=
-  subroutine process_setup_mci (process, combined_integration)
+  subroutine process_setup_mci (process, combined_integration, debug_events)
     class(process_t), intent(inout) :: process
     logical, intent(in), optional :: combined_integration
+    logical, intent(in), optional :: debug_events
     integer :: n_mci, i_mci
     integer :: i
     logical :: powheg_damping_active
@@ -2919,6 +2924,8 @@ make a random-number generator instance for each MCI group.
     end do
     do i_mci = 1, size (process%mci_entry)
        call process%mci_entry(i_mci)%set_parameters (process%meta%var_list)
+       if (present (debug_events)) &
+          process%mci_entry(i_mci)%check_weighted_events = debug_events
     end do
   end subroutine process_setup_mci
   
@@ -4589,6 +4596,10 @@ The [[results]] object records results, broken down in passes and iterations.
      logical :: combined_integration = .false.
      integer :: powheg_damping_type = DAMPING_NONE
      integer :: associated_real_component = 0
+     logical :: check_weighted_events = .false.
+     real(default) :: mean = 0
+     real(default) :: varsq = 0
+     integer :: n_events = 0
    contains
    <<Processes: process mci entry: TBP>>
   end type process_mci_entry_t
@@ -4601,6 +4612,7 @@ The [[results]] object records results, broken down in passes and iterations.
   subroutine process_mci_entry_final (object)
     class(process_mci_entry_t), intent(inout) :: object
     if (allocated (object%mci))  call object%mci%final ()
+    if (object%check_weighted_events) call object%evaluate_event_statistics()
   end subroutine process_mci_entry_final
   
 @ %def process_mci_entry_final
@@ -5026,7 +5038,15 @@ unweighting routine should already take care of this.
          if (signal_is_pending ())  return
          if (instance%is_valid ())  exit REJECTION
       end do REJECTION
+      if (mci_entry%check_weighted_events) call check_weighted_events ()
     end associate
+  contains
+    subroutine check_weighted_events ()
+       select type (mci_instance => instance%mci_work(mci_entry%i_mci)%mci)
+       type is (mci_vamp_instance_t)
+           call mci_entry%record_weights (mci_instance%vamp_weight)
+       end select
+    end subroutine check_weighted_events
   end subroutine process_mci_entry_generate_weighted_event
   
   subroutine process_mci_entry_generate_unweighted_event (mci_entry, instance)
@@ -5114,6 +5134,40 @@ state of the integrator (adaptation).
   end function process_mci_entry_get_md5sum
   
 @ %def process_mci_entry_get_md5sum
+@
+<<Processes: process mci entry: TBP>>=
+  procedure :: record_weights => process_mci_entry_record_weights
+<<Processes: procedures>>=
+  subroutine process_mci_entry_record_weights (mci_entry, weight)
+    class(process_mci_entry_t), intent(inout) :: mci_entry
+    real(default), intent(in) :: weight
+    real(default) :: mean_new
+    integer :: n
+    mci_entry%n_events = mci_entry%n_events + 1
+    n = mci_entry%n_events
+    mean_new = mci_entry%mean + (weight - mci_entry%mean) / n
+    if (n > 1) &
+       mci_entry%varsq = mci_entry%varsq - mci_entry%varsq / (n - 1)+ &
+          n * (mean_new - mci_entry%mean)**2
+    mci_entry%mean = mean_new 
+  end subroutine process_mci_entry_record_weights
+
+@ %def process_mci_entry_record_weights
+@
+<<Processes: process mci entry: TBP>>=
+  procedure :: evaluate_event_statistics => process_mci_entry_evaluate_event_statistics
+<<Processes: procedures>>=
+  subroutine process_mci_entry_evaluate_event_statistics (mci_entry)
+    class(process_mci_entry_t), intent(in) :: mci_entry
+    if (mci_entry%n_events > 0) then
+       print *, 'Reconstructed total cross section with ', mci_entry%n_events, ' events: '
+       print *, mci_entry%mean, ' +- ' , sqrt (mci_entry%varsq / mci_entry%n_events)
+    else
+       call msg_warning ("Cannot compute reconstructed cross section: Events are unweighted!")
+    end if
+  end subroutine process_mci_entry_evaluate_event_statistics
+
+@ %def process_mci_entry_evaluate_event_statistics
 @
 \subsection{Process Components}
 A process component is an individual contribution to a process
@@ -6897,8 +6951,9 @@ postpone until we know the factorization scale), and we have a valid
     type is (phs_fks_t)
        call component%k_seed%compute_selected_channel &
             (mci_work, phs_channel, component%p_seed, success)
-       call component%k_seed%evaluate_radiation_kinematics (mci_work%get_x_process (), &
-          component%nlo_controller%reg_data)
+       if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) &
+          call component%k_seed%evaluate_radiation_kinematics (mci_work%get_x_process (), &
+             component%nlo_controller%reg_data)
        sf_channel = component%k_seed%phs%config%get_sf_channel (phs_channel)
        call component%nlo_controller%sf_born%compute_kinematics (sf_channel, mci_work%get_x_strfun ())
        if (success) &
@@ -7242,6 +7297,7 @@ imaginary part of the terms, which should be zero anyway.
            (term%int_hard%get_momenta (), term%ren_scale) 
         call nlo_controller%virtual_terms%set_fac_scale &
            (term%int_hard%get_momenta (), term%fac_scale)
+        call nlo_controller%virtual_terms%set_ellis_sexton_scale ()
         select type (core => component%config%core)
         class is (prc_user_defined_base_t)
            call core%update_alpha_s (component%core_state, term%fac_scale)
@@ -7302,7 +7358,7 @@ imaginary part of the terms, which should be zero anyway.
      call core%compute_sqme_virt (i_flv + i_hel, p, ren_scale, &
         sqme_virt, bad_point)
      call core%apply_structure_functions (component%k_seed%sf_chain, &
-        term%config%data%flv_state (1:2,i_flv))
+        term%config%data%flv_state (1 : 2,i_flv))
      sqme_virt = sqme_virt * core%get_sf_value ()
 
      associate (nlo_controller => component%nlo_controller)
@@ -7348,9 +7404,12 @@ imaginary part of the terms, which should be zero anyway.
           (component%config%core_sub_born%get_alpha_s (component%core_state))
        call term%nlo_controller%evaluate_color_correlations &
           (component%config%core_sub_born, component%core_state, &
-          term%fac_scale, 1, 1, bad_point)
+          term%fac_scale, 1, bad_point)
        call nlo_controller%compute_sqme_mismatch ()
        component%sqme = nlo_controller%sqme_collector%sqme_mismatch
+       !!! mismatch might vanish if the exponents get large with smaller precisions
+       !!! TODO: (cw 2016-03-29) Check whether this problem also occurs for higher precisions.
+       nlo_controller%nlo_cuts%passed_born = .not. vanishes (component%sqme)
     end associate
   end subroutine component_instance_evaluate_sqme_mismatch
 
@@ -7423,19 +7482,18 @@ imaginary part of the terms, which should be zero anyway.
   subroutine component_instance_apply_subtraction (component, term)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout) :: term
-    integer :: i_flv, i_flv_born
+    integer :: i_flv_born
     logical :: bad_point
     if (term%nlo_type /= NLO_REAL) return
     associate (nlo_controller => component%nlo_controller, &
        collector => component%nlo_controller%sqme_collector)
        if (nlo_controller%is_subtraction_active ()) then
-            do i_flv = 1, nlo_controller%get_n_flv_born ()
-               i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv)
+            do i_flv_born = 1, nlo_controller%get_n_flv_born ()
                call term%nlo_controller%evaluate_color_correlations &
                   (component%config%core_sub_born, component%core_state, &
-                  term%fac_scale, i_flv, i_flv_born, bad_point)
+                  term%fac_scale, i_flv_born, bad_point)
 
-               if (nlo_controller%requires_spin_correlation (i_flv)) then
+               if (nlo_controller%requires_spin_correlation (i_flv_born)) then
                   select type (core_born => component%config%core_sub_born)
                   type is (prc_omega_t)
                      call msg_fatal ("Computation of spin-correlated " // &
@@ -8080,12 +8138,12 @@ The quantum numbers mask of the incoming particle
     call term%connected_real%receive_kinematics ()
     associate (scales => term%nlo_controller%real_terms%scales)
        call term%connected_real%evaluate_expressions (term%passed, &
-          scales%scale, scales%fac_scale, scales%ren_scale, &
-          term%weight)
+          term%scale, term%fac_scale, term%ren_scale, &
+          term%weight, force_evaluation = .true.)
        if (.not. term%passed) return
        scales%scale_born = scales%scale
-       scales%fac_scale_born = scales%fac_scale
-       scales%ren_scale_born = scales%ren_scale
+       scales%fac_scale_born = term%fac_scale
+       scales%ren_scale_born = term%ren_scale
        select type (phs => term%k_term%phs)
        type is (phs_fks_t)
           if (phs%i_phs_is_isr (i_phs)) then
@@ -8354,7 +8412,7 @@ physical event.
               term%amp(i) = core%compute_amplitude (i_term, &
                  term%int_hard_real%get_momenta (), &
                  term%config%flv(i), term%config%hel(i), term%config%col(i), &
-                 fac_scale, ren_scale, term%alpha_qcd_forced, &
+                 term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
                  component%core_state)
            else
               term%amp(i) = zero
@@ -8402,7 +8460,7 @@ physical event.
                   term%nlo_controller%get_flv_born(i), &
                   term%nlo_controller%get_hel_born(i), &
                   term%nlo_controller%get_col_born(i), &
-                  fac_scale, ren_scale, &
+                  term%fac_scale, term%ren_scale, &
                   term%alpha_qcd_forced, &
                   component%core_state)
           else
@@ -8465,7 +8523,7 @@ physical event.
              term%amp(i) = core%compute_amplitude (i_term, &
                 term%int_hard_real%get_momenta (), &
                 term%config%flv(i), term%config%hel(i), term%config%col(i), &
-                fac_scale, ren_scale, alpha_qcd_forced, &
+                term%fac_scale, term%ren_scale, alpha_qcd_forced, &
                 component%core_state)
           end do
        class is (prc_user_defined_base_t)
@@ -8483,7 +8541,7 @@ physical event.
           term%nlo_controller%amp_born(i) = core_sub_born%compute_amplitude (i_term, &
               term%nlo_controller%int_born%get_momenta (), &
               term%nlo_controller%get_flv_born(i), term%nlo_controller%get_hel_born(i), &
-              term%nlo_controller%get_col_born(i), fac_scale, ren_scale, &
+              term%nlo_controller%get_col_born(i), term%fac_scale, term%ren_scale, &
               alpha_qcd_forced, component%core_state)
        end do
     class is (prc_user_defined_base_t)
@@ -9125,13 +9183,13 @@ to subobject of [[instance]].
     class(process_instance_t), intent(inout), target :: instance
     type(nlo_settings_t), intent(in), optional :: nlo_settings
     type(process_t), pointer :: process
-    integer :: i_component
+    integer :: i_component, i_term
     type(process_constants_t), dimension(2), save :: prc_constants
     integer :: nlo_type
     integer :: i_born
     logical :: use_internal_cc, use_internal_sc
     logical :: use_resonance_mappings
-    logical :: test_soft_limit, test_coll_limit
+    logical :: test_soft_limit, test_coll_limit, test_anti_coll_limit
     integer :: generator_mode
     integer :: fixed_alr
 
@@ -9149,6 +9207,7 @@ to subobject of [[instance]].
                case (BORN)
                case (NLO_REAL)
                   i_born = component%config%config%get_associated_born ()
+                  i_term = component%config%i_term(1)
                   call process%term(i_born)%fetch_constants &
                        (prc_constants(1))
                   call process%term(i_component)%fetch_constants &
@@ -9159,6 +9218,7 @@ to subobject of [[instance]].
                      use_resonance_mappings = nlo_settings%use_resonance_mappings
                      test_soft_limit = nlo_settings%test_soft_limit
                      test_coll_limit = nlo_settings%test_coll_limit
+                     test_anti_coll_limit = nlo_settings%test_coll_limit
                      fixed_alr = nlo_settings%fixed_alr
                   else
                      use_internal_cc = .true.
@@ -9166,6 +9226,7 @@ to subobject of [[instance]].
                      use_resonance_mappings = .false.
                      test_soft_limit = .false.
                      test_coll_limit = .false.
+                     test_anti_coll_limit = .false.
                      fixed_alr = 0
                   end if
                   component%nlo_type = NLO_REAL
@@ -9177,10 +9238,10 @@ to subobject of [[instance]].
                           settings%use_resonance_mappings = use_resonance_mappings
                           settings%test_soft_limit = test_soft_limit
                           settings%test_coll_limit = test_coll_limit
+                          settings%test_anti_coll_limit = test_anti_coll_limit
                           settings%fixed_alr = fixed_alr
                           if (present (nlo_settings)) then
                              settings%combined_integration = nlo_settings%combined_integration
-                             settings%nlo_event_generation = nlo_settings%nlo_event_generation
                           end if
                        end associate
                        process%component(i_component)%fks_template%id = &
@@ -9188,10 +9249,13 @@ to subobject of [[instance]].
                        call nlo_controller%check_if_threshold_method (component%config%core)
                        select type (model => process%config%model)
                        type is (model_t)
-                          call nlo_controller%init (prc_constants, &
+                          call nlo_controller%init_regions_and_resonances (prc_constants, &
                              process%component(i_component)%fks_template, &
                              process%component(i_component)%phs_config, model)
                        end select
+                       call nlo_controller%init_color_data (prc_constants, &
+                          process%term(i_term)%flv, process%term(i_term)%col)
+                       call nlo_controller%setup_real_terms (process%component(i_component)%fks_template)
                        call nlo_controller%set_flv_born (process%term(i_born)%flv)
                        call nlo_controller%set_col_born (process%term(i_born)%col)
                        call nlo_controller%set_hel_born (process%term(i_born)%hel)
@@ -9244,12 +9308,19 @@ to subobject of [[instance]].
     function check_generator_mode (gen_mode_default) result (gen_mode)
        integer :: gen_mode
        integer, intent(in) :: gen_mode_default
+       if (nlo_settings%test_coll_limit .and. nlo_settings%test_anti_coll_limit) &
+          call msg_fatal ("You cannot check the collinear and anti-collinear limit "&
+             &"at the same time!")
        if (nlo_settings%test_soft_limit .and. .not. nlo_settings%test_coll_limit) then
           gen_mode = GEN_SOFT_LIMIT_TEST
        else if (.not. nlo_settings%test_soft_limit .and. nlo_settings%test_coll_limit) then
           gen_mode = GEN_COLL_LIMIT_TEST
+       else if (.not. nlo_settings%test_soft_limit .and. nlo_settings%test_anti_coll_limit) then
+          gen_mode = GEN_ANTI_COLL_LIMIT_TEST
        else if (nlo_settings%test_soft_limit .and. nlo_settings%test_coll_limit) then
           gen_mode = GEN_SOFT_COLL_LIMIT_TEST
+       else if (nlo_settings%test_soft_limit .and. nlo_settings%test_anti_coll_limit) then
+          gen_mode = GEN_SOFT_ANTI_COLL_LIMIT_TEST
        else
           gen_mode = gen_mode_default
        end if
@@ -9749,7 +9820,7 @@ terms, iterating over all active process components.
   subroutine process_instance_evaluate_trace (instance)
     class(process_instance_t), intent(inout) :: instance
     integer :: i, i_real
-    instance%sqme = 0
+    instance%sqme = zero
     i_real = 0
     call instance%reset_nlo_matrix_elements ()
     if (instance%evaluation_status >= STAT_PASSED_CUTS) then
@@ -9778,7 +9849,7 @@ terms, iterating over all active process components.
        end do
     else
        ! failed kinematics, failed cuts: set sqme to zero
-       instance%sqme = 0
+       instance%sqme = zero
     end if
     if (instance%evaluation_status < STAT_SEED_KINEMATICS) return
     select type (pcm => instance%pcm)
@@ -9865,7 +9936,7 @@ if it fails the cuts for at least one emitter.
 
      select type (pcm => instance%pcm)
      type is (pcm_instance_nlo_t)
-        nlegs = term%nlo_controller%reg_data%nlegs_real
+        nlegs = term%nlo_controller%reg_data%n_legs_real
         instance%sqme_real = zero
 
         associate (reg_data => term%nlo_controller%reg_data)
@@ -9947,9 +10018,10 @@ if it fails the cuts for at least one emitter.
              end if
              if (passed_real) &
                 call component%evaluate_sqme_real (term, i_phs)
-             if (passed_real .or. passed_born) &
+             if (passed_real .or. passed_born) then
                 call component%apply_subtraction (term)
-             instance%sqme_real(i_flv_real, i_phs) = pcm%collector%current_sqme_real
+                instance%sqme_real(i_flv_real, i_phs) = pcm%collector%current_sqme_real
+             end if
              if (pcm%collect_matrix_elements) then
                 pcm%collector%sqme_real_per_phs (i_flv_real, i_phs) &
                    = pcm%collector%current_sqme_real 
@@ -10848,9 +10920,9 @@ and directly set the coupling value that comes together with a particle set.
     type(string_t) :: real_tree_me_method
     type(string_t) :: loop_me_method
     type(string_t) :: correlation_me_method
-    integer :: openloops_phs_tolerance
+    integer :: openloops_phs_tolerance, openloops_stability_log
     logical :: openloops_top_signal
-    logical :: use_cms
+    logical :: use_cms, use_collier
 
     associate (process => instance%process)
        associate (var_list => process%meta%var_list)
@@ -10858,9 +10930,11 @@ and directly set the coupling value that comes together with a particle set.
           real_tree_me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
           loop_me_method = var_list%get_sval (var_str ("$loop_me_method"))
           correlation_me_method = var_list%get_sval (var_str ("$correlation_me_method"))
-          openloops_phs_tolerance = var_list%get_ival (var_str ('openloops_phs_tolerance'))
-          openloops_top_signal = var_list%get_lval (var_str ('?openloops_top_signal'))
-          use_cms = var_list%get_lval (var_str ('?openloops_use_cms'))
+          openloops_phs_tolerance = var_list%get_ival (var_str ("openloops_phs_tolerance"))
+          openloops_stability_log = var_list%get_ival (var_str ("openloops_stability_log"))
+          openloops_top_signal = var_list%get_lval (var_str ("?openloops_top_signal"))
+          use_cms = var_list%get_lval (var_str ("?openloops_use_cms"))
+          use_collier = var_list%get_lval (var_str ("?openloops_use_collier"))
        end associate
        call instance%get_coupling_powers (alpha_power, alphas_power)
        do i = 1, size (process%term)
@@ -10917,7 +10991,9 @@ and directly set the coupling value that comes together with a particle set.
           use_external_loops, use_external_correlations)
        call blha_master%allocate_config_files ()
        call blha_master%setup_additional_features (openloops_phs_tolerance, &
-          use_cms, top_signal = openloops_top_signal, &
+          use_cms, openloops_top_signal, &
+          openloops_stability_log, &
+          use_collier, &
           beam_structure = beam_structure)
        call blha_master%init (process%meta%id, process%config%model, &
           n_in, alpha_power, alphas_power, flv_born, flv_real)

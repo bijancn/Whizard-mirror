@@ -277,6 +277,9 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/fks_regions_1.ref \
     unit_tests/ref-output/fks_regions_2.ref \
     unit_tests/ref-output/fks_regions_3.ref \
+    unit_tests/ref-output/nlo_color_data_1.ref \
+    unit_tests/ref-output/nlo_color_data_2.ref \
+    unit_tests/ref-output/nlo_color_data_3.ref \
     unit_tests/ref-output/rng_base_1.ref \
     unit_tests/ref-output/rng_base_2.ref \
     unit_tests/ref-output/rng_tao_1.ref \
@@ -714,6 +717,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/pythia6_3.ref \
     functional_tests/ref-output-double/pythia6_4.ref \
     functional_tests/ref-output-double/tauola_1.ref \
+    functional_tests/ref-output-double/tauola_2.ref \
     functional_tests/ref-output-double/mlm_matching_isr.ref \
     functional_tests/ref-output-double/ewa_1.ref \
     functional_tests/ref-output-double/ewa_2.ref \
@@ -766,6 +770,7 @@ REF_OUTPUT_FILES_EXT = \
     functional_tests/ref-output-ext/pythia6_3.ref \
     functional_tests/ref-output-ext/pythia6_4.ref \
     functional_tests/ref-output-ext/tauola_1.ref \
+    functional_tests/ref-output-ext/tauola_2.ref \
     functional_tests/ref-output-ext/ewa_2.ref \
     functional_tests/ref-output-ext/ewa_3.ref \
     functional_tests/ref-output-ext/ilc.ref \
@@ -784,6 +789,7 @@ REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/pythia6_3.ref \
     functional_tests/ref-output-quad/pythia6_4.ref \
     functional_tests/ref-output-quad/tauola_1.ref \
+    functional_tests/ref-output-quad/tauola_2.ref \
     functional_tests/ref-output-quad/ewa_2.ref \
     functional_tests/ref-output-quad/ewa_3.ref \
     functional_tests/ref-output-quad/ilc.ref \
@@ -908,6 +914,7 @@ MISC_TESTS_SIN = \
     functional_tests/pythia6_3.sin \
     functional_tests/pythia6_4.sin \
     functional_tests/tauola_1.sin \
+    functional_tests/tauola_2.sin \
     functional_tests/mlm_matching_fsr.sin \
     functional_tests/mlm_matching_isr.sin \
     functional_tests/mlm_pythia6_isr.sin \

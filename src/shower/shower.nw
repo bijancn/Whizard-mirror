@@ -29,6 +29,7 @@ module shower_base
   use variables
   use model_data
   use pdf
+  use tauola_interface !NODEP!
 
 <<Standard module head>>
 
@@ -121,6 +122,7 @@ $P_t$-ordered ISR is [[isr_pt_ordered]].
      logical :: isr_active = .false.
      logical :: fsr_active = .false.
      logical :: muli_active = .false.
+     logical :: tau_dec = .false.
      logical :: verbose = .false.
      integer :: method = PS_UNDEFINED
      logical :: hadronization_active = .false.
@@ -165,6 +167,8 @@ hadronization are switched on).
          var_list%get_lval (var_str ("?ps_fsr_active"))
     shower_settings%isr_active = &
          var_list%get_lval (var_str ("?ps_isr_active"))
+    shower_settings%tau_dec = &
+         var_list%get_lval (var_str ("?ps_taudec_active"))    
     shower_settings%muli_active = &
          var_list%get_lval (var_str ("?muli_active"))
     shower_settings%hadronization_active = &
@@ -242,6 +246,8 @@ hadronization are switched on).
     write (u, "(3x,A,1x,L1)") &
          "ps_fsr_active                = ", settings%fsr_active
     write (u, "(3x,A,1x,L1)") &
+         "ps_tau_dec                   = ", settings%tau_dec
+    write (u, "(3x,A,1x,L1)") &
          "muli_active                  = ", settings%muli_active
     write (u, "(1x,A)")  "General settings:"
     if (settings%isr_active .or. settings%fsr_active) then
@@ -316,6 +322,7 @@ emissions.
      type(string_t) :: name
      type(pdf_data_t) :: pdf_data
      type(shower_settings_t) :: settings
+     type(taudec_settings_t) :: taudec_settings
    contains
    <<Shower base: shower base: TBP>>
   end type shower_base_t
@@ -348,10 +355,11 @@ emissions.
   procedure (shower_base_init), deferred :: init
 <<Shower base: interfaces>>=
   abstract interface
-    subroutine shower_base_init (shower, settings, pdf_data)
+    subroutine shower_base_init (shower, settings, taudec_settings, pdf_data)
       import
       class(shower_base_t), intent(out) :: shower
       type(shower_settings_t), intent(in) :: settings
+      type(taudec_settings_t), intent(in) :: taudec_settings
       type(pdf_data_t), intent(in) :: pdf_data
     end subroutine shower_base_init
    end interface
@@ -1897,6 +1905,7 @@ module shower_core
   use shower_partons
   use muli, only: muli_t
   use hep_common
+  use tauola_interface !NODEP!
 
 <<Standard module head>>
 
@@ -1961,12 +1970,14 @@ $k_T$-ordered showers.
 <<Shower core: shower: TBP>>=
   procedure :: init => shower_init
 <<Shower core: procedures>>=
-  subroutine shower_init (shower, settings, pdf_data)
+  subroutine shower_init (shower, settings, taudec_settings, pdf_data)
     class(shower_t), intent(out) :: shower
     type(shower_settings_t), intent(in) :: settings
+    type(taudec_settings_t), intent(in) :: taudec_settings
     type(pdf_data_t), intent(in) :: pdf_data
     call msg_debug (D_SHOWER, "shower_init")
     shower%settings = settings
+    shower%taudec_settings = taudec_settings
     call shower%pdf_data%init (pdf_data)
     shower%name = "WHIZARD internal"
     call shower%write_msg ()
@@ -6290,6 +6301,7 @@ module shower_pythia6
   use hep_common
   use pdf
   use helicities
+  use tauola_interface !NODEP!
 
 <<Standard module head>>
 
@@ -6330,12 +6342,14 @@ contains
 <<Shower pythia6: shower pythia6: TBP>>=
   procedure :: init => shower_pythia6_init
 <<Shower pythia6: procedures>>=
-  subroutine shower_pythia6_init (shower, settings, pdf_data)
+  subroutine shower_pythia6_init (shower, settings, taudec_settings, pdf_data)
     class(shower_pythia6_t), intent(out) :: shower
     type(shower_settings_t), intent(in) :: settings
+    type(taudec_settings_t), intent(in) :: taudec_settings
     type(pdf_data_t), intent(in) :: pdf_data
     call msg_debug (D_SHOWER, "shower_pythia6_init")
     shower%settings = settings
+    shower%taudec_settings = taudec_settings
     call pythia6_set_verbose (settings%verbose)
     call shower%pdf_data%init (pdf_data)
     shower%name = "PYTHIA6"
@@ -6375,7 +6389,7 @@ contains
        print *, 'After particle_set%reduce: pset_reduced'
        call pset_reduced%write (summary=.true., compressed=.true.)
     end if
-    call hepeup_from_particle_set (pset_reduced)
+    call hepeup_from_particle_set (pset_reduced, tauola_convention=.true.)
     call hepeup_set_event_parameters (proc_id=1)
   end subroutine shower_pythia6_import_particle_set
 
@@ -6479,6 +6493,9 @@ contains
        else
           call pygive ("MSTP(71)=0")   !!! switch off FSR
        end if
+       if (shower%settings%tau_dec) then
+          call pygive ("MSTJ(28)=2")
+       end if
        call pygive ("MSTP(111)=1")     !!! Allow hadronization and decays
        call pygive ("MSTJ(1)=0")       !!! No jet fragmentation
        call pygive ("MSTJ(21)=1")      !!! Allow decays but no jet fragmentation
@@ -6524,6 +6541,7 @@ contains
           call pygive ("MSTP(62)=2")
           call pygive ("MSTP(67)=0")
        end if
+       call pythia6_set_config (shower%settings%pythia6_pygive)
        call msg_debug (D_SHOWER, "calling pyinit")
        call PYINIT ("USER", "", "", 0D0)
        call shower%rng%generate (rand)
@@ -6534,7 +6552,7 @@ contains
        shower%initialized_for_NPRUP = NPRUP
     end if
     if (pythia6_tauola_active() .and. .not. tauola_initialized) then
-       call ilc_tauola_init_call ()
+       call ilc_tauola_init_call (shower%taudec_settings)
        tauola_initialized = .true.
     end if
   end subroutine shower_pythia6_transfer_settings
@@ -6745,12 +6763,10 @@ added back in by Pythia.
                call particles(n_tot_old+i_whz)%set_lifetime (lifetime)
           if (any (V(i_py,1:4) /= 0)) &
                call particles(n_tot_old+i_whz)%set_vertex (vertex)
-          ! Set tau helicity set by TAUOLA
+          !!! Set tau helicity set by TAUOLA
           if (abs (pdg) == 15) then
-             ! TODO: (bcn 2016-02-23) activate when we add tauola folder
-            call ilc_tauola_get_helicity(i_py, ihelicity)
-            ihelicity = 1 !!! Dummy value, replace by the subroutine above
-            call hel%init(ihelicity)
+            call ilc_tauola_get_helicity (i_py, ihelicity)
+            call hel%init (ihelicity)
             call particles(n_tot_old+i_whz)%set_helicity(hel)
             call particles(n_tot_old+i_whz)%set_polarization(PRT_DEFINITE_HELICITY)
           end if

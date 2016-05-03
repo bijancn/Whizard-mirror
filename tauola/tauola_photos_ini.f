@@ -492,7 +492,7 @@ C
       ENDIF
       DCDMAS=APKMAS
       END
-      double precision FUNCTION LUNPIK(ID,ISGN)
+      integer FUNCTION LUNPIK(ID,ISGN)
         IMPLICIT double precision (A-H,O-Z)
       COMMON / TAUKLE / BRA1,BRK0,BRK0B,BRKS
       double precision  BRA1,BRK0,BRK0B,BRKS

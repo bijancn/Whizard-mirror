@@ -1438,6 +1438,7 @@ so the latter is always available (and kept global).
          var_str ("helicity"), &
          intrinsic=.true.)
     call set_shower_defaults ()
+    call set_tauola_defaults  ()
     call set_hadronization_defaults ()
     call set_mlm_matching_defaults ()
     call set_powheg_matching_defaults ()
@@ -1605,6 +1606,9 @@ so the latter is always available (and kept global).
          (global%var_list, var_str ("?ps_isr_active"), .false., &
             intrinsic=.true.)
     call var_list_append_log &
+         (global%var_list, var_str ("?ps_taudec_active"), .false., &
+            intrinsic=.true.)
+    call var_list_append_log &
          (global%var_list, var_str ("?muli_active"), .false., &
             intrinsic=.true.)
     call var_list_append_string &
@@ -1651,6 +1655,26 @@ so the latter is always available (and kept global).
     call var_list_append_log (global%var_list, var_str &
          ("?ps_isr_only_onshell_emitted_partons"), .false., intrinsic=.true.)
   end subroutine set_shower_defaults
+
+@
+@
+<<RT data: global init: procedures>>=
+  subroutine set_tauola_defaults ()
+    call var_list_append_log (global%var_list, &
+         var_str ("?ps_tauola_photos"), .false., intrinsic=.true.)
+    call var_list_append_log (global%var_list, &
+         var_str ("?ps_tauola_transverse"), .false., intrinsic=.true.)
+    call var_list_append_log (global%var_list, &
+         var_str ("?ps_tauola_dec_rad_cor"), .false., intrinsic=.true.)
+    call var_list_append_int (global%var_list, &
+         var_str ("ps_tauola_dec_mode1"), 0, intrinsic = .true.)
+    call var_list_append_int (global%var_list, &
+         var_str ("ps_tauola_dec_mode2"), 0, intrinsic = .true.)
+    call var_list_append_real (global%var_list, var_str &
+         ("ps_tauola_mh"), 125._default, intrinsic = .true.)
+    call var_list_append_real (global%var_list, var_str &
+         ("ps_tauola_mix_angle"), 90._default, intrinsic = .true.)
+  end subroutine set_tauola_defaults
 
 @
 <<RT data: global init: procedures>>=
@@ -1776,6 +1800,8 @@ so the latter is always available (and kept global).
          var_str ("?test_soft_limit"), .false., intrinsic = .true.)
     call var_list_append_log (global%var_list, &
          var_str ("?test_coll_limit"), .false., intrinsic = .true.)
+    call var_list_append_log (global%var_list, &
+         var_str ("?test_anti_coll_limit"), .false., intrinsic = .true.)
     call var_list_append_int (global%var_list, &
          var_str ("fixed_alpha_region"), 0, intrinsic = .true.)
     call var_list_append_int &
@@ -1787,12 +1813,18 @@ so the latter is always available (and kept global).
     call var_list_append_int &
          (global%var_list, var_str ("openloops_phs_tolerance"), 7, &
          intrinsic = .true.)
+    call var_list_append_int &
+         (global%var_list, var_str ("openloops_stability_log"), 0, &
+         intrinsic = .true.)
     call var_list_append_log &
          (global%var_list, var_str ("?openloops_top_signal"), &
          .false., intrinsic = .true.)
     call var_list_append_log &
          (global%var_list, var_str ("?openloops_switch_off_muon_yukawa"), &
          .false., intrinsic = .true.)
+    call var_list_append_log &
+         (global%var_list, var_str ("?openloops_use_collier"), &
+         .true., intrinsic = .true.)
     call var_list_append_log &
          (global%var_list, var_str ("?disable_subtraction"), &
          .false., intrinsic = .true.)
@@ -1805,9 +1837,9 @@ so the latter is always available (and kept global).
     call var_list_append_string &
          (global%var_list, var_str ("$fks_mapping_type"), &
          var_str ("default"), intrinsic = .true.)
-    call var_list_append_log &
-         (global%var_list, var_str ("?fks_count_kinematics"), &
-         .false., intrinsic = .true.)
+    call var_list_append_string &
+         (global%var_list, var_str ("$resonances_exclude_particles"), &
+         var_str ("default"), intrinsic = .true.)
     call var_list_append_int &
          (global%var_list, var_str ("alpha_power"), &
          2, intrinsic = .true.)
@@ -1819,6 +1851,9 @@ so the latter is always available (and kept global).
          .false., intrinsic = .true.)
     call var_list_append_log &
          (global%var_list, var_str ("?nlo_fixed_order"), &
+         .false., intrinsic = .true.)
+    call var_list_append_log &
+         (global%var_list, var_str ("?check_event_weights_against_xsection"), &
          .false., intrinsic = .true.)
     call var_list_append_int &
          (global%var_list, var_str ("gks_multiplicity"), &
@@ -3709,6 +3744,7 @@ module dispatch
   use kinds, only: i16
 <<Use strings>>
   use constants, only: PI
+  use string_utils, only: split_string
   use io_units
   use diagnostics
   use system_defs, only: LF  
@@ -3783,7 +3819,8 @@ module dispatch
   use decays
   use hadrons
   use evt_nlo
-  
+  use tauola_interface !NODEP!
+
 <<Standard module head>>
 
 <<Dispatch: public>>
@@ -4244,6 +4281,7 @@ Initialize parameters used to optimize FKS calculations.
     type(string_t) :: fks_mapping_type
     logical :: kinematics_counter_active
     logical :: subtraction_disabled
+    type(string_t) :: exclude_from_resonance
 
     fks_dij_exp1 = &
        global%var_list%get_rval (var_str ("fks_dij_exp1"))
@@ -4255,6 +4293,11 @@ Initialize parameters used to optimize FKS calculations.
        global%var_list%get_lval (var_str ("?fks_count_kinematics"))
     subtraction_disabled = &
        global%var_list%get_lval (var_str ("?disable_subtraction"))
+
+    exclude_from_resonance = &
+       global%var_list%get_sval (var_str ("$resonances_exclude_particles"))
+    if (exclude_from_resonance /= var_str ("default")) &
+       fks_template%excluded_resonances = split_string (exclude_from_resonance, var_str (":"))
 
     call fks_template%set_dij_exp (fks_dij_exp1, fks_dij_exp2)
     select case (char (fks_mapping_type))
@@ -5585,12 +5628,18 @@ concatenated, we provide individual dispatchers for each of them.
     type(string_t) :: lhapdf_file, lhapdf_dir, process_name
     integer :: lhapdf_member
     type(shower_settings_t) :: settings
+    type(taudec_settings_t) :: taudec_settings
     type(var_list_t), pointer :: var_list
 
     call msg_message ("Simulate: activating parton shower")
     var_list => global%get_var_list_ptr ()
     allocate (evt_shower_t :: evt)
     call settings%init (var_list)
+    if (associated (global%model)) then
+       call taudec_settings%init (var_list, global%model)
+    else
+       call taudec_settings%init (var_list, global%fallback_model)
+    end if
     if (present (process)) then
        process_name = process%get_id ()
     else
@@ -5621,7 +5670,7 @@ concatenated, we provide individual dispatchers for each of them.
             char (global%get_sval (var_str ("$shower_method"))) // &
             'not implemented!')
        end select
-       call evt%shower%init (settings, evt%pdf_data)
+       call evt%shower%init (settings, taudec_settings, evt%pdf_data)
     end select
     call dispatch_matching (evt, settings, var_list, process_name)
   end subroutine dispatch_evt_shower
@@ -8622,6 +8671,7 @@ local changes to currently inactive models.
     type(eval_tree_factory_t) :: expr_factory
     logical :: use_powheg_damping
     integer :: i = 0
+    logical :: debug_events
 
     verb = .true.; if (present (verbose))  verb = verbose
     call intg%process%set_var_list (local%get_var_list_ptr ())
@@ -8856,7 +8906,9 @@ local changes to currently inactive models.
        if (verb)  call intg%process%sf_startup_message (sf_string)    
     end if
 
-    call intg%setup_process_mci ()
+    debug_events = var_list%get_lval &
+       (var_str ("?check_event_weights_against_xsection"))
+    call intg%setup_process_mci (debug_events)
     call intg%process%setup_terms ()
 
     if (associated (local%pn%cuts_lexpr)) then
@@ -9077,10 +9129,9 @@ of the integration history.
     nlo_settings%use_internal_color_correlations = color_method == 'omega' & 
        .or. color_method == 'threshold'
     nlo_settings%combined_integration = intg%combined_integration
-    nlo_settings%nlo_event_generation = &
-       var_list%get_lval (var_str ('?nlo_fixed_order'))
     nlo_settings%test_soft_limit = var_list%get_lval (var_str ('?test_soft_limit'))
     nlo_settings%test_coll_limit = var_list%get_lval (var_str ('?test_coll_limit'))
+    nlo_settings%test_anti_coll_limit = var_list%get_lval (var_str ('?test_anti_coll_limit'))
     nlo_settings%fixed_alr = var_list%get_ival (var_str ('fixed_alpha_region'))
 
     allocate (process_instance)
@@ -9195,9 +9246,10 @@ of the integration history.
 <<Integrations: integration: TBP>>=
   procedure :: setup_process_mci => integration_setup_process_mci
 <<Integrations: procedures>>=
-  subroutine integration_setup_process_mci (intg)
+  subroutine integration_setup_process_mci (intg, debug_events)
     class(integration_t), intent(inout) :: intg
-    call intg%process%setup_mci (intg%combined_integration)
+    logical, intent(in), optional :: debug_events
+    call intg%process%setup_mci (intg%combined_integration, debug_events)
   end subroutine integration_setup_process_mci
 
 @ %def integration_setup_process_mci@
@@ -11807,13 +11859,15 @@ does not affect parameters.
     class(model_data_t), intent(in), optional :: model
     type(rt_data_t), intent(in), optional, target :: local
     type(nlo_settings_t) :: nlo_settings
+    type(string_t) :: color_method
     allocate (process_instance)
     if (process%is_nlo_calculation ()) then
        associate (var_list => local%var_list)
           nlo_settings%combined_integration = &
              var_list%get_lval (var_str("?combined_nlo_integration"))
-          nlo_settings%nlo_event_generation = &
-             var_list%get_lval (var_str("?nlo_fixed_order"))
+          color_method = var_list%get_sval (var_str ('$correlation_me_method'))
+          nlo_settings%use_internal_color_correlations = color_method == 'omega' &
+             .or. color_method == 'threshold'
        end associate
        call process_instance%init (process, nlo_settings)    
        select type (pcm => process_instance%pcm)
@@ -29510,6 +29564,15 @@ This is for developers only, but needs a well-defined interface.
      call fks_regions_test (u, results)
 <<Main: all tests>>=
   call fks_regions_test (u, results)
+@
+\subsubsection{NLO Color data}
+<<Main: use tests>>=
+  use nlo_controller_ut, only: nlo_color_data_test
+<<Main: test cases>>=
+  case ("nlo_color_data")
+     call nlo_color_data_test (u, results)
+<<Main: all tests>>=
+  call nlo_color_data_test (u, results)
 @
 \subsubsection{RNG Base}
 <<Main: use tests>>=

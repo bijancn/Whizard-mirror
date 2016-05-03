@@ -91,6 +91,7 @@ UNIT_TESTS = \
     phs_wood.run \
     phs_fks_generator.run \
     fks_regions.run \
+    nlo_color_data.run \
     rng_base.run \
     rng_tao.run \
     selectors.run \
