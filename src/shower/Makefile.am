@@ -130,7 +130,7 @@ endif
 	@:
 #	touch $@
 
-AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../fastjet -I../lhapdf -I ../pdf_builtin -I../../pythia6 -I../../tauola
+AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../fastjet -I../lhapdf -I ../pdf_builtin -I../../pythia6 -I../tauola
 AM_FFLAGS =
 
 ########################################################################

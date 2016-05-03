@@ -54,6 +54,7 @@ SUBDIRS = \
   xdr events \
   phase_space \
   mci variables \
+  tauola \
   muli shower \
   user \
   threshold \
@@ -96,6 +97,7 @@ libwhizard_la_LIBADD = \
   ../circe1/src/libcirce1.la \
   ../circe2/src/libcirce2.la \
   shower/libshower.la \
+  tauola/libtauola_interface.la \
   muli/libmuli.la \
   pdf_builtin/libpdf_builtin.la \
   model_features/libmodel_features.la \
