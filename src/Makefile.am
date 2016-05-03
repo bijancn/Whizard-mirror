@@ -96,8 +96,8 @@ libwhizard_la_LIBADD = \
   ../vamp/src/libvamp.la \
   ../circe1/src/libcirce1.la \
   ../circe2/src/libcirce2.la \
-  tauola/libtauola_interface.la \
   shower/libshower.la \
+  tauola/libtauola_interface.la \
   muli/libmuli.la \
   pdf_builtin/libpdf_builtin.la \
   model_features/libmodel_features.la \
