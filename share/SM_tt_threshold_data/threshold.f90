@@ -448,9 +448,9 @@ contains
           amp = - amp
        else
           top_width = ttv_wtpole (p12*p12, ffi)
-          owf_wb_35 = pr_psibar (ptop, mtop, wd_tl (ptop, top_width), .false. &
+          owf_wb_35 = pr_psibar (ptop, mtop, wd_tl (ptop, top_width), .false., &
                + f_fvl (gccq33, owf_b_5, owf_Wp_3))
-          owf_wb_46 = pr_psi (ptopbar, mtop, wd_tl (ptopbar, top_width), .false. &
+          owf_wb_46 = pr_psi (ptopbar, mtop, wd_tl (ptopbar, top_width), .false., &
                + f_vlf (gccq33, owf_Wm_4, owf_b_6))
           amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
           amp = amp + owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46) * ttv_vec
