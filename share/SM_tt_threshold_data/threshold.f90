@@ -463,9 +463,16 @@ contains
     integer, intent(in) :: ffi
     real(default) :: top_mass, top_width
     top_mass = ttv_mtpole (p12*p12)
-    top_width = ttv_wtpole (p12*p12, ffi)
-    one_over_p = one / cmplx (p35*p35 - top_mass**2, top_mass*top_width, kind=default)
-    one_over_p = one_over_p / cmplx (p46*p46 - top_mass**2, top_mass*top_width, kind=default)
+    if (threshold%settings%onshell_projection%width) then
+      top_width = ttv_wtpole (p12*p12, ffi)
+      one_over_p = one / cmplx (p35*p35 - top_mass**2, top_mass*top_width, kind=default)
+      one_over_p = one_over_p / cmplx (p46*p46 - top_mass**2, top_mass*top_width, kind=default)
+    else
+      top_width = ttv_wtpole (sqrt(p35*p35), ffi, use_as_minv=.true.)
+      one_over_p = one / cmplx (p35*p35 - top_mass**2, top_mass*top_width, kind=default)
+      top_width = ttv_wtpole (sqrt(p46*p46), ffi, use_as_minv=.true.)
+      one_over_p = one_over_p / cmplx (p46*p46 - top_mass**2, top_mass*top_width, kind=default)
+    end if
   end function top_propagators
 
   function top_decay_born (h_t, h_W, h_b) result (me)
