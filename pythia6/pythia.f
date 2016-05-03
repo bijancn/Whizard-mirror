@@ -68359,7 +68359,34 @@ C...Boost back decay tau and decay products.
           CALL PYROBO(NSAV+1,N,THETAU,PHITAU,0D0,0D0,0D0)
           IF(KFORIG.NE.0) CALL PYROBO(NSAV+1,N,0D0,0D0,DBETAU(1),
      &    DBETAU(2),DBETAU(3))
- 
+
+C...  call pylist (2)
+          
+C... If Parent is Higgs (IORIG=25,35,36), another tau is boosted and rotate.
+C... Only Higgs to tau pair decay
+        IF(KFORIG.EQ.25.OR.KFORIG.EQ.35.OR.KFORIG.EQ.36) THEN
+          ITFOUND=0
+          print *, "iorig = ", iorig
+          DO 60210 J=K(IORIG,4), K(IORIG,5)
+            IF( ABS(K(J,2)).EQ.15 ) THEN
+              ITFOUND=ITFOUND+1
+              IF( ITFOUND.GT.3 ) THEN
+                PRINT *,'%%Fatal error in PYDCAY after PYTAUD call,'
+                PRINT *,'because more than 2 taus are found in Higgs',
+     &                  'daughters.  '
+                STOP
+              ENDIF
+              CALL PYROBO(J,J,THETAU,PHITAU,0D0,0D0,0D0)
+              CALL PYROBO(J,J,0D0,0D0,DBETAU(1),
+     &        DBETAU(2),DBETAU(3))
+            ENDIF
+60210     CONTINUE
+C ... In the case of single tau decay, copy momentum before PYTAUD
+        ELSE
+          DO 211 J=1,4
+            P(ITAU,J)=PTAU(J)
+ 211     CONTINUE
+      ENDIF
 C...Skip past ordinary tau decay treatment.
           MMAT=0
           MBST=0
