@@ -1438,6 +1438,7 @@ so the latter is always available (and kept global).
          var_str ("helicity"), &
          intrinsic=.true.)
     call set_shower_defaults ()
+    call set_tauola_defaults  ()
     call set_hadronization_defaults ()
     call set_mlm_matching_defaults ()
     call set_powheg_matching_defaults ()
@@ -1605,6 +1606,9 @@ so the latter is always available (and kept global).
          (global%var_list, var_str ("?ps_isr_active"), .false., &
             intrinsic=.true.)
     call var_list_append_log &
+         (global%var_list, var_str ("?ps_taudec_active"), .false., &
+            intrinsic=.true.)
+    call var_list_append_log &
          (global%var_list, var_str ("?muli_active"), .false., &
             intrinsic=.true.)
     call var_list_append_string &
@@ -1651,6 +1655,26 @@ so the latter is always available (and kept global).
     call var_list_append_log (global%var_list, var_str &
          ("?ps_isr_only_onshell_emitted_partons"), .false., intrinsic=.true.)
   end subroutine set_shower_defaults
+
+@
+@
+<<RT data: global init: procedures>>=
+  subroutine set_tauola_defaults ()
+    call var_list_append_log (global%var_list, &
+         var_str ("?ps_tauola_photos"), .false., intrinsic=.true.)
+    call var_list_append_log (global%var_list, &
+         var_str ("?ps_tauola_transverse"), .false., intrinsic=.true.)
+    call var_list_append_log (global%var_list, &
+         var_str ("?ps_tauola_dec_rad_cor"), .true., intrinsic=.true.)
+    call var_list_append_int (global%var_list, &
+         var_str ("ps_tauola_dec_mode1"), 0, intrinsic = .true.)
+    call var_list_append_int (global%var_list, &
+         var_str ("ps_tauola_dec_mode2"), 0, intrinsic = .true.)
+    call var_list_append_real (global%var_list, var_str &
+         ("ps_tauola_mh"), 125._default, intrinsic = .true.)
+    call var_list_append_real (global%var_list, var_str &
+         ("ps_tauola_mix_angle"), 90._default, intrinsic = .true.)
+  end subroutine set_tauola_defaults
 
 @
 <<RT data: global init: procedures>>=
@@ -1799,6 +1823,9 @@ so the latter is always available (and kept global).
          (global%var_list, var_str ("?openloops_switch_off_muon_yukawa"), &
          .false., intrinsic = .true.)
     call var_list_append_log &
+         (global%var_list, var_str ("?openloops_use_collier"), &
+         .true., intrinsic = .true.)
+    call var_list_append_log &
          (global%var_list, var_str ("?disable_subtraction"), &
          .false., intrinsic = .true.)
     call var_list_append_real &
@@ -1824,6 +1851,9 @@ so the latter is always available (and kept global).
          .false., intrinsic = .true.)
     call var_list_append_log &
          (global%var_list, var_str ("?nlo_fixed_order"), &
+         .false., intrinsic = .true.)
+    call var_list_append_log &
+         (global%var_list, var_str ("?check_event_weights_against_xsection"), &
          .false., intrinsic = .true.)
     call var_list_append_int &
          (global%var_list, var_str ("gks_multiplicity"), &
@@ -3789,7 +3819,8 @@ module dispatch
   use decays
   use hadrons
   use evt_nlo
-  
+  use tauola_interface !NODEP!
+
 <<Standard module head>>
 
 <<Dispatch: public>>
@@ -5597,12 +5628,18 @@ concatenated, we provide individual dispatchers for each of them.
     type(string_t) :: lhapdf_file, lhapdf_dir, process_name
     integer :: lhapdf_member
     type(shower_settings_t) :: settings
+    type(taudec_settings_t) :: taudec_settings
     type(var_list_t), pointer :: var_list
 
     call msg_message ("Simulate: activating parton shower")
     var_list => global%get_var_list_ptr ()
     allocate (evt_shower_t :: evt)
     call settings%init (var_list)
+    if (associated (global%model)) then
+       call taudec_settings%init (var_list, global%model)
+    else
+       call taudec_settings%init (var_list, global%fallback_model)
+    end if
     if (present (process)) then
        process_name = process%get_id ()
     else
@@ -5633,7 +5670,7 @@ concatenated, we provide individual dispatchers for each of them.
             char (global%get_sval (var_str ("$shower_method"))) // &
             'not implemented!')
        end select
-       call evt%shower%init (settings, evt%pdf_data)
+       call evt%shower%init (settings, taudec_settings, evt%pdf_data)
     end select
     call dispatch_matching (evt, settings, var_list, process_name)
   end subroutine dispatch_evt_shower
@@ -8634,6 +8671,7 @@ local changes to currently inactive models.
     type(eval_tree_factory_t) :: expr_factory
     logical :: use_powheg_damping
     integer :: i = 0
+    logical :: debug_events
 
     verb = .true.; if (present (verbose))  verb = verbose
     call intg%process%set_var_list (local%get_var_list_ptr ())
@@ -8868,7 +8906,9 @@ local changes to currently inactive models.
        if (verb)  call intg%process%sf_startup_message (sf_string)    
     end if
 
-    call intg%setup_process_mci ()
+    debug_events = var_list%get_lval &
+       (var_str ("?check_event_weights_against_xsection"))
+    call intg%setup_process_mci (debug_events)
     call intg%process%setup_terms ()
 
     if (associated (local%pn%cuts_lexpr)) then
@@ -9206,9 +9246,10 @@ of the integration history.
 <<Integrations: integration: TBP>>=
   procedure :: setup_process_mci => integration_setup_process_mci
 <<Integrations: procedures>>=
-  subroutine integration_setup_process_mci (intg)
+  subroutine integration_setup_process_mci (intg, debug_events)
     class(integration_t), intent(inout) :: intg
-    call intg%process%setup_mci (intg%combined_integration)
+    logical, intent(in), optional :: debug_events
+    call intg%process%setup_mci (intg%combined_integration, debug_events)
   end subroutine integration_setup_process_mci
 
 @ %def integration_setup_process_mci@

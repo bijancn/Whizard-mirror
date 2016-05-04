@@ -1,4 +1,4 @@
-(* $Id: modeltools.ml 7469 2016-03-13 16:44:17Z ohl $
+(* $Id: modeltools.ml 7520 2016-04-25 11:42:45Z ohl $
 
    Copyright (C) 1999-2016 by
 
@@ -23,11 +23,11 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modeltools" ["Lagragians"]
-    { RCS.revision = "$Revision: 7469 $";
-      RCS.date = "$Date: 2016-03-13 17:44:17 +0100 (Sun, 13 Mar 2016) $";
+    { RCS.revision = "$Revision: 7520 $";
+      RCS.date = "$Date: 2016-04-25 13:42:45 +0200 (Mon, 25 Apr 2016) $";
       RCS.author = "$Author: ohl $";
       RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modeltools.ml $" }
+        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modeltools.ml $" }
 
 (* \thocwmodulesection{Compilation} *)
 
@@ -268,15 +268,24 @@ module Constant (M : Model.T) : Constant with type t = M.constant =
         (fun (_, _, c) ->
           String_Hash.add table (M.constant_symbol c) c)
         vs
-          
-    let _ =
-      let (v3, v4, vn) = M.vertices () in
-      fill_table table v3;
-      fill_table table v4;
-      fill_table table vn
+
+    (* Delay loading of the tables until the first use, so that
+       [M.vertices] can be initialized from a file.  *)
+
+    let tables_filled = ref false
+
+    let fill_tables () =
+      if not !tables_filled then begin
+	let (v3, v4, vn) = M.vertices () in
+	fill_table table v3;
+	fill_table table v4;
+	fill_table table vn;
+	tables_filled := true
+      end
 
     let of_string name =
       try
+	fill_tables ();
         String_Hash.find table name
       with
       | Not_found ->
@@ -396,12 +405,3 @@ module Mutable (FGC : sig type f and g and c end) =
 
     let rcs = RCS.rename rcs_file "Models.Mutable" ["Mutable Model"]
   end
-
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  End:
-i*)
-

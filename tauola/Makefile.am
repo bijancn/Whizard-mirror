@@ -44,10 +44,7 @@ endif
 noinst_LTLIBRARIES = libtauola_wo.la
 
 libtauola_wo_la_SOURCES = \
-  tauface-jetset.f formf.f photos.f tauola.f tauola_photos_ini.f \
-  hepeup_include_common.f90  \
-  hepevt_include_common.f90 \
-  ilc_tauola_mod2.f90
+  tauface-jetset.f formf.f photos.f tauola.f tauola_photos_ini.f
 
 else
 
@@ -57,11 +54,6 @@ libtauola_wo_dummy_la_SOURCES = tauola_dummy.f90
 endif
 ########################################################################
 ## Default Fortran compiler options
-
-# Explicit dependencies
-hepevt_include_common.lo: hepeup_include_common.lo
-
-ilc_tauola_mod2.lo: hepevt_include_common.lo hepeup_include_common.lo
 
 ## Profiling
 if FC_USE_PROFILING

@@ -1,15 +1,25 @@
-subroutine ilc_tauola_init_call
+subroutine dekay (kto, hx)
+  integer, intent(in) :: kto
+  double precision, dimension(4), intent(in) :: hx
   write (0, "(A)")  "**************************************************************"
-  write (0, "(A)")  "*** Error: PYTHIA6 has not been enabled, WHIZARD terminates ***"
+  write (0, "(A)")  "*** Error: TAUOLA has not been enabled, WHIZARD terminates ***"
   write (0, "(A)")  "**************************************************************"
   stop
-end subroutine ilc_tauola_init_call
+end subroutine dekay
 
-subroutine ilc_tauola_get_helicity (itau, the_helicity)
-  integer, intent(in)  :: itau
-  integer, intent(out) :: the_helicity
+subroutine dexay (kto, pol)
+  integer, intent(in) :: kto
+  double precision, dimension(4), intent(in) :: pol
   write (0, "(A)")  "**************************************************************"
-  write (0, "(A)")  "*** Error: PYTHIA6 has not been enabled, WHIZARD terminates ***"
+  write (0, "(A)")  "*** Error: TAUOLA has not been enabled, WHIZARD terminates ***"
   write (0, "(A)")  "**************************************************************"
   stop
-end subroutine ilc_tauola_get_helicity
+end subroutine dexay
+
+subroutine tauola (mode, keypol)
+  integer, intent(in) :: mode, keypol
+  write (0, "(A)")  "**************************************************************"
+  write (0, "(A)")  "*** Error: TAUOLA has not been enabled, WHIZARD terminates ***"
+  write (0, "(A)")  "**************************************************************"
+  stop
+end subroutine tauola

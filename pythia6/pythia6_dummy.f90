@@ -65,3 +65,10 @@ subroutine pyhepc (mconv)
   write (0, "(A)")  "**************************************************************"
   stop  
 end subroutine pyhepc
+function pyr (idummy)
+  integer, intent(in) :: idummy
+  write (0, "(A)")  "**************************************************************"
+  write (0, "(A)")  "*** Error: PYTHIA6 has not been enabled, WHIZARD terminates ***"
+  write (0, "(A)")  "**************************************************************"
+  stop  
+end function pyr

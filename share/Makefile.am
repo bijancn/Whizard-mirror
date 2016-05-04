@@ -161,6 +161,8 @@ dist_pdf_DATA = \
 	pdf_builtin/CJ12_max_00.tbl \
 	pdf_builtin/CJ12_mid_00.tbl \
 	pdf_builtin/CJ12_min_00.tbl \
+	pdf_builtin/CJ15LO_00.tbl \
+	pdf_builtin/CJ15NLO_00.tbl \
 	pdf_builtin/mmht2014lo.00.dat \
 	pdf_builtin/mmht2014nlo.00.dat \
 	pdf_builtin/mmht2014nnlo.00.dat \
