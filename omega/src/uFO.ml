@@ -824,8 +824,7 @@ module Model =
     let translate_tensor4 _ = Coupling.Scalar4 1
     let translate_constant _ = ""
 
-    let ufo_directory =
-      ref "/home/ohl/physics/feynrules/Standard_Model_UFO"
+    let ufo_directory = ref Config.default_UFO_dir
 
     let init () =
       let model = parse_directory !ufo_directory in

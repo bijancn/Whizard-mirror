@@ -193,6 +193,35 @@ esac
 OMEGA_CACHE_SUFFIX="vertices"
 AC_SUBST([OMEGA_CACHE_SUFFIX])
 
+AC_ARG_ENABLE([default-UFO-dir],
+[  --enable-default-UFO-dir=directory
+                          Read precomputed model tables from this directory,
+                          which will be populated by an administrator at
+                          install time [[default=$datadir/UFO, enabled]].],
+[case "$enableval" in
+   no) OMEGA_DEFAULT_UFO_DIR="."
+       ;;
+    *) OMEGA_DEFAULT_UFO_DIR="$enableval"
+       ;;
+esac],
+[### use eval b/c $datadir defaults to unexpanded ${datarootdir}
+case "$OMEGA_DEFAULT_UFO_DIR" in
+   "") OMEGA_DEFAULT_UFO_DIR="${prefix}/share/UFO"
+      ;;
+   *) eval OMEGA_DEFAULT_UFO_DIR="$datadir/UFO"
+      ;;
+esac])
+AC_SUBST([OMEGA_DEFAULT_UFO_DIR])
+
+case "$OMEGA_DEFAULT_UFO_DIR" in
+  .|""|NONE*) OMEGA_DEFAULT_UFO_DIR="."
+              ;;
+           *) AC_MSG_NOTICE([Creating default UFO directory $OMEGA_DEFAULT_UFO_DIR])
+              $MKDIR_P "$OMEGA_DEFAULT_UFO_DIR" 2>/dev/null
+              chmod u+w "$OMEGA_DEFAULT_UFO_DIR" 2>/dev/null
+              ;;
+esac
+
 ###---------------------------------------------------------------------
 ### Noweb
 
