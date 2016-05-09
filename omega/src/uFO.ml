@@ -232,6 +232,12 @@ let decay_dictionary_attrib name attribs =
 
 module SMap = Map.Make (struct type t = string let compare = compare end)
 
+let map_to_alist map =
+  SMap.fold (fun key value acc -> (key, value) :: acc) map []
+
+let keys map =
+  SMap.fold (fun key _ acc -> key :: acc) map []
+
 module Particle =
   struct
     
@@ -641,7 +647,7 @@ type t =
     lorentz : Lorentz.t SMap.t;
     parameters : Parameter.t SMap.t;
     propagators : Propagator.t SMap.t;
-    decays : Decay.t SMap.t}
+    decays : Decay.t SMap.t }
 
 let of_file u =
   { particles = Particle.of_file u.Files.particles;
@@ -709,7 +715,9 @@ let (@@@) f g x y =
   f (g x y)
 
 let parse_directory dir =
-  let model = of_file (Files.parse_directory dir) in
+  of_file (Files.parse_directory dir)
+
+let dump model =
   SMap.iter (print_endline @@@ Particle.to_string) model.particles;
   (* SMap.iter (print_endline @@@ UFO_Coupling.to_string) model.couplings; *)
   SMap.iter
@@ -737,13 +745,12 @@ let parse_directory dir =
   SMap.iter
     (fun symbol d ->
       List.iter (fun (_, w) -> ignore (UFOx.Expr.of_string w)) d.Decay.widths)
-    model.decays;
-  model
+    model.decays
 
 module Model =
   struct
 
-    type flavor = int
+    type flavor = string
     type constant = string
     type gauge = unit
 
@@ -826,8 +833,13 @@ module Model =
 
     let ufo_directory = ref Config.default_UFO_dir
 
+    let dump_raw = ref false
+
     let init () =
       let model = parse_directory !ufo_directory in
+      if !dump_raw then
+	dump model;
+      let flavors = keys model.particles in
       let flavor_of_string_map =
 	SMap.fold
 	  (fun symbol particle map ->
@@ -836,7 +848,7 @@ module Model =
       let flavor_of_string name =
 	SMap.find name flavor_of_string_map in
       let flavor_of_string name =
-	0 in
+	name in
       let functions = [] in
       let variables = [] in
       let vertices = [] in
@@ -872,15 +884,15 @@ module Model =
         ~max_degree
         ~vertices:all_vertices
         ~fuse:(F.fuse2 table, F.fuse3 table, F.fuse table)
-        ~flavors:([("All Flavors", [])])
+        ~flavors:([("All Flavors", flavors)])
         ~parameters:(fun () ->
           { Coupling.input = input_parameters;
             Coupling.derived = derived_parameters;
             Coupling.derived_arrays = [] })
         ~flavor_of_string
-        ~flavor_to_string:(fun f -> "")
-        ~flavor_to_TeX:(fun f -> "")
-        ~flavor_symbol:(fun f -> "")
+        ~flavor_to_string:(fun f -> f)
+        ~flavor_to_TeX:(fun f -> "\\verb{" ^ f ^ "}")
+        ~flavor_symbol:(fun f -> f)
         ~gauge_symbol:(fun () -> "")
         ~mass_symbol:(fun f -> "")
         ~width_symbol:(fun f -> "")
@@ -890,8 +902,9 @@ module Model =
       init ()
 
     let options = Options.create
-        [ ("p", Arg.String (fun name -> ufo_directory := name),
+        [ ("UFO_dir", Arg.String (fun name -> ufo_directory := name),
            "UFO model directory (default: " ^ !ufo_directory ^ ")");
+          ("dump", Arg.Set dump_raw, "dump UFO model");
           ("exec", Arg.Unit load,
            "load the model files (required _before_ any particle)");
           ("help", Arg.Unit (fun () ->

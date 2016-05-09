@@ -43,8 +43,9 @@ module type Files =
   end
 
 type t
-val parse_directory : string -> t
-  
+val parse_directory : string -> t 
+val dump : t -> unit
+ 
 module Model : Model.T
 
 module type Test =

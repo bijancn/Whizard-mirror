@@ -340,7 +340,9 @@ i*)
 (* \thocwmodulesection{Main Program} *)
 
     let main () =
-      let usage =
+      (* FIXME: [M.external_flavors] is evaluated too early,
+	 before processing the rest of the commandline \ldots *)
+      let usage () =
         "usage: " ^ Sys.argv.(0) ^
         " [options] [" ^
 	  String.concat "|" (List.map M.flavor_to_string 
@@ -421,9 +423,9 @@ i*)
 (*i       ("-T", Arg.Int Topology.Binary.debug_triplet, "");
           ("-P", Arg.Int Topology.Binary.debug_partition, "")])
 i*)
-        (fun _ -> prerr_endline usage; exit 1)
-        usage;
-
+        (fun _ -> prerr_endline (usage ()); exit 1)
+        (usage ());
+      
       let cmdline =
         String.concat " " (List.map ThoString.quote (Array.to_list Sys.argv)) in
         
