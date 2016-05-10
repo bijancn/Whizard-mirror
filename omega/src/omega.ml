@@ -340,6 +340,7 @@ i*)
 (* \thocwmodulesection{Main Program} *)
 
     let main () =
+      (* Delay evaluation of [M.external_flavors ()]! *)
       let usage () =
         "usage: " ^ Sys.argv.(0) ^
         " [options] [" ^
@@ -363,7 +364,7 @@ i*)
       and poles = ref false
       and dag_out = ref None
       and dag0_out = ref None in
-      Arg.parse
+      Options.parse
         (Options.cmdline "-target:" T.options @
          Options.cmdline "-model:" M.options @
          Options.cmdline "-fusion:" CF.options @
@@ -422,8 +423,8 @@ i*)
           ("-P", Arg.Int Topology.Binary.debug_partition, "")])
 i*)
         (fun _ -> prerr_endline (usage ()); exit 1)
-        (usage ());
-      
+        usage;
+
       let cmdline =
         String.concat " " (List.map ThoString.quote (Array.to_list Sys.argv)) in
         

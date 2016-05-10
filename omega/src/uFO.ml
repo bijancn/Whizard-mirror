@@ -759,10 +759,7 @@ module Model =
 
     let flavors = M.flavors
     let external_flavors = M.external_flavors
-    let external_flavors () =
-      prerr_endline "external_flavors\n";
-      flush stderr;
-      M.external_flavors ()
+    let external_flavors = M.external_flavors
     let lorentz = M.lorentz
     let color = M.color
     let propagator = M.propagator
@@ -911,11 +908,8 @@ module Model =
           ("dump", Arg.Set dump_raw, "dump UFO model");
           ("exec", Arg.Unit load,
            "load the model files (required _before_ any particle)");
-          ("help", Arg.Unit (fun () ->
-            print_endline
-              ("[" ^ String.concat "|"
-                       (List.map M.flavor_to_string (M.flavors ())) ^ "]")),
-            "print information on the model")]
+          ("help", Arg.Unit (fun () -> prerr_endline "..."),
+           "print information on the model")]
 
   end
 

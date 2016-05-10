@@ -64,7 +64,19 @@ let parse options (name, value) =
 let list options =
   List.map (fun (o, _, d) -> (o, d)) options.raw
 i*)
-    
+
+let parse specs anonymous usage =
+  let help () =
+    raise (Arg.Help (Arg.usage_string specs (usage ()))) in
+  let specs' =
+    [("-help", Arg.Unit help, "Display this list of options");
+     ("--help", Arg.Unit help, "Display this list of options")] @ specs in
+  try
+    Arg.parse_argv Sys.argv specs' anonymous (usage ())
+  with
+  | Arg.Bad msg -> Printf.eprintf "%s" msg; exit 2;
+  | Arg.Help msg -> Printf.printf "%s" msg; exit 0
+
 (*i
  *  Local Variables:
  *  mode:caml

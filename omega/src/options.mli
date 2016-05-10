@@ -36,6 +36,10 @@ val cmdline : string -> t -> (string * Arg.spec * string) list
 (*i val parse : t -> string * string -> unit i*)
 (*i exception Invalid of string * string i*)
 
+(* This is a clone of [Arg.parse] with a delayed usage string. *)
+val parse : (string * Arg.spec * string) list ->
+  (string -> unit) -> (unit -> string) -> unit
+
 (*i
  *  Local Variables:
  *  mode:caml
