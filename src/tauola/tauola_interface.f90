@@ -150,7 +150,7 @@ contains
        end if
        if (debug2_active (D_TAUOLA)) then
           call msg_debug2 (D_TAUOLA, "TAUOLA interface: fill_pyjets_spin_data")
-          write (msg_buffer, "(A,I0,A,I0,A,I0,A,I0)") &
+          write (msg_buffer, "(A,I0,A,I0,A,I0,A,ES19.12)") &
                "ip = ", ip, " iorig = ", iorig, " pid  ", k(ip,2), &
                " spin = ", pyjets_spin_data(ip)%helicity
           call msg_message ()
@@ -404,23 +404,31 @@ contains
     common /pyjets/ n, npad, k, p, v
     save /pyjets/
 
+    integer, save :: n_akiya = 0
+    integer :: n1, n2
+
+    is_swapped = .false.
+
+    n1 = n_akiya + 1
+    n2 = n_akiya + 2
+
     tauspin_pyjets(itau) = spin_dexay
     !!! change nhep from 2 -> 3 changes tauola_2 test output
     !!! plus changes of 1->2 and 2->3 in the next two blocks
     nhep = 2
 
-    isthep(1)   = 1
-    idhep(1)    = id_dexay
-    jmohep(:,1) = 0
-    jdahep(:,1) = 0
-    phep(:,1)   = p_dexay
+    isthep(n1)   = 1
+    idhep(n1)    = id_dexay
+    jmohep(:,n1) = 0
+    jdahep(:,n1) = 0
+    phep(:,n1)   = p_dexay
 
-    isthep(2)   = 1
-    idhep(2)    = - id_dexay
-    jmohep(:,2) = 0
-    jdahep(:,2) = 0
-    phep(1:3,2) = - phep(1:3,1)
-    phep(4:5,2) = phep(4:5,1)
+    isthep(n2)   = 1
+    idhep(n2)    = - id_dexay
+    jmohep(:,n2) = 0
+    jdahep(:,n2) = 0
+    phep(1:3,n2) = - phep(1:3,1)
+    phep(4:5,n2) = phep(4:5,1)
 
 !!! NOTE (Akiya Miyamoto, 25-March-2016)
 !!!  Higgs (h0/H0/A0) to tau+tau- decay is handled here
@@ -432,59 +440,186 @@ contains
 !!!  Instead, PHOTOS is called after tau decay and generate
 !!!  photons.
 
-    check_tau_sign: if(idhep(1).lt.0) then
-       np1 = 1
-       np2 = 2
+!!! ****************************************************************
+!!! (A) Higgs to tau+ tau- decay .
+!!! ****************************************************************
+    if (higgs_dec .and. trans_spin) then
+       if (idhep(2) .gt. 0) then
+          idhep(3) = id_dexay
+          idhep(2) = - id_dexay
+          is_swapped = .true.
+       end if
+
+       phep(:,n1) = p_dexay
+       phep(1:3,n2) = - phep(1:3,2)
+       phep(4:5,n2) = phep(4:5,2)
+
+       isthep(1) = 11
+       idhep(1) = kforig
+       jmohep(:,1) = 0
+       jdahep(1,1) = n1
+       jdahep(2,1) = n2
+       phep(:,1) = phep(:,2) + phep(:,3)
+       phep(5,1) = sqrt(phep(4,1)**2 - phep(1,1)**2 - phep(2,1)**2 - &
+            phep(3,1)**2)
+       jmohep(:,n1) = 1
+       jmohep(:,n2) = 1
+       
+       p1=phep(1:4,np1)  ! tau+ momentum
+       p2=phep(1:4,np2)  ! tau- momentum
+       
+       q1 = p1 + p2
+       im = 1
+    end if
+
+!!!  tau+ momentum should have positive Pz
+!!!  tau- momentum should have negative Pz
+
+!!! ********************************************************
+!!! (B) Single Tau+ decay
+!!! ********************************************************    
+    check_tau_sign: if (idhep(n1) .lt. 0) then
+       np1 = n1
+       np2 = n2
        pol = 0.
        pol(3) = - spin_dexay
-       p1 = phep(1:4,1)
-       p2 = phep(1:4,2)
+       p1 = phep(1:4,n1)
+       p2 = phep(1:4,n2)
        q1 = p1 + p2
-       !print *, " antiparticle decay q1= ", q1
-       !print *, " antiparticle decay p1= ", p1
-       !print *, " antiparticle decay p2= ", p2
-       ! ==========================================================
-       ! TAUOLA is called here
-       ! ==========================================================
-       call dexay(1,pol)
+       if (nsub_call .lt. max_dump) then
+          call msg_message ("Tau+ decay with pol(3) = " // &
+               real2char (pol(3)) // ".")
+          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, q1 = ", q1
+          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p1 = ", p1
+          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p2 = ", p2
+       end if
+       call msg_debug2 (D_TAUOLA, "TAUOLA is called here")
+       call dexay (1,pol)
+       !!! TBD: check whether photos should be called here
+       ! if (IFPHOT == 1)  call photos (np1)
+       phep(:,n1) = p_dexay
+       phep(1:3,n2) = - phep(1:3,n1)
+       phep(4:5,n2) = phep(4:5,n1)
+!!! ********************************************************
+!!! (C) Single Tau- decay
+!!! ********************************************************
     else check_tau_sign
-       np2 = 1
-       np1 = 2
+       idhep(3) = id_dexay
+       idhep(2) = - id_dexay
+       np2 = n1
+       np1 = n2
        pol = 0.
        pol(3) = spin_dexay
-       p2 = phep(1:4,1)
-       p1 = phep(1:4,2)
+       !!! Akiya now has a relation with the negative spin_dexay
+       ! pol(3) = - spin_dexay
+       p2 = phep(1:4,n1)
+       p1 = phep(1:4,n2)
        q1 = p1 + p2
-       !print *, " particle decay q1= ", q1
-       !print *, " particle decay p1= ", p1
-       !print *, " particle decay p2= ", p2
-       ! ==========================================================
-       ! TAUOLA is called here
-       ! ==========================================================
-       call dexay(2,pol)
-       ! ==========================================================
+       if (nsub_call .lt. max_dump) then
+          call msg_message ("Tau- decay with pol(3) = " // &
+               real2char (pol(3)) // ".")
+          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, q1 = ", q1
+          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p1 = ", p1
+          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p2 = ", p2
+       end if       
+       call msg_debug2 (D_TAUOLA, "TAUOLA is called here")
+       call dexay (2,pol)
+       !!! TBD: check whether photos should be called here
+       ! if (IFPHOT == 1)  call photos(np2)
+       phep(:,n1) = p_dexay
+       phep(1:3,n2) = - phep(1:3,n1)
+       phep(4:5,n2) = phep(4:5,n1)
+       is_swapped = .true.
     end if check_tau_sign
 
+!!! TODO (Akiya Miyamoto, 25-march-2016)
+!!!   In the following code, the tau helicity (polarization vector)
+!!!   information is not stored in pyjets_spin_data(jtau)%helicity
+!!!   and /HEPEV4/, because the tau polarization vector is determined
+!!!   here in order to have a transverse spin correlation between
+!!!   tau+ and tau-, but the decided polarization vectors are not
+!!!   calculated here.  It would be possible to calculate them
+!!!   from the polarimetric vectors, hh1 and hh2,  after
+!!!   the end of the loop, between "10 continue" and "goto 10".
+    
+!!! **********************************************************
+!!! Now copies /HEPEVT/ to /PYJETS/
+!!! Higgs tau pair decay and single tau decay are treated
+!!! separately.
+!!! **********************************************************
+
     nproducts = 0
-    loop_products_nohiggs: do i = 3, nhep
-       nproducts = nproducts + 1
-       p(n+nproducts,:) = phep(:,i)
-       if ( isthep(i) == 1 ) then
-          k(n+nproducts,1) = 1
-          k(n+nproducts,4) = 0
-          k(n+nproducts,5) = 0
+    np = nproducts
+
+!!! =========================================================
+!!! Higgs to tau pair decay case.
+!!! =========================================================
+
+    if (higgs_dec .and. trans_spin .and. jtau2 .gt. 0) then
+       if (is_swapped) then
+          !!! invert all momentum
+          do i = n1, nhep
+             phep(1:3,i) = - phep(1:3,i)
+          end do
+          do i = n2+1, nhep
+             if (jmohep(1,i) == n1) then
+                jmohep(1,i) = n2
+                jmohep(2,i) = n2
+             else if (jmohep(1,i) == n2) then
+                jmohep(1,i) = n1
+                jmohep(2,i) = n1
+             end if
+          end do
+      end if
+       
+!!! Overwrite tau+ and tau- data in /PYJETS/, because tau+tau- momentum 
+!!! could have been changed due to photon emmision in Higgs --> tau+ tau- 
+!!! system. Their momentum should be boosted and rotate back to the lab frame
+!!! in the calling routine, PYDCAY.
+
+       if (is_swapped) then
+          p(itau,:) = phep(:,3)
+          k(itau,4) = jdahep(1,3) - n2 + n
+          k(itau,5) = jdahep(2,3) - n2 + n
+          p(jtau2,:) = phep(:,2)
+          k(jtau2,4) = jdahep(1,2) - n2 + n
+          k(jtau2,5) = jdahep(2,2) - n2 + n
        else
-          k(n+nproducts,1) = 11
-          k(n+nproducts,4) = jdahep(1,i) + n - 2
-          k(n+nproducts,5) = jdahep(2,i) + n - 2
-       end if
-       k(n+nproducts,2) = idhep(i)
-       if (abs(idhep(jmohep(1,i))) .ne. 15) then
-          k(n+nproducts,3) = jmohep(1,i) + n - 2
-       else
-          k(n+nproducts,3) = itau
+          p(itau,:) = phep(:,2)
+          k(itau,4) = jdahep(1,2) - n2 + n
+          k(itau,5) = jdahep(2,2) - n2 + n
+          p(jtau2,:) = phep(:,3)
+          k(jtau2,4) = jdahep(1,3) - n2 + n
+          k(jtau2,5) = jdahep(2,3) - n2 + n
        endif
-    end do loop_products_nohiggs
+       k(itau,  1) = 11
+       k(jtau2, 1) = 11
+       k(itau,  3) = jorig
+       k(jtau2, 3) = jorig
+      
+    else
+       loop_products_nohiggs: do i = n2+1, nhep
+          nproducts = nproducts + 1
+          p(n+nproducts,:) = phep(:,i)
+          if (isthep(i) == 1) then
+             k(n+nproducts,1) = 1
+             k(n+nproducts,4) = 0
+             k(n+nproducts,5) = 0
+          else
+             k(n+nproducts,1) = 11
+             k(n+nproducts,4) = jdahep(1,i) - n2 + n
+             k(n+nproducts,5) = jdahep(2,i) - n2 + n
+          end if
+          k(n+nproducts,2) = idhep(i)
+          if (abs(idhep(jmohep(1,i))) .ne. 15) then
+             k(n+nproducts,3) = jmohep(1,i) - n2 + n
+          else
+             k(n+nproducts,3) = itau
+          end if
+       end do loop_products_nohiggs
+       
+    end if
+       
   end subroutine do_dexay
 
   subroutine taudec_settings_init (taudec_settings, var_list, model)
@@ -628,6 +763,15 @@ contains
          taudec_settings%mh**2))
     csc = cos(psi) * betah
     ssc = sin(psi)
+
+    if (trans_spin) then
+       if (mstj(39) .ne. 15) then
+          call msg_warning ("ilc_tauola_init_call: transverse spin " // &
+               "correlation requested for H -> tau tau. Photon radiation " // &
+               "from PYTHIA will be switched off.")
+          mstj(39) = 15
+       end if
+    end if
 
     if (debug2_active (D_TAUOLA)) then
        call msg_debug2 (D_TAUOLA, "TAUOLA initialization")       
