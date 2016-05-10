@@ -35,11 +35,17 @@ let extend old options =
       (fun a (s, f, _) -> A.add s f a) old.actions options;
     raw = options @ old.raw }
 
-let create = extend empty
-
+(*i
 let merge o1 o2 =
   extend o1 o2.raw
+i*)
 
+let create = extend empty
+
+let cmdline prefix options =
+  List.map (fun (o, f, d) -> (prefix ^ o, f, d)) options.raw
+
+(*i
 exception Invalid of string * string
 
 let parse options (name, value) =
@@ -57,11 +63,8 @@ let parse options (name, value) =
 
 let list options =
   List.map (fun (o, _, d) -> (o, d)) options.raw
-
-let cmdline prefix options =
-  List.map (fun (o, f, d) -> (prefix ^ o, f, d)) options.raw
-  
-
+i*)
+    
 (*i
  *  Local Variables:
  *  mode:caml

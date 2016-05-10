@@ -340,8 +340,6 @@ i*)
 (* \thocwmodulesection{Main Program} *)
 
     let main () =
-      (* FIXME: [M.external_flavors] is evaluated too early,
-	 before processing the rest of the commandline \ldots *)
       let usage () =
         "usage: " ^ Sys.argv.(0) ^
         " [options] [" ^

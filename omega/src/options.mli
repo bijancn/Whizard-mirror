@@ -23,15 +23,18 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 type t
+
 val empty : t
-val merge : t -> t -> t
-val extend : t -> (string * Arg.spec * string) list -> t
 val create : (string * Arg.spec * string) list -> t
-val parse : t -> string * string -> unit
-val list : t -> (string * string) list
+
+val extend : t -> (string * Arg.spec * string) list -> t
+(*i val merge : t -> t -> t i*)
+
 val cmdline : string -> t -> (string * Arg.spec * string) list
 
-exception Invalid of string * string
+(*i val list : t -> (string * string) list i*)
+(*i val parse : t -> string * string -> unit i*)
+(*i exception Invalid of string * string i*)
 
 (*i
  *  Local Variables:

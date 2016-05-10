@@ -759,6 +759,10 @@ module Model =
 
     let flavors = M.flavors
     let external_flavors = M.external_flavors
+    let external_flavors () =
+      prerr_endline "external_flavors\n";
+      flush stderr;
+      M.external_flavors ()
     let lorentz = M.lorentz
     let color = M.color
     let propagator = M.propagator
