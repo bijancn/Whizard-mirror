@@ -238,6 +238,9 @@ let map_to_alist map =
 let keys map =
   SMap.fold (fun key _ acc -> key :: acc) map []
 
+let values map =
+  SMap.fold (fun _ value acc -> value :: acc) map []
+
 module Particle =
   struct
     
@@ -852,20 +855,22 @@ module Model =
 	name in
       let functions = [] in
       let variables = [] in
-      let vertices = [] in
+      let vertices = values model.vertices in
       let vertices3, vertices4 =
-        List.fold_left (fun (v3, v4) ((p1, p2, p3, p4), c, t) ->
-          if p4 = "" then
-            (((flavor_of_string p1, flavor_of_string p2, flavor_of_string p3),
-              translate_tensor3 t, translate_constant c) :: v3, v4)
-          else
-            (v3, ((flavor_of_string p1, flavor_of_string p2,
-                   flavor_of_string p3, flavor_of_string p4),
-                  translate_tensor4 t, translate_constant c) :: v4))
+        List.fold_left (fun (v3, v4) v ->
+	  let t = v.Vertex.lorentz
+	  and c = v.Vertex.couplings in
+	  match v.Vertex.particles with
+	  | [| p1; p2; p3 |] ->
+             (((flavor_of_string p1, flavor_of_string p2, flavor_of_string p3),
+	       translate_tensor3 t, translate_constant c) :: v3, v4)
+	  | [| p1; p2; p3; p4 |] ->
+             (v3, ((flavor_of_string p1, flavor_of_string p2,
+                    flavor_of_string p3, flavor_of_string p4),
+                   translate_tensor4 t, translate_constant c) :: v4))
           ([], []) vertices in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
       let all_vertices () = (vertices3, vertices4, []) in
-      let all_vertices () = ([], [], []) in
       let table = F.of_vertices (all_vertices ()) in
       let input_parameters = 
         ("0.0_default", 0.0) ::
