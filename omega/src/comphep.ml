@@ -449,7 +449,6 @@ module Model =
         ~fermion:(fun f -> flavors.(clamp_flavor "fermion" f).f_fermion)
         ~max_degree
         ~vertices:all_vertices
-        ~fuse:(F.fuse2 table, F.fuse3 table, F.fuse table)
         ~flavors:([("All Flavors", flist)])
         ~parameters:(fun () ->
           { Coupling.input = input_parameters;

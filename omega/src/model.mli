@@ -152,10 +152,6 @@ module type Mutable =
           ((((flavor * flavor * flavor) * constant Coupling.vertex3 * constant) list)
              * (((flavor * flavor * flavor * flavor) * constant Coupling.vertex4 * constant) list)
              * (((flavor list) * constant Coupling.vertexn * constant) list))) ->
-        fuse:((flavor -> flavor -> (flavor * constant Coupling.t) list)
-                * (flavor -> flavor -> flavor ->
-                  (flavor * constant Coupling.t) list)
-                * (flavor list -> (flavor * constant Coupling.t) list)) ->
         flavors:((string * flavor list) list) ->
         parameters:(unit -> constant Coupling.parameters) ->
         flavor_of_string:(string -> flavor) ->

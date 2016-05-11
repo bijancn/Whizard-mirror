@@ -871,7 +871,6 @@ module Model =
           ([], []) vertices in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
       let all_vertices () = (vertices3, vertices4, []) in
-      let table = F.of_vertices (all_vertices ()) in
       let input_parameters = 
         ("0.0_default", 0.0) ::
         (List.map (fun (n, v, _) -> (n, v)) variables) in
@@ -889,7 +888,6 @@ module Model =
         ~fermion:(fun f -> 0)
         ~max_degree
         ~vertices:all_vertices
-        ~fuse:(F.fuse2 table, F.fuse3 table, F.fuse table)
         ~flavors:([("All Flavors", flavors)])
         ~parameters:(fun () ->
           { Coupling.input = input_parameters;
