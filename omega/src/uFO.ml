@@ -241,6 +241,14 @@ let keys map =
 let values map =
   SMap.fold (fun _ value acc -> value :: acc) map []
 
+module SKey =
+  struct
+    type t = string
+    let hash = Hashtbl.hash
+    let equal = (=)
+  end
+module SHash = Hashtbl.Make (SKey)
+
 module Particle =
   struct
     
@@ -753,7 +761,7 @@ let dump model =
 module Model =
   struct
 
-    type flavor = string
+    type flavor = int
     type constant = string
     type gauge = unit
 
@@ -861,16 +869,27 @@ module Model =
       let model = parse_directory !ufo_directory in
       if !dump_raw then
 	dump model;
-      let flavors = keys model.particles in
-      let flavor_of_string_map =
-	SMap.fold
-	  (fun symbol particle map ->
-	    SMap.add particle.Particle.name symbol map)
-	  model.particles SMap.empty in
+      let flavor_array = Array.of_list (values model.particles) in
+      let flavors = ThoList.range 0 (Array.length flavor_array - 1) in
+      let flavor_of_string_table = SHash.create 37 in
+      Array.iteri
+        (fun i f -> SHash.add flavor_of_string_table f.Particle.name i)
+	flavor_array;
       let flavor_of_string name =
-	SMap.find name flavor_of_string_map in
-      let flavor_of_string name =
-	name in
+	try
+	  SHash.find flavor_of_string_table name
+	with
+	| Not_found -> invalid_arg ("particle name not found: " ^ name) in
+      let symbol_array = Array.of_list (keys model.particles) in
+      let flavor_of_symbol_table = SHash.create 37 in
+      Array.iteri
+        (fun i s -> SHash.add flavor_of_symbol_table s i)
+	symbol_array;
+      let flavor_of_symbol name =
+	try
+	  SHash.find flavor_of_symbol_table name
+	with
+	| Not_found -> invalid_arg ("particle symbol not found: " ^ name) in
       let functions = [] in
       let variables = [] in
       let vertices3, vertices4 =
@@ -879,11 +898,11 @@ module Model =
 	  and c = v.Vertex.couplings in
 	  match v.Vertex.particles with
 	  | [| p1; p2; p3 |] ->
-             (((flavor_of_string p1, flavor_of_string p2, flavor_of_string p3),
+             (((flavor_of_symbol p1, flavor_of_symbol p2, flavor_of_symbol p3),
 	       translate_tensor3 t, translate_constant c) :: v3, v4)
 	  | [| p1; p2; p3; p4 |] ->
-             (v3, ((flavor_of_string p1, flavor_of_string p2,
-                    flavor_of_string p3, flavor_of_string p4),
+             (v3, ((flavor_of_symbol p1, flavor_of_symbol p2,
+                    flavor_of_symbol p3, flavor_of_symbol p4),
                    translate_tensor4 t, translate_constant c) :: v4)
 	  | _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
           ([], []) (values model.vertices) in
@@ -894,12 +913,18 @@ module Model =
       let derived_parameters =
         List.map (fun (n, f, _) -> (Coupling.Real n, Coupling.Const 0))
           functions in
-      let particle f = SMap.find f model.particles in
+      let particle f = flavor_array.(f)
+      and flavor_symbol f = symbol_array.(f) in
       let pdg f = (particle f).Particle.pdg_code
       and color f = UFOx.Color.omega (particle f).Particle.color
       and lorentz f = UFOx.Lorentz.omega (particle f).Particle.spin in
       let propagator f = propagator_of_lorentz (lorentz f) in
       let color f = Color.Singlet in (* TEMPORARY HACK! *)
+      let flavor_to_string f = (particle f).Particle.name
+      and flavor_to_TeX f = (particle f).Particle.texname in
+      let mass_symbol f = (particle f).Particle.mass
+      and width_symbol f = (particle f).Particle.width in
+      let gauge_symbol () = "?GAUGE?" in
       M.setup ~color ~pdg ~lorentz ~propagator
         ~width:(fun f -> Coupling.Constant)
         ~goldstone:(fun f -> None)
@@ -912,13 +937,8 @@ module Model =
           { Coupling.input = input_parameters;
             Coupling.derived = derived_parameters;
             Coupling.derived_arrays = [] })
-        ~flavor_of_string
-        ~flavor_to_string:(fun f -> f)
-        ~flavor_to_TeX:(fun f -> (particle f).Particle.texname)
-        ~flavor_symbol:(fun f -> f)
-        ~gauge_symbol:(fun () -> "{gauge}")
-        ~mass_symbol:(fun f -> (particle f).Particle.mass)
-        ~width_symbol:(fun f -> (particle f).Particle.width)
+        ~flavor_of_string ~flavor_to_string ~flavor_to_TeX
+        ~flavor_symbol ~gauge_symbol ~mass_symbol ~width_symbol
         ~constant_symbol:(fun c -> "g")
 
     let load () =
