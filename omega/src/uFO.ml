@@ -855,7 +855,6 @@ module Model =
 	name in
       let functions = [] in
       let variables = [] in
-      let vertices = values model.vertices in
       let vertices3, vertices4 =
         List.fold_left (fun (v3, v4) v ->
 	  let t = v.Vertex.lorentz
@@ -868,9 +867,9 @@ module Model =
              (v3, ((flavor_of_string p1, flavor_of_string p2,
                     flavor_of_string p3, flavor_of_string p4),
                    translate_tensor4 t, translate_constant c) :: v4))
-          ([], []) vertices in
+          ([], []) (values model.vertices) in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
-      let all_vertices () = (vertices3, vertices4, []) in
+      let vertices () = (vertices3, vertices4, []) in
       let input_parameters = 
         ("0.0_default", 0.0) ::
         (List.map (fun (n, v, _) -> (n, v)) variables) in
@@ -887,7 +886,7 @@ module Model =
         ~conjugate:(fun f -> f)
         ~fermion:(fun f -> 0)
         ~max_degree
-        ~vertices:all_vertices
+        ~vertices
         ~flavors:([("All Flavors", flavors)])
         ~parameters:(fun () ->
           { Coupling.input = input_parameters;
@@ -897,10 +896,10 @@ module Model =
         ~flavor_to_string:(fun f -> f)
         ~flavor_to_TeX:(fun f -> "\\verb{" ^ f ^ "}")
         ~flavor_symbol:(fun f -> f)
-        ~gauge_symbol:(fun () -> "")
-        ~mass_symbol:(fun f -> "")
-        ~width_symbol:(fun f -> "")
-        ~constant_symbol:(fun c -> failwith "constant_symbol")
+        ~gauge_symbol:(fun () -> "{gauge}")
+        ~mass_symbol:(fun f -> "{mass}")
+        ~width_symbol:(fun f -> "{width}")
+        ~constant_symbol:(fun c -> "g")
 
     let load () =
       init ()
