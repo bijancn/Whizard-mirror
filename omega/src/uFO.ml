@@ -907,6 +907,7 @@ module Model =
 	  | _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
           ([], []) (values model.vertices) in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
+      let vertices = (vertices3, vertices4, []) in
       let input_parameters = 
         ("0.0_default", 0.0) ::
         (List.map (fun (n, v, _) -> (n, v)) variables) in
@@ -918,21 +919,20 @@ module Model =
       let pdg f = (particle f).Particle.pdg_code
       and color f = UFOx.Color.omega (particle f).Particle.color
       and lorentz f = UFOx.Lorentz.omega (particle f).Particle.spin in
-      let propagator f = propagator_of_lorentz (lorentz f) in
-      let color f = Color.Singlet in (* TEMPORARY HACK! *)
+      let propagator f = propagator_of_lorentz (lorentz f)
+      and fermion f = fermion_of_lorentz (lorentz f) in
       let flavor_to_string f = (particle f).Particle.name
       and flavor_to_TeX f = (particle f).Particle.texname in
       let mass_symbol f = (particle f).Particle.mass
       and width_symbol f = (particle f).Particle.width in
       let gauge_symbol () = "?GAUGE?" in
+      let color f = Color.Singlet in (* TEMPORARY HACK! *)
       M.setup ~color ~pdg ~lorentz ~propagator
         ~width:(fun f -> Coupling.Constant)
         ~goldstone:(fun f -> None)
         ~conjugate:(fun f -> f)
-        ~fermion:(fun f -> 0)
-        ~max_degree
-        ~vertices:(vertices3, vertices4, [])
-        ~flavors:([("All Flavors", flavors)])
+        ~fermion ~max_degree ~vertices
+        ~flavors:[("All Flavors", flavors)]
         ~parameters:(fun () ->
           { Coupling.input = input_parameters;
             Coupling.derived = derived_parameters;
