@@ -429,8 +429,8 @@ module Model =
                   translate_tensor4 t, translate_constant c) :: v4))
           ([], []) vertices in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
-      let all_vertices () = (vertices3, vertices4, []) in
-      let table = F.of_vertices (all_vertices ()) in
+      let all_vertices = (vertices3, vertices4, []) in
+      let table = F.of_vertices all_vertices in
       let input_parameters = 
         (real_variable (Comphep_syntax.integer 0), 0.0) ::
         (List.map (fun (n, v, _) -> (n, v)) variables) in

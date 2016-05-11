@@ -68,7 +68,8 @@ module type T =
      Nevertheless: [vertices] is a candidate for removal, b/c we can
      build a smarter [Colorize] functor acting on [(fuse2, fuse3, fusen)].
      It can support an arbitrary numer of color lines.  But we have to test
-     whether it is efficient enough.
+     whether it is efficient enough.  And we have to make sure that this
+     wouldn't break the UFO interface.
    \end{dubious} *)
     type constant 
 
@@ -148,10 +149,10 @@ module type Mutable =
         conjugate:(flavor -> flavor) ->
         fermion:(flavor -> int) ->
         max_degree:int ->
-        vertices:(unit ->
-          ((((flavor * flavor * flavor) * constant Coupling.vertex3 * constant) list)
-             * (((flavor * flavor * flavor * flavor) * constant Coupling.vertex4 * constant) list)
-             * (((flavor list) * constant Coupling.vertexn * constant) list))) ->
+        vertices:
+            ((((flavor * flavor * flavor) * constant Coupling.vertex3 * constant) list)
+               * (((flavor * flavor * flavor * flavor) * constant Coupling.vertex4 * constant) list)
+               * (((flavor list) * constant Coupling.vertexn * constant) list)) ->
         flavors:((string * flavor list) list) ->
         parameters:(unit -> constant Coupling.parameters) ->
         flavor_of_string:(string -> flavor) ->

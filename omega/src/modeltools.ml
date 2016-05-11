@@ -394,14 +394,14 @@ module Mutable (FGC : sig type f and g and c end) =
       set_conjugate conjugate;
       set_fermion fermion;
       set_max_degree (fun () -> max_degree);
-      set_vertices vertices;
-      let table = F.of_vertices (vertices ()) in
+      set_vertices (fun () -> vertices);
+      let table = F.of_vertices vertices in
       set_fuse2 (F.fuse2 table);
       set_fuse3 (F.fuse3 table);
       set_fuse (F.fuse table);
-      set_external_flavors (fun f -> flavors);
+      set_external_flavors (fun () -> flavors);
       let flavors = ThoList.flatmap snd flavors in
-      set_flavors (fun f -> flavors);
+      set_flavors (fun () -> flavors);
       set_parameters parameters;
       set_flavor_of_string flavor_of_string;
       set_flavor_to_string flavor_to_string;

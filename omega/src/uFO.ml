@@ -839,6 +839,24 @@ module Model =
 
     let dump_raw = ref false
 
+    let propagator_of_lorentz = function
+      | Coupling.Scalar -> Coupling.Prop_Scalar
+      | Coupling.Spinor -> Coupling.Prop_Spinor
+      | Coupling.ConjSpinor -> Coupling.Prop_ConjSpinor
+      | Coupling.Majorana -> Coupling.Prop_Majorana
+      | Coupling.Maj_Ghost -> invalid_arg 
+         "UFO.Model.propagator_of_lorentz: SUSY ghosts do not propagate"
+      | Coupling.Vector -> Coupling.Prop_Feynman
+      | Coupling.Massive_Vector -> Coupling.Prop_Unitarity
+      | Coupling.Vectorspinor -> invalid_arg
+	 "UFO.Model.propagator_of_lorentz: Vectorspinor"
+      | Coupling.Tensor_1 -> invalid_arg
+	 "UFO.Model.propagator_of_lorentz: Tensor_1"
+      | Coupling.Tensor_2 -> invalid_arg
+	 "UFO.Model.propagator_of_lorentz: Tensor_2"
+      | Coupling.BRS _ -> invalid_arg
+	 "UFO.Model.propagator_of_lorentz: no BRST"
+
     let init () =
       let model = parse_directory !ufo_directory in
       if !dump_raw then
@@ -866,27 +884,29 @@ module Model =
 	  | [| p1; p2; p3; p4 |] ->
              (v3, ((flavor_of_string p1, flavor_of_string p2,
                     flavor_of_string p3, flavor_of_string p4),
-                   translate_tensor4 t, translate_constant c) :: v4))
+                   translate_tensor4 t, translate_constant c) :: v4)
+	  | _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
           ([], []) (values model.vertices) in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
-      let vertices () = (vertices3, vertices4, []) in
       let input_parameters = 
         ("0.0_default", 0.0) ::
         (List.map (fun (n, v, _) -> (n, v)) variables) in
       let derived_parameters =
         List.map (fun (n, f, _) -> (Coupling.Real n, Coupling.Const 0))
           functions in
-      M.setup
-        ~color:(fun f -> Singlet)
-        ~pdg:(fun f -> 0)
-        ~lorentz:(fun f -> Scalar)
-        ~propagator:(fun f -> Prop_Scalar)
+      let particle f = SMap.find f model.particles in
+      let pdg f = (particle f).Particle.pdg_code
+      and color f = UFOx.Color.omega (particle f).Particle.color
+      and lorentz f = UFOx.Lorentz.omega (particle f).Particle.spin in
+      let propagator f = propagator_of_lorentz (lorentz f) in
+      let color f = Color.Singlet in (* TEMPORARY HACK! *)
+      M.setup ~color ~pdg ~lorentz ~propagator
         ~width:(fun f -> Coupling.Constant)
         ~goldstone:(fun f -> None)
         ~conjugate:(fun f -> f)
         ~fermion:(fun f -> 0)
         ~max_degree
-        ~vertices
+        ~vertices:(vertices3, vertices4, [])
         ~flavors:([("All Flavors", flavors)])
         ~parameters:(fun () ->
           { Coupling.input = input_parameters;
@@ -894,11 +914,11 @@ module Model =
             Coupling.derived_arrays = [] })
         ~flavor_of_string
         ~flavor_to_string:(fun f -> f)
-        ~flavor_to_TeX:(fun f -> "\\verb{" ^ f ^ "}")
+        ~flavor_to_TeX:(fun f -> (particle f).Particle.texname)
         ~flavor_symbol:(fun f -> f)
         ~gauge_symbol:(fun () -> "{gauge}")
-        ~mass_symbol:(fun f -> "{mass}")
-        ~width_symbol:(fun f -> "{width}")
+        ~mass_symbol:(fun f -> (particle f).Particle.mass)
+        ~width_symbol:(fun f -> (particle f).Particle.width)
         ~constant_symbol:(fun c -> "g")
 
     let load () =

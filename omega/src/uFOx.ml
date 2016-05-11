@@ -113,6 +113,8 @@ module type Atomic_Tensor =
     val rep_of_int : int -> r
     val rep_conjugate : r -> r
     val rep_trivial : r -> bool
+    type r_omega
+    val omega : r -> r_omega
   end
 
 module type Tensor =
@@ -129,10 +131,12 @@ module type Tensor =
     val rep_of_int : int -> r
     val rep_conjugate : r -> r
     val rep_trivial : r -> bool
+    type r_omega
+    val omega : r -> r_omega
   end
 
 module Tensor (A : Atomic_Tensor) : Tensor
-  with type tensor = A.t and type r = A.r =
+  with type tensor = A.t and type r = A.r and type r_omega = A.r_omega =
   struct
 
     module S = UFOx_syntax
@@ -248,6 +252,9 @@ module Tensor (A : Atomic_Tensor) : Tensor
     let to_string terms =
       String.concat "" (List.map term_to_string terms)
       
+    type r_omega = A.r_omega
+    let omega = A.omega
+
   end
 
 module Atomic_Lorentz =
@@ -370,6 +377,14 @@ module Atomic_Lorentz =
 	   (fun v acc -> classify_indices1 v @ acc)
 	   tensors [])
 
+    type r_omega = Coupling.lorentz
+    let omega = function
+      | S -> Coupling.Scalar
+      | V -> Coupling.Vector
+      | Sp -> Coupling.Spinor
+      | CSp-> Coupling.ConjSpinor
+      | Ghost -> Coupling.Scalar
+
   end
     
 module Lorentz = Tensor(Atomic_Lorentz)
@@ -483,6 +498,14 @@ module Atomic_Color =
 	   (fun v acc -> classify_indices1 v @ acc)
 	   tensors [])
 
+    type r_omega = Color.t
+
+    let omega = function
+      | S | Sbar -> Color.Singlet
+      | F -> Color.SUN (3)
+      | C -> Color.SUN (-3)
+      | A-> Color.AdjSUN (3)
+    
   end
 
 module Color = Tensor(Atomic_Color)

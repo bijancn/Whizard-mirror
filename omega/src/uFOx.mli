@@ -50,10 +50,12 @@ module type Tensor =
     val rep_of_int : int -> r
     val rep_conjugate : r -> r
     val rep_trivial : r -> bool
+    type r_omega
+    val omega : r -> r_omega
   end
 
-module Lorentz : Tensor
-module Color : Tensor
+module Lorentz : Tensor with type r_omega = Coupling.lorentz
+module Color : Tensor with type r_omega = Color.t
 
 module Value :
   sig
