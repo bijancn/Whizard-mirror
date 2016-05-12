@@ -289,23 +289,31 @@ module Particle =
       | Q_Integer i -> Q_Integer (-i)
       | Q_Fraction (n, d) -> Q_Fraction (-n, d)
 
+    let is_neutral p =
+      (p.name = p.antiname)
+
+    (* We \emph{must not} mess with [pdg_code] and [color] if
+       the particle is neutral! *)
     let conjugate p =
-      { pdg_code = - p.pdg_code;
-	name = p.antiname;
-	antiname = p.name;
-	spin = UFOx.Lorentz.rep_conjugate p.spin;
-	color = UFOx.Color.rep_conjugate p.color;
-	mass = p.mass;
-	width = p.width;
-	texname = p.antitexname;
-	antitexname = p.texname;
-	charge = conjugate_charge p.charge;
-	ghost_number = p.ghost_number;
-	lepton_number = p.lepton_number;
-	y = p.y;
-	goldstone = p.goldstone;
-	propagating = p.propagating;
-	line = p.line }
+      if is_neutral p then
+	p
+      else
+	{ pdg_code = - p.pdg_code;
+	  name = p.antiname;
+	  antiname = p.name;
+	  spin = UFOx.Lorentz.rep_conjugate p.spin;
+	  color = UFOx.Color.rep_conjugate p.color;
+	  mass = p.mass;
+	  width = p.width;
+	  texname = p.antitexname;
+	  antitexname = p.texname;
+	  charge = conjugate_charge p.charge;
+	  ghost_number = p.ghost_number;
+	  lepton_number = p.lepton_number;
+	  y = p.y;
+	  goldstone = p.goldstone;
+	  propagating = p.propagating;
+	  line = p.line }
 
     let of_file1 map d =
       let symbol = d.S.name in
@@ -895,7 +903,13 @@ module Model =
 	  (Array.length flavor_array)
 	  (fun i ->
 	    let f' = Particle.conjugate flavor_array.(i) in
-	    None) in
+	    match ThoArray.match_all f' flavor_array with
+	    | [i'] -> i'
+	    | [] -> invalid_arg
+	       ("no charge conjugate found: " ^ f'.Particle.name)
+	    | _ -> invalid_arg
+	       ("multiple charge conjugates found: " ^ f'.Particle.name)) in
+      let conjugate f = conjugate_array.(f) in
       let functions = [] in
       let variables = [] in
       let vertices3, vertices4 =
@@ -936,8 +950,7 @@ module Model =
       M.setup ~color ~pdg ~lorentz ~propagator
         ~width:(fun f -> Coupling.Constant)
         ~goldstone:(fun f -> None)
-        ~conjugate:(fun f -> f)
-        ~fermion ~max_degree ~vertices
+        ~conjugate ~fermion ~max_degree ~vertices
         ~flavors:[("All Flavors", flavors)]
         ~parameters:(fun () ->
           { Coupling.input = input_parameters;

@@ -118,6 +118,7 @@ let find_all f a =
 let match_all x a =
   find_all (fun x' -> x = x') a
 
+(*i
 module Test =
   struct
 
@@ -191,6 +192,7 @@ module Test =
          suite_find_all]
 
   end
+i*)
 
 (*i
  *  Local Variables:

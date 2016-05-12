@@ -54,7 +54,7 @@ val match_first : 'a -> 'a array -> int
 val find_all : ('a -> bool) -> 'a array -> int list
 val match_all : 'a -> 'a array -> int list
     
-module Test : sig val suite : OUnit.test end
+(* [module Test : sig val suite : OUnit.test end] *)
 
 (*i
  *  Local Variables:
