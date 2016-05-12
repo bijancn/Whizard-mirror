@@ -851,6 +851,29 @@ module Model =
     let translate_tensor4 _ = Coupling.Scalar4 1
     let translate_constant _ = ""
 
+    let translate_coupling3 t c g =
+      translate_tensor3 t, translate_constant g
+
+    let translate_coupling4 t c g =
+      translate_tensor4 t, translate_constant g
+
+    let translate_vertices flavor_of_symbol model =
+      List.fold_left (fun (v3, v4, vn) v ->
+	let t = v.Vertex.lorentz
+	and c = v.Vertex.color
+	and g = v.Vertex.couplings in
+	match v.Vertex.particles with
+	| [| p1; p2; p3 |] ->
+	   let t, g = translate_coupling3 t c g in
+           (((flavor_of_symbol p1, flavor_of_symbol p2,
+	      flavor_of_symbol p3), t, g) :: v3, v4, vn)
+	| [| p1; p2; p3; p4 |] ->
+	   let t, g = translate_coupling4 t c g in
+           (v3, ((flavor_of_symbol p1, flavor_of_symbol p2,
+                  flavor_of_symbol p3, flavor_of_symbol p4), t, g) :: v4, vn)
+	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
+        ([], [], []) (values model.vertices)
+
     let ufo_directory = ref Config.default_UFO_dir
 
     let dump_raw = ref false
@@ -873,61 +896,44 @@ module Model =
       | Coupling.BRS _ -> invalid_arg
 	 "UFO.Model.propagator_of_lorentz: no BRST"
 
+    let conjugate_of_flavor_array a =
+      Array.init
+	(Array.length a)
+	(fun i ->
+	  let f' = Particle.conjugate a.(i) in
+	  match ThoArray.match_all f' a with
+	  | [i'] -> i'
+	  | [] ->
+	     invalid_arg ("no charge conjugate: " ^ f'.Particle.name)
+	  | _ ->
+	     invalid_arg ("multiple charge conjugates: " ^ f'.Particle.name))
+
+    let invert_array a =
+      let table = SHash.create 37 in
+      Array.iteri (fun i s -> SHash.add table s i) a;
+      (fun name ->
+	try
+	  SHash.find table name
+	with
+	| Not_found -> invalid_arg ("not found: " ^ name))
+
     let init () =
       let model = parse_directory !ufo_directory in
       if !dump_raw then
 	dump model;
       let flavor_array = Array.of_list (values model.particles) in
       let flavors = ThoList.range 0 (Array.length flavor_array - 1) in
-      let flavor_of_string_table = SHash.create 37 in
-      Array.iteri
-        (fun i f -> SHash.add flavor_of_string_table f.Particle.name i)
-	flavor_array;
-      let flavor_of_string name =
-	try
-	  SHash.find flavor_of_string_table name
-	with
-	| Not_found -> invalid_arg ("particle name not found: " ^ name) in
+      let name_array = Array.map (fun f -> f.Particle.name) flavor_array in
+      let flavor_of_string = invert_array name_array in
       let symbol_array = Array.of_list (keys model.particles) in
-      let flavor_of_symbol_table = SHash.create 37 in
-      Array.iteri
-        (fun i s -> SHash.add flavor_of_symbol_table s i)
-	symbol_array;
-      let flavor_of_symbol name =
-	try
-	  SHash.find flavor_of_symbol_table name
-	with
-	| Not_found -> invalid_arg ("particle symbol not found: " ^ name) in
-      let conjugate_array =
-	Array.init
-	  (Array.length flavor_array)
-	  (fun i ->
-	    let f' = Particle.conjugate flavor_array.(i) in
-	    match ThoArray.match_all f' flavor_array with
-	    | [i'] -> i'
-	    | [] -> invalid_arg
-	       ("no charge conjugate found: " ^ f'.Particle.name)
-	    | _ -> invalid_arg
-	       ("multiple charge conjugates found: " ^ f'.Particle.name)) in
+      let flavor_of_symbol = invert_array symbol_array in
+      let conjugate_array = conjugate_of_flavor_array flavor_array in
       let conjugate f = conjugate_array.(f) in
       let functions = [] in
       let variables = [] in
-      let vertices3, vertices4 =
-        List.fold_left (fun (v3, v4) v ->
-	  let t = v.Vertex.lorentz
-	  and c = v.Vertex.couplings in
-	  match v.Vertex.particles with
-	  | [| p1; p2; p3 |] ->
-             (((flavor_of_symbol p1, flavor_of_symbol p2, flavor_of_symbol p3),
-	       translate_tensor3 t, translate_constant c) :: v3, v4)
-	  | [| p1; p2; p3; p4 |] ->
-             (v3, ((flavor_of_symbol p1, flavor_of_symbol p2,
-                    flavor_of_symbol p3, flavor_of_symbol p4),
-                   translate_tensor4 t, translate_constant c) :: v4)
-	  | _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
-          ([], []) (values model.vertices) in
+      let (vertices3, vertices4, verticesn) as vertices =
+	translate_vertices flavor_of_symbol model in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
-      let vertices = (vertices3, vertices4, []) in
       let input_parameters = 
         ("0.0_default", 0.0) ::
         (List.map (fun (n, v, _) -> (n, v)) variables) in
