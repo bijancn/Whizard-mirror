@@ -47,10 +47,17 @@ val embedding2 : 'a compressed2 -> int array
 val compress2 : 'a array array -> 'a compressed2
 val uncompress2 : 'a compressed2 -> 'a array array
 
+(* Searching arrays *)
+
+val find_first : ('a -> bool) -> 'a array -> int
+val match_first : 'a -> 'a array -> int
+val find_all : ('a -> bool) -> 'a array -> int list
+val match_all : 'a -> 'a array -> int list
+    
+module Test : sig val suite : OUnit.test end
 
 (*i
  *  Local Variables:
- *  mode:caml
  *  indent-tabs-mode:nil
  *  page-delimiter:"^(\\* .*\n"
  *  End:

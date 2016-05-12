@@ -890,6 +890,12 @@ module Model =
 	  SHash.find flavor_of_symbol_table name
 	with
 	| Not_found -> invalid_arg ("particle symbol not found: " ^ name) in
+      let conjugate_array =
+	Array.init
+	  (Array.length flavor_array)
+	  (fun i ->
+	    let f' = Particle.conjugate flavor_array.(i) in
+	    None) in
       let functions = [] in
       let variables = [] in
       let vertices3, vertices4 =
