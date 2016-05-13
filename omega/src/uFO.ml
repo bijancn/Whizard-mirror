@@ -852,6 +852,8 @@ module Model =
     let dummy_constant = "{coupling}"
 
     let translate_coupling3 model = function
+      | [| [ [UFOx.Lorentz_Atom.C (i, j)], q] |], [| c |], [| [| g |] |] ->
+	 dummy_tensor3, dummy_constant
       | [| t |], [| c |], [| [| g |] |] ->
 	 dummy_tensor3, dummy_constant
       | [| t |], [| c |], _->
@@ -888,6 +890,7 @@ module Model =
 	  Array.map (Array.map (coupling_of_symbol model)) v.Vertex.couplings
 	and t = Array.map (lorentz_of_symbol model) v.Vertex.lorentz
 	and c = v.Vertex.color in
+	let t = Array.map (fun l -> l.Lorentz.structure) t in
 	match p with
 	| [| p1; p2; p3 |] ->
 	   let t, g = translate_coupling3 model (t, c, g) in

@@ -120,7 +120,7 @@ module type Atomic_Tensor =
 module type Tensor =
   sig
     type tensor
-    type t
+    type t = (tensor list * Q.t) list
     val of_expr : UFOx_syntax.expr -> t
     val of_string : string -> t
     val of_strings : string list -> t
@@ -257,9 +257,23 @@ module Tensor (A : Atomic_Tensor) : Tensor
 
   end
 
-module Atomic_Lorentz =
+module type Lorentz_Atom =
+  sig
+    type t = private
+      | C of int * int
+      | Epsilon of int * int * int * int
+      | Gamma of int * int * int
+      | Gamma5 of int * int
+      | Identity of int * int
+      | Metric of int * int
+      | P of int * int
+      | ProjP of int * int
+      | ProjM of int * int
+      | Sigma of int * int * int * int
+  end
+
+module Lorentz_Atom =
   struct
-	
     type t =
       | C of int * int
       | Epsilon of int * int * int * int
@@ -271,7 +285,15 @@ module Atomic_Lorentz =
       | ProjP of int * int
       | ProjM of int * int
       | Sigma of int * int * int * int
+  end
 
+module Atomic_Lorentz : Atomic_Tensor with type t = Lorentz_Atom.t and type r_omega = Coupling.lorentz =
+  struct
+	
+    type t = Lorentz_Atom.t
+
+    open Lorentz_Atom
+    
     let to_string = function
       | C (i, j) ->
 	 Printf.sprintf "C(%d,%d)" i j
@@ -389,7 +411,7 @@ module Atomic_Lorentz =
     
 module Lorentz = Tensor(Atomic_Lorentz)
 
-module Atomic_Color =
+module Atomic_Color : Atomic_Tensor with type r_omega = Color.t =
   struct
 
     type t =

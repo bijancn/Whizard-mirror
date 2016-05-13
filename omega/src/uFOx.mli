@@ -36,10 +36,12 @@ module Index :
     val classes_to_string : ('r -> string) -> (int * 'r) list -> string
   end
 
+module Q : Algebra.Rational
+
 module type Tensor =
   sig
     type tensor
-    type t
+    type t = (tensor list * Q.t) list
     val of_expr : UFOx_syntax.expr -> t
     val of_string : string -> t
     val of_strings : string list -> t
@@ -54,7 +56,39 @@ module type Tensor =
     val omega : r -> r_omega
   end
 
-module Lorentz : Tensor with type r_omega = Coupling.lorentz
+module type Atomic_Tensor =
+  sig
+    type t
+    val of_expr : string -> UFOx_syntax.expr list -> t
+    val to_string : t -> string
+    type r
+    val classify_indices : t list -> (int * r) list
+    val rep_to_string : r -> string
+    val rep_of_int : int -> r
+    val rep_conjugate : r -> r
+    val rep_trivial : r -> bool
+    type r_omega
+    val omega : r -> r_omega
+  end
+
+module type Lorentz_Atom =
+  sig
+    type t = private
+      | C of int * int
+      | Epsilon of int * int * int * int
+      | Gamma of int * int * int
+      | Gamma5 of int * int
+      | Identity of int * int
+      | Metric of int * int
+      | P of int * int
+      | ProjP of int * int
+      | ProjM of int * int
+      | Sigma of int * int * int * int
+  end
+
+module Lorentz_Atom : Lorentz_Atom
+
+module Lorentz : Tensor with type tensor = Lorentz_Atom.t and type r_omega = Coupling.lorentz
 module Color : Tensor with type r_omega = Color.t
 
 module Value :
