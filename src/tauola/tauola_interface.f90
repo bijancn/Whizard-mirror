@@ -43,6 +43,7 @@ module tauola_interface
   double precision, external :: wthiggs
 
   logical, save, public :: trans_spin
+  logical, save, public :: tau_pol_vec
   integer :: jtau2, jorig, jforig
   integer :: nproducts
 
@@ -70,6 +71,7 @@ module tauola_interface
     real(default) :: mh
     real(default) :: mix_angle
     real(default) :: mtau
+    logical :: use_pol_vec
   contains
     procedure :: init => taudec_settings_init
     procedure :: write => taudec_settings_write
@@ -405,6 +407,7 @@ contains
     save /pyjets/
 
     integer, save :: n_akiya = 0
+    ! integer, save :: n_akiya = 1
     integer :: n1, n2
 
     is_swapped = .false.
@@ -416,6 +419,9 @@ contains
     !!! change nhep from 2 -> 3 changes tauola_2 test output
     !!! plus changes of 1->2 and 2->3 in the next two blocks
     nhep = 2
+
+    !!! Does SPINHIGGS in tauface_jetset.f
+    ifpseudo = kforig == 36
 
     isthep(n1)   = 1
     idhep(n1)    = id_dexay
@@ -488,7 +494,7 @@ contains
        q1 = p1 + p2
        if (nsub_call .lt. max_dump) then
           call msg_message ("Tau+ decay with pol(3) = " // &
-               real2char (pol(3)) // ".")
+               real2char (real (pol(3), kind=default)) // ".")
           write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, q1 = ", q1
           write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p1 = ", p1
           write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p2 = ", p2
@@ -517,7 +523,7 @@ contains
        q1 = p1 + p2
        if (nsub_call .lt. max_dump) then
           call msg_message ("Tau- decay with pol(3) = " // &
-               real2char (pol(3)) // ".")
+               real2char (real (pol(3), kind=default)) // ".")
           write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, q1 = ", q1
           write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p1 = ", p1
           write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p2 = ", p2
@@ -540,8 +546,41 @@ contains
 !!!   tau+ and tau-, but the decided polarization vectors are not
 !!!   calculated here.  It would be possible to calculate them
 !!!   from the polarimetric vectors, hh1 and hh2,  after
-!!!   the end of the loop, between "10 continue" and "goto 10".
-    
+!!!   the end of the rejection loop.
+
+    if (trans_spin) then
+       if (.not. tau_pol_vec) then         
+          pol1 = 0
+          pol2 = 0
+          if (pyr(0) .gt. 0.5) then
+             pol1(3) = 1
+             pol2(3) = -1
+          else
+             pol1(3) = -1
+             pol2(3) = 1
+          end if
+          call dexay (1, pol1)
+          call dexay (2, pol2)         
+       else
+          !!! Decide polarimetric vector to have a spin correlation
+          REJECTION: do
+             call ranmar (rrr, 1)
+             !!! tau+ decay          
+             call dekay (1, hh1)
+             !!! tau- decay
+             call dekay (2, hh2)
+             wt = wthiggs (ifpseudo, hh1, hh2)
+             if (rrr(1) .lt. wt)  exit REJECTION
+          end do REJECTION
+          ion = 0
+          call dekay(11, hh1)
+          call taupi0 (0, 1, ion)
+          call dekay(12, hh2)
+          call taupi0 (0, 2, ion)       
+       end if
+       if (IFPHOT == 1)  call photos(im)       
+    end if
+
 !!! **********************************************************
 !!! Now copies /HEPEVT/ to /PYJETS/
 !!! Higgs tau pair decay and single tau decay are treated
@@ -570,8 +609,8 @@ contains
                 jmohep(2,i) = n1
              end if
           end do
-      end if
-       
+       end if
+
 !!! Overwrite tau+ and tau- data in /PYJETS/, because tau+tau- momentum 
 !!! could have been changed due to photon emmision in Higgs --> tau+ tau- 
 !!! system. Their momentum should be boosted and rotate back to the lab frame
@@ -591,12 +630,57 @@ contains
           p(jtau2,:) = phep(:,3)
           k(jtau2,4) = jdahep(1,3) - n2 + n
           k(jtau2,5) = jdahep(2,3) - n2 + n
-       endif
+       end if
        k(itau,  1) = 11
        k(jtau2, 1) = 11
        k(itau,  3) = jorig
        k(jtau2, 3) = jorig
-      
+
+!!! TODO : Akiya Miyamoto, 12-April-2016
+!!!   Reset daughter pointer of Higgs, because Higgs daughters
+!!!   increase when photons are emitted. This may not work well if
+!!!   additional particles exist after second tau.
+       k(jorig,4) = itau
+       k(jorig,5) = jtau2  ! jtau2 > jtau allways
+       if (jdahep(2,1)-jdahep(1,1)+1 .gt. 2) then
+          if (n .gt. jtau2) then
+             write (msg_buffer, "(A)") &
+                  "Tau decay routine do_dexay: necessary to update " // &
+                  "index of Higgs daughter in order to include photons " // &
+                  "produced by PHOTOS."             
+             call msg_message ()
+             write (msg_buffer, "(A)") &
+                  "Run continues without modifying the 2nd daughter pointer."
+             call msg_message ()
+          else
+             k(jorig,5) = jdahep(2,1) - n2 + n
+          end if
+       end if
+
+!!! Now, fill the information of tau daughters to /PYJETS/
+
+       nproducts = 0
+       loop_products_higgs: do i = n2+1, nhep
+          nproducts = nproducts + 1
+          p(n+nproducts,:) = phep(:,i)
+          k(n+nproducts,2) = idhep(i)
+          k(n+nproducts,3) = jmohep(1,i) - n2 + n
+          if (isthep(i) == 1) then
+             k(n+nproducts,1) = 1
+             k(n+nproducts,4) = 0
+             k(n+nproducts,5) = 0
+          else
+             k(n+nproducts,1) = 11
+             k(n+nproducts,4) = jdahep(1,i) - n2 + n
+             k(n+nproducts,5) = jdahep(2,i) - n2 + n
+          end if
+       end do loop_products_higgs
+
+!!! ***************************************************************
+!!! Single tau decay case.
+!!! This case, parent tau daghter momentum is not over-wtitten
+!!! ***************************************************************
+
     else
        loop_products_nohiggs: do i = n2+1, nhep
           nproducts = nproducts + 1
@@ -617,9 +701,17 @@ contains
              k(n+nproducts,3) = itau
           end if
        end do loop_products_nohiggs
-       
+       k(itau,4) = jdahep(1,2) - n2 + n
+       k(itau,5) = jdahep(2,2) - n2 + n
     end if
-       
+
+    if (nsub_call .lt. max_dump) then
+      call msg_message ("TAUOLA interface: PYLIST at the end of do_dexay")
+      n = n + nproducts
+      call pylist(2)
+      n = n - nproducts
+    end if
+
   end subroutine do_dexay
 
   subroutine taudec_settings_init (taudec_settings, var_list, model)
@@ -641,6 +733,8 @@ contains
          var_list%get_rval (var_str ("ps_tauola_mh"))
     taudec_settings%mix_angle = &
          var_list%get_rval (var_str ("?ps_tauola_mix_angle"))
+    taudec_settings%use_pol_vec = &
+         var_list%get_lval (var_str ("?ps_tauola_pol_vector"))
     select case (char (model%get_name ()))
     case ("QCD", "Test")
        call msg_fatal ("taudec_settings_init: Model has no tau.")
@@ -671,13 +765,14 @@ contains
          "ps_tauola_mh          = ", taudec_settings%mh
     write (u, "(3x,A,1x,ES19.12)") &
          "ps_tauola_mix_angle   = ", taudec_settings%mix_angle
+    write (u, "(3x,A,1x,L1)") &
+         "ps_tauola_use_pol_vec = ", taudec_settings%use_pol_vec
   end subroutine taudec_settings_write  
 
   function ilc_tauola_get_helicity_mod (ip) result (the_helicity)
-    integer, intent(in)  :: ip
-    integer           :: the_helicity
-    integer :: n
-    integer :: npad
+    integer, intent(in) :: ip
+    integer :: the_helicity
+    integer :: n, npad
     integer, dimension(4000,5) :: k
     double precision, dimension(4000,5) :: p
     double precision, dimension(4000,5) :: v
@@ -742,7 +837,10 @@ contains
     double precision :: csc, ssc
     common /pseudocoup/ csc, ssc
     save /pseudocoup/
-    call tauola (-1,1)
+
+    integer, dimension(3) :: ion
+    double precision, dimension(4) :: pol1x
+
     JAK1 = taudec_settings%dec_mode1
     JAK2 = taudec_settings%dec_mode2
     if (taudec_settings%dec_rad_cor) then
@@ -757,6 +855,7 @@ contains
     end if
 
     trans_spin = taudec_settings%transverse
+    tau_pol_vec = taudec_settings%use_pol_vec
 
     psi = dble (taudec_settings%mix_angle * degree)
     betah = dble (sqrt (one - four * taudec_settings%mtau**2 / &
@@ -772,6 +871,18 @@ contains
           mstj(39) = 15
        end if
     end if
+
+    call tauola (-1, 1)
+    !!! Alternative call by Akiya Miyamoto
+    ! call phoini
+    ! call inietc (JAK1, JAK2, ITDKRC, IFPHOT)
+    ! call inimas
+    ! call iniphx (0.01d0)
+    ! call initdk
+    ! !!! Deactivation of pi0 and eta decays: (1) means on, (0) off
+    ! ion = 0
+    ! call taupi0 (-1, 1, ion)
+    ! call dekay (-1, pol1x)
 
     if (debug2_active (D_TAUOLA)) then
        call msg_debug2 (D_TAUOLA, "TAUOLA initialization")       
