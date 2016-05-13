@@ -90,6 +90,7 @@ end module blha_olp_interfaces
     logical, dimension(0:3) :: compute_component
     logical :: include_polarizations = .false.
     logical :: switch_off_muon_yukawas = .false.
+    real(default) :: external_top_yukawa = -1._default
   contains
   <<BLHA OLP interfaces: blha template: TBP>>
   end type blha_template_t
@@ -124,6 +125,7 @@ end module blha_olp_interfaces
     type(string_t) :: contract_file
     logical :: include_polarizations = .false.
     logical :: switch_off_muon_yukawas = .false.
+    real(default) :: external_top_yukawa = -1.0
     procedure(olp_start),nopass,  pointer :: &
               blha_olp_start => null ()
     procedure(olp_eval), nopass, pointer :: &
@@ -370,12 +372,14 @@ end module blha_olp_interfaces
   procedure :: init => blha_template_init
 <<BLHA OLP interfaces: procedures>>=
   subroutine blha_template_init (template, requires_polarizations, &
-       switch_off_muon_yukawas)
+       switch_off_muon_yukawas, external_top_yukawa)
     class(blha_template_t), intent(inout) :: template
     logical, intent(in) :: requires_polarizations, switch_off_muon_yukawas
+    real(default), intent(in) :: external_top_yukawa
     template%compute_component = .false.
     template%include_polarizations = requires_polarizations
     template%switch_off_muon_yukawas = switch_off_muon_yukawas
+    template%external_top_yukawa = external_top_yukawa
   end subroutine blha_template_init
 
 @ %def blha_template_init
@@ -1153,12 +1157,10 @@ end module blha_olp_interfaces
   subroutine prc_blha_init_blha (object, blha_template)
     class(prc_blha_t), intent(inout) :: object
     type(blha_template_t), intent(inout) :: blha_template
-    logical :: include_polarizations 
     object%n_particles = size (object%data%flv_state, 1)
     object%n_flv = size (object%data%flv_state, 2)
-    include_polarizations = blha_template%include_polarizations
     if (blha_template%compute_loop ()) then
-       if (include_polarizations) then
+       if (blha_template%include_polarizations) then
           allocate (object%i_virt (object%n_flv * object%data%n_in * 2), &
                     object%i_cc (object%n_flv * object%data%n_in * 2))
           allocate (object%i_hel (object%n_flv * object%data%n_in * 2, &
@@ -1188,8 +1190,9 @@ end module blha_olp_interfaces
 
     select type (driver => object%driver)
     class is (blha_driver_t)
-       driver%include_polarizations = include_polarizations
+       driver%include_polarizations = blha_template%include_polarizations
        driver%switch_off_muon_yukawas = blha_template%switch_off_muon_yukawas
+       driver%external_top_yukawa = blha_template%external_top_yukawa
     end select
   end subroutine prc_blha_init_blha
 
@@ -1205,6 +1208,7 @@ end module blha_olp_interfaces
     type(flavor_t) :: flv
     real(default) :: mass, width
     integer :: ierr
+    real(default) :: top_yukawa
     do i = 1, OLP_N_MASSIVE_PARTICLES
        i_pdg = OLP_MASSIVE_PARTICLES(i)
        if (i_pdg < 0) cycle
@@ -1215,8 +1219,15 @@ end module blha_olp_interfaces
           call driver%set_mass_and_width (i_pdg, mass = mass, width = width)
           if (i_pdg == 5) call driver%blha_olp_set_parameter &
              ('yuk(5)'//c_null_char, dble(mass), 0._double, ierr)
-          if (i_pdg == 6) call driver%blha_olp_set_parameter &
-             ('yuk(6)'//c_null_char, dble(mass), 0._double, ierr)
+          if (i_pdg == 6) then
+             if (driver%external_top_yukawa > 0._default) then
+                top_yukawa = driver%external_top_yukawa
+             else
+                top_yukawa = mass
+             end if
+             call driver%blha_olp_set_parameter &
+                ('yuk(6)'//c_null_char, dble(top_yukawa), 0._double, ierr)
+          end if
           if (driver%switch_off_muon_yukawas) then
              if (i_pdg == 13) call driver%blha_olp_set_parameter &
                 ('yuk(13)' //c_null_char, 0._double, 0._double, ierr)
