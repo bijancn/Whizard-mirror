@@ -2840,8 +2840,6 @@ if there are structure functions.
     do i_mci = 1, size (process%mci_entry)
        if (i_mci /= fixed_mci) then
           i_component = process%i_mci_to_i_component (i_mci)
-          !!!call process%mci_entry(i_mci)%deactivate_real_component &
-          !!!   (process%component(i_component))
           process%component(i_component)%active = .false.
        end if
     end do
@@ -2876,11 +2874,10 @@ make a random-number generator instance for each MCI group.
   procedure :: setup_mci => process_setup_mci
 <<Processes: procedures>>=
   subroutine process_setup_mci (process, combined_integration, &
-     debug_events, keep_failed_events)
+     debug_events)
     class(process_t), intent(inout) :: process
     logical, intent(in), optional :: combined_integration
     logical, intent(in), optional :: debug_events
-    logical, intent(in), optional :: keep_failed_events
     integer :: n_mci, i_mci
     integer :: i
     logical :: powheg_damping_active
@@ -2928,8 +2925,6 @@ make a random-number generator instance for each MCI group.
        call process%mci_entry(i_mci)%set_parameters (process%meta%var_list)
        if (present (debug_events)) &
           process%mci_entry(i_mci)%check_weighted_events = debug_events
-       if (present (keep_failed_events)) &
-          process%mci_entry(i_mci)%keep_failed_events = keep_failed_events
     end do
   end subroutine process_setup_mci
   
@@ -4604,7 +4599,6 @@ The [[results]] object records results, broken down in passes and iterations.
      real(default) :: mean = 0
      real(default) :: varsq = 0
      integer :: n_events = 0
-     logical :: keep_failed_events = .false.
    contains
    <<Processes: process mci entry: TBP>>
   end type process_mci_entry_t
@@ -5042,8 +5036,8 @@ unweighting routine should already take care of this.
       REJECTION: do while (generate_new)
          call mci_entry%mci%generate_weighted_event (mci_instance, instance)
          if (signal_is_pending ())  return
-         generate_new = .not. (instance%is_valid () .and. mci_entry%keep_failed_events)
-         print *, 'generate_new: ', generate_new
+         generate_new = .not. (instance%is_valid () &
+            .and. instance%keep_failed_events())
       end do REJECTION
       if (mci_entry%check_weighted_events) call check_weighted_events ()
     end associate
@@ -8639,6 +8633,7 @@ that the integrator needs for doing its work.
      real(default), dimension(:), allocatable :: x
      class(mci_instance_t), pointer :: mci => null ()
      type(process_counter_t) :: counter
+     logical :: keep_failed_events = .false.
    contains
    <<Processes: mci work: TBP>>
   end type mci_work_t
@@ -8772,11 +8767,14 @@ entry.  This also resets the counter.
   procedure :: init_simulation => mci_work_init_simulation
   procedure :: final_simulation => mci_work_final_simulation
 <<Processes: procedures>>=
-  subroutine mci_work_init_simulation (mci_work, safety_factor)
+  subroutine mci_work_init_simulation (mci_work, safety_factor, keep_failed_events)
     class(mci_work_t), intent(inout) :: mci_work
     real(default), intent(in), optional :: safety_factor
+    logical, intent(in), optional :: keep_failed_events
     call mci_work%mci%init_simulation (safety_factor)
     call mci_work%counter%reset ()
+    if (present (keep_failed_events)) &
+       mci_work%keep_failed_events = keep_failed_events
   end subroutine mci_work_init_simulation
 
   subroutine mci_work_final_simulation (mci_work)
@@ -9931,6 +9929,9 @@ it from the MCI record.
     else
        ! failed kinematics etc.: set weight to zero
        instance%weight = 0
+       ! Maybe we want to keep the event nevertheless
+       if (instance%keep_failed_events ()) &
+          instance%evaluation_status = STAT_EVENT_COMPLETE
     end if
   end subroutine process_instance_evaluate_event_data
 
@@ -10360,11 +10361,13 @@ entry.
   procedure :: init_simulation => process_instance_init_simulation
   procedure :: final_simulation => process_instance_final_simulation
 <<Processes: procedures>>=
-  subroutine process_instance_init_simulation (instance, i_mci, safety_factor)
+  subroutine process_instance_init_simulation (instance, i_mci, &
+     safety_factor, keep_failed_events)
     class(process_instance_t), intent(inout) :: instance
     integer, intent(in) :: i_mci
     real(default), intent(in), optional :: safety_factor
-    call instance%mci_work(i_mci)%init_simulation (safety_factor)
+    logical, intent(in), optional :: keep_failed_events
+    call instance%mci_work(i_mci)%init_simulation (safety_factor, keep_failed_events)
   end subroutine process_instance_init_simulation
 
   subroutine process_instance_final_simulation (instance, i_mci)
@@ -10837,6 +10840,17 @@ and directly set the coupling value that comes together with a particle set.
   end function process_instance_has_nlo_component
 
 @ %def process_instance_has_nlo_component
+@
+<<Processes: process instance: TBP>>=
+  procedure :: keep_failed_events => process_instance_keep_failed_events
+<<Processes: procedures>>=
+  function process_instance_keep_failed_events (instance) result (keep)
+    logical :: keep
+    class(process_instance_t), intent(in) :: instance
+    keep = instance%mci_work(instance%i_mci)%keep_failed_events
+  end function process_instance_keep_failed_events
+
+@ %def process_instance_keep_failed_events
 @
 <<Processes: process instance: TBP>>=
   procedure :: has_blha_component => process_instance_has_blha_component
