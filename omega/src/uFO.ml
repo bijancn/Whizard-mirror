@@ -847,30 +847,54 @@ module Model =
       let conjugate = conjugate
     end)
 
-    let translate_tensor3 _ = Coupling.Scalar_Scalar_Scalar 1
-    let translate_tensor4 _ = Coupling.Scalar4 1
-    let translate_constant _ = ""
+    let dummy_tensor3 = Coupling.Scalar_Scalar_Scalar 1
+    let dummy_tensor4 = Coupling.Scalar4 1
+    let dummy_constant = "{coupling}"
 
-    let translate_coupling3 t c g =
-      translate_tensor3 t, translate_constant g
+    let translate_coupling3 model = function
+      | [| t |], [| c |], [| [| g |] |] ->
+	 dummy_tensor3, dummy_constant
+      | [| t |], [| c |], _->
+	 invalid_arg "translate_coupling3: too many constants"
+      | t, c, g -> dummy_tensor3, dummy_constant
 
-    let translate_coupling4 t c g =
-      translate_tensor4 t, translate_constant g
+    let translate_coupling4 model = function
+      | [| t |], [| c |], [| [| g |] |] ->
+	 dummy_tensor4, dummy_constant
+      | [| t |], [| c |], _->
+	 invalid_arg "translate_coupling4: too many constants"
+      | t, c, g -> dummy_tensor4, dummy_constant
 
-    let translate_vertices flavor_of_symbol model =
+    let lorentz_of_symbol model symbol =
+      try
+	SMap.find symbol model.lorentz
+      with
+      | Not_found -> invalid_arg ("lorentz_of_symbol: " ^ symbol)
+
+    let coupling_of_symbol model = function
+      | None -> None
+      | Some symbol ->
+	 begin
+	   try
+	     Some (SMap.find symbol model.couplings)
+	   with
+	   | Not_found -> invalid_arg ("coupling_of_symbol: " ^ symbol)
+	 end
+
+    let translate_vertices model flavor_of_symbol model =
       List.fold_left (fun (v3, v4, vn) v ->
-	let t = v.Vertex.lorentz
-	and c = v.Vertex.color
-	and g = v.Vertex.couplings in
-	match v.Vertex.particles with
+	let p = Array.map flavor_of_symbol v.Vertex.particles
+	and g =
+	  Array.map (Array.map (coupling_of_symbol model)) v.Vertex.couplings
+	and t = Array.map (lorentz_of_symbol model) v.Vertex.lorentz
+	and c = v.Vertex.color in
+	match p with
 	| [| p1; p2; p3 |] ->
-	   let t, g = translate_coupling3 t c g in
-           (((flavor_of_symbol p1, flavor_of_symbol p2,
-	      flavor_of_symbol p3), t, g) :: v3, v4, vn)
+	   let t, g = translate_coupling3 model (t, c, g) in
+           (((p1, p2, p3), t, g) :: v3, v4, vn)
 	| [| p1; p2; p3; p4 |] ->
-	   let t, g = translate_coupling4 t c g in
-           (v3, ((flavor_of_symbol p1, flavor_of_symbol p2,
-                  flavor_of_symbol p3, flavor_of_symbol p4), t, g) :: v4, vn)
+	   let t, g = translate_coupling4 model (t, c, g) in
+           (v3, ((p1, p2, p3, p4), t, g) :: v4, vn)
 	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
         ([], [], []) (values model.vertices)
 
@@ -896,12 +920,12 @@ module Model =
       | Coupling.BRS _ -> invalid_arg
 	 "UFO.Model.propagator_of_lorentz: no BRST"
 
-    let conjugate_of_flavor_array a =
+    let conjugate_of_particle_array particles =
       Array.init
-	(Array.length a)
+	(Array.length particles)
 	(fun i ->
-	  let f' = Particle.conjugate a.(i) in
-	  match ThoArray.match_all f' a with
+	  let f' = Particle.conjugate particles.(i) in
+	  match ThoArray.match_all f' particles with
 	  | [i'] -> i'
 	  | [] ->
 	     invalid_arg ("no charge conjugate: " ^ f'.Particle.name)
@@ -921,18 +945,18 @@ module Model =
       let model = parse_directory !ufo_directory in
       if !dump_raw then
 	dump model;
-      let flavor_array = Array.of_list (values model.particles) in
-      let flavors = ThoList.range 0 (Array.length flavor_array - 1) in
-      let name_array = Array.map (fun f -> f.Particle.name) flavor_array in
+      let particle_array = Array.of_list (values model.particles) in
+      let flavors = ThoList.range 0 (Array.length particle_array - 1) in
+      let name_array = Array.map (fun f -> f.Particle.name) particle_array in
       let flavor_of_string = invert_array name_array in
       let symbol_array = Array.of_list (keys model.particles) in
       let flavor_of_symbol = invert_array symbol_array in
-      let conjugate_array = conjugate_of_flavor_array flavor_array in
+      let conjugate_array = conjugate_of_particle_array particle_array in
       let conjugate f = conjugate_array.(f) in
       let functions = [] in
       let variables = [] in
       let (vertices3, vertices4, verticesn) as vertices =
-	translate_vertices flavor_of_symbol model in
+	translate_vertices model flavor_of_symbol model in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
       let input_parameters = 
         ("0.0_default", 0.0) ::
@@ -940,7 +964,7 @@ module Model =
       let derived_parameters =
         List.map (fun (n, f, _) -> (Coupling.Real n, Coupling.Const 0))
           functions in
-      let particle f = flavor_array.(f)
+      let particle f = particle_array.(f)
       and flavor_symbol f = symbol_array.(f) in
       let pdg f = (particle f).Particle.pdg_code
       and color f = UFOx.Color.omega (particle f).Particle.color
