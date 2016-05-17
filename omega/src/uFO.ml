@@ -897,6 +897,30 @@ module Model =
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.SL, Coupling.Psi),
 	  dummy_constant)
+      | [| [ ([L.ProjM(i,j)], qm);
+	     ([L.ProjP(i',j')], qp)] |] as t,
+        [| [ [], qc] |],
+        [| [| g |] |] ->
+	 if i = i' && j = j' then begin
+	   if Q.is_null (Q.add qm qp) then 
+	     ((p.(pred i), p.(pred (third i j)), p.(pred j)),
+	      Coupling.FBF (coeff qp qc,
+			    Coupling.Psibar, Coupling.P, Coupling.Psi),
+	      dummy_constant)
+	   else if Q.is_null (Q.sub qp qp) then 
+	     ((p.(pred i), p.(pred (third i j)), p.(pred j)),
+	      Coupling.FBF (coeff qp qc,
+			    Coupling.Psibar, Coupling.S, Coupling.Psi),
+	      dummy_constant)
+	   else begin
+	     prerr_endline
+	       ("unhandled colorless vertex: " ^
+		   (String.concat ", "
+		      (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+	     ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	   end
+         end else
+           invalid_arg "translate_coupling3: mismatched indices"
       | [| [ [L.Gamma(mu,i,j)], qt] |],
         [| [ [], qc] |],
         [| [| g |] |] ->
@@ -924,6 +948,28 @@ module Model =
 	 ((p.(pred (third i j)), p.(pred i), p.(pred j)),
 	  Coupling.Scalar_Vector_Vector (coeff qt qc),
 	  dummy_constant)
+      | [| [ ([L.P(mu,i)], q1);
+	     ([L.P(mu',j')], q2)] |] as t,
+        [| [ [], qc] |],
+        [| [| g |] |] ->
+	 prerr_endline
+	   ("not yet handled colorless vertex: " ^
+	       (String.concat ", "
+		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+      | [| [ ([L.Metric(ka1,la1); L.P(mu1,i1)], q1);
+	     ([L.Metric(ka2,la2); L.P(mu2,i2)], q2);
+	     ([L.Metric(ka3,la3); L.P(mu3,i3)], q3);
+	     ([L.Metric(ka4,la4); L.P(mu4,i4)], q4);
+	     ([L.Metric(ka5,la5); L.P(mu5,i5)], q5);
+	     ([L.Metric(ka6,la6); L.P(mu6,i6)], q6)] |] as t,
+        [| [ [], qc] |],
+        [| [| g |] |] ->
+	 prerr_endline
+	   ("not yet handled colorless vertex: " ^
+	       (String.concat ", "
+		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
       | t,
         [| [ [], qc] |],
         [| [| g |] |] ->
@@ -933,10 +979,16 @@ module Model =
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
       | [| t |], [| c |], [| [| g |] |] ->
+	 prerr_endline
+	   ("unhandled colorfull vertex: " ^ UFOx.Lorentz.to_string t);
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
       | [| t |], [| c |], _->
 	 invalid_arg "translate_coupling3: too many constants"
       | t, c, g ->
+	 prerr_endline
+	   ("unhandled colorfull vertex: " ^
+	       (String.concat ", "
+		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
 
     let translate_coupling4 model p t c g =
