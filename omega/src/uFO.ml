@@ -668,16 +668,9 @@ type t =
     propagators : Propagator.t SMap.t;
     decays : Decay.t SMap.t }
 
-let of_file u =
-  { particles = Particle.of_file u.Files.particles;
-    couplings = UFO_Coupling.of_file u.Files.couplings;
-    coupling_orders = Coupling_Order.of_file u.Files.coupling_orders;
-    vertices = Vertex.of_file u.Files.vertices;
-    lorentz = Lorentz.of_file u.Files.lorentz;
-    parameters = Parameter.of_file u.Files.parameters;
-    propagators = Propagator.of_file u.Files.propagators;
-    decays = Decay.of_file u.Files.decays }
-
+(* Take the elements of [list] that satisfy [predicate] and
+   form a list of pairs of offsets and elements with the offsets
+   starting from [offset]. *)
 let alist_of_list predicate offset list =
   let _, alist =
     List.fold_left
@@ -730,6 +723,23 @@ let check_color_reps_of_vertex model v =
      end)
     v.Vertex.color
   
+let of_file u =
+  let model =
+    { particles = Particle.of_file u.Files.particles;
+      couplings = UFO_Coupling.of_file u.Files.couplings;
+      coupling_orders = Coupling_Order.of_file u.Files.coupling_orders;
+      vertices = Vertex.of_file u.Files.vertices;
+      lorentz = Lorentz.of_file u.Files.lorentz;
+      parameters = Parameter.of_file u.Files.parameters;
+      propagators = Propagator.of_file u.Files.propagators;
+      decays = Decay.of_file u.Files.decays } in
+  SMap.iter
+    (fun _ v ->
+      check_color_reps_of_vertex model v;
+      check_lorentz_reps_of_vertex model v)
+    model.vertices;
+  model
+
 let (@@@) f g x y =
   f (g x y)
 
@@ -852,10 +862,12 @@ module Model =
     let dummy_constant = "{coupling}"
 
     let translate_coupling3 model t c g =
-      let open UFOx.Lorentz_Atom in
-      let open UFOx.Color_Atom in
+      let module L = UFOx.Lorentz_Atom in
+      let module C = UFOx.Color_Atom in
       match t, c, g with
-      | [| [ [UFOx.Lorentz_Atom.C (i, j)], q] |], [| c |], [| [| g |] |] ->
+      | [| [ [L.Identity (li, lj)], lq] |],
+        [| [ [C.Identity (ci, cj)], cq] |],
+        [| [| g |] |] ->
 	 dummy_tensor3, dummy_constant
       | [| t |], [| c |], [| [| g |] |] ->
 	 dummy_tensor3, dummy_constant
@@ -864,8 +876,8 @@ module Model =
       | t, c, g -> dummy_tensor3, dummy_constant
 
     let translate_coupling4 model t c g =
-      let open UFOx.Lorentz_Atom in
-      let open UFOx.Color_Atom in
+      let module L = UFOx.Lorentz_Atom in
+      let module C = UFOx.Color_Atom in
       match t, c, g with
       | [| t |], [| c |], [| [| g |] |] ->
 	 dummy_tensor4, dummy_constant
