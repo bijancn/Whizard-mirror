@@ -851,7 +851,9 @@ module Model =
     let dummy_tensor4 = Coupling.Scalar4 1
     let dummy_constant = "{coupling}"
 
-    let translate_coupling3 model = function
+    let translate_coupling3 model t c g =
+      let open UFOx.Lorentz_Atom in
+      match t, c, g with
       | [| [ [UFOx.Lorentz_Atom.C (i, j)], q] |], [| c |], [| [| g |] |] ->
 	 dummy_tensor3, dummy_constant
       | [| t |], [| c |], [| [| g |] |] ->
@@ -860,7 +862,9 @@ module Model =
 	 invalid_arg "translate_coupling3: too many constants"
       | t, c, g -> dummy_tensor3, dummy_constant
 
-    let translate_coupling4 model = function
+    let translate_coupling4 model t c g =
+      let open UFOx.Lorentz_Atom in
+      match t, c, g with
       | [| t |], [| c |], [| [| g |] |] ->
 	 dummy_tensor4, dummy_constant
       | [| t |], [| c |], _->
@@ -893,10 +897,10 @@ module Model =
 	let t = Array.map (fun l -> l.Lorentz.structure) t in
 	match p with
 	| [| p1; p2; p3 |] ->
-	   let t, g = translate_coupling3 model (t, c, g) in
+	   let t, g = translate_coupling3 model t c g in
            (((p1, p2, p3), t, g) :: v3, v4, vn)
 	| [| p1; p2; p3; p4 |] ->
-	   let t, g = translate_coupling4 model (t, c, g) in
+	   let t, g = translate_coupling4 model t c g in
            (v3, ((p1, p2, p3, p4), t, g) :: v4, vn)
 	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
         ([], [], []) (values model.vertices)
