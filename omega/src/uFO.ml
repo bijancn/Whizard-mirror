@@ -853,6 +853,7 @@ module Model =
 
     let translate_coupling3 model t c g =
       let open UFOx.Lorentz_Atom in
+      let open UFOx.Color_Atom in
       match t, c, g with
       | [| [ [UFOx.Lorentz_Atom.C (i, j)], q] |], [| c |], [| [| g |] |] ->
 	 dummy_tensor3, dummy_constant
@@ -864,6 +865,7 @@ module Model =
 
     let translate_coupling4 model t c g =
       let open UFOx.Lorentz_Atom in
+      let open UFOx.Color_Atom in
       match t, c, g with
       | [| t |], [| c |], [| [| g |] |] ->
 	 dummy_tensor4, dummy_constant

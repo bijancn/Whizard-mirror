@@ -287,7 +287,8 @@ module Lorentz_Atom =
       | Sigma of int * int * int * int
   end
 
-module Atomic_Lorentz : Atomic_Tensor with type t = Lorentz_Atom.t and type r_omega = Coupling.lorentz =
+module Atomic_Lorentz : Atomic_Tensor
+  with type t = Lorentz_Atom.t and type r_omega = Coupling.lorentz =
   struct
 	
     type t = Lorentz_Atom.t
@@ -411,9 +412,22 @@ module Atomic_Lorentz : Atomic_Tensor with type t = Lorentz_Atom.t and type r_om
     
 module Lorentz = Tensor(Atomic_Lorentz)
 
-module Atomic_Color : Atomic_Tensor with type r_omega = Color.t =
-  struct
+module type Color_Atom =
+  sig
+    type t = private
+      | Identity of int * int
+      | T of int * int * int
+      | F of int * int * int
+      | D of int * int * int
+      | Epsilon of int * int * int
+      | EpsilonBar of int * int * int
+      | T6 of int * int * int
+      | K6 of int * int * int
+      | K6Bar of int * int * int
+  end
 
+module Color_Atom =
+  struct
     type t =
       | Identity of int * int
       | T of int * int * int
@@ -424,8 +438,17 @@ module Atomic_Color : Atomic_Tensor with type r_omega = Color.t =
       | T6 of int * int * int
       | K6 of int * int * int
       | K6Bar of int * int * int
+  end
+
+module Atomic_Color : Atomic_Tensor
+  with type t = Color_Atom.t and type r_omega = Color.t =
+  struct
+
+    type t = Color_Atom.t
 
     module S = UFOx_syntax
+
+    open Color_Atom
 
     let of_expr name args =
       match name, args with

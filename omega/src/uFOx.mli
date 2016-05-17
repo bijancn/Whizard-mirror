@@ -88,8 +88,27 @@ module type Lorentz_Atom =
 
 module Lorentz_Atom : Lorentz_Atom
 
-module Lorentz : Tensor with type tensor = Lorentz_Atom.t and type r_omega = Coupling.lorentz
-module Color : Tensor with type r_omega = Color.t
+module Lorentz : Tensor
+  with type tensor = Lorentz_Atom.t and type r_omega = Coupling.lorentz
+
+module type Color_Atom =
+  sig
+    type t = private
+      | Identity of int * int
+      | T of int * int * int
+      | F of int * int * int
+      | D of int * int * int
+      | Epsilon of int * int * int
+      | EpsilonBar of int * int * int
+      | T6 of int * int * int
+      | K6 of int * int * int
+      | K6Bar of int * int * int
+  end
+
+module Color_Atom : Color_Atom
+
+module Color : Tensor
+  with type tensor = Color_Atom.t and type r_omega = Color.t
 
 module Value :
   sig
