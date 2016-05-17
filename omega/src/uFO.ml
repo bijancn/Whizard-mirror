@@ -863,6 +863,16 @@ module Model =
     let dummy_tensor4 = Coupling.Scalar4 1
     let dummy_constant = "{coupling}"
 
+    let third i j =
+      match i, j with
+      | 1, 2 | 2, 1 -> 3
+      | 2, 3 | 3, 2 -> 1
+      | 3, 1 | 1, 3 -> 2
+      | _ -> invalid_arg "UFO.third"
+
+    let coeff q1 q2 =
+      Q.to_integer (Q.mul q1 q2)
+
     let translate_coupling3 model p t c g =
       let module L = UFOx.Lorentz_Atom in
       let module C = UFOx.Color_Atom in
@@ -870,19 +880,64 @@ module Model =
       | [| [ [], qt] |],
         [| [ [], qc] |],
         [| [| g |] |] ->
-	  (p, Coupling.Scalar_Scalar_Scalar (Q.to_integer (Q.mul qt qc)),
-	   dummy_constant)
+	 ((p.(0), p.(1), p.(2)),
+	  Coupling.Scalar_Scalar_Scalar (Q.to_integer (Q.mul qt qc)),
+	  dummy_constant)
       | [| [ [L.ProjP(i,j)], qt] |],
         [| [ [], qc] |],
         [| [| g |] |] ->
-	 (p, Coupling.FBF (Q.to_integer (Q.mul qt qc),
+	 ((p.(pred i), p.(pred (third i j)), p.(pred j)),
+	  Coupling.FBF (coeff qt qc,
+			Coupling.Psibar, Coupling.SR, Coupling.Psi),
+	  dummy_constant)
+      | [| [ [L.ProjM(i,j)], qt] |],
+        [| [ [], qc] |],
+        [| [| g |] |] ->
+	 ((p.(pred i), p.(pred (third i j)), p.(pred j)),
+	  Coupling.FBF (coeff qt qc,
+			Coupling.Psibar, Coupling.SL, Coupling.Psi),
+	  dummy_constant)
+      | [| [ [L.Gamma(mu,i,j)], qt] |],
+        [| [ [], qc] |],
+        [| [| g |] |] ->
+	 ((p.(pred i), p.(pred mu), p.(pred j)),
+	  Coupling.FBF (coeff qt qc,
+			Coupling.Psibar, Coupling.V, Coupling.Psi),
+	  dummy_constant)
+      | [| [ [L.Gamma(mu,i,-1); L.ProjP(-1,j)], qt] |],
+        [| [ [], qc] |],
+        [| [| g |] |] ->
+	 ((p.(pred i), p.(pred mu), p.(pred j)),
+	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.VR, Coupling.Psi),
 	  dummy_constant)
+      | [| [ [L.Gamma(mu,i,-1); L.ProjM(-1,j)], qt] |],
+        [| [ [], qc] |],
+        [| [| g |] |] ->
+	 ((p.(pred i), p.(pred mu), p.(pred j)),
+	  Coupling.FBF (coeff qt qc,
+			Coupling.Psibar, Coupling.VL, Coupling.Psi),
+	  dummy_constant)
+      | [| [ [L.Metric(i,j)], qt] |],
+        [| [ [], qc] |],
+        [| [| g |] |] ->
+	 ((p.(pred (third i j)), p.(pred i), p.(pred j)),
+	  Coupling.Scalar_Vector_Vector (coeff qt qc),
+	  dummy_constant)
+      | t,
+        [| [ [], qc] |],
+        [| [| g |] |] ->
+	 prerr_endline
+	   ("unhandled colorless vertex: " ^
+	       (String.concat ", "
+		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
       | [| t |], [| c |], [| [| g |] |] ->
-	 (p, dummy_tensor3, dummy_constant)
+	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
       | [| t |], [| c |], _->
 	 invalid_arg "translate_coupling3: too many constants"
-      | t, c, g -> (p, dummy_tensor3, dummy_constant)
+      | t, c, g ->
+	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
 
     let translate_coupling4 model p t c g =
       let module L = UFOx.Lorentz_Atom in
@@ -891,13 +946,15 @@ module Model =
       | [| [ [], qt] |],
         [| [ [], qc] |],
         [| [| g |] |] ->
-	 (p, Coupling.Scalar4 (Q.to_integer (Q.mul qt qc)),
+	 ((p.(0), p.(1), p.(2), p.(3)),
+	  Coupling.Scalar4 (coeff qt qc),
 	  dummy_constant)
       | [| t |], [| c |], [| [| g |] |] ->
-	 (p, dummy_tensor4, dummy_constant)
+	 ((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
       | [| t |], [| c |], _->
 	 invalid_arg "translate_coupling4: too many constants"
-      | t, c, g -> (p, dummy_tensor4, dummy_constant)
+      | t, c, g ->
+	 ((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
 
     let lorentz_of_symbol model symbol =
       try
@@ -923,12 +980,12 @@ module Model =
 	and t = Array.map (lorentz_of_symbol model) v.Vertex.lorentz
 	and c = v.Vertex.color in
 	let t = Array.map (fun l -> l.Lorentz.structure) t in
-	match p with
-	| [| p1; p2; p3 |] ->
-	   let p, t, g = translate_coupling3 model (p1, p2, p3) t c g in
+	match Array.length p with
+	| 3 ->
+	   let p, t, g = translate_coupling3 model p t c g in
            ((p, t, g) :: v3, v4, vn)
-	| [| p1; p2; p3; p4 |] ->
-	   let p, t, g = translate_coupling4 model (p1, p2, p3, p4) t c g in
+	| 4 ->
+	   let p, t, g = translate_coupling4 model p t c g in
            (v3, (p, t, g) :: v4, vn)
 	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
         ([], [], []) (values model.vertices)
