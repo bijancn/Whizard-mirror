@@ -118,6 +118,15 @@ let find_all f a =
 let match_all x a =
   find_all (fun x' -> x = x') a
 
+let num_rows a =
+  Array.length a
+
+let num_columns a =
+  match ThoList.classify (List.map Array.length (Array.to_list a)) with
+  | [ (_, n) ] -> n
+  | _ -> invalid_arg "ThoArray.num_columns: inhomogeneous array"
+
+
 module Test =
   struct
 
@@ -185,10 +194,42 @@ module Test =
          test_find_all_last;
          test_find_all_not_last]
 
+    let test_num_columns_ok2 =
+      "ok/2" >::
+	(fun () ->
+	  assert_equal 2
+            (num_columns [| [| 11; 12 |];
+                            [| 21; 22 |];
+                            [| 31; 32 |] |]))
+
+    let test_num_columns_ok0 =
+      "ok/0" >::
+	(fun () ->
+	  assert_equal 0
+            (num_columns [| [| |];
+                            [| |];
+                            [| |] |]))
+
+    let test_num_columns_not_ok =
+      "not_ok" >::
+	(fun () ->
+	  assert_raises (Invalid_argument
+                           "ThoArray.num_columns: inhomogeneous array")
+            (fun () -> num_columns [| [| 11; 12 |];
+                                      [| 21 |];
+                                      [| 31; 32 |] |]))
+
+    let suite_num_columns =
+      "num_columns" >:::
+	[test_num_columns_ok2;
+         test_num_columns_ok0;
+         test_num_columns_not_ok]
+
     let suite =
       "ThoArrays" >:::
 	[suite_find_first;
-         suite_find_all]
+         suite_find_all;
+         suite_num_columns]
 
   end
 

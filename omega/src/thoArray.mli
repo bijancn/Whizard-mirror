@@ -53,7 +53,10 @@ val find_first : ('a -> bool) -> 'a array -> int
 val match_first : 'a -> 'a array -> int
 val find_all : ('a -> bool) -> 'a array -> int list
 val match_all : 'a -> 'a array -> int list
-    
+
+val num_rows : 'a array array -> int
+val num_columns : 'a array array -> int
+
 module Test : sig val suite : OUnit.test end
 
 (*i
