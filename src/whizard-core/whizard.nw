@@ -11275,6 +11275,10 @@ sample or sub-sample.
      integer :: excess = 0
      real(default) :: max_excess = 0
      real(default) :: sum_excess = 0
+     logical :: reproduce_xsection = .true.
+     real(default) :: mean = 0
+     real(default) :: varsq = 0
+     integer :: n_events = 0
    contains
    <<Simulations: counter: TBP>>
   end type counter_t
@@ -11284,24 +11288,24 @@ sample or sub-sample.
 <<Simulations: counter: TBP>>=
   procedure :: write => counter_write
 <<Simulations: procedures>>=
-  subroutine counter_write (object, unit)
-    class(counter_t), intent(in) :: object
+  subroutine counter_write (counter, unit)
+    class(counter_t), intent(in) :: counter
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit)
 1   format (3x,A,I0)
 2   format (5x,A,I0)
 3   format (5x,A,ES19.12)
-    write (u, 1)  "Events total      = ", object%total
-    write (u, 2)  "generated       = ", object%generated
-    write (u, 2)  "read            = ", object%read
-    write (u, 2)  "positive weight = ", object%positive
-    write (u, 2)  "negative weight = ", object%negative
-    write (u, 2)  "zero weight     = ", object%zero
-    write (u, 2)  "excess weight   = ", object%excess
-    if (object%excess /= 0) then
-       write (u, 3)  "max excess      = ", object%max_excess
-       write (u, 3)  "avg excess      = ", object%sum_excess / object%total
+    write (u, 1)  "Events total    = ", counter%total
+    write (u, 2)  "generated       = ", counter%generated
+    write (u, 2)  "read            = ", counter%read
+    write (u, 2)  "positive weight = ", counter%positive
+    write (u, 2)  "negative weight = ", counter%negative
+    write (u, 2)  "zero weight     = ", counter%zero
+    write (u, 2)  "excess weight   = ", counter%excess
+    if (counter%excess /= 0) then
+       write (u, 3)  "max excess      = ", counter%max_excess
+       write (u, 3)  "avg excess      = ", counter%sum_excess / counter%total
     end if
   end subroutine counter_write
 
@@ -11327,6 +11331,21 @@ sample or sub-sample.
   end subroutine counter_show_excess
     
 @ %def counter_show_excess
+@
+<<Simulations: counter: TBP>>=
+  procedure :: show_mean_and_variance => counter_show_mean_and_variance
+<<Simulations: procedures>>=
+  subroutine counter_show_mean_and_variance (counter)
+    class(counter_t), intent(in) :: counter
+    if (counter%reproduce_xsection) then
+       print *,  "Reconstructed cross-section from event weights: "
+       print *,  counter%mean, '+-', sqrt (counter%varsq / counter%n_events)
+       print *, 'n_events: ', counter%n_events
+       print *, 'total: ', counter%total
+    end if 
+  end subroutine counter_show_mean_and_variance
+
+@ %def counter_show_mean_and_variance
 @ Count an event.  The weight and event source are optional; by
 default we assume that the event has been generated and has positive
 weight.
@@ -11368,6 +11387,27 @@ weight.
   end subroutine counter_record
     
 @ %def counter_record
+@
+<<Simulations: counter: TBP>>=
+  procedure :: record_mean_and_variance => &
+     counter_record_mean_and_variance
+<<Simulations: procedures>>=
+  subroutine counter_record_mean_and_variance (counter, weight)
+    class(counter_t), intent(inout) :: counter
+    real(default), intent(in) :: weight
+    real(default) :: mean_new
+    integer :: n
+    if (.not. counter%reproduce_xsection) return
+    counter%n_events = counter%n_events + 1
+    n = counter%n_events
+    mean_new = counter%mean + (weight - counter%mean) / n
+    if (n > 1) &
+       counter%varsq = counter%varsq - counter%varsq / (n - 1)+ &
+          n * (mean_new - counter%mean)**2
+    counter%mean = mean_new 
+  end subroutine counter_record_mean_and_variance
+
+@ %def counter_record_mean_and_variance
 @
 \subsection{Simulation: component sets}
 For each set of process components that share a MCI entry in the
@@ -13120,7 +13160,11 @@ process instance will not be complete.  This should be fixed.
                           "matrix element vanishes, no events can be generated.")
                   call current_entry%generate (simulation%i_mci, i_nlo = k)
                   if (signal_is_pending ()) return
-                  if (current_entry%has_valid_particle_set ())  exit
+                  if (current_entry%has_valid_particle_set ()) then
+                     call simulation%counter%record_mean_and_variance (&
+                        current_entry%weight_prc)
+                     exit
+                  end if
                end do
             end do
             if (entry%is_nlo_event()) call entry%reset_nlo_counter ()
@@ -13177,6 +13221,7 @@ process instance will not be complete.  This should be fixed.
     call msg_message ("        ... event sample complete.")
     if (simulation%unweighted)  call simulation%show_efficiency ()
     call simulation%counter%show_excess ()
+    call simulation%counter%show_mean_and_variance ()
   end subroutine simulation_generate
   
 @ %def simulation_generate
