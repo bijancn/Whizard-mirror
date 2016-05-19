@@ -283,6 +283,8 @@ module type Particle =
     val to_string : string -> t -> string
     val conjugate : t -> t
     val is_ghost : t -> bool
+    val is_goldstone : t -> bool
+    val is_physical : t -> bool
     val filter : (t -> bool) -> t SMap.t -> t SMap.t
 
   end
@@ -304,7 +306,7 @@ module Particle : Particle =
 	ghost_number : int;
 	lepton_number : int;
 	y : int;
-	goldstone : bool;    (* NOT HANDLED YET! *)
+	goldstone : bool;
 	propagating : bool;  (* NOT HANDLED YET! *)
 	line : string option (* NOT HANDLED YET! *) }
 
@@ -314,7 +316,7 @@ module Particle : Particle =
                           spin = %s, color = %s, \
                           mass = %s, width = %s, \
                           Q = %s, G = %d, L = %d, Y = %d, \
-                          TeX = '%s'/'%s']"
+                          TeX = '%s'/'%s'%s]"
 	symbol p.pdg_code p.name p.antiname
 	(UFOx.Lorentz.rep_to_string p.spin)
 	(UFOx.Color.rep_to_string p.color)
@@ -322,6 +324,7 @@ module Particle : Particle =
 	(charge_to_string p.charge)
 	p.ghost_number p.lepton_number p.y
 	p.texname p.antitexname
+	(if p.goldstone then ", GB" else "")
 
     let conjugate_charge = function
       | Q_Integer i -> Q_Integer (-i)
@@ -371,7 +374,7 @@ module Particle : Particle =
 	     ghost_number = integer_attrib "GhostNumber" attribs;
 	     lepton_number = integer_attrib "LeptonNumber" attribs;
 	     y = integer_attrib "Y" attribs;
-	     goldstone = false;
+	     goldstone = boolean_attrib "goldstone" attribs;
 	     propagating = true;
 	     line = None } map
       | [ "anti"; p ], [] ->
@@ -390,6 +393,12 @@ module Particle : Particle =
 
     let is_ghost p =
       p.ghost_number <> 0
+
+    let is_goldstone p =
+      p.goldstone
+
+    let is_physical p =
+      not (is_ghost p || is_goldstone p)
 
     let filter predicate map =
       SMap.filter (fun symbol p -> predicate p) map
