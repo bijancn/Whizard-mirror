@@ -154,9 +154,9 @@ let name_to_string ?strip name =
     end in
   String.concat "." stripped
 
-let name_attrib ~strip name attribs =
+let name_attrib ?strip name attribs =
   match find_attrib name attribs with
-  | S.Name n -> name_to_string ~strip n
+  | S.Name n -> name_to_string ?strip n
   | _ -> invalid_arg name
 
 let integer_attrib name attribs =
@@ -174,6 +174,15 @@ let string_attrib name attribs =
   match find_attrib name attribs with
   | S.String s -> s
   | _ -> invalid_arg name
+
+let boolean_attrib name attribs =
+  try
+    match String.lowercase (name_attrib name attribs) with
+    | "true" -> true
+    | "false" -> false
+    | _ -> invalid_arg name
+  with
+  | Not_found -> false
 
 type value =
   | Integer of int
