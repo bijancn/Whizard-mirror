@@ -11336,7 +11336,7 @@ sample or sub-sample.
     class(counter_t), intent(in) :: counter
     if (counter%reproduce_xsection) then
        print *,  "Reconstructed cross-section from event weights: "
-       print *,  counter%mean, '+-', sqrt (counter%varsq / counter%nlo_weight_counter)
+       print *,  counter%mean, '+-', sqrt (counter%varsq / (counter%nlo_weight_counter - 1))
     end if 
   end subroutine counter_show_mean_and_variance
 
@@ -11387,19 +11387,38 @@ weight.
   procedure :: record_mean_and_variance => &
      counter_record_mean_and_variance
 <<Simulations: procedures>>=
-  subroutine counter_record_mean_and_variance (counter, weight)
+  subroutine counter_record_mean_and_variance (counter, weight, i_nlo)
     class(counter_t), intent(inout) :: counter
     real(default), intent(in) :: weight
-    real(default) :: mean_new
-    integer :: n
+    integer, intent(in) :: i_nlo
+    real(default), save :: weight_buffer = 0._default
+    integer, save :: nlo_count = 1
     if (.not. counter%reproduce_xsection) return
-    counter%nlo_weight_counter = counter%nlo_weight_counter + 1
-    n = counter%nlo_weight_counter
-    mean_new = counter%mean + (weight - counter%mean) / n
-    if (n > 1) &
-       counter%varsq = counter%varsq - counter%varsq / (n - 1) + &
-          n * (mean_new - counter%mean)**2
-    counter%mean = mean_new 
+    if (i_nlo == 1) then
+       call flush_weight_buffer (weight_buffer, nlo_count)
+       weight_buffer = weight
+       nlo_count = 1
+    else
+       weight_buffer = weight_buffer + weight
+       nlo_count = nlo_count + 1
+    end if
+  contains
+    subroutine flush_weight_buffer (w, n_nlo)
+      real(default), intent(in) :: w 
+      integer, intent(in) :: n_nlo
+      integer :: n
+      real(default) :: mean_new 
+      counter%nlo_weight_counter = counter%nlo_weight_counter + 1
+      !!! Minus 1 to take into account offset from initialization
+      n = counter%nlo_weight_counter - 1
+      if (n > 0) then
+         mean_new = counter%mean + (w / n_nlo - counter%mean) / n
+         if (n > 1) &
+            counter%varsq = counter%varsq - counter%varsq / (n - 1) + &
+               n * (mean_new - counter%mean)**2
+         counter%mean = mean_new 
+      end if
+    end subroutine flush_weight_buffer
   end subroutine counter_record_mean_and_variance
 
 @ %def counter_record_mean_and_variance
@@ -13159,7 +13178,7 @@ process instance will not be complete.  This should be fixed.
                   if (signal_is_pending ()) return
                   if (current_entry%has_valid_particle_set ()) then
                      call simulation%counter%record_mean_and_variance (&
-                        current_entry%weight_prc)
+                        current_entry%weight_prc, k)
                      exit
                   end if
                end do
