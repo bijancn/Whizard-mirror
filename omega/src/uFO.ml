@@ -387,7 +387,20 @@ module Particle : Particle =
 
   end
 
-module UFO_Coupling =
+module type UFO_Coupling =
+  sig
+
+    type t = private
+      { name : string;
+	value : string;
+	order : (string * int) list }
+
+    val of_file : S.t -> t SMap.t
+    val to_string : string -> t -> string
+
+  end
+
+module UFO_Coupling : UFO_Coupling =
   struct
     
     type t =
@@ -419,7 +432,20 @@ module UFO_Coupling =
 
   end
 
-module Coupling_Order =
+module type Coupling_Order =
+  sig
+
+    type t = private
+      { name : string;
+	expansion_order : int;
+	hierarchy : int }
+
+    val of_file : S.t -> t SMap.t
+    val to_string : string -> t -> string
+
+  end
+
+module Coupling_Order : Coupling_Order =
   struct
 
     type t =
@@ -448,7 +474,22 @@ module Coupling_Order =
       List.fold_left of_file1 SMap.empty coupling_orders
   end
 
-module Vertex =
+module type Vertex =
+  sig
+
+    type t = private
+      { name : string;
+	particles : string array;
+	color : UFOx.Color.t array;
+	lorentz : string array;
+	couplings : string option array array }
+
+    val of_file : S.t -> t SMap.t
+    val to_string : string -> t -> string
+
+  end
+
+module Vertex : Vertex =
   struct
     
     type t =
@@ -519,7 +560,20 @@ module Vertex =
 
   end
 
-module Lorentz =
+module type Lorentz =
+  sig
+
+    type t = private
+      { name : string;
+	spins : int list;
+	structure : UFOx.Lorentz.t }
+
+    val of_file : S.t -> t SMap.t
+    val to_string : string -> t -> string
+
+  end
+
+module Lorentz : Lorentz =
   struct
     
     type t =
@@ -551,7 +605,27 @@ module Lorentz =
 
   end
 
-module Parameter =
+module type Parameter =
+  sig
+
+    type nature = private Internal | External
+    type ptype = private Real | Complex
+
+    type t = private
+      { name : string;
+	nature : nature;
+	ptype : ptype;
+	value : value;
+	texname : string;
+	lhablock : string option;
+	lhacode : int list option }
+
+    val of_file : S.t -> t SMap.t
+    val to_string : string -> t -> string
+
+  end
+
+module Parameter : Parameter =
   struct
 
     type nature = Internal | External
@@ -622,7 +696,20 @@ module Parameter =
 
   end
 
-module Propagator =
+module type Propagator =
+  sig
+
+    type t = private
+      { name : string;
+	numerator : string;
+	denominator : string }
+
+    val of_file : S.t -> t SMap.t
+    val to_string : string -> t -> string
+
+  end
+
+module Propagator : Propagator =
   struct
 
     type t =
@@ -669,7 +756,20 @@ module Propagator =
 
   end
 
-module Decay =
+module type Decay =
+  sig
+
+    type t = private
+      { name : string;
+	particle : string;
+	widths : (string list * string) list }
+
+    val of_file : S.t -> t SMap.t
+    val to_string : string -> t -> string
+
+  end
+
+module Decay : Decay =
   struct
 
     type t =
