@@ -83,7 +83,7 @@ let parse_file name =
 module type Files =
   sig
     
-    type t =
+    type t = private
       { particles : UFO_syntax.t;
 	couplings : UFO_syntax.t;
 	coupling_orders : UFO_syntax.t;
@@ -249,7 +249,36 @@ module SKey =
   end
 module SHash = Hashtbl.Make (SKey)
 
-module Particle =
+module type Particle =
+  sig
+
+    type t = private
+      { pdg_code : int;
+	name : string;
+	antiname : string;
+	spin : UFOx.Lorentz.r;
+	color : UFOx.Color.r;
+	mass : string;
+	width : string;
+	texname : string;
+	antitexname : string;
+	charge : charge;
+	ghost_number : int;
+	lepton_number : int;
+	y : int;
+	goldstone : bool;    (* NOT HANDLED YET! *)
+	propagating : bool;  (* NOT HANDLED YET! *)
+	line : string option (* NOT HANDLED YET! *) }
+
+    val of_file : S.t -> t SMap.t
+    val to_string : string -> t -> string
+    val conjugate : t -> t
+    val is_ghost : t -> bool
+    val filter : (t -> bool) -> t SMap.t -> t SMap.t
+
+  end
+
+module Particle : Particle =
   struct
     
     type t =
@@ -350,6 +379,12 @@ module Particle =
     let of_file particles =
       List.fold_left of_file1 SMap.empty particles
 
+    let is_ghost p =
+      p.ghost_number <> 0
+
+    let filter predicate map =
+      SMap.filter (fun symbol p -> predicate p) map
+
   end
 
 module UFO_Coupling =
@@ -442,6 +477,17 @@ module Vertex =
 			    (Array.to_list column))) ^ "]")
 	      (Array.to_list c.couplings)))
 
+    let contains_ghosts particles v =
+      let p = v.particles in
+      let rec contains_ghosts' i =
+	if i > 0 then
+	  false
+	else if Particle.is_ghost (SMap.find p.(i) particles) then
+	  true
+	else
+	  contains_ghosts' (pred i) in
+      contains_ghosts' (Array.length p - 1)
+      
     let of_file1 map d =
       let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
@@ -775,6 +821,11 @@ let dump model =
     (fun symbol d ->
       List.iter (fun (_, w) -> ignore (UFOx.Expr.of_string w)) d.Decay.widths)
     model.decays
+
+let filter_ghosts model =
+  { model with
+    particles = model.particles;
+    vertices = model.vertices }
 
 module Model =
   struct

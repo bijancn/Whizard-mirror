@@ -28,7 +28,7 @@ val parse_file : string -> UFO_syntax.t
 module type Files =
   sig
     
-    type t =
+    type t = private
       { particles : UFO_syntax.t;
 	couplings : UFO_syntax.t;
 	coupling_orders : UFO_syntax.t;
