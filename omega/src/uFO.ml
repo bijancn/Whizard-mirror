@@ -506,6 +506,7 @@ module type Vertex =
     val to_string : string -> t -> string
 
     val contains : Particle.t SMap.t -> (Particle.t -> bool) -> t -> bool
+    val filter : (t -> bool) -> t SMap.t -> t SMap.t
 
   end
 
@@ -577,6 +578,9 @@ module Vertex : Vertex =
 
     let of_file vertices =
       List.fold_left of_file1 SMap.empty vertices
+
+    let filter predicate map =
+      SMap.filter (fun symbol p -> predicate p) map
 
   end
 
@@ -942,11 +946,6 @@ let dump model =
       List.iter (fun (_, w) -> ignore (UFOx.Expr.of_string w)) d.Decay.widths)
     model.decays
 
-let filter_ghosts model =
-  { model with
-    particles = model.particles;
-    vertices = model.vertices }
-
 module Model =
   struct
 
@@ -1258,6 +1257,18 @@ module Model =
 
     let init () =
       let model = parse_directory !ufo_directory in
+      let model =
+	let is_unphysical p =
+	  not (Particle.is_physical p) in
+	let particles' =
+	  Particle.filter Particle.is_physical model.particles in
+	let vertices' =
+	  Vertex.filter
+	    (fun v -> not (Vertex.contains model.particles is_unphysical v))
+	    model.vertices in
+	let particles' = model.particles in
+	let vertices' = model.vertices in
+	{ model with particles = particles'; vertices = vertices' } in
       if !dump_raw then
 	dump model;
       let particle_array = Array.of_list (values model.particles) in
