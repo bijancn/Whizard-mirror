@@ -872,17 +872,15 @@ contains
        end if
     end if
 
-    call tauola (-1, 1)
-    !!! Alternative call by Akiya Miyamoto
-    ! call phoini
-    ! call inietc (JAK1, JAK2, ITDKRC, IFPHOT)
-    ! call inimas
-    ! call iniphx (0.01d0)
-    ! call initdk
+    call phoini
+    call inietc (JAK1, JAK2, ITDKRC, IFPHOT)
+    call inimas
+    call iniphx (0.01d0)
+    call initdk
     ! !!! Deactivation of pi0 and eta decays: (1) means on, (0) off
-    ! ion = 0
-    ! call taupi0 (-1, 1, ion)
-    ! call dekay (-1, pol1x)
+    ion = 0
+    call taupi0 (-1, 1, ion)
+    call dekay (-1, pol1x)
 
     if (debug2_active (D_TAUOLA)) then
        call msg_debug2 (D_TAUOLA, "TAUOLA initialization")       
