@@ -505,6 +505,8 @@ module type Vertex =
     val of_file : S.t -> t SMap.t
     val to_string : string -> t -> string
 
+    val contains : Particle.t SMap.t -> (Particle.t -> bool) -> t -> bool
+
   end
 
 module Vertex : Vertex =
@@ -536,12 +538,12 @@ module Vertex : Vertex =
 			    (Array.to_list column))) ^ "]")
 	      (Array.to_list c.couplings)))
 
-    let contains_ghosts particles v =
+    let contains particles predicate v =
       let p = v.particles in
       let rec contains_ghosts' i =
 	if i > 0 then
 	  false
-	else if Particle.is_ghost (SMap.find p.(i) particles) then
+	else if predicate (SMap.find p.(i) particles) then
 	  true
 	else
 	  contains_ghosts' (pred i) in
