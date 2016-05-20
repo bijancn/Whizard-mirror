@@ -29,6 +29,12 @@ let rcs_file = RCS.parse "UFO" ["Reading UFO Files"]
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/UFO.ml $" }
 
+let (@<) f g x =
+ f (g x)
+
+let (@@<) f g x y =
+  f (g x y)
+
 let error_in_string text start_pos end_pos =
   let i = start_pos.Lexing.pos_cnum
   and j = end_pos.Lexing.pos_cnum in
@@ -275,7 +281,7 @@ module type Particle =
 	ghost_number : int;
 	lepton_number : int;
 	y : int;
-	goldstone : bool;    (* NOT HANDLED YET! *)
+	goldstone : bool;
 	propagating : bool;  (* NOT HANDLED YET! *)
 	line : string option (* NOT HANDLED YET! *) }
 
@@ -850,7 +856,7 @@ let alist_of_list predicate offset list =
   alist
 
 let lorentz_reps_of_vertex model v =
-  alist_of_list (fun r -> not (UFOx.Lorentz.rep_trivial r)) 1
+  alist_of_list (not @< UFOx.Lorentz.rep_trivial) 1
     (List.map
        (fun p ->
 	 (* Why do we need to conjugate??? *)
@@ -875,7 +881,7 @@ let check_lorentz_reps_of_vertex model v =
     v.Vertex.lorentz
   
 let color_reps_of_vertex model v =
-  alist_of_list (fun r -> not (UFOx.Color.rep_trivial r)) 1
+  alist_of_list (not @< UFOx.Color.rep_trivial) 1
     (List.map
        (fun p -> (SMap.find p model.particles).Particle.color)
        (Array.to_list v.Vertex.particles))
@@ -910,34 +916,31 @@ let of_file u =
     model.vertices;
   model
 
-let (@@@) f g x y =
-  f (g x y)
-
 let parse_directory dir =
   of_file (Files.parse_directory dir)
 
 let dump model =
-  SMap.iter (print_endline @@@ Particle.to_string) model.particles;
-  (* SMap.iter (print_endline @@@ UFO_Coupling.to_string) model.couplings; *)
+  SMap.iter (print_endline @@< Particle.to_string) model.particles;
+  (* SMap.iter (print_endline @@< UFO_Coupling.to_string) model.couplings; *)
   SMap.iter
     (fun symbol c ->
-      (print_endline @@@ UFO_Coupling.to_string) symbol c;
+      (print_endline @@< UFO_Coupling.to_string) symbol c;
       print_endline
 	(UFOx.Value.to_string
 	   (UFOx.Value.of_expr (UFOx.Expr.of_string c.UFO_Coupling.value))))
     model.couplings;
-  SMap.iter (print_endline @@@ Coupling_Order.to_string) model.coupling_orders;
-  (* SMap.iter (print_endline @@@ Vertex.to_string) model.vertices; *)
+  SMap.iter (print_endline @@< Coupling_Order.to_string) model.coupling_orders;
+  (* SMap.iter (print_endline @@< Vertex.to_string) model.vertices; *)
   SMap.iter
     (fun symbol v ->
-      (print_endline @@@ Vertex.to_string) symbol v;
+      (print_endline @@< Vertex.to_string) symbol v;
       check_color_reps_of_vertex model v;
       check_lorentz_reps_of_vertex model v)
     model.vertices;
-  SMap.iter (print_endline @@@ Lorentz.to_string) model.lorentz;
-  SMap.iter (print_endline @@@ Parameter.to_string) model.parameters;
-  SMap.iter (print_endline @@@ Propagator.to_string) model.propagators;
-  SMap.iter (print_endline @@@ Decay.to_string) model.decays;
+  SMap.iter (print_endline @@< Lorentz.to_string) model.lorentz;
+  SMap.iter (print_endline @@< Parameter.to_string) model.parameters;
+  SMap.iter (print_endline @@< Propagator.to_string) model.propagators;
+  SMap.iter (print_endline @@< Decay.to_string) model.decays;
   SMap.iter
     (fun symbol c -> ignore (UFOx.Expr.of_string c.UFO_Coupling.value))
     model.couplings;
@@ -1258,13 +1261,12 @@ module Model =
     let init () =
       let model = parse_directory !ufo_directory in
       let model =
-	let is_unphysical p =
-	  not (Particle.is_physical p) in
+	let is_unphysical = not @< Particle.is_physical in
 	let particles' =
 	  Particle.filter Particle.is_physical model.particles in
 	let vertices' =
 	  Vertex.filter
-	    (fun v -> not (Vertex.contains model.particles is_unphysical v))
+	    (not @< (Vertex.contains model.particles is_unphysical))
 	    model.vertices in
 	let particles' = model.particles in
 	let vertices' = model.vertices in
