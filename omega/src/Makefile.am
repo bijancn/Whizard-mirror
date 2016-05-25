@@ -90,9 +90,6 @@ omega_models.cma: $(OMEGA_MODELS_CMO)
 cascade_lexer.mli: cascade_lexer.ml cascade_parser.cmi
 	$(OCAMLC) -i $< | $(GREP) 'val token' >$@
 
-comphep_lexer.mli: comphep_lexer.ml comphep_parser.cmi
-	$(OCAMLC) -i $< | $(GREP) 'val token' >$@
-
 vertex_lexer.mli: vertex_lexer.ml vertex_parser.cmi
 	$(OCAMLC) -i $< | $(EGREP) 'val (token|init_position)' >$@
 
@@ -167,7 +164,7 @@ if OCAML_AVAILABLE
 
 @am__include@ @am__quote@Makefile.depend_ocaml@am__quote@
 
-PARSERS = cascade comphep vertex uFO uFOx
+PARSERS = cascade vertex uFO uFOx
 
 Makefile.depend_ocaml: $(OMEGA_CAML_PRIMARY)
 	@rm -f $@
