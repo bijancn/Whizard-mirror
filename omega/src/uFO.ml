@@ -1145,7 +1145,7 @@ module Model =
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
       | t,
         [| [ [], qc] |],
-        [| [| g |] |] ->
+        g ->
 	 prerr_endline
 	   ("unhandled colorless vertex: " ^
 	       (String.concat ", "
@@ -1175,10 +1175,16 @@ module Model =
 	  Coupling.Scalar4 (coeff qt qc),
 	  dummy_constant)
       | [| t |], [| c |], [| [| g |] |] ->
+	 prerr_endline
+	   ("unhandled vertex: " ^ UFOx.Lorentz.to_string t);
 	 ((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
       | [| t |], [| c |], _->
 	 invalid_arg "translate_coupling4: too many constants"
       | t, c, g ->
+	 prerr_endline
+	   ("unhandled vertex: " ^
+	       (String.concat ", "
+		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	 ((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
 
     let lorentz_of_symbol model symbol =
@@ -1268,8 +1274,6 @@ module Model =
 	  Vertex.filter
 	    (not @< (Vertex.contains model.particles is_unphysical))
 	    model.vertices in
-	let particles'' = model.particles in
-	let vertices'' = model.vertices in
 	{ model with particles = particles'; vertices = vertices' } in
       if !dump_raw then
 	dump model;
