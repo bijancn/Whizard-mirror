@@ -36,7 +36,7 @@ libfks_la_SOURCES = \
   nlo_data.f90 \
   virtual.f90 \
   real_subtraction.f90 \
-  pdf_subtraction.f90 \
+  dglap_remnant.f90 \
   nlo_controller.f90 \
   phs_fks.f90
 

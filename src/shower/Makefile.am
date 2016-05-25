@@ -78,7 +78,8 @@ module_lists = \
   ../model_features/Modules \
   ../muli/Modules \
   ../events/Modules \
-  ../beams/Modules
+  ../beams/Modules \
+  ../tauola/Modules
 
 include_modules_bare = ${module_lists:/Modules=}
 include_modules = ${include_modules_bare:../%=-I../%}
@@ -119,18 +120,12 @@ Makefile.depend: $(libshower_la_SOURCES)
 
 DISTCLEANFILES += Makefile.depend
 
-if PYTHIA6_AVAILABLE
-libshower_la_LIBADD = ../../pythia6/libpythia6_wo.la ../../tauola/libtauola_wo.la
-else
-libshower_la_LIBADD = ../../pythia6/libpythia6_wo_dummy.la ../../tauola/libtauola_wo_dummy.la
-endif
-
 # Fortran90 module files are generated at the same time as object files
 .lo.$(FC_MODULE_EXT):
 	@:
 #	touch $@
 
-AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../fastjet -I../lhapdf -I ../pdf_builtin -I../../pythia6 -I../tauola
+AM_FCFLAGS = $(include_modules) -I../../vamp/src -I../fastjet -I../lhapdf -I ../pdf_builtin -I../tauola -I../../pythia6 
 AM_FFLAGS =
 
 ########################################################################

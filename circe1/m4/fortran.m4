@@ -207,14 +207,7 @@ AC_SUBST([OBJ_EXT])
 AC_DEFUN([WO_FC_LIBRARY_LDFLAGS],
 [dnl
 AC_REQUIRE([AC_PROG_FC])
-case "$FC" in
-nagfor*)
-  WO_NAGFOR_LIBRARY_LDFLAGS()
-  ;;
-*)
   AC_FC_LIBRARY_LDFLAGS
-  ;;
-esac
 ])
 
 ### Check the NAG Fortran compiler

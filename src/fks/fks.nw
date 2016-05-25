@@ -198,6 +198,7 @@ module fks_regions
 
 <<Use kinds>>
   use format_utils, only: write_separator
+  use numeric_utils, only: remove_duplicates_from_list
   use io_units
   use os_interface, only: os_data_t, os_data_init
 <<Use strings>>
@@ -2572,7 +2573,7 @@ resonances are possible for all ftuples
                 call reg_data%get_contributors (i_res, emitter, contributors%c, share_emitter)
                 if (.not. share_emitter) cycle
                 call check_for_phs_identifier &
-                   (phs_id_tmp, emitter, contributors%c, phs_exist, i_phs)
+                   (phs_id_tmp, reg_data%n_in, emitter, contributors%c, phs_exist, i_phs)
                 if (.not. phs_exist) then
                    reg_data%n_phs = reg_data%n_phs + 1
                    if (reg_data%n_phs > n_max_phs) call msg_fatal &
@@ -2584,7 +2585,8 @@ resonances are possible for all ftuples
           end do
        end do
     else
-       reg_data%n_phs = reg_data%n_emitters
+       reg_data%n_phs = count (remove_duplicates_from_list (reg_data%emitters) > reg_data%n_in)
+       if (any (reg_data%emitters <= reg_data%n_in)) reg_data%n_phs = reg_data%n_phs + 1
     end if
   end subroutine region_data_compute_number_of_phase_spaces
 
@@ -4574,9 +4576,9 @@ where $\vec{\beta}_i = \frac{\vec{k}_i}{k_i^0}$. Further
     real(default) :: zmb, z1b
     real(default) :: K1, K2
 
-    beta1 = space_part (p1)/energy(p1)
-    beta2 = space_part (p2)/energy(p2)
-    a = beta1**2 + beta2**2 - 2*beta1*beta2
+    beta1 = space_part (p1) / energy(p1)
+    beta2 = space_part (p2) / energy(p2)
+    a = beta1**2 + beta2**2 - 2 * beta1 * beta2
     b = beta1**2 * beta2**2 - (beta1 * beta2)**2
     if (beta1**1 > beta2**1) call switch_beta (beta1, beta2)
     if (beta1 == vector3_null) then
@@ -4595,10 +4597,10 @@ where $\vec{\beta}_i = \frac{\vec{k}_i}{k_i^0}$. Further
     z1b = one / (sqrt (x1**2 + b) + x1)
     K1 = - 0.5 * log (((z1b - zmb) * (zp - z1)) / ((zp + z1) * (z1b + zmb)))**2 &
           - two * Li2 ((two * zmb * (zp - z1)) / ((zp - zm) * (zmb + z1b))) &
-          - two *Li2 ((-two * zp * (zm + z1)) / ((zp - zm) * (zp - z1)))
+          - two * Li2 ((-two * zp * (zm + z1)) / ((zp - zm) * (zp - z1)))
     K2 = - 0.5 * log ((( z2 - zm) * (zp - z2)) / ((zp + z2) * (z2 + zm)))**2 &
-          - two *Li2 ((two * zm * (zp - z2)) / ((zp - zm) * (zm + z2))) &
-          -two *Li2 ((-two * zp * (zm + z2)) / ((zp - zm) * (zp - z2)))
+          - two * Li2 ((two * zm * (zp - z2)) / ((zp - zm) * (zm + z2))) &
+          - two * Li2 ((-two * zp * (zm + z2)) / ((zp - zm) * (zp - z2)))
     I = (K2 - K1) * (one - beta1 * beta2) / sqrt (a - b)
   contains
     subroutine switch_beta (beta1, beta2)
@@ -5642,17 +5644,23 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
     integer, intent(in) :: emitter, i_phs, i_flv
     real(default) :: sqme_alr, alpha_s
     integer :: alr, i_con
+    logical :: same_emitter
 
     sqme = zero
     do alr = 1, rsub%reg_data%n_regions
        if (rsub%fixed_alr > 0 .and. rsub%fixed_alr /= alr) cycle
        sqme_alr = zero
-       if (emitter == rsub%reg_data%regions(alr)%emitter .and. &
-          i_phs == rsub%real_kinematics%alr_to_i_phs (alr) .and. &
+       if (emitter > rsub%isr_kinematics%n_in) then
+          same_emitter = emitter == rsub%reg_data%regions(alr)%emitter
+       else
+          same_emitter = rsub%reg_data%regions(alr)%emitter <= rsub%isr_kinematics%n_in
+       end if
+       if (same_emitter .and. i_phs == rsub%real_kinematics%alr_to_i_phs (alr) .and. &
           i_flv == rsub%reg_data%regions(alr)%real_index) then
           call rsub%set_alr (alr)
           call rsub%set_i_res (alr)
-          sqme_alr = rsub%evaluate_emitter_region (emitter, i_phs, alpha_s)
+          sqme_alr = rsub%evaluate_emitter_region (rsub%reg_data%regions(alr)%emitter, &
+             i_phs, alpha_s)
           i_con = rsub%get_i_contributor (alr)
           if (rsub%purpose == INTEGRATION .or. rsub%purpose == FIXED_ORDER_EVENTS) &
              sqme_alr = sqme_alr * rsub%get_phs_factor (i_con)
@@ -6616,9 +6624,9 @@ avoid duplicate computations.
 <<nlo data: public>>=
   public :: check_for_phs_identifier
 <<nlo data: procedures>>=
-  subroutine check_for_phs_identifier (phs_id, emitter, contributors, phs_exist, i_phs)
+  subroutine check_for_phs_identifier (phs_id, n_in, emitter, contributors, phs_exist, i_phs)
      type(phs_identifier_t), intent(in), dimension(:) :: phs_id
-     integer, intent(in) :: emitter
+     integer, intent(in) :: n_in, emitter
      integer, intent(in), dimension(:), optional :: contributors
      logical, intent(out) :: phs_exist
      integer, intent(out) :: i_phs
@@ -6630,7 +6638,11 @@ avoid duplicate computations.
            i_phs = i
            exit
         end if 
-        phs_exist = phs_id(i)%emitter == emitter
+        if (emitter > n_in) then
+           phs_exist = phs_id(i)%emitter == emitter
+        else
+           phs_exist = phs_id(i)%emitter <= n_in
+        end if
         if (present (contributors)) &
            phs_exist = phs_exist .and. all (phs_id(i)%contributors == contributors)
         if (phs_exist) then
@@ -7144,7 +7156,7 @@ module nlo_controller
   use nlo_data
   use virtual
   use real_subtraction
-  use pdf_subtraction
+  use dglap_remnant
 
 <<Standard module head>>
 
@@ -8193,10 +8205,10 @@ one to determine this.
              if (.not. share_emitter) cycle
           end if
           if (allocated (contributors%c)) then
-             call check_for_phs_identifier (phs_identifiers, &
+             call check_for_phs_identifier (phs_identifiers, nlo_controller%get_n_in (), &
                 emitter, contributors%c, phs_exist = phs_exist, i_phs = i_phs) 
           else
-             call check_for_phs_identifier (phs_identifiers, &
+             call check_for_phs_identifier (phs_identifiers, nlo_controller%get_n_in (), &
                 emitter, phs_exist = phs_exist, i_phs = i_phs)
           end if
           if (.not. phs_exist) &
@@ -8634,6 +8646,7 @@ end module nlo_controller_uti
     real(default), dimension(:,:), allocatable :: sqme_virt_born_list
     real(default), dimension(:,:), allocatable :: sqme_virt_list
     real(default) :: sqme_mismatch
+    real(default), dimension(:), allocatable :: sqme_dglap_list
   contains
   <<nlo data: sqme collector: TBP>>
   end type sqme_collector_t
@@ -8659,7 +8672,8 @@ end module nlo_controller_uti
     sqme = sum (collector%sqme_born_list) + &
            collector%sqme_real_sum + &
            sum (collector%sqme_virt_list) + &
-           collector%sqme_mismatch
+           collector%sqme_mismatch + &
+           sum (collector%sqme_dglap_list)
     if (debug2_active (D_SUBTRACTION)) then
        call msg_debug (D_SUBTRACTION, "Get content of sqme lists: ")
        call collector%write ()
@@ -8690,6 +8704,7 @@ end module nlo_controller_uti
        collector%sqme_real_sum = zero
        collector%sqme_virt_list = zero
        collector%sqme_mismatch = zero
+       collector%sqme_dglap_list = zero
   end subroutine sqme_collector_reset
 
 @ %def sqme_collector_reset
@@ -8702,6 +8717,7 @@ end module nlo_controller_uti
     print *, 'Born: ', collector%sqme_born_list 
     print *, 'Real: ', collector%sqme_real_sum
     print *, 'Virt: ', collector%sqme_virt_list
+    print *, 'Dglap: ', collector%sqme_dglap_list
     print *, 'Mismatch: ', collector%sqme_mismatch
   end subroutine sqme_collector_write
 
@@ -8832,7 +8848,7 @@ process.
     type(virtual_t) :: virtual_terms
     type(real_subtraction_t) :: real_terms
     type(soft_mismatch_t) :: soft_mismatch
-    type(pdf_subtraction_t) :: pdf_terms
+    type(dglap_remnant_t) :: dglap_remnant
     real(default) :: alpha_s_born
     logical :: alpha_s_born_set
     complex(default) :: me_sc
@@ -8872,13 +8888,14 @@ process.
 <<nlo controller: nlo controller: TBP>>=
   procedure :: setup_real_terms => nlo_controller_setup_real_terms
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_setup_real_terms (nlo_controller, template)
+  subroutine nlo_controller_setup_real_terms (nlo_controller, template, sqrts)
      class(nlo_controller_t), intent(inout), target :: nlo_controller
      type(fks_template_t), intent(in) :: template
+     real(default), intent(in) :: sqrts
      integer :: n_in, n_tot_born, n_tot_real
      call nlo_controller%setup_matrix_elements ()
      nlo_controller%alpha_s_born_set = .false.
-     call nlo_controller%init_real_and_isr_kinematics ()
+     call nlo_controller%init_real_and_isr_kinematics (sqrts)
      associate (particle_data => nlo_controller%particle_data)
         n_in = particle_data%n_in
         n_tot_born = n_in + particle_data%n_out_born
@@ -9071,6 +9088,7 @@ polarized or not.
       n_tot_born = particle_data%n_in + particle_data%n_out_born
       allocate (collector%sqme_born_cc (n_tot_born, n_tot_born, particle_data%n_flv_born))
       allocate (collector%sqme_born_sc (particle_data%n_flv_born))
+      allocate (collector%sqme_dglap_list (particle_data%n_flv_born))
       collector%sqme_born_list = zero
       collector%sqme_subtraction_born_list = zero
       collector%sqme_real_non_sub = zero
@@ -9081,6 +9099,7 @@ polarized or not.
       collector%sqme_real_sum = zero
       collector%sqme_virt_born_list = zero
       collector%sqme_virt_list = zero
+      collector%sqme_dglap_list = zero
       collector%sqme_mismatch = zero
     end associate
   end subroutine nlo_controller_setup_matrix_elements
@@ -9103,7 +9122,7 @@ polarized or not.
        nlo_controller%real_kinematics, &
        nlo_controller%has_massive_emitter ())
     generator%n_in = nlo_controller%particle_data%n_in
-    call generator%set_beam_energy (sqrts)
+    call generator%set_sqrts_hat (sqrts)
     call generator%set_emitters (nlo_controller%reg_data%emitters)
     call generator%setup_masses (nlo_controller%particle_data%n_in + &
        nlo_controller%particle_data%n_out_born)
@@ -9665,40 +9684,42 @@ polarized or not.
 @ %def nlo_controller_init_virtual
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: init_pdf_subtraction => nlo_controller_init_pdf_subtraction
+  procedure :: init_dglap_remnant => nlo_controller_init_dglap_remnant
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_init_pdf_subtraction (nlo_controller)
+  subroutine nlo_controller_init_dglap_remnant (nlo_controller)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    call nlo_controller%pdf_terms%init (nlo_controller%isr_kinematics, &
+    call nlo_controller%dglap_remnant%init (nlo_controller%isr_kinematics, &
        nlo_controller%particle_states%flv_state_born, &
        nlo_controller%reg_data%n_regions, nlo_controller%sqme_collector)
-  end subroutine nlo_controller_init_pdf_subtraction
+  end subroutine nlo_controller_init_dglap_remnant
 
-@ %def nlo_controller_init_pdf_subtraction
+@ %def nlo_controller_init_dglap_remnant
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: pdf_subtraction_is_required => nlo_controller_pdf_subtraction_is_required
+  procedure :: dglap_remnant_is_required => nlo_controller_dglap_remnant_is_required
 <<nlo controller: procedures>>=
-  function nlo_controller_pdf_subtraction_is_required (nlo_controller) result (required)
+  function nlo_controller_dglap_remnant_is_required (nlo_controller) result (required)
     class(nlo_controller_t), intent(in) :: nlo_controller
     logical :: required
-    required = nlo_controller%pdf_terms%required
-  end function nlo_controller_pdf_subtraction_is_required
+    required = nlo_controller%dglap_remnant%required
+  end function nlo_controller_dglap_remnant_is_required
 
-@ %def nlo_controller_pdf_subtraction_is_required
+@ %def nlo_controller_dglap_remnant_is_required
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: evaluate_pdf_subtraction => nlo_controller_evaluate_pdf_subtraction
+  procedure :: evaluate_dglap_remnant => nlo_controller_evaluate_dglap_remnant
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_evaluate_pdf_subtraction (nlo_controller, sqme)
+  subroutine nlo_controller_evaluate_dglap_remnant (nlo_controller, sqme)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    real(default), intent(inout) :: sqme
+    real(default), intent(in) :: sqme
     if (.not. nlo_controller%alpha_s_born_set) &
-        call msg_fatal ("Strong coupling not set for pdf subtraction")
-    call nlo_controller%pdf_terms%evaluate (nlo_controller%alpha_s_born, sqme)
-  end subroutine nlo_controller_evaluate_pdf_subtraction
+        call msg_fatal ("Strong coupling not set for dglap remnant")
+    !!! TODO (cw 2016-04-26): Use correct i_flv_born
+    nlo_controller%sqme_collector%sqme_dglap_list (1) =  &
+       nlo_controller%dglap_remnant%evaluate (nlo_controller%alpha_s_born, sqme)
+  end subroutine nlo_controller_evaluate_dglap_remnant
 
-@ %def evaluate_pdf_subtraction
+@ %def evaluate_dglap_remnant
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: get_emitter_list => nlo_controller_get_emitter_list
@@ -9924,8 +9945,9 @@ polarized or not.
   procedure :: init_real_and_isr_kinematics &
      => nlo_controller_init_real_and_isr_kinematics
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_init_real_and_isr_kinematics (nlo_controller)
+  subroutine nlo_controller_init_real_and_isr_kinematics (nlo_controller, sqrts)
     class(nlo_controller_t), intent(inout) :: nlo_controller
+    real(default), intent(in) :: sqrts
     integer :: n_tot, n_contr
     n_tot = nlo_controller%particle_data%n_in + &
             nlo_controller%particle_data%n_out_born
@@ -9941,6 +9963,7 @@ polarized or not.
           reg_data%n_phs, reg_data%n_regions, n_contr)
     end associate
     nlo_controller%isr_kinematics%n_in = nlo_controller%particle_data%n_in
+    nlo_controller%isr_kinematics%beam_energy = sqrts / two
   end subroutine nlo_controller_init_real_and_isr_kinematics
 
 @ %def nlo_controller_init_real_and_isr_kinematics
@@ -10220,7 +10243,7 @@ end module phs_fks
     select case (mode)
     case (NLO_REAL, NLO_MISMATCH)
        phs_config%mode = PHS_MODE_ADDITIONAL_PARTICLE
-    case (NLO_PDF)
+    case (NLO_DGLAP)
        phs_config%mode = PHS_MODE_COLLINEAR_REMNANT
     end select
   end subroutine phs_fks_config_set_mode
@@ -10421,7 +10444,7 @@ phase-space points with [[p_real(emitter) = 0]].
 <<phs fks: phs fks generator: TBP>>=
   procedure :: compute_isr_kinematics => phs_fks_generator_compute_isr_kinematics
 <<phs fks: procedures>>=
-  pure subroutine phs_fks_generator_compute_isr_kinematics (generator, r, p_in)
+  subroutine phs_fks_generator_compute_isr_kinematics (generator, r, p_in)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: r
     type(vector4_t), dimension(2), intent(in), optional :: p_in
@@ -10635,7 +10658,7 @@ calculated from the Born momenta.
 <<phs fks: procedures>>=
   subroutine phs_fks_set_beam_energy (phs)
     class(phs_fks_t), intent(inout) :: phs
-    call phs%generator%set_beam_energy (phs%config%sqrts)
+    call phs%generator%set_sqrts_hat (phs%config%sqrts)
   end subroutine phs_fks_set_beam_energy
 
 @ %def phs_fks_set_beam_energy
@@ -10807,14 +10830,15 @@ in the center-of-mass and lab frame.
              call reg_data%get_contributors (i_res, emitter, contributors%c, share_emitter)
              if (.not. share_emitter) cycle
              call check_for_phs_identifier &
-                (phs%phs_identifiers, emitter, contributors%c, phs_exist, i_phs)
+                (phs%phs_identifiers, phs%config%n_in, emitter, contributors%c, phs_exist, i_phs)
              if (.not. phs_exist) &
                 call phs%phs_identifiers(i_phs)%init (emitter, contributors%c)
              if (allocated (contributors%c)) deallocate (contributors%c)
           end do
        else
           call check_for_phs_identifier &
-             (phs%phs_identifiers, emitter, phs_exist = phs_exist, i_phs = i_phs)
+             (phs%phs_identifiers, phs%config%n_in, emitter, &
+             phs_exist = phs_exist, i_phs = i_phs)
           if (.not. phs_exist) &
              call phs%phs_identifiers(i_phs)%init (emitter)
        end if
@@ -11743,7 +11767,6 @@ with $\Lambda$.
     associate (jac => generator%real_kinematics%jac(i_phs))
        !!! Additional 1 / (1 -xi) factor because in the real jacobian,
        !!! there is s_real in the numerator
-       !!!jac%jac(1) = one / (one - xi)**2
        !!! We also have to adapt the flux factor, which is 1/2s_real for the real component
        !!! The reweighting factor is s_born / s_real, cancelling the (1-x) factor from above
        jac%jac(1) = one / (one - xi)
@@ -11792,16 +11815,15 @@ with $\Lambda$.
 @ %def phs_fks_generator_generate_isr
 @
 <<phs fks: phs fks generator: TBP>>=
-  procedure :: set_beam_energy => phs_fks_generator_set_beam_energy
+  procedure :: set_sqrts_hat => phs_fks_generator_set_sqrts_hat
 <<phs fks: procedures>>=
-  pure subroutine phs_fks_generator_set_beam_energy (generator, sqrts)
+  subroutine phs_fks_generator_set_sqrts_hat (generator, sqrts)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: sqrts
     generator%sqrts = sqrts
-    generator%isr_kinematics%beam_energy = sqrts / two
-  end subroutine phs_fks_generator_set_beam_energy
+  end subroutine phs_fks_generator_set_sqrts_hat
 
-@ %def phs_fks_generator_set_beam_energy
+@ %def phs_fks_generator_set_sqrts_hat
 @
 <<phs fks: phs fks generator: TBP>>=
   procedure :: set_emitters => phs_fks_generator_set_emitters
@@ -11845,7 +11867,8 @@ with $\Lambda$.
        p = generator%real_kinematics%p_born_lab%phs_point(1)%p(1:2)
     end if
 
-    generator%isr_kinematics%x = p%p(0) / (generator%sqrts / two)
+    !generator%isr_kinematics%x = p%p(0) / (generator%sqrts / two)
+    generator%isr_kinematics%x = p%p(0) / generator%isr_kinematics%beam_energy
   end subroutine phs_fks_generator_set_isr_kinematics
 
 @ %def phs_fks_generator_set_isr_kinematics
@@ -12187,7 +12210,7 @@ has already been taken into account during its generation.
        rad_var%y(i_phs) = y
        rad_var%phi = phi
     end associate
-    call generator%set_beam_energy (p_born(1)%p(0) + p_born(2)%p(0))
+    call generator%set_sqrts_hat (p_born(1)%p(0) + p_born(2)%p(0))
     call generator%generate_fsr (emitter, i_phs, p_born, p_real)
   end subroutine phs_fks_generator_generate_fsr_from_xi_and_y
 
@@ -12301,7 +12324,7 @@ module phs_fks_uti
 <<Use kinds>>
   use format_utils, only: write_separator, pac_fmt
   use format_defs, only: FMT_15, FMT_19
-  use constants, only: tiny_07, zero
+  use constants, only: tiny_07, zero, two
   use lorentz
 
   use ttv_formfactors, only: THR_POS_B, THR_POS_BBAR
@@ -12380,7 +12403,7 @@ end module phs_fks_uti
     allocate (generator%isr_kinematics)
     generator%n_in = 2
 
-    call generator%set_beam_energy (sqrts)
+    call generator%set_sqrts_hat (sqrts)
 
     write (u, "(A)") "* Use four-particle phase space containing: "
     call vector4_write_set (p_born, u, testflag = .true., ultra = .true.)
@@ -12471,7 +12494,9 @@ end module phs_fks_uti
     allocate (generator%isr_kinematics)
     generator%n_in = 2
     generator%emitters(1) = 1; generator%emitters(2) = 2
-    call generator%set_beam_energy (sqrts_hadronic)
+    generator%sqrts = sqrts_hadronic
+    generator%isr_kinematics%beam_energy = sqrts_hadronic / two
+    call generator%set_sqrts_hat (sqrts_hadronic)
     call generator%set_isr_kinematics (p_born)
 
     write (u, "(A)") "* Use four-particle phase space containing: "
@@ -12680,7 +12705,7 @@ end module phs_fks_uti
     allocate (generator%isr_kinematics)
     generator%n_in = 2
 
-    call generator%set_beam_energy (sqrts)
+    call generator%set_sqrts_hat (sqrts)
 
     write (u, "(A)") "* Test process: e+ e- -> W+ W- b b~"
     write (u, "(A)") "* Resonance pairs: (3,5) and (4,6)"
@@ -12807,7 +12832,7 @@ end module phs_fks_uti
     generator%n_in = 2
     p_real = nlegborn + 1
 
-    call generator%set_beam_energy (250._default)
+    call generator%set_sqrts_hat (250._default)
 
     write (u, "(A)") "* Test process: e+ e- -> W+ W- b b~"
     write (u, "(A)") "* Use four-particle phase space containing: "
@@ -12957,51 +12982,108 @@ end module phs_fks_uti
 @
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Subtraction of initial-state divergences}
-We must calculate two terms, $G_\oplus$ and $G_\ominus$ for each
-possible initial-state emitter.  Following the notation of 0709.2092,
-this is separated into $G = \tilde{\mathcal{L}}\mathcal{G}$, such that
-$\tilde{\mathcal{L}}$ contains the PDF-values at the scales, explicitly
-\begin{align*}
-  \tilde{\mathcal{L}} &=
-  \begin{cases}
-    \mathcal{L}(\bar{x}_\oplus/z, \bar{x}_\ominus) &\mbox{for} \alpha \in \mbox{ISR}_\oplus \\
-    \mathcal{L}(\bar{x}_\oplus, \bar{x}_\ominus/z) &\mbox{for} \alpha \in \mbox{ISR}_\ominus
-  \end{cases}
-\end{align*}
-For each flavor combination $f_\oplus$ and $f_\ominus$ of initial-state
-particles, the relevant terms are given by
-\begin{align*}
-  \mathcal{G}_\oplus^{f_\oplus f_\ominus} (z) =
-           \frac{\alpha_s}{2\pi}\sum_{f'_\oplus} &\left\lbrace (1-z)P^{f_\oplus f'_\ominus}(z,0)
-           \left[\left(\frac{1}{1-z}\right)_+\log\frac{s}{2\mu_F^2} + 2\left(\frac{\log(1-z)}{1-z}\right)_+\right]\right.\\
-           - \left.\left[\frac{\partial P^{f_\oplus f'_\oplus}(z,\epsilon)}{\partial \epsilon}\right]_{\epsilon=0}
-           - K^{f_\oplus f'_\oplus}\right\rbrace \mathcal{B}^{f'_\oplus f_\ominus}(z)
-\end{align*}
-where $P(z,\epsilon)$ are the Altarelli-Parisi splitting functions
-\begin{align*}
-  P_{qq}(z,\epsilon) &= C_F \left[\frac{1+z^2}{1-z} - \epsilon(1-z)\right], \\
-  P_{qg}(z,\epsilon) &= C_F \left[\frac{1+(1-z)^2}{z} - \epsilon z\right], \\
-  P_{gq}(z,\epsilon) &= T_F \left[1 - \frac{2z(1-z)}{1-\epsilon}\right], \\
-  P_{gg}(z,\epsilon) &= 2C_A \left[\frac{z}{1-z} + \frac{1-z}{z} + z(1-z)\right].
-\end{align*}
-In the code we deal with $\hat{P}^{f_\oplus f_\ominus}(z) =
-(1-z)P^{f_\oplus f_\ominus}(z,0)$ because this quantity behaves nicely
-in the limit $z \to 1$.  The factor $K^{f_\oplus f_\ominus}$ depends on
-the renormalization scheme and vanishes for $\overline{MS}$.\\ The
-second thing to consider is the fact that the integration over $z$ is
-carried out over the interval $[\bar{x}_\oplus,1]$ or
-$[\bar{x}_\ominus,1]$, respectively, but the plus-distribution can only
-be evaluated over $[0,1]$. We thus use the identities
-\begin{align*}
-  \int_{\bar{x}_\oplus}^1 dz \left(\frac{1}{1-z}\right)_+ f(z) &= \log(1-\bar{x}_\oplus)f(1) + \int_{\bar{x}_\oplus}^1 dz \frac{f(z)-f(1)}{1-z}, \\
-  \int_{\bar{x}_\oplus}^1 dz \left(\frac{\log(1-z)}{1-z}\right)_+ f(z) &= \frac{1}{2} \log^2(1-\bar{x}_\oplus) f(1) + \int_{\bar{x}_\oplus}^1 dz \frac{\log(1-z)[f(z)-f(1)]}{1-z}.
-\end{align*}
+\section{Contribution of divergencies due to PDF Evolution}
+The origin of these contributions is a bit tricky to understand, because we cannot understand the
+initial-state real collinear contributions without also taking into account the evolution
+of parton density functions at $\mathcal{O}(\alpha_s)$. The NLO PDF evolution is given by
+\begin{equation}
+  \label{eqn:pdf_nlo}
+  f (\bar{x}) = \int_0^1 \int_0^1 dx dz f(x) \Gamma(z) \delta (\bar{x} - x z),
+\end{equation}
+where $\Gamma$ are the DGLAP evolution kernels for an $a \to d$ splitting,
+\begin{equation}
+  \label{eqn:dglap}
+  \Gamma_a^{(d)} = \delta_{ad}\delta(1-x) - \frac{\alpha_s}{2\pi} \left(\frac{1}{\epsilon} P_{ad}(x,0) - K_{ad}(x)\right) + \mathcal{O}(\alpha_s).
+\end{equation}
+$K_{ad}$ is a renormalization scheme matching factor, which is exactly zero in $\bar{MS}$. Let the leading-order hadronic cross section be given by
+\begin{equation}
+  \label{eqn:xsec_hadro_lo}
+  d\sigma^{(0)}(s) = \int dx_\oplus dx_\ominus f_\oplus (x_\oplus) f_\ominus (x_\ominus) d\tilde{\sigma}^{(0)} (x_\oplus x_\ominus s),
+\end{equation}
+then the NLO hadronic cross section is
+\begin{equation}
+  \label{eqn:xsec_hadro_nlo}
+  d\sigma^{(1)}(s) = \int dx_\oplus dx_\ominus dz_\oplus dz_\ominus f_\oplus (x_\oplus) f_\ominus (x_\ominus) 
+                     \underbrace{\Gamma_\oplus (z_\oplus) \Gamma_\ominus (z_\ominus) d\tilde{\sigma}^{(1)} (z_\oplus z_\ominus s)}_{d\hat{\sigma}^{(1)}}.
+\end{equation}
+$d\hat{\sigma}$ is called the subtracted partonic cross section. Expanding in $\alpha_s$ we find
+\begin{align}
+  d\hat{\sigma}^{(0)}_{ab}(k_1, k_2) &= d\tilde{\sigma}_{ab}^{(0)} (k_1, k_2), \\
+  d\hat{\sigma}^{(1)}_{ab}(k_1, k_2) &= d\tilde{\sigma}_{ab}^{(1)} (k_1, k_2) \\
+                                     &+ \frac{\alpha_s}{2\pi} \sum_d \int dx \left (\frac{1}{\epsilon} P_{da}(x,0) - K_{da}(x)\right) d\tilde{\sigma}_{db}^{(0)}(xk_1, k_2)\\
+                                     &+ \frac{\alpha_s}{2\pi} \sum_d \int \left (\frac{1}{\epsilon} P_{db} (x, 0) - K_{db}(x)\right) d\tilde{\sigma}_{ad}^{(0)}(k_1, xk_2).\\
+                                     &= d\tilde{\sigma}_{ab}^{(1)} + d\tilde{\sigma}_{ab}^{(cnt,+)} + d\tilde{\sigma}_{ab}^{(cnt,-)}
+\end{align}
 
-<<[[pdf_subtraction.f90]]>>=
+Let us now turn the soft-subtracted real part of the cross section. For ease of notation, it is constrained to one singular region,
+\begin{align*}
+  \label{eqn:R-in}
+  d\sigma^{(in)}_\alpha &= \left[\left(\frac{1}{\xi}\right)_+ - 2\epsilon\left(\frac{\log \xi}{\xi}\right)_+\right] (1-y^2)\xi^2 \mathcal{R}_\alpha \mathcal{S}_\alpha \\
+                 &\times  \frac{1}{2(2\pi)^{3-2\epsilon}} \left(\frac{\sqrt{s}}{2}\right)^{2-2\epsilon} \left( 1 - y^2\right)^{-1-\epsilon} d\phi d\xi dy d\Omega^{2-2\epsilon},
+\end{align*}
+where we regularize collinear divergencies using the identity
+\begin{equation*}
+  \left (1 - y^2 \right)^{-1-\epsilon} = -\frac{2^{-\epsilon}}{\epsilon} \left (\delta(1-y) + \delta(1+y)\right) 
+     + \underbrace{\frac{1}{2} \left[ \left (\frac {1}{1-y}\right)_+ + \left (\frac{1}{1+y}\right)_+ \right]}_{\mathcal{P}(y)}.
+\end{equation*}
+This enables us to split the cross section into a finite and a singular part. The latter can further be separated into a contribution of the incoming and of the outgoing particles,
+\begin{equation*}
+  d\sigma^{(in)}_\alpha = d\sigma^{(in,+)}_\alpha + d\sigma^{(in,-)}_\alpha + d\sigma^{(in,f)}_\alpha.
+\end{equation*}
+They are given by
+\begin{align}
+  \label{eqn:sigma-f}
+  d\sigma^{(in,f)}_\alpha = & \mathcal{P}(y) \left[\left(\frac{1}{\xi}\right)_+ - 2\epsilon \left(\frac{\log\xi}{\xi}\right)_+\right] \frac{1}{2(2\pi)^{3-2\epsilon}} 
+     \left(\frac{\sqrt{s}}{2}\right)^{2-2\epsilon} \\
+     & \times (1-y^2)\xi^2 \mathcal{R}_\alpha \mathcal{S}_\alpha d\phi d\xi dy d\Omega^{2-2\epsilon}
+\end{align}
+and 
+\begin{align}
+  \label{eqn:sigma-pm}
+  d\sigma^{(in,\pm)}_\alpha &= -\frac{2^{-\epsilon}}{\epsilon} \delta (1 \mp y) \left[ \left( \frac{1}{\xi}\right)_+ - 2\epsilon \left(\frac{\log\xi}{\xi}\right)_+\right] \\
+                    & \times \frac{1}{2(2\pi)^{3-2\epsilon}} \left( \frac{\sqrt{s}}{2}\right)^{2-2\epsilon} (1-y^2)\xi^2 \mathcal{R}_\alpha \mathcal{S}_\alpha d\phi d\xi dy d\Omega^{2-2\epsilon}.
+\end{align}
+Equation \ref{eqn:sigma-f} is the contribution to the real cross section which is computed in [[evaluate_region_isr]]. It is regularized both in the soft and collinear limit via the plus distributions.
+Equation \ref{eqn:sigma-pm} is a different contribution. It is only present exactly in the collinear limit, due to the delta function. The divergences present in this term do not completely cancel out
+divergences in the virtual matrix element, because the beam axis is distinguished. Thus, the conditions in which the KLM theorem applies are not met. To see this, we carry out the collinear limit, obtaining
+\begin{equation*}
+  \lim_{y \to 1} (1-y^2)\xi^2\mathcal{R}_\alpha = 8\pi\alpha_s \mu^{2\epsilon} \left(\frac{2}{\sqrt{s}}\right)^2 \xi P^<(1-\xi, \epsilon) \mathcal{R}_\alpha,
+\end{equation*}
+with the Altarelli-Parisi splitting kernel for $z < 1$, $P^<(z,\epsilon)$. Moreover, $\lim_{\vec{k} \parallel \vec{k}_1} d\phi = d\phi_3$ violates spatial averaging. The integration over the spherical angle $d\Omega$ can be carried out easily, yielding a factor of $2\pi^{1-\epsilon} / \Gamma(1-\epsilon)$.
+This allows us to redefine $\epsilon$,
+\begin{equation}
+  \frac{1}{\epsilon} - \gamma_E + \log(4\pi) \to \frac{1}{\epsilon}.
+\end{equation}
+In order to make a connection to $d\tilde{\sigma}^{(cnt,\pm)}$, we relate $P_{ab}(z,0)$ to $P^<_{ab}(z,0)$ via the equation
+\begin{equation*}
+  P_{ab}(z,0) = (1-z)P_{ab}^<(z,0)\left(\frac{1}{1-z}\right)_+ + \gamma(a)\delta_{ab}\delta(1-z),
+\end{equation*}
+which yields
+\begin{equation}
+  d\tilde{\sigma}^{(cnt,+)} = \frac{\alpha_s}{2\pi} \sum_d \left\lbrace -K_{da}(1-\xi) + \frac{1}{\epsilon} \left[\left(\frac{1}{\xi}\right)_+ \xi P_{da}^<(1-\xi,0)
+                           + \delta_{da}\delta(\xi)\gamma(d)\right]\right\rbrace \mathcal{R}_\alpha \mathcal{S}_\alpha.
+\end{equation}
+This term has the same pole structure as eqn. \ref{eqn:sigma-pm}. This makes clear that the quantity
+\begin{equation}
+  d\hat{\sigma}^{(in,+)} = d\tilde{\sigma}^{(in,+)} + \frac{1}{4} d\tilde{\sigma}^{(cnt,+)}
+\end{equation}
+has no collinear poles. Therefore, our task is to add up eqns. \ref{eqn:sigma-pm} and \ref{???} in order to compute the finite remainder. This is the integrand which is evaluated in the [[dglap_remnant]] component.\\
+So, we have to perform an expansion of $d\hat{\sigma}^{(in,+)}$ in $\epsilon$. Hereby, we must not neglect the implicit $\epsilon$-dependence of $P^<$, which leads to additional terms involving the
+first derivative,
+\begin{equation*}
+  P_{ab}^<(z,\epsilon) = P_{ab}^<(z,0) + \epsilon \frac{\partial P_{ab}^<(z,\epsilon)}{\partial \epsilon}|_{\epsilon = 0} + \mathcal{O}(\alpha_s^2).
+\end{equation*}
+This finally gives us the equation for the collinear remnant. Note that there is still one soft $1/\epsilon$-pole, which cancels out with the corresponding expression in the soft-virtual terms.
+\begin{align}
+  d\hat{\sigma}^{(in,+)} &= \frac{\alpha_s}{2\pi} \frac{1}{\epsilon} \gamma(a) \mathcal{R}_\alpha \mathcal{S}_\alpha \\
+                         &+ \frac{\alpha_s}{2\pi} \sum_d \left\lbrace (1-z) P_{da}^<(z,0)\left[\left(\frac{1}{1-z}\right)_+ \log\frac{s}{\mu^2} + 2 \left(\frac{\log(1-z)}{1-z}\right)_+\right] \right .\\
+                         &\left . -(1-z)\frac{\partial P_{da}^<(z,\epsilon)}{\partial \epsilon} \left(\frac{1}{1-z}\right)_+ - K_{da}(z)\right\rbrace \mathcal{R}_\alpha \mathcal{S}_\alpha
+\end{align}
+
+<<[[dglap_remnant.f90]]>>=
 <<File header>>
 
-module pdf_subtraction
+module dglap_remnant
 
 <<Use kinds with double>>
 <<Use strings>>
@@ -13017,22 +13099,22 @@ module pdf_subtraction
 
 <<Standard module head>>
 
-<<pdf subtraction: public>>
+<<dglap remnant: public>>
 
-<<pdf subtraction: types>>
+<<dglap remnant: types>>
 
 contains
 
-<<pdf subtraction: procedures>>
+<<dglap remnant: procedures>>
 
-end module pdf_subtraction
+end module dglap_remnant
 
-@ %def module pdf_subtraction
+@ %def module dglap_remnant
 @
-<<pdf subtraction: public>>=
-  public :: pdf_subtraction_t
-<<pdf subtraction: types>>=
-  type :: pdf_subtraction_t
+<<dglap remnant: public>>=
+  public :: dglap_remnant_t
+<<dglap remnant: types>>=
+  type :: dglap_remnant_t
     type(pdf_data_t) :: pdf_data
     logical :: required = .false.
     type(isr_kinematics_t), pointer :: isr_kinematics => null ()
@@ -13043,30 +13125,30 @@ end module pdf_subtraction
     real(default), dimension(:), pointer :: sqme_born => null ()
     real(default), dimension(:), allocatable :: value
   contains
-  <<pdf subtraction: pdf subtraction: TBP>>
-  end type pdf_subtraction_t
+  <<dglap remnant: dglap remnant: TBP>>
+  end type dglap_remnant_t
 
-@ %def pdf_subtraction_t
+@ %def dglap_remnant_t
 @
-<<pdf subtraction: pdf subtraction: TBP>>=
-  procedure :: init => pdf_subtraction_init
-<<pdf subtraction: procedures>>=
-  subroutine pdf_subtraction_init (pdf_sub, isr_kinematics, flv, n_alr, sqme_collector)
-    class(pdf_subtraction_t), intent(inout) :: pdf_sub
+<<dglap remnant: dglap remnant: TBP>>=
+  procedure :: init => dglap_remnant_init
+<<dglap remnant: procedures>>=
+  subroutine dglap_remnant_init (dglap, isr_kinematics, flv, n_alr, sqme_collector)
+    class(dglap_remnant_t), intent(inout) :: dglap
     type(isr_kinematics_t), intent(in), target :: isr_kinematics
     integer, dimension(:,:), intent(in) :: flv
     integer, intent(in) :: n_alr
     type(sqme_collector_t), intent(in), target :: sqme_collector
     integer :: i, j, n_quarks
     logical, dimension(-6:6) :: quark_checked = .false.
-    pdf_sub%required = any ([is_quark(flv(1,1)), &
+    dglap%required = any ([is_quark(flv(1,1)), &
         is_quark(flv(2,1)), is_gluon(flv(1,1)), is_gluon(flv(2,1))])
-    if (.not. pdf_sub%required) return
+    if (.not. dglap%required) return
 
-    pdf_sub%sqme_born => sqme_collector%sqme_subtraction_born_list
-    pdf_sub%isr_kinematics => isr_kinematics
-    allocate (pdf_sub%value (n_alr))
-    call pdf_sub%set_incoming_flavor (flv(1,1), flv(2,1))
+    dglap%sqme_born => sqme_collector%sqme_subtraction_born_list
+    dglap%isr_kinematics => isr_kinematics
+    allocate (dglap%value (n_alr))
+    call dglap%set_incoming_flavor (flv(1,1), flv(2,1))
     n_quarks = 0
     do i = 1, size (flv, dim = 1)
        if (is_quark(flv(i,1))) then
@@ -13074,36 +13156,36 @@ end module pdf_subtraction
           quark_checked(flv(i, 1)) = .true.
        end if
     end do
-    allocate (pdf_sub%i_light_quarks (n_quarks))
+    allocate (dglap%i_light_quarks (n_quarks))
     j = 1
     do i = -6, 6
        if (quark_checked(i)) then
-          pdf_sub%i_light_quarks(j) = i
+          dglap%i_light_quarks(j) = i
           j = j + 1
        end if
     end do
 
-    call pdf_sub%init_pdfs ()
-  end subroutine pdf_subtraction_init
+    call dglap%init_pdfs ()
+  end subroutine dglap_remnant_init
 
-@ %def pdf_subtraction_init
+@ %def dglap_remnant_init
 @
-<<pdf subtraction: pdf subtraction: TBP>>=
-  procedure :: set_incoming_flavor => pdf_subtraction_set_incoming_flavor
-<<pdf subtraction: procedures>>=
-  subroutine pdf_subtraction_set_incoming_flavor (pdf_sub, flv1, flv2)
-    class(pdf_subtraction_t), intent(inout) :: pdf_sub
+<<dglap remnant: dglap remnant: TBP>>=
+  procedure :: set_incoming_flavor => dglap_remnant_set_incoming_flavor
+<<dglap remnant: procedures>>=
+  subroutine dglap_remnant_set_incoming_flavor (dglap, flv1, flv2)
+    class(dglap_remnant_t), intent(inout) :: dglap
     integer, intent(in) :: flv1, flv2
-    pdf_sub%flv_in(1) = flv1; pdf_sub%flv_in(2) = flv2
-  end subroutine pdf_subtraction_set_incoming_flavor
+    dglap%flv_in(1) = flv1; dglap%flv_in(2) = flv2
+  end subroutine dglap_remnant_set_incoming_flavor
 
-@ %def pdf_subtraction_set_incoming_flavor
+@ %def dglap_remnant_set_incoming_flavor
 @
-<<pdf subtraction: pdf subtraction: TBP>>=
-  procedure :: init_pdfs => pdf_subtraction_init_pdfs
-<<pdf subtraction: procedures>>=
-  subroutine pdf_subtraction_init_pdfs (pdf_sub)
-    class(pdf_subtraction_t), intent(inout) :: pdf_sub
+<<dglap remnant: dglap remnant: TBP>>=
+  procedure :: init_pdfs => dglap_remnant_init_pdfs
+<<dglap remnant: procedures>>=
+  subroutine dglap_remnant_init_pdfs (dglap)
+    class(dglap_remnant_t), intent(inout) :: dglap
     type(string_t) :: lhapdf_dir, lhapdf_file
     integer :: lhapdf_member
     lhapdf_dir = ""
@@ -13111,8 +13193,8 @@ end module pdf_subtraction
     lhapdf_member = 0
     if (LHAPDF6_AVAILABLE) then
        call lhapdf_initialize &
-            (1, lhapdf_dir, lhapdf_file, lhapdf_member, pdf_sub%pdf_data%pdf)
-       associate (pdf_data => pdf_sub%pdf_data)
+            (1, lhapdf_dir, lhapdf_file, lhapdf_member, dglap%pdf_data%pdf)
+       associate (pdf_data => dglap%pdf_data)
           pdf_data%type = STRF_LHAPDF6
           pdf_data%xmin = pdf_data%pdf%getxmin ()
           pdf_data%xmax = pdf_data%pdf%getxmax ()
@@ -13122,148 +13204,161 @@ end module pdf_subtraction
     else
        call msg_fatal ("PDF subtraction: PDFs could not be initialized")
     end if
-  end subroutine pdf_subtraction_init_pdfs
+  end subroutine dglap_remnant_init_pdfs
 
-@ %def pdf_subtraction_init_pdfs
+@ %def dglap_remnant_init_pdfs
 @
-<<pdf subtraction: pdf subtraction: TBP>>=
-  procedure :: compute_pdfs => pdf_subtraction_compute_pdfs
-<<pdf subtraction: procedures>>=
-  subroutine pdf_subtraction_compute_pdfs (pdf_sub)
-    class(pdf_subtraction_t), intent(inout) :: pdf_sub
+<<dglap remnant: dglap remnant: TBP>>=
+  procedure :: compute_pdfs => dglap_remnant_compute_pdfs
+<<dglap remnant: procedures>>=
+  subroutine dglap_remnant_compute_pdfs (dglap)
+    class(dglap_remnant_t), intent(inout) :: dglap
     integer :: i
     real(default) :: z, x, Q
     real(double), dimension(-6:6) :: f_dble = 0._double
-    Q = pdf_sub%isr_kinematics%fac_scale
+    Q = dglap%isr_kinematics%fac_scale
     do i = 1, 2
-       x = pdf_sub%isr_kinematics%x(i)
-       z = pdf_sub%isr_kinematics%z(i)
-       call pdf_sub%pdf_data%evolve (dble(x), dble(Q), f_dble)
-       pdf_sub%pdf_born(i)%f = f_dble / dble(x)
-       call pdf_sub%pdf_data%evolve (dble(x / z), dble(Q), f_dble)
-       pdf_sub%pdf_scaled(i)%f = f_dble / dble(x / z)
+       x = dglap%isr_kinematics%x(i)
+       z = dglap%isr_kinematics%z(i)
+       call dglap%pdf_data%evolve (dble(x), dble(Q), f_dble)
+       dglap%pdf_born(i)%f = f_dble / dble(x)
+       call dglap%pdf_data%evolve (dble(x / z), dble(Q), f_dble)
+       dglap%pdf_scaled(i)%f = f_dble / dble(x / z)
     end do
-  end subroutine pdf_subtraction_compute_pdfs
+  end subroutine dglap_remnant_compute_pdfs
 
-@ %def pdf_subtraction_compute_pdfs
+@ %def dglap_remnant_compute_pdfs
 @
-<<pdf subtraction: pdf subtraction: TBP>>=
-  procedure :: get_gluon_pdf => pdf_subtraction_get_gluon_pdf
-<<pdf subtraction: procedures>>=
-  function pdf_subtraction_get_gluon_pdf (pdf_sub, em, scaled) result (pdf)
-    class(pdf_subtraction_t), intent(in) :: pdf_sub
+<<dglap remnant: dglap remnant: TBP>>=
+  procedure :: get_gluon_pdf => dglap_remnant_get_gluon_pdf
+<<dglap remnant: procedures>>=
+  function dglap_remnant_get_gluon_pdf (dglap, em, scaled) result (pdf)
+    class(dglap_remnant_t), intent(in) :: dglap
     integer, intent(in) :: em
     logical, intent(in) :: scaled
     real(default) :: pdf
     if (scaled) then
-       pdf = pdf_sub%pdf_scaled(em)%f(0)
+       pdf = dglap%pdf_scaled(em)%f(0)
     else
-       pdf = pdf_sub%pdf_born(em)%f(0)
+       pdf = dglap%pdf_born(em)%f(0)
     end if
-  end function pdf_subtraction_get_gluon_pdf
+  end function dglap_remnant_get_gluon_pdf
 
-@ %def pdf_subtraction_get_gluon_pdf
+@ %def dglap_remnant_get_gluon_pdf
 @
-<<pdf subtraction: pdf subtraction: TBP>>=
-  procedure :: get_quark_pdf => pdf_subtraction_get_quark_pdf
-<<pdf subtraction: procedures>>=
-  function pdf_subtraction_get_quark_pdf (pdf_sub, em, i, scaled) result (pdf)
-    class(pdf_subtraction_t), intent(in) :: pdf_sub
+<<dglap remnant: dglap remnant: TBP>>=
+  procedure :: get_quark_pdf => dglap_remnant_get_quark_pdf
+<<dglap remnant: procedures>>=
+  function dglap_remnant_get_quark_pdf (dglap, em, i, scaled) result (pdf)
+    class(dglap_remnant_t), intent(in) :: dglap
     integer, intent(in) :: em, i
     logical, intent(in) :: scaled
     real(default) :: pdf
     if (scaled) then
-       pdf = pdf_sub%pdf_scaled(em)%f(i)
+       pdf = dglap%pdf_scaled(em)%f(i)
     else
-       pdf = pdf_sub%pdf_born(em)%f(i)
+       pdf = dglap%pdf_born(em)%f(i)
     end if
-  end function pdf_subtraction_get_quark_pdf
+  end function dglap_remnant_get_quark_pdf
 
-@ %def pdf_subtraction_get_quark_pdf
+@ %def dglap_remnant_get_quark_pdf
 @
-<<pdf subtraction: pdf subtraction: TBP>>=
-  procedure :: get_summed_quark_pdf => pdf_subtraction_get_summed_quark_pdf
-<<pdf subtraction: procedures>>=
-  function pdf_subtraction_get_summed_quark_pdf (pdf_sub, em) result (pdf)
-    class(pdf_subtraction_t), intent(in) :: pdf_sub
+<<dglap remnant: dglap remnant: TBP>>=
+  procedure :: get_summed_quark_pdf => dglap_remnant_get_summed_quark_pdf
+<<dglap remnant: procedures>>=
+  function dglap_remnant_get_summed_quark_pdf (dglap, em) result (pdf)
+    class(dglap_remnant_t), intent(in) :: dglap
     integer, intent(in) :: em
     real(default) :: pdf
     integer :: i_quark
     pdf = 0._default
     do i_quark = -6, 6
-       if (any(i_quark == pdf_sub%i_light_quarks)) &
-          pdf = pdf + pdf_sub%get_quark_pdf(em, i_quark, scaled = .true.)
+       if (any(i_quark == dglap%i_light_quarks)) &
+          pdf = pdf + dglap%get_quark_pdf(em, i_quark, scaled = .true.)
     end do
-  end function pdf_subtraction_get_summed_quark_pdf
+  end function dglap_remnant_get_summed_quark_pdf
 
-@ %def pdf_subtraction_get_summed_quark_pdf
-@
-<<pdf subtraction: pdf subtraction: TBP>>=
-  procedure :: evaluate => pdf_subtraction_evaluate
-<<pdf subtraction: procedures>>=
-  subroutine pdf_subtraction_evaluate (pdf_sub, alpha_s, sqme_born)
-    class(pdf_subtraction_t), intent(inout) :: pdf_sub
+@ %def dglap_remnant_get_summed_quark_pdf
+@ Evaluates formula (...). Note that, as also is the case for the real subtraction,
+we have to take into account an additional term, occuring because the integral the
+plus distribution is evaluated over is not constrained on the interval $[0,1]$.
+Explicitly, this means
+\begin{equation}
+  \int_{\bar{x}_\oplus}^1 dz \left( \frac{1}{1-z} \right)_+ = \log(1-\bar{x}_\oplus)f(1) + \int_{\bar{x}_\oplus}^1 \frac{f(z) - f(1)}{1-z},
+\end{equation}
+and
+\begin{equation}
+  \int_{\bar{x}_\oplus}^1 dz \left(\frac{\log(1-z)}{1-z}\right)_+ f(z) = \frac{1}{2}\log^2(1-\bar{x}_\oplus) f(1) 
+   + \int_{\bar{x}_\oplus}^1 \frac{\log(1-z)[f(z) - f(1)]}{1-z},
+\end{equation}
+and the same of course for $\bar{x}_\ominus$. These two terms are stored in the [[plus_dist_remnant]] variable below. 
+<<dglap remnant: dglap remnant: TBP>>=
+  procedure :: evaluate => dglap_remnant_evaluate
+<<dglap remnant: procedures>>=
+  function dglap_remnant_evaluate (dglap, alpha_s, sqme_born) result (sqme_dglap)
+    real(default) :: sqme_dglap
+    class(dglap_remnant_t), intent(inout) :: dglap
     real(default), intent(in) :: alpha_s
-    real(default), intent(inout) :: sqme_born
-    real(default) :: factor, factor_soft, remnant
+    real(default), intent(in) :: sqme_born
+    real(default) :: factor, factor_soft, plus_dist_remnant
     real(default) :: pdfs, pdfb
     integer :: emitter
     real(default), dimension(2) :: tmp
     real(default) :: sb, xb, onemz
     real(default) :: fac_scale2, jac
 
-    pdf_sub%value = zero
-    sb = pdf_sub%isr_kinematics%sqrts_born**2
+    dglap%value = zero
+    sb = dglap%isr_kinematics%sqrts_born**2
     tmp = zero
-    fac_scale2 = pdf_sub%isr_kinematics%fac_scale**2
+    fac_scale2 = dglap%isr_kinematics%fac_scale**2
 
-    call pdf_sub%compute_pdfs ()
+    call dglap%compute_pdfs ()
 
     do emitter = 1, 2
-       associate (z => pdf_sub%isr_kinematics%z(emitter))
-          jac = pdf_sub%isr_kinematics%jacobian(emitter)
+       associate (z => dglap%isr_kinematics%z(emitter))
+          jac = dglap%isr_kinematics%jacobian(emitter)
           onemz = one - z
           factor = log(sb / z / fac_scale2) / onemz + two * log(onemz) / onemz
           factor_soft = log(sb / fac_scale2) / onemz + two * log(onemz) / onemz
 
-          xb = pdf_sub%isr_kinematics%x(emitter)
-          remnant = log(one - xb) * log(sb / fac_scale2) + log(one - xb)**2
+          xb = dglap%isr_kinematics%x(emitter)
+          plus_dist_remnant = log(one - xb) * log(sb / fac_scale2) + log(one - xb)**2
 
-          if (is_gluon(pdf_sub%flv_in(emitter))) then
-             pdfs = pdf_sub%get_gluon_pdf (emitter, scaled = .true.)
-             pdfb = pdf_sub%get_gluon_pdf (emitter, scaled = .false.)
+          if (is_gluon(dglap%flv_in(emitter))) then
+             pdfs = dglap%get_gluon_pdf (emitter, scaled = .true.)
+             pdfb = dglap%get_gluon_pdf (emitter, scaled = .false.)
              tmp(emitter) = p_hat_gg(z) * factor / z * pdfs / pdfb * jac &
                   - p_hat_gg(one) * factor_soft * jac &
-                  + p_hat_gg(one) * remnant
-             pdfs = pdf_sub%get_summed_quark_pdf (emitter)
+                  + p_hat_gg(one) * plus_dist_remnant
+             pdfs = dglap%get_summed_quark_pdf (emitter)
              tmp(emitter) = tmp(emitter) + &
                   (p_hat_qg(z) * factor - p_derived_qg(z)) / z * pdfs / pdfb * jac
-          else if (is_quark(pdf_sub%flv_in(emitter))) then
-             pdfs = pdf_sub%get_quark_pdf (emitter, pdf_sub%flv_in(emitter), scaled = .true.)
-             pdfb = pdf_sub%get_quark_pdf (emitter, pdf_sub%flv_in(emitter), scaled = .false.)
+          else if (is_quark(dglap%flv_in(emitter))) then
+             pdfs = dglap%get_quark_pdf (emitter, dglap%flv_in(emitter), scaled = .true.)
+             pdfb = dglap%get_quark_pdf (emitter, dglap%flv_in(emitter), scaled = .false.)
              if (vanishes (pdfb)) then
-                sqme_born = zero
+                sqme_dglap = zero
                 return
              end if
              tmp(emitter) = p_hat_qq(z) * factor / z * pdfs / pdfb * jac &
                   - p_derived_qq(z) / z * pdfs / pdfb * jac &
                   - p_hat_qq(one) * factor_soft * jac &
-                  + p_hat_qq(one) * remnant
-             pdfs = pdf_sub%get_gluon_pdf (emitter, scaled = .true.)
+                  + p_hat_qq(one) * plus_dist_remnant
+             pdfs = dglap%get_gluon_pdf (emitter, scaled = .true.)
              tmp(emitter) = tmp(emitter) + &
                   (p_hat_gq(z) * factor - p_derived_gq(z)) / z * pdfs / pdfb * jac
           end if
        end associate
     end do
-    sqme_born = alpha_s / twopi * (tmp(1) + tmp(2)) * sqme_born
-  end subroutine pdf_subtraction_evaluate
+    sqme_dglap = alpha_s / twopi * (tmp(1) + tmp(2)) * sqme_born
+  end function dglap_remnant_evaluate
 
-@ %def pdf_subtraction_evaluate
+@ %def dglap_remnant_evaluate
 @ 
 \begin{equation}
     \hat{P}^{gg}(z) = 2C_A \left[z + \frac{(1-z)^2}{z} + z(1-z)^2\right]
 \end{equation} 
-<<pdf subtraction: procedures>>=
+<<dglap remnant: procedures>>=
   function p_hat_gg (z)
     real(default) :: p_hat_gg
   <<p variables>>
@@ -13275,7 +13370,7 @@ end module pdf_subtraction
 \begin{equation}
   \hat{P}^{qg}(z) = C_F (1-z) \frac{1 + (1-z)^2}{z}
 \end{equation}
-<<pdf subtraction: procedures>>=
+<<dglap remnant: procedures>>=
   function p_hat_qg (z)
     real(default) :: p_hat_qg
   <<p variables>>
@@ -13287,7 +13382,7 @@ end module pdf_subtraction
 \begin{equation}
   \hat{P}^{gq}(z) = T_F (1 - z - 2z(1-z)^2)
 \end{equation}
-<<pdf subtraction: procedures>>=
+<<dglap remnant: procedures>>=
   function p_hat_gq (z)
     real(default) :: p_hat_gq
   <<p variables>>
@@ -13299,7 +13394,7 @@ end module pdf_subtraction
 \begin{equation}
   \hat{P}^{qq}(z) = C_F (1 + z^2)
 \end{equation}
-<<pdf subtraction: procedures>>=
+<<dglap remnant: procedures>>=
   function p_hat_qq (z)
     real(default) :: p_hat_qq
   <<p variables>>
@@ -13311,7 +13406,7 @@ end module pdf_subtraction
 \begin{equation}
   \frac{\partial P^{gg}(z,\epsilon)}{\partial \epsilon}|_{\epsilon = 0} = 0
 \end{equation}
-<<pdf subtraction: procedures>>=
+<<dglap remnant: procedures>>=
   function p_derived_gg (z)
     real(default) :: p_derived_gg
   <<p variables>>
@@ -13323,7 +13418,7 @@ end module pdf_subtraction
 \begin{equation}
   \frac{\partial P^{qg}(z,\epsilon)}{\partial \epsilon}|_{\epsilon = 0} = -C_F z
 \end{equation}
-<<pdf subtraction: procedures>>=
+<<dglap remnant: procedures>>=
   function p_derived_qg (z)
     real(default) :: p_derived_qg
   <<p variables>>
@@ -13335,7 +13430,7 @@ end module pdf_subtraction
 \begin{equation}
   \frac{\partial P^{gq}(z,\epsilon)}{\partial \epsilon}|_{\epsilon = 0} = - 2 T_F z (1-z)
 \end{equation}
-<<pdf subtraction: procedures>>=
+<<dglap remnant: procedures>>=
   function p_derived_gq (z)
     real(default) :: p_derived_gq
   <<p variables>>
@@ -13347,7 +13442,7 @@ end module pdf_subtraction
 \begin{equation}  
    \frac{\partial P^{gq}(z,\epsilon)}{\partial \epsilon}|_{\epsilon = 0} = -C_F (1-z)
 \end{equation}
-<<pdf subtraction: procedures>>=
+<<dglap remnant: procedures>>=
   function p_derived_qq (z)
     real(default) :: p_derived_qq
   <<p variables>>
