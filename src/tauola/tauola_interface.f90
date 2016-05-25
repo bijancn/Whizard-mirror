@@ -23,18 +23,18 @@ module tauola_interface
 
   private
 
-  public :: ilc_tauola_pytaud
+  public :: wo_tauola_pytaud
   public :: tauspin_pyjets
-  public :: ilc_tauola_get_helicity_mod
-  public :: ilc_tauola_init_call
-  public :: ilc_tauola_get_helicity
+  public :: wo_tauola_get_helicity_mod
+  public :: wo_tauola_init_call
+  public :: wo_tauola_get_helicity
   public :: taudec_settings_t
   public :: pyjets_spin_t
 
   !!! THIS COMMON BLOCK IS USED FOR COMMUNICATION WITH TAUOLA
-  common/taupos/np1,np2
-  integer                      ::  np1
-  integer                      ::  np2
+  common /taupos/ np1, np2
+  integer ::  np1
+  integer ::  np2
 
   !!! THIS COMMON BLOCK IS USED FOR COMMUNICATION WITH TAUOLA
   COMMON / MOMDEC / Q1,Q2,P1,P2,P3,P4
@@ -78,12 +78,12 @@ module tauola_interface
   end type taudec_settings_t
 
   type :: pyjets_spin_t
-    integer           :: index_to_hepeup  ! =-1, if no matching entry in hepeup
-    double precision  :: helicity   ! copy of SPINUP
-    integer           :: pid        ! particle ID
-    integer           :: id_orig    ! pid of parent
-    integer           :: index_orig ! index of parent
-    integer           :: n_daughter ! number of daughter
+    integer :: index_to_hepeup  ! =-1, if no matching entry in hepeup
+    double precision :: helicity   ! copy of SPINUP
+    integer :: pid        ! particle ID
+    integer :: id_orig    ! pid of parent
+    integer :: index_orig ! index of parent
+    integer :: n_daughter ! number of daughter
     integer, dimension(10) :: index_daughter  ! index of daughter particles
   end type pyjets_spin_t
 
@@ -248,7 +248,7 @@ contains
 !  Main interface to tauola.
 !  Called by PYTAUD and calls TAUOLA
 ! =====================================================================
-  subroutine ilc_tauola_pytaud (itau, iorig, kforig, ndecay)
+  subroutine wo_tauola_pytaud (itau, iorig, kforig, ndecay)
     !!! Line number in /JETSET/ where the tau is stored
     integer, intent(in)  :: itau
     !!! Line number where the mother is stored. =0 if the mother is not stored
@@ -298,7 +298,7 @@ contains
     end if
 
     if (nsub_call .lt. max_dump) then
-       write (msg_buffer, "(A)") "ilc_tauola_pytaud was called."
+       write (msg_buffer, "(A)") "wo_tauola_pytaud was called."
        call msg_message ()
        write (msg_buffer, "(A,I0,A,I0,A,I0,A,I0)") &
             "ncall = ", nsub_call, "itau = ", itau, " iorig = ", iorig, &
@@ -322,11 +322,7 @@ contains
        p_dexay = p(itau,1:5)
        pyjets_spin_data(itau)%helicity = pyjets_spin_data(ip)%helicity
        spin_dexay = pyjets_spin_data(ip)%helicity
-       !!! Flip the sign of spin in advance, because it is flipped later
-       if ( id_dexay .gt. 0 ) then 
-          spin_dexay = -spin_dexay
-       end if
-
+       
        !!! If tau origin is known (iorig .ne. 0), decide tau helicity
        !!! based on parent particle id (kforig)
        !!! kforig = 25/35/36: 2 tau's spin must be generated: tau
@@ -356,7 +352,7 @@ contains
              if (idau1 .ne. itau) then
                 write (msg_buffer, "(A,I0,A,I0,A)") &
                      "idau1 = ", idau1, "itau = ", itau, " are not equal."
-                call msg_fatal ("ilc_tauola_pytaud: " // &
+                call msg_fatal ("wo_tauola_pytaud: " // &
                      "Something is wrong in parent-daughter relation.")
              end if
              jtau2 = idau2
@@ -366,7 +362,7 @@ contains
           end if
        else
         !!! Unknow decay mother
-          call msg_warning ("ilc_tau_decay : Unknown decay modther of " // &
+          call msg_warning ("wo_tau_decay : Unknown decay modther of " // &
                "tau, id = " // int2char (kforig) // ", tau is 50% right " // &
                "or 50% left handed.")
           if (pyr(0) .lt. 0.5) then
@@ -379,7 +375,7 @@ contains
     end if
     call do_dexay (itau, p_dexay, id_dexay, kforig)
     ndecay = nproducts
-  end subroutine ilc_tauola_pytaud
+  end subroutine wo_tauola_pytaud
 
   subroutine do_dexay (itau, p_dexay, id_dexay, kforig)
     !!! Main routine to call Tauola. Three type of tau decay:
@@ -406,19 +402,23 @@ contains
     common /pyjets/ n, npad, k, p, v
     save /pyjets/
 
-    integer, save :: n_akiya = 0
-    ! integer, save :: n_akiya = 1
-    integer :: n1, n2
-
+    integer :: n1, n2    
+    
     is_swapped = .false.
 
-    n1 = n_akiya + 1
-    n2 = n_akiya + 2
+    !!! For transverse spin of the Higgs, Higgs and the two taus
+    !!!    have to be considered
+    if (trans_spin .and. IFPHOT == 1) then
+       n1 = 2
+       n2 = 3
+       nhep = 3
+    else
+       n1 = 1
+       n2 = 2
+       nhep = 2
+    end if
 
     tauspin_pyjets(itau) = spin_dexay
-    !!! change nhep from 2 -> 3 changes tauola_2 test output
-    !!! plus changes of 1->2 and 2->3 in the next two blocks
-    nhep = 2
 
     !!! Does SPINHIGGS in tauface_jetset.f
     ifpseudo = kforig == 36
@@ -433,8 +433,8 @@ contains
     idhep(n2)    = - id_dexay
     jmohep(:,n2) = 0
     jdahep(:,n2) = 0
-    phep(1:3,n2) = - phep(1:3,1)
-    phep(4:5,n2) = phep(4:5,1)
+    phep(1:3,n2) = - phep(1:3,n1)
+    phep(4:5,n2) = phep(4:5,n1)
 
 !!! NOTE (Akiya Miyamoto, 25-March-2016)
 !!!  Higgs (h0/H0/A0) to tau+tau- decay is handled here
@@ -483,61 +483,55 @@ contains
 
 !!! ********************************************************
 !!! (B) Single Tau+ decay
-!!! ********************************************************    
-    check_tau_sign: if (idhep(n1) .lt. 0) then
-       np1 = n1
-       np2 = n2
-       pol = 0.
-       pol(3) = - spin_dexay
-       p1 = phep(1:4,n1)
-       p2 = phep(1:4,n2)
-       q1 = p1 + p2
-       if (nsub_call .lt. max_dump) then
-          call msg_message ("Tau+ decay with pol(3) = " // &
-               real2char (real (pol(3), kind=default)) // ".")
-          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, q1 = ", q1
-          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p1 = ", p1
-          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p2 = ", p2
-       end if
-       call msg_debug2 (D_TAUOLA, "TAUOLA is called here")
-       call dexay (1,pol)
-       !!! TBD: check whether photos should be called here
-       ! if (IFPHOT == 1)  call photos (np1)
-       phep(:,n1) = p_dexay
-       phep(1:3,n2) = - phep(1:3,n1)
-       phep(4:5,n2) = phep(4:5,n1)
+!!! ********************************************************
+    if (.not. trans_spin) then
+       check_tau_sign: if (idhep(n1) .lt. 0) then
+          np1 = n1
+          np2 = n2
+          pol = 0.
+          pol(3) = - spin_dexay
+          p1 = phep(1:4,n1)
+          p2 = phep(1:4,n2)
+          q1 = p1 + p2
+          if (nsub_call .lt. max_dump) then
+             call msg_message ("Tau+ decay with pol(3) = " // &
+                  real2char (real (pol(3), kind=default)) // ".")
+             write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, q1 = ", q1
+             write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p1 = ", p1
+             write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p2 = ", p2
+          end if
+          call msg_debug2 (D_TAUOLA, "TAUOLA is called here")
+          call dexay (1,pol)
+          if (IFPHOT == 1)  call photos (np1)
 !!! ********************************************************
 !!! (C) Single Tau- decay
 !!! ********************************************************
-    else check_tau_sign
-       idhep(3) = id_dexay
-       idhep(2) = - id_dexay
-       np2 = n1
-       np1 = n2
-       pol = 0.
-       pol(3) = spin_dexay
-       !!! Akiya now has a relation with the negative spin_dexay
-       ! pol(3) = - spin_dexay
-       p2 = phep(1:4,n1)
-       p1 = phep(1:4,n2)
-       q1 = p1 + p2
-       if (nsub_call .lt. max_dump) then
-          call msg_message ("Tau- decay with pol(3) = " // &
-               real2char (real (pol(3), kind=default)) // ".")
-          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, q1 = ", q1
-          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p1 = ", p1
-          write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p2 = ", p2
-       end if       
-       call msg_debug2 (D_TAUOLA, "TAUOLA is called here")
-       call dexay (2,pol)
-       !!! TBD: check whether photos should be called here
-       ! if (IFPHOT == 1)  call photos(np2)
-       phep(:,n1) = p_dexay
-       phep(1:3,n2) = - phep(1:3,n1)
-       phep(4:5,n2) = phep(4:5,n1)
-       is_swapped = .true.
-    end if check_tau_sign
-
+       else check_tau_sign
+          idhep(3) = id_dexay
+          idhep(2) = - id_dexay
+          np2 = n1
+          np1 = n2
+          pol = 0.
+          pol(3) = spin_dexay
+         !!! Akiya now has a relation with the negative spin_dexay
+          ! pol(3) = - spin_dexay
+          p2 = phep(1:4,n1)
+          p1 = phep(1:4,n2)
+          q1 = p1 + p2
+          if (nsub_call .lt. max_dump) then
+             call msg_message ("Tau- decay with pol(3) = " // &
+                  real2char (real (pol(3), kind=default)) // ".")
+             write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, q1 = ", q1
+             write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p1 = ", p1
+             write (*, "(A,4(1x,ES19.12))") "Antiparticle decay, p2 = ", p2
+          end if
+          call msg_debug2 (D_TAUOLA, "TAUOLA is called here")
+          call dexay (2,pol)
+          if (IFPHOT == 1)  call photos (np2)
+          is_swapped = .true.
+       end if check_tau_sign
+    end if
+       
 !!! TODO (Akiya Miyamoto, 25-march-2016)
 !!!   In the following code, the tau helicity (polarization vector)
 !!!   information is not stored in pyjets_spin_data(jtau)%helicity
@@ -578,7 +572,7 @@ contains
           call dekay(12, hh2)
           call taupi0 (0, 2, ion)       
        end if
-       if (IFPHOT == 1)  call photos(im)       
+       if (IFPHOT == 1)  call photos (im)       
     end if
 
 !!! **********************************************************
@@ -769,7 +763,7 @@ contains
          "ps_tauola_use_pol_vec = ", taudec_settings%use_pol_vec
   end subroutine taudec_settings_write  
 
-  function ilc_tauola_get_helicity_mod (ip) result (the_helicity)
+  function wo_tauola_get_helicity_mod (ip) result (the_helicity)
     integer, intent(in) :: ip
     integer :: the_helicity
     integer :: n, npad
@@ -793,21 +787,21 @@ contains
         the_helicity = int(pyjets_spin_data(ip)%helicity)
       end if
     end if
-  end function ilc_tauola_get_helicity_mod
+  end function wo_tauola_get_helicity_mod
 
-  subroutine ilc_tauola_get_helicity (ip, the_helicity)
+  subroutine wo_tauola_get_helicity (ip, the_helicity)
     integer, intent(in)  :: ip
     integer, intent(out) :: the_helicity
-    the_helicity = ilc_tauola_get_helicity_mod(ip)
+    the_helicity = wo_tauola_get_helicity_mod(ip)
     if ( abs(the_helicity) .gt. 1 ) then
        write (msg_buffer, "(A,I0,A,I0,A)") &
             "Stored helicity information is wrong: ", the_helicity, &
             "for ip = ", ip, "."
        call msg_warning ()
     end if
-  end subroutine ilc_tauola_get_helicity
+  end subroutine wo_tauola_get_helicity
 
-  subroutine ilc_tauola_init_call (taudec_settings)
+  subroutine wo_tauola_init_call (taudec_settings)
     !!! Tauola initialization.
     !!! (default defined in rt_data)
     !!!  JAK1   ! (0) decay mode of first tau
@@ -865,7 +859,7 @@ contains
 
     if (trans_spin) then
        if (mstj(39) .ne. 15) then
-          call msg_warning ("ilc_tauola_init_call: transverse spin " // &
+          call msg_warning ("wo_tauola_init_call: transverse spin " // &
                "correlation requested for H -> tau tau. Photon radiation " // &
                "from PYTHIA will be switched off.")
           mstj(39) = 15
@@ -905,7 +899,7 @@ contains
        call msg_debug2 (D_TAUOLA, "PHOTOS switch: ON(1), OFF(0)")
        print *, " IFPHOT = ", IFPHOT
     end if
-  end subroutine ilc_tauola_init_call
+  end subroutine wo_tauola_init_call
 
 end module tauola_interface
 
@@ -938,6 +932,6 @@ subroutine pytaud (itau, iorig, kforig, ndecay)
   !print *," itau,iorig,kforig=",itau,iorig,kforig
   !print *,"###############################################"
 
-  call ilc_tauola_pytaud (itau, iorig, kforig, ndecay)
+  call wo_tauola_pytaud (itau, iorig, kforig, ndecay)
 
 end subroutine pytaud
