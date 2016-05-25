@@ -547,14 +547,14 @@ module Vertex : Vertex =
 
     let contains particles predicate v =
       let p = v.particles in
-      let rec contains_ghosts' i =
-	if i > 0 then
+      let rec contains' i =
+	if i < 0 then
 	  false
 	else if predicate (SMap.find p.(i) particles) then
 	  true
 	else
-	  contains_ghosts' (pred i) in
-      contains_ghosts' (Array.length p - 1)
+	  contains' (pred i) in
+      contains' (Array.length p - 1)
       
     let of_file1 map d =
       let symbol = d.S.name in
@@ -1268,8 +1268,8 @@ module Model =
 	  Vertex.filter
 	    (not @< (Vertex.contains model.particles is_unphysical))
 	    model.vertices in
-	let particles' = model.particles in
-	let vertices' = model.vertices in
+	let particles'' = model.particles in
+	let vertices'' = model.vertices in
 	{ model with particles = particles'; vertices = vertices' } in
       if !dump_raw then
 	dump model;
