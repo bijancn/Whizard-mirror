@@ -1554,6 +1554,29 @@ Those are the default pdg codes for massive particles in BLHA programs
   integer, parameter :: OLP_HEL_LONG = 2
 
 @ %def OLP_MASSIVE_PARTICLES
+@ The user might provide an extra command string for OpenLoops to apply special libraries
+instead of the default ones, such as signal-only amplitudes for off-shell top production.
+We check in this subroutine that the provided string is valid and print out the possible
+options to ease the user's memory.
+<<BLHA config: parameters>>=
+  integer, parameter :: N_KNOWN_SPECIAL_OL_METHODS = 3
+<<BLHA config: procedures>>=
+  subroutine check_extra_cmd (extra_cmd)
+    type(string_t), intent(in) :: extra_cmd
+    type(string_t), dimension(N_KNOWN_SPECIAL_OL_METHODS) :: known_methods
+    known_methods(1) = 'top'
+    known_methods(2) = 'not'
+    known_methods(3) = 'stop'
+    if (extra_cmd == var_str ("")) return
+    if (.not. any (extra_cmd == var_str ('extra approx ') // known_methods)) &
+       call msg_fatal ("The given extra OpenLoops method is not kown ", &
+          [var_str ("Available commands are: "), &
+           var_str ("extra approx top (only WbWb signal),"), &
+           var_str ("extra approx stop (only WbWb singletop),"), &
+           var_str ("extra approx not (no top in WbWb).")])
+  end subroutine check_extra_cmd
+
+@ %def check_extra_cmd 
 @ This type contains the pdg code of the particle to be written in the process
 specification string and an optional additional information about the polarization 
 of the particles. Note that the output can only be processed by OpenLoops.
@@ -1685,8 +1708,7 @@ of the particles. Note that the output can only be processed by OpenLoops.
      integer :: width_scheme = BLHA_WIDTH_DEFAULT
      logical :: openloops_use_cms = .false.
      integer :: openloops_phs_tolerance = 0
-     logical :: openloops_top_signal = .false.
-     logical :: openloops_no_top = .false.
+     type(string_t) :: openloops_extra_cmd
      integer :: openloops_stability_log = 0
      logical :: openloops_use_collier = .false.
   end type blha_configuration_t
@@ -1856,12 +1878,11 @@ This types control the creation of BLHA-interface files
   procedure :: setup_additional_features => blha_master_setup_additional_features
 <<BLHA config: procedures>>=
   subroutine blha_master_setup_additional_features (master, &
-     phs_tolerance, use_cms, top_signal, no_top, stability_log, use_collier, beam_structure)
+     phs_tolerance, use_cms, stability_log, use_collier, extra_cmd, beam_structure)
      class(blha_master_t), intent(inout) :: master
      integer, intent(in) :: phs_tolerance
      logical, intent(in) :: use_cms
-     logical, intent(in) :: top_signal
-     logical, intent(in) :: no_top
+     type(string_t), intent(in), optional :: extra_cmd
      integer, intent(in) :: stability_log
      logical, intent(in) :: use_collier
      type(beam_structure_t), intent(in), optional :: beam_structure
@@ -1883,8 +1904,11 @@ This types control the creation of BLHA-interface files
               master%blha_cfg(i_file)%openloops_use_cms = use_cms
               master%blha_cfg(i_file)%openloops_phs_tolerance = phs_tolerance
               master%blha_cfg(i_file)%polarized = polarized
-              master%blha_cfg(i_file)%openloops_top_signal = top_signal
-              master%blha_cfg(i_file)%openloops_no_top = no_top
+              if (present (extra_cmd)) then
+                master%blha_cfg(i_file)%openloops_extra_cmd = extra_cmd
+              else
+                master%blha_cfg(i_file)%openloops_extra_cmd = var_str ('')
+              end if
               master%blha_cfg(i_file)%openloops_stability_log = stability_log
               master%blha_cfg(i_file)%openloops_use_collier = use_collier
            end select
@@ -2484,10 +2508,8 @@ Write the BLHA file. Internal mode is intented for md5summing only.
           write (u, '(A25,A4,I0)') "extra psp_tolerance " // pad, "10e-", &
              cfg%openloops_phs_tolerance
        end if
-       if (cfg%openloops_top_signal) &
-          write (u, '(A)') "extra approx top"
-       if (cfg%openloops_no_top) &
-          write (u, '(A)') "extra approx not"
+       call check_extra_cmd (cfg%openloops_extra_cmd)
+       write (u, '(A)') char (cfg%openloops_extra_cmd)
        if (cfg%openloops_stability_log > 0) &
           write (u, '(A25,I1)') "extra stability_log " // pad, cfg%openloops_stability_log
        if (cfg%openloops_use_collier) &
@@ -2692,7 +2714,7 @@ end module blha_uti
        end do
     end if
     call blha_master%setup_additional_features &
-       (openloops_phs_tolerance, .false., .false., 0, .false.)
+       (openloops_phs_tolerance, .false., 0, .false.)
 
     do i = 1, 4
        call write_separator(u)
