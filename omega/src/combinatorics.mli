@@ -156,9 +156,12 @@ val permute_tensor_odd : 'a seq list -> 'a seq list list
 
 val sort_signed : ('a -> 'a -> int) -> 'a list -> int * 'a list
 
+(* \thocwmodulesubsection{Unit Tests} *)
+
+module Test : sig val suite : OUnit.test end
+
 (*i
  *  Local Variables:
- *  mode:caml
  *  indent-tabs-mode:nil
  *  page-delimiter:"^(\\* .*\n"
  *  End:

@@ -398,6 +398,42 @@ let insert_inorder_signed order x (eps, l) =
 let sort_signed order l =
   List.fold_left (fun acc x -> insert_inorder_signed order x acc) (1, []) l
 
+module Test =
+  struct
+
+    open OUnit
+
+    let sort_signed_not_unique =
+      "not unique" >::
+	(fun () ->
+	  assert_raises
+            (Invalid_argument
+               "Combinatorics.insert_inorder_signed: identical elements")
+            (fun () -> sort_signed compare [1;2;3;4;2]))
+        
+    let sort_signed_even =
+      "even" >::
+	(fun () ->
+	  assert_equal (-1, [1;2;3;4;5;6])
+            (sort_signed compare [1;2;4;3;6;5]))
+
+    let sort_signed_even =
+      "even" >::
+	(fun () ->
+	  assert_equal (1, [1;2;3;4;5;6])
+            (sort_signed compare [1;2;3;4;5;6]))
+
+    let suite_sort_signed =
+      "sort_signed" >:::
+	[sort_signed_not_unique;
+         sort_signed_even]
+
+    let suite =
+      "Combinatorics" >:::
+	[suite_sort_signed]
+
+  end
+
 (*i
  *  Local Variables:
  *  mode:caml
