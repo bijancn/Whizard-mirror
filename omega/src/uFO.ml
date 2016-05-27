@@ -1046,6 +1046,32 @@ module Model =
     let coeff q1 q2 =
       Q.to_integer (Q.mul q1 q2)
 
+    let translate_color3_1_1 c =
+      let open UFOx.Color_Atom in
+      match c with
+      | Identity (i, j) -> 1
+      | T (a, i, j) -> 1
+      | F (a, b, c) -> Combinatorics.sign compare [a;b;c]
+      | D (a, b, c) -> invalid_arg "d-tensor not supported yet"
+      | Epsilon (i, j, k) -> invalid_arg "epsilon-tensor not supported yet"
+      | EpsilonBar (i, j, k) -> invalid_arg "epsilon-tensor not supported yet"
+      | T6 (a, i, j) -> invalid_arg "T6-tensor not supported yet"
+      | K6 (i, j, k) -> invalid_arg "K6-tensor not supported yet"
+      | K6Bar (i, j, k) -> invalid_arg "K6-tensor not supported yet"
+
+    let translate_color3_1 c =
+      match c with
+      | [ ([], q) ] -> Q.to_integer q
+      | [ ([c1], q) ] ->
+	 Q.to_integer q * translate_color3_1_1 c1
+
+    let translate_color3 = function
+      | [| c |] -> translate_color3_1 c
+      | c ->
+	 invalid_arg
+	   (Printf.sprintf
+	      "translate_color3: %n color structures" (Array.length c))
+
     let translate_coupling3 model p t c g =
       let module L = UFOx.Lorentz_Atom in
       let module C = UFOx.Color_Atom in
