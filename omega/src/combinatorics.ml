@@ -379,6 +379,8 @@ let permute_tensor_even l =
 let permute_tensor_odd l =
   filter_sign (-1) (permute_tensor_signed l)
 
+(* \thocwmodulesubsection{Sorting} *)
+
 let insert_inorder_signed order x (eps, l) =
   let rec insert eps' accu = function
     | [] -> (eps * eps', List.rev_append accu [x])
@@ -392,8 +394,6 @@ let insert_inorder_signed order x (eps, l) =
           insert (-eps') (h::accu) t
   in
   insert 1 [] l
-
-(* \thocwmodulesubsection{Sorting} *)
 
 let sort_signed order l =
   List.fold_left (fun acc x -> insert_inorder_signed order x acc) (1, []) l
