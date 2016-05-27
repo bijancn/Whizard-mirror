@@ -396,7 +396,7 @@ let insert_inorder_signed order x (eps, l) =
   insert 1 [] l
 
 let sort_signed order l =
-  List.fold_left (fun acc x -> insert_inorder_signed order x acc) (1, []) l
+  List.fold_right (insert_inorder_signed order) l (1, [])
 
 module Test =
   struct
@@ -414,19 +414,20 @@ module Test =
     let sort_signed_even =
       "even" >::
 	(fun () ->
-	  assert_equal (-1, [1;2;3;4;5;6])
+	  assert_equal (1, [1;2;3;4;5;6])
             (sort_signed compare [1;2;4;3;6;5]))
 
-    let sort_signed_even =
-      "even" >::
+    let sort_signed_odd =
+      "odd" >::
 	(fun () ->
-	  assert_equal (1, [1;2;3;4;5;6])
-            (sort_signed compare [1;2;3;4;5;6]))
+	  assert_equal (-1, [1;2;3;4;5;6])
+            (sort_signed compare [2;3;1;5;4;6]))
 
     let suite_sort_signed =
       "sort_signed" >:::
 	[sort_signed_not_unique;
-         sort_signed_even]
+         sort_signed_even;
+         sort_signed_odd]
 
     let suite =
       "Combinatorics" >:::
