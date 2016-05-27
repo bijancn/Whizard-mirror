@@ -398,6 +398,10 @@ let insert_inorder_signed order x (eps, l) =
 let sort_signed order l =
   List.fold_right (insert_inorder_signed order) l (1, [])
 
+let sign order l =
+  let eps, _ = sort_signed order l in
+  eps
+
 module Test =
   struct
 
