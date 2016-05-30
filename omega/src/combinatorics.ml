@@ -402,6 +402,17 @@ let sign order l =
   let eps, _ = sort_signed order l in
   eps
 
+let sign2 order l =
+  let a = Array.of_list l in
+  let eps = ref 1 in
+  for j = 0 to Array.length a - 1 do
+    for i = 0 to j - 1 do
+      if compare a.(i) a.(j) > 0 then
+        eps := - !eps
+    done
+  done;
+  !eps
+
 module Test =
   struct
 
@@ -438,12 +449,22 @@ module Test =
                eps' = eps && p' = l)
              (permute_signed l)))
 
+    let sign_sign2 =
+      "sign/sign2" >::
+      (fun () ->
+        let l = ThoList.range 1 8in
+          assert_bool "all permutations"
+          (List.for_all
+             (fun p -> sign compare p = sign2 compare p)
+             (permute l)))
+
     let suite_sort_signed =
       "sort_signed" >:::
 	[sort_signed_not_unique;
          sort_signed_even;
          sort_signed_odd;
-         sort_signed_all]
+         sort_signed_all;
+         sign_sign2]
 
     let suite =
       "Combinatorics" >:::
