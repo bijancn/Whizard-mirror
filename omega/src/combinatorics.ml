@@ -427,11 +427,23 @@ module Test =
 	  assert_equal (-1, [1;2;3;4;5;6])
             (sort_signed compare [2;3;1;5;4;6]))
 
+    let sort_signed_all =
+      "all" >::
+      (fun () ->
+        let l = ThoList.range 1 8in
+        assert_bool "all signed permutations"
+          (List.for_all
+             (fun (eps, p) ->
+               let eps', p' = sort_signed compare p in
+               eps' = eps && p' = l)
+             (permute_signed l)))
+
     let suite_sort_signed =
       "sort_signed" >:::
 	[sort_signed_not_unique;
          sort_signed_even;
-         sort_signed_odd]
+         sort_signed_odd;
+         sort_signed_all]
 
     let suite =
       "Combinatorics" >:::
