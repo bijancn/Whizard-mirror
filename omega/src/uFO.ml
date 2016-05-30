@@ -1064,13 +1064,94 @@ module Model =
       | [ ([], q) ] -> Q.to_integer q
       | [ ([c1], q) ] ->
 	 Q.to_integer q * translate_color3_1_1 c1
+      | [] -> invalid_arg "translate_color3_1: empty"
+      | _ -> invalid_arg "translate_color3_1: sums of tensors not supported yet"
 
     let translate_color3 = function
       | [| c |] -> translate_color3_1 c
       | c ->
 	 invalid_arg
 	   (Printf.sprintf
-	      "translate_color3: %n color structures" (Array.length c))
+	      "translate_color3: #color structures: %d > 1" (Array.length c))
+
+    type color4 =
+      | C3 of Q.t
+      | F_F of Q.t * (int * int) * (int * int)
+
+    let translate_color4_1_1 c =
+      Q.make (translate_color3_1_1 c) 1
+
+    let translate_color4_88 abc abc' =
+      match ThoList.common abc abc' with
+      | [] -> invalid_arg "translate_color4_88: not summation index"
+      | [s] ->
+	 if s >= 1 && s <= 4 then
+	   invalid_arg "translate_color4_88: invalid summation index"
+	 else
+	   let order i i' =
+	     if i = s then
+	       -1
+	     else if i' = s then
+	       1
+	     else
+	       compare i i' in
+	   begin match (Combinatorics.sort_signed order abc,
+			Combinatorics.sort_signed order abc') with
+	   | (eps, [_; b; c]), (eps', [_; b'; c']) ->
+	      (eps * eps', (b, c), (b', c'))
+	   | _ -> failwith "translate_color4_88: can't happen"
+	   end
+      | _ ->  invalid_arg "translate_color4_88: multiple summation indices"
+
+    let translate_color4_1_2 c1 c2 =
+      let open UFOx.Color_Atom in
+      match c1, c2 with
+      | Identity (i, j), Identity (i', l') ->
+	 invalid_arg "quartic 3-3bar-couplings not supported yet"
+      | T (a, i, j), T (a', i', j') ->
+	 invalid_arg "quartic 3-3bar-couplings not supported yet"
+      | F (a, b, c), F (a', b', c') ->
+	 translate_color4_88 [a; b; c] [a'; b'; c]
+      | T (a, i, j), F (a', b', c')
+      | F (a', b', c'), T (a, i, j) ->
+	 invalid_arg "quartic 8-8-3-3bar-couplings not supported yet"
+      | Identity (i, j), T (a', i', l')
+      | T (a', i', l'), Identity (i, j) ->
+	 invalid_arg "open index"
+      | Identity (i, j), F (a', b', c')
+      | F (a', b', c'), Identity (i, j) ->
+	 invalid_arg "open index"
+      | D (a, b, c), _ | _, D (a, b, c) ->
+	 invalid_arg "d-tensor not supported yet"
+      | Epsilon (i, j, k), _ | _, Epsilon (i, j, k)
+      | EpsilonBar (i, j, k), _| _, EpsilonBar (i, j, k) ->
+	 invalid_arg "epsilon-tensor not supported yet"
+      | T6 (a, i, j), _ | _, T6 (a, i, j) ->
+	 invalid_arg "T6-tensor not supported yet"
+      | K6 (i, j, k), _ | _, K6 (i, j, k)
+      | K6Bar (i, j, k), _ | _, K6Bar (i, j, k) ->
+	 invalid_arg "K6-tensor not supported yet"
+
+    let translate_color4_1 c =
+      match c with
+      | [ ([], q) ] -> C3 (q)
+      | [ ([c1], q) ] ->
+	 C3 (Q.mul q (translate_color4_1_1 c1))
+      | [ ([c1; c2], q) ] ->
+	 let eps, bc, bc' = translate_color4_1_2 c1 c2 in
+	 F_F (Q.mul q (Q.make eps 1), bc, bc')
+      | _ -> invalid_arg "translate_color4_1: too many atoms"
+
+    let translate_color4 c =
+      match Array.map translate_color4_1 c with
+      | [| C3 (q) |] -> q
+      | [| F_F (q1, (b1, c1), (b1', c1'));
+           F_F (q2, (b2, c2), (b2', c2'));
+           F_F (q3, (b3, c3), (b3', c3')) |] -> q1
+      | c ->
+	 invalid_arg
+	   (Printf.sprintf
+	      "translate_color4: #color structures: %d" (Array.length c))
 
     let translate_coupling3 model p t c g =
       let module L = UFOx.Lorentz_Atom in
@@ -1193,20 +1274,18 @@ module Model =
     let translate_coupling4 model p t c g =
       let module L = UFOx.Lorentz_Atom in
       let module C = UFOx.Color_Atom in
-      match t, c, g with
-      | [| [ [], qt] |],
-        [| [ [], qc] |],
-        [| [| g |] |] ->
+      match t, translate_color4 c, g with
+      | [| [ [], qt] |], qc, [| [| g |] |] ->
 	 ((p.(0), p.(1), p.(2), p.(3)),
 	  Coupling.Scalar4 (coeff qt qc),
 	  dummy_constant)
-      | [| t |], [| c |], [| [| g |] |] ->
+      | [| t |], qc, [| [| g |] |] ->
 	 prerr_endline
 	   ("unhandled vertex: " ^ UFOx.Lorentz.to_string t);
 	 ((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
-      | [| t |], [| c |], _->
+      | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
-      | t, c, g ->
+      | t, qc, g ->
 	 prerr_endline
 	   ("unhandled vertex: " ^
 	       (String.concat ", "

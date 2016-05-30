@@ -294,3 +294,13 @@ let ariadne_unsort (sorted, indices) =
     (List.sort
        (fun (n1, a1) (n2, a2) -> Pervasives.compare n1 n2)
        (List.map2 (fun n a -> (n, a)) indices sorted))
+
+let common l1 l2 =
+  List.fold_left
+    (fun acc x1 ->
+      if List.mem x1 l2 then
+	x1 :: acc
+      else
+	acc)
+    [] l2
+
