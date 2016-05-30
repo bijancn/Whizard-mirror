@@ -1076,7 +1076,7 @@ module Model =
 
     type color4 =
       | C3 of Q.t
-      | F_F of Q.t * (int * int) * (int * int)
+      | F_F of Q.t * int * int * int * int
 
     let translate_color4_1_1 c =
       Q.make (translate_color3_1_1 c) 1
@@ -1098,7 +1098,7 @@ module Model =
 	   begin match (Combinatorics.sort_signed order abc,
 			Combinatorics.sort_signed order abc') with
 	   | (eps, [_; b; c]), (eps', [_; b'; c']) ->
-	      (eps * eps', (b, c), (b', c'))
+	      (eps * eps', b, c, b', c')
 	   | _ -> failwith "translate_color4_88: can't happen"
 	   end
       | _ ->
@@ -1139,16 +1139,16 @@ module Model =
       | [ ([c1], q) ] ->
 	 C3 (Q.mul q (translate_color4_1_1 c1))
       | [ ([c1; c2], q) ] ->
-	 let eps, bc, bc' = translate_color4_1_2 c1 c2 in
-	 F_F (Q.mul q (Q.make eps 1), bc, bc')
+	 let eps, a, b, c, d = translate_color4_1_2 c1 c2 in
+	 F_F (Q.mul q (Q.make eps 1), a, b, c, d)
       | _ -> invalid_arg "translate_color4_1: too many atoms"
 
     let translate_color4 c =
       match Array.map translate_color4_1 c with
       | [| C3 (q) |] -> q
-      | [| F_F (q1, (b1, c1), (b1', c1'));
-           F_F (q2, (b2, c2), (b2', c2'));
-           F_F (q3, (b3, c3), (b3', c3')) |] -> q1
+      | [| F_F (q1, a1, b1, c1, d1);
+	   F_F (q2, a2, b2, c2, d2);
+	   F_F (q3, a3, b3, c3, d3) |] -> q1
       | c ->
 	 invalid_arg
 	   (Printf.sprintf
