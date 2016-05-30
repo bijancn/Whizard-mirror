@@ -1101,7 +1101,8 @@ module Model =
 	      (eps * eps', (b, c), (b', c'))
 	   | _ -> failwith "translate_color4_88: can't happen"
 	   end
-      | _ ->  invalid_arg "translate_color4_88: multiple summation indices"
+      | _ ->
+	 invalid_arg "translate_color4_88: multiple summation indices"
 
     let translate_color4_1_2 c1 c2 =
       let open UFOx.Color_Atom in
@@ -1111,7 +1112,7 @@ module Model =
       | T (a, i, j), T (a', i', j') ->
 	 invalid_arg "quartic 3-3bar-couplings not supported yet"
       | F (a, b, c), F (a', b', c') ->
-	 translate_color4_88 [a; b; c] [a'; b'; c]
+	 translate_color4_88 [a; b; c] [a'; b'; c']
       | T (a, i, j), F (a', b', c')
       | F (a', b', c'), T (a, i, j) ->
 	 invalid_arg "quartic 8-8-3-3bar-couplings not supported yet"

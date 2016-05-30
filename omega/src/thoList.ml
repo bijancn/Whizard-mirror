@@ -302,5 +302,13 @@ let common l1 l2 =
 	x1 :: acc
       else
 	acc)
-    [] l2
+    [] l1
+
+(*i
+ *  Local Variables:
+ *  indent-tabs-mode:nil
+ *  page-delimiter:"^(\\* .*\n"
+ *  compile-command:"ocamlc -o vertex thoList.ml{i,} pmap.ml{i,} vertex.ml"
+ *  End:
+i*)
 
