@@ -1161,12 +1161,22 @@ module Model =
       | [| F_F (q1, a1, b1, c1, d1);
 	   F_F (q2, a2, b2, c2, d2);
 	   F_F (q3, a3, b3, c3, d3) |] ->
-	 if a1 = a2 && a2 = a3 then
-	   let even = Combinatorics.permute_even [b1; c1; d1]
-	   and odd =  Combinatorics.permute_odd [b1; c1; d1] in
-	   q1
+	 if Q.abs q1 = Q.abs q2 && Q.abs q2 = Q.abs q3 then
+	   if a1 = a2 && a2 = a3 then
+	     let bcd1 = [b1; c1; d1]
+	     and bcd2 = if q2 = q1 then [c2; b2; d2] else [b2; c2; d2]
+	     and bcd3 = if q3 = q1 then [c3; b3; d3] else [b3; c3; d3] in
+	     let bcd = List.sort compare [bcd1; bcd2; bcd3] in
+	     if bcd = List.sort compare (Combinatorics.permute_even bcd1) then
+	       q1
+	     else if bcd = List.sort compare (Combinatorics.permute_odd bcd1) then
+	       Q.neg q1
+	     else
+	       invalid_arg "translate_color4: mismatched permutations"
+	   else
+	     invalid_arg "translate_color4: mismatched indices"
 	 else
-	   invalid_arg "translate_color4: mismatched indices"
+	   invalid_arg "translate_color4: mismatched couplings"
       | c ->
 	 invalid_arg
 	   (Printf.sprintf
