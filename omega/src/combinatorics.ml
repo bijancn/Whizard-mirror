@@ -453,7 +453,6 @@ module Test =
 
 (*i
  *  Local Variables:
- *  mode:caml
  *  indent-tabs-mode:nil
  *  page-delimiter:"^(\\* .*\n"
  *  End:
