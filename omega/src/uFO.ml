@@ -1162,6 +1162,8 @@ module Model =
 	   F_F (q2, a2, b2, c2, d2);
 	   F_F (q3, a3, b3, c3, d3) |] ->
 	 if a1 = a2 && a2 = a3 then
+	   let even = Combinatorics.permute_even [b1; c1; d1]
+	   and odd =  Combinatorics.permute_odd [b1; c1; d1] in
 	   q1
 	 else
 	   invalid_arg "translate_color4: mismatched indices"
