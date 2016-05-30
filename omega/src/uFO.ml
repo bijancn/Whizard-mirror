@@ -1081,6 +1081,17 @@ module Model =
     let translate_color4_1_1 c =
       Q.make (translate_color3_1_1 c) 1
 
+    let normalize_quartet a b c d =
+      let a0 = List.hd (List.sort compare [a; b; c; d]) in
+      if a0 = a then
+	(a, b, c, d)
+      else if a0 = b then
+	(b, a, d, c)
+      else if a0 = c then
+	(c, d, a, b)
+      else
+	(d, c, b, a)
+
     let translate_color4_88 abc abc' =
       match ThoList.common abc abc' with
       | [] -> invalid_arg "translate_color4_88: not summation index"
@@ -1098,7 +1109,8 @@ module Model =
 	   begin match (Combinatorics.sort_signed order abc,
 			Combinatorics.sort_signed order abc') with
 	   | (eps, [_; b; c]), (eps', [_; b'; c']) ->
-	      (eps * eps', b, c, b', c')
+	      let a, b, c, d = normalize_quartet b c b' c' in
+	      (eps * eps', a, b, c, d)
 	   | _ -> failwith "translate_color4_88: can't happen"
 	   end
       | _ ->
@@ -1148,7 +1160,11 @@ module Model =
       | [| C3 (q) |] -> q
       | [| F_F (q1, a1, b1, c1, d1);
 	   F_F (q2, a2, b2, c2, d2);
-	   F_F (q3, a3, b3, c3, d3) |] -> q1
+	   F_F (q3, a3, b3, c3, d3) |] ->
+	 if a1 = a2 && a2 = a3 then
+	   q1
+	 else
+	   invalid_arg "translate_color4: mismatched indices"
       | c ->
 	 invalid_arg
 	   (Printf.sprintf
