@@ -1074,6 +1074,7 @@ module Model =
 	   (Printf.sprintf
 	      "translate_color3: #color structures: %d > 1" (Array.length c))
 
+	   
     type color4 =
       | C3 of Q.t
       | F_F of Q.t * int * int * int * int
@@ -1155,12 +1156,47 @@ module Model =
 	 F_F (Q.mul q (Q.make eps 1), a, b, c, d)
       | _ -> invalid_arg "translate_color4_1: too many atoms"
 
+    let l2s f l =
+      "[" ^ String.concat "; " (List.map f l) ^ "]"
+
+    let il2s l = l2s string_of_int l
+      
+    let il2s2 l2 = l2s il2s l2
+
+(* This does not work on it's own, because FeynRules exchanges
+   signs between color and Lorentz tensors. *)
+      
+(*i
+    color = [ 'f(-1,1,2)*f(3,4,-1)',
+              'f(-1,1,3)*f(2,4,-1)',
+              'f(-1,1,4)*f(2,3,-1)' ],
+    lorentz = [ 'Metric(1,4)*Metric(2,3) - Metric(1,3)*Metric(2,4)',
+                'Metric(1,4)*Metric(2,3) - Metric(1,2)*Metric(3,4)',
+                'Metric(1,3)*Metric(2,4) - Metric(1,2)*Metric(3,4)' ],
+    couplings = {(1,1):C.GC_12,(0,0):C.GC_12,(2,2):C.GC_12})
+
+i.e.
+
+   f(-1,1,2)*f(3,4,-1) * (Metric(1,4)*Metric(2,3) - Metric(1,3)*Metric(2,4))
+ + f(-1,1,3)*f(2,4,-1) * (Metric(1,4)*Metric(2,3) - Metric(1,2)*Metric(3,4))
+ + f(-1,1,4)*f(2,3,-1) * (Metric(1,3)*Metric(2,4) - Metric(1,2)*Metric(3,4))
+
+=
+   f(-1,1,2)*f(3,4,-1) * (Metric(1,4)*Metric(2,3) - Metric(1,3)*Metric(4,2))
+ + f(-1,1,3)*f(4,2,-1) * (Metric(1,2)*Metric(3,4) - Metric(1,4)*Metric(3,2))
+ + f(-1,1,4)*f(2,3,-1) * (Metric(1,3)*Metric(2,4) - Metric(1,2)*Metric(3,4))
+
+i*)
+
     let translate_color4 c =
       match Array.map translate_color4_1 c with
       | [| C3 (q) |] -> q
       | [| F_F (q1, a1, b1, c1, d1);
 	   F_F (q2, a2, b2, c2, d2);
 	   F_F (q3, a3, b3, c3, d3) |] ->
+	 prerr_endline ("raw1 = " ^ il2s [a1; b1; c1; d1]);
+	 prerr_endline ("raw2 = " ^ il2s [a2; b2; c2; d2]);
+	 prerr_endline ("raw3 = " ^ il2s [a3; b3; c3; d3]);
 	 if Q.abs q1 = Q.abs q2 && Q.abs q2 = Q.abs q3 then
 	   if a1 = a2 && a2 = a3 then
 	     let bcd1 = [b1; c1; d1]
@@ -1171,8 +1207,11 @@ module Model =
 	       q1
 	     else if bcd = List.sort compare (Combinatorics.permute_odd bcd1) then
 	       Q.neg q1
-	     else
-	       invalid_arg "translate_color4: mismatched permutations"
+	     else (
+	       prerr_endline ("bcd  = " ^ il2s2 bcd);
+	       prerr_endline ("even = " ^ il2s2 (List.sort compare (Combinatorics.permute_even bcd1)));
+	       prerr_endline ("odd  = " ^ il2s2 (List.sort compare (Combinatorics.permute_odd bcd1)));
+	       invalid_arg "translate_color4: mismatched permutations")
 	   else
 	     invalid_arg "translate_color4: mismatched indices"
 	 else
