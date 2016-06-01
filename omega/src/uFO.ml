@@ -926,8 +926,10 @@ let dump model =
     (fun symbol c ->
       (print_endline @@< UFO_Coupling.to_string) symbol c;
       print_endline
-	(UFOx.Value.to_string
-	   (UFOx.Value.of_expr (UFOx.Expr.of_string c.UFO_Coupling.value))))
+	(" ==>> " ^
+	    (UFOx.Value.to_string
+	       (UFOx.Value.of_expr
+		  (UFOx.Expr.of_string c.UFO_Coupling.value)))))
     model.couplings;
   SMap.iter (print_endline @@< Coupling_Order.to_string) model.coupling_orders;
   (* SMap.iter (print_endline @@< Vertex.to_string) model.vertices; *)
