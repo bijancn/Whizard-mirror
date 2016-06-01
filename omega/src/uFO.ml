@@ -1074,10 +1074,15 @@ module Model =
 	   (Printf.sprintf
 	      "translate_color3: #color structures: %d > 1" (Array.length c))
 
-	   
+    type ff4 = Q.t * int * int * int * int
+
+    type color4_1 =
+      | C3_1 of Q.t
+      | FF4_1 of ff4
+
     type color4 =
       | C3 of Q.t
-      | F_F of Q.t * int * int * int * int
+      | FF4 of ff4 * ff4 * ff4
 
     let translate_color4_1_1 c =
       Q.make (translate_color3_1_1 c) 1
@@ -1111,7 +1116,7 @@ module Model =
 			Combinatorics.sort_signed order abc') with
 	   | (eps, [_; b; c]), (eps', [_; b'; c']) ->
 	      let a, b, c, d = normalize_quartet b c b' c' in
-	      (eps * eps', a, b, c, d)
+	      FF4_1 (Q.make (eps * eps') 1, a, b, c, d)
 	   | _ -> failwith "translate_color4_88: can't happen"
 	   end
       | _ ->
@@ -1148,12 +1153,14 @@ module Model =
 
     let translate_color4_1 c =
       match c with
-      | [ ([], q) ] -> C3 (q)
+      | [ ([], q) ] -> C3_1 (q)
       | [ ([c1], q) ] ->
-	 C3 (Q.mul q (translate_color4_1_1 c1))
+	 C3_1 (Q.mul q (translate_color4_1_1 c1))
       | [ ([c1; c2], q) ] ->
-	 let eps, a, b, c, d = translate_color4_1_2 c1 c2 in
-	 F_F (Q.mul q (Q.make eps 1), a, b, c, d)
+	 begin match translate_color4_1_2 c1 c2 with
+	 | FF4_1 (eps, a, b, c, d) -> FF4_1 (Q.mul q eps, a, b, c, d)
+	 | C3_1 (eps) -> C3_1 (Q.mul q eps)
+	 end
       | _ -> invalid_arg "translate_color4_1: too many atoms"
 
     let l2s f l =
@@ -1190,10 +1197,10 @@ i*)
 
     let translate_color4 c =
       match Array.map translate_color4_1 c with
-      | [| C3 (q) |] -> q
-      | [| F_F (q1, a1, b1, c1, d1);
-	   F_F (q2, a2, b2, c2, d2);
-	   F_F (q3, a3, b3, c3, d3) |] ->
+      | [| C3_1 (q) |] -> C3 q
+      | [| FF4_1 (q1, a1, b1, c1, d1);
+	   FF4_1 (q2, a2, b2, c2, d2);
+	   FF4_1 (q3, a3, b3, c3, d3) |] ->
 	 prerr_endline ("raw1 = " ^ il2s [a1; b1; c1; d1]);
 	 prerr_endline ("raw2 = " ^ il2s [a2; b2; c2; d2]);
 	 prerr_endline ("raw3 = " ^ il2s [a3; b3; c3; d3]);
@@ -1204,9 +1211,9 @@ i*)
 	     and bcd3 = if q3 = q1 then [c3; b3; d3] else [b3; c3; d3] in
 	     let bcd = List.sort compare [bcd1; bcd2; bcd3] in
 	     if bcd = List.sort compare (Combinatorics.permute_even bcd1) then
-	       q1
+	       C3 (q1) (* HACK! *)
 	     else if bcd = List.sort compare (Combinatorics.permute_odd bcd1) then
-	       Q.neg q1
+	       C3 (Q.neg q1)  (* HACK! *)
 	     else (
 	       prerr_endline ("bcd  = " ^ il2s2 bcd);
 	       prerr_endline ("even = " ^ il2s2 (List.sort compare (Combinatorics.permute_even bcd1)));
@@ -1343,7 +1350,7 @@ i*)
       let module L = UFOx.Lorentz_Atom in
       let module C = UFOx.Color_Atom in
       match t, translate_color4 c, g with
-      | [| [ [], qt] |], qc, [| [| g |] |] ->
+      | [| [ [], qt] |], C3 qc, [| [| g |] |] ->
 	 ((p.(0), p.(1), p.(2), p.(3)),
 	  Coupling.Scalar4 (coeff qt qc),
 	  dummy_constant)
