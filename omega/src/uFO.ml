@@ -1074,19 +1074,8 @@ module Model =
 	   (Printf.sprintf
 	      "translate_color3: #color structures: %d > 1" (Array.length c))
 
-    type ff4 = Q.t * int * int * int * int
-
-    type color4_1 =
-      | C3_1 of Q.t
-      | FF4_1 of ff4
-
-    type color4 =
-      | C3 of Q.t
-      | FF4 of ff4 * ff4 * ff4
-
-    let translate_color4_1_1 c =
-      Q.make (translate_color3_1_1 c) 1
-
+    (* Move the smallest index first, using antisymmetry
+       in $a,b$ and $c,d$ as well as symmetry in $(ab)(cd)$: *)
     let normalize_quartet a b c d =
       let a0 = List.hd (List.sort compare [a; b; c; d]) in
       if a0 = a then
@@ -1097,6 +1086,39 @@ module Model =
 	(c, d, a, b)
       else
 	(d, c, b, a)
+
+    (* [FF_1 (q, a, b, c, d)] represents the tensor $q f_{abe}f_{ecd}$
+       and we assume that [normalize_quartet] has been applied to the
+       indices.  *)
+    type color4_1 =
+      | C3_1 of Q.t
+      | FF_1 of Q.t * int * int * int * int
+
+    (* [FF (q1, q2, q3, a, b, c, d)] represents the tensor
+       $q_1 f_{abe}f_{ecd} + q_2 f_{ace}f_{eda} + q_3 f_{ade}f_{eab}$ *)
+
+    type color4 =
+      | C3 of Q.t
+      | FF of Q.t * Q.t * Q.t * int * int * int * int
+
+    let q2s q =
+      match Q.to_ratio q with
+      | n, 1 -> string_of_int n
+      | n, d -> string_of_int n ^ "/" ^ string_of_int d
+
+    let color4_to_string = function
+      | C3 (q) -> q2s q
+      | FF (q1, q2, q3, a, b, c, d) ->
+	 Printf.sprintf
+	   "%s*f(%d,%d,-1)*f(-1,%d,%d) \
+          + %s*f(%d,%d,-1)*f(-1,%d,%d) \
+          + %s*f(%d,%d,-1)*f(-1,%d,%d)"
+	   (q2s q1) a b c d
+	   (q2s q2) a c d b
+	   (q2s q3) a d b c
+
+    let translate_color4_1_1 c =
+      Q.make (translate_color3_1_1 c) 1
 
     let translate_color4_88 abc abc' =
       match ThoList.common abc abc' with
@@ -1116,7 +1138,7 @@ module Model =
 			Combinatorics.sort_signed order abc') with
 	   | (eps, [_; b; c]), (eps', [_; b'; c']) ->
 	      let a, b, c, d = normalize_quartet b c b' c' in
-	      FF4_1 (Q.make (eps * eps') 1, a, b, c, d)
+	      FF_1 (Q.make (eps * eps') 1, a, b, c, d)
 	   | _ -> failwith "translate_color4_88: can't happen"
 	   end
       | _ ->
@@ -1158,7 +1180,7 @@ module Model =
 	 C3_1 (Q.mul q (translate_color4_1_1 c1))
       | [ ([c1; c2], q) ] ->
 	 begin match translate_color4_1_2 c1 c2 with
-	 | FF4_1 (eps, a, b, c, d) -> FF4_1 (Q.mul q eps, a, b, c, d)
+	 | FF_1 (eps, a, b, c, d) -> FF_1 (Q.mul q eps, a, b, c, d)
 	 | C3_1 (eps) -> C3_1 (Q.mul q eps)
 	 end
       | _ -> invalid_arg "translate_color4_1: too many atoms"
@@ -1170,10 +1192,12 @@ module Model =
       
     let il2s2 l2 = l2s il2s l2
 
-(* This does not work on it's own, because FeynRules exchanges
-   signs between color and Lorentz tensors. *)
+(* We can not handle color tensors on their own, because UFO
+   allows to exchange signs between color and Lorentz tensors. *)
       
 (*i
+Indeed, the FeynRulesSM file has
+
     color = [ 'f(-1,1,2)*f(3,4,-1)',
               'f(-1,1,3)*f(2,4,-1)',
               'f(-1,1,4)*f(2,3,-1)' ],
@@ -1198,29 +1222,41 @@ i*)
     let translate_color4 c =
       match Array.map translate_color4_1 c with
       | [| C3_1 (q) |] -> C3 q
-      | [| FF4_1 (q1, a1, b1, c1, d1);
-	   FF4_1 (q2, a2, b2, c2, d2);
-	   FF4_1 (q3, a3, b3, c3, d3) |] ->
-	 prerr_endline ("raw1 = " ^ il2s [a1; b1; c1; d1]);
-	 prerr_endline ("raw2 = " ^ il2s [a2; b2; c2; d2]);
-	 prerr_endline ("raw3 = " ^ il2s [a3; b3; c3; d3]);
+      | [| FF_1 (q1, a1, b1, c1, d1);
+	   FF_1 (q2, a2, b2, c2, d2);
+	   FF_1 (q3, a3, b3, c3, d3) |] ->
 	 if Q.abs q1 = Q.abs q2 && Q.abs q2 = Q.abs q3 then
 	   if a1 = a2 && a2 = a3 then
 	     let bcd1 = [b1; c1; d1]
-	     and bcd2 = if q2 = q1 then [c2; b2; d2] else [b2; c2; d2]
-	     and bcd3 = if q3 = q1 then [c3; b3; d3] else [b3; c3; d3] in
-	     let bcd = List.sort compare [bcd1; bcd2; bcd3] in
-	     if bcd = List.sort compare (Combinatorics.permute_even bcd1) then
-	       C3 (q1) (* HACK! *)
-	     else if bcd = List.sort compare (Combinatorics.permute_odd bcd1) then
-	       C3 (Q.neg q1)  (* HACK! *)
-	     else (
-	       prerr_endline ("bcd  = " ^ il2s2 bcd);
-	       prerr_endline ("even = " ^ il2s2 (List.sort compare (Combinatorics.permute_even bcd1)));
-	       prerr_endline ("odd  = " ^ il2s2 (List.sort compare (Combinatorics.permute_odd bcd1)));
-	       invalid_arg "translate_color4: mismatched permutations")
+	     and bcd2 = [b2; c2; d2]
+	     and bcd3 = [b3; c3; d3] in
+	     let eps1 = Combinatorics.sign compare bcd1 in
+	     let eps2, bcd2 =
+	       let eps = Combinatorics.sign compare bcd2 in
+	       if eps = eps1 then
+		 (Q.make eps 1, bcd2)
+	       else
+		 (Q.make eps 1, [b2; d2; c2])
+	     and eps3, bcd3 =
+	       let eps = Combinatorics.sign compare bcd3 in
+	       if eps = eps1 then
+		 (Q.make eps 1, bcd3)
+	       else
+		 (Q.make eps 1, [b3; d3; c3]) in
+	     if bcd2 = [c1; d1; b1] then
+	       if bcd3 = [d1; b1; c1] then
+		 FF (q1, Q.mul eps2 q2, Q.mul eps3 q3, a1, b1, c1, d1)
+	       else
+		 invalid_arg "translate_color4: mismatched indices b, c, d"
+	     else if bcd2 = [d1; b1; c1] then
+	       if bcd3 = [c1; d1; b1] then
+		 FF (q1, Q.mul eps3 q3, Q.mul eps2 q2, a1, b1, c1, d1)
+	       else
+		 invalid_arg "translate_color4: mismatched indices b, c, d"
+	     else
+	       invalid_arg "translate_color4: mismatched indices b, c, d"
 	   else
-	     invalid_arg "translate_color4: mismatched indices"
+	     invalid_arg "translate_color4: mismatched indices a"
 	 else
 	   invalid_arg "translate_color4: mismatched couplings"
       | c ->
