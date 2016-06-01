@@ -56,7 +56,7 @@ module type Tensor =
     val omega : r -> r_omega
   end
 
-module type Atomic_Tensor =
+module type Atom =
   sig
     type t
     val of_expr : string -> UFOx_syntax.expr list -> t

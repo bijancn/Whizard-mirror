@@ -102,7 +102,7 @@ module Index : Index =
       
   end
 
-module type Atomic_Tensor =
+module type Atom =
   sig
     type t
     val of_expr : string -> UFOx_syntax.expr list -> t
@@ -135,7 +135,7 @@ module type Tensor =
     val omega : r -> r_omega
   end
 
-module Tensor (A : Atomic_Tensor) : Tensor
+module Tensor (A : Atom) : Tensor
   with type atom = A.t and type r = A.r and type r_omega = A.r_omega =
   struct
 
@@ -287,7 +287,7 @@ module Lorentz_Atom =
       | Sigma of int * int * int * int
   end
 
-module Atomic_Lorentz : Atomic_Tensor
+module Lorentz_Atom' : Atom
   with type t = Lorentz_Atom.t and type r_omega = Coupling.lorentz =
   struct
 	
@@ -410,7 +410,7 @@ module Atomic_Lorentz : Atomic_Tensor
 
   end
     
-module Lorentz = Tensor(Atomic_Lorentz)
+module Lorentz = Tensor(Lorentz_Atom')
 
 module type Color_Atom =
   sig
@@ -440,7 +440,7 @@ module Color_Atom =
       | K6Bar of int * int * int
   end
 
-module Atomic_Color : Atomic_Tensor
+module Color_Atom' : Atom
   with type t = Color_Atom.t and type r_omega = Color.t =
   struct
 
@@ -553,7 +553,7 @@ module Atomic_Color : Atomic_Tensor
     
   end
 
-module Color = Tensor(Atomic_Color)
+module Color = Tensor(Color_Atom')
 
 module Value =
   struct
