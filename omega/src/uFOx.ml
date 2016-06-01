@@ -119,8 +119,8 @@ module type Atomic_Tensor =
 
 module type Tensor =
   sig
-    type tensor
-    type t = (tensor list * Q.t) list
+    type atom
+    type t = (atom list * Q.t) list
     val of_expr : UFOx_syntax.expr -> t
     val of_string : string -> t
     val of_strings : string list -> t
@@ -136,13 +136,13 @@ module type Tensor =
   end
 
 module Tensor (A : Atomic_Tensor) : Tensor
-  with type tensor = A.t and type r = A.r and type r_omega = A.r_omega =
+  with type atom = A.t and type r = A.r and type r_omega = A.r_omega =
   struct
 
     module S = UFOx_syntax
 
-    type tensor = A.t
-    type t = (tensor list * Q.t) list
+    type atom = A.t
+    type t = (atom list * Q.t) list
 
     let multiply (t1, c1) (t2, c2) =
       (List.sort compare (t1 @ t2), Q.mul c1 c2)

@@ -40,8 +40,8 @@ module Q : Algebra.Rational
 
 module type Tensor =
   sig
-    type tensor
-    type t = (tensor list * Q.t) list
+    type atom
+    type t = (atom list * Q.t) list
     val of_expr : UFOx_syntax.expr -> t
     val of_string : string -> t
     val of_strings : string list -> t
@@ -89,7 +89,7 @@ module type Lorentz_Atom =
 module Lorentz_Atom : Lorentz_Atom
 
 module Lorentz : Tensor
-  with type tensor = Lorentz_Atom.t and type r_omega = Coupling.lorentz
+  with type atom = Lorentz_Atom.t and type r_omega = Coupling.lorentz
 
 module type Color_Atom =
   sig
@@ -108,7 +108,7 @@ module type Color_Atom =
 module Color_Atom : Color_Atom
 
 module Color : Tensor
-  with type tensor = Color_Atom.t and type r_omega = Color.t
+  with type atom = Color_Atom.t and type r_omega = Color.t
 
 module Value :
   sig
