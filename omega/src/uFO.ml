@@ -1048,6 +1048,30 @@ module Model =
     let coeff q1 q2 =
       Q.to_integer (Q.mul q1 q2)
 
+    let translate_lorentz_atom c =
+      let open UFOx.Lorentz_Atom in
+      match c with
+      | C (i, j) ->
+	 invalid_arg "charge conjugation matrix not supported yet"
+      | Epsilon (mu, nu, ka, la) ->
+	 invalid_arg "Epsilon not supported yet"
+      | Gamma (mu, i, j) ->
+	 invalid_arg "Gamma not supported yet"
+      | Gamma5 (i, j) ->
+	 invalid_arg "Gamma5 not supported yet"
+      | Identity (i, j) ->
+	 invalid_arg "Identity not supported yet"
+      | Metric (mu, nu) ->
+	 invalid_arg "Metric not supported yet"
+      | P (mu, i) ->
+	 invalid_arg "P not supported yet"
+      | ProjP (i, j) ->
+	 invalid_arg "ProjP not supported yet"
+      | ProjM (i, j) ->
+	 invalid_arg "ProjM not supported yet"
+      | Sigma (mu, nu, i, j) ->
+	 invalid_arg "sigma not supported yet"
+
     let translate_color_atom c =
       let open UFOx.Color_Atom in
       match c with
@@ -1265,34 +1289,24 @@ i*)
 	   (Printf.sprintf
 	      "translate_color4: #color structures: %d" (Array.length c))
 
-    let translate_coupling3 model p t c g =
+    let translate_coupling3_1 model p t qc g =
       let module L = UFOx.Lorentz_Atom in
-      let module C = UFOx.Color_Atom in
-      match t, translate_color3 c, g with
-      | [| [ [], qt] |],
-        qc,
-        [| [| g |] |] ->
+      match t with
+      | [ [], qt] ->
 	 ((p.(0), p.(1), p.(2)),
 	  Coupling.Scalar_Scalar_Scalar (Q.to_integer (Q.mul qt qc)),
 	  dummy_constant)
-      | [| [ [L.ProjP(i,j)], qt] |],
-        qc,
-        [| [| g |] |] ->
+      | [ [L.ProjP(i,j)], qt] ->
 	 ((p.(pred i), p.(pred (third i j)), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.SR, Coupling.Psi),
 	  dummy_constant)
-      | [| [ [L.ProjM(i,j)], qt] |],
-        qc,
-        [| [| g |] |] ->
+      | [ [L.ProjM(i,j)], qt] ->
 	 ((p.(pred i), p.(pred (third i j)), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.SL, Coupling.Psi),
 	  dummy_constant)
-      | [| [ ([L.ProjM(i,j)], qm);
-	     ([L.ProjP(i',j')], qp)] |] as t,
-        qc,
-        [| [| g |] |] ->
+      | [ ([L.ProjM(i,j)], qm); ([L.ProjP(i',j')], qp)] as t ->
 	 if i = i' && j = j' then begin
 	   if Q.is_null (Q.add qm qp) then 
 	     ((p.(pred i), p.(pred (third i j)), p.(pred j)),
@@ -1306,84 +1320,71 @@ i*)
 	      dummy_constant)
 	   else begin
 	     prerr_endline
-	       ("unhandled colorless vertex: " ^
-		   (String.concat ", "
-		      (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+	       ("unhandled colorless vertex: " ^ UFOx.Lorentz.to_string t);
 	     ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
 	   end
          end else
-           invalid_arg "translate_coupling3: mismatched indices"
-      | [| [ [L.Gamma(mu,i,j)], qt] |],
-        qc,
-        [| [| g |] |] ->
+           invalid_arg "translate_coupling3_1: mismatched indices"
+      | [ [L.Gamma(mu,i,j)], qt] ->
 	 ((p.(pred i), p.(pred mu), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.V, Coupling.Psi),
 	  dummy_constant)
-      | [| [ [L.Gamma(mu,i,-1); L.ProjP(-1,j)], qt] |],
-        qc,
-        [| [| g |] |] ->
+      | [ [L.Gamma(mu,i,-1); L.ProjP(-1,j)], qt] ->
 	 ((p.(pred i), p.(pred mu), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.VR, Coupling.Psi),
 	  dummy_constant)
-      | [| [ [L.Gamma(mu,i,-1); L.ProjM(-1,j)], qt] |],
-        qc,
-        [| [| g |] |] ->
+      | [ [L.Gamma(mu,i,-1); L.ProjM(-1,j)], qt] ->
 	 ((p.(pred i), p.(pred mu), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.VL, Coupling.Psi),
 	  dummy_constant)
-      | [| [ [L.Metric(i,j)], qt] |],
-        qc,
-        [| [| g |] |] ->
+      | [ [L.Metric(i,j)], qt] ->
 	 ((p.(pred (third i j)), p.(pred i), p.(pred j)),
 	  Coupling.Scalar_Vector_Vector (coeff qt qc),
 	  dummy_constant)
-      | [| [ ([L.P(mu,i)], q1);
-	     ([L.P(mu',j')], q2)] |] as t,
-        qc,
-        [| [| g |] |] ->
+      | [ ([L.P(mu,i)], q1); ([L.P(mu',j')], q2) ] as t ->
+	 prerr_endline
+	   ("not yet handled colorless vertex: " ^ UFOx.Lorentz.to_string t);
+	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+      | [ ([L.Metric(ka1,la1); L.P(mu1,i1)], q1);
+	  ([L.Metric(ka2,la2); L.P(mu2,i2)], q2);
+	  ([L.Metric(ka3,la3); L.P(mu3,i3)], q3);
+	  ([L.Metric(ka4,la4); L.P(mu4,i4)], q4);
+	  ([L.Metric(ka5,la5); L.P(mu5,i5)], q5);
+	  ([L.Metric(ka6,la6); L.P(mu6,i6)], q6)] as t ->
 	 prerr_endline
 	   ("not yet handled colorless vertex: " ^
-	       (String.concat ", "
-		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+	       (UFOx.Lorentz.to_string t));
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
-      | [| [ ([L.Metric(ka1,la1); L.P(mu1,i1)], q1);
-	     ([L.Metric(ka2,la2); L.P(mu2,i2)], q2);
-	     ([L.Metric(ka3,la3); L.P(mu3,i3)], q3);
-	     ([L.Metric(ka4,la4); L.P(mu4,i4)], q4);
-	     ([L.Metric(ka5,la5); L.P(mu5,i5)], q5);
-	     ([L.Metric(ka6,la6); L.P(mu6,i6)], q6)] |] as t,
-        qc,
-        [| [| g |] |] ->
+      | t ->
 	 prerr_endline
-	   ("not yet handled colorless vertex: " ^
-	       (String.concat ", "
-		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+	   ("unhandled vertex: " ^ UFOx.Lorentz.to_string t);
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
-      | t, qc, g ->
-	 prerr_endline
-	   ("unhandled colorless vertex: " ^
-	       (String.concat ", "
-		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+
+    let translate_coupling3 model p t c g =
+      match t, translate_color3 c, g with
       | [| t |], qc, [| [| g |] |] ->
-	 prerr_endline
-	   ("unhandled colorfull vertex: " ^ UFOx.Lorentz.to_string t);
-	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
-      | [| t |], qc, _->
+	 translate_coupling3_1 model p t qc g
+      | [| t |], qc, _ ->
 	 invalid_arg "translate_coupling3: too many constants"
+      | [| t1; t2 |] as t, qc, [| [| g1; g2 |] |] ->
+	 prerr_endline
+	   ("unhandled vertex 2 Lorentz structures: " ^
+	       (String.concat ", "
+		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+	 translate_coupling3_1 model p t1 qc g1;
+	 translate_coupling3_1 model p t2 qc g2
       | t, qc, g ->
 	 prerr_endline
-	   ("unhandled colorfull vertex: " ^
+	   ("unhandled vertex w/multiple Lorentz structures: " ^
 	       (String.concat ", "
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
 
     let translate_coupling4 model p t c g =
       let module L = UFOx.Lorentz_Atom in
-      let module C = UFOx.Color_Atom in
       match t, translate_color4 c, g with
       | [| [ [], qt] |], C3 qc, [| [| g |] |] ->
 	 ((p.(0), p.(1), p.(2), p.(3)),
