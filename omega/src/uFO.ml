@@ -1145,12 +1145,12 @@ module Model =
     let translate_color4_1_1 c =
       Q.make (translate_color_atom c) 1
 
-    let translate_color4_88 abc abc' =
+    let translate_color4_ff abc abc' =
       match ThoList.common abc abc' with
-      | [] -> invalid_arg "translate_color4_88: not summation index"
+      | [] -> invalid_arg "translate_color4_ff: not summation index"
       | [s] ->
-	 if s >= 1 && s <= 4 then
-	   invalid_arg "translate_color4_88: invalid summation index"
+	 if s >= 1 then
+	   invalid_arg "translate_color4_ff: invalid summation index"
 	 else
 	   let order i i' =
 	     if i = s then
@@ -1164,12 +1164,12 @@ module Model =
 	   | (eps, [_; b; c]), (eps', [_; b'; c']) ->
 	      let a, b, c, d = normalize_quartet b c b' c' in
 	      FF_1 (Q.make (eps * eps') 1, a, b, c, d)
-	   | _ -> failwith "translate_color4_88: can't happen"
+	   | _ -> failwith "translate_color4_ff: can't happen"
 	   end
       | _ ->
-	 invalid_arg "translate_color4_88: multiple summation indices"
+	 invalid_arg "translate_color4_ff: multiple summation indices"
 
-    let translate_color4_1_2 c1 c2 =
+    let translate_color_atom_pair c1 c2 =
       let open UFOx.Color_Atom in
       match c1, c2 with
       | Identity (i, j), Identity (i', l') ->
@@ -1177,7 +1177,7 @@ module Model =
       | T (a, i, j), T (a', i', j') ->
 	 invalid_arg "quartic 3-3bar-couplings not supported yet"
       | F (a, b, c), F (a', b', c') ->
-	 translate_color4_88 [a; b; c] [a'; b'; c']
+	 translate_color4_ff [a; b; c] [a'; b'; c']
       | T (a, i, j), F (a', b', c')
       | F (a', b', c'), T (a, i, j) ->
 	 invalid_arg "quartic 8-8-3-3bar-couplings not supported yet"
@@ -1204,7 +1204,7 @@ module Model =
       | [ ([c1], q) ] ->
 	 C3_1 (Q.mul q (translate_color4_1_1 c1))
       | [ ([c1; c2], q) ] ->
-	 begin match translate_color4_1_2 c1 c2 with
+	 begin match translate_color_atom_pair c1 c2 with
 	 | FF_1 (eps, a, b, c, d) -> FF_1 (Q.mul q eps, a, b, c, d)
 	 | C3_1 (eps) -> C3_1 (Q.mul q eps)
 	 end
@@ -1371,7 +1371,7 @@ i*)
 	 invalid_arg "translate_coupling3: too many constants"
       | [| t1; t2 |] as t, qc, [| [| g1; g2 |] |] ->
 	 prerr_endline
-	   ("unhandled vertex 2 Lorentz structures: " ^
+	   ("unhandled vertex w/2 Lorentz structures: " ^
 	       (String.concat ", "
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	 translate_coupling3_1 model p t1 qc g1;
