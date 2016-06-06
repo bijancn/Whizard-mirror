@@ -1289,6 +1289,46 @@ i*)
 	   (Printf.sprintf
 	      "translate_color4: #color structures: %d" (Array.length c))
 
+    let order_lexicographic order l1 l2 =
+      let rec order_lexicographic' = function
+	| [], [] -> 0
+	| [], _ -> -1
+	| _, [] -> 1
+	| x1 :: rest1, x2 :: rest2 ->
+	  let res = order x1 x2 in
+	  if res <> 0 then
+	    res
+	  else
+	    order_lexicographic' (rest1, rest2) in
+      order_lexicographic' (l1, l2)
+
+    let normalize_lorentz_gauge_3 l =
+      List.sort
+	(fun (ka1, la1, mu1, i1, q1) (ka2, la2, mu2, i2, q2) ->
+	  order_lexicographic compare
+	    [ka1; la1; mu1; i1] [ka2; la2; mu2; i2])
+	(List.map
+	   (fun (ka, la, mu, i, q) ->
+	     if ka > la then
+	       (la, ka, mu, i, q)
+	     else
+	       (ka, la, mu, i, q))
+	   l)
+
+    let translate_lorentz_gauge_3 t p kalamuiq =
+      match normalize_lorentz_gauge_3 kalamuiq with
+      | [ (ka1, la1, mu1, i1, q1);
+	  (ka2, la2, mu2, i2, q2);
+	  (ka3, la3, mu3, i3, q3);
+	  (ka4, la4, mu4, i4, q4);
+	  (ka5, la5, mu5, i5, q5);
+	  (ka6, la6, mu6, i6, q6) ] ->
+	 prerr_endline
+	   ("incompletely handled 3-gauge: " ^
+	       (UFOx.Lorentz.to_string t));
+	((p.(0), p.(1), p.(2)), Coupling.Gauge_Gauge_Gauge 1, dummy_constant)
+      | _ -> invalid_arg "translate_lorentz_gauge_3: expected 6 terms"
+
     let translate_coupling3_1 model p t qc g =
       let module L = UFOx.Lorentz_Atom in
       match t with
@@ -1354,10 +1394,13 @@ i*)
 	  ([L.Metric(ka4,la4); L.P(mu4,i4)], q4);
 	  ([L.Metric(ka5,la5); L.P(mu5,i5)], q5);
 	  ([L.Metric(ka6,la6); L.P(mu6,i6)], q6)] as t ->
-	 prerr_endline
-	   ("unhandled colorless 3-vertex: " ^
-	       (UFOx.Lorentz.to_string t));
-	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	 translate_lorentz_gauge_3 t p
+	   [ (ka1, la1, mu1, i1, q1);
+	     (ka2, la2, mu2, i2, q2);
+	     (ka3, la3, mu3, i3, q3);
+	     (ka4, la4, mu4, i4, q4);
+	     (ka5, la5, mu5, i5, q5);
+	     (ka6, la6, mu6, i6, q6) ]
       | t ->
 	 prerr_endline
 	   ("unhandled 3-vertex: " ^ UFOx.Lorentz.to_string t);
