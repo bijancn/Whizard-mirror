@@ -1320,7 +1320,7 @@ i*)
 	      dummy_constant)
 	   else begin
 	     prerr_endline
-	       ("unhandled colorless vertex: " ^ UFOx.Lorentz.to_string t);
+	       ("unhandled colorless 3-vertex: " ^ UFOx.Lorentz.to_string t);
 	     ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
 	   end
          end else
@@ -1346,7 +1346,7 @@ i*)
 	  dummy_constant)
       | [ ([L.P(mu,i)], q1); ([L.P(mu',j')], q2) ] as t ->
 	 prerr_endline
-	   ("not yet handled colorless vertex: " ^ UFOx.Lorentz.to_string t);
+	   ("unhandled colorless 3-vertex: " ^ UFOx.Lorentz.to_string t);
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
       | [ ([L.Metric(ka1,la1); L.P(mu1,i1)], q1);
 	  ([L.Metric(ka2,la2); L.P(mu2,i2)], q2);
@@ -1355,12 +1355,12 @@ i*)
 	  ([L.Metric(ka5,la5); L.P(mu5,i5)], q5);
 	  ([L.Metric(ka6,la6); L.P(mu6,i6)], q6)] as t ->
 	 prerr_endline
-	   ("not yet handled colorless vertex: " ^
+	   ("unhandled colorless 3-vertex: " ^
 	       (UFOx.Lorentz.to_string t));
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
       | t ->
 	 prerr_endline
-	   ("unhandled vertex: " ^ UFOx.Lorentz.to_string t);
+	   ("unhandled 3-vertex: " ^ UFOx.Lorentz.to_string t);
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
 
     let translate_coupling3 model p t c g =
@@ -1370,15 +1370,50 @@ i*)
       | [| t |], qc, _ ->
 	 invalid_arg "translate_coupling3: too many constants"
       | [| t1; t2 |] as t, qc, [| [| g1; g2 |] |] ->
-	 prerr_endline
-	   ("unhandled vertex w/2 Lorentz structures: " ^
-	       (String.concat ", "
-		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	 translate_coupling3_1 model p t1 qc g1;
-	 translate_coupling3_1 model p t2 qc g2
+	 begin match (translate_coupling3_1 model p t1 qc g1,
+		      translate_coupling3_1 model p t2 qc g2) with
+	 | ((p1, p2, p3),
+	    Coupling.FBF (q, Coupling.Psibar, l, Coupling.Psi),
+	    g),
+           ((p1', p2', p3'),
+	    Coupling.FBF (q', Coupling.Psibar, l', Coupling.Psi),
+	    g') ->
+	    prerr_endline
+	      ("incompletely handled 3-vertex w/2 Lorentz structures: " ^
+		  (String.concat ", "
+		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+	    if p1 = p1' && p2 = p2' && p3 = p3' then begin
+	      match l, l' with
+	      | P, S | S, P ->
+		 ((p1, p2, p3),
+		  Coupling.FBF (q, Coupling.Psibar, SP, Coupling.Psi),
+		  g)
+	      | SL, SR | SR, SL ->
+		 ((p1, p2, p3),
+		  Coupling.FBF (q, Coupling.Psibar, SLR, Coupling.Psi),
+		  g)
+	      | V, A | A, V ->
+		 ((p1, p2, p3),
+		  Coupling.FBF (q, Coupling.Psibar, VA, Coupling.Psi),
+		  g)
+	      | VL, VR | VR, VL ->
+		 ((p1, p2, p3),
+		  Coupling.FBF (q, Coupling.Psibar, VLR, Coupling.Psi),
+		  g)
+	      | _, _ ->
+		 invalid_arg "translate_coupling3: incompatible Dirac matrices"
+	    end else
+	      invalid_arg "translate_coupling3: incompatible flavors"
+	 | _ ->
+	    prerr_endline
+	      ("unhandled 3-vertex w/2 Lorentz structures: " ^
+		  (String.concat ", "
+		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+	   ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	 end
       | t, qc, g ->
 	 prerr_endline
-	   ("unhandled vertex w/multiple Lorentz structures: " ^
+	   ("unhandled 3-vertex w/multiple Lorentz structures: " ^
 	       (String.concat ", "
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
@@ -1392,13 +1427,13 @@ i*)
 	  dummy_constant)
       | [| t |], qc, [| [| g |] |] ->
 	 prerr_endline
-	   ("unhandled vertex: " ^ UFOx.Lorentz.to_string t);
+	   ("unhandled 4-vertex: " ^ UFOx.Lorentz.to_string t);
 	 ((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
       | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
       | t, qc, g ->
 	 prerr_endline
-	   ("unhandled vertex: " ^
+	   ("unhandled 4-vertex w/multiple Lorentz structures: " ^
 	       (String.concat ", "
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	 ((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
