@@ -491,11 +491,11 @@ contains
   subroutine set_top_decay_momenta (pw, pb, ptop)
     type(momentum), intent(out) :: pw, pb, ptop
     if (threshold%settings%onshell_projection%decay) then
-       pw = pwp_onshell
-       pb = pb_onshell
-       ptop = ptop_onshell_cms
+       pw = boost_to_cms * pwp_onshell
+       pb = boost_to_cms * pb_onshell
+       ptop = boost_to_cms * ptop_onshell_cms
        if (debug_active (D_THRESHOLD)) &
-            call assert_equal (output_unit, sqrt (ptop_onshell_cms * ptop_onshell_cms), mass(6), "ptop is projected")
+            call assert_equal (output_unit, sqrt (ptop * ptop), mass(6), "ptop is projected")
     else
        pw = p3
        pb = p5
