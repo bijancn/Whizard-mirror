@@ -1,9 +1,9 @@
-import * as cuts from './cuts';
-import * as models from './models';
-import * as alias from './alias';
-import * as process from './process';
-import * as simulate from './tabs.simulate';
-import * as constructSindarin from './constructSindarin';
+const cuts = require('./cuts');
+const models = require('./models');
+const alias = require('./alias');
+const process = require('./process');
+const simulate = require('./tabs.simulate');
+const constructSindarin = require('./constructSindarin');
 
 function rebuildVariables() {
   let SindarinList = [];
@@ -29,12 +29,11 @@ function rebuildVariables() {
   }
 
 
-  const Cuts = cuts.cutsClass.getCutsArray();
   const NewLineStarter = '\n\t and ';
-  if (Cuts.length > 0) {
+  if (cuts.Instance.length > 0) {
     let CutsRHS = '';
-    for (let i = 0; i < Cuts.length; i++) {
-      CutsRHS += Cuts[i] + NewLineStarter;
+    for (let i = 0; i < cuts.Instance.length; i++) {
+      CutsRHS += cuts.Instance[i] + NewLineStarter;
     }
     CutsRHS = CutsRHS.substring(0, CutsRHS.length - NewLineStarter.length);
 
@@ -56,7 +55,7 @@ function cleanAll() {
   $('input[type="text"]').val('');
   $('#conf-additional').val('');
   alias.cleanAlias();
-  cuts.clean();
+  cuts.Instance.clean();
   Scan.Clean();
   process.ProcessList = [];
   SimulateList = [];

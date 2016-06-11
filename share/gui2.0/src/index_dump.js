@@ -1,9 +1,12 @@
 // This was just lying around in index.ejs
 // TODO: (bcn 2016-06-11) Disect and put in proper modules
 
-import * as models from './models';
-import * as alias from './alias';
-import * as backend from './backend';
+const models = require('./models');
+const alias = require('./alias');
+const backend = require('./backend');
+const process = require('./process');
+const simulate = require('./tabs.simulate.js');
+const cuts = require('./cuts');
 const ToolbarColumns = 4;
 const Models = models.fillModelList();
 
@@ -176,18 +179,17 @@ $(document).ready(function() {
 
   $(document).on('click', '.process-entry-sim', function () {
     activeProcessId = $(this).attr('process-id');
-    p = SimulateList[activeProcessId];
+    p = simulate.SimulateList[activeProcessId];
 
     //Fill simulate fields
     $('#conf-sim-sim').prop('checked', p.getStatus());
     $('#conf-sim-events').val(p.getEvents());
 
     //Fill histogram fields
-    Simulate.FillHistogramFieldsHTML();
+    simulate.Simulate.FillHistogramFieldsHTML();
 
     //Process selected show right column
     $('.simulate-right').fadeIn('fast');
-
   });
 
   /*
@@ -220,14 +222,14 @@ $(document).ready(function() {
    * Tab Cuts clicked, generate particles list
    */
   $('#tab_button_cuts').click(() => {
-    cuts.RebuildParticlesHTML();
+    cuts.Instance.RebuildParticlesHTML();
   });
 
   /*
    * Tab Simulate clicked, generate particles popup list
    */
-  $('#tab_button_simulate').click(function() {
-    Simulate.RebuildParticlesHTML();
+  $('#tab_button_simulate').click(() => {
+    simulate.Simulate.RebuildParticlesHTML();
   });
 
   /*

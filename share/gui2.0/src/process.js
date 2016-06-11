@@ -1,4 +1,4 @@
-var ProcessList = [];
+export var ProcessList = [];
 
 function SindarinProcess(incoming, outgoing) {
   this.counter = 0;
@@ -22,7 +22,7 @@ function SindarinProcess(incoming, outgoing) {
   this.grabScanData = grabScanData;
 }
 
-function ExtAssignScans() {
+export function ExtAssignScans() {
   for (var i = 0; i < ProcessList.length; i++) {
     ProcessList[i].grabScanData(i);
   }
@@ -118,7 +118,7 @@ function SimulationData () {
 }
 
 
-function SindarinWriteProcesses () {
+export function SindarinWriteProcesses () {
   for (var i=0; i<this.nElements; i++) {
     p = this.list[i];
     if (p instanceof SindarinProcess) {
@@ -196,7 +196,7 @@ function SindarinWriteProcesses () {
   }
 
 // Generate process list to choose setups from
-function DisplayProcessList(ProcessList) {
+export function DisplayProcessList(ProcessList) {
   /*
    * Constructing integration list
    */
@@ -248,5 +248,3 @@ function DisplayProcessList(ProcessList) {
     $(".simulate-right, .integrate-right, .scan-right").hide();
   }
 }
-
-module.exports = {SindarinWriteProcesses, ProcessList, DisplayProcessList, ExtAssignScans};

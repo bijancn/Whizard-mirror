@@ -4,7 +4,10 @@
  */
 // TODO: (bcn 2016-03-25) more standard way to do this?
 Array.prototype.remove = function() {
-  var what, a = arguments, L = a.length, ax;
+  let what;
+  let ax;
+  const a = arguments;
+  let L = a.length;
   while (L && this.length) {
     what = a[--L];
     while ((ax = this.indexOf(what)) !== -1) {
@@ -18,28 +21,26 @@ Array.prototype.remove = function() {
  * Removes duplicates in array
  */
 // TODO: (bcn 2016-03-25) more standard way to do this?
-function arrayUnique(array) {
-  var a = array.concat();
-  for (var i=0; i<a.length; ++i) {
-    for (var j=i+1; j<a.length; ++j) {
-      if(a[i] === a[j])
+export function arrayUnique(array) {
+  const a = array.concat();
+  for (let i = 0; i < a.length; ++i) {
+    for (let j = i + 1; j < a.length; ++j) {
+      if (a[i] === a[j]) {
         a.splice(j--, 1);
+      }
     }
   }
   return a;
 }
 
-/*
- * Ex: W+ used in GUI will be replaced with "W+" in sindarin file
- * (Only for cuts atm)
- */
+// Ex: W+ used in GUI will be replaced with "W+" in sindarin file
+// (Only for cuts atm)
 // TODO: (bcn 2016-03-25) not even remotely generic
-function parseParticleName(name)
-{
-  if (name == 'W+') return '"W+"';
-  if (name == 'W-') return '"W-"';
-  if (name == 'e+') return '"e+"';
-  if (name == 'e-') return '"e-"';
+export function parseParticleName(name) {
+  if (name === 'W+') return '"W+"';
+  if (name === 'W-') return '"W-"';
+  if (name === 'e+') return '"e+"';
+  if (name === 'e-') return '"e-"';
   return name;
 }
 
