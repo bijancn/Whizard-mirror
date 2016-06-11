@@ -127,7 +127,7 @@ function SindarinSimulateToString () {
 
 function SindarinWriteSimulate () {
 
-  for(var i = 0; i < this.list.length; i++) {
+  for (var i = 0; i < this.list.length; i++) {
     var elem = this.list[i];
     if (elem instanceof SindarinSimulate) {
       if (elem.getStatus() == true && elem.getEvents() > 0) {
@@ -153,7 +153,7 @@ function removeSimulateElement(id)
 function RebuildSimulateList()
 {
   var NewIndex = 1;
-  for(var i=0; i < SimulateList.length; i++) {
+  for (var i=0; i < SimulateList.length; i++) {
     if (SimulateList[i] instanceof SindarinSimulate) {
       if (SimulateList[i] === null) continue;
         SimulateList[i].procid = NewIndex++;
@@ -177,7 +177,7 @@ var Simulate = {
   RebuildParticlesHTML: function() {
     $("#pop_sim_subevent_list").html('');
     var particles = cuts.getActiveParticles();
-    for(var i = 0; i < particles.length; i++)
+    for (var i = 0; i < particles.length; i++)
       $("#pop_sim_subevent_list").append('<li role="presentation"><a href="#" class="simulation-particles-click">' + particles[i] + '</a></li>');
   },
 
@@ -278,4 +278,4 @@ $("#conf-sim-events").change(function() {
   SimulateList[activeProcessId].setEvents($(this).val());
 });
 
-module.exports = {SindarinSimulate, SindarinWriteSimulate};
+module.exports = {SindarinSimulate, SindarinWriteSimulate, SimulateList};

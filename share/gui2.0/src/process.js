@@ -23,7 +23,7 @@ function SindarinProcess(incoming, outgoing) {
 }
 
 function ExtAssignScans() {
-  for(var i = 0; i < ProcessList.length; i++) {
+  for (var i = 0; i < ProcessList.length; i++) {
     ProcessList[i].grabScanData(i);
   }
 }
@@ -134,7 +134,7 @@ function SindarinWriteProcesses () {
         this.src += 'plot lineshape_' + i + ' { x_min = ' +p.ScanData.xmin + ' x_max = ' + p.ScanData.xmax + ' }' + '\n';
 
         this.src += 'scan sqrts = (';
-            for(var j = 0; j < p.ScanData.Sets.length; j++) {
+            for (var j = 0; j < p.ScanData.Sets.length; j++) {
               var e = p.ScanData.Sets[j];
               this.src += '('+e.min+' => '+e.max+' /+ '+e.inc+'),';
             }
@@ -161,15 +161,15 @@ function SindarinWriteProcesses () {
             }
             this.elementsUsed.push(i);
       }
-    }
-    console.log(this.src);
   }
+  console.log(this.src);
+}
 
   function rebuildProcessList() {
     $("#pop_process").empty();
     $("#pop_process").append('<div class="row">');
     proc_index = 1;
-    for(var i=0; i < ProcessList.length; i++) {
+    for (var i=0; i < ProcessList.length; i++) {
       if (ProcessList[i] instanceof SindarinProcess) {
         if (ProcessList[i] === null) continue; //!!!
         ProcessList[i].counter = proc_index;
@@ -195,4 +195,58 @@ function SindarinWriteProcesses () {
     rebuildProcessList();
   }
 
-module.exports = {SindarinWriteProcesses};
+// Generate process list to choose setups from
+function DisplayProcessList(ProcessList) {
+  /*
+   * Constructing integration list
+   */
+  $('#integrate-process-list').empty();
+  for (let i = 0; i < ProcessList.length; i++) {
+    if (ProcessList[i] === null) continue;
+    const ip1 = i + 1;
+    const Name = T(constructTex(ProcessList[i].Name()), ProcessList[i].Name());
+    $('#integrate-process-list').append(
+        '<a href="#" class="list-group-item process-entry" process-id="' + ip1 + '">' +
+        Name + '</a>');
+  }
+
+  /*
+   *  Constructing simulation list
+   */
+  $('#simulate-process-list').empty();
+  for (let i = 0; i < ProcessList.length; i++)
+  {
+    if (ProcessList[i] === null) continue;
+    var CSSClass = SimulateList[i].status ? "label-success": "label-default";
+    var Text = SimulateList[i].status ? "On" : "Off";
+    var Name = T(constructTex(ProcessList[i].Name()), ProcessList[i].Name());
+    $("#simulate-process-list").append('<a href="#" class="list-group-item process-entry-sim" process-id="' + i + '">' +
+        Name + '<br><span id="proc_indicator_'+i+'" class="label '+CSSClass+'">'+ Text +'</span></a>');
+  }
+
+  /*
+   *  Constructing process list for TABS:scan
+   */
+  $("#scan-process-list").empty();
+  for (var i = 0; i < ProcessList.length; i++)
+  {
+    if (ProcessList[i] === null) continue;
+    var CSSClass = ScansList[i].status ? "label-success": "label-default";
+    var Text = ScansList[i].status ? "On" : "Off";
+    var Name = T(constructTex(ProcessList[i].Name()), ProcessList[i].Name());
+    $("#scan-process-list").append('<a href="#" class="list-group-item process-entry-scan" process-id="' + i + '">' +
+        Name + '<br><span id="proc_indicator_scan_'+i+'" class="label '+CSSClass+'">'+Text+'</span></a>');
+  }
+
+  /*
+   * If no process added, suggest adding one
+   */
+  if (ProcessList.filter(function(value) { return value !== null }).length == 0) {
+    $("#simulate-process-list").html("Please add a process.");
+    $("#integrate-process-list").html("Please add a process.");
+    $("#scan-process-list").html("Please add a process.");
+    $(".simulate-right, .integrate-right, .scan-right").hide();
+  }
+}
+
+module.exports = {SindarinWriteProcesses, ProcessList, DisplayProcessList, ExtAssignScans};

@@ -1,45 +1,43 @@
-(function() {
-  'use strict';
-  var express = require('express');
-  var mongo = require('mongodb').MongoClient;
-  var promisify = require('es6-promisify');
-  var log = require('js-logger');
-  var utils = require('./helpers/utils');
-  var guiconf = require('./guiconfig'); // This should parse a settings JSON/YAML
-  var es6Promise = require('es6-promise');
-  var app = express();
-  var mongoPort = 27017;
-  es6Promise.polyfill();  // Remove as soon standard node has it
+const express = require('express');
+// let mongo = require('mongodb').MongoClient;
+// const promisify = require('es6-promisify');
+const log = require('js-logger');
+const utils = require('./utils');
+const guiconf = require('./guiconfig'); // This should parse a settings JSON/YAML
+// const es6Promise = require('es6-promise');
+const app = express();
+// const mongoPort = 27017;
+// es6Promise.polyfill();  // Remove as soon standard node has it
+const startServer = () => {
+  // console.log('MongoDB successfully connected on port: ' + mongoPort);
+  app.set('view engine', 'ejs');
+  app.use('/public', express.static(process.cwd() + '/public'));
+  app.use('/browser', express.static(process.cwd() + '/browser'));
+  app.get('/', (req, res) => {
+    res.render('index');
+  });
 
-  log.useDefaults();
-  log.setLevel(guiconf.logLevel);
+  // app.set('port', guiconf.port);
+  app.listen(guiconf.port, () => {
+    console.log('Listening on port: ' + guiconf.port);
+  });
+};
+log.useDefaults();
+log.setLevel(guiconf.logLevel);
 
-  utils.mkdir(guiconf.whizardOutputDir)
-    .then(function(success) {
-      log.info(success);
-      return utils.mkdir(guiconf.whizardOutputSin);
-    })
-    .then(log.info).catch(log.error);
+utils.mkdir(guiconf.whizardOutputDir)
+  .then((success) => {
+    log.info(success);
+    return utils.mkdir(guiconf.whizardOutputSin);
+  })
+  .then(log.info).catch(log.error);
 
-  var startServer = function(db) {
-    console.log('MongoDB successfully connected on port: ' + mongoPort);
-    app.set('view engine', 'ejs');
-    app.use('/public', express.static(process.cwd() + '/../public'));
-    app.use('/controllers', express.static(process.cwd()));
-    app.get('/', function(req, res) {
-      res.render('index');
-    });
 
-    // app.set('port', guiconf.port);
-    app.listen(guiconf.port, function() {
-      console.log('Listening on port: ' + guiconf.port);
-    });
-  };
-
-  promisify(mongo.connect)('mongodb://localhost:' + mongoPort + '/whizard')
-    .then(function(mongodb) {
-      startServer(mongodb);
-    })
-    .catch(console.log.bind(console));
-})()
-;
+startServer();
+// It is probably better to save the state in a mongo db but it also adds a
+// further dependency. For now disabled
+// promisify(mongo.connect)('mongodb://localhost:' + mongoPort + '/whizard')
+  // .then(function(mongodb) {
+    // startServer(mongodb);
+  // })
+  // .catch(console.log.bind(console));
