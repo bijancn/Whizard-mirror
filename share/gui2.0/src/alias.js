@@ -1,4 +1,4 @@
-// TODO: (bcn 2016-04-01) where is this used? why externalsindarinlist?
+// TODO: (bcn 2016-04-01) why externalsindarinlist?
 let ExternalSindarinList = [];
 
 function SindarinAliasToString() {
@@ -51,4 +51,4 @@ function cleanAlias() {
 }
 
 module.exports = {SindarinAlias, AddAlias, SindarinWriteAliases, cleanAlias,
-  rebuildAliasList};
+  rebuildAliasList, ExternalSindarinList};

@@ -45,7 +45,6 @@ function SindarinWriteAdditionalCode() {
 
 function SindarinAdditionalCode(s) {
   this.as = s;
-  // TODO: (bcn 2016-04-17) this looks wrong. maybe its never called
   this.writeModelData = SindarinWriteAdditionalCode;
 }
 

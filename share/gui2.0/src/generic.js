@@ -20,8 +20,8 @@ Array.prototype.remove = function() {
 // TODO: (bcn 2016-03-25) more standard way to do this?
 function arrayUnique(array) {
   var a = array.concat();
-  for(var i=0; i<a.length; ++i) {
-    for(var j=i+1; j<a.length; ++j) {
+  for (var i=0; i<a.length; ++i) {
+    for (var j=i+1; j<a.length; ++j) {
       if(a[i] === a[j])
         a.splice(j--, 1);
     }
@@ -55,7 +55,7 @@ function parseParticleNameString(str)
     ['w-', '"W-"']
   ];
 
-    for(var n = 0; n < FromTo.length; n++)
+    for (var n = 0; n < FromTo.length; n++)
       str = str.replace(FromTo[n][0], FromTo[n][1]);
 
     return str;

@@ -1,3 +1,5 @@
+import * as process from './process';
+
 function SindarinCutsToString() {
   return 'cuts = ' + this.CutsData;
 }
@@ -18,7 +20,7 @@ function SindarinWriteCuts() {
   }
 }
 
-var cuts = (function() {
+var cutsClass = (function() {
   // private variables
   var Public = {};
   var LastClickedCutName;
@@ -66,10 +68,10 @@ var cuts = (function() {
    * getActiveParticles: Returns array of particles used in GUI
    */
   Public.getActiveParticles = function() {
-    var ParticlesList = [];
+    let ParticlesList = [];
 
     /* Get particles from allias list */
-    for(var i=0; i < ExternalSindarinList.length; i++) {
+    for (let i = 0; i < ExternalSindarinList.length; i++) {
       if (ExternalSindarinList[i] instanceof SindarinAlias) {
         var alias = ExternalSindarinList[i].alias;
         ParticlesList = arrayUnique(ParticlesList.concat(alias.split(':')));
@@ -77,11 +79,11 @@ var cuts = (function() {
     }
 
     /* Construct particle list from process definitions */
-    for(var i = 0; i < ProcessList.length; i++) {
-      if (ProcessList[i] === null) continue; // Check if process was removed
-      var Process = ProcessList[i].incoming + ' ' + ProcessList[i].outgoing;
+    for (var i = 0; i < process.ProcessList.length; i++) {
+      if (process.ProcessList[i] === null) continue; // Check if process was removed
+      var Process = process.ProcessList[i].incoming + ' ' + process.ProcessList[i].outgoing;
       Process = Process.replace(/"/g, "").replace(/'/g, "").replace(/\(|\)/g, "").replace(/,/g, ' ');
-      Process = Process.split(' ').filter(function(n){ return n != "" });
+      Process = Process.split(' ').filter(function(n){ return n != '' });
       ParticlesList = arrayUnique(ParticlesList.concat(Process));
     }
 
@@ -91,32 +93,30 @@ var cuts = (function() {
   /*
    * getCutsArray: Returns array of used cuts in sindarin format
    */
-  Public.getCutsArray = function() {
-
+  Public.getCutsArray = () => {
     var CutsList = [];
 
     $('[rel=cut-elem]').each(function(i, obj) {
-      var cutName = $(this).find(".cut-name").text().replace(/ /g,'');
-      var cutEq = $(this).find(".cut-eq").text().replace(/ /g,'');
-      var cutVal = $(this).find(".cut-val").val();
-      var cutAssignment = $(this).find(".cut-assignment").val();
+      var cutName = $(this).find('.cut-name').text().replace(/ /g,'');
+      var cutEq = $(this).find('.cut-eq').text().replace(/ /g,'');
+      var cutVal = $(this).find('.cut-val').val();
+      var cutAssignment = $(this).find('.cut-assignment').val();
 
       /* Contains an array of individual particles used in Cut */
       if (cutAssignment === undefined) return;
 
-      cutAssignment = cutAssignment.split(' ').remove(" ").remove("");
+      cutAssignment = cutAssignment.split(' ').remove(' ').remove('');
 
       /* Constructing string of form: p1,p2,p3... */
       if(cutAssignment.length && cutVal.length && cutEq.length && cutName.length) {
 
-        var ParticlesString = "";
-        for(var i = 0; i < cutAssignment.length; i++)
+        var ParticlesString = '';
+        for (var i = 0; i < cutAssignment.length; i++)
           ParticlesString += parseParticleName(cutAssignment[i]) + ':';
         ParticlesString = ParticlesString.slice(0, -1);
 
         /* Cut format going into Whizard */
-        CutsList.push("all " + cutName + " " + cutEq + " " + cutVal + " [collect[" + ParticlesString + "]]");
-        //console.log("all " + cutName + " " + cutEq + " " + cutVal + " [collect[" + ParticlesString + "]]");
+        CutsList.push('all ' + cutName + ' ' + cutEq + ' ' + cutVal + ' [collect[' + ParticlesString + ']]');
       }
     });
 
@@ -131,7 +131,7 @@ var cuts = (function() {
     /* Cleaning current list and building new */
     $("#cuts-html-particles-list").html('');
     var particles = cuts.getActiveParticles();
-    for(var i = 0; i < particles.length; i++) {
+    for (var i = 0; i < particles.length; i++) {
       $("#cuts-html-particles-list").append('<li role="presentation"><a href="#" class="cuts-particles-click">' + particles[i] + '</a></li>');
     }
   };
@@ -139,7 +139,7 @@ var cuts = (function() {
   /*
    * Clean: Cleans all cuts data
    */
-  Public.Clean = function() {
+  Public.clean = function() {
     $("#cutsContainer").html("");
   };
 
@@ -155,7 +155,7 @@ var cuts = (function() {
                   </button> \
                   <ul class="dropdown-menu scrollable-menu" role="menu">';
 
-    for(var i = 0; i < CutNames.length; i++)
+    for (var i = 0; i < CutNames.length; i++)
       CutCode += '<li><a href="#" class="cuts-select-name">' + CutNames[i] + '</a></li>';
 
     CutCode += '<li><a href="#" class="cuts-select-delete"><span class="glyphicon glyphicon-remove-sign" aria-hidden="true"></span> Delete</a></li></ul> \
@@ -165,7 +165,7 @@ var cuts = (function() {
                </button> \
                <ul class="dropdown-menu" role="menu">';
 
-    for(var i = 0; i < CutEq.length; i++)
+    for (var i = 0; i < CutEq.length; i++)
       CutCode += '<li><a href="#" class="cuts-select-eq">' + CutEq[i] + '</a></li>';
 
     CutCode += '</ul> \
@@ -258,10 +258,9 @@ function setupDocument() {
   /*
    * Button: Cuts > New Cut
    */
-  $(".cuts-newcut").click(function() {
-    //default
+  $('.cuts-newcut').click(function() {
     cuts.AddNewCut('Pt', '>', '', '');
   });
 }
 
-module.exports = {SindarinWriteCuts};
+module.exports = {SindarinWriteCuts, cutsClass, SindarinCuts};
