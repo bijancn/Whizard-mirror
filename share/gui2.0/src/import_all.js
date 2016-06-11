@@ -1,5 +1,4 @@
 import 'babel-polyfill';
-import './cuts';
 import './bootstrap.min.js';
 import './generic.js';
 import './cuts.js';

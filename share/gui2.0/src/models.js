@@ -8,20 +8,20 @@ function SindarinParameter(name, value) {
   this.toString = SindarinParameterToString;
 }
 
-function SindarinWriteModelData () {
-  for (var i=0; i<this.nElements; i++) {
-    p = this.list[i];
+export function SindarinWriteModelData() {
+  for (let i = 0; i < this.nElements; i++) {
+    const p = this.list[i];
     if (p instanceof SindarinModelData) {
-      this.src += p.model.toString() + "\n";
-      for (var j=0; j<p.parameters.length; j++) {
-        this.src += p.parameters.toString() + "\n";
+      this.src += p.model.toString() + '\n';
+      for (let j = 0; j < p.parameters.length; j++) {
+        this.src += p.parameters.toString() + '\n';
       }
       this.elementsUsed.push(i);
     }
   }
 }
 
-function SindarinModelData(model) {
+export function SindarinModelData(model) {
   this.model = model;
   this.parameters = [];
   this.writeModelData = SindarinWriteModelData;
@@ -31,13 +31,13 @@ function SindarinModelToString() {
   return 'model = ' + this.modelName;
 }
 
-function SindarinModel(name, description) {
+export function SindarinModel(name, description) {
   this.modelName = name;
   this.description = description;
   this.toString = SindarinModelToString;
 }
 
-function fillModelList() {
+export function fillModelList() {
   const modelList = [];
   let modelName;
   let description;
@@ -208,5 +208,3 @@ function fillModelList() {
 
   return modelList;
 }
-
-module.exports = {SindarinWriteModelData, fillModelList, SindarinModelData};

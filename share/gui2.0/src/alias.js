@@ -1,11 +1,11 @@
 // TODO: (bcn 2016-04-01) why externalsindarinlist?
-let ExternalSindarinList = [];
+export let ExternalSindarinList = [];
 
 function SindarinAliasToString() {
   return 'alias ' + this.name + ' = ' + this.alias;
 }
 
-function SindarinAlias(str, alias) {
+export function SindarinAlias(str, alias) {
   this.name = str;
   this.alias = alias;
   this.toString = SindarinAliasToString;
@@ -13,7 +13,7 @@ function SindarinAlias(str, alias) {
 
 /* TODO: (bcn 2016-03-27) it is very unclear what *this* will be for this function */
 // it is not even testable at this level
-function SindarinWriteAliases() {
+export function SindarinWriteAliases() {
   for (let i = 0; i < this.nElements; i++) {
     if (this.list[i] instanceof SindarinAlias) {
       this.src += this.list[i].toString() + '\n';
@@ -22,7 +22,7 @@ function SindarinWriteAliases() {
   }
 }
 
-function rebuildAliasList() {
+export function rebuildAliasList() {
   $('#pop_aliases').empty();
   $('#pop_aliases').append('<div class="row">');
   for (let i = 0; i < ExternalSindarinList.length; i++) {
@@ -40,15 +40,12 @@ function rebuildAliasList() {
 
 // TODO: (bcn 2016-04-16) why is this capitalized? does it build a class?
 // Add new alias, useful with examples
-function AddAlias(name, str) {
+export function AddAlias(name, str) {
   ExternalSindarinList.push(new SindarinAlias(name, str));
   rebuildAliasList();
 }
 
-function cleanAlias() {
+export function cleanAlias() {
   ExternalSindarinList = [];
   rebuildAliasList();
 }
-
-module.exports = {SindarinAlias, AddAlias, SindarinWriteAliases, cleanAlias,
-  rebuildAliasList, ExternalSindarinList};
