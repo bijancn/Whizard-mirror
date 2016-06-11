@@ -232,7 +232,7 @@ CASCADE_TESTS = \
 	jjj-notgc.cascade \
 	vbf-noh.cascade
 
-cascade: cascade_driver.sh Makefile
+cascade: cascade_driver.sh Makefile $(OMEGA_SM_CACHE)
 	$(SED) -e 's|%%cascade_tests%%|$(CASCADE_TESTS)|' \
 	  -e 's|%%srcdir%%|$(srcdir)|' \
 	  -e 's|%%SED%%|$(SED)|' \
