@@ -30,10 +30,11 @@ function rebuildVariables() {
 
 
   const NewLineStarter = '\n\t and ';
-  if (cuts.Instance.length > 0) {
+  const cutsList = cuts.cutsClosure.getCutsArray();
+  if (cutsList.length > 0) {
     let CutsRHS = '';
     for (let i = 0; i < cuts.Instance.length; i++) {
-      CutsRHS += cuts.Instance[i] + NewLineStarter;
+      CutsRHS += cutsList[i] + NewLineStarter;
     }
     CutsRHS = CutsRHS.substring(0, CutsRHS.length - NewLineStarter.length);
 
@@ -55,10 +56,10 @@ function cleanAll() {
   $('input[type="text"]').val('');
   $('#conf-additional').val('');
   alias.cleanAlias();
-  cuts.Instance.clean();
+  cuts.cutsClosure.clean();
   Scan.Clean();
   process.ProcessList = [];
-  SimulateList = [];
+  simulate.SimulateList = [];
   ScansList = [];
 }
 

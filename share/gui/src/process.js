@@ -1,11 +1,130 @@
-export var ProcessList = [];
+const simulation = require('./tabs.simulate');
+const generic = require('./generic');
+const scans = require('./tabs.scan');
+export let ProcessList = [];
+
+
+function SimulationData() {
+  this.nEvents = 0;
+}
+
+
+function IntegrationData() {
+  this.nlo = false;
+  // Default values, should be set in a file
+  this.sqrts = 0;
+  this.nCalls = 10000;
+  this.nIter = 5;
+}
+
+
+function ScanData() {
+  this.Sets = [];
+  this.type;
+  this.title;
+  this.xlabel;
+  this.ylabel;
+  this.xmin;
+  this.xmax;
+}
+
+
+function SindarinProcessIsNlo() {
+  return this.integrationData.nlo;
+}
+
+
+function SindarinProcessSetNlo(value) {
+  this.integrationData.nlo = value;
+}
+
+
+function SindarinProcessGetSqrts() {
+  return this.integrationData.sqrts;
+}
+
+
+function SindarinProcessSetSqrts(sqrts) {
+  this.integrationData.sqrts = sqrts;
+}
+
+
+function SindarinProcessGetNIter() {
+  return this.integrationData.nIter;
+}
+
+
+function SindarinProcessSetNIter(nIt) {
+  this.integrationData.nIter = nIt;
+}
+
+
+function SindarinProcessGetNCalls() {
+  return this.integrationData.nCalls;
+}
+
+
+function SindarinProcessSetNCalls(nCalls) {
+  this.integrationData.nCalls = nCalls;
+}
+
+
+function SindarinProcessSetNEvents(nEv) {
+  this.simulationData.nEvents = nEv;
+}
+
+
+function SindarinProcessGetNEvents() {
+  return this.simulationData.nEvents;
+}
+
+
+export function ExtAssignScans() {
+  for (let i = 0; i < ProcessList.length; i++) {
+    ProcessList[i].grabScanData(i);
+  }
+}
+
+
+function SindarinProcessToString() {
+  try {
+    if (this.counter <= 0) {
+      throw new Error('Invalid process counter');
+    }
+    let str = 'process proc_' + this.counter + ' = '
+      + this.incoming + ' => ' + this.outgoing;
+    if (this.isNlo()) {
+      str += " {nlo_calculation = 'Full'}";
+    }
+    return str;
+  } catch (err) {
+    console.log(err);
+  }
+}
+
+
+function ProcessDisplayName() {
+  return 'proc_' + this.counter + ' = ' + this.incoming + ' => ' + this.outgoing;
+}
+
+
+function grabScanData(processID) {
+  this.ScanData.Sets = scans.ScansList[processID].ScansContainer;
+  this.ScanData.type = scans.ScansList[processID].type;
+  this.ScanData.title = scans.ScansList[processID].title;
+  this.ScanData.xlabel = scans.ScansList[processID].xlabel;
+  this.ScanData.ylabel = scans.ScansList[processID].ylabel;
+  this.ScanData.xmin = scans.ScansList[processID].xmin;
+  this.ScanData.xmax = scans.ScansList[processID].xmax;
+}
+
 
 function SindarinProcess(incoming, outgoing) {
   this.counter = 0;
   this.incoming = incoming;
   this.outgoing = outgoing;
-  this.integrationData = new integrationData ();
-  this.simulationData = new SimulationData ();
+  this.integrationData = new IntegrationData();
+  this.simulationData = new SimulationData();
   this.ScanData = new ScanData();
   this.isNlo = SindarinProcessIsNlo;
   this.setNlo = SindarinProcessSetNlo;
@@ -18,185 +137,82 @@ function SindarinProcess(incoming, outgoing) {
   this.getNEvents = SindarinProcessGetNEvents;
   this.setNEvents = SindarinProcessSetNEvents;
   this.toString = SindarinProcessToString;
-  this.Name = ProcessDisplayName;
+  this.name = ProcessDisplayName;
   this.grabScanData = grabScanData;
 }
 
-export function ExtAssignScans() {
-  for (var i = 0; i < ProcessList.length; i++) {
-    ProcessList[i].grabScanData(i);
-  }
-}
 
-function SindarinProcessIsNlo () {
-  return this.integrationData.nlo;
-}
-
-function SindarinProcessSetNlo (value) {
-  this.integrationData.nlo = value;
-}
-
-function SindarinProcessGetSqrts () {
-  return this.integrationData.sqrts;
-}
-
-function SindarinProcessSetSqrts (sqrts) {
-  this.integrationData.sqrts = sqrts;
-}
-
-function SindarinProcessGetNIter () {
-  return this.integrationData.nIter;
-}
-
-function SindarinProcessSetNIter (nIt) {
-  this.integrationData.nIter = nIt;
-}
-
-function SindarinProcessGetNCalls () {
-  return this.integrationData.nCalls;
-}
-
-function SindarinProcessSetNCalls (nCalls) {
-  this.integrationData.nCalls = nCalls;
-}
-
-function SindarinProcessGetNEvents () {
-  return this.simulationData.nEvents;
-}
-
-function SindarinProcessSetNEvents (nEv) {
-  this.simulationData.nEvents = nEv;
-}
-
-function SindarinProcessToString () {
-  try {
-    if (this.counter <= 0) throw "Invalid process counter";
-    var str = "process proc_" + this.counter + " = " + this.incoming + " => " + this.outgoing;
-    if (this.isNlo()) str += ' {nlo_calculation = "Full"}';
-    return str;
-  }
-  catch (err) {
-    console.log (err)
-  }
-}
-
-function ProcessDisplayName() {
-  return 'proc_' + this.counter + ' = ' + this.incoming + " => " + this.outgoing;
-}
-
-function integrationData () {
-  this.nlo = false;
-  //Default values, should be set in a file
-  this.sqrts = 0;
-  this.nCalls = 10000;
-  this.nIter = 5;
-}
-
-// TODO: (bcn 2016-01-24) WTF is this shit?
-function ScanData() {
-  this.Sets = [];
-  this.type;
-  this.title;
-  this.xlabel;
-  this.ylabel;
-  this.xmin;
-  this.xmax;
-}
-
-function grabScanData(processID) {
-  this.ScanData.Sets = ScansList[processID].ScansContainer;
-  this.ScanData.type = ScansList[processID].type;
-  this.ScanData.title = ScansList[processID].title;
-  this.ScanData.xlabel = ScansList[processID].xlabel;
-  this.ScanData.ylabel = ScansList[processID].ylabel;
-  this.ScanData.xmin = ScansList[processID].xmin;
-  this.ScanData.xmax = ScansList[processID].xmax;
-}
-
-function SimulationData () {
-  this.nEvents = 0;
-}
-
-
-export function SindarinWriteProcesses () {
-  for (var i=0; i<this.nElements; i++) {
-    p = this.list[i];
+export function SindarinWriteProcesses() {
+  for (let i = 0; i < this.nElements; i++) {
+    const p = this.list[i];
     if (p instanceof SindarinProcess) {
-      this.src += this.list[i].toString() + "\n";
-
-      //If scans defined overwrite
+      this.src += this.list[i].toString() + '\n';
+      // If scans defined overwrite
       if (p.ScanData.Sets.length > 0) {
-        console.log(p.ScanData.Sets.length);
         this.src += '#Plot data' + '\n';
-        this.src += '$x_label = "'+p.ScanData.xlabel+'"' + '\n';
-        this.src += '$y_label = "'+p.ScanData.ylabel+'"' + '\n';
-        this.src += '$title = "'+p.ScanData.title+'"' + '\n';
-        this.src += 'plot lineshape_' + i + ' { x_min = ' +p.ScanData.xmin + ' x_max = ' + p.ScanData.xmax + ' }' + '\n';
-
+        this.src += '$x_label = "' + p.ScanData.xlabel + '"' + '\n';
+        this.src += '$y_label = "' + p.ScanData.ylabel + '"' + '\n';
+        this.src += '$title = "' + p.ScanData.title + '"' + '\n';
+        this.src += 'plot lineshape_' + i + ' { x_min = ' +
+          p.ScanData.xmin + ' x_max = ' + p.ScanData.xmax + ' }' + '\n';
         this.src += 'scan sqrts = (';
-            for (var j = 0; j < p.ScanData.Sets.length; j++) {
-              var e = p.ScanData.Sets[j];
-              this.src += '('+e.min+' => '+e.max+' /+ '+e.inc+'),';
-            }
-
-            //@.@
-            this.src = this.src.substring(0, this.src.length -1);
-
-            this.src += ') {' + '\n';
-              this.src += '\tintegrate (proc_'+p.counter+') { iterations = 2:1000:"gw", 1:2000 }' + '\n';
-              this.src += 'record lineshape_' + i + '(sqrts, integral (proc_'+i+') / 1000)' + '\n';
-              this.src += '}' + '\n';
-              this.src += 'compile_analysis '; //{ $out_file = "AUG.dat" }
-            } else {
-              this.src += "sqrts = " + this.list[i].getSqrts() + "\n";
-              if (p.getNCalls() > 0 && p.getNIter() > 0) {
-                this.src += 'integrate(proc_' + p.counter
-                    + ') {iterations=' + p.getNIter() + ':'
-                      + p.getNCalls() + ':"gw"}\n';
-              }
-            }
-            if (p.getNEvents() > 0) {
-              this.src += 'simulate(proc_' + p.counter +
-                  ') {n_events=' + p.getNEvents() + '}\n';
-            }
-            this.elementsUsed.push(i);
+        for (let j = 0; j < p.ScanData.Sets.length; j++) {
+          const e = p.ScanData.Sets[j];
+          this.src += '(' + e.min + ' => ' + e.max + ' /+ ' + e.inc + '),';
+        }
+        this.src = this.src.substring(0, this.src.length - 1);
+        this.src += ') {' + '\n';
+        this.src += '\tintegrate (proc_' + p.counter +
+            ') { iterations = 2:1000:"gw", 1:2000 }' + '\n';
+        this.src += 'record lineshape_' + i +
+          '(sqrts, integral (proc_' + i + ') / 1000)' + '\n';
+        this.src += '}\ncompile_analysis ';
+      } else {
+        this.src += 'sqrts = ' + this.list[i].getSqrts() + '\n';
+        if (p.getNCalls() > 0 && p.getNIter() > 0) {
+          this.src += 'integrate(proc_' + p.counter + ') {iterations=' +
+            p.getNIter() + ':' + p.getNCalls() + ':"gw"}\n';
+        }
       }
-  }
-  console.log(this.src);
-}
-
-  function rebuildProcessList() {
-    $("#pop_process").empty();
-    $("#pop_process").append('<div class="row">');
-    proc_index = 1;
-    for (var i=0; i < ProcessList.length; i++) {
-      if (ProcessList[i] instanceof SindarinProcess) {
-        if (ProcessList[i] === null) continue; //!!!
-        ProcessList[i].counter = proc_index;
-        proc_index++;
-        $("#pop_process").append('<div class="col-md-10"><a href="javascript:;" class="process">' + ProcessList[i].Name() + '</a></div><div class="col-md-2"><a href="javascript:;" class="process-remove" process-id=' + i + '><span class="glyphicon glyphicon-remove-sign" aria-hidden="true"></span></a></div>');
+      if (p.getNEvents() > 0) {
+        this.src += 'simulate(proc_' + p.counter +
+            ') {n_events=' + p.getNEvents() + '}\n';
       }
-      $("#pop_process").append('</div>');
+      this.elementsUsed.push(i);
     }
   }
+}
 
-  /*
-   * Add new process, useful with examples
-   */
-  function AddProcess(incoming, outgoing) {
-    ProcessList.push (new SindarinProcess(incoming, outgoing));
-    AddSimulation();
-    Scan.AddProcess();
-    rebuildProcessList();
+function rebuildProcessList() {
+  $('#pop_process').empty();
+  $('#pop_process').append('<div class="row">');
+  let procIndex = 1;
+  for (let i = 0; i < ProcessList.length; i++) {
+    if (ProcessList[i] instanceof SindarinProcess) {
+      if (ProcessList[i] === null) continue; // !!! // ???
+      ProcessList[i].counter = procIndex;
+      procIndex++;
+      $('#pop_process').append(
+          '<div class="col-md-10"><a href="javascript:;" class="process">' +
+          ProcessList[i].name() + '</a></div><div class="col-md-2">' +
+          '<a href="javascript:;" class="process-remove" process-id=' + i +
+          '><span class="glyphicon glyphicon-remove-sign" aria-hidden="true">' +
+          '</span></a></div>');
+    }
+    $('#pop_process').append('</div>');
   }
+}
 
-  function CleanProcess() {
-    ProcessList = [];
-    rebuildProcessList();
-  }
+// Add a new process
+export function AddProcess(incoming, outgoing) {
+  ProcessList.push(new SindarinProcess(incoming, outgoing));
+  simulation.addSimulation();
+  scans.Scan.newProcess();
+  rebuildProcessList();
+}
 
 // Generate process list to choose setups from
-export function DisplayProcessList(ProcessList) {
+export function displayProcessList() {
   /*
    * Constructing integration list
    */
@@ -204,47 +220,45 @@ export function DisplayProcessList(ProcessList) {
   for (let i = 0; i < ProcessList.length; i++) {
     if (ProcessList[i] === null) continue;
     const ip1 = i + 1;
-    const Name = T(constructTex(ProcessList[i].Name()), ProcessList[i].Name());
+    const name = T(generic.constructTex(ProcessList[i].name()), ProcessList[i].name());
     $('#integrate-process-list').append(
         '<a href="#" class="list-group-item process-entry" process-id="' + ip1 + '">' +
-        Name + '</a>');
+        name + '</a>');
   }
 
   /*
    *  Constructing simulation list
    */
   $('#simulate-process-list').empty();
-  for (let i = 0; i < ProcessList.length; i++)
-  {
+  for (let i = 0; i < ProcessList.length; i++) {
     if (ProcessList[i] === null) continue;
-    var CSSClass = SimulateList[i].status ? "label-success": "label-default";
-    var Text = SimulateList[i].status ? "On" : "Off";
-    var Name = T(constructTex(ProcessList[i].Name()), ProcessList[i].Name());
-    $("#simulate-process-list").append('<a href="#" class="list-group-item process-entry-sim" process-id="' + i + '">' +
-        Name + '<br><span id="proc_indicator_'+i+'" class="label '+CSSClass+'">'+ Text +'</span></a>');
+    const CSSClass = simulation.SimulateList[i].status ? 'label-success' : 'label-default';
+    const Text = simulation.SimulateList[i].status ? 'On' : 'Off';
+    const name = T(generic.constructTex(ProcessList[i].name()), ProcessList[i].name());
+    $('#simulate-process-list').append(
+        '<a href="#" class="list-group-item process-entry-sim" process-id="' +
+        i + '">' + name + '<br><span id="proc_indicator_' + i +
+        '" class="label ' + CSSClass + '">' + Text + '</span></a>');
   }
 
-  /*
-   *  Constructing process list for TABS:scan
-   */
-  $("#scan-process-list").empty();
-  for (var i = 0; i < ProcessList.length; i++)
-  {
+  // Constructing process list for TABS:scan
+  $('#scan-process-list').empty();
+  for (let i = 0; i < ProcessList.length; i++) {
     if (ProcessList[i] === null) continue;
-    var CSSClass = ScansList[i].status ? "label-success": "label-default";
-    var Text = ScansList[i].status ? "On" : "Off";
-    var Name = T(constructTex(ProcessList[i].Name()), ProcessList[i].Name());
-    $("#scan-process-list").append('<a href="#" class="list-group-item process-entry-scan" process-id="' + i + '">' +
-        Name + '<br><span id="proc_indicator_scan_'+i+'" class="label '+CSSClass+'">'+Text+'</span></a>');
+    const CSSClass = scans.ScansList[i].status ? 'label-success' : 'label-default';
+    const Text = scans.ScansList[i].status ? 'On' : 'Off';
+    const name = T(generic.constructTex(ProcessList[i].name()), ProcessList[i].name());
+    $('#scan-process-list').append(
+        '<a href="#" class="list-group-item process-entry-scan" process-id="' +
+        i + '">' + name + '<br><span id="proc_indicator_scan_' + i +
+        '" class="label ' + CSSClass + '">' + Text + '</span></a>');
   }
 
-  /*
-   * If no process added, suggest adding one
-   */
-  if (ProcessList.filter(function(value) { return value !== null }).length == 0) {
-    $("#simulate-process-list").html("Please add a process.");
-    $("#integrate-process-list").html("Please add a process.");
-    $("#scan-process-list").html("Please add a process.");
-    $(".simulate-right, .integrate-right, .scan-right").hide();
+  // If no process added, suggest adding one
+  if (ProcessList.filter((value) => value !== null).length === 0) {
+    $('#simulate-process-list').html('Please add a process.');
+    $('#integrate-process-list').html('Please add a process.');
+    $('#scan-process-list').html('Please add a process.');
+    $('.simulate-right, .integrate-right, .scan-right').hide();
   }
 }

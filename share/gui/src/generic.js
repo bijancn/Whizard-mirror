@@ -45,21 +45,20 @@ export function parseParticleName(name) {
 }
 
 // TODO: (bcn 2016-03-25) not even remotely generic
-function parseParticleNameString(str)
-{
-  var FromTo = [
+export function parseParticleNameString(str) {
+  const FromTo = [
     ['e+', '"e+"'],
     ['e-', '"e-"'],
     ['W+', '"W+"'],
     ['W-', '"W-"'],
     ['w+', '"W+"'],
-    ['w-', '"W-"']
+    ['w-', '"W-"'],
   ];
-
-    for (var n = 0; n < FromTo.length; n++)
-      str = str.replace(FromTo[n][0], FromTo[n][1]);
-
-    return str;
+  let newStr = str;
+  for (let n = 0; n < FromTo.length; n++) {
+    newStr = newStr.replace(FromTo[n][0], FromTo[n][1]);
+  }
+  return newStr;
 }
 
 /*
