@@ -1,6 +1,7 @@
 // This was just lying around in index.ejs
 // TODO: (bcn 2016-06-11) Disect and put in proper modules
 
+const generic = require('./generic');
 const models = require('./models');
 const alias = require('./alias');
 const backend = require('./backend');
@@ -35,7 +36,6 @@ function RebuildPreviewTab() {
 
 // Contains sindarin script
 var SindarinScript = '';
-var activeProcessId = -1;
 var WhizRunning = false;
 
 
@@ -77,8 +77,8 @@ $(document).ready(function() {
   $('#button-add-process').click(function() {
     /* Checking if process input non empty */
     if ($('#conf-process-in').val() && $('#conf-process-out').val()) {
-      AddProcess(parseParticleNameString($('#conf-process-in').val()),
-        parseParticleNameString($('#conf-process-out').val()));
+      process.AddProcess(generic.parseParticleNameString($('#conf-process-in').val()),
+        generic.parseParticleNameString($('#conf-process-out').val()));
 
 
       MessageGUI('New process is added.', 'alert-success');
@@ -105,7 +105,7 @@ $(document).ready(function() {
     process.ProcessList.splice(id, 1); // No longer keeping nulls in the array
     rebuildProcessList();
 
-    removeSimulateElement(id);
+    simulate.removeSimulateElement(id);
   });
 
   /*
@@ -123,11 +123,11 @@ $(document).ready(function() {
 
   $('#conf-int-nlo').change(function() {
     try {
-      if (activeProcessId < 0) throw ('Please select a process');
+      if (simulate.activeProcessId < 0) throw ('Please select a process');
       if ($(this).prop('checked')) {
-        process.ProcessList[activeProcessId].setNlo (true);
+        process.ProcessList[simulate.activeProcessId].setNlo (true);
       } else {
-        process.ProcessList[activeProcessId].setNlo (false);
+        process.ProcessList[simulate.activeProcessId].setNlo (false);
       }
     } catch (err) {
       MessageGUI(err, 'alert-danger');
@@ -136,8 +136,8 @@ $(document).ready(function() {
 
   $('#conf-int-sqrts').change(function() {
     try {
-      if (activeProcessId < 0) throw ('Please select a process');
-      process.ProcessList[activeProcessId].setSqrts ($(this).val());
+      if (simulate.activeProcessId < 0) throw ('Please select a process');
+      process.ProcessList[simulate.activeProcessId].setSqrts ($(this).val());
     } catch (err) {
       MessageGUI(err, 'alert-danger');
     }
@@ -145,8 +145,8 @@ $(document).ready(function() {
 
   $('#conf-int-itt').change(function() {
     try {
-      if (activeProcessId < 0) throw ('Please select a process');
-      process.ProcessList[activeProcessId].setNIter ($(this).val());
+      if (simulate.activeProcessId < 0) throw ('Please select a process');
+      process.ProcessList[simulate.activeProcessId].setNIter ($(this).val());
     } catch (err) {
       MessageGUI(err, 'alert-danger');
     }
@@ -154,8 +154,8 @@ $(document).ready(function() {
 
   $('#conf-int-cpi').change(function() {
     try {
-      if (activeProcessId < 0) throw ('Please select a process');
-      process.ProcessList[activeProcessId].setNCalls ($(this).val());
+      if (simulate.activeProcessId < 0) throw ('Please select a process');
+      process.ProcessList[simulate.activeProcessId].setNCalls ($(this).val());
     } catch (err) {
       MessageGUI(err, 'alert-danger');
     }
@@ -163,8 +163,8 @@ $(document).ready(function() {
 
 
   $(document).on('click', '.process-entry', function () {
-    activeProcessId = $(this).attr('process-id') - 1;
-    p = process.ProcessList[activeProcessId];
+    simulate.activeProcessId = $(this).attr('process-id') - 1;
+    p = process.ProcessList[simulate.activeProcessId];
     if (!p.isNlo ()) {
       $('#conf-int-nlo').prop('checked', false);
     } else {
@@ -178,8 +178,8 @@ $(document).ready(function() {
   });
 
   $(document).on('click', '.process-entry-sim', function () {
-    activeProcessId = $(this).attr('process-id');
-    p = simulate.SimulateList[activeProcessId];
+    simulate.activeProcessId = $(this).attr('process-id');
+    p = simulate.SimulateList[simulate.activeProcessId];
 
     //Fill simulate fields
     $('#conf-sim-sim').prop('checked', p.getStatus());
@@ -214,8 +214,8 @@ $(document).ready(function() {
   /*
    *  Changing tab, rebuild process list
    */
-  $('#tab_button_integrate, #tab_button_simulate, #tab_button_scan').click(function() {
-    process.DisplayProcessList (process.ProcessList);
+  $('#tab_button_integrate, #tab_button_simulate, #tab_button_scan').click(() => {
+    process.displayProcessList();
   });
 
   /*

@@ -22,7 +22,7 @@ export function SindarinWriteCuts() {
   }
 }
 
-export var cutsClosure = (function () {
+export const cutsClosure = (() => {
   let LastClickedCutName;
   let LastClickedCutEq;
   let ActiveInputParticleElement = null;
@@ -30,36 +30,23 @@ export var cutsClosure = (function () {
   const CutEq = ['>', '<'];
 
   const Public = {};
-  // ActiveInputElement (particles in cuts) // ?
+  // LastActiveInputElement (particles in cuts)
   Public.setLastActiveInputElement = (element) => {
     ActiveInputParticleElement = element;
   };
+  Public.getLastActiveInputElement = () => ActiveInputParticleElement;
 
-  Public.getLastActiveInputElement = function() {
-    return ActiveInputParticleElement;
-  };
-
-  /*
-   * LastClickedCutName (name of cut)
-   */
+  // LastClickedCutName (name of cut)
   Public.setLastClickedCutName = (element) => {
     LastClickedCutName = element;
   };
+  Public.getLastClickedCutName = () => LastClickedCutName;
 
-  Public.getLastClickedCutName = function() {
-    return LastClickedCutName;
-  };
-
-  /*
-   * LastClickedCutEq (inequality in cut)
-   */
+  // LastClickedCutEq (inequality in cut)
   Public.setLastClickedCutEq = (element) => {
     LastClickedCutEq = element;
   };
-
-  Public.getLastClickedCutEq = function() {
-    return LastClickedCutEq;
-  };
+  Public.getLastClickedCutEq = () => LastClickedCutEq;
 
   // Returns array of particles used in GUI
   Public.getActiveParticles = () => {
@@ -80,36 +67,32 @@ export var cutsClosure = (function () {
         process.ProcessList[i].outgoing;
       Process = Process.replace(/"/g, '').replace(/'/g, '')
         .replace(/\(|\)/g, '').replace(/,/g, ' ');
-      Process = Process.split(' ').filter(function(n){ return n != '' });
+      Process = Process.split(' ').filter((n) => n !== '');
       ParticlesList = generic.arrayUnique(ParticlesList.concat(Process));
     }
 
     return ParticlesList;
   };
 
-  /*
-   * getCutsArray: Returns array of used cuts in sindarin format
-   */
+  // getCutsArray: Returns array of used cuts in sindarin format
   Public.getCutsArray = () => {
-    var CutsList = [];
+    const CutsList = [];
+    $('[rel=cut-elem]').each((i, obj) => {
+      const cutName = $(this).find('.cut-name').text().replace(/ /g, '');
+      const cutEq = $(this).find('.cut-eq').text().replace(/ /g, '');
+      const cutVal = $(this).find('.cut-val').val();
 
-    $('[rel=cut-elem]').each(function(i, obj) {
-      var cutName = $(this).find('.cut-name').text().replace(/ /g,'');
-      var cutEq = $(this).find('.cut-eq').text().replace(/ /g,'');
-      var cutVal = $(this).find('.cut-val').val();
-      var cutAssignment = $(this).find('.cut-assignment').val();
-
-      /* Contains an array of individual particles used in Cut */
+      let cutAssignment = $(this).find('.cut-assignment').val();
+      // Contains an array of individual particles used in cut
       if (cutAssignment === undefined) return;
 
       cutAssignment = cutAssignment.split(' ').remove(' ').remove('');
-
       // Constructing string of form: p1,p2,p3...
       if (cutAssignment.length && cutVal.length &&
           cutEq.length && cutName.length) {
         let ParticlesString = '';
-        for (let i = 0; i < cutAssignment.length; i++) {
-          ParticlesString += generic.parseParticleName(cutAssignment[i]) + ':';
+        for (let j = 0; j < cutAssignment.length; j++) {
+          ParticlesString += generic.parseParticleName(cutAssignment[j]) + ':';
         }
         ParticlesString = ParticlesString.slice(0, -1);
 
@@ -122,72 +105,69 @@ export var cutsClosure = (function () {
     return CutsList;
   };
 
-  /*
-   * RebuildParticlesHTML: Rebuilds particles list html code in Cuts tab
-   */
+  // RebuildParticlesHTML: Rebuilds particles list html code in cuts tab
   Public.RebuildParticlesHTML = () => {
     /* Cleaning current list and building new */
     $('#cuts-html-particles-list').html('');
-    var particles = cuts.getActiveParticles();
-    for (var i = 0; i < particles.length; i++) {
-      $('#cuts-html-particles-list').append('<li role="presentation"><a href="#" class="cuts-particles-click">' + particles[i] + '</a></li>');
+    const particles = Public.getActiveParticles();
+    for (let i = 0; i < particles.length; i++) {
+      $('#cuts-html-particles-list').append('<li role="presentation">' +
+          '<a href="#" class="cuts-particles-click">' +
+          particles[i] + '</a></li>');
     }
   };
 
-  // Cleans all cuts data
-  Public.clean = function() {
+  // Cleans all cuts data in html
+  Public.clean = () => {
     $('#cutsContainer').html('');
   };
 
-  Public.AddNewCut = function(name, eq, cutValue, cutAssignment) {
-    $('#cutsContainer').append(Public.getCutHTML(name, eq, cutValue, cutAssignment));
+  Public.AddNewCut = (name, eq, cutValue, cutAssignment) => {
+    $('#cutsContainer').append(
+        Public.getCutHTML(name, eq, cutValue, cutAssignment));
   };
 
-  Public.getCutHTML = function(name, eq, cutValue, cutAssignment) {
-    var CutCode = '<div class="row" rel="cut-elem"> \
-                  <div class="col-md-12"> \
-                  <div class="btn-group"> \
-                  <button type="button" class="btn btn-default dropdown-toggle cut-name" data-toggle="dropdown"> ' + name + ' <span class="caret"></span> \
-                  </button> \
-                  <ul class="dropdown-menu scrollable-menu" role="menu">';
+  Public.getCutHTML = (name, eq, cutValue, cutAssignment) => {
+    let CutCode = '<div class="row" rel="cut-elem"> ' +
+                  '<div class="col-md-12">' +
+                  '<div class="btn-group">' +
+                  '<button type="button" class=' +
+                  '"btn btn-default dropdown-toggle cut-name" ' +
+                  'data-toggle="dropdown"> ' + name +
+                  ' <span class="caret"></span> </button> ' +
+                  '<ul class="dropdown-menu scrollable-menu" role="menu">';
 
-    for (var i = 0; i < CutNames.length; i++)
-      CutCode += '<li><a href="#" class="cuts-select-name">' + CutNames[i] + '</a></li>';
+    for (let i = 0; i < CutNames.length; i++) {
+      CutCode += '<li><a href="#" class="cuts-select-name">' +
+        CutNames[i] + '</a></li>';
+    }
 
-    CutCode += '<li><a href="#" class="cuts-select-delete"><span class="glyphicon glyphicon-remove-sign" aria-hidden="true"></span> Delete</a></li></ul> \
-               </div> \
-               <div class="btn-group"> \
-               <button type="button" class="btn btn-default dropdown-toggle cut-eq" data-toggle="dropdown">' + eq + ' <span class="caret"></span> \
-               </button> \
-               <ul class="dropdown-menu" role="menu">';
+    CutCode += '<li><a href="#" class="cuts-select-delete">' +
+      '<span class="glyphicon glyphicon-remove-sign" aria-hidden="true">' +
+      '</span> Delete</a></li></ul></div><div class="btn-group">' +
+      '<button type="button" class="btn btn-default dropdown-toggle cut-eq"' +
+      'data-toggle="dropdown">' + eq + ' <span class="caret"></span>' +
+      '</button><ul class="dropdown-menu" role="menu">';
 
-    for (var i = 0; i < CutEq.length; i++)
-      CutCode += '<li><a href="#" class="cuts-select-eq">' + CutEq[i] + '</a></li>';
+    for (let i = 0; i < CutEq.length; i++) {
+      CutCode += '<li><a href="#" class="cuts-select-eq">' +
+        CutEq[i] + '</a></li>';
+    }
 
-    CutCode += '</ul> \
-               </div> \
-               \
-               <div class="btn-group"> \
-               <input type="text" class="form-control cut-val" placeholder="500 GeV" value="' + cutValue + '"> \
-               </div> \
-               \
-               <div class="btn-group pull-right"> \
-               <form class="form-inline"> \
-               <div class="form-group"> \
-               <label for="exampleInputName2">Union:</label> \
-               <input type="text" rel="" class="form-control cuts-particles-active cut-assignment" value="' + cutAssignment + '"> \
-               </div> \
-               </form> \
-               </div> \
-               </div> \
-               </div>';
+    CutCode += '</ul> </div> <div class="btn-group">' +
+      '<input type="text" class="form-control cut-val"' +
+      'placeholder="500 GeV" value="' + cutValue + '"> </div>' +
+      '<div class="btn-group pull-right"> <form class="form-inline">' +
+      '<div class="form-group"><label for="exampleInputName2">Union:</label>' +
+      '<input type="text" rel="" class="form-control cuts-particles-active ' +
+      'cut-assignment" value="' + cutAssignment + '">' +
+      '</div> </form> </div> </div> </div>';
 
     return CutCode;
   };
 
-  //Return just the public parts
   return Public;
-}());
+})();
 
 
 // TODO: (bcn 2016-04-17) these statements used to be directly called in cuts.js
@@ -258,5 +238,3 @@ function setupDocument() {
     cuts.AddNewCut('Pt', '>', '', '');
   });
 }
-
-export const Instance = cutsClosure.getCutsArray();
