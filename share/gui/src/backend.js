@@ -18,18 +18,15 @@ export function rebuildVariables() {
     SindarinList.push(AdditionalCode);
   }
 
-  /* Only use the field if process list is empty */
-
+  // Only use the field if process list is empty
   for (let i = 0; i < process.ProcessList.length; i++) {
     if (process.ProcessList[i] !== null) SindarinList.push(process.ProcessList[i]);
   }
-
 
   if ($('#conf-beams').val()) {
     SindarinList.push(new constructSindarin.SindarinAssignment('beams',
           $('#conf-beams').val() + ' => ' + $('#conf-pdf').text()));
   }
-
 
   const NewLineStarter = '\n\t and ';
   const cutsList = cuts.cutsClosure.getCutsArray();
@@ -39,7 +36,6 @@ export function rebuildVariables() {
       CutsRHS += cutsList[i] + NewLineStarter;
     }
     CutsRHS = CutsRHS.substring(0, CutsRHS.length - NewLineStarter.length);
-
     SindarinList.push(new cuts.SindarinCuts(CutsRHS));
   }
 
@@ -74,4 +70,10 @@ export function messageGUI(str, style) {
       'data-dismiss="alert" aria-label="Close">' +
       '<span aria-hidden="true">&times;</span></button><p id="gui-message">' +
       str + '</p></div>');
+}
+
+
+export function rebuildPreviewTab() {
+  const SindarinScript = rebuildVariables();
+  $('#preview').html('<pre>' + SindarinScript + '</pre>');
 }

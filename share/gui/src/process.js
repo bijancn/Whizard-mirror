@@ -221,7 +221,7 @@ export function displayProcessList() {
   for (let i = 0; i < ProcessList.length; i++) {
     if (ProcessList[i] === null) continue;
     const ip1 = i + 1;
-    const name = T(generic.constructTex(ProcessList[i].name()), ProcessList[i].name());
+    const name = generic.texImageOrPlain(ProcessList[i].name());
     $('#integrate-process-list').append(
         '<a href="#" class="list-group-item process-entry" process-id="' + ip1 + '">' +
         name + '</a>');
@@ -235,7 +235,7 @@ export function displayProcessList() {
     if (ProcessList[i] === null) continue;
     const CSSClass = simulation.SimulateList[i].status ? 'label-success' : 'label-default';
     const Text = simulation.SimulateList[i].status ? 'On' : 'Off';
-    const name = T(generic.constructTex(ProcessList[i].name()), ProcessList[i].name());
+    const name = generic.texImageOrPlain(ProcessList[i].name());
     $('#simulate-process-list').append(
         '<a href="#" class="list-group-item process-entry-sim" process-id="' +
         i + '">' + name + '<br><span id="proc_indicator_' + i +
@@ -248,7 +248,7 @@ export function displayProcessList() {
     if (ProcessList[i] === null) continue;
     const CSSClass = scan.ScansList[i].status ? 'label-success' : 'label-default';
     const Text = scan.ScansList[i].status ? 'On' : 'Off';
-    const name = T(generic.constructTex(ProcessList[i].name()), ProcessList[i].name());
+    const name = generic.texImageOrPlain(ProcessList[i].name());
     $('#scan-process-list').append(
         '<a href="#" class="list-group-item process-entry-scan" process-id="' +
         i + '">' + name + '<br><span id="proc_indicator_scan_' + i +
