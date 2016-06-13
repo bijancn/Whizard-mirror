@@ -25,20 +25,6 @@ for (let k = 0; k < Models.length; k += ToolbarColumns) {
   $('#pop_models').append('</div>');
 }
 
-function RebuildPreviewTab() {
-  SindarinScript = backend.rebuildVariables();
-  $('#preview').html('<pre>' + SindarinScript + '</pre>');
-}
-
-/*
- * Working variables
- */
-
-// Contains sindarin script
-var SindarinScript = '';
-var WhizRunning = false;
-
-
 
 $(document).ready(function() {
   $('.outputcontainer').hide();
@@ -153,31 +139,27 @@ $(document).ready(function() {
 
   $(document).on('click', '.process-entry', function () {
     simulate.activeProcessId = $(this).attr('process-id') - 1;
-    p = process.ProcessList[simulate.activeProcessId];
-    if (!p.isNlo ()) {
+    const p = process.ProcessList[simulate.activeProcessId];
+    if (!p.isNlo()) {
       $('#conf-int-nlo').prop('checked', false);
     } else {
       $('#conf-int-nlo').prop('checked', true);
     }
-    $('#conf-int-itt').val (p.getNIter());
-    $('#conf-int-cpi').val (p.getNCalls());
-    $('#conf-int-sqrts').val (p.getSqrts());
-
+    $('#conf-int-itt').val(p.getNIter());
+    $('#conf-int-cpi').val(p.getNCalls());
+    $('#conf-int-sqrts').val(p.getSqrts());
     $('.integrate-right').fadeIn('fast');
   });
 
-  $(document).on('click', '.process-entry-sim', function () {
+  $(document).on('click', '.process-entry-sim', () => {
     simulate.activeProcessId = $(this).attr('process-id');
-    p = simulate.SimulateList[simulate.activeProcessId];
-
-    //Fill simulate fields
+    const p = simulate.SimulateList[simulate.activeProcessId];
+    // Fill simulate fields
     $('#conf-sim-sim').prop('checked', p.getStatus());
     $('#conf-sim-events').val(p.getEvents());
-
-    //Fill histogram fields
-    simulate.Simulate.FillHistogramFieldsHTML();
-
-    //Process selected show right column
+    // Fill histogram fields
+    simulate.Simulate.fillHistogramFieldsHTML();
+    // Process selected show right column
     $('.simulate-right').fadeIn('fast');
   });
 
@@ -192,138 +174,109 @@ $(document).ready(function() {
     }
   });
 
-  /*
-   * Tab preview clicked, generate script
-   */
-  $('#tab_button_preview').click(function() {
-    SindarinScript = backend.rebuildVariables();
-    RebuildPreviewTab();
+  // Tab preview clicked, generate script
+  $('#tab_button_preview').click(() => {
+    backend.rebuildPreviewTab();
   });
 
-  /*
-   *  Changing tab, rebuild process list
-   */
+  //  Changing tab, rebuild process list
   $('#tab_button_integrate, #tab_button_simulate, #tab_button_scan').click(() => {
     process.displayProcessList();
   });
 
-  /*
-   * Tab Cuts clicked, generate particles list
-   */
+  // Tab Cuts clicked, generate particles list
   $('#tab_button_cuts').click(() => {
-    cuts.Instance.RebuildParticlesHTML();
+    cuts.cutsClosure.rebuildParticlesHTML();
   });
 
-  /*
-   * Tab Simulate clicked, generate particles popup list
-   */
+  // Tab Simulate clicked, generate particles popup list
   $('#tab_button_simulate').click(() => {
-    simulate.Simulate.RebuildParticlesHTML();
+    simulate.Simulate.rebuildParticlesHTML();
   });
 
-  /*
-   * Clicking on the model
-   */
-  $(document).on('click', '.model', function() {
+  // Clicking on the model
+  $(document).on('click', '.model', () => {
     $('#conf-model').html($(this).text() + ' <span class="caret"></span>');
   });
 
-  /*
-   *  Remove Alias
-   */
+  //  Remove Alias
   $(document).on('click', '.alias-remove', () => {
-    var id = $(this).attr('alias-id');
+    const id = $(this).attr('alias-id');
     alias.ExternalSindarinList.splice(id, 1);
     alias.rebuildAliasList();
   });
 
-  /*
-   * Button: Save Sindarin
-   */
-  $(".savesin").click(function() {
-    SindarinScript = backend.rebuildVariables();
-    $.post('/savesin', { src: SindarinScript }, function(data) {
-      backend.messageGUI(data, "alert-success");
+  // Button: Save Sindarin
+  $('.savesin').click(() => {
+    const SindarinScript = backend.rebuildVariables();
+    $.post('/savesin', {src: SindarinScript}, (data) => {
+      backend.messageGUI(data, 'alert-success');
     });
   });
 
-  /*
-   * Button: Run Whizard
-   */
-  $(".runwhiz").click(function() {
-    //Run option: [--rebuild-events, --rebuild-grids, --rebuild]
-    var option = (typeof $(this).attr("opt") != 'undefined')? $(this).attr("opt") : "";
+  // Button: Run Whizard
+  $('.runwhiz').click(() => {
+    // Run option: [--rebuild-events, --rebuild-grids, --rebuild]
+    const option = (typeof $(this).attr('opt') !== 'undefined') ?
+      $(this).attr('opt') : '';
 
-    //Animation
-    $("#pbar").show();
-    $("#whizoutput").fadeOut("fast");
-    $(".outputcontainer").fadeOut("fast");
+    // Animation
+    $('#pbar').show();
+    $('#whizoutput').fadeOut('fast');
+    $('.outputcontainer').fadeOut('fast');
 
-    //Functionality
-    $(".runwhiz, .runarrow").attr("disabled", "disabled");
-    SindarinScript = backend.rebuildVariables();
-    WhizRunning = true;
-    MonitorLogChanges();
+    // Functionality
+    $('.runwhiz, .runarrow').attr('disabled', 'disabled');
+    const SindarinScript = backend.rebuildVariables();
+    let whizRunning = true;
+    generic.monitorLogChanges(whizRunning);
 
-    $.post('/runwhiz', { src: SindarinScript, option: option }, function(data) {
-      //Animation
-      $(".outputcontainer").fadeIn("fast");
-      $("#pbar").fadeOut("fast");
+    $.post('/runwhiz', {src: SindarinScript, option: option}, (data) => {
+      // Animation
+      $('.outputcontainer').fadeIn('fast');
+      $('#pbar').fadeOut('fast');
 
-      //Functionality
-      WhizRunning = false;
-      $(".runwhiz, .runarrow").removeAttr("disabled");
-      /* Display output whizard file */
-      $("#whizoutput").load( "whizard.log" ).fadeIn("fast");
-      /* Display pdf (assuming there exists one for now) */
-      $("#out_hist").html('<embed src="whizard_analysis.pdf" width="100%" height="700px">');
+      // Functionality
+      whizRunning = false;
+      $('.runwhiz, .runarrow').removeAttr('disabled');
+      // Display output whizard file
+      $('#whizoutput').load('whizard.log').fadeIn('fast');
+      // Display pdf (assuming there exists one for now)
+      $('#out_hist').html(
+          '<embed src="whizard_analysis.pdf" width="100%" height="700px">');
 
-      /*
-       *  Whiz->GUI error parser
-       *  AM: check for other keywords, change method
-       */
-      var CritKeyword = 'FATAL ERROR:';
-      var str = $.ajax({ url: "whizard.log",  async: false}).responseText;
+      // Whiz->GUI error parser
+      // AM: check for other keywords, change method
+      const CritKeyword = 'FATAL ERROR:';
+      const str = $.ajax({url: 'whizard.log', async: false}).responseText;
 
       if (str.indexOf(CritKeyword) > -1) {
-        var s=str.substring(str.lastIndexOf(CritKeyword),str.lastIndexOf('*')).replace(/\*/g,'');
-        if (s)
-          backend.messageGUI(s, 'alert-danger');
+        const s = str.substring(str.lastIndexOf(CritKeyword),
+            str.lastIndexOf('*')).replace(/\*/g, '');
+        if (s) backend.messageGUI(s, 'alert-danger');
       }
-
     });
-
   });
 
-  /* Design stuff */
+  // Design stuff
   $('[rel=popover]').popover({
-    html : true,
-    content: function() {
-      return $('#pop_models').html();
-    }
+    html: true,
+    content: () => $('#pop_models').html(),
   });
 
   $('[rel=popover_aliases]').popover({
-    html : true,
-    content: function() {
-      return $('#pop_aliases').html();
-    }
+    html: true,
+    content: () => $('#pop_aliases').html(),
   });
 
   $('[rel=popover_process]').popover({
-    html : true,
-    content: function() {
-      return $('#pop_process').html();
-    }
+    html: true,
+    content: () => $('#pop_process').html(),
   });
 
-  /*
-   * Popover for histogram
-   */
+  // Popover for histogram
   $('[data-toggle=popover_simulation_hist]').popover({
-    html : true,
-    content: function() {
-      return $('#pop_sim_subevent').html();
-    }
+    html: true,
+    content: () => $('#pop_sim_subevent').html(),
   });
 });

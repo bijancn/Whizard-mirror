@@ -1,9 +1,7 @@
-/*
- *  Ability to remove specific type of elements from the array
- *  array.remove("like this").remove("and like this");
- */
+// Ability to remove specific type of elements from the array
+// array.remove('like this').remove('and like this');
 // TODO: (bcn 2016-03-25) more standard way to do this?
-Array.prototype.remove = function() {
+Array.prototype.remove = () => {
   let what;
   let ax;
   const a = arguments;
@@ -17,9 +15,8 @@ Array.prototype.remove = function() {
   return this;
 };
 
-/*
- * Removes duplicates in array
- */
+
+// Removes duplicates in array
 // TODO: (bcn 2016-03-25) more standard way to do this?
 export function arrayUnique(array) {
   const a = array.concat();
@@ -33,6 +30,7 @@ export function arrayUnique(array) {
   return a;
 }
 
+
 // Ex: W+ used in GUI will be replaced with "W+" in sindarin file
 // (Only for cuts atm)
 // TODO: (bcn 2016-03-25) not even remotely generic
@@ -43,6 +41,7 @@ export function parseParticleName(name) {
   if (name === 'e-') return '"e-"';
   return name;
 }
+
 
 // TODO: (bcn 2016-03-25) not even remotely generic
 export function parseParticleNameString(str) {
@@ -61,44 +60,42 @@ export function parseParticleNameString(str) {
   return newStr;
 }
 
-/*
- * Construct latex out of def
- * Experimental.
- */
-function constructTex(tex)
-{
-  tex = tex.replace('=>', '\\Rightarrow')
+
+// Construct latex out of def
+// Experimental.
+function constructTex(tex) {
+  const newTex = tex.replace('=>', '\\Rightarrow')
     .replace(/\+/g, '^%2B')
     .replace(/\-/g, '^-')
     .replace(/"/g, '');
-
-  return tex;
+  return newTex;
 }
 
-/*
- * Using Google Chart API to get Latex images
- */
-function getLatexImage(tex)
-{
-  tex = tex.replace(/\+/g, '%2B');
-  tex = tex.replace(/ /g, '%20');
-  return 'http://chart.apis.google.com/chart?cht=tx&chf=bg,s,FFFFFF00&chl=' + (tex);
+
+// Using Google Chart API to get Latex images
+function getLatexImage(tex) {
+  const newTex = tex.replace(/\+/g, '%2B').replace(/ /g, '%20');
+  return 'http://chart.apis.google.com/chart?cht=tx&chf=bg,s,FFFFFF00&chl=' +
+    newTex;
 }
 
-/*
- * This function returns latex image of string str1 if USE_GOOGLE_LATEX
- * is set to true, or str2 otherwise.
- * Sometimes user may not have internet connection and latex images could
- * not be generated using getLatexImage(s).
- */
-// TODO: (bcn 2016-03-25) is offline use really handled correctly?
-function T(str1, str2)
-{
-  if(MGUI.USE_GOOGLE_LATEX == true)
+
+// This function returns latex image of string str1 if USE_GOOGLE_LATEX
+// is set to true, or str2 otherwise.
+// Sometimes user may not have internet connection and latex images could
+// not be generated using getLatexImage(s).
+function image(str1, str2) {
+  if (MGUI.USE_GOOGLE_LATEX == true) {
     return '<img src="'+getLatexImage(str1)+'">';
-  else
+  } else {
     return str2;
+  }
 }
+
+export function texImageOrPlain (name) {
+  return image(constructTex(name), name);
+}
+
 
 function htmlEscape(str) {
   return String(str)
@@ -118,91 +115,65 @@ function getFileTimestamp(file)
 
 function getFileTimestampAsync(file) {
   return $.ajax({
-    type: "POST",
-    url: "/checktimestamp",
+    type: 'POST',
+    url: '/checktimestamp',
     data: {filename: file},
     success: function(data) { }
   });
 }
 
-/*
- * Monitor for changes in output-whiz/whizard_analysis.pdf, if timestamp
- * differences detected redisplay histogram.
- */
-function MonitorHistogramChanges() {
-
-  var obj = getFileTimestampAsync("output-whiz/whizard_analysis.pdf");
-
-  obj.success(function (data) {
-    var thisCheck = new Date(data);
-    MonitorHistogramChanges(thisCheck);
+// Monitor for changes in output-whiz/whizard_analysis.pdf, if timestamp
+// differences detected redisplay histogram.
+function MonitorHistogramChanges(whizRunning) {
+  const obj = getFileTimestampAsync('output-whiz/whizard_analysis.pdf');
+  obj.success((data) => {
+    const thisCheck = new Date(data);
+    MonitorHistogramChanges(thisCheck, whizRunning);
   });
 }
 
-function MonitorHistogramChanges(lastCheck) {
-
-  console.log("^-.-^");
-
-  var WhizRunning = 1;
-  if (!WhizRunning) return;
-
-  lastCheck = new Date(lastCheck); //probably unnecessary
-
-  var obj = getFileTimestampAsync("output-whiz/whizard_analysis.pdf");
-
-  obj.success(function (data) {
-    var thisCheck = new Date(data);
-    var diff = Math.abs(lastCheck - thisCheck)/1000;
-
-    /*
-     * Redisplay histogram if timestamp checked last time and timestamp check this time differs
-     */
+function MonitorHistogramChanges(lastCheck, whizRunning) {
+  if (!whizRunning) return;
+  console.log('^-.-^');
+  lastCheck = new Date(lastCheck); // probably unnecessary
+  const obj = getFileTimestampAsync('output-whiz/whizard_analysis.pdf');
+  obj.success((data) => {
+    const thisCheck = new Date(data);
+    const diff = Math.abs(lastCheck - thisCheck) / 1000;
+    // Redisplay histogram if timestamp checked last time and timestamp check
+    // this time differs
     if (diff > 0) {
       console.log(diff);
-      $("#out_hist").html('<embed src="whizard_analysis.pdf" width="100%" height="700px">');
+      $('#out_hist').html('<embed src="whizard_analysis.pdf" width="100%" height="700px">');
     }
-
-    // Check every 10000 ms.
-    setTimeout(function(){ MonitorHistogramChanges(thisCheck); }, 10000);
+    setTimeout(() => {MonitorHistogramChanges(thisCheck, whizRunning);}, 10000);
   });
 }
 
-/*
- * Monitor whizard.log during computation
- */
-function MonitorLogChanges() {
-
-  var obj = getFileTimestampAsync("output-whiz/whizard.log");
-
-  obj.success(function (data) {
-    var thisCheck = new Date(data);
-    MonitorLogChanges(thisCheck);
+// Monitor whizard.log during computation
+export function monitorLogChanges(whizRunning) {
+  const obj = getFileTimestampAsync('output-whiz/whizard.log');
+  obj.success((data) => {
+    const thisCheck = new Date(data);
+    monitorLogChanges(thisCheck, whizRunning);
   });
 }
 
-function MonitorLogChanges(lastCheck) {
-
-  if (!WhizRunning) return;
-  console.log("^-.-^ log");
-
-  lastCheck = new Date(lastCheck); //probably unnecessary
-
-  var obj = getFileTimestampAsync("output-whiz/whizard.log");
-
-  obj.success(function (data) {
-    var thisCheck = new Date(data);
-    var diff = Math.abs(lastCheck - thisCheck)/1000;
-
-    /*
-     * Redisplay histogram if timestamp checked last time and timestamp check this time differs
-     */
+function monitorLogChanges(lastCheck, whizRunning) {
+  if (!whizRunning) return;
+  console.log('^-.-^ log');
+  lastCheck = new Date(lastCheck); // probably unnecessary
+  const obj = getFileTimestampAsync('output-whiz/whizard.log');
+  obj.success((data) => {
+    const thisCheck = new Date(data);
+    const diff = Math.abs(lastCheck - thisCheck) / 1000;
+    // Redisplay histogram if timestamp checked last time and timestamp check
+    // this time differs
     if (diff > 0) {
       console.log(diff);
-      $("#whizoutput").load( "whizard.log" ).fadeIn("fast");
-      $(".outputcontainer").fadeIn("fast");
+      $('#whizoutput').load('whizard.log').fadeIn('fast');
+      $('.outputcontainer').fadeIn('fast');
     }
-
-    // Check every 10000 ms.
-    setTimeout(function(){ MonitorLogChanges(thisCheck); }, 5000);
+    setTimeout(() => {monitorLogChanges(thisCheck, whizRunning);}, 5000);
   });
 }

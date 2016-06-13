@@ -145,7 +145,7 @@ export function addSimulation() {
 }
 
 export const Simulate = {
-  RebuildParticlesHTML: () => {
+  rebuildParticlesHTML: () => {
     $('#pop_sim_subevent_list').html('');
     const particles = cuts.cutsClosure.getActiveParticles();
     for (let i = 0; i < particles.length; i++) {
@@ -155,7 +155,7 @@ export const Simulate = {
     }
   },
 
-  FillHistogramFieldsHTML: () => {
+  fillHistogramFieldsHTML: () => {
     $('#conf-sim-hist').prop('checked', SimulateList[activeProcessId].Histogram.doHistogram);
 
     if ($('#conf-sim-hist').prop('checked')) $('#struct-sim-hist').fadeIn('fast');

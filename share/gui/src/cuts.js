@@ -105,9 +105,9 @@ export const cutsClosure = (() => {
     return CutsList;
   };
 
-  // RebuildParticlesHTML: Rebuilds particles list html code in cuts tab
-  Public.RebuildParticlesHTML = () => {
-    /* cleaning current list and building new */
+  // Rebuilds particles list html code in cuts tab
+  Public.rebuildParticlesHTML = () => {
+    // cleaning current list and building new
     $('#cuts-html-particles-list').html('');
     const particles = Public.getActiveParticles();
     for (let i = 0; i < particles.length; i++) {
