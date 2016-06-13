@@ -1,11 +1,10 @@
-/*
- * Pair Production ee->WW
- */
-$(".ex-eeww").click(function() {
+const backend = require('./backend');
+const process = require('./process');
 
-  /* Clean current settings */
-  cleanAll();
-  AddProcess('"e+", "e-"', '"W+", "W-"');
-  ProcessList[0].setSqrts(500);
-  MessageGUI("Example loaded.", "alert-success");
+// Pair Production ee->WW
+$('.ex-eeww').click(() => {
+  backend.cleanAll();
+  process.addProcess('"e+", "e-"', '"W+", "W-"');
+  process.ProcessList[0].setSqrts(500);
+  backend.messageGUI("Example loaded.", "alert-success");
 });

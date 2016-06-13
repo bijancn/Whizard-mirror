@@ -3,9 +3,11 @@ const models = require('./models');
 const alias = require('./alias');
 const process = require('./process');
 const simulate = require('./tabs.simulate');
+const scan = require('./scan');
 const constructSindarin = require('./constructSindarin');
 
-function rebuildVariables() {
+
+export function rebuildVariables() {
   let SindarinList = [];
   const model = new models.SindarinModel($('#conf-model').text());
   SindarinList.push(new models.SindarinModelData(model));
@@ -42,7 +44,7 @@ function rebuildVariables() {
   }
 
   // Access Scans data
-  process.ExtAssignScans();
+  process.extAssignScans();
 
   SindarinList = SindarinList.concat(alias.ExternalSindarinList);
   SindarinList = SindarinList.concat(simulate.SimulateList);
@@ -52,15 +54,24 @@ function rebuildVariables() {
 }
 
 
-function cleanAll() {
+export function cleanAll() {
   $('input[type="text"]').val('');
   $('#conf-additional').val('');
   alias.cleanAlias();
   cuts.cutsClosure.clean();
-  Scan.Clean();
+  scan.Scan.clean();
   process.ProcessList = [];
   simulate.SimulateList = [];
-  ScansList = [];
+  scan.ScansList = [];
 }
 
-module.exports = {cleanAll, cuts, rebuildVariables};
+
+// Creates a message box with appropriate style class
+// style = [alert-success, alert-warning, alert-danger]
+export function messageGUI(str, style) {
+  $('#controller').after('<div id="gui-box" class="alert ' + style +
+      ' alert-dismissible" role="alert"><button type="button" class="close" ' +
+      'data-dismiss="alert" aria-label="Close">' +
+      '<span aria-hidden="true">&times;</span></button><p id="gui-message">' +
+      str + '</p></div>');
+}

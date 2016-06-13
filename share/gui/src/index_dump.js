@@ -39,17 +39,6 @@ var SindarinScript = '';
 var WhizRunning = false;
 
 
-/*
- * Creates a message box with appropriate style class
- * style = [alert-success, alert-warning, alert-danger]
- */
-function MessageGUI(str, style) {
-  $('#controller').after('<div id="gui-box" class="alert ' + style +
-      ' alert-dismissible" role="alert"><button type="button" class="close" ' +
-      'data-dismiss="alert" aria-label="Close">' +
-      '<span aria-hidden="true">&times;</span></button><p id="gui-message">' +
-      str + '</p></div>');
-}
 
 $(document).ready(function() {
   $('.outputcontainer').hide();
@@ -65,7 +54,7 @@ $(document).ready(function() {
       alias.AddAlias($('#conf-alias-lhs').val(), $('#conf-alias-rhs').val());
       alias.rebuildAliasList();
 
-      MessageGUI('New alias is added.', 'alert-success');
+      backend.messageGUI('New alias is added.', 'alert-success');
       $('#conf-alias-lhs').val('');
       $('#conf-alias-rhs').val('');
     }
@@ -77,17 +66,17 @@ $(document).ready(function() {
   $('#button-add-process').click(function() {
     /* Checking if process input non empty */
     if ($('#conf-process-in').val() && $('#conf-process-out').val()) {
-      process.AddProcess(generic.parseParticleNameString($('#conf-process-in').val()),
+      process.addProcess(generic.parseParticleNameString($('#conf-process-in').val()),
         generic.parseParticleNameString($('#conf-process-out').val()));
 
 
-      MessageGUI('New process is added.', 'alert-success');
+      backend.messageGUI('New process is added.', 'alert-success');
     } else {
       var incoming_missing = '';
       var outgoing_missing = '';
       if (!$('#conf-process-in').val()) incoming_missing = 'No incoming particles';
       if (!$('#conf-process-out').val()) outgoing_missing = 'No outgoing particles';
-      MessageGUI('Adding process failed! ' + incoming_missing + ' ' +
+      backend.messageGUI('Adding process failed! ' + incoming_missing + ' ' +
         outgoing_missing, 'alert-danger');
     }
   });
@@ -130,7 +119,7 @@ $(document).ready(function() {
         process.ProcessList[simulate.activeProcessId].setNlo (false);
       }
     } catch (err) {
-      MessageGUI(err, 'alert-danger');
+      backend.messageGUI(err, 'alert-danger');
     }
   });
 
@@ -139,7 +128,7 @@ $(document).ready(function() {
       if (simulate.activeProcessId < 0) throw ('Please select a process');
       process.ProcessList[simulate.activeProcessId].setSqrts ($(this).val());
     } catch (err) {
-      MessageGUI(err, 'alert-danger');
+      backend.messageGUI(err, 'alert-danger');
     }
   });
 
@@ -148,7 +137,7 @@ $(document).ready(function() {
       if (simulate.activeProcessId < 0) throw ('Please select a process');
       process.ProcessList[simulate.activeProcessId].setNIter ($(this).val());
     } catch (err) {
-      MessageGUI(err, 'alert-danger');
+      backend.messageGUI(err, 'alert-danger');
     }
   });
 
@@ -157,7 +146,7 @@ $(document).ready(function() {
       if (simulate.activeProcessId < 0) throw ('Please select a process');
       process.ProcessList[simulate.activeProcessId].setNCalls ($(this).val());
     } catch (err) {
-      MessageGUI(err, 'alert-danger');
+      backend.messageGUI(err, 'alert-danger');
     }
   });
 
@@ -254,7 +243,7 @@ $(document).ready(function() {
   $(".savesin").click(function() {
     SindarinScript = backend.rebuildVariables();
     $.post('/savesin', { src: SindarinScript }, function(data) {
-      MessageGUI(data, "alert-success");
+      backend.messageGUI(data, "alert-success");
     });
   });
 
@@ -299,7 +288,7 @@ $(document).ready(function() {
       if (str.indexOf(CritKeyword) > -1) {
         var s=str.substring(str.lastIndexOf(CritKeyword),str.lastIndexOf('*')).replace(/\*/g,'');
         if (s)
-          MessageGUI(s, 'alert-danger');
+          backend.messageGUI(s, 'alert-danger');
       }
 
     });
