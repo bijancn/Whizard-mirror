@@ -1,7 +1,8 @@
 const simulation = require('./tabs.simulate');
 const generic = require('./generic');
-const scans = require('./tabs.scan');
-export let ProcessList = [];
+const scan = require('./scan');
+
+export const ProcessList = [];
 
 
 function SimulationData() {
@@ -20,12 +21,12 @@ function IntegrationData() {
 
 function ScanData() {
   this.Sets = [];
-  this.type;
-  this.title;
-  this.xlabel;
-  this.ylabel;
-  this.xmin;
-  this.xmax;
+  this.type = '';
+  this.title = '';
+  this.xlabel = '';
+  this.ylabel = '';
+  this.xmin = '';
+  this.xmax = '';
 }
 
 
@@ -79,7 +80,7 @@ function SindarinProcessGetNEvents() {
 }
 
 
-export function ExtAssignScans() {
+export function extAssignScans() {
   for (let i = 0; i < ProcessList.length; i++) {
     ProcessList[i].grabScanData(i);
   }
@@ -98,7 +99,7 @@ function SindarinProcessToString() {
     }
     return str;
   } catch (err) {
-    console.log(err);
+    console.error(err);
   }
 }
 
@@ -109,13 +110,13 @@ function ProcessDisplayName() {
 
 
 function grabScanData(processID) {
-  this.ScanData.Sets = scans.ScansList[processID].ScansContainer;
-  this.ScanData.type = scans.ScansList[processID].type;
-  this.ScanData.title = scans.ScansList[processID].title;
-  this.ScanData.xlabel = scans.ScansList[processID].xlabel;
-  this.ScanData.ylabel = scans.ScansList[processID].ylabel;
-  this.ScanData.xmin = scans.ScansList[processID].xmin;
-  this.ScanData.xmax = scans.ScansList[processID].xmax;
+  this.ScanData.Sets = scan.ScansList[processID].ScansContainer;
+  this.ScanData.type = scan.ScansList[processID].type;
+  this.ScanData.title = scan.ScansList[processID].title;
+  this.ScanData.xlabel = scan.ScansList[processID].xlabel;
+  this.ScanData.ylabel = scan.ScansList[processID].ylabel;
+  this.ScanData.xmin = scan.ScansList[processID].xmin;
+  this.ScanData.xmax = scan.ScansList[processID].xmax;
 }
 
 
@@ -204,10 +205,10 @@ function rebuildProcessList() {
 }
 
 // Add a new process
-export function AddProcess(incoming, outgoing) {
+export function addProcess(incoming, outgoing) {
   ProcessList.push(new SindarinProcess(incoming, outgoing));
   simulation.addSimulation();
-  scans.Scan.newProcess();
+  scan.Scan.newProcess();
   rebuildProcessList();
 }
 
@@ -241,12 +242,12 @@ export function displayProcessList() {
         '" class="label ' + CSSClass + '">' + Text + '</span></a>');
   }
 
-  // Constructing process list for TABS:scan
+  // Constructing process list for scan
   $('#scan-process-list').empty();
   for (let i = 0; i < ProcessList.length; i++) {
     if (ProcessList[i] === null) continue;
-    const CSSClass = scans.ScansList[i].status ? 'label-success' : 'label-default';
-    const Text = scans.ScansList[i].status ? 'On' : 'Off';
+    const CSSClass = scan.ScansList[i].status ? 'label-success' : 'label-default';
+    const Text = scan.ScansList[i].status ? 'On' : 'Off';
     const name = T(generic.constructTex(ProcessList[i].name()), ProcessList[i].name());
     $('#scan-process-list').append(
         '<a href="#" class="list-group-item process-entry-scan" process-id="' +

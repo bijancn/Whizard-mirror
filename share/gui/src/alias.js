@@ -1,4 +1,4 @@
-// TODO: (bcn 2016-04-01) why externalsindarinlist?
+// TODO: (bcn 2016-04-01) why is it called externalsindarinlist?
 export let ExternalSindarinList = [];
 
 function SindarinAliasToString() {

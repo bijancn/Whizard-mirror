@@ -7,7 +7,7 @@ import './models.js';
 import './examples.js';
 import './alias.js';
 import './process.js';
-import './tabs.scan.js';
+import './scan.js';
 import './tabs.integration.js';
 import './tabs.simulate.js';
 import './index_dump.js';
