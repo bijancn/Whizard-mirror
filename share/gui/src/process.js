@@ -184,7 +184,7 @@ export function SindarinWriteProcesses() {
   }
 }
 
-function rebuildProcessList() {
+export function rebuildProcessList() {
   $('#pop_process').empty();
   $('#pop_process').append('<div class="row">');
   let procIndex = 1;
