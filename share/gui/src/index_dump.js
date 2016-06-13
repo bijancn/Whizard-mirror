@@ -46,47 +46,39 @@ $(document).ready(function() {
     }
   });
 
-  /*
-   * Button: Add process
-   */
-  $('#button-add-process').click(function() {
-    /* Checking if process input non empty */
+  // Button: Add process
+  $('#button-add-process').click(() => {
+    // Checking if process input non empty
     if ($('#conf-process-in').val() && $('#conf-process-out').val()) {
       process.addProcess(generic.parseParticleNameString($('#conf-process-in').val()),
         generic.parseParticleNameString($('#conf-process-out').val()));
-
-
       backend.messageGUI('New process is added.', 'alert-success');
     } else {
-      var incoming_missing = '';
-      var outgoing_missing = '';
-      if (!$('#conf-process-in').val()) incoming_missing = 'No incoming particles';
-      if (!$('#conf-process-out').val()) outgoing_missing = 'No outgoing particles';
-      backend.messageGUI('Adding process failed! ' + incoming_missing + ' ' +
-        outgoing_missing, 'alert-danger');
+      let incomingMissing = '';
+      let outgoingMissing = '';
+      if (!$('#conf-process-in').val()) incomingMissing = 'No incoming particles';
+      if (!$('#conf-process-out').val()) outgoingMissing = 'No outgoing particles';
+      backend.messageGUI('Adding process failed! ' + incomingMissing + ' and ' +
+        outgoingMissing, 'alert-danger');
     }
   });
 
   /*
    *  Mini-button: Remove process
    */
-  $(document).on('click', '.process-remove', function() {
-    var id = $(this).attr('process-id');
-
-    /*
-     *  Nescessary to remove process element entirely.
-     */
+  $(document).on('click', '.process-remove', () => {
+    const id = $(this).attr('process-id');
+    // Nescessary to remove process element entirely.
     process.ProcessList[id] = null;
     process.ProcessList.splice(id, 1); // No longer keeping nulls in the array
-    rebuildProcessList();
-
+    process.rebuildProcessList();
     simulate.removeSimulateElement(id);
   });
 
   /*
    * Integrate checked, show #form-iterations and #for-calls
    */
-  $('#conf-integrate').change(function() {
+  $('#conf-integrate').change(() => {
     if ($(this).prop('checked')) {
       $('#form-iterations').fadeIn('fast');
       $('#form-calls').fadeIn('fast');
