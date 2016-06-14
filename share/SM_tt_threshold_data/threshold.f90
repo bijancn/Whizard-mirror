@@ -150,7 +150,7 @@ module @ID@_threshold
   integer, parameter, public :: n_hel = 144
   integer, parameter :: n_hel_OS = 16
 
-  type(lorentz_transformation_t) :: boost_to_cms
+  type(lorentz_transformation_t) :: boost_to_cms, boost_to_top_rest
 
   ! NB: you MUST NOT change the value of N_ here!!!
   !     It is defined here for convenience only and must be
@@ -335,10 +335,12 @@ module @ID@_threshold
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p12, p35, p46
-  type(momentum) :: ptop_onshell, ptop_onshell_cms, pwp_onshell, pb_onshell
-  type(momentum) :: ptopbar_onshell, pwm_onshell, pbbar_onshell
-  type(vector4_t) :: ptop_onshell_v4, ptop_onshell_cms_v4, pwp_onshell_v4, pb_onshell_v4
-  type(vector4_t) :: ptopbar_onshell_v4, pwm_onshell_v4, pbbar_onshell_v4
+  type(momentum) :: mom_top_onshell, mom_top_onshell_rest
+  type(momentum) :: mom_topbar_onshell, mom_topbar_onshell_rest
+  type(momentum) :: mom_wm_onshell, mom_wm_onshell_rest
+  type(momentum) :: mom_wp_onshell, mom_wp_onshell_rest
+  type(momentum) :: mom_b_onshell, mom_b_onshell_rest
+  type(momentum) :: mom_bbar_onshell, mom_bbar_onshell_rest
   type(spinor) :: owf_t_4, owf_b_6, owf_e_1
   type(conjspinor) :: owf_t_3, owf_b_5, owf_e_2
   type(vector) :: owf_Wp_3, owf_Wm_4
@@ -431,11 +433,11 @@ contains
        mtop = ttv_mtpole (p12*p12)
        if (threshold%settings%onshell_projection%production) then
           if (debug_active (D_THRESHOLD)) then
-             call assert_equal (u, sqrt (ptop_onshell * ptop_onshell), mtop, "ptop is projected")
-             call assert_equal (u, sqrt (ptopbar_onshell * ptopbar_onshell), mtop, "ptop is projected")
+             call assert_equal (u, sqrt (mom_top_onshell * mom_top_onshell), mtop, "ptop is projected")
+             call assert_equal (u, sqrt (mom_topbar_onshell * mom_topbar_onshell), mtop, "ptop is projected")
           end if
-          ptop = ptop_onshell
-          ptopbar = ptopbar_onshell
+          ptop = mom_top_onshell
+          ptopbar = mom_topbar_onshell
        else
           ptop = p35
           ptopbar = p46
@@ -466,7 +468,8 @@ contains
     if (threshold%settings%onshell_projection%width) then
       top_width = ttv_wtpole (p12*p12, ffi)
       one_over_p = one / cmplx (p35*p35 - top_mass**2, top_mass*top_width, kind=default)
-      one_over_p = one_over_p / cmplx (p46*p46 - top_mass**2, top_mass*top_width, kind=default)
+      one_over_p = one_over_p / cmplx (p46*p46 - top_mass**2, &
+           top_mass * top_width, kind=default)
     else
       top_width = ttv_wtpole (sqrt(p35*p35), ffi, use_as_minv=.true.)
       one_over_p = one / cmplx (p35*p35 - top_mass**2, top_mass*top_width, kind=default)
@@ -491,9 +494,9 @@ contains
   subroutine set_top_decay_momenta (pw, pb, ptop)
     type(momentum), intent(out) :: pw, pb, ptop
     if (threshold%settings%onshell_projection%decay) then
-       pw = boost_to_cms * pwp_onshell
-       pb = boost_to_cms * pb_onshell
-       ptop = boost_to_cms * ptop_onshell_cms
+       pw = mom_wp_onshell
+       pb = mom_b_onshell
+       ptop = mom_top_onshell
        if (debug_active (D_THRESHOLD)) &
             call assert_equal (output_unit, sqrt (ptop * ptop), mass(6), "ptop is projected")
     else
@@ -519,11 +522,11 @@ contains
   subroutine set_anti_top_decay_momenta (pw, pb, ptop)
     type(momentum), intent(out) :: pw, pb, ptop
     if (threshold%settings%onshell_projection%decay) then
-       pw = pwm_onshell
-       pb = pbbar_onshell
-       ptop = ptop_onshell_cms
+       pw = mom_wm_onshell
+       pb = mom_bbar_onshell
+       ptop = mom_top_onshell
        if (debug_active (D_THRESHOLD)) &
-            call assert_equal (output_unit, sqrt (ptop_onshell_cms * ptop_onshell_cms), mass(6), "ptop is projected")
+            call assert_equal (output_unit, sqrt (mom_top_onshell * mom_top_onshell), mass(6), "ptop is projected")
     else
        pw = p4
        pb = p6
@@ -638,31 +641,34 @@ contains
     real(default) :: sqrts, scale_factor, mtop
     real(default), dimension(1:3) :: unit_vec
     real(default), dimension(4) :: tmp, test
+    type(vector4_t) :: v4_top_onshell, v4_top_onshell_rest
+    type(vector4_t) :: v4_topbar_onshell, v4_topbar_onshell_rest
     integer :: u
     u = output_unit
     mtop = ttv_mtpole (p12*p12)
     sqrts = - p12%t
     scale_factor = sqrt (sqrts**2 - 4 * mtop**2) / 2
     unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
-    ptop_onshell = [sqrts / 2, scale_factor * unit_vec]
-    tmp = ptop_onshell
-    ptop_onshell_v4 = tmp
-    ptop_onshell_cms = [mtop, zero, zero, zero]
-    boost_to_cms = inverse (boost (ptop_onshell_v4, mtop))
-    ptopbar_onshell = [sqrts / 2, - scale_factor * unit_vec]
+    mom_top_onshell = [sqrts / 2, scale_factor * unit_vec]
+    tmp = mom_top_onshell
+    v4_top_onshell = tmp
+    mom_top_onshell_rest = [mtop, zero, zero, zero]
+    boost_to_cms = boost (v4_top_onshell, mtop)
+    boost_to_top_rest = inverse (boost_to_cms)
+    mom_topbar_onshell = [sqrts / 2, - scale_factor * unit_vec]
     if (debug_active (D_THRESHOLD)) then
-       ptop_onshell_cms_v4 = boost_to_cms * ptop_onshell_v4
-       tmp = ptop_onshell_cms_v4
-       test = ptop_onshell_cms
+       v4_top_onshell_rest = boost_to_top_rest * v4_top_onshell
+       tmp = v4_top_onshell_rest
+       test = mom_top_onshell_rest
        call assert_equal (u, tmp, test, &
             "verify that we have the right boost", exit_on_fail=.true.)
-       call assert (u, p12 == - (ptop_onshell + ptopbar_onshell), &
+       call assert (u, p12 == - (mom_top_onshell + mom_topbar_onshell), &
             "momentum conservation with a flip", exit_on_fail=.true.)
-       call assert_equal (u, ptop_onshell * ptop_onshell, mtop**2, &
+       call assert_equal (u, mom_top_onshell * mom_top_onshell, mtop**2, &
             "mass onshell", exit_on_fail=.true.)
-       call assert_equal (u, ptopbar_onshell * ptopbar_onshell, mtop**2, &
+       call assert_equal (u, mom_topbar_onshell * mom_topbar_onshell, mtop**2, &
             "mass onshell", exit_on_fail=.true.)
-       call assert_equal (u, ptop_onshell_cms * ptop_onshell_cms, mtop**2, &
+       call assert_equal (u, mom_top_onshell_rest * mom_top_onshell_rest, mtop**2, &
             "mass onshell", exit_on_fail=.true.)
        call assert_equal (u, dot_product(unit_vec, unit_vec), one, &
             "unit vector length", exit_on_fail=.true.)
@@ -682,29 +688,35 @@ contains
     en_b = (mtop**2 - mw2 + mb2) / (2 * mtop)
     p_three_mag = sqrt (lambda (mtop**2, mw2, mb2)) / (2 * mtop)
     unit_vec_wp = p3%x / sqrt (dot_product(p3%x, p3%x))
-    pwp_onshell = [en_w, p_three_mag * unit_vec_wp]
-    pb_onshell = [en_b, - p_three_mag * unit_vec_wp]
+    mom_wp_onshell_rest = [en_w, p_three_mag * unit_vec_wp]
+    mom_b_onshell_rest = [en_b, - p_three_mag * unit_vec_wp]
     unit_vec_wm = p4%x / sqrt (dot_product(p4%x, p4%x))
-    pwm_onshell = [en_w, p_three_mag * unit_vec_wm]
-    pbbar_onshell = [en_b, - p_three_mag * unit_vec_wm]
+    mom_wm_onshell_rest = [en_w, p_three_mag * unit_vec_wm]
+    mom_bbar_onshell_rest = [en_b, - p_three_mag * unit_vec_wm]
+    mom_wp_onshell = apply_boost (mom_wp_onshell_rest)
+    mom_wm_onshell = apply_boost (mom_wm_onshell_rest)
+    mom_b_onshell = apply_boost (mom_b_onshell_rest)
+    mom_bbar_onshell = apply_boost (mom_bbar_onshell_rest)
     if (debug_active (D_THRESHOLD)) then
        call assert_equal(u, en_w + en_b, mtop, "top energy", &
             exit_on_fail=.true.)
        call assert (u, &
-            (pwp_onshell + pb_onshell + pwm_onshell + pbbar_onshell) &
-            == 2 * ptop_onshell_cms, "overall: momentum conservation", &
+            (mom_wp_onshell + mom_b_onshell + mom_wm_onshell + mom_bbar_onshell) &
+            == - p12, "overall: momentum conservation", &
             exit_on_fail=.true.)
-       call assert (u, (pwp_onshell + pb_onshell) == ptop_onshell_cms, &
+       call assert (u, (mom_wp_onshell_rest + mom_b_onshell_rest) == &
+            mom_top_onshell_rest, &
             "top: momentum conservation", exit_on_fail=.true.)
-       call assert (u, (pwm_onshell + pbbar_onshell) == ptop_onshell_cms, &
+       call assert (u, (mom_wm_onshell_rest + mom_bbar_onshell_rest) == &
+            mom_top_onshell_rest, &
             "topbar: momentum conservation", exit_on_fail=.true.)
-       call assert_equal (u, pwp_onshell * pwp_onshell, mw2, &
+       call assert_equal (u, mom_wp_onshell * mom_wp_onshell, mw2, &
             "mass onshell", exit_on_fail=.true.)
-       call assert_equal (u, pwm_onshell * pwm_onshell, mw2, &
+       call assert_equal (u, mom_wm_onshell * mom_wm_onshell, mw2, &
             "mass onshell", exit_on_fail=.true.)
-       call assert_equal (u, pb_onshell * pb_onshell, mb2, &
+       call assert_equal (u, mom_b_onshell * mom_b_onshell, mb2, &
             "mass onshell", exit_on_fail=.true.)
-       call assert_equal (u, pbbar_onshell * pbbar_onshell, mb2, &
+       call assert_equal (u, mom_bbar_onshell * mom_bbar_onshell, mb2, &
             "mass onshell", exit_on_fail=.true.)
        call assert_equal (u, dot_product(unit_vec_wp, unit_vec_wp), &
             one, "unit vector length", exit_on_fail=.true.)
@@ -712,6 +724,18 @@ contains
             one, "unit vector length", exit_on_fail=.true.)
     end if
   end subroutine compute_projected_top_decay_products
+
+  pure function apply_boost(mom) result (mom_result)
+    type(momentum), intent(in) :: mom
+    type(momentum) :: mom_result
+    type(vector4_t) :: tmp_v4
+    real(default), dimension(4) :: tmp
+    tmp = mom
+    tmp_v4 = tmp
+    tmp_v4 = boost_to_cms * tmp_v4
+    tmp = tmp_v4
+    mom_result = tmp
+  end function apply_boost
 
   function compute_production_me (ffi) result (production_me)
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
