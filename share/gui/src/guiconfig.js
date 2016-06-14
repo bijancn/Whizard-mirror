@@ -1,6 +1,7 @@
-function setDefaults () {
-  var context = {},
-      log = require('js-logger');
+const log = require('js-logger');
+
+export function setDefaults() {
+  const context = {};
   // Directory to output whizard files
   context.whizardOutputDir = 'output-whiz/';
 
@@ -26,5 +27,3 @@ function setDefaults () {
   context.logLevel = log.DEBUG;
   return context;
 }
-
-module.exports = setDefaults();

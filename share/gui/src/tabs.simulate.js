@@ -6,21 +6,26 @@ export const SimulateList = [];
 // Hiding optional fields
 $('#struct-sim-hist').hide();
 
+
 function SimulateSetEvents(events) {
   this.events = events;
 }
+
 
 function SimulateGetEvents() {
   return this.events;
 }
 
+
 function SimulateSetStatus(status) {
   this.status = status;
 }
 
+
 function SimulateGetStatus() {
   return this.status;
 }
+
 
 function SindarinSimulateToString() {
   let s = '';
@@ -49,33 +54,41 @@ function setHistTitle(title) {
   this.title = title;
 }
 
+
 function setHistXmin(x) {
   this.xmin = x;
 }
+
 
 function setHistXmax(x) {
   this.xmax = x;
 }
 
+
 function setHistTicks(ticks) {
   this.ticks = ticks;
 }
+
 
 function setHistXLabel(l) {
   this.xlabel = l;
 }
 
+
 function setHistSubevent(s) {
   this.subevent = s;
 }
+
 
 function setHistStatus(s) {
   this.doHistogram = s;
 }
 
+
 function setHistAnalysis(s) {
   this.analysis = s;
 }
+
 
 function HistogramData() {
   this.doHistogram = false;
@@ -97,6 +110,7 @@ function HistogramData() {
   this.setHistAnalysis = setHistAnalysis;
 }
 
+
 export function SindarinSimulate() {
   this.procid = SimulateList.length + 1;
   this.status = 0;
@@ -111,6 +125,7 @@ export function SindarinSimulate() {
   this.Histogram = new HistogramData();
 }
 
+
 export function SindarinWriteSimulate() {
   for (let i = 0; i < this.list.length; i++) {
     const elem = this.list[i];
@@ -122,6 +137,7 @@ export function SindarinWriteSimulate() {
   }
 }
 
+
 function rebuildSimulateList() {
   let NewIndex = 1;
   for (let i = 0; i < SimulateList.length; i++) {
@@ -131,6 +147,7 @@ function rebuildSimulateList() {
     }
   }
 }
+
 
 // Removes element from the list and rebuilds index list
 export function removeSimulateElement(id) {
