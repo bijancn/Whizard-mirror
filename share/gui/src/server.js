@@ -18,17 +18,17 @@ const startServer = () => {
   });
 
   // app.set('port', guiconf.port);
-  app.listen(guiconf.port, () => {
-    console.log('Listening on port: ' + guiconf.port);
+  app.listen(guiconf.context.port, () => {
+    console.log('Listening on port: ' + guiconf.context.port);
   });
 };
 log.useDefaults();
-log.setLevel(guiconf.logLevel);
+log.setLevel(guiconf.context.logLevel);
 
-utils.mkdir(guiconf.whizardOutputDir)
+utils.mkdir(guiconf.context.whizardOutputDir)
   .then((success) => {
     log.info(success);
-    return utils.mkdir(guiconf.whizardOutputSin);
+    return utils.mkdir(guiconf.context.whizardOutputSin);
   })
   .then(log.info).catch(log.error);
 

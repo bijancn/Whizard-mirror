@@ -13,6 +13,8 @@ const Models = models.fillModelList();
 
 //  Hiding whatever needed
 $('.simulate-right, .integrate-right').hide();
+// Hiding optional fields
+$('#struct-scan').hide();
 
 for (let k = 0; k < Models.length; k += ToolbarColumns) {
   $('#pop_models').append('<div class="row">');

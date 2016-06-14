@@ -1,3 +1,5 @@
+const guiconfig = require('./guiconfig');
+
 // Ability to remove specific type of elements from the array
 // array.remove('like this').remove('and like this');
 // TODO: (bcn 2016-03-25) more standard way to do this?
@@ -80,19 +82,19 @@ function getLatexImage(tex) {
 }
 
 
-// This function returns latex image of string str1 if USE_GOOGLE_LATEX
+// This function returns latex image of string str1 if useGoogleLatex
 // is set to true, or str2 otherwise.
 // Sometimes user may not have internet connection and latex images could
 // not be generated using getLatexImage(s).
 function image(str1, str2) {
-  if (MGUI.USE_GOOGLE_LATEX == true) {
-    return '<img src="'+getLatexImage(str1)+'">';
-  } else {
-    return str2;
+  if (guiconfig.context.useGoogleLatex) {
+    return '<img src="' + getLatexImage(str1) + '">';
   }
+  return str2;
 }
 
-export function texImageOrPlain (name) {
+
+export function texImageOrPlain(name) {
   return image(constructTex(name), name);
 }
 
@@ -106,21 +108,23 @@ function htmlEscape(str) {
     .replace(/>/g, '&gt;');
 }
 
-function getFileTimestamp(file)
-{
-  $.post('/checktimestamp', { filename: file }, function(data) {
+
+function getFileTimestamp(file) {
+  $.post('/checktimestamp', {filename: file}, (data) => {
     console.log(data);
   });
 }
+
 
 function getFileTimestampAsync(file) {
   return $.ajax({
     type: 'POST',
     url: '/checktimestamp',
     data: {filename: file},
-    success: function(data) { }
+    success: (data) => {},
   });
 }
+
 
 // Monitor for changes in output-whiz/whizard_analysis.pdf, if timestamp
 // differences detected redisplay histogram.

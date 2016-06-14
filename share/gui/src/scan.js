@@ -1,8 +1,5 @@
 const simulate = require('./tabs.simulate');
 
-// Hiding optional fields
-$('#struct-scan').hide();
-
 // Object structure:
 // ScansList[i] : contain all Scan information for a i'th process
 // ScansList[i].ScansContainer : contains union of subintervals for a i'th process
