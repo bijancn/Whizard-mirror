@@ -629,10 +629,10 @@ contains
        p6 =   k(:,6) ! outgoing
        p35 = p3 + p5
        p46 = p4 + p6
-    end if
-    if (threshold%settings%onshell_projection%active ()) then
-       call compute_projected_top_momenta (p12)
-       call compute_projected_top_decay_products (p12)
+       if (threshold%settings%onshell_projection%active ()) then
+          call compute_projected_top_momenta (p12)
+          call compute_projected_top_decay_products (p12)
+       end if
     end if
   end subroutine set_production_momenta
 
