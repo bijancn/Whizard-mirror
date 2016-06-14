@@ -1,16 +1,7 @@
-function SindarinParameterToString() {
-  return this.name + ' = ' + this.value;
-}
-
-function SindarinParameter(name, value) {
-  this.name = name;
-  this.value = value;
-  this.toString = SindarinParameterToString;
-}
-
 export function SindarinWriteModelData() {
   for (let i = 0; i < this.nElements; i++) {
     const p = this.list[i];
+    // TODO: (bcn 2016-06-14) both functions use each other
     if (p instanceof SindarinModelData) {
       this.src += p.model.toString() + '\n';
       for (let j = 0; j < p.parameters.length; j++) {
@@ -21,21 +12,25 @@ export function SindarinWriteModelData() {
   }
 }
 
+
 export function SindarinModelData(model) {
   this.model = model;
   this.parameters = [];
   this.writeModelData = SindarinWriteModelData;
 }
 
+
 function SindarinModelToString() {
   return 'model = ' + this.modelName;
 }
+
 
 export function SindarinModel(name, description) {
   this.modelName = name;
   this.description = description;
   this.toString = SindarinModelToString;
 }
+
 
 export function fillModelList() {
   const modelList = [];

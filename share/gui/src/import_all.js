@@ -1,13 +1,16 @@
 import 'babel-polyfill';
-import './bootstrap.min.js';
-import './generic.js';
-import './cuts.js';
-import './constructSindarin.js';
-import './models.js';
-import './examples.js';
-import './alias.js';
-import './process.js';
-import './scan.js';
-import './tabs.integration.js';
-import './tabs.simulate.js';
-import './index_dump.js';
+import '../public/bootstrap.min';
+import './generic';
+const cuts = require('./cuts');
+const guiconfig = require('./guiconfig');
+import './constructSindarin';
+import './models';
+import './examples';
+import './alias';
+import './process';
+import './scan';
+import './tabs.integration';
+import './tabs.simulate';
+import './index_dump';
+
+cuts.setupJquery();

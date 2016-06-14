@@ -2,14 +2,17 @@ const alias = require('./alias');
 const process = require('./process');
 const generic = require('./generic');
 
+
 function SindarinCutsToString() {
   return 'cuts = ' + this.CutsData;
 }
+
 
 export function SindarinCuts(cuts) {
   this.CutsData = cuts;
   this.toString = SindarinCutsToString;
 }
+
 
 export function SindarinWriteCuts() {
   for (let i = 0; i < this.list.length; i++) {
@@ -22,6 +25,7 @@ export function SindarinWriteCuts() {
   }
 }
 
+// TODO: (bcn 2016-06-14) reduce complexity
 export const cutsClosure = (() => {
   let LastClickedCutName;
   let LastClickedCutEq;
@@ -60,7 +64,7 @@ export const cutsClosure = (() => {
       }
     }
 
-    /* Construct particle list from process definitions */
+    // Construct particle list from process definitions
     for (let i = 0; i < process.ProcessList.length; i++) {
       if (process.ProcessList[i] === null) continue; // Check if process was removed
       let Process = process.ProcessList[i].incoming + ' ' +
@@ -122,7 +126,7 @@ export const cutsClosure = (() => {
     $('#cutsContainer').html('');
   };
 
-  Public.AddNewCut = (name, eq, cutValue, cutAssignment) => {
+  Public.addNewCut = (name, eq, cutValue, cutAssignment) => {
     $('#cutsContainer').append(
         Public.getCutHTML(name, eq, cutValue, cutAssignment));
   };
@@ -170,71 +174,55 @@ export const cutsClosure = (() => {
 })();
 
 
-// TODO: (bcn 2016-04-17) these statements used to be directly called in cuts.js
-// this function has to be called on the frontend
-function setupDocument() {
-  /*
-   * Clicking on Cuts->Particles
-   * Input is added for the last active input field
-   */
-  $(document).on('click', '.cuts-particles-click', function() {
-    //var oldList = ActiveInputParticleElement.val();
-    var oldList = cuts.getLastActiveInputElement().val();
+export function setupJquery() {
+  const cuts = cutsClosure;
+  // Clicking on Cuts->Particles
+  // Input is added for the last active input field
+  $(document).on('click', '.cuts-particles-click', () => {
+    const oldList = cuts.getLastActiveInputElement().val();
     cuts.getLastActiveInputElement().val(oldList + ' ' + $(this).text());
   });
 
-  /*
-   *  Clicking on the input field making it active
-   */
-  $(document).on('click', '.cuts-particles-active', function() {
-    //ActiveInputParticleElement = $(this);
+  // Clicking on the input field making it active
+  $(document).on('click', '.cuts-particles-active', () => {
     cuts.setLastActiveInputElement($(this));
   });
 
-  /*
-   *  Checking focus to show/hide particle Cuts -> Particles List
-   */
-  $(document).on('click', 'body', function() {
-    if ($('.cuts-particles-active').is(':focus') || $('.cuts-particles-click').is(':focus'))
+  // Checking focus to show/hide particle Cuts -> Particles List
+  $(document).on('click', 'body', () => {
+    if ($('.cuts-particles-active').is(':focus') ||
+        $('.cuts-particles-click').is(':focus')) {
       $('#cuts-html-particles').fadeIn('fast');
-    else
+    } else {
       $('#cuts-html-particles').fadeOut('fast');
-
+    }
   });
 
-  /*
-   * Selecting cut name (Pt, M)
-   */
-  $(document).on('click', '.cut-name', function() {
+  // Selecting cut name (Pt, M)
+  $(document).on('click', '.cut-name', () => {
     cuts.setLastClickedCutName($(this));
   });
 
-  $(document).on('click', '.cuts-select-name', function() {
+  $(document).on('click', '.cuts-select-name', () => {
     cuts.getLastClickedCutName().html($(this).text() + ' <span class="caret"></span>');
   });
 
-  /*
-   * Selecting cut inequality sign (>, <)
-   */
-  $(document).on('click', '.cut-eq', function() {
+  // Selecting cut inequality sign (>, <)
+  $(document).on('click', '.cut-eq', () => {
     cuts.setLastClickedCutEq($(this));
   });
 
-  $(document).on('click', '.cuts-select-eq', function() {
+  $(document).on('click', '.cuts-select-eq', () => {
     cuts.getLastClickedCutEq().html($(this).text() + ' <span class="caret"></span>');
   });
 
-  /*
-   * Selecting to remove cut
-   */
-  $(document).on('click', '.cuts-select-delete', function() {
+  // Selecting to remove cut
+  $(document).on('click', '.cuts-select-delete', () => {
     cuts.getLastClickedCutName().parent().parent().unbind().remove();
   });
 
-  /*
-   * Button: Cuts > New Cut
-   */
-  $('.cuts-newcut').click(function() {
-    cuts.AddNewCut('Pt', '>', '', '');
+  // Button: Cuts > New Cut
+  $('.cuts-newcut').click(() => {
+    cuts.addNewCut('Pt', '>', '', '');
   });
 }
