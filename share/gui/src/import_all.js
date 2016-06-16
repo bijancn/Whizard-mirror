@@ -9,7 +9,7 @@ import './examples';
 import './alias';
 import './process';
 import './scan';
-import './tabs.integration';
+import './integration';
 import './tabs.simulate';
 import './index_dump';
 

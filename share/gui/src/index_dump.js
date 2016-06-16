@@ -1,6 +1,3 @@
-// This was just lying around in index.ejs
-// TODO: (bcn 2016-06-11) Disect and put in proper modules
-
 const generic = require('./generic');
 const models = require('./models');
 const alias = require('./alias');
@@ -8,6 +5,7 @@ const backend = require('./backend');
 const process = require('./process');
 const simulate = require('./tabs.simulate.js');
 const cuts = require('./cuts');
+
 const ToolbarColumns = 4;
 const Models = models.fillModelList();
 
@@ -26,6 +24,13 @@ for (let k = 0; k < Models.length; k += ToolbarColumns) {
   }
   $('#pop_models').append('</div>');
 }
+
+
+// Selecting Tabs:Integration > Process
+$(document).on('click', '.process-entry', () => {
+  $('.process-entry').removeClass('active');
+  $(this).addClass('active');
+});
 
 
 $(document).ready(function() {
@@ -157,9 +162,7 @@ $(document).ready(function() {
     $('.simulate-right').fadeIn('fast');
   });
 
-  /*
-   * Simulate checked, show form-events
-   */
+  // Simulate checked, show form-events
   $('#conf-simulate').change(() => {
     if ($(this).prop('checked')) {
       $('#form-events').fadeIn('fast');
