@@ -937,7 +937,7 @@ subroutine @ID@_threshold_init (par, scheme) bind(C)
   call init (par, scheme)
 end subroutine @ID@_threshold_init
 
-subroutine @ID@_threshold_get_amp_squared (amp2, p) bind(C)
+subroutine @ID@_get_amp_squared (amp2, p) bind(C)
   use iso_c_binding
   use kinds
   use constants
@@ -1015,4 +1015,4 @@ contains
     allocate (amp_summed(n_total_hel))
   end subroutine allocate_amps
 
-end subroutine @ID@_threshold_get_amp_squared
+end subroutine @ID@_get_amp_squared
