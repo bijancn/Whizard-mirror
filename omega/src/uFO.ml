@@ -1323,9 +1323,16 @@ i*)
 	  (ka4, la4, mu4, i4, q4);
 	  (ka5, la5, mu5, i5, q5);
 	  (ka6, la6, mu6, i6, q6) ] ->
-	 prerr_endline
-	   ("incompletely handled 3-gauge: " ^
-	       (UFOx.Lorentz.to_string t));
+	 if   ThoList.homogeneous [ (*1*) ka1; ka2; ka3; ka4; mu5; mu6; i1; i3 ]
+	   && ThoList.homogeneous [ (*2*) la1; la2; mu3; mu4; ka5; ka6; i2; i5 ]
+	   && ThoList.homogeneous [ (*3*) mu1; mu2; la3; la4; la5; la6; i4; i6 ]
+	   && ThoList.homogeneous [ q1; Q.neg q2; Q.neg q3; q4; q5; Q.neg q6 ]
+	 then
+	   prerr_endline
+	     ("incompletely handled 3-gauge: " ^
+		 (UFOx.Lorentz.to_string t))
+	 else
+	   invalid_arg "translate_lorentz_gauge_3";
 	((p.(0), p.(1), p.(2)), Coupling.Gauge_Gauge_Gauge 1, dummy_constant)
       | _ -> invalid_arg "translate_lorentz_gauge_3: expected 6 terms"
 
