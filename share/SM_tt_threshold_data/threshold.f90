@@ -492,17 +492,23 @@ contains
     me = f_fvl (gccq33, owf_b_5, owf_Wp_3) * u (sqrt(ptop*ptop), ptop, h_t)
   end function top_decay_born
 
-  subroutine set_top_decay_momenta (pw, pb, ptop)
-    type(momentum), intent(out) :: pw, pb, ptop
+  subroutine set_top_decay_momenta (pwp, pb, ptop)
+    type(momentum), intent(out) :: pwp, pb, ptop
     if (threshold%settings%onshell_projection%decay) then
-       pw = mom_wp_onshell
-       pb = mom_b_onshell
-       ptop = mom_top_onshell
+       if (threshold%settings%onshell_projection%boost_decay) then
+         pwp = mom_wp_onshell
+         pb = mom_b_onshell
+         ptop = mom_top_onshell
+       else
+         pwp = mom_wp_onshell_rest
+         pb = mom_b_onshell_rest
+         ptop = mom_top_onshell_rest
+       end if
        if (debug_active (D_THRESHOLD)) &
             call assert_equal (output_unit, sqrt (ptop * ptop), mass(6), &
               "ptop is projected", exit_on_fail=.true.)
     else
-       pw = p3
+       pwp = p3
        pb = p5
        ptop = p35
     end if
@@ -523,9 +529,15 @@ contains
   subroutine set_anti_top_decay_momenta (pwm, pbbar, ptopbar)
     type(momentum), intent(out) :: pwm, pbbar, ptopbar
     if (threshold%settings%onshell_projection%decay) then
-       pwm = mom_wm_onshell
-       pbbar = mom_bbar_onshell
-       ptopbar = mom_topbar_onshell
+       if (threshold%settings%onshell_projection%boost_decay) then
+          pwm = mom_wm_onshell
+          pbbar = mom_bbar_onshell
+          ptopbar = mom_topbar_onshell
+       else
+          pwm = mom_wm_onshell_rest
+          pbbar = mom_bbar_onshell_rest
+          ptopbar = mom_topbar_onshell_rest
+       end if
        if (debug_active (D_THRESHOLD)) &
             call assert_equal (output_unit, &
             sqrt (mom_topbar_onshell * mom_topbar_onshell), mass(6), &
@@ -557,16 +569,36 @@ contains
        !        need interference terms in the Born
        if (threshold%settings%factorized_computation) then
           if (threshold%settings%helicity_approximated) then
-             do h_t = -1, 1, 2
-                do h_tbar = -1, 1, 2
-                   prod = production_me(s(1), s(2), h_t, h_tbar)
-                   dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
-                   dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
-                   amp_blob(hi) = amp_blob(hi) + &
-                        abs2 (prod) * abs2 (top_propagators (ffi)) * &
-                        abs2 (dec1) * abs2 (dec2)
+             if (threshold%settings%helicity_approximated_extra) then
+                prod = zero
+                do h_t = -1, 1, 2
+                   do h_tbar = -1, 1, 2
+                      prod = prod + production_me(s(1), s(2), h_t, h_tbar)
+                   end do
                 end do
-             end do
+                dec1 = zero
+                do h_t = -1, 1, 2
+                   dec1 = dec1 + born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+                end do
+                dec2 = zero
+                do h_t = -1, 1, 2
+                   dec2 = dec2 + born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+                end do
+                amp_blob(hi) = amp_blob(hi) + &
+                     abs2 (prod) * abs2 (top_propagators (ffi)) * &
+                     abs2 (dec1) * abs2 (dec2) / 4
+             else
+                do h_t = -1, 1, 2
+                   do h_tbar = -1, 1, 2
+                      prod = production_me(s(1), s(2), h_t, h_tbar)
+                      dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+                      dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
+                      amp_blob(hi) = amp_blob(hi) + &
+                           abs2 (prod) * abs2 (top_propagators (ffi)) * &
+                           abs2 (dec1) * abs2 (dec2)
+                   end do
+                end do
+             end if
           else
              do h_t = -1, 1, 2
                 do h_tbar = -1, 1, 2
