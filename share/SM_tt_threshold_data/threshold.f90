@@ -504,9 +504,14 @@ contains
          pb = mom_b_onshell_rest
          ptop = mom_top_onshell_rest
        end if
-       if (debug_active (D_THRESHOLD)) &
-            call assert_equal (output_unit, sqrt (ptop * ptop), mass(6), &
-              "ptop is projected", exit_on_fail=.true.)
+       if (debug_active (D_THRESHOLD)) then
+          call assert_equal (output_unit, sqrt (ptop * ptop), mass(6), &
+            "ptop is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
+          call assert_equal (output_unit, sqrt (pwp * pwp), mass(24), &
+            "pwp is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
+          call assert_equal (output_unit, sqrt (pb * pb), mass(5), &
+            "pb is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
+       end if
     else
        pwp = p3
        pb = p5
@@ -538,10 +543,14 @@ contains
           pbbar = mom_bbar_onshell_rest
           ptopbar = mom_topbar_onshell_rest
        end if
-       if (debug_active (D_THRESHOLD)) &
-            call assert_equal (output_unit, &
-            sqrt (mom_topbar_onshell * mom_topbar_onshell), mass(6), &
-            "ptopbar is projected", exit_on_fail=.true.)
+       if (debug_active (D_THRESHOLD)) then
+          call assert_equal (output_unit, sqrt (ptopbar * ptopbar), mass(6), &
+               "ptopbar is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
+          call assert_equal (output_unit, sqrt (pwm * pwm), mass(24), &
+            "pwm is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
+          call assert_equal (output_unit, sqrt (pbbar * pbbar), mass(5), &
+            "pbbar is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
+       end if
     else
        pwm = p4
        pbbar = p6
@@ -573,20 +582,22 @@ contains
                 prod = zero
                 do h_t = -1, 1, 2
                    do h_tbar = -1, 1, 2
-                      prod = prod + production_me(s(1), s(2), h_t, h_tbar)
+                      prod = prod + abs2(production_me(s(1), s(2), h_t, h_tbar))
                    end do
                 end do
                 dec1 = zero
                 do h_t = -1, 1, 2
-                   dec1 = dec1 + born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+                   dec1 = dec1 + abs2(born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1))
                 end do
+                !print *, 'dec1 =    ', dec1 !!! Debugging
+                !stop
                 dec2 = zero
-                do h_t = -1, 1, 2
-                   dec2 = dec2 + born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
+                do h_tbar = -1, 1, 2
+                   dec2 = dec2 + abs2(born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2))
                 end do
                 amp_blob(hi) = amp_blob(hi) + &
-                     abs2 (prod) * abs2 (top_propagators (ffi)) * &
-                     abs2 (dec1) * abs2 (dec2) / 4
+                     prod * abs2 (top_propagators (ffi)) * &
+                     dec1 * dec2 / 4
              else
                 do h_t = -1, 1, 2
                    do h_tbar = -1, 1, 2
@@ -688,6 +699,7 @@ contains
     tmp = mom_top_onshell
     v4_top_onshell = tmp
     mom_top_onshell_rest = [mtop, zero, zero, zero]
+    mom_topbar_onshell_rest = [mtop, zero, zero, zero]
     boost_to_cms = boost (v4_top_onshell, mtop)
     boost_to_top_rest = inverse (boost_to_cms)
     mom_topbar_onshell = [sqrts / 2, - scale_factor * unit_vec]
