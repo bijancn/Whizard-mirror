@@ -1072,6 +1072,7 @@ NLO_EXT_SIN = \
     extra_nlo_uu_powheg.sin \
     extra_nlo_methods.sin \
     extra_nlo_threshold.sin \
+    extra_threshold_factorized.sin \
     extra_nlo_methods_gosam.sin
 
 all-local: $(TESTSUITES_SIN)

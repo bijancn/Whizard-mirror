@@ -425,7 +425,6 @@ contains
        amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * &
             ttv_formfactor (p3, p4, 1)
     else
-       ! TODO: (bcn 2016-03-18) use onshell_projection for form factor?
        ttv_vec = ttv_formfactor (p35, p46, 1, ffi)
        ttv_ax = ttv_formfactor (p35, p46, 2, ffi)
        blob_Z_vec = gncup(1) * ttv_vec
@@ -433,8 +432,10 @@ contains
        mtop = ttv_mtpole (p12*p12)
        if (threshold%settings%onshell_projection%production) then
           if (debug_active (D_THRESHOLD)) then
-             call assert_equal (u, sqrt (mom_top_onshell * mom_top_onshell), mtop, "ptop is projected")
-             call assert_equal (u, sqrt (mom_topbar_onshell * mom_topbar_onshell), mtop, "ptop is projected")
+             call assert_equal (u, sqrt (mom_top_onshell * mom_top_onshell), &
+                  mtop, "ptop is projected", exit_on_fail=.true.)
+             call assert_equal (u, sqrt (mom_topbar_onshell * mom_topbar_onshell), &
+                  mtop, "ptop is projected", exit_on_fail=.true.)
           end if
           ptop = mom_top_onshell
           ptopbar = mom_topbar_onshell
@@ -471,23 +472,23 @@ contains
       one_over_p = one_over_p / cmplx (p46*p46 - top_mass**2, &
            top_mass * top_width, kind=default)
     else
+      call msg_fatal ("on-shell projection width: You should really keep it on-shell")
       top_width = ttv_wtpole (sqrt(p35*p35), ffi, use_as_minv=.true.)
       one_over_p = one / cmplx (p35*p35 - top_mass**2, top_mass*top_width, kind=default)
       top_width = ttv_wtpole (sqrt(p46*p46), ffi, use_as_minv=.true.)
-      one_over_p = one_over_p / cmplx (p46*p46 - top_mass**2, top_mass*top_width, kind=default)
+      one_over_p = one_over_p / cmplx (p46*p46 - top_mass**2, &
+           top_mass*top_width, kind=default)
     end if
   end function top_propagators
 
   function top_decay_born (h_t, h_W, h_b) result (me)
     complex(default) :: me
     integer, intent(in) :: h_t
-    integer, intent(in), optional :: h_W, h_b
+    integer, intent(in) :: h_W, h_b
     type(momentum) :: pw, pb, ptop
     call set_top_decay_momenta (pw, pb, ptop)
-    if (present (h_W) .and. present (h_b)) then
-       owf_Wp_3 = conjg (eps (mass(24), pw, h_W))
-       owf_b_5 = ubar (mass(5), pb, h_b)
-    end if
+    owf_Wp_3 = conjg (eps (mass(24), pw, h_W))
+    owf_b_5 = ubar (mass(5), pb, h_b)
     me = f_fvl (gccq33, owf_b_5, owf_Wp_3) * u (sqrt(ptop*ptop), ptop, h_t)
   end function top_decay_born
 
@@ -498,7 +499,8 @@ contains
        pb = mom_b_onshell
        ptop = mom_top_onshell
        if (debug_active (D_THRESHOLD)) &
-            call assert_equal (output_unit, sqrt (ptop * ptop), mass(6), "ptop is projected")
+            call assert_equal (output_unit, sqrt (ptop * ptop), mass(6), &
+              "ptop is projected", exit_on_fail=.true.)
     else
        pw = p3
        pb = p5
@@ -506,31 +508,32 @@ contains
     end if
   end subroutine set_top_decay_momenta
 
-  function anti_top_decay_born (h_tbar, h_W, h_b) result(me)
+  function anti_top_decay_born (h_tbar, h_W, h_b) result (me)
     complex(default) :: me
     integer, intent(in) :: h_tbar
-    integer, intent(in), optional :: h_W, h_b
-    type(momentum) :: pw, pb, ptop
-    call set_anti_top_decay_momenta (pw, pb, ptop)
-    if (present (h_W) .and. present (h_b)) then
-       owf_Wm_4 = conjg (eps (mass(24), pw, h_W))
-       owf_b_6 = v (mass(5), pb, h_b)
-    end if
-    me = vbar (sqrt(ptop*ptop), ptop, h_tbar) * f_vlf (gccq33, owf_Wm_4, owf_b_6)
+    integer, intent(in) :: h_W, h_b
+    type(momentum) :: pwm, pbbar, ptopbar
+    call set_anti_top_decay_momenta (pwm, pbbar, ptopbar)
+    owf_Wm_4 = conjg (eps (mass(24), pwm, h_W))
+    owf_b_6 = v (mass(5), pbbar, h_b)
+    me = vbar (sqrt(ptopbar*ptopbar), ptopbar, h_tbar) * &
+         f_vlf (gccq33, owf_Wm_4, owf_b_6)
   end function anti_top_decay_born
 
-  subroutine set_anti_top_decay_momenta (pw, pb, ptop)
-    type(momentum), intent(out) :: pw, pb, ptop
+  subroutine set_anti_top_decay_momenta (pwm, pbbar, ptopbar)
+    type(momentum), intent(out) :: pwm, pbbar, ptopbar
     if (threshold%settings%onshell_projection%decay) then
-       pw = mom_wm_onshell
-       pb = mom_bbar_onshell
-       ptop = mom_topbar_onshell
+       pwm = mom_wm_onshell
+       pbbar = mom_bbar_onshell
+       ptopbar = mom_topbar_onshell
        if (debug_active (D_THRESHOLD)) &
-            call assert_equal (output_unit, sqrt (mom_topbar_onshell * mom_topbar_onshell), mass(6), "ptop is projected")
+            call assert_equal (output_unit, &
+            sqrt (mom_topbar_onshell * mom_topbar_onshell), mass(6), &
+            "ptopbar is projected", exit_on_fail=.true.)
     else
-       pw = p4
-       pb = p6
-       ptop = p46
+       pwm = p4
+       pbbar = p6
+       ptopbar = p46
     end if
   end subroutine set_anti_top_decay_momenta
 
