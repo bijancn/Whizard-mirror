@@ -1327,13 +1327,12 @@ i*)
 	   && ThoList.homogeneous [ (*2*) la1; la2; mu3; mu4; ka5; ka6; i2; i5 ]
 	   && ThoList.homogeneous [ (*3*) mu1; mu2; la3; la4; la5; la6; i4; i6 ]
 	   && ThoList.homogeneous [ q1; Q.neg q2; Q.neg q3; q4; q5; Q.neg q6 ]
-	 then
-	   prerr_endline
-	     ("incompletely handled 3-gauge: " ^
-		 (UFOx.Lorentz.to_string t))
-	 else
-	   invalid_arg "translate_lorentz_gauge_3";
-	((p.(0), p.(1), p.(2)), Coupling.Gauge_Gauge_Gauge 1, dummy_constant)
+	 then begin
+	   ((p.(0), p.(1), p.(2)),
+	    Coupling.Gauge_Gauge_Gauge (Q.to_integer q1),
+	    dummy_constant)
+	 end else
+	   invalid_arg "translate_lorentz_gauge_3"
       | _ -> invalid_arg "translate_lorentz_gauge_3: expected 6 terms"
 
     let translate_coupling3_1 model p t qc g =
@@ -1468,6 +1467,42 @@ i*)
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
 
+    let translate_lorentz_4_1 model p t =  
+      let module L = UFOx.Lorentz_Atom in
+      match t with
+      | _ -> failwith "translate_lorentz_4_1"
+
+    let normalize_lorentz_4 mu nu ka la =
+      match (List.sort (order_lexicographic compare)
+	       (List.map (List.sort compare) [[mu; nu]; [ka; la]])) with
+      | [[mu; nu]; [ka; la]] -> ((mu, nu), (ka, la))
+      | _ -> failwith "normalize_lorentz_4: can't happen"
+	 
+    let translate_lorentz_4 model p t =  
+      let module L = UFOx.Lorentz_Atom in
+      match t with
+      | [ ([L.Metric(mu1,nu1); L.Metric(ka1,la1)], q1);
+	  ([L.Metric(mu2,nu2); L.Metric(ka2,la2)], q2);
+	  ([L.Metric(mu3,nu3); L.Metric(ka3,la3)], q3) ] ->
+	 normalize_lorentz_4 mu1 nu1 ka1 la1;
+	 normalize_lorentz_4 mu2 nu2 ka2 la2;
+	 normalize_lorentz_4 mu3 nu3 ka3 la3;
+	 prerr_endline
+	   ("unhandled 4-gauge-vertex: " ^ UFOx.Lorentz.to_string t);
+	 dummy_tensor4
+      | [ ([L.Metric(mu1,nu1); L.Metric(ka1,la1)], q1);
+	  ([L.Metric(mu2,nu2); L.Metric(ka2,la2)], q2) ] ->
+	 normalize_lorentz_4 mu1 nu1 ka1 la1;
+	 normalize_lorentz_4 mu2 nu2 ka2 la2;
+	 prerr_endline
+	   ("unhandled 4-vector-vertex: " ^ UFOx.Lorentz.to_string t);
+	 dummy_tensor4
+      | [ ([L.Metric(mu,nu)], q) ] ->
+	 prerr_endline
+	   ("unhandled seagull-vertex: " ^ UFOx.Lorentz.to_string t);
+	 dummy_tensor4
+      | _ -> failwith "translate_lorentz_4"
+
     let translate_coupling4 model p t c g =
       let module L = UFOx.Lorentz_Atom in
       match t, translate_color4 c, g with
@@ -1476,12 +1511,13 @@ i*)
 	  Coupling.Scalar4 (coeff qt qc),
 	  dummy_constant)
       | [| t |], qc, [| [| g |] |] ->
-	 prerr_endline
-	   ("unhandled 4-vertex: " ^ UFOx.Lorentz.to_string t);
-	 ((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
+	 begin match translate_lorentz_4 model p t with
+	 | t -> ((p.(0), p.(1), p.(2), p.(3)), t, dummy_constant)
+	 end
       | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
       | t, qc, g ->
+	 let t' = Array.map (translate_lorentz_4 model p) t in
 	 prerr_endline
 	   ("unhandled 4-vertex w/multiple Lorentz structures: " ^
 	       (String.concat ", "
