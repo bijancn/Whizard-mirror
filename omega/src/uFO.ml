@@ -1472,35 +1472,85 @@ i*)
       match t with
       | _ -> failwith "translate_lorentz_4_1"
 
-    let normalize_lorentz_4 mu nu ka la =
-      match (List.sort (order_lexicographic compare)
-	       (List.map (List.sort compare) [[mu; nu]; [ka; la]])) with
-      | [[mu; nu]; [ka; la]] -> ((mu, nu), (ka, la))
-      | _ -> failwith "normalize_lorentz_4: can't happen"
-	 
+    let normalize_lorentz_4_1 (mu, nu, ka, la) =
+      List.flatten (List.sort (order_lexicographic compare)
+		      (List.map (List.sort compare) [[mu; nu]; [ka; la]]))
+
+    let normalize_lorentz_4 contractions =
+      List.sort
+	(fun (c1, q1) (c2, q2) -> order_lexicographic compare c1 c2)
+	(List.map (fun (c, q) -> (normalize_lorentz_4_1 c, q)) contractions)
+
     let translate_lorentz_4 model p t =  
       let module L = UFOx.Lorentz_Atom in
       match t with
       | [ ([L.Metric(mu1,nu1); L.Metric(ka1,la1)], q1);
 	  ([L.Metric(mu2,nu2); L.Metric(ka2,la2)], q2);
 	  ([L.Metric(mu3,nu3); L.Metric(ka3,la3)], q3) ] ->
-	 normalize_lorentz_4 mu1 nu1 ka1 la1;
-	 normalize_lorentz_4 mu2 nu2 ka2 la2;
-	 normalize_lorentz_4 mu3 nu3 ka3 la3;
-	 prerr_endline
-	   ("unhandled 4-gauge-vertex: " ^ UFOx.Lorentz.to_string t);
-	 dummy_tensor4
+	 begin match normalize_lorentz_4 [ ((mu1, nu1, ka1, la1), q1);
+					   ((mu2, nu2, ka2, la2), q2);
+					   ((mu3, nu3, ka3, la3), q3) ] with
+	 | [ ([mu1; nu1; ka1; la1], q1);
+	     ([mu2; nu2; ka2; la2], q2);
+	     ([mu3; nu3; ka3; la3], q3) ] ->
+	    let minus_two q = Q.mul (Q.make (-2) 1) q in
+	    if   ThoList.homogeneous [mu1; mu2; mu3]
+	      && ThoList.homogeneous [nu1; ka2; ka3]
+	      && ThoList.homogeneous [ka1; nu2; la3]
+	      && ThoList.homogeneous [la1; la2; nu3] then begin
+		if ThoList.homogeneous [q1; minus_two q2; minus_two q3] then
+		  (q1, Coupling.Vector4 [ ( 2, Coupling.C_12_34);
+					  (-1, Coupling.C_13_42);
+					  (-1, Coupling.C_14_23) ])
+		else if ThoList.homogeneous [q2; minus_two q3; minus_two q1] then
+		  (q2, Coupling.Vector4 [ (-1, Coupling.C_12_34);
+					  ( 2, Coupling.C_13_42);
+					  (-1, Coupling.C_14_23) ] )
+		else if ThoList.homogeneous [q3; minus_two q1; minus_two q2] then
+		  (q3, Coupling.Vector4 [ (-1, Coupling.C_12_34);
+					  (-1, Coupling.C_13_42);
+					  ( 2, Coupling.C_14_23) ])
+		else begin
+		  prerr_endline
+		    ("unexpected 4-gauge-vertex: " ^ UFOx.Lorentz.to_string t);
+		  (Q.unit, dummy_tensor4)
+		end
+	      end else begin
+		prerr_endline
+		  ("expected 4-gauge-vertex: " ^ UFOx.Lorentz.to_string t);
+		invalid_arg "normalize_lorentz_4: unexpected"
+	      end
+	 | _ -> failwith "translate_lorentz_4: unexpected"
+	 end
       | [ ([L.Metric(mu1,nu1); L.Metric(ka1,la1)], q1);
 	  ([L.Metric(mu2,nu2); L.Metric(ka2,la2)], q2) ] ->
-	 normalize_lorentz_4 mu1 nu1 ka1 la1;
-	 normalize_lorentz_4 mu2 nu2 ka2 la2;
-	 prerr_endline
-	   ("unhandled 4-vector-vertex: " ^ UFOx.Lorentz.to_string t);
-	 dummy_tensor4
+	 begin match normalize_lorentz_4 [ ((mu1, nu1, ka1, la1), q1);
+					   ((mu2, nu2, ka2, la2), q2) ] with
+	 | [ ([mu1; nu1; ka1; la1], q1);
+	     ([mu2; nu2; ka2; la2], q2) ] ->
+	    (* [1;2;3;4] - [1;3;2;4]
+	       [1;2;3;4] - [1;4;2;3]
+	       [1;3;2;4] - [1;4;2;3] *)
+	    if mu1 = mu2 && q2 = Q.neg q1 then begin
+	      if [nu2; ka2; la2] = [ka1; nu1; la1] then
+		(q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
+				        (-1, Coupling.C_13_42) ])
+	      else if [nu2; ka2; la2] = [la1; nu1; ka1] then
+		(q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
+				        (-1, Coupling.C_14_23) ])
+	      else if [nu2; ka2; la2] = [la1; ka1; nu1] then
+		(q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
+				        (-1, Coupling.C_14_23) ])
+	      else
+		invalid_arg "translate_lorentz_4: inconsistent"
+	    end else
+	      invalid_arg "translate_lorentz_4: inconsistent"
+	 | _ -> failwith "translate_lorentz_4: unexpected"
+	 end
       | [ ([L.Metric(mu,nu)], q) ] ->
 	 prerr_endline
-	   ("unhandled seagull-vertex: " ^ UFOx.Lorentz.to_string t);
-	 dummy_tensor4
+	   ("incompletely handled seagull-vertex: " ^ UFOx.Lorentz.to_string t);
+	 (Q.unit, Coupling.Scalar2_Vector2 1)
       | _ -> failwith "translate_lorentz_4"
 
     let translate_coupling4 model p t c g =
@@ -1512,7 +1562,7 @@ i*)
 	  dummy_constant)
       | [| t |], qc, [| [| g |] |] ->
 	 begin match translate_lorentz_4 model p t with
-	 | t -> ((p.(0), p.(1), p.(2), p.(3)), t, dummy_constant)
+	 | q, t -> ((p.(0), p.(1), p.(2), p.(3)), t, dummy_constant)
 	 end
       | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
