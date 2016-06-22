@@ -29,10 +29,12 @@ let rcs_file = RCS.parse "UFO" ["Reading UFO Files"]
       RCS.source
         = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/UFO.ml $" }
 
-let (@<) f g x =
+(* Unfortunately, \texttt{ocamlweb} will not typeset all multi character
+   operators nicely. E.\,g.~\verb+f @< g+ comes out as [f @< g]. *)
+let (@@) f g x =
  f (g x)
 
-let (@@<) f g x y =
+let (@@@) f g x y =
   f (g x y)
 
 let error_in_string text start_pos end_pos =
@@ -856,7 +858,7 @@ let alist_of_list predicate offset list =
   alist
 
 let lorentz_reps_of_vertex model v =
-  alist_of_list (not @< UFOx.Lorentz.rep_trivial) 1
+  alist_of_list (not @@ UFOx.Lorentz.rep_trivial) 1
     (List.map
        (fun p ->
 	 (* Why do we need to conjugate??? *)
@@ -881,7 +883,7 @@ let check_lorentz_reps_of_vertex model v =
     v.Vertex.lorentz
   
 let color_reps_of_vertex model v =
-  alist_of_list (not @< UFOx.Color.rep_trivial) 1
+  alist_of_list (not @@ UFOx.Color.rep_trivial) 1
     (List.map
        (fun p -> (SMap.find p model.particles).Particle.color)
        (Array.to_list v.Vertex.particles))
@@ -920,29 +922,29 @@ let parse_directory dir =
   of_file (Files.parse_directory dir)
 
 let dump model =
-  SMap.iter (print_endline @@< Particle.to_string) model.particles;
-  (* SMap.iter (print_endline @@< UFO_Coupling.to_string) model.couplings; *)
+  SMap.iter (print_endline @@@ Particle.to_string) model.particles;
+  (* [SMap.iter (print_endline @@@ UFO_Coupling.to_string) model.couplings;] *)
   SMap.iter
     (fun symbol c ->
-      (print_endline @@< UFO_Coupling.to_string) symbol c;
+      (print_endline @@@ UFO_Coupling.to_string) symbol c;
       print_endline
 	(" ==>> " ^
 	    (UFOx.Value.to_string
 	       (UFOx.Value.of_expr
 		  (UFOx.Expr.of_string c.UFO_Coupling.value)))))
     model.couplings;
-  SMap.iter (print_endline @@< Coupling_Order.to_string) model.coupling_orders;
-  (* SMap.iter (print_endline @@< Vertex.to_string) model.vertices; *)
+  SMap.iter (print_endline @@@ Coupling_Order.to_string) model.coupling_orders;
+  (* [SMap.iter (print_endline @@@ Vertex.to_string) model.vertices;] *)
   SMap.iter
     (fun symbol v ->
-      (print_endline @@< Vertex.to_string) symbol v;
+      (print_endline @@@ Vertex.to_string) symbol v;
       check_color_reps_of_vertex model v;
       check_lorentz_reps_of_vertex model v)
     model.vertices;
-  SMap.iter (print_endline @@< Lorentz.to_string) model.lorentz;
-  SMap.iter (print_endline @@< Parameter.to_string) model.parameters;
-  SMap.iter (print_endline @@< Propagator.to_string) model.propagators;
-  SMap.iter (print_endline @@< Decay.to_string) model.decays;
+  SMap.iter (print_endline @@@ Lorentz.to_string) model.lorentz;
+  SMap.iter (print_endline @@@ Parameter.to_string) model.parameters;
+  SMap.iter (print_endline @@@ Propagator.to_string) model.propagators;
+  SMap.iter (print_endline @@@ Decay.to_string) model.decays;
   SMap.iter
     (fun symbol c -> ignore (UFOx.Expr.of_string c.UFO_Coupling.value))
     model.couplings;
@@ -1217,12 +1219,12 @@ module Model =
       
     let il2s2 l2 = l2s il2s l2
 
-(* We can not handle color tensors on their own, because UFO
-   allows to exchange signs between color and Lorentz tensors. *)
-      
-(*i
-Indeed, the FeynRulesSM file has
+(*l
+We can not handle color tensors on their own, because UFO
+allows to exchange signs between color and Lorentz tensors.
 
+Indeed, the \texttt{FeynRulesSM} file has
+\begin{verbatim}
     color = [ 'f(-1,1,2)*f(3,4,-1)',
               'f(-1,1,3)*f(2,4,-1)',
               'f(-1,1,4)*f(2,3,-1)' ],
@@ -1230,19 +1232,18 @@ Indeed, the FeynRulesSM file has
                 'Metric(1,4)*Metric(2,3) - Metric(1,2)*Metric(3,4)',
                 'Metric(1,3)*Metric(2,4) - Metric(1,2)*Metric(3,4)' ],
     couplings = {(1,1):C.GC_12,(0,0):C.GC_12,(2,2):C.GC_12})
-
+\end{verbatim}
 i.e.
-
+\begin{verbatim}
    f(-1,1,2)*f(3,4,-1) * (Metric(1,4)*Metric(2,3) - Metric(1,3)*Metric(2,4))
  + f(-1,1,3)*f(2,4,-1) * (Metric(1,4)*Metric(2,3) - Metric(1,2)*Metric(3,4))
  + f(-1,1,4)*f(2,3,-1) * (Metric(1,3)*Metric(2,4) - Metric(1,2)*Metric(3,4))
-
 =
    f(-1,1,2)*f(3,4,-1) * (Metric(1,4)*Metric(2,3) - Metric(1,3)*Metric(4,2))
  + f(-1,1,3)*f(4,2,-1) * (Metric(1,2)*Metric(3,4) - Metric(1,4)*Metric(3,2))
  + f(-1,1,4)*f(2,3,-1) * (Metric(1,3)*Metric(2,4) - Metric(1,2)*Metric(3,4))
-
-i*)
+\end{verbatim}
+*)
 
     let translate_color4 c =
       match Array.map translate_color4_1 c with
@@ -1315,6 +1316,12 @@ i*)
 	       (ka, la, mu, i, q))
 	   l)
 
+(* \begin{equation}
+       g_{\mu_1\mu_2} (k^1_{\mu_3} - k^2_{\mu_3})
+     + g_{\mu_2\mu_3} (k^2_{\mu_1} - k^3_{\mu_1})
+     + g_{\mu_3\mu_1} (k^3_{\mu_2} - k^1_{\mu_2})
+   \end{equation}
+*)
     let translate_lorentz_gauge_3 t p kalamuiq =
       match normalize_lorentz_gauge_3 kalamuiq with
       | [ (ka1, la1, mu1, i1, q1);
@@ -1323,9 +1330,9 @@ i*)
 	  (ka4, la4, mu4, i4, q4);
 	  (ka5, la5, mu5, i5, q5);
 	  (ka6, la6, mu6, i6, q6) ] ->
-	 if   ThoList.homogeneous [ (*1*) ka1; ka2; ka3; ka4; mu5; mu6; i1; i3 ]
-	   && ThoList.homogeneous [ (*2*) la1; la2; mu3; mu4; ka5; ka6; i2; i5 ]
-	   && ThoList.homogeneous [ (*3*) mu1; mu2; la3; la4; la5; la6; i4; i6 ]
+	 if   ThoList.homogeneous [ ka1; ka2; ka3; ka4; mu5; mu6; i1; i3 ]
+	   && ThoList.homogeneous [ la1; la2; mu3; mu4; ka5; ka6; i2; i5 ]
+	   && ThoList.homogeneous [ mu1; mu2; la3; la4; la5; la6; i4; i6 ]
 	   && ThoList.homogeneous [ q1; Q.neg q2; Q.neg q3; q4; q5; Q.neg q6 ]
 	 then begin
 	   ((p.(0), p.(1), p.(2)),
@@ -1654,12 +1661,12 @@ i*)
     let init () =
       let model = parse_directory !ufo_directory in
       let model =
-	let is_unphysical = not @< Particle.is_physical in
+	let is_unphysical = not @@ Particle.is_physical in
 	let particles' =
 	  Particle.filter Particle.is_physical model.particles in
 	let vertices' =
 	  Vertex.filter
-	    (not @< (Vertex.contains model.particles is_unphysical))
+	    (not @@ (Vertex.contains model.particles is_unphysical))
 	    model.vertices in
 	{ model with particles = particles'; vertices = vertices' } in
       if !dump_raw then
