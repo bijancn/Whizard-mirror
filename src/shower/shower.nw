@@ -384,11 +384,12 @@ emissions.
 <<Shower base: interfaces>>=
   abstract interface
      subroutine shower_base_import_particle_set &
-            (shower, particle_set, os_data)
+            (shower, particle_set, os_data, scale)
        import
        class(shower_base_t), target, intent(inout) :: shower
        type(particle_set_t), intent(in) :: particle_set
        type(os_data_t), intent(in) :: os_data
+       real(default), intent(in) :: scale
      end subroutine shower_base_import_particle_set
   end interface
 
@@ -2041,10 +2042,11 @@ $k_T$-ordered showers.
 <<Shower core: shower: TBP>>=
   procedure :: import_particle_set => shower_import_particle_set
 <<Shower core: procedures>>=
-  subroutine shower_import_particle_set (shower, particle_set, os_data)
+  subroutine shower_import_particle_set (shower, particle_set, os_data, scale)
     class(shower_t), target, intent(inout) :: shower
     type(particle_set_t), intent(in) :: particle_set
     type(os_data_t), intent(in) :: os_data
+    real(default), intent(in) :: scale
     !integer, dimension(:), allocatable :: connections
     type(parton_t), dimension(:), allocatable, target, save :: partons, hadrons
     type(parton_pointer_t), dimension(:), allocatable :: &
@@ -6371,10 +6373,11 @@ contains
   procedure :: import_particle_set => shower_pythia6_import_particle_set
 <<Shower pythia6: procedures>>=
   subroutine shower_pythia6_import_particle_set &
-         (shower, particle_set, os_data)
+         (shower, particle_set, os_data, scale)
     class(shower_pythia6_t), target, intent(inout) :: shower
     type(particle_set_t), intent(in) :: particle_set
     type(os_data_t), intent(in) :: os_data
+    real(default), intent(in) :: scale
     type(particle_set_t) :: pset_reduced
     call msg_debug (D_SHOWER, "shower_pythia6_import_particle_set")
     if (debug_active (D_SHOWER)) then
@@ -6390,7 +6393,8 @@ contains
        call pset_reduced%write (summary=.true., compressed=.true.)
     end if
     call hepeup_from_particle_set (pset_reduced, tauola_convention=.true.)
-    call hepeup_set_event_parameters (proc_id=1)
+    call hepeup_set_event_parameters (proc_id = 1)
+    call hepeup_set_event_parameters (scale = scale)
   end subroutine shower_pythia6_import_particle_set
 
 @ %def shower_pythia6_import_particle_set
@@ -6400,13 +6404,19 @@ contains
 <<Shower pythia6: procedures>>=
   subroutine shower_pythia6_generate_emissions &
          (shower, valid, number_of_emissions)
+    IMPLICIT DOUBLE PRECISION(A-H, O-Z)
+    IMPLICIT INTEGER(I-N)
+    COMMON/PYDAT1/MSTU(200),PARU(200),MSTJ(200),PARJ(200)
+    SAVE/PYDAT1/
     class(shower_pythia6_t), intent(inout), target :: shower
     logical, intent(out) :: valid
     integer, optional, intent(in) :: number_of_emissions
     integer :: N, NPAD, K
     real(double) :: P, V
     common /PYJETS/ N, NPAD, K(4000,5), P(4000,5), V(4000,5)
-    save /PYJETS/
+    COMMON/PYDAT2/KCHG(500,4),PMAS(500,4),PARF(2000),VCKM(4,4)
+    COMMON/PYINT4/MWID(500),WIDS(500,5)
+    save /PYJETS/,/PYDAT2/,/PYINT4/
     integer :: u_W2P
     integer :: i
     real(double) :: beta_z, pz_in, E_in
@@ -6449,6 +6459,16 @@ contains
     if (debug_active (D_SHOWER)) then
        print *, ' After pyevnt, after boosting :'
        call pylist(2)
+       if (debug2_active (D_SHOWER)) then
+          call pystat (5)
+          do i = 1, 200
+             print *, 'MSTJ (', i, ') = ', MSTJ(i)
+             print *, 'MSTU (', i, ') = ', MSTU(i)
+             print *, 'PMAS (', i, ') = ', PMAS(i,1), PMAS(i,2)
+             print *, 'MWID (', i, ') = ', MWID(i)
+             print *, 'PARJ (', i, ') = ', PARJ(i)
+          end do
+       end if
     end if
     close (u_W2P)
     valid = pythia6_handle_errors ()
@@ -6479,6 +6499,11 @@ contains
     real(default) :: rand
     logical, save :: tauola_initialized = .false.
     call msg_debug (D_SHOWER, "shower_pythia6_transfer_settings")
+    !!! We repeat these as they are overwritten by the hadronization
+    call pygive ("MSTP(111)=1")     !!! Allow hadronization and decays
+    call pygive ("MSTJ(1)=0")       !!! No jet fragmentation
+    call pygive ("MSTJ(21)=1")      !!! Allow decays but no jet fragmentation
+
     if (shower%initialized_for_NPRUP >= NPRUP) then
       call msg_debug (D_SHOWER, "calling upinit")
       call upinit ()
@@ -6493,9 +6518,6 @@ contains
        else
           call pygive ("MSTP(71)=0")   !!! switch off FSR
        end if
-       call pygive ("MSTP(111)=1")     !!! Allow hadronization and decays
-       call pygive ("MSTJ(1)=0")       !!! No jet fragmentation
-       call pygive ("MSTJ(21)=1")      !!! Allow decays but no jet fragmentation
        call pygive ("MSTP(11)=0")      !!! Disable Pythias QED-ISR per default
        call pygive ("MSTP(171)=1")     !!! Allow variable energies
 

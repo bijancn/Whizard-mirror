@@ -16,13 +16,44 @@ subroutine dexay (kto, pol)
   stop
 end subroutine dexay
 
-subroutine tauola (mode, keypol)
+subroutine initdk (mode, keypol)
   integer, intent(in) :: mode, keypol
   write (0, "(A)")  "**************************************************************"
   write (0, "(A)")  "*** Error: TAUOLA has not been enabled, WHIZARD terminates ***"
   write (0, "(A)")  "**************************************************************"
   stop
-end subroutine tauola
+end subroutine initdk
+
+subroutine inimas (mode, keypol)
+  integer, intent(in) :: mode, keypol
+  write (0, "(A)")  "**************************************************************"
+  write (0, "(A)")  "*** Error: TAUOLA has not been enabled, WHIZARD terminates ***"
+  write (0, "(A)")  "**************************************************************"
+  stop
+end subroutine inimas
+
+subroutine iniphx (xk00)
+  double precision, intent(in) :: xk00
+  write (0, "(A)")  "**************************************************************"
+  write (0, "(A)")  "*** Error: TAUOLA has not been enabled, WHIZARD terminates ***"
+  write (0, "(A)")  "**************************************************************"
+  stop
+end subroutine iniphx
+
+subroutine inietc (jakk1, jakk2, itd, ifpho)
+  integer, intent(in) :: jakk1, jakk2, itd, ifpho
+  write (0, "(A)")  "**************************************************************"
+  write (0, "(A)")  "*** Error: TAUOLA has not been enabled, WHIZARD terminates ***"
+  write (0, "(A)")  "**************************************************************"
+  stop
+end subroutine inietc
+
+subroutine phoini ()
+  write (0, "(A)")  "**************************************************************"
+  write (0, "(A)")  "*** Error: TAUOLA has not been enabled, WHIZARD terminates ***"
+  write (0, "(A)")  "**************************************************************"
+  stop
+end subroutine phoini
 
 function wthiggs (ifpseudo, hh1, hh2)
   double precision, dimension(4), intent(in) :: hh1, hh2
