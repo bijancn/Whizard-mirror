@@ -10,7 +10,8 @@ import './alias';
 import './process';
 import './scan';
 import './integration';
-import './tabs.simulate';
+const simulate = require('./simulate');
 import './index_dump';
 
 cuts.setupJquery();
+simulate.setupJquery();

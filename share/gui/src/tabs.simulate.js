@@ -3,9 +3,6 @@ const cuts = require('./cuts');
 export const activeProcessId = -1;
 export const SimulateList = [];
 
-// Hiding optional fields
-$('#struct-sim-hist').hide();
-
 
 function SimulateSetEvents(events) {
   this.events = events;
@@ -156,10 +153,12 @@ export function removeSimulateElement(id) {
   rebuildSimulateList();
 }
 
+
 export function addSimulation() {
   SimulateList.push(new SindarinSimulate());
   rebuildSimulateList();
 }
+
 
 export const Simulate = {
   rebuildParticlesHTML: () => {
@@ -171,90 +170,96 @@ export const Simulate = {
         + particles[i] + '</a></li>');
     }
   },
-
   fillHistogramFieldsHTML: () => {
-    $('#conf-sim-hist').prop('checked', SimulateList[activeProcessId].Histogram.doHistogram);
-
+    $('#conf-sim-hist').prop('checked',
+        SimulateList[activeProcessId].Histogram.doHistogram);
     if ($('#conf-sim-hist').prop('checked')) $('#struct-sim-hist').fadeIn('fast');
     else $('#struct-sim-hist').fadeOut('fast');
-
     $('#conf-sim-hist-title').val(SimulateList[activeProcessId].Histogram.title);
     $('#conf-sim-hist-x').val(SimulateList[activeProcessId].Histogram.xlabel);
     $('#conf-sim-hist-minx').val(SimulateList[activeProcessId].Histogram.xmin);
     $('#conf-sim-hist-maxx').val(SimulateList[activeProcessId].Histogram.xmax);
     $('#conf-sim-hist-ticks').val(SimulateList[activeProcessId].Histogram.ticks);
-    $('#conf-sim-hist-subevent').val(SimulateList[activeProcessId].Histogram.subevent);
-    $('#sim-hist-analysis').html(SimulateList[activeProcessId].Histogram.analysis +
+    $('#conf-sim-hist-subevent').val(
+        SimulateList[activeProcessId].Histogram.subevent);
+    $('#sim-hist-analysis').html(
+        SimulateList[activeProcessId].Histogram.analysis +
         ' <span class="caret"></span>');
   },
 };
 
-// [Appearance]
-// Selecting Tabs:Integration > Process
-$(document).on('click', '.process-entry-sim', () => {
-  $('.process-entry-sim').removeClass('active');
-  $(this).addClass('active');
-});
 
-//  Checkbox Simulation->Histograms
-$('#conf-sim-hist').change(() => {
-  if ($(this).prop('checked')) $('#struct-sim-hist').fadeIn('fast');
-  else $('#struct-sim-hist').fadeOut('fast');
-  SimulateList[activeProcessId].Histogram.setHistStatus($(this).prop('checked'));
-});
+export function setupJquery() {
+  // [Appearance]
+  // Selecting Tabs:Integration > Process
+  $(document).on('click', '.process-entry-sim', () => {
+    $('.process-entry-sim').removeClass('active');
+    $(this).addClass('active');
+  });
 
-// Clicking on Simulation->Histograms->Subevent->Particle
-$(document).on('click', '.simulation-particles-click', () => {
-  const Input = $('#conf-sim-hist-subevent').val();
-  $('#conf-sim-hist-subevent').val(Input + '' + $(this).text());
-  SimulateList[activeProcessId].Histogram.setHistSubevent(
-      $('#conf-sim-hist-subevent').val());
-});
+  //  Checkbox Simulation->Histograms
+  $('#conf-sim-hist').change(() => {
+    if ($(this).prop('checked')) $('#struct-sim-hist').fadeIn('fast');
+    else $('#struct-sim-hist').fadeOut('fast');
+    SimulateList[activeProcessId].Histogram.setHistStatus($(this).prop('checked'));
+  });
 
+  // Clicking on Simulation->Histograms->Subevent->Particle
+  $(document).on('click', '.simulation-particles-click', () => {
+    const Input = $('#conf-sim-hist-subevent').val();
+    $('#conf-sim-hist-subevent').val(Input + '' + $(this).text());
+    SimulateList[activeProcessId].Histogram.setHistSubevent(
+        $('#conf-sim-hist-subevent').val());
+  });
 
-// Histogram Data from HTML forms
-$('#conf-sim-hist-title').change(() => {
-  SimulateList[activeProcessId].Histogram.setHistTitle($(this).val());
-});
+  // Histogram Data from HTML forms
+  $('#conf-sim-hist-title').change(() => {
+    SimulateList[activeProcessId].Histogram.setHistTitle($(this).val());
+  });
 
-$('#conf-sim-hist-x').change(() => {
-  SimulateList[activeProcessId].Histogram.setHistXLabel($(this).val());
-});
+  $('#conf-sim-hist-x').change(() => {
+    SimulateList[activeProcessId].Histogram.setHistXLabel($(this).val());
+  });
 
-$('#conf-sim-hist-subevent').change(() => {
-  SimulateList[activeProcessId].Histogram.setHistSubevent($('#conf-sim-hist-subevent').val());
-});
+  $('#conf-sim-hist-subevent').change(() => {
+    SimulateList[activeProcessId].Histogram.setHistSubevent(
+        $('#conf-sim-hist-subevent').val());
+  });
 
-$('#conf-sim-hist-minx').change(() => {
-  SimulateList[activeProcessId].Histogram.setHistXmin($(this).val());
-});
+  $('#conf-sim-hist-minx').change(() => {
+    SimulateList[activeProcessId].Histogram.setHistXmin($(this).val());
+  });
 
-$('#conf-sim-hist-maxx').change(() => {
-  SimulateList[activeProcessId].Histogram.setHistXmax($(this).val());
-});
+  $('#conf-sim-hist-maxx').change(() => {
+    SimulateList[activeProcessId].Histogram.setHistXmax($(this).val());
+  });
 
-$('#conf-sim-hist-ticks').change(() => {
-  SimulateList[activeProcessId].Histogram.setHistTicks($(this).val());
-});
+  $('#conf-sim-hist-ticks').change(() => {
+    SimulateList[activeProcessId].Histogram.setHistTicks($(this).val());
+  });
 
-$('.sim-hist-analysis').click(() => {
-  $('#sim-hist-analysis').html($(this).text() + ' <span class="caret"></span>');
-  SimulateList[activeProcessId].Histogram.setHistAnalysis($(this).attr('key'));
-});
+  $('.sim-hist-analysis').click(() => {
+    $('#sim-hist-analysis').html($(this).text() + ' <span class="caret"></span>');
+    SimulateList[activeProcessId].Histogram.setHistAnalysis($(this).attr('key'));
+  });
 
-// Simulate Data from HTML forms
-$('#conf-sim-sim').change(() => {
-  SimulateList[activeProcessId].setStatus($(this).prop('checked'));
-  // Changing On/Off indicator
-  if (SimulateList[activeProcessId].status) {
-    $('#proc_indicator_' + activeProcessId).removeClass(
-        'label-default label-success').addClass('label-success').text('On');
-  } else {
-    $('#proc_indicator_' + activeProcessId).removeClass(
-        'label-default label-success').addClass('label-default').text('Off');
-  }
-});
+  // Simulate Data from HTML forms
+  $('#conf-sim-sim').change(() => {
+    SimulateList[activeProcessId].setStatus($(this).prop('checked'));
+    // Changing On/Off indicator
+    if (SimulateList[activeProcessId].status) {
+      $('#proc_indicator_' + activeProcessId).removeClass(
+          'label-default label-success').addClass('label-success').text('On');
+    } else {
+      $('#proc_indicator_' + activeProcessId).removeClass(
+          'label-default label-success').addClass('label-default').text('Off');
+    }
+  });
 
-$('#conf-sim-events').change(() => {
-  SimulateList[activeProcessId].setEvents($(this).val());
-});
+  $('#conf-sim-events').change(() => {
+    SimulateList[activeProcessId].setEvents($(this).val());
+  });
+
+  // Hiding optional fields
+  $('#struct-sim-hist').hide();
+}
