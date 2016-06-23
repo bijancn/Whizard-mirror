@@ -540,7 +540,6 @@ clean-local:
 	rm -f *.f90 *.f90.in *.c *.$(FC_MODULE_EXT) *.o *.la
 	rm -f *.makefile
 	rm -f *.grid
-	rm -f *.timing
 	rm -rf err-output
 	rm -rf ref-output
 	rm -f *.sin *.hbc
@@ -558,13 +557,6 @@ clean-local:
 if FC_SUBMODULES
 	rm -f *.smod
 endif
-
-show-timings:
-	@echo '* +-------------------------------------------------------------+ *'
-	@echo '* | Timings where available:                                    | *'
-	@echo '* +-------------------------------------------------------------+ *'
-	@echo ''
-	@for i in *timing; do printf "%30s%30s\n" "$$i" "`grep real $$i` sec"; done
 
 ## Remove backup files
 maintainer-clean-local: maintainer-clean-fc
