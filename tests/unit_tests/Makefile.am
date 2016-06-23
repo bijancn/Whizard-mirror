@@ -105,6 +105,7 @@ UNIT_TESTS = \
     slha_interface.run \
     prc_test.run \
     prc_template_me.run \
+    parton_states.run \
     subevt_expr.run \
     processes.run \
     process_stacks.run \

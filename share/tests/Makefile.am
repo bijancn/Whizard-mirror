@@ -348,6 +348,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/prc_omega_4.ref \
     unit_tests/ref-output/prc_omega_5.ref \
     unit_tests/ref-output/prc_omega_diags_1.ref \
+    unit_tests/ref-output/parton_states_1.ref \
     unit_tests/ref-output/subevt_expr_1.ref \
     unit_tests/ref-output/subevt_expr_2.ref \
     unit_tests/ref-output/processes_1.ref \
