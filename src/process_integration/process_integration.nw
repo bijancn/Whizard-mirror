@@ -1345,17 +1345,17 @@ apply the provided [[qn_mask_in]] which communicates the beam properties.
               .or. qn_mask_in(i)
          end if
       end do
-    if (core%use_color_factors) then
-       call state%matrix%init_square (state%int_eff, qn_mask, &
-            col_flow_index = data%cf_index, &
-            col_factor = data%color_factors, &
-            col_index_hi = col, &
-            nc = core%nc)
-    else
-       call state%matrix%init_square (state%int_eff, &
-            qn_mask, &
-            nc = core%nc)
-    end if
+      if (core%use_color_factors) then
+         call state%matrix%init_square (state%int_eff, qn_mask, &
+              col_flow_index = data%cf_index, &
+              col_factor = data%color_factors, &
+              col_index_hi = col, &
+              nc = core%nc)
+      else
+         call state%matrix%init_square (state%int_eff, &
+              qn_mask, &
+              nc = core%nc)
+      end if
     end associate
     state%has_matrix = .true.
   end subroutine isolated_state_setup_square_matrix
@@ -1737,6 +1737,18 @@ evaluated at this point.
   end subroutine parton_state_evaluate_trace
 
 @ %def parton_state_evaluate_trace
+<<Parton states: parton state: TBP>>=
+  procedure :: evaluate_matrix => parton_state_evaluate_matrix
+<<Parton states: procedures>>=
+  subroutine parton_state_evaluate_matrix (state)
+    class(parton_state_t), intent(inout) :: state
+    if (state%has_matrix) then
+       print *, 'FOFOFOFOF'
+       call state%matrix%evaluate ()
+    end if
+  end subroutine parton_state_evaluate_matrix
+
+@ %def parton_state_evaluate_matrix
 @ Evaluate the extra evaluators that we need for physical events. 
 <<Parton states: parton state: TBP>>=
   procedure :: evaluate_event_data => parton_state_evaluate_event_data
@@ -1883,6 +1895,7 @@ use sf_base, only: sf_chain_instance_t
 use state_matrices, only: state_matrix_t
 use prc_template_me, only: prc_template_me_t
 use interactions, only: interaction_t 
+use models, only: model_t, create_test_model
 use parton_states
 
 <<Standard module head>>
@@ -1925,24 +1938,45 @@ end module parton_states_uti
     type(color_t), dimension(4) :: col
     integer :: h1, h2, h3, h4
     integer :: f
+    integer :: i
     type(quantum_numbers_t), dimension(4) :: qn
     type(prc_template_me_t) :: core
-    type(sf_chain_instance_t) :: sf_chain
-    type(interaction_t) :: int
+    type(sf_chain_instance_t), target :: sf_chain
+    type(interaction_t), target :: int
     type(isolated_state_t) :: isolated_state
+    integer :: n_states = 0
+    integer, dimension(:), allocatable :: col_flow_index
+    type(quantum_numbers_mask_t), dimension(2) :: qn_mask
+    integer, dimension(8) :: i_allowed_states
+    complex(default), dimension(8) :: me
+    type(model_t), pointer :: test_model => null ()
+    
+    write (u, "(A)") "* Test output: parton_states_1"
+    write (u, "(A)") "* Purpose: Test the standard parton states"
+    write (u, "(A)") 
 
     call flv_in%init ([11, -11])
     call flv_out1%init ([1, -1])
     call flv_out2%init ([2, -2])
 
+    write (u, "(A)") "* Using incoming flavors: "
+    call flavor_write_array (flv_in, u)
+    write (u, "(A)") "* Two outgoing flavor structures: "
+    call flavor_write_array (flv_out1, u)
+    call flavor_write_array (flv_out2, u)
+
+
+    write (u, "(A)") "* Initialize state matrix"
     allocate (state)    
     call state%init ()
 
+    write (u, "(A)") "* Fill state matrix" 
     do f = 1, 2
        do h1 = -1, 1, 2
           do h2 = -1, 1, 2
              do h3 = -1, 1, 2
                 do h4 = -1, 1, 2
+                   n_states = n_states + 1
                    call hel%init ([h1, h2, h3, h4], [h1, h2, h3, h4])
                    call col(3)%init ([1])
                    call col(4)%init ([-1])
@@ -1958,19 +1992,67 @@ end module parton_states_uti
           end do
        end do
     end do
+
+    !!! Two flavors, one color flow, 2 x 2 x 2 x 2 helicity configurations
+    !!! -> 32 states. 
+    write (u, "(A)")
+    write (u, "(A,I2)") "* Generated number of states: ", n_states 
+
     call state%freeze ()
-    int%state_matrix = state
-   
-    call state%write ()
+
+    !!! Indices of the helicity configurations which are non-zero
+    i_allowed_states = [6, 7, 10, 11, 22, 23, 26, 27]
+    me = [cmplx (-1.89448E-5, 9.94456E-7, default), &
+          cmplx (-8.37887E-2, 4.30842E-3, default), &
+          cmplx (-1.99997E-1, -1.01985E-2, default), &
+          cmplx (1.79717E-5, 9.27038E-7, default), &
+          cmplx (-1.74859E-5, 8.78819E-7, default), &
+          cmplx (1.67577E-1, -8.61683E-3, default), &
+          cmplx (2.41331E-1, 1.23306E-2, default), &
+          cmplx (-3.59435E-5, -1.85407E-6, default)]
+    do i = 1, 8
+       call state%set_matrix_element (i_allowed_states(i), me(i))
+    end do
+
+    write (u, "(A)") "* Summary of generated state: "
+    call state%write (u)
+
+    write (u, "(A)") "* Setup interaction"
+    call int%basic_init (2, 0, 2, set_relations = .true.)
+    call int%set_state_matrix (state)
 
     core%data%n_in = 2; core%data%n_out = 2
+    core%data%n_flv = 2
+    allocate (core%data%flv_state (4, 2))
+    core%data%flv_state (1, :) = [11, 11]
+    core%data%flv_state (2, :) = [-11, -11]
+    core%data%flv_state (3, :) = [1, 2]
+    core%data%flv_state (4, :) = [-1, -2]
     core%use_color_factors = .false.
     core%nc = 3
   
+    write (u, "(A)") "* Init isolated state"
     call isolated_state%init (sf_chain, int) 
-    !call isolated_state%setup_square_trace (core, qn_mask, col)
+    !!! There is only one color flow. 
+    allocate (col_flow_index (n_states)); col_flow_index = 1
+    call qn_mask%init (.false., .false., .true., mask_cg = .false.)
+    write (u, "(A)") "* Give a trace to the isolated state"
+    call isolated_state%setup_square_trace (core, qn_mask, col_flow_index)
+    call isolated_state%evaluate_trace ()
+    write (u, "(A)") "* Evaluated trace of isolated state: "
+    call isolated_state%trace%write (u)
 
-    write (u, "(A)") "* Test output: parton_states_1"
+    write (u, "(A)") "* Give a matrix to the isolated state"
+    call create_test_model (var_str ("SM"), test_model)
+    call isolated_state%setup_square_matrix (core, test_model, qn_mask, col_flow_index)
+    call isolated_state%evaluate_matrix ()
+    
+    write (u, "(A)") "* Evaluated matrix of isolated state: "
+    call isolated_state%matrix%write (u)
+   
+    write (u, "(A)") "* Complete state: "
+    call isolated_state%write (u) 
+     
     write (u, "(A)") "* Test output end: parton_states_1"
   end subroutine parton_states_1
 
