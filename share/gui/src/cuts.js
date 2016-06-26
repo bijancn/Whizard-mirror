@@ -81,7 +81,7 @@ export const cutsClosure = (() => {
   // getCutsArray: Returns array of used cuts in sindarin format
   Public.getCutsArray = () => {
     const CutsList = [];
-    $('[rel=cut-elem]').each((i, obj) => {
+    $('[rel=cut-elem]').each((i, obj) => { // eslint-disable-line no-unused-vars
       const cutName = $(this).find('.cut-name').text().replace(/ /g, '');
       const cutEq = $(this).find('.cut-eq').text().replace(/ /g, '');
       const cutVal = $(this).find('.cut-val').val();

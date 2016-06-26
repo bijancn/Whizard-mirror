@@ -40,7 +40,7 @@ export function rebuildAliasList() {
 
 // TODO: (bcn 2016-04-16) why is this capitalized? does it build a class?
 // Add new alias, useful with examples
-export function AddAlias(name, str) {
+export function addAlias(name, str) {
   ExternalSindarinList.push(new SindarinAlias(name, str));
   rebuildAliasList();
 }

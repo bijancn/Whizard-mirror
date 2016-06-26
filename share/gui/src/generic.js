@@ -3,14 +3,14 @@ const guiconfig = require('./guiconfig');
 // Ability to remove specific type of elements from the array
 // array.remove('like this').remove('and like this');
 // TODO: (bcn 2016-03-25) more standard way to do this?
-Array.prototype.remove = () => {
+Array.prototype.remove = () => { // eslint-disable-line no-extend-native
   let what;
   let ax;
   const a = arguments;
   let L = a.length;
   while (L && this.length) {
     what = a[--L];
-    while ((ax = this.indexOf(what)) !== -1) {
+    while ((ax = this.indexOf(what)) !== -1) { // eslint-disable-line no-cond-assign
       this.splice(ax, 1);
     }
   }
@@ -99,7 +99,7 @@ export function texImageOrPlain(name) {
 }
 
 
-function htmlEscape(str) {
+export function htmlEscape(str) {
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
@@ -109,9 +109,9 @@ function htmlEscape(str) {
 }
 
 
-function getFileTimestamp(file) {
+export function getFileTimestamp(file) {
   $.post('/checktimestamp', {filename: file}, (data) => {
-    console.log(data);
+    console.warn(data);
   });
 }
 
@@ -121,63 +121,65 @@ function getFileTimestampAsync(file) {
     type: 'POST',
     url: '/checktimestamp',
     data: {filename: file},
-    success: (data) => {},
+    success: (data) => {console.warn(data);},
+  });
+}
+
+
+function monitorHistogramChangesFromCheck(lastCheck, whizRunning) {
+  if (!whizRunning) return;
+  console.warn('^-.-^');
+  const obj = getFileTimestampAsync('output-whiz/whizard_analysis.pdf');
+  obj.success((data) => {
+    const thisCheck = new Date(data);
+    const diff = Math.abs(lastCheck - thisCheck) / 1000;
+    // Redisplay histogram if timestamp checked last time and timestamp check
+    // this time differs
+    if (diff > 0) {
+      console.warn(diff);
+      $('#out_hist').html('<embed src="whizard_analysis.pdf" width="100%" height="700px">');
+    }
+    setTimeout(() => {monitorHistogramChangesFromCheck(thisCheck, whizRunning);}, 10000);
   });
 }
 
 
 // Monitor for changes in output-whiz/whizard_analysis.pdf, if timestamp
 // differences detected redisplay histogram.
-function MonitorHistogramChanges(whizRunning) {
+export function monitorHistogramChanges(whizRunning) {
   const obj = getFileTimestampAsync('output-whiz/whizard_analysis.pdf');
   obj.success((data) => {
     const thisCheck = new Date(data);
-    MonitorHistogramChanges(thisCheck, whizRunning);
+    monitorHistogramChangesFromCheck(thisCheck, whizRunning);
   });
 }
 
-function MonitorHistogramChanges(lastCheck, whizRunning) {
+
+// TODO: (bcn 2016-06-26) refactor with monitorHistogramChangesFromCheck
+function monitorLogChangesFromCheck(lastCheck, whizRunning) {
   if (!whizRunning) return;
-  console.log('^-.-^');
-  lastCheck = new Date(lastCheck); // probably unnecessary
-  const obj = getFileTimestampAsync('output-whiz/whizard_analysis.pdf');
+  console.warn('^-.-^ log');
+  const obj = getFileTimestampAsync('output-whiz/whizard.log');
   obj.success((data) => {
     const thisCheck = new Date(data);
     const diff = Math.abs(lastCheck - thisCheck) / 1000;
     // Redisplay histogram if timestamp checked last time and timestamp check
     // this time differs
     if (diff > 0) {
-      console.log(diff);
-      $('#out_hist').html('<embed src="whizard_analysis.pdf" width="100%" height="700px">');
+      console.warn(diff);
+      $('#whizoutput').load('whizard.log').fadeIn('fast');
+      $('.outputcontainer').fadeIn('fast');
     }
-    setTimeout(() => {MonitorHistogramChanges(thisCheck, whizRunning);}, 10000);
+    setTimeout(() => {monitorLogChangesFromCheck(thisCheck, whizRunning);}, 5000);
   });
 }
+
 
 // Monitor whizard.log during computation
 export function monitorLogChanges(whizRunning) {
   const obj = getFileTimestampAsync('output-whiz/whizard.log');
   obj.success((data) => {
     const thisCheck = new Date(data);
-    monitorLogChanges(thisCheck, whizRunning);
-  });
-}
-
-function monitorLogChanges(lastCheck, whizRunning) {
-  if (!whizRunning) return;
-  console.log('^-.-^ log');
-  lastCheck = new Date(lastCheck); // probably unnecessary
-  const obj = getFileTimestampAsync('output-whiz/whizard.log');
-  obj.success((data) => {
-    const thisCheck = new Date(data);
-    const diff = Math.abs(lastCheck - thisCheck) / 1000;
-    // Redisplay histogram if timestamp checked last time and timestamp check
-    // this time differs
-    if (diff > 0) {
-      console.log(diff);
-      $('#whizoutput').load('whizard.log').fadeIn('fast');
-      $('.outputcontainer').fadeIn('fast');
-    }
-    setTimeout(() => {monitorLogChanges(thisCheck, whizRunning);}, 5000);
+    monitorLogChangesFromCheck(thisCheck, whizRunning);
   });
 }
