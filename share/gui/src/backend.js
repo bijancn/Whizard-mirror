@@ -2,7 +2,7 @@ const cuts = require('./cuts');
 const models = require('./models');
 const alias = require('./alias');
 const process = require('./process');
-const simulate = require('./tabs.simulate');
+const simulation = require('./simulation');
 const scan = require('./scan');
 const constructSindarin = require('./constructSindarin');
 
@@ -43,7 +43,7 @@ export function rebuildVariables() {
   process.extAssignScans();
 
   SindarinList = SindarinList.concat(alias.ExternalSindarinList);
-  SindarinList = SindarinList.concat(simulate.SimulateList);
+  SindarinList = SindarinList.concat(simulation.SimulateList);
 
   const a = new constructSindarin.SindarinGenerator(SindarinList);
   return a.construct();
@@ -57,7 +57,7 @@ export function cleanAll() {
   cuts.cutsClosure.clean();
   scan.Scan.clean();
   process.ProcessList = [];
-  simulate.SimulateList = [];
+  simulation.SimulateList = [];
   scan.ScansList = [];
 }
 

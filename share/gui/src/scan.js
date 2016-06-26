@@ -1,4 +1,4 @@
-const simulate = require('./tabs.simulate');
+const simulation = require('./simulation');
 
 // Object structure:
 // ScansList[i] : contain all Scan information for a i'th process
@@ -42,16 +42,16 @@ export const Scan = {
   fillHTMLFields: () => {
     Scan.clean();
     for (let i = 0; i <
-        ScansList[simulate.activeProcessId].ScansContainer.length; i++) {
-      const elem = ScansList[simulate.activeProcessId].ScansContainer[i];
+        ScansList[simulation.activeProcessId].ScansContainer.length; i++) {
+      const elem = ScansList[simulation.activeProcessId].ScansContainer[i];
       Scan.addNew(elem.min, elem.max, elem.inc, i);
     }
-    $('#conf-scan-check').prop('checked', ScansList[simulate.activeProcessId].status);
-    $('#scan-plot-title').val(ScansList[simulate.activeProcessId].title);
-    $('#scan-plot-xlabel').val(ScansList[simulate.activeProcessId].xlabel);
-    $('#scan-plot-ylabel').val(ScansList[simulate.activeProcessId].ylabel);
-    $('#scan-plot-xmin').val(ScansList[simulate.activeProcessId].xmin);
-    $('#scan-plot-xmax').val(ScansList[simulate.activeProcessId].xmax);
+    $('#conf-scan-check').prop('checked', ScansList[simulation.activeProcessId].status);
+    $('#scan-plot-title').val(ScansList[simulation.activeProcessId].title);
+    $('#scan-plot-xlabel').val(ScansList[simulation.activeProcessId].xlabel);
+    $('#scan-plot-ylabel').val(ScansList[simulation.activeProcessId].ylabel);
+    $('#scan-plot-xmin').val(ScansList[simulation.activeProcessId].xmin);
+    $('#scan-plot-xmax').val(ScansList[simulation.activeProcessId].xmax);
   },
 
   getScanCodeHTML: (min, max, inc, sid) =>
@@ -86,100 +86,102 @@ export const Scan = {
 };
 
 
-// Selecting: Scan > Process
-$(document).on('click', '.process-entry-scan', () => {
-  $('.scan-right').fadeIn('fast');
-  $('.process-entry-scan').removeClass('active');
-  $(this).addClass('active');
-  simulate.activeProcessId = $(this).attr('process-id');
-  Scan.fillHTMLFields();
-  if (ScansList[simulate.activeProcessId].status) {
-    $('#struct-scan').fadeIn('fast');
-  } else {
-    $('#struct-scan').fadeOut('fast');
-  }
-});
+export function setupJquery() {
+  // Selecting: Scan > Process
+  $(document).on('click', '.process-entry-scan', () => {
+    $('.scan-right').fadeIn('fast');
+    $('.process-entry-scan').removeClass('active');
+    $(this).addClass('active');
+    simulation.activeProcessId = $(this).attr('process-id');
+    Scan.fillHTMLFields();
+    if (ScansList[simulation.activeProcessId].status) {
+      $('#struct-scan').fadeIn('fast');
+    } else {
+      $('#struct-scan').fadeOut('fast');
+    }
+  });
 
 
-// Button: New Scan subinterval
-$('.scan-newscan').click(() => {
-  Scan.addNew('', '', '',
-      ScansList[simulate.activeProcessId].ScansContainer.length);
-  ScansList[simulate.activeProcessId].addScanElement(0, 0, 0);
-});
+  // Button: New Scan subinterval
+  $('.scan-newscan').click(() => {
+    Scan.addNew('', '', '',
+        ScansList[simulation.activeProcessId].ScansContainer.length);
+    ScansList[simulation.activeProcessId].addScanElement(0, 0, 0);
+  });
 
 
-// Button: clean Scans
-$('.scan-clean').click(() => {
-  ScansList[simulate.activeProcessId].ScansContainer = [];
-  Scan.clean();
-});
+  // Button: clean Scans
+  $('.scan-clean').click(() => {
+    ScansList[simulation.activeProcessId].ScansContainer = [];
+    Scan.clean();
+  });
 
 
-// Checkbox button: Enable scan for this process
-$('#conf-scan-check').click(() => {
-  ScansList[simulate.activeProcessId].status = $(this).prop('checked');
-  if ($(this).prop('checked')) {
-    $('#struct-scan').fadeIn('fast');
-  } else {
-    $('#struct-scan').fadeOut('fast');
-  }
-  // Changing On/Off indicator
-  if (ScansList[simulate.activeProcessId].status) {
-    $('#proc_indicator_scan_' + simulate.activeProcessId).removeClass(
-        'label-default label-success').addClass('label-success').text('On');
-  } else {
-    $('#proc_indicator_scan_' + simulate.activeProcessId).removeClass(
-        'label-default label-success').addClass('label-default').text('Off');
-  }
-});
+  // Checkbox button: Enable scan for this process
+  $('#conf-scan-check').click(() => {
+    ScansList[simulation.activeProcessId].status = $(this).prop('checked');
+    if ($(this).prop('checked')) {
+      $('#struct-scan').fadeIn('fast');
+    } else {
+      $('#struct-scan').fadeOut('fast');
+    }
+    // Changing On/Off indicator
+    if (ScansList[simulation.activeProcessId].status) {
+      $('#proc_indicator_scan_' + simulation.activeProcessId).removeClass(
+          'label-default label-success').addClass('label-success').text('On');
+    } else {
+      $('#proc_indicator_scan_' + simulation.activeProcessId).removeClass(
+          'label-default label-success').addClass('label-default').text('Off');
+    }
+  });
 
 
-// Modify field: Scan-minimum value
-$(document).on('change', '.conf-scan-min', () => {
-  const min = $(this).val();
-  const intervalID = $(this).parent().parent().parent().attr('scanid');
-  ScansList[simulate.activeProcessId].ScansContainer[intervalID].min = min;
-});
+  // Modify field: Scan-minimum value
+  $(document).on('change', '.conf-scan-min', () => {
+    const min = $(this).val();
+    const intervalID = $(this).parent().parent().parent().attr('scanid');
+    ScansList[simulation.activeProcessId].ScansContainer[intervalID].min = min;
+  });
 
 
-// Modify field: Scan-maximum value
-$(document).on('change', '.conf-scan-max', () => {
-  const max = $(this).val();
-  const intervalID = $(this).parent().parent().parent().attr('scanid');
-  ScansList[simulate.activeProcessId].ScansContainer[intervalID].max = max;
-});
+  // Modify field: Scan-maximum value
+  $(document).on('change', '.conf-scan-max', () => {
+    const max = $(this).val();
+    const intervalID = $(this).parent().parent().parent().attr('scanid');
+    ScansList[simulation.activeProcessId].ScansContainer[intervalID].max = max;
+  });
 
 
-// Modify field: Scan-inc value
-$(document).on('change', '.conf-scan-inc', () => {
-  const inc = $(this).val();
-  const intervalID = $(this).parent().parent().parent().attr('scanid');
-  ScansList[simulate.activeProcessId].ScansContainer[intervalID].inc = inc;
-});
+  // Modify field: Scan-inc value
+  $(document).on('change', '.conf-scan-inc', () => {
+    const inc = $(this).val();
+    const intervalID = $(this).parent().parent().parent().attr('scanid');
+    ScansList[simulation.activeProcessId].ScansContainer[intervalID].inc = inc;
+  });
 
 
-// Plot fields modification
-$('#scan-plot-title').change(() => {
-  ScansList[simulate.activeProcessId].title = $('#scan-plot-title').val();
-});
+  // Plot fields modification
+  $('#scan-plot-title').change(() => {
+    ScansList[simulation.activeProcessId].title = $('#scan-plot-title').val();
+  });
 
 
-$('#scan-plot-xlabel').change(() => {
-  ScansList[simulate.activeProcessId].xlabel = $('#scan-plot-xlabel').val();
-});
+  $('#scan-plot-xlabel').change(() => {
+    ScansList[simulation.activeProcessId].xlabel = $('#scan-plot-xlabel').val();
+  });
 
 
-$('#scan-plot-ylabel').change(() => {
-  ScansList[simulate.activeProcessId].ylabel = $('#scan-plot-ylabel').val();
-});
+  $('#scan-plot-ylabel').change(() => {
+    ScansList[simulation.activeProcessId].ylabel = $('#scan-plot-ylabel').val();
+  });
 
 
-$('#scan-plot-xmin').change(() => {
-  ScansList[simulate.activeProcessId].xmin = $('#scan-plot-xmin').val();
-});
+  $('#scan-plot-xmin').change(() => {
+    ScansList[simulation.activeProcessId].xmin = $('#scan-plot-xmin').val();
+  });
 
 
-$('#scan-plot-xmax').change(() => {
-  ScansList[simulate.activeProcessId].xmax = $('#scan-plot-xmax').val();
-});
+  $('#scan-plot-xmax').change(() => {
+    ScansList[simulation.activeProcessId].xmax = $('#scan-plot-xmax').val();
+  });
+}

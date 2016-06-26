@@ -1,8 +1,8 @@
-const models = require('./models.js');
-const alias = require('./alias.js');
-const process = require('./process.js');
-const simulate = require('./tabs.simulate.js');
-const cuts = require('./cuts.js');
+const models = require('./models');
+const alias = require('./alias');
+const process = require('./process');
+const simulation = require('./simulation');
+const cuts = require('./cuts');
 
 
 function SindarinAssignmentToString() {
@@ -91,6 +91,6 @@ export function SindarinGenerator(SindarinList) {
   this.writeAliases = alias.SindarinWriteAliases;
   this.writeProcesses = process.SindarinWriteProcesses;
   this.writeBody = SindarinWriteBody;
-  this.writeSimulate = simulate.SindarinWriteSimulate;
+  this.writeSimulate = simulation.SindarinWriteSimulate;
   this.writeCuts = cuts.SindarinWriteCuts;
 }

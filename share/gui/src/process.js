@@ -1,4 +1,4 @@
-const simulation = require('./tabs.simulate');
+const simulation = require('./simulation');
 const generic = require('./generic');
 const scan = require('./scan');
 

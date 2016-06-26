@@ -19,7 +19,7 @@ const startServer = () => {
 
   // app.set('port', guiconf.port);
   app.listen(guiconf.context.port, () => {
-    console.log('Listening on port: ' + guiconf.context.port);
+    console.warn('Listening on port: ' + guiconf.context.port);
   });
 };
 log.useDefaults();

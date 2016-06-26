@@ -3,7 +3,7 @@ const models = require('./models');
 const alias = require('./alias');
 const backend = require('./backend');
 const process = require('./process');
-const simulate = require('./tabs.simulate.js');
+const simulation = require('./simulation');
 const cuts = require('./cuts');
 
 const ToolbarColumns = 4;
@@ -33,20 +33,17 @@ $(document).on('click', '.process-entry', () => {
 });
 
 
-$(document).ready(function() {
+$(document).ready(() => {
   $('.outputcontainer').hide();
   $('#pbar').hide();
   $('#form-events, #form-calls, #form-iterations').hide();
   $('#gui-box').hide();
 
-  $('#button_alias').click(function() {
-
-    /* Checking if both fields are non-empty */
+  $('#button_alias').click(() => {
+    // Checking if both fields are non-empty
     if ($('#conf-alias-lhs').val() && $('#conf-alias-rhs').val()) {
-
-      alias.AddAlias($('#conf-alias-lhs').val(), $('#conf-alias-rhs').val());
+      alias.addAlias($('#conf-alias-lhs').val(), $('#conf-alias-rhs').val());
       alias.rebuildAliasList();
-
       backend.messageGUI('New alias is added.', 'alert-success');
       $('#conf-alias-lhs').val('');
       $('#conf-alias-rhs').val('');
@@ -70,21 +67,17 @@ $(document).ready(function() {
     }
   });
 
-  /*
-   *  Mini-button: Remove process
-   */
+  // Mini-button: Remove process
   $(document).on('click', '.process-remove', () => {
     const id = $(this).attr('process-id');
     // Nescessary to remove process element entirely.
     process.ProcessList[id] = null;
     process.ProcessList.splice(id, 1); // No longer keeping nulls in the array
     process.rebuildProcessList();
-    simulate.removeSimulateElement(id);
+    simulation.removeSimulateElement(id);
   });
 
-  /*
-   * Integrate checked, show #form-iterations and #for-calls
-   */
+  // Integrate checked, show #form-iterations and #for-calls
   $('#conf-integrate').change(() => {
     if ($(this).prop('checked')) {
       $('#form-iterations').fadeIn('fast');
@@ -95,50 +88,49 @@ $(document).ready(function() {
     }
   });
 
-  $('#conf-int-nlo').change(function() {
+  $('#conf-int-nlo').change(() => {
     try {
-      if (simulate.activeProcessId < 0) throw ('Please select a process');
+      if (simulation.activeProcessId < 0) throw new {error: 'Please select a process'};
       if ($(this).prop('checked')) {
-        process.ProcessList[simulate.activeProcessId].setNlo (true);
+        process.ProcessList[simulation.activeProcessId].setNlo(true);
       } else {
-        process.ProcessList[simulate.activeProcessId].setNlo (false);
+        process.ProcessList[simulation.activeProcessId].setNlo(false);
       }
     } catch (err) {
       backend.messageGUI(err, 'alert-danger');
     }
   });
 
-  $('#conf-int-sqrts').change(function() {
+  $('#conf-int-sqrts').change(() => {
     try {
-      if (simulate.activeProcessId < 0) throw ('Please select a process');
-      process.ProcessList[simulate.activeProcessId].setSqrts ($(this).val());
+      if (simulation.activeProcessId < 0) throw new {error: 'Please select a process'};
+      process.ProcessList[simulation.activeProcessId].setSqrts($(this).val());
     } catch (err) {
       backend.messageGUI(err, 'alert-danger');
     }
   });
 
-  $('#conf-int-itt').change(function() {
+  $('#conf-int-itt').change(() => {
     try {
-      if (simulate.activeProcessId < 0) throw ('Please select a process');
-      process.ProcessList[simulate.activeProcessId].setNIter ($(this).val());
+      if (simulation.activeProcessId < 0) throw new {error: 'Please select a process'};
+      process.ProcessList[simulation.activeProcessId].setNIter($(this).val());
     } catch (err) {
       backend.messageGUI(err, 'alert-danger');
     }
   });
 
-  $('#conf-int-cpi').change(function() {
+  $('#conf-int-cpi').change(() => {
     try {
-      if (simulate.activeProcessId < 0) throw ('Please select a process');
-      process.ProcessList[simulate.activeProcessId].setNCalls ($(this).val());
+      if (simulation.activeProcessId < 0) throw new {error: 'Please select a process'};
+      process.ProcessList[simulation.activeProcessId].setNCalls($(this).val());
     } catch (err) {
       backend.messageGUI(err, 'alert-danger');
     }
   });
 
-
-  $(document).on('click', '.process-entry', function () {
-    simulate.activeProcessId = $(this).attr('process-id') - 1;
-    const p = process.ProcessList[simulate.activeProcessId];
+  $(document).on('click', '.process-entry', () => {
+    simulation.activeProcessId = $(this).attr('process-id') - 1;
+    const p = process.ProcessList[simulation.activeProcessId];
     if (!p.isNlo()) {
       $('#conf-int-nlo').prop('checked', false);
     } else {
@@ -151,13 +143,13 @@ $(document).ready(function() {
   });
 
   $(document).on('click', '.process-entry-sim', () => {
-    simulate.activeProcessId = $(this).attr('process-id');
-    const p = simulate.SimulateList[simulate.activeProcessId];
+    simulation.activeProcessId = $(this).attr('process-id');
+    const p = simulation.SimulateList[simulation.activeProcessId];
     // Fill simulate fields
     $('#conf-sim-sim').prop('checked', p.getStatus());
     $('#conf-sim-events').val(p.getEvents());
     // Fill histogram fields
-    simulate.Simulate.fillHistogramFieldsHTML();
+    simulation.Simulate.fillHistogramFieldsHTML();
     // Process selected show right column
     $('.simulate-right').fadeIn('fast');
   });
@@ -188,7 +180,7 @@ $(document).ready(function() {
 
   // Tab Simulate clicked, generate particles popup list
   $('#tab_button_simulate').click(() => {
-    simulate.Simulate.rebuildParticlesHTML();
+    simulation.Simulate.rebuildParticlesHTML();
   });
 
   // Clicking on the model
@@ -228,7 +220,8 @@ $(document).ready(function() {
     let whizRunning = true;
     generic.monitorLogChanges(whizRunning);
 
-    $.post('/runwhiz', {src: SindarinScript, option: option}, (data) => {
+    // eslint-disable-next-line no-unused-vars
+    $.post('/runwhiz', {src: SindarinScript, option}, (data) => {
       // Animation
       $('.outputcontainer').fadeIn('fast');
       $('#pbar').fadeOut('fast');
