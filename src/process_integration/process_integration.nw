@@ -2753,7 +2753,7 @@ from the library.
            allocate (component%i_term (n_entry(i)))
            do j = 1, n_entry(i)
               component%i_term(j) = k + j
-              call process%term(k+j)%init (k + j, i, j, core, model)
+              call process%term(k+j)%init (k + j, i, j, core, model, process%uses_beams ())
            end do
          end associate
        end associate
@@ -5901,13 +5901,14 @@ could become relevant for NLO algorithms.
   procedure :: init => process_term_init
 <<Processes: procedures>>=
   subroutine process_term_init &
-       (term, i_term_global, i_component, i_term, core, model)
+       (term, i_term_global, i_component, i_term, core, model, use_beam_pol)
     class(process_term_t), intent(inout), target :: term
     integer, intent(in) :: i_term_global
     integer, intent(in) :: i_component
     integer, intent(in) :: i_term
     class(prc_core_t), intent(in) :: core
     class(model_data_t), intent(in), target :: model
+    logical, intent(in), optional :: use_beam_pol
     class(modelpar_data_t), pointer :: alpha_s_ptr
     term%i_term_global = i_term_global
     term%i_component = i_component
@@ -5920,7 +5921,7 @@ could become relevant for NLO algorithms.
        term%alpha_s = -1
     end if
 
-    call term%setup_interaction (core, model)
+    call term%setup_interaction (core, model, use_beam_pol)
   end subroutine process_term_init
     
 @ %def process_term_init
@@ -5949,17 +5950,31 @@ matrix element.
     type(quantum_numbers_t), dimension(:), allocatable :: qn
     integer :: i, n, f, h, c
     logical :: yorn
+    integer :: n_hel
+    !!! TODO (cw-2016-06-26): Make pol_beams a component of prc_blha
+    yorn = .false.; if (present (pol_beams)) yorn = pol_beams
     associate (data => term%data)
       n_tot = data%n_in + data%n_out
       n = 0
-      do f = 1, data%n_flv
-         do h = 1, data%n_hel
-            do c = 1, data%n_col
-               if (core%is_allowed (term%i_term, f, h, c))  n = n + 1
+      select type (core)
+      type is (prc_omega_t)
+         do f = 1, data%n_flv
+            do h = 1, data%n_hel
+               do c = 1, data%n_col
+                  if (core%is_allowed (term%i_term, f, h, c))  n = n + 1
+               end do
             end do
          end do
-      end do
-      allocate (term%flv (n), term%col (n), term%hel (n))
+         allocate (term%flv (n), term%col (n), term%hel (n))
+      class is (prc_user_defined_base_t)
+         n_hel = 1; if (yorn) n_hel = 4
+         do f = 1, data%n_flv
+            do h = 1, n_hel
+               n = n + 1
+            end do
+         end do
+         allocate (term%flv (n), term%hel(n))
+      end select
       term%n_allowed = n
       allocate (flv (n_tot), col (n_tot), hel (n_tot))
       allocate (qn (n_tot))
@@ -5989,8 +6004,24 @@ matrix element.
             end do
          end do
       class is (prc_user_defined_base_t)
-         yorn = .false.; if (present (pol_beams)) yorn = pol_beams
-         print *, 'Setup term here! '
+         do f = 1, data%n_flv
+            do h = 1, n_hel
+               i = i + 1
+               term%flv(i) = f
+               term%hel(i) = h
+               call flv%init (data%flv_state (:,f), model)
+               !!! TODO: (cw 2016-06-26): Need to filter out correct helicities here!
+               if (n_hel > 1) then
+                  call hel%init (data%hel_state (:,h))
+                  call qn%init (flv, hel)
+               else
+                  call qn%init (flv)
+               end if
+               call term%int%add_state (qn)
+            end do
+         end do
+         call term%int%freeze ()
+         call term%int%basic_write ()
       end select
       call term%int%freeze ()
     end associate
