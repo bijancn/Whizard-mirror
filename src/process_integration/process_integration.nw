@@ -2753,7 +2753,7 @@ from the library.
            allocate (component%i_term (n_entry(i)))
            do j = 1, n_entry(i)
               component%i_term(j) = k + j
-              call process%term(k+j)%init (k+j, i, j, core, model)
+              call process%term(k+j)%init (k + j, i, j, core, model)
            end do
          end associate
        end associate
@@ -2938,6 +2938,17 @@ scattering or decay process.
   end subroutine process_setup_beams_beam_structure
   
 @ %def process_setup_beams_beam_structure
+@ Check if beam structure functions are used
+<<Processes: process: TBP>>=
+  procedure :: uses_beams => process_uses_beams
+<<Processes: procedures>>=
+  function process_uses_beams (process) result (uses_beams)
+    logical :: uses_beams
+    class(process_t), intent(in) :: process
+    uses_beams = process%beam_config%data%is_initialized ()
+  end function process_uses_beams
+
+@ %def process_uses_beams
 @ Notify the user about beam setup.
 <<Processes: process: TBP>>=
   procedure :: beams_startup_message => process_beams_startup_message
@@ -5926,16 +5937,18 @@ matrix element.
 <<Processes: process term: TBP>>=
   procedure :: setup_interaction => process_term_setup_interaction
 <<Processes: procedures>>=
-  subroutine process_term_setup_interaction (term, core, model)
+  subroutine process_term_setup_interaction (term, core, model, pol_beams)
     class(process_term_t), intent(inout) :: term
     class(prc_core_t), intent(in) :: core
     class(model_data_t), intent(in), target :: model
+    logical, intent(in), optional :: pol_beams
     integer :: n_tot
     type(flavor_t), dimension(:), allocatable :: flv
     type(color_t), dimension(:), allocatable :: col
     type(helicity_t), dimension(:), allocatable :: hel
     type(quantum_numbers_t), dimension(:), allocatable :: qn
     integer :: i, n, f, h, c
+    logical :: yorn
     associate (data => term%data)
       n_tot = data%n_in + data%n_out
       n = 0
@@ -5953,26 +5966,32 @@ matrix element.
       call term%int%basic_init &
            (data%n_in, 0, data%n_out, set_relations=.true.)
       i = 0
-      do f = 1, data%n_flv
-         do h = 1, data%n_hel
-            do c = 1, data%n_col
-               if (core%is_allowed (term%i_term, f, h, c)) then
-                  i = i + 1
-                  term%flv(i) = f
-                  term%hel(i) = h
-                  term%col(i) = c
-                  call flv%init (data%flv_state(:,f), model)
-                  call color_init_from_array (col, &
-                       data%col_state(:,:,c), &
-                       data%ghost_flag(:,c))
-                  call col(:data%n_in)%invert ()
-                  call hel%init (data%hel_state(:,h))
-                  call qn%init (flv, col, hel)
-                  call term%int%add_state (qn)
-               end if
+      select type (core)
+      type is (prc_omega_t)
+         do f = 1, data%n_flv
+            do h = 1, data%n_hel
+               do c = 1, data%n_col
+                  if (core%is_allowed (term%i_term, f, h, c)) then
+                     i = i + 1
+                     term%flv(i) = f
+                     term%hel(i) = h
+                     term%col(i) = c
+                     call flv%init (data%flv_state(:,f), model)
+                     call color_init_from_array (col, &
+                          data%col_state(:,:,c), &
+                          data%ghost_flag(:,c))
+                     call col(:data%n_in)%invert ()
+                     call hel%init (data%hel_state(:,h))
+                     call qn%init (flv, col, hel)
+                     call term%int%add_state (qn)
+                  end if
+               end do
             end do
          end do
-      end do
+      class is (prc_user_defined_base_t)
+         yorn = .false.; if (present (pol_beams)) yorn = pol_beams
+         print *, 'Setup term here! '
+      end select
       call term%int%freeze ()
     end associate
   end subroutine process_term_setup_interaction
@@ -7615,6 +7634,27 @@ imaginary part of the terms, which should be zero anyway.
 
 @ %def component_instance_evaluate_sqme_virt
 @
+<<Processes: term instance: TBP>>=
+    ! print *, "Interaction square with color factors (diag)"  !!! Debugging
+    ! print *, "Input interaction"                             !!! Debugging
+    ! call int_in%basic_write ()                               !!! Debugging
+    
+  procedure :: reduce_isolated_for_polarized_blha => &
+     term_instance_reduce_isolated_for_polarized_blha
+<<Processes: procedures>>=
+  subroutine term_instance_reduce_isolated_for_polarized_blha (term)
+    class(term_instance_t), intent(inout) :: term
+    type(quantum_numbers_mask_t), dimension(:), allocatable :: qn_mask
+    logical, dimension(:), allocatable :: mask_f, mask_c, mask_h
+    integer :: n_tot
+    n_tot = term%isolated%int_eff%get_n_tot ()
+    print *, 'n_tot: ', n_tot
+    stop
+    
+  end subroutine term_instance_reduce_isolated_for_polarized_blha
+
+@ %def term_instance_reduce_isolated_for_polarized_blha
+@ 
 <<Processes: procedures>>=
   subroutine compute_sqme_virt_single_helicity (core, component, term, &
      i_flv, i_hel, sqme_virt, bad_point)
@@ -8193,6 +8233,27 @@ relevant for a NLO algorithm.
       call term%connected_real%setup_var_list &
          (process_var_list, beam_config%data)
    end subroutine setup_real_subevt
+
+   subroutine reduce_interaction (int, polarized_beams)
+     type(interaction_t), intent(inout) :: int
+     logical, intent(in) :: polarized_beams
+     type(quantum_numbers_mask_t), dimension(:), allocatable :: qn_mask
+     logical, dimension(:), allocatable :: mask_f, mask_c, mask_h
+     integer :: n_tot, n_in
+     n_in = int%get_n_in (); n_tot = int%get_n_tot ()
+     print *, 'n_tot: ', n_tot, 'n_in: ', n_in
+     allocate (qn_mask (n_tot))
+     allocate (mask_f (n_tot), mask_c (n_tot), mask_h (n_tot))
+     mask_f = .false.; mask_c = .true.
+     if (polarized_beams) then
+        mask_h (1 : n_in) = .false.
+     else
+        mask_h (1 : n_in) = .true.
+     end if
+     mask_h (n_in + 1 : ) = .true.
+     call qn_mask%init (mask_f, mask_c, mask_h)
+     call int%reduce_state_matrix (qn_mask) 
+   end subroutine
     
   end subroutine term_instance_init
 
@@ -8575,23 +8636,38 @@ method may modify the [[core_state]] workspace object.
   subroutine term_instance_evaluate_interaction (term, component)
     class(term_instance_t), intent(inout) :: term
     type(component_instance_t), dimension(:), intent(inout) :: component
-    integer :: i_component, i_term, i
+    integer :: i_component, i_term, i, j
+    !!! Needs to be factored out into its own routine!
+    real(default), dimension(4) :: sqme_virt
+    logical :: bad_point
     i_component = term%config%i_component
     i_term = term%config%i_term
     term%p_hard = term%int_hard%get_momenta ()
     select case (term%nlo_type)
     case (BORN, NLO_VIRTUAL, NLO_DGLAP)
-       associate (core => component(i_component)%config%core)
+       select type (core => component(i_component)%config%core)
+       type is (prc_omega_t)
+       !associate (core => component(i_component)%config%core)
           do i = 1, term%config%n_allowed
              term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
                 term%config%flv(i), term%config%hel(i), term%config%col(i), &
                 term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
                 component(i_component)%core_state)
           end do
-          call term%int_hard%set_matrix_element (term%amp)
           if (associated (term%nlo_controller)) &
              call term%nlo_controller%set_fac_scale (term%fac_scale)
-       end associate 
+       class is (prc_user_defined_base_t)
+          !!! Need some kind of list of flavors and helicities here
+          do i = 1, 4
+             call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
+             term%amp(i) = cmplx (sqme_virt(3), 0, default)
+          end do
+          print *, 'sqme_virt: ', sqme_virt
+       end select
+       print *, 'amp: ', term%amp
+       call term%int_hard%set_matrix_element (term%amp)
+       call term%int_hard%basic_write ()
+       !end associate 
     case (NLO_REAL)
        call term%evaluate_real_phase_space (term%nlo_controller%get_active_emitter ())
        call term%evaluate_interaction_real (component(i_component), i_term)
