@@ -1301,6 +1301,20 @@ table from the hard matrix element data.
   end subroutine isolated_state_setup_square_trace
     
 @ %def isolated_state_setup_square_trace
+@ Setup an identity-evaluator for the trace. This implies that [[me]]
+is considered to be a squared amplitude, as for example for BLHA matrix
+elements.
+<<Parton states: isolated state: TBP>>=
+  procedure :: setup_identity_trace => isolated_state_setup_identity_trace
+<<Parton states: procedures>>=
+  subroutine isolated_state_setup_identity_trace (state)
+     class(isolated_state_t), intent(inout), target :: state
+     print *, 'Setup idenity trace'
+     call state%trace%init_identity (state%int_eff)
+     print *, 'Done'
+  end subroutine isolated_state_setup_identity_trace
+
+@ %def isolated_state_setup_identity_trace
 @ Setup the evaluator for the transition matrix, exclusive in
 helicities where this is requested.  
 
@@ -7668,23 +7682,6 @@ imaginary part of the terms, which should be zero anyway.
 
 @ %def component_instance_evaluate_sqme_virt
 @
-<<Processes: term instance: TBP>>=
-  procedure :: reduce_isolated_for_polarized_blha => &
-     term_instance_reduce_isolated_for_polarized_blha
-<<Processes: procedures>>=
-  subroutine term_instance_reduce_isolated_for_polarized_blha (term)
-    class(term_instance_t), intent(inout) :: term
-    type(quantum_numbers_mask_t), dimension(:), allocatable :: qn_mask
-    logical, dimension(:), allocatable :: mask_f, mask_c, mask_h
-    integer :: n_tot
-    n_tot = term%isolated%int_eff%get_n_tot ()
-    print *, 'n_tot: ', n_tot
-    stop
-    
-  end subroutine term_instance_reduce_isolated_for_polarized_blha
-
-@ %def term_instance_reduce_isolated_for_polarized_blha
-@ 
 <<Processes: procedures>>=
   subroutine compute_sqme_virt_single_helicity (core, component, term, &
      i_flv, i_hel, sqme_virt, bad_point)
@@ -8127,6 +8124,7 @@ relevant for a NLO algorithm.
     type(sf_chain_instance_t), pointer, save :: sf_sav
     integer, dimension(:), allocatable, save :: col_sav
     class(prc_core_t), save, allocatable :: core_sav
+    logical :: me_already_squared = .false.
 
     term%config => config
     term%nlo_controller => nlo_controller
@@ -8143,7 +8141,8 @@ relevant for a NLO algorithm.
     select type (core)
     class is (prc_user_defined_base_t)
        call reduce_interaction (term%int_hard, &
-          nlo_controller%beams_are_polarized ())
+          nlo_controller%beams_are_polarized (), .false.)
+       me_already_squared = .true.
     end select
     allocate (term%p_hard (term%int_hard%get_n_tot ()))
     sf_chain_int => term%k_term%sf_chain%get_out_int_ptr ()
@@ -8187,7 +8186,11 @@ relevant for a NLO algorithm.
     mask_in = term%k_term%sf_chain%get_out_mask ()
     select type (phs => term%k_term%phs)
       type is (phs_wood_t)
-         call term%isolated%setup_square_trace (core, mask_in, term%config%col)
+         if (me_already_squared) then
+            call term%isolated%setup_identity_trace ()
+         else
+            call term%isolated%setup_square_trace (core, mask_in, term%config%col)
+         end if
          if (allocated (term%config%col)) then
             if (allocated (col_sav)) deallocate (col_sav)
             allocate (col_sav (size (term%config%col)))
@@ -8199,10 +8202,18 @@ relevant for a NLO algorithm.
          select case (phs%mode)
          case (PHS_MODE_ADDITIONAL_PARTICLE)
             mask_in = sf_sav%get_out_mask ()
-            call term%isolated%setup_square_trace (core_sav, mask_in, col_sav)
+            if (me_already_squared) then
+               call term%isolated%setup_identity_trace ()
+            else
+               call term%isolated%setup_square_trace (core_sav, mask_in, col_sav)
+            end if
             call term%init_states (core)
          case (PHS_MODE_COLLINEAR_REMNANT)
-            call term%isolated%setup_square_trace (core, mask_in, term%config%col)
+            if (me_already_squared) then
+               call term%isolated%setup_identity_trace ()
+            else
+               call term%isolated%setup_square_trace (core, mask_in, term%config%col)
+            end if
          end select      
       class default
          call term%isolated%setup_square_trace (core, mask_in, term%config%col)
@@ -8272,9 +8283,10 @@ relevant for a NLO algorithm.
          (process_var_list, beam_config%data)
    end subroutine setup_real_subevt
 
-   subroutine reduce_interaction (int, polarized_beams)
+   subroutine reduce_interaction (int, polarized_beams, keep_fs_flavors)
      type(interaction_t), intent(inout) :: int
      logical, intent(in) :: polarized_beams
+     logical, intent(in) :: keep_fs_flavors
      type(quantum_numbers_mask_t), dimension(:), allocatable :: qn_mask
      logical, dimension(:), allocatable :: mask_f, mask_c, mask_h
      integer :: n_tot, n_in
@@ -8282,7 +8294,13 @@ relevant for a NLO algorithm.
      print *, 'n_tot: ', n_tot, 'n_in: ', n_in
      allocate (qn_mask (n_tot))
      allocate (mask_f (n_tot), mask_c (n_tot), mask_h (n_tot))
-     mask_f = .false.; mask_c = .true.
+     mask_c = .true.
+     mask_f (1 : n_in) = .false.
+     if (keep_fs_flavors) then
+        mask_f (n_in + 1 : ) = .false.
+     else
+        mask_f (n_in + 1 : ) = .true.
+     end if
      if (polarized_beams) then
         mask_h (1 : n_in) = .false.
      else
@@ -8696,7 +8714,7 @@ method may modify the [[core_state]] workspace object.
              call term%nlo_controller%set_fac_scale (term%fac_scale)
        class is (prc_user_defined_base_t)
           !!! Need some kind of list of flavors and helicities here
-          do i = 1, 4
+          do i = 1, size (term%amp)
              call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
              term%amp(i) = cmplx (sqme_virt(3), 0, default)
           end do
