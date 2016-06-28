@@ -201,8 +201,8 @@ module Stat_Dirac (M : Model.T) : (Stat with type flavor = M.flavor) =
 
     let permutation lines =
       let fout, fin = List.split lines in
-      let eps_in, _ = Combinatorics.sort_signed compare fin
-      and eps_out, _ = Combinatorics.sort_signed compare fout in
+      let eps_in, _ = Combinatorics.sort_signed fin
+      and eps_out, _ = Combinatorics.sort_signed fout in
       (eps_in * eps_out)
 
 (* \begin{dubious}
@@ -1990,7 +1990,7 @@ i*)
           raise Impossible
 i*)
 
-    let permutation lines = fst(Combinatorics.sort_signed compare lines)   
+    let permutation lines = fst (Combinatorics.sort_signed lines)   
 
     let stat_sign = function
       | Boson lines -> permutation lines

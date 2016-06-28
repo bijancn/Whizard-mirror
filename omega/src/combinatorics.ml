@@ -395,19 +395,19 @@ let insert_inorder_signed order x (eps, l) =
   in
   insert 1 [] l
 
-let sort_signed order l =
-  List.fold_right (insert_inorder_signed order) l (1, [])
+let sort_signed ?(cmp=Pervasives.compare) l =
+  List.fold_right (insert_inorder_signed cmp) l (1, [])
 
-let sign order l =
-  let eps, _ = sort_signed order l in
+let sign ?(cmp=Pervasives.compare) l =
+  let eps, _ = sort_signed ~cmp l in
   eps
 
-let sign2 order l =
+let sign2 ?(cmp=Pervasives.compare) l =
   let a = Array.of_list l in
   let eps = ref 1 in
   for j = 0 to Array.length a - 1 do
     for i = 0 to j - 1 do
-      if compare a.(i) a.(j) > 0 then
+      if cmp a.(i) a.(j) > 0 then
         eps := - !eps
     done
   done;
@@ -424,19 +424,19 @@ module Test =
 	  assert_raises
             (Invalid_argument
                "Combinatorics.insert_inorder_signed: identical elements")
-            (fun () -> sort_signed compare [1;2;3;4;2]))
+            (fun () -> sort_signed [1;2;3;4;2]))
         
     let sort_signed_even =
       "even" >::
 	(fun () ->
 	  assert_equal (1, [1;2;3;4;5;6])
-            (sort_signed compare [1;2;4;3;6;5]))
+            (sort_signed [1;2;4;3;6;5]))
 
     let sort_signed_odd =
       "odd" >::
 	(fun () ->
 	  assert_equal (-1, [1;2;3;4;5;6])
-            (sort_signed compare [2;3;1;5;4;6]))
+            (sort_signed [2;3;1;5;4;6]))
 
     let sort_signed_all =
       "all" >::
@@ -445,7 +445,7 @@ module Test =
         assert_bool "all signed permutations"
           (List.for_all
              (fun (eps, p) ->
-               let eps', p' = sort_signed compare p in
+               let eps', p' = sort_signed p in
                eps' = eps && p' = l)
              (permute_signed l)))
 
@@ -455,7 +455,7 @@ module Test =
         let l = ThoList.range 1 8in
           assert_bool "all permutations"
           (List.for_all
-             (fun p -> sign compare p = sign2 compare p)
+             (fun p -> sign p = sign2 p)
              (permute l)))
 
     let suite_sort_signed =

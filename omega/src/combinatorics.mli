@@ -152,11 +152,11 @@ val permute_tensor_signed : 'a seq list -> (int * 'a seq list) list
 val permute_tensor_even : 'a seq list -> 'a seq list list
 val permute_tensor_odd : 'a seq list -> 'a seq list list
 
-val sign : ('a -> 'a -> int) -> 'a seq -> int
+val sign : ?cmp:('a -> 'a -> int) -> 'a seq -> int
 
 (* \thocwmodulesubsection{Sorting} *)
 
-val sort_signed : ('a -> 'a -> int) -> 'a seq -> int * 'a seq
+val sort_signed : ?cmp:('a -> 'a -> int) -> 'a seq -> int * 'a seq
 
 (* \thocwmodulesubsection{Unit Tests} *)
 

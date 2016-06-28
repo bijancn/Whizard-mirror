@@ -295,6 +295,19 @@ let ariadne_unsort (sorted, indices) =
        (fun (n1, a1) (n2, a2) -> Pervasives.compare n1 n2)
        (List.map2 (fun n a -> (n, a)) indices sorted))
 
+let lexicographic ?(cmp=Pervasives.compare) l1 l2 =
+  let rec lexicographic' = function
+    | [], [] -> 0
+    | [], _ -> -1
+    | _, [] -> 1
+    | x1 :: rest1, x2 :: rest2 ->
+       let res = cmp x1 x2 in
+       if res <> 0 then
+	 res
+       else
+	 lexicographic' (rest1, rest2) in
+  lexicographic' (l1, l2)
+
 let common l1 l2 =
   List.fold_left
     (fun acc x1 ->

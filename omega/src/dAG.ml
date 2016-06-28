@@ -370,7 +370,7 @@ i*)
       dependencies' node
         
     let lists dag =
-      Sort.list (fun (n1, _) (n2, _) -> F.Nodes.compare n1 n2 <= 0)
+      List.sort (fun (n1, _) (n2, _) -> F.Nodes.compare n1 n2)
         (Parents.fold (fun node offspring l ->
           (node, Offspring.elements offspring) :: l) dag [])
 
@@ -436,7 +436,7 @@ i*)
         List.fold_left
           (fun (v, values) -> eval_offspring f mule muln add null unit dag values)
           (null, Parents.empty)
-          (Sort.list (fun (n1, _) (n2, _) -> F.Nodes.compare n1 n2 <= 0)
+          (List.sort (fun (n1, _) (n2, _) -> F.Nodes.compare n1 n2)
              (Parents.fold
                 (fun node offspring l -> (node, offspring) :: l) dag [])) in
       result

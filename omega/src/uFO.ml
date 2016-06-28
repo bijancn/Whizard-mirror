@@ -1079,7 +1079,7 @@ module Model =
       match c with
       | Identity (i, j) -> 1
       | T (a, i, j) -> 1
-      | F (a, b, c) -> Combinatorics.sign compare [a;b;c]
+      | F (a, b, c) -> Combinatorics.sign [a;b;c]
       | D (a, b, c) -> invalid_arg "d-tensor not supported yet"
       | Epsilon (i, j, k) -> invalid_arg "epsilon-tensor not supported yet"
       | EpsilonBar (i, j, k) -> invalid_arg "epsilon-tensor not supported yet"
@@ -1161,8 +1161,8 @@ module Model =
 	       1
 	     else
 	       compare i i' in
-	   begin match (Combinatorics.sort_signed order abc,
-			Combinatorics.sort_signed order abc') with
+	   begin match (Combinatorics.sort_signed abc,
+			Combinatorics.sort_signed abc') with
 	   | (eps, [_; b; c]), (eps', [_; b'; c']) ->
 	      let a, b, c, d = normalize_quartet b c b' c' in
 	      FF_1 (Q.make (eps * eps') 1, a, b, c, d)
@@ -1256,15 +1256,15 @@ i.e.
 	     let bcd1 = [b1; c1; d1]
 	     and bcd2 = [b2; c2; d2]
 	     and bcd3 = [b3; c3; d3] in
-	     let eps1 = Combinatorics.sign compare bcd1 in
+	     let eps1 = Combinatorics.sign bcd1 in
 	     let eps2, bcd2 =
-	       let eps = Combinatorics.sign compare bcd2 in
+	       let eps = Combinatorics.sign bcd2 in
 	       if eps = eps1 then
 		 (Q.make eps 1, bcd2)
 	       else
 		 (Q.make eps 1, [b2; d2; c2])
 	     and eps3, bcd3 =
-	       let eps = Combinatorics.sign compare bcd3 in
+	       let eps = Combinatorics.sign bcd3 in
 	       if eps = eps1 then
 		 (Q.make eps 1, bcd3)
 	       else
@@ -1290,24 +1290,17 @@ i.e.
 	   (Printf.sprintf
 	      "translate_color4: #color structures: %d" (Array.length c))
 
-    let order_lexicographic order l1 l2 =
-      let rec order_lexicographic' = function
-	| [], [] -> 0
-	| [], _ -> -1
-	| _, [] -> 1
-	| x1 :: rest1, x2 :: rest2 ->
-	  let res = order x1 x2 in
-	  if res <> 0 then
-	    res
-	  else
-	    order_lexicographic' (rest1, rest2) in
-      order_lexicographic' (l1, l2)
-
+(* The Lorentz part of the thre gauge boson vertex is
+   \begin{equation}
+       g_{\mu_1\mu_2} (k^1_{\mu_3} - k^2_{\mu_3})
+     + g_{\mu_2\mu_3} (k^2_{\mu_1} - k^3_{\mu_1})
+     + g_{\mu_3\mu_1} (k^3_{\mu_2} - k^1_{\mu_2})
+   \end{equation}
+*)
     let normalize_lorentz_gauge_3 l =
       List.sort
 	(fun (ka1, la1, mu1, i1, q1) (ka2, la2, mu2, i2, q2) ->
-	  order_lexicographic compare
-	    [ka1; la1; mu1; i1] [ka2; la2; mu2; i2])
+	  ThoList.lexicographic [ka1; la1; mu1; i1] [ka2; la2; mu2; i2])
 	(List.map
 	   (fun (ka, la, mu, i, q) ->
 	     if ka > la then
@@ -1316,12 +1309,6 @@ i.e.
 	       (ka, la, mu, i, q))
 	   l)
 
-(* \begin{equation}
-       g_{\mu_1\mu_2} (k^1_{\mu_3} - k^2_{\mu_3})
-     + g_{\mu_2\mu_3} (k^2_{\mu_1} - k^3_{\mu_1})
-     + g_{\mu_3\mu_1} (k^3_{\mu_2} - k^1_{\mu_2})
-   \end{equation}
-*)
     let translate_lorentz_gauge_3 t p kalamuiq =
       match normalize_lorentz_gauge_3 kalamuiq with
       | [ (ka1, la1, mu1, i1, q1);
@@ -1480,12 +1467,12 @@ i.e.
       | _ -> failwith "translate_lorentz_4_1"
 
     let normalize_lorentz_4_1 (mu, nu, ka, la) =
-      List.flatten (List.sort (order_lexicographic compare)
+      List.flatten (List.sort ThoList.lexicographic
 		      (List.map (List.sort compare) [[mu; nu]; [ka; la]]))
 
     let normalize_lorentz_4 contractions =
       List.sort
-	(fun (c1, q1) (c2, q2) -> order_lexicographic compare c1 c2)
+	(fun (c1, q1) (c2, q2) -> ThoList.lexicographic c1 c2)
 	(List.map (fun (c, q) -> (normalize_lorentz_4_1 c, q)) contractions)
 
     let translate_lorentz_4 model p t =  

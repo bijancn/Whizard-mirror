@@ -132,6 +132,10 @@ val ariadne_sort : ?cmp:('a -> 'a -> int) -> 'a list -> 'a list * int list
 (* [ariadne_unsort (ariadne_sort cmp list)] returns [list]. *)
 val ariadne_unsort : 'a list * int list -> 'a list
 
+(* [lexicographic cmp list1 list2] compares [list1] and [list2]
+   lexicographically. *)
+val lexicographic : ?cmp:('a -> 'a -> int) -> 'a list -> 'a list -> int
+
 (* [common l1 l2] returns the elements common to the lists [l1] and [l2]. *)
 val common : 'a list -> 'a list -> 'a list
 
