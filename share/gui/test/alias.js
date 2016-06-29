@@ -4,7 +4,7 @@ const chai = require('chai');
 const chaiAsPromised = require('chai-as-promised');
 chai.use(chaiAsPromised);
 GLOBAL.$ = require('jquery');
-//const chaiJquery = require('chai-jquery');
+// const chaiJquery = require('chai-jquery');
 
 describe('SindarinAlias', () => {
   const testAliasName = 'quark';
@@ -21,7 +21,7 @@ describe('SindarinAlias', () => {
   it('should use jquery to populate the aliases list', () => {
     alias.cleanAlias();
     alias.rebuildAliasList();
-    //expect($('#pop_aliases').get).to.have.length.above(0);
-    //expect($('#pop_aliases')).to.contain('text');
+    // expect($('#pop_aliases').get).to.have.length.above(0);
+    // expect($('#pop_aliases')).to.contain('text');
   });
 });
