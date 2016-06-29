@@ -1,6 +1,5 @@
 const models = require('./models');
 const alias = require('./alias');
-const process = require('./process');
 const simulation = require('./simulation');
 const cuts = require('./cuts');
 
@@ -42,16 +41,22 @@ export function SindarinWriteHeader() {
 function SindarinWriteAdditionalCode() {
   for (let i = 0; i < this.list.length; i++) {
     const elem = this.list[i];
-    // if (elem instanceof SindarinAdditionalCode) {
-    this.src += elem.as + '\n';
-    // }
+    // TODO: (bcn 2016-06-29) BIG TODO CONTINUE HERE
+    // all the elements of this.list which comes from SindarinList in backend.js
+    // should have a writeToSindarin or toString method and then one can just
+    // iterate over all of them with one loop without ugly instanceof
+    // eslint-disable-next-line no-use-before-define
+    if (elem instanceof SindarinAdditionalCode) {
+      this.src += elem.as + '\n';
+    }
   }
 }
 
 
 export function SindarinAdditionalCode(s) {
   this.as = s;
-  this.writeModelData = SindarinWriteAdditionalCode;
+  // TODO: (bcn 2016-06-29) this looks useless and in the wrong place
+  // this.writeModelData = SindarinWriteAdditionalCode;
 }
 
 
@@ -77,6 +82,15 @@ function constructSindarinFromList() {
 }
 
 
+export function SindarinWriteProcesses() {
+  for (let i = 0; i < this.nElements; i++) {
+    const p = this.list[i];
+    this.src += p.writeProcess(i);
+    this.elementsUsed.push(i);
+  }
+}
+
+
 // TODO: (bcn 2016-04-17) this cant be unit tested for now as it depends on too much
 export function SindarinGenerator(SindarinList) {
   this.list = SindarinList;
@@ -89,7 +103,7 @@ export function SindarinGenerator(SindarinList) {
   this.writeModelData = models.SindarinWriteModelData;
   this.writeAdditionalData = SindarinWriteAdditionalCode;
   this.writeAliases = alias.SindarinWriteAliases;
-  this.writeProcesses = process.SindarinWriteProcesses;
+  this.writeProcesses = SindarinWriteProcesses;
   this.writeBody = SindarinWriteBody;
   this.writeSimulate = simulation.SindarinWriteSimulate;
   this.writeCuts = cuts.SindarinWriteCuts;

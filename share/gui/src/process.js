@@ -121,7 +121,7 @@ function grabScanData(processID) {
 
 
 function sindarinWriteProcess(i) {
-  let str = this.list[i].toString() + '\n';
+  let str = this.toString() + '\n';
   // If scans defined overwrite
   if (this.ScanData.Sets.length > 0) {
     str += '#Plot data' + '\n';
@@ -157,7 +157,7 @@ function sindarinWriteProcess(i) {
 }
 
 
-function SindarinProcess(incoming, outgoing) {
+export function SindarinProcess(incoming, outgoing) {
   this.counter = 0;
   this.incoming = incoming;
   this.outgoing = outgoing;
@@ -181,22 +181,13 @@ function SindarinProcess(incoming, outgoing) {
 }
 
 
-export function SindarinWriteProcesses() {
-  for (let i = 0; i < this.nElements; i++) {
-    const p = this.list[i];
-    this.src += p.writeProcess(i);
-    this.elementsUsed.push(i);
-  }
-}
-
-
 export function rebuildProcessList() {
   $('#pop_process').empty();
   $('#pop_process').append('<div class="row">');
   let procIndex = 1;
   for (let i = 0; i < ProcessList.length; i++) {
     if (ProcessList[i] instanceof SindarinProcess) {
-      if (ProcessList[i] === null) continue; // !!! // ???
+      // if (ProcessList[i] === null) continue; // !!! // ???
       ProcessList[i].counter = procIndex;
       procIndex++;
       $('#pop_process').append(
@@ -212,6 +203,7 @@ export function rebuildProcessList() {
 
 
 // Add a new process
+// TODO: (bcn 2016-06-26) Adding a process should not change simulation and scan
 export function addProcess(incoming, outgoing) {
   ProcessList.push(new SindarinProcess(incoming, outgoing));
   simulation.addSimulation();
