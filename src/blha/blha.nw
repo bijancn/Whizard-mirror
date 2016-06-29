@@ -91,7 +91,7 @@ end module blha_olp_interfaces
     logical :: include_polarizations = .false.
     logical :: switch_off_muon_yukawas = .false.
     real(default) :: external_top_yukawa = -1._default
-    type(string_t) :: ew_scheme
+    integer :: ew_scheme
   contains
   <<BLHA OLP interfaces: blha template: TBP>>
   end type blha_template_t
@@ -373,10 +373,11 @@ end module blha_olp_interfaces
   procedure :: init => blha_template_init
 <<BLHA OLP interfaces: procedures>>=
   subroutine blha_template_init (template, requires_polarizations, &
-       switch_off_muon_yukawas, external_top_yukawa)
+       switch_off_muon_yukawas, external_top_yukawa, ew_scheme)
     class(blha_template_t), intent(inout) :: template
     logical, intent(in) :: requires_polarizations, switch_off_muon_yukawas
     real(default), intent(in) :: external_top_yukawa
+    type(string_t), intent(in) :: ew_scheme
     template%compute_component = .false.
     template%include_polarizations = requires_polarizations
     template%switch_off_muon_yukawas = switch_off_muon_yukawas
@@ -1044,7 +1045,12 @@ end module blha_olp_interfaces
   subroutine prc_blha_set_electroweak_parameters (object, model)
      class(prc_blha_t), intent(inout) :: object
      type(model_data_t), intent(in), target :: model
-     !if (object%ew_parameter_mask (I_ALPHA)) call object%set_alpha_qed (model)
+     if (count (object%ew_parameter_mask) == 0) then
+        call msg_fatal ("Cannot decide EW parameter setting: No scheme set!")
+     else if (count (object%ew_parameter_mask) > 1) then
+        call msg_fatal ("Cannot decide EW parameter setting: More than one scheme set!")
+     end if
+     if (object%ew_parameter_mask (I_ALPHA)) call object%set_alpha_qed (model)
      if (object%ew_parameter_mask (I_GF)) call object%set_GF (model)
      if (object%ew_parameter_mask (I_SW2)) call object%set_weinberg_angle (model)
   end subroutine prc_blha_set_electroweak_parameters
@@ -1188,7 +1194,7 @@ end module blha_olp_interfaces
        object%i_born = 0
     end if
 
-    call object%init_ew_parameters ()
+    call object%init_ew_parameters (blha_template%ew_scheme)
 
     select type (driver => object%driver)
     class is (blha_driver_t)
@@ -1244,11 +1250,16 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
 <<BLHA OLP interfaces: prc blha: TBP>>=
   procedure :: init_ew_parameters => prc_blha_init_ew_parameters
 <<BLHA OLP interfaces: procedures>>=
-  subroutine prc_blha_init_ew_parameters (object)
+  subroutine prc_blha_init_ew_parameters (object, ew_scheme)
     class(prc_blha_t), intent(inout) :: object
-    object%ew_parameter_mask (I_ALPHA) = .true.
-    object%ew_parameter_mask (I_GF) = .true.
-    object%ew_parameter_mask (I_SW2) = .false.
+    integer, intent(in) :: ew_scheme
+    object%ew_parameter_mask = .false.
+    select case (ew_scheme)
+    case (BLHA_EW_QED)
+       object%ew_parameter_mask (I_ALPHA) = .true.
+    case (BLHA_EW_GF)
+       object%ew_parameter_mask (I_GF) = .true.
+    end select
   end subroutine prc_blha_init_ew_parameters
 
 @ %def prc_blha_init_ew_parameters
@@ -1723,6 +1734,26 @@ of the particles. Note that the output can only be processed by OpenLoops.
   end type blha_configuration_t
 
 @ %def blha_cffg_process_node_t blha_configuration_t
+@ Translate the SINDARIN input string to the corresponding named integer.
+<<BLHA config: procedures>>=
+  function ew_scheme_string_to_int (ew_scheme_str) result (ew_scheme_int)
+    integer :: ew_scheme_int
+    type(string_t), intent(in) :: ew_scheme_str
+    select case (char (ew_scheme_str))
+    case ('GF', 'Gmu')
+       ew_scheme_int = BLHA_EW_GF
+    case ('alpha_qed')
+       ew_scheme_int = BLHA_EW_QED
+    case ('alpha_mz')
+       ew_scheme_int = BLHA_EW_MZ
+    case ('alpha_0', 'alpha_thompson')
+       ew_scheme_int = BLHA_EW_0
+    case default
+       call msg_fatal ("ew_scheme: " // char (ew_scheme_str) // " not supported yet")
+    end select
+  end function ew_scheme_string_to_int
+      
+@ %def ew_scheme_string_to_int
 @
 This types control the creation of BLHA-interface files
 <<BLHA config: public>>=
@@ -1778,7 +1809,6 @@ This types control the creation of BLHA-interface files
     allocate (master%blha_cfg (master%n_files))
     allocate (master%suffix (master%n_files))
   end subroutine blha_master_allocate_config_files
-
 @ %def blha_master_allocate_config_files
 @
 <<BLHA config: blha master: TBP>>=
@@ -1787,20 +1817,9 @@ This types control the creation of BLHA-interface files
   subroutine blha_master_set_ew_scheme (master, ew_scheme)
     class(blha_master_t), intent(inout) :: master
     type(string_t), intent(in) :: ew_scheme
-    select case (char (ew_scheme))
-    case ('GF', 'Gmu')
-       master%ew_scheme = BLHA_EW_GF
-    case ('alpha_qed')
-       master%ew_scheme = BLHA_EW_QED
-    case ('alpha_mz')
-       master%ew_scheme = BLHA_EW_MZ
-    case ('alpha_0', 'alpha_thompson')
-       master%ew_scheme = BLHA_EW_0
-    case default
-       call msg_fatal ("ew_scheme: " // char (ew_scheme) // " not supported yet")
-    end select
+    master%ew_scheme = ew_scheme_string_to_int (ew_scheme)
   end subroutine blha_master_set_ew_scheme
-      
+
 @ %def blha_master_set_ew_scheme
 @
 <<BLHA config: blha master: TBP>>=
@@ -2486,8 +2505,6 @@ Write the BLHA file. Internal mode is intented for md5summing only.
       if (cfg%alpha_power >= 0) write (u, '(A25,A)') &
          "CouplingPower QED " // pad, int2char (cfg%alpha_power)
     end select
-    print *, 'ew_scheme: ', cfg%ew_scheme
-    stop
     if (cfg%ew_scheme > BLHA_EW_QED) then
        select case (cfg%mode)
        case (BLHA_MODE_GOSAM)
@@ -2501,10 +2518,9 @@ Write the BLHA file. Internal mode is intented for md5summing only.
           write (u, '(A25, A)') "EWScheme " // pad, char (buf)
        case (BLHA_MODE_OPENLOOPS)
           select case (cfg%ew_scheme)
-             case (BLHA_EW_0); buf = "alpha0"
              case (BLHA_EW_GF); buf = "Gmu"
              case default
-                call msg_fatal ("OpenLoops input: Only supported EW schemes are 'alpha0' and 'Gmu'")
+                call msg_fatal ("OpenLoops input: Only supported EW schemes are 'alpha_qed' and 'Gmu'")
           end select
           write (u, '(A25, A)') "ewscheme " // pad, char (buf)
        end select
