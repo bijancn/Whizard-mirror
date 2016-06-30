@@ -308,6 +308,8 @@ let lexicographic ?(cmp=Pervasives.compare) l1 l2 =
 	 lexicographic' (rest1, rest2) in
   lexicographic' (l1, l2)
 
+(* If there was a polymorphic [Set], we could also say
+   [Set.elements (Set.union (Set.of_list l1) (Set.of_list l2))]. *)
 let common l1 l2 =
   List.fold_left
     (fun acc x1 ->

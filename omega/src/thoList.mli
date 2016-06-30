@@ -136,7 +136,9 @@ val ariadne_unsort : 'a list * int list -> 'a list
    lexicographically. *)
 val lexicographic : ?cmp:('a -> 'a -> int) -> 'a list -> 'a list -> int
 
-(* [common l1 l2] returns the elements common to the lists [l1] and [l2]. *)
+(* [common l1 l2] returns the elements common to the lists [l1] and [l2].
+   The lists are not required to be ordered and the result will also
+   not be ordered. *)
 val common : 'a list -> 'a list -> 'a list
 
 (*i

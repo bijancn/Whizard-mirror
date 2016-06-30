@@ -1147,6 +1147,10 @@ module Model =
     let translate_color4_1_1 c =
       Q.make (translate_color_atom c) 1
 
+(* Take two lists of three indices each, find exactly one common index,
+   check that it is a summation index (i.\,e. not positive) and return
+   the remaining four indices in normal order (see [normalize_quartet])
+   together with the sign of the permutations. *) 
     let translate_color4_ff abc abc' =
       match ThoList.common abc abc' with
       | [] -> invalid_arg "translate_color4_ff: not summation index"
@@ -1493,21 +1497,21 @@ i.e.
 	      && ThoList.homogeneous [ka1; nu2; la3]
 	      && ThoList.homogeneous [la1; la2; nu3] then begin
 		if ThoList.homogeneous [q1; minus_two q2; minus_two q3] then
-		  (q1, Coupling.Vector4 [ ( 2, Coupling.C_12_34);
-					  (-1, Coupling.C_13_42);
-					  (-1, Coupling.C_14_23) ])
+		  (p, q1, Coupling.Vector4 [ ( 2, Coupling.C_12_34);
+					     (-1, Coupling.C_13_42);
+					     (-1, Coupling.C_14_23) ])
 		else if ThoList.homogeneous [q2; minus_two q3; minus_two q1] then
-		  (q2, Coupling.Vector4 [ (-1, Coupling.C_12_34);
-					  ( 2, Coupling.C_13_42);
-					  (-1, Coupling.C_14_23) ] )
+		  (p, q2, Coupling.Vector4 [ (-1, Coupling.C_12_34);
+					     ( 2, Coupling.C_13_42);
+					     (-1, Coupling.C_14_23) ] )
 		else if ThoList.homogeneous [q3; minus_two q1; minus_two q2] then
-		  (q3, Coupling.Vector4 [ (-1, Coupling.C_12_34);
-					  (-1, Coupling.C_13_42);
-					  ( 2, Coupling.C_14_23) ])
+		  (p, q3, Coupling.Vector4 [ (-1, Coupling.C_12_34);
+					     (-1, Coupling.C_13_42);
+					     ( 2, Coupling.C_14_23) ])
 		else begin
 		  prerr_endline
 		    ("unexpected 4-gauge-vertex: " ^ UFOx.Lorentz.to_string t);
-		  (Q.unit, dummy_tensor4)
+		  (p, Q.unit, dummy_tensor4)
 		end
 	      end else begin
 		prerr_endline
@@ -1527,14 +1531,14 @@ i.e.
 	       [1;3;2;4] - [1;4;2;3] *)
 	    if mu1 = mu2 && q2 = Q.neg q1 then begin
 	      if [nu2; ka2; la2] = [ka1; nu1; la1] then
-		(q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
-				        (-1, Coupling.C_13_42) ])
+		(p, q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
+				           (-1, Coupling.C_13_42) ])
 	      else if [nu2; ka2; la2] = [la1; nu1; ka1] then
-		(q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
-				        (-1, Coupling.C_14_23) ])
+		(p, q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
+				           (-1, Coupling.C_14_23) ])
 	      else if [nu2; ka2; la2] = [la1; ka1; nu1] then
-		(q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
-				        (-1, Coupling.C_14_23) ])
+		(p, q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
+				           (-1, Coupling.C_14_23) ])
 	      else
 		invalid_arg "translate_lorentz_4: inconsistent"
 	    end else
@@ -1542,9 +1546,21 @@ i.e.
 	 | _ -> failwith "translate_lorentz_4: unexpected"
 	 end
       | [ ([L.Metric(mu,nu)], q) ] ->
-	 prerr_endline
-	   ("incompletely handled seagull-vertex: " ^ UFOx.Lorentz.to_string t);
-	 (Q.unit, Coupling.Scalar2_Vector2 1)
+	 let mu' = mu - 1
+	 and nu' = nu - 1 in
+	 (* TODO: generalize this! *)
+	 let vectors_last ka la =
+	   if ka = la then
+	     0
+	   else if (ka = mu' || ka = nu') && la != mu' && la != nu' then
+	     1
+	   else if (la = mu' || la = nu') && ka != mu' && ka != nu' then
+	     -1
+	   else
+	     compare ka la in
+	 let p' = p in
+	 Array.sort vectors_last p';
+	 (p', Q.unit, Coupling.Scalar2_Vector2 1)
       | _ -> failwith "translate_lorentz_4"
 
     let translate_coupling4 model p t c g =
@@ -1556,7 +1572,7 @@ i.e.
 	  dummy_constant)
       | [| t |], qc, [| [| g |] |] ->
 	 begin match translate_lorentz_4 model p t with
-	 | q, t -> ((p.(0), p.(1), p.(2), p.(3)), t, dummy_constant)
+	 | p, q, t -> ((p.(0), p.(1), p.(2), p.(3)), t, dummy_constant)
 	 end
       | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
