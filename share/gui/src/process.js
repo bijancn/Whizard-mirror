@@ -120,7 +120,7 @@ function grabScanData(processID) {
 }
 
 
-function sindarinWriteProcess(i) {
+function processWriteToSindarin(i) {
   let str = this.toString() + '\n';
   // If scans defined overwrite
   if (this.ScanData.Sets.length > 0) {
@@ -175,7 +175,7 @@ export function SindarinProcess(incoming, outgoing) {
   this.getNEvents = SindarinProcessGetNEvents;
   this.setNEvents = SindarinProcessSetNEvents;
   this.toString = SindarinProcessToString;
-  this.writeProcess = sindarinWriteProcess;
+  this.writeToSindarin = processWriteToSindarin;
   this.name = ProcessDisplayName;
   this.grabScanData = grabScanData;
 }

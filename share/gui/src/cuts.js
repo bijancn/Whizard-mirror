@@ -3,27 +3,17 @@ const process = require('./process');
 const generic = require('./generic');
 
 
-function SindarinCutsToString() {
-  return 'cuts = ' + this.CutsData;
-}
-
-
 export function SindarinCuts(cuts) {
   this.CutsData = cuts;
-  this.toString = SindarinCutsToString;
-}
-
-
-export function SindarinWriteCuts() {
-  for (let i = 0; i < this.list.length; i++) {
-    const elem = this.list[i];
-    if (elem instanceof SindarinCuts) {
-      if (elem.CutsData.length > 0) {
-        this.src += elem.toString() + '\n';
-      }
+  this.toString = () => 'cuts = ' + this.CutsData;
+  this.writeToSindarin = () => {
+    if (this.CutsData.length > 0) {
+      return this.toString();
     }
-  }
+    return '# No cuts defined';
+  };
 }
+
 
 // TODO: (bcn 2016-06-14) reduce complexity
 export const cutsClosure = (() => {

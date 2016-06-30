@@ -7,23 +7,13 @@ const simulation = require('./simulation');
 const cuts = require('./cuts');
 
 const ToolbarColumns = 4;
-const Models = models.fillModelList();
 
 //  Hiding whatever needed
 $('.simulate-right, .integrate-right').hide();
 // Hiding optional fields
 $('#struct-scan').hide();
 
-for (let k = 0; k < Models.length; k += ToolbarColumns) {
-  $('#pop_models').append('<div class="row">');
-  for (let i = k; i < k + ToolbarColumns; i++) {
-    const modelName = (Models[i] === undefined) ? '&nbsp;' : Models[i].modelName;
-    const modelDescription = (Models[i] === undefined) ? '&nbsp;' : Models[i].description;
-    $('#pop_models').append('<div class="col-md-3"><a href="javascript:;" title="'
-        + modelDescription + '" class="model">' + modelName + '</a></div>');
-  }
-  $('#pop_models').append('</div>');
-}
+models.setupJquery(ToolbarColumns);
 
 
 // Selecting Tabs:Integration > Process

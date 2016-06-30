@@ -9,18 +9,13 @@ const constructSindarin = require('./constructSindarin');
 
 export function rebuildVariables() {
   let SindarinList = [];
-  const model = new models.SindarinModel($('#conf-model').text());
-  SindarinList.push(new models.SindarinModelData(model));
+  const modelString = $('#conf-model').text();
+  SindarinList.push(new models.SindarinModelData(modelString));
 
   if ($('#conf-additional').val()) {
     const AdditionalCode = new
       constructSindarin.SindarinAdditionalCode($('#conf-additional').val());
     SindarinList.push(AdditionalCode);
-  }
-
-  // Only use the field if process list is empty
-  for (let i = 0; i < process.ProcessList.length; i++) {
-    if (process.ProcessList[i] !== null) SindarinList.push(process.ProcessList[i]);
   }
 
   if ($('#conf-beams').val()) {
@@ -45,7 +40,7 @@ export function rebuildVariables() {
   SindarinList = SindarinList.concat(alias.ExternalSindarinList);
   SindarinList = SindarinList.concat(simulation.SimulateList);
 
-  const a = new constructSindarin.SindarinGenerator(SindarinList);
+  const a = new constructSindarin.SindarinGenerator(SindarinList, process.ProcessList);
   return a.construct();
 }
 

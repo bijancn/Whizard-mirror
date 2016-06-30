@@ -120,18 +120,12 @@ export function SindarinSimulate() {
   this.toString = SindarinSimulateToString;
 
   this.Histogram = new HistogramData();
-}
-
-
-export function SindarinWriteSimulate() {
-  for (let i = 0; i < this.list.length; i++) {
-    const elem = this.list[i];
-    if (elem instanceof SindarinSimulate) {
-      if (elem.getStatus() === true && elem.getEvents() > 0) {
-        this.src += elem.toString() + '\n';
-      }
+  this.writeToSindarin = () => {
+    if (this.getStatus() && this.getEvents() > 0) {
+      return this.toString();
     }
-  }
+    return '';
+  };
 }
 
 

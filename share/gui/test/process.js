@@ -24,7 +24,7 @@ describe('SindarinProcess', () => {
     sindarinProcess.setSqrts('500 GeV');
     sindarinProcess.setNIter(5);
     sindarinProcess.setNCalls('100');
-    expect(sindarinProcess.writeProcess()).to.equal('process ' + expectName +
+    expect(sindarinProcess.writeToSindarin()).to.equal('process ' + expectName +
         '\nsqrts = 500 GeV' +
         '\nintegrate(proc_2) {iterations=5:100:"gw"}\n');
   });
