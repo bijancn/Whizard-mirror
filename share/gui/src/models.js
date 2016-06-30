@@ -1,39 +1,25 @@
-export function SindarinWriteModelData() {
-  for (let i = 0; i < this.nElements; i++) {
-    const p = this.list[i];
-    // TODO: (bcn 2016-06-14) both functions use each other
-    // eslint-disable-next-line no-use-before-define
-    if (p instanceof SindarinModelData) {
-      this.src += p.model.toString() + '\n';
-      for (let j = 0; j < p.parameters.length; j++) {
-        this.src += p.parameters.toString() + '\n';
-      }
-      this.elementsUsed.push(i);
-    }
-  }
-}
-
-
-export function SindarinModelData(model) {
-  this.model = model;
-  this.parameters = [];
-  this.writeModelData = SindarinWriteModelData;
-}
-
-
-function SindarinModelToString() {
-  return 'model = ' + this.modelName;
-}
-
-
 export function SindarinModel(name, description) {
   this.modelName = name;
   this.description = description;
-  this.toString = SindarinModelToString;
+  this.toString = () => 'model = ' + this.modelName;
 }
 
 
-export function fillModelList() {
+// TODO: (bcn 2016-06-30) parameters are not setable yet
+export function SindarinModelData(modelString) {
+  this.model = new SindarinModel(modelString);
+  this.parameters = [];
+  this.writeToSindarin = () => {
+    let src = this.model.toString() + '\n';
+    for (let j = 0; j < this.parameters.length; j++) {
+      src += this.parameters.toString() + '\n';
+    }
+    return src;
+  };
+}
+
+
+function fillModelList() {
   const modelList = [];
   const models = [
     {name: '2HDM', description: 'Two-Higgs Doublet Model'},
@@ -82,4 +68,19 @@ export function fillModelList() {
     modelList.push(new SindarinModel(model.name, model.description));
   }
   return modelList;
+}
+
+export function setupJquery(ToolbarColumns) {
+  const Models = fillModelList();
+  for (let k = 0; k < Models.length; k += ToolbarColumns) {
+    $('#pop_models').append('<div class="row">');
+    for (let i = k; i < k + ToolbarColumns; i++) {
+      const modelName = (Models[i] === undefined) ? '&nbsp;' : Models[i].modelName;
+      const modelDescription = (Models[i] === undefined) ?
+        '&nbsp;' : Models[i].description;
+      $('#pop_models').append('<div class="col-md-3"><a href="javascript:;" title="'
+          + modelDescription + '" class="model">' + modelName + '</a></div>');
+    }
+    $('#pop_models').append('</div>');
+  }
 }
