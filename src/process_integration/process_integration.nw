@@ -1322,6 +1322,7 @@ elements.
      end associate
      call state%int_eff%set_mask (qn_mask)
      call state%trace%init_identity (state%int_eff)
+     state%has_trace = .true.
      print *, 'Done'
   end subroutine isolated_state_setup_identity_trace
 
@@ -1447,25 +1448,38 @@ event output.
   procedure :: setup_connected_trace => connected_state_setup_connected_trace
 <<Parton states: procedures>>=
   subroutine connected_state_setup_connected_trace &
-       (state, isolated, int, resonant, nlo_type)
+       (state, isolated, int, resonant, me_already_squared)
     class(connected_state_t), intent(inout), target :: state
     type(isolated_state_t), intent(in), target :: isolated
     type(interaction_t), intent(in), optional, target :: int
     logical, intent(in), optional :: resonant
-    integer, intent(in), optional :: nlo_type
+    logical, intent(in), optional :: me_already_squared
     type(quantum_numbers_mask_t) :: mask
     type(interaction_t), pointer :: src_int
-    mask = quantum_numbers_mask (.true., .true., .true.)
-    if (present (int)) then
-       src_int => int
-    else
-       src_int => isolated%sf_chain_eff%get_out_int_ptr ()
-    end if
-    call state%trace%init_product (src_int, isolated%trace, &
-          qn_mask_conn = mask, &
-          qn_mask_rest = mask, &
-          connections_are_resonant = resonant, &
-          nlo_type = nlo_type)
+    logical :: use_identity
+    use_identity = .false.
+    if (present (me_already_squared)) use_identity = me_already_squared
+    !if (use_identity) then
+       !call state%trace%init_identity (isolated%trace)
+       
+    !else
+       mask = quantum_numbers_mask (.true., .true., .true.)
+       if (present (int)) then
+          src_int => int
+       else
+          src_int => isolated%sf_chain_eff%get_out_int_ptr ()
+       end if
+       if (use_identity) then
+          call src_int%reduce_state_matrix ([mask, mask])
+          call src_int%set_mask ([mask, mask])
+       end if
+       
+       call state%trace%init_product (src_int, isolated%trace, &
+             qn_mask_conn = mask, &
+             qn_mask_rest = mask, &
+             connections_are_resonant = resonant)
+    !end if
+    !if (use_identity) stop
     state%has_trace = .true.
   end subroutine connected_state_setup_connected_trace
     
@@ -8198,7 +8212,6 @@ relevant for a NLO algorithm.
           call term%isolated%init (term%k_term%sf_chain, term%int_hard)
       end select
     end if
-    !if (nlo_type == NLO_VIRTUAL) stop
     allocate (mask_in (n_in))
     mask_in = term%k_term%sf_chain%get_out_mask ()
     select type (phs => term%k_term%phs)
@@ -8236,7 +8249,8 @@ relevant for a NLO algorithm.
          call term%isolated%setup_square_trace (core, mask_in, term%config%col)
     end select
     print *, 'Setup connected trace: ', char (component_status (nlo_type)) 
-    call term%connected%setup_connected_trace (term%isolated, nlo_type = nlo_type)
+    call term%connected%setup_connected_trace (term%isolated, &
+       me_already_squared = me_already_squared)
     associate (int_eff => term%isolated%int_eff)
       state_matrix => int_eff%get_state_matrix_ptr ()
       n_tot = int_eff%get_n_tot  ()
