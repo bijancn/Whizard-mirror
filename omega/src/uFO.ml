@@ -1558,9 +1558,9 @@ i.e.
 	     -1
 	   else
 	     compare ka la in
-	 let p' = p in
-	 Array.sort vectors_last p';
-	 (p', Q.unit, Coupling.Scalar2_Vector2 1)
+	 let indices = [|0; 1; 2; 3|] in
+	 Array.sort vectors_last indices;
+	 (Array.map (fun i -> p.(i)) indices, Q.unit, Coupling.Scalar2_Vector2 1)
       | _ -> failwith "translate_lorentz_4"
 
     let translate_coupling4 model p t c g =
