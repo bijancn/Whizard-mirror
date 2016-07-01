@@ -87,6 +87,9 @@ function getLatexImage(tex) {
 // Sometimes user may not have internet connection and latex images could
 // not be generated using getLatexImage(s).
 function image(str1, str2) {
+  // TODO: (bcn 2016-07-01) this function should try to get image and return tex
+  // if it fails. Even better it should use local installation of mathjax!
+  console.log(getLatexImage(str1));
   if (guiconfig.context.useGoogleLatex) {
     return '<img src="' + getLatexImage(str1) + '">';
   }
@@ -109,6 +112,7 @@ export function htmlEscape(str) {
 }
 
 
+// TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
 export function getFileTimestamp(file) {
   $.post('/checktimestamp', {filename: file}, (data) => {
     console.warn(data);
@@ -116,6 +120,7 @@ export function getFileTimestamp(file) {
 }
 
 
+// TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
 function getFileTimestampAsync(file) {
   return $.ajax({
     type: 'POST',

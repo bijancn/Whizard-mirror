@@ -1,15 +1,13 @@
 // TODO: (bcn 2016-04-01) why is it called externalsindarinlist?
 export let ExternalSindarinList = [];
 
-function SindarinAliasToString() {
-  return 'alias ' + this.name + ' = ' + this.alias;
-}
 
 export function SindarinAlias(str, alias) {
   this.name = str;
   this.alias = alias;
-  this.toString = SindarinAliasToString;
+  this.writeToSindarin = () => 'alias ' + this.name + ' = ' + this.alias;
 }
+
 
 /* TODO: (bcn 2016-03-27) it is very unclear what *this* will be for this function */
 // it is not even testable at this level
@@ -21,6 +19,7 @@ export function SindarinWriteAliases() {
     }
   }
 }
+
 
 export function rebuildAliasList() {
   $('#pop_aliases').empty();
@@ -38,12 +37,13 @@ export function rebuildAliasList() {
   }
 }
 
-// TODO: (bcn 2016-04-16) why is this capitalized? does it build a class?
+
 // Add new alias, useful with examples
 export function addAlias(name, str) {
   ExternalSindarinList.push(new SindarinAlias(name, str));
   rebuildAliasList();
 }
+
 
 export function cleanAlias() {
   ExternalSindarinList = [];

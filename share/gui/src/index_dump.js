@@ -1,7 +1,7 @@
 const generic = require('./generic');
 const models = require('./models');
 const alias = require('./alias');
-const backend = require('./backend');
+const main = require('./main');
 const process = require('./process');
 const simulation = require('./simulation');
 const cuts = require('./cuts');
@@ -34,7 +34,7 @@ $(document).ready(() => {
     if ($('#conf-alias-lhs').val() && $('#conf-alias-rhs').val()) {
       alias.addAlias($('#conf-alias-lhs').val(), $('#conf-alias-rhs').val());
       alias.rebuildAliasList();
-      backend.messageGUI('New alias is added.', 'alert-success');
+      main.messageGUI('New alias is added.', 'alert-success');
       $('#conf-alias-lhs').val('');
       $('#conf-alias-rhs').val('');
     }
@@ -46,13 +46,13 @@ $(document).ready(() => {
     if ($('#conf-process-in').val() && $('#conf-process-out').val()) {
       process.addProcess(generic.parseParticleNameString($('#conf-process-in').val()),
         generic.parseParticleNameString($('#conf-process-out').val()));
-      backend.messageGUI('New process is added.', 'alert-success');
+      main.messageGUI('New process is added.', 'alert-success');
     } else {
       let incomingMissing = '';
       let outgoingMissing = '';
       if (!$('#conf-process-in').val()) incomingMissing = 'No incoming particles';
       if (!$('#conf-process-out').val()) outgoingMissing = 'No outgoing particles';
-      backend.messageGUI('Adding process failed! ' + incomingMissing + ' and ' +
+      main.messageGUI('Adding process failed! ' + incomingMissing + ' and ' +
         outgoingMissing, 'alert-danger');
     }
   });
@@ -87,7 +87,7 @@ $(document).ready(() => {
         process.ProcessList[simulation.activeProcessId].setNlo(false);
       }
     } catch (err) {
-      backend.messageGUI(err, 'alert-danger');
+      main.messageGUI(err, 'alert-danger');
     }
   });
 
@@ -96,7 +96,7 @@ $(document).ready(() => {
       if (simulation.activeProcessId < 0) throw new {error: 'Please select a process'};
       process.ProcessList[simulation.activeProcessId].setSqrts($(this).val());
     } catch (err) {
-      backend.messageGUI(err, 'alert-danger');
+      main.messageGUI(err, 'alert-danger');
     }
   });
 
@@ -105,7 +105,7 @@ $(document).ready(() => {
       if (simulation.activeProcessId < 0) throw new {error: 'Please select a process'};
       process.ProcessList[simulation.activeProcessId].setNIter($(this).val());
     } catch (err) {
-      backend.messageGUI(err, 'alert-danger');
+      main.messageGUI(err, 'alert-danger');
     }
   });
 
@@ -114,17 +114,20 @@ $(document).ready(() => {
       if (simulation.activeProcessId < 0) throw new {error: 'Please select a process'};
       process.ProcessList[simulation.activeProcessId].setNCalls($(this).val());
     } catch (err) {
-      backend.messageGUI(err, 'alert-danger');
+      main.messageGUI(err, 'alert-danger');
     }
   });
 
   $(document).on('click', '.process-entry', () => {
-    simulation.activeProcessId = $(this).attr('process-id') - 1;
+    console.log('before ' + simulation.activeProcessId);
+    console.log($(this));
+    simulation.activeProcessId = $(this).attr('process-id');
+    console.log('after ' + simulation.activeProcessId);
     const p = process.ProcessList[simulation.activeProcessId];
-    if (!p.isNlo()) {
-      $('#conf-int-nlo').prop('checked', false);
-    } else {
+    if (p.isNlo()) {
       $('#conf-int-nlo').prop('checked', true);
+    } else {
+      $('#conf-int-nlo').prop('checked', false);
     }
     $('#conf-int-itt').val(p.getNIter());
     $('#conf-int-cpi').val(p.getNCalls());
@@ -155,7 +158,7 @@ $(document).ready(() => {
 
   // Tab preview clicked, generate script
   $('#tab_button_preview').click(() => {
-    backend.rebuildPreviewTab();
+    main.rebuildPreviewTab();
   });
 
   //  Changing tab, rebuild process list
@@ -185,14 +188,17 @@ $(document).ready(() => {
     alias.rebuildAliasList();
   });
 
+  // TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
   // Button: Save Sindarin
   $('.savesin').click(() => {
-    const SindarinScript = backend.rebuildVariables();
-    $.post('/savesin', {src: SindarinScript}, (data) => {
-      backend.messageGUI(data, 'alert-success');
-    });
+    const SindarinScript = main.rebuildVariables();
+    $.post('/savesin',
+      {src: SindarinScript}, (data) => {
+        main.messageGUI(data, 'alert-success');
+      });
   });
 
+  // TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
   // Button: Run Whizard
   $('.runwhiz').click(() => {
     // Run option: [--rebuild-events, --rebuild-grids, --rebuild]
@@ -204,12 +210,14 @@ $(document).ready(() => {
     $('#whizoutput').fadeOut('fast');
     $('.outputcontainer').fadeOut('fast');
 
+    // TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
     // Functionality
     $('.runwhiz, .runarrow').attr('disabled', 'disabled');
-    const SindarinScript = backend.rebuildVariables();
+    const SindarinScript = main.rebuildVariables();
     let whizRunning = true;
     generic.monitorLogChanges(whizRunning);
 
+    // TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
     // eslint-disable-next-line no-unused-vars
     $.post('/runwhiz', {src: SindarinScript, option}, (data) => {
       // Animation
@@ -233,7 +241,7 @@ $(document).ready(() => {
       if (str.indexOf(CritKeyword) > -1) {
         const s = str.substring(str.lastIndexOf(CritKeyword),
             str.lastIndexOf('*')).replace(/\*/g, '');
-        if (s) backend.messageGUI(s, 'alert-danger');
+        if (s) main.messageGUI(s, 'alert-danger');
       }
     });
   });

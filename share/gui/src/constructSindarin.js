@@ -32,7 +32,7 @@ export function SindarinAdditionalCode(s) {
 function SindarinWriteBody() {
   let string = '';
   for (let i = 0; i < this.list.length; i++) {
-    string += this.list[i].writeToSindarin();
+    string += this.list[i].writeToSindarin() + '\n';
   }
   return string;
 }
