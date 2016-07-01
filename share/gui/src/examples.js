@@ -1,10 +1,10 @@
-const backend = require('./backend');
+const main = require('./main');
 const process = require('./process');
 
 // Pair Production ee->WW
 $('.ex-eeww').click(() => {
-  backend.cleanAll();
+  main.cleanAll();
   process.addProcess('"e+", "e-"', '"W+", "W-"');
   process.ProcessList[0].setSqrts(500);
-  backend.messageGUI('Example loaded.', 'alert-success');
+  main.messageGUI('Example loaded.', 'alert-success');
 });

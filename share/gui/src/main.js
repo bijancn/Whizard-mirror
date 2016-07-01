@@ -1,10 +1,16 @@
+import 'babel-polyfill';
+import '../public/bootstrap.min';
+import './generic';
 const cuts = require('./cuts');
+// const guiconfig = require('./guiconfig');
+const constructSindarin = require('./constructSindarin');
 const models = require('./models');
+import './examples';
 const alias = require('./alias');
 const process = require('./process');
-const simulation = require('./simulation');
 const scan = require('./scan');
-const constructSindarin = require('./constructSindarin');
+const simulation = require('./simulation');
+import './index_dump';
 
 
 export function rebuildVariables() {
@@ -72,3 +78,8 @@ export function rebuildPreviewTab() {
   const SindarinScript = rebuildVariables();
   $('#preview').html('<pre>' + SindarinScript + '</pre>');
 }
+
+
+cuts.setupJquery();
+simulation.setupJquery();
+scan.setupJquery();

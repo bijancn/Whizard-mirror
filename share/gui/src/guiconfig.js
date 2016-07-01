@@ -22,7 +22,7 @@ function setDefaults() {
 
   // Use Google Chart API for Latex images
   // Internet connection is required.
-  context.useGoogleLatex = true;
+  context.useGoogleLatex = false;
 
   // Set to log.WARN for less verbose
   context.logLevel = log.DEBUG;

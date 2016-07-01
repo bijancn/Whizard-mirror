@@ -92,7 +92,9 @@ export function setupJquery() {
     $('.scan-right').fadeIn('fast');
     $('.process-entry-scan').removeClass('active');
     $(this).addClass('active');
+    console.log("setting simulation.activeProcessId");
     simulation.activeProcessId = $(this).attr('process-id');
+    console.log(simulation.activeProcessId);
     Scan.fillHTMLFields();
     if (ScansList[simulation.activeProcessId].status) {
       $('#struct-scan').fadeIn('fast');

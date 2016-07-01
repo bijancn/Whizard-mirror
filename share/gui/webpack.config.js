@@ -8,7 +8,7 @@ module.exports = {
   name: 'browser',
   entry: [
     'babel-polyfill',
-    './src/import_all',
+    './src/main',
   ],
   output: {
     path: build_dir,
