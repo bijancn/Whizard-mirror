@@ -1456,31 +1456,35 @@ event output.
     logical, intent(in), optional :: me_already_squared
     type(quantum_numbers_mask_t) :: mask
     type(interaction_t), pointer :: src_int
-    logical :: use_identity
-    use_identity = .false.
-    if (present (me_already_squared)) use_identity = me_already_squared
-    !if (use_identity) then
-       !call state%trace%init_identity (isolated%trace)
-       
-    !else
-       mask = quantum_numbers_mask (.true., .true., .true.)
-       if (present (int)) then
-          src_int => int
-       else
-          src_int => isolated%sf_chain_eff%get_out_int_ptr ()
-       end if
-       if (use_identity) then
-          call src_int%reduce_state_matrix ([mask, mask])
-          call src_int%set_mask ([mask, mask])
-       end if
-       
-       call state%trace%init_product (src_int, isolated%trace, &
-             qn_mask_conn = mask, &
-             qn_mask_rest = mask, &
-             connections_are_resonant = resonant)
-    !end if
-    !if (use_identity) stop
+    logical :: reduce
+    reduce = .false.
+    if (present (me_already_squared)) reduce = me_already_squared
+    mask = quantum_numbers_mask (.true., .true., .true.)
+    if (present (int)) then
+       src_int => int
+    else
+       src_int => isolated%sf_chain_eff%get_out_int_ptr ()
+    end if
+    if (reduce) call undo_qn_hel (src_int, mask, isolated%trace%get_n_in ())
+    
+    call state%trace%init_product (src_int, isolated%trace, &
+          qn_mask_conn = mask, &
+          qn_mask_rest = mask, &
+          connections_are_resonant = resonant)
     state%has_trace = .true.
+  contains
+    subroutine undo_qn_hel (int_in, mask, n_in)
+      type(interaction_t), intent(inout) :: int_in
+      type(quantum_numbers_mask_t), intent(in) :: mask
+      integer, intent(in) :: n_in
+      type(quantum_numbers_mask_t), dimension(n_in) :: mask_in
+      mask_in = mask
+      call int_in%reduce_state_matrix (mask_in)
+      call int_in%set_mask (mask_in)
+      if (int_in%get_n_matrix_elements () /= 1) &
+         call msg_fatal ("Reduced sf-state should have only one matrix element!")
+      call int_in%set_matrix_element (cmplx (1, 0, default))
+    end subroutine undo_qn_hel
   end subroutine connected_state_setup_connected_trace
     
 @ %def connected_state_setup_connected_trace
@@ -7701,7 +7705,8 @@ imaginary part of the terms, which should be zero anyway.
         else
            component%sqme = component%sqme + sum (nlo_controller%sqme_collector%sqme_virt_list)
         end if
-        print *, 'old method: ', component%sqme
+        !print *, 'old method: ', component%sqme
+        !print *, 'new method: ', real (term%connected%trace%get_matrix_element(1))
      end associate
   end subroutine component_instance_evaluate_sqme_virt
 
@@ -8199,9 +8204,6 @@ relevant for a NLO algorithm.
                 call term%nlo_controller%int_born%set_source_link &
                    (j, term%nlo_controller%sf_born%get_out_int_ptr (), i)
              end do
-             !print *, 'sf_born: '
-             !call term%nlo_controller%sf_born%write ()
-             print *, 'Init isolated - fks: ', char (component_status (nlo_type))
              call term%isolated%init & 
                 (term%nlo_controller%sf_born, term%nlo_controller%int_born)
              term%int_hard_real = term%int_hard
