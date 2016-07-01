@@ -1546,21 +1546,13 @@ i.e.
 	 | _ -> failwith "translate_lorentz_4: unexpected"
 	 end
       | [ ([L.Metric(mu,nu)], q) ] ->
-	 let mu' = mu - 1
-	 and nu' = nu - 1 in
-	 (* TODO: generalize this! *)
-	 let vectors_last ka la =
-	   if ka = la then
-	     0
-	   else if (ka = mu' || ka = nu') && la != mu' && la != nu' then
-	     1
-	   else if (la = mu' || la = nu') && ka != mu' && ka != nu' then
-	     -1
-	   else
-	     compare ka la in
-	 let indices = [|0; 1; 2; 3|] in
-	 Array.sort vectors_last indices;
-	 (Array.map (fun i -> p.(i)) indices, Q.unit, Coupling.Scalar2_Vector2 1)
+	 let mu = pred mu and nu = pred nu in
+	 begin match ThoList.complement [0; 1; 2; 3] [mu; nu] with
+	 | [ka; la] ->
+	    ([|p.(ka); p.(la); p.(mu); p.(nu)|],
+	     Q.unit, Coupling.Scalar2_Vector2 1)
+	 | _ -> failwith "translate_lorentz_4: impossible"
+	 end
       | _ -> failwith "translate_lorentz_4"
 
     let translate_coupling4 model p t c g =

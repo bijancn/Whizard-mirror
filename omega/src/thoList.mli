@@ -141,6 +141,12 @@ val lexicographic : ?cmp:('a -> 'a -> int) -> 'a list -> 'a list -> int
    not be ordered. *)
 val common : 'a list -> 'a list -> 'a list
 
+(* [complement l1 l2] returns the list [l1] with elements of list [l2]
+   removed. The lists are not required to be ordered.  Raises
+   [Invalid_argument "ThoList.complement"], if a member of [l1] is not
+   in [l1]. *)
+val complement : 'a list -> 'a list -> 'a list
+
 (*i
  *  Local Variables:
  *  mode:caml

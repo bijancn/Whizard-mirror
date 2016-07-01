@@ -319,6 +319,12 @@ let common l1 l2 =
 	acc)
     [] l1
 
+let complement l1 l2 =
+  if List.for_all (fun x -> List.mem x l1) l2 then
+    List.filter (fun x -> not (List.mem x l2)) l1
+  else
+    invalid_arg "ThoList.complement"
+
 (*i
  *  Local Variables:
  *  indent-tabs-mode:nil
