@@ -956,7 +956,21 @@ let dump model =
 module Model =
   struct
 
-    type flavor = int
+    module type Flavor =
+      sig
+	type t
+	val of_int : int -> t
+	val to_int : t -> int
+      end
+  
+    module Flavor : Flavor =
+      struct
+	type t = int
+	let of_int n = n
+	let to_int n = n
+      end
+  
+    type flavor = Flavor.t
     type constant = string
     type gauge = unit
 
@@ -1644,12 +1658,12 @@ i.e.
 	  | _ ->
 	     invalid_arg ("multiple charge conjugates: " ^ f'.Particle.name))
 
-    let invert_array a =
+    let invert_flavor_array a =
       let table = SHash.create 37 in
       Array.iteri (fun i s -> SHash.add table s i) a;
       (fun name ->
 	try
-	  SHash.find table name
+	  Flavor.of_int (SHash.find table name)
 	with
 	| Not_found -> invalid_arg ("not found: " ^ name))
 
@@ -1667,13 +1681,16 @@ i.e.
       if !dump_raw then
 	dump model;
       let particle_array = Array.of_list (values model.particles) in
-      let flavors = ThoList.range 0 (Array.length particle_array - 1) in
+      let flavors =
+	List.map
+	  Flavor.of_int
+	  (ThoList.range 0 (Array.length particle_array - 1)) in
       let name_array = Array.map (fun f -> f.Particle.name) particle_array in
-      let flavor_of_string = invert_array name_array in
+      let flavor_of_string = invert_flavor_array name_array in
       let symbol_array = Array.of_list (keys model.particles) in
-      let flavor_of_symbol = invert_array symbol_array in
+      let flavor_of_symbol = invert_flavor_array symbol_array in
       let conjugate_array = conjugate_of_particle_array particle_array in
-      let conjugate f = conjugate_array.(f) in
+      let conjugate f = Flavor.of_int (conjugate_array.(Flavor.to_int f)) in
       let functions = [] in
       let variables = [] in
       let (vertices3, vertices4, verticesn) as vertices =
@@ -1685,8 +1702,8 @@ i.e.
       let derived_parameters =
         List.map (fun (n, f, _) -> (Coupling.Real n, Coupling.Const 0))
           functions in
-      let particle f = particle_array.(f)
-      and flavor_symbol f = symbol_array.(f) in
+      let particle f = particle_array.(Flavor.to_int f)
+      and flavor_symbol f = symbol_array.(Flavor.to_int f) in
       let pdg f = (particle f).Particle.pdg_code
       and color f = UFOx.Color.omega (particle f).Particle.color
       and lorentz f = UFOx.Lorentz.omega (particle f).Particle.spin in
