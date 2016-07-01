@@ -1583,6 +1583,19 @@ i.e.
       | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
       | t, qc, g ->
+	 begin match g with
+	 | [| [| Some c1; None; None |];
+	      [| None; Some c2; None |];
+	      [| None; None; Some c3 |] |] ->
+	    if c1 = c2 && c2 = c3 then
+	      prerr_endline ("unital coupling: " ^ c1.UFO_Coupling.name)
+	    else
+	      prerr_endline ("diagonal coupling: " ^
+				c1.UFO_Coupling.name ^ ", " ^
+				c2.UFO_Coupling.name ^ ", " ^
+				c3.UFO_Coupling.name)
+	 | _ -> invalid_arg "translate_coupling4: off diagonal"
+	 end;
 	 let t' = Array.map (translate_lorentz_4 model p) t in
 	 prerr_endline
 	   ("unhandled 4-vertex w/multiple Lorentz structures: " ^
