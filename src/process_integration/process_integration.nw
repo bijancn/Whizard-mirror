@@ -5660,8 +5660,8 @@ configuration finalizer may include closing an open scratch file.
     component%active = component%core%has_matrix_element ()
     if (component%active) then
        if (allocated (mci_template)) &
-          allocate (component%mci_template, source=mci_template)
-       allocate (component%phs_config, source=phs_config_template)
+          allocate (component%mci_template, source = mci_template)
+       allocate (component%phs_config, source = phs_config_template)
        call component%phs_config%init (component%core%data, config%model)
     end if
   end subroutine process_component_init
@@ -6008,15 +6008,6 @@ matrix element.
       n_tot = data%n_in + data%n_out
       n = 0
       select type (core)
-      type is (prc_omega_t)
-         do f = 1, data%n_flv
-            do h = 1, data%n_hel
-               do c = 1, data%n_col
-                  if (core%is_allowed (term%i_term, f, h, c))  n = n + 1
-               end do
-            end do
-         end do
-         allocate (term%flv (n), term%col (n), term%hel (n))
       class is (prc_user_defined_base_t)
          n_hel = 1; if (yorn) n_hel = 4
          do f = 1, data%n_flv
@@ -6025,6 +6016,15 @@ matrix element.
             end do
          end do
          allocate (term%flv (n), term%hel(n))
+      class default !!! Omega and all test cores
+         do f = 1, data%n_flv
+            do h = 1, data%n_hel
+               do c = 1, data%n_col
+                  if (core%is_allowed (term%i_term, f, h, c))  n = n + 1
+               end do
+            end do
+         end do
+         allocate (term%flv (n), term%col (n), term%hel (n))
       end select
       term%n_allowed = n
       allocate (flv (n_tot), col (n_tot), hel (n_tot))
@@ -6033,7 +6033,24 @@ matrix element.
            (data%n_in, 0, data%n_out, set_relations = .true.)
       i = 0
       select type (core)
-      type is (prc_omega_t)
+      class is (prc_user_defined_base_t)
+         do f = 1, data%n_flv
+            do h = 1, n_hel
+               i = i + 1
+               term%flv(i) = f
+               term%hel(i) = h
+               call flv%init (data%flv_state (:,f), model)
+               !!! TODO: (cw 2016-06-26): Need to filter out correct helicities here!
+               if (n_hel > 1) then
+                  call hel%init (data%hel_state (:,h))
+                  call qn%init (flv, hel)
+               else
+                  call qn%init (flv)
+               end if
+               call term%int%add_state (qn)
+            end do
+         end do
+      class default
          do f = 1, data%n_flv
             do h = 1, data%n_hel
                do c = 1, data%n_col
@@ -6052,23 +6069,6 @@ matrix element.
                      call term%int%add_state (qn)
                   end if
                end do
-            end do
-         end do
-      class is (prc_user_defined_base_t)
-         do f = 1, data%n_flv
-            do h = 1, n_hel
-               i = i + 1
-               term%flv(i) = f
-               term%hel(i) = h
-               call flv%init (data%flv_state (:,f), model)
-               !!! TODO: (cw 2016-06-26): Need to filter out correct helicities here!
-               if (n_hel > 1) then
-                  call hel%init (data%hel_state (:,h))
-                  call qn%init (flv, hel)
-               else
-                  call qn%init (flv)
-               end if
-               call term%int%add_state (qn)
             end do
          end do
       end select
@@ -8739,15 +8739,6 @@ method may modify the [[core_state]] workspace object.
     select case (term%nlo_type)
     case (BORN, NLO_VIRTUAL, NLO_DGLAP)
        select type (core => component(i_component)%config%core)
-       type is (prc_omega_t)
-          do i = 1, term%config%n_allowed
-             term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
-                term%config%flv(i), term%config%hel(i), term%config%col(i), &
-                term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
-                component(i_component)%core_state)
-          end do
-          if (associated (term%nlo_controller)) &
-             call term%nlo_controller%set_fac_scale (term%fac_scale)
        class is (prc_user_defined_base_t)
           select type (core_state => component(i_component)%core_state)
           class is (user_defined_state_t)
@@ -8758,6 +8749,15 @@ method may modify the [[core_state]] workspace object.
              call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
              term%amp(i) = cmplx (sqme_virt(3), 0, default)
           end do
+       class default
+          do i = 1, term%config%n_allowed
+             term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
+                term%config%flv(i), term%config%hel(i), term%config%col(i), &
+                term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
+                component(i_component)%core_state)
+          end do
+          if (associated (term%nlo_controller)) &
+             call term%nlo_controller%set_fac_scale (term%fac_scale)
        end select
        call term%int_hard%set_matrix_element (term%amp)
     case (NLO_REAL)
