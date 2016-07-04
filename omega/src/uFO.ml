@@ -1583,25 +1583,35 @@ i.e.
       | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
       | t, qc, g ->
-	 begin match g with
-	 | [| [| Some c1; None; None |];
-	      [| None; Some c2; None |];
-	      [| None; None; Some c3 |] |] ->
-	    if c1 = c2 && c2 = c3 then
-	      prerr_endline ("unital coupling: " ^ c1.UFO_Coupling.name)
-	    else
-	      prerr_endline ("diagonal coupling: " ^
-				c1.UFO_Coupling.name ^ ", " ^
-				c2.UFO_Coupling.name ^ ", " ^
-				c3.UFO_Coupling.name)
-	 | _ -> invalid_arg "translate_coupling4: off diagonal"
-	 end;
-	 let t' = Array.map (translate_lorentz_4 model p) t in
-	 prerr_endline
-	   ("unhandled 4-vertex w/multiple Lorentz structures: " ^
-	       (String.concat ", "
-		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	 ((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
+	 let g =
+	   begin match g with
+	   | [| [| Some c1; None; None |];
+		[| None; Some c2; None |];
+		[| None; None; Some c3 |] |] ->
+	      if c1 = c2 && c2 = c3 then
+		c1
+	      else
+		invalid_arg "translate_coupling4: non-unital couplings"
+	   | _ -> invalid_arg "translate_coupling4: off diagonal couplings"
+	   end in
+	 begin match qc with
+	 | FF (q1, q2, q3, a, b, c, d) -> ()
+	 | _ -> invalid_arg "translate_coupling4: wrong color"
+         end;
+	 begin match Array.map (translate_lorentz_4 model p) t with
+	 | [| (p1, q1, Coupling.Vector4 [ ( c11, contraction11);
+					  ( c12, contraction12) ]);
+	      (p2, q2, Coupling.Vector4 [ ( c21, contraction21);
+					  ( c22, contraction22) ]);
+	      (p3, q3, Coupling.Vector4 [ ( c31, contraction31);
+					  ( c32, contraction32) ])  |] ->
+	    prerr_endline
+	      ("unhandled 4-vertex w/multiple Lorentz structures: " ^
+		  (String.concat ", "
+		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+	   ((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
+	 | _ -> invalid_arg "translate_coupling4: unexpected Lorentz"
+	 end
 
     let lorentz_of_symbol model symbol =
       try
