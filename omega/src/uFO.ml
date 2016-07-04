@@ -1479,11 +1479,10 @@ i.e.
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
 
-    let translate_lorentz_4_1 model p t =  
-      let module L = UFOx.Lorentz_Atom in
-      match t with
-      | _ -> failwith "translate_lorentz_4_1"
-
+(* Use the fact that $g_{\mu\nu}g_{\kappa\lambda}$ is symmetric in the
+   interchanges $\mu\leftrightarrow\nu$, $\kappa\leftrightarrow\lambda$
+   and $(\mu\nu)\leftrightarrow(\kappa\lambda)$ to normalize the
+   index positions: *)
     let normalize_lorentz_4_1 (mu, nu, ka, la) =
       List.flatten (List.sort ThoList.lexicographic
 		      (List.map (List.sort compare) [[mu; nu]; [ka; la]]))
