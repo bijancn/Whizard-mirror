@@ -11181,6 +11181,31 @@ term instance.
 
 @ %def process_instance_reset_nlo_matrix_elements
 @
+<<Processes: process instance: TBP>>=
+  procedure :: get_phase_space_point &
+     => process_instance_get_phase_space_point
+<<Processes: procedures>>=
+  function process_instance_get_phase_space_point (instance, i_component) result (p)
+    type(vector4_t), dimension(:), allocatable :: p
+    class(process_instance_t), intent(inout) :: instance
+    integer, intent(in) :: i_component
+    real(default), dimension(:), allocatable :: x
+    logical :: success
+    instance%i_mci = i_component
+    associate (component => instance%component (i_component))
+       allocate (x (size (component%p_seed)))
+       x = 0.5_default
+       call instance%set_mcpar (x)
+       call instance%select_channel (1)
+       call instance%component(i_component)%compute_seed_kinematics &
+          (instance%mci_work(i_component), 1, success)
+       allocate (p (size (component%p_seed)))
+       p = component%p_seed
+    end associate
+  end function process_instance_get_phase_space_point
+    
+@ %def process_instance_get_phase_space_point
+@
 \subsection{NLO Stuff}
 [This should eventually be moved to a separate module.]
 
@@ -11496,7 +11521,8 @@ one has to bring NLO information there.
 <<Processes: process instance: TBP>>=
   procedure :: create_and_load_extra_libraries => process_instance_create_and_load_extra_libraries
 <<Processes: procedures>>=
-  subroutine process_instance_create_and_load_extra_libraries (instance, beam_structure, os_data)
+  subroutine process_instance_create_and_load_extra_libraries &
+     (instance, beam_structure, os_data)
     class(process_instance_t), intent(inout), target :: instance
     type(beam_structure_t), intent(in) :: beam_structure
     type(os_data_t), intent(in) :: os_data
@@ -11504,6 +11530,7 @@ one has to bring NLO information there.
     integer :: i
     type(process_component_t), pointer :: component_config => null ()
     logical :: skip
+    type(vector4_t), dimension(:), allocatable :: p
 
     if (instance%has_blha_component ())  &
          call instance%create_blha_interface (beam_structure)
@@ -11531,7 +11558,11 @@ one has to bring NLO information there.
              call core%start ()
              call core%read_contract_file (instance%process%term(i)%data%flv_state)
              call core%print_parameter_file (i)
-             if (core%includes_polarization ()) call instance%transfer_helicities (core)
+             if (core%includes_polarization ()) then
+                call instance%transfer_helicities (core)
+                p = instance%get_phase_space_point (i)
+                call core%warmup_helicities (p)
+             end if
           type is (prc_threshold_t)
              if (component_config%config%get_nlo_type () == NLO_VIRTUAL) then
                 libname = instance%process%get_library_name ()
