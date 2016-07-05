@@ -1446,17 +1446,17 @@ event output.
   procedure :: setup_connected_trace => connected_state_setup_connected_trace
 <<Parton states: procedures>>=
   subroutine connected_state_setup_connected_trace &
-       (state, isolated, int, resonant, me_already_squared)
+       (state, isolated, int, resonant, undo_helicities)
     class(connected_state_t), intent(inout), target :: state
     type(isolated_state_t), intent(in), target :: isolated
     type(interaction_t), intent(in), optional, target :: int
     logical, intent(in), optional :: resonant
-    logical, intent(in), optional :: me_already_squared
+    logical, intent(in), optional :: undo_helicities
     type(quantum_numbers_mask_t) :: mask
     type(interaction_t), pointer :: src_int
     logical :: reduce
     reduce = .false.
-    if (present (me_already_squared)) reduce = me_already_squared
+    if (present (undo_helicities)) reduce = undo_helicities
     mask = quantum_numbers_mask (.true., .true., .true.)
     if (present (int)) then
        src_int => int
@@ -5954,7 +5954,7 @@ could become relevant for NLO algorithms.
     integer, intent(in) :: i_term_global
     integer, intent(in) :: i_component
     integer, intent(in) :: i_term
-    class(prc_core_t), intent(in) :: core
+    class(prc_core_t), intent(inout) :: core
     class(model_data_t), intent(in), target :: model
     logical, intent(in), optional :: use_beam_pol
     class(modelpar_data_t), pointer :: alpha_s_ptr
@@ -5988,7 +5988,7 @@ matrix element.
 <<Processes: procedures>>=
   subroutine process_term_setup_interaction (term, core, model, pol_beams)
     class(process_term_t), intent(inout) :: term
-    class(prc_core_t), intent(in) :: core
+    class(prc_core_t), intent(inout) :: core
     class(model_data_t), intent(in), target :: model
     logical, intent(in), optional :: pol_beams
     integer :: n_tot
@@ -6008,7 +6008,7 @@ matrix element.
       class is (prc_user_defined_base_t)
          n_hel = 1; if (yorn) n_hel = 4
          do f = 1, data%n_flv
-            do h = 1, n_hel
+            do h = 1, data%n_hel
                n = n + 1
             end do
          end do
@@ -6029,9 +6029,9 @@ matrix element.
            (data%n_in, 0, data%n_out, set_relations = .true.)
       i = 0
       select type (core)
-      class is (prc_user_defined_base_t)
+      type is (prc_openloops_t)
          do f = 1, data%n_flv
-            do h = 1, n_hel
+            do h = 1, data%n_hel
                i = i + 1
                term%flv(i) = f
                term%hel(i) = h
@@ -6047,6 +6047,22 @@ matrix element.
                end if
                call term%int%add_state (qn)
             end do
+         end do
+         call term%int%freeze ()
+      class is (prc_user_defined_base_t)
+         if (n_hel > 1) &
+            call msg_fatal ("Polarized beams only supported by OpenLoops")
+         do f = 1, data%n_flv
+            i = i + 1
+            term%flv(i) = f
+            !!! Dumy initialization of helicity
+            term%hel(i) = 1
+            !!! Dummy-initialization of color
+            term%col(i) = 1
+            call flv%init (data%flv_state (:,f), model)
+            !!! TODO: (cw 2016-06-26): Need to filter out correct helicities here!
+            call qn%init (flv)
+            call term%int%add_state (qn)
          end do
       class default
          do f = 1, data%n_flv
@@ -7707,8 +7723,8 @@ imaginary part of the terms, which should be zero anyway.
         else
            component%sqme = component%sqme + sum (nlo_controller%sqme_collector%sqme_virt_list)
         end if
-        !print *, 'old method: ', component%sqme
-        !print *, 'new method: ', real (term%connected%trace%get_matrix_element(1))
+        print *, 'old method: ', component%sqme
+        print *, 'new method: ', real (term%connected%trace%get_matrix_element(1))
      end associate
   end subroutine component_instance_evaluate_sqme_virt
 
@@ -8169,7 +8185,6 @@ relevant for a NLO algorithm.
        call term%k_term%init_ptr (k_seed)
     end if
     !!! TODO: (cw-2016-06-26) Set correct n_allowed!
-    allocate (term%amp (config%n_allowed)); term%amp = cmplx (0, 0, default)
     term%int_hard = config%int
     select type (core)
     class is (prc_user_defined_base_t)
@@ -8179,6 +8194,8 @@ relevant for a NLO algorithm.
           me_already_squared = .true.
        end if
     end select
+    allocate (term%amp (term%int_hard%get_n_matrix_elements ()))
+    term%amp = cmplx (0, 0, default)
     allocate (term%p_hard (term%int_hard%get_n_tot ()))
     sf_chain_int => term%k_term%sf_chain%get_out_int_ptr ()
     n_in = term%int_hard%get_n_in ()
@@ -8253,9 +8270,13 @@ relevant for a NLO algorithm.
       class default
          call term%isolated%setup_square_trace (core, mask_in, term%config%col)
     end select
-    print *, 'Setup connected trace: ', char (component_status (nlo_type)) 
-    call term%connected%setup_connected_trace (term%isolated, &
-       me_already_squared = me_already_squared)
+    if (associated (term%nlo_controller)) then
+       call term%connected%setup_connected_trace (term%isolated, &
+          undo_helicities = me_already_squared .and. .not. term%nlo_controller%beams_are_polarized ())
+    else
+       call term%connected%setup_connected_trace (term%isolated)
+    end if
+
     associate (int_eff => term%isolated%int_eff)
       state_matrix => int_eff%get_state_matrix_ptr ()
       n_tot = int_eff%get_n_tot  ()
@@ -8738,7 +8759,9 @@ method may modify the [[core_state]] workspace object.
     select case (term%nlo_type)
     case (BORN, NLO_VIRTUAL, NLO_DGLAP)
        select type (core => component(i_component)%config%core)
-       class is (prc_user_defined_base_t)
+       !class is (prc_user_defined_base_t)
+       !class is (prc_blha_t)
+       type is (prc_openloops_t)
           select type (core_state => component(i_component)%core_state)
           class is (user_defined_state_t)
              call core%compute_alpha_s (core_state, term%ren_scale)
@@ -8748,6 +8771,7 @@ method may modify the [[core_state]] workspace object.
              call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
              term%amp(i) = cmplx (sqme_virt(3), 0, default)
           end do
+          call term%int_hard%set_matrix_element (term%amp (core%get_helicity_list ()))
        class default
           do i = 1, term%config%n_allowed
              term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
@@ -8757,8 +8781,8 @@ method may modify the [[core_state]] workspace object.
           end do
           if (associated (term%nlo_controller)) &
              call term%nlo_controller%set_fac_scale (term%fac_scale)
+          call term%int_hard%set_matrix_element (term%amp)
        end select
-       call term%int_hard%set_matrix_element (term%amp)
     case (NLO_REAL)
        call term%evaluate_real_phase_space (term%nlo_controller%get_active_emitter ())
        call term%evaluate_interaction_real (component(i_component), i_term)
@@ -9858,12 +9882,35 @@ to subobject of [[instance]].
 <<Processes: process instance: TBP>>=
   procedure :: transfer_helicities => process_instance_transfer_helicities
 <<Processes: procedures>>=
-  subroutine process_instance_transfer_helicities (instance, core)
+  subroutine process_instance_transfer_helicities (instance, component, core)
     class(process_instance_t), intent(inout) :: instance
-    type(prc_openloops_t), intent(in) :: core
+    type(component_instance_t), intent(in) :: component
+    !!! intent(inout) is annoying. Transfer list should be somewhere else
+    type(prc_openloops_t), intent(inout) :: core
+    integer :: i_term
+    type(quantum_numbers_t), dimension(:,:), allocatable :: qn
+    integer :: h, i, j
+    integer, dimension(:,:), allocatable :: helicities
+    type(helicity_t), dimension(:), allocatable :: hel
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
        call pcm%controller%init_polarized_sqmes (core%get_beam_helicities ())
+       i_term = component%config%i_term(1) 
+       qn = instance%term(i_term)%isolated%trace%get_quantum_numbers ()
+       allocate (helicities (size (qn, dim=1), 2))
+       allocate (hel (size (qn, dim=1)))
+       do i = 1, size (qn, dim=1)
+          do j = 1, pcm%controller%get_n_in ()
+             hel(j) = qn(i, j)%get_helicity () 
+             call hel(j)%diagonalize ()
+             call hel(j)%get_indices (h, h)
+             !!! Second helicity comes with a minus sign because OpenLoops
+             !!! inverts the helicity index of antiparticles
+             if (j == 2) h = -h 
+             helicities (i, j) = h
+          end do 
+       end do
+       call core%set_helicity_list (helicities) 
     end select
   end subroutine process_instance_transfer_helicities
 
@@ -11519,7 +11566,8 @@ and directly set the coupling value that comes together with a particle set.
 @ Would be better to do this at the level of the writer of the core but
 one has to bring NLO information there.
 <<Processes: process instance: TBP>>=
-  procedure :: create_and_load_extra_libraries => process_instance_create_and_load_extra_libraries
+  procedure :: create_and_load_extra_libraries &
+     => process_instance_create_and_load_extra_libraries
 <<Processes: procedures>>=
   subroutine process_instance_create_and_load_extra_libraries &
      (instance, beam_structure, os_data)
@@ -11528,47 +11576,47 @@ one has to bring NLO information there.
     type(os_data_t), intent(in) :: os_data
     type(string_t) :: libname
     integer :: i
-    type(process_component_t), pointer :: component_config => null ()
     logical :: skip
     type(vector4_t), dimension(:), allocatable :: p
 
     if (instance%has_blha_component ())  &
          call instance%create_blha_interface (beam_structure)
     do i = 1, size (instance%component)
-       component_config => instance%component(i)%config
-       if (associated (component_config)) then
-          !!! Always load libraries for the subtraction component so that
-          !!! other components can use it
-          skip = .not. component_config%get_nlo_type () == NLO_SUBTRACTION &
-             .and. .not. component_config%config%is_active_component ()
-          if (skip) cycle
-          select type (core => component_config%core)
-          type is (prc_gosam_t)
-             libname = instance%process%get_library_name ()
-             call core%prepare_library (os_data, libname)
-             call core%start ()
-             call core%read_contract_file (instance%process%term(i)%data%flv_state)
-             call core%set_particle_properties (instance%process%config%model)
-             call core%set_electroweak_parameters (instance%process%config%model)
-             call core%print_parameter_file (i)
-          type is (prc_openloops_t)
-             call core%set_n_external (instance%component(i)%get_n_particles ())
-             call core%prepare_library (os_data, instance%process%config%model, &
-                  instance%process%meta%var_list)
-             call core%start ()
-             call core%read_contract_file (instance%process%term(i)%data%flv_state)
-             call core%print_parameter_file (i)
-             if (core%includes_polarization ()) then
-                call instance%transfer_helicities (core)
-                p = instance%get_phase_space_point (i)
-                call core%warmup_helicities (p)
-             end if
-          type is (prc_threshold_t)
-             if (component_config%config%get_nlo_type () == NLO_VIRTUAL) then
+       if (associated (instance%component(i)%config)) then
+          associate (component_config => instance%component(i)%config)
+             !!! Always load libraries for the subtraction component so that
+             !!! other components can use it
+             skip = .not. component_config%get_nlo_type () == NLO_SUBTRACTION &
+                .and. .not. component_config%config%is_active_component ()
+             if (skip) cycle
+             select type (core => component_config%core)
+             type is (prc_gosam_t)
                 libname = instance%process%get_library_name ()
-                call core%load_extra_libraries (os_data, libname, component_config%config%get_nlo_type ())
-             end if
-          end select
+                call core%prepare_library (os_data, libname)
+                call core%start ()
+                call core%read_contract_file (instance%process%term(i)%data%flv_state)
+                call core%set_particle_properties (instance%process%config%model)
+                call core%set_electroweak_parameters (instance%process%config%model)
+                call core%print_parameter_file (i)
+             type is (prc_openloops_t)
+                call core%set_n_external (instance%component(i)%get_n_particles ())
+                call core%prepare_library (os_data, instance%process%config%model, &
+                     instance%process%meta%var_list)
+                call core%start ()
+                call core%read_contract_file (instance%process%term(i)%data%flv_state)
+                call core%print_parameter_file (i)
+                if (core%includes_polarization ()) then
+                   call instance%transfer_helicities (instance%component(i), core)
+                   p = instance%get_phase_space_point (i)
+                   call core%warmup_helicities (p)
+                end if
+             type is (prc_threshold_t)
+                if (component_config%config%get_nlo_type () == NLO_VIRTUAL) then
+                   libname = instance%process%get_library_name ()
+                   call core%load_extra_libraries (os_data, libname, component_config%config%get_nlo_type ())
+                end if
+             end select
+          end associate
        end if
     end do
   end subroutine process_instance_create_and_load_extra_libraries
