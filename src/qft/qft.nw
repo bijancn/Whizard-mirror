@@ -5339,6 +5339,7 @@ end module quantum_numbers
      type(color_t) :: c
      type(helicity_t) :: h
      integer :: real_index = 0
+     logical :: sub = .false.
    contains
    <<Quantum numbers: quantum numbers: TBP>>
   end type quantum_numbers_t
@@ -5359,7 +5360,9 @@ component.  This implies transfer of a pointer behind the scenes.
      quantum_numbers_init_fr, &
      quantum_numbers_init_ch, &
      quantum_numbers_init_fch, &
-     quantum_numbers_init_fchr
+     quantum_numbers_init_fchr, &
+     quantum_numbers_init_fs, &
+     quantum_numbers_init_fhs
   procedure, private :: quantum_numbers_init_f
   procedure, private :: quantum_numbers_init_c
   procedure, private :: quantum_numbers_init_h
@@ -5369,6 +5372,8 @@ component.  This implies transfer of a pointer behind the scenes.
   procedure, private :: quantum_numbers_init_ch
   procedure, private :: quantum_numbers_init_fch
   procedure, private :: quantum_numbers_init_fchr
+  procedure, private :: quantum_numbers_init_fs
+  procedure, private :: quantum_numbers_init_fhs
 <<Quantum numbers: procedures>>=
   impure elemental subroutine quantum_numbers_init_f (qn, flv)
     class(quantum_numbers_t), intent(inout) :: qn
@@ -5450,6 +5455,21 @@ component.  This implies transfer of a pointer behind the scenes.
     qn%f = flv; qn%c = col; qn%h = hel; qn%real_index = real_index
   end subroutine quantum_numbers_init_fchr
 
+  impure elemental subroutine quantum_numbers_init_fs (qn, flv, sub)
+    class(quantum_numbers_t), intent(inout) :: qn
+    type(flavor_t), intent(in) :: flv
+    logical, intent(in) :: sub
+    qn%f = flv; qn%sub = sub
+  end subroutine quantum_numbers_init_fs
+
+  impure elemental subroutine quantum_numbers_init_fhs (qn, flv, hel, sub)
+    class(quantum_numbers_t), intent(inout) :: qn
+    type(flavor_t), intent(in) :: flv
+    type(helicity_t), intent(in) :: hel
+    logical, intent(in) :: sub
+    qn%f = flv; qn%h = hel; qn%sub = sub
+  end subroutine quantum_numbers_init_fhs
+
 @ %def quantum_numbers_init
 @ 
 \subsection{I/O}
@@ -5499,6 +5519,8 @@ if it is zero, but defined.  Otherwise, suppress zero color.
     end if
     if (qn%real_index > 0) &
        write (u, "(A,I1,A)", advance = "no") " alr(", qn%real_index, ")"
+    if (qn%sub) &
+       write (u, "(A)", advance = "no") " SUB"
     write (u, "(A)", advance="no")  "]"
   end subroutine quantum_numbers_write_single
 
@@ -5751,7 +5773,8 @@ undefined.
     eq = (qn1%f == qn2%f) .and. &
          (qn1%c == qn2%c) .and. &
          (qn1%h == qn2%h) .and. &
-         (qn1%real_index == qn2%real_index)
+         (qn1%real_index == qn2%real_index) .and. &
+         (qn1%sub .eqv. qn2%sub)
   end function quantum_numbers_eq
 
   elemental function quantum_numbers_neq (qn1, qn2) result (neq)
@@ -5759,12 +5782,45 @@ undefined.
     class(quantum_numbers_t), intent(in) :: qn1, qn2
     neq = (qn1%f /= qn2%f) .or. &
          (qn1%c /= qn2%c) .or. &
-         (qn1%h /= qn2%h)
+         (qn1%h /= qn2%h) .or. &
+         (qn1%real_index /= qn2%real_index) .or. &
+         (qn1%sub .neqv. qn2%sub)
   end function quantum_numbers_neq
 
 @ %def quantum_numbers_match
 @ %def quantum_numbers_eq
 @ %def quantum_numbers_neq
+<<Quantum numbers: public>>=
+  public :: assignment(=)
+<<Quantum numbers: interfaces>>=
+  interface assignment(=)
+     module procedure quantum_numbers_assign
+  end interface 
+
+<<Quantum numbers: procedures>>=
+  subroutine quantum_numbers_assign (qn_out, qn_in)
+    type(quantum_numbers_t), intent(out) :: qn_out
+    type(quantum_numbers_t), intent(in) :: qn_in
+    qn_out%f = qn_in%f
+    qn_out%c = qn_in%c
+    qn_out%h = qn_in%h
+    !if (allocated (qn_in%f)) then
+    !   allocate (qn_out%f (size (qn_in%f)))
+    !   qn_out%f = qn_in%f
+    !end if
+    !if (allocated (qn_in%c)) then
+    !   allocate (qn_out%c (size (qn_in%c)))
+    !   qn_out%c = qn_in%c
+    !end if
+    !if (allocated (qn_in%h)) then
+    !   allocate (qn_out%h (size (qn_in%h)))
+    !   qn_out%h = qn_in%h
+    !end if
+    qn_out%real_index = qn_in%real_index
+    qn_out%sub = qn_in%sub
+  end subroutine quantum_numbers_assign
+
+@ %def quantum_numbers_assign
 @ Two sets of quantum numbers are compatible if the individual quantum numbers
 are compatible, depending on the mask.  Flavor has to match, regardless of the
 flavor mask.  
@@ -12113,7 +12169,7 @@ assignments remain fixed from now on.
          end if
       end do
       qn_mask(prt_index_conn%entry) = qn_mask_conn_initial .or. qn_mask_conn
-      call eval%interaction_t%basic_init (n_in, n_vir, n_out, mask=qn_mask)
+      call eval%interaction_t%basic_init (n_in, n_vir, n_out, mask = qn_mask)
       m = 1
       do i = 1, connection_table%n_me_conn
          entry => connection_table%entry(i)
