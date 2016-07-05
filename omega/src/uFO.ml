@@ -1550,7 +1550,7 @@ i.e.
 		(p, q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
 				           (-1, Coupling.C_14_23) ])
 	      else if [nu2; ka2; la2] = [la1; ka1; nu1] then
-		(p, q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
+		(p, q1, Coupling.Vector4 [ ( 1, Coupling.C_13_42);
 				           (-1, Coupling.C_14_23) ])
 	      else
 		invalid_arg "translate_lorentz_4: inconsistent"
@@ -1568,6 +1568,60 @@ i.e.
 	 end
       | _ -> failwith "translate_lorentz_4"
 
+    let translate_gauge_vertex4 model p t c g =
+      let g =
+	begin match g with
+	| [| [| Some g1; None; None |];
+	     [| None; Some g2; None |];
+	     [| None; None; Some g3 |] |] ->
+	   if g1 = g2 && g2 = g3 then
+	     g1
+	   else
+	     invalid_arg "translate_gauge_vertex4: non-unital couplings"
+	| _ -> (* NB: [g] can be off-diagonal, if [t] or [c] are reordered! *)
+	   invalid_arg "translate_gauge_vertex4: off diagonal couplings"
+	end in
+      match Array.map (translate_lorentz_4 model p) t with
+      | [| (p1, q1, Coupling.Vector4 [ (  1, contraction11);
+				       ( -1, contraction12) ]);
+	   (p2, q2, Coupling.Vector4 [ (  1, contraction21);
+				       ( -1, contraction22) ]);
+	   (p3, q3, Coupling.Vector4 [ (  1, contraction31);
+				       ( -1, contraction32) ])  |] ->
+	 if p1 = p2 && p2 = p3 then begin
+	   match c with
+	   | FF (q1', q2', q3', a, b, c, d) ->
+	      let q1 = Q.mul q1 q1'
+	      and q2 = Q.mul q2 q2'
+	      and q3 = Q.mul q3 q3' in
+	      if Q.abs q1 = Q.abs q2 && Q.abs q2 = Q.abs q3 then begin
+		begin match contraction11, contraction12 with
+		| (Coupling.C_12_34, Coupling.C_13_42) -> ()
+		| (Coupling.C_12_34, Coupling.C_14_23) -> ()
+		| (Coupling.C_13_42, Coupling.C_14_23) -> ()
+		end;
+		begin match contraction21, contraction22 with
+		| (Coupling.C_12_34, Coupling.C_13_42) -> ()
+		| (Coupling.C_12_34, Coupling.C_14_23) -> ()
+		| (Coupling.C_13_42, Coupling.C_14_23) -> ()
+		end;
+		begin match contraction31, contraction32 with
+		| (Coupling.C_12_34, Coupling.C_13_42) -> ()
+		| (Coupling.C_12_34, Coupling.C_14_23) -> ()
+		| (Coupling.C_13_42, Coupling.C_14_23) -> ()
+		end;
+		prerr_endline
+		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
+		      (String.concat ", "
+			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+		((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
+	      end else
+		invalid_arg "translate_gauge_vertex4: different couplings"
+	   | _ -> invalid_arg "translate_gauge_vertex4: wrong color"
+	 end else
+	   invalid_arg "translate_gauge_vertex4: different particles"
+      | _ -> invalid_arg "translate_gauge_vertex4: unexpected Lorentz"
+
     let translate_coupling4 model p t c g =
       let module L = UFOx.Lorentz_Atom in
       match t, translate_color4 c, g with
@@ -1582,35 +1636,7 @@ i.e.
       | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
       | t, qc, g ->
-	 let g =
-	   begin match g with
-	   | [| [| Some c1; None; None |];
-		[| None; Some c2; None |];
-		[| None; None; Some c3 |] |] ->
-	      if c1 = c2 && c2 = c3 then
-		c1
-	      else
-		invalid_arg "translate_coupling4: non-unital couplings"
-	   | _ -> invalid_arg "translate_coupling4: off diagonal couplings"
-	   end in
-	 begin match qc with
-	 | FF (q1, q2, q3, a, b, c, d) -> ()
-	 | _ -> invalid_arg "translate_coupling4: wrong color"
-         end;
-	 begin match Array.map (translate_lorentz_4 model p) t with
-	 | [| (p1, q1, Coupling.Vector4 [ ( c11, contraction11);
-					  ( c12, contraction12) ]);
-	      (p2, q2, Coupling.Vector4 [ ( c21, contraction21);
-					  ( c22, contraction22) ]);
-	      (p3, q3, Coupling.Vector4 [ ( c31, contraction31);
-					  ( c32, contraction32) ])  |] ->
-	    prerr_endline
-	      ("unhandled 4-vertex w/multiple Lorentz structures: " ^
-		  (String.concat ", "
-		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	   ((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
-	 | _ -> invalid_arg "translate_coupling4: unexpected Lorentz"
-	 end
+	 translate_gauge_vertex4 model p t qc g
 
     let lorentz_of_symbol model symbol =
       try
