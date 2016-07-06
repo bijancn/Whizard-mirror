@@ -3961,6 +3961,7 @@ end module virtual
     logical :: use_internal_color_correlations
     logical :: with_subtraction = .true.
     integer :: factorization_mode = NO_FACTORIZATION
+    type(vector4_t), dimension(:), allocatable :: p
   contains
   <<virtual: virtual: TBP>>
   end type virtual_t
@@ -8218,6 +8219,40 @@ one to determine this.
 
 @ %def nlo_controller_set_alr_to_i_phs
 @                
+\subsection{NLO connectors}
+<<nlo controller: public>>=
+  public :: nlo_connector_t
+<<nlo controller: types>>=
+  type, extends (connector_function_t), abstract :: nlo_connector_t
+     type(nlo_controller_t), pointer :: controller => null ()
+  contains
+  <<nlo controller: nlo connector: TBP>>
+  end type nlo_connector_t
+
+@ %def nlo_connector_t
+@ 
+<<nlo controller: public>>=
+  public :: virtual_connector_t
+<<nlo controller: types>>=
+  type, extends (nlo_connector_t) :: virtual_connector_t
+  contains
+  <<nlo controller: virtual connector: TBP>>
+  end type virtual_connector_t
+
+@ %def virtual_connector_t
+@
+<<nlo controller: virtual connector: TBP>>=
+  procedure :: evaluate => virtual_connector_evaluate
+<<nlo controller: procedures>>=
+  function virtual_connector_evaluate (connector, x) result (me)
+    complex(default) :: me
+    class(virtual_connector_t), intent(in) :: connector
+    complex(default), intent(in), dimension(:) :: x
+    me = connector%controller%compute_sqme_virt_from_me (x)
+  end function virtual_connector_evaluate
+
+@ %def virtual_connector_evaluate
+@
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Unit tests}
@@ -10095,16 +10130,49 @@ polarized or not.
 
 @ %def nlo_controller_uses_resonance_mappings
 @
-\subsection{xxx}
+\subsection{Computation of virtual matrix element}
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: compute_virt => nlo_controller_compute_virt
+  procedure :: transfer_to_virtual => nlo_controller_transfer_to_virtual
 <<nlo controller: procedures>>=
-  function nlo_controller_compute_virt &
-       (nlo_controller, i_flv, i_hel, p_born) result(sqme_virt)
+  subroutine nlo_controller_transfer_to_virtual (nlo_controller, p)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    type(vector4_t), intent(in), dimension(:) :: p
+    if (.not. allocated (nlo_controller%virtual_terms%p)) &
+       allocate (nlo_controller%virtual_terms%p (size (p)))
+    nlo_controller%virtual_terms%p = p
+  end subroutine nlo_controller_transfer_to_virtual
+
+@ %def nlo_controller_transfer_to_virtual
+@
+<<nlo controller: nlo controller: TBP>>=
+  generic :: compute_sqme_virt => compute_sqme_virt_from_list
+  procedure :: compute_sqme_virt_from_list => nlo_controller_compute_sqme_virt_from_list
+  generic :: compute_sqme_virt => compute_sqme_virt_from_me
+  procedure :: compute_sqme_virt_from_me => nlo_controller_compute_sqme_virt_from_me
+<<nlo controller: procedures>>=
+  function nlo_controller_compute_sqme_virt_from_me &
+     (nlo_controller, me) result (sqme_virt)
+    real(default) :: sqme_virt
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    complex(default), intent(in), dimension(:) :: me
+    associate (virtual => nlo_controller%virtual_terms)
+       call virtual%set_vfin (real(me(1)))
+       if (nlo_controller%settings%use_internal_color_correlations) then
+          call virtual%evaluate (nlo_controller%reg_data, 1, &
+             nlo_controller%alpha_s_born, virtual%p, real(me(2)), &
+             nlo_controller%color_data%beta_ij)
+       end if
+       sqme_virt = virtual%sqme_virt
+    end associate
+  end function nlo_controller_compute_sqme_virt_from_me
+
+
+  function nlo_controller_compute_sqme_virt_from_list &
+     (nlo_controller, i_flv, i_hel, p_born) result(sqme_virt)
+    real(default) :: sqme_virt
     class(nlo_controller_t), intent(inout) :: nlo_controller
     integer, intent(in) :: i_flv, i_hel
     type(vector4_t), intent(in), dimension(:) :: p_born
-    real(default) :: sqme_virt
     associate (collector => nlo_controller%sqme_collector)
        if (nlo_controller%settings%use_internal_color_correlations) then
           call nlo_controller%virtual_terms%evaluate &
@@ -10121,9 +10189,9 @@ polarized or not.
        end if
     end associate
     sqme_virt = nlo_controller%virtual_terms%sqme_virt
-  end function nlo_controller_compute_virt
+  end function nlo_controller_compute_sqme_virt_from_list
 
-@ %def nlo_controller_compute_virt
+@ %def nlo_controller_compute_sqme_virt_from_list
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: requires_spin_correlation => &
