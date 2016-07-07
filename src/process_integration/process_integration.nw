@@ -5850,7 +5850,6 @@ This type is public only for use in a unit test.
      type(process_constants_t) :: data
      real(default) :: alpha_s = 0
      integer, dimension(:), allocatable :: flv, hel, col
-     logical :: rearrange = .false.
      type(interaction_t) :: int
      type(interaction_t), pointer :: int_eff => null ()
    contains
@@ -5874,18 +5873,16 @@ interaction object.
          term%i_component
     write (u, "(3x,A,I0)")  "Term index w.r.t. component  = ", &
          term%i_term
-    write (u, "(3x,A,L1)")  "Rearrange partons            = ", &
-         term%rearrange
     call write_separator (u)
     write (u, "(1x,A)")  "Hard interaction:"
     call write_separator (u)
     call term%int%basic_write (u)
-    if (term%rearrange) then
-       call write_separator (u)
-       write (u, "(1x,A)")  "Rearranged hard interaction:"
-       call write_separator (u)
-       call term%int_eff%basic_write (u)
-    end if
+    !if (term%rearrange) then
+    !   call write_separator (u)
+    !   write (u, "(1x,A)")  "Rearranged hard interaction:"
+    !   call write_separator (u)
+    !   call term%int_eff%basic_write (u)
+    !end if
   end subroutine process_term_write
      
 @ %def process_term_write
@@ -5933,10 +5930,10 @@ finalizer that we must call.
   subroutine process_term_final (term)
     class(process_term_t), intent(inout) :: term
     call term%int%final ()
-    if (term%rearrange) then
-       call term%int_eff%final ()
-       deallocate (term%int_eff)
-    end if
+    !if (term%rearrange) then
+    !   call term%int_eff%final ()
+    !   deallocate (term%int_eff)
+    !end if
   end subroutine process_term_final
 
 @ %def process_term_final
@@ -7700,16 +7697,12 @@ imaginary part of the terms, which should be zero anyway.
 
         call nlo_controller%set_alpha_s_born &
            (component%config%core%get_alpha_s (component%core_state))
-        call nlo_controller%virtual_terms%set_ren_scale &
-           (term%int_hard%get_momenta (), term%ren_scale) 
-        call nlo_controller%virtual_terms%set_fac_scale &
-           (term%int_hard%get_momenta (), term%fac_scale)
-        call nlo_controller%virtual_terms%set_ellis_sexton_scale ()
         select type (core => component%config%core)
         class is (prc_user_defined_base_t)
            call core%update_alpha_s (component%core_state, term%fac_scale)
         end select
-        call nlo_controller%transfer_to_virtual (term%int_hard%get_momenta ())
+        call nlo_controller%transfer_to_virtual (term%int_hard%get_momenta (), &
+           term%ren_scale, term%fac_scale)
         !!! TODO: (cw 2016-07-06) Perform connector setup earlier 
         allocate (virtual_connector_t :: me_connector)
         select type (me_connector)
@@ -8122,14 +8115,7 @@ relevant for a NLO algorithm.
 
     term%config => config
     term%nlo_controller => nlo_controller
-    if (config%rearrange) then
-       ! rearrangement of seed to hard kinematics not implemented yet
-       ! allocate k_term distinct from k_seed as needed.
-    else
-       ! here, k_term trivially accesses k_seed via pointers
-       call term%k_term%init_ptr (k_seed)
-    end if
-    !!! TODO: (cw-2016-06-26) Set correct n_allowed!
+    call term%k_term%init_ptr (k_seed)
     term%int_hard = config%int
     select type (core)
     type is (prc_openloops_t)
@@ -8150,37 +8136,31 @@ relevant for a NLO algorithm.
        i = term%k_term%sf_chain%get_out_i (j)
        call term%int_hard%set_source_link (j, sf_chain_int, i)
     end do
-    if (config%rearrange) then
-       ! rearrangement hard to effective kinematics not implemented yet
-       ! should use term%config%int_eff as template
-       ! allocate distinct sf_chain in term%connected as needed
-    else
-      select type (phs => term%k_term%phs)
-        type is (phs_wood_t)
-          ! here, int_hard and sf_chain are trivially accessed via pointers
-          call term%isolated%init (term%k_term%sf_chain, term%int_hard)
-          int_sav => term%int_hard
-          sf_sav => term%k_term%sf_chain
-        type is (phs_fks_t)
-          select case (phs%mode)
-          case (PHS_MODE_ADDITIONAL_PARTICLE)
-             term%nlo_controller%int_born = int_sav
-             term%nlo_controller%sf_born => sf_sav
-             do j = 1, n_in
-                i = term%nlo_controller%sf_born%get_out_i (j)
-                call term%nlo_controller%int_born%set_source_link &
-                   (j, term%nlo_controller%sf_born%get_out_int_ptr (), i)
-             end do
-             call term%isolated%init & 
-                (term%nlo_controller%sf_born, term%nlo_controller%int_born)
-             term%int_hard_real = term%int_hard
-          case (PHS_MODE_COLLINEAR_REMNANT)
-             call term%isolated%init (term%k_term%sf_chain, term%int_hard)
-          end select
-        class default
-          call term%isolated%init (term%k_term%sf_chain, term%int_hard)
-      end select
-    end if
+    select type (phs => term%k_term%phs)
+      type is (phs_wood_t)
+        ! here, int_hard and sf_chain are trivially accessed via pointers
+        call term%isolated%init (term%k_term%sf_chain, term%int_hard)
+        int_sav => term%int_hard
+        sf_sav => term%k_term%sf_chain
+      type is (phs_fks_t)
+        select case (phs%mode)
+        case (PHS_MODE_ADDITIONAL_PARTICLE)
+           term%nlo_controller%int_born = int_sav
+           term%nlo_controller%sf_born => sf_sav
+           do j = 1, n_in
+              i = term%nlo_controller%sf_born%get_out_i (j)
+              call term%nlo_controller%int_born%set_source_link &
+                 (j, term%nlo_controller%sf_born%get_out_int_ptr (), i)
+           end do
+           call term%isolated%init & 
+              (term%nlo_controller%sf_born, term%nlo_controller%int_born)
+           term%int_hard_real = term%int_hard
+        case (PHS_MODE_COLLINEAR_REMNANT)
+           call term%isolated%init (term%k_term%sf_chain, term%int_hard)
+        end select
+      class default
+        call term%isolated%init (term%k_term%sf_chain, term%int_hard)
+    end select
     allocate (mask_in (n_in))
     mask_in = term%k_term%sf_chain%get_out_mask ()
     select type (phs => term%k_term%phs)
@@ -8620,30 +8600,30 @@ kinematics to the evaluators and to the [[subevt]].
     integer :: i_component, i_term
     term%checked = .false.
     term%passed = .false.
-    if (term%config%rearrange) then
-       ! should evaluate k_term first if allocated separately, not impl. yet
-       i_component = term%config%i_component
-       i_term = term%config%i_term
-       associate (core => component(i_component)%config%core)
-          select case (term%nlo_type)
-          case (BORN, NLO_VIRTUAL, NLO_DGLAP)
-             call core%compute_eff_kinematics &
-                (i_term, term%int_hard, term%isolated%int_eff, &
-                component(i_component)%core_state)
-          case (NLO_REAL, NLO_MISMATCH)
-             call component(i_component)%config%core_sub_born%compute_eff_kinematics & 
-                (i_term, term%nlo_controller%int_born, term%isolated%int_eff, &
-                component(i_component)%core_state)
-          end select
-          select case (term%nlo_type)
-          case (NLO_REAL, NLO_MISMATCH)
-             call core%compute_eff_kinematics &
-                (i_term, term%int_hard_real, &
-                 term%isolated_real%int_eff, &
-                 component(i_component)%core_state)
-          end select
-       end associate
-    end if
+    !if (term%config%rearrange) then
+    !   ! should evaluate k_term first if allocated separately, not impl. yet
+    !   i_component = term%config%i_component
+    !   i_term = term%config%i_term
+    !   associate (core => component(i_component)%config%core)
+    !      select case (term%nlo_type)
+    !      case (BORN, NLO_VIRTUAL, NLO_DGLAP)
+    !         call core%compute_eff_kinematics &
+    !            (i_term, term%int_hard, term%isolated%int_eff, &
+    !            component(i_component)%core_state)
+    !      case (NLO_REAL, NLO_MISMATCH)
+    !         call component(i_component)%config%core_sub_born%compute_eff_kinematics & 
+    !            (i_term, term%nlo_controller%int_born, term%isolated%int_eff, &
+    !            component(i_component)%core_state)
+    !      end select
+    !      select case (term%nlo_type)
+    !      case (NLO_REAL, NLO_MISMATCH)
+    !         call core%compute_eff_kinematics &
+    !            (i_term, term%int_hard_real, &
+    !             term%isolated_real%int_eff, &
+    !             component(i_component)%core_state)
+    !      end select
+    !   end associate
+    !end if
     call term%isolated%receive_kinematics ()
     call term%connected%receive_kinematics ()
   end subroutine term_instance_compute_eff_kinematics
@@ -8707,9 +8687,7 @@ method may modify the [[core_state]] workspace object.
     select case (term%nlo_type)
     case (BORN, NLO_VIRTUAL, NLO_DGLAP)
        select type (core => component(i_component)%config%core)
-       !class is (prc_user_defined_base_t)
-       !class is (prc_blha_t)
-       type is (prc_openloops_t)
+       class is (prc_blha_t)
           select type (core_state => component(i_component)%core_state)
           class is (user_defined_state_t)
              call core%compute_alpha_s (core_state, term%ren_scale)
