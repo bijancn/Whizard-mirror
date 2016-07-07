@@ -7683,7 +7683,6 @@ imaginary part of the terms, which should be zero anyway.
      real(default), dimension(4) :: sqme_virt 
      integer :: i_flv, i_hel
      logical :: bad_point
-     class(connector_function_t), allocatable :: me_connector
 
      if (term%nlo_type /= NLO_VIRTUAL) return
      associate (nlo_controller => component%nlo_controller)
@@ -7703,13 +7702,6 @@ imaginary part of the terms, which should be zero anyway.
         end select
         call nlo_controller%transfer_to_virtual (term%int_hard%get_momenta (), &
            term%ren_scale, term%fac_scale)
-        !!! TODO: (cw 2016-07-06) Perform connector setup earlier 
-        allocate (virtual_connector_t :: me_connector)
-        select type (me_connector)
-        type is (virtual_connector_t)
-           me_connector%controller => nlo_controller
-        end select
-        call term%connected%trace%set_me_connector (me_connector)
         component%sqme = term%connected%trace%get_matrix_element_proc ()
      end associate
   end subroutine component_instance_evaluate_sqme_virt
@@ -8110,6 +8102,7 @@ relevant for a NLO algorithm.
     integer, dimension(:), allocatable, save :: col_sav
     class(prc_core_t), save, allocatable :: core_sav
     logical :: me_already_squared
+    class(connector_function_t), allocatable :: me_connector
 
     me_already_squared = .false.
 
@@ -8118,10 +8111,10 @@ relevant for a NLO algorithm.
     call term%k_term%init_ptr (k_seed)
     term%int_hard = config%int
     select type (core)
-    type is (prc_openloops_t)
+    class is (prc_blha_t)
        if (associated (nlo_controller)) then
           call reduce_interaction (term%int_hard, &
-             nlo_controller%beams_are_polarized (), .false.)
+             core%includes_polarization (), .false.)
           me_already_squared = .true.
        end if
        allocate (term%amp (term%int_hard%get_n_matrix_elements ()))
@@ -8199,7 +8192,7 @@ relevant for a NLO algorithm.
     end select
     if (associated (term%nlo_controller)) then
        call term%connected%setup_connected_trace (term%isolated, &
-          undo_helicities = me_already_squared .and. .not. term%nlo_controller%beams_are_polarized (), &
+          undo_helicities = undo_helicities (core, me_already_squared), &
           requires_subtraction = nlo_type == NLO_VIRTUAL)
     else
        call term%connected%setup_connected_trace (term%isolated)
@@ -8254,8 +8247,30 @@ relevant for a NLO algorithm.
     select case (term%nlo_type)
     case (NLO_REAL)
        call setup_real_subevt ()
+       allocate (real_connector_t :: me_connector)
+    case (NLO_VIRTUAL)
+       allocate (virtual_connector_t :: me_connector)
     end select
+    if (allocated (me_connector)) then
+       select type (me_connector)
+       class is (nlo_connector_t)
+          me_connector%controller => term%nlo_controller
+       end select
+       call term%connected%trace%set_me_connector (me_connector)
+    end if
   contains
+
+   function undo_helicities (core, me_squared) result (val)
+     logical :: val
+     class(prc_core_t), intent(in) :: core
+     logical, intent(in) :: me_squared
+     select type (core)
+     class is (prc_blha_t)
+        val = me_squared .and. .not. core%includes_polarization ()
+     class default
+        val = .false.
+     end select
+   end function undo_helicities
 
    subroutine setup_real_subevt ()
       allocate (f_out_real (n_out + 1))
@@ -8695,7 +8710,12 @@ method may modify the [[core_state]] workspace object.
           do i = 1, term%int_hard%get_n_matrix_elements () / 2
              call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
              term%amp(i) = cmplx (sqme_virt(3), 0, default)
-             term%amp(i + 4) = cmplx (sqme_virt(4), 0, default)
+             if (core%includes_polarization ()) then
+                j = 4
+             else
+                j = 1
+             end if
+             term%amp(i + j) = cmplx (sqme_virt(4), 0, default)
           end do
           !!! OpenLoops already includes a factor of 1 / 4 in the amplitudes. Undo it. 
           if (core%includes_polarization ()) term%amp = four * term%amp
