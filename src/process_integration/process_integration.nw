@@ -7708,101 +7708,20 @@ imaginary part of the terms, which should be zero anyway.
         select type (core => component%config%core)
         class is (prc_user_defined_base_t)
            call core%update_alpha_s (component%core_state, term%fac_scale)
-           do i_flv = 1, core%get_nflv()
-              if (nlo_controller%beams_are_polarized ()) then
-                do i_hel = 0, nlo_controller%particle_data%n_in * 2 - 1
-                   call compute_sqme_virt_single_helicity (core, component, term, &
-                      i_flv, i_hel, sqme_virt, bad_point)
-                   call nlo_controller%virtual_terms%set_vfin (sqme_virt(3))
-                   call nlo_controller%virtual_terms%set_bad_point (bad_point)
-                   nlo_controller%sqme_collector%sqme_virt_born_list (i_flv, i_hel + 1) = sqme_virt (4)
-                   nlo_controller%sqme_collector%sqme_virt_list (i_flv, i_hel + 1) = &
-                      nlo_controller%compute_sqme_virt &
-                         (i_flv, i_hel + 1, term%int_hard%get_momenta ()) * term%weight
-                 end do
-              else
-                 call compute_sqme_virt_all_helicities (core, component, term, &
-                    i_flv, sqme_virt, bad_point)
-                 call nlo_controller%virtual_terms%set_vfin (sqme_virt(3))
-                 call nlo_controller%virtual_terms%set_bad_point (bad_point)
-                 nlo_controller%sqme_collector%sqme_virt_born_list (i_flv, 1) = sqme_virt (4)
-                 nlo_controller%sqme_collector%sqme_virt_list (i_flv, 1) = &
-                    nlo_controller%compute_sqme_virt (i_flv, 1, term%int_hard%get_momenta ()) * term%weight
-              end if
-           end do
         end select
-
-        if (nlo_controller%beams_are_polarized ()) then
-           do i_hel = 1, nlo_controller%particle_data%n_in * 2
-              call nlo_controller%pol_sqme(i_hel)%set_value &
-                 (sum (nlo_controller%sqme_collector%sqme_virt_list (:,i_hel)))
-           end do
-           component%sqme = component%sqme + nlo_controller%get_weighted_helicity_sum ()
-        else
-           component%sqme = component%sqme + sum (nlo_controller%sqme_collector%sqme_virt_list)
-        end if
         call nlo_controller%transfer_to_virtual (term%int_hard%get_momenta ())
+        !!! TODO: (cw 2016-07-06) Perform connector setup earlier 
         allocate (virtual_connector_t :: me_connector)
         select type (me_connector)
         type is (virtual_connector_t)
            me_connector%controller => nlo_controller
         end select
         call term%connected%trace%set_me_connector (me_connector)
-        !print *, 'old method: ', component%sqme
-        !print *, 'new method: ', term%connected%trace%get_matrix_element ()
-        !print *, 'Check connector function: ', term%connected%trace%get_matrix_element_proc ()
+        component%sqme = term%connected%trace%get_matrix_element_proc ()
      end associate
   end subroutine component_instance_evaluate_sqme_virt
 
 @ %def component_instance_evaluate_sqme_virt
-@
-<<Processes: procedures>>=
-  subroutine compute_sqme_virt_single_helicity (core, component, term, &
-     i_flv, i_hel, sqme_virt, bad_point)
-     class(prc_user_defined_base_t), intent(inout) :: core
-     type(component_instance_t), intent(in) :: component
-     type(term_instance_t), intent(in) :: term
-     integer, intent(in) :: i_flv, i_hel
-     real(default), intent(out), dimension(4) :: sqme_virt
-     logical, intent(out) :: bad_point
-     type(vector4_t), dimension(:), allocatable :: p
-     real(default) :: ren_scale
-     call msg_debug2 (D_PROCESS_INTEGRATION, &
-          "compute_sqme_virt_single_helicity: term%ren_scale", term%ren_scale)
-     allocate (p (size (term%int_hard%get_momenta ())))
-     p = term%int_hard%get_momenta ()
-     ren_scale = term%ren_scale
-
-     call core%compute_sqme_virt (i_flv + i_hel, p, ren_scale, &
-        sqme_virt, bad_point)
-     call core%apply_structure_functions (component%k_seed%sf_chain, &
-        term%config%data%flv_state (1 : 2,i_flv))
-     sqme_virt = sqme_virt * core%get_sf_value ()
-
-     associate (nlo_controller => component%nlo_controller)
-        if (.not. nlo_controller%settings%use_internal_color_correlations) &
-           call core%compute_sqme_cc (i_flv + i_hel, p, ren_scale, &
-              born_cc = nlo_controller%sqme_collector%sqme_born_cc (:,:,i_flv), &
-              bad_point = bad_point)
-     end associate
-  end subroutine compute_sqme_virt_single_helicity
-
-@ %def compute_sqme_virt_single_helicity
-@
-<<Processes: procedures>>=
-  subroutine compute_sqme_virt_all_helicities (core, component, term, &
-      i_flv, sqme_virt, bad_point)
-    class(prc_user_defined_base_t), intent(inout) :: core
-    type(component_instance_t), intent(in) :: component
-    type(term_instance_t), intent(in) :: term
-    integer, intent(in) :: i_flv
-    real(default), intent(out), dimension(4) :: sqme_virt
-    logical, intent(out) :: bad_point
-    call compute_sqme_virt_single_helicity (core, component, term, &
-       i_flv, 0, sqme_virt, bad_point)
-  end subroutine compute_sqme_virt_all_helicities
-
-@ %def compute_sqme_virt_all_helicities
 @
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_mismatch => component_instance_evaluate_sqme_mismatch
@@ -9782,9 +9701,6 @@ to subobject of [[instance]].
                     end if
                   end associate
                case (NLO_VIRTUAL)
-                  if (process%beam_config%data%is_initialized ()) then
-                     call instance%setup_polarized_beams_for_virtuals (process%beam_config)
-                  end if
                   i_born = component%config%config%get_associated_born ()
                   component%nlo_type = NLO_VIRTUAL
                   call component%nlo_controller%init_virtual ()
@@ -9866,51 +9782,6 @@ to subobject of [[instance]].
 @ %def process_instance_setup_blha_structure_functions
 @
 <<Processes: process instance: TBP>>=
-  procedure :: setup_polarized_beams_for_virtuals &
-     => process_instance_setup_polarized_beams_for_virtuals
-<<Processes: procedures>>=
-  subroutine process_instance_setup_polarized_beams_for_virtuals (instance, config)
-     class(process_instance_t), intent(inout) :: instance
-     type(process_beam_config_t), intent(in) :: config
-     type(state_matrix_t) :: state_hel
-     integer, dimension(:), allocatable :: i_diag
-     real(default), dimension(:), allocatable :: f
-     integer :: i, j, n_flv
-     type(quantum_numbers_t), dimension(:), allocatable :: qn
-     type(helicity_t) :: hel
-     integer, dimension(:), allocatable :: h
-     state_hel = config%data%get_helicity_state_matrix ()
-     call state_hel%get_diagonal_entries (i_diag)
-     allocate (qn (state_hel%get_depth()))
-     select type (pcm => instance%pcm)
-     type is (pcm_instance_nlo_t)
-        allocate (h (pcm%controller%particle_data%n_in))
-        call pcm%controller%init_pol_density_matrix (size (i_diag))
-        f = state_hel%get_matrix_element (i_diag)
-        do i = 1, size (i_diag)
-           qn = state_hel%get_quantum_numbers (i_diag(i))
-           do j = 1, size (qn)
-              hel = qn(j)%get_helicity ()
-              call hel%get_indices (h(j), h(j))
-           end do
-           call pcm%controller%pol_density_matrix(i)%set_helicities (h)
-           call pcm%controller%pol_density_matrix(i)%set_value (f(i))
-        end do
-        associate (collector => pcm%controller%sqme_collector)
-           n_flv = size (collector%sqme_born_list)
-           deallocate (collector%sqme_virt_born_list)
-           deallocate (collector%sqme_virt_list)
-           allocate (collector%sqme_virt_born_list (n_flv, 4))
-           allocate (collector%sqme_virt_list (n_flv, 4))
-           collector%sqme_virt_born_list = zero
-           collector%sqme_virt_list = zero
-        end associate
-     end select
-  end subroutine process_instance_setup_polarized_beams_for_virtuals
-
-@ %def process_instance_setup_polarized_beams_for_virtuals
-@
-<<Processes: process instance: TBP>>=
   procedure :: transfer_helicities => process_instance_transfer_helicities
 <<Processes: procedures>>=
   subroutine process_instance_transfer_helicities (instance, component, core)
@@ -9926,7 +9797,7 @@ to subobject of [[instance]].
     logical, dimension(:), allocatable :: sub
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
-       call pcm%controller%init_polarized_sqmes (core%get_beam_helicities ())
+       !call pcm%controller%init_polarized_sqmes (core%get_beam_helicities ())
        i_term = component%config%i_term(1) 
        qn = instance%term(i_term)%isolated%trace%get_quantum_numbers ()
        allocate (helicities (size (qn, dim=1), 2))

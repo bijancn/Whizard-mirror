@@ -8755,107 +8755,6 @@ end module nlo_controller_uti
   end subroutine sqme_collector_write
 
 @ %def sqme_collector_write
-@
-<<nlo controller: types>>=
-  type :: polarization_data_t
-    logical :: valid = .false.
-    real(default) :: value = zero
-    integer, dimension(:), allocatable :: h
-    !!real(default), dimension(:), allocatable :: pmatrix_diag
-  contains
-  <<nlo controller: polarization data: TBP>>
-  end type polarization_data_t
-
-@ %def polarization_data_t
-@
-<<nlo controller: public operators>>=
-  public :: operator(*)
-<<nlo controller: interfaces>>=
-  interface operator(*)
-     module procedure polarization_data_multiply
-  end interface
-
-@ %def multipliy_interface
-@
-<<nlo controller: procedures>>=
-  function polarization_data_multiply (p1, p2) result (prod)
-    real(default) :: prod
-    type(polarization_data_t), dimension(:), intent(in) :: p1, p2
-    integer :: i, j
-    prod = zero
-    do i = 1, size (p1)
-       do j = 1, size (p2)
-          if (all (p1(i)%h == p2(j)%h)) then
-             prod = prod + p1(i)%value * p2(j)%value
-             exit
-          end if
-       end do
-    end do
-  end function polarization_data_multiply
-
-@ %def polarization_data_multiply
-@
-<<nlo controller: polarization data: TBP>>=
-  procedure :: set_helicities => polarization_data_set_helicities
-<<nlo controller: procedures>>=
-  subroutine polarization_data_set_helicities (pol_data, h)
-    class(polarization_data_t), intent(inout) :: pol_data
-    integer, dimension(:), intent(in) :: h
-    integer :: i
-    pol_data%h = h
-    if (size (pol_data%h) == 2)  pol_data%h(2) = - pol_data%h(2) !!! why?
-    pol_data%valid = .true.
-    do i = 1, size (pol_data%h)
-       pol_data%valid = pol_data%valid .and. &
-                (pol_data%h(i) == 1 .or. pol_data%h(i) == -1)
-    end do
-  end subroutine polarization_data_set_helicities
-
-@ %def polarization_data_set_helicities
-@
-<<nlo controller: polarization data: TBP>>=
-  procedure :: set_value => polarization_data_set_value
-<<nlo controller: procedures>>=
-  subroutine polarization_data_set_value (pol_data, value)
-     class(polarization_data_t), intent(inout) :: pol_data
-     real(default), intent(in) :: value
-     pol_data%value = value
-  end subroutine polarization_data_set_value
-
-@ %def polarization_data_set_value
-@
-<<nlo controller: polarization data: TBP>>=
-  procedure :: is_active => polarization_data_is_valid
-<<nlo controller: procedures>>=
-  elemental function polarization_data_is_valid (pol_data) result (valid)
-    logical :: valid
-    class(polarization_data_t), intent(in) :: pol_data
-    valid = pol_data%valid
-  end function polarization_data_is_valid
-
-@ %def polarization_data_is_valid
-@
-<<nlo controller: polarization data: TBP>>=
-  procedure :: write => polarization_data_write
-<<nlo controller: procedures>>=
-  subroutine polarization_data_write (pol_data, unit)
-    class(polarization_data_t), intent(in) :: pol_data
-    integer, intent(in), optional :: unit
-    integer :: u, i
-    u = given_output_unit (unit)
-    write (u, "(A,1x,L1)") "valid: ", pol_data%valid
-    write (u, "(A,1x,F7.5)") "value: ", pol_data%value
-    if (allocated (pol_data%h)) then
-       write (u, "(A,1x)") "helicities: "
-       do i = 1, size(pol_data%h)
-          write (u, "(I0,1x)") pol_data%h(i)
-       end do
-    else
-       write (u, "(A,1x)") "no helicities allocated "
-    end if
-  end subroutine polarization_data_write
-
-@ %def polarization_data_write
 @ This data type governs the whole calculation. It contains information
 about color, spin and flavor as well as the information about the Born
 process.
@@ -8869,8 +8768,6 @@ process.
     type(nlo_states_t) :: particle_states
     type(nlo_settings_t) :: settings
     type(sqme_collector_t), pointer :: sqme_collector => null ()
-    type(polarization_data_t), dimension(:), allocatable :: pol_density_matrix
-    type(polarization_data_t), dimension(:), allocatable :: pol_sqme
     integer :: n_allowed_born
     integer :: active_emitter, active_phase_space
     integer :: active_flavor_structure_real
@@ -8961,69 +8858,17 @@ process.
   end subroutine nlo_controller_check_if_threshold_method
 
 @ %def nlo_controller_check_if_threshold_method
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: init_pol_density_matrix => nlo_controller_init_pol_density_matrix
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_init_pol_density_matrix (nlo_controller, n_entries)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer :: n_entries
-    allocate (nlo_controller%pol_density_matrix (n_entries))
-  end subroutine nlo_controller_init_pol_density_matrix
-
-@ %def nlo_controller_init_pol_density_matrix
-@ Anti-particles need to have an opposite sign for the helicity index
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: init_polarized_sqmes => nlo_controller_init_polarized_sqmes
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_init_polarized_sqmes (nlo_controller, helicities)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer, intent(in), dimension(:,:) :: helicities
-    integer :: i_sqme, n_sqme
-    integer, dimension(size(helicities, dim=2)) :: h
-    integer, dimension(size(helicities, dim=2)) :: flavor_sign
-
-    associate (flv => nlo_controller%particle_states%flv_state_born (:,1))
-       flavor_sign(:) = sign (1, flv(1:size(flavor_sign)))
-    end associate
-
-    n_sqme = size (helicities, dim=1)
-    allocate (nlo_controller%pol_sqme (n_sqme))
-    associate (pol_sqme => nlo_controller%pol_sqme)
-       do i_sqme = 1, n_sqme
-          h = flavor_sign * helicities (i_sqme, :)
-          call pol_sqme(i_sqme)%set_helicities (h)
-       end do
-    end associate
-  end subroutine nlo_controller_init_polarized_sqmes
-
-@ %def nlo_controller_init_polarized_sqmes
-@
+@ Temporary Dummy: value is always true. 
 <<nlo controller: nlo controller: TBP>>=
   procedure :: beams_are_polarized => nlo_controller_beams_are_polarized
 <<nlo controller: procedures>>=
   elemental function nlo_controller_beams_are_polarized (nlo_controller) result (val)
     logical :: val
     class(nlo_controller_t), intent(in) :: nlo_controller
-    val = allocated (nlo_controller%pol_density_matrix)
+    val = .true.
   end function nlo_controller_beams_are_polarized
 
 @ %def nlo_controller_beams_are_polarized
-@ This subroutine combines the outer product of the spin density
-matrices with the polarized matrix elements. Note that there is a factor
-of four to account for the fact that \texttt{OpenLoops} supplies the
-averaging factor $1/4$ regardless whether the matrix elements are
-polarized or not.
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: get_weighted_helicity_sum => nlo_controller_get_weighted_helicity_sum
-<<nlo controller: procedures>>=
-  function nlo_controller_get_weighted_helicity_sum (nlo_controller) result (sqme)
-     real(default) :: sqme
-     class(nlo_controller_t), intent(in) :: nlo_controller
-     sqme = four * (nlo_controller%pol_sqme * nlo_controller%pol_density_matrix)
-  end function nlo_controller_get_weighted_helicity_sum
-
-@ %def nlo_controller_get_weighted_helicity_sum
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: init_real_subtraction => nlo_controller_init_real_subtraction
