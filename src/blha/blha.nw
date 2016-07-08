@@ -1332,19 +1332,55 @@ Hence, the interface is simpler than in the other routines.
 @ %def prc_blha_compute_sqme_born interface
 @
 <<BLHA OLP interfaces: prc blha: TBP>>=
-  procedure :: compute_sqme_cc => prc_blha_compute_sqme_cc
+  procedure :: compute_sqme_cc_raw => prc_blha_compute_sqme_cc_raw
 <<BLHA OLP interfaces: procedures>>=
-  subroutine prc_blha_compute_sqme_cc &
-         (object, i_flv, p, ren_scale, &
-          born_out, born_cc, bad_point)
+  subroutine prc_blha_compute_sqme_cc_raw &
+     (object, i_flv, p, ren_scale, rr, bad_point)
     class(prc_blha_t), intent(inout) :: object
     integer, intent(in) :: i_flv
     type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: ren_scale
-    real(default), intent(out), optional :: born_out
-    real(default), intent(inout), dimension(:,:) :: born_cc
+    real(default), intent(out), dimension(blha_result_array_size &
+       (object%n_particles, BLHA_AMP_CC)) :: rr
     logical, intent(out) :: bad_point
-    real(double), dimension(5*object%n_particles) :: mom
+    real(double), dimension(5 * object%n_particles) :: mom
+    real(double), dimension(blha_result_array_size &
+       (object%n_particles, BLHA_AMP_CC)) :: r
+    real(default) :: alpha_s, acc
+    real(double) :: mu_dble, acc_dble
+
+    mom = object%create_momentum_array (p)
+    if (vanishes (ren_scale)) &
+       call msg_fatal ("prc_blha_compute_sqme_cc: ren_scale vanishes")
+    mu_dble = dble(ren_scale)
+    alpha_s = object%qcd%alpha%get (ren_scale)
+
+    select type (driver => object%driver)
+    class is (blha_driver_t)
+       call driver%set_alpha_s (alpha_s)
+       call driver%blha_olp_eval2 (object%i_cc(i_flv), &
+          mom, mu_dble, r, acc_dble)
+    end select
+    r = rr
+    acc = acc_dble
+    bad_point = acc > object%maximum_accuracy
+  end subroutine prc_blha_compute_sqme_cc_raw  
+  
+@ %def prc_blha_compute_sqme_cc_raw
+@
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: compute_sqme_cc => prc_blha_compute_sqme_cc
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_compute_sqme_cc &
+         (object, i_flv, p, ren_scale, born_cc, bad_point, born_out)
+    class(prc_blha_t), intent(inout) :: object
+    integer, intent(in) :: i_flv
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default), intent(in) :: ren_scale
+    real(default), intent(inout), dimension(:,:) :: born_cc
+    real(default), intent(out), optional :: born_out
+    logical, intent(out) :: bad_point
+    real(double), dimension(5 * object%n_particles) :: mom
     real(double), dimension(blha_result_array_size (object%n_particles, &
                                               BLHA_AMP_CC)) :: r
     real(double) :: mu_dble
@@ -1487,10 +1523,10 @@ Hence, the interface is simpler than in the other routines.
   procedure :: set_helicity_list => prc_blha_set_helicity_list
 <<BLHA OLP interfaces: procedures>>=
   subroutine prc_blha_set_helicity_list (object, &
-     helicities, subtraction_flag)
+     helicities, subtraction_index)
     class(prc_blha_t), intent(inout) :: object
     integer, intent(in), dimension(:,:) :: helicities
-    logical, intent(in), dimension(:) :: subtraction_flag
+    integer, intent(in), dimension(:) :: subtraction_index
     integer, dimension(:, :), allocatable :: hel_olc
     integer :: n1, n2
     integer :: i, j
@@ -1504,7 +1540,7 @@ Hence, the interface is simpler than in the other routines.
     do i = 1, n1
        do j = 1, n2
           if (all (helicities (i, :) == hel_olc (j, :))) then
-             if (subtraction_flag (i)) then
+             if (subtraction_index (i) > 0) then
                 object%i_whizard_to_i_olc (i) = j + n2
              else
                 object%i_whizard_to_i_olc (i) = j

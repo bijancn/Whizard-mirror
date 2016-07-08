@@ -2390,8 +2390,8 @@ module processes
   use prc_user_defined
   use prc_threshold
 
-  use blha_config, only: blha_master_t
-  use blha_olp_interfaces, only: blha_template_t, prc_blha_t
+  use blha_config
+  use blha_olp_interfaces
 
 <<Standard module head>>
 
@@ -2799,7 +2799,9 @@ from the library.
            do j = 1, n_entry(i)
               component%i_term(j) = k + j
               call process%term(k + j)%init (k + j, i, j, core, model, &
-                 component%config%get_nlo_type (), process%uses_beams ())
+                 nlo_type = component%config%get_nlo_type (), &
+                 use_beam_pol = process%uses_beams (), &
+                 use_internal_color = .false.)
            end do
          end associate
        end associate
@@ -5948,7 +5950,8 @@ could become relevant for NLO algorithms.
   procedure :: init => process_term_init
 <<Processes: procedures>>=
   subroutine process_term_init &
-       (term, i_term_global, i_component, i_term, core, model, nlo_type, use_beam_pol)
+       (term, i_term_global, i_component, i_term, core, model, &
+        nlo_type, use_beam_pol, use_internal_color)
     class(process_term_t), intent(inout), target :: term
     integer, intent(in) :: i_term_global
     integer, intent(in) :: i_component
@@ -5957,6 +5960,7 @@ could become relevant for NLO algorithms.
     class(model_data_t), intent(in), target :: model
     integer, intent(in), optional :: nlo_type
     logical, intent(in), optional :: use_beam_pol
+    logical, intent(in), optional :: use_internal_color
     class(modelpar_data_t), pointer :: alpha_s_ptr
     term%i_term_global = i_term_global
     term%i_component = i_component
@@ -5970,7 +5974,7 @@ could become relevant for NLO algorithms.
     end if
 
     call term%setup_interaction (core, model, nlo_type = nlo_type, &
-       pol_beams = use_beam_pol)
+       pol_beams = use_beam_pol, use_internal_color = use_internal_color)
   end subroutine process_term_init
     
 @ %def process_term_init
@@ -5988,21 +5992,21 @@ matrix element.
   procedure :: setup_interaction => process_term_setup_interaction
 <<Processes: procedures>>=
   subroutine process_term_setup_interaction (term, core, model, &
-     nlo_type, pol_beams)
+     nlo_type, pol_beams, use_internal_color)
     class(process_term_t), intent(inout) :: term
     class(prc_core_t), intent(inout) :: core
     class(model_data_t), intent(in), target :: model
     logical, intent(in), optional :: pol_beams
     integer, intent(in), optional :: nlo_type
+    logical, intent(in), optional :: use_internal_color
     integer :: n_tot
     type(flavor_t), dimension(:), allocatable :: flv
     type(color_t), dimension(:), allocatable :: col
     type(helicity_t), dimension(:), allocatable :: hel
     type(quantum_numbers_t), dimension(:), allocatable :: qn
     integer :: i, n, f, h, c, s
-    logical :: yorn, sub
+    logical :: yorn
     integer :: nlo_t, n_hel, n_sub
-    !!! TODO (cw-2016-06-26): Make pol_beams a component of prc_blha
     yorn = .false.; if (present (pol_beams)) yorn = pol_beams
     nlo_t = BORN; if (present (nlo_type)) nlo_t = nlo_type
     associate (data => term%data)
@@ -6026,7 +6030,18 @@ matrix element.
          end do
       end select
       if (nlo_t == NLO_VIRTUAL) then
-         allocate (term%flv (2 * n), term%col (2 * n), term%hel (2 * n))
+         yorn = .false.; if (present (use_internal_color)) yorn = use_internal_color
+         if (yorn) then
+            n_sub = 1
+         else
+            n_sub = 1 + n_tot * (n_tot - 1) / 2 
+         end if
+      else
+         n_sub = 0
+      end if
+      if (nlo_t == NLO_VIRTUAL) then
+         allocate (term%flv ((n_sub + 1) * n), &
+            term%col ((n_sub + 1) * n), term%hel ((n_sub + 1) * n))
       else
          allocate (term%flv (n), term%col (n), term%hel (n))
       end if
@@ -6038,9 +6053,7 @@ matrix element.
       i = 0
       select type (core)
       type is (prc_openloops_t)
-         n_sub = 1; if (nlo_t == NLO_VIRTUAL) n_sub = 2
-         do s = 1, n_sub
-            sub = s > 1
+        do s = 0, n_sub
             do f = 1, data%n_flv
                do h = 1, data%n_hel
                   i = i + 1
@@ -6049,12 +6062,11 @@ matrix element.
                   !!! Dummy-initialization of color
                   term%col(i) = 1
                   call flv%init (data%flv_state (:,f), model)
-                  !!! TODO: (cw 2016-06-26): Need to filter out correct helicities here!
                   if (n_hel > 1) then
                      call hel%init (data%hel_state (:,h))
-                     call qn%init (flv, hel, sub)
+                     call qn%init (flv, hel, s)
                   else
-                     call qn%init (flv, sub)
+                     call qn%init (flv, s)
                   end if
                   call term%int%add_state (qn)
               end do
@@ -6064,8 +6076,7 @@ matrix element.
          if (n_hel > 1) &
             call msg_fatal ("Polarized beams only supported by OpenLoops")
          n_sub = 1; if (nlo_t == NLO_VIRTUAL) n_sub = 2
-         do s = 1, n_sub
-            sub = s > 1
+         do s = 0, n_sub
             do f = 1, data%n_flv
                i = i + 1
                term%flv(i) = f
@@ -6074,8 +6085,7 @@ matrix element.
                !!! Dummy-initialization of color
                term%col(i) = 1
                call flv%init (data%flv_state (:,f), model)
-               !!! TODO: (cw 2016-06-26): Need to filter out correct helicities here!
-               call qn%init (flv, sub)
+               call qn%init (flv, s)
                call term%int%add_state (qn)
             end do
          end do
@@ -8697,9 +8707,11 @@ method may modify the [[core_state]] workspace object.
   subroutine term_instance_evaluate_interaction (term, component)
     class(term_instance_t), intent(inout) :: term
     type(component_instance_t), dimension(:), intent(inout) :: component
-    integer :: i_component, i_term, i, j
+    integer :: i_component, i_term, i, j, k
     !!! Needs to be factored out into its own routine!
     real(default), dimension(4) :: sqme_virt
+    real(default), dimension(blha_result_array_size &
+       (term%int_hard%get_n_tot (), BLHA_AMP_CC)) :: sqme_cc
     logical :: bad_point
     i_component = term%config%i_component
     i_term = term%config%i_term
@@ -8720,7 +8732,16 @@ method may modify the [[core_state]] workspace object.
              else
                 j = 1
              end if
-             term%amp(i + j) = cmplx (sqme_virt(4), 0, default)
+             if (term%nlo_controller%settings%use_internal_color_correlations) then
+                term%amp(i + j) = cmplx (sqme_virt(4), 0, default)
+             else
+                select type (core)
+                class is (prc_blha_t)
+                   call core%compute_sqme_cc_raw (i, term%p_hard, term%ren_scale, &
+                      sqme_cc, bad_point)
+                end select
+                print *, 'Computed ', sqme_cc
+             end if
           end do
           !!! OpenLoops already includes a factor of 1 / 4 in the amplitudes. Undo it. 
           if (core%includes_polarization ()) term%amp = four * term%amp
@@ -9801,7 +9822,7 @@ to subobject of [[instance]].
     integer :: h, i, j
     integer, dimension(:,:), allocatable :: helicities
     type(helicity_t), dimension(:), allocatable :: hel
-    logical, dimension(:), allocatable :: sub
+    integer, dimension(:), allocatable :: sub
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
        i_term = component%config%i_term(1) 
@@ -9810,7 +9831,7 @@ to subobject of [[instance]].
        allocate (hel (size (qn, dim=1)))
        allocate (sub (size (qn, dim=1)))
        do i = 1, size (qn, dim=1)
-          sub(i) = qn(i, 1)%get_subtraction_flag () 
+          sub(i) = qn(i, 1)%get_subtraction_index () 
           do j = 1, pcm%controller%get_n_in ()
              hel(j) = qn(i, j)%get_helicity () 
              call hel(j)%diagonalize ()
