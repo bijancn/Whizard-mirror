@@ -6063,17 +6063,21 @@ matrix element.
       class is (prc_user_defined_base_t)
          if (n_hel > 1) &
             call msg_fatal ("Polarized beams only supported by OpenLoops")
-         do f = 1, data%n_flv
-            i = i + 1
-            term%flv(i) = f
-            !!! Dumy initialization of helicity
-            term%hel(i) = 1
-            !!! Dummy-initialization of color
-            term%col(i) = 1
-            call flv%init (data%flv_state (:,f), model)
-            !!! TODO: (cw 2016-06-26): Need to filter out correct helicities here!
-            call qn%init (flv)
-            call term%int%add_state (qn)
+         n_sub = 1; if (nlo_t == NLO_VIRTUAL) n_sub = 2
+         do s = 1, n_sub
+            sub = s > 1
+            do f = 1, data%n_flv
+               i = i + 1
+               term%flv(i) = f
+               !!! Dumy initialization of helicity
+               term%hel(i) = 1
+               !!! Dummy-initialization of color
+               term%col(i) = 1
+               call flv%init (data%flv_state (:,f), model)
+               !!! TODO: (cw 2016-06-26): Need to filter out correct helicities here!
+               call qn%init (flv, sub)
+               call term%int%add_state (qn)
+            end do
          end do
       class default
          do f = 1, data%n_flv
@@ -8109,7 +8113,7 @@ relevant for a NLO algorithm.
     call term%k_term%init_ptr (k_seed)
     term%int_hard = config%int
     select type (core)
-    class is (prc_blha_t)
+    class is (prc_user_defined_base_t)
        if (associated (nlo_controller)) then
           call reduce_interaction (term%int_hard, &
              core%includes_polarization (), .false.)
@@ -8700,7 +8704,7 @@ method may modify the [[core_state]] workspace object.
     select case (term%nlo_type)
     case (BORN, NLO_VIRTUAL, NLO_DGLAP)
        select type (core => component(i_component)%config%core)
-       class is (prc_blha_t)
+       class is (prc_user_defined_base_t)
           select type (core_state => component(i_component)%core_state)
           class is (user_defined_state_t)
              call core%compute_alpha_s (core_state, term%ren_scale)
@@ -8717,7 +8721,6 @@ method may modify the [[core_state]] workspace object.
           end do
           !!! OpenLoops already includes a factor of 1 / 4 in the amplitudes. Undo it. 
           if (core%includes_polarization ()) term%amp = four * term%amp
-          call term%int_hard%set_matrix_element (term%amp (core%get_helicity_list ()))
        class default
           do i = 1, term%config%n_allowed
              term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
@@ -8727,8 +8730,13 @@ method may modify the [[core_state]] workspace object.
           end do
           if (associated (term%nlo_controller)) &
              call term%nlo_controller%set_fac_scale (term%fac_scale)
-          call term%int_hard%set_matrix_element (term%amp)
        end select
+       select type (core => component(i_component)%config%core)
+       class is (prc_blha_t)
+          call term%int_hard%set_matrix_element (term%amp (core%get_helicity_list()))
+       class default
+          call term%int_hard%set_matrix_element (term%amp)
+       end select 
     case (NLO_REAL)
        call term%evaluate_real_phase_space (term%nlo_controller%get_active_emitter ())
        call term%evaluate_interaction_real (component(i_component), i_term)
