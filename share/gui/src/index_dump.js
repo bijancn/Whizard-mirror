@@ -119,10 +119,7 @@ $(document).ready(() => {
   });
 
   $(document).on('click', '.process-entry', () => {
-    console.log('before ' + simulation.activeProcessId);
-    console.log($(this));
     simulation.activeProcessId = $(this).attr('process-id');
-    console.log('after ' + simulation.activeProcessId);
     const p = process.ProcessList[simulation.activeProcessId];
     if (p.isNlo()) {
       $('#conf-int-nlo').prop('checked', true);
