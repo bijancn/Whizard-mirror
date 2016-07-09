@@ -5,7 +5,6 @@ chai.use(chaiAsPromised);
 
 describe('cuts.cutsClosure', () => {
   it('should be empty', () => {
-    console.log(cuts.cutsClosure);
     const test = cuts.cutsClosure.getActiveParticles();
     return test === [];
   });

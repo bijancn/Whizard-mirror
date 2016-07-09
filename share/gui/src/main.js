@@ -43,7 +43,7 @@ export function rebuildVariables() {
   // Access Scans data
   process.extAssignScans();
 
-  SindarinList = SindarinList.concat(alias.ExternalSindarinList);
+  SindarinList = SindarinList.concat(alias.aliasList);
   SindarinList = SindarinList.concat(simulation.SimulateList);
 
   const a = new constructSindarin.SindarinGenerator(SindarinList, process.ProcessList);

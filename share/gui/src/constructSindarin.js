@@ -49,13 +49,12 @@ function constructSindarinFromList() {
 export function SindarinWriteProcesses() {
   let string = '';
   for (let i = 0; i < this.processList.length; i++) {
-    string += this.processList[i].writeToSindarin(i);
+    string += this.processList[i].writeToSindarin(i) + '\n';
   }
   return string;
 }
 
 
-// TODO: (bcn 2016-04-17) this cant be unit tested for now as it depends on too much
 export function SindarinGenerator(sindarinList, processList) {
   this.list = sindarinList;
   this.processList = processList;

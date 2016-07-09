@@ -47,9 +47,9 @@ export const cutsClosure = (() => {
     let ParticlesList = [];
 
     // Get particles from alias list
-    for (let i = 0; i < alias.ExternalSindarinList.length; i++) {
-      if (alias.ExternalSindarinList[i] instanceof alias.SindarinAlias) {
-        const thisAlias = alias.ExternalSindarinList[i].alias;
+    for (let i = 0; i < alias.aliasList.length; i++) {
+      if (alias.aliasList[i] instanceof alias.SindarinAlias) {
+        const thisAlias = alias.aliasList[i].alias;
         ParticlesList = generic.arrayUnique(ParticlesList.concat(thisAlias.split(':')));
       }
     }
