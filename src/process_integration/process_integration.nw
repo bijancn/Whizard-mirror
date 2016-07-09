@@ -2780,6 +2780,8 @@ from the library.
     integer :: i, j, k
     integer, dimension(:), allocatable :: n_entry
     integer :: n_components, n_tot
+    integer :: i_sub = 0
+    type(string_t) :: subtraction_method
     model => process%config%model
     n_components = process%meta%n_components
     allocate (n_entry (n_components), source = 0)
@@ -2791,6 +2793,11 @@ from the library.
     n_tot = sum (n_entry)
     allocate (process%term (n_tot))
     k = 0
+    if (process%is_nlo_calculation ()) then
+       i_sub = process%component(1)%config%get_associated_subtraction ()
+       subtraction_method = process%component(i_sub)%config%get_me_method ()
+    end if
+
     do i = 1, n_components
        associate (component => process%component(i))
          if (.not. component%active)  cycle
@@ -2798,10 +2805,17 @@ from the library.
            allocate (component%i_term (n_entry(i)))
            do j = 1, n_entry(i)
               component%i_term(j) = k + j
-              call process%term(k + j)%init (k + j, i, j, core, model, &
-                 nlo_type = component%config%get_nlo_type (), &
-                 use_beam_pol = process%uses_beams (), &
-                 use_internal_color = .false.)
+              if (i_sub > 0) then
+                 call process%term(k + j)%init (k + j, i, j, core, model, &
+                    nlo_type = component%config%get_nlo_type (), &
+                    use_beam_pol = process%uses_beams (), &
+                    subtraction_method = subtraction_method)
+              else
+                 !!! TODO (cw 2016-07-09): Can leave out more arguments below
+                 call process%term(k + j)%init (k + j, i, j, core, model, &
+                    nlo_type = component%config%get_nlo_type (), &
+                    use_beam_pol = process%uses_beams ())
+              end if
            end do
          end associate
        end associate
@@ -5951,7 +5965,7 @@ could become relevant for NLO algorithms.
 <<Processes: procedures>>=
   subroutine process_term_init &
        (term, i_term_global, i_component, i_term, core, model, &
-        nlo_type, use_beam_pol, use_internal_color)
+        nlo_type, use_beam_pol, subtraction_method)
     class(process_term_t), intent(inout), target :: term
     integer, intent(in) :: i_term_global
     integer, intent(in) :: i_component
@@ -5960,8 +5974,9 @@ could become relevant for NLO algorithms.
     class(model_data_t), intent(in), target :: model
     integer, intent(in), optional :: nlo_type
     logical, intent(in), optional :: use_beam_pol
-    logical, intent(in), optional :: use_internal_color
+    type(string_t), intent(in), optional :: subtraction_method
     class(modelpar_data_t), pointer :: alpha_s_ptr
+    logical :: use_internal_color
     term%i_term_global = i_term_global
     term%i_component = i_component
     term%i_term = i_term
@@ -5972,7 +5987,9 @@ could become relevant for NLO algorithms.
     else
        term%alpha_s = -1
     end if
-
+    use_internal_color = .false.
+    if (present (subtraction_method)) &
+       use_internal_color = char (subtraction_method) == 'omega'
     call term%setup_interaction (core, model, nlo_type = nlo_type, &
        pol_beams = use_beam_pol, use_internal_color = use_internal_color)
   end subroutine process_term_init
@@ -8727,8 +8744,8 @@ method may modify the [[core_state]] workspace object.
           end select
           n_amps = term%int_hard%get_n_matrix_elements ()
           n_sub = term%int_hard%get_n_sub ()
-          if (n_sub > 1) then
-             if (term%nlo_controller%settings%use_internal_color_correlations) then
+          if (n_sub > 0) then
+             if (core%includes_polarization ()) then
                 n_amps = n_amps - (4 * n_sub)
              else
                 n_amps = n_amps - n_sub
