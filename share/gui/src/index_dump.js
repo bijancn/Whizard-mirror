@@ -33,7 +33,6 @@ $(document).ready(() => {
     // Checking if both fields are non-empty
     if ($('#conf-alias-lhs').val() && $('#conf-alias-rhs').val()) {
       alias.addAlias($('#conf-alias-lhs').val(), $('#conf-alias-rhs').val());
-      alias.rebuildAliasList();
       main.messageGUI('New alias is added.', 'alert-success');
       $('#conf-alias-lhs').val('');
       $('#conf-alias-rhs').val('');
@@ -181,8 +180,7 @@ $(document).ready(() => {
   //  Remove Alias
   $(document).on('click', '.alias-remove', () => {
     const id = $(this).attr('alias-id');
-    alias.ExternalSindarinList.splice(id, 1);
-    alias.rebuildAliasList();
+    alias.removeAlias(id);
   });
 
   // TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
