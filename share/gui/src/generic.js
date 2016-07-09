@@ -89,7 +89,6 @@ function getLatexImage(tex) {
 function image(str1, str2) {
   // TODO: (bcn 2016-07-01) this function should try to get image and return tex
   // if it fails. Even better it should use local installation of mathjax!
-  console.log(getLatexImage(str1));
   if (guiconfig.context.useGoogleLatex) {
     return '<img src="' + getLatexImage(str1) + '">';
   }

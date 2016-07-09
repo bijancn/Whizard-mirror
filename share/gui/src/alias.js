@@ -14,7 +14,7 @@ export function SindarinAlias(str, alias) {
 export function SindarinWriteAliases() {
   for (let i = 0; i < this.nElements; i++) {
     if (this.list[i] instanceof SindarinAlias) {
-      this.src += this.list[i].toString() + '\n';
+      this.src += this.list[i].writeToSindarin() + '\n';
       this.elementsUsed.push(i);
     }
   }
@@ -26,7 +26,7 @@ export function rebuildAliasList() {
   $('#pop_aliases').append('<div class="row">');
   for (let i = 0; i < ExternalSindarinList.length; i++) {
     if (ExternalSindarinList[i] instanceof SindarinAlias) {
-      const alias = ExternalSindarinList[i].toString();
+      const alias = ExternalSindarinList[i].writeToSindarin();
       $('#pop_aliases').append('<div class="col-md-10">' +
           '<a href="javascript:;" class="alias">' + alias + '</a></div>' +
           '<div class="col-md-2"><a href="javascript:;" class="alias-remove" alias-id='

@@ -16,7 +16,7 @@ describe('SindarinAlias', () => {
   });
   it('should write to the expected string', () => {
     const sindarinAlias = new alias.SindarinAlias(testAliasName, testAlias);
-    expect(sindarinAlias.toString()).to.equal('alias quark = u:U');
+    expect(sindarinAlias.writeToSindarin()).to.equal('alias quark = u:U');
   });
   it('should use jquery to populate the aliases list', () => {
     alias.cleanAlias();
