@@ -12,7 +12,7 @@ function SimulationData() {
 
 function IntegrationData() {
   this.nlo = false;
-  // Default values, should be set in a file
+  // Default values
   this.sqrts = 0;
   this.nCalls = 10000;
   this.nIter = 5;
@@ -80,9 +80,10 @@ function SindarinProcessGetNEvents() {
 }
 
 
+// TODO: (bcn 2016-07-09) have to test this together with scan.ScansList
 export function extAssignScans() {
   for (let i = 0; i < ProcessList.length; i++) {
-    ProcessList[i].grabScanData(i);
+    ProcessList[i].importScanData(i);
   }
 }
 
@@ -109,7 +110,7 @@ function ProcessDisplayName() {
 }
 
 
-function grabScanData(processID) {
+function importScanData(processID) {
   this.ScanData.Sets = scan.ScansList[processID].ScansContainer;
   this.ScanData.type = scan.ScansList[processID].type;
   this.ScanData.title = scan.ScansList[processID].title;
@@ -177,7 +178,7 @@ export function SindarinProcess(incoming, outgoing) {
   this.toString = SindarinProcessToString;
   this.writeToSindarin = processWriteToSindarin;
   this.name = ProcessDisplayName;
-  this.grabScanData = grabScanData;
+  this.importScanData = importScanData;
 }
 
 
@@ -212,7 +213,7 @@ export function addProcess(incoming, outgoing) {
 }
 
 
-function suggestAddingProccesIfNoneAdded(list) {
+function suggestAddingProcessIfNoneAdded(list) {
   if (list.filter((value) => value !== null).length === 0) {
     $('#simulate-process-list').html('Please add a process.');
     $('#integrate-process-list').html('Please add a process.');
@@ -253,5 +254,5 @@ export function displayProcessList() {
       '#simulate-process-list', 'sim');
   constructProcessList(ProcessList, scan.ScansList,
       '#scan-process-list', 'scan');
-  suggestAddingProccesIfNoneAdded(ProcessList);
+  suggestAddingProcessIfNoneAdded(ProcessList);
 }
