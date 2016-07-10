@@ -1446,26 +1446,27 @@ event output.
   procedure :: setup_connected_trace => connected_state_setup_connected_trace
 <<Parton states: procedures>>=
   subroutine connected_state_setup_connected_trace &
-       (state, isolated, int, resonant, undo_helicities, requires_subtraction)
+       (state, isolated, int, resonant, undo_helicities, n_sub)
     class(connected_state_t), intent(inout), target :: state
     type(isolated_state_t), intent(in), target :: isolated
     type(interaction_t), intent(in), optional, target :: int
     logical, intent(in), optional :: resonant
     logical, intent(in), optional :: undo_helicities
-    logical, intent(in), optional :: requires_subtraction
+    integer, intent(in), optional :: n_sub
     type(quantum_numbers_mask_t) :: mask
     type(interaction_t), pointer :: src_int
-    logical :: reduce, need_sub
-    reduce = .false.; need_sub = .false.
+    logical :: reduce
+    reduce = .false.
     if (present (undo_helicities)) reduce = undo_helicities
-    if (present (requires_subtraction)) need_sub = requires_subtraction
     mask = quantum_numbers_mask (.true., .true., .true.)
     if (present (int)) then
        src_int => int
     else
        src_int => isolated%sf_chain_eff%get_out_int_ptr ()
     end if
-    if (need_sub) call interaction_declare_subtraction (src_int)
+    if (present (n_sub)) then
+       if (n_sub > 0) call interaction_declare_subtraction (src_int, n_sub)
+    end if
     if (reduce) call undo_qn_hel (src_int, mask, isolated%trace%get_n_in ())
     
     call state%trace%init_product (src_int, isolated%trace, &
@@ -8125,7 +8126,7 @@ relevant for a NLO algorithm.
     type(state_matrix_t), pointer :: state_matrix
     type(flavor_t), dimension(:), allocatable :: flv_int, flv_src, f_in, f_out
     type(flavor_t), dimension(:), allocatable :: f_out_real
-    integer :: n_in, n_vir, n_out, n_tot
+    integer :: n_in, n_vir, n_out, n_tot, n_sub
     !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
     integer :: i, j, k
     type(quantum_numbers_t), dimension(:), allocatable :: qn
@@ -8223,9 +8224,15 @@ relevant for a NLO algorithm.
          call term%isolated%setup_square_trace (core, mask_in, term%config%col)
     end select
     if (associated (term%nlo_controller)) then
+       if (nlo_type == NLO_VIRTUAL) then
+          n_sub = term%nlo_controller%get_n_sub ()
+       else
+          !!! No integration of real subtraction in interactions yet
+          n_sub = 0
+       end if
        call term%connected%setup_connected_trace (term%isolated, &
           undo_helicities = undo_helicities (core, me_already_squared), &
-          requires_subtraction = nlo_type == NLO_VIRTUAL)
+          n_sub = n_sub)
     else
        call term%connected%setup_connected_trace (term%isolated)
     end if
@@ -11534,7 +11541,7 @@ one has to bring NLO information there.
     type(beam_structure_t), intent(in) :: beam_structure
     type(os_data_t), intent(in) :: os_data
     type(string_t) :: libname
-    integer :: i
+    integer :: i, n_sub
     logical :: skip
     type(vector4_t), dimension(:), allocatable :: p
 
@@ -11565,12 +11572,16 @@ one has to bring NLO information there.
                 call core%read_contract_file (instance%process%term(i)%data%flv_state)
                 call core%print_parameter_file (i)
                 call core%reset_helicity_list ()
+                select type (pcm => instance%pcm)
+                type is (pcm_instance_nlo_t)
+                   n_sub =  pcm%controller%get_n_sub ()
+                end select
                 if (core%includes_polarization ()) then
                    call instance%transfer_helicities (instance%component(i), core)
                    p = instance%get_phase_space_point (i)
                    call core%warmup_helicities (p)
                 else
-                   call core%set_helicity_list_trivial ()
+                   call core%set_helicity_list_trivial (n_sub)
                 end if
              type is (prc_threshold_t)
                 if (component_config%config%get_nlo_type () == NLO_VIRTUAL) then
