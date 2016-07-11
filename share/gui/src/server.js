@@ -9,7 +9,6 @@ const startServer = () => {
   app.use('/public', express.static(process.cwd() + '/public'));
   app.use('/browser', express.static(process.cwd() + '/browser'));
   app.use('/output', express.static(process.cwd() + '/output'));
-  //app.get('/' + context.outputDir, express.static(__dirname + context.outputDir));
   // app.use(express.logger('dev'));
   app.use(bodyParser.json());       // to support JSON-encoded bodies
   app.use(bodyParser.urlencoded({     // to support URL-encoded bodies

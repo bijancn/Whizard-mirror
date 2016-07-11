@@ -1,12 +1,24 @@
 const context = require('./guiconfig').context;
 
+
+// Creates a message box with appropriate style class
+// style = [alert-success, alert-warning, alert-danger]
+export function messageGUI(str, style) {
+  $('#controller').after('<div id="gui-box" class="alert ' + style +
+      ' alert-dismissible" role="alert"><button type="button" class="close" ' +
+      'data-dismiss="alert" aria-label="Close">' +
+      '<span aria-hidden="true">&times;</span></button><p id="gui-message">' +
+      str + '</p></div>');
+}
+
+
 // Ability to remove specific type of elements from the array
 // array.remove('like this').remove('and like this');
 // TODO: (bcn 2016-03-25) more standard way to do this?
-Array.prototype.remove = () => { // eslint-disable-line no-extend-native
+Array.prototype.remove = function remover() { // eslint-disable-line no-extend-native
   let what;
   let ax;
-  const a = arguments;
+  const a = arguments;  // eslint-disable-line prefer-rest-params
   let L = a.length;
   while (L && this.length) {
     what = a[--L];

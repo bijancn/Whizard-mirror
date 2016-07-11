@@ -1,3 +1,6 @@
+const generic = require('./generic');
+
+
 export let aliasList = [];
 
 
@@ -14,7 +17,7 @@ function rebuildAliasList() {
   for (let i = 0; i < aliasList.length; i++) {
     const alias = aliasList[i].writeToSindarin();
     $('#pop_aliases').append('<div class="col-md-10">' +
-        '<a href="javascript:;" class="alias">' + alias + '</a></div>' +
+        '<a class="alias">' + alias + '</a></div>' +
         '<div class="col-md-2"><a href="javascript:;" class="alias-remove" alias-id='
         + i + '><span class="glyphicon glyphicon-remove-sign" ' +
         'aria-hidden="true"></span></a></div>');
@@ -30,12 +33,29 @@ export function addAlias(name, str) {
 
 
 export function removeAlias(id) {
-  aliasList.splice(id, 1);
-  rebuildAliasList();
+  if (parseInt(Number(id), 10) == id) {  // eslint-disable-line eqeqeq
+    aliasList.splice(id, 1);
+    rebuildAliasList();
+  } else {
+    console.error('Did not get an integer id but ', id);
+  }
 }
 
 
 export function cleanAlias() {
   aliasList = [];
   rebuildAliasList();
+}
+
+
+export function setupJquery() {
+  $('#button_alias').click(() => {
+    // Checking if both fields are non-empty
+    if ($('#conf-alias-lhs').val() && $('#conf-alias-rhs').val()) {
+      addAlias($('#conf-alias-lhs').val(), $('#conf-alias-rhs').val());
+      generic.messageGUI('New alias is added.', 'alert-success');
+      // $('#conf-alias-lhs').val('');
+      // $('#conf-alias-rhs').val('');
+    }
+  });
 }

@@ -40,8 +40,8 @@ function SindarinWriteBody() {
 
 function constructSindarinFromList() {
   let string = sindarinWriteHeader();
-  string += this.writeProcesses();
   string += this.writeBody();
+  string += this.writeProcesses();
   return string;
 }
 

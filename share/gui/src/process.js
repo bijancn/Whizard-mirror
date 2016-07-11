@@ -96,7 +96,7 @@ function SindarinProcessToString() {
     let str = 'process proc_' + this.counter + ' = '
       + this.incoming + ' => ' + this.outgoing;
     if (this.isNlo()) {
-      str += " {nlo_calculation = 'Full'}";
+      str += ' {nlo_calculation = "Full"}';
     }
     return str;
   } catch (err) {
@@ -188,13 +188,12 @@ export function rebuildProcessList() {
   let procIndex = 1;
   for (let i = 0; i < ProcessList.length; i++) {
     if (ProcessList[i] instanceof SindarinProcess) {
-      // if (ProcessList[i] === null) continue; // !!! // ???
       ProcessList[i].counter = procIndex;
       procIndex++;
       $('#pop_process').append(
           '<div class="col-md-10"><a href="javascript:;" class="process">' +
           ProcessList[i].name() + '</a></div><div class="col-md-2">' +
-          '<a href="javascript:;" class="process-remove" process-id=' + i +
+          '<a href="javascript:;" class="process-remove" processid=' + i +
           '><span class="glyphicon glyphicon-remove-sign" aria-hidden="true">' +
           '</span></a></div>');
     }
@@ -222,16 +221,15 @@ function suggestAddingProcessIfNoneAdded(list) {
   }
 }
 
-function constructProcessList(processList, list, jQueryObject, type) {
-  $(jQueryObject).empty();
+function constructProcessList(processList, list, jQuerySelector, type, id) {
+  $(jQuerySelector).empty();
   for (let i = 0; i < processList.length; i++) {
-    if (processList[i] === null) continue;
     const CSSClass = list[i].status ? 'label-success' : 'label-default';
     const Text = list[i].status ? 'On' : 'Off';
     const name = generic.texImageOrPlain(processList[i].name());
-    $(jQueryObject).append(
+    $(jQuerySelector).append(
         '<a href="#" class="list-group-item process-entry-' + type + '" process-id="' +
-        i + '">' + name + '<br><span id="proc_indicator_scan_' + i +
+        i + '">' + name + '<br><span id="' + id + '_' + i +
         '" class="label ' + CSSClass + '">' + Text + '</span></a>');
   }
 }
@@ -239,11 +237,10 @@ function constructProcessList(processList, list, jQueryObject, type) {
 function constructIntegrationList(processList) {
   $('#integrate-process-list').empty();
   for (let i = 0; i < processList.length; i++) {
-    if (processList[i] === null) continue;
     const name = generic.texImageOrPlain(ProcessList[i].name());
     $('#integrate-process-list').append(
         '<a href="#" class="list-group-item process-entry" process-id="' +
-        i + 1 + '">' + name + '</a>');
+        i + '">' + name + '</a>');
   }
 }
 
@@ -251,8 +248,36 @@ function constructIntegrationList(processList) {
 export function displayProcessList() {
   constructIntegrationList(ProcessList);
   constructProcessList(ProcessList, simulation.SimulateList,
-      '#simulate-process-list', 'sim');
+      '#simulate-process-list', 'sim', 'proc_indicator');
   constructProcessList(ProcessList, scan.ScansList,
-      '#scan-process-list', 'scan');
+      '#scan-process-list', 'scan', 'proc_indicator_scan');
   suggestAddingProcessIfNoneAdded(ProcessList);
+}
+
+
+export function setupJquery() {
+  $('#button-add-process').click(() => {
+    const incoming = $('#conf-process-in').val();
+    const outgoing = $('#conf-process-out').val();
+    if (incoming && outgoing) {
+      addProcess(generic.parseParticleNameString(incoming),
+        generic.parseParticleNameString(outgoing));
+      generic.messageGUI('New process is added.', 'alert-success');
+    } else {
+      let incomingMissing = '';
+      let outgoingMissing = '';
+      if (!incoming) incomingMissing = 'No incoming particles';
+      if (!outgoing) outgoingMissing = 'No outgoing particles';
+      generic.messageGUI('Adding process failed! ' + incomingMissing + ' and ' +
+        outgoingMissing, 'alert-danger');
+    }
+  });
+
+  // Mini-button: Remove process
+  $(document).on('click', '.process-remove', function processRemoveHandler() {
+    const id = $(this).attr('process-id');
+    ProcessList.splice(id, 1);
+    rebuildProcessList();
+    simulation.removeSimulateElement(id);
+  });
 }

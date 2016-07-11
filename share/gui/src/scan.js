@@ -42,16 +42,16 @@ export const Scan = {
   fillHTMLFields: () => {
     Scan.clean();
     for (let i = 0; i <
-        ScansList[simulation.activeProcessId].ScansContainer.length; i++) {
-      const elem = ScansList[simulation.activeProcessId].ScansContainer[i];
+        ScansList[simulation.getActiveProcessId()].ScansContainer.length; i++) {
+      const elem = ScansList[simulation.getActiveProcessId()].ScansContainer[i];
       Scan.addNew(elem.min, elem.max, elem.inc, i);
     }
-    $('#conf-scan-check').prop('checked', ScansList[simulation.activeProcessId].status);
-    $('#scan-plot-title').val(ScansList[simulation.activeProcessId].title);
-    $('#scan-plot-xlabel').val(ScansList[simulation.activeProcessId].xlabel);
-    $('#scan-plot-ylabel').val(ScansList[simulation.activeProcessId].ylabel);
-    $('#scan-plot-xmin').val(ScansList[simulation.activeProcessId].xmin);
-    $('#scan-plot-xmax').val(ScansList[simulation.activeProcessId].xmax);
+    $('#conf-scan-check').prop('checked', ScansList[simulation.getActiveProcessId()].status);
+    $('#scan-plot-title').val(ScansList[simulation.getActiveProcessId()].title);
+    $('#scan-plot-xlabel').val(ScansList[simulation.getActiveProcessId()].xlabel);
+    $('#scan-plot-ylabel').val(ScansList[simulation.getActiveProcessId()].ylabel);
+    $('#scan-plot-xmin').val(ScansList[simulation.getActiveProcessId()].xmin);
+    $('#scan-plot-xmax').val(ScansList[simulation.getActiveProcessId()].xmax);
   },
 
   getScanCodeHTML: (min, max, inc, sid) =>
@@ -88,100 +88,89 @@ export const Scan = {
 
 export function setupJquery() {
   // Selecting: Scan > Process
-  $(document).on('click', '.process-entry-scan', () => {
+  $(document).on('click', '.process-entry-scan', function selectScan() {
     $('.scan-right').fadeIn('fast');
     $('.process-entry-scan').removeClass('active');
     $(this).addClass('active');
-    simulation.activeProcessId = $(this).attr('process-id');
+    simulation.setActiveProcessId($(this).attr('process-id'));
     Scan.fillHTMLFields();
-    if (ScansList[simulation.activeProcessId].status) {
+    if (ScansList[simulation.getActiveProcessId()].status) {
       $('#struct-scan').fadeIn('fast');
     } else {
       $('#struct-scan').fadeOut('fast');
     }
   });
 
-
   // Button: New Scan subinterval
   $('.scan-newscan').click(() => {
     Scan.addNew('', '', '',
-        ScansList[simulation.activeProcessId].ScansContainer.length);
-    ScansList[simulation.activeProcessId].addScanElement(0, 0, 0);
+        ScansList[simulation.getActiveProcessId()].ScansContainer.length);
+    ScansList[simulation.getActiveProcessId()].addScanElement(0, 0, 0);
   });
-
 
   // Button: clean Scans
   $('.scan-clean').click(() => {
-    ScansList[simulation.activeProcessId].ScansContainer = [];
+    ScansList[simulation.getActiveProcessId()].ScansContainer = [];
     Scan.clean();
   });
 
-
   // Checkbox button: Enable scan for this process
-  $('#conf-scan-check').click(() => {
-    ScansList[simulation.activeProcessId].status = $(this).prop('checked');
+  $('#conf-scan-check').click(function enableScan() {
+    ScansList[simulation.getActiveProcessId()].status = $(this).prop('checked');
     if ($(this).prop('checked')) {
       $('#struct-scan').fadeIn('fast');
     } else {
       $('#struct-scan').fadeOut('fast');
     }
     // Changing On/Off indicator
-    if (ScansList[simulation.activeProcessId].status) {
-      $('#proc_indicator_scan_' + simulation.activeProcessId).removeClass(
+    if (ScansList[simulation.getActiveProcessId()].status) {
+      $('#proc_indicator_scan_' + simulation.getActiveProcessId()).removeClass(
           'label-default label-success').addClass('label-success').text('On');
     } else {
-      $('#proc_indicator_scan_' + simulation.activeProcessId).removeClass(
+      $('#proc_indicator_scan_' + simulation.getActiveProcessId()).removeClass(
           'label-default label-success').addClass('label-default').text('Off');
     }
   });
 
-
   // Modify field: Scan-minimum value
-  $(document).on('change', '.conf-scan-min', () => {
+  $(document).on('change', '.conf-scan-min', function transferScanMin() {
     const min = $(this).val();
     const intervalID = $(this).parent().parent().parent().attr('scanid');
-    ScansList[simulation.activeProcessId].ScansContainer[intervalID].min = min;
+    ScansList[simulation.getActiveProcessId()].ScansContainer[intervalID].min = min;
   });
-
 
   // Modify field: Scan-maximum value
-  $(document).on('change', '.conf-scan-max', () => {
+  $(document).on('change', '.conf-scan-max', function transferScanMax() {
     const max = $(this).val();
     const intervalID = $(this).parent().parent().parent().attr('scanid');
-    ScansList[simulation.activeProcessId].ScansContainer[intervalID].max = max;
+    ScansList[simulation.getActiveProcessId()].ScansContainer[intervalID].max = max;
   });
-
 
   // Modify field: Scan-inc value
-  $(document).on('change', '.conf-scan-inc', () => {
+  $(document).on('change', '.conf-scan-inc', function transferScanInc() {
     const inc = $(this).val();
     const intervalID = $(this).parent().parent().parent().attr('scanid');
-    ScansList[simulation.activeProcessId].ScansContainer[intervalID].inc = inc;
+    ScansList[simulation.getActiveProcessId()].ScansContainer[intervalID].inc = inc;
   });
-
 
   // Plot fields modification
   $('#scan-plot-title').change(() => {
-    ScansList[simulation.activeProcessId].title = $('#scan-plot-title').val();
+    ScansList[simulation.getActiveProcessId()].title = $('#scan-plot-title').val();
   });
-
 
   $('#scan-plot-xlabel').change(() => {
-    ScansList[simulation.activeProcessId].xlabel = $('#scan-plot-xlabel').val();
+    ScansList[simulation.getActiveProcessId()].xlabel = $('#scan-plot-xlabel').val();
   });
-
 
   $('#scan-plot-ylabel').change(() => {
-    ScansList[simulation.activeProcessId].ylabel = $('#scan-plot-ylabel').val();
+    ScansList[simulation.getActiveProcessId()].ylabel = $('#scan-plot-ylabel').val();
   });
-
 
   $('#scan-plot-xmin').change(() => {
-    ScansList[simulation.activeProcessId].xmin = $('#scan-plot-xmin').val();
+    ScansList[simulation.getActiveProcessId()].xmin = $('#scan-plot-xmin').val();
   });
 
-
   $('#scan-plot-xmax').change(() => {
-    ScansList[simulation.activeProcessId].xmax = $('#scan-plot-xmax').val();
+    ScansList[simulation.getActiveProcessId()].xmax = $('#scan-plot-xmax').val();
   });
 }
