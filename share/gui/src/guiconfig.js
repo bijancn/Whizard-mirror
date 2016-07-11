@@ -3,11 +3,8 @@ const log = require('js-logger');
 
 function setDefaults() {
   const context = {};
-  // Directory to output whizard files
-  context.whizardOutputDir = 'output-whiz/';
-
-  // Directory to store sindarin file
-  context.whizardOutputSin = 'output/';
+  // Directory to store sindarin file and run whizard
+  context.outputDir = 'output';
 
   // Default port
   context.port = '3000';

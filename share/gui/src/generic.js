@@ -1,4 +1,4 @@
-const guiconfig = require('./guiconfig');
+const context = require('./guiconfig').context;
 
 // Ability to remove specific type of elements from the array
 // array.remove('like this').remove('and like this');
@@ -89,7 +89,7 @@ function getLatexImage(tex) {
 function image(str1, str2) {
   // TODO: (bcn 2016-07-01) this function should try to get image and return tex
   // if it fails. Even better it should use local installation of mathjax!
-  if (guiconfig.context.useGoogleLatex) {
+  if (context.useGoogleLatex) {
     return '<img src="' + getLatexImage(str1) + '">';
   }
   return str2;
@@ -111,36 +111,30 @@ export function htmlEscape(str) {
 }
 
 
-// TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
 export function getFileTimestamp(file) {
-  $.post('/checktimestamp', {filename: file}, (data) => {
-    console.warn(data);
-  });
+  $.post('/checktimestamp', {filename: file}, () => {});
 }
 
 
-// TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
 function getFileTimestampAsync(file) {
   return $.ajax({
     type: 'POST',
     url: '/checktimestamp',
     data: {filename: file},
-    success: (data) => {console.warn(data);},
+    success: () => {},
   });
 }
 
 
 function monitorHistogramChangesFromCheck(lastCheck, whizRunning) {
   if (!whizRunning) return;
-  console.warn('^-.-^');
-  const obj = getFileTimestampAsync('output-whiz/whizard_analysis.pdf');
+  const obj = getFileTimestampAsync(context.outputDir + '/whizard_analysis.pdf');
   obj.success((data) => {
     const thisCheck = new Date(data);
     const diff = Math.abs(lastCheck - thisCheck) / 1000;
     // Redisplay histogram if timestamp checked last time and timestamp check
     // this time differs
     if (diff > 0) {
-      console.warn(diff);
       $('#out_hist').html('<embed src="whizard_analysis.pdf" width="100%" height="700px">');
     }
     setTimeout(() => {monitorHistogramChangesFromCheck(thisCheck, whizRunning);}, 10000);
@@ -148,10 +142,9 @@ function monitorHistogramChangesFromCheck(lastCheck, whizRunning) {
 }
 
 
-// Monitor for changes in output-whiz/whizard_analysis.pdf, if timestamp
-// differences detected redisplay histogram.
+// Monitor for changes, if timestamp differences detected, redisplay histogram
 export function monitorHistogramChanges(whizRunning) {
-  const obj = getFileTimestampAsync('output-whiz/whizard_analysis.pdf');
+  const obj = getFileTimestampAsync(context.outputDir + '/whizard_analysis.pdf');
   obj.success((data) => {
     const thisCheck = new Date(data);
     monitorHistogramChangesFromCheck(thisCheck, whizRunning);
@@ -162,16 +155,14 @@ export function monitorHistogramChanges(whizRunning) {
 // TODO: (bcn 2016-06-26) refactor with monitorHistogramChangesFromCheck
 function monitorLogChangesFromCheck(lastCheck, whizRunning) {
   if (!whizRunning) return;
-  console.warn('^-.-^ log');
-  const obj = getFileTimestampAsync('output-whiz/whizard.log');
+  const obj = getFileTimestampAsync(context.outputDir + '/whizard.log');
   obj.success((data) => {
     const thisCheck = new Date(data);
     const diff = Math.abs(lastCheck - thisCheck) / 1000;
     // Redisplay histogram if timestamp checked last time and timestamp check
     // this time differs
     if (diff > 0) {
-      console.warn(diff);
-      $('#whizoutput').load('whizard.log').fadeIn('fast');
+      $('#whizoutput').load(context.outputDir + '/whizard.log').fadeIn('fast');
       $('.outputcontainer').fadeIn('fast');
     }
     setTimeout(() => {monitorLogChangesFromCheck(thisCheck, whizRunning);}, 5000);
@@ -181,7 +172,7 @@ function monitorLogChangesFromCheck(lastCheck, whizRunning) {
 
 // Monitor whizard.log during computation
 export function monitorLogChanges(whizRunning) {
-  const obj = getFileTimestampAsync('output-whiz/whizard.log');
+  const obj = getFileTimestampAsync(context.outputDir + '/whizard.log');
   obj.success((data) => {
     const thisCheck = new Date(data);
     monitorLogChangesFromCheck(thisCheck, whizRunning);

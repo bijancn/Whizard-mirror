@@ -5,6 +5,7 @@ const main = require('./main');
 const process = require('./process');
 const simulation = require('./simulation');
 const cuts = require('./cuts');
+const context = require('./guiconfig').context;
 
 const ToolbarColumns = 4;
 
@@ -193,7 +194,6 @@ $(document).ready(() => {
       });
   });
 
-  // TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
   // Button: Run Whizard
   $('.runwhiz').click(() => {
     // Run option: [--rebuild-events, --rebuild-grids, --rebuild]
@@ -205,14 +205,12 @@ $(document).ready(() => {
     $('#whizoutput').fadeOut('fast');
     $('.outputcontainer').fadeOut('fast');
 
-    // TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
     // Functionality
     $('.runwhiz, .runarrow').attr('disabled', 'disabled');
     const SindarinScript = main.rebuildVariables();
     let whizRunning = true;
     generic.monitorLogChanges(whizRunning);
 
-    // TODO: (bcn 2016-07-01) I think this route has to be setup. Check old version
     // eslint-disable-next-line no-unused-vars
     $.post('/runwhiz', {src: SindarinScript, option}, (data) => {
       // Animation
@@ -223,7 +221,7 @@ $(document).ready(() => {
       whizRunning = false;
       $('.runwhiz, .runarrow').removeAttr('disabled');
       // Display output whizard file
-      $('#whizoutput').load('whizard.log').fadeIn('fast');
+      $('#whizoutput').load('/' + context.outputDir + '/whizard.log').fadeIn('fast');
       // Display pdf (assuming there exists one for now)
       $('#out_hist').html(
           '<embed src="whizard_analysis.pdf" width="100%" height="700px">');
@@ -231,7 +229,7 @@ $(document).ready(() => {
       // Whiz->GUI error parser
       // AM: check for other keywords, change method
       const CritKeyword = 'FATAL ERROR:';
-      const str = $.ajax({url: 'whizard.log', async: false}).responseText;
+      const str = $.ajax({url: '/' + context.outputDir + '/whizard.log', async: false}).responseText;
 
       if (str.indexOf(CritKeyword) > -1) {
         const s = str.substring(str.lastIndexOf(CritKeyword),
