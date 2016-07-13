@@ -108,6 +108,7 @@ end module blha_olp_interfaces
 <<BLHA OLP interfaces: types>>=
   type, abstract, extends (prc_user_defined_base_t) :: prc_blha_t
     integer :: n_particles
+    integer :: n_proc
     integer, dimension(:), allocatable :: i_born, i_sc, i_cc
     integer, dimension(:), allocatable :: i_real
     integer, dimension(:), allocatable :: i_virt
@@ -1093,7 +1094,8 @@ end module blha_olp_interfaces
     class is (blha_driver_t)
        call driver%read_contract_file (flavors, amp_type, flv_index, label, helicities)
     end select
-    do i_proc = 1, size (amp_type)
+    object%n_proc = count (amp_type >= 0)
+    do i_proc = 1, object%n_proc
        if (amp_type (i_proc) < 0) exit
        select case (amp_type (i_proc))
        case (BLHA_AMP_TREE)
@@ -1112,9 +1114,6 @@ end module blha_olp_interfaces
              call msg_fatal ("Color-correlated matrix element present, &
                   &but cc-indices are not allocated!")
           end if
-          if (allocated (object%i_hel)) then 
-             object%i_hel (i_proc, :) = helicities (label(i_proc), :)
-          end if
        case (BLHA_AMP_SC)
           if (allocated (object%i_sc)) then
              object%i_sc(flv_index(i_proc)) = label(i_proc)
@@ -1129,12 +1128,11 @@ end module blha_olp_interfaces
              call msg_fatal ("Loop matrix element present, &
                   &but virt-indices are not allocated!")
           end if
-          if (allocated (object%i_hel)) then 
-             object%i_hel (i_proc, :) = helicities (label(i_proc), :)
-          end if
        case default
           call msg_fatal ("Undefined amplitude type")
        end select
+       if (allocated (object%i_hel)) &
+          object%i_hel (i_proc, :) = helicities (label(i_proc), :)
     end do
   end subroutine prc_blha_read_contract_file
 
@@ -1201,7 +1199,7 @@ end module blha_olp_interfaces
           else
              n_hel = object%n_flv * object%data%n_in * 2
           end if
-          allocate (object%i_hel(n_hel, object%data%n_in))
+          allocate (object%i_hel (n_hel, object%data%n_in))
        else
           allocate (object%i_virt (object%n_flv), &
                     object%i_cc (object%n_flv))
@@ -1224,7 +1222,13 @@ end module blha_olp_interfaces
        allocate (object%i_real (object%n_flv))
        object%i_real = 0
     else if (blha_template%compute_born ()) then
-       allocate (object%i_born (object%n_flv))
+       if (blha_template%include_polarizations) then
+          n_hel = 4
+          allocate (object%i_hel (n_hel, object%data%n_in))
+       else
+          n_hel = 1
+       end if
+       allocate (object%i_born (object%n_flv * n_hel))
        object%i_born = 0
     end if
 
@@ -1546,11 +1550,9 @@ Hence, the interface is simpler than in the other routines.
     integer, dimension(:,:), allocatable :: hel
     class(prc_blha_t), intent(in) :: object
     logical, intent(in), optional :: invert_second
-    integer :: i, n_hel
-    n_hel = object%n_flv * (2 * object%data%n_in)
-    n_hel = n_hel * 2
-    allocate (hel (n_hel, object%data%n_in))
-    do i = 1, n_hel
+    integer :: i
+    allocate (hel (object%n_proc, object%data%n_in))
+    do i = 1, object%n_proc
        hel(i,:) = object%get_beam_helicities (i, invert_second)
     end do
   end function prc_blha_get_beam_helicities_array
@@ -1608,8 +1610,6 @@ Hence, the interface is simpler than in the other routines.
     integer :: i, j
     n1 = size (helicities, dim=1)
     n2 = size (object%get_beam_helicities (), dim=1)
-    if ((n2 / 2) /= n1) &
-       call msg_fatal ("Setup beam helicities: OLC and Whizard arrays must have the same length")
     allocate (object%i_whizard_to_i_olc (n2)) 
     allocate (hel_olc (n2, 2))
     hel_olc = object%get_beam_helicities (invert_second = .true.)

@@ -7580,23 +7580,24 @@ stored in the kinematics subobject to their source.  This is a side effect.
           sqme = real (term%connected%trace%get_matrix_element (1))
        end select
     else
-       select type (core => component%config%core)
-       class is (prc_blha_t)
-          n_flv = term%config%data%n_flv
-          do i_flv = 1, n_flv
-             sqme = sqme + component%compute_sqme_born_from_blha (core, i_flv, term, .false.)
-          end do
-       class is (prc_user_defined_base_t)
-          n_flv = term%config%data%n_flv
-          do i_flv = 1, n_flv
-             call core%update_alpha_s (component%core_state, term%fac_scale)
-             sqme = sqme + core%compute_sqme (i_flv, term%int_hard%get_momenta ())
-          end do
-       class default
-          sqme = real (term%connected%trace%get_matrix_element (1))
-       end select
+       !select type (core => component%config%core)
+       !class is (prc_blha_t)
+       !   n_flv = term%config%data%n_flv
+       !   do i_flv = 1, n_flv
+       !      sqme = sqme + component%compute_sqme_born_from_blha (core, i_flv, term, .false.)
+       !   end do
+       !class is (prc_user_defined_base_t)
+       !   n_flv = term%config%data%n_flv
+       !   do i_flv = 1, n_flv
+       !      call core%update_alpha_s (component%core_state, term%fac_scale)
+       !      sqme = sqme + core%compute_sqme (i_flv, term%int_hard%get_momenta ())
+       !   end do
+       !class default
+       !   sqme = real (term%connected%trace%get_matrix_element (1))
+       !end select
     end if
-    component%sqme = sqme * term%weight
+    !component%sqme = sqme * term%weight
+    component%sqme = real (term%connected%trace%get_matrix_element (1)) * term%weight
   end subroutine component_instance_evaluate_sqme_born
 
 @ %def component_instance_evaluate_sqme_born
@@ -8142,11 +8143,9 @@ relevant for a NLO algorithm.
     term%int_hard = config%int
     select type (core)
     class is (prc_user_defined_base_t)
-       if (associated (nlo_controller)) then
-          call reduce_interaction (term%int_hard, &
-             core%includes_polarization (), .false.)
-          me_already_squared = .true.
-       end if
+       call reduce_interaction (term%int_hard, &
+          core%includes_polarization (), .false.)
+       me_already_squared = .true.
        allocate (term%amp (term%int_hard%get_n_matrix_elements ()))
     class default
        allocate (term%amp (term%config%n_allowed))
@@ -8220,19 +8219,15 @@ relevant for a NLO algorithm.
       class default
          call term%isolated%setup_square_trace (core, mask_in, term%config%col)
     end select
-    if (associated (term%nlo_controller)) then
-       if (nlo_type == NLO_VIRTUAL) then
-          n_sub = term%nlo_controller%get_n_sub ()
-       else
-          !!! No integration of real subtraction in interactions yet
-          n_sub = 0
-       end if
-       call term%connected%setup_connected_trace (term%isolated, &
-          undo_helicities = undo_helicities (core, me_already_squared), &
-          n_sub = n_sub)
+    if (nlo_type == NLO_VIRTUAL) then
+       n_sub = term%nlo_controller%get_n_sub ()
     else
-       call term%connected%setup_connected_trace (term%isolated)
+       !!! No integration of real subtraction in interactions yet
+       n_sub = 0
     end if
+    call term%connected%setup_connected_trace (term%isolated, &
+       undo_helicities = undo_helicities (core, me_already_squared), &
+       n_sub = n_sub)
 
     associate (int_eff => term%isolated%int_eff)
       state_matrix => int_eff%get_state_matrix_ptr ()
@@ -8792,7 +8787,8 @@ method may modify the [[core_state]] workspace object.
                 do i = 1, n_amps
                    call core%compute_sqme_born (i, term%p_hard, term%ren_scale, &
                       sqme, bad_point)
-                   term%amp(i) = cmplx (sqme, 0, default)
+                   i_born = core%get_helicity_list (i)
+                   term%amp(i_born) = cmplx (sqme, 0, default)
                 end do
              end select
           end select
@@ -9867,33 +9863,27 @@ to subobject of [[instance]].
     type(prc_openloops_t), intent(inout) :: core
     integer :: i_term
     type(quantum_numbers_t), dimension(:,:), allocatable :: qn
-    integer :: h, i, j
+    integer :: h, i, j, n_in
     integer, dimension(:,:), allocatable :: helicities
     type(helicity_t), dimension(:), allocatable :: hel
-    integer, dimension(:), allocatable :: sub
     type(quantum_numbers_mask_t) :: qn_mask
     call qn_mask%set_sub (1)
-    select type (pcm => instance%pcm)
-    type is (pcm_instance_nlo_t)
-       i_term = component%config%i_term(1) 
-       qn = instance%term(i_term)%isolated%trace%get_quantum_numbers (qn_mask)
-       allocate (helicities (size (qn, dim=1), 2))
-       allocate (hel (size (qn, dim=1)))
-       allocate (sub (size (qn, dim=1)))
-       do i = 1, size (qn, dim=1)
-          sub(i) = qn(i, 1)%get_subtraction_index () 
-          do j = 1, pcm%controller%get_n_in ()
-             hel(j) = qn(i, j)%get_helicity () 
-             call hel(j)%diagonalize ()
-             call hel(j)%get_indices (h, h)
-             !!! Second helicity comes with a minus sign because OpenLoops
-             !!! inverts the helicity index of antiparticles
-             !if (j == 2) h = -h 
-             helicities (i, j) = h
-          end do 
-       end do
-       call core%set_helicity_list (helicities) 
-    end select
+    i_term = component%config%i_term(1) 
+    qn = instance%term(i_term)%isolated%trace%get_quantum_numbers (qn_mask)
+    n_in = instance%term(i_term)%int_hard%get_n_in () 
+    allocate (helicities (size (qn, dim=1), 2))
+    allocate (hel (size (qn, dim=1)))
+    do i = 1, size (qn, dim=1)
+       do j = 1, n_in
+          hel(j) = qn(i, j)%get_helicity () 
+          call hel(j)%diagonalize ()
+          call hel(j)%get_indices (h, h)
+          !!! Second helicity comes with a minus sign because OpenLoops
+          !!! inverts the helicity index of antiparticles
+          helicities (i, j) = h
+       end do 
+    end do
+    call core%set_helicity_list (helicities) 
   end subroutine process_instance_transfer_helicities
 
 @ %def process_instance_transfer_helicities
