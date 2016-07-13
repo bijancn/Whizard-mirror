@@ -8734,7 +8734,8 @@ method may modify the [[core_state]] workspace object.
     real(default), dimension(blha_result_array_size &
        (term%int_hard%get_n_tot (), BLHA_AMP_CC)) :: sqme_cc
     logical :: bad_point
-    integer :: n_sub, n_amps
+    integer :: n_sub, n_amps, n_hel
+    integer :: i_born, i_virt, i_cc, i_sub
     i_component = term%config%i_component
     i_term = term%config%i_term
     term%p_hard = term%int_hard%get_momenta ()
@@ -8750,28 +8751,36 @@ method may modify the [[core_state]] workspace object.
           n_sub = term%int_hard%get_n_sub ()
           if (n_sub > 0) then
              if (core%includes_polarization ()) then
-                n_amps = n_amps - (4 * n_sub)
+                n_hel = 4
              else
-                n_amps = n_amps - n_sub
+                n_hel = 1
              end if
+             n_amps = n_amps - n_hel * n_sub
           end if
           do i = 1, n_amps
+             select type (core)
+             class is (prc_blha_t)
+                i_virt = core%get_helicity_list (i)
+             class default
+                i_virt = 1
+             end select
+             i_born = i_virt + n_hel
              call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
-             term%amp(i) = cmplx (sqme_virt(3), 0, default)
-             if (core%includes_polarization ()) then
-                j = 4
-             else
-                j = 1
-             end if
+             term%amp(i_virt) = cmplx (sqme_virt(3), 0, default)
              if (term%nlo_controller%settings%use_internal_color_correlations) then
-                term%amp(i + j) = cmplx (sqme_virt(4), 0, default)
+                term%amp(i_born) = cmplx (sqme_virt(4), 0, default)
              else
                 select type (core)
                 class is (prc_blha_t)
                    call core%compute_sqme_cc_raw (i, term%p_hard, term%ren_scale, &
                       sqme_cc, bad_point)
-                   term%amp (i + j) = cmplx (sqme_virt(4), 0._default)
-                   term%amp (i + j + 1 : i + j + n_sub - 1) = sqme_cc 
+                   term%amp (i_born) = cmplx (sqme_virt(4), 0._default)
+                   do i_sub = 1, n_sub - 1
+                      print *, 'i_sub: ', i_sub  
+                      i_cc = core%get_helicity_list (i + n_hel)
+                      i_cc = i_cc + (i_sub + 1) * n_hel
+                      term%amp(i_cc) = sqme_cc(i_sub)
+                   end do 
                 end select
              end if
           end do
@@ -9855,10 +9864,12 @@ to subobject of [[instance]].
     integer, dimension(:,:), allocatable :: helicities
     type(helicity_t), dimension(:), allocatable :: hel
     integer, dimension(:), allocatable :: sub
+    type(quantum_numbers_mask_t) :: qn_mask
+    call qn_mask%set_sub (1)
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
        i_term = component%config%i_term(1) 
-       qn = instance%term(i_term)%isolated%trace%get_quantum_numbers ()
+       qn = instance%term(i_term)%isolated%trace%get_quantum_numbers (qn_mask)
        allocate (helicities (size (qn, dim=1), 2))
        allocate (hel (size (qn, dim=1)))
        allocate (sub (size (qn, dim=1)))
@@ -9870,11 +9881,12 @@ to subobject of [[instance]].
              call hel(j)%get_indices (h, h)
              !!! Second helicity comes with a minus sign because OpenLoops
              !!! inverts the helicity index of antiparticles
-             if (j == 2) h = -h 
+             !if (j == 2) h = -h 
              helicities (i, j) = h
           end do 
        end do
-       call core%set_helicity_list (helicities, sub) 
+       call pcm%controller%virtual_index%fill (helicities, core%get_beam_helicities ())
+       call core%set_helicity_list (helicities) 
     end select
   end subroutine process_instance_transfer_helicities
 
@@ -11574,10 +11586,14 @@ one has to bring NLO information there.
                 type is (pcm_instance_nlo_t)
                    n_sub =  pcm%controller%get_n_sub ()
                 end select
-                if (core%includes_polarization ()) then
-                   call instance%transfer_helicities (instance%component(i), core)
-                   p = instance%get_phase_space_point (i)
-                   call core%warmup_helicities (p)
+                if (component_config%config%get_nlo_type () /= NLO_SUBTRACTION) then
+                   if (core%includes_polarization ()) then
+                      call instance%transfer_helicities (instance%component(i), core)
+                      p = instance%get_phase_space_point (i)
+                      call core%warmup_helicities (p)
+                   else
+                      call core%set_helicity_list_trivial (n_sub)
+                   end if
                 else
                    call core%set_helicity_list_trivial (n_sub)
                 end if

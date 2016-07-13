@@ -90,6 +90,7 @@ end module blha_olp_interfaces
     logical, dimension(0:3) :: compute_component
     logical :: include_polarizations = .false.
     logical :: switch_off_muon_yukawas = .false.
+    logical :: use_internal_color_correlations = .true.
     real(default) :: external_top_yukawa = -1._default
   contains
   <<BLHA OLP interfaces: blha template: TBP>>
@@ -412,6 +413,32 @@ end module blha_olp_interfaces
   end subroutine blha_template_set_subtraction
 
 @ %def blha_template_set_components
+@
+<<BLHA OLP interfaces: blha template: TBP>>=
+  procedure :: set_internal_color_correlations &
+     => blha_template_set_internal_color_correlations
+<<BLHA OLP interfaces: procedures>>=
+  subroutine blha_template_set_internal_color_correlations &
+     (template, val)
+    class(blha_template_t), intent(inout) :: template
+    logical, intent(in) :: val
+    template%use_internal_color_correlations = val
+  end subroutine blha_template_set_internal_color_correlations
+
+@ %def blha_template_set_internal_color_correlations
+@
+<<BLHA OLP interfaces: blha template: TBP>>=
+  procedure :: get_internal_color_correlations &
+     => blha_template_get_internal_color_correlations
+<<BLHA OLP interfaces: procedures>>=
+  pure function blha_template_get_internal_color_correlations (template) &
+     result (val)
+    logical :: val
+    class(blha_template_t), intent(in) :: template
+    val = template%use_internal_color_correlations
+  end function blha_template_get_internal_color_correlations
+
+@ %def blha_template_use_internal_color_correlations
 @
 <<BLHA OLP interfaces: blha template: TBP>>=
   procedure :: compute_born => blha_template_compute_born
@@ -1085,8 +1112,9 @@ end module blha_olp_interfaces
              call msg_fatal ("Color-correlated matrix element present, &
                   &but cc-indices are not allocated!")
           end if
-          if (allocated (object%i_hel)) &
-             object%i_hel (flv_index(i_proc), :) = helicities (label(i_proc), :)
+          if (allocated (object%i_hel)) then 
+             object%i_hel (i_proc, :) = helicities (label(i_proc), :)
+          end if
        case (BLHA_AMP_SC)
           if (allocated (object%i_sc)) then
              object%i_sc(flv_index(i_proc)) = label(i_proc)
@@ -1101,8 +1129,9 @@ end module blha_olp_interfaces
              call msg_fatal ("Loop matrix element present, &
                   &but virt-indices are not allocated!")
           end if
-          if (allocated (object%i_hel)) &
-             object%i_hel (flv_index(i_proc), :) = helicities (label(i_proc), :)
+          if (allocated (object%i_hel)) then 
+             object%i_hel (i_proc, :) = helicities (label(i_proc), :)
+          end if
        case default
           call msg_fatal ("Undefined amplitude type")
        end select
@@ -1160,14 +1189,19 @@ end module blha_olp_interfaces
   subroutine prc_blha_init_blha (object, blha_template)
     class(prc_blha_t), intent(inout) :: object
     type(blha_template_t), intent(inout) :: blha_template
+    integer :: n_hel
     object%n_particles = size (object%data%flv_state, 1)
     object%n_flv = size (object%data%flv_state, 2)
     if (blha_template%compute_loop ()) then
        if (blha_template%include_polarizations) then
           allocate (object%i_virt (object%n_flv * object%data%n_in * 2), &
                     object%i_cc (object%n_flv * object%data%n_in * 2))
-          allocate (object%i_hel (object%n_flv * object%data%n_in * 2, &
-               object%data%n_in))
+          if (blha_template%use_internal_color_correlations) then
+             n_hel = object%n_flv * object%data%n_in * 4
+          else
+             n_hel = object%n_flv * object%data%n_in * 2
+          end if
+          allocate (object%i_hel(n_hel, object%data%n_in))
        else
           allocate (object%i_virt (object%n_flv), &
                     object%i_cc (object%n_flv))
@@ -1175,9 +1209,14 @@ end module blha_olp_interfaces
        object%i_virt = 0
        object%i_cc = 0
     else if (blha_template%compute_subtraction ()) then
-       allocate (object%i_born (object%n_flv), &
-                 object%i_cc (object%n_flv) , &
-                 object%i_sc (object%n_flv))
+       if (blha_template%include_polarizations) then
+          allocate (object%i_born (object%n_flv * 4), &
+             object%i_cc (object%n_flv * 4), &
+             object%i_sc (object%n_flv * 4))
+       else
+          allocate (object%i_born (object%n_flv), &
+             object%i_cc (object%n_flv) , object%i_sc (object%n_flv))
+       end if
        object%i_born = 0
        object%i_cc = 0
        object%i_sc = 0
@@ -1474,12 +1513,16 @@ Hence, the interface is simpler than in the other routines.
   procedure :: get_beam_helicities_single => prc_blha_get_beam_helicities_single
   procedure :: get_beam_helicities_array => prc_blha_get_beam_helicities_array
 <<BLHA OLP interfaces: procedures>>=
-  function prc_blha_get_beam_helicities_single (object, i) result (hel)
+  function prc_blha_get_beam_helicities_single (object, i, invert_second) result (hel)
     integer, dimension(:), allocatable :: hel
     class(prc_blha_t), intent(in) :: object
+    logical, intent(in), optional :: invert_second
     integer, intent(in) :: i
+    logical :: inv
+    inv = .false.; if (present (invert_second)) inv = invert_second
     allocate (hel (object%data%n_in))
     hel = object%i_hel (i, :)
+    if (inv .and. object%data%n_in == 2) hel(2) = -hel(2)  
   end function prc_blha_get_beam_helicities_single
 
 @ %def prc_blha_get_beam_helicities_single
@@ -1499,14 +1542,16 @@ Hence, the interface is simpler than in the other routines.
 @ %def prc_blha_includes_polarization
 @
 <<BLHA OLP interfaces: procedures>>=
-  function prc_blha_get_beam_helicities_array (object) result (hel)
+  function prc_blha_get_beam_helicities_array (object, invert_second) result (hel)
     integer, dimension(:,:), allocatable :: hel
     class(prc_blha_t), intent(in) :: object
+    logical, intent(in), optional :: invert_second
     integer :: i, n_hel
     n_hel = object%n_flv * (2 * object%data%n_in)
+    n_hel = n_hel * 2
     allocate (hel (n_hel, object%data%n_in))
     do i = 1, n_hel
-       hel(i,:) = object%get_beam_helicities (i)
+       hel(i,:) = object%get_beam_helicities (i, invert_second)
     end do
   end function prc_blha_get_beam_helicities_array
 
@@ -1554,46 +1599,69 @@ Hence, the interface is simpler than in the other routines.
   procedure :: set_helicity_list => prc_blha_set_helicity_list
 <<BLHA OLP interfaces: procedures>>=
   subroutine prc_blha_set_helicity_list (object, &
-     helicities, subtraction_index)
+     helicities)
     class(prc_blha_t), intent(inout) :: object
     integer, intent(in), dimension(:,:) :: helicities
-    integer, intent(in), dimension(:) :: subtraction_index
     integer, dimension(:, :), allocatable :: hel_olc
+    integer, dimension(:), allocatable :: i_tmp
     integer :: n1, n2
     integer :: i, j
     n1 = size (helicities, dim=1)
     n2 = size (object%get_beam_helicities (), dim=1)
-    if ((n1 / 2) /= n2) &
+    print *, 'n1: ', n1, 'n2: ', n2
+    print *, 'Omega: ', helicities (1, :)
+    if ((n2 / 2) /= n1) &
        call msg_fatal ("Setup beam helicities: OLC and Whizard arrays must have the same length")
-    allocate (object%i_whizard_to_i_olc (n1))
-    allocate (hel_olc (n1, 2))
-    hel_olc = object%get_beam_helicities ()
+    !allocate (object%i_whizard_to_i_olc (n2))
+    allocate (object%i_whizard_to_i_olc (n2)) 
+    allocate (hel_olc (n2, 2))
+    hel_olc = object%get_beam_helicities (invert_second = .true.)
+    do i = 1, n2
+       print *, 'olc: ', hel_olc(i, :)
+    end do
+    do i = 1, n1
+       print *, 'whizard: ', helicities (i, :)
+    end do
     do i = 1, n1
        do j = 1, n2
+          print *, 'Check: ', i, j
+          print *, helicities (i, :)
+          print *, hel_olc (j, :) 
           if (all (helicities (i, :) == hel_olc (j, :))) then
-             if (subtraction_index (i) > 0) then
-                object%i_whizard_to_i_olc (i) = j + n2
-             else
-                object%i_whizard_to_i_olc (i) = j
-             end if 
+             object%i_whizard_to_i_olc (j) = i
+             !if (j > n1) then
+             !else
+             !   object%i_whizard_to_i_olc (i) = i
+             !end if 
           end if
        end do
     end do
+    print *, 'List: ', object%i_whizard_to_i_olc
   end subroutine prc_blha_set_helicity_list
 
 @ %def prc_blha_set_helicity_list
 @
 <<BLHA OLP interfaces: prc blha: TBP>>=
-  procedure :: get_helicity_list => prc_blha_get_helicity_list
+  generic :: get_helicity_list => get_helicity_list_single, get_helicity_list_array
+  procedure :: get_helicity_list_single => prc_blha_get_helicity_list_single
+  procedure :: get_helicity_list_array => prc_blha_get_helicity_list_array
 <<BLHA OLP interfaces: procedures>>=
-  function prc_blha_get_helicity_list (object) result (i_out)
+  function prc_blha_get_helicity_list_single (object, i) result (i_out)
+    integer :: i_out
+    class(prc_blha_t), intent(in) :: object
+    integer, intent(in) :: i
+    i_out = object%i_whizard_to_i_olc (i)
+  end function prc_blha_get_helicity_list_single
+
+  function prc_blha_get_helicity_list_array (object) result (i_out)
     integer, dimension(:), allocatable :: i_out
     class(prc_blha_t), intent(in) :: object
     allocate (i_out (size (object%i_whizard_to_i_olc)))
     i_out = object%i_whizard_to_i_olc
-  end function prc_blha_get_helicity_list 
+  end function prc_blha_get_helicity_list_array
     
-@ %def prc_blha_get_helicity_list
+@ %def prc_blha_get_helicity_list_array
+@ %def prc_blha_get_helicity_list_single
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 The module is split into a configuration interface which manages configuration

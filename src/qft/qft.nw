@@ -6094,6 +6094,7 @@ kept.  If [[h]] is set, [[hd]] is irrelevant and will be kept
      logical :: cg = .false.
      logical :: h = .false.
      logical :: hd = .false.
+     integer :: sub = 0
    contains
    <<Quantum numbers: quantum numbers mask: TBP>>
   end type quantum_numbers_mask_t
@@ -6189,6 +6190,7 @@ array case.
   procedure :: set_flavor => quantum_numbers_mask_set_flavor
   procedure :: set_color => quantum_numbers_mask_set_color
   procedure :: set_helicity => quantum_numbers_mask_set_helicity
+  procedure :: set_sub => quantum_numbers_mask_set_sub
 <<Quantum numbers: procedures>>=
   elemental subroutine quantum_numbers_mask_set_flavor (mask, mask_f)
     class(quantum_numbers_mask_t), intent(inout) :: mask
@@ -6218,9 +6220,16 @@ array case.
     end if
   end subroutine quantum_numbers_mask_set_helicity
 
+  elemental subroutine quantum_numbers_mask_set_sub (mask, sub)
+    class(quantum_numbers_mask_t), intent(inout) :: mask
+    integer, intent(in) :: sub
+    mask%sub = sub
+  end subroutine quantum_numbers_mask_set_sub
+
 @ %def quantum_numbers_mask_set_flavor
 @ %def quantum_numbers_mask_set_color
 @ %def quantum_numbers_mask_set_helicity
+@ %def quantum_numbers_mask_set_sub
 @ The following routines assign part of a mask, depending on the flags given.
 <<Quantum numbers: quantum numbers mask: TBP>>=
   procedure :: assign => quantum_numbers_mask_assign
@@ -6402,6 +6411,7 @@ be removed by the applied mask, e.g., if polarization is defined but
     else if (mask%hd) then
        redundant = .not. qn%h%is_diagonal ()
     end if
+    if (mask%sub > 0) redundant = qn%sub >= mask%sub
   end function quantum_numbers_are_redundant
 
 @ %def quantum_numbers_are_redundant
@@ -7034,9 +7044,14 @@ independent matrix elements.
 Return the quantum number array, using an index.  We have to scan the
 state matrix since there is no shortcut.
 <<State matrices: state matrix: TBP>>=
-  procedure :: get_quantum_numbers => state_matrix_get_quantum_numbers
+  generic :: get_quantum_numbers => get_quantum_numbers_single, &
+                                    get_quantum_numbers_all
+  procedure :: get_quantum_numbers_single => &
+     state_matrix_get_quantum_numbers_single
+  procedure :: get_quantum_numbers_all => &
+     state_matrix_get_quantum_numbers_all
 <<State matrices: procedures>>=
-  function state_matrix_get_quantum_numbers (state, i) result (qn)
+  function state_matrix_get_quantum_numbers_single (state, i) result (qn)
     class(state_matrix_t), intent(in), target :: state
     integer, intent(in) :: i
     type(quantum_numbers_t), dimension(state%depth) :: qn
@@ -7052,9 +7067,21 @@ state matrix since there is no shortcut.
        end if
        call it%advance ()
     end do
-  end function state_matrix_get_quantum_numbers
+  end function state_matrix_get_quantum_numbers_single
+  
+  function state_matrix_get_quantum_numbers_all (state) result (qn)
+    type(quantum_numbers_t), dimension(:,:), allocatable :: qn
+    class(state_matrix_t), intent(in), target :: state
+    integer :: i
+    allocate (qn (state%get_n_matrix_elements (), &
+       state%get_depth()))
+    do i = 1, state%get_n_matrix_elements ()
+       qn (i, :) = state%get_quantum_numbers (i)
+    end do
+  end function state_matrix_get_quantum_numbers_all
 
-@ %def state_matrix_get_quantum_numbers
+@ %def state_matrix_get_quantum_numbers_single
+@ %def state_matrix_get_quantum_numbers_all
 @ Return a single matrix element using its index.  Works only if the
 shortcut array is allocated.
 <<State matrices: state matrix: TBP>>=
@@ -9849,11 +9876,14 @@ this would be unity).
 @ Get the quantum number array that corresponds to a given index.
 <<Interactions: interaction: TBP>>=
   generic :: get_quantum_numbers => get_quantum_numbers_single, &
-                                    get_quantum_numbers_all
+                                    get_quantum_numbers_all, &
+                                    get_quantum_numbers_all_qn_mask
   procedure :: get_quantum_numbers_single => &
      interaction_get_quantum_numbers_single
   procedure :: get_quantum_numbers_all => &
      interaction_get_quantum_numbers_all
+  procedure :: get_quantum_numbers_all_qn_mask => &
+     interaction_get_quantum_numbers_all_qn_mask
 <<Interactions: procedures>>=
   function interaction_get_quantum_numbers_single (int, i) result (qn)
     type(quantum_numbers_t), dimension(:), allocatable :: qn
@@ -9874,8 +9904,28 @@ this would be unity).
     end do
   end function interaction_get_quantum_numbers_all 
     
+  function interaction_get_quantum_numbers_all_qn_mask (int, qn_mask) &
+     result (qn)
+    type(quantum_numbers_t), dimension(:,:), allocatable :: qn
+    class(interaction_t), intent(in) :: int
+    type(quantum_numbers_mask_t), intent(in) :: qn_mask
+    integer :: n_redundant, n_all, n_me
+    integer :: i
+    type(quantum_numbers_t), dimension(:,:), allocatable :: qn_all
+    qn_all = int%state_matrix%get_quantum_numbers () 
+    n_redundant = count (qn_all%are_redundant (qn_mask)) 
+    n_all = size (qn_all)
+    !!! Number of matrix elements = survivors / n_particles
+    n_me = (n_all - n_redundant) / int%state_matrix%get_depth ()
+    allocate (qn (n_me, int%state_matrix%get_depth()))
+    do i = 1, n_me
+       if (.not. any (qn_all(i, :)%are_redundant (qn_mask))) &
+          qn (i, :) = qn_all (i, :)
+    end do
+  end function interaction_get_quantum_numbers_all_qn_mask
 @ %def interaction_get_quantum_numbers_single
-@ %dif interaction_get_qantum_numbers_all
+@ %def interaction_get_quantum_numbers_all
+@ %def interaction_get_quantum_numbers_all_qn_mask
 @ Get the matrix element that corresponds to a set of quantum
 numbers, a given index, or return the whole array.
 <<Interactions: interaction: TBP>>=
