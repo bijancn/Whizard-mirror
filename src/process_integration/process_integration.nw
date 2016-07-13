@@ -8730,6 +8730,7 @@ method may modify the [[core_state]] workspace object.
     type(component_instance_t), dimension(:), intent(inout) :: component
     integer :: i_component, i_term, i, j, k
     !!! Needs to be factored out into its own routine!
+    real(default) :: sqme
     real(default), dimension(4) :: sqme_virt
     real(default), dimension(blha_result_array_size &
        (term%int_hard%get_n_tot (), BLHA_AMP_CC)) :: sqme_cc
@@ -8757,32 +8758,44 @@ method may modify the [[core_state]] workspace object.
              end if
              n_amps = n_amps - n_hel * n_sub
           end if
-          do i = 1, n_amps
-             select type (core)
-             class is (prc_blha_t)
-                i_virt = core%get_helicity_list (i)
-             class default
-                i_virt = 1
-             end select
-             i_born = i_virt + n_hel
-             call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
-             term%amp(i_virt) = cmplx (sqme_virt(3), 0, default)
-             if (term%nlo_controller%settings%use_internal_color_correlations) then
-                term%amp(i_born) = cmplx (sqme_virt(4), 0, default)
-             else
+          select case (term%nlo_type)
+          case (NLO_VIRTUAL)
+             do i = 1, n_amps
                 select type (core)
                 class is (prc_blha_t)
-                   call core%compute_sqme_cc_raw (i, term%p_hard, term%ren_scale, &
-                      sqme_cc, bad_point)
-                   term%amp (i_born) = cmplx (sqme_virt(4), 0._default)
-                   do i_sub = 1, n_sub - 1
-                      i_cc = core%get_helicity_list (i + n_hel)
-                      i_cc = i_cc + (i_sub + 1) * n_hel
-                      term%amp(i_cc) = sqme_cc(i_sub)
-                   end do 
+                   i_virt = core%get_helicity_list (i)
+                class default
+                   i_virt = 1
                 end select
-             end if
-          end do
+                i_born = i_virt + n_hel
+                call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
+                term%amp(i_virt) = cmplx (sqme_virt(3), 0, default)
+                if (term%nlo_controller%settings%use_internal_color_correlations) then
+                   term%amp(i_born) = cmplx (sqme_virt(4), 0, default)
+                else
+                   select type (core)
+                   class is (prc_blha_t)
+                      call core%compute_sqme_cc_raw (i, term%p_hard, term%ren_scale, &
+                         sqme_cc, bad_point)
+                      term%amp (i_born) = cmplx (sqme_virt(4), 0, default)
+                      do i_sub = 1, n_sub - 1
+                         i_cc = core%get_helicity_list (i + n_hel)
+                         i_cc = i_cc + (i_sub + 1) * n_hel
+                         term%amp(i_cc) = cmplx (sqme_cc(i_sub), 0, default)
+                      end do 
+                   end select
+                end if
+             end do
+          case (BORN, NLO_DGLAP)
+             select type (core)
+             class is (prc_blha_t)
+                do i = 1, n_amps
+                   call core%compute_sqme_born (i, term%p_hard, term%ren_scale, &
+                      sqme, bad_point)
+                   term%amp(i) = cmplx (sqme, 0, default)
+                end do
+             end select
+          end select
           !!! OpenLoops already includes a factor of 1 / 4 in the amplitudes. Undo it. 
           if (core%includes_polarization ()) term%amp = four * term%amp
        class default
