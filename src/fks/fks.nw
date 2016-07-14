@@ -214,6 +214,7 @@ module fks_regions
   use nlo_data, only: phs_identifier_t, check_for_phs_identifier
   use nlo_data, only: FKS_DEFAULT, FKS_RESONANCES
   use nlo_data, only: NO_FACTORIZATION, FACTORIZATION_THRESHOLD
+  use nlo_data, only: fks_template_t
 
   use ttv_formfactors, only: THR_POS_B, THR_POS_BBAR
   use ttv_formfactors, only: THR_POS_WP, THR_POS_WM
@@ -1586,15 +1587,43 @@ there is only a soft singularity if the radiated parton becomes soft.
     integer, intent(in) :: factorization_mode
     call reg_data%enlarge_singular_regions_with_resonances ()
     call reg_data%find_resonances ()
-    select type (map => reg_data%fks_mapping)
-    type is (fks_mapping_resonances_t)
-       call map%res_map%write ()
-    end select
     if (factorization_mode == FACTORIZATION_THRESHOLD) &
        call reg_data%set_isr_pseudo_regions ()
   end subroutine region_data_init_resonance_information
 
 @ %def region_data_init_resonance_information
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: set_resonance_mappings => region_data_set_resonance_mappings
+<<fks regions: procedures>>=
+  subroutine region_data_set_resonance_mappings (reg_data, resonance_histories)
+    class(region_data_t), intent(inout) :: reg_data
+    type(resonance_history_t), intent(in), dimension(:) :: resonance_histories
+    select type (map => reg_data%fks_mapping)
+    type is (fks_mapping_resonances_t)
+       call map%res_map%init (resonance_histories)
+    end select
+    !call nlo_controller%reg_data%init_resonance_information &
+    !   (nlo_controller%settings%factorization_mode)
+  end subroutine region_data_set_resonance_mappings
+
+@ %def region_data_set_resonance_mappings
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: setup_fks_mappings => region_data_setup_fks_mappings
+<<fks regions: procedures>>=
+  subroutine region_data_setup_fks_mappings (reg_data, template, n_in)
+    class(region_data_t), intent(inout) :: reg_data
+    type(fks_template_t), intent(in) :: template
+    integer, intent(in) :: n_in
+    call reg_data%allocate_fks_mappings (template%mapping_type)
+    select type (map => reg_data%fks_mapping)
+    type is (fks_mapping_default_t)
+       call map%set_parameter (n_in, template%fks_dij_exp1, template%fks_dij_exp2)
+    end select
+  end subroutine region_data_setup_fks_mappings
+
+@ %def region_data_setup_fks_mappings 
 @ So far, we have only created singular regions for a non-resonant case. When
 resonance mappings are required, we have more singular regions, since they
 must now be identified by their emitter-resonance pair index, where the emitter
@@ -6478,7 +6507,7 @@ end module nlo_data
   public :: fks_template_t
 <<nlo data: types>>=
   type :: fks_template_t
-    type(string_t) :: id
+    !type(string_t) :: id
     logical :: subtraction_disabled = .false.
     integer :: mapping_type = FKS_DEFAULT
     logical :: count_kinematics = .false.
@@ -8809,10 +8838,10 @@ process.
 <<nlo controller: types>>=
   type :: nlo_controller_t
     logical :: needs_initialization = .true.
-    type(region_data_t) :: reg_data
+    type(region_data_t), pointer :: reg_data => null ()
     type(nlo_particle_data_t) :: particle_data
     type(nlo_states_t) :: particle_states
-    type(nlo_settings_t) :: settings
+    type(nlo_settings_t), pointer :: settings => null ()
     type(sqme_collector_t), pointer :: sqme_collector => null ()
     integer :: n_allowed_born
     integer :: active_emitter, active_phase_space
@@ -8859,6 +8888,18 @@ process.
   end subroutine nlo_controller_init_regions_and_resonances
 
 @ %def nlo_controller_init_regions_and_resonances
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: fill_particle_states => nlo_controller_fill_particle_states
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_fill_particle_states (nlo_controller, prc_constants)
+    class(nlo_controller_t), intent(inout), target :: nlo_controller
+    type(process_constants_t), dimension(2) :: prc_constants
+    call nlo_controller%set_flv_states (prc_constants)
+    call nlo_controller%set_particle_data (prc_constants)
+  end subroutine nlo_controller_fill_particle_states
+
+@ %def nlo_controller_fill_particle_states
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: setup_real_terms => nlo_controller_setup_real_terms
@@ -8926,21 +8967,41 @@ process.
 @ %def nlo_controller_init_real_subtraction
 @
 <<nlo controller: nlo controller: TBP>>=
+  procedure :: set_flv_state_born => nlo_controller_set_flv_state_born
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_set_flv_state_born (nlo_controller, prc_constants)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    type(process_constants_t), intent(in) :: prc_constants
+    allocate (nlo_controller%particle_states%flv_state_born &
+       (size (prc_constants%get_flv_state (), dim=1), &
+        size (prc_constants%get_flv_state (), dim=2)))
+    nlo_controller%particle_states%flv_state_born = prc_constants%get_flv_state ()
+  end subroutine nlo_controller_set_flv_state_born
+
+@ %def nlo_controller_set_flv_state_born
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: set_flv_state_real => nlo_controller_set_flv_state_real
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_set_flv_state_real (nlo_controller, prc_constants)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    type(process_constants_t), intent(in) :: prc_constants
+    allocate (nlo_controller%particle_states%flv_state_real &
+       (size (prc_constants%get_flv_state (), dim=1), &
+        size (prc_constants%get_flv_state (), dim=2)))
+    nlo_controller%particle_states%flv_state_real = prc_constants%get_flv_state ()
+  end subroutine nlo_controller_set_flv_state_real
+
+@ %def nlo_controller_set_flv_state_real
+@
+<<nlo controller: nlo controller: TBP>>=
   procedure :: set_flv_states => nlo_controller_set_flv_states
 <<nlo controller: procedures>>=
   subroutine nlo_controller_set_flv_states (nlo_controller, prc_constants)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
-    associate (states => nlo_controller%particle_states)
-      allocate (states%flv_state_born &
-           (size (prc_constants(1)%get_flv_state (), 1), &
-            size (prc_constants(1)%get_flv_state (), 2)))
-      allocate (states%flv_state_real &
-           (size (prc_constants(2)%get_flv_state (), 1), &
-            size (prc_constants(2)%get_flv_state (), 2)))
-      states%flv_state_born = prc_constants(1)%get_flv_state ()
-      states%flv_state_real = prc_constants(2)%get_flv_state ()
-    end associate
+    call nlo_controller%set_flv_state_born (prc_constants(1))
+    call nlo_controller%set_flv_state_real (prc_constants(2))
   end subroutine nlo_controller_set_flv_states
 
 @ %def nlo_controller_set_flv_states
@@ -9184,14 +9245,47 @@ process.
     call nlo_controller%init_region_data (template, model)
     select case (template%mapping_type)
     case (FKS_RESONANCES)
-       call nlo_controller%init_resonance_info (resonance_histories_filtered)
+       call nlo_controller%reg_data%set_resonance_mappings (resonance_histories_filtered)
+       call nlo_controller%reg_data%init_resonance_information &
+          (nlo_controller%settings%factorization_mode)
        nlo_controller%settings%use_resonance_mappings = .true.
     end select
     call nlo_controller%reg_data%compute_number_of_phase_spaces ()
-    call nlo_controller%reg_data%write_to_file (template%id)
+    !call nlo_controller%reg_data%write_to_file (template%id)
   end subroutine nlo_controller_init_region_and_color_data
 
 @ %def nlo_controller_init_region_and_color_data
+@
+<<nlo controller: public>>=
+  public :: get_filtered_resonance_histories
+<<nlo controller: procedures>>=
+  subroutine get_filtered_resonance_histories (phs_config, n_in, flv_state, model, &
+     excluded_resonances, resonance_histories_out, success)
+    type(phs_fks_config_t), intent(inout) :: phs_config
+    integer, intent(in) :: n_in
+    integer, intent(in), dimension(:,:), allocatable :: flv_state
+    type(model_t), intent(in) :: model
+    type(string_t), intent(in), dimension(:), allocatable :: excluded_resonances 
+    type(resonance_history_t), intent(out), dimension(:), &
+       allocatable :: resonance_histories_out
+    logical, intent(out) :: success
+    type(resonance_history_t), dimension(:), allocatable :: resonance_histories
+    type(resonance_history_t), dimension(:), allocatable :: &
+       resonance_histories_clean, resonance_histories_filtered
+    allocate (resonance_histories (size (phs_config%get_resonance_histories ())))          
+    resonance_histories = phs_config%get_resonance_histories ()
+    call clean_resonance_histories (resonance_histories, &
+       n_in, flv_state (:,1), resonance_histories_clean, success)
+    if (success .and. allocated (excluded_resonances)) then
+       call filter_particles_from_resonances (resonance_histories_clean, &
+          excluded_resonances, model, resonance_histories_filtered)
+    else
+       allocate (resonance_histories_filtered (size (resonance_histories_clean)))
+       resonance_histories_filtered = resonance_histories_clean
+    end if
+  end subroutine get_filtered_resonance_histories
+
+@ %def get_filtered_resonance_histories
 @
 <<nlo controller: types>>=
   type :: color_index_list_t
@@ -9491,13 +9585,7 @@ process.
     integer :: n_in
     call msg_debug (D_SUBTRACTION, "nlo_controller_init_region_data")
     n_in = nlo_controller%particle_data%n_in
-    call nlo_controller%reg_data%allocate_fks_mappings (template%mapping_type)
-
-    select type (map => nlo_controller%reg_data%fks_mapping)
-    type is (fks_mapping_default_t)
-       call map%set_parameter (n_in, template%fks_dij_exp1, template%fks_dij_exp2)
-    end select
-
+    call nlo_controller%reg_data%setup_fks_mappings (template, n_in)
     associate (states => nlo_controller%particle_states)
        call nlo_controller%reg_data%init (n_in, model, &
           states%flv_state_born, states%flv_state_real)
@@ -9505,22 +9593,6 @@ process.
   end subroutine nlo_controller_init_region_data
 
 @ %def nlo_controller_init_region_data
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: init_resonance_info => nlo_controller_init_resonance_info
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_init_resonance_info (nlo_controller, resonance_histories)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    type(resonance_history_t), intent(in), dimension(:) :: resonance_histories
-    select type (map => nlo_controller%reg_data%fks_mapping)
-    type is (fks_mapping_resonances_t)
-       call map%res_map%init (resonance_histories)
-    end select
-    call nlo_controller%reg_data%init_resonance_information &
-       (nlo_controller%settings%factorization_mode)
-  end subroutine nlo_controller_init_resonance_info
-
-@ %def nlo_controller_init_resonance_info
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: get_xi_max => nlo_controller_get_xi_max
@@ -9555,7 +9627,7 @@ process.
   subroutine nlo_controller_set_internal_procedures (nlo_controller, flag_color, flag_spin)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     logical, intent(in) :: flag_color, flag_spin
-    nlo_controller%settings%use_internal_color_correlations = flag_color
+    !nlo_controller%settings%use_internal_color_correlations = flag_color
     nlo_controller%real_terms%sub_soft%use_internal_color_correlations = flag_color
     nlo_controller%virtual_terms%use_internal_color_correlations = flag_color
     nlo_controller%settings%use_internal_spin_correlations = flag_spin

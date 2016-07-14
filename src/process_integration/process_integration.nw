@@ -2372,18 +2372,16 @@ module processes
   use integration_results
   use prc_core
   use parton_states
-  use cascades, only: operator(==), assignment(=)
+  use cascades
 
   use pcm_base, only: pcm_t, pcm_instance_t
-  use nlo_data, only: sqme_collector_t
-  use nlo_data, only: fks_template_t, nlo_settings_t
-  use nlo_data, only: phs_point_set_t
+  use nlo_data
   use models, only: model_t
   use nlo_controller
 
   use phs_wood, only: phs_wood_config_t, phs_wood_t
   use phs_fks
-  use fks_regions, only: region_data_t
+  use fks_regions, only: region_data_t, create_resonance_histories_for_threshold
 
   use prc_gosam, only: prc_gosam_t
   use prc_openloops, only: prc_openloops_t
@@ -6181,16 +6179,16 @@ matrix element.
 @ %def process_term_setup_interaction
 @
 <<Processes: process term: TBP>>=
-  procedure :: fetch_constants => process_term_fetch_process_constants
+  procedure :: get_process_constants => process_term_get_process_constants
 <<Processes: procedures>>= 
-   subroutine process_term_fetch_process_constants &
+   subroutine process_term_get_process_constants &
        (term, prc_constants)
     class(process_term_t), intent(inout) :: term
     type(process_constants_t), intent(out) :: prc_constants
     prc_constants = term%data
-  end subroutine process_term_fetch_process_constants
+  end subroutine process_term_get_process_constants
 
-@ %def process_term_fetch_process_constants
+@ %def process_term_get_process_constants
 @
 \subsection{Process component manager}
 This is the configuration object which has the duty of allocating the
@@ -9696,7 +9694,7 @@ to subobject of [[instance]].
     else
        select type (pcm => instance%process%pcm)
        type is (pcm_nlo_t)
-          call instance%init_nlo_configuration (pcm%settings)
+          call instance%init_nlo_configuration ()
        class default
           call msg_fatal ("Attempt to get NLO settings from non-NLO pcm!")
        end select
@@ -9733,83 +9731,91 @@ to subobject of [[instance]].
   procedure :: init_nlo_configuration => &
        process_instance_init_nlo_configuration
 <<Processes: procedures>>=
-  subroutine process_instance_init_nlo_configuration &
-       (instance, nlo_settings)
+  subroutine process_instance_init_nlo_configuration (instance)
     class(process_instance_t), intent(inout), target :: instance
-    type(nlo_settings_t), intent(in), optional :: nlo_settings
+    !type(nlo_settings_t), intent(in), optional :: nlo_settings
     type(process_t), pointer :: process
-    integer :: i_component, i_term
+    integer :: i_component
     type(process_constants_t), dimension(2), save :: prc_constants
     integer :: nlo_type
-    integer :: i_born
+    integer :: i_born, i_real
     logical :: use_internal_cc, use_internal_sc
     logical :: use_resonance_mappings
     logical :: test_soft_limit, test_coll_limit, test_anti_coll_limit
+    logical :: combined_nlo_integration = .false.
     integer :: generator_mode
     integer :: fixed_alr
 
-    select type (pcm => instance%pcm)
+    select type (pcm_instance => instance%pcm)
     type is (pcm_instance_nlo_t)
-       pcm%controller%sqme_collector => pcm%collector
+       pcm_instance%controller%sqme_collector => pcm_instance%collector
 
        process => instance%process
        do i_component = 1, size (instance%component)
           if (process%component(i_component)%active) then
              associate (component => instance%component(i_component))
-               nlo_type = component%config%config%get_nlo_type ()
-               component%nlo_controller => pcm%controller
-               select case (nlo_type)
-               case (BORN)
-               case (NLO_REAL)
-                  i_born = component%config%config%get_associated_born ()
-                  i_term = component%config%i_term(1)
-                  call process%term(i_born)%fetch_constants &
-                       (prc_constants(1))
-                  call process%term(i_component)%fetch_constants &
-                       (prc_constants(2))
-                  if (present (nlo_settings)) then
-                     use_internal_cc = nlo_settings%use_internal_color_correlations
-                     use_internal_sc = .false.
-                     use_resonance_mappings = nlo_settings%use_resonance_mappings
-                     test_soft_limit = nlo_settings%test_soft_limit
-                     test_coll_limit = nlo_settings%test_coll_limit
-                     test_anti_coll_limit = nlo_settings%test_coll_limit
-                     fixed_alr = nlo_settings%fixed_alr
-                  else
-                     use_internal_cc = .true.
-                     use_internal_sc = .false.
-                     use_resonance_mappings = .false.
-                     test_soft_limit = .false.
-                     test_coll_limit = .false.
-                     test_anti_coll_limit = .false.
-                     fixed_alr = 0
-                  end if
-                  component%nlo_type = NLO_REAL
-                  associate (nlo_controller => component%nlo_controller)
+               component%nlo_controller => pcm_instance%controller
+               print *, 'nlo_type: ', char (component_status (component%config%get_nlo_type ()))
+               print *, 'nlo_controller associated? ', associated (component%nlo_controller)
+               associate (nlo_controller => component%nlo_controller)
+                  nlo_type = component%config%config%get_nlo_type ()
+                  select case (nlo_type)
+                  case (BORN)
+                  case (NLO_REAL)
+                     i_born = component%config%i_term(1)
+                     i_real = component%config%i_term(2)
+                     print *, 'i_born: ', i_born, 'i_real: ', i_real
+                     call process%term(i_born)%get_process_constants (prc_constants(1))
+                     call process%term(i_real)%get_process_constants (prc_constants(2))
+                     select type (pcm => instance%process%pcm)
+                     type is (pcm_nlo_t)
+                        nlo_controller%settings => pcm%settings
+                        nlo_controller%reg_data => pcm%region_data 
+                        use_internal_cc = pcm%settings%use_internal_color_correlations
+                        use_internal_sc = .false.
+                        combined_nlo_integration = pcm%settings%combined_integration
+                          !use_resonance_mappings = nlo_settings%use_resonance_mappings
+                          !test_soft_limit = nlo_settings%test_soft_limit
+                          !test_coll_limit = nlo_settings%test_coll_limit
+                          !test_anti_coll_limit = nlo_settings%test_coll_limit
+                          !fixed_alr = nlo_settings%fixed_alr
+                       !end associate
+                       !else
+                       !use_internal_cc = .true.
+                       !use_internal_sc = .false.
+                       !use_resonance_mappings = .false.
+                       !test_soft_limit = .false.
+                       !test_coll_limit = .false.
+                       !test_anti_coll_limit = .false.
+                       !fixed_alr = 0
+                    !end if
+                    end select
+                    component%nlo_type = NLO_REAL
                     if (nlo_controller%needs_initialization) then
                        call nlo_controller%set_internal_procedures &
                           (use_internal_cc, use_internal_sc)
-                       associate (settings => nlo_controller%settings)
-                          settings%use_resonance_mappings = use_resonance_mappings
-                          settings%test_soft_limit = test_soft_limit
-                          settings%test_coll_limit = test_coll_limit
-                          settings%test_anti_coll_limit = test_anti_coll_limit
-                          settings%fixed_alr = fixed_alr
-                          if (present (nlo_settings)) then
-                             settings%combined_integration = nlo_settings%combined_integration
-                          end if
-                       end associate
-                       process%component(i_component)%fks_template%id = &
-                          prc_constants(1)%id
-                       call nlo_controller%check_if_threshold_method (component%config%core)
-                       select type (model => process%config%model)
-                       type is (model_t)
-                          call nlo_controller%init_regions_and_resonances (prc_constants, &
-                             process%component(i_component)%fks_template, &
-                             process%component(i_component)%phs_config, model)
-                       end select
+                       !associate (settings => nlo_controller%settings)
+                          !settings%use_resonance_mappings = use_resonance_mappings
+                          !settings%test_soft_limit = test_soft_limit
+                          !settings%test_coll_limit = test_coll_limit
+                          !settings%test_anti_coll_limit = test_anti_coll_limit
+                          !settings%fixed_alr = fixed_alr
+                          !if (present (nlo_settings)) then
+                          !   settings%combined_integration = nlo_settings%combined_integration
+                          !end if
+                       !end associate
+                       !process%component(i_component)%fks_template%id = &
+                       !   prc_constants(1)%id
+                       !call nlo_controller%check_if_threshold_method (component%config%core)
+                       !select type (model => process%config%model)
+                       !type is (model_t)
+                          !call nlo_controller%init_regions_and_resonances (prc_constants, &
+                          !   process%component(i_component)%fks_template, &
+                          !   process%component(i_component)%phs_config, model)
+                       !end select
+                       call nlo_controller%fill_particle_states (prc_constants)
                        call nlo_controller%init_color_data (prc_constants, &
-                          process%term(i_term)%flv, process%term(i_term)%col)
+                          process%term(i_real)%flv, process%term(i_real)%col)
                        call nlo_controller%setup_real_terms &
                           (process%component(i_component)%fks_template, &
                            process%component(i_component)%phs_config%sqrts)
@@ -9822,12 +9828,11 @@ to subobject of [[instance]].
                        call nlo_controller%init_born_amps (process%get_n_allowed_born (i_born))
                        nlo_controller%needs_initialization = .false.
                     end if
-                  end associate
                case (NLO_VIRTUAL)
                   i_born = component%config%config%get_associated_born ()
                   component%nlo_type = NLO_VIRTUAL
                   call component%nlo_controller%init_virtual ()
-                  if (.not. nlo_settings%with_virtual_subtraction) &
+                  if (.not. nlo_controller%settings%with_virtual_subtraction) &
                      call component%nlo_controller%disable_virtual_subtraction ()
                case (NLO_MISMATCH)
                   component%nlo_type = NLO_MISMATCH
@@ -9839,8 +9844,7 @@ to subobject of [[instance]].
                   component%nlo_type = NLO_SUBTRACTION
                end select
                call component%setup_kinematics &
-                  (instance%sf_chain, process%beam_config, &
-                     nlo_settings%combined_integration)
+                  (instance%sf_chain, process%beam_config, combined_nlo_integration)
                if (nlo_type == NLO_REAL) then
                   generator_mode = check_generator_mode (GEN_REAL_PHASE_SPACE)
                   call component%setup_fks_kinematics (process%meta%var_list, &
@@ -9852,34 +9856,39 @@ to subobject of [[instance]].
                   call component%setup_fks_kinematics (process%meta%var_list, &
                      generator_mode) 
                end if
+               end associate
              end associate
           end if
        end do
 
-       if (present (nlo_settings)) &
-          pcm%collect_matrix_elements = nlo_settings%combined_integration
+       pcm_instance%collect_matrix_elements = combined_nlo_integration
 
     end select
   contains
     function check_generator_mode (gen_mode_default) result (gen_mode)
        integer :: gen_mode
        integer, intent(in) :: gen_mode_default
-       if (nlo_settings%test_coll_limit .and. nlo_settings%test_anti_coll_limit) &
-          call msg_fatal ("You cannot check the collinear and anti-collinear limit "&
-             &"at the same time!")
-       if (nlo_settings%test_soft_limit .and. .not. nlo_settings%test_coll_limit) then
-          gen_mode = GEN_SOFT_LIMIT_TEST
-       else if (.not. nlo_settings%test_soft_limit .and. nlo_settings%test_coll_limit) then
-          gen_mode = GEN_COLL_LIMIT_TEST
-       else if (.not. nlo_settings%test_soft_limit .and. nlo_settings%test_anti_coll_limit) then
-          gen_mode = GEN_ANTI_COLL_LIMIT_TEST
-       else if (nlo_settings%test_soft_limit .and. nlo_settings%test_coll_limit) then
-          gen_mode = GEN_SOFT_COLL_LIMIT_TEST
-       else if (nlo_settings%test_soft_limit .and. nlo_settings%test_anti_coll_limit) then
-          gen_mode = GEN_SOFT_ANTI_COLL_LIMIT_TEST
-       else
-          gen_mode = gen_mode_default
-       end if
+       select type (pcm => instance%process%pcm)
+       type is (pcm_nlo_t)
+          associate (nlo_settings => pcm%settings)
+             if (nlo_settings%test_coll_limit .and. nlo_settings%test_anti_coll_limit) &
+                call msg_fatal ("You cannot check the collinear and anti-collinear limit "&
+                   &"at the same time!")
+             if (nlo_settings%test_soft_limit .and. .not. nlo_settings%test_coll_limit) then
+                gen_mode = GEN_SOFT_LIMIT_TEST
+             else if (.not. nlo_settings%test_soft_limit .and. nlo_settings%test_coll_limit) then
+                gen_mode = GEN_COLL_LIMIT_TEST
+             else if (.not. nlo_settings%test_soft_limit .and. nlo_settings%test_anti_coll_limit) then
+                gen_mode = GEN_ANTI_COLL_LIMIT_TEST
+             else if (nlo_settings%test_soft_limit .and. nlo_settings%test_coll_limit) then
+                gen_mode = GEN_SOFT_COLL_LIMIT_TEST
+             else if (nlo_settings%test_soft_limit .and. nlo_settings%test_anti_coll_limit) then
+                gen_mode = GEN_SOFT_ANTI_COLL_LIMIT_TEST
+             else
+                gen_mode = gen_mode_default
+             end if
+         end associate
+      end select      
     end function check_generator_mode
   end subroutine process_instance_init_nlo_configuration
 
@@ -11324,6 +11333,8 @@ object and the squared matrix-element collector.
     class(process_t), intent(inout) :: process
     type(var_list_t), intent(in), target :: var_list
     type(string_t) :: color_method
+    !!! TODO (cw-2016-07-14): All these routines start with a select type. Make
+    !!! them a TBP of pcm_nlo instead with process as argument!
     select type (pcm => process%pcm)
     type is (pcm_nlo_t)
        color_method = var_list%get_sval (var_str ('$correlation_me_method'))
@@ -11354,16 +11365,42 @@ object and the squared matrix-element collector.
     integer, intent(in) :: i_real
     type(process_constants_t) :: data_born, data_real
     integer, dimension (:,:), allocatable :: flavor_born, flavor_real
+    type(resonance_history_t), dimension(:), allocatable :: resonance_histories
+    logical :: success
     select type (pcm => process%pcm)
     type is (pcm_nlo_t) 
        call process%component(1)%core%get_constants (data_born, 1)
        call process%component(i_real)%core%get_constants (data_real, 1)
        flavor_born = data_born%get_flv_state ()
        flavor_real = data_real%get_flv_state ()
+       call pcm%region_data%setup_fks_mappings &
+          (process%component(i_real)%fks_template, data_born%n_in) 
        select type (model => process%config%model)
        type is (model_t)
           call pcm%region_data%init (data_born%n_in, model, &
              flavor_born, flavor_real)
+          associate (template => process%component(i_real)%fks_template)
+             if (template%mapping_type == FKS_RESONANCES) then
+                select case (pcm%settings%factorization_mode)
+                case (NO_FACTORIZATION)
+                   select type (phs_config => process%component(i_real)%phs_config)
+                   type is (phs_fks_config_t)
+                      call get_filtered_resonance_histories (phs_config, &
+                         data_born%n_in, flavor_born, model, template%excluded_resonances, &
+                         resonance_histories, success)
+                   end select
+                   if (.not. success) template%mapping_type = FKS_DEFAULT
+                case (FACTORIZATION_THRESHOLD)
+                   resonance_histories = create_resonance_histories_for_threshold ()   
+                end select
+             end if
+             !!! Check again, mapping_type might have changed
+             if (template%mapping_type == FKS_RESONANCES) then
+                call pcm%region_data%set_resonance_mappings (resonance_histories) 
+                call pcm%region_data%init_resonance_information &
+                   (pcm%settings%factorization_mode)
+             end if
+          end associate
        end select
        !!! TODO (cw-2016-07-14) Also include resonances
        call pcm%region_data%compute_number_of_phase_spaces ()
@@ -11372,6 +11409,23 @@ object and the squared matrix-element collector.
   end subroutine process_setup_region_data
 
 @ %def process_setup_region_data
+@
+<<Processes: process: TBP>>=
+  procedure :: check_if_threshold_method => process_check_if_threshold_method
+<<Processes: procedures>>=
+  subroutine process_check_if_threshold_method (process, i_real)
+    class(process_t), intent(inout) :: process
+    integer, intent(in) :: i_real
+    select type (core => process%component(i_real)%core)
+    type is (prc_threshold_t)
+       select type (pcm => process%pcm)
+       type is (pcm_nlo_t)
+          pcm%settings%factorization_mode = FACTORIZATION_THRESHOLD
+       end select
+    end select
+  end subroutine process_check_if_threshold_method
+
+@ %def process_check_if_threshold_method
 @
 \subsection{Particle sets}
 Here we provide two procedures that convert the process instance
