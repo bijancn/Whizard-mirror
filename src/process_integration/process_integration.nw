@@ -2788,7 +2788,8 @@ from the library.
     allocate (n_entry (n_components), source = 0)
     do i = 1, n_components
        associate (component => process%component(i))
-         if (component%active)  n_entry(i) = component%core%get_n_terms () 
+       !  if (component%active)  n_entry(i) = component%core%get_n_terms () 
+         if (component%active) n_entry(i) = 1
        end associate
     end do
     n_tot = sum (n_entry)
@@ -9647,11 +9648,9 @@ to subobject of [[instance]].
 <<Processes: process instance: TBP>>=
   procedure :: init => process_instance_init
 <<Processes: procedures>>=
-  subroutine process_instance_init (instance, process, &
-       nlo_settings)
+  subroutine process_instance_init (instance, process)
     class(process_instance_t), intent(out), target :: instance
     type(process_t), intent(inout), target :: process
-    type(nlo_settings_t), intent(in), optional :: nlo_settings
     integer :: i, i_component
 
     instance%process => process
@@ -9682,7 +9681,12 @@ to subobject of [[instance]].
           end if
        end do
     else
-       call instance%init_nlo_configuration (nlo_settings)
+       select type (pcm => instance%process%pcm)
+       type is (pcm_nlo_t)
+          call instance%init_nlo_configuration (pcm%settings)
+       class default
+          call msg_fatal ("Attempt to get NLO settings from non-NLO pcm!")
+       end select
     end if
     
     call instance%setup_blha_structure_functions ()
@@ -11268,8 +11272,9 @@ This is the configuration object, which has the duty of allocating the
 corresponding instance.  This is the nontrivial NLO version.
 <<Processes: types>>=
   type, extends (pcm_t) :: pcm_nlo_t
-   contains
-   <<Processes: pcm nlo: TBP>>
+    type(nlo_settings_t) :: settings
+  contains
+  <<Processes: pcm nlo: TBP>>
   end type pcm_nlo_t
   
 @ %def pcm_nlo_t 
@@ -11298,6 +11303,35 @@ object and the squared matrix-element collector.
 
 @ %def pcm_instance_nlo_t
 @
+<<Processes: process: TBP>>=
+  procedure :: init_nlo_settings => process_init_nlo_settings
+<<Processes: procedures>>=
+  subroutine process_init_nlo_settings (process, var_list)
+    class(process_t), intent(inout) :: process
+    type(var_list_t), intent(in), target :: var_list
+    type(string_t) :: color_method
+    select type (pcm => process%pcm)
+    type is (pcm_nlo_t)
+       color_method = var_list%get_sval (var_str ('$correlation_me_method'))
+       associate (settings => pcm%settings)
+          settings%use_internal_color_correlations = color_method == 'omega' & 
+             .or. color_method == 'threshold'
+          settings%combined_integration = var_list%get_lval &
+             (var_str ("?combined_nlo_integration"))
+          settings%test_soft_limit = var_list%get_lval (var_str ('?test_soft_limit'))
+          settings%test_coll_limit = var_list%get_lval (var_str ('?test_coll_limit'))
+          settings%test_anti_coll_limit = var_list%get_lval (var_str ('?test_anti_coll_limit'))
+          settings%fixed_alr = var_list%get_ival (var_str ('fixed_alpha_region'))
+          settings%with_virtual_subtraction = &
+             .not. var_list%get_lval (var_str ('?switch_off_virtual_subtraction'))
+       end associate
+    class default
+       call msg_fatal ("Attempt to set nlo_settings with a non-NLO pcm!")
+    end select
+  end subroutine process_init_nlo_settings
+
+@ %def process_init_nlo_settings
+@    
 \subsection{Particle sets}
 Here we provide two procedures that convert the process instance
 from/to a particle set.  The conversion applies to the trace evaluator

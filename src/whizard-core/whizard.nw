@@ -8580,6 +8580,7 @@ applies to a single process.
     type(string_t) :: log_filename
     logical :: combined_integration = .false.
     type(iteration_multipliers_t) :: iteration_multipliers
+    type(nlo_settings_t) :: nlo_settings
    contains
    <<Integrations: integration: TBP>> 
   end type integration_t
@@ -8674,108 +8675,51 @@ local changes to currently inactive models.
     type(var_list_t), pointer :: var_list
     class(prc_core_t), allocatable :: core_template
     class(phs_config_t), allocatable :: phs_config_template
-    class(phs_config_t), allocatable :: phs_config_template_other
     type(phs_parameters_t) :: phs_par
     type(mapping_defaults_t) :: mapping_defs
     class(mci_t), allocatable :: mci_template
-    integer :: n_components, n_in, i_component
-    type(pdg_array_t), dimension(:,:), allocatable :: pdg_prc
+    integer :: n_components, i_component
     type(process_component_def_t), pointer :: config
     type(helicity_selection_t) :: helicity_selection
-    real(default) :: sqrts
-    logical :: decay_rest_frame, use_color_factors
+    logical :: use_color_factors
     type(sf_config_t), dimension(:), allocatable :: sf_config
     type(sf_prop_t) :: sf_prop
     type(sf_channel_t), dimension(:), allocatable :: sf_channel
     type(phs_channel_collection_t) :: phs_channel_collection
     logical :: sf_trace
-    type(string_t) :: sf_string, sf_trace_file
     logical :: verb
-    type(fks_template_t) :: fks_template
     type(blha_template_t) :: blha_template
-    type(string_t) :: me_method
-    type(eval_tree_factory_t) :: expr_factory
-    logical :: use_powheg_damping
-    integer :: i = 0
-
+    type(string_t) :: me_method, sf_string
+    class(phs_config_t), allocatable :: phs_config_template_other
     verb = .true.; if (present (verbose))  verb = verbose
     call intg%process%set_var_list (local%get_var_list_ptr ())
     var_list => intg%process%get_var_list_ptr ()
 
-    intg%rebuild_phs = &
-         var_list%get_lval (var_str ("?rebuild_phase_space"))
-    intg%ignore_phs_mismatch = &
-         .not. var_list%get_lval (var_str ("?check_phs_file"))
-    intg%phs_only = &
-         var_list%get_lval (var_str ("?phs_only"))
-    phs_par%m_threshold_s = &
-         var_list%get_rval (var_str ("phs_threshold_s"))
-    phs_par%m_threshold_t = &
-         var_list%get_rval (var_str ("phs_threshold_t"))
-    phs_par%off_shell = &
-         var_list%get_ival (var_str ("phs_off_shell"))
-    phs_par%keep_nonresonant = &
-         var_list%get_lval (var_str ("?phs_keep_nonresonant"))
-    phs_par%t_channel = &
-         var_list%get_ival (var_str ("phs_t_channel"))
-    mapping_defs%energy_scale = &
-         var_list%get_rval (var_str ("phs_e_scale"))
-    mapping_defs%invariant_mass_scale = &
-         var_list%get_rval (var_str ("phs_m_scale"))
-    mapping_defs%momentum_transfer_scale = &
-         var_list%get_rval (var_str ("phs_q_scale"))
-    mapping_defs%step_mapping = &
-         var_list%get_lval (var_str ("?phs_step_mapping"))
-    mapping_defs%step_mapping_exp = &
-         var_list%get_lval (var_str ("?phs_step_mapping_exp"))
-    mapping_defs%enable_s_mapping = &
-         var_list%get_lval (var_str ("?phs_s_mapping"))
-
-    call dispatch_phs (phs_config_template, local, &
-         intg%process_id, mapping_defs, phs_par)
-    
+    call setup_phase_space ()    
     
     intg%n_calls_test = &
          var_list%get_ival (var_str ("n_calls_test"))
-
-    !!! We avoid two dots in the filename due to a bug in certain MetaPost versions.
-    if (intg%run_id /= "") then
-       intg%history_filename = intg%process_id // "." // intg%run_id &
-            // "-history"
-       intg%log_filename = intg%process_id // "." // intg%run_id // ".log"
-    else
-       intg%history_filename = intg%process_id // "-history"
-       intg%log_filename = intg%process_id // ".log"
-    end if
-
+    
+    call setup_log_and_history ()
+   
     call dispatch_mci (mci_template, local, intg%process_id, &
        intg%process%is_nlo_calculation ())
 
-    if (verb) then
-       call msg_message ("Initializing integration for process " &
-            // char (intg%process_id) // ":")
-       if (intg%run_id /= "") then
-          call msg_message ("Run ID = " // '"' // char (intg%run_id) // '"')
-       end if
-    end if
-
-    helicity_selection = local%get_helicity_selection ()
-
-    intg%vis_history = &
-         var_list%get_lval (var_str ("?vis_history"))
-    use_color_factors = var_list%get_lval &
-         (var_str ("?read_color_factors"))
+    call display_init_message (verb)
 
     n_components = intg%process%get_n_components ()
-    n_in = intg%process%get_n_in ()
 
     call blha_template%init (local%beam_structure%has_polarized_beams(), &
        var_list%get_lval (var_str ("?openloops_switch_off_muon_yukawa")), &
        var_list%get_rval (var_str ("blha_use_top_yukawa")))
 
     intg%combined_integration = var_list%get_lval &
-       (var_str ('?combined_nlo_integration')) .and. intg%process%is_nlo_calculation ()
+       (var_str ('?combined_nlo_integration')) .and. &
+        intg%process%is_nlo_calculation ()
 
+    helicity_selection = local%get_helicity_selection ()
+    use_color_factors = var_list%get_lval &
+         (var_str ("?read_color_factors"))
     do i_component = 1, n_components
        config => intg%process%get_component_def_ptr (i_component)
        call dispatch_core (core_template, config%get_core_def_ptr (), &
@@ -8784,98 +8728,27 @@ local changes to currently inactive models.
             use_color_factors)
        select case (config%get_nlo_type ())
        case (NLO_VIRTUAL)
-         me_method = var_list%get_sval (var_str ("$loop_me_method"))
-         select case (char (me_method)) 
-         case ('gosam', 'openloops')
-            call blha_template%set_loop ()
-         end select
-         call intg%process%init_component &
-            (i_component, core_template, mci_template, phs_config_template, &
-             blha_template = blha_template)
-         if (intg%combined_integration) &
-            call intg%process%set_component_type (i_component, COMP_VIRT)
-         me_method = var_list%get_sval (var_str ("$correlation_me_method"))
-         select case (char (me_method))
-         case ('gosam', 'openloops')
-            call blha_template%set_internal_color_correlations (.true.)
-         end select 
+          call setup_virtual_component ()
        case (NLO_REAL)
-         me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
-         use_powheg_damping = var_list%get_lval (var_str ("?powheg_use_damping"))
-         select case (char (me_method))
-         case ('gosam', 'openloops')
-            call blha_template%set_real_trees ()
-         end select
-         call dispatch_phs (phs_config_template_other, local, &
-             intg%process_id, mapping_defs, phs_par, &
-             var_str ('fks'))
-         call dispatch_fks (fks_template, local)
-         call intg%process%init_component &
-            (i_component, core_template, mci_template, &
-             phs_config_template_other, fks_template = fks_template, &
-             blha_template = blha_template)
-         if (intg%combined_integration) then
-            if (use_powheg_damping) then
-               if (i == 0) then
-                  call intg%process%set_component_type (i_component, COMP_REAL_SING)
-                  i = i + 1
-               else
-                  call intg%process%set_component_type (i_component, COMP_REAL_FIN)
-               end if
-            else
-               call intg%process%set_component_type (i_component, COMP_REAL)
-            end if
-         end if
+          call setup_real_component ()
        case (NLO_MISMATCH)
-         call dispatch_phs (phs_config_template_other, local, &
-            intg%process_id, mapping_defs, phs_par, var_str ('fks')) 
-         call intg%process%init_component & 
-            (i_component, core_template, mci_template, &
-            phs_config_template_other)
-         if (intg%combined_integration) &
-            call intg%process%set_component_type (i_component, COMP_MISMATCH)
+          call setup_mismatch_component ()
        case (NLO_DGLAP)
-         call dispatch_phs (phs_config_template_other, local, &
-             intg%process_id, mapping_defs, phs_par, &
-             var_str ('fks'))
-         call intg%process%init_component &
-           (i_component, core_template, mci_template, phs_config_template_other)
-         if (intg%combined_integration) &
-            call intg%process%set_component_type (i_component, COMP_PDF)
+          call setup_dglap_component ()
        case (BORN)
-         me_method = var_list%get_sval (var_str ("$born_me_method"))
-         select case (char (me_method))
-         case ('gosam', 'openloops')
-            call blha_template%set_born ()
-            call intg%process%init_component &
-               (i_component, core_template, mci_template, phs_config_template, &
-                blha_template = blha_template)
-         case default
-            call intg%process%init_component &
-               (i_component, core_template, mci_template, phs_config_template)
-         end select
-         if (intg%combined_integration) &
-            call intg%process%set_component_type (i_component, COMP_MASTER)
+          call setup_born_component ()
        case (NLO_SUBTRACTION)
-         me_method = var_list%get_sval (var_str ("$correlation_me_method"))
-         select case (char (me_method))
-         case ('gosam', 'openloops')
-            call blha_template%set_subtraction ()
-         end select
-         call intg%process%init_component &
-             (i_component, core_template, mci_template, phs_config_template, &
-              blha_template = blha_template)
-         if (intg%combined_integration) &
-            call intg%process%set_component_type (i_component, COMP_SUB)
+          call setup_subtraction_component ()
        case (GKS)
-         call intg%process%init_component &
+          call intg%process%init_component &
              (i_component, core_template, mci_template, phs_config_template)
        case default
-         call msg_fatal ("setup_process: NLO type not implemented!")
+          call msg_fatal ("setup_process: NLO type not implemented!")
        end select
        call blha_template%reset ()
        deallocate (core_template)
-       if (allocated (phs_config_template_other)) deallocate (phs_config_template_other)
+       if (allocated (phs_config_template_other)) &
+          deallocate (phs_config_template_other)
     end do
 
     if (verb)  call intg%process%write (screen = .true.)
@@ -8886,40 +8759,13 @@ local changes to currently inactive models.
             // char (intg%process_id) // "': matrix element vanishes")
     end if
 
-    sqrts = local%get_sqrts ()
-    decay_rest_frame = &
-         var_list%get_lval (var_str ("?decay_rest_frame"))    
-    if (intg%process_has_me) then
-       call intg%process%setup_beams_beam_structure &
-            (local%beam_structure, sqrts, decay_rest_frame)
-    end if
-    call intg%process%check_masses ()
-    if (verb .and. intg%process_has_me) then
-       call intg%process%beams_startup_message &
-            (beam_structure = local%beam_structure)
-    end if
-
-    if (intg%process_has_me) then
-       call intg%process%get_pdg_in (pdg_prc)
-    else
-       allocate (pdg_prc (n_in, n_components))
-       pdg_prc = 0
-    end if
-    call dispatch_sf_config (sf_config, sf_prop, local, pdg_prc)
-    sf_trace = &
-         var_list%get_lval (var_str ("?sf_trace"))
-    sf_trace_file = &
-         var_list%get_sval (var_str ("$sf_trace_file"))
-    if (sf_trace) then
-       call intg%process%init_sf_chain (sf_config, sf_trace_file)
-    else
-       call intg%process%init_sf_chain (sf_config)
-    end if
+    call setup_beams ()
+    call setup_structure_functions ()
 
     if (intg%process_has_me) then
        call intg%process%configure_phs &
             (intg%rebuild_phs, intg%ignore_phs_mismatch, verbose=verbose, &
-             combined_integration=intg%combined_integration)
+             combined_integration = intg%combined_integration)
        if (size (sf_config) > 0) then
           call intg%process%collect_channels (phs_channel_collection)
        else if (intg%process%contains_trivial_component ()) then
@@ -8938,37 +8784,242 @@ local changes to currently inactive models.
     end if
 
     call intg%setup_process_mci ()
+    if (intg%process%is_nlo_calculation ()) &
+       call intg%process%init_nlo_settings (var_list)
     call intg%process%setup_terms ()
 
-    if (associated (local%pn%cuts_lexpr)) then
-       if (verb)  call msg_message ("Applying user-defined cuts.")
-       call expr_factory%init (local%pn%cuts_lexpr)
-       call intg%process%set_cuts (expr_factory)
-    else
-       if (verb)  call msg_warning ("No cuts have been defined.")
-    end if
-    if (associated (local%pn%scale_expr)) then
-       if (verb) call msg_message ("Using user-defined general scale.")
-       call expr_factory%init (local%pn%scale_expr)
-       call intg%process%set_scale (expr_factory)
-    end if
-    if (associated (local%pn%fac_scale_expr)) then
-       if (verb) call msg_message ("Using user-defined factorization scale.")
-       call expr_factory%init (local%pn%fac_scale_expr)
-       call intg%process%set_fac_scale (expr_factory)
-    end if
-    if (associated (local%pn%ren_scale_expr)) then
-       if (verb) call msg_message ("Using user-defined renormalization scale.")
-       call expr_factory%init (local%pn%ren_scale_expr)
-       call intg%process%set_ren_scale (expr_factory)
-    end if
-    if (associated (local%pn%weight_expr)) then
-       if (verb) call msg_message ("Using user-defined reweighting factor.")
-       call expr_factory%init (local%pn%weight_expr)
-       call intg%process%set_weight (expr_factory)
-    end if
+    call setup_expressions ()
 
     call intg%process%compute_md5sum ()
+  contains
+    subroutine setup_phase_space ()
+      intg%rebuild_phs = &
+           var_list%get_lval (var_str ("?rebuild_phase_space"))
+      intg%ignore_phs_mismatch = &
+           .not. var_list%get_lval (var_str ("?check_phs_file"))
+      intg%phs_only = &
+           var_list%get_lval (var_str ("?phs_only"))
+      phs_par%m_threshold_s = &
+           var_list%get_rval (var_str ("phs_threshold_s"))
+      phs_par%m_threshold_t = &
+           var_list%get_rval (var_str ("phs_threshold_t"))
+      phs_par%off_shell = &
+           var_list%get_ival (var_str ("phs_off_shell"))
+      phs_par%keep_nonresonant = &
+           var_list%get_lval (var_str ("?phs_keep_nonresonant"))
+      phs_par%t_channel = &
+           var_list%get_ival (var_str ("phs_t_channel"))
+      mapping_defs%energy_scale = &
+           var_list%get_rval (var_str ("phs_e_scale"))
+      mapping_defs%invariant_mass_scale = &
+           var_list%get_rval (var_str ("phs_m_scale"))
+      mapping_defs%momentum_transfer_scale = &
+           var_list%get_rval (var_str ("phs_q_scale"))
+      mapping_defs%step_mapping = &
+           var_list%get_lval (var_str ("?phs_step_mapping"))
+      mapping_defs%step_mapping_exp = &
+           var_list%get_lval (var_str ("?phs_step_mapping_exp"))
+      mapping_defs%enable_s_mapping = &
+           var_list%get_lval (var_str ("?phs_s_mapping"))
+  
+      call dispatch_phs (phs_config_template, local, &
+           intg%process_id, mapping_defs, phs_par)
+    end subroutine setup_phase_space
+  
+    subroutine setup_log_and_history ()
+       !!! We avoid two dots in the filename due to a bug in certain MetaPost versions.
+       if (intg%run_id /= "") then
+          intg%history_filename = intg%process_id // "." // intg%run_id &
+               // "-history"
+          intg%log_filename = intg%process_id // "." // intg%run_id // ".log"
+       else
+          intg%history_filename = intg%process_id // "-history"
+          intg%log_filename = intg%process_id // ".log"
+       end if
+       intg%vis_history = &
+          var_list%get_lval (var_str ("?vis_history"))
+    end subroutine setup_log_and_history
+
+    subroutine display_init_message (verb)
+      logical, intent(in) :: verb
+      if (verb) then
+         call msg_message ("Initializing integration for process " &
+            // char (intg%process_id) // ":")
+         if (intg%run_id /= "") &
+          call msg_message ("Run ID = " // '"' // char (intg%run_id) // '"')
+      end if
+    end subroutine display_init_message
+
+    subroutine setup_born_component ()
+      me_method = var_list%get_sval (var_str ("$born_me_method"))
+      select case (char (me_method))
+      case ('gosam', 'openloops')
+         call blha_template%set_born ()
+         call intg%process%init_component &
+            (i_component, core_template, mci_template, phs_config_template, &
+             blha_template = blha_template)
+      case default
+         call intg%process%init_component &
+            (i_component, core_template, mci_template, phs_config_template)
+      end select
+      if (intg%combined_integration) &
+         call intg%process%set_component_type (i_component, COMP_MASTER)
+    end subroutine setup_born_component
+
+    subroutine setup_virtual_component ()
+      me_method = var_list%get_sval (var_str ("$loop_me_method"))
+      select case (char (me_method)) 
+      case ('gosam', 'openloops')
+         call blha_template%set_loop ()
+      end select
+      call intg%process%init_component &
+         (i_component, core_template, mci_template, phs_config_template, &
+          blha_template = blha_template)
+      if (intg%combined_integration) &
+         call intg%process%set_component_type (i_component, COMP_VIRT)
+      me_method = var_list%get_sval (var_str ("$correlation_me_method"))
+      select case (char (me_method))
+      case ('gosam', 'openloops')
+         call blha_template%set_internal_color_correlations (.true.)
+      end select 
+    end subroutine setup_virtual_component
+
+    subroutine setup_real_component ()
+      logical :: use_powheg_damping
+      type(fks_template_t) :: fks_template
+      integer :: i = 0
+      me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
+      use_powheg_damping = var_list%get_lval (var_str ("?powheg_use_damping"))
+      select case (char (me_method))
+      case ('gosam', 'openloops')
+         call blha_template%set_real_trees ()
+      end select
+      call dispatch_phs (phs_config_template_other, local, &
+          intg%process_id, mapping_defs, phs_par, &
+          var_str ('fks'))
+      call dispatch_fks (fks_template, local)
+      call intg%process%init_component &
+         (i_component, core_template, mci_template, &
+          phs_config_template_other, fks_template = fks_template, &
+          blha_template = blha_template)
+      if (intg%combined_integration) then
+         if (use_powheg_damping) then
+            if (i == 0) then
+               call intg%process%set_component_type (i_component, COMP_REAL_SING)
+               i = i + 1
+            else
+               call intg%process%set_component_type (i_component, COMP_REAL_FIN)
+            end if
+         else
+            call intg%process%set_component_type (i_component, COMP_REAL)
+         end if
+      end if
+    end subroutine setup_real_component
+  
+    subroutine setup_mismatch_component ()
+      call dispatch_phs (phs_config_template_other, local, &
+         intg%process_id, mapping_defs, phs_par, var_str ('fks')) 
+      call intg%process%init_component & 
+         (i_component, core_template, mci_template, &
+         phs_config_template_other)
+      if (intg%combined_integration) &
+         call intg%process%set_component_type (i_component, COMP_MISMATCH)
+    end subroutine setup_mismatch_component 
+
+    subroutine setup_dglap_component ()
+      call dispatch_phs (phs_config_template_other, local, &
+          intg%process_id, mapping_defs, phs_par, &
+          var_str ('fks'))
+      call intg%process%init_component &
+        (i_component, core_template, mci_template, phs_config_template_other)
+      if (intg%combined_integration) &
+         call intg%process%set_component_type (i_component, COMP_PDF)
+    end subroutine setup_dglap_component
+
+    subroutine setup_subtraction_component ()
+      me_method = var_list%get_sval (var_str ("$correlation_me_method"))
+      select case (char (me_method))
+      case ('gosam', 'openloops')
+         call blha_template%set_subtraction ()
+      end select
+    
+      call intg%process%init_component &
+          (i_component, core_template, mci_template, phs_config_template, &
+           blha_template = blha_template)
+      if (intg%combined_integration) &
+         call intg%process%set_component_type (i_component, COMP_SUB)
+    end subroutine setup_subtraction_component
+
+    subroutine setup_beams ()
+      real(default) :: sqrts
+      logical :: decay_rest_frame
+      sqrts = local%get_sqrts ()
+      decay_rest_frame = &
+           var_list%get_lval (var_str ("?decay_rest_frame"))    
+      if (intg%process_has_me) then
+         call intg%process%setup_beams_beam_structure &
+              (local%beam_structure, sqrts, decay_rest_frame)
+      end if
+      call intg%process%check_masses ()
+      if (verb .and. intg%process_has_me) then
+         call intg%process%beams_startup_message &
+              (beam_structure = local%beam_structure)
+      end if
+    end subroutine setup_beams
+
+    subroutine setup_structure_functions ()
+      integer :: n_in
+      type(pdg_array_t), dimension(:,:), allocatable :: pdg_prc
+      type(string_t) :: sf_trace_file
+      if (intg%process_has_me) then
+         call intg%process%get_pdg_in (pdg_prc)
+      else
+         n_in = intg%process%get_n_in ()
+         allocate (pdg_prc (n_in, n_components))
+         pdg_prc = 0
+      end if
+      call dispatch_sf_config (sf_config, sf_prop, local, pdg_prc)
+      sf_trace = &
+           var_list%get_lval (var_str ("?sf_trace"))
+      sf_trace_file = &
+           var_list%get_sval (var_str ("$sf_trace_file"))
+      if (sf_trace) then
+         call intg%process%init_sf_chain (sf_config, sf_trace_file)
+      else
+         call intg%process%init_sf_chain (sf_config)
+      end if
+    end subroutine setup_structure_functions
+  
+    subroutine setup_expressions ()
+      type(eval_tree_factory_t) :: expr_factory
+      if (associated (local%pn%cuts_lexpr)) then
+         if (verb)  call msg_message ("Applying user-defined cuts.")
+         call expr_factory%init (local%pn%cuts_lexpr)
+         call intg%process%set_cuts (expr_factory)
+      else
+         if (verb)  call msg_warning ("No cuts have been defined.")
+      end if
+      if (associated (local%pn%scale_expr)) then
+         if (verb) call msg_message ("Using user-defined general scale.")
+         call expr_factory%init (local%pn%scale_expr)
+         call intg%process%set_scale (expr_factory)
+      end if
+      if (associated (local%pn%fac_scale_expr)) then
+         if (verb) call msg_message ("Using user-defined factorization scale.")
+         call expr_factory%init (local%pn%fac_scale_expr)
+         call intg%process%set_fac_scale (expr_factory)
+      end if
+      if (associated (local%pn%ren_scale_expr)) then
+         if (verb) call msg_message ("Using user-defined renormalization scale.")
+         call expr_factory%init (local%pn%ren_scale_expr)
+         call intg%process%set_ren_scale (expr_factory)
+      end if
+      if (associated (local%pn%weight_expr)) then
+         if (verb) call msg_message ("Using user-defined reweighting factor.")
+         call expr_factory%init (local%pn%weight_expr)
+         call intg%process%set_weight (expr_factory)
+      end if
+    end subroutine setup_expressions
   end subroutine integration_setup_process
 
 @ %def integration_setup_process
@@ -9150,29 +9201,16 @@ of the integration history.
     integer :: nlo_type
     logical :: display_summed
     logical :: nlo_active
-    type(string_t) :: color_method
-    type(nlo_settings_t) :: nlo_settings
-
-    var_list => intg%process%get_var_list_ptr ()
-    color_method = var_list%get_sval (var_str ('$correlation_me_method'))
-    nlo_settings%use_internal_color_correlations = color_method == 'omega' & 
-       .or. color_method == 'threshold'
-    nlo_settings%combined_integration = intg%combined_integration
-    nlo_settings%test_soft_limit = var_list%get_lval (var_str ('?test_soft_limit'))
-    nlo_settings%test_coll_limit = var_list%get_lval (var_str ('?test_coll_limit'))
-    nlo_settings%test_anti_coll_limit = var_list%get_lval (var_str ('?test_anti_coll_limit'))
-    nlo_settings%fixed_alr = var_list%get_ival (var_str ('fixed_alpha_region'))
-    nlo_settings%with_virtual_subtraction = &
-       .not. var_list%get_lval (var_str ('?switch_off_virtual_subtraction'))
 
     allocate (process_instance)
-    call process_instance%init (intg%process, nlo_settings)
+    call process_instance%init (intg%process)
 
     if (process_instance%needs_extra_code ()) then
        call process_instance%create_and_load_extra_libraries &
                (local%beam_structure, local%os_data)
     end if
 
+    var_list => intg%process%get_var_list_ptr ()
     call openmp_set_num_threads_verbose &
          (var_list%get_ival (var_str ("openmp_num_threads")), &
           var_list%get_lval (var_str ("?openmp_logging")))
@@ -11952,13 +11990,14 @@ does not affect parameters.
     allocate (process_instance)
     if (process%is_nlo_calculation ()) then
        associate (var_list => local%var_list)
-          nlo_settings%combined_integration = &
-             var_list%get_lval (var_str("?combined_nlo_integration"))
-          color_method = var_list%get_sval (var_str ('$correlation_me_method'))
-          nlo_settings%use_internal_color_correlations = color_method == 'omega' &
-             .or. color_method == 'threshold'
+          !!! TODO (cw-2016-07-14): Reactivate correct NLO settings
+          !nlo_settings%combined_integration = &
+          !   var_list%get_lval (var_str("?combined_nlo_integration"))
+          !color_method = var_list%get_sval (var_str ('$correlation_me_method'))
+          !nlo_settings%use_internal_color_correlations = color_method == 'omega' &
+          !   .or. color_method == 'threshold'
        end associate
-       call process_instance%init (process, nlo_settings)    
+       call process_instance%init (process)    
        select type (pcm => process_instance%pcm)
        type is (pcm_instance_nlo_t)
           pcm%collect_matrix_elements = .true.
