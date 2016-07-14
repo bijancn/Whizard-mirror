@@ -6017,36 +6017,55 @@ matrix element.
     logical, intent(in), optional :: pol_beams
     integer, intent(in), optional :: nlo_type
     logical, intent(in), optional :: use_internal_color
-    integer :: n_tot
+    integer :: n, n_tot
     type(flavor_t), dimension(:), allocatable :: flv
     type(color_t), dimension(:), allocatable :: col
     type(helicity_t), dimension(:), allocatable :: hel
     type(quantum_numbers_t), dimension(:), allocatable :: qn
-    integer :: i, n, f, h, c, s
     logical :: yorn
     integer :: nlo_t, n_hel, n_sub
     yorn = .false.; if (present (pol_beams)) yorn = pol_beams
     nlo_t = BORN; if (present (nlo_type)) nlo_t = nlo_type
-    associate (data => term%data)
-      n_tot = data%n_in + data%n_out
+    n_tot = term%data%n_in + term%data%n_out
+    call count_number_of_states () 
+    term%n_allowed = n
+    call compute_n_sub ()
+    call fill_quantum_numbers ()
+    call term%int%basic_init &
+         (term%data%n_in, 0, term%data%n_out, set_relations = .true.)
+    select type (core)
+    type is (prc_openloops_t)
+      call setup_states_openloops ()
+    class is (prc_user_defined_base_t)
+      call setup_states_other_user_defined ()
+    class default
+      call setup_states_omega ()
+    end select
+    call term%int%freeze ()
+  contains
+    subroutine count_number_of_states ()
+      integer :: f, h, c
       n = 0
       select type (core)
       class is (prc_user_defined_base_t)
          n_hel = 1; if (yorn) n_hel = 4
-         do f = 1, data%n_flv
-            do h = 1, data%n_hel
+         do f = 1, term%data%n_flv
+            do h = 1, term%data%n_hel
                n = n + 1
             end do
          end do
       class default !!! Omega and all test cores
-         do f = 1, data%n_flv
-            do h = 1, data%n_hel
-               do c = 1, data%n_col
+         do f = 1, term%data%n_flv
+            do h = 1, term%data%n_hel
+               do c = 1, term%data%n_col
                   if (core%is_allowed (term%i_term, f, h, c))  n = n + 1
                end do
             end do
          end do
       end select
+    end subroutine count_number_of_states
+
+    subroutine compute_n_sub ()
       if (nlo_t == NLO_VIRTUAL) then
          yorn = .false.; if (present (use_internal_color)) yorn = use_internal_color
          n_sub = 1
@@ -6054,80 +6073,95 @@ matrix element.
       else
          n_sub = 0
       end if
+    end subroutine compute_n_sub
+  
+    subroutine fill_quantum_numbers ()
       if (nlo_t == NLO_VIRTUAL) then
          allocate (term%flv ((n_sub + 1) * n), &
             term%col ((n_sub + 1) * n), term%hel ((n_sub + 1) * n))
       else
          allocate (term%flv (n), term%col (n), term%hel (n))
       end if
-      term%n_allowed = n
       allocate (flv (n_tot), col (n_tot), hel (n_tot))
       allocate (qn (n_tot))
-      call term%int%basic_init &
-           (data%n_in, 0, data%n_out, set_relations = .true.)
+    end subroutine fill_quantum_numbers
+
+    subroutine setup_states_openloops ()
+      integer :: s, f, h, i
+      i = 0 
+      associate (data => term%data)
+         do s = 0, n_sub
+             do f = 1, data%n_flv
+                do h = 1, data%n_hel
+                   i = i + 1
+                   term%flv(i) = f
+                   term%hel(i) = h
+                   !!! Dummy-initialization of color
+                   term%col(i) = 1
+                   call flv%init (data%flv_state (:,f), model)
+                   if (n_hel > 1) then
+                      call hel%init (data%hel_state (:,h))
+                      call qn%init (flv, hel, s)
+                   else
+                      call qn%init (flv, s)
+                   end if
+                   call term%int%add_state (qn)
+               end do
+             end do
+         end do
+      end associate
+    end subroutine setup_states_openloops
+
+    subroutine setup_states_other_user_defined ()
+      integer :: s, f, i
+      integer :: n_sub
+      if (n_hel > 1) &
+         call msg_fatal ("Polarized beams only supported by OpenLoops")
       i = 0
-      select type (core)
-      type is (prc_openloops_t)
-        do s = 0, n_sub
-            do f = 1, data%n_flv
-               do h = 1, data%n_hel
-                  i = i + 1
-                  term%flv(i) = f
-                  term%hel(i) = h
-                  !!! Dummy-initialization of color
-                  term%col(i) = 1
-                  call flv%init (data%flv_state (:,f), model)
-                  if (n_hel > 1) then
-                     call hel%init (data%hel_state (:,h))
-                     call qn%init (flv, hel, s)
-                  else
-                     call qn%init (flv, s)
-                  end if
-                  call term%int%add_state (qn)
+      !!! TODO (cw-2016-07-14): n_sub with user-defined subtraction
+      n_sub = 1; if (nlo_t == NLO_VIRTUAL) n_sub = 2
+      do s = 0, n_sub
+         do f = 1, term%data%n_flv
+            i = i + 1
+            term%flv(i) = f
+            !!! Dumy initialization of helicity
+            term%hel(i) = 1
+            !!! Dummy-initialization of color
+            term%col(i) = 1
+            call flv%init (term%data%flv_state (:,f), model)
+            call qn%init (flv, s)
+            call term%int%add_state (qn)
+         end do
+      end do
+    end subroutine setup_states_other_user_defined         
+
+    subroutine setup_states_omega ()
+      integer :: f, h, c, i 
+      i = 0
+      associate (data => term%data)
+         do f = 1, data%n_flv
+            do h = 1, data%n_hel
+              do c = 1, data%n_col
+                 if (core%is_allowed (term%i_term, f, h, c)) then
+                    i = i + 1
+                    term%flv(i) = f
+                    term%hel(i) = h
+                    term%col(i) = c
+                    call flv%init (data%flv_state(:,f), model)
+                    call color_init_from_array (col, &
+                         data%col_state(:,:,c), &
+                         data%ghost_flag(:,c))
+                    call col(:data%n_in)%invert ()
+                    call hel%init (data%hel_state(:,h))
+                    call qn%init (flv, col, hel)
+                    call term%int%add_state (qn)
+                 end if
               end do
             end do
          end do
-      class is (prc_user_defined_base_t)
-         if (n_hel > 1) &
-            call msg_fatal ("Polarized beams only supported by OpenLoops")
-         n_sub = 1; if (nlo_t == NLO_VIRTUAL) n_sub = 2
-         do s = 0, n_sub
-            do f = 1, data%n_flv
-               i = i + 1
-               term%flv(i) = f
-               !!! Dumy initialization of helicity
-               term%hel(i) = 1
-               !!! Dummy-initialization of color
-               term%col(i) = 1
-               call flv%init (data%flv_state (:,f), model)
-               call qn%init (flv, s)
-               call term%int%add_state (qn)
-            end do
-         end do
-      class default
-         do f = 1, data%n_flv
-            do h = 1, data%n_hel
-               do c = 1, data%n_col
-                  if (core%is_allowed (term%i_term, f, h, c)) then
-                     i = i + 1
-                     term%flv(i) = f
-                     term%hel(i) = h
-                     term%col(i) = c
-                     call flv%init (data%flv_state(:,f), model)
-                     call color_init_from_array (col, &
-                          data%col_state(:,:,c), &
-                          data%ghost_flag(:,c))
-                     call col(:data%n_in)%invert ()
-                     call hel%init (data%hel_state(:,h))
-                     call qn%init (flv, col, hel)
-                     call term%int%add_state (qn)
-                  end if
-               end do
-            end do
-         end do
-      end select
-      call term%int%freeze ()
-    end associate
+      end associate
+    end subroutine setup_states_omega
+
   end subroutine process_term_setup_interaction
   
 @ %def process_term_setup_interaction
