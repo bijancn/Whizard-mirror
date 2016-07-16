@@ -1137,6 +1137,26 @@ list.  Variables used within the expressions are looked up in [[var_list]].
   end type connected_state_t
      
 @ %def connected_state_t
+@ Auxilliary container of [[connected_state]] pointers.
+<<Parton states: types>>=
+  type :: connected_pointer_t
+    type(connected_state_t), pointer :: connected => null ()
+  end type connected_pointer_t
+
+@ %def connected_pointer_t
+@ The [[nlo_state]] merges connected states, which e.g. belong to
+different $\alpha_r$, and computes the final NLO matrix element.
+<<Parton states: public>>=
+  public :: nlo_state_t
+<<Parton states: types>>=
+  type :: nlo_state_t
+    class(connector_function_t), allocatable :: me_connector
+    type(connected_pointer_t), dimension(:), allocatable :: connected
+  contains
+  <<Parton states: nlo state: TBP>>
+  end type nlo_state_t
+
+@ %def nlo_state_t
 @ Output: each evaluator is written only when it is active.  The
 [[sf_chain]] is only written if it is explicitly allocated.
 <<Parton states: parton state: TBP>>=
@@ -1690,6 +1710,21 @@ list acquires pointers to subobjects of [[state]], which must therefore have a
   
 @ %def connected_state_reset_expressions
 @ 
+<<Parton states: nlo state: TBP>>=
+  procedure :: init => nlo_state_init
+<<Parton states: procedures>>=
+  subroutine nlo_state_init (state, connected)
+    class(nlo_state_t), intent(inout) :: state
+    type(connected_state_t), intent(in), dimension(:), target :: connected
+    integer :: i_conn
+    allocate (state%connected (size (connected)))
+    do i_conn = 1, size (connected)
+       state%connected(i_conn)%connected => connected(i_conn) 
+    end do
+  end subroutine nlo_state_init
+
+@ %def nlo_state_init
+@
 \subsection{Evaluation}
 Transfer momenta to the trace evaluator and fill the [[subevt]] with
 this effective kinematics, if applicable.
@@ -7306,6 +7341,7 @@ type and contents depend on the process variant.
      real(default) :: sqme = zero
      class(prc_core_state_t), allocatable :: core_state
      type(nlo_controller_t), pointer :: nlo_controller => null ()
+     type(nlo_state_t) :: nlo_state
      integer :: nlo_type = BORN
    contains
    <<Processes: component instance: TBP>>
@@ -8076,9 +8112,11 @@ has passed cuts, we calculate the various scale and weight expressions.
      type(kinematics_t) :: k_term
      complex(default), dimension(:), allocatable :: amp
      type(interaction_t) :: int_hard
+     !!! TODO (cw-2016-07-15): Get rid of this
      type(interaction_t) :: int_hard_real
      type(isolated_state_t) :: isolated
      type(connected_state_t) :: connected
+     !!! TODO (cw-2016-07-15): Get rid of these
      type(isolated_state_t) :: isolated_real
      type(connected_state_t) :: connected_real
      logical :: checked = .false.
@@ -8261,8 +8299,12 @@ relevant for a NLO algorithm.
               call term%nlo_controller%int_born%set_source_link &
                  (j, term%nlo_controller%sf_born%get_out_int_ptr (), i)
            end do
-           call term%isolated%init & 
-              (term%nlo_controller%sf_born, term%nlo_controller%int_born)
+           if (i_term == 1) then
+              call term%isolated%init & 
+                 (term%nlo_controller%sf_born, term%nlo_controller%int_born)
+           else
+              call term%isolated%init (term%k_term%sf_chain, term%int_hard)
+           end if
            term%int_hard_real = term%int_hard
         case (PHS_MODE_COLLINEAR_REMNANT)
            call term%isolated%init (term%k_term%sf_chain, term%int_hard)
@@ -8293,9 +8335,13 @@ relevant for a NLO algorithm.
             if (me_already_squared) then
                call term%isolated%setup_identity_trace (core, mask_in)
             else
-               call term%isolated%setup_square_trace (core_sav, mask_in, col_sav)
+               if (i_term == 1) then
+                  call term%isolated%setup_square_trace (core_sav, mask_in, col_sav)
+               else
+                  call term%isolated%setup_square_trace (core, mask_in, term%config%col)
+               end if
             end if
-            call term%init_states (core)
+            if (i_term > 1) call term%init_states (core)
          case (PHS_MODE_COLLINEAR_REMNANT)
             if (me_already_squared) then
                call term%isolated%setup_identity_trace (core, mask_in)
@@ -8364,7 +8410,7 @@ relevant for a NLO algorithm.
     term%nlo_type = nlo_type
     select case (term%nlo_type)
     case (NLO_REAL)
-       call setup_real_subevt ()
+       if (term%config%i_term > 1) call setup_real_subevt ()
        allocate (real_connector_t :: me_connector)
     case (NLO_VIRTUAL)
        allocate (virtual_connector_t :: me_connector)
@@ -8486,7 +8532,7 @@ parse trees.
          call term%connected%setup_weight (config%ef_weight)
     select case (term%nlo_type)
     case (NLO_REAL)
-       call term%setup_expressions_real (config)
+       if (term%config%i_term > 1) call term%setup_expressions_real (config)
     end select
   end subroutine term_instance_setup_expressions
     
@@ -8661,7 +8707,7 @@ The quantum numbers mask of the incoming particle
     integer, intent(in) :: i_phs
     type(vector4_t), dimension(:), allocatable :: p
     real(default) :: xi
-    !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug      
+    if (term%config%i_term == 1) return
     allocate (p (term%nlo_controller%get_n_particles_real()))
     p = term%nlo_controller%get_momenta (born_phsp = .false., i_phs = i_phs)
     call term%int_hard_real%set_momenta (p)
@@ -8840,7 +8886,7 @@ method may modify the [[core_state]] workspace object.
     i_term = term%config%i_term
     term%p_hard = term%int_hard%get_momenta ()
     select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_DGLAP)
+    case (BORN, NLO_VIRTUAL, NLO_DGLAP, NLO_REAL)
        select type (core => component(i_component)%config%core)
        class is (prc_user_defined_base_t)
           select type (core_state => component(i_component)%core_state)
@@ -8909,9 +8955,9 @@ method may modify the [[core_state]] workspace object.
              call term%nlo_controller%set_fac_scale (term%fac_scale)
        end select
        call term%int_hard%set_matrix_element (term%amp)
-    case (NLO_REAL)
-       call term%evaluate_real_phase_space (term%nlo_controller%get_active_emitter ())
-       call term%evaluate_interaction_real (component(i_component), i_term)
+    !case (NLO_REAL)
+       !call term%evaluate_real_phase_space (term%nlo_controller%get_active_emitter ())
+       !call term%evaluate_interaction_real (component(i_component), i_term)
     case (NLO_MISMATCH)
        call term%evaluate_interaction_sub (component(i_component), 1, 1)
     end select  
@@ -8945,9 +8991,8 @@ interaction, then compute the convolution with the initial state.
 <<Processes: procedures>>=
   subroutine term_instance_evaluate_trace_real (term)
      class(term_instance_t), intent(inout) :: term
-     
+     if (term%config%i_term == 1) return
      call term%nlo_controller%sf_born%evaluate (term%fac_scale)
-
      call term%isolated_real%evaluate_trace ()
      call term%connected_real%evaluate_trace ()
   end subroutine term_instance_evaluate_trace_real
@@ -9722,6 +9767,7 @@ to subobject of [[instance]].
     class(process_instance_t), intent(out), target :: instance
     type(process_t), intent(inout), target :: process
     integer :: i, i_component
+    type(connected_state_t), dimension(:), allocatable :: all_connected
 
     instance%process => process
     call instance%setup_sf_chain (process%beam_config)
@@ -9773,14 +9819,22 @@ to subobject of [[instance]].
                    process%component(i_component)%core, &
                    process%meta%var_list, &
                    component%nlo_controller, &
-                   component%config%config%get_nlo_type ())
-              call term%setup_expressions &
-                   (process%meta, process%config)
+                   component%config%config%get_nlo_type (), &
+                   i_component)
+              call term%set_emitter (process%pcm)
+              call term%setup_expressions (process%meta, process%config)
            end associate
          end if
        end associate
     end do
 
+    do i_component = 1, size (instance%component)
+       associate (component => instance%component(i_component))
+         all_connected =  instance%get_connected_states (i_component)
+         call component%nlo_state%init (all_connected)
+         deallocate (all_connected)
+       end associate
+    end do
     instance%evaluation_status = STAT_INITIAL
   end subroutine process_instance_init
   
@@ -10455,7 +10509,7 @@ terms, iterating over all active process components.
           associate (term => instance%term(i))
             if (term%active .and. term%passed) then
               select case (term%nlo_type)
-              case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP)
+              case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP, NLO_REAL)
                  call term%evaluate_interaction (instance%component)
                  call term%evaluate_trace ()
               end select
@@ -10490,7 +10544,7 @@ terms, iterating over all active process components.
                       instance%evaluation_status >= STAT_PASSED_CUTS
                    if (.not. pcm%collect_matrix_elements) then
                       call msg_debug2 (D_SUBTRACTION, "Evaluate real trace")
-                      call instance%evaluate_trace_real (term, i)
+                      !call instance%evaluate_trace_real (term, i)
                    else
                       i_real = i
                    end if
@@ -10498,8 +10552,8 @@ terms, iterating over all active process components.
              end if
           end associate
        end do
-       if (pcm%collect_matrix_elements .and. i_real > 0) &
-          call instance%evaluate_trace_real (instance%term(i_real), i_real)
+       !if (pcm%collect_matrix_elements .and. i_real > 0) &
+       !   call instance%evaluate_trace_real (instance%term(i_real), i_real)
     end select
   end subroutine process_instance_evaluate_trace
 
@@ -10766,7 +10820,7 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
          call instance%evaluate_trace_real_rad (term, i_real, i_phs, i_flv)
        end associate
        associate (component => instance%component(i_real))
-         call component%apply_damping_factor (component%sqme)
+          call component%apply_damping_factor (component%sqme)
        end associate
     end select
   end subroutine process_instance_compute_sqme_real_rad
