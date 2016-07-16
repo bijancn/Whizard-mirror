@@ -6855,8 +6855,8 @@ a pointer.
      logical :: sf_chain_allocated = .false.
      logical :: phs_allocated = .false.
      logical :: f_allocated = .false.
-     integer :: nlo_type
-     integer :: emitter
+     integer :: nlo_type = BORN
+     integer :: emitter = -1
      logical :: only_cm_frame = .false.
    contains
    <<Processes: kinematics: TBP>>
@@ -6923,15 +6923,11 @@ a pointer.
 <<Processes: kinematics: TBP>>=
   procedure :: set_nlo_info => kinematics_set_nlo_info
 <<Processes: procedures>>=
-  subroutine kinematics_set_nlo_info (k, nlo_type, emitter)
+  subroutine kinematics_set_nlo_info (k, nlo_type)
     class(kinematics_t), intent(inout) :: k
     integer, intent(in) :: nlo_type
-    integer, intent(in), optional :: emitter
     k%nlo_type = nlo_type
     if (nlo_type == NLO_VIRTUAL) k%only_cm_frame = .true.
-    if (present (emitter)) then
-      k%emitter = emitter
-    end if
   end subroutine kinematics_set_nlo_info
 
 @ %def kinematics_set_nlo_info
@@ -7000,6 +6996,9 @@ indicate this fact.
     k%sf_chain => k_in%sf_chain
     k%phs => k_in%phs
     k%f => k_in%f
+    k%nlo_type = k_in%nlo_type
+    k%emitter = k_in%emitter
+    k%only_cm_frame = k_in%only_cm_frame
   end subroutine kinematics_init_ptr
   
 @ %def kinematics_init_ptr
@@ -7235,6 +7234,44 @@ Relevant for using the proper momenta input for BLHA matrix elements.
   end subroutine kinematics_boost_to_cm_frame
 
 @ %def kinematics_boost_to_cm_frame
+@
+<<Processes: kinematics: TBP>>=
+  procedure :: get_momenta => kinematics_get_momenta
+<<Processes: procedures>>=
+  function kinematics_get_momenta (k, p_in) result (p_out)
+    type(vector4_t), dimension(:), allocatable :: p_out
+    class(kinematics_t), intent(in) :: k
+    type(vector4_t), intent(in), dimension(:) :: p_in
+    type(phs_point_t) :: p
+    print *, 'nlo_type: ', char (component_status (k%nlo_type))
+    select case (k%nlo_type)
+    case (NLO_REAL)
+       select type (phs => k%phs)
+       type is (phs_fks_t)
+          print *, 'Emitter: ', k%emitter 
+          if (k%emitter >= 0) then
+             p = size (p_in) + 1
+             allocate (p_out (size (p_in) + 1))
+             if (k%emitter <= k%n_in) then
+                call phs%generate_isr (k%emitter - 2, p_in, p) 
+             else
+                call phs%generate_fsr (k%emitter, k%emitter - 2, p)
+             end if
+             p_out = p%p
+          else
+             allocate (p_out (size (p_in))); p_out = p_in
+          end if
+       class default
+          call msg_fatal ("Real component only implemented for FKS phase space!")
+       end select
+    case (NLO_DGLAP)
+    case (NLO_MISMATCH)
+    case default
+       allocate (p_out (size (p_in))); p_out = p_in
+    end select
+  end function kinematics_get_momenta
+
+@ %def kinematics_get_momenta
 @
 \subsubsection{Process component instance}
 The actual calculation of a sampling point is done from here.
@@ -7503,20 +7540,21 @@ choose to calculate all terms at once together with the seed kinematics, use
            if (present (skip_term)) then
               if (i == skip_term)  cycle
            end if
-           if (present (real_phsp)) then
-             if (real_phsp) then
-               call core%compute_hard_kinematics &
-                     (component%p_seed, i, term(i)%nlo_controller%int_born, &
-                     component%core_state)
-             else 
-               call core%compute_hard_kinematics &
-                     (component%p_seed, i, term(i)%int_hard, &
-                     component%core_state)
-             end if
-          else
-             call core%compute_hard_kinematics & 
-                 (component%p_seed, i, term(i)%int_hard, component%core_state)
-          end if
+           !if (present (real_phsp)) then
+           !  if (real_phsp) then
+           !    call core%compute_hard_kinematics &
+           !          (component%p_seed, i, term(i)%nlo_controller%int_born, &
+           !          component%core_state)
+           !  else 
+           !    call core%compute_hard_kinematics &
+           !          (component%p_seed, i, term(i)%int_hard, &
+           !          component%core_state)
+           !  end if
+           !else
+           !call core%compute_hard_kinematics & 
+           !   (component%p_seed, i, term(i)%int_hard, component%core_state)
+           !end if
+           call term(i)%int_hard%set_momenta (term(i)%k_term%get_momenta (component%p_seed))
         end do
       end associate
     end associate
@@ -8954,6 +8992,7 @@ physical event.
 
      i_flv_real = term%nlo_controller%active_flavor_structure_real
      i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real)
+     term%p_hard = term%int_hard%get_momenta ()
      call msg_debug2 (D_SUBTRACTION, "underlying Born ", i_flv_born)
 
      associate (scales => term%nlo_controller%real_terms%scales)
@@ -8968,7 +9007,7 @@ physical event.
         do i = 1, term%config%n_allowed
            if (term%config%flv(i) == i_flv_real) then
               term%amp(i) = core%compute_amplitude (i_term, &
-                 term%int_hard_real%get_momenta (), &
+                 term%p_hard, &
                  term%config%flv(i), term%config%hel(i), term%config%col(i), &
                  term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
                  component%core_state)
@@ -10256,7 +10295,7 @@ components, from the seed kinematics.
               real_phsp = .true.
             end select
               call instance%component(i)% &
-                  compute_hard_kinematics (instance%term, skip_term, real_phsp)
+                  compute_hard_kinematics (instance%term, skip_term)
           end if
        end do
        instance%evaluation_status = STAT_HARD_KINEMATICS
