@@ -2270,20 +2270,26 @@ The types introduced here are abstract base types.
 
 module pcm_base
 
-use diagnostics, only: msg_fatal
-use io_units, only: given_output_unit
-
-use physics_defs, only: BORN, NLO_REAL
-use physics_defs, only: NLO_VIRTUAL, NLO_SUBTRACTION
-
-use prc_test, only: prc_test_t
-use prc_core, only: prc_core_t
-use prc_template_me, only: prc_template_me_t
-use prc_omega, only: prc_omega_t
-use prc_threshold, only: prc_threshold_t
-use prc_user_defined, only: prc_user_defined_test_t
-use prc_gosam, only: prc_gosam_t
-use prc_openloops, only: prc_openloops_t
+<<Use strings>>
+  use diagnostics, only: msg_fatal
+  use io_units, only: given_output_unit
+  use format_utils, only: write_integer_array
+  
+  use physics_defs, only: BORN, NLO_REAL
+  use physics_defs, only: NLO_VIRTUAL, NLO_SUBTRACTION
+  
+  use sm_qcd, only: qcd_t
+  use process_libraries, only: process_component_def_t, process_library_t
+  use model_data, only: model_data_t
+  
+  use prc_test, only: prc_test_t
+  use prc_core, only: prc_core_t, helicity_selection_t
+  use prc_template_me, only: prc_template_me_t
+  use prc_omega, only: prc_omega_t
+  use prc_threshold, only: prc_threshold_t
+  use prc_user_defined, only: prc_user_defined_test_t
+  use prc_gosam, only: prc_gosam_t
+  use prc_openloops, only: prc_openloops_t
 
 <<Standard module head>>
 
@@ -2317,16 +2323,6 @@ and allocates the corresponding manager instance.
   integer, parameter, public :: CORE_RECOLA = 8
   integer, parameter, public :: N_MAX_CORES = 4
  
-<<PCM base: public>>=
-  public :: cm_t
-<<PCM base: types>>=
-  type :: cm_t
-    integer, dimension(N_MAX_CORES) :: me
-  contains
-  <<PCM base: cm: TBP>>
-  end type cm_t
-
-@ %def cm_t
 @ Auxilliary container for polymorphic cores.
 <<PCM base: types>>=
   type :: generic_core_t
@@ -2336,43 +2332,49 @@ and allocates the corresponding manager instance.
 @ %def generic_core_t
 @
 <<PCM base: public>>=
-  public :: cm_instance_t
+  public :: cm_t
 <<PCM base: types>>=
-  type :: cm_instance_t
+  type :: cm_t
+    integer, dimension(N_MAX_CORES) :: me
+    integer, dimension(N_MAX_CORES) :: def_ptr_index_all = 0
     integer :: n_cores = 0
     type(generic_core_t), dimension(:), allocatable :: cores
+    integer, dimension(:), allocatable :: def_ptr_index
   contains
-  <<PCM base: cm instance: TBP>>
-  end type cm_instance_t 
+  <<PCM base: cm: TBP>>
+  end type cm_t
 
-@ %def cm_instance_t
+@ %def cm_t
 @
 <<PCM base: cm: TBP>>=
   procedure :: register => cm_register
 <<PCM base: procedures>>=
-  subroutine cm_register (cm, nlo_type, core_type)
+  subroutine cm_register (cm, nlo_type, core_type, i_component)
     class(cm_t), intent(inout) :: cm
-    integer, intent(in) :: nlo_type, core_type
+    integer, intent(in) :: nlo_type, core_type, i_component
+    integer :: index
     select case (nlo_type)
     case (BORN)
-       cm%me(1) = core_type
+       index = 1
     case (NLO_REAL)
-       cm%me(2) = core_type
+       index = 2
     case (NLO_VIRTUAL)
-       cm%me(3) = core_type
+       index = 3
     case (NLO_SUBTRACTION)
-       cm%me(4) = core_type
+       index = 4
     end select
+    cm%me(index) = core_type
+    if (cm%def_ptr_index_all(index) == 0) &
+       cm%def_ptr_index_all(index) = i_component
   end subroutine cm_register
 
 @ %def cm_register
 @
 <<PCM base: cm: TBP>>=
-  procedure :: setup_instance => cm_setup_instance
+  procedure :: allocate_core_array => cm_allocate_core_array
 <<PCM base: procedures>>=
-  subroutine cm_setup_instance (cm, cm_instance)
-    class(cm_t), intent(in) :: cm
-    type(cm_instance_t), intent(out) :: cm_instance
+  subroutine cm_allocate_core_array (cm)
+    class(cm_t), intent(inout) :: cm
     integer, dimension(N_MAX_CORES) :: use_cores
     integer :: n_cores = 0
     integer :: i, j, k, this_core
@@ -2387,52 +2389,128 @@ and allocates the corresponding manager instance.
           end if
        end do
     end do
-    cm_instance%n_cores = n_cores
-    allocate (cm_instance%cores (n_cores))  
+    cm%n_cores = n_cores
+    allocate (cm%cores (n_cores), cm%def_ptr_index (n_cores))
+    cm%def_ptr_index = 0
+    print *, 'n_cores: ', n_cores
+    print *, 'cm%me: ', cm%me
+    print *, 'use cores: ', use_cores
+    print *, 'All def_ptr indices: ', cm%def_ptr_index_all
     do i = 1, n_cores
        this_core = use_cores(i)
-       select case (this_core)
-       case (CORE_TEST)
-          !!! prc_test is no real prc_core
-          !allocate (prc_test_t :: cm_instance%cores(i)%core)
-       case (CORE_OMEGA)
-          allocate (prc_omega_t :: cm_instance%cores(i)%core)
-       case (CORE_TEMPLATE)
-          allocate (prc_template_me_t :: cm_instance%cores(i)%core)
-       case (CORE_THRESHOLD)
-          allocate (prc_threshold_t :: cm_instance%cores(i)%core)
-       case (CORE_DUMMY)
-          allocate (prc_user_defined_test_t :: cm_instance%cores(i)%core)
-       case (CORE_GOSAM)
-          allocate (prc_gosam_t :: cm_instance%cores(i)%core)
-       case (CORE_OPENLOOPS)
-          allocate (prc_openloops_t :: cm_instance%cores(i)%core)
-       case (CORE_RECOLA)
-          call msg_fatal ("Recola core not implemented yet")
-       case default
-          call msg_fatal ("Undefined core type")
-       end select
+       cm%def_ptr_index(i) = minval (pack (cm%def_ptr_index_all, this_core == cm%me))
     end do
-  end subroutine cm_setup_instance
+  end subroutine cm_allocate_core_array
 
-@ %def cm_setup_instance
+@ %def cm_allocate_core_array
 @
-<<PCM base: cm instance: TBP>>=
-  procedure :: write => cm_instance_write
+<<PCM base: cm: TBP>>=
+  procedure :: init_core => cm_init_core
 <<PCM base: procedures>>=
-  subroutine cm_instance_write (cm_instance, unit)
-    class(cm_instance_t), intent(in) :: cm_instance
+  subroutine cm_init_core (cm, i_core, core_template)
+    class(cm_t), intent(inout) :: cm
+    integer, intent(in) :: i_core
+    class(prc_core_t), intent(in) :: core_template
+    allocate (cm%cores(i_core)%core, source = core_template)
+  end subroutine cm_init_core
+
+@ %def cm_init_core
+@
+<<PCM base: cm: TBP>>=
+  procedure :: setup_cores => cm_setup_cores
+<<PCM base: procedures>>=
+  subroutine cm_setup_cores (cm, proc_id, lib, qcd, model, helicity_selection, use_color_factors)
+    class(cm_t), intent(inout) :: cm
+    type(string_t), intent(in) :: proc_id
+    type(process_library_t), intent(in) :: lib
+    type(qcd_t), intent(in) :: qcd
+    class(model_data_t), intent(in), pointer :: model
+    type(helicity_selection_t), intent(in) :: helicity_selection
+    logical, intent(in) :: use_color_factors
+    integer, dimension(N_MAX_CORES) :: use_cores
+    integer :: n_cores = 0
+    integer :: i, j, k, this_core
+    type(process_component_def_t), pointer :: config => null ()
+    !use_cores = 0; k = 1
+    !do i = CORE_OMEGA, CORE_RECOLA
+    !   do j = 1, N_MAX_CORES
+    !      if (i == cm%me(j) .and. .not. any (use_cores == cm%me(j))) then
+    !         n_cores = n_cores + 1
+    !         use_cores(k) = cm%me(j)
+    !         k = k + 1
+    !         exit
+    !      end if
+    !   end do
+    !end do
+    !cm%n_cores = n_cores
+    !allocate (cm%cores (n_cores), cm%def_ptr_index (n_cores))
+    !cm%def_ptr_index = 0
+    !print *, 'n_cores: ', n_cores
+    !print *, 'cm%me: ', cm%me
+    !print *, 'use cores: ', use_cores
+    !print *, 'All def_ptr indices: ', cm%def_ptr_index_all
+    !do i = 1, n_cores
+    !   this_core = use_cores(i)
+    !   cm%def_ptr_index(i) = minval (pack (cm%def_ptr_index_all, this_core == cm%me))
+    !   config => lib%get_component_def_ptr (proc_id, cm%def_ptr_index(i))
+    !   call dispatch_core (core_template, config%get_core_def_ptr (), &
+    !      model, helicity_selection, qcd, &
+    !      use_color_factors)
+    !   !do j = 1, N_MAX_CORES
+    !   !   print *, 'this_core: ', this_core, 'me: ', cm%me(j)
+    !   !   if (this_core == cm%me(j)) then
+    !   !      print *, cm%def_ptr_index(i), cm%def_ptr_index_all(j)
+    !   !      if (cm%def_ptr_index(i) < cm%def_ptr_index_all(j)) &
+    !   !         cm%def_ptr_index(i) = cm%def_ptr_index_all(j)
+    !   !   end if
+    !   !end do
+    !   print *, 'allocate core! ', i, this_core
+    !   print *, 'component index: ', cm%def_ptr_index(i)
+    !   select case (this_core)
+    !   case (CORE_TEST)
+    !      !!! prc_test is no real prc_core
+    !      !allocate (prc_test_t :: cm_instance%cores(i)%core)
+    !   case (CORE_OMEGA)
+    !      allocate (prc_omega_t :: cm%cores(i)%core)
+    !   case (CORE_TEMPLATE)
+    !      allocate (prc_template_me_t :: cm%cores(i)%core)
+    !   case (CORE_THRESHOLD)
+    !      allocate (prc_threshold_t :: cm%cores(i)%core)
+    !   case (CORE_DUMMY)
+    !      allocate (prc_user_defined_test_t :: cm%cores(i)%core)
+    !   case (CORE_GOSAM)
+    !      allocate (prc_gosam_t :: cm%cores(i)%core)
+    !   case (CORE_OPENLOOPS)
+    !      allocate (prc_openloops_t :: cm%cores(i)%core)
+    !   case (CORE_RECOLA)
+    !      call msg_fatal ("Recola core not implemented yet")
+    !   case default
+    !      call msg_fatal ("Undefined core type")
+    !   end select
+    !end do
+  end subroutine cm_setup_cores
+
+@ %def cm_setup_cores
+@
+<<PCM base: cm: TBP>>=
+  procedure :: write => cm_write
+<<PCM base: procedures>>=
+  subroutine cm_write (cm, unit)
+    class(cm_t), intent(in) :: cm
     integer, intent(in), optional :: unit
     integer :: u, i
     u = given_output_unit (unit)
-    write (u,"(1x,A,I1,A)") "component manager instance with ", cm_instance%n_cores, " cores: "
-    do i = 1, cm_instance%n_cores
+    write (u,"(1x,A,I1,A)") "component manager instance with ", cm%n_cores, " cores: "
+    print *, 'Cores allocated? ', allocated (cm%cores)
+    do i = 1, cm%n_cores
        write (u,"(1x,A,I1)") "Core nr. ", i
-       call cm_instance%cores(i)%core%write_name (u)
+       call cm%cores(i)%core%write_name (u)
     end do
-  end subroutine cm_instance_write
+    write (u,"(1x,A)") "Associated component indices: "
+    call write_integer_array (cm%def_ptr_index, u)
+  end subroutine cm_write
 
-@ %def cm_instance_write
+@ %def cm_write
 @ This object may hold process and method-specific data, and it should
 allocate the corresponding manager instance.
 <<PCM base: public>>=
@@ -2560,7 +2638,7 @@ module processes
   use parton_states
   use cascades
 
-  use pcm_base, only: cm_t, cm_instance_t
+  use pcm_base, only: cm_t
   use pcm_base, only: pcm_t, pcm_instance_t
   use nlo_data
   use models, only: model_t
@@ -2946,13 +3024,29 @@ freed.
 <<Processes: process: TBP>>=
   procedure :: core_manager_register => process_core_manager_register
 <<Processes: procedures>>=
-  subroutine process_core_manager_register (process, nlo_type, core_type)
+  subroutine process_core_manager_register (process, nlo_type, core_type, i_component)
     class(process_t), intent(inout) :: process
-    integer, intent(in) :: nlo_type, core_type
-    call process%cm%register (nlo_type, core_type)
+    integer, intent(in) :: nlo_type, core_type, i_component
+    call process%cm%register (nlo_type, core_type, i_component)
   end subroutine process_core_manager_register
 
 @ %def process_core_manager_register
+@
+<<Processes: process: TBP>>=
+  procedure :: allocate_cores => process_allocate_cores
+<<Processes: procedures>>=
+  subroutine process_allocate_cores (process, qcd, &
+     helicity_selection, use_color_factors)
+    class(process_t), intent(inout) :: process
+    type(qcd_t), intent(in) :: qcd
+    type(helicity_selection_t), intent(in) :: helicity_selection
+    logical, intent(in) :: use_color_factors
+    call process%cm%setup_cores (process%meta%id, process%meta%lib, qcd, process%get_model_ptr (), &
+       helicity_selection, use_color_factors)
+    call process%cm%write ()
+  end subroutine process_allocate_cores
+
+@ %def process_allocate_cores
 @ Initialize the process components, one by one, using a template for
 the process core object.  The template is taken only for allocating
 the correct type; the contents are set by extracting the process entry
@@ -4162,6 +4256,28 @@ usual error propagation gives
   end function process_get_component_associated_born
 
 @ %def process_get_component_associated_born
+@
+<<Processes: process: TBP>>=
+  procedure :: allocate_core_array => process_allocate_core_array
+<<Processes: procedures>>=
+  subroutine process_allocate_core_array (process)
+    class(process_t), intent(inout) :: process
+    call process%cm%allocate_core_array ()
+  end subroutine process_allocate_core_array
+
+@ %def process_allocate_core_array
+@
+<<Processes: process: TBP>>=
+  procedure :: init_core => process_init_core
+<<Processes: procedures>>=
+  subroutine process_init_core (process, i_core, core_template)
+    class(process_t), intent(inout) :: process
+    integer, intent(in) :: i_core
+    class(prc_core_t), intent(in) :: core_template
+    call process%cm%init_core (i_core, core_template)
+  end subroutine process_init_core
+
+@ %def process_init_core
 @
 <<Processes: process: TBP>>=
   procedure :: get_n_allowed_born => process_get_n_allowed_born
@@ -5858,6 +5974,50 @@ configuration finalizer may include closing an open scratch file.
   end subroutine process_component_write
 
 @ %def process_component_write
+@ Initialize all cores
+<<Processes: process: TBP>>=
+  procedure :: init_cores => process_init_cores
+<<Processes: procedures>>=
+  subroutine process_init_cores (process)
+    class(process_t), intent(inout) :: process
+    integer :: i_core, i_component
+    type(process_component_def_t), pointer :: config
+    do i_core = 1, process%cm%n_cores
+       i_component = process%cm%def_ptr_index(i_core)
+       print *, 'i_component: ', i_component
+       config => process%meta%lib%get_component_def_ptr (process%meta%id, i_component)
+       associate (core => process%cm%cores(i_core)%core)
+          call core%init (config%get_core_def_ptr (), &
+             process%meta%lib, process%meta%id, i_component)
+       end associate  
+    end do
+    call process%cm%write ()
+  end subroutine process_init_cores
+
+@ %def process_init_cores
+@
+<<Processes: process: TBP>>=
+  procedure :: get_n_cores => process_get_n_cores
+<<Processes: procedures>>=
+  function process_get_n_cores (process) result (n)
+    integer :: n
+    class(process_t), intent(in) :: process
+    n = process%cm%n_cores
+  end function process_get_n_cores
+
+@ %def process_get_n_cores
+@
+<<Processes: process: TBP>>=
+  procedure :: get_core_manager_index => process_get_core_manager_index
+<<Processes: procedures>>=
+  function process_get_core_manager_index (process, i_core) result (i)
+    integer :: i
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: i_core
+    i = process%cm%def_ptr_index(i_core)
+  end function process_get_core_manager_index
+
+@ %def process_get_core_manager_index
 @ Initialize the component.
 <<Processes: process component: TBP>>=
   procedure :: init => process_component_init
@@ -9697,7 +9857,6 @@ selected by the [[i_mci]] index above.
      type(term_instance_t), dimension(:), allocatable :: term
      type(mci_work_t), dimension(:), allocatable :: mci_work
      class(pcm_instance_t), allocatable :: pcm
-     type(cm_instance_t) :: cm
    contains
    <<Processes: process instance: TBP>>
   end type process_instance_t
@@ -9953,10 +10112,6 @@ to subobject of [[instance]].
     do i = 1, size (instance%mci_work)
        call instance%mci_work(i)%init (process%mci_entry(i))
     end do
-
-    call instance%process%cm%setup_instance (instance%cm)
-    call instance%cm%write ()
-    !!!stop
 
     allocate (instance%component (process%config%n_components))
     do i = 1, size (instance%component)
