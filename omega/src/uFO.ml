@@ -1128,19 +1128,21 @@ module Model =
       else
 	(d, c, b, a)
 
+    type ff = Q.t * int * int * int * int
+
     (* [FF_1 (q, a, b, c, d)] represents the tensor $q f_{abe}f_{ecd}$
        and we assume that [normalize_quartet] has been applied to the
        indices.  *)
     type color4_1 =
       | C3_1 of Q.t
-      | FF_1 of Q.t * int * int * int * int
+      | FF_1 of ff
 
     (* [FF (q1, q2, q3, a, b, c, d)] represents the tensor
        $q_1 f_{abe}f_{ecd} + q_2 f_{ace}f_{eda} + q_3 f_{ade}f_{eab}$ *)
 
     type color4 =
       | C3 of Q.t
-      | FF of Q.t * Q.t * Q.t * int * int * int * int
+      | FF of ff * ff * ff
 
     let q2s q =
       match Q.to_ratio q with
@@ -1149,14 +1151,16 @@ module Model =
 
     let color4_to_string = function
       | C3 (q) -> q2s q
-      | FF (q1, q2, q3, a, b, c, d) ->
+      | FF ((q1, a1, b1, c1, d1),
+	    (q2, a2, b2, c2, d2),
+	    (q3, a3, b3, c3, d3)) ->
 	 Printf.sprintf
 	   "%s*f(%d,%d,-1)*f(-1,%d,%d) \
           + %s*f(%d,%d,-1)*f(-1,%d,%d) \
           + %s*f(%d,%d,-1)*f(-1,%d,%d)"
-	   (q2s q1) a b c d
-	   (q2s q2) a c d b
-	   (q2s q3) a d b c
+	   (q2s q1) a1 b1 c1 d1
+	   (q2s q2) a2 b2 c2 d2
+	   (q2s q3) a3 b3 c3 d3
 
     let translate_color4_1_1 c =
       Q.make (translate_color_atom c) 1
@@ -1289,12 +1293,16 @@ i.e.
 		 (Q.make eps 1, [b3; d3; c3]) in
 	     if bcd2 = [c1; d1; b1] then
 	       if bcd3 = [d1; b1; c1] then
-		 FF (q1, Q.mul eps2 q2, Q.mul eps3 q3, a1, b1, c1, d1)
+		 FF ((q1,            a1, b1, c1, d1),
+		     (Q.mul eps2 q2, a1, c1, d1, b1),
+		     (Q.mul eps3 q3, a1, d1, b1, c1))
 	       else
 		 invalid_arg "translate_color4: mismatched indices b, c, d"
 	     else if bcd2 = [d1; b1; c1] then
 	       if bcd3 = [c1; d1; b1] then
-		 FF (q1, Q.mul eps3 q3, Q.mul eps2 q2, a1, b1, c1, d1)
+		 FF ((q1,            a1, b1, c1, d1),
+		     (Q.mul eps2 q2, a1, d1, b1, c1),
+		     (Q.mul eps3 q3, a1, c1, d1, b1))
 	       else
 		 invalid_arg "translate_color4: mismatched indices b, c, d"
 	     else
@@ -1425,6 +1433,7 @@ i.e.
 	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
 
     let translate_coupling3 model p t c g =
+      let open Coupling in
       match t, translate_color3 c, g with
       | [| t |], qc, [| [| g |] |] ->
 	 translate_coupling3_1 model p t qc g
@@ -1433,34 +1442,18 @@ i.e.
       | [| t1; t2 |] as t, qc, [| [| g1; g2 |] |] ->
 	 begin match (translate_coupling3_1 model p t1 qc g1,
 		      translate_coupling3_1 model p t2 qc g2) with
-	 | ((p1, p2, p3),
-	    Coupling.FBF (q, Coupling.Psibar, l, Coupling.Psi),
-	    g),
-           ((p1', p2', p3'),
-	    Coupling.FBF (q', Coupling.Psibar, l', Coupling.Psi),
-	    g') ->
+	 | ((p1, p2, p3), FBF (q, Psibar, l, Psi), g),
+           ((p1', p2', p3'), FBF (q', Psibar, l', Psi), g') ->
 	    prerr_endline
 	      ("incompletely handled 3-vertex w/2 Lorentz structures: " ^
 		  (String.concat ", "
 		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	    if p1 = p1' && p2 = p2' && p3 = p3' then begin
 	      match l, l' with
-	      | P, S | S, P ->
-		 ((p1, p2, p3),
-		  Coupling.FBF (q, Coupling.Psibar, SP, Coupling.Psi),
-		  g)
-	      | SL, SR | SR, SL ->
-		 ((p1, p2, p3),
-		  Coupling.FBF (q, Coupling.Psibar, SLR, Coupling.Psi),
-		  g)
-	      | V, A | A, V ->
-		 ((p1, p2, p3),
-		  Coupling.FBF (q, Coupling.Psibar, VA, Coupling.Psi),
-		  g)
-	      | VL, VR | VR, VL ->
-		 ((p1, p2, p3),
-		  Coupling.FBF (q, Coupling.Psibar, VLR, Coupling.Psi),
-		  g)
+	      | P, S | S, P -> ((p1, p2, p3), FBF (q, Psibar, SP, Psi), g)
+	      | SL, SR | SR, SL -> ((p1, p2, p3), FBF (q, Psibar, SLR, Psi), g)
+	      | V, A | A, V -> ((p1, p2, p3), FBF (q, Psibar, VA, Psi), g)
+	      | VL, VR | VR, VL -> ((p1, p2, p3), FBF (q, Psibar, VLR, Psi), g)
 	      | _, _ ->
 		 invalid_arg "translate_coupling3: incompatible Dirac matrices"
 	    end else
@@ -1492,7 +1485,8 @@ i.e.
 	(fun (c1, q1) (c2, q2) -> ThoList.lexicographic c1 c2)
 	(List.map (fun (c, q) -> (normalize_lorentz_4_1 c, q)) contractions)
 
-    let translate_lorentz_4 model p t =  
+    let translate_lorentz_4 model p t =
+      let open Coupling in
       let module L = UFOx.Lorentz_Atom in
       match t with
       | [ ([L.Metric(mu1,nu1); L.Metric(ka1,la1)], q1);
@@ -1510,24 +1504,18 @@ i.e.
 	      && ThoList.homogeneous [ka1; nu2; la3]
 	      && ThoList.homogeneous [la1; la2; nu3] then begin
 		if ThoList.homogeneous [q1; minus_two q2; minus_two q3] then
-		  (p, q1, Coupling.Vector4 [ ( 2, Coupling.C_12_34);
-					     (-1, Coupling.C_13_42);
-					     (-1, Coupling.C_14_23) ])
+		  (p, q1, Vector4 [ ( 2, C_12_34); (-1, C_13_42); (-1, C_14_23) ])
 		else if ThoList.homogeneous [q2; minus_two q3; minus_two q1] then
-		  (p, q2, Coupling.Vector4 [ (-1, Coupling.C_12_34);
-					     ( 2, Coupling.C_13_42);
-					     (-1, Coupling.C_14_23) ] )
+		  (p, q2, Vector4 [ (-1, C_12_34); ( 2, C_13_42); (-1, C_14_23) ])
 		else if ThoList.homogeneous [q3; minus_two q1; minus_two q2] then
-		  (p, q3, Coupling.Vector4 [ (-1, Coupling.C_12_34);
-					     (-1, Coupling.C_13_42);
-					     ( 2, Coupling.C_14_23) ])
+		  (p, q3, Vector4 [ (-1, C_12_34); (-1, C_13_42); ( 2, C_14_23) ])
 		else begin
 		  prerr_endline
 		    ("unexpected 4-gauge-vertex: " ^ UFOx.Lorentz.to_string t);
 		  (p, Q.unit, dummy_tensor4)
 		end
 	      end else begin
-		prerr_endline
+ 		prerr_endline
 		  ("expected 4-gauge-vertex: " ^ UFOx.Lorentz.to_string t);
 		invalid_arg "normalize_lorentz_4: unexpected"
 	      end
@@ -1539,19 +1527,19 @@ i.e.
 					   ((mu2, nu2, ka2, la2), q2) ] with
 	 | [ ([mu1; nu1; ka1; la1], q1);
 	     ([mu2; nu2; ka2; la2], q2) ] ->
-	    (* [1;2;3;4] - [1;3;2;4]
-	       [1;2;3;4] - [1;4;2;3]
-	       [1;3;2;4] - [1;4;2;3] *)
+	    (* $ \lbrack 1;2;3;4 \rbrack - \lbrack 1;3;2;4 \rbrack $ and
+	       $ \lbrack 1;2;3;4 \rbrack - \lbrack 1;4;2;3 \rbrack $ and
+	       $ \lbrack 1;3;2;4 \rbrack - \lbrack 1;4;2;3 \rbrack $ *)
 	    if mu1 = mu2 && q2 = Q.neg q1 then begin
 	      if [nu2; ka2; la2] = [ka1; nu1; la1] then
-		(p, q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
-				           (-1, Coupling.C_13_42) ])
+		(p, q1, Vector4 [ ( 1, C_12_34);
+				           (-1, C_13_42) ])
 	      else if [nu2; ka2; la2] = [la1; nu1; ka1] then
-		(p, q1, Coupling.Vector4 [ ( 1, Coupling.C_12_34);
-				           (-1, Coupling.C_14_23) ])
+		(p, q1, Vector4 [ ( 1, C_12_34);
+				           (-1, C_14_23) ])
 	      else if [nu2; ka2; la2] = [la1; ka1; nu1] then
-		(p, q1, Coupling.Vector4 [ ( 1, Coupling.C_13_42);
-				           (-1, Coupling.C_14_23) ])
+		(p, q1, Vector4 [ ( 1, C_13_42);
+				           (-1, C_14_23) ])
 	      else
 		invalid_arg "translate_lorentz_4: inconsistent"
 	    end else
@@ -1563,12 +1551,13 @@ i.e.
 	 begin match ThoList.complement [0; 1; 2; 3] [mu; nu] with
 	 | [ka; la] ->
 	    ([|p.(ka); p.(la); p.(mu); p.(nu)|],
-	     Q.unit, Coupling.Scalar2_Vector2 1)
+	     Q.unit, Scalar2_Vector2 1)
 	 | _ -> failwith "translate_lorentz_4: impossible"
 	 end
       | _ -> failwith "translate_lorentz_4"
 
     let translate_gauge_vertex4 model p t c g =
+      let open Coupling in
       let g =
 	begin match g with
 	| [| [| Some g1; None; None |];
@@ -1582,33 +1571,32 @@ i.e.
 	   invalid_arg "translate_gauge_vertex4: off diagonal couplings"
 	end in
       match Array.map (translate_lorentz_4 model p) t with
-      | [| (p1, q1, Coupling.Vector4 [ (  1, contraction11);
-				       ( -1, contraction12) ]);
-	   (p2, q2, Coupling.Vector4 [ (  1, contraction21);
-				       ( -1, contraction22) ]);
-	   (p3, q3, Coupling.Vector4 [ (  1, contraction31);
-				       ( -1, contraction32) ])  |] ->
+      | [| (p1, q1, Vector4 [ (1, contraction11); (-1, contraction12) ]);
+	   (p2, q2, Vector4 [ (1, contraction21); (-1, contraction22) ]);
+	   (p3, q3, Vector4 [ (1, contraction31); (-1, contraction32) ])  |] ->
 	 if p1 = p2 && p2 = p3 then begin
 	   match c with
-	   | FF (q1', q2', q3', a, b, c, d) ->
+	   | FF ((q1', a1, b1, c1, d1),
+		 (q2', a2, b2, c2, d2),
+		 (q3', a3, b3, c3, d3)) ->
 	      let q1 = Q.mul q1 q1'
 	      and q2 = Q.mul q2 q2'
 	      and q3 = Q.mul q3 q3' in
 	      if Q.abs q1 = Q.abs q2 && Q.abs q2 = Q.abs q3 then begin
 		begin match contraction11, contraction12 with
-		| (Coupling.C_12_34, Coupling.C_13_42) -> ()
-		| (Coupling.C_12_34, Coupling.C_14_23) -> ()
-		| (Coupling.C_13_42, Coupling.C_14_23) -> ()
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
 		end;
 		begin match contraction21, contraction22 with
-		| (Coupling.C_12_34, Coupling.C_13_42) -> ()
-		| (Coupling.C_12_34, Coupling.C_14_23) -> ()
-		| (Coupling.C_13_42, Coupling.C_14_23) -> ()
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
 		end;
 		begin match contraction31, contraction32 with
-		| (Coupling.C_12_34, Coupling.C_13_42) -> ()
-		| (Coupling.C_12_34, Coupling.C_14_23) -> ()
-		| (Coupling.C_13_42, Coupling.C_14_23) -> ()
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
 		end;
 		prerr_endline
 		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
@@ -1623,12 +1611,11 @@ i.e.
       | _ -> invalid_arg "translate_gauge_vertex4: unexpected Lorentz"
 
     let translate_coupling4 model p t c g =
+      let open Coupling in
       let module L = UFOx.Lorentz_Atom in
       match t, translate_color4 c, g with
       | [| [ [], qt] |], C3 qc, [| [| g |] |] ->
-	 ((p.(0), p.(1), p.(2), p.(3)),
-	  Coupling.Scalar4 (coeff qt qc),
-	  dummy_constant)
+	 ((p.(0), p.(1), p.(2), p.(3)), Scalar4 (coeff qt qc), dummy_constant)
       | [| t |], qc, [| [| g |] |] ->
 	 begin match translate_lorentz_4 model p t with
 	 | p, q, t -> ((p.(0), p.(1), p.(2), p.(3)), t, dummy_constant)
