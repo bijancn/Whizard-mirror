@@ -3838,6 +3838,7 @@ module dispatch
   use hadrons
   use evt_nlo
   use tauola_interface !NODEP!
+  use pcm_base
 
 <<Standard module head>>
 
@@ -4009,7 +4010,8 @@ grab it from the model.
   public :: dispatch_core
 <<Dispatch: procedures>>=
   subroutine dispatch_core (core, core_def, model, &
-       helicity_selection, qcd, use_color_factors)
+       helicity_selection, qcd, use_color_factors, &
+       core_type)
     
     class(prc_core_t), allocatable, intent(inout) :: core
     class(prc_core_def_t), intent(in) :: core_def
@@ -4017,18 +4019,22 @@ grab it from the model.
     type(helicity_selection_t), intent(in), optional :: helicity_selection
     type(qcd_t), intent(in), optional :: qcd
     logical, intent(in), optional :: use_color_factors
+    integer, intent(out), optional :: core_type
 
     select type (core_def)
     type is (prc_test_def_t)
        allocate (test_t :: core)
+       if (present (core_type)) core_type = CORE_TEST
     type is (template_me_def_t)
        allocate (prc_template_me_t :: core)
+       if (present (core_type)) core_type = CORE_TEMPLATE
        select type (core)
        type is (prc_template_me_t)
           call core%set_parameters (model) 
        end select       
     class is (omega_def_t)
        if (.not. allocated (core)) allocate (prc_omega_t :: core)
+       if (present (core_type)) core_type = CORE_OMEGA
        select type (core)
        type is (prc_omega_t)
           call core%set_parameters (model, & 
@@ -4036,24 +4042,28 @@ grab it from the model.
        end select
     type is (gosam_def_t)
       if (.not. allocated (core)) allocate (prc_gosam_t :: core)
+      if (present (core_type)) core_type = CORE_GOSAM
       select type (core)
       type is (prc_gosam_t)
         call core%set_parameters (qcd)
       end select
     type is (openloops_def_t)
       if (.not. allocated (core)) allocate (prc_openloops_t :: core)
+      if (present (core_type)) core_type = CORE_OPENLOOPS
       select type (core)
       type is (prc_openloops_t)
          call core%set_parameters (qcd)
       end select
     type is (user_defined_test_def_t)
       if (.not. allocated (core)) allocate (prc_user_defined_test_t :: core)
+      if (present (core_type)) core_type = CORE_DUMMY
       select type (core)
       type is (prc_user_defined_test_t)
          call core%set_parameters (qcd, model)
       end select
     type is (threshold_def_t)
       if (.not. allocated (core)) allocate (prc_threshold_t :: core)
+      if (present (core_type)) core_type = CORE_THRESHOLD
       select type (core)
       type is (prc_threshold_t)
          !!! Need to wait for Bijan's answer to decide whether prc_threshold
@@ -8692,8 +8702,10 @@ local changes to currently inactive models.
     type(string_t) :: me_method, sf_string
     class(phs_config_t), allocatable :: phs_config_template_other
     integer :: i_real = 0
+    integer :: core_type
     verb = .true.; if (present (verbose))  verb = verbose
     call intg%process%set_var_list (local%get_var_list_ptr ())
+    call intg%process%init_core_manager ()
     var_list => intg%process%get_var_list_ptr ()
 
     call setup_phase_space ()    
@@ -8721,6 +8733,16 @@ local changes to currently inactive models.
     helicity_selection = local%get_helicity_selection ()
     use_color_factors = var_list%get_lval &
          (var_str ("?read_color_factors"))
+    do i_component = 1, n_components
+       config => intg%process%get_component_def_ptr (i_component)
+       call dispatch_core (core_template, config%get_core_def_ptr (), &
+            intg%process%get_model_ptr (), &
+            helicity_selection, intg%qcd, &
+            use_color_factors, core_type = core_type)
+       call intg%process%core_manager_register (config%get_nlo_type (), core_type)
+    end do
+
+        
     do i_component = 1, n_components
        config => intg%process%get_component_def_ptr (i_component)
        call dispatch_core (core_template, config%get_core_def_ptr (), &
@@ -8855,6 +8877,21 @@ local changes to currently inactive models.
           call msg_message ("Run ID = " // '"' // char (intg%run_id) // '"')
       end if
     end subroutine display_init_message
+
+    function get_me_method (nlo_type) result (me_method)
+      type(string_t) :: me_method
+      integer, intent(in) :: nlo_type
+      select case (nlo_type)
+      case (BORN)
+         me_method = var_list%get_sval (var_str ("$born_me_method"))
+      case (NLO_REAL)
+         me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
+      case (NLO_VIRTUAL)
+         me_method = var_list%get_sval (var_str ("$loop_me_method"))
+      case (NLO_SUBTRACTION)
+         me_method = var_list%get_sval (var_str ("$correlation_me_method"))
+      end select
+    end function get_me_method
 
     subroutine setup_born_component ()
       me_method = var_list%get_sval (var_str ("$born_me_method"))

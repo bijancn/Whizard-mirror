@@ -2270,7 +2270,24 @@ The types introduced here are abstract base types.
 
 module pcm_base
 
+use diagnostics, only: msg_fatal
+use io_units, only: given_output_unit
+
+use physics_defs, only: BORN, NLO_REAL
+use physics_defs, only: NLO_VIRTUAL, NLO_SUBTRACTION
+
+use prc_test, only: prc_test_t
+use prc_core, only: prc_core_t
+use prc_template_me, only: prc_template_me_t
+use prc_omega, only: prc_omega_t
+use prc_threshold, only: prc_threshold_t
+use prc_user_defined, only: prc_user_defined_test_t
+use prc_gosam, only: prc_gosam_t
+use prc_openloops, only: prc_openloops_t
+
 <<Standard module head>>
+
+<<PCM base: parameters>>
 
 <<PCM base: public>>
 
@@ -2278,11 +2295,145 @@ module pcm_base
 
 <<PCM base: interfaces>>
 
+contains
+
+<<PCM base: procedures>>
+
 end module pcm_base
 @ %def pcm_base
 @
 \subsection{Manager Configuration}
-This object may holds process and method-specific data, and it should
+This object holds information about the cores used by the components
+and allocates the corresponding manager instance.
+<<PCM base: parameters>>=
+  integer, parameter, public :: CORE_UNDEFINED = 0
+  integer, parameter, public :: CORE_TEST = 1
+  integer, parameter, public :: CORE_OMEGA = 2
+  integer, parameter, public :: CORE_TEMPLATE = 3
+  integer, parameter, public :: CORE_THRESHOLD = 4
+  integer, parameter, public :: CORE_DUMMY = 5
+  integer, parameter, public :: CORE_GOSAM = 6
+  integer, parameter, public :: CORE_OPENLOOPS = 7
+  integer, parameter, public :: CORE_RECOLA = 8
+  integer, parameter, public :: N_MAX_CORES = 4
+ 
+<<PCM base: public>>=
+  public :: cm_t
+<<PCM base: types>>=
+  type :: cm_t
+    integer, dimension(N_MAX_CORES) :: me
+  contains
+  <<PCM base: cm: TBP>>
+  end type cm_t
+
+@ %def cm_t
+@ Auxilliary container for polymorphic cores.
+<<PCM base: types>>=
+  type :: generic_core_t
+    class(prc_core_t), allocatable :: core
+  end type  generic_core_t
+
+@ %def generic_core_t
+@
+<<PCM base: public>>=
+  public :: cm_instance_t
+<<PCM base: types>>=
+  type :: cm_instance_t
+    integer :: n_cores = 0
+    type(generic_core_t), dimension(:), allocatable :: cores
+  contains
+  <<PCM base: cm instance: TBP>>
+  end type cm_instance_t 
+
+@ %def cm_instance_t
+@
+<<PCM base: cm: TBP>>=
+  procedure :: register => cm_register
+<<PCM base: procedures>>=
+  subroutine cm_register (cm, nlo_type, core_type)
+    class(cm_t), intent(inout) :: cm
+    integer, intent(in) :: nlo_type, core_type
+    select case (nlo_type)
+    case (BORN)
+       cm%me(1) = core_type
+    case (NLO_REAL)
+       cm%me(2) = core_type
+    case (NLO_VIRTUAL)
+       cm%me(3) = core_type
+    case (NLO_SUBTRACTION)
+       cm%me(4) = core_type
+    end select
+  end subroutine cm_register
+
+@ %def cm_register
+@
+<<PCM base: cm: TBP>>=
+  procedure :: setup_instance => cm_setup_instance
+<<PCM base: procedures>>=
+  subroutine cm_setup_instance (cm, cm_instance)
+    class(cm_t), intent(in) :: cm
+    type(cm_instance_t), intent(out) :: cm_instance
+    integer, dimension(N_MAX_CORES) :: use_cores
+    integer :: n_cores = 0
+    integer :: i, j, k, this_core
+    use_cores = 0; k = 1
+    do i = CORE_OMEGA, CORE_RECOLA
+       do j = 1, N_MAX_CORES
+          if (i == cm%me(j) .and. .not. any (use_cores == cm%me(j))) then
+             n_cores = n_cores + 1
+             use_cores(k) = cm%me(j)
+             k = k + 1
+             exit
+          end if
+       end do
+    end do
+    cm_instance%n_cores = n_cores
+    allocate (cm_instance%cores (n_cores))  
+    do i = 1, n_cores
+       this_core = use_cores(i)
+       select case (this_core)
+       case (CORE_TEST)
+          !!! prc_test is no real prc_core
+          !allocate (prc_test_t :: cm_instance%cores(i)%core)
+       case (CORE_OMEGA)
+          allocate (prc_omega_t :: cm_instance%cores(i)%core)
+       case (CORE_TEMPLATE)
+          allocate (prc_template_me_t :: cm_instance%cores(i)%core)
+       case (CORE_THRESHOLD)
+          allocate (prc_threshold_t :: cm_instance%cores(i)%core)
+       case (CORE_DUMMY)
+          allocate (prc_user_defined_test_t :: cm_instance%cores(i)%core)
+       case (CORE_GOSAM)
+          allocate (prc_gosam_t :: cm_instance%cores(i)%core)
+       case (CORE_OPENLOOPS)
+          allocate (prc_openloops_t :: cm_instance%cores(i)%core)
+       case (CORE_RECOLA)
+          call msg_fatal ("Recola core not implemented yet")
+       case default
+          call msg_fatal ("Undefined core type")
+       end select
+    end do
+  end subroutine cm_setup_instance
+
+@ %def cm_setup_instance
+@
+<<PCM base: cm instance: TBP>>=
+  procedure :: write => cm_instance_write
+<<PCM base: procedures>>=
+  subroutine cm_instance_write (cm_instance, unit)
+    class(cm_instance_t), intent(in) :: cm_instance
+    integer, intent(in), optional :: unit
+    integer :: u, i
+    u = given_output_unit (unit)
+    write (u,"(1x,A,I1,A)") "component manager instance with ", cm_instance%n_cores, " cores: "
+    do i = 1, cm_instance%n_cores
+       write (u,"(1x,A,I1)") "Core nr. ", i
+       call cm_instance%cores(i)%core%write_name (u)
+    end do
+  end subroutine cm_instance_write
+
+@ %def cm_instance_write
+@ This object may hold process and method-specific data, and it should
 allocate the corresponding manager instance.
 <<PCM base: public>>=
   public :: pcm_t
@@ -2409,6 +2560,7 @@ module processes
   use parton_states
   use cascades
 
+  use pcm_base, only: cm_t, cm_instance_t
   use pcm_base, only: pcm_t, pcm_instance_t
   use nlo_data
   use models, only: model_t
@@ -2523,6 +2675,7 @@ work for this matter.
           mci_entry
      class(pcm_t), allocatable :: &
           pcm
+     type(cm_t) :: cm
    contains
    <<Processes: process: TBP>>
   end type process_t
@@ -2777,6 +2930,29 @@ freed.
   end subroutine process_set_var_list
   
 @ %def process_set_var_list
+@
+<<Processes: process: TBP>>=
+  procedure :: init_core_manager => process_init_core_manager
+<<Processes: procedures>>=
+  subroutine process_init_core_manager (process)
+    class(process_t), intent(inout) :: process
+    associate (var_list => process%meta%var_list)
+
+    end associate
+  end subroutine process_init_core_manager
+
+@ %def process_init_core_manager
+@
+<<Processes: process: TBP>>=
+  procedure :: core_manager_register => process_core_manager_register
+<<Processes: procedures>>=
+  subroutine process_core_manager_register (process, nlo_type, core_type)
+    class(process_t), intent(inout) :: process
+    integer, intent(in) :: nlo_type, core_type
+    call process%cm%register (nlo_type, core_type)
+  end subroutine process_core_manager_register
+
+@ %def process_core_manager_register
 @ Initialize the process components, one by one, using a template for
 the process core object.  The template is taken only for allocating
 the correct type; the contents are set by extracting the process entry
@@ -9521,6 +9697,7 @@ selected by the [[i_mci]] index above.
      type(term_instance_t), dimension(:), allocatable :: term
      type(mci_work_t), dimension(:), allocatable :: mci_work
      class(pcm_instance_t), allocatable :: pcm
+     type(cm_instance_t) :: cm
    contains
    <<Processes: process instance: TBP>>
   end type process_instance_t
@@ -9776,6 +9953,10 @@ to subobject of [[instance]].
     do i = 1, size (instance%mci_work)
        call instance%mci_work(i)%init (process%mci_entry(i))
     end do
+
+    call instance%process%cm%setup_instance (instance%cm)
+    call instance%cm%write ()
+    !!!stop
 
     allocate (instance%component (process%config%n_components))
     do i = 1, size (instance%component)
