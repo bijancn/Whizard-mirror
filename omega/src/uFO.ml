@@ -1128,21 +1128,22 @@ module Model =
       else
 	(d, c, b, a)
 
-    type ff = Q.t * int * int * int * int
-
     (* [FF_1 (q, a, b, c, d)] represents the tensor $q f_{abe}f_{ecd}$
        and we assume that [normalize_quartet] has been applied to the
        indices.  *)
     type color4_1 =
       | C3_1 of Q.t
-      | FF_1 of ff
+      | FF_1 of Q.t * int * int * int * int
 
-    (* [FF (q1, q2, q3, a, b, c, d)] represents the tensor
-       $q_1 f_{abe}f_{ecd} + q_2 f_{ace}f_{eda} + q_3 f_{ade}f_{eab}$ *)
+    (* [FF123 (q1, q2, q3, a, b, c, d)] represents the tensor triple
+       $(q_1 f_{abe}f_{ecd}, q_2 f_{ace}f_{edb}, q_3 f_{ade}f_{ecb})$
+       and [FF132 (q1, q2, q3, a, b, c, d)] the triple
+       $(q_1 f_{abe}f_{ecd}, q_2 f_{ade}f_{ecb}, q_3 f_{ace}f_{edb})$ *)
 
     type color4 =
       | C3 of Q.t
-      | FF of ff * ff * ff
+      | FF123 of Q.t * Q.t * Q.t * int * int * int * int
+      | FF132 of Q.t * Q.t * Q.t * int * int * int * int
 
     let q2s q =
       match Q.to_ratio q with
@@ -1151,16 +1152,22 @@ module Model =
 
     let color4_to_string = function
       | C3 (q) -> q2s q
-      | FF ((q1, a1, b1, c1, d1),
-	    (q2, a2, b2, c2, d2),
-	    (q3, a3, b3, c3, d3)) ->
+      | FF123 (q1, q2, q3, a, b, c, d) ->
 	 Printf.sprintf
-	   "%s*f(%d,%d,-1)*f(-1,%d,%d) \
-          + %s*f(%d,%d,-1)*f(-1,%d,%d) \
-          + %s*f(%d,%d,-1)*f(-1,%d,%d)"
-	   (q2s q1) a1 b1 c1 d1
-	   (q2s q2) a2 b2 c2 d2
-	   (q2s q3) a3 b3 c3 d3
+	   "[%s*f(%d,%d,-1)*f(-1,%d,%d); \
+             %s*f(%d,%d,-1)*f(-1,%d,%d); \
+             %s*f(%d,%d,-1)*f(-1,%d,%d)]"
+	   (q2s q1) a b c d
+	   (q2s q2) a c d b
+	   (q2s q3) a d b c
+      | FF132 (q1, q2, q3, a, b, c, d) ->
+	 Printf.sprintf
+	   "[%s*f(%d,%d,-1)*f(-1,%d,%d); \
+             %s*f(%d,%d,-1)*f(-1,%d,%d); \
+             %s*f(%d,%d,-1)*f(-1,%d,%d)]"
+	   (q2s q1) a b c d
+	   (q2s q2) a d b c
+	   (q2s q3) a c d b
 
     let translate_color4_1_1 c =
       Q.make (translate_color_atom c) 1
@@ -1293,16 +1300,12 @@ i.e.
 		 (Q.make eps 1, [b3; d3; c3]) in
 	     if bcd2 = [c1; d1; b1] then
 	       if bcd3 = [d1; b1; c1] then
-		 FF ((q1,            a1, b1, c1, d1),
-		     (Q.mul eps2 q2, a1, c1, d1, b1),
-		     (Q.mul eps3 q3, a1, d1, b1, c1))
+		 FF123 (q1, Q.mul eps2 q2, Q.mul eps3 q3, a1, b1, c1, d1)
 	       else
 		 invalid_arg "translate_color4: mismatched indices b, c, d"
 	     else if bcd2 = [d1; b1; c1] then
 	       if bcd3 = [c1; d1; b1] then
-		 FF ((q1,            a1, b1, c1, d1),
-		     (Q.mul eps2 q2, a1, d1, b1, c1),
-		     (Q.mul eps3 q3, a1, c1, d1, b1))
+		 FF132 (q1, Q.mul eps2 q2, Q.mul eps3 q3, a1, b1, c1, d1)
 	       else
 		 invalid_arg "translate_color4: mismatched indices b, c, d"
 	     else
@@ -1576,9 +1579,34 @@ i.e.
 	   (p3, q3, Vector4 [ (1, contraction31); (-1, contraction32) ])  |] ->
 	 if p1 = p2 && p2 = p3 then begin
 	   match c with
-	   | FF ((q1', a1, b1, c1, d1),
-		 (q2', a2, b2, c2, d2),
-		 (q3', a3, b3, c3, d3)) ->
+	   | FF123 (q1', q2', q3', a, b, c, d) ->
+	      let q1 = Q.mul q1 q1'
+	      and q2 = Q.mul q2 q2'
+	      and q3 = Q.mul q3 q3' in
+	      if Q.abs q1 = Q.abs q2 && Q.abs q2 = Q.abs q3 then begin
+		begin match contraction11, contraction12 with
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
+		end;
+		begin match contraction21, contraction22 with
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
+		end;
+		begin match contraction31, contraction32 with
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
+		end;
+		prerr_endline
+		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
+		      (String.concat ", "
+			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
+		((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
+	      end else
+		invalid_arg "translate_gauge_vertex4: different couplings"
+	   | FF132 (q1', q2', q3', a, b, c, d) ->
 	      let q1 = Q.mul q1 q1'
 	      and q2 = Q.mul q2 q2'
 	      and q3 = Q.mul q3 q3' in
