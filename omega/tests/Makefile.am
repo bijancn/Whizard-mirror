@@ -514,10 +514,9 @@ amplitude_benchmark_v1.o amplitude_benchmark_v2.o \
 
 if OCAML_AVAILABLE
 
-TESTS += @comment_model_file@ vertex_unit
-@comment_model_file@ EXTRA_PROGRAMS += vertex_unit
-
-@comment_model_file@ vertex_unit_SOURCES = vertex_unit.ml
+TESTS += vertex_unit
+EXTRA_PROGRAMS += vertex_unit
+vertex_unit_SOURCES = vertex_unit.ml
 
 vertex_unit: $(OMEGA_CORE) vertex_unit.cmx
 	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -o vertex_unit \
@@ -532,10 +531,9 @@ endif
 
 if OCAML_AVAILABLE
 
-TESTS += @comment_model_file@ ufo_unit
-@comment_model_file@ EXTRA_PROGRAMS += ufo_unit
-
-@comment_model_file@ ufo_unit_SOURCES = ufo_unit.ml
+TESTS += ufo_unit
+EXTRA_PROGRAMS += ufo_unit
+ufo_unit_SOURCES = ufo_unit.ml
 
 ufo_unit: $(OMEGA_CORE) ufo_unit.cmx
 	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -o ufo_unit \
