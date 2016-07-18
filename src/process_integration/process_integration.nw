@@ -2343,6 +2343,7 @@ and allocates the corresponding manager instance.
     integer :: n_cores = 0
     type(generic_core_t), dimension(:), allocatable :: cores
     integer, dimension(:), allocatable :: def_ptr_index
+    integer, dimension(N_MAX_CORES) :: i_core
   contains
   <<PCM base: cm: TBP>>
   end type cm_t
@@ -2376,18 +2377,25 @@ and allocates the corresponding manager instance.
 <<PCM base: cm: TBP>>=
   procedure :: allocate_core_array => cm_allocate_core_array
 <<PCM base: procedures>>=
-  subroutine cm_allocate_core_array (cm)
+  subroutine cm_allocate_core_array (cm, includes_real)
     class(cm_t), intent(inout) :: cm
+    logical, intent(in) :: includes_real
     integer, dimension(N_MAX_CORES) :: use_cores
     integer :: n_cores = 0
     integer :: i, j, k, this_core
+    logical :: search_real
     use_cores = 0; k = 1
+    search_real = includes_real
     do i = CORE_OMEGA, CORE_RECOLA
        do j = 1, N_MAX_CORES
           if (i == cm%me(j) .and. .not. any (use_cores == cm%me(j))) then
              n_cores = n_cores + 1
              use_cores(k) = cm%me(j)
              k = k + 1
+             exit
+          else if (j == 2 .and. search_real) then
+             n_cores = n_cores + 1
+             search_real = .false.
              exit
           end if
        end do
@@ -2400,35 +2408,45 @@ and allocates the corresponding manager instance.
     print *, 'use cores: ', use_cores
     print *, 'All def_ptr indices: ', cm%def_ptr_index_all
     do i = 1, n_cores
-       this_core = use_cores(i)
-       cm%def_ptr_index(i) = minval (pack (cm%def_ptr_index_all, this_core == cm%me))
+       if (i == n_cores .and. includes_real) then
+          cm%i_core(2) = i
+          cm%def_ptr_index(i) = cm%def_ptr_index_all(2)
+       else
+          this_core = use_cores(i)
+          do j = 1, N_MAX_CORES
+             if (cm%me(j) == this_core) cm%i_core(j) = i
+          end do
+          cm%def_ptr_index(i) = minval (pack (cm%def_ptr_index_all, this_core == cm%me))
+       end if
     end do
   end subroutine cm_allocate_core_array
 
 @ %def cm_allocate_core_array
 @
 <<PCM base: cm: TBP>>=
-  procedure :: init_core => cm_init_core
+  procedure :: allocate_core => cm_allocate_core
 <<PCM base: procedures>>=
-  subroutine cm_init_core (cm, i_core, core_template, blha_template, os_data)
+  subroutine cm_allocate_core (cm, i_core, core_template)
     class(cm_t), intent(inout) :: cm
     integer, intent(in) :: i_core
     class(prc_core_t), intent(in) :: core_template
-    type(blha_template_t), intent(in), optional :: blha_template
-    type(os_data_t), intent(in), optional :: os_data
+    !type(blha_template_t), intent(in), optional :: blha_template
+    !type(os_data_t), intent(in), optional :: os_data
     allocate (cm%cores(i_core)%core, source = core_template)
-    select type (core => cm%cores(i_core)%core)
-    class is (prc_blha_t)
-       if (present (blha_template) .and. present (os_data)) then
-          call core%init_blha (blha_template)
-       else
-          call msg_bug ("BLHA core cannot be initialized - missing template or missing os_data")
-       end if
-       call core%init_driver (os_data)
-    end select
-  end subroutine cm_init_core
+    !select type (core => cm%cores(i_core)%core)
+    !class is (prc_blha_t)
+    !   print *, 'Init BLHA: '
+    !   if (present (blha_template) .and. present (os_data)) then
+    !      call core%init_blha (blha_template)
+    !   else
+    !      call msg_bug ("BLHA core cannot be initialized - missing template or missing os_data")
+    !   end if
+    !   print *, 'Init driver: '
+    !   call core%init_driver (os_data)
+    !end select
+  end subroutine cm_allocate_core
 
-@ %def cm_init_core
+@ %def cm_allocate_core
 @
 <<PCM base: cm: TBP>>=
   procedure :: setup_cores => cm_setup_cores
@@ -2507,6 +2525,18 @@ and allocates the corresponding manager instance.
 @ %def cm_setup_cores
 @
 <<PCM base: cm: TBP>>=
+  procedure :: get_core => cm_get_core
+<<PCM base: procedures>>=
+  function cm_get_core (cm, i_core) result (core)
+    class(prc_core_t), pointer :: core
+    class(cm_t), intent(in), target :: cm
+    integer, intent(in) :: i_core
+    core => cm%cores(i_core)%core
+  end function cm_get_core 
+
+@ %def cm_get_core
+@
+<<PCM base: cm: TBP>>=
   procedure :: write => cm_write
 <<PCM base: procedures>>=
   subroutine cm_write (cm, unit)
@@ -2522,6 +2552,8 @@ and allocates the corresponding manager instance.
     end do
     write (u,"(1x,A)") "Associated component indices: "
     call write_integer_array (cm%def_ptr_index, u)
+    write (u,"(1x,A)") "nlo type -> i_core: "
+    call write_integer_array (cm%i_core, u)
   end subroutine cm_write
 
 @ %def cm_write
@@ -3101,7 +3133,8 @@ from the library.
     integer :: n_components, n_tot
     integer :: i_sub = 0
     type(string_t) :: subtraction_method
-    class(prc_core_t), allocatable :: core
+    !class(prc_core_t), allocatable :: core
+    class(prc_core_t), pointer :: core => null ()
     logical :: setup_subtraction_component
     model => process%config%model
     n_components = process%meta%n_components
@@ -3134,13 +3167,16 @@ from the library.
            do j = 1, n_entry(i)
               setup_subtraction_component = &
                  (component%get_nlo_type () == NLO_REAL .and. j == 1)
-              if (setup_subtraction_component) then
-                 allocate (core, source = component%core_sub_born)
-              else
-                 allocate (core, source = component%core)
-              end if
               i_term = k + j
               component%i_term(j) = i_term
+              process%term(i_term)%i_core = set_i_core &
+                 (component%get_nlo_type (), setup_subtraction_component)
+              !if (setup_subtraction_component) then
+              !   allocate (core, source = component%core_sub_born)
+              !else
+              !   allocate (core, source = component%core)
+              !end if
+              core => process%cm%get_core (process%term(i_term)%i_core)
               if (i_sub > 0) then
                  call process%term(i_term)%init (i_term, i, j, core, model, &
                     nlo_type = component%config%get_nlo_type (), &
@@ -3152,12 +3188,34 @@ from the library.
                     nlo_type = component%config%get_nlo_type (), &
                     use_beam_pol = process%uses_beams ())
               end if
-              deallocate (core)
+              !deallocate (core)
            end do
        end associate
        k = k + n_entry(i)
     end do
     process%config%n_terms = n_tot
+  contains
+    function set_i_core (nlo_type, sub) result (i_core)
+      integer :: i_core
+      integer, intent(in) :: nlo_type
+      logical, intent(in) :: sub
+      integer :: index
+      if (sub) then
+         i_core = process%cm%i_core (4)
+      else
+         select case (nlo_type)
+         case (BORN)
+            index = 1
+         case (NLO_REAL)
+            index = 2
+         case (NLO_VIRTUAL) 
+            index = 3
+         case (NLO_SUBTRACTION)
+            index = 4
+         end select
+         i_core = process%cm%i_core (index)
+      end if    
+    end function set_i_core
   end subroutine process_setup_terms
 
 @ %def process_setup_terms
@@ -4275,28 +4333,25 @@ usual error propagation gives
 <<Processes: process: TBP>>=
   procedure :: allocate_core_array => process_allocate_core_array
 <<Processes: procedures>>=
-  subroutine process_allocate_core_array (process)
+  subroutine process_allocate_core_array (process, includes_real)
     class(process_t), intent(inout) :: process
-    call process%cm%allocate_core_array ()
+    logical, intent(in) :: includes_real
+    call process%cm%allocate_core_array (includes_real)
   end subroutine process_allocate_core_array
 
 @ %def process_allocate_core_array
 @
 <<Processes: process: TBP>>=
-  procedure :: init_core => process_init_core
+  procedure :: allocate_core => process_allocate_core
 <<Processes: procedures>>=
-  subroutine process_init_core (process, i_core, core_template, &
-     blha_template, os_data)
+  subroutine process_allocate_core (process, i_core, core_template)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: i_core
     class(prc_core_t), intent(in) :: core_template
-    type(blha_template_t), intent(in), optional :: blha_template
-    type(os_data_t), intent(in), optional :: os_data
-    call process%cm%init_core (i_core, core_template, &
-       blha_template, os_data)
-  end subroutine process_init_core
+    call process%cm%allocate_core (i_core, core_template)
+  end subroutine process_allocate_core
 
-@ %def process_init_core
+@ %def process_allocate_core
 @
 <<Processes: process: TBP>>=
   procedure :: get_n_allowed_born => process_get_n_allowed_born
@@ -5997,18 +6052,33 @@ configuration finalizer may include closing an open scratch file.
 <<Processes: process: TBP>>=
   procedure :: init_cores => process_init_cores
 <<Processes: procedures>>=
-  subroutine process_init_cores (process)
+  subroutine process_init_cores (process, blha_template)
     class(process_t), intent(inout) :: process
     integer :: i_core, i_component
     type(process_component_def_t), pointer :: config
+    type(blha_template_t), intent(in), optional :: blha_template
+    logical :: activate_blha
     do i_core = 1, process%cm%n_cores
        i_component = process%cm%def_ptr_index(i_core)
-       print *, 'i_component: ', i_component
        config => process%meta%lib%get_component_def_ptr (process%meta%id, i_component)
        associate (core => process%cm%cores(i_core)%core)
           call core%init (config%get_core_def_ptr (), &
              process%meta%lib, process%meta%id, i_component)
        end associate  
+       select type (core => process%cm%cores(i_core)%core)
+       class is (prc_blha_t)
+          activate_blha = config%is_active_component () &
+             .or. config%get_nlo_type () == NLO_SUBTRACTION
+          if (activate_blha) then
+             if (present (blha_template)) then
+                call core%init_blha (blha_template)
+             else
+                call msg_bug ("process_component_init: BLHA core cannot " // &
+                     "be initialized - missing template")
+             end if
+             call core%init_driver (process%config%os_data)
+          end if
+       end select
     end do
     call process%cm%write ()
   end subroutine process_init_cores
@@ -6265,6 +6335,7 @@ This type is public only for use in a unit test.
      integer :: i_term_global = 0
      integer :: i_component = 0
      integer :: i_term = 0
+     integer :: i_core = 0
      integer :: n_allowed = 0
      integer :: n_allowed_sub_born = 0
      type(process_constants_t) :: data
@@ -8655,13 +8726,14 @@ relevant for a NLO algorithm.
               call term%nlo_controller%int_born%set_source_link &
                  (j, term%nlo_controller%sf_born%get_out_int_ptr (), i)
            end do
-           if (i_term == 1) then
-              call term%isolated%init & 
-                 (term%nlo_controller%sf_born, term%nlo_controller%int_born)
-           else
-              call term%isolated%init (term%k_term%sf_chain, term%int_hard)
-           end if
-           term%int_hard_real = term%int_hard
+           !if (i_term == 1) then
+           !   call term%isolated%init & 
+           !      (term%nlo_controller%sf_born, term%nlo_controller%int_born)
+           !else
+           !   call term%isolated%init (term%k_term%sf_chain, term%int_hard)
+           !end if
+           call term%isolated%init (term%k_term%sf_chain, term%int_hard)
+           !term%int_hard_real = term%int_hard
         case (PHS_MODE_COLLINEAR_REMNANT)
            call term%isolated%init (term%k_term%sf_chain, term%int_hard)
         end select
@@ -8691,13 +8763,14 @@ relevant for a NLO algorithm.
             if (me_already_squared) then
                call term%isolated%setup_identity_trace (core, mask_in)
             else
-               if (i_term == 1) then
-                  call term%isolated%setup_square_trace (core_sav, mask_in, col_sav)
-               else
-                  call term%isolated%setup_square_trace (core, mask_in, term%config%col)
-               end if
+               !if (i_term == 1) then
+               !   call term%isolated%setup_square_trace (core_sav, mask_in, col_sav)
+               !else
+               !   call term%isolated%setup_square_trace (core, mask_in, term%config%col)
+               !end if
+               call term%isolated%setup_square_trace (core, mask_in, term%config%col)
             end if
-            if (i_term > 1) call term%init_states (core)
+            !if (i_term > 1) call term%init_states (core)
          case (PHS_MODE_COLLINEAR_REMNANT)
             if (me_already_squared) then
                call term%isolated%setup_identity_trace (core, mask_in)
@@ -8766,7 +8839,7 @@ relevant for a NLO algorithm.
     term%nlo_type = nlo_type
     select case (term%nlo_type)
     case (NLO_REAL)
-       if (term%config%i_term > 1) call setup_real_subevt ()
+       !if (term%config%i_term > 1) call setup_real_subevt ()
        allocate (real_connector_t :: me_connector)
     case (NLO_VIRTUAL)
        allocate (virtual_connector_t :: me_connector)
@@ -10124,6 +10197,7 @@ to subobject of [[instance]].
     type(process_t), intent(inout), target :: process
     integer :: i, i_component
     type(connected_state_t), dimension(:), allocatable :: all_connected
+    class(prc_core_t), pointer :: core => null ()
 
     instance%process => process
     call instance%setup_sf_chain (process%beam_config)
@@ -10169,10 +10243,12 @@ to subobject of [[instance]].
          i_component = process%term(i)%i_component
          if (i_component /= 0) then
             associate (component => instance%component(i_component))
+              core => process%cm%get_core (process%term(i)%i_core)
               call term%init (process%term(i), &
                    component%k_seed, &
                    process%beam_config, &
-                   process%component(i_component)%core, &
+                   !process%component(i_component)%core, &
+                   core, &
                    process%meta%var_list, &
                    component%nlo_controller, &
                    component%config%config%get_nlo_type ())
@@ -10259,7 +10335,8 @@ to subobject of [[instance]].
                   case (BORN)
                   case (NLO_REAL)
                      i_born = component%config%i_term(1)
-                     i_real = component%config%i_term(2)
+                     !!! TODO (cw-2016-07-18): More generic indices
+                     i_real = component%config%i_term(3)
                      call process%term(i_born)%get_process_constants (prc_constants(1))
                      call process%term(i_real)%get_process_constants (prc_constants(2))
                      select type (pcm => instance%process%pcm)
