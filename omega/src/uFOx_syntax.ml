@@ -1,4 +1,4 @@
-(* $Id: omega_Comphep.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* $Id: vertex_syntax.ml 7444 2016-02-17 15:37:20Z jr_reuter $
 
    Copyright (C) 1999-2016 by
 
@@ -22,13 +22,45 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-module O = Omega.Make(Fusion.Mixed23)(Targets.Fortran)(Comphep.Model)
-let _ = O.main ()
+(* \thocwmodulesection{Abstract Syntax} *)
 
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  End:
-i*)
+exception Syntax_Error of string * Lexing.position * Lexing.position
+
+type expr =
+  | Integer of int
+  | Float of float
+  | Variable of string
+  | Sum of expr * expr
+  | Difference of expr * expr
+  | Product of expr * expr
+  | Quotient of expr * expr
+  | Power of expr * expr
+  | Application of string * expr list
+
+let integer i =
+  Integer i
+
+let float x =
+  Float x
+
+let variable s =
+  Variable s
+
+let add e1 e2 =
+  Sum (e1, e2)
+    
+let subtract e1 e2 =
+  Difference (e1, e2)
+    
+let multiply e1 e2 =
+  Product (e1, e2)
+    
+let divide e1 e2 =
+  Quotient (e1, e2)
+    
+let power e p =
+  Power (e, p)
+
+let apply f args =
+  Application (f, args)
+    

@@ -294,3 +294,42 @@ let ariadne_unsort (sorted, indices) =
     (List.sort
        (fun (n1, a1) (n2, a2) -> Pervasives.compare n1 n2)
        (List.map2 (fun n a -> (n, a)) indices sorted))
+
+let lexicographic ?(cmp=Pervasives.compare) l1 l2 =
+  let rec lexicographic' = function
+    | [], [] -> 0
+    | [], _ -> -1
+    | _, [] -> 1
+    | x1 :: rest1, x2 :: rest2 ->
+       let res = cmp x1 x2 in
+       if res <> 0 then
+	 res
+       else
+	 lexicographic' (rest1, rest2) in
+  lexicographic' (l1, l2)
+
+(* If there was a polymorphic [Set], we could also say
+   [Set.elements (Set.union (Set.of_list l1) (Set.of_list l2))]. *)
+let common l1 l2 =
+  List.fold_left
+    (fun acc x1 ->
+      if List.mem x1 l2 then
+	x1 :: acc
+      else
+	acc)
+    [] l1
+
+let complement l1 l2 =
+  if List.for_all (fun x -> List.mem x l1) l2 then
+    List.filter (fun x -> not (List.mem x l2)) l1
+  else
+    invalid_arg "ThoList.complement"
+
+(*i
+ *  Local Variables:
+ *  indent-tabs-mode:nil
+ *  page-delimiter:"^(\\* .*\n"
+ *  compile-command:"ocamlc -o vertex thoList.ml{i,} pmap.ml{i,} vertex.ml"
+ *  End:
+i*)
+

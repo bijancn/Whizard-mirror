@@ -232,7 +232,7 @@ CASCADE_TESTS = \
 	jjj-notgc.cascade \
 	vbf-noh.cascade
 
-cascade: cascade_driver.sh Makefile
+cascade: cascade_driver.sh Makefile $(OMEGA_SM_CACHE)
 	$(SED) -e 's|%%cascade_tests%%|$(CASCADE_TESTS)|' \
 	  -e 's|%%srcdir%%|$(srcdir)|' \
 	  -e 's|%%SED%%|$(SED)|' \
@@ -527,6 +527,24 @@ vertex_unit.cmx: vertex_unit.ml
 	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -c -o $@ $<
 
 vertex_unit.cmx: $(OMEGA_CORE) $(OMEGA_MODELS)
+
+endif
+
+if OCAML_AVAILABLE
+
+TESTS += @comment_model_file@ ufo_unit
+@comment_model_file@ EXTRA_PROGRAMS += ufo_unit
+
+@comment_model_file@ ufo_unit_SOURCES = ufo_unit.ml
+
+ufo_unit: $(OMEGA_CORE) ufo_unit.cmx
+	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -o ufo_unit \
+		unix.cmxa $(OMEGA_CORE) $(OMEGA_MODELS) ufo_unit.cmx
+
+ufo_unit.cmx: ufo_unit.ml
+	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -c -o $@ $<
+
+ufo_unit.cmx: $(OMEGA_CORE) $(OMEGA_MODELS)
 
 endif
 

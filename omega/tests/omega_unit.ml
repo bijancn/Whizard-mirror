@@ -178,10 +178,12 @@ let suite =
   "omega" >:::
     [selftest_suite;
      ThoList_Unit_Tests.suite;
+     ThoArray.Test.suite;
      Partial.Test.suite;
      Permutation_Test_Using_Lists.suite;
      Permutation_Test_Using_Arrays.suite;
-     Combinatorics_Unit_Tests.suite]
+     Combinatorics_Unit_Tests.suite;
+     Combinatorics.Test.suite]
 
 let _ =
   ignore
