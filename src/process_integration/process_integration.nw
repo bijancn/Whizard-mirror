@@ -7929,9 +7929,9 @@ postpone until we know the factorization scale), and we have a valid
           call component%k_seed%evaluate_radiation_kinematics (mci_work%get_x_process (), &
              component%nlo_controller%reg_data)
        sf_channel = component%k_seed%phs%config%get_sf_channel (phs_channel)
-       call component%nlo_controller%sf_born%compute_kinematics (sf_channel, mci_work%get_x_strfun ())
-       if (success) &
-          call component%nlo_controller%int_born%set_momenta (component%p_seed)
+       !call component%nlo_controller%sf_born%compute_kinematics (sf_channel, mci_work%get_x_strfun ())
+       !if (success) &
+       !   call component%nlo_controller%int_born%set_momenta (component%p_seed)
     class default
        call component%k_seed%compute_selected_channel &
             (mci_work, phs_channel, component%p_seed, success)
@@ -8103,42 +8103,38 @@ stored in the kinematics subobject to their source.  This is a side effect.
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_born => component_instance_evaluate_sqme_born
 <<Processes: procedures>>=
-  subroutine component_instance_evaluate_sqme_born (component, term, not_virtual, pure_born)
+  subroutine component_instance_evaluate_sqme_born (component, term)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout), target :: term
-    logical, intent(out) :: not_virtual, pure_born
     real(default) :: sqme
     integer :: n_flv, i_flv
-    not_virtual = term%nlo_type /= NLO_VIRTUAL
-    pure_born = term%nlo_type == BORN
-    if (.not. not_virtual) return
     i_flv = 1
     sqme = zero
     if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) then
        select type (core => component%config%core_sub_born)
        class is (prc_blha_t)
-          sqme = component%compute_sqme_born_from_blha (core, i_flv, term, .true.)
+          sqme = component%compute_sqme_born_from_blha (core, i_flv, term)
        class is (prc_user_defined_base_t)
-          sqme = core%compute_sqme (i_flv, term%nlo_controller%int_born%get_momenta ())
+          sqme = core%compute_sqme (i_flv, term%int_hard%get_momenta ())
        class default
           sqme = real (term%connected%trace%get_matrix_element (1))
        end select
     else
-       !select type (core => component%config%core)
-       !class is (prc_blha_t)
-       !   n_flv = term%config%data%n_flv
-       !   do i_flv = 1, n_flv
-       !      sqme = sqme + component%compute_sqme_born_from_blha (core, i_flv, term, .false.)
-       !   end do
-       !class is (prc_user_defined_base_t)
-       !   n_flv = term%config%data%n_flv
-       !   do i_flv = 1, n_flv
-       !      call core%update_alpha_s (component%core_state, term%fac_scale)
-       !      sqme = sqme + core%compute_sqme (i_flv, term%int_hard%get_momenta ())
-       !   end do
-       !class default
-       !   sqme = real (term%connected%trace%get_matrix_element (1))
-       !end select
+       select type (core => component%config%core)
+       class is (prc_blha_t)
+          n_flv = term%config%data%n_flv
+          do i_flv = 1, n_flv
+             sqme = sqme + component%compute_sqme_born_from_blha (core, i_flv, term)
+          end do
+       class is (prc_user_defined_base_t)
+          n_flv = term%config%data%n_flv
+          do i_flv = 1, n_flv
+             call core%update_alpha_s (term%core_state, term%fac_scale)
+             sqme = sqme + core%compute_sqme (i_flv, term%int_hard%get_momenta ())
+          end do
+       class default
+          sqme = real (term%connected%trace%get_matrix_element (1))
+       end select
     end if
     !component%sqme = sqme * term%weight
     component%sqme = real (term%connected%trace%get_matrix_element (1)) * term%weight
@@ -8150,23 +8146,17 @@ stored in the kinematics subobject to their source.  This is a side effect.
   procedure :: compute_sqme_born_from_blha => component_instance_compute_sqme_born_from_blha
 <<Processes: procedures>>=
   function component_instance_compute_sqme_born_from_blha &
-     (component, core, i_flv, term, subtraction) result (sqme)
+     (component, core, i_flv, term) result (sqme)
      real(default) :: sqme
      class(component_instance_t), intent(inout) :: component
      class(prc_blha_t), intent(inout) :: core
      integer, intent(in) :: i_flv
      type(term_instance_t), intent(inout), target :: term
-     logical, intent(in) :: subtraction
      logical :: bad_point
 
      call core%update_alpha_s (term%core_state, term%fac_scale)
-     if (subtraction) then
-        call core%compute_sqme_born (i_flv, term%nlo_controller%int_born%get_momenta (), &
-           term%ren_scale, sqme, bad_point)
-     else
-        call core%compute_sqme_born (i_flv, term%int_hard%get_momenta (), &
-           term%ren_scale, sqme, bad_point)
-     end if
+     call core%compute_sqme_born (i_flv, term%int_hard%get_momenta (), &
+        term%ren_scale, sqme, bad_point)
 
      call core%apply_structure_functions (component%k_seed%sf_chain, &
           term%config%data%flv_state (1:2,i_flv))
@@ -8184,7 +8174,6 @@ imaginary part of the terms, which should be zero anyway.
   subroutine component_instance_evaluate_sqme (component, term)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), dimension(:), intent(inout), target :: term
-    logical :: not_virtual, pure_born
     integer :: j, i
 
     component%sqme = zero
@@ -8193,11 +8182,7 @@ imaginary part of the terms, which should be zero anyway.
       do j = 1, size (i_term)
          i = i_term(j)
          if (term(i)%passed) then
-            call component%evaluate_sqme_born (term(i), not_virtual, pure_born)
-            if (pure_born) &
-               call set_pure_born (component, component%sqme * term(i)%weight, 1) 
-            if (not_virtual) &
-               call set_subtraction_born (component, component%sqme * term(i)%weight, 1)
+            call component%evaluate_sqme_born (term(i))
             call component%evaluate_sqme_real (term(i), 1)
             call component%evaluate_sqme_virt (term(i))
             call component%evaluate_sqme_mismatch (term(i))
@@ -8343,33 +8328,33 @@ imaginary part of the terms, which should be zero anyway.
      type(vector4_t), dimension(:), allocatable :: p_real
      integer :: i_flv, i_flv_born
      logical :: bad_point
-     if (term%nlo_type /= NLO_REAL) return
-     call msg_debug2 (D_SUBTRACTION, "component_instance_evaluate_sqme_real")
-     associate (nlo_controller => component%nlo_controller, &
-                collector => component%nlo_controller%sqme_collector)
-        if (component%config%component_type == COMP_REAL_FIN) &
-           call nlo_controller%disable_subtraction ()
-        allocate (p_real (1 : term%nlo_controller%get_n_particles_real ()))
-        p_real = term%nlo_controller%get_momenta (born_phsp = .false., i_phs = i_phs)
-        i_flv = term%nlo_controller%active_flavor_structure_real
-        select type (core => component%config%core)
-        type is (prc_omega_t)
-           !collector%sqme_real_non_sub (i_flv, i_phs) = &
-           !   real (term%connected_real%trace%get_matrix_element (1))
-        class is (prc_blha_t)
-           call core%update_alpha_s (term%core_state, term%fac_scale)
-           call core%compute_sqme_real (i_flv, p_real, term%ren_scale, &
-              collector%sqme_real_non_sub(i_flv, i_phs), bad_point)
-        class is (prc_user_defined_base_t)
-           call core%update_alpha_s (term%core_state, term%fac_scale)
-           collector%sqme_real_non_sub (i_flv, i_phs) = &
-              core%compute_sqme (i_flv, p_real)
-        end select
-        call component%apply_damping_factor &
-           (collector%sqme_real_non_sub (i_flv, i_phs))
-        call msg_debug2 (D_SUBTRACTION, "non-subtracted real matrix element", &
-             collector%sqme_real_non_sub(i_flv, i_phs))
-     end associate
+     !if (term%nlo_type /= NLO_REAL) return
+     !call msg_debug2 (D_SUBTRACTION, "component_instance_evaluate_sqme_real")
+     !associate (nlo_controller => component%nlo_controller, &
+     !           collector => component%nlo_controller%sqme_collector)
+     !   if (component%config%component_type == COMP_REAL_FIN) &
+     !      call nlo_controller%disable_subtraction ()
+     !   allocate (p_real (1 : term%nlo_controller%get_n_particles_real ()))
+     !   p_real = term%nlo_controller%get_momenta (born_phsp = .false., i_phs = i_phs)
+     !   i_flv = term%nlo_controller%active_flavor_structure_real
+     !   select type (core => component%config%core)
+     !   type is (prc_omega_t)
+     !      !collector%sqme_real_non_sub (i_flv, i_phs) = &
+     !      !   real (term%connected_real%trace%get_matrix_element (1))
+     !   class is (prc_blha_t)
+     !      call core%update_alpha_s (term%core_state, term%fac_scale)
+     !      call core%compute_sqme_real (i_flv, p_real, term%ren_scale, &
+     !         collector%sqme_real_non_sub(i_flv, i_phs), bad_point)
+     !   class is (prc_user_defined_base_t)
+     !      call core%update_alpha_s (term%core_state, term%fac_scale)
+     !      collector%sqme_real_non_sub (i_flv, i_phs) = &
+     !         core%compute_sqme (i_flv, p_real)
+     !   end select
+     !   call component%apply_damping_factor &
+     !      (collector%sqme_real_non_sub (i_flv, i_phs))
+     !   call msg_debug2 (D_SUBTRACTION, "non-subtracted real matrix element", &
+     !        collector%sqme_real_non_sub(i_flv, i_phs))
+     !end associate
   end subroutine component_instance_evaluate_sqme_real
 
 @ %def subroutine component_instance_evaluate_sqme_real
@@ -8401,7 +8386,8 @@ imaginary part of the terms, which should be zero anyway.
                           term%fac_scale)
                      call core_born%compute_sqme_sc (i_flv_born, &
                         nlo_controller%get_active_emitter(), &
-                        nlo_controller%int_born%get_momenta(), &
+                        !nlo_controller%int_born%get_momenta(), &
+                        nlo_controller%real_kinematics%p_born_cms%get_momenta(1), &
                         zero, collector%sqme_born_sc(i_flv_born), bad_point)
                   type is (prc_openloops_t) 
                      call core_born%update_alpha_s (term%core_state, &
@@ -8409,7 +8395,8 @@ imaginary part of the terms, which should be zero anyway.
                      call nlo_controller%compute_k_perp ()
                      call core_born%compute_sqme_sc (i_flv_born, &
                         nlo_controller%get_active_emitter(), &
-                        nlo_controller%int_born%get_momenta(), &
+                        !nlo_controller%int_born%get_momenta(), &
+                        nlo_controller%real_kinematics%p_born_cms%get_momenta(1), &
                         zero, nlo_controller%get_k_perp(), &
                         collector%sqme_born_sc(i_flv_born), bad_point)
                   class is (prc_user_defined_base_t)
@@ -8701,21 +8688,14 @@ relevant for a NLO algorithm.
       type is (phs_fks_t)
         select case (phs%mode)
         case (PHS_MODE_ADDITIONAL_PARTICLE)
-           term%nlo_controller%int_born = int_sav
-           term%nlo_controller%sf_born => sf_sav
-           do j = 1, n_in
-              i = term%nlo_controller%sf_born%get_out_i (j)
-              call term%nlo_controller%int_born%set_source_link &
-                 (j, term%nlo_controller%sf_born%get_out_int_ptr (), i)
-           end do
-           !if (i_term == 1) then
-           !   call term%isolated%init & 
-           !      (term%nlo_controller%sf_born, term%nlo_controller%int_born)
-           !else
-           !   call term%isolated%init (term%k_term%sf_chain, term%int_hard)
-           !end if
+           !term%nlo_controller%int_born = int_sav
+           !term%nlo_controller%sf_born => sf_sav
+           !do j = 1, n_in
+           !   i = term%nlo_controller%sf_born%get_out_i (j)
+           !   call term%nlo_controller%int_born%set_source_link &
+           !      (j, term%nlo_controller%sf_born%get_out_int_ptr (), i)
+           !end do
            call term%isolated%init (term%k_term%sf_chain, term%int_hard)
-           !term%int_hard_real = term%int_hard
         case (PHS_MODE_COLLINEAR_REMNANT)
            call term%isolated%init (term%k_term%sf_chain, term%int_hard)
         end select
@@ -8987,8 +8967,8 @@ The quantum numbers mask of the incoming particle
     integer :: n_in
     type(phs_point_set_t) :: p_real
     logical :: evaluate_phs, resonance_contributors_exist
-    allocate (p_born(1 : size(term%nlo_controller%int_born%get_momenta ())))
-    p_born = term%nlo_controller%int_born%get_momenta ()
+    !allocate (p_born(1 : size(term%nlo_controller%int_born%get_momenta ())))
+    !p_born = term%nlo_controller%int_born%get_momenta ()
 
     select type (phs => term%k_term%phs)
     type is (phs_fks_t)
@@ -9394,7 +9374,7 @@ interaction, then compute the convolution with the initial state.
   subroutine term_instance_evaluate_trace_real (term)
      class(term_instance_t), intent(inout) :: term
      if (term%config%i_term == 1) return
-     call term%nlo_controller%sf_born%evaluate (term%fac_scale)
+     !call term%nlo_controller%sf_born%evaluate (term%fac_scale)
      !call term%isolated_real%evaluate_trace ()
      !call term%connected_real%evaluate_trace ()
   end subroutine term_instance_evaluate_trace_real
@@ -9482,31 +9462,31 @@ physical event.
        ren_scale = term%ren_scale
     end select
 
-    select type (core_sub_born => component%config%core_sub_born)
-    type is (prc_omega_t)
-       do i = 1, term%nlo_controller%n_allowed_born
-          if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
-             term%nlo_controller%amp_born(i) = &
-                  core_sub_born%compute_amplitude (i_term, &
-                  term%nlo_controller%int_born%get_momenta (), &
-                  term%nlo_controller%get_flv_born(i), &
-                  term%nlo_controller%get_hel_born(i), &
-                  term%nlo_controller%get_col_born(i), &
-                  term%fac_scale, term%ren_scale, &
-                  term%alpha_qcd_forced, &
-                  term%core_state)
-          else
-             term%nlo_controller%amp_born(i) = zero
-          end if
-       end do
-    class is (prc_user_defined_base_t)
-       call core_sub_born%update_alpha_s (term%core_state, fac_scale)
-       term%nlo_controller%amp_born = zero
-    class default
-       call msg_fatal ("Invalid core type set up for subtraction matrix elements")
-    end select
-    call term%nlo_controller%int_born%set_matrix_element &
-       (term%nlo_controller%amp_born)
+    !select type (core_sub_born => component%config%core_sub_born)
+    !type is (prc_omega_t)
+    !   do i = 1, term%nlo_controller%n_allowed_born
+    !      if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
+    !         term%nlo_controller%amp_born(i) = &
+    !              core_sub_born%compute_amplitude (i_term, &
+    !              term%nlo_controller%int_born%get_momenta (), &
+    !              term%nlo_controller%get_flv_born(i), &
+    !              term%nlo_controller%get_hel_born(i), &
+    !              term%nlo_controller%get_col_born(i), &
+    !              term%fac_scale, term%ren_scale, &
+    !              term%alpha_qcd_forced, &
+    !              term%core_state)
+    !      else
+    !         term%nlo_controller%amp_born(i) = zero
+    !      end if
+    !   end do
+    !class is (prc_user_defined_base_t)
+    !   call core_sub_born%update_alpha_s (term%core_state, fac_scale)
+    !   !term%nlo_controller%amp_born = zero
+    !class default
+    !   call msg_fatal ("Invalid core type set up for subtraction matrix elements")
+    !end select
+    !call term%nlo_controller%int_born%set_matrix_element &
+    !   (term%nlo_controller%amp_born)
   end subroutine term_instance_evaluate_interaction_sub
 
 @ %def term_intstance_evaluate_interaction_sub
@@ -9527,70 +9507,70 @@ physical event.
     logical :: yorn
     integer :: i_flv_born
 
-    yorn = .false.; if (present (only_born)) yorn = only_born
-    if (present (alpha_s_external)) then
-       allocate (alpha_qcd_forced, source = alpha_s_external)
-    else
-       if (allocated (term%alpha_qcd_forced)) &
-          allocate (alpha_qcd_forced, source = term%alpha_qcd_forced)
-    end if
-    call term%update_real_interactions (i_phs)
-    select type (phs => term%k_term%phs)
-    type is (phs_fks_t)
-       call term%nlo_controller%set_active_phase_space (i_phs)
-       call term%nlo_controller%set_active_emitter &
-          (phs%phs_identifiers(i_phs)%emitter)
-    end select
+    !yorn = .false.; if (present (only_born)) yorn = only_born
+    !if (present (alpha_s_external)) then
+    !   allocate (alpha_qcd_forced, source = alpha_s_external)
+    !else
+    !   if (allocated (term%alpha_qcd_forced)) &
+    !      allocate (alpha_qcd_forced, source = term%alpha_qcd_forced)
+    !end if
+    !call term%update_real_interactions (i_phs)
+    !select type (phs => term%k_term%phs)
+    !type is (phs_fks_t)
+    !   call term%nlo_controller%set_active_phase_space (i_phs)
+    !   call term%nlo_controller%set_active_emitter &
+    !      (phs%phs_identifiers(i_phs)%emitter)
+    !end select
 
-    i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real)
-    if (i_flv_real == 1) call term%core_state%reset_new_kinematics ()
+    !i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real)
+    !if (i_flv_real == 1) call term%core_state%reset_new_kinematics ()
 
-    if (.not. yorn) then
-       call term%core_state%reset_new_kinematics ()
-       select type (core => component%config%core)
-       type is (prc_omega_t)
-          do i = 1, term%config%n_allowed
-             if (term%config%flv(i) == i_flv_real) then
-                term%amp(i) = core%compute_amplitude (i_term, &
-                   !term%int_hard_real%get_momenta (), &
-                   term%int_hard%get_momenta (), &
-                   term%config%flv(i), term%config%hel(i), term%config%col(i), &
-                   term%fac_scale, term%ren_scale, alpha_qcd_forced, &
-                   term%core_state)
-             else
-                term%amp(i) = zero
-             end if
-          end do
-       class is (prc_user_defined_base_t)
-          call core%update_alpha_s (term%core_state, term%fac_scale)
-          term%amp = zero
-       end select
-       !call term%int_hard_real%set_matrix_element (term%amp)
-    end if
-    call component%nlo_controller%int_born%set_momenta &
-       (component%nlo_controller%real_kinematics%p_born_cms%phs_point(1)%p)
-    if (i_flv_born == 1) call term%core_state%reset_new_kinematics ()
-    select type (core_sub_born => component%config%core_sub_born)
-    type is (prc_omega_t)
-       do i = 1, term%nlo_controller%n_allowed_born
-          if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
-             term%nlo_controller%amp_born(i) = core_sub_born%compute_amplitude (i_term, &
-                 term%nlo_controller%int_born%get_momenta (), &
-                 term%nlo_controller%get_flv_born(i), &
-                 term%nlo_controller%get_hel_born(i), &
-                 term%nlo_controller%get_col_born(i), &
-                 term%fac_scale, term%ren_scale, &
-                 alpha_qcd_forced, term%core_state)
-          else
-             term%nlo_controller%amp_born(i) = zero
-          end if
-       end do
-    class is (prc_user_defined_base_t)
-       term%nlo_controller%amp_born = zero
-       call core_sub_born%update_alpha_s (term%core_state, term%fac_scale)
-    end select 
-    call term%nlo_controller%int_born%set_matrix_element &
-         (term%nlo_controller%amp_born) 
+    !if (.not. yorn) then
+    !   call term%core_state%reset_new_kinematics ()
+    !   select type (core => component%config%core)
+    !   type is (prc_omega_t)
+    !      do i = 1, term%config%n_allowed
+    !         if (term%config%flv(i) == i_flv_real) then
+    !            term%amp(i) = core%compute_amplitude (i_term, &
+    !               !term%int_hard_real%get_momenta (), &
+    !               term%int_hard%get_momenta (), &
+    !               term%config%flv(i), term%config%hel(i), term%config%col(i), &
+    !               term%fac_scale, term%ren_scale, alpha_qcd_forced, &
+    !               term%core_state)
+    !         else
+    !            term%amp(i) = zero
+    !         end if
+    !      end do
+    !   class is (prc_user_defined_base_t)
+    !      call core%update_alpha_s (term%core_state, term%fac_scale)
+    !      term%amp = zero
+    !   end select
+    !   !call term%int_hard_real%set_matrix_element (term%amp)
+    !end if
+    !!call component%nlo_controller%int_born%set_momenta &
+    !!   (component%nlo_controller%real_kinematics%p_born_cms%phs_point(1)%p)
+    !if (i_flv_born == 1) call term%core_state%reset_new_kinematics ()
+    !select type (core_sub_born => component%config%core_sub_born)
+    !type is (prc_omega_t)
+    !   do i = 1, term%nlo_controller%n_allowed_born
+    !      if (term%nlo_controller%get_flv_born(i) == i_flv_born) then
+    !         term%nlo_controller%amp_born(i) = core_sub_born%compute_amplitude (i_term, &
+    !             term%nlo_controller%int_born%get_momenta (), &
+    !             term%nlo_controller%get_flv_born(i), &
+    !             term%nlo_controller%get_hel_born(i), &
+    !             term%nlo_controller%get_col_born(i), &
+    !             term%fac_scale, term%ren_scale, &
+    !             alpha_qcd_forced, term%core_state)
+    !      else
+    !         !term%nlo_controller%amp_born(i) = zero
+    !      end if
+    !   end do
+    !class is (prc_user_defined_base_t)
+    !   !term%nlo_controller%amp_born = zero
+    !   call core_sub_born%update_alpha_s (term%core_state, term%fac_scale)
+    !end select 
+    !!call term%nlo_controller%int_born%set_matrix_element &
+    !!     (term%nlo_controller%amp_born) 
   end subroutine term_instance_evaluate_interaction_real_rad
 
 @ %def term_instance_evaluate_interaction_real_rad
@@ -10359,7 +10339,6 @@ to subobject of [[instance]].
                        allocate (instance%sqme_real &
                           (nlo_controller%reg_data%n_flv_real, &
                           component%nlo_controller%reg_data%n_phs))
-                       call nlo_controller%init_born_amps (process%get_n_allowed_born (i_born))
                        nlo_controller%needs_initialization = .false.
                     end if
                case (NLO_VIRTUAL)
@@ -10915,8 +10894,10 @@ terms, iterating over all active process components.
             end if
           end associate
        end do
-       !!! (TODO: cw-2016-07-18) term%weight actually needed?
-       instance%sqme = real (sum (instance%term%connected%trace%get_matrix_element (1)))
+       !!! (TODO: cw-2016-07-18) 'Evaluate other MEs before!'
+       instance%sqme = real (sum (&
+          instance%term%connected%trace%get_matrix_element (1) * &
+          instance%term%weight))
        instance%evaluation_status = STAT_EVALUATED_TRACE
        !do i = 1, size (instance%component)
        !   associate (component => instance%component(i))
@@ -11023,47 +11004,47 @@ if it fails the cuts for at least one emitter.
      logical :: use_contributors
      type(vector4_t), dimension(:), allocatable :: p_born
 
-     call msg_debug2 (D_SUBTRACTION, "process_instance_evaluate_trace_real")
+     !call msg_debug2 (D_SUBTRACTION, "process_instance_evaluate_trace_real")
 
-     select type (pcm => instance%pcm)
-     type is (pcm_instance_nlo_t)
-        nlegs = term%nlo_controller%reg_data%n_legs_real
-        instance%sqme_real = zero
+     !select type (pcm => instance%pcm)
+     !type is (pcm_instance_nlo_t)
+     !   nlegs = term%nlo_controller%reg_data%n_legs_real
+     !   instance%sqme_real = zero
 
-        associate (reg_data => term%nlo_controller%reg_data)
-           use_contributors = allocated (reg_data%alr_contributors)
-           allocate (p_born(1 : size(term%nlo_controller%int_born%get_momenta ())))
-           p_born = term%nlo_controller%int_born%get_momenta ()
-           call term%reset_phs_identifiers ()
-           do alr = 1, reg_data%n_regions
-              if (use_contributors) then
-                 call term%evaluate_real_phase_space (reg_data%get_emitter(alr), &
-                    reg_data%alr_to_i_contributor(alr))
-              else
-                 call term%evaluate_real_phase_space (reg_data%get_emitter(alr))
-              end if
-           end do
-        end associate
+     !   associate (reg_data => term%nlo_controller%reg_data)
+     !      use_contributors = allocated (reg_data%alr_contributors)
+     !      allocate (p_born(1 : size(term%nlo_controller%int_born%get_momenta ())))
+     !      p_born = term%nlo_controller%int_born%get_momenta ()
+     !      call term%reset_phs_identifiers ()
+     !      do alr = 1, reg_data%n_regions
+     !         if (use_contributors) then
+     !            call term%evaluate_real_phase_space (reg_data%get_emitter(alr), &
+     !               reg_data%alr_to_i_contributor(alr))
+     !         else
+     !            call term%evaluate_real_phase_space (reg_data%get_emitter(alr))
+     !         end if
+     !      end do
+     !   end associate
 
-        select type (phs => term%k_term%phs)
-        type is (phs_fks_t)
-           do i_phs = 1, size (phs%phs_identifiers)
-              call term%update_real_interactions (i_phs)
-              term%nlo_controller%nlo_cuts%passed_real (i_phs)  = term%passed
-              call term%nlo_controller%set_active_emitter &
-                 (phs%phs_identifiers(i_phs)%emitter)
-              call term%nlo_controller%set_active_phase_space (i_phs)
-              call instance%evaluate_trace_real_for_phs (term, pcm, &
-                 i_component, i_phs)
-           end do
-        end select
+     !   select type (phs => term%k_term%phs)
+     !   type is (phs_fks_t)
+     !      do i_phs = 1, size (phs%phs_identifiers)
+     !         call term%update_real_interactions (i_phs)
+     !         term%nlo_controller%nlo_cuts%passed_real (i_phs)  = term%passed
+     !         call term%nlo_controller%set_active_emitter &
+     !            (phs%phs_identifiers(i_phs)%emitter)
+     !         call term%nlo_controller%set_active_phase_space (i_phs)
+     !         call instance%evaluate_trace_real_for_phs (term, pcm, &
+     !            i_component, i_phs)
+     !      end do
+     !   end select
 
-        instance%sqme = instance%sqme + sum (instance%sqme_real)
-        if (pcm%collect_matrix_elements) then
-           pcm%collector%sqme_real_sum = sum (instance%sqme_real)
-        end if
-        instance%evaluation_status = STAT_EVALUATED_TRACE  
-     end select
+     !   instance%sqme = instance%sqme + sum (instance%sqme_real)
+     !   if (pcm%collect_matrix_elements) then
+     !      pcm%collector%sqme_real_sum = sum (instance%sqme_real)
+     !   end if
+     !   instance%evaluation_status = STAT_EVALUATED_TRACE  
+     !end select
   end subroutine process_instance_evaluate_trace_real
 
 @ %def process_instance_evaluate_trace_real
@@ -11080,7 +11061,6 @@ if it fails the cuts for at least one emitter.
     integer, intent(in) :: i_component
     integer, intent(in) :: i_phs
     integer :: i_flv_real, i_flv_born
-    logical :: not_virtual, pure_born
     real(default) :: sqme_born
 
     do i_flv_real = 1, term%nlo_controller%get_n_flv_real ()
@@ -11100,12 +11080,12 @@ if it fails the cuts for at least one emitter.
              !!! real flavor structures has to be changed with the one over resonances
              !!! in this case.
              if (passed_born) then
-                call component%evaluate_sqme_born (term, not_virtual, pure_born)
+                call component%evaluate_sqme_born (term)
                 sqme_born = component%sqme
                 call msg_debug2 (D_SUBTRACTION, "sqme_born", sqme_born)
-                if (pcm%controller%nlo_cuts%passed_born .and. not_virtual) &
-                   call set_subtraction_born (component, sqme_born * term%weight, i_flv_born)
-                call set_pure_born (component, sqme_born * term%weight, i_flv_born)
+                !if (pcm%controller%nlo_cuts%passed_born .and. not_virtual) &
+                !   call set_subtraction_born (component, sqme_born * term%weight, i_flv_born)
+                !call set_pure_born (component, sqme_born * term%weight, i_flv_born)
              end if
              if (passed_real) &
                 call component%evaluate_sqme_real (term, i_phs)
