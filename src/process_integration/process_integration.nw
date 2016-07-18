@@ -7400,12 +7400,11 @@ are taken from there.
 <<Processes: kinematics: TBP>>=
   procedure :: init_sf_chain => kinematics_init_sf_chain
 <<Processes: procedures>>=
-  subroutine kinematics_init_sf_chain (k, core, sf_chain, config, core_state)
+  subroutine kinematics_init_sf_chain (k, core, sf_chain, config)
     class(kinematics_t), intent(inout) :: k
     class(prc_core_t), intent(in) :: core
     type(sf_chain_t), intent(in), target :: sf_chain
     type(process_beam_config_t), intent(in) :: config
-    class(prc_core_state_t), intent(inout), allocatable :: core_state
     integer :: n_strfun, n_channel
     integer :: c
     k%n_in = config%data%get_n_in ()
@@ -7413,7 +7412,7 @@ are taken from there.
     n_channel = config%n_channel
     allocate (k%sf_chain)
     k%sf_chain_allocated = .true.
-    call core%init_sf_chain (k%sf_chain, sf_chain, n_channel, core_state)
+    call core%init_sf_chain (k%sf_chain, sf_chain, n_channel)
     if (n_strfun /= 0) then
        do c = 1, n_channel
           call k%sf_chain%set_channel (c, config%sf_channel(c))
@@ -7765,7 +7764,6 @@ type and contents depend on the process variant.
      type(vector4_t), dimension(:), allocatable :: p_seed
      logical :: sqme_known = .false.
      real(default) :: sqme = zero
-     class(prc_core_state_t), allocatable :: core_state
      type(nlo_controller_t), pointer :: nlo_controller => null ()
      type(nlo_state_t) :: nlo_state
      integer :: nlo_type = BORN
@@ -7811,10 +7809,10 @@ appear elsewhere.
        write (u, "(2x,A)")  "[undefined]"
     end if
     call object%k_seed%write (u)
-    if (allocated (object%core_state)) then
-       call write_separator (u)
-       call object%core_state%write (u)
-    end if
+    !if (allocated (object%core_state)) then
+    !   call write_separator (u)
+    !   call object%core_state%write (u)
+    !end if
   end subroutine component_instance_write
     
 @ %def component_instance_write
@@ -7851,7 +7849,7 @@ matter of the process core.
       case (BORN, NLO_VIRTUAL, NLO_DGLAP, NLO_SUBTRACTION)
         allocate (component%p_seed (n_tot))
       end select
-      call core%allocate_workspace (component%core_state)
+      !call core%allocate_workspace (component%core_state)
     end associate
   end subroutine component_instance_init
 
@@ -7878,7 +7876,7 @@ allocated explicitly.
        end if
     end if
     call component%k_seed%init_sf_chain &
-         (component%config%core, sf_chain, config, component%core_state)
+         (component%config%core, sf_chain, config)
     call component%k_seed%init_phs (component%config%phs_config)
     call component%k_seed%set_nlo_info (nlo_type)
     select type (phs => component%k_seed%phs)
@@ -7994,11 +7992,10 @@ choose to calculate all terms at once together with the seed kinematics, use
     integer :: j, i
     associate (core => component%config%core)
       associate (i_term => component%config%i_term)
-        if (allocated (component%core_state)) then
-           call component%core_state%reset_new_kinematics ()
-        end if
         do j = 1, size (i_term)
            i = i_term(j)
+           if (allocated (term(i)%core_state)) &
+              call term(i)%core_state%reset_new_kinematics ()
            if (present (skip_term)) then
               if (i == skip_term)  cycle
            end if
@@ -8047,7 +8044,7 @@ left undefined.  We remedy this by calling [[receive_kinematics]] once.
     associate (core => component%config%core)
       call core%recover_kinematics &
            (component%p_seed, term%int_hard, term%isolated%int_eff, &
-           component%core_state)
+           term%core_state)
       call term%isolated%receive_kinematics ()
     end associate
   end subroutine component_instance_recover_seed_kinematics
@@ -8160,11 +8157,11 @@ stored in the kinematics subobject to their source.  This is a side effect.
      class(component_instance_t), intent(inout) :: component
      class(prc_blha_t), intent(inout) :: core
      integer, intent(in) :: i_flv
-     type(term_instance_t), intent(in), target :: term
+     type(term_instance_t), intent(inout), target :: term
      logical, intent(in) :: subtraction
      logical :: bad_point
 
-     call core%update_alpha_s (component%core_state, term%fac_scale)
+     call core%update_alpha_s (term%core_state, term%fac_scale)
      if (subtraction) then
         call core%compute_sqme_born (i_flv, term%nlo_controller%int_born%get_momenta (), &
            term%ren_scale, sqme, bad_point)
@@ -8266,16 +8263,16 @@ imaginary part of the terms, which should be zero anyway.
 
         if (debug2_active (D_VIRTUAL)) then
            call msg_debug2 (D_VIRTUAL, "Evaluating virtual-subtracted matrix elements")
-           print *, 'alpha_s: ', component%config%core%get_alpha_s (component%core_state)
+           print *, 'alpha_s: ', component%config%core%get_alpha_s (term%core_state)
            print *, 'ren_scale: ', term%ren_scale
            print *, 'fac_scale: ', term%fac_scale
         end if
 
         call nlo_controller%set_alpha_s_born &
-           (component%config%core%get_alpha_s (component%core_state))
+           (component%config%core%get_alpha_s (term%core_state))
         select type (core => component%config%core)
         class is (prc_user_defined_base_t)
-           call core%update_alpha_s (component%core_state, term%fac_scale)
+           call core%update_alpha_s (term%core_state, term%fac_scale)
         end select
         call nlo_controller%transfer_to_virtual (term%int_hard%get_momenta (), &
            term%ren_scale, term%fac_scale)
@@ -8299,12 +8296,12 @@ imaginary part of the terms, which should be zero anyway.
     associate (nlo_controller => component%nlo_controller)
        select type (core_sub_born => component%config%core_sub_born)
        class is (prc_blha_t)
-          call core_sub_born%update_alpha_s (component%core_state, term%fac_scale)
+          call core_sub_born%update_alpha_s (term%core_state, term%fac_scale)
        end select
        call nlo_controller%set_alpha_s_born &
-          (component%config%core_sub_born%get_alpha_s (component%core_state))
+          (component%config%core_sub_born%get_alpha_s (term%core_state))
        call term%nlo_controller%evaluate_color_correlations &
-          (component%config%core_sub_born, component%core_state, &
+          (component%config%core_sub_born, term%core_state, &
           term%fac_scale, 1, bad_point)
        call nlo_controller%compute_sqme_mismatch ()
        component%sqme = nlo_controller%sqme_collector%sqme_mismatch
@@ -8329,7 +8326,7 @@ imaginary part of the terms, which should be zero anyway.
           return
        end if
        call nlo_controller%set_alpha_s_born &
-                 (component%config%core%get_alpha_s (component%core_state))
+                 (component%config%core%get_alpha_s (term%core_state))
        call nlo_controller%evaluate_dglap_remnant (component%sqme)
        !!! TODO: (cw 2016-04-26) Use correct i_flv_born
        component%sqme = nlo_controller%sqme_collector%sqme_dglap_list (1)
@@ -8362,11 +8359,11 @@ imaginary part of the terms, which should be zero anyway.
            collector%sqme_real_non_sub (i_flv, i_phs) = &
               real (term%connected_real%trace%get_matrix_element (1))
         class is (prc_blha_t)
-           call core%update_alpha_s (component%core_state, term%fac_scale)
+           call core%update_alpha_s (term%core_state, term%fac_scale)
            call core%compute_sqme_real (i_flv, p_real, term%ren_scale, &
               collector%sqme_real_non_sub(i_flv, i_phs), bad_point)
         class is (prc_user_defined_base_t)
-           call core%update_alpha_s (component%core_state, term%fac_scale)
+           call core%update_alpha_s (term%core_state, term%fac_scale)
            collector%sqme_real_non_sub (i_flv, i_phs) = &
               core%compute_sqme (i_flv, p_real)
         end select
@@ -8393,7 +8390,7 @@ imaginary part of the terms, which should be zero anyway.
        if (nlo_controller%is_subtraction_active ()) then
             do i_flv_born = 1, nlo_controller%get_n_flv_born ()
                call term%nlo_controller%evaluate_color_correlations &
-                  (component%config%core_sub_born, component%core_state, &
+                  (component%config%core_sub_born, term%core_state, &
                   term%fac_scale, i_flv_born, bad_point)
 
                if (nlo_controller%requires_spin_correlation (i_flv_born)) then
@@ -8402,14 +8399,14 @@ imaginary part of the terms, which should be zero anyway.
                      call msg_fatal ("Computation of spin-correlated " // &
                           "matrix elements not possible with O'Mega!")
                   type is (prc_gosam_t)
-                     call core_born%update_alpha_s (component%core_state, &
+                     call core_born%update_alpha_s (term%core_state, &
                           term%fac_scale)
                      call core_born%compute_sqme_sc (i_flv_born, &
                         nlo_controller%get_active_emitter(), &
                         nlo_controller%int_born%get_momenta(), &
                         zero, collector%sqme_born_sc(i_flv_born), bad_point)
                   type is (prc_openloops_t) 
-                     call core_born%update_alpha_s (component%core_state, &
+                     call core_born%update_alpha_s (term%core_state, &
                           term%fac_scale)
                      call nlo_controller%compute_k_perp ()
                      call core_born%compute_sqme_sc (i_flv_born, &
@@ -8424,7 +8421,7 @@ imaginary part of the terms, which should be zero anyway.
             end do
        end if
        call nlo_controller%set_alpha_s_born &
-          (component%config%core%get_alpha_s (component%core_state))
+          (component%config%core%get_alpha_s (term%core_state))
        nlo_controller%sqme_collector%current_sqme_real = &
           nlo_controller%compute_sqme_real_fin ()
     end associate
@@ -8545,6 +8542,7 @@ has passed cuts, we calculate the various scale and weight expressions.
      !!! TODO (cw-2016-07-15): Get rid of these
      type(isolated_state_t) :: isolated_real
      type(connected_state_t) :: connected_real
+     class(prc_core_state_t), allocatable :: core_state
      logical :: checked = .false.
      logical :: passed = .false.
      real(default) :: scale = 0
@@ -8626,10 +8624,10 @@ has passed cuts, we calculate the various scale and weight expressions.
     call term%connected%final ()
     call term%isolated%final ()
     call term%int_hard%final ()
-    select case (term%nlo_type)
-    case (NLO_REAL)
-       call final_real ()
-    end select
+    !select case (term%nlo_type)
+    !case (NLO_REAL)
+    !   call final_real ()
+    !end select
   contains
     subroutine final_real ()
       call term%connected_real%final ()
@@ -8693,6 +8691,7 @@ relevant for a NLO algorithm.
     term%nlo_controller => nlo_controller
     call term%k_term%init_ptr (k_seed)
     term%int_hard = config%int
+    call core%allocate_workspace (term%core_state)
     select type (core)
     class is (prc_user_defined_base_t)
        call reduce_interaction (term%int_hard, &
@@ -9015,8 +9014,8 @@ The quantum numbers mask of the incoming particle
       else
          call msg_fatal ("NLO event setup: Born core is required!")
       end if
-      call setup_isolated (term%isolated_real, core, model, mask_in, term%config%col)
-      call setup_connected (term%connected_real, term%isolated_real) 
+      !call setup_isolated (term%isolated_real, core, model, mask_in, term%config%col)
+      !call setup_connected (term%connected_real, term%isolated_real) 
     end select
  contains
    subroutine setup_isolated (isolated, core, model, mask, color)
@@ -9137,31 +9136,31 @@ The quantum numbers mask of the incoming particle
     type(vector4_t), dimension(:), allocatable :: p
     real(default) :: xi
     if (term%config%i_term == 1) return
-    allocate (p (term%nlo_controller%get_n_particles_real()))
-    p = term%nlo_controller%get_momenta (born_phsp = .false., i_phs = i_phs)
-    call term%int_hard_real%set_momenta (p)
-    call term%isolated_real%receive_kinematics ()
-    call term%connected_real%receive_kinematics ()
-    associate (scales => term%nlo_controller%real_terms%scales)
-       call term%connected_real%evaluate_expressions (term%passed, &
-          term%scale, term%fac_scale, term%ren_scale, &
-          term%weight, force_evaluation = .true.)
-       if (.not. term%passed) return
-       scales%scale_born = scales%scale
-       scales%fac_scale_born = term%fac_scale
-       scales%ren_scale_born = term%ren_scale
-       select type (phs => term%k_term%phs)
-       type is (phs_fks_t)
-          if (phs%i_phs_is_isr (i_phs)) then
-             associate (rad_var => term%nlo_controller%real_kinematics)
-                xi = rad_var%xi_tilde * rad_var%xi_max (i_phs)
-             end associate
-             scales%scale = scales%scale / sqrt (one - xi)
-             scales%fac_scale = scales%fac_scale / sqrt (one - xi)
-             scales%ren_scale = scales%ren_scale / sqrt (one - xi)
-          end if
-       end select
-    end associate
+    !allocate (p (term%nlo_controller%get_n_particles_real()))
+    !p = term%nlo_controller%get_momenta (born_phsp = .false., i_phs = i_phs)
+    !call term%int_hard_real%set_momenta (p)
+    !call term%isolated_real%receive_kinematics ()
+    !call term%connected_real%receive_kinematics ()
+    !associate (scales => term%nlo_controller%real_terms%scales)
+    !   call term%connected_real%evaluate_expressions (term%passed, &
+    !      term%scale, term%fac_scale, term%ren_scale, &
+    !      term%weight, force_evaluation = .true.)
+    !   if (.not. term%passed) return
+    !   scales%scale_born = scales%scale
+    !   scales%fac_scale_born = term%fac_scale
+    !   scales%ren_scale_born = term%ren_scale
+    !   select type (phs => term%k_term%phs)
+    !   type is (phs_fks_t)
+    !      if (phs%i_phs_is_isr (i_phs)) then
+    !         associate (rad_var => term%nlo_controller%real_kinematics)
+    !            xi = rad_var%xi_tilde * rad_var%xi_max (i_phs)
+    !         end associate
+    !         scales%scale = scales%scale / sqrt (one - xi)
+    !         scales%fac_scale = scales%fac_scale / sqrt (one - xi)
+    !         scales%ren_scale = scales%ren_scale / sqrt (one - xi)
+    !      end if
+    !   end select
+    !end associate
   end subroutine term_instance_update_real_interactions
 
 @ %def term_instance_update_interactions
@@ -9299,9 +9298,10 @@ method may modify the [[core_state]] workspace object.
 <<Processes: term instance: TBP>>=
   procedure :: evaluate_interaction => term_instance_evaluate_interaction
 <<Processes: procedures>>=
-  subroutine term_instance_evaluate_interaction (term, component)
+  subroutine term_instance_evaluate_interaction (term, component, core)
     class(term_instance_t), intent(inout) :: term
     type(component_instance_t), dimension(:), intent(inout) :: component
+    class(prc_core_t), intent(in), pointer :: core
     integer :: i_component, i_term, i, j, k
     !!! Needs to be factored out into its own routine!
     real(default) :: sqme
@@ -9316,9 +9316,10 @@ method may modify the [[core_state]] workspace object.
     term%p_hard = term%int_hard%get_momenta ()
     select case (term%nlo_type)
     case (BORN, NLO_VIRTUAL, NLO_DGLAP, NLO_REAL)
-       select type (core => component(i_component)%config%core)
+       !select type (core => component(i_component)%config%core)
+       select type (core)
        class is (prc_user_defined_base_t)
-          select type (core_state => component(i_component)%core_state)
+          select type (core_state => term%core_state)
           class is (user_defined_state_t)
              call core%compute_alpha_s (core_state, term%ren_scale)
           end select
@@ -9378,7 +9379,7 @@ method may modify the [[core_state]] workspace object.
              term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
                 term%config%flv(i), term%config%hel(i), term%config%col(i), &
                 term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
-                component(i_component)%core_state)
+                term%core_state)
           end do
           if (associated (term%nlo_controller)) &
              call term%nlo_controller%set_fac_scale (term%fac_scale)
@@ -9474,7 +9475,7 @@ physical event.
         ren_scale = scales%ren_scale
         call term%nlo_controller%set_fac_scale (scales%fac_scale_born)
      end associate
-     if (i_flv_real == 1) call component%core_state%reset_new_kinematics ()
+     if (i_flv_real == 1) call term%core_state%reset_new_kinematics ()
 
      select type (core => component%config%core)
      type is (prc_omega_t)
@@ -9484,17 +9485,17 @@ physical event.
                  term%p_hard, &
                  term%config%flv(i), term%config%hel(i), term%config%col(i), &
                  term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
-                 component%core_state)
+                 term%core_state)
            else
               term%amp(i) = zero
            end if
         end do
      class is (prc_user_defined_base_t)
-        call core%update_alpha_s (component%core_state, fac_scale)
+        call core%update_alpha_s (term%core_state, fac_scale)
         term%amp = zero
      end select
      call term%int_hard_real%set_matrix_element (term%amp)
-     if (i_flv_born == 1) call component%core_state%reset_new_kinematics ()
+     if (i_flv_born == 1) call term%core_state%reset_new_kinematics ()
      call term%evaluate_interaction_sub (component, i_term, i_flv_born)
   end subroutine term_instance_evaluate_interaction_real
 
@@ -9533,13 +9534,13 @@ physical event.
                   term%nlo_controller%get_col_born(i), &
                   term%fac_scale, term%ren_scale, &
                   term%alpha_qcd_forced, &
-                  component%core_state)
+                  term%core_state)
           else
              term%nlo_controller%amp_born(i) = zero
           end if
        end do
     class is (prc_user_defined_base_t)
-       call core_sub_born%update_alpha_s (component%core_state, fac_scale)
+       call core_sub_born%update_alpha_s (term%core_state, fac_scale)
        term%nlo_controller%amp_born = zero
     class default
        call msg_fatal ("Invalid core type set up for subtraction matrix elements")
@@ -9582,10 +9583,10 @@ physical event.
     end select
 
     i_flv_born = term%nlo_controller%reg_data%underlying_borns (i_flv_real)
-    if (i_flv_real == 1) call component%core_state%reset_new_kinematics ()
+    if (i_flv_real == 1) call term%core_state%reset_new_kinematics ()
 
     if (.not. yorn) then
-       call component%core_state%reset_new_kinematics ()
+       call term%core_state%reset_new_kinematics ()
        select type (core => component%config%core)
        type is (prc_omega_t)
           do i = 1, term%config%n_allowed
@@ -9594,20 +9595,20 @@ physical event.
                    term%int_hard_real%get_momenta (), &
                    term%config%flv(i), term%config%hel(i), term%config%col(i), &
                    term%fac_scale, term%ren_scale, alpha_qcd_forced, &
-                   component%core_state)
+                   term%core_state)
              else
                 term%amp(i) = zero
              end if
           end do
        class is (prc_user_defined_base_t)
-          call core%update_alpha_s (component%core_state, term%fac_scale)
+          call core%update_alpha_s (term%core_state, term%fac_scale)
           term%amp = zero
        end select
        call term%int_hard_real%set_matrix_element (term%amp)
     end if
     call component%nlo_controller%int_born%set_momenta &
        (component%nlo_controller%real_kinematics%p_born_cms%phs_point(1)%p)
-    if (i_flv_born == 1) call component%core_state%reset_new_kinematics ()
+    if (i_flv_born == 1) call term%core_state%reset_new_kinematics ()
     select type (core_sub_born => component%config%core_sub_born)
     type is (prc_omega_t)
        do i = 1, term%nlo_controller%n_allowed_born
@@ -9618,14 +9619,14 @@ physical event.
                  term%nlo_controller%get_hel_born(i), &
                  term%nlo_controller%get_col_born(i), &
                  term%fac_scale, term%ren_scale, &
-                 alpha_qcd_forced, component%core_state)
+                 alpha_qcd_forced, term%core_state)
           else
              term%nlo_controller%amp_born(i) = zero
           end if
        end do
     class is (prc_user_defined_base_t)
        term%nlo_controller%amp_born = zero
-       call core_sub_born%update_alpha_s (component%core_state, term%fac_scale)
+       call core_sub_born%update_alpha_s (term%core_state, term%fac_scale)
     end select 
     call term%nlo_controller%int_born%set_matrix_element &
          (term%nlo_controller%amp_born) 
@@ -9670,7 +9671,7 @@ by the model.  If the model does not provide a value, the result is zero.
     integer :: i_component
     i_component = term%config%i_component
     associate (core => component(i_component)%config%core)
-      alpha_s = core%get_alpha_s (component(i_component)%core_state)
+      alpha_s = core%get_alpha_s (term%core_state)
     end associate
     if (alpha_s < 0)  alpha_s = term%config%alpha_s
   end function term_instance_get_alpha_s
@@ -10933,6 +10934,7 @@ terms, iterating over all active process components.
   subroutine process_instance_evaluate_trace (instance)
     class(process_instance_t), intent(inout) :: instance
     integer :: i, i_real
+    class(prc_core_t), pointer :: core => null ()
     instance%sqme = zero
     i_real = 0
     call instance%reset_nlo_matrix_elements ()
@@ -10942,7 +10944,8 @@ terms, iterating over all active process components.
             if (term%active .and. term%passed) then
               select case (term%nlo_type)
               case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP, NLO_REAL)
-                 call term%evaluate_interaction (instance%component)
+                 core => instance%process%cm%get_core (term%config%i_core)
+                 call term%evaluate_interaction (instance%component, core)
                  call term%evaluate_trace ()
               end select
             end if
