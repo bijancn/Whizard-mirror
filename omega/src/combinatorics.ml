@@ -1,4 +1,4 @@
-(* $Id: combinatorics.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* $Id: combinatorics.ml 7653 2016-07-18 11:37:04Z ohl $
 
    Copyright (C) 1999-2016 by
 
@@ -441,7 +441,7 @@ module Test =
     let sort_signed_all =
       "all" >::
       (fun () ->
-        let l = ThoList.range 1 8in
+        let l = ThoList.range 1 8 in
         assert_bool "all signed permutations"
           (List.for_all
              (fun (eps, p) ->
@@ -452,7 +452,7 @@ module Test =
     let sign_sign2 =
       "sign/sign2" >::
       (fun () ->
-        let l = ThoList.range 1 8in
+        let l = ThoList.range 1 8 in
           assert_bool "all permutations"
           (List.for_all
              (fun p -> sign p = sign2 p)
