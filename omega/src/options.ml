@@ -1,4 +1,4 @@
-(* $Id: options.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* $Id: options.ml 7653 2016-07-18 11:37:04Z ohl $
 
    Copyright (C) 1999-2016 by
 
@@ -65,6 +65,7 @@ let list options =
   List.map (fun (o, _, d) -> (o, d)) options.raw
 i*)
 
+(*i
 let parse specs anonymous usage =
   let help () =
     raise (Arg.Help (Arg.usage_string specs (usage ()))) in
@@ -74,8 +75,26 @@ let parse specs anonymous usage =
   try
     Arg.parse_argv Sys.argv specs' anonymous (usage ())
   with
-  | Arg.Bad msg -> Printf.eprintf "%s" msg; exit 2;
-  | Arg.Help msg -> Printf.printf "%s" msg; exit 0
+  | Arg.Bad msg -> Printf.eprintf "%s\n" msg; exit 2;
+  | Arg.Help msg -> Printf.printf "%s\n" msg; exit 0
+i*)
+
+(* Starting with O'Caml version 3.12.1 we can provide a better
+   \verb*--help* option using [Arg.usage_string].  Alas, we
+   must disable it if we want to remain compatible with O'Caml versions
+   up to 3.12.0.  *)
+    
+let parse specs anonymous usage =
+  let help () =
+    raise (Arg.Help (usage ())) in
+  let specs' =
+    [("-usage", Arg.Unit help, "Display the external particles");
+     ("--usage", Arg.Unit help, "Display the external particles")] @ specs in
+  try
+    Arg.parse_argv Sys.argv specs' anonymous (usage ())
+  with
+  | Arg.Bad msg -> Printf.eprintf "%s\n" msg; exit 2;
+  | Arg.Help msg -> Printf.printf "%s\n" msg; exit 0
 
 (*i
  *  Local Variables:
