@@ -8354,8 +8354,8 @@ imaginary part of the terms, which should be zero anyway.
         i_flv = term%nlo_controller%active_flavor_structure_real
         select type (core => component%config%core)
         type is (prc_omega_t)
-           collector%sqme_real_non_sub (i_flv, i_phs) = &
-              real (term%connected_real%trace%get_matrix_element (1))
+           !collector%sqme_real_non_sub (i_flv, i_phs) = &
+           !   real (term%connected_real%trace%get_matrix_element (1))
         class is (prc_blha_t)
            call core%update_alpha_s (term%core_state, term%fac_scale)
            call core%compute_sqme_real (i_flv, p_real, term%ren_scale, &
@@ -8533,13 +8533,8 @@ has passed cuts, we calculate the various scale and weight expressions.
      type(kinematics_t) :: k_term
      complex(default), dimension(:), allocatable :: amp
      type(interaction_t) :: int_hard
-     !!! TODO (cw-2016-07-15): Get rid of this
-     type(interaction_t) :: int_hard_real
      type(isolated_state_t) :: isolated
      type(connected_state_t) :: connected
-     !!! TODO (cw-2016-07-15): Get rid of these
-     type(isolated_state_t) :: isolated_real
-     type(connected_state_t) :: connected_real
      class(prc_core_state_t), allocatable :: core_state
      logical :: checked = .false.
      logical :: passed = .false.
@@ -8622,16 +8617,6 @@ has passed cuts, we calculate the various scale and weight expressions.
     call term%connected%final ()
     call term%isolated%final ()
     call term%int_hard%final ()
-    !select case (term%nlo_type)
-    !case (NLO_REAL)
-    !   call final_real ()
-    !end select
-  contains
-    subroutine final_real ()
-      call term%connected_real%final ()
-      call term%isolated_real%final ()
-      call term%int_hard_real%final ()
-    end subroutine final_real
   end subroutine term_instance_final
   
 @ %def term_instance_final
@@ -8862,18 +8847,6 @@ relevant for a NLO algorithm.
      end select
    end function undo_helicities
 
-   subroutine setup_real_subevt ()
-      allocate (f_out_real (n_out + 1))
-      f_out_real (1:n_out) = f_out
-      f_out_real (n_out + 1) = term%nlo_controller%reg_data%flv_extra
-
-      call term%connected_real%setup_subevt &
-         (term%isolated_real%sf_chain_eff, &
-         beam_config%data%flv, f_in, f_out_real)
-      call term%connected_real%setup_var_list &
-         (process_var_list, beam_config%data)
-   end subroutine setup_real_subevt
-
    subroutine reduce_interaction (int, polarized_beams, keep_fs_flavors)
      type(interaction_t), intent(inout) :: int
      logical, intent(in) :: polarized_beams
@@ -8921,22 +8894,6 @@ relevant for a NLO algorithm.
   end subroutine term_instance_set_emitter
  
 @ %def term_instance_set_emitter           
-@ Set up the state objects.
-<<Processes: term instance: TBP>>=
-  procedure :: init_states => term_instance_init_states
-<<Processes: procedures>>=
-  subroutine term_instance_init_states (term, core)
-    class(term_instance_t), intent(inout), target :: term
-    class(prc_core_t), intent(in) :: core
-    type(quantum_numbers_mask_t), dimension(:), allocatable :: mask_in
-    allocate (mask_in(1:size(term%k_term%sf_chain%get_out_mask ())))
-    mask_in = term%k_term%sf_chain%get_out_mask ()
-    call term%isolated_real%init (term%k_term%sf_chain, term%int_hard_real)
-    call term%isolated_real%setup_square_trace (core, mask_in, term%config%col)
-    call term%connected_real%setup_connected_trace (term%isolated_real) 
-  end subroutine term_instance_init_states
-
-@ %def term_instance_init_states 
 @ For initializing the expressions, we need the local variable list and the
 parse trees.
 <<Processes: term instance: TBP>>=
@@ -8956,33 +8913,9 @@ parse trees.
          call term%connected%setup_ren_scale (config%ef_ren_scale)
     if (allocated (config%ef_weight)) &
          call term%connected%setup_weight (config%ef_weight)
-    select case (term%nlo_type)
-    case (NLO_REAL)
-       if (term%config%i_term > 1) call term%setup_expressions_real (config)
-    end select
   end subroutine term_instance_setup_expressions
     
 @ %def term_instance_setup_expressions
-@
-<<Processes: term instance: TBP>>=
-  procedure :: setup_expressions_real => term_instance_setup_expressions_real
-<<Processes: procedures>>=
-  subroutine term_instance_setup_expressions_real (term, config)
-    class(term_instance_t), intent(inout), target :: term
-    type(process_config_data_t), intent(in) :: config
-    if (allocated (config%ef_cuts)) &
-       call term%connected_real%setup_cuts (config%ef_cuts)
-    if (allocated (config%ef_scale)) &
-       call term%connected_real%setup_scale (config%ef_scale)
-    if (allocated (config%ef_fac_scale)) &
-       call term%connected_real%setup_fac_scale (config%ef_fac_scale)
-    if (allocated (config%ef_ren_scale)) &
-       call term%connected_real%setup_ren_scale (config%ef_ren_scale)
-    if (allocated (config%ef_weight)) &
-       call term%connected_real%setup_weight (config%ef_weight)
-  end subroutine term_instance_setup_expressions_real
-
-@ %def term_instance_setup_expressions_real
 @ Prepare the extra evaluators that we need for processing events.
 
 The quantum numbers mask of the incoming particle
@@ -9012,8 +8945,6 @@ The quantum numbers mask of the incoming particle
       else
          call msg_fatal ("NLO event setup: Born core is required!")
       end if
-      !call setup_isolated (term%isolated_real, core, model, mask_in, term%config%col)
-      !call setup_connected (term%connected_real, term%isolated_real) 
     end select
  contains
    subroutine setup_isolated (isolated, core, model, mask, color)
@@ -9403,10 +9334,10 @@ interaction, then compute the convolution with the initial state.
   subroutine term_instance_evaluate_trace (term)
     class(term_instance_t), intent(inout) :: term
     call term%k_term%evaluate_sf_chain (term%fac_scale)
-    select case (term%nlo_type)
-    case (NLO_REAL)
-      call term%evaluate_trace_real () 
-    end select
+    !select case (term%nlo_type)
+    !case (NLO_REAL)
+    !  call term%evaluate_trace_real () 
+    !end select
     call term%isolated%evaluate_sf_chain (term%fac_scale)
     call term%isolated%evaluate_trace ()
     call term%connected%evaluate_trace ()
@@ -9421,8 +9352,8 @@ interaction, then compute the convolution with the initial state.
      class(term_instance_t), intent(inout) :: term
      if (term%config%i_term == 1) return
      call term%nlo_controller%sf_born%evaluate (term%fac_scale)
-     call term%isolated_real%evaluate_trace ()
-     call term%connected_real%evaluate_trace ()
+     !call term%isolated_real%evaluate_trace ()
+     !call term%connected_real%evaluate_trace ()
   end subroutine term_instance_evaluate_trace_real
 
 @ %def term_instance_evaluate_trace_real
@@ -9433,20 +9364,8 @@ physical event.
 <<Processes: procedures>>=
   subroutine term_instance_evaluate_event_data (term)
     class(term_instance_t), intent(inout) :: term
-    select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_DGLAP)
-      call term%isolated%evaluate_event_data ()
-      call term%connected%evaluate_event_data ()
-    case (NLO_REAL, NLO_MISMATCH)
-       call term%isolated%evaluate_event_data ()
-       call term%connected%evaluate_event_data ()
-       call evaluate_event_data_real ()
-    end select
-  contains
-    subroutine evaluate_event_data_real ()
-      call term%isolated_real%evaluate_event_data ()
-      call term%connected_real%evaluate_event_data ()
-    end subroutine evaluate_event_data_real
+    call term%isolated%evaluate_event_data ()
+    call term%connected%evaluate_event_data ()
   end subroutine term_instance_evaluate_event_data
   
 @ %def term_instance_evaluate_event_data
@@ -9492,7 +9411,7 @@ physical event.
         call core%update_alpha_s (term%core_state, fac_scale)
         term%amp = zero
      end select
-     call term%int_hard_real%set_matrix_element (term%amp)
+     !call term%int_hard_real%set_matrix_element (term%amp)
      if (i_flv_born == 1) call term%core_state%reset_new_kinematics ()
      call term%evaluate_interaction_sub (component, i_term, i_flv_born)
   end subroutine term_instance_evaluate_interaction_real
@@ -9590,7 +9509,8 @@ physical event.
           do i = 1, term%config%n_allowed
              if (term%config%flv(i) == i_flv_real) then
                 term%amp(i) = core%compute_amplitude (i_term, &
-                   term%int_hard_real%get_momenta (), &
+                   !term%int_hard_real%get_momenta (), &
+                   term%int_hard%get_momenta (), &
                    term%config%flv(i), term%config%hel(i), term%config%col(i), &
                    term%fac_scale, term%ren_scale, alpha_qcd_forced, &
                    term%core_state)
@@ -9602,7 +9522,7 @@ physical event.
           call core%update_alpha_s (term%core_state, term%fac_scale)
           term%amp = zero
        end select
-       call term%int_hard_real%set_matrix_element (term%amp)
+       !call term%int_hard_real%set_matrix_element (term%amp)
     end if
     call component%nlo_controller%int_born%set_momenta &
        (component%nlo_controller%real_kinematics%p_born_cms%phs_point(1)%p)
@@ -11599,35 +11519,6 @@ component.
 
 @ %def process_instance_get_trace_int_ptr
 @ %def process_instance_get_matrix_int_ptr
-@ %def process_instance_get_flows_int_ptr
-<<Processes: process instance: TBP>>=
-  procedure :: get_trace_int_ptr_real => process_instance_get_trace_int_ptr_real
-  procedure :: get_matrix_int_ptr_real => process_instance_get_matrix_int_ptr_real
-  procedure :: get_flows_int_ptr_real => process_instance_get_flows_int_ptr_real
-<<Processes: procedures>>=
-  function process_instance_get_trace_int_ptr_real (instance, i_term) result (ptr)
-    class(process_instance_t), intent(in), target :: instance
-    integer, intent(in) :: i_term
-    type(interaction_t), pointer :: ptr
-    ptr => instance%term(i_term)%connected_real%get_trace_int_ptr ()
-  end function process_instance_get_trace_int_ptr_real
-
-  function process_instance_get_matrix_int_ptr_real (instance, i_term) result (ptr)
-    class(process_instance_t), intent(in), target :: instance
-    integer, intent(in) :: i_term
-    type(interaction_t), pointer :: ptr
-    ptr => instance%term(i_term)%connected_real%get_matrix_int_ptr ()
-  end function process_instance_get_matrix_int_ptr_real
-
-  function process_instance_get_flows_int_ptr_real (instance, i_term) result (ptr)
-    class(process_instance_t), intent(in), target :: instance
-    integer, intent(in) :: i_term
-    type(interaction_t), pointer :: ptr
-    ptr => instance%term(i_term)%connected_real%get_flows_int_ptr ()
-  end function process_instance_get_flows_int_ptr_real
-
-@ %def process_instance_get_trace_int_ptr_real
-@ %def process_instance_get_matrix_int_ptr_real
 @ %def process_instance_get_flows_int_ptr
 @ Return the complete account of flavor combinations in the underlying
 interaction object, including beams, radiation, and hard interaction.
