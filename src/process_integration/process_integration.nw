@@ -9093,6 +9093,49 @@ The quantum numbers mask of the incoming particle
   end subroutine term_instance_update_real_interactions
 
 @ %def term_instance_update_interactions
+@
+<<Processes: term instance: TBP>>=
+  procedure :: apply_fks => term_instance_apply_fks
+<<Processes: procedures>>=
+  subroutine term_instance_apply_fks (term, core)
+    class(term_instance_t), intent(inout) :: term
+    class(prc_core_t), intent(inout) :: core
+    logical :: bad_point = .false.
+    real(default) :: sqme
+    integer :: i_em, emitter
+    sqme = zero
+    associate (nlo_controller => term%nlo_controller)
+       !print *, 'emitter: ', term%k_term%emitter
+       call nlo_controller%set_alpha_s_born &
+          (core%get_alpha_s (term%core_state))
+       call nlo_controller%real_terms%set_real_kinematics &
+          (nlo_controller%real_kinematics)
+       call nlo_controller%real_terms%set_isr_kinematics &
+          (nlo_controller%isr_kinematics)
+       if (term%k_term%emitter < 0) then
+          call nlo_controller%disable_sqme_np1 ()
+          nlo_controller%sqme_collector%sqme_subtraction_born_list (1) = &
+             real (term%connected%trace%get_matrix_element (1))
+          call nlo_controller%evaluate_color_correlations &
+             (core, term%core_state, term%fac_scale, 1, bad_point) 
+          do i_em = 1, nlo_controller%reg_data%n_emitters
+             emitter = nlo_controller%reg_data%emitters(i_em)
+             sqme = sqme + nlo_controller%real_terms%compute (emitter, &
+                emitter - 2, 1, nlo_controller%alpha_s_born)
+          end do 
+       else
+          call nlo_controller%disable_subtraction () 
+          nlo_controller%real_terms%sqme_real_non_sub (1, term%k_term%emitter - 2) = &
+             real (term%connected%trace%get_matrix_element (1))
+          emitter = term%k_term%emitter
+          sqme = nlo_controller%real_terms%compute (emitter, &
+             emitter - 2, 1, nlo_controller%alpha_s_born)
+       end if
+    end associate
+    call term%connected%trace%set_matrix_element (cmplx (sqme, 0, default))
+  end subroutine term_instance_apply_fks
+
+@ %def term_instance_apply_fks
 @ Reset the term instance: clear the parton-state expressions and deactivate.
 <<Processes: term instance: TBP>>=
   procedure :: reset => term_instance_reset
@@ -10865,49 +10908,55 @@ terms, iterating over all active process components.
                  core => instance%process%cm%get_core (term%config%i_core)
                  call term%evaluate_interaction (instance%component, core)
                  call term%evaluate_trace ()
+                 if (term%nlo_type == NLO_REAL) then
+                    call term%apply_fks (core)
+                 end if
               end select
             end if
           end associate
        end do
-       do i = 1, size (instance%component)
-          associate (component => instance%component(i))
-            if (component%active) then
-              select case (component%config%config%get_nlo_type())
-              case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP)
-                 call component%evaluate_sqme (instance%term)
-                 instance%sqme = instance%sqme + component%sqme
-                 instance%evaluation_status = STAT_EVALUATED_TRACE
-              end select
-            end if
-          end associate
-       end do
+       !!! (TODO: cw-2016-07-18) term%weight actually needed?
+       instance%sqme = real (sum (instance%term%connected%trace%get_matrix_element (1)))
+       instance%evaluation_status = STAT_EVALUATED_TRACE
+       !do i = 1, size (instance%component)
+       !   associate (component => instance%component(i))
+       !     if (component%active) then
+       !       select case (component%config%config%get_nlo_type())
+       !       case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP)
+       !          call component%evaluate_sqme (instance%term)
+       !          instance%sqme = instance%sqme + component%sqme
+       !          instance%evaluation_status = STAT_EVALUATED_TRACE
+       !       end select
+       !     end if
+       !   end associate
+       !end do
     else
        ! failed kinematics, failed cuts: set sqme to zero
        instance%sqme = zero
     end if
     if (instance%evaluation_status < STAT_SEED_KINEMATICS) return
-    select type (pcm => instance%pcm)
-    class is (pcm_instance_nlo_t)
-       do i = 1, size (instance%term)
-          associate (term => instance%term(i))
-             if (term%active) then
-                select case (term%nlo_type)
-                case (NLO_REAL)
-                   pcm%controller%nlo_cuts%passed_born = &
-                      instance%evaluation_status >= STAT_PASSED_CUTS
-                   if (.not. pcm%collect_matrix_elements) then
-                      call msg_debug2 (D_SUBTRACTION, "Evaluate real trace")
-                      !call instance%evaluate_trace_real (term, i)
-                   else
-                      i_real = i
-                   end if
-                end select
-             end if
-          end associate
-       end do
-       !if (pcm%collect_matrix_elements .and. i_real > 0) &
-       !   call instance%evaluate_trace_real (instance%term(i_real), i_real)
-    end select
+    !select type (pcm => instance%pcm)
+    !class is (pcm_instance_nlo_t)
+    !   do i = 1, size (instance%term)
+    !      associate (term => instance%term(i))
+    !         if (term%active) then
+    !            select case (term%nlo_type)
+    !            case (NLO_REAL)
+    !               pcm%controller%nlo_cuts%passed_born = &
+    !                  instance%evaluation_status >= STAT_PASSED_CUTS
+    !               if (.not. pcm%collect_matrix_elements) then
+    !                  call msg_debug2 (D_SUBTRACTION, "Evaluate real trace")
+    !                  !call instance%evaluate_trace_real (term, i)
+    !               else
+    !                  i_real = i
+    !               end if
+    !            end select
+    !         end if
+    !      end associate
+    !   end do
+    !   !if (pcm%collect_matrix_elements .and. i_real > 0) &
+    !   !   call instance%evaluate_trace_real (instance%term(i_real), i_real)
+    !end select
   end subroutine process_instance_evaluate_trace
 
 @ %def process_instance_evaluate_trace
