@@ -1584,21 +1584,24 @@ i.e.
 	      and q2 = Q.mul q2 q2'
 	      and q3 = Q.mul q3 q3' in
 	      if Q.abs q1 = Q.abs q2 && Q.abs q2 = Q.abs q3 then begin
-		begin match contraction11, contraction12 with
-		| (C_12_34, C_13_42) -> ()
-		| (C_12_34, C_14_23) -> ()
-		| (C_13_42, C_14_23) -> ()
-		end;
-		begin match contraction21, contraction22 with
-		| (C_12_34, C_13_42) -> ()
-		| (C_12_34, C_14_23) -> ()
-		| (C_13_42, C_14_23) -> ()
-		end;
-		begin match contraction31, contraction32 with
-		| (C_12_34, C_13_42) -> ()
-		| (C_12_34, C_14_23) -> ()
-		| (C_13_42, C_14_23) -> ()
-		end;
+		let eps1 =
+		  begin match contraction11, contraction12 with
+		  | (C_13_42, C_14_23) -> 1
+		  | (C_14_23, C_13_42) -> -1
+		  | _ -> invalid_arg "translate_gauge_vertex4: mismatch"
+		  end
+		and eps2 =
+		  begin match contraction21, contraction22 with
+		  | (C_14_23, C_12_34) -> 1
+		  | (C_12_34, C_14_23) -> -1
+		  | _ -> invalid_arg "translate_gauge_vertex4: mismatch"
+		  end
+		and eps3 =
+		  begin match contraction31, contraction32 with
+		  | (C_12_34, C_13_42) -> 1
+		  | (C_13_42, C_12_34) -> -1
+		  | _ -> invalid_arg "translate_gauge_vertex4: mismatch"
+		  end in
 		prerr_endline
 		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
 		      (String.concat ", "
@@ -1611,21 +1614,24 @@ i.e.
 	      and q2 = Q.mul q2 q2'
 	      and q3 = Q.mul q3 q3' in
 	      if Q.abs q1 = Q.abs q2 && Q.abs q2 = Q.abs q3 then begin
-		begin match contraction11, contraction12 with
-		| (C_12_34, C_13_42) -> ()
-		| (C_12_34, C_14_23) -> ()
-		| (C_13_42, C_14_23) -> ()
-		end;
-		begin match contraction21, contraction22 with
-		| (C_12_34, C_13_42) -> ()
-		| (C_12_34, C_14_23) -> ()
-		| (C_13_42, C_14_23) -> ()
-		end;
-		begin match contraction31, contraction32 with
-		| (C_12_34, C_13_42) -> ()
-		| (C_12_34, C_14_23) -> ()
-		| (C_13_42, C_14_23) -> ()
-		end;
+		let eps1 =
+		  begin match contraction11, contraction12 with
+		  | (C_13_42, C_14_23) -> 1
+		  | (C_14_23, C_13_42) -> -1
+		  | _ -> invalid_arg "translate_gauge_vertex4: mismatch"
+		  end
+		and eps2 =
+		  begin match contraction21, contraction22 with
+		  | (C_12_34, C_13_42) -> 1
+		  | (C_13_42, C_12_34) -> -1
+		  | _ -> invalid_arg "translate_gauge_vertex4: mismatch"
+		  end
+		and eps3 =
+		  begin match contraction31, contraction32 with
+		  | (C_14_23, C_12_34) -> 1
+		  | (C_12_34, C_14_23) -> -1
+		  | _ -> invalid_arg "translate_gauge_vertex4: mismatch"
+		  end in
 		prerr_endline
 		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
 		      (String.concat ", "
