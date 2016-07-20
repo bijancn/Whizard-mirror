@@ -6064,20 +6064,16 @@ configuration finalizer may include closing an open scratch file.
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit)
-    !if (allocated (object%core)) then
-    !   write (u, "(1x,A,I0)")  "Component #", object%index
-    !   if (associated (object%config)) then
-    !      call object%config%write (u)
-    !      if (object%md5sum_phs /= "") then
-    !         write (u, "(3x,A,A,A)")  "MD5 sum (phs)       = '", &
-    !              object%md5sum_phs, "'"
-    !      end if
-    !   end if
-    !   write (u, "(1x,A)") "Process core:"
-    !   call object%core%write (u)
-    !else
-    !   write (u, "(1x,A)") "Process component: [not allocated]"
-    !end if
+    if (associated (object%config)) then
+       write (u, "(1x,A,I0)")  "Component #", object%index
+       call object%config%write (u)
+       if (object%md5sum_phs /= "") then
+          write (u, "(3x,A,A,A)")  "MD5 sum (phs)       = '", &
+               object%md5sum_phs, "'"
+       end if
+    else
+       write (u, "(1x,A)") "Process component: [not allocated]"
+    end if
     if (.not. object%active) then
        write (u, "(1x,A)") "[Inactive]"
        return
@@ -7871,6 +7867,7 @@ type and contents depend on the process variant.
      type(kinematics_t) :: k_seed
      type(vector4_t), dimension(:), allocatable :: p_seed
      logical :: sqme_known = .false.
+     !!! TODO (cw-2016-07-20): Find out whether component_instance really needs its own sqme
      real(default) :: sqme = zero
      type(nlo_controller_t), pointer :: nlo_controller => null ()
      type(nlo_state_t) :: nlo_state
@@ -8303,7 +8300,7 @@ imaginary part of the terms, which should be zero anyway.
       end do
     end associate
     component%sqme_known = .true.
-    deallocate (core)
+    core => null ()
   end subroutine component_instance_evaluate_sqme
   
 @ %def component_instance_evaluate_sqme
@@ -9016,30 +9013,18 @@ The quantum numbers mask of the incoming particle
 <<Processes: term instance: TBP>>=
   procedure :: setup_event_data => term_instance_setup_event_data
 <<Processes: procedures>>=
-  subroutine term_instance_setup_event_data (term, core, model, core_born)
+  subroutine term_instance_setup_event_data (term, core, model)
     class(term_instance_t), intent(inout), target :: term
     class(prc_core_t), intent(in) :: core
     class(model_data_t), intent(in), target :: model
-    class(prc_core_t), intent(in), optional :: core_born
     integer :: n_in
     type(quantum_numbers_mask_t), dimension(:), allocatable :: mask_in
     integer, dimension(:), allocatable, save :: col_born
     n_in = term%int_hard%get_n_in ()
     allocate (mask_in (n_in))
     mask_in = term%k_term%sf_chain%get_out_mask ()
-    select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_DGLAP)
-      call setup_isolated (term%isolated, core, model, mask_in, term%config%col)
-      call setup_connected (term%connected, term%isolated)
-      call extract_born_color_configuration ()
-    case (NLO_REAL, NLO_MISMATCH)
-      if (present (core_born)) then
-         call setup_isolated (term%isolated, core_born, model, mask_in, col_born)
-         call setup_connected (term%connected, term%isolated)
-      else
-         call msg_fatal ("NLO event setup: Born core is required!")
-      end if
-    end select
+    call setup_isolated (term%isolated, core, model, mask_in, term%config%col)
+    call setup_connected (term%connected, term%isolated)
  contains
    subroutine setup_isolated (isolated, core, model, mask, color)
      type(isolated_state_t), intent(inout), target :: isolated
@@ -9058,13 +9043,6 @@ The quantum numbers mask of the incoming particle
      call connected%setup_connected_flows (isolated)
      call connected%setup_state_flv (isolated%get_n_out ())
    end subroutine setup_connected
-
-   subroutine extract_born_color_configuration ()
-      if (.not. allocated (col_born)) then
-         allocate (col_born (size (term%config%col)))
-         col_born = term%config%col
-      end if
-   end subroutine extract_born_color_configuration
  end subroutine term_instance_setup_event_data
     
 @ %def term_instance_setup_event_data
@@ -10620,27 +10598,27 @@ particle settings.
 <<Processes: process instance: TBP>>=
   procedure :: setup_event_data => process_instance_setup_event_data
 <<Processes: procedures>>=
-  subroutine process_instance_setup_event_data (instance, model)
+  subroutine process_instance_setup_event_data (instance, model, i_core)
     class(process_instance_t), intent(inout), target :: instance
     class(model_data_t), intent(in), optional, target :: model
+    integer, intent(in), optional :: i_core
     class(model_data_t), pointer :: current_model
-    integer :: i, i_component
+    integer :: i, i_component, i_term_base
+    class(prc_core_t), pointer :: core => null ()
     if (present (model)) then
        current_model => model
     else
        current_model => instance%process%config%model
     end if
-    !do i = 1, size (instance%term)
-    !   associate (term => instance%term(i))
-    !     if (associated (term%config)) then
-    !        i_component = term%config%i_component
-    !        associate (component => instance%process%component(i_component))
-    !          call term%setup_event_data (component%core, current_model, &
-    !             component%core_sub_born)
-    !        end associate
-    !     end if
-    !   end associate
-    !end do
+    do i = 1, size (instance%term)
+       associate (term => instance%term(i))
+         if (associated (term%config)) then
+            core => instance%process%cm%get_core (term%config%i_core)
+            call term%setup_event_data (core, current_model)
+         end if
+       end associate
+    end do
+    core => null ()
   end subroutine process_instance_setup_event_data
 
 @ %def process_instance_setup_event_data
@@ -11015,22 +10993,22 @@ terms, iterating over all active process components.
           end associate
        end do
        !!! (TODO: cw-2016-07-18) 'Evaluate other MEs before!'
+       instance%evaluation_status = STAT_EVALUATED_TRACE
+       do i = 1, size (instance%component)
+          associate (component => instance%component(i))
+            if (component%active) then
+       !       select case (component%config%config%get_nlo_type())
+       !       case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP)
+                 call component%evaluate_sqme (instance%process%cm, instance%term)
+                 !instance%sqme = instance%sqme + component%sqme
+                 instance%evaluation_status = STAT_EVALUATED_TRACE
+       !       end select
+            end if
+          end associate
+       end do
        instance%sqme = real (sum (&
           instance%term%connected%trace%get_matrix_element (1) * &
           instance%term%weight))
-       instance%evaluation_status = STAT_EVALUATED_TRACE
-       !do i = 1, size (instance%component)
-       !   associate (component => instance%component(i))
-       !     if (component%active) then
-       !       select case (component%config%config%get_nlo_type())
-       !       case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP)
-       !          call component%evaluate_sqme (instance%term)
-       !          instance%sqme = instance%sqme + component%sqme
-       !          instance%evaluation_status = STAT_EVALUATED_TRACE
-       !       end select
-       !     end if
-       !   end associate
-       !end do
     else
        ! failed kinematics, failed cuts: set sqme to zero
        instance%sqme = zero
@@ -13931,7 +13909,7 @@ temporary storage, read kinematics and recalculate the event.
     allocate (process)
     allocate (process_instance)
     call prepare_test_process (process, process_instance, model)
-    call process_instance%setup_event_data ()
+    call process_instance%setup_event_data (i_core = 1)
 
     call process%prepare_simulation (1)
     call process_instance%init_simulation (1)
