@@ -2350,6 +2350,26 @@ and allocates the corresponding manager instance.
 
 @ %def cm_t
 @
+<<PCM base: public>>=
+  public :: nlo_to_i_core
+<<PCM base: procedures>>=
+  function nlo_to_i_core (nlo_type) result (i_core)
+    integer :: i_core
+    integer, intent(in) :: nlo_type
+    select case (nlo_type)
+    case (BORN)
+       i_core = 1
+    case (NLO_REAL)
+       i_core = 2
+    case (NLO_VIRTUAL)
+       i_core = 3
+    case (NLO_SUBTRACTION)
+       i_core = 4
+    end select
+  end function nlo_to_i_core
+
+@ %def nlo_to_i_core
+@ 
 <<PCM base: cm: TBP>>=
   procedure :: register => cm_register
 <<PCM base: procedures>>=
@@ -2357,16 +2377,7 @@ and allocates the corresponding manager instance.
     class(cm_t), intent(inout) :: cm
     integer, intent(in) :: nlo_type, core_type, i_component
     integer :: index
-    select case (nlo_type)
-    case (BORN)
-       index = 1
-    case (NLO_REAL)
-       index = 2
-    case (NLO_VIRTUAL)
-       index = 3
-    case (NLO_SUBTRACTION)
-       index = 4
-    end select
+    index = nlo_to_i_core (nlo_type)
     cm%me(index) = core_type
     if (cm%def_ptr_index_all(index) == 0) &
        cm%def_ptr_index_all(index) = i_component
@@ -2684,7 +2695,7 @@ module processes
   use parton_states
   use cascades
 
-  use pcm_base, only: cm_t, CORE_OMEGA
+  use pcm_base
   use pcm_base, only: pcm_t, pcm_instance_t
   use nlo_data
   use models, only: model_t
@@ -3125,18 +3136,22 @@ from the library.
   procedure :: init_component => process_init_component
 <<Processes: procedures>>=
   subroutine process_init_component &
-       (process, index, core_template, mci_template, phs_config_template, &
+       (process, index, active, data, mci_template, phs_config_template, &
         fks_template, blha_template)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: index
-    class(prc_core_t), intent(in), allocatable :: core_template
+    !class(prc_core_t), intent(in), allocatable :: core_template
+    logical, intent(in) :: active
+    type(process_constants_t), intent(in) :: data
     class(mci_t), intent(in), allocatable :: mci_template
     class(phs_config_t), intent(in), allocatable :: phs_config_template
     type(fks_template_t), intent(in), optional :: fks_template
     type(blha_template_t), intent(inout), optional :: blha_template
     call process%component(index)%init (index, &
          process%meta, process%config, &
-         core_template, mci_template, phs_config_template, &
+         !core_template, mci_template, phs_config_template, &
+         active, data, &
+         mci_template, phs_config_template, &
          blha_template, fks_template)
     if (.not. process%component(index)%active) then
        call process%meta%deactivate_component(index)
@@ -3148,8 +3163,9 @@ from the library.
 <<Processes: process: TBP>>=
   procedure :: setup_terms => process_setup_terms
 <<Processes: procedures>>=
-  subroutine process_setup_terms (process)
+  subroutine process_setup_terms (process, with_beams)
     class(process_t), intent(inout) :: process
+    logical, intent(in), optional :: with_beams
     class(model_data_t), pointer :: model
     integer :: i, j, k, i_term
     integer, dimension(:), allocatable :: n_entry
@@ -3158,7 +3174,7 @@ from the library.
     type(string_t) :: subtraction_method
     !class(prc_core_t), allocatable :: core
     class(prc_core_t), pointer :: core => null ()
-    logical :: setup_subtraction_component
+    logical :: setup_subtraction_component, use_beam_pol
     model => process%config%model
     n_components = process%meta%n_components
     allocate (n_entry (n_components), source = 0)
@@ -3203,13 +3219,13 @@ from the library.
               if (i_sub > 0) then
                  call process%term(i_term)%init (i_term, i, j, core, model, &
                     nlo_type = component%config%get_nlo_type (), &
-                    use_beam_pol = process%uses_beams (), &
+                    use_beam_pol = with_beams, &
                     subtraction_method = subtraction_method)
               else
                  !!! TODO (cw 2016-07-09): Can leave out more arguments below
                  call process%term(i_term)%init (i_term, i, j, core, model, &
                     nlo_type = component%config%get_nlo_type (), &
-                    use_beam_pol = process%uses_beams ())
+                    use_beam_pol = with_beams)
               end if
               !deallocate (core)
            end do
@@ -3266,12 +3282,19 @@ This restriction could be removed by extending the code in the
     type(pdg_array_t), dimension(:,:), allocatable :: pdg_in
     integer, dimension(2) :: pdg_scattering
     type(flavor_t), dimension(2) :: flv_in
-    integer :: i, i0
+    integer :: i, i0, i_term_base
+    class(prc_core_t), pointer :: core => null ()
+    if (present (beam_structure)) then
+       print *, 'BEAM STRUCTURE'
+       call beam_structure%write ()
+    end if
     allocate (pdg_in (2, process%meta%n_components))
     i0 = 0
     do i = 1, process%meta%n_components
        if (process%component(i)%active) then
-          pdg_in(:,i) = process%component(i)%get_pdg_in ()
+          i_term_base = process%component(i)%i_term(1) 
+          core => process%cm%get_core(process%term(i_term_base)%i_core)
+          pdg_in(:,i) = core%data%get_pdg_in ()
           if (i0 == 0)  i0 = i
        end if
     end do
@@ -3310,12 +3333,16 @@ particle mass, hence no extra argument.
     type(pdg_array_t), dimension(:,:), allocatable :: pdg_in
     integer, dimension(1) :: pdg_decay
     type(flavor_t), dimension(1) :: flv_in
-    integer :: i, i0
+    integer :: i, i0, i_term_base
+    class(prc_core_t), pointer :: core => null () 
     allocate (pdg_in (1, process%meta%n_components))
     i0 = 0
     do i = 1, process%meta%n_components
        if (process%component(i)%active) then
-          pdg_in(:,i) = process%component(i)%get_pdg_in ()
+          i_term_base = process%component(i)%i_term(1)
+          core => process%cm%get_core (process%term(i_term_base)%i_core)
+          !pdg_in(:,i) = process%component(i)%get_pdg_in ()
+          pdg_in(:,i) = core%data%get_pdg_in ()
           if (i0 == 0)  i0 = i
        end if
     end do
@@ -3347,9 +3374,15 @@ in a given position in the particle string coincide.
        real(default), dimension(:), allocatable :: mass
        !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
        integer :: i, j, k
-       do i = 1, process%meta%n_components
-          if (.not. process%component(i)%active)  cycle
-          associate (data => process%component(i)%core%data)
+       integer :: i_component
+       class(prc_core_t), pointer :: core => null ()
+       !do i = 1, process%meta%n_components
+       do i = 1, process%config%n_terms
+          i_component = process%term(i)%i_component
+          if (.not. process%component(i_component)%active)  cycle
+          core => process%cm%get_core (process%term(i)%i_core)
+          !associate (data => process%component(i)%core%data)
+          associate (data => core%data)
             allocate (flv (data%n_flv), mass (data%n_flv))
             do j = 1, data%n_in + data%n_out
                call flv%init (data%flv_state(j,:), process%config%model)
@@ -3380,13 +3413,17 @@ incoming PDG values for this beam and component.
   subroutine process_get_pdg_in (process, pdg_in)
     class(process_t), intent(in) :: process
     type(pdg_array_t), dimension(:,:), allocatable, intent(out) :: pdg_in
-    integer :: i
+    integer :: i, i_term_base
+    class(prc_core_t), pointer :: core => null ()
     allocate (pdg_in (process%config%n_in, process%meta%n_components))
     do i = 1, process%meta%n_components
        if (process%component(i)%active) then
-          pdg_in(:,i) = process%component(i)%get_pdg_in ()
+          i_term_base = process%component(i)%i_term(1)
+          core => process%cm%get_core (process%term(i_term_base)%i_core)
+          pdg_in(:,i) = core%data%get_pdg_in ()
        end if
     end do    
+    core => null ()
   end subroutine process_get_pdg_in
   
 @ %def process_get_pdg_in
@@ -3419,13 +3456,13 @@ scattering or decay process.
 @ %def process_setup_beams_beam_structure
 @ Check if beam structure functions are used
 <<Processes: process: TBP>>=
-  procedure :: uses_beams => process_uses_beams
+  !!!procedure :: uses_beams => process_uses_beams
 <<Processes: procedures>>=
-  function process_uses_beams (process) result (uses_beams)
-    logical :: uses_beams
-    class(process_t), intent(in) :: process
-    uses_beams = process%beam_config%data%is_initialized ()
-  end function process_uses_beams
+  !!!function process_uses_beams (process) result (uses_beams)
+  !!!  logical :: uses_beams
+  !!!  class(process_t), intent(in) :: process
+  !!!  uses_beams = process%beam_config%data%is_initialized ()
+  !!!end function process_uses_beams
 
 @ %def process_uses_beams
 @ Notify the user about beam setup.
@@ -4050,7 +4087,7 @@ current status (allowed or switched off).
        i_component = process%term(i)%i_component
        if (i_component /= 0) then
           call process%term(i)%write_state_summary &
-               (process%component(i_component)%core, unit)
+               (process%cm%get_core (process%term(i)%i_core), unit)
        end if
     end do
   end subroutine process_write_state_summary
@@ -4293,22 +4330,22 @@ usual error propagation gives
 @ %def process_get_correction process_get_correction_error
 @
 <<Processes: process: TBP>>=
-  procedure :: component_reset_helicity => process_component_reset_helicity
+  !procedure :: component_reset_helicity => process_component_reset_helicity
 <<Processes: procedures>>=
-  subroutine process_component_reset_helicity(proc, i)
-    class(process_t), intent(inout) :: proc
-    integer, intent(in) :: i
-    select type (core => proc%component(i)%core)
-      type is (prc_omega_t)
-        call core%reset_helicity_selection ()
-    end select
-    !if (i == 2) then
-    !  select type (core_sub_born => proc%component(i)%core_sub_born)
-    !  type is (prc_omega_t)
-    !     call core_sub_born%reset_helicity_selection ()
-    !  end select
-    !end if
-  end subroutine process_component_reset_helicity
+  !subroutine process_component_reset_helicity(proc, i)
+  !  class(process_t), intent(inout) :: proc
+  !  integer, intent(in) :: i
+  !  select type (core => proc%component(i)%core)
+  !    type is (prc_omega_t)
+  !      call core%reset_helicity_selection ()
+  !  end select
+  !  !if (i == 2) then
+  !  !  select type (core_sub_born => proc%component(i)%core_sub_born)
+  !  !  type is (prc_omega_t)
+  !  !     call core_sub_born%reset_helicity_selection ()
+  !  !  end select
+  !  !end if
+  !end subroutine process_component_reset_helicity
 
 @ %def process_component_reset_helicity
 @
@@ -5000,12 +5037,13 @@ The [[verbose]] flag is passed to the beam-data writer.
 <<Processes: process beam config: TBP>>=
   procedure :: write => process_beam_config_write
 <<Processes: procedures>>=
-  subroutine process_beam_config_write (object, u, verbose)
+  subroutine process_beam_config_write (object, unit, verbose)
     class(process_beam_config_t), intent(in) :: object
-    integer, intent(in) :: u
+    integer, intent(in), optional :: unit
     logical, intent(in), optional :: verbose
-    integer :: i, c
-    call object%data%write (u, verbose=verbose)
+    integer :: u, i, c
+    u = given_output_unit (unit)
+    call object%data%write (u, verbose = verbose)
     if (object%data%initialized) then
        write (u, "(3x,A,L1)")  "Azimuthal dependence    = ", &
             object%azimuthal_dependence
@@ -5973,7 +6011,7 @@ are associated to this process component.
      private
      type(process_component_def_t), pointer :: config => null ()
      integer :: index = 0
-     class(prc_core_t), allocatable :: core
+     !class(prc_core_t), allocatable :: core
      logical :: active = .false.
      class(mci_t), allocatable :: mci_template
      integer, dimension(:), allocatable :: i_term
@@ -6012,20 +6050,20 @@ configuration finalizer may include closing an open scratch file.
     integer, intent(in), optional :: unit
     integer :: u
     u = given_output_unit (unit)
-    if (allocated (object%core)) then
-       write (u, "(1x,A,I0)")  "Component #", object%index
-       if (associated (object%config)) then
-          call object%config%write (u)
-          if (object%md5sum_phs /= "") then
-             write (u, "(3x,A,A,A)")  "MD5 sum (phs)       = '", &
-                  object%md5sum_phs, "'"
-          end if
-       end if
-       write (u, "(1x,A)") "Process core:"
-       call object%core%write (u)
-    else
-       write (u, "(1x,A)") "Process component: [not allocated]"
-    end if
+    !if (allocated (object%core)) then
+    !   write (u, "(1x,A,I0)")  "Component #", object%index
+    !   if (associated (object%config)) then
+    !      call object%config%write (u)
+    !      if (object%md5sum_phs /= "") then
+    !         write (u, "(3x,A,A,A)")  "MD5 sum (phs)       = '", &
+    !              object%md5sum_phs, "'"
+    !      end if
+    !   end if
+    !   write (u, "(1x,A)") "Process core:"
+    !   call object%core%write (u)
+    !else
+    !   write (u, "(1x,A)") "Process component: [not allocated]"
+    !end if
     if (.not. object%active) then
        write (u, "(1x,A)") "[Inactive]"
        return
@@ -6107,19 +6145,74 @@ configuration finalizer may include closing an open scratch file.
   end function process_get_core_manager_index
 
 @ %def process_get_core_manager_index
+@
+<<Processes: process: TBP>>=
+  procedure :: get_base_i_term => process_get_base_i_term
+<<Processes: procedures>>=
+  function process_get_base_i_term (process, i_component) result (i_term)
+    integer :: i_term
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: i_component
+    i_term = process%component(i_component)%i_term(1)
+  end function process_get_base_i_term
+
+@ %def process_get_base_i_term
+@
+<<Processes: process: TBP>>=
+  procedure :: get_core_term => process_get_core_term
+<<Processes: procedures>>=
+  function process_get_core_term (process, i_term) result (core)
+    class(prc_core_t), pointer :: core
+    class(process_t), intent(in), target :: process
+    integer, intent(in) :: i_term
+    integer :: i_core
+    i_core = process%term(i_term)%i_core
+    core => process%cm%cores(i_core)%core
+  end function process_get_core_term
+
+@ %def process_get_core_term
+@
+<<Processes: process: TBP>>=
+  procedure :: get_core_nlo_type => process_get_core_nlo_type
+<<Processes: procedures>>=
+  function process_get_core_nlo_type (process, nlo_type) result (core)
+    class(prc_core_t), pointer :: core
+    class(process_t), intent(in), target :: process
+    integer, intent(in) :: nlo_type
+    integer :: i_core
+    i_core = process%cm%i_core (nlo_to_i_core (nlo_type))
+    core => process%cm%cores(process%cm%i_core(i_core))%core
+  end function process_get_core_nlo_type 
+
+@ %def process_get_core_nlo_type 
+<<Processes: process: TBP>>=
+  procedure :: get_i_core_nlo_type => process_get_i_core_nlo_type
+<<Processes: procedures>>=
+  function process_get_i_core_nlo_type (process, nlo_type) result (i_core)
+    integer :: i_core
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: nlo_type
+    i_core = process%cm%i_core (nlo_to_i_core (nlo_type))
+  end function process_get_i_core_nlo_type
+
+@ %def process_get_i_core_nlo_type
 @ Initialize the component.
 <<Processes: process component: TBP>>=
   procedure :: init => process_component_init
 <<Processes: procedures>>=
   subroutine process_component_init (component, &
        i_component, meta, config, &
-       core_template, mci_template, phs_config_template, &
+       !core_template, mci_template, phs_config_template, &
+       active, data, &
+       mci_template, phs_config_template, & 
        blha_template, fks_template)
     class(process_component_t), intent(out) :: component
     integer, intent(in) :: i_component
     type(process_metadata_t), intent(in) :: meta
     type(process_config_data_t), intent(in) :: config
-    class(prc_core_t), intent(in), allocatable :: core_template
+    logical, intent(in) :: active
+    type(process_constants_t), intent(in) :: data
+    !class(prc_core_t), intent(in), allocatable :: core_template
     class(mci_t), intent(in), allocatable :: mci_template
     class(phs_config_t), intent(in), allocatable :: phs_config_template
     type(blha_template_t), intent(inout), optional :: blha_template
@@ -6128,32 +6221,32 @@ configuration finalizer may include closing an open scratch file.
 
     component%index = i_component
     component%config => meta%lib%get_component_def_ptr (meta%id, i_component)
-    allocate (component%core, source = core_template)
-    call component%core%init (component%config%get_core_def_ptr (), &
-         meta%lib, meta%id, i_component)
+    !allocate (component%core, source = core_template)
+    !call component%core%init (component%config%get_core_def_ptr (), &
+    !     meta%lib, meta%id, i_component)
     if (present (fks_template)) then
       component%fks_template = fks_template
     end if
-    select type (core => component%core)
-    class is (prc_blha_t)
-       activate_blha = component%config%is_active_component () &
-          .or. component%config%get_nlo_type () == NLO_SUBTRACTION
-       if (activate_blha) then
-          if (present (blha_template)) then
-             call core%init_blha (blha_template)
-          else
-             call msg_bug ("process_component_init: BLHA core cannot " // &
-                  "be initialized - missing template")
-          end if
-          call core%init_driver (config%os_data)
-       end if
-    end select
-    component%active = component%core%has_matrix_element ()
+    !select type (core => component%core)
+    !class is (prc_blha_t)
+    !   activate_blha = component%config%is_active_component () &
+    !      .or. component%config%get_nlo_type () == NLO_SUBTRACTION
+    !   if (activate_blha) then
+    !      if (present (blha_template)) then
+    !         call core%init_blha (blha_template)
+    !      else
+    !         call msg_bug ("process_component_init: BLHA core cannot " // &
+    !              "be initialized - missing template")
+    !      end if
+    !      call core%init_driver (config%os_data)
+    !   end if
+    !end select
+    component%active = active
     if (component%active) then
        if (allocated (mci_template)) &
           allocate (component%mci_template, source = mci_template)
        allocate (component%phs_config, source = phs_config_template)
-       call component%phs_config%init (component%core%data, config%model)
+       call component%phs_config%init (data, config%model)
     end if
   end subroutine process_component_init
 
@@ -6240,21 +6333,20 @@ This calls a method of the [[phs_config]] phase-space implementation.
 @ Return the incoming flavor combination as an array of PDG arrays,
 one for a decay or two for a scattering process.
 <<Processes: process component: TBP>>=
-  procedure :: get_pdg_in => process_component_get_pdg_in
+  !procedure :: get_pdg_in => process_component_get_pdg_in
 <<Processes: procedures>>=
-  function process_component_get_pdg_in (component) result (pdg_in)
-    class(process_component_t), intent(in) :: component
-    type(pdg_array_t), dimension(:), allocatable :: pdg_in
-    type(pdg_array_t) :: pdg_tmp
-    integer :: i
-    associate (data => component%core%data)
-      allocate (pdg_in (data%n_in))
-      do i = 1, data%n_in
-         pdg_tmp = data%flv_state(i,:)
-         pdg_in(i) = sort_abs (pdg_tmp, unique = .true.)
-      end do
-    end associate
-  end function process_component_get_pdg_in
+  !function process_component_get_pdg_in (component, data) result (pdg_in)
+  !  class(process_component_t), intent(in) :: component
+  !  type(process_constants_t), intent(in) :: data
+  !  type(pdg_array_t), dimension(:), allocatable :: pdg_in
+  !  type(pdg_array_t) :: pdg_tmp
+  !  integer :: i
+  !  allocate (pdg_in (data%n_in))
+  !  do i = 1, data%n_in
+  !     pdg_tmp = data%flv_state(i,:)
+  !     pdg_in(i) = sort_abs (pdg_tmp, unique = .true.)
+  !  end do
+  !end function process_component_get_pdg_in
   
 @ %def process_component_get_pdg_in
 @
@@ -6947,22 +7039,22 @@ specific MCI entry.
 allocation) the process core.  This is useful for changing process
 parameters from outside this module.
 <<Processes: process: TBP>>=
-  procedure :: extract_component_core => process_extract_component_core
-  procedure :: restore_component_core => process_restore_component_core
+  !procedure :: extract_component_core => process_extract_component_core
+  !procedure :: restore_component_core => process_restore_component_core
 <<Processes: procedures>>=
-  subroutine process_extract_component_core (process, i_component, core)
-    class(process_t), intent(inout) :: process
-    integer, intent(in) :: i_component
-    class(prc_core_t), intent(inout), allocatable :: core
-    call move_alloc (from = process%component(i_component)%core, to = core)
-  end subroutine process_extract_component_core
-    
-  subroutine process_restore_component_core (process, i_component, core)
-    class(process_t), intent(inout) :: process
-    integer, intent(in) :: i_component
-    class(prc_core_t), intent(inout), allocatable :: core
-    call move_alloc (from = core, to = process%component(i_component)%core)
-  end subroutine process_restore_component_core
+  !subroutine process_extract_component_core (process, i_component, core)
+  !  class(process_t), intent(inout) :: process
+  !  integer, intent(in) :: i_component
+  !  class(prc_core_t), intent(inout), allocatable :: core
+  !  call move_alloc (from = process%component(i_component)%core, to = core)
+  !end subroutine process_extract_component_core
+  !  
+  !subroutine process_restore_component_core (process, i_component, core)
+  !  class(process_t), intent(inout) :: process
+  !  integer, intent(in) :: i_component
+  !  class(prc_core_t), intent(inout), allocatable :: core
+  !  call move_alloc (from = core, to = process%component(i_component)%core)
+  !end subroutine process_restore_component_core
     
 @ %def process_extract_component_core
 @ %def process_restore_component_core
@@ -6970,11 +7062,11 @@ parameters from outside this module.
 <<Processes: process: TBP>>=
   procedure :: get_constants => process_get_constants
 <<Processes: procedures>>=
-  function process_get_constants (process, i) result (data)
-    class(process_t), intent(in) :: process
-    integer, intent(in) :: i
+  function process_get_constants (process, i_core) result (data)
     type(process_constants_t) :: data
-    data = process%component(i)%core%data
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: i_core
+    data = process%cm%cores(i_core)%core%data
   end function process_get_constants
   
 @ %def process_get_constants
@@ -7145,13 +7237,18 @@ For invalid arguments (quantum states), we return zero.
     integer, intent(in) :: f, h, c
     real(default), intent(in), optional :: fac_scale, ren_scale
     real(default), intent(in), allocatable, optional :: alpha_qcd_forced
+    integer :: i_core
+    class(prc_core_t), pointer :: core => null ()
     real(default) :: fscale, rscale
     real(default), allocatable :: aqcd_forced
     complex(default) :: amp
     amp = 0
     if (0 < i .and. i <= process%meta%n_components) then
+       i_core = process%term(j)%i_core
+       core => process%cm%get_core(i_core)
        if (process%component(i)%active) then
-          associate (data => process%component(i)%core%data)
+          !associate (data => process%component(i)%core%data)
+          associate (data => core%data)
             if (size (p) == data%n_in + data%n_out &
                  .and. 0 < f .and. f <= data%n_flv &
                  .and. 0 < h .and. h <= data%n_hel &
@@ -7170,8 +7267,8 @@ For invalid arguments (quantum states), we return zero.
                   if (allocated (alpha_qcd_forced)) &
                        allocate (aqcd_forced, source = alpha_qcd_forced)
                end if
-               amp = process%component(i)%core%compute_amplitude &
-                    (j, p, f, h, c, fscale, rscale, aqcd_forced)
+               amp = core%compute_amplitude (j, p, f, h, c, &
+                  fscale, rscale, aqcd_forced)
             end if
           end associate
        else
@@ -7830,25 +7927,24 @@ matter of the process core.
 <<Processes: component instance: TBP>>=
   procedure :: init => component_instance_init
 <<Processes: procedures>>=
-  subroutine component_instance_init (component, config)
+  subroutine component_instance_init (component, config, data)
     class(component_instance_t), intent(out) :: component
     type(process_component_t), intent(in), target :: config
+    type(process_constants_t), intent(in) :: data
     integer :: nlo_type
-    integer :: n_in, n_tot
+    integer :: n_tot
     component%config => config
     nlo_type = component%config%config%get_nlo_type ()
     component%nlo_type = nlo_type
-    associate (core => component%config%core)
-      n_in = core%data%n_in
-      n_tot = n_in + core%data%n_out
-      select case (nlo_type)
-      case (NLO_REAL, NLO_MISMATCH)
-        allocate (component%p_seed (n_tot - 1))
-      case (BORN, NLO_VIRTUAL, NLO_DGLAP, NLO_SUBTRACTION)
-        allocate (component%p_seed (n_tot))
-      end select
-      !call core%allocate_workspace (component%core_state)
-    end associate
+    n_tot = data%get_n_tot ()
+    allocate (component%p_seed (n_tot))
+    !select case (nlo_type)
+    !case (NLO_REAL, NLO_MISMATCH)
+    !  allocate (component%p_seed (n_tot - 1))
+    !case (BORN, NLO_VIRTUAL, NLO_DGLAP, NLO_SUBTRACTION)
+    !  allocate (component%p_seed (n_tot))
+    !end select
+    !call core%allocate_workspace (component%core_state)
   end subroutine component_instance_init
 
 @ %def component_instance_init
@@ -7858,10 +7954,11 @@ allocated explicitly.
   procedure :: setup_kinematics => component_instance_setup_kinematics
 <<Processes: procedures>>=
   subroutine component_instance_setup_kinematics (component, sf_chain, config, &
-     combined_integration)
+     core, combined_integration)
     class(component_instance_t), intent(inout) :: component
     type(sf_chain_t), intent(in), target :: sf_chain
     type(process_beam_config_t), intent(in) :: config
+    class(prc_core_t), intent(in) :: core
     logical, intent(in), optional :: combined_integration
     integer :: nlo_type
     nlo_type = component%config%config%get_nlo_type ()
@@ -7873,8 +7970,7 @@ allocated explicitly.
           end select
        end if
     end if
-    call component%k_seed%init_sf_chain &
-         (component%config%core, sf_chain, config)
+    call component%k_seed%init_sf_chain (core, sf_chain, config)
     call component%k_seed%init_phs (component%config%phs_config)
     call component%k_seed%set_nlo_info (nlo_type)
     select type (phs => component%k_seed%phs)
@@ -7988,7 +8084,7 @@ choose to calculate all terms at once together with the seed kinematics, use
     integer, intent(in), optional :: skip_term
     logical, intent(in), optional :: real_phsp
     integer :: j, i
-    associate (core => component%config%core)
+    !associate (core => component%config%core)
       associate (i_term => component%config%i_term)
         do j = 1, size (i_term)
            i = i_term(j)
@@ -8014,7 +8110,7 @@ choose to calculate all terms at once together with the seed kinematics, use
            call term(i)%int_hard%set_momenta (term(i)%k_term%get_momenta (component%p_seed))
         end do
       end associate
-    end associate
+    !end associate
   end subroutine component_instance_compute_hard_kinematics
     
 @ %def component_instance_compute_hard_kinematics
@@ -8039,12 +8135,11 @@ left undefined.  We remedy this by calling [[receive_kinematics]] once.
     integer :: n_in
     n_in = component%k_seed%n_in
     call component%k_seed%get_incoming_momenta (component%p_seed(1:n_in))
-    associate (core => component%config%core)
-      call core%recover_kinematics &
-           (component%p_seed, term%int_hard, term%isolated%int_eff, &
-           term%core_state)
-      call term%isolated%receive_kinematics ()
+    associate (int_eff => term%isolated%int_eff)
+       call int_eff%set_momenta (component%p_seed(1:n_in), outgoing = .false.)
+       component%p_seed(n_in+1:) = int_eff%get_momenta (outgoing = .true.)
     end associate
+    call term%isolated%receive_kinematics ()
   end subroutine component_instance_recover_seed_kinematics
   
 @ %def component_instance_recover_seed_kinematics
@@ -8103,9 +8198,10 @@ stored in the kinematics subobject to their source.  This is a side effect.
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_born => component_instance_evaluate_sqme_born
 <<Processes: procedures>>=
-  subroutine component_instance_evaluate_sqme_born (component, term)
+  subroutine component_instance_evaluate_sqme_born (component, term, core)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout), target :: term
+    class(prc_core_t), intent(in) :: core
     real(default) :: sqme
     integer :: n_flv, i_flv
     i_flv = 1
@@ -8120,7 +8216,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
        !   sqme = real (term%connected%trace%get_matrix_element (1))
        !end select
     else
-       select type (core => component%config%core)
+       select type (core)
        class is (prc_blha_t)
           n_flv = term%config%data%n_flv
           do i_flv = 1, n_flv
@@ -8171,10 +8267,12 @@ imaginary part of the terms, which should be zero anyway.
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme => component_instance_evaluate_sqme
 <<Processes: procedures>>=
-  subroutine component_instance_evaluate_sqme (component, term)
+  subroutine component_instance_evaluate_sqme (component, cm, term)
     class(component_instance_t), intent(inout) :: component
+    type(cm_t), intent(in) :: cm
     type(term_instance_t), dimension(:), intent(inout), target :: term
     integer :: j, i
+    class(prc_core_t), pointer :: core => null ()
 
     component%sqme = zero
     call reset_nlo_components (component)
@@ -8182,15 +8280,17 @@ imaginary part of the terms, which should be zero anyway.
       do j = 1, size (i_term)
          i = i_term(j)
          if (term(i)%passed) then
-            call component%evaluate_sqme_born (term(i))
+            core => cm%get_core(term(i)%config%i_core)
+            call component%evaluate_sqme_born (term(i), core)
             call component%evaluate_sqme_real (term(i), 1)
-            call component%evaluate_sqme_virt (term(i))
+            call component%evaluate_sqme_virt (term(i), core)
             call component%evaluate_sqme_mismatch (term(i))
-            call component%evaluate_sqme_dglap (term(i))
+            call component%evaluate_sqme_dglap (term(i), core)
          end if
       end do
     end associate
     component%sqme_known = .true.
+    deallocate (core)
   end subroutine component_instance_evaluate_sqme
   
 @ %def component_instance_evaluate_sqme
@@ -8234,9 +8334,10 @@ imaginary part of the terms, which should be zero anyway.
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_virt => component_instance_evaluate_sqme_virt
 <<Processes: procedures>>=
-  subroutine component_instance_evaluate_sqme_virt (component, term)
+  subroutine component_instance_evaluate_sqme_virt (component, term, core)
      class(component_instance_t), intent(inout) :: component
      type(term_instance_t), intent(inout), target :: term
+     class(prc_core_t), intent(in) :: core
      real(default), dimension(4) :: sqme_virt 
      integer :: i_flv, i_hel
      logical :: bad_point
@@ -8246,14 +8347,13 @@ imaginary part of the terms, which should be zero anyway.
 
         if (debug2_active (D_VIRTUAL)) then
            call msg_debug2 (D_VIRTUAL, "Evaluating virtual-subtracted matrix elements")
-           print *, 'alpha_s: ', component%config%core%get_alpha_s (term%core_state)
+           print *, 'alpha_s: ', core%get_alpha_s (term%core_state)
            print *, 'ren_scale: ', term%ren_scale
            print *, 'fac_scale: ', term%fac_scale
         end if
 
-        call nlo_controller%set_alpha_s_born &
-           (component%config%core%get_alpha_s (term%core_state))
-        select type (core => component%config%core)
+        call nlo_controller%set_alpha_s_born (core%get_alpha_s (term%core_state))
+        select type (core)
         class is (prc_user_defined_base_t)
            call core%update_alpha_s (term%core_state, term%fac_scale)
         end select
@@ -8299,17 +8399,17 @@ imaginary part of the terms, which should be zero anyway.
 <<Processes: component instance: TBP>>=
   procedure :: evaluate_sqme_dglap => component_instance_evaluate_sqme_dglap 
 <<Processes: procedures>>=
-  subroutine component_instance_evaluate_sqme_dglap (component, term)
+  subroutine component_instance_evaluate_sqme_dglap (component, term, core)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout) :: term
+    class(prc_core_t), intent(in) :: core
     if (term%nlo_type /= NLO_DGLAP) return
     associate (nlo_controller => component%nlo_controller)
        if (.not. nlo_controller%dglap_remnant_is_required ()) then
           component%sqme = zero
           return
        end if
-       call nlo_controller%set_alpha_s_born &
-                 (component%config%core%get_alpha_s (term%core_state))
+       call nlo_controller%set_alpha_s_born (core%get_alpha_s (term%core_state))
        call nlo_controller%evaluate_dglap_remnant (component%sqme)
        !!! TODO: (cw 2016-04-26) Use correct i_flv_born
        component%sqme = nlo_controller%sqme_collector%sqme_dglap_list (1)
@@ -8362,9 +8462,10 @@ imaginary part of the terms, which should be zero anyway.
 <<Processes: component instance: TBP>>=
   procedure :: apply_subtraction => component_instance_apply_subtraction
 <<Processes: procedures>>=
-  subroutine component_instance_apply_subtraction (component, term)
+  subroutine component_instance_apply_subtraction (component, term, core)
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout) :: term
+    class(prc_core_t), intent(in) :: core
     integer :: i_flv_born
     logical :: bad_point
     if (term%nlo_type /= NLO_REAL) return
@@ -8405,8 +8506,7 @@ imaginary part of the terms, which should be zero anyway.
                end if
             end do
        end if
-       call nlo_controller%set_alpha_s_born &
-          (component%config%core%get_alpha_s (term%core_state))
+       call nlo_controller%set_alpha_s_born (core%get_alpha_s (term%core_state))
        nlo_controller%sqme_collector%current_sqme_real = &
           nlo_controller%compute_sqme_real_fin ()
     end associate
@@ -8466,8 +8566,9 @@ imaginary part of the terms, which should be zero anyway.
   function process_component_needs_mci_entry (component) result (value)
     class(process_component_t), intent(in) :: component
     logical :: value
-    value = component%active .and. component%core%needs_mcset () &
-            .and. component%component_type <= COMP_MASTER
+    !value = component%active .and. component%core%needs_mcset () &
+    !        .and. component%component_type <= COMP_MASTER
+    value = component%active .and. component%component_type <= COMP_MASTER
   end function process_component_needs_mci_entry
 
 @ %def process_component_needs_mci_entry
@@ -9397,10 +9498,11 @@ physical event.
   procedure :: evaluate_interaction_real &
      => term_instance_evaluate_interaction_real
 <<Processes: procedures>>=
-  subroutine term_instance_evaluate_interaction_real (term, component, i_term)
+  subroutine term_instance_evaluate_interaction_real (term, component, i_term, core)
      class(term_instance_t), intent(inout) :: term
      type(component_instance_t), intent(inout) :: component
      integer, intent(in) :: i_term
+     class(prc_core_t), intent(in) :: core
      integer :: i
      integer :: i_flv_real, i_flv_born
      real(default) :: ren_scale, fac_scale
@@ -9417,7 +9519,7 @@ physical event.
      end associate
      if (i_flv_real == 1) call term%core_state%reset_new_kinematics ()
 
-     select type (core => component%config%core)
+     select type (core)
      type is (prc_omega_t)
         do i = 1, term%config%n_allowed
            if (term%config%flv(i) == i_flv_real) then
@@ -9605,16 +9707,13 @@ by the model.  If the model does not provide a value, the result is zero.
 <<Processes: term instance: TBP>>=
   procedure :: get_alpha_s => term_instance_get_alpha_s
 <<Processes: procedures>>=
-  function term_instance_get_alpha_s (term, component) result (alpha_s)
+  function term_instance_get_alpha_s (term, core) result (alpha_s)
     class(term_instance_t), intent(in) :: term
-    type(component_instance_t), dimension(:), intent(in) :: component
+    class(prc_core_t), intent(in) :: core
     real(default) :: alpha_s
     integer :: i_component
-    i_component = term%config%i_component
-    associate (core => component(i_component)%config%core)
-      alpha_s = core%get_alpha_s (term%core_state)
-    end associate
-    if (alpha_s < 0)  alpha_s = term%config%alpha_s
+    alpha_s = core%get_alpha_s (term%core_state)
+    if (alpha_s < zero)  alpha_s = term%config%alpha_s
   end function term_instance_get_alpha_s
   
 @ %def term_instance_get_alpha_s
@@ -10080,6 +10179,7 @@ selected MCI parameter set.
     class(process_instance_t), intent(inout) :: instance
     integer :: i, j
     associate (mci_work => instance%mci_work(instance%i_mci))
+      !instance%component(mci_work%get_active_components ())%config%active &
       instance%component(mci_work%get_active_components ())%active &
            = .true.
       do i = 1, size (instance%component)
@@ -10137,7 +10237,7 @@ to subobject of [[instance]].
   subroutine process_instance_init (instance, process)
     class(process_instance_t), intent(out), target :: instance
     type(process_t), intent(inout), target :: process
-    integer :: i, i_component
+    integer :: i, i_component, i_term_base
     type(connected_state_t), dimension(:), allocatable :: all_connected
     class(prc_core_t), pointer :: core => null ()
 
@@ -10152,8 +10252,10 @@ to subobject of [[instance]].
     allocate (instance%component (process%config%n_components))
     do i = 1, size (instance%component)
        if (process%component(i)%active) then
+          i_term_base = process%component(i)%i_term(1)
+          core => process%cm%get_core (process%term(i_term_base)%i_core)
           associate (component => instance%component(i))
-            call component%init (process%component(i))
+             call component%init (process%component(i), core%data)
           end associate
        end if
     end do
@@ -10162,9 +10264,11 @@ to subobject of [[instance]].
     if (.not. instance%has_nlo_component ()) then
        do i = 1, size (instance%component)
           if (process%component(i)%active) then
+             i_term_base = process%component(i)%i_term(1)
+             core => process%cm%get_core (process%term(i_term_base)%i_core)
              associate (component => instance%component(i))
                 call component%setup_kinematics &
-                    (instance%sf_chain, process%beam_config)
+                    (instance%sf_chain, process%beam_config, core)
              end associate
           end if
        end do
@@ -10259,8 +10363,9 @@ to subobject of [[instance]].
     logical :: use_resonance_mappings
     logical :: test_soft_limit, test_coll_limit, test_anti_coll_limit
     logical :: combined_nlo_integration = .false.
-    integer :: generator_mode
+    integer :: generator_mode, i_term_base
     integer :: fixed_alr
+    class(prc_core_t), pointer :: core => null ()
 
     select type (pcm_instance => instance%pcm)
     type is (pcm_instance_nlo_t)
@@ -10356,8 +10461,10 @@ to subobject of [[instance]].
                case (NLO_SUBTRACTION)
                   component%nlo_type = NLO_SUBTRACTION
                end select
+               i_term_base = process%component(i_component)%i_term(1)
+               core => process%cm%get_core (process%term(i_term_base)%i_core)
                call component%setup_kinematics &
-                  (instance%sf_chain, process%beam_config, combined_nlo_integration)
+                  (instance%sf_chain, process%beam_config, core, combined_nlo_integration)
                if (nlo_type == NLO_REAL) then
                   generator_mode = check_generator_mode (GEN_REAL_PHASE_SPACE)
                   call component%setup_fks_kinematics (process%meta%var_list, &
@@ -10415,12 +10522,12 @@ to subobject of [[instance]].
      class(process_instance_t), intent(inout) :: instance
      integer :: i
      do i = 1, size (instance%component)
-        if (associated (instance%component(i)%config)) then
-           select type (core => instance%component(i)%config%core)
-           class is (prc_user_defined_base_t)
-              call core%init_sf_handler (instance%component(i)%k_seed%sf_chain)
-           end select
-        end if
+        !if (associated (instance%component(i)%config)) then
+        !   select type (core => instance%component(i)%config%core)
+        !   class is (prc_user_defined_base_t)
+        !      call core%init_sf_handler (instance%component(i)%k_seed%sf_chain)
+        !   end select
+        !end if
      end do
    end subroutine process_instance_setup_blha_structure_functions
 
@@ -11070,29 +11177,29 @@ if it fails the cuts for at least one emitter.
        associate (component => instance%component(i_component), &
           passed_born => term%nlo_controller%nlo_cuts%passed_born, &
           passed_real => term%nlo_controller%nlo_cuts%passed_real(i_phs)) 
-          if (passed_real) then
-             call term%evaluate_interaction_real (component, i_component)
-             call term%evaluate_trace ()
-          end if
+          !if (passed_real) then
+          !   call term%evaluate_interaction_real (component, i_component)
+          !   call term%evaluate_trace ()
+          !end if
           if (component%active) then
              !!! Since this is now looped over we should extract this from the routine or
              !!! at least make sure that it is only evaluated once. Also, the loop over
              !!! real flavor structures has to be changed with the one over resonances
              !!! in this case.
              if (passed_born) then
-                call component%evaluate_sqme_born (term)
+                !call component%evaluate_sqme_born (term)
                 sqme_born = component%sqme
                 call msg_debug2 (D_SUBTRACTION, "sqme_born", sqme_born)
                 !if (pcm%controller%nlo_cuts%passed_born .and. not_virtual) &
                 !   call set_subtraction_born (component, sqme_born * term%weight, i_flv_born)
                 !call set_pure_born (component, sqme_born * term%weight, i_flv_born)
              end if
-             if (passed_real) &
-                call component%evaluate_sqme_real (term, i_phs)
-             if (passed_real .or. passed_born) then
-                call component%apply_subtraction (term)
-                instance%sqme_real(i_flv_real, i_phs) = pcm%collector%current_sqme_real
-             end if
+             !if (passed_real) &
+                !call component%evaluate_sqme_real (term, i_phs)
+             !if (passed_real .or. passed_born) then
+             !   call component%apply_subtraction (term)
+             !   instance%sqme_real(i_flv_real, i_phs) = pcm%collector%current_sqme_real
+             !end if
              if (pcm%collect_matrix_elements) then
                 pcm%collector%sqme_real_per_phs (i_flv_real, i_phs) &
                    = pcm%collector%current_sqme_real 
@@ -11118,8 +11225,8 @@ if it fails the cuts for at least one emitter.
        term%nlo_controller%active_flavor_structure_real = i_flv
        call term%evaluate_trace ()
        associate (component => instance%component(i))
-          call component%evaluate_sqme_real (term, i_phs)
-          call component%apply_subtraction (term)
+          !call component%evaluate_sqme_real (term, i_phs)
+          !call component%apply_subtraction (term)
           pcm%collector%sqme_real_per_phs (i_flv, i_phs) = &
              pcm%collector%current_sqme_real
        end associate
@@ -11145,7 +11252,7 @@ if it fails the cuts for at least one emitter.
           term%nlo_controller%active_flavor_structure_real = i_flv_real
           !!! TODO: (cw 2016-03-02) Avoid multiple evaluation of that
           call term%evaluate_trace ()
-          call instance%component(i)%apply_subtraction (term)
+          !call instance%component(i)%apply_subtraction (term)
           pcm%collector%sqme_real_per_phs (i_flv_real, i_phs) = &
              pcm%collector%current_sqme_real
        end do
@@ -11167,7 +11274,7 @@ if it fails the cuts for at least one emitter.
        i_real = instance%get_associated_real ()
        associate (term => instance%term(i_real))
           call term%nlo_controller%set_active_phase_space (i_phs)
-          call instance%component(i_real)%apply_subtraction (term)
+          !call instance%component(i_real)%apply_subtraction (term)
        end associate
     end select
   end subroutine process_instance_apply_fks_factors_for_powheg
@@ -11687,10 +11794,13 @@ term instance.
   end function process_instance_get_fac_scale
   
   function process_instance_get_alpha_s (instance, i_term) result (alpha_s)
+    real(default) :: alpha_s
     class(process_instance_t), intent(in) :: instance
     integer, intent(in) :: i_term
-    real(default) :: alpha_s
-    alpha_s = instance%term(i_term)%get_alpha_s (instance%component)
+    class(prc_core_t), pointer :: core => null () 
+    core => instance%process%cm%get_core (instance%term(i_term)%config%i_core)
+    alpha_s = instance%term(i_term)%get_alpha_s (core)
+    deallocate (core) 
   end function process_instance_get_alpha_s
   
 @ %def process_instance_get_fac_scale
@@ -11853,17 +11963,17 @@ object and the squared matrix-element collector.
 <<Processes: process: TBP>>=
   procedure :: setup_region_data => process_setup_region_data
 <<Processes: procedures>>=
-  subroutine process_setup_region_data (process, i_real)
+  subroutine process_setup_region_data (process, i_real, data_born, data_real)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: i_real
-    type(process_constants_t) :: data_born, data_real
+    type(process_constants_t), intent(in) :: data_born, data_real
     integer, dimension (:,:), allocatable :: flavor_born, flavor_real
     type(resonance_history_t), dimension(:), allocatable :: resonance_histories
     logical :: success
     select type (pcm => process%pcm)
     type is (pcm_nlo_t) 
-       call process%component(1)%core%get_constants (data_born, 1)
-       call process%component(i_real)%core%get_constants (data_real, 1)
+       !call process%component(1)%core%get_constants (data_born, 1)
+       !call process%component(i_real)%core%get_constants (data_real, 1)
        flavor_born = data_born%get_flv_state ()
        flavor_real = data_real%get_flv_state ()
        call pcm%region_data%setup_fks_mappings &
@@ -11909,7 +12019,9 @@ object and the squared matrix-element collector.
   subroutine process_check_if_threshold_method (process, i_real)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: i_real
-    select type (core => process%component(i_real)%core)
+    integer :: i_term_base
+    i_term_base = process%component(i_real)%i_term(1)
+    select type (core => process%cm%get_core(process%term(i_term_base)%i_core))
     type is (prc_threshold_t)
        select type (pcm => process%pcm)
        type is (pcm_nlo_t)
@@ -12016,21 +12128,21 @@ and directly set the coupling value that comes together with a particle set.
     integer :: i
     logical :: skip
     val = .false.
-    do i = 1, size (instance%component)
-       if (associated (instance%component(i)%config)) then
-          associate (config => instance%component(i)%config)
-             !!! Always take into account the subtraction component
-             skip = .not. config%is_active_component () .and. &
-                .not. config%get_nlo_type () == NLO_SUBTRACTION 
-             if (skip) cycle
-             select type (core => config%core)
-             class is (prc_blha_t)
-                val = .true.
-                exit
-             end select
-          end associate
-       end if
-    end do
+    !do i = 1, size (instance%component)
+    !   if (associated (instance%component(i)%config)) then
+    !      associate (config => instance%component(i)%config)
+    !         !!! Always take into account the subtraction component
+    !         skip = .not. config%is_active_component () .and. &
+    !            .not. config%get_nlo_type () == NLO_SUBTRACTION 
+    !         if (skip) cycle
+    !         select type (core => config%core)
+    !         class is (prc_blha_t)
+    !            val = .true.
+    !            exit
+    !         end select
+    !      end associate
+    !   end if
+    !end do
   end function process_instance_has_blha_component
 
 @ %def process_instance_has_blha_component
@@ -12044,24 +12156,24 @@ and directly set the coupling value that comes together with a particle set.
     integer :: i
     logical :: skip
     val = .false.
-    do i = 1, size (instance%component)
-       if (associated (instance%component(i)%config)) then
-          !!! Always take into account the subtraction component
-          associate (config => instance%component(i)%config)
-             skip = .not. config%get_nlo_type () == NLO_SUBTRACTION &
-                .and. .not. config%is_active_component ()
-             if (skip) cycle
-             select type (core => config%core)
-             class is (prc_blha_t)
-                val = .true.
-                exit
-             class is (prc_threshold_t)
-                val = .true.
-                exit
-             end select
-          end associate
-       end if
-    end do
+    !do i = 1, size (instance%component)
+    !   if (associated (instance%component(i)%config)) then
+    !      !!! Always take into account the subtraction component
+    !      associate (config => instance%component(i)%config)
+    !         skip = .not. config%get_nlo_type () == NLO_SUBTRACTION &
+    !            .and. .not. config%is_active_component ()
+    !         if (skip) cycle
+    !         select type (core => config%core)
+    !         class is (prc_blha_t)
+    !            val = .true.
+    !            exit
+    !         class is (prc_threshold_t)
+    !            val = .true.
+    !            exit
+    !         end select
+    !      end associate
+    !   end if
+    !end do
   end function process_instance_needs_extra_code
 
 @ %def process_instance_needs_extra_code
@@ -12209,55 +12321,55 @@ one has to bring NLO information there.
 
     if (instance%has_blha_component ())  &
          call instance%create_blha_interface (beam_structure)
-    do i = 1, size (instance%component)
-       if (associated (instance%component(i)%config)) then
-          associate (component_config => instance%component(i)%config)
-             !!! Always load libraries for the subtraction component so that
-             !!! other components can use it
-             skip = .not. component_config%get_nlo_type () == NLO_SUBTRACTION &
-                .and. .not. component_config%config%is_active_component ()
-             if (skip) cycle
-             select type (core => component_config%core)
-             type is (prc_gosam_t)
-                libname = instance%process%get_library_name ()
-                call core%prepare_library (os_data, libname)
-                call core%start ()
-                call core%read_contract_file (instance%process%term(i)%data%flv_state)
-                call core%set_particle_properties (instance%process%config%model)
-                call core%set_electroweak_parameters (instance%process%config%model)
-                call core%print_parameter_file (i)
-             type is (prc_openloops_t)
-                call core%set_n_external (instance%component(i)%get_n_particles ())
-                call core%prepare_library (os_data, instance%process%config%model, &
-                     instance%process%meta%var_list)
-                call core%start ()
-                call core%read_contract_file (instance%process%term(i)%data%flv_state)
-                call core%print_parameter_file (i)
-                call core%reset_helicity_list ()
-                select type (pcm => instance%pcm)
-                type is (pcm_instance_nlo_t)
-                   n_sub =  pcm%controller%get_n_sub ()
-                end select
-                if (component_config%config%get_nlo_type () /= NLO_SUBTRACTION) then
-                   if (core%includes_polarization ()) then
-                      call instance%transfer_helicities (instance%component(i), core)
-                      p = instance%get_phase_space_point (i)
-                      call core%warmup_helicities (p)
-                   else
-                      call core%set_helicity_list_trivial (n_sub)
-                   end if
-                else
-                   call core%set_helicity_list_trivial (n_sub)
-                end if
-             type is (prc_threshold_t)
-                if (component_config%config%get_nlo_type () == NLO_VIRTUAL) then
-                   libname = instance%process%get_library_name ()
-                   call core%load_extra_libraries (os_data, libname, component_config%config%get_nlo_type ())
-                end if
-             end select
-          end associate
-       end if
-    end do
+    !do i = 1, size (instance%component)
+    !   if (associated (instance%component(i)%config)) then
+    !      associate (component_config => instance%component(i)%config)
+    !         !!! Always load libraries for the subtraction component so that
+    !         !!! other components can use it
+    !         skip = .not. component_config%get_nlo_type () == NLO_SUBTRACTION &
+    !            .and. .not. component_config%config%is_active_component ()
+    !         if (skip) cycle
+    !         select type (core => component_config%core)
+    !         type is (prc_gosam_t)
+    !            libname = instance%process%get_library_name ()
+    !            call core%prepare_library (os_data, libname)
+    !            call core%start ()
+    !            call core%read_contract_file (instance%process%term(i)%data%flv_state)
+    !            call core%set_particle_properties (instance%process%config%model)
+    !            call core%set_electroweak_parameters (instance%process%config%model)
+    !            call core%print_parameter_file (i)
+    !         type is (prc_openloops_t)
+    !            call core%set_n_external (instance%component(i)%get_n_particles ())
+    !            call core%prepare_library (os_data, instance%process%config%model, &
+    !                 instance%process%meta%var_list)
+    !            call core%start ()
+    !            call core%read_contract_file (instance%process%term(i)%data%flv_state)
+    !            call core%print_parameter_file (i)
+    !            call core%reset_helicity_list ()
+    !            select type (pcm => instance%pcm)
+    !            type is (pcm_instance_nlo_t)
+    !               n_sub =  pcm%controller%get_n_sub ()
+    !            end select
+    !            if (component_config%config%get_nlo_type () /= NLO_SUBTRACTION) then
+    !               if (core%includes_polarization ()) then
+    !                  call instance%transfer_helicities (instance%component(i), core)
+    !                  p = instance%get_phase_space_point (i)
+    !                  call core%warmup_helicities (p)
+    !               else
+    !                  call core%set_helicity_list_trivial (n_sub)
+    !               end if
+    !            else
+    !               call core%set_helicity_list_trivial (n_sub)
+    !            end if
+    !         type is (prc_threshold_t)
+    !            if (component_config%config%get_nlo_type () == NLO_VIRTUAL) then
+    !               libname = instance%process%get_library_name ()
+    !               call core%load_extra_libraries (os_data, libname, component_config%config%get_nlo_type ())
+    !            end if
+    !         end select
+    !      end associate
+    !   end if
+    !end do
   end subroutine process_instance_create_and_load_extra_libraries
 
 @ %def process_instance_create_and_load_extra_libraries

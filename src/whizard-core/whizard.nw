@@ -8684,6 +8684,7 @@ local changes to currently inactive models.
     logical, intent(in), optional :: verbose
     type(var_list_t), pointer :: var_list
     class(prc_core_t), allocatable :: core_template
+    class(prc_core_t), pointer :: core => null ()
     class(phs_config_t), allocatable :: phs_config_template
     type(phs_parameters_t) :: phs_par
     type(mapping_defaults_t) :: mapping_defs
@@ -8703,7 +8704,7 @@ local changes to currently inactive models.
     class(phs_config_t), allocatable :: phs_config_template_other
     integer :: i_real = 0
     integer :: i_core
-    integer :: core_type
+    integer :: core_type, i_term_base, i_core_born, i_core_real
     logical :: includes_real
     verb = .true.; if (present (verbose))  verb = verbose
     call intg%process%set_var_list (local%get_var_list_ptr ())
@@ -8765,10 +8766,11 @@ local changes to currently inactive models.
         
     do i_component = 1, n_components
        config => intg%process%get_component_def_ptr (i_component)
-       call dispatch_core (core_template, config%get_core_def_ptr (), &
-            intg%process%get_model_ptr (), &
-            helicity_selection, intg%qcd, &
-            use_color_factors)
+       !call dispatch_core (core_template, config%get_core_def_ptr (), &
+       !     intg%process%get_model_ptr (), &
+       !     helicity_selection, intg%qcd, &
+       !     use_color_factors)
+       core => intg%process%get_core_nlo_type (config%get_nlo_type ())
        select case (config%get_nlo_type ())
        case (NLO_VIRTUAL)
           call setup_virtual_component ()
@@ -8785,12 +8787,13 @@ local changes to currently inactive models.
           call setup_subtraction_component ()
        case (GKS)
           call intg%process%init_component &
-             (i_component, core_template, mci_template, phs_config_template)
+             (i_component, core%has_matrix_element (), core%data, &
+             mci_template, phs_config_template)
        case default
           call msg_fatal ("setup_process: NLO type not implemented!")
        end select
        call blha_template%reset ()
-       deallocate (core_template)
+       !deallocate (core_template)
        if (allocated (phs_config_template_other)) &
           deallocate (phs_config_template_other)
     end do
@@ -8803,8 +8806,19 @@ local changes to currently inactive models.
             // char (intg%process_id) // "': matrix element vanishes")
     end if
 
+    if (intg%process%is_nlo_calculation ()) then
+       call intg%process%init_nlo_settings (var_list)
+       i_core_real = intg%process%get_i_core_nlo_type (NLO_REAL) 
+       i_core_born = intg%process%get_i_core_nlo_type (BORN)
+       call intg%process%setup_region_data (i_real, &
+          intg%process%get_constants(i_core_born), intg%process%get_constants(i_core_real))
+       !call intg%setup_nlo_component_cores ()
+    end if
+    call intg%process%setup_terms (with_beams = local%beam_structure%is_set ())
     call setup_beams ()
     call setup_structure_functions ()
+    if (intg%process%is_nlo_calculation ()) &
+       call intg%process%check_if_threshold_method (i_real)
 
     if (intg%process_has_me) then
        call intg%process%configure_phs &
@@ -8828,13 +8842,6 @@ local changes to currently inactive models.
     end if
 
     call intg%setup_process_mci ()
-    if (intg%process%is_nlo_calculation ()) then
-       call intg%process%init_nlo_settings (var_list)
-       call intg%process%check_if_threshold_method (i_real)
-       call intg%process%setup_region_data (i_real)
-       call intg%setup_nlo_component_cores ()
-    end if
-    call intg%process%setup_terms ()
 
     call setup_expressions ()
 
@@ -8919,11 +8926,13 @@ local changes to currently inactive models.
       case ('gosam', 'openloops')
          call blha_template%set_born ()
          call intg%process%init_component &
-            (i_component, core_template, mci_template, phs_config_template, &
+            (i_component, core%has_matrix_element (), core%data, &
+             mci_template, phs_config_template, &
              blha_template = blha_template)
       case default
          call intg%process%init_component &
-            (i_component, core_template, mci_template, phs_config_template)
+            (i_component, core%has_matrix_element (), core%data, &
+             mci_template, phs_config_template)
       end select
       if (intg%combined_integration) &
          call intg%process%set_component_type (i_component, COMP_MASTER)
@@ -8936,7 +8945,8 @@ local changes to currently inactive models.
          call blha_template%set_loop ()
       end select
       call intg%process%init_component &
-         (i_component, core_template, mci_template, phs_config_template, &
+         (i_component, core%has_matrix_element (), core%data, &
+          mci_template, phs_config_template, &
           blha_template = blha_template)
       if (intg%combined_integration) &
          call intg%process%set_component_type (i_component, COMP_VIRT)
@@ -8962,7 +8972,7 @@ local changes to currently inactive models.
           var_str ('fks'))
       call dispatch_fks (fks_template, local)
       call intg%process%init_component &
-         (i_component, core_template, mci_template, &
+         (i_component, core%has_matrix_element (), core%data, mci_template, &
           phs_config_template_other, fks_template = fks_template, &
           blha_template = blha_template)
       if (intg%combined_integration) then
@@ -8983,7 +8993,7 @@ local changes to currently inactive models.
       call dispatch_phs (phs_config_template_other, local, &
          intg%process_id, mapping_defs, phs_par, var_str ('fks')) 
       call intg%process%init_component & 
-         (i_component, core_template, mci_template, &
+         (i_component, core%has_matrix_element (), core%data, mci_template, &
          phs_config_template_other)
       if (intg%combined_integration) &
          call intg%process%set_component_type (i_component, COMP_MISMATCH)
@@ -8994,7 +9004,8 @@ local changes to currently inactive models.
           intg%process_id, mapping_defs, phs_par, &
           var_str ('fks'))
       call intg%process%init_component &
-        (i_component, core_template, mci_template, phs_config_template_other)
+        (i_component, core%has_matrix_element (), core%data, &
+         mci_template, phs_config_template_other)
       if (intg%combined_integration) &
          call intg%process%set_component_type (i_component, COMP_PDF)
     end subroutine setup_dglap_component
@@ -9007,7 +9018,8 @@ local changes to currently inactive models.
       end select
     
       call intg%process%init_component &
-          (i_component, core_template, mci_template, phs_config_template, &
+          (i_component, core%has_matrix_element (), core%data, &
+           mci_template, phs_config_template, &
            blha_template = blha_template)
       if (intg%combined_integration) &
          call intg%process%set_component_type (i_component, COMP_SUB)
@@ -12458,11 +12470,11 @@ parameters stored in the process object.
     allocate (entry%core_safe (n_components))
     do i = 1, n_components
        if (process%has_matrix_element (i)) then
-          call process%extract_component_core (i, core)
-          call dispatch_core_update (core, &
-               model_local, helicity_selection, qcd_local, &
-               entry%core_safe(i)%core)
-          call process%restore_component_core (i, core)
+          !call process%extract_component_core (i, core)
+          !call dispatch_core_update (core, &
+          !     model_local, helicity_selection, qcd_local, &
+          !     entry%core_safe(i)%core)
+          !call process%restore_component_core (i, core)
        end if
     end do
   end subroutine entry_update_process
@@ -12476,9 +12488,9 @@ parameters stored in the process object.
     n_components = process%get_n_components ()
     do i = 1, n_components
        if (process%has_matrix_element (i)) then
-          call process%extract_component_core (i, core)
-          call dispatch_core_restore (core, entry%core_safe(i)%core)
-          call process%restore_component_core (i, core)
+          !call process%extract_component_core (i, core)
+          !call dispatch_core_restore (core, entry%core_safe(i)%core)
+          !call process%restore_component_core (i, core)
        end if
     end do
     deallocate (entry%core_safe)
