@@ -121,8 +121,6 @@ endif
 ########################################################################
 ## Explicit dependencies
 
-tauola_interface.lo: hepev4_aux.lo
-
 AM_FCFLAGS += -I../basics -I../utilities -I../system -I../expr_base -I../combinatorics -I../parsing -I../physics -I../qft -I../types -I../fastjet -I../particles -I../events -I../variables
 
 MODULES= \

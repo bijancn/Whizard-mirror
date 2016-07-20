@@ -1,4 +1,4 @@
-(* $Id: comphep_syntax.mli 7444 2016-02-17 15:37:20Z jr_reuter $
+(* $Id: vertex_syntax.mli 7444 2016-02-17 15:37:20Z jr_reuter $
 
    Copyright (C) 1999-2016 by
 
@@ -22,31 +22,27 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-type raw =
-  | I | Integer of int | Symbol of string
-  | Application of string * raw
-  | Dotproduct of raw * raw
-  | Product of (raw * int) list
-  | Sum of (raw * int) list
+(* \thocwmodulesection{Abstract Syntax} *)
 
-val symbol : string -> raw
-val integer : int -> raw
-val imag : raw
+exception Syntax_Error of string * Lexing.position * Lexing.position
 
-val apply : string -> raw -> raw
-val dot : raw -> raw -> raw
-val multiply : raw -> raw -> raw
-val divide : raw -> raw -> raw
-val power : raw -> int -> raw
-val add : raw -> raw -> raw
-val subtract : raw -> raw -> raw
-val neg : raw -> raw
+type expr =
+  | Integer of int
+  | Float of float
+  | Variable of string
+  | Sum of expr * expr
+  | Difference of expr * expr
+  | Product of expr * expr
+  | Quotient of expr * expr
+  | Power of expr * expr
+  | Application of string * expr list
 
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  End:
-i*)
-
+val integer : int -> expr
+val float : float -> expr
+val variable : string -> expr
+val add : expr -> expr -> expr
+val subtract : expr -> expr -> expr
+val multiply : expr -> expr -> expr
+val divide : expr -> expr -> expr
+val power : expr -> expr -> expr
+val apply : string -> expr list -> expr

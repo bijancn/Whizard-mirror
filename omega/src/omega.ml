@@ -1,4 +1,4 @@
-(* $Id: omega.ml 7469 2016-03-13 16:44:17Z ohl $
+(* $Id: omega.ml 7653 2016-07-18 11:37:04Z ohl $
 
    Copyright (C) 1999-2016 by
 
@@ -46,6 +46,12 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
     type flavor = M.flavor
 
     module Proc = Process.Make(M)
+
+(* \begin{dubious}
+     We must have initialized the vertices \emph{before}
+     applying [Fusion_Maker], at least if we want to continue
+     using the vertex cache!
+   \end{dubious} *)
 
 (* \begin{dubious}
      NB: this causes the constant initializers in [Fusion_Maker] more than once.
@@ -334,7 +340,8 @@ i*)
 (* \thocwmodulesection{Main Program} *)
 
     let main () =
-      let usage =
+      (* Delay evaluation of [M.external_flavors ()]! *)
+      let usage () =
         "usage: " ^ Sys.argv.(0) ^
         " [options] [" ^
 	  String.concat "|" (List.map M.flavor_to_string 
@@ -357,7 +364,7 @@ i*)
       and poles = ref false
       and dag_out = ref None
       and dag0_out = ref None in
-      Arg.parse
+      Options.parse
         (Options.cmdline "-target:" T.options @
          Options.cmdline "-model:" M.options @
          Options.cmdline "-fusion:" CF.options @
@@ -415,7 +422,7 @@ i*)
 (*i       ("-T", Arg.Int Topology.Binary.debug_triplet, "");
           ("-P", Arg.Int Topology.Binary.debug_partition, "")])
 i*)
-        (fun _ -> prerr_endline usage; exit 1)
+        (fun _ -> prerr_endline (usage ()); exit 1)
         usage;
 
       let cmdline =

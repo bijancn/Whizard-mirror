@@ -1,4 +1,4 @@
-(* $Id: modeltools.ml 7520 2016-04-25 11:42:45Z ohl $
+(* $Id: modeltools.ml 7653 2016-07-18 11:37:04Z ohl $
 
    Copyright (C) 1999-2016 by
 
@@ -23,8 +23,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Modeltools" ["Lagragians"]
-    { RCS.revision = "$Revision: 7520 $";
-      RCS.date = "$Date: 2016-04-25 13:42:45 +0200 (Mon, 25 Apr 2016) $";
+    { RCS.revision = "$Revision: 7653 $";
+      RCS.date = "$Date: 2016-07-18 13:37:04 +0200 (Mon, 18 Jul 2016) $";
       RCS.author = "$Author: ohl $";
       RCS.source
         = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modeltools.ml $" }
@@ -302,13 +302,15 @@ module Mutable (FGC : sig type f and g and c end) =
     type gauge = FGC.g
     type constant = FGC.c
 
+    let init () = ()
+
     let options = Options.empty
 
     module Ch = Charges.Null
     let charges _ = ()
 
     exception Uninitialized of string
-    let unitialized name =
+    let uninitialized name =
       raise (Uninitialized name)
       
 (* Note that [lookup] works, by the magic of currying, for any arity.  But
@@ -323,57 +325,63 @@ module Mutable (FGC : sig type f and g and c end) =
       (update, lookup)
 
     let set_color, color =
-      declare (fun f -> unitialized "color")
+      declare (fun f -> uninitialized "color")
     let set_pdg, pdg =
-      declare (fun f -> unitialized "pdg")
+      declare (fun f -> uninitialized "pdg")
     let set_lorentz, lorentz =
-      declare (fun f -> unitialized "lorentz")
+      declare (fun f -> uninitialized "lorentz")
     let set_propagator, propagator =
-      declare (fun f -> unitialized "propagator")
+      declare (fun f -> uninitialized "propagator")
     let set_width, width =
-      declare (fun f -> unitialized "width")
+      declare (fun f -> uninitialized "width")
     let set_goldstone, goldstone =
-      declare (fun f -> unitialized "goldstone")
+      declare (fun f -> uninitialized "goldstone")
     let set_conjugate, conjugate =
-      declare (fun f -> unitialized "conjugate")
+      declare (fun f -> uninitialized "conjugate")
     let set_fermion, fermion =
-      declare (fun f -> unitialized "fermion")
+      declare (fun f -> uninitialized "fermion")
     let set_max_degree, max_degree =
-      declare (fun () -> unitialized "max_degree")
+      declare (fun () -> uninitialized "max_degree")
     let set_vertices, vertices =
-      declare (fun () -> unitialized "vertices")
+      declare (fun () -> (* ([], [], []) *) uninitialized "vertices" )
     let set_fuse2, fuse2 =
-      declare (fun f1 f2 -> unitialized "fuse2")
+      declare (fun f1 f2 -> uninitialized "fuse2")
     let set_fuse3, fuse3 =
-      declare (fun f1 f2 f3 -> unitialized "fuse3")
+      declare (fun f1 f2 f3 -> uninitialized "fuse3")
     let set_fuse, fuse =
-      declare (fun f -> unitialized "fuse")
+      declare (fun f -> uninitialized "fuse")
     let set_flavors, flavors =
       declare (fun () -> [])
     let set_external_flavors, external_flavors =
-      declare (fun () -> [("unitialized", [])])
+      declare (fun () -> [("uninitialized", [])])
     let set_parameters, parameters =
-      declare (fun f -> unitialized "parameters")
+      declare (fun f -> uninitialized "parameters")
     let set_flavor_of_string, flavor_of_string =
-      declare (fun f -> unitialized "flavor_of_string")
+      declare (fun f -> uninitialized "flavor_of_string")
     let set_flavor_to_string, flavor_to_string =
-      declare (fun f -> unitialized "flavor_to_string")
+      declare (fun f -> uninitialized "flavor_to_string")
     let set_flavor_to_TeX, flavor_to_TeX =
-      declare (fun f -> unitialized "flavor_to_TeX")
+      declare (fun f -> uninitialized "flavor_to_TeX")
     let set_flavor_symbol, flavor_symbol =
-      declare (fun f -> unitialized "flavor_symbol")
+      declare (fun f -> uninitialized "flavor_symbol")
     let set_gauge_symbol, gauge_symbol =
-      declare (fun f -> unitialized "gauge_symbol")
+      declare (fun f -> uninitialized "gauge_symbol")
     let set_mass_symbol, mass_symbol =
-      declare (fun f -> unitialized "mass_symbol")
+      declare (fun f -> uninitialized "mass_symbol")
     let set_width_symbol, width_symbol =
-      declare (fun f -> unitialized "width_symbol")
+      declare (fun f -> uninitialized "width_symbol")
     let set_constant_symbol, constant_symbol =
-      declare (fun f -> unitialized "constant_symbol")
+      declare (fun f -> uninitialized "constant_symbol")
+
+    module F = Fusions (struct
+      type f = flavor
+      type c = constant
+      let compare = compare
+      let conjugate = conjugate
+    end)
 
     let setup ~color ~pdg ~lorentz ~propagator ~width ~goldstone
         ~conjugate ~fermion ~max_degree ~vertices 
-        ~fuse:(fuse2, fuse3, fusen)
         ~flavors ~parameters ~flavor_of_string ~flavor_to_string
         ~flavor_to_TeX ~flavor_symbol
         ~gauge_symbol ~mass_symbol ~width_symbol ~constant_symbol =
@@ -386,13 +394,14 @@ module Mutable (FGC : sig type f and g and c end) =
       set_conjugate conjugate;
       set_fermion fermion;
       set_max_degree (fun () -> max_degree);
-      set_vertices vertices;
-      set_fuse2 fuse2;
-      set_fuse3 fuse3;
-      set_fuse fusen;
-      set_external_flavors (fun f -> flavors);
+      set_vertices (fun () -> vertices);
+      let table = F.of_vertices vertices in
+      set_fuse2 (F.fuse2 table);
+      set_fuse3 (F.fuse3 table);
+      set_fuse (F.fuse table);
+      set_external_flavors (fun () -> flavors);
       let flavors = ThoList.flatmap snd flavors in
-      set_flavors (fun f -> flavors);
+      set_flavors (fun () -> flavors);
       set_parameters parameters;
       set_flavor_of_string flavor_of_string;
       set_flavor_to_string flavor_to_string;
@@ -404,4 +413,46 @@ module Mutable (FGC : sig type f and g and c end) =
       set_constant_symbol constant_symbol
 
     let rcs = RCS.rename rcs_file "Models.Mutable" ["Mutable Model"]
+  end
+
+module Static (M : Model.T) =
+  struct
+    type flavor = M.flavor
+    type gauge = M.gauge
+    type constant = M.constant
+    module Ch = M.Ch
+    let color = M.color
+    let charges = M.charges
+    let pdg = M.pdg
+    let lorentz = M.lorentz
+    let propagator = M.propagator
+    let width = M.width
+    let conjugate = M.conjugate
+    let fermion = M.fermion
+    let max_degree = M.max_degree
+    let vertices = M.vertices
+    let fuse2 = M.fuse2
+    let fuse3 = M.fuse3
+    let fuse = M.fuse
+    let flavors = M.flavors
+    let external_flavors = M.external_flavors
+    let goldstone = M.goldstone
+    let parameters = M.parameters
+    let flavor_of_string = M.flavor_of_string
+    let flavor_to_string = M.flavor_to_string
+    let flavor_to_TeX = M.flavor_to_TeX
+    let flavor_symbol = M.flavor_symbol
+    let gauge_symbol = M.gauge_symbol
+    let mass_symbol = M.mass_symbol
+    let width_symbol = M.width_symbol
+    let constant_symbol = M.constant_symbol
+    let options = M.options
+    let rcs = M.rcs
+    let init () = ()
+    let setup ~color ~pdg ~lorentz ~propagator ~width ~goldstone
+        ~conjugate ~fermion ~max_degree ~vertices 
+        ~flavors ~parameters ~flavor_of_string ~flavor_to_string
+        ~flavor_to_TeX ~flavor_symbol
+        ~gauge_symbol ~mass_symbol ~width_symbol ~constant_symbol =
+      ()
   end
