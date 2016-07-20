@@ -6438,6 +6438,7 @@ module nlo_data
   use constants, only: zero, one, two, twopi
   use io_units
   use lorentz
+  use variables, only: var_list_t
 
 <<Standard module head>>
 
@@ -7092,6 +7093,21 @@ initial-state phase spaces.
 @ %def powheg_damping_t
 @
 <<nlo data: powheg damping: TBP>>=
+  procedure (powheg_damping_init), deferred :: init
+<<nlo data: interfaces>>=
+  abstract interface
+     subroutine powheg_damping_init (damping, scale)
+       import
+       class(powheg_damping_t), intent(out) :: damping
+       real(default), intent(in) :: scale
+     end subroutine powheg_damping_init
+  end interface
+
+@ %def powheg_damping_init
+@ To allow really arbitrary damping functions, [[get_f]] should get the
+full real phase space as argument and not just some [[pt2]] that is
+extracted higher up.
+<<nlo data: powheg damping: TBP>>=
   procedure (powheg_damping_get_f), deferred :: get_f
 <<nlo data: interfaces>>=
   abstract interface
@@ -7127,6 +7143,17 @@ initial-state phase spaces.
   end function powheg_damping_simple_get_f
 
 @ %def powheg_damping_simple_get_f
+@
+<<nlo data: powheg damping simple: TBP>>=
+  procedure :: init => powheg_damping_simple_init
+<<nlo data: procedures>>=
+  pure subroutine powheg_damping_simple_init (damping, scale)
+    class(powheg_damping_simple_t), intent(out) :: damping
+    real(default), intent(in) :: scale
+    damping%h2 = scale**2
+  end subroutine powheg_damping_simple_init
+
+@ %def powheg_damping_simple_init
 @
 <<[[nlo_controller.f90]]>>=
 <<File header>>
@@ -8609,11 +8636,36 @@ end module nlo_controller_uti
      logical :: test_anti_coll_limit = .false.
      integer :: fixed_alr = -1
      integer :: factorization_mode = NO_FACTORIZATION
+     !!! Probably not the right place for this. Revisit after refactoring
+     real(default) :: powheg_damping_scale = zero
   contains
   <<nlo data: nlo settings: TBP>>
   end type nlo_settings_t
 
 @ %def nlo_settings_t
+@
+<<nlo data: nlo settings: TBP>>=
+procedure :: init => nlo_settings_init
+<<nlo data: procedures>>=
+  pure subroutine nlo_settings_init (nlo_settings, var_list, combined_integration)
+    class(nlo_settings_t), intent(out) :: nlo_settings
+    type(var_list_t), intent(in) :: var_list
+    logical, intent(in) :: combined_integration
+    type(string_t) :: color_method
+    color_method = var_list%get_sval (var_str ('$correlation_me_method'))
+    nlo_settings%use_internal_color_correlations = color_method == 'omega' & 
+       .or. color_method == 'threshold'
+    nlo_settings%combined_integration = combined_integration
+    nlo_settings%test_soft_limit = var_list%get_lval (var_str ('?test_soft_limit'))
+    nlo_settings%test_coll_limit = var_list%get_lval (var_str ('?test_coll_limit'))
+    nlo_settings%test_anti_coll_limit = var_list%get_lval (var_str ('?test_anti_coll_limit'))
+    nlo_settings%fixed_alr = var_list%get_ival (var_str ('fixed_alpha_region'))
+    nlo_settings%with_virtual_subtraction = &
+       .not. var_list%get_lval (var_str ('?switch_off_virtual_subtraction'))
+    nlo_settings%powheg_damping_scale = var_list%get_rval (var_str ('powheg_damping_scale'))
+  end subroutine nlo_settings_init
+
+@ %def nlo_settings_init
 @
 <<nlo data: public>>=
   public :: nlo_particle_data_t
@@ -8918,7 +8970,6 @@ process.
         call nlo_controller%soft_mismatch%init (n_in, n_tot_born, nlo_controller%reg_data, &
            nlo_controller%sqme_collector, nlo_controller%real_kinematics)
      end associate
-     allocate (powheg_damping_simple_t :: nlo_controller%powheg_damping)
   end subroutine nlo_controller_setup_real_terms
 
 @ %def nlo_controller_setup_real_terms
