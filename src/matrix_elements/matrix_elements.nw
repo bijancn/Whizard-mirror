@@ -63,8 +63,9 @@ module process_constants
 <<Use kinds>>
 <<Use strings>>
 
-use io_units, only: given_output_unit
+use io_units, only: given_output_unit, free_unit
 use format_utils, only: write_integer_array
+use md5, only: md5sum
 
 use pdg_arrays
 
@@ -279,7 +280,64 @@ types, no type-bound procedures.
 @ %def process_constants_get_pdg_in
 @
 <<Process constants: prc const: TBP>>=
-procedure :: write => process_constants_write
+  procedure :: compute_md5sum => process_constants_compute_md5sum
+<<Process constants: procedures>>=
+  subroutine process_constants_compute_md5sum (prc_const, include_id)
+    class(process_constants_t), intent(inout) :: prc_const
+    logical, intent(in) :: include_id
+    integer :: unit, i, j, k
+    unit = free_unit ()
+    open (unit, status="scratch", action="readwrite")
+    if (include_id) write (unit, '(A)') char (prc_const%id)
+    write (unit, '(A)') char (prc_const%model_name) 
+    write (unit, '(L1)') prc_const%openmp_supported
+    write (unit, '(I0)') prc_const%n_in
+    write (unit, '(I0)') prc_const%n_out
+    write (unit, '(I0)') prc_const%n_flv
+    write (unit, '(I0)') prc_const%n_hel
+    write (unit, '(I0)') prc_const%n_col
+    write (unit, '(I0)') prc_const%n_cin
+    write (unit, '(I0)') prc_const%n_cf
+    do i = 1, size (prc_const%flv_state, dim=1)
+       do j = 1, size (prc_const%flv_state, dim=2)
+          write (unit, '(I0)') prc_const%flv_state (i, j)
+       end do
+    end do
+    do i = 1, size (prc_const%hel_state, dim=1)
+       do j = 1, size (prc_const%hel_state, dim=2)
+          write (unit, '(I0)') prc_const%hel_state (i, j)
+       end do
+    end do
+    do i = 1, size (prc_const%col_state, dim=1)
+       do j = 1, size (prc_const%col_state, dim=2)
+          do k = 1, size (prc_const%col_state, dim=3)
+             write (unit, '(I0)') prc_const%col_state (i, j, k)
+          end do
+      end do
+    end do
+    do i = 1, size (prc_const%ghost_flag, dim=1)
+       do j = 1, size (prc_const%ghost_flag, dim=2)
+          write (unit, '(L1)') prc_const%ghost_flag (i, j)
+       end do
+    end do
+    do i = 1, size (prc_const%color_factors)
+       write (unit, '(F0.0,F0.0)') real (prc_const%color_factors(i)), &
+          aimag (prc_const%color_factors(i))
+    end do
+    do i = 1, size (prc_const%cf_index, dim=1)
+       do j = 1, size (prc_const%cf_index, dim=2)
+          write (unit, '(I0)') prc_const%cf_index(i, j)
+       end do
+    end do
+    rewind (unit)
+    prc_const%md5sum = md5sum (unit)
+    close (unit) 
+  end subroutine process_constants_compute_md5sum
+
+@ %process_constants_compute_md5sum
+@ 
+<<Process constants: prc const: TBP>>=
+  procedure :: write => process_constants_write
 <<Process constants: procedures>>=
   subroutine process_constants_write (prc_const, unit)
     class(process_constants_t), intent(in) :: prc_const
@@ -7302,6 +7360,27 @@ the process code has been loaded, if external.
   end subroutine process_library_entry_fill_constants
   
 @ %def process_library_entry_fill_constants
+@ Retrieve the constants for a process
+<<Process libraries: process library: TBP>>=
+  procedure :: fill_constants => process_library_fill_constants
+<<Process libraries: procedures>>=
+  subroutine process_library_fill_constants (lib, id, i_component, data)
+    class(process_library_t), intent(in) :: lib
+    type(string_t), intent(in) :: id
+    integer, intent(in) :: i_component
+    type(process_constants_t), intent(out) :: data
+    integer :: i
+    do i = 1, size (lib%entry)
+       associate (entry => lib%entry(i))
+          if (entry%def%id == id .and. entry%i_component == i_component) then
+             call entry%fill_constants (lib%driver, data)
+             return
+          end if 
+       end associate
+    end do
+  end subroutine process_library_fill_constants
+
+@ %def process_library_fill_constants
 @ Retrieve the constants and a connected driver for a process,
 identified by a process ID and a subprocess index.  We
 scan the process entries until we have found a match.

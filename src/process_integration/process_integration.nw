@@ -2324,7 +2324,7 @@ and allocates the corresponding manager instance.
   integer, parameter, public :: CORE_GOSAM = 6
   integer, parameter, public :: CORE_OPENLOOPS = 7
   integer, parameter, public :: CORE_RECOLA = 8
-  integer, parameter, public :: N_MAX_CORES = 4
+  integer, parameter, public :: N_MAX_CORES = 100
  
 @ Auxilliary container for polymorphic cores.
 <<PCM base: types>>=
@@ -2339,11 +2339,14 @@ and allocates the corresponding manager instance.
 <<PCM base: types>>=
   type :: cm_t
     integer, dimension(N_MAX_CORES) :: me
-    integer, dimension(N_MAX_CORES) :: def_ptr_index_all = 0
+    integer, dimension(N_MAX_CORES) :: def_ptr_index = 0
     integer, dimension(N_MAX_CORES) :: i_core
+    character(32), dimension(N_MAX_CORES) :: md5s
+    integer, dimension(N_MAX_CORES) :: nlo_type
+    integer, dimension(:), allocatable :: i_component_to_i_core
     integer :: n_cores = 0
     type(generic_core_t), dimension(:), allocatable :: cores
-    integer, dimension(:), allocatable :: def_ptr_index
+    integer :: current_index = 1
   contains
   <<PCM base: cm: TBP>>
   end type cm_t
@@ -2373,14 +2376,18 @@ and allocates the corresponding manager instance.
 <<PCM base: cm: TBP>>=
   procedure :: register => cm_register
 <<PCM base: procedures>>=
-  subroutine cm_register (cm, nlo_type, core_type, i_component)
+  subroutine cm_register (cm, nlo_type, core_type, i_component, md5sum)
     class(cm_t), intent(inout) :: cm
     integer, intent(in) :: nlo_type, core_type, i_component
+    character(32), intent(in) :: md5sum
     integer :: index
+    print *, 'Register: ', i_component
     index = nlo_to_i_core (nlo_type)
-    cm%me(index) = core_type
-    if (cm%def_ptr_index_all(index) == 0) &
-       cm%def_ptr_index_all(index) = i_component
+    cm%me(cm%current_index) = core_type
+    cm%nlo_type(cm%current_index) = nlo_type
+    cm%md5s(cm%current_index) = md5sum
+    cm%def_ptr_index(cm%current_index) = i_component 
+    cm%current_index = cm%current_index + 1
   end subroutine cm_register
 
 @ %def cm_register
@@ -2395,42 +2402,41 @@ and allocates the corresponding manager instance.
     integer :: n_cores
     integer :: i, j, k, this_core
     logical :: search_real
-    n_cores = 0
+    cm%n_cores = count (cm%me > 0)
     use_cores = 0; k = 1
     search_real = includes_real
-    do i = CORE_TEST, CORE_RECOLA
-       do j = 1, N_MAX_CORES
-          if (i == cm%me(j) .and. .not. any (use_cores == cm%me(j))) then
-             n_cores = n_cores + 1
-             use_cores(k) = cm%me(j)
-             k = k + 1
-             exit
-          else if (j == 2 .and. search_real) then
-             n_cores = n_cores + 1
-             search_real = .false.
-             exit
-          end if
-       end do
-    end do
-    cm%n_cores = n_cores
-    allocate (cm%cores (n_cores), cm%def_ptr_index (n_cores))
-    cm%def_ptr_index = 0
-    print *, 'n_cores: ', n_cores
+    !do i = CORE_TEST, CORE_RECOLA
+    !   do j = 1, N_MAX_CORES
+    !      if (i == cm%me(j) .and. .not. any (use_cores == cm%me(j))) then
+    !         n_cores = n_cores + 1
+    !         use_cores(k) = cm%me(j)
+    !         k = k + 1
+    !         exit
+    !      else if (j == 2 .and. search_real) then
+    !         n_cores = n_cores + 1
+    !         search_real = .false.
+    !         exit
+    !      end if
+    !   end do
+    !end do
+    !cm%n_cores = n_cores
+    allocate (cm%cores (cm%n_cores))
+    print *, 'n_cores: ', cm%n_cores
     print *, 'cm%me: ', cm%me
     print *, 'use cores: ', use_cores
-    print *, 'All def_ptr indices: ', cm%def_ptr_index_all
-    do i = 1, n_cores
-       if (i == n_cores .and. includes_real) then
-          cm%i_core(2) = i
-          cm%def_ptr_index(i) = cm%def_ptr_index_all(2)
-       else
-          this_core = use_cores(i)
-          do j = 1, N_MAX_CORES
-             if (cm%me(j) == this_core) cm%i_core(j) = i
-          end do
-          cm%def_ptr_index(i) = minval (pack (cm%def_ptr_index_all, this_core == cm%me))
-       end if
-    end do
+    print *, 'All def_ptr indices: ', cm%def_ptr_index
+    !do i = 1, n_cores
+    !   if (i == n_cores .and. includes_real) then
+    !      cm%i_core(2) = i
+    !      cm%def_ptr_index(i) = cm%def_ptr_index_all(2)
+    !   else
+    !      this_core = use_cores(i)
+    !      do j = 1, N_MAX_CORES
+    !         if (cm%me(j) == this_core) cm%i_core(j) = i
+    !      end do
+    !      cm%def_ptr_index(i) = minval (pack (cm%def_ptr_index_all, this_core == cm%me))
+    !   end if
+    !end do
   end subroutine cm_allocate_core_array
 
 @ %def cm_allocate_core_array
@@ -2576,11 +2582,10 @@ and allocates the corresponding manager instance.
   subroutine cm_final (cm)
     class(cm_t), intent(inout) :: cm
     cm%me = 0
-    cm%def_ptr_index_all = 0
+    cm%def_ptr_index = 0
     cm%n_cores = 0
     cm%i_core = 0
     if (allocated (cm%cores)) deallocate (cm%cores)
-    if (allocated (cm%def_ptr_index)) deallocate (cm%def_ptr_index) 
   end subroutine cm_final
 
 @ %def cm_final
@@ -3090,7 +3095,10 @@ freed.
   subroutine process_core_manager_register (process, nlo_type, core_type, i_component)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: nlo_type, core_type, i_component
-    call process%cm%register (nlo_type, core_type, i_component)
+    character(32) :: md5sum
+    md5sum = process%get_constants_md5sum (i_component)
+    if (.not. any (process%cm%md5s == md5sum)) &
+       call process%cm%register (nlo_type, core_type, i_component, md5sum)
   end subroutine process_core_manager_register
 
 @ %def process_core_manager_register
@@ -3140,20 +3148,19 @@ from the library.
   procedure :: init_component => process_init_component
 <<Processes: procedures>>=
   subroutine process_init_component &
-       (process, index, active, data, mci_template, phs_config_template, &
+       (process, index, active, mci_template, phs_config_template, &
         fks_template, blha_template)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: index
-    !class(prc_core_t), intent(in), allocatable :: core_template
     logical, intent(in) :: active
-    type(process_constants_t), intent(in) :: data
     class(mci_t), intent(in), allocatable :: mci_template
     class(phs_config_t), intent(in), allocatable :: phs_config_template
     type(fks_template_t), intent(in), optional :: fks_template
     type(blha_template_t), intent(inout), optional :: blha_template
+    type(process_constants_t) :: data
+    call process%meta%lib%fill_constants (process%meta%id, index, data)
     call process%component(index)%init (index, &
          process%meta, process%config, &
-         !core_template, mci_template, phs_config_template, &
          active, data, &
          mci_template, phs_config_template, &
          blha_template, fks_template)
@@ -3213,7 +3220,8 @@ from the library.
               i_term = k + j
               component%i_term(j) = i_term
               process%term(i_term)%i_core = set_i_core &
-                 (component%get_nlo_type (), setup_subtraction_component)
+                 (component%get_nlo_type (), setup_subtraction_component, &
+                  process%get_constants_md5sum (i))
               !if (setup_subtraction_component) then
               !   allocate (core, source = component%core_sub_born)
               !else
@@ -3238,26 +3246,34 @@ from the library.
     end do
     process%config%n_terms = n_tot
   contains
-    function set_i_core (nlo_type, sub) result (i_core)
+    function set_i_core (nlo_type, sub, md5sum) result (i_core)
       integer :: i_core
       integer, intent(in) :: nlo_type
       logical, intent(in) :: sub
+      character(32), intent(in) :: md5sum
       integer :: index
-      if (sub) then
-         i_core = process%cm%i_core (4)
-      else
-         select case (nlo_type)
-         case (BORN)
-            index = 1
-         case (NLO_REAL)
-            index = 2
-         case (NLO_VIRTUAL) 
-            index = 3
-         case (NLO_SUBTRACTION)
-            index = 4
-         end select
-         i_core = process%cm%i_core (index)
-      end if    
+      do index = 1, N_MAX_CORES
+         if (process%cm%nlo_type(index) == nlo_type .and. &
+             process%cm%md5s(index) == md5sum) then
+            i_core = index
+            exit
+         end if
+      end do
+      !if (sub) then
+      !   i_core = process%cm%i_core (4)
+      !else
+      !   select case (nlo_type)
+      !   case (BORN)
+      !      index = 1
+      !   case (NLO_REAL)
+      !      index = 2
+      !   case (NLO_VIRTUAL) 
+      !      index = 3
+      !   case (NLO_SUBTRACTION)
+      !      index = 4
+      !   end select
+      !   i_core = process%cm%i_core (index)
+      !end if    
     end function set_i_core
   end subroutine process_setup_terms
 
@@ -6184,13 +6200,19 @@ configuration finalizer may include closing an open scratch file.
 <<Processes: process: TBP>>=
   procedure :: get_core_nlo_type => process_get_core_nlo_type
 <<Processes: procedures>>=
-  function process_get_core_nlo_type (process, nlo_type) result (core)
+  function process_get_core_nlo_type (process, nlo_type, md5sum) result (core)
     class(prc_core_t), pointer :: core
     class(process_t), intent(in), target :: process
     integer, intent(in) :: nlo_type
+    character(32), intent(in) :: md5sum
     integer :: i_core
-    i_core = process%cm%i_core (nlo_to_i_core (nlo_type))
-    core => process%cm%cores(process%cm%i_core(i_core))%core
+    associate (cm => process%cm)
+       do i_core = 1, N_MAX_CORES
+          if (cm%nlo_type(i_core) == nlo_type .and. cm%md5s(i_core) == md5sum) exit
+       end do
+       core => cm%cores(i_core)%core
+    end associate
+    !i_core = process%cm%i_core (nlo_to_i_core (nlo_type))
   end function process_get_core_nlo_type 
 
 @ %def process_get_core_nlo_type 
@@ -6228,6 +6250,7 @@ configuration finalizer may include closing an open scratch file.
 
     component%index = i_component
     component%config => meta%lib%get_component_def_ptr (meta%id, i_component)
+    
     !allocate (component%core, source = core_template)
     !call component%core%init (component%config%get_core_def_ptr (), &
     !     meta%lib, meta%id, i_component)
@@ -6355,7 +6378,8 @@ This calls a method of the [[phs_config]] phase-space implementation.
     call move_alloc (from = phs_config, to = component%phs_config)
   end subroutine process_component_restore_phs_config
 
-@ %def process_component_fill_constants
+@ %def process_component_extrach_phs_config
+@ %def process_component_restore_phs_config
 @
 <<Processes: process component: TBP>>=
   procedure :: get_nlo_type => process_component_get_nlo_type
@@ -7063,6 +7087,21 @@ parameters from outside this module.
   end function process_get_constants
   
 @ %def process_get_constants
+@
+<<Processes: process: TBP>>=
+  procedure :: get_constants_md5sum => process_get_constants_md5sum
+<<Processes: procedures>>=
+  function process_get_constants_md5sum (process, i_component) result (md5sum)
+    character(32) :: md5sum
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: i_component
+    type(process_constants_t) :: data
+    call process%meta%lib%fill_constants (process%meta%id, i_component, data)
+    call data%compute_md5sum (.false.)
+    md5sum = data%md5sum
+  end function process_get_constants_md5sum
+
+@ %def process_get_constants_md5sum
 @ Return the set of outgoing flavors that are associated with a particular
 term. We deduce this from the effective interaction.
 <<Processes: process: TBP>>=
@@ -12771,10 +12810,8 @@ Initialize a process and display it.
     
     allocate (test_t :: core_template)
     allocate (phs_test_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     call process%setup_mci ()
 
@@ -12854,10 +12891,8 @@ functionality.
        call mci_template%set_divisions (100)
     end select
     allocate (phs_test_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     write (u, "(A)")  "* Return the number of process components"
     write (u, "(A)")
@@ -12963,10 +12998,8 @@ functionality.
    
     call process%setup_test_cores ()
     allocate (phs_test_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     write (u, "(A)")  "* Prepare a trivial beam setup"
     write (u, "(A)")
@@ -13121,12 +13154,9 @@ Configure structure functions (multi-channel) in a process object.
          lib, os_data, qcd, rng_factory, model)
     
     call process%setup_test_cores ()
-    !allocate (test_t :: core_template)
     allocate (phs_test_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     write (u, "(A)")  "* Set beam, structure functions, and mappings"
     write (u, "(A)")
@@ -13245,12 +13275,9 @@ structure-function channel.
          lib, os_data, qcd, rng_factory, model)
    
     call process%setup_test_cores () 
-    !allocate (test_t :: core_template)
     allocate (phs_test_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     write (u, "(A)")  "* Set beam, structure functions, and mappings"
     write (u, "(A)")
@@ -13408,12 +13435,9 @@ distinct phase-space channels.
          lib, os_data, qcd, rng_factory, model)
     
     call process%setup_test_cores ()
-    !allocate (test_t :: core_template)
     allocate (phs_test_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     write (u, "(A)")  "* Set beam, structure functions, and mappings"
     write (u, "(A)")
@@ -13588,10 +13612,8 @@ require integration in preparation for generating events.
     type is (mci_test_t);  call mci_template%set_divisions (100)
     end select
     allocate (phs_test_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     write (u, "(A)")  "* Prepare a trivial beam setup"
     write (u, "(A)")
@@ -13721,10 +13743,8 @@ integrate over phase space.
        call mci_template%set_divisions (100)
     end select
     allocate (phs_test_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     write (u, "(A)")  "* Prepare a trivial beam setup"
     write (u, "(A)")
@@ -13826,10 +13846,8 @@ The procedure is re-exported by the [[processes_ut]] module.
     type is (mci_test_t);  call mci_template%set_divisions (100)
     end select
     allocate (phs_test_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
     sqrts = 1000
     call process%setup_beams_sqrts (sqrts, i_core = 1)
     call process%configure_phs ()
@@ -14076,12 +14094,9 @@ compute MD5 sums
          lib, os_data, qcd, rng_factory, model)
     
     call process%setup_test_cores ()
-    !allocate (test_t :: core_template)
     allocate (phs_test_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     write (u, "(A)")  "* Set beam, structure functions, and mappings"
     write (u, "(A)")
@@ -14191,12 +14206,9 @@ Initialize an evaluate a decay process.
          lib, os_data, qcd, rng_factory, model)
     
     call process%setup_test_cores ()
-    !allocate (test_t :: core_template)
     allocate (phs_single_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     write (u, "(A)")  "* Prepare a trivial beam setup"
     write (u, "(A)")
@@ -14344,13 +14356,10 @@ integrate over phase space.
          lib, os_data, qcd, rng_factory, model)
     
     call process%setup_test_cores ()
-    !allocate (test_t :: core_template)
     allocate (mci_midpoint_t :: mci_template)
     allocate (phs_single_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     write (u, "(A)")  "* Prepare a trivial beam setup"
     write (u, "(A)")
@@ -14460,12 +14469,9 @@ Initialize an evaluate a decay process for a moving particle.
          lib, os_data, qcd, rng_factory, model)
     
     call process%setup_test_cores ()
-    !allocate (test_t :: core_template)
     allocate (phs_single_config_t :: phs_config_template)
-    !call process%init_component &
-    !     (1, core_template, mci_template, phs_config_template)
     call process%init_component &
-       (1, .true., process%get_constants(1), mci_template, phs_config_template)
+       (1, .true., mci_template, phs_config_template)
 
     write (u, "(A)")  "* Prepare a trivial beam setup"
     write (u, "(A)")
