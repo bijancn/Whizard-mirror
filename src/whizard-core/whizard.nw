@@ -8566,6 +8566,7 @@ Push it on the stack if the [[global]] environment is supplied.
     type(rt_data_t), intent(inout), optional, target :: global
     type(string_t), intent(in) :: process_id
     type(process_entry_t), pointer :: process_entry
+    call msg_debug (D_CORE, "integration_create_process")
     intg%process_id = process_id
     if (present (global)) then
        allocate (process_entry)
@@ -8604,6 +8605,7 @@ local changes to currently inactive models.
     type(model_t), pointer :: model
     class(model_data_t), pointer :: model_instance
     class(rng_factory_t), allocatable :: rng_factory
+    call msg_debug (D_CORE, "integration_init_process")
     if (.not. local%prclib%contains (intg%process_id)) then
        call msg_fatal ("Process '" // char (intg%process_id) // "' not found" &
             // " in library '" // char (local%prclib%get_name ()) // "'")
@@ -8701,8 +8703,7 @@ local changes to currently inactive models.
 
     call dispatch_phs (phs_config_template, local, &
          intg%process_id, mapping_defs, phs_par)
-    
-    
+
     intg%n_calls_test = &
          var_list%get_ival (var_str ("n_calls_test"))
 
@@ -17193,13 +17194,12 @@ or arrays which would make the expansion ambiguous.
     logical :: requires_pdf
     integer :: n_components_extra
     integer :: gks_multiplicity
-    integer :: i_real, n_real
     integer :: n_emitters
     integer, dimension(:), allocatable :: emitters
     integer :: n_components_init
     integer :: alpha_power, alphas_power
     logical :: requires_soft_mismatch
-
+    call msg_debug (D_CORE, "cmd_process_execute")
     var_list => cmd%local%get_var_list_ptr ()
 
     nlo_fixed_order = cmd%local%nlo_fixed_order
@@ -17234,72 +17234,7 @@ or arrays which would make the expansion ambiguous.
     alphas_power = var_list%get_ival (var_str ("alphas_power"))
     call prc_config%set_coupling_powers (alpha_power, alphas_power)
 
-    do i = 1, n_components
-       call prt_expr_out%term_to_array (prt_spec_out, i_term(i))
-       if (nlo_fixed_order) then
-          associate (active_comp => cmd%local%active_nlo_components)
-             call set_component_list (i_list, i, n_components, &
-                  requires_pdf, &
-                  requires_soft_mismatch, use_powheg_damping, n_emitters)
-
-             call override_local_me_method (born_me_method)
-             call prc_config%setup_component (i, prt_spec_in, prt_spec_out, &
-                  cmd%local%model, var_list, BORN, &
-                  active_in = active_comp (1))
-             call radiation_generator%generate (prt_in_nlo, prt_out_nlo)
-
-             call override_local_me_method (real_tree_me_method)
-             call prc_config%setup_component (n_components + i, &
-                new_prt_spec (prt_in_nlo), new_prt_spec (prt_out_nlo), &
-                  cmd%local%model, var_list, NLO_REAL, &
-                  active_in = active_comp (NLO_REAL + 1))
-
-             call override_local_me_method (loop_me_method)
-             i_real = n_real + 1
-             call prc_config%setup_component (n_components * i_real + i, &
-                  prt_spec_in, prt_spec_out, cmd%local%model, var_list, &
-                  NLO_VIRTUAL, active_in = active_comp (NLO_VIRTUAL + 1))
-
-             call override_local_me_method (correlation_me_method)
-             i_real = i_real + 1
-             call prc_config%setup_component (n_components * i_real + i, prt_spec_in, &
-                prt_spec_out, cmd%local%model, var_list, NLO_SUBTRACTION, &
-                active_in = active_comp (NLO_SUBTRACTION + 1))
-             if (requires_pdf) then
-                ! TODO: (bcn 2016-01-26) why only omega here?
-                call override_local_me_method (var_str ("omega"))
-                call prc_config%setup_component (n_components * 4 + i, prt_spec_in, &
-                   prt_spec_out, cmd%local%model, var_list, NLO_DGLAP, &
-                   active_in = active_comp (NLO_DGLAP + 1))
-             end if
-
-             if (requires_soft_mismatch) then
-                ! TODO: (bcn 2016-01-26) why only omega here?
-                call override_local_me_method (var_str ("omega"))
-                call prc_config%setup_component (n_components * 4 + i, &
-                   new_prt_spec (prt_in_nlo), new_prt_spec (prt_out_nlo), &
-                   cmd%local%model, var_list, NLO_MISMATCH, &
-                   active_in = active_comp (NLO_MISMATCH + 1))
-             end if
-
-             call prc_config%set_component_associations (i_list, &
-                  requires_pdf, use_powheg_damping, requires_soft_mismatch)
-          end associate
-       else if (gks_active) then
-          call override_local_me_method (var_str ("omega"))
-          call prc_config%setup_component (i, prt_spec_in, prt_spec_out, &
-               cmd%local%model, var_list, BORN, active_in = .true.)
-          call radiation_generator%reset_queue ()
-          do j = 1, n_components_extra
-             prt_out_nlo =  radiation_generator%get_next_state ()
-             call prc_config%setup_component (i + j, &
-                new_prt_spec (prt_in), new_prt_spec (prt_out_nlo), &
-                cmd%local%model, var_list, GKS, active_in = .false.)
-          end do
-       else
-          call prc_config%setup_component (i, prt_spec_in, prt_spec_out, cmd%local%model, var_list)
-       end if
-    end do
+    call setup_components ()
     call prc_config%record (cmd%local)
 
   contains
@@ -17430,6 +17365,107 @@ or arrays which would make the expansion ambiguous.
        call pdg_array_delete (pdg)
     end do
   end subroutine split_prt
+
+@
+@
+<<Commands: cmd process execute procedures>>=
+  subroutine setup_components()
+    integer :: i_comp
+    call msg_debug (D_CORE, "setup_components")
+    do i = 1, n_components
+       call prt_expr_out%term_to_array (prt_spec_out, i_term(i))
+       if (nlo_fixed_order) then
+          associate (active_comp => cmd%local%active_nlo_components)
+             call set_component_list (i_list, i, n_components, &
+                  requires_pdf, requires_soft_mismatch, &
+                  use_powheg_damping, n_emitters)
+
+             call override_local_me_method (born_me_method)
+             i_comp = i
+             call msg_debug (D_CORE, "Setting up this NLO component:", i_comp)
+             call prc_config%setup_component (i_comp, &
+                  prt_spec_in, prt_spec_out, &
+                  cmd%local%model, var_list, BORN, &
+                  active_in = active_comp (1))
+
+             call radiation_generator%generate (prt_in_nlo, prt_out_nlo)
+             call override_local_me_method (real_tree_me_method)
+             i_comp = n_components + i
+             call msg_debug (D_CORE, "Setting up this NLO component:", i_comp)
+             call prc_config%setup_component (i_comp, &
+                  new_prt_spec (prt_in_nlo), new_prt_spec (prt_out_nlo), &
+                  cmd%local%model, var_list, NLO_REAL, &
+                  active_in = active_comp (NLO_REAL + 1))
+
+             call override_local_me_method (loop_me_method)
+             i_comp = n_components * 2 + i
+             call msg_debug (D_CORE, "Setting up this NLO component:", i_comp)
+             call prc_config%setup_component (i_comp, &
+                  prt_spec_in, prt_spec_out, &
+                  cmd%local%model, var_list, NLO_VIRTUAL, &
+                  active_in = active_comp (NLO_VIRTUAL + 1))
+
+             call override_local_me_method (correlation_me_method)
+             i_comp = n_components * 3 + i
+             call msg_debug (D_CORE, "Setting up this NLO component:", i_comp)
+             call prc_config%setup_component (i_comp, &
+                  prt_spec_in, prt_spec_out, &
+                  cmd%local%model, var_list, NLO_SUBTRACTION, &
+                active_in = active_comp (NLO_SUBTRACTION + 1))
+
+             if (use_powheg_damping) then
+                call override_local_me_method (real_tree_me_method)
+                i_comp = n_components * 4 + i
+                call msg_debug (D_CORE, "Setting up this NLO component:", i_comp)
+                call prc_config%setup_component (i_comp, &
+                     new_prt_spec (prt_in_nlo), new_prt_spec (prt_out_nlo), &
+                     cmd%local%model, var_list, NLO_REAL, &
+                     active_in = active_comp (NLO_REAL + 1))
+             end if
+
+             if (requires_pdf) then
+                ! TODO: (bcn 2016-01-26) why only omega here?
+                call override_local_me_method (var_str ("omega"))
+                i_comp = n_components * 4 + i
+                call msg_debug (D_CORE, "Setting up this NLO component:", i_comp)
+                call prc_config%setup_component (i_comp, &
+                     prt_spec_in, prt_spec_out, &
+                     cmd%local%model, var_list, NLO_DGLAP, &
+                     active_in = active_comp (NLO_DGLAP + 1))
+             end if
+
+             if (requires_soft_mismatch) then
+                ! TODO: (bcn 2016-01-26) why only omega here?
+                call override_local_me_method (var_str ("omega"))
+                i_comp = n_components * 4 + i
+                call msg_debug (D_CORE, "Setting up this NLO component:", i_comp)
+                call prc_config%setup_component (i_comp, &
+                   new_prt_spec (prt_in_nlo), new_prt_spec (prt_out_nlo), &
+                   cmd%local%model, var_list, NLO_MISMATCH, &
+                   active_in = active_comp (NLO_MISMATCH + 1))
+             end if
+
+             call prc_config%set_component_associations (i_list, &
+                  requires_pdf, use_powheg_damping, requires_soft_mismatch)
+          end associate
+       else if (gks_active) then
+          call override_local_me_method (var_str ("omega"))
+          call prc_config%setup_component (i, prt_spec_in, prt_spec_out, &
+               cmd%local%model, var_list, BORN, active_in = .true.)
+          call radiation_generator%reset_queue ()
+          do j = 1, n_components_extra
+             prt_out_nlo =  radiation_generator%get_next_state ()
+             call prc_config%setup_component (i + j, &
+                new_prt_spec (prt_in), new_prt_spec (prt_out_nlo), &
+                cmd%local%model, var_list, GKS, active_in = .false.)
+          end do
+       else
+          call prc_config%setup_component (i, &
+               prt_spec_in, prt_spec_out, &
+               cmd%local%model, var_list)
+       end if
+    end do
+  end subroutine setup_components
 
 @
 @ These three functions should be bundled with the logicals they depend
