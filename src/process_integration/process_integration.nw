@@ -2283,14 +2283,15 @@ module pcm_base
   use process_libraries, only: process_component_def_t, process_library_t
   use model_data, only: model_data_t
   
-  use prc_test, only: prc_test_t
+  use prc_core_def, only: prc_core_def_t 
+  use prc_test, only: prc_test_t, prc_test_def_t
   use prc_core, only: prc_core_t, helicity_selection_t
-  use prc_template_me, only: prc_template_me_t
-  use prc_omega, only: prc_omega_t
-  use prc_threshold, only: prc_threshold_t
-  use prc_user_defined, only: prc_user_defined_test_t
-  use prc_gosam, only: prc_gosam_t
-  use prc_openloops, only: prc_openloops_t
+  use prc_template_me, only: prc_template_me_t, template_me_def_t
+  use prc_omega, only: prc_omega_t, omega_def_t
+  use prc_threshold, only: prc_threshold_t, threshold_def_t
+  use prc_user_defined, only: prc_user_defined_test_t, user_defined_test_def_t
+  use prc_gosam, only: prc_gosam_t, gosam_def_t
+  use prc_openloops, only: prc_openloops_t, openloops_def_t
   
   use blha_olp_interfaces, only: prc_blha_t, blha_template_t 
 
@@ -2326,7 +2327,36 @@ and allocates the corresponding manager instance.
   integer, parameter, public :: CORE_RECOLA = 8
   integer, parameter, public :: N_MAX_CORES = 100
  
+@ Translate a [[prc_core_def_t]] to above named integers
+<<PCM base: public>>=
+  public :: get_core_identifier
+<<PCM base: procedures>>=
+  function get_core_identifier (core_def) result (core_type)
+    integer :: core_type
+    class(prc_core_def_t), intent(in) :: core_def
+    select type (core_def)
+    type is (prc_test_def_t)
+       core_type = CORE_TEST
+    type is (template_me_def_t)
+       core_type = CORE_TEMPLATE
+    class is (omega_def_t)
+       core_type = CORE_OMEGA
+    type is (gosam_def_t)
+       core_type = CORE_GOSAM
+    type is (openloops_def_t)
+       core_type = CORE_OPENLOOPS
+    type is (user_defined_test_def_t)
+       core_type = CORE_DUMMY
+    type is (threshold_def_t)
+       core_type = CORE_THRESHOLD
+    class default
+       core_type = CORE_UNDEFINED
+    end select
+  end function get_core_identifier
+
+@ %def get_core_identifier 
 @ Auxilliary container for polymorphic cores.
+@
 <<PCM base: types>>=
   type :: generic_core_t
     class(prc_core_t), allocatable :: core
@@ -2341,6 +2371,7 @@ and allocates the corresponding manager instance.
     integer, dimension(N_MAX_CORES) :: me = 0
     integer, dimension(N_MAX_CORES) :: def_ptr_index = 0
     integer, dimension(N_MAX_CORES) :: i_core
+    logical, dimension(N_MAX_CORES) :: sub = .false.
     character(32), dimension(N_MAX_CORES) :: md5s = ""
     integer, dimension(N_MAX_CORES) :: nlo_type
     integer :: n_cores = 0
@@ -3093,15 +3124,47 @@ freed.
 @
 <<Processes: process: TBP>>=
   procedure :: core_manager_register => process_core_manager_register
+  procedure :: core_manager_register_default => process_core_manager_register_default
+  procedure :: core_manager_register_sub => process_core_manager_register_sub
 <<Processes: procedures>>=
-  subroutine process_core_manager_register (process, nlo_type, core_type, i_component)
+  subroutine process_core_manager_register (process, &
+     nlo_type, core_type, i_component)
+    class(process_t), intent(inout) :: process
+    integer, intent(in) :: nlo_type, core_type, i_component
+    if (nlo_type == NLO_SUBTRACTION) then
+       call process%core_manager_register_sub (nlo_type, core_type, i_component)
+    else
+       call process%core_manager_register_default (nlo_type, core_type, i_component)
+    end if
+  end subroutine process_core_manager_register
+
+  subroutine process_core_manager_register_sub (process, &
+     nlo_type, core_type, i_component)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: nlo_type, core_type, i_component
     character(32) :: md5sum
     md5sum = process%get_constants_md5sum (i_component)
-    if (.not. any (process%cm%md5s == md5sum)) &
+    if (count (process%cm%md5s == md5sum) > 0) then
+       where (process%cm%md5s == md5sum)
+          process%cm%sub = .true.
+       end where
+    else
        call process%cm%register (nlo_type, core_type, i_component, md5sum)
-  end subroutine process_core_manager_register
+    end if
+  end subroutine process_core_manager_register_sub
+
+  subroutine process_core_manager_register_default &
+     (process, nlo_type, core_type, i_component)
+    class(process_t), intent(inout) :: process
+    integer, intent(in) :: nlo_type, core_type, i_component
+    character(32) :: md5sum
+    logical :: register
+    md5sum = process%get_constants_md5sum (i_component)
+    register = (.not. any (process%cm%md5s == md5sum)) .or. &
+               (.not. any (process%cm%me == core_type))
+    if (register) &
+       call process%cm%register (nlo_type, core_type, i_component, md5sum)
+  end subroutine process_core_manager_register_default
 
 @ %def process_core_manager_register
 @
@@ -3255,27 +3318,19 @@ from the library.
       character(32), intent(in) :: md5sum
       integer :: index
       do index = 1, N_MAX_CORES
-         if (process%cm%nlo_type(index) == nlo_type .and. &
-             process%cm%md5s(index) == md5sum) then
-            i_core = index
-            exit
+         if (sub) then
+            if (process%cm%sub(index)) then
+                i_core = index
+                exit
+            end if
+         else       
+            if (process%cm%nlo_type(index) == nlo_type .and. &
+                process%cm%md5s(index) == md5sum) then
+               i_core = index
+               exit
+            end if
          end if
       end do
-      !if (sub) then
-      !   i_core = process%cm%i_core (4)
-      !else
-      !   select case (nlo_type)
-      !   case (BORN)
-      !      index = 1
-      !   case (NLO_REAL)
-      !      index = 2
-      !   case (NLO_VIRTUAL) 
-      !      index = 3
-      !   case (NLO_SUBTRACTION)
-      !      index = 4
-      !   end select
-      !   i_core = process%cm%i_core (index)
-      !end if    
     end function set_i_core
   end subroutine process_setup_terms
 
@@ -6202,15 +6257,15 @@ configuration finalizer may include closing an open scratch file.
 <<Processes: process: TBP>>=
   procedure :: get_core_nlo_type => process_get_core_nlo_type
 <<Processes: procedures>>=
-  function process_get_core_nlo_type (process, nlo_type, md5sum) result (core)
+  function process_get_core_nlo_type (process, core_type, md5sum) result (core)
     class(prc_core_t), pointer :: core
     class(process_t), intent(in), target :: process
-    integer, intent(in) :: nlo_type
+    integer, intent(in) :: core_type
     character(32), intent(in) :: md5sum
     integer :: i_core
     associate (cm => process%cm)
        do i_core = 1, N_MAX_CORES
-          if (cm%nlo_type(i_core) == nlo_type .and. cm%md5s(i_core) == md5sum) exit
+          if (cm%me(i_core) == core_type .and. cm%md5s(i_core) == md5sum) exit
        end do
        core => cm%cores(i_core)%core
     end associate
@@ -6224,7 +6279,10 @@ configuration finalizer may include closing an open scratch file.
     integer :: i_core
     class(process_t), intent(in) :: process
     integer, intent(in) :: nlo_type
-    i_core = process%cm%i_core (nlo_to_i_core (nlo_type))
+    do i_core = 1, process%cm%n_cores 
+       if (process%cm%nlo_type (i_core) == nlo_type) return
+    end do
+    i_core = -1
   end function process_get_i_core_nlo_type
 
 @ %def process_get_i_core_nlo_type
@@ -7970,12 +8028,11 @@ matter of the process core.
     nlo_type = component%config%config%get_nlo_type ()
     component%nlo_type = nlo_type
     n_tot = data%get_n_tot ()
-    allocate (component%p_seed (n_tot))
     !select case (nlo_type)
     !case (NLO_REAL, NLO_MISMATCH)
     !  allocate (component%p_seed (n_tot - 1))
     !case (BORN, NLO_VIRTUAL, NLO_DGLAP, NLO_SUBTRACTION)
-    !  allocate (component%p_seed (n_tot))
+    allocate (component%p_seed (n_tot))
     !end select
     !call core%allocate_workspace (component%core_state)
   end subroutine component_instance_init
@@ -8008,6 +8065,8 @@ allocated explicitly.
     call component%k_seed%set_nlo_info (nlo_type)
     select type (phs => component%k_seed%phs)
     type is (phs_fks_t)
+       call phs%allocate_momenta (component%config%phs_config, &
+          .not. (nlo_type == NLO_REAL))
        call phs%init_phs_identifiers (component%nlo_controller%reg_data)
        call component%nlo_controller%set_alr_to_i_phs (phs%phs_identifiers)
     end select
@@ -9200,7 +9259,6 @@ The quantum numbers mask of the incoming particle
     integer :: i_em, emitter
     sqme = zero
     associate (nlo_controller => term%nlo_controller)
-       !print *, 'emitter: ', term%k_term%emitter
        call nlo_controller%set_alpha_s_born &
           (core%get_alpha_s (term%core_state))
        call nlo_controller%real_terms%set_real_kinematics &
@@ -10369,7 +10427,8 @@ to subobject of [[instance]].
     !type(nlo_settings_t), intent(in), optional :: nlo_settings
     type(process_t), pointer :: process
     integer :: i_component
-    type(process_constants_t), dimension(2), save :: prc_constants
+    !!!type(process_constants_t), dimension(2), save :: prc_constants
+    type(process_constants_t) :: data_born, data_real
     integer :: nlo_type
     integer :: i_born, i_real
     logical :: use_internal_cc, use_internal_sc
@@ -10385,6 +10444,10 @@ to subobject of [[instance]].
        pcm_instance%controller%sqme_collector => pcm_instance%collector
 
        process => instance%process
+       i_born = process%get_i_core_nlo_type (BORN)
+       i_real = process%get_i_core_nlo_type (NLO_REAL)
+       data_born = process%get_constants (i_born)
+       data_real = process%get_constants (i_real)
        do i_component = 1, size (instance%component)
           if (process%component(i_component)%active) then
              associate (component => instance%component(i_component))
@@ -10394,11 +10457,6 @@ to subobject of [[instance]].
                   select case (nlo_type)
                   case (BORN)
                   case (NLO_REAL)
-                     i_born = component%config%i_term(1)
-                     !!! TODO (cw-2016-07-18): More generic indices
-                     i_real = component%config%i_term(3)
-                     call process%term(i_born)%get_process_constants (prc_constants(1))
-                     call process%term(i_real)%get_process_constants (prc_constants(2))
                      select type (pcm => instance%process%pcm)
                      type is (pcm_nlo_t)
                         nlo_controller%settings => pcm%settings
@@ -10445,15 +10503,16 @@ to subobject of [[instance]].
                           !   process%component(i_component)%fks_template, &
                           !   process%component(i_component)%phs_config, model)
                        !end select
-                       call nlo_controller%fill_particle_states (prc_constants)
-                       call nlo_controller%init_color_data (prc_constants, &
+                       !call nlo_controller%fill_particle_states (prc_constants)
+                       call nlo_controller%init_color_data  &
+                          ([data_born, data_real], &
                           process%term(i_real)%flv, process%term(i_real)%col)
                        call nlo_controller%setup_real_terms &
                           (process%component(i_component)%fks_template, &
                            process%component(i_component)%phs_config%sqrts)
-                       call nlo_controller%set_flv_born (process%term(i_born)%flv)
-                       call nlo_controller%set_col_born (process%term(i_born)%col)
-                       call nlo_controller%set_hel_born (process%term(i_born)%hel)
+                       !call nlo_controller%set_flv_born (process%term(i_born)%flv)
+                       !call nlo_controller%set_col_born (process%term(i_born)%col)
+                       !call nlo_controller%set_hel_born (process%term(i_born)%hel)
                        allocate (instance%sqme_real &
                           (nlo_controller%reg_data%n_flv_real, &
                           component%nlo_controller%reg_data%n_phs))
