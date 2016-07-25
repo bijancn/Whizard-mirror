@@ -222,6 +222,35 @@ case "$OMEGA_DEFAULT_UFO_DIR" in
               ;;
 esac
 
+AC_ARG_ENABLE([default-WHIZARD-dir],
+[  --enable-default-WHIZARD-dir=directory
+                          Read precomputed model tables from this directory,
+                          which will be populated by an administrator at
+                          install time [[default=$datadir/whizard, enabled]].],
+[case "$enableval" in
+   no) OMEGA_DEFAULT_WHIZARD_DIR="."
+       ;;
+    *) OMEGA_DEFAULT_WHIZARD_DIR="$enableval"
+       ;;
+esac],
+[### use eval b/c $datadir defaults to unexpanded ${datarootdir}
+case "$OMEGA_DEFAULT_WHIZARD_DIR" in
+   "") OMEGA_DEFAULT_WHIZARD_DIR="${prefix}/share/whizard"
+      ;;
+   *) eval OMEGA_DEFAULT_WHIZARD_DIR="$datadir/whizard"
+      ;;
+esac])
+AC_SUBST([OMEGA_DEFAULT_WHIZARD_DIR])
+
+case "$OMEGA_DEFAULT_WHIZARD_DIR" in
+  .|""|NONE*) OMEGA_DEFAULT_WHIZARD_DIR="."
+              ;;
+           *) AC_MSG_NOTICE([Creating default WHIZARD directory $OMEGA_DEFAULT_WHIZARD_DIR])
+              $MKDIR_P "$OMEGA_DEFAULT_WHIZARD_DIR" 2>/dev/null
+              chmod u+w "$OMEGA_DEFAULT_WHIZARD_DIR" 2>/dev/null
+              ;;
+esac
+
 ###---------------------------------------------------------------------
 ### Noweb
 

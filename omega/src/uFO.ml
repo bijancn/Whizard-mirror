@@ -1685,6 +1685,7 @@ i.e.
         ([], [], []) (values model.vertices)
 
     let ufo_directory = ref Config.default_UFO_dir
+    let whizard_directory = ref Config.default_WHIZARD_dir
 
     let dump_raw = ref false
 
@@ -1788,15 +1789,22 @@ i.e.
         ~flavor_symbol ~gauge_symbol ~mass_symbol ~width_symbol
         ~constant_symbol:(fun c -> "g")
 
-    let load () =
+    let load_UFO () =
       init ()
+
+    let write_WHIZARD () =
+      failwith "UFO.write_WHIZARD: not implemented yet!"
 
     let options = Options.create
         [ ("UFO_dir", Arg.String (fun name -> ufo_directory := name),
            "UFO model directory (default: " ^ !ufo_directory ^ ")");
-          ("dump", Arg.Set dump_raw, "dump UFO model");
-          ("exec", Arg.Unit load,
-           "load the model files (required _before_ any particle)");
+          ("WHIZARD_dir", Arg.String (fun name -> whizard_directory := name),
+           "WHIZARD model directory (default: " ^ !whizard_directory ^ ")");
+          ("write_WHIZARD", Arg.Unit write_WHIZARD,
+           "write the WHIZARD model files (required once per model)");
+          ("exec", Arg.Unit load_UFO,
+           "load the UFO model files (required _before_ using particles names)");
+          ("dump", Arg.Set dump_raw, "dump UFO model for debugging the parser");
           ("help", Arg.Unit (fun () -> prerr_endline "..."),
            "print information on the model")]
 
