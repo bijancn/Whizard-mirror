@@ -2411,7 +2411,6 @@ and allocates the corresponding manager instance.
     integer, intent(in) :: nlo_type, core_type, i_component
     character(32), intent(in) :: md5sum
     integer :: index
-    print *, 'Register: ', i_component
     index = nlo_to_i_core (nlo_type)
     cm%me(cm%current_index) = core_type
     cm%nlo_type(cm%current_index) = nlo_type
@@ -2451,10 +2450,6 @@ and allocates the corresponding manager instance.
     !end do
     !cm%n_cores = n_cores
     allocate (cm%cores (cm%n_cores))
-    print *, 'n_cores: ', cm%n_cores
-    print *, 'cm%me: ', cm%me
-    print *, 'use cores: ', use_cores
-    print *, 'All def_ptr indices: ', cm%def_ptr_index
     !do i = 1, n_cores
     !   if (i == n_cores .and. includes_real) then
     !      cm%i_core(2) = i
@@ -3214,21 +3209,20 @@ from the library.
 <<Processes: procedures>>=
   subroutine process_init_component &
        (process, index, active, mci_template, phs_config_template, &
-        fks_template, blha_template)
+        fks_template)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: index
     logical, intent(in) :: active
     class(mci_t), intent(in), allocatable :: mci_template
     class(phs_config_t), intent(in), allocatable :: phs_config_template
     type(fks_template_t), intent(in), optional :: fks_template
-    type(blha_template_t), intent(inout), optional :: blha_template
     type(process_constants_t) :: data
     call process%meta%lib%fill_constants (process%meta%id, index, data)
     call process%component(index)%init (index, &
          process%meta, process%config, &
          active, data, &
          mci_template, phs_config_template, &
-         blha_template, fks_template)
+         fks_template)
     if (.not. process%component(index)%active) then
        call process%meta%deactivate_component(index)
     end if
@@ -3362,10 +3356,6 @@ This restriction could be removed by extending the code in the
     type(flavor_t), dimension(2) :: flv_in
     integer :: i, i0, i_term_base
     class(prc_core_t), pointer :: core => null ()
-    if (present (beam_structure)) then
-       print *, 'BEAM STRUCTURE'
-       call beam_structure%write ()
-    end if
     allocate (pdg_in (2, process%meta%n_components))
     i0 = 0
     do i = 1, process%meta%n_components
@@ -6283,8 +6273,6 @@ configuration finalizer may include closing an open scratch file.
     logical :: skip_sub
     skip_sub = .false.
     if (present (include_sub)) skip_sub = .not. include_sub
-    print *, 'skip_sub: ', skip_sub
-    print *, 'sub: ', process%cm%sub
     do i_core = 1, process%cm%n_cores 
        if (skip_sub) then
           if (process%cm%sub(i_core)) cycle
@@ -6318,7 +6306,7 @@ configuration finalizer may include closing an open scratch file.
        i_component, meta, config, &
        active, data, &
        mci_template, phs_config_template, & 
-       blha_template, fks_template)
+       fks_template)
     class(process_component_t), intent(out) :: component
     integer, intent(in) :: i_component
     type(process_metadata_t), intent(in) :: meta
@@ -6327,7 +6315,6 @@ configuration finalizer may include closing an open scratch file.
     type(process_constants_t), intent(in) :: data
     class(mci_t), intent(in), allocatable :: mci_template
     class(phs_config_t), intent(in), allocatable :: phs_config_template
-    type(blha_template_t), intent(inout), optional :: blha_template
     type(fks_template_t), intent(in), optional :: fks_template
     logical :: activate_blha
 
@@ -8320,6 +8307,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
     class(prc_core_t), intent(in) :: core
     real(default) :: sqme
     integer :: n_flv, i_flv
+    if (term%nlo_type /= BORN) return
     i_flv = 1
     sqme = zero
     if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) then
@@ -12258,34 +12246,6 @@ and directly set the coupling value that comes together with a particle set.
 @ %def process_instance_keep_failed_events
 @
 <<Processes: process instance: TBP>>=
-  procedure :: has_blha_component => process_instance_has_blha_component
-<<Processes: procedures>>=
-  function process_instance_has_blha_component (instance) result (val)
-    logical :: val
-    class(process_instance_t), intent(in) :: instance
-    integer :: i
-    logical :: skip
-    val = .false.
-    !do i = 1, size (instance%component)
-    !   if (associated (instance%component(i)%config)) then
-    !      associate (config => instance%component(i)%config)
-    !         !!! Always take into account the subtraction component
-    !         skip = .not. config%is_active_component () .and. &
-    !            .not. config%get_nlo_type () == NLO_SUBTRACTION 
-    !         if (skip) cycle
-    !         select type (core => config%core)
-    !         class is (prc_blha_t)
-    !            val = .true.
-    !            exit
-    !         end select
-    !      end associate
-    !   end if
-    !end do
-  end function process_instance_has_blha_component
-
-@ %def process_instance_has_blha_component
-@
-<<Processes: process instance: TBP>>=
   procedure :: needs_extra_code => process_instance_needs_extra_code
 <<Processes: procedures>>=
   function process_instance_needs_extra_code (instance) result (val)
@@ -12294,24 +12254,18 @@ and directly set the coupling value that comes together with a particle set.
     integer :: i
     logical :: skip
     val = .false.
-    !do i = 1, size (instance%component)
-    !   if (associated (instance%component(i)%config)) then
-    !      !!! Always take into account the subtraction component
-    !      associate (config => instance%component(i)%config)
-    !         skip = .not. config%get_nlo_type () == NLO_SUBTRACTION &
-    !            .and. .not. config%is_active_component ()
-    !         if (skip) cycle
-    !         select type (core => config%core)
-    !         class is (prc_blha_t)
-    !            val = .true.
-    !            exit
-    !         class is (prc_threshold_t)
-    !            val = .true.
-    !            exit
-    !         end select
-    !      end associate
-    !   end if
-    !end do
+    associate (cm => instance%process%cm)
+       do i = 1, cm%n_cores
+         select type (core => cm%cores(i)%core)
+         class is (prc_blha_t)
+            val = .true.
+            exit
+         class is (prc_threshold_t)
+            val = .true.
+            exit
+         end select
+       end do
+    end associate
   end function process_instance_needs_extra_code
 
 @ %def process_instance_needs_extra_code
@@ -12362,8 +12316,8 @@ and directly set the coupling value that comes together with a particle set.
     logical :: use_cms, use_collier
     type(string_t) :: openloops_extra_cmd
 
-    associate (process => instance%process)
-       associate (var_list => process%meta%var_list)
+    associate (cm => instance%process%cm)
+       associate (var_list => instance%process%meta%var_list)
           born_me_method = var_list%get_sval (var_str ("$born_me_method"))
           real_tree_me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
           loop_me_method = var_list%get_sval (var_str ("$loop_me_method"))
@@ -12375,21 +12329,21 @@ and directly set the coupling value that comes together with a particle set.
           use_collier = var_list%get_lval (var_str ("?openloops_use_collier"))
        end associate
        call instance%get_coupling_powers (alpha_power, alphas_power)
-       do i = 1, size (process%term)
-          if (instance%component(i)%nlo_type == BORN) then
+       do i = 1, cm%n_cores
+          if (cm%nlo_type(i) == BORN) then
              !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
              if (.not. allocated (flv_born)) &
-                allocate (flv_born (size (process%term(i)%data%flv_state, 1), &
-                   size (process%term(i)%data%flv_state, 2)))
-             flv_born = process%term(i)%data%flv_state
-             n_in = process%term(i)%data%n_in
-          else if (instance%component(i)%nlo_type == NLO_REAL) then
+                allocate (flv_born (size (cm%cores(i)%core%data%flv_state, 1), &
+                   size (cm%cores(i)%core%data%flv_state, 2)))
+             flv_born = cm%cores(i)%core%data%flv_state
+             n_in = cm%cores(i)%core%data%n_in
+          else if (cm%nlo_type(i) == NLO_REAL) then
              !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
              if (.not. allocated (flv_real)) &
-                allocate (flv_real (size (process%term(i)%data%flv_state, 1), &
-                   size (process%term(i)%data%flv_state, 2)))
-             flv_real = process%term(i)%data%flv_state
-             n_in = process%term(i)%data%n_in
+                allocate (flv_real (size (cm%cores(i)%core%data%flv_state, 1), &
+                   size (cm%cores(i)%core%data%flv_state, 2)))
+             flv_real = cm%cores(i)%core%data%flv_state
+             n_in = cm%cores(i)%core%data%n_in
           end if
        end do
        use_external_borns = born_me_method /= 'omega'
@@ -12434,9 +12388,9 @@ and directly set the coupling value that comes together with a particle set.
           use_collier, &
           extra_cmd = openloops_extra_cmd, &
           beam_structure = beam_structure)
-       call blha_master%init (process%meta%id, process%config%model, &
+       call blha_master%init (instance%process%meta%id, instance%process%config%model, &
           n_in, alpha_power, alphas_power, flv_born, flv_real)
-       call blha_master%generate (process%meta%id)
+       call blha_master%generate (instance%process%meta%id)
     end associate 
   end subroutine process_instance_create_blha_interface
 
@@ -12453,61 +12407,55 @@ one has to bring NLO information there.
     type(beam_structure_t), intent(in) :: beam_structure
     type(os_data_t), intent(in) :: os_data
     type(string_t) :: libname
-    integer :: i, n_sub
+    integer :: i, i_component, n_sub
     logical :: skip
     type(vector4_t), dimension(:), allocatable :: p
 
-    if (instance%has_blha_component ())  &
+    if (instance%needs_extra_code ())  &
          call instance%create_blha_interface (beam_structure)
-    !do i = 1, size (instance%component)
-    !   if (associated (instance%component(i)%config)) then
-    !      associate (component_config => instance%component(i)%config)
-    !         !!! Always load libraries for the subtraction component so that
-    !         !!! other components can use it
-    !         skip = .not. component_config%get_nlo_type () == NLO_SUBTRACTION &
-    !            .and. .not. component_config%config%is_active_component ()
-    !         if (skip) cycle
-    !         select type (core => component_config%core)
-    !         type is (prc_gosam_t)
-    !            libname = instance%process%get_library_name ()
-    !            call core%prepare_library (os_data, libname)
-    !            call core%start ()
-    !            call core%read_contract_file (instance%process%term(i)%data%flv_state)
-    !            call core%set_particle_properties (instance%process%config%model)
-    !            call core%set_electroweak_parameters (instance%process%config%model)
-    !            call core%print_parameter_file (i)
-    !         type is (prc_openloops_t)
-    !            call core%set_n_external (instance%component(i)%get_n_particles ())
-    !            call core%prepare_library (os_data, instance%process%config%model, &
-    !                 instance%process%meta%var_list)
-    !            call core%start ()
-    !            call core%read_contract_file (instance%process%term(i)%data%flv_state)
-    !            call core%print_parameter_file (i)
-    !            call core%reset_helicity_list ()
-    !            select type (pcm => instance%pcm)
-    !            type is (pcm_instance_nlo_t)
-    !               n_sub =  pcm%controller%get_n_sub ()
-    !            end select
-    !            if (component_config%config%get_nlo_type () /= NLO_SUBTRACTION) then
-    !               if (core%includes_polarization ()) then
-    !                  call instance%transfer_helicities (instance%component(i), core)
-    !                  p = instance%get_phase_space_point (i)
-    !                  call core%warmup_helicities (p)
-    !               else
-    !                  call core%set_helicity_list_trivial (n_sub)
-    !               end if
-    !            else
-    !               call core%set_helicity_list_trivial (n_sub)
-    !            end if
-    !         type is (prc_threshold_t)
-    !            if (component_config%config%get_nlo_type () == NLO_VIRTUAL) then
-    !               libname = instance%process%get_library_name ()
-    !               call core%load_extra_libraries (os_data, libname, component_config%config%get_nlo_type ())
-    !            end if
-    !         end select
-    !      end associate
-    !   end if
-    !end do
+    associate (cm => instance%process%cm)
+       do i = 1, cm%n_cores
+          select type (core => cm%cores(i)%core)
+          type is (prc_gosam_t)
+             libname = instance%process%get_library_name ()
+             call core%prepare_library (os_data, libname)
+             call core%start ()
+             call core%read_contract_file (core%data%flv_state)
+             call core%set_particle_properties (instance%process%config%model)
+             call core%set_electroweak_parameters (instance%process%config%model)
+             call core%print_parameter_file (i)
+          type is (prc_openloops_t)
+             call core%set_n_external (core%data%get_n_tot ())
+             call core%prepare_library (os_data, instance%process%config%model, &
+                  instance%process%meta%var_list)
+             call core%start ()
+             call core%read_contract_file (core%data%flv_state)
+             call core%print_parameter_file (i)
+             call core%reset_helicity_list ()
+             select type (pcm => instance%pcm)
+             type is (pcm_instance_nlo_t)
+                n_sub =  pcm%controller%get_n_sub ()
+             end select
+             if (cm%nlo_type(i) /= NLO_SUBTRACTION) then
+                if (core%includes_polarization ()) then
+                   i_component = cm%def_ptr_index(i)
+                   call instance%transfer_helicities (instance%component(i_component), core)
+                   p = instance%get_phase_space_point (i_component)
+                   call core%warmup_helicities (p)
+                else
+                   call core%set_helicity_list_trivial (n_sub)
+                end if
+             else
+                call core%set_helicity_list_trivial (n_sub)
+             end if
+          type is (prc_threshold_t)
+             if (cm%nlo_type(i) == NLO_VIRTUAL) then
+                libname = instance%process%get_library_name ()
+                call core%load_extra_libraries (os_data, libname, cm%nlo_type(i))
+             end if
+          end select
+       end do
+    end associate
   end subroutine process_instance_create_and_load_extra_libraries
 
 @ %def process_instance_create_and_load_extra_libraries

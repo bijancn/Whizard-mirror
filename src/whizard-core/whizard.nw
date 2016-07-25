@@ -8701,7 +8701,7 @@ local changes to currently inactive models.
     logical :: sf_trace
     logical :: verb
     type(blha_template_t) :: blha_template
-    type(string_t) :: me_method, sf_string
+    type(string_t) :: sf_string
     class(phs_config_t), allocatable :: phs_config_template_other
     integer :: i_real = 0
     integer :: i_core
@@ -8762,7 +8762,8 @@ local changes to currently inactive models.
        call intg%process%allocate_core (i_core, core_template)
        deallocate (core_template)
     end do
-    print *, 'init cores: '
+
+    call fill_blha_template ()
     call intg%process%init_cores (blha_template)
         
     do i_component = 1, n_components
@@ -8796,7 +8797,7 @@ local changes to currently inactive models.
        case default
           call msg_fatal ("setup_process: NLO type not implemented!")
        end select
-       call blha_template%reset ()
+       !call blha_template%reset ()
        if (allocated (phs_config_template_other)) &
           deallocate (phs_config_template_other)
     end do
@@ -8924,60 +8925,33 @@ local changes to currently inactive models.
     end function get_me_method
 
     subroutine setup_born_component ()
-      me_method = var_list%get_sval (var_str ("$born_me_method"))
-      select case (char (me_method))
-      case ('gosam', 'openloops')
-         call blha_template%set_born ()
-         call intg%process%init_component &
-            (i_component, core%has_matrix_element (), &
-             mci_template, phs_config_template, &
-             blha_template = blha_template)
-      case default
-         call intg%process%init_component &
-            (i_component, core%has_matrix_element (), &
-             mci_template, phs_config_template)
-      end select
+      call intg%process%init_component &
+         (i_component, core%has_matrix_element (), &
+          mci_template, phs_config_template)
       if (intg%combined_integration) &
          call intg%process%set_component_type (i_component, COMP_MASTER)
     end subroutine setup_born_component
 
     subroutine setup_virtual_component ()
-      me_method = var_list%get_sval (var_str ("$loop_me_method"))
-      select case (char (me_method)) 
-      case ('gosam', 'openloops')
-         call blha_template%set_loop ()
-      end select
       call intg%process%init_component &
          (i_component, core%has_matrix_element (), &
-          mci_template, phs_config_template, &
-          blha_template = blha_template)
+          mci_template, phs_config_template)
       if (intg%combined_integration) &
          call intg%process%set_component_type (i_component, COMP_VIRT)
-      me_method = var_list%get_sval (var_str ("$correlation_me_method"))
-      select case (char (me_method))
-      case ('gosam', 'openloops')
-         call blha_template%set_internal_color_correlations (.true.)
-      end select 
     end subroutine setup_virtual_component
 
     subroutine setup_real_component ()
       logical :: use_powheg_damping
       type(fks_template_t) :: fks_template
       integer :: i = 0
-      me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
       use_powheg_damping = var_list%get_lval (var_str ("?powheg_use_damping"))
-      select case (char (me_method))
-      case ('gosam', 'openloops')
-         call blha_template%set_real_trees ()
-      end select
       call dispatch_phs (phs_config_template_other, local, &
           intg%process_id, mapping_defs, phs_par, &
           var_str ('fks'))
       call dispatch_fks (fks_template, local)
       call intg%process%init_component &
          (i_component, core%has_matrix_element (), mci_template, &
-          phs_config_template_other, fks_template = fks_template, &
-          blha_template = blha_template)
+          phs_config_template_other, fks_template = fks_template)
       if (intg%combined_integration) then
          if (use_powheg_damping) then
             if (i == 0) then
@@ -9014,19 +8988,31 @@ local changes to currently inactive models.
     end subroutine setup_dglap_component
 
     subroutine setup_subtraction_component ()
-      me_method = var_list%get_sval (var_str ("$correlation_me_method"))
-      select case (char (me_method))
-      case ('gosam', 'openloops')
-         call blha_template%set_subtraction ()
-      end select
-    
       call intg%process%init_component &
           (i_component, .false., &
-           mci_template, phs_config_template, &
-           blha_template = blha_template)
+           mci_template, phs_config_template)
       if (intg%combined_integration) &
          call intg%process%set_component_type (i_component, COMP_SUB)
     end subroutine setup_subtraction_component
+
+    function needs_entry (me_method) result (val)
+      logical :: val
+      type(string_t), intent(in) :: me_method
+      val = char (me_method) == 'gosam' .or. char (me_method) == 'openloops'
+    end function needs_entry
+
+    subroutine fill_blha_template ()
+      if (needs_entry (var_list%get_sval (var_str ("$born_me_method")))) &
+         call blha_template%set_born () 
+      if (needs_entry (var_list%get_sval (var_str ("$real_tree_me_method")))) &
+         call blha_template%set_real_trees ()
+      if (needs_entry (var_list%get_sval (var_str ("$loop_me_method")))) &
+         call blha_template%set_loop ()
+      if (needs_entry (var_list%get_sval (var_str ("$correlation_me_method")))) then
+         call blha_template%set_subtraction ()
+         call blha_template%set_internal_color_correlations ()
+      end if
+    end subroutine fill_blha_template 
 
     subroutine setup_beams ()
       real(default) :: sqrts
