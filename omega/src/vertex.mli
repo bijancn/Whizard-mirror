@@ -1,4 +1,4 @@
-(* $Id: vertex.mli 7444 2016-02-17 15:37:20Z jr_reuter $
+(* $Id: vertex.mli 7653 2016-07-18 11:37:04Z ohl $
 
    Copyright (C) 1999-2016 by
 
@@ -34,7 +34,7 @@ module type Test =
 module Test (M : Model.T) : Test
 
 module Parser_Test : Test
-module Model_Test : Test
+module Modelfile_Test : Test
 
 (*i
 module Symbol :

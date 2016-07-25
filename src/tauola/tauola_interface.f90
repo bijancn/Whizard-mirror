@@ -923,7 +923,7 @@ end module tauola_interface
 !...give the flavour codes K(I,2) and the five-momenta P(I,1), P(I,2),
 !...P(I,3), P(I,4) and P(I,5). The rest will be stored automatically.
 subroutine pytaud (itau, iorig, kforig, ndecay)
-  use tauola_interface
+  use tauola_interface !NODEP!
   implicit none
   integer itau,iorig,kforig
   integer ndecay
