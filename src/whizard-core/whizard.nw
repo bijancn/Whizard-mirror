@@ -1723,9 +1723,6 @@ so the latter is always available (and kept global).
     call var_list_append_log &
         (global%var_list, var_str ("?powheg_matching"), &
          .false., intrinsic = .true.)
-    call var_list_append_log &
-        (global%var_list, var_str ("?use_powheg_damping"), &
-         .false., intrinsic = .true.)
     call var_list_append_real &
          (global%var_list, var_str ("powheg_damping_scale"), &
           10._default, intrinsic = .true.)
@@ -4016,14 +4013,12 @@ grab it from the model.
 <<Dispatch: procedures>>=
   subroutine dispatch_core (core, core_def, model, &
        helicity_selection, qcd, use_color_factors)
-    
     class(prc_core_t), allocatable, intent(inout) :: core
     class(prc_core_def_t), intent(in) :: core_def
     class(model_data_t), intent(in), target, optional :: model
     type(helicity_selection_t), intent(in), optional :: helicity_selection
     type(qcd_t), intent(in), optional :: qcd
     logical, intent(in), optional :: use_color_factors
-
     select type (core_def)
     type is (prc_test_def_t)
        allocate (test_t :: core)
@@ -8665,7 +8660,7 @@ local changes to currently inactive models.
     type(blha_template_t) :: blha_template
     type(string_t) :: me_method
     type(eval_tree_factory_t) :: expr_factory
-    logical :: use_powheg_damping
+    logical :: powheg_use_damping
     integer :: i = 0
     call msg_debug (D_CORE, "integration_setup_process")
     verb = .true.; if (present (verbose))  verb = verbose
@@ -8765,7 +8760,7 @@ local changes to currently inactive models.
             call intg%process%set_component_type (i_component, COMP_VIRT)
        case (NLO_REAL)
          me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
-         use_powheg_damping = var_list%get_lval (var_str ("?powheg_use_damping"))
+         powheg_use_damping = var_list%get_lval (var_str ("?powheg_use_damping"))
          select case (char (me_method))
          case ('gosam', 'openloops')
             call blha_template%set_real_trees ()
@@ -8779,7 +8774,7 @@ local changes to currently inactive models.
              phs_config_template_other, fks_template = fks_template, &
              blha_template = blha_template)
          if (intg%combined_integration) then
-            if (use_powheg_damping) then
+            if (powheg_use_damping) then
                if (i == 0) then
                   call intg%process%set_component_type (i_component, COMP_REAL_SING)
                   i = i + 1
@@ -11577,7 +11572,7 @@ However, all entries share the same event transforms.
      type(counter_t) :: counter
      integer :: n_in = 0
      integer :: n_mci = 0
-     type(mci_set_t), dimension(:), allocatable :: mci_set
+     type(mci_set_t), dimension(:), allocatable :: mci_sets
      type(selector_t) :: mci_selector
      type(core_safe_t), dimension(:), allocatable :: core_safe
      class(model_data_t), pointer :: model => null ()
@@ -11617,10 +11612,10 @@ the base-object method.
     end if
     write (u, "(3x,A,I0)")   "MCI sets  = ", object%n_mci
     call object%counter%write (u)
-    do i = 1, size (object%mci_set)
+    do i = 1, size (object%mci_sets)
        write (u, "(A)")
        write (u, "(1x,A,I0,A)")  "MCI set #", i, ":"
-       call object%mci_set(i)%write (u)
+       call object%mci_sets(i)%write (u)
     end do
     if (allocated (object%core_safe)) then
        do i = 1, size (object%core_safe)
@@ -11671,9 +11666,9 @@ deallocate it here.  Then we call the finalizer of the base type.
     entry2%counter = entry1%counter
     entry2%n_in = entry1%n_in
     entry2%n_mci = entry1%n_mci
-    if (allocated (entry1%mci_set)) then
-       allocate (entry2%mci_set (size (entry1%mci_set)))
-       entry2%mci_set = entry1%mci_set
+    if (allocated (entry1%mci_sets)) then
+       allocate (entry2%mci_sets (size (entry1%mci_sets)))
+       entry2%mci_sets = entry1%mci_sets
     end if
     entry2%mci_selector = entry1%mci_selector
     if (allocated (entry1%core_safe)) then
@@ -11725,7 +11720,8 @@ base type by the [[connect]] method, so we can reference them later.
     integer :: i
     logical :: combined_integration
     integer :: fixed_mci = 0
-
+    call msg_debug (D_CORE, "entry_init")
+    call msg_debug (D_CORE, "process_id", process_id)
     call prepare_process &
          (master_process, process_id, use_process, integrate, local, global)
     if (signal_is_pending ())  return
@@ -11734,7 +11730,7 @@ base type by the [[connect]] method, so we can reference them later.
        if (.not. master_process%has_matrix_element ()) then
           entry%has_integral = .true.
           entry%process_id = process_id
-          entry%valid = .false.          
+          entry%valid = .false.
           return
        end if
     else
@@ -11745,7 +11741,7 @@ base type by the [[connect]] method, so we can reference them later.
        entry%valid = .true.
        return
     end if
-    
+
     call entry%basic_init (local%var_list, n_alt)
 
     entry%process_id = process_id
@@ -11770,9 +11766,9 @@ base type by the [[connect]] method, so we can reference them later.
 
     call entry%import_process_characteristics (process)
 
-    allocate (entry%mci_set (entry%n_mci))
-    do i = 1, size (entry%mci_set)
-       call entry%mci_set(i)%init (i, master_process)
+    allocate (entry%mci_sets (entry%n_mci))
+    do i = 1, size (entry%mci_sets)
+       call entry%mci_sets(i)%init (i, master_process)
     end do
     call entry%set_nlo_event (local%get_lval (var_str ("?fixed_order_nlo_events")))
     if (entry%is_nlo_event()) then
@@ -11830,9 +11826,9 @@ base type by the [[connect]] method, so we can reference them later.
 
     entry%model => process%get_model_ptr ()
     entry%valid = .true.
-    
+
   end subroutine entry_init
-    
+
 @ %def entry_init
 @
 <<Simulations: entry: TBP>>=
@@ -11998,8 +11994,8 @@ objects and store them.
   end subroutine entry_prepare_expressions
 
 @ %def entry_prepare_expressions
-@ Checks if event generation from a single grid is performed and sets [[fixed_mci]]
-@ correspondingly
+@ Checks if event generation from a single grid is performed and sets
+[[fixed_mci]] correspondingly.
 <<Simulations: entry: TBP>>=
   procedure :: set_fixed_mci => entry_set_fixed_mci
 <<Simulations: procedures>>=
@@ -12225,17 +12221,22 @@ the normalization procedure for the process components.
     class(entry_t), intent(inout), target :: entry
     logical, intent(in), optional :: negative_weights
     type(entry_t), pointer :: current_entry
-    integer :: i, j
+    integer :: i, j, k
+    call msg_debug (D_CORE, "entry_init_mci_selector")
     if (entry%has_integral) then
        select type (entry)
        type is (entry_t)
           current_entry => entry
           do j = 1, current_entry%count_nlo_entries ()
              if (j > 1) current_entry => current_entry%get_next ()
+             do k = 1, size(current_entry%mci_sets%integral)
+                call msg_debug (D_CORE, "current_entry%mci_sets(k)%integral", &
+                     current_entry%mci_sets(k)%integral)
+             end do
              call current_entry%mci_selector%init &
-                  (current_entry%mci_set%integral, negative_weights)
+                  (current_entry%mci_sets%integral, negative_weights)
              do i = 1, current_entry%n_mci
-                current_entry%mci_set(i)%weight_mci = &
+                current_entry%mci_sets(i)%weight_mci = &
                    current_entry%mci_selector%get_weight (i)
              end do
           end do
@@ -12251,11 +12252,13 @@ the normalization procedure for the process components.
   function entry_select_mci (entry) result (i_mci)
     class(entry_t), intent(inout) :: entry
     integer :: i_mci
+    call msg_debug2 (D_CORE, "entry_select_mci")
     if (entry%nlo_info%fixed_mci > 0) then
        i_mci = entry%nlo_info%fixed_mci
     else
        call entry%mci_selector%generate (entry%rng, i_mci)
     end if
+    call msg_debug2 (D_CORE, "i_mci", i_mci)
   end function entry_select_mci
   
 @ %def entry_select_mci
@@ -12272,7 +12275,7 @@ the normalization procedure for the process components.
     excess = entry%get_excess_prc ()
     call entry%counter%record (weight, excess, from_file)
     if (i_mci > 0) then
-       call entry%mci_set(i_mci)%counter%record (weight, excess)
+       call entry%mci_sets(i_mci)%counter%record (weight, excess)
     end if
   end subroutine entry_record
     
@@ -12419,9 +12422,9 @@ contains pointers to the process and instance.
 
     call entry%import_process_characteristics (process)
     
-    allocate (entry%mci_set (entry%n_mci))
-    do i = 1, size (entry%mci_set)
-       call entry%mci_set(i)%init (i, master_process)
+    allocate (entry%mci_sets (entry%n_mci))
+    do i = 1, size (entry%mci_sets)
+       call entry%mci_sets(i)%init (i, master_process)
     end do
 
     call entry%import_process_results (master_process)
@@ -12787,7 +12790,7 @@ we may only read and rescan events.
        call msg_fatal ("Event file format '" &
             // char (version_string) &
             // "' is not compatible with this version.")
-    end if  	  
+    end if
     simulation%n_prc = size (process_id)
     allocate (simulation%entry (simulation%n_prc))
     if (present (alt_env)) then
@@ -12825,7 +12828,8 @@ we may only read and rescan events.
           call simulation%entry(i)%determine_if_powheg_matching ()
           if (signal_is_pending ())  return          
           if (simulation%entry(i)%is_nlo_event()) then
-             if (.not. simulation%local%get_lval (var_str ("?combined_nlo_integration"))) &
+             if (.not. simulation%local%get_lval (&
+                  var_str ("?combined_nlo_integration"))) &
                 call simulation%entry(i)%set_fixed_mci ()
              call simulation%entry(i)%setup_additional_entries ()
           end if
@@ -12998,7 +13002,7 @@ latter should guarantee identical physics.
     if (simulation%md5sum_cfg == "") then
        buffer = ""
        do i = 1, simulation%n_prc
-          if (.not. simulation%entry(i)%valid) cycle          
+          if (.not. simulation%entry(i)%valid) cycle
           process => simulation%entry(i)%get_process_ptr ()
           if (associated (process)) then
              n_mci = process%get_n_mci ()
@@ -13280,7 +13284,7 @@ external matrix element parameters event by event.  The matrix element
       call entry%store_alt_values ()
     end associate
   end subroutine simulation_calculate_alt_entries
-       
+
 @ %def simulation_calculate_alt_entries
 @ Rescan an undefined number of events.
 
@@ -17187,7 +17191,7 @@ or arrays which would make the expansion ambiguous.
     type(string_t) :: loop_me_method
     type(string_t) :: correlation_me_method
     integer, dimension(:), allocatable :: i_list
-    logical :: use_powheg_damping
+    logical :: powheg_use_damping
     logical :: gks_active
     logical :: initial_state_colored
     logical :: has_structure_functions
@@ -17203,8 +17207,8 @@ or arrays which would make the expansion ambiguous.
     var_list => cmd%local%get_var_list_ptr ()
 
     nlo_fixed_order = cmd%local%nlo_fixed_order
-    use_powheg_damping = &
-       var_list%get_lval (var_str ('?use_powheg_damping'))
+    powheg_use_damping = &
+       var_list%get_lval (var_str ('?powheg_use_damping'))
     gks_multiplicity = var_list%get_ival (var_str ('gks_multiplicity'))
     gks_active = gks_multiplicity > 2
     born_me_method = var_list%get_sval (var_str ("$born_me_method"))
@@ -17259,7 +17263,7 @@ or arrays which would make the expansion ambiguous.
     if (nlo_fixed_order .or. gks_active) &
          call setup_radiation_generator ()
 
-    if (use_powheg_damping) then
+    if (powheg_use_damping) then
        emitters = radiation_generator%get_emitter_indices()
        n_emitters = size (emitters)
     end if
@@ -17269,16 +17273,16 @@ or arrays which would make the expansion ambiguous.
        requires_soft_mismatch = fks_method == var_str ('resonances')
        n_components_extra = needed_extra_components (initial_state_colored, &
             has_structure_functions, requires_soft_mismatch, &
-            use_powheg_damping, n_emitters)
+            powheg_use_damping, n_emitters)
        allocate (i_list (n_components_extra))
     else if (gks_active) then
        call radiation_generator%generate_multiple (gks_multiplicity)
        n_components_extra = radiation_generator%get_n_gks_states ()
     end if
 
-    if (nlo_fixed_order .and. .not. use_powheg_damping) then
+    if (nlo_fixed_order .and. .not. powheg_use_damping) then
        n_components_init = n_components * n_components_extra
-    else if (nlo_fixed_order .and. use_powheg_damping) then
+    else if (nlo_fixed_order .and. powheg_use_damping) then
        n_components_init = n_components * n_components_extra
     else if (gks_active) then
        n_components_init = n_components * (n_components_extra + 1)
@@ -17378,7 +17382,7 @@ or arrays which would make the expansion ambiguous.
           associate (active_comp => cmd%local%active_nlo_components)
              call set_component_list (i_list, i, n_components, &
                   requires_pdf, requires_soft_mismatch, &
-                  use_powheg_damping, n_emitters)
+                  powheg_use_damping, n_emitters)
 
              call override_local_me_method (born_me_method)
              i_comp = i
@@ -17413,7 +17417,7 @@ or arrays which would make the expansion ambiguous.
                   cmd%local%model, var_list, NLO_SUBTRACTION, &
                 active_in = active_comp (NLO_SUBTRACTION + 1))
 
-             if (use_powheg_damping) then
+             if (powheg_use_damping) then
                 call override_local_me_method (real_tree_me_method)
                 i_comp = n_components * 4 + i
                 call msg_debug (D_CORE, "Setting up this NLO component:", i_comp)
@@ -17446,7 +17450,7 @@ or arrays which would make the expansion ambiguous.
              end if
 
              call prc_config%set_component_associations (i_list, &
-                  requires_pdf, use_powheg_damping, requires_soft_mismatch)
+                  requires_pdf, powheg_use_damping, requires_soft_mismatch)
           end associate
        else if (gks_active) then
           call override_local_me_method (var_str ("omega"))
@@ -17479,7 +17483,7 @@ on into an object (the pcm?).
     logical :: case_nlo_powheg_but_not_combined
     logical :: vamp_equivalences_enabled
     combined = var_list%get_lval (var_str ('?combined_nlo_integration'))
-    powheg = var_list%get_lval (var_str ('?powheg_matching')) 
+    powheg = var_list%get_lval (var_str ('?powheg_matching'))
     case_lo_but_any_other = .not. nlo .and. any ([combined, powheg])
     case_nlo_powheg_but_not_combined = &
          nlo .and. powheg .and. .not. combined
@@ -17506,16 +17510,16 @@ all Borns, then all Reals, etc.
 <<Commands: procedures>>=
   pure subroutine set_component_list (i_list, i, n_components, &
                   requires_pdf, requires_soft_mismatch, &
-             use_powheg_damping, n_emitters)
+             powheg_use_damping, n_emitters)
     integer, dimension(:), intent(out) :: i_list
     integer, intent(in) :: i, n_components, n_emitters
-    logical, intent(in) :: requires_pdf, use_powheg_damping, &
+    logical, intent(in) :: requires_pdf, powheg_use_damping, &
          requires_soft_mismatch
     i_list(1) = i
     i_list(2) = i + n_components
     i_list(3) = i + 2 * n_components
     i_list(4) = i + 3 * n_components
-    if (requires_pdf .or. requires_soft_mismatch .or. use_powheg_damping) then
+    if (requires_pdf .or. requires_soft_mismatch .or. powheg_use_damping) then
        i_list(5) = i + 4 * n_components
     end if
   end subroutine set_component_list
@@ -17525,10 +17529,10 @@ all Borns, then all Reals, etc.
 <<Commands: procedures>>=
   pure function needed_extra_components (initial_state_colored, &
             has_structure_functions, requires_soft_mismatch, &
-            use_powheg_damping, n_emitters) result (n)
+            powheg_use_damping, n_emitters) result (n)
     integer :: n
     logical, intent(in) :: initial_state_colored, &
-         has_structure_functions, use_powheg_damping, &
+         has_structure_functions, powheg_use_damping, &
          requires_soft_mismatch
     integer, intent(in) :: n_emitters
     if (initial_state_colored) then
@@ -17537,7 +17541,7 @@ all Borns, then all Reals, etc.
        else
           n = 4
        end if
-    else if (use_powheg_damping) then
+    else if (powheg_use_damping) then
        n = 5
     else if (requires_soft_mismatch) then
        n = 5
@@ -20018,7 +20022,9 @@ later changes of the variable list do not affect the stored process.
     class(cmd_integrate_t), intent(inout) :: cmd
     type(rt_data_t), intent(inout), target :: global
     integer :: i
+    call msg_debug (D_CORE, "cmd_integrate_execute")
     do i = 1, cmd%n_proc
+       call msg_debug (D_CORE, "cmd%process_id(i) ", cmd%process_id(i))
        call integrate_process (cmd%process_id(i), cmd%local, global)
        call global%process_stack%fill_result_vars (cmd%process_id(i))
        if (signal_is_pending ())  return
