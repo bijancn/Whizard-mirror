@@ -39,7 +39,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl 
 dnl *********************************************************************** 
 dnl Start configuration
-AC_INIT([WHIZARD],[2.3.0])
+AC_INIT([WHIZARD],[2.3.1])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AC_PREREQ([2.65])
 
@@ -53,7 +53,7 @@ AC_MSG_NOTICE([**************************************************************])
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Mar 31 2016"
+PACKAGE_DATE="Sep 30 2016"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
@@ -145,7 +145,7 @@ WO_CONFIGURE_SECTION([Generic tools])
 ### Initialize LIBTOOL
 LT_INIT(dlopen)
 
-LT_PREREQ([2.3.0b])
+LT_PREREQ([2.3.1b])
 
 AX_CHECK_GNU_MAKE()
 
