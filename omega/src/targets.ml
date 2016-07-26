@@ -1376,7 +1376,7 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
         | Vanishing | Fudged -> 0
         | Constant -> 1
         | Timelike -> 2
-	| Complex_Mass -> 3
+        | Complex_Mass -> 3
         | Running -> failwith "Targets.VM: running width not available"
         | Custom _ -> failwith "Targets.VM: custom width not available"
         end
