@@ -1,4 +1,4 @@
-(* $Id: targets.ml 7506 2016-04-05 14:39:23Z jr_reuter $
+(* $Id: targets.ml 7665 2016-07-26 16:37:28Z bchokoufe $
 
    Copyright (C) 1999-2016 by
 
@@ -27,9 +27,9 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 7506 $";
-      RCS.date = "$Date: 2016-04-05 16:39:23 +0200 (Tue, 05 Apr 2016) $";
-      RCS.author = "$Author: jr_reuter $";
+    { RCS.revision = "$Revision: 7665 $";
+      RCS.date = "$Date: 2016-07-26 18:37:28 +0200 (Tue, 26 Jul 2016) $";
+      RCS.author = "$Author: bchokoufe $";
       RCS.source
         = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets.ml $" }
 
