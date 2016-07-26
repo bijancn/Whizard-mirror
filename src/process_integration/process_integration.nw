@@ -3138,13 +3138,20 @@ freed.
     class(process_t), intent(inout) :: process
     integer, intent(in) :: nlo_type, core_type, i_component
     character(32) :: md5sum
+    integer :: i, me
     md5sum = process%get_constants_md5sum (i_component)
-    if (count (process%cm%md5s == md5sum) > 0) then
-       where (process%cm%md5s == md5sum)
-          process%cm%sub = .true.
-       end where
-    else
+    if (core_type >= CORE_DUMMY) then
+       process%cm%sub(process%cm%current_index) = .true.
        call process%cm%register (nlo_type, core_type, i_component, md5sum)
+    else
+       if (any (process%cm%md5s == md5sum)) then
+          do i = 1, N_MAX_CORES
+             me = process%cm%me(i)
+             if (me == 0) exit
+             if (.not. (md5sum == process%cm%md5s(i))) cycle
+             process%cm%sub(i) = (me == core_type)
+          end do
+       end if
     end if
   end subroutine process_core_manager_register_sub
 
@@ -3154,11 +3161,20 @@ freed.
     integer, intent(in) :: nlo_type, core_type, i_component
     character(32) :: md5sum
     logical :: register
+    integer :: i
     md5sum = process%get_constants_md5sum (i_component)
-    register = (.not. any (process%cm%md5s == md5sum)) .or. &
-               (.not. any (process%cm%me == core_type))
-    if (register) &
-       call process%cm%register (nlo_type, core_type, i_component, md5sum)
+    register = .false.
+    do i = 1, N_MAX_CORES
+       if (process%cm%sub(i) .and. process%cm%me(i) >= CORE_DUMMY) cycle 
+       register = .not. process%cm%md5s(i) == md5sum .and. &
+          .not. process%cm%me(i) == core_type
+      if (register) then
+         call process%cm%register (nlo_type, core_type, i_component, md5sum)
+         exit
+      else if (process%cm%me(i) == 0) then
+         exit
+      end if 
+    end do
   end subroutine process_core_manager_register_default
 
 @ %def process_core_manager_register
@@ -6153,37 +6169,35 @@ configuration finalizer may include closing an open scratch file.
   end subroutine process_component_write
 
 @ %def process_component_write
-@ Initialize all cores
+@ Initialize the [[i_core]]th core.
 <<Processes: process: TBP>>=
-  procedure :: init_cores => process_init_cores
+  procedure :: init_core => process_init_core
 <<Processes: procedures>>=
-  subroutine process_init_cores (process, blha_template)
+  subroutine process_init_core (process, i_core, blha_template)
     class(process_t), intent(inout) :: process
-    integer :: i_core, i_component
-    type(process_component_def_t), pointer :: config
+    integer, intent(in) :: i_core
     type(blha_template_t), intent(in), optional :: blha_template
-    do i_core = 1, process%cm%n_cores
-       i_component = process%cm%def_ptr_index(i_core)
-       config => process%meta%lib%get_component_def_ptr (process%meta%id, i_component)
-       associate (core => process%cm%cores(i_core)%core)
-          call core%init (config%get_core_def_ptr (), &
-             process%meta%lib, process%meta%id, i_component)
-       end associate  
-       select type (core => process%cm%cores(i_core)%core)
-       class is (prc_blha_t)
-          if (present (blha_template)) then
-             call core%init_blha (blha_template)
-          else
-             call msg_bug ("process_init_cores: BLHA core cannot " // &
-                  "be initialized - missing template")
-          end if
-          call core%init_driver (process%config%os_data)
-       end select
-    end do
-    call process%cm%write ()
-  end subroutine process_init_cores
+    integer :: i_component
+    type(process_component_def_t), pointer :: config
+    i_component = process%cm%def_ptr_index(i_core)
+    config => process%meta%lib%get_component_def_ptr (process%meta%id, i_component)
+    associate (core => process%cm%cores(i_core)%core)
+       call core%init (config%get_core_def_ptr (), &
+          process%meta%lib, process%meta%id, i_component)
+    end associate  
+    select type (core => process%cm%cores(i_core)%core)
+    class is (prc_blha_t)
+       if (present (blha_template)) then
+          call core%init_blha (blha_template)
+       else
+          call msg_bug ("process_init_cores: BLHA core cannot " // &
+               "be initialized - missing template")
+       end if
+       call core%init_driver (process%config%os_data)
+    end select
+  end subroutine process_init_core
 
-@ %def process_init_cores
+@ %def process_init_core
 @
 <<Processes: process: TBP>>=
   procedure :: get_n_cores => process_get_n_cores
@@ -6195,6 +6209,18 @@ configuration finalizer may include closing an open scratch file.
   end function process_get_n_cores
 
 @ %def process_get_n_cores
+@
+<<Processes: process: TBP>>=
+  procedure :: get_nlo_type => process_get_nlo_type
+<<Processes: procedures>>=
+  function process_get_nlo_type (process, i_core) result (nlo_type)
+    integer :: nlo_type
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: i_core
+    nlo_type = process%cm%nlo_type(i_core)
+  end function process_get_nlo_type
+
+@ %def process_get_nlo_type
 @
 <<Processes: process: TBP>>=
   procedure :: get_core_manager_index => process_get_core_manager_index
@@ -7575,9 +7601,10 @@ are taken from there.
 <<Processes: kinematics: TBP>>=
   procedure :: init_sf_chain => kinematics_init_sf_chain
 <<Processes: procedures>>=
-  subroutine kinematics_init_sf_chain (k, core, sf_chain, config)
+  !subroutine kinematics_init_sf_chain (k, core, sf_chain, config)
+  subroutine kinematics_init_sf_chain (k, sf_chain, config, verbose)
     class(kinematics_t), intent(inout) :: k
-    class(prc_core_t), intent(in) :: core
+    !class(prc_core_t), intent(in) :: core
     type(sf_chain_t), intent(in), target :: sf_chain
     type(process_beam_config_t), intent(in) :: config
     integer :: n_strfun, n_channel
@@ -7587,7 +7614,8 @@ are taken from there.
     n_channel = config%n_channel
     allocate (k%sf_chain)
     k%sf_chain_allocated = .true.
-    call core%init_sf_chain (k%sf_chain, sf_chain, n_channel)
+    call k%sf_chain%init (sf_chain, n_channel)
+    !call core%init_sf_chain (k%sf_chain, sf_chain, n_channel)
     if (n_strfun /= 0) then
        do c = 1, n_channel
           call k%sf_chain%set_channel (c, config%sf_channel(c))
@@ -12103,7 +12131,7 @@ object and the squared matrix-element collector.
     call process%core_manager_register (BORN, CORE_TEST, 1)
     call process%allocate_core_array (.false.)
     call process%allocate_core (1, core)
-    call process%init_cores ()
+    call process%init_core (1)
     call process%cm%write ()
   end subroutine process_setup_test_cores
 
