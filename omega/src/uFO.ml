@@ -1684,9 +1684,6 @@ i.e.
 	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
         ([], [], []) (values model.vertices)
 
-    let ufo_directory = ref Config.default_UFO_dir
-    let whizard_directory = ref Config.default_WHIZARD_dir
-
     let dump_raw = ref false
 
     let propagator_of_lorentz = function
@@ -1728,8 +1725,15 @@ i.e.
 	with
 	| Not_found -> invalid_arg ("not found: " ^ name))
 
-    let init () =
-      let model = parse_directory !ufo_directory in
+    let initialized_from = ref None
+
+    let is_initialized_from dir =
+      match !initialized_from with
+      | None -> false
+      | Some old_dir -> dir = old_dir
+
+    let init dir =
+      let model = parse_directory dir in
       let model =
 	let is_unphysical = not @@ Particle.is_physical in
 	let particles' =
@@ -1787,19 +1791,24 @@ i.e.
             Coupling.derived_arrays = [] })
         ~flavor_of_string ~flavor_to_string ~flavor_to_TeX
         ~flavor_symbol ~gauge_symbol ~mass_symbol ~width_symbol
-        ~constant_symbol:(fun c -> "g")
+        ~constant_symbol:(fun c -> "g");
+      initialized_from := Some dir
+
+    let ufo_directory = ref Config.default_UFO_dir
 
     let load_UFO () =
-      init ()
+      if is_initialized_from !ufo_directory then
+	()
+      else
+	init !ufo_directory
 
     let write_WHIZARD () =
+      load_UFO ();
       failwith "UFO.write_WHIZARD: not implemented yet!"
 
     let options = Options.create
         [ ("UFO_dir", Arg.String (fun name -> ufo_directory := name),
            "UFO model directory (default: " ^ !ufo_directory ^ ")");
-          ("WHIZARD_dir", Arg.String (fun name -> whizard_directory := name),
-           "WHIZARD model directory (default: " ^ !whizard_directory ^ ")");
           ("write_WHIZARD", Arg.Unit write_WHIZARD,
            "write the WHIZARD model files (required once per model)");
           ("exec", Arg.Unit load_UFO,
