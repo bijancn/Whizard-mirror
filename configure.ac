@@ -777,6 +777,11 @@ AC_CONFIG_FILES([src/gosam/Makefile])
 AC_CONFIG_FILES([src/openloops/Makefile])
 
 ###---------------------------------------------------------------------
+### Subdirectory src/recola: Recola support (NLO amplitudes)
+
+AC_CONFIG_FILES([src/recola/Makefile])
+
+###---------------------------------------------------------------------
 ### Subdirectory src/fks: FKS subtraction algorithm
 
 AC_CONFIG_FILES([src/fks/Makefile])

@@ -37,7 +37,7 @@
 noinst_LTLIBRARIES = librecola.la
 
 librecola_la_SOURCES = \
-  interfacerecola.f90
+  prc_recola.f90
   #DONT KNOW WHAT SOURCES SHOULD I PUT HERE
 
 ## Omitting this would exclude it from the distribution
@@ -131,9 +131,9 @@ AM_FCFLAGS += $(FCFLAGS_OPENMP)
 endif
 
 # TODO: (cw 2015-03-26) Fix this
-if RECOLA_AVAILABLE
+# if RECOLA_AVAILABLE
 AM_FCFLAGS += -I/home/motor/soft/recola-collier-1.0/recola-1.0/modules/ -L/home/motor/soft/recola-collier-1.0/recola-1.0 -lrecola
-endif
+# endif
 ########################################################################
 ## Non-standard targets and dependencies
 
