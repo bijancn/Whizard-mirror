@@ -249,6 +249,7 @@ BUILT_SOURCES = \
     GAMELAN_FLAG \
     EVENT_ANALYSIS_FLAG \
     OCAML_FLAG \
+    RECOLA_FLAG \
     PYTHIA6_FLAG \
     STATIC_FLAG \
     ref-output \
@@ -295,6 +296,11 @@ if OCAML_AVAILABLE
 	touch $@
 endif
 
+RECOLA_FLAG:
+if RECOLA_AVAILABLE
+	touch $@
+endif
+
 PYTHIA6_FLAG:
 if PYTHIA6_AVAILABLE
 	touch $@
@@ -331,7 +337,7 @@ notestflag:
 clean-local:
 	rm -f gamelan.sty
 	rm -f TESTFLAG GAMELAN_FLAG 
-	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG 
+	rm -f OCAML_FLAG FASTJET_FLAG HEPMC_FLAG LCIO_FLAG RECOLA_FLAG
 	rm -f EVENT_ANALYSIS_FLAG PYTHIA6_FLAG LHAPDF5_FLAG
 	rm -f LHAPDF6_FLAG STATIC_FLAG static_1.exe
 	rm -f *.run *.log slha_test.out
