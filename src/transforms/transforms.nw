@@ -4839,6 +4839,7 @@ module evt_nlo
   use constants
   use lorentz
   use diagnostics
+  use physics_defs, only: NLO_REAL
   use sm_qcd
   use model_data
   use particles
@@ -4908,7 +4909,8 @@ it would be unretrievable if the usual particle set of the event object was used
     type(nlo_event_deps_t) :: event_deps
     integer :: mode = EVT_NLO_UNDEFINED
     integer, dimension(:), allocatable :: &
-       i_evaluation_to_i_phs, i_evaluation_to_i_flv, i_evaluation_to_emitter
+       i_evaluation_to_i_phs, i_evaluation_to_i_flv, i_evaluation_to_emitter, &
+       i_evaluation_to_i_term
   contains
   <<Evt Nlo: evt nlo: TBP>>
   end type evt_nlo_t
@@ -4991,6 +4993,7 @@ object in [[nlo_controller]].
        allocate (evt%i_evaluation_to_i_phs (n_phs * n_flv), source = 0)
        allocate (evt%i_evaluation_to_i_flv (n_phs * n_flv), source = 0)
        allocate (evt%i_evaluation_to_emitter (n_phs * n_flv), source = -1)
+       allocate (evt%i_evaluation_to_i_term (0 : n_phs * n_flv), source = 0)
        do alr = 1, reg_data%n_regions
           i_phs = controller%real_kinematics%alr_to_i_phs (alr)
           i_flv = reg_data%regions(alr)%real_index 
@@ -5003,6 +5006,7 @@ object in [[nlo_controller]].
              i_evaluation = i_evaluation + 1
           end if
        end do 
+       call fill_i_evaluation_to_i_term ()
     end associate
     if (.not. (all (evt%i_evaluation_to_i_phs > 0) &
        .and. all (evt%i_evaluation_to_i_flv > 0) &
@@ -5017,6 +5021,22 @@ object in [[nlo_controller]].
        end if
     end if
   contains
+    subroutine fill_i_evaluation_to_i_term ()
+      integer :: i_term, i_evaluation, term_emitter
+      !!! First find subtraction component
+      i_evaluation = 1
+      do i_term = 1, evt%process%get_n_terms ()
+         if (evt%process_instance%term(i_term)%nlo_type /= NLO_REAL) cycle
+         term_emitter = evt%process_instance%term(i_term)%k_term%emitter
+         if (term_emitter < 0) then
+            evt%i_evaluation_to_i_term (0) = i_term
+         else if (evt%i_evaluation_to_emitter(i_evaluation) == term_emitter) then
+            evt%i_evaluation_to_i_term (i_evaluation) = i_term
+            i_evaluation = i_evaluation + 1
+         end if 
+      end do
+    end subroutine fill_i_evaluation_to_i_term 
+
     subroutine search_check_list (found)
       logical, intent(out) :: found
       type(registered_triple_t), pointer :: current_triple => null ()
@@ -5320,15 +5340,17 @@ subtraction terms.
     select type (pcm => evt%process_instance%pcm)
     class is (pcm_instance_nlo_t)
        associate (event_deps => evt%event_deps)
-          do i_phs = 1, evt%event_deps%n_phs           
-             call evt%process_instance%compute_sqme_real_sub (i_phs)
+          i_phs = 1
+          !do i_phs = 1, evt%event_deps%n_phs           
+             call evt%process_instance%compute_sqme_real_sub &
+                (evt%i_evaluation_to_i_term(0), i_phs)
              if (debug2_active (D_TRANSFORMS)) then
                 call msg_debug (D_TRANSFORMS, &
                    "instance%sqme_collector%sqme_real_per_phs(:, i_phs)")
                 print *, pcm%collector%sqme_real_per_phs(:, i_phs)
              end if
              weight = weight + sum (pcm%collector%sqme_real_per_phs (:, i_phs))
-          end do
+          !end do
        end associate
     end select
   end function evt_nlo_compute_subtraction_weights
