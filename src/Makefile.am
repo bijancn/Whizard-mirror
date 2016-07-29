@@ -219,6 +219,11 @@ libomega_la_LIBADD = \
   ../omega/src/libomega_core.la \
   models/libmodels.la
 
+if RECOLA_AVAILABLE
+libwhizard_test_la_LIBADD += $(LDFLAGS_RECOLA) recola/librecola_ut.la
+endif
+
+
 
 ########################################################################
 ## Build a standalone program

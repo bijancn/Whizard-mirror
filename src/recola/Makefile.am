@@ -35,16 +35,19 @@
 
 ## We create a library which is still to be combined with auxiliary libs.
 noinst_LTLIBRARIES = librecola.la
+check_LTLIBRARIES = librecola_ut.la
 
 librecola_la_SOURCES = \
   prc_recola.f90
-  #DONT KNOW WHAT SOURCES SHOULD I PUT HERE
+
+librecola_ut_la_SOURCES = \
+  prc_recola_uti.f90 prc_recola_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = recola.nw
 
 # Dump module names into file Modules
-librecola_Modules = ${librecola_la_SOURCES:.f90=}
+librecola_Modules = ${librecola_la_SOURCES:.f90=} ${librecola_ut_la_SOURCES:.f90=}
 Modules: Makefile
 	@for module in $(librecola_Modules); do \
           echo $$module >> $@.new; \
@@ -96,7 +99,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(librecola_la_SOURCES)
+Makefile.depend: $(librecola_la_SOURCES) ${librecola_ut_la_SOURCES}
 	@rm -f $@
 	for src in $^; do \
 	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -144,12 +147,12 @@ POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 recola.stamp: $(PRELUDE) $(srcdir)/recola.nw $(POSTLUDE)
 	@rm -f recola.tmp
 	@touch recola.tmp
-	for src in $(librecola_la_SOURCES); do \
+	for src in $(librecola_la_SOURCES) $(librecola_ut_la_SOURCES); do \
 	  $(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
         done
 	@mv -f recola.tmp recola.stamp
 
-$(librecola_la_SOURCES): recola.stamp
+$(librecola_la_SOURCES) $(librecola_ut_la_SOURCES): recola.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
 	  rm -f recola.stamp; \
