@@ -157,7 +157,10 @@ UNIT_TESTS_REQ_OCAML = \
     prc_omega.run \
     compilations.run \
     compilations_static.run
-
+    
+UNIT_TESTS_REQ_RECOLA = \
+    prc_recola.run
+    
 UNIT_TESTS_REQ_LHAPDF5 = \
     sf_lhapdf5.run 
 UNIT_TESTS_REQ_LHAPDF6 = \
@@ -171,8 +174,8 @@ TEST_DRIVERS_RUN = \
     $(UNIT_TESTS_REQ_FASTJET) \
     $(UNIT_TESTS_REQ_LHAPDF5) \
     $(UNIT_TESTS_REQ_LHAPDF6) \
-    $(UNIT_TESTS_REQ_OCAML)
-
+    $(UNIT_TESTS_REQ_OCAML) \
+    $(UNIT_TESTS_REQ_RECOLA)
 TEST_DRIVERS_SH = $(TEST_DRIVERS_RUN:.run=.sh)
 
 ########################################################################
