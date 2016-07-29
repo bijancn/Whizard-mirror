@@ -490,6 +490,13 @@ WO_CONFIGURE_SECTION([OPENLOOPS])
 WO_PROG_OPENLOOPS()
 
 ###---------------------------------------------------------------------
+### Recola
+
+WO_CONFIGURE_SECTION([RECOLA])
+
+WO_PROG_RECOLA()
+
+###---------------------------------------------------------------------
 ### LoopTools 
 
 WO_CONFIGURE_SECTION([LOOPTOOLS]) 

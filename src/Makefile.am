@@ -59,7 +59,7 @@ SUBDIRS = \
   user \
   threshold \
   blha \
-  gosam openloops \
+  gosam openloops recola\
   looptools \
   model_features \
   fks \

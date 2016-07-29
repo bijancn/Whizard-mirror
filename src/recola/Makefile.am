@@ -69,9 +69,7 @@ module_lists = \
   ../particles/Modules \
   ../matrix_elements/Modules \
   ../me_methods/Modules \
-  ../fks/Modules \
-  ../variables/Modules \
-  ../blha/Modules
+  ../variables/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -115,7 +113,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../fks -I../variables -I../blha -I../fastjet -I../pdf_builtin -I../lhapdf
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../me_methods -I../variables 
 
 ########################################################################
 ## Default Fortran compiler options
@@ -132,7 +130,7 @@ endif
 
 # TODO: (cw 2015-03-26) Fix this
 # if RECOLA_AVAILABLE
-AM_FCFLAGS += -I/home/motor/soft/recola-collier-1.0/recola-1.0/modules/ -L/home/motor/soft/recola-collier-1.0/recola-1.0 -lrecola
+AM_FCFLAGS += -I$(RECOLA_DIR)/modules
 # endif
 ########################################################################
 ## Non-standard targets and dependencies

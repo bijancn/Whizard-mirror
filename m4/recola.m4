@@ -18,13 +18,12 @@ if test "$enable_recola" = "yes"; then
   
   unset RECOLA_DIR
   if test -n "$with_recola"; then
-    WO_PATH_LIB(recola_lib, [recola], [librecola.${SHRLIB_EXT}], ${with_recola}/lib)
+    WO_PATH_LIB(recola_lib, [recola], [librecola.${SHRLIB_EXT}], ${with_recola})
   else
     WO_PATH_LIB(recola_lib, [recola], [librecola.${SHRLIB_EXT}], $LD_LIBRARY_PATHj)
   fi
   if test "$recola_lib" != "no"; then
-    recola_libdir=`dirname $recola_lib`
-    RECOLA_DIR=`dirname $recola_libdir`
+    RECOLA_DIR=`dirname $recola_lib`
   fi
 
 else
@@ -34,13 +33,15 @@ else
 
 fi
 
+AC_SUBST([RECOLA_DIR])
+
 if test -n "$RECOLA_DIR"; then
   wo_recola_includes="-I$RECOLA_DIR/modules"
   wo_recola_ldflags="-L$RECOLA_DIR -lrecola"
 fi
 
 if test "$enable_recola" = "yes" -a "$recola_lib" != "no"; then
-    AC_MESG_RESULT([ Recola found])
+    AC_MSG_RESULT([ Recola found])
     RECOLA_AVAILABLE_FLAG=".true."
     RECOLA_INCLUDES=$wo_recola_includes
     LDFLAGS_RECOLA=$wo_recola_ldflags
