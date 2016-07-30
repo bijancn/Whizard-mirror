@@ -107,6 +107,7 @@ libwhizard_la_LIBADD = \
   fks/libfks.la \
   gosam/libgosam.la \
   openloops/liboloops.la \
+  recola/librecola.la \
   blha/libblha.la \
   user/libuser.la \
   mci/libmci.la \
