@@ -3611,13 +3611,14 @@ parameterizing an s-channel resonance.
                   type is (phs_fks_config_t)
                      select type (phs_config_born)
                      type is (phs_wood_config_t)
+                        config%md5sum_born_config = phs_config_born%md5sum_phs_config
                         call config%set_born_config (phs_config_born)
                         call config%set_mode (component%config%get_nlo_type ())
                      end select
                   end select
                   call component%configure_phs (sqrts, &
                      process%beam_config, rebuild, ignore_mismatch, &
-                     verbose=verbose)
+                     verbose = verbose)
                   call process%component(i_born)%restore_phs_config (phs_config_born)
                end select
             class default
@@ -7530,6 +7531,7 @@ a pointer.
      integer :: nlo_type = BORN
      integer :: emitter = -1
      logical :: only_cm_frame = .false.
+     logical :: new_seed = .true.
    contains
    <<Processes: kinematics: TBP>>
   end type kinematics_t
@@ -8176,25 +8178,35 @@ postpone until we know the factorization scale), and we have a valid
     type(mci_work_t), intent(in) :: mci_work
     integer, intent(in) :: phs_channel
     logical, intent(out) :: success
-    integer :: sf_channel
-    select type (phs => term%k_term%phs)
-    type is (phs_fks_t)
-       call term%k_term%compute_selected_channel &
-            (mci_work, phs_channel, term%p_seed, success)
-       if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) &
-          call term%k_term%evaluate_radiation_kinematics (mci_work%get_x_process (), &
-             term%nlo_controller%reg_data)
-       sf_channel = term%k_term%phs%config%get_sf_channel (phs_channel)
+    !integer :: sf_channel
+     call term%k_term%compute_selected_channel &
+        (mci_work, phs_channel, term%p_seed, success)
+       !if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) &
+       !   call term%k_term%evaluate_radiation_kinematics (mci_work%get_x_process (), &
+       !      term%nlo_controller%reg_data)
+       !sf_channel = term%k_term%phs%config%get_sf_channel (phs_channel)
        !call term%nlo_controller%sf_born%compute_kinematics (sf_channel, mci_work%get_x_strfun ())
        !if (success) &
        !   call term%nlo_controller%int_born%set_momenta (term%p_hard)
-    class default
-       call term%k_term%compute_selected_channel &
-            (mci_work, phs_channel, term%p_seed, success)
-    end select
   end subroutine term_instance_compute_seed_kinematics
     
 @ %def term_instance_compute_seed_kinematics
+@
+<<Processes: term instance: TBP>>=
+  procedure :: evaluate_radiation_kinematics => term_instance_evaluate_radiation_kinematics
+<<Processes: procedures>>=
+  subroutine term_instance_evaluate_radiation_kinematics (term, mci_work)
+    class(term_instance_t), intent(inout) :: term
+    type(mci_work_t), intent(in) :: mci_work
+    select type (phs => term%k_term%phs)
+    type is (phs_fks_t)
+       if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) &
+         call term%k_term%evaluate_radiation_kinematics (mci_work%get_x_process (), &
+            term%nlo_controller%reg_data)
+    end select
+  end subroutine term_instance_evaluate_radiation_kinematics
+
+@ %def term_instance_evaluate_radiation_kinematics
 @
 <<Processes: term instance: TBP>>=
   procedure :: redo_sf_chain => term_instance_redo_sf_chain
@@ -8211,6 +8223,87 @@ postpone until we know the factorization scale), and we have a valid
   end subroutine term_instance_redo_sf_chain
 
 @ %def term_instance_redo_sf_chain
+@
+<<Processes: process instance: TBP>>=
+  procedure :: find_same_kinematics => process_instance_find_same_kinematics
+<<Processes: procedures>>=
+  subroutine process_instance_find_same_kinematics (instance)
+    class(process_instance_t), intent(inout) :: instance
+    integer :: i_term1, i_term2 
+    integer :: k
+    integer :: n_same
+    do i_term1 = 1, size (instance%term)
+       if (.not. allocated (instance%term(i_term1)%same_kinematics)) then
+          n_same = 1 !!! Index group includes the index of its term_instance
+          do i_term2 = 1, size (instance%term)
+             if (i_term1 == i_term2) cycle
+             if (compare_md5s (i_term1, i_term2)) n_same = n_same + 1   
+          end do
+          allocate (instance%term(i_term1)%same_kinematics (n_same), source = 0)
+          associate (same_kinematics => instance%term(i_term1)%same_kinematics)
+             k = 1
+             do i_term2 = 1, size (instance%term)
+                if (compare_md5s (i_term1, i_term2)) then
+                   same_kinematics(k) = i_term2
+                   k = k + 1
+                end if
+             end do
+             do k = 1, size (same_kinematics)
+                if (same_kinematics(k) == i_term1) cycle
+                i_term2 = same_kinematics(k) 
+                allocate (instance%term(i_term2)%same_kinematics (n_same), &
+                   source = same_kinematics)
+             end do 
+          end associate
+       end if
+    end do
+  contains
+    function compare_md5s (i, j) result (same)
+      logical :: same
+      integer, intent(in) :: i, j
+      character(32) :: md5sum_1, md5sum_2
+      select type (phs => instance%term(i)%k_term%phs%config)
+      type is (phs_fks_config_t)
+         md5sum_1 = phs%md5sum_born_config
+      class default 
+         md5sum_1 = phs%md5sum_phs_config
+      end select
+      select type (phs => instance%term(j)%k_term%phs%config)
+      type is (phs_fks_config_t)
+         md5sum_2 = phs%md5sum_born_config
+      class default 
+         md5sum_2 = phs%md5sum_phs_config
+      end select
+      same = md5sum_1 == md5sum_2
+    end function compare_md5s
+  end subroutine process_instance_find_same_kinematics
+
+@ %def process_instance_find_same_kinematics
+@
+<<Processes: process instance: TBP>>=
+  procedure :: transfer_same_kinematics => process_instance_transfer_same_kinematics
+<<Processes: procedures>>=
+  subroutine process_instance_transfer_same_kinematics (instance, i_term)
+    class(process_instance_t), intent(inout) :: instance
+    integer, intent(in) :: i_term
+    integer :: i, i_term_same
+    associate (same_kinematics => instance%term(i_term)%same_kinematics) 
+       do i = 1, size (same_kinematics)
+          i_term_same = same_kinematics(i)
+          if (i_term_same /= i_term) then
+             instance%term(i_term_same)%p_seed = instance%term(i_term)%p_seed 
+             select type (phs => instance%term(i_term_same)%k_term%phs)
+             type is (phs_fks_t)
+                call phs%set_momenta (instance%term(i_term_same)%p_seed)
+             end select
+          end if
+          call vector4_write_set (instance%term(i_term)%p_seed)
+          instance%term(i_term_same)%k_term%new_seed = .false. 
+       end do 
+    end associate
+  end subroutine process_instance_transfer_same_kinematics
+
+@ %def process_instance_transfer_same_kinematics
 @ Inverse: recover missing parts of the kinematics, given a complete
 set of seed momenta.  Select a channel and reconstruct the MC parameter set.
 <<Processes: term instance: TBP>>=
@@ -8798,6 +8891,7 @@ has passed cuts, we calculate the various scale and weight expressions.
      type(vector4_t), dimension(:), allocatable :: p_hard
      type(nlo_controller_t), pointer :: nlo_controller => null ()
      integer :: nlo_type = BORN
+     integer, dimension(:), allocatable :: same_kinematics
    contains
    <<Processes: term instance: TBP>>
   end type term_instance_t
@@ -10303,6 +10397,7 @@ required explicitly.
     end do
     instance%term%checked = .false.
     instance%term%passed = .false.
+    instance%term%k_term%new_seed = .true.
     if (present (reset_mci)) then
        if (reset_mci)  instance%i_mci = 0
     end if
@@ -10451,6 +10546,7 @@ to subobject of [[instance]].
          end if
        end associate
     end do
+    call instance%find_same_kinematics ()
 
     do i_component = 1, size (instance%component)
        associate (component => instance%component(i_component))
@@ -10891,8 +10987,13 @@ recovered, and we are just computing the rest.
           if (instance%component(i)%active) then
              do j = 1, size (instance%component(i)%config%i_term) 
                 i_term = instance%component(i)%config%i_term(j)
-                call instance%term(i_term)%compute_seed_kinematics &
-                  (instance%mci_work(instance%i_mci), channel, success)
+                if (instance%term(i_term)%k_term%new_seed) then
+                   call instance%term(i_term)%compute_seed_kinematics &
+                      (instance%mci_work(instance%i_mci), channel, success) 
+                   call instance%transfer_same_kinematics (i_term)
+                end if
+                call instance%term(i_term)%evaluate_radiation_kinematics &
+                   (instance%mci_work(instance%i_mci))
                 if (.not. success)  exit
              end do
           end if
