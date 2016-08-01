@@ -704,17 +704,19 @@ contains
     boost_to_top_rest = inverse (boost_to_cms)
     mom_topbar_onshell = [sqrts / 2, - scale_factor * unit_vec]
     if (debug_active (D_THRESHOLD)) then
-       tmp_v4 = boost_to_top_rest * v4_top_onshell
-       tmp = tmp_v4
-       test = mom_top_onshell_rest
-       call assert_equal (u, tmp, test, &
-            "verify that we have the right boost", abs_smallness=tiny_07 * 10, &
-             rel_smallness=tiny_07, &
-            exit_on_fail=.true.)
-       tmp = apply_boost (boost_to_cms, mom_top_onshell_rest)
-       test = mom_top_onshell
-       call assert_equal(u, test, tmp, "test the inverse boost", &
-            exit_on_fail=.true.)
+       if (sqrts > 2 * mtop) then
+          tmp_v4 = boost_to_top_rest * v4_top_onshell
+          tmp = tmp_v4
+          test = mom_top_onshell_rest
+          call assert_equal (u, tmp, test, &
+               "verify that we have the right boost", abs_smallness=tiny_07 * 10, &
+                rel_smallness=tiny_07, &
+               exit_on_fail=.true.)
+          tmp = apply_boost (boost_to_cms, mom_top_onshell_rest)
+          test = mom_top_onshell
+          call assert_equal(u, test, tmp, "test the inverse boost", &
+               exit_on_fail=.true.)
+       end if
        call assert (u, p12 == - (mom_top_onshell + mom_topbar_onshell), &
             "momentum conservation with a flip", exit_on_fail=.true.)
        call assert_equal (u, mom_top_onshell * mom_top_onshell, mtop**2, &
