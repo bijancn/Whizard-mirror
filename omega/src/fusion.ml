@@ -1,4 +1,4 @@
-(* $Id: fusion.ml 7520 2016-04-25 11:42:45Z ohl $
+(* $Id: fusion.ml 7653 2016-07-18 11:37:04Z ohl $
 
    Copyright (C) 1999-2016 by
 
@@ -24,8 +24,8 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Fusion" ["General Fusions"]
-    { RCS.revision = "$Revision: 7520 $";
-      RCS.date = "$Date: 2016-04-25 13:42:45 +0200 (Mon, 25 Apr 2016) $";
+    { RCS.revision = "$Revision: 7653 $";
+      RCS.date = "$Date: 2016-07-18 13:37:04 +0200 (Mon, 18 Jul 2016) $";
       RCS.author = "$Author: ohl $";
       RCS.source
         = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/fusion.ml $" }
@@ -201,8 +201,8 @@ module Stat_Dirac (M : Model.T) : (Stat with type flavor = M.flavor) =
 
     let permutation lines =
       let fout, fin = List.split lines in
-      let eps_in, _ = Combinatorics.sort_signed compare fin
-      and eps_out, _ = Combinatorics.sort_signed compare fout in
+      let eps_in, _ = Combinatorics.sort_signed fin
+      and eps_out, _ = Combinatorics.sort_signed fout in
       (eps_in * eps_out)
 
 (* \begin{dubious}
@@ -1990,7 +1990,7 @@ i*)
           raise Impossible
 i*)
 
-    let permutation lines = fst(Combinatorics.sort_signed compare lines)   
+    let permutation lines = fst (Combinatorics.sort_signed lines)   
 
     let stat_sign = function
       | Boson lines -> permutation lines

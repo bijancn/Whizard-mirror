@@ -1,10 +1,11 @@
-(* $Id: config.ml.in 7653 2016-07-18 11:37:04Z ohl $
+(* $Id: omega_UFO.ml $
 
    Copyright (C) 1999-2016 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
@@ -21,32 +22,12 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-let default_UFO_dir = "@OMEGA_DEFAULT_UFO_DIR@"
-
-let system_cache_dir = "@OMEGA_SYSTEM_CACHE_DIR@"
-let user_cache_dir = "@OMEGA_USER_CACHE_DIR@"
-
-(* \begin{dubious}
-     This relies on the assumption that executable names are unique,
-     which is not true for the UFO version.
-   \end{dubious} *)
-let cache_prefix =
-  let basename = Filename.basename Sys.executable_name in
-  try Filename.chop_extension basename with | _ -> basename
-
-let cache_suffix = "@OMEGA_CACHE_SUFFIX@"
-
-let openmp = false
+module O = Omega.Make(Fusion.Mixed23)(Targets.Fortran)(UFO.Model)
+let _ = O.main ()
 
 (*i
  *  Local Variables:
- *  mode:caml
  *  indent-tabs-mode:nil
  *  page-delimiter:"^(\\* .*\n"
  *  End:
 i*)
-
-
-
-
-

@@ -1,10 +1,11 @@
-(* $Id: config.ml.in 7653 2016-07-18 11:37:04Z ohl $
+(* $Id: vertex.mli 7444 2016-02-17 15:37:20Z jr_reuter $
 
    Copyright (C) 1999-2016 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
+       with contributions from
        Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
@@ -21,32 +22,34 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-let default_UFO_dir = "@OMEGA_DEFAULT_UFO_DIR@"
+val parse_string : string -> UFO_syntax.t
+val parse_file : string -> UFO_syntax.t
 
-let system_cache_dir = "@OMEGA_SYSTEM_CACHE_DIR@"
-let user_cache_dir = "@OMEGA_USER_CACHE_DIR@"
+module type Files =
+  sig
+    
+    type t = private
+      { particles : UFO_syntax.t;
+	couplings : UFO_syntax.t;
+	coupling_orders : UFO_syntax.t;
+	vertices : UFO_syntax.t;
+	lorentz : UFO_syntax.t;
+	parameters : UFO_syntax.t;
+	propagators : UFO_syntax.t;
+	decays : UFO_syntax.t }
 
-(* \begin{dubious}
-     This relies on the assumption that executable names are unique,
-     which is not true for the UFO version.
-   \end{dubious} *)
-let cache_prefix =
-  let basename = Filename.basename Sys.executable_name in
-  try Filename.chop_extension basename with | _ -> basename
+    val parse_directory : string -> t
 
-let cache_suffix = "@OMEGA_CACHE_SUFFIX@"
+  end
 
-let openmp = false
+type t
+val parse_directory : string -> t 
+val dump : t -> unit
+ 
+module Model : Model.T
 
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  End:
-i*)
-
-
-
-
-
+module type Test =
+  sig
+    val example : unit -> unit
+    val suite : OUnit.test
+  end
