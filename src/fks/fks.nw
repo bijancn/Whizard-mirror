@@ -5105,7 +5105,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     logical :: active = .true.
     type(region_data_t), pointer :: reg_data => null ()
     real(default), dimension(:), pointer :: sqme_born => null ()
-    real(default), dimension(:,:,:), pointer :: sqme_born_cc => null ()
+    real(default), dimension(:,:,:), allocatable :: sqme_born_cc
     type(real_kinematics_t), pointer :: real_kinematics => null ()
     type(soft_subtraction_t) :: sub_soft
   contains
@@ -5118,19 +5118,19 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   procedure :: init => soft_mismatch_init
 <<real subtraction: procedures>>=
   subroutine soft_mismatch_init (soft_mismatch, n_in, nlegs_born, &
-     reg_data, sqme_collector, real_kinematics)
+     reg_data, real_kinematics)
     class(soft_mismatch_t), intent(inout) :: soft_mismatch
     integer, intent(in) :: n_in, nlegs_born
     type(region_data_t), intent(in), target :: reg_data
-    type(sqme_collector_t), intent(in), target :: sqme_collector
+    !type(sqme_collector_t), intent(in), target :: sqme_collector
     type(real_kinematics_t), intent(in), target :: real_kinematics
     select type (mapping => reg_data%fks_mapping)
     type is (fks_mapping_default_t)
        soft_mismatch%active = .false.
     type is (fks_mapping_resonances_t)
        soft_mismatch%reg_data => reg_data
-       soft_mismatch%sqme_born => sqme_collector%sqme_subtraction_born_list
-       soft_mismatch%sqme_born_cc => sqme_collector%sqme_born_cc
+       !soft_mismatch%sqme_born => sqme_collector%sqme_subtraction_born_list
+       !soft_mismatch%sqme_born_cc => sqme_collector%sqme_born_cc
        call soft_mismatch%sub_soft%init (reg_data, n_in, nlegs_born, nlegs_born + 1)
        soft_mismatch%sub_soft%xi2_expanded = .false.
        soft_mismatch%real_kinematics => real_kinematics
@@ -5537,8 +5537,8 @@ necessary to expand with $z$ once.
     integer :: current_alr = 0
     integer :: current_i_res = 0
     real(default), dimension(:,:), allocatable :: sqme_real_non_sub
-    real(default), dimension(:), pointer :: sqme_born => null ()
-    real(default), dimension(:,:,:), pointer :: sqme_born_cc => null ()
+    real(default), dimension(:), allocatable :: sqme_born
+    real(default), dimension(:,:,:), allocatable :: sqme_born_cc
     complex(default), dimension(:), pointer :: sqme_born_sc => null ()
     type(soft_subtraction_t) :: sub_soft
     type(coll_subtraction_t) :: sub_coll
@@ -5560,12 +5560,12 @@ necessary to expand with $z$ once.
   procedure :: init => real_subtraction_init
 <<real subtraction: procedures>>=
   subroutine real_subtraction_init (rsub, reg_data, n_in, &
-      nlegs_born, nlegs_real, sqme_collector, &
+      nlegs_born, nlegs_real, &
       nlo_cuts)
     class(real_subtraction_t), intent(inout), target :: rsub
     type(region_data_t), intent(in), target :: reg_data
     integer, intent(in) :: n_in, nlegs_born, nlegs_real
-    type(sqme_collector_t), intent(in), target :: sqme_collector
+    !type(sqme_collector_t), intent(in), target :: sqme_collector
     type(nlo_cuts_t), intent(in), target :: nlo_cuts
     integer :: alr, i_uborn
     call msg_debug (D_SUBTRACTION, "real_subtraction_init")
@@ -5577,9 +5577,12 @@ necessary to expand with $z$ once.
     if (debug2_active (D_SUBTRACTION))  &
          call reg_data%write ()
     rsub%reg_data => reg_data
-    rsub%sqme_born => sqme_collector%sqme_subtraction_born_list
-    rsub%sqme_born_cc => sqme_collector%sqme_born_cc
-    rsub%sqme_born_sc => sqme_collector%sqme_born_sc
+    allocate (rsub%sqme_born (reg_data%n_flv_born))
+    !rsub%sqme_born => sqme_collector%sqme_subtraction_born_list
+    rsub%sqme_born = zero
+    allocate (rsub%sqme_born_cc (reg_data%n_legs_born, reg_data%n_legs_born, &
+       reg_data%n_flv_born))    
+    !rsub%sqme_born_sc => sqme_collector%sqme_born_sc
     allocate (rsub%sqme_real_non_sub (reg_data%n_flv_real, reg_data%n_phs))
     allocate (rsub%sc_required (reg_data%n_regions))
     do alr = 1, reg_data%n_regions
@@ -8132,7 +8135,7 @@ and virtual counterterms.
          "nlo_controller%settings%use_internal_color_correlations", &
          nlo_controller%settings%use_internal_color_correlations)
     call msg_debug2 (D_SUBTRACTION, "fac_scale", fac_scale)
-    associate (collector => nlo_controller%sqme_collector)
+    associate (real_terms => nlo_controller%real_terms)
        if (.not. nlo_controller%settings%use_internal_color_correlations) then
           select type (core)
           class is (prc_user_defined_base_t)
@@ -8141,12 +8144,16 @@ and virtual counterterms.
                 !nlo_controller%int_born%get_momenta (), fac_scale, &
                 nlo_controller%real_kinematics%p_born_cms%get_momenta(1), &
                 fac_scale, &
-                collector%sqme_born_cc (:,:,i_flv_born), bad_point, &
-                collector%sqme_subtraction_born_list (i_flv_born))
+                !collector%sqme_born_cc (:,:,i_flv_born), bad_point, &
+                real_terms%sqme_born_cc (:,:,i_flv_born), bad_point, &
+                !collector%sqme_subtraction_born_list (i_flv_born))
+                real_terms%sqme_born (i_flv_born))
           end select
        else
-          collector%sqme_born_cc (:,:,i_flv_born) = &
-             collector%sqme_subtraction_born_list (i_flv_born) * &
+          !collector%sqme_born_cc (:,:,i_flv_born) = &
+          real_terms%sqme_born_cc (:,:,i_flv_born) = &
+             !collector%sqme_subtraction_born_list (i_flv_born) * &
+             real_terms%sqme_born (i_flv_born) * &
              nlo_controller%color_data%beta_ij (:,:,i_flv_born)
           bad_point = .false.
        end if
@@ -8190,8 +8197,8 @@ and virtual counterterms.
 <<nlo controller: procedures>>=
   subroutine nlo_controller_compute_sqme_mismatch (nlo_controller)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    nlo_controller%sqme_collector%sqme_mismatch = &
-       nlo_controller%soft_mismatch%evaluate (nlo_controller%alpha_s_born)
+    !nlo_controller%sqme_collector%sqme_mismatch = &
+    !   nlo_controller%soft_mismatch%evaluate (nlo_controller%alpha_s_born)
   end subroutine nlo_controller_compute_sqme_mismatch
 
 @ %def nlo_controller_sqme_mismatch
@@ -8272,15 +8279,15 @@ one to determine this.
 @ %def nlo_controller_set_powheg_mode
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: set_real_sqme_born_pointer => nlo_controller_set_real_sqme_born_pointer
+  procedure :: set_real_sqme_born => nlo_controller_set_real_sqme_born
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_set_real_sqme_born_pointer (nlo_controller, sqme_born_list)
+  subroutine nlo_controller_set_real_sqme_born (nlo_controller, sqme_born_list)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     real(default), intent(in), dimension(:), target :: sqme_born_list
-    nlo_controller%real_terms%sqme_born => sqme_born_list
-  end subroutine nlo_controller_set_real_sqme_born_pointer
+    nlo_controller%real_terms%sqme_born = sqme_born_list
+  end subroutine nlo_controller_set_real_sqme_born
 
-@ %def nlo_controller_set_real_sqme_born_pointer
+@ %def nlo_controller_set_real_sqme_born
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: set_alr_to_i_phs => nlo_controller_set_alr_to_i_phs
@@ -8348,7 +8355,7 @@ one to determine this.
     complex(default) :: me
     class(virtual_connector_t), intent(in) :: connector
     complex(default), intent(in), dimension(:) :: x
-    me = connector%controller%compute_sqme_virt_from_me (x)
+    me = connector%controller%compute_sqme_virt (x)
   end function virtual_connector_evaluate
 
 @ %def virtual_connector_evaluate
@@ -8777,24 +8784,6 @@ end module nlo_controller_uti
 @ %def nlo_states_t
 @
 <<nlo data: public>>=
-  public :: sqme_collector_t
-<<nlo data: types>>=
-  type :: sqme_collector_t
-    real(default), dimension(:,:,:), allocatable :: sqme_born_cc
-    complex(default), dimension(:), allocatable :: sqme_born_sc
-    real(default), dimension(:), allocatable :: sqme_born_list
-    real(default), dimension(:), allocatable :: sqme_subtraction_born_list
-    real(default), dimension(:), allocatable :: sqme_virt_born_list
-    real(default), dimension(:), allocatable :: sqme_virt_list
-    real(default) :: sqme_mismatch
-    real(default), dimension(:), allocatable :: sqme_dglap_list
-  contains
-  <<nlo data: sqme collector: TBP>>
-  end type sqme_collector_t
-
-@ %def sqme_collector_t
-@
-<<nlo data: public>>=
   public :: nlo_cuts_t
 <<nlo data: types>>=
   type :: nlo_cuts_t
@@ -8803,63 +8792,6 @@ end module nlo_controller_uti
   end type nlo_cuts_t
 
 @ %def nlo_cuts_t
-@
-<<nlo data: sqme collector: TBP>>=
-  procedure :: get_sqme_sum => sqme_collector_get_sqme_sum
-<<nlo data: procedures>>=
-  function sqme_collector_get_sqme_sum (collector) result (sqme)
-    class(sqme_collector_t), intent(in) :: collector
-    real(default) :: sqme
-    sqme = sum (collector%sqme_born_list) + &
-           sum (collector%sqme_virt_list) + &
-           collector%sqme_mismatch + &
-           sum (collector%sqme_dglap_list)
-    if (debug2_active (D_SUBTRACTION)) then
-       call msg_debug (D_SUBTRACTION, "Get content of sqme lists: ")
-       call collector%write ()
-       print *, 'Sum: ', sqme
-    end if
-  end function sqme_collector_get_sqme_sum
-
-@ %def sqme_collector_get_sqme_sum
-@
-<<nlo data: sqme collector: TBP>>=
-  procedure :: get_sqme_born => sqme_collector_get_sqme_born
-<<nlo data: procedures>>=
-  function sqme_collector_get_sqme_born (collector, i_flv) result (sqme)
-    real(default) :: sqme
-    class(sqme_collector_t), intent(in) :: collector
-    integer, intent(in) :: i_flv
-    sqme = collector%sqme_born_list (i_flv)
-  end function sqme_collector_get_sqme_born
-
-@ %def sqme_collector_get_sqme_born
-@
-<<nlo data: sqme collector: TBP>>=
-  procedure :: reset => sqme_collector_reset
-<<nlo data: procedures>>=
-  subroutine sqme_collector_reset (collector)
-    class(sqme_collector_t), intent(inout) :: collector
-       collector%sqme_born_list = zero
-       collector%sqme_virt_list = zero
-       collector%sqme_mismatch = zero
-       collector%sqme_dglap_list = zero
-  end subroutine sqme_collector_reset
-
-@ %def sqme_collector_reset
-@
-<<nlo data: sqme collector: TBP>>=
-  procedure :: write => sqme_collector_write
-<<nlo data: procedures>>=
-  subroutine sqme_collector_write (collector)
-    class(sqme_collector_t), intent(in) :: collector
-    print *, 'Born: ', collector%sqme_born_list 
-    print *, 'Virt: ', collector%sqme_virt_list
-    print *, 'Dglap: ', collector%sqme_dglap_list
-    print *, 'Mismatch: ', collector%sqme_mismatch
-  end subroutine sqme_collector_write
-
-@ %def sqme_collector_write
 @ This data type governs the whole calculation. It contains information
 about color, spin and flavor as well as the information about the Born
 process.
@@ -8871,7 +8803,6 @@ process.
     type(region_data_t), pointer :: reg_data => null ()
     type(nlo_states_t) :: particle_states
     type(nlo_settings_t), pointer :: settings => null ()
-    type(sqme_collector_t), pointer :: sqme_collector => null ()
     integer :: n_allowed_born
     integer :: active_emitter, active_phase_space
     integer :: active_flavor_structure_real
@@ -8933,7 +8864,6 @@ process.
      type(fks_template_t), intent(in) :: template
      real(default), intent(in) :: sqrts
      integer :: n_in, n_tot_born
-     call nlo_controller%setup_matrix_elements ()
      nlo_controller%alpha_s_born_set = .false.
      call nlo_controller%init_real_and_isr_kinematics (sqrts)
 
@@ -8946,7 +8876,7 @@ process.
      n_in = nlo_controller%reg_data%n_in
      n_tot_born = nlo_controller%reg_data%n_legs_born
      call nlo_controller%soft_mismatch%init (n_in, n_tot_born, nlo_controller%reg_data, &
-        nlo_controller%sqme_collector, nlo_controller%real_kinematics)
+        nlo_controller%real_kinematics)
      allocate (powheg_damping_simple_t :: nlo_controller%powheg_damping)
   end subroutine nlo_controller_setup_real_terms
 
@@ -8974,7 +8904,7 @@ process.
     associate (reg_data => nlo_controller%reg_data)
        call nlo_controller%real_terms%init (nlo_controller%reg_data, &
           reg_data%n_in, reg_data%n_legs_born, reg_data%n_legs_real, &
-          nlo_controller%sqme_collector, nlo_controller%nlo_cuts)
+          nlo_controller%nlo_cuts)
        call nlo_controller%real_terms%set_resonance_mappings &
           (nlo_controller%settings%use_resonance_mappings)
        associate (settings => nlo_controller%settings)
@@ -9039,41 +8969,6 @@ process.
   end function nlo_controller_get_flv_state_real
 
 @ %def nlo_controller_get_flv_state_real
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: setup_matrix_elements => nlo_controller_setup_matrix_elements
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_setup_matrix_elements (nlo_controller, n_hel)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer, intent(in), optional :: n_hel
-    integer :: n_tot_born
-    associate (collector => nlo_controller%sqme_collector, &
-         reg_data => nlo_controller%reg_data)
-      if (present (n_hel)) then
-         allocate (collector%sqme_virt_born_list (reg_data%n_flv_born))
-         allocate (collector%sqme_virt_list (reg_data%n_flv_born))
-      else
-         allocate (collector%sqme_virt_born_list (reg_data%n_flv_born))
-         allocate (collector%sqme_virt_list (reg_data%n_flv_born))
-      end if
-      allocate (collector%sqme_born_list (reg_data%n_flv_born))
-      allocate (collector%sqme_subtraction_born_list (reg_data%n_flv_born))
-      n_tot_born = nlo_controller%reg_data%n_legs_born
-      allocate (collector%sqme_born_cc (n_tot_born, n_tot_born, reg_data%n_flv_born))
-      allocate (collector%sqme_born_sc (reg_data%n_flv_born))
-      allocate (collector%sqme_dglap_list (reg_data%n_flv_born))
-      collector%sqme_born_list = zero
-      collector%sqme_subtraction_born_list = zero
-      collector%sqme_born_cc = zero
-      collector%sqme_born_sc = cmplx (zero, zero, kind=default)
-      collector%sqme_virt_born_list = zero
-      collector%sqme_virt_list = zero
-      collector%sqme_dglap_list = zero
-      collector%sqme_mismatch = zero
-    end associate
-  end subroutine nlo_controller_setup_matrix_elements
-
-@ %def nlo_controller_setup_matrix_elements
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: setup_generator => nlo_controller_setup_generator
@@ -9663,7 +9558,7 @@ process.
     class(nlo_controller_t), intent(inout) :: nlo_controller
     call nlo_controller%dglap_remnant%init (nlo_controller%isr_kinematics, &
        nlo_controller%particle_states%flv_state_born, &
-       nlo_controller%reg_data%n_regions, nlo_controller%sqme_collector)
+       nlo_controller%reg_data%n_regions)
   end subroutine nlo_controller_init_dglap_remnant
 
 @ %def nlo_controller_init_dglap_remnant
@@ -9688,8 +9583,8 @@ process.
     if (.not. nlo_controller%alpha_s_born_set) &
         call msg_fatal ("Strong coupling not set for dglap remnant")
     !!! TODO (cw 2016-04-26): Use correct i_flv_born
-    nlo_controller%sqme_collector%sqme_dglap_list (1) =  &
-       nlo_controller%dglap_remnant%evaluate (nlo_controller%alpha_s_born, sqme)
+    !nlo_controller%sqme_collector%sqme_dglap_list (1) =  &
+    !   nlo_controller%dglap_remnant%evaluate (nlo_controller%alpha_s_born, sqme)
   end subroutine nlo_controller_evaluate_dglap_remnant
 
 @ %def evaluate_dglap_remnant
@@ -10079,66 +9974,38 @@ process.
 @ %def nlo_controller_transfer_to_virtual
 @
 <<nlo controller: nlo controller: TBP>>=
-  generic :: compute_sqme_virt => compute_sqme_virt_from_list
-  procedure :: compute_sqme_virt_from_list => nlo_controller_compute_sqme_virt_from_list
-  generic :: compute_sqme_virt => compute_sqme_virt_from_me
-  procedure :: compute_sqme_virt_from_me => nlo_controller_compute_sqme_virt_from_me
+  procedure :: compute_sqme_virt => nlo_controller_compute_sqme_virt
 <<nlo controller: procedures>>=
-  function nlo_controller_compute_sqme_virt_from_me &
-     (nlo_controller, me) result (sqme_virt)
+  function nlo_controller_compute_sqme_virt (nlo_controller, me) result (sqme_virt)
     real(default) :: sqme_virt
     class(nlo_controller_t), intent(inout) :: nlo_controller
     complex(default), intent(in), dimension(:) :: me
     integer :: n_tot, n_me 
     integer, dimension(:), allocatable :: flv_state
     associate (virtual => nlo_controller%virtual_terms)
+       print *, 'me: ', me
        call virtual%set_vfin (real(me(1)))
        if (nlo_controller%settings%use_internal_color_correlations) then
           call virtual%evaluate (nlo_controller%reg_data, 1, &
              nlo_controller%alpha_s_born, virtual%p, real(me(2)), &
              nlo_controller%color_data%beta_ij)
        else
-          n_tot = nlo_controller%reg_data%n_legs_born
-          n_me = size (me)
-          call blha_cc_fill_offdiag (n_tot, real (me(3 : n_me)), &
-             nlo_controller%sqme_collector%sqme_born_cc (:,:,1)) 
-          flv_state = nlo_controller%reg_data%get_flv_states_born (1)
-          call blha_cc_fill_diag (real (me(2)), flv_state, &
-             nlo_controller%sqme_collector%sqme_born_cc (:,:,1))
-          call virtual%evaluate (nlo_controller%reg_data, 1, &
-             nlo_controller%alpha_s_born, virtual%p, real(me(2)), &
-             nlo_controller%sqme_collector%sqme_born_cc)
+          !!! TODO (cw 2016-08-03): Restore external color correlations
+          !n_tot = nlo_controller%reg_data%n_legs_born
+          !n_me = size (me)
+          !call blha_cc_fill_offdiag (n_tot, real (me(3 : n_me)), &
+          !   nlo_controller%sqme_collector%sqme_born_cc (:,:,1)) 
+          !flv_state = nlo_controller%reg_data%get_flv_states_born (1)
+          !call blha_cc_fill_diag (real (me(2)), flv_state, &
+          !   nlo_controller%sqme_collector%sqme_born_cc (:,:,1))
+          !call virtual%evaluate (nlo_controller%reg_data, 1, &
+          !   nlo_controller%alpha_s_born, virtual%p, real(me(2)), &
+          !   nlo_controller%sqme_collector%sqme_born_cc)
        end if
        sqme_virt = virtual%sqme_virt
     end associate
-  end function nlo_controller_compute_sqme_virt_from_me
-
-
-  function nlo_controller_compute_sqme_virt_from_list &
-     (nlo_controller, i_flv, i_hel, p_born) result(sqme_virt)
-    real(default) :: sqme_virt
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer, intent(in) :: i_flv, i_hel
-    type(vector4_t), intent(in), dimension(:) :: p_born
-    associate (collector => nlo_controller%sqme_collector)
-       if (nlo_controller%settings%use_internal_color_correlations) then
-          call nlo_controller%virtual_terms%evaluate &
-               (nlo_controller%reg_data, &
-               i_flv, nlo_controller%alpha_s_born, &
-               p_born, collector%sqme_virt_born_list (i_flv), &
-               nlo_controller%color_data%beta_ij)
-       else
-          call nlo_controller%virtual_terms%evaluate &
-               (nlo_controller%reg_data, &
-               i_flv, nlo_controller%alpha_s_born, &
-               p_born, collector%sqme_virt_born_list (i_flv), &
-               collector%sqme_born_cc)
-       end if
-    end associate
-    sqme_virt = nlo_controller%virtual_terms%sqme_virt
-  end function nlo_controller_compute_sqme_virt_from_list
-
-@ %def nlo_controller_compute_sqme_virt_from_list
+  end function nlo_controller_compute_sqme_virt
+@ %def nlo_controller_compute_sqme_virt
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: requires_spin_correlation => &
@@ -13237,19 +13104,19 @@ end module dglap_remnant
 <<dglap remnant: dglap remnant: TBP>>=
   procedure :: init => dglap_remnant_init
 <<dglap remnant: procedures>>=
-  subroutine dglap_remnant_init (dglap, isr_kinematics, flv, n_alr, sqme_collector)
+  subroutine dglap_remnant_init (dglap, isr_kinematics, flv, n_alr)
     class(dglap_remnant_t), intent(inout) :: dglap
     type(isr_kinematics_t), intent(in), target :: isr_kinematics
     integer, dimension(:,:), intent(in) :: flv
     integer, intent(in) :: n_alr
-    type(sqme_collector_t), intent(in), target :: sqme_collector
+    !type(sqme_collector_t), intent(in), target :: sqme_collector
     integer :: i, j, n_quarks
     logical, dimension(-6:6) :: quark_checked = .false.
     dglap%required = any ([is_quark(flv(1,1)), &
         is_quark(flv(2,1)), is_gluon(flv(1,1)), is_gluon(flv(2,1))])
     if (.not. dglap%required) return
 
-    dglap%sqme_born => sqme_collector%sqme_subtraction_born_list
+    !dglap%sqme_born => sqme_collector%sqme_subtraction_born_list
     dglap%isr_kinematics => isr_kinematics
     allocate (dglap%value (n_alr))
     call dglap%set_incoming_flavor (flv(1,1), flv(2,1))
