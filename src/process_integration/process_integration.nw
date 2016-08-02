@@ -1137,26 +1137,6 @@ list.  Variables used within the expressions are looked up in [[var_list]].
   end type connected_state_t
      
 @ %def connected_state_t
-@ Auxilliary container of [[connected_state]] pointers.
-<<Parton states: types>>=
-  type :: connected_pointer_t
-    type(connected_state_t), pointer :: connected => null ()
-  end type connected_pointer_t
-
-@ %def connected_pointer_t
-@ The [[nlo_state]] merges connected states, which e.g. belong to
-different $\alpha_r$, and computes the final NLO matrix element.
-<<Parton states: public>>=
-  public :: nlo_state_t
-<<Parton states: types>>=
-  type :: nlo_state_t
-    class(connector_function_t), allocatable :: me_connector
-    type(connected_pointer_t), dimension(:), allocatable :: connected
-  contains
-  <<Parton states: nlo state: TBP>>
-  end type nlo_state_t
-
-@ %def nlo_state_t
 @ Output: each evaluator is written only when it is active.  The
 [[sf_chain]] is only written if it is explicitly allocated.
 <<Parton states: parton state: TBP>>=
@@ -1710,21 +1690,6 @@ list acquires pointers to subobjects of [[state]], which must therefore have a
   
 @ %def connected_state_reset_expressions
 @ 
-<<Parton states: nlo state: TBP>>=
-  procedure :: init => nlo_state_init
-<<Parton states: procedures>>=
-  subroutine nlo_state_init (state, connected)
-    class(nlo_state_t), intent(inout) :: state
-    type(connected_state_t), intent(in), dimension(:), target :: connected
-    integer :: i_conn
-    allocate (state%connected (size (connected)))
-    do i_conn = 1, size (connected)
-       state%connected(i_conn)%connected => connected(i_conn) 
-    end do
-  end subroutine nlo_state_init
-
-@ %def nlo_state_init
-@
 \subsection{Evaluation}
 Transfer momenta to the trace evaluator and fill the [[subevt]] with
 this effective kinematics, if applicable.
@@ -7775,13 +7740,10 @@ type and contents depend on the process variant.
   type :: component_instance_t
      type(process_component_t), pointer :: config => null ()
      logical :: active = .false.
-     !type(kinematics_t) :: k_seed
-     !type(vector4_t), dimension(:), allocatable :: p_seed
      logical :: sqme_known = .false.
      !!! TODO (cw-2016-07-20): Find out whether component_instance really needs its own sqme
      real(default) :: sqme = zero
      type(nlo_controller_t), pointer :: nlo_controller => null ()
-     type(nlo_state_t) :: nlo_state
      integer :: nlo_type = BORN
    contains
    <<Processes: component instance: TBP>>
@@ -8265,7 +8227,6 @@ imaginary part of the terms, which should be zero anyway.
     class(prc_core_t), pointer :: core => null ()
 
     component%sqme = zero
-    call reset_nlo_components (component)
     associate (i_term => component%config%i_term)
       do j = 1, size (i_term)
          i = i_term(j)
@@ -8285,19 +8246,6 @@ imaginary part of the terms, which should be zero anyway.
   end subroutine component_instance_evaluate_sqme
   
 @ %def component_instance_evaluate_sqme
-@
-<<Processes: procedures>>=
-  subroutine reset_nlo_components (component)
-     type(component_instance_t), intent(inout) :: component
-     select case (component%config%config%get_nlo_type ())
-     case (NLO_REAL, NLO_VIRTUAL, NLO_DGLAP, NLO_MISMATCH)
-        associate (collector => component%nlo_controller%sqme_collector)
-           collector%sqme_real_non_sub = zero
-        end associate
-     end select
-  end subroutine reset_nlo_components
-
-@ %def reset_nlo_components
 @
 <<Processes: procedures>>=
   subroutine set_subtraction_born (component, sqme_born, i_flv)
@@ -9835,7 +9783,6 @@ to subobject of [[instance]].
     class(process_instance_t), intent(out), target :: instance
     type(process_t), intent(inout), target :: process
     integer :: i, i_component, i_term, i_term_global, i_term_base
-    type(connected_state_t), dimension(:), allocatable :: all_connected
     class(prc_core_t), pointer :: core => null ()
     logical :: combined_nlo_integration
 
@@ -9909,13 +9856,6 @@ to subobject of [[instance]].
     end do
     call instance%find_same_kinematics ()
 
-    do i_component = 1, size (instance%component)
-       associate (component => instance%component(i_component))
-         all_connected =  instance%get_connected_states (i_component)
-         call component%nlo_state%init (all_connected)
-         deallocate (all_connected)
-       end associate
-    end do
     instance%evaluation_status = STAT_INITIAL
     core => null ()
   end subroutine process_instance_init
