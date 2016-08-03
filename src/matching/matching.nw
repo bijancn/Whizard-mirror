@@ -1359,7 +1359,7 @@ module powheg_matching
   use format_defs, only: FMT_16, FMT_19
   use string_utils, only: str
   use os_interface, only: os_file_exist
-  use physics_defs, only: CA
+  use physics_defs, only: CA, BORN, NLO_REAL
   use lorentz
   use sm_qcd, only: qcd_t, alpha_qcd_from_scale_t, alpha_qcd_from_lambda_t
   use sm_physics, only: Li2
@@ -1510,6 +1510,8 @@ functions.
      logical :: cm_frame = .true.
      type(phs_identifier_t), dimension(:), allocatable :: phs_identifiers
      integer, dimension(:), allocatable :: alr_to_i_phs
+     integer :: i_born
+     integer, dimension(:), allocatable :: i_real
   contains
    <<POWHEG matching: process deps: TBP>>
   end type process_deps_t
@@ -2920,13 +2922,14 @@ Implements the function $G(a,b,\xi)$ given in eq. (\ref{GPlusMassiveFSR}) and eq
     class(powheg_matching_t), intent(inout) :: powheg
     type(vector4_t), dimension(:), intent(in) :: p_born
     type(lorentz_transformation_t) :: lt_lab_to_cms
+    real(default) :: sqme_born
     
+    sqme_born = powheg%process_instance%get_sqme (powheg%process_deps%i_born)
     if (.not. powheg%process_deps%cm_frame) then
        lt_lab_to_cms = inverse (powheg%process_instance%get_lorentz_transformation (1))
-       call powheg%update_event_deps (powheg%process_instance%pcm, &
-          p_born, lt_lab_to_cms)
+       call powheg%update_event_deps (sqme_born, p_born, lt_lab_to_cms)
     else
-       call powheg%update_event_deps (powheg%process_instance%pcm, p_born)
+       call powheg%update_event_deps (sqme_born, p_born)
     end if
   end subroutine powheg_matching_update_momenta
 
@@ -2951,17 +2954,12 @@ Implements the function $G(a,b,\xi)$ given in eq. (\ref{GPlusMassiveFSR}) and eq
 <<POWHEG matching: powheg matching: TBP>>=
   procedure :: update_event_deps => powheg_matching_update_event_deps 
 <<POWHEG matching: procedures>>=
-  subroutine powheg_matching_update_event_deps (powheg, pcm, p_born, lt_lab_to_cms)
+  subroutine powheg_matching_update_event_deps (powheg, sqme_born, p_born, lt_lab_to_cms)
     class(powheg_matching_t), intent(inout) :: powheg
-    class(pcm_instance_t), intent(in) :: pcm
+    real(default), intent(in) :: sqme_born
     type(vector4_t), dimension(:), intent(in) :: p_born
     type(lorentz_transformation_t), intent(in), optional :: lt_lab_to_cms
-    select type (pcm => powheg%process_instance%pcm)
-    class is (pcm_instance_nlo_t)
-       !!! TODO (cw-2016-08-03): Modernize
-       !call powheg%event_deps%update &
-       !   (pcm%collector%get_sqme_born(1), p_born, lt_lab_to_cms)
-    end select
+    call powheg%event_deps%update (sqme_born, p_born, lt_lab_to_cms)
   end subroutine powheg_matching_update_event_deps
 
 @ %def powheg_matching_update_event_deps
@@ -3209,8 +3207,9 @@ The following is valid for one underlying Born.
             process => powheg%process_instance%process)
           do
              call process%generate_weighted_event (powheg%process_instance, 1)
-             !!! TODO (cw-2016-07-18) Restore
-             !call powheg%update (pcm%controller%int_born%get_momenta ())
+             call pcm%controller%real_kinematics%write ()
+             call powheg%update (pcm%controller%get_momenta (born_phsp = .true., &
+                cms = .false., i_phs = 1))
              call powheg%rng%generate (radiation_randoms)
              do alr = 1, powheg%process_deps%n_alr
                 i_phs = powheg%process_deps%alr_to_i_phs (alr)
@@ -3535,16 +3534,15 @@ $p_{T,\text{min}}^2$.
 <<POWHEG matching: procedures>>=
   subroutine powheg_matching_setup_nlo_environment (matching)
     class(powheg_matching_t), intent(inout) :: matching
-    integer :: n_in, n_out_born, n_out_real
-    integer :: i_real
-    integer :: n_phs
+    integer :: n_tot_born, n_tot_real
+    integer :: i, i_real, i_term
+    integer :: n_phs, nlo_type
     call msg_debug (D_MATCHING, "powheg_matching_setup_nlo_environment")
     select type (pcm => matching%process_instance%pcm)
     class is (pcm_instance_nlo_t)
        matching%process_deps%n_alr = pcm%controller%get_n_alr ()
-       n_in = pcm%controller%reg_data%n_in
-       n_out_born = pcm%controller%reg_data%n_legs_born
-       n_out_real = pcm%controller%reg_data%n_legs_real
+       n_tot_born = pcm%controller%reg_data%n_legs_born
+       n_tot_real = pcm%controller%reg_data%n_legs_real
        matching%process_deps%sqrts = matching%process_instance%get_sqrts ()
        call pcm%controller%setup_generator &
             (matching%phs_fks_generator, &
@@ -3563,11 +3561,24 @@ $p_{T,\text{min}}^2$.
                 (size (nlo_controller%real_kinematics%alr_to_i_phs)))
              process_deps%alr_to_i_phs = nlo_controller%real_kinematics%alr_to_i_phs
           end associate
+          allocate (process_deps%i_real (n_phs))
+          i = 1
+          do i_term = 1, size (matching%process_instance%term)
+             nlo_type = matching%process_instance%term(i_term)%nlo_type
+             if (nlo_type == BORN) then
+                process_deps%i_born = i_term
+             else if (nlo_type == NLO_REAL) then
+                if (matching%process_instance%term(i_term)%k_term%emitter >= 0) then
+                   process_deps%i_real(i) = i_term
+                   i = i + 1
+                end if
+             end if
+          end do 
        end associate
-       call matching%event_deps%p_born_lab%init (n_in + n_out_born, 1)
-       call matching%event_deps%p_born_cms%init (n_in + n_out_born, 1)
-       call matching%event_deps%p_real_lab%init (n_in + n_out_real, n_phs)
-       call matching%event_deps%p_real_cms%init (n_in + n_out_real, n_phs)
+       call matching%event_deps%p_born_lab%init (n_tot_born, 1)
+       call matching%event_deps%p_born_cms%init (n_tot_born, 1)
+       call matching%event_deps%p_real_lab%init (n_tot_real, n_phs)
+       call matching%event_deps%p_real_cms%init (n_tot_real, n_phs)
     end select
   end subroutine powheg_matching_setup_nlo_environment
 
