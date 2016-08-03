@@ -27,7 +27,7 @@ let rcs_file = RCS.parse "DAG" ["Directed Acyclical Graph"]
       RCS.date = "$Date: 2016-07-18 13:37:04 +0200 (Mon, 18 Jul 2016) $";
       RCS.author = "$Author: ohl $";
       RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/dAG.ml $" }
+        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/dAG.ml $" }
 
 module type Ord =
   sig
