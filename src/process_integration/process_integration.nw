@@ -8177,39 +8177,9 @@ stored in the kinematics subobject to their source.  This is a side effect.
     class(component_instance_t), intent(inout) :: component
     type(term_instance_t), intent(inout), target :: term
     class(prc_core_t), intent(in) :: core
-    real(default) :: sqme
     integer :: n_flv, i_flv
     if (term%nlo_type /= BORN) return
     i_flv = 1
-    sqme = zero
-    if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) then
-       !select type (core => component%config%core_sub_born)
-       !class is (prc_blha_t)
-       !   sqme = component%compute_sqme_born_from_blha (core, i_flv, term)
-       !class is (prc_user_defined_base_t)
-       !   sqme = core%compute_sqme (i_flv, term%int_hard%get_momenta ())
-       !class default
-       !   sqme = real (term%connected%trace%get_matrix_element (1))
-       !end select
-    else
-       select type (core)
-       class is (prc_blha_t)
-          !n_flv = term%config%data%n_flv
-          !do i_flv = 1, n_flv
-          !   sqme = sqme + component%compute_sqme_born_from_blha (core, i_flv, term)
-          !end do
-          call msg_fatal ("This should not happen any more: sqme born from BLHA")
-       class is (prc_user_defined_base_t)
-          n_flv = term%config%data%n_flv
-          do i_flv = 1, n_flv
-             call core%update_alpha_s (term%core_state, term%fac_scale)
-             sqme = sqme + core%compute_sqme (i_flv, term%int_hard%get_momenta ())
-          end do
-       class default
-          sqme = real (term%connected%trace%get_matrix_element (1))
-       end select
-    end if
-    !component%sqme = sqme * term%weight
     component%sqme = real (term%connected%trace%get_matrix_element (1)) * term%weight
   end subroutine component_instance_evaluate_sqme_born
 
@@ -9143,6 +9113,11 @@ method may modify the [[core_state]] workspace object.
                    i_born = core%get_helicity_list (i)
                    term%amp(i_born) = cmplx (sqme, 0, default)
                 end do
+             type is (prc_threshold_t)
+               call core%update_alpha_s (term%core_state, term%fac_scale)
+               do i = 1, n_amps
+                  term%amp(i) = cmplx (core%compute_sqme (i, term%p_hard), 0 , default)
+               end do
              end select
           end select
           !!! OpenLoops already includes a factor of 1 / 4 in the amplitudes. Undo it. 
@@ -11353,12 +11328,14 @@ and directly set the coupling value that comes together with a particle set.
 <<Processes: process instance: TBP>>=
   procedure :: needs_extra_code => process_instance_needs_extra_code
 <<Processes: procedures>>=
-  function process_instance_needs_extra_code (instance) result (val)
+  function process_instance_needs_extra_code (instance, only_blha) result (val)
     logical :: val
     class(process_instance_t), intent(in) :: instance
+    logical, intent(in), optional :: only_blha
     integer :: i
-    logical :: skip
-    val = .false.
+    logical :: skip_other
+    val = .false.; skip_other = .false.
+    if (present (only_blha)) skip_other = only_blha
     associate (cm => instance%process%cm)
        do i = 1, cm%n_cores
          select type (core => cm%cores(i)%core)
@@ -11366,6 +11343,7 @@ and directly set the coupling value that comes together with a particle set.
             val = .true.
             exit
          class is (prc_threshold_t)
+            if (skip_other) cycle
             val = .true.
             exit
          end select
@@ -11516,7 +11494,7 @@ one has to bring NLO information there.
     logical :: skip
     type(vector4_t), dimension(:), allocatable :: p
 
-    if (instance%needs_extra_code ())  &
+    if (instance%needs_extra_code (only_blha = .true.))  &
          call instance%create_blha_interface (beam_structure)
     associate (cm => instance%process%cm)
        do i = 1, cm%n_cores
