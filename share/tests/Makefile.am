@@ -522,6 +522,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/lcio_interface_1.ref \
     unit_tests/ref-output/blha_1.ref \
     unit_tests/ref-output/ttv_formfactors_1.ref \
+    unit_tests/ref-output/ttv_formfactors_2.ref \
     unit_tests/ref-output/blha_2.ref \
     unit_tests/ref-output/blha_3.ref \
     functional_tests/ref-output/structure_1.ref \
@@ -562,7 +563,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/model_test.ref \
     functional_tests/ref-output/cuts.ref \
     functional_tests/ref-output/user_cuts.ref \
-    functional_tests/ref-output/user_prc_threshold.ref \
+    functional_tests/ref-output/user_prc_threshold_1.ref \
     functional_tests/ref-output/qedtest_1.ref \
     functional_tests/ref-output/qedtest_2.ref \
     functional_tests/ref-output/qedtest_5.ref \
@@ -645,6 +646,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/smtest_13.ref \
     functional_tests/ref-output/smtest_14.ref \
     functional_tests/ref-output/smtest_15.ref \
+    functional_tests/ref-output/sm_cms_1.ref \
     functional_tests/ref-output/nlo_1.ref \
     functional_tests/ref-output/mssmtest.ref \
     functional_tests/ref-output/spincor_1.ref \
@@ -725,6 +727,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/ewa_2.ref \
     functional_tests/ref-output-double/ewa_3.ref \
     functional_tests/ref-output-double/ilc.ref \
+    functional_tests/ref-output-double/user_prc_threshold_2.ref \
     functional_tests/ref-output-double/beam_events_2.ref \
     functional_tests/ref-output-double/beam_events_3.ref
 
@@ -760,6 +763,7 @@ REF_OUTPUT_FILES_PREC = \
     functional_tests/ref-output-prec/circe1_photons_3.ref \
     functional_tests/ref-output-prec/circe1_photons_4.ref \
     functional_tests/ref-output-prec/circe1_photons_5.ref \
+    functional_tests/ref-output-prec/user_prc_threshold_2.ref \
     functional_tests/ref-output-prec/ewa_1.ref
 
 REF_OUTPUT_FILES_EXT = \
@@ -953,6 +957,7 @@ MISC_TESTS_SIN = \
     functional_tests/smtest_13.sin \
     functional_tests/smtest_14.sin \
     functional_tests/smtest_15.sin \
+    functional_tests/sm_cms_1.sin \
     functional_tests/nlo_1.sin \
     functional_tests/nlo_2.sin \
     functional_tests/nlo_3.sin \
@@ -1022,7 +1027,8 @@ MISC_TESTS_SIN = \
     functional_tests/static_2.sin \
     functional_tests/static_2.exe.sin \
     functional_tests/user_cuts.sin \
-    functional_tests/user_prc_threshold.sin \
+    functional_tests/user_prc_threshold_1.sin \
+    functional_tests/user_prc_threshold_2.sin \
     functional_tests/user_strfun.sin \
     ilc_ext.sin
 
@@ -1076,6 +1082,7 @@ NLO_EXT_SIN = \
     extra_nlo_uu_powheg.sin \
     extra_nlo_methods.sin \
     extra_nlo_threshold.sin \
+    extra_threshold_factorized.sin \
     extra_nlo_methods_gosam.sin
 
 all-local: $(TESTSUITES_SIN)

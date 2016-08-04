@@ -56,7 +56,7 @@ module parameters_sm_tt_threshold
 
   public :: import_from_whizard, model_update_alpha_s, &
        ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole, ttv_wtpole, &
-       onshell_tops, expanded_amp2, top_width_lo, top_width_nlo
+       onshell_tops
 
 contains
 
@@ -86,7 +86,7 @@ contains
        real(default) :: m1s
        real(default) :: Vtb
        real(default) :: wt_inv
-       real(default) :: nloop
+       real(default) :: nrqcd_order
        real(default) :: sh
        real(default) :: sf
        real(default) :: FF
@@ -131,7 +131,7 @@ contains
     par%m1s    = par_array(20)
     par%Vtb    = par_array(21)
     par%wt_inv = par_array(22)
-    par%nloop  = par_array(23)
+    par%nrqcd_order  = par_array(23)
     par%sh     = par_array(24)
     par%sf     = par_array(25)
     par%FF     = par_array(26)
@@ -239,10 +239,11 @@ contains
     call init_parameters &
          (mass(6), width(6), par%m1s, par%Vtb, par%wt_inv, &
           par%alphaemi, par%sw, par%alphas, par%mZ, par%mW, &
-          mass(5), par%sh, par%sf, par%nloop, par%FF, &
+          mass(5), par%sh, par%sf, par%nrqcd_order, par%FF, &
           par%offshell_strategy, par%v1, par%v2, par%scan_sqrts_min, &
           par%scan_sqrts_max, par%scan_sqrts_stepsize, mpole_fixed)
     call init_threshold_grids (par%test)
+    call threshold%formfactor%activate ()
   end subroutine import_from_whizard
 
   subroutine model_update_alpha_s (alpha_s)
@@ -251,6 +252,7 @@ contains
     igs = cmplx (0.0_default, 1.0_default, kind=default) * gs
   end subroutine model_update_alpha_s
 
+  !!! Note: these functions use OMega's momentum type
   function ttv_formfactor (p, k, i, FF_mode) result (c)
     complex(default) :: c
     type(momentum), intent(in) :: p, k
@@ -260,9 +262,9 @@ contains
     integer :: this_FF
     call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
     this_FF = FF; if (present (FF_mode))  this_FF = FF_mode
-    c = FF_master (ps, i, this_FF)
+    c = threshold%formfactor%compute (ps, i, this_FF)
     !!! form factors include tree level: FF = 1 + O(alphas)
-    !!! subtract tree level contribution ~ 1 already included in SM couplings
+    !!! subtract tree level contribution (1) already included in SM couplings
     c = c - 1.0_default
   end function ttv_formfactor
 
@@ -303,7 +305,6 @@ contains
     real(default), save :: last_m = zero, last_w = zero
     logical :: uam
     real(default) :: m
-    logical :: nlo
     uam = .false.;  if (present (use_as_minv))  uam = use_as_minv
     if (uam) then
        m = s_or_minv
@@ -314,21 +315,7 @@ contains
        w = last_w
        return
     else
-       select case (OFFSHELL_STRATEGY)
-       case (0, -1, -3)
-          nlo = .false.
-       case (-2, -4)
-          nlo = .true.
-       case default
-          select case (ff)
-          case (MATCHED, RESUMMED_P0DEPENDENT, RESUMMED_P0CONSTANT, &
-                RESUMMED_SWITCHOFF_P0CONSTANT, RESUMMED_ANALYTIC_LL)
-             nlo = .false.
-          case default
-             nlo = .true.
-          end select
-       end select
-       if (nlo) then
+       if (threshold%settings%use_nlo_width (ff)) then
           w = top_width_nlo (m)
        else
           w = top_width_lo (m)
@@ -353,11 +340,4 @@ contains
          mass(5)) + wt_inv
   end function top_width_lo
 
-  pure function expanded_amp2 (amp_tree, amp_blob) result (amp2)
-    real(default) :: amp2
-    complex(default), dimension(:), intent(in) :: amp_tree, amp_blob
-    amp2 = sum (amp_tree * conjg (amp_tree) + &
-                amp_tree * conjg (amp_blob) + &
-                amp_blob * conjg (amp_tree))
-  end function expanded_amp2
 end module parameters_sm_tt_threshold

@@ -48,6 +48,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
        sqme_c, acc_c) bind(C)
   use @ID@_threshold
   use @ID@_virtual
+  use ttv_formfactors
   use omega95
   implicit none
   integer(c_int), intent(in) :: i_flv
@@ -68,7 +69,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   call msg_debug (D_ME_METHODS, "@ID@_olp_eval2")
   if (i_flv /= 1)  call msg_fatal ("i_flv /= 1, threshold interface was not built for this")
   if (any (id <= 0))  call msg_fatal ("Could not register process in OpenLoops")
-  if (OFFSHELL_STRATEGY >= 0)  call msg_fatal ("OFFSHELL_STRATEGY should be < 0")
+  if (.not. threshold%settings%factorized_computation)  call msg_fatal ("@ID@_olp_eval2: OFFSHELL_STRATEGY is not factorized")
   alpha_s = alpha_s_c
   mu = mu_c
   call init_workspace ()

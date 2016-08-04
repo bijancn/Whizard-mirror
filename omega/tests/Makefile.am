@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 7475 2016-03-16 09:17:25Z bchokoufe $
+# $Id: Makefile.am 7655 2016-07-18 16:40:19Z ohl $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -232,7 +232,7 @@ CASCADE_TESTS = \
 	jjj-notgc.cascade \
 	vbf-noh.cascade
 
-cascade: cascade_driver.sh Makefile
+cascade: cascade_driver.sh Makefile $(OMEGA_SM_CACHE)
 	$(SED) -e 's|%%cascade_tests%%|$(CASCADE_TESTS)|' \
 	  -e 's|%%srcdir%%|$(srcdir)|' \
 	  -e 's|%%SED%%|$(SED)|' \
@@ -514,10 +514,9 @@ amplitude_benchmark_v1.o amplitude_benchmark_v2.o \
 
 if OCAML_AVAILABLE
 
-TESTS += @comment_model_file@ vertex_unit
-@comment_model_file@ EXTRA_PROGRAMS += vertex_unit
-
-@comment_model_file@ vertex_unit_SOURCES = vertex_unit.ml
+TESTS += vertex_unit
+EXTRA_PROGRAMS += vertex_unit
+vertex_unit_SOURCES = vertex_unit.ml
 
 vertex_unit: $(OMEGA_CORE) vertex_unit.cmx
 	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -o vertex_unit \
@@ -527,6 +526,23 @@ vertex_unit.cmx: vertex_unit.ml
 	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -c -o $@ $<
 
 vertex_unit.cmx: $(OMEGA_CORE) $(OMEGA_MODELS)
+
+endif
+
+if OCAML_AVAILABLE
+
+TESTS += ufo_unit
+EXTRA_PROGRAMS += ufo_unit
+ufo_unit_SOURCES = ufo_unit.ml
+
+ufo_unit: $(OMEGA_CORE) ufo_unit.cmx
+	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -o ufo_unit \
+		unix.cmxa $(OMEGA_CORE) $(OMEGA_MODELS) ufo_unit.cmx
+
+ufo_unit.cmx: ufo_unit.ml
+	$(OCAMLOPT) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) -c -o $@ $<
+
+ufo_unit.cmx: $(OMEGA_CORE) $(OMEGA_MODELS)
 
 endif
 

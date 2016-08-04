@@ -3626,7 +3626,7 @@ if there are structure functions.
   end function process_i_mci_to_i_component
 
 
-@ %def process_i_mci_to_i_component     
+@ %def process_i_mci_to_i_component
 @ Determine the MC parameter set structure and the MCI configuration for each
 process component.  We need data from the structure-function and phase-space
 setup, so those should be complete before this is called.  We also
@@ -3640,6 +3640,7 @@ make a random-number generator instance for each MCI group.
     integer :: n_mci, i_mci
     integer :: i
     logical :: powheg_damping_active
+    call msg_debug (D_PROCESS_INTEGRATION, "process_setup_mci")
     n_mci = 0
     do i = 1, process%meta%n_components
        associate (component => process%component(i))
@@ -3648,6 +3649,8 @@ make a random-number generator instance for each MCI group.
             n_mci = n_mci + 1
             component%i_mci = n_mci
          end if
+         call msg_debug (D_PROCESS_INTEGRATION, &
+              "component%component_type", component%component_type)
        end associate
     end do
     process%config%n_mci = n_mci
@@ -3656,7 +3659,9 @@ make a random-number generator instance for each MCI group.
     allocate (process%mci_entry (n_mci))
     i_mci = 0
     powheg_damping_active = &
-        any (process%component%component_type == COMP_REAL_SING)
+        any (process%component%component_type == COMP_REAL_FIN)
+    call msg_debug (D_PROCESS_INTEGRATION, "powheg_damping_active", &
+         powheg_damping_active)
     do i = 1, process%meta%n_components
        associate (component => process%component(i))
           if (component%needs_mci_entry () .and. &
@@ -5464,9 +5469,12 @@ restriction should be relaxed.
     integer, dimension(:), allocatable :: i_list
     integer :: n
     integer, save :: i_rfin_offset = 0
+    call msg_debug (D_PROCESS_INTEGRATION, "process_mci_entry_create_component_list")
     if (mci_entry%combined_integration) then
       n = get_n_components (mci_entry%powheg_damping_type)
       allocate (i_list (n))
+      call msg_debug (D_PROCESS_INTEGRATION, &
+           "mci_entry%powheg_damping_type", mci_entry%powheg_damping_type)
       select case (mci_entry%powheg_damping_type)
       case (DAMPING_NONE)
          i_list = component%config%get_association_list ()
@@ -5480,8 +5488,7 @@ restriction should be relaxed.
       case (DAMPING_FINITE)
          allocate (mci_entry%i_component (1))
          mci_entry%i_component(1) = &
-            component%config%get_associated_real_fin () &
-          + i_rfin_offset 
+              component%config%get_associated_real_fin () + i_rfin_offset
          i_rfin_offset = i_rfin_offset + 1
       end select
     else
@@ -5490,7 +5497,7 @@ restriction should be relaxed.
     end if
   contains
     function get_n_components (damping_type) result (n_components)
-      integer :: n_components 
+      integer :: n_components
       integer, intent(in) :: damping_type
       select case (damping_type)
       case (DAMPING_NONE)
@@ -5499,6 +5506,7 @@ restriction should be relaxed.
          n_components = size (component%config%get_association_list &
             (ASSOCIATED_REAL_FIN))
       end select
+      call msg_debug (D_PROCESS_INTEGRATION, "n_components", n_components)
     end function get_n_components
   end subroutine process_mci_entry_create_component_list
 
@@ -8153,6 +8161,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
     real(default), intent(inout) :: sqme
     real(default) :: E_gluon
     integer :: nlegs
+    call msg_debug2 (D_PROCESS_INTEGRATION, "component_instance_apply_damping_factor")
     associate (nlo_controller => component%nlo_controller)
        select case (component%config%component_type)
        case (COMP_REAL_FIN, COMP_REAL_SING)
@@ -8160,12 +8169,15 @@ stored in the kinematics subobject to their source.  This is a side effect.
           E_gluon = energy (nlo_controller%real_kinematics%p_real_lab%phs_point(1)%p(nlegs))
           select case (component%config%component_type)
           case (COMP_REAL_FIN)
-             sqme = sqme * (one - nlo_controller%powheg_damping%get_f (E_gluon))
+             call msg_debug2 (D_PROCESS_INTEGRATION, "Real finite")
+             sqme = sqme * (one - nlo_controller%powheg_damping%get_f (E_gluon**2))
           case (COMP_REAL_SING)
-             sqme = sqme * nlo_controller%powheg_damping%get_f (E_gluon)
+             call msg_debug2 (D_PROCESS_INTEGRATION, "Real singular")
+             sqme = sqme * nlo_controller%powheg_damping%get_f (E_gluon**2)
           end select
        end select
     end associate
+    call msg_debug2 (D_PROCESS_INTEGRATION, "apply_damping: sqme", sqme)
   end subroutine component_instance_apply_damping_factor
 
 @ %def component_instance_apply_damping_factor
@@ -9143,7 +9155,7 @@ method may modify the [[core_state]] workspace object.
        !call term%evaluate_interaction_sub (component(i_component), 1, 1)
     end select  
   end subroutine term_instance_evaluate_interaction
-  
+
 @ %def term_instance_evaluate_interaction
 @ Evaluate the trace.  First evaluate the
 structure-function chain (i.e., the density matrix of the incoming
@@ -9713,7 +9725,9 @@ selected MCI parameter set.
           select case (config%component_type)
           case (COMP_MASTER)
              i_real = config%config%get_associated_real ()
-             if (i_real == 0) i_real = config%config%get_associated_real_sing ()
+             if (i_real == 0)  &
+                  call msg_bug ("process_instance_get_associated_real:" // &
+                  " i_real = 0. this should not happen anymore!")
           case (COMP_REAL_FIN)
              i_real = config%config%get_associated_real_fin ()
           case default
@@ -11618,7 +11632,9 @@ apply this to the phase space subobject of the process instance.
     type(process_t), intent(inout), target :: process
     integer :: i_sub
     integer :: n_components, i_component
+    call msg_debug (D_PROCESS_INTEGRATION, "setup_nlo_component_cores")
     n_components = process%get_n_components ()
+    call msg_debug (D_PROCESS_INTEGRATION, "n_components", n_components)
 
     do i_component = 1, n_components
        select case (process%get_component_nlo_type (i_component))
@@ -11627,6 +11643,7 @@ apply this to the phase space subobject of the process instance.
           exit
        end select
     end do
+    call msg_debug (D_PROCESS_INTEGRATION, "i_sub", i_sub)
 
   end subroutine setup_nlo_component_cores
 

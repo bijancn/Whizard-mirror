@@ -41,7 +41,7 @@ dnl   OCAMLFLAGS	OCaml compiler flags
 dnl 
 dnl *********************************************************************** 
 
-AC_INIT([omega],[2.3.0])
+AC_INIT([omega],[2.3.1])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 
@@ -54,7 +54,7 @@ AM_MAKE_INCLUDE
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Mar 31 2016"
+PACKAGE_DATE="Sep 30 2016"
 PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
@@ -78,7 +78,7 @@ AC_PROG_RANLIB
 AC_PROG_LIBTOOL
 AC_PROG_MKDIR_P
 LT_INIT
-LT_PREREQ([2.3.0b])
+LT_PREREQ([2.3.1b])
 AC_PATH_PROG([M4],[m4])
 
 ########################################################################
@@ -193,6 +193,35 @@ esac
 OMEGA_CACHE_SUFFIX="vertices"
 AC_SUBST([OMEGA_CACHE_SUFFIX])
 
+AC_ARG_ENABLE([default-UFO-dir],
+[  --enable-default-UFO-dir=directory
+                          Read precomputed model tables from this directory,
+                          which will be populated by an administrator at
+                          install time [[default=$datadir/UFO, enabled]].],
+[case "$enableval" in
+   no) OMEGA_DEFAULT_UFO_DIR="."
+       ;;
+    *) OMEGA_DEFAULT_UFO_DIR="$enableval"
+       ;;
+esac],
+[### use eval b/c $datadir defaults to unexpanded ${datarootdir}
+case "$OMEGA_DEFAULT_UFO_DIR" in
+   "") OMEGA_DEFAULT_UFO_DIR="${prefix}/share/UFO"
+      ;;
+   *) eval OMEGA_DEFAULT_UFO_DIR="$datadir/UFO"
+      ;;
+esac])
+AC_SUBST([OMEGA_DEFAULT_UFO_DIR])
+
+case "$OMEGA_DEFAULT_UFO_DIR" in
+  .|""|NONE*) OMEGA_DEFAULT_UFO_DIR="."
+              ;;
+           *) AC_MSG_NOTICE([Creating default UFO directory $OMEGA_DEFAULT_UFO_DIR])
+              $MKDIR_P "$OMEGA_DEFAULT_UFO_DIR" 2>/dev/null
+              chmod u+w "$OMEGA_DEFAULT_UFO_DIR" 2>/dev/null
+              ;;
+esac
+
 ###---------------------------------------------------------------------
 ### Noweb
 
@@ -278,32 +307,6 @@ else
    AM_CONDITIONAL([OCAMLDOT_AVAILABLE],[false])
    AM_CONDITIONAL([OCAMLDEP_AVAILABLE],[false])
 fi
-
-###---------------------------------------------------------------------
-### Model files
-
-AC_ARG_ENABLE([model-files],
-  [AS_HELP_STRING([--enable-model-files],
-    [build the development code for model files (developers only) [[no]]])])
-
-AC_CACHE_CHECK([whether we want to build the development code for model files], 
-[wo_cv_model_files],
-[dnl
-if test "$enable_model_files" = "yes"; then
-  wo_cv_model_files=yes
-else
-  wo_cv_model_files=no
-fi])
-
-AM_CONDITIONAL([MODEL_FILES],
-  [test "$enable_model_files" = "yes"])
-
-if test "$enable_model_files" = "yes"; then
-  comment_model_file=""
-else
-  comment_model_file="#"
-fi
-AC_SUBST([comment_model_file])
 
 ########################################################################
 # Copy config.mli to the build directory (otherwise ocamlc and/or

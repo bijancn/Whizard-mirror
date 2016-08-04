@@ -160,6 +160,7 @@ TESTS_REQ_OCAML = \
     smtest_14.run \
     smtest_15.run \
     mssmtest.run \
+    sm_cms_1.run \
     nlo_1.run \
     nlo_2.run \
     nlo_3.run \
@@ -224,7 +225,8 @@ TESTS_REQ_OCAML = \
     parton_shower_2.run \
     mlm_matching_fsr.run \
     user_cuts.run \
-    user_prc_threshold.run \
+    user_prc_threshold_1.run \
+    user_prc_threshold_2.run \
     $(TESTS_USER_STRFUN) 
 
 XFAIL_TESTS_REQ_OCAML = \
@@ -329,17 +331,17 @@ EXTRA_DIST = $(TEST_DRIVERS_SH) \
 
 VPATH = $(srcdir)
 
-SUFFIXES = .sh .run 
+SUFFIXES = .sh .run
 
 .sh.run:
 	@rm -f $@
 	@if test -f $(top_builddir)/share/tests/functional_tests/$*.sin; then \
-	  $(SED) 's|@script@|$(top_builddir)/share/tests/functional_tests/$*|g' $< > $@; \
+		$(SED) 's|@script@|$(top_builddir)/share/tests/functional_tests/$*|g' $< > $@; \
 	elif test -f $(top_srcdir)/share/tests/functional_tests/$*.sin; then \
-	  $(SED) 's|@script@|$(top_srcdir)/share/tests/functional_tests/$*|g' $< > $@; \
+		$(SED) 's|@script@|$(top_srcdir)/share/tests/functional_tests/$*|g' $< > $@; \
 	else \
-	  echo "$*.sin not found!" 1>&2; \
-	  exit 2; \
+		echo "$*.sin not found!" 1>&2; \
+		exit 2; \
 	fi
 	@chmod +x $@
 
@@ -563,6 +565,3 @@ endif
 maintainer-clean-local: maintainer-clean-fc
 	-rm -f *~
 .PHONY: maintainer-clean-local
-
-
-

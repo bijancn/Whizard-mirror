@@ -31,7 +31,7 @@ subroutine init_external_parameters (par) bind (C)
 
   real(c_default_float), dimension(*), intent(inout) :: par
   real(default) :: m1s, Vtb, wt_inv, alphas, mZ, &
-                   nloop, sh, sf, FF, offshell_strategy, v1, v2, match, mpole, &
+                   nrqcd_order, sh, sf, FF, offshell_strategy, v1, v2, mpole, &
                    aemi, sw, mW, mb, wtop, sqrts_min, sqrts_max, sqrts_it
   logical :: mpole_fixed
   call msg_debug (D_THRESHOLD, "init_external_parameters")
@@ -43,7 +43,7 @@ subroutine init_external_parameters (par) bind (C)
   m1s    = par(20)
   Vtb    = par(21)
   wt_inv = par(22)
-  nloop  = par(23)
+  nrqcd_order  = par(23)
   sh     = par(24)
   sf     = par(25)
   FF     = par(26)
@@ -56,7 +56,7 @@ subroutine init_external_parameters (par) bind (C)
   mpole_fixed = par(35) > 0.0_default
   sw     = par(38)
   call init_parameters (mpole, wtop, m1s, Vtb, wt_inv, aemi, &
-                        sw, alphas, mZ, mW, mb, sh, sf, nloop, FF, &
+                        sw, alphas, mZ, mW, mb, sh, sf, nrqcd_order, FF, &
                         offshell_strategy, v1, v2, &
                         sqrts_min, sqrts_max, sqrts_it, mpole_fixed)
   par(40) = mpole

@@ -2223,12 +2223,13 @@ Also set any data for this process that the writer needs.
   procedure :: init => omega_def_init
 <<Omega interface: procedures>>=
   subroutine omega_def_init (object, model_name, prt_in, prt_out, &
-       restrictions, openmp_support, report_progress, extra_options, &
-       diags, diags_color)
+       restrictions, cms_scheme, openmp_support, report_progress, &
+       extra_options, diags, diags_color)
     class(omega_def_t), intent(out) :: object
     type(string_t), intent(in) :: model_name
     type(string_t), dimension(:), intent(in) :: prt_in
     type(string_t), dimension(:), intent(in) :: prt_out
+    logical, intent(in), optional :: cms_scheme
     type(string_t), intent(in), optional :: restrictions
     logical, intent(in), optional :: openmp_support
     logical, intent(in), optional :: report_progress
@@ -2240,16 +2241,16 @@ Also set any data for this process that the writer needs.
        select type (writer => object%writer)
        type is (omega_omega_writer_t)
           call writer%init (model_name, prt_in, prt_out, &
-               restrictions, openmp_support, report_progress, &
-               extra_options, diags, diags_color)
+               restrictions, cms_scheme, openmp_support, &
+               report_progress, extra_options, diags, diags_color)
        end select
     type is (omega_ovm_def_t)
        allocate (omega_ovm_writer_t :: object%writer)
        select type (writer => object%writer)
        type is (omega_ovm_writer_t)
           call writer%init (model_name, prt_in, prt_out, &
-               restrictions, openmp_support, report_progress, &
-               extra_options, diags, diags_color)
+               restrictions, cms_scheme, openmp_support, &
+               report_progress, extra_options, diags, diags_color)
        end select
     end select
   end subroutine omega_def_init
@@ -2422,6 +2423,7 @@ wrappers.
      logical :: report_progress = .false.
      logical :: diags = .false.
      logical :: diags_color = .false.
+     logical :: complex_mass_scheme = .false.
      type(string_t) :: extra_options
    contains
    <<Omega interface: omega writer: TBP>>
@@ -2496,6 +2498,8 @@ wrappers.
          '"' // char (object%extra_options) // '"'
     write (unit, "(5x,A,L1)")  "Write diagrams    = ", object%diags    
     write (unit, "(5x,A,L1)")  "Write color diag. = ", object%diags_color
+    write (unit, "(5x,A,L1)")  "Complex Mass S.   = ", &
+         object%complex_mass_scheme
   end subroutine omega_writer_write
 
 @ %def omega_writer_write
@@ -2504,12 +2508,13 @@ wrappers.
   procedure :: init => omega_writer_init
 <<Omega interface: procedures>>=
   subroutine omega_writer_init (writer, model_name, prt_in, prt_out, &
-       restrictions, openmp_support, report_progress, extra_options, &
-       diags, diags_color)
+       restrictions, cms_scheme, openmp_support, report_progress, &
+       extra_options, diags, diags_color)
     class(omega_writer_t), intent(out) :: writer
     type(string_t), intent(in) :: model_name
     type(string_t), dimension(:), intent(in) :: prt_in
     type(string_t), dimension(:), intent(in) :: prt_out
+    logical, intent(in), optional :: cms_scheme
     type(string_t), intent(in), optional :: restrictions
     logical, intent(in), optional :: openmp_support
     logical, intent(in), optional :: report_progress
@@ -2524,6 +2529,7 @@ wrappers.
     end if
     if (present (openmp_support))  writer%openmp_support = openmp_support
     if (present (report_progress))  writer%report_progress = report_progress
+    if (present (cms_scheme))  writer%complex_mass_scheme = cms_scheme
     if (present (diags))  writer%diags = diags
     if (present (diags_color))  writer%diags_color = diags_color
     if (present (extra_options)) then
@@ -2568,6 +2574,7 @@ diagrams, at least in the testsuite.
     type(string_t) :: kmatrix_string
     type(string_t) :: progress_string
     type(string_t) :: diagrams_string
+    type(string_t) :: cms_string
     logical :: escape_hyperref
     escape_hyperref = .false.
     if (present (testflag))  escape_hyperref = testflag
@@ -2616,6 +2623,11 @@ diagrams, at least in the testsuite.
           diagrams_string = ""
        end if
     end if
+    if (writer%complex_mass_scheme) then
+       cms_string = " -model:cms_width"
+    else
+       cms_string = ""
+    end if
     select case (char (writer%model_name))
     case ("SM_rx", "SSC", "NoH_rx", "AltH")
        kmatrix_string = " -target:kmatrix_2_write"
@@ -2647,6 +2659,7 @@ diagrams, at least in the testsuite.
             " -target:parameter_module parameters_", char (writer%model_name), &
             " -target:module opr_", char (id), &
             " -target:md5sum '", writer%md5sum, "'", &
+            char (cms_string), &
             char (openmp_string), &
             char (progress_string), &
             char (kmatrix_string), &
@@ -2658,6 +2671,7 @@ diagrams, at least in the testsuite.
        write (unit, "(99A)")  TAB, char (omega_path), &
             " -o ", char (id), ".hbc", &
             char (progress_string), &
+            char (cms_string), &
             char (writer%process_mode), char (writer%process_string), &
             char (restrictions_string), char (diagrams_string), &
             char (writer%extra_options)
@@ -2667,7 +2681,7 @@ diagrams, at least in the testsuite.
             " -target:whizard ", &
             " -target:bytecode_file ", char (id), ".hbc", &
             " -target:wrapper_module opr_", char (id), &
-            " -target:parameter_module_external parameters_", &           
+            " -target:parameter_module_external parameters_", &
             char (writer%model_name), &
             " -target:md5sum '", writer%md5sum, "'", &
             char (openmp_string)
@@ -2977,12 +2991,13 @@ cause a segfault.
 <<Omega interface: procedures>>=
   subroutine omega_make_process_component (entry, component_index, &
          model_name, prt_in, prt_out, restrictions, openmp_support, &
-         report_progress, extra_options, diags, diags_color)
+         cms_scheme, report_progress, extra_options, diags, diags_color)
     class(process_def_entry_t), intent(inout) :: entry
     integer, intent(in) :: component_index
     type(string_t), intent(in) :: model_name
     type(string_t), dimension(:), intent(in) :: prt_in
     type(string_t), dimension(:), intent(in) :: prt_out
+    logical, intent(in), optional :: cms_scheme
     type(string_t), intent(in), optional :: restrictions
     logical, intent(in), optional :: openmp_support
     logical, intent(in), optional :: report_progress
@@ -2993,8 +3008,8 @@ cause a segfault.
     select type (def)
     type is (omega_omega_def_t)
        call def%init (model_name, prt_in, prt_out, &
-            restrictions, openmp_support, report_progress, &
-            extra_options, diags, diags_color)
+            restrictions, cms_scheme, openmp_support, &
+            report_progress, extra_options, diags, diags_color)
     end select
     call entry%process_def_t%import_component (component_index, &
          n_out = size (prt_out), &
@@ -4760,6 +4775,18 @@ driver.
 @ %def prc_user_defined_base_t
 @
 <<Prc User: prc user defined base: TBP>>=
+  procedure :: get_n_flvs => prc_user_defined_base_get_n_flvs
+<<Prc User: procedures>>=
+  pure function prc_user_defined_base_get_n_flvs (object, i_flv) result (n)
+    integer :: n
+    class(prc_user_defined_base_t), intent(in) :: object
+    integer, intent(in) :: i_flv
+    n = size (object%data%flv_state (:,i_flv))
+  end function prc_user_defined_base_get_n_flvs
+
+@ %def prc_user_defined_base_get_n_flvs
+@
+<<Prc User: prc user defined base: TBP>>=
   procedure :: get_flv_state => prc_user_defined_base_get_flv_state
 <<Prc User: procedures>>=
   function prc_user_defined_base_get_flv_state (object, i_flv) result (flv)
@@ -5780,17 +5807,17 @@ end module prc_threshold
 @
 \subsubsection{Driver}
 <<Prc Threshold: public>>=
-  public :: threshold_get_amp_squared
+  public :: get_amp_squared
 <<Prc Threshold: interfaces>>=
   interface
-    subroutine threshold_get_amp_squared (amp2, p) bind(C)
+    subroutine get_amp_squared (amp2, p) bind(C)
       import
       real(c_default_float), intent(out) :: amp2
       real(c_default_float), dimension(0:3,*), intent(in) :: p
-    end subroutine threshold_get_amp_squared
+    end subroutine get_amp_squared
   end interface
 
-@ %def threshold_get_amp_squared
+@ %def get_amp_squared
 @
 <<Prc Threshold: public>>=
   public :: threshold_olp_eval2
@@ -5840,7 +5867,7 @@ end module prc_threshold
   type, extends (user_defined_driver_t) :: threshold_driver_t
     procedure(threshold_olp_eval2), nopass, pointer :: &
          olp_eval2 => null ()
-    procedure(threshold_get_amp_squared), nopass, pointer :: &
+    procedure(get_amp_squared), nopass, pointer :: &
          get_amp_squared => null ()
     procedure(threshold_start_openloops), nopass, pointer :: &
          start_openloops => null ()
@@ -5872,9 +5899,9 @@ end module prc_threshold
     type(dlaccess_t), intent(inout) :: dlaccess
     type(c_funptr) :: c_fptr
     call msg_debug (D_ME_METHODS, "threshold_driver_load")
-    c_fptr = dlaccess_get_c_funptr (dlaccess, threshold_driver%id // "_threshold_get_amp_squared")
+    c_fptr = dlaccess_get_c_funptr (dlaccess, threshold_driver%id // "_get_amp_squared")
     call c_f_procpointer (c_fptr, threshold_driver%get_amp_squared)
-    call check_for_error (threshold_driver%id // "_threshold_get_amp_squared")
+    call check_for_error (threshold_driver%id // "_get_amp_squared")
     c_fptr = dlaccess_get_c_funptr (dlaccess, threshold_driver%id // "_threshold_init")
     call c_f_procpointer (c_fptr, threshold_driver%init)
     call check_for_error (threshold_driver%id // "_threshold_init")
