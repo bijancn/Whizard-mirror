@@ -8904,8 +8904,8 @@ The quantum numbers mask of the incoming particle
     integer :: i_em, emitter
     sqme = zero
     associate (nlo_controller => term%nlo_controller)
-       call nlo_controller%set_alpha_s_born &
-          (core%get_alpha_s (term%core_state))
+       !call nlo_controller%set_alpha_s_born &
+       !   (core%get_alpha_s (term%core_state))
        call nlo_controller%real_terms%set_real_kinematics &
           (nlo_controller%real_kinematics)
        call nlo_controller%real_terms%set_isr_kinematics &
@@ -10377,28 +10377,48 @@ terms, iterating over all active process components.
 <<Processes: procedures>>=
   subroutine process_instance_evaluate_trace (instance)
     class(process_instance_t), intent(inout) :: instance
-    integer :: i, i_real
+    integer :: i, i_real, i_real_sub
+    logical :: alpha_s_sub_set 
     class(prc_core_t), pointer :: core => null ()
     instance%sqme = zero
-    i_real = 0
     call instance%reset_matrix_elements ()
     if (instance%evaluation_status >= STAT_PASSED_CUTS) then
        do i = 1, size (instance%term)
           associate (term => instance%term(i))
             if (term%active .and. term%passed) then
-              select case (term%nlo_type)
-              case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP, NLO_REAL)
-                 core => instance%process%cm%get_core (term%config%i_core)
-                 call term%evaluate_interaction (instance%component, core)
-                 call term%evaluate_trace ()
-                 if (term%nlo_type == NLO_REAL) then
-                    call term%apply_fks (core)
-                 end if
-                 core => null ()
-              end select
+              core => instance%process%cm%get_core (term%config%i_core)
+              call term%evaluate_interaction (instance%component, core)
+              call term%evaluate_trace ()
+              if (term%nlo_type == NLO_REAL) then
+                 if (term%k_term%emitter < 0) i_real_sub = i 
+              end if
             end if
           end associate
        end do
+       alpha_s_sub_set = .false.
+       do i = 1, size (instance%term)
+          associate (term => instance%term(i))
+             if (term%active .and. term%passed .and. term%nlo_type == NLO_REAL) then
+                if (i /= i_real_sub) then
+                   core => instance%process%cm%get_core (term%config%i_core)
+                   if (.not. alpha_s_sub_set) then
+                      call set_alpha_s_nlo (instance%term(i_real_sub))
+                      alpha_s_sub_set = .true.
+                   end if
+                   call set_alpha_s_nlo (term)
+                end if
+             end if
+          end associate
+       end do
+       do i = 1, size (instance%term)
+          associate (term => instance%term(i))
+             if (term%active .and. term%passed .and. term%nlo_type == NLO_REAL) then
+                core => instance%process%cm%get_core (term%config%i_core)
+                call term%apply_fks (core)
+             end if
+          end associate
+       end do
+       core => null ()
        !!! (TODO: cw-2016-07-18) 'Evaluate other MEs before!'
        instance%evaluation_status = STAT_EVALUATED_TRACE
        do i = 1, size (instance%component)
@@ -10416,6 +10436,12 @@ terms, iterating over all active process components.
        ! failed kinematics, failed cuts: set sqme to zero
        instance%sqme = zero
     end if
+  contains
+    subroutine set_alpha_s_nlo (term)
+      class(term_instance_t), intent(inout) :: term
+      call term%nlo_controller%set_alpha_s_born &
+         (core%get_alpha_s (term%core_state))
+    end subroutine set_alpha_s_nlo
   end subroutine process_instance_evaluate_trace
 
 @ %def process_instance_evaluate_trace
