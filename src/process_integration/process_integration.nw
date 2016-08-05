@@ -3118,9 +3118,11 @@ from the library.
            allocate (component%i_term (n_entry(i)))
            do j = 1, n_entry(i)
               setup_subtraction_component = &
-                 (component%get_nlo_type () == NLO_REAL .and. j == 1)
+                 (component%get_nlo_type () == NLO_REAL &
+                  .and. j == n_entry(i))
               i_term = k + j
               component%i_term(j) = i_term
+              process%term(i_term)%i_sub = n_entry(i)
               process%term(i_term)%i_core = set_i_core &
                  (component%get_nlo_type (), setup_subtraction_component, &
                   process%get_constants_md5sum (i))
@@ -3136,7 +3138,6 @@ from the library.
                     nlo_type = component%config%get_nlo_type (), &
                     use_beam_pol = with_beams)
               end if
-              !deallocate (core)
            end do
        end associate
        k = k + n_entry(i)
@@ -6300,9 +6301,9 @@ This type is public only for use in a unit test.
      integer :: i_term_global = 0
      integer :: i_component = 0
      integer :: i_term = 0
+     integer :: i_sub = 0
      integer :: i_core = 0
      integer :: n_allowed = 0
-     integer :: n_allowed_sub_born = 0
      type(process_constants_t) :: data
      real(default) :: alpha_s = 0
      integer, dimension(:), allocatable :: flv, hel, col
@@ -8568,7 +8569,7 @@ relevant for a NLO algorithm.
        allocate (term%amp (term%config%n_allowed))
     end select
     term%amp = cmplx (0, 0, default)
-    if (term%nlo_type == NLO_REAL .and. term%config%i_term > 1) then
+    if (term%nlo_type == NLO_REAL .and. term%config%i_term /= term%config%i_sub) then
        allocate (term%p_seed (term%int_hard%get_n_tot () - 1))
     else
        allocate (term%p_seed (term%int_hard%get_n_tot ()))
@@ -8756,8 +8757,9 @@ relevant for a NLO algorithm.
     select type (pcm)
     type is (pcm_nlo_t)
        !!! Without resonances, i_alr = i_phs
-       i_phs = term%config%i_term - 1
-       if (i_phs > 0) term%k_term%emitter = pcm%region_data%get_emitter (i_phs)
+       i_phs = term%config%i_term
+       if (i_phs <= pcm%region_data%n_phs) &
+          term%k_term%emitter = pcm%region_data%get_emitter (i_phs)
     end select
   end subroutine term_instance_set_emitter
  
@@ -10523,15 +10525,10 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
        associate (term => instance%term(i_term))
+         core => instance%process%cm%get_core(term%config%i_core)
          if (is_subtraction) then
             call pcm%controller%disable_sqme_np1 ()
-            if (present (alpha_s_external)) then
-               call term%nlo_controller%set_alpha_s_born (alpha_s_external)
-            else
-               call term%nlo_controller%set_alpha_s_born &
-                  (core%get_alpha_s (term%core_state))
-            end if
-         else
+        else
             call pcm%controller%disable_subtraction () 
          end if
          call term%int_hard%set_momenta (term%nlo_controller%get_momenta &
@@ -10542,7 +10539,12 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
             call term%set_alpha_qcd_forced (alpha_s_external)
          call term%compute_eff_kinematics ()
          call term%evaluate_expressions ()
-         core => instance%process%cm%get_core(term%config%i_core)
+         if (present (alpha_s_external)) then
+            call term%nlo_controller%set_alpha_s_born (alpha_s_external)
+         else
+            call term%nlo_controller%set_alpha_s_born &
+               (core%get_alpha_s (term%core_state))
+         end if
          call term%evaluate_interaction (instance%component, core)
          call term%evaluate_trace ()
          call term%apply_fks (core)
