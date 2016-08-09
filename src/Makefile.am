@@ -221,6 +221,7 @@ libomega_la_LIBADD = \
   models/libmodels.la
 
 if RECOLA_AVAILABLE
+libwhizard_la_LIBADD += $(LDFLAGS_RECOLA) recola/librecola_ut.la
 libwhizard_test_la_LIBADD += $(LDFLAGS_RECOLA) recola/librecola_ut.la
 endif
 

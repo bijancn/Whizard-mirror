@@ -23,9 +23,10 @@ module prc_recola
   use physics_defs
 
   use prc_core, only: prc_core_state_t
-  use prc_core_def, only: prc_core_driver_t
+  use prc_core_def, only: prc_core_driver_t, prc_core_def_t
   use prc_user_defined, only: prc_user_defined_base_t, user_defined_def_t, &
      user_defined_driver_t
+  use process_libraries, only: process_library_t
 
 <<Standard module head>>
 
@@ -43,6 +44,77 @@ contains
 
 end module prc_recola
 @ %def prc_recola
+@ Returns the particle string corresponding to a pdg code used in the Recola
+process definition
+<<prc recola: procedures>>=
+  elemental function get_recola_particle_string (pdg) result (name)
+    type(string_t) :: name
+    integer, intent(in) :: pdg
+    select case (pdg)
+    case (1)
+       name = var_str ("d")
+    case (-1) 
+       name = var_str ("d~")
+    case (2) 
+       name = var_str ("u")
+    case (-2)
+       name = var_str ("u~")
+    case (3)
+       name = var_str ("s")
+    case (-3)
+       name = var_str ("s~")
+    case (4)
+       name = var_str ("c")
+    case (-4)
+       name = var_str ("c~")
+    case (5)
+       name = var_str ("b")
+    case (-5)
+       name = var_str ("b~")
+    case (6)
+       name = var_str ("t")
+    case (-6)
+       name = var_str ("t~")
+    case (11)
+       name = var_str ("e-")
+    case (-11)
+       name = var_str ("e+")
+    case (12)
+       name = var_str ("nu_e")
+    case (-12)
+       name = var_str ("nu_e~")
+    case (13)
+       name = var_str ("mu-")
+    case (-13)
+       name = var_str ("mu+")
+    case (14)
+       name = var_str ("nu_mu")
+    case (-14)
+       name = var_str ("nu_mu~")
+    case (15)
+       name = var_str ("tau-")
+    case (-15)
+       name = var_str ("tau+")
+    case (16)
+       name = var_str ("nu_tau")
+    case (-16)
+       name = var_str ("nu_tau~")
+    case (21)
+       name = var_str ("g")
+    case (22)
+       name = var_str ("A")
+    case (23)
+       name = var_str ("Z")
+    case (24)
+       name = var_str ("W+")
+    case (-24)
+       name = var_str ("W-")
+    case (25)
+       name = var_str ("H")
+    end select
+  end function get_recola_particle_string
+
+@ %def get_recola_particle_string
 @ We create [[prc_recola_t]] as an extension of the [[prc_user_defined_base_t]],
 which in turn inherits from [[prc_core_tt]]. This way, we can use a lot of the
 existing interfaces in the actual code. However, we have to stick to the rules and
@@ -51,7 +123,7 @@ implement the deferred type-bound procedures of [[prc_core_t]].
   public :: prc_recola_t
 <<prc recola: types>>=
   type, extends (prc_user_defined_base_t) :: prc_recola_t
-  !!! Put attributes here if necessary
+     integer :: recola_id = 0
   contains
   <<prc recola: prc recola: TBP>>
   end type prc_recola_t
@@ -77,6 +149,52 @@ because we are not going to load any external dynamical libraries.
   end type recola_driver_t
 
 @ %def recola_driver_t
+@ Recola can compute dressed amplitudes, but it needs helicity and color
+to be in its own format to do so. 
+<<prc recola: prc recola: TBP>>=
+  procedure :: replace_helicity_and_color_arrays => &
+     prc_recola_replace_helicity_and_color_arrays
+<<prc recola: procedures>>=
+  subroutine prc_recola_replace_helicity_and_color_arrays (object)
+    class(prc_recola_t), intent(inout) :: object
+    deallocate (object%data%hel_state)
+    call get_helicity_configurations_rcl (object%recola_id, object%data%hel_state)
+    !!! TODO (cw-2016-08-08): Adapt color array, problem: different rank
+  end subroutine prc_recola_replace_helicity_and_color_arrays
+
+@ %def prc_recola_replace_helicity_and_color_arrays
+@
+<<prc recola: prc recola: TBP>>=
+  procedure :: register_processes => prc_recola_register_processes
+<<prc recola: procedures>>=
+  subroutine prc_recola_register_processes (object, recola_id)
+    class(prc_recola_t), intent(inout) :: object
+    integer, intent(inout) :: recola_id
+    type(string_t), dimension(:), allocatable :: particle_names
+    type(string_t) :: process_string
+    integer :: i_flv, i_part
+    integer :: n_tot
+    !!! TODO (cw-2016-08-08): Include amplitude type (LO, NLO, ...)
+    !!! TODO (cw-2016-08-08): Include helicities 
+    n_tot = object%data%n_in + object%data%n_out
+    allocate (particle_names (n_tot))
+    do i_flv = 1, object%data%n_flv 
+       recola_id = recola_id + 1
+       object%recola_id = recola_id
+       particle_names = get_recola_particle_string (object%data%flv_state (:, i_flv))
+       process_string = var_str ("")
+       do i_part = 1, n_tot
+          print *, 'Appending particle: ', char (particle_names(i_part))
+          process_string = process_string // particle_names (i_part) // var_str (" ")
+          if (i_part == object%data%n_in) &
+             process_string = process_string // var_str ("-> ")
+       end do
+       call define_process_rcl (object%recola_id, char (process_string), 'LO')
+       call generate_processes_rcl ()
+    end do
+  end subroutine prc_recola_register_processes
+
+@ %def prc_recola_register_processes 
 @ Computes the amplitude as a function of the phase space point, the
 flavor, helicity and color index. It is currently only used in thes form
 by [[prc_omega_t]], all the other ones use different interfaces. However,
@@ -214,6 +332,7 @@ end module prc_recola_ut
 
 module prc_recola_uti
 
+  use, intrinsic :: iso_c_binding !NODEP!
   use recola !NODEP!
   use kinds
 <<Use strings>>
