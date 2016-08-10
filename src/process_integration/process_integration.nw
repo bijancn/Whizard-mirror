@@ -8155,13 +8155,19 @@ stored in the kinematics subobject to their source.  This is a side effect.
 @ %def term_instance_return_beam_momenta
 @
 <<Processes: component instance: TBP>>=
-  procedure :: apply_damping_factor => component_instance_apply_damping_factor
+  generic :: apply_damping_factor => & 
+     apply_damping_factor_single, apply_damping_factor_array
+  procedure :: apply_damping_factor_single => &
+     component_instance_apply_damping_factor_single
+  procedure :: apply_damping_factor_array => &
+     component_instance_apply_damping_factor_array
 <<Processes: procedures>>=
-  subroutine component_instance_apply_damping_factor (component, sqme)
-    class(component_instance_t), intent(in) :: component
-    real(default), intent(inout) :: sqme
-    real(default) :: E_gluon
+  subroutine component_instance_apply_damping_factor_single (component, term)
+    class(component_instance_t), intent(inout) :: component
+    type(term_instance_t), intent(inout) :: term
+    real(default) :: E_gluon, sqme
     integer :: nlegs
+    sqme = real (term%connected%trace%get_matrix_element (1))
     call msg_debug2 (D_PROCESS_INTEGRATION, "component_instance_apply_damping_factor")
     associate (nlo_controller => component%nlo_controller)
        select case (component%config%component_type)
@@ -8179,7 +8185,21 @@ stored in the kinematics subobject to their source.  This is a side effect.
        end select
     end associate
     call msg_debug2 (D_PROCESS_INTEGRATION, "apply_damping: sqme", sqme)
-  end subroutine component_instance_apply_damping_factor
+    call term%connected%trace%set_matrix_element (cmplx (sqme, 0, default))
+  end subroutine component_instance_apply_damping_factor_single
+
+@ %def component_instance_apply_damping_factor_single
+@
+<<Processes: procedures>>=
+  subroutine component_instance_apply_damping_factor_array (component, terms)
+    class(component_instance_t), intent(inout) :: component
+    type(term_instance_t), intent(inout), dimension(:) :: terms
+    integer :: i, i_term
+    do i = 1, size (component%config%i_term)
+       i_term = component%config%i_term(i) 
+       call component%apply_damping_factor (terms(i_term))
+    end do
+  end subroutine component_instance_apply_damping_factor_array
 
 @ %def component_instance_apply_damping_factor
 @
@@ -10442,6 +10462,9 @@ terms, iterating over all active process components.
             if (component%active) then
                call component%evaluate_sqme (instance%process%cm, instance%term)
                instance%evaluation_status = STAT_EVALUATED_TRACE
+               if (component%nlo_type == NLO_REAL .and. &
+                   instance%process%uses_powheg_damping_factors ()) &
+                  call component%apply_damping_factor (instance%term) 
             end if
           end associate
        end do
@@ -10520,7 +10543,7 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
     logical, intent(in) :: is_subtraction
     real(default), intent(in), optional :: alpha_s_external
     class(prc_core_t), pointer :: core
-    integer :: i_real = 1
+    integer :: i_real
     
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
@@ -10528,7 +10551,7 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
          core => instance%process%cm%get_core(term%config%i_core)
          if (is_subtraction) then
             call pcm%controller%disable_sqme_np1 ()
-        else
+         else
             call pcm%controller%disable_subtraction () 
          end if
          call term%int_hard%set_momenta (term%nlo_controller%get_momenta &
@@ -10548,11 +10571,10 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
          call term%evaluate_interaction (instance%component, core)
          call term%evaluate_trace ()
          call term%apply_fks (core)
-       end associate
-
-       !!! TODO (cw-2016-08-02): Get correct component index for damping
-       associate (component => instance%component(i_real))
-          call component%apply_damping_factor (component%sqme)
+         if (instance%process%uses_powheg_damping_factors ()) then
+            i_real = instance%get_associated_real ()
+            call instance%component(i_real)%apply_damping_factor (term)
+         end if
        end associate
     end select
     core => null ()
