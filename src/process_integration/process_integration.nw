@@ -3098,7 +3098,8 @@ from the library.
             if (component%get_nlo_type () == NLO_REAL) then
                select type (pcm => process%pcm)
                type is (pcm_nlo_t)
-                  n_entry(i) = n_entry(i) + pcm%region_data%get_n_phs ()
+                  if (component%component_type /= COMP_REAL_FIN) &
+                     n_entry(i) = n_entry(i) + pcm%region_data%get_n_phs ()
                end select
             end if
          end if
@@ -9723,14 +9724,28 @@ selected MCI parameter set.
          associate (component => instance%component(i))
            if (component%active) then
               do j = 1, size (component%config%i_term)
-                 instance%term(component%config%i_term(j))%active &
-                      = .true.
+                 if (.not. check_for_real_finite (component, j)) then
+                    instance%term(component%config%i_term(j))%active &
+                         = .true.
+                 end if
               end do
            end if
          end associate
       end do
     end associate
     instance%evaluation_status = STAT_ACTIVATED
+  contains
+    function check_for_real_finite (component, i) result (val)
+      logical :: val
+      type(component_instance_t), intent(in) :: component
+      integer, intent(in) :: i
+      integer :: i_term
+      val = .false.
+      if (component%config%component_type /= COMP_REAL_FIN) return 
+      associate (term => instance%term(component%config%i_term(i))%config)
+         val = term%i_term_global == term%i_sub
+      end associate
+    end function check_for_real_finite
   end subroutine process_instance_activate
   
 @ %def process_instance_activate
@@ -9738,23 +9753,20 @@ selected MCI parameter set.
 <<Processes: process instance: TBP>>=
   procedure :: get_associated_real => process_instance_get_associated_real
 <<Processes: procedures>>=
-  function process_instance_get_associated_real (instance) result (i_real)
+  function process_instance_get_associated_real (instance, avoid_finite) result (i_real)
     integer :: i_real
     class(process_instance_t), intent(in) :: instance
+    logical, intent(in), optional :: avoid_finite
+    logical :: avoid
+    avoid = .false.; if (present (avoid_finite)) avoid = avoid_finite
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
        associate (config => instance%component(pcm%active_real_component)%config)
-          select case (config%component_type)
-          case (COMP_MASTER)
-             i_real = config%config%get_associated_real ()
-             if (i_real == 0)  &
-                  call msg_bug ("process_instance_get_associated_real:" // &
-                  " i_real = 0. this should not happen anymore!")
-          case (COMP_REAL_FIN)
+          if (config%component_type == COMP_REAL_FIN .and. .not. avoid) then 
              i_real = config%config%get_associated_real_fin ()
-          case default
+          else
              i_real = config%config%get_associated_real ()
-          end select
+          end if
        end associate
     end select
   end function process_instance_get_associated_real
@@ -9834,14 +9846,12 @@ to subobject of [[instance]].
             associate (component => instance%component(i_component))
               core => process%cm%get_core (process%term(i)%i_core)
               call term%init (process%term(i), &
-                   !component%k_seed, &
                    process%beam_config, &
-                   !process%component(i_component)%core, &
                    core, &
                    process%meta%var_list)
-                   !component%nlo_controller, &
-                   !component%config%config%get_nlo_type ())
-              call term%set_emitter (process%pcm)
+              if (term%nlo_type == NLO_REAL .and. &
+                 component%config%component_type /= COMP_REAL_FIN) &
+                 call term%set_emitter (process%pcm)
               call term%setup_expressions (process%meta, process%config)
               call term%setup_fks_kinematics (process%meta%var_list)
            end associate
@@ -10418,6 +10428,7 @@ terms, iterating over all active process components.
     class(prc_core_t), pointer :: core => null ()
     instance%sqme = zero
     call instance%reset_matrix_elements ()
+    i_real_sub = 0
     if (instance%evaluation_status >= STAT_PASSED_CUTS) then
        do i = 1, size (instance%term)
           associate (term => instance%term(i))
@@ -10437,7 +10448,7 @@ terms, iterating over all active process components.
              if (term%active .and. term%passed .and. term%nlo_type == NLO_REAL) then
                 if (i /= i_real_sub) then
                    core => instance%process%cm%get_core (term%config%i_core)
-                   if (.not. alpha_s_sub_set) then
+                   if (.not. alpha_s_sub_set .and. i_real_sub > 0) then
                       call set_alpha_s_nlo (instance%term(i_real_sub))
                       alpha_s_sub_set = .true.
                    end if
