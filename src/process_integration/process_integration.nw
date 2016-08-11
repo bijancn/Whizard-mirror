@@ -3120,6 +3120,7 @@ from the library.
            do j = 1, n_entry(i)
               setup_subtraction_component = &
                  (component%get_nlo_type () == NLO_REAL &
+                  .and. component%component_type /= COMP_REAL_FIN &
                   .and. j == n_entry(i))
               i_term = k + j
               component%i_term(j) = i_term
@@ -7703,6 +7704,7 @@ Relevant for using the proper momenta input for BLHA matrix elements.
 <<Processes: kinematics: TBP>>=
   procedure :: get_momenta => kinematics_get_momenta
 <<Processes: procedures>>=
+  !!! TODO (cw-2016-08-11): Rename this procedure. It is totally not clear what it does.
   function kinematics_get_momenta (k, p_in) result (p_out)
     type(vector4_t), dimension(:), allocatable :: p_out
     class(kinematics_t), intent(in) :: k
@@ -7726,7 +7728,7 @@ Relevant for using the proper momenta input for BLHA matrix elements.
              allocate (p_out (size (p_in))); p_out = p_in
           end if
        class default
-          call msg_fatal ("Real component only implemented for FKS phase space!")
+          allocate (p_out (size (p_in))); p_out = p_in
        end select
     case (NLO_DGLAP)
     case (NLO_MISMATCH)
@@ -8563,14 +8565,15 @@ relevant for a NLO algorithm.
   procedure :: init => term_instance_init
 <<Processes: procedures>>=
   subroutine term_instance_init (term, &
-       config, beam_config, core, process_var_list)
+       config, beam_config, core, process_var_list, real_finite)
     class(term_instance_t), intent(inout), target :: term
     type(process_term_t), intent(in), target :: config
     type(process_beam_config_t), intent(in) :: beam_config
-    type(interaction_t), pointer :: sf_chain_int
-    type(interaction_t), pointer :: src_int
     class(prc_core_t), intent(in) :: core
     type(var_list_t), intent(in), target :: process_var_list
+    logical, intent(in), optional :: real_finite
+    type(interaction_t), pointer :: sf_chain_int
+    type(interaction_t), pointer :: src_int
     type(quantum_numbers_mask_t), dimension(:), allocatable :: mask_in
     type(state_matrix_t), pointer :: state_matrix
     type(flavor_t), dimension(:), allocatable :: flv_int, flv_src, f_in, f_out
@@ -8586,6 +8589,7 @@ relevant for a NLO algorithm.
     logical :: me_already_squared
     class(connector_function_t), allocatable :: me_connector
     integer :: i_term
+    logical :: decrease_n_tot
 
     me_already_squared = .false.
 
@@ -8602,7 +8606,11 @@ relevant for a NLO algorithm.
        allocate (term%amp (term%config%n_allowed))
     end select
     term%amp = cmplx (0, 0, default)
-    if (term%nlo_type == NLO_REAL .and. term%config%i_term /= term%config%i_sub) then
+    decrease_n_tot = term%nlo_type == NLO_REAL .and. term%config%i_term /= term%config%i_sub 
+    if (present (real_finite)) then 
+       if (real_finite) decrease_n_tot = .false.
+    end if
+    if (decrease_n_tot) then
        allocate (term%p_seed (term%int_hard%get_n_tot () - 1))
     else
        allocate (term%p_seed (term%int_hard%get_n_tot ()))
@@ -9857,7 +9865,8 @@ to subobject of [[instance]].
               call term%init (process%term(i), &
                    process%beam_config, &
                    core, &
-                   process%meta%var_list)
+                   process%meta%var_list, &
+                   real_finite = component%config%component_type == COMP_REAL_FIN)
               select type (phs => term%k_term%phs)
               type is (phs_fks_t)
                  call term%set_emitter (process%pcm)
