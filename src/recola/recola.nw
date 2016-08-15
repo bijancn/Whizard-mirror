@@ -379,12 +379,15 @@ module prc_recola_uti
   use prc_core
 
   use prc_omega
+  use prc_recola, only: create_recola_color_structures
   
 <<Standard module head>>
 
 <<prc recola: test declarations>>
 
 contains
+
+<<prc recola: test procedures>>
 
 <<prc recola: tests>>
 
@@ -404,6 +407,27 @@ end module prc_recola_uti
 @ %def prc_recola_test
 @
 \subsubsection{Testing a fixed flavor matrix element computation}
+<<prc recola: test procedures>>=
+  function get_omega_parameter_array () result (par)
+    real(default), dimension(25) :: par
+    par = zero
+    
+    par(1) = 1.16637d-5 ! gf
+    par(2) = 91.153480619182744_default ! mZ
+    par(3) = 80.357973609877547_default ! mW
+    par(4) = 125._default ! mH
+    call get_alphas_rcl (par(5)) ! aplha_s
+    par(12) = 173.2_default ! mt
+    par(14) = 2.4942663787728243_default ! wZ
+    par(15) = 2.0842989982782196_default ! wW
+    par(22) = one / sqrt (sqrt (two) * par(1)) ! par%v - Higgs expectation value
+    par(23) = par(3) / par(2) ! par%cw
+    par(24) = sqrt (one - par(23)**2) ! par%sw
+    par(25) = two * par(24) * par(3) / par(22) 
+  end function get_omega_parameter_array
+
+@ %def get_omega_parameter_array
+@ 
 <<prc recola: execute tests>>=
   call test (prc_recola_1, "prc_recola_1", &
        "Registering a RECOLA process and computing the amplitude", &
@@ -435,22 +459,8 @@ end module prc_recola_uti
     class(prc_core_driver_t), allocatable :: driver
     complex(default) :: amp
     
-    real(default), dimension(25) :: omega_parameters
+    integer, dimension(:,:), allocatable :: helicities
     
-    omega_parameters(1:25) = zero
-    
-    omega_parameters(1) = 1.16637d-5 ! gf
-    omega_parameters(2) = 91.153480619182744_default ! mZ
-    omega_parameters(3) = 80.357973609877547_default ! mW
-    omega_parameters(4) = 125._default ! mH
-    call get_alphas_rcl (omega_parameters(5)) ! aplha_s
-    omega_parameters(12) = 173.2_default ! mt
-    omega_parameters(14) = 2.4942663787728243_default ! wZ
-    omega_parameters(15) = 2.0842989982782196_default ! wW
-    omega_parameters(22) = one / sqrt (sqrt (two) * omega_parameters(1)) ! par%v - Higgs expectation value
-    omega_parameters(23) = omega_parameters(3) / omega_parameters(2) ! par%cw
-    omega_parameters(24) = sqrt (one - omega_parameters(23)**2) ! par%sw
-    omega_parameters(25) = two * omega_parameters(24) * omega_parameters(3) / omega_parameters(22) 
 
     
     write (u, "(A)") "* Test output: prc_recola_1"
@@ -517,8 +527,11 @@ end module prc_recola_uti
   
     select type (driver)
     type is (omega_driver_t)
-       call driver%init (omega_parameters, 0)
+       call driver%init (get_omega_parameter_array (), 0)
        call driver%new_event (p)
+       do i = 1, 6
+          call get_amplitude_rcl (1, 0, 'LO', col_recola, helicities (i, :), amp_recola)
+       end do
        do i = 1, 16
            call get_amplitude_rcl (1, 0, 'LO', col_recola, data%hel_state (:,i), amp_recola)
            amp_recola = amp_recola * cmplx (0, -1, default) 
@@ -570,24 +583,9 @@ end module prc_recola_uti
     type(process_constants_t) :: data
     class(prc_core_driver_t), allocatable :: driver
     complex(default) :: amp
+    integer :: n_allowed
     
-    real(default), dimension(25) :: omega_parameters
-    
-    omega_parameters(1:25) = zero
-    
-    omega_parameters(1) = 1.16637d-5 ! gf
-    omega_parameters(2) = 91.153480619182744_default ! mZ
-    omega_parameters(3) = 80.357973609877547_default ! mW
-    omega_parameters(4) = 125._default ! mH
-    call get_alphas_rcl (omega_parameters(5)) ! aplha_s
-    omega_parameters(12) = 173.2_default ! mt
-    omega_parameters(14) = 2.4942663787728243_default ! wZ
-    omega_parameters(15) = 2.0842989982782196_default ! wW
-    omega_parameters(22) = one / sqrt (sqrt (two) * omega_parameters(1)) ! par%v - Higgs expectation value
-    omega_parameters(23) = omega_parameters(3) / omega_parameters(2) ! par%cw
-    omega_parameters(24) = sqrt (one - omega_parameters(23)**2) ! par%sw
-    omega_parameters(25) = two * omega_parameters(24) * omega_parameters(3) / omega_parameters(22) 
-
+    logical(c_bool) :: flag
     
     write (u, "(A)") "* Test output: prc_recola_2"
     write (u, "(A)") "* Purpose: Test interface to RECOLA and compare matrix elements with O'Mega for 2->3 process"
@@ -663,7 +661,7 @@ end module prc_recola_uti
   
     select type (driver)
     type is (omega_driver_t)
-       call driver%init (omega_parameters, 0)
+       call driver%init (get_omega_parameter_array (), 0)
        call driver%new_event (p)
        do i = 1, 32
            call get_amplitude_rcl (2, 0, 'LO', col_recola, helicities (i,:), amp_recola)
@@ -684,4 +682,134 @@ end module prc_recola_uti
     
   end subroutine prc_recola_2
 @ %def prc_recola_2
+@
+<<prc recola: execute tests>>=
+  call test (prc_recola_3, "prc_recola_2", &
+       "Registering a RECOLA process and computing the amplitude for 2->3 process", &
+       u, results)
+<<prc recola: test declarations>>=
+  public :: prc_recola_3
+<<prc recola: tests>>=
+  subroutine prc_recola_3 (u) 
+    integer, intent(in) :: u
+    real(double) :: p(0:3,1:4)
+    real(double) :: sqrts = 500._double
+    real(double) :: m_quark = 0._double
+    real(double) :: p_x_out, p_y_out, p_z_out, p_z_in
+    integer      :: h_e_p, h_e_m, h_mu_p, h_mu_m, counter
+    real(double) :: sqme
+    integer :: i
+    complex(double) :: amp_recola
+
+    real(default), parameter :: ee = 0.3 !!! Electromagnetic coupling
+
+    type(process_library_t) :: lib
+    class(prc_core_def_t), allocatable :: def
+    type(process_def_entry_t), pointer :: entry
+    type(string_t), dimension(:), allocatable :: prt_in, prt_out
+    type(os_data_t) :: os_data
+    type(process_constants_t) :: data
+    class(prc_core_driver_t), allocatable :: driver
+    complex(default) :: amp
+    
+    integer, dimension(:,:), allocatable :: helicities
+    integer, dimension(:,:), allocatable :: colors, col_recola
+    
+    write (u, "(A)") "* Test output: prc_recola_3"
+    write (u, "(A)") "* Purpose: Test interface to RECOLA and compare matrix elements with O'Mega for a colored process"
+    write (u, "(A)")  
+        
+    p_z_in = sqrts / 2
+    p_z_out = 0._double 
+    p_y_out = sqrts / 10._default
+    p_x_out = sqrt ((sqrts / 2)**2 - p_y_out**2 - p_z_out**2)
+    p(:,1) = [sqrts / 2,  0._double,  0._double,  p_z_in]
+    p(:,2) = [sqrts / 2,  0._double,  0._double, -p_z_in]
+    p(:,3) = [sqrts / 2,  p_x_out,  p_y_out,  p_z_out]
+    p(:,4) = [sqrts / 2, -p_x_out, -p_y_out, -p_z_out]
+
+    write (u, "(A)") "Use phase-space point: "
+    do i = 1, 4
+       write (u, "(4(F12.3,1x))") p(:,1)
+    end do
+    write (u, "(A)")
+    call write_separator (u) 
+    write (u, "(A)")
+    write (u, "(A)") "* RECOLA: Evaluate process"
+    call set_on_shell_scheme_rcl ()
+    write (u, "(A)") "*  RECOLA: Define process u u~ -> g at leading order"
+    call define_process_rcl (1, 'u u~ -> g g','LO')
+    write (u, "(A)") "* RECOLA: generate process"
+    call generate_processes_rcl ()
+    call get_helicity_configurations_rcl (1, helicities)
+    call get_colour_configurations_rcl (1, colors)
+    print *, 'Number of helicities: ', size (helicities, dim=1)
+    do i = 1, size (helicities, dim=1)
+       print *, 'hel: ', helicities (i, :)
+    end do
+    do i = 1, size (colors, dim=1)
+       print *, 'col: ', colors (i, :)
+    end do
+    call compute_process_rcl (1,p,'LO')
+
+    write (u, "(A)") "* Setting up Omega to compute the same amplitude"
+
+    call lib%init (var_str ("omega3"))
+    allocate (prt_in (2), prt_out (2))
+    prt_in = [var_str ("u"), var_str ("ubar")]
+    prt_out = [var_str ("g"), var_str ("g")]
+
+    allocate (omega_omega_def_t :: def)
+    select type (def)
+    type is (omega_omega_def_t)
+       call def%init (var_str ("SM"), prt_in, prt_out)
+    end select      
+ 
+    allocate (entry)
+    call entry%init (var_str ("omega3_a"), model_name = var_str ("SM"), &
+       n_in = 2, n_components = 1)
+    call entry%import_component (1, n_out = 2, &
+         prt_in  = new_prt_spec (prt_in), & 
+         prt_out = new_prt_spec (prt_out), &
+         method  = var_str ("omega"), &
+         variant = def)
+    call lib%append (entry)
+
+    call os_data_init (os_data)
+    call lib%configure (os_data)
+    call lib%write_makefile (os_data, force = .true.)
+    call lib%clean (os_data, distclean = .false.)
+    call lib%write_driver (force = .true.)
+    call lib%load (os_data)
+    call lib%connect_process (var_str ("omega3_a"), 1, data, driver) 
+  
+    select type (driver)
+    type is (omega_driver_t)
+       call driver%init (get_omega_parameter_array (), 0)
+       call driver%new_event (p)
+       !do i = 1, 16
+           !call get_amplitude_rcl (1, 0, 'LO', col_recola, data%hel_state (:,i), amp_recola)
+           !amp_recola = amp_recola * cmplx (0, -1, default) 
+           !call driver%get_amplitude (1, i, 1, amp)                
+           !write(u,"(A,4(I2),A)") "Helicity: [",data%hel_state (:,i),"]"
+           !call assert_equal (u, amp, amp_recola) ! , "Helicity:", data%hel_state (:,i))
+       !end do
+       col_recola = create_recola_color_structures (data%col_state)
+       print *, 'Number of colors: ', data%n_col
+       do i = 1, 5
+          print *, 'omega color state: ', data%col_state (:,:,i)
+          print *, 'reconstructed recola state: ', col_recola (i, :)
+       end do 
+       
+    end select
+    
+    call reset_recola_rcl
+    
+    write (u, "(A)")
+    write (u, "(A)") "* End of test output: prc_recola_3"
+
+    
+  end subroutine prc_recola_3
+
+@ %def prc_recola_3
 @
