@@ -24,8 +24,7 @@ module prc_recola
 
   use prc_core, only: prc_core_state_t
   use prc_core_def, only: prc_core_driver_t, prc_core_def_t
-  use prc_user_defined, only: prc_user_defined_base_t, user_defined_def_t, &
-     user_defined_driver_t
+  use prc_user_defined
   use process_libraries, only: process_library_t
 
 <<Standard module head>>
@@ -155,11 +154,48 @@ implement the deferred type-bound procedures of [[prc_core_t]].
 <<prc recola: types>>=
   type, extends (prc_user_defined_base_t) :: prc_recola_t
      integer :: recola_id = 0
+     integer, dimension(:,:), allocatable :: color_state
   contains
   <<prc recola: prc recola: TBP>>
   end type prc_recola_t
 
 @ %def prc_recola_t
+@
+<<prc recola: types>>=
+  type, extends (prc_user_defined_writer_t) :: recola_writer_t
+  contains
+  <<prc recola: recola writer: TBP>>
+  end type recola_writer_t
+
+@ %def recola_writer_t
+@
+<<prc recola: types>>=
+  type, extends (user_defined_state_t) :: recola_state_t
+  contains
+  <<prc recola: recola state: TBP>>
+  end type recola_state_t
+
+@ %def recola_state_t
+@ 
+<<prc recola: recola state: TBP>>=
+  procedure :: write => recola_state_write
+<<prc recola: procedures>>=
+  subroutine recola_state_write (object, unit)
+    class(recola_state_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+  end subroutine recola_state_write
+
+@ %def recola_state_write
+@
+<<prc recola: recola writer: TBP>>=
+  procedure, nopass :: type_name => recola_writer_type_name
+<<prc recola: procedures>>=
+  function recola_writer_type_name () result (string)
+    type(string_t) :: string
+    string = "recola"
+  end function recola_writer_type_name
+
+@ %def recola_writer_type_name
 @
 <<prc recola: public>>=
   public :: recola_def_t
@@ -188,9 +224,17 @@ to be in its own format to do so.
 <<prc recola: procedures>>=
   subroutine prc_recola_replace_helicity_and_color_arrays (object)
     class(prc_recola_t), intent(inout) :: object
+    integer, dimension(:,:), allocatable :: col_recola
+    integer :: i
     deallocate (object%data%hel_state)
     call get_helicity_configurations_rcl (object%recola_id, object%data%hel_state)
-    !!! TODO (cw-2016-08-08): Adapt color array, problem: different rank
+    call get_colour_configurations_rcl (object%recola_id, col_recola)
+    deallocate (object%data%col_state)
+    allocate (object%data%col_state (1, object%data%n_in + object%data%n_out, &
+              size (col_recola, dim=1)))
+    do i = 1, size (col_recola, dim=1)
+       object%data%col_state (1, :, i) = col_recola (i, :)
+    end do
   end subroutine prc_recola_replace_helicity_and_color_arrays
 
 @ %def prc_recola_replace_helicity_and_color_arrays
@@ -245,7 +289,28 @@ with RECOLA, we might be able to use this, too.
     real(default), intent(in), allocatable :: alpha_qcd_forced
     class(prc_core_state_t), intent(inout), allocatable, optional :: &
        core_state
-    amp = zero
+    real(default), dimension(0:3, object%data%n_in + object%data%n_out) :: p_recola
+    integer :: i
+    logical :: new_event
+    
+    if (present (core_state)) then
+       if (allocated (core_state)) then
+          select type (core_state)
+          type is (recola_state_t)
+             new_event = core_state%new_kinematics
+             core_state%new_kinematics = .false.
+          end select
+       end if
+    end if
+    if (new_event) then
+       do i = 1, object%data%n_in + object%data%n_out
+          p_recola(:, i) = p%p(i) 
+       end do
+       call compute_process_rcl (f, p_recola, 'LO')  
+    end if
+      
+    call get_amplitude_rcl (f, 0, 'LO', object%data%col_state (1, :, c), &
+       object%data%hel_state (:,h), amp) 
   end function prc_recola_compute_amplitude
 
 @ %def prc_recola_compute_amplitude
@@ -264,11 +329,14 @@ prints out information about the current state of the object.
 <<prc recola: recola def: TBP>>=
   procedure :: init => recola_def_init
 <<prc recola: procedures>>=
-  subroutine recola_def_init (object, basename, nlo_type)
+  subroutine recola_def_init (object, basename, model_name, &
+     prt_in, prt_out, nlo_type)
     class(recola_def_t), intent(inout) :: object
-    type(string_t), intent(in) :: basename
+    type(string_t), intent(in) :: basename, model_name
+    type(string_t), dimension(:), intent(in) :: prt_in, prt_out
     integer, intent(in) :: nlo_type
     object%basename = basename
+    allocate (recola_writer_t :: object%writer)
     select case (nlo_type)
     case (BORN)
        object%suffix = '_BORN'
@@ -282,6 +350,10 @@ prints out information about the current state of the object.
        object%suffix = '_MISMATCH'
     case (NLO_DGLAP)
        object%suffix = '_DGLAP'
+    end select
+    select type (writer => object%writer)
+    class is (recola_writer_t)
+       call writer%init (model_name, prt_in, prt_out)
     end select
   end subroutine recola_def_init
 
