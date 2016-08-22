@@ -81,7 +81,8 @@ module_lists = \
   ../me_methods/Modules \
   ../phase_space/Modules \
   ../variables/Modules \
-  ../threshold/Modules
+  ../threshold/Modules \
+  ../blha/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -125,7 +126,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../user -I../rng -I../physics -I../qft -I../model_features -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../phase_space -I../variables -I../threshold -I../lhapdf -I../pdf_builtin -I../fastjet
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../user -I../rng -I../physics -I../qft -I../model_features -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../phase_space -I../variables -I../threshold -I../blha -I../lhapdf -I../pdf_builtin -I../fastjet
 
 
 ########################################################################

@@ -63,6 +63,12 @@ module process_constants
 <<Use kinds>>
 <<Use strings>>
 
+use io_units, only: given_output_unit, free_unit
+use format_utils, only: write_integer_array
+use md5, only: md5sum
+
+use pdg_arrays
+
 <<Standard module head>>
 
 <<Process constants: public>>
@@ -105,6 +111,17 @@ types, no type-bound procedures.
 
 @ %def process_constants_t
 @ 
+<<Process constants: prc const: TBP>>=
+  procedure :: get_n_tot => process_constants_get_n_tot
+<<Process constants: procedures>>=
+  elemental function process_constants_get_n_tot (prc_const) result (n_tot)
+    integer :: n_tot
+    class(process_constants_t), intent(in) :: prc_const
+    n_tot = prc_const%n_in + prc_const%n_out
+  end function process_constants_get_n_tot
+
+@ %def process_constants_get_n_tot
+@
 <<Process constants: prc const: TBP>>=
   procedure :: get_flv_state => process_constants_get_flv_state
 <<Process constants: procedures>>=
@@ -244,6 +261,106 @@ types, no type-bound procedures.
     prc_const%ghost_flag = ghost_flag
   end subroutine process_constants_set_ghost_flag
 @ %def process_constants_set_ghost_flag
+@
+<<Process constants: prc const: TBP>>=
+  procedure :: get_pdg_in => process_constants_get_pdg_in
+<<Process constants: procedures>>=
+  function process_constants_get_pdg_in (prc_const) result (pdg_in)
+    type(pdg_array_t), dimension(:), allocatable :: pdg_in
+    class(process_constants_t), intent(in) :: prc_const
+    type(pdg_array_t) :: pdg_tmp
+    integer :: i
+    allocate (pdg_in (prc_const%n_in))
+    do i = 1, prc_const%n_in
+       pdg_tmp = prc_const%flv_state(i,:)
+       pdg_in(i) = sort_abs (pdg_tmp, unique = .true.)
+    end do
+  end function process_constants_get_pdg_in
+
+@ %def process_constants_get_pdg_in
+@
+<<Process constants: prc const: TBP>>=
+  procedure :: compute_md5sum => process_constants_compute_md5sum
+<<Process constants: procedures>>=
+  subroutine process_constants_compute_md5sum (prc_const, include_id)
+    class(process_constants_t), intent(inout) :: prc_const
+    logical, intent(in) :: include_id
+    integer :: unit, i, j, k
+    unit = free_unit ()
+    open (unit, status="scratch", action="readwrite")
+    if (include_id) write (unit, '(A)') char (prc_const%id)
+    write (unit, '(A)') char (prc_const%model_name) 
+    write (unit, '(L1)') prc_const%openmp_supported
+    write (unit, '(I0)') prc_const%n_in
+    write (unit, '(I0)') prc_const%n_out
+    write (unit, '(I0)') prc_const%n_flv
+    write (unit, '(I0)') prc_const%n_hel
+    write (unit, '(I0)') prc_const%n_col
+    write (unit, '(I0)') prc_const%n_cin
+    write (unit, '(I0)') prc_const%n_cf
+    do i = 1, size (prc_const%flv_state, dim=1)
+       do j = 1, size (prc_const%flv_state, dim=2)
+          write (unit, '(I0)') prc_const%flv_state (i, j)
+       end do
+    end do
+    do i = 1, size (prc_const%hel_state, dim=1)
+       do j = 1, size (prc_const%hel_state, dim=2)
+          write (unit, '(I0)') prc_const%hel_state (i, j)
+       end do
+    end do
+    do i = 1, size (prc_const%col_state, dim=1)
+       do j = 1, size (prc_const%col_state, dim=2)
+          do k = 1, size (prc_const%col_state, dim=3)
+             write (unit, '(I0)') prc_const%col_state (i, j, k)
+          end do
+      end do
+    end do
+    do i = 1, size (prc_const%ghost_flag, dim=1)
+       do j = 1, size (prc_const%ghost_flag, dim=2)
+          write (unit, '(L1)') prc_const%ghost_flag (i, j)
+       end do
+    end do
+    do i = 1, size (prc_const%color_factors)
+       write (unit, '(F0.0,F0.0)') real (prc_const%color_factors(i)), &
+          aimag (prc_const%color_factors(i))
+    end do
+    do i = 1, size (prc_const%cf_index, dim=1)
+       do j = 1, size (prc_const%cf_index, dim=2)
+          write (unit, '(I0)') prc_const%cf_index(i, j)
+       end do
+    end do
+    rewind (unit)
+    prc_const%md5sum = md5sum (unit)
+    close (unit) 
+  end subroutine process_constants_compute_md5sum
+
+@ %process_constants_compute_md5sum
+@ 
+<<Process constants: prc const: TBP>>=
+  procedure :: write => process_constants_write
+<<Process constants: procedures>>=
+  subroutine process_constants_write (prc_const, unit)
+    class(process_constants_t), intent(in) :: prc_const
+    integer, intent(in), optional :: unit
+    integer :: u, i
+    u = given_output_unit (unit)
+    write (u, "(1x,A,A)") "Process data of id: ", char (prc_const%id)
+    write (u, "(1x,A,A)") "Associated model: ", char (prc_const%model_name)
+    write (u, "(1x,A,I0)") "n_in: ", prc_const%n_in
+    write (u, "(1x,A,I0)") "n_out: ", prc_const%n_out
+    write (u, "(1x,A,I0)") "n_flv: ", prc_const%n_flv
+    write (u, "(1x,A,I0)") "n_hel: ", prc_const%n_hel
+    write (u, "(1x,A,I0)") "n_col: ", prc_const%n_col
+    write (u, "(1x,A,I0)") "n_cin: ", prc_const%n_cin
+    write (u, "(1x,A,I0)") "n_cf: ", prc_const%n_cf
+    write (u, "(1x,A)") "Flavors: "
+    do i = 1, prc_const%n_flv
+       write (u, "(1x,A,I0)") "i_flv: ", i
+       call write_integer_array (prc_const%flv_state (:,i))
+    end do
+  end subroutine process_constants_write
+
+@ %def process_constants_write
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 \section{Process library interface}
@@ -5223,6 +5340,10 @@ abstract type.
                => process_component_def_get_associated_born
   procedure :: get_associated_real_fin &
                => process_component_def_get_associated_real_fin
+  procedure :: get_associated_real_sing &
+               => process_component_def_get_associated_real_sing
+  procedure :: get_associated_subtraction &
+               => process_component_def_get_associated_subtraction
   procedure :: get_association_list &
                => process_component_def_get_association_list
   procedure :: is_active_component &
@@ -5230,33 +5351,45 @@ abstract type.
   procedure :: get_associated_real => process_component_def_get_associated_real
 <<Process libraries: procedures>>=
   elemental function process_component_def_get_nlo_type (component) result (nlo_type)
-    class(process_component_def_t), intent(in) :: component
     integer :: nlo_type
+    class(process_component_def_t), intent(in) :: component
     nlo_type = component%nlo_type
   end function process_component_def_get_nlo_type
 
   function process_component_def_get_associated_born (component) result (i_born)
-    class(process_component_def_t), intent(in) :: component
     integer :: i_born
+    class(process_component_def_t), intent(in) :: component
     i_born = component%associated_components(ASSOCIATED_BORN)
   end function process_component_def_get_associated_born
 
   function process_component_def_get_associated_real_fin (component) result (i_rfin)
-    class(process_component_def_t), intent(in) :: component
     integer :: i_rfin
+    class(process_component_def_t), intent(in) :: component
     i_rfin = component%associated_components(ASSOCIATED_REAL_FIN)
   end function process_component_def_get_associated_real_fin
 
-  elemental function process_component_def_is_active_component (component) result (active)
+  function process_component_def_get_associated_real_sing (component) result (i_rsing)
+    integer :: i_rsing
     class(process_component_def_t), intent(in) :: component
+    i_rsing = component%associated_components(ASSOCIATED_REAL_SING)
+  end function process_component_def_get_associated_real_sing
+  
+  elemental function process_component_def_get_associated_subtraction (component) result (i_sub)
+    integer :: i_sub
+    class(process_component_def_t), intent(in) :: component
+    i_sub = component%associated_components(ASSOCIATED_SUB)
+  end function process_component_def_get_associated_subtraction
+
+  elemental function process_component_def_is_active_component (component) result (active)
     logical :: active
+    class(process_component_def_t), intent(in) :: component
     active = component%active_component
   end function process_component_def_is_active_component
 
   function process_component_def_get_association_list (component, i_skip_in) result (list)
+    integer, dimension(:), allocatable :: list
     class(process_component_def_t), intent(in) :: component
     integer, intent(in), optional :: i_skip_in
-    integer, dimension(:), allocatable :: list
     integer :: i, j, n, i_skip
     logical :: valid
     i_skip = 0; if (present (i_skip_in)) i_skip = i_skip_in
@@ -5275,8 +5408,8 @@ abstract type.
   end function process_component_def_get_association_list
 
   function process_component_def_get_associated_real (component) result (i_real)
-    class(process_component_def_t), intent(in) :: component
     integer :: i_real
+    class(process_component_def_t), intent(in) :: component
     i_real = component%associated_components(ASSOCIATED_REAL)
   end function process_component_def_get_associated_real
 
@@ -5285,6 +5418,18 @@ abstract type.
 @ %def process_component_def_get_association_list
 @ %def process_component_def_get_associated_real
 @ %def process_component_def_get_associated_real_fin
+@ %def process_component_def_get_associated_subtraction
+@
+<<Process libraries: process component def: TBP>>=
+  procedure :: get_me_method => process_component_def_get_me_method
+<<Process libraries: procedures>>=
+  elemental function process_component_def_get_me_method (component) result (method)
+    type(string_t) :: method
+    class(process_component_def_t), intent(in) :: component
+    method = component%method
+  end function process_component_def_get_me_method
+
+@ %def process_component_def_get_me_method
 @
 <<Process libraries: process component def: TBP>>=
   procedure :: get_fixed_emitter => process_component_def_get_fixed_emitter
@@ -6294,8 +6439,9 @@ always referring to the lowest status among the process entries.
   integer, parameter, public :: ASSOCIATED_VIRT = 3
   integer, parameter, public :: ASSOCIATED_SUB = 4
   integer, parameter, public :: ASSOCIATED_PDF = 5
-  integer, parameter, public :: ASSOCIATED_REAL_FIN = 6
-  integer, parameter, public :: N_ASSOCIATED_COMPONENTS = 6
+  integer, parameter, public :: ASSOCIATED_REAL_SING = 6
+  integer, parameter, public :: ASSOCIATED_REAL_FIN = 7
+  integer, parameter, public :: N_ASSOCIATED_COMPONENTS = 7
 
 @ %def STAT_UNKNOWN STAT_OPEN STAT_CONFIGURED 
 @ %def STAT_SOURCE STAT_COMPILED STAT_LINKED STAT_ACTIVE
@@ -7211,6 +7357,27 @@ the process code has been loaded, if external.
   end subroutine process_library_entry_fill_constants
   
 @ %def process_library_entry_fill_constants
+@ Retrieve the constants for a process
+<<Process libraries: process library: TBP>>=
+  procedure :: fill_constants => process_library_fill_constants
+<<Process libraries: procedures>>=
+  subroutine process_library_fill_constants (lib, id, i_component, data)
+    class(process_library_t), intent(in) :: lib
+    type(string_t), intent(in) :: id
+    integer, intent(in) :: i_component
+    type(process_constants_t), intent(out) :: data
+    integer :: i
+    do i = 1, size (lib%entry)
+       associate (entry => lib%entry(i))
+          if (entry%def%id == id .and. entry%i_component == i_component) then
+             call entry%fill_constants (lib%driver, data)
+             return
+          end if 
+       end associate
+    end do
+  end subroutine process_library_fill_constants
+
+@ %def process_library_fill_constants
 @ Retrieve the constants and a connected driver for a process,
 identified by a process ID and a subprocess index.  We
 scan the process entries until we have found a match.
@@ -7229,7 +7396,7 @@ scan the process entries until we have found a match.
        associate (entry => lib%entry(i))
          if (entry%def%id == id .and. entry%i_component == i_component) then
             call entry%fill_constants (lib%driver, data)
-            allocate (proc_driver, source=entry%driver)
+            allocate (proc_driver, source = entry%driver)
             return
          end if
        end associate

@@ -27,7 +27,7 @@ let rcs_file = RCS.parse "Tuple" ["Tuples of fixed and indefinite arity"]
       RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/tuple.ml $" }
+        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/tuple.ml $" }
 
 module type Mono =
   sig

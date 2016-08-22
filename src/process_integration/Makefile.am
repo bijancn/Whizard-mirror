@@ -45,7 +45,8 @@ libprocess_integration_la_SOURCES = \
 
 libprocess_integration_ut_la_SOURCES = \
   processes_uti.f90 processes_ut.f90 \
-  process_stacks_uti.f90 process_stacks_ut.f90
+  process_stacks_uti.f90 process_stacks_ut.f90 \
+  parton_states_uti.f90 parton_states_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = process_integration.nw

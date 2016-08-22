@@ -214,6 +214,7 @@ module fks_regions
   use nlo_data, only: phs_identifier_t, check_for_phs_identifier
   use nlo_data, only: FKS_DEFAULT, FKS_RESONANCES
   use nlo_data, only: NO_FACTORIZATION, FACTORIZATION_THRESHOLD
+  use nlo_data, only: fks_template_t
 
   use ttv_formfactors, only: THR_POS_B, THR_POS_BBAR
   use ttv_formfactors, only: THR_POS_WP, THR_POS_WM
@@ -1586,15 +1587,43 @@ there is only a soft singularity if the radiated parton becomes soft.
     integer, intent(in) :: factorization_mode
     call reg_data%enlarge_singular_regions_with_resonances ()
     call reg_data%find_resonances ()
-    select type (map => reg_data%fks_mapping)
-    type is (fks_mapping_resonances_t)
-       call map%res_map%write ()
-    end select
     if (factorization_mode == FACTORIZATION_THRESHOLD) &
        call reg_data%set_isr_pseudo_regions ()
   end subroutine region_data_init_resonance_information
 
 @ %def region_data_init_resonance_information
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: set_resonance_mappings => region_data_set_resonance_mappings
+<<fks regions: procedures>>=
+  subroutine region_data_set_resonance_mappings (reg_data, resonance_histories)
+    class(region_data_t), intent(inout) :: reg_data
+    type(resonance_history_t), intent(in), dimension(:) :: resonance_histories
+    select type (map => reg_data%fks_mapping)
+    type is (fks_mapping_resonances_t)
+       call map%res_map%init (resonance_histories)
+    end select
+    !call nlo_controller%reg_data%init_resonance_information &
+    !   (nlo_controller%settings%factorization_mode)
+  end subroutine region_data_set_resonance_mappings
+
+@ %def region_data_set_resonance_mappings
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: setup_fks_mappings => region_data_setup_fks_mappings
+<<fks regions: procedures>>=
+  subroutine region_data_setup_fks_mappings (reg_data, template, n_in)
+    class(region_data_t), intent(inout) :: reg_data
+    type(fks_template_t), intent(in) :: template
+    integer, intent(in) :: n_in
+    call reg_data%allocate_fks_mappings (template%mapping_type)
+    select type (map => reg_data%fks_mapping)
+    type is (fks_mapping_default_t)
+       call map%set_parameter (n_in, template%fks_dij_exp1, template%fks_dij_exp2)
+    end select
+  end subroutine region_data_setup_fks_mappings
+
+@ %def region_data_setup_fks_mappings 
 @ So far, we have only created singular regions for a non-resonant case. When
 resonance mappings are required, we have more singular regions, since they
 must now be identified by their emitter-resonance pair index, where the emitter
@@ -1982,6 +2011,55 @@ auto-allocation bug.
   end function region_data_get_emitter_group
 
 @ %def region_data_get_emitter_group
+@
+<<fks regions: reg data: TBP>>=
+  generic :: get_flv_states_born => get_flv_states_born_single, get_flv_states_born_array
+  procedure :: get_flv_states_born_single => region_data_get_flv_states_born_single
+  procedure :: get_flv_states_born_array => region_data_get_flv_states_born_array
+<<fks regions: procedures>>=
+  function region_data_get_flv_states_born_array (reg_data) result (flv_states)
+    integer, dimension(:,:), allocatable :: flv_states
+    class(region_data_t), intent(in) :: reg_data
+    integer :: i_flv
+    allocate (flv_states (reg_data%n_legs_born, reg_data%n_flv_born))
+    do i_flv = 1, reg_data%n_flv_born
+       flv_states (:, i_flv) = reg_data%flv_born(i_flv)%flst 
+    end do
+  end function region_data_get_flv_states_born_array
+
+  function region_data_get_flv_states_born_single (reg_data, i) result (flv_states)
+    integer, dimension(:), allocatable :: flv_states
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: i
+    allocate (flv_states (reg_data%n_legs_born))
+    flv_states = reg_data%flv_born(i)%flst
+  end function region_data_get_flv_states_born_single
+
+@ %def region_data_get_flv_states_born
+<<fks regions: reg data: TBP>>=
+  generic :: get_flv_states_real => get_flv_states_real_single, get_flv_states_real_array
+  procedure :: get_flv_states_real_single => region_data_get_flv_states_real_single
+  procedure :: get_flv_states_real_array => region_data_get_flv_states_real_array
+<<fks regions: procedures>>=
+  function region_data_get_flv_states_real_array (reg_data) result (flv_states)
+    integer, dimension(:,:), allocatable :: flv_states
+    class(region_data_t), intent(in) :: reg_data
+    integer :: i_flv
+    allocate (flv_states (reg_data%n_legs_real, reg_data%n_flv_real))
+    do i_flv = 1, reg_data%n_flv_real
+       flv_states (:, i_flv) = reg_data%flv_real(i_flv)%flst 
+    end do
+  end function region_data_get_flv_states_real_array
+
+  function region_data_get_flv_states_real_single (reg_data, i) result (flv_states)
+    integer, dimension(:), allocatable :: flv_states
+    class(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: i
+    allocate (flv_states (reg_data%n_legs_real))
+    flv_states = reg_data%flv_real(i)%flst
+  end function region_data_get_flv_states_real_single
+
+@ %def region_data_get_flv_states_real
 @ Returns $S_i = \frac{1}{\mathcal{D}d_i}$ or $S_{ij} =
 \frac{1}{\mathcal{D}d_{ij}}$ for one particular singular region.  At
 this point, the flavor array should be rearranged in such a way that
@@ -2595,6 +2673,17 @@ resonances are possible for all ftuples
   end subroutine region_data_compute_number_of_phase_spaces
 
 @ %def region_data_compute_number_of_phase_spaces
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: get_n_phs => region_data_get_n_phs
+<<fks regions: procedures>>=
+  function region_data_get_n_phs (reg_data) result (n_phs)
+    integer :: n_phs
+    class(region_data_t), intent(in) :: reg_data
+    n_phs = reg_data%n_phs
+  end function region_data_get_n_phs
+
+@ %def region_data_get_n_phs
 @
 <<fks regions: reg data: TBP>>=
   procedure :: set_splitting_info => region_data_set_splitting_info
@@ -3560,13 +3649,8 @@ reference.
     integer, intent(in) :: n_in
     integer, intent(in), dimension(:,:) :: flv_born, flv_real
     type(region_data_t), intent(out) :: reg_data
-    type(os_data_t) :: os_data
-    type(model_list_t) :: model_list
     type(model_t), pointer :: test_model => null ()
-    call syntax_model_file_init ()
-    call os_data_init (os_data)
-    call model_list%read_model &
-       (var_str ("SM_rad"), var_str ("SM_rad.mdl"), os_data, test_model)
+    call create_test_model (var_str ("SM_rad"), test_model)
     call reg_data%init (n_in, test_model, flv_born, flv_real)
   end subroutine setup_region_data_for_test
 
@@ -3641,17 +3725,12 @@ end module fks_regions_uti
   subroutine fks_regions_1 (u)
     integer, intent(in) :: u
     type(flv_structure_t) :: flv_born, flv_real
-    type(os_data_t) :: os_data
-    type(model_list_t) :: model_list
     type(model_t), pointer :: test_model => null ()
     write (u, "(A)") "* Test output: fks_regions_1"
     write (u, "(A)") "* Purpose: Test utilities of flavor structure manipulation"
     write (u, "(A)")
 
-    call syntax_model_file_init ()
-    call os_data_init (os_data)
-    call model_list%read_model &
-       (var_str ("SM_rad"), var_str ("SM_rad.mdl"), os_data, test_model)
+    call create_test_model (var_str ("SM_rad"), test_model)
 
     flv_born = [11, -11, 2, -2]
     flv_real = [11, -11, 2, -2, 21]
@@ -3967,10 +4046,11 @@ end module virtual
     real(default) :: ren_scale2, fac_scale, es_scale2
     integer, dimension(:), allocatable :: n_is_neutrinos
     integer :: n_in, n_legs, n_flv
-    logical :: bad_point
+    logical :: bad_point = .false.
     logical :: use_internal_color_correlations
     logical :: with_subtraction = .true.
     integer :: factorization_mode = NO_FACTORIZATION
+    type(vector4_t), dimension(:), allocatable :: p
   contains
   <<virtual: virtual: TBP>>
   end type virtual_t
@@ -4874,7 +4954,7 @@ distinguished by the flag [[xi2_expanded]].
     end if
 
     s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
-        (p_born, sub_soft%p_soft, alr, emitter, i_res)
+       (p_born, sub_soft%p_soft, alr, emitter, i_res)
     if (debug2_active (D_SUBTRACTION)) &
        call msg_print_color ('s_alpha_soft', s_alpha_soft, COL_YELLOW)
     sub_soft%value(alr) = 4 * pi * alpha_s * s_alpha_soft
@@ -5025,7 +5105,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     logical :: active = .true.
     type(region_data_t), pointer :: reg_data => null ()
     real(default), dimension(:), pointer :: sqme_born => null ()
-    real(default), dimension(:,:,:), pointer :: sqme_born_cc => null ()
+    real(default), dimension(:,:,:), allocatable :: sqme_born_cc
     type(real_kinematics_t), pointer :: real_kinematics => null ()
     type(soft_subtraction_t) :: sub_soft
   contains
@@ -5038,19 +5118,19 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   procedure :: init => soft_mismatch_init
 <<real subtraction: procedures>>=
   subroutine soft_mismatch_init (soft_mismatch, n_in, nlegs_born, &
-     reg_data, sqme_collector, real_kinematics)
+     reg_data, real_kinematics)
     class(soft_mismatch_t), intent(inout) :: soft_mismatch
     integer, intent(in) :: n_in, nlegs_born
     type(region_data_t), intent(in), target :: reg_data
-    type(sqme_collector_t), intent(in), target :: sqme_collector
+    !type(sqme_collector_t), intent(in), target :: sqme_collector
     type(real_kinematics_t), intent(in), target :: real_kinematics
     select type (mapping => reg_data%fks_mapping)
     type is (fks_mapping_default_t)
        soft_mismatch%active = .false.
     type is (fks_mapping_resonances_t)
        soft_mismatch%reg_data => reg_data
-       soft_mismatch%sqme_born => sqme_collector%sqme_subtraction_born_list
-       soft_mismatch%sqme_born_cc => sqme_collector%sqme_born_cc
+       !soft_mismatch%sqme_born => sqme_collector%sqme_subtraction_born_list
+       !soft_mismatch%sqme_born_cc => sqme_collector%sqme_born_cc
        call soft_mismatch%sub_soft%init (reg_data, n_in, nlegs_born, nlegs_born + 1)
        soft_mismatch%sub_soft%xi2_expanded = .false.
        soft_mismatch%real_kinematics => real_kinematics
@@ -5456,9 +5536,9 @@ necessary to expand with $z$ once.
     type(real_scales_t) :: scales
     integer :: current_alr = 0
     integer :: current_i_res = 0
-    real(default), dimension(:,:), pointer :: sqme_real_non_sub => null ()
-    real(default), dimension(:), pointer :: sqme_born => null ()
-    real(default), dimension(:,:,:), pointer :: sqme_born_cc => null ()
+    real(default), dimension(:,:), allocatable :: sqme_real_non_sub
+    real(default), dimension(:), allocatable :: sqme_born
+    real(default), dimension(:,:,:), allocatable :: sqme_born_cc
     complex(default), dimension(:), pointer :: sqme_born_sc => null ()
     type(soft_subtraction_t) :: sub_soft
     type(coll_subtraction_t) :: sub_coll
@@ -5480,12 +5560,12 @@ necessary to expand with $z$ once.
   procedure :: init => real_subtraction_init
 <<real subtraction: procedures>>=
   subroutine real_subtraction_init (rsub, reg_data, n_in, &
-      nlegs_born, nlegs_real, sqme_collector, &
+      nlegs_born, nlegs_real, &
       nlo_cuts)
     class(real_subtraction_t), intent(inout), target :: rsub
     type(region_data_t), intent(in), target :: reg_data
     integer, intent(in) :: n_in, nlegs_born, nlegs_real
-    type(sqme_collector_t), intent(in), target :: sqme_collector
+    !type(sqme_collector_t), intent(in), target :: sqme_collector
     type(nlo_cuts_t), intent(in), target :: nlo_cuts
     integer :: alr, i_uborn
     call msg_debug (D_SUBTRACTION, "real_subtraction_init")
@@ -5497,10 +5577,13 @@ necessary to expand with $z$ once.
     if (debug2_active (D_SUBTRACTION))  &
          call reg_data%write ()
     rsub%reg_data => reg_data
-    rsub%sqme_real_non_sub => sqme_collector%sqme_real_non_sub
-    rsub%sqme_born => sqme_collector%sqme_subtraction_born_list
-    rsub%sqme_born_cc => sqme_collector%sqme_born_cc
-    rsub%sqme_born_sc => sqme_collector%sqme_born_sc
+    allocate (rsub%sqme_born (reg_data%n_flv_born))
+    !rsub%sqme_born => sqme_collector%sqme_subtraction_born_list
+    rsub%sqme_born = zero
+    allocate (rsub%sqme_born_cc (reg_data%n_legs_born, reg_data%n_legs_born, &
+       reg_data%n_flv_born))    
+    !rsub%sqme_born_sc => sqme_collector%sqme_born_sc
+    allocate (rsub%sqme_real_non_sub (reg_data%n_flv_real, reg_data%n_phs))
     allocate (rsub%sc_required (reg_data%n_regions))
     do alr = 1, reg_data%n_regions
        i_uborn = reg_data%regions(alr)%uborn_index
@@ -5728,7 +5811,7 @@ the corresponding jacobians.
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       if (rsub%radiation_active .and. rsub%passed_real_cuts (i_phs)) then
          i_real = region%real_index
-         sqme_rad = rsub%sqme_real_non_sub (i_real, i_phs)
+         sqme_rad = rsub%sqme_real_non_sub (1, i_phs)
          call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, rsub%current_alr, &
             i_phs, emitter, rsub%current_i_res)
          call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, rsub%real_kinematics, i_phs, .false.)
@@ -5875,7 +5958,7 @@ the corresponding jacobians.
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       i_real = region%real_index
       if (rsub%radiation_active .and. rsub%passed_real_cuts (i_phs)) then 
-         sqme_rad = rsub%sqme_real_non_sub (i_real, i_phs)
+         sqme_rad = rsub%sqme_real_non_sub (1, i_phs)
          call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, &
             rsub%current_alr, i_phs, emitter, rsub%current_i_res)
          if (proc_scatter) then
@@ -5991,10 +6074,10 @@ the corresponding jacobians.
     integer :: alr
     alr = rsub%current_alr
     call rsub%compute_sub_soft (emitter, i_phs, alpha_s)
-    call rsub%compute_sub_coll (emitter, i_phs, alpha_s)
-    call rsub%compute_sub_coll_soft (emitter, alpha_s)
     sqme_soft = rsub%sub_soft%value(alr)
+    call rsub%compute_sub_coll (emitter, i_phs, alpha_s)
     sqme_coll = rsub%sub_coll%value(alr)
+    call rsub%compute_sub_coll_soft (emitter, alpha_s)
     sqme_cs = rsub%sub_coll%value_soft(alr)
   end subroutine real_subtraction_evaluate_subtraction_terms_fsr
 
@@ -6477,7 +6560,7 @@ end module nlo_data
   public :: fks_template_t
 <<nlo data: types>>=
   type :: fks_template_t
-    type(string_t) :: id
+    !type(string_t) :: id
     logical :: subtraction_disabled = .false.
     integer :: mapping_type = FKS_DEFAULT
     logical :: count_kinematics = .false.
@@ -6499,7 +6582,15 @@ end module nlo_data
     integer :: u
     u = given_output_unit (unit)
     write (u,'(1x,A)') 'FKS Template: '
-    write (u,'(1x,A,I0)') 'Mapping Type: ', template%mapping_type
+    write (u,'(1x,A)', advance = 'no') 'Mapping Type: '
+    select case (template%mapping_type)
+    case (FKS_DEFAULT)
+       write (u,'(A)') 'Default'
+    case (FKS_RESONANCES)
+       write (u,'(A)') 'Resonances'
+    case default
+       write (u,'(A)') 'Unkown'
+    end select
     write (u,'(1x,A,ES4.3,ES4.3)') 'd_ij exponentials: ', &
        template%fks_dij_exp1, template%fks_dij_exp2
   end subroutine fks_template_write
@@ -6705,7 +6796,7 @@ avoid duplicate computations.
        call phs_point_set%phs_point(i_phs)%write (u, show_mass = .true.)
     else
        do i = 1, size(phs_point_set%phs_point)
-          call phs_point_set%phs_point(i_phs)%write (u, show_mass = .true.)
+          call phs_point_set%phs_point(i)%write (u, show_mass = .true.)
        end do
     end if
     if (present (contributors)) then
@@ -6892,10 +6983,10 @@ avoid duplicate computations.
     allocate (r%xi_max (n_phs))
     allocate (r%y (n_phs))
     allocate (r%y_soft (n_phs))
-    call r%p_born_cms%init (n_tot, 1)
-    call r%p_born_lab%init (n_tot, 1)
-    call r%p_real_cms%init (n_tot + 1, n_phs)
-    call r%p_real_lab%init (n_tot + 1, n_phs)
+    call r%p_born_cms%init (n_tot - 1, 1)
+    call r%p_born_lab%init (n_tot - 1, 1)
+    call r%p_real_cms%init (n_tot, n_phs)
+    call r%p_real_lab%init (n_tot, n_phs)
     allocate (r%jac (n_phs), r%jac_rand (n_phs))
     allocate (r%k_perp (n_tot))
     allocate (r%alr_to_i_phs (n_alr))
@@ -7212,6 +7303,7 @@ module nlo_controller
   use sf_base
   use colors
   use phs_fks
+  use blha_olp_interfaces, only: blha_cc_fill_diag, blha_cc_fill_offdiag
   use flavors
   use fks_regions
   use nlo_data
@@ -8106,18 +8198,25 @@ and virtual counterterms.
          "nlo_controller%settings%use_internal_color_correlations", &
          nlo_controller%settings%use_internal_color_correlations)
     call msg_debug2 (D_SUBTRACTION, "fac_scale", fac_scale)
-    associate (collector => nlo_controller%sqme_collector)
+    associate (real_terms => nlo_controller%real_terms)
        if (.not. nlo_controller%settings%use_internal_color_correlations) then
           select type (core)
           class is (prc_user_defined_base_t)
              call core%update_alpha_s (core_state, fac_scale)
-             call core%compute_sqme_cc (i_flv_born, nlo_controller%int_born%get_momenta (), &
-                fac_scale, collector%sqme_subtraction_born_list (i_flv_born), &
-                collector%sqme_born_cc (:,:,i_flv_born), bad_point)
+             call core%compute_sqme_cc (i_flv_born, &
+                !nlo_controller%int_born%get_momenta (), fac_scale, &
+                nlo_controller%real_kinematics%p_born_cms%get_momenta(1), &
+                fac_scale, &
+                !collector%sqme_born_cc (:,:,i_flv_born), bad_point, &
+                real_terms%sqme_born_cc (:,:,i_flv_born), bad_point, &
+                !collector%sqme_subtraction_born_list (i_flv_born))
+                real_terms%sqme_born (i_flv_born))
           end select
        else
-          collector%sqme_born_cc (:,:,i_flv_born) = &
-             collector%sqme_subtraction_born_list (i_flv_born) * &
+          !collector%sqme_born_cc (:,:,i_flv_born) = &
+          real_terms%sqme_born_cc (:,:,i_flv_born) = &
+             !collector%sqme_subtraction_born_list (i_flv_born) * &
+             real_terms%sqme_born (i_flv_born) * &
              nlo_controller%color_data%beta_ij (:,:,i_flv_born)
           bad_point = .false.
        end if
@@ -8161,8 +8260,8 @@ and virtual counterterms.
 <<nlo controller: procedures>>=
   subroutine nlo_controller_compute_sqme_mismatch (nlo_controller)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    nlo_controller%sqme_collector%sqme_mismatch = &
-       nlo_controller%soft_mismatch%evaluate (nlo_controller%alpha_s_born)
+    !nlo_controller%sqme_collector%sqme_mismatch = &
+    !   nlo_controller%soft_mismatch%evaluate (nlo_controller%alpha_s_born)
   end subroutine nlo_controller_compute_sqme_mismatch
 
 @ %def nlo_controller_sqme_mismatch
@@ -8198,11 +8297,10 @@ one to determine this.
   function nlo_controller_has_massive_emitter (nlo_controller) result (val)
     class(nlo_controller_t), intent(in) :: nlo_controller
     logical :: val
-    integer :: n_tot, i
+    integer :: i
     val = .false.
-    associate (particle_data => nlo_controller%particle_data)
-       n_tot = particle_data%n_in + particle_data%n_out_born
-       do i = particle_data%n_in+1, n_tot
+    associate (reg_data => nlo_controller%reg_data)
+       do i = reg_data%n_in + 1, reg_data%n_legs_born
           if (any (i == nlo_controller%reg_data%emitters)) &
              val = val .or. nlo_controller%reg_data%flv_born(1)%massive(i)
        end do
@@ -8244,6 +8342,17 @@ one to determine this.
 @ %def nlo_controller_set_powheg_mode
 @
 <<nlo controller: nlo controller: TBP>>=
+  procedure :: set_real_sqme_born => nlo_controller_set_real_sqme_born
+<<nlo controller: procedures>>=
+  subroutine nlo_controller_set_real_sqme_born (nlo_controller, sqme_born_list)
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    real(default), intent(in), dimension(:), target :: sqme_born_list
+    nlo_controller%real_terms%sqme_born = sqme_born_list
+  end subroutine nlo_controller_set_real_sqme_born
+
+@ %def nlo_controller_set_real_sqme_born
+@
+<<nlo controller: nlo controller: TBP>>=
   procedure :: set_alr_to_i_phs => nlo_controller_set_alr_to_i_phs
 <<nlo controller: procedures>>=
   subroutine nlo_controller_set_alr_to_i_phs (nlo_controller, phs_identifiers)
@@ -8280,6 +8389,63 @@ one to determine this.
 
 @ %def nlo_controller_set_alr_to_i_phs
 @                
+\subsection{NLO connectors}
+<<nlo controller: public>>=
+  public :: nlo_connector_t
+<<nlo controller: types>>=
+  type, extends (connector_function_t), abstract :: nlo_connector_t
+     type(nlo_controller_t), pointer :: controller => null ()
+  contains
+  <<nlo controller: nlo connector: TBP>>
+  end type nlo_connector_t
+
+@ %def nlo_connector_t
+@ 
+<<nlo controller: public>>=
+  public :: virtual_connector_t
+<<nlo controller: types>>=
+  type, extends (nlo_connector_t) :: virtual_connector_t
+  contains
+  <<nlo controller: virtual connector: TBP>>
+  end type virtual_connector_t
+
+@ %def virtual_connector_t
+@
+<<nlo controller: virtual connector: TBP>>=
+  procedure :: evaluate => virtual_connector_evaluate
+<<nlo controller: procedures>>=
+  function virtual_connector_evaluate (connector, x) result (me)
+    complex(default) :: me
+    class(virtual_connector_t), intent(in) :: connector
+    complex(default), intent(in), dimension(:) :: x
+    me = connector%controller%compute_sqme_virt (x)
+  end function virtual_connector_evaluate
+
+@ %def virtual_connector_evaluate
+@
+<<nlo controller: public>>=
+  public :: real_connector_t
+<<nlo controller: types>>=
+  type, extends (nlo_connector_t) :: real_connector_t
+  contains
+  <<nlo controller: real connector: TBP>>
+  end type real_connector_t
+
+@ %def real_connector_t
+@
+<<nlo controller: real connector: TBP>>=
+  procedure :: evaluate => real_connector_evaluate
+<<nlo controller: procedures>>=
+  function real_connector_evaluate (connector, x) result (me)
+    complex(default) :: me
+    class(real_connector_t), intent(in) :: connector
+    complex(default), intent(in), dimension(:) :: x
+    !!! TODO (cw 2016-07-06): Implementation
+    me = zero
+  end function real_connector_evaluate
+
+@ %def real_connector_evaluate
+@ 
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Unit tests}
@@ -8734,17 +8900,6 @@ procedure :: init => nlo_settings_init
 @ %def nlo_settings_write
 @
 <<nlo data: public>>=
-  public :: nlo_particle_data_t
-<<nlo data: types>>=
-  type :: nlo_particle_data_t
-    integer :: n_in
-    integer :: n_out_born, n_out_real
-    integer :: n_flv_born, n_flv_real
-  end type nlo_particle_data_t
-
-@ %def nlo_particle_data_t
-@
-<<nlo data: public>>=
   public :: nlo_states_t
 <<nlo data: types>>=
   type :: nlo_states_t
@@ -8758,28 +8913,6 @@ procedure :: init => nlo_settings_init
 @ %def nlo_states_t
 @
 <<nlo data: public>>=
-  public :: sqme_collector_t
-<<nlo data: types>>=
-  type :: sqme_collector_t
-    real(default) :: current_sqme_real
-    real(default), dimension(:,:), allocatable :: sqme_real_per_phs
-    real(default), dimension(:,:), allocatable :: sqme_real_non_sub
-    real(default), dimension(:,:,:), allocatable :: sqme_born_cc
-    complex(default), dimension(:), allocatable :: sqme_born_sc
-    real(default) :: sqme_real_sum
-    real(default), dimension(:), allocatable :: sqme_born_list
-    real(default), dimension(:), allocatable :: sqme_subtraction_born_list
-    real(default), dimension(:,:), allocatable :: sqme_virt_born_list
-    real(default), dimension(:,:), allocatable :: sqme_virt_list
-    real(default) :: sqme_mismatch
-    real(default), dimension(:), allocatable :: sqme_dglap_list
-  contains
-  <<nlo data: sqme collector: TBP>>
-  end type sqme_collector_t
-
-@ %def sqme_collector_t
-@
-<<nlo data: public>>=
   public :: nlo_cuts_t
 <<nlo data: types>>=
   type :: nlo_cuts_t
@@ -8788,167 +8921,6 @@ procedure :: init => nlo_settings_init
   end type nlo_cuts_t
 
 @ %def nlo_cuts_t
-@
-<<nlo data: sqme collector: TBP>>=
-  procedure :: get_sqme_sum => sqme_collector_get_sqme_sum
-<<nlo data: procedures>>=
-  function sqme_collector_get_sqme_sum (collector) result (sqme)
-    class(sqme_collector_t), intent(in) :: collector
-    real(default) :: sqme
-    sqme = sum (collector%sqme_born_list) + &
-           collector%sqme_real_sum + &
-           sum (collector%sqme_virt_list) + &
-           collector%sqme_mismatch + &
-           sum (collector%sqme_dglap_list)
-    if (debug2_active (D_SUBTRACTION)) then
-       call msg_debug (D_SUBTRACTION, "Get content of sqme lists: ")
-       call collector%write ()
-       print *, 'Sum: ', sqme
-    end if
-  end function sqme_collector_get_sqme_sum
-
-@ %def sqme_collector_get_sqme_sum
-@
-<<nlo data: sqme collector: TBP>>=
-  procedure :: get_sqme_born => sqme_collector_get_sqme_born
-<<nlo data: procedures>>=
-  function sqme_collector_get_sqme_born (collector, i_flv) result (sqme)
-    real(default) :: sqme
-    class(sqme_collector_t), intent(in) :: collector
-    integer, intent(in) :: i_flv
-    sqme = collector%sqme_born_list (i_flv)
-  end function sqme_collector_get_sqme_born
-
-@ %def sqme_collector_get_sqme_born
-@
-<<nlo data: sqme collector: TBP>>=
-  procedure :: reset => sqme_collector_reset
-<<nlo data: procedures>>=
-  subroutine sqme_collector_reset (collector)
-    class(sqme_collector_t), intent(inout) :: collector
-       collector%sqme_born_list = zero
-       collector%sqme_real_sum = zero
-       collector%sqme_virt_list = zero
-       collector%sqme_mismatch = zero
-       collector%sqme_dglap_list = zero
-  end subroutine sqme_collector_reset
-
-@ %def sqme_collector_reset
-@
-<<nlo data: sqme collector: TBP>>=
-  procedure :: write => sqme_collector_write
-<<nlo data: procedures>>=
-  subroutine sqme_collector_write (collector)
-    class(sqme_collector_t), intent(in) :: collector
-    print *, 'Born: ', collector%sqme_born_list
-    print *, 'Real: ', collector%sqme_real_sum
-    print *, 'Virt: ', collector%sqme_virt_list
-    print *, 'Dglap: ', collector%sqme_dglap_list
-    print *, 'Mismatch: ', collector%sqme_mismatch
-  end subroutine sqme_collector_write
-
-@ %def sqme_collector_write
-@
-<<nlo controller: types>>=
-  type :: polarization_data_t
-    logical :: valid = .false.
-    real(default) :: value = zero
-    integer, dimension(:), allocatable :: h
-    !!real(default), dimension(:), allocatable :: pmatrix_diag
-  contains
-  <<nlo controller: polarization data: TBP>>
-  end type polarization_data_t
-
-@ %def polarization_data_t
-@
-<<nlo controller: public operators>>=
-  public :: operator(*)
-<<nlo controller: interfaces>>=
-  interface operator(*)
-     module procedure polarization_data_multiply
-  end interface
-
-@ %def multipliy_interface
-@
-<<nlo controller: procedures>>=
-  function polarization_data_multiply (p1, p2) result (prod)
-    real(default) :: prod
-    type(polarization_data_t), dimension(:), intent(in) :: p1, p2
-    integer :: i, j
-    prod = zero
-    do i = 1, size (p1)
-       do j = 1, size (p2)
-          if (all (p1(i)%h == p2(j)%h)) then
-             prod = prod + p1(i)%value * p2(j)%value
-             exit
-          end if
-       end do
-    end do
-  end function polarization_data_multiply
-
-@ %def polarization_data_multiply
-@
-<<nlo controller: polarization data: TBP>>=
-  procedure :: set_helicities => polarization_data_set_helicities
-<<nlo controller: procedures>>=
-  subroutine polarization_data_set_helicities (pol_data, h)
-    class(polarization_data_t), intent(inout) :: pol_data
-    integer, dimension(:), intent(in) :: h
-    integer :: i
-    pol_data%h = h
-    if (size (pol_data%h) == 2)  pol_data%h(2) = - pol_data%h(2) !!! why?
-    pol_data%valid = .true.
-    do i = 1, size (pol_data%h)
-       pol_data%valid = pol_data%valid .and. &
-                (pol_data%h(i) == 1 .or. pol_data%h(i) == -1)
-    end do
-  end subroutine polarization_data_set_helicities
-
-@ %def polarization_data_init_helicities
-@
-<<nlo controller: polarization data: TBP>>=
-  procedure :: set_value => polarization_data_set_value
-<<nlo controller: procedures>>=
-  subroutine polarization_data_set_value (pol_data, value)
-     class(polarization_data_t), intent(inout) :: pol_data
-     real(default), intent(in) :: value
-     pol_data%value = value
-  end subroutine polarization_data_set_value
-
-@ %def polarization_data_set_value
-@
-<<nlo controller: polarization data: TBP>>=
-  procedure :: is_active => polarization_data_is_valid
-<<nlo controller: procedures>>=
-  elemental function polarization_data_is_valid (pol_data) result (valid)
-    logical :: valid
-    class(polarization_data_t), intent(in) :: pol_data
-    valid = pol_data%valid
-  end function polarization_data_is_valid
-
-@ %def polarization_data_is_valid
-@
-<<nlo controller: polarization data: TBP>>=
-  procedure :: write => polarization_data_write
-<<nlo controller: procedures>>=
-  subroutine polarization_data_write (pol_data, unit)
-    class(polarization_data_t), intent(in) :: pol_data
-    integer, intent(in), optional :: unit
-    integer :: u, i
-    u = given_output_unit (unit)
-    write (u, "(A,1x,L1)") "valid: ", pol_data%valid
-    write (u, "(A,1x,F7.5)") "value: ", pol_data%value
-    if (allocated (pol_data%h)) then
-       write (u, "(A,1x)") "helicities: "
-       do i = 1, size(pol_data%h)
-          write (u, "(I0,1x)") pol_data%h(i)
-       end do
-    else
-       write (u, "(A,1x)") "no helicities allocated "
-    end if
-  end subroutine polarization_data_write
-
-@ %def polarization_data_write
 @ This data type governs the whole calculation. It contains information
 about color, spin and flavor as well as the information about the Born
 process.
@@ -8957,17 +8929,12 @@ process.
 <<nlo controller: types>>=
   type :: nlo_controller_t
     logical :: needs_initialization = .true.
-    type(region_data_t) :: reg_data
-    type(nlo_particle_data_t) :: particle_data
+    type(region_data_t), pointer :: reg_data => null ()
     type(nlo_states_t) :: particle_states
-    type(nlo_settings_t) :: settings
-    type(sqme_collector_t), pointer :: sqme_collector => null ()
-    type(polarization_data_t), dimension(:), allocatable :: pol_density_matrix
-    type(polarization_data_t), dimension(:), allocatable :: pol_sqme
+    type(nlo_settings_t), pointer :: settings => null ()
     integer :: n_allowed_born
     integer :: active_emitter, active_phase_space
     integer :: active_flavor_structure_real
-    complex(default), dimension(:), allocatable :: amp_born
     type(color_data_t) :: color_data
     type(real_kinematics_t), pointer :: real_kinematics => null()
     type(isr_kinematics_t), pointer :: isr_kinematics => null()
@@ -8978,8 +8945,6 @@ process.
     real(default) :: alpha_s_born
     logical :: alpha_s_born_set
     complex(default) :: me_sc
-    type(interaction_t), public :: int_born
-    type(sf_chain_instance_t), pointer :: sf_born => null ()
     class(powheg_damping_t), allocatable :: powheg_damping
     type(nlo_cuts_t) :: nlo_cuts
   contains
@@ -8989,53 +8954,27 @@ process.
 @ %def nlo_controller_t
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: init_regions_and_resonances &
-     => nlo_controller_init_regions_and_resonances
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_init_regions_and_resonances &
-     (nlo_controller, prc_constants, template, phs_config, model)
-     class(nlo_controller_t), intent(inout), target :: nlo_controller
-     type(process_constants_t), intent(in), dimension(2) :: prc_constants
-     !!! intent(inout) because the mapping type might  be reset to defeault
-     !!! if no resonances are found
-     type(fks_template_t), intent(inout) :: template
-     !!! intent(inout) because the phase space might have to be generated new
-     class(phs_config_t), intent(inout) :: phs_config
-     type(model_t), intent(in) :: model
-     call msg_debug (D_SUBTRACTION, "nlo_controller_init")
-     call nlo_controller%set_flv_states (prc_constants)
-     call nlo_controller%set_particle_data (prc_constants)
-     call nlo_controller%init_region_and_color_data (template, model, &
-        prc_constants, phs_config)
-  end subroutine nlo_controller_init_regions_and_resonances
-
-@ %def nlo_controller_init_regions_and_resonances
-@
-<<nlo controller: nlo controller: TBP>>=
   procedure :: setup_real_terms => nlo_controller_setup_real_terms
 <<nlo controller: procedures>>=
   subroutine nlo_controller_setup_real_terms (nlo_controller, template, sqrts)
      class(nlo_controller_t), intent(inout), target :: nlo_controller
      type(fks_template_t), intent(in) :: template
      real(default), intent(in) :: sqrts
-     integer :: n_in, n_tot_born, n_tot_real
-     call nlo_controller%setup_matrix_elements ()
+     integer :: n_in, n_tot_born
      nlo_controller%alpha_s_born_set = .false.
      call nlo_controller%init_real_and_isr_kinematics (sqrts)
-     associate (particle_data => nlo_controller%particle_data)
-        n_in = particle_data%n_in
-        n_tot_born = n_in + particle_data%n_out_born
-        n_tot_real = n_in + particle_data%n_out_real
 
-        allocate (nlo_controller%nlo_cuts%passed_real (nlo_controller%reg_data%n_phs))
-        nlo_controller%nlo_cuts%passed_real = .true.
-        nlo_controller%nlo_cuts%passed_born = .true.
+     allocate (nlo_controller%nlo_cuts%passed_real (nlo_controller%reg_data%n_phs))
+     nlo_controller%nlo_cuts%passed_real = .true.
+     nlo_controller%nlo_cuts%passed_born = .true.
 
-        call nlo_controller%init_real_subtraction (n_in, n_tot_born, n_tot_real)
-        if (template%subtraction_disabled) call nlo_controller%disable_subtraction ()
-        call nlo_controller%soft_mismatch%init (n_in, n_tot_born, nlo_controller%reg_data, &
-           nlo_controller%sqme_collector, nlo_controller%real_kinematics)
-     end associate
+     call nlo_controller%init_real_subtraction ()
+     if (template%subtraction_disabled) call nlo_controller%disable_subtraction ()
+     n_in = nlo_controller%reg_data%n_in
+     n_tot_born = nlo_controller%reg_data%n_legs_born
+     call nlo_controller%soft_mismatch%init (n_in, n_tot_born, nlo_controller%reg_data, &
+        nlo_controller%real_kinematics)
+     allocate (powheg_damping_simple_t :: nlo_controller%powheg_damping)
   end subroutine nlo_controller_setup_real_terms
 
 @ %def nlo_controller_setup_real_terms
@@ -9055,181 +8994,25 @@ process.
 @ %def nlo_controller_check_if_threshold_method
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: init_pol_density_matrix => nlo_controller_init_pol_density_matrix
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_init_pol_density_matrix (nlo_controller, n_entries)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer :: n_entries
-    allocate (nlo_controller%pol_density_matrix (n_entries))
-  end subroutine nlo_controller_init_pol_density_matrix
-
-@ %def nlo_controller_init_pol_density_matrix
-@ Anti-particles need to have an opposite sign for the helicity index
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: init_polarized_sqmes => nlo_controller_init_polarized_sqmes
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_init_polarized_sqmes (nlo_controller, helicities)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer, intent(in), dimension(:,:) :: helicities
-    integer :: i_sqme, n_sqme
-    integer, dimension(size(helicities, dim=2)) :: h
-    integer, dimension(size(helicities, dim=2)) :: flavor_sign
-
-    associate (flv => nlo_controller%particle_states%flv_state_born (:,1))
-       flavor_sign(:) = sign (1, flv(1:size(flavor_sign)))
-    end associate
-
-    n_sqme = size (helicities, dim=1)
-    allocate (nlo_controller%pol_sqme (n_sqme))
-    associate (pol_sqme => nlo_controller%pol_sqme)
-       do i_sqme = 1, n_sqme
-          h = flavor_sign * helicities (i_sqme, :)
-          call pol_sqme(i_sqme)%set_helicities (h)
-       end do
-    end associate
-  end subroutine nlo_controller_init_polarized_sqmes
-
-@ %def nlo_controller_init_polarized_sqmes
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: beams_are_polarized => nlo_controller_beams_are_polarized
-<<nlo controller: procedures>>=
-  elemental function nlo_controller_beams_are_polarized (nlo_controller) result (val)
-    logical :: val
-    class(nlo_controller_t), intent(in) :: nlo_controller
-    val = allocated (nlo_controller%pol_density_matrix)
-  end function nlo_controller_beams_are_polarized
-
-@ %def nlo_controller_beams_are_polarized
-@ This subroutine combines the outer product of the spin density
-matrices with the polarized matrix elements. Note that there is a factor
-of four to account for the fact that \texttt{OpenLoops} supplies the
-averaging factor $1/4$ regardless whether the matrix elements are
-polarized or not.
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: get_weighted_helicity_sum => nlo_controller_get_weighted_helicity_sum
-<<nlo controller: procedures>>=
-  function nlo_controller_get_weighted_helicity_sum (nlo_controller) result (sqme)
-     real(default) :: sqme
-     class(nlo_controller_t), intent(in) :: nlo_controller
-     sqme = four * (nlo_controller%pol_sqme * nlo_controller%pol_density_matrix)
-  end function nlo_controller_get_weighted_helicity_sum
-
-@ %def nlo_controller_get_weighted_helicity_sum
-@
-<<nlo controller: nlo controller: TBP>>=
   procedure :: init_real_subtraction => nlo_controller_init_real_subtraction
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_init_real_subtraction (nlo_controller, &
-     n_in, n_tot_born, n_tot_real)
+  subroutine nlo_controller_init_real_subtraction (nlo_controller)
     class(nlo_controller_t), intent(inout), target :: nlo_controller
-    integer, intent(in) :: n_in, n_tot_born, n_tot_real
-    call nlo_controller%real_terms%init (nlo_controller%reg_data, &
-       n_in, n_tot_born, n_tot_real, nlo_controller%sqme_collector, &
-       nlo_controller%nlo_cuts)
-    call nlo_controller%real_terms%set_resonance_mappings &
-       (nlo_controller%settings%use_resonance_mappings)
-    associate (settings => nlo_controller%settings)
-       nlo_controller%real_terms%fixed_alr = settings%fixed_alr
-       nlo_controller%real_terms%sub_soft%factorization_mode &
-          = settings%factorization_mode
+    associate (reg_data => nlo_controller%reg_data)
+       call nlo_controller%real_terms%init (nlo_controller%reg_data, &
+          reg_data%n_in, reg_data%n_legs_born, reg_data%n_legs_real, &
+          nlo_controller%nlo_cuts)
+       call nlo_controller%real_terms%set_resonance_mappings &
+          (nlo_controller%settings%use_resonance_mappings)
+       associate (settings => nlo_controller%settings)
+          nlo_controller%real_terms%fixed_alr = settings%fixed_alr
+          nlo_controller%real_terms%sub_soft%factorization_mode &
+             = settings%factorization_mode
+       end associate
     end associate
   end subroutine nlo_controller_init_real_subtraction
 
 @ %def nlo_controller_init_real_subtraction
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: set_flv_states => nlo_controller_set_flv_states
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_set_flv_states (nlo_controller, prc_constants)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    type(process_constants_t), intent(in), dimension(2) :: prc_constants
-    associate (states => nlo_controller%particle_states)
-      allocate (states%flv_state_born &
-           (size (prc_constants(1)%get_flv_state (), 1), &
-            size (prc_constants(1)%get_flv_state (), 2)))
-      allocate (states%flv_state_real &
-           (size (prc_constants(2)%get_flv_state (), 1), &
-            size (prc_constants(2)%get_flv_state (), 2)))
-      states%flv_state_born = prc_constants(1)%get_flv_state ()
-      states%flv_state_real = prc_constants(2)%get_flv_state ()
-    end associate
-  end subroutine nlo_controller_set_flv_states
-
-@ %def nlo_controller_set_flv_states
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: get_flv_state_real => nlo_controller_get_flv_state_real
-<<nlo controller: procedures>>=
-  function nlo_controller_get_flv_state_real (nlo_controller, i_uborn) result (flv_state)
-    class(nlo_controller_t), intent(in) :: nlo_controller
-    integer, intent(in) :: i_uborn
-    integer, dimension(:), allocatable :: flv_state
-    allocate (flv_state (size (nlo_controller%particle_states%flv_state_real (:,i_uborn))))
-    flv_state = nlo_controller%particle_states%flv_state_real (:,i_uborn)
-  end function nlo_controller_get_flv_state_real
-
-@ %def nlo_controller_get_flv_state_real
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: set_particle_data => nlo_controller_set_particle_data
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_set_particle_data (nlo_controller, prc_constants)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    type(process_constants_t), intent(in), dimension(2) :: prc_constants
-    associate (particle_data => nlo_controller%particle_data)
-       particle_data%n_flv_born = size (nlo_controller%particle_states%flv_state_born(1,:))
-       particle_data%n_flv_real = size (nlo_controller%particle_states%flv_state_real(1,:))
-       particle_data%n_in = prc_constants(2)%n_in
-       particle_data%n_out_born = prc_constants(1)%n_out
-       particle_data%n_out_real = prc_constants(2)%n_out
-    end associate
-  end subroutine nlo_controller_set_particle_data
-
-@ %def nlo_controller_set_particle_data
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: setup_matrix_elements => nlo_controller_setup_matrix_elements
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_setup_matrix_elements (nlo_controller, n_hel)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer, intent(in), optional :: n_hel
-    integer :: n_tot_born
-    associate (collector => nlo_controller%sqme_collector, &
-         particle_data => nlo_controller%particle_data)
-      if (present (n_hel)) then
-         allocate (collector%sqme_virt_born_list (particle_data%n_flv_born, n_hel))
-         allocate (collector%sqme_virt_list (particle_data%n_flv_born, n_hel))
-      else
-         allocate (collector%sqme_virt_born_list (particle_data%n_flv_born, 1))
-         allocate (collector%sqme_virt_list (particle_data%n_flv_born, 1))
-      end if
-      allocate (collector%sqme_born_list (particle_data%n_flv_born))
-      allocate (collector%sqme_subtraction_born_list (particle_data%n_flv_born))
-      allocate (collector%sqme_real_non_sub (particle_data%n_flv_real, &
-         nlo_controller%reg_data%n_phs))
-      allocate (collector%sqme_real_per_phs &
-         (nlo_controller%reg_data%n_flv_real, nlo_controller%reg_data%n_phs))
-      n_tot_born = particle_data%n_in + particle_data%n_out_born
-      allocate (collector%sqme_born_cc (n_tot_born, n_tot_born, particle_data%n_flv_born))
-      allocate (collector%sqme_born_sc (particle_data%n_flv_born))
-      allocate (collector%sqme_dglap_list (particle_data%n_flv_born))
-      collector%sqme_born_list = zero
-      collector%sqme_subtraction_born_list = zero
-      collector%sqme_real_non_sub = zero
-      collector%sqme_real_per_phs = zero
-      collector%sqme_born_cc = zero
-      collector%sqme_born_sc = cmplx (zero, zero, kind=default)
-      collector%current_sqme_real = zero
-      collector%sqme_real_sum = zero
-      collector%sqme_virt_born_list = zero
-      collector%sqme_virt_list = zero
-      collector%sqme_dglap_list = zero
-      collector%sqme_mismatch = zero
-    end associate
-  end subroutine nlo_controller_setup_matrix_elements
-
-@ %def nlo_controller_setup_matrix_elements
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: setup_generator => nlo_controller_setup_generator
@@ -9246,11 +9029,10 @@ polarized or not.
     call generator%connect_kinematics (nlo_controller%isr_kinematics, &
        nlo_controller%real_kinematics, &
        nlo_controller%has_massive_emitter ())
-    generator%n_in = nlo_controller%particle_data%n_in
+    generator%n_in = nlo_controller%reg_data%n_in
     call generator%set_sqrts_hat (sqrts)
     call generator%set_emitters (nlo_controller%reg_data%emitters)
-    call generator%setup_masses (nlo_controller%particle_data%n_in + &
-       nlo_controller%particle_data%n_out_born)
+    call generator%setup_masses (nlo_controller%reg_data%n_legs_born)
     generator%is_massive = nlo_controller%get_mass_info(1)
     generator%singular_jacobian = yorn
     if (present (mode)) generator%mode = mode
@@ -9261,10 +9043,10 @@ polarized or not.
 <<nlo controller: nlo controller: TBP>>=
   procedure :: get_n_particles_real => nlo_controller_get_n_particles_real
 <<nlo controller: procedures>>=
-  pure function nlo_controller_get_n_particles_real (nlo_controller) result (n_particles)
+  elemental function nlo_controller_get_n_particles_real (nlo_controller) result (n_particles)
     integer :: n_particles
     class(nlo_controller_t), intent(in) :: nlo_controller
-    n_particles = nlo_controller%particle_data%n_in + nlo_controller%particle_data%n_out_real
+    n_particles = nlo_controller%reg_data%n_legs_real
   end function nlo_controller_get_n_particles_real
 
 @ %def nlo_controller_get_n_particles_real
@@ -9272,12 +9054,10 @@ polarized or not.
 <<nlo controller: nlo controller: TBP>>=
   procedure :: get_n_particles => nlo_controller_get_n_particles
 <<nlo controller: procedures>>=
-  elemental function nlo_controller_get_n_particles (nlo_controller) result (n)
-    integer :: n
+  elemental function nlo_controller_get_n_particles (nlo_controller) result (n_particles)
+    integer :: n_particles
     class(nlo_controller_t), intent(in) :: nlo_controller
-    associate (particle_data => nlo_controller%particle_data)
-       n = particle_data%n_in + particle_data%n_out_born
-    end associate
+    n_particles = nlo_controller%reg_data%n_legs_born
   end function nlo_controller_get_n_particles
 
 @ %def nlo_controller_get_n_particles
@@ -9286,9 +9066,9 @@ polarized or not.
   procedure :: get_n_flv_born => nlo_controller_get_n_flv_born
 <<nlo controller: procedures>>=
   elemental function nlo_controller_get_n_flv_born (nlo_controller) result (n_flv)
-    class(nlo_controller_t), intent(in) :: nlo_controller
     integer :: n_flv
-    n_flv = nlo_controller%particle_data%n_flv_born
+    class(nlo_controller_t), intent(in) :: nlo_controller
+    n_flv = nlo_controller%reg_data%n_flv_born
   end function nlo_controller_get_n_flv_born
 
 @ %def nlo_controller_get_n_flv_born
@@ -9297,9 +9077,9 @@ polarized or not.
   procedure :: get_n_flv_real => nlo_controller_get_n_flv_real
 <<nlo controller: procedures>>=
   elemental function nlo_controller_get_n_flv_real (nlo_controller) result (n_flv)
-    class(nlo_controller_t), intent(in) :: nlo_controller
     integer :: n_flv
-    n_flv = nlo_controller%particle_data%n_flv_real
+    class(nlo_controller_t), intent(in) :: nlo_controller
+    n_flv = nlo_controller%reg_data%n_flv_real
   end function nlo_controller_get_n_flv_real
 
 @ %def nlo_controller_get_n_flv_real
@@ -9308,8 +9088,8 @@ polarized or not.
   procedure :: get_n_alr => nlo_controller_get_n_alr
 <<nlo controller: procedures>>=
   elemental function nlo_controller_get_n_alr (nlo_controller) result (n_alr)
-    class(nlo_controller_t), intent(in) :: nlo_controller
     integer :: n_alr
+    class(nlo_controller_t), intent(in) :: nlo_controller
     n_alr = nlo_controller%reg_data%n_regions
   end function nlo_controller_get_n_alr
 
@@ -9321,7 +9101,7 @@ polarized or not.
   function nlo_controller_get_n_in (controller) result (n_in)
     integer :: n_in
     class(nlo_controller_t), intent(in) :: controller
-    n_in = controller%particle_data%n_in
+    n_in = controller%reg_data%n_in
   end function nlo_controller_get_n_in
 
 @ %def nlo_controller_get_n_in
@@ -9356,11 +9136,10 @@ polarized or not.
      => nlo_controller_init_region_and_color_data
 <<nlo controller: procedures>>=
   subroutine nlo_controller_init_region_and_color_data (nlo_controller, &
-     template, model, prc_constants, phs_config)
+     template, model, phs_config)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     type(fks_template_t), intent(inout) :: template
     type(model_t), intent(in) :: model
-    type(process_constants_t), intent(in), dimension(2) :: prc_constants
     class(phs_config_t), intent(inout) :: phs_config
     type(resonance_history_t), dimension(:), allocatable :: resonance_histories
     type(resonance_history_t), dimension(:), allocatable :: &
@@ -9372,14 +9151,13 @@ polarized or not.
     case (FKS_RESONANCES) 
        select type (phs_config)
        type is (phs_fks_config_t)
-          !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-          select case (nlo_controller%settings%factorization_mode)
+	  select case (nlo_controller%settings%factorization_mode)
           case (NO_FACTORIZATION)
              allocate (resonance_histories (size (phs_config%get_resonance_histories ())))
              resonance_histories = phs_config%get_resonance_histories ()
              call clean_resonance_histories (resonance_histories, &
-                nlo_controller%particle_data%n_in, &
-                nlo_controller%particle_states%flv_state_born (:,1), &
+                nlo_controller%reg_data%n_in, &
+                nlo_controller%reg_data%get_flv_states_born (1), &
                 resonance_histories_clean, success)
              if (success .and. allocated (template%excluded_resonances)) then
                 call filter_particles_from_resonances (resonance_histories_clean, &
@@ -9399,14 +9177,47 @@ polarized or not.
     call nlo_controller%init_region_data (template, model)
     select case (template%mapping_type)
     case (FKS_RESONANCES)
-       call nlo_controller%init_resonance_info (resonance_histories_filtered)
+       call nlo_controller%reg_data%set_resonance_mappings (resonance_histories_filtered)
+       call nlo_controller%reg_data%init_resonance_information &
+          (nlo_controller%settings%factorization_mode)
        nlo_controller%settings%use_resonance_mappings = .true.
     end select
     call nlo_controller%reg_data%compute_number_of_phase_spaces ()
-    call nlo_controller%reg_data%write_to_file (template%id)
+    !call nlo_controller%reg_data%write_to_file (template%id)
   end subroutine nlo_controller_init_region_and_color_data
 
 @ %def nlo_controller_init_region_and_color_data
+@
+<<nlo controller: public>>=
+  public :: get_filtered_resonance_histories
+<<nlo controller: procedures>>=
+  subroutine get_filtered_resonance_histories (phs_config, n_in, flv_state, model, &
+     excluded_resonances, resonance_histories_out, success)
+    type(phs_fks_config_t), intent(inout) :: phs_config
+    integer, intent(in) :: n_in
+    integer, intent(in), dimension(:,:), allocatable :: flv_state
+    type(model_t), intent(in) :: model
+    type(string_t), intent(in), dimension(:), allocatable :: excluded_resonances 
+    type(resonance_history_t), intent(out), dimension(:), &
+       allocatable :: resonance_histories_out
+    logical, intent(out) :: success
+    type(resonance_history_t), dimension(:), allocatable :: resonance_histories
+    type(resonance_history_t), dimension(:), allocatable :: &
+       resonance_histories_clean, resonance_histories_filtered
+    allocate (resonance_histories (size (phs_config%get_resonance_histories ())))          
+    resonance_histories = phs_config%get_resonance_histories ()
+    call clean_resonance_histories (resonance_histories, &
+       n_in, flv_state (:,1), resonance_histories_clean, success)
+    if (success .and. allocated (excluded_resonances)) then
+       call filter_particles_from_resonances (resonance_histories_clean, &
+          excluded_resonances, model, resonance_histories_filtered)
+    else
+       allocate (resonance_histories_filtered (size (resonance_histories_clean)))
+       resonance_histories_filtered = resonance_histories_clean
+    end if
+  end subroutine get_filtered_resonance_histories
+
+@ %def get_filtered_resonance_histories
 @
 <<nlo controller: types>>=
   type :: color_index_list_t
@@ -9705,14 +9516,8 @@ polarized or not.
     type(model_t), intent(in) :: model
     integer :: n_in
     call msg_debug (D_SUBTRACTION, "nlo_controller_init_region_data")
-    n_in = nlo_controller%particle_data%n_in
-    call nlo_controller%reg_data%allocate_fks_mappings (template%mapping_type)
-
-    select type (map => nlo_controller%reg_data%fks_mapping)
-    type is (fks_mapping_default_t)
-       call map%set_parameter (n_in, template%fks_dij_exp1, template%fks_dij_exp2)
-    end select
-
+    n_in = nlo_controller%reg_data%n_in
+    call nlo_controller%reg_data%setup_fks_mappings (template, n_in)
     associate (states => nlo_controller%particle_states)
        call nlo_controller%reg_data%init (n_in, model, &
           states%flv_state_born, states%flv_state_real)
@@ -9720,22 +9525,6 @@ polarized or not.
   end subroutine nlo_controller_init_region_data
 
 @ %def nlo_controller_init_region_data
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: init_resonance_info => nlo_controller_init_resonance_info
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_init_resonance_info (nlo_controller, resonance_histories)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    type(resonance_history_t), intent(in), dimension(:) :: resonance_histories
-    select type (map => nlo_controller%reg_data%fks_mapping)
-    type is (fks_mapping_resonances_t)
-       call map%res_map%init (resonance_histories)
-    end select
-    call nlo_controller%reg_data%init_resonance_information &
-       (nlo_controller%settings%factorization_mode)
-  end subroutine nlo_controller_init_resonance_info
-
-@ %def nlo_controller_init_resonance_info
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: get_xi_max => nlo_controller_get_xi_max
@@ -9752,25 +9541,12 @@ polarized or not.
 @ %def nlo_controller_get_xi_max
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: init_born_amps => nlo_controller_init_born_amps
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_init_born_amps (nlo_controller, n)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer, intent(in) :: n
-    nlo_controller%n_allowed_born = n
-    if (.not. allocated (nlo_controller%amp_born)) &
-       allocate (nlo_controller%amp_born (n))
-  end subroutine nlo_controller_init_born_amps
-
-@ %def nlo_controller_init_born_amps
-@
-<<nlo controller: nlo controller: TBP>>=
   procedure :: set_internal_procedures => nlo_controller_set_internal_procedures
 <<nlo controller: procedures>>=
   subroutine nlo_controller_set_internal_procedures (nlo_controller, flag_color, flag_spin)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     logical, intent(in) :: flag_color, flag_spin
-    nlo_controller%settings%use_internal_color_correlations = flag_color
+    !nlo_controller%settings%use_internal_color_correlations = flag_color
     nlo_controller%real_terms%sub_soft%use_internal_color_correlations = flag_color
     nlo_controller%virtual_terms%use_internal_color_correlations = flag_color
     nlo_controller%settings%use_internal_spin_correlations = flag_spin
@@ -9801,8 +9577,8 @@ polarized or not.
   subroutine nlo_controller_init_virtual (nlo_controller)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     call nlo_controller%virtual_terms%init &
-      (nlo_controller%particle_states%flv_state_born, &
-       nlo_controller%particle_data%n_in)
+      (nlo_controller%reg_data%get_flv_states_born (), &
+       nlo_controller%reg_data%n_in)
     nlo_controller%virtual_terms%factorization_mode &
        = nlo_controller%settings%factorization_mode
   end subroutine nlo_controller_init_virtual
@@ -9826,7 +9602,7 @@ polarized or not.
     class(nlo_controller_t), intent(inout) :: nlo_controller
     call nlo_controller%dglap_remnant%init (nlo_controller%isr_kinematics, &
        nlo_controller%particle_states%flv_state_born, &
-       nlo_controller%reg_data%n_regions, nlo_controller%sqme_collector)
+       nlo_controller%reg_data%n_regions)
   end subroutine nlo_controller_init_dglap_remnant
 
 @ %def nlo_controller_init_dglap_remnant
@@ -9851,8 +9627,8 @@ polarized or not.
     if (.not. nlo_controller%alpha_s_born_set) &
         call msg_fatal ("Strong coupling not set for dglap remnant")
     !!! TODO (cw 2016-04-26): Use correct i_flv_born
-    nlo_controller%sqme_collector%sqme_dglap_list (1) =  &
-       nlo_controller%dglap_remnant%evaluate (nlo_controller%alpha_s_born, sqme)
+    !nlo_controller%sqme_collector%sqme_dglap_list (1) =  &
+    !   nlo_controller%dglap_remnant%evaluate (nlo_controller%alpha_s_born, sqme)
   end subroutine nlo_controller_evaluate_dglap_remnant
 
 @ %def evaluate_dglap_remnant
@@ -10084,9 +9860,7 @@ polarized or not.
   subroutine nlo_controller_init_real_and_isr_kinematics (nlo_controller, sqrts)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     real(default), intent(in) :: sqrts
-    integer :: n_tot, n_contr
-    n_tot = nlo_controller%particle_data%n_in + &
-            nlo_controller%particle_data%n_out_born
+    integer :: n_contr
     allocate (nlo_controller%real_kinematics)
     allocate (nlo_controller%isr_kinematics)
     associate (reg_data => nlo_controller%reg_data)
@@ -10095,10 +9869,11 @@ polarized or not.
        else
           n_contr = 1
        end if
-       call nlo_controller%real_kinematics%init (n_tot, &
+       call nlo_controller%real_kinematics%init &
+          (reg_data%n_legs_real, &
           reg_data%n_phs, reg_data%n_regions, n_contr)
+       nlo_controller%isr_kinematics%n_in = reg_data%n_in
     end associate
-    nlo_controller%isr_kinematics%n_in = nlo_controller%particle_data%n_in
     nlo_controller%isr_kinematics%beam_energy = sqrts / two
   end subroutine nlo_controller_init_real_and_isr_kinematics
 
@@ -10222,35 +9997,58 @@ polarized or not.
 
 @ %def nlo_controller_uses_resonance_mappings
 @
-\subsection{xxx}
+\subsection{Computation of virtual matrix element}
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: compute_virt => nlo_controller_compute_virt
+  procedure :: transfer_to_virtual => nlo_controller_transfer_to_virtual
 <<nlo controller: procedures>>=
-  function nlo_controller_compute_virt &
-       (nlo_controller, i_flv, i_hel, p_born) result(sqme_virt)
+  subroutine nlo_controller_transfer_to_virtual (nlo_controller, p, &
+     ren_scale, fac_scale)
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer, intent(in) :: i_flv, i_hel
-    type(vector4_t), intent(in), dimension(:) :: p_born
-    real(default) :: sqme_virt
-    associate (collector => nlo_controller%sqme_collector)
-       if (nlo_controller%settings%use_internal_color_correlations) then
-          call nlo_controller%virtual_terms%evaluate &
-               (nlo_controller%reg_data, &
-               i_flv, nlo_controller%alpha_s_born, &
-               p_born, collector%sqme_virt_born_list (i_flv, i_hel), &
-               nlo_controller%color_data%beta_ij)
-       else
-          call nlo_controller%virtual_terms%evaluate &
-               (nlo_controller%reg_data, &
-               i_flv, nlo_controller%alpha_s_born, &
-               p_born, collector%sqme_virt_born_list (i_flv, i_hel), &
-               collector%sqme_born_cc)
-       end if
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default), intent(in) :: ren_scale, fac_scale
+    associate (virtual => nlo_controller%virtual_terms)
+       if (.not. allocated (virtual%p)) allocate (virtual%p (size (p)))
+       virtual%p = p
+       call virtual%set_ren_scale (p, ren_scale)
+       call virtual%set_fac_scale (p, fac_scale)
+       call virtual%set_ellis_sexton_scale () 
     end associate
-    sqme_virt = nlo_controller%virtual_terms%sqme_virt
-  end function nlo_controller_compute_virt
+  end subroutine nlo_controller_transfer_to_virtual
 
-@ %def nlo_controller_compute_virt
+@ %def nlo_controller_transfer_to_virtual
+@
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: compute_sqme_virt => nlo_controller_compute_sqme_virt
+<<nlo controller: procedures>>=
+  function nlo_controller_compute_sqme_virt (nlo_controller, me) result (sqme_virt)
+    real(default) :: sqme_virt
+    class(nlo_controller_t), intent(inout) :: nlo_controller
+    complex(default), intent(in), dimension(:) :: me
+    integer :: n_tot, n_me 
+    integer, dimension(:), allocatable :: flv_state
+    associate (virtual => nlo_controller%virtual_terms)
+       call virtual%set_vfin (real(me(1)))
+       if (nlo_controller%settings%use_internal_color_correlations) then
+          call virtual%evaluate (nlo_controller%reg_data, 1, &
+             nlo_controller%alpha_s_born, virtual%p, real(me(2)), &
+             nlo_controller%color_data%beta_ij)
+       else
+          !!! TODO (cw 2016-08-03): Restore external color correlations
+          !n_tot = nlo_controller%reg_data%n_legs_born
+          !n_me = size (me)
+          !call blha_cc_fill_offdiag (n_tot, real (me(3 : n_me)), &
+          !   nlo_controller%sqme_collector%sqme_born_cc (:,:,1)) 
+          !flv_state = nlo_controller%reg_data%get_flv_states_born (1)
+          !call blha_cc_fill_diag (real (me(2)), flv_state, &
+          !   nlo_controller%sqme_collector%sqme_born_cc (:,:,1))
+          !call virtual%evaluate (nlo_controller%reg_data, 1, &
+          !   nlo_controller%alpha_s_born, virtual%p, real(me(2)), &
+          !   nlo_controller%sqme_collector%sqme_born_cc)
+       end if
+       sqme_virt = virtual%sqme_virt
+    end associate
+  end function nlo_controller_compute_sqme_virt
+@ %def nlo_controller_compute_sqme_virt
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: requires_spin_correlation => &
@@ -10265,25 +10063,28 @@ polarized or not.
   end function nlo_controller_requires_spin_correlation
 
 @ %def nlo_controller_requires_spin_correlation
-@
+@ We need one subtraction index for the Born matrix element. Further, if we do
+not use the internal color correlation, we need $n(n-1)/2$ indices for
+each entry of the BLHA output array.
+<<nlo controller: nlo controller: TBP>>=
+  procedure :: get_n_sub => nlo_controller_get_n_sub
+<<nlo controller: procedures>>=
+  function nlo_controller_get_n_sub (nlo_controller) result (n_sub)
+    integer :: n_sub
+    class(nlo_controller_t), intent(in) :: nlo_controller
+    integer :: n_tot
+    n_sub = 1
+    if (.not. nlo_controller%settings%use_internal_color_correlations) then
+       n_tot = nlo_controller%reg_data%n_legs_born
+       n_sub = n_sub + n_tot * (n_tot - 1) / 2 
+    end if
+  end function nlo_controller_get_n_sub
+
+@ %def nlo_controller_get_n_sub
+@  
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{The FKS phase space}
-To handle the FKS phase space and adapt it to multi-channel
-integration, some extensions have to be made for pre-existing types.
-The \texttt{phs\_tree}-type has an attribute containing the tree-code
-of the emitting branch.
-<<PHS trees: phs tree: TBP>>=
-  procedure :: get_emitter => phs_tree_get_emitter
-<<PHS trees: procedures>>=
-  function phs_tree_get_emitter (tree) result (emitter)
-    class(phs_tree_t), intent(in) :: tree
-    integer :: emitter
-    emitter = tree%emitter
-  end function phs_tree_get_emitter
-
-@ %def phs_tree_get_emitter
-@
 <<[[phs_fks.f90]]>>=
 <<File header>>
 
@@ -10344,6 +10145,7 @@ end module phs_fks
 <<phs fks: types>>=
   type, extends (phs_wood_config_t) :: phs_fks_config_t
     integer :: mode = PHS_MODE_UNDEFINED
+    character(32) :: md5sum_born_config
   contains
   <<phs fks: fks config: TBP>>
   end type phs_fks_config_t
@@ -10362,10 +10164,14 @@ end module phs_fks
 <<phs fks: fks config: TBP>>=
   procedure :: write => phs_fks_config_write
 <<phs fks: procedures>>=
-  subroutine phs_fks_config_write (object, unit)
+  subroutine phs_fks_config_write (object, unit, include_id)
     class(phs_fks_config_t), intent(in) :: object
     integer, intent(in), optional :: unit
-    call object%phs_wood_config_t%write (unit)
+    logical, intent(in), optional :: include_id
+    integer :: u
+    u = given_output_unit (unit)
+    call object%phs_wood_config_t%write (u)
+    write (u, "(A,A)") "Extra Born md5sum: ", object%md5sum_born_config
   end subroutine phs_fks_config_write
 
 @ %def phs_fks_config_write
@@ -10410,6 +10216,7 @@ end module phs_fks
     end if
 !!! Channel equivalences not accessible yet
     phs_config%provides_equivalences = .false.
+    call phs_config%compute_md5sum ()
   end subroutine phs_fks_config_configure
 
 @ %def phs_fks_config_configure
@@ -10496,6 +10303,7 @@ be assured that Born flavors are used for this.
        allocate (phs_config%cascade_set)
        phs_config%cascade_set = phs_cfg_born%cascade_set
     end if
+    phs_config%md5sum_born_config = phs_cfg_born%md5sum_phs_config
   end subroutine phs_fks_config_set_born_config
 
 @ %def phs_fks_config_set_born_config
@@ -10647,6 +10455,28 @@ channel with an emitter.
   end interface
 
 @ %def interfaces
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: write => phs_fks_write
+<<phs fks: procedures>>=
+  subroutine phs_fks_write (object, unit, verbose)
+    class(phs_fks_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    logical, intent(in), optional :: verbose
+    integer :: u, i, n_id
+    u = given_output_unit (unit)
+    call object%base_write ()
+    n_id = size (object%phs_identifiers)
+    if (n_id == 0) then
+       write (u, "(A)") "No phs identifiers allocated! "
+    else
+       do i = 1, n_id
+          call object%phs_identifiers(i)%write (u)
+       end do
+    end if
+  end subroutine phs_fks_write
+
+@ %def phs_fks_write
 @ Initializer for the phase space. Calls the initialization of the
 corresponding Born phase space, sets up the
 channel-emitter-association and allocates space for the momenta.
@@ -10677,7 +10507,6 @@ channel-emitter-association and allocates space for the momenta.
       case (PHS_MODE_COLLINEAR_REMNANT)
          phs%n_r_born = phs%config%n_par - 1
       end select
-      call phs%init_momenta (phs_config)
     end select
   end subroutine phs_fks_init
 
@@ -10693,22 +10522,29 @@ channel-emitter-association and allocates space for the momenta.
 @ %def phs_fks_final
 @
 <<phs fks: phs fks: TBP>>=
-  procedure :: init_momenta => phs_fks_init_momenta
+  procedure :: allocate_momenta => phs_fks_allocate_momenta
 <<phs fks: procedures>>=
-  subroutine phs_fks_init_momenta (phs, phs_config)
+  subroutine phs_fks_allocate_momenta (phs, phs_config, data_is_born)
     class(phs_fks_t), intent(inout) :: phs
     class(phs_config_t), intent(in) :: phs_config
+    logical, intent(in) :: data_is_born
+    integer :: n_out_born
     allocate (phs%p_born (phs_config%n_in))
     allocate (phs%p_real (phs_config%n_in))
     select case (phs%mode)
     case (PHS_MODE_ADDITIONAL_PARTICLE)
-       allocate (phs%q_born (phs_config%n_out-1))
-       allocate (phs%q_real (phs_config%n_out-1))
-       allocate (phs%p_born_tot (phs%config%n_in + phs%config%n_out-1))
+       if (data_is_born) then
+          n_out_born = phs_config%n_out
+       else
+          n_out_born = phs_config%n_out - 1
+       end if
+       allocate (phs%q_born (n_out_born))
+       allocate (phs%q_real (n_out_born + 1))
+       allocate (phs%p_born_tot (phs_config%n_in + n_out_born))
     end select
-  end subroutine phs_fks_init_momenta
+  end subroutine phs_fks_allocate_momenta
 
-@ %def phs_fks_init_momenta
+@ %def phs_fks_allocate_momenta
 @
 <<phs fks: phs fks: TBP>>=
   procedure :: set_incoming_momenta => phs_fks_set_incoming_momenta
@@ -10810,6 +10646,26 @@ calculated from the Born momenta.
 
 @ %def phs_fks_set_emitters
 @
+<<phs fks: phs fks: TBP>>=
+  procedure :: set_momenta => phs_fks_set_momenta
+<<phs fks: procedures>>=
+  subroutine phs_fks_set_momenta (phs, p)
+    class(phs_fks_t), intent(inout) :: phs
+    type(vector4_t), intent(in), dimension(:) :: p
+    integer :: n_in, n_tot_born
+    select case (phs%mode)
+    case (PHS_MODE_ADDITIONAL_PARTICLE)
+       n_in = phs%config%n_in; n_tot_born = phs%config%n_tot - 1
+       phs%p_born = p(1 : n_in)
+       phs%q_born = p(n_in + 1 : n_tot_born)
+       phs%p_born_tot = p
+       call phs%set_reference_frames ()
+       call phs%set_isr_kinematics ()
+    end select
+  end subroutine phs_fks_set_momenta
+
+@ %def phs_fks_set_momenta
+@ 
 <<phs fks: phs fks: TBP>>=
   procedure :: setup_masses => phs_fks_setup_masses
 <<phs fks: procedures>>=
@@ -11347,7 +11203,7 @@ $\xi$.
        allocate (p (1 : generator%real_kinematics%p_born_cms%get_n_particles()), &
           source = generator%real_kinematics%p_born_cms%phs_point(1)%p)
        generator%real_kinematics%supply_xi_max = .true.
-       call generator%compute_xi_max (emitter, i_phs, p, i_con)
+       !call generator%compute_xi_max (emitter, i_phs, p, i_con)
        if (present (i_con)) then
           call generator%generate_fsr (emitter, i_phs, i_con, p, p_real)
        else
@@ -11361,6 +11217,28 @@ $\xi$.
 
 @ %def phs_fks_generate_fsr
 @
+<<phs fks: phs fks: TBP>>=
+  procedure :: compute_xi_max => phs_fks_compute_xi_max
+<<phs fks: procedures>>=
+  subroutine phs_fks_compute_xi_max (phs, p)
+    class(phs_fks_t), intent(inout) :: phs
+    type(vector4_t), intent(in), dimension(:) :: p
+    integer :: i_phs, i_con, emitter
+    do i_phs = 1, size (phs%phs_identifiers) 
+       associate (phs_id => phs%phs_identifiers(i_phs)) 
+          emitter = phs_id%emitter
+          if (allocated (phs_id%contributors)) then
+             do i_con = 1, size (phs_id%contributors)
+                call phs%generator%compute_xi_max (emitter, i_phs, p, i_con)
+             end do
+          else
+             call phs%generator%compute_xi_max (emitter, i_phs, p)
+          end if
+       end associate
+    end do
+  end subroutine phs_fks_compute_xi_max
+
+@ %def phs_fks_compute_xi_max
 <<phs fks: phs fks generator: TBP>>=
   generic :: compute_emitter_kinematics => &
      compute_emitter_kinematics_massless, &
@@ -12130,7 +12008,7 @@ with $\Lambda$.
           end if
        case default
           call msg_fatal ("Real phase space: " // &
-             "Only 1 or 2 initial particles supported")
+             "Only one or two initial particles supported")
        end select
     end associate
   end subroutine phs_fks_generator_compute_xi_max
@@ -13269,19 +13147,19 @@ end module dglap_remnant
 <<dglap remnant: dglap remnant: TBP>>=
   procedure :: init => dglap_remnant_init
 <<dglap remnant: procedures>>=
-  subroutine dglap_remnant_init (dglap, isr_kinematics, flv, n_alr, sqme_collector)
+  subroutine dglap_remnant_init (dglap, isr_kinematics, flv, n_alr)
     class(dglap_remnant_t), intent(inout) :: dglap
     type(isr_kinematics_t), intent(in), target :: isr_kinematics
     integer, dimension(:,:), intent(in) :: flv
     integer, intent(in) :: n_alr
-    type(sqme_collector_t), intent(in), target :: sqme_collector
+    !type(sqme_collector_t), intent(in), target :: sqme_collector
     integer :: i, j, n_quarks
     logical, dimension(-6:6) :: quark_checked = .false.
     dglap%required = any ([is_quark(flv(1,1)), &
         is_quark(flv(2,1)), is_gluon(flv(1,1)), is_gluon(flv(2,1))])
     if (.not. dglap%required) return
 
-    dglap%sqme_born => sqme_collector%sqme_subtraction_born_list
+    !dglap%sqme_born => sqme_collector%sqme_subtraction_born_list
     dglap%isr_kinematics => isr_kinematics
     allocate (dglap%value (n_alr))
     call dglap%set_incoming_flavor (flv(1,1), flv(2,1))
