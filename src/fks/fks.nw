@@ -3198,8 +3198,7 @@ tuning the efficiency of the mapping and are set to $1$ per default.
     integer, intent(in) :: i, j
     integer, intent(in), optional :: i_con
     real(default) :: y, E1, E2
-    d = 0
-    !!! FSR Region
+    d = zero
     if (i /= j) then
         if (i > map%n_in .and. j > map%n_in) then
            E1 = p(i)%p(0); E2 = p(j)%p(0)
@@ -8261,7 +8260,7 @@ and virtual counterterms.
   subroutine nlo_controller_compute_sqme_mismatch (nlo_controller)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     !nlo_controller%sqme_collector%sqme_mismatch = &
-    !   nlo_controller%soft_mismatch%evaluate (nlo_controller%alpha_s_born)
+    !   nlo_controller%soft_mismatch%evaluate (nlo_controller%alpha_s_sub)
   end subroutine nlo_controller_compute_sqme_mismatch
 
 @ %def nlo_controller_sqme_mismatch
@@ -8274,8 +8273,6 @@ and virtual counterterms.
     real(default) :: sqme_fin
     integer :: emitter, i_flv, i_phs
     call msg_debug2 (D_SUBTRACTION, "nlo_controller_compute_sqme_real_fin")
-    if (.not. nlo_controller%alpha_s_born_set) &
-      call msg_fatal ("Strong coupling not set for real calculation")
     emitter = nlo_controller%get_active_emitter ()
     i_phs = nlo_controller%get_active_phase_space ()
     i_flv = nlo_controller%active_flavor_structure_real
@@ -8284,7 +8281,7 @@ and virtual counterterms.
     call nlo_controller%real_terms%set_isr_kinematics &
          (nlo_controller%isr_kinematics)
     sqme_fin = nlo_controller%real_terms%compute &
-         (emitter, i_phs, i_flv, nlo_controller%alpha_s_born)
+         (emitter, i_phs, i_flv, nlo_controller%alpha_s_sub)
   end function nlo_controller_compute_sqme_real_fin
 
 @ %def nlo_controller_compute_sqme_real_fin
@@ -8932,7 +8929,6 @@ process.
     type(region_data_t), pointer :: reg_data => null ()
     type(nlo_states_t) :: particle_states
     type(nlo_settings_t), pointer :: settings => null ()
-    integer :: n_allowed_born
     integer :: active_emitter, active_phase_space
     integer :: active_flavor_structure_real
     type(color_data_t) :: color_data
@@ -8942,8 +8938,8 @@ process.
     type(real_subtraction_t) :: real_terms
     type(soft_mismatch_t) :: soft_mismatch
     type(dglap_remnant_t) :: dglap_remnant
-    real(default) :: alpha_s_born
-    logical :: alpha_s_born_set
+    real(default) :: alpha_s_sub
+    logical :: alpha_s_set = .false.
     complex(default) :: me_sc
     class(powheg_damping_t), allocatable :: powheg_damping
     type(nlo_cuts_t) :: nlo_cuts
@@ -8961,7 +8957,6 @@ process.
      type(fks_template_t), intent(in) :: template
      real(default), intent(in) :: sqrts
      integer :: n_in, n_tot_born
-     nlo_controller%alpha_s_born_set = .false.
      call nlo_controller%init_real_and_isr_kinematics (sqrts)
 
      allocate (nlo_controller%nlo_cuts%passed_real (nlo_controller%reg_data%n_phs))
@@ -9624,11 +9619,9 @@ process.
   subroutine nlo_controller_evaluate_dglap_remnant (nlo_controller, sqme)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     real(default), intent(in) :: sqme
-    if (.not. nlo_controller%alpha_s_born_set) &
-        call msg_fatal ("Strong coupling not set for dglap remnant")
     !!! TODO (cw 2016-04-26): Use correct i_flv_born
     !nlo_controller%sqme_collector%sqme_dglap_list (1) =  &
-    !   nlo_controller%dglap_remnant%evaluate (nlo_controller%alpha_s_born, sqme)
+    !   nlo_controller%dglap_remnant%evaluate (nlo_controller%alpha_s_sub, sqme)
   end subroutine nlo_controller_evaluate_dglap_remnant
 
 @ %def evaluate_dglap_remnant
@@ -9840,18 +9833,17 @@ process.
 @ %def nlo_controller_get_col_born
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: set_alpha_s_born => nlo_controller_set_alpha_s_born
+  procedure :: set_alpha_s_sub => nlo_controller_set_alpha_s_sub
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_set_alpha_s_born (nlo_controller, as_born)
+  subroutine nlo_controller_set_alpha_s_sub (nlo_controller, as_sub)
     class (nlo_controller_t), intent(inout) :: nlo_controller
-    real(default), intent(in) :: as_born
+    real(default), intent(in) :: as_sub
     call msg_debug2 (D_SUBTRACTION, &
-         "nlo_controller_set_alpha_s_born: ", as_born)
-    nlo_controller%alpha_s_born = as_born
-    nlo_controller%alpha_s_born_set = .true.
-  end subroutine nlo_controller_set_alpha_s_born
+         "nlo_controller_set_alpha_s_sub: ", as_sub)
+    nlo_controller%alpha_s_sub = as_sub
+  end subroutine nlo_controller_set_alpha_s_sub
 
-@ %def nlo_controller_set_alpha_s_born
+@ %def nlo_controller_set_alpha_s_sub
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: init_real_and_isr_kinematics &
@@ -10030,7 +10022,7 @@ process.
        call virtual%set_vfin (real(me(1)))
        if (nlo_controller%settings%use_internal_color_correlations) then
           call virtual%evaluate (nlo_controller%reg_data, 1, &
-             nlo_controller%alpha_s_born, virtual%p, real(me(2)), &
+             nlo_controller%alpha_s_sub, virtual%p, real(me(2)), &
              nlo_controller%color_data%beta_ij)
        else
           !!! TODO (cw 2016-08-03): Restore external color correlations
@@ -10042,7 +10034,7 @@ process.
           !call blha_cc_fill_diag (real (me(2)), flv_state, &
           !   nlo_controller%sqme_collector%sqme_born_cc (:,:,1))
           !call virtual%evaluate (nlo_controller%reg_data, 1, &
-          !   nlo_controller%alpha_s_born, virtual%p, real(me(2)), &
+          !   nlo_controller%alpha_s_sub, virtual%p, real(me(2)), &
           !   nlo_controller%sqme_collector%sqme_born_cc)
        end if
        sqme_virt = virtual%sqme_virt

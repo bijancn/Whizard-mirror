@@ -3099,7 +3099,8 @@ from the library.
             if (component%get_nlo_type () == NLO_REAL) then
                select type (pcm => process%pcm)
                type is (pcm_nlo_t)
-                  n_entry(i) = n_entry(i) + pcm%region_data%get_n_phs ()
+                  if (component%component_type /= COMP_REAL_FIN) &
+                     n_entry(i) = n_entry(i) + pcm%region_data%get_n_phs ()
                end select
             end if
          end if
@@ -3119,9 +3120,12 @@ from the library.
            allocate (component%i_term (n_entry(i)))
            do j = 1, n_entry(i)
               setup_subtraction_component = &
-                 (component%get_nlo_type () == NLO_REAL .and. j == 1)
+                 (component%get_nlo_type () == NLO_REAL &
+                  .and. component%component_type /= COMP_REAL_FIN &
+                  .and. j == n_entry(i))
               i_term = k + j
               component%i_term(j) = i_term
+              process%term(i_term)%i_sub = k + n_entry(i)
               process%term(i_term)%i_core = set_i_core &
                  (component%get_nlo_type (), setup_subtraction_component, &
                   process%get_constants_md5sum (i))
@@ -3137,7 +3141,6 @@ from the library.
                     nlo_type = component%config%get_nlo_type (), &
                     use_beam_pol = with_beams)
               end if
-              !deallocate (core)
            end do
        end associate
        k = k + n_entry(i)
@@ -4281,6 +4284,18 @@ usual error propagation gives
 
 @ %def process_get_component_associated_born
 @
+<<Processes: process: TBP>>=
+  procedure :: get_component_type => process_get_component_type
+<<Processes: procedures>>=
+  elemental function process_get_component_type (process, i_component) result (comp_type)
+    integer :: comp_type
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: i_component
+    comp_type = process%component(i_component)%component_type
+  end function process_get_component_type
+
+@ %def process_get_component_type
+@ 
 <<Processes: process: TBP>>=
   procedure :: get_n_allowed_born => process_get_n_allowed_born
 <<Processes: procedures>>=
@@ -6301,9 +6316,9 @@ This type is public only for use in a unit test.
      integer :: i_term_global = 0
      integer :: i_component = 0
      integer :: i_term = 0
+     integer :: i_sub = 0
      integer :: i_core = 0
      integer :: n_allowed = 0
-     integer :: n_allowed_sub_born = 0
      type(process_constants_t) :: data
      real(default) :: alpha_s = 0
      integer, dimension(:), allocatable :: flv, hel, col
@@ -7690,6 +7705,7 @@ Relevant for using the proper momenta input for BLHA matrix elements.
 <<Processes: kinematics: TBP>>=
   procedure :: get_momenta => kinematics_get_momenta
 <<Processes: procedures>>=
+  !!! TODO (cw-2016-08-11): Rename this procedure. It is totally not clear what it does.
   function kinematics_get_momenta (k, p_in) result (p_out)
     type(vector4_t), dimension(:), allocatable :: p_out
     class(kinematics_t), intent(in) :: k
@@ -7713,7 +7729,7 @@ Relevant for using the proper momenta input for BLHA matrix elements.
              allocate (p_out (size (p_in))); p_out = p_in
           end if
        class default
-          call msg_fatal ("Real component only implemented for FKS phase space!")
+          allocate (p_out (size (p_in))); p_out = p_in
        end select
     case (NLO_DGLAP)
     case (NLO_MISMATCH)
@@ -7751,9 +7767,9 @@ type and contents depend on the process variant.
   type :: component_instance_t
      type(process_component_t), pointer :: config => null ()
      logical :: active = .false.
-     logical :: sqme_known = .false.
+     !!! logical :: sqme_known = .false.
      !!! TODO (cw-2016-07-20): Find out whether component_instance really needs its own sqme
-     real(default) :: sqme = zero
+     !real(default) :: sqme = zero
      type(nlo_controller_t), pointer :: nlo_controller => null ()
      integer :: nlo_type = BORN
    contains
@@ -7791,12 +7807,12 @@ appear elsewhere.
     !      call vector4_write (object%p_seed(i), u, testflag = testflag)
     !   end do
     !end if
-    write (u, "(1x,A)")  "Squared matrix element:"
-    if (object%sqme_known) then
-       write (u, "(2x,ES19.12)")  object%sqme
-    else
-       write (u, "(2x,A)")  "[undefined]"
-    end if
+    !write (u, "(1x,A)")  "Squared matrix element:"
+    !if (object%sqme_known) then
+    !   write (u, "(2x,ES19.12)")  object%sqme
+    !else
+    !   write (u, "(2x,A)")  "[undefined]"
+    !end if
     !call object%k_seed%write (u)
     !if (allocated (object%core_state)) then
     !   call write_separator (u)
@@ -7813,8 +7829,8 @@ appear elsewhere.
     class(component_instance_t), intent(inout) :: object
     object%config => null ()
     object%active = .false.
-    object%sqme_known = .false.
-    object%sqme = zero
+    !object%sqme_known = .false.
+    !object%sqme = zero
     object%nlo_controller => null ()
     object%nlo_type = BORN
     !call object%k_seed%final ()
@@ -8155,46 +8171,68 @@ stored in the kinematics subobject to their source.  This is a side effect.
 @ %def term_instance_return_beam_momenta
 @
 <<Processes: component instance: TBP>>=
-  procedure :: apply_damping_factor => component_instance_apply_damping_factor
+  generic :: apply_damping_factor => & 
+     apply_damping_factor_single, apply_damping_factor_array
+  procedure :: apply_damping_factor_single => &
+     component_instance_apply_damping_factor_single
+  procedure :: apply_damping_factor_array => &
+     component_instance_apply_damping_factor_array
 <<Processes: procedures>>=
-  subroutine component_instance_apply_damping_factor (component, sqme)
-    class(component_instance_t), intent(in) :: component
-    real(default), intent(inout) :: sqme
-    real(default) :: E_gluon
+  subroutine component_instance_apply_damping_factor_single (component, term)
+    class(component_instance_t), intent(inout) :: component
+    type(term_instance_t), intent(inout) :: term
+    real(default) :: E_gluon, sqme
     integer :: nlegs
+    sqme = real (term%connected%trace%get_matrix_element (1))
     call msg_debug2 (D_PROCESS_INTEGRATION, "component_instance_apply_damping_factor")
     associate (nlo_controller => component%nlo_controller)
        select case (component%config%component_type)
        case (COMP_REAL_FIN, COMP_REAL_SING)
           nlegs = nlo_controller%reg_data%n_legs_real
-          E_gluon = energy (nlo_controller%real_kinematics%p_real_lab%phs_point(1)%p(nlegs))
           select case (component%config%component_type)
           case (COMP_REAL_FIN)
              call msg_debug2 (D_PROCESS_INTEGRATION, "Real finite")
+             E_gluon = energy (term%p_hard(nlegs))
              sqme = sqme * (one - nlo_controller%powheg_damping%get_f (E_gluon**2))
           case (COMP_REAL_SING)
+             if (term%k_term%emitter < 0) return
              call msg_debug2 (D_PROCESS_INTEGRATION, "Real singular")
+             E_gluon = energy (nlo_controller%real_kinematics%p_real_lab%phs_point(1)%p(nlegs))
              sqme = sqme * nlo_controller%powheg_damping%get_f (E_gluon**2)
           end select
        end select
     end associate
     call msg_debug2 (D_PROCESS_INTEGRATION, "apply_damping: sqme", sqme)
-  end subroutine component_instance_apply_damping_factor
+    call term%connected%trace%set_matrix_element (cmplx (sqme, 0, default))
+  end subroutine component_instance_apply_damping_factor_single
+
+@ %def component_instance_apply_damping_factor_single
+@
+<<Processes: procedures>>=
+  subroutine component_instance_apply_damping_factor_array (component, terms)
+    class(component_instance_t), intent(inout) :: component
+    type(term_instance_t), intent(inout), dimension(:) :: terms
+    integer :: i, i_term
+    do i = 1, size (component%config%i_term)
+       i_term = component%config%i_term(i) 
+       call component%apply_damping_factor (terms(i_term))
+    end do
+  end subroutine component_instance_apply_damping_factor_array
 
 @ %def component_instance_apply_damping_factor
 @
 <<Processes: component instance: TBP>>=
-  procedure :: evaluate_sqme_born => component_instance_evaluate_sqme_born
+  !procedure :: evaluate_sqme_born => component_instance_evaluate_sqme_born
 <<Processes: procedures>>=
-  subroutine component_instance_evaluate_sqme_born (component, term, core)
-    class(component_instance_t), intent(inout) :: component
-    type(term_instance_t), intent(inout), target :: term
-    class(prc_core_t), intent(in) :: core
-    integer :: n_flv, i_flv
-    if (term%nlo_type /= BORN) return
-    i_flv = 1
-    component%sqme = real (term%connected%trace%get_matrix_element (1)) * term%weight
-  end subroutine component_instance_evaluate_sqme_born
+  !subroutine component_instance_evaluate_sqme_born (component, term, core)
+  !  class(component_instance_t), intent(inout) :: component
+  !  type(term_instance_t), intent(inout), target :: term
+  !  class(prc_core_t), intent(in) :: core
+  !  integer :: n_flv, i_flv
+  !  if (term%nlo_type /= BORN) return
+  !  i_flv = 1
+  !  component%sqme = real (term%connected%trace%get_matrix_element (1)) * term%weight
+  !end subroutine component_instance_evaluate_sqme_born
 
 @ %def component_instance_evaluate_sqme_born
 @ Evaluate the trace of the transition matrix, convoluted with the initial
@@ -8211,14 +8249,14 @@ imaginary part of the terms, which should be zero anyway.
     integer :: j, i
     class(prc_core_t), pointer :: core => null ()
 
-    component%sqme = zero
+    !component%sqme = zero
     associate (i_term => component%config%i_term)
       do j = 1, size (i_term)
          i = i_term(j)
          if (term(i)%passed) then
             core => cm%get_core(term(i)%config%i_core)
             !!!TODO: (cw-2016-08-02): We are going to eliminate them all
-            call component%evaluate_sqme_born (term(i), core)
+            !call component%evaluate_sqme_born (term(i), core)
             !call component%evaluate_sqme_real (term(i), 1)
             call component%evaluate_sqme_virt (term(i), core)
             call component%evaluate_sqme_mismatch (term(i))
@@ -8226,7 +8264,7 @@ imaginary part of the terms, which should be zero anyway.
          end if
       end do
     end associate
-    component%sqme_known = .true.
+    !component%sqme_known = .true.
     core => null ()
   end subroutine component_instance_evaluate_sqme
   
@@ -8253,7 +8291,7 @@ imaginary part of the terms, which should be zero anyway.
            print *, 'fac_scale: ', term%fac_scale
         end if
 
-        call nlo_controller%set_alpha_s_born (core%get_alpha_s (term%core_state))
+        call nlo_controller%set_alpha_s_sub (core%get_alpha_s (term%core_state))
         select type (core)
         class is (prc_user_defined_base_t)
            call core%update_alpha_s (term%core_state, term%fac_scale)
@@ -8261,9 +8299,11 @@ imaginary part of the terms, which should be zero anyway.
         call nlo_controller%transfer_to_virtual (term%int_hard%get_momenta (), &
            term%ren_scale, term%fac_scale)
         !!! TODO(cw 2016-07-08): Handle bad point
-        component%sqme = term%connected%trace%get_matrix_element_proc () * term%weight
+        !component%sqme = term%connected%trace%get_matrix_element_proc () * term%weight
         !!! TODO(cw 2016-07-08): Handle multiple Born flavors 
-        call term%connected%trace%set_matrix_element (cmplx (component%sqme, 0, default))
+        !call term%connected%trace%set_matrix_element (cmplx (component%sqme, 0, default))
+        call term%connected%trace%set_matrix_element &
+           (term%connected%trace%get_matrix_element_proc () * term%weight)
      end associate
   end subroutine component_instance_evaluate_sqme_virt
 
@@ -8282,7 +8322,7 @@ imaginary part of the terms, which should be zero anyway.
        !class is (prc_blha_t)
        !   call core_sub_born%update_alpha_s (term%core_state, term%fac_scale)
        !end select
-       !call nlo_controller%set_alpha_s_born &
+       !call nlo_controller%set_alpha_s_sub &
        !   (component%config%core_sub_born%get_alpha_s (term%core_state))
        !call term%nlo_controller%evaluate_color_correlations &
        !   (component%config%core_sub_born, term%core_state, &
@@ -8291,7 +8331,7 @@ imaginary part of the terms, which should be zero anyway.
        !component%sqme = nlo_controller%sqme_collector%sqme_mismatch
        !!! mismatch might vanish if the exponents get large with smaller precisions
        !!! TODO: (cw 2016-03-29) Check whether this problem also occurs for higher precisions.
-       nlo_controller%nlo_cuts%passed_born = .not. vanishes (component%sqme)
+       !nlo_controller%nlo_cuts%passed_born = .not. vanishes (component%sqme)
     end associate
   end subroutine component_instance_evaluate_sqme_mismatch
 
@@ -8307,11 +8347,11 @@ imaginary part of the terms, which should be zero anyway.
     if (term%nlo_type /= NLO_DGLAP) return
     associate (nlo_controller => component%nlo_controller)
        if (.not. nlo_controller%dglap_remnant_is_required ()) then
-          component%sqme = zero
+          !component%sqme = zero
           return
        end if
-       call nlo_controller%set_alpha_s_born (core%get_alpha_s (term%core_state))
-       call nlo_controller%evaluate_dglap_remnant (component%sqme)
+       call nlo_controller%set_alpha_s_sub (core%get_alpha_s (term%core_state))
+       !call nlo_controller%evaluate_dglap_remnant (component%sqme)
        !!! TODO: (cw 2016-04-26) Use correct i_flv_born
        !component%sqme = nlo_controller%sqme_collector%sqme_dglap_list (1)
     end associate
@@ -8530,14 +8570,15 @@ relevant for a NLO algorithm.
   procedure :: init => term_instance_init
 <<Processes: procedures>>=
   subroutine term_instance_init (term, &
-       config, beam_config, core, process_var_list)
+       config, beam_config, core, process_var_list, real_finite)
     class(term_instance_t), intent(inout), target :: term
     type(process_term_t), intent(in), target :: config
     type(process_beam_config_t), intent(in) :: beam_config
-    type(interaction_t), pointer :: sf_chain_int
-    type(interaction_t), pointer :: src_int
     class(prc_core_t), intent(in) :: core
     type(var_list_t), intent(in), target :: process_var_list
+    logical, intent(in), optional :: real_finite
+    type(interaction_t), pointer :: sf_chain_int
+    type(interaction_t), pointer :: src_int
     type(quantum_numbers_mask_t), dimension(:), allocatable :: mask_in
     type(state_matrix_t), pointer :: state_matrix
     type(flavor_t), dimension(:), allocatable :: flv_int, flv_src, f_in, f_out
@@ -8553,6 +8594,7 @@ relevant for a NLO algorithm.
     logical :: me_already_squared
     class(connector_function_t), allocatable :: me_connector
     integer :: i_term
+    logical :: decrease_n_tot
 
     me_already_squared = .false.
 
@@ -8569,7 +8611,11 @@ relevant for a NLO algorithm.
        allocate (term%amp (term%config%n_allowed))
     end select
     term%amp = cmplx (0, 0, default)
-    if (term%nlo_type == NLO_REAL .and. term%config%i_term > 1) then
+    decrease_n_tot = term%nlo_type == NLO_REAL .and. term%config%i_term /= term%config%i_sub 
+    if (present (real_finite)) then 
+       if (real_finite) decrease_n_tot = .false.
+    end if
+    if (decrease_n_tot) then
        allocate (term%p_seed (term%int_hard%get_n_tot () - 1))
     else
        allocate (term%p_seed (term%int_hard%get_n_tot ()))
@@ -8757,8 +8803,9 @@ relevant for a NLO algorithm.
     select type (pcm)
     type is (pcm_nlo_t)
        !!! Without resonances, i_alr = i_phs
-       i_phs = term%config%i_term - 1
-       if (i_phs > 0) term%k_term%emitter = pcm%region_data%get_emitter (i_phs)
+       i_phs = term%config%i_term
+       if (i_phs <= pcm%region_data%n_phs) &
+          term%k_term%emitter = pcm%region_data%get_emitter (i_phs)
     end select
   end subroutine term_instance_set_emitter
  
@@ -8917,7 +8964,7 @@ The quantum numbers mask of the incoming particle
     integer :: i_em, emitter
     sqme = zero
     associate (nlo_controller => term%nlo_controller)
-       !call nlo_controller%set_alpha_s_born &
+       !call nlo_controller%set_alpha_s_sub &
        !   (core%get_alpha_s (term%core_state))
        call nlo_controller%real_terms%set_real_kinematics &
           (nlo_controller%real_kinematics)
@@ -8932,7 +8979,7 @@ The quantum numbers mask of the incoming particle
           do i_em = 1, nlo_controller%reg_data%n_emitters
              emitter = nlo_controller%reg_data%emitters(i_em)
              sqme = sqme + nlo_controller%real_terms%compute (emitter, &
-                emitter - 2, 1, nlo_controller%alpha_s_born)
+                emitter - 2, 1, nlo_controller%alpha_s_sub)
           end do 
        else
           call nlo_controller%disable_subtraction () 
@@ -8940,7 +8987,7 @@ The quantum numbers mask of the incoming particle
              real (term%connected%trace%get_matrix_element (1))
           emitter = term%k_term%emitter
           sqme = nlo_controller%real_terms%compute (emitter, &
-             emitter - 2, 1, nlo_controller%alpha_s_born)
+             emitter - 2, 1, nlo_controller%alpha_s_sub)
        end if
     end associate
     call term%connected%trace%set_matrix_element (cmplx (sqme, 0, default))
@@ -9068,25 +9115,38 @@ method may modify the [[core_state]] workspace object.
     logical :: bad_point
     integer :: n_sub, n_amps, n_hel
     integer :: i_born, i_virt, i_cc, i_sub
+    !!! Use logical to avoid nested select-type statement
+    logical :: core_is_omega
     i_component = term%config%i_component
     i_term = term%config%i_term
     term%p_hard = term%int_hard%get_momenta ()
+    select type (core)
+    type is (prc_omega_t)
+       core_is_omega = .true.
+    class default
+       core_is_omega = .false.
+    end select
     select case (term%nlo_type)
     case (BORN, NLO_VIRTUAL, NLO_DGLAP, NLO_REAL)
-       select type (core)
-       class is (prc_user_defined_base_t)
+       if (.not. core_is_omega) then
           select type (core_state => term%core_state)
           class is (user_defined_state_t)
-             call core%compute_alpha_s (core_state, term%ren_scale)
+             select type (core)
+             class is (prc_user_defined_base_t)
+                call core%compute_alpha_s (core_state, term%ren_scale)
+             end select
           end select
           n_amps = term%int_hard%get_n_matrix_elements ()
           n_sub = term%int_hard%get_n_sub ()
           if (n_sub > 0) then
-             if (core%includes_polarization ()) then
-                n_hel = 4
-             else
-                n_hel = 1
-             end if
+             select type (core)
+             class is (prc_user_defined_base_t)
+                if (core%includes_polarization ()) then
+                   n_hel = 4
+                else
+                   n_hel = 1
+                end if
+             end select
              n_amps = n_amps - n_hel * n_sub
           end if
           select case (term%nlo_type)
@@ -9099,7 +9159,10 @@ method may modify the [[core_state]] workspace object.
                    i_virt = 1
                 end select
                 i_born = i_virt + n_hel
-                call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
+                select type (core)
+                class is (prc_user_defined_base_t)
+                   call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
+                end select
                 term%amp(i_virt) = cmplx (sqme_virt(3), 0, default)
                 if (term%nlo_controller%settings%use_internal_color_correlations) then
                    term%amp(i_born) = cmplx (sqme_virt(4), 0, default)
@@ -9139,8 +9202,11 @@ method may modify the [[core_state]] workspace object.
              end select
           end select
           !!! OpenLoops already includes a factor of 1 / 4 in the amplitudes. Undo it. 
-          if (core%includes_polarization ()) term%amp = four * term%amp
-       class default
+          select type (core)
+          type is (prc_openloops_t)
+             if (core%includes_polarization ()) term%amp = four * term%amp
+          end select
+       else
           do i = 1, term%config%n_allowed
              term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
                 term%config%flv(i), term%config%hel(i), term%config%col(i), &
@@ -9149,7 +9215,7 @@ method may modify the [[core_state]] workspace object.
           end do
           if (associated (term%nlo_controller)) &
              call term%nlo_controller%set_fac_scale (term%fac_scale)
-       end select
+       end if
        call term%int_hard%set_matrix_element (term%amp)
     case (NLO_MISMATCH)
        !!! TODO: (cw-2016-08-02): Modernize mismatch
@@ -9702,14 +9768,25 @@ selected MCI parameter set.
          associate (component => instance%component(i))
            if (component%active) then
               do j = 1, size (component%config%i_term)
-                 instance%term(component%config%i_term(j))%active &
-                      = .true.
+                 instance%term(component%config%i_term(j))%active = .true.
               end do
            end if
          end associate
       end do
     end associate
     instance%evaluation_status = STAT_ACTIVATED
+  contains
+    function check_for_real_finite (component, i) result (val)
+      logical :: val
+      type(component_instance_t), intent(in) :: component
+      integer, intent(in) :: i
+      integer :: i_term
+      val = .false.
+      if (component%config%component_type /= COMP_REAL_FIN) return 
+      associate (term => instance%term(component%config%i_term(i))%config)
+         val = term%i_term_global == term%i_sub
+      end associate
+    end function check_for_real_finite
   end subroutine process_instance_activate
   
 @ %def process_instance_activate
@@ -9717,23 +9794,20 @@ selected MCI parameter set.
 <<Processes: process instance: TBP>>=
   procedure :: get_associated_real => process_instance_get_associated_real
 <<Processes: procedures>>=
-  function process_instance_get_associated_real (instance) result (i_real)
+  function process_instance_get_associated_real (instance, avoid_finite) result (i_real)
     integer :: i_real
     class(process_instance_t), intent(in) :: instance
+    logical, intent(in), optional :: avoid_finite
+    logical :: avoid
+    avoid = .false.; if (present (avoid_finite)) avoid = avoid_finite
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
        associate (config => instance%component(pcm%active_real_component)%config)
-          select case (config%component_type)
-          case (COMP_MASTER)
-             i_real = config%config%get_associated_real ()
-             if (i_real == 0)  &
-                  call msg_bug ("process_instance_get_associated_real:" // &
-                  " i_real = 0. this should not happen anymore!")
-          case (COMP_REAL_FIN)
+          if (config%component_type == COMP_REAL_FIN .and. .not. avoid) then 
              i_real = config%config%get_associated_real_fin ()
-          case default
+          else
              i_real = config%config%get_associated_real ()
-          end select
+          end if
        end associate
     end select
   end function process_instance_get_associated_real
@@ -9813,16 +9887,16 @@ to subobject of [[instance]].
             associate (component => instance%component(i_component))
               core => process%cm%get_core (process%term(i)%i_core)
               call term%init (process%term(i), &
-                   !component%k_seed, &
                    process%beam_config, &
-                   !process%component(i_component)%core, &
                    core, &
-                   process%meta%var_list)
-                   !component%nlo_controller, &
-                   !component%config%config%get_nlo_type ())
-              call term%set_emitter (process%pcm)
+                   process%meta%var_list, &
+                   real_finite = component%config%component_type == COMP_REAL_FIN)
+              select type (phs => term%k_term%phs)
+              type is (phs_fks_t)
+                 call term%set_emitter (process%pcm)
+                 call term%setup_fks_kinematics (process%meta%var_list)
+              end select
               call term%setup_expressions (process%meta, process%config)
-              call term%setup_fks_kinematics (process%meta%var_list)
            end associate
          end if
        end associate
@@ -10397,6 +10471,7 @@ terms, iterating over all active process components.
     class(prc_core_t), pointer :: core => null ()
     instance%sqme = zero
     call instance%reset_matrix_elements ()
+    i_real_sub = 0
     if (instance%evaluation_status >= STAT_PASSED_CUTS) then
        do i = 1, size (instance%term)
           associate (term => instance%term(i))
@@ -10416,7 +10491,7 @@ terms, iterating over all active process components.
              if (term%active .and. term%passed .and. term%nlo_type == NLO_REAL) then
                 if (i /= i_real_sub) then
                    core => instance%process%cm%get_core (term%config%i_core)
-                   if (.not. alpha_s_sub_set) then
+                   if (.not. alpha_s_sub_set .and. i_real_sub > 0) then
                       call set_alpha_s_nlo (instance%term(i_real_sub))
                       alpha_s_sub_set = .true.
                    end if
@@ -10427,9 +10502,12 @@ terms, iterating over all active process components.
        end do
        do i = 1, size (instance%term)
           associate (term => instance%term(i))
-             if (term%active .and. term%passed .and. term%nlo_type == NLO_REAL) then
-                core => instance%process%cm%get_core (term%config%i_core)
-                call term%apply_fks (core)
+             if (term%active .and. term%passed) then
+                select type (phs => term%k_term%phs)
+                type is (phs_fks_t)
+                   core => instance%process%cm%get_core (term%config%i_core)
+                   call term%apply_fks (core)
+                end select
              end if
           end associate
        end do
@@ -10441,6 +10519,9 @@ terms, iterating over all active process components.
             if (component%active) then
                call component%evaluate_sqme (instance%process%cm, instance%term)
                instance%evaluation_status = STAT_EVALUATED_TRACE
+               if (component%nlo_type == NLO_REAL .and. &
+                   instance%process%uses_powheg_damping_factors ()) &
+                  call component%apply_damping_factor (instance%term) 
             end if
           end associate
        end do
@@ -10454,7 +10535,7 @@ terms, iterating over all active process components.
   contains
     subroutine set_alpha_s_nlo (term)
       class(term_instance_t), intent(inout) :: term
-      call term%nlo_controller%set_alpha_s_born &
+      call term%nlo_controller%set_alpha_s_sub &
          (core%get_alpha_s (term%core_state))
     end subroutine set_alpha_s_nlo
   end subroutine process_instance_evaluate_trace
@@ -10519,19 +10600,14 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
     logical, intent(in) :: is_subtraction
     real(default), intent(in), optional :: alpha_s_external
     class(prc_core_t), pointer :: core
-    integer :: i_real = 1
+    integer :: i_real
     
     select type (pcm => instance%pcm)
     type is (pcm_instance_nlo_t)
        associate (term => instance%term(i_term))
+         core => instance%process%cm%get_core(term%config%i_core)
          if (is_subtraction) then
             call pcm%controller%disable_sqme_np1 ()
-            if (present (alpha_s_external)) then
-               call term%nlo_controller%set_alpha_s_born (alpha_s_external)
-            else
-               call term%nlo_controller%set_alpha_s_born &
-                  (core%get_alpha_s (term%core_state))
-            end if
          else
             call pcm%controller%disable_subtraction () 
          end if
@@ -10543,15 +10619,23 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
             call term%set_alpha_qcd_forced (alpha_s_external)
          call term%compute_eff_kinematics ()
          call term%evaluate_expressions ()
-         core => instance%process%cm%get_core(term%config%i_core)
          call term%evaluate_interaction (instance%component, core)
+         !call instance%transfer_same_alpha_s (i_term)
+         if (.not. term%nlo_controller%alpha_s_set) then
+            if (present (alpha_s_external)) then
+               call term%nlo_controller%set_alpha_s_sub (alpha_s_external)
+            else
+               call term%nlo_controller%set_alpha_s_sub &
+                  (core%get_alpha_s (term%core_state))
+            end if
+            term%nlo_controller%alpha_s_set = .true.
+         end if
          call term%evaluate_trace ()
          call term%apply_fks (core)
-       end associate
-
-       !!! TODO (cw-2016-08-02): Get correct component index for damping
-       associate (component => instance%component(i_real))
-          call component%apply_damping_factor (component%sqme)
+         if (instance%process%uses_powheg_damping_factors ()) then
+            i_real = instance%get_associated_real ()
+            call instance%component(i_real)%apply_damping_factor (term)
+         end if
        end associate
     end select
     core => null ()
@@ -10821,10 +10905,15 @@ component.
   subroutine process_instance_select_i_term (instance, i_term)
     class(process_instance_t), intent(in) :: instance
     integer, intent(out) :: i_term
-    integer :: i_mci, i_component
+    integer :: i_mci, i_component, i_sub
     i_mci = instance%i_mci
-    i_component = instance%process%mci_entry(i_mci)%i_component(1)
-    i_term = instance%process%component(i_component)%i_term(1)
+    associate (process => instance%process)
+       i_component = process%mci_entry(i_mci)%i_component(1)
+       i_term = process%component(i_component)%i_term(1)
+       i_sub = process%term(i_term)%i_sub
+       if (i_sub > 0) &
+          i_term = process%term(i_sub)%i_term_global
+    end associate
   end subroutine process_instance_select_i_term
     
 @ %def process_instance_select_i_term
