@@ -9114,25 +9114,38 @@ method may modify the [[core_state]] workspace object.
     logical :: bad_point
     integer :: n_sub, n_amps, n_hel
     integer :: i_born, i_virt, i_cc, i_sub
+    !!! Use logical to avoid nested select-type statement
+    logical :: core_is_omega
     i_component = term%config%i_component
     i_term = term%config%i_term
     term%p_hard = term%int_hard%get_momenta ()
+    select type (core)
+    type is (prc_omega_t)
+       core_is_omega = .true.
+    class default
+       core_is_omega = .false.
+    end select
     select case (term%nlo_type)
     case (BORN, NLO_VIRTUAL, NLO_DGLAP, NLO_REAL)
-       select type (core)
-       class is (prc_user_defined_base_t)
+       if (.not. core_is_omega) then
           select type (core_state => term%core_state)
           class is (user_defined_state_t)
-             call core%compute_alpha_s (core_state, term%ren_scale)
+             select type (core)
+             class is (prc_user_defined_base_t)
+                call core%compute_alpha_s (core_state, term%ren_scale)
+             end select
           end select
           n_amps = term%int_hard%get_n_matrix_elements ()
           n_sub = term%int_hard%get_n_sub ()
           if (n_sub > 0) then
-             if (core%includes_polarization ()) then
-                n_hel = 4
-             else
-                n_hel = 1
-             end if
+             select type (core)
+             class is (prc_user_defined_base_t)
+                if (core%includes_polarization ()) then
+                   n_hel = 4
+                else
+                   n_hel = 1
+                end if
+             end select
              n_amps = n_amps - n_hel * n_sub
           end if
           select case (term%nlo_type)
@@ -9145,7 +9158,10 @@ method may modify the [[core_state]] workspace object.
                    i_virt = 1
                 end select
                 i_born = i_virt + n_hel
-                call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
+                select type (core)
+                class is (prc_user_defined_base_t)
+                   call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
+                end select
                 term%amp(i_virt) = cmplx (sqme_virt(3), 0, default)
                 if (term%nlo_controller%settings%use_internal_color_correlations) then
                    term%amp(i_born) = cmplx (sqme_virt(4), 0, default)
@@ -9185,8 +9201,11 @@ method may modify the [[core_state]] workspace object.
              end select
           end select
           !!! OpenLoops already includes a factor of 1 / 4 in the amplitudes. Undo it. 
-          if (core%includes_polarization ()) term%amp = four * term%amp
-       class default
+          select type (core)
+          type is (prc_openloops_t)
+             if (core%includes_polarization ()) term%amp = four * term%amp
+          end select
+       else
           do i = 1, term%config%n_allowed
              term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
                 term%config%flv(i), term%config%hel(i), term%config%col(i), &
@@ -9195,7 +9214,7 @@ method may modify the [[core_state]] workspace object.
           end do
           if (associated (term%nlo_controller)) &
              call term%nlo_controller%set_fac_scale (term%fac_scale)
-       end select
+       end if
        call term%int_hard%set_matrix_element (term%amp)
     case (NLO_MISMATCH)
        !!! TODO: (cw-2016-08-02): Modernize mismatch
