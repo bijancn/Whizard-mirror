@@ -2248,17 +2248,8 @@ module pcm_base
   use process_libraries, only: process_component_def_t, process_library_t
   use model_data, only: model_data_t
   
-  use prc_core_def, only: prc_core_def_t 
-  use prc_test, only: prc_test_t, prc_test_def_t
-  use prc_core, only: prc_core_t, helicity_selection_t
-  use prc_template_me, only: prc_template_me_t, template_me_def_t
-  use prc_omega, only: prc_omega_t, omega_def_t
-  use prc_threshold, only: prc_threshold_t, threshold_def_t
-  use prc_user_defined, only: prc_user_defined_test_t, user_defined_test_def_t
-  use prc_gosam, only: prc_gosam_t, gosam_def_t
-  use prc_openloops, only: prc_openloops_t, openloops_def_t
-  
-  use blha_olp_interfaces, only: prc_blha_t, blha_template_t 
+  use prc_core_def
+  use prc_core
 
 <<Standard module head>>
 
@@ -2281,45 +2272,8 @@ end module pcm_base
 This object holds information about the cores used by the components
 and allocates the corresponding manager instance.
 <<PCM base: parameters>>=
-  integer, parameter, public :: CORE_UNDEFINED = 0
-  integer, parameter, public :: CORE_TEST = 1
-  integer, parameter, public :: CORE_OMEGA = 2
-  integer, parameter, public :: CORE_TEMPLATE = 3
-  integer, parameter, public :: CORE_THRESHOLD = 4
-  integer, parameter, public :: CORE_DUMMY = 5
-  integer, parameter, public :: CORE_GOSAM = 6
-  integer, parameter, public :: CORE_OPENLOOPS = 7
-  integer, parameter, public :: CORE_RECOLA = 8
   integer, parameter, public :: N_MAX_CORES = 100
  
-@ Translate a [[prc_core_def_t]] to above named integers
-<<PCM base: public>>=
-  public :: get_core_identifier
-<<PCM base: procedures>>=
-  function get_core_identifier (core_def) result (core_type)
-    integer :: core_type
-    class(prc_core_def_t), intent(in) :: core_def
-    select type (core_def)
-    type is (prc_test_def_t)
-       core_type = CORE_TEST
-    type is (template_me_def_t)
-       core_type = CORE_TEMPLATE
-    class is (omega_def_t)
-       core_type = CORE_OMEGA
-    type is (gosam_def_t)
-       core_type = CORE_GOSAM
-    type is (openloops_def_t)
-       core_type = CORE_OPENLOOPS
-    type is (user_defined_test_def_t)
-       core_type = CORE_DUMMY
-    type is (threshold_def_t)
-       core_type = CORE_THRESHOLD
-    class default
-       core_type = CORE_UNDEFINED
-    end select
-  end function get_core_identifier
-
-@ %def get_core_identifier 
 @ Auxilliary container for polymorphic cores.
 @
 <<PCM base: types>>=
@@ -2330,12 +2284,11 @@ and allocates the corresponding manager instance.
 @ %def generic_core_t
 @
 <<PCM base: public>>=
-  public :: cm_t
+  public :: core_manager_t
 <<PCM base: types>>=
-  type :: cm_t
-    integer, dimension(N_MAX_CORES) :: me = 0
+  type :: core_manager_t
     integer, dimension(N_MAX_CORES) :: def_ptr_index = 0
-    integer, dimension(N_MAX_CORES) :: i_core
+    integer, dimension(N_MAX_CORES) :: i_core = 0
     logical, dimension(N_MAX_CORES) :: sub = .false.
     character(32), dimension(N_MAX_CORES) :: md5s = ""
     integer, dimension(N_MAX_CORES) :: nlo_type
@@ -2344,43 +2297,20 @@ and allocates the corresponding manager instance.
     integer :: current_index = 1
   contains
   <<PCM base: cm: TBP>>
-  end type cm_t
+  end type core_manager_t
 
-@ %def cm_t
+@ %def core_manager_t
 @
-<<PCM base: public>>=
-  public :: nlo_to_i_core
-<<PCM base: procedures>>=
-  function nlo_to_i_core (nlo_type) result (i_core)
-    integer :: i_core
-    integer, intent(in) :: nlo_type
-    select case (nlo_type)
-    case (BORN)
-       i_core = 1
-    case (NLO_REAL)
-       i_core = 2
-    case (NLO_VIRTUAL)
-       i_core = 3
-    case (NLO_SUBTRACTION)
-       i_core = 4
-    end select
-  end function nlo_to_i_core
-
-@ %def nlo_to_i_core
-@ 
 <<PCM base: cm: TBP>>=
   procedure :: register => cm_register
 <<PCM base: procedures>>=
-  subroutine cm_register (cm, nlo_type, core_type, i_component, md5sum)
-    class(cm_t), intent(inout) :: cm
-    integer, intent(in) :: nlo_type, core_type, i_component
+  subroutine cm_register (cm, nlo_type, i_component, md5sum)
+    class(core_manager_t), intent(inout) :: cm
+    integer, intent(in) :: nlo_type, i_component
     character(32), intent(in) :: md5sum
-    integer :: index
-    index = nlo_to_i_core (nlo_type)
-    cm%me(cm%current_index) = core_type
     cm%nlo_type(cm%current_index) = nlo_type
     cm%md5s(cm%current_index) = md5sum
-    cm%def_ptr_index(cm%current_index) = i_component 
+    cm%def_ptr_index(cm%current_index) = i_component
     cm%current_index = cm%current_index + 1
   end subroutine cm_register
 
@@ -2390,8 +2320,8 @@ and allocates the corresponding manager instance.
   procedure :: allocate_core_array => cm_allocate_core_array
 <<PCM base: procedures>>=
   subroutine cm_allocate_core_array (cm)
-    class(cm_t), intent(inout) :: cm
-    cm%n_cores = count (cm%me > 0)
+    class(core_manager_t), intent(inout) :: cm
+    cm%n_cores = count (cm%i_core > 0)
     allocate (cm%cores (cm%n_cores))
   end subroutine cm_allocate_core_array
 
@@ -2401,7 +2331,7 @@ and allocates the corresponding manager instance.
   procedure :: allocate_core => cm_allocate_core
 <<PCM base: procedures>>=
   subroutine cm_allocate_core (cm, i_core, core_template)
-    class(cm_t), intent(inout) :: cm
+    class(core_manager_t), intent(inout) :: cm
     integer, intent(in) :: i_core
     class(prc_core_t), intent(in) :: core_template
     allocate (cm%cores(i_core)%core, source = core_template)
@@ -2414,7 +2344,7 @@ and allocates the corresponding manager instance.
 <<PCM base: procedures>>=
   function cm_get_core (cm, i_core) result (core)
     class(prc_core_t), pointer :: core
-    class(cm_t), intent(in), target :: cm
+    class(core_manager_t), intent(in), target :: cm
     integer, intent(in) :: i_core
     core => cm%cores(i_core)%core
   end function cm_get_core 
@@ -2425,10 +2355,10 @@ and allocates the corresponding manager instance.
   procedure :: write => cm_write
 <<PCM base: procedures>>=
   subroutine cm_write (cm, unit)
-    class(cm_t), intent(in) :: cm
+    class(core_manager_t), intent(in) :: cm
     integer, intent(in), optional :: unit
     integer :: u, i
-    u = given_output_unit (unit)
+    u = given_output_unit (unit);  if (u < 0)  return
     write (u,"(1x,A,I1,A)") "component manager instance with ", cm%n_cores, " cores: "
     print *, 'Cores allocated? ', allocated (cm%cores)
     do i = 1, cm%n_cores
@@ -2447,13 +2377,12 @@ and allocates the corresponding manager instance.
   procedure :: final => cm_final
 <<PCM base: procedures>>=
   subroutine cm_final (cm)
-    class(cm_t), intent(inout) :: cm
+    class(core_manager_t), intent(inout) :: cm
     cm%def_ptr_index = 0
     cm%n_cores = 0
     cm%i_core = 0
     cm%nlo_type = 0
     cm%md5s = ""
-    cm%me = 0
     cm%current_index = 1
     if (allocated (cm%cores)) deallocate (cm%cores)
   end subroutine cm_final
@@ -2702,7 +2631,7 @@ work for this matter.
           mci_entry
      class(pcm_t), allocatable :: &
           pcm
-     type(cm_t) :: cm
+     type(core_manager_t) :: cm
    contains
    <<Processes: process: TBP>>
   end type process_t
@@ -2965,57 +2894,52 @@ freed.
   procedure :: core_manager_register_sub => process_core_manager_register_sub
 <<Processes: procedures>>=
   subroutine process_core_manager_register (process, &
-     nlo_type, core_type, i_component)
+     nlo_type, i_component)
     class(process_t), intent(inout) :: process
-    integer, intent(in) :: nlo_type, core_type, i_component
+    integer, intent(in) :: nlo_type, i_component
     if (nlo_type == NLO_SUBTRACTION) then
-       call process%core_manager_register_sub (nlo_type, core_type, i_component)
+       call process%core_manager_register_sub (nlo_type, i_component)
     else
-       call process%core_manager_register_default (nlo_type, core_type, i_component)
+       call process%core_manager_register_default (nlo_type, i_component)
     end if
   end subroutine process_core_manager_register
 
-  subroutine process_core_manager_register_sub (process, &
-     nlo_type, core_type, i_component)
+  subroutine process_core_manager_register_sub (process, nlo_type, i_component)
     class(process_t), intent(inout) :: process
-    integer, intent(in) :: nlo_type, core_type, i_component
+    integer, intent(in) :: nlo_type, i_component
     character(32) :: md5sum
-    integer :: i, me
+    integer :: i
     md5sum = process%get_constants_md5sum (i_component)
-    if (core_type >= CORE_DUMMY) then
-       process%cm%sub(process%cm%current_index) = .true.
-       call process%cm%register (nlo_type, core_type, i_component, md5sum)
+    if (any (process%cm%md5s == md5sum)) then
+       do i = 1, N_MAX_CORES
+          if (process%cm%i_core(i) == 0) exit
+          if (md5sum == process%cm%md5s(i)) then
+            process%cm%sub(i) = .true.
+         end if
+       end do
     else
-       if (any (process%cm%md5s == md5sum)) then
-          do i = 1, N_MAX_CORES
-             me = process%cm%me(i)
-             if (me == 0) exit
-             if (.not. (md5sum == process%cm%md5s(i))) cycle
-             process%cm%sub(i) = (me == core_type)
-          end do
-       end if
+       process%cm%sub(process%cm%current_index) = .true.
+       call process%cm%register (nlo_type, i_component, md5sum)
     end if
   end subroutine process_core_manager_register_sub
 
   subroutine process_core_manager_register_default &
-     (process, nlo_type, core_type, i_component)
+     (process, nlo_type, i_component)
     class(process_t), intent(inout) :: process
-    integer, intent(in) :: nlo_type, core_type, i_component
+    integer, intent(in) :: nlo_type, i_component
     character(32) :: md5sum
     logical :: register
     integer :: i
     md5sum = process%get_constants_md5sum (i_component)
     register = .false.
     do i = 1, N_MAX_CORES
-       if (process%cm%sub(i) .and. process%cm%me(i) >= CORE_DUMMY) cycle 
-       register = .not. process%cm%md5s(i) == md5sum .and. &
-          .not. process%cm%me(i) == core_type
-      if (register) then
-         call process%cm%register (nlo_type, core_type, i_component, md5sum)
-         exit
-      else if (process%cm%me(i) == 0) then
-         exit
-      end if 
+       if (process%cm%sub(i)) cycle
+       if (.not. process%cm%md5s(i) == md5sum) then
+          call process%cm%register (nlo_type, i_component, md5sum)
+          exit
+       else if (process%cm%i_core(i) == 0) then
+          exit
+       end if
     end do
   end subroutine process_core_manager_register_default
 
@@ -6082,21 +6006,20 @@ configuration finalizer may include closing an open scratch file.
 <<Processes: process: TBP>>=
   procedure :: get_core_nlo_type => process_get_core_nlo_type
 <<Processes: procedures>>=
-  function process_get_core_nlo_type (process, core_type, md5sum) result (core)
+  function process_get_core_nlo_type (process, md5sum) result (core)
     class(prc_core_t), pointer :: core
     class(process_t), intent(in), target :: process
-    integer, intent(in) :: core_type
     character(32), intent(in) :: md5sum
     integer :: i_core
     associate (cm => process%cm)
        do i_core = 1, N_MAX_CORES
-          if (cm%me(i_core) == core_type .and. cm%md5s(i_core) == md5sum) exit
+          if (cm%md5s(i_core) == md5sum) exit
        end do
        core => cm%cores(i_core)%core
     end associate
-  end function process_get_core_nlo_type 
+  end function process_get_core_nlo_type
 
-@ %def process_get_core_nlo_type 
+@ %def process_get_core_nlo_type
 <<Processes: process: TBP>>=
   procedure :: get_i_core_nlo_type => process_get_i_core_nlo_type
 <<Processes: procedures>>=
@@ -6956,14 +6879,20 @@ parameters from outside this module.
 <<Processes: process: TBP>>=
   procedure :: get_constants_md5sum => process_get_constants_md5sum
 <<Processes: procedures>>=
-  function process_get_constants_md5sum (process, i_component) result (md5sum)
-    character(32) :: md5sum
+  function process_get_constants_md5sum (process, i_component) result (this_md5sum)
+    character(32) :: this_md5sum
     class(process_t), intent(in) :: process
     integer, intent(in) :: i_component
     type(process_constants_t) :: data
+    type(string_t) :: type_string
+    integer :: unit
     call process%meta%lib%fill_constants (process%meta%id, i_component, data)
-    call data%compute_md5sum (.false.)
-    md5sum = data%md5sum
+    unit = data%fill_unit_for_md5sum (.false.)
+    type_string = process%component(i_component)%config%get_def_type_string ()
+    write (unit, '(A)') char(type_string)
+    rewind (unit)
+    this_md5sum = md5sum (unit)
+    close (unit)
   end function process_get_constants_md5sum
 
 @ %def process_get_constants_md5sum
@@ -8243,7 +8172,7 @@ imaginary part of the terms, which should be zero anyway.
 <<Processes: procedures>>=
   subroutine component_instance_evaluate_sqme (component, cm, term)
     class(component_instance_t), intent(inout) :: component
-    type(cm_t), intent(in) :: cm
+    type(core_manager_t), intent(in) :: cm
     type(term_instance_t), dimension(:), intent(inout), target :: term
     integer :: j, i
     class(prc_core_t), pointer :: core => null ()
@@ -11344,7 +11273,7 @@ object and the squared matrix-element collector.
     class(process_t), intent(inout) :: process
     class(prc_core_t), allocatable :: core
     allocate (test_t :: core)
-    call process%core_manager_register (BORN, CORE_TEST, 1)
+    call process%core_manager_register (BORN, 1)
     call process%allocate_core_array ()
     call process%allocate_core (1, core)
     call process%init_core (1)
