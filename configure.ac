@@ -53,8 +53,8 @@ AC_MSG_NOTICE([**************************************************************])
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Sep 30 2016"
-PACKAGE_STATUS="alpha"
+PACKAGE_DATE="Aug 25 2016"
+PACKAGE_STATUS="release"
 
 AC_SUBST(PACKAGE_DATE)
 AC_SUBST(PACKAGE_STATUS)
@@ -621,6 +621,11 @@ AC_CONFIG_FILES([src/fastjet/Makefile])
 ### Subdirectory src/looptools
 
 AC_CONFIG_FILES([src/looptools/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/shower: shower and all that
+
+AC_CONFIG_FILES([src/pythia8/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/shower: shower and all that

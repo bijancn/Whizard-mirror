@@ -28,7 +28,7 @@ let rcs_file = RCS.parse "F90_CQED" ["QED with contact terms"]
       RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
-        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/omega_CQED.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/omega_CQED.ml $" }
 
 (* QED with contact interactions. *)
 
