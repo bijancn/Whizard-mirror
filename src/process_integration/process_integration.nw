@@ -2895,22 +2895,24 @@ freed.
   procedure :: core_manager_register_sub => process_core_manager_register_sub
 <<Processes: procedures>>=
   subroutine process_core_manager_register (process, &
-     nlo_type, i_component)
+     nlo_type, i_component, type_string)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: nlo_type, i_component
+    type(string_t), intent(in), optional :: type_string
     if (nlo_type == NLO_SUBTRACTION) then
-       call process%core_manager_register_sub (nlo_type, i_component)
+       call process%core_manager_register_sub (nlo_type, i_component, type_string)
     else
-       call process%core_manager_register_default (nlo_type, i_component)
+       call process%core_manager_register_default (nlo_type, i_component, type_string)
     end if
   end subroutine process_core_manager_register
 
-  subroutine process_core_manager_register_sub (process, nlo_type, i_component)
+  subroutine process_core_manager_register_sub (process, nlo_type, i_component, type_string)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: nlo_type, i_component
+    type(string_t), intent(in), optional :: type_string
     character(32) :: md5sum
     integer :: i
-    md5sum = process%get_constants_md5sum (i_component)
+    md5sum = process%get_constants_md5sum (i_component, type_string)
     if (any (process%cm%md5s == md5sum)) then
        do i = 1, N_MAX_CORES
           if (process%cm%i_core(i) == 0) exit
@@ -2925,12 +2927,13 @@ freed.
   end subroutine process_core_manager_register_sub
 
   subroutine process_core_manager_register_default &
-     (process, nlo_type, i_component)
+     (process, nlo_type, i_component, type_string)
     class(process_t), intent(inout) :: process
     integer, intent(in) :: nlo_type, i_component
+    type(string_t), intent(in), optional :: type_string
     character(32) :: md5sum
     integer :: i
-    md5sum = process%get_constants_md5sum (i_component)
+    md5sum = process%get_constants_md5sum (i_component, type_string)
     do i = 1, N_MAX_CORES
        if (process%cm%sub(i)) cycle
        if (.not. process%cm%md5s(i) == md5sum) then
@@ -3051,6 +3054,9 @@ from the library.
               process%term(i_term)%i_core = set_i_core &
                  (component%get_nlo_type (), setup_subtraction_component, &
                   process%get_constants_md5sum (i))
+              if (process%term(i_term)%i_core == 0) then
+                 call msg_fatal ("Core not found!")
+              end if
               core => process%cm%get_core (process%term(i_term)%i_core)
               if (i_sub > 0) then
                  call process%term(i_term)%init (i_term, i, j, core, model, &
@@ -3075,6 +3081,7 @@ from the library.
       logical, intent(in) :: sub
       character(32), intent(in) :: md5sum
       integer :: index
+      i_core = 0
       do index = 1, N_MAX_CORES
          if (sub) then
             if (process%cm%sub(index)) then
@@ -6878,20 +6885,22 @@ parameters from outside this module.
 <<Processes: process: TBP>>=
   procedure :: get_constants_md5sum => process_get_constants_md5sum
 <<Processes: procedures>>=
-  function process_get_constants_md5sum (process, i_component) result (this_md5sum)
+  function process_get_constants_md5sum (process, i_component, &
+     type_string_external) result (this_md5sum)
     character(32) :: this_md5sum
     class(process_t), intent(in) :: process
     integer, intent(in) :: i_component
+    type(string_t), intent(in), optional :: type_string_external
     type(process_constants_t) :: data
     type(string_t) :: type_string
     integer :: unit
     call process%meta%lib%fill_constants (process%meta%id, i_component, data)
     unit = data%fill_unit_for_md5sum (.false.)
-    if (associated (process%component(i_component)%config)) then
+    if (present (type_string_external)) then
+       write (unit, '(A)') char(type_string_external)
+    else
        type_string = process%component(i_component)%config%get_def_type_string ()
        write (unit, '(A)') char(type_string)
-    else
-       write (unit, '(A)') "test_me"
     end if 
     rewind (unit)
     this_md5sum = md5sum (unit)
@@ -11276,7 +11285,7 @@ object and the squared matrix-element collector.
     class(process_t), intent(inout) :: process
     class(prc_core_t), allocatable :: core
     allocate (test_t :: core)
-    call process%core_manager_register (BORN, 1)
+    call process%core_manager_register (BORN, 1, var_str ("test_me"))
     call process%allocate_core_array ()
     call process%allocate_core (1, core)
     call process%init_core (1)
