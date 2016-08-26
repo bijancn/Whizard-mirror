@@ -3014,6 +3014,8 @@ from the library.
     type(string_t) :: subtraction_method
     class(prc_core_t), pointer :: core => null ()
     logical :: setup_subtraction_component, use_beam_pol
+    integer :: i_recola
+    i_recola = 0
     model => process%config%model
     n_components = process%meta%n_components
     allocate (n_entry (n_components), source = 0)
@@ -3058,6 +3060,13 @@ from the library.
                  call msg_fatal ("Core not found!")
               end if
               core => process%cm%get_core (process%term(i_term)%i_core)
+              select type (core)
+              type is (prc_recola_t)
+                 call core%register_processes (i_recola) 
+                 call core%replace_helicity_and_color_arrays ()
+                 if (component%get_nlo_type () == NLO_VIRTUAL) &
+                    call core%set_nlo ()
+              end select 
               if (i_sub > 0) then
                  call process%term(i_term)%init (i_term, i, j, core, model, &
                     nlo_type = component%config%get_nlo_type (), &
@@ -6411,6 +6420,8 @@ matrix element.
     select type (core)
     type is (prc_openloops_t)
       call setup_states_openloops ()
+    type is (prc_recola_t)
+      call setup_states_recola ()
     class is (prc_user_defined_base_t)
       call setup_states_other_user_defined ()
     class default
@@ -6422,6 +6433,8 @@ matrix element.
       integer :: f, h, c
       n = 0
       select type (core)
+      type is (prc_recola_t)
+         n = term%data%n_flv * term%data%n_hel * term%data%n_col
       class is (prc_user_defined_base_t)
          n_hel = 1; if (yorn) n_hel = 4
          do f = 1, term%data%n_flv
@@ -6509,6 +6522,32 @@ matrix element.
          end do
       end do
     end subroutine setup_states_other_user_defined         
+
+    subroutine setup_states_recola ()
+      integer :: f, h, c, i 
+      i = 0
+      associate (data => term%data)
+         do f = 1, data%n_flv
+            do h = 1, data%n_hel
+              do c = 1, data%n_col
+                 i = i + 1
+                 term%flv(i) = f
+                 term%hel(i) = h
+                 term%col(i) = c
+                 call flv%init (data%flv_state(:,f), model)
+                 call color_init_from_array (col, &
+                      data%col_state(:,:,c), &
+                      data%ghost_flag(:,c))
+                 call col(:data%n_in)%invert ()
+                 call hel%init (data%hel_state(:,h))
+                 call qn%init (flv, col, hel)
+                 call term%int%add_state (qn)
+              end do
+            end do
+         end do
+      end associate
+    end subroutine setup_states_recola
+
 
     subroutine setup_states_omega ()
       integer :: f, h, c, i 
@@ -9137,6 +9176,13 @@ method may modify the [[core_state]] workspace object.
                 call core%update_alpha_s (term%core_state, term%fac_scale)
                 do i = 1, n_amps
                    term%amp(i) = cmplx (core%compute_sqme (i, term%p_hard), 0 , default)
+                end do
+             type is (prc_recola_t)
+                do i = 1, term%config%n_allowed
+                   term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
+                      term%config%flv(i), term%config%hel(i), term%config%col(i), &
+                      term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
+                      term%core_state)
                 end do
              end select
           end select
