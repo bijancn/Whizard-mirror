@@ -38,7 +38,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl =======================================================================
 dnl 
 dnl Start configuration
-AC_INIT([circe2],[2.3.1])
+AC_INIT([circe2],[2.3.2])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AM_MAKE_INCLUDE
@@ -49,8 +49,8 @@ AM_MAKE_INCLUDE
 WO_CONFIGURE_SECTION([Start of package configuration])
 
 ### Further version information
-PACKAGE_DATE="Aug 25 2016"
-PACKAGE_STATUS="release"
+PACKAGE_DATE="Sep 30 2016"
+PACKAGE_STATUS="alpha"
 
 AC_SUBST(PACKAGE_DATE)
 AC_SUBST(PACKAGE_STATUS)
@@ -77,7 +77,7 @@ AC_PROG_LIBTOOL
 AC_PROG_MKDIR_P
 AC_PROG_GREP
 LT_INIT
-LT_PREREQ([2.3.1b])
+LT_PREREQ([2.3.2b])
 AC_PATH_PROG([M4],[m4])
 
 ########################################################################
