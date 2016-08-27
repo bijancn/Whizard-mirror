@@ -167,6 +167,7 @@ TESTS_REQ_OCAML = \
     nlo_3.run \
     nlo_4.run \
     nlo_5.run \
+    mismatch.run \
     openloops_1.run \
     openloops_2.run \
     powheg_1.run \
