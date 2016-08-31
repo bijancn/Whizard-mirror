@@ -7663,7 +7663,6 @@ phase-space file:
     integer, intent(in), optional :: unit
     type(flavor_t) :: flv
     integer :: u, i
-1   format(3x,A,1x,40(1x,I4))
 2   format(3x,A,1x,I3,1x,A,1x,I7,1x,'!',1x,A)
     u = given_output_unit (unit);  if (u < 0)  return
     call write_reduced (cascade%tree, u)
@@ -8046,6 +8045,31 @@ unequal cascades together.
   end type hash_entry_t
 
 @ %def hash_entry_t
+<<Cascades: public>>=
+  public :: hash_entry_init
+<<Cascades: procedures>>=
+  subroutine hash_entry_init (entry, entry_in)
+    type(hash_entry_t), intent(out) :: entry
+    type(hash_entry_t), intent(in) :: entry_in
+    type(cascade_p), pointer :: casc_iter, casc_copy
+    entry%hashval = entry_in%hashval
+    entry%key = entry_in%key
+    casc_iter => entry_in%first
+    do while (associated (casc_iter))
+       allocate (casc_copy)
+       casc_copy = casc_iter
+       casc_copy%next => null ()
+       if (associated (entry%first)) then
+          entry%last%next => casc_copy
+       else
+          entry%first => casc_copy
+       end if
+       entry%last => casc_copy
+       casc_iter => casc_iter%next
+    end do
+  end subroutine hash_entry_init
+
+@ %def hash_entry_init
 @ Finalize: just deallocate the list; the contents are just pointers.
 <<Cascades: procedures>>=
   subroutine hash_entry_final (hash_entry)
@@ -8233,6 +8257,58 @@ the cascade list.
   end type cascade_set_t
 
 @ %def cascade_set_t
+@
+<<Cascades: public>>=
+  interface cascade_set_init
+     module procedure cascade_set_init_base
+     module procedure cascade_set_init_from_cascade
+  end interface
+@ %def cascade_set_init
+@ This might be broken. Test before using.
+<<Cascades: procedures>>=
+  subroutine cascade_set_init_from_cascade (cascade_set, cascade_set_in)
+    type(cascade_set_t), intent(out) :: cascade_set
+    type(cascade_set_t), intent(in), target :: cascade_set_in
+    type(cascade_t), pointer :: casc_iter, casc_copy
+    cascade_set%model => cascade_set_in%model
+    cascade_set%n_in = cascade_set_in%n_in
+    cascade_set%n_out = cascade_set_in%n_out
+    cascade_set%n_tot = cascade_set_in%n_tot
+    cascade_set%flv = cascade_set_in%flv
+    cascade_set%depth_out = cascade_set_in%depth_out
+    cascade_set%depth_tot = cascade_set_in%depth_tot
+    cascade_set%sqrts = cascade_set_in%sqrts
+    cascade_set%m_threshold_s = cascade_set_in%m_threshold_s
+    cascade_set%m_threshold_t = cascade_set_in%m_threshold_t
+    cascade_set%off_shell = cascade_set_in%off_shell
+    cascade_set%t_channel = cascade_set_in%t_channel
+    cascade_set%keep_nonresonant = cascade_set_in%keep_nonresonant
+    cascade_set%n_groves = cascade_set_in%n_groves
+
+    casc_iter => cascade_set_in%first
+    do while (associated (casc_iter))
+       allocate (casc_copy)
+       casc_copy = casc_iter
+       casc_copy%next => null ()
+       if (associated (cascade_set%first)) then
+          cascade_set%last%next => casc_copy
+       else
+          cascade_set%first => casc_copy
+       end if
+       cascade_set%last => casc_copy
+       casc_iter => casc_iter%next
+    end do
+
+    cascade_set%n_entries = cascade_set_in%n_entries
+    cascade_set%fill_ratio = cascade_set_in%fill_ratio
+    cascade_set%n_entries_max = cascade_set_in%n_entries_max
+    cascade_set%mask = cascade_set_in%mask
+    cascade_set%fatal_beam_decay = cascade_set_in%fatal_beam_decay
+    allocate (cascade_set%entry (0:cascade_set%mask))
+    cascade_set%entry = cascade_set_in%entry
+  end subroutine cascade_set_init_from_cascade
+
+@ %def cascade_set_init_from_cascade
 @ Return true if there are cascades which are active and complete, so
 the phase space file would be nonempty.
 <<Cascades: public>>=
@@ -8264,7 +8340,7 @@ but a bug in nagfor 5.3.2 prevents this.
 <<Cascades: parameters>>=
   real, parameter, public :: CASCADE_SET_FILL_RATIO = 0.1
 <<Cascades: procedures>>=
-  subroutine cascade_set_init (cascade_set, model, n_in, n_out, phs_par, &
+  subroutine cascade_set_init_base (cascade_set, model, n_in, n_out, phs_par, &
         fatal_beam_decay, flv)
     type(cascade_set_t), intent(out) :: cascade_set
     class(model_data_t), intent(in), target :: model
@@ -8303,9 +8379,9 @@ but a bug in nagfor 5.3.2 prevents this.
     cascade_set%mask = size_guess - 1
     allocate (cascade_set%entry (0:cascade_set%mask))
     cascade_set%fatal_beam_decay = fatal_beam_decay
-  end subroutine cascade_set_init
-    
-@ %def cascade_set_init
+  end subroutine cascade_set_init_base
+
+@ %def cascade_set_init_base
 @ The finalizer has to delete both the hash and the list.
 <<Cascades: public>>=
   public :: cascade_set_final
@@ -10277,7 +10353,6 @@ the mapping a dimensionless quantity.
     type(resonance_history_t), dimension(:), allocatable :: tmp
     type(cascade_t), pointer :: cascade
     type(resonance_history_t) :: res_hist
-    type(resonance_info_t), dimension(:), allocatable :: resonances
     integer :: grove, i, n_hists
     logical :: included, add_to_list
     call msg_debug (D_PHASESPACE, "cascade_set_get_resonance_histories")

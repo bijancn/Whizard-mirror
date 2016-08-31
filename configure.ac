@@ -39,7 +39,7 @@ dnl   FCFLAGS		Fortran compiler flags
 dnl 
 dnl *********************************************************************** 
 dnl Start configuration
-AC_INIT([WHIZARD],[2.3.1])
+AC_INIT([WHIZARD],[2.3.2])
 AM_INIT_AUTOMAKE([1.11 color-tests parallel-tests])
 AC_PREREQ([2.65])
 
@@ -145,7 +145,7 @@ WO_CONFIGURE_SECTION([Generic tools])
 ### Initialize LIBTOOL
 LT_INIT(dlopen)
 
-LT_PREREQ([2.3.1b])
+LT_PREREQ([2.3.2b])
 
 AX_CHECK_GNU_MAKE()
 
@@ -628,6 +628,11 @@ AC_CONFIG_FILES([src/fastjet/Makefile])
 ### Subdirectory src/looptools
 
 AC_CONFIG_FILES([src/looptools/Makefile])
+
+###---------------------------------------------------------------------
+### Subdirectory src/shower: shower and all that
+
+AC_CONFIG_FILES([src/pythia8/Makefile])
 
 ###---------------------------------------------------------------------
 ### Subdirectory src/shower: shower and all that

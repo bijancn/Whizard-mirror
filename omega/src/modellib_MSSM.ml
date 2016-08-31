@@ -29,7 +29,7 @@ let rcs_file = RCS.parse "Modellib_MSSM" ["MSSM"]
       RCS.date = "$Date: 2016-07-29 19:37:42 +0200 (Fri, 29 Jul 2016) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
-        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_MSSM.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_MSSM.ml $" }
 
 (* \thocwmodulesection{Minimal Supersymmetric Standard Model} *)
 

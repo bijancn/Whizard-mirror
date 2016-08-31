@@ -1,4 +1,4 @@
-(* $Id: targets.ml 7665 2016-07-26 16:37:28Z bchokoufe $
+(* $Id: targets.ml 7676 2016-08-19 13:40:57Z jr_reuter $
 
    Copyright (C) 1999-2016 by
 
@@ -27,11 +27,11 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 let rcs_file = RCS.parse "Targets" ["Code Generation"]
-    { RCS.revision = "$Revision: 7665 $";
-      RCS.date = "$Date: 2016-07-26 18:37:28 +0200 (Tue, 26 Jul 2016) $";
-      RCS.author = "$Author: bchokoufe $";
+    { RCS.revision = "$Revision: 7676 $";
+      RCS.date = "$Date: 2016-08-19 15:40:57 +0200 (Fri, 19 Aug 2016) $";
+      RCS.author = "$Author: jr_reuter $";
       RCS.source
-        = "$URL: svn+ssh://cweiss@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets.ml $" }
 
 module Dummy (F : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
   struct
@@ -4941,7 +4941,7 @@ i*)
 	| Prop_Majorana ->
           printf "%s(%s,%s,%s,%s," Fermions.chi_propagator p m w cms
 	| Prop_Col_Majorana ->
-          printf "%s * %s(%s,%s,%s,%s" minus_third Fermions.chi_propagator p m w cms
+          printf "%s * %s(%s,%s,%s,%s," minus_third Fermions.chi_propagator p m w cms
 	| Prop_Unitarity ->
           printf "pr_unitarity(%s,%s,%s,%s," p m w cms
 	| Prop_Col_Unitarity ->
