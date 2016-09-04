@@ -496,6 +496,8 @@ WO_CONFIGURE_SECTION([RECOLA])
 
 WO_PROG_RECOLA()
 
+WO_FC_CHECK_RECOLA()
+
 ###---------------------------------------------------------------------
 ### LoopTools 
 

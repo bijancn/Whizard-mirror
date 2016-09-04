@@ -57,5 +57,30 @@ AC_SUBST([LDFLAGS_RECOLA])
 AM_CONDITIONAL([RECOLA_AVAILABLE], [test "$enable_recola" = "yes"])
 
 ]) dnl WO_PROG_RECOLA
+### end WO_PROG_RECOLA 
+
+
+### Check if the compiler actually supports Recola
+AC_DEFUN([WO_FC_CHECK_RECOLA],
+[dnl
+AC_CACHE_CHECK([whether Recola can be compiled with $FC],
+[wo_cv_fc_supports_recola],
+[dnl
+AC_REQUIRE([WO_PROG_RECOLA])
+AC_LANG([Fortran])
+FCFLAGS="$RECOLA_INCLUDES"
+AC_COMPILE_IFELSE([dnl
+  program recolatest
+     use recola
+  end program recolatest
+  ],
+  [wo_cv_fc_supports_recola="yes"],
+  [wo_cv_fc_supports_recola="no"])
+])
+FC_SUPPORTS_RECOLA="$wo_cv_fc_supports_recola"
+AM_CONDITIONAL([FC_SUPPORTS_RECOLA], [test "$wo_cv_fc_supports_recola" = "yes"])
+])
+### end WO_FC_CHECK_RECOLA
+
 
    
