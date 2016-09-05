@@ -37,8 +37,13 @@
 noinst_LTLIBRARIES = librecola.la
 check_LTLIBRARIES = librecola_ut.la
 
+if FC_SUPPORTS_RECOLA
 librecola_la_SOURCES = \
-  prc_recola.f90
+  recola_wrapper.f90 prc_recola.f90
+else
+librecola_la_SOURCES = \
+  recola_wrapper_dummy.f90 prc_recola.f90
+endif
 
 librecola_ut_la_SOURCES = \
   prc_recola_uti.f90 prc_recola_ut.f90
@@ -47,7 +52,16 @@ librecola_ut_la_SOURCES = \
 dist_noinst_DATA = recola.nw
 
 # Dump module names into file Modules
-librecola_Modules = ${librecola_la_SOURCES:.f90=} ${librecola_ut_la_SOURCES:.f90=}
+#librecola_Modules = ${librecola_la_SOURCES:.f90=} ${librecola_ut_la_SOURCES:.f90=}
+librecola_Modules = prc_recola recola_wrapper \
+		    prc_recola_uti prc_recola_ut
+
+if FC_SUPPORTS_RECOLA
+  prc_recola.lo: recola_wrapper.lo
+else
+  prc_recola.lo: recola_wrapper_dummy.lo
+endif
+
 Modules: Makefile
 	@for module in $(librecola_Modules); do \
           echo $$module >> $@.new; \
@@ -57,6 +71,7 @@ Modules: Makefile
 	else \
           mv $@.new $@; echo "Modules updated"; \
         fi
+
 BUILT_SOURCES = Modules
 
 ## Fortran module dependencies
@@ -72,7 +87,8 @@ module_lists = \
   ../particles/Modules \
   ../matrix_elements/Modules \
   ../me_methods/Modules \
-  ../variables/Modules
+  ../variables/Modules \
+  ../beams/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -116,7 +132,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../me_methods -I../variables 
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../qft -I../expr_base -I../types -I../particles -I../matrix_elements -I../me_methods -I../variables -I../beams -I../lhapdf -I../pdf_builtin 
 
 ########################################################################
 ## Default Fortran compiler options

@@ -194,6 +194,7 @@ libwhizard_test_la_LIBADD = \
   matching/libmatching_ut.la \
   fks/libfks_ut.la \
   process_integration/libprocess_integration_ut.la \
+  recola/librecola_ut.la \
   blha/libblha_ut.la \
   model_features/libmodel_features_ut.la \
   mci/libmci_ut.la \
@@ -222,11 +223,9 @@ libomega_la_LIBADD = \
   models/libmodels.la
 
 if RECOLA_AVAILABLE
-libwhizard_la_LIBADD += $(LDFLAGS_RECOLA) recola/librecola_ut.la
-libwhizard_test_la_LIBADD += $(LDFLAGS_RECOLA) recola/librecola_ut.la
+libwhizard_la_LIBADD += $(LDFLAGS_RECOLA)
+libwhizard_test_la_LIBADD += $(LDFLAGS_RECOLA)
 endif
-
-
 
 ########################################################################
 ## Build a standalone program
