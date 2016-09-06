@@ -527,7 +527,7 @@ module Color_Atom' : Atom
     let classify_indices1 = function
       | Identity (i, j) -> [(i, C); (j, F)]
       | T (a, i, j) -> [(i, F); (j, C); (a, A)]
-      | F (a, b, c) | D (a, b, c) -> [(a, A); (b, A); (c, A)]
+      | Color_Atom.F (a, b, c) | D (a, b, c) -> [(a, A); (b, A); (c, A)] 
       | Epsilon (i, j, k) -> [(i, F); (j, F); (k, F)]
       | EpsilonBar (i, j, k) -> [(i, C); (j, C); (k, C)]
       | T6 (a, i', j') ->
