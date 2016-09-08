@@ -204,7 +204,7 @@ de-xbandt-ee.dat: $(top_builddir)/tools/circe1_plot
 dg-xbandt-ee.dat: $(top_builddir)/tools/circe1_plot
 	echo 1 0.001 1.0 50 -1.0 22 11 1000.0 6 $(CIRCE1_VER) $(CIRCE1_REV) | $(CPLOT)
 
-CPLOT = $(top_builddir)/tools/circe1_plot | $(GREP) -v circe1: | $(SED) 's/E/e/g' | $(CPIF) $@
+CPLOT = $(top_builddir)/tools/circe1_plot | $(GREP) -v circe1: | $(SED) 's/E/e/g' | $(CPIF) -eq $@
 
 tex-comments: tex-comments.sh
 	cp $< $@
@@ -244,7 +244,7 @@ endif DISTRIBUTION
 if DISTRIBUTION
 if SUPP_PDF_AVAILABLE
 if PDFLATEX_AVAILABLE
-circe1.pdf: $(PICTURES_PDF) dist.1
+circe1.pdf: $(PICTURES_PDF) dist.1 circe1.tex
 endif PDFLATEX_AVAILABLE
 endif SUPP_PDF_AVAILABLE
 endif DISTRIBUTION
