@@ -7673,7 +7673,7 @@ Relevant for using the proper momenta input for BLHA matrix elements.
           allocate (p_out (size (p_in))); p_out = p_in
        end select
     case (NLO_DGLAP)
-    case (NLO_MISMATCH)
+    !case (NLO_MISMATCH)
     case default
        allocate (p_out (size (p_in))); p_out = p_in
     end select
@@ -7823,7 +7823,7 @@ allocated explicitly.
     select type (phs => term%k_term%phs)
     type is (phs_fks_t)
        call phs%allocate_momenta (phs_config, &
-          .not. (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH))
+          .not. (term%nlo_type == NLO_REAL))
        call phs%init_phs_identifiers (term%nlo_controller%reg_data)
        call term%nlo_controller%set_alr_to_i_phs (phs%phs_identifiers)
     end select
@@ -8545,8 +8545,7 @@ relevant for a NLO algorithm.
        allocate (term%amp (term%config%n_allowed))
     end select
     term%amp = cmplx (0, 0, default)
-    decrease_n_tot = (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) &
-        .and. term%config%i_term /= term%config%i_sub 
+    decrease_n_tot = term%nlo_type == NLO_REAL .and. term%config%i_term /= term%config%i_sub 
     if (present (real_finite)) then 
        if (real_finite) decrease_n_tot = .false.
     end if
@@ -8893,23 +8892,20 @@ The quantum numbers mask of the incoming particle
   subroutine term_instance_apply_fks (term, core)
     class(term_instance_t), intent(inout) :: term
     class(prc_core_t), intent(inout) :: core
-    logical :: bad_point = .false.
     real(default) :: sqme
     integer :: i_em, emitter
     sqme = zero
     associate (nlo_controller => term%nlo_controller)
-       !call nlo_controller%set_alpha_s_sub &
-       !   (core%get_alpha_s (term%core_state))
        call nlo_controller%real_terms%set_real_kinematics &
           (nlo_controller%real_kinematics)
        call nlo_controller%real_terms%set_isr_kinematics &
           (nlo_controller%isr_kinematics)
        if (term%k_term%emitter < 0) then
           call nlo_controller%disable_sqme_np1 ()
-          nlo_controller%real_terms%sqme_born (1) = &
-             real (term%connected%trace%get_matrix_element (1))
-          call nlo_controller%evaluate_color_correlations &
-             (core, term%core_state, term%fac_scale, 1, bad_point)
+          !nlo_controller%real_terms%sqme_born (1) = &
+          !   real (term%connected%trace%get_matrix_element (1))
+          !call nlo_controller%evaluate_color_correlations &
+          !   (core, term%core_state, term%fac_scale, 1, bad_point) 
           do i_em = 1, nlo_controller%reg_data%n_emitters
              emitter = nlo_controller%reg_data%emitters(i_em)
              sqme = sqme + nlo_controller%real_terms%compute (emitter, &
@@ -9059,103 +9055,98 @@ method may modify the [[core_state]] workspace object.
     class default
        core_is_user_defined = .false.
     end select
-    select case (term%nlo_type)
-    case (BORN, NLO_VIRTUAL, NLO_DGLAP, NLO_REAL)
-       if (core_is_user_defined) then
-          select type (core_state => term%core_state)
-          class is (user_defined_state_t)
-             select type (core)
-             class is (prc_user_defined_base_t)
-                call core%compute_alpha_s (core_state, term%ren_scale)
-             end select
+    if (core_is_user_defined) then
+       select type (core_state => term%core_state)
+       class is (user_defined_state_t)
+          select type (core)
+          class is (prc_user_defined_base_t)
+             call core%compute_alpha_s (core_state, term%ren_scale)
           end select
-          n_amps = term%int_hard%get_n_matrix_elements ()
-          n_sub = term%int_hard%get_n_sub ()
-          if (n_sub > 0) then
-             select type (core)
-             class is (prc_user_defined_base_t)
-                if (core%includes_polarization ()) then
-                   n_hel = 4
-                else
-                   n_hel = 1
-                end if
-             end select
-             n_amps = n_amps - n_hel * n_sub
-          else
-             n_hel = 1
-          end if
-          select case (term%nlo_type)
-          case (NLO_VIRTUAL)
-             do i = 1, n_amps
-                select type (core)
-                class is (prc_blha_t)
-                   i_virt = core%get_helicity_list (i)
-                class default
-                   i_virt = 1
-                end select
-                i_born = i_virt + n_hel
-                select type (core)
-                class is (prc_user_defined_base_t)
-                   call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
-                end select
-                term%amp(i_virt) = cmplx (sqme_virt(3), 0, default)
-                if (term%nlo_controller%settings%use_internal_color_correlations) then
-                   term%amp(i_born) = cmplx (sqme_virt(4), 0, default)
-                else
-                   select type (core)
-                   class is (prc_blha_t)
-                      call core%compute_sqme_cc_raw (i, term%p_hard, term%ren_scale, &
-                         sqme_cc, bad_point)
-                      term%amp (i_born) = cmplx (sqme_virt(4), 0, default)
-                      do i_sub = 1, n_sub - 1
-                         i_cc = core%get_helicity_list (i + n_hel)
-                         i_cc = i_cc + (i_sub + 1) * n_hel
-                         term%amp(i_cc) = cmplx (sqme_cc(i_sub), 0, default)
-                      end do 
-                   end select
-                end if
-             end do
-          case (BORN, NLO_DGLAP)
+       end select
+       n_amps = term%int_hard%get_n_matrix_elements ()
+       n_sub = term%int_hard%get_n_sub ()
+       if (n_sub > 0) then
+          select type (core)
+          class is (prc_user_defined_base_t)
+             if (core%includes_polarization ()) then
+                n_hel = 4
+             else
+                n_hel = 1
+             end if
+          end select
+          n_amps = n_amps - n_hel * n_sub
+       else
+          n_hel = 1
+       end if
+       select case (term%nlo_type)
+       case (NLO_VIRTUAL)
+          do i = 1, n_amps
              select type (core)
              class is (prc_blha_t)
-                do i = 1, n_amps
-                   call core%compute_sqme_born (i, term%p_hard, term%ren_scale, &
-                      sqme, bad_point)
-                   i_born = core%get_helicity_list (i)
-                   term%amp(i_born) = cmplx (sqme, 0, default)
-                end do
-             type is (prc_threshold_t)
-                call core%update_alpha_s (term%core_state, term%fac_scale)
-                do i = 1, n_amps
-                   term%amp(i) = cmplx (core%compute_sqme (i, term%p_hard), 0 , default)
-                end do
-             type is (prc_user_defined_test_t)
-                call core%update_alpha_s (term%core_state, term%fac_scale)
-                do i = 1, n_amps
-                   term%amp(i) = cmplx (core%compute_sqme (i, term%p_hard), 0 , default)
-                end do
+                i_virt = core%get_helicity_list (i)
+             class default
+                i_virt = 1
              end select
-          end select
-          !!! OpenLoops already includes a factor of 1 / 4 in the amplitudes. Undo it. 
-          select type (core)
-          type is (prc_openloops_t)
-             if (core%includes_polarization ()) term%amp = four * term%amp
-          end select
-       else
-          do i = 1, term%config%n_allowed
-             term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
-                term%config%flv(i), term%config%hel(i), term%config%col(i), &
-                term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
-                term%core_state)
+             i_born = i_virt + n_hel
+             select type (core)
+             class is (prc_user_defined_base_t)
+                call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
+             end select
+             term%amp(i_virt) = cmplx (sqme_virt(3), 0, default)
+             if (term%nlo_controller%settings%use_internal_color_correlations) then
+                term%amp(i_born) = cmplx (sqme_virt(4), 0, default)
+             else
+                select type (core)
+                class is (prc_blha_t)
+                   call core%compute_sqme_cc_raw (i, term%p_hard, term%ren_scale, &
+                      sqme_cc, bad_point)
+                   term%amp (i_born) = cmplx (sqme_virt(4), 0, default)
+                   do i_sub = 1, n_sub - 1
+                      i_cc = core%get_helicity_list (i + n_hel)
+                      i_cc = i_cc + (i_sub + 1) * n_hel
+                      term%amp(i_cc) = cmplx (sqme_cc(i_sub), 0, default)
+                   end do 
+                end select
+             end if
           end do
-          if (associated (term%nlo_controller)) &
-             call term%nlo_controller%set_fac_scale (term%fac_scale)
-       end if
-       call term%int_hard%set_matrix_element (term%amp)
-    case (NLO_MISMATCH)
-       !!! TODO: (cw-2016-08-02): Modernize mismatch
-       !call term%evaluate_interaction_sub (component(i_component), 1, 1)
-    end select  
+       case (BORN, NLO_DGLAP)
+          select type (core)
+          class is (prc_blha_t)
+             do i = 1, n_amps
+                call core%compute_sqme_born (i, term%p_hard, term%ren_scale, &
+                   sqme, bad_point)
+                i_born = core%get_helicity_list (i)
+                term%amp(i_born) = cmplx (sqme, 0, default)
+             end do
+          type is (prc_threshold_t)
+             call core%update_alpha_s (term%core_state, term%fac_scale)
+             do i = 1, n_amps
+                term%amp(i) = cmplx (core%compute_sqme (i, term%p_hard), 0 , default)
+             end do
+          type is (prc_user_defined_test_t)
+             call core%update_alpha_s (term%core_state, term%fac_scale)
+             do i = 1, n_amps
+                term%amp(i) = cmplx (core%compute_sqme (i, term%p_hard), 0 , default)
+             end do
+          end select
+       end select
+       !!! OpenLoops already includes a factor of 1 / 4 in the amplitudes. Undo it. 
+       select type (core)
+       type is (prc_openloops_t)
+          if (core%includes_polarization ()) term%amp = four * term%amp
+       end select
+    else
+       call vector4_write_set (term%p_hard)
+       do i = 1, term%config%n_allowed
+          term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
+             term%config%flv(i), term%config%hel(i), term%config%col(i), &
+             term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
+             term%core_state)
+       end do
+       if (associated (term%nlo_controller)) &
+          call term%nlo_controller%set_fac_scale (term%fac_scale)
+    end if
+    call term%int_hard%set_matrix_element (term%amp)
   end subroutine term_instance_evaluate_interaction
 
 @ %def term_instance_evaluate_interaction
@@ -10416,26 +10407,32 @@ terms, iterating over all active process components.
        alpha_s_sub_set = .false.
        do i = 1, size (instance%term)
           associate (term => instance%term(i))
-             if (term%active .and. term%passed .and. term%nlo_type == NLO_REAL) then
-                if (i /= i_real_sub) then
-                   core => instance%process%cm%get_core (term%config%i_core)
-                   if (.not. alpha_s_sub_set .and. i_real_sub > 0) then
-                      call set_alpha_s_nlo (instance%term(i_real_sub))
-                      alpha_s_sub_set = .true.
+             if (term%active .and. term%passed .and. term%nlo_type > BORN) then
+                if (term%nlo_type == NLO_REAL) then
+                   if (i /= i_real_sub) then
+                      if (.not. alpha_s_sub_set .and. i_real_sub > 0) then
+                         call set_alpha_s_nlo (instance%term(i_real_sub))
+                         alpha_s_sub_set = .true.
+                      end if
+                   else
+                      call set_alpha_s_nlo (term)
                    end if
+                else
                    call set_alpha_s_nlo (term)
-                end if
+                end if 
              end if
           end associate
        end do
        do i = 1, size (instance%term)
           associate (term => instance%term(i))
              if (term%active .and. term%passed) then
-                select type (phs => term%k_term%phs)
-                type is (phs_fks_t)
-                   core => instance%process%cm%get_core (term%config%i_core)
-                   call term%apply_fks (core)
-                end select
+                core => instance%process%cm%get_core (term%config%i_core)
+                if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) then
+                   call set_sqme_born (term, 1) 
+                   call term%nlo_controller%evaluate_color_correlations &
+                      (core, term%core_state, term%fac_scale, 1, term%nlo_type)
+                end if
+                if (term%nlo_type == NLO_REAL) call term%apply_fks (core)
              end if
           end associate
        end do
@@ -10466,6 +10463,19 @@ terms, iterating over all active process components.
       call term%nlo_controller%set_alpha_s_sub &
          (core%get_alpha_s (term%core_state))
     end subroutine set_alpha_s_nlo
+
+    subroutine set_sqme_born (term, i_flv)
+      type(term_instance_t), intent(inout) :: term
+      integer, intent(in) :: i_flv
+      real(default) :: sqme
+      sqme = real (term%connected%trace%get_matrix_element (i_flv))
+      select case (term%nlo_type)
+      case (NLO_REAL)
+         term%nlo_controller%real_terms%sqme_born (i_flv) = sqme
+      case (NLO_MISMATCH)
+         term%nlo_controller%soft_mismatch%sqme_born (i_flv) = sqme
+      end select
+    end subroutine set_sqme_born
   end subroutine process_instance_evaluate_trace
 
 @ %def process_instance_evaluate_trace
