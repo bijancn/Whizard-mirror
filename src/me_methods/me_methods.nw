@@ -439,9 +439,193 @@ assumed to be zero and not called again if it has been zero [[cutoff]] times.
 @ %def helicity_selection_write
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Test process type}
+For the following tests, we define a simple implementation of the abstract
+[[prc_core_t]], designed such as to complement the [[prc_test_t]]
+process definition type.
+
+Note that it is not given that the actual process is defined as
+[[prc_test_t]] type.  We enforce this by calling
+[[prc_test_create_library]].  The driver component in the process core
+will then become of type [[prc_test_t]].
+@
+<<[[prc_test_core.f90]]>>=
+<<File header>>
+
+module prc_test_core
+
+<<Use kinds>>
+  use io_units
+  use lorentz
+  use interactions
+  use prc_test
+  use prc_core
+
+<<Standard module head>>
+
+<<Prc test core: public>>
+
+<<Prc test core: types>>
+
+contains
+
+<<Prc test core: procedures>>
+
+end module prc_test_core
+@ %def prc_test_core
+<<Prc test core: public>>=
+  public :: test_t
+<<Prc test core: types>>=
+  type, extends (prc_core_t) :: test_t
+   contains
+   <<Prc test core: test type: TBP>>
+  end type test_t
+
+@ %def test_t
+<<Prc test core: test type: TBP>>=
+  procedure :: write => test_write
+<<Prc test core: procedures>>=
+  subroutine test_write (object, unit)
+    class(test_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, "(3x,A)")  "test type implementing prc_test"
+  end subroutine test_write
+
+@ %def test_write
+<<Prc test core: test type: TBP>>=
+  procedure :: write_name => test_write_name
+<<Prc test core: procedures>>=
+  subroutine test_write_name (object, unit)
+    class(test_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u,"(1x,A)")  "Core: prc_test"
+  end subroutine test_write_name
+
+@ %def test_write_name
+@ This process type always needs a MC parameter set and a
+single term.  This only state is always allowed.
+<<Prc test core: test type: TBP>>=
+  procedure :: needs_mcset => test_needs_mcset
+  procedure :: get_n_terms => test_get_n_terms
+  procedure :: is_allowed => test_is_allowed
+<<Prc test core: procedures>>=
+  function test_needs_mcset (object) result (flag)
+    class(test_t), intent(in) :: object
+    logical :: flag
+    flag = .true.
+  end function test_needs_mcset
+
+  function test_get_n_terms (object) result (n)
+    class(test_t), intent(in) :: object
+    integer :: n
+    n = 1
+  end function test_get_n_terms
+
+  function test_is_allowed (object, i_term, f, h, c) result (flag)
+    class(test_t), intent(in) :: object
+    integer, intent(in) :: i_term, f, h, c
+    logical :: flag
+    flag = .true.
+  end function test_is_allowed
+
+@ %def test_needs_mcset
+@ %def test_get_n_terms
+@ %def test_is_allowed
+@ Transfer the generated momenta directly to the hard interaction in
+the (only) term.  We assume that everything has been set up correctly,
+so the array fits.
+<<Prc test core: test type: TBP>>=
+  procedure :: compute_hard_kinematics => test_compute_hard_kinematics
+<<Prc test core: procedures>>=
+  subroutine test_compute_hard_kinematics &
+       (object, p_seed, i_term, int_hard, core_state)
+    class(test_t), intent(in) :: object
+    type(vector4_t), dimension(:), intent(in) :: p_seed
+    integer, intent(in) :: i_term
+    type(interaction_t), intent(inout) :: int_hard
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+    call int_hard%set_momenta (p_seed)
+  end subroutine test_compute_hard_kinematics
+
+@ %def test_compute_hard_kinematics
+@ This procedure is not called for [[test_t]], just a placeholder.
+<<Prc test core: test type: TBP>>=
+  procedure :: compute_eff_kinematics => test_compute_eff_kinematics
+<<Prc test core: procedures>>=
+  subroutine test_compute_eff_kinematics &
+       (object, i_term, int_hard, int_eff, core_state)
+    class(test_t), intent(in) :: object
+    integer, intent(in) :: i_term
+    type(interaction_t), intent(in) :: int_hard
+    type(interaction_t), intent(inout) :: int_eff
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+  end subroutine test_compute_eff_kinematics
+
+@ %def test_compute_eff_kinematics
+@ Transfer the incoming momenta of [[p_seed]] directly to the
+effective interaction, and vice versa for the outgoing momenta.
+
+[[int_hard]] is left untouched since [[int_eff]] is an alias (via
+pointer) to it.
+<<Prc test core: test type: TBP>>=
+  procedure :: recover_kinematics => test_recover_kinematics
+<<Prc test core: procedures>>=
+  subroutine test_recover_kinematics &
+       (object, p_seed, int_hard, int_eff, core_state)
+    class(test_t), intent(in) :: object
+    type(vector4_t), dimension(:), intent(inout) :: p_seed
+    type(interaction_t), intent(inout) :: int_hard
+    type(interaction_t), intent(inout) :: int_eff
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+    integer :: n_in
+    n_in = int_eff%get_n_in ()
+    call int_eff%set_momenta (p_seed(1:n_in), outgoing = .false.)
+    p_seed(n_in+1:) = int_eff%get_momenta (outgoing = .true.)
+  end subroutine test_recover_kinematics
+
+@ %def test_recover_kinematics
+@ Compute the amplitude.  The driver ignores all quantum numbers and,
+in fact, returns a constant.  Nevertheless, we properly transfer the
+momentum vectors.
+<<Prc test core: test type: TBP>>=
+  procedure :: compute_amplitude => test_compute_amplitude
+<<Prc test core: procedures>>=
+  function test_compute_amplitude &
+       (object, j, p, f, h, c, fac_scale, ren_scale, alpha_qcd_forced, core_state) &
+       result (amp)
+    class(test_t), intent(in) :: object
+    integer, intent(in) :: j
+    type(vector4_t), dimension(:), intent(in) :: p
+    integer, intent(in) :: f, h, c
+    real(default), intent(in) :: fac_scale, ren_scale
+    real(default), intent(in), allocatable :: alpha_qcd_forced
+    class(prc_core_state_t), intent(inout), allocatable, optional :: core_state
+    complex(default) :: amp
+    real(default), dimension(:,:), allocatable :: parray
+    integer :: i, n_tot
+    select type (driver => object%driver)
+    type is (prc_test_t)
+       if (driver%scattering) then
+          n_tot = 4
+       else
+          n_tot = 3
+       end if
+       allocate (parray (0:3,n_tot))
+       forall (i = 1:n_tot)  parray(:,i) = vector4_get_components (p(i))
+       amp = driver%get_amplitude (parray)
+    end select
+  end function test_compute_amplitude
+
+@ %def test_compute_amplitude
+@
+@
 \section{Template matrix elements}
 
-Here, we provide template matrix elements that are in structure 
+Here, we provide template matrix elements that are in structure
 very similar to \oMega\ matrix elements, but do not need its
 infrastructure. Per default, the matrix elements are flat, i.e.
 they have the constant value one. Analogous to the \oMega\
@@ -451,7 +635,7 @@ to the templates (via the makefile) and the driver.
 <<File header>>
 
 module prc_template_me
-  
+
   use, intrinsic ::  iso_c_binding !NODEP!
 
   use kinds
@@ -481,7 +665,7 @@ module prc_template_me
 <<Template matrix elements: interfaces>>
 
 contains
-  
+
 <<Template matrix elements: procedures>>
 
 end module prc_template_me
@@ -497,7 +681,7 @@ For the process definition we implement an extension of the
    contains
    <<Template matrix elements: template ME def: TBP>>
   end type template_me_def_t
-  
+
 @ %def template_me_def_t
 <<Template matrix elements: template ME def: TBP>>=
   procedure, nopass :: type_string => template_me_def_type_string
