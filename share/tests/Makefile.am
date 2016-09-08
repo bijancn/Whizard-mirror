@@ -647,7 +647,6 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/smtest_15.ref \
     functional_tests/ref-output/sm_cms_1.ref \
     functional_tests/ref-output/nlo_1.ref \
-    functional_tests/ref-output/soft_mismatch.ref \
     functional_tests/ref-output/mssmtest_1.ref \
     functional_tests/ref-output/mssmtest_2.ref \
     functional_tests/ref-output/spincor_1.ref \
@@ -691,6 +690,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/nlo_2.ref \
     functional_tests/ref-output-double/nlo_3.ref \
     functional_tests/ref-output-double/nlo_4.ref \
+    functional_tests/ref-output-double/soft_mismatch.ref \
     functional_tests/ref-output-double/openloops_1.ref \
     functional_tests/ref-output-double/powheg_1.ref \
     functional_tests/ref-output-double/defaultcuts.ref \
@@ -742,6 +742,7 @@ REF_OUTPUT_FILES_PREC = \
     functional_tests/ref-output-prec/nlo_2.ref \
     functional_tests/ref-output-prec/nlo_3.ref \
     functional_tests/ref-output-prec/nlo_4.ref \
+    functional_tests/ref-output-prec/soft_mismatch.ref \
     functional_tests/ref-output-prec/defaultcuts.ref \
     functional_tests/ref-output-prec/parton_shower_2.ref \
     functional_tests/ref-output-prec/helicity.ref \
