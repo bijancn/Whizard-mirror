@@ -2353,6 +2353,25 @@ and allocates the corresponding manager instance.
 @ %def cm_get_core
 @
 <<PCM base: cm: TBP>>=
+  procedure :: get_i_core_from_i_component => cm_get_i_core_from_i_component
+<<PCM base: procedures>>=
+  function cm_get_i_core_from_i_component (cm, i_component) result (i_core)
+    integer :: i_core
+    class(core_manager_t), intent(in) :: cm
+    integer, intent(in) :: i_component
+    integer :: i
+    i_core = 0
+    do i = 1, cm%n_cores
+       if (cm%def_ptr_index(i) == i_component) then
+          i_core = i
+          exit
+       end if
+    end do
+  end function cm_get_i_core_from_i_component
+
+@ %def cm_get_i_core_from_i_component
+@ 
+<<PCM base: cm: TBP>>=
   procedure :: write => cm_write
 <<PCM base: procedures>>=
   subroutine cm_write (cm, unit)
@@ -3116,26 +3135,22 @@ This restriction could be removed by extending the code in the
 <<Processes: process: TBP>>=
   procedure :: setup_beams_sqrts => process_setup_beams_sqrts
 <<Processes: procedures>>=
-  subroutine process_setup_beams_sqrts (process, sqrts, beam_structure, i_core)
+  subroutine process_setup_beams_sqrts (process, sqrts, beam_structure)!, i_core)
     class(process_t), intent(inout) :: process
     real(default), intent(in) :: sqrts
     type(beam_structure_t), intent(in), optional :: beam_structure
-    integer, intent(in), optional :: i_core
     type(pdg_array_t), dimension(:,:), allocatable :: pdg_in
     integer, dimension(2) :: pdg_scattering
     type(flavor_t), dimension(2) :: flv_in
-    integer :: i, i0, i_term_base
+    integer :: i, i0, i_core
     class(prc_core_t), pointer :: core => null ()
+    integer :: i_component
     allocate (pdg_in (2, process%meta%n_components))
     i0 = 0
     do i = 1, process%meta%n_components
        if (process%component(i)%active) then
-          if (present (i_core)) then
-             core => process%cm%get_core (i_core)
-          else
-             i_term_base = process%component(i)%i_term(1) 
-             core => process%cm%get_core(process%term(i_term_base)%i_core)
-          end if
+          i_core = process%cm%get_i_core_from_i_component (i) 
+          core => process%cm%get_core (i_core)
           pdg_in(:,i) = core%data%get_pdg_in ()
           if (i0 == 0)  i0 = i
        end if
@@ -3168,27 +3183,21 @@ particle mass, hence no extra argument.
 <<Processes: process: TBP>>=
   procedure :: setup_beams_decay => process_setup_beams_decay
 <<Processes: procedures>>=
-  subroutine process_setup_beams_decay (process, rest_frame, beam_structure, i_core)
+  subroutine process_setup_beams_decay (process, rest_frame, beam_structure)
     class(process_t), intent(inout) :: process
     logical, intent(in), optional :: rest_frame
     type(beam_structure_t), intent(in), optional :: beam_structure
-    integer, intent(in), optional :: i_core
     type(pdg_array_t), dimension(:,:), allocatable :: pdg_in
     integer, dimension(1) :: pdg_decay
     type(flavor_t), dimension(1) :: flv_in
-    integer :: i, i0, i_term_base
+    integer :: i, i0, i_core
     class(prc_core_t), pointer :: core => null () 
     allocate (pdg_in (1, process%meta%n_components))
     i0 = 0
     do i = 1, process%meta%n_components
        if (process%component(i)%active) then
-          if (present (i_core)) then
-             core => process%cm%get_core (i_core)
-          else
-             i_term_base = process%component(i)%i_term(1)
-             core => process%cm%get_core (process%term(i_term_base)%i_core)
-          end if
-          !pdg_in(:,i) = process%component(i)%get_pdg_in ()
+          i_core = process%cm%get_i_core_from_i_component (i)
+          core => process%cm%get_core (i_core)
           pdg_in(:,i) = core%data%get_pdg_in ()
           if (i0 == 0)  i0 = i
        end if
@@ -3260,13 +3269,13 @@ incoming PDG values for this beam and component.
   subroutine process_get_pdg_in (process, pdg_in)
     class(process_t), intent(in) :: process
     type(pdg_array_t), dimension(:,:), allocatable, intent(out) :: pdg_in
-    integer :: i, i_term_base
+    integer :: i, i_core 
     class(prc_core_t), pointer :: core => null ()
     allocate (pdg_in (process%config%n_in, process%meta%n_components))
     do i = 1, process%meta%n_components
        if (process%component(i)%active) then
-          i_term_base = process%component(i)%i_term(1)
-          core => process%cm%get_core (process%term(i_term_base)%i_core)
+          i_core = process%cm%get_i_core_from_i_component (i)
+          core => process%cm%get_core (i_core)
           pdg_in(:,i) = core%data%get_pdg_in ()
        end if
     end do    
@@ -7805,7 +7814,7 @@ allocated explicitly.
     select type (phs => term%k_term%phs)
     type is (phs_fks_t)
        call phs%allocate_momenta (phs_config, &
-          .not. (term%nlo_type == NLO_REAL))
+          .not. (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH))
        call phs%init_phs_identifiers (term%nlo_controller%reg_data)
        call term%nlo_controller%set_alr_to_i_phs (phs%phs_identifiers)
     end select
@@ -8527,7 +8536,8 @@ relevant for a NLO algorithm.
        allocate (term%amp (term%config%n_allowed))
     end select
     term%amp = cmplx (0, 0, default)
-    decrease_n_tot = term%nlo_type == NLO_REAL .and. term%config%i_term /= term%config%i_sub 
+    decrease_n_tot = (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) &
+        .and. term%config%i_term /= term%config%i_sub 
     if (present (real_finite)) then 
        if (real_finite) decrease_n_tot = .false.
     end if
@@ -11369,19 +11379,23 @@ and directly set the coupling value that comes together with a particle set.
     logical, intent(in), optional :: only_blha
     integer :: i
     logical :: skip_other
+    type(process_component_def_t), pointer :: config => null ()
     val = .false.; skip_other = .false.
     if (present (only_blha)) skip_other = only_blha
     associate (cm => instance%process%cm)
        do i = 1, cm%n_cores
-         select type (core => cm%cores(i)%core)
-         class is (prc_blha_t)
-            val = .true.
-            exit
-         class is (prc_threshold_t)
-            if (skip_other) cycle
-            val = .true.
-            exit
-         end select
+          config => instance%process%get_component_def_ptr (cm%def_ptr_index(i))
+          if (config%get_active_component () .or. cm%sub(i)) then
+             select type (core => cm%cores(i)%core)
+             class is (prc_blha_t)
+                val = .true.
+                exit
+             class is (prc_threshold_t)
+                if (skip_other) cycle
+                val = .true.
+                exit
+             end select
+          end if
        end do
     end associate
   end function process_instance_needs_extra_code
