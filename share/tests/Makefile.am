@@ -690,8 +690,8 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/nlo_2.ref \
     functional_tests/ref-output-double/nlo_3.ref \
     functional_tests/ref-output-double/nlo_4.ref \
-    functional_tests/ref-output-double/fks_resonance_1.ref \
-    functional_tests/ref-output-double/soft_mismatch.ref \
+    functional_tests/ref-output-double/fks_res_1.ref \
+    functional_tests/ref-output-double/fks_res_2.ref \
     functional_tests/ref-output-double/openloops_1.ref \
     functional_tests/ref-output-double/powheg_1.ref \
     functional_tests/ref-output-double/defaultcuts.ref \
@@ -743,7 +743,7 @@ REF_OUTPUT_FILES_PREC = \
     functional_tests/ref-output-prec/nlo_2.ref \
     functional_tests/ref-output-prec/nlo_3.ref \
     functional_tests/ref-output-prec/nlo_4.ref \
-    functional_tests/ref-output-prec/soft_mismatch.ref \
+    functional_tests/ref-output-prec/fks_res_2.ref \
     functional_tests/ref-output-prec/defaultcuts.ref \
     functional_tests/ref-output-prec/parton_shower_2.ref \
     functional_tests/ref-output-prec/helicity.ref \
@@ -960,8 +960,8 @@ MISC_TESTS_SIN = \
     functional_tests/nlo_2.sin \
     functional_tests/nlo_3.sin \
     functional_tests/nlo_4.sin \
-    functional_tests/fks_resonance_1.sin \
-    functional_tests/soft_mismatch.sin \
+    functional_tests/fks_res_1.sin \
+    functional_tests/fks_res_2.sin \
     functional_tests/openloops_1.sin \
     functional_tests/powheg_1.sin \
     functional_tests/mssmtest_1.sin \
