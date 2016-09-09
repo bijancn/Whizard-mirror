@@ -1501,18 +1501,21 @@ there is only a soft singularity if the radiated parton becomes soft.
     type(flv_structure_t), dimension(:), allocatable :: flv_born
     type(flv_structure_t), dimension(:), allocatable :: flv_real
     integer, dimension(:), allocatable :: emitters
-    integer :: n_regions
-    integer :: n_emitters
-    integer :: n_flv_born, n_flv_real
-    integer :: n_in
-    integer :: n_legs_born, n_legs_real
+    integer :: n_regions = 0
+    integer :: n_emitters = 0
+    integer :: n_flv_born = 0
+    integer :: n_flv_real = 0
+    integer :: n_in = 0
+    integer :: n_legs_born = 0
+    integer :: n_legs_real = 0
+    integer :: n_phs = 0
     integer, dimension(:), allocatable :: underlying_borns
     type(flavor_t) :: flv_extra
     class(fks_mapping_t), allocatable :: fks_mapping
     integer, dimension(:), allocatable :: resonances
-    integer :: n_phs
     type(resonance_contributors_t), dimension(:), allocatable :: alr_contributors
     integer, dimension(:), allocatable :: alr_to_i_contributor
+    integer, dimension(:), allocatable :: i_phs_to_i_con
   contains
   <<fks regions: reg data: TBP>>
   end type region_data_t
@@ -2508,6 +2511,59 @@ of the present one is increased.
   end subroutine region_data_find_resonances
 
 @ %def region_data_find_resonances
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: set_alr_to_i_phs => region_data_set_alr_to_i_phs
+<<fks regions: procedures>>=
+  subroutine region_data_set_alr_to_i_phs (reg_data)
+    class(region_data_t), intent(inout) :: reg_data
+    integer :: alr
+    integer :: i_res, emitter, i_con, i_phs
+    type(phs_identifier_t), dimension(:), allocatable :: phs_id_tmp
+    logical :: share_emitter, phs_exist
+    type(resonance_contributors_t) :: contributors
+    allocate (phs_id_tmp (reg_data%n_phs))
+    if (allocated (reg_data%resonances)) then
+       allocate (reg_data%i_phs_to_i_con (reg_data%n_phs))
+       do i_em = 1, size (reg_data%emitters)
+          emitter = reg_data%emitters(i_em)
+          do i_res = 1, size (reg_data%resonances)
+             if (reg_data%emitter_is_compatible_with_resonance (i_res, emitter)) then
+                alr = find_alr (emitter, i_res)
+                if (alr == 0) call msg_fatal ("Could not find requested alpha region!")
+                i_con = reg_data%alr_to_i_contributor (alr)
+                call reg_data%get_contributors (i_res, emitter, contributors%c, share_emitter)
+                if (.not. share_emitter) cycle
+                call check_for_phs_identifier &
+                   (phs_id_tmp, reg_data%n_in, emitter, contributors%c, phs_exist, i_phs)
+                if (phs_id_tmp(i_phs)%emitter < 0) then
+                   phs_id_tmp(i_phs)%emitter = emitter
+                   allocate (phs_id_tmp(i_phs)%contributors (size (contributors%c)))
+                   phs_id_tmp(i_phs)%contributors = contributors%c
+                end if
+                reg_data%i_phs_to_i_con (i_phs) = i_con
+             end if
+             if (allocated (contributors%c)) deallocate (contributors%c)
+          end do
+       end do 
+    end if
+  contains
+    function find_alr (emitter, i_res) result (alr)
+       integer :: alr
+       integer, intent(in) :: emitter, i_res
+       integer :: i
+       do i = 1, reg_data%n_regions
+          if (reg_data%regions(i)%emitter == emitter .and. &
+              reg_data%regions(i)%i_res == i_res) then
+             alr = i
+             return
+          end if 
+       end do
+       alr = 0
+    end function find_alr
+  end subroutine region_data_set_alr_to_i_phs
+
+@ %def region_data_set_alr_to_i_phs
 @
 <<fks regions: reg data: TBP>>=
   procedure :: set_contributors => region_data_set_contributors
@@ -11219,7 +11275,8 @@ $\xi$.
           emitter = phs_id%emitter
           if (allocated (phs_id%contributors)) then
              do i_con = 1, size (phs_id%contributors)
-                call phs%generator%compute_xi_max (emitter, i_phs, p, i_con)
+                print *, 'i_phs: ', i_phs, 'i_con: ', i_con
+                call phs%generator%compute_xi_max (emitter, i_phs, p, 1)
              end do
           else
              call phs%generator%compute_xi_max (emitter, i_phs, p)
