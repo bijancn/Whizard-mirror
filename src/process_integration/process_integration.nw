@@ -2553,6 +2553,7 @@ module process
   use nlo_data, only: fks_template_t
   use fks_regions, only: create_resonance_histories_for_threshold
 
+  use parton_states, only: connected_state_t
   use pcm_base
   use pcm
   use process_counter
@@ -4285,7 +4286,29 @@ usual error propagation gives
   end function process_get_n_allowed_born
 
 @ %def process_get_n_allowed_born
-@ 
+@ Workaround getter. Would be better to remove this.
+<<Process: process: TBP>>=
+  procedure :: get_pcm_ptr => process_get_pcm_ptr
+<<Process: procedures>>=
+  function process_get_pcm_ptr (process) result (pcm)
+    class(pcm_t), pointer :: pcm
+    class(process_t), intent(in), target :: process
+    pcm => process%pcm
+  end function process_get_pcm_ptr
+
+@ %def process_get_pcm_ptr
+@ Workaround getter. Would be better to remove this.
+<<Process: process: TBP>>=
+  procedure :: component_is_active => process_component_is_active
+<<Process: procedures>>=
+  function process_component_is_active (process, i_comp) result (val)
+    logical :: val
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: i_comp
+    val = process%component(i_comp)%active
+  end function process_component_is_active
+
+@ %def process_component_is_active
 <<Process: process: TBP>>=
   procedure :: is_active_component => process_is_active_component 
 <<Process: procedures>>=
@@ -7166,6 +7189,17 @@ parameters from outside this module.
 @ %def process_get_constants
 @
 <<Process: process: TBP>>=
+  procedure :: get_config => process_get_config
+<<Process: procedures>>=
+  function process_get_config (process) result (config)
+    type(process_config_data_t) :: config
+    class(process_t), intent(in) :: process
+    config = process%config
+  end function process_get_config
+
+@ %def process_get_config
+@
+<<Process: process: TBP>>=
   procedure :: get_md5sum_constants => process_get_md5sum_constants
 <<Process: procedures>>=
   function process_get_md5sum_constants (process, i_component, &
@@ -7222,7 +7256,7 @@ one that is stored in the process object.
        if (flag)  return
     end do
   end function process_contains_unstable
-    
+
 @ %def process_contains_unstable
 @ The nominal process energy.
 <<Process: process: TBP>>=
@@ -7233,8 +7267,19 @@ one that is stored in the process object.
     real(default) :: sqrts
     sqrts = process%beam_config%data%get_sqrts ()
   end function process_get_sqrts
-  
+
 @ %def process_get_sqrts
+@
+<<Process: process: TBP>>=
+  procedure :: get_meta => process_get_meta
+<<Process: procedures>>=
+  function process_get_meta (process) result (meta)
+    type(process_metadata_t) :: meta
+    class(process_t), intent(in) :: process
+    meta = process%meta
+  end function process_get_meta
+
+@ %def process_get_meta
 <<Process: process: TBP>>=
   procedure :: has_matrix_element => process_has_matrix_element
 <<Process: procedures>>=
@@ -7271,6 +7316,17 @@ one that is stored in the process object.
   end function process_get_beam_data_ptr
 
 @ %def process_get_beam_data_ptr
+@
+<<Process: process: TBP>>=
+  procedure :: get_beam_config => process_get_beam_config
+<<Process: procedures>>=
+  function process_get_beam_config (process) result (beam_config)
+    type(process_beam_config_t) :: beam_config
+    class(process_t), intent(in) :: process
+    beam_config = process%beam_config
+  end function process_get_beam_config
+
+@ %def process_get_beam_config
 @ Return true if lab and c.m.\ frame coincide for this process.
 <<Process: process: TBP>>=
   procedure :: cm_frame => process_cm_frame
@@ -10201,7 +10257,7 @@ to subobject of [[instance]].
                 term%nlo_controller => component%nlo_controller
                 term%nlo_type = component%config%get_nlo_type ()
                 call term%setup_kinematics (instance%sf_chain, & 
-                   process%beam_config, component%config%phs_config, &
+                   process%get_beam_config (), component%config%phs_config, &
                    combined_nlo_integration)
              end associate
           end if
@@ -10211,22 +10267,23 @@ to subobject of [[instance]].
     !call instance%setup_blha_structure_functions ()
 
     do i = 1, process%config%n_terms
+       !  TODO: (bcn 2016-09-13) make this a term_instance_init_from_process
        associate (term => instance%term(i))
          i_component = process%term(i)%i_component
          if (i_component /= 0) then
-            associate (component => instance%component(i_component))
-              core => process%cm%get_core (process%term(i)%i_core)
+            associate (component => process%component(i_component))
+              core => process%get_core_term(i)
               call term%init (process%term(i), &
-                   process%beam_config, &
+                   process%get_beam_config (), &
                    core, &
-                   process%meta%var_list, &
-                   real_finite = component%config%component_type == COMP_REAL_FIN)
+                   process%get_var_list_ptr (), &
+                   real_finite = component%component_type == COMP_REAL_FIN)
               select type (phs => term%k_term%phs)
               type is (phs_fks_t)
-                 call term%set_emitter (process%pcm)
-                 call term%setup_fks_kinematics (process%meta%var_list)
+                 call term%set_emitter (process%get_pcm_ptr ())
+                 call term%setup_fks_kinematics (process%get_var_list_ptr ())
               end select
-              call term%setup_expressions (process%meta, process%config)
+              call term%setup_expressions (process%get_meta (), process%get_config ())
            end associate
          end if
        end associate
@@ -10246,28 +10303,40 @@ to subobject of [[instance]].
     type(connected_state_t), dimension(:), allocatable :: connected
     class(process_instance_t), intent(in) :: instance
     integer, intent(in) :: i_component
-    integer :: i, i_conn
-    integer :: n_conn
-    n_conn = 0
-    associate (component => instance%component(i_component), &
-       process => instance%process)
-       do i = 1, process%config%n_terms
-          if (process%term(i)%i_component == i_component) then
-             n_conn = n_conn + 1
-          end if 
-       end do
-       allocate (connected (n_conn))
-       i_conn = 1
-       do i = 1, process%config%n_terms
-          if (process%term(i)%i_component == i_component) then
-             connected (i_conn) = instance%term(i)%connected
-             i_conn = i_conn + 1
-          end if
-       end do
-    end associate
+    connected = instance%process%get_connected_states (i_component, &
+        instance%term(:)%connected)
   end function process_instance_get_connected_states
 
 @ %def process_instance_get_connected_states
+@
+<<Process: process: TBP>>=
+  procedure :: get_connected_states => process_get_connected_states
+<<Process: procedures>>=
+  function process_get_connected_states (process, i_component, &
+         connected_terms) result (connected)
+    type(connected_state_t), dimension(:), allocatable :: connected
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: i_component
+    type(connected_state_t), dimension(:), intent(in) :: connected_terms
+    integer :: i, i_conn
+    integer :: n_conn
+    n_conn = 0
+    do i = 1, process%config%n_terms
+       if (process%term(i)%i_component == i_component) then
+          n_conn = n_conn + 1
+       end if 
+    end do
+    allocate (connected (n_conn))
+    i_conn = 1
+    do i = 1, process%config%n_terms
+       if (process%term(i)%i_component == i_component) then
+          connected (i_conn) = connected_terms(i)
+          i_conn = i_conn + 1
+       end if
+    end do
+  end function process_get_connected_states
+
+@ %def process_get_connected_states
 @ All the NLO-specific initialization.
 <<Instances: process instance: TBP>>=
   procedure :: init_nlo_configuration => &
@@ -10283,6 +10352,7 @@ to subobject of [[instance]].
     integer :: i_born, i_real
     logical :: use_internal_cc, use_internal_sc
     logical :: combined_nlo_integration = .false.
+    class(pcm_t), pointer :: pcm
 
     select type (pcm_instance => instance%pcm)
     type is (pcm_instance_nlo_t)
@@ -10294,7 +10364,7 @@ to subobject of [[instance]].
        data_real = process%get_constants (i_real)
        i_real = process%get_i_term (i_real)
        do i_component = 1, size (instance%component)
-          if (process%component(i_component)%active) then
+          if (process%component_is_active (i_component)) then
              associate (component => instance%component(i_component))
                component%nlo_controller => pcm_instance%controller
                associate (nlo_controller => component%nlo_controller)
@@ -10302,27 +10372,28 @@ to subobject of [[instance]].
                   select case (nlo_type)
                   case (BORN)
                   case (NLO_REAL)
-                     select type (pcm => instance%process%pcm)
+                     pcm => instance%process%get_pcm_ptr ()
+                     select type (pcm)
                      type is (pcm_nlo_t)
                         nlo_controller%settings => pcm%settings
-                        nlo_controller%reg_data => pcm%region_data 
+                        nlo_controller%reg_data => pcm%region_data
                         use_internal_cc = pcm%settings%use_internal_color_correlations
                         use_internal_sc = .false.
                         combined_nlo_integration = pcm%settings%combined_integration
-                      end select
-                      component%nlo_type = NLO_REAL
-                      if (nlo_controller%needs_initialization) then
-                         call nlo_controller%set_internal_procedures &
-                            (use_internal_cc, use_internal_sc)
-                         term = process%get_term (i_real)
-                         call nlo_controller%init_color_data  &
-                            ([data_born, data_real], &
-                            term%flv, term%col)
-                         call nlo_controller%setup_real_terms &
-                            (nlo_controller%settings%fks_template%subtraction_disabled, &
-                             process%get_sqrts ())
-                         nlo_controller%needs_initialization = .false.
-                      end if
+                     end select
+                     component%nlo_type = NLO_REAL
+                     if (nlo_controller%needs_initialization) then
+                        call nlo_controller%set_internal_procedures &
+                           (use_internal_cc, use_internal_sc)
+                        term = process%get_term (i_real)
+                        call nlo_controller%init_color_data  &
+                           ([data_born, data_real], &
+                           term%flv, term%col)
+                        call nlo_controller%setup_real_terms &
+                           (nlo_controller%settings%fks_template%subtraction_disabled, &
+                            process%get_sqrts ())
+                        nlo_controller%needs_initialization = .false.
+                     end if
                   case (NLO_VIRTUAL)
                      i_born = component%config%config%get_associated_born ()
                      component%nlo_type = NLO_VIRTUAL
@@ -11272,7 +11343,7 @@ interaction object, including beams, radiation, and hard interaction.
     state_flv = instance%term(i_term)%connected%get_state_flv ()
   end function process_instance_get_state_flv
   
-@ %def process_get_term_state_flv
+@ %def process_instance_get_state_flv
 @ Return pointers to the parton states of a selected term.
 <<Instances: process instance: TBP>>=
   procedure :: get_isolated_state_ptr => &
