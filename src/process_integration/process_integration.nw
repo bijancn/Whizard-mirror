@@ -8980,14 +8980,13 @@ relevant for a NLO algorithm.
 <<Instances: term instance: TBP>>=
   procedure :: init => term_instance_init
 <<Instances: procedures>>=
-  subroutine term_instance_init (term, &
-       config, beam_config, core, process_var_list, real_finite)
+  subroutine term_instance_init (term, process, i_term, real_finite)
     class(term_instance_t), intent(inout), target :: term
-    type(process_term_t), intent(in), target :: config
-    type(process_beam_config_t), intent(in) :: beam_config
-    class(prc_core_t), intent(in) :: core
-    type(var_list_t), intent(in), target :: process_var_list
+    type(process_t), intent(in), target:: process
+    integer, intent(in) :: i_term
     logical, intent(in), optional :: real_finite
+    class(prc_core_t), pointer :: core => null ()
+    type(process_beam_config_t) :: beam_config
     type(interaction_t), pointer :: sf_chain_int
     type(interaction_t), pointer :: src_int
     type(quantum_numbers_mask_t), dimension(:), allocatable :: mask_in
@@ -9006,8 +9005,9 @@ relevant for a NLO algorithm.
 
     me_already_squared = .false.
 
-    term%config => config
-    term%int_hard = config%int
+    term%config => process%get_term (i_term)
+    term%int_hard = term%config%int
+    core => process%get_core_term (i_term)
     call core%allocate_workspace (term%core_state)
     select type (core)
     class is (prc_user_defined_base_t)
@@ -9088,7 +9088,10 @@ relevant for a NLO algorithm.
          call term%isolated%setup_square_trace (core, mask_in, term%config%col)
     end select
     if (term%nlo_type == NLO_VIRTUAL) then
-       n_sub = term%nlo_controller%get_n_sub ()
+       select type (pcm => process%get_pcm_ptr ())
+       type is (pcm_nlo_t)
+          n_sub = pcm%get_n_sub ()
+       end select
     else
        !!! No integration of real subtraction in interactions yet
        n_sub = 0
@@ -9137,10 +9140,12 @@ relevant for a NLO algorithm.
        end if
     end do
 
+    beam_config = process%get_beam_config ()
+
     call term%connected%setup_subevt (term%isolated%sf_chain_eff, &
          beam_config%data%flv, f_in, f_out)
     call term%connected%setup_var_list &
-         (process_var_list, beam_config%data)
+         (process%get_var_list_ptr, beam_config%data)
 
     select case (term%nlo_type)
     case (NLO_REAL)
@@ -10392,11 +10397,7 @@ to subobject of [[instance]].
                  process%get_beam_config (), component%config%phs_config, &
                  combined_nlo_integration)
            end associate
-           core => process%get_core_term (i)
-           call term_instance%init (process%get_term (i), &
-                process%get_beam_config (), &
-                core, &
-                process%get_var_list_ptr (), &
+           call term_instance%init (process, i, &
                 real_finite = process%component_is_real_finite (i_component))
            select type (phs => term_instance%k_term%phs)
            type is (phs_fks_t)
