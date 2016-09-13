@@ -3232,7 +3232,7 @@ in a given position in the particle string coincide.
        integer :: i_component
        class(prc_core_t), pointer :: core => null ()
        !do i = 1, process%meta%n_components
-       do i = 1, process%config%n_terms
+       do i = 1, process%get_n_terms ()
           i_component = process%term(i)%i_component
           if (.not. process%component(i_component)%active)  cycle
           core => process%get_core_term (i)
@@ -4235,6 +4235,19 @@ usual error propagation gives
   end function process_lab_is_cm_frame
 
 @ %def process_lab_is_cm_frame
+@
+<<Process: process: TBP>>=
+  procedure :: component_is_real_finite => process_component_is_real_finite
+<<Process: procedures>>=
+  pure function process_component_is_real_finite (process, i_component) &
+         result (val)
+    logical :: val
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: i_component
+    val = process%component(i_component)%component_type == COMP_REAL_FIN
+  end function process_component_is_real_finite
+
+@ %def process_component_is_real_finite
 @ Return nlo data of a process component
 <<Process: process: TBP>>=
   procedure :: get_component_nlo_type => process_get_component_nlo_type
@@ -4248,6 +4261,18 @@ usual error propagation gives
   end function process_get_component_nlo_type
 
 @ %def process_get_component_nlo_type
+@
+<<Process: process: TBP>>=
+  procedure :: get_component => process_get_component
+<<Process: procedures>>=
+  function process_get_component (process, i) result (component)
+    type(process_component_t) :: component
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: i
+    component = process%component(i)
+  end function process_get_component
+
+@ %def process_get_component
 <<Process: process: TBP>>=
   procedure :: get_component_associated_born &
             => process_get_component_associated_born
@@ -6291,7 +6316,7 @@ configuration finalizer may include closing an open scratch file.
     integer :: i_term
     class(process_t), intent(in) :: process
     integer, intent(in) :: i_core
-    do i_term = 1, process%config%n_terms
+    do i_term = 1, process%get_n_terms ()
        if (process%term(i_term)%i_core == i_core) return
     end do
     i_term = -1
@@ -10217,29 +10242,32 @@ to subobject of [[instance]].
     type(process_t), intent(inout), target :: process
     integer :: i, i_component, i_term_base
     class(prc_core_t), pointer :: core => null ()
+    class(pcm_t), pointer :: pcm
+    type(process_term_t) :: term
     logical :: combined_nlo_integration
 
     instance%process => process
     call instance%setup_sf_chain (process%beam_config)
 
-    allocate (instance%mci_work (process%config%n_mci))
+    allocate (instance%mci_work (process%get_n_mci ()))
     do i = 1, size (instance%mci_work)
        call instance%mci_work(i)%init (process%mci_entry(i))
     end do
 
-    allocate (instance%component (process%config%n_components))
+    allocate (instance%component (process%get_n_components ()))
     do i = 1, size (instance%component)
-       if (process%component(i)%active) then
-          i_term_base = process%component(i)%i_term(1)
+       if (process%component_is_active(i)) then
+          i_term_base = process%get_base_i_term (i)
           core => process%get_core_term (i_term_base)
           associate (component => instance%component(i))
-             call component%init (process%component(i), core%data)
+             call component%init (process%get_component(i), core%data)
           end associate
        end if
     end do
 
-    call instance%process%pcm%allocate_instance (instance%pcm)
-    select type (pcm => instance%process%pcm)
+    pcm = instance%process%get_pcm_ptr ()
+    call pcm%allocate_instance (instance%pcm)
+    select type (pcm)
     type is (pcm_nlo_t)
        call instance%init_nlo_configuration ()
        combined_nlo_integration = pcm%settings%combined_integration
@@ -10247,44 +10275,34 @@ to subobject of [[instance]].
        combined_nlo_integration = .false.
     end select
 
-    !if (.not. instance%has_nlo_component ()) then
-    allocate (instance%term (process%config%n_terms))
-    do i = 1, process%config%n_terms
-       associate (term => instance%term(i))
-          i_component = process%term(i)%i_component
-          if (i_component /= 0) then
-             associate (component => instance%component(i_component))
-                term%nlo_controller => component%nlo_controller
-                term%nlo_type = component%config%get_nlo_type ()
-                call term%setup_kinematics (instance%sf_chain, & 
-                   process%get_beam_config (), component%config%phs_config, &
-                   combined_nlo_integration)
-             end associate
-          end if
-       end associate
-    end do 
-    
     !call instance%setup_blha_structure_functions ()
 
-    do i = 1, process%config%n_terms
-       !  TODO: (bcn 2016-09-13) make this a term_instance_init_from_process
-       associate (term => instance%term(i))
-         i_component = process%term(i)%i_component
+    do i = 1, process%get_n_terms ()
+       !  TODO: (bcn 2016-09-13) make this a term_instance_init_from_process ?
+       associate (term_instance => instance%term(i))
+         term = process%get_term (i)
+         i_component = term%i_component
          if (i_component /= 0) then
-            associate (component => process%component(i_component))
-              core => process%get_core_term(i)
-              call term%init (process%term(i), &
-                   process%get_beam_config (), &
-                   core, &
-                   process%get_var_list_ptr (), &
-                   real_finite = component%component_type == COMP_REAL_FIN)
-              select type (phs => term%k_term%phs)
-              type is (phs_fks_t)
-                 call term%set_emitter (process%get_pcm_ptr ())
-                 call term%setup_fks_kinematics (process%get_var_list_ptr ())
-              end select
-              call term%setup_expressions (process%get_meta (), process%get_config ())
+           associate (component => instance%component(i_component))
+              !  TODO: (bcn 2016-09-13) use instance%pcm%controller
+              term_instance%nlo_controller => component%nlo_controller
+              term_instance%nlo_type = component%config%get_nlo_type ()
+              call term_instance%setup_kinematics (instance%sf_chain, & 
+                 process%get_beam_config (), component%config%phs_config, &
+                 combined_nlo_integration)
            end associate
+           core => process%get_core_term (i)
+           call term_instance%init (process%get_term (i), &
+                process%get_beam_config (), &
+                core, &
+                process%get_var_list_ptr (), &
+                real_finite = process%component_is_real_finite (i_component))
+           select type (phs => term_instance%k_term%phs)
+           type is (phs_fks_t)
+              call term_instance%set_emitter (process%get_pcm_ptr ())
+              call term_instance%setup_fks_kinematics (process%get_var_list_ptr ())
+           end select
+           call term_instance%setup_expressions (process%get_meta (), process%get_config ())
          end if
        end associate
     end do
@@ -10321,14 +10339,14 @@ to subobject of [[instance]].
     integer :: i, i_conn
     integer :: n_conn
     n_conn = 0
-    do i = 1, process%config%n_terms
+    do i = 1, process%get_n_terms ()
        if (process%term(i)%i_component == i_component) then
           n_conn = n_conn + 1
        end if 
     end do
     allocate (connected (n_conn))
     i_conn = 1
-    do i = 1, process%config%n_terms
+    do i = 1, process%get_n_terms ()
        if (process%term(i)%i_component == i_component) then
           connected (i_conn) = connected_terms(i)
           i_conn = i_conn + 1
