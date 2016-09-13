@@ -1307,21 +1307,23 @@ elements.
 <<Parton states: isolated state: TBP>>=
   procedure :: setup_identity_trace => isolated_state_setup_identity_trace
 <<Parton states: procedures>>=
-  subroutine isolated_state_setup_identity_trace (state, core, qn_mask_in, keep_fs_flavors)
+  subroutine isolated_state_setup_identity_trace (state, core, qn_mask_in, &
+      keep_fs_flavors, keep_colors)
      class(isolated_state_t), intent(inout), target :: state
      class(prc_core_t), intent(in) :: core
-     logical, intent(in), optional :: keep_fs_flavors
      type(quantum_numbers_mask_t), intent(in), dimension(:) :: qn_mask_in
+     logical, intent(in), optional :: keep_fs_flavors, keep_colors
      type(quantum_numbers_mask_t), dimension(:), allocatable :: qn_mask
-     logical :: fs_flv_flag
-     fs_flv_flag = .true.
+     logical :: fs_flv_flag, col_flag
+     fs_flv_flag = .true.; col_flag = .true.
      if (present(keep_fs_flavors)) fs_flv_flag = .not. keep_fs_flavors 
+     if (present(keep_colors)) col_flag = .not. keep_colors
      associate (data => core%data)
         allocate (qn_mask (data%n_in + data%n_out))
         qn_mask( : data%n_in) = &
-           quantum_numbers_mask (.false., .true., .false.) .or. qn_mask_in
+           quantum_numbers_mask (.false., col_flag, .false.) .or. qn_mask_in
         qn_mask(data%n_in + 1 : ) = &
-           quantum_numbers_mask (fs_flv_flag, .true., .true.)
+           quantum_numbers_mask (fs_flv_flag, col_flag, .true.)
      end associate
      call state%int_eff%set_mask (qn_mask)
      call state%trace%init_identity (state%int_eff)
@@ -1465,7 +1467,7 @@ event output.
     reduce = .false.; fs_flv_flag = .true.
     if (present (undo_helicities)) reduce = undo_helicities
     if (present (keep_fs_flavors)) fs_flv_flag = .not. keep_fs_flavors
-    mask = quantum_numbers_mask (fs_flv_flag, .true., .true.)
+    mask = quantum_numbers_mask (fs_flv_flag, .false., .true.)
     if (present (int)) then
        src_int => int
     else
@@ -6476,25 +6478,31 @@ matrix element.
     end subroutine fill_quantum_numbers
 
     subroutine setup_states_openloops ()
-      integer :: s, f, h, i
+      integer :: s, f, c, h, i
       i = 0 
       associate (data => term%data)
          do s = 0, n_sub
              do f = 1, data%n_flv
                 do h = 1, data%n_hel
-                   i = i + 1
-                   term%flv(i) = f
-                   term%hel(i) = h
-                   !!! Dummy-initialization of color
-                   term%col(i) = 1
-                   call flv%init (data%flv_state (:,f), model)
-                   if (n_hel > 1) then
-                      call hel%init (data%hel_state (:,h))
-                      call qn%init (flv, hel, s)
-                   else
-                      call qn%init (flv, s)
-                   end if
-                   call term%int%add_state (qn)
+                   do c = 1, data%n_col
+                      i = i + 1
+                      term%flv(i) = f
+                      term%hel(i) = h
+                      !!! Dummy-initialization of color
+                      term%col(i) = c
+                      call flv%init (data%flv_state (:,f), model)
+                      call color_init_from_array (col, &
+                           data%col_state(:,:,c), &
+                           data%ghost_flag(:,c))
+                      call col(:data%n_in)%invert ()
+                      if (n_hel > 1) then
+                         call hel%init (data%hel_state (:,h))
+                         call qn%init (flv, hel, col, s)
+                      else
+                         call qn%init (flv, col, s)
+                      end if
+                      call term%int%add_state (qn)
+                  end do
                end do
              end do
          end do
@@ -8519,7 +8527,7 @@ relevant for a NLO algorithm.
     select type (core)
     class is (prc_user_defined_base_t)
        call reduce_interaction (term%int_hard, &
-          core%includes_polarization (), .true.)
+          core%includes_polarization (), .true., .true.)
        me_already_squared = .true.
        allocate (term%amp (term%int_hard%get_n_matrix_elements ()))
     class default
@@ -8563,7 +8571,7 @@ relevant for a NLO algorithm.
     select type (phs => term%k_term%phs)
       type is (phs_wood_t)
          if (me_already_squared) then
-            call term%isolated%setup_identity_trace (core, mask_in, .true.)
+            call term%isolated%setup_identity_trace (core, mask_in, .true., .true.)
          else
             call term%isolated%setup_square_trace (core, mask_in, term%config%col)
          end if
@@ -8677,17 +8685,18 @@ relevant for a NLO algorithm.
      end select
    end function undo_helicities
 
-   subroutine reduce_interaction (int, polarized_beams, keep_fs_flavors)
+   subroutine reduce_interaction (int, polarized_beams, keep_fs_flavors, &
+      keep_colors)
      type(interaction_t), intent(inout) :: int
      logical, intent(in) :: polarized_beams
-     logical, intent(in) :: keep_fs_flavors
+     logical, intent(in) :: keep_fs_flavors, keep_colors
      type(quantum_numbers_mask_t), dimension(:), allocatable :: qn_mask
      logical, dimension(:), allocatable :: mask_f, mask_c, mask_h
      integer :: n_tot, n_in
      n_in = int%get_n_in (); n_tot = int%get_n_tot ()
      allocate (qn_mask (n_tot))
      allocate (mask_f (n_tot), mask_c (n_tot), mask_h (n_tot))
-     mask_c = .true.
+     mask_c = .not. keep_colors
      mask_f (1 : n_in) = .false.
      if (keep_fs_flavors) then
         mask_f (n_in + 1 : ) = .false.
