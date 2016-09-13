@@ -3284,6 +3284,22 @@ incoming PDG values for this beam and component.
   end subroutine process_get_pdg_in
   
 @ %def process_get_pdg_in
+@
+<<Process: process: TBP>>=
+  procedure :: get_phs_config => process_get_phs_config
+<<Process: procedures>>=
+  function process_get_phs_config (process, i_component) result (phs_config)
+    class(phs_config_t), pointer :: phs_config
+    class(process_t), intent(in), target :: process
+    integer, intent(in) :: i_component
+    if (allocated (process%component)) then
+       phs_config => process%component(i_component)%phs_config
+    else
+       phs_config => null ()
+    end if
+  end function process_get_phs_config
+
+@ %def process_get_phs_config
 @ Initialize from a complete beam setup.  If the beam setup doesn't
 apply directly to the process, choose a fallback option as a straight
 scattering or decay process.
@@ -8317,21 +8333,12 @@ allocated explicitly.
 <<Instances: term instance: TBP>>=
   procedure :: setup_kinematics => term_instance_setup_kinematics
 <<Instances: procedures>>=
-  subroutine term_instance_setup_kinematics (term, sf_chain, beam_config, &
-     phs_config, combined_integration)
+  subroutine term_instance_setup_kinematics (term, sf_chain, &
+     beam_config, phs_config)
     class(term_instance_t), intent(inout) :: term
     type(sf_chain_t), intent(in), target :: sf_chain
     type(process_beam_config_t), intent(in) :: beam_config
-    class(phs_config_t), intent(inout), target :: phs_config
-    logical, intent(in), optional :: combined_integration
-    if (present (combined_integration)) then
-       if (combined_integration) then
-          select type (phs_config)
-          type is (phs_wood_config_t)
-             call phs_config%set_extended_phs ()
-          end select
-       end if
-    end if
+    class(phs_config_t), intent(in), target :: phs_config
     call term%k_term%init_sf_chain (sf_chain, beam_config)
     call term%k_term%init_phs (phs_config)
     call term%k_term%set_nlo_info (term%nlo_type)
@@ -10378,6 +10385,7 @@ to subobject of [[instance]].
     class(pcm_t), pointer :: pcm
     type(process_term_t) :: term
     logical :: combined_nlo_integration
+    class(phs_config_t), pointer :: phs_config => null ()
 
     instance%process => process
     call instance%setup_sf_chain (process%get_beam_config ())
@@ -10417,24 +10425,23 @@ to subobject of [[instance]].
          term = process%get_term_ptr (i)
          i_component = term%i_component
          if (i_component /= 0) then
-           associate (component => instance%component(i_component))
-              select type (pcm_instance => instance%pcm)
-              type is (pcm_instance_nlo_t)
-                 term_instance%nlo_controller => pcm_instance%controller
-              end select 
-              term_instance%nlo_type = process%get_nlo_type_component (i_component)
-              call term_instance%setup_kinematics (instance%sf_chain, & 
-                 process%get_beam_config (), component%config%phs_config, &
-                 combined_nlo_integration)
-           end associate
-           call term_instance%init (process, i, &
-                real_finite = process%component_is_real_finite (i_component))
-           select type (phs => term_instance%k_term%phs)
-           type is (phs_fks_t)
-              call term_instance%set_emitter (process%get_pcm_ptr ())
-              call term_instance%setup_fks_kinematics (process%get_var_list_ptr ())
-           end select
-           call term_instance%setup_expressions (process%get_meta (), process%get_config ())
+            select type (pcm_instance => instance%pcm)
+            type is (pcm_instance_nlo_t)
+               term_instance%nlo_controller => pcm_instance%controller
+            end select 
+            term_instance%nlo_type = process%get_nlo_type_component (i_component)
+            phs_config => process%get_phs_config (i_component)
+            call extend_phs_config (phs_config, combined_nlo_integration)
+            call term_instance%setup_kinematics (instance%sf_chain, & 
+               process%get_beam_config (), phs_config)
+            call term_instance%init (process, i, &
+                 real_finite = process%component_is_real_finite (i_component))
+            select type (phs => term_instance%k_term%phs)
+            type is (phs_fks_t)
+               call term_instance%set_emitter (process%get_pcm_ptr ())
+               call term_instance%setup_fks_kinematics (process%get_var_list_ptr ())
+            end select
+            call term_instance%setup_expressions (process%get_meta (), process%get_config ())
          end if
        end associate
     end do
@@ -10442,6 +10449,17 @@ to subobject of [[instance]].
 
     instance%evaluation_status = STAT_INITIAL
     core => null ()
+  contains
+    subroutine extend_phs_config (phs_config, combined_integration) 
+       class(phs_config_t), intent(inout) :: phs_config
+       logical, intent(in) :: combined_integration
+       if (combined_integration) then
+          select type (phs_config)
+          type is (phs_wood_config_t)
+             call phs_config%set_extended_phs ()
+          end select
+       end if
+    end subroutine extend_phs_config
   end subroutine process_instance_init
   
 @ %def process_instance_init
