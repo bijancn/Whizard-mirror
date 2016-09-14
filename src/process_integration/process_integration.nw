@@ -4402,6 +4402,19 @@ usual error propagation gives
 @ %def process_get_component_type
 @ 
 <<Process: process: TBP>>=
+  procedure :: get_component_i_terms => process_get_component_i_terms
+<<Process: procedures>>=
+  function process_get_component_i_terms (process, i_component) result (i_term)
+     integer, dimension(:), allocatable :: i_term 
+     class(process_t), intent(in) :: process
+     integer, intent(in) :: i_component
+     allocate (i_term (size (process%component(i_component)%i_term)))
+     i_term = process%component(i_component)%i_term
+  end function process_get_component_i_terms
+
+@ %def process_get_component_i_terms
+@
+<<Process: process: TBP>>=
   procedure :: get_n_allowed_born => process_get_n_allowed_born
 <<Process: procedures>>=
   function process_get_n_allowed_born (process, i_born) result (n_born)
@@ -8268,7 +8281,7 @@ type and contents depend on the process variant.
      !!! TODO (cw-2016-07-20): Find out whether component_instance really needs its own sqme
      !real(default) :: sqme = zero
      !type(nlo_controller_t), pointer :: nlo_controller => null ()
-     integer :: nlo_type = BORN
+     !integer :: nlo_type = BORN
    contains
    <<Instances: component instance: TBP>>
   end type component_instance_t
@@ -8329,7 +8342,7 @@ appear elsewhere.
     !object%sqme_known = .false.
     !object%sqme = zero
     !object%nlo_controller => null ()
-    object%nlo_type = BORN
+    !object%nlo_type = BORN
     !call object%k_seed%final ()
   end subroutine component_instance_final
   
@@ -8347,7 +8360,6 @@ matter of the process core.
     integer :: nlo_type
     component%config => config
     nlo_type = component%config%config%get_nlo_type ()
-    component%nlo_type = nlo_type
   end subroutine component_instance_init
 
 @ %def component_instance_init
@@ -8655,26 +8667,21 @@ stored in the kinematics subobject to their source.  This is a side effect.
     
 @ %def term_instance_return_beam_momenta
 @
-<<Instances: component instance: TBP>>=
-  generic :: apply_damping_factor => & 
-     apply_damping_factor_single, apply_damping_factor_array
-  procedure :: apply_damping_factor_single => &
-     component_instance_apply_damping_factor_single
-  procedure :: apply_damping_factor_array => &
-     component_instance_apply_damping_factor_array
+<<Instances: term instance: TBP>>=
+  procedure :: apply_damping_factor => term_instance_apply_damping_factor
 <<Instances: procedures>>=
-  subroutine component_instance_apply_damping_factor_single (component, term)
-    class(component_instance_t), intent(inout) :: component
-    type(term_instance_t), intent(inout) :: term
+  subroutine term_instance_apply_damping_factor (term, component_type)
+    class(term_instance_t), intent(inout) :: term
+    integer, intent(in) :: component_type
     real(default) :: E_gluon, sqme
     integer :: nlegs
     sqme = real (term%connected%trace%get_matrix_element (1))
-    call msg_debug2 (D_PROCESS_INTEGRATION, "component_instance_apply_damping_factor")
+    call msg_debug2 (D_PROCESS_INTEGRATION, "term_instance_apply_damping_factor")
     associate (nlo_controller => term%nlo_controller)
-       select case (component%config%component_type)
+       select case (component_type)
        case (COMP_REAL_FIN, COMP_REAL_SING)
           nlegs = nlo_controller%reg_data%n_legs_real
-          select case (component%config%component_type)
+          select case (component_type)
           case (COMP_REAL_FIN)
              call msg_debug2 (D_PROCESS_INTEGRATION, "Real finite")
              E_gluon = energy (term%p_hard(nlegs))
@@ -8689,144 +8696,22 @@ stored in the kinematics subobject to their source.  This is a side effect.
     end associate
     call msg_debug2 (D_PROCESS_INTEGRATION, "apply_damping: sqme", sqme)
     call term%connected%trace%set_matrix_element (cmplx (sqme, 0, default))
-  end subroutine component_instance_apply_damping_factor_single
+  end subroutine term_instance_apply_damping_factor
 
-@ %def component_instance_apply_damping_factor_single
-@
-<<Instances: procedures>>=
-  subroutine component_instance_apply_damping_factor_array (component, terms)
-    class(component_instance_t), intent(inout) :: component
-    type(term_instance_t), intent(inout), dimension(:) :: terms
-    integer :: i, i_term
-    do i = 1, size (component%config%i_term)
-       i_term = component%config%i_term(i) 
-       call component%apply_damping_factor (terms(i_term))
-    end do
-  end subroutine component_instance_apply_damping_factor_array
-
-@ %def component_instance_apply_damping_factor
-@
-@ Evaluate the trace of the transition matrix, convoluted with the initial
-state, and summed over all terms.  The trace evaluators of the
-individual terms have only a single matrix element. We implicitly drop the
-imaginary part of the terms, which should be zero anyway.
-<<Instances: component instance: TBP>>=
-  procedure :: evaluate_sqme => component_instance_evaluate_sqme
-<<Instances: procedures>>=
-  subroutine component_instance_evaluate_sqme (component, cm, term)
-    class(component_instance_t), intent(inout) :: component
-    type(core_manager_t), intent(in) :: cm
-    type(term_instance_t), dimension(:), intent(inout), target :: term
-    integer :: j, i
-    class(prc_core_t), pointer :: core => null ()
-
-    !component%sqme = zero
-    associate (i_term => component%config%i_term)
-      do j = 1, size (i_term)
-         i = i_term(j)
-         if (term(i)%passed) then
-            core => cm%get_core(term(i)%config%i_core)
-            !!!TODO: (cw-2016-08-02): We are going to eliminate them all
-            !call component%evaluate_sqme_born (term(i), core)
-            !call component%evaluate_sqme_real (term(i), 1)
-            call component%evaluate_sqme_virt (term(i), core)
-            call component%evaluate_sqme_mismatch (term(i))
-            call component%evaluate_sqme_dglap (term(i), core)
-         end if
-      end do
-    end associate
-    !component%sqme_known = .true.
-    core => null ()
-  end subroutine component_instance_evaluate_sqme
-  
-@ %def component_instance_evaluate_sqme
-@ Perform the matrix-element-evaluation if the component is flagged as virtual
-<<Instances: component instance: TBP>>=
-  procedure :: evaluate_sqme_virt => component_instance_evaluate_sqme_virt
-<<Instances: procedures>>=
-  subroutine component_instance_evaluate_sqme_virt (component, term, core)
-     class(component_instance_t), intent(inout) :: component
-     type(term_instance_t), intent(inout), target :: term
-     class(prc_core_t), intent(in) :: core
-
-     if (term%nlo_type /= NLO_VIRTUAL) return
-     associate (nlo_controller => term%nlo_controller)
-
-        if (debug2_active (D_VIRTUAL)) then
-           call msg_debug2 (D_VIRTUAL, "Evaluating virtual-subtracted matrix elements")
-           print *, 'alpha_s: ', core%get_alpha_s (term%core_state)
-           print *, 'ren_scale: ', term%ren_scale
-           print *, 'fac_scale: ', term%fac_scale
-        end if
-
-        call nlo_controller%set_alpha_s_sub (core%get_alpha_s (term%core_state))
-        select type (core)
-        class is (prc_user_defined_base_t)
-           call core%update_alpha_s (term%core_state, term%fac_scale)
-        end select
-        call nlo_controller%transfer_to_virtual (term%int_hard%get_momenta (), &
-           term%ren_scale, term%fac_scale)
-        !!! TODO(cw 2016-07-08): Handle bad point
-        !component%sqme = term%connected%trace%get_matrix_element_proc () * term%weight
-        !!! TODO(cw 2016-07-08): Handle multiple Born flavors 
-        !call term%connected%trace%set_matrix_element (cmplx (component%sqme, 0, default))
-        call term%connected%trace%set_matrix_element &
-           (term%connected%trace%get_matrix_element_proc () * term%weight)
-     end associate
-  end subroutine component_instance_evaluate_sqme_virt
-
-@ %def component_instance_evaluate_sqme_virt
-@
-<<Instances: component instance: TBP>>=
-  procedure :: evaluate_sqme_mismatch => component_instance_evaluate_sqme_mismatch
-<<Instances: procedures>>=
-  subroutine component_instance_evaluate_sqme_mismatch (component, term)
-    class(component_instance_t), intent(inout) :: component
-    type(term_instance_t), intent(inout) :: term
-    if (term%nlo_type /= NLO_MISMATCH) return
-    associate (nlo_controller => term%nlo_controller)
-       call term%connected%trace%set_matrix_element &
-          (cmplx (nlo_controller%compute_sqme_mismatch () * term%weight, 0, default))
-    end associate
-  end subroutine component_instance_evaluate_sqme_mismatch
-
-@ %def component_instance_evaluate_sqme_mismatch
-@ Perform the matrix-element evaluation if the component is a DGLAP remnant
-<<Instances: component instance: TBP>>=
-  procedure :: evaluate_sqme_dglap => component_instance_evaluate_sqme_dglap 
-<<Instances: procedures>>=
-  subroutine component_instance_evaluate_sqme_dglap (component, term, core)
-    class(component_instance_t), intent(inout) :: component
-    type(term_instance_t), intent(inout) :: term
-    class(prc_core_t), intent(in) :: core
-    if (term%nlo_type /= NLO_DGLAP) return
-    associate (nlo_controller => term%nlo_controller)
-       if (.not. nlo_controller%dglap_remnant_is_required ()) then
-          !component%sqme = zero
-          return
-       end if
-       call nlo_controller%set_alpha_s_sub (core%get_alpha_s (term%core_state))
-       !call nlo_controller%evaluate_dglap_remnant (component%sqme)
-       !!! TODO: (cw 2016-04-26) Use correct i_flv_born
-       !component%sqme = nlo_controller%sqme_collector%sqme_dglap_list (1)
-    end associate
-  end subroutine component_instance_evaluate_sqme_dglap
-
-@ %def component_instance_evaluate_sqme_dglap
+@ %def term_instance_apply_damping_factor
 @ Perform the matrix-element evaluation if the component is flagged as real
-@ Get nlo-type and emitter of the component.
 <<Instances: component instance: TBP>>=
-  procedure :: get_nlo_type => component_instance_get_nlo_type
+  !procedure :: get_nlo_type => component_instance_get_nlo_type
 <<Instances: procedures>>=
-  elemental function component_instance_get_nlo_type (component) &
-       result (nlo_type)
-    class(component_instance_t), intent(in) :: component
-    integer :: nlo_type
-    nlo_type = component%nlo_type
-  end function component_instance_get_nlo_type
+  !elemental function component_instance_get_nlo_type (component) &
+  !     result (nlo_type)
+  !  class(component_instance_t), intent(in) :: component
+  !  integer :: nlo_type
+  !  nlo_type = component%nlo_type
+  !end function component_instance_get_nlo_type
 
 @ %def component_instance_get_nlo_type
-@
+@ Get nlo-type and emitter of the component.
 <<Instances: component instance: TBP>>=
   procedure :: get_component_type => &
                    component_instance_get_component_type
@@ -9372,6 +9257,77 @@ The quantum numbers mask of the incoming particle
   end subroutine term_instance_apply_fks
 
 @ %def term_instance_apply_fks
+@
+<<Instances: term instance: TBP>>=
+  procedure :: evaluate_sqme_virt => term_instance_evaluate_sqme_virt
+<<Instances: procedures>>=
+  subroutine term_instance_evaluate_sqme_virt (term, core)
+     class(term_instance_t), intent(inout) :: term
+     class(prc_core_t), intent(in) :: core
+
+     if (term%nlo_type /= NLO_VIRTUAL) call msg_fatal &
+        ("Trying to evaluate virtual matrix element with unsuited term_instance.")
+     associate (nlo_controller => term%nlo_controller)
+
+        if (debug2_active (D_VIRTUAL)) then
+           call msg_debug2 (D_VIRTUAL, "Evaluating virtual-subtracted matrix elements")
+           print *, 'alpha_s: ', core%get_alpha_s (term%core_state)
+           print *, 'ren_scale: ', term%ren_scale
+           print *, 'fac_scale: ', term%fac_scale
+        end if
+
+        call nlo_controller%set_alpha_s_sub (core%get_alpha_s (term%core_state))
+        select type (core)
+        class is (prc_user_defined_base_t)
+           call core%update_alpha_s (term%core_state, term%fac_scale)
+        end select
+        call nlo_controller%transfer_to_virtual (term%int_hard%get_momenta (), &
+           term%ren_scale, term%fac_scale)
+        !!! TODO(cw 2016-07-08): Handle bad point
+        !!! TODO(cw 2016-07-08): Handle multiple Born flavors 
+        call term%connected%trace%set_matrix_element &
+           (term%connected%trace%get_matrix_element_proc () * term%weight)
+     end associate
+  end subroutine term_instance_evaluate_sqme_virt
+
+@ %def term_instance_evaluate_sqme_virt
+@
+<<Instances: term instance: TBP>>=
+  procedure :: evaluate_sqme_mismatch => term_instance_evaluate_sqme_mismatch
+<<Instances: procedures>>=
+  subroutine term_instance_evaluate_sqme_mismatch (term)
+    class(term_instance_t), intent(inout) :: term
+    if (term%nlo_type /= NLO_MISMATCH) call msg_fatal &
+       ("Trying to evaluate soft mismatch with unsuited term_instance.")
+    associate (nlo_controller => term%nlo_controller)
+       call term%connected%trace%set_matrix_element &
+          (cmplx (nlo_controller%compute_sqme_mismatch () * term%weight, 0, default))
+    end associate
+  end subroutine term_instance_evaluate_sqme_mismatch
+
+@ %def term_instance_evaluate_sqme_mismatch
+@ 
+<<Instances: term instance: TBP>>=
+  procedure :: evaluate_sqme_dglap => term_instance_evaluate_sqme_dglap 
+<<Instances: procedures>>=
+  subroutine term_instance_evaluate_sqme_dglap (term, core)
+    class(term_instance_t), intent(inout) :: term
+    class(prc_core_t), intent(in) :: core
+    if (term%nlo_type /= NLO_DGLAP) call msg_fatal &
+       ("Trying to evaluate DGLAP remnant with unsuited term_instance.")
+    associate (nlo_controller => term%nlo_controller)
+       if (.not. nlo_controller%dglap_remnant_is_required ()) then
+          return
+       end if
+       call msg_fatal ("DGLAP component has not been modernized!")
+       !call nlo_controller%set_alpha_s_sub (core%get_alpha_s (term%core_state))
+       !call nlo_controller%evaluate_dglap_remnant (component%sqme)
+       !!! TODO: (cw 2016-04-26) Use correct i_flv_born
+       !component%sqme = nlo_controller%sqme_collector%sqme_dglap_list (1)
+    end associate
+  end subroutine term_instance_evaluate_sqme_dglap
+
+@ %def term_instance_evaluate_sqme_dglap
 @ Reset the term instance: clear the parton-state expressions and deactivate.
 <<Instances: term instance: TBP>>=
   procedure :: reset => term_instance_reset
@@ -10465,7 +10421,6 @@ to subobject of [[instance]].
                         use_internal_sc = .false.
                         combined_nlo_integration = pcm%settings%combined_integration
                      end select
-                     component%nlo_type = NLO_REAL
                      if (nlo_controller%needs_initialization) then
                         call nlo_controller%set_internal_procedures &
                            (use_internal_cc, use_internal_sc)
@@ -10479,18 +10434,12 @@ to subobject of [[instance]].
                      end if
                   case (NLO_VIRTUAL)
                      i_born = component%config%config%get_associated_born ()
-                     component%nlo_type = NLO_VIRTUAL
                      call pcm_instance%controller%init_virtual ()
                      if (.not. nlo_controller%settings%with_virtual_subtraction) &
                         call pcm_instance%controller%disable_virtual_subtraction ()
-                  case (NLO_MISMATCH)
-                     component%nlo_type = NLO_MISMATCH
                   case (NLO_DGLAP)
                      i_born = component%config%config%get_associated_born ()
-                     component%nlo_type = NLO_DGLAP
                      call pcm_instance%controller%init_dglap_remnant ()
-                  case (NLO_SUBTRACTION)
-                     component%nlo_type = NLO_SUBTRACTION
                   end select
                end associate
              end associate
@@ -10944,26 +10893,26 @@ terms, iterating over all active process components.
                  call term%nlo_controller%evaluate_color_correlations &
                     (core, term%core_state, term%fac_scale, 1, term%nlo_type)
               end if
-              if (term%nlo_type == NLO_REAL) call term%apply_fks (core)
+              select case (term%nlo_type)
+              case (NLO_REAL)
+                 call term%apply_fks (core)
+              case (NLO_VIRTUAL)
+                 call term%evaluate_sqme_virt (core)
+              case (NLO_MISMATCH)
+                 call term%evaluate_sqme_mismatch ()
+              case (NLO_DGLAP)
+                 call term%evaluate_sqme_dglap (core) 
+              end select
             end if
           end associate
        end do
 
        core => null ()
-       !!! (TODO: cw-2016-07-18) This should be done by the terms
        instance%evaluation_status = STAT_EVALUATED_TRACE
-       do i = 1, size (instance%component)
-          associate (component => instance%component(i))
-            if (component%active) then
-               call component%evaluate_sqme ( &
-                    instance%process%get_core_manager (), instance%term)
-               instance%evaluation_status = STAT_EVALUATED_TRACE
-               if (component%nlo_type == NLO_REAL .and. &
-                   instance%process%uses_powheg_damping_factors ()) &
-                  call component%apply_damping_factor (instance%term) 
-            end if
-          end associate
-       end do
+
+       !!! (TODO: cw-2016-09-14): Find a better place for this
+       call instance%apply_powheg_dampings ()
+
        instance%sqme = instance%sqme + real (sum (&
           instance%term%connected%trace%get_matrix_element (1) * &
           instance%term%weight))
@@ -10995,6 +10944,36 @@ terms, iterating over all active process components.
   end subroutine process_instance_evaluate_trace
 
 @ %def process_instance_evaluate_trace
+@
+<<Instances: process instance: TBP>>=
+  procedure :: apply_powheg_dampings => process_instance_apply_powheg_dampings
+<<Instances: procedures>>=
+  subroutine process_instance_apply_powheg_dampings (instance, only_component)
+    class(process_instance_t), intent(inout) :: instance
+    integer, intent(in), optional :: only_component
+    integer :: i, i_term 
+    integer, dimension(:), allocatable :: i_terms
+    integer :: i_skip
+    i_skip = 0; if (present (only_component)) i_skip = only_component
+    associate (process => instance%process)
+       if (.not. process%uses_powheg_damping_factors ()) return
+       do i = 1, process%get_n_components ()
+          if (i_skip > 0 .and. i /= i_skip) cycle
+          if (process%is_active_component (i) .and. &
+             process%get_component_nlo_type (i) == NLO_REAL) then
+             allocate (i_terms (size (process%get_component_i_terms (i))))
+             i_terms = process%get_component_i_terms (i)
+             do i_term = 1, size (i_terms) 
+                call instance%term(i_term)%apply_damping_factor &
+                   (process%get_component_type (i))
+             end do
+          end if
+          if (allocated (i_terms)) deallocate (i_terms)
+       end do
+    end associate
+  end subroutine process_instance_apply_powheg_dampings
+
+@ %def process_instance_apply_powheg_dampings 
 @ Final step of process evaluation: evaluate the matrix elements, and compute
 the trace (summed over quantum numbers) for all terms.  Finally, sum up the
 terms, iterating over all active process components.
@@ -11092,7 +11071,7 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
          call term%apply_fks (core)
          if (instance%process%uses_powheg_damping_factors ()) then
             i_real = instance%get_associated_real ()
-            call instance%component(i_real)%apply_damping_factor (term)
+            call instance%apply_powheg_dampings (i_real)
          end if
        end associate
     end select
