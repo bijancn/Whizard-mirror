@@ -1501,18 +1501,21 @@ there is only a soft singularity if the radiated parton becomes soft.
     type(flv_structure_t), dimension(:), allocatable :: flv_born
     type(flv_structure_t), dimension(:), allocatable :: flv_real
     integer, dimension(:), allocatable :: emitters
-    integer :: n_regions
-    integer :: n_emitters
-    integer :: n_flv_born, n_flv_real
-    integer :: n_in
-    integer :: n_legs_born, n_legs_real
+    integer :: n_regions = 0
+    integer :: n_emitters = 0
+    integer :: n_flv_born = 0
+    integer :: n_flv_real = 0
+    integer :: n_in = 0
+    integer :: n_legs_born = 0
+    integer :: n_legs_real = 0
+    integer :: n_phs = 0
     integer, dimension(:), allocatable :: underlying_borns
     type(flavor_t) :: flv_extra
     class(fks_mapping_t), allocatable :: fks_mapping
     integer, dimension(:), allocatable :: resonances
-    integer :: n_phs
     type(resonance_contributors_t), dimension(:), allocatable :: alr_contributors
     integer, dimension(:), allocatable :: alr_to_i_contributor
+    integer, dimension(:), allocatable :: i_phs_to_i_con
   contains
   <<fks regions: reg data: TBP>>
   end type region_data_t
@@ -2508,6 +2511,59 @@ of the present one is increased.
   end subroutine region_data_find_resonances
 
 @ %def region_data_find_resonances
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: set_i_phs_to_i_con => region_data_set_i_phs_to_i_con
+<<fks regions: procedures>>=
+  subroutine region_data_set_i_phs_to_i_con (reg_data)
+    class(region_data_t), intent(inout) :: reg_data
+    integer :: alr
+    integer :: i_res, emitter, i_con, i_phs, i_em
+    type(phs_identifier_t), dimension(:), allocatable :: phs_id_tmp
+    logical :: share_emitter, phs_exist
+    type(resonance_contributors_t) :: contributors
+    allocate (phs_id_tmp (reg_data%n_phs))
+    if (allocated (reg_data%resonances)) then
+       allocate (reg_data%i_phs_to_i_con (reg_data%n_phs))
+       do i_em = 1, size (reg_data%emitters)
+          emitter = reg_data%emitters(i_em)
+          do i_res = 1, size (reg_data%resonances)
+             if (reg_data%emitter_is_compatible_with_resonance (i_res, emitter)) then
+                alr = find_alr (emitter, i_res)
+                if (alr == 0) call msg_fatal ("Could not find requested alpha region!")
+                i_con = reg_data%alr_to_i_contributor (alr)
+                call reg_data%get_contributors (i_res, emitter, contributors%c, share_emitter)
+                if (.not. share_emitter) cycle
+                call check_for_phs_identifier &
+                   (phs_id_tmp, reg_data%n_in, emitter, contributors%c, phs_exist, i_phs)
+                if (phs_id_tmp(i_phs)%emitter < 0) then
+                   phs_id_tmp(i_phs)%emitter = emitter
+                   allocate (phs_id_tmp(i_phs)%contributors (size (contributors%c)))
+                   phs_id_tmp(i_phs)%contributors = contributors%c
+                end if
+                reg_data%i_phs_to_i_con (i_phs) = i_con
+             end if
+             if (allocated (contributors%c)) deallocate (contributors%c)
+          end do
+       end do 
+    end if
+  contains
+    function find_alr (emitter, i_res) result (alr)
+       integer :: alr
+       integer, intent(in) :: emitter, i_res
+       integer :: i
+       do i = 1, reg_data%n_regions
+          if (reg_data%regions(i)%emitter == emitter .and. &
+              reg_data%regions(i)%i_res == i_res) then
+             alr = i
+             return
+          end if 
+       end do
+       alr = 0
+    end function find_alr
+  end subroutine region_data_set_i_phs_to_i_con
+
+@ %def region_data_set_i_phs_to_i_con
 @
 <<fks regions: reg data: TBP>>=
   procedure :: set_contributors => region_data_set_contributors
@@ -5095,7 +5151,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   type :: soft_mismatch_t
     logical :: active = .true.
     type(region_data_t), pointer :: reg_data => null ()
-    real(default), dimension(:), pointer :: sqme_born => null ()
+    real(default), dimension(:), allocatable :: sqme_born
     real(default), dimension(:,:,:), allocatable :: sqme_born_cc
     type(real_kinematics_t), pointer :: real_kinematics => null ()
     type(soft_subtraction_t) :: sub_soft
@@ -5122,6 +5178,9 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
        soft_mismatch%reg_data => reg_data
        !soft_mismatch%sqme_born => sqme_collector%sqme_subtraction_born_list
        !soft_mismatch%sqme_born_cc => sqme_collector%sqme_born_cc
+       allocate (soft_mismatch%sqme_born (reg_data%n_flv_born))
+       allocate (soft_mismatch%sqme_born_cc (reg_data%n_legs_born, &
+          reg_data%n_legs_born, reg_data%n_flv_born))
        call soft_mismatch%sub_soft%init (reg_data, n_in, nlegs_born, nlegs_born + 1)
        soft_mismatch%sub_soft%xi2_expanded = .false.
        soft_mismatch%real_kinematics => real_kinematics
@@ -8176,13 +8235,17 @@ and virtual counterterms.
        nlo_controller_evaluate_color_correlations
 <<nlo controller: procedures>>=
   subroutine nlo_controller_evaluate_color_correlations (nlo_controller, core, &
-     core_state, fac_scale, i_flv_born, bad_point)
+     core_state, fac_scale, i_flv_born, nlo_type, bad_point)
     class(nlo_controller_t), intent(inout) :: nlo_controller
     class(prc_core_t), intent(inout) :: core
     class(prc_core_state_t), intent(inout), allocatable :: core_state
     real(default), intent(in) :: fac_scale
     integer, intent(in) :: i_flv_born
-    logical, intent(out) :: bad_point
+    integer, intent(in) :: nlo_type
+    logical, intent(out), optional :: bad_point
+    logical :: bp
+    real(default), dimension(:,:), allocatable :: sqme_cc
+    real(default) :: sqme_born
     call msg_debug2 (D_SUBTRACTION, "nlo_controller_evaluate_color_correlations: " // &
          "nlo_controller%settings%use_internal_color_correlations", &
          nlo_controller%settings%use_internal_color_correlations)
@@ -8197,19 +8260,39 @@ and virtual counterterms.
                 nlo_controller%real_kinematics%p_born_cms%get_momenta(1), &
                 fac_scale, &
                 !collector%sqme_born_cc (:,:,i_flv_born), bad_point, &
-                real_terms%sqme_born_cc (:,:,i_flv_born), bad_point, &
+                !real_terms%sqme_born_cc (:,:,i_flv_born), bp, &
+                sqme_cc, bp, &
                 !collector%sqme_subtraction_born_list (i_flv_born))
-                real_terms%sqme_born (i_flv_born))
+                !real_terms%sqme_born (i_flv_born))
+                sqme_born)
           end select
        else
           !collector%sqme_born_cc (:,:,i_flv_born) = &
-          real_terms%sqme_born_cc (:,:,i_flv_born) = &
+          !real_terms%sqme_born_cc (:,:,i_flv_born) = &
+          select case (nlo_type)
+          case (NLO_REAL)
+             sqme_born = nlo_controller%real_terms%sqme_born (i_flv_born)
+          case (NLO_MISMATCH)
+             sqme_born = nlo_controller%soft_mismatch%sqme_born (i_flv_born) 
+          case (default)
+             !TODO (cw-2016-09-08): Give error message here
+          end select
+          sqme_cc = sqme_born * &
              !collector%sqme_subtraction_born_list (i_flv_born) * &
-             real_terms%sqme_born (i_flv_born) * &
+             !real_terms%sqme_born (i_flv_born) * &
              nlo_controller%color_data%beta_ij (:,:,i_flv_born)
-          bad_point = .false.
+          bp = .false.
        end if
     end associate 
+    select case (nlo_type)
+    case (NLO_REAL)
+       nlo_controller%real_terms%sqme_born_cc (:,:,i_flv_born) = sqme_cc
+    case (NLO_MISMATCH)
+       nlo_controller%soft_mismatch%sqme_born_cc (:,:,i_flv_born) = sqme_cc
+    case default
+       !TODO (cw-2016-09-08): Give error message here
+    end select
+    if (present (bad_point)) bad_point = bp
   end subroutine nlo_controller_evaluate_color_correlations
 
 @ %def nlo_controller_evaluate_color_correlations
@@ -8247,11 +8330,11 @@ and virtual counterterms.
 <<nlo controller: nlo controller: TBP>>=
   procedure :: compute_sqme_mismatch => nlo_controller_compute_sqme_mismatch
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_compute_sqme_mismatch (nlo_controller)
+  function nlo_controller_compute_sqme_mismatch (nlo_controller) result (sqme)
+    real(default) :: sqme
     class(nlo_controller_t), intent(inout) :: nlo_controller
-    !nlo_controller%sqme_collector%sqme_mismatch = &
-    !   nlo_controller%soft_mismatch%evaluate (nlo_controller%alpha_s_sub)
-  end subroutine nlo_controller_compute_sqme_mismatch
+    sqme = nlo_controller%soft_mismatch%evaluate (nlo_controller%alpha_s_sub)
+  end function nlo_controller_compute_sqme_mismatch
 
 @ %def nlo_controller_sqme_mismatch
 @
@@ -8327,17 +8410,6 @@ one to determine this.
 
 @ %def nlo_controller_set_fixed_order_event_mode
 @ %def nlo_controller_set_powheg_mode
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: set_real_sqme_born => nlo_controller_set_real_sqme_born
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_set_real_sqme_born (nlo_controller, sqme_born_list)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    real(default), intent(in), dimension(:), target :: sqme_born_list
-    nlo_controller%real_terms%sqme_born = sqme_born_list
-  end subroutine nlo_controller_set_real_sqme_born
-
-@ %def nlo_controller_set_real_sqme_born
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: set_alr_to_i_phs => nlo_controller_set_alr_to_i_phs
@@ -11184,7 +11256,7 @@ $\xi$.
           emitter = phs_id%emitter
           if (allocated (phs_id%contributors)) then
              do i_con = 1, size (phs_id%contributors)
-                call phs%generator%compute_xi_max (emitter, i_phs, p, i_con)
+                call phs%generator%compute_xi_max (emitter, i_phs, p, 1)
              end do
           else
              call phs%generator%compute_xi_max (emitter, i_phs, p)
@@ -11258,7 +11330,7 @@ $\xi$.
   end function compute_beta_massless
 
   function compute_beta_massive (q2, k0_rec, uk_rec, &
-                                 k0_em_born, uk_em_born) result (beta)
+     k0_em_born, uk_em_born) result (beta)
     real(default), intent(in) :: q2, k0_rec, uk_rec
     real(default), intent(in) :: k0_em_born, uk_em_born
     real(default) :: beta

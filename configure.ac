@@ -962,5 +962,7 @@ AC_CONFIG_FILES([scripts/whizard-relocate.sh], [chmod u+x scripts/whizard-reloca
 
 AC_OUTPUT()
 
+WO_SUMMARY()
+
 ########################################################################
 
