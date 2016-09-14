@@ -9859,6 +9859,7 @@ selected by the [[i_mci]] index above.
      integer :: i_mci = 0
      integer :: selected_channel = 0
      type(sf_chain_t) :: sf_chain
+     logical, dimension(:), allocatable :: component_active
      type(term_instance_t), dimension(:), allocatable :: term
      type(mci_work_t), dimension(:), allocatable :: mci_work
      class(pcm_instance_t), allocatable :: pcm
@@ -9903,8 +9904,7 @@ parameters, or if the [[verbose]] option is set.
          if (allocated (meta%component_id)) then
             write (u, "(3x,A)")  "Process components:"
             do i = 1, size (meta%component_id)
-               if (object%process%is_active_component (i)) then
-               !if (object%component(i)%active) then
+               if (object%component_active (i)) then
                   write (u, "(3x,'*')", advance="no")
                else
                   write (u, "(4x)", advance="no")
@@ -10057,17 +10057,19 @@ selected MCI parameter set.
     integer :: i, j
     integer, dimension(:), allocatable :: i_term
     associate (mci_work => instance%mci_work(instance%i_mci))
-      associate (process => instance%process)
-         do i = 1, instance%process%get_n_components ()
-            if (process%is_active_component (i)) then
-              allocate (i_term (size (process%get_component_i_terms (i))))
-              i_term = process%get_component_i_terms (i)
-              do j = 1, size (i_term)
-                 instance%term(i_term(j))%active = .true.
-              end do
-            end if
-         end do
-      end associate
+      instance%component_active (mci_work%get_active_components ()) = .true.
+    end associate
+    associate (process => instance%process)
+       do i = 1, instance%process%get_n_components ()
+          if (instance%component_active (i)) then
+            allocate (i_term (size (process%get_component_i_terms (i))))
+            i_term = process%get_component_i_terms (i)
+            do j = 1, size (i_term)
+               instance%term(i_term(j))%active = .true.
+            end do
+          end if
+          if (allocated (i_term)) deallocate (i_term)
+       end do
     end associate
     instance%evaluation_status = STAT_ACTIVATED
   end subroutine process_instance_activate
@@ -10126,16 +10128,8 @@ to subobject of [[instance]].
        call instance%process%init_mci_work (instance%mci_work(i), i)
     end do
 
-    !allocate (instance%component (process%get_n_components ()))
-    !do i = 1, size (instance%component)
-    !   if (process%component_is_active(i)) then
-    !      i_term_base = process%get_base_i_term (i)
-    !      core => process%get_core_term (i_term_base)
-    !      associate (component => instance%component(i))
-    !         call component%init (process%get_component_ptr(i), core%data)
-    !      end associate
-    !   end if
-    !end do
+    allocate (instance%component_active (process%get_n_components ()))
+    instance%component_active = .false.
 
     pcm => instance%process%get_pcm_ptr ()
     call pcm%allocate_instance (instance%pcm)
@@ -10262,9 +10256,8 @@ to subobject of [[instance]].
        data_born = process%get_constants (i_born)
        data_real = process%get_constants (i_real)
        i_real = process%get_i_term (i_real)
-       !do i_component = 1, size (instance%component)
        do i_component = 1, process%get_n_components ()
-          if (process%is_active_component (i_component)) then
+          if (instance%component_active (i_component)) then
              associate (nlo_controller => pcm_instance%controller)
                 nlo_type = process%get_nlo_type_component (i_component)
                 select case (nlo_type)
@@ -10517,7 +10510,7 @@ recovered, and we are just computing the rest.
        success = .true.
        do i = 1, instance%process%get_n_components ()
           if (i == skip_component)  cycle
-          if (instance%process%is_active_component (i)) then
+          if (instance%component_active (i)) then
              allocate (i_term (size (instance%process%get_component_i_terms (i))))
              i_term = instance%process%get_component_i_terms (i)
              do j = 1, size (i_term)
@@ -10710,9 +10703,9 @@ recovered, and we are just computing the rest.
     if (instance%evaluation_status >= STAT_PASSED_CUTS) then
        do i = 1, instance%process%get_n_components ()
           if (i == skip_component)  cycle
-          if (instance%process%is_active_component(i)) then
+          if (instance%component_active(i)) then
              allocate (i_term (size (instance%process%get_component_i_terms (i))))
-             i_term = instance%process%get_component_i_terms (i)
+             i_term = instance%process%get_component_i_terms (i) 
              do j = 1, size (i_term)
                 call instance%term(i_term(j))%compute_other_channels &
                    (instance%mci_work(instance%i_mci), channel)
@@ -10818,7 +10811,7 @@ terms, iterating over all active process components.
        if (.not. process%uses_powheg_damping_factors ()) return
        do i = 1, process%get_n_components ()
           if (i_skip > 0 .and. i /= i_skip) cycle
-          if (process%is_active_component (i) .and. &
+          if (instance%component_active (i) .and. &
              process%get_component_nlo_type (i) == NLO_REAL) then
              allocate (i_terms (size (process%get_component_i_terms (i))))
              i_terms = process%get_component_i_terms (i)
@@ -11094,8 +11087,8 @@ fetch the data that are relevant for the MCI record.
    
     val = 0
     associate (process => sampler%process)
-       FIND_COMPONENT: do i = 1, process%get_n_components ()
-         if (process%is_active_component (i)) then
+       FIND_COMPONENT: do i = 1, process%get_n_components () 
+         if (sampler%component_active (i)) then
             allocate (i_terms (size (process%get_component_i_terms (i))))
             i_terms = process%get_component_i_terms (i)
             i_term_base = i_terms(1)
