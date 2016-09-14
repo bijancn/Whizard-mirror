@@ -5079,17 +5079,6 @@ Used for testing.
 @ %def prc_user_defined_base_get_alpha_s
 @
 <<Prc User: prc user defined base: TBP>>=
-  !procedure :: needs_mcset => prc_user_defined_base_needs_mcset
-<<Prc User: procedures>>=
-  !function prc_user_defined_base_needs_mcset (object) result (flag)
-  !  class(prc_user_defined_base_t), intent(in) :: object
-  !  logical :: flag
-  !  flag = .true.
-  !end function prc_user_defined_base_needs_mcset
-
-@
-@ %def prc_user_defined_base_needs_mc_set
-<<Prc User: prc user defined base: TBP>>=
   procedure :: is_allowed => prc_user_defined_base_is_allowed
 <<Prc User: procedures>>=
   function prc_user_defined_base_is_allowed (object, i_term, f, h, c) result (flag)
@@ -5154,23 +5143,7 @@ Used for testing.
 
 @
 @ %def prc_user_defined_base_compute_eff_kinematics
-<<Prc User: prc user defined base: TBP>>=
-  !procedure :: recover_kinematics => prc_user_defined_base_recover_kinematics
-<<Prc User: procedures>>=
-  !subroutine prc_user_defined_base_recover_kinematics &
-  !     (object, p_seed, int_hard, int_eff, core_state)
-  !  class(prc_user_defined_base_t), intent(in) :: object
-  !  type(vector4_t), dimension(:), intent(inout) :: p_seed
-  !  type(interaction_t), intent(inout) :: int_hard, int_eff
-  !  class(prc_core_state_t), intent(inout), allocatable :: core_state
-  !  integer :: n_in
-  !  n_in = int_eff%get_n_in ()
-  !  call int_eff%set_momenta (p_seed(1:n_in), outgoing = .false.)
-  !  p_seed(n_in+1:) = int_eff%get_momenta (outgoing = .true.)
-  !end subroutine prc_user_defined_base_recover_kinematics
-
-@ 
-@ %def prc_user_defined_base_recover_kinematics
+@
 <<Prc User: prc user defined base: TBP>>=
   procedure :: set_parameters => prc_user_defined_base_set_parameters
 <<Prc User: procedures>>=
@@ -5275,7 +5248,25 @@ Used for testing.
   end interface
 
 @ %def prc_user_defined_base_includes_polarization
-@    
+@
+<<Prc User: prc user defined base: TBP>>=
+  procedure(prc_user_defined_base_create_and_load_extra_libraries), deferred :: &
+    create_and_load_extra_libraries
+<<Prc User: interfaces>>=
+  abstract interface
+    subroutine prc_user_defined_base_create_and_load_extra_libraries ( &
+         core, os_data, libname, model, i_core)
+      import
+      class(prc_user_defined_base_t), intent(inout) :: core
+      type(os_data_t), intent(in) :: os_data
+      type(string_t), intent(in) :: libname
+      type(model_data_t), intent(in), target :: model
+      integer, intent(in) :: i_core
+    end subroutine prc_user_defined_base_create_and_load_extra_libraries
+  end interface
+
+@ %def prc_user_defined_base_create_and_load_extra_libraries
+@
 \subsubsection{Configuration}
 This is the abstract user defined process definition
 <<Prc User: public>>=
@@ -5868,6 +5859,21 @@ result of the integration is the n-particle-phase-space volume.
 
 @ %def prc_user_defined_test_includes_polarization
 @
+<<Prc User: prc test: TBP>>=
+  procedure :: create_and_load_extra_libraries => &
+       prc_user_defined_test_create_and_load_extra_libraries
+<<Prc User: procedures>>=
+  subroutine prc_user_defined_test_create_and_load_extra_libraries ( &
+         core, os_data, libname, model, i_core)
+    class(prc_user_defined_test_t), intent(inout) :: core
+    type(os_data_t), intent(in) :: os_data
+    type(string_t), intent(in) :: libname
+    type(model_data_t), intent(in), target :: model
+    integer, intent(in) :: i_core
+  end subroutine prc_user_defined_test_create_and_load_extra_libraries
+
+@ %def prc_user_defined_test_create_and_load_extra_libraries
+@
 \subsection{Threshold}
 <<[[prc_threshold.f90]]>>=
 <<File header>>
@@ -5888,6 +5894,7 @@ module prc_threshold
   use lorentz
   use interactions
   use sm_qcd
+  use model_data
 
   use prclib_interfaces
   use process_libraries
@@ -6403,31 +6410,32 @@ matrix element.
 @ %def prc_threshold_activate_parameters
 @
 <<Prc Threshold: prc threshold: TBP>>=
-  procedure :: load_extra_libraries => prc_threshold_load_extra_libraries
+  procedure :: create_and_load_extra_libraries => prc_threshold_create_and_load_extra_libraries
 <<Prc Threshold: procedures>>=
-  subroutine prc_threshold_load_extra_libraries (prc_threshold, os_data, &
-         libname, nlo_type)
-    class(prc_threshold_t), intent(inout) :: prc_threshold
+  subroutine prc_threshold_create_and_load_extra_libraries ( &
+         core, os_data, libname, model, i_core)
+    class(prc_threshold_t), intent(inout) :: core
     type(os_data_t), intent(in) :: os_data
     type(string_t), intent(in) :: libname
+    type(model_data_t), intent(in), target :: model
+    integer, intent(in) :: i_core
     type(dlaccess_t) :: dlaccess
-    integer, intent(in) :: nlo_type
-    integer :: unit
     type(string_t) :: new_libname
     logical :: success
-    call msg_debug (D_ME_METHODS, "prc_threshold_load_extra_libraries")
-    unit = free_unit ()
-    if (allocated (prc_threshold%driver)) then
-       select type (driver => prc_threshold%driver)
+    call msg_debug (D_ME_METHODS, "prc_threshold_create_and_load_extra_libraries")
+    if (allocated (core%driver)) then
+       select type (driver => core%driver)
        type is (threshold_driver_t)
-          call driver%start_openloops ()
+          if (driver%nlo_type == NLO_VIRTUAL) then
+             call driver%start_openloops ()
+          end if
        end select
     else
-       call msg_bug ("prc_threshold_load_extra_libraries: driver is not allocated")
+       call msg_bug ("prc_threshold_create_and_load_extra_libraries: driver is not allocated")
     end if
-  end subroutine prc_threshold_load_extra_libraries
+  end subroutine prc_threshold_create_and_load_extra_libraries
 
-@ %def prc_threshold_load_extra_libraries
+@ %def prc_threshold_create_and_load_extra_libraries
 @
 <<Prc Threshold: prc threshold: TBP>>=
   procedure :: includes_polarization => prc_threshold_includes_polarization
