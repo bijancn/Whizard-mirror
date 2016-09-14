@@ -129,12 +129,12 @@ end module blha_olp_interfaces
   type, abstract, extends (prc_user_defined_base_t) :: prc_blha_t
     integer :: n_particles
     integer :: n_proc
-    integer, dimension(:), allocatable :: i_born, i_sc, i_cc
-    integer, dimension(:), allocatable :: i_real
+    integer, dimension(:), allocatable :: i_tree, i_sc, i_cc
     integer, dimension(:), allocatable :: i_virt
     integer, dimension(:,:), allocatable :: i_hel
     integer, dimension(:), allocatable :: i_whizard_to_i_olc
     logical, dimension(3) :: ew_parameter_mask
+    integer :: sqme_tree_pos
   contains
   <<BLHA OLP interfaces: prc blha: TBP>>
   end type prc_blha_t
@@ -566,7 +566,7 @@ end module blha_olp_interfaces
   abstract interface
     subroutine blha_driver_set_alpha_s (driver, alpha_s)
        import
-       class(blha_driver_t), intent(inout) :: driver
+       class(blha_driver_t), intent(in) :: driver
        real(default), intent(in) :: alpha_s
     end subroutine blha_driver_set_alpha_s
   end interface
@@ -1117,10 +1117,8 @@ end module blha_olp_interfaces
        if (amp_type (i_proc) < 0) exit
        select case (amp_type (i_proc))
        case (BLHA_AMP_TREE)
-          if (allocated (object%i_born)) then
-             object%i_born(flv_index(i_proc)) = label(i_proc)
-          else if (allocated (object%i_real)) then
-             object%i_real(flv_index(i_proc)) = label(i_proc)
+          if (allocated (object%i_tree)) then
+             object%i_tree(flv_index(i_proc)) = label(i_proc)
           else
              call msg_fatal ("Tree matrix element present, &
                   &but neither Born nor real indices are allocated!")
@@ -1226,28 +1224,25 @@ end module blha_olp_interfaces
        object%i_cc = 0
     else if (blha_template%compute_subtraction ()) then
        if (blha_template%include_polarizations) then
-          allocate (object%i_born (object%n_flv * 4), &
+          allocate (object%i_tree (object%n_flv * 4), &
              object%i_cc (object%n_flv * 4), &
              object%i_sc (object%n_flv * 4))
        else
-          allocate (object%i_born (object%n_flv), &
+          allocate (object%i_tree (object%n_flv), &
              object%i_cc (object%n_flv) , object%i_sc (object%n_flv))
        end if
-       object%i_born = 0
+       object%i_tree = 0
        object%i_cc = 0
        object%i_sc = 0
-    else if (blha_template%compute_real_trees ()) then
-       allocate (object%i_real (object%n_flv))
-       object%i_real = 0
-    else if (blha_template%compute_born ()) then
+    else if (blha_template%compute_real_trees () .or. blha_template%compute_born ()) then
        if (blha_template%include_polarizations) then
           n_hel = 4
           allocate (object%i_hel (n_hel, object%data%n_in))
        else
           n_hel = 1
        end if
-       allocate (object%i_born (object%n_flv * n_hel))
-       object%i_born = 0
+       allocate (object%i_tree (object%n_flv * n_hel))
+       object%i_tree = 0
     end if
 
     call object%init_ew_parameters ()
@@ -1338,60 +1333,59 @@ the chosen BLHA EWScheme. This is only implemented for the default OLP method so
     call msg_debug2 (D_VIRTUAL, "object%i_virt(i_flv)", object%i_virt(i_flv))
     mom = object%create_momentum_array (p)
     if (vanishes (ren_scale)) &
-       call msg_fatal ("prc_blha_compute_sqme_real: ren_scale vanishes")
+       call msg_fatal ("prc_blha_compute_sqme_virt: ren_scale vanishes")
     mu_dble = dble(ren_scale)
     alpha_s = object%qcd%alpha%get (ren_scale)
     select type (driver => object%driver)
     class is (blha_driver_t)
       call driver%set_alpha_s (alpha_s)
-      call driver%blha_olp_eval2 (object%i_virt(i_flv), mom, mu_dble, r, acc_dble) 
+      call driver%blha_olp_eval2 (object%i_virt(i_flv), mom, mu_dble, r, acc_dble)
     end select
     acc = acc_dble
     sqme = r(1:4)
     bad_point = acc > object%maximum_accuracy
+    !!! OpenLoops includes a factor of 1 / 4 in the amplitudes
+    !!! GoSam does not support polarization
+    if (object%includes_polarization ()) sqme = four * sqme
   end subroutine prc_blha_compute_sqme_virt
 
 @ %def prc_blha_compute_sqme_virt
 @
 <<BLHA OLP interfaces: prc blha: TBP>>=
-  procedure(prc_blha_compute_sqme_real), deferred :: &
-      compute_sqme_real
-<<BLHA OLP interfaces: interfaces>>=
-  abstract interface
-    subroutine prc_blha_compute_sqme_real (object, i_flv, &
-          p, ren_scale, sqme, bad_point)
-      import
-      class(prc_blha_t), intent(inout) :: object
-      integer, intent(in) :: i_flv
-      type(vector4_t), intent(in), dimension(:) :: p
-      real(default), intent(in) :: ren_scale
-      real(default), intent(out) :: sqme
-      logical, intent(out) :: bad_point
-    end subroutine prc_blha_compute_sqme_real
-  end interface 
+  procedure :: compute_sqme => prc_blha_compute_sqme
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_compute_sqme &
+         (object, i_flv, p, ren_scale, sqme, bad_point)
+    class(prc_blha_t), intent(in) :: object
+    integer, intent(in) :: i_flv
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default), intent(in) :: ren_scale
+    real(default), intent(out) :: sqme
+    logical, intent(out) :: bad_point
+    real(double), dimension(5*object%n_particles) :: mom
+    real(double), dimension(OLP_RESULTS_LIMIT) :: r
+    real(double) :: mu_dble, acc_dble
+    real(default) :: acc, alpha_s
+    mom = object%create_momentum_array (p)
+    if (vanishes (ren_scale)) &
+       call msg_fatal ("prc_blha_compute_sqme: ren_scale vanishes")
+    mu_dble = dble(ren_scale)
+    alpha_s = object%qcd%alpha%get (ren_scale)
+    select type (driver => object%driver)
+    class is (blha_driver_t)
+       call driver%set_alpha_s (alpha_s)
+       call driver%blha_olp_eval2 (object%i_tree(i_flv), mom, &
+                                    mu_dble, r, acc_dble)
+       sqme = r(object%sqme_tree_pos)
+    end select
+    acc = acc_dble
+    bad_point = acc > object%maximum_accuracy
+    !!! OpenLoops includes a factor of 1 / 4 in the amplitudes
+    !!! GoSam does not support polarization
+    if (object%includes_polarization ()) sqme = four * sqme
+  end subroutine prc_blha_compute_sqme
 
-@ %def prc_blha_compute_sqme_real interface
-@ Compute the Born matrix element. This will always occur in connection to a subtraction
-term, so scales and couplings have already been set, and the momenta are in the BLHA format
-Hence, the interface is simpler than in the other routines.
-<<BLHA OLP interfaces: prc blha: TBP>>=
-  procedure(prc_blha_compute_sqme_born), deferred :: &
-      compute_sqme_born
-<<BLHA OLP interfaces: interfaces>>=
-  abstract interface
-    subroutine prc_blha_compute_sqme_born (object, i_born, &
-          p, mu, sqme, bad_point)
-      import
-      class(prc_blha_t), intent(inout) :: object
-      integer, intent(in) :: i_born
-      type(vector4_t), dimension(:), intent(in) :: p
-      real(default), intent(in) :: mu
-      real(default), intent(out) :: sqme
-      logical, intent(out) :: bad_point
-    end subroutine prc_blha_compute_sqme_born
-  end interface 
-
-@ %def prc_blha_compute_sqme_born interface
+@ %def prc_blha_compute_sqme
 @
 <<BLHA OLP interfaces: public>>=
   public :: blha_cc_fill_diag
@@ -1460,7 +1454,6 @@ Hence, the interface is simpler than in the other routines.
     mu_dble = dble(ren_scale)
     alpha_s = object%qcd%alpha%get (ren_scale)
 
-    
     select type (driver => object%driver)
     class is (blha_driver_t)
        call driver%set_alpha_s (alpha_s)
@@ -1470,7 +1463,10 @@ Hence, the interface is simpler than in the other routines.
     rr = r
     acc = acc_dble
     bad_point = acc > object%maximum_accuracy
-  end subroutine prc_blha_compute_sqme_cc_raw  
+    !!! OpenLoops includes a factor of 1 / 4 in the amplitudes
+    !!! GoSam does not support polarization
+    if (object%includes_polarization ()) rr = four * rr
+  end subroutine prc_blha_compute_sqme_cc_raw
   
 @ %def prc_blha_compute_sqme_cc_raw
 @
@@ -1489,46 +1485,36 @@ Hence, the interface is simpler than in the other routines.
     real(double), dimension(5 * object%n_particles) :: mom
     real(double), dimension(blha_result_array_size (object%n_particles, &
                                               BLHA_AMP_CC)) :: r
-    real(double) :: mu_dble
-    real(default) :: alpha_s
     integer :: i, j, pos
     integer :: im1, jm1
-    logical :: bad_point2 = .false.
+    logical :: bad_point2
     real(double) :: acc_dble
     real(default) :: acc
     real(default) :: born
     integer, dimension(:), allocatable :: flavors
 
-    mom = object%create_momentum_array (p)
-    if (vanishes (ren_scale)) &
-       call msg_fatal ("prc_blha_compute_sqme_cc: ren_scale vanishes")
-    mu_dble = dble(ren_scale)
-    alpha_s = object%qcd%alpha%get (ren_scale)
-    !!! !!! !!! Workaround for ifort 16.0 missing default allocate-on-assignment
-    allocate (flavors (object%get_n_flvs (i_flv)))
-    !!! !!! !!! End of workaround
-    flavors = object%get_flv_state (i_flv)
+    call object%compute_sqme_cc_raw (i_flv, p, ren_scale, born_cc, bad_point)
 
     select type (driver => object%driver)
     class is (blha_driver_t)
-       call driver%set_alpha_s (alpha_s)
-       if (allocated (object%i_born)) then
-          call object%compute_sqme_born (i_flv, p, ren_scale, born, bad_point2)
+       if (allocated (object%i_tree)) then
+          call object%compute_sqme (i_flv, p, ren_scale, born, bad_point2)
        else
           born = zero
           acc = zero
        end if
        if (present (born_out)) born_out = born
-       call driver%blha_olp_eval2 (object%i_cc(i_flv), &
-          mom, mu_dble, r, acc_dble)
     end select
-
     call blha_cc_fill_offdiag (object%n_particles, real (r, kind=default), &
          born_cc)
+    !!! !!! !!! Workaround for ifort 16.0 missing default allocate-on-assignment
+    allocate (flavors (object%get_n_flvs (i_flv)))
+    !!! !!! !!! End of workaround
+    flavors = object%get_flv_state (i_flv)
     call blha_cc_fill_diag (born, flavors, born_cc)
 
     acc = acc_dble
-    bad_point = bad_point2 .or. acc > object%maximum_accuracy
+    bad_point = bad_point .or. bad_point2
   end subroutine prc_blha_compute_sqme_cc
 
 @ %def prc_blha_compute_sqme_cc
@@ -1560,7 +1546,7 @@ Hence, the interface is simpler than in the other routines.
     logical :: polarized
     class(prc_blha_t), intent(in) :: object
     select type (driver => object%driver)
-    class is (blha_driver_t) 
+    class is (blha_driver_t)
        polarized = driver%include_polarizations
     end select
   end function prc_blha_includes_polarization
@@ -1666,6 +1652,33 @@ Hence, the interface is simpler than in the other routines.
     
 @ %def prc_blha_get_helicity_list_array
 @ %def prc_blha_get_helicity_list_single
+@ OpenLoops has problems initializing the first helicity-correlated matrix
+element. Therefore, we compute one dummy value during the initialization phase.
+<<BLHA OLP interfaces: prc blha: TBP>>=
+  procedure :: warmup_helicities => prc_blha_warmup_helicities
+<<BLHA OLP interfaces: procedures>>=
+  subroutine prc_blha_warmup_helicities (object, p)
+    class(prc_blha_t), intent(inout) :: object
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(double), dimension(5 * object%n_particles) :: mom
+    real(double), dimension(blha_result_array_size (object%n_particles, &
+                                                    BLHA_AMP_LOOP)) :: r
+    real(default) :: alpha_s
+    real(double) :: ren_scale, acc
+    integer :: i_hel
+    alpha_s = 0.1178_double
+    ren_scale = 200._double
+    mom = object%create_momentum_array (p)
+    select type (driver => object%driver)
+    class is (blha_driver_t)
+       call driver%set_alpha_s (alpha_s)
+       do i_hel = 1, 4
+          call driver%blha_olp_eval2 (i_hel, mom, ren_scale, r, acc)
+       end do
+    end select
+  end subroutine prc_blha_warmup_helicities
+
+@ %def prc_blha_warmup_helicities
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 The module is split into a configuration interface which manages configuration
@@ -2011,7 +2024,7 @@ This types control the creation of BLHA-interface files
          n_flv = n_flv + n_proc_real
        end if
     end if
-    i_file = 1          
+    i_file = 1
     if (master%compute_loops) then
        if (allocated (flv_born)) then
           allocate (blha_flavor (size (flv_born, 2)))
