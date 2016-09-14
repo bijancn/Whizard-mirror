@@ -8258,120 +8258,6 @@ Relevant for using the proper momenta input for BLHA matrix elements.
   end function kinematics_get_momenta
 
 @ %def kinematics_get_momenta
-@
-\subsubsection{Process component instance}
-The actual calculation of a sampling point is done from here.
-
-The [[config]] pointer accesses the corresponding
-configuration in the [[process]] object.
-
-The [[active]] flag indicates that we are currently computing this
-component, together with all other components that share the same MC
-parameter set.  Inactive components are using a different MC parameter
-set and are not in use for this sampling point.
-
-The [[k_seed]] subobject contains the kinematics (structure-function
-chain, phase space, etc.) that implements the `seed' configuration of
-momenta.  This version of the process kinematics is accessed by the MCI
-setup.
-
-[[p_seed]] is the array of momenta that we compute from the MC input
-parameters, via the [[k_seed]] subobject.  Depending on the process
-variant, these may or may not coincide with the momenta that enter the
-process terms associated to this component.
-
-The [[core_state]] object can be used for storing intermediate results.  Its precise
-type and contents depend on the process variant.
-<<Instances: types>>=
-  type :: component_instance_t
-     type(process_component_t), pointer :: config => null ()
-     logical :: active = .false.
-     !!! logical :: sqme_known = .false.
-     !!! TODO (cw-2016-07-20): Find out whether component_instance really needs its own sqme
-     !real(default) :: sqme = zero
-     !type(nlo_controller_t), pointer :: nlo_controller => null ()
-     !integer :: nlo_type = BORN
-   contains
-   <<Instances: component instance: TBP>>
-  end type component_instance_t
-  
-@ %def component_instance_t
-@ In the header, fetch the component index from the configuration record.
-[[process_component_t]] configuration block.
-
-We write the [[sf_chain]] subobject only upon request, since its instances
-appear elsewhere.
-<<Instances: component instance: TBP>>=
-  procedure :: write => component_instance_write
-<<Instances: procedures>>=
-  subroutine component_instance_write (object, unit, testflag)
-    class(component_instance_t), intent(in) :: object
-    integer, intent(in), optional :: unit
-    logical, intent(in), optional :: testflag
-    integer :: u
-    u = given_output_unit (unit)
-    if (object%active) then
-       if (associated (object%config)) then
-          write (u, "(1x,A,I0)")  "Component #", object%config%index
-       else
-          write (u, "(1x,A)")  "Component [undefined]"
-       end if
-    else
-       write (u, "(1x,A,I0,A)")  "Component #", object%config%index, &
-            " [inactive]"
-    end if
-    !if (allocated (object%p_seed)) then
-    !   write (u, "(1x,A)")  "Seed momenta:"
-    !   do i = 1, size (object%p_seed)
-    !      call vector4_write (object%p_seed(i), u, testflag = testflag)
-    !   end do
-    !end if
-    !write (u, "(1x,A)")  "Squared matrix element:"
-    !if (object%sqme_known) then
-    !   write (u, "(2x,ES19.12)")  object%sqme
-    !else
-    !   write (u, "(2x,A)")  "[undefined]"
-    !end if
-    !call object%k_seed%write (u)
-    !if (allocated (object%core_state)) then
-    !   call write_separator (u)
-    !   call object%core_state%write (u)
-    !end if
-  end subroutine component_instance_write
-    
-@ %def component_instance_write
-@ Finalizer
-<<Instances: component instance: TBP>>=
-  procedure :: final => component_instance_final
-<<Instances: procedures>>=
-  subroutine component_instance_final (object)
-    class(component_instance_t), intent(inout) :: object
-    object%config => null ()
-    object%active = .false.
-    !object%sqme_known = .false.
-    !object%sqme = zero
-    !object%nlo_controller => null ()
-    !object%nlo_type = BORN
-    !call object%k_seed%final ()
-  end subroutine component_instance_final
-  
-@ %def component_instance_final
-@ Initialize: associate the configuration pointer.  Also initialize the
-process workspace, if there is anything to do.  This initialization is a
-matter of the process core.
-<<Instances: component instance: TBP>>=
-  procedure :: init => component_instance_init
-<<Instances: procedures>>=
-  subroutine component_instance_init (component, config, data)
-    class(component_instance_t), intent(out) :: component
-    type(process_component_t), intent(in), pointer :: config
-    type(process_constants_t), intent(in) :: data
-    integer :: nlo_type
-    component%config => config
-    nlo_type = component%config%config%get_nlo_type ()
-  end subroutine component_instance_init
-
-@ %def component_instance_init
 @ Initialize the seed-kinematics configuration.  All subobjects are
 allocated explicitly.
 <<Instances: term instance: TBP>>=
@@ -8708,30 +8594,6 @@ stored in the kinematics subobject to their source.  This is a side effect.
   end subroutine term_instance_apply_damping_factor
 
 @ %def term_instance_apply_damping_factor
-@ Perform the matrix-element evaluation if the component is flagged as real
-<<Instances: component instance: TBP>>=
-  !procedure :: get_nlo_type => component_instance_get_nlo_type
-<<Instances: procedures>>=
-  !elemental function component_instance_get_nlo_type (component) &
-  !     result (nlo_type)
-  !  class(component_instance_t), intent(in) :: component
-  !  integer :: nlo_type
-  !  nlo_type = component%nlo_type
-  !end function component_instance_get_nlo_type
-
-@ %def component_instance_get_nlo_type
-@ Get nlo-type and emitter of the component.
-<<Instances: component instance: TBP>>=
-  procedure :: get_component_type => &
-                   component_instance_get_component_type
-<<Instances: procedures>>=
-  function component_instance_get_component_type (component) result (val)
-    class(component_instance_t), intent(in) :: component
-    integer :: val
-    val = component%config%component_type
-  end function component_instance_get_component_type
-
-@ %def component_instance_get_component_type
 @
 <<Instances: term instance: TBP>>=
   procedure :: get_lorentz_transformation => term_instance_get_lorentz_transformation
@@ -10195,16 +10057,9 @@ selected MCI parameter set.
     integer :: i, j
     integer, dimension(:), allocatable :: i_term
     associate (mci_work => instance%mci_work(instance%i_mci))
-      !instance%component(mci_work%get_active_components ())%config%active &
-      !instance%component(mci_work%get_active_components ())%active &
-      !     = .true.
-      !do i = 1, size (instance%component)
       associate (process => instance%process)
          do i = 1, instance%process%get_n_components ()
-         !associate (component => instance%component(i))
             if (process%is_active_component (i)) then
-           !if (component%active) then
-              !do j = 1, size (component%config%i_term)
               allocate (i_term (size (process%get_component_i_terms (i))))
               i_term = process%get_component_i_terms (i)
               do j = 1, size (i_term)
@@ -10215,17 +10070,6 @@ selected MCI parameter set.
       end associate
     end associate
     instance%evaluation_status = STAT_ACTIVATED
-  contains
-    function check_for_real_finite (component, i) result (val)
-      logical :: val
-      type(component_instance_t), intent(in) :: component
-      integer, intent(in) :: i
-      val = .false.
-      if (component%config%component_type /= COMP_REAL_FIN) return 
-      associate (term => instance%term(component%config%i_term(i))%config)
-         val = term%i_term_global == term%i_sub
-      end associate
-    end function check_for_real_finite
   end subroutine process_instance_activate
   
 @ %def process_instance_activate
