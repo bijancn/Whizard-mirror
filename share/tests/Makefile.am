@@ -177,6 +177,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/particles_6.ref \
     unit_tests/ref-output/particles_7.ref \
     unit_tests/ref-output/particles_8.ref \
+    unit_tests/ref-output/particles_9.ref \
     unit_tests/ref-output/beam_structures_1.ref \
     unit_tests/ref-output/beam_structures_2.ref \
     unit_tests/ref-output/beam_structures_3.ref \
