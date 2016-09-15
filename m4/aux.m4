@@ -295,7 +295,7 @@ else
 fi
 if test "$OPENLOOPS_AVAILABLE_FLAG" = ".true." ; then
    echo "OpenLoops (OLP)     :   yes, v$OPENLOOPS_VERSION"
-   echo "           path     :        $OPENLOOPS_DIR"
+   echo "           path     :   $OPENLOOPS_DIR"
 else
    echo "OpenLoops (OLP)     :   no"
 fi
