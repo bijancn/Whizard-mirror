@@ -170,6 +170,7 @@ TESTS_REQ_OCAML = \
     nlo_decay_1.run \
     fks_res_1.run \
     fks_res_2.run \
+    fks_res_3.run \
     openloops_1.run \
     openloops_2.run \
     powheg_1.run \
