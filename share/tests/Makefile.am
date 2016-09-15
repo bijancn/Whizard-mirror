@@ -695,6 +695,7 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/nlo_5.ref \
     functional_tests/ref-output-double/fks_res_1.ref \
     functional_tests/ref-output-double/fks_res_2.ref \
+    functional_tests/ref-output-double/fks_res_3.ref \
     functional_tests/ref-output-double/openloops_1.ref \
     functional_tests/ref-output-double/powheg_1.ref \
     functional_tests/ref-output-double/defaultcuts.ref \
@@ -970,6 +971,7 @@ MISC_TESTS_SIN = \
     functional_tests/nlo_decay_1.sin \
     functional_tests/fks_res_1.sin \
     functional_tests/fks_res_2.sin \
+    functional_tests/fks_res_3.sin \
     functional_tests/openloops_1.sin \
     functional_tests/powheg_1.sin \
     functional_tests/mssmtest_1.sin \
