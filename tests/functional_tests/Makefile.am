@@ -167,6 +167,7 @@ TESTS_REQ_OCAML = \
     nlo_3.run \
     nlo_4.run \
     nlo_5.run \
+    nlo_decay_1.run \
     fks_res_1.run \
     fks_res_2.run \
     openloops_1.run \
