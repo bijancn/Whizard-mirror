@@ -7112,11 +7112,13 @@ module pcm
   
 <<Use kinds>>
   use constants, only: two
+  use diagnostics
   use lorentz, only: vector4_t
   use process_constants, only: process_constants_t
   use pcm_base
   use nlo_data
   use fks_regions, only: region_data_t
+  use phs_fks, only: phs_fks_generator_t
   use real_subtraction
   use virtual, only: virtual_t
   use nlo_controller
@@ -8387,14 +8389,11 @@ allocated explicitly.
     end if
     select type (phs => term%k_term%phs)
     type is (phs_fks_t)
-       ! TODO (cw-2016-09-16): Restore when dealing with real subtraction in pcm_instance_t
-       !if (mode > PHS_MODE_UNDEFINED) then
-       !   call term%nlo_controller%setup_generator &
-       !      (phs%generator, phs%config%sqrts, singular_jacobian, mode)
-       !else
-       !   call term%nlo_controller%setup_generator &
-       !      (phs%generator, phs%config%sqrts, singular_jacobian)
-       !end if
+       select type (config => term%pcm_instance%config)
+       type is (pcm_nlo_t)
+          call config%setup_phs_generator (term%pcm_instance, &
+             phs%generator, phs%config%sqrts, mode, singular_jacobian)
+       end select
     class default 
        call msg_fatal ("Phase space should be an FKS phase space!")
     end select
@@ -8433,8 +8432,7 @@ argument.  As a result, the [[k_seed]] kinematics object is evaluated
 postpone until we know the factorization scale), and we have a valid
 [[p_seed]] momentum array.
 <<Instances: term instance: TBP>>=
-  procedure :: compute_seed_kinematics => &
-       term_instance_compute_seed_kinematics
+  procedure :: compute_seed_kinematics => term_instance_compute_seed_kinematics
 <<Instances: procedures>>=
   subroutine term_instance_compute_seed_kinematics &
        (term, mci_work, phs_channel, success)
@@ -10389,6 +10387,12 @@ to subobject of [[instance]].
                    select type (pcm_instance => instance%pcm)
                    type is (pcm_instance_nlo_t)
                       pcm_instance%active_real_component = i_component
+                      select type (config => pcm_instance%config)
+                      type is (pcm_nlo_t)
+                         call pcm_instance%setup_real_subtraction &
+                         (config%settings%fks_template%subtraction_disabled, &
+                         process%get_sqrts ())
+                      end select
                    end select
                    !if (nlo_controller%needs_initialization) then
                    !   call nlo_controller%set_internal_procedures &
@@ -11655,6 +11659,41 @@ each entry of the BLHA output array.
   end function pcm_nlo_get_n_sub
 
 @ %def pcm_nlo_get_n_sub
+@ Check if there are massive emitters. Since the mass-structure of all
+underlying Born configurations have to be the same (\textbf{This does
+not have to be the case when different components are generated at LO})
+, we just use the first one to determine this.
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: has_massive_emitter => pcm_nlo_has_massive_emitter
+<<Pcm: procedures>>=
+  function pcm_nlo_has_massive_emitter (pcm) result (val)
+    logical :: val
+    class(pcm_nlo_t), intent(in) :: pcm
+    integer :: i
+    val = .false.
+    associate (reg_data => pcm%region_data)
+       do i = reg_data%n_in + 1, reg_data%n_legs_born
+          if (any (i == reg_data%emitters)) &
+             val = val .or. reg_data%flv_born(1)%massive(i)
+       end do
+    end associate
+  end function pcm_nlo_has_massive_emitter
+
+@ %def pcm_nlo_has_massive_emitter
+@ Returns an array which specifies if the particle at position [[i]] is massive.
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: get_mass_info => pcm_nlo_get_mass_info
+<<Pcm: procedures>>=
+  function pcm_nlo_get_mass_info (pcm, i_flv) result (massive)
+    class(pcm_nlo_t), intent(in) :: pcm
+    integer, intent(in) :: i_flv
+    logical, dimension(:), allocatable :: massive
+    allocate (massive (size (pcm%region_data%flv_born(i_flv)%massive)))
+    massive = pcm%region_data%flv_born(i_flv)%massive
+  end function pcm_nlo_get_mass_info
+
+@ %def pcm_nlo_get_mass_info
+@
 <<Pcm: pcm nlo: TBP>>=
   procedure :: allocate_instance => pcm_nlo_allocate_instance
 <<Pcm: procedures>>=
@@ -11680,6 +11719,34 @@ each entry of the BLHA output array.
   end subroutine pcm_nlo_init_color_data
 
 @ %def pcm_nlo_init_color_data
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: setup_phs_generator => pcm_nlo_setup_phs_generator
+<<Pcm: procedures>>=
+  subroutine pcm_nlo_setup_phs_generator (pcm, pcm_instance, generator, &
+     sqrts, mode, singular_jacobian)
+    class(pcm_nlo_t), intent(in) :: pcm
+    type(phs_fks_generator_t), intent(inout) :: generator
+    type(pcm_instance_nlo_t), intent(in), target :: pcm_instance
+    real(default), intent(in) :: sqrts
+    integer, intent(in), optional:: mode
+    logical, intent(in), optional :: singular_jacobian
+    logical :: yorn
+    yorn = .false.; if (present (singular_jacobian)) yorn = singular_jacobian
+    call msg_print_color ("CONNECT KINEMATICS: ", COL_RED)
+    print *, associated (pcm_instance%real_kinematics)
+    call generator%connect_kinematics (pcm_instance%isr_kinematics, &
+       pcm_instance%real_kinematics, pcm%has_massive_emitter ()) 
+    generator%n_in = pcm%region_data%n_in
+    call generator%set_sqrts_hat (sqrts)
+    call generator%set_emitters (pcm%region_data%emitters)
+    call generator%setup_masses (pcm%region_data%n_legs_born)
+    generator%is_massive = pcm%get_mass_info (1) 
+    generator%singular_jacobian = yorn
+    if (present (mode)) generator%mode = mode
+  end subroutine pcm_nlo_setup_phs_generator
+
+@ %def pcm_nlo_setup_phs_generator
 @ As a first implementation, it acts as a wrapper for the NLO controller
 object and the squared matrix-element collector.
 <<Pcm: public>>=
