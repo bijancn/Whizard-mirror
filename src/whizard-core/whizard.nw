@@ -7155,7 +7155,7 @@ polarization flag and names of decay processes, where applicable.
 <<Process configurations: procedures>>=
   subroutine process_configuration_setup_component &
        (config, i_component, prt_in, prt_out, model, var_list, &
-        nlo_type, active_in)
+        nlo_type, can_be_integrated)
     class(process_configuration_t), intent(inout) :: config
     integer, intent(in) :: i_component
     type(prt_spec_t), dimension(:), intent(in) :: prt_in
@@ -7163,23 +7163,17 @@ polarization flag and names of decay processes, where applicable.
     type(model_t), pointer, intent(in) :: model
     type(var_list_t), intent(in) :: var_list
     integer, intent(in), optional :: nlo_type
-    logical, intent(in), optional :: active_in
+    logical, intent(in), optional :: can_be_integrated
     type(string_t), dimension(:), allocatable :: prt_str_in
     type(string_t), dimension(:), allocatable :: prt_str_out
     class(prc_core_def_t), allocatable :: core_def
     type(string_t) :: method
     integer :: i
-    logical :: active
 
     allocate (prt_str_in  (size (prt_in)))
     allocate (prt_str_out (size (prt_out)))
     forall (i = 1:size (prt_in))  prt_str_in(i)  = prt_in(i)% get_name ()
     forall (i = 1:size (prt_out)) prt_str_out(i) = prt_out(i)%get_name ()
-    if (present (active_in)) then
-      active = active_in
-    else
-      active = .true.
-    end if
 
     call dispatch_core_def (core_def, prt_str_in, prt_str_out, &
                             model, var_list, config%id, nlo_type)
@@ -7191,7 +7185,7 @@ polarization flag and names of decay processes, where applicable.
        method = method, &
        variant = core_def, &
        nlo_type = nlo_type, &
-       active = active)
+       can_be_integrated = can_be_integrated)
   end subroutine process_configuration_setup_component
   
 @ %def process_configuration_setup_component
@@ -8709,13 +8703,8 @@ local changes to currently inactive models.
          (var_str ("?read_color_factors"))
     do i_component = 1, n_components
        config => intg%process%get_component_def_ptr (i_component)
-       call dispatch_core (core_template, config%get_core_def_ptr (), &
-            intg%process%get_model_ptr (), &
-            helicity_selection, intg%qcd, &
-            use_color_factors)
        call intg%process%core_manager_register &
           (config%get_nlo_type (), i_component, config%get_def_type_string ())
-       deallocate (core_template)
     end do
     call intg%process%allocate_core_array ()
     do i_core = 1, intg%process%get_n_cores ()
@@ -9287,7 +9276,7 @@ of the integration history.
     do i_mci = 1, n_mci
        i_component = intg%process%i_mci_to_i_component (i_mci)
        nlo_type = intg%process%get_component_nlo_type (i_component)
-       if (intg%process%is_active_component (i_component)) then
+       if (intg%process%component_can_be_integrated (i_component)) then
           if (n_mci > 1) then
              if (nlo_active) then
                 if (intg%combined_integration .and. nlo_type == BORN) then
@@ -11937,7 +11926,7 @@ base type by the [[connect]] method, so we can reference them later.
     combined_integration = local%get_lval (var_str ("?combined_nlo_integration"))
     if (.not. combined_integration &
        .and. local%get_lval (var_str ("?fixed_order_nlo_events"))) then
-       fixed_mci = process%extract_active_component ()
+       fixed_mci = process%extract_fixed_mci ()
     end if
     call prepare_process_instance (process_instance, process, local%model, &
          local = local)
@@ -12046,7 +12035,6 @@ does not affect parameters.
     class(model_data_t), intent(in), optional :: model
     type(rt_data_t), intent(in), optional, target :: local
     type(nlo_settings_t) :: nlo_settings
-    type(string_t) :: color_method
     allocate (process_instance)
     call process_instance%init (process)
     if (process%is_nlo_calculation ()) then
@@ -12139,7 +12127,7 @@ objects and store them.
 <<Simulations: procedures>>=
   subroutine entry_set_fixed_mci (entry)
      class(entry_t), intent(inout) :: entry
-     entry%nlo_info%fixed_mci = entry%process%extract_active_component ()
+     entry%nlo_info%fixed_mci = entry%process%extract_fixed_mci ()
   end subroutine entry_set_fixed_mci
 
 @ %def entry_set_fixed_mci
@@ -15845,7 +15833,6 @@ module expr_tests_uti
 
     use rng_base_ut, only: rng_test_factory_t
     use phs_base_ut, only: phs_test_config_t
-    use processes_ut, only: prepare_test_process
 
 <<Standard module head>>
 
@@ -17135,7 +17122,6 @@ the variable list.
   subroutine cmd_model_execute (cmd, global)
     class(cmd_model_t), intent(inout) :: cmd
     type(rt_data_t), intent(inout), target :: global
-    type(model_t), pointer :: model
     if (cmd%scheme /= "") then
        call global%select_model (cmd%name, cmd%scheme)
     else
@@ -17532,7 +17518,7 @@ or arrays which would make the expansion ambiguous.
              call prc_config%setup_component (i_comp, &
                   prt_spec_in, prt_spec_out, &
                   cmd%local%model, var_list, BORN, &
-                  active_in = selected_nlo_parts (BORN))
+                  can_be_integrated = selected_nlo_parts (BORN))
 
              call radiation_generator%generate (prt_in_nlo, prt_out_nlo)
              call override_local_me_method (real_tree_me_method)
@@ -17541,7 +17527,7 @@ or arrays which would make the expansion ambiguous.
              call prc_config%setup_component (i_comp, &
                   new_prt_spec (prt_in_nlo), new_prt_spec (prt_out_nlo), &
                   cmd%local%model, var_list, NLO_REAL, &
-                  active_in = selected_nlo_parts (NLO_REAL))
+                  can_be_integrated = selected_nlo_parts (NLO_REAL))
 
              call override_local_me_method (loop_me_method)
              i_comp = n_components * 2 + i
@@ -17549,7 +17535,7 @@ or arrays which would make the expansion ambiguous.
              call prc_config%setup_component (i_comp, &
                   prt_spec_in, prt_spec_out, &
                   cmd%local%model, var_list, NLO_VIRTUAL, &
-                  active_in = selected_nlo_parts (NLO_VIRTUAL))
+                  can_be_integrated = selected_nlo_parts (NLO_VIRTUAL))
 
              call override_local_me_method (correlation_me_method)
              i_comp = n_components * 3 + i
@@ -17557,7 +17543,7 @@ or arrays which would make the expansion ambiguous.
              call prc_config%setup_component (i_comp, &
                   prt_spec_in, prt_spec_out, &
                   cmd%local%model, var_list, NLO_SUBTRACTION, &
-                  active_in = selected_nlo_parts (NLO_SUBTRACTION))
+                  can_be_integrated = selected_nlo_parts (NLO_SUBTRACTION))
 
              if (powheg_use_damping) then
                 call override_local_me_method (real_tree_me_method)
@@ -17566,7 +17552,7 @@ or arrays which would make the expansion ambiguous.
                 call prc_config%setup_component (i_comp, &
                      new_prt_spec (prt_in_nlo), new_prt_spec (prt_out_nlo), &
                      cmd%local%model, var_list, NLO_REAL, &
-                     active_in = selected_nlo_parts (NLO_REAL))
+                     can_be_integrated = selected_nlo_parts (NLO_REAL))
              end if
 
              if (requires_pdf) then
@@ -17577,7 +17563,7 @@ or arrays which would make the expansion ambiguous.
                 call prc_config%setup_component (i_comp, &
                      prt_spec_in, prt_spec_out, &
                      cmd%local%model, var_list, NLO_DGLAP, &
-                     active_in = selected_nlo_parts (NLO_DGLAP))
+                     can_be_integrated = selected_nlo_parts (NLO_DGLAP))
              end if
 
              if (requires_soft_mismatch) then
@@ -17589,7 +17575,7 @@ or arrays which would make the expansion ambiguous.
                    !new_prt_spec (prt_in_nlo), new_prt_spec (prt_out_nlo), &
                    prt_spec_in, prt_spec_out, &
                    cmd%local%model, var_list, NLO_MISMATCH, &
-                   active_in = selected_nlo_parts (NLO_MISMATCH))
+                   can_be_integrated = selected_nlo_parts (NLO_MISMATCH))
              end if
 
              call prc_config%set_component_associations (i_list, &
@@ -17598,13 +17584,13 @@ or arrays which would make the expansion ambiguous.
        else if (gks_active) then
           call override_local_me_method (var_str ("omega"))
           call prc_config%setup_component (i, prt_spec_in, prt_spec_out, &
-               cmd%local%model, var_list, BORN, active_in = .true.)
+               cmd%local%model, var_list, BORN, can_be_integrated = .true.)
           call radiation_generator%reset_queue ()
           do j = 1, n_components_extra
              prt_out_nlo =  radiation_generator%get_next_state ()
              call prc_config%setup_component (i + j, &
                 new_prt_spec (prt_in), new_prt_spec (prt_out_nlo), &
-                cmd%local%model, var_list, GKS, active_in = .false.)
+                cmd%local%model, var_list, GKS, can_be_integrated = .false.)
           end do
        else
           call prc_config%setup_component (i, &
@@ -17860,11 +17846,11 @@ particle-specifier expression which we can process further.
        component_type = eval_string (current_component, global%var_list)
        comp = component_status (component_type)
        select case (comp)
-       case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP)
+       case (BORN, NLO_VIRTUAL, NLO_MISMATCH, NLO_DGLAP, NLO_REAL)
           selected_nlo_parts(comp) = .true.
-       case (NLO_REAL)
-          selected_nlo_parts(NLO_REAL) = .true.
-          selected_nlo_parts(NLO_SUBTRACTION) = .true.
+       !case (NLO_REAL)
+          !selected_nlo_parts(NLO_REAL) = .true.
+          !selected_nlo_parts(NLO_SUBTRACTION) = .true.
        case (NLO_FULL)
           selected_nlo_parts = .true.
        case default

@@ -5002,7 +5002,7 @@ We assume that no finalizer is needed.
      character(32) :: md5sum = ""
      integer :: nlo_type = BORN
      integer, dimension(N_ASSOCIATED_COMPONENTS) :: associated_components = 0
-     logical :: active_component
+     logical :: active
      integer :: fixed_emitter = -1
      integer :: alpha_power = 0
      integer :: alphas_power = 0
@@ -5372,8 +5372,8 @@ abstract type.
                => process_component_def_get_associated_subtraction
   procedure :: get_association_list &
                => process_component_def_get_association_list
-  procedure :: is_active_component &
-               => process_component_def_is_active_component
+  procedure :: can_be_integrated &
+               => process_component_def_can_be_integrated
   procedure :: get_associated_real => process_component_def_get_associated_real
 <<Process libraries: procedures>>=
   elemental function process_component_def_get_nlo_type (component) result (nlo_type)
@@ -5406,11 +5406,11 @@ abstract type.
     i_sub = component%associated_components(ASSOCIATED_SUB)
   end function process_component_def_get_associated_subtraction
 
-  elemental function process_component_def_is_active_component (component) result (active)
+  elemental function process_component_def_can_be_integrated (component) result (active)
     logical :: active
     class(process_component_def_t), intent(in) :: component
-    active = component%active_component
-  end function process_component_def_is_active_component
+    active = component%active
+  end function process_component_def_can_be_integrated
 
   function process_component_def_get_association_list (component, i_skip_in) result (list)
     integer, dimension(:), allocatable :: list
@@ -5440,7 +5440,7 @@ abstract type.
   end function process_component_def_get_associated_real
 
 @ %def process_component_def_get_nlo_type, process_component_def_get_associated_born
-@ %def process_component_def_is_active_component
+@ %def process_component_def_can_be_integrated
 @ %def process_component_def_get_association_list
 @ %def process_component_def_get_associated_real
 @ %def process_component_def_get_associated_real_fin
@@ -5479,17 +5479,6 @@ abstract type.
   end subroutine process_component_def_get_coupling_powers
 
 @ %def process_component_def_get_coupling_powers
-@
-<<Process libraries: process component def: TBP>>=
-  procedure :: get_active_component => process_component_def_get_active_component
-<<Process libraries: procedures>>=
-  function process_component_def_get_active_component (component) result (active)
-    logical :: active
-    class(process_component_def_t), intent(in) :: component
-    active = component%active_component
-  end function process_component_def_get_active_component
-
-@ %def process_component_def_get_active_component
 @
 \subsubsection{Process definition}
 The process component definitions are collected in a common process
@@ -5744,7 +5733,7 @@ allocation is moved, so the original allocated object is returned empty.
 <<Process libraries: procedures>>=
   subroutine process_def_import_component (def, &
        i, n_out, prt_in, prt_out, method, variant, &
-       nlo_type, active)
+       nlo_type, can_be_integrated)
     class(process_def_t), intent(inout) :: def
     integer, intent(in) :: i
     integer, intent(in), optional :: n_out
@@ -5752,7 +5741,7 @@ allocation is moved, so the original allocated object is returned empty.
     type(prt_spec_t), dimension(:), intent(in), optional :: prt_out
     type(string_t), intent(in), optional :: method
     integer, intent(in), optional :: nlo_type
-    logical, intent(in), optional :: active
+    logical, intent(in), optional :: can_be_integrated
     type(string_t) :: nlo_type_string
     class(prc_core_def_t), &
          intent(inout), allocatable, optional :: variant
@@ -5778,10 +5767,10 @@ allocation is moved, so the original allocated object is returned empty.
       if (present (nlo_type)) then
         comp%nlo_type = nlo_type
       end if
-      if (present (active)) then
-         comp%active_component = active
+      if (present (can_be_integrated)) then
+         comp%active = can_be_integrated
       else
-         comp%active_component = .true.
+         comp%active = .true.
       end if
       if (allocated (comp%prt_in) .and. allocated (comp%prt_out)) then
          associate (d => comp%description)
@@ -5796,7 +5785,8 @@ allocation is moved, so the original allocated object is returned empty.
               d = d // comp%prt_out(p)%to_string ()
            end do
            if (comp%method /= "") then
-              if ((def%nlo_process .and. .not. comp%active_component) .or. &
+              !  TODO: (bcn 2016-09-16) better output for subtraction
+              if ((def%nlo_process .and. .not. comp%active) .or. &
                    comp%nlo_type == NLO_SUBTRACTION) then
                  d = d // " [inactive]"
               else
