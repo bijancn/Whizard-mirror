@@ -5597,8 +5597,6 @@ necessary to expand with $z$ once.
     logical :: radiation_active = .true.
     logical :: subtraction_active = .true.
     type(pdf_container_t), dimension(2) :: pdf_born, pdf_scaled, pdf_scaled_coll
-    logical, dimension(:), pointer :: passed_real_cuts => null ()
-    logical, pointer :: passed_born_cuts => null ()
     integer :: fixed_alr = 0
   contains
   <<real subtraction: real subtraction: TBP>>
@@ -5610,13 +5608,10 @@ necessary to expand with $z$ once.
   procedure :: init => real_subtraction_init
 <<real subtraction: procedures>>=
   subroutine real_subtraction_init (rsub, reg_data, n_in, &
-      nlegs_born, nlegs_real, &
-      nlo_cuts)
+      nlegs_born, nlegs_real)
     class(real_subtraction_t), intent(inout), target :: rsub
     type(region_data_t), intent(in), target :: reg_data
     integer, intent(in) :: n_in, nlegs_born, nlegs_real
-    !type(sqme_collector_t), intent(in), target :: sqme_collector
-    type(nlo_cuts_t), intent(in), target :: nlo_cuts
     integer :: alr, i_uborn
     call msg_debug (D_SUBTRACTION, "real_subtraction_init")
     call msg_debug (D_SUBTRACTION, "n_in", n_in)
@@ -5624,8 +5619,7 @@ necessary to expand with $z$ once.
     call msg_debug (D_SUBTRACTION, "nlegs_real", nlegs_real)
     call msg_debug (D_SUBTRACTION, "reg_data%n_regions", reg_data%n_regions)
 
-    if (debug2_active (D_SUBTRACTION))  &
-         call reg_data%write ()
+    if (debug2_active (D_SUBTRACTION))  call reg_data%write ()
     rsub%reg_data => reg_data
     allocate (rsub%sqme_born (reg_data%n_flv_born))
     !rsub%sqme_born => sqme_collector%sqme_subtraction_born_list
@@ -5640,9 +5634,6 @@ necessary to expand with $z$ once.
        rsub%sc_required(alr) = &
           reg_data%flv_born(i_uborn)%count_particle (GLUON) > 0
     end do
-
-    rsub%passed_born_cuts => nlo_cuts%passed_born
-    rsub%passed_real_cuts => nlo_cuts%passed_real
 
     call rsub%sub_soft%init (reg_data, n_in, nlegs_born, nlegs_real)
     call rsub%sub_coll%init (reg_data%n_regions, n_in)
@@ -5859,14 +5850,14 @@ the corresponding jacobians.
     sqme_rad = zero; sqme_soft = zero; sqme_coll = zero
     sqme_cs = zero; sqme_remn = zero
     associate (region => rsub%reg_data%regions(rsub%current_alr))
-      if (rsub%radiation_active .and. rsub%passed_real_cuts (i_phs)) then
+      if (rsub%radiation_active) then
          i_real = region%real_index
          sqme_rad = rsub%sqme_real_non_sub (1, i_phs)
          call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, rsub%current_alr, &
             i_phs, emitter, rsub%current_i_res)
          call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, rsub%real_kinematics, i_phs, .false.)
       end if
-      if (rsub%subtraction_active .and. rsub%passed_born_cuts) then
+      if (rsub%subtraction_active) then
          call rsub%evaluate_subtraction_terms_fsr (emitter, i_phs, alpha_s, &
             sqme_soft, sqme_coll, sqme_cs)
          call apply_kinematic_factors_subtraction_fsr (sqme_soft, sqme_coll, sqme_cs, &
@@ -6007,7 +5998,7 @@ the corresponding jacobians.
     if (proc_scatter) call rsub%compute_pdfs ()
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       i_real = region%real_index
-      if (rsub%radiation_active .and. rsub%passed_real_cuts (i_phs)) then 
+      if (rsub%radiation_active) then
          sqme_rad = rsub%sqme_real_non_sub (1, i_phs)
          call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, &
             rsub%current_alr, i_phs, emitter, rsub%current_i_res)
@@ -6019,7 +6010,7 @@ the corresponding jacobians.
          call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, rsub%real_kinematics, &
             i_phs, .true.)
       end if
-      if (rsub%subtraction_active .and. rsub%passed_born_cuts) then
+      if (rsub%subtraction_active) then
          call rsub%evaluate_subtraction_terms_isr (emitter, i_phs, alpha_s, &
             sqme_soft, sqme_coll_plus, sqme_coll_minus, sqme_cs_plus, sqme_cs_minus)
          if (proc_scatter) then
@@ -6051,11 +6042,6 @@ the corresponding jacobians.
        type(vector4_t) :: p_gluon
        if (debug_active (D_SUBTRACTION)) then
           call msg_debug2 (D_SUBTRACTION, "real_subtraction_evaluate_region_isr")
-          if (.not. rsub%passed_born_cuts) &
-             call msg_print_color ("PHS Point did not pass Born cuts", COL_RED)
-          if (.not. any (rsub%passed_real_cuts)) &
-             call msg_print_color ("PHS Point did not pass Real cuts", COL_RED)
-          if (.not. rsub%passed_born_cuts .or. (.not. any (rsub%passed_real_cuts))) return
           if (debug2_active (D_SUBTRACTION)) then
              call write_computation_status ()
           else
@@ -8903,16 +8889,6 @@ procedure :: init => nlo_settings_init
   end type nlo_states_t
 
 @ %def nlo_states_t
-@
-<<nlo data: public>>=
-  public :: nlo_cuts_t
-<<nlo data: types>>=
-  type :: nlo_cuts_t
-    logical :: passed_born
-    logical, dimension(:), allocatable :: passed_real
-  end type nlo_cuts_t
-
-@ %def nlo_cuts_t
 @ This data type governs the whole calculation. It contains information
 about color, spin and flavor as well as the information about the Born
 process.
@@ -8937,7 +8913,6 @@ process.
     logical :: alpha_s_set = .false.
     complex(default) :: me_sc
     class(powheg_damping_t), allocatable :: powheg_damping
-    type(nlo_cuts_t) :: nlo_cuts
   contains
   <<nlo controller: nlo controller: TBP>>
   end type nlo_controller_t
@@ -8952,13 +8927,10 @@ process.
      logical, intent(in) :: subtraction_disabled
      real(default), intent(in) :: sqrts
      integer :: n_in, n_tot_born
+
      call nlo_controller%init_real_and_isr_kinematics (sqrts)
-
-     allocate (nlo_controller%nlo_cuts%passed_real (nlo_controller%reg_data%n_phs))
-     nlo_controller%nlo_cuts%passed_real = .true.
-     nlo_controller%nlo_cuts%passed_born = .true.
-
      call nlo_controller%init_real_subtraction ()
+
      if (subtraction_disabled) call nlo_controller%disable_subtraction ()
      n_in = nlo_controller%reg_data%n_in
      n_tot_born = nlo_controller%reg_data%n_legs_born
@@ -8990,8 +8962,7 @@ process.
     class(nlo_controller_t), intent(inout), target :: nlo_controller
     associate (reg_data => nlo_controller%reg_data)
        call nlo_controller%real_terms%init (nlo_controller%reg_data, &
-          reg_data%n_in, reg_data%n_legs_born, reg_data%n_legs_real, &
-          nlo_controller%nlo_cuts)
+          reg_data%n_in, reg_data%n_legs_born, reg_data%n_legs_real)
        call nlo_controller%real_terms%set_resonance_mappings &
           (nlo_controller%settings%use_resonance_mappings)
        associate (settings => nlo_controller%settings)
