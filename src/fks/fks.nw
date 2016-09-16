@@ -2566,6 +2566,44 @@ of the present one is increased.
 @ %def region_data_set_i_phs_to_i_con
 @
 <<fks regions: reg data: TBP>>=
+  procedure :: set_alr_to_i_phs => region_data_set_alr_to_i_phs
+<<fks regions: procedures>>=
+  subroutine region_data_set_alr_to_i_phs (reg_data, phs_identifiers)
+    class(region_data_t), intent(inout) :: reg_data
+    type(phs_identifier_t), intent(in), dimension(:) :: phs_identifiers
+    integer :: alr, i_phs
+    integer :: emitter, i_res
+    type(resonance_contributors_t) :: contributors
+    logical :: share_emitter, phs_exist
+    do alr = 1, reg_data%n_regions
+       associate (region => reg_data%regions(alr))
+          emitter = region%emitter
+          i_res = region%i_res
+          if (i_res /= 0) then
+             !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+             call reg_data%get_contributors (i_res, emitter, &
+                contributors%c, share_emitter)
+             if (.not. share_emitter) cycle
+          end if
+          if (allocated (contributors%c)) then
+             call check_for_phs_identifier (phs_identifiers, reg_data%n_in, &
+                emitter, contributors%c, phs_exist = phs_exist, i_phs = i_phs) 
+          else
+             call check_for_phs_identifier (phs_identifiers, reg_data%n_in, &
+                emitter, phs_exist = phs_exist, i_phs = i_phs)
+          end if
+          if (.not. phs_exist) &
+             call msg_fatal ("phs identifiers are not set up correctly!")
+          ! TODO (cw-2016-09-15): Recover as soon as nlo_controller is relocated
+          !nlo_controller%real_kinematics%alr_to_i_phs(alr) = i_phs
+       end associate
+       if (allocated (contributors%c)) deallocate (contributors%c)
+    end do
+  end subroutine region_data_set_alr_to_i_phs
+
+@ %def region_data_set_alr_to_i_phs
+@
+<<fks regions: reg data: TBP>>=
   procedure :: set_contributors => region_data_set_contributors
 <<fks regions: procedures>>=
   subroutine region_data_set_contributors (reg_data)
@@ -4094,7 +4132,7 @@ end module virtual
     integer, dimension(:), allocatable :: n_is_neutrinos
     integer :: n_in, n_legs, n_flv
     logical :: bad_point = .false.
-    logical :: use_internal_color_correlations
+    !logical :: use_internal_color_correlations
     logical :: with_subtraction = .true.
     integer :: factorization_mode = NO_FACTORIZATION
     type(vector4_t), dimension(:), allocatable :: p
@@ -4237,15 +4275,16 @@ particles involved in the radiation process are massive or massless.
 <<virtual: virtual: TBP>>=
   procedure :: evaluate => virtual_evaluate
 <<virtual: procedures>>=
-  subroutine virtual_evaluate &
-       (virt, reg_data, i_flv, alpha_s, p_born, born, b_ij)
+  subroutine virtual_evaluate (virt, reg_data, i_flv, &
+     alpha_s, p_born, sqme_born, b_ij, use_internal_cc)
     class(virtual_t), intent(inout) :: virt
     type(region_data_t), intent(in) :: reg_data
     integer, intent(in) :: i_flv
     real(default), intent(in) :: alpha_s
     type(vector4_t), intent(in), dimension(:)  :: p_born
-    real(default), intent(in) :: born
+    real(default), intent(in) :: sqme_born
     real(default), intent(in), dimension(:,:,:), allocatable :: b_ij
+    logical, intent(in) :: use_internal_cc
     integer :: alr
     real(default) :: s, BI, s_o_Q2
     virt%sqme_virt = zero
@@ -4280,15 +4319,15 @@ particles involved in the radiation process are massive or massless.
          print *, 'Q: ', virt%Q
        end if
     end associate
-    if (virt%use_internal_color_correlations) BI = BI * born
+    if (use_internal_cc) BI = BI * sqme_born
     virt%sqme_virt = virt%vfin
     !!! A factor of alpha_s/twopi is assumed to be included in vfin
     if (virt%with_subtraction) &
-       virt%sqme_virt = virt%sqme_virt + alpha_s / twopi * (virt%Q * born + BI)
+       virt%sqme_virt = virt%sqme_virt + alpha_s / twopi * (virt%Q * sqme_born + BI)
 
     if (debug2_active (D_VIRTUAL)) then
        call msg_debug2 (D_VIRTUAL, "virtual-subtracted matrix element: ")
-       print *, 'Q * born: ', virt%Q * born
+       print *, 'Q * sqme_born: ', virt%Q * sqme_born
        print *, 'BI: ', BI
        print *, 'vfin: ', virt%vfin
        print *, 'Result: ', virt%sqme_virt
@@ -5998,7 +6037,7 @@ the corresponding jacobians.
     if (proc_scatter) call rsub%compute_pdfs ()
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       i_real = region%real_index
-      if (rsub%radiation_active) then
+      if (rsub%radiation_active) then 
          sqme_rad = rsub%sqme_real_non_sub (1, i_phs)
          call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, &
             rsub%current_alr, i_phs, emitter, rsub%current_i_res)
@@ -7649,6 +7688,8 @@ and virtual counterterms.
     logical :: beta_ij_evaluated = .false.
     logical :: color_is_conserved = .false.
     integer, dimension(:), allocatable :: equivalent_color_up_to_sign
+    integer, dimension(:), allocatable :: included_color_structures
+
   contains
   <<nlo controller: color data: TBP>>
   end type color_data_t
@@ -7656,15 +7697,97 @@ and virtual counterterms.
 @ %def color_data_t
 @
 <<nlo controller: color data: TBP>>=
-  procedure :: init => color_data_init
+  procedure :: prepare => color_data_prepare
 <<nlo controller: procedures>>=
-  subroutine color_data_init (color_data, reg_data, prc_constants, &
-     factorization_mode, included_color_structures)
+  subroutine color_data_prepare (color_data, reg_data, flavor_indices, color_indices)
+    class(color_data_t), intent(inout) :: color_data
+    type(region_data_t), intent(in) :: reg_data
+    integer, intent(in), dimension(:) :: flavor_indices, color_indices
+    integer :: i, i_uborn, n_flv
+    integer, dimension(N_MAX_FLV) :: checked_uborns
+    integer, dimension(:), allocatable :: i_flv, i_limit
+    type(color_index_list_t), dimension(:), allocatable :: i_col
+    call evaluate_flavors (n_flv, i_flv, i_limit) 
+    call evaluate_colors (n_flv, i_flv, i_limit, i_col)
+    checked_uborns = 0
+    do i = 1, size (i_flv)
+       i_uborn = reg_data%get_underlying_born_index (i_flv(i))
+       if (.not. any (checked_uborns == i_uborn)) then
+          if (.not. allocated (color_data%included_color_structures)) then
+             allocate (color_data%included_color_structures (size (i_col(i)%col)))
+             color_data%included_color_structures = i_col(i)%col
+          end if
+          checked_uborns(i) = i_uborn
+       end if
+    end do
+  contains
+    subroutine evaluate_flavors (n_flv, i_flavor, i_limit)
+      integer, intent(out) :: n_flv
+      integer, intent(out), dimension(:), allocatable :: i_flavor
+      integer, intent(out), dimension(:), allocatable :: i_limit
+      integer :: i, current_flavor
+      n_flv = 0; current_flavor = 0
+      do i = 1, size (flavor_indices)
+         if (flavor_indices (i) /= current_flavor) then
+            n_flv = n_flv + 1
+            current_flavor = flavor_indices(i)
+         end if
+      end do
+      allocate (i_flavor (n_flv), i_limit (n_flv))
+      current_flavor = 0; i_limit(1) = 1
+      do i = 1, size (flavor_indices)
+         if (flavor_indices(i) /= current_flavor) then
+           i_limit(current_flavor + 1) = i
+           current_flavor = flavor_indices(i)
+           i_flavor(current_flavor) = current_flavor
+         end if
+      end do
+    end subroutine evaluate_flavors
+
+    subroutine evaluate_colors (n_flv, i_flavor, col_limit, i_color)
+      integer, intent(in) :: n_flv
+      integer, intent(in), dimension(:) :: i_flavor, col_limit
+      type(color_index_list_t), intent(out), dimension(:), allocatable :: i_color
+      integer :: i, j, k, col_first
+      integer :: count_n_col
+      allocate (i_color (n_flv)) 
+      j = 1
+      do i = 1, n_flv
+         col_first = color_indices(col_limit (i))
+         count_n_col = 1
+         k = col_limit(i) + 1
+         do while (color_indices(k) /= col_first)
+            count_n_col = count_n_col + 1
+            k = k + 1
+         end do
+         allocate (i_color(i)%col(count_n_col))
+      end do
+      do i = 1, n_flv
+         j = 1
+         col_first = color_indices(col_limit (i))
+         i_color(i)%col(1) = color_indices (col_limit(i))
+         k = col_limit(i) + 1
+         do while (color_indices(k) /= col_first)
+            j = j + 1
+            i_color(i)%col(j) = color_indices (k)
+            k = k + 1
+         end do
+      end do
+    end subroutine evaluate_colors
+
+  end subroutine color_data_prepare
+
+@ %def color_data_prepare
+@
+<<nlo controller: color data: TBP>>=
+  procedure :: init_color_matrix => color_data_init_color_matrix
+<<nlo controller: procedures>>=
+  subroutine color_data_init_color_matrix (color_data, reg_data, prc_constants, &
+     factorization_mode)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
     type(process_constants_t), intent(in), dimension(2) :: prc_constants
     integer, intent(in) :: factorization_mode
-    integer, intent(in), dimension(:) :: included_color_structures
     if (debug_active (D_SUBTRACTION))  call show_input_values ()
     call prc_constants(1)%get_col_state (color_data%col_state_born)
     call prc_constants(2)%get_col_state (color_data%col_state_real)
@@ -7674,23 +7797,24 @@ and virtual counterterms.
     color_data%n_col_real = size (color_data%col_state_real (1 ,1, :))
     call color_data%init_ghost_flags &
        (prc_constants(1)%get_ghost_flag(), prc_constants(2)%get_ghost_flag())
-    call color_data%init_color (reg_data, included_color_structures)
+    call color_data%init_color (reg_data)
     call color_data%check_equivalences ()
-    call color_data%init_betaij (reg_data, factorization_mode, included_color_structures)
+    call color_data%compute_betaij (reg_data, factorization_mode)
   contains
     subroutine show_input_values()
       integer :: i
       call msg_debug (D_SUBTRACTION, "color_data_init")
       call msg_debug (D_SUBTRACTION, "factorization_mode", factorization_mode)
-      do i = 1, size(included_color_structures)
-         call msg_debug (D_SUBTRACTION, "included_color_structures(i)", included_color_structures(i))
+      do i = 1, size(color_data%included_color_structures)
+         call msg_debug (D_SUBTRACTION, "included_color_structures(i)", &
+            color_data%included_color_structures(i))
       end do
       !call color_data%write ()
       !call region_data%write ()
     end subroutine show_input_values
-  end subroutine color_data_init
+  end subroutine color_data_init_color_matrix
 
-@ %def color_data_init
+@ %def color_data_init_color_matrix
 @
 <<nlo controller: color data: TBP>>=
   procedure :: init_ghost_flags => color_data_init_ghost_flags
@@ -7747,10 +7871,9 @@ and virtual counterterms.
 <<nlo controller: color data: TBP>>=
   procedure :: init_color => color_data_init_color
 <<nlo controller: procedures>>=
-  subroutine color_data_init_color (color_data, reg_data, included_color_structures)
+  subroutine color_data_init_color (color_data, reg_data)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(in) :: reg_data
-    integer, intent(in), dimension(:) :: included_color_structures
     integer :: i
     allocate (color_data%color_real (reg_data%n_legs_real, color_data%n_col_real))
     allocate (color_data%icm (reg_data%n_regions))
@@ -7765,7 +7888,7 @@ and virtual counterterms.
       associate (region => reg_data%regions(i))
         call color_data%icm(i)%create_map (region%flst_real, region%emitter, &
              region%ftuples, color_data%col_state_born, &
-             color_data%col_state_real, included_color_structures)
+             color_data%col_state_real, color_data%included_color_structures)
       end associate
     end do
   end subroutine color_data_init_color
@@ -7773,17 +7896,15 @@ and virtual counterterms.
 @ %def color_data_init_color
 @ Allocate and compute $\beta_{ij}$:
 <<nlo controller: color data: TBP>>=
-  procedure :: init_betaij => color_data_init_betaij
+  procedure :: compute_betaij => color_data_compute_betaij
 <<nlo controller: procedures>>=
-  subroutine color_data_init_betaij (color_data, reg_data, factorization_mode, &
-     included_color_structures)
+  subroutine color_data_compute_betaij (color_data, reg_data, factorization_mode)
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
     integer, intent(in) :: factorization_mode
-    integer, intent(in), dimension(:) :: included_color_structures
     integer :: i
     if (debug_active (D_SUBTRACTION)) then
-       call msg_print_color ("color_data_init_betaij", COL_AQUA)
+       call msg_print_color ("color_data_compute_betaij", COL_AQUA)
        call msg_print_color ("factorization_mode", factorization_mode, COL_AQUA)
     end if
     allocate (color_data%beta_ij (reg_data%n_legs_born, &
@@ -7792,25 +7913,24 @@ and virtual counterterms.
     case (NO_FACTORIZATION)
        do i = 1, reg_data%n_flv_born
           call color_data%fill_betaij_matrix (reg_data%n_legs_born, i, &
-             reg_data%regions(1)%flst_real, reg_data, included_color_structures)
+             reg_data%regions(1)%flst_real, reg_data)
        end do
     case (FACTORIZATION_THRESHOLD)
        call color_data%fill_betaij_matrix_threshold ()
     end select
-  end subroutine color_data_init_betaij
+  end subroutine color_data_compute_betaij
 
-@ %def color_data_init_betaij
+@ %def color_data_compute_betaij
 @ Actual computation of $\beta_{ij}$.
 <<nlo controller: color data: TBP>>=
   procedure :: fill_betaij_matrix => color_data_fill_betaij_matrix
 <<nlo controller: procedures>>=
   subroutine color_data_fill_betaij_matrix &
-       (color_data, n_legs, uborn_index, flst_real, reg_data, included_color_structures)
+       (color_data, n_legs, uborn_index, flst_real, reg_data)
     class(color_data_t), intent(inout) :: color_data
     integer, intent(in) :: n_legs, uborn_index
     type(flv_structure_t), intent(in) :: flst_real
     type(region_data_t), intent(inout) :: reg_data
-    integer, intent(in), dimension(:) :: included_color_structures
     integer :: em1, em2
     associate (flv_born => reg_data%flv_born (uborn_index))
        do em1 = 1, n_legs
@@ -7819,8 +7939,7 @@ and virtual counterterms.
                 if (em1 < em2) then
                    color_data%beta_ij (em1, em2, uborn_index) &
                       = color_data%compute_bij &
-                      (reg_data, uborn_index, flst_real, em1, em2, &
-                       included_color_structures)
+                      (reg_data, uborn_index, flst_real, em1, em2)
                 else if (em1 > em2) then
                    !!! B_ij is symmetric
                    color_data%beta_ij (em1, em2, uborn_index) = &
@@ -7922,15 +8041,14 @@ and virtual counterterms.
 <<nlo controller: color data: TBP>>=
   procedure :: compute_bij => color_data_compute_bij
 <<nlo controller: procedures>>=
-  function color_data_compute_bij (color_data, reg_data, uborn_index, flst_real, &
-      em1, em2, included_color_structures) result (bij)
+  function color_data_compute_bij (color_data, reg_data, uborn_index, &
+      flst_real, em1, em2) result (bij)
     real(default) :: bij
     class(color_data_t), intent(inout) :: color_data
     type(region_data_t), intent(inout) :: reg_data
     integer, intent(in) :: uborn_index
     type(flv_structure_t), intent(in) :: flst_real
     integer, intent(in) :: em1, em2
-    integer, intent(in), dimension(:) :: included_color_structures
     logical, dimension(:,:), allocatable :: cf_present
     type(singular_region_t), dimension(2,100) :: reg
     integer ::  i, j, k, l
@@ -7977,7 +8095,7 @@ and virtual counterterms.
     end do
     i1 = 1; i2 = 1
     do i = 1, color_data%n_col_real
-       if (any (included_color_structures == i)) then
+       if (any (color_data%included_color_structures == i)) then
           col1 = color_data%col_state_real (:, em1, i)
           col2 = color_data%col_state_real (:, reg_data%n_legs_real, i)
           if (share_line (col1, col2)) then
@@ -8312,27 +8430,6 @@ and virtual counterterms.
   end function nlo_controller_compute_sqme_mismatch
 
 @ %def nlo_controller_sqme_mismatch
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: compute_sqme_real_fin => nlo_controller_compute_sqme_real_fin
-<<nlo controller: procedures>>=
-  function nlo_controller_compute_sqme_real_fin (nlo_controller) result (sqme_fin)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    real(default) :: sqme_fin
-    integer :: emitter, i_flv, i_phs
-    call msg_debug2 (D_SUBTRACTION, "nlo_controller_compute_sqme_real_fin")
-    emitter = nlo_controller%get_active_emitter ()
-    i_phs = nlo_controller%get_active_phase_space ()
-    i_flv = nlo_controller%active_flavor_structure_real
-    call nlo_controller%real_terms%set_real_kinematics &
-         (nlo_controller%real_kinematics)
-    call nlo_controller%real_terms%set_isr_kinematics &
-         (nlo_controller%isr_kinematics)
-    sqme_fin = nlo_controller%real_terms%compute &
-         (emitter, i_phs, i_flv, nlo_controller%alpha_s_sub)
-  end function nlo_controller_compute_sqme_real_fin
-
-@ %def nlo_controller_compute_sqme_real_fin
 @ Check if there are massive emitters. Since the mass-structure of all
 underlying Born configurations have to be the same, we just use the first
 one to determine this.
@@ -8386,43 +8483,6 @@ one to determine this.
 @ %def nlo_controller_set_fixed_order_event_mode
 @ %def nlo_controller_set_powheg_mode
 @
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: set_alr_to_i_phs => nlo_controller_set_alr_to_i_phs
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_set_alr_to_i_phs (nlo_controller, phs_identifiers)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    type(phs_identifier_t), intent(in), dimension(:) :: phs_identifiers
-    integer :: alr, i_phs
-    integer :: emitter, i_res
-    type(resonance_contributors_t) :: contributors
-    logical :: share_emitter, phs_exist
-    do alr = 1, nlo_controller%reg_data%n_regions
-       associate (region => nlo_controller%reg_data%regions(alr))
-          emitter = region%emitter
-          i_res = region%i_res
-          if (i_res /= 0) then
-             !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-             call nlo_controller%reg_data%get_contributors &
-                (i_res, emitter, contributors%c, share_emitter)
-             if (.not. share_emitter) cycle
-          end if
-          if (allocated (contributors%c)) then
-             call check_for_phs_identifier (phs_identifiers, nlo_controller%get_n_in (), &
-                emitter, contributors%c, phs_exist = phs_exist, i_phs = i_phs) 
-          else
-             call check_for_phs_identifier (phs_identifiers, nlo_controller%get_n_in (), &
-                emitter, phs_exist = phs_exist, i_phs = i_phs)
-          end if
-          if (.not. phs_exist) &
-             call msg_fatal ("phs identifiers are not set up correctly!")
-          nlo_controller%real_kinematics%alr_to_i_phs(alr) = i_phs
-       end associate
-       if (allocated (contributors%c)) deallocate (contributors%c)
-    end do
-  end subroutine nlo_controller_set_alr_to_i_phs
-
-@ %def nlo_controller_set_alr_to_i_phs
-@                
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Unit tests}
@@ -8496,7 +8556,6 @@ end module nlo_controller_uti
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     type(region_data_t) :: reg_data
     logical, dimension(:, :), allocatable :: ghost_flag_born, ghost_flag_real
-    integer, dimension(:), allocatable :: included_color_structures
     write (u, "(A)") "* Test output: nlo_color_data_1"
     write (u, "(A)") "* Purpose: Test internal computation of color-correlated matrix elements"
     write (u, "(A)") "* in the color-flow scheme"
@@ -8547,11 +8606,11 @@ end module nlo_controller_uti
    ghost_flag_real (1 : n_legs_born, 2) = .false.
    ghost_flag_real (n_legs_real, 2) = .true.
    call color_data%init_ghost_flags (ghost_flag_born, ghost_flag_real)
-   allocate (included_color_structures (2))
-   included_color_structures = [1, 2]
-   call color_data%init_color (reg_data, included_color_structures)
+   allocate (color_data%included_color_structures (2))
+   color_data%included_color_structures = [1, 2]
+   call color_data%init_color (reg_data)
    call color_data%check_equivalences ()
-   call color_data%init_betaij (reg_data, NO_FACTORIZATION, included_color_structures)
+   call color_data%compute_betaij (reg_data, NO_FACTORIZATION)
    call color_data%write (u, verbose = .true.)
   end subroutine nlo_color_data_1
 
@@ -8570,7 +8629,6 @@ end module nlo_controller_uti
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     type(region_data_t) :: reg_data
     logical, dimension(:, :), allocatable :: ghost_flag_born, ghost_flag_real
-    integer, dimension(:), allocatable :: included_color_structures
     integer :: i
     write (u, "(A)") "* Test output: nlo_color_data_2"
     write (u, "(A)") "* Purpose: Test internal computation of color-correlated matrix elements"
@@ -8652,11 +8710,11 @@ end module nlo_controller_uti
    ghost_flag_real (3 : n_legs_real, 5) = .true.
    ghost_flag_real (:, 6) = .false.
    call color_data%init_ghost_flags (ghost_flag_born, ghost_flag_real)
-   allocate (included_color_structures (2))
-   included_color_structures = [2, 6]
-   call color_data%init_color (reg_data, included_color_structures)
+   allocate (color_data%included_color_structures (2))
+   color_data%included_color_structures = [2, 6]
+   call color_data%init_color (reg_data)
    call color_data%check_equivalences ()
-   call color_data%init_betaij (reg_data, NO_FACTORIZATION, included_color_structures)
+   call color_data%compute_betaij (reg_data, NO_FACTORIZATION)
    call color_data%write (u, verbose = .true.)
   end subroutine nlo_color_data_2
 
@@ -8675,7 +8733,6 @@ end module nlo_controller_uti
     integer, dimension(:,:), allocatable :: flv_born, flv_real
     type(region_data_t) :: reg_data
     logical, dimension(:, :), allocatable :: ghost_flag_born, ghost_flag_real
-    integer, dimension(:), allocatable :: included_color_structures
     integer :: i_col, i_flv, pdg1, pdg2
     write (u, "(A)") "* Test output: nlo_color_data_2"
     write (u, "(A)") "* Purpose: Test internal computation of color-correlated matrix elements"
@@ -8779,11 +8836,11 @@ end module nlo_controller_uti
       ghost_flag_real (:, i_col + 5) = .false.
    end do
    call color_data%init_ghost_flags (ghost_flag_born, ghost_flag_real)
-   allocate (included_color_structures (2))
-   included_color_structures = [2, 6]
-   call color_data%init_color (reg_data, included_color_structures)
+   allocate (color_data%included_color_structures (2))
+   color_data%included_color_structures = [2, 6]
+   call color_data%init_color (reg_data)
    call color_data%check_equivalences ()
-   call color_data%init_betaij (reg_data, NO_FACTORIZATION, included_color_structures)
+   call color_data%compute_betaij (reg_data, NO_FACTORIZATION)
    call color_data%write (u, verbose = .true.)
   end subroutine nlo_color_data_3
 
@@ -8900,12 +8957,10 @@ process.
     type(region_data_t), pointer :: reg_data => null ()
     type(nlo_states_t) :: particle_states
     type(nlo_settings_t), pointer :: settings => null ()
-    integer :: active_emitter, active_phase_space
-    integer :: active_flavor_structure_real
     type(color_data_t) :: color_data
     type(real_kinematics_t), pointer :: real_kinematics => null()
     type(isr_kinematics_t), pointer :: isr_kinematics => null()
-    type(virtual_t) :: virtual_terms
+    !type(virtual_t) :: virtual_terms
     type(real_subtraction_t) :: real_terms
     type(soft_mismatch_t) :: soft_mismatch
     type(dglap_remnant_t) :: dglap_remnant
@@ -9067,88 +9122,6 @@ process.
 
 @ %def nlo_controller_get_n_in
 @
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: get_n_res => nlo_controller_get_n_res
-<<nlo controller: procedures>>=
-  function nlo_controller_get_n_res (nlo_controller, emitter) result (n_res)
-    integer :: n_res
-    class(nlo_controller_t), intent(in) :: nlo_controller
-    integer, intent(in), optional :: emitter
-    integer :: em
-    integer, dimension(:), allocatable :: resonances
-    if (present (emitter)) then
-       em = emitter
-    else
-       em = nlo_controller%get_active_emitter ()
-    end if
-    if (nlo_controller%settings%use_resonance_mappings) &
-       resonances = nlo_controller%reg_data%get_associated_resonances (em)
-    if (allocated (resonances)) then
-       n_res = size (resonances)
-    else
-       n_res = 1
-    end if
-  end function nlo_controller_get_n_res
-
-@ %def nlo_controller_get_n_res
-@
-<<nlo controller: nlo controller: TBP>>=
-  !procedure :: init_region_and_color_data &
-  !   => nlo_controller_init_region_and_color_data
-<<nlo controller: procedures>>=
-  !subroutine nlo_controller_init_region_and_color_data (nlo_controller, &
-  !   template, model, phs_config)
-  !  class(nlo_controller_t), intent(inout) :: nlo_controller
-  !  type(fks_template_t), intent(inout) :: template
-  !  type(model_t), intent(in) :: model
-  !  class(phs_config_t), intent(inout) :: phs_config
-  !  type(resonance_history_t), dimension(:), allocatable :: resonance_histories
-  !  type(resonance_history_t), dimension(:), allocatable :: &
-  !     resonance_histories_clean, resonance_histories_filtered
-  !  logical :: success
-  !  integer :: mapping_type
-  !  mapping_type = template%mapping_type
-  !  select case (mapping_type)
-  !  case (FKS_RESONANCES) 
-  !     select type (phs_config)
-  !     type is (phs_fks_config_t)
-  !        select case (nlo_controller%settings%factorization_mode)
-  !        case (NO_FACTORIZATION)
-  !           allocate (resonance_histories (size (phs_config%get_resonance_histories ())))
-  !           resonance_histories = phs_config%get_resonance_histories ()
-  !           call clean_resonance_histories (resonance_histories, &
-  !              nlo_controller%reg_data%n_in, &
-  !              nlo_controller%reg_data%get_flv_states_born (1), &
-  !              resonance_histories_clean, success)
-  !           if (success .and. allocated (template%excluded_resonances)) then
-  !              call filter_particles_from_resonances (resonance_histories_clean, &
-  !                 template%excluded_resonances, model, resonance_histories_filtered)
-  !           else
-  !              allocate (resonance_histories_filtered (size (resonance_histories_clean)))
-  !              resonance_histories_filtered = resonance_histories_clean
-  !           end if
-  !           if (.not. success) &
-  !              template%mapping_type = FKS_DEFAULT
-  !        case (FACTORIZATION_THRESHOLD)
-  !           allocate (resonance_histories_clean (1))
-  !           resonance_histories_filtered = create_resonance_histories_for_threshold ()
-  !        end select
-  !     end select
-  !  end select
-  !  call nlo_controller%init_region_data (template, model)
-  !  select case (template%mapping_type)
-  !  case (FKS_RESONANCES)
-  !     call nlo_controller%reg_data%set_resonance_mappings (resonance_histories_filtered)
-  !     call nlo_controller%reg_data%init_resonance_information &
-  !        (nlo_controller%settings%factorization_mode)
-  !     nlo_controller%settings%use_resonance_mappings = .true.
-  !  end select
-  !  call nlo_controller%reg_data%compute_number_of_phase_spaces ()
-  !  !call nlo_controller%reg_data%write_to_file (template%id)
-  !end subroutine nlo_controller_init_region_and_color_data
-
-@ %def nlo_controller_init_region_and_color_data
-@
 <<nlo controller: public>>=
   public :: get_filtered_resonance_histories
 <<nlo controller: procedures>>=
@@ -9186,97 +9159,6 @@ process.
   end type color_index_list_t
 
 @ %def color_index_list
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: init_color_data => nlo_controller_init_color_data
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_init_color_data (nlo_controller, prc_constants, &
-     flavor_indices, color_indices)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    type(process_constants_t), intent(in), dimension(2) :: prc_constants
-    integer, intent(in), dimension(:) :: flavor_indices, color_indices
-    integer, dimension(N_MAX_FLV) :: checked_uborns
-    integer, dimension(:), allocatable :: i_unique
-    integer, dimension(:), allocatable :: i_flv
-    type(color_index_list_t), dimension(:), allocatable :: i_col
-    integer, dimension(:), allocatable :: i_limit
-    integer :: n_flv, i 
-    integer :: i_uborn
-    call evaluate_flavors (n_flv, i_flv, i_limit)
-    call evaluate_colors (n_flv, i_flv, i_limit, i_col)
-    checked_uborns = 0
-    do i = 1, size (i_flv)
-       i_uborn = nlo_controller%reg_data%get_underlying_born_index (i_flv(i))
-       if (.not. any (checked_uborns == i_uborn)) then
-          if (.not. allocated (i_unique)) then
-             allocate (i_unique (size (i_col(i)%col)))
-             i_unique = i_col(i)%col
-          end if
-          checked_uborns(i) = i_uborn
-       end if
-    end do
-    if (nlo_controller%settings%use_internal_color_correlations) then
-       call nlo_controller%color_data%init (nlo_controller%reg_data, &
-          prc_constants, nlo_controller%settings%factorization_mode, &
-          i_unique)
-    end if
-  contains
-    subroutine evaluate_flavors (n_flv, i_flavor, i_limit)
-      integer, intent(out) :: n_flv
-      integer, intent(out), dimension(:), allocatable :: i_flavor
-      integer, intent(out), dimension(:), allocatable :: i_limit
-      integer :: i, current_flavor
-      n_flv = 0; current_flavor = 0
-      do i = 1, size (flavor_indices)
-         if (flavor_indices (i) /= current_flavor) then
-            n_flv = n_flv + 1
-            current_flavor = flavor_indices(i)
-         end if
-      end do
-      allocate (i_flavor (n_flv), i_limit (n_flv))
-      current_flavor = 0; i_limit(1) = 1
-      do i = 1, size (flavor_indices)
-         if (flavor_indices(i) /= current_flavor) then
-           i_limit(current_flavor + 1) = i
-           current_flavor = flavor_indices(i)
-           i_flavor(current_flavor) = current_flavor
-         end if
-      end do
-    end subroutine evaluate_flavors
-
-    subroutine evaluate_colors (n_flv, i_flavor, col_limit, i_color)
-      integer, intent(in) :: n_flv
-      integer, intent(in), dimension(:) :: i_flavor, col_limit
-      type(color_index_list_t), intent(out), dimension(:), allocatable :: i_color
-      integer :: i, j, k, col_first
-      integer :: count_n_col
-      allocate (i_color (n_flv)) 
-      j = 1
-      do i = 1, n_flv
-         col_first = color_indices(col_limit (i))
-         count_n_col = 1
-         k = col_limit(i) + 1
-         do while (color_indices(k) /= col_first)
-            count_n_col = count_n_col + 1
-            k = k + 1
-         end do
-         allocate (i_color(i)%col(count_n_col))
-      end do
-      do i = 1, n_flv
-         j = 1
-         col_first = color_indices(col_limit (i))
-         i_color(i)%col(1) = color_indices (col_limit(i))
-         k = col_limit(i) + 1
-         do while (color_indices(k) /= col_first)
-            j = j + 1
-            i_color(i)%col(j) = color_indices (k)
-            k = k + 1
-         end do
-      end do
-    end subroutine evaluate_colors
-  end subroutine nlo_controller_init_color_data
-
-@ %def nlo_controller_init_color_data
 @
 <<nlo controller: procedures>>=
   subroutine clean_resonance_histories (res_hist, n_in, flv, res_hist_clean, success)
@@ -9508,7 +9390,7 @@ process.
     logical, intent(in) :: flag_color, flag_spin
     !nlo_controller%settings%use_internal_color_correlations = flag_color
     nlo_controller%real_terms%sub_soft%use_internal_color_correlations = flag_color
-    nlo_controller%virtual_terms%use_internal_color_correlations = flag_color
+    !nlo_controller%virtual_terms%use_internal_color_correlations = flag_color
     nlo_controller%settings%use_internal_spin_correlations = flag_spin
   end subroutine nlo_controller_set_internal_procedures
 
@@ -9532,26 +9414,26 @@ process.
 @ %def nlo_controller_set_x_rad
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: init_virtual => nlo_controller_init_virtual
+  !procedure :: init_virtual => nlo_controller_init_virtual
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_init_virtual (nlo_controller)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    call nlo_controller%virtual_terms%init &
-      (nlo_controller%reg_data%get_flv_states_born (), &
-       nlo_controller%reg_data%n_in)
-    nlo_controller%virtual_terms%factorization_mode &
-       = nlo_controller%settings%factorization_mode
-  end subroutine nlo_controller_init_virtual
+  !subroutine nlo_controller_init_virtual (nlo_controller)
+  !  class(nlo_controller_t), intent(inout) :: nlo_controller
+  !  call nlo_controller%virtual_terms%init &
+  !    (nlo_controller%reg_data%get_flv_states_born (), &
+  !     nlo_controller%reg_data%n_in)
+  !  nlo_controller%virtual_terms%factorization_mode &
+  !     = nlo_controller%settings%factorization_mode
+  !end subroutine nlo_controller_init_virtual
 
 @ %def nlo_controller_init_virtual
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: disable_virtual_subtraction => nlo_controller_disable_virtual_subtraction
+  !procedure :: disable_virtual_subtraction => nlo_controller_disable_virtual_subtraction
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_disable_virtual_subtraction (nlo_controller)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    nlo_controller%virtual_terms%with_subtraction = .false.
-  end subroutine nlo_controller_disable_virtual_subtraction
+  !subroutine nlo_controller_disable_virtual_subtraction (nlo_controller)
+  !  class(nlo_controller_t), intent(inout) :: nlo_controller
+  !  nlo_controller%virtual_terms%with_subtraction = .false.
+  !end subroutine nlo_controller_disable_virtual_subtraction
 
 @ %def nlo_controller_disable_virtual_subtraction
 @
@@ -9626,50 +9508,6 @@ process.
   end function nlo_controller_get_i_phs
 
 @ %def nlo_controller_get_i_phs
-@ 
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: set_active_emitter => nlo_controller_set_active_emitter
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_set_active_emitter (nlo_controller, emitter)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer, intent(in) :: emitter
-    nlo_controller%active_emitter = emitter
-  end subroutine nlo_controller_set_active_emitter
-
-@ %def nlo_controller_set_active_emitter
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: set_active_phase_space => nlo_controller_set_active_phase_space
-<<nlo controller: procedures>>=
-  subroutine nlo_controller_set_active_phase_space (nlo_controller, i_phs)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    integer, intent(in) :: i_phs
-    nlo_controller%active_phase_space = i_phs
-  end subroutine 
-
-@ %def nlo_controller_set_active_phase_spac
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: get_active_emitter => nlo_controller_get_active_emitter
-<<nlo controller: procedures>>=
-  function nlo_controller_get_active_emitter (nlo_controller) result (emitter)
-    integer :: emitter
-    class(nlo_controller_t), intent(in) :: nlo_controller
-    emitter = nlo_controller%active_emitter
-  end function nlo_controller_get_active_emitter
-
-@ %def nlo_controller_get_active_emitter
-@
-<<nlo controller: nlo controller: TBP>>=
-  procedure :: get_active_phase_space => nlo_controller_get_active_phase_space
-<<nlo controller: procedures>>=
-  function nlo_controller_get_active_phase_space (nlo_controller) result (i_phs)
-    integer :: i_phs
-    class(nlo_controller_t), intent(in) :: nlo_controller
-    i_phs = nlo_controller%active_phase_space
-  end function nlo_controller_get_active_phase_space
-
-@ %def nlo_controller_get_active_phase_space
 @
 <<nlo controller: nlo controller: TBP>>=
   procedure :: disable_subtraction => nlo_controller_disable_subtraction
@@ -9956,55 +9794,55 @@ process.
 @
 \subsection{Computation of virtual matrix element}
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: transfer_to_virtual => nlo_controller_transfer_to_virtual
+  !procedure :: transfer_to_virtual => nlo_controller_transfer_to_virtual
 <<nlo controller: procedures>>=
-  subroutine nlo_controller_transfer_to_virtual (nlo_controller, p, &
-     ren_scale, fac_scale)
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    type(vector4_t), intent(in), dimension(:) :: p
-    real(default), intent(in) :: ren_scale, fac_scale
-    associate (virtual => nlo_controller%virtual_terms)
-       if (.not. allocated (virtual%p)) allocate (virtual%p (size (p)))
-       virtual%p = p
-       call virtual%set_ren_scale (p, ren_scale)
-       call virtual%set_fac_scale (p, fac_scale)
-       call virtual%set_ellis_sexton_scale () 
-    end associate
-  end subroutine nlo_controller_transfer_to_virtual
+  !subroutine nlo_controller_transfer_to_virtual (nlo_controller, p, &
+  !   ren_scale, fac_scale)
+  !  class(nlo_controller_t), intent(inout) :: nlo_controller
+  !  type(vector4_t), intent(in), dimension(:) :: p
+  !  real(default), intent(in) :: ren_scale, fac_scale
+  !  associate (virtual => nlo_controller%virtual_terms)
+  !     if (.not. allocated (virtual%p)) allocate (virtual%p (size (p)))
+  !     virtual%p = p
+  !     call virtual%set_ren_scale (p, ren_scale)
+  !     call virtual%set_fac_scale (p, fac_scale)
+  !     call virtual%set_ellis_sexton_scale () 
+  !  end associate
+  !end subroutine nlo_controller_transfer_to_virtual
 
 @ %def nlo_controller_transfer_to_virtual
 @
 <<nlo controller: nlo controller: TBP>>=
-  procedure :: compute_sqme_virt => nlo_controller_compute_sqme_virt
+  !procedure :: compute_sqme_virt => nlo_controller_compute_sqme_virt
 <<nlo controller: procedures>>=
-  function nlo_controller_compute_sqme_virt (nlo_controller, me) result (sqme_virt)
-    real(default) :: sqme_virt
-    class(nlo_controller_t), intent(inout) :: nlo_controller
-    complex(default), intent(in), dimension(:) :: me
-    integer :: n_tot, n_me 
-    integer, dimension(:), allocatable :: flv_state
-    associate (virtual => nlo_controller%virtual_terms)
-       call virtual%set_vfin (real(me(1)))
-       if (nlo_controller%settings%use_internal_color_correlations) then
-          call virtual%evaluate (nlo_controller%reg_data, 1, &
-             nlo_controller%alpha_s_sub, virtual%p, real(me(2)), &
-             nlo_controller%color_data%beta_ij)
-       else
-          !!! TODO (cw 2016-08-03): Restore external color correlations
-          !n_tot = nlo_controller%reg_data%n_legs_born
-          !n_me = size (me)
-          !call blha_cc_fill_offdiag (n_tot, real (me(3 : n_me)), &
-          !   nlo_controller%sqme_collector%sqme_born_cc (:,:,1)) 
-          !flv_state = nlo_controller%reg_data%get_flv_states_born (1)
-          !call blha_cc_fill_diag (real (me(2)), flv_state, &
-          !   nlo_controller%sqme_collector%sqme_born_cc (:,:,1))
-          !call virtual%evaluate (nlo_controller%reg_data, 1, &
-          !   nlo_controller%alpha_s_sub, virtual%p, real(me(2)), &
-          !   nlo_controller%sqme_collector%sqme_born_cc)
-       end if
-       sqme_virt = virtual%sqme_virt
-    end associate
-  end function nlo_controller_compute_sqme_virt
+  !function nlo_controller_compute_sqme_virt (nlo_controller, me) result (sqme_virt)
+  !  real(default) :: sqme_virt
+  !  class(nlo_controller_t), intent(inout) :: nlo_controller
+  !  complex(default), intent(in), dimension(:) :: me
+  !  integer :: n_tot, n_me 
+  !  integer, dimension(:), allocatable :: flv_state
+  !  associate (virtual => nlo_controller%virtual_terms)
+  !     call virtual%set_vfin (real(me(1)))
+  !     if (nlo_controller%settings%use_internal_color_correlations) then
+  !        call virtual%evaluate (nlo_controller%reg_data, 1, &
+  !           nlo_controller%alpha_s_sub, virtual%p, real(me(2)), &
+  !           nlo_controller%color_data%beta_ij)
+  !     else
+  !        !!! TODO (cw 2016-08-03): Restore external color correlations
+  !        !n_tot = nlo_controller%reg_data%n_legs_born
+  !        !n_me = size (me)
+  !        !call blha_cc_fill_offdiag (n_tot, real (me(3 : n_me)), &
+  !        !   nlo_controller%sqme_collector%sqme_born_cc (:,:,1)) 
+  !        !flv_state = nlo_controller%reg_data%get_flv_states_born (1)
+  !        !call blha_cc_fill_diag (real (me(2)), flv_state, &
+  !        !   nlo_controller%sqme_collector%sqme_born_cc (:,:,1))
+  !        !call virtual%evaluate (nlo_controller%reg_data, 1, &
+  !        !   nlo_controller%alpha_s_sub, virtual%p, real(me(2)), &
+  !        !   nlo_controller%sqme_collector%sqme_born_cc)
+  !     end if
+  !     sqme_virt = virtual%sqme_virt
+  !  end associate
+  !end function nlo_controller_compute_sqme_virt
 @ %def nlo_controller_compute_sqme_virt
 @
 <<nlo controller: nlo controller: TBP>>=

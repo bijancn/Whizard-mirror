@@ -2456,9 +2456,23 @@ This object deals with the actual (squared) matrix element values.
   public :: pcm_instance_t
 <<PCM base: types>>=
   type, abstract :: pcm_instance_t
+    class(pcm_t), pointer :: config => null ()
+  contains
+  <<PCM base: pcm instance: TBP>>
   end type pcm_instance_t
   
 @ %def pcm_instance_t
+@
+<<PCM base: pcm instance: TBP>>=
+  procedure :: link_config => pcm_instance_link_config
+<<PCM base: procedures>>=
+  subroutine pcm_instance_link_config (pcm_instance, config)
+     class(pcm_instance_t), intent(inout) :: pcm_instance
+     class(pcm_t), intent(in), target :: config
+     pcm_instance%config => config
+  end subroutine pcm_instance_link_config
+
+@ %def pcm_instance_link_config
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Complete Elementary Processes}
@@ -7022,10 +7036,14 @@ matrix element.
 <<File header>>
 
 module pcm
-
+  
+<<Use kinds>>
+  use lorentz, only: vector4_t
+  use process_constants, only: process_constants_t
   use pcm_base
   use nlo_data, only: nlo_settings_t
   use fks_regions, only: region_data_t
+  use virtual, only: virtual_t
   use nlo_controller
 
 <<Standard module head>>
@@ -7063,6 +7081,8 @@ corresponding instance.  The default version is trivial.
 @ %def pcm_default_allocate_instance
 <<Pcm: types>>=
   type, extends (pcm_instance_t) :: pcm_instance_default_t
+  contains
+  <<Pcm: pcm instance default: TBP>>
   end type pcm_instance_default_t
   
 @ %def pcm_instance_default_t
@@ -8262,8 +8282,11 @@ allocated explicitly.
     type is (phs_fks_t)
        call phs%allocate_momenta (phs_config, &
           .not. (term%nlo_type == NLO_REAL))
-       call phs%init_phs_identifiers (term%nlo_controller%reg_data)
-       call term%nlo_controller%set_alr_to_i_phs (phs%phs_identifiers)
+       select type (config => term%pcm_instance%config)
+       type is (pcm_nlo_t)
+          call phs%init_phs_identifiers (config%region_data)
+          call config%region_data%set_alr_to_i_phs (phs%phs_identifiers)
+       end select
     end select
   end subroutine term_instance_setup_kinematics
 
@@ -8289,13 +8312,14 @@ allocated explicitly.
     end if
     select type (phs => term%k_term%phs)
     type is (phs_fks_t)
-       if (mode > PHS_MODE_UNDEFINED) then
-          call term%nlo_controller%setup_generator &
-             (phs%generator, phs%config%sqrts, singular_jacobian, mode)
-       else
-          call term%nlo_controller%setup_generator &
-             (phs%generator, phs%config%sqrts, singular_jacobian)
-       end if
+       ! TODO (cw-2016-09-16): Restore when dealing with real subtraction in pcm_instance_t
+       !if (mode > PHS_MODE_UNDEFINED) then
+       !   call term%nlo_controller%setup_generator &
+       !      (phs%generator, phs%config%sqrts, singular_jacobian, mode)
+       !else
+       !   call term%nlo_controller%setup_generator &
+       !      (phs%generator, phs%config%sqrts, singular_jacobian)
+       !end if
     class default 
        call msg_fatal ("Phase space should be an FKS phase space!")
     end select
@@ -8303,24 +8327,27 @@ allocated explicitly.
     function check_generator_mode (gen_mode_default) result (gen_mode)
        integer :: gen_mode
        integer, intent(in) :: gen_mode_default
-       associate (nlo_settings => term%nlo_controller%settings)
-         if (nlo_settings%test_coll_limit .and. nlo_settings%test_anti_coll_limit) &
-            call msg_fatal ("You cannot check the collinear and anti-collinear limit "&
-               &"at the same time!")
-         if (nlo_settings%test_soft_limit .and. .not. nlo_settings%test_coll_limit) then
-            gen_mode = GEN_SOFT_LIMIT_TEST
-         else if (.not. nlo_settings%test_soft_limit .and. nlo_settings%test_coll_limit) then
-            gen_mode = GEN_COLL_LIMIT_TEST
-         else if (.not. nlo_settings%test_soft_limit .and. nlo_settings%test_anti_coll_limit) then
-            gen_mode = GEN_ANTI_COLL_LIMIT_TEST
-         else if (nlo_settings%test_soft_limit .and. nlo_settings%test_coll_limit) then
-            gen_mode = GEN_SOFT_COLL_LIMIT_TEST
-         else if (nlo_settings%test_soft_limit .and. nlo_settings%test_anti_coll_limit) then
-            gen_mode = GEN_SOFT_ANTI_COLL_LIMIT_TEST
-         else
-            gen_mode = gen_mode_default
-         end if
-       end associate
+       select type (config => term%pcm_instance%config)
+       type is (pcm_nlo_t)
+          associate (settings => config%settings)
+             if (settings%test_coll_limit .and. settings%test_anti_coll_limit) &
+                call msg_fatal ("You cannot check the collinear and anti-collinear limit "&
+                   &"at the same time!")
+             if (settings%test_soft_limit .and. .not. settings%test_coll_limit) then
+                gen_mode = GEN_SOFT_LIMIT_TEST
+             else if (.not. settings%test_soft_limit .and. settings%test_coll_limit) then
+                gen_mode = GEN_COLL_LIMIT_TEST
+             else if (.not. settings%test_soft_limit .and. settings%test_anti_coll_limit) then
+                gen_mode = GEN_ANTI_COLL_LIMIT_TEST
+             else if (settings%test_soft_limit .and. settings%test_coll_limit) then
+                gen_mode = GEN_SOFT_COLL_LIMIT_TEST
+             else if (settings%test_soft_limit .and. settings%test_anti_coll_limit) then
+                gen_mode = GEN_SOFT_ANTI_COLL_LIMIT_TEST
+             else
+                gen_mode = gen_mode_default
+             end if
+          end associate
+       end select
     end function check_generator_mode
   end subroutine term_instance_setup_fks_kinematics
 
@@ -8670,6 +8697,7 @@ has passed cuts, we calculate the various scale and weight expressions.
      type(vector4_t), dimension(:), allocatable :: p_seed
      type(vector4_t), dimension(:), allocatable :: p_hard
      type(nlo_controller_t), pointer :: nlo_controller => null ()
+     type(pcm_instance_nlo_t), pointer :: pcm_instance => null ()
      integer :: nlo_type = BORN
      integer, dimension(:), allocatable :: same_kinematics
    contains
@@ -8999,8 +9027,11 @@ relevant for a NLO algorithm.
        type is (phs_fks_t)
           if (i_phs <= pcm%region_data%n_phs) then !!! Not a subtraction component
              term%k_term%emitter = phs%phs_identifiers(i_phs)%emitter
-             if (allocated (term%nlo_controller%reg_data%i_phs_to_i_con)) &
-                term%k_term%i_con = term%nlo_controller%reg_data%i_phs_to_i_con (i_phs)
+             select type (pcm => term%pcm_instance%config)
+             type is (pcm_nlo_t)
+                if (allocated (pcm%region_data%i_phs_to_i_con)) &
+                   term%k_term%i_con = pcm%region_data%i_phs_to_i_con (i_phs)
+             end select
           end if
        end select       
     end select
@@ -9116,29 +9147,32 @@ The quantum numbers mask of the incoming particle
 
      if (term%nlo_type /= NLO_VIRTUAL) call msg_fatal &
         ("Trying to evaluate virtual matrix element with unsuited term_instance.")
-     associate (nlo_controller => term%nlo_controller)
 
-        if (debug2_active (D_VIRTUAL)) then
-           call msg_debug2 (D_VIRTUAL, "Evaluating virtual-subtracted matrix elements")
-           print *, 'alpha_s: ', core%get_alpha_s (term%core_state)
-           print *, 'ren_scale: ', term%ren_scale
-           print *, 'fac_scale: ', term%fac_scale
-        end if
+     if (debug2_active (D_VIRTUAL)) then
+        call msg_debug2 (D_VIRTUAL, "Evaluating virtual-subtracted matrix elements")
+        print *, 'alpha_s: ', core%get_alpha_s (term%core_state)
+        print *, 'ren_scale: ', term%ren_scale
+        print *, 'fac_scale: ', term%fac_scale
+     end if
 
-        call nlo_controller%set_alpha_s_sub (core%get_alpha_s (term%core_state))
-        select type (core)
-        class is (prc_user_defined_base_t)
-           call core%update_alpha_s (term%core_state, term%fac_scale)
-        end select
-        call nlo_controller%transfer_to_virtual (term%int_hard%get_momenta (), &
-           term%ren_scale, term%fac_scale)
-        !!! TODO(cw 2016-07-08): Handle bad point
-        !!! TODO(cw 2016-07-08): Handle multiple Born flavors 
-        sqme_virt = term%nlo_controller%compute_sqme_virt &
-           (term%connected%trace%get_matrix_element ())
-        call term%connected%trace%set_matrix_element &
-           (cmplx (sqme_virt * term%weight, 0, default))
-     end associate
+     !call nlo_controller%set_alpha_s_sub (core%get_alpha_s (term%core_state))
+     !select type (core)
+     !class is (prc_user_defined_base_t)
+     !   call core%update_alpha_s (term%core_state, term%fac_scale)
+     !end select
+     call term%pcm_instance%set_momenta_and_scales (term%int_hard%get_momenta (), &
+        term%ren_scale, term%fac_scale)
+     !call nlo_controller%transfer_to_virtual (term%int_hard%get_momenta (), &
+     !   term%ren_scale, term%fac_scale)
+     !!! TODO(cw 2016-07-08): Handle bad point
+     !!! TODO(cw 2016-07-08): Handle multiple Born flavors 
+     !sqme_virt = term%nlo_controller%compute_sqme_virt &
+     !   (term%connected%trace%get_matrix_element ())
+     sqme_virt = term%pcm_instance%compute_sqme_virt &
+        (core%get_alpha_s (term%core_state), &
+        term%connected%trace%get_matrix_element ())
+     call term%connected%trace%set_matrix_element &
+        (cmplx (sqme_virt * term%weight, 0, default))
   end subroutine term_instance_evaluate_sqme_virt
 
 @ %def term_instance_evaluate_sqme_virt
@@ -9346,21 +9380,24 @@ method may modify the [[core_state]] workspace object.
                 call core%compute_sqme_virt (i, term%p_hard, term%ren_scale, sqme_virt, bad_point)
              end select
              term%amp(i_virt) = cmplx (sqme_virt(3), 0, default)
-             if (term%nlo_controller%settings%use_internal_color_correlations) then
-                term%amp(i_born) = cmplx (sqme_virt(4), 0, default)
-             else
-                select type (core)
-                class is (prc_blha_t)
-                   call core%compute_sqme_cc_raw (i, term%p_hard, term%ren_scale, &
-                      sqme_cc, bad_point)
-                   term%amp (i_born) = cmplx (sqme_virt(4), 0, default)
-                   do i_sub = 1, n_sub - 1
-                      i_cc = core%get_helicity_list (i + n_hel)
-                      i_cc = i_cc + (i_sub + 1) * n_hel
-                      term%amp(i_cc) = cmplx (sqme_cc(i_sub), 0, default)
-                   end do 
-                end select
-             end if
+             select type (config => term%pcm_instance%config)
+             type is (pcm_nlo_t)
+                if (config%settings%use_internal_color_correlations) then
+                   term%amp(i_born) = cmplx (sqme_virt(4), 0, default)
+                else
+                   select type (core)
+                   class is (prc_blha_t)
+                      call core%compute_sqme_cc_raw (i, term%p_hard, term%ren_scale, &
+                         sqme_cc, bad_point)
+                      term%amp (i_born) = cmplx (sqme_virt(4), 0, default)
+                      do i_sub = 1, n_sub - 1
+                         i_cc = core%get_helicity_list (i + n_hel)
+                         i_cc = i_cc + (i_sub + 1) * n_hel
+                         term%amp(i_cc) = cmplx (sqme_cc(i_sub), 0, default)
+                      end do
+                   end select
+                end if
+             end select
           end do
        case (BORN, NLO_DGLAP)
          !  TODO: (bcn 2016-09-14) combine these two?
@@ -10099,6 +10136,8 @@ to subobject of [[instance]].
 
     pcm => instance%process%get_pcm_ptr ()
     call pcm%allocate_instance (instance%pcm)
+    call instance%pcm%link_config (pcm)
+
     select type (pcm)
     type is (pcm_nlo_t)
        call instance%init_nlo_configuration ()
@@ -10117,7 +10156,7 @@ to subobject of [[instance]].
          if (i_component /= 0) then
             select type (pcm_instance => instance%pcm)
             type is (pcm_instance_nlo_t)
-               term_instance%nlo_controller => pcm_instance%controller
+               term_instance%pcm_instance => pcm_instance
             end select 
             term_instance%nlo_type = process%get_nlo_type_component (i_component)
             phs_config => process%get_phs_config (i_component)
@@ -10235,26 +10274,31 @@ to subobject of [[instance]].
                       use_internal_cc = pcm%settings%use_internal_color_correlations
                       use_internal_sc = .false.
                       combined_nlo_integration = pcm%settings%combined_integration
+                      if (use_internal_cc) then
+                         term = process%get_term_ptr (i_real)
+                         call pcm%init_color_data ([data_born, data_real], &
+                            term%flv, term%col)
+                      end if
                    end select
                    select type (pcm_instance => instance%pcm)
                    type is (pcm_instance_nlo_t)
                       pcm_instance%active_real_component = i_component
                    end select
-                   if (nlo_controller%needs_initialization) then
-                      call nlo_controller%set_internal_procedures &
-                         (use_internal_cc, use_internal_sc)
-                      term = process%get_term_ptr (i_real)
-                      call nlo_controller%init_color_data  &
-                         ([data_born, data_real], term%flv, term%col)
-                      call nlo_controller%setup_real_terms &
-                         (nlo_controller%settings%fks_template%subtraction_disabled, &
-                          process%get_sqrts ())
-                      nlo_controller%needs_initialization = .false.
-                   end if
+                   !if (nlo_controller%needs_initialization) then
+                   !   call nlo_controller%set_internal_procedures &
+                   !      (use_internal_cc, use_internal_sc)
+                   !   term = process%get_term_ptr (i_real)
+                   !   call nlo_controller%init_color_data  &
+                   !      ([data_born, data_real], term%flv, term%col)
+                   !   call nlo_controller%setup_real_terms &
+                   !      (nlo_controller%settings%fks_template%subtraction_disabled, &
+                   !       process%get_sqrts ())
+                   !   nlo_controller%needs_initialization = .false.
+                   !end if
                 case (NLO_VIRTUAL)
-                   call pcm_instance%controller%init_virtual ()
+                   call pcm_instance%init_virtual ()
                    if (.not. nlo_controller%settings%with_virtual_subtraction) &
-                      call pcm_instance%controller%disable_virtual_subtraction ()
+                      call pcm_instance%disable_virtual_subtraction ()
                 case (NLO_DGLAP)
                    call pcm_instance%controller%init_dglap_remnant ()
                 end select
@@ -10504,7 +10548,8 @@ recovered, and we are just computing the rest.
     associate (mci_work => instance%mci_work(instance%i_mci))
        select type (pcm => instance%pcm)
        class is (pcm_instance_nlo_t)
-          call pcm%controller%set_x_rad (mci_work%get_x_process ())
+          ! TODO (cw-2016-09-16): Recover as soon as working on real component!
+          !call pcm%controller%set_x_rad (mci_work%get_x_process ())
        end select
     end associate
   end subroutine process_instance_compute_seed_kinematics
@@ -10876,7 +10921,6 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
          call term%compute_eff_kinematics ()
          call term%evaluate_expressions ()
          call term%evaluate_interaction (core)
-         !call instance%transfer_same_alpha_s (i_term)
          if (.not. term%nlo_controller%alpha_s_set) then
             if (present (alpha_s_external)) then
                call term%nlo_controller%set_alpha_s_sub (alpha_s_external)
@@ -11482,6 +11526,7 @@ corresponding instance.  This is the nontrivial NLO version.
   type, extends (pcm_t) :: pcm_nlo_t
     type(nlo_settings_t) :: settings
     type(region_data_t) :: region_data
+    type(color_data_t) :: color_data
   contains
   <<Pcm: pcm nlo: TBP>>
   end type pcm_nlo_t
@@ -11516,7 +11561,21 @@ each entry of the BLHA output array.
     
 @ %def pcm_nlo_allocate_instance
 @
-As a first implementation, it acts as a wrapper for the NLO controller
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: init_color_data => pcm_nlo_init_color_data
+<<Pcm: procedures>>=
+  subroutine pcm_nlo_init_color_data (pcm, prc_constants, &
+     flavor_indices, color_indices)
+    class(pcm_nlo_t), intent(inout) :: pcm
+    type(process_constants_t), intent(in), dimension(2) :: prc_constants
+    integer, intent(in), dimension(:) :: flavor_indices, color_indices
+    call pcm%color_data%prepare (pcm%region_data, flavor_indices, color_indices)
+    call pcm%color_data%init_color_matrix (pcm%region_data, prc_constants, &
+       pcm%settings%factorization_mode)
+  end subroutine pcm_nlo_init_color_data
+
+@ %def pcm_nlo_init_color_data
+@ As a first implementation, it acts as a wrapper for the NLO controller
 object and the squared matrix-element collector.
 <<Pcm: public>>=
   public :: pcm_instance_nlo_t
@@ -11524,9 +11583,98 @@ object and the squared matrix-element collector.
   type, extends (pcm_instance_t) :: pcm_instance_nlo_t
      type(nlo_controller_t) :: controller
      integer :: active_real_component = 1
+     logical :: use_internal_color_correlation = .true.
+     type(virtual_t) :: virtual
+  contains
+  <<Pcm: pcm instance: TBP>>
   end type pcm_instance_nlo_t
 
 @ %def pcm_instance_nlo_t
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: set_momenta_and_scales => pcm_instance_nlo_set_momenta_and_scales
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_set_momenta_and_scales (pcm_instance, p, &
+     ren_scale, fac_scale)
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default), intent(in) :: ren_scale, fac_scale
+    associate (virtual => pcm_instance%virtual)
+       if (.not. allocated (virtual%p)) allocate (virtual%p (size (p)))
+       virtual%p = p
+       call virtual%set_ren_scale (p, ren_scale)
+       call virtual%set_fac_scale (p, fac_scale)
+       call virtual%set_ellis_sexton_scale ()
+    end associate
+  end subroutine pcm_instance_nlo_set_momenta_and_scales
+
+@ %def pcm_instance_nlo_set_momenta_and_scales
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: init_virtual => pcm_instance_nlo_init_virtual
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_init_virtual (pcm_instance)
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       associate (region_data => config%region_data)
+          call pcm_instance%virtual%init (region_data%get_flv_states_born (), &
+             region_data%n_in)
+          pcm_instance%virtual%factorization_mode = config%settings%factorization_mode
+       end associate
+    end select
+  end subroutine pcm_instance_nlo_init_virtual
+
+@ %def pcm_instance_nlo_init_virtual
+@ 
+<<Pcm: pcm instance: TBP>>=
+  procedure :: disable_virtual_subtraction => pcm_instance_nlo_disable_virtual_subtraction
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_disable_virtual_subtraction (pcm_instance)
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    pcm_instance%virtual%with_subtraction = .false.
+  end subroutine pcm_instance_nlo_disable_virtual_subtraction
+
+@ %def pcm_instance_nlo_disable_virtual_subtraction
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: compute_sqme_virt => pcm_instance_nlo_compute_sqme_virt
+<<Pcm: procedures>>=
+  function pcm_instance_nlo_compute_sqme_virt (pcm_instance, alpha_s, me) result (sqme_virt)
+    real(default) :: sqme_virt
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    real(default), intent(in) :: alpha_s
+    complex(default), intent(in), dimension(:) :: me
+    integer :: n_tot, n_me 
+    integer, dimension(:), allocatable :: flv_state
+    associate (virtual => pcm_instance%virtual)
+       !!! TODO (cw-2016-09-16): Interface vfin directly
+       call virtual%set_vfin (real(me(1)))
+       select type (config => pcm_instance%config)
+       type is (pcm_nlo_t)
+          if (config%settings%use_internal_color_correlations) then
+          else
+             !!! TODO (cw 2016-08-03): Restore external color correlations
+             !n_tot = nlo_controller%reg_data%n_legs_born
+             !n_me = size (me)
+             !call blha_cc_fill_offdiag (n_tot, real (me(3 : n_me)), &
+             !   nlo_controller%sqme_collector%sqme_born_cc (:,:,1)) 
+             !flv_state = nlo_controller%reg_data%get_flv_states_born (1)
+             !call blha_cc_fill_diag (real (me(2)), flv_state, &
+             !   nlo_controller%sqme_collector%sqme_born_cc (:,:,1))
+             !call virtual%evaluate (nlo_controller%reg_data, 1, &
+             !   nlo_controller%alpha_s_sub, virtual%p, real(me(2)), &
+             !   nlo_controller%sqme_collector%sqme_born_cc)
+          end if
+          call virtual%evaluate (config%region_data, 1, &
+             alpha_s, virtual%p, real(me(2)), &
+             config%color_data%beta_ij, &
+             config%settings%use_internal_color_correlations)
+       end select
+       sqme_virt = virtual%sqme_virt
+    end associate
+  end function pcm_instance_nlo_compute_sqme_virt
+@ %def pcm_instance_nlo_compute_sqme_virt
 @
 <<Process: process: TBP>>=
   procedure :: init_nlo_settings => process_init_nlo_settings
