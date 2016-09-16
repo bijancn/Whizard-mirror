@@ -1937,18 +1937,18 @@ module parton_states_uti
 
 <<Use kinds>>
 <<Use strings>>
-
-use numeric_utils
-use flavors
-use colors
-use helicities
-use quantum_numbers
-use sf_base, only: sf_chain_instance_t
-use state_matrices, only: state_matrix_t
-use prc_template_me, only: prc_template_me_t
-use interactions, only: interaction_t 
-use models, only: model_t, create_test_model
-use parton_states
+  use constants, only: zero
+  use numeric_utils
+  use flavors
+  use colors
+  use helicities
+  use quantum_numbers
+  use sf_base, only: sf_chain_instance_t
+  use state_matrices, only: state_matrix_t
+  use prc_template_me, only: prc_template_me_t
+  use interactions, only: interaction_t 
+  use models, only: model_t, create_test_model
+  use parton_states
 
 <<Standard module head>>
 
@@ -2056,17 +2056,17 @@ end module parton_states_uti
 
     !!! Indices of the helicity configurations which are non-zero
     i_allowed_states = [6, 7, 10, 11, 22, 23, 26, 27]
-    me = [cmplx (-1.89448E-5, 9.94456E-7, default), &
-          cmplx (-8.37887E-2, 4.30842E-3, default), &
-          cmplx (-1.99997E-1, -1.01985E-2, default), &
-          cmplx (1.79717E-5, 9.27038E-7, default), &
-          cmplx (-1.74859E-5, 8.78819E-7, default), &
-          cmplx (1.67577E-1, -8.61683E-3, default), &
-          cmplx (2.41331E-1, 1.23306E-2, default), &
-          cmplx (-3.59435E-5, -1.85407E-6, default)]
-    me_check_tot = cmplx (0, 0, default)
-    me_check_1 = cmplx (0, 0, default)
-    me_check_2 = cmplx (0, 0, default) 
+    me = [cmplx (-1.89448E-5_default,  9.94456E-7_default, default), &
+          cmplx (-8.37887E-2_default,  4.30842E-3_default, default), &
+          cmplx (-1.99997E-1_default, -1.01985E-2_default, default), &
+          cmplx ( 1.79717E-5_default,  9.27038E-7_default, default), &
+          cmplx (-1.74859E-5_default,  8.78819E-7_default, default), &
+          cmplx ( 1.67577E-1_default, -8.61683E-3_default, default), &
+          cmplx ( 2.41331E-1_default,  1.23306E-2_default, default), &
+          cmplx (-3.59435E-5_default, -1.85407E-6_default, default)]
+    me_check_tot = cmplx (zero, zero, default)
+    me_check_1 = cmplx (zero, zero, default)
+    me_check_2 = cmplx (zero, zero, default)
     do i = 1, 8
        me2 = me(i) * conjg (me(i))
        me_check_tot = me_check_tot + me2
@@ -2665,6 +2665,7 @@ work for this matter.
      class(pcm_t), allocatable :: &
           pcm
      type(core_manager_t) :: cm
+     logical, dimension(:), allocatable :: component_selected
    contains
    <<Process: process: TBP>>
   end type process_t
@@ -2792,6 +2793,45 @@ interesting parts.
   end subroutine process_write
       
 @ %def process_write
+@
+<<Process: process: TBP>>=
+  procedure :: write_meta => process_write_meta
+<<Process: procedures>>=
+  subroutine process_write_meta (process, unit, testflag)
+    class(process_t), intent(inout) :: process
+    integer, intent(in), optional :: unit
+    logical, intent(in), optional :: testflag
+    integer :: u, i
+    u = given_output_unit (unit)
+    select case (process%meta%type)
+    case (PRC_UNKNOWN)
+       write (u, "(1x,A)") "Process instance [undefined]"
+       return
+    case (PRC_DECAY)
+       write (u, "(1x,A)", advance="no") "Process instance [decay]:"
+    case (PRC_SCATTERING)
+       write (u, "(1x,A)", advance="no") "Process instance [scattering]:"
+    case default
+       call msg_bug ("process_instance_write: undefined process type")
+    end select
+    write (u, "(1x,A,A,A)") "'", char (process%meta%id), "'"
+    write (u, "(3x,A,A,A)") "Run ID = '", char (process%meta%run_id), "'"
+    if (allocated (process%meta%component_id)) then
+       write (u, "(3x,A)")  "Process components:"
+       do i = 1, size (process%meta%component_id)
+          if (process%component_selected (i)) then
+             write (u, "(3x,'*')", advance="no")
+          else
+             write (u, "(4x)", advance="no")
+          end if
+          write (u, "(1x,I0,9A)")  i, ": '", &
+               char (process%meta%component_id (i)), "':   ", &
+               char (process%meta%component_description (i))
+       end do
+    end if
+  end subroutine process_write_meta
+
+@ %def process_write_meta
 @ Screen output.  Write a short account of the process configuration
 and the current results.  The verbose version lists the components,
 the short version just the results.
@@ -2899,6 +2939,8 @@ freed.
       call process%config%init &
            (meta, os_data, qcd, rng_factory, model)
       allocate (process%component (meta%n_components))
+      allocate (process%component_selected (meta%n_components))
+      process%component_selected = .false.
     end associate
     if (.not. lib%get_nlo_process (proc_id)) then
        allocate (pcm_default_t :: process%pcm)
@@ -4160,7 +4202,7 @@ Tell whether integral (and error) are known.
     do i = 1, size (process%mci_entry)
        do j = 1, size (process%mci_entry(i)%i_component)
           i_component = process%mci_entry(i)%i_component(j)
-          if (process%is_active_component (i_component)) &
+          if (process%component_can_be_integrated (i_component)) &
              flag = flag .and. process%mci_entry(i)%has_integral ()
        end do
     end do
@@ -4210,7 +4252,7 @@ Return the current integral and error obtained by the integrator [[i_mci]].
        do i = 1, size (process%mci_entry)
           do j = 1, size (process%mci_entry(i)%i_component)
              i_component = process%mci_entry(i)%i_component(j)
-             if (process%is_active_component(i_component)) &
+             if (process%component_can_be_integrated(i_component)) &
                   integral = integral + process%mci_entry(i)%get_integral ()
           end do
        end do
@@ -4227,7 +4269,7 @@ Return the current integral and error obtained by the integrator [[i_mci]].
        do i = 1, size (process%mci_entry)
           do j = 1, size (process%mci_entry(i)%i_component)
              i_component = process%mci_entry(i)%i_component(j)
-             if (process%is_active_component(i_component)) &
+             if (process%component_can_be_integrated(i_component)) &
                   variance = variance + process%mci_entry(i)%get_error () ** 2
           end do
        end do
@@ -4245,7 +4287,7 @@ Return the current integral and error obtained by the integrator [[i_mci]].
        do i = 1, size (process%mci_entry)
           do j = 1, size (process%mci_entry(i)%i_component)
              i_component = process%mci_entry(i)%i_component(j)
-             if (process%is_active_component(i_component)) then
+             if (process%component_can_be_integrated(i_component)) then
                 int = process%get_integral (i)
                 if (int > 0) then
                    eff = process%mci_entry(i)%get_efficiency ()
@@ -4287,7 +4329,7 @@ usual error propagation gives
     int_nlo = zero
     int_born = process%mci_entry(1)%get_integral ()
     do i_mci = 2, size (process%mci_entry)
-       if (process%is_active_component (i_mci)) &
+       if (process%component_can_be_integrated (i_mci)) &
           int_nlo = int_nlo + process%mci_entry(i_mci)%get_integral ()
     end do
     ratio = int_nlo / int_born * 100
@@ -4303,7 +4345,7 @@ usual error propagation gives
     int_born = process%mci_entry(1)%get_integral ()
     err_born = process%mci_entry(1)%get_error ()
     do i_mci = 2, size (process%mci_entry)
-       if (process%is_active_component (i_mci)) then
+       if (process%component_can_be_integrated (i_mci)) then
           sum_int_nlo = sum_int_nlo + process%mci_entry(i_mci)%get_integral ()
           err2 = err2 + process%mci_entry(i_mci)%get_error()**2
        end if
@@ -4439,33 +4481,54 @@ usual error propagation gives
   end function process_get_pcm_ptr
 
 @ %def process_get_pcm_ptr
-@ Workaround getter. Would be better to remove this.
 <<Process: process: TBP>>=
-  procedure :: component_is_active => process_component_is_active
+  procedure :: component_can_be_integrated => process_component_can_be_integrated 
 <<Process: procedures>>=
-  function process_component_is_active (process, i_comp) result (val)
-    logical :: val
-    class(process_t), intent(in) :: process
-    integer, intent(in) :: i_comp
-    val = process%component(i_comp)%active
-  end function process_component_is_active
-
-@ %def process_component_is_active
-<<Process: process: TBP>>=
-  procedure :: is_active_component => process_is_active_component 
-<<Process: procedures>>=
-  function process_is_active_component (process, i_component) &
+  function process_component_can_be_integrated (process, i_component) &
            result (active)
     logical :: active
     class(process_t), intent(in) :: process
     integer, intent(in) :: i_component
     associate (component => process%component(i_component))
-       active = component%is_active_component () &
+       active = component%can_be_integrated () &
                 .and. component%component_type <= COMP_MASTER
     end associate
-  end function process_is_active_component
+  end function process_component_can_be_integrated
 
-@ %def process_is_active_component
+@ %def process_component_can_be_integrated
+@
+<<Process: process: TBP>>=
+  procedure :: reset_selected_cores => process_reset_selected_cores
+<<Process: procedures>>=
+  pure subroutine process_reset_selected_cores (process)
+    class(process_t), intent(inout) :: process
+    process%component_selected = .false.
+  end subroutine process_reset_selected_cores
+
+@ %def process_reset_selected_cores
+@
+<<Process: process: TBP>>=
+  procedure :: select_components => process_select_components
+<<Process: procedures>>=
+  pure subroutine process_select_components (process, indices)
+    class(process_t), intent(inout) :: process
+    integer, dimension(:), intent(in) :: indices
+    process%component_selected(indices) = .true.
+  end subroutine process_select_components
+
+@ %def process_select_components
+@
+<<Process: process: TBP>>=
+  procedure :: component_is_selected => process_component_is_selected
+<<Process: procedures>>=
+  pure function process_component_is_selected (process, index) result (val)
+    logical :: val
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: index
+    val = process%component_selected(index)
+  end function process_component_is_selected
+
+@ %def process_component_is_selected
 @
 <<Process: process: TBP>>=
   procedure :: get_coupling_powers => process_get_coupling_powers
@@ -4479,9 +4542,9 @@ usual error propagation gives
 @ %def process_get_coupling_powers
 @
 <<Process: process: TBP>>=
-  procedure :: extract_active_component => process_extract_active_component
+  procedure :: extract_fixed_mci => process_extract_fixed_mci
 <<Process: procedures>>=
-  function process_extract_active_component (process) result (i_active)
+  function process_extract_fixed_mci (process) result (i_active)
     integer :: i_active
     class(process_t), intent(in) :: process
     integer :: i_mci, j, i_component, n_active
@@ -4495,9 +4558,8 @@ usual error propagation gives
              do j = 1, size (mci_entry%i_component)
                 i_component = mci_entry%i_component(j)
                 associate (component => process%component (i_component))
-                   if (component%is_active_component () .and. &
-                      component%component_type <= COMP_MASTER .and. &
-                      component%get_nlo_type () /= NLO_SUBTRACTION) then
+                   if (component%can_be_integrated () .and. &
+                      component%component_type <= COMP_MASTER) then
                       i_active = i_mci
                       n_active = n_active + 1
                    end if
@@ -4506,9 +4568,9 @@ usual error propagation gives
           end associate
        end do
     end subroutine count_n_active
-  end function process_extract_active_component
+  end function process_extract_fixed_mci
 
-@ %def process_extract_active_component
+@ %def process_extract_fixed_mci
 @
 <<Process: process: TBP>>=
   procedure :: needs_extra_code => process_needs_extra_code
@@ -4525,7 +4587,7 @@ usual error propagation gives
     associate (cm => process%cm)
        do i = 1, cm%n_cores
           config => process%get_component_def_ptr (cm%def_ptr_index(i))
-          if (config%get_active_component () .or. cm%sub(i)) then
+          if (config%can_be_integrated () .or. cm%sub(i)) then
              select type (core => cm%cores(i)%core)
              class is (prc_blha_t)
                 val = .true.
@@ -4902,7 +4964,6 @@ module process_config
   use mci_base
   use beam_structures
   use phs_base
-  use nlo_data, only: fks_template_t
   use variables
   use expr_base
 
@@ -6527,6 +6588,18 @@ configuration finalizer may include closing an open scratch file.
     logical :: active
     class(process_component_t), intent(in) :: component
     active = component%active
+  end function process_component_is_active
+
+@ %def process_component_is_active
+@
+<<Process: process: TBP>>=
+  procedure :: component_is_active => process_component_is_active
+<<Process: procedures>>=
+  pure function process_component_is_active (process, i_comp) result (val)
+    logical :: val
+    class(process_t), intent(in) :: process
+    integer, intent(in) :: i_comp
+    val = process%component(i_comp)%is_active ()
   end function process_component_is_active
 
 @ %def process_component_is_active
@@ -8612,7 +8685,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
        end select
     end select
     call msg_debug2 (D_PROCESS_INTEGRATION, "apply_damping: sqme", sqme)
-    call term%connected%trace%set_matrix_element (cmplx (sqme, 0, default))
+    call term%connected%trace%set_matrix_element (cmplx (sqme, zero, default))
   end subroutine term_instance_apply_damping_factor
 
 @ %def term_instance_apply_damping_factor
@@ -8640,15 +8713,15 @@ stored in the kinematics subobject to their source.  This is a side effect.
 @ %def process_component_needs_mci_entry
 @
 <<Process config: process component: TBP>>=
-  procedure :: is_active_component => process_component_is_active_component
+  procedure :: can_be_integrated => process_component_can_be_integrated
 <<Process config: procedures>>=
-  elemental function process_component_is_active_component (component) result (active)
+  elemental function process_component_can_be_integrated (component) result (active)
     logical :: active
     class(process_component_t), intent(in) :: component
-    active = component%config%is_active_component ()
-  end function process_component_is_active_component
+    active = component%config%can_be_integrated ()
+  end function process_component_can_be_integrated
 
-@ %def process_component_is_active_component
+@ %def process_component_can_be_integrated
 @
 \subsubsection{Term instance}
 A [[term_instance_t]] object contains all data that describe a term.  Each
@@ -9020,7 +9093,7 @@ relevant for a NLO algorithm.
   subroutine term_instance_set_emitter (term, pcm)
     class(term_instance_t), intent(inout) :: term
     class(pcm_t), intent(in) :: pcm
-    integer :: i_phs, alr
+    integer :: i_phs
     select type (pcm)
     type is (pcm_nlo_t)
        !!! Without resonances, i_alr = i_phs
@@ -9199,7 +9272,7 @@ The quantum numbers mask of the incoming particle
              i_phs, 1, alpha_s_sub)!, nlo_controller%alpha_s_sub)
        end if
     end associate
-    call term%connected%trace%set_matrix_element (cmplx (sqme, 0, default))
+    call term%connected%trace%set_matrix_element (cmplx (sqme, zero, default))
   end subroutine term_instance_apply_fks
 
 @ %def term_instance_apply_fks
@@ -9253,7 +9326,7 @@ The quantum numbers mask of the incoming particle
        ("Trying to evaluate soft mismatch with unsuited term_instance.")
     associate (nlo_controller => term%nlo_controller)
        call term%connected%trace%set_matrix_element &
-          (cmplx (nlo_controller%compute_sqme_mismatch () * term%weight, 0, default))
+          (cmplx (nlo_controller%compute_sqme_mismatch () * term%weight, zero, default))
     end associate
   end subroutine term_instance_evaluate_sqme_mismatch
 
@@ -9843,7 +9916,6 @@ module instances
   use phs_fks, only: GEN_SOFT_LIMIT_TEST, GEN_COLL_LIMIT_TEST, GEN_ANTI_COLL_LIMIT_TEST
   use phs_fks, only: PHS_MODE_UNDEFINED, GEN_SOFT_COLL_LIMIT_TEST, GEN_SOFT_ANTI_COLL_LIMIT_TEST
   use phs_fks, only: PHS_MODE_ADDITIONAL_PARTICLE, PHS_MODE_COLLINEAR_REMNANT
-  use nlo_data, only: phs_point_set_t
   use nlo_controller, only: nlo_controller_t
   use prc_core, only: prc_core_t, prc_core_state_t
   use blha_olp_interfaces, only: prc_blha_t
@@ -9942,7 +10014,6 @@ selected by the [[i_mci]] index above.
      integer :: i_mci = 0
      integer :: selected_channel = 0
      type(sf_chain_t) :: sf_chain
-     logical, dimension(:), allocatable :: component_active
      type(term_instance_t), dimension(:), allocatable :: term
      type(mci_work_t), dimension(:), allocatable :: mci_work
      class(pcm_instance_t), allocatable :: pcm
@@ -9966,38 +10037,11 @@ parameters, or if the [[verbose]] option is set.
     class(process_instance_t), intent(in) :: object
     integer, intent(in), optional :: unit
     logical, intent(in), optional :: testflag
-    integer :: u, i
+    integer :: u
     u = given_output_unit (unit)
     call write_separator (u, 2)
     if (associated (object%process)) then
-       associate (meta => object%process%get_meta ())
-         select case (meta%type)
-         case (PRC_UNKNOWN)
-            write (u, "(1x,A)") "Process instance [undefined]"
-            return
-         case (PRC_DECAY)
-            write (u, "(1x,A)", advance="no") "Process instance [decay]:"
-         case (PRC_SCATTERING)
-            write (u, "(1x,A)", advance="no") "Process instance [scattering]:"
-         case default
-            call msg_bug ("process_instance_write: undefined process type")
-         end select
-         write (u, "(1x,A,A,A)") "'", char (meta%id), "'"
-         write (u, "(3x,A,A,A)") "Run ID = '", char (meta%run_id), "'"
-         if (allocated (meta%component_id)) then
-            write (u, "(3x,A)")  "Process components:"
-            do i = 1, size (meta%component_id)
-               if (object%component_active (i)) then
-                  write (u, "(3x,'*')", advance="no")
-               else
-                  write (u, "(4x)", advance="no")
-               end if
-               write (u, "(1x,I0,9A)")  i, ": '", &
-                    char (meta%component_id (i)), "':   ", &
-                    char (meta%component_description (i))
-            end do
-         end if
-       end associate
+       call object%process%write_meta (u, testflag)
     else
        write (u, "(1x,A)") "Process instance [undefined process]"
        return
@@ -10102,7 +10146,7 @@ required explicitly.
     class(process_instance_t), intent(inout) :: instance
     logical, intent(in), optional :: reset_mci
     integer :: i
-    instance%component_active = .false.
+    call instance%process%reset_selected_cores ()
     do i = 1, size (instance%term)
        call instance%term(i)%reset ()
     end do
@@ -10127,11 +10171,11 @@ selected MCI parameter set.
     integer :: i, j
     integer, dimension(:), allocatable :: i_term
     associate (mci_work => instance%mci_work(instance%i_mci))
-      instance%component_active (mci_work%get_active_components ()) = .true.
+       call instance%process%select_components (mci_work%get_active_components ())
     end associate
     associate (process => instance%process)
        do i = 1, instance%process%get_n_components ()
-          if (instance%component_active (i)) then
+          if (instance%process%component_is_selected (i)) then
             allocate (i_term (size (process%get_component_i_terms (i))))
             i_term = process%get_component_i_terms (i)
             do j = 1, size (i_term)
@@ -10183,8 +10227,7 @@ to subobject of [[instance]].
   subroutine process_instance_init (instance, process)
     class(process_instance_t), intent(out), target :: instance
     type(process_t), intent(inout), target :: process
-    integer :: i, i_component, i_term_base
-    class(prc_core_t), pointer :: core => null ()
+    integer :: i, i_component
     class(pcm_t), pointer :: pcm
     type(process_term_t) :: term
     logical :: combined_nlo_integration
@@ -10198,8 +10241,7 @@ to subobject of [[instance]].
        call instance%process%init_mci_work (instance%mci_work(i), i)
     end do
 
-    allocate (instance%component_active (process%get_n_components ()))
-    instance%component_active = .false.
+    call instance%process%reset_selected_cores ()
 
     pcm => instance%process%get_pcm_ptr ()
     call pcm%allocate_instance (instance%pcm)
@@ -10244,7 +10286,6 @@ to subobject of [[instance]].
     call instance%find_same_kinematics ()
 
     instance%evaluation_status = STAT_INITIAL
-    core => null ()
   contains
     subroutine extend_phs_config (phs_config, combined_integration) 
        class(phs_config_t), intent(inout) :: phs_config
@@ -10315,7 +10356,6 @@ to subobject of [[instance]].
     integer :: nlo_type
     integer :: i_born, i_real
     logical :: use_internal_cc, use_internal_sc
-    logical :: combined_nlo_integration = .false.
     class(pcm_t), pointer :: pcm
 
     select type (pcm_instance => instance%pcm)
@@ -10340,7 +10380,6 @@ to subobject of [[instance]].
                       nlo_controller%reg_data => pcm%region_data
                       use_internal_cc = pcm%settings%use_internal_color_correlations
                       use_internal_sc = .false.
-                      combined_nlo_integration = pcm%settings%combined_integration
                       if (use_internal_cc) then
                          term = process%get_term_ptr (i_real)
                          call pcm%init_color_data ([data_born, data_real], &
@@ -10590,7 +10629,7 @@ recovered, and we are just computing the rest.
        success = .true.
        do i = 1, instance%process%get_n_components ()
           if (i == skip_component)  cycle
-          if (instance%component_active (i)) then
+          if (instance%process%component_is_selected (i)) then
              allocate (i_term (size (instance%process%get_component_i_terms (i))))
              i_term = instance%process%get_component_i_terms (i)
              do j = 1, size (i_term)
@@ -10785,7 +10824,7 @@ recovered, and we are just computing the rest.
     if (instance%evaluation_status >= STAT_PASSED_CUTS) then
        do i = 1, instance%process%get_n_components ()
           if (i == skip_component)  cycle
-          if (instance%component_active(i)) then
+          if (instance%process%component_is_selected (i)) then
              allocate (i_term (size (instance%process%get_component_i_terms (i))))
              i_term = instance%process%get_component_i_terms (i) 
              do j = 1, size (i_term)
@@ -10893,7 +10932,7 @@ terms, iterating over all active process components.
        if (.not. process%uses_powheg_damping_factors ()) return
        do i = 1, process%get_n_components ()
           if (i_skip > 0 .and. i /= i_skip) cycle
-          if (instance%component_active (i) .and. &
+          if (instance%process%component_is_selected (i) .and. &
              process%get_component_nlo_type (i) == NLO_REAL) then
              allocate (i_terms (size (process%get_component_i_terms (i))))
              i_terms = process%get_component_i_terms (i)
@@ -11168,7 +11207,7 @@ fetch the data that are relevant for the MCI record.
     val = 0
     associate (process => sampler%process)
        FIND_COMPONENT: do i = 1, process%get_n_components () 
-         if (sampler%component_active (i)) then
+         if (sampler%process%component_is_selected (i)) then
             allocate (i_terms (size (process%get_component_i_terms (i))))
             i_terms = process%get_component_i_terms (i)
             i_term_base = i_terms(1)
@@ -12205,8 +12244,7 @@ Could also be moved to the [[core_manager_t]].
     type(os_data_t), intent(in) :: os_data
     integer, intent(out) :: n_sub
     type(string_t) :: libname
-    integer :: i, i_component
-    type(vector4_t), dimension(:), allocatable :: p
+    integer :: i
 
     if (process%needs_extra_code (only_blha = .true.))  &
          call process%create_blha_interface (beam_structure)
