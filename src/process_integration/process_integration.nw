@@ -9100,36 +9100,99 @@ The quantum numbers mask of the incoming particle
 @ %def term_instance_setup_event_data
 @
 <<Instances: term instance: TBP>>=
-  procedure :: apply_fks => term_instance_apply_fks
+  procedure :: evaluate_color_correlations => &
+     term_instance_evaluate_color_correlations
 <<Instances: procedures>>=
-  subroutine term_instance_apply_fks (term, core)
+  subroutine term_instance_evaluate_color_correlations (term, core, &
+     core_state, fac_scale, i_flv_born, nlo_type, bad_point)
     class(term_instance_t), intent(inout) :: term
     class(prc_core_t), intent(inout) :: core
+    class(prc_core_state_t), intent(inout), allocatable :: core_state
+    real(default), intent(in) :: fac_scale
+    integer, intent(in) :: i_flv_born
+    integer, intent(in) :: nlo_type
+    logical, intent(out), optional :: bad_point
+    logical :: bp
+    real(default), dimension(:,:), allocatable :: sqme_cc
+    real(default) :: sqme_born
+    select type (pcm_instance => term%pcm_instance)
+    type is (pcm_instance_nlo_t)
+       call msg_debug2 (D_SUBTRACTION, "term_instance_evaluate_color_correlations: " // &
+         "pcm_instance%settings%use_internal_color_correlations", &
+         pcm_instance%settings%use_internal_color_correlations)
+       call msg_debug2 (D_SUBTRACTION, "fac_scale", fac_scale)
+       select type (config => pcm_instance%config)
+       type is (pcm_nlo_t)
+          if (.not. config%settings%use_internal_color_correlations) then
+             select type (core)
+             class is (prc_user_defined_base_t)
+                call core%update_alpha_s (core_state, fac_scale)
+                call core%compute_sqme_cc (i_flv_born, &
+                   pcm_instance%real_kinematics%p_born_cms%get_momenta(1), &
+                   fac_scale, sqme_cc, bp, sqme_born)
+             end select
+          else
+             select case (nlo_type)
+             case (NLO_REAL)
+                sqme_born = pcm_instance%real_sub%sqme_born (i_flv_born)
+             case (NLO_MISMATCH)
+                sqme_born = pcm_instance%soft_mismatch%sqme_born (i_flv_born)
+             case (default)
+                !TODO (cw-2016-09-08): Give error message here
+             end select
+             sqme_cc = sqme_born * config%color_data%beta_ij (:,:,i_flv_born)
+             bp = .false.
+          end if
+       end select
+       select case (nlo_type)
+       case (NLO_REAL)
+          pcm_instance%real_terms%sqme_born_cc (:,:,i_flv_born) = sqme_cc
+       case (NLO_MISMATCH)
+          pcm_instance%soft_mismatch%sqme_born_cc (:,:,i_flv_born) = sqme_cc
+       case default
+          !TODO (cw-2016-09-08): Give error message here
+       end select
+    end select
+    if (present (bad_point)) bad_point = bp
+  end subroutine nlo_controller_evaluate_color_correlations
+
+@ %def nlo_controller_evaluate_color_correlations
+@
+<<Instances: term instance: TBP>>=
+  procedure :: apply_fks => term_instance_apply_fks
+<<Instances: procedures>>=
+  subroutine term_instance_apply_fks (term, core, alpha_s_sub)
+    class(term_instance_t), intent(inout) :: term
+    class(prc_core_t), intent(inout) :: core
+    real(default), intent(in) :: alpha_s_sub
     real(default) :: sqme
     integer :: i_phs, emitter
     sqme = zero
-    associate (nlo_controller => term%nlo_controller)
-       call nlo_controller%real_terms%set_real_kinematics &
-          (nlo_controller%real_kinematics)
-       call nlo_controller%real_terms%set_isr_kinematics &
-          (nlo_controller%isr_kinematics)
+    associate (pcm_instance => term%pcm_instance)
+       call pcm_instance%real_sub%set_real_kinematics &
+          (pcm_instance%real_kinematics)
+       call pcm_instance%real_sub%set_isr_kinematics &
+          (pcm_instance%isr_kinematics)
        if (term%k_term%emitter < 0) then
-          call nlo_controller%disable_sqme_np1 ()
-          do i_phs = 1, nlo_controller%reg_data%n_phs
-             select type (phs => term%k_term%phs)
-             type is (phs_fks_t)
-                emitter = phs%phs_identifiers(i_phs)%emitter
-             end select
-             sqme = sqme + nlo_controller%real_terms%compute (emitter, &
-                i_phs, 1, nlo_controller%alpha_s_sub)  
-          end do
+          call pcm_instance%disable_sqme_np1 ()
+          select type (config => pcm_instance%config)
+          type is (pcm_nlo_t)
+             do i_phs = 1, config%region_data%n_phs
+                select type (phs => term%k_term%phs)
+                type is (phs_fks_t)
+                   emitter = phs%phs_identifiers(i_phs)%emitter
+                end select
+                sqme = sqme + pcm_instance%real_sub%compute (emitter, &
+                   i_phs, 1, alpha_s_sub)!, nlo_controller%alpha_s_sub)  
+             end do
+          end select
        else
-          call nlo_controller%disable_subtraction () 
+          call pcm_instance%disable_subtraction () 
           emitter = term%k_term%emitter; i_phs = term%k_term%i_phs
-          nlo_controller%real_terms%sqme_real_non_sub (1, i_phs) = &
+          pcm_instance%real_sub%sqme_real_non_sub (1, i_phs) = &
              real (term%connected%trace%get_matrix_element (1))
-          sqme = nlo_controller%real_terms%compute (emitter, &
-             i_phs, 1, nlo_controller%alpha_s_sub)
+          sqme = pcm_instance%real_sub%compute (emitter, &
+             i_phs, 1, alpha_s_sub)!, nlo_controller%alpha_s_sub)
        end if
     end associate
     call term%connected%trace%set_matrix_element (cmplx (sqme, 0, default))
@@ -11584,12 +11647,107 @@ object and the squared matrix-element collector.
      type(nlo_controller_t) :: controller
      integer :: active_real_component = 1
      logical :: use_internal_color_correlation = .true.
+     type(real_subtraction_t) :: real_sub
      type(virtual_t) :: virtual
+     type(soft_mismatch_t) :: soft_mismatch
   contains
   <<Pcm: pcm instance: TBP>>
   end type pcm_instance_nlo_t
 
 @ %def pcm_instance_nlo_t
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: disable_subtraction => pcm_instance_disable_subtraction
+  procedure :: enable_subtraction => pcm_instance_enable_subtraction
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_disable_subtraction (pcm_instance)
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    pcm_instance%real_terms%radiation_active = .true.
+    pcm_instance%real_terms%subtraction_active = .false.
+  end subroutine pcm_instance_nlo_disable_subtraction
+
+  subroutine pcm_instance_nlo_enable_subtraction (pcm_instance)
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    pcm_instance%real_terms%subtraction_active = .true.
+  end subroutine pcm_instance_nlo_enable_subtraction
+
+@ %def pcm_instance_nlo_disable_subtraction
+@ %def pcm_instance_nlo_enable_subtraction
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: setup_real_subtraction => pcm_instance_nlo_setup_real_subtraction
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_setup_real_subtraction (pcm_instance, &
+     subtraction_disabled, sqrts)
+    class(pcm_instance_nlo_t), intent(inout), target :: pcm_instance
+    logical, intent(in) :: subtraction_disabled
+    real(default), intent(in) :: sqrts
+    integer :: n_in, n_tot_born
+    
+    call pcm_instance%init_real_and_isr_kinematics (sqrts)
+    call pcm_instance%init_real_subtraction ()
+
+    if (subtraction_disabled) call pcm_instance%disable_subtraction ()
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       associate (region_data => config%region_data)
+          call pcm_instance%soft_mismatch%init (region_data%n_in, &
+             region_data%n_legs_born, pcm_instance%real_kinematics)
+       end associate
+       allocate (powheg_damping_simple_t :: config%powheg_damping)
+    end select
+  end subroutine pcm_instance_nlo_setup_real_subtraction
+
+@ %def pcm_instance_nlo_setup_real_subtraction
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: init_real_and_isr_kinematics => &
+     pcm_instance_nlo_init_real_and_isr_kinematics
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_init_real_and_isr_kinematics (pcm_instance, sqrts)
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    real(default) :: sqrts
+    integer :: n_contr
+    allocate (pcm_instance%real_kinematics)
+    allocate (pcm_instance%isr_kinematics)
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       associate (region_data => config%region_data)
+          if (allocated (region_data%alr_contributors)) then
+             n_contr = size (region_data%alr_contributors)
+          else
+             n_contr = 1
+          end if
+          call pcm_instance%real_kinematics%init &
+             (region_data%n_legs_real, reg_dataion%n_phs, &
+             region_data%n_regions, n_contr)
+          pcm_instance%isr_kinematics%n_in = region_data%n_in
+       end associate
+    end select  
+    pcm_instance%isr_kinematics%beam_energy = sqrts / two
+  end subroutine pcm_instance_nlo_init_real_and_isr_kinematics
+
+@ %def pcm_instance_nlo_init_real_and_isr_kinematics
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: init_real_subtraction => pcm_instance_nlo_init_real_subtraction
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_init_real_subtraction (pcm_instance)
+    class(pcm_instance_nlo_t), intent(inout), target :: pcm_instance
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       associate (region_data => config%region_data)
+          call pcm_instance%real_sub%init (region_data)
+          call pcm_instance%real_sub%set_resonance_mappings &
+             (config%settings%use_resonance_mappings)
+          pcm_instance%real_sub%fixed_alr = config%settings%fixed_alr
+          pcm_instance%real_sub%sub_soft%factorization_mode &
+             = config%settings%factorization_mode
+       end associate
+    end select
+  end subroutine pcm_instance_nlo_init_real_subtraction
+
+@ %def pcm_instance_nlo_init_real_subtraction
 @
 <<Pcm: pcm instance: TBP>>=
   procedure :: set_momenta_and_scales => pcm_instance_nlo_set_momenta_and_scales
@@ -11675,6 +11833,25 @@ object and the squared matrix-element collector.
     end associate
   end function pcm_instance_nlo_compute_sqme_virt
 @ %def pcm_instance_nlo_compute_sqme_virt
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: set_fixed_order_event_%ode => pcm_instance_nlo_set_fixed_order_event_mode
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_set_fixed_order_event_mode (pcm_instance)
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    pcm_instance%real_sub%purpose = FIXED_ORDER_EVENTS
+  end subroutine pcm_instance_nlo_set_fixed_order_event_mode
+
+<<Pcm: pcm instance: TBP>>=
+  procedure :: set_powheg_mode => pcm_instance_nlo_set_powheg_mode
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_set_powheg_mode (pcm_instance)
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    pcm_instance%real_terms%purpose = POWHEG
+  end subroutine pcm_instance_nlo_set_powheg_mode
+
+@ %def pcm_instance_nlo_set_fixed_order_event_mode
+@ %def pcm_instance_nlo_set_powheg_mode
 @
 <<Process: process: TBP>>=
   procedure :: init_nlo_settings => process_init_nlo_settings
