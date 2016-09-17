@@ -4856,8 +4856,8 @@ module evt_nlo
 
   use nlo_data, only: phs_identifier_t, phs_point_set_t
   use cascades, only: resonance_contributors_t
+  use fks_regions, only: region_data_t
   use phs_fks
-  use nlo_controller, only: nlo_controller_t
 
 <<Standard module head>>
 
@@ -4949,7 +4949,7 @@ it would be unretrievable if the usual particle set of the event object was used
 @ %def evt_nlo_write
 @ Connects the event transform to the process. Here also the phase space
 is set up by making [[real_kinematics]] point to the corresponding
-object in [[nlo_controller]].
+object in the [[pcm_instance]].
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: connect => evt_nlo_connect
 <<Evt Nlo: procedures>>=
@@ -4966,8 +4966,9 @@ object in [[nlo_controller]].
        type is (pcm_nlo_t)
           call config%setup_phs_generator (pcm, evt%phs_fks_generator, &
              process_instance%get_sqrts ())
+          call evt%set_i_evaluation_mappings (config%region_data, &
+             pcm%real_kinematics%alr_to_i_phs)
        end select
-       call evt%set_i_evaluation_mappings (pcm%controller)
     end select
     call evt%set_mode (process_instance) 
     if (evt%mode > EVT_NLO_SEPARATE_BORNLIKE) &
@@ -4980,9 +4981,10 @@ object in [[nlo_controller]].
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: set_i_evaluation_mappings => evt_nlo_set_i_evaluation_mappings
 <<Evt Nlo: procedures>>=
-  subroutine evt_nlo_set_i_evaluation_mappings (evt, controller)
+  subroutine evt_nlo_set_i_evaluation_mappings (evt, reg_data, alr_to_i_phs)
     class(evt_nlo_t), intent(inout) :: evt
-    type(nlo_controller_t), intent(in) :: controller
+    type(region_data_t), intent(in) :: reg_data
+    integer, intent(in), dimension(:) :: alr_to_i_phs
     integer :: n_flv, n_phs, alr
     integer :: i_evaluation, i_phs, i_flv, emitter
     integer, parameter :: N_MAX_PHS = 10, N_MAX_FLV = 100, N_MAX_EMITTER = 10
@@ -4993,27 +4995,25 @@ object in [[nlo_controller]].
     end type registered_triple_t
     type(registered_triple_t), allocatable, target :: check_list
     i_evaluation = 1
-    associate (reg_data => controller%reg_data)
-       n_phs = reg_data%n_phs; n_flv = reg_data%n_flv_real
-       evt%weight_multiplier = n_phs * n_flv + 1
-       allocate (evt%i_evaluation_to_i_phs (n_phs * n_flv), source = 0)
-       allocate (evt%i_evaluation_to_i_flv (n_phs * n_flv), source = 0)
-       allocate (evt%i_evaluation_to_emitter (n_phs * n_flv), source = -1)
-       allocate (evt%i_evaluation_to_i_term (0 : n_phs * n_flv), source = 0)
-       do alr = 1, reg_data%n_regions
-          i_phs = controller%real_kinematics%alr_to_i_phs (alr)
-          i_flv = reg_data%regions(alr)%real_index 
-          emitter = reg_data%regions(alr)%emitter 
-          call search_check_list (checked)
-          if (.not. checked) then
-             evt%i_evaluation_to_i_phs (i_evaluation) = i_phs
-             evt%i_evaluation_to_i_flv (i_evaluation) = i_flv
-             evt%i_evaluation_to_emitter (i_evaluation) = emitter
-             i_evaluation = i_evaluation + 1
-          end if
-       end do 
-       call fill_i_evaluation_to_i_term ()
-    end associate
+    n_phs = reg_data%n_phs; n_flv = reg_data%n_flv_real
+    evt%weight_multiplier = n_phs * n_flv + 1
+    allocate (evt%i_evaluation_to_i_phs (n_phs * n_flv), source = 0)
+    allocate (evt%i_evaluation_to_i_flv (n_phs * n_flv), source = 0)
+    allocate (evt%i_evaluation_to_emitter (n_phs * n_flv), source = -1)
+    allocate (evt%i_evaluation_to_i_term (0 : n_phs * n_flv), source = 0)
+    do alr = 1, reg_data%n_regions
+       i_phs = alr_to_i_phs (alr)
+       i_flv = reg_data%regions(alr)%real_index 
+       emitter = reg_data%regions(alr)%emitter 
+       call search_check_list (checked)
+       if (.not. checked) then
+          evt%i_evaluation_to_i_phs (i_evaluation) = i_phs
+          evt%i_evaluation_to_i_flv (i_evaluation) = i_flv
+          evt%i_evaluation_to_emitter (i_evaluation) = emitter
+          i_evaluation = i_evaluation + 1
+       end if
+    end do 
+    call fill_i_evaluation_to_i_term ()
     if (.not. (all (evt%i_evaluation_to_i_phs > 0) &
        .and. all (evt%i_evaluation_to_i_flv > 0) &
        .and. all (evt%i_evaluation_to_emitter > -1))) then
@@ -5235,24 +5235,26 @@ mother-daughter relations and color information.
     evt%particle_set_radiated(i_event) = evt%particle_set
     select type (pcm => evt%process_instance%pcm)
     class is (pcm_instance_nlo_t)
-       if (evt%i_evaluation /= 0) then
-          i_flv = evt%get_i_flv ()
-          allocate (flv_radiated (size (pcm%controller%reg_data%get_flv_states_real (i_flv))))
-          flv_radiated = pcm%controller%reg_data%get_flv_states_real (i_flv)
-          call evt%rng%generate (r_col)
-          call msg_debug2 (D_TRANSFORMS, "r_col", r_col)
-          if (debug2_active (D_TRANSFORMS))  print *, 'flv_radiated =    ', flv_radiated
-          i_phs = evt%get_i_phs()
-          emitter = evt%get_emitter ()
-          if (emitter == 0) emitter = choose_in_or_out ()
-          call msg_debug (D_TRANSFORMS, "emitter", emitter)
-          allocate (p_new (size (pcm%controller%get_momenta &
-             (born_phsp = .false., i_phs = i_phs))))
-          p_new = pcm%controller%get_momenta (born_phsp = .false., i_phs = i_phs)
-          call evt%particle_set_radiated(i_event)%build_radiation (p_new, emitter, flv_radiated, &
-             evt%process_instance%process%get_model_ptr (), r_col)
-       end if
-       evt%i_evaluation = evt%i_evaluation + 1
+       select type (config => pcm%config)
+       type is (pcm_nlo_t)
+          if (evt%i_evaluation /= 0) then
+             i_flv = evt%get_i_flv ()
+             allocate (flv_radiated (size (config%region_data%get_flv_states_real (i_flv))))
+             flv_radiated = config%region_data%get_flv_states_real (i_flv)
+             call evt%rng%generate (r_col)
+             call msg_debug2 (D_TRANSFORMS, "r_col", r_col)
+             if (debug2_active (D_TRANSFORMS))  print *, 'flv_radiated =    ', flv_radiated
+             i_phs = evt%get_i_phs()
+             emitter = evt%get_emitter ()
+             if (emitter == 0) emitter = choose_in_or_out ()
+             call msg_debug (D_TRANSFORMS, "emitter", emitter)
+             allocate (p_new (size (pcm%get_momenta (i_phs = i_phs, born_phsp = .false.))))
+             p_new = pcm%get_momenta (i_phs = i_phs, born_phsp = .false.) 
+             call evt%particle_set_radiated(i_event)%build_radiation (p_new, emitter, flv_radiated, &
+                evt%process_instance%process%get_model_ptr (), r_col)
+          end if
+          evt%i_evaluation = evt%i_evaluation + 1
+       end select
     end select
   contains
     function choose_in_or_out () result (em)
@@ -5280,7 +5282,7 @@ mother-daughter relations and color information.
 
     select type (pcm => evt%process_instance%pcm)
     class is (pcm_instance_nlo_t)
-       x_rad = pcm%controller%real_kinematics%x_rad
+       x_rad = pcm%real_kinematics%x_rad
        associate (event_deps => evt%event_deps)
           event_deps%p_born_lab%phs_point(1) = &
              evt%particle_set%get_in_and_out_momenta ()
@@ -5323,11 +5325,9 @@ mother-daughter relations and color information.
                 event_deps%p_real_lab%phs_point(i_phs) &
                    = evt%boost_to_lab (event_deps%p_real_cms%phs_point(i_phs))
              end associate
-             call pcm%controller%set_momenta &
-                (event_deps%p_born_lab%phs_point(1)%p, &
+             call pcm%set_momenta (event_deps%p_born_lab%phs_point(1)%p, &
                 event_deps%p_real_lab%phs_point(i_phs)%p, i_phs)
-             call pcm%controller%set_momenta &
-                (event_deps%p_born_cms%phs_point(1)%p, &
+             call pcm%set_momenta (event_deps%p_born_cms%phs_point(1)%p, &
                 event_deps%p_real_cms%phs_point(i_phs)%p, i_phs, cms = .true.)
              event_deps%phs_identifiers(i_phs)%evaluated = .true.
           end do
@@ -5432,37 +5432,34 @@ emission matrix elements.
        event_deps%cm_frame = process_instance%is_cm_frame (1)
        select type (pcm => process_instance%pcm)
        class is (pcm_instance_nlo_t)
-          n_born = pcm%controller%get_n_particles ()
-          n_real = pcm%controller%get_n_particles_real ()
-       end select
-       call event_deps%p_born_cms%init (n_born, 1)
-       call event_deps%p_born_lab%init (n_born, 1)
-       i_real = process_instance%get_associated_real ()
-       select type (phs => process_instance%term(i_real)%k_term%phs)
-       type is (phs_fks_t)
-          !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-          allocate (event_deps%phs_identifiers (size (phs%phs_identifiers)))
-          event_deps%phs_identifiers = phs%phs_identifiers
-       end select
-       n_phs = size (event_deps%phs_identifiers)
-       call event_deps%p_real_cms%init (n_real, n_phs)
-       call event_deps%p_real_lab%init (n_real, n_phs)
-       select type (pcm_instance => process_instance%pcm)
-       type is (pcm_instance_nlo_t)
-          associate (nlo_controller => pcm_instance%controller)
-             allocate (event_deps%i_evaluation_to_i_phs &
-                (size (nlo_controller%real_kinematics%alr_to_i_phs)))
-             event_deps%i_evaluation_to_i_phs = nlo_controller%real_kinematics%alr_to_i_phs
-             if (allocated (nlo_controller%reg_data%alr_contributors)) then
-                allocate (event_deps%contributors (size (nlo_controller%reg_data%alr_contributors)))
-                event_deps%contributors = nlo_controller%reg_data%alr_contributors
+          select type (config => pcm%config)
+          type is (pcm_nlo_t)
+             n_born = config%region_data%n_legs_born
+             n_real = config%region_data%n_legs_real
+             call event_deps%p_born_cms%init (n_born, 1)
+             call event_deps%p_born_lab%init (n_born, 1)
+             i_real = process_instance%get_associated_real ()
+             select type (phs => process_instance%term(i_real)%k_term%phs)
+             type is (phs_fks_t)
+                !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+                allocate (event_deps%phs_identifiers (size (phs%phs_identifiers)))
+                event_deps%phs_identifiers = phs%phs_identifiers
+             end select
+             n_phs = size (event_deps%phs_identifiers)
+             call event_deps%p_real_cms%init (n_real, n_phs)
+             call event_deps%p_real_lab%init (n_real, n_phs)
+             allocate (event_deps%i_evaluation_to_i_phs (size (pcm%real_kinematics%alr_to_i_phs)))
+             event_deps%i_evaluation_to_i_phs = pcm%real_kinematics%alr_to_i_phs
+             if (allocated (config%region_data%alr_contributors)) then
+                allocate (event_deps%contributors (size (config%region_data%alr_contributors)))
+                event_deps%contributors = config%region_data%alr_contributors
              end if
-             if (allocated (nlo_controller%reg_data%alr_to_i_contributor)) then
+             if (allocated (config%region_data%alr_to_i_contributor)) then
                 allocate (event_deps%alr_to_i_con &
-                   (size (nlo_controller%reg_data%alr_to_i_contributor)))
-                event_deps%alr_to_i_con = nlo_controller%reg_data%alr_to_i_contributor
+                   (size (config%region_data%alr_to_i_contributor)))
+                event_deps%alr_to_i_con = config%region_data%alr_to_i_contributor
              end if
-          end associate
+          end select
        end select
     end associate
   end subroutine evt_nlo_setup_event_kinematics
@@ -5478,8 +5475,9 @@ emission matrix elements.
     integer :: i_real
     select type (pcm => process_instance%pcm)
     type is (pcm_instance_nlo_t)
-       associate (nlo_settings => pcm%controller%settings)
-          if (nlo_settings%combined_integration) then
+       select type (config => pcm%config)
+       type is (pcm_nlo_t)
+          if (config%settings%combined_integration) then
              evt%mode = EVT_NLO_COMBINED
           else
              i_real = evt%process_instance%get_associated_real ()
@@ -5489,7 +5487,7 @@ emission matrix elements.
                 evt%mode = EVT_NLO_SEPARATE_BORNLIKE
              end if
           end if
-       end associate
+       end select
     end select
   end subroutine evt_nlo_set_mode
 
