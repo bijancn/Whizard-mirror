@@ -2566,13 +2566,12 @@ module process
 
   use phs_base
   use phs_wood, only: phs_wood_config_t
-  use phs_fks, only: phs_fks_config_t
+  use phs_fks, only: phs_fks_config_t, get_filtered_resonance_histories
   use blha_config, only: blha_master_t
   use nlo_data, only: FKS_DEFAULT, FKS_RESONANCES
   use nlo_data, only: NO_FACTORIZATION, FACTORIZATION_THRESHOLD
   use nlo_data, only: fks_template_t
   use fks_regions, only: create_resonance_histories_for_threshold
-  use nlo_controller, only: get_filtered_resonance_histories 
 
   use parton_states, only: connected_state_t
   use pcm_base
@@ -7122,6 +7121,7 @@ module pcm
   use real_subtraction
   use virtual, only: virtual_t
   use nlo_controller
+  use dglap_remnant, only: dglap_remnant_t
 
 <<Standard module head>>
 
@@ -8775,7 +8775,6 @@ has passed cuts, we calculate the various scale and weight expressions.
      real(default) :: weight = 1
      type(vector4_t), dimension(:), allocatable :: p_seed
      type(vector4_t), dimension(:), allocatable :: p_hard
-     type(nlo_controller_t), pointer :: nlo_controller => null ()
      type(pcm_instance_nlo_t), pointer :: pcm_instance => null ()
      integer :: nlo_type = BORN
      integer, dimension(:), allocatable :: same_kinematics
@@ -8852,11 +8851,11 @@ has passed cuts, we calculate the various scale and weight expressions.
        deallocate (term%alpha_qcd_forced)
     if (allocated (term%p_seed)) deallocate(term%p_seed)
     if (allocated (term%p_hard)) deallocate (term%p_hard)
-    term%nlo_controller => null ()
     call term%k_term%final ()
     call term%connected%final ()
     call term%isolated%final ()
     call term%int_hard%final ()
+    ! TODO (cw-2016-09-17): Finalize pcm_instance
   end subroutine term_instance_final
   
 @ %def term_instance_final
@@ -9283,9 +9282,9 @@ The quantum numbers mask of the incoming particle
 <<Instances: term instance: TBP>>=
   procedure :: evaluate_sqme_virt => term_instance_evaluate_sqme_virt
 <<Instances: procedures>>=
-  subroutine term_instance_evaluate_sqme_virt (term, core)
+  subroutine term_instance_evaluate_sqme_virt (term, alpha_s)
      class(term_instance_t), intent(inout) :: term
-     class(prc_core_t), intent(in) :: core
+     real(default), intent(in) :: alpha_s
      real(default) :: sqme_virt
 
      if (term%nlo_type /= NLO_VIRTUAL) call msg_fatal &
@@ -9293,7 +9292,7 @@ The quantum numbers mask of the incoming particle
 
      if (debug2_active (D_VIRTUAL)) then
         call msg_debug2 (D_VIRTUAL, "Evaluating virtual-subtracted matrix elements")
-        print *, 'alpha_s: ', core%get_alpha_s (term%core_state)
+        print *, 'alpha_s: ', alpha_s
         print *, 'ren_scale: ', term%ren_scale
         print *, 'fac_scale: ', term%fac_scale
      end if
@@ -9311,8 +9310,7 @@ The quantum numbers mask of the incoming particle
      !!! TODO(cw 2016-07-08): Handle multiple Born flavors 
      !sqme_virt = term%nlo_controller%compute_sqme_virt &
      !   (term%connected%trace%get_matrix_element ())
-     sqme_virt = term%pcm_instance%compute_sqme_virt &
-        (core%get_alpha_s (term%core_state), &
+     sqme_virt = term%pcm_instance%compute_sqme_virt (alpha_s, &
         term%connected%trace%get_matrix_element ())
      call term%connected%trace%set_matrix_element &
         (cmplx (sqme_virt * term%weight, 0, default))
@@ -9323,14 +9321,13 @@ The quantum numbers mask of the incoming particle
 <<Instances: term instance: TBP>>=
   procedure :: evaluate_sqme_mismatch => term_instance_evaluate_sqme_mismatch
 <<Instances: procedures>>=
-  subroutine term_instance_evaluate_sqme_mismatch (term)
+  subroutine term_instance_evaluate_sqme_mismatch (term, alpha_s)
     class(term_instance_t), intent(inout) :: term
+    real(default), intent(in) :: alpha_s
     if (term%nlo_type /= NLO_MISMATCH) call msg_fatal &
        ("Trying to evaluate soft mismatch with unsuited term_instance.")
-    associate (nlo_controller => term%nlo_controller)
-       call term%connected%trace%set_matrix_element &
-          (cmplx (nlo_controller%compute_sqme_mismatch () * term%weight, zero, default))
-    end associate
+    call term%connected%trace%set_matrix_element &
+       (cmplx (term%pcm_instance%compute_sqme_mismatch (alpha_s) * term%weight, zero, default))
   end subroutine term_instance_evaluate_sqme_mismatch
 
 @ %def term_instance_evaluate_sqme_mismatch
@@ -9341,18 +9338,19 @@ The quantum numbers mask of the incoming particle
   subroutine term_instance_evaluate_sqme_dglap (term, core)
     class(term_instance_t), intent(inout) :: term
     class(prc_core_t), intent(in) :: core
+    real(default) :: sqme
     if (term%nlo_type /= NLO_DGLAP) call msg_fatal &
        ("Trying to evaluate DGLAP remnant with unsuited term_instance.")
-    associate (nlo_controller => term%nlo_controller)
-       if (.not. nlo_controller%dglap_remnant_is_required ()) then
-          return
-       end if
+    if (term%pcm_instance%dglap_remnant%required) then
        call msg_fatal ("DGLAP component has not been modernized!")
        !call nlo_controller%set_alpha_s_sub (core%get_alpha_s (term%core_state))
        !call nlo_controller%evaluate_dglap_remnant (component%sqme)
        !!! TODO: (cw 2016-04-26) Use correct i_flv_born
        !component%sqme = nlo_controller%sqme_collector%sqme_dglap_list (1)
-    end associate
+    else
+       sqme = zero
+    end if
+    call term%connected%trace%set_matrix_element (cmplx (sqme, 0, default))
   end subroutine term_instance_evaluate_sqme_dglap
 
 @ %def term_instance_evaluate_sqme_dglap
@@ -9568,8 +9566,8 @@ method may modify the [[core_state]] workspace object.
              term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
              term%core_state)
        end do
-       if (associated (term%nlo_controller)) &
-          call term%nlo_controller%set_fac_scale (term%fac_scale)
+       if (associated (term%pcm_instance)) &
+          call term%pcm_instance%set_fac_scale (term%fac_scale)
     end if
     call term%int_hard%set_matrix_element (term%amp)
   end subroutine term_instance_evaluate_interaction
@@ -9918,7 +9916,6 @@ module instances
   use phs_fks, only: GEN_SOFT_LIMIT_TEST, GEN_COLL_LIMIT_TEST, GEN_ANTI_COLL_LIMIT_TEST
   use phs_fks, only: PHS_MODE_UNDEFINED, GEN_SOFT_COLL_LIMIT_TEST, GEN_SOFT_ANTI_COLL_LIMIT_TEST
   use phs_fks, only: PHS_MODE_ADDITIONAL_PARTICLE, PHS_MODE_COLLINEAR_REMNANT
-  use nlo_controller, only: nlo_controller_t
   use prc_core, only: prc_core_t, prc_core_state_t
   use blha_olp_interfaces, only: prc_blha_t
   use blha_config, only: BLHA_AMP_CC
@@ -10415,7 +10412,7 @@ to subobject of [[instance]].
                       call pcm_instance%disable_virtual_subtraction ()
                 end select
              case (NLO_DGLAP)
-                call pcm_instance%controller%init_dglap_remnant ()
+                call pcm_instance%init_dglap_remnant ()
              end select
           end if
        end do
@@ -10855,6 +10852,7 @@ terms, iterating over all active process components.
     class(process_instance_t), intent(inout) :: instance
     class(prc_core_t), pointer :: core => null ()
     integer :: i
+    real(default) :: alpha_s
     instance%sqme = zero
     call instance%reset_matrix_elements ()
     if (instance%evaluation_status >= STAT_PASSED_CUTS) then
@@ -10873,13 +10871,14 @@ terms, iterating over all active process components.
                  call set_sqme_born (term, 1)
                  call term%evaluate_color_correlations (core, 1)
               end if
+              alpha_s = core%get_alpha_s (term%core_state)
               select case (term%nlo_type)
               case (NLO_REAL)
-                 call term%apply_fks (core, core%get_alpha_s (term%core_state))
+                 call term%apply_fks (core, alpha_s)
               case (NLO_VIRTUAL)
-                 call term%evaluate_sqme_virt (core)
+                 call term%evaluate_sqme_virt (alpha_s)
               case (NLO_MISMATCH)
-                 call term%evaluate_sqme_mismatch ()
+                 call term%evaluate_sqme_mismatch (alpha_s)
               case (NLO_DGLAP)
                  call term%evaluate_sqme_dglap (core) 
               end select
@@ -10903,10 +10902,10 @@ terms, iterating over all active process components.
   contains
     subroutine set_alpha_s_nlo (term)
       class(term_instance_t), intent(inout) :: term
-      if (associated (term%nlo_controller)) then
-         call term%nlo_controller%set_alpha_s_sub &
-            (core%get_alpha_s (term%core_state))
-      end if
+      !if (associated (term%nlo_controller)) then
+      !   call term%nlo_controller%set_alpha_s_sub &
+      !      (core%get_alpha_s (term%core_state))
+      !end if
     end subroutine set_alpha_s_nlo
 
     subroutine set_sqme_born (term, i_flv)
@@ -11636,6 +11635,7 @@ corresponding instance.  This is the nontrivial NLO version.
 <<Pcm: types>>=
   type, extends (pcm_t) :: pcm_nlo_t
     type(nlo_settings_t) :: settings
+    type(nlo_states_t) :: particle_states 
     type(region_data_t) :: region_data
     type(color_data_t) :: color_data
     class(powheg_damping_t), allocatable :: powheg_damping
@@ -11662,6 +11662,17 @@ each entry of the BLHA output array.
   end function pcm_nlo_get_n_sub
 
 @ %def pcm_nlo_get_n_sub
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: get_n_alr => pcm_nlo_get_n_alr
+<<Pcm: procedures>>=
+  function pcm_nlo_get_n_alr (pcm) result (n_alr)
+    integer :: n_alr
+    class(pcm_nlo_t), intent(in) :: pcm
+    n_alr = pcm%region_data%n_regions
+  end function pcm_nlo_get_n_alr
+
+@ %def pcm_nlo_get_n_alr
 @ Check if there are massive emitters. Since the mass-structure of all
 underlying Born configurations have to be the same (\textbf{This does
 not have to be the case when different components are generated at LO})
@@ -11754,7 +11765,6 @@ object and the squared matrix-element collector.
   public :: pcm_instance_nlo_t
 <<Pcm: types>>=
   type, extends (pcm_instance_t) :: pcm_instance_nlo_t
-     type(nlo_controller_t) :: controller
      integer :: active_real_component = 1
      logical :: use_internal_color_correlation = .true.
      type(real_kinematics_t), pointer :: real_kinematics => null ()
@@ -11762,6 +11772,7 @@ object and the squared matrix-element collector.
      type(real_subtraction_t) :: real_sub
      type(virtual_t) :: virtual
      type(soft_mismatch_t) :: soft_mismatch
+     type(dglap_remnant_t) :: dglap_remnant
   contains
   <<Pcm: pcm instance: TBP>>
   end type pcm_instance_nlo_t
@@ -11881,6 +11892,17 @@ object and the squared matrix-element collector.
 @ %def pcm_instance_nlo_set_momenta_and_scales_virtual
 @
 <<Pcm: pcm instance: TBP>>=
+  procedure :: set_fac_scale => pcm_instance_nlo_set_fac_scale
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_set_fac_scale (pcm_instance, fac_scale)
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    real(default), intent(in) :: fac_scale
+    pcm_instance%isr_kinematics%fac_scale = fac_scale
+  end subroutine pcm_instance_nlo_set_fac_scale
+
+@ %def pcm_instance_nlo_set_fac_scale
+@
+<<Pcm: pcm instance: TBP>>=
   procedure :: set_momenta => pcm_instance_nlo_set_momenta
 <<Pcm: procedures>>=
   subroutine pcm_instance_nlo_set_momenta (pcm_instance, p_born, p_real, i_phs, cms)
@@ -11945,6 +11967,20 @@ object and the squared matrix-element collector.
   end function pcm_instance_nlo_get_momenta
 
 @ %def pcm_instance_nlo_get_momenta
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: get_xi_max => pcm_instance_nlo_get_xi_max
+<<Pcm: procedures>>=
+  function pcm_instance_nlo_get_xi_max (pcm_instance, alr) result (xi_max)
+    real(default) :: xi_max
+    class(pcm_instance_nlo_t), intent(in) :: pcm_instance
+    integer, intent(in) :: alr
+    integer :: i_phs
+    i_phs = pcm_instance%real_kinematics%alr_to_i_phs (alr)
+    xi_max = pcm_instance%real_kinematics%xi_max (i_phs)
+  end function pcm_instance_nlo_get_xi_max
+
+@ %def pcm_instance_nlo_get_xi_max
 @
 <<Pcm: pcm instance: TBP>>=
   procedure :: set_x_rad => pcm_instance_nlo_set_x_rad
@@ -12031,6 +12067,18 @@ object and the squared matrix-element collector.
 @ %def pcm_instance_nlo_compute_sqme_virt
 @
 <<Pcm: pcm instance: TBP>>=
+  procedure :: compute_sqme_mismatch => pcm_instance_nlo_compute_sqme_mismatch
+<<Pcm: procedures>>=
+  function pcm_instance_nlo_compute_sqme_mismatch (pcm_instance, alpha_s) result (sqme_mism)
+    real(default) :: sqme_mism
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    real(default) :: alpha_s 
+    sqme_mism = pcm_instance%soft_mismatch%evaluate (alpha_s)
+  end function pcm_instance_nlo_compute_sqme_mismatch
+
+@ %def pcm_instance_nlo_compute_sqme_mismatch
+@
+<<Pcm: pcm instance: TBP>>=
   procedure :: set_fixed_order_event_mode => pcm_instance_nlo_set_fixed_order_event_mode
 <<Pcm: procedures>>=
   subroutine pcm_instance_nlo_set_fixed_order_event_mode (pcm_instance)
@@ -12048,6 +12096,20 @@ object and the squared matrix-element collector.
 
 @ %def pcm_instance_nlo_set_fixed_order_event_mode
 @ %def pcm_instance_nlo_set_powheg_mode
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: init_dglap_remnant => pcm_instance_nlo_init_dglap_remnant
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_init_dglap_remnant (pcm_instance)
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       call pcm_instance%dglap_remnant%init (pcm_instance%isr_kinematics, &
+          config%particle_states%flv_state_born, config%get_n_alr ())
+    end select
+  end subroutine pcm_instance_nlo_init_dglap_remnant
+
+@ %def pcm_instance_nlo_init_dglap_remnant
 @
 <<Process: process: TBP>>=
   procedure :: init_nlo_settings => process_init_nlo_settings
