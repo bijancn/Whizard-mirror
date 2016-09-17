@@ -7116,11 +7116,11 @@ module pcm
   use process_constants, only: process_constants_t
   use pcm_base
   use nlo_data
+  use nlo_color_data, only: nlo_color_data_t
   use fks_regions, only: region_data_t
   use phs_fks, only: phs_fks_generator_t
   use real_subtraction
   use virtual, only: virtual_t
-  use nlo_controller
   use dglap_remnant, only: dglap_remnant_t
 
 <<Standard module head>>
@@ -9262,7 +9262,7 @@ The quantum numbers mask of the incoming particle
                    emitter = phs%phs_identifiers(i_phs)%emitter
                 end select
                 sqme = sqme + pcm_instance%real_sub%compute (emitter, &
-                   i_phs, 1, alpha_s_sub)!, nlo_controller%alpha_s_sub)  
+                   i_phs, 1, alpha_s_sub)  
              end do
           end select
        else
@@ -9271,7 +9271,7 @@ The quantum numbers mask of the incoming particle
           pcm_instance%real_sub%sqme_real_non_sub (1, i_phs) = &
              real (term%connected%trace%get_matrix_element (1))
           sqme = pcm_instance%real_sub%compute (emitter, &
-             i_phs, 1, alpha_s_sub)!, nlo_controller%alpha_s_sub)
+             i_phs, 1, alpha_s_sub)
        end if
     end associate
     call term%connected%trace%set_matrix_element (cmplx (sqme, zero, default))
@@ -9297,19 +9297,10 @@ The quantum numbers mask of the incoming particle
         print *, 'fac_scale: ', term%fac_scale
      end if
 
-     !call nlo_controller%set_alpha_s_sub (core%get_alpha_s (term%core_state))
-     !select type (core)
-     !class is (prc_user_defined_base_t)
-     !   call core%update_alpha_s (term%core_state, term%fac_scale)
-     !end select
      call term%pcm_instance%set_momenta_and_scales_virtual &
         (term%int_hard%get_momenta (), term%ren_scale, term%fac_scale)
-     !call nlo_controller%transfer_to_virtual (term%int_hard%get_momenta (), &
-     !   term%ren_scale, term%fac_scale)
      !!! TODO(cw 2016-07-08): Handle bad point
      !!! TODO(cw 2016-07-08): Handle multiple Born flavors 
-     !sqme_virt = term%nlo_controller%compute_sqme_virt &
-     !   (term%connected%trace%get_matrix_element ())
      sqme_virt = term%pcm_instance%compute_sqme_virt (alpha_s, &
         term%connected%trace%get_matrix_element ())
      call term%connected%trace%set_matrix_element &
@@ -10384,25 +10375,11 @@ to subobject of [[instance]].
                    select type (pcm_instance => instance%pcm)
                    type is (pcm_instance_nlo_t)
                       pcm_instance%active_real_component = i_component
-                      !select type (config => pcm_instance%config)
-                      !type is (pcm_nlo_t)
                       call pcm_instance%setup_real_subtraction &
                          (pcm%settings%fks_template%subtraction_disabled, &
                          process%get_sqrts ())
-                      !end select
                    end select
                    pcm%initialized = .true.
-                   !if (nlo_controller%needs_initialization) then
-                   !   call nlo_controller%set_internal_procedures &
-                   !      (use_internal_cc, use_internal_sc)
-                   !   term = process%get_term_ptr (i_real)
-                   !   call nlo_controller%init_color_data  &
-                   !      ([data_born, data_real], term%flv, term%col)
-                   !   call nlo_controller%setup_real_terms &
-                   !      (nlo_controller%settings%fks_template%subtraction_disabled, &
-                   !       process%get_sqrts ())
-                   !   nlo_controller%needs_initialization = .false.
-                   !end if
                 end select
              case (NLO_VIRTUAL)
                 call pcm_instance%init_virtual ()
@@ -10862,11 +10839,11 @@ terms, iterating over all active process components.
               core => instance%process%get_core_term (i)
               call term%evaluate_interaction (core)
               call term%evaluate_trace ()
-              if (term%nlo_type == NLO_REAL) then
-                 call set_alpha_s_nlo (instance%term(term%config%i_sub))
-              else
-                 call set_alpha_s_nlo (term)
-              end if
+              !if (term%nlo_type == NLO_REAL) then
+              !   call set_alpha_s_nlo (instance%term(term%config%i_sub))
+              !else
+              !   call set_alpha_s_nlo (term)
+              !end if
               if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) then
                  call set_sqme_born (term, 1)
                  call term%evaluate_color_correlations (core, 1)
@@ -10900,13 +10877,6 @@ terms, iterating over all active process components.
        instance%sqme = zero
     end if
   contains
-    subroutine set_alpha_s_nlo (term)
-      class(term_instance_t), intent(inout) :: term
-      !if (associated (term%nlo_controller)) then
-      !   call term%nlo_controller%set_alpha_s_sub &
-      !      (core%get_alpha_s (term%core_state))
-      !end if
-    end subroutine set_alpha_s_nlo
 
     subroutine set_sqme_born (term, i_flv)
       type(term_instance_t), intent(inout) :: term
@@ -11032,15 +11002,6 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
          call term%compute_eff_kinematics ()
          call term%evaluate_expressions ()
          call term%evaluate_interaction (core)
-         !if (.not. term%nlo_controller%alpha_s_set) then
-         !   if (present (alpha_s_external)) then
-         !      call term%nlo_controller%set_alpha_s_sub (alpha_s_external)
-         !   else
-         !      call term%nlo_controller%set_alpha_s_sub &
-         !         (core%get_alpha_s (term%core_state))
-         !   end if
-         !   term%nlo_controller%alpha_s_set = .true.
-         !end if
          call term%evaluate_trace ()
          pcm%real_sub%sqme_born (1) = &
             real (term%connected%trace%get_matrix_element (1)) 
@@ -11637,7 +11598,7 @@ corresponding instance.  This is the nontrivial NLO version.
     type(nlo_settings_t) :: settings
     type(nlo_states_t) :: particle_states 
     type(region_data_t) :: region_data
-    type(color_data_t) :: color_data
+    type(nlo_color_data_t) :: color_data
     class(powheg_damping_t), allocatable :: powheg_damping
   contains
   <<Pcm: pcm nlo: TBP>>
@@ -12034,8 +11995,6 @@ object and the squared matrix-element collector.
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
     real(default), intent(in) :: alpha_s
     complex(default), intent(in), dimension(:) :: me
-    !integer :: n_tot, n_me
-    !integer, dimension(:), allocatable :: flv_state
     associate (virtual => pcm_instance%virtual)
        !!! TODO (cw-2016-09-16): Interface vfin directly
        call virtual%set_vfin (real(me(1)))
