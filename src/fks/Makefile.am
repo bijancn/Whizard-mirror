@@ -43,7 +43,7 @@ libfks_la_SOURCES = \
 libfks_ut_la_SOURCES = \
   phs_fks_uti.f90 phs_fks_ut.f90 \
   fks_regions_uti.f90 fks_regions_ut.f90 \
-  nlo_color_data.f90
+  nlo_color_data_ut.f90 nlo_color_data_uti.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = fks.nw
