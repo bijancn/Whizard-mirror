@@ -6379,7 +6379,7 @@ configuration finalizer may include closing an open scratch file.
 <<Process: process: TBP>>=
   procedure :: get_nlo_type => process_get_nlo_type
 <<Process: procedures>>=
-  function process_get_nlo_type (process, i_core) result (nlo_type)
+  elemental function process_get_nlo_type (process, i_core) result (nlo_type)
     integer :: nlo_type
     class(process_t), intent(in) :: process
     integer, intent(in) :: i_core
@@ -6389,16 +6389,30 @@ configuration finalizer may include closing an open scratch file.
 @ %def process_get_nlo_type
 @
 <<Process: process: TBP>>=
-  procedure :: get_nlo_type_component => process_get_nlo_type_component
+  generic :: get_nlo_type_component => get_nlo_type_component_single
+  procedure :: get_nlo_type_component_single => process_get_nlo_type_component_single
 <<Process: procedures>>=
-  pure function process_get_nlo_type_component (process, i_component) result (val)
+  elemental function process_get_nlo_type_component_single (process, i_component) result (val)
     integer :: val
     class(process_t), intent(in) :: process
     integer, intent(in) :: i_component
     val = process%component(i_component)%get_nlo_type ()
-  end function process_get_nlo_type_component
+  end function process_get_nlo_type_component_single
 
-@ %def process_get_nlo_type_component
+@ %def process_get_nlo_type_component_single
+@
+<<Process: process: TBP>>=
+  generic :: get_nlo_type_component => get_nlo_type_component_all
+  procedure :: get_nlo_type_component_all => process_get_nlo_type_component_all
+<<Process: procedures>>=
+  pure function process_get_nlo_type_component_all (process) result (val)
+    integer, dimension(:), allocatable :: val
+    class(process_t), intent(in) :: process
+    allocate (val (size (process%component)))
+    val = process%component%get_nlo_type ()
+  end function process_get_nlo_type_component_all
+
+@ %def process_get_nlo_type_component_all
 @
 <<Process: process: TBP>>=
   procedure :: get_core_manager_index => process_get_core_manager_index
@@ -6583,7 +6597,7 @@ configuration finalizer may include closing an open scratch file.
 <<Process config: process component: TBP>>=
   procedure :: is_active => process_component_is_active
 <<Process config: procedures>>=
-  pure function process_component_is_active (component) result (active)
+  elemental function process_component_is_active (component) result (active)
     logical :: active
     class(process_component_t), intent(in) :: component
     active = component%active
@@ -6592,16 +6606,31 @@ configuration finalizer may include closing an open scratch file.
 @ %def process_component_is_active
 @
 <<Process: process: TBP>>=
-  procedure :: component_is_active => process_component_is_active
+  generic :: component_is_active => component_is_active_single
+  procedure :: component_is_active_single => process_component_is_active_single
 <<Process: procedures>>=
-  pure function process_component_is_active (process, i_comp) result (val)
+  elemental function process_component_is_active_single (process, i_comp) result (val)
     logical :: val
     class(process_t), intent(in) :: process
     integer, intent(in) :: i_comp
     val = process%component(i_comp)%is_active ()
-  end function process_component_is_active
+  end function process_component_is_active_single
 
-@ %def process_component_is_active
+@ %def process_component_is_active_single
+@
+<<Process: process: TBP>>=
+  generic :: component_is_active => component_is_active_all
+  procedure :: component_is_active_all => process_component_is_active_all
+<<Process: procedures>>=
+  pure function process_component_is_active_all (process) result (val)
+    logical, dimension(:), allocatable :: val
+    class(process_t), intent(in) :: process
+    integer :: i_component
+    allocate (val (size (process%component)))
+    val = process%component%is_active ()
+  end function process_component_is_active_all
+
+@ %def process_component_is_active_all
 @
 <<Process config: process component: TBP>>=
   procedure :: has_mci_template => process_component_has_mci_template
@@ -6731,7 +6760,7 @@ This calls a method of the [[phs_config]] phase-space implementation.
 <<Process config: process component: TBP>>=
   procedure :: get_nlo_type => process_component_get_nlo_type
 <<Process config: procedures>>=
-  pure function process_component_get_nlo_type (component) result (nlo_type)
+  elemental function process_component_get_nlo_type (component) result (nlo_type)
      integer :: nlo_type
      class(process_component_t), intent(in) :: component
      nlo_type = component%config%get_nlo_type ()
@@ -7114,6 +7143,7 @@ module pcm
   use diagnostics
   use lorentz, only: vector4_t
   use process_constants, only: process_constants_t
+  use physics_defs
   use pcm_base
   use nlo_data
   use nlo_color_data, only: nlo_color_data_t
@@ -10222,6 +10252,7 @@ to subobject of [[instance]].
     type(process_term_t) :: term
     logical :: combined_nlo_integration
     class(phs_config_t), pointer :: phs_config => null ()
+    integer :: i_born, i_real
 
     instance%process => process
     call instance%setup_sf_chain (process%get_beam_config_ptr ())
@@ -10239,7 +10270,24 @@ to subobject of [[instance]].
 
     select type (pcm)
     type is (pcm_nlo_t)
-       call instance%init_nlo_configuration ()
+       !!! The process is kept when the integration is finalized, but not the
+       !!! process_instance. Thus, we check whether pcm has been initialized
+       !!! but set up the pcm_instance each time.
+       if (.not. pcm%initialized) then
+          i_born = process%get_i_core_nlo_type (BORN)
+          i_real = process%get_i_core_nlo_type (NLO_REAL, include_sub = .false.)
+          associate (term => process%get_term_ptr (process%get_i_term (i_real)))
+             call pcm%init_color_data &
+                ([process%get_constants (i_born), process%get_constants (i_real)], &
+                 term%flv, term%col)
+          end associate
+       end if
+       pcm%initialized = .true.
+       select type (pcm_instance => instance%pcm)
+       type is (pcm_instance_nlo_t)
+          call pcm_instance%init_config (process%component_is_active (), &
+             process%get_nlo_type_component (), process%get_sqrts ())
+       end select
        combined_nlo_integration = pcm%settings%combined_integration
     class default
        combined_nlo_integration = .false.
@@ -10332,71 +10380,6 @@ to subobject of [[instance]].
   end function process_get_connected_states
 
 @ %def process_get_connected_states
-@ All the NLO-specific initialization.
-<<Instances: process instance: TBP>>=
-  procedure :: init_nlo_configuration => &
-       process_instance_init_nlo_configuration
-<<Instances: procedures>>=
-  subroutine process_instance_init_nlo_configuration (instance)
-    class(process_instance_t), intent(inout), target :: instance
-    type(process_t), pointer :: process
-    integer :: i_component
-    type(process_constants_t) :: data_born, data_real
-    type(process_term_t) :: term
-    integer :: nlo_type
-    integer :: i_born, i_real
-    logical :: use_internal_cc
-    class(pcm_t), pointer :: pcm
-
-    select type (pcm_instance => instance%pcm)
-    type is (pcm_instance_nlo_t)
-
-       process => instance%process
-       i_born = process%get_i_core_nlo_type (BORN)
-       i_real = process%get_i_core_nlo_type (NLO_REAL, include_sub = .false.)
-       data_born = process%get_constants (i_born)
-       data_real = process%get_constants (i_real)
-       i_real = process%get_i_term (i_real)
-       do i_component = 1, process%get_n_components ()
-          if (process%component_is_active (i_component)) then
-             nlo_type = process%get_nlo_type_component (i_component)
-             select case (nlo_type)
-             case (NLO_REAL)
-                pcm => instance%process%get_pcm_ptr ()
-                select type (pcm)
-                type is (pcm_nlo_t)
-                   use_internal_cc = pcm%settings%use_internal_color_correlations
-                   pcm%settings%use_internal_spin_correlations = .false.
-                   if (use_internal_cc .and. .not. pcm%initialized) then
-                      term = process%get_term_ptr (i_real)
-                      call pcm%init_color_data ([data_born, data_real], &
-                         term%flv, term%col)
-                   end if
-                   select type (pcm_instance => instance%pcm)
-                   type is (pcm_instance_nlo_t)
-                      pcm_instance%active_real_component = i_component
-                      call pcm_instance%setup_real_subtraction &
-                         (pcm%settings%fks_template%subtraction_disabled, &
-                         process%get_sqrts ())
-                   end select
-                   pcm%initialized = .true.
-                end select
-             case (NLO_VIRTUAL)
-                call pcm_instance%init_virtual ()
-                select type (pcm)
-                type is (pcm_nlo_t)
-                   if (.not. pcm%settings%with_virtual_subtraction) &
-                      call pcm_instance%disable_virtual_subtraction ()
-                end select
-             case (NLO_DGLAP)
-                call pcm_instance%init_dglap_remnant ()
-             end select
-          end if
-       end do
-    end select
-  end subroutine process_instance_init_nlo_configuration
-
-@ %def process_instance_init_nlo_configuration
 @
 <<Instances: process instance: TBP>>=
   procedure :: transfer_helicities => process_instance_transfer_helicities
@@ -11758,6 +11741,39 @@ object and the squared matrix-element collector.
 
 @ %def pcm_instance_nlo_disable_subtraction
 @ %def pcm_instance_nlo_disable_sqme_np1
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: init_config => pcm_instance_nlo_init_config
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_init_config (pcm_instance, active_components, &
+     nlo_types, sqrts)
+    class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    logical, intent(in), dimension(:) :: active_components
+    integer, intent(in), dimension(:) :: nlo_types
+    real(default), intent(in) :: sqrts
+    integer :: i_component
+    select type (pcm => pcm_instance%config)
+    type is (pcm_nlo_t)
+       do i_component = 1, size (active_components)
+          if (active_components(i_component)) then
+             select case (nlo_types(i_component))
+             case (NLO_REAL) 
+                pcm_instance%active_real_component = i_component
+                call pcm_instance%setup_real_subtraction &
+                   (pcm%settings%fks_template%subtraction_disabled, sqrts)
+             case (NLO_VIRTUAL)
+                call pcm_instance%init_virtual ()
+                if (.not. pcm%settings%with_virtual_subtraction) &
+                   call pcm_instance%disable_virtual_subtraction ()
+             case (NLO_DGLAP)
+                call pcm_instance%init_dglap_remnant ()
+             end select
+          end if
+       end do
+    end select
+  end subroutine pcm_instance_nlo_init_config
+
+@ %def pcm_instance_nlo_init_config
 @
 <<Pcm: pcm instance: TBP>>=
   procedure :: setup_real_subtraction => pcm_instance_nlo_setup_real_subtraction
