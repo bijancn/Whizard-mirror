@@ -2904,6 +2904,14 @@ allocated pointers.
        end do
     end if
     call process%cm%final ()
+    if (allocated (process%pcm)) then
+       !!! TODO (cw-2016-09-19): Deferred TBP for pcm_final
+       select type (pcm => process%pcm)
+       type is (pcm_nlo_t)
+          call pcm%final ()
+       end select
+       deallocate (process%pcm)
+    end if
   end subroutine process_final
 
 @ %def process_final
@@ -10258,7 +10266,7 @@ to subobject of [[instance]].
     type(process_term_t) :: term
     logical :: combined_nlo_integration
     class(phs_config_t), pointer :: phs_config => null ()
-    integer :: i_born, i_real
+    integer :: i_born, i_real, i_real_fin
 
     instance%process => process
     call instance%setup_sf_chain (process%get_beam_config_ptr ())
@@ -10279,6 +10287,7 @@ to subobject of [[instance]].
        !!! The process is kept when the integration is finalized, but not the
        !!! process_instance. Thus, we check whether pcm has been initialized
        !!! but set up the pcm_instance each time.
+       i_real_fin = process%get_associated_real_fin (1)
        if (.not. pcm%initialized) then
           i_born = process%get_i_core_nlo_type (BORN)
           i_real = process%get_i_core_nlo_type (NLO_REAL, include_sub = .false.)
@@ -10287,12 +10296,13 @@ to subobject of [[instance]].
                 ([process%get_constants (i_born), process%get_constants (i_real)], &
                  term%flv, term%col)
           end associate
+          if (i_real_fin > 0) call pcm%allocate_ps_matching ()
        end if
        pcm%initialized = .true.
        select type (pcm_instance => instance%pcm)
        type is (pcm_instance_nlo_t)
           call pcm_instance%init_config (process%component_is_active (), &
-             process%get_nlo_type_component (), process%get_sqrts ())
+             process%get_nlo_type_component (), process%get_sqrts (), i_real_fin)
        end select
        combined_nlo_integration = pcm%settings%combined_integration
     class default
@@ -11685,6 +11695,18 @@ not have to be the case when different components are generated at LO})
 @ %def pcm_nlo_init_color_data
 @
 <<Pcm: pcm nlo: TBP>>=
+  procedure :: allocate_ps_matching => pcm_nlo_allocate_ps_matching
+<<Pcm: procedures>>=
+  subroutine pcm_nlo_allocate_ps_matching (pcm)
+    class(pcm_nlo_t), intent(inout) :: pcm
+    if (.not. allocated (pcm%powheg_damping)) then
+       allocate (powheg_damping_simple_t :: pcm%powheg_damping)
+    end if
+  end subroutine pcm_nlo_allocate_ps_matching
+
+@ %def pcm_nlo_allocate_ps_matching
+@
+<<Pcm: pcm nlo: TBP>>=
   procedure :: setup_phs_generator => pcm_nlo_setup_phs_generator
 <<Pcm: procedures>>=
   subroutine pcm_nlo_setup_phs_generator (pcm, pcm_instance, generator, &
@@ -11709,6 +11731,16 @@ not have to be the case when different components are generated at LO})
   end subroutine pcm_nlo_setup_phs_generator
 
 @ %def pcm_nlo_setup_phs_generator
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: final => pcm_nlo_final
+<<Pcm: procedures>>=
+  subroutine pcm_nlo_final (pcm)
+    class(pcm_nlo_t), intent(inout) :: pcm
+    if (allocated (pcm%powheg_damping)) deallocate (pcm%powheg_damping)
+  end subroutine pcm_nlo_final
+
+@ %def pcm_nlo_final 
 @ As a first implementation, it acts as a wrapper for the NLO controller
 object and the squared matrix-element collector.
 <<Pcm: public>>=
@@ -11752,11 +11784,12 @@ object and the squared matrix-element collector.
   procedure :: init_config => pcm_instance_nlo_init_config
 <<Pcm: procedures>>=
   subroutine pcm_instance_nlo_init_config (pcm_instance, active_components, &
-     nlo_types, sqrts)
+     nlo_types, sqrts, i_real_fin)
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
     logical, intent(in), dimension(:) :: active_components
     integer, intent(in), dimension(:) :: nlo_types
     real(default), intent(in) :: sqrts
+    integer, intent(in) :: i_real_fin
     integer :: i_component
     select type (pcm => pcm_instance%config)
     type is (pcm_nlo_t)
@@ -11764,9 +11797,11 @@ object and the squared matrix-element collector.
           if (active_components(i_component)) then
              select case (nlo_types(i_component))
              case (NLO_REAL) 
-                pcm_instance%active_real_component = i_component
-                call pcm_instance%setup_real_subtraction &
-                   (pcm%settings%fks_template%subtraction_disabled, sqrts)
+                if (i_component /= i_real_fin) then
+                   pcm_instance%active_real_component = i_component
+                   call pcm_instance%setup_real_component &
+                      (pcm%settings%fks_template%subtraction_disabled, sqrts)
+                end if
              case (NLO_VIRTUAL)
                 call pcm_instance%init_virtual ()
                 if (.not. pcm%settings%with_virtual_subtraction) &
@@ -11782,9 +11817,9 @@ object and the squared matrix-element collector.
 @ %def pcm_instance_nlo_init_config
 @
 <<Pcm: pcm instance: TBP>>=
-  procedure :: setup_real_subtraction => pcm_instance_nlo_setup_real_subtraction
+  procedure :: setup_real_component => pcm_instance_nlo_setup_real_component
 <<Pcm: procedures>>=
-  subroutine pcm_instance_nlo_setup_real_subtraction (pcm_instance, &
+  subroutine pcm_instance_nlo_setup_real_component (pcm_instance, &
      subtraction_disabled, sqrts)
     class(pcm_instance_nlo_t), intent(inout), target :: pcm_instance
     logical, intent(in) :: subtraction_disabled
@@ -11798,12 +11833,10 @@ object and the squared matrix-element collector.
           call pcm_instance%soft_mismatch%init (region_data, &
              pcm_instance%real_kinematics)
        end associate
-       if (.not. config%initialized) &
-          allocate (powheg_damping_simple_t :: config%powheg_damping)
     end select
-  end subroutine pcm_instance_nlo_setup_real_subtraction
+  end subroutine pcm_instance_nlo_setup_real_component
 
-@ %def pcm_instance_nlo_setup_real_subtraction
+@ %def pcm_instance_nlo_setup_real_component
 @
 <<Pcm: pcm instance: TBP>>=
   procedure :: init_real_and_isr_kinematics => &
