@@ -31,7 +31,7 @@ let rcs_file = RCS.parse "Targets" ["Code Generation"]
       RCS.date = "$Date: 2016-08-19 15:40:57 +0200 (Fri, 19 Aug 2016) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
-        = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets.ml $" }
 
 module Dummy (F : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
   struct

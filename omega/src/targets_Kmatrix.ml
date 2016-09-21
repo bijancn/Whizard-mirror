@@ -28,7 +28,7 @@ let rcs_file = RCS.parse "Targets_Kmatrix" ["K-Matrix Support routines"]
       RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
-        = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets_Kmatrix.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/targets_Kmatrix.ml $" }
 
 module Fortran =
   struct

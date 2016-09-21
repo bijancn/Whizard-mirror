@@ -1559,27 +1559,6 @@ i.e.
 	 end
       | _ -> failwith "translate_lorentz_4"
 
-    let gauge_contraction1 c1 c2 =
-      let open Coupling in
-      match c1, c2 with
-      | (C_13_42, C_14_23) -> 1
-      | (C_14_23, C_13_42) -> -1
-      | _ -> invalid_arg "gauge_contraction1: unexpected"
-
-    let gauge_contraction2 c1 c2 =
-      let open Coupling in
-      match c1, c2 with
-      | (C_14_23, C_12_34) -> 1
-      | (C_12_34, C_14_23) -> -1
-      | _ -> invalid_arg "gauge_contraction2: mismatch"
-
-    let gauge_contraction3 c1 c2 =
-      let open Coupling in
-      match c1, c2 with
-      | (C_12_34, C_13_42) -> 1
-      | (C_13_42, C_12_34) -> -1
-      | _ -> invalid_arg "gauge_contraction3: mismatch"
-
     let translate_gauge_vertex4 model p t c g =
       let open Coupling in
       let g =
@@ -1605,9 +1584,21 @@ i.e.
 	      and q2 = Q.mul q2 q2'
 	      and q3 = Q.mul q3 q3' in
 	      if Q.abs q1 = Q.abs q2 && Q.abs q2 = Q.abs q3 then begin
-		let eps1 = gauge_contraction1 contraction11 contraction12
-		and eps2 = gauge_contraction2 contraction21 contraction22
-		and eps3 = gauge_contraction3 contraction31 contraction32 in
+		begin match contraction11, contraction12 with
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
+		end;
+		begin match contraction21, contraction22 with
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
+		end;
+		begin match contraction31, contraction32 with
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
+		end;
 		prerr_endline
 		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
 		      (String.concat ", "
@@ -1620,9 +1611,21 @@ i.e.
 	      and q2 = Q.mul q2 q2'
 	      and q3 = Q.mul q3 q3' in
 	      if Q.abs q1 = Q.abs q2 && Q.abs q2 = Q.abs q3 then begin
-		let eps1 = gauge_contraction1 contraction11 contraction12
-		and eps2 = gauge_contraction3 contraction21 contraction22
-		and eps3 = gauge_contraction2 contraction31 contraction32 in
+		begin match contraction11, contraction12 with
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
+		end;
+		begin match contraction21, contraction22 with
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
+		end;
+		begin match contraction31, contraction32 with
+		| (C_12_34, C_13_42) -> ()
+		| (C_12_34, C_14_23) -> ()
+		| (C_13_42, C_14_23) -> ()
+		end;
 		prerr_endline
 		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
 		      (String.concat ", "
@@ -1684,6 +1687,8 @@ i.e.
 	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
         ([], [], []) (values model.vertices)
 
+    let ufo_directory = ref Config.default_UFO_dir
+
     let dump_raw = ref false
 
     let propagator_of_lorentz = function
@@ -1725,15 +1730,8 @@ i.e.
 	with
 	| Not_found -> invalid_arg ("not found: " ^ name))
 
-    let initialized_from = ref None
-
-    let is_initialized_from dir =
-      match !initialized_from with
-      | None -> false
-      | Some old_dir -> dir = old_dir
-
-    let init dir =
-      let model = parse_directory dir in
+    let init () =
+      let model = parse_directory !ufo_directory in
       let model =
 	let is_unphysical = not @@ Particle.is_physical in
 	let particles' =
@@ -1791,29 +1789,17 @@ i.e.
             Coupling.derived_arrays = [] })
         ~flavor_of_string ~flavor_to_string ~flavor_to_TeX
         ~flavor_symbol ~gauge_symbol ~mass_symbol ~width_symbol
-        ~constant_symbol:(fun c -> "g");
-      initialized_from := Some dir
+        ~constant_symbol:(fun c -> "g")
 
-    let ufo_directory = ref Config.default_UFO_dir
-
-    let load_UFO () =
-      if is_initialized_from !ufo_directory then
-	()
-      else
-	init !ufo_directory
-
-    let write_WHIZARD () =
-      load_UFO ();
-      failwith "UFO.write_WHIZARD: not implemented yet!"
+    let load () =
+      init ()
 
     let options = Options.create
         [ ("UFO_dir", Arg.String (fun name -> ufo_directory := name),
            "UFO model directory (default: " ^ !ufo_directory ^ ")");
-          ("write_WHIZARD", Arg.Unit write_WHIZARD,
-           "write the WHIZARD model files (required once per model)");
-          ("exec", Arg.Unit load_UFO,
-           "load the UFO model files (required _before_ using particles names)");
-          ("dump", Arg.Set dump_raw, "dump UFO model for debugging the parser");
+          ("dump", Arg.Set dump_raw, "dump UFO model");
+          ("exec", Arg.Unit load,
+           "load the model files (required _before_ any particle)");
           ("help", Arg.Unit (fun () -> prerr_endline "..."),
            "print information on the model")]
 

@@ -27,7 +27,7 @@ let rcs = RCS.parse "Partition" ["Partitions"]
       RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
       RCS.author = "$Author: jr_reuter $";
       RCS.source
-        = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/partition.ml $" }
+        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/partition.ml $" }
 
 (* All unordered pairs of integers with the same sum~$n$ in a given
    range~$\{n_1,\ldots,n_2\}$:
