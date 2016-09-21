@@ -101,7 +101,7 @@ g95)
   wo_cv_fc_version=[`echo $FC_ID_STRING | $SED -e 's/.*g95 \([0-9][0-9]*\.[0-9][0-9]*\).*$/\1/'`]
   ;;
 NAG)
-  wo_cv_fc_version=[`echo $FC_ID_STRING | $SED -e 's/.* Release \([0-9][0-9]*\.[0-9][0-9]*.*$\)/\1/'`]
+  wo_cv_fc_version=[`echo $FC_ID_STRING | $SED -e 's/.* Release \([0-9][0-9]*\.[0-9][0-9]*\).*$/\1/'`]
   ;;
 Intel)
   wo_cv_fc_version=[`echo $FC_ID_STRING | $SED -e 's/[a-zA-Z\(\)]//g;s/[0-9]\{8\}$//g'`]
