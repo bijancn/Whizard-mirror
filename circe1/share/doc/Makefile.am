@@ -204,7 +204,7 @@ de-xbandt-ee.dat: $(top_builddir)/tools/circe1_plot
 dg-xbandt-ee.dat: $(top_builddir)/tools/circe1_plot
 	echo 1 0.001 1.0 50 -1.0 22 11 1000.0 6 $(CIRCE1_VER) $(CIRCE1_REV) | $(CPLOT)
 
-CPLOT = $(top_builddir)/tools/circe1_plot | $(GREP) -v circe1: | $(SED) 's/E/e/g' | $(CPIF) -eq $@
+CPLOT = $(top_builddir)/tools/circe1_plot | $(GREP) -v circe1: | $(SED) 's/E/e/g' > $@
 
 tex-comments: tex-comments.sh
 	cp $< $@

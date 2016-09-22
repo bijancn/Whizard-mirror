@@ -149,16 +149,16 @@ if NOWEB_AVAILABLE
 	$(NOTANGLE_IT)
 
 circe2_ls.f90: circe2.nw
-	cat $(WEBS) | $(NOTANGLE) -R'[[$@]]' | $(CPIF) -eq $@
+	cat $(WEBS) | $(NOTANGLE) -R'[[$@]]' > $@
 
 circe2_generate.f90: circe2.nw
-	cat $(WEBS) | $(NOTANGLE) -R'[[$@]]' | $(CPIF) -eq $@
+	cat $(WEBS) | $(NOTANGLE) -R'[[$@]]' > $@
 
 circe2_moments.f90: circe2.nw
-	cat $(WEBS) | $(NOTANGLE) -R'[[$@]]' | $(CPIF) -eq $@
+	cat $(WEBS) | $(NOTANGLE) -R'[[$@]]' > $@
 
 tao_random_objects.f90: circe2.nw
-	cat $(WEBS) | $(NOTANGLE) -R'[[$@]]' | $(CPIF) -eq $@
+	cat $(WEBS) | $(NOTANGLE) -R'[[$@]]' > $@
 
 endif NOWEB_AVAILABLE
 
