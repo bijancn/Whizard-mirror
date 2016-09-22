@@ -2302,12 +2302,14 @@ end module core_manager
   public :: core_manager_t
 <<Core manager: types>>=
   type :: core_manager_t
-    integer, dimension(N_MAX_CORES) :: def_ptr_index = 0
+    !integer, dimension(N_MAX_CORES) :: def_ptr_index = 0
+    integer, dimension(N_MAX_CORES) :: i_component_to_i_core = 0
     integer, dimension(N_MAX_CORES) :: i_core = 0
     logical, dimension(N_MAX_CORES) :: sub = .false.
     character(32), dimension(N_MAX_CORES) :: md5s = ""
     integer, dimension(N_MAX_CORES) :: nlo_type
     integer :: n_cores = 0
+    integer, dimension(:), allocatable :: i_core_to_first_i_component
     type(generic_core_t), dimension(:), allocatable :: cores
     integer :: current_index = 1
   contains
@@ -2317,20 +2319,34 @@ end module core_manager
 @ %def core_manager_t
 @
 <<Core manager: cm: TBP>>=
-  procedure :: register => cm_register
+  procedure :: register_new => cm_register_new
 <<Core manager: procedures>>=
-  subroutine cm_register (cm, nlo_type, i_component, md5sum)
+  subroutine cm_register_new (cm, nlo_type, i_component, md5sum)
     class(core_manager_t), intent(inout) :: cm
     integer, intent(in) :: nlo_type, i_component
     character(32), intent(in) :: md5sum
     cm%nlo_type(cm%current_index) = nlo_type
     cm%md5s(cm%current_index) = md5sum
-    cm%def_ptr_index(cm%current_index) = i_component
+    cm%i_component_to_i_core(i_component) = cm%current_index
+    !cm%def_ptr_index(cm%current_index) = i_component
     cm%i_core(cm%current_index) = cm%current_index
     cm%current_index = cm%current_index + 1
-  end subroutine cm_register
+  end subroutine cm_register_new
 
-@ %def cm_register
+@ %def cm_register_new
+@
+<<Core manager: cm: TBP>>=
+  procedure :: register_existing => cm_register_existing
+<<Core manager: procedures>>=
+  subroutine cm_register_existing (cm, i_existing, i_component)
+    class(core_manager_t), intent(inout) :: cm
+    integer, intent(in) :: i_existing, i_component
+    integer :: i_core
+    i_core = cm%i_component_to_i_core(i_existing)
+    cm%i_component_to_i_core(i_component) = i_core
+  end subroutine cm_register_existing
+
+@ %def cm_register_existing
 @
 <<Core manager: cm: TBP>>=
   procedure :: allocate_core_array => cm_allocate_core_array
@@ -2343,6 +2359,26 @@ end module core_manager
 
 @ %def cm_allocate_core_array
 @
+<<Core manager: cm: TBP>>=
+  procedure :: create_i_core_to_first_i_component &
+     => core_manager_create_i_core_to_first_i_component
+<<Core manager: procedures>>=
+  subroutine core_manager_create_i_core_to_first_i_component (cm, n_components)
+    class(core_manager_t), intent(inout) :: cm
+    integer, intent(in) :: n_components
+    integer :: i, i_core
+    allocate (cm%i_core_to_first_i_component (cm%n_cores))
+    cm%i_core_to_first_i_component = 0
+    do i = 1, n_components
+       if (.not. any (cm%i_core_to_first_i_component == i)) then
+          i_core = cm%i_component_to_i_core (i)
+          cm%i_core_to_first_i_component(i_core) = i
+       end if
+    end do
+  end subroutine core_manager_create_i_core_to_first_i_component
+
+@ %def core_manager_create_i_core_to_first_i_component 
+@ 
 <<Core manager: cm: TBP>>=
   procedure :: allocate_core => cm_allocate_core
 <<Core manager: procedures>>=
@@ -2384,25 +2420,6 @@ end module core_manager
   end function cm_get_subtraction_core
 
 @ %def cm_get_subtraction_core
-@
-<<Core manager: cm: TBP>>=
-  procedure :: get_i_core_from_i_component => cm_get_i_core_from_i_component
-<<Core manager: procedures>>=
-  function cm_get_i_core_from_i_component (cm, i_component) result (i_core)
-    integer :: i_core
-    class(core_manager_t), intent(in) :: cm
-    integer, intent(in) :: i_component
-    integer :: i
-    i_core = 0
-    do i = 1, cm%n_cores
-       if (cm%def_ptr_index(i) == i_component) then
-          i_core = i
-          exit
-       end if
-    end do
-  end function cm_get_i_core_from_i_component
-
-@ %def cm_get_i_core_from_i_component
 @ Asterisks denote the subtraction components
 <<Core manager: cm: TBP>>=
   procedure :: write => cm_write
@@ -2421,8 +2438,22 @@ end module core_manager
        call cm%cores(i)%core%write_name (u)
     end do
     call write_separator (u, 1)
-    write (u,"(1x,A)") "Associated component indices: "
-    call write_integer_array (cm%def_ptr_index, unit = u, n_max = cm%n_cores)
+    write (u,"(1x,A)") "i_component -> i_core: "
+    do i = 1, N_MAX_CORES
+       if (cm%i_component_to_i_core(i) > 0) then
+          write (u, "(I0, A)", advance = "no") cm%i_component_to_i_core(i), ", "
+       else
+          write (u, "(A)") ""
+       end if
+    end do
+    call write_separator (u, 1)
+    if (allocated (cm%i_core_to_first_i_component)) then
+       write (u, "(1x,A)") "i_core -> i_component_first: "
+       call write_integer_array (cm%i_core_to_first_i_component, &
+          unit = u, n_max = cm%n_cores)
+    else
+       write (u, "(1X,A)") "cm%i_core_to_first_i_component: Not allocated."
+    end if
     call write_separator (u, 1)
     write (u,"(1x,A)") "nlo type -> i_core: "
     call write_integer_array (cm%i_core, unit = u, n_max = cm%n_cores)
@@ -2441,14 +2472,18 @@ end module core_manager
 <<Core manager: procedures>>=
   subroutine cm_final (cm)
     class(core_manager_t), intent(inout) :: cm
-    cm%def_ptr_index = 0
+    !cm%def_ptr_index = 0
+    cm%i_component_to_i_core = 0
     cm%n_cores = 0
     cm%i_core = 0
     cm%nlo_type = 0
     cm%md5s = ""
     cm%current_index = 1
     if (allocated (cm%cores)) deallocate (cm%cores)
+    if (allocated (cm%i_core_to_first_i_component)) &
+       deallocate (cm%i_core_to_first_i_component)
   end subroutine cm_final
+
 
 @ %def cm_final
 @ This object may hold process and method-specific data, and it should
@@ -3031,7 +3066,7 @@ freed.
        end do
     else
        process%cm%sub(process%cm%current_index) = .true.
-       call process%cm%register (nlo_type, i_component, md5sum)
+       call process%cm%register_new (nlo_type, i_component, md5sum)
     end if
   end subroutine process_core_manager_register_sub
 
@@ -3042,11 +3077,23 @@ freed.
     type(string_t), intent(in), optional :: type_string
     character(32) :: md5sum
     integer :: i
-    if (present (type_string)) &
-       print *, 'TYPE STRING: ', char (type_string)
+    logical :: check
     md5sum = process%get_md5sum_constants (i_component, type_string, nlo_type)
-    if (.not. any (process%cm%md5s == md5sum)) &
-       call process%cm%register (nlo_type, i_component, md5sum)
+    check = .false.
+    associate (cm => process%cm)
+       if (.not. any (cm%md5s == md5sum)) then
+          call cm%register_new (nlo_type, i_component, md5sum)
+       else
+          do i = 1, N_MAX_CORES
+             if (cm%md5s(i) == md5sum) then
+                call cm%register_existing (i, i_component)
+                check = .true.
+                exit
+             end if
+          end do
+          if (.not. check) call msg_fatal ("Register core: Inconsistency encountered!")
+       end if
+    end associate
     !do i = 1, N_MAX_CORES
     !   if (process%cm%sub(i)) cycle
     !   if (.not. process%cm%md5s(i) == md5sum) then
@@ -3061,14 +3108,16 @@ freed.
 @ %def process_core_manager_register
 @
 <<Process: process: TBP>>=
-  procedure :: allocate_core_array => process_allocate_core_array
+  procedure :: allocate_cm_arrays => process_allocate_cm_arrays
 <<Process: procedures>>=
-  subroutine process_allocate_core_array (process)
+  subroutine process_allocate_cm_arrays (process, n_components)
     class(process_t), intent(inout) :: process
+    integer, intent(in) :: n_components
     call process%cm%allocate_core_array ()
-  end subroutine process_allocate_core_array
+    call process%cm%create_i_core_to_first_i_component (n_components)
+  end subroutine process_allocate_cm_arrays
 
-@ %def process_allocate_core_array
+@ %def process_allocate_cm_arrays
 @
 <<Process: process: TBP>>=
   procedure :: allocate_core => process_allocate_core
@@ -3246,7 +3295,7 @@ This restriction could be removed by extending the code in the
           if (present (i_core)) then
              ic = i_core
           else
-             ic = process%cm%get_i_core_from_i_component (i)
+             ic = process%cm%i_component_to_i_core (i)
           end if
           core => process%cm%get_core (ic)
           pdg_in(:,i) = core%data%get_pdg_in ()
@@ -3298,7 +3347,7 @@ particle mass, hence no extra argument.
           if (present (i_core)) then
              ic = i_core
           else
-             ic = process%cm%get_i_core_from_i_component (i)
+             ic = process%cm%i_component_to_i_core (i)
           end if
           core => process%cm%get_core (ic)
           pdg_in(:,i) = core%data%get_pdg_in ()
@@ -3377,7 +3426,7 @@ incoming PDG values for this beam and component.
     allocate (pdg_in (process%config%n_in, process%meta%n_components))
     do i = 1, process%meta%n_components
        if (process%component(i)%active) then
-          i_core = process%cm%get_i_core_from_i_component (i)
+          i_core = process%cm%i_component_to_i_core (i)
           core => process%cm%get_core (i_core)
           pdg_in(:,i) = core%data%get_pdg_in ()
        end if
@@ -4642,7 +4691,8 @@ usual error propagation gives
     if (present (only_blha)) skip_other = only_blha
     associate (cm => process%cm)
        do i = 1, cm%n_cores
-          config => process%get_component_def_ptr (cm%def_ptr_index(i))
+          config => process%get_component_def_ptr &
+             (cm%i_core_to_first_i_component(i))
           if (config%can_be_integrated () .or. cm%sub(i)) then
              select type (core => cm%cores(i)%core)
              class is (prc_blha_t)
@@ -6402,7 +6452,7 @@ configuration finalizer may include closing an open scratch file.
     type(blha_template_t), intent(in), optional :: blha_template
     integer :: i_component
     type(process_component_def_t), pointer :: config
-    i_component = process%cm%def_ptr_index(i_core)
+    i_component = process%cm%i_core_to_first_i_component (i_core)
     config => process%meta%lib%get_component_def_ptr (process%meta%id, i_component)
     associate (core => process%cm%cores(i_core)%core)
        call core%init (config%get_core_def_ptr (), &
@@ -6478,7 +6528,7 @@ configuration finalizer may include closing an open scratch file.
     integer :: i
     class(process_t), intent(in) :: process
     integer, intent(in) :: i_core
-    i = process%cm%def_ptr_index(i_core)
+    i = process%cm%i_core_to_first_i_component (i_core)
   end function process_get_core_manager_index
 
 @ %def process_get_core_manager_index
@@ -12347,7 +12397,7 @@ object and the squared matrix-element collector.
     class(prc_core_t), allocatable :: core
     allocate (test_t :: core)
     call process%core_manager_register (BORN, 1, var_str ("test_me"))
-    call process%allocate_core_array ()
+    call process%allocate_cm_arrays (1)
     call process%allocate_core (1, core)
     call process%init_core (1)
   end subroutine process_setup_test_cores
@@ -12613,7 +12663,7 @@ Could also be moved to the [[core_manager_t]].
           !            looks wrong, verify that it can be removed
           if (cm%nlo_type(i) /= NLO_SUBTRACTION .and. &
                core%includes_polarization ()) then
-             i_component = cm%def_ptr_index(i)
+             i_component = cm%i_core_to_first_i_component (i)
              call instance%transfer_helicities (i_component, core)
              p = instance%get_phase_space_point (i_component, i)
              call core%warmup_helicities (p)
