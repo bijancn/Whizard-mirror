@@ -2552,6 +2552,19 @@ This object deals with the actual (squared) matrix element values.
 @ %def pcm_instance_final
 @
 <<PCM base: pcm instance: TBP>>=
+  procedure(pcm_instance_is_valid), deferred :: is_valid
+<<PCM base: interfaces>>=
+  abstract interface
+     function pcm_instance_is_valid (pcm_instance) result (valid)
+        import
+        logical :: valid
+        class(pcm_instance_t), intent(in) :: pcm_instance 
+     end function pcm_instance_is_valid
+  end interface
+
+@ %def pcm_instance_is_valid
+@
+<<PCM base: pcm instance: TBP>>=
   procedure :: link_config => pcm_instance_link_config
 <<PCM base: procedures>>=
   subroutine pcm_instance_link_config (pcm_instance, config)
@@ -7348,6 +7361,17 @@ corresponding instance.  The default version is trivial.
 
 @ %def pcm_instance_default_final
 @
+<<Pcm: pcm instance default: TBP>>=
+  procedure :: is_valid => pcm_instance_default_is_valid
+<<Pcm: procedures>>=
+  function pcm_instance_default_is_valid (pcm_instance) result (valid)
+    logical :: valid
+    class(pcm_instance_default_t), intent(in) :: pcm_instance
+    valid = .true. 
+  end function pcm_instance_default_is_valid
+
+@ %def pcm_instance_default_is_valid
+@
 \subsection{Default Iterations}
 If the user does not specify the passes and iterations for
 integration, we should be able to give reasonable defaults.  These
@@ -9107,21 +9131,11 @@ relevant for a NLO algorithm.
        i = term%k_term%sf_chain%get_out_i (j)
        call term%int_hard%set_source_link (j, sf_chain_int, i)
     end do
-    !!! TODO (cw-2016-09-21): Below can be combined
+    call term%isolated%init (term%k_term%sf_chain, term%int_hard)
+    !!! TODO (cw-2016-09-22): sf_sav really necessary?
     select type (phs => term%k_term%phs)
-      type is (phs_wood_t)
-         ! here, int_hard and sf_chain are trivially accessed via pointers
-         call term%isolated%init (term%k_term%sf_chain, term%int_hard)
-         sf_sav => term%k_term%sf_chain
-      type is (phs_fks_t)
-         select case (phs%mode)
-         case (PHS_MODE_ADDITIONAL_PARTICLE)
-            call term%isolated%init (term%k_term%sf_chain, term%int_hard)
-         case (PHS_MODE_COLLINEAR_REMNANT)
-            call term%isolated%init (term%k_term%sf_chain, term%int_hard)
-         end select
-      class default
-         call term%isolated%init (term%k_term%sf_chain, term%int_hard)
+    type is (phs_wood_t)
+       sf_sav => term%k_term%sf_chain
     end select
     allocate (mask_in (n_in))
     mask_in = term%k_term%sf_chain%get_out_mask ()
@@ -9385,7 +9399,7 @@ The quantum numbers mask of the incoming particle
              case (NLO_MISMATCH)
                 sqme_born = pcm_instance%soft_mismatch%sqme_born (i_flv_born)
              case (default)
-                !TODO (cw-2016-09-08): Give error message here
+                !TODO (cw-2016-09-08): What about virtual?
              end select
              sqme_cc = sqme_born * config%color_data%beta_ij (:,:,i_flv_born)
              bp = .false.
@@ -9407,7 +9421,7 @@ The quantum numbers mask of the incoming particle
        case (NLO_MISMATCH)
           pcm_instance%soft_mismatch%sqme_born_cc (:,:,i_flv_born) = sqme_cc
        case default
-          !TODO (cw-2016-09-08): Give error message here
+          !TODO (cw-2016-09-08): What about virtual?
        end select
     end associate
     if (present (bad_point)) bad_point = bp
@@ -9477,7 +9491,6 @@ The quantum numbers mask of the incoming particle
 
      call term%pcm_instance%set_momenta_and_scales_virtual &
         (term%int_hard%get_momenta (), term%ren_scale, term%fac_scale)
-     !!! TODO(cw 2016-07-08): Handle bad point
      !!! TODO(cw 2016-07-08): Handle multiple Born flavors 
      sqme_virt = term%pcm_instance%compute_sqme_virt (alpha_s, &
         term%connected%trace%get_matrix_element ())
@@ -9689,6 +9702,9 @@ method may modify the [[core_state]] workspace object.
              class is (prc_user_defined_base_t)
                 call core%compute_sqme_virt (i, term%p_hard, &
                    term%ren_scale, sqme_virt, bad_point)
+                associate (bad_blha => term%pcm_instance%bad_blha_point (term%config%i_component))
+                   bad_blha = bad_blha .or. bad_point
+                end associate
              end select
              term%amp(i_virt) = cmplx (sqme_virt(3), 0, default)
              select type (config => term%pcm_instance%config)
@@ -10990,11 +11006,6 @@ terms, iterating over all active process components.
               core => instance%process%get_core_term (i)
               call term%evaluate_interaction (core)
               call term%evaluate_trace ()
-              !if (term%nlo_type == NLO_REAL) then
-              !   call set_alpha_s_nlo (instance%term(term%config%i_sub))
-              !else
-              !   call set_alpha_s_nlo (term)
-              !end if
               if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) then
                  call set_sqme_born (term, 1)
                  core_sub => instance%process%get_subtraction_core ()
@@ -11019,9 +11030,13 @@ terms, iterating over all active process components.
        end do
 
        core => null ()
-       instance%evaluation_status = STAT_EVALUATED_TRACE
+       if (instance%pcm%is_valid ()) then
+          instance%evaluation_status = STAT_EVALUATED_TRACE
+       else
+          !!! (TODO: cw-2016-09-22): Special status code for bad BLHA points?
+          instance%evaluation_status = STAT_FAILED_KINEMATICS 
+       end if
 
-       !!! (TODO: cw-2016-09-14): Find a better place for this
        call instance%apply_powheg_dampings ()
 
        instance%sqme = instance%sqme + real (sum (&
@@ -11913,6 +11928,7 @@ object and the squared matrix-element collector.
      type(virtual_t) :: virtual
      type(soft_mismatch_t) :: soft_mismatch
      type(dglap_remnant_t) :: dglap_remnant
+     logical, dimension(:), allocatable :: bad_blha_point
   contains
   <<Pcm: pcm instance: TBP>>
   end type pcm_instance_nlo_t
@@ -11969,6 +11985,8 @@ object and the squared matrix-element collector.
              end select
           end if
        end do
+       allocate (pcm_instance%bad_blha_point (size (active_components)))
+       pcm_instance%bad_blha_point = .false.
     end select
   end subroutine pcm_instance_nlo_init_config
 
@@ -12302,6 +12320,17 @@ object and the squared matrix-element collector.
   end subroutine pcm_instance_nlo_final
 
 @ %def pcm_instance_nlo_final
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: is_valid => pcm_instance_nlo_is_valid
+<<Pcm: procedures>>=
+  function pcm_instance_nlo_is_valid (pcm_instance) result (valid)
+    logical :: valid
+    class(pcm_instance_nlo_t), intent(in) :: pcm_instance
+    valid = .not. any (pcm_instance%bad_blha_point)
+  end function pcm_instance_nlo_is_valid
+
+@ %def pcm_instance_nlo_is_valid
 @
 <<Process: process: TBP>>=
   procedure :: init_nlo_settings => process_init_nlo_settings
