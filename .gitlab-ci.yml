@@ -1,7 +1,6 @@
 stages:
   - autotools
   - build
-  - test
   - deploy
 
 cache:
@@ -18,87 +17,137 @@ autotools:
   artifacts:
     untracked: true
     expire_in: 3 weeks
+  except:
+    - production
 
-.build_template: &build_definition
+.default_template: &default_definition
   stage: build
   before_script:
     - mkdir -p "$CI_BUILD_NAME"
     - cd "$CI_BUILD_NAME"
-
-build.nagfor:
-  <<: *build_definition
-  script:
-    - ../configure FC=nagfor FCFLAGS="$NAGFOR_OPTIONS" --prefix="`pwd`/../install.nagfor" --disable-static > configure.log
-    - make $JOBS -s V=0 > make.log
-    - make $JOBS -s V=0 install > make-install.log
+  except:
+    - production
   artifacts:
     expire_in: 3 weeks
     paths:
-      - build.nagfor/
+      - build.*/
+    when: always
+  dependencies:
+    - autotools
+
+.extra_template: &extra_definition
+  <<: *build_definition
+  only:
+    - master
+  after_script:
+    - find . -type f -exec chmod 644 {} +
+    - find . -type d -exec chmod 755 {} +
+  artifacts:
+    expire_in: 3 weeks
+    paths:
+      - distcheck.*/*.tar.gz
+    when: on_success
+
+.distcheck_template: &distcheck_definition
+  <<: *build_definition
+  only:
+    - master
+
+build.nagfor-6:
+  <<: *default_definition
+  script:
+    - ../configure FC=nagfor FCFLAGS="$NAGFOR_OPTIONS" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
   tags:
     - nagfor
 
 build.gfortran:
-  <<: *build_definition
+  <<: *default_definition
   script:
-    - ../configure FC=gfortran FCFLAGS="-O0" --prefix="`pwd`/../install.gfortran" --disable-static
-    - make $JOBS -s V=0 > make.log
-    - make $JOBS -s V=0 install > make-install.log
-  artifacts:
-    expire_in: 3 weeks
-    paths:
-      - build.gfortran/
-
-.test_template: &test_definition
-  stage: test
-  before_script:
-    - cd "${CI_BUILD_NAME/test/build}"
-  script:
-    - make $JOBS -s V=0 check
-
-.test_extra_template: &test_extra_definition
-  <<: *build_definition
-  stage: test
-  only:
-    - master
-
-test.nagfor:
-  <<: *test_definition
-  dependencies:
-    - autotools
-    - build.nagfor
-  tags:
-    - nagfor
-
-test.gfortran:
-  <<: *test_definition
-  dependencies:
-    - autotools
-    - build.gfortran
-
-test.nagfor.distribution:
-  <<: *test_extra_definition
-  script:
-    - ../configure FC=nagfor FCFLAGS="$NAGFOR_OPTIONS" --prefix="`pwd`/../install.nagfor.distribution" --enable-distribution
-    - make $JOBS -s V=0 distcheck > make.distcheck.log
-    - make $JOBS -s V=0 extra-distcheck > make.extra-distcheck.log
-    - find . -type f -exec chmod 644 {} +
-    - find . -type d -exec chmod 755 {} +
-  tags:
-    - nagfor
-
-test.gfortran.distribution:
-  <<: *test_extra_definition
-  script:
-    - ../configure FC=gfortran FCFLAGS="-O0" --prefix="`pwd`/../install.gfortran" --enable-distribution
+    - ../configure FC=gfortran FCFLAGS="-O0" --disable-static --prefix="`pwd`/install" > configure.log
     - make $JOBS -s V=0 > make.log
     - make $JOBS -s V=0 install > make-install.log
     - make $JOBS -s V=0 check
-    - make $JOBS -s V=0 distcheck > make.distcheck.log
-    - make $JOBS -s V=0 extra-distcheck > make.extra-distcheck.log
-    - find . -type f -exec chmod 644 {} +
-    - find . -type d -exec chmod 755 {} +
 
+build.ifort-16:
+  <<: *default_definition
+  script:
+    - ../configure FC=ifort2016 FCFLAGS="-O1" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+  tags:
+    - ifort
+
+distcheck.static.nagfor-6:
+  <<: *distcheck_definition
+  script:
+    - ../configure FC=nagfor FCFLAGS="$NAGFOR_OPTIONS" --enable-distribution --enable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 distcheck > make.distcheck.log
+  tags:
+    - nagfor
+
+distcheck.disabled.gfortran:
+  <<: *distcheck_definition
+  script:
+    - ../configure --disable-ocaml --disable-pythia6 --disable-noweb-force --enable-distribution FC=gfortran FCFLAGS="-O0" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 distcheck > make.distcheck.log
+
+distcheck.ifort-16:
+  <<: *distcheck_definition
+  script:
+    - ../configure --enable-distribution FC=ifort2016 FCFLAGS="-O0" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 distcheck > make.distcheck.log
+  tags:
+    - ifort
+
+build.disabled.static.nagfor-6:
+  <<: *extra_definition
+  script:
+    - ../configure --disable-ocaml --disable-pythia6 --disable-noweb-force --enable-distribution FC=nagfor FCFLAGS="$NAGFOR_OPTIONS" --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+  tags:
+    - nagfor
+
+build.extended.gfortran:
+  <<: *extra_definition
+  script:
+    - ../configure --with-precision=extended FC=gfortran FCFLAGS="-O0" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+
+build.quadruple.openmp.gfortran:
+  <<: *extra_definition
+  script:
+    - ../configure --with-precision=quadruple --enable-fc-openmp FC=gfortran FCFLAGS="-O0" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+
+build.stdsemantics.ifort-16:
+  <<: *extra_definition
+  script:
+    - ../configure FC=ifort2016 FCFLAGS="-O1 -standard-semantics" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+  tags:
+    - ifort
+
+build.stdsemantics.ifort-17:
+  <<: *extra_definition
+  script:
+    - ../configure FC=ifort2017 FCFLAGS="-O1" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+  tags:
+    - ifort
 
 deploy to production:
   stage: deploy
@@ -107,10 +156,3 @@ deploy to production:
     - master
   script:
     - git push production HEAD:master
-
-cleanup:
-  stage: deploy
-  script:
-    - rm build* -rf
-    - rm install* -rf
-  when: manual
