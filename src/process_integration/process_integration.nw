@@ -2368,6 +2368,24 @@ end module core_manager
 @ %def cm_get_core
 @
 <<Core manager: cm: TBP>>=
+  procedure :: get_subtraction_core => cm_get_subtraction_core
+<<Core manager: procedures>>=
+  function cm_get_subtraction_core (cm) result (core)
+    class(prc_core_t), pointer :: core
+    class(core_manager_t), intent(in), target :: cm
+    integer :: i
+    core => null ()
+    do i = 1, cm%n_cores
+       if (cm%sub(i)) then
+          core => cm%cores(i)%core
+          exit
+       end if
+    end do
+  end function cm_get_subtraction_core
+
+@ %def cm_get_subtraction_core
+@
+<<Core manager: cm: TBP>>=
   procedure :: get_i_core_from_i_component => cm_get_i_core_from_i_component
 <<Core manager: procedures>>=
   function cm_get_i_core_from_i_component (cm, i_component) result (i_core)
@@ -6508,10 +6526,22 @@ configuration finalizer may include closing an open scratch file.
     integer, intent(in) :: i_term
     integer :: i_core
     i_core = process%term(i_term)%i_core
+    print *, 'Get core: ', i_core
     core => process%cm%cores(i_core)%core
   end function process_get_core_term
 
 @ %def process_get_core_term
+@
+<<Process: process: TBP>>=
+  procedure :: get_subtraction_core => process_get_subtraction_core
+<<Process: procedures>>=
+  function process_get_subtraction_core (process) result (core)
+    class(prc_core_t), pointer :: core
+    class(process_t), intent(in), target :: process
+    core => process%cm%get_subtraction_core ()
+  end function process_get_subtraction_core
+
+@ %def process_get_subtraction_core
 @
 <<Process: process: TBP>>=
   procedure :: get_term_ptr => process_get_term_ptr
@@ -9253,6 +9283,7 @@ The quantum numbers mask of the incoming particle
     logical :: bp
     real(default), dimension(:,:), allocatable :: sqme_cc
     real(default) :: sqme_born
+    class(prc_core_t), pointer :: core_sub => null ()
     associate (pcm_instance => term%pcm_instance)
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
@@ -9264,15 +9295,7 @@ The quantum numbers mask of the incoming particle
             config%settings%use_internal_color_correlations)
           call msg_debug2 (D_SUBTRACTION, "fac_scale", term%fac_scale)
 
-          if (.not. config%settings%use_internal_color_correlations) then
-             select type (core)
-             class is (prc_user_defined_base_t)
-                call core%update_alpha_s (term%core_state, term%fac_scale)
-                call core%compute_sqme_cc (i_flv_born, &
-                   pcm_instance%real_kinematics%p_born_cms%get_momenta(1), &
-                   term%fac_scale, sqme_cc, bp, sqme_born)
-             end select
-          else
+          if (config%settings%use_internal_color_correlations) then
              select case (term%nlo_type)
              case (NLO_REAL)
                 sqme_born = pcm_instance%real_sub%sqme_born (i_flv_born)
@@ -9283,8 +9306,16 @@ The quantum numbers mask of the incoming particle
              end select
              sqme_cc = sqme_born * config%color_data%beta_ij (:,:,i_flv_born)
              bp = .false.
+          else
+             !TODO (cw-2016-09-22): Check if the same works above
+             select type (core)
+             class is (prc_user_defined_base_t)
+                call core%update_alpha_s (term%core_state, term%fac_scale)
+                call core%compute_sqme_cc (i_flv_born, &
+                   pcm_instance%real_kinematics%p_born_cms%get_momenta(1), &
+                   term%fac_scale, sqme_cc, bp, sqme_born)
+             end select
           end if
-
        end select
 
        select case (term%nlo_type)
@@ -10870,6 +10901,7 @@ terms, iterating over all active process components.
     class(prc_core_t), pointer :: core => null ()
     integer :: i, i_real_fin
     real(default) :: alpha_s
+    class(prc_core_t), pointer :: core_sub => null ()
     instance%sqme = zero
     call instance%reset_matrix_elements ()
     if (instance%evaluation_status >= STAT_PASSED_CUTS) then
@@ -10886,7 +10918,9 @@ terms, iterating over all active process components.
               !end if
               if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) then
                  call set_sqme_born (term, 1)
-                 call term%evaluate_color_correlations (core, 1)
+                 core_sub => instance%process%get_subtraction_core ()
+                 call term%evaluate_color_correlations (core_sub, 1)
+                 core_sub => null ()
               end if
               alpha_s = core%get_alpha_s (term%core_state)
               select case (term%nlo_type)
