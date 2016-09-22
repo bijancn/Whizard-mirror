@@ -3003,7 +3003,7 @@ freed.
     type(string_t), intent(in), optional :: type_string
     character(32) :: md5sum
     integer :: i
-    md5sum = process%get_md5sum_constants (i_component, type_string)
+    md5sum = process%get_md5sum_constants (i_component, type_string, nlo_type)
     if (any (process%cm%md5s == md5sum)) then
        do i = 1, N_MAX_CORES
           if (process%cm%i_core(i) == 0) exit
@@ -3024,16 +3024,20 @@ freed.
     type(string_t), intent(in), optional :: type_string
     character(32) :: md5sum
     integer :: i
-    md5sum = process%get_md5sum_constants (i_component, type_string)
-    do i = 1, N_MAX_CORES
-       if (process%cm%sub(i)) cycle
-       if (.not. process%cm%md5s(i) == md5sum) then
-          call process%cm%register (nlo_type, i_component, md5sum)
-          exit
-       else if (process%cm%i_core(i) == 0) then
-          exit
-       end if
-    end do
+    if (present (type_string)) &
+       print *, 'TYPE STRING: ', char (type_string)
+    md5sum = process%get_md5sum_constants (i_component, type_string, nlo_type)
+    if (.not. any (process%cm%md5s == md5sum)) &
+       call process%cm%register (nlo_type, i_component, md5sum)
+    !do i = 1, N_MAX_CORES
+    !   if (process%cm%sub(i)) cycle
+    !   if (.not. process%cm%md5s(i) == md5sum) then
+    !      call process%cm%register (nlo_type, i_component, md5sum)
+    !      exit
+    !   else if (process%cm%i_core(i) == 0) then
+    !      exit
+    !   end if
+    !end do
   end subroutine process_core_manager_register_default
 
 @ %def process_core_manager_register
@@ -3139,9 +3143,11 @@ from the library.
               i_term = k + j
               component%i_term(j) = i_term
               process%term(i_term)%i_sub = k + n_entry(i)
-              process%term(i_term)%i_core = set_i_core &
-                 (component%get_nlo_type (), setup_subtraction_component, &
-                  process%get_md5sum_constants (i, component%config%get_def_type_string ()))
+              process%term(i_term)%i_core = set_i_core (i, component%get_nlo_type (), &
+                 setup_subtraction_component, component%config%get_def_type_string ()) 
+              !process%term(i_term)%i_core = set_i_core &
+              !   (component%get_nlo_type (), setup_subtraction_component, &
+              !    process%get_md5sum_constants (i, component%config%get_def_type_string ()))
               if (process%term(i_term)%i_core == 0) call msg_fatal ("Core not found!")
               core => process%get_core_term (i_term)
               if (i_sub > 0) then
@@ -3161,13 +3167,15 @@ from the library.
     end do
     process%config%n_terms = n_tot
   contains
-    function set_i_core (nlo_type, sub, md5sum) result (i_core)
+    function set_i_core (i_component, nlo_type, sub, type_string) result (i_core)
       integer :: i_core
-      integer, intent(in) :: nlo_type
+      integer, intent(in) :: i_component, nlo_type
       logical, intent(in) :: sub
-      character(32), intent(in) :: md5sum
+      type(string_t), intent(in) :: type_string
+      character(32) :: md5sum
       integer :: index
       i_core = 0
+      md5sum = process%get_md5sum_constants (i_component, type_string, nlo_type)
       do index = 1, N_MAX_CORES
          if (sub) then
             if (process%cm%sub(index)) then
@@ -7029,7 +7037,9 @@ matrix element.
          n_hel = 1; if (yorn) n_hel = 4
          do f = 1, term%data%n_flv
             do h = 1, term%data%n_hel
-               n = n + 1
+               do c = 1, term%data%n_col
+                  n = n + 1
+               end do
             end do
          end do
       class default !!! Omega and all test cores
@@ -7079,8 +7089,7 @@ matrix element.
                       term%col(i) = c
                       call flv%init (data%flv_state (:,f), model)
                       call color_init_from_array (col, &
-                           data%col_state(:,:,c), &
-                           data%ghost_flag(:,c))
+                         data%col_state(:,:,c), data%ghost_flag(:,c))
                       call col(:data%n_in)%invert ()
                       if (n_hel > 1) then
                          call hel%init (data%hel_state (:,h))
@@ -7543,16 +7552,18 @@ parameters from outside this module.
   procedure :: get_md5sum_constants => process_get_md5sum_constants
 <<Process: procedures>>=
   function process_get_md5sum_constants (process, i_component, &
-     type_string) result (this_md5sum)
+     type_string, nlo_type) result (this_md5sum)
     character(32) :: this_md5sum
     class(process_t), intent(in) :: process
     integer, intent(in) :: i_component
     type(string_t), intent(in) :: type_string
+    integer, intent(in) :: nlo_type
     type(process_constants_t) :: data
     integer :: unit
     call process%meta%lib%fill_constants (process%meta%id, i_component, data)
     unit = data%fill_unit_for_md5sum (.false.)
     write (unit, '(A)') char(type_string)
+    write (unit, '(I0)') nlo_type
     rewind (unit)
     this_md5sum = md5sum (unit)
     close (unit)
@@ -8983,6 +8994,7 @@ relevant for a NLO algorithm.
        i = term%k_term%sf_chain%get_out_i (j)
        call term%int_hard%set_source_link (j, sf_chain_int, i)
     end do
+    !!! TODO (cw-2016-09-21): Below can be combined
     select type (phs => term%k_term%phs)
       type is (phs_wood_t)
          ! here, int_hard and sf_chain are trivially accessed via pointers
@@ -9019,7 +9031,7 @@ relevant for a NLO algorithm.
          case (PHS_MODE_ADDITIONAL_PARTICLE)
             mask_in = sf_sav%get_out_mask ()
             if (me_already_squared) then
-               call term%isolated%setup_identity_trace (core, mask_in)
+               call term%isolated%setup_identity_trace (core, mask_in, .true., .true.)
             else
                call term%isolated%setup_square_trace (core, mask_in, term%config%col)
             end if
