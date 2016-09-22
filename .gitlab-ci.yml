@@ -1,7 +1,6 @@
 stages:
   - autotools
   - build
-  - cleanup_build
   - test
   - deploy
 
@@ -11,13 +10,20 @@ autotools:
     - autoreconf
   artifacts:
     untracked: true
+    expire_in: 3 weeks
 
-build:nagfor:
+.build_template: &build_definition
   stage: build
+  before_script:
+    - mkdir -p "$CI_BUILD_NAME"
+    - cd "$CI_BUILD_NAME"
+  artifacts:
+    expire_in: 3 weeks
+
+build.nagfor:
+  <<: *build_definition
   script:
-    - mkdir -p build.nagfor
-    - cd build.nagfor
-    - ../configure FC=nagfor FCFLAGS="-O0 -C=all -gline -nan -f2008" --prefix="`pwd`/../install.nagfor" --disable-static
+    - ../configure FC=nagfor FCFLAGS="-O0 -C=all -gline -nan -f2008" --prefix="`pwd`/../install.nagfor" --disable-static > configure.log
     - make -s V=0 > make.log
     - make -s V=0 install > make-install.log
   cache:
@@ -27,57 +33,81 @@ build:nagfor:
     paths:
       - build.nagfor/
 
-build:gfortran:
-  stage: build
+build.gfortran:
+  <<: *build_definition
   script:
-    - mkdir -p build.gfortran
-    - cd build.gfortran
     - ../configure FC=gfortran FCFLAGS="-O0" --prefix="`pwd`/../install.gfortran" --disable-static
     - make -s V=0 > make.log
     - make -s V=0 install > make-install.log
   cache:
     paths:
-      - build.gfortran/
+      - build.gfortran
   artifacts:
     paths:
       - build.gfortran/
 
-build:nagfor:distribution:
-  stage: build
+build.nagfor.distribution:
+  <<: *build_definition
   script:
-    - mkdir -p build.nagfor.distribution
-    - cd build.nagfor.distribution
     - ../configure FC=nagfor FCFLAGS="-O0 -C=all -gline -nan -f2008" --prefix="`pwd`/../install.nagfor.distribution" --enable-distribution
-    - make -s V=0 distcheck > make.distcheck.log
-    - make -s V=0 extra-distcheck > make.extra-distcheck.log
-  only:
-    - master
+    - make -s V=0 > make.log
+    - make -s V=0 install > make-install.log
+  artifacts:
+    paths:
+      - build.nagfor.distribution/
 
-build:gfortran:distribution:
-  stage: build
+build.gfortran.distribution:
+  <<: *build_definition
   script:
     - mkdir -p build.gfortran:distribution
     - cd build.gfortran:distribution
     - ../configure FC=gfortran FCFLAGS="-O0" --prefix="`pwd`/../install.gfortran" --enable-distribution
+    - make -s V=0 > make.log
+    - make -s V=0 install > make-install.log
+  artifacts:
+    paths:
+      - build.gfortran.distribution/
+
+.test_template: &test_definition
+  stage: test
+  before_script:
+    - cd "${CI_BUILD_NAME/test/build}"
+  script:
+    - make -s V=0 check
+  artifacts:
+    expire_in: 3 weeks
+
+.test_extra_template: &test_extra_definition
+  <<: *test_definition
+  script:
     - make -s V=0 distcheck > make.distcheck.log
     - make -s V=0 extra-distcheck > make.extra-distcheck.log
   only:
     - master
 
-test:nagfor:
-  stage: test
-  script:
-    - cd build.nagfor
-    - make check > make-check.log
-  cache:
-    paths:
-      - build.nagfor/
+test.nagfor:
+  <<: *test_definition
+  dependencies:
+    - build.nagfor
 
-test:gfortran:
-  stage: test
+test.gfortran:
+  <<: *test_definition
+  dependencies:
+    - build.gfortran
+
+test.nagfor.distribution:
+  <<: *test_extra_definition
+  dependencies:
+    - build.nagfor.distribution
+
+test.gfortran.distribution:
+  <<: *test_extra_definition
+  dependencies:
+    - build.nagfor.distribution
+
+deploy to production:
+  environment: production
+  only:
+    - master
   script:
-    - cd build.gfortran
-    - make check > make-check.log
-  cache:
-    paths:
-      - build.gfortran/
+    - git push production HEAD:master
