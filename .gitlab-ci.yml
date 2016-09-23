@@ -1,0 +1,174 @@
+stages:
+  - autotools
+  - build
+  - deploy
+
+variables:
+  NAGFOR_OPTIONS: "-O1 -w=all -C=all -gline -nan -f2008"
+  JOBS: "-j2"
+
+autotools:
+  stage: autotools
+  script:
+    - ./build_master.sh
+    - autoreconf
+  artifacts:
+    untracked: true
+    when: always
+    expire_in: 3 weeks
+  except:
+    - production
+
+.default_template: &default_definition
+  stage: build
+  before_script:
+    - mkdir -p build
+    - cd build
+  except:
+    - production
+  dependencies:
+    - autotools
+  artifacts:
+    expire_in: 3 weeks
+    when: always
+    paths:
+    - build/configure.log
+    - build/make.log
+    - build/make-install.log
+
+.extra_template: &extra_definition
+  <<: *default_definition
+  only:
+    - master
+
+.distcheck_template: &distcheck_definition
+  <<: *default_definition
+  only:
+    - master
+  artifacts:
+    expire_in: 3 weeks
+    when: always
+    paths:
+    - build/configure.log
+    - build/make.log
+    - build/make-install.log
+    - build/whizard.tar.gz
+    - build/make-distcheck.log
+  after_script:
+  - mv whizard*/*.tar.gz whizard.tar.gz
+  - find . -type f -exec chmod 644 {} +
+  - find . -type d -exec chmod 755 {} +
+  - rm whizard*/ -rf
+
+build.nagfor-6:
+  <<: *default_definition
+  script:
+    - ../configure FC=nagfor FCFLAGS="$NAGFOR_OPTIONS" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+  tags:
+    - nagfor
+
+build.gfortran:
+  <<: *default_definition
+  script:
+    - ../configure FC=gfortran FCFLAGS="-O0" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+
+build.ifort-16:
+  <<: *default_definition
+  script:
+    - source /opt/intel/2016/bin/compilervars.sh intel64
+    - ../configure FC=ifort2016 FCFLAGS="-O1" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+  tags:
+    - ifort
+
+distcheck.static.nagfor-6:
+  <<: *distcheck_definition
+  script:
+    - ../configure FC=nagfor FCFLAGS="$NAGFOR_OPTIONS" --enable-distribution --enable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 distcheck > make-distcheck.log
+  tags:
+    - nagfor
+    - latex
+
+distcheck.disabled-all.gfortran:
+  <<: *distcheck_definition
+  script:
+    - ../configure --disable-ocaml --disable-pythia6 --disable-noweb-force --enable-distribution FC=gfortran FCFLAGS="-O0" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 distcheck > make-distcheck.log
+  tags:
+    - latex
+
+distcheck.ifort-16:
+  <<: *distcheck_definition
+  script:
+    - source /opt/intel/2016/bin/compilervars.sh intel64
+    - ../configure --enable-distribution FC=ifort2016 FCFLAGS="-O0" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 distcheck > make-distcheck.log
+  tags:
+    - ifort
+    - latex
+
+build.disabled.static.nagfor-6:
+  <<: *extra_definition
+  script:
+  - ../configure --disable-lhapdf --disable-hepmc --disable-lcio --disable-pythia8 --disable-fastjet --disable-hoppet --disable-gosam --disable-openloops --disable-looptools  --disable-pythia6 --enable-distribution FC=nagfor FCFLAGS="$NAGFOR_OPTIONS" --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+  tags:
+    - nagfor
+    - latex
+
+build.extended.gfortran:
+  <<: *extra_definition
+  script:
+    - ../configure --with-precision=extended FC=gfortran FCFLAGS="-O0" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+
+build.quadruple.openmp.gfortran:
+  <<: *extra_definition
+  script:
+    - ../configure --with-precision=quadruple --enable-fc-openmp FC=gfortran FCFLAGS="-O0" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+
+build.stdsemantics.ifort-16:
+  <<: *extra_definition
+  script:
+    - source /opt/intel/2016/bin/compilervars.sh intel64
+    - ../configure FC=ifort2016 FCFLAGS="-O1 -standard-semantics" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+  tags:
+    - ifort
+
+build.ifort-17:
+  <<: *extra_definition
+  script:
+    - source /opt/intel/2017/bin/compilervars.sh intel64
+    - ../configure FC=ifort2017 FCFLAGS="-O1" --disable-static --prefix="`pwd`/install" > configure.log
+    - make $JOBS -s V=0 > make.log
+    - make $JOBS -s V=0 install > make-install.log
+    - make $JOBS -s V=0 check
+  tags:
+    - ifort
+
+deploy to production:
+  stage: deploy
+  environment: production
+  only:
+    - master
+  script:
+    - git push production HEAD:master
