@@ -2515,6 +2515,19 @@ again is an error.
 @ %def pcm_allocate_instance
 @
 <<PCM base: pcm: TBP>>=
+  procedure(pcm_is_nlo), deferred :: is_nlo
+<<PCM base: interfaces>>=
+  abstract interface
+     function pcm_is_nlo (pcm) result (is_nlo)
+        import
+        logical :: is_nlo
+        class(pcm_t), intent(in) :: pcm
+     end function pcm_is_nlo
+  end interface
+
+@ %def pcm_is_nlo
+@
+<<PCM base: pcm: TBP>>=
   procedure(pcm_final), deferred :: final
 <<PCM base: interfaces>>=
   abstract interface
@@ -7344,6 +7357,17 @@ corresponding instance.  The default version is trivial.
 
 @ %def pcm_default_final
 @
+<<Pcm: pcm default: TBP>>=
+  procedure :: is_nlo => pcm_default_is_nlo
+<<Pcm: procedures>>=
+  function pcm_default_is_nlo (pcm) result (is_nlo)
+    logical :: is_nlo
+    class(pcm_default_t), intent(in) :: pcm
+    is_nlo = .false.
+  end function pcm_default_is_nlo
+
+@ %def pcm_default_is_nlo
+@
 <<Pcm: types>>=
   type, extends (pcm_instance_t) :: pcm_instance_default_t
   contains
@@ -9371,16 +9395,16 @@ The quantum numbers mask of the incoming particle
   procedure :: evaluate_color_correlations => &
      term_instance_evaluate_color_correlations
 <<Instances: procedures>>=
-  subroutine term_instance_evaluate_color_correlations (term, core, &
+  subroutine term_instance_evaluate_color_correlations (term, p, core, &
      i_flv_born, bad_point)
     class(term_instance_t), intent(inout) :: term
+    type(vector4_t), intent(in), dimension(:) :: p
     class(prc_core_t), intent(inout) :: core
     integer, intent(in) :: i_flv_born
     logical, intent(out), optional :: bad_point
     logical :: bp
     real(default), dimension(:,:), allocatable :: sqme_cc
     real(default) :: sqme_born
-    class(prc_core_t), pointer :: core_sub => null ()
     associate (pcm_instance => term%pcm_instance)
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
@@ -9398,30 +9422,31 @@ The quantum numbers mask of the incoming particle
                 sqme_born = pcm_instance%real_sub%sqme_born (i_flv_born)
              case (NLO_MISMATCH)
                 sqme_born = pcm_instance%soft_mismatch%sqme_born (i_flv_born)
-             case (default)
-                !TODO (cw-2016-09-08): What about virtual?
              end select
              sqme_cc = sqme_born * config%color_data%beta_ij (:,:,i_flv_born)
              bp = .false.
           else
-             !TODO (cw-2016-09-22): Check if the same works above
              select type (core)
              class is (prc_user_defined_base_t)
                 call core%update_alpha_s (term%core_state, term%fac_scale)
-                call core%compute_sqme_cc (i_flv_born, &
-                   pcm_instance%real_kinematics%p_born_cms%get_momenta(1), &
+                call core%compute_sqme_cc (i_flv_born, p, &
                    term%fac_scale, sqme_cc, bp, sqme_born)
              end select
           end if
-       end select
 
-       select case (term%nlo_type)
-       case (NLO_REAL)
-          pcm_instance%real_sub%sqme_born_cc (:,:,i_flv_born) = sqme_cc
-       case (NLO_MISMATCH)
-          pcm_instance%soft_mismatch%sqme_born_cc (:,:,i_flv_born) = sqme_cc
-       case default
-          !TODO (cw-2016-09-08): What about virtual?
+          select case (term%nlo_type)
+          case (NLO_REAL)
+             pcm_instance%real_sub%sqme_born_cc (:,:,i_flv_born) = sqme_cc
+          case (NLO_MISMATCH)
+             pcm_instance%soft_mismatch%sqme_born_cc (:,:,i_flv_born) = sqme_cc
+          case (NLO_VIRTUAL)
+             if (config%settings%use_internal_color_correlations) then
+                pcm_instance%virtual%sqme_cc (:,:,i_flv_born) = &
+                   config%color_data%beta_ij (:,:,i_flv_born)
+             else
+                pcm_instance%virtual%sqme_cc (:,:,i_flv_born) = sqme_cc
+             end if
+          end select
        end select
     end associate
     if (present (bad_point)) bad_point = bp
@@ -9492,7 +9517,7 @@ The quantum numbers mask of the incoming particle
      call term%pcm_instance%set_momenta_and_scales_virtual &
         (term%int_hard%get_momenta (), term%ren_scale, term%fac_scale)
      !!! TODO(cw 2016-07-08): Handle multiple Born flavors 
-     sqme_virt = term%pcm_instance%compute_sqme_virt (alpha_s, &
+     sqme_virt = term%pcm_instance%compute_sqme_virt (term%p_hard, alpha_s, &
         term%connected%trace%get_matrix_element ())
      call term%connected%trace%set_matrix_element &
         (cmplx (sqme_virt * term%weight, 0, default))
@@ -11004,14 +11029,14 @@ terms, iterating over all active process components.
           associate (term => instance%term(i))
             if (term%active .and. term%passed) then
               core => instance%process%get_core_term (i)
+              if (instance%pcm%config%is_nlo ()) &
+                 core_sub => instance%process%get_subtraction_core ()
               call term%evaluate_interaction (core)
               call term%evaluate_trace ()
-              if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) then
+              if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) &
                  call set_sqme_born (term, 1)
-                 core_sub => instance%process%get_subtraction_core ()
-                 call term%evaluate_color_correlations (core_sub, 1)
-                 core_sub => null ()
-              end if
+              if (term%nlo_type > BORN) &
+                 call term%evaluate_color_correlations (term%p_seed, core_sub, 1)
               alpha_s = core%get_alpha_s (term%core_state)
               select case (term%nlo_type)
               case (NLO_REAL)
@@ -11026,6 +11051,7 @@ terms, iterating over all active process components.
                  call term%evaluate_sqme_dglap (core) 
               end select
             end if
+            core_sub => null ()
           end associate
        end do
 
@@ -11175,7 +11201,7 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
          call term%evaluate_trace ()
          pcm%real_sub%sqme_born (1) = &
             real (term%connected%trace%get_matrix_element (1)) 
-         call term%evaluate_color_correlations (core, 1)
+         call term%evaluate_color_correlations (term%p_seed, core, 1)
          i_real_fin = instance%process%get_associated_real_fin (1)
          if (term%config%i_component /= i_real_fin) &
             call term%apply_fks (core, core%get_alpha_s (term%core_state))
@@ -11914,6 +11940,17 @@ not have to be the case when different components are generated at LO})
   end subroutine pcm_nlo_final
 
 @ %def pcm_nlo_final 
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: is_nlo => pcm_nlo_is_nlo
+<<Pcm: procedures>>=
+  function pcm_nlo_is_nlo (pcm) result (is_nlo)
+    logical :: is_nlo
+    class(pcm_nlo_t), intent(in) :: pcm
+    is_nlo = .true.
+  end function pcm_nlo_is_nlo 
+
+@ %def pcm_nlo_is_nlo
 @ As a first implementation, it acts as a wrapper for the NLO controller
 object and the squared matrix-element collector.
 <<Pcm: public>>=
@@ -12073,8 +12110,8 @@ object and the squared matrix-element collector.
     type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: ren_scale, fac_scale
     associate (virtual => pcm_instance%virtual)
-       if (.not. allocated (virtual%p)) allocate (virtual%p (size (p)))
-       virtual%p = p
+       !if (.not. allocated (virtual%p)) allocate (virtual%p (size (p)))
+       !virtual%p = p
        call virtual%set_ren_scale (p, ren_scale)
        call virtual%set_fac_scale (p, fac_scale)
        call virtual%set_ellis_sexton_scale ()
@@ -12221,9 +12258,10 @@ object and the squared matrix-element collector.
 <<Pcm: pcm instance: TBP>>=
   procedure :: compute_sqme_virt => pcm_instance_nlo_compute_sqme_virt
 <<Pcm: procedures>>=
-  function pcm_instance_nlo_compute_sqme_virt (pcm_instance, alpha_s, me) result (sqme_virt)
+  function pcm_instance_nlo_compute_sqme_virt (pcm_instance, p, alpha_s, me) result (sqme_virt)
     real(default) :: sqme_virt
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: alpha_s
     complex(default), intent(in), dimension(:) :: me
     associate (virtual => pcm_instance%virtual)
@@ -12232,6 +12270,9 @@ object and the squared matrix-element collector.
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
           if (config%settings%use_internal_color_correlations) then
+             call virtual%evaluate (config%region_data, 1, &
+                alpha_s, p, real(me(2)), &
+                config%settings%use_internal_color_correlations)
           else
              !!! TODO (cw 2016-08-03): Restore external color correlations
              !n_tot = nlo_controller%reg_data%n_legs_born
@@ -12245,10 +12286,6 @@ object and the squared matrix-element collector.
              !   nlo_controller%alpha_s_sub, virtual%p, real(me(2)), &
              !   nlo_controller%sqme_collector%sqme_born_cc)
           end if
-          call virtual%evaluate (config%region_data, 1, &
-             alpha_s, virtual%p, real(me(2)), &
-             config%color_data%beta_ij, &
-             config%settings%use_internal_color_correlations)
        end select
        sqme_virt = virtual%sqme_virt
     end associate
