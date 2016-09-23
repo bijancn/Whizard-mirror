@@ -97,8 +97,8 @@ all-local:
 bytecode:
 endif
 
-include $(top_srcdir)/src/Makefile.ocaml
-include $(top_srcdir)/src/Makefile.sources
+include $(top_srcdir)/circe2/src/Makefile.ocaml
+include $(top_srcdir)/circe2/src/Makefile.sources
 
 EXTRA_DIST = $(NOWEB_FILES) $(SOURCE_FILES) $(CIRCE2_CAML) \
 	$(EXTRA_SOURCE_FILES) $(circe2_moments_SOURCES) \
@@ -111,8 +111,7 @@ MYPRECIOUS = $(CIRCE2_DERIVED)
 	@:
 #	touch $@
 
-# There are no module files for the FORTRAN 77 code
-moduleexecincludedir = $(pkgincludedir)
+moduleexecincludedir = $(pkgincludedir)/../circe2
 nodist_moduleexecinclude_HEADERS = $(MODULE_FILES)
 
 AM_FFLAGS = 

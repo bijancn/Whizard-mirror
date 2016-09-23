@@ -1,5 +1,5 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 7444 2016-02-17 15:37:20Z jr_reuter $
+# $Id: Makefile.am 7706 2016-09-22 18:01:21Z jr_reuter $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -32,9 +32,9 @@
 ### TODO: fix weaving of lexers and parsers
 ########################################################################
 
-include $(top_srcdir)/src/Makefile.sources
+include $(top_srcdir)/omega/src/Makefile.sources
 
-VPATH = $(srcdir):$(top_builddir)/src:$(srcdir):$(top_srcdir)/src
+VPATH = $(srcdir):$(top_builddir)/omega/src:$(srcdir):$(top_srcdir)/omega/src
 
 PICTURES_EPS = \
     modules.eps \
@@ -61,8 +61,8 @@ LATEX_STYLES = \
     noweb.sty ocamlweb.sty \
     feynmp.sty feynmp.mp emp.sty
 
-TEX_FLAGS = "$$TEXINPUTS:$(top_srcdir)/share/doc"
-MP_FLAGS  = "$$MPINPUTS:$(top_srcdir)/share/doc"
+TEX_FLAGS = "$$TEXINPUTS:$(top_srcdir)/omega/share/doc"
+MP_FLAGS  = "$$MPINPUTS:$(top_srcdir)/omega/share/doc"
 
 if DISTRIBUTION
 PDFS = omega.pdf omega-paper-1.pdf omega-paper-2.pdf 

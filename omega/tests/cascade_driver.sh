@@ -4,7 +4,7 @@
 
 # Edited by tests/Makefile using $(SED)
 cascade_tests="%%cascade_tests%%"
-top_builddir="%%top_builddir%%"
+top_builddir="%%top_builddir%%"/omega
 srcdir="%%srcdir%%"
 OCAML_NATIVE_EXT="%%OCAML_NATIVE_EXT%%"
 SED="%%SED%%"
