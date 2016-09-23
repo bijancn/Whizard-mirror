@@ -53,7 +53,7 @@ endif
 
 # Compiled interfaces and libraries for out-of-tree compilation of models
 if OCAML_AVAILABLE
-camllibdir = $(pkglibdir)/caml
+camllibdir = $(pkglibdir)/../omega/caml
 nodist_camllib_DATA = \
 	omega.cmi fusion.cmi targets.cmi coupling.cmi modeltools.cmi color.cmi \
 	options.cmi rCS.cmi model.cmi \
