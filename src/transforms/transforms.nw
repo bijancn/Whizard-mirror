@@ -8138,3 +8138,195 @@ We test the implementation of all I/O methods.
 
 @ %def eio_raw_2
 @ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Dispatch}
+An event transform is responsible for dressing a partonic event.
+Since event transforms are not mutually exclusive but are
+concatenated, we provide individual dispatchers for each of them.
+
+<<[[dispatch_evt.f90]]>>=
+<<File header>>
+
+module dispatch_evt
+
+<<Use strings>>
+  use process
+  use variables
+  use system_defs, only: LF
+  use system_dependencies, only: LHAPDF6_AVAILABLE
+  use sf_lhapdf, only: lhapdf_initialize
+  use diagnostics
+  use models
+  use os_interface
+  use beam_structures
+
+  use event_transforms
+  use decays
+  use shower_base
+  use shower_core
+  use shower
+  use shower_pythia6
+  use hadrons
+  use mlm_matching
+  use powheg_matching
+  use ckkw_matching
+  use tauola_interface !NODEP!
+  use evt_nlo
+
+<<Standard module head>>
+
+<<Dispatch evt: public>>
+
+contains
+
+<<Dispatch evt: procedures>>
+
+end module dispatch_evt
+@ %def dispatch_evt
+@
+<<Dispatch evt: public>>=
+  public :: dispatch_evt_nlo
+<<Dispatch evt: procedures>>=
+  subroutine dispatch_evt_nlo (evt)
+    class(evt_t), intent(out), pointer :: evt
+    call msg_message ("Simuate: activating fixed-order NLO events")
+    allocate (evt_nlo_t :: evt)
+    evt%only_weighted_events = .true.
+    select type (evt)
+    type is (evt_nlo_t)
+       evt%i_evaluation = 0
+    end select
+  end subroutine dispatch_evt_nlo
+
+@ %def dispatch_evt_nlo
+@
+<<Dispatch evt: public>>=
+  public :: dispatch_evt_decay
+<<Dispatch evt: procedures>>=
+  subroutine dispatch_evt_decay (evt, var_list)
+    class(evt_t), intent(out), pointer :: evt
+    type(var_list_t), intent(in) :: var_list
+    logical :: allow_decays
+    allow_decays = var_list%get_lval (var_str ("?allow_decays"))
+    if (allow_decays) then
+       allocate (evt_decay_t :: evt)
+       call msg_message ("Simulate: activating decays")
+    else
+       evt => null ()
+    end if
+  end subroutine dispatch_evt_decay
+
+@ %def dispatch_evt_decay
+@
+<<Dispatch evt: public>>=
+  public :: dispatch_evt_shower
+<<Dispatch evt: procedures>>=
+  subroutine dispatch_evt_shower (evt, var_list, model, fallback_model, &
+       os_data, beam_structure, process)
+    class(evt_t), intent(out), pointer :: evt
+    type(var_list_t), intent(in) :: var_list
+    type(model_t), pointer, intent(in) :: model, fallback_model
+    type(os_data_t), intent(in) :: os_data
+    type(beam_structure_t), intent(in) :: beam_structure
+    type(process_t), intent(in), optional :: process
+    type(string_t) :: lhapdf_file, lhapdf_dir, process_name
+    integer :: lhapdf_member
+    type(shower_settings_t) :: settings
+    type(taudec_settings_t) :: taudec_settings
+    call msg_message ("Simulate: activating parton shower")
+    allocate (evt_shower_t :: evt)
+    call settings%init (var_list)
+    if (associated (model)) then
+       call taudec_settings%init (var_list, model)
+    else
+       call taudec_settings%init (var_list, fallback_model)
+    end if
+    if (present (process)) then
+       process_name = process%get_id ()
+    else
+       process_name = 'dispatch_testing'
+    end if
+    select type (evt)
+    type is (evt_shower_t)
+       call evt%init (fallback_model, os_data)
+       lhapdf_member = &
+            var_list%get_ival (var_str ("lhapdf_member"))
+       if (LHAPDF6_AVAILABLE) then
+          lhapdf_dir = &
+               var_list%get_sval (var_str ("$lhapdf_dir"))
+          lhapdf_file = &
+               var_list%get_sval (var_str ("$lhapdf_file"))
+          call lhapdf_initialize &
+               (1, lhapdf_dir, lhapdf_file, lhapdf_member, evt%pdf_data%pdf)
+       end if
+       if (present (process))  call evt%pdf_data%setup ("Shower", &
+            beam_structure, lhapdf_member, process%get_pdf_set ())
+       select case (settings%method)
+       case (PS_WHIZARD)
+          allocate (shower_t :: evt%shower)
+       case (PS_PYTHIA6)
+          allocate (shower_pythia6_t :: evt%shower)
+       case default
+          call msg_fatal ('Shower: Method ' // &
+            char (var_list%get_sval (var_str ("$shower_method"))) // &
+            'not implemented!')
+       end select
+       call evt%shower%init (settings, taudec_settings, evt%pdf_data)
+    end select
+    call dispatch_matching (evt, settings, var_list, process_name)
+  end subroutine dispatch_evt_shower
+
+@ %def dispatch_evt_shower
+@
+<<Dispatch evt: public>>=
+  public :: dispatch_matching
+<<Dispatch evt: procedures>>=
+  subroutine dispatch_matching (evt, settings, var_list, process_name)
+    class(evt_t), intent(inout) :: evt
+    type(var_list_t), intent(in) :: var_list
+    type(string_t), intent(in) :: process_name
+    type(shower_settings_t), intent(in) :: settings
+    select type (evt)
+    type is (evt_shower_t)
+       if (settings%mlm_matching .and. settings%ckkw_matching) then
+          call msg_fatal ("Both MLM and CKKW matching activated," // &
+               LF // "     aborting simulation")
+       end if
+       if (settings%powheg_matching) then
+          call msg_message ("Simulate: applying POWHEG matching")
+          allocate (powheg_matching_t :: evt%matching)
+       end if
+       if (settings%mlm_matching) then
+          call msg_message ("Simulate: applying MLM matching")
+          allocate (mlm_matching_t :: evt%matching)
+       end if
+       if (settings%ckkw_matching) then
+          call msg_warning ("Simulate: CKKW(-L) matching not yet supported")
+          allocate (ckkw_matching_t :: evt%matching)
+       end if
+       if (allocated (evt%matching)) &
+            call evt%matching%init (var_list, process_name)
+    end select
+  end subroutine dispatch_matching
+
+@ %def dispatch_matching
+@
+<<Dispatch evt: public>>=
+  public :: dispatch_evt_hadrons
+<<Dispatch evt: procedures>>=
+  subroutine dispatch_evt_hadrons (evt, var_list, fallback_model)
+    class(evt_t), intent(out), pointer :: evt
+    type(var_list_t), intent(in) :: var_list
+    type(model_t), pointer, intent(in) :: fallback_model
+    type(string_t) :: method
+    type(shower_settings_t) :: settings
+    method = var_list%get_sval (var_str ("$hadronization_method"))
+    allocate (evt_hadrons_t :: evt)
+    call msg_message ("Simulate: activating hadronization")
+    call settings%init (var_list)
+    select type (evt)
+    type is (evt_hadrons_t)
+       call evt%init (settings, fallback_model, method)
+    end select
+  end subroutine dispatch_evt_hadrons
+
+@ %def dispatch_evt_hadrons
