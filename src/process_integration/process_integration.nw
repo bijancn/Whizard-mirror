@@ -9679,131 +9679,51 @@ method may modify the [[core_state]] workspace object.
   subroutine term_instance_evaluate_interaction (term, core)
     class(term_instance_t), intent(inout) :: term
     class(prc_core_t), intent(in), pointer :: core
-    integer :: i_term, i
-    real(default) :: sqme
-    real(default), dimension(4) :: sqme_virt
-    real(default), dimension(:), allocatable :: sqme_cc
-    logical :: bad_point
-    integer :: n_sub, n_amps, n_hel
-    integer :: i_born, i_virt, i_cc, i_sub
-    !!! Use logical to avoid nested select-type statement
-    logical :: core_is_user_defined
-    type(phs_identifier_t), dimension(:), allocatable :: phs_id
-    integer :: only_flavor
-    allocate (sqme_cc (blha_result_array_size &
-         (term%int_hard%get_n_tot (), BLHA_AMP_CC)))
-    i_term = term%config%i_term
+
     term%p_hard = term%int_hard%get_momenta ()
     select type (core)
     class is (prc_user_defined_base_t)
-       core_is_user_defined = .true.
+       call term%evaluate_interaction_user_defined (core)
     class default
-       core_is_user_defined = .false.
+       call term%evaluate_interaction_default (core)
     end select
-    if (core_is_user_defined) then
-       select type (core_state => term%core_state)
-       class is (user_defined_state_t)
-          select type (core)
-          class is (prc_user_defined_base_t)
-             call core%compute_alpha_s (core_state, term%ren_scale)
-          end select
-       end select
-       n_amps = term%int_hard%get_n_matrix_elements ()
-       n_sub = term%int_hard%get_n_sub ()
-       if (n_sub > 0) then
-          select type (core)
-          class is (prc_user_defined_base_t)
-             if (core%includes_polarization ()) then
-                n_hel = 4
-             else
-                n_hel = 1
-             end if
-          end select
-          n_amps = n_amps - n_hel * n_sub
-       else
-          n_hel = 1
-       end if
-       select case (term%nlo_type)
-       case (NLO_VIRTUAL)
-          do i = 1, n_amps
-             select type (core)
-             class is (prc_blha_t)
-                i_virt = core%get_helicity_list (i)
-             class default
-                i_virt = 1
-             end select
-             i_born = i_virt + n_hel
-             select type (core)
-             class is (prc_user_defined_base_t)
-                call core%compute_sqme_virt (i, term%p_hard, &
-                   term%ren_scale, sqme_virt, bad_point)
-                associate (bad_blha => term%pcm_instance%bad_blha_point (term%config%i_component))
-                   bad_blha = bad_blha .or. bad_point
-                end associate
-             end select
-             term%amp(i_virt) = cmplx (sqme_virt(3), 0, default)
-             select type (config => term%pcm_instance%config)
-             type is (pcm_nlo_t)
-                if (config%settings%use_internal_color_correlations) then
-                   term%amp(i_born) = cmplx (sqme_virt(4), 0, default)
-                else
-                   select type (core)
-                   class is (prc_blha_t)
-                      call core%compute_sqme_cc_raw (i, term%p_hard, term%ren_scale, &
-                         sqme_cc, bad_point)
-                      term%amp (i_born) = cmplx (sqme_virt(4), 0, default)
-                      do i_sub = 1, n_sub - 1
-                         i_cc = core%get_helicity_list (i + n_hel - 1)
-                         i_cc = i_cc + (i_sub + 1) * n_hel
-                         term%amp(i_cc) = cmplx (sqme_cc(i_sub), 0, default)
-                      end do
-                   end select
-                end if
-             end select
-          end do
-       case (BORN, NLO_REAL, NLO_DGLAP)
-         !  TODO: (bcn 2016-09-14) combine these two?
-         select type (core)
-         class is (prc_blha_t)
-            do i = 1, n_amps
-               call core%compute_sqme (i, term%p_hard, term%ren_scale, &
-                  sqme, bad_point)
-               i_born = core%get_helicity_list (i)
-               term%amp(i_born) = cmplx (sqme, 0, default)
-            end do
-         class is (prc_user_defined_base_t)
-            call core%update_alpha_s (term%core_state, term%fac_scale)
-            do i = 1, n_amps
-               call core%compute_sqme (i, term%p_hard, term%ren_scale, &
-                  sqme, bad_point)
-               term%amp(i) = cmplx (sqme, 0 , default)
-            end do
-         end select
+    call term%int_hard%set_matrix_element (term%amp)
+  end subroutine term_instance_evaluate_interaction
+
+@ %def term_instance_evaluate_interaction
+@
+<<Instances: term instance: TBP>>=
+  procedure :: evaluate_interaction_default &
+     => term_instance_evaluate_interaction_default
+<<Instances: procedures>>=
+  subroutine term_instance_evaluate_interaction_default (term, core)
+    class(term_instance_t), intent(inout) :: term
+    class(prc_core_t), intent(in), pointer :: core
+    type(phs_identifier_t), dimension(:), allocatable :: phs_id
+    integer :: i, i_term
+    integer :: only_flavor
+    if (term%nlo_type == NLO_REAL .and. term%config%i_term_global /= term%config%i_sub) then
+       select type (config => term%pcm_instance%config)
+       type is (pcm_nlo_t)
+          associate (region_data => config%region_data)
+             call region_data%init_phs_identifiers (phs_id)
+             only_flavor = get_flavor (region_data, phs_id(term%config%i_term)%emitter)
+             deallocate (phs_id)
+          end associate
        end select
     else
-       if (term%nlo_type == NLO_REAL .and. term%config%i_term_global /= term%config%i_sub) then
-          select type (config => term%pcm_instance%config)
-          type is (pcm_nlo_t)
-             associate (region_data => config%region_data)
-                call region_data%init_phs_identifiers (phs_id)
-                only_flavor = get_flavor (region_data, phs_id(term%config%i_term)%emitter)
-                deallocate (phs_id)
-             end associate
-          end select
-       else
-          only_flavor = 0
-       end if 
-       do i = 1, term%config%n_allowed
-          if (only_flavor > 0 .and. term%config%flv(i) /= only_flavor) cycle
-          term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
-             term%config%flv(i), term%config%hel(i), term%config%col(i), &
-             term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
-             term%core_state)
-       end do
-       if (associated (term%pcm_instance)) &
-          call term%pcm_instance%set_fac_scale (term%fac_scale)
-    end if
-    call term%int_hard%set_matrix_element (term%amp)
+       only_flavor = 0
+    end if 
+    i_term = term%config%i_term
+    do i = 1, term%config%n_allowed
+       if (only_flavor > 0 .and. term%config%flv(i) /= only_flavor) cycle
+       term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
+          term%config%flv(i), term%config%hel(i), term%config%col(i), &
+          term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
+          term%core_state)
+    end do
+    if (associated (term%pcm_instance)) &
+       call term%pcm_instance%set_fac_scale (term%fac_scale)
   contains
     function get_flavor (region_data, emitter) result (flv)
       integer :: flv
@@ -9818,9 +9738,103 @@ method may modify the [[core_state]] workspace object.
          end if
       end do
     end function get_flavor
-  end subroutine term_instance_evaluate_interaction
+  end subroutine term_instance_evaluate_interaction_default
 
-@ %def term_instance_evaluate_interaction
+@ %def term_instance_evaluate_interaction_default
+@
+<<Instances: term instance: TBP>>=
+  procedure :: evaluate_interaction_user_defined &
+     => term_instance_evaluate_interaction_user_defined
+<<Instances: procedures>>=
+  subroutine term_instance_evaluate_interaction_user_defined (term, core)
+    class(term_instance_t), intent(inout) :: term
+    class(prc_core_t), intent(in), pointer :: core
+    integer :: n_amps, n_sub, n_hel
+    integer :: i, i_born, i_virt, i_cc, i_sub
+    real(default) :: sqme
+    real(default), dimension(4) :: sqme_virt
+    real(default), dimension(:), allocatable :: sqme_cc
+    logical :: bad_point
+
+    allocate (sqme_cc (blha_result_array_size &
+         (term%int_hard%get_n_tot (), BLHA_AMP_CC)))
+
+    select type (core_state => term%core_state)
+    class is (user_defined_state_t)
+       select type (core)
+       class is (prc_user_defined_base_t)
+          call core%compute_alpha_s (core_state, term%ren_scale)
+       end select
+    end select
+    n_amps = term%int_hard%get_n_matrix_elements ()
+    n_sub = term%int_hard%get_n_sub ()
+    if (n_sub > 0) then
+       select type (core)
+       class is (prc_user_defined_base_t)
+          if (core%includes_polarization ()) then
+             n_hel = 4
+          else
+             n_hel = 1
+          end if
+       end select
+       n_amps = n_amps - n_hel * n_sub
+    else
+       n_hel = 1
+    end if
+    select case (term%nlo_type)
+    case (NLO_VIRTUAL)
+       do i = 1, n_amps
+          select type (core)
+          class is (prc_blha_t)
+             i_virt = core%get_helicity_list (i)
+          class default
+             i_virt = 1
+          end select
+          i_born = i_virt + n_hel
+          select type (core)
+          class is (prc_user_defined_base_t)
+             call core%compute_sqme_virt (i, term%p_hard, &
+                term%ren_scale, sqme_virt, bad_point)
+             associate (bad_blha => term%pcm_instance%bad_blha_point (term%config%i_component))
+                bad_blha = bad_blha .or. bad_point
+             end associate
+          end select
+          term%amp(i_virt) = cmplx (sqme_virt(3), 0, default)
+          select type (config => term%pcm_instance%config)
+          type is (pcm_nlo_t)
+             if (config%settings%use_internal_color_correlations) then
+                term%amp(i_born) = cmplx (sqme_virt(4), 0, default)
+             else
+                select type (core)
+                class is (prc_blha_t)
+                   call core%compute_sqme_cc_raw (i, term%p_hard, term%ren_scale, &
+                      sqme_cc, bad_point)
+                   term%amp (i_born) = cmplx (sqme_virt(4), 0, default)
+                   do i_sub = 1, n_sub - 1
+                      i_cc = core%get_helicity_list (i + n_hel - 1)
+                      i_cc = i_cc + (i_sub + 1) * n_hel
+                      term%amp(i_cc) = cmplx (sqme_cc(i_sub), 0, default)
+                   end do
+                end select
+             end if
+          end select
+       end do
+    case (BORN, NLO_REAL, NLO_DGLAP)
+      select type (core)
+      class is (prc_user_defined_base_t)
+         call core%update_alpha_s (term%core_state, term%fac_scale)
+         do i = 1, n_amps
+            call core%compute_sqme (i, term%p_hard, term%ren_scale, &
+               sqme, bad_point)
+            i_born = core%get_helicity_list (i)
+            term%amp(i_born) = cmplx (sqme, 0, default)
+         end do
+      end select
+    end select
+
+  end subroutine term_instance_evaluate_interaction_user_defined
+
+@ %def term_instance_evaluate_interaction_user_defined
 @ Evaluate the trace.  First evaluate the
 structure-function chain (i.e., the density matrix of the incoming
 partons).  Do this twice, in case the sf-chain instances within
