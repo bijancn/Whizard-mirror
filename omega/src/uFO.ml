@@ -1833,9 +1833,10 @@ i.e.
            "write the WHIZARD model files (required once per model)");
           ("long_flavors", Arg.Set long_flavors,
            "write use the UFO flavor names instead of integers");
+          ("dump", Arg.Set dump_raw,
+           "dump UFO model for debugging the parser (must come _before_ exec!)");
           ("exec", Arg.Unit load_UFO,
            "load the UFO model files (required _before_ using particles names)");
-          ("dump", Arg.Set dump_raw, "dump UFO model for debugging the parser");
           ("help", Arg.Unit (fun () -> prerr_endline "..."),
            "print information on the model")]
 
