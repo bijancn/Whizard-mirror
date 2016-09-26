@@ -3820,17 +3820,6 @@ module dispatch
   use phs_fks
   use rt_data
   use variables
-  use eio_base
-  use eio_raw
-  use eio_checkpoints
-  use eio_callback
-  use eio_lhef
-  use eio_hepmc
-  use eio_lcio
-  use eio_stdhep
-  use eio_ascii
-  use eio_weights
-  use eio_dump
   use pcm_base
 
 <<Standard module head>>
@@ -5202,297 +5191,6 @@ structure-function chain.
     
 @ %def dispatch_sf_channels
 @
-\subsection{Event I/O stream}
-<<Dispatch: public>>=
-  public :: dispatch_eio
-<<Dispatch: procedures>>=
-  subroutine dispatch_eio (eio, method, global)
-    use event_base, only: event_callback_nop_t
-    
-    class(eio_t), intent(inout), allocatable :: eio
-    type(string_t), intent(in) :: method
-    type(rt_data_t), intent(in) :: global
-    logical :: check, keep_beams, keep_remnants, recover_beams
-    logical :: use_alpha_s_from_file, use_scale_from_file
-    logical :: write_sqme_prc, write_sqme_ref, write_sqme_alt
-    logical :: output_cross_section, ensure_order
-    type(string_t) :: lhef_version, lhef_extension, raw_version
-    type(string_t) :: extension_default, debug_extension, dump_extension, &
-         extension_hepmc, &
-         extension_lha, extension_hepevt, extension_ascii_short, &
-         extension_ascii_long, extension_athena, extension_mokka, &
-         extension_stdhep, extension_stdhep_up, extension_stdhep_ev4, &
-         extension_raw, extension_hepevt_verb, extension_lha_verb, &
-         extension_lcio
-    integer :: checkpoint
-    logical :: show_process, show_transforms, show_decay, verbose, pacified
-    logical :: dump_weights, dump_compressed, dump_summary, dump_screen
-    keep_beams = &
-         global%var_list%get_lval (var_str ("?keep_beams"))
-    keep_remnants = &
-         global%var_list%get_lval (var_str ("?keep_remnants"))
-    ensure_order = &
-         global%var_list%get_lval (var_str ("?hepevt_ensure_order"))
-    recover_beams = &
-         global%var_list%get_lval (var_str ("?recover_beams"))
-    use_alpha_s_from_file = &
-         global%var_list%get_lval (var_str ("?use_alpha_s_from_file"))
-    use_scale_from_file = &
-         global%var_list%get_lval (var_str ("?use_scale_from_file"))
-    select case (char (method))
-    case ("raw")
-       allocate (eio_raw_t :: eio)
-       select type (eio)
-       type is (eio_raw_t)
-          check = &
-               global%var_list%get_lval (var_str ("?check_event_file"))
-          raw_version = &
-               global%var_list%get_sval (var_str ("$event_file_version"))
-          extension_raw = &
-               global%var_list%get_sval (var_str ("$extension_raw"))
-          call eio%set_parameters (check, raw_version, extension_raw)
-       end select
-    case ("checkpoint")
-       allocate (eio_checkpoints_t :: eio)
-       select type (eio)
-       type is (eio_checkpoints_t)
-          checkpoint = &
-               global%var_list%get_ival (var_str ("checkpoint"))
-          pacified = &
-               global%var_list%get_lval (var_str ("?pacify"))
-          call eio%set_parameters (checkpoint, blank = pacified)
-       end select
-    case ("callback")
-       allocate (eio_callback_t :: eio)
-       select type (eio)
-       type is (eio_callback_t)
-          checkpoint = &
-               global%var_list%get_ival (var_str ("event_callback_interval"))
-          if (global%has_event_callback ()) then
-             call eio%set_parameters (global%get_event_callback (), checkpoint)
-          else
-             call eio%set_parameters (event_callback_nop_t (), 0)
-          end if
-       end select
-    case ("lhef")
-       allocate (eio_lhef_t :: eio)
-       select type (eio)
-       type is (eio_lhef_t)
-          lhef_version = &
-               global%var_list%get_sval (var_str ("$lhef_version"))
-          lhef_extension = &
-               global%var_list%get_sval (var_str ("$lhef_extension"))
-          write_sqme_prc = &
-               global%var_list%get_lval (var_str ("?lhef_write_sqme_prc"))
-          write_sqme_ref = &
-               global%var_list%get_lval (var_str ("?lhef_write_sqme_ref"))
-          write_sqme_alt = &
-               global%var_list%get_lval (var_str ("?lhef_write_sqme_alt"))
-          call eio%set_parameters ( &
-               keep_beams, keep_remnants, recover_beams, &
-               use_alpha_s_from_file, use_scale_from_file, &
-               char (lhef_version), lhef_extension, &
-               write_sqme_ref, write_sqme_prc, write_sqme_alt)
-       end select
-    case ("hepmc")
-       allocate (eio_hepmc_t :: eio)
-       select type (eio)
-       type is (eio_hepmc_t)
-          output_cross_section = &
-               global%var_list%get_lval (var_str ("?hepmc_output_cross_section"))
-          extension_hepmc = &
-               global%var_list%get_sval (var_str ("$extension_hepmc"))          
-          ! call eio%set_parameters (keep_beams, recover_beams, extension_hepmc)
-          call eio%set_parameters (global%model, &
-               recover_beams, &
-               use_alpha_s_from_file, use_scale_from_file, &
-               extension_hepmc, output_cross_section)
-       end select
-    case ("lcio")
-       allocate (eio_lcio_t :: eio)
-       select type (eio)
-       type is (eio_lcio_t)
-          extension_lcio = &
-               global%var_list%get_sval (var_str ("$extension_lcio"))
-          ! call eio%set_parameters &
-          !      (keep_beams, keep_remnants, recover_beams, extension_lcio)
-          call eio%set_parameters (recover_beams, &
-               use_alpha_s_from_file, use_scale_from_file, &
-               extension_lcio)
-       end select
-    case ("stdhep")
-       allocate (eio_stdhep_hepevt_t :: eio)
-       select type (eio)
-       type is (eio_stdhep_hepevt_t)
-          extension_stdhep = &
-               global%var_list%get_sval (var_str ("$extension_stdhep"))
-          call eio%set_parameters &
-               (keep_beams, keep_remnants, ensure_order, recover_beams, &
-                use_alpha_s_from_file, use_scale_from_file, extension_stdhep)
-       end select
-    case ("stdhep_up")
-       allocate (eio_stdhep_hepeup_t :: eio)
-       select type (eio)
-       type is (eio_stdhep_hepeup_t)
-          extension_stdhep_up = &
-               global%var_list%get_sval (var_str ("$extension_stdhep_up")) 
-          call eio%set_parameters (keep_beams, keep_remnants, ensure_order, &
-               recover_beams, use_alpha_s_from_file, &
-               use_scale_from_file, extension_stdhep_up)
-       end select
-    case ("stdhep_ev4")
-       allocate (eio_stdhep_hepev4_t :: eio)
-       select type (eio)
-       type is (eio_stdhep_hepev4_t)
-          extension_stdhep_ev4 = &
-               global%var_list%get_sval (var_str ("$extension_stdhep_ev4"))
-          call eio%set_parameters &
-               (keep_beams, keep_remnants, ensure_order, recover_beams, &
-                use_alpha_s_from_file, use_scale_from_file, extension_stdhep_ev4)
-       end select       
-    case ("ascii")   
-       allocate (eio_ascii_ascii_t :: eio)
-       select type (eio)
-       type is (eio_ascii_ascii_t)
-          extension_default = &
-               global%var_list%get_sval (var_str ("$extension_default"))
-          call eio%set_parameters &
-               (keep_beams, keep_remnants, ensure_order, extension_default)
-       end select       
-    case ("athena")   
-       allocate (eio_ascii_athena_t :: eio)
-       select type (eio)
-       type is (eio_ascii_athena_t)
-          extension_athena = &
-               global%var_list%get_sval (var_str ("$extension_athena"))
-          call eio%set_parameters &
-               (keep_beams, keep_remnants, ensure_order, extension_athena)
-       end select              
-    case ("debug")   
-       allocate (eio_ascii_debug_t :: eio)
-       select type (eio)
-       type is (eio_ascii_debug_t)
-          debug_extension = &
-               global%var_list%get_sval (var_str ("$debug_extension"))          
-          show_process = &
-               global%var_list%get_lval (var_str ("?debug_process"))
-          show_transforms = &
-               global%var_list%get_lval (var_str ("?debug_transforms"))
-          show_decay = &
-               global%var_list%get_lval (var_str ("?debug_decay"))
-          verbose = &
-               global%var_list%get_lval (var_str ("?debug_verbose"))
-          call eio%set_parameters ( &
-               extension = debug_extension, &
-               show_process = show_process, &
-               show_transforms = show_transforms, &
-               show_decay = show_decay, &
-               verbose = verbose)
-       end select
-    case ("dump")   
-       allocate (eio_dump_t :: eio)
-       select type (eio)
-       type is (eio_dump_t)
-          dump_extension = &
-               global%var_list%get_sval (var_str ("$dump_extension"))          
-          pacified = &
-               global%var_list%get_lval (var_str ("?pacify"))
-          dump_weights = &
-               global%var_list%get_lval (var_str ("?dump_weights"))
-          dump_compressed = &
-               global%var_list%get_lval (var_str ("?dump_compressed"))
-          dump_summary = &
-               global%var_list%get_lval (var_str ("?dump_summary"))
-          dump_screen = &
-               global%var_list%get_lval (var_str ("?dump_screen"))
-          call eio%set_parameters ( &
-               extension = dump_extension, &
-               pacify = pacified, &
-               weights = dump_weights, &
-               compressed = dump_compressed, &
-               summary = dump_summary, &
-               screen = dump_screen)
-       end select
-    case ("hepevt")
-       allocate (eio_ascii_hepevt_t :: eio)
-       select type (eio)
-       type is (eio_ascii_hepevt_t)
-          extension_hepevt = &
-               global%var_list%get_sval (var_str ("$extension_hepevt"))
-          call eio%set_parameters &
-               (keep_beams, keep_remnants, ensure_order, extension_hepevt)
-       end select              
-    case ("hepevt_verb")   
-       allocate (eio_ascii_hepevt_verb_t :: eio)
-       select type (eio)
-       type is (eio_ascii_hepevt_verb_t)
-          extension_hepevt_verb = &
-               global%var_list%get_sval (var_str ("$extension_hepevt_verb"))
-          call eio%set_parameters &
-               (keep_beams, keep_remnants, ensure_order, extension_hepevt_verb)
-       end select                     
-    case ("lha")   
-       allocate (eio_ascii_lha_t :: eio)
-       select type (eio)
-       type is (eio_ascii_lha_t)
-          extension_lha = &
-               global%var_list%get_sval (var_str ("$extension_lha"))
-          call eio%set_parameters &
-               (keep_beams, keep_remnants, ensure_order, extension_lha)
-       end select                     
-    case ("lha_verb")   
-       allocate (eio_ascii_lha_verb_t :: eio)
-       select type (eio)
-       type is (eio_ascii_lha_verb_t)
-          extension_lha_verb = global%var_list%get_sval ( &
-               var_str ("$extension_lha_verb"))
-          call eio%set_parameters &
-               (keep_beams, keep_remnants, ensure_order, extension_lha_verb)
-       end select
-    case ("long")
-       allocate (eio_ascii_long_t :: eio)
-       select type (eio)
-       type is (eio_ascii_long_t)
-          extension_ascii_long = &
-               global%var_list%get_sval (var_str ("$extension_ascii_long"))
-          call eio%set_parameters &
-               (keep_beams, keep_remnants, ensure_order, extension_ascii_long)
-       end select              
-    case ("mokka")   
-       allocate (eio_ascii_mokka_t :: eio)
-       select type (eio)
-       type is (eio_ascii_mokka_t)
-          extension_mokka = &
-               global%var_list%get_sval (var_str ("$extension_mokka"))          
-          call eio%set_parameters &
-               (keep_beams, keep_remnants, ensure_order, extension_mokka)
-       end select                     
-    case ("short")   
-       allocate (eio_ascii_short_t :: eio)
-       select type (eio)
-       type is (eio_ascii_short_t)
-          extension_ascii_short = &
-               global%var_list%get_sval (var_str ("$extension_ascii_short"))
-          call eio%set_parameters &
-               (keep_beams, keep_remnants, ensure_order, extension_ascii_short)
-       end select                     
-    case ("weight_stream")
-       allocate (eio_weights_t :: eio)
-       select type (eio)
-       type is (eio_weights_t)
-          pacified = &
-               global%var_list%get_lval (var_str ("?pacify"))
-          call eio%set_parameters (pacify = pacified)       
-       end select
-    case default
-       call msg_fatal ("Event I/O method '" // char (method) &
-            // "' not implemented")
-    end select
-    call eio%set_fallback_model (global%fallback_model)
-  end subroutine dispatch_eio
-  
-@ %def dispatch_eio
-@
 \subsection{QCD coupling}
 Allocate the [[alpha]] (running coupling) component of the [[qcd]] block with
 a concrete implementation, depending on the variable settings in the
@@ -5675,7 +5373,7 @@ module dispatch_uti
   use rt_data
 
   use dispatch
-  use dispatch_evt
+  use dispatch_transforms
   
   use sf_base_ut, only: sf_test_data_t
     
@@ -6429,7 +6127,8 @@ functions.  This procedure should be assigned to the
     write (u, "(A)")  "* Allocate as raw"
     write (u, "(A)")
     
-    call dispatch_eio (eio, var_str ("raw"), global)
+    call dispatch_eio (eio, var_str ("raw"), global%var_list, &
+         global%model, global%fallback_model, global%event_callback)
 
     call eio%write (u)
 
@@ -6440,7 +6139,8 @@ functions.  This procedure should be assigned to the
     write (u, "(A)")  "* Allocate as checkpoints:"
     write (u, "(A)")
     
-    call dispatch_eio (eio, var_str ("checkpoint"), global)
+    call dispatch_eio (eio, var_str ("checkpoint"), global%var_list, &
+         global%model, global%fallback_model, global%event_callback)
 
     call eio%write (u)
 
@@ -6453,7 +6153,8 @@ functions.  This procedure should be assigned to the
     
     call global%set_string (var_str ("$lhef_extension"), &
          var_str ("lhe_custom"), is_known = .true.)
-    call dispatch_eio (eio, var_str ("lhef"), global)
+    call dispatch_eio (eio, var_str ("lhef"), global%var_list, &
+         global%model, global%fallback_model, global%event_callback)
 
     call eio%write (u)
 
@@ -6464,7 +6165,8 @@ functions.  This procedure should be assigned to the
     write (u, "(A)")  "* Allocate as HepMC:"
     write (u, "(A)")
     
-    call dispatch_eio (eio, var_str ("hepmc"), global)
+    call dispatch_eio (eio, var_str ("hepmc"), global%var_list, &
+         global%model, global%fallback_model, global%event_callback)
 
     call eio%write (u)
 
@@ -6475,7 +6177,8 @@ functions.  This procedure should be assigned to the
     write (u, "(A)")  "* Allocate as weight_stream"
     write (u, "(A)")
     
-    call dispatch_eio (eio, var_str ("weight_stream"), global)
+    call dispatch_eio (eio, var_str ("weight_stream"), global%var_list, &
+         global%model, global%fallback_model, global%event_callback)
 
     call eio%write (u)
 
@@ -6488,7 +6191,8 @@ functions.  This procedure should be assigned to the
     
     call global%set_log (var_str ("?debug_verbose"), &
          .false., is_known = .true.)
-    call dispatch_eio (eio, var_str ("debug"), global)
+    call dispatch_eio (eio, var_str ("debug"), global%var_list, &
+         global%model, global%fallback_model, global%event_callback)
 
     call eio%write (u)
 
@@ -10411,7 +10115,7 @@ module event_streams
   use eio_base
   use rt_data
 
-  use dispatch, only: dispatch_eio
+  use dispatch_transforms, only: dispatch_eio
   
 <<Standard module head>>
 
@@ -10554,16 +10258,22 @@ happens if we open a stream for reading and get new information there.
     allocate (es_array%entry (n))
     if (i_checkpoint > 0) then
        call dispatch_eio &
-            (es_array%entry(i_checkpoint)%eio, var_str ("checkpoint"), global)
+            (es_array%entry(i_checkpoint)%eio, var_str ("checkpoint"), &
+            global%var_list, global%model, global%fallback_model, &
+            global%event_callback)
        call es_array%entry(i_checkpoint)%eio%init_out (sample, data)
     end if
     if (i_callback > 0) then
        call dispatch_eio &
-            (es_array%entry(i_callback)%eio, var_str ("callback"), global)
+            (es_array%entry(i_callback)%eio, var_str ("callback"), &
+            global%var_list, global%model, global%fallback_model, &
+            global%event_callback)
        call es_array%entry(i_callback)%eio%init_out (sample, data)
     end if
     if (i_input > 0) then
-       call dispatch_eio (es_array%entry(i_input)%eio, input, global)
+       call dispatch_eio (es_array%entry(i_input)%eio, input, &
+            global%var_list, global%model, global%fallback_model, &
+            global%event_callback)
        if (present (input_data)) then
           call es_array%entry(i_input)%eio%init_in &
                (sample_in, input_data, success)
@@ -10591,7 +10301,9 @@ happens if we open a stream for reading and get new information there.
        end if
     end if
     do i = 1, n_output
-       call dispatch_eio (es_array%entry(i)%eio, stream_fmt(i), global)
+       call dispatch_eio (es_array%entry(i)%eio, stream_fmt(i), &
+            global%var_list, global%model, global%fallback_model, &
+            global%event_callback)
        call es_array%entry(i)%eio%init_out (sample, data)
     end do
   end subroutine event_stream_array_init
@@ -11167,15 +10879,15 @@ module simulations
   use dispatch, only: dispatch_qcd
   use dispatch, only: dispatch_rng_factory
   use dispatch, only: dispatch_core_update, dispatch_core_restore
-  use dispatch_evt, only: dispatch_evt_decay
-  use dispatch_evt, only: dispatch_evt_shower
-  use dispatch_evt, only: dispatch_evt_hadrons
+  use dispatch_transforms, only: dispatch_evt_decay
+  use dispatch_transforms, only: dispatch_evt_shower
+  use dispatch_transforms, only: dispatch_evt_hadrons
+  use dispatch_transforms, only: dispatch_evt_nlo
 
   use integrations
   use event_streams
 
   use evt_nlo
-  use dispatch_evt, only: dispatch_evt_nlo
 
 <<Standard module head>>
 
@@ -15532,7 +15244,7 @@ Generate events and execute a callback in place of event I/O.
 
     allocate (eio_callback_t :: eio)
     select type (eio)
-    class is (eio_callback_t);  
+    class is (eio_callback_t)
        call eio%set_parameters (callback = event_callback, &
             count_interval = 3)
     end select
