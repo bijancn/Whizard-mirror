@@ -3797,9 +3797,6 @@ module dispatch
   use models
   use rng_base
   use rng_tao
-  use mci_base
-  use mci_midpoint
-  use mci_vamp
   use mappings
   use phs_forests, only: phs_parameters_t
   use phs_base
@@ -4113,99 +4110,6 @@ second routine restores the original from the save.
   end subroutine dispatch_core_restore
 
 @ %def dispatch_core_update dispatch_core_restore
-@
-\subsection{Integrator allocation}
-Allocate an integrator according to the variable [[$integration_method]].
-<<Dispatch: public>>=
-  public :: dispatch_mci
-<<Dispatch: procedures>>=
-  subroutine dispatch_mci (mci, global, process_id, is_nlo)
-    
-    class(mci_t), allocatable, intent(inout) :: mci
-    logical, intent(in), optional :: is_nlo
-    type(rt_data_t), intent(in) :: global
-    type(string_t), intent(in) :: process_id
-    type(string_t) :: run_id
-    type(string_t) :: integration_method
-    type(grid_parameters_t) :: grid_par
-    type(history_parameters_t) :: history_par
-    logical :: rebuild_grids, check_grid_file, negative_weights, verbose
-    logical :: dispatch_nlo = .false.
-
-    if (present (is_nlo)) dispatch_nlo = is_nlo
-    integration_method = &
-         global%var_list%get_sval (var_str ("$integration_method"))
-    select case (char (integration_method))
-    case ("midpoint")
-       allocate (mci_midpoint_t :: mci)
-    case ("vamp", "default")
-       associate (var_list => global%get_var_list_ptr ())
-         grid_par%threshold_calls = &
-              var_list%get_ival (var_str ("threshold_calls"))
-         grid_par%min_calls_per_channel = &
-              var_list%get_ival (var_str ("min_calls_per_channel"))
-         grid_par%min_calls_per_bin = &
-              var_list%get_ival (var_str ("min_calls_per_bin"))
-         grid_par%min_bins = &
-              var_list%get_ival (var_str ("min_bins"))
-         grid_par%max_bins = &
-              var_list%get_ival (var_str ("max_bins"))
-         grid_par%stratified = &
-              var_list%get_lval (var_str ("?stratified"))
-         if (.not. dispatch_nlo) then
-            grid_par%use_vamp_equivalences = &
-                 var_list%get_lval (var_str ("?use_vamp_equivalences"))
-         else
-            grid_par%use_vamp_equivalences = .false.
-         end if
-         grid_par%channel_weights_power = &
-              var_list%get_rval (var_str ("channel_weights_power"))
-         grid_par%accuracy_goal = &
-              var_list%get_rval (var_str ("accuracy_goal"))
-         grid_par%error_goal = &
-              var_list%get_rval (var_str ("error_goal"))
-         grid_par%rel_error_goal = &
-              var_list%get_rval (var_str ("relative_error_goal"))
-         history_par%global = &
-              var_list%get_lval (var_str ("?vamp_history_global"))
-         history_par%global_verbose = &
-              var_list%get_lval (var_str ("?vamp_history_global_verbose"))
-         history_par%channel = &
-              var_list%get_lval (var_str ("?vamp_history_channels"))
-         history_par%channel_verbose = &
-              var_list%get_lval (var_str ("?vamp_history_channels_verbose"))
-         verbose = &
-              var_list%get_lval (var_str ("?vamp_verbose"))
-         check_grid_file = &
-              var_list%get_lval (var_str ("?check_grid_file"))
-         run_id = &
-              var_list%get_sval (var_str ("$run_id"))
-         rebuild_grids = &
-              var_list%get_lval (var_str ("?rebuild_grids"))
-         negative_weights = &
-              var_list%get_lval (var_str ("?negative_weights")) .or. dispatch_nlo
-       end associate
-       allocate (mci_vamp_t :: mci)
-       select type (mci)
-       type is (mci_vamp_t)
-          call mci%set_grid_parameters (grid_par)
-          if (run_id /= "") then
-             call mci%set_grid_filename (process_id, run_id)
-          else
-             call mci%set_grid_filename (process_id)
-          end if
-          call mci%set_history_parameters (history_par)
-          call mci%set_rebuild_flag (rebuild_grids, check_grid_file)
-          mci%negative_weights = negative_weights
-          mci%verbose = verbose
-       end select
-    case default
-       call msg_fatal ("Integrator '" &
-            // char (integration_method) // "' not implemented")
-    end select
-  end subroutine dispatch_mci
-  
-@ %def dispatch_mci
 @
 \subsection{Phase-space allocation}
 Allocate a phase-space object according to the variable [[$phs_method]].
@@ -5381,6 +5285,7 @@ module dispatch_uti
   use rt_data
 
   use dispatch
+  use dispatch_mci
   use dispatch_me_methods
   use dispatch_transforms
   
@@ -5580,7 +5485,7 @@ end module dispatch_uti
     call global%set_string (&
          var_str ("$integration_method"), &
          var_str ("midpoint"), is_known = .true.)
-    call dispatch_mci (mci, global, process_id)
+    call dispatch_mci_s (mci, global%get_var_list_ptr (), process_id)
     select type (mci)
     type is (mci_midpoint_t)
        call mci%write (u)
@@ -5624,7 +5529,7 @@ end module dispatch_uti
     call global%set_log (var_str ("?stratified"), &
          .false., is_known = .true.)
 
-    call dispatch_mci (mci, global, process_id)
+    call dispatch_mci_s (mci, global%get_var_list_ptr (), process_id)
     select type (mci)
     type is (mci_vamp_t)
        call mci%write (u)
@@ -5633,34 +5538,34 @@ end module dispatch_uti
 
     call mci%final ()
     deallocate (mci)
-    
+
     write (u, "(A)")
     write (u, "(A)")  "* Allocate MCI as vamp_t, allow for negative weights"
-    write (u, "(A)")    
-    
+    write (u, "(A)")
+
     call global%set_string (&
          var_str ("$integration_method"), &
          var_str ("vamp"), is_known = .true.)
     call global%set_log (var_str ("?negative_weights"), &
          .true., is_known = .true.)
-    
-    call dispatch_mci (mci, global, process_id)
-    select type (mci)       
+
+    call dispatch_mci_s (mci, global%get_var_list_ptr (), process_id)
+    select type (mci)
     type is (mci_vamp_t)
        call mci%write (u)
        call mci%write_history_parameters (u)
     end select
-    
+
     call mci%final ()
     deallocate (mci)
-    
+
     call global%final ()
 
     write (u, "(A)")
     write (u, "(A)")  "* Test output end: dispatch_3"
-    
+
   end subroutine dispatch_3
-  
+
 @ %def dispatch_3
 @
 \subsubsection{Select type: phase-space configuration object}
@@ -8043,7 +7948,7 @@ module integrations
   use dispatch, only: sf_prop_t
   use dispatch, only: dispatch_sf_channels, dispatch_sf_config
   use dispatch, only: dispatch_phs
-  use dispatch, only: dispatch_mci
+  use dispatch_mci, only: dispatch_mci_s
 
   use compilations, only: compile_library
 
@@ -8217,7 +8122,7 @@ local changes to currently inactive models.
 
     call setup_log_and_history ()
 
-    call dispatch_mci (mci_template, local, intg%process_id, &
+    call dispatch_mci_s (mci_template, local%get_var_list_ptr (), intg%process_id, &
        intg%process%is_nlo_calculation ())
 
     call display_init_message (verb)
