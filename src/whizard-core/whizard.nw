@@ -9076,20 +9076,14 @@ Record the results in the global variable list.
     logical, intent(in), optional :: pacify
     integer :: n_calls, n_it
     logical :: adapt_grids, adapt_weights, final
-        
     n_it = it_list%get_n_it (pass)
     n_calls = it_list%get_n_calls (pass)
     adapt_grids = it_list%adapt_grids (pass)
     adapt_weights = it_list%adapt_weights (pass)
     final = pass == it_list%get_n_pass ()
-    
     call process_instance%integrate ( &
          i_mci, n_it, n_calls, adapt_grids, adapt_weights, &
          final, pacify)
-    !call intg%process%integrate (process_instance, &
-         !i_mci, n_it, n_calls, adapt_grids, adapt_weights, &
-         !final, pacify)
-
   end subroutine integration_evaluate
 
 @ %def integration_evaluate
@@ -10815,6 +10809,7 @@ If there is no output stream, do nothing.
                   if (increased)  call eio%split_out ()
                end if
             end if
+            print *, 'event_stream_array_output  (can be empty)'
             call eio%output (event, i_prc, reading = es_array%i_in /= 0, &
                  passed = passed, &
                  pacify = pacify)
@@ -11787,7 +11782,9 @@ deallocate it here.  Then we call the finalizer of the base type.
   subroutine entry_copy_entry (entry1, entry2)
     class(entry_t), intent(in) :: entry1
     type(entry_t), intent(inout) :: entry2
-    entry2%event_t = entry1%event_t
+    !entry2%event_t = entry1%event_t
+    !  TODO: (bcn 2016-09-21) Implement an event_assign
+    call entry1%clone (entry2)
     entry2%process_id = entry1%process_id
     entry2%library = entry1%library
     entry2%run_id = entry1%run_id 
@@ -11810,7 +11807,6 @@ deallocate it here.  Then we call the finalizer of the base type.
     end if
     entry2%model => entry1%model
     entry2%qcd = entry1%qcd
-!    entry2%first => entry1%first
   end subroutine entry_copy_entry
 
 @ %def entry_copy_entry
@@ -12160,6 +12156,10 @@ information about how many entries to associate from [[region_data]].
              current_entry%next%first => current_entry%first
              current_entry => current_entry%next
              call entry%copy_entry (current_entry)
+             print *, 'ENTRY'
+             call entry%expr%write () !!! Debugging
+             print *, 'CURRENT ENTRY'
+             call current_entry%expr%write () !!! Debugging
              current_entry%i_event = i
           end do
        else
@@ -12747,6 +12747,7 @@ in order to suppress numerical noise in the testsuite.
     else
        current = object%i_prc
     end if
+    print *, 'object%entry(current)%get_weight_prc =    ', object%entry(current)%get_weight_prc() !!! Debugging
     if (current > 0) then
        call object%entry(current)%write (unit, verbose = verbose, &
             testflag = pacified)
@@ -13300,13 +13301,20 @@ process instance will not be complete.  This should be fixed.
                call msg_fatal ()
             end if
             current_entry => entry%get_first ()
+            print *, 'FIRST'
+            call current_entry%expr%write () !!! Debugging
             do k = 1, current_entry%count_nlo_entries ()
                if (k > 1) current_entry => current_entry%get_next ()
                call current_entry%evaluate_expressions ()
+               print *, 'ENTRY', k
+               call current_entry%expr%write () !!! Debugging
+               print *, 'current_entry%get_weight_prc() =    ', current_entry%get_weight_prc() !!! Debugging
             end do
             if (signal_is_pending ()) return
+            print *, 'entry%passed_selection =    ', entry%passed_selection () !!! Debugging
             if (entry%passed_selection ()) then
                simulation%weight = entry%get_weight_ref ()
+               print *, 'simulation%weight =    ', simulation%weight !!! Debugging
                simulation%excess = entry%get_excess_prc ()
             end if
             call simulation%counter%record &
@@ -13339,7 +13347,9 @@ process instance will not be complete.  This should be fixed.
        else
           passed = .true.
        end if
+       print *, 'will we call write event?' !!! Debugging
        if (present (es_array)) then
+          print *, 'yes es_array is present' !!! Debugging
           call simulation%write_event (es_array, passed)
        end if
     end do
@@ -13485,6 +13495,7 @@ if [[update_weight]] is set.)  Otherwise, we accept the reference values.
        end if
        call simulation%calculate_alt_entries ()
        if (signal_is_pending ())  return
+       print *, 'woops we re in a rescan' !!! Debugging
        call simulation%write_event (es_array)
     end do
     if (simulation%update_sqme .or. simulation%update_weight) then
@@ -13540,6 +13551,7 @@ must be selected, or the current index must be available.
     integer, intent(in), optional :: i_prc
     logical :: increased
     integer :: current
+    print *, 'simulation_write_event_eio' !!! Debugging
     if (present (i_prc)) then
        current = i_prc
     else
@@ -13554,6 +13566,7 @@ must be selected, or the current index must be available.
           call eio%update_split_count (increased)
           if (increased)  call eio%split_out ()
        end if
+       print *, 'simulation_write_event_eio is not called !!!' !!! Debugging
        call eio%output (object%entry(current)%event_t, current, pacify = object%pacify)
     else
        call msg_fatal ("Simulation: write event: no process selected")
@@ -13613,12 +13626,16 @@ available.
     integer :: i_prc, event_index
     integer :: i
     type(entry_t), pointer :: current_entry
+    print *, 'simulation_write_event_es_array' !!! Debugging
     i_prc = object%i_prc
     if (i_prc > 0) then
        event_index = object%counter%total
        current_entry => object%entry(i_prc)%get_first ()
        do i = 1, current_entry%count_nlo_entries ()
           if (i > 1) current_entry => current_entry%get_next ()
+          print *, 'simulation_write_event_es_array calls event_stream_array_output' !!! Debugging
+          print *, 'i =    ', i !!! Debugging
+          print *, 'current_entry%event_t%get_weight_prc () =    ', current_entry%event_t%get_weight_prc () !!! Debugging
           call es_array%output (current_entry%event_t, i_prc, &
              event_index, passed = passed, pacify = object%pacify)
        end do
