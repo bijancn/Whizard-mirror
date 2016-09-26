@@ -1720,8 +1720,10 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       print_line "  subroutine initialize_vm (vm, bytecode_file)";
       print_line "    class(vm_t), intent(out) :: vm";
       print_line "    type(string_t), intent(in) :: bytecode_file";
-      print_line "    type(string_t) :: version = 1 ! used to come from RCS";
-      print_line "    type(string_t) :: model = 1   ! used to come from RCS";
+      print_line "    type(string_t) :: version";
+      print_line "    type(string_t) :: model";
+      print_line "    version = '???' ! used to come from RCS";
+      print_line "    model = '???'   ! used to come from RCS";
       print_line "    call setup_couplings ()";
       print_line "    call vm%init (bytecode_file, version, model, verbose=.False., &";
       print_line "      coupl_cmplx=ovm_coupl_cmplx, &";
