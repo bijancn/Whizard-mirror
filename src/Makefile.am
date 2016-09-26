@@ -43,6 +43,7 @@ SUBDIRS = \
   physics qft \
   fastjet \
   types \
+  variables \
   matrix_elements \
   hepmc lcio particles \
   lhapdf \
@@ -53,7 +54,7 @@ SUBDIRS = \
   me_methods \
   xdr events \
   phase_space \
-  mci variables \
+  mci \
   pythia8 \
   tauola \
   muli shower \
