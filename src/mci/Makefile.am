@@ -37,7 +37,8 @@ libmci_la_SOURCES = \
   iterations.f90 \
   integration_results.f90 \
   mci_midpoint.f90 \
-  mci_vamp.f90
+  mci_vamp.f90 \
+  dispatch_mci.f90
 
 libmci_ut_la_SOURCES = \
   mci_base_uti.f90 mci_base_ut.f90 \
@@ -70,7 +71,8 @@ module_lists = \
   ../system/Modules \
   ../combinatorics/Modules \
   ../rng/Modules \
-  ../phase_space/Modules
+  ../phase_space/Modules \
+  ../variables/Modules
 
 
 $(module_lists):
@@ -118,7 +120,7 @@ mci_vamp.lo: ../../vamp/src/vamp.$(FC_MODULE_EXT)
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../rng -I../physics -I../fastjet -I../qft -I../matrix_elements -I../types -I../particles -I../beams -I../phase_space -I../../vamp/src
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../rng -I../physics -I../fastjet -I../qft -I../matrix_elements -I../types -I../particles -I../beams -I../phase_space -I../expr_base -I../variables -I../../vamp/src
 
 
 ########################################################################

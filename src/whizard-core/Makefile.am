@@ -41,6 +41,7 @@ libwhizard_core_la_SOURCES = \
   user_files.f90 \
   rt_data.f90  \
   dispatch.f90 \
+  dispatch_me_methods.f90 \
   process_configurations.f90 \
   compilations.f90 \
   integrations.f90 \

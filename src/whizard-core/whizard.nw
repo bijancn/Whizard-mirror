@@ -3774,20 +3774,9 @@ module dispatch
   use os_interface
   use physics_defs, only: PHOTON
   use physics_defs, only: MZ_REF, ALPHA_QCD_MZ_REF
-  use physics_defs, only: BORN
   use variables
   use sm_qcd
   use model_data
-  use prc_core_def
-  use prc_core
-  use prc_test_core
-  use prc_template_me
-  use prc_test
-  use prc_omega
-  use prc_user_defined
-  use prc_gosam
-  use prc_openloops
-  use prc_threshold
   use process
   use numeric_utils
   use pdg_arrays
@@ -3808,9 +3797,6 @@ module dispatch
   use models
   use rng_base
   use rng_tao
-  use mci_base
-  use mci_midpoint
-  use mci_vamp
   use mappings
   use phs_forests, only: phs_parameters_t
   use phs_base
@@ -3836,19 +3822,54 @@ contains
 
 end module dispatch
 @ %def dispatch
-@
+@ We would like to put this in the [[me_methods]] folder but it also
+depends on [[gosam]] and [[openloops]], so it is unclear where to put
+it.
+<<[[dispatch_me_methods.f90]]>>=
+<<File header>>
+
+module dispatch_me_methods
+
+<<Use strings>>
+  use physics_defs, only: BORN
+  use diagnostics
+  use sm_qcd
+  use variables
+  use models
+  use model_data
+
+  use prc_core_def
+  use prc_core
+  use prc_test_core
+  use prc_template_me
+  use prc_test
+  use prc_omega
+  use prc_user_defined
+  use prc_gosam
+  use prc_openloops
+  use prc_threshold
+
+<<Standard module head>>
+
+<<Dispatch me methods: public>>
+
+contains
+
+<<Dispatch me methods: procedures>>
+
+end module dispatch_me_methods
+@ %def dispatch_me_methods
 \subsection{Process Core Definition}
 The [[prc_core_def_t]] abstract type can be instantiated by providing a
 [[$method]] string variable.
 
 Note: [[core_def]] has intent(inout) because gfortran 4.7.1 crashes for
 intent(out).
-<<Dispatch: public>>=
+<<Dispatch me methods: public>>=
   public :: dispatch_core_def
-<<Dispatch: procedures>>=
+<<Dispatch me methods: procedures>>=
   subroutine dispatch_core_def (core_def, prt_in, prt_out, &
                                 model, var_list, id, nlo_type)
-
     class(prc_core_def_t), allocatable, intent(inout) :: core_def
     type(string_t), dimension(:), intent(in) :: prt_in
     type(string_t), dimension(:), intent(in) :: prt_out
@@ -3874,6 +3895,18 @@ intent(out).
        model_name = ""
        cms_scheme = .false.
     end if
+    restrictions = var_list%get_sval (&
+         var_str ("$restrictions"))
+    diags = var_list%get_lval (&
+         var_str ("?vis_diags"))
+    diags_color = var_list%get_lval (&
+         var_str ("?vis_diags_color"))
+    openmp_support = var_list%get_lval (&
+         var_str ("?omega_openmp"))
+    report_progress = var_list%get_lval (&
+         var_str ("?report_progress"))
+    extra_options = var_list%get_sval (&
+         var_str ("$omega_flags"))
     select case (char (method))
     case ("unit_test")
        allocate (prc_test_def_t :: core_def)
@@ -3894,18 +3927,6 @@ intent(out).
           call core_def%init (model, prt_in, prt_out, unity = .true.)
        end select
     case ("omega")
-       diags = var_list%get_lval (&
-            var_str ("?vis_diags"))
-       diags_color = var_list%get_lval (&
-            var_str ("?vis_diags_color"))
-       restrictions = var_list%get_sval (&
-            var_str ("$restrictions"))
-       openmp_support = var_list%get_lval (&
-            var_str ("?omega_openmp"))
-       report_progress = var_list%get_lval (&
-            var_str ("?report_progress"))
-       extra_options = var_list%get_sval (&
-            var_str ("$omega_flags"))
        allocate (omega_omega_def_t :: core_def)
        select type (core_def)
        type is (omega_omega_def_t)
@@ -3914,18 +3935,6 @@ intent(out).
                report_progress, extra_options, diags, diags_color)
        end select
     case ("ovm")
-       diags = var_list%get_lval (&
-            var_str ("?vis_diags"))
-       diags_color = var_list%get_lval (&
-            var_str ("?vis_diags_color"))         
-       restrictions = var_list%get_sval (&
-            var_str ("$restrictions"))
-       openmp_support = var_list%get_lval (&
-            var_str ("?omega_openmp"))
-       report_progress = var_list%get_lval (&
-            var_str ("?report_progress"))
-       extra_options = var_list%get_sval (&
-            var_str ("$omega_flags"))
        allocate (omega_ovm_def_t :: core_def)
        select type (core_def)
        type is (omega_ovm_def_t)
@@ -3966,8 +3975,6 @@ intent(out).
           end if
        end select 
     case ("threshold")
-       restrictions = var_list%get_sval (&
-            var_str ("$restrictions"))
        allocate (threshold_def_t :: core_def)
        select type (core_def)
        type is (threshold_def_t)
@@ -3991,19 +3998,17 @@ Here we allocate an object of abstract type [[prc_core_t]] with a concrete
 type that matches a process definition.  The [[prc_omega_t]] extension
 will require the current parameter set, so we take the opportunity to
 grab it from the model.
-<<Dispatch: public>>=
+<<Dispatch me methods: public>>=
   public :: dispatch_core
-<<Dispatch: procedures>>=
+<<Dispatch me methods: procedures>>=
   subroutine dispatch_core (core, core_def, model, &
        helicity_selection, qcd, use_color_factors)
-    
     class(prc_core_t), allocatable, intent(inout) :: core
     class(prc_core_def_t), intent(in) :: core_def
     class(model_data_t), intent(in), target, optional :: model
     type(helicity_selection_t), intent(in), optional :: helicity_selection
     type(qcd_t), intent(in), optional :: qcd
     logical, intent(in), optional :: use_color_factors
-
     select type (core_def)
     type is (prc_test_def_t)
        allocate (test_t :: core)
@@ -4061,10 +4066,10 @@ Optionally, we can save the previous state as [[saved_core]].  The
 second routine restores the original from the save.
 
 (In the test case, there is no possible update.)
-<<Dispatch: public>>=
+<<Dispatch me methods: public>>=
   public :: dispatch_core_update
   public :: dispatch_core_restore
-<<Dispatch: procedures>>=
+<<Dispatch me methods: procedures>>=
   subroutine dispatch_core_update &
        (core, model, helicity_selection, qcd, saved_core)
     
@@ -4105,99 +4110,6 @@ second routine restores the original from the save.
   end subroutine dispatch_core_restore
 
 @ %def dispatch_core_update dispatch_core_restore
-@
-\subsection{Integrator allocation}
-Allocate an integrator according to the variable [[$integration_method]].
-<<Dispatch: public>>=
-  public :: dispatch_mci
-<<Dispatch: procedures>>=
-  subroutine dispatch_mci (mci, global, process_id, is_nlo)
-    
-    class(mci_t), allocatable, intent(inout) :: mci
-    logical, intent(in), optional :: is_nlo
-    type(rt_data_t), intent(in) :: global
-    type(string_t), intent(in) :: process_id
-    type(string_t) :: run_id
-    type(string_t) :: integration_method
-    type(grid_parameters_t) :: grid_par
-    type(history_parameters_t) :: history_par
-    logical :: rebuild_grids, check_grid_file, negative_weights, verbose
-    logical :: dispatch_nlo = .false.
-
-    if (present (is_nlo)) dispatch_nlo = is_nlo
-    integration_method = &
-         global%var_list%get_sval (var_str ("$integration_method"))
-    select case (char (integration_method))
-    case ("midpoint")
-       allocate (mci_midpoint_t :: mci)
-    case ("vamp", "default")
-       associate (var_list => global%get_var_list_ptr ())
-         grid_par%threshold_calls = &
-              var_list%get_ival (var_str ("threshold_calls"))
-         grid_par%min_calls_per_channel = &
-              var_list%get_ival (var_str ("min_calls_per_channel"))
-         grid_par%min_calls_per_bin = &
-              var_list%get_ival (var_str ("min_calls_per_bin"))
-         grid_par%min_bins = &
-              var_list%get_ival (var_str ("min_bins"))
-         grid_par%max_bins = &
-              var_list%get_ival (var_str ("max_bins"))
-         grid_par%stratified = &
-              var_list%get_lval (var_str ("?stratified"))
-         if (.not. dispatch_nlo) then
-            grid_par%use_vamp_equivalences = &
-                 var_list%get_lval (var_str ("?use_vamp_equivalences"))
-         else
-            grid_par%use_vamp_equivalences = .false.
-         end if
-         grid_par%channel_weights_power = &
-              var_list%get_rval (var_str ("channel_weights_power"))
-         grid_par%accuracy_goal = &
-              var_list%get_rval (var_str ("accuracy_goal"))
-         grid_par%error_goal = &
-              var_list%get_rval (var_str ("error_goal"))
-         grid_par%rel_error_goal = &
-              var_list%get_rval (var_str ("relative_error_goal"))
-         history_par%global = &
-              var_list%get_lval (var_str ("?vamp_history_global"))
-         history_par%global_verbose = &
-              var_list%get_lval (var_str ("?vamp_history_global_verbose"))
-         history_par%channel = &
-              var_list%get_lval (var_str ("?vamp_history_channels"))
-         history_par%channel_verbose = &
-              var_list%get_lval (var_str ("?vamp_history_channels_verbose"))
-         verbose = &
-              var_list%get_lval (var_str ("?vamp_verbose"))
-         check_grid_file = &
-              var_list%get_lval (var_str ("?check_grid_file"))
-         run_id = &
-              var_list%get_sval (var_str ("$run_id"))
-         rebuild_grids = &
-              var_list%get_lval (var_str ("?rebuild_grids"))
-         negative_weights = &
-              var_list%get_lval (var_str ("?negative_weights")) .or. dispatch_nlo
-       end associate
-       allocate (mci_vamp_t :: mci)
-       select type (mci)
-       type is (mci_vamp_t)
-          call mci%set_grid_parameters (grid_par)
-          if (run_id /= "") then
-             call mci%set_grid_filename (process_id, run_id)
-          else
-             call mci%set_grid_filename (process_id)
-          end if
-          call mci%set_history_parameters (history_par)
-          call mci%set_rebuild_flag (rebuild_grids, check_grid_file)
-          mci%negative_weights = negative_weights
-          mci%verbose = verbose
-       end select
-    case default
-       call msg_fatal ("Integrator '" &
-            // char (integration_method) // "' not implemented")
-    end select
-  end subroutine dispatch_mci
-  
-@ %def dispatch_mci
 @
 \subsection{Phase-space allocation}
 Allocate a phase-space object according to the variable [[$phs_method]].
@@ -5373,6 +5285,8 @@ module dispatch_uti
   use rt_data
 
   use dispatch
+  use dispatch_mci
+  use dispatch_me_methods
   use dispatch_transforms
   
   use sf_base_ut, only: sf_test_data_t
@@ -5571,7 +5485,7 @@ end module dispatch_uti
     call global%set_string (&
          var_str ("$integration_method"), &
          var_str ("midpoint"), is_known = .true.)
-    call dispatch_mci (mci, global, process_id)
+    call dispatch_mci_s (mci, global%get_var_list_ptr (), process_id)
     select type (mci)
     type is (mci_midpoint_t)
        call mci%write (u)
@@ -5615,7 +5529,7 @@ end module dispatch_uti
     call global%set_log (var_str ("?stratified"), &
          .false., is_known = .true.)
 
-    call dispatch_mci (mci, global, process_id)
+    call dispatch_mci_s (mci, global%get_var_list_ptr (), process_id)
     select type (mci)
     type is (mci_vamp_t)
        call mci%write (u)
@@ -5624,34 +5538,34 @@ end module dispatch_uti
 
     call mci%final ()
     deallocate (mci)
-    
+
     write (u, "(A)")
     write (u, "(A)")  "* Allocate MCI as vamp_t, allow for negative weights"
-    write (u, "(A)")    
-    
+    write (u, "(A)")
+
     call global%set_string (&
          var_str ("$integration_method"), &
          var_str ("vamp"), is_known = .true.)
     call global%set_log (var_str ("?negative_weights"), &
          .true., is_known = .true.)
-    
-    call dispatch_mci (mci, global, process_id)
-    select type (mci)       
+
+    call dispatch_mci_s (mci, global%get_var_list_ptr (), process_id)
+    select type (mci)
     type is (mci_vamp_t)
        call mci%write (u)
        call mci%write_history_parameters (u)
     end select
-    
+
     call mci%final ()
     deallocate (mci)
-    
+
     call global%final ()
 
     write (u, "(A)")
     write (u, "(A)")  "* Test output end: dispatch_3"
-    
+
   end subroutine dispatch_3
-  
+
 @ %def dispatch_3
 @
 \subsubsection{Select type: phase-space configuration object}
@@ -6609,7 +6523,7 @@ module process_configurations
   use rt_data
   use variables
 
-  use dispatch, only: dispatch_core_def
+  use dispatch_me_methods, only: dispatch_core_def
   
 <<Standard module head>>
 
@@ -8030,11 +7944,11 @@ module integrations
   
   use dispatch, only: dispatch_qcd
   use dispatch, only: dispatch_rng_factory
-  use dispatch, only: dispatch_core
+  use dispatch_me_methods, only: dispatch_core
   use dispatch, only: sf_prop_t
   use dispatch, only: dispatch_sf_channels, dispatch_sf_config
   use dispatch, only: dispatch_phs
-  use dispatch, only: dispatch_mci
+  use dispatch_mci, only: dispatch_mci_s
 
   use compilations, only: compile_library
 
@@ -8208,7 +8122,7 @@ local changes to currently inactive models.
 
     call setup_log_and_history ()
 
-    call dispatch_mci (mci_template, local, intg%process_id, &
+    call dispatch_mci_s (mci_template, local%get_var_list_ptr (), intg%process_id, &
        intg%process%is_nlo_calculation ())
 
     call display_init_message (verb)
@@ -10878,7 +10792,7 @@ module simulations
 
   use dispatch, only: dispatch_qcd
   use dispatch, only: dispatch_rng_factory
-  use dispatch, only: dispatch_core_update, dispatch_core_restore
+  use dispatch_me_methods, only: dispatch_core_update, dispatch_core_restore
   use dispatch_transforms, only: dispatch_evt_decay
   use dispatch_transforms, only: dispatch_evt_shower
   use dispatch_transforms, only: dispatch_evt_hadrons
