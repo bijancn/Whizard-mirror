@@ -3252,10 +3252,18 @@ from the library.
               if (process%term(i_term)%i_core == 0) call msg_fatal ("Core not found!")
               core => process%get_core_term (i_term)
               if (i_sub > 0) then
-                 call process%term(i_term)%init (i_term, i, j, core, model, &
-                    nlo_type = component%config%get_nlo_type (), &
-                    use_beam_pol = with_beams, &
-                    subtraction_method = subtraction_method)
+                 select type (pcm => process%pcm)
+                 type is (pcm_nlo_t) 
+                    call process%term(i_term)%init (i_term, i, j, core, model, &
+                       nlo_type = component%config%get_nlo_type (), &
+                       use_beam_pol = with_beams, &
+                       subtraction_method = subtraction_method)
+                 class default
+                    call process%term(i_term)%init (i_term, i, j, core, model, &
+                       nlo_type = component%config%get_nlo_type (), &
+                       use_beam_pol = with_beams, &
+                       subtraction_method = subtraction_method)
+                 end select
               else
                  call process%term(i_term)%init (i_term, i, j, core, model, &
                     nlo_type = component%config%get_nlo_type (), &
@@ -9682,6 +9690,8 @@ method may modify the [[core_state]] workspace object.
     integer :: i_born, i_virt, i_cc, i_sub
     !!! Use logical to avoid nested select-type statement
     logical :: core_is_user_defined
+    type(phs_identifier_t), dimension(:), allocatable :: phs_id
+    integer :: only_flavor
     allocate (sqme_cc (blha_result_array_size &
          (term%int_hard%get_n_tot (), BLHA_AMP_CC)))
     i_term = term%config%i_term
@@ -9773,7 +9783,20 @@ method may modify the [[core_state]] workspace object.
          end select
        end select
     else
+       if (term%nlo_type == NLO_REAL .and. term%config%i_term_global /= term%config%i_sub) then
+          select type (config => term%pcm_instance%config)
+          type is (pcm_nlo_t)
+             associate (region_data => config%region_data)
+                call region_data%init_phs_identifiers (phs_id)
+                only_flavor = get_flavor (region_data, phs_id(term%config%i_term)%emitter)
+                deallocate (phs_id)
+             end associate
+          end select
+       else
+          only_flavor = 0
+       end if 
        do i = 1, term%config%n_allowed
+          if (only_flavor > 0 .and. term%config%flv(i) /= only_flavor) cycle
           term%amp(i) = core%compute_amplitude (i_term, term%p_hard, &
              term%config%flv(i), term%config%hel(i), term%config%col(i), &
              term%fac_scale, term%ren_scale, term%alpha_qcd_forced, &
@@ -9783,6 +9806,20 @@ method may modify the [[core_state]] workspace object.
           call term%pcm_instance%set_fac_scale (term%fac_scale)
     end if
     call term%int_hard%set_matrix_element (term%amp)
+  contains
+    function get_flavor (region_data, emitter) result (flv)
+      integer :: flv
+      class(region_data_t), intent(in) :: region_data
+      integer, intent(in) :: emitter
+      integer :: i
+      flv = 0
+      do i = 1, region_data%n_regions
+         if (region_data%regions(i)%emitter == emitter) then
+            flv = region_data%regions(i)%real_index
+            exit
+         end if
+      end do
+    end function get_flavor
   end subroutine term_instance_evaluate_interaction
 
 @ %def term_instance_evaluate_interaction
@@ -10135,6 +10172,8 @@ module instances
   use prc_user_defined, only: prc_user_defined_base_t
   use prc_user_defined, only: user_defined_state_t
   use blha_olp_interfaces, only: blha_result_array_size
+  use nlo_data, only: phs_identifier_t
+  use fks_regions, only: region_data_t
 
   !!! local modules
   use parton_states

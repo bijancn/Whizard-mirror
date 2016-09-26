@@ -210,10 +210,7 @@ module fks_regions
   use models
   use physics_defs
   use cascades
-  use nlo_data, only: phs_identifier_t, check_for_phs_identifier
-  use nlo_data, only: FKS_DEFAULT, FKS_RESONANCES
-  use nlo_data, only: FACTORIZATION_THRESHOLD
-  use nlo_data, only: fks_template_t
+  use nlo_data
 
   use ttv_formfactors, only: THR_POS_B, THR_POS_BBAR
   use ttv_formfactors, only: THR_POS_WP, THR_POS_WM
@@ -2788,6 +2785,40 @@ resonances are possible for all ftuples
    end subroutine region_data_set_splitting_info
 
 @ %def region_data_set_splitting_info
+@
+<<fks regions: reg data: TBP>>=
+  procedure :: init_phs_identifiers => region_data_init_phs_identifiers
+<<fks regions: procedures>>=
+  subroutine region_data_init_phs_identifiers (reg_data, phs_id)
+    class(region_data_t), intent(in) :: reg_data
+    type(phs_identifier_t), intent(out), dimension(:), allocatable :: phs_id
+    integer :: i_em, i_res, i_phs
+    integer :: emitter
+    type(resonance_contributors_t) :: contributors
+    logical :: share_emitter, phs_exist
+    allocate (phs_id (reg_data%n_phs))
+    do i_em = 1, size (reg_data%emitters)
+       emitter = reg_data%emitters(i_em)
+       if (allocated (reg_data%resonances)) then
+          do i_res = 1, size (reg_data%resonances)
+             !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+             call reg_data%get_contributors (i_res, emitter, contributors%c, share_emitter)
+             if (.not. share_emitter) cycle
+             call check_for_phs_identifier &
+                (phs_id, reg_data%n_in, emitter, contributors%c, phs_exist, i_phs)
+             if (.not. phs_exist) &
+                call phs_id(i_phs)%init (emitter, contributors%c)
+             if (allocated (contributors%c)) deallocate (contributors%c)
+          end do
+       else
+          call check_for_phs_identifier (phs_id, reg_data%n_in, emitter, &
+             phs_exist = phs_exist, i_phs = i_phs)
+          if (.not. phs_exist) call phs_id(i_phs)%init (emitter)
+       end if
+    end do
+  end subroutine region_data_init_phs_identifiers
+
+@ %def region_data_init_phs_identifiers
 @
 <<fks regions: reg data: TBP>>=
   procedure :: write_to_file => region_data_write_to_file
@@ -6072,10 +6103,10 @@ the corresponding jacobians.
          sqme_rad = rsub%sqme_real_non_sub (1, i_phs)
          call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, &
             rsub%current_alr, i_phs, emitter, rsub%current_i_res)
-         !if (proc_scatter) then
-         !   call rsub%scale_pdfs_real (sqme_rad, i_real, I_PLUS)
-         !   call rsub%scale_pdfs_real (sqme_rad, i_real, I_MINUS)
-         !end if
+         if (proc_scatter) then
+            call rsub%scale_pdfs_real (sqme_rad, i_real, I_PLUS)
+            call rsub%scale_pdfs_real (sqme_rad, i_real, I_MINUS)
+         end if
 
          call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, rsub%real_kinematics, &
             i_phs, .true.)
@@ -6568,21 +6599,21 @@ delivers $x \cdot f(x)$ as output, so that $x$ has to be factored out.
 at Born level, but with the real flavor structure. We multiply out the Born
 contribution and use the real one instead.
 <<real subtraction: real subtraction: TBP>>=
-  !procedure :: scale_pdfs_real => real_subtraction_scale_pdfs_real
+  procedure :: scale_pdfs_real => real_subtraction_scale_pdfs_real
 <<real subtraction: procedures>>=
-  !subroutine real_subtraction_scale_pdfs_real (rsub, sqme, i_real, i_part)
-  !  class(real_subtraction_t), intent(inout) :: rsub
-  !  real(default), intent(inout) :: sqme
-  !  integer, intent(in) :: i_real, i_part
-  !  integer :: flv
-  !  real(default) :: pdfs, pdfb
-  !  flv = rsub%reg_data%flv_real(i_real)%flst(i_part)
-  !  !!! Gluon has index 0 in the pdf array
-  !  if (flv == GLUON) flv = 0
-  !  pdfb = rsub%pdf_born(i_part)%f(flv)
-  !  pdfs = rsub%pdf_scaled(i_part)%f(flv)
-  !  sqme = sqme * pdfs / pdfb
-  !end subroutine real_subtraction_scale_pdfs_real
+  subroutine real_subtraction_scale_pdfs_real (rsub, sqme, i_real, i_part)
+    class(real_subtraction_t), intent(inout) :: rsub
+    real(default), intent(inout) :: sqme
+    integer, intent(in) :: i_real, i_part
+    integer :: flv
+    real(default) :: pdfs, pdfb
+    flv = rsub%reg_data%flv_real(i_real)%flst(i_part)
+    !!! Gluon has index 0 in the pdf array
+    if (flv == GLUON) flv = 0
+    pdfb = rsub%pdf_born(i_part)%f(flv)
+    pdfs = rsub%pdf_scaled(i_part)%f(flv)
+    sqme = sqme * pdfs / pdfb
+  end subroutine real_subtraction_scale_pdfs_real
 
 @ %def real_subtraction_scale_pdfs_real
 @ The same as above, but for the collinear subtraction terms. They are
@@ -9584,28 +9615,29 @@ in the center-of-mass and lab frame.
     integer :: emitter
     type(resonance_contributors_t) :: contributors
     logical :: share_emitter, phs_exist
-    allocate (phs%phs_identifiers (reg_data%n_phs))
-    do i_em = 1, size (reg_data%emitters)
-       emitter = reg_data%emitters(i_em)
-       if (allocated (reg_data%resonances)) then
-          do i_res = 1, size (reg_data%resonances)
-             !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-             call reg_data%get_contributors (i_res, emitter, contributors%c, share_emitter)
-             if (.not. share_emitter) cycle
-             call check_for_phs_identifier &
-                (phs%phs_identifiers, phs%config%n_in, emitter, contributors%c, phs_exist, i_phs)
-             if (.not. phs_exist) &
-                call phs%phs_identifiers(i_phs)%init (emitter, contributors%c)
-             if (allocated (contributors%c)) deallocate (contributors%c)
-          end do
-       else
-          call check_for_phs_identifier &
-             (phs%phs_identifiers, phs%config%n_in, emitter, &
-             phs_exist = phs_exist, i_phs = i_phs)
-          if (.not. phs_exist) &
-             call phs%phs_identifiers(i_phs)%init (emitter)
-       end if
-    end do
+    call reg_data%init_phs_identifiers (phs%phs_identifiers)
+    !allocate (phs%phs_identifiers (reg_data%n_phs))
+    !do i_em = 1, size (reg_data%emitters)
+    !   emitter = reg_data%emitters(i_em)
+    !   if (allocated (reg_data%resonances)) then
+    !      do i_res = 1, size (reg_data%resonances)
+    !         !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+    !         call reg_data%get_contributors (i_res, emitter, contributors%c, share_emitter)
+    !         if (.not. share_emitter) cycle
+    !         call check_for_phs_identifier &
+    !            (phs%phs_identifiers, phs%config%n_in, emitter, contributors%c, phs_exist, i_phs)
+    !         if (.not. phs_exist) &
+    !            call phs%phs_identifiers(i_phs)%init (emitter, contributors%c)
+    !         if (allocated (contributors%c)) deallocate (contributors%c)
+    !      end do
+    !   else
+    !      call check_for_phs_identifier &
+    !         (phs%phs_identifiers, phs%config%n_in, emitter, &
+    !         phs_exist = phs_exist, i_phs = i_phs)
+    !      if (.not. phs_exist) &
+    !         call phs%phs_identifiers(i_phs)%init (emitter)
+    !   end if
+    !end do
   end subroutine phs_fks_init_phs_identifiers
 
 @ %def phs_fks_init_phs_identifiers
