@@ -451,7 +451,13 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
    \end{dubious} *)
 
     let version = "1.0"
-    let model_name = "unknown"
+    let model_name =
+      let basename = Filename.basename Sys.executable_name in
+      try
+        Filename.chop_extension basename
+      with
+      | _ -> basename
+
 
     let print_description cmdline  =
       printf "Model-%s\n" model_name;
