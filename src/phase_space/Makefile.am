@@ -37,14 +37,16 @@ libphase_space_la_SOURCES = \
   phs_single.f90 \
   mappings.f90 phs_trees.f90 phs_forests.f90 \
   cascades.f90 \
-  phs_wood.f90
+  phs_wood.f90 \
+  phs_fks.f90
 
 libphase_space_ut_la_SOURCES = \
   phs_base_uti.f90 phs_base_ut.f90 \
   phs_single_uti.f90 phs_single_ut.f90 \
   phs_forests_uti.f90 phs_forests_ut.f90 \
   cascades_uti.f90 cascades_ut.f90 \
-  phs_wood_uti.f90 phs_wood_ut.f90
+  phs_wood_uti.f90 phs_wood_ut.f90 \
+  phs_fks_uti.f90 phs_fks_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = phase_space.nw
@@ -77,7 +79,11 @@ module_lists = \
   ../qft/Modules \
   ../types/Modules \
   ../matrix_elements/Modules \
-  ../beams/Modules
+  ../beams/Modules \
+  ../model_features/Modules \
+  ../variables/Modules \
+  ../expr_base/Modules \
+  ../user/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -121,7 +127,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../fastjet -I../qft -I../matrix_elements -I../types -I../particles -I../beams
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../fastjet -I../qft -I../matrix_elements -I../types -I../particles -I../beams -I../model_features -I../variables -I../expr_base -I../user
 
 
 ########################################################################
