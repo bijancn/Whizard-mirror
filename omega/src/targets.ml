@@ -450,7 +450,12 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
      module doesn't seem to be loaded on default.
    \end{dubious} *)
 
+    let version = "1.0"
+    let model_name = "unknown"
+
     let print_description cmdline  =
+      printf "Model-%s\n" model_name;
+      printf "OVM-v%s\n" version;
       printf "@\nBytecode file generated automatically by O'Mega for OVM";
       printf "@\nDo not delete any lines. You called O'Mega with";
       printf "@\n  %s" cmdline;
@@ -1722,8 +1727,8 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       print_line "    type(string_t), intent(in) :: bytecode_file";
       print_line "    type(string_t) :: version";
       print_line "    type(string_t) :: model";
-      print_line "    version = '???' ! used to come from RCS";
-      print_line "    model = '???'   ! used to come from RCS";
+      print_line ("    version = 'OVM-v" ^ version ^ "'");
+      print_line ("    model = 'Model-" ^ model_name ^ "'");
       print_line "    call setup_couplings ()";
       print_line "    call vm%init (bytecode_file, version, model, verbose=.False., &";
       print_line "      coupl_cmplx=ovm_coupl_cmplx, &";
