@@ -450,7 +450,8 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
      module doesn't seem to be loaded on default.
    \end{dubious} *)
 
-    let version = "1.0"
+    let version =
+      String.concat " " [Config.version; Config.status; Config.date]
     let model_name =
       let basename = Filename.basename Sys.executable_name in
       try
@@ -460,8 +461,8 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
 
 
     let print_description cmdline  =
-      printf "Model-%s\n" model_name;
-      printf "OVM-v%s\n" version;
+      printf "Model %s\n" model_name;
+      printf "OVM %s\n" version;
       printf "@\nBytecode file generated automatically by O'Mega for OVM";
       printf "@\nDo not delete any lines. You called O'Mega with";
       printf "@\n  %s" cmdline;
@@ -1733,8 +1734,8 @@ module VM (Fusion_Maker : Fusion.Maker) (P : Momentum.T) (M : Model.T) =
       print_line "    type(string_t), intent(in) :: bytecode_file";
       print_line "    type(string_t) :: version";
       print_line "    type(string_t) :: model";
-      print_line ("    version = 'OVM-v" ^ version ^ "'");
-      print_line ("    model = 'Model-" ^ model_name ^ "'");
+      print_line ("    version = 'OVM " ^ version ^ "'");
+      print_line ("    model = 'Model " ^ model_name ^ "'");
       print_line "    call setup_couplings ()";
       print_line "    call vm%init (bytecode_file, version, model, verbose=.False., &";
       print_line "      coupl_cmplx=ovm_coupl_cmplx, &";
@@ -5951,7 +5952,9 @@ i*)
       | powers -> String.concat " " (List.map format_power_of_nc powers)
 
     let print_description cmdline amplitudes () =
-      printf "! File generated automatically by O'Mega"; nl ();
+      printf
+        "! File generated automatically by O'Mega %s %s %s"
+        Config.version Config.status Config.date; nl ();
       printf "!"; nl ();
       printf "!   %s" cmdline; nl ();
       printf "!"; nl ();
