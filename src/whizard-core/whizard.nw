@@ -11347,15 +11347,6 @@ base type by the [[connect]] method, so we can reference them later.
     do i = 1, size (entry%mci_sets)
        call entry%mci_sets(i)%init (i, master_process)
     end do
-    call entry%set_nlo_event (local%get_lval (var_str ("?fixed_order_nlo_events")))
-    if (entry%is_nlo_event()) then
-       call entry%init_sample_formats ()
-       if (allocated (local%sample_fmt)) then
-          call entry%check_supported_sample_formats (local%sample_fmt(1))
-       else
-          call msg_fatal ("NLO Events: Sample format must be specified!")
-       end if
-    end if
 
     call entry%import_process_results (master_process)
     call entry%prepare_expressions (local)
@@ -11387,7 +11378,7 @@ base type by the [[connect]] method, so we can reference them later.
 
     call entry%connect_qcd ()
 
-    if (entry%is_nlo_event ()) then
+    if (process%is_nlo_calculation ()) then
        select type (pcm => process_instance%pcm)
        class is (pcm_instance_nlo_t)
           call pcm%set_fixed_order_event_mode ()
@@ -11432,9 +11423,10 @@ base type by the [[connect]] method, so we can reference them later.
           end select
        end if
     end select
-    if (entry%is_nlo_event()) then
-       if (entry%get_fixed_mci () > 0) then 
-          call entry%process%deactivate_components (entry%get_fixed_mci ())
+    if (entry%is_nlo () .and. .not. entry%process%is_combined_nlo_integration ()) then
+       if (entry%process%extract_fixed_mci () > 0) then 
+          call entry%process%deactivate_components &
+               (entry%process%extract_fixed_mci ())
        else
           call entry%process%deactivate_real_component ()
        end if
@@ -11559,17 +11551,6 @@ objects and store them.
   end subroutine entry_prepare_expressions
 
 @ %def entry_prepare_expressions
-@ Checks if event generation from a single grid is performed and sets
-[[fixed_mci]] correspondingly.
-<<Simulations: entry: TBP>>=
-  procedure :: set_fixed_mci => entry_set_fixed_mci
-<<Simulations: procedures>>=
-  subroutine entry_set_fixed_mci (entry)
-     class(entry_t), intent(inout) :: entry
-     entry%nlo_info%fixed_mci = entry%process%extract_fixed_mci ()
-  end subroutine entry_set_fixed_mci
-
-@ %def entry_set_fixed_mci
 @ Initializes the list of additional NLO entries.  The routine gets the
 information about how many entries to associate from [[region_data]].
 <<Simulations: entry: TBP>>=
@@ -11645,7 +11626,7 @@ information about how many entries to associate from [[region_data]].
     entry_out => null ()
     select type (entry)
     type is (entry_t)
-       if (entry%is_nlo_event()) then
+       if (entry%is_nlo ()) then
           entry_out => entry%first
        else
           entry_out => entry
@@ -11825,8 +11806,8 @@ the normalization procedure for the process components.
     class(entry_t), intent(inout) :: entry
     integer :: i_mci
     call msg_debug2 (D_CORE, "entry_select_mci")
-    if (entry%nlo_info%fixed_mci > 0) then
-       i_mci = entry%nlo_info%fixed_mci
+    if (entry%process%extract_fixed_mci () > 0) then
+       i_mci = entry%process%extract_fixed_mci ()
     else
        call entry%mci_selector%generate (entry%rng, i_mci)
     end if
@@ -12400,12 +12381,8 @@ we may only read and rescan events.
                local, global)
           call simulation%entry(i)%determine_if_powheg_matching ()
           if (signal_is_pending ())  return          
-          if (simulation%entry(i)%is_nlo_event()) then
-             if (.not. simulation%local%get_lval (&
-                  var_str ("?combined_nlo_integration"))) &
-                call simulation%entry(i)%set_fixed_mci ()
+          if (simulation%entry(i)%is_nlo ()) &
              call simulation%entry(i)%setup_additional_entries ()
-          end if
        end do
        simulation%valid = any (simulation%entry%valid)
        if (.not. simulation%valid) then
@@ -12740,7 +12717,7 @@ process instance will not be complete.  This should be fixed.
                   end if
                end do
             end do
-            if (entry%is_nlo_event()) call entry%reset_nlo_counter ()
+            if (entry%is_nlo ()) call entry%reset_nlo_counter ()
             if (.not. entry%has_valid_particle_set ()) then
                write (msg_buffer, "(A,I0,A)")  "Simulation: failed to &
                     &generate valid event after ", &
