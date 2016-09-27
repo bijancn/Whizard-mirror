@@ -166,25 +166,38 @@ build.ifort-17:
     - ifort
   allow_failure: true
 
-deploy to production:
+.deploy_template: &deploy_definition
   stage: deploy
   tags:
     - deployment
   only:
     - master
-  script:
+  before_script:
     - eval `ssh-agent -s`
     - ssh-add /scratch/bcho/id_rsa
+  except:
+    - production
+    - /^.*xfail.*$/
+
+deploy to production:
+  <<: *deploy_definition
+  script:
     - git remote set-url --push origin git@gitlab.tp.nt.uni-siegen.de:whizard/development.git
     - git checkout production
     - git merge master --ff-only
     - git push
 
 deploy to svn:
-  stage: deploy
-  tags:
-    - deployment
-  only:
-    - master
+  <<: *deploy_definition
   script:
-    - echo "coming soon"
+    - svn co svn+ssh://jr_reuter@svn.hepforge.org/hepforge/svn/whizard/trunk trunk
+    - cp .git trunk/ -r
+    - cd trunk
+    - git status
+    - git checkout -- .
+    - svn diff > ../svndiff.log
+    - svn status | grep "^?" | grep -v '.git$' | awk '{print $2}' | xargs svn add
+    - git log --format="%h %s" -n 1 HEAD > svn-commit.msg
+    - svn commit --file=svn-commit.msg
+  artifacts:
+    - svndiff.log
