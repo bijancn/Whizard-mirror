@@ -679,7 +679,8 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
 
     let initialize_cache dir =
       Printf.eprintf
-        " >>> Initializing vertex table.  This may take some time ... ";
+        " >>> Initializing vertex table %s.  This may take some time ... "
+        !cache_name;
       flush stderr;
       VCache.write_dir (hash ()) dir !cache_name
         (vertices_nocache  (M.max_degree ()) (M.flavors()));
@@ -694,7 +695,8 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
               | VCache.Hit result -> result
               | VCache.Miss ->
                   Printf.eprintf
-                    " >>> Initializing vertex table.  This may take some time ... ";
+                    " >>> Initializing vertex table %s.  This may take some time ... "
+                    !cache_name;
                   flush stderr;
                   let result = vertices_nocache max_degree flavors in
                   VCache.write (hash ()) !cache_name (result);
@@ -704,8 +706,8 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
                   result
               | VCache.Stale file ->
                   Printf.eprintf
-                    " >>> Re-initializing stale vertex table for model in file %s.  "
-                    file;
+                    " >>> Re-initializing stale vertex table %s in file %s.  "
+                    !cache_name file;
                   Printf.eprintf "This may take some time ... ";
                   flush stderr;
                   let result = vertices_nocache max_degree flavors in
@@ -717,7 +719,8 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
               end
           | Cache_Overwrite ->
               Printf.eprintf
-                " >>> Overwriting vertex table.  This may take some time ... ";
+                " >>> Overwriting vertex table %s.  This may take some time ... "
+                !cache_name;
               flush stderr;
               let result = vertices_nocache max_degree flavors in
               VCache.write (hash ()) !cache_name (result);
@@ -727,7 +730,8 @@ module Tagged (Tagger : Tagger) (PT : Tuple.Poly)
               result
           | Cache_Ignore ->
               Printf.eprintf
-                " >>> Ignoring vertex table.  This may take some time ... ";
+                " >>> Ignoring vertex table %s.  This may take some time ... "
+                !cache_name;
               flush stderr;
               let result = vertices_nocache max_degree flavors in
               vertices_cache := Some result;
