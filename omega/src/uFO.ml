@@ -1,4 +1,4 @@
-(* $Id: vertex.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* uFO.ml --
 
    Copyright (C) 1999-2016 by
 
@@ -21,13 +21,6 @@
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
-
-let rcs_file = RCS.parse "UFO" ["Reading UFO Files"]
-    { RCS.revision = "$Revision: 0$";
-      RCS.date = "$Date: 2016-03-26 00:00:00 +0100 (Sat, 26 Mar 2016) $";
-      RCS.author = "$Author: ohl $";
-      RCS.source
-        = "$URL: svn+ssh://login.hepforge.org/hepforge/svn/whizard/trunk/omega/src/UFO.ml $" }
 
 (* Unfortunately, \texttt{ocamlweb} will not typeset all multi character
    operators nicely. E.\,g.~\verb+f @< g+ comes out as [f @< g]. *)
@@ -1004,8 +997,6 @@ module Model =
     let constant_symbol = M.constant_symbol
     module Ch = M.Ch
     let charges = M.charges
-
-    let rcs = rcs_file
 
     let rec fermion_of_lorentz = function
       | Coupling.Spinor -> 1

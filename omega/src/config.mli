@@ -22,6 +22,10 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
+val version : string
+val date : string
+val status : string
+
 val default_UFO_dir : string
 
 (* Cache writing is attempted in the order [[system_cache_dir]], [[user_cache_dir]], [["."]]
