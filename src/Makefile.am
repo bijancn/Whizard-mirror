@@ -53,17 +53,17 @@ SUBDIRS = \
   beams \
   me_methods \
   xdr events \
+  user \
+  model_features \
   phase_space \
   mci \
   pythia8 \
   tauola \
   muli shower \
-  user \
   threshold \
   blha \
   gosam openloops \
   looptools \
-  model_features \
   fks \
   process_integration \
   matching \
