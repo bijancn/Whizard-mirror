@@ -648,6 +648,8 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/smtest_15.ref \
     functional_tests/ref-output/sm_cms_1.ref \
     functional_tests/ref-output/nlo_1.ref \
+    functional_tests/ref-output/openloops_1.ref \
+    functional_tests/ref-output/openloops_2.ref \
     functional_tests/ref-output/nlo_decay_1.ref \
     functional_tests/ref-output/mssmtest_1.ref \
     functional_tests/ref-output/mssmtest_2.ref \
@@ -695,8 +697,6 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/fks_res_1.ref \
     functional_tests/ref-output-double/fks_res_2.ref \
     functional_tests/ref-output-double/fks_res_3.ref \
-    functional_tests/ref-output-double/openloops_1.ref \
-    functional_tests/ref-output-double/openloops_2.ref \
     functional_tests/ref-output-double/openloops_3.ref \
     functional_tests/ref-output-double/powheg_1.ref \
     functional_tests/ref-output-double/defaultcuts.ref \
@@ -788,9 +788,7 @@ REF_OUTPUT_FILES_EXT = \
     functional_tests/ref-output-ext/beam_events_2.ref \
     functional_tests/ref-output-ext/beam_events_3.ref \
     functional_tests/ref-output-ext/mlm_matching_isr.ref \
-    functional_tests/ref-output-ext/hepmc_8.ref \
-    functional_tests/ref-output-ext/openloops_1.ref \
-    functional_tests/ref-output-ext/openloops_1.ref
+    functional_tests/ref-output-ext/hepmc_8.ref
 
 REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/circe1_4.ref \
@@ -808,9 +806,7 @@ REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/beam_events_2.ref \
     functional_tests/ref-output-quad/beam_events_3.ref \
     functional_tests/ref-output-quad/mlm_matching_isr.ref \
-    functional_tests/ref-output-quad/hepmc_8.ref \
-    functional_tests/ref-output-quad/openloops_1.ref \
-    functional_tests/ref-output-quad/openloops_1.ref
+    functional_tests/ref-output-quad/hepmc_8.ref
 
 TESTSUITES_M4 = \
     $(MISC_TESTS_M4) \
