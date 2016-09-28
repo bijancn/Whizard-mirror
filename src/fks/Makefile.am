@@ -37,7 +37,8 @@ libfks_la_SOURCES = \
   virtual.f90 \
   real_subtraction.f90 \
   dglap_remnant.f90 \
-  nlo_color_data.f90
+  nlo_color_data.f90 \
+  dispatch_fks.f90
 
 libfks_ut_la_SOURCES = \
   fks_regions_uti.f90 fks_regions_ut.f90 \
@@ -84,6 +85,7 @@ module_lists = \
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
 
+Module_dependencies.sed: $(libfks_la_SOURCES) $(libfks_ut_la_SOURCES)
 Module_dependencies.sed: $(module_lists)
 	@rm -f $@
 	echo 's/, *only:.*//' >> $@
@@ -91,10 +93,12 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
 	for list in $^; do \
-	  dir="`dirname $$list`"; \
-	  for mod in `cat $$list`; do \
-	    echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
-	  done ; \
+		if test -z `echo $$list | grep f90`; then \
+			dir="`dirname $$list`"; \
+			for mod in `cat $$list`; do \
+				echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+			done \
+		fi \
 	done
 
 DISTCLEANFILES = Module_dependencies.sed

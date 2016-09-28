@@ -46,7 +46,8 @@ libbeams_la_SOURCES = \
   hoppet_interface.f90 \
   sf_pdf_builtin.f90 \
   sf_lhapdf.f90 \
-  pdf.f90
+  pdf.f90 \
+  dispatch_beams.f90
 
 libbeams_ut_la_SOURCES = \
   beam_structures_uti.f90 beam_structures_ut.f90 \
@@ -93,7 +94,9 @@ module_lists = \
   ../physics/Modules \
   ../qft/Modules \
   ../types/Modules \
-  ../particles/Modules
+  ../particles/Modules \
+  ../model_features/Modules \
+  ../variables/Modules
 
 # Explicit dependencies, not automatically generated
 sf_circe1.lo: ../../circe1/src/circe1.$(FC_MODULE_EXT)
@@ -106,6 +109,7 @@ sf_lhapdf.lo:  ../lhapdf/lhapdf.$(FC_MODULE_EXT)
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
 
+Module_dependencies.sed: $(libbeams_la_SOURCES) $(libbeams_ut_la_SOURCES)
 Module_dependencies.sed: $(module_lists)
 	@rm -f $@
 	echo 's/, *only:.*//' >> $@
@@ -113,10 +117,12 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
 	for list in $^; do \
-	  dir="`dirname $$list`"; \
-	  for mod in `cat $$list`; do \
-	    echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
-	  done ; \
+		if test -z `echo $$list | grep f90`; then \
+			dir="`dirname $$list`"; \
+			for mod in `cat $$list`; do \
+				echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+			done \
+		fi \
 	done
 
 DISTCLEANFILES = Module_dependencies.sed
@@ -144,7 +150,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I../../circe1/src -I../../circe2/src -I../pdf_builtin -I../lhapdf
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I../../circe1/src -I../../circe2/src -I../pdf_builtin -I../lhapdf -I..//model_features -I../variables -I../expr_base -I../user -I../parsing
 
 
 ########################################################################

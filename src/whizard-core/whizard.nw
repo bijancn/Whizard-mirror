@@ -3758,71 +3758,7 @@ way to dynamically select a concrete type, using either data given by the user
 or a previous selection of a concrete type.  This is done by subroutines in
 the current module.
 
-This module provides no new types, just procedures.
-<<[[dispatch.f90]]>>=
-<<File header>>
-
-module dispatch
-  
-<<Use kinds>>
-  use kinds, only: i16
-<<Use strings>>
-  use constants, only: PI
-  use string_utils, only: split_string
-  use io_units
-  use diagnostics
-  use os_interface
-  use physics_defs, only: PHOTON
-  use physics_defs, only: MZ_REF, ALPHA_QCD_MZ_REF
-  use variables
-  use sm_qcd
-  use model_data
-  use process
-  use numeric_utils
-  use pdg_arrays
-  use sf_base
-  use sf_mappings
-  use sf_isr
-  use sf_epa
-  use sf_ewa
-  use sf_escan
-  use sf_gaussian
-  use sf_beam_events
-  use sf_circe1
-  use sf_circe2
-  use sf_pdf_builtin
-  use sf_lhapdf
-  use flavors
-  use beam_structures
-  use models
-  use rng_base
-  use rng_tao
-  use mappings
-  use phs_forests, only: phs_parameters_t
-  use phs_base
-  use phs_single
-  use phs_wood
-  use nlo_data
-  use phs_fks
-  use rt_data
-  use variables
-  use pcm_base
-
-<<Standard module head>>
-
-<<Dispatch: public>>
-
-<<Dispatch: types>>
-
-<<Dispatch: variables>>
-
-contains
-  
-<<Dispatch: procedures>>
-
-end module dispatch
-@ %def dispatch
-@ We would like to put this in the [[me_methods]] folder but it also
+We would like to put this in the [[me_methods]] folder but it also
 depends on [[gosam]] and [[openloops]], so it is unclear where to put
 it.
 <<[[dispatch_me_methods.f90]]>>=
@@ -3973,7 +3909,7 @@ intent(out).
           else
              call msg_fatal ("Dispatch User-Defined Test def: No id!")
           end if
-       end select 
+       end select
     case ("threshold")
        allocate (threshold_def_t :: core_def)
        select type (core_def)
@@ -4072,7 +4008,7 @@ second routine restores the original from the save.
 <<Dispatch me methods: procedures>>=
   subroutine dispatch_core_update &
        (core, model, helicity_selection, qcd, saved_core)
-    
+
     class(prc_core_t), allocatable, intent(inout) :: core
     class(model_data_t), intent(in), optional, target :: model
     type(helicity_selection_t), intent(in), optional :: helicity_selection
@@ -4095,7 +4031,7 @@ second routine restores the original from the save.
   end subroutine dispatch_core_update
 
   subroutine dispatch_core_restore (core, saved_core)
-    
+
     class(prc_core_t), allocatable, intent(inout) :: core
     class(prc_core_t), allocatable, intent(inout) :: saved_core
 
@@ -4110,1119 +4046,6 @@ second routine restores the original from the save.
   end subroutine dispatch_core_restore
 
 @ %def dispatch_core_update dispatch_core_restore
-@
-\subsection{Phase-space allocation}
-Allocate a phase-space object according to the variable [[$phs_method]].
-<<Dispatch: public>>=
-  public :: dispatch_phs
-<<Dispatch: procedures>>=
-  subroutine dispatch_phs (phs, global, process_id, mapping_defaults, phs_par, &
-     phs_method_in)
-    
-    class(phs_config_t), allocatable, intent(inout) :: phs
-    type(rt_data_t), intent(in) :: global
-    type(string_t), intent(in) :: process_id
-    type(mapping_defaults_t), intent(in), optional :: mapping_defaults
-    type(phs_parameters_t), intent(in), optional :: phs_par
-    type(string_t), intent(in), optional :: phs_method_in
-    type(string_t) :: phs_method, phs_file, run_id
-    logical :: use_equivalences, vis_channels, fatal_beam_decay
-    integer :: u_phs
-    logical :: exist
-
-    if (present (phs_method_in)) then
-       phs_method = phs_method_in
-    else
-       phs_method = &
-            global%var_list%get_sval (var_str ("$phs_method"))
-    end if
-    phs_file = &
-         global%var_list%get_sval (var_str ("$phs_file"))
-    use_equivalences = &
-         global%var_list%get_lval (var_str ("?use_vamp_equivalences"))
-    vis_channels = &
-         global%var_list%get_lval (var_str ("?vis_channels"))
-    fatal_beam_decay = &
-         global%var_list%get_lval (var_str ("?fatal_beam_decay"))
-    run_id = &
-         global%var_list%get_sval (var_str ("$run_id"))    
-    select case (char (phs_method))
-    case ("single")
-       allocate (phs_single_config_t :: phs)
-       if (vis_channels) then
-          call msg_warning ("Visualizing phase space channels not " // &
-               "available for method 'single'.")
-       end if
-    case ("fks")
-      allocate (phs_fks_config_t :: phs)
-    case ("wood", "default")
-       allocate (phs_wood_config_t :: phs)
-       select type (phs)
-       type is (phs_wood_config_t)
-          if (phs_file /= "") then
-             inquire (file = char (phs_file), exist = exist)
-             if (exist) then
-                call msg_message ("Phase space: reading configuration from '" &
-                     // char (phs_file) // "'")
-                u_phs = free_unit ()
-                open (u_phs, file = char (phs_file), &
-                     action = "read", status = "old")
-                call phs%set_input (u_phs)
-             else
-                call msg_fatal ("Phase space: configuration file '" &
-                     // char (phs_file) // "' not found")
-             end if
-          end if
-          if (present (phs_par)) &
-               call phs%set_parameters (phs_par)
-          if (use_equivalences) &
-               call phs%enable_equivalences ()
-          if (present (mapping_defaults)) &
-               call phs%set_mapping_defaults (mapping_defaults)
-          phs%vis_channels = vis_channels
-          phs%fatal_beam_decay = fatal_beam_decay
-          phs%os_data = global%os_data
-          phs%run_id = run_id
-       end select
-    case default
-       call msg_fatal ("Phase space: parameterization method '" &
-            // char (phs_method) // "' not implemented")
-    end select
-  end subroutine dispatch_phs
-  
-@ %def dispatch_phs
-@
-\subsection{FKS parameter}
-Initialize parameters used to optimize FKS calculations.
-<<Dispatch: public>>=
-  public :: dispatch_fks
-<<Dispatch: procedures>>=
-  subroutine dispatch_fks (fks_template, global)
-    type(fks_template_t), intent(inout) :: fks_template
-    type(rt_data_t), intent(in) :: global
-    real(default) :: fks_dij_exp1, fks_dij_exp2
-    type(string_t) :: fks_mapping_type
-    logical :: subtraction_disabled
-    type(string_t) :: exclude_from_resonance
-
-    fks_dij_exp1 = &
-       global%var_list%get_rval (var_str ("fks_dij_exp1"))
-    fks_dij_exp2 = &
-       global%var_list%get_rval (var_str ("fks_dij_exp2"))
-    fks_mapping_type = &
-       global%var_list%get_sval (var_str ("$fks_mapping_type"))
-    subtraction_disabled = &
-       global%var_list%get_lval (var_str ("?disable_subtraction"))
-
-    exclude_from_resonance = &
-       global%var_list%get_sval (var_str ("$resonances_exclude_particles"))
-    if (exclude_from_resonance /= var_str ("default")) &
-       call split_string (exclude_from_resonance, var_str (":"), &
-       fks_template%excluded_resonances)
-
-    call fks_template%set_dij_exp (fks_dij_exp1, fks_dij_exp2)
-    select case (char (fks_mapping_type))
-    case ("default")
-       call fks_template%set_mapping_type (FKS_DEFAULT)
-    case ("resonances")
-       call fks_template%set_mapping_type (FKS_RESONANCES)
-    end select
-    if (subtraction_disabled) call fks_template%disable_subtraction ()
-
-  end subroutine dispatch_fks
-
-@ %def dispatch_fks
-@
-\subsection{Random-number generator}
-Allocate a random-number generator factory according to the variable
-[[$rng_method]], using the current seed in the global record.  We take
-only the lower 15 bits of the seed, so the actual value fits into a
-positive 16-bit signed integer.
-
-Since we want to guarantee that all random-number generators in a run
-are independent, we increment the global seed by one after creating
-the rng factory.  If the user wants to have identical sequences, he
-can always set the seed manually, before it is used.
-<<Dispatch: public>>=
-  public :: dispatch_rng_factory
-<<Dispatch: procedures>>=
-  subroutine dispatch_rng_factory (rng_factory, global, local_input)
-    class(rng_factory_t), allocatable, intent(inout) :: rng_factory
-    type(rt_data_t), intent(inout), target :: global
-    type(rt_data_t), intent(in), target, optional :: local_input
-    type(rt_data_t), pointer :: local
-    type(string_t) :: rng_method
-    integer :: seed
-    character(30) :: buffer
-    integer(i16) :: s
-    if (present (local_input)) then
-       local => local_input
-    else
-       local => global
-    end if
-    rng_method = &
-         local%var_list%get_sval (var_str ("$rng_method"))
-    seed = &
-         local%var_list%get_ival (var_str ("seed"))
-    s = int (mod (seed, 32768), i16)
-    select case (char (rng_method))
-    case ("tao")
-       allocate (rng_tao_factory_t :: rng_factory)
-       call msg_message ("RNG: Initializing TAO random-number generator")       
-    case default
-       if (associated (dispatch_rng_factory_extra)) then
-          call dispatch_rng_factory_extra (rng_factory, global, local_input)
-       end if
-       if (.not. allocated (rng_factory)) then
-          call msg_fatal ("Random-number generator '" &
-               // char (rng_method) // "' not implemented")
-       end if
-    end select
-    write (buffer, "(I0)")  s
-    call msg_message ("RNG: Setting seed for random-number generator to " &
-            // trim (buffer))
-    call rng_factory%init (s)
-    call global%set_int (var_str ("seed"), seed + 1, &
-         is_known = .true.)
-  end subroutine dispatch_rng_factory
-  
-@ %def dispatch_rng_factory
-@ This is a hook that allows us to inject further handlers for
-RNG factory objects, in particular a test RNG.
-<<Dispatch: public>>=
-  public :: dispatch_rng_factory_extra
-<<Dispatch: variables>>=
-  procedure (dispatch_rng_factory), pointer :: &
-       dispatch_rng_factory_extra => null ()
-@ %def dispatch_rng_factory_extra
-@
-\subsection{Structure function configuration data}
-This data type is a container for transferring structure-function
-specific data from the [[dispatch_sf_data]] to the
-[[dispatch_sf_channels]] subroutine.
-<<Dispatch: public>>=
-  public :: sf_prop_t
-<<Dispatch: types>>=
-  type :: sf_prop_t
-     real(default), dimension(2) :: isr_eps = 1
-  end type sf_prop_t
-  
-@ %def sf_prop_t
-@
-Allocate a structure-function configuration object according to the
-[[sf_method]] string.
-
-The [[sf_prop]] object can be used to transfer structure-function
-specific data up and to the [[dispatch_sf_channels]] subroutine below,
-so they can be used for particular mappings.
-
-The [[global]] object is intent(inout) because the RNG generator seed may change
-during initialization.
-
-The [[pdg_in]] array is the array of incoming flavors, corresponding
-to the upstream structure function or the beam array.  This will be
-checked for the structure function in question and replaced by the
-outgoing flavors.  The [[pdg_prc]] array is the array of incoming
-flavors (beam index, component index) for the hard process.
-<<Dispatch: public>>=
-  public :: dispatch_sf_data
-<<Dispatch: procedures>>=
-  subroutine dispatch_sf_data (data, sf_method, i_beam, sf_prop, global, &
-       pdg_in, pdg_prc, polarized)
-    
-    class(sf_data_t), allocatable, intent(inout) :: data
-    type(string_t), intent(in) :: sf_method
-    integer, dimension(:), intent(in) :: i_beam
-    type(pdg_array_t), dimension(:), intent(inout) :: pdg_in
-    type(pdg_array_t), dimension(:,:), intent(in) :: pdg_prc
-    type(sf_prop_t), intent(inout) :: sf_prop
-    type(rt_data_t), intent(inout) :: global
-    logical, intent(in) :: polarized
-    type(model_t), pointer :: model
-    type(pdg_array_t), dimension(:), allocatable :: pdg_out
-    real(default) :: sqrts, isr_alpha, isr_q_max, isr_mass
-    integer :: isr_order
-    logical :: isr_recoil, isr_keep_energy
-    real(default) :: epa_alpha, epa_x_min, epa_q_min, epa_e_max, epa_mass
-    logical :: epa_recoil, epa_keep_energy
-    real(default) :: ewa_x_min, ewa_pt_max, ewa_mass
-    logical :: ewa_recoil, ewa_keep_energy   
-    type(pdg_array_t), dimension(:), allocatable :: pdg_prc1
-    integer :: ewa_id
-    type(string_t) :: pdf_name
-    type(string_t) :: lhapdf_dir, lhapdf_file
-    type(string_t), dimension(13) :: lhapdf_photon_sets
-    integer :: lhapdf_member, lhapdf_photon_scheme
-    logical :: hoppet_b_matching
-    class(rng_factory_t), allocatable :: rng_factory
-    logical :: circe1_photon1, circe1_photon2, circe1_generate, &
-         circe1_with_radiation
-    real(default) :: circe1_sqrts, circe1_eps
-    integer :: circe1_version, circe1_chattiness, &
-         circe1_revision
-    character(6) :: circe1_accelerator
-    logical :: circe2_polarized
-    type(string_t) :: circe2_design, circe2_file
-    real(default), dimension(2) :: gaussian_spread
-    logical :: beam_events_warn_eof
-    type(string_t) :: beam_events_dir, beam_events_file
-    logical :: escan_normalize
-    
-    lhapdf_photon_sets = [var_str ("DOG0.LHgrid"), var_str ("DOG1.LHgrid"), &
-         var_str ("DGG.LHgrid"), var_str ("LACG.LHgrid"), &
-         var_str ("GSG0.LHgrid"), var_str ("GSG1.LHgrid"), &
-         var_str ("GSG960.LHgrid"), var_str ("GSG961.LHgrid"), &
-         var_str ("GRVG0.LHgrid"), var_str ("GRVG1.LHgrid"), &
-         var_str ("ACFGPG.LHgrid"), var_str ("WHITG.LHgrid"), &
-         var_str ("SASG.LHgrid")]
-    model => global%model
-    sqrts = global%get_sqrts ()
-    associate (var_list => global%get_var_list_ptr ())
-      select case (char (sf_method))
-      case ("pdf_builtin")
-         allocate (pdf_builtin_data_t :: data)
-         select type (data)
-         type is (pdf_builtin_data_t)
-            pdf_name = &
-                 var_list%get_sval (var_str ("$pdf_builtin_set"))
-            hoppet_b_matching = &
-                 var_list%get_lval (var_str ("?hoppet_b_matching"))
-            call data%init ( &
-                 model, pdg_in(i_beam(1)), &
-                 name = pdf_name, &
-                 path = global%os_data%pdf_builtin_datapath, &
-                 hoppet_b_matching = hoppet_b_matching)
-         end select
-      case ("pdf_builtin_photon")
-         call msg_fatal ("Currently, there are no photon PDFs built into WHIZARD,", &
-              [var_str ("for the photon content inside a proton or neutron use"), &
-               var_str ("the 'lhapdf_photon' structure function.")])
-      case ("lhapdf")
-         allocate (lhapdf_data_t :: data)
-         if (pdg_array_get (pdg_in(i_beam(1)), 1) == PHOTON) then
-            call msg_fatal ("The 'lhapdf' structure is intended only for protons and", &
-                 [var_str ("pions, please use 'lhapdf_photon' for photon beams.")])
-         end if         
-         lhapdf_dir = &
-              var_list%get_sval (var_str ("$lhapdf_dir"))  
-         lhapdf_file = &
-              var_list%get_sval (var_str ("$lhapdf_file")) 
-         lhapdf_member = &
-              var_list%get_ival (var_str ("lhapdf_member"))
-         lhapdf_photon_scheme = &
-              var_list%get_ival (var_str ("lhapdf_photon_scheme"))
-         hoppet_b_matching = &
-              var_list%get_lval (var_str ("?hoppet_b_matching"))
-         select type (data)
-         type is (lhapdf_data_t)
-            call data%init &
-                 (model, pdg_in(i_beam(1)), &
-                  lhapdf_dir, lhapdf_file, lhapdf_member, &
-                  lhapdf_photon_scheme, hoppet_b_matching)
-         end select
-      case ("lhapdf_photon")
-         allocate (lhapdf_data_t :: data)
-         if (pdg_array_get_length (pdg_in(i_beam(1))) /= 1 .or. &
-              pdg_array_get (pdg_in(i_beam(1)), 1) /= PHOTON) then
-            call msg_fatal ("The 'lhapdf_photon' structure function is exclusively for", &
-                 [var_str ("photon PDFs, i.e. for photons as beam particles")])
-         end if
-         lhapdf_dir = &
-              var_list%get_sval (var_str ("$lhapdf_dir"))  
-         lhapdf_file = &
-              var_list%get_sval (var_str ("$lhapdf_photon_file")) 
-         lhapdf_member = &
-              var_list%get_ival (var_str ("lhapdf_member"))
-         lhapdf_photon_scheme = &
-              var_list%get_ival (var_str ("lhapdf_photon_scheme"))
-         if (.not. any (lhapdf_photon_sets == lhapdf_file)) then
-            call msg_fatal ("This PDF set is not supported or not " // & 
-                 "intended for photon beams.")
-         end if
-         select type (data)
-         type is (lhapdf_data_t)
-            call data%init &
-                 (model, pdg_in(i_beam(1)), &
-                  lhapdf_dir, lhapdf_file, lhapdf_member, &
-                  lhapdf_photon_scheme)
-         end select         
-      case ("isr")
-         allocate (isr_data_t :: data)
-         isr_alpha = &
-              var_list%get_rval (var_str ("isr_alpha"))
-         if (vanishes (isr_alpha)) then
-            isr_alpha = (var_list%get_rval (var_str ("ee"))) &
-                 ** 2 / (4 * PI)
-         end if
-         isr_q_max = &
-              var_list%get_rval (var_str ("isr_q_max"))
-         if (vanishes (isr_q_max)) then
-            isr_q_max = sqrts
-         end if
-         isr_mass   = var_list%get_rval (var_str ("isr_mass"))
-         isr_order  = var_list%get_ival (var_str ("isr_order"))
-         isr_recoil = var_list%get_lval (var_str ("?isr_recoil")) 
-         isr_keep_energy = var_list%get_lval (var_str ("?isr_keep_energy"))
-         select type (data)
-         type is (isr_data_t)
-            call data%init &
-                 (model, pdg_in (i_beam(1)), isr_alpha, isr_q_max, &
-                 isr_mass, isr_order, recoil = isr_recoil, keep_energy = &
-                 isr_keep_energy)
-            call data%check ()
-            sf_prop%isr_eps(i_beam(1)) = data%get_eps ()
-         end select
-      case ("epa")
-         allocate (epa_data_t :: data)
-         epa_alpha = var_list%get_rval (var_str ("epa_alpha"))
-         if (vanishes (epa_alpha)) then
-            epa_alpha = (var_list%get_rval (var_str ("ee"))) &
-                 ** 2 / (4 * PI)
-         end if         
-         epa_x_min = var_list%get_rval (var_str ("epa_x_min"))
-         epa_q_min = var_list%get_rval (var_str ("epa_q_min"))
-         epa_e_max = var_list%get_rval (var_str ("epa_e_max"))
-         if (vanishes (epa_e_max)) then
-            epa_e_max = sqrts
-         end if
-         epa_mass   = var_list%get_rval (var_str ("epa_mass"))
-         epa_recoil = var_list%get_lval (var_str ("?epa_recoil"))
-         epa_keep_energy = var_list%get_lval (var_str ("?epa_keep_energy"))
-         select type (data)            
-         type is (epa_data_t)
-            call data%init &
-                 (model, pdg_in (i_beam(1)), epa_alpha, epa_x_min, &
-                 epa_q_min, epa_e_max, epa_mass, recoil = epa_recoil, &
-                 keep_energy = epa_keep_energy)
-            call data%check ()
-         end select
-      case ("ewa")
-         allocate (ewa_data_t :: data)
-         allocate (pdg_prc1 (size (pdg_prc, 2)))
-         pdg_prc1 = pdg_prc(i_beam(1),:)
-         if (any (pdg_array_get_length (pdg_prc1) /= 1) &
-              .or. any (pdg_prc1 /= pdg_prc1(1))) then
-            call msg_fatal &
-                 ("EWA: process incoming particle (W/Z) must be unique")
-         end if
-         ewa_id = abs (pdg_array_get (pdg_prc1(1), 1))
-         ewa_x_min = var_list%get_rval (var_str ("ewa_x_min"))
-         ewa_pt_max = var_list%get_rval (var_str ("ewa_pt_max")) 
-         if (vanishes (ewa_pt_max)) then
-            ewa_pt_max = sqrts
-         end if
-         ewa_mass = var_list%get_rval (var_str ("ewa_mass"))  
-         ewa_recoil = var_list%get_lval (&
-              var_str ("?ewa_recoil"))
-         ewa_keep_energy = var_list%get_lval (&
-              var_str ("?ewa_keep_energy"))
-         select type (data)
-         type is (ewa_data_t)
-            call data%init &
-                 (model, pdg_in (i_beam(1)), ewa_x_min, &
-                 ewa_pt_max, sqrts, ewa_recoil, &
-                 ewa_keep_energy, ewa_mass)
-            call data%set_id (ewa_id)
-            call data%check ()
-         end select
-      case ("circe1")
-         allocate (circe1_data_t :: data)
-         select type (data)
-         type is (circe1_data_t)
-            circe1_photon1 = &
-                 var_list%get_lval (var_str ("?circe1_photon1"))	
-            circe1_photon2 = &
-                 var_list%get_lval (var_str ("?circe1_photon2"))	
-            circe1_sqrts = &
-                 var_list%get_rval (var_str ("circe1_sqrts"))
-            circe1_eps = &
-                 var_list%get_rval (var_str ("circe1_eps"))
-            if (circe1_sqrts <= 0)  circe1_sqrts = sqrts
-            circe1_generate = &
-                 var_list%get_lval (var_str ("?circe1_generate"))
-            circe1_version = &
-                 var_list%get_ival (var_str ("circe1_ver"))
-            circe1_revision = &
-                 var_list%get_ival (var_str ("circe1_rev"))
-            circe1_accelerator = &
-                 char (var_list%get_sval (var_str ("$circe1_acc")))
-            circe1_chattiness = &
-                 var_list%get_ival (var_str ("circe1_chat"))
-            circe1_with_radiation = &
-                 var_list%get_lval (var_str ("?circe1_with_radiation"))
-            call data%init (model, pdg_in, circe1_sqrts, circe1_eps, &
-                 [circe1_photon1, circe1_photon2], &
-                 circe1_version, circe1_revision, circe1_accelerator, &
-                 circe1_chattiness, circe1_with_radiation)
-            if (circe1_generate) then
-               call msg_message ("CIRCE1: activating generator mode")
-               call dispatch_rng_factory (rng_factory, global)
-               call data%set_generator_mode (rng_factory)
-            end if
-         end select
-      case ("circe2")
-         allocate (circe2_data_t :: data)
-         select type (data)
-         type is (circe2_data_t)
-            circe2_polarized = &
-                 var_list%get_lval (var_str ("?circe2_polarized"))
-            circe2_file = &
-                 var_list%get_sval (var_str ("$circe2_file"))
-            circe2_design = &
-                 var_list%get_sval (var_str ("$circe2_design"))
-            call data%init (global%os_data, model, pdg_in, sqrts, &
-                 circe2_polarized, polarized, circe2_file, circe2_design)
-            call msg_message ("CIRCE2: activating generator mode")
-            call dispatch_rng_factory (rng_factory, global)
-            call data%set_generator_mode (rng_factory)
-         end select
-      case ("gaussian")
-         allocate (gaussian_data_t :: data)
-         select type (data)
-         type is (gaussian_data_t)
-            gaussian_spread = &
-                 [var_list%get_rval (var_str ("gaussian_spread1")), &
-                 var_list%get_rval (var_str ("gaussian_spread2"))]
-            call dispatch_rng_factory (rng_factory, global)
-            call data%init (model, pdg_in, gaussian_spread, rng_factory)
-         end select
-      case ("beam_events")
-         allocate (beam_events_data_t :: data)
-         select type (data)
-         type is (beam_events_data_t)
-            beam_events_dir = global%os_data%whizard_beamsimpath
-            beam_events_file = var_list%get_sval (&
-                 var_str ("$beam_events_file"))
-            beam_events_warn_eof = var_list%get_lval (&
-                 var_str ("?beam_events_warn_eof"))
-            call data%init (model, pdg_in, &
-                    beam_events_dir, beam_events_file, beam_events_warn_eof)  
-         end select
-      case ("energy_scan")
-         escan_normalize = &
-              var_list%get_lval (var_str ("?energy_scan_normalize"))
-         allocate (escan_data_t :: data)
-         select type (data) 
-         type is (escan_data_t)
-            if (escan_normalize) then
-               call data%init (model, pdg_in)  
-            else
-               call data%init (model, pdg_in, sqrts)  
-            end if
-         end select
-      case default
-         if (associated (dispatch_sf_data_extra)) then
-            call dispatch_sf_data_extra (data, &
-                 sf_method, i_beam, sf_prop, global, &
-                 pdg_in, pdg_prc, polarized)
-         end if
-         if (.not. allocated (data)) then
-            call msg_fatal ("Structure function '" &
-                 // char (sf_method) // "' not implemented")
-         end if
-      end select
-    end associate
-    if (allocated (data)) then
-       allocate (pdg_out (size (pdg_prc, 1)))
-       call data%get_pdg_out (pdg_out)
-       pdg_in(i_beam) = pdg_out
-    end if
-  end subroutine dispatch_sf_data
-  
-@ %def dispatch_sf_data
-@ This is a hook that allows us to inject further handlers for
-structure-function objects, in particular a test structure function.
-<<Dispatch: public>>=
-  public :: dispatch_sf_data_extra
-<<Dispatch: variables>>=
-  procedure (dispatch_sf_data), pointer :: &
-       dispatch_sf_data_extra => null ()
-@ %def dispatch_sf_data_extra
-@ This is an auxiliary procedure, used by the beam-structure
-expansion: tell for a given structure function name, whether it
-corresponds to a pair spectrum ($n=2$), a single-particle structure
-function ($n=1$), or nothing ($n=0$). Though [[energy_scan]] can
-in principle also be a pair spectrum, it always has only one
-parameter.
-<<Dispatch: procedures>>=
-  function strfun_mode (name) result (n)
-    type(string_t), intent(in) :: name
-    integer :: n
-    select case (char (name))
-    case ("none")
-       n = 0
-    case ("sf_test_0", "sf_test_1")
-       n = 1
-    case ("pdf_builtin","pdf_builtin_photon", &
-          "lhapdf","lhapdf_photon")
-       n = 1
-    case ("isr","epa","ewa")
-       n = 1
-    case ("circe1", "circe2")
-       n = 2
-    case ("gaussian")
-       n = 2
-    case ("beam_events")
-       n = 2
-    case ("energy_scan")
-       n = 2
-    case default
-       n = -1
-       call msg_bug ("Structure function '" // char (name) &
-            // "' not supported yet")
-    end select
-  end function strfun_mode
-    
-@ %def strfun_mode
-@ Dispatch a whole structure-function chain, given beam data and beam
-structure data.
-
-This could be done generically, but we should look at the specific
-combination of structure functions in order to select appropriate mappings.
-
-The [[beam_structure]] argument gets copied because
-we want to expand it to canonical form (one valid structure-function
-entry per record) before proceeding further.
-
-The [[pdg_prc]] argument is the array of incoming flavors.  The first
-index is the beam index, the second one the process component index.
-Each element is itself a PDG array, notrivial if there is a flavor sum
-for the incoming state of this component.
-
-The dispatcher is divided in two parts.  The first part configures the
-structure function data themselves.  After this, we can configure the
-phase space for the elementary process.
-<<Dispatch: public>>=
-  public :: dispatch_sf_config
-<<Dispatch: procedures>>=
-  subroutine dispatch_sf_config (sf_config, sf_prop, global, pdg_prc)
-
-    type(sf_config_t), dimension(:), allocatable, intent(out) :: sf_config
-    type(sf_prop_t), intent(out) :: sf_prop
-    type(rt_data_t), intent(inout) :: global
-    type(beam_structure_t) :: beam_structure
-    class(sf_data_t), allocatable :: sf_data
-    type(pdg_array_t), dimension(:,:), intent(in) :: pdg_prc
-    type(string_t), dimension(:), allocatable :: prt_in
-    type(pdg_array_t), dimension(:), allocatable :: pdg_in
-    type(flavor_t) :: flv_in
-    integer :: n_beam, n_record, i
-
-    beam_structure = global%beam_structure
-    call beam_structure%expand (strfun_mode)
-    n_record = beam_structure%get_n_record ()
-    allocate (sf_config (n_record))
-    n_beam = beam_structure%get_n_beam ()
-    if (n_beam > 0) then
-       allocate (prt_in (n_beam), pdg_in (n_beam))
-       prt_in = beam_structure%get_prt ()
-       do i = 1, n_beam
-          call flv_in%init (prt_in(i), global%model)
-          pdg_in(i) = flv_in%get_pdg ()
-       end do
-    else
-       n_beam = size (pdg_prc, 1)
-       allocate (pdg_in (n_beam))
-       pdg_in = pdg_prc(:,1)
-    end if
-    do i = 1, n_record
-       call dispatch_sf_data (sf_data, &
-            beam_structure%get_name (i), &
-            beam_structure%get_i_entry (i), &
-            sf_prop, global, pdg_in, pdg_prc, &
-            beam_structure%polarized ())
-       call sf_config(i)%init (beam_structure%get_i_entry (i), sf_data)
-       deallocate (sf_data)
-    end do
-  end subroutine dispatch_sf_config
-    
-@ %def dispatch_sf_config
-@ The second part configures channel mappings, using some conditions
-from the phase space configuration.  If there are no structure
-functions, we enable a default setup with a single (dummy)
-structure-function channel.  Otherwise, we look at the channel
-collection that we got from the phase-space configuration step.  Each
-entry should be translated into an independent structure-function
-channel, where typically there is one default entry, which could be
-mapped using a standard s-channel mapping if the structure function
-setup recommends this, and other entries with s-channel resonances.
-The latter need to be translated into global mappings from the
-structure-function chain.
-<<Dispatch: public>>=
-  public :: dispatch_sf_channels
-<<Dispatch: procedures>>=
-  subroutine dispatch_sf_channels (sf_channel, sf_string, sf_prop, coll, global)
-    
-    type(sf_channel_t), dimension(:), allocatable, intent(out) :: sf_channel
-    type(string_t), intent(out) :: sf_string
-    type(sf_prop_t), intent(in) :: sf_prop
-    type(phs_channel_collection_t), intent(in) :: coll
-    type(rt_data_t), intent(in) :: global
-    type(beam_structure_t) :: beam_structure
-    class(channel_prop_t), allocatable :: prop
-    integer :: n_strfun, n_sf_channel, i
-    logical :: sf_allow_s_mapping, circe1_map, circe1_generate
-    logical :: s_mapping_enable, endpoint_mapping, power_mapping
-    integer, dimension(:), allocatable :: s_mapping, single_mapping
-    real(default) :: sqrts, s_mapping_power
-    real(default) :: circe1_mapping_slope, endpoint_mapping_slope
-    real(default) :: power_mapping_eps
-    sqrts = global%get_sqrts ()
-    beam_structure = global%beam_structure
-    call beam_structure%expand (strfun_mode)
-    n_strfun = beam_structure%get_n_record ()
-    sf_string = beam_structure%to_string (sf_only = .true.)
-    sf_allow_s_mapping = &
-         global%var_list%get_lval (var_str ("?sf_allow_s_mapping"))
-    circe1_generate = &
-         global%var_list%get_lval (var_str ("?circe1_generate"))
-    circe1_map = &
-         global%var_list%get_lval (var_str ("?circe1_map"))
-    circe1_mapping_slope = &
-         global%var_list%get_rval (var_str ("circe1_mapping_slope"))
-    s_mapping_enable = .false.
-    s_mapping_power = 1
-    endpoint_mapping = .false.
-    endpoint_mapping_slope = 1
-    power_mapping = .false.
-    select case (char (sf_string))
-    case ("", "[any particles]")
-    case ("pdf_builtin, none", &
-         "pdf_builtin_photon, none", &
-         "none, pdf_builtin", &
-         "none, pdf_builtin_photon", &
-         "lhapdf, none", &
-         "lhapdf_photon, none", &
-         "none, lhapdf", &
-         "none, lhapdf_photon")
-    case ("pdf_builtin, none => none, pdf_builtin", &
-          "pdf_builtin, none => none, pdf_builtin_photon", &
-          "pdf_builtin_photon, none => none, pdf_builtin", &
-          "pdf_builtin_photon, none => none, pdf_builtin_photon", &
-          "lhapdf, none => none, lhapdf", &
-          "lhapdf, none => none, lhapdf_photon", &
-          "lhapdf_photon, none => none, lhapdf", &
-          "lhapdf_photon, none => none, lhapdf_photon")
-       allocate (s_mapping (2), source = [1, 2])
-       s_mapping_enable = .true.
-       s_mapping_power = 2
-    case ("pdf_builtin, none => none, pdf_builtin => epa, none => none, epa", &
-          "pdf_builtin, none => none, pdf_builtin => ewa, none => none, ewa", &
-          "pdf_builtin, none => none, pdf_builtin => ewa, none => none, epa", &
-          "pdf_builtin, none => none, pdf_builtin => epa, none => none, ewa")
-       allocate (s_mapping (2), source = [1, 2])
-       s_mapping_enable = .true.
-       s_mapping_power = 2
-    case ("isr, none", &
-         "none, isr")
-       allocate (single_mapping (1), source = [1])
-    case ("isr, none => none, isr")
-       allocate (s_mapping (2), source = [1, 2])
-       power_mapping = .true.
-       power_mapping_eps = minval (sf_prop%isr_eps)
-    case ("isr, none => none, isr => epa, none => none, epa", &
-          "isr, none => none, isr => ewa, none => none, ewa", &
-          "isr, none => none, isr => ewa, none => none, epa", &
-          "isr, none => none, isr => epa, none => none, ewa")
-       allocate (s_mapping (2), source = [1, 2])
-       power_mapping = .true.
-       power_mapping_eps = minval (sf_prop%isr_eps)
-    case ("circe1 => isr, none => none, isr => epa, none => none, epa", &
-          "circe1 => isr, none => none, isr => ewa, none => none, ewa", &
-          "circe1 => isr, none => none, isr => ewa, none => none, epa", &
-          "circe1 => isr, none => none, isr => epa, none => none, ewa")
-       if (circe1_generate) then
-          allocate (s_mapping (2), source = [2, 3])
-       else
-          allocate (s_mapping (3), source = [1, 2, 3])
-          endpoint_mapping = .true.
-          endpoint_mapping_slope = circe1_mapping_slope
-       end if
-       power_mapping = .true.
-       power_mapping_eps = minval (sf_prop%isr_eps)       
-    case ("pdf_builtin, none => none, isr", &
-         "pdf_builtin_photon, none => none, isr", &
-         "lhapdf, none => none, isr", &
-         "lhapdf_photon, none => none, isr")
-       allocate (single_mapping (1), source = [2])
-    case ("isr, none => none, pdf_builtin", &
-         "isr, none => none, pdf_builtin_photon", &
-         "isr, none => none, lhapdf", &
-         "isr, none => none, lhapdf_photon")
-       allocate (single_mapping (1), source = [1])
-    case ("epa, none", &
-          "none, epa")
-       allocate (single_mapping (1), source = [1])
-    case ("epa, none => none, epa")
-       allocate (single_mapping (2), source = [1, 2])
-    case ("epa, none => none, isr", &
-         "isr, none => none, epa", &
-         "ewa, none => none, isr", &
-         "isr, none => none, ewa")
-       allocate (single_mapping (2), source = [1, 2])
-    case ("pdf_builtin, none => none, epa", &
-         "pdf_builtin_photon, none => none, epa", &
-         "lhapdf, none => none, epa", &
-         "lhapdf_photon, none => none, epa")
-       allocate (single_mapping (1), source = [2])
-    case ("pdf_builtin, none => none, ewa", &
-         "pdf_builtin_photon, none => none, ewa", &
-         "lhapdf, none => none, ewa", &
-         "lhapdf_photon, none => none, ewa")
-       allocate (single_mapping (1), source = [2])       
-    case ("epa, none => none, pdf_builtin", &
-         "epa, none => none, pdf_builtin_photon", &
-         "epa, none => none, lhapdf", &
-         "epa, none => none, lhapdf_photon")
-       allocate (single_mapping (1), source = [1])
-    case ("ewa, none => none, pdf_builtin", &
-         "ewa, none => none, pdf_builtin_photon", &
-         "ewa, none => none, lhapdf", &
-         "ewa, none => none, lhapdf_photon")
-       allocate (single_mapping (1), source = [1])       
-    case ("ewa, none", &
-          "none, ewa")
-       allocate (single_mapping (1), source = [1])
-    case ("ewa, none => none, ewa")
-       allocate (single_mapping (2), source = [1, 2])
-    case ("energy_scan, none => none, energy_scan")
-       allocate (s_mapping (2), source = [1, 2])
-    case ("sf_test_1, none => none, sf_test_1")
-       allocate (s_mapping (2), source = [1, 2])
-    case ("circe1")
-       if (circe1_generate) then
-          !!! no mapping
-       else if (circe1_map) then
-          allocate (s_mapping (1), source = [1])
-          endpoint_mapping = .true.
-          endpoint_mapping_slope = circe1_mapping_slope
-       else
-          allocate (s_mapping (1), source = [1])
-          s_mapping_enable = .true.
-       end if
-    case ("circe1 => isr, none => none, isr")
-       if (circe1_generate) then
-          allocate (s_mapping (2), source = [2, 3])
-       else
-          allocate (s_mapping (3), source = [1, 2, 3])
-          endpoint_mapping = .true.
-          endpoint_mapping_slope = circe1_mapping_slope
-       end if
-       power_mapping = .true.
-       power_mapping_eps = minval (sf_prop%isr_eps)
-    case ("circe1 => isr, none", &
-         "circe1 => none, isr")
-       allocate (single_mapping (1), source = [2])
-    case ("circe1 => epa, none => none, epa")
-       if (circe1_generate) then
-          allocate (single_mapping (2), source = [2, 3])
-       else
-          call msg_fatal ("CIRCE/EPA: supported with ?circe1_generate=true &
-               &only")
-       end if
-    case ("circe1 => ewa, none => none, ewa")
-       if (circe1_generate) then
-          allocate (single_mapping (2), source = [2, 3])
-       else 
-          call msg_fatal ("CIRCE/EWA: supported with ?circe1_generate=true &
-               &only")
-       end if
-    case ("circe1 => epa, none", &
-         "circe1 => none, epa")
-       if (circe1_generate) then
-          allocate (single_mapping (1), source = [2])
-       else
-          call msg_fatal ("CIRCE/EPA: supported with ?circe1_generate=true &
-               &only")
-       end if
-    case ("circe1 => epa, none => none, isr", &
-         "circe1 => isr, none => none, epa", &
-         "circe1 => ewa, none => none, isr", &
-         "circe1 => isr, none => none, ewa")
-       if (circe1_generate) then
-          allocate (single_mapping (2), source = [2, 3])
-       else
-          call msg_fatal ("CIRCE/EPA: supported with ?circe1_generate=true &
-               &only")
-       end if
-    case ("circe2", &
-         "gaussian", &
-         "beam_events")
-       !!! no mapping
-    case ("circe2 => isr, none => none, isr", &
-       "gaussian => isr, none => none, isr", &
-       "beam_events => isr, none => none, isr")
-       allocate (s_mapping (2), source = [2, 3])
-       power_mapping = .true.
-       power_mapping_eps = minval (sf_prop%isr_eps)
-    case ("circe2 => isr, none", &
-         "circe2 => none, isr", &
-         "gaussian => isr, none", &
-         "gaussian => none, isr", &
-         "beam_events => isr, none", &
-         "beam_events => none, isr")
-       allocate (single_mapping (1), source = [2])
-    case ("circe2 => epa, none => none, epa", &
-         "gaussian => epa, none => none, epa", &
-         "beam_events => epa, none => none, epa")
-       allocate (single_mapping (2), source = [2, 3])
-    case ("circe2 => epa, none", &
-         "circe2 => none, epa", &
-         "circe2 => ewa, none", &
-         "circe2 => none, ewa", &
-         "gaussian => epa, none", &
-         "gaussian => none, epa", &
-         "gaussian => ewa, none", &
-         "gaussian => none, ewa", &
-         "beam_events => epa, none", &
-         "beam_events => none, epa", &
-         "beam_events => ewa, none", &
-         "beam_events => none, ewa")
-       allocate (single_mapping (1), source = [2])
-    case ("circe2 => epa, none => none, isr", &
-         "circe2 => isr, none => none, epa", &
-         "circe2 => ewa, none => none, isr", &
-         "circe2 => isr, none => none, ewa", &
-         "gaussian => epa, none => none, isr", &
-         "gaussian => isr, none => none, epa", &
-         "gaussian => ewa, none => none, isr", &
-         "gaussian => isr, none => none, ewa", &
-         "beam_events => epa, none => none, isr", &
-         "beam_events => isr, none => none, epa", &
-         "beam_events => ewa, none => none, isr", &
-         "beam_events => isr, none => none, ewa")
-       allocate (single_mapping (2), source = [2, 3])
-    case ("energy_scan")
-    case default
-       call msg_fatal ("Beam structure: " &
-            // char (sf_string) // " not supported")
-    end select
-    if (sf_allow_s_mapping .and. coll%n > 0) then
-       n_sf_channel = coll%n
-       allocate (sf_channel (n_sf_channel))
-       do i = 1, n_sf_channel
-          call sf_channel(i)%init (n_strfun)
-          if (allocated (single_mapping)) then
-             call sf_channel(i)%activate_mapping (single_mapping)
-          end if
-          if (allocated (prop))  deallocate (prop)
-          call coll%get_entry (i, prop)
-          if (allocated (prop)) then
-             if (endpoint_mapping .and. power_mapping) then
-                select type (prop)
-                type is (resonance_t)
-                   call sf_channel(i)%set_eir_mapping (s_mapping, &
-                        a = endpoint_mapping_slope, eps = power_mapping_eps, &
-                        m = prop%mass / sqrts, w = prop%width / sqrts)
-                type is (on_shell_t)
-                   call sf_channel(i)%set_eio_mapping (s_mapping, &
-                        a = endpoint_mapping_slope, eps = power_mapping_eps, &
-                        m = prop%mass / sqrts)
-                end select
-             else if (endpoint_mapping) then
-                select type (prop)
-                type is (resonance_t)
-                   call sf_channel(i)%set_epr_mapping (s_mapping, &
-                        a = endpoint_mapping_slope, &
-                        m = prop%mass / sqrts, w = prop%width / sqrts)
-                type is (on_shell_t)
-                   call sf_channel(i)%set_epo_mapping (s_mapping, &
-                        a = endpoint_mapping_slope, &
-                        m = prop%mass / sqrts)
-                end select
-             else if (power_mapping) then
-                select type (prop)
-                type is (resonance_t)
-                   call sf_channel(i)%set_ipr_mapping (s_mapping, &
-                        eps = power_mapping_eps, &
-                        m = prop%mass / sqrts, w = prop%width / sqrts)
-                type is (on_shell_t)
-                   call sf_channel(i)%set_ipo_mapping (s_mapping, &
-                        eps = power_mapping_eps, &
-                        m = prop%mass / sqrts)
-                end select
-             else if (allocated (s_mapping)) then
-                select type (prop)
-                type is (resonance_t)
-                   call sf_channel(i)%set_res_mapping (s_mapping, &
-                        m = prop%mass / sqrts, w = prop%width / sqrts)
-                type is (on_shell_t)
-                   call sf_channel(i)%set_os_mapping (s_mapping, &
-                        m = prop%mass / sqrts)
-                end select
-             else if (allocated (single_mapping)) then
-                select type (prop)
-                type is (resonance_t)
-                   call sf_channel(i)%set_res_mapping (single_mapping, &
-                        m = prop%mass / sqrts, w = prop%width / sqrts)
-                type is (on_shell_t)
-                   call sf_channel(i)%set_os_mapping (single_mapping, &
-                        m = prop%mass / sqrts)
-                end select
-             end if
-          else if (endpoint_mapping .and. power_mapping) then
-             call sf_channel(i)%set_ei_mapping (s_mapping, &
-                  a = endpoint_mapping_slope, eps = power_mapping_eps)
-          else if (endpoint_mapping .and. .not. allocated (single_mapping)) then
-             call sf_channel(i)%set_ep_mapping (s_mapping, &
-                  a = endpoint_mapping_slope)
-          else if (power_mapping .and. .not. allocated (single_mapping)) then
-             call sf_channel(i)%set_ip_mapping (s_mapping, &
-                  eps = power_mapping_eps)
-          else if (s_mapping_enable .and. .not. allocated (single_mapping)) then
-             call sf_channel(i)%set_s_mapping (s_mapping, &
-                  power = s_mapping_power)
-          end if
-       end do
-    else if (sf_allow_s_mapping) then
-       allocate (sf_channel (1))
-       call sf_channel(1)%init (n_strfun)
-       if (allocated (single_mapping)) then
-          call sf_channel(1)%activate_mapping (single_mapping)
-       else if (endpoint_mapping .and. power_mapping) then
-          call sf_channel(i)%set_ei_mapping (s_mapping, &
-               a = endpoint_mapping_slope, eps = power_mapping_eps)
-       else if (endpoint_mapping) then
-          call sf_channel(1)%set_ep_mapping (s_mapping, &
-                  a = endpoint_mapping_slope)
-       else if (power_mapping) then
-          call sf_channel(1)%set_ip_mapping (s_mapping, &
-                  eps = power_mapping_eps)
-       else if (s_mapping_enable) then
-          call sf_channel(1)%set_s_mapping (s_mapping, &
-               power = s_mapping_power)
-       end if
-    else
-       allocate (sf_channel (1))
-       call sf_channel(1)%init (n_strfun)
-       if (allocated (single_mapping)) then
-          call sf_channel(1)%activate_mapping (single_mapping)
-       end if
-    end if
-  end subroutine dispatch_sf_channels
-    
-@ %def dispatch_sf_channels
-@
-\subsection{QCD coupling}
-Allocate the [[alpha]] (running coupling) component of the [[qcd]] block with
-a concrete implementation, depending on the variable settings in the
-[[global]] record.
-
-If a fixed $\alpha_s$ is requested, we do not allocate the
-[[qcd%alpha]] object.  In this case, the matrix element code will just take
-the model parameter as-is, which implies fixed $\alpha_s$.  If the
-object is allocated, the $\alpha_s$ value is computed and updated for
-each matrix-element call.
-<<Dispatch: public>>=
-  public :: dispatch_qcd
-<<Dispatch: procedures>>=
-  subroutine dispatch_qcd (qcd, global)
-
-    type(qcd_t), intent(inout) :: qcd
-    type(rt_data_t), intent(in), target :: global
-    logical :: fixed, from_mz, from_pdf_builtin, from_lhapdf, from_lambda_qcd
-    real(default) :: mz, alpha_val, lambda
-    integer :: nf, order, lhapdf_member
-    type(string_t) :: pdfset, lhapdf_dir, lhapdf_file
-    fixed = &
-         global%get_lval (var_str ("?alpha_s_is_fixed"))
-    from_mz = &
-         global%get_lval (var_str ("?alpha_s_from_mz"))
-    from_pdf_builtin = &
-         global%get_lval (var_str ("?alpha_s_from_pdf_builtin"))
-    from_lhapdf = &
-         global%get_lval (var_str ("?alpha_s_from_lhapdf"))
-    from_lambda_qcd = &
-         global%get_lval (var_str ("?alpha_s_from_lambda_qcd"))
-    pdfset = &
-         global%get_sval (var_str ("$pdf_builtin_set"))    
-    lambda = &
-         global%get_rval (var_str ("lambda_qcd"))
-    nf = &
-         global%get_ival (var_str ("alpha_s_nf"))
-    order = &
-         global%get_ival (var_str ("alpha_s_order"))
-    lhapdf_dir = &
-         global%get_sval (var_str ("$lhapdf_dir"))
-    lhapdf_file = &
-         global%get_sval (var_str ("$lhapdf_file"))
-    lhapdf_member = &
-         global%get_ival (var_str ("lhapdf_member"))         
-    if (global%contains (var_str ("mZ"))) then
-       mz = global%get_rval (var_str ("mZ"))
-    else
-       mz = MZ_REF
-    end if
-    if (global%contains (var_str ("alphas"))) then
-       alpha_val = global%get_rval (var_str ("alphas"))
-    else
-       alpha_val = ALPHA_QCD_MZ_REF
-    end if
-    if (allocated (qcd%alpha))  deallocate (qcd%alpha)
-    if (from_lhapdf .and. from_pdf_builtin) then
-        call msg_fatal (" Mixing alphas evolution",  &
-             [var_str (" from LHAPDF and builtin PDF is not permitted")])
-    end if 
-    select case (count ([from_mz, from_pdf_builtin, from_lhapdf, from_lambda_qcd]))
-    case (0)
-       if (fixed) then 
-          allocate (alpha_qcd_fixed_t :: qcd%alpha)          
-       else
-          call msg_fatal ("QCD alpha: no calculation mode set")
-       end if
-    case (2:)
-       call msg_fatal ("QCD alpha: calculation mode is ambiguous")
-    case (1)
-       if (fixed) then
-          call msg_fatal ("QCD alpha: use '?alpha_s_is_fixed = false' for " // &
-               "running alphas")          
-       else if (from_mz) then
-          allocate (alpha_qcd_from_scale_t :: qcd%alpha)
-       else if (from_pdf_builtin) then
-          allocate (alpha_qcd_pdf_builtin_t :: qcd%alpha)
-       else if (from_lhapdf) then
-          allocate (alpha_qcd_lhapdf_t :: qcd%alpha)
-       else if (from_lambda_qcd) then
-          allocate (alpha_qcd_from_lambda_t :: qcd%alpha)
-       end if
-       call msg_message ("QCD alpha: using a running strong coupling")
-    end select
-    select type (alpha => qcd%alpha)
-    type is (alpha_qcd_fixed_t)
-       alpha%val = alpha_val
-    type is (alpha_qcd_from_scale_t)
-       alpha%mu_ref = mz
-       alpha%ref = alpha_val
-       alpha%order = order
-       alpha%nf = nf
-    type is (alpha_qcd_from_lambda_t)
-       alpha%lambda = lambda
-       alpha%order = order
-       alpha%nf = nf
-    type is (alpha_qcd_pdf_builtin_t)
-       call alpha%init (pdfset, &
-            global%os_data%pdf_builtin_datapath)
-    type is (alpha_qcd_lhapdf_t)
-       call alpha%init (lhapdf_file, lhapdf_member, lhapdf_dir)
-    end select
-  end subroutine dispatch_qcd
-  
-@ %def dispatch_qcd
-@
-\subsection{SLHA Interface}
-This is a container for the settings for the SLHA Interface
-<<Dispatch: public>>=
-  public :: dispatch_slha
-<<Dispatch: procedures>>=
-  subroutine dispatch_slha (global, input, spectrum, decays)
-    type(rt_data_t), intent(inout), target :: global
-    logical, intent(out) :: input, spectrum, decays
-    input = global%get_lval (var_str ("?slha_read_input"))
-    spectrum = global%get_lval (var_str ("?slha_read_spectrum"))
-    decays = global%get_lval (var_str ("?slha_read_decays"))
-  end subroutine dispatch_slha
-
-@ %def dispatch_slha  
 @
 \subsection{Unit Tests}
 Test module, followed by the corresponding implementation module.
@@ -5284,7 +4107,10 @@ module dispatch_uti
   use shower_base
   use rt_data
 
-  use dispatch
+  use slha_interface, only: dispatch_slha
+  use dispatch_rng
+  use dispatch_beams
+  use dispatch_phase_space
   use dispatch_mci
   use dispatch_me_methods
   use dispatch_transforms
@@ -5595,7 +4421,7 @@ end module dispatch_uti
     call global%set_string (&
          var_str ("$phs_method"), &
          var_str ("single"), is_known = .true.)
-    call dispatch_phs (phs, global, var_str ("dispatch_4"))
+    call dispatch_phs (phs, global%var_list, global%os_data, var_str ("dispatch_4"))
     call phs%write (u)
 
     call phs%final ()
@@ -5608,7 +4434,7 @@ end module dispatch_uti
     call global%set_string (&
          var_str ("$phs_method"), &
          var_str ("wood"), is_known = .true.)
-    call dispatch_phs (phs, global, var_str ("dispatch_4"))
+    call dispatch_phs (phs, global%var_list, global%os_data, var_str ("dispatch_4"))
     call phs%write (u)
           
     call phs%final ()
@@ -5629,7 +4455,7 @@ end module dispatch_uti
     mapping_defs%step_mapping = .false.   
     mapping_defs%step_mapping_exp = .false.       
     mapping_defs%enable_s_mapping = .true.       
-    call dispatch_phs (phs, global, var_str ("dispatch_4"), &
+    call dispatch_phs (phs, global%var_list, global%os_data, var_str ("dispatch_4"), &
          mapping_defs, phs_par)    
     call phs%write (u)    
         
@@ -5651,21 +4477,21 @@ any tests are executed.
 <<Dispatch: public test auxiliary>>=
   public :: dispatch_rng_factory_test
 <<Dispatch: test auxiliary>>=
-  subroutine dispatch_rng_factory_test (rng_factory, global, local_input)
+  subroutine dispatch_rng_factory_test (rng_factory, var_list_global, var_list_local)
     use rng_base
     use rng_base_ut, only: rng_test_factory_t
     class(rng_factory_t), allocatable, intent(inout) :: rng_factory
-    type(rt_data_t), intent(inout), target :: global
-    type(rt_data_t), intent(in), target, optional :: local_input
-    type(rt_data_t), pointer :: local
+    type(var_list_t), intent(inout) :: var_list_global
+    type(var_list_t), intent(in), optional :: var_list_local
+    type(var_list_t) :: local
     type(string_t) :: rng_method
-    if (present (local_input)) then
-       local => local_input
+    if (present (var_list_local)) then
+       local = var_list_local
     else
-       local => global
+       local = var_list_global
     end if
     rng_method = &
-         local%var_list%get_sval (var_str ("$rng_method"))
+         local%get_sval (var_str ("$rng_method"))
     select case (char (rng_method))
     case ("unit_test")
        allocate (rng_test_factory_t :: rng_factory)
@@ -5700,7 +4526,7 @@ any tests are executed.
          var_str ("unit_test"), is_known = .true.)
     call global%set_int (&
          var_str ("seed"), 1, is_known = .true.)
-    call dispatch_rng_factory (rng_factory, global)
+    call dispatch_rng_factory (rng_factory, global%var_list)
     call rng_factory%write (u)
     deallocate (rng_factory)
     
@@ -5711,7 +4537,7 @@ any tests are executed.
     call global%set_string (&
          var_str ("$rng_method"), &
          var_str ("tao"), is_known = .true.)
-    call dispatch_rng_factory (rng_factory, global)
+    call dispatch_rng_factory (rng_factory, global%var_list)
     call rng_factory%write (u)
     deallocate (rng_factory)
     
@@ -5779,7 +4605,7 @@ any tests are executed.
     call global%set_string (&
          var_str ("$phs_file"), &
          var_str ("dispatch_6.phs"), is_known = .true.)
-    call dispatch_phs (phs, global, var_str ("dispatch_6"))
+    call dispatch_phs (phs, global%var_list, global%os_data, var_str ("dispatch_6"))
 
     call phs%init (process_data, global%model)
     call phs%configure (sqrts = 1000._default)
@@ -5810,15 +4636,19 @@ functions.  This procedure should be assigned to the
 <<Dispatch: public test auxiliary>>=
   public :: dispatch_sf_data_test
 <<Dispatch: test auxiliary>>=
-  subroutine dispatch_sf_data_test (data, sf_method, i_beam, sf_prop, global, &
-       pdg_in, pdg_prc, polarized)
+  subroutine dispatch_sf_data_test (data, sf_method, i_beam, sf_prop, &
+       var_list, var_list_global, model, os_data, sqrts, pdg_in, pdg_prc, polarized)
     class(sf_data_t), allocatable, intent(inout) :: data
     type(string_t), intent(in) :: sf_method
     integer, dimension(:), intent(in) :: i_beam
+    type(var_list_t), intent(in) :: var_list
+    type(var_list_t), intent(inout) :: var_list_global
+    type(model_t), target, intent(in) :: model
+    type(os_data_t), intent(in) :: os_data
+    real(default), intent(in) :: sqrts
     type(pdg_array_t), dimension(:), intent(inout) :: pdg_in
     type(pdg_array_t), dimension(:,:), intent(in) :: pdg_prc
     type(sf_prop_t), intent(inout) :: sf_prop
-    type(rt_data_t), intent(inout) :: global
     logical, intent(in) :: polarized
     select case (char (sf_method))
     case ("sf_test_0", "sf_test_1")
@@ -5826,8 +4656,8 @@ functions.  This procedure should be assigned to the
        select type (data)
        type is (sf_test_data_t)
           select case (char (sf_method))
-          case ("sf_test_0");  call data%init (global%model, pdg_in(i_beam(1)))
-          case ("sf_test_1");  call data%init (global%model, pdg_in(i_beam(1)),&
+          case ("sf_test_0");  call data%init (model, pdg_in(i_beam(1)))
+          case ("sf_test_1");  call data%init (model, pdg_in(i_beam(1)),&
                mode = 1)
           end select
        end select
@@ -5877,8 +4707,10 @@ functions.  This procedure should be assigned to the
     write (u, "(A)")
 
     sf_method = "pdf_builtin"
-    call dispatch_sf_data &
-         (data, sf_method, [1], sf_prop, global, pdg_in, pdg_prc, .false.)
+    call dispatch_sf_data (data, sf_method, [1], sf_prop, &
+         global%get_var_list_ptr (), global%var_list, &
+         global%model, global%os_data, global%get_sqrts (), &
+         pdg_in, pdg_prc, .false.)
     call data%write (u)
 
     call data%get_pdg_out (pdg_out)
@@ -5897,8 +4729,10 @@ functions.  This procedure should be assigned to the
     call global%set_string (var_str ("$pdf_builtin_set"), &
          var_str ("CTEQ6M"), is_known = .true.)
     sf_method = "pdf_builtin"
-    call dispatch_sf_data &
-         (data, sf_method, [1], sf_prop, global, pdg_in, pdg_prc, .false.)
+    call dispatch_sf_data (data, sf_method, [1], sf_prop, &
+         global%get_var_list_ptr (), global%var_list, &
+         global%model, global%os_data, global%get_sqrts (), &
+         pdg_in, pdg_prc, .false.)
     call data%write (u)
 
     call data%get_pdg_out (pdg_out)
@@ -5962,12 +4796,15 @@ functions.  This procedure should be assigned to the
     call global%beam_structure%init_sf (flv%get_name (), [1])
     call global%beam_structure%set_sf (1, 1, var_str ("pdf_builtin"))
     
-    call dispatch_sf_config (sf_config, sf_prop, global, pdg_prc)
+    call dispatch_sf_config (sf_config, sf_prop, global%beam_structure, &
+         global%get_var_list_ptr (), global%var_list, &
+         global%model, global%os_data, global%get_sqrts (), pdg_prc)
     do i = 1, size (sf_config)
        call sf_config(i)%write (u)
     end do
 
-    call dispatch_sf_channels (sf_channel, sf_string, sf_prop, coll, global)
+    call dispatch_sf_channels (sf_channel, sf_string, sf_prop, coll, &
+         global%var_list, global%get_sqrts(), global%beam_structure)
     write (u, "(1x,A)")  "Mapping configuration:"
     do i = 1, size (sf_channel)
        write (u, "(2x)", advance = "no")
@@ -5991,12 +4828,15 @@ functions.  This procedure should be assigned to the
     call global%beam_structure%init_sf (flv%get_name (), [1])
     call global%beam_structure%set_sf (1, 1, var_str ("circe1"))
     
-    call dispatch_sf_config (sf_config, sf_prop, global, pdg_prc)
+    call dispatch_sf_config (sf_config, sf_prop, global%beam_structure, &
+         global%get_var_list_ptr (), global%var_list, &
+         global%model, global%os_data, global%get_sqrts (), pdg_prc)
     do i = 1, size (sf_config)
        call sf_config(i)%write (u)
     end do
 
-    call dispatch_sf_channels (sf_channel, sf_string, sf_prop, coll, global)
+    call dispatch_sf_channels (sf_channel, sf_string, sf_prop, coll, &
+         global%var_list, global%get_sqrts(), global%beam_structure)
     write (u, "(1x,A)")  "Mapping configuration:"
     do i = 1, size (sf_channel)
        write (u, "(2x)", advance = "no")
@@ -6250,7 +5090,7 @@ This test dispatches an [[qcd]] object, which is used to compute the
 
     call global%set_log (var_str ("?alpha_s_is_fixed"), &
          .true., is_known = .true.)
-    call dispatch_qcd (qcd, global)
+    call dispatch_qcd (qcd, global%get_var_list_ptr (), global%os_data)
     call qcd%write (u)
 
     write (u, "(A)")
@@ -6267,7 +5107,7 @@ This test dispatches an [[qcd]] object, which is used to compute the
           is_known=.true.)
     call model_vars%set_real (var_str ("mZ"), 91.234_default, &
           is_known=.true.)
-    call dispatch_qcd (qcd, global)
+    call dispatch_qcd (qcd, global%get_var_list_ptr (), global%os_data)
     call qcd%write (u)
     
     write (u, "(A)")
@@ -6286,7 +5126,7 @@ This test dispatches an [[qcd]] object, which is used to compute the
          (var_str ("alpha_s_order"), 2, is_known = .true.)
     call global%set_int &
          (var_str ("alpha_s_nf"), 4, is_known = .true.)
-    call dispatch_qcd (qcd, global)
+    call dispatch_qcd (qcd, global%get_var_list_ptr (), global%os_data)
     call qcd%write (u)
     
     write (u, "(A)")
@@ -6299,7 +5139,7 @@ This test dispatches an [[qcd]] object, which is used to compute the
     call global%set_log &
          (var_str ("?alpha_s_from_pdf_builtin"), &
          .true., is_known = .true.)
-    call dispatch_qcd (qcd, global)
+    call dispatch_qcd (qcd, global%get_var_list_ptr (), global%os_data)
     call qcd%write (u)
     
     call global%final ()
@@ -6464,7 +5304,7 @@ to [[false]].
     write (u, "(A)")    
     
     call global%global_init ()
-    call dispatch_slha (global, &
+    call dispatch_slha (global%var_list, &
          input = input, spectrum = spectrum, decays = decays)
 
     write (u, "(A,1x,L1)")  " slha_read_input     =", input
@@ -6485,7 +5325,7 @@ to [[false]].
     call global%set_log (var_str ("?slha_read_decays"), &
          .false., is_known = .true.)    
 
-    call dispatch_slha (global, &
+    call dispatch_slha (global%var_list, &
          input = input, spectrum = spectrum, decays = decays)
 
     write (u, "(A,1x,L1)")  " slha_read_input     =", input
@@ -7941,18 +6781,17 @@ module integrations
   use models
   use iterations
   use rt_data
-  
-  use dispatch, only: dispatch_qcd
-  use dispatch, only: dispatch_rng_factory
+
+  use dispatch_rng, only: dispatch_rng_factory
   use dispatch_me_methods, only: dispatch_core
-  use dispatch, only: sf_prop_t
-  use dispatch, only: dispatch_sf_channels, dispatch_sf_config
-  use dispatch, only: dispatch_phs
+  use dispatch_beams, only: dispatch_qcd, sf_prop_t, dispatch_sf_config
+  use dispatch_phase_space, only: dispatch_sf_channels
+  use dispatch_phase_space, only: dispatch_phs
   use dispatch_mci, only: dispatch_mci_s
 
   use compilations, only: compile_library
 
-  use dispatch, only: dispatch_fks
+  use dispatch_fks, only: dispatch_fks_s
   use blha_olp_interfaces
   use nlo_data
 
@@ -8059,8 +6898,8 @@ local changes to currently inactive models.
     end if
     intg%run_id = &
          local%var_list%get_sval (var_str ("$run_id"))
-    call dispatch_qcd (intg%qcd, local)
-    call dispatch_rng_factory (rng_factory, local)
+    call dispatch_qcd (intg%qcd, local%get_var_list_ptr (), local%os_data)
+    call dispatch_rng_factory (rng_factory, local%var_list)
     model_name = local%prclib%get_model_name (intg%process_id)
     if (local%get_sval (var_str ("$model_name")) == model_name) then
        model => local%model
@@ -8229,7 +7068,8 @@ local changes to currently inactive models.
                &with fixed-energy beams")
        end if
        call dispatch_sf_channels &
-            (sf_channel, sf_string, sf_prop, phs_channel_collection, local)
+            (sf_channel, sf_string, sf_prop, phs_channel_collection, &
+            local%var_list, local%get_sqrts(), local%beam_structure)
        if (allocated (sf_channel)) then
           if (size (sf_channel) > 0) then
              call intg%process%set_sf_channel (sf_channel)
@@ -8275,8 +7115,8 @@ local changes to currently inactive models.
       mapping_defs%enable_s_mapping = &
            var_list%get_lval (var_str ("?phs_s_mapping"))
   
-      call dispatch_phs (phs_config_template, local, &
-           intg%process_id, mapping_defs, phs_par)
+      call dispatch_phs (phs_config_template, local%var_list, &
+           local%os_data, intg%process_id, mapping_defs, phs_par)
     end subroutine setup_phase_space
   
     subroutine setup_log_and_history ()
@@ -8341,13 +7181,14 @@ local changes to currently inactive models.
       use_powheg_damping = var_list%get_lval (var_str ("?powheg_use_damping"))
       setup_real_fin = i > 0
       if (.not. setup_real_fin) then
-         call dispatch_phs (phs_config_template_other, local, &
-            intg%process_id, mapping_defs, phs_par, &
+         call dispatch_phs (phs_config_template_other, local%var_list, &
+            local%os_data, intg%process_id, mapping_defs, phs_par, &
             var_str ('fks'))
-         call dispatch_fks (fks_template, local)
+         call dispatch_fks_s (fks_template, local%var_list)
       else
-         call dispatch_phs (phs_config_template_other, local, &
-            intg%process_id, mapping_defs, phs_par, var_str ('wood'))
+         call dispatch_phs (phs_config_template_other, local%var_list, &
+            local%os_data, intg%process_id, mapping_defs, phs_par, &
+            var_str ('wood'))
       end if
       call intg%process%init_component &
          (i_component, core%has_matrix_element (), mci_template, &
@@ -8367,8 +7208,8 @@ local changes to currently inactive models.
     end subroutine setup_real_component
   
     subroutine setup_mismatch_component ()
-      call dispatch_phs (phs_config_template_other, local, &
-         intg%process_id, mapping_defs, phs_par, var_str ('fks')) 
+      call dispatch_phs (phs_config_template_other, local%var_list, &
+           local%os_data, intg%process_id, mapping_defs, phs_par, var_str ('fks')) 
       call intg%process%init_component & 
          (i_component, core%has_matrix_element (), mci_template, &
          phs_config_template_other)
@@ -8377,7 +7218,7 @@ local changes to currently inactive models.
     end subroutine setup_mismatch_component 
 
     subroutine setup_dglap_component ()
-      call dispatch_phs (phs_config_template_other, local, &
+      call dispatch_phs (phs_config_template_other, local%var_list, local%os_data, &
           intg%process_id, mapping_defs, phs_par, &
           var_str ('fks'))
       call intg%process%init_component &
@@ -8449,7 +7290,9 @@ local changes to currently inactive models.
          allocate (pdg_prc (n_in, n_components))
          pdg_prc = 0
       end if
-      call dispatch_sf_config (sf_config, sf_prop, local, pdg_prc)
+      call dispatch_sf_config (sf_config, sf_prop, local%beam_structure, &
+         local%get_var_list_ptr (), local%var_list, &
+         local%model, local%os_data, local%get_sqrts (), pdg_prc)
       sf_trace = &
            var_list%get_lval (var_str ("?sf_trace"))
       sf_trace_file = &
@@ -9685,7 +8528,7 @@ zero here.
     use process_configurations_ut, only: prepare_test_library
     use compilations, only: compile_library
     use integrations
-    
+
     implicit none
 
     integer, intent(in) :: u
@@ -9884,7 +8727,7 @@ This test is only run when event analysis can be done.
     character(91) :: buffer
     type(string_t) :: his_file, ps_file, pdf_file
     logical :: exist, exist_ps, exist_pdf
-    
+
     write (u, "(A)")  "* Test output: integrations_history_1"
     write (u, "(A)")  "*   Purpose: test integration history files"
     write (u, "(A)")
@@ -9901,11 +8744,11 @@ This test is only run when event analysis can be done.
     procname = "integrations_history_1"
 
     call global%set_log (var_str ("?vis_history"), &
-         .true., is_known = .true.)        
+         .true., is_known = .true.)
     call global%set_log (var_str ("?integration_timer"),&
-         .false., is_known = .true.)    
+         .false., is_known = .true.)
     call global%set_log (var_str ("?phs_s_mapping"),&
-         .false., is_known = .true.)    
+         .false., is_known = .true.)
     
     call prepare_test_library (global, libname, 1, [procname])
     call compile_library (libname, global)
@@ -10777,8 +9620,8 @@ module simulations
   use eio_base
   use rt_data
 
-  use dispatch, only: dispatch_qcd
-  use dispatch, only: dispatch_rng_factory
+  use dispatch_beams, only: dispatch_qcd
+  use dispatch_rng, only: dispatch_rng_factory
   use dispatch_me_methods, only: dispatch_core_update, dispatch_core_restore
   use dispatch_transforms, only: dispatch_evt_decay
   use dispatch_transforms, only: dispatch_evt_shower
@@ -11370,7 +10213,7 @@ base type by the [[connect]] method, so we can reference them later.
        end if
     end if
     call entry%setup_event_transforms (process, local)
-    call dispatch_qcd (entry%qcd, local)
+    call dispatch_qcd (entry%qcd, local%get_var_list_ptr (), local%os_data)
 
     call entry%connect_qcd ()
 
@@ -12389,7 +11232,7 @@ we may only read and rescan events.
     end if
 !!! if this becomes conditional, some ref files will need update (seed change)
 !    if (generate) then
-       call dispatch_rng_factory (rng_factory, local)
+       call dispatch_rng_factory (rng_factory, local%var_list)
        call rng_factory%make (simulation%rng)
 !    end if
     if (all (simulation%entry%has_integral)) then
@@ -12862,7 +11705,7 @@ if [[update_weight]] is set.)  Otherwise, we accept the reference values.
     simulation%n_evt_requested = n
     call simulation%entry%set_n (n)
     if (simulation%update_sqme .or. simulation%update_weight) then
-       call dispatch_qcd (qcd, global)
+       call dispatch_qcd (qcd, global%get_var_list_ptr (), global%os_data)
        call simulation%update_processes &
             (global%model, qcd, global%get_helicity_selection ())
        str3 = "(process parameters updated) "
@@ -16150,8 +14993,6 @@ module commands
   use eio_data
   use rt_data
 
-  use dispatch, only: dispatch_slha
-
   use process_configurations
   use compilations, only: compile_library, compile_executable
   use integrations, only: integrate_process
@@ -17877,7 +16718,7 @@ with the model.  This is similar to executing [[cmd_model]].
           call msg_fatal ("SLHA: global model not associated")
           return
        end if
-       call dispatch_slha (cmd%local, &
+       call dispatch_slha (cmd%local%var_list, &
             input = input, spectrum = spectrum, decays = decays)
        call global%ensure_model_copy ()
        call slha_read_file &
@@ -28651,7 +27492,7 @@ This generator is not normally available for the dispatcher.  We assign an
 additional dispatch routine to the hook in the [[dispatch]] module
 which will be checked before the default rule.
 <<Main: use tests>>=
-  use dispatch, only: dispatch_rng_factory_extra
+  use dispatch_rng, only: dispatch_rng_factory_extra
   use dispatch_ut, only: dispatch_rng_factory_test
 <<Main: prepare testbed>>=
   dispatch_rng_factory_extra => dispatch_rng_factory_test
@@ -28661,7 +27502,7 @@ These are not normally available for the dispatcher.  We assign an
 additional dispatch routine to the hook in the [[dispatch]] module
 which will be checked before the default rule.
 <<Main: use tests>>=
-  use dispatch, only: dispatch_sf_data_extra
+  use dispatch_beams, only: dispatch_sf_data_extra
   use dispatch_ut, only: dispatch_sf_data_test
 <<Main: prepare testbed>>=
   dispatch_sf_data_extra => dispatch_sf_data_test

@@ -38,12 +38,13 @@ SUBDIRS = \
   utilities \
   testing \
   system \
-  combinatorics parsing rng expr_base \
+  combinatorics parsing expr_base \
   sindarin \
   physics qft \
   fastjet \
   types \
   variables \
+  rng \
   matrix_elements \
   hepmc lcio particles \
   lhapdf \
