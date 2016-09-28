@@ -1,4 +1,4 @@
-! $Id: xsect.f90 774 2009-06-11 17:42:04Z ohl $
+! xsect.f90 --
 
 module gauss
   use omega_kinds

@@ -22,7 +22,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-(* $Id: modellib_MSSM.ml 7667 2016-07-29 17:37:42Z jr_reuter $ *)
+(* modellib_MSSM.ml -- *)
 
 (* \thocwmodulesection{Minimal Supersymmetric Standard Model} *)
 
