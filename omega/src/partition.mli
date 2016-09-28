@@ -35,8 +35,6 @@ val triples : int -> int -> int -> (int * int * int) list
    \end{equation} *)
 val tuples : int -> int -> int -> int -> int list list
 
-val rcs : RCS.t
-
 (*i
  *  Local Variables:
  *  mode:caml
