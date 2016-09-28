@@ -1,4 +1,4 @@
-% $Id: omega_logo.mp 7444 2016-02-17 15:37:20Z jr_reuter $
+% omega_logo.mp --
 %
 %  Copyright (C) 1999-2016 by 
 %
