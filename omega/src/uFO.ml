@@ -1790,6 +1790,7 @@ i.e.
       let mass_symbol f = (particle f).Particle.mass
       and width_symbol f = (particle f).Particle.width in
       let gauge_symbol () = "?GAUGE?" in
+      let constant_symbol c = "g" in
       let color f = Color.Singlet in (* TEMPORARY HACK! *)
       M.setup ~color ~pdg ~lorentz ~propagator
         ~width:(fun f -> Coupling.Constant)
@@ -1802,7 +1803,7 @@ i.e.
             Coupling.derived_arrays = [] })
         ~flavor_of_string ~flavor_to_string ~flavor_to_TeX
         ~flavor_symbol ~gauge_symbol ~mass_symbol ~width_symbol
-        ~constant_symbol:(fun c -> "g");
+        ~constant_symbol;
       initialized_from := Some dir
 
     let ufo_directory = ref Config.default_UFO_dir
