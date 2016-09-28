@@ -95,7 +95,6 @@ module_lists = \
   ../qft/Modules \
   ../types/Modules \
   ../particles/Modules \
-  ../model_features/Modules \
   ../variables/Modules
 
 # Explicit dependencies, not automatically generated
@@ -117,7 +116,7 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
 	for list in $^; do \
-		if test -z `echo $$list | grep f90`; then \
+		if ! echo $$list | grep f90 > /dev/null ; then \
 			dir="`dirname $$list`"; \
 			for mod in `cat $$list`; do \
 				echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
@@ -150,7 +149,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I../../circe1/src -I../../circe2/src -I../pdf_builtin -I../lhapdf -I..//model_features -I../variables -I../expr_base -I../user -I../parsing
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../rng -I../physics -I../fastjet -I../qft -I../types -I../particles -I../../circe1/src -I../../circe2/src -I../pdf_builtin -I../lhapdf -I../variables -I../expr_base -I../user -I../parsing
 
 
 ########################################################################
