@@ -1,4 +1,4 @@
-(* $Id: coupling.mli 7506 2016-04-05 14:39:23Z jr_reuter $
+(* coupling.mli --
 
    Copyright (C) 1999-2016 by
 

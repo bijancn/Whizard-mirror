@@ -1,5 +1,5 @@
 #! /bin/sh
-# $Id: make_modules_eps.sh 5342 2014-02-21 11:04:47Z msekulla $
+# make_modules_eps.sh --
 
 root=`pwd`
 
