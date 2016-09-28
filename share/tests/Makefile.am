@@ -750,6 +750,7 @@ REF_OUTPUT_FILES_PREC = \
     functional_tests/ref-output-prec/nlo_4.ref \
     functional_tests/ref-output-prec/openloops_3.ref \
     functional_tests/ref-output-prec/fks_res_2.ref \
+    functional_tests/ref-output-prec/fks_res_3.ref \
     functional_tests/ref-output-prec/defaultcuts.ref \
     functional_tests/ref-output-prec/parton_shower_2.ref \
     functional_tests/ref-output-prec/helicity.ref \
