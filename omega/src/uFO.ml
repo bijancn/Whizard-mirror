@@ -1044,8 +1044,6 @@ module Model =
     let dummy_tensor3 = Coupling.Scalar_Scalar_Scalar 1
     let dummy_tensor4 = Coupling.Scalar4 1
 
-    let dummy_constant = None
-
     let third i j =
       match i, j with
       | 1, 2 | 2, 1 -> 3
@@ -1330,7 +1328,7 @@ i.e.
 	       (ka, la, mu, i, q))
 	   l)
 
-    let translate_lorentz_gauge_3 t p kalamuiq =
+    let translate_lorentz_gauge_3 t p g kalamuiq =
       match normalize_lorentz_gauge_3 kalamuiq with
       | [ (ka1, la1, mu1, i1, q1);
 	  (ka2, la2, mu2, i2, q2);
@@ -1345,7 +1343,7 @@ i.e.
 	 then begin
 	   ((p.(0), p.(1), p.(2)),
 	    Coupling.Gauge_Gauge_Gauge (Q.to_integer q1),
-	    dummy_constant)
+	    g)
 	 end else
 	   invalid_arg "translate_lorentz_gauge_3"
       | _ -> invalid_arg "translate_lorentz_gauge_3: expected 6 terms"
@@ -1415,7 +1413,7 @@ i.e.
 	  ([L.Metric(ka4,la4); L.P(mu4,i4)], q4);
 	  ([L.Metric(ka5,la5); L.P(mu5,i5)], q5);
 	  ([L.Metric(ka6,la6); L.P(mu6,i6)], q6)] as t ->
-	 translate_lorentz_gauge_3 t p
+	 translate_lorentz_gauge_3 t p g
 	   [ (ka1, la1, mu1, i1, q1);
 	     (ka2, la2, mu2, i2, q2);
 	     (ka3, la3, mu3, i3, q3);
@@ -1458,14 +1456,14 @@ i.e.
 	      ("unhandled 3-vertex w/2 Lorentz structures: " ^
 		  (String.concat ", "
 		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	   ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	   ((p.(0), p.(1), p.(2)), dummy_tensor3, g.(0).(0))
 	 end
       | t, qc, g ->
 	 prerr_endline
 	   ("unhandled 3-vertex w/multiple Lorentz structures: " ^
 	       (String.concat ", "
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	 ((p.(0), p.(1), p.(2)), dummy_tensor3, g.(0).(0))
 
 (* Use the fact that $g_{\mu\nu}g_{\kappa\lambda}$ is symmetric in the
    interchanges $\mu\leftrightarrow\nu$, $\kappa\leftrightarrow\lambda$
@@ -1604,7 +1602,7 @@ i.e.
 		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
 		      (String.concat ", "
 			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-		((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
+		((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, Some g)
 	      end else
 		invalid_arg "translate_gauge_vertex4: different couplings"
 	   | FF132 (q1', q2', q3', a, b, c, d) ->
@@ -1619,7 +1617,7 @@ i.e.
 		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
 		      (String.concat ", "
 			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-		((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
+		((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, Some g)
 	      end else
 		invalid_arg "translate_gauge_vertex4: different couplings"
 	   | _ -> invalid_arg "translate_gauge_vertex4: wrong color"
@@ -1632,10 +1630,10 @@ i.e.
       let module L = UFOx.Lorentz_Atom in
       match t, translate_color4 c, g with
       | [| [ [], qt] |], C3 qc, [| [| g |] |] ->
-	 ((p.(0), p.(1), p.(2), p.(3)), Scalar4 (coeff qt qc), dummy_constant)
+	 ((p.(0), p.(1), p.(2), p.(3)), Scalar4 (coeff qt qc), g)
       | [| t |], qc, [| [| g |] |] ->
 	 begin match translate_lorentz_4 model p t with
-	 | p, q, t -> ((p.(0), p.(1), p.(2), p.(3)), t, dummy_constant)
+	 | p, q, t -> ((p.(0), p.(1), p.(2), p.(3)), t, g)
 	 end
       | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
@@ -1769,7 +1767,6 @@ i.e.
 	translate_vertices model flavor_of_symbol model in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
       let input_parameters = 
-        (None (* ["0.0_default"] *), 0.0) ::
         (List.map (fun (n, v, _) -> (n, v)) variables) in
       let derived_parameters =
         List.map (fun (n, f, _) -> (Coupling.Real n, Coupling.Const 0))
@@ -1793,7 +1790,7 @@ i.e.
       let gauge_symbol () = "?GAUGE?" in
       let constant_symbol = function
         | Some c -> c.UFO_Coupling.name
-        | None -> "{???}" in
+        | None -> "<<UNDEFINED>>" in
       let color f = Color.Singlet in (* TEMPORARY HACK! *)
       M.setup ~color ~pdg ~lorentz ~propagator
         ~width:(fun f -> Coupling.Constant)
