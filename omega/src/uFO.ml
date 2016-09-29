@@ -1453,7 +1453,7 @@ i.e.
 	      invalid_arg "translate_coupling3: incompatible flavors"
 	 | _ ->
 	    prerr_endline
-	      ("unhandled 3-vertex w/2 Lorentz structures: " ^
+	      ("unhandled 3-vertex w/3 or more Lorentz structures: " ^
 		  (String.concat ", "
 		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	   ((p.(0), p.(1), p.(2)), dummy_tensor3, g.(0).(0))
@@ -1665,12 +1665,8 @@ i.e.
 	and c = v.Vertex.color in
 	let t = Array.map (fun l -> l.Lorentz.structure) t in
 	match Array.length p with
-	| 3 ->
-	   let p, t, g = translate_coupling3 model p t c g in
-           ((p, t, g) :: v3, v4, vn)
-	| 4 ->
-	   let p, t, g = translate_coupling4 model p t c g in
-           (v3, (p, t, g) :: v4, vn)
+	| 3 -> (translate_coupling3 model p t c g :: v3, v4, vn)
+	| 4 -> (v3, translate_coupling4 model p t c g :: v4, vn)
 	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
         ([], [], []) (values model.vertices)
 
