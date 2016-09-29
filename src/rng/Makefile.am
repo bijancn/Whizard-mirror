@@ -34,7 +34,8 @@ check_LTLIBRARIES = librng_ut.la
 librng_la_SOURCES = \
   rng_base.f90 \
   selectors.f90 \
-  rng_tao.f90
+  rng_tao.f90 \
+  dispatch_rng.f90
 
 librng_ut_la_SOURCES = \
   rng_base_uti.f90 rng_base_ut.f90 \
@@ -63,11 +64,13 @@ module_lists = \
   ../basics/Modules \
   ../utilities/Modules \
   ../testing/Modules \
-  ../system/Modules
+  ../system/Modules \
+  ../variables/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
 
+Module_dependencies.sed: $(librng_la_SOURCES) $(librng_ut_la_SOURCES)
 Module_dependencies.sed: $(module_lists)
 	@rm -f $@
 	echo 's/, *only:.*//' >> $@
@@ -75,10 +78,12 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
 	for list in $^; do \
-	  dir="`dirname $$list`"; \
-	  for mod in `cat $$list`; do \
-	    echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
-	  done ; \
+		if test -z `echo $$list | grep f90`; then \
+			dir="`dirname $$list`"; \
+			for mod in `cat $$list`; do \
+				echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+			done \
+		fi \
 	done
 
 DISTCLEANFILES = Module_dependencies.sed
@@ -110,7 +115,7 @@ rng_tao.lo: ../../vamp/src/tao_random_numbers.$(FC_MODULE_EXT)
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../../vamp/src
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../../vamp/src -I../variables -I../expr_base -I../user -I../parsing -I../types -I../fastjet -I../physics -I../combinatorics
 
 
 ########################################################################
