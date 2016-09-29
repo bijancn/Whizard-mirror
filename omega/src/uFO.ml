@@ -1429,7 +1429,7 @@ i.e.
       let open Coupling in
       match t, translate_color3 c, g with
       | [| t |], qc, [| [| g |] |] ->
-	 translate_coupling3_1 model p t qc g
+	 [translate_coupling3_1 model p t qc g]
       | [| t |], qc, _ ->
 	 invalid_arg "translate_coupling3: too many constants"
       | [| t1; t2 |] as t, qc, [| [| g1; g2 |] |] ->
@@ -1437,16 +1437,11 @@ i.e.
 		      translate_coupling3_1 model p t2 qc g2) with
 	 | ((p1, p2, p3), FBF (q, Psibar, l, Psi), g),
            ((p1', p2', p3'), FBF (q', Psibar, l', Psi), g') ->
-	    prerr_endline
-	      ("incompletely handled 3-vertex w/2 Lorentz structures: " ^
-		  (String.concat ", "
-		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	    if p1 = p1' && p2 = p2' && p3 = p3' then begin
 	      match l, l' with
-	      | P, S | S, P -> ((p1, p2, p3), FBF (q, Psibar, SP, Psi), g)
-	      | SL, SR | SR, SL -> ((p1, p2, p3), FBF (q, Psibar, SLR, Psi), g)
-	      | V, A | A, V -> ((p1, p2, p3), FBF (q, Psibar, VA, Psi), g)
-	      | VL, VR | VR, VL -> ((p1, p2, p3), FBF (q, Psibar, VLR, Psi), g)
+	      | P, S | S, P | SL, SR | SR, SL | V, A | A, V | VL, VR | VR, VL ->
+                 [((p1, p2, p3), FBF (q, Psibar, l, Psi), g);
+                  ((p1, p2, p3), FBF (q, Psibar, l', Psi), g')]
 	      | _, _ ->
 		 invalid_arg "translate_coupling3: incompatible Dirac matrices"
 	    end else
@@ -1456,14 +1451,14 @@ i.e.
 	      ("unhandled 3-vertex w/3 or more Lorentz structures: " ^
 		  (String.concat ", "
 		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	   ((p.(0), p.(1), p.(2)), dummy_tensor3, g.(0).(0))
+	    [((p.(0), p.(1), p.(2)), dummy_tensor3, g.(0).(0))]
 	 end
       | t, qc, g ->
 	 prerr_endline
 	   ("unhandled 3-vertex w/multiple Lorentz structures: " ^
 	       (String.concat ", "
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	 ((p.(0), p.(1), p.(2)), dummy_tensor3, g.(0).(0))
+	 [((p.(0), p.(1), p.(2)), dummy_tensor3, g.(0).(0))]
 
 (* Use the fact that $g_{\mu\nu}g_{\kappa\lambda}$ is symmetric in the
    interchanges $\mu\leftrightarrow\nu$, $\kappa\leftrightarrow\lambda$
@@ -1665,7 +1660,7 @@ i.e.
 	and c = v.Vertex.color in
 	let t = Array.map (fun l -> l.Lorentz.structure) t in
 	match Array.length p with
-	| 3 -> (translate_coupling3 model p t c g :: v3, v4, vn)
+	| 3 -> (translate_coupling3 model p t c g @ v3, v4, vn)
 	| 4 -> (v3, translate_coupling4 model p t c g :: v4, vn)
 	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
         ([], [], []) (values model.vertices)
