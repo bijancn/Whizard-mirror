@@ -1518,14 +1518,11 @@ i.e.
 	       $ \lbrack 1;3;2;4 \rbrack - \lbrack 1;4;2;3 \rbrack $ *)
 	    if mu1 = mu2 && q2 = Q.neg q1 then begin
 	      if [nu2; ka2; la2] = [ka1; nu1; la1] then
-		(p, q1, Vector4 [ ( 1, C_12_34);
-				           (-1, C_13_42) ])
+		(p, q1, Vector4 [ ( 1, C_12_34); (-1, C_13_42) ])
 	      else if [nu2; ka2; la2] = [la1; nu1; ka1] then
-		(p, q1, Vector4 [ ( 1, C_12_34);
-				           (-1, C_14_23) ])
+		(p, q1, Vector4 [ ( 1, C_12_34); (-1, C_14_23) ])
 	      else if [nu2; ka2; la2] = [la1; ka1; nu1] then
-		(p, q1, Vector4 [ ( 1, C_13_42);
-				           (-1, C_14_23) ])
+		(p, q1, Vector4 [ ( 1, C_13_42); (-1, C_14_23) ])
 	      else
 		invalid_arg "translate_lorentz_4: inconsistent"
 	    end else
@@ -1552,8 +1549,8 @@ i.e.
     let gauge_contraction2 c1 c2 =
       let open Coupling in
       match c1, c2 with
-      | (C_14_23, C_12_34) -> 1
-      | (C_12_34, C_14_23) -> -1
+      | (C_12_34, C_14_23) -> 1
+      | (C_14_23, C_12_34) -> -1
       | _ -> invalid_arg "gauge_contraction2: mismatch"
 
     let gauge_contraction3 c1 c2 =
@@ -1565,6 +1562,7 @@ i.e.
 
     let quartet p = (p.(0), p.(1), p.(2), p.(3))
 
+    (* color flow basis: *)
     let gauge4 eps =
       let open Coupling in
       Vector4 [(2*eps, C_13_42); (-1*eps, C_12_34); (-1*eps, C_14_23)]
@@ -1597,11 +1595,10 @@ i.e.
 		let eps1 = gauge_contraction1 contraction11 contraction12
 		and eps2 = gauge_contraction2 contraction21 contraction22
 		and eps3 = gauge_contraction3 contraction31 contraction32 in
-		prerr_endline
-		  ("incompletely handled gauge 4-vertex: " ^
-		      (String.concat ", "
-			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-		[(quartet p, gauge4 1, Some g)]
+                if eps1 = eps2 && eps2 = eps3 then
+		  [(quartet p, gauge4 eps1, Some g)]
+                else
+		  invalid_arg "translate_gauge_vertex4: unexpected permutations"
 	      end else
 		invalid_arg "translate_gauge_vertex4: different couplings"
 	   | FF132 (q1', q2', q3', a, b, c, d) ->
@@ -1612,11 +1609,10 @@ i.e.
 		let eps1 = gauge_contraction1 contraction11 contraction12
 		and eps2 = gauge_contraction3 contraction21 contraction22
 		and eps3 = gauge_contraction2 contraction31 contraction32 in
-		prerr_endline
-		  ("incompletely handled gauge 4-vertex: " ^
-		      (String.concat ", "
-			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-		[(quartet p, gauge4 1, Some g)]
+                if eps1 = eps2 && eps2 = eps3 then
+		  [(quartet p, gauge4 eps1, Some g)]
+                else
+		  invalid_arg "translate_gauge_vertex4: unexpected permutations"
 	      end else
 		invalid_arg "translate_gauge_vertex4: different couplings"
 	   | _ -> invalid_arg "translate_gauge_vertex4: wrong color"
