@@ -964,7 +964,7 @@ module Model =
       end
   
     type flavor = Flavor.t
-    type constant = string
+    type constant = UFO_Coupling.t option
     type gauge = unit
 
     module M = Modeltools.Mutable
@@ -1043,7 +1043,8 @@ module Model =
 
     let dummy_tensor3 = Coupling.Scalar_Scalar_Scalar 1
     let dummy_tensor4 = Coupling.Scalar4 1
-    let dummy_constant = "{coupling}"
+
+    let dummy_constant = None
 
     let third i j =
       match i, j with
@@ -1768,7 +1769,7 @@ i.e.
 	translate_vertices model flavor_of_symbol model in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
       let input_parameters = 
-        ("0.0_default", 0.0) ::
+        (None (* ["0.0_default"] *), 0.0) ::
         (List.map (fun (n, v, _) -> (n, v)) variables) in
       let derived_parameters =
         List.map (fun (n, f, _) -> (Coupling.Real n, Coupling.Const 0))
@@ -1790,7 +1791,9 @@ i.e.
       let mass_symbol f = (particle f).Particle.mass
       and width_symbol f = (particle f).Particle.width in
       let gauge_symbol () = "?GAUGE?" in
-      let constant_symbol c = "g" in
+      let constant_symbol = function
+        | Some c -> c.UFO_Coupling.name
+        | None -> "{???}" in
       let color f = Color.Singlet in (* TEMPORARY HACK! *)
       M.setup ~color ~pdg ~lorentz ~propagator
         ~width:(fun f -> Coupling.Constant)
