@@ -149,6 +149,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/state_matrix_3.ref \
     unit_tests/ref-output/state_matrix_4.ref \
     unit_tests/ref-output/state_matrix_5.ref \
+    unit_tests/ref-output/state_matrix_6.ref \
     unit_tests/ref-output/interaction_1.ref \
     unit_tests/ref-output/xml_1.ref \
     unit_tests/ref-output/xml_2.ref \
