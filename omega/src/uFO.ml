@@ -1356,33 +1356,33 @@ i.e.
       | [ [], qt] ->
 	 ((p.(0), p.(1), p.(2)),
 	  Coupling.Scalar_Scalar_Scalar (Q.to_integer (Q.mul qt qc)),
-	  dummy_constant)
+	  g)
       | [ [L.ProjP(i,j)], qt] ->
 	 ((p.(pred i), p.(pred (third i j)), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.SR, Coupling.Psi),
-	  dummy_constant)
+	  g)
       | [ [L.ProjM(i,j)], qt] ->
 	 ((p.(pred i), p.(pred (third i j)), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.SL, Coupling.Psi),
-	  dummy_constant)
+	  g)
       | [ ([L.ProjM(i,j)], qm); ([L.ProjP(i',j')], qp)] as t ->
 	 if i = i' && j = j' then begin
 	   if Q.is_null (Q.add qm qp) then 
 	     ((p.(pred i), p.(pred (third i j)), p.(pred j)),
 	      Coupling.FBF (coeff qp qc,
 			    Coupling.Psibar, Coupling.P, Coupling.Psi),
-	      dummy_constant)
+	      g)
 	   else if Q.is_null (Q.sub qp qp) then 
 	     ((p.(pred i), p.(pred (third i j)), p.(pred j)),
 	      Coupling.FBF (coeff qp qc,
 			    Coupling.Psibar, Coupling.S, Coupling.Psi),
-	      dummy_constant)
+	      g)
 	   else begin
 	     prerr_endline
 	       ("unhandled colorless 3-vertex: " ^ UFOx.Lorentz.to_string t);
-	     ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	     ((p.(0), p.(1), p.(2)), dummy_tensor3, g)
 	   end
          end else
            invalid_arg "translate_coupling3_1: mismatched indices"
@@ -1390,25 +1390,25 @@ i.e.
 	 ((p.(pred i), p.(pred mu), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.V, Coupling.Psi),
-	  dummy_constant)
+	  g)
       | [ [L.Gamma(mu,i,-1); L.ProjP(-1,j)], qt] ->
 	 ((p.(pred i), p.(pred mu), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.VR, Coupling.Psi),
-	  dummy_constant)
+	  g)
       | [ [L.Gamma(mu,i,-1); L.ProjM(-1,j)], qt] ->
 	 ((p.(pred i), p.(pred mu), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.VL, Coupling.Psi),
-	  dummy_constant)
+	  g)
       | [ [L.Metric(i,j)], qt] ->
 	 ((p.(pred (third i j)), p.(pred i), p.(pred j)),
 	  Coupling.Scalar_Vector_Vector (coeff qt qc),
-	  dummy_constant)
+	  g)
       | [ ([L.P(mu,i)], q1); ([L.P(mu',j')], q2) ] as t ->
 	 prerr_endline
 	   ("unhandled colorless 3-vertex: " ^ UFOx.Lorentz.to_string t);
-	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	 ((p.(0), p.(1), p.(2)), dummy_tensor3, g)
       | [ ([L.Metric(ka1,la1); L.P(mu1,i1)], q1);
 	  ([L.Metric(ka2,la2); L.P(mu2,i2)], q2);
 	  ([L.Metric(ka3,la3); L.P(mu3,i3)], q3);
@@ -1425,7 +1425,7 @@ i.e.
       | t ->
 	 prerr_endline
 	   ("unhandled 3-vertex: " ^ UFOx.Lorentz.to_string t);
-	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	 ((p.(0), p.(1), p.(2)), dummy_tensor3, g)
 
     let translate_coupling3 model p t c g =
       let open Coupling in
