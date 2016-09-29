@@ -1594,10 +1594,10 @@ i.e.
 		and eps2 = gauge_contraction2 contraction21 contraction22
 		and eps3 = gauge_contraction3 contraction31 contraction32 in
 		prerr_endline
-		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
+		  ("unhandled gauge 4-vertex: " ^
 		      (String.concat ", "
 			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-		[(quadruple p, dummy_tensor4, Some g)]
+		[(quadruple p, dummy_tensor4, None)]
 	      end else
 		invalid_arg "translate_gauge_vertex4: different couplings"
 	   | FF132 (q1', q2', q3', a, b, c, d) ->
@@ -1609,10 +1609,10 @@ i.e.
 		and eps2 = gauge_contraction3 contraction21 contraction22
 		and eps3 = gauge_contraction2 contraction31 contraction32 in
 		prerr_endline
-		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
+		  ("unhandled gauge 4-vertex: " ^
 		      (String.concat ", "
 			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-		[(quadruple p, dummy_tensor4, Some g)]
+		[(quadruple p, dummy_tensor4, None)]
 	      end else
 		invalid_arg "translate_gauge_vertex4: different couplings"
 	   | _ -> invalid_arg "translate_gauge_vertex4: wrong color"
