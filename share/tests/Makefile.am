@@ -751,6 +751,7 @@ REF_OUTPUT_FILES_PREC = \
     functional_tests/ref-output-prec/fks_res_1.ref \
     functional_tests/ref-output-prec/fks_res_2.ref \
     functional_tests/ref-output-prec/fks_res_3.ref \
+    functional_tests/ref-output-prec/openloops_3.ref \
     functional_tests/ref-output-prec/defaultcuts.ref \
     functional_tests/ref-output-prec/parton_shower_2.ref \
     functional_tests/ref-output-prec/helicity.ref \
@@ -786,7 +787,6 @@ REF_OUTPUT_FILES_EXT = \
     functional_tests/ref-output-ext/ewa_2.ref \
     functional_tests/ref-output-ext/ewa_3.ref \
     functional_tests/ref-output-ext/ilc.ref \
-    functional_tests/ref-output-ext/openloops_3.ref \
     functional_tests/ref-output-ext/beam_events_2.ref \
     functional_tests/ref-output-ext/beam_events_3.ref \
     functional_tests/ref-output-ext/mlm_matching_isr.ref \
@@ -805,7 +805,6 @@ REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/ewa_2.ref \
     functional_tests/ref-output-quad/ewa_3.ref \
     functional_tests/ref-output-quad/ilc.ref \
-    functional_tests/ref-output-quad/openloops_3.ref \
     functional_tests/ref-output-quad/beam_events_2.ref \
     functional_tests/ref-output-quad/beam_events_3.ref \
     functional_tests/ref-output-quad/mlm_matching_isr.ref \
