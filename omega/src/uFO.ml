@@ -1328,7 +1328,7 @@ i.e.
 	       (ka, la, mu, i, q))
 	   l)
 
-    let triple p = (p.(0), p.(1), p.(2))
+    let triplet p = (p.(0), p.(1), p.(2))
 
     let translate_lorentz_gauge_3 t p g kalamuiq =
       match normalize_lorentz_gauge_3 kalamuiq with
@@ -1343,7 +1343,7 @@ i.e.
 	   && ThoList.homogeneous [ mu1; mu2; la3; la4; la5; la6; i4; i6 ]
 	   && ThoList.homogeneous [ q1; Q.neg q2; Q.neg q3; q4; q5; Q.neg q6 ]
 	 then begin
-	   (triple p, Coupling.Gauge_Gauge_Gauge (Q.to_integer q1), g)
+	   (triplet p, Coupling.Gauge_Gauge_Gauge (Q.to_integer q1), g)
 	 end else
 	   invalid_arg "translate_lorentz_gauge_3"
       | _ -> invalid_arg "translate_lorentz_gauge_3: expected 6 terms"
@@ -1352,7 +1352,7 @@ i.e.
       let module L = UFOx.Lorentz_Atom in
       match t with
       | [ [], qt] ->
-	 (triple p, Coupling.Scalar_Scalar_Scalar (Q.to_integer (Q.mul qt qc)), g)
+	 (triplet p, Coupling.Scalar_Scalar_Scalar (Q.to_integer (Q.mul qt qc)), g)
       | [ [L.ProjP(i,j)], qt] ->
 	 ((p.(pred i), p.(pred (third i j)), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
@@ -1378,7 +1378,7 @@ i.e.
 	   else begin
 	     prerr_endline
 	       ("unhandled colorless 3-vertex: " ^ UFOx.Lorentz.to_string t);
-	     (triple p, dummy_tensor3, g)
+	     (triplet p, dummy_tensor3, g)
 	   end
          end else
            invalid_arg "translate_coupling3_1: mismatched indices"
@@ -1404,7 +1404,7 @@ i.e.
       | [ ([L.P(mu,i)], q1); ([L.P(mu',j')], q2) ] as t ->
 	 prerr_endline
 	   ("unhandled colorless 3-vertex: " ^ UFOx.Lorentz.to_string t);
-	 (triple p, dummy_tensor3, g)
+	 (triplet p, dummy_tensor3, g)
       | [ ([L.Metric(ka1,la1); L.P(mu1,i1)], q1);
 	  ([L.Metric(ka2,la2); L.P(mu2,i2)], q2);
 	  ([L.Metric(ka3,la3); L.P(mu3,i3)], q3);
@@ -1421,7 +1421,7 @@ i.e.
       | t ->
 	 prerr_endline
 	   ("unhandled 3-vertex: " ^ UFOx.Lorentz.to_string t);
-	 (triple p, dummy_tensor3, g)
+	 (triplet p, dummy_tensor3, g)
 
     let translate_coupling3 model p t c g =
       let open Coupling in
@@ -1449,14 +1449,14 @@ i.e.
 	      ("unhandled 3-vertex w/3 or more Lorentz structures: " ^
 		  (String.concat ", "
 		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	    [(triple p, dummy_tensor3, g.(0).(0))]
+	    [(triplet p, dummy_tensor3, g.(0).(0))]
 	 end
       | t, qc, g ->
 	 prerr_endline
 	   ("unhandled 3-vertex w/multiple Lorentz structures: " ^
 	       (String.concat ", "
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	 [(triple p, dummy_tensor3, g.(0).(0))]
+	 [(triplet p, dummy_tensor3, g.(0).(0))]
 
 (* Use the fact that $g_{\mu\nu}g_{\kappa\lambda}$ is symmetric in the
    interchanges $\mu\leftrightarrow\nu$, $\kappa\leftrightarrow\lambda$
@@ -1563,7 +1563,11 @@ i.e.
       | (C_13_42, C_12_34) -> -1
       | _ -> invalid_arg "gauge_contraction3: mismatch"
 
-    let quadruple p = (p.(0), p.(1), p.(2), p.(3))
+    let quartet p = (p.(0), p.(1), p.(2), p.(3))
+
+    let gauge4 eps =
+      let open Coupling in
+      Vector4 [(2*eps, C_13_42); (-1*eps, C_12_34); (-1*eps, C_14_23)]
 
     let translate_gauge_vertex4 model p t c g =
       let open Coupling in
@@ -1594,10 +1598,10 @@ i.e.
 		and eps2 = gauge_contraction2 contraction21 contraction22
 		and eps3 = gauge_contraction3 contraction31 contraction32 in
 		prerr_endline
-		  ("unhandled gauge 4-vertex: " ^
+		  ("incompletely handled gauge 4-vertex: " ^
 		      (String.concat ", "
 			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-		[(quadruple p, dummy_tensor4, None)]
+		[(quartet p, gauge4 1, Some g)]
 	      end else
 		invalid_arg "translate_gauge_vertex4: different couplings"
 	   | FF132 (q1', q2', q3', a, b, c, d) ->
@@ -1609,10 +1613,10 @@ i.e.
 		and eps2 = gauge_contraction3 contraction21 contraction22
 		and eps3 = gauge_contraction2 contraction31 contraction32 in
 		prerr_endline
-		  ("unhandled gauge 4-vertex: " ^
+		  ("incompletely handled gauge 4-vertex: " ^
 		      (String.concat ", "
 			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-		[(quadruple p, dummy_tensor4, None)]
+		[(quartet p, gauge4 1, Some g)]
 	      end else
 		invalid_arg "translate_gauge_vertex4: different couplings"
 	   | _ -> invalid_arg "translate_gauge_vertex4: wrong color"
@@ -1625,10 +1629,10 @@ i.e.
       let module L = UFOx.Lorentz_Atom in
       match t, translate_color4 c, g with
       | [| [ [], qt] |], C3 qc, [| [| g |] |] ->
-	 [(quadruple p, Scalar4 (coeff qt qc), g)]
+	 [(quartet p, Scalar4 (coeff qt qc), g)]
       | [| t |], qc, [| [| g |] |] ->
 	 begin match translate_lorentz_4 model p t with
-	 | p, q, t -> [(quadruple p, t, g)]
+	 | p, q, t -> [(quartet p, t, g)]
 	 end
       | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
