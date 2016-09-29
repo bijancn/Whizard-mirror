@@ -1,4 +1,4 @@
-(* $Id: omega_CQED.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* omega_CQED.ml --
 
    Copyright (C) 1999-2016 by
 
@@ -23,19 +23,10 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 
-let rcs_file = RCS.parse "F90_CQED" ["QED with contact terms"]
-    { RCS.revision = "$Revision: 7444 $";
-      RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
-      RCS.author = "$Author: jr_reuter $";
-      RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/omega_CQED.ml $" }
-
 (* QED with contact interactions. *)
 
 module M : Model.T =
   struct
-    let rcs = rcs_file
-
     open Coupling
 
     let options = Options.empty

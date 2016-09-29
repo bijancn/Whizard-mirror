@@ -46,7 +46,8 @@ libtransforms_la_SOURCES = \
    shower.f90 \
    evt_nlo.f90 \
    events.f90 \
-   eio_raw.f90
+   eio_raw.f90 \
+   dispatch_transforms.f90
 
 libtransforms_ut_la_SOURCES = \
    event_transforms_uti.f90 event_transforms_ut.f90 \

@@ -39,8 +39,15 @@ check_LTLIBRARIES = libprocess_integration_ut.la
 libprocess_integration_la_SOURCES = \
   subevt_expr.f90 \
   parton_states.f90 \
+  core_manager.f90 \
   pcm_base.f90 \
-  processes.f90 \
+  pcm.f90 \
+  process_counter.f90 \
+  process_config.f90 \
+  process.f90 \
+  instances.f90 \
+  process_mci.f90 \
+  kinematics.f90 \
   process_stacks.f90
 
 libprocess_integration_ut_la_SOURCES = \
