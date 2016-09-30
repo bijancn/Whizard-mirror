@@ -1,4 +1,4 @@
-! $Id: maint.f90 1203 2009-10-08 11:39:11Z jr_reuter $
+! maint.f90 --
 
 program maint
   use kinds

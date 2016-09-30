@@ -1,4 +1,4 @@
-(* $Id: omega_Phi4h.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* omega_Phi4h.ml --
 
    Copyright (C) 1999-2016 by
 

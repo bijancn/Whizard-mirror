@@ -1,4 +1,4 @@
-(* $Id: modellib_NMSSM.mli 7444 2016-02-17 15:37:20Z jr_reuter $
+(* modellib_NMSSM.mli --
 
    Copyright (C) 1999-2016 by
 
@@ -39,12 +39,3 @@ module NMSSM : NMSSM_flags
 module NMSSM_CKM : NMSSM_flags
 module NMSSM_Hgg : NMSSM_flags
 module NMSSM_func : functor (F: NMSSM_flags) -> Model.T with module Ch = Charges.QQ
-
-
-(*i
- *  Local Variables:
- *  mode:caml
- *  indent-tabs-mode:nil
- *  page-delimiter:"^(\\* .*\n"
- *  End:
-i*)

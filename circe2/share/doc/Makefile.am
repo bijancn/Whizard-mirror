@@ -29,9 +29,9 @@
 
 DISTCLEANFILES =
 
-include $(top_srcdir)/src/Makefile.sources
+include $(top_srcdir)/circe2/src/Makefile.sources
 
-VPATH = $(srcdir):$(top_builddir)/src:$(srcdir):$(top_srcdir)/src
+VPATH = $(srcdir):$(top_builddir)/circe2/src:$(srcdir):$(top_srcdir)/circe2/src
 
 WEBS = prelude.nw circe2.nw postlude.nw
 
@@ -44,8 +44,8 @@ endif
 LATEX_STYLES = \
     emp.sty noweb.sty thohacks.sty thopp.sty ocamlweb.sty
 
-TEX_FLAGS = "$$TEXINPUTS:$(top_srcdir)/share/doc"
-MP_FLAGS  = "$$MPINPUTS:$(top_srcdir)/share/doc"
+TEX_FLAGS = "$$TEXINPUTS:$(top_srcdir)/circe2/share/doc"
+MP_FLAGS  = "$$MPINPUTS:$(top_srcdir)/circe2/share/doc"
 
 CIRCE2_HISTOS = \
   x.20.histo x.20m.histo x.20q.histo x.20qm.histo x.input.histo \
@@ -77,7 +77,7 @@ if NOWEB_AVAILABLE
 circe2.tex: $(WEBS)
 	$(NOWEAVE) -filter ./tex-comments -delay -index \
 	    `for i in  $^; do case $$i in *.nw) echo $$i;; esac done` \
-	  | $(CPIF) $@
+	  > $@
 
 circe2.tex: tex-comments
 

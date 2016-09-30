@@ -37,13 +37,12 @@ libfks_la_SOURCES = \
   virtual.f90 \
   real_subtraction.f90 \
   dglap_remnant.f90 \
-  nlo_controller.f90 \
-  phs_fks.f90
+  nlo_color_data.f90 \
+  dispatch_fks.f90
 
 libfks_ut_la_SOURCES = \
-  phs_fks_uti.f90 phs_fks_ut.f90 \
   fks_regions_uti.f90 fks_regions_ut.f90 \
-  nlo_controller_uti.f90 nlo_controller_ut.f90
+  nlo_color_data_ut.f90 nlo_color_data_uti.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = fks.nw
@@ -81,11 +80,12 @@ module_lists = \
   ../me_methods/Modules \
   ../phase_space/Modules \
   ../variables/Modules \
-  ../threshold/Modules
+  ../blha/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
 
+Module_dependencies.sed: $(libfks_la_SOURCES) $(libfks_ut_la_SOURCES)
 Module_dependencies.sed: $(module_lists)
 	@rm -f $@
 	echo 's/, *only:.*//' >> $@
@@ -93,10 +93,12 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
 	for list in $^; do \
-	  dir="`dirname $$list`"; \
-	  for mod in `cat $$list`; do \
-	    echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
-	  done ; \
+		if test -z `echo $$list | grep f90`; then \
+			dir="`dirname $$list`"; \
+			for mod in `cat $$list`; do \
+				echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+			done \
+		fi \
 	done
 
 DISTCLEANFILES = Module_dependencies.sed
@@ -125,7 +127,7 @@ DISTCLEANFILES += Makefile.depend
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../user -I../rng -I../physics -I../qft -I../model_features -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../phase_space -I../variables -I../threshold -I../lhapdf -I../pdf_builtin -I../fastjet
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../user -I../rng -I../physics -I../qft -I../model_features -I../expr_base -I../types -I../particles -I../matrix_elements -I../beams -I../me_methods -I../phase_space -I../variables -I../blha -I../lhapdf -I../pdf_builtin -I../fastjet
 
 
 ########################################################################

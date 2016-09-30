@@ -38,11 +38,13 @@ SUBDIRS = \
   utilities \
   testing \
   system \
-  combinatorics parsing rng expr_base \
+  combinatorics parsing expr_base \
   sindarin \
   physics qft \
   fastjet \
   types \
+  variables \
+  rng \
   matrix_elements \
   hepmc lcio particles \
   lhapdf \
@@ -52,16 +54,17 @@ SUBDIRS = \
   beams \
   me_methods \
   xdr events \
+  user \
+  model_features \
   phase_space \
-  mci variables \
+  mci \
+  pythia8 \
   tauola \
   muli shower \
-  user \
   threshold \
   blha \
   gosam openloops \
   looptools \
-  model_features \
   fks \
   process_integration \
   matching \

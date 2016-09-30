@@ -1,5 +1,4 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 7444 2016-02-17 15:37:20Z jr_reuter $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -30,7 +29,7 @@
 ### N = 100
 ### TOLERANCE = 1000000
 ### 
-### auxdir = $(top_srcdir)/src/misc
+### auxdir = $(top_srcdir)/omega/src/misc
 ### 
 ### build_bindir = $(top_srcdir)/bin
 ### build_libdir = $(top_srcdir)/lib

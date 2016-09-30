@@ -68,8 +68,11 @@ if test "$enable_lcio" = "yes"; then
   LDFLAGS_LCIO=$wo_lcio_ldflags
 fi
 
+LCIO_AVAILABLE_FLAG=$enable_lcio
+
 AC_SUBST([LCIO_INCLUDES])
 AC_SUBST([LDFLAGS_LCIO])
+AC_SUBST([LCIO_AVAILABLE_FLAG])
 
 AM_CONDITIONAL([LCIO_AVAILABLE], [test "$enable_lcio" = "yes"])
 ])

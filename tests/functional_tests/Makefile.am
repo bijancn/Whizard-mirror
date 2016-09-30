@@ -159,12 +159,20 @@ TESTS_REQ_OCAML = \
     smtest_13.run \
     smtest_14.run \
     smtest_15.run \
-    mssmtest.run \
+    mssmtest_1.run \
+    mssmtest_2.run \
+    sm_cms_1.run \
     nlo_1.run \
     nlo_2.run \
     nlo_3.run \
     nlo_4.run \
+    nlo_decay_1.run \
+    fks_res_1.run \
+    fks_res_2.run \
+    fks_res_3.run \
     openloops_1.run \
+    openloops_2.run \
+    openloops_3.run \
     powheg_1.run \
     spincor_1.run \
     show_1.run \

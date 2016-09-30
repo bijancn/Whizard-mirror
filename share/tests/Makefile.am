@@ -149,6 +149,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/state_matrix_3.ref \
     unit_tests/ref-output/state_matrix_4.ref \
     unit_tests/ref-output/state_matrix_5.ref \
+    unit_tests/ref-output/state_matrix_6.ref \
     unit_tests/ref-output/interaction_1.ref \
     unit_tests/ref-output/xml_1.ref \
     unit_tests/ref-output/xml_2.ref \
@@ -348,6 +349,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/prc_omega_4.ref \
     unit_tests/ref-output/prc_omega_5.ref \
     unit_tests/ref-output/prc_omega_diags_1.ref \
+    unit_tests/ref-output/parton_states_1.ref \
     unit_tests/ref-output/subevt_expr_1.ref \
     unit_tests/ref-output/subevt_expr_2.ref \
     unit_tests/ref-output/processes_1.ref \
@@ -645,8 +647,13 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/smtest_13.ref \
     functional_tests/ref-output/smtest_14.ref \
     functional_tests/ref-output/smtest_15.ref \
+    functional_tests/ref-output/sm_cms_1.ref \
     functional_tests/ref-output/nlo_1.ref \
-    functional_tests/ref-output/mssmtest.ref \
+    functional_tests/ref-output/openloops_1.ref \
+    functional_tests/ref-output/openloops_2.ref \
+    functional_tests/ref-output/nlo_decay_1.ref \
+    functional_tests/ref-output/mssmtest_1.ref \
+    functional_tests/ref-output/mssmtest_2.ref \
     functional_tests/ref-output/spincor_1.ref \
     functional_tests/ref-output/show_1.ref \
     functional_tests/ref-output/show_2.ref \
@@ -688,7 +695,10 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/nlo_2.ref \
     functional_tests/ref-output-double/nlo_3.ref \
     functional_tests/ref-output-double/nlo_4.ref \
-    functional_tests/ref-output-double/openloops_1.ref \
+    functional_tests/ref-output-double/fks_res_1.ref \
+    functional_tests/ref-output-double/fks_res_2.ref \
+    functional_tests/ref-output-double/fks_res_3.ref \
+    functional_tests/ref-output-double/openloops_3.ref \
     functional_tests/ref-output-double/powheg_1.ref \
     functional_tests/ref-output-double/defaultcuts.ref \
     functional_tests/ref-output-double/parton_shower_2.ref \
@@ -739,6 +749,10 @@ REF_OUTPUT_FILES_PREC = \
     functional_tests/ref-output-prec/nlo_2.ref \
     functional_tests/ref-output-prec/nlo_3.ref \
     functional_tests/ref-output-prec/nlo_4.ref \
+    functional_tests/ref-output-prec/fks_res_1.ref \
+    functional_tests/ref-output-prec/fks_res_2.ref \
+    functional_tests/ref-output-prec/fks_res_3.ref \
+    functional_tests/ref-output-prec/openloops_3.ref \
     functional_tests/ref-output-prec/defaultcuts.ref \
     functional_tests/ref-output-prec/parton_shower_2.ref \
     functional_tests/ref-output-prec/helicity.ref \
@@ -777,8 +791,7 @@ REF_OUTPUT_FILES_EXT = \
     functional_tests/ref-output-ext/beam_events_2.ref \
     functional_tests/ref-output-ext/beam_events_3.ref \
     functional_tests/ref-output-ext/mlm_matching_isr.ref \
-    functional_tests/ref-output-ext/hepmc_8.ref \
-    functional_tests/ref-output-ext/openloops_1.ref
+    functional_tests/ref-output-ext/hepmc_8.ref
 
 REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/circe1_4.ref \
@@ -796,8 +809,7 @@ REF_OUTPUT_FILES_QUAD = \
     functional_tests/ref-output-quad/beam_events_2.ref \
     functional_tests/ref-output-quad/beam_events_3.ref \
     functional_tests/ref-output-quad/mlm_matching_isr.ref \
-    functional_tests/ref-output-quad/hepmc_8.ref \
-    functional_tests/ref-output-quad/openloops_1.ref
+    functional_tests/ref-output-quad/hepmc_8.ref
 
 TESTSUITES_M4 = \
     $(MISC_TESTS_M4) \
@@ -950,13 +962,21 @@ MISC_TESTS_SIN = \
     functional_tests/smtest_13.sin \
     functional_tests/smtest_14.sin \
     functional_tests/smtest_15.sin \
+    functional_tests/sm_cms_1.sin \
     functional_tests/nlo_1.sin \
     functional_tests/nlo_2.sin \
     functional_tests/nlo_3.sin \
     functional_tests/nlo_4.sin \
+    functional_tests/nlo_decay_1.sin \
+    functional_tests/fks_res_1.sin \
+    functional_tests/fks_res_2.sin \
+    functional_tests/fks_res_3.sin \
     functional_tests/openloops_1.sin \
+    functional_tests/openloops_2.sin \
+    functional_tests/openloops_3.sin \
     functional_tests/powheg_1.sin \
-    functional_tests/mssmtest.sin \
+    functional_tests/mssmtest_1.sin \
+    functional_tests/mssmtest_2.sin \
     functional_tests/spincor_1.sin \
     functional_tests/show_1.sin \
     functional_tests/show_2.sin \

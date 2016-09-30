@@ -1,4 +1,4 @@
-(* $Id: ogiga.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* ogiga.ml --
 
    Copyright (C) 1999-2016 by
 
@@ -31,13 +31,6 @@
      erroneous white space.
    \end{dubious} *)
 
-let rcs = RCS.parse "Ogiga" ["Graphical User Interface"]
-    { RCS.revision = "$Revision: 7444 $";
-      RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
-      RCS.author = "$Author: jr_reuter $";
-      RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/ogiga.ml $" }
-
 (* \thocwmodulesection{Windows} *)
 
 let window =
@@ -60,8 +53,7 @@ let about () =
             ([ "This is the skeleton for a graphical interface";
                "for O'Mega."; "";
                "There is almost no functionality implemented yet.";
-               "I'm still trying to learn GTK+ and LablGTK."; "" ] @
-             RCS.summary rcs)) ()
+               "I'm still trying to learn GTK+ and LablGTK."]) ()
 
 
 (* \thocwmodulesection{Main Program} *)
