@@ -1,4 +1,4 @@
-! $Id: mainx.f90 1203 2009-10-08 11:39:11Z jr_reuter $
+! mainx.f90 --
 
 program mainx
   use kinds

@@ -1,5 +1,5 @@
 #! /bin/sh
-# $Id: make_modules_eps.sh 5342 2014-02-21 11:04:47Z msekulla $
+# make_modules_eps.sh --
 
 root=`pwd`
 
@@ -19,7 +19,7 @@ modules="bundle.ml bundle.mli cache.ml
   omega.mli omega_MSSM.ml omega_Littlest.ml omega_QED.ml omega_SM.ml
   options.ml options.mli partition.ml partition.mli pmap.ml pmap.mli
   powSet.ml powSet.mli process.ml process.mli product.ml product.mli
-  progress.ml progress.mli rCS.ml rCS.mli target.mli targets.ml
+  progress.ml progress.mli target.mli targets.ml
   targets.mli thoFilename.ml thoFilename.mli
   thoList.ml thoList.mli thoString.ml thoString.mli topology.ml
   topology.mli tree.ml tree.mli tree2.ml tree2.mli
