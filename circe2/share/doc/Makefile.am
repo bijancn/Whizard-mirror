@@ -77,7 +77,7 @@ if NOWEB_AVAILABLE
 circe2.tex: $(WEBS)
 	$(NOWEAVE) -filter ./tex-comments -delay -index \
 	    `for i in  $^; do case $$i in *.nw) echo $$i;; esac done` \
-	  | $(CPIF) $@
+	  > $@
 
 circe2.tex: tex-comments
 

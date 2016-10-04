@@ -2811,7 +2811,7 @@ interesting parts.
   procedure :: write_meta => process_write_meta
 <<Process: procedures>>=
   subroutine process_write_meta (process, unit, testflag)
-    class(process_t), intent(inout) :: process
+    class(process_t), intent(in) :: process
     integer, intent(in), optional :: unit
     logical, intent(in), optional :: testflag
     integer :: u, i
@@ -9331,13 +9331,12 @@ The quantum numbers mask of the incoming particle
   procedure :: evaluate_color_correlations => &
      term_instance_evaluate_color_correlations
 <<Instances: procedures>>=
-  subroutine term_instance_evaluate_color_correlations (term, p, core, &
-     i_flv_born, bad_point)
+  subroutine term_instance_evaluate_color_correlations (term, p, core, bad_point)
     class(term_instance_t), intent(inout) :: term
     type(vector4_t), intent(in), dimension(:) :: p
     class(prc_core_t), intent(inout) :: core
-    integer, intent(in) :: i_flv_born
     logical, intent(out), optional :: bad_point
+    integer :: i_flv_born
     logical :: bp
     real(default), dimension(:,:), allocatable :: sqme_cc
     real(default) :: sqme_born
@@ -9352,38 +9351,40 @@ The quantum numbers mask of the incoming particle
             config%settings%use_internal_color_correlations)
           call msg_debug2 (D_SUBTRACTION, "fac_scale", term%fac_scale)
 
-          if (config%settings%use_internal_color_correlations) then
+          do i_flv_born = 1, config%region_data%n_flv_born
+             if (config%settings%use_internal_color_correlations) then
+                select case (term%nlo_type)
+                case (NLO_REAL)
+                   sqme_born = pcm_instance%real_sub%sqme_born (i_flv_born)
+                   sqme_cc = sqme_born * config%color_data%beta_ij (:, :, i_flv_born)
+                case (NLO_MISMATCH)
+                   sqme_born = pcm_instance%soft_mismatch%sqme_born (i_flv_born)
+                   sqme_cc = sqme_born * config%color_data%beta_ij (:, :, i_flv_born)
+                end select
+                bp = .false.
+             else
+                select type (core)
+                class is (prc_user_defined_base_t)
+                   call core%update_alpha_s (term%core_state, term%fac_scale)
+                   call core%compute_sqme_cc (i_flv_born, p, &
+                        term%fac_scale, sqme_cc, bp, sqme_born)
+                end select
+             end if
+
              select case (term%nlo_type)
              case (NLO_REAL)
-                sqme_born = pcm_instance%real_sub%sqme_born (i_flv_born)
-                sqme_cc = sqme_born * config%color_data%beta_ij (:,:,i_flv_born)
+                pcm_instance%real_sub%sqme_born_cc (:, :, i_flv_born) = sqme_cc
              case (NLO_MISMATCH)
-                sqme_born = pcm_instance%soft_mismatch%sqme_born (i_flv_born)
-                sqme_cc = sqme_born * config%color_data%beta_ij (:,:,i_flv_born)
+                pcm_instance%soft_mismatch%sqme_born_cc (:, :, i_flv_born) = sqme_cc
+             case (NLO_VIRTUAL)
+                if (config%settings%use_internal_color_correlations) then
+                   pcm_instance%virtual%sqme_cc (:, :, i_flv_born) = &
+                      config%color_data%beta_ij (:, :, i_flv_born)
+                else
+                   pcm_instance%virtual%sqme_cc (:, :, i_flv_born) = sqme_cc
+                end if
              end select
-             bp = .false.
-          else
-             select type (core)
-             class is (prc_user_defined_base_t)
-                call core%update_alpha_s (term%core_state, term%fac_scale)
-                call core%compute_sqme_cc (i_flv_born, p, &
-                   term%fac_scale, sqme_cc, bp, sqme_born)
-             end select
-          end if
-
-          select case (term%nlo_type)
-          case (NLO_REAL)
-             pcm_instance%real_sub%sqme_born_cc (:,:,i_flv_born) = sqme_cc
-          case (NLO_MISMATCH)
-             pcm_instance%soft_mismatch%sqme_born_cc (:,:,i_flv_born) = sqme_cc
-          case (NLO_VIRTUAL)
-             if (config%settings%use_internal_color_correlations) then
-                pcm_instance%virtual%sqme_cc (:,:,i_flv_born) = &
-                   config%color_data%beta_ij (:,:,i_flv_born)
-             else
-                pcm_instance%virtual%sqme_cc (:,:,i_flv_born) = sqme_cc
-             end if
-          end select
+          end do
        end select
     end associate
     if (present (bad_point)) bad_point = bp
@@ -9448,11 +9449,11 @@ The quantum numbers mask of the incoming particle
         print *, 'fac_scale: ', term%fac_scale
      end if
      call term%pcm_instance%set_momenta_and_scales_virtual &
-        (term%int_hard%get_momenta (), term%ren_scale, term%fac_scale)
+          (term%int_hard%get_momenta (), term%ren_scale, term%fac_scale)
      sqme_virt = term%pcm_instance%compute_sqme_virt (term%p_hard, alpha_s, &
-        term%connected%trace%get_matrix_element ())
+          term%connected%trace%get_matrix_element ())
      call term%connected%trace%set_matrix_element &
-        (cmplx (sqme_virt * term%weight, 0, default))
+          (cmplx (sqme_virt * term%weight, 0, default))
   end subroutine term_instance_evaluate_sqme_virt
 
 @ %def term_instance_evaluate_sqme_virt
@@ -9684,7 +9685,7 @@ method may modify the [[core_state]] workspace object.
        do i = 1, n_amps
           call core%compute_sqme (i, term%p_hard, term%ren_scale, &
              sqme, bad_point)
-          i_born = core%get_helicity_list (i)
+          i_born = core%get_helicity_list_base (i)
           term%amp(i_born) = cmplx (sqme, 0, default)
        end do
     end select
@@ -9755,7 +9756,9 @@ method may modify the [[core_state]] workspace object.
   contains
     subroutine get_numbers (n_amps, n_sub, n_hel)
       integer, intent(out) :: n_amps, n_sub, n_hel
+      integer :: n_flv
       n_amps = term%int_hard%get_n_matrix_elements ()
+      n_flv = term%config%data%n_flv
       n_sub = term%int_hard%get_n_sub ()
       if (n_sub > 0) then
          select type (core)
@@ -9766,7 +9769,7 @@ method may modify the [[core_state]] workspace object.
                n_hel = 1
             end if
          end select
-         n_amps = n_amps - n_hel * n_sub
+         n_amps = n_amps - n_hel * n_sub * n_flv
       else
          n_hel = 1
       end if
@@ -11025,7 +11028,7 @@ terms, iterating over all active process components.
               if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) &
                  call set_sqme_born (term, 1)
               if (term%nlo_type > BORN) &
-                 call term%evaluate_color_correlations (term%p_seed, core_sub, 1)
+                   call term%evaluate_color_correlations (term%p_seed, core_sub)
               alpha_s = core%get_alpha_s (term%core_state)
               select case (term%nlo_type)
               case (NLO_REAL)
@@ -11189,7 +11192,7 @@ e.g. for Powheg, there is the possibility to supply an external $\alpha_s$
          call term%evaluate_trace ()
          pcm%real_sub%sqme_born (1) = &
             real (term%connected%trace%get_matrix_element (1)) 
-         call term%evaluate_color_correlations (term%p_seed, core, 1)
+         call term%evaluate_color_correlations (term%p_seed, core)
          i_real_fin = instance%process%get_associated_real_fin (1)
          if (term%config%i_component /= i_real_fin) &
             call term%apply_fks (core, core%get_alpha_s (term%core_state))
@@ -12225,7 +12228,7 @@ object and the squared matrix-element collector.
     type is (pcm_nlo_t)
        associate (region_data => config%region_data)
           call pcm_instance%virtual%init (region_data%get_flv_states_born (), &
-             region_data%n_in)
+             region_data%n_in, config%settings%use_internal_color_correlations)
           pcm_instance%virtual%factorization_mode = config%settings%factorization_mode
        end associate
     end select
@@ -12255,9 +12258,8 @@ object and the squared matrix-element collector.
     associate (virtual => pcm_instance%virtual)
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
-          sqme_virt = virtual%evaluate (config%region_data, 1, &
-             alpha_s, p, real(me(1)), real(me(2)), &
-             config%settings%use_internal_color_correlations)
+          sqme_virt = virtual%evaluate (config%region_data, &
+               alpha_s, p, real(me))
        end select
     end associate
   end function pcm_instance_nlo_compute_sqme_virt
