@@ -1651,9 +1651,93 @@ i.e.
 	   | Not_found -> invalid_arg ("coupling_of_symbol: " ^ symbol)
 	 end
 
-    let translate_vertices model flavor_of_symbol model =
+    let long_flavors = ref false
+
+    module type Lookup =
+      sig
+        type f = private
+          { flavors : Flavor.t list;
+            flavor_of_string : string -> Flavor.t;
+            flavor_of_symbol : string -> Flavor.t;
+            particle : Flavor.t -> Particle.t;
+            flavor_symbol : Flavor.t -> string;
+            conjugate : Flavor.t -> Flavor.t }
+        val of_model : t -> f
+      end
+
+    module Lookup : Lookup =
+      struct
+
+        type f =
+          { flavors : Flavor.t list;
+            flavor_of_string : string -> Flavor.t;
+            flavor_of_symbol : string -> Flavor.t;
+            particle : Flavor.t -> Particle.t;
+            flavor_symbol : Flavor.t -> string;
+            conjugate : Flavor.t -> Flavor.t }
+            
+        let conjugate_of_particle_array particles =
+          Array.init
+	    (Array.length particles)
+	    (fun i ->
+	      let f' = Particle.conjugate particles.(i) in
+	      match ThoArray.match_all f' particles with
+	      | [i'] -> i'
+	      | [] ->
+	         invalid_arg ("no charge conjugate: " ^ f'.Particle.name)
+	      | _ ->
+	         invalid_arg ("multiple charge conjugates: " ^ f'.Particle.name))
+
+        let invert_flavor_array a =
+          let table = SHash.create 37 in
+          Array.iteri (fun i s -> SHash.add table s i) a;
+          (fun name ->
+	    try
+	      Flavor.of_int (SHash.find table name)
+	    with
+	    | Not_found -> invalid_arg ("not found: " ^ name))
+
+        let digits n =
+          let rec digits' acc n =
+            if n < 1 then
+              acc
+            else
+              digits' (succ acc) (n / 10) in
+          if n < 0 then
+            digits' 1 (-n)
+          else if n = 0 then
+            1
+          else
+            digits' 0 n
+
+        let of_model model =
+          let particle_array = Array.of_list (values model.particles) in
+          let conjugate_array = conjugate_of_particle_array particle_array in
+          let flavor_list =
+	    List.map
+	      Flavor.of_int
+	      (ThoList.range 0 (Array.length particle_array - 1))
+          and name_array = Array.map (fun f -> f.Particle.name) particle_array
+          and symbol_array = Array.of_list (keys model.particles) in
+          let flavor_symbol f =
+            if !long_flavors then
+              symbol_array.(Flavor.to_int f)
+            else
+              let w = digits (Array.length particle_array - 1) in
+              Printf.sprintf "%0*d" w (Flavor.to_int f) in
+          { flavors = flavor_list;
+            flavor_of_string = invert_flavor_array name_array;
+            flavor_of_symbol = invert_flavor_array symbol_array;
+            particle = (fun f -> particle_array.(Flavor.to_int f));
+            flavor_symbol = flavor_symbol;
+            conjugate = (fun f ->
+              Flavor.of_int (conjugate_array.(Flavor.to_int f))) }
+
+      end
+
+    let translate_vertices model tables =
       List.fold_left (fun (v3, v4, vn) v ->
-	let p = Array.map flavor_of_symbol v.Vertex.particles
+	let p = Array.map tables.Lookup.flavor_of_symbol v.Vertex.particles
 	and g =
 	  Array.map (Array.map (coupling_of_symbol model)) v.Vertex.couplings
 	and t = Array.map (lorentz_of_symbol model) v.Vertex.lorentz
@@ -1685,48 +1769,12 @@ i.e.
       | Coupling.BRS _ -> invalid_arg
 	 "UFO.Model.propagator_of_lorentz: no BRST"
 
-    let conjugate_of_particle_array particles =
-      Array.init
-	(Array.length particles)
-	(fun i ->
-	  let f' = Particle.conjugate particles.(i) in
-	  match ThoArray.match_all f' particles with
-	  | [i'] -> i'
-	  | [] ->
-	     invalid_arg ("no charge conjugate: " ^ f'.Particle.name)
-	  | _ ->
-	     invalid_arg ("multiple charge conjugates: " ^ f'.Particle.name))
-
-    let invert_flavor_array a =
-      let table = SHash.create 37 in
-      Array.iteri (fun i s -> SHash.add table s i) a;
-      (fun name ->
-	try
-	  Flavor.of_int (SHash.find table name)
-	with
-	| Not_found -> invalid_arg ("not found: " ^ name))
-
     let initialized_from = ref None
 
     let is_initialized_from dir =
       match !initialized_from with
       | None -> false
       | Some old_dir -> dir = old_dir
-
-    let long_flavors = ref false
-
-    let digits n =
-      let rec digits' acc n =
-        if n < 1 then
-          acc
-        else
-          digits' (succ acc) (n / 10) in
-      if n < 0 then
-        digits' 1 (-n)
-      else if n = 0 then
-        1
-      else
-        digits' 0 n
 
     let filter_unphysical model =
       let physical_particles =
@@ -1737,64 +1785,13 @@ i.e.
 	  model.vertices in
       { model with particles = physical_particles; vertices = physical_vertices }
 
-    module type Lookup =
-      sig
-        type f = private
-          { flavors : Flavor.t list;
-            flavor_of_string : string -> Flavor.t;
-            flavor_of_symbol : string -> Flavor.t;
-            particle : Flavor.t -> Particle.t;
-            flavor_symbol : Flavor.t -> string;
-            conjugate : Flavor.t -> Flavor.t }
-        val of_model : t -> f
-      end
-
-    module Lookup : Lookup =
-      struct
-
-        type f =
-          { flavors : Flavor.t list;
-            flavor_of_string : string -> Flavor.t;
-            flavor_of_symbol : string -> Flavor.t;
-            particle : Flavor.t -> Particle.t;
-            flavor_symbol : Flavor.t -> string;
-            conjugate : Flavor.t -> Flavor.t }
-            
-        let of_model model =
-          let particle_array = Array.of_list (values model.particles) in
-          let conjugate_array = conjugate_of_particle_array particle_array in
-          let flavors =
-	    List.map
-	      Flavor.of_int
-	      (ThoList.range 0 (Array.length particle_array - 1)) in
-          let name_array = Array.map (fun f -> f.Particle.name) particle_array
-          and symbol_array = Array.of_list (keys model.particles) in
-          let flavor_of_string = invert_flavor_array name_array
-          and flavor_of_symbol = invert_flavor_array symbol_array in
-          let particle f = particle_array.(Flavor.to_int f) in
-          let conjugate f = Flavor.of_int (conjugate_array.(Flavor.to_int f)) in
-          let flavor_symbol f =
-            if !long_flavors then
-              symbol_array.(Flavor.to_int f)
-            else
-              let w = digits (Array.length particle_array - 1) in
-              Printf.sprintf "%0*d" w (Flavor.to_int f) in
-          { flavors = flavors;
-            flavor_of_string = flavor_of_string;
-            flavor_of_symbol = flavor_of_symbol;
-            particle = particle;
-            flavor_symbol = flavor_symbol;
-            conjugate = conjugate }
-
-      end
-
     let init dir =
       let model = filter_unphysical (parse_directory dir) in
       if !dump_raw then
 	dump model;
       let tables = Lookup.of_model model in
       let (vertices3, vertices4, verticesn) as vertices =
-	translate_vertices model tables.Lookup.flavor_of_symbol model in
+	translate_vertices model tables in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
       let functions = [] in
       let variables = [] in
