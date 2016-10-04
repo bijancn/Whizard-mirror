@@ -8,8 +8,9 @@
 This is the central part of the \whizard\ package.  It provides the
 functionality for evaluating structure functions, kinematics and matrix
 elements, integration and event generation.  It combines the various
-parts that deal with those tasks individually and organizes the data transfer
-between them.
+parts that deal with those tasks individually and organizes the data
+transfer between them.
+
 \begin{description}
 \item[subevt\_expr]
   This enables process observables as (abstract) expressions, to be
@@ -21,7 +22,7 @@ between them.
   the structure-function chain.  The parton state is an effective
   state.  It needs not coincide with the seed-kinematics state which is
   used in evaluating phase space.
-\item[processes]
+\item[process]
   Here, all pieces are combined for the purpose of evaluating the
   elementary processes.  The whole algorithm is coded in terms of
   abstract data types as defined in the appropriate modules: [[prc_core]]
@@ -29,9 +30,61 @@ between them.
   configuration and driver, [[sf_base]] for beams and structure-functions,
   [[phs_base]] for phase space, and [[mci_base]] for integration and event
   generation.
+\item[process\_config]
+\item[process\_counter]
+  Very simple object for statistics
+\item[process\_mci]
+\item[pcm]
+\item[kinematics]
+\item[instances]
+  While the above modules set up all static information, the instances
+  have the changing event data.
 \item[process\_stacks]
   Process stacks collect process objects.
 \end{description}
+
+We combine here hard interactions, phase space, and (for scatterings)
+structure functions and interfaces them to the integration module.
+
+The process object implements the combination of a fixed beam and
+structure-function setup with a number of elementary processes.  The
+latter are called process components.  The process object
+represents an entity which is supposedly observable.  It should
+be meaningful to talk about the cross section of a process.
+
+The individual components of a process are, technically, processes
+themselves, but they may have unphysical cross sections which have to
+be added for a physical result.  Process components may be exclusive
+tree-level elementary processes, dipole subtraction term, loop
+corrections, etc.
+
+The beam and structure function setup is common to all process
+components.  Thus, there is only one instance of this part.
+
+The process may be a scattering process or a decay process.  In the
+latter case, there are no structure functions, and the beam setup
+consists of a single particle.  Otherwise, the two classes are treated
+on the same footing.
+
+Once a sampling point has been chosen, a process determines a set of
+partons with a correlated density matrix of quantum numbers.  In
+general, each sampling point will generate, for each process component,
+one or more distinct parton configurations.  This is the [[computed]]
+state.  The computed state is the subject of the multi-channel
+integration algorithm.
+
+For NLO computations, it is necessary to project the computed states
+onto another set of parton configurations (e.g., by recombining
+certain pairs).  This is the [[observed]] state.  When computing
+partonic observables, the information is taken from the observed
+state.
+
+For the purpose of event generation, we will later select one parton
+configuration from the observed state and collapse the correlated
+quantum state.  This configuration is then dressed by applying parton
+shower, decays and hadronization.  The decay chain, in particular,
+combines a scattering process with possible subsequent decay processes
+on the parton level, which are full-fledged process objects themselves.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Process observables}
@@ -2263,7 +2316,8 @@ This object deals with the actual (squared) matrix element values.
 
 @ %def pcm_instance_link_config
 @
-\subsection{Manager Configuration}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Manager Configuration}
 This object holds information about the cores used by the components
 and allocates the corresponding manager instance.
 <<[[core_manager.f90]]>>=
@@ -2487,53 +2541,8 @@ end module core_manager
 
 
 @ %def cm_final
+@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%\section{Complete Elementary Processes}
-%  TODO: (bcn 2016-10-03) move this to the appropriate modules
-This module combines hard interactions, phase space, and (for
-scatterings) structure functions and interfaces them to the
-integration module.
-
-The process object implements the combination of a fixed beam and
-structure-function setup with a number of elementary processes.  The
-latter are called process components.  The process object
-represents an entity which is supposedly observable.  It should
-be meaningful to talk about the cross section of a process.
-
-The individual components of a process are, technically, processes
-themselves, but they may have unphysical cross sections which have to
-be added for a physical result.  Process components may be exclusive
-tree-level elementary processes, dipole subtraction term, loop
-corrections, etc.
-
-The beam and structure function setup is common to all process
-components.  Thus, there is only one instance of this part.
-
-The process may be a scattering process or a decay process.  In the
-latter case, there are no structure functions, and the beam setup
-consists of a single particle.  Otherwise, the two classes are treated
-on the same footing.
-
-Once a sampling point has been chosen, a process determines a set of
-partons with a correlated density matrix of quantum numbers.  In general, each
-sampling point will generate, for each process component, one or more
-distinct parton configurations.  This is the [[computed]] state.  The
-computed state is the subject of the multi-channel integration
-algorithm.
-
-For NLO computations, it is necessary to project the computed states
-onto another set of parton configurations (e.g., by recombining
-certain pairs).  This is the [[observed]] state.  When computing
-partonic observables, the information is taken from the observed
-state.
-
-For the purpose of event generation, we will later select one parton
-configuration from the observed state and collapse the correlated
-quantum state.  This configuration is then dressed by applying parton
-shower, decays and hadronization.  The decay chain, in particular,
-combines a scattering process with possible subsequent decay processes
-on the parton level, which are full-fledged process objects themselves.
-
 \section{The Process Object}
 <<[[process.f90]]>>=
 <<File header>>
@@ -5898,7 +5907,7 @@ Could also be moved to the [[core_manager_t]].
 
 @ %def process_select_i_term
 @
-@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Process config}
 <<[[process_config.f90]]>>=
 <<File header>>
@@ -6781,8 +6790,669 @@ This is done only once, when the MD5 sum is still empty.
 
 @ %def process_beam_config_get_md5sum
 @
-\subsubsection{Process call statistics}
-Very simple object. Could be moved upwards.
+\subsection{Process Components}
+A process component is an individual contribution to a process
+(scattering or decay) which needs not be physical.  The sum over all
+components should be physical.
+
+The [[index]] indentifies this component within its parent process.
+
+The actual process component is stored in the [[core]] subobject.  We
+use a polymorphic subobject instead of an extension of
+[[process_component_t]], because the individual entries in the array
+of process components can have different types.  In short,
+[[process_component_t]] is a wrapper for the actual process variants.
+
+If the [[active]] flag is false, we should skip this component.  This happens
+if the associated process has vanishing matrix element.
+
+The index array [[i_term]] points to the individual terms generated by
+this component.  The indices refer to the parent process.
+
+The index [[i_mci]] is the index of the MC integrator and parameter set which
+are associated to this process component.
+<<Process config: public>>=
+  public :: process_component_t
+<<Process config: types>>=
+  type :: process_component_t
+     type(process_component_def_t), pointer :: config => null ()
+     integer :: index = 0
+     logical :: active = .false.
+     class(mci_t), allocatable :: mci_template
+     integer, dimension(:), allocatable :: i_term
+     integer :: i_mci = 0
+     class(phs_config_t), allocatable :: phs_config
+     character(32) :: md5sum_phs = ""
+     integer :: component_type = COMP_DEFAULT
+   contains
+   <<Process config: process component: TBP>>
+  end type process_component_t
+
+@ %def process_component_t
+@ Finalizer.  The MCI template may (potentially) need a finalizer.  The process
+configuration finalizer may include closing an open scratch file.
+<<Process config: process component: TBP>>=
+  procedure :: final => process_component_final
+<<Process config: procedures>>=
+  subroutine process_component_final (object)
+    class(process_component_t), intent(inout) :: object
+    if (allocated (object%mci_template)) then
+       call object%mci_template%final ()
+    end if
+    if (allocated (object%phs_config)) then
+       call object%phs_config%final ()
+    end if
+  end subroutine process_component_final
+
+@ %def process_component_final
+@ The meaning of [[verbose]] depends on the process variant.
+<<Process config: process component: TBP>>=
+  procedure :: write => process_component_write
+<<Process config: procedures>>=
+  subroutine process_component_write (object, unit)
+    class(process_component_t), intent(in) :: object
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    if (associated (object%config)) then
+       write (u, "(1x,A,I0)")  "Component #", object%index
+       call object%config%write (u)
+       if (object%md5sum_phs /= "") then
+          write (u, "(3x,A,A,A)")  "MD5 sum (phs)       = '", &
+               object%md5sum_phs, "'"
+       end if
+    else
+       write (u, "(1x,A)") "Process component: [not allocated]"
+    end if
+    if (.not. object%active) then
+       write (u, "(1x,A)") "[Inactive]"
+       return
+    end if
+    write (u, "(1x,A)") "Referenced data:"
+    if (allocated (object%i_term)) then
+       write (u, "(3x,A,999(1x,I0))") "Terms                    =", &
+            object%i_term
+    else
+       write (u, "(3x,A)") "Terms                    = [undefined]"
+    end if
+    if (object%i_mci /= 0) then
+       write (u, "(3x,A,I0)") "MC dataset               = ", object%i_mci
+    else
+       write (u, "(3x,A)") "MC dataset               = [undefined]"
+    end if
+    if (allocated (object%phs_config)) then
+       call object%phs_config%write (u)
+    end if
+  end subroutine process_component_write
+
+@ %def process_component_write
+@ Initialize the component.
+<<Process config: process component: TBP>>=
+  procedure :: init => process_component_init
+<<Process config: procedures>>=
+  subroutine process_component_init (component, &
+       i_component, meta, config, &
+       active, data, &
+       mci_template, phs_config_template)
+    class(process_component_t), intent(out) :: component
+    integer, intent(in) :: i_component
+    type(process_metadata_t), intent(in), target :: meta
+    type(process_config_data_t), intent(in) :: config
+    logical, intent(in) :: active
+    type(process_constants_t), intent(in) :: data
+    class(mci_t), intent(in), allocatable :: mci_template
+    class(phs_config_t), intent(in), allocatable :: phs_config_template
+
+    component%index = i_component
+    component%config => meta%lib%get_component_def_ptr (meta%id, i_component)
+
+    component%active = active
+    if (component%active) then
+       if (allocated (mci_template)) &
+          allocate (component%mci_template, source = mci_template)
+       allocate (component%phs_config, source = phs_config_template)
+       call component%phs_config%init (data, config%model)
+       call component%phs_config%set_component_index (component%index)
+    end if
+  end subroutine process_component_init
+
+@ %def process_component_init
+@
+<<Process config: process component: TBP>>=
+  procedure :: is_active => process_component_is_active
+<<Process config: procedures>>=
+  elemental function process_component_is_active (component) result (active)
+    logical :: active
+    class(process_component_t), intent(in) :: component
+    active = component%active
+  end function process_component_is_active
+
+@ %def process_component_is_active
+@
+<<Process config: process component: TBP>>=
+  procedure :: has_mci_template => process_component_has_mci_template
+<<Process config: procedures>>=
+  pure function process_component_has_mci_template (component) &
+         result (is_allocated)
+    logical :: is_allocated
+    class(process_component_t), intent(in) :: component
+    is_allocated = allocated (component%mci_template)
+  end function process_component_has_mci_template
+
+@ %def process_component_has_mci_template
+@
+<<Process config: process component: TBP>>=
+  procedure :: extract_mci_template => process_component_extract_mci_template
+<<Process config: procedures>>=
+  function process_component_extract_mci_template (component) &
+         result (mci_template)
+    class(mci_t), allocatable :: mci_template
+    class(process_component_t), intent(in) :: component
+    if (allocated (component%mci_template)) &
+       allocate (mci_template, source = component%mci_template)
+  end function process_component_extract_mci_template
+
+@ %def process_component_extract_mci_template
+@ Finalize the phase-space configuration.
+<<Process config: process component: TBP>>=
+  procedure :: configure_phs => process_component_configure_phs
+<<Process config: procedures>>=
+  subroutine process_component_configure_phs &
+       (component, sqrts, beam_config, rebuild, &
+        ignore_mismatch, verbose)
+    class(process_component_t), intent(inout) :: component
+    real(default), intent(in) :: sqrts
+    type(process_beam_config_t), intent(in) :: beam_config
+    logical, intent(in), optional :: rebuild
+    logical, intent(in), optional :: ignore_mismatch
+    logical, intent(in), optional :: verbose
+    logical :: no_strfun, verb
+    integer :: nlo_type
+    no_strfun = beam_config%n_strfun == 0
+    verb = .true.;  if (present (verbose))  verb = verbose
+    nlo_type = component%config%get_nlo_type ()
+    call component%phs_config%configure (sqrts, &
+         azimuthal_dependence = beam_config%azimuthal_dependence, &
+         sqrts_fixed = no_strfun, &
+         cm_frame = beam_config%lab_is_cm_frame .and. no_strfun, &
+         rebuild = rebuild, ignore_mismatch = ignore_mismatch, &
+         nlo_type = nlo_type)
+    if (verb)  call component%phs_config%startup_message ()
+  end subroutine process_component_configure_phs
+
+@ %def process_component_configure_phs
+@ The process component possesses two MD5 sums: the checksum of the
+component definition, which should be available when the component is
+initialized, and the phase-space MD5 sum, which is available after
+configuration.
+<<Process config: process component: TBP>>=
+  procedure :: compute_md5sum => process_component_compute_md5sum
+<<Process config: procedures>>=
+  subroutine process_component_compute_md5sum (component)
+    class(process_component_t), intent(inout) :: component
+    component%md5sum_phs = component%phs_config%get_md5sum ()
+  end subroutine process_component_compute_md5sum
+
+@ %def process_component_compute_md5sum
+@ Match phase-space channels with structure-function channels, where
+applicable.
+
+This calls a method of the [[phs_config]] phase-space implementation.
+<<Process config: process component: TBP>>=
+  procedure :: collect_channels => process_component_collect_channels
+<<Process config: procedures>>=
+  subroutine process_component_collect_channels (component, coll)
+    class(process_component_t), intent(inout) :: component
+    type(phs_channel_collection_t), intent(inout) :: coll
+    call component%phs_config%collect_channels (coll)
+  end subroutine process_component_collect_channels
+
+@ %def process_component_collect_channels
+@
+<<Process config: process component: TBP>>=
+  procedure :: get_config => process_component_get_config
+<<Process config: procedures>>=
+  function process_component_get_config (component) &
+         result (config)
+    type(process_component_def_t) :: config
+    class(process_component_t), intent(in) :: component
+    config = component%config
+  end function process_component_get_config
+
+@ %def process_component_get_config
+@
+<<Process config: process component: TBP>>=
+  procedure :: get_md5sum => process_component_get_md5sum
+<<Process config: procedures>>=
+  pure function process_component_get_md5sum (component) result (md5)
+    type(string_t) :: md5
+    class(process_component_t), intent(in) :: component
+    md5 = component%config%get_md5sum () // component%md5sum_phs
+  end function process_component_get_md5sum
+
+@ %def process_component_get_md5sum
+@ Return the number of phase-space parameters.
+<<Process config: process component: TBP>>=
+  procedure :: get_n_phs_par => process_component_get_n_phs_par
+<<Process config: procedures>>=
+  function process_component_get_n_phs_par (component) result (n_par)
+    class(process_component_t), intent(in) :: component
+    integer :: n_par
+    n_par = component%phs_config%get_n_par ()
+  end function process_component_get_n_phs_par
+
+@ %def process_component_get_n_phs_par
+@
+<<Process config: process component: TBP>>=
+  procedure :: get_phs_config => process_component_get_phs_config
+<<Process config: procedures>>=
+  subroutine process_component_get_phs_config (component, phs_config)
+    class(process_component_t), intent(in), target :: component
+    class(phs_config_t), intent(out), pointer :: phs_config
+    phs_config => component%phs_config
+  end subroutine process_component_get_phs_config
+
+@ %def process_component_get_phs_config
+@
+<<Process config: process component: TBP>>=
+  procedure :: get_nlo_type => process_component_get_nlo_type
+<<Process config: procedures>>=
+  elemental function process_component_get_nlo_type (component) result (nlo_type)
+     integer :: nlo_type
+     class(process_component_t), intent(in) :: component
+     nlo_type = component%config%get_nlo_type ()
+  end function process_component_get_nlo_type
+
+@ %def process_component_get_nlo_type
+@
+<<Process config: process component: TBP>>=
+  procedure :: needs_mci_entry => process_component_needs_mci_entry
+<<Process config: procedures>>=
+  function process_component_needs_mci_entry (component) result (value)
+    class(process_component_t), intent(in) :: component
+    logical :: value
+    value = component%active .and. component%component_type <= COMP_MASTER
+  end function process_component_needs_mci_entry
+
+@ %def process_component_needs_mci_entry
+@
+<<Process config: process component: TBP>>=
+  procedure :: can_be_integrated => process_component_can_be_integrated
+<<Process config: procedures>>=
+  elemental function process_component_can_be_integrated (component) result (active)
+    logical :: active
+    class(process_component_t), intent(in) :: component
+    active = component%config%can_be_integrated ()
+  end function process_component_can_be_integrated
+
+@ %def process_component_can_be_integrated
+@
+\subsection{Process terms}
+For straightforward tree-level calculations, each process component
+corresponds to a unique elementary interaction.  However, in the case
+of NLO calculations with subtraction terms, a process component may
+split into several separate contributions to the scattering, which are
+qualified by interactions with distinct kinematics and particle
+content.  We represent their configuration as [[process_term_t]]
+objects, the actual instances will be introduced below as
+[[term_instance_t]].  In any case, the process term contains an
+elementary interaction with a definite quantum-number and momentum
+content.
+
+The index [[i_term_global]] identifies the term relative to the
+process.
+
+The index [[i_component]] identifies the process component which
+generates this term, relative to the parent process.
+
+The index [[i_term]] identifies the term relative to the process
+component (not the process).
+
+The [[data]] subobject holds all process constants.
+
+The number of allowed flavor/helicity/color combinations is stored as
+[[n_allowed]].  This is the total number of independent entries in the
+density matrix.  For each combination, the index of the flavor,
+helicity, and color state is stored in the arrays [[flv]], [[hel]],
+and [[col]], respectively.
+
+The flag [[rearrange]] is true if we need to rearrange the particles of the
+hard interaction, to obtain the effective parton state.
+
+The interaction [[int]] holds the quantum state for the (resolved) hard
+interaction, the parent-child relations of the particles, and their momenta.
+The momenta are not filled yet; this is postponed to copies of [[int]] which
+go into the process instances.
+
+If recombination is in effect, we should allocate [[int_eff]] to describe the
+rearranged partonic state.
+
+This type is public only for use in a unit test.
+<<Process config: public>>=
+  public :: process_term_t
+<<Process config: types>>=
+  type :: process_term_t
+     integer :: i_term_global = 0
+     integer :: i_component = 0
+     integer :: i_term = 0
+     integer :: i_sub = 0
+     integer :: i_core = 0
+     integer :: n_allowed = 0
+     type(process_constants_t) :: data
+     real(default) :: alpha_s = 0
+     integer, dimension(:), allocatable :: flv, hel, col
+     type(interaction_t) :: int
+     type(interaction_t), pointer :: int_eff => null ()
+   contains
+   <<Process config: process term: TBP>>
+  end type process_term_t
+
+@ %def process_term_t
+@ For the output, we skip the process constants and the tables of
+allowed quantum numbers.  Those can also be read off from the
+interaction object.
+<<Process config: process term: TBP>>=
+  procedure :: write => process_term_write
+<<Process config: procedures>>=
+  subroutine process_term_write (term, unit)
+    class(process_term_t), intent(in) :: term
+    integer, intent(in), optional :: unit
+    integer :: u
+    u = given_output_unit (unit)
+    write (u, "(1x,A,I0)")  "Term #", term%i_term_global
+    write (u, "(3x,A,I0)")  "Process component index      = ", &
+         term%i_component
+    write (u, "(3x,A,I0)")  "Term index w.r.t. component  = ", &
+         term%i_term
+    call write_separator (u)
+    write (u, "(1x,A)")  "Hard interaction:"
+    call write_separator (u)
+    call term%int%basic_write (u)
+  end subroutine process_term_write
+
+@ %def process_term_write
+@ Write an account of all quantum number states and their current status.
+<<Process config: process term: TBP>>=
+  procedure :: write_state_summary => process_term_write_state_summary
+<<Process config: procedures>>=
+  subroutine process_term_write_state_summary (term, core, unit)
+    class(process_term_t), intent(in) :: term
+    class(prc_core_t), intent(in) :: core
+    integer, intent(in), optional :: unit
+    integer :: u, i, f, h, c
+    type(state_iterator_t) :: it
+    character :: sgn
+    u = given_output_unit (unit)
+    write (u, "(1x,A,I0)")  "Term #", term%i_term_global
+    call it%init (term%int%get_state_matrix_ptr ())
+    do while (it%is_valid ())
+       i = it%get_me_index ()
+       f = term%flv(i)
+       h = term%hel(i)
+       if (allocated (term%col)) then
+          c = term%col(i)
+       else
+          c = 1
+       end if
+       if (core%is_allowed (term%i_term, f, h, c)) then
+          sgn = "+"
+       else
+          sgn = " "
+       end if
+       write (u, "(1x,A1,1x,I0,2x)", advance="no")  sgn, i
+       call quantum_numbers_write (it%get_quantum_numbers (), u)
+       write (u, *)
+       call it%advance ()
+    end do
+  end subroutine process_term_write_state_summary
+
+@ %def process_term_write_state_summary
+@ Finalizer: the [[int]] and potentially [[int_eff]] components have a
+finalizer that we must call.
+<<Process config: process term: TBP>>=
+  procedure :: final => process_term_final
+<<Process config: procedures>>=
+  subroutine process_term_final (term)
+    class(process_term_t), intent(inout) :: term
+    call term%int%final ()
+  end subroutine process_term_final
+
+@ %def process_term_final
+@ Initialize the term.  We copy the process constants from the [[core]]
+object and set up the [[int]] hard interaction accordingly.
+
+The [[alpha_s]] value is useful for writing external event records.  This is
+the constant value which may be overridden by a event-specific running value.
+If the model does not contain the strong coupling, the value is zero.
+
+The [[rearrange]] part is commented out; this or something equivalent
+could become relevant for NLO algorithms.
+<<Process config: process term: TBP>>=
+  procedure :: init => process_term_init
+<<Process config: procedures>>=
+  subroutine process_term_init &
+       (term, i_term_global, i_component, i_term, core, model, &
+        nlo_type, use_beam_pol, subtraction_method)
+    class(process_term_t), intent(inout), target :: term
+    integer, intent(in) :: i_term_global
+    integer, intent(in) :: i_component
+    integer, intent(in) :: i_term
+    class(prc_core_t), intent(inout) :: core
+    class(model_data_t), intent(in), target :: model
+    integer, intent(in), optional :: nlo_type
+    logical, intent(in), optional :: use_beam_pol
+    type(string_t), intent(in), optional :: subtraction_method
+    class(modelpar_data_t), pointer :: alpha_s_ptr
+    logical :: use_internal_color
+    term%i_term_global = i_term_global
+    term%i_component = i_component
+    term%i_term = i_term
+    call core%get_constants (term%data, i_term)
+    alpha_s_ptr => model%get_par_data_ptr (var_str ("alphas"))
+    if (associated (alpha_s_ptr)) then
+       term%alpha_s = alpha_s_ptr%get_real ()
+    else
+       term%alpha_s = -1
+    end if
+    use_internal_color = .false.
+    if (present (subtraction_method)) &
+       use_internal_color = char (subtraction_method) == 'omega'
+    call term%setup_interaction (core, model, nlo_type = nlo_type, &
+       pol_beams = use_beam_pol, use_internal_color = use_internal_color)
+  end subroutine process_term_init
+
+@ %def process_term_init
+@ We fetch the process constants which determine the quantum numbers and
+use those to create the interaction.  The interaction contains
+incoming and outgoing particles, no virtuals.  The incoming particles
+are parents of the outgoing ones.
+
+Keeping previous \whizard\ conventions, we invert the color assignment
+(but not flavor or helicity) for the incoming particles.  When the
+color-flow square matrix is evaluated, this inversion is done again,
+so in the color-flow sequence we get the color assignments of the
+matrix element.
+<<Process config: process term: TBP>>=
+  procedure :: setup_interaction => process_term_setup_interaction
+<<Process config: procedures>>=
+  subroutine process_term_setup_interaction (term, core, model, &
+     nlo_type, pol_beams, use_internal_color)
+    class(process_term_t), intent(inout) :: term
+    class(prc_core_t), intent(inout) :: core
+    class(model_data_t), intent(in), target :: model
+    logical, intent(in), optional :: pol_beams
+    integer, intent(in), optional :: nlo_type
+    logical, intent(in), optional :: use_internal_color
+    integer :: n, n_tot
+    type(flavor_t), dimension(:), allocatable :: flv
+    type(color_t), dimension(:), allocatable :: col
+    type(helicity_t), dimension(:), allocatable :: hel
+    type(quantum_numbers_t), dimension(:), allocatable :: qn
+    logical :: yorn
+    integer :: nlo_t, n_hel, n_sub
+    yorn = .false.; if (present (pol_beams)) yorn = pol_beams
+    nlo_t = BORN; if (present (nlo_type)) nlo_t = nlo_type
+    n_tot = term%data%n_in + term%data%n_out
+    call count_number_of_states ()
+    term%n_allowed = n
+    call compute_n_sub ()
+    call fill_quantum_numbers ()
+    call term%int%basic_init &
+         (term%data%n_in, 0, term%data%n_out, set_relations = .true.)
+    select type (core)
+    type is (prc_openloops_t)
+      call setup_states_openloops ()
+    class is (prc_user_defined_base_t)
+      call setup_states_other_user_defined ()
+    class default
+      call setup_states_omega ()
+    end select
+    call term%int%freeze ()
+  contains
+    subroutine count_number_of_states ()
+      integer :: f, h, c
+      n = 0
+      select type (core)
+      class is (prc_user_defined_base_t)
+         n_hel = 1; if (yorn) n_hel = 4
+         do f = 1, term%data%n_flv
+            do h = 1, term%data%n_hel
+               do c = 1, term%data%n_col
+                  n = n + 1
+               end do
+            end do
+         end do
+      class default !!! Omega and all test cores
+         do f = 1, term%data%n_flv
+            do h = 1, term%data%n_hel
+               do c = 1, term%data%n_col
+                  if (core%is_allowed (term%i_term, f, h, c))  n = n + 1
+               end do
+            end do
+         end do
+      end select
+    end subroutine count_number_of_states
+
+    subroutine compute_n_sub ()
+      if (nlo_t == NLO_VIRTUAL) then
+         yorn = .false.; if (present (use_internal_color)) yorn = use_internal_color
+         n_sub = 1
+         if (.not. yorn) n_sub = n_sub + n_tot * (n_tot - 1) / 2
+      else
+         n_sub = 0
+      end if
+    end subroutine compute_n_sub
+
+    subroutine fill_quantum_numbers ()
+      if (nlo_t == NLO_VIRTUAL) then
+         allocate (term%flv ((n_sub + 1) * n), &
+            term%col ((n_sub + 1) * n), term%hel ((n_sub + 1) * n))
+      else
+         allocate (term%flv (n), term%col (n), term%hel (n))
+      end if
+      allocate (flv (n_tot), col (n_tot), hel (n_tot))
+      allocate (qn (n_tot))
+    end subroutine fill_quantum_numbers
+
+    subroutine setup_states_openloops ()
+      integer :: s, f, c, h, i
+      i = 0
+      associate (data => term%data)
+         do s = 0, n_sub
+             do f = 1, data%n_flv
+                do h = 1, data%n_hel
+                   do c = 1, data%n_col
+                      i = i + 1
+                      term%flv(i) = f
+                      term%hel(i) = h
+                      !!! Dummy-initialization of color
+                      term%col(i) = c
+                      call flv%init (data%flv_state (:,f), model)
+                      call color_init_from_array (col, &
+                         data%col_state(:,:,c), data%ghost_flag(:,c))
+                      call col(:data%n_in)%invert ()
+                      if (n_hel > 1) then
+                         call hel%init (data%hel_state (:,h))
+                         call qn%init (flv, hel, col, s)
+                      else
+                         call qn%init (flv, col, s)
+                      end if
+                      call term%int%add_state (qn)
+                  end do
+               end do
+             end do
+         end do
+      end associate
+    end subroutine setup_states_openloops
+
+    subroutine setup_states_other_user_defined ()
+      integer :: s, f, i
+      integer :: n_sub
+      if (n_hel > 1) &
+         call msg_fatal ("Polarized beams only supported by OpenLoops")
+      i = 0
+      n_sub = 1; if (nlo_t == NLO_VIRTUAL) n_sub = 2
+      do s = 0, n_sub
+         do f = 1, term%data%n_flv
+            i = i + 1
+            term%flv(i) = f
+            !!! Dumy initialization of helicity
+            term%hel(i) = 1
+            !!! Dummy-initialization of color
+            term%col(i) = 1
+            call flv%init (term%data%flv_state (:,f), model)
+            call qn%init (flv, s)
+            call term%int%add_state (qn)
+         end do
+      end do
+    end subroutine setup_states_other_user_defined
+
+    subroutine setup_states_omega ()
+      integer :: f, h, c, i
+      i = 0
+      associate (data => term%data)
+         do f = 1, data%n_flv
+            do h = 1, data%n_hel
+              do c = 1, data%n_col
+                 if (core%is_allowed (term%i_term, f, h, c)) then
+                    i = i + 1
+                    term%flv(i) = f
+                    term%hel(i) = h
+                    term%col(i) = c
+                    call flv%init (data%flv_state(:,f), model)
+                    call color_init_from_array (col, &
+                         data%col_state(:,:,c), &
+                         data%ghost_flag(:,c))
+                    call col(:data%n_in)%invert ()
+                    call hel%init (data%hel_state(:,h))
+                    call qn%init (flv, col, hel)
+                    call term%int%add_state (qn)
+                 end if
+              end do
+            end do
+         end do
+      end associate
+    end subroutine setup_states_omega
+
+  end subroutine process_term_setup_interaction
+
+@ %def process_term_setup_interaction
+@
+<<Process config: process term: TBP>>=
+  procedure :: get_process_constants => process_term_get_process_constants
+<<Process config: procedures>>=
+   subroutine process_term_get_process_constants &
+       (term, prc_constants)
+    class(process_term_t), intent(inout) :: term
+    type(process_constants_t), intent(out) :: prc_constants
+    prc_constants = term%data
+  end subroutine process_term_get_process_constants
+
+@ %def process_term_get_process_constants
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Process call statistics}
+Very simple object for statistics.  Could be moved to a more basic chapter.
 <<[[process_counter.f90]]>>=
 <<File header>>
 
@@ -6805,7 +7475,7 @@ contains
 
 end module process_counter
 @ %def process_counter
-This object can record process calls, categorized by evaluation
+@ This object can record process calls, categorized by evaluation
 status.  It is a part of the [[mci_entry]] component below.
 <<Process counter: public>>=
   public :: process_counter_t
@@ -6895,8 +7565,8 @@ instance; the process object just copies the instance counter.
 
 @ %def process_counter_record
 @
-\subsection{Multi-channel integration}
-@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Multi-channel integration}
 <<[[process_mci.f90]]>>=
 <<File header>>
 
@@ -7477,646 +8147,8 @@ state of the integrator (adaptation).
 
 @ %def process_mci_entry_get_md5sum
 @
-\subsection{Process Components}
-A process component is an individual contribution to a process
-(scattering or decay) which needs not be physical.  The sum over all
-components should be physical.
-
-The [[index]] indentifies this component within its parent process.
-
-The actual process component is stored in the [[core]] subobject.  We
-use a polymorphic subobject instead of an extension of
-[[process_component_t]], because the individual entries in the array
-of process components can have different types.  In short,
-[[process_component_t]] is a wrapper for the actual process variants.
-
-If the [[active]] flag is false, we should skip this component.  This happens
-if the associated process has vanishing matrix element.
-
-The index array [[i_term]] points to the individual terms generated by
-this component.  The indices refer to the parent process.
-
-The index [[i_mci]] is the index of the MC integrator and parameter set which
-are associated to this process component.
-<<Process config: public>>=
-  public :: process_component_t
-<<Process config: types>>=
-  type :: process_component_t
-     type(process_component_def_t), pointer :: config => null ()
-     integer :: index = 0
-     logical :: active = .false.
-     class(mci_t), allocatable :: mci_template
-     integer, dimension(:), allocatable :: i_term
-     integer :: i_mci = 0
-     class(phs_config_t), allocatable :: phs_config
-     character(32) :: md5sum_phs = ""
-     integer :: component_type = COMP_DEFAULT
-   contains
-   <<Process config: process component: TBP>>
-  end type process_component_t
-
-@ %def process_component_t
-@ Finalizer.  The MCI template may (potentially) need a finalizer.  The process
-configuration finalizer may include closing an open scratch file.
-<<Process config: process component: TBP>>=
-  procedure :: final => process_component_final
-<<Process config: procedures>>=
-  subroutine process_component_final (object)
-    class(process_component_t), intent(inout) :: object
-    if (allocated (object%mci_template)) then
-       call object%mci_template%final ()
-    end if
-    if (allocated (object%phs_config)) then
-       call object%phs_config%final ()
-    end if
-  end subroutine process_component_final
-
-@ %def process_component_final
-@ The meaning of [[verbose]] depends on the process variant.
-<<Process config: process component: TBP>>=
-  procedure :: write => process_component_write
-<<Process config: procedures>>=
-  subroutine process_component_write (object, unit)
-    class(process_component_t), intent(in) :: object
-    integer, intent(in), optional :: unit
-    integer :: u
-    u = given_output_unit (unit)
-    if (associated (object%config)) then
-       write (u, "(1x,A,I0)")  "Component #", object%index
-       call object%config%write (u)
-       if (object%md5sum_phs /= "") then
-          write (u, "(3x,A,A,A)")  "MD5 sum (phs)       = '", &
-               object%md5sum_phs, "'"
-       end if
-    else
-       write (u, "(1x,A)") "Process component: [not allocated]"
-    end if
-    if (.not. object%active) then
-       write (u, "(1x,A)") "[Inactive]"
-       return
-    end if
-    write (u, "(1x,A)") "Referenced data:"
-    if (allocated (object%i_term)) then
-       write (u, "(3x,A,999(1x,I0))") "Terms                    =", &
-            object%i_term
-    else
-       write (u, "(3x,A)") "Terms                    = [undefined]"
-    end if
-    if (object%i_mci /= 0) then
-       write (u, "(3x,A,I0)") "MC dataset               = ", object%i_mci
-    else
-       write (u, "(3x,A)") "MC dataset               = [undefined]"
-    end if
-    if (allocated (object%phs_config)) then
-       call object%phs_config%write (u)
-    end if
-  end subroutine process_component_write
-
-@ %def process_component_write
-@ Initialize the component.
-<<Process config: process component: TBP>>=
-  procedure :: init => process_component_init
-<<Process config: procedures>>=
-  subroutine process_component_init (component, &
-       i_component, meta, config, &
-       active, data, &
-       mci_template, phs_config_template)
-    class(process_component_t), intent(out) :: component
-    integer, intent(in) :: i_component
-    type(process_metadata_t), intent(in), target :: meta
-    type(process_config_data_t), intent(in) :: config
-    logical, intent(in) :: active
-    type(process_constants_t), intent(in) :: data
-    class(mci_t), intent(in), allocatable :: mci_template
-    class(phs_config_t), intent(in), allocatable :: phs_config_template
-
-    component%index = i_component
-    component%config => meta%lib%get_component_def_ptr (meta%id, i_component)
-
-    component%active = active
-    if (component%active) then
-       if (allocated (mci_template)) &
-          allocate (component%mci_template, source = mci_template)
-       allocate (component%phs_config, source = phs_config_template)
-       call component%phs_config%init (data, config%model)
-       call component%phs_config%set_component_index (component%index)
-    end if
-  end subroutine process_component_init
-
-@ %def process_component_init
-@
-<<Process config: process component: TBP>>=
-  procedure :: is_active => process_component_is_active
-<<Process config: procedures>>=
-  elemental function process_component_is_active (component) result (active)
-    logical :: active
-    class(process_component_t), intent(in) :: component
-    active = component%active
-  end function process_component_is_active
-
-@ %def process_component_is_active
-@
-<<Process config: process component: TBP>>=
-  procedure :: has_mci_template => process_component_has_mci_template
-<<Process config: procedures>>=
-  pure function process_component_has_mci_template (component) &
-         result (is_allocated)
-    logical :: is_allocated
-    class(process_component_t), intent(in) :: component
-    is_allocated = allocated (component%mci_template)
-  end function process_component_has_mci_template
-
-@ %def process_component_has_mci_template
-@
-<<Process config: process component: TBP>>=
-  procedure :: extract_mci_template => process_component_extract_mci_template
-<<Process config: procedures>>=
-  function process_component_extract_mci_template (component) &
-         result (mci_template)
-    class(mci_t), allocatable :: mci_template
-    class(process_component_t), intent(in) :: component
-    if (allocated (component%mci_template)) &
-       allocate (mci_template, source = component%mci_template)
-  end function process_component_extract_mci_template
-
-@ %def process_component_extract_mci_template
-@ Finalize the phase-space configuration.
-<<Process config: process component: TBP>>=
-  procedure :: configure_phs => process_component_configure_phs
-<<Process config: procedures>>=
-  subroutine process_component_configure_phs &
-       (component, sqrts, beam_config, rebuild, &
-        ignore_mismatch, verbose)
-    class(process_component_t), intent(inout) :: component
-    real(default), intent(in) :: sqrts
-    type(process_beam_config_t), intent(in) :: beam_config
-    logical, intent(in), optional :: rebuild
-    logical, intent(in), optional :: ignore_mismatch
-    logical, intent(in), optional :: verbose
-    logical :: no_strfun, verb
-    integer :: nlo_type
-    no_strfun = beam_config%n_strfun == 0
-    verb = .true.;  if (present (verbose))  verb = verbose
-    nlo_type = component%config%get_nlo_type ()
-    call component%phs_config%configure (sqrts, &
-         azimuthal_dependence = beam_config%azimuthal_dependence, &
-         sqrts_fixed = no_strfun, &
-         cm_frame = beam_config%lab_is_cm_frame .and. no_strfun, &
-         rebuild = rebuild, ignore_mismatch = ignore_mismatch, &
-         nlo_type = nlo_type)
-    if (verb)  call component%phs_config%startup_message ()
-  end subroutine process_component_configure_phs
-
-@ %def process_component_configure_phs
-@ The process component possesses two MD5 sums: the checksum of the
-component definition, which should be available when the component is
-initialized, and the phase-space MD5 sum, which is available after
-configuration.
-<<Process config: process component: TBP>>=
-  procedure :: compute_md5sum => process_component_compute_md5sum
-<<Process config: procedures>>=
-  subroutine process_component_compute_md5sum (component)
-    class(process_component_t), intent(inout) :: component
-    component%md5sum_phs = component%phs_config%get_md5sum ()
-  end subroutine process_component_compute_md5sum
-
-@ %def process_component_compute_md5sum
-@ Match phase-space channels with structure-function channels, where
-applicable.
-
-This calls a method of the [[phs_config]] phase-space implementation.
-<<Process config: process component: TBP>>=
-  procedure :: collect_channels => process_component_collect_channels
-<<Process config: procedures>>=
-  subroutine process_component_collect_channels (component, coll)
-    class(process_component_t), intent(inout) :: component
-    type(phs_channel_collection_t), intent(inout) :: coll
-    call component%phs_config%collect_channels (coll)
-  end subroutine process_component_collect_channels
-
-@ %def process_component_collect_channels
-@
-<<Process config: process component: TBP>>=
-  procedure :: get_config => process_component_get_config
-<<Process config: procedures>>=
-  function process_component_get_config (component) &
-         result (config)
-    type(process_component_def_t) :: config
-    class(process_component_t), intent(in) :: component
-    config = component%config
-  end function process_component_get_config
-
-@ %def process_component_get_config
-@
-<<Process config: process component: TBP>>=
-  procedure :: get_md5sum => process_component_get_md5sum
-<<Process config: procedures>>=
-  pure function process_component_get_md5sum (component) result (md5)
-    type(string_t) :: md5
-    class(process_component_t), intent(in) :: component
-    md5 = component%config%get_md5sum () // component%md5sum_phs
-  end function process_component_get_md5sum
-
-@ %def process_component_get_md5sum
-@ Return the number of phase-space parameters.
-<<Process config: process component: TBP>>=
-  procedure :: get_n_phs_par => process_component_get_n_phs_par
-<<Process config: procedures>>=
-  function process_component_get_n_phs_par (component) result (n_par)
-    class(process_component_t), intent(in) :: component
-    integer :: n_par
-    n_par = component%phs_config%get_n_par ()
-  end function process_component_get_n_phs_par
-
-@ %def process_component_get_n_phs_par
-@
-<<Process config: process component: TBP>>=
-  procedure :: get_phs_config => process_component_get_phs_config
-<<Process config: procedures>>=
-  subroutine process_component_get_phs_config (component, phs_config)
-    class(process_component_t), intent(in), target :: component
-    class(phs_config_t), intent(out), pointer :: phs_config
-    phs_config => component%phs_config
-  end subroutine process_component_get_phs_config
-
-@ %def process_component_get_phs_config
-@
-<<Process config: process component: TBP>>=
-  procedure :: get_nlo_type => process_component_get_nlo_type
-<<Process config: procedures>>=
-  elemental function process_component_get_nlo_type (component) result (nlo_type)
-     integer :: nlo_type
-     class(process_component_t), intent(in) :: component
-     nlo_type = component%config%get_nlo_type ()
-  end function process_component_get_nlo_type
-
-@ %def process_component_get_nlo_type
-@
-\subsection{Process terms}
-For straightforward tree-level calculations, each process component
-corresponds to a unique elementary interaction.  However, in the case
-of NLO calculations with subtraction terms, a process component may
-split into several separate contributions to the scattering, which are
-qualified by interactions with distinct kinematics and particle
-content.  We represent their configuration as [[process_term_t]]
-objects, the actual instances will be introduced below as
-[[term_instance_t]].  In any case, the process term contains an
-elementary interaction with a definite quantum-number and momentum
-content.
-
-The index [[i_term_global]] identifies the term relative to the
-process.
-
-The index [[i_component]] identifies the process component which
-generates this term, relative to the parent process.
-
-The index [[i_term]] identifies the term relative to the process
-component (not the process).
-
-The [[data]] subobject holds all process constants.
-
-The number of allowed flavor/helicity/color combinations is stored as
-[[n_allowed]].  This is the total number of independent entries in the
-density matrix.  For each combination, the index of the flavor,
-helicity, and color state is stored in the arrays [[flv]], [[hel]],
-and [[col]], respectively.
-
-The flag [[rearrange]] is true if we need to rearrange the particles of the
-hard interaction, to obtain the effective parton state.
-
-The interaction [[int]] holds the quantum state for the (resolved) hard
-interaction, the parent-child relations of the particles, and their momenta.
-The momenta are not filled yet; this is postponed to copies of [[int]] which
-go into the process instances.
-
-If recombination is in effect, we should allocate [[int_eff]] to describe the
-rearranged partonic state.
-
-This type is public only for use in a unit test.
-<<Process config: public>>=
-  public :: process_term_t
-<<Process config: types>>=
-  type :: process_term_t
-     integer :: i_term_global = 0
-     integer :: i_component = 0
-     integer :: i_term = 0
-     integer :: i_sub = 0
-     integer :: i_core = 0
-     integer :: n_allowed = 0
-     type(process_constants_t) :: data
-     real(default) :: alpha_s = 0
-     integer, dimension(:), allocatable :: flv, hel, col
-     type(interaction_t) :: int
-     type(interaction_t), pointer :: int_eff => null ()
-   contains
-   <<Process config: process term: TBP>>
-  end type process_term_t
-
-@ %def process_term_t
-@ For the output, we skip the process constants and the tables of
-allowed quantum numbers.  Those can also be read off from the
-interaction object.
-<<Process config: process term: TBP>>=
-  procedure :: write => process_term_write
-<<Process config: procedures>>=
-  subroutine process_term_write (term, unit)
-    class(process_term_t), intent(in) :: term
-    integer, intent(in), optional :: unit
-    integer :: u
-    u = given_output_unit (unit)
-    write (u, "(1x,A,I0)")  "Term #", term%i_term_global
-    write (u, "(3x,A,I0)")  "Process component index      = ", &
-         term%i_component
-    write (u, "(3x,A,I0)")  "Term index w.r.t. component  = ", &
-         term%i_term
-    call write_separator (u)
-    write (u, "(1x,A)")  "Hard interaction:"
-    call write_separator (u)
-    call term%int%basic_write (u)
-  end subroutine process_term_write
-
-@ %def process_term_write
-@ Write an account of all quantum number states and their current status.
-<<Process config: process term: TBP>>=
-  procedure :: write_state_summary => process_term_write_state_summary
-<<Process config: procedures>>=
-  subroutine process_term_write_state_summary (term, core, unit)
-    class(process_term_t), intent(in) :: term
-    class(prc_core_t), intent(in) :: core
-    integer, intent(in), optional :: unit
-    integer :: u, i, f, h, c
-    type(state_iterator_t) :: it
-    character :: sgn
-    u = given_output_unit (unit)
-    write (u, "(1x,A,I0)")  "Term #", term%i_term_global
-    call it%init (term%int%get_state_matrix_ptr ())
-    do while (it%is_valid ())
-       i = it%get_me_index ()
-       f = term%flv(i)
-       h = term%hel(i)
-       if (allocated (term%col)) then
-          c = term%col(i)
-       else
-          c = 1
-       end if
-       if (core%is_allowed (term%i_term, f, h, c)) then
-          sgn = "+"
-       else
-          sgn = " "
-       end if
-       write (u, "(1x,A1,1x,I0,2x)", advance="no")  sgn, i
-       call quantum_numbers_write (it%get_quantum_numbers (), u)
-       write (u, *)
-       call it%advance ()
-    end do
-  end subroutine process_term_write_state_summary
-
-@ %def process_term_write_state_summary
-@ Finalizer: the [[int]] and potentially [[int_eff]] components have a
-finalizer that we must call.
-<<Process config: process term: TBP>>=
-  procedure :: final => process_term_final
-<<Process config: procedures>>=
-  subroutine process_term_final (term)
-    class(process_term_t), intent(inout) :: term
-    call term%int%final ()
-  end subroutine process_term_final
-
-@ %def process_term_final
-@ Initialize the term.  We copy the process constants from the [[core]]
-object and set up the [[int]] hard interaction accordingly.
-
-The [[alpha_s]] value is useful for writing external event records.  This is
-the constant value which may be overridden by a event-specific running value.
-If the model does not contain the strong coupling, the value is zero.
-
-The [[rearrange]] part is commented out; this or something equivalent
-could become relevant for NLO algorithms.
-<<Process config: process term: TBP>>=
-  procedure :: init => process_term_init
-<<Process config: procedures>>=
-  subroutine process_term_init &
-       (term, i_term_global, i_component, i_term, core, model, &
-        nlo_type, use_beam_pol, subtraction_method)
-    class(process_term_t), intent(inout), target :: term
-    integer, intent(in) :: i_term_global
-    integer, intent(in) :: i_component
-    integer, intent(in) :: i_term
-    class(prc_core_t), intent(inout) :: core
-    class(model_data_t), intent(in), target :: model
-    integer, intent(in), optional :: nlo_type
-    logical, intent(in), optional :: use_beam_pol
-    type(string_t), intent(in), optional :: subtraction_method
-    class(modelpar_data_t), pointer :: alpha_s_ptr
-    logical :: use_internal_color
-    term%i_term_global = i_term_global
-    term%i_component = i_component
-    term%i_term = i_term
-    call core%get_constants (term%data, i_term)
-    alpha_s_ptr => model%get_par_data_ptr (var_str ("alphas"))
-    if (associated (alpha_s_ptr)) then
-       term%alpha_s = alpha_s_ptr%get_real ()
-    else
-       term%alpha_s = -1
-    end if
-    use_internal_color = .false.
-    if (present (subtraction_method)) &
-       use_internal_color = char (subtraction_method) == 'omega'
-    call term%setup_interaction (core, model, nlo_type = nlo_type, &
-       pol_beams = use_beam_pol, use_internal_color = use_internal_color)
-  end subroutine process_term_init
-
-@ %def process_term_init
-@ We fetch the process constants which determine the quantum numbers and
-use those to create the interaction.  The interaction contains
-incoming and outgoing particles, no virtuals.  The incoming particles
-are parents of the outgoing ones.
-
-Keeping previous \whizard\ conventions, we invert the color assignment
-(but not flavor or helicity) for the incoming particles.  When the
-color-flow square matrix is evaluated, this inversion is done again,
-so in the color-flow sequence we get the color assignments of the
-matrix element.
-<<Process config: process term: TBP>>=
-  procedure :: setup_interaction => process_term_setup_interaction
-<<Process config: procedures>>=
-  subroutine process_term_setup_interaction (term, core, model, &
-     nlo_type, pol_beams, use_internal_color)
-    class(process_term_t), intent(inout) :: term
-    class(prc_core_t), intent(inout) :: core
-    class(model_data_t), intent(in), target :: model
-    logical, intent(in), optional :: pol_beams
-    integer, intent(in), optional :: nlo_type
-    logical, intent(in), optional :: use_internal_color
-    integer :: n, n_tot
-    type(flavor_t), dimension(:), allocatable :: flv
-    type(color_t), dimension(:), allocatable :: col
-    type(helicity_t), dimension(:), allocatable :: hel
-    type(quantum_numbers_t), dimension(:), allocatable :: qn
-    logical :: yorn
-    integer :: nlo_t, n_hel, n_sub
-    yorn = .false.; if (present (pol_beams)) yorn = pol_beams
-    nlo_t = BORN; if (present (nlo_type)) nlo_t = nlo_type
-    n_tot = term%data%n_in + term%data%n_out
-    call count_number_of_states ()
-    term%n_allowed = n
-    call compute_n_sub ()
-    call fill_quantum_numbers ()
-    call term%int%basic_init &
-         (term%data%n_in, 0, term%data%n_out, set_relations = .true.)
-    select type (core)
-    type is (prc_openloops_t)
-      call setup_states_openloops ()
-    class is (prc_user_defined_base_t)
-      call setup_states_other_user_defined ()
-    class default
-      call setup_states_omega ()
-    end select
-    call term%int%freeze ()
-  contains
-    subroutine count_number_of_states ()
-      integer :: f, h, c
-      n = 0
-      select type (core)
-      class is (prc_user_defined_base_t)
-         n_hel = 1; if (yorn) n_hel = 4
-         do f = 1, term%data%n_flv
-            do h = 1, term%data%n_hel
-               do c = 1, term%data%n_col
-                  n = n + 1
-               end do
-            end do
-         end do
-      class default !!! Omega and all test cores
-         do f = 1, term%data%n_flv
-            do h = 1, term%data%n_hel
-               do c = 1, term%data%n_col
-                  if (core%is_allowed (term%i_term, f, h, c))  n = n + 1
-               end do
-            end do
-         end do
-      end select
-    end subroutine count_number_of_states
-
-    subroutine compute_n_sub ()
-      if (nlo_t == NLO_VIRTUAL) then
-         yorn = .false.; if (present (use_internal_color)) yorn = use_internal_color
-         n_sub = 1
-         if (.not. yorn) n_sub = n_sub + n_tot * (n_tot - 1) / 2
-      else
-         n_sub = 0
-      end if
-    end subroutine compute_n_sub
-
-    subroutine fill_quantum_numbers ()
-      if (nlo_t == NLO_VIRTUAL) then
-         allocate (term%flv ((n_sub + 1) * n), &
-            term%col ((n_sub + 1) * n), term%hel ((n_sub + 1) * n))
-      else
-         allocate (term%flv (n), term%col (n), term%hel (n))
-      end if
-      allocate (flv (n_tot), col (n_tot), hel (n_tot))
-      allocate (qn (n_tot))
-    end subroutine fill_quantum_numbers
-
-    subroutine setup_states_openloops ()
-      integer :: s, f, c, h, i
-      i = 0
-      associate (data => term%data)
-         do s = 0, n_sub
-             do f = 1, data%n_flv
-                do h = 1, data%n_hel
-                   do c = 1, data%n_col
-                      i = i + 1
-                      term%flv(i) = f
-                      term%hel(i) = h
-                      !!! Dummy-initialization of color
-                      term%col(i) = c
-                      call flv%init (data%flv_state (:,f), model)
-                      call color_init_from_array (col, &
-                         data%col_state(:,:,c), data%ghost_flag(:,c))
-                      call col(:data%n_in)%invert ()
-                      if (n_hel > 1) then
-                         call hel%init (data%hel_state (:,h))
-                         call qn%init (flv, hel, col, s)
-                      else
-                         call qn%init (flv, col, s)
-                      end if
-                      call term%int%add_state (qn)
-                  end do
-               end do
-             end do
-         end do
-      end associate
-    end subroutine setup_states_openloops
-
-    subroutine setup_states_other_user_defined ()
-      integer :: s, f, i
-      integer :: n_sub
-      if (n_hel > 1) &
-         call msg_fatal ("Polarized beams only supported by OpenLoops")
-      i = 0
-      n_sub = 1; if (nlo_t == NLO_VIRTUAL) n_sub = 2
-      do s = 0, n_sub
-         do f = 1, term%data%n_flv
-            i = i + 1
-            term%flv(i) = f
-            !!! Dumy initialization of helicity
-            term%hel(i) = 1
-            !!! Dummy-initialization of color
-            term%col(i) = 1
-            call flv%init (term%data%flv_state (:,f), model)
-            call qn%init (flv, s)
-            call term%int%add_state (qn)
-         end do
-      end do
-    end subroutine setup_states_other_user_defined
-
-    subroutine setup_states_omega ()
-      integer :: f, h, c, i
-      i = 0
-      associate (data => term%data)
-         do f = 1, data%n_flv
-            do h = 1, data%n_hel
-              do c = 1, data%n_col
-                 if (core%is_allowed (term%i_term, f, h, c)) then
-                    i = i + 1
-                    term%flv(i) = f
-                    term%hel(i) = h
-                    term%col(i) = c
-                    call flv%init (data%flv_state(:,f), model)
-                    call color_init_from_array (col, &
-                         data%col_state(:,:,c), &
-                         data%ghost_flag(:,c))
-                    call col(:data%n_in)%invert ()
-                    call hel%init (data%hel_state(:,h))
-                    call qn%init (flv, col, hel)
-                    call term%int%add_state (qn)
-                 end if
-              end do
-            end do
-         end do
-      end associate
-    end subroutine setup_states_omega
-
-  end subroutine process_term_setup_interaction
-
-@ %def process_term_setup_interaction
-@
-<<Process config: process term: TBP>>=
-  procedure :: get_process_constants => process_term_get_process_constants
-<<Process config: procedures>>=
-   subroutine process_term_get_process_constants &
-       (term, prc_constants)
-    class(process_term_t), intent(inout) :: term
-    type(process_constants_t), intent(out) :: prc_constants
-    prc_constants = term%data
-  end subroutine process_term_get_process_constants
-
-@ %def process_term_get_process_constants
-@
-\subsection{Process component manager}
-@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Process component manager}
 <<[[pcm.f90]]>>=
 <<File header>>
 
@@ -8222,6 +8254,8 @@ corresponding instance.  The default version is trivial.
   end function pcm_instance_default_is_valid
 
 @ %def pcm_instance_default_is_valid
+@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Kinematics instance}
 In this data type we combine all objects (instances) necessary for
 generating (or recovering) a kinematical configuration.  The
@@ -8970,28 +9004,6 @@ stored in the kinematics subobject to their source.  This is a side effect.
   end function term_instance_get_lorentz_transformation
 
 @ %def term_instance_get_lorentz_transformation
-@
-<<Process config: process component: TBP>>=
-  procedure :: needs_mci_entry => process_component_needs_mci_entry
-<<Process config: procedures>>=
-  function process_component_needs_mci_entry (component) result (value)
-    class(process_component_t), intent(in) :: component
-    logical :: value
-    value = component%active .and. component%component_type <= COMP_MASTER
-  end function process_component_needs_mci_entry
-
-@ %def process_component_needs_mci_entry
-@
-<<Process config: process component: TBP>>=
-  procedure :: can_be_integrated => process_component_can_be_integrated
-<<Process config: procedures>>=
-  elemental function process_component_can_be_integrated (component) result (active)
-    logical :: active
-    class(process_component_t), intent(in) :: component
-    active = component%config%can_be_integrated ()
-  end function process_component_can_be_integrated
-
-@ %def process_component_can_be_integrated
 @
 \subsubsection{Term instance}
 A [[term_instance_t]] object contains all data that describe a term.  Each
@@ -10164,6 +10176,7 @@ entry.  This also resets the counter.
 @ %def mci_work_record_call
 @ %def mci_work_get_counter
 @
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Instances}
 
 <<[[instances.f90]]>>=
@@ -12800,7 +12813,8 @@ apply this to the phase space subobject of the process instance.
 
 @ %def pacify
 @
-\subsection{Unit tests}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Unit tests}
 Test module, followed by the corresponding implementation module.
 <<[[processes_ut.f90]]>>=
 <<File header>>
