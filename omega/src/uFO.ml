@@ -1727,18 +1727,18 @@ i.e.
         1
       else
         digits' 0 n
-  
+
+    let filter_unphysical model =
+      let physical_particles =
+	Particle.filter Particle.is_physical model.particles in
+      let physical_vertices =
+	Vertex.filter
+	  (not @@ (Vertex.contains model.particles (not @@ Particle.is_physical)))
+	  model.vertices in
+      { model with particles = physical_particles; vertices = physical_vertices }
+
     let init dir =
-      let model = parse_directory dir in
-      let model =
-	let is_unphysical = not @@ Particle.is_physical in
-	let particles' =
-	  Particle.filter Particle.is_physical model.particles in
-	let vertices' =
-	  Vertex.filter
-	    (not @@ (Vertex.contains model.particles is_unphysical))
-	    model.vertices in
-	{ model with particles = particles'; vertices = vertices' } in
+      let model = filter_unphysical (parse_directory dir) in
       if !dump_raw then
 	dump model;
       let particle_array = Array.of_list (values model.particles) in
