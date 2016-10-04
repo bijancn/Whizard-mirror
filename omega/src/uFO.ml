@@ -1737,63 +1737,100 @@ i.e.
 	  model.vertices in
       { model with particles = physical_particles; vertices = physical_vertices }
 
+    module type Lookup =
+      sig
+        type f = private
+          { flavors : Flavor.t list;
+            flavor_of_string : string -> Flavor.t;
+            flavor_of_symbol : string -> Flavor.t;
+            particle : Flavor.t -> Particle.t;
+            flavor_symbol : Flavor.t -> string;
+            conjugate : Flavor.t -> Flavor.t }
+        val of_model : t -> f
+      end
+
+    module Lookup : Lookup =
+      struct
+
+        type f =
+          { flavors : Flavor.t list;
+            flavor_of_string : string -> Flavor.t;
+            flavor_of_symbol : string -> Flavor.t;
+            particle : Flavor.t -> Particle.t;
+            flavor_symbol : Flavor.t -> string;
+            conjugate : Flavor.t -> Flavor.t }
+            
+        let of_model model =
+          let particle_array = Array.of_list (values model.particles) in
+          let conjugate_array = conjugate_of_particle_array particle_array in
+          let flavors =
+	    List.map
+	      Flavor.of_int
+	      (ThoList.range 0 (Array.length particle_array - 1)) in
+          let name_array = Array.map (fun f -> f.Particle.name) particle_array
+          and symbol_array = Array.of_list (keys model.particles) in
+          let flavor_of_string = invert_flavor_array name_array
+          and flavor_of_symbol = invert_flavor_array symbol_array in
+          let particle f = particle_array.(Flavor.to_int f) in
+          let conjugate f = Flavor.of_int (conjugate_array.(Flavor.to_int f)) in
+          let flavor_symbol f =
+            if !long_flavors then
+              symbol_array.(Flavor.to_int f)
+            else
+              let w = digits (Array.length particle_array - 1) in
+              Printf.sprintf "%0*d" w (Flavor.to_int f) in
+          { flavors = flavors;
+            flavor_of_string = flavor_of_string;
+            flavor_of_symbol = flavor_of_symbol;
+            particle = particle;
+            flavor_symbol = flavor_symbol;
+            conjugate = conjugate }
+
+      end
+
     let init dir =
       let model = filter_unphysical (parse_directory dir) in
       if !dump_raw then
 	dump model;
-      let particle_array = Array.of_list (values model.particles) in
-      let flavors =
-	List.map
-	  Flavor.of_int
-	  (ThoList.range 0 (Array.length particle_array - 1)) in
-      let name_array = Array.map (fun f -> f.Particle.name) particle_array in
-      let flavor_of_string = invert_flavor_array name_array in
-      let symbol_array = Array.of_list (keys model.particles) in
-      let flavor_of_symbol = invert_flavor_array symbol_array in
-      let conjugate_array = conjugate_of_particle_array particle_array in
-      let conjugate f = Flavor.of_int (conjugate_array.(Flavor.to_int f)) in
+      let tables = Lookup.of_model model in
+      let (vertices3, vertices4, verticesn) as vertices =
+	translate_vertices model tables.Lookup.flavor_of_symbol model in
+      let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
       let functions = [] in
       let variables = [] in
-      let (vertices3, vertices4, verticesn) as vertices =
-	translate_vertices model flavor_of_symbol model in
-      let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
       let input_parameters = 
         (List.map (fun (n, v, _) -> (n, v)) variables) in
       let derived_parameters =
         List.map (fun (n, f, _) -> (Coupling.Real n, Coupling.Const 0))
           functions in
-      let particle f = particle_array.(Flavor.to_int f)
-      and flavor_symbol f =
-        if !long_flavors then
-          symbol_array.(Flavor.to_int f)
-        else
-          let w = digits (Array.length particle_array - 1) in
-          Printf.sprintf "%0*d" w (Flavor.to_int f) in
-      let pdg f = (particle f).Particle.pdg_code
-      and color f = UFOx.Color.omega (particle f).Particle.color
-      and lorentz f = UFOx.Lorentz.omega (particle f).Particle.spin in
-      let propagator f = propagator_of_lorentz (lorentz f)
-      and fermion f = fermion_of_lorentz (lorentz f) in
-      let flavor_to_string f = (particle f).Particle.name
-      and flavor_to_TeX f = (particle f).Particle.texname in
-      let mass_symbol f = (particle f).Particle.mass
-      and width_symbol f = (particle f).Particle.width in
+      let particle = tables.Lookup.particle in
+      let lorentz f = UFOx.Lorentz.omega (particle f).Particle.spin in
       let gauge_symbol () = "?GAUGE?" in
       let constant_symbol = function
         | Some c -> c.UFO_Coupling.name
         | None -> "<<UNDEFINED>>" in
-      let color f = Color.Singlet in (* TEMPORARY HACK! *)
-      M.setup ~color ~pdg ~lorentz ~propagator
+      M.setup
+        ~color:(fun f -> UFOx.Color.omega (particle f).Particle.color)
+        ~pdg:(fun f -> (particle f).Particle.pdg_code)
+        ~lorentz
+        ~propagator:(fun f -> propagator_of_lorentz (lorentz f))
         ~width:(fun f -> Coupling.Constant)
         ~goldstone:(fun f -> None)
-        ~conjugate ~fermion ~max_degree ~vertices
-        ~flavors:[("All Flavors", flavors)]
+        ~conjugate:tables.Lookup.conjugate
+        ~fermion:(fun f -> fermion_of_lorentz (lorentz f))
+        ~vertices ~max_degree
+        ~flavors:[("All Flavors", tables.Lookup.flavors)]
         ~parameters:(fun () ->
           { Coupling.input = input_parameters;
             Coupling.derived = derived_parameters;
             Coupling.derived_arrays = [] })
-        ~flavor_of_string ~flavor_to_string ~flavor_to_TeX
-        ~flavor_symbol ~gauge_symbol ~mass_symbol ~width_symbol
+        ~flavor_of_string:tables.Lookup.flavor_of_string
+        ~flavor_to_string:(fun f -> (particle f).Particle.name)
+        ~flavor_to_TeX:(fun f -> (particle f).Particle.texname)
+        ~flavor_symbol:tables.Lookup.flavor_symbol
+        ~gauge_symbol
+        ~mass_symbol:(fun f -> (particle f).Particle.mass)
+        ~width_symbol:(fun f -> (particle f).Particle.width)
         ~constant_symbol;
       initialized_from := Some dir
 
