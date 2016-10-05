@@ -199,6 +199,14 @@ let value_to_string = function
   | String s -> Printf.sprintf "'%s'" s
   | Name n -> name_to_string n
 
+let value_to_expr = function
+  | Integer i -> Printf.sprintf "%d" i
+  | Fraction (n, d) -> Printf.sprintf "%d/%d" n d
+  | Float x -> Printf.sprintf "%f" x
+  | String s ->
+     UFOx.Value.to_string (UFOx.Value.of_expr (UFOx.Expr.of_string s))
+  | Name n -> name_to_string n
+
 let value_to_numeric = function
   | Integer i -> Printf.sprintf "%d" i
   | Fraction (n, d) -> Printf.sprintf "%g" (float n /. float d)
@@ -1896,10 +1904,9 @@ i.e.
     let write_derived_parameters parameters =
       let open Parameter in
       Printf.printf "# Dependent (derived) Parameters\n";
-      Printf.printf "# TODO: need to be translated from Python to Sindarin\n";
       List.iter
         (fun p ->
-          Printf.printf "parameter %s = %s\n" p.name (value_to_string p.value))
+          Printf.printf "parameter %s = %s\n" p.name (value_to_expr p.value))
         parameters;
       Printf.printf "\n"
 

@@ -562,14 +562,20 @@ module Value =
 
     type builtin =
       | Sqrt
+      | Cos
+      | Sin
       | Conj
 
     let builtin_to_string = function
       | Sqrt -> "sqrt"
+      | Cos -> "cos"
+      | Sin -> "sin"
       | Conj -> "conj"
 
     let builtin_of_string = function
-      | "cname.sqrt" -> Sqrt
+      | "cmath.sqrt" -> Sqrt
+      | "cmath.cos" -> Cos
+      | "cmath.sin" -> Sin
       | "complexconjugate" -> Conj
       | name -> failwith ("UFOx.Value: unsupported function: " ^ name)
 
@@ -618,6 +624,7 @@ module Value =
     and of_expr' = function
       | S.Integer i -> Integer i
       | S.Float x -> Real x
+      | S.Variable "cmath.pi" -> Variable "pi"
       | S.Variable name -> Variable name
       | S.Sum (e1, e2) ->
 	 begin match of_expr e1, of_expr e2 with
