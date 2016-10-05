@@ -1393,6 +1393,25 @@ there is only a soft singularity if the radiated parton becomes soft.
 @ %def resonance_mapping_get_resonance_all
 @
 <<fks regions: resonance mapping: TBP>>=
+  procedure :: get_weight => resonance_mapping_get_weight
+<<fks regions: procedures>>=
+  function resonance_mapping_get_weight (res_map, alr, p) result (pfr)
+    real(default) :: pfr
+    class(resonance_mapping_t), intent(in) :: res_map
+    integer, intent(in) :: alr
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default) :: sumpfr
+    integer :: i_res, i_alr
+    sumpfr = zero
+    do i_res = 1, size (res_map%res_histories)
+       sumpfr = sumpfr + res_map%get_resonance_value (i_res, p)
+    end do
+    pfr = res_map%get_resonance_value (res_map%alr_to_i_res (alr), p) / sumpfr
+  end function resonance_mapping_get_weight
+
+@ %def resonance_mapping_get_weight
+@
+<<fks regions: resonance mapping: TBP>>=
   procedure :: get_resonance_alr => resonance_mapping_get_resonance_alr
 <<fks regions: procedures>>=
   function resonance_mapping_get_resonance_alr (res_map, alr, p, i_gluon) result (p_map)
@@ -3651,6 +3670,19 @@ leave out the denominator because it will cancel out anyway.
   end function fks_mapping_resonances_svalue
 
 @ %def fks_mapping_resonances_svalue
+@
+<<fks regions: fks mapping resonances: TBP>>=
+  procedure :: get_resonance_weight => fks_mapping_resonances_get_resonance_weight
+<<fks regions: procedures>>=
+  function fks_mapping_resonances_get_resonance_weight (map, alr, p) result (pfr)
+    real(default) :: pfr
+    class(fks_mapping_resonances_t), intent(in) :: map
+    integer, intent(in) :: alr
+    type(vector4_t), intent(in), dimension(:) :: p
+    pfr = map%res_map%get_weight (alr, p)
+  end function fks_mapping_resonances_get_resonance_weight
+
+@ %def fks_mapping_resonances_get_resonance_weight
 @ As above, the soft limit of $d_{ij,k}$ must be computed in the resonance frame of
 reference.
 <<fks regions: fks mapping resonances: TBP>>=
@@ -4499,7 +4531,7 @@ particles involved in the radiation process are massive or massless.
                I_ij = compute_eikonal_factor &
                     (p_thr, [.true., .true., .true., .true.], i, j, s_o_Q2)
                b_ij_times_I = b_ij_times_I + &
-                    virtual%sqme_cc (i, j, i_flv) * I_ij 
+                    virtual%sqme_cc (i, j, i_flv) * I_ij
                if (debug2_active (D_VIRTUAL)) &
                   print *, 'b_ij: ', virtual%sqme_cc (i, j, i_flv), 'I_ij: ', I_ij
             end if
@@ -6566,6 +6598,7 @@ to be more consistent with the evaluation of the Born phase space.
     real(default) :: xi, xi_max, xi_max_pm
     real(default) :: sqme_sc
     integer :: alr, i_con
+    real(default) :: pfr
     alr = rsub%current_alr
     associate (sregion => rsub%reg_data%regions(alr))
        if (sregion%has_collinear_divergence ()) then
@@ -6580,13 +6613,21 @@ to be more consistent with the evaluation of the Born phase space.
              xi_max_pm = one - rsub%isr_kinematics%x(em)
              xi = rsub%real_kinematics%xi_tilde * xi_max_pm
              sqme_coll = rsub%sub_coll%compute_isr (sregion, &
-                rsub%real_kinematics%p_born_lab%phs_point(1)%p, &
-                rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
+                  rsub%real_kinematics%p_born_lab%phs_point(1)%p, &
+                  rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
           else
              sqme_coll = rsub%sub_coll%compute_fsr (sregion, &
-                  rsub%real_kinematics%xi_ref_momenta (i_con), &
-                  rsub%real_kinematics%p_born_cms%get_momenta(1), &
-                  rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr)
+                    rsub%real_kinematics%xi_ref_momenta (i_con), &
+                    rsub%real_kinematics%p_born_cms%get_momenta(1), &
+                    rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr)
+             if (rsub%sub_coll%use_resonance_mappings) then
+                select type (fks_mapping => rsub%reg_data%fks_mapping)
+                type is (fks_mapping_resonances_t)
+                   pfr = fks_mapping%get_resonance_weight (alr, &
+                         rsub%real_kinematics%p_born_cms%get_momenta(1))
+                end select
+                sqme_coll = sqme_coll * pfr
+             end if
           end if
        else
           sqme_coll = zero
