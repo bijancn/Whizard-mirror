@@ -199,6 +199,13 @@ let value_to_string = function
   | String s -> Printf.sprintf "'%s'" s
   | Name n -> name_to_string n
 
+let value_to_numeric = function
+  | Integer i -> Printf.sprintf "%d" i
+  | Fraction (n, d) -> Printf.sprintf "%g" (float n /. float d)
+  | Float x -> Printf.sprintf "%g" x
+  | String s -> invalid_arg ("UFO.value_to_numeric: string = " ^ s)
+  | Name n -> invalid_arg ("UFO.value_to_numeric: name = " ^ name_to_string n)
+
 let value_attrib name attribs =
   match find_attrib name attribs with
   | S.Integer i -> Integer i
@@ -277,8 +284,9 @@ module type Particle =
 	lepton_number : int;
 	y : int;
 	goldstone : bool;
-	propagating : bool;  (* NOT HANDLED YET! *)
-	line : string option (* NOT HANDLED YET! *) }
+	propagating : bool;   (* NOT HANDLED YET! *)
+	line : string option; (* NOT HANDLED YET! *)
+        is_anti : bool }
 
     val of_file : S.t -> t SMap.t
     val to_string : string -> t -> string
@@ -309,7 +317,8 @@ module Particle : Particle =
 	y : int;
 	goldstone : bool;
 	propagating : bool;  (* NOT HANDLED YET! *)
-	line : string option (* NOT HANDLED YET! *) }
+	line : string option; (* NOT HANDLED YET! *)
+        is_anti : bool }
 
     let to_string symbol p =
       Printf.sprintf
@@ -355,7 +364,8 @@ module Particle : Particle =
 	  y = p.y;
 	  goldstone = p.goldstone;
 	  propagating = p.propagating;
-	  line = p.line }
+	  line = p.line;
+          is_anti = not p.is_anti }
 
     let of_file1 map d =
       let symbol = d.S.name in
@@ -377,7 +387,8 @@ module Particle : Particle =
 	     y = integer_attrib "Y" attribs;
 	     goldstone = boolean_attrib "goldstone" attribs;
 	     propagating = true;
-	     line = None } map
+	     line = None;
+             is_anti = false} map
       | [ "anti"; p ], [] ->
 	 begin
 	   try
@@ -643,7 +654,8 @@ module type Parameter =
 	value : value;
 	texname : string;
 	lhablock : string option;
-	lhacode : int list option }
+	lhacode : int list option;
+        sequence : int }
 
     val of_file : S.t -> t SMap.t
     val to_string : string -> t -> string
@@ -682,14 +694,15 @@ module Parameter : Parameter =
 	value : value;
 	texname : string;
 	lhablock : string option;
-	lhacode : int list option }
+	lhacode : int list option;
+        sequence : int }
 
     let to_string symbol p =
       Printf.sprintf
-	"parameter: %s => [name = '%s', nature = %s, type = %s, \
+	"parameter: %s => [#%d, name = '%s', nature = %s, type = %s, \
                            value = %s, texname = '%s', \
                            lhablock = %s, lhacode = [%s]]"
-	symbol p.name
+	symbol p.sequence p.name
 	(nature_to_string p.nature)
 	(ptype_to_string p.ptype)
 	(value_to_string p.value) p.texname
@@ -698,26 +711,28 @@ module Parameter : Parameter =
 	| None -> ""
 	| Some c -> String.concat ", " (List.map string_of_int c))
       
-    let of_file1 map d =
+    let of_file1 (map, n) d =
       let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Parameter" ], attribs ->
-	 SMap.add symbol
-	   { name = string_attrib "name" attribs;
-	     nature = nature_of_string (string_attrib "nature" attribs);
-	     ptype = ptype_of_string (string_attrib "type" attribs);
-	     value = value_attrib "value" attribs;
-	     texname = string_attrib "texname" attribs;
-	     lhablock =
-	       (try Some (string_attrib "lhablock" attribs) with
-		 Not_found -> None);
-	     lhacode =
-	       (try Some (integer_list_attrib "lhacode" attribs) with
-		 Not_found -> None) } map
+	 (SMap.add symbol
+	    { name = string_attrib "name" attribs;
+	      nature = nature_of_string (string_attrib "nature" attribs);
+	      ptype = ptype_of_string (string_attrib "type" attribs);
+	      value = value_attrib "value" attribs;
+	      texname = string_attrib "texname" attribs;
+	      lhablock =
+	        (try Some (string_attrib "lhablock" attribs) with
+		   Not_found -> None);
+	      lhacode =
+	        (try Some (integer_list_attrib "lhacode" attribs) with
+		   Not_found -> None);
+              sequence = n } map, succ n)
       | _ -> invalid_arg ("Parameter.of_file: " ^ name_to_string d.S.kind)
     
     let of_file parameters =
-      List.fold_left of_file1 SMap.empty parameters
+      let map, _ = List.fold_left of_file1 (SMap.empty, 0) parameters in
+      map
 
   end
 
@@ -1765,8 +1780,6 @@ i.e.
 	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
         ([], [], []) (values model.vertices)
 
-    let dump_raw = ref false
-
     let propagator_of_lorentz = function
       | Coupling.Scalar -> Coupling.Prop_Scalar
       | Coupling.Spinor -> Coupling.Prop_Spinor
@@ -1785,13 +1798,6 @@ i.e.
       | Coupling.BRS _ -> invalid_arg
 	 "UFO.Model.propagator_of_lorentz: no BRST"
 
-    let initialized_from = ref None
-
-    let is_initialized_from dir =
-      match !initialized_from with
-      | None -> false
-      | Some old_dir -> dir = old_dir
-
     let filter_unphysical model =
       let physical_particles =
 	Particle.filter Particle.is_physical model.particles in
@@ -1801,6 +1807,31 @@ i.e.
 	  model.vertices in
       { model with particles = physical_particles; vertices = physical_vertices }
 
+    let classify_parameters model =
+      let compare_parameters p1 p2 =
+        compare p1.Parameter.sequence p2.Parameter.sequence in
+      let rec classify (input, derived) = function
+        | [] -> (List.sort compare_parameters input,
+                 List.sort compare_parameters derived)
+        | p :: rest ->
+           classify (match p.Parameter.nature with
+                     | Parameter.Internal -> (input, p :: derived)
+                     | Parameter.External -> (p :: input, derived)) rest in
+      classify ([], []) (values model.parameters)
+
+    type state =
+      { directory : string;
+        model : t }
+        
+    let initialized = ref None
+
+    let is_initialized_from dir =
+      match !initialized with
+      | None -> false
+      | Some state -> dir = state.directory
+
+    let dump_raw = ref false
+
     let init dir =
       let model = filter_unphysical (parse_directory dir) in
       if !dump_raw then
@@ -1809,14 +1840,7 @@ i.e.
       let (vertices3, vertices4, verticesn) as vertices =
 	translate_vertices model tables in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
-      let functions = [] in
-      let variables = [] in
-      let input_parameters = 
-        (List.map (fun (n, v, _) -> (n, v)) variables) in
-      let derived_parameters =
-        List.map (fun (n, f, _) -> (Coupling.Real n, Coupling.Const 0))
-          functions in
-      let particle = tables.Lookup.particle in
+      let particle f = tables.Lookup.particle f in
       let lorentz f = UFOx.Lorentz.omega (particle f).Particle.spin in
       let gauge_symbol () = "?GAUGE?" in
       let constant_symbol = function
@@ -1834,8 +1858,8 @@ i.e.
         ~vertices ~max_degree
         ~flavors:[("All Flavors", tables.Lookup.flavors)]
         ~parameters:(fun () ->
-          { Coupling.input = input_parameters;
-            Coupling.derived = derived_parameters;
+          { Coupling.input = [];
+            Coupling.derived = [];
             Coupling.derived_arrays = [] })
         ~flavor_of_string:tables.Lookup.flavor_of_string
         ~flavor_to_string:(fun f -> (particle f).Particle.name)
@@ -1845,7 +1869,7 @@ i.e.
         ~mass_symbol:(fun f -> (particle f).Particle.mass)
         ~width_symbol:(fun f -> (particle f).Particle.width)
         ~constant_symbol;
-      initialized_from := Some dir
+      initialized := Some { directory = dir; model = model }
 
     let ufo_directory = ref Config.default_UFO_dir
 
@@ -1855,9 +1879,75 @@ i.e.
       else
 	init !ufo_directory
 
+    let write_header dir =
+      Printf.printf "# WHIZARD Model file derived from UFO directory\n";
+      Printf.printf "#   '%s'\n\n" dir;
+      Printf.printf "model = \"%s\"\n\n" (Filename.basename dir)
+
+    let write_input_parameters parameters =
+      let open Parameter in
+      Printf.printf "# Independent (input) Parameters\n";
+      List.iter
+        (fun p ->
+          Printf.printf "parameter %s = %s\n" p.name (value_to_numeric p.value))
+        parameters;
+      Printf.printf "\n"
+
+    let write_derived_parameters parameters =
+      let open Parameter in
+      Printf.printf "# Dependent (derived) Parameters\n";
+      Printf.printf "# TODO: need to be translated from Python to Sindarin\n";
+      List.iter
+        (fun p ->
+          Printf.printf "parameter %s = %s\n" p.name (value_to_string p.value))
+        parameters;
+      Printf.printf "\n"
+
+    let write_particles particles =
+      let open Particle in
+      Printf.printf "# Particles\n";
+      List.iter
+        (fun p ->
+          if not p.is_anti then begin
+            Printf.printf "particle \"%s\" %d {parton/gauge/left}\n"
+                          p.name p.pdg_code;
+            Printf.printf "  spin {} charge {} isospin {} color {}\n";
+            Printf.printf "  name \"%s\"\n" p.name;
+            Printf.printf "  anti \"%s\"\n" p.antiname;
+            Printf.printf "  tex_name \"%s\"\n" p.texname;
+            Printf.printf "  tex_anti \"%s\"\n" p.antitexname;
+            Printf.printf "  mass %s width %s\n\n" p.mass p.width
+          end)
+        (values particles);
+      Printf.printf "\n"
+
+    let write_vertices model vertices  =
+      Printf.printf "# Vertices (for phasespace generation only)\n";
+      Printf.printf "# NB: particles should be sorted increasing in mass.\n";
+      Printf.printf "#     This is NOT implemented yet!\n";
+      List.iter
+        (fun v ->
+          let particles =
+            String.concat " "
+              (List.map
+                 (fun s ->
+                   "\"" ^ (SMap.find s model.particles).Particle.name ^ "\"")
+                 (Array.to_list v.Vertex.particles)) in
+          Printf.printf "%s\n" particles)
+        (values vertices);
+      Printf.printf "\n"
+
     let write_WHIZARD () =
       load_UFO ();
-      failwith "UFO.write_WHIZARD: not implemented yet!"
+      match !initialized with
+      | None -> failwith "UFO.write_WHIZARD: can't happen"
+      | Some { directory = dir; model = model } ->
+         let input_parameters, derived_parameters = classify_parameters model in
+         write_header dir;
+         write_input_parameters input_parameters;
+         write_derived_parameters derived_parameters;
+         write_particles model.particles;
+         write_vertices model model.vertices
 
     let options = Options.create
         [ ("UFO_dir", Arg.String (fun name -> ufo_directory := name),
