@@ -1913,12 +1913,20 @@ i.e.
     let write_particles particles =
       let open Particle in
       Printf.printf "# Particles\n";
+      Printf.printf "# NB: hypercharge assignments appear to be unreliable\n";
+      Printf.printf "#     therefore we can't infer the isospin\n";
+      Printf.printf "# NB: parton-, gauge- and lefthandedness are unavailable\n";
       List.iter
         (fun p ->
           if not p.is_anti then begin
-            Printf.printf "particle \"%s\" %d {parton/gauge/left}\n"
-                          p.name p.pdg_code;
-            Printf.printf "  spin {} charge {} isospin {} color {}\n";
+            Printf.printf
+              "particle \"%s\" %d ### parton? gauge? left?\n"
+              p.name p.pdg_code;
+            Printf.printf
+              "  spin %s charge %s color %s ### isospin?\n"
+              (UFOx.Lorentz.rep_to_string p.spin)
+              (charge_to_string p.charge)
+              (UFOx.Color.rep_to_string p.color);
             Printf.printf "  name \"%s\"\n" p.name;
             Printf.printf "  anti \"%s\"\n" p.antiname;
             Printf.printf "  tex_name \"%s\"\n" p.texname;
