@@ -1196,13 +1196,6 @@ module Model =
 	 if s >= 1 then
 	   invalid_arg "translate_color4_ff: invalid summation index"
 	 else
-	   let order i i' =
-	     if i = s then
-	       -1
-	     else if i' = s then
-	       1
-	     else
-	       compare i i' in
 	   begin match (Combinatorics.sort_signed abc,
 			Combinatorics.sort_signed abc') with
 	   | (eps, [_; b; c]), (eps', [_; b'; c']) ->
