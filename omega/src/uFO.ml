@@ -1662,6 +1662,11 @@ i.e.
             particle : Flavor.t -> Particle.t;
             flavor_symbol : Flavor.t -> string;
             conjugate : Flavor.t -> Flavor.t }
+        type flavor_format =
+          | Long
+          | Decimal
+          | Hexadecimal
+        val flavor_format : flavor_format ref
         val of_model : t -> f
       end
 
@@ -1676,6 +1681,13 @@ i.e.
             flavor_symbol : Flavor.t -> string;
             conjugate : Flavor.t -> Flavor.t }
             
+        type flavor_format =
+          | Long
+          | Decimal
+          | Hexadecimal
+
+        let flavor_format = ref Hexadecimal
+
         let conjugate_of_particle_array particles =
           Array.init
 	    (Array.length particles)
@@ -1697,12 +1709,12 @@ i.e.
 	    with
 	    | Not_found -> invalid_arg ("not found: " ^ name))
 
-        let digits n =
+        let digits base n =
           let rec digits' acc n =
             if n < 1 then
               acc
             else
-              digits' (succ acc) (n / 10) in
+              digits' (succ acc) (n / base) in
           if n < 0 then
             digits' 1 (-n)
           else if n = 0 then
@@ -1720,11 +1732,15 @@ i.e.
           and name_array = Array.map (fun f -> f.Particle.name) particle_array
           and symbol_array = Array.of_list (keys model.particles) in
           let flavor_symbol f =
-            if !long_flavors then
-              symbol_array.(Flavor.to_int f)
-            else
-              let w = digits (Array.length particle_array - 1) in
-              Printf.sprintf "%0*d" w (Flavor.to_int f) in
+            begin match !flavor_format with
+            | Long -> symbol_array.(Flavor.to_int f)
+            | Decimal -> 
+               let w = digits 10 (Array.length particle_array - 1) in
+               Printf.sprintf "%0*d" w (Flavor.to_int f)
+            | Hexadecimal ->
+               let w = digits 16 (Array.length particle_array - 1) in
+               Printf.sprintf "%0*X" w (Flavor.to_int f)
+            end in
           { flavors = flavor_list;
             flavor_of_string = invert_flavor_array name_array;
             flavor_of_symbol = invert_flavor_array symbol_array;
@@ -1848,7 +1864,8 @@ i.e.
            "UFO model directory (default: " ^ !ufo_directory ^ ")");
           ("write_WHIZARD", Arg.Unit write_WHIZARD,
            "write the WHIZARD model files (required once per model)");
-          ("long_flavors", Arg.Set long_flavors,
+          ("long_flavors",
+           Arg.Unit (fun () -> Lookup.flavor_format := Lookup.Long),
            "write use the UFO flavor names instead of integers");
           ("dump", Arg.Set dump_raw,
            "dump UFO model for debugging the parser (must come _before_ exec!)");
