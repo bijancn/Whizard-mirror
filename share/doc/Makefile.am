@@ -139,7 +139,7 @@ $(WHIZARD_DEPENDENCY_GRAPHS_DOT):
 	@rm -f $@
 	$(top_srcdir)/share/doc/dep2dot.py ../../src/$(basename $@)/Makefile.depend > $@
 dist_noinst_DATA += $(WHIZARD_DEPENDENCY_GRAPHS_DOT)
-DISTCLEANFILES = $(WHIZARD_DEPENDENCY_GRAPHS_DOT)
+DISTCLEANFILES = $(WHIZARD_DEPENDENCY_GRAPHS_DOT) $(WHIZARD_DEPENDENCY_GRAPHS_PDF)
 endif
 
 ## Rules for creating PDF
