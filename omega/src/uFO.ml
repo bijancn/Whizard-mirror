@@ -199,6 +199,21 @@ let value_to_string = function
   | String s -> Printf.sprintf "'%s'" s
   | Name n -> name_to_string n
 
+let value_to_expr = function
+  | Integer i -> Printf.sprintf "%d" i
+  | Fraction (n, d) -> Printf.sprintf "%d/%d" n d
+  | Float x -> Printf.sprintf "%f" x
+  | String s ->
+     UFOx.Value.to_string (UFOx.Value.of_expr (UFOx.Expr.of_string s))
+  | Name n -> name_to_string n
+
+let value_to_numeric = function
+  | Integer i -> Printf.sprintf "%d" i
+  | Fraction (n, d) -> Printf.sprintf "%g" (float n /. float d)
+  | Float x -> Printf.sprintf "%g" x
+  | String s -> invalid_arg ("UFO.value_to_numeric: string = " ^ s)
+  | Name n -> invalid_arg ("UFO.value_to_numeric: name = " ^ name_to_string n)
+
 let value_attrib name attribs =
   match find_attrib name attribs with
   | S.Integer i -> Integer i
@@ -277,8 +292,9 @@ module type Particle =
 	lepton_number : int;
 	y : int;
 	goldstone : bool;
-	propagating : bool;  (* NOT HANDLED YET! *)
-	line : string option (* NOT HANDLED YET! *) }
+	propagating : bool;   (* NOT HANDLED YET! *)
+	line : string option; (* NOT HANDLED YET! *)
+        is_anti : bool }
 
     val of_file : S.t -> t SMap.t
     val to_string : string -> t -> string
@@ -309,7 +325,8 @@ module Particle : Particle =
 	y : int;
 	goldstone : bool;
 	propagating : bool;  (* NOT HANDLED YET! *)
-	line : string option (* NOT HANDLED YET! *) }
+	line : string option; (* NOT HANDLED YET! *)
+        is_anti : bool }
 
     let to_string symbol p =
       Printf.sprintf
@@ -355,7 +372,8 @@ module Particle : Particle =
 	  y = p.y;
 	  goldstone = p.goldstone;
 	  propagating = p.propagating;
-	  line = p.line }
+	  line = p.line;
+          is_anti = not p.is_anti }
 
     let of_file1 map d =
       let symbol = d.S.name in
@@ -377,7 +395,8 @@ module Particle : Particle =
 	     y = integer_attrib "Y" attribs;
 	     goldstone = boolean_attrib "goldstone" attribs;
 	     propagating = true;
-	     line = None } map
+	     line = None;
+             is_anti = false} map
       | [ "anti"; p ], [] ->
 	 begin
 	   try
@@ -643,7 +662,8 @@ module type Parameter =
 	value : value;
 	texname : string;
 	lhablock : string option;
-	lhacode : int list option }
+	lhacode : int list option;
+        sequence : int }
 
     val of_file : S.t -> t SMap.t
     val to_string : string -> t -> string
@@ -682,14 +702,15 @@ module Parameter : Parameter =
 	value : value;
 	texname : string;
 	lhablock : string option;
-	lhacode : int list option }
+	lhacode : int list option;
+        sequence : int }
 
     let to_string symbol p =
       Printf.sprintf
-	"parameter: %s => [name = '%s', nature = %s, type = %s, \
+	"parameter: %s => [#%d, name = '%s', nature = %s, type = %s, \
                            value = %s, texname = '%s', \
                            lhablock = %s, lhacode = [%s]]"
-	symbol p.name
+	symbol p.sequence p.name
 	(nature_to_string p.nature)
 	(ptype_to_string p.ptype)
 	(value_to_string p.value) p.texname
@@ -698,26 +719,28 @@ module Parameter : Parameter =
 	| None -> ""
 	| Some c -> String.concat ", " (List.map string_of_int c))
       
-    let of_file1 map d =
+    let of_file1 (map, n) d =
       let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Parameter" ], attribs ->
-	 SMap.add symbol
-	   { name = string_attrib "name" attribs;
-	     nature = nature_of_string (string_attrib "nature" attribs);
-	     ptype = ptype_of_string (string_attrib "type" attribs);
-	     value = value_attrib "value" attribs;
-	     texname = string_attrib "texname" attribs;
-	     lhablock =
-	       (try Some (string_attrib "lhablock" attribs) with
-		 Not_found -> None);
-	     lhacode =
-	       (try Some (integer_list_attrib "lhacode" attribs) with
-		 Not_found -> None) } map
+	 (SMap.add symbol
+	    { name = string_attrib "name" attribs;
+	      nature = nature_of_string (string_attrib "nature" attribs);
+	      ptype = ptype_of_string (string_attrib "type" attribs);
+	      value = value_attrib "value" attribs;
+	      texname = string_attrib "texname" attribs;
+	      lhablock =
+	        (try Some (string_attrib "lhablock" attribs) with
+		   Not_found -> None);
+	      lhacode =
+	        (try Some (integer_list_attrib "lhacode" attribs) with
+		   Not_found -> None);
+              sequence = n } map, succ n)
       | _ -> invalid_arg ("Parameter.of_file: " ^ name_to_string d.S.kind)
     
     let of_file parameters =
-      List.fold_left of_file1 SMap.empty parameters
+      let map, _ = List.fold_left of_file1 (SMap.empty, 0) parameters in
+      map
 
   end
 
@@ -964,7 +987,7 @@ module Model =
       end
   
     type flavor = Flavor.t
-    type constant = string
+    type constant = UFO_Coupling.t option
     type gauge = unit
 
     module M = Modeltools.Mutable
@@ -1043,7 +1066,6 @@ module Model =
 
     let dummy_tensor3 = Coupling.Scalar_Scalar_Scalar 1
     let dummy_tensor4 = Coupling.Scalar4 1
-    let dummy_constant = "{coupling}"
 
     let third i j =
       match i, j with
@@ -1174,13 +1196,6 @@ module Model =
 	 if s >= 1 then
 	   invalid_arg "translate_color4_ff: invalid summation index"
 	 else
-	   let order i i' =
-	     if i = s then
-	       -1
-	     else if i' = s then
-	       1
-	     else
-	       compare i i' in
 	   begin match (Combinatorics.sort_signed abc,
 			Combinatorics.sort_signed abc') with
 	   | (eps, [_; b; c]), (eps', [_; b'; c']) ->
@@ -1329,7 +1344,9 @@ i.e.
 	       (ka, la, mu, i, q))
 	   l)
 
-    let translate_lorentz_gauge_3 t p kalamuiq =
+    let triplet p = (p.(0), p.(1), p.(2))
+
+    let translate_lorentz_gauge_3 t p g kalamuiq =
       match normalize_lorentz_gauge_3 kalamuiq with
       | [ (ka1, la1, mu1, i1, q1);
 	  (ka2, la2, mu2, i2, q2);
@@ -1342,9 +1359,7 @@ i.e.
 	   && ThoList.homogeneous [ mu1; mu2; la3; la4; la5; la6; i4; i6 ]
 	   && ThoList.homogeneous [ q1; Q.neg q2; Q.neg q3; q4; q5; Q.neg q6 ]
 	 then begin
-	   ((p.(0), p.(1), p.(2)),
-	    Coupling.Gauge_Gauge_Gauge (Q.to_integer q1),
-	    dummy_constant)
+	   (triplet p, Coupling.Gauge_Gauge_Gauge (Q.to_integer q1), g)
 	 end else
 	   invalid_arg "translate_lorentz_gauge_3"
       | _ -> invalid_arg "translate_lorentz_gauge_3: expected 6 terms"
@@ -1353,35 +1368,33 @@ i.e.
       let module L = UFOx.Lorentz_Atom in
       match t with
       | [ [], qt] ->
-	 ((p.(0), p.(1), p.(2)),
-	  Coupling.Scalar_Scalar_Scalar (Q.to_integer (Q.mul qt qc)),
-	  dummy_constant)
+	 (triplet p, Coupling.Scalar_Scalar_Scalar (Q.to_integer (Q.mul qt qc)), g)
       | [ [L.ProjP(i,j)], qt] ->
 	 ((p.(pred i), p.(pred (third i j)), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.SR, Coupling.Psi),
-	  dummy_constant)
+	  g)
       | [ [L.ProjM(i,j)], qt] ->
 	 ((p.(pred i), p.(pred (third i j)), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.SL, Coupling.Psi),
-	  dummy_constant)
+	  g)
       | [ ([L.ProjM(i,j)], qm); ([L.ProjP(i',j')], qp)] as t ->
 	 if i = i' && j = j' then begin
 	   if Q.is_null (Q.add qm qp) then 
 	     ((p.(pred i), p.(pred (third i j)), p.(pred j)),
 	      Coupling.FBF (coeff qp qc,
 			    Coupling.Psibar, Coupling.P, Coupling.Psi),
-	      dummy_constant)
+	      g)
 	   else if Q.is_null (Q.sub qp qp) then 
 	     ((p.(pred i), p.(pred (third i j)), p.(pred j)),
 	      Coupling.FBF (coeff qp qc,
 			    Coupling.Psibar, Coupling.S, Coupling.Psi),
-	      dummy_constant)
+	      g)
 	   else begin
 	     prerr_endline
 	       ("unhandled colorless 3-vertex: " ^ UFOx.Lorentz.to_string t);
-	     ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	     (triplet p, dummy_tensor3, g)
 	   end
          end else
            invalid_arg "translate_coupling3_1: mismatched indices"
@@ -1389,32 +1402,32 @@ i.e.
 	 ((p.(pred i), p.(pred mu), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.V, Coupling.Psi),
-	  dummy_constant)
+	  g)
       | [ [L.Gamma(mu,i,-1); L.ProjP(-1,j)], qt] ->
 	 ((p.(pred i), p.(pred mu), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.VR, Coupling.Psi),
-	  dummy_constant)
+	  g)
       | [ [L.Gamma(mu,i,-1); L.ProjM(-1,j)], qt] ->
 	 ((p.(pred i), p.(pred mu), p.(pred j)),
 	  Coupling.FBF (coeff qt qc,
 			Coupling.Psibar, Coupling.VL, Coupling.Psi),
-	  dummy_constant)
+	  g)
       | [ [L.Metric(i,j)], qt] ->
 	 ((p.(pred (third i j)), p.(pred i), p.(pred j)),
 	  Coupling.Scalar_Vector_Vector (coeff qt qc),
-	  dummy_constant)
+	  g)
       | [ ([L.P(mu,i)], q1); ([L.P(mu',j')], q2) ] as t ->
 	 prerr_endline
 	   ("unhandled colorless 3-vertex: " ^ UFOx.Lorentz.to_string t);
-	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	 (triplet p, dummy_tensor3, g)
       | [ ([L.Metric(ka1,la1); L.P(mu1,i1)], q1);
 	  ([L.Metric(ka2,la2); L.P(mu2,i2)], q2);
 	  ([L.Metric(ka3,la3); L.P(mu3,i3)], q3);
 	  ([L.Metric(ka4,la4); L.P(mu4,i4)], q4);
 	  ([L.Metric(ka5,la5); L.P(mu5,i5)], q5);
 	  ([L.Metric(ka6,la6); L.P(mu6,i6)], q6)] as t ->
-	 translate_lorentz_gauge_3 t p
+	 translate_lorentz_gauge_3 t p g
 	   [ (ka1, la1, mu1, i1, q1);
 	     (ka2, la2, mu2, i2, q2);
 	     (ka3, la3, mu3, i3, q3);
@@ -1424,13 +1437,13 @@ i.e.
       | t ->
 	 prerr_endline
 	   ("unhandled 3-vertex: " ^ UFOx.Lorentz.to_string t);
-	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	 (triplet p, dummy_tensor3, g)
 
     let translate_coupling3 model p t c g =
       let open Coupling in
       match t, translate_color3 c, g with
       | [| t |], qc, [| [| g |] |] ->
-	 translate_coupling3_1 model p t qc g
+	 [translate_coupling3_1 model p t qc g]
       | [| t |], qc, _ ->
 	 invalid_arg "translate_coupling3: too many constants"
       | [| t1; t2 |] as t, qc, [| [| g1; g2 |] |] ->
@@ -1438,33 +1451,28 @@ i.e.
 		      translate_coupling3_1 model p t2 qc g2) with
 	 | ((p1, p2, p3), FBF (q, Psibar, l, Psi), g),
            ((p1', p2', p3'), FBF (q', Psibar, l', Psi), g') ->
-	    prerr_endline
-	      ("incompletely handled 3-vertex w/2 Lorentz structures: " ^
-		  (String.concat ", "
-		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
 	    if p1 = p1' && p2 = p2' && p3 = p3' then begin
 	      match l, l' with
-	      | P, S | S, P -> ((p1, p2, p3), FBF (q, Psibar, SP, Psi), g)
-	      | SL, SR | SR, SL -> ((p1, p2, p3), FBF (q, Psibar, SLR, Psi), g)
-	      | V, A | A, V -> ((p1, p2, p3), FBF (q, Psibar, VA, Psi), g)
-	      | VL, VR | VR, VL -> ((p1, p2, p3), FBF (q, Psibar, VLR, Psi), g)
+	      | P, S | S, P | SL, SR | SR, SL | V, A | A, V | VL, VR | VR, VL ->
+                 [((p1, p2, p3), FBF (q, Psibar, l, Psi), g);
+                  ((p1, p2, p3), FBF (q, Psibar, l', Psi), g')]
 	      | _, _ ->
 		 invalid_arg "translate_coupling3: incompatible Dirac matrices"
 	    end else
 	      invalid_arg "translate_coupling3: incompatible flavors"
 	 | _ ->
 	    prerr_endline
-	      ("unhandled 3-vertex w/2 Lorentz structures: " ^
+	      ("unhandled 3-vertex w/3 or more Lorentz structures: " ^
 		  (String.concat ", "
 		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	   ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	    [(triplet p, dummy_tensor3, g.(0).(0))]
 	 end
       | t, qc, g ->
 	 prerr_endline
 	   ("unhandled 3-vertex w/multiple Lorentz structures: " ^
 	       (String.concat ", "
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	 ((p.(0), p.(1), p.(2)), dummy_tensor3, dummy_constant)
+	 [(triplet p, dummy_tensor3, g.(0).(0))]
 
 (* Use the fact that $g_{\mu\nu}g_{\kappa\lambda}$ is symmetric in the
    interchanges $\mu\leftrightarrow\nu$, $\kappa\leftrightarrow\lambda$
@@ -1526,14 +1534,11 @@ i.e.
 	       $ \lbrack 1;3;2;4 \rbrack - \lbrack 1;4;2;3 \rbrack $ *)
 	    if mu1 = mu2 && q2 = Q.neg q1 then begin
 	      if [nu2; ka2; la2] = [ka1; nu1; la1] then
-		(p, q1, Vector4 [ ( 1, C_12_34);
-				           (-1, C_13_42) ])
+		(p, q1, Vector4 [ ( 1, C_12_34); (-1, C_13_42) ])
 	      else if [nu2; ka2; la2] = [la1; nu1; ka1] then
-		(p, q1, Vector4 [ ( 1, C_12_34);
-				           (-1, C_14_23) ])
+		(p, q1, Vector4 [ ( 1, C_12_34); (-1, C_14_23) ])
 	      else if [nu2; ka2; la2] = [la1; ka1; nu1] then
-		(p, q1, Vector4 [ ( 1, C_13_42);
-				           (-1, C_14_23) ])
+		(p, q1, Vector4 [ ( 1, C_13_42); (-1, C_14_23) ])
 	      else
 		invalid_arg "translate_lorentz_4: inconsistent"
 	    end else
@@ -1560,8 +1565,8 @@ i.e.
     let gauge_contraction2 c1 c2 =
       let open Coupling in
       match c1, c2 with
-      | (C_14_23, C_12_34) -> 1
-      | (C_12_34, C_14_23) -> -1
+      | (C_12_34, C_14_23) -> 1
+      | (C_14_23, C_12_34) -> -1
       | _ -> invalid_arg "gauge_contraction2: mismatch"
 
     let gauge_contraction3 c1 c2 =
@@ -1570,6 +1575,13 @@ i.e.
       | (C_12_34, C_13_42) -> 1
       | (C_13_42, C_12_34) -> -1
       | _ -> invalid_arg "gauge_contraction3: mismatch"
+
+    let quartet p = (p.(0), p.(1), p.(2), p.(3))
+
+    (* color flow basis: *)
+    let gauge4 eps =
+      let open Coupling in
+      Vector4 [(2*eps, C_13_42); (-1*eps, C_12_34); (-1*eps, C_14_23)]
 
     let translate_gauge_vertex4 model p t c g =
       let open Coupling in
@@ -1599,11 +1611,10 @@ i.e.
 		let eps1 = gauge_contraction1 contraction11 contraction12
 		and eps2 = gauge_contraction2 contraction21 contraction22
 		and eps3 = gauge_contraction3 contraction31 contraction32 in
-		prerr_endline
-		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
-		      (String.concat ", "
-			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-		((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
+                if eps1 = eps2 && eps2 = eps3 then
+		  [(quartet p, gauge4 eps1, Some g)]
+                else
+		  invalid_arg "translate_gauge_vertex4: unexpected permutations"
 	      end else
 		invalid_arg "translate_gauge_vertex4: different couplings"
 	   | FF132 (q1', q2', q3', a, b, c, d) ->
@@ -1614,11 +1625,10 @@ i.e.
 		let eps1 = gauge_contraction1 contraction11 contraction12
 		and eps2 = gauge_contraction3 contraction21 contraction22
 		and eps3 = gauge_contraction2 contraction31 contraction32 in
-		prerr_endline
-		  ("unhandled 4-vertex w/multiple Lorentz structures: " ^
-		      (String.concat ", "
-			 (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-		((p.(0), p.(1), p.(2), p.(3)), dummy_tensor4, dummy_constant)
+                if eps1 = eps2 && eps2 = eps3 then
+		  [(quartet p, gauge4 eps1, Some g)]
+                else
+		  invalid_arg "translate_gauge_vertex4: unexpected permutations"
 	      end else
 		invalid_arg "translate_gauge_vertex4: different couplings"
 	   | _ -> invalid_arg "translate_gauge_vertex4: wrong color"
@@ -1631,10 +1641,10 @@ i.e.
       let module L = UFOx.Lorentz_Atom in
       match t, translate_color4 c, g with
       | [| [ [], qt] |], C3 qc, [| [| g |] |] ->
-	 ((p.(0), p.(1), p.(2), p.(3)), Scalar4 (coeff qt qc), dummy_constant)
+	 [(quartet p, Scalar4 (coeff qt qc), g)]
       | [| t |], qc, [| [| g |] |] ->
 	 begin match translate_lorentz_4 model p t with
-	 | p, q, t -> ((p.(0), p.(1), p.(2), p.(3)), t, dummy_constant)
+	 | p, q, t -> [(quartet p, t, g)]
 	 end
       | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
@@ -1657,25 +1667,119 @@ i.e.
 	   | Not_found -> invalid_arg ("coupling_of_symbol: " ^ symbol)
 	 end
 
-    let translate_vertices model flavor_of_symbol model =
+    let long_flavors = ref false
+
+    module type Lookup =
+      sig
+        type f = private
+          { flavors : Flavor.t list;
+            flavor_of_string : string -> Flavor.t;
+            flavor_of_symbol : string -> Flavor.t;
+            particle : Flavor.t -> Particle.t;
+            flavor_symbol : Flavor.t -> string;
+            conjugate : Flavor.t -> Flavor.t }
+        type flavor_format =
+          | Long
+          | Decimal
+          | Hexadecimal
+        val flavor_format : flavor_format ref
+        val of_model : t -> f
+      end
+
+    module Lookup : Lookup =
+      struct
+
+        type f =
+          { flavors : Flavor.t list;
+            flavor_of_string : string -> Flavor.t;
+            flavor_of_symbol : string -> Flavor.t;
+            particle : Flavor.t -> Particle.t;
+            flavor_symbol : Flavor.t -> string;
+            conjugate : Flavor.t -> Flavor.t }
+            
+        type flavor_format =
+          | Long
+          | Decimal
+          | Hexadecimal
+
+        let flavor_format = ref Hexadecimal
+
+        let conjugate_of_particle_array particles =
+          Array.init
+	    (Array.length particles)
+	    (fun i ->
+	      let f' = Particle.conjugate particles.(i) in
+	      match ThoArray.match_all f' particles with
+	      | [i'] -> i'
+	      | [] ->
+	         invalid_arg ("no charge conjugate: " ^ f'.Particle.name)
+	      | _ ->
+	         invalid_arg ("multiple charge conjugates: " ^ f'.Particle.name))
+
+        let invert_flavor_array a =
+          let table = SHash.create 37 in
+          Array.iteri (fun i s -> SHash.add table s i) a;
+          (fun name ->
+	    try
+	      Flavor.of_int (SHash.find table name)
+	    with
+	    | Not_found -> invalid_arg ("not found: " ^ name))
+
+        let digits base n =
+          let rec digits' acc n =
+            if n < 1 then
+              acc
+            else
+              digits' (succ acc) (n / base) in
+          if n < 0 then
+            digits' 1 (-n)
+          else if n = 0 then
+            1
+          else
+            digits' 0 n
+
+        let of_model model =
+          let particle_array = Array.of_list (values model.particles) in
+          let conjugate_array = conjugate_of_particle_array particle_array in
+          let flavor_list =
+	    List.map
+	      Flavor.of_int
+	      (ThoList.range 0 (Array.length particle_array - 1))
+          and name_array = Array.map (fun f -> f.Particle.name) particle_array
+          and symbol_array = Array.of_list (keys model.particles) in
+          let flavor_symbol f =
+            begin match !flavor_format with
+            | Long -> symbol_array.(Flavor.to_int f)
+            | Decimal -> 
+               let w = digits 10 (Array.length particle_array - 1) in
+               Printf.sprintf "%0*d" w (Flavor.to_int f)
+            | Hexadecimal ->
+               let w = digits 16 (Array.length particle_array - 1) in
+               Printf.sprintf "%0*X" w (Flavor.to_int f)
+            end in
+          { flavors = flavor_list;
+            flavor_of_string = invert_flavor_array name_array;
+            flavor_of_symbol = invert_flavor_array symbol_array;
+            particle = (fun f -> particle_array.(Flavor.to_int f));
+            flavor_symbol = flavor_symbol;
+            conjugate = (fun f ->
+              Flavor.of_int (conjugate_array.(Flavor.to_int f))) }
+
+      end
+
+    let translate_vertices model tables =
       List.fold_left (fun (v3, v4, vn) v ->
-	let p = Array.map flavor_of_symbol v.Vertex.particles
+	let p = Array.map tables.Lookup.flavor_of_symbol v.Vertex.particles
 	and g =
 	  Array.map (Array.map (coupling_of_symbol model)) v.Vertex.couplings
 	and t = Array.map (lorentz_of_symbol model) v.Vertex.lorentz
 	and c = v.Vertex.color in
 	let t = Array.map (fun l -> l.Lorentz.structure) t in
 	match Array.length p with
-	| 3 ->
-	   let p, t, g = translate_coupling3 model p t c g in
-           ((p, t, g) :: v3, v4, vn)
-	| 4 ->
-	   let p, t, g = translate_coupling4 model p t c g in
-           (v3, (p, t, g) :: v4, vn)
+	| 3 -> (translate_coupling3 model p t c g @ v3, v4, vn)
+	| 4 -> (v3, translate_coupling4 model p t c g @ v4, vn)
 	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
         ([], [], []) (values model.vertices)
-
-    let dump_raw = ref false
 
     let propagator_of_lorentz = function
       | Coupling.Scalar -> Coupling.Prop_Scalar
@@ -1695,115 +1799,78 @@ i.e.
       | Coupling.BRS _ -> invalid_arg
 	 "UFO.Model.propagator_of_lorentz: no BRST"
 
-    let conjugate_of_particle_array particles =
-      Array.init
-	(Array.length particles)
-	(fun i ->
-	  let f' = Particle.conjugate particles.(i) in
-	  match ThoArray.match_all f' particles with
-	  | [i'] -> i'
-	  | [] ->
-	     invalid_arg ("no charge conjugate: " ^ f'.Particle.name)
-	  | _ ->
-	     invalid_arg ("multiple charge conjugates: " ^ f'.Particle.name))
+    let filter_unphysical model =
+      let physical_particles =
+	Particle.filter Particle.is_physical model.particles in
+      let physical_vertices =
+	Vertex.filter
+	  (not @@ (Vertex.contains model.particles (not @@ Particle.is_physical)))
+	  model.vertices in
+      { model with particles = physical_particles; vertices = physical_vertices }
 
-    let invert_flavor_array a =
-      let table = SHash.create 37 in
-      Array.iteri (fun i s -> SHash.add table s i) a;
-      (fun name ->
-	try
-	  Flavor.of_int (SHash.find table name)
-	with
-	| Not_found -> invalid_arg ("not found: " ^ name))
+    let classify_parameters model =
+      let compare_parameters p1 p2 =
+        compare p1.Parameter.sequence p2.Parameter.sequence in
+      let rec classify (input, derived) = function
+        | [] -> (List.sort compare_parameters input,
+                 List.sort compare_parameters derived)
+        | p :: rest ->
+           classify (match p.Parameter.nature with
+                     | Parameter.Internal -> (input, p :: derived)
+                     | Parameter.External -> (p :: input, derived)) rest in
+      classify ([], []) (values model.parameters)
 
-    let initialized_from = ref None
+    type state =
+      { directory : string;
+        model : t }
+        
+    let initialized = ref None
 
     let is_initialized_from dir =
-      match !initialized_from with
+      match !initialized with
       | None -> false
-      | Some old_dir -> dir = old_dir
+      | Some state -> dir = state.directory
 
-    let long_flavors = ref false
+    let dump_raw = ref false
 
-    let digits n =
-      let rec digits' acc n =
-        if n < 1 then
-          acc
-        else
-          digits' (succ acc) (n / 10) in
-      if n < 0 then
-        digits' 1 (-n)
-      else if n = 0 then
-        1
-      else
-        digits' 0 n
-  
     let init dir =
-      let model = parse_directory dir in
-      let model =
-	let is_unphysical = not @@ Particle.is_physical in
-	let particles' =
-	  Particle.filter Particle.is_physical model.particles in
-	let vertices' =
-	  Vertex.filter
-	    (not @@ (Vertex.contains model.particles is_unphysical))
-	    model.vertices in
-	{ model with particles = particles'; vertices = vertices' } in
+      let model = filter_unphysical (parse_directory dir) in
       if !dump_raw then
 	dump model;
-      let particle_array = Array.of_list (values model.particles) in
-      let flavors =
-	List.map
-	  Flavor.of_int
-	  (ThoList.range 0 (Array.length particle_array - 1)) in
-      let name_array = Array.map (fun f -> f.Particle.name) particle_array in
-      let flavor_of_string = invert_flavor_array name_array in
-      let symbol_array = Array.of_list (keys model.particles) in
-      let flavor_of_symbol = invert_flavor_array symbol_array in
-      let conjugate_array = conjugate_of_particle_array particle_array in
-      let conjugate f = Flavor.of_int (conjugate_array.(Flavor.to_int f)) in
-      let functions = [] in
-      let variables = [] in
+      let tables = Lookup.of_model model in
       let (vertices3, vertices4, verticesn) as vertices =
-	translate_vertices model flavor_of_symbol model in
+	translate_vertices model tables in
       let max_degree = match vertices4 with [] -> 3 | _ -> 4 in
-      let input_parameters = 
-        ("0.0_default", 0.0) ::
-        (List.map (fun (n, v, _) -> (n, v)) variables) in
-      let derived_parameters =
-        List.map (fun (n, f, _) -> (Coupling.Real n, Coupling.Const 0))
-          functions in
-      let particle f = particle_array.(Flavor.to_int f)
-      and flavor_symbol f =
-        if !long_flavors then
-          symbol_array.(Flavor.to_int f)
-        else
-          let w = digits (Array.length particle_array - 1) in
-          Printf.sprintf "%0*d" w (Flavor.to_int f) in
-      let pdg f = (particle f).Particle.pdg_code
-      and color f = UFOx.Color.omega (particle f).Particle.color
-      and lorentz f = UFOx.Lorentz.omega (particle f).Particle.spin in
-      let propagator f = propagator_of_lorentz (lorentz f)
-      and fermion f = fermion_of_lorentz (lorentz f) in
-      let flavor_to_string f = (particle f).Particle.name
-      and flavor_to_TeX f = (particle f).Particle.texname in
-      let mass_symbol f = (particle f).Particle.mass
-      and width_symbol f = (particle f).Particle.width in
+      let particle f = tables.Lookup.particle f in
+      let lorentz f = UFOx.Lorentz.omega (particle f).Particle.spin in
       let gauge_symbol () = "?GAUGE?" in
-      let color f = Color.Singlet in (* TEMPORARY HACK! *)
-      M.setup ~color ~pdg ~lorentz ~propagator
+      let constant_symbol = function
+        | Some c -> c.UFO_Coupling.name
+        | None -> "<<UNDEFINED>>" in
+      M.setup
+        ~color:(fun f -> UFOx.Color.omega (particle f).Particle.color)
+        ~pdg:(fun f -> (particle f).Particle.pdg_code)
+        ~lorentz
+        ~propagator:(fun f -> propagator_of_lorentz (lorentz f))
         ~width:(fun f -> Coupling.Constant)
         ~goldstone:(fun f -> None)
-        ~conjugate ~fermion ~max_degree ~vertices
-        ~flavors:[("All Flavors", flavors)]
+        ~conjugate:tables.Lookup.conjugate
+        ~fermion:(fun f -> fermion_of_lorentz (lorentz f))
+        ~vertices ~max_degree
+        ~flavors:[("All Flavors", tables.Lookup.flavors)]
         ~parameters:(fun () ->
-          { Coupling.input = input_parameters;
-            Coupling.derived = derived_parameters;
+          { Coupling.input = [];
+            Coupling.derived = [];
             Coupling.derived_arrays = [] })
-        ~flavor_of_string ~flavor_to_string ~flavor_to_TeX
-        ~flavor_symbol ~gauge_symbol ~mass_symbol ~width_symbol
-        ~constant_symbol:(fun c -> "g");
-      initialized_from := Some dir
+        ~flavor_of_string:tables.Lookup.flavor_of_string
+        ~flavor_to_string:(fun f -> (particle f).Particle.name)
+        ~flavor_to_TeX:(fun f -> (particle f).Particle.texname)
+        ~flavor_symbol:tables.Lookup.flavor_symbol
+        ~gauge_symbol
+        ~mass_symbol:(fun f -> (particle f).Particle.mass)
+        ~width_symbol:(fun f -> (particle f).Particle.width)
+        ~constant_symbol;
+      initialized := Some { directory = dir; model = model }
 
     let ufo_directory = ref Config.default_UFO_dir
 
@@ -1813,20 +1880,96 @@ i.e.
       else
 	init !ufo_directory
 
+    let write_header dir =
+      Printf.printf "# WHIZARD Model file derived from UFO directory\n";
+      Printf.printf "#   '%s'\n\n" dir;
+      Printf.printf "model = \"%s\"\n\n" (Filename.basename dir)
+
+    let write_input_parameters parameters =
+      let open Parameter in
+      Printf.printf "# Independent (input) Parameters\n";
+      List.iter
+        (fun p ->
+          Printf.printf "parameter %s = %s\n" p.name (value_to_numeric p.value))
+        parameters;
+      Printf.printf "\n"
+
+    let write_derived_parameters parameters =
+      let open Parameter in
+      Printf.printf "# Dependent (derived) Parameters\n";
+      List.iter
+        (fun p ->
+          Printf.printf "parameter %s = %s\n" p.name (value_to_expr p.value))
+        parameters;
+      Printf.printf "\n"
+
+    let write_particles particles =
+      let open Particle in
+      Printf.printf "# Particles\n";
+      Printf.printf "# NB: hypercharge assignments appear to be unreliable\n";
+      Printf.printf "#     therefore we can't infer the isospin\n";
+      Printf.printf "# NB: parton-, gauge- and lefthandedness are unavailable\n";
+      List.iter
+        (fun p ->
+          if not p.is_anti then begin
+            Printf.printf
+              "particle \"%s\" %d ### parton? gauge? left?\n"
+              p.name p.pdg_code;
+            Printf.printf
+              "  spin %s charge %s color %s ### isospin?\n"
+              (UFOx.Lorentz.rep_to_string p.spin)
+              (charge_to_string p.charge)
+              (UFOx.Color.rep_to_string p.color);
+            Printf.printf "  name \"%s\"\n" p.name;
+            Printf.printf "  anti \"%s\"\n" p.antiname;
+            Printf.printf "  tex_name \"%s\"\n" p.texname;
+            Printf.printf "  tex_anti \"%s\"\n" p.antitexname;
+            Printf.printf "  mass %s width %s\n\n" p.mass p.width
+          end)
+        (values particles);
+      Printf.printf "\n"
+
+    let write_vertices model vertices  =
+      Printf.printf "# Vertices (for phasespace generation only)\n";
+      Printf.printf "# NB: particles should be sorted increasing in mass.\n";
+      Printf.printf "#     This is NOT implemented yet!\n";
+      List.iter
+        (fun v ->
+          let particles =
+            String.concat " "
+              (List.map
+                 (fun s ->
+                   "\"" ^ (SMap.find s model.particles).Particle.name ^ "\"")
+                 (Array.to_list v.Vertex.particles)) in
+          Printf.printf "%s\n" particles)
+        (values vertices);
+      Printf.printf "\n"
+
     let write_WHIZARD () =
       load_UFO ();
-      failwith "UFO.write_WHIZARD: not implemented yet!"
+      match !initialized with
+      | None -> failwith "UFO.write_WHIZARD: can't happen"
+      | Some { directory = dir; model = model } ->
+         let input_parameters, derived_parameters = classify_parameters model in
+         write_header dir;
+         write_input_parameters input_parameters;
+         write_derived_parameters derived_parameters;
+         write_particles model.particles;
+         write_vertices model model.vertices;
+         exit 0
 
     let options = Options.create
         [ ("UFO_dir", Arg.String (fun name -> ufo_directory := name),
            "UFO model directory (default: " ^ !ufo_directory ^ ")");
           ("write_WHIZARD", Arg.Unit write_WHIZARD,
            "write the WHIZARD model files (required once per model)");
-          ("long_flavors", Arg.Set long_flavors,
+          ("long_flavors",
+           Arg.Unit (fun () -> Lookup.flavor_format := Lookup.Long),
            "write use the UFO flavor names instead of integers");
+          ("dump", Arg.Set dump_raw,
+           "dump UFO model for debugging the parser (must come _before_ exec!)");
           ("exec", Arg.Unit load_UFO,
            "load the UFO model files (required _before_ using particles names)");
-          ("dump", Arg.Set dump_raw, "dump UFO model for debugging the parser");
           ("help", Arg.Unit (fun () -> prerr_endline "..."),
            "print information on the model")]
 
