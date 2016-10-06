@@ -214,6 +214,13 @@ let value_to_numeric = function
   | String s -> invalid_arg ("UFO.value_to_numeric: string = " ^ s)
   | Name n -> invalid_arg ("UFO.value_to_numeric: name = " ^ name_to_string n)
 
+let value_to_float = function
+  | Integer i -> float i
+  | Fraction (n, d) -> float n /. float d
+  | Float x -> x
+  | String s -> invalid_arg ("UFO.value_to_float: string = " ^ s)
+  | Name n -> invalid_arg ("UFO.value_to_float: name = " ^ name_to_string n)
+
 let value_attrib name attribs =
   match find_attrib name attribs with
   | S.Integer i -> Integer i
@@ -436,6 +443,10 @@ module type UFO_Coupling =
     val of_file : S.t -> t SMap.t
     val to_string : string -> t -> string
 
+    (* TODO: this is a hack to allow [UFO_Coupling.t option]
+             as [M.coupling].  Introduce a simpler type for this purpose! *)
+    val of_name : string -> t
+
   end
 
 module UFO_Coupling : UFO_Coupling =
@@ -467,6 +478,11 @@ module UFO_Coupling : UFO_Coupling =
 
     let of_file couplings =
       List.fold_left of_file1 SMap.empty couplings
+
+    let of_name name =
+      { name = name;
+        value = "???";
+        order = [] }
 
   end
 
@@ -1820,6 +1836,22 @@ i.e.
                      | Parameter.External -> (p :: input, derived)) rest in
       classify ([], []) (values model.parameters)
 
+    let translate_input p =
+      (Some (UFO_Coupling.of_name p.Parameter.name),
+       value_to_float p.Parameter.value)
+
+    let translate_derived p =
+      let c = Some (UFO_Coupling.of_name p.Parameter.name) in
+      match p.Parameter.ptype with
+      | Parameter.Real -> (Coupling.Real c, Coupling.Const 42)
+      | Parameter.Complex -> (Coupling.Complex c, Coupling.Const 42)
+
+    let translate_parameters model =
+      let input_parameters, derived_parameters = classify_parameters model in
+      { Coupling.input = List.map translate_input input_parameters;
+        Coupling.derived = List.map translate_derived derived_parameters;
+        Coupling.derived_arrays = [] }
+
     type state =
       { directory : string;
         model : t }
@@ -1847,6 +1879,7 @@ i.e.
       let constant_symbol = function
         | Some c -> c.UFO_Coupling.name
         | None -> "<<UNDEFINED>>" in
+      let parameters = translate_parameters model in
       M.setup
         ~color:(fun f -> UFOx.Color.omega (particle f).Particle.color)
         ~pdg:(fun f -> (particle f).Particle.pdg_code)
@@ -1858,10 +1891,7 @@ i.e.
         ~fermion:(fun f -> fermion_of_lorentz (lorentz f))
         ~vertices ~max_degree
         ~flavors:[("All Flavors", tables.Lookup.flavors)]
-        ~parameters:(fun () ->
-          { Coupling.input = [];
-            Coupling.derived = [];
-            Coupling.derived_arrays = [] })
+        ~parameters:(fun () -> parameters)
         ~flavor_of_string:tables.Lookup.flavor_of_string
         ~flavor_to_string:(fun f -> (particle f).Particle.name)
         ~flavor_to_TeX:(fun f -> (particle f).Particle.texname)
