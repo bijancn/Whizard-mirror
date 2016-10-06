@@ -77,7 +77,8 @@ EXTRA_DIST = $(LATEX_STYLES)
 manual.ps: $(PACKAGE).ps
 manual.pdf: $(PACKAGE).pdf
 $(PACKAGE).ps: gamelan_manual.ps
-$(PACKAGE).pdf: gamelan_manual.pdf
+$(PACKAGE).pdf: gamelan_manual.pdf $(WHIZARD_DEPENDENCY_GRAPHS_PDF)
+
 
 gamelan_manual.pdf: gamelan.sty
 
@@ -95,7 +96,7 @@ gamelan_manual.pdf: gamelan.sty
 SUFFIXES: .dot .tex .dvi .ps .pdf
 
 .dot.pdf:
-	dot -Tpdf $< > $@
+	$(DOT) -Tpdf $< > $@
 
 if DISTRIBUTION
 WHIZARD_DEPENDENCY_GRAPHS_DOT = \
@@ -137,9 +138,9 @@ all-dots: $(WHIZARD_DEPENDENCY_GRAPHS_DOT)
 
 $(WHIZARD_DEPENDENCY_GRAPHS_DOT):
 	@rm -f $@
-	$(top_srcdir)/share/doc/dep2dot.py ../../src/$(basename $@)/Makefile.depend > $@
+	$(top_srcdir)/share/doc/dep2dot.py \
+		../../src/`echo $@ | sed 's/.dot//'`/Makefile.depend > $@
 dist_noinst_DATA += $(WHIZARD_DEPENDENCY_GRAPHS_DOT)
-DISTCLEANFILES = $(WHIZARD_DEPENDENCY_GRAPHS_DOT) $(WHIZARD_DEPENDENCY_GRAPHS_PDF)
 endif
 
 ## Rules for creating PDF
@@ -210,8 +211,6 @@ WHIZARD_NOWEB_SRC = \
   whizard.nw \
   whizard-postlude.nw
 
-$(PACKAGE).pdf: $(WHIZARD_DEPENDENCY_GRAPHS_PDF)
-
 $(PACKAGE).tex: $(WHIZARD_NOWEB_SRC)
 	-rm -f $@
 	$(NOWEAVE) -delay $^ | $(CPIF) $@
@@ -224,7 +223,8 @@ endif NOWEB_AVAILABLE
 mostlyclean-latex:
 	-rm -f *.aux *.log *.dvi *.toc *.idx *.out *.ltp *.mp *.mpx *.glo \
 	gamelan_manual.[1-9] gamelan_manual.[1-9][0-9] \
-	manual.ps manual.pdf gamelan_manual.ps gamelan_manual.pdf
+	manual.ps manual.pdf gamelan_manual.ps gamelan_manual.pdf \
+	$(WHIZARD_DEPENDENCY_GRAPHS_DOT) $(WHIZARD_DEPENDENCY_GRAPHS_PDF)
 clean-latex:
 maintainer-clean-latex:
 	-rm manual.ps manual.pdf gamelan_manual.ps gamelan_manual.pdf
