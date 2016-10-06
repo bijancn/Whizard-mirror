@@ -1955,7 +1955,8 @@ i.e.
          write_input_parameters input_parameters;
          write_derived_parameters derived_parameters;
          write_particles model.particles;
-         write_vertices model model.vertices
+         write_vertices model model.vertices;
+         exit 0
 
     let options = Options.create
         [ ("UFO_dir", Arg.String (fun name -> ufo_directory := name),
