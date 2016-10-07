@@ -1000,6 +1000,10 @@ module Model =
        be very inefficient, because we will use [flavor] as a key
        for maps below. *)
     type flavor = int
+
+    (* NB: not clean yet.  The option type is for UFO's sparse
+       arrays of couplings.   However it makes no sense for O'Mega
+       and causes all sorts of headaches below.  *)
     type constant = UFO_Coupling.t option
     type gauge = unit
 
