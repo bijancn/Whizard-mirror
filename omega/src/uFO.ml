@@ -478,8 +478,13 @@ module UFO_Coupling : UFO_Coupling =
       let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Coupling" ], attribs ->
+         let name = string_attrib "name" attribs in
+         if name <> symbol then
+           Printf.eprintf
+             "UFO_Coupling.of_file: warning: symbol '%s' <> name '%s'\n"
+             symbol name;
 	 SMap.add symbol
-	   { name = string_attrib "name" attribs;
+	   { name = name;
 	     value = string_attrib "value" attribs;
 	     order = order_dictionary_attrib "order" attribs } map
       | _ -> invalid_arg ("UFO_Coupling.of_file: " ^ name_to_string d.S.kind)
