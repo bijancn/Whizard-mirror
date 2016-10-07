@@ -915,13 +915,49 @@ contains
     end subroutine init_decay_and_production_momenta
 
     subroutine set_decay_and_production_momenta ()
+      type(vector4_t), dimension(3) :: k_tmp
+      type(lorentz_transformation_t) :: L_to_rest_frame, L_to_cms
+      type(vector4_t), dimension(4) :: k_decay_vector4
+      type(vector4_t), dimension(3) :: k_decay2_vector4
+      type(momentum) :: mom_tmp
       k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
       k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
-      k_decay_real = zero
-      k_decay_real(:,4) = k(:,7)
-      k_decay_real(:,3) = k(:,ass_quark(leg))
-      k_decay_real(:,2) = k(:,ass_boson(leg))
-      k_decay_real(:,1) = sum(k_decay_real,2)     !!! momentum conservation
+      !k_decay_real = zero
+      !k_decay_real(:,4) = k(:,7)
+      !k_decay_real(:,3) = k(:,ass_quark(leg))
+      !k_decay_real(:,2) = k(:,ass_boson(leg))
+      !k_decay_real(:,1) = sum(k_decay_real,2)     !!! momentum conservation
+      k_tmp(1)%p = k(:,7)
+      k_tmp(2)%p = k(:,ass_quark(leg))
+      k_tmp(3)%p = k(:,ass_boson(leg))
+      print *, 'Check sum of momenta: '
+      print *, k(:,1) + k(:,2) + k(:,3) + k(:,4) + k(:,5) + k(:,6) + k(:,7)
+      k_decay_vector4 = create_three_particle_decay (k_tmp(1), k_tmp(2), k_tmp(3))
+      L_to_rest_frame = inverse (boost (k_decay_vector4 (4), k_decay_vector4(4)**1))
+      print *, 'Real - Gottfried Jackson Frame: '
+      call vector4_write_set (k_decay_vector4)
+      k_decay_vector4 = L_to_rest_frame * k_decay_vector4
+      print *, 'After first boost - Rest Frame: '
+      call vector4_write_set (k_decay_vector4)
+      print *, '****************'
+      mom_tmp = -(k(:,1) + k(:,2))
+      call compute_projected_top_momenta (mom_tmp)
+      k_decay_vector4 = boost_to_cms * k_decay_vector4
+      print *, 'After second boost - CMS: '
+      call vector4_write_set (k_decay_vector4, show_mass = .true.)
+      print *, '****************'
+      k_tmp(1)%p = k(:,ass_quark(other_leg))
+      k_tmp(2)%p = k(:,ass_boson(other_leg))
+      k_decay2_vector4 = create_two_particle_decay (k_tmp(1), k_tmp(2)) 
+      print *, 'Same for Born - Rest frame: '
+      call vector4_write_set (k_decay2_vector4)
+      k_decay2_vector4 = boost_to_cms * k_decay2_vector4
+      print *, 'Born - CMS: '
+      call vector4_write_set (k_decay2_vector4, show_mass = .true.)
+      print *, 'Real - without top: '
+      call vector4_write_set (k_decay_vector4 (1:3), show_mass = .true.)
+      print *, 'Born - without top: '
+      call vector4_write_set (k_decay2_vector4 (2:3), show_mass = .true.)
       k_decay_born = zero
       k_decay_born(:,2) = k(:,ass_boson(other_leg))
       k_decay_born(:,3) = k(:,ass_quark(other_leg))
