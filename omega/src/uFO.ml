@@ -1448,14 +1448,19 @@ i.e.
 	   ("unhandled 3-vertex: " ^ UFOx.Lorentz.to_string t);
 	 (triplet p, dummy_tensor3, g)
 
+
     let translate_coupling3 model p t c g =
+      let project g =
+        match g.(0).(0) with
+        | Some g -> g
+        | None -> failwith "project" in
       let open Coupling in
       match t, translate_color3 c, g with
-      | [| t |], qc, [| [| g |] |] ->
+      | [| t |], qc, [| [| Some g |] |] ->
 	 [translate_coupling3_1 model p t qc g]
       | [| t |], qc, _ ->
 	 invalid_arg "translate_coupling3: too many constants"
-      | [| t1; t2 |] as t, qc, [| [| g1; g2 |] |] ->
+      | [| t1; t2 |] as t, qc, [| [| Some g1; Some g2 |] |] ->
 	 begin match (translate_coupling3_1 model p t1 qc g1,
 		      translate_coupling3_1 model p t2 qc g2) with
 	 | ((p1, p2, p3), FBF (q, Psibar, l, Psi), g),
@@ -1474,14 +1479,14 @@ i.e.
 	      ("unhandled 3-vertex w/3 or more Lorentz structures: " ^
 		  (String.concat ", "
 		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	    [(triplet p, dummy_tensor3, g.(0).(0))]
+	    [(triplet p, dummy_tensor3, project g)]
 	 end
       | t, qc, g ->
 	 prerr_endline
 	   ("unhandled 3-vertex w/multiple Lorentz structures: " ^
 	       (String.concat ", "
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	 [(triplet p, dummy_tensor3, g.(0).(0))]
+	 [(triplet p, dummy_tensor3, project g)]
 
 (* Use the fact that $g_{\mu\nu}g_{\kappa\lambda}$ is symmetric in the
    interchanges $\mu\leftrightarrow\nu$, $\kappa\leftrightarrow\lambda$
@@ -1771,6 +1776,9 @@ i.e.
 
       end
 
+    let project_coupling (p, c, g) =
+      (p, c, g.UFO_Coupling.name)
+
     let translate_vertices model tables =
       List.fold_left (fun (v3, v4, vn) v ->
 	let p = Array.map tables.Lookup.flavor_of_symbol v.Vertex.particles
@@ -1780,24 +1788,10 @@ i.e.
 	and c = v.Vertex.color in
 	let t = Array.map (fun l -> l.Lorentz.structure) t in
 	match Array.length p with
-	| 3 -> (translate_coupling3 model p t c g @ v3, v4, vn)
-	| 4 -> (v3, translate_coupling4 model p t c g @ v4, vn)
+	| 3 -> (List.map project_coupling (translate_coupling3 model p t c g) @ v3, v4, vn)
+	| 4 -> (v3, List.map project_coupling (translate_coupling4 model p t c g) @ v4, vn)
 	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
         ([], [], []) (values model.vertices)
-
-    let project_coupling (p, c, g) =
-      match g with
-      | Some g' -> (p, c, g'.UFO_Coupling.name)
-      | None -> invalid_arg "project_coupling: unexpected None"
-
-    let project_coupling' (p, c, g) =
-      (p, c, g.UFO_Coupling.name)
-
-    let translate_vertices model tables =
-      let v3, v4, vn = translate_vertices model tables in
-      (List.map project_coupling v3,
-       List.map project_coupling' v4,
-       List.map project_coupling vn)
 
     let propagator_of_lorentz = function
       | Coupling.Scalar -> Coupling.Prop_Scalar
