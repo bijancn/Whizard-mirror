@@ -207,6 +207,14 @@ let value_to_expr = function
      UFOx.Value.to_string (UFOx.Value.of_expr (UFOx.Expr.of_string s))
   | Name n -> name_to_string n
 
+let value_to_coupling atom = function
+  | Integer i -> Coupling.Const i
+  | Fraction (n, d) -> Coupling.Quot (Coupling.Const n, Coupling.Const d)
+  | Float x -> Coupling.Const 42
+  | String s ->
+     UFOx.Value.to_coupling atom (UFOx.Value.of_expr (UFOx.Expr.of_string s))
+  | Name n -> Coupling.Const 42
+
 let value_to_numeric = function
   | Integer i -> Printf.sprintf "%d" i
   | Fraction (n, d) -> Printf.sprintf "%g" (float n /. float d)
@@ -1841,10 +1849,12 @@ i.e.
        value_to_float p.Parameter.value)
 
     let translate_derived p =
-      let c = Some (UFO_Coupling.of_name p.Parameter.name) in
+      let make_atom s = Some (UFO_Coupling.of_name s) in
+      let c = make_atom p.Parameter.name in
+      let v = value_to_coupling make_atom p.Parameter.value in
       match p.Parameter.ptype with
-      | Parameter.Real -> (Coupling.Real c, Coupling.Const 42)
-      | Parameter.Complex -> (Coupling.Complex c, Coupling.Const 42)
+      | Parameter.Real -> (Coupling.Real c, v)
+      | Parameter.Complex -> (Coupling.Complex c, v)
 
     let translate_parameters model =
       let input_parameters, derived_parameters = classify_parameters model in
