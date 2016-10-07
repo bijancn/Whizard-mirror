@@ -747,6 +747,7 @@ contains
     en_w = (mtop**2 + mw2 - mb2) / (2 * mtop)
     en_b = (mtop**2 - mw2 + mb2) / (2 * mtop)
     p_three_mag = sqrt (lambda (mtop**2, mw2, mb2)) / (2 * mtop)
+    !!! TODO (bcn-2016-10-07): Use p3 in the top rest frame.
     unit_vec_wp = p3%x / sqrt (dot_product(p3%x, p3%x))
     mom_wp_onshell_rest = [en_w, p_three_mag * unit_vec_wp]
     mom_b_onshell_rest = [en_b, - p_three_mag * unit_vec_wp]
