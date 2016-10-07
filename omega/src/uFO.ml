@@ -451,10 +451,6 @@ module type UFO_Coupling =
     val of_file : S.t -> t SMap.t
     val to_string : string -> t -> string
 
-    (* TODO: this is a hack to allow [UFO_Coupling.t option]
-             as [M.coupling].  Introduce a simpler type for this purpose! *)
-    val of_name : string -> t
-
   end
 
 module UFO_Coupling : UFO_Coupling =
@@ -491,11 +487,6 @@ module UFO_Coupling : UFO_Coupling =
 
     let of_file couplings =
       List.fold_left of_file1 SMap.empty couplings
-
-    let of_name name =
-      { name = name;
-        value = "???";
-        order = [] }
 
   end
 
@@ -1005,11 +996,7 @@ module Model =
        be very inefficient, because we will use [flavor] as a key
        for maps below. *)
     type flavor = int
-
-    (* NB: not clean yet.  The option type is for UFO's sparse
-       arrays of couplings.   However it makes no sense for O'Mega
-       and causes all sorts of headaches below.  *)
-    type constant = UFO_Coupling.t option
+    type constant = string
     type gauge = unit
 
     module M = Modeltools.Mutable
@@ -1798,6 +1785,17 @@ i.e.
 	| _ -> invalid_arg "UFO.Model.init: only 3- and 4-vertices for now!")
         ([], [], []) (values model.vertices)
 
+    let project_coupling (p, c, g) =
+      match g with
+      | Some g' -> (p, c, g'.UFO_Coupling.name)
+      | None -> invalid_arg "project_coupling: unexpected None"
+
+    let translate_vertices model tables =
+      let v3, v4, vn = translate_vertices model tables in
+      (List.map project_coupling v3,
+       List.map project_coupling v4,
+       List.map project_coupling vn)
+
     let propagator_of_lorentz = function
       | Coupling.Scalar -> Coupling.Prop_Scalar
       | Coupling.Spinor -> Coupling.Prop_Spinor
@@ -1838,11 +1836,10 @@ i.e.
       classify ([], []) (values model.parameters)
 
     let translate_input p =
-      (Some (UFO_Coupling.of_name p.Parameter.name),
-       value_to_float p.Parameter.value)
+      (p.Parameter.name, value_to_float p.Parameter.value)
 
     let translate_derived p =
-      let make_atom s = Some (UFO_Coupling.of_name s) in
+      let make_atom s = s in
       let c = make_atom p.Parameter.name in
       let v = value_to_coupling make_atom p.Parameter.value in
       match p.Parameter.ptype with
@@ -1879,9 +1876,7 @@ i.e.
       let particle f = tables.Lookup.particle f in
       let lorentz f = UFOx.Lorentz.omega (particle f).Particle.spin in
       let gauge_symbol () = "?GAUGE?" in
-      let constant_symbol = function
-        | Some c -> c.UFO_Coupling.name
-        | None -> "<<UNDEFINED>>" in
+      let constant_symbol s = s in
       let parameters = translate_parameters model in
       M.setup
         ~color:(fun f -> UFOx.Color.omega (particle f).Particle.color)
