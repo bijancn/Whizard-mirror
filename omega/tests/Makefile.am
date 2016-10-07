@@ -26,7 +26,7 @@
 #
 ########################################################################
 
-SUBDIRS = MSSM SM people
+SUBDIRS =
 
 # OMEGA_SPLIT = -target:single_function
   OMEGA_SPLIT = -target:split_function 10
