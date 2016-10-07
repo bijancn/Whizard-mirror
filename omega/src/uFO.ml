@@ -996,21 +996,10 @@ let dump model =
 module Model =
   struct
 
-    module type Flavor =
-      sig
-	type t
-	val of_int : int -> t
-	val to_int : t -> int
-      end
-  
-    module Flavor : Flavor =
-      struct
-	type t = int
-	let of_int n = n
-	let to_int n = n
-      end
-  
-    type flavor = Flavor.t
+    (* NB: we could use [type flavor = Particle.t], but that would
+       be very inefficient, because we will use [flavor] as a key
+       for maps below. *)
+    type flavor = int
     type constant = UFO_Coupling.t option
     type gauge = unit
 
@@ -1696,12 +1685,12 @@ i.e.
     module type Lookup =
       sig
         type f = private
-          { flavors : Flavor.t list;
-            flavor_of_string : string -> Flavor.t;
-            flavor_of_symbol : string -> Flavor.t;
-            particle : Flavor.t -> Particle.t;
-            flavor_symbol : Flavor.t -> string;
-            conjugate : Flavor.t -> Flavor.t }
+          { flavors : flavor list;
+            flavor_of_string : string -> flavor;
+            flavor_of_symbol : string -> flavor;
+            particle : flavor -> Particle.t;
+            flavor_symbol : flavor -> string;
+            conjugate : flavor -> flavor }
         type flavor_format =
           | Long
           | Decimal
@@ -1714,12 +1703,12 @@ i.e.
       struct
 
         type f =
-          { flavors : Flavor.t list;
-            flavor_of_string : string -> Flavor.t;
-            flavor_of_symbol : string -> Flavor.t;
-            particle : Flavor.t -> Particle.t;
-            flavor_symbol : Flavor.t -> string;
-            conjugate : Flavor.t -> Flavor.t }
+          { flavors : flavor list;
+            flavor_of_string : string -> flavor;
+            flavor_of_symbol : string -> flavor;
+            particle : flavor -> Particle.t;
+            flavor_symbol : flavor -> string;
+            conjugate : flavor -> flavor }
             
         type flavor_format =
           | Long
@@ -1745,7 +1734,7 @@ i.e.
           Array.iteri (fun i s -> SHash.add table s i) a;
           (fun name ->
 	    try
-	      Flavor.of_int (SHash.find table name)
+	      SHash.find table name
 	    with
 	    | Not_found -> invalid_arg ("not found: " ^ name))
 
@@ -1764,30 +1753,25 @@ i.e.
 
         let of_model model =
           let particle_array = Array.of_list (values model.particles) in
-          let conjugate_array = conjugate_of_particle_array particle_array in
-          let flavor_list =
-	    List.map
-	      Flavor.of_int
-	      (ThoList.range 0 (Array.length particle_array - 1))
+          let conjugate_array = conjugate_of_particle_array particle_array
           and name_array = Array.map (fun f -> f.Particle.name) particle_array
           and symbol_array = Array.of_list (keys model.particles) in
           let flavor_symbol f =
             begin match !flavor_format with
-            | Long -> symbol_array.(Flavor.to_int f)
+            | Long -> symbol_array.(f)
             | Decimal -> 
                let w = digits 10 (Array.length particle_array - 1) in
-               Printf.sprintf "%0*d" w (Flavor.to_int f)
+               Printf.sprintf "%0*d" w f
             | Hexadecimal ->
                let w = digits 16 (Array.length particle_array - 1) in
-               Printf.sprintf "%0*X" w (Flavor.to_int f)
+               Printf.sprintf "%0*X" w f
             end in
-          { flavors = flavor_list;
+          { flavors = ThoList.range 0 (Array.length particle_array - 1);
             flavor_of_string = invert_flavor_array name_array;
             flavor_of_symbol = invert_flavor_array symbol_array;
-            particle = (fun f -> particle_array.(Flavor.to_int f));
+            particle = Array.get particle_array;
             flavor_symbol = flavor_symbol;
-            conjugate = (fun f ->
-              Flavor.of_int (conjugate_array.(Flavor.to_int f))) }
+            conjugate = Array.get conjugate_array }
 
       end
 
