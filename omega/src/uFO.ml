@@ -1621,7 +1621,7 @@ i.e.
 		and eps2 = gauge_contraction2 contraction21 contraction22
 		and eps3 = gauge_contraction3 contraction31 contraction32 in
                 if eps1 = eps2 && eps2 = eps3 then
-		  [(quartet p, gauge4 eps1, Some g)]
+		  [(quartet p, gauge4 eps1, g)]
                 else
 		  invalid_arg "translate_gauge_vertex4: unexpected permutations"
 	      end else
@@ -1635,7 +1635,7 @@ i.e.
 		and eps2 = gauge_contraction3 contraction21 contraction22
 		and eps3 = gauge_contraction2 contraction31 contraction32 in
                 if eps1 = eps2 && eps2 = eps3 then
-		  [(quartet p, gauge4 eps1, Some g)]
+		  [(quartet p, gauge4 eps1, g)]
                 else
 		  invalid_arg "translate_gauge_vertex4: unexpected permutations"
 	      end else
@@ -1649,9 +1649,9 @@ i.e.
       let open Coupling in
       let module L = UFOx.Lorentz_Atom in
       match t, translate_color4 c, g with
-      | [| [ [], qt] |], C3 qc, [| [| g |] |] ->
+      | [| [ [], qt] |], C3 qc, [| [| Some g |] |] ->
 	 [(quartet p, Scalar4 (coeff qt qc), g)]
-      | [| t |], qc, [| [| g |] |] ->
+      | [| t |], qc, [| [| Some g |] |] ->
 	 begin match translate_lorentz_4 model p t with
 	 | p, q, t -> [(quartet p, t, g)]
 	 end
@@ -1790,10 +1790,13 @@ i.e.
       | Some g' -> (p, c, g'.UFO_Coupling.name)
       | None -> invalid_arg "project_coupling: unexpected None"
 
+    let project_coupling' (p, c, g) =
+      (p, c, g.UFO_Coupling.name)
+
     let translate_vertices model tables =
       let v3, v4, vn = translate_vertices model tables in
       (List.map project_coupling v3,
-       List.map project_coupling v4,
+       List.map project_coupling' v4,
        List.map project_coupling vn)
 
     let propagator_of_lorentz = function
