@@ -845,6 +845,7 @@ contains
     integer, dimension(n_prt) :: s
     integer :: i, hi, leg, other_leg, h_t, h_tbar, h_gl, h_W, h_b
     if (.not. threshold%settings%factorized_computation)  call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not factorized')
+    call set_production_momenta (k)
     call init_decay_and_production_momenta ()
     call init_workspace ()
     call compute_amplitudes ()
@@ -916,55 +917,40 @@ contains
     end subroutine init_decay_and_production_momenta
 
     subroutine set_decay_and_production_momenta ()
-      type(vector4_t), dimension(3) :: k_tmp
+      type(vector4_t), dimension(4) :: k_tmp
       type(lorentz_transformation_t) :: L_to_rest_frame, L_to_cms
       type(vector4_t), dimension(4) :: k_decay_vector4
       type(vector4_t), dimension(3) :: k_decay2_vector4
       type(momentum) :: mom_tmp
+      real(default) :: msq_in
       k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
       k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
-      !k_decay_real = zero
-      !k_decay_real(:,4) = k(:,7)
-      !k_decay_real(:,3) = k(:,ass_quark(leg))
-      !k_decay_real(:,2) = k(:,ass_boson(leg))
-      !k_decay_real(:,1) = sum(k_decay_real,2)     !!! momentum conservation
       k_tmp(1)%p = k(:,7)
       k_tmp(2)%p = k(:,ass_quark(leg))
       k_tmp(3)%p = k(:,ass_boson(leg))
-      print *, 'Check sum of momenta: '
-      print *, k(:,1) + k(:,2) + k(:,3) + k(:,4) + k(:,5) + k(:,6) + k(:,7)
-      k_decay_vector4 = create_three_particle_decay (k_tmp(1), k_tmp(2), k_tmp(3))
-      L_to_rest_frame = inverse (boost (k_decay_vector4 (4), k_decay_vector4(4)**1))
-      print *, 'Real - Gottfried Jackson Frame: '
-      call vector4_write_set (k_decay_vector4)
-      k_decay_vector4 = L_to_rest_frame * k_decay_vector4
-      print *, 'After first boost - Rest Frame: '
-      call vector4_write_set (k_decay_vector4)
-      print *, '****************'
       mom_tmp = -(k(:,1) + k(:,2))
+      msq_in = (ttv_mtpole (mom_tmp * mom_tmp))**2
+      k_tmp(4)%p = [sqrt (msq_in), zero, zero, zero] 
+      call generate_on_shell_decay (k_tmp(4), k_tmp(1:3), k_decay_vector4(2:4), 1)  
+      k_decay_vector4 (1) = k_tmp(4)
       call compute_projected_top_momenta (mom_tmp)
-      k_decay_vector4 = boost_to_cms * k_decay_vector4
-      print *, 'After second boost - CMS: '
-      call vector4_write_set (k_decay_vector4, show_mass = .true.)
-      print *, '****************'
+      if (leg == 1) then
+         L_to_cms = boost_to_cms
+      else
+         L_to_cms = inverse (boost_to_cms)
+      end if
+      k_decay_vector4 = L_to_cms * k_decay_vector4
       k_tmp(1)%p = k(:,ass_quark(other_leg))
       k_tmp(2)%p = k(:,ass_boson(other_leg))
-      k_decay2_vector4 = create_two_particle_decay (k_tmp(1), k_tmp(2)) 
-      print *, 'Same for Born - Rest frame: '
-      call vector4_write_set (k_decay2_vector4)
+      k_decay2_vector4 = create_two_particle_decay (msq_in, k_tmp(1), k_tmp(2)) 
       k_decay2_vector4 = boost_to_cms * k_decay2_vector4
-      print *, 'Born - CMS: '
-      call vector4_write_set (k_decay2_vector4, show_mass = .true.)
-      print *, 'Real - without top: '
-      call vector4_write_set (k_decay_vector4 (1:3), show_mass = .true.)
-      print *, 'Born - without top: '
-      call vector4_write_set (k_decay2_vector4 (2:3), show_mass = .true.)
-      k_decay_born = zero
-      k_decay_born(:,2) = k(:,ass_boson(other_leg))
-      k_decay_born(:,3) = k(:,ass_quark(other_leg))
-      k_decay_born(:,1) = sum(k_decay_born,2)     !!! momentum conservation
+      k_decay2_vector4(2)%p(1:3) = -k_decay2_vector4(2)%p(1:3)
+      k_decay2_vector4(3)%p(1:3) = -k_decay2_vector4(3)%p(1:3)
+      k_decay_born = k_decay2_vector4
+      k_decay_real = k_decay_vector4
       call set_production_momenta (k_production)
     end subroutine set_decay_and_production_momenta
+
 
   end function compute_real
 
