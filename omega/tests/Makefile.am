@@ -93,6 +93,9 @@ OMEGA_SM_top_anom_OPTS = $(OMEGA_SPLIT) -target:parameter_module parameters_SM_t
 omega_SM_top_anom.$(OMEGA_CACHE_SUFFIX): $(OMEGA_SM_top_anom)
 	$(OMEGA_SM_top_anom) -initialize .
 
+OMEGA_UFO = $(top_builddir)/omega/bin/omega_UFO$(OCAML_NATIVE_EXT)
+OMEGA_UFO_OPTS = -target:parameter_module parameters_UFO
+
 OMEGA_XXX = $(top_builddir)/omega/bin/omega_%%%$(OCAML_NATIVE_EXT)
 OMEGA_XXX_OPTS = -target:parameter_module parameters_%%%
 
@@ -357,6 +360,18 @@ nodist_compare_split_module_SOURCES = compare_split_module.f90
 compare_split_module_LDADD = $(top_builddir)/omega/src/libomega_core.la
 
 compare_split_function.o compare_split_module.o: $(COMPARE_LIB_O)
+
+########################################################################
+
+TESTS += compare_amplitude_UFO
+XFAIL_TESTS += compare_amplitude_UFO
+EXTRA_PROGRAMS += compare_amplitude_UFO
+EXTRA_DIST += compare_driver_UFO.sh
+
+compare_amplitude_UFO.f90: compare_driver_UFO.sh
+	$(SHELL) $(srcdir)/compare_driver_UFO.sh >$@
+
+nodist_compare_amplitude_UFO_SOURCES = compare_amplitude_UFO.f90
 
 ########################################################################
 
