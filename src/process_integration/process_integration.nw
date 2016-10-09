@@ -9111,7 +9111,6 @@ end module kinematics
      logical :: sf_chain_allocated = .false.
      logical :: phs_allocated = .false.
      logical :: f_allocated = .false.
-     integer :: nlo_type = BORN
      integer :: emitter = -1
      integer :: i_phs = 0
      integer :: i_con = 0
@@ -9185,7 +9184,6 @@ end module kinematics
   subroutine kinematics_set_nlo_info (k, nlo_type)
     class(kinematics_t), intent(inout) :: k
     integer, intent(in) :: nlo_type
-    k%nlo_type = nlo_type
     if (nlo_type == NLO_VIRTUAL) k%only_cm_frame = .true.
   end subroutine kinematics_set_nlo_info
 
@@ -9473,47 +9471,43 @@ Relevant for using the proper momenta input for BLHA matrix elements.
 @ %def kinematics_boost_to_cm_frame
 @
 <<Kinematics: kinematics: TBP>>=
-  procedure :: get_momenta => kinematics_get_momenta
+  procedure :: evaluate_radiation => kinematics_evaluate_radiation
 <<Kinematics: procedures>>=
-  function kinematics_get_momenta (k, p_in) result (p_out)
-    type(vector4_t), dimension(:), allocatable :: p_out
+  subroutine kinematics_evaluate_radiation (k, p_in, p_out, success)
     class(kinematics_t), intent(in) :: k
     type(vector4_t), intent(in), dimension(:) :: p_in
+    type(vector4_t), intent(out), dimension(:), allocatable :: p_out
+    logical, intent(out) :: success
     type(phs_point_t) :: p
-    select case (k%nlo_type)
-    case (NLO_REAL)
-       select type (phs => k%phs)
-       type is (phs_fks_t)
-          call phs%compute_xi_max (p_in)
-          if (k%emitter >= 0) then
-             p = size (p_in) + 1
-             allocate (p_out (size (p_in) + 1))
-             if (k%emitter <= k%n_in) then
-                call phs%generate_isr (k%i_phs, p_in, p)
-             else
-                if (k%i_con > 0) then
-                   call phs%generate_fsr (k%emitter, k%i_phs, p, k%i_con)
-                else
-                   call phs%generate_fsr (k%emitter, k%i_phs, p)
-                end if
-             end if
-             if (debug_active (D_SUBTRACTION)) then
-                call msg_debug (D_SUBTRACTION, "Real phase-space: ")
-                call p%write ()
-             end if
-             p_out = p%p
+    select type (phs => k%phs)
+    type is (phs_fks_t)
+       call phs%compute_xi_max (p_in)
+       if (k%emitter >= 0) then
+          p = size (p_in) + 1
+          allocate (p_out (size (p_in) + 1))
+          if (k%emitter <= k%n_in) then
+             call phs%generate_isr (k%i_phs, p_in, p)
           else
-             allocate (p_out (size (p_in))); p_out = p_in
+             if (k%i_con > 0) then
+                call phs%generate_fsr (k%emitter, k%i_phs, p, k%i_con)
+             else
+                call phs%generate_fsr (k%emitter, k%i_phs, p)
+             end if
           end if
-       class default
+          if (debug_active (D_SUBTRACTION)) then
+             call msg_debug (D_SUBTRACTION, "Real phase-space: ")
+             call p%write ()
+          end if
+          p_out = p%p
+       else
           allocate (p_out (size (p_in))); p_out = p_in
-       end select
-    case default
-       allocate (p_out (size (p_in))); p_out = p_in
+       end if
     end select
-  end function kinematics_get_momenta
+    !!! TODO (cw-2016-10-09): Set this to a sensible value for threshold projection
+    success = .true.
+  end subroutine kinematics_evaluate_radiation
 
-@ %def kinematics_get_momenta
+@ %def kinematics_evaluate_radiation
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Instances}
@@ -10094,12 +10088,20 @@ choose to calculate all terms at once together with the seed kinematics, use
   subroutine term_instance_compute_hard_kinematics (term, skip_term)
     class(term_instance_t), intent(inout) :: term
     integer, intent(in), optional :: skip_term
+    type(vector4_t), dimension(:), allocatable :: p
+    logical :: success
     if (allocated (term%core_state)) &
        call term%core_state%reset_new_kinematics ()
     if (present (skip_term)) then
        if (term%config%i_term_global == skip_term) return
     end if
-    call term%int_hard%set_momenta (term%k_term%get_momenta (term%p_seed))
+
+    if (term%k_term%emitter >= 0) then
+       call term%k_term%evaluate_radiation (term%p_seed, p, success)
+    else
+       allocate (p (size (term%p_seed))); p = term%p_seed
+    end if
+    call term%int_hard%set_momenta (p)
   end subroutine term_instance_compute_hard_kinematics
 
 @ %def term_instance_compute_hard_kinematics
