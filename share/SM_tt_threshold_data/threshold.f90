@@ -844,7 +844,8 @@ contains
     integer, dimension(2) :: h_ass_t
     integer, dimension(n_prt) :: s
     integer :: i, hi, leg, other_leg, h_t, h_tbar, h_gl, h_W, h_b
-    if (.not. threshold%settings%factorized_computation)  call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not factorized')
+    if (.not. threshold%settings%factorized_computation)  &
+         call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not factorized')
     call set_production_momenta (k)
     call init_decay_and_production_momenta ()
     call init_workspace ()
