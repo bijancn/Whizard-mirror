@@ -943,9 +943,7 @@ contains
       k_tmp(1)%p = k(:,ass_quark(other_leg))
       k_tmp(2)%p = k(:,ass_boson(other_leg))
       k_decay2_vector4 = create_two_particle_decay (msq_in, k_tmp(1), k_tmp(2)) 
-      k_decay2_vector4 = boost_to_cms * k_decay2_vector4
-      k_decay2_vector4(2)%p(1:3) = -k_decay2_vector4(2)%p(1:3)
-      k_decay2_vector4(3)%p(1:3) = -k_decay2_vector4(3)%p(1:3)
+      k_decay2_vector4 = - L_to_cms * k_decay2_vector4
       k_decay_born = k_decay2_vector4
       k_decay_real = k_decay_vector4
       call set_production_momenta (k_production)
