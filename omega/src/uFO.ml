@@ -207,12 +207,27 @@ let value_to_expr = function
      UFOx.Value.to_string (UFOx.Value.of_expr (UFOx.Expr.of_string s))
   | Name n -> name_to_string n
 
+let value_to_coupling atom = function
+  | Integer i -> Coupling.Const i
+  | Fraction (n, d) -> Coupling.Quot (Coupling.Const n, Coupling.Const d)
+  | Float x -> Coupling.Const 42
+  | String s ->
+     UFOx.Value.to_coupling atom (UFOx.Value.of_expr (UFOx.Expr.of_string s))
+  | Name n -> Coupling.Const 42
+
 let value_to_numeric = function
   | Integer i -> Printf.sprintf "%d" i
   | Fraction (n, d) -> Printf.sprintf "%g" (float n /. float d)
   | Float x -> Printf.sprintf "%g" x
   | String s -> invalid_arg ("UFO.value_to_numeric: string = " ^ s)
   | Name n -> invalid_arg ("UFO.value_to_numeric: name = " ^ name_to_string n)
+
+let value_to_float = function
+  | Integer i -> float i
+  | Fraction (n, d) -> float n /. float d
+  | Float x -> x
+  | String s -> invalid_arg ("UFO.value_to_float: string = " ^ s)
+  | Name n -> invalid_arg ("UFO.value_to_float: name = " ^ name_to_string n)
 
 let value_attrib name attribs =
   match find_attrib name attribs with
@@ -459,8 +474,13 @@ module UFO_Coupling : UFO_Coupling =
       let symbol = d.S.name in
       match d.S.kind, d.S.attribs with
       | [ "Coupling" ], attribs ->
+         let name = string_attrib "name" attribs in
+         if name <> symbol then
+           Printf.eprintf
+             "UFO_Coupling.of_file: warning: symbol '%s' <> name '%s'\n"
+             symbol name;
 	 SMap.add symbol
-	   { name = string_attrib "name" attribs;
+	   { name = name;
 	     value = string_attrib "value" attribs;
 	     order = order_dictionary_attrib "order" attribs } map
       | _ -> invalid_arg ("UFO_Coupling.of_file: " ^ name_to_string d.S.kind)
@@ -972,22 +992,11 @@ let dump model =
 module Model =
   struct
 
-    module type Flavor =
-      sig
-	type t
-	val of_int : int -> t
-	val to_int : t -> int
-      end
-  
-    module Flavor : Flavor =
-      struct
-	type t = int
-	let of_int n = n
-	let to_int n = n
-      end
-  
-    type flavor = Flavor.t
-    type constant = UFO_Coupling.t option
+    (* NB: we could use [type flavor = Particle.t], but that would
+       be very inefficient, because we will use [flavor] as a key
+       for maps below. *)
+    type flavor = int
+    type constant = string
     type gauge = unit
 
     module M = Modeltools.Mutable
@@ -1439,14 +1448,24 @@ i.e.
 	   ("unhandled 3-vertex: " ^ UFOx.Lorentz.to_string t);
 	 (triplet p, dummy_tensor3, g)
 
+
+    let name g =
+      g.UFO_Coupling.name
+
+    (* Only for error paths \ldots *)
+    let dummy_name g =
+      match g.(0).(0) with
+      | Some g -> g.UFO_Coupling.name
+      | None -> "???"
+
     let translate_coupling3 model p t c g =
       let open Coupling in
       match t, translate_color3 c, g with
-      | [| t |], qc, [| [| g |] |] ->
-	 [translate_coupling3_1 model p t qc g]
+      | [| t |], qc, [| [| Some g |] |] ->
+	 [translate_coupling3_1 model p t qc (name g)]
       | [| t |], qc, _ ->
 	 invalid_arg "translate_coupling3: too many constants"
-      | [| t1; t2 |] as t, qc, [| [| g1; g2 |] |] ->
+      | [| t1; t2 |] as t, qc, [| [| Some g1; Some g2 |] |] ->
 	 begin match (translate_coupling3_1 model p t1 qc g1,
 		      translate_coupling3_1 model p t2 qc g2) with
 	 | ((p1, p2, p3), FBF (q, Psibar, l, Psi), g),
@@ -1454,8 +1473,8 @@ i.e.
 	    if p1 = p1' && p2 = p2' && p3 = p3' then begin
 	      match l, l' with
 	      | P, S | S, P | SL, SR | SR, SL | V, A | A, V | VL, VR | VR, VL ->
-                 [((p1, p2, p3), FBF (q, Psibar, l, Psi), g);
-                  ((p1, p2, p3), FBF (q, Psibar, l', Psi), g')]
+                 [((p1, p2, p3), FBF (q, Psibar, l, Psi), name g);
+                  ((p1, p2, p3), FBF (q, Psibar, l', Psi), name g')]
 	      | _, _ ->
 		 invalid_arg "translate_coupling3: incompatible Dirac matrices"
 	    end else
@@ -1465,14 +1484,14 @@ i.e.
 	      ("unhandled 3-vertex w/3 or more Lorentz structures: " ^
 		  (String.concat ", "
 		     (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	    [(triplet p, dummy_tensor3, g.(0).(0))]
+	    [(triplet p, dummy_tensor3, dummy_name g)]
 	 end
       | t, qc, g ->
 	 prerr_endline
 	   ("unhandled 3-vertex w/multiple Lorentz structures: " ^
 	       (String.concat ", "
 		  (List.map UFOx.Lorentz.to_string (Array.to_list t))));
-	 [(triplet p, dummy_tensor3, g.(0).(0))]
+	 [(triplet p, dummy_tensor3, dummy_name g)]
 
 (* Use the fact that $g_{\mu\nu}g_{\kappa\lambda}$ is symmetric in the
    interchanges $\mu\leftrightarrow\nu$, $\kappa\leftrightarrow\lambda$
@@ -1612,7 +1631,7 @@ i.e.
 		and eps2 = gauge_contraction2 contraction21 contraction22
 		and eps3 = gauge_contraction3 contraction31 contraction32 in
                 if eps1 = eps2 && eps2 = eps3 then
-		  [(quartet p, gauge4 eps1, Some g)]
+		  [(quartet p, gauge4 eps1, name g)]
                 else
 		  invalid_arg "translate_gauge_vertex4: unexpected permutations"
 	      end else
@@ -1626,7 +1645,7 @@ i.e.
 		and eps2 = gauge_contraction3 contraction21 contraction22
 		and eps3 = gauge_contraction2 contraction31 contraction32 in
                 if eps1 = eps2 && eps2 = eps3 then
-		  [(quartet p, gauge4 eps1, Some g)]
+		  [(quartet p, gauge4 eps1, name g)]
                 else
 		  invalid_arg "translate_gauge_vertex4: unexpected permutations"
 	      end else
@@ -1640,11 +1659,11 @@ i.e.
       let open Coupling in
       let module L = UFOx.Lorentz_Atom in
       match t, translate_color4 c, g with
-      | [| [ [], qt] |], C3 qc, [| [| g |] |] ->
-	 [(quartet p, Scalar4 (coeff qt qc), g)]
-      | [| t |], qc, [| [| g |] |] ->
+      | [| [ [], qt] |], C3 qc, [| [| Some g |] |] ->
+	 [(quartet p, Scalar4 (coeff qt qc), name g)]
+      | [| t |], qc, [| [| Some g |] |] ->
 	 begin match translate_lorentz_4 model p t with
-	 | p, q, t -> [(quartet p, t, g)]
+	 | p, q, t -> [(quartet p, t, name g)]
 	 end
       | [| t |], qc, _->
 	 invalid_arg "translate_coupling4: too many constants"
@@ -1672,12 +1691,12 @@ i.e.
     module type Lookup =
       sig
         type f = private
-          { flavors : Flavor.t list;
-            flavor_of_string : string -> Flavor.t;
-            flavor_of_symbol : string -> Flavor.t;
-            particle : Flavor.t -> Particle.t;
-            flavor_symbol : Flavor.t -> string;
-            conjugate : Flavor.t -> Flavor.t }
+          { flavors : flavor list;
+            flavor_of_string : string -> flavor;
+            flavor_of_symbol : string -> flavor;
+            particle : flavor -> Particle.t;
+            flavor_symbol : flavor -> string;
+            conjugate : flavor -> flavor }
         type flavor_format =
           | Long
           | Decimal
@@ -1690,12 +1709,12 @@ i.e.
       struct
 
         type f =
-          { flavors : Flavor.t list;
-            flavor_of_string : string -> Flavor.t;
-            flavor_of_symbol : string -> Flavor.t;
-            particle : Flavor.t -> Particle.t;
-            flavor_symbol : Flavor.t -> string;
-            conjugate : Flavor.t -> Flavor.t }
+          { flavors : flavor list;
+            flavor_of_string : string -> flavor;
+            flavor_of_symbol : string -> flavor;
+            particle : flavor -> Particle.t;
+            flavor_symbol : flavor -> string;
+            conjugate : flavor -> flavor }
             
         type flavor_format =
           | Long
@@ -1721,7 +1740,7 @@ i.e.
           Array.iteri (fun i s -> SHash.add table s i) a;
           (fun name ->
 	    try
-	      Flavor.of_int (SHash.find table name)
+	      SHash.find table name
 	    with
 	    | Not_found -> invalid_arg ("not found: " ^ name))
 
@@ -1740,30 +1759,25 @@ i.e.
 
         let of_model model =
           let particle_array = Array.of_list (values model.particles) in
-          let conjugate_array = conjugate_of_particle_array particle_array in
-          let flavor_list =
-	    List.map
-	      Flavor.of_int
-	      (ThoList.range 0 (Array.length particle_array - 1))
+          let conjugate_array = conjugate_of_particle_array particle_array
           and name_array = Array.map (fun f -> f.Particle.name) particle_array
           and symbol_array = Array.of_list (keys model.particles) in
           let flavor_symbol f =
             begin match !flavor_format with
-            | Long -> symbol_array.(Flavor.to_int f)
+            | Long -> symbol_array.(f)
             | Decimal -> 
                let w = digits 10 (Array.length particle_array - 1) in
-               Printf.sprintf "%0*d" w (Flavor.to_int f)
+               Printf.sprintf "%0*d" w f
             | Hexadecimal ->
                let w = digits 16 (Array.length particle_array - 1) in
-               Printf.sprintf "%0*X" w (Flavor.to_int f)
+               Printf.sprintf "%0*X" w f
             end in
-          { flavors = flavor_list;
+          { flavors = ThoList.range 0 (Array.length particle_array - 1);
             flavor_of_string = invert_flavor_array name_array;
             flavor_of_symbol = invert_flavor_array symbol_array;
-            particle = (fun f -> particle_array.(Flavor.to_int f));
+            particle = Array.get particle_array;
             flavor_symbol = flavor_symbol;
-            conjugate = (fun f ->
-              Flavor.of_int (conjugate_array.(Flavor.to_int f))) }
+            conjugate = Array.get conjugate_array }
 
       end
 
@@ -1820,6 +1834,23 @@ i.e.
                      | Parameter.External -> (p :: input, derived)) rest in
       classify ([], []) (values model.parameters)
 
+    let translate_input p =
+      (p.Parameter.name, value_to_float p.Parameter.value)
+
+    let translate_derived p =
+      let make_atom s = s in
+      let c = make_atom p.Parameter.name in
+      let v = value_to_coupling make_atom p.Parameter.value in
+      match p.Parameter.ptype with
+      | Parameter.Real -> (Coupling.Real c, v)
+      | Parameter.Complex -> (Coupling.Complex c, v)
+
+    let translate_parameters model =
+      let input_parameters, derived_parameters = classify_parameters model in
+      { Coupling.input = List.map translate_input input_parameters;
+        Coupling.derived = List.map translate_derived derived_parameters;
+        Coupling.derived_arrays = [] }
+
     type state =
       { directory : string;
         model : t }
@@ -1844,9 +1875,8 @@ i.e.
       let particle f = tables.Lookup.particle f in
       let lorentz f = UFOx.Lorentz.omega (particle f).Particle.spin in
       let gauge_symbol () = "?GAUGE?" in
-      let constant_symbol = function
-        | Some c -> c.UFO_Coupling.name
-        | None -> "<<UNDEFINED>>" in
+      let constant_symbol s = s in
+      let parameters = translate_parameters model in
       M.setup
         ~color:(fun f -> UFOx.Color.omega (particle f).Particle.color)
         ~pdg:(fun f -> (particle f).Particle.pdg_code)
@@ -1858,10 +1888,7 @@ i.e.
         ~fermion:(fun f -> fermion_of_lorentz (lorentz f))
         ~vertices ~max_degree
         ~flavors:[("All Flavors", tables.Lookup.flavors)]
-        ~parameters:(fun () ->
-          { Coupling.input = [];
-            Coupling.derived = [];
-            Coupling.derived_arrays = [] })
+        ~parameters:(fun () -> parameters)
         ~flavor_of_string:tables.Lookup.flavor_of_string
         ~flavor_to_string:(fun f -> (particle f).Particle.name)
         ~flavor_to_TeX:(fun f -> (particle f).Particle.texname)
