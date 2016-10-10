@@ -923,6 +923,9 @@ contains
       type(vector4_t), dimension(3) :: k_decay2_vector4
       type(momentum) :: mom_tmp
       real(default) :: msq_in
+      type(virtuality_scaling_threshold_t) :: virt_map
+      integer :: i
+      call init_mapping_parameters (k, virt_map)
       k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
       k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
       k_tmp(1)%p = k(:,7)
@@ -931,7 +934,8 @@ contains
       mom_tmp = -(k(:,1) + k(:,2))
       msq_in = (ttv_mtpole (mom_tmp * mom_tmp))**2
       k_tmp(4)%p = [sqrt (msq_in), zero, zero, zero] 
-      call generate_on_shell_decay (k_tmp(4), k_tmp(1:3), k_decay_vector4(2:4), 1)  
+      call generate_on_shell_decay (k_tmp(4), virt_map, &
+           k_tmp(1:3), k_decay_vector4(2:4), 1)
       k_decay_vector4 (1) = k_tmp(4)
       call compute_projected_top_momenta (mom_tmp)
       if (leg == 1) then
@@ -943,11 +947,26 @@ contains
       k_tmp(1)%p = k(:,ass_quark(other_leg))
       k_tmp(2)%p = k(:,ass_boson(other_leg))
       k_decay2_vector4 = create_two_particle_decay (msq_in, k_tmp(1), k_tmp(2)) 
-      k_decay2_vector4 = - L_to_cms * k_decay2_vector4
+      k_decay2_vector4 = L_to_cms * k_decay2_vector4
+      do i = 1, 3
+         k_decay2_vector4(i)%p(1:3) = -k_decay2_vector4(i)%p(1:3)
+      end do
       k_decay_born = k_decay2_vector4
       k_decay_real = k_decay_vector4
       call set_production_momenta (k_production)
     end subroutine set_decay_and_production_momenta
+
+    subroutine init_mapping_parameters (k, virt_map)
+      real(default), dimension(0:3,*), intent(in) :: k
+      type(virtuality_scaling_threshold_t), intent(inout) :: virt_map
+      real(default) :: mtop2, v_min, s
+      type(momentum) :: p12
+      p12 = -(k(:,1) + k(:,2))
+      s = p12 * p12
+      mtop2 = (ttv_mtpole (s))**2
+      v_min = mass(24)**2 + mass(5)**2 + two * mass(24) * mass(5)
+      call virt_map%set_parameters (v_min, s, v_min, mtop2)
+    end subroutine init_mapping_parameters
 
 
   end function compute_real
