@@ -2257,6 +2257,19 @@ again is an error.
 @ %def pcm_is_nlo
 @
 <<PCM base: pcm: TBP>>=
+  procedure(pcm_get_factorization_mode), deferred :: get_factorization_mode
+<<PCM base: interfaces>>=
+  abstract interface
+     function pcm_get_factorization_mode (pcm) result (fac_mode)
+        import
+        integer :: fac_mode
+        class(pcm_t), intent(in) :: pcm
+     end function pcm_get_factorization_mode
+  end interface
+
+@ %def pcm_get_factorization_mode
+@
+<<PCM base: pcm: TBP>>=
   procedure(pcm_final), deferred :: final
 <<PCM base: interfaces>>=
   abstract interface
@@ -8378,6 +8391,7 @@ module pcm
   use lorentz, only: vector4_t
   use process_constants, only: process_constants_t
   use physics_defs
+  use nlo_data, only: NO_FACTORIZATION
   use nlo_data, only: nlo_settings_t
   use nlo_data, only: powheg_damping_t, powheg_damping_simple_t
   use phs_fks, only: isr_kinematics_t, real_kinematics_t
@@ -8445,6 +8459,17 @@ corresponding instance.  The default version is trivial.
   end function pcm_default_is_nlo
 
 @ %def pcm_default_is_nlo
+@
+<<Pcm: pcm default: TBP>>=
+  procedure :: get_factorization_mode => pcm_default_get_factorization_mode
+<<Pcm: procedures>>=
+  function pcm_default_get_factorization_mode (pcm) result (fac_mode)
+    integer :: fac_mode
+    class(pcm_default_t), intent(in) :: pcm
+    fac_mode = NO_FACTORIZATION
+  end function pcm_default_get_factorization_mode
+
+@ %def pcm_default_get_factorization_mode
 @
 <<Pcm: types>>=
   type, extends (pcm_instance_t) :: pcm_instance_default_t
@@ -8640,6 +8665,17 @@ not have to be the case when different components are generated at LO})
   end function pcm_nlo_is_nlo
 
 @ %def pcm_nlo_is_nlo
+@
+<<Pcm: pcm nlo: TBP>>=
+  procedure :: get_factorization_mode => pcm_nlo_get_factorization_mode
+<<Pcm: procedures>>=
+  function pcm_nlo_get_factorization_mode (pcm) result (fac_mode)
+    integer :: fac_mode
+    class(pcm_nlo_t), intent(in) :: pcm
+    fac_mode = pcm%settings%factorization_mode
+  end function pcm_nlo_get_factorization_mode
+
+@ %def pcm_nlo_get_factorization_mode
 @ As a first implementation, it acts as a wrapper for the NLO controller
 object and the squared matrix-element collector.
 <<Pcm: public>>=
@@ -9105,8 +9141,11 @@ module kinematics
   use mci_base
   use phs_fks
   use fks_regions
+  use ttv_formfactors, only: m1s_to_mpole
   use process_config
   use process_mci
+
+  use nlo_data, only: FACTORIZATION_THRESHOLD
 
 <<Standard module head>>
 
@@ -9496,9 +9535,10 @@ Relevant for using the proper momenta input for BLHA matrix elements.
 <<Kinematics: kinematics: TBP>>=
   procedure :: evaluate_radiation => kinematics_evaluate_radiation
 <<Kinematics: procedures>>=
-  subroutine kinematics_evaluate_radiation (k, p_in, p_out, success)
+  subroutine kinematics_evaluate_radiation (k, p_in, factorization_mode, p_out, success)
     class(kinematics_t), intent(in) :: k
     type(vector4_t), intent(in), dimension(:) :: p_in
+    integer, intent(in) :: factorization_mode
     type(vector4_t), intent(out), dimension(:), allocatable :: p_out
     logical, intent(out) :: success
     type(phs_point_t) :: p
@@ -9527,11 +9567,33 @@ Relevant for using the proper momenta input for BLHA matrix elements.
        end if
     end select
     !!! TODO (cw-2016-10-09): Set this to a sensible value for threshold projection
-    success = .true.
+    if (factorization_mode == FACTORIZATION_THRESHOLD) then
+       success = check_top_decay_bounds (p%p, k%emitter)
+    else
+       success = .true.
+    end if
   end subroutine kinematics_evaluate_radiation
 
 @ %def kinematics_evaluate_radiation
 @
+<<Kinematics: procedures>>=
+  !!!TODO (cw-2016-10-09): Is there a better place for this?
+  function check_top_decay_bounds (p, emitter) result (valid)
+    logical :: valid
+    type(vector4_t), intent(in), dimension(:) :: p
+    integer, intent(in) :: emitter
+    integer, dimension(2) :: ass_quark = [5, 6]
+    integer, dimension(2) :: ass_boson = [3, 4]
+    integer :: leg
+    real(default) :: mtop, m
+    leg = emitter - 4
+    mtop = m1s_to_mpole ((p(1) + p(2))**1)
+    m = (p(ass_quark(leg)) + p(ass_boson(leg)))**1
+    valid = mtop >= m
+  end function check_top_decay_bounds
+
+@ %def check_top_decay_bounds
+@ 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Instances}
 
@@ -10108,11 +10170,11 @@ choose to calculate all terms at once together with the seed kinematics, use
   procedure :: compute_hard_kinematics => &
        term_instance_compute_hard_kinematics
 <<Instances: procedures>>=
-  subroutine term_instance_compute_hard_kinematics (term, skip_term)
+  subroutine term_instance_compute_hard_kinematics (term, skip_term, success)
     class(term_instance_t), intent(inout) :: term
     integer, intent(in), optional :: skip_term
+    logical, intent(out) :: success
     type(vector4_t), dimension(:), allocatable :: p
-    logical :: success
     if (allocated (term%core_state)) &
        call term%core_state%reset_new_kinematics ()
     if (present (skip_term)) then
@@ -10120,9 +10182,11 @@ choose to calculate all terms at once together with the seed kinematics, use
     end if
 
     if (term%k_term%emitter >= 0) then
-       call term%k_term%evaluate_radiation (term%p_seed, p, success)
+       call term%k_term%evaluate_radiation (term%p_seed, &
+          term%pcm_instance%config%get_factorization_mode (), p, success)
     else
        allocate (p (size (term%p_seed))); p = term%p_seed
+       success = .true.
     end if
     call term%int_hard%set_momenta (p)
   end subroutine term_instance_compute_hard_kinematics
@@ -11725,10 +11789,15 @@ components, from the seed kinematics.
     class(process_instance_t), intent(inout) :: instance
     integer, intent(in), optional :: skip_term
     integer :: i
+    logical :: success
     if (instance%evaluation_status >= STAT_SEED_KINEMATICS) then
        do i = 1, size (instance%term)
           if (instance%term(i)%active) then
-            call instance%term(i)%compute_hard_kinematics (skip_term)
+             call instance%term(i)%compute_hard_kinematics (skip_term, success)
+             if (.not. success) then
+                instance%evaluation_status = STAT_FAILED_KINEMATICS
+                exit
+             end if 
           end if
        end do
        instance%evaluation_status = STAT_HARD_KINEMATICS
