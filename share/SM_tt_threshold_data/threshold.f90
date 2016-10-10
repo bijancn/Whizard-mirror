@@ -954,6 +954,7 @@ contains
       k_decay_born = k_decay2_vector4
       k_decay_real = k_decay_vector4
       call set_production_momenta (k_production)
+      call check_phase_space_point (k_decay_vector4, k_decay2_vector4, mom_tmp * mom_tmp)
     end subroutine set_decay_and_production_momenta
 
     subroutine init_mapping_parameters (k, virt_map)
@@ -968,7 +969,44 @@ contains
       call virt_map%set_parameters (v_min, s, v_min, mtop2)
     end subroutine init_mapping_parameters
 
-
+    subroutine check_phase_space_point (p_decay, p_prod, s)
+      type(vector4_t), intent(in), dimension(4) :: p_decay
+      type(vector4_t), intent(in), dimension(3) :: p_prod
+      real(default), intent(in) :: s
+      real(default) :: sqrts, E
+      integer :: u, i
+      if (debug_active (D_THRESHOLD)) then
+         u = output_unit
+         sqrts = sqrt(s)
+         call assert_equal (u, mass(6), p_decay(1)**1, 'Decay-top is on-shell', &
+              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
+         call assert_equal (u, zero, p_decay(2)**1, 'Gluon is on-shell', &
+              abs_smallness = 1E-5_default, rel_smallness = 1E-5_default, &
+              exit_on_fail = .true.)
+         call assert_equal (u, mass(5), p_decay(3)**1, 'Decay-bottom is on-shell', &
+              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
+         call assert_equal (u, mass(24), p_decay(4)**1, 'Decay-W is on-shell', &
+              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
+         call assert_equal (u, mass(6), p_prod(1)**1, 'Production-top is on-shell', &
+              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
+         call assert_equal (u, mass(5), p_prod(2)**1, 'Production-bottom is on-shell', &
+              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
+         call assert_equal (u, mass(24), p_prod(3)**1, 'Production-W is on-shell', &
+              abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
+         call assert_equal (u, sqrts / two, sum (p_decay(2:4)%p(0)), &
+              'Decay momenta have E = sqrts / 2', abs_smallness = tiny_07, &
+              rel_smallness = tiny_07, exit_on_fail = .true.)
+         call assert_equal (u, sqrts / two, sum (p_prod(2:3)%p(0)), &
+              'Production momenta have E = sqrts / 2', abs_smallness = tiny_07, &
+              rel_smallness = tiny_07, exit_on_fail = .true.)
+         do i = 1, 3
+            E = sum (p_decay (2:4)%p(i)) + sum (p_prod(2:3)%p(i))
+            call assert_equal (u, zero, E, 'Total momentum vanishes', &
+                 abs_smallness = 1E-5_default, rel_smallness = 1E-5_default, &
+                 exit_on_fail = .true.)
+         end do
+      end if
+    end subroutine check_phase_space_point
   end function compute_real
 
 end module @ID@_threshold
