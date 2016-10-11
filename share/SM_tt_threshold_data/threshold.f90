@@ -431,6 +431,7 @@ contains
        amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * &
             (ttv_formfactor (p3, p4, 1) + extra_tree)
     else
+
        ttv_vec = ttv_formfactor (p35, p46, 1, ffi) + extra_tree
        ttv_ax = ttv_formfactor (p35, p46, 2, ffi) + extra_tree
        blob_Z_vec = gncup(1) * ttv_vec
@@ -917,6 +918,65 @@ contains
       end do
     end subroutine init_decay_and_production_momenta
 
+    subroutine evaluate_one_to_two_splitting_threshold (p_origin, &
+         p1_in, p2_in, p1_out, p2_out, msq_in, jac)
+      type(vector4_t), intent(in) :: p_origin
+      type(vector4_t), intent(in) :: p1_in, p2_in
+      type(vector4_t), intent(inout) :: p1_out, p2_out
+      real(default), intent(in), optional :: msq_in
+      real(default), intent(inout), optional :: jac
+      type(lorentz_transformation_t) :: L
+      type(vector4_t) :: p1_rest, p2_rest
+      real(default) :: msq, msq1, msq2
+      real(default) :: m
+      real(default) :: E1, E2, E_max
+      real(default) :: p, rlda
+      real(default), parameter :: E_offset = 1._default
+
+      call get_rest_frame (p1_in, p2_in, p1_rest, p2_rest)
+
+      msq = p_origin**2; m = sqrt(msq)
+      msq1 = p1_in**2
+      msq2 = m * (m - two * p1_rest%p(0))
+      E1 = (msq + msq1 - msq2) / (two * m)
+      E_max = (msq - (mass(5) + mass(24))**2) / (two * m)
+      E_max = E_max - E_offset
+      if (E1 > E_max) then
+         E1 = E_max
+         msq2 = m * (m - two * E_max)
+      end if
+
+      rlda = sqrt (lambda (msq, msq1, msq2))
+      p = rlda / (two * m)
+
+      E1 = sqrt (msq1 + p**2)
+      E2 = sqrt (msq2 + p**2)
+
+      p1_out = shift_momentum (p1_rest, E1, p)
+      p2_out = shift_momentum (p2_rest, E2, p)
+
+      L = boost (p_origin, p_origin**1)
+      p1_out = L  * p1_out
+      p2_out = L  * p2_out
+   end subroutine evaluate_one_to_two_splitting_threshold
+
+   subroutine get_rest_frame (p1_in, p2_in, p1_out, p2_out)
+     type(vector4_t), intent(in) :: p1_in, p2_in
+     type(vector4_t), intent(out) :: p1_out, p2_out
+     type(lorentz_transformation_t) :: L
+     L = inverse (boost (p1_in + p2_in, (p1_in + p2_in)**1))
+     p1_out = L * p1_in; p2_out = L * p2_in
+   end subroutine get_rest_frame
+
+   function shift_momentum (p_in, E, p) result (p_out)
+     type(vector4_t) :: p_out
+     type(vector4_t), intent(in) :: p_in
+     real(default), intent(in) :: E, p
+     type(vector3_t) :: vec
+     vec = p_in%p(1:3) / space_part_norm (p_in)
+     p_out = vector4_moving (E, p * vec)
+   end function shift_momentum 
+
     subroutine set_decay_and_production_momenta ()
       type(vector4_t), dimension(4) :: k_tmp
       type(lorentz_transformation_t) :: L_to_rest_frame, L_to_cms
@@ -924,9 +984,7 @@ contains
       type(vector4_t), dimension(3) :: k_decay2_vector4
       type(momentum) :: mom_tmp
       real(default) :: msq_in
-      type(virtuality_scaling_threshold_t) :: virt_map
       integer :: i
-      call init_mapping_parameters (k, virt_map)
       k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
       k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
       k_tmp(1)%p = k(:,7)
@@ -935,8 +993,9 @@ contains
       mom_tmp = -(k(:,1) + k(:,2))
       msq_in = (ttv_mtpole (mom_tmp * mom_tmp))**2
       k_tmp(4)%p = [sqrt (msq_in), zero, zero, zero] 
-      call generate_on_shell_decay (k_tmp(4), virt_map, &
-           k_tmp(1:3), k_decay_vector4(2:4), 1)
+      call generate_on_shell_decay (k_tmp(4), &
+           k_tmp(1:3), k_decay_vector4(2:4), 1, &
+           evaluate_special = evaluate_one_to_two_splitting_threshold)
       k_decay_vector4 (1) = k_tmp(4)
       call compute_projected_top_momenta (mom_tmp)
       if (leg == 1) then
@@ -948,27 +1007,17 @@ contains
       k_tmp(1)%p = k(:,ass_quark(other_leg))
       k_tmp(2)%p = k(:,ass_boson(other_leg))
       k_decay2_vector4 = create_two_particle_decay (msq_in, k_tmp(1), k_tmp(2)) 
+      
       k_decay2_vector4 = L_to_cms * k_decay2_vector4
       do i = 1, 3
          k_decay2_vector4(i)%p(1:3) = -k_decay2_vector4(i)%p(1:3)
       end do
+
       k_decay_born = k_decay2_vector4
       k_decay_real = k_decay_vector4
       call set_production_momenta (k_production)
       call check_phase_space_point (k_decay_vector4, k_decay2_vector4, mom_tmp * mom_tmp)
     end subroutine set_decay_and_production_momenta
-
-    subroutine init_mapping_parameters (k, virt_map)
-      real(default), dimension(0:3,*), intent(in) :: k
-      type(virtuality_scaling_threshold_t), intent(inout) :: virt_map
-      real(default) :: mtop2, v_min, s
-      type(momentum) :: p12
-      p12 = -(k(:,1) + k(:,2))
-      s = p12 * p12
-      mtop2 = (ttv_mtpole (s))**2
-      v_min = mass(24)**2 + mass(5)**2 + two * mass(24) * mass(5)
-      call virt_map%set_parameters (v_min, s, v_min, mtop2)
-    end subroutine init_mapping_parameters
 
     subroutine check_phase_space_point (p_decay, p_prod, s)
       type(vector4_t), intent(in), dimension(4) :: p_decay
