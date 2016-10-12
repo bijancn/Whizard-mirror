@@ -960,8 +960,8 @@ contains
       real(default) :: msq, msq1, msq2
       real(default) :: m
       real(default) :: E1, E2, E_max
-      real(default) :: p, rlda
-      real(default), parameter :: E_offset = 1._default
+      real(default) :: p, lda
+      real(default), parameter :: E_offset = 0.001_default
 
       call get_rest_frame (p1_in, p2_in, p1_rest, p2_rest)
 
@@ -976,8 +976,10 @@ contains
          msq2 = m * (m - two * E_max)
       end if
 
-      rlda = sqrt (lambda (msq, msq1, msq2))
-      p = rlda / (two * m)
+      lda = lambda (msq, msq1, msq2)
+      if (lda < zero) call msg_fatal &
+           ("Threshold Splitting: lambda < 0 encountered! Use a higher offset.")
+      p = sqrt(lda) / (two * m)
 
       E1 = sqrt (msq1 + p**2)
       E2 = sqrt (msq2 + p**2)
