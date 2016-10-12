@@ -690,7 +690,6 @@ contains
      real(default), dimension(4) :: tmp, test
      if (threshold%settings%onshell_projection%active ()) then
         call compute_projected_top_momenta (p12, leg)
-        call msg_print_color ("Compute projected top decay products!", COL_RED)
         call compute_projected_top_decay_products (p12, leg)
         if (debug_active (D_THRESHOLD)) then
            if (leg == 0) then
@@ -773,22 +772,14 @@ contains
     en_w = (mtop**2 + mw2 - mb2) / (2 * mtop)
     en_b = (mtop**2 - mw2 + mb2) / (2 * mtop)
     p_three_mag = sqrt (lambda (mtop**2, mw2, mb2)) / (2 * mtop)
-    call msg_print_color ("Compute projected top decay products: ", COL_RED)
-    print *, 'leg: ', leg
     if (leg == 0 .or. leg == 2) then
        p_tmp_1%p = p5
        p_tmp_2%p = p3
        p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
        mom_b_onshell_rest = p_decay(2)%p
        mom_wp_onshell_rest = p_decay(3)%p
-       print *, 'Rest frame, top decay: '
-       print *, 'W+: ', mom_wp_onshell_rest, sqrt (mom_wp_onshell_rest * mom_wp_onshell_rest)
-       print *, 'b: ', mom_b_onshell_rest, sqrt (mom_b_onshell_rest * mom_b_onshell_rest)
        mom_wp_onshell = apply_boost (boost_to_cms, mom_wp_onshell_rest)
        mom_b_onshell = apply_boost (boost_to_cms, mom_b_onshell_rest)
-       print *, 'CMS, top decay: '
-       print *, 'W+: ', mom_wp_onshell, sqrt (mom_wp_onshell * mom_wp_onshell)
-       print *, 'b: ', mom_b_onshell, sqrt (mom_b_onshell * mom_b_onshell)
     end if
     if (leg == 0 .or. leg == 1) then
        p_tmp_1%p = p6
@@ -796,16 +787,10 @@ contains
        p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
        mom_bbar_onshell_rest = p_decay(2)%p
        mom_wm_onshell_rest = p_decay(3)%p
-       print *, 'Rest frame: '
-       print *, 'W-: ', mom_wm_onshell_rest, sqrt (mom_wm_onshell_rest * mom_wm_onshell_rest)
-       print *, 'bbar: ', mom_bbar_onshell_rest, sqrt (mom_bbar_onshell_rest * mom_bbar_onshell_rest)
        mom_wm_onshell = apply_boost (boost_to_cms, mom_wm_onshell_rest)
        mom_bbar_onshell = apply_boost (boost_to_cms, mom_bbar_onshell_rest)
        mom_wm_onshell%x(1:3) = -mom_wm_onshell%x(1:3)
        mom_bbar_onshell%x(1:3) = -mom_bbar_onshell%x(1:3)
-       print *, 'CMS: '
-       print *, 'W-: ', mom_wm_onshell, sqrt (mom_wm_onshell * mom_wm_onshell)
-       print *, 'bbar: ', mom_bbar_onshell, sqrt (mom_bbar_onshell * mom_bbar_onshell)
     end if
 
     if (debug_active (D_THRESHOLD)) then
@@ -1049,15 +1034,9 @@ contains
            k_tmp(1:3), k_decay_onshell_real (2:4), 1, &
            evaluate_special = evaluate_one_to_two_splitting_threshold)
       k_decay_onshell_real (1) = k_tmp(4)
-      call msg_print_color ("Compute projected top momenta", COL_RED)
       call compute_projected_top_momenta (mom_tmp, leg)
 
-
-      !if (leg == 1) then
-         L_to_cms = boost_to_cms
-      !else
-      !   L_to_cms = inverse (boost_to_cms)
-      !end if
+      L_to_cms = boost_to_cms
 
       k_decay_onshell_real = L_to_cms * k_decay_onshell_real
 
