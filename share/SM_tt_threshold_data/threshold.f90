@@ -574,6 +574,7 @@ contains
     integer, dimension(n_prt) :: s
     integer :: hi, h_t, h_tbar
     call set_production_momenta (k)
+    call compute_projected_momenta (0)
     call init_workspace ()
     if (threshold%settings%factorized_computation) then
        production_me = compute_production_me (ffi)
@@ -666,6 +667,7 @@ contains
 
   subroutine set_production_momenta (k)
     real(default), dimension(0:3,*), intent(in) :: k
+    real(default), dimension(4) :: tmp, test
     if (debug2_active (D_THRESHOLD)) then
        call msg_debug (D_THRESHOLD, "set_production_momenta")
        print *, 'k =    ', k(0:3,1:6)
@@ -680,15 +682,32 @@ contains
        p6 =   k(:,6) ! outgoing
        p35 = p3 + p5
        p46 = p4 + p6
-       if (threshold%settings%onshell_projection%active ()) then
-          call compute_projected_top_momenta (p12)
-          call compute_projected_top_decay_products (p12)
-       end if
     end if
   end subroutine set_production_momenta
 
-  subroutine compute_projected_top_momenta (p12)
+  subroutine compute_projected_momenta (leg)
+     integer, intent(in) :: leg
+     real(default), dimension(4) :: tmp, test
+     if (threshold%settings%onshell_projection%active ()) then
+        call compute_projected_top_momenta (p12, leg)
+        call msg_print_color ("Compute projected top decay products!", COL_RED)
+        call compute_projected_top_decay_products (p12, leg)
+        if (debug_active (D_THRESHOLD)) then
+           if (leg == 0) then
+              tmp = mom_wp_onshell + mom_b_onshell + mom_wm_onshell + mom_bbar_onshell
+              test = - p12
+              call assert_equal (output_unit, tmp, test, "overall: momentum conservation", &
+                   abs_smallness=tiny_07, &
+                   rel_smallness=tiny_07, &
+                   exit_on_fail=.true.)
+           end if
+        end if
+     end if
+  end subroutine compute_projected_momenta
+
+  subroutine compute_projected_top_momenta (p12, leg)
     type(momentum), intent(in) :: p12
+    integer, intent(in) :: leg
     real(default) :: sqrts, scale_factor, mtop
     real(default), dimension(1:3) :: unit_vec
     real(default), dimension(4) :: tmp, test
@@ -699,7 +718,11 @@ contains
     mtop = ttv_mtpole (p12*p12)
     sqrts = - p12%t
     scale_factor = sqrt (sqrts**2 - 4 * mtop**2) / 2
-    unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
+    if (leg == 0 .or. leg == 1) then
+       unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
+    else
+       unit_vec = p46%x / sqrt (dot_product(p46%x, p46%x))
+    end if
     mom_top_onshell = [sqrts / 2, scale_factor * unit_vec]
     tmp = mom_top_onshell
     v4_top_onshell = tmp
@@ -735,11 +758,13 @@ contains
     end if
   end subroutine compute_projected_top_momenta
 
-  subroutine compute_projected_top_decay_products (p12)
+  subroutine compute_projected_top_decay_products (p12, leg)
     type(momentum), intent(in) :: p12
+    integer, intent(in) :: leg
     real(default) :: sqrts, scale_factor, mtop, mw2, mb2, en_w, en_b, p_three_mag
-    real(default), dimension(1:3) :: unit_vec_wp, unit_vec_wm
     real(default), dimension(4) :: tmp, test
+    type(vector4_t) :: p_tmp_1, p_tmp_2
+    type(vector4_t), dimension(3) :: p_decay
     integer :: u
     u = output_unit
     mtop = ttv_mtpole (p12*p12)
@@ -748,56 +773,76 @@ contains
     en_w = (mtop**2 + mw2 - mb2) / (2 * mtop)
     en_b = (mtop**2 - mw2 + mb2) / (2 * mtop)
     p_three_mag = sqrt (lambda (mtop**2, mw2, mb2)) / (2 * mtop)
-    !!! TODO (bcn-2016-10-07): Use p3 in the top rest frame.
-    unit_vec_wp = p3%x / sqrt (dot_product(p3%x, p3%x))
-    mom_wp_onshell_rest = [en_w, p_three_mag * unit_vec_wp]
-    mom_b_onshell_rest = [en_b, - p_three_mag * unit_vec_wp]
-    unit_vec_wm = p4%x / sqrt (dot_product(p4%x, p4%x))
-    mom_wm_onshell_rest = [en_w, p_three_mag * unit_vec_wm]
-    mom_bbar_onshell_rest = [en_b, - p_three_mag * unit_vec_wm]
-    mom_wp_onshell = apply_boost (boost_to_cms, mom_wp_onshell_rest)
-    mom_b_onshell = apply_boost (boost_to_cms, mom_b_onshell_rest)
-    mom_wm_onshell = apply_boost (boost_to_top_rest, mom_wm_onshell_rest)
-    mom_bbar_onshell = apply_boost (boost_to_top_rest, mom_bbar_onshell_rest)
+    call msg_print_color ("Compute projected top decay products: ", COL_RED)
+    print *, 'leg: ', leg
+    if (leg == 0 .or. leg == 2) then
+       p_tmp_1%p = p5
+       p_tmp_2%p = p3
+       p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
+       mom_b_onshell_rest = p_decay(2)%p
+       mom_wp_onshell_rest = p_decay(3)%p
+       print *, 'Rest frame, top decay: '
+       print *, 'W+: ', mom_wp_onshell_rest, sqrt (mom_wp_onshell_rest * mom_wp_onshell_rest)
+       print *, 'b: ', mom_b_onshell_rest, sqrt (mom_b_onshell_rest * mom_b_onshell_rest)
+       mom_wp_onshell = apply_boost (boost_to_cms, mom_wp_onshell_rest)
+       mom_b_onshell = apply_boost (boost_to_cms, mom_b_onshell_rest)
+       print *, 'CMS, top decay: '
+       print *, 'W+: ', mom_wp_onshell, sqrt (mom_wp_onshell * mom_wp_onshell)
+       print *, 'b: ', mom_b_onshell, sqrt (mom_b_onshell * mom_b_onshell)
+    end if
+    if (leg == 0 .or. leg == 1) then
+       p_tmp_1%p = p6
+       p_tmp_2%p = p4
+       p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
+       mom_bbar_onshell_rest = p_decay(2)%p
+       mom_wm_onshell_rest = p_decay(3)%p
+       print *, 'Rest frame: '
+       print *, 'W-: ', mom_wm_onshell_rest, sqrt (mom_wm_onshell_rest * mom_wm_onshell_rest)
+       print *, 'bbar: ', mom_bbar_onshell_rest, sqrt (mom_bbar_onshell_rest * mom_bbar_onshell_rest)
+       mom_wm_onshell = apply_boost (boost_to_cms, mom_wm_onshell_rest)
+       mom_bbar_onshell = apply_boost (boost_to_cms, mom_bbar_onshell_rest)
+       mom_wm_onshell%x(1:3) = -mom_wm_onshell%x(1:3)
+       mom_bbar_onshell%x(1:3) = -mom_bbar_onshell%x(1:3)
+       print *, 'CMS: '
+       print *, 'W-: ', mom_wm_onshell, sqrt (mom_wm_onshell * mom_wm_onshell)
+       print *, 'bbar: ', mom_bbar_onshell, sqrt (mom_bbar_onshell * mom_bbar_onshell)
+    end if
+
     if (debug_active (D_THRESHOLD)) then
        call assert_equal (u, en_w + en_b, mtop, "top energy", &
             exit_on_fail=.true.)
-       tmp = mom_wp_onshell + mom_b_onshell
-       test = mom_top_onshell
-       call assert_equal (u, tmp, test, "overall: top momentum conservation", &
-            exit_on_fail=.true.)
-       tmp = mom_wm_onshell + mom_bbar_onshell
-       test = mom_topbar_onshell
-       call assert_equal (u, tmp, test, "overall: topbar momentum conservation", &
-            exit_on_fail=.true.)
-       tmp = mom_wp_onshell + mom_b_onshell + mom_wm_onshell + mom_bbar_onshell
-       test = - p12
-       call assert_equal (u, tmp, test, "overall: momentum conservation", &
-            abs_smallness=tiny_07, &
-            rel_smallness=tiny_07, &
-            exit_on_fail=.true.)
-       call assert (u, (mom_wp_onshell_rest + mom_b_onshell_rest) == &
-            mom_top_onshell_rest, &
-            "top: momentum conservation", exit_on_fail=.true.)
-       call assert (u, (mom_wm_onshell_rest + mom_bbar_onshell_rest) == &
-            mom_top_onshell_rest, &
-            "topbar: momentum conservation", exit_on_fail=.true.)
-       call assert_equal (u, mom_wp_onshell * mom_wp_onshell, mw2, &
-            "mass onshell", rel_smallness=tiny_07, &
-            exit_on_fail=.true.)
-       call assert_equal (u, mom_wm_onshell * mom_wm_onshell, mw2, &
-            "mass onshell", rel_smallness=tiny_07, &
-            exit_on_fail=.true.)
-       call assert_equal (u, mom_b_onshell * mom_b_onshell, mb2, &
-            "mass onshell", rel_smallness=tiny_07, &
-            exit_on_fail=.true.)
-       call assert_equal (u, mom_bbar_onshell * mom_bbar_onshell, mb2, &
-            "mass onshell", rel_smallness=tiny_07, &
-            exit_on_fail=.true.)
-       call assert_equal (u, dot_product(unit_vec_wp, unit_vec_wp), &
-            one, "unit vector length", exit_on_fail=.true.)
-       call assert_equal (u, dot_product(unit_vec_wm, unit_vec_wm), &
-            one, "unit vector length", exit_on_fail=.true.)
+       if (leg == 0 .or. leg == 1) then
+          call assert_equal (u, en_w + en_b, mtop, "top energy", &
+             exit_on_fail=.true.)
+          tmp = mom_wm_onshell + mom_bbar_onshell
+          test = mom_topbar_onshell
+          call assert_equal (u, tmp, test, "overall: topbar momentum conservation", &
+               exit_on_fail=.true.)
+          call assert (u, (mom_wm_onshell_rest + mom_bbar_onshell_rest) == &
+               mom_top_onshell_rest, &
+               "topbar: momentum conservation", exit_on_fail=.true.)
+          call assert_equal (u, mom_wm_onshell * mom_wm_onshell, mw2, &
+               "W- mass onshell", rel_smallness=tiny_07, &
+               exit_on_fail=.true.)
+          call assert_equal (u, mom_bbar_onshell * mom_bbar_onshell, mb2, &
+               "bbar mass onshell", rel_smallness=tiny_07, &
+               exit_on_fail=.true.)
+       end if
+       if (leg == 0 .or. leg == 2) then
+          tmp = mom_wp_onshell + mom_b_onshell
+          test = mom_top_onshell
+          call assert_equal (u, tmp, test, "overall: top momentum conservation", &
+               exit_on_fail=.true.)
+          call assert (u, (mom_wp_onshell_rest + mom_b_onshell_rest) == &
+               mom_top_onshell_rest, &
+               "top: momentum conservation", exit_on_fail=.true.)
+          call assert_equal (u, mom_wp_onshell * mom_wp_onshell, mw2, &
+               "W+ mass onshell", rel_smallness=tiny_07, &
+               exit_on_fail=.true.)
+          call assert_equal (u, mom_b_onshell * mom_b_onshell, mb2, &
+               "b mass onshell", rel_smallness=tiny_07, &
+               exit_on_fail=.true.)
+       end if
     end if
   end subroutine compute_projected_top_decay_products
 
@@ -881,7 +926,10 @@ contains
       procedure(top_decay_born), pointer :: top_decay_born_
       do leg = 1, 2
          other_leg = 3 - leg
-         call set_decay_and_production_momenta ()
+         !call set_production_momenta (k)
+         call set_production_momenta_with_gluon ()
+         call compute_projected_momenta (leg)
+         call set_decay_momenta ()
          production_me(:,:,:,:,leg) = compute_production_me (ffi)
          if (leg == 1) then
             top_decay_real => top_real_decay_calculate_amplitude
@@ -977,16 +1025,20 @@ contains
      p_out = vector4_moving (E, p * vec)
    end function shift_momentum 
 
-    subroutine set_decay_and_production_momenta ()
+    subroutine set_production_momenta_with_gluon ()
+      k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
+      k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
+      call set_production_momenta (k_production)
+    end subroutine set_production_momenta_with_gluon
+
+    subroutine set_decay_momenta ()
       type(vector4_t), dimension(4) :: k_tmp
       type(lorentz_transformation_t) :: L_to_rest_frame, L_to_cms
-      type(vector4_t), dimension(4) :: k_decay_vector4
-      type(vector4_t), dimension(3) :: k_decay2_vector4
+      type(vector4_t), dimension(4) :: k_decay_onshell_real
+      type(vector4_t), dimension(3) :: k_decay_onshell_born
       type(momentum) :: mom_tmp
       real(default) :: msq_in
       integer :: i
-      k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
-      k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
       k_tmp(1)%p = k(:,7)
       k_tmp(2)%p = k(:,ass_quark(leg))
       k_tmp(3)%p = k(:,ass_boson(leg))
@@ -994,30 +1046,35 @@ contains
       msq_in = (ttv_mtpole (mom_tmp * mom_tmp))**2
       k_tmp(4)%p = [sqrt (msq_in), zero, zero, zero] 
       call generate_on_shell_decay (k_tmp(4), &
-           k_tmp(1:3), k_decay_vector4(2:4), 1, &
+           k_tmp(1:3), k_decay_onshell_real (2:4), 1, &
            evaluate_special = evaluate_one_to_two_splitting_threshold)
-      k_decay_vector4 (1) = k_tmp(4)
-      call compute_projected_top_momenta (mom_tmp)
-      if (leg == 1) then
+      k_decay_onshell_real (1) = k_tmp(4)
+      call msg_print_color ("Compute projected top momenta", COL_RED)
+      call compute_projected_top_momenta (mom_tmp, leg)
+
+
+      !if (leg == 1) then
          L_to_cms = boost_to_cms
-      else
-         L_to_cms = inverse (boost_to_cms)
-      end if
-      k_decay_vector4 = L_to_cms * k_decay_vector4
+      !else
+      !   L_to_cms = inverse (boost_to_cms)
+      !end if
+
+      k_decay_onshell_real = L_to_cms * k_decay_onshell_real
+
       k_tmp(1)%p = k(:,ass_quark(other_leg))
       k_tmp(2)%p = k(:,ass_boson(other_leg))
-      k_decay2_vector4 = create_two_particle_decay (msq_in, k_tmp(1), k_tmp(2)) 
+      k_decay_onshell_born = create_two_particle_decay (msq_in, k_tmp(1), k_tmp(2))
       
-      k_decay2_vector4 = L_to_cms * k_decay2_vector4
+      k_decay_onshell_born = L_to_cms * k_decay_onshell_born
       do i = 1, 3
-         k_decay2_vector4(i)%p(1:3) = -k_decay2_vector4(i)%p(1:3)
+         k_decay_onshell_born(i)%p(1:3) = -k_decay_onshell_born(i)%p(1:3)
       end do
 
-      k_decay_born = k_decay2_vector4
-      k_decay_real = k_decay_vector4
-      call set_production_momenta (k_production)
-      call check_phase_space_point (k_decay_vector4, k_decay2_vector4, mom_tmp * mom_tmp)
-    end subroutine set_decay_and_production_momenta
+
+      k_decay_born = k_decay_onshell_born
+      k_decay_real = k_decay_onshell_real
+      call check_phase_space_point (k_decay_onshell_real, k_decay_onshell_born, mom_tmp * mom_tmp)
+    end subroutine set_decay_momenta
 
     subroutine check_phase_space_point (p_decay, p_prod, s)
       type(vector4_t), intent(in), dimension(4) :: p_decay
