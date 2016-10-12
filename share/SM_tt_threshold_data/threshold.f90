@@ -913,7 +913,6 @@ contains
       procedure(top_decay_born), pointer :: top_decay_born_
       do leg = 1, 2
          other_leg = 3 - leg
-         !call set_production_momenta (k)
          call set_production_momenta_with_gluon ()
          call compute_projected_momenta (leg)
          call set_decay_momenta ()
