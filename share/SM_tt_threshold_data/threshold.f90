@@ -717,11 +717,7 @@ contains
     mtop = ttv_mtpole (p12*p12)
     sqrts = - p12%t
     scale_factor = sqrt (sqrts**2 - 4 * mtop**2) / 2
-    if (leg == 0 .or. leg == 1) then
-       unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
-    else
-       unit_vec = p46%x / sqrt (dot_product(p46%x, p46%x))
-    end if
+    unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
     mom_top_onshell = [sqrts / 2, scale_factor * unit_vec]
     tmp = mom_top_onshell
     v4_top_onshell = tmp
