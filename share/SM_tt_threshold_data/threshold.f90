@@ -801,11 +801,12 @@ contains
              exit_on_fail=.true.)
           tmp = mom_wm_onshell + mom_bbar_onshell
           test = mom_topbar_onshell
-          call assert_equal (u, tmp, test, "overall: topbar momentum conservation", &
-               exit_on_fail=.true.)
-          call assert (u, (mom_wm_onshell_rest + mom_bbar_onshell_rest) == &
-               mom_top_onshell_rest, &
-               "topbar: momentum conservation", exit_on_fail=.true.)
+          call assert_equal (u, tmp, test, "CMS: topbar momentum conservation", &
+               abs_smallness = tiny_07, exit_on_fail=.true.)
+          tmp = mom_wm_onshell_rest + mom_bbar_onshell_rest
+          test = mom_topbar_onshell_rest
+          call assert_equal (u, tmp, test, "Rest frame: topbar conservation", &
+               abs_smallness = tiny_07, exit_on_fail=.true.)
           call assert_equal (u, mom_wm_onshell * mom_wm_onshell, mw2, &
                "W- mass onshell", rel_smallness=tiny_07, &
                exit_on_fail=.true.)
@@ -816,11 +817,12 @@ contains
        if (leg == 0 .or. leg == 2) then
           tmp = mom_wp_onshell + mom_b_onshell
           test = mom_top_onshell
-          call assert_equal (u, tmp, test, "overall: top momentum conservation", &
-               exit_on_fail=.true.)
-          call assert (u, (mom_wp_onshell_rest + mom_b_onshell_rest) == &
-               mom_top_onshell_rest, &
-               "top: momentum conservation", exit_on_fail=.true.)
+          call assert_equal (u, tmp, test, "CMS: top momentum conservation", &
+               abs_smallness = tiny_07, exit_on_fail=.true.)
+          tmp = mom_wp_onshell_rest + mom_b_onshell_rest
+          test = mom_top_onshell_rest
+          call assert_equal (u, tmp, test, "Rest frame: top momentum conservation", &
+               abs_smallness = tiny_07, exit_on_fail=.true.)
           call assert_equal (u, mom_wp_onshell * mom_wp_onshell, mw2, &
                "W+ mass onshell", rel_smallness=tiny_07, &
                exit_on_fail=.true.)
