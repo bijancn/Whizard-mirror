@@ -1442,6 +1442,7 @@ there is only a soft singularity if the radiated parton becomes soft.
   type, abstract :: fks_mapping_t
      real(default) :: sumdij
      real(default) :: sumdij_soft
+     logical :: pseudo_isr = .false.
   contains
   <<fks regions: fks mapping: TBP>>
   end type fks_mapping_t
@@ -1673,33 +1674,20 @@ must be compatible with the resonance.
     !!! Size of singular regions at this point is fixed
     type(singular_region_t), dimension(2) :: save_regions
     integer, dimension(4) :: alr_new_to_old
-    integer, dimension(2) :: alr_to_i_con_old
     do alr = 1, reg_data%n_regions
        save_regions(alr) = reg_data%regions(alr)
     end do
     n_alr_new = reg_data%n_regions * 2
     alr_new_to_old = [1, 1, 2, 2]
-    alr_to_i_con_old = reg_data%alr_to_i_contributor
     deallocate (reg_data%regions)
-    deallocate (reg_data%alr_to_i_contributor)
     allocate (reg_data%regions (n_alr_new))
-    allocate (reg_data%alr_to_i_contributor (n_alr_new))
     reg_data%n_regions = n_alr_new
     do alr = 1, n_alr_new
        reg_data%regions(alr) = save_regions(alr_new_to_old (alr))
        call add_pseudo_emitters (reg_data%regions(alr))
        if (mod (alr, 2) == 0) reg_data%regions(alr)%pseudo_isr = .true.
        reg_data%regions(alr)%i_res = 1
-       reg_data%alr_to_i_contributor(alr) = alr_to_i_con_old (alr_new_to_old (alr))
-       allocate (reg_data%regions(alr)%i_reg_to_i_con(4))
-       reg_data%regions(alr)%i_reg_to_i_con = [1, 1, 2, 2]
     end do
-    !select type (fks_mapping => reg_data%fks_mapping)
-    !type is (fks_mapping_resonances_t)
-    !   deallocate (fks_mapping%res_map%alr_to_i_res)
-    !   allocate (fks_mapping%res_map%alr_to_i_res (4))
-    !   fks_mapping%res_map%alr_to_i_res = [1, 1, 1, 1]
-    !end select
   contains
     subroutine add_pseudo_emitters (sregion)
       type(singular_region_t), intent(inout) :: sregion
@@ -2088,6 +2076,7 @@ the flavor structure list.
        select type (map)
        type is (fks_mapping_resonances_t)
           map%i_con = reg_data%alr_to_i_contributor (alr)
+          map%pseudo_isr = reg_data%regions(alr)%pseudo_isr
        end select
        sval = map%svalue (p, emitter, reg_data%n_legs_real, i_res)
     end associate
@@ -3337,36 +3326,67 @@ tuning the efficiency of the mapping and are set to $1$ per default.
     type(vector4_t), intent(in), dimension(:) :: p
     integer, intent(in) :: i, j
     integer, intent(in), optional :: i_con
-    real(default) :: y, E1, E2
     d = zero
     if (i /= j) then
-        if (i > map%n_in .and. j > map%n_in) then
-           E1 = p(i)%p(0); E2 = p(j)%p(0)
-           d = (two * p(i) * p(j) * E1 * E2 / (E1 + E2)**2)**map%exp_1
+        if (map%pseudo_isr) then
+           d = dij_threshold_gluon_from_top (i, j, p, map%exp_1)
+        else if (i > map%n_in .and. j > map%n_in) then
+           d = dij_fsr (p(i), p(j), map%exp_1)
         else
-           select case (map%n_in)
-           case (1)
-              call get_emitter_variables (1, i, j, p, E1, y)
-              d = ( E1**2 * (one - y**2) )**map%exp_2
-           case (2)
-              if ((i == 0 .and. j > 2) .or. (j == 0 .and. i > 2)) then
-                 call get_emitter_variables (0, i, j, p, E1, y)
-                 d = ( E1**2 * (one - y**2) )**map%exp_2
-              else if ((i == 1 .and. j > 2) .or. (j == 1 .and. i > 2)) then
-                 call get_emitter_variables (1, i, j, p, E1, y)
-                 d = ( 2 * E1**2 * (one - y) )**map%exp_2
-              else if ((i == 2 .and. j > 2) .or. (j == 2 .and. i > 2)) then
-                 call get_emitter_variables (2, i, j, p, E1, y)
-                 d = (2 * E1**2 * (one + y) )**map%exp_2
-              else
-                 call msg_fatal ("FKS: Region with i, j <= 2 encountered")
-              end if
-           end select
+           d = dij_isr (map%n_in, i, j, p, map%exp_2)
         end if
     else
       call msg_fatal ("Invalid FKS region: Emitter equals FKS parton!")
     end if
   contains
+
+    function dij_fsr (p1, p2, expo) result (d_ij)
+      real(default) :: d_ij
+      type(vector4_t), intent(in) :: p1, p2
+      real(default), intent(in) :: expo
+      real(default) :: E1, E2 
+      E1 = p1%p(0); E2 = p2%p(0)
+      d_ij = (two * p1 * p2 * E1 * E2 / (E1 + E2)**2)**expo
+    end function dij_fsr
+
+    function dij_threshold_gluon_from_top (i, j, p, expo) result (d_ij)
+      real(default) :: d_ij
+      integer, intent(in) :: i, j
+      type(vector4_t), intent(in), dimension(:) :: p
+      real(default), intent(in) :: expo
+      type(vector4_t) :: p_top
+      if (i == 5) then
+         p_top = p(3) + p(5)
+      else
+         p_top = p(4) + p(6)
+      end if
+      d_ij = dij_fsr (p_top, p(j), expo)
+    end function dij_threshold_gluon_from_top
+
+    function dij_isr (n_in, i, j, p, expo) result (d_ij)
+      real(default) :: d_ij
+      integer, intent(in) :: n_in, i, j
+      type(vector4_t), intent(in), dimension(:) :: p
+      real(default), intent(in) :: expo
+      real(default) :: E, y
+      select case (n_in)
+      case (1)
+         call get_emitter_variables (1, i, j, p, E, y)
+         d_ij = (E**2 * (one - y**2))**expo
+      case (2)
+         if ((i == 0 .and. j > 2) .or. (j == 0 .and. i > 2)) then
+            call get_emitter_variables (0, i, j, p, E, y)
+            d_ij = (E**2 * (one - y**2))**expo
+         else if ((i == 1 .and. j > 2) .or. (j == 1 .and. i > 2)) then
+            call get_emitter_variables (1, i, j, p, E, y)
+            d_ij = (two * E**2 * (one - y))**expo
+         else if ((i == 2 .and. j > 2) .or. (j == 2 .and. i > 2)) then
+            call get_emitter_variables (2, i, j, p, E, y)
+            d_ij = (two * E**2 * (one + y))**expo
+         end if
+      end select
+    end function dij_isr
+
     subroutine get_emitter_variables (i_check, i, j, p, E, y)
        integer, intent(in) :: i_check, i, j
        type(vector4_t), intent(in), dimension(:) :: p
@@ -3394,15 +3414,16 @@ tuning the efficiency of the mapping and are set to $1$ per default.
     class(fks_mapping_default_t), intent(inout) :: map
     type(singular_region_t), intent(in) :: sregion
     type(vector4_t), intent(in), dimension(:) :: p
-    real(default) :: d, dij
+    real(default) :: d
     integer :: alr, i, j
 
     associate (ftuples => sregion%ftuples)
       d = zero
       do alr = 1, sregion%nregions
         call ftuples(alr)%get (i, j)
-        dij = map%dij (p, i, j)
-        d = d + one / dij
+        print *, 'pseudo_isr: ', ftuples(alr)%pseudo_isr
+        map%pseudo_isr = ftuples(alr)%pseudo_isr
+        d = d + one / map%dij (p, i, j)
       end do
     end associate
     map%sumdij = d
