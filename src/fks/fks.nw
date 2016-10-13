@@ -2099,6 +2099,7 @@ the flavor structure list.
        select type (map)
        type is (fks_mapping_resonances_t)
           map%i_con = reg_data%alr_to_i_contributor (alr)
+          map%pseudo_isr = reg_data%regions(alr)%pseudo_isr
        end select
        sval = map%svalue_soft (p, p_soft, emitter, i_res)
     end associate
@@ -3421,7 +3422,6 @@ tuning the efficiency of the mapping and are set to $1$ per default.
       d = zero
       do alr = 1, sregion%nregions
         call ftuples(alr)%get (i, j)
-        print *, 'pseudo_isr: ', ftuples(alr)%pseudo_isr
         map%pseudo_isr = ftuples(alr)%pseudo_isr
         d = d + one / map%dij (p, i, j)
       end do
@@ -3482,32 +3482,65 @@ From these equations we can deduce the soft limit of $d$:
     type(vector4_t), intent(in) :: p_soft
     integer, intent(in) :: em
     integer, intent(in), optional :: i_con
-    real(default) :: y
-    if (em <= map%n_in) then
+    if (map%pseudo_isr) then
+       d = dij_soft_threshold_gluon_from_top (em, p_born, p_soft, map%exp_1)
+    else if (em <= map%n_in) then
+       d = dij_soft_isr (map%n_in, p_soft, map%exp_2)
+    else
+       d = dij_soft_fsr (p_born(em), p_soft, map%exp_1)
+    end if
+  contains
+
+    function dij_soft_threshold_gluon_from_top (em, p, p_soft, expo) result (dij_soft)
+      real(default) :: dij_soft
+      integer, intent(in) :: em
+      type(vector4_t), intent(in), dimension(:) :: p
+      type(vector4_t), intent(in) :: p_soft
+      real(default), intent(in) :: expo
+      type(vector4_t) :: p_top
+      if (em == 5) then
+         p_top = p(3) + p(5)
+      else
+         p_top = p(4) + p(6)
+      end if
+      dij_soft = dij_soft_fsr (p_top, p_soft, expo)
+    end function dij_soft_threshold_gluon_from_top
+
+    function dij_soft_fsr (p_em, p_soft, expo) result (dij_soft)
+      real(default) :: dij_soft
+      type(vector4_t), intent(in) :: p_em, p_soft
+      real(default), intent(in) :: expo
+      dij_soft = (two * p_em * p_soft / p_em%p(0))**expo
+    end function dij_soft_fsr
+
+    function dij_soft_isr (n_in, p_soft, expo) result (dij_soft)
+       real(default) :: dij_soft
+       integer, intent(in) :: n_in
+       type(vector4_t), intent(in) :: p_soft
+       real(default), intent(in) :: expo
+       real(default) :: y
        y = polar_angle_ct (p_soft)
-       select case (map%n_in)
+       select case (n_in)
        case (1)
-          d = one - y**2
+          dij_soft = one - y**2
        case (2)
           select case (em)
           case (0)
-             d = one - y**2
+             dij_soft = one - y**2
           case (1)
-             d = two * (one - y)
+             dij_soft = two * (one - y)
           case (2)
-             d = two * (one + y)
+             dij_soft = two * (one + y)
           case default
-             d = zero
+             dij_soft = zero
              call msg_fatal ("fks_mappings_default_dij_soft: n_in > 2")
           end select
        case default
-          d = zero
+          dij_soft = zero
           call msg_fatal ("fks_mappings_default_dij_soft: n_in > 2")
        end select
-       d = d**map%exp_2
-    else
-       d = (two * p_born(em) * p_soft / p_born(em)%p(0))**map%exp_1
-    end if
+       dij_soft = dij_soft**expo
+    end function dij_soft_isr
   end function fks_mapping_default_dij_soft
 
 @ %def fks_mapping_default_dij_soft
@@ -3520,7 +3553,7 @@ From these equations we can deduce the soft limit of $d$:
     type(singular_region_t), intent(in) :: sregion
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(in) :: p_soft
-    real(default) :: d, dij
+    real(default) :: d
     integer :: alr, i, j
     integer :: nlegs
     d = zero
@@ -3529,8 +3562,8 @@ From these equations we can deduce the soft limit of $d$:
       do alr = 1, sregion%nregions
         call ftuples(alr)%get (i ,j)
         if (j == nlegs) then
-          dij = map%dij_soft (p_born, p_soft, i)
-          d = d + one / dij
+          map%pseudo_isr = ftuples(alr)%pseudo_isr
+          d = d + one / map%dij_soft (p_born, p_soft, i)
         end if
       end do
     end associate
