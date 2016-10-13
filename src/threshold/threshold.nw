@@ -10603,6 +10603,7 @@ module ttv_formfactors
   use numeric_utils
   use physics_defs, only: CF, CA, TR
   use sm_physics
+  use lorentz
   use interpolation
   use nr_tools
   use io_units, only: free_unit, given_output_unit
@@ -12496,7 +12497,94 @@ where the variables are from.
           * ff_p_spline%interpolate (x)
   end function p0_q_integrand_evaluate
 
+@ %def p0_q_integrand_evaluate
 @
+<<ttv formfactors: procedures>>=
+  subroutine get_rest_frame (p1_in, p2_in, p1_out, p2_out)
+    type(vector4_t), intent(in) :: p1_in, p2_in
+    type(vector4_t), intent(out) :: p1_out, p2_out
+    type(lorentz_transformation_t) :: L
+    L = inverse (boost (p1_in + p2_in, (p1_in + p2_in)**1))
+    p1_out = L * p1_in; p2_out = L * p2_in
+  end subroutine get_rest_frame
+
+  function shift_momentum (p_in, E, p) result (p_out)
+    type(vector4_t) :: p_out
+    type(vector4_t), intent(in) :: p_in
+    real(default), intent(in) :: E, p
+    type(vector3_t) :: vec
+    vec = p_in%p(1:3) / space_part_norm (p_in)
+    p_out = vector4_moving (E, p * vec)
+  end function shift_momentum
+
+  subroutine evaluate_one_to_two_splitting_threshold (p_origin, &
+      p1_in, p2_in, p1_out, p2_out, msq_in, jac)
+    type(vector4_t), intent(in) :: p_origin
+    type(vector4_t), intent(in) :: p1_in, p2_in
+    type(vector4_t), intent(inout) :: p1_out, p2_out
+    real(default), intent(in), optional :: msq_in
+    real(default), intent(inout), optional :: jac
+    type(lorentz_transformation_t) :: L
+    type(vector4_t) :: p1_rest, p2_rest
+    real(default) :: msq, msq1, msq2
+    real(default) :: m
+    real(default) :: E1, E2, E_max
+    real(default) :: p, lda
+    real(default), parameter :: E_offset = 0.001_default
+    !!! (TODO-cw-2016-10-13) Find a better way to get masses
+    real(default), parameter :: mb = 4.2_default
+    real(default), parameter :: mw = 80.419_default 
+
+    call get_rest_frame (p1_in, p2_in, p1_rest, p2_rest)
+
+    msq = p_origin**2; m = sqrt(msq)
+    msq1 = p1_in**2
+    msq2 = m * (m - two * p1_rest%p(0))
+    E1 = (msq + msq1 - msq2) / (two * m)
+    E_max = (msq - (mb + mw)**2) / (two * m)
+    E_max = E_max - E_offset
+    if (E1 > E_max) then
+       E1 = E_max
+       msq2 = m * (m - two * E_max)
+    end if
+
+    lda = lambda (msq, msq1, msq2)
+    if (lda < zero) call msg_fatal &
+         ("Threshold Splitting: lambda < 0 encountered! Use a higher offset.")
+    p = sqrt(lda) / (two * m)
+
+    E1 = sqrt (msq1 + p**2)
+    E2 = sqrt (msq2 + p**2)
+
+    p1_out = shift_momentum (p1_rest, E1, p)
+    p2_out = shift_momentum (p2_rest, E2, p)
+
+    L = boost (p_origin, p_origin**1)
+    p1_out = L  * p1_out
+    p2_out = L  * p2_out
+  end subroutine evaluate_one_to_two_splitting_threshold
+
+@ %def evaluate_one_to_two_splitting_threshold
+@
+<<ttv formfactors: public>>=
+  public :: generate_on_shell_decay_threshold
+<<ttv formfactors: procedures>>=
+  subroutine generate_on_shell_decay_threshold (p_decay, p_top, p_decay_onshell, L_to_cms)
+    !!! Gluon must be on first position in this array
+    type(vector4_t), intent(in), dimension(:) :: p_decay
+    type(vector4_t), intent(inout) :: p_top
+    type(vector4_t), intent(inout), dimension(:) :: p_decay_onshell 
+    type(lorentz_transformation_t), intent(in) :: L_to_cms
+    procedure(evaluate_one_to_two_splitting_threshold), pointer :: ppointer
+    ppointer => evaluate_one_to_two_splitting_threshold
+    call generate_on_shell_decay (p_top, p_decay, p_decay_onshell, 1, &
+         evaluate_special = ppointer)
+    p_decay_onshell = L_to_cms * p_decay_onshell
+    p_top = L_to_cms * p_top
+  end subroutine generate_on_shell_decay_threshold
+
+@ %def generate_on_shell_decay_threshold
+@ 
 \subsection{Unit tests}
 Test module, followed by the corresponding implementation module.
 <<[[ttv_formfactors_ut.f90]]>>=

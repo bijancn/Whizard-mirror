@@ -948,67 +948,6 @@ contains
       end do
     end subroutine init_decay_and_production_momenta
 
-    subroutine evaluate_one_to_two_splitting_threshold (p_origin, &
-         p1_in, p2_in, p1_out, p2_out, msq_in, jac)
-      type(vector4_t), intent(in) :: p_origin
-      type(vector4_t), intent(in) :: p1_in, p2_in
-      type(vector4_t), intent(inout) :: p1_out, p2_out
-      real(default), intent(in), optional :: msq_in
-      real(default), intent(inout), optional :: jac
-      type(lorentz_transformation_t) :: L
-      type(vector4_t) :: p1_rest, p2_rest
-      real(default) :: msq, msq1, msq2
-      real(default) :: m
-      real(default) :: E1, E2, E_max
-      real(default) :: p, lda
-      real(default), parameter :: E_offset = 0.001_default
-
-      call get_rest_frame (p1_in, p2_in, p1_rest, p2_rest)
-
-      msq = p_origin**2; m = sqrt(msq)
-      msq1 = p1_in**2
-      msq2 = m * (m - two * p1_rest%p(0))
-      E1 = (msq + msq1 - msq2) / (two * m)
-      E_max = (msq - (mass(5) + mass(24))**2) / (two * m)
-      E_max = E_max - E_offset
-      if (E1 > E_max) then
-         E1 = E_max
-         msq2 = m * (m - two * E_max)
-      end if
-
-      lda = lambda (msq, msq1, msq2)
-      if (lda < zero) call msg_fatal &
-           ("Threshold Splitting: lambda < 0 encountered! Use a higher offset.")
-      p = sqrt(lda) / (two * m)
-
-      E1 = sqrt (msq1 + p**2)
-      E2 = sqrt (msq2 + p**2)
-
-      p1_out = shift_momentum (p1_rest, E1, p)
-      p2_out = shift_momentum (p2_rest, E2, p)
-
-      L = boost (p_origin, p_origin**1)
-      p1_out = L  * p1_out
-      p2_out = L  * p2_out
-   end subroutine evaluate_one_to_two_splitting_threshold
-
-   subroutine get_rest_frame (p1_in, p2_in, p1_out, p2_out)
-     type(vector4_t), intent(in) :: p1_in, p2_in
-     type(vector4_t), intent(out) :: p1_out, p2_out
-     type(lorentz_transformation_t) :: L
-     L = inverse (boost (p1_in + p2_in, (p1_in + p2_in)**1))
-     p1_out = L * p1_in; p2_out = L * p2_in
-   end subroutine get_rest_frame
-
-   function shift_momentum (p_in, E, p) result (p_out)
-     type(vector4_t) :: p_out
-     type(vector4_t), intent(in) :: p_in
-     real(default), intent(in) :: E, p
-     type(vector3_t) :: vec
-     vec = p_in%p(1:3) / space_part_norm (p_in)
-     p_out = vector4_moving (E, p * vec)
-   end function shift_momentum 
-
     subroutine set_production_momenta_with_gluon ()
       k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
       k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
@@ -1023,24 +962,18 @@ contains
       type(momentum) :: mom_tmp
       real(default) :: msq_in
       integer :: i
-      procedure(evaluate_one_to_two_splitting_threshold), pointer :: ppointer
       k_tmp(1)%p = k(:,7)
       k_tmp(2)%p = k(:,ass_quark(leg))
       k_tmp(3)%p = k(:,ass_boson(leg))
       mom_tmp = -(k(:,1) + k(:,2))
       msq_in = (ttv_mtpole (mom_tmp * mom_tmp))**2
       k_tmp(4)%p = [sqrt (msq_in), zero, zero, zero] 
-      ppointer => evaluate_one_to_two_splitting_threshold
-      call generate_on_shell_decay (k_tmp(4), &
-           k_tmp(1:3), k_decay_onshell_real (2:4), 1, &
-           evaluate_special = ppointer)
+      L_to_cms = boost_to_cms
+      call generate_on_shell_decay_threshold (k_tmp(1:3), &
+           k_tmp(4), k_decay_onshell_real (2:4), L_to_cms)
       k_decay_onshell_real (1) = k_tmp(4)
       k_decay_onshell_real = k_decay_onshell_real ([1,4,3,2])
       call compute_projected_top_momenta (mom_tmp, leg)
-
-      L_to_cms = boost_to_cms
-
-      k_decay_onshell_real = L_to_cms * k_decay_onshell_real
 
       k_tmp(1)%p = k(:,ass_quark(other_leg))
       k_tmp(2)%p = k(:,ass_boson(other_leg))
@@ -1050,7 +983,6 @@ contains
       do i = 1, 3
          k_decay_onshell_born(i)%p(1:3) = -k_decay_onshell_born(i)%p(1:3)
       end do
-
 
       k_decay_born = k_decay_onshell_born
       k_decay_real = k_decay_onshell_real

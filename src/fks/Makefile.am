@@ -75,6 +75,7 @@ module_lists = \
   ../model_features/Modules \
   ../types/Modules \
   ../particles/Modules \
+  ../threshold/Modules \
   ../matrix_elements/Modules \
   ../beams/Modules \
   ../me_methods/Modules \
