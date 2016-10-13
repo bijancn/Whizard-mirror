@@ -23,10 +23,17 @@
     `contained` subroutines can serve as intermediate solutions with the
     naming convention:
 
-       function foo ()
-       contains
-       <<module containing foo: foo: procedures>>
-       end function foo
+```
+  function foo ()
+  contains
+  <<module containing foo: foo: procedures>>
+  end function foo
+
+@ %def foo
+<<module containing foo: foo: procedures>>=
+  subroutine contained_sub_routine ()
+  end subroutine
+```
 
 # Style settings
 ## general
