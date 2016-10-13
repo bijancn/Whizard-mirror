@@ -1023,15 +1023,17 @@ contains
       type(momentum) :: mom_tmp
       real(default) :: msq_in
       integer :: i
+      procedure(evaluate_one_to_two_splitting_threshold), pointer :: ppointer
       k_tmp(1)%p = k(:,7)
       k_tmp(2)%p = k(:,ass_quark(leg))
       k_tmp(3)%p = k(:,ass_boson(leg))
       mom_tmp = -(k(:,1) + k(:,2))
       msq_in = (ttv_mtpole (mom_tmp * mom_tmp))**2
       k_tmp(4)%p = [sqrt (msq_in), zero, zero, zero] 
+      ppointer => evaluate_one_to_two_splitting_threshold
       call generate_on_shell_decay (k_tmp(4), &
            k_tmp(1:3), k_decay_onshell_real (2:4), 1, &
-           evaluate_special = evaluate_one_to_two_splitting_threshold)
+           evaluate_special = ppointer)
       k_decay_onshell_real (1) = k_tmp(4)
       call compute_projected_top_momenta (mom_tmp, leg)
 
