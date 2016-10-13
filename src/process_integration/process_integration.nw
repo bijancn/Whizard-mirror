@@ -5703,28 +5703,24 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
              flavor_born, flavor_real)
           associate (template => pcm%settings%fks_template)
              if (template%mapping_type == FKS_RESONANCES) then
-                select case (pcm%settings%factorization_mode)
-                case (NO_FACTORIZATION)
-                   select type (phs_config => process%component(i_real)%phs_config)
-                   type is (phs_fks_config_t)
-                      call get_filtered_resonance_histories (phs_config, &
-                         data_born%n_in, flavor_born, model, template%excluded_resonances, &
-                         resonance_histories, success)
-                   end select
-                   if (.not. success) template%mapping_type = FKS_DEFAULT
-                case (FACTORIZATION_THRESHOLD)
-                   resonance_histories = create_resonance_histories_for_threshold ()
+                select type (phs_config => process%component(i_real)%phs_config)
+                type is (phs_fks_config_t)
+                   call get_filtered_resonance_histories (phs_config, &
+                      data_born%n_in, flavor_born, model, template%excluded_resonances, &
+                      resonance_histories, success)
                 end select
+                if (.not. success) template%mapping_type = FKS_DEFAULT
              end if
              !!! Check again, mapping_type might have changed
              if (template%mapping_type == FKS_RESONANCES) then
                 call pcm%region_data%set_resonance_mappings (resonance_histories)
-                call pcm%region_data%init_resonance_information &
-                   (pcm%settings%factorization_mode)
+                call pcm%region_data%init_resonance_information ()
                 pcm%settings%use_resonance_mappings = .true.
              end if
           end associate
        end select
+       if (pcm%settings%factorization_mode == FACTORIZATION_THRESHOLD) &
+          call pcm%region_data%set_isr_pseudo_regions ()
        call pcm%region_data%compute_number_of_phase_spaces ()
        call pcm%region_data%set_i_phs_to_i_con ()
        call pcm%region_data%write_to_file (process%meta%id)
@@ -5736,18 +5732,22 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
 <<Process: process: TBP>>=
   procedure :: check_if_threshold_method => process_check_if_threshold_method
 <<Process: procedures>>=
-  subroutine process_check_if_threshold_method (process, i_real)
+  subroutine process_check_if_threshold_method (process)
     class(process_t), intent(inout) :: process
-    integer, intent(in) :: i_real
-    integer :: i_term_base
-    i_term_base = process%get_base_i_term (i_real)
-    select type (core => process%get_core_term(i_term_base))
-    type is (prc_threshold_t)
-       select type (pcm => process%pcm)
-       type is (pcm_nlo_t)
-          pcm%settings%factorization_mode = FACTORIZATION_THRESHOLD
-       end select
-    end select
+    integer :: i_core
+    associate (cm => process%cm)
+       do i_core = 1, cm%n_cores
+          if (cm%nlo_type (i_core) == NLO_REAL) then
+             select type (core => cm%cores(i_core)%core)
+             type is (prc_threshold_t)
+                select type (pcm => process%pcm)
+                type is (pcm_nlo_t)
+                   pcm%settings%factorization_mode = FACTORIZATION_THRESHOLD
+                end select
+             end select
+          end if
+       end do
+    end associate
   end subroutine process_check_if_threshold_method
 
 @ %def process_check_if_threshold_method
