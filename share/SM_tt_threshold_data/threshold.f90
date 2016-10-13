@@ -1035,6 +1035,7 @@ contains
            k_tmp(1:3), k_decay_onshell_real (2:4), 1, &
            evaluate_special = ppointer)
       k_decay_onshell_real (1) = k_tmp(4)
+      k_decay_onshell_real = k_decay_onshell_real ([1,4,3,2])
       call compute_projected_top_momenta (mom_tmp, leg)
 
       L_to_cms = boost_to_cms
