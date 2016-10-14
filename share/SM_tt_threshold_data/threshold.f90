@@ -163,9 +163,6 @@ module @ID@_threshold
   !!! Helicity factors: Mean over incoming helicities
   real(default), parameter, public :: production_factors = N_ / four
 
-  integer, dimension(2), parameter, public :: ass_quark = [5, 6]
-  integer, dimension(2), parameter, public :: ass_boson = [3, 4]
-
   integer, dimension(n_prt_OS,n_hel_OS), save, protected :: table_spin_states_OS
   data table_spin_states_OS(:,   1) / -1, -1, -1, -1 /
   data table_spin_states_OS(:,   2) / -1, -1, -1,  1 /
