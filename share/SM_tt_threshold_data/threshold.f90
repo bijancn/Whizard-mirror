@@ -115,6 +115,7 @@ module @ID@_threshold
   use diagnostics
   use numeric_utils
   use physics_defs, only: THR_POS_WP, THR_POS_WM, THR_POS_B, THR_POS_BBAR
+  use physics_defs, only: ass_boson, ass_quark
   use constants
   use lorentz
   use omega95
