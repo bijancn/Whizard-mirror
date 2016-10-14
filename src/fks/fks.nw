@@ -3183,6 +3183,17 @@ position.
 @ %def fks_apply_perm
 @
 <<fks regions: reg data: TBP>>=
+  procedure :: has_pseudo_isr => region_data_has_pseudo_isr
+<<fks regions: procedures>>=
+  function region_data_has_pseudo_isr (reg_data) result (val)
+    logical :: val
+    class(region_data_t), intent(in) :: reg_data
+    val = any (reg_data%regions%pseudo_isr)
+  end function region_data_has_pseudo_isr
+
+@ %def region_data_has_pseudo_isr
+@
+<<fks regions: reg data: TBP>>=
   procedure :: final => region_data_final
 <<fks regions: procedures>>=
   subroutine region_data_final (reg_data)
@@ -5023,6 +5034,7 @@ module real_subtraction
   use flavors
   use phs_fks, only: real_kinematics_t, isr_kinematics_t
   use phs_fks, only: I_PLUS, I_MINUS
+  use phs_fks, only: phs_point_set_t
 
   use fks_regions
   use nlo_data
@@ -5998,7 +6010,7 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
           call rsub%set_alr (alr)
           call rsub%set_i_res (alr)
           sqme_alr = rsub%evaluate_emitter_region (rsub%reg_data%regions(alr)%emitter, &
-             i_phs, alpha_s)
+               i_phs, alpha_s)
           i_con = rsub%get_i_contributor (alr)
           if (rsub%purpose == INTEGRATION .or. rsub%purpose == FIXED_ORDER_EVENTS) &
              sqme_alr = sqme_alr * rsub%get_phs_factor (i_con)
@@ -6057,9 +6069,10 @@ the corresponding jacobians.
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       if (rsub%radiation_active) then
          sqme_rad = rsub%sqme_real_non_sub (1, i_phs)
-         call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, rsub%current_alr, &
-            i_phs, emitter, rsub%current_i_res)
-         call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, rsub%real_kinematics, i_phs, .false.)
+         call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, &
+              rsub%current_alr, i_phs, emitter, rsub%current_i_res)
+         call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, &
+              rsub%real_kinematics, i_phs, .false.)
       end if
       if (rsub%subtraction_active) then
          call rsub%evaluate_subtraction_terms_fsr (emitter, i_phs, alpha_s, &
@@ -6320,17 +6333,22 @@ the corresponding jacobians.
      (sqme, reg_data, real_kinematics, alr, i_phs, emitter, i_res)
     real(default), intent(inout) :: sqme
     type(region_data_t), intent(inout) :: reg_data
-    type(real_kinematics_t), intent(in) :: real_kinematics
+    type(real_kinematics_t), intent(in), target :: real_kinematics
     integer, intent(in) :: alr, i_phs, emitter, i_res
     real(default) :: s_alpha
-    s_alpha = reg_data%get_svalue (real_kinematics%p_real_cms%get_momenta(i_phs), &
-        alr, emitter, i_res)
+    type(phs_point_set_t), pointer :: p_real => null ()
+    if (reg_data%has_pseudo_isr ()) then
+       p_real => real_kinematics%p_real_onshell
+    else
+       p_real => real_kinematics%p_real_cms
+    end if
+    s_alpha = reg_data%get_svalue (p_real%get_momenta(i_phs),  alr, emitter, i_res)
     if (debug2_active (D_SUBTRACTION)) call msg_print_color('s_alpha', s_alpha, COL_YELLOW)
     sqme = sqme * s_alpha
     associate (region => reg_data%regions(alr))
        sqme = sqme * region%mult
        if (emitter > reg_data%n_in) &
-          sqme = sqme * region%double_fsr_factor (real_kinematics%p_real_cms%get_momenta(i_phs))
+          sqme = sqme * region%double_fsr_factor (p_real%get_momenta(i_phs))
     end associate
   end subroutine evaluate_fks_factors
 
@@ -8033,8 +8051,8 @@ end module nlo_color_data_ut
 <<File header>>
 
 module nlo_color_data_uti
+  use physics_defs, only: NO_FACTORIZATION
   use nlo_color_data, only: nlo_color_data_t
-  use nlo_data, only: NO_FACTORIZATION
   use fks_regions, only: region_data_t, setup_region_data_for_test
 
 <<Standard module head>>

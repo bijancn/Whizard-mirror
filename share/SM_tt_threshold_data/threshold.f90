@@ -998,12 +998,12 @@ contains
          sqrts = sqrt(s)
          call assert_equal (u, mass(6), p_decay(1)**1, 'Decay-top is on-shell', &
               abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
-         call assert_equal (u, zero, p_decay(2)**1, 'Gluon is on-shell', &
+         call assert_equal (u, zero, p_decay(4)**1, 'Gluon is on-shell', &
               abs_smallness = 1E-5_default, rel_smallness = 1E-5_default, &
               exit_on_fail = .true.)
          call assert_equal (u, mass(5), p_decay(3)**1, 'Decay-bottom is on-shell', &
               abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
-         call assert_equal (u, mass(24), p_decay(4)**1, 'Decay-W is on-shell', &
+         call assert_equal (u, mass(24), p_decay(2)**1, 'Decay-W is on-shell', &
               abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
          call assert_equal (u, mass(6), p_prod(1)**1, 'Production-top is on-shell', &
               abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)

@@ -1361,6 +1361,17 @@ inverse mappings to fill the [[r]] and [[f]] arrays.
 
 @ %def phs_inverse
 @
+<<PHS base: phs: TBP>>=
+  procedure :: get_sqrts => phs_get_sqrts
+<<PHS base: procedures>>=
+  function phs_get_sqrts (phs) result (sqrts)
+    real(default) :: sqrts
+    class(phs_t), intent(in) :: phs
+    sqrts = phs%config%sqrts
+  end function phs_get_sqrts
+
+@ %def phs_get_sqrts
+@
 \subsubsection{Uniform angular distribution}
 These procedures implement the uniform angular distribution, generated
 from two parameters $x_1$ and $x_2$:
@@ -12412,6 +12423,7 @@ module phs_fks
   use cascades
   use process_constants
   use process_libraries
+  use ttv_formfactors, only: generate_on_shell_decay_threshold
 
 <<Standard module head>>
 
@@ -12671,6 +12683,8 @@ end module phs_fks
     type(phs_point_set_t) :: p_born_lab
     type(phs_point_set_t) :: p_real_cms
     type(phs_point_set_t) :: p_real_lab
+    type(phs_point_set_t) :: p_born_onshell
+    type(phs_point_set_t) :: p_real_onshell
     integer, dimension(:), allocatable :: alr_to_i_phs
     real(default), dimension(3) :: x_rad
     real(default), dimension(:), allocatable :: jac_rand
@@ -12716,6 +12730,18 @@ end module phs_fks
 @ %def real_kinematics_init
 @
 <<phs fks: real kinematics: TBP>>=
+  procedure :: init_onshell => real_kinematics_init_onshell
+<<phs fks: procedures>>=
+  subroutine real_kinematics_init_onshell (r, n_tot, n_phs)
+    class(real_kinematics_t), intent(inout) :: r
+    integer, intent(in) :: n_tot, n_phs
+    call r%p_born_onshell%init (n_tot - 1, 1)
+    call r%p_real_onshell%init (n_tot, n_phs)
+  end subroutine real_kinematics_init_onshell
+
+@ %def real_kinematics_init_onshell
+@
+<<phs fks: real kinematics: TBP>>=
   procedure :: write => real_kinematics_write
 <<phs fks: procedures>>=
   subroutine real_kinematics_write (r, unit)
@@ -12736,6 +12762,55 @@ end module phs_fks
   end subroutine real_kinematics_write
 
 @ %def real_kinematics_write
+@
+<<phs fks: real kinematics: TBP>>=
+  procedure :: apply_threshold_projection => real_kinematics_apply_threshold_projection
+<<phs fks: procedures>>=
+  subroutine real_kinematics_apply_threshold_projection (r, emitter, sqrts, mtop)
+    class(real_kinematics_t), intent(inout) :: r
+    integer, intent(in) :: emitter
+    real(default), intent(in) :: sqrts, mtop
+    integer :: leg, other_leg
+    type(vector4_t), dimension(4) :: k_tmp
+    type(lorentz_transformation_t) :: L_to_cms
+    type(vector4_t), dimension(4) :: k_decay_onshell_real
+    type(vector4_t), dimension(3) :: k_decay_onshell_born
+    real(default) :: scale_factor
+    type(vector3_t) :: dir
+    if (emitter > 0) then
+       leg = emitter - 4; other_leg = 3 - leg
+       !!! TODO (cw-2016-10-14): Use i_phs
+       associate (p_real => r%p_real_cms%phs_point(1), &
+            p_real_onshell => r%p_real_onshell%phs_point(1))
+          p_real_onshell%p(1:2) = p_real%p(1:2)
+          k_tmp(1) = p_real%p(ass_quark(leg)) + p_real%p(ass_boson(leg))
+          scale_factor = sqrt (sqrts**2 - 4 * mtop**2) / two
+          dir = scale_factor * create_unit_vector (k_tmp(1))
+          k_tmp(4)%p = [sqrts / two, dir%p]
+          L_to_cms = boost (k_tmp(4), mtop)
+          k_tmp(1) = p_real%p(7)
+          k_tmp(2) = p_real%p(ass_quark(leg))
+          k_tmp(3) = p_real%p(ass_boson(leg))
+          k_tmp(4)%p = [mtop, zero, zero, zero]
+          call generate_on_shell_decay_threshold (k_tmp(1:3), &
+               k_tmp(4), k_decay_onshell_real (2:4), L_to_cms) 
+          k_decay_onshell_real (1) = k_tmp(4)
+          p_real_onshell%p(7) = k_decay_onshell_real (2)
+          p_real_onshell%p(ass_quark(leg)) = k_decay_onshell_real(3)
+          p_real_onshell%p(ass_boson(leg)) = k_decay_onshell_real(4)
+          k_tmp(1)%p = p_real%p(ass_quark(other_leg))
+          k_tmp(2)%p = p_real%p(ass_boson(other_leg))
+          k_decay_onshell_born = create_two_particle_decay (mtop**2, k_tmp(1), k_tmp(2))
+          p_real_onshell%p(ass_quark(other_leg)) = L_to_cms * k_decay_onshell_born (2)
+          p_real_onshell%p(ass_boson(other_leg)) = L_to_cms * k_decay_onshell_born (3)
+          call vector4_invert_direction (p_real%p (ass_quark(other_leg)))
+          call vector4_invert_direction (p_real%p (ass_boson(other_leg)))
+       end associate
+    else
+    end if
+  end subroutine real_kinematics_apply_threshold_projection
+
+@ %def real_kinematics_apply_threshold_projection
 @ This routine computes the bounds of the Dalitz region for massive emitters, see below.
 It is also used by [[Powheg]], so the routine is public.
 The input parameter [[m2]] corresponds to the squared mass of the emitter and [[p]] is the

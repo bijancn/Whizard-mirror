@@ -8767,8 +8767,11 @@ object and the squared matrix-element collector.
              n_contr = 1
           end if
           call pcm_instance%real_kinematics%init &
-             (region_data%n_legs_real, region_data%n_phs, &
-             region_data%n_regions, n_contr)
+               (region_data%n_legs_real, region_data%n_phs, &
+               region_data%n_regions, n_contr)
+          if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) &
+             call pcm_instance%real_kinematics%init_onshell &
+                  (region_data%n_legs_real, region_data%n_phs)
           pcm_instance%isr_kinematics%n_in = region_data%n_in
        end associate
     end select
@@ -9571,6 +9574,7 @@ module instances
   use integration_results
   use phs_base
   use prc_core, only: prc_core_t, prc_core_state_t
+  use ttv_formfactors, only: m1s_to_mpole
 
   !!! We should depend less on these modules (move it to pcm_nlo_t e.g.)
   use phs_wood, only: phs_wood_t, phs_wood_config_t
@@ -10398,30 +10402,34 @@ The quantum numbers mask of the incoming particle
     integer :: i_phs, emitter
     sqme = zero
     associate (pcm_instance => term%pcm_instance)
-       call pcm_instance%real_sub%set_real_kinematics &
-          (pcm_instance%real_kinematics)
-       call pcm_instance%real_sub%set_isr_kinematics &
-          (pcm_instance%isr_kinematics)
-       if (term%k_term%emitter < 0) then
-          call pcm_instance%disable_sqme_np1 ()
-          select type (config => pcm_instance%config)
-          type is (pcm_nlo_t)
+       select type (config => pcm_instance%config)
+       type is (pcm_nlo_t)
+          if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) &
+             call pcm_instance%real_kinematics%apply_threshold_projection &
+                  (term%k_term%emitter, term%k_term%phs%get_sqrts (), &
+                  m1s_to_mpole (term%k_term%phs%get_sqrts ()))
+          call pcm_instance%real_sub%set_real_kinematics &
+               (pcm_instance%real_kinematics)
+          call pcm_instance%real_sub%set_isr_kinematics &
+               (pcm_instance%isr_kinematics)
+          if (term%k_term%emitter < 0) then
+             call pcm_instance%disable_sqme_np1 ()
              do i_phs = 1, config%region_data%n_phs
                 select type (phs => term%k_term%phs)
                 type is (phs_fks_t)
                    emitter = phs%phs_identifiers(i_phs)%emitter
                 end select
                 sqme = sqme + pcm_instance%real_sub%compute (emitter, &
-                   i_phs, alpha_s_sub)
+                     i_phs, alpha_s_sub)
              end do
-          end select
-       else
-          call pcm_instance%disable_subtraction ()
-          emitter = term%k_term%emitter; i_phs = term%k_term%i_phs
-          pcm_instance%real_sub%sqme_real_non_sub (1, i_phs) = &
-             real (term%connected%trace%get_matrix_element (1))
-          sqme = pcm_instance%real_sub%compute (emitter, i_phs, alpha_s_sub)
-       end if
+          else
+             call pcm_instance%disable_subtraction ()
+             emitter = term%k_term%emitter; i_phs = term%k_term%i_phs
+             pcm_instance%real_sub%sqme_real_non_sub (1, i_phs) = &
+                real (term%connected%trace%get_matrix_element (1))
+             sqme = pcm_instance%real_sub%compute (emitter, i_phs, alpha_s_sub)
+          end if
+       end select
     end associate
     call term%connected%trace%set_matrix_element (cmplx (sqme, zero, default))
   end subroutine term_instance_apply_fks
