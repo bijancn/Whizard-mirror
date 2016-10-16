@@ -8389,6 +8389,7 @@ module pcm
   use nlo_data, only: nlo_settings_t
   use nlo_data, only: powheg_damping_t, powheg_damping_simple_t
   use phs_fks, only: isr_kinematics_t, real_kinematics_t
+  use phs_fks, only: phs_identifier_t
   use nlo_color_data, only: nlo_color_data_t
   use fks_regions, only: region_data_t
   use phs_fks, only: phs_fks_generator_t
@@ -8396,6 +8397,7 @@ module pcm
   use real_subtraction, only: FIXED_ORDER_EVENTS, POWHEG
   use virtual, only: virtual_t
   use dglap_remnant, only: dglap_remnant_t
+  use ttv_formfactors, only: m1s_to_mpole
 
   use pcm_base
 
@@ -8750,7 +8752,7 @@ object and the squared matrix-element collector.
 @
 <<Pcm: pcm instance: TBP>>=
   procedure :: init_real_and_isr_kinematics => &
-     pcm_instance_nlo_init_real_and_isr_kinematics
+       pcm_instance_nlo_init_real_and_isr_kinematics
 <<Pcm: procedures>>=
   subroutine pcm_instance_nlo_init_real_and_isr_kinematics (pcm_instance, sqrts)
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
@@ -8779,6 +8781,35 @@ object and the squared matrix-element collector.
   end subroutine pcm_instance_nlo_init_real_and_isr_kinematics
 
 @ %def pcm_instance_nlo_init_real_and_isr_kinematics
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: set_real_and_isr_kinematics => &
+      pcm_instance_nlo_set_real_and_isr_kinematics
+<<Pcm: procedures>>=
+  subroutine pcm_instance_nlo_set_real_and_isr_kinematics (pcm_instance, phs_identifiers, sqrts)
+    class(pcm_instance_nlo_t), intent(inout), target :: pcm_instance
+    type(phs_identifier_t), intent(in), dimension(:) :: phs_identifiers
+    real(default), intent(in) :: sqrts
+    integer :: i_phs, emitter
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) then
+          do i_phs = 1, config%region_data%n_phs
+             emitter = phs_identifiers(i_phs)%emitter
+             call pcm_instance%real_kinematics%apply_threshold_projection_real &
+                  (i_phs, emitter, sqrts, m1s_to_mpole (sqrts))
+          end do
+          call pcm_instance%real_kinematics%apply_threshold_projection_born &
+               (sqrts, m1s_to_mpole (sqrts))
+       end if
+       call pcm_instance%real_sub%set_real_kinematics &
+            (pcm_instance%real_kinematics)
+       call pcm_instance%real_sub%set_isr_kinematics &
+            (pcm_instance%isr_kinematics)
+   end select
+  end subroutine pcm_instance_nlo_set_real_and_isr_kinematics
+
+@ %def pcm_instance_nlo_set_real_and_isr_kinematics
 @
 <<Pcm: pcm instance: TBP>>=
   procedure :: init_real_subtraction => pcm_instance_nlo_init_real_subtraction
@@ -9574,7 +9605,6 @@ module instances
   use integration_results
   use phs_base
   use prc_core, only: prc_core_t, prc_core_state_t
-  use ttv_formfactors, only: m1s_to_mpole
 
   !!! We should depend less on these modules (move it to pcm_nlo_t e.g.)
   use phs_wood, only: phs_wood_t, phs_wood_config_t
@@ -10404,38 +10434,25 @@ The quantum numbers mask of the incoming particle
     associate (pcm_instance => term%pcm_instance)
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
-          if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) then
-             do i_phs = 1, config%region_data%n_phs
-                select type (phs => term%k_term%phs)
-                type is (phs_fks_t)
+          select type (phs => term%k_term%phs)
+          type is (phs_fks_t)
+             call pcm_instance%set_real_and_isr_kinematics &
+                  (phs%phs_identifiers, term%k_term%phs%get_sqrts ())
+             if (term%k_term%emitter < 0) then
+                call pcm_instance%disable_sqme_np1 ()
+                do i_phs = 1, config%region_data%n_phs
                    emitter = phs%phs_identifiers(i_phs)%emitter
-                end select
-                call pcm_instance%real_kinematics%apply_threshold_projection &
-                     (i_phs, emitter, term%k_term%phs%get_sqrts (), &
-                      m1s_to_mpole (term%k_term%phs%get_sqrts ()))
-             end do
-          end if
-          call pcm_instance%real_sub%set_real_kinematics &
-               (pcm_instance%real_kinematics)
-          call pcm_instance%real_sub%set_isr_kinematics &
-               (pcm_instance%isr_kinematics)
-          if (term%k_term%emitter < 0) then
-             call pcm_instance%disable_sqme_np1 ()
-             do i_phs = 1, config%region_data%n_phs
-                select type (phs => term%k_term%phs)
-                type is (phs_fks_t)
-                   emitter = phs%phs_identifiers(i_phs)%emitter
-                end select
-                sqme = sqme + pcm_instance%real_sub%compute (emitter, &
-                       i_phs, alpha_s_sub)
-             end do
-          else
-             call pcm_instance%disable_subtraction ()
-             emitter = term%k_term%emitter; i_phs = term%k_term%i_phs
-             pcm_instance%real_sub%sqme_real_non_sub (1, i_phs) = &
-                  real (term%connected%trace%get_matrix_element (1))
-             sqme = pcm_instance%real_sub%compute (emitter, i_phs, alpha_s_sub)
-          end if
+                   sqme = sqme + pcm_instance%real_sub%compute (emitter, &
+                          i_phs, alpha_s_sub)
+                end do
+             else
+                call pcm_instance%disable_subtraction ()
+                emitter = term%k_term%emitter; i_phs = term%k_term%i_phs
+                pcm_instance%real_sub%sqme_real_non_sub (1, i_phs) = &
+                     real (term%connected%trace%get_matrix_element (1))
+                sqme = pcm_instance%real_sub%compute (emitter, i_phs, alpha_s_sub)
+             end if
+          end select
        end select
     end associate
     call term%connected%trace%set_matrix_element (cmplx (sqme, zero, default))
