@@ -582,8 +582,6 @@ contains
     end if
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
-       ! TODO: (bcn 2016-02-08) in the matched factorized computation we might
-       !        need interference terms in the Born
        if (threshold%settings%factorized_computation) then
           if (threshold%settings%helicity_approximated) then
              if (threshold%settings%helicity_approximated_extra) then
