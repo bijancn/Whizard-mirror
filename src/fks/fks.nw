@@ -5035,6 +5035,7 @@ module real_subtraction
   use phs_fks, only: real_kinematics_t, isr_kinematics_t
   use phs_fks, only: I_PLUS, I_MINUS
   use phs_fks, only: phs_point_set_t
+  use phs_fks, only: thr_leg
 
   use fks_regions
   use nlo_data
@@ -5077,6 +5078,7 @@ where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_
     real(default), dimension(:,:), allocatable :: momentum_matrix
     logical :: use_resonance_mappings = .false.
     type(vector4_t) :: p_soft = vector4_null
+    type(vector4_t), dimension(2) :: p_soft_threshold = vector4_null
     logical :: use_internal_color_correlations = .true.
     logical :: use_internal_spin_correlations = .false.
     logical :: xi2_expanded = .true.
@@ -5114,34 +5116,46 @@ rotated about the corresponding angles $y$ and $\phi$.
   procedure :: create_softvec_fsr => soft_subtraction_create_softvec_fsr
 <<real subtraction: procedures>>=
   subroutine soft_subtraction_create_softvec_fsr &
-     (sub_soft, p_born, y, phi, emitter, xi_ref_momentum)
+     (sub_soft, p_born, y, phi, emitter, xi_ref_momentum, leg)
     class(soft_subtraction_t), intent(inout) :: sub_soft
     type(vector4_t), intent(in), dimension(:) :: p_born
     real(default), intent(in) :: y, phi
     integer, intent(in) :: emitter
     type(vector4_t), intent(in) :: xi_ref_momentum
+    integer, intent(in), optional :: leg
     type(vector3_t) :: dir
     type(vector4_t) :: p_em
     type(lorentz_transformation_t) :: rot
     type(lorentz_transformation_t) :: boost_to_rest_frame
-    sub_soft%p_soft%p(0) = one
+    type(vector4_t) :: p_soft
+    p_soft%p(0) = one
     if (sub_soft%use_resonance_mappings) then
        boost_to_rest_frame = inverse (boost (xi_ref_momentum, xi_ref_momentum**1))
        p_em = boost_to_rest_frame * p_born(emitter)
     else
        p_em = p_born(emitter)
     end if
-    sub_soft%p_soft%p(1:3) = p_em%p(1:3) / space_part_norm (p_em)
+    p_soft%p(1:3) = p_em%p(1:3) / space_part_norm (p_em)
     dir = create_orthogonal (space_part (p_em))
     rot = rotation (y, sqrt(one - y**2), dir)
-    sub_soft%p_soft = rot * sub_soft%p_soft
+    p_soft = rot * p_soft
     if (.not. vanishes (phi)) then
       dir = space_part (p_em) / space_part_norm (p_em)
       rot = rotation (cos(phi), sin(phi), dir)
-      sub_soft%p_soft = rot * sub_soft%p_soft
+      p_soft = rot * p_soft
     end if
     if (sub_soft%use_resonance_mappings) &
-       sub_soft%p_soft = inverse (boost_to_rest_frame) * sub_soft%p_soft
+       p_soft = inverse (boost_to_rest_frame) * p_soft
+    select case (sub_soft%factorization_mode)
+    case (NO_FACTORIZATION)
+       sub_soft%p_soft = p_soft
+    case (FACTORIZATION_THRESHOLD)
+       if (present (leg)) then
+          sub_soft%p_soft_threshold(leg) = p_soft
+       else
+          call msg_fatal ("THRESHOLD FACTORIZATION REQUIRES A SPECIFIED LEG!")
+       end if
+    end select
   end subroutine soft_subtraction_create_softvec_fsr
 
 @ %def soft_subtraction_create_softvec_fsr
@@ -5237,8 +5251,15 @@ distinguished by the flag [[xi2_expanded]].
        print *, 'Compute soft subtraction using alpha_s = ', alpha_s
     end if
 
-    s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
-       (p_born, sub_soft%p_soft, alr, emitter, i_res)
+    select case (sub_soft%factorization_mode)
+    case (NO_FACTORIZATION)
+       s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
+            (p_born, sub_soft%p_soft, alr, emitter, i_res)
+    case (FACTORIZATION_THRESHOLD)
+       s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
+            (p_born, sub_soft%p_soft_threshold(thr_leg(emitter)), &
+            alr, emitter, i_res)
+    end select
     if (debug2_active (D_SUBTRACTION)) &
        call msg_print_color ('s_alpha_soft', s_alpha_soft, COL_YELLOW)
     select case (sub_soft%factorization_mode)
@@ -5330,37 +5351,37 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     real(default), intent(in), dimension(:,:) :: born_ij
     type(vector4_t), dimension(4) :: p
     p = get_threshold_momenta (p_born)
-    kb = evaluate_leg_pair (1) + evaluate_leg_pair (3)
+    kb = evaluate_leg_pair (1, 1) + evaluate_leg_pair (3, 2)
     if (debug2_active (D_SUBTRACTION))  call show_debug ()
 
   contains
 
-    function evaluate_leg_pair (i_start) result (kbb)
+    function evaluate_leg_pair (i_start, leg) result (kbb)
       real(default) :: kbb
-      integer, intent(in) :: i_start
+      integer, intent(in) :: i_start, leg
       integer :: i1, i2
       real(default) :: numerator, deno1, deno2
       kbb = zero
       do i1 = i_start, i_start + 1
          do i2 = i_start, i_start + 1
             numerator = p(i1) * p(i2)
-            deno1 = p(i1) * sub_soft%p_soft
-            deno2 = p(i2) * sub_soft%p_soft
+            deno1 = p(i1) * sub_soft%p_soft_threshold(leg)
+            deno2 = p(i2) * sub_soft%p_soft_threshold(leg)
             kbb = kbb +  numerator * born_ij (i1, i2) / deno1 / deno2
          end do
       end do
       if (debug2_active (D_SUBTRACTION)) then
-      do i1 = i_start, i_start + 1
-         do i2 = i_start, i_start + 1
-            call msg_print_color('i1', i1, COL_PEACH)
-            call msg_print_color('i2', i2, COL_PEACH)
-            call msg_print_color('born_ij(i1,i2)', born_ij(i1,i2), COL_PINK)
-            numerator = p(i1) * p(i2)
-            deno1 = p(i1) * sub_soft%p_soft
-            deno2 = p(i2) * sub_soft%p_soft
-            kbb = kbb +  numerator * born_ij (i1, i2) / deno1 / deno2
+         do i1 = i_start, i_start + 1
+            do i2 = i_start, i_start + 1
+               call msg_print_color('i1', i1, COL_PEACH)
+               call msg_print_color('i2', i2, COL_PEACH)
+               call msg_print_color('born_ij (i1,i2)', born_ij (i1,i2), COL_PINK)
+               numerator = p(i1) * p(i2)
+               deno1 = p(i1) * sub_soft%p_soft_threshold(leg)
+               deno2 = p(i2) * sub_soft%p_soft_threshold(leg)
+               kbb = kbb +  numerator * born_ij (i1, i2) / deno1 / deno2
+            end do
          end do
-      end do
       end if
     end function evaluate_leg_pair
 
@@ -6077,8 +6098,13 @@ the corresponding jacobians.
       if (rsub%subtraction_active) then
          call rsub%evaluate_subtraction_terms_fsr (emitter, i_phs, alpha_s, &
               sqme_soft, sqme_coll, sqme_cs)
-         call apply_kinematic_factors_subtraction_fsr (sqme_soft, sqme_coll, sqme_cs, &
-              rsub%real_kinematics, i_phs, rsub%reg_data%has_pseudo_isr ())
+         if (rsub%reg_data%has_pseudo_isr ()) then
+            call apply_kinematic_factors_subtraction_fsr (sqme_soft, sqme_coll, sqme_cs, &
+                 rsub%real_kinematics, i_phs, emitter)
+         else
+            call apply_kinematic_factors_subtraction_fsr (sqme_soft, sqme_coll, sqme_cs, &
+                 rsub%real_kinematics, i_phs)
+         end if
          sqme_remn = compute_sqme_remnant_fsr (sqme_soft, sqme_cs, rsub%real_kinematics, i_phs)
          select case (rsub%purpose)
          case (INTEGRATION)
@@ -6338,7 +6364,7 @@ the corresponding jacobians.
     real(default) :: s_alpha
     type(phs_point_set_t), pointer :: p_real => null ()
     if (reg_data%has_pseudo_isr ()) then
-       p_real => real_kinematics%p_real_onshell
+       p_real => real_kinematics%p_real_onshell (thr_leg (emitter))
     else
        p_real => real_kinematics%p_real_cms
     end if
@@ -6381,15 +6407,15 @@ the corresponding jacobians.
 @
 <<real subtraction: procedures>>=
   subroutine apply_kinematic_factors_subtraction_fsr &
-     (sqme_soft, sqme_coll, sqme_cs, real_kinematics, i_phs, pseudo_isr)
+     (sqme_soft, sqme_coll, sqme_cs, real_kinematics, i_phs, emitter)
     real(default), intent(inout) :: sqme_soft, sqme_coll, sqme_cs
     type(real_kinematics_t), intent(in) :: real_kinematics
     integer, intent(in) :: i_phs
-    logical, intent(in) :: pseudo_isr
+    integer, intent(in), optional :: emitter
     real(default) :: xi_tilde, onemy
     xi_tilde = real_kinematics%xi_tilde
-    if (pseudo_isr) then
-       onemy = one - real_kinematics%y_onshell(i_phs)
+    if (present(emitter)) then
+       onemy = one - real_kinematics%y_onshell(i_phs, thr_leg (emitter))
     else
        onemy = one - real_kinematics%y(i_phs)
     end if
@@ -6548,18 +6574,30 @@ to be more consistent with the evaluation of the Born phase space.
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: emitter, i_phs
     real(default), intent(in) :: alpha_s
+    if (rsub%reg_data%has_pseudo_isr ()) then
+       sqme_soft = rsub%compute_sub_soft_threshold (emitter, i_phs, alpha_s)
+    else
+       sqme_soft = rsub%compute_sub_soft_default (emitter, i_phs, alpha_s)
+    end if
+  end function real_subtraction_compute_sub_soft
+
+@ %def real_subtraction_compute_sub_soft
+@
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: compute_sub_soft_default => real_subtraction_compute_sub_soft_default
+<<real subtraction: procedures>>=
+  function real_subtraction_compute_sub_soft_default (rsub, emitter, &
+     i_phs, alpha_s) result (sqme_soft)
+    real(default) :: sqme_soft
+    class(real_subtraction_t), intent(inout) :: rsub
+    integer, intent(in) :: emitter, i_phs
+    real(default), intent(in) :: alpha_s
     integer :: alr, i_con, i_uborn
-    real(default) :: q2, y
-    type(phs_point_set_t), pointer :: p_born => null ()
+    real(default) :: q2
 
     alr = rsub%current_alr
     associate (real_kinematics => rsub%real_kinematics)
        if (rsub%reg_data%regions(alr)%has_soft_divergence ()) then
-          if (rsub%reg_data%has_pseudo_isr ()) then
-             p_born => real_kinematics%p_born_onshell
-          else
-             p_born => real_kinematics%p_born_cms
-          end if
           if (rsub%sub_soft%use_resonance_mappings) then
              i_con = rsub%reg_data%alr_to_i_contributor (alr)
           else
@@ -6568,8 +6606,8 @@ to be more consistent with the evaluation of the Born phase space.
           q2 = real_kinematics%xi_ref_momenta (i_con)**2
           if (emitter > rsub%sub_soft%reg_data%n_in) then
              call rsub%sub_soft%create_softvec_fsr &
-                (p_born%get_momenta(1), &
-                real_kinematics%y_soft (i_phs), &
+                (real_kinematics%p_born_cms%get_momenta(1), &
+                real_kinematics%y_soft(i_phs), &
                 real_kinematics%phi, emitter, &
                 real_kinematics%xi_ref_momenta(i_con))
           else
@@ -6577,21 +6615,59 @@ to be more consistent with the evaluation of the Born phase space.
                 (real_kinematics%y_soft(i_phs), real_kinematics%phi)
           end if
           i_uborn = rsub%reg_data%regions(alr)%uborn_index
-          if (rsub%reg_data%has_pseudo_isr ()) then
-             y = real_kinematics%y_onshell(i_phs)
-          else
-             y = real_kinematics%y(i_phs)
-          end if
-          sqme_soft = rsub%sub_soft%compute (p_born%get_momenta(1), &
-               rsub%sqme_born_cc(:,:,i_uborn), y, &
+          sqme_soft = rsub%sub_soft%compute &
+               (real_kinematics%p_born_cms%get_momenta(1), &
+               rsub%sqme_born_cc(:,:,i_uborn), real_kinematics%y(i_phs), &
                q2, alpha_s, alr, emitter, rsub%current_i_res)
        else
           sqme_soft = zero
        end if
     end associate
-  end function real_subtraction_compute_sub_soft
+  end function real_subtraction_compute_sub_soft_default
 
-@ %def real_subtraction_compute_sub_soft
+@ %def real_subtraction_compute_sub_soft_defauld
+@
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: compute_sub_soft_threshold => real_subtraction_compute_sub_soft_threshold
+<<real subtraction: procedures>>=
+  function real_subtraction_compute_sub_soft_threshold (rsub, emitter, &
+     i_phs, alpha_s) result (sqme_soft)
+    real(default) :: sqme_soft
+    class(real_subtraction_t), intent(inout) :: rsub
+    integer, intent(in) :: emitter, i_phs
+    real(default), intent(in) :: alpha_s
+    integer :: alr, i_con, i_uborn, leg
+    real(default) :: q2
+
+    alr = rsub%current_alr
+    associate (real_kinematics => rsub%real_kinematics)
+       if (rsub%reg_data%regions(alr)%has_soft_divergence ()) then
+          if (rsub%sub_soft%use_resonance_mappings) then
+             i_con = rsub%reg_data%alr_to_i_contributor (alr)
+          else
+             i_con = 1
+          end if
+          q2 = real_kinematics%xi_ref_momenta (i_con)**2
+          do leg = 1, 2
+             call rsub%sub_soft%create_softvec_fsr &
+                  (real_kinematics%p_born_onshell%get_momenta(1), &
+                  real_kinematics%y_soft_onshell(i_phs, leg), &
+                  real_kinematics%phi, emitter, &
+                  real_kinematics%xi_ref_momenta(i_con), leg)
+          end do
+          i_uborn = rsub%reg_data%regions(alr)%uborn_index
+          sqme_soft = rsub%sub_soft%compute &
+               (real_kinematics%p_born_onshell%get_momenta(1), &
+               rsub%sqme_born_cc(:,:,i_uborn), &
+               real_kinematics%y_onshell (i_phs, thr_leg(emitter)), &
+               q2, alpha_s, alr, emitter, rsub%current_i_res)
+       else
+          sqme_soft = zero
+       end if
+    end associate
+  end function real_subtraction_compute_sub_soft_threshold
+
+@ %def real_subtraction_compute_sub_soft_threshold
 @
 <<real subtraction: real subtraction: TBP>>=
   procedure :: get_sc_matrix_element => real_subtraction_get_sc_matrix_element

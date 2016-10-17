@@ -12658,6 +12658,16 @@ end module phs_fks
 
 @ %def phs_point_set_final
 @
+<<phs fks: public>>=
+  public :: thr_leg
+<<phs fks: procedures>>=
+  function thr_leg (emitter) result (leg)
+    integer :: leg
+    integer, intent(in) :: emitter
+    leg = emitter - THR_EMITTER_OFFSET
+  end function thr_leg
+
+@ %def thr_leg
 @
 <<phs fks: public>>=
   public :: real_jacobian_t
@@ -12684,7 +12694,7 @@ end module phs_fks
     type(phs_point_set_t) :: p_real_cms
     type(phs_point_set_t) :: p_real_lab
     type(phs_point_set_t) :: p_born_onshell
-    type(phs_point_set_t) :: p_real_onshell
+    type(phs_point_set_t), dimension(2) :: p_real_onshell
     integer, dimension(:), allocatable :: alr_to_i_phs
     real(default), dimension(3) :: x_rad
     real(default), dimension(:), allocatable :: jac_rand
@@ -12692,7 +12702,8 @@ end module phs_fks
     real(default) :: cms_energy2
     type(vector4_t), dimension(:), allocatable :: k_perp
     type(vector4_t), dimension(:), allocatable :: xi_ref_momenta
-    real(default), dimension(:), allocatable :: y_onshell
+    real(default), dimension(:,:), allocatable :: y_onshell
+    real(default), dimension(:,:), allocatable :: y_soft_onshell
   contains
   <<phs fks: real kinematics: TBP>>
   end type real_kinematics_t
@@ -12707,8 +12718,9 @@ end module phs_fks
     integer, intent(in) :: n_tot, n_phs, n_alr, n_contr
     allocate (r%xi_max (n_phs))
     allocate (r%y (n_phs))
-    allocate (r%y_onshell (n_phs))
+    allocate (r%y_onshell (n_phs, 2))
     allocate (r%y_soft (n_phs))
+    allocate (r%y_soft_onshell (n_phs, 2))
     call r%p_born_cms%init (n_tot - 1, 1)
     call r%p_born_lab%init (n_tot - 1, 1)
     call r%p_real_cms%init (n_tot, n_phs)
@@ -12723,6 +12735,7 @@ end module phs_fks
     r%y = zero; r%y_mismatch = zero
     r%y_onshell = zero
     r%y_soft = zero
+    r%y_soft_onshell = zero
     r%phi = zero
     r%cms_energy2 = zero
     r%xi_ref_momenta = vector4_null
@@ -12739,7 +12752,8 @@ end module phs_fks
     class(real_kinematics_t), intent(inout) :: r
     integer, intent(in) :: n_tot, n_phs
     call r%p_born_onshell%init (n_tot - 1, 1)
-    call r%p_real_onshell%init (n_tot, n_phs)
+    call r%p_real_onshell(1)%init (n_tot, n_phs)
+    call r%p_real_onshell(2)%init (n_tot, n_phs)
   end subroutine real_kinematics_init_onshell
 
 @ %def real_kinematics_init_onshell
@@ -12795,29 +12809,31 @@ end module phs_fks
     type(lorentz_transformation_t) :: L_to_cms
     type(vector4_t), dimension(4) :: k_decay_onshell_real
     type(vector4_t), dimension(3) :: k_decay_onshell_born
-    leg = emitter - 4; other_leg = 3 - leg
-    associate (p_real => r%p_real_cms%phs_point(i_phs)%p, &
-         p_real_onshell => r%p_real_onshell%phs_point(i_phs)%p)
-       L_to_cms = get_boost_for_threshold_projection (p_real, sqrts, mtop)
-       p_real_onshell(1:2) = p_real(1:2)
-       k_tmp(1) = p_real(7)
-       k_tmp(2) = p_real(ass_quark(leg))
-       k_tmp(3) = p_real(ass_boson(leg))
-       k_tmp(4) = [mtop, zero, zero, zero]
-       call generate_on_shell_decay_threshold (k_tmp(1:3), &
-            k_tmp(4), k_decay_onshell_real (2:4), L_to_cms)
-       k_decay_onshell_real (1) = k_tmp(4)
-       p_real_onshell(7) = k_decay_onshell_real (2)
-       p_real_onshell(ass_quark(leg)) = k_decay_onshell_real(3)
-       p_real_onshell(ass_boson(leg)) = k_decay_onshell_real(4)
-       k_tmp(1) = p_real(ass_quark(other_leg))
-       k_tmp(2) = p_real(ass_boson(other_leg))
-       k_decay_onshell_born = create_two_particle_decay (mtop**2, k_tmp(1), k_tmp(2))
-       p_real_onshell(ass_quark(other_leg)) = L_to_cms * k_decay_onshell_born (2)
-       p_real_onshell(ass_boson(other_leg)) = L_to_cms * k_decay_onshell_born (3)
-       call vector4_invert_direction (p_real_onshell (ass_quark(other_leg)))
-       call vector4_invert_direction (p_real_onshell (ass_boson(other_leg)))
-    end associate
+    do leg = 1, 2
+       other_leg = 3 - leg
+       associate (p_real => r%p_real_cms%phs_point(i_phs)%p, &
+            p_real_onshell => r%p_real_onshell(leg)%phs_point(i_phs)%p)
+          L_to_cms = get_boost_for_threshold_projection (p_real, sqrts, mtop)
+          p_real_onshell(1:2) = p_real(1:2)
+          k_tmp(1) = p_real(7)
+          k_tmp(2) = p_real(ass_quark(leg))
+          k_tmp(3) = p_real(ass_boson(leg))
+          k_tmp(4) = [mtop, zero, zero, zero]
+          call generate_on_shell_decay_threshold (k_tmp(1:3), &
+               k_tmp(4), k_decay_onshell_real (2:4), L_to_cms)
+          k_decay_onshell_real (1) = k_tmp(4)
+          p_real_onshell(7) = k_decay_onshell_real (2)
+          p_real_onshell(ass_quark(leg)) = k_decay_onshell_real(3)
+          p_real_onshell(ass_boson(leg)) = k_decay_onshell_real(4)
+          k_tmp(1) = p_real(ass_quark(other_leg))
+          k_tmp(2) = p_real(ass_boson(other_leg))
+          k_decay_onshell_born = create_two_particle_decay (mtop**2, k_tmp(1), k_tmp(2))
+          p_real_onshell(ass_quark(other_leg)) = L_to_cms * k_decay_onshell_born (2)
+          p_real_onshell(ass_boson(other_leg)) = L_to_cms * k_decay_onshell_born (3)
+          call vector4_invert_direction (p_real_onshell (ass_quark(other_leg)))
+          call vector4_invert_direction (p_real_onshell (ass_boson(other_leg)))
+       end associate
+    end do
   end subroutine real_kinematics_apply_threshold_projection_real
 
 @ %def real_kinematics_apply_threshold_projection_real
@@ -12858,12 +12874,16 @@ end module phs_fks
     class(real_kinematics_t), intent(inout) :: r
     integer, intent(in) :: i_phs, emitter
     real(default) :: q0, mrec2, m2
-    associate (p => r%p_real_onshell%get_momenta(i_phs))
-       r%y_onshell = space_part (p(emitter)) * space_part (p(THR_POS_GLUON)) / &
+    integer :: leg
+    leg = thr_leg (emitter)
+    associate (p => r%p_real_onshell(leg)%get_momenta(i_phs))
+       r%y_onshell(i_phs, leg) = &
+            space_part (p(emitter)) * space_part (p(THR_POS_GLUON)) / &
             space_part_norm (p(emitter)) / space_part_norm (p(THR_POS_GLUON))
        q0 = p(1)%p(0); m2 = p(emitter)**2
        mrec2 = (q0 - p(emitter)%p(0))**2 - space_part_norm (p(emitter))**2
-       r%y_soft(i_phs) = recompute_y_soft (q0, mrec2, m2, r%y_onshell (i_phs))
+       r%y_soft_onshell(i_phs, leg) = &
+            recompute_y_soft (q0, mrec2, m2, r%y_onshell (i_phs, leg))
     end associate
   end subroutine real_kinematics_scale_y_threshold
 
