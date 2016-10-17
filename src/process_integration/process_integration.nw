@@ -3592,9 +3592,8 @@ configuration is left intact.
     integer :: i
     do i = 1, process%meta%n_components
        associate (component => process%component(i))
-         if (component%active) then
+         if (component%active) &
             call component%collect_channels (coll)
-         end if
        end associate
     end do
   end subroutine process_collect_channels
@@ -4557,7 +4556,7 @@ the process setup, data, and expressions, but no integration results.
     config => process%meta%lib%get_component_def_ptr (process%meta%id, i_component)
     associate (core => process%cm%cores(i_core)%core)
        call core%init (config%get_core_def_ptr (), &
-          process%meta%lib, process%meta%id, i_component)
+            process%meta%lib, process%meta%id, i_component)
     end associate
     select type (core => process%cm%cores(i_core)%core)
     class is (prc_blha_t)
@@ -5884,20 +5883,30 @@ Could also be moved to the [[core_manager_t]].
     type(os_data_t), intent(in) :: os_data
     integer, intent(out) :: n_sub
     type(string_t) :: libname
-    integer :: i
+    integer :: i, i_component, i_term, i_core
+    logical, dimension(process%cm%n_cores) :: loaded
 
+    loaded = .false.
     if (process%needs_extra_code (only_blha = .true.))  &
          call process%create_blha_interface (beam_structure)
-    associate (cm => process%cm)
-       do i = 1, cm%n_cores
-          select type (core => cm%cores(i)%core)
-          class is (prc_user_defined_base_t)
-             libname = process%get_library_name ()
-             call core%create_and_load_extra_libraries ( &
-                  os_data, libname, process%config%model, i)
-          end select
-       end do
-    end associate
+    do i_component = 1, process%meta%n_components
+       associate (component => process%component(i_component))
+          if (.not. component%can_be_integrated ()) cycle
+          do i = 1, size (component%i_term)
+             i_term = component%i_term(i)
+             i_core = process%term(i_term)%i_core
+             if (.not. loaded (i_core)) then
+                select type (core => process%cm%cores(i_core)%core)
+                class is (prc_user_defined_base_t)
+                   libname = process%get_library_name ()
+                   call core%create_and_load_extra_libraries &
+                        (os_data, libname, process%config%model, i_core)
+                end select
+                loaded(i_core) = .true.
+             end if
+          end do
+       end associate
+    end do
     select type (pcm => process%pcm)
     type is (pcm_nlo_t)
        n_sub =  pcm%get_n_sub ()
@@ -5939,6 +5948,7 @@ module process_config
   use prc_core
   use prc_user_defined
   use prc_openloops
+  use prc_threshold, only: prc_threshold_t
   use beams
   use mci_base
   use beam_structures
@@ -7301,11 +7311,13 @@ matrix element.
          (term%data%n_in, 0, term%data%n_out, set_relations = .true.)
     select type (core)
     type is (prc_openloops_t)
-      call setup_states_openloops ()
+       call setup_states_openloops ()
+    type is (prc_threshold_t)
+       call setup_states_threshold ()
     class is (prc_user_defined_base_t)
-      call setup_states_other_user_defined ()
+       call setup_states_other_user_defined ()
     class default
-      call setup_states_omega ()
+       call setup_states_omega ()
     end select
     call term%int%freeze ()
   contains
@@ -7385,6 +7397,30 @@ matrix element.
       end associate
     end subroutine setup_states_openloops
 
+    subroutine setup_states_threshold ()
+      integer :: f, c, h, i
+      if (n_hel > 1) &
+         call msg_fatal ("Polarized beams only supported by OpenLoops")
+      i = 0
+      associate (data => term%data)
+         do f = 1, term%data%n_flv
+            do h = 1, data%n_hel
+               do c = 1, data%n_col
+                  i = i + 1
+                  term%flv(i) = f
+                  !!! Dumy initialization of helicity
+                  term%hel(i) = 1
+                  !!! Dummy-initialization of color
+                  term%col(i) = 1
+                  call flv%init (term%data%flv_state (:,f), model)
+                  call qn%init (flv)
+                  call term%int%add_state (qn)
+               end do
+            end do
+         end do
+      end associate
+    end subroutine setup_states_threshold
+
     subroutine setup_states_other_user_defined ()
       integer :: s, f, i
       integer :: n_sub
@@ -7396,9 +7432,7 @@ matrix element.
          do f = 1, term%data%n_flv
             i = i + 1
             term%flv(i) = f
-            !!! Dumy initialization of helicity
             term%hel(i) = 1
-            !!! Dummy-initialization of color
             term%col(i) = 1
             call flv%init (term%data%flv_state (:,f), model)
             call qn%init (flv, s)
@@ -9108,7 +9142,6 @@ end module kinematics
      logical :: sf_chain_allocated = .false.
      logical :: phs_allocated = .false.
      logical :: f_allocated = .false.
-     integer :: nlo_type = BORN
      integer :: emitter = -1
      integer :: i_phs = 0
      integer :: i_con = 0
@@ -9182,7 +9215,6 @@ end module kinematics
   subroutine kinematics_set_nlo_info (k, nlo_type)
     class(kinematics_t), intent(inout) :: k
     integer, intent(in) :: nlo_type
-    k%nlo_type = nlo_type
     if (nlo_type == NLO_VIRTUAL) k%only_cm_frame = .true.
   end subroutine kinematics_set_nlo_info
 
@@ -9470,47 +9502,40 @@ Relevant for using the proper momenta input for BLHA matrix elements.
 @ %def kinematics_boost_to_cm_frame
 @
 <<Kinematics: kinematics: TBP>>=
-  procedure :: get_momenta => kinematics_get_momenta
+  procedure :: evaluate_radiation => kinematics_evaluate_radiation
 <<Kinematics: procedures>>=
-  function kinematics_get_momenta (k, p_in) result (p_out)
-    type(vector4_t), dimension(:), allocatable :: p_out
+  subroutine kinematics_evaluate_radiation (k, p_in, p_out)
     class(kinematics_t), intent(in) :: k
     type(vector4_t), intent(in), dimension(:) :: p_in
+    type(vector4_t), intent(out), dimension(:), allocatable :: p_out
     type(phs_point_t) :: p
-    select case (k%nlo_type)
-    case (NLO_REAL)
-       select type (phs => k%phs)
-       type is (phs_fks_t)
-          call phs%compute_xi_max (p_in)
-          if (k%emitter >= 0) then
-             p = size (p_in) + 1
-             allocate (p_out (size (p_in) + 1))
-             if (k%emitter <= k%n_in) then
-                call phs%generate_isr (k%i_phs, p_in, p)
-             else
-                if (k%i_con > 0) then
-                   call phs%generate_fsr (k%emitter, k%i_phs, p, k%i_con)
-                else
-                   call phs%generate_fsr (k%emitter, k%i_phs, p)
-                end if
-             end if
-             if (debug_active (D_SUBTRACTION)) then
-                call msg_debug (D_SUBTRACTION, "Real phase-space: ")
-                call p%write ()
-             end if
-             p_out = p%p
+    select type (phs => k%phs)
+    type is (phs_fks_t)
+       call phs%compute_xi_max (p_in)
+       if (k%emitter >= 0) then
+          p = size (p_in) + 1
+          allocate (p_out (size (p_in) + 1))
+          if (k%emitter <= k%n_in) then
+             call phs%generate_isr (k%i_phs, p_in, p)
           else
-             allocate (p_out (size (p_in))); p_out = p_in
+             if (k%i_con > 0) then
+                call phs%generate_fsr (k%emitter, k%i_phs, p, k%i_con)
+             else
+                call phs%generate_fsr (k%emitter, k%i_phs, p)
+             end if
           end if
-       class default
+          if (debug_active (D_SUBTRACTION)) then
+             call msg_debug (D_SUBTRACTION, "Real phase-space: ")
+             call p%write ()
+          end if
+          p_out = p%p
+       else
           allocate (p_out (size (p_in))); p_out = p_in
-       end select
-    case default
-       allocate (p_out (size (p_in))); p_out = p_in
+       end if
     end select
-  end function kinematics_get_momenta
+  end subroutine kinematics_evaluate_radiation
 
-@ %def kinematics_get_momenta
+@ %def kinematics_evaluate_radiation
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Instances}
@@ -10039,8 +10064,8 @@ postpone until we know the factorization scale), and we have a valid
        if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) then
           select type (config => term%pcm_instance%config)
           type is (pcm_nlo_t)
-             call term%k_term%evaluate_radiation_kinematics (mci_work%get_x_process (), &
-                config%region_data)
+             call term%k_term%evaluate_radiation_kinematics &
+                  (mci_work%get_x_process (), config%region_data)
           end select
        end if
     end select
@@ -10091,12 +10116,19 @@ choose to calculate all terms at once together with the seed kinematics, use
   subroutine term_instance_compute_hard_kinematics (term, skip_term)
     class(term_instance_t), intent(inout) :: term
     integer, intent(in), optional :: skip_term
+    type(vector4_t), dimension(:), allocatable :: p
     if (allocated (term%core_state)) &
        call term%core_state%reset_new_kinematics ()
     if (present (skip_term)) then
        if (term%config%i_term_global == skip_term) return
     end if
-    call term%int_hard%set_momenta (term%k_term%get_momenta (term%p_seed))
+
+    if (term%nlo_type == NLO_REAL .and. term%k_term%emitter >= 0) then
+       call term%k_term%evaluate_radiation (term%p_seed, p)
+    else
+       allocate (p (size (term%p_seed))); p = term%p_seed
+    end if
+    call term%int_hard%set_momenta (p)
   end subroutine term_instance_compute_hard_kinematics
 
 @ %def term_instance_compute_hard_kinematics
@@ -11699,9 +11731,8 @@ components, from the seed kinematics.
     integer :: i
     if (instance%evaluation_status >= STAT_SEED_KINEMATICS) then
        do i = 1, size (instance%term)
-          if (instance%term(i)%active) then
-            call instance%term(i)%compute_hard_kinematics (skip_term)
-          end if
+          if (instance%term(i)%active) &
+             call instance%term(i)%compute_hard_kinematics (skip_term)
        end do
        instance%evaluation_status = STAT_HARD_KINEMATICS
     end if
