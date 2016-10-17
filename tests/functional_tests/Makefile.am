@@ -419,9 +419,10 @@ $(top_builddir)/src/gamelan/gamelan.sty:
 	$(MAKE) -C $(top_builddir)/src/gamelan gamelan.sty
 endif
 
+noinst_PROGRAMS = 
 if HEPMC_AVAILABLE
 TESTS_SRC += $(hepmc_6_rd_SOURCES)
-noinst_PROGRAMS = hepmc_6_rd
+noinst_PROGRAMS += hepmc_6_rd
 hepmc_6_rd_SOURCES = hepmc_6_rd.cpp
 hepmc_6_rd_CXXFLAGS = $(HEPMC_INCLUDES) $(AM_CXXFLAGS)
 hepmc_6_rd_LDADD = $(LDFLAGS_HEPMC)
@@ -430,7 +431,7 @@ endif
 
 if LCIO_AVAILABLE
 TESTS_SRC += $(lcio_rd_SOURCES)
-noinst_PROGRAMS = lcio_rd
+noinst_PROGRAMS += lcio_rd
 lcio_rd_SOURCES = lcio_rd.cpp
 lcio_rd_CXXFLAGS = $(LCIO_INCLUDES) $(AM_CXXFLAGS)
 lcio_rd_LDADD = $(LDFLAGS_LCIO)
