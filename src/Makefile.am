@@ -39,7 +39,6 @@ SUBDIRS = \
   testing \
   system \
   combinatorics parsing expr_base \
-  sindarin \
   physics qft \
   fastjet \
   types \
