@@ -4,7 +4,7 @@ echo "Running script $0"
 if test -f OCAML_FLAG -a -f HEPMC_FLAG; then
     s=`basename @script@`
     ./run_whizard.sh @script@ --no-logging --model QED
-    echo "Output from running ${s}_rd:" >> ${s}.log
+    echo "Output from running ${s}_rd:" > ${s}.log
     LD_LIBRARY_PATH=@HEPMC_LD_LIBRARY_PATH@ ./${s}_rd >> ${s}.log
     diff ref-output/$s.ref ${s}.log
 else
