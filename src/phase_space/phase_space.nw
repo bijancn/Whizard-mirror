@@ -12692,6 +12692,7 @@ end module phs_fks
     real(default) :: cms_energy2
     type(vector4_t), dimension(:), allocatable :: k_perp
     type(vector4_t), dimension(:), allocatable :: xi_ref_momenta
+    real(default), dimension(:), allocatable :: y_onshell
   contains
   <<phs fks: real kinematics: TBP>>
   end type real_kinematics_t
@@ -12706,6 +12707,7 @@ end module phs_fks
     integer, intent(in) :: n_tot, n_phs, n_alr, n_contr
     allocate (r%xi_max (n_phs))
     allocate (r%y (n_phs))
+    allocate (r%y_onshell (n_phs))
     allocate (r%y_soft (n_phs))
     call r%p_born_cms%init (n_tot - 1, 1)
     call r%p_born_lab%init (n_tot - 1, 1)
@@ -12719,6 +12721,7 @@ end module phs_fks
     r%xi_tilde = zero; r%xi_mismatch = zero
     r%xi_max = zero
     r%y = zero; r%y_mismatch = zero
+    r%y_onshell = zero
     r%y_soft = zero
     r%phi = zero
     r%cms_energy2 = zero
@@ -12847,6 +12850,24 @@ end module phs_fks
   end subroutine real_kinematics_apply_threshold_projection_born
 
 @ %def real_kinematics_apply_threshold_projection_born
+@
+<<phs fks: real kinematics: TBP>>=
+  procedure :: scale_y_threshold => real_kinematics_scale_y_threshold
+<<phs fks: procedures>>=
+  subroutine real_kinematics_scale_y_threshold (r, i_phs, emitter)
+    class(real_kinematics_t), intent(inout) :: r
+    integer, intent(in) :: i_phs, emitter
+    real(default) :: q0, mrec2, m2
+    associate (p => r%p_real_onshell%get_momenta(i_phs))
+       r%y_onshell = space_part (p(emitter)) * space_part (p(THR_POS_GLUON)) / &
+            space_part_norm (p(emitter)) / space_part_norm (p(THR_POS_GLUON))
+       q0 = p(1)%p(0); m2 = p(emitter)**2
+       mrec2 = (q0 - p(emitter)%p(0))**2 - space_part_norm (p(emitter))**2
+       r%y_soft(i_phs) = recompute_y_soft (q0, mrec2, m2, r%y_onshell (i_phs))
+    end associate
+  end subroutine real_kinematics_scale_y_threshold
+
+@ %def real_kinematics_scale_y_threshold
 @ This routine computes the bounds of the Dalitz region for massive emitters, see below.
 It is also used by [[Powheg]], so the routine is public.
 The input parameter [[m2]] corresponds to the squared mass of the emitter and [[p]] is the
@@ -14195,6 +14216,23 @@ $\xi$.
 @ %def phs_fks_generator_compute_emitter_kinematics
 @
 <<phs fks: procedures>>=
+  function recompute_y_soft (q0, mrec2, m2, y) result (y_soft)
+    real(default) :: y_soft
+    real(default), intent(in) :: q0, mrec2, m2, y
+    real(default) :: q2, k0_em_max, k0_rec_max
+    real(default) :: z1, z2, z
+    q2 = q0**2
+    k0_rec_max = (q2 - m2 + mrec2) / (two * q0)
+    k0_em_max = (q2 + m2 - mrec2)  /(two * q0)
+    z1 = (k0_rec_max + sqrt (k0_rec_max**2 - mrec2)) / q0
+    z2 = (k0_rec_max - sqrt (k0_rec_max**2 - mrec2)) / q0
+    z = z2 - (z2 - z1) * (one + y) / 2
+    y_soft = (two * q2 * z - q2 - mrec2 + m2) / (sqrt(k0_em_max**2 - m2) * q0) / two
+  end function recompute_y_soft
+
+@ %def recompute_y_soft
+@
+<<phs fks: procedures>>=
   function compute_beta_massless (q2, k0_rec, uk_rec) result (beta)
     real(default), intent(in) :: q2, k0_rec, uk_rec
     real(default) :: beta
@@ -14929,8 +14967,8 @@ with $\Lambda$.
                          p_em = boost_to_resonance * p(emitter)
                       end associate
                    else
-                       q0 = generator%sqrts
-                       p_em = p(emitter)
+                      q0 = generator%sqrts
+                      p_em = p(emitter)
                    end if
                    beta = beta_emitter (q0, p_em)
                    one_m_beta = one - beta
