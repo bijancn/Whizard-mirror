@@ -28,7 +28,7 @@
 ## defined outside the DISTRIBUTION environment as modern autotools
 ## versions complain otherwise
 w_srcdir = $(top_srcdir)/src
-VPATH = $(srcdir):$(w_srcdir)/noweb-frame:$(w_srcdir)/utilities:$(w_srcdir)/testing:$(w_srcdir)/system:$(w_srcdir)/combinatorics:$(w_srcdir)/parsing:$(w_srcdir)/rng:$(w_srcdir)/expr_base:$(w_srcdir)/sindarin:$(w_srcdir)/physics:$(w_srcdir)/qft:$(w_srcdir)/types:$(w_srcdir)/matrix_elements:$(w_srcdir)/particles:$(w_srcdir)/beams:$(w_srcdir)/me_methods:$(w_srcdir)/events:$(w_srcdir)/phase_space:$(w_srcdir)/mci:$(w_srcdir)/user:$(w_srcdir)/fks:$(w_srcdir)/gosam:$(w_srcdir)/openloops:$(w_srcdir)/blha:$(w_srcdir)/shower:$(w_srcdir)/muli:$(w_srcdir)/variables:$(w_srcdir)/model_features:$(w_srcdir)/threshold:$(w_srcdir)/process_integration:$(w_srcdir)/matching:$(w_srcdir)/transforms:$(w_srcdir)/whizard-core
+VPATH = $(srcdir):$(w_srcdir)/noweb-frame:$(w_srcdir)/utilities:$(w_srcdir)/testing:$(w_srcdir)/system:$(w_srcdir)/combinatorics:$(w_srcdir)/parsing:$(w_srcdir)/rng:$(w_srcdir)/expr_base:$(w_srcdir)/physics:$(w_srcdir)/qft:$(w_srcdir)/types:$(w_srcdir)/matrix_elements:$(w_srcdir)/particles:$(w_srcdir)/beams:$(w_srcdir)/me_methods:$(w_srcdir)/events:$(w_srcdir)/phase_space:$(w_srcdir)/mci:$(w_srcdir)/user:$(w_srcdir)/fks:$(w_srcdir)/gosam:$(w_srcdir)/openloops:$(w_srcdir)/blha:$(w_srcdir)/shower:$(w_srcdir)/muli:$(w_srcdir)/variables:$(w_srcdir)/model_features:$(w_srcdir)/threshold:$(w_srcdir)/process_integration:$(w_srcdir)/matching:$(w_srcdir)/transforms:$(w_srcdir)/whizard-core
 
 ## The primary targets
 if DISTRIBUTION
@@ -122,7 +122,6 @@ WHIZARD_DEPENDENCY_GRAPHS_DOT = \
 	qft.dot \
 	rng.dot \
 	shower.dot \
-	sindarin.dot \
 	system.dot \
 	testing.dot \
 	threshold.dot \
