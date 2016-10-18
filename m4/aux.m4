@@ -305,4 +305,13 @@ else
    echo "LoopTools           :   no"
 fi
 echo "--------------------------------------------------------------"
+if test "$SIP_ACTIVE" = "yes" ; then
+echo "**************************************************************"
+echo "***              MAC OS X Darwin system with               ***"
+echo "***    Security Integrity Protection (SIP) enabled.        ***"
+echo "***  'make check' will not work, and most likely also      ***"
+echo "***  'make installcheck' will not work. The installed      ***"
+echo "***            WHIZARD will work as intended.              ***"
+echo "**************************************************************"
+fi
 ])
