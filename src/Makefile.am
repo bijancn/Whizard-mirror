@@ -39,7 +39,6 @@ SUBDIRS = \
   testing \
   system \
   combinatorics parsing expr_base \
-  sindarin \
   physics qft \
   fastjet \
   types \
@@ -123,7 +122,6 @@ libwhizard_la_LIBADD = \
   types/libtypes.la \
   qft/libqft.la \
   physics/libphysics.la \
-  sindarin/libsindarin.la \
   expr_base/libexpr_base.la \
   rng/librng.la \
   parsing/libparsing.la \
@@ -207,7 +205,6 @@ libwhizard_test_la_LIBADD = \
   types/libtypes_ut.la \
   qft/libqft_ut.la \
   physics/libphysics_ut.la \
-  sindarin/libsindarin_ut.la \
   rng/librng_ut.la \
   parsing/libparsing_ut.la \
   combinatorics/libcombinatorics_ut.la \

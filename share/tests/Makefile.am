@@ -94,50 +94,6 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/evaluator_4.ref \
     unit_tests/ref-output/format_1.ref \
     unit_tests/ref-output/sorting_1.ref \
-    unit_tests/ref-output/codes_1.ref \
-    unit_tests/ref-output/object_base_1.ref \
-    unit_tests/ref-output/object_base_2.ref \
-    unit_tests/ref-output/object_base_3.ref \
-    unit_tests/ref-output/object_base_4.ref \
-    unit_tests/ref-output/object_base_5.ref \
-    unit_tests/ref-output/object_base_6.ref \
-    unit_tests/ref-output/object_base_7.ref \
-    unit_tests/ref-output/object_base_8.ref \
-    unit_tests/ref-output/object_builder_1.ref \
-    unit_tests/ref-output/object_logical_1.ref \
-    unit_tests/ref-output/object_logical_2.ref \
-    unit_tests/ref-output/object_logical_3.ref \
-    unit_tests/ref-output/object_logical_4.ref \
-    unit_tests/ref-output/object_logical_5.ref \
-    unit_tests/ref-output/object_logical_6.ref \
-    unit_tests/ref-output/object_logical_7.ref \
-    unit_tests/ref-output/object_logical_8.ref \
-    unit_tests/ref-output/object_logical_9.ref \
-    unit_tests/ref-output/object_logical_10.ref \
-    unit_tests/ref-output/object_integer_1.ref \
-    unit_tests/ref-output/object_integer_2.ref \
-    unit_tests/ref-output/object_integer_3.ref \
-    unit_tests/ref-output/object_integer_4.ref \
-    unit_tests/ref-output/object_integer_5.ref \
-    unit_tests/ref-output/object_integer_6.ref \
-    unit_tests/ref-output/object_integer_7.ref \
-    unit_tests/ref-output/object_integer_8.ref \
-    unit_tests/ref-output/object_integer_9.ref \
-    unit_tests/ref-output/object_integer_10.ref \
-    unit_tests/ref-output/object_container_1.ref \
-    unit_tests/ref-output/object_container_2.ref \
-    unit_tests/ref-output/object_container_3.ref \
-    unit_tests/ref-output/object_container_4.ref \
-    unit_tests/ref-output/object_comparison_1.ref \
-    unit_tests/ref-output/object_comparison_2.ref \
-    unit_tests/ref-output/object_conditional_1.ref \
-    unit_tests/ref-output/sindarin_parser_1.ref \
-    unit_tests/ref-output/sindarin_parser_2.ref \
-    unit_tests/ref-output/sindarin_parser_3.ref \
-    unit_tests/ref-output/sindarin_parser_4.ref \
-    unit_tests/ref-output/sindarin_parser_5.ref \
-    unit_tests/ref-output/sindarin_parser_6.ref \
-    unit_tests/ref-output/sindarin_parser_7.ref \
     unit_tests/ref-output/grids_1.ref \
     unit_tests/ref-output/grids_2.ref \
     unit_tests/ref-output/grids_3.ref \
@@ -634,6 +590,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/stdhep_4.ref \
     functional_tests/ref-output/stdhep_5.ref \
     functional_tests/ref-output/stdhep_6.ref \
+    functional_tests/ref-output/lcio_1.ref \
     functional_tests/ref-output/fatal_beam_decay.ref \
     functional_tests/ref-output/smtest_1.ref \
     functional_tests/ref-output/smtest_3.ref \
@@ -947,6 +904,7 @@ MISC_TESTS_SIN = \
     functional_tests/stdhep_4.sin \
     functional_tests/stdhep_5.sin \
     functional_tests/stdhep_6.sin \
+    functional_tests/lcio_1.sin \
     functional_tests/fatal_beam_decay.sin \
     functional_tests/smtest_1.sin \
     functional_tests/smtest_2.sin \
