@@ -43,7 +43,7 @@ if test "$enable_lcio" = "yes"; then
   wo_require_stdcpp="yes"
   AC_MSG_CHECKING([for LCEventImpl class in -llcio])
   if test -n "$LCIO_DIR"; then
-    wo_lcio_ldflags="-L$LCIO_DIR/lib $wo_lcio_ldflags"
+    wo_lcio_ldflags="-Wl,-rpath,$LCIO_DIR/lib -L$LCIO_DIR/lib $wo_lcio_ldflags"
   fi
   wo_libs_tmp=$LIBS
   LIBS="$wo_lcio_ldflags $wo_libs_tmp"

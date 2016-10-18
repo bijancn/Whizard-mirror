@@ -51,15 +51,6 @@ UNIT_TESTS = \
     evaluators.run \
     formats.run \
     sorting.run \
-    codes.run \
-    object_base.run \
-    object_builder.run \
-    object_logical.run \
-    object_integer.run \
-    object_container.run \
-    object_comparison.run \
-    object_conditional.run \
-    sindarin_parser.run \
     grids.run \
     solver.run \
     state_matrices.run \
