@@ -431,7 +431,6 @@ contains
        amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * &
             (ttv_formfactor (p3, p4, 1) + extra_tree)
     else
-
        ttv_vec = ttv_formfactor (p35, p46, 1, ffi) + extra_tree
        ttv_ax = ttv_formfactor (p35, p46, 2, ffi) + extra_tree
        blob_Z_vec = gncup(1) * ttv_vec
@@ -455,7 +454,6 @@ contains
           owf_t_4 = v (sqrt (ptopbar * ptopbar), ptopbar, h_tbar)
           amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
           amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * ttv_vec
-          amp = - amp
        else
           top_width = ttv_wtpole (p12*p12, ffi)
           owf_wb_35 = pr_psibar (ptop, mtop, wd_tl (ptop, top_width), .false., &
