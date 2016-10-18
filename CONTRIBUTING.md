@@ -17,6 +17,27 @@
 
 # Development
 
+- General information about noweb is [here](https://www.cs.tufts.edu/~nr/noweb/),
+  and [here in short form](https://www.cs.tufts.edu/~nr/noweb/onepage.ps)
+- functions/subroutines go in code chunk structures like this
+
+```
+@ Some documentation what the idea behind this function is
+<<Module name: procedures>>=
+  subroutine some_subroutine ()
+    ...
+  end subroutine some_subroutine
+
+@ %def some_subroutine
+```
+
+  - If it is a public function/subroutine, there is an additional chunk in
+    between documentation and procedure chunk
+```
+<<Module name: public>>=
+  public :: some_subroutine
+```
+
 - functions/subroutines should stay below 50 lines (a.k.a. roughly a screen).
   Refactoring of violators of this rule are welcome
   - In functions/subroutines where a lot of variables have to be unpacked,
@@ -24,13 +45,14 @@
     naming convention:
 
 ```
+<<Foo bars: procedures>>=
   function foo ()
   contains
-  <<module containing foo: foo: procedures>>
+  <<Foo bars: foo: procedures>>
   end function foo
 
 @ %def foo
-<<module containing foo: foo: procedures>>=
+<<Foo bars: foo: procedures>>=
   subroutine contained_sub_routine ()
   end subroutine
 ```
