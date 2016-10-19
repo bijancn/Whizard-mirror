@@ -9,7 +9,7 @@ if test -f OCAML_FLAG -a -f HEPMC_FLAG; then
     diff ref-output/$s.ref ${s}.log
 else
     echo "|=============================================================================|"
-    echo "No LCIO available, test skipped"
+    echo "No HepMC available, test skipped"
     exit 77
 fi
 
