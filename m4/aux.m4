@@ -299,7 +299,7 @@ if test "$OPENLOOPS_AVAILABLE_FLAG" = ".true." ; then
 else
    echo "OpenLoops (OLP)     :   no"
 fi
-if test $LOOPTOOLS_AVAILABLE_FLAG" = ".true. ; then
+if test "$LOOPTOOLS_AVAILABLE_FLAG" = ".true." ; then
    echo "LoopTools           :   yes"
 else
    echo "LoopTools           :   no"
