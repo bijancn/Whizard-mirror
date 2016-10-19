@@ -4913,6 +4913,7 @@ it would be unretrievable if the usual particle set of the event object was used
     integer, dimension(:), allocatable :: &
        i_evaluation_to_i_phs, i_evaluation_to_i_flv, i_evaluation_to_emitter, &
        i_evaluation_to_i_term
+    logical :: keep_failed_events = .false.
   contains
   <<Evt Nlo: evt nlo: TBP>>
   end type evt_nlo_t
@@ -4966,8 +4967,9 @@ object in the [[pcm_instance]].
        end select
     end select
     call evt%set_mode (process_instance) 
+    call evt%setup_general_event_kinematics (process_instance)
     if (evt%mode > EVT_NLO_SEPARATE_BORNLIKE) &
-       call evt%setup_event_kinematics (process_instance)
+       call evt%setup_real_event_kinematics (process_instance)
     call msg_debug2 (D_TRANSFORMS, "evt_nlo_connect: success")
   end subroutine evt_nlo_connect
 
@@ -5108,6 +5110,20 @@ object in the [[pcm_instance]].
   end subroutine evt_nlo_prepare_new_event
 
 @ %def evt_nlo_prepare_new_event
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: copy_previous_particle_set => evt_nlo_copy_previous_particle_set
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_copy_previous_particle_set (evt)
+    class(evt_nlo_t), intent(inout) :: evt
+    if (associated (evt%previous)) then
+       evt%particle_set = evt%previous%particle_set
+    else
+       call msg_fatal ("evt_nlo requires one preceeding evt_trivial!")
+    end if
+  end subroutine evt_nlo_copy_previous_particle_set
+
+@ %def evt_nlo_copy_previous_particle_set
 @ The event transform has a variable which counts the number of times it
 has already been called for one generation point. If [[i_evaluation]] is
 zero, this means that [[evt_nlo_generate]] is called for the first time,
@@ -5127,7 +5143,7 @@ is distributed over the real and Born subevents.
     real(default), intent(inout) :: probability
     real(default) :: weight
     call print_debug_info ()
-    evt%particle_set = evt%previous%particle_set
+    !evt%particle_set = evt%previous%particle_set
     if (evt%mode > EVT_NLO_SEPARATE_BORNLIKE) then
        if (evt%i_evaluation == 0) then
           call evt%reset_phs_identifiers ()
@@ -5227,7 +5243,7 @@ mother-daughter relations and color information.
     class is (pcm_instance_nlo_t)
        select type (config => pcm%config)
        type is (pcm_nlo_t)
-          if (evt%i_evaluation /= 0) then
+          !if (evt%i_evaluation /= 0) then
              i_flv = evt%get_i_flv ()
              allocate (flv_radiated (size (config%region_data%get_flv_states_real (i_flv))))
              flv_radiated = config%region_data%get_flv_states_real (i_flv)
@@ -5242,8 +5258,8 @@ mother-daughter relations and color information.
              p_new = pcm%get_momenta (i_phs = i_phs, born_phsp = .false.) 
              call evt%particle_set_radiated(i_event)%build_radiation (p_new, emitter, flv_radiated, &
                 evt%process_instance%process%get_model_ptr (), r_col)
-          end if
-          evt%i_evaluation = evt%i_evaluation + 1
+          !end if
+          !evt%i_evaluation = evt%i_evaluation + 1
        end select
     end select
   contains
@@ -5260,6 +5276,28 @@ mother-daughter relations and color information.
   end subroutine evt_nlo_build_radiated_particle_set
 
 @ %def evt_nlo_build_radiated_particle_set
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: keep_and_boost_born_particle_set => &
+       evt_nlo_keep_and_boost_born_particle_set
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_keep_and_boost_born_particle_set (evt, i_event)
+    class(evt_nlo_t), intent(inout) :: evt
+    integer, intent(in) :: i_event
+    evt%particle_set_radiated(i_event) = evt%particle_set
+    if (evt%event_deps%cm_frame) then
+       evt%event_deps%p_born_cms%phs_point(1) = &
+          evt%particle_set%get_in_and_out_momenta ()
+       evt%event_deps%p_born_lab%phs_point(1) = &
+          evt%boost_to_lab (evt%event_deps%p_born_cms%phs_point(1))
+       call evt%particle_set_radiated(i_event)%replace_incoming_momenta &
+          (evt%event_deps%p_born_lab%phs_point(1)%p)
+       call evt%particle_set_radiated(i_event)%replace_outgoing_momenta &
+          (evt%event_deps%p_born_lab%phs_point(1)%p)
+    end if
+  end subroutine evt_nlo_keep_and_boost_born_particle_set
+
+@ %def evt_nlo_keep_and_boost_born_particle_set
 @
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: evaluate_real_kinematics => evt_nlo_evaluate_real_kinematics
@@ -5287,7 +5325,6 @@ mother-daughter relations and color information.
              emitter = event_deps%phs_identifiers(i_phs)%emitter 
              associate (generator => evt%phs_fks_generator)
                 if (emitter <= 2) then
-                   !!!call msg_fatal ("NLO Events only supply final-state emissions")
                    call generator%prepare_generation (x_rad, i_phs, emitter, &
                       event_deps%p_born_cms%phs_point(1)%p, event_deps%phs_identifiers)
                    call generator%generate_isr (i_phs, &
@@ -5311,9 +5348,9 @@ mother-daughter relations and color information.
                          event_deps%p_born_cms%phs_point(1)%p, &
                          event_deps%p_real_cms%phs_point(i_phs))
                    end if
+                   event_deps%p_real_lab%phs_point(i_phs) &
+                        = evt%boost_to_lab (event_deps%p_real_cms%phs_point(i_phs))
                 end if
-                event_deps%p_real_lab%phs_point(i_phs) &
-                   = evt%boost_to_lab (event_deps%p_real_cms%phs_point(i_phs))
              end associate
              call pcm%set_momenta (event_deps%p_born_lab%phs_point(1)%p, &
                 event_deps%p_real_lab%phs_point(i_phs)%p, i_phs)
@@ -5378,12 +5415,16 @@ emission matrix elements.
     class(evt_nlo_t), intent(in) :: evt
     type(phs_point_t) :: p_cms
     type(lorentz_transformation_t) :: lt_lab_to_cms
-    integer :: i_real
+    integer :: i_boost
     if (evt%event_deps%cm_frame) then
        lt_lab_to_cms = identity
     else
-       i_real = evt%process_instance%get_associated_real ()
-       lt_lab_to_cms = inverse (evt%process_instance%get_lorentz_transformation (i_real))
+       if (evt%mode == EVT_NLO_COMBINED) then
+          i_boost = 1
+       else
+          i_boost = evt%process%extract_active_component ()
+       end if
+       lt_lab_to_cms = evt%process_instance%get_boost_to_cms (i_boost)
     end if
     p_cms = lt_lab_to_cms * p_lab
   end function evt_nlo_boost_to_cms
@@ -5398,12 +5439,16 @@ emission matrix elements.
     class(evt_nlo_t), intent(in) :: evt
     type(phs_point_t), intent(in) :: p_cms
     type(lorentz_transformation_t) :: lt_cms_to_lab
-    integer :: i_real
-    if (evt%event_deps%cm_frame) then
+    integer :: i_boost
+    if (.not. evt%event_deps%cm_frame) then
        lt_cms_to_lab = identity
     else
-       i_real = evt%process_instance%get_associated_real ()
-       lt_cms_to_lab = evt%process_instance%get_lorentz_transformation (i_real)
+       if (evt%mode == EVT_NLO_COMBINED) then
+          i_boost = 1
+       else
+          i_boost = evt%process%extract_active_component ()
+       end if
+       lt_cms_to_lab = evt%process_instance%get_boost_to_lab (i_boost)
     end if
     p_lab = lt_cms_to_lab * p_cms
   end function evt_nlo_boost_to_lab
@@ -5411,34 +5456,61 @@ emission matrix elements.
 @ %def evt_nlo_boost_to_lab
 @
 <<Evt Nlo: evt nlo: TBP>>=
-  procedure :: setup_event_kinematics => evt_nlo_setup_event_kinematics
+  procedure :: setup_general_event_kinematics => evt_nlo_setup_general_event_kinematics
 <<Evt Nlo: procedures>>=
-  subroutine evt_nlo_setup_event_kinematics (evt, process_instance)
+  subroutine evt_nlo_setup_general_event_kinematics (evt, process_instance)
     class(evt_nlo_t), intent(inout) :: evt
     type(process_instance_t), intent(in) :: process_instance
-    integer :: n_born, n_real, n_phs 
+    integer :: n_born, i_active
+    associate (event_deps => evt%event_deps)
+       if (evt%mode == EVT_NLO_COMBINED) then
+          i_active = 1
+       else
+          i_active = evt%process%extract_active_component ()
+       end if
+       event_deps%cm_frame = process_instance%is_cm_frame (i_active)
+       select type (pcm => process_instance%pcm)
+       type is (pcm_instance_nlo_t)
+          n_born = pcm%get_n_born ()
+       end select
+       !! TODO (cw-2016-06-02): More generic compoment index!
+       if (i_active == 2) n_born = n_born - 1
+       call event_deps%p_born_cms%init (n_born, 1)
+       call event_deps%p_born_lab%init (n_born, 1)
+    end associate
+  end subroutine evt_nlo_setup_general_event_kinematics
+
+@ %def evt_nlo_setup_general_event_kinematics
+@
+<<Evt Nlo: evt nlo: TBP>>=
+  procedure :: setup_real_event_kinematics => evt_nlo_setup_real_event_kinematics
+<<Evt Nlo: procedures>>=
+  subroutine evt_nlo_setup_real_event_kinematics (evt, process_instance)
+    class(evt_nlo_t), intent(inout) :: evt
+    type(process_instance_t), intent(in) :: process_instance
+    integer :: n_real, n_phs
     integer :: i_real
     associate (event_deps => evt%event_deps)
-       event_deps%cm_frame = process_instance%is_cm_frame (1)
        select type (pcm => process_instance%pcm)
        class is (pcm_instance_nlo_t)
+          n_real = pcm%get_n_real ()
+       end select
+       i_real = process_instance%get_associated_real ()
+       select type (phs => process_instance%term(i_real)%k_term%phs)
+       type is (phs_fks_t)
+          !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+          allocate (event_deps%phs_identifiers (size (phs%phs_identifiers)))
+          event_deps%phs_identifiers = phs%phs_identifiers
+       end select
+       n_phs = size (event_deps%phs_identifiers)
+       call event_deps%p_real_cms%init (n_real, n_phs)
+       call event_deps%p_real_lab%init (n_real, n_phs)
+       select type (pcm => process_instance%pcm)
+       type is (pcm_instance_nlo_t)
           select type (config => pcm%config)
           type is (pcm_nlo_t)
-             n_born = config%region_data%n_legs_born
-             n_real = config%region_data%n_legs_real
-             call event_deps%p_born_cms%init (n_born, 1)
-             call event_deps%p_born_lab%init (n_born, 1)
-             i_real = process_instance%get_associated_real ()
-             select type (phs => process_instance%term(i_real)%k_term%phs)
-             type is (phs_fks_t)
-                !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-                allocate (event_deps%phs_identifiers (size (phs%phs_identifiers)))
-                event_deps%phs_identifiers = phs%phs_identifiers
-             end select
-             n_phs = size (event_deps%phs_identifiers)
-             call event_deps%p_real_cms%init (n_real, n_phs)
-             call event_deps%p_real_lab%init (n_real, n_phs)
-             allocate (event_deps%i_evaluation_to_i_phs (size (pcm%real_kinematics%alr_to_i_phs)))
+             allocate (event_deps%i_evaluation_to_i_phs &
+                (size (pcm%real_kinematics%alr_to_i_phs)))
              event_deps%i_evaluation_to_i_phs = pcm%real_kinematics%alr_to_i_phs
              if (allocated (config%region_data%alr_contributors)) then
                 allocate (event_deps%contributors (size (config%region_data%alr_contributors)))
@@ -5452,9 +5524,9 @@ emission matrix elements.
           end select
        end select
     end associate
-  end subroutine evt_nlo_setup_event_kinematics
+  end subroutine evt_nlo_setup_real_event_kinematics
 
-@ %def evt_nlo_setup_event_kinematics
+@ %def evt_nlo_setup_real_event_kinematics
 @
 <<Evt Nlo: evt nlo: TBP>>=
   procedure :: set_mode => evt_nlo_set_mode
@@ -5489,7 +5561,10 @@ emission matrix elements.
   function evt_nlo_is_valid_event (evt) result (valid)
     logical :: valid
     class(evt_nlo_t), intent(in) :: evt
-    valid = .true.
+    associate (term => evt%process_instance%term(evt%process%extract_active_component()))
+       valid = term%passed
+    end associate
+    !valid = .true.
   end function evt_nlo_is_valid_event
 
 @ %def evt_nlo_is_valid_event
@@ -6086,6 +6161,7 @@ For testing purpose, we allow for providing them explicitly, as an option.
     class(evt_t), pointer :: evt
     real(default) :: sigma_over_sqme
     integer :: i_term
+    logical :: failed_but_keep = .false.
     call msg_debug (D_TRANSFORMS, "event_evaluate_transforms")
     call event%discard_particle_set ()
     call event%check ()
@@ -6107,12 +6183,17 @@ For testing purpose, we allow for providing them explicitly, as an option.
           if (evt%only_weighted_events) then
              select type (evt)
              type is (evt_nlo_t)
-                if (.not. evt%is_valid_event ()) return
+                failed_but_keep = .not. evt%is_valid_event () .and. evt%keep_failed_events
+                call evt%copy_previous_particle_set ()
+                if (.not. evt%is_valid_event () .and. .not. failed_but_keep) &
+                   return
              end select
              if (abs (event%weight_prc) > 0._default) then
                 sigma_over_sqme = event%weight_prc / event%sqme_prc
                 call evt%generate_weighted (event%sqme_prc)
                 event%weight_prc = sigma_over_sqme * event%sqme_prc
+             else
+                if (.not. failed_but_keep) exit
              end if
           else
              call evt%generate_unweighted ()
@@ -6125,11 +6206,16 @@ For testing purpose, we allow for providing them explicitly, as an option.
           evt => evt%next
        end do
        evt => event%transform_last
-       if (associated (evt) .and. evt%particle_set_exists) then
+       if ((associated (evt) .and. evt%particle_set_exists) .or. failed_but_keep) then
           if (event%is_nlo ()) then
              select type (evt)
              type is (evt_nlo_t)
-                call evt%build_radiated_particle_set (event%i_event + 1)
+                if (evt%i_evaluation > 0) then
+                   call evt%build_radiated_particle_set (event%i_event + 1)
+                else
+                   call evt%keep_and_boost_born_particle_set (event%i_event + 1)
+                end if
+                evt%i_evaluation = evt%i_evaluation + 1
                 call event%link_particle_set &
                    (evt%particle_set_radiated(event%i_event + 1))
              end select
@@ -8257,14 +8343,16 @@ end module dispatch_transforms
 <<Dispatch transforms: public>>=
   public :: dispatch_evt_nlo
 <<Dispatch transforms: procedures>>=
-  subroutine dispatch_evt_nlo (evt)
+  subroutine dispatch_evt_nlo (evt, keep_failed_events)
     class(evt_t), intent(out), pointer :: evt
+    logical, intent(in) :: keep_failed_events
     call msg_message ("Simuate: activating fixed-order NLO events")
     allocate (evt_nlo_t :: evt)
     evt%only_weighted_events = .true.
     select type (evt)
     type is (evt_nlo_t)
        evt%i_evaluation = 0
+       evt%keep_failed_events = keep_failed_events
     end select
   end subroutine dispatch_evt_nlo
 

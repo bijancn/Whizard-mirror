@@ -2589,6 +2589,7 @@ module process
 
   use phs_base
   use phs_wood, only: phs_wood_config_t
+  use phs_wood, only: EXTENSION_NONE, EXTENSION_DEFAULT, EXTENSION_DGLAP
   use phs_fks, only: phs_fks_config_t, get_filtered_resonance_histories
   use blha_config, only: blha_master_t
   use nlo_data, only: FKS_DEFAULT, FKS_RESONANCES
@@ -3469,10 +3470,10 @@ parameterizing an s-channel resonance.
                case (BORN, NLO_VIRTUAL, NLO_SUBTRACTION)
                   call component%configure_phs (sqrts, process%beam_config, &
                        rebuild, ignore_mismatch, verbose=verbose)
-                  call check_and_extend_phs (component, combined_integration)
+                  call check_and_extend_phs (component)
                case (NLO_REAL, NLO_MISMATCH, NLO_DGLAP)
                   i_born = component%config%get_associated_born ()
-                  call check_and_extend_phs (component, combined_integration)
+                  call check_and_extend_phs (component)
                   call process%component(i_born)%get_phs_config (phs_config_born)
                   select type (config => component%phs_config)
                   type is (phs_fks_config_t)
@@ -3494,16 +3495,19 @@ parameterizing an s-channel resonance.
        end associate
     end do
   contains
-    subroutine check_and_extend_phs (component, combined_integration)
+    subroutine check_and_extend_phs (component)
       type(process_component_t), intent(inout) :: component
-      logical, intent(in) :: combined_integration
+      logical :: requires_dglap_random_number
       if (combined_integration) then
+         requires_dglap_random_number = any (process%component%get_nlo_type () == NLO_DGLAP)
          select type (phs_config => component%phs_config)
-         type is (phs_wood_config_t)
-            call phs_config%set_extended_phs ()
+         class is (phs_wood_config_t)
+            if (requires_dglap_random_number) then
+               call phs_config%set_extension_mode (EXTENSION_DGLAP)
+            else
+               call phs_config%set_extension_mode (EXTENSION_DEFAULT)
+            end if
             call phs_config%increase_n_par ()
-         type is (phs_fks_config_t)
-            call phs_config%set_extended_phs ()
          end select
       end if
     end subroutine check_and_extend_phs
@@ -5915,6 +5919,33 @@ Could also be moved to the [[core_manager_t]].
 
 @ %def process_create_and_load_extra_libraries
 @
+<<Process: process: TBP>>=
+  procedure :: extract_active_component => process_extract_active_component
+<<Process: procedures>>=
+  function process_extract_active_component (process) result (i_active)
+    integer :: i_active
+    class(process_t), intent(in) :: process
+    integer :: i, i_component
+    integer :: n_active
+    n_active = 0
+    call count_n_active ()
+    if (n_active /= 1) i_active = 0
+  contains
+    subroutine count_n_active ()
+      do i_component = 1, size (process%component)
+         associate (component => process%component(i_component))
+            if (process%component_can_be_integrated (i_component) .and. &
+                 component%component_type <= COMP_MASTER .and. &
+                 component%get_nlo_type () /= NLO_SUBTRACTION) then
+               i_active = i_component
+               n_active = n_active + 1
+            end if
+         end associate
+      end do
+    end subroutine count_n_active
+  end function process_extract_active_component
+
+@ %def process_extract_active_component
 @
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Process config}
@@ -8909,6 +8940,34 @@ object and the squared matrix-element collector.
 @ %def pcm_instance_nlo_get_xi_max
 @
 <<Pcm: pcm instance: TBP>>=
+  procedure :: get_n_born => pcm_instance_nlo_get_n_born
+<<Pcm: procedures>>=
+  function pcm_instance_nlo_get_n_born (pcm_instance) result (n_born)
+    integer :: n_born
+    class(pcm_instance_nlo_t), intent(in) :: pcm_instance
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       n_born = config%region_data%n_legs_born
+    end select
+  end function pcm_instance_nlo_get_n_born
+
+@ %def pcm_instance_nlo_get_n_born
+@
+<<Pcm: pcm instance: TBP>>=
+  procedure :: get_n_real => pcm_instance_nlo_get_n_real
+<<Pcm: procedures>>=
+  function pcm_instance_nlo_get_n_real (pcm_instance) result (n_real)
+    integer :: n_real
+    class(pcm_instance_nlo_t), intent(in) :: pcm_instance
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       n_real = config%region_data%n_legs_real
+    end select
+  end function pcm_instance_nlo_get_n_real
+
+@ %def pcm_instance_nlo_get_n_real
+@
+<<Pcm: pcm instance: TBP>>=
   procedure :: set_x_rad => pcm_instance_nlo_set_x_rad
 <<Pcm: procedures>>=
   subroutine pcm_instance_nlo_set_x_rad (pcm_instance, x_tot)
@@ -9330,7 +9389,7 @@ parameter arrays for the selected channel.
       end if
     class default
       if (phs%q_defined) then
-         call k%phs%get_outgoing_momenta (p(k%n_in+1:))
+         call k%phs%get_outgoing_momenta (p(k%n_in + 1 :))
          k%phs_factor = k%phs%get_overall_factor ()
          success = .true.
          if (k%only_cm_frame) then
@@ -10876,6 +10935,28 @@ by the model.  If the model does not provide a value, the result is zero.
 
 @ %def term_instance_get_helicities_for_openloops
 @
+<<Instances: term instance: TBP>>=
+  procedure :: get_boost_to_lab => term_instance_get_boost_to_lab
+<<Instances: procedures>>=
+  function term_instance_get_boost_to_lab (term) result (lt)
+    type(lorentz_transformation_t) :: lt
+    class(term_instance_t), intent(in) :: term
+    lt = term%k_term%phs%get_lorentz_transformation ()
+  end function term_instance_get_boost_to_lab
+
+@ %def term_instance_get_boost_to_lab
+@
+<<Instances: term instance: TBP>>=
+  procedure :: get_boost_to_cms => term_instance_get_boost_to_cms
+<<Instances: procedures>>=
+  function term_instance_get_boost_to_cms (term) result (lt)
+    type(lorentz_transformation_t) :: lt
+    class(term_instance_t), intent(in) :: term
+    lt = inverse (term%k_term%phs%get_lorentz_transformation ())
+  end function term_instance_get_boost_to_cms
+
+@ %def term_instance_get_boost_to_cms
+@
 \subsection{The process instance}
 A process instance contains all process data that depend on the
 sampling point and thus change often.  In essence, it is an event
@@ -11112,7 +11193,7 @@ to subobject of [[instance]].
             end select
             term_instance%nlo_type = process%get_nlo_type_component (i_component)
             phs_config => process%get_phs_config (i_component)
-            call extend_phs_config (phs_config, combined_nlo_integration)
+            !call extend_phs_config (phs_config, combined_nlo_integration)
             call term_instance%setup_kinematics (instance%sf_chain, &
                process%get_beam_config (), phs_config)
             call term_instance%init (process, i, &
@@ -11129,17 +11210,17 @@ to subobject of [[instance]].
     call instance%find_same_kinematics ()
 
     instance%evaluation_status = STAT_INITIAL
-  contains
-    subroutine extend_phs_config (phs_config, combined_integration)
-       class(phs_config_t), intent(inout) :: phs_config
-       logical, intent(in) :: combined_integration
-       if (combined_integration) then
-          select type (phs_config)
-          type is (phs_wood_config_t)
-             call phs_config%set_extended_phs ()
-          end select
-       end if
-    end subroutine extend_phs_config
+  !contains
+  !  subroutine extend_phs_config (phs_config, combined_integration)
+  !     class(phs_config_t), intent(inout) :: phs_config
+  !     logical, intent(in) :: combined_integration
+  !     if (combined_integration) then
+  !        select type (phs_config)
+  !        type is (phs_wood_config_t)
+  !           call phs_config%set_extended_phs ()
+  !        end select
+  !     end if
+  !  end subroutine extend_phs_config
   end subroutine process_instance_init
 
 @ %def process_instance_init
@@ -12804,6 +12885,7 @@ and directly set the coupling value that comes together with a particle set.
 <<Instances: process instance: TBP>>=
   procedure :: get_lorentz_transformation => process_instance_get_lorentz_transformation
 <<Instances: procedures>>=
+  !!!TODO (cw-2016-10-19): Check if this is obsolete now
   function process_instance_get_lorentz_transformation (instance, i_term) result (lt)
     type(lorentz_transformation_t) :: lt
     class(process_instance_t), intent(in) :: instance
@@ -12812,6 +12894,30 @@ and directly set the coupling value that comes together with a particle set.
   end function process_instance_get_lorentz_transformation
 
 @ %def process_instance_get_lorentz_transformation
+@
+<<Instances: process instance: TBP>>=
+  procedure :: get_boost_to_lab => process_instance_get_boost_to_lab
+<<Instances: procedures>>=
+  function process_instance_get_boost_to_lab (instance, i_term) result (lt)
+    type(lorentz_transformation_t) :: lt
+    class(process_instance_t), intent(in) :: instance
+    integer, intent(in) :: i_term
+    lt = instance%term(i_term)%get_boost_to_lab ()
+  end function process_instance_get_boost_to_lab
+
+@ %def process_instance_get_boost_to_lab
+@
+<<Instances: process instance: TBP>>=
+  procedure :: get_boost_to_cms => process_instance_get_boost_to_cms
+<<Instances: procedures>>=
+  function process_instance_get_boost_to_cms (instance, i_term) result (lt)
+    type(lorentz_transformation_t) :: lt
+    class(process_instance_t), intent(in) :: instance
+    integer, intent(in) :: i_term
+    lt = instance%term(i_term)%get_boost_to_cms ()
+  end function process_instance_get_boost_to_cms
+
+@ %def process_instance_get_boost_to_cms
 @
 <<Instances: process instance: TBP>>=
   procedure :: is_cm_frame => process_instance_is_cm_frame
