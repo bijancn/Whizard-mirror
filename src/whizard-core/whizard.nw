@@ -1854,6 +1854,12 @@ so the latter is always available (and kept global).
     call var_list_append_real &
          (global%var_list, var_str ("fks_dij_exp2"), &
          1._default, intrinsic = .true.)
+    call var_list_append_real &
+         (global%var_list, var_str ("fks_xi_min"), &
+         0.0000001_default, intrinsic = .true.)
+    call var_list_append_real &
+         (global%var_list, var_str ("fks_y_max"), &
+         1._default, intrinsic = .true.)
     call var_list_append_string &
          (global%var_list, var_str ("$fks_mapping_type"), &
          var_str ("default"), intrinsic = .true.)
@@ -9721,7 +9727,7 @@ sample or sub-sample.
 <<Simulations: procedures>>=
   subroutine counter_show_mean_and_variance (counter)
     class(counter_t), intent(in) :: counter
-    if (counter%reproduce_xsection) then
+    if (counter%reproduce_xsection .and. counter%nlo_weight_counter > 1) then
        print *,  "Reconstructed cross-section from event weights: "
        print *,  counter%mean, '+-', sqrt (counter%varsq / (counter%nlo_weight_counter - 1))
     end if 
@@ -10577,7 +10583,7 @@ information about how many entries to associate from [[region_data]].
        if (local%get_lval (var_str ("?unweighted"))) &
           call msg_fatal ("NLO Fixed Order events have to be generated with &
                           &?unweighted = false")
-       call dispatch_evt_nlo (evt)
+       call dispatch_evt_nlo (evt, local%get_lval (var_str ("?keep_failed_events")))
        call entry%import_transform (evt)
     end if
     enable_shower = local%get_lval (var_str ("?allow_shower")) .and. &
@@ -11546,11 +11552,9 @@ process instance will not be complete.  This should be fixed.
                           "matrix element vanishes, no events can be generated.")
                   call current_entry%generate (simulation%i_mci, i_nlo = k)
                   if (signal_is_pending ()) return
-                  if (current_entry%has_valid_particle_set ()) then
-                     call simulation%counter%record_mean_and_variance (&
-                        current_entry%weight_prc, k)
-                     exit
-                  end if
+                  call simulation%counter%record_mean_and_variance &
+                       (current_entry%weight_prc, k)
+                  if (current_entry%has_valid_particle_set ()) exit
                end do
             end do
             if (entry%is_nlo ()) call entry%reset_nlo_counter ()
@@ -15598,7 +15602,7 @@ or arrays which would make the expansion ambiguous.
     real_tree_me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
     loop_me_method = var_list%get_sval (var_str ("$loop_me_method"))
     correlation_me_method = var_list%get_sval (var_str ("$correlation_me_method"))
-    call check_nlo_options (nlo_fixed_order, var_list)
+    call check_nlo_options (cmd%local)
     if (any (cmd%local%selected_nlo_parts))  &
        call override_local_me_method (born_me_method)
 
@@ -15859,13 +15863,16 @@ or arrays which would make the expansion ambiguous.
 @ These three functions should be bundled with the logicals they depend
 on into an object (the pcm?).
 <<Commands: procedures>>=
-  subroutine check_nlo_options (nlo, var_list)
-    logical, intent(in) :: nlo
-    type(var_list_t), intent(in) :: var_list
-    logical :: combined, powheg
+  subroutine check_nlo_options (local)
+    type(rt_data_t), intent(in) :: local
+    type(var_list_t), pointer :: var_list => null ()
+    logical :: nlo, combined, powheg
     logical :: case_lo_but_any_other
     logical :: case_nlo_powheg_but_not_combined
     logical :: vamp_equivalences_enabled
+    logical :: fixed_order_nlo_events
+    var_list => local%get_var_list_ptr ()
+    nlo = local%nlo_fixed_order
     combined = var_list%get_lval (var_str ('?combined_nlo_integration'))
     powheg = var_list%get_lval (var_str ('?powheg_matching'))
     case_lo_but_any_other = .not. nlo .and. any ([combined, powheg])
@@ -15878,6 +15885,14 @@ on into an object (the pcm?).
     else if (case_nlo_powheg_but_not_combined) then
         call msg_fatal ("POWHEG requires the 'combined_nlo_integration'-option &
                         &to be set to true.")
+    end if
+    fixed_order_nlo_events = var_list%get_lval (var_str ('?fixed_order_nlo_events'))
+    if (fixed_order_nlo_events .and. .not. combined .and. all (local%selected_nlo_parts)) then
+       call msg_fatal ("Option mismatch: Fixed order NLO events of the full ", &
+                       [var_str ("process are requested, but ?combined_nlo_integration"), &
+                        var_str ("is false. You can either switch to the combined NLO"), &
+                        var_str ("integration mode or choose one individual NLO component"), &
+                        var_str ("to generate events with.")])
     end if
     vamp_equivalences_enabled = var_list%get_lval &
        (var_str ('?use_vamp_equivalences'))
@@ -16117,7 +16132,7 @@ particle-specifier expression which we can process further.
        current_component => cmd%pn_components(i)%ptr
        i = i + 1
     end do
-    global%nlo_fixed_order = any (selected_nlo_parts(1:4))
+    global%nlo_fixed_order = any (selected_nlo_parts(1:5))
     global%selected_nlo_parts = selected_nlo_parts
   end subroutine cmd_nlo_execute
 
