@@ -43,12 +43,12 @@ contains
     owf_gl___4_0 = conjg (eps (mass(21), p4, s(4)))
     owf_d3_1__12_0 = pr_psi(p12,mass(5),wd_tl(p12,width(5)), .false., &
        + f_vlf(gcc,owf_wm_2_0,owf_u3_1__1_0))
-    owf_u3_1__14_0_X1 = pr_psi(p14,dynamic_top_mass,wd_tl(p14,top_width), &
-       .false., + f_vf((-gs),owf_gl___4_0,owf_u3_1__1_0))
+    !owf_u3_1__14_0_X1 = pr_psi(p14,dynamic_top_mass,wd_tl(p14,top_width), &
+    !   .false., + f_vf((-gs),owf_gl___4_0,owf_u3_1__1_0))
     oks_u3_1_wpd3_1_gl__ = ( &
        + f_fv((-gs),owf_d3b__1_3_0,owf_gl___4_0))*owf_d3_1__12_0
-    oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
-       + f_fvl(gcc,owf_d3b__1_3_0,owf_wm_2_0))*owf_u3_1__14_0_X1
+    !oks_u3_1_wpd3_1_gl__ = oks_u3_1_wpd3_1_gl__ + ( &
+    !   + f_fvl(gcc,owf_d3b__1_3_0,owf_wm_2_0))*owf_u3_1__14_0_X1
     amp = - oks_u3_1_wpd3_1_gl__ ! 2 vertices, 1 propagators
   end function calculate_amplitude
 
@@ -99,12 +99,12 @@ contains
     owf_gl_1_2_4_0 = conjg (eps (mass(21), p4, s(4)))
     owf_d3b__1_12_0 = pr_psibar(p12,mass(5),wd_tl(p12,width(5)), .false., &
        + f_fvl(gcc,owf_u3b__1_1_0,owf_wp_2_0))
-    owf_u3b__2_14_0 = pr_psibar(p14,dynamic_top_mass,wd_tl(p14,top_width), &
-       .false., + f_fv((-gs),owf_u3b__1_1_0,owf_gl_1_2_4_0))
+    !owf_u3b__2_14_0 = pr_psibar(p14,dynamic_top_mass,wd_tl(p14,top_width), &
+    !   .false., + f_fv((-gs),owf_u3b__1_1_0,owf_gl_1_2_4_0))
     oks_u3b__1wmd3b__2gl_2_1 = owf_d3b__1_12_0 * &
        f_vf((-gs),owf_gl_1_2_4_0,owf_d3_2__3_0)
-    oks_u3b__1wmd3b__2gl_2_1 = oks_u3b__1wmd3b__2gl_2_1 + owf_u3b__2_14_0*( &
-       + f_vlf(gcc,owf_wp_2_0,owf_d3_2__3_0))
+    !oks_u3b__1wmd3b__2gl_2_1 = oks_u3b__1wmd3b__2gl_2_1 + owf_u3b__2_14_0*( &
+    !   + f_vlf(gcc,owf_wp_2_0,owf_d3_2__3_0))
     amp = - oks_u3b__1wmd3b__2gl_2_1 ! 2 vertices, 1 propagators
   end function calculate_amplitude
 
@@ -884,6 +884,7 @@ contains
        do h_tbar = -1, 1, 2
           h_ass_t = [h_t, h_tbar]
           do leg = 1, 2
+             if (leg == 2) cycle
              other_leg = 3 - leg
              prod_ = production_me(s(1), s(2), h_t, h_tbar, leg)
              born_ = born_decay_me(s(ass_quark(other_leg)), &
