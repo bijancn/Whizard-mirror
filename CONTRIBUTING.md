@@ -225,14 +225,14 @@ Plug 'bijancn/whizard.vim'
 call plug#end()
 ```
 
- [Plug](https://github.com/junegunn/plug.vim) will then go ahead and install
+ [Plug](https://github.com/junegunn/vim-plug) will then go ahead and install
  [Ultisnips](https://github.com/SirVer/ultisnips),
  [free-fortran.vim](https://github.com/bijancn/free-fortran.vim) and
  [whizard.vim](https://github.com/bijancn/whizard.vim) when you type
  `:PlugInstall<Enter>` from the Github repositories
 
 - Ultisnips allows to use our
-  [noweb snippets following the above conventions](https://raw.githubusercontent.com/bijancn/bcn_scripts/master/.vim/Ultisnips/noweb.snippets)
+  [noweb snippets following the above conventions](https://raw.githubusercontent.com/bijancn/bcn_scripts/master/.vim/UltiSnips/noweb.snippets)
   including automagic substitution rules like using `class name` in the chunk,
   which gets replaced by `class_name` in the subroutine and much more.
 
@@ -273,8 +273,8 @@ nnoremap <silent> <leader>ff :call FindFortranObject()<CR>
 nnoremap <silent> <leader>fa :call FindAnyObject()<CR>
 ```
 
-  This allows to only press `<leader>ff` (*f*ind *f*ortran) to jump to the
-  definition of most objects like types. `fa` (*f*ind *a*ll) gives a list of all
+  This allows to only press `<leader>ff` (**f**ind **f**ortran) to jump to the
+  definition of most objects like types. `fa` (**f**ind **a**ll) gives a list of all
   occurences of the word under the cursor.
 
 # emacs
