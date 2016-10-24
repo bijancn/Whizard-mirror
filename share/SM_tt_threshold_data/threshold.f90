@@ -969,9 +969,11 @@ contains
       k_tmp(4)%p = [sqrt (msq_in), zero, zero, zero] 
       L_to_cms = boost_to_cms
       call generate_on_shell_decay_threshold (k_tmp(1:3), &
-           k_tmp(4), k_decay_onshell_real (2:4), L_to_cms)
+           k_tmp(4), k_decay_onshell_real (2:4))
       k_decay_onshell_real (1) = k_tmp(4)
       k_decay_onshell_real = k_decay_onshell_real ([1,4,3,2])
+      if (threshold%settings%onshell_projection%boost_decay) &
+         k_decay_onshell_real  = L_to_cms * k_decay_onshell_real
       call compute_projected_top_momenta (mom_tmp, leg)
 
       k_tmp(1)%p = k(:,ass_quark(other_leg))
