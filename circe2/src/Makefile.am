@@ -139,7 +139,7 @@ endif
 TRIPLE = $(srcdir)/prelude.nw $< $(srcdir)/postlude.nw
 WEBS = $(srcdir)/prelude.nw $(srcdir)/circe2.nw $(srcdir)/postlude.nw
 NOTANGLE_IT = \
-  cat $(TRIPLE) | $(NOTANGLE) -R'[[$@]]' | $(CPIF) $@
+  cat $(TRIPLE) | $(NOTANGLE) -R'[[$@]]' > $@
 
 SUFFIXES += .nw .$(FC_MODULE_EXT)
 

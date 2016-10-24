@@ -1,4 +1,4 @@
-(* $Id: f90_SQED.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* f90_SQED.ml --
 
    Copyright (C) 1999-2016 by
 
@@ -21,16 +21,8 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-let rcs_file = RCS.parse "f90_SQED" ["SQED-1 gen"]
-    { RCS.revision = "$Revision: 7444 $";
-      RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
-      RCS.author = "$Author: jr_reuter $";
-      RCS.source
-        = "$Source: /home/sources/ohl/ml/omega/extensions/people/jr/f90_SQED.ml,v $" }
-
 module SQED = 
   struct
-    let rcs = rcs_file
     open Coupling
     let options = Options.empty
 

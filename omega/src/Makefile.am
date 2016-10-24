@@ -1,5 +1,4 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 7709 2016-09-22 22:32:15Z jr_reuter $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -56,7 +55,7 @@ if OCAML_AVAILABLE
 camllibdir = $(pkglibdir)/../omega/caml
 nodist_camllib_DATA = \
 	omega.cmi fusion.cmi targets.cmi coupling.cmi modeltools.cmi color.cmi \
-	options.cmi rCS.cmi model.cmi \
+	options.cmi model.cmi \
 	omega_core.cmxa omega_core.a omega_targets.cmxa omega_targets.a \
 	charges.cmi
 endif
