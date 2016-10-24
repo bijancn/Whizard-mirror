@@ -6143,13 +6143,17 @@ the corresponding jacobians.
     real(default) :: sqme_rad, sqme_soft, sqme_coll, sqme_cs, sqme_remn
     sqme_rad = zero; sqme_soft = zero; sqme_coll = zero
     sqme_cs = zero; sqme_remn = zero
+    !print *, 'evaluate fsr region: '
+    !print *, 'xi_max_onshell: '
+    !print *, rsub%real_kinematics%xi_max_onshell
     associate (region => rsub%reg_data%regions(rsub%current_alr))
       if (rsub%radiation_active) then
          sqme_rad = rsub%sqme_real_non_sub (1, i_phs)
          call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, &
               rsub%current_alr, i_phs, emitter, rsub%current_i_res)
          call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, &
-              rsub%real_kinematics, i_phs, .false.)
+              rsub%real_kinematics, i_phs, .false., rsub%reg_data%has_pseudo_isr (), &
+              emitter)
       end if
       if (rsub%subtraction_active) then
          call rsub%evaluate_subtraction_terms_fsr (emitter, i_phs, alpha_s, &
@@ -6305,7 +6309,7 @@ the corresponding jacobians.
          end if
 
          call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, rsub%real_kinematics, &
-            i_phs, .true.)
+            i_phs, .true., .false.)
       end if
       if (rsub%subtraction_active) then
          call rsub%evaluate_subtraction_terms_isr (emitter, i_phs, alpha_s, &
@@ -6437,15 +6441,27 @@ the corresponding jacobians.
 @ %def evaluate_fks_factors
 @
 <<real subtraction: procedures>>=
-  subroutine apply_kinematic_factors_radiation (sqme, purpose, real_kinematics, i_phs, isr)
+  subroutine apply_kinematic_factors_radiation (sqme, purpose, real_kinematics, &
+         i_phs, isr, threshold, emitter)
     real(default), intent(inout) :: sqme
     integer, intent(in) :: purpose
     type(real_kinematics_t), intent(in) :: real_kinematics
     integer, intent(in) :: i_phs
-    logical, intent(in) :: isr
+    logical, intent(in) :: isr, threshold
+    integer, intent(in), optional :: emitter
     real(default) :: xi, xi_max, xi_tilde, s
+    integer :: leg
     xi_tilde = real_kinematics%xi_tilde
-    xi_max = real_kinematics%xi_max_onshell (i_phs, 1)
+    if (threshold) then
+       if (present (emitter)) then
+          leg = thr_leg (emitter)
+       else
+          call msg_fatal ("Factorized NLO requires leg!")
+       end if
+       xi_max = real_kinematics%xi_max_onshell (i_phs, leg)
+    else
+       xi_max = real_kinematics%xi_max (i_phs)
+    end if
     !xi = xi_tilde * real_kinematics%xi_max (i_phs)
     xi = xi_tilde * xi_max
     select case (purpose)
@@ -6719,7 +6735,7 @@ to be more consistent with the evaluation of the Born phase space.
           end if
           q2 = real_kinematics%xi_ref_momenta (i_con)**2
           do leg = 1, 2
-             !if (leg == 2) cycle
+             if (leg == 2) cycle
              call rsub%sub_soft%create_softvec_fsr &
                   (real_kinematics%p_born_onshell%get_momenta(1), &
                   real_kinematics%y_soft_onshell(i_phs, leg), &
