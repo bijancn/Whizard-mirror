@@ -8385,7 +8385,7 @@ module pcm
 <<Use kinds>>
   use constants, only: zero, two
   use diagnostics
-  use lorentz, only: vector4_t
+  use lorentz, only: vector4_t, lorentz_transformation_t, identity
   use process_constants, only: process_constants_t
   use physics_defs
   use nlo_data, only: nlo_settings_t
@@ -8395,6 +8395,7 @@ module pcm
   use nlo_color_data, only: nlo_color_data_t
   use fks_regions, only: region_data_t
   use phs_fks, only: phs_fks_generator_t
+  use phs_fks, only: thr_leg, get_boost_for_threshold_projection
   use real_subtraction, only: real_subtraction_t, soft_mismatch_t
   use real_subtraction, only: FIXED_ORDER_EVENTS, POWHEG
   use virtual, only: virtual_t
@@ -8792,21 +8793,41 @@ object and the squared matrix-element collector.
     class(pcm_instance_nlo_t), intent(inout), target :: pcm_instance
     type(phs_identifier_t), intent(in), dimension(:) :: phs_identifiers
     real(default), intent(in) :: sqrts
-    integer :: i_phs, emitter
+    integer :: i_phs, emitter, leg
+    logical :: boost_to_cms = .false.
+    real(default) :: mtop
+    type(lorentz_transformation_t) :: L
     select type (config => pcm_instance%config)
     type is (pcm_nlo_t)
        if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) then
-          call pcm_instance%real_kinematics%apply_threshold_projection_born &
-               (sqrts, m1s_to_mpole (sqrts))
+          mtop = m1s_to_mpole (sqrts)
+          associate (r => pcm_instance%real_kinematics)
+             if (boost_to_cms) then
+                do i_phs = 1, config%region_data%n_phs
+                   do leg = 1, 2
+                      !r%L_onshell_to_cms(i_phs, leg) = get_boost_for_threshold_projection &
+                      r%L_onshell_to_cms = get_boost_for_threshold_projection &
+                           (r%p_real_cms%phs_point(i_phs)%p, sqrts, mtop)
+                   end do
+                end do
+             else
+                r%L_onshell_to_cms = identity
+             end if
+          end associate
           do i_phs = 1, config%region_data%n_phs
              emitter = phs_identifiers(i_phs)%emitter
+             call pcm_instance%real_kinematics%apply_threshold_projection_born &
+                  (mtop, pcm_instance%real_kinematics%L_onshell_to_cms (i_phs, thr_leg(emitter)))
              !if (emitter == 6) cycle
              call pcm_instance%real_kinematics%apply_threshold_projection_real &
-                  (i_phs, emitter, sqrts, m1s_to_mpole (sqrts))
+                  (i_phs, mtop, pcm_instance%real_kinematics%L_onshell_to_cms (i_phs, :), &
+                   boost_to_cms)
           end do
           do i_phs = 1, config%region_data%n_phs
              emitter = phs_identifiers(i_phs)%emitter
-             call pcm_instance%real_kinematics%scale_y_threshold (i_phs, emitter)
+             L = get_boost_for_threshold_projection &
+                 (pcm_instance%real_kinematics%p_real_cms%phs_point(i_phs)%p, sqrts, mtop)
+             call pcm_instance%real_kinematics%scale_y_threshold (i_phs, emitter, L)
              call pcm_instance%real_kinematics%scale_xi_max_threshold (i_phs, emitter)
              call pcm_instance%real_kinematics%recompute_phi (i_phs, emitter)
           end do
