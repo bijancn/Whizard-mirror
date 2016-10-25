@@ -12409,6 +12409,7 @@ module phs_fks
 <<Use strings>>
   use constants
   use diagnostics
+  use numeric_utils, only: nearly_equal
   use io_units, only: given_output_unit
   use format_utils, only: write_separator
   use lorentz
@@ -12706,6 +12707,7 @@ end module phs_fks
     real(default), dimension(:,:), allocatable :: y_soft_onshell
     real(default), dimension(:,:), allocatable :: xi_max_onshell
     real(default), dimension(2) :: phi_onshell
+    type(lorentz_transformation_t), dimension(:,:), allocatable :: L_onshell_to_cms
   contains
   <<phs fks: real kinematics: TBP>>
   end type real_kinematics_t
@@ -12732,6 +12734,7 @@ end module phs_fks
     allocate (r%k_perp (n_tot))
     allocate (r%alr_to_i_phs (n_alr))
     allocate (r%xi_ref_momenta (n_contr))
+    allocate (r%L_onshell_to_cms (n_phs, 2))
     r%alr_to_i_phs = 0
     r%xi_tilde = zero; r%xi_mismatch = zero
     r%xi_max = zero
@@ -12783,6 +12786,8 @@ end module phs_fks
 
 @ %def real_kinematics_write
 @
+<<phs fks: public>>=
+  public :: get_boost_for_threshold_projection
 <<phs fks: procedures>>=
   function get_boost_for_threshold_projection (p, sqrts, mtop) result (L)
     type(lorentz_transformation_t) :: L
@@ -12830,40 +12835,43 @@ end module phs_fks
 <<phs fks: real kinematics: TBP>>=
   procedure :: apply_threshold_projection_real => real_kinematics_apply_threshold_projection_real
 <<phs fks: procedures>>=
-  subroutine real_kinematics_apply_threshold_projection_real (r, i_phs, emitter, sqrts, mtop)
+  subroutine real_kinematics_apply_threshold_projection_real (r, i_phs, mtop, L_to_cms, invert)
     class(real_kinematics_t), intent(inout) :: r
-    integer, intent(in) :: i_phs, emitter
-    real(default), intent(in) :: sqrts, mtop
+    integer, intent(in) :: i_phs
+    real(default), intent(in) :: mtop
+    type(lorentz_transformation_t), intent(in), dimension(:) :: L_to_cms
+    logical, intent(in) :: invert
     integer :: leg, other_leg
     type(vector4_t), dimension(4) :: k_tmp
-    type(lorentz_transformation_t) :: L_to_cms
     type(vector4_t), dimension(4) :: k_decay_onshell_real
     type(vector4_t), dimension(3) :: k_decay_onshell_born
-    if (i_phs == 2) return
+    !if (i_phs == 2) return
     do leg = 1, 2
-       if (leg == 2) cycle 
+       !if (leg == 2) cycle 
        other_leg = 3 - leg
        associate (p_real => r%p_real_cms%phs_point(i_phs)%p, &
             p_real_onshell => r%p_real_onshell(leg)%phs_point(i_phs)%p)
-          L_to_cms = get_boost_for_threshold_projection (p_real, sqrts, mtop)
           p_real_onshell(1:2) = p_real(1:2)
           k_tmp(1) = p_real(7)
           k_tmp(2) = p_real(ass_quark(leg))
           k_tmp(3) = p_real(ass_boson(leg))
           k_tmp(4) = [mtop, zero, zero, zero]
           call generate_on_shell_decay_threshold (k_tmp(1:3), &
-               k_tmp(4), k_decay_onshell_real (2:4), L_to_cms)
+               k_tmp(4), k_decay_onshell_real (2:4))
           k_decay_onshell_real (1) = k_tmp(4)
-          p_real_onshell(THR_POS_GLUON) = k_decay_onshell_real (2)
-          p_real_onshell(ass_quark(leg)) = k_decay_onshell_real(3)
-          p_real_onshell(ass_boson(leg)) = k_decay_onshell_real(4)
           k_tmp(1) = p_real(ass_quark(other_leg))
           k_tmp(2) = p_real(ass_boson(other_leg))
           k_decay_onshell_born = create_two_particle_decay (mtop**2, k_tmp(1), k_tmp(2))
-          p_real_onshell(ass_quark(other_leg)) = L_to_cms * k_decay_onshell_born (2)
-          p_real_onshell(ass_boson(other_leg)) = L_to_cms * k_decay_onshell_born (3)
-          call vector4_invert_direction (p_real_onshell (ass_quark(other_leg)))
-          call vector4_invert_direction (p_real_onshell (ass_boson(other_leg)))
+          p_real_onshell(THR_POS_GLUON) = L_to_cms(leg) * k_decay_onshell_real (2)
+          p_real_onshell(ass_quark(leg)) = L_to_cms(leg) * k_decay_onshell_real(3)
+          p_real_onshell(ass_boson(leg)) = L_to_cms(leg) * k_decay_onshell_real(4)
+          p_real_onshell(ass_quark(other_leg)) = L_to_cms(leg) * k_decay_onshell_born (2)
+          p_real_onshell(ass_boson(other_leg)) = L_to_cms(leg) * k_decay_onshell_born (3)
+          if (invert) then
+             call vector4_invert_direction (p_real_onshell (ass_quark(other_leg)))
+             call vector4_invert_direction (p_real_onshell (ass_boson(other_leg)))
+          end if
+          !call vector4_write_set (p_real_onshell, show_mass = .true.)
        end associate
     end do
   end subroutine real_kinematics_apply_threshold_projection_real
@@ -12873,14 +12881,13 @@ end module phs_fks
 <<phs fks: real kinematics: TBP>>=
   procedure :: apply_threshold_projection_born => real_kinematics_apply_threshold_projection_born
 <<phs fks: procedures>>=
-  subroutine real_kinematics_apply_threshold_projection_born (r, sqrts, mtop)
+  subroutine real_kinematics_apply_threshold_projection_born (r, mtop, L_to_cms)
     class(real_kinematics_t), intent(inout) :: r
-    real(default), intent(in) :: sqrts, mtop
-    type(lorentz_transformation_t) :: L_to_cms
+    real(default), intent(in) :: mtop
+    type(lorentz_transformation_t), intent(in) :: L_to_cms
     type(vector4_t), dimension(3) :: k_decay_onshell_born
     associate (p_born => r%p_born_cms%phs_point(1)%p, &
          p_born_onshell => r%p_born_onshell%phs_point(1)%p)
-       L_to_cms = get_boost_for_threshold_projection (p_born, sqrts, mtop)
        p_born_onshell(1:2) = p_born(1:2)
        k_decay_onshell_born = create_two_particle_decay (mtop**2, &
             p_born(THR_POS_B), p_born(THR_POS_WP))
@@ -12901,20 +12908,57 @@ end module phs_fks
 <<phs fks: real kinematics: TBP>>=
   procedure :: scale_y_threshold => real_kinematics_scale_y_threshold
 <<phs fks: procedures>>=
-  subroutine real_kinematics_scale_y_threshold (r, i_phs, emitter)
+  subroutine real_kinematics_scale_y_threshold (r, i_phs, emitter, L)
     class(real_kinematics_t), intent(inout) :: r
     integer, intent(in) :: i_phs, emitter
+    type(lorentz_transformation_t), intent(in) :: L
     real(default) :: q0, mrec2, m2
     integer :: leg
-    type(vector4_t), dimension(:), allocatable :: p_real
+    real(default) :: y_test
+    real(default) :: q2, k0_em_max, k0_rec_max
+    real(default) :: z, z1, z2
+    logical :: ok
+    type(lorentz_transformation_t) :: L_to_cms
+    type(vector4_t) :: p1, p2, p3
+
     leg = thr_leg (emitter)
-    p_real = r%p_real_onshell(leg)%get_momenta(i_phs)
-    r%y_onshell(i_phs, leg) = &
-         space_part (p_real(emitter)) * space_part (p_real(THR_POS_GLUON)) / &
-         space_part_norm (p_real(emitter)) / space_part_norm (p_real(THR_POS_GLUON))
-    q0 = two * p_real(1)%p(0); m2 = p_real(emitter)**2
-    mrec2 = (q0 - p_real(emitter)%p(0))**2 - space_part_norm (p_real(emitter))**2
-    r%y_soft_onshell(i_phs, leg) =  recompute_y_soft (q0, mrec2, m2, r%y_onshell (i_phs, leg))
+    associate (p_born => r%p_born_onshell%phs_point(1)%p, &
+            p_real => r%p_real_onshell(leg)%phs_point(i_phs)%p)
+       q0 = two * p_real(1)%p(0); q2 = q0**2
+       m2 = p_real(emitter)**2
+       mrec2 = (q0 - p_born(emitter)%p(0))**2 - space_part_norm (p_born(emitter))**2
+       k0_rec_max = (q2 - m2 + mrec2) / (two * q0)
+       k0_em_max = (q2 + m2 - mrec2)  /(two * q0)
+       z = (energy (p_born(emitter)) - energy (p_real(emitter))) / energy (p_real(THR_POS_GLUON))
+       z1 = (k0_rec_max + sqrt (k0_rec_max**2 - mrec2)) / q0
+       z2 = (k0_rec_max - sqrt (k0_rec_max**2 - mrec2)) / q0
+       !if (z > 1) then
+       !   call msg_print_color ("z > 1", COL_RED)
+       !   print *, 'z: ', z1, z, z2
+       !   r%y_onshell(i_phs, leg) = 0.5_default
+       !   r%y_soft_onshell(i_phs, leg) = 0.5_default
+       !else if (z < 1) then
+       !   call msg_print_color ("z > 1", COL_RED)
+       !   r%y_onshell(i_phs, leg) = 0.5_default
+       !   r%y_soft_onshell(i_phs, leg) = 0.5_default
+       !else
+       !   r%y_onshell(i_phs, leg) = two * (z2 - z) / (z2 - z1) - one
+       !   r%y_soft_onshell(i_phs, leg) = (two * q2 * z - q2 - mrec2 + m2) / &
+       !     (sqrt(k0_em_max**2 - m2) * q0) / two
+       !end if
+       !print *, 'y_soft: ', r%y_soft_onshell(i_phs, leg)
+       !if (.not. nearly_equal (r%y_onshell(i_phs, leg), r%y(i_phs), 0.001_default)) then
+       !   call msg_print_color ("y not correctly reproduced: ", COL_RED)
+       !   print *, 'y_onshell: ', r%y_onshell(i_phs, leg), leg
+       !   print *, 'r%y: ', r%y(i_phs)
+       !end if
+       !if (r%y_onshell(i_phs, leg) > 1) call msg_print_color ("z > 1", COL_RED) 
+       !ok = z1 < z .and. z < z2
+       !if (.not. ok) then
+       !   call msg_print_color ("z not in order: ", COL_RED)
+       !   print *, z1, z, z2
+       !end if
+    end associate
   end subroutine real_kinematics_scale_y_threshold
 
 @ %def real_kinematics_scale_y_threshold
@@ -12952,8 +12996,11 @@ end module phs_fks
          p_real => r%p_real_cms%phs_point(i_phs)%p)
        phi_test = get_generation_phi (p_born, p_real, emitter, THR_POS_GLUON)
     end associate
-    print *, 'phi_test: ', phi_test
-    print *, 'phi: ', r%phi
+    !if (.not. nearly_equal (phi_test, r%phi, 0.001_default)) then
+    !   call msg_print_color ("phi not correctly reproduced: ", COL_RED)
+    !   print *, 'phi: ', r%phi
+    !   print *, 'phi_test: ', phi_test
+    !end if
 
   end subroutine real_kinematics_recompute_phi
 
@@ -12987,6 +13034,7 @@ four-momentum of the emitter.
     real(default) :: xii, yy
     real(default) :: q, E_em, z, z1, z2, m2, mrec2, k0_rec_max
     type(vector4_t) :: p_emitter
+    logical :: ok
     if (present (y)) then
        yy = y
     else
@@ -14119,7 +14167,7 @@ recoiling momenta.
 
     associate (rad_var => generator%real_kinematics)
        xi = rad_var%xi_tilde
-       if (rad_var%supply_xi_max) xi = xi*rad_var%xi_max(i_phs)
+       if (rad_var%supply_xi_max) xi = xi * rad_var%xi_max(i_phs)
        y = rad_var%y(i_phs)
        phi = rad_var%phi
     end associate
@@ -14358,6 +14406,7 @@ $\xi$.
     real(default) :: k0_np1, q2, mrec2, m2
     real(default) :: k0_rec_max, k0_em_max, k0_rec, uk_rec
     real(default) :: z, z1, z2
+    logical :: ok
 
     k0_np1 = generator%E_gluon
     q2 = q0**2
@@ -14369,6 +14418,11 @@ $\xi$.
     z1 = (k0_rec_max + sqrt (k0_rec_max**2 - mrec2)) / q0
     z2 = (k0_rec_max - sqrt (k0_rec_max**2 - mrec2)) / q0
     z = z2 - (z2 - z1) * (one + y) / two
+    !ok = z1 < z .and. z < z2
+    !if (.not. ok) then
+    !   call msg_print_color ("z not in order: ", COL_RED)
+    !   print *, z1, z , z2
+    !end if
     k0_em = k0_em_max - k0_np1 * z
     k0_rec = q0 - k0_np1 - k0_em
     uk_em = sqrt(k0_em**2 - m2)
@@ -14380,23 +14434,6 @@ $\xi$.
   end subroutine phs_fks_generator_compute_emitter_kinematics_massive
 
 @ %def phs_fks_generator_compute_emitter_kinematics
-@
-<<phs fks: procedures>>=
-  function recompute_y_soft (q0, mrec2, m2, y) result (y_soft)
-    real(default) :: y_soft
-    real(default), intent(in) :: q0, mrec2, m2, y
-    real(default) :: q2, k0_em_max, k0_rec_max
-    real(default) :: z1, z2, z
-    q2 = q0**2
-    k0_rec_max = (q2 - m2 + mrec2) / (two * q0)
-    k0_em_max = (q2 + m2 - mrec2)  /(two * q0)
-    z1 = (k0_rec_max + sqrt (k0_rec_max**2 - mrec2)) / q0
-    z2 = (k0_rec_max - sqrt (k0_rec_max**2 - mrec2)) / q0
-    z = z2 - (z2 - z1) * (one + y) / two
-    y_soft = (two * q2 * z - q2 - mrec2 + m2) / (sqrt(k0_em_max**2 - m2) * q0) / two
-  end function recompute_y_soft
-
-@ %def recompute_y_soft
 @
 <<phs fks: procedures>>=
   function recompute_xi_max (q0, mrec2, m2, y) result (xi_max)
