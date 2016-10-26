@@ -114,7 +114,7 @@ module @ID@_threshold
   use kinds
   use diagnostics
   use numeric_utils
-  use physics_defs, only: THR_POS_WP, THR_POS_WM, THR_POS_B, THR_POS_BBAR
+  use physics_defs, only: THR_POS_WP, THR_POS_WM, THR_POS_B, THR_POS_BBAR, THR_POS_GLUON
   use physics_defs, only: ass_boson, ass_quark
   use constants
   use lorentz
@@ -429,7 +429,6 @@ contains
        amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * &
             (ttv_formfactor (p3, p4, 1) + extra_tree)
     else
-
        ttv_vec = ttv_formfactor (p35, p46, 1, ffi) + extra_tree
        ttv_ax = ttv_formfactor (p35, p46, 2, ffi) + extra_tree
        blob_Z_vec = gncup(1) * ttv_vec
@@ -503,12 +502,13 @@ contains
        if (threshold%settings%onshell_projection%boost_decay) then
          pwp = mom_wp_onshell
          pb = mom_b_onshell
-         ptop = mom_top_onshell
+         !ptop = mom_top_onshell
        else
          pwp = mom_wp_onshell_rest
          pb = mom_b_onshell_rest
-         ptop = mom_top_onshell_rest
+         !ptop = mom_top_onshell
        end if
+       ptop = pwp + pb
        if (debug_active (D_THRESHOLD)) then
           call assert_equal (output_unit, sqrt (ptop * ptop), mass(6), &
             "ptop is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
@@ -542,12 +542,13 @@ contains
        if (threshold%settings%onshell_projection%boost_decay) then
           pwm = mom_wm_onshell
           pbbar = mom_bbar_onshell
-          ptopbar = mom_topbar_onshell
+          !ptopbar = mom_topbar_onshell
        else
           pwm = mom_wm_onshell_rest
           pbbar = mom_bbar_onshell_rest
-          ptopbar = mom_topbar_onshell_rest
+          !ptopbar = mom_topbar_onshell_rest
        end if
+       ptopbar = pwm + pbbar
        if (debug_active (D_THRESHOLD)) then
           call assert_equal (output_unit, sqrt (ptopbar * ptopbar), mass(6), &
                "ptopbar is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
@@ -986,8 +987,33 @@ contains
       end do
 
       k_decay_born = k_decay_onshell_born
-      k_decay_real = k_decay_onshell_real
-      call check_phase_space_point (k_decay_onshell_real, k_decay_onshell_born, mom_tmp * mom_tmp)
+      !k_decay_real = k_decay_onshell_real
+      k_decay_real(:,1) = k(:,ass_boson(leg)) + k(:,ass_quark(leg)) + k(:,THR_POS_GLUON)
+      k_decay_real(:,2) = k(:,ass_boson(leg))
+      k_decay_real(:,3) = k(:,ass_quark(leg))
+      k_decay_real(:,4) = k(:,THR_POS_GLUON)
+      call vector4_invert_direction (k_tmp(4))
+      k_decay_born(:,1) = k(:,ass_boson(other_leg)) + k(:,ass_quark(other_leg))
+      k_decay_born(:,2) = k(:,ass_boson(other_leg))
+      k_decay_born(:,3) = k(:,ass_quark(other_leg))
+      if (leg == 1) then
+         mom_wm_onshell = k_decay_born(:,2)
+         mom_bbar_onshell = k_decay_born(:,3)
+      else
+         mom_wp_onshell = k_decay_born(:,2)
+         mom_b_onshell = k_decay_born(:,3)
+      end if
+      if (leg == 1) then
+         mom_top_onshell = k_decay_real(:,2) + k_decay_real(:,3) + k_decay_real(:,4)
+      else
+         mom_top_onshell = k_decay_born(:,2) + k_decay_born(:,3)
+      end if
+      if (leg == 2) then
+         mom_topbar_onshell = k_decay_real(:,2) + k_decay_real(:,3) + k_decay_real(:,4)
+      else
+         mom_topbar_onshell = k_decay_born(:,2) + k_decay_born(:,3)
+      end if
+      !call check_phase_space_point (k_decay_onshell_real, k_decay_onshell_born, mom_tmp * mom_tmp)
     end subroutine set_decay_momenta
 
     subroutine check_phase_space_point (p_decay, p_prod, s)
