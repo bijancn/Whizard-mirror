@@ -115,6 +115,7 @@ module Value :
     type t
     val of_expr : Expr.t -> t
     val to_string : t -> string
+    val to_coupling : (string -> 'b) -> t -> 'b Coupling.expr
   end
 
 module type Test =

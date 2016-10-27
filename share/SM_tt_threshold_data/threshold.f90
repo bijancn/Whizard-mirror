@@ -452,7 +452,6 @@ contains
           owf_t_4 = v (sqrt (ptopbar * ptopbar), ptopbar, h_tbar)
           amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
           amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * ttv_vec
-          amp = - amp
        else
           top_width = ttv_wtpole (p12*p12, ffi)
           owf_wb_35 = pr_psibar (ptop, mtop, wd_tl (ptop, top_width), .false., &
@@ -581,8 +580,6 @@ contains
     end if
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
-       ! TODO: (bcn 2016-02-08) in the matched factorized computation we might
-       !        need interference terms in the Born
        if (threshold%settings%factorized_computation) then
           if (threshold%settings%helicity_approximated) then
              if (threshold%settings%helicity_approximated_extra) then
@@ -691,10 +688,11 @@ contains
         call compute_projected_top_momenta (p12, leg)
         call compute_projected_top_decay_products (p12, leg)
         if (debug_active (D_THRESHOLD)) then
-           if (leg == 0) then
+           if (leg == 0 .and. - p12%t > 2 * ttv_mtpole (p12*p12)) then
               tmp = mom_wp_onshell + mom_b_onshell + mom_wm_onshell + mom_bbar_onshell
               test = - p12
-              call assert_equal (output_unit, tmp, test, "overall: momentum conservation", &
+              call assert_equal (output_unit, tmp, test, &
+                   "overall: momentum conservation", &
                    abs_smallness=tiny_07, &
                    rel_smallness=tiny_07, &
                    exit_on_fail=.true.)
@@ -738,15 +736,15 @@ contains
           test = mom_top_onshell
           call assert_equal(u, test, tmp, "test the inverse boost", &
                exit_on_fail=.true.)
+          call assert (u, p12 == - (mom_top_onshell + mom_topbar_onshell), &
+               "momentum conservation with a flip", exit_on_fail=.true.)
+          call assert_equal (u, mom_top_onshell * mom_top_onshell, mtop**2, &
+               "mass onshell", abs_smallness=tiny_07, &
+                rel_smallness=tiny_07, exit_on_fail=.true.)
+          call assert_equal (u, mom_topbar_onshell * mom_topbar_onshell, mtop**2, &
+               "mass onshell", abs_smallness=tiny_07, &
+                rel_smallness=tiny_07, exit_on_fail=.true.)
        end if
-       call assert (u, p12 == - (mom_top_onshell + mom_topbar_onshell), &
-            "momentum conservation with a flip", exit_on_fail=.true.)
-       call assert_equal (u, mom_top_onshell * mom_top_onshell, mtop**2, &
-            "mass onshell", abs_smallness=tiny_07, &
-             rel_smallness=tiny_07, exit_on_fail=.true.)
-       call assert_equal (u, mom_topbar_onshell * mom_topbar_onshell, mtop**2, &
-            "mass onshell", abs_smallness=tiny_07, &
-             rel_smallness=tiny_07, exit_on_fail=.true.)
        call assert_equal (u, dot_product(unit_vec, unit_vec), one, &
             "unit vector length", exit_on_fail=.true.)
     end if
@@ -755,13 +753,14 @@ contains
   subroutine compute_projected_top_decay_products (p12, leg)
     type(momentum), intent(in) :: p12
     integer, intent(in) :: leg
-    real(default) :: sqrts, scale_factor, mtop, mw2, mb2, en_w, en_b, p_three_mag
+    real(default) :: sqrts, mtop, mw2, mb2, en_w, en_b, p_three_mag
     real(default), dimension(4) :: tmp, test
     type(vector4_t) :: p_tmp_1, p_tmp_2
     type(vector4_t), dimension(3) :: p_decay
     integer :: u
     logical :: keep_momenta = .true.
     u = output_unit
+    sqrts = - p12%t
     mtop = ttv_mtpole (p12*p12)
     mw2 = mass(24)**2
     mb2 = mass(5)**2
@@ -799,41 +798,44 @@ contains
        mom_wp_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wp_onshell)
        mom_wm_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wm_onshell)
     end if
-
     if (debug_active (D_THRESHOLD)) then
        call assert_equal (u, en_w + en_b, mtop, "top energy", &
             exit_on_fail=.true.)
        if (leg == 0 .or. leg == 1) then
           call assert_equal (u, en_w + en_b, mtop, "top energy", &
              exit_on_fail=.true.)
-          tmp = mom_wm_onshell + mom_bbar_onshell
-          test = mom_topbar_onshell
-          call assert_equal (u, tmp, test, "CMS: topbar momentum conservation", &
-               abs_smallness = tiny_07, exit_on_fail=.true.)
-          tmp = mom_wm_onshell_rest + mom_bbar_onshell_rest
-          test = mom_topbar_onshell_rest
-          call assert_equal (u, tmp, test, "Rest frame: topbar conservation", &
-               abs_smallness = tiny_07, exit_on_fail=.true.)
-          call assert_equal (u, mom_wm_onshell * mom_wm_onshell, mw2, &
+          if (sqrts > 2 * mtop) then
+             tmp = mom_wm_onshell + mom_bbar_onshell
+             test = mom_topbar_onshell
+             call assert_equal (u, tmp, test, "CMS: topbar momentum conservation", &
+                  abs_smallness = tiny_07, exit_on_fail=.true.)
+             tmp = mom_wm_onshell_rest + mom_bbar_onshell_rest
+             test = mom_topbar_onshell_rest
+             call assert_equal (u, tmp, test, "Rest frame: topbar conservation", &
+                  abs_smallness = tiny_07, exit_on_fail=.true.)
+          end if
+          call assert_equal (u, mom_wm_onshell_rest * mom_wm_onshell_rest, mw2, &
                "W- mass onshell", rel_smallness=tiny_07, &
                exit_on_fail=.true.)
-          call assert_equal (u, mom_bbar_onshell * mom_bbar_onshell, mb2, &
+          call assert_equal (u, mom_bbar_onshell_rest * mom_bbar_onshell_rest, mb2, &
                "bbar mass onshell", rel_smallness=tiny_07, &
                exit_on_fail=.true.)
        end if
        if (leg == 0 .or. leg == 2) then
           tmp = mom_wp_onshell + mom_b_onshell
           test = mom_top_onshell
-          call assert_equal (u, tmp, test, "CMS: top momentum conservation", &
-               abs_smallness = tiny_07, exit_on_fail=.true.)
-          tmp = mom_wp_onshell_rest + mom_b_onshell_rest
-          test = mom_top_onshell_rest
-          call assert_equal (u, tmp, test, "Rest frame: top momentum conservation", &
-               abs_smallness = tiny_07, exit_on_fail=.true.)
-          call assert_equal (u, mom_wp_onshell * mom_wp_onshell, mw2, &
+          if (sqrts > 2 * mtop) then
+             call assert_equal (u, tmp, test, "CMS: top momentum conservation", &
+                  abs_smallness = tiny_07, exit_on_fail=.true.)
+             tmp = mom_wp_onshell_rest + mom_b_onshell_rest
+             test = mom_top_onshell_rest
+             call assert_equal (u, tmp, test, "Rest frame: top momentum conservation", &
+                  abs_smallness = tiny_07, exit_on_fail=.true.)
+          end if
+          call assert_equal (u, mom_wp_onshell_rest * mom_wp_onshell_rest, mw2, &
                "W+ mass onshell", rel_smallness=tiny_07, &
                exit_on_fail=.true.)
-          call assert_equal (u, mom_b_onshell * mom_b_onshell, mb2, &
+          call assert_equal (u, mom_b_onshell_rest * mom_b_onshell_rest, mb2, &
                "b mass onshell", rel_smallness=tiny_07, &
                exit_on_fail=.true.)
        end if

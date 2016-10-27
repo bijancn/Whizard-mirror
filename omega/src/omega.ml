@@ -458,11 +458,13 @@ i*)
           F.initialize_cache dir;
           exit 0
       | _, _, true ->
-          T.parameters_to_channel output_channel;
+          if !write then
+            T.parameters_to_channel output_channel;
           exit 0
       | [], _, false ->
-          T.amplitudes_to_channel cmdline output_channel !checks CF.empty;
-          exit 0
+         if !write then
+           T.amplitudes_to_channel cmdline output_channel !checks CF.empty;
+         exit 0
       | _, _, false ->
 
         let selectors =
