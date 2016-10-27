@@ -9570,14 +9570,49 @@ Relevant for using the proper momenta input for BLHA matrix elements.
 @ %def kinematics_boost_to_cm_frame
 @
 <<Kinematics: kinematics: TBP>>=
+  procedure :: modify_momenta_for_subtraction => kinematics_modify_momenta_for_subtraction
+<<Kinematics: procedures>>=
+  subroutine kinematics_modify_momenta_for_subtraction (k, p_in, p_out)
+    class(kinematics_t), intent(inout) :: k
+    type(vector4_t), intent(in), dimension(:) :: p_in
+    type(vector4_t), intent(out), dimension(:), allocatable :: p_out
+    logical :: threshold = .true.
+    allocate (p_out (size (p_in)))
+    if (threshold) then
+       call k%threshold_projection ()
+       select type (phs => k%phs)
+       type is (phs_fks_t)
+          p_out = phs%get_onshell_projected_momenta ()
+       end select
+    else
+       p_out = p_in
+    end if
+  end subroutine kinematics_modify_momenta_for_subtraction
+
+@ %def kinematics_modify_momenta_for_subtraction
+@
+<<Kinematics: kinematics: TBP>>=
+  procedure :: threshold_projection => kinematics_threshold_projection
+<<Kinematics: procedures>>=
+  subroutine kinematics_threshold_projection (k)
+    class(kinematics_t), intent(inout) :: k
+    select type (phs => k%phs)
+    type is (phs_fks_t)
+       call phs%threshold_projection (m1s_to_mpole (phs%get_sqrts()))
+    end select
+  end subroutine kinematics_threshold_projection
+
+@ %def kinematics_threshold_projection
+@
+<<Kinematics: kinematics: TBP>>=
   procedure :: evaluate_radiation => kinematics_evaluate_radiation
 <<Kinematics: procedures>>=
   subroutine kinematics_evaluate_radiation (k, p_in, p_out)
-    class(kinematics_t), intent(in) :: k
+    class(kinematics_t), intent(inout) :: k
     type(vector4_t), intent(in), dimension(:) :: p_in
     type(vector4_t), intent(out), dimension(:), allocatable :: p_out
     type(phs_point_t) :: p
-    logical :: test_fsr = .true.
+    logical :: threshold = .true.
     select type (phs => k%phs)
     type is (phs_fks_t)
        call phs%compute_xi_max (p_in)
@@ -9587,10 +9622,9 @@ Relevant for using the proper momenta input for BLHA matrix elements.
           if (k%emitter <= k%n_in) then
              call phs%generate_isr (k%i_phs, p_in, p)
           else
-             if (test_fsr) then
-                call phs%generate_fsr_threshold &
-                     (m1s_to_mpole (phs%get_sqrts ()), k%emitter, &
-                     k%i_phs, p)
+             if (threshold) then
+                call phs%threshold_projection (m1s_to_mpole (phs%get_sqrts()))
+                call phs%generate_fsr_threshold (k%emitter, k%i_phs, p)
                 !print *, 'Generated real on-shell phase-space: '
                 !call p%write (show_mass = .true.)
                 !stop
@@ -10201,6 +10235,8 @@ choose to calculate all terms at once together with the seed kinematics, use
 
     if (term%nlo_type == NLO_REAL .and. term%k_term%emitter >= 0) then
        call term%k_term%evaluate_radiation (term%p_seed, p)
+    else if (term%nlo_type == NLO_REAL .and. term%k_term%emitter < 0) then
+       call term%k_term%modify_momenta_for_subtraction (term%p_seed, p)
     else
        allocate (p (size (term%p_seed))); p = term%p_seed
     end if
