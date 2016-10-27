@@ -712,7 +712,6 @@ contains
     type(vector4_t) :: v4_top_onshell, tmp_v4
     type(vector4_t) :: v4_topbar_onshell, v4_topbar_onshell_rest
     integer :: u
-    u = output_unit
     mtop = ttv_mtpole (p12*p12)
     sqrts = - p12%t
     scale_factor = sqrt (sqrts**2 - 4 * mtop**2) / 2
@@ -726,6 +725,7 @@ contains
     boost_to_top_rest = inverse (boost_to_cms)
     mom_topbar_onshell = [sqrts / 2, - scale_factor * unit_vec]
     if (debug_active (D_THRESHOLD)) then
+       u = output_unit
        if (sqrts > 2 * mtop) then
           tmp_v4 = boost_to_top_rest * v4_top_onshell
           tmp = tmp_v4
@@ -760,6 +760,7 @@ contains
     type(vector4_t) :: p_tmp_1, p_tmp_2
     type(vector4_t), dimension(3) :: p_decay
     integer :: u
+    logical :: keep_momenta = .true.
     u = output_unit
     mtop = ttv_mtpole (p12*p12)
     mw2 = mass(24)**2
@@ -767,25 +768,36 @@ contains
     en_w = (mtop**2 + mw2 - mb2) / (2 * mtop)
     en_b = (mtop**2 - mw2 + mb2) / (2 * mtop)
     p_three_mag = sqrt (lambda (mtop**2, mw2, mb2)) / (2 * mtop)
-    if (leg == 0 .or. leg == 2) then
-       p_tmp_1%p = p5
-       p_tmp_2%p = p3
-       p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
-       mom_b_onshell_rest = p_decay(2)%p
-       mom_wp_onshell_rest = p_decay(3)%p
-       mom_wp_onshell = apply_boost (boost_to_cms, mom_wp_onshell_rest)
-       mom_b_onshell = apply_boost (boost_to_cms, mom_b_onshell_rest)
-    end if
-    if (leg == 0 .or. leg == 1) then
-       p_tmp_1%p = p6
-       p_tmp_2%p = p4
-       p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
-       mom_bbar_onshell_rest = p_decay(2)%p
-       mom_wm_onshell_rest = p_decay(3)%p
-       mom_wm_onshell = apply_boost (boost_to_cms, mom_wm_onshell_rest)
-       mom_bbar_onshell = apply_boost (boost_to_cms, mom_bbar_onshell_rest)
-       mom_wm_onshell%x(1:3) = -mom_wm_onshell%x(1:3)
-       mom_bbar_onshell%x(1:3) = -mom_bbar_onshell%x(1:3)
+    if (.not. keep_momenta) then
+       if (leg == 0 .or. leg == 2) then
+          p_tmp_1%p = p5
+          p_tmp_2%p = p3
+          p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
+          mom_b_onshell_rest = p_decay(2)%p
+          mom_wp_onshell_rest = p_decay(3)%p
+          mom_wp_onshell = apply_boost (boost_to_cms, mom_wp_onshell_rest)
+          mom_b_onshell = apply_boost (boost_to_cms, mom_b_onshell_rest)
+       end if
+       if (leg == 0 .or. leg == 1) then
+          p_tmp_1%p = p6
+          p_tmp_2%p = p4
+          p_decay = create_two_particle_decay (mtop**2, p_tmp_1, p_tmp_2)
+          mom_bbar_onshell_rest = p_decay(2)%p
+          mom_wm_onshell_rest = p_decay(3)%p
+          mom_wm_onshell = apply_boost (boost_to_cms, mom_wm_onshell_rest)
+          mom_bbar_onshell = apply_boost (boost_to_cms, mom_bbar_onshell_rest)
+          mom_wm_onshell%x(1:3) = -mom_wm_onshell%x(1:3)
+          mom_bbar_onshell%x(1:3) = -mom_bbar_onshell%x(1:3)
+       end if
+    else
+       mom_b_onshell = p5
+       mom_bbar_onshell = p6
+       mom_wp_onshell = p3
+       mom_wm_onshell = p4
+       mom_b_onshell_rest = apply_boost (inverse (boost_to_cms), mom_b_onshell)
+       mom_bbar_onshell_rest = apply_boost (inverse (boost_to_cms), mom_bbar_onshell)
+       mom_wp_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wp_onshell)
+       mom_wm_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wm_onshell)
     end if
 
     if (debug_active (D_THRESHOLD)) then
@@ -900,6 +912,7 @@ contains
        end do
        end do
     end do
+    !!! Add color factor. Real ~ N^2 - 1; Born(has to be divided out) ~ N
     amp2 = total * (N_**2 - one) / N_
 
   contains
