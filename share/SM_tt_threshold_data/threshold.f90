@@ -501,13 +501,12 @@ contains
        if (threshold%settings%onshell_projection%boost_decay) then
          pwp = mom_wp_onshell
          pb = mom_b_onshell
-         !ptop = mom_top_onshell
+         ptop = mom_top_onshell
        else
          pwp = mom_wp_onshell_rest
          pb = mom_b_onshell_rest
-         !ptop = mom_top_onshell
+         ptop = mom_top_onshell
        end if
-       ptop = pwp + pb
        if (debug_active (D_THRESHOLD)) then
           call assert_equal (output_unit, sqrt (ptop * ptop), mass(6), &
             "ptop is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
@@ -899,7 +898,6 @@ contains
        do h_tbar = -1, 1, 2
           h_ass_t = [h_t, h_tbar]
           do leg = 1, 2
-             !if (leg == 2) cycle
              other_leg = 3 - leg
              prod_ = production_me(s(1), s(2), h_t, h_tbar, leg)
              born_ = born_decay_me(s(ass_quark(other_leg)), &
