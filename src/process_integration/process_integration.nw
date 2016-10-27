@@ -9211,6 +9211,7 @@ end module kinematics
      integer :: i_con = 0
      logical :: only_cm_frame = .false.
      logical :: new_seed = .true.
+     logical :: threshold = .false.
    contains
    <<Kinematics: kinematics: TBP>>
   end type kinematics_t
@@ -9341,19 +9342,18 @@ Jacobian factors.
     real(default), intent(in), dimension(:) :: r_in
     type(region_data_t), intent(in) :: reg_data
     logical :: use_contributors
-    logical :: threshold = .true.
     use_contributors = allocated (reg_data%alr_contributors)
     select type (phs => k%phs)
     type is (phs_fks_t)
        if (use_contributors) then
           call phs%compute_xi_ref_momenta (reg_data%alr_contributors)
-       else if (threshold .and. k%emitter > 0) then
+       else if (k%threshold .and. k%emitter > 0) then
           call phs%compute_xi_ref_momenta_threshold (k%emitter)
        else
           call phs%compute_xi_ref_momenta ()
        end if
        call phs%generate_radiation_variables &
-          (r_in(phs%n_r_born + 1 : phs%n_r_born + 3))
+            (r_in(phs%n_r_born + 1 : phs%n_r_born + 3))
        call phs%compute_cms_energy ()
     end select
   end subroutine kinematics_evaluate_radiation_kinematics
@@ -9575,9 +9575,8 @@ Relevant for using the proper momenta input for BLHA matrix elements.
     class(kinematics_t), intent(inout) :: k
     type(vector4_t), intent(in), dimension(:) :: p_in
     type(vector4_t), intent(out), dimension(:), allocatable :: p_out
-    logical :: threshold = .true.
     allocate (p_out (size (p_in)))
-    if (threshold) then
+    if (k%threshold) then
        call k%threshold_projection ()
        select type (phs => k%phs)
        type is (phs_fks_t)
@@ -9611,7 +9610,6 @@ Relevant for using the proper momenta input for BLHA matrix elements.
     type(vector4_t), intent(in), dimension(:) :: p_in
     type(vector4_t), intent(out), dimension(:), allocatable :: p_out
     type(phs_point_t) :: p
-    logical :: threshold = .true.
     select type (phs => k%phs)
     type is (phs_fks_t)
        call phs%compute_xi_max (p_in)
@@ -9621,12 +9619,9 @@ Relevant for using the proper momenta input for BLHA matrix elements.
           if (k%emitter <= k%n_in) then
              call phs%generate_isr (k%i_phs, p_in, p)
           else
-             if (threshold) then
+             if (k%threshold) then
                 call phs%threshold_projection (m1s_to_mpole (phs%get_sqrts()))
                 call phs%generate_fsr_threshold (k%emitter, k%i_phs, p)
-                !print *, 'Generated real on-shell phase-space: '
-                !call p%write (show_mass = .true.)
-                !stop
              else if (k%i_con > 0) then
                 call phs%generate_fsr (k%emitter, k%i_phs, p, k%i_con)
              else
@@ -10265,7 +10260,7 @@ left undefined.  We remedy this by calling [[receive_kinematics]] once.
     call term%k_term%get_incoming_momenta (term%p_seed(1:n_in))
     associate (int_eff => term%isolated%int_eff)
        call int_eff%set_momenta (term%p_seed(1:n_in), outgoing = .false.)
-       term%p_seed(n_in+1:) = int_eff%get_momenta (outgoing = .true.)
+       term%p_seed(n_in + 1 : ) = int_eff%get_momenta (outgoing = .true.)
     end associate
     call term%isolated%receive_kinematics ()
   end subroutine term_instance_recover_seed_kinematics
@@ -10372,6 +10367,22 @@ stored in the kinematics subobject to their source.  This is a side effect.
   end subroutine term_instance_set_emitter
 
 @ %def term_instance_set_emitter
+@
+<<Instances: term instance: TBP>>=
+  procedure :: set_threshold => term_instance_set_threshold
+<<Instances: procedures>>=
+  subroutine term_instance_set_threshold (term, pcm)
+    class(term_instance_t), intent(inout) :: term
+    class(pcm_t), intent(in) :: pcm
+    select type (pcm)
+    type is (pcm_nlo_t)
+       term%k_term%threshold = pcm%region_data%has_pseudo_isr ()
+    class default
+       term%k_term%threshold = .false.
+    end select
+  end subroutine term_instance_set_threshold
+
+@ %def term_instance_set_threshold
 @ For initializing the expressions, we need the local variable list and the
 parse trees.
 <<Instances: term instance: TBP>>=
@@ -11229,6 +11240,7 @@ to subobject of [[instance]].
             select type (phs => term_instance%k_term%phs)
             type is (phs_fks_t)
                call term_instance%set_emitter (process%get_pcm_ptr ())
+               call term_instance%set_threshold (process%get_pcm_ptr ())
                call term_instance%setup_fks_kinematics (process%get_var_list_ptr ())
             end select
             call term_instance%setup_expressions (process%get_meta (), process%get_config ())
