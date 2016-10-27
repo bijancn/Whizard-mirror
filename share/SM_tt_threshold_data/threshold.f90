@@ -885,7 +885,7 @@ contains
        do h_tbar = -1, 1, 2
           h_ass_t = [h_t, h_tbar]
           do leg = 1, 2
-             if (leg == 2) cycle
+             !if (leg == 2) cycle
              other_leg = 3 - leg
              prod_ = production_me(s(1), s(2), h_t, h_tbar, leg)
              born_ = born_decay_me(s(ass_quark(other_leg)), &
