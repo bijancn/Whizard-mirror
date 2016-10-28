@@ -56,12 +56,12 @@ SUBDIRS = \
   xdr events \
   user \
   model_features \
+  threshold \
   phase_space \
   mci \
   pythia8 \
   tauola \
   muli shower \
-  threshold \
   blha \
   gosam openloops \
   looptools \

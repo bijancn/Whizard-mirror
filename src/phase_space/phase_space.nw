@@ -1362,6 +1362,17 @@ inverse mappings to fill the [[r]] and [[f]] arrays.
 
 @ %def phs_inverse
 @
+<<PHS base: phs: TBP>>=
+  procedure :: get_sqrts => phs_get_sqrts
+<<PHS base: procedures>>=
+  function phs_get_sqrts (phs) result (sqrts)
+    real(default) :: sqrts
+    class(phs_t), intent(in) :: phs
+    sqrts = phs%config%sqrts
+  end function phs_get_sqrts
+
+@ %def phs_get_sqrts
+@
 \subsubsection{Uniform angular distribution}
 These procedures implement the uniform angular distribution, generated
 from two parameters $x_1$ and $x_2$:
@@ -12399,6 +12410,7 @@ module phs_fks
 <<Use strings>>
   use constants
   use diagnostics
+  use numeric_utils, only: nearly_equal
   use io_units, only: given_output_unit
   use format_utils, only: write_separator
   use lorentz
@@ -12413,6 +12425,7 @@ module phs_fks
   use cascades
   use process_constants
   use process_libraries
+  use ttv_formfactors, only: generate_on_shell_decay_threshold
 
 <<Standard module head>>
 
@@ -12647,6 +12660,16 @@ end module phs_fks
 
 @ %def phs_point_set_final
 @
+<<phs fks: public>>=
+  public :: thr_leg
+<<phs fks: procedures>>=
+  function thr_leg (emitter) result (leg)
+    integer :: leg
+    integer, intent(in) :: emitter
+    leg = emitter - THR_EMITTER_OFFSET
+  end function thr_leg
+
+@ %def thr_leg
 @
 <<phs fks: public>>=
   public :: real_jacobian_t
@@ -12672,6 +12695,8 @@ end module phs_fks
     type(phs_point_set_t) :: p_born_lab
     type(phs_point_set_t) :: p_real_cms
     type(phs_point_set_t) :: p_real_lab
+    type(phs_point_set_t) :: p_born_onshell
+    type(phs_point_set_t), dimension(2) :: p_real_onshell
     integer, dimension(:), allocatable :: alr_to_i_phs
     real(default), dimension(3) :: x_rad
     real(default), dimension(:), allocatable :: jac_rand
@@ -12717,6 +12742,19 @@ end module phs_fks
 @ %def real_kinematics_init
 @
 <<phs fks: real kinematics: TBP>>=
+  procedure :: init_onshell => real_kinematics_init_onshell
+<<phs fks: procedures>>=
+  subroutine real_kinematics_init_onshell (r, n_tot, n_phs)
+    class(real_kinematics_t), intent(inout) :: r
+    integer, intent(in) :: n_tot, n_phs
+    call r%p_born_onshell%init (n_tot - 1, 1)
+    call r%p_real_onshell(1)%init (n_tot, n_phs)
+    call r%p_real_onshell(2)%init (n_tot, n_phs)
+  end subroutine real_kinematics_init_onshell
+
+@ %def real_kinematics_init_onshell
+@
+<<phs fks: real kinematics: TBP>>=
   procedure :: write => real_kinematics_write
 <<phs fks: procedures>>=
   subroutine real_kinematics_write (r, unit)
@@ -12737,6 +12775,123 @@ end module phs_fks
   end subroutine real_kinematics_write
 
 @ %def real_kinematics_write
+@
+<<phs fks: public>>=
+  public :: get_boost_for_threshold_projection
+<<phs fks: procedures>>=
+  function get_boost_for_threshold_projection (p, sqrts, mtop) result (L)
+    type(lorentz_transformation_t) :: L
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default), intent(in) :: sqrts, mtop
+    type(vector4_t) :: p_tmp
+    type(vector3_t) :: dir
+    real(default) :: scale_factor
+    p_tmp = p(THR_POS_WP) + p(THR_POS_B)
+    scale_factor = sqrt (sqrts**2 - 4 * mtop**2) / two
+    dir = scale_factor * create_unit_vector (p_tmp)
+    p_tmp = [sqrts / two, dir%p]
+    L = boost (p_tmp, mtop)
+  end function get_boost_for_threshold_projection
+
+@ %def get_boost_for_threshold_projection
+@ This routine recomputes the value of $\phi$ used to generate the real phase space.
+<<phs fks: procedures>>=
+  function get_generation_phi (p_born, p_real, emitter, i_gluon) result (phi)
+    real(default) :: phi
+    type(vector4_t), intent(in), dimension(:) :: p_born, p_real
+    integer, intent(in) :: emitter, i_gluon
+    type(vector4_t) :: p1, p2, pp
+    type(lorentz_transformation_t) :: rot_to_gluon, rot_to_z
+    type(vector3_t) :: dir, z
+    real(default) :: cpsi
+    pp = p_real(emitter) + p_real(i_gluon)
+    cpsi = (space_part_norm (pp)**2 - space_part_norm (p_real(emitter))**2 &
+           + space_part_norm (p_real(i_gluon))**2) / &
+           (two * space_part_norm (pp) * space_part_norm (p_real(i_gluon)))
+    dir = create_orthogonal (space_part (p_born(emitter)))
+    rot_to_gluon = rotation (cpsi, sqrt (one - cpsi**2), dir)
+    pp = rot_to_gluon * p_born(emitter)
+    z%p = [0, 0, 1]
+    rot_to_z = rotation_to_2nd &
+         (space_part (p_born(emitter)) / space_part_norm (p_born(emitter)), z)
+    p1 = rot_to_z * pp / space_part_norm (pp)
+    p2 = rot_to_z * p_real(i_gluon)
+    phi = azimuthal_distance (p1, p2)
+    if (phi < zero) phi = twopi - abs(phi)
+  end function get_generation_phi
+
+@ %def get_generation_phi
+@
+<<phs fks: real kinematics: TBP>>=
+  procedure :: apply_threshold_projection_real => real_kinematics_apply_threshold_projection_real
+<<phs fks: procedures>>=
+  subroutine real_kinematics_apply_threshold_projection_real (r, i_phs, mtop, L_to_cms, invert)
+    class(real_kinematics_t), intent(inout) :: r
+    integer, intent(in) :: i_phs
+    real(default), intent(in) :: mtop
+    type(lorentz_transformation_t), intent(in), dimension(:) :: L_to_cms
+    logical, intent(in) :: invert
+    integer :: leg, other_leg
+    type(vector4_t), dimension(4) :: k_tmp
+    type(vector4_t), dimension(4) :: k_decay_onshell_real
+    type(vector4_t), dimension(3) :: k_decay_onshell_born
+    do leg = 1, 2
+       other_leg = 3 - leg
+       associate (p_real => r%p_real_cms%phs_point(i_phs)%p, &
+            p_real_onshell => r%p_real_onshell(leg)%phs_point(i_phs)%p)
+          p_real_onshell(1:2) = p_real(1:2)
+          k_tmp(1) = p_real(7)
+          k_tmp(2) = p_real(ass_quark(leg))
+          k_tmp(3) = p_real(ass_boson(leg))
+          k_tmp(4) = [mtop, zero, zero, zero]
+          call generate_on_shell_decay_threshold (k_tmp(1:3), &
+               k_tmp(4), k_decay_onshell_real (2:4))
+          k_decay_onshell_real (1) = k_tmp(4)
+          k_tmp(1) = p_real(ass_quark(other_leg))
+          k_tmp(2) = p_real(ass_boson(other_leg))
+          k_decay_onshell_born = create_two_particle_decay (mtop**2, k_tmp(1), k_tmp(2))
+          p_real_onshell(THR_POS_GLUON) = L_to_cms(leg) * k_decay_onshell_real (2)
+          p_real_onshell(ass_quark(leg)) = L_to_cms(leg) * k_decay_onshell_real(3)
+          p_real_onshell(ass_boson(leg)) = L_to_cms(leg) * k_decay_onshell_real(4)
+          p_real_onshell(ass_quark(other_leg)) = L_to_cms(leg) * k_decay_onshell_born (2)
+          p_real_onshell(ass_boson(other_leg)) = L_to_cms(leg) * k_decay_onshell_born (3)
+          if (invert) then
+             call vector4_invert_direction (p_real_onshell (ass_quark(other_leg)))
+             call vector4_invert_direction (p_real_onshell (ass_boson(other_leg)))
+          end if
+       end associate
+    end do
+  end subroutine real_kinematics_apply_threshold_projection_real
+
+@ %def real_kinematics_apply_threshold_projection_real
+@
+<<phs fks: real kinematics: TBP>>=
+  procedure :: apply_threshold_projection_born => real_kinematics_apply_threshold_projection_born
+<<phs fks: procedures>>=
+  subroutine real_kinematics_apply_threshold_projection_born (r, mtop, L_to_cms)
+    class(real_kinematics_t), intent(inout) :: r
+    real(default), intent(in) :: mtop
+    type(lorentz_transformation_t), intent(in) :: L_to_cms
+    type(vector4_t), dimension(3) :: k_decay_onshell_born
+    associate (p_born => r%p_born_cms%phs_point(1)%p, &
+         p_born_onshell => r%p_born_onshell%phs_point(1)%p)
+       p_born_onshell(1:2) = p_born(1:2)
+       k_decay_onshell_born = create_two_particle_decay (mtop**2, &
+            p_born(THR_POS_B), p_born(THR_POS_WP))
+       p_born_onshell([THR_POS_B, THR_POS_WP]) = &
+            k_decay_onshell_born([2, 3])
+       k_decay_onshell_born = create_two_particle_decay (mtop**2, &
+            p_born(THR_POS_BBAR), p_born(THR_POS_WM))
+       p_born_onshell([THR_POS_BBAR, THR_POS_WM]) = &
+            k_decay_onshell_born([2, 3])
+       p_born_onshell (3:6) = L_to_cms * p_born_onshell (3:6)
+       call vector4_invert_direction (p_born_onshell (THR_POS_WM))
+       call vector4_invert_direction (p_born_onshell (THR_POS_BBAR))
+    end associate
+  end subroutine real_kinematics_apply_threshold_projection_born
+
+@ %def real_kinematics_apply_threshold_projection_born
+@
 @ This routine computes the bounds of the Dalitz region for massive emitters, see below.
 It is also used by [[Powheg]], so the routine is public.
 The input parameter [[m2]] corresponds to the squared mass of the emitter and [[p]] is the
@@ -13587,11 +13742,23 @@ calculated from the Born momenta.
   subroutine phs_fks_compute_xi_ref_momenta (phs, contributors)
     class(phs_fks_t), intent(inout) :: phs
     type(resonance_contributors_t), intent(in), dimension(:), optional :: contributors
+    if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) &
+         call phs%generator%compute_xi_ref_momenta (phs%p_born_tot, contributors)
+  end subroutine phs_fks_compute_xi_ref_momenta
+
+@ %def phs_fks_compute_xi_ref_momenta
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: compute_xi_ref_momenta_threshold => phs_fks_compute_xi_ref_momenta_threshold
+<<phs fks: procedures>>=
+  subroutine phs_fks_compute_xi_ref_momenta_threshold (phs, emitter)
+    class(phs_fks_t), intent(inout) :: phs
+    integer, intent(in) :: emitter
     select case (phs%mode)
     case (PHS_MODE_ADDITIONAL_PARTICLE)
-       call phs%generator%compute_xi_ref_momenta (phs%p_born_tot, contributors)
+       call phs%generator%compute_xi_ref_momenta_threshold (phs%p_born_tot, emitter)
     end select
-  end subroutine phs_fks_compute_xi_ref_momenta
+  end subroutine phs_fks_compute_xi_ref_momenta_threshold
 
 @ %def phs_fks_compute_xi_ref_momenta
 @
@@ -13600,10 +13767,8 @@ calculated from the Born momenta.
 <<phs fks: procedures>>=
   subroutine phs_fks_compute_cms_energy (phs)
     class(phs_fks_t), intent(inout) :: phs
-    select case (phs%mode)
-    case (PHS_MODE_ADDITIONAL_PARTICLE)
-       call phs%generator%compute_cms_energy (phs%p_born_tot)
-    end select
+    if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) &
+         call phs%generator%compute_cms_energy (phs%p_born_tot)
   end subroutine phs_fks_compute_cms_energy
 
 @ %def phs_fks_compute_cms_energy
@@ -13803,6 +13968,53 @@ recoiling momenta.
 @ %def phs_fks_generator_generate_fsr_resonances
 @
 <<phs fks: phs fks generator: TBP>>=
+  procedure :: generate_fsr_threshold => phs_fks_generator_generate_fsr_threshold
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_generate_fsr_threshold (generator, &
+       emitter, i_phs, p_born, p_real)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    integer, intent(in) :: emitter, i_phs
+    type(vector4_t), intent(in), dimension(:) :: p_born 
+    type(phs_point_t), intent(inout) :: p_real
+    type(vector4_t), dimension(:), allocatable :: p_tmp_born
+    type(phs_point_t) :: p_tmp_real
+    integer :: nlegborn, nlegreal
+    type(vector4_t) :: p_top
+    real(default) :: q0
+    type(lorentz_transformation_t) :: boost_to_top
+    integer :: leg, other_leg
+    call msg_debug2 (D_PHASESPACE, "phs_fks_generator_generate_fsr_resonances")
+    nlegborn = size (p_born); nlegreal = nlegborn + 1
+
+    leg = thr_leg(emitter); other_leg = 3 - leg
+    p_tmp_real = 3
+    allocate (p_tmp_born (2))
+    p_tmp_born(1) = p_born (ass_boson(leg))
+    p_tmp_born(2) = p_born (ass_quark(leg))
+
+    call generator%generate_fsr_in (p_born, p_real)
+
+    p_top = generator%real_kinematics%xi_ref_momenta(1)
+
+    q0 = p_top**1
+    boost_to_top = inverse (boost (p_top, q0))
+    p_tmp_born = boost_to_top * p_tmp_born
+
+    generator%i_fsr_first = 1
+    call generator%generate_fsr_out (emitter, i_phs, p_tmp_born, p_tmp_real, q0, 2) 
+    p_tmp_real = inverse (boost_to_top) * p_tmp_real
+
+    p_real%p(ass_boson(leg)) = p_tmp_real%p(1)
+    p_real%p(ass_quark(leg)) = p_tmp_real%p(2)
+    p_real%p(ass_boson(other_leg)) = p_born(ass_boson(other_leg))
+    p_real%p(ass_quark(other_leg)) = p_born(ass_quark(other_leg))
+    p_real%p(THR_POS_GLUON) = p_tmp_real%p(3)
+
+  end subroutine phs_fks_generator_generate_fsr_threshold
+
+@ %def phs_fks_generator_generate_fsr_threshold
+@
+<<phs fks: phs fks generator: TBP>>=
   procedure :: generate_fsr_in => phs_fks_generator_generate_fsr_in
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_generate_fsr_in (generator, p_born, p_real)
@@ -13846,7 +14058,7 @@ recoiling momenta.
 
     associate (rad_var => generator%real_kinematics)
        xi = rad_var%xi_tilde
-       if (rad_var%supply_xi_max) xi = xi*rad_var%xi_max(i_phs)
+       if (rad_var%supply_xi_max) xi = xi * rad_var%xi_max(i_phs)
        y = rad_var%y(i_phs)
        phi = rad_var%phi
     end associate
@@ -13891,7 +14103,7 @@ recoiling momenta.
     rot = rotation (cpsi, sqrt (one - cpsi**2), vec_orth)
     p_real%p(nlegreal) = rot * p_real%p(nlegreal)
     call construct_recoiling_momenta ()
-    call generate_jacobians ()
+    call compute_jacobians ()
 
   contains
 
@@ -13900,6 +14112,7 @@ recoiling momenta.
   end subroutine phs_fks_generator_generate_fsr_out
 
 @ %def phs_fks_generator_generate_fsr_out
+@
 <<phs fks: generator generate fsr out procedures>>=
   subroutine debug_input_values ()
     if (debug2_active (D_PHASESPACE)) then
@@ -13966,7 +14179,7 @@ is
 supplied during phase space generation. Also, we already divide by
 $\xi$.
 <<phs fks: generator generate fsr out procedures>>=
-  subroutine generate_jacobians ()
+  subroutine compute_jacobians ()
     associate (jac => generator%real_kinematics%jac(i_phs))
        if (generator%is_massive(emitter)) then
           jac%jac(1) = jac%jac(1) * 4 / q0 / uk_n_born / xi
@@ -13977,8 +14190,9 @@ $\xi$.
        jac%jac(2) = one
        jac%jac(3) = one - xi / two * q0 / uk_n_born
     end associate
-  end subroutine generate_jacobians
+  end subroutine compute_jacobians
 
+@ %def compute_jacobians
 @
 <<phs fks: phs fks: TBP>>=
   procedure :: generate_fsr => phs_fks_generate_fsr
@@ -14005,6 +14219,52 @@ $\xi$.
   end subroutine phs_fks_generate_fsr
 
 @ %def phs_fks_generate_fsr
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: threshold_projection => phs_fks_threshold_projection
+<<phs fks: procedures>>=
+  subroutine phs_fks_threshold_projection (phs, mtop)
+    class(phs_fks_t), intent(inout) :: phs
+    real(default), intent(in) :: mtop
+    type(lorentz_transformation_t) :: L
+    associate (generator => phs%generator)
+       L = get_boost_for_threshold_projection &
+            (generator%real_kinematics%p_born_cms%get_momenta (1), phs%get_sqrts (), mtop)
+       call generator%real_kinematics%apply_threshold_projection_born (mtop, L)
+    end associate
+  end subroutine phs_fks_threshold_projection
+
+@ %def phs_fks_threshold_projection
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: get_onshell_projected_momenta => phs_fks_get_onshell_projected_momenta
+<<phs fks: procedures>>=
+  function phs_fks_get_onshell_projected_momenta (phs) result (p)
+    type(vector4_t), dimension(:), allocatable :: p
+    class(phs_fks_t), intent(in) :: phs
+    p = phs%generator%real_kinematics%p_born_onshell%get_momenta (1)
+  end function phs_fks_get_onshell_projected_momenta
+
+@ %def phs_fks_get_onshell_projected_momenta
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: generate_fsr_threshold => phs_fks_generate_fsr_threshold
+<<phs fks: procedures>>=
+  subroutine phs_fks_generate_fsr_threshold (phs, emitter, i_phs, p_real)
+    class(phs_fks_t), intent(inout) :: phs
+    integer, intent(in) :: emitter, i_phs
+    type(phs_point_t), intent(inout) :: p_real
+    type(vector4_t), dimension(:), allocatable :: p_born
+    associate (generator => phs%generator)
+       generator%real_kinematics%supply_xi_max = .true.
+       allocate (p_born (1 : generator%real_kinematics%p_born_cms%get_n_particles()))
+       p_born = generator%real_kinematics%p_born_onshell%get_momenta (1)
+       call generator%generate_fsr_threshold (emitter, i_phs, p_born, p_real)
+       generator%real_kinematics%p_real_onshell(thr_leg(emitter))%phs_point(i_phs)%p = p_real%p
+    end associate
+  end subroutine phs_fks_generate_fsr_threshold
+
+@ %def phs_fks_generate_fsr_threshold
 @
 <<phs fks: phs fks: TBP>>=
   procedure :: compute_xi_max => phs_fks_compute_xi_max
@@ -14071,7 +14331,7 @@ $\xi$.
     k0_em_max = (q2 + m2 - mrec2)  /(two * q0)
     z1 = (k0_rec_max + sqrt (k0_rec_max**2 - mrec2)) / q0
     z2 = (k0_rec_max - sqrt (k0_rec_max**2 - mrec2)) / q0
-    z = z2 - (z2 - z1) * (one + y) / 2
+    z = z2 - (z2 - z1) * (one + y) / two
     k0_em = k0_em_max - k0_np1 * z
     k0_rec = q0 - k0_np1 - k0_em
     uk_em = sqrt(k0_em**2 - m2)
@@ -14083,6 +14343,23 @@ $\xi$.
   end subroutine phs_fks_generator_compute_emitter_kinematics_massive
 
 @ %def phs_fks_generator_compute_emitter_kinematics
+@
+<<phs fks: procedures>>=
+  function recompute_xi_max (q0, mrec2, m2, y) result (xi_max)
+    real(default) :: xi_max
+    real(default), intent(in) :: q0, mrec2, m2, y
+    real(default) :: q2, k0_np1_max, k0_rec_max
+    real(default) :: z1, z2, z
+    q2 = q0**2
+    k0_rec_max = (q2 - m2 + mrec2) / (two * q0)
+    z1 = (k0_rec_max + sqrt (k0_rec_max**2 - mrec2)) / q0
+    z2 = (k0_rec_max - sqrt (k0_rec_max**2 - mrec2)) / q0
+    z = z2 - (z2 - z1) * (one + y) / 2
+    k0_np1_max = - (q2 * z**2 - two * q0 * k0_rec_max * z + mrec2) / (two * q0 * z * (one - z))
+    xi_max = two * k0_np1_max / q0
+  end function recompute_xi_max
+
+@ %def recompute_xi_max
 @
 <<phs fks: procedures>>=
   function compute_beta_massless (q2, k0_rec, uk_rec) result (beta)
@@ -14556,7 +14833,7 @@ with $\Lambda$.
        beta_gamma = beta / sqrt (one - beta**2)
        vec_transverse%p(1:2) = p_rad%p(1:2)
        vec_transverse%p(3) = zero
-       call normalize (vec_transverse)
+       vec_transverse = normalize (vec_transverse)
        lambda = boost (-beta_gamma, vec_transverse)
     end function create_transversal_boost
   end subroutine phs_fks_generator_generate_isr
@@ -14676,6 +14953,21 @@ with $\Lambda$.
        generator%real_kinematics%xi_ref_momenta(1) = sum (p_born(1:generator%n_in))
     end if
   end subroutine phs_fks_generator_compute_xi_ref_momenta
+
+@ %def phs_fks_generator_compute_xi_ref_momenta
+@
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: compute_xi_ref_momenta_threshold &
+       => phs_fks_generator_compute_xi_ref_momenta_threshold
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_compute_xi_ref_momenta_threshold (generator, p_born, emitter)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    type(vector4_t), intent(in), dimension(:) :: p_born
+    integer, intent(in) :: emitter
+    integer :: leg
+    leg = thr_leg(emitter)
+    generator%real_kinematics%xi_ref_momenta(1) = p_born(ass_boson(leg)) + p_born(ass_quark(leg))
+  end subroutine phs_fks_generator_compute_xi_ref_momenta_threshold
 
 @ %def phs_fks_generator_compute_xi_ref_momenta
 @
@@ -14819,8 +15111,8 @@ with $\Lambda$.
                          p_em = boost_to_resonance * p(emitter)
                       end associate
                    else
-                       q0 = generator%sqrts
-                       p_em = p(emitter)
+                      q0 = generator%sqrts
+                      p_em = p(emitter)
                    end if
                    beta = beta_emitter (q0, p_em)
                    one_m_beta = one - beta
@@ -14884,7 +15176,7 @@ with $\Lambda$.
        select case (generator%mode)
        case (GEN_REAL_PHASE_SPACE)
           if (generator%singular_jacobian) then
-             rad_var%xi_tilde = (one - generator%xi_min) - (one - r)**2 *&
+             rad_var%xi_tilde = (one - generator%xi_min) - (one - r)**2 * &
                 (one - two * generator%xi_min)
              rad_var%jac_rand = rad_var%jac_rand * two * (one - r) * &
                 (one - two * generator%xi_min)
