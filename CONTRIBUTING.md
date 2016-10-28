@@ -14,6 +14,8 @@
 - large merge requests can be pretested with the full test-suite by renaming
   with `git checkout -b testing/branchname; git push` before they are merged
   with the `master`
+- **Any change to `.gitlab-ci.yml` has to be verified in a `testing/branchname`
+  branch before it is allowed to merge into master**
 - As the full test suite is only run *after* the merge, it is still possible
   (though fairly unlikely) to break the `master`. This might change in a future
   version of `gitlab` to create an unbreakable system.
