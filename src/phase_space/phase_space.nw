@@ -12492,19 +12492,28 @@ end module phs_fks
 <<phs fks: phs point set: TBP>>=
   procedure :: write => phs_point_set_write
 <<phs fks: procedures>>=
-  subroutine phs_point_set_write (phs_point_set, i_phs, contributors, unit)
+  subroutine phs_point_set_write (phs_point_set, i_phs, contributors, unit, show_mass, &
+         testflag, check_conservation, ultra, n_in)
     class(phs_point_set_t), intent(in) :: phs_point_set
     integer, intent(in), optional :: i_phs
     integer, intent(in), dimension(:), optional :: contributors
     integer, intent(in), optional :: unit
+    logical, intent(in), optional :: show_mass
+    logical, intent(in), optional :: testflag, ultra
+    logical, intent(in), optional :: check_conservation
+    integer, intent(in), optional :: n_in
     integer :: i, u
     type(vector4_t) :: p_sum
     u = given_output_unit (unit); if (u < 0) return
     if (present (i_phs)) then
-       call phs_point_set%phs_point(i_phs)%write (u, show_mass = .true.)
+       call phs_point_set%phs_point(i_phs)%write &
+            (unit = u, show_mass = show_mass, testflag = testflag, &
+            check_conservation = check_conservation, ultra = ultra, n_in = n_in)
     else
        do i = 1, size(phs_point_set%phs_point)
-          call phs_point_set%phs_point(i)%write (u, show_mass = .true.)
+          call phs_point_set%phs_point(i)%write &
+               (unit = u, show_mass = show_mass, testflag = testflag, &
+               check_conservation = check_conservation, ultra = ultra, n_in = n_in)
        end do
     end if
     if (present (contributors)) then
@@ -12516,7 +12525,9 @@ end module phs_fks
           end do
           p_sum = p_sum + p(size(p))
        end associate
-       if (debug_active (D_SUBTRACTION)) call vector4_write (p_sum, show_mass = .true.)
+       if (debug_active (D_SUBTRACTION)) &
+            call vector4_write (p_sum, unit = unit, show_mass = show_mass, &
+                 testflag = testflag, ultra = ultra)
     end if
   end subroutine phs_point_set_write
 
@@ -13974,7 +13985,7 @@ recoiling momenta.
        emitter, i_phs, p_born, p_real)
     class(phs_fks_generator_t), intent(inout) :: generator
     integer, intent(in) :: emitter, i_phs
-    type(vector4_t), intent(in), dimension(:) :: p_born 
+    type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_point_t), intent(inout) :: p_real
     type(vector4_t), dimension(:), allocatable :: p_tmp_born
     type(phs_point_t) :: p_tmp_real
@@ -13994,14 +14005,14 @@ recoiling momenta.
 
     call generator%generate_fsr_in (p_born, p_real)
 
-    p_top = generator%real_kinematics%xi_ref_momenta(1)
+    p_top = generator%real_kinematics%xi_ref_momenta(leg)
 
     q0 = p_top**1
     boost_to_top = inverse (boost (p_top, q0))
     p_tmp_born = boost_to_top * p_tmp_born
 
     generator%i_fsr_first = 1
-    call generator%generate_fsr_out (emitter, i_phs, p_tmp_born, p_tmp_real, q0, 2) 
+    call generator%generate_fsr_out (emitter, i_phs, p_tmp_born, p_tmp_real, q0, 2)
     p_tmp_real = inverse (boost_to_top) * p_tmp_real
 
     p_real%p(ass_boson(leg)) = p_tmp_real%p(1)
@@ -14966,7 +14977,7 @@ with $\Lambda$.
     integer, intent(in) :: emitter
     integer :: leg
     leg = thr_leg(emitter)
-    generator%real_kinematics%xi_ref_momenta(1) = p_born(ass_boson(leg)) + p_born(ass_quark(leg))
+    generator%real_kinematics%xi_ref_momenta(leg) = p_born(ass_boson(leg)) + p_born(ass_quark(leg))
   end subroutine phs_fks_generator_compute_xi_ref_momenta_threshold
 
 @ %def phs_fks_generator_compute_xi_ref_momenta
@@ -16105,7 +16116,7 @@ end module phs_fks_uti
     write (u, "(A)")
 
     allocate (generator%real_kinematics)
-    call generator%real_kinematics%init (6, 2, 2, 1)
+    call generator%real_kinematics%init (6, 2, 2, 2)
     call generator%real_kinematics%init_onshell (7, 2)
     generator%real_kinematics%p_born_cms%phs_point(1)%p = p_born
 
@@ -16120,29 +16131,7 @@ end module phs_fks_uti
     call generator%real_kinematics%p_born_onshell%write (1, unit = u)
     associate (p => generator%real_kinematics%p_born_onshell%phs_point(1)%p)
        p_born_onshell = p
-       write (u, "(A)") "* Check momentum conservation in projected system:"
-       call vector4_check_momentum_conservation &
-            (p, 2, unit = u, abs_smallness = momentum_tolerance)
-       write (u, "(A)") "* Check that invariant masses equal mtop: "
-       write (u, "(A)", advance = "no") "inv(W+, b): "
-       mcheck = (p(THR_POS_WP) + p(THR_POS_B))**1
-       if (nearly_equal (mcheck, mtop)) then
-          write (u, "(A)") "CHECK"
-       else
-          write (u, "(A,F7.3)") "FAIL: ", mcheck
-       end if
-       write (u, "(A)", advance = "no") "inv(W-, bbar): "
-       mcheck = (p(THR_POS_WM) + p(THR_POS_BBAR))**1
-       if (nearly_equal (mcheck, mtop)) then
-          write (u, "(A)") "CHECK"
-       else
-          write (u, "(A)") "FAIL"
-       end if
-       write (u, "(A)") "* Sum of energies equal to sqrts?"
-       write (u, "(A,L1)") "Initial state: ", nearly_equal (sum(p(1:2)%p(0)), sqrts)
-       write (u, "(A,L1)") "Final state  : ", nearly_equal (sum(p(3:6)%p(0)), sqrts)
-       write (u, "(A)") "* Projected Born phase-space: "
-       call vector4_write_set (p, u, testflag = .true., ultra = .true.)
+       call check_phsp (p, 0)
     end associate
 
     allocate (generator%emitters (2))
@@ -16163,9 +16152,9 @@ end module phs_fks_uti
 
 
     call generator%generate_radiation_variables ([x1,x2,x3], p_born_onshell, phs_identifiers)
-    call generator%compute_xi_ref_momenta (p_born_onshell)
     do i_phs = 1, 2
        emitter = phs_identifiers(i_phs)%emitter
+       call generator%compute_xi_ref_momenta_threshold (p_born_onshell, emitter)
        call generator%compute_xi_max (emitter, i_phs, p_born_onshell)
     end do
 
@@ -16181,72 +16170,51 @@ end module phs_fks_uti
 
     call write_separator (u)
     write (u, "(A)") "* Produce real momenta from on-shell phase space: "
-    i_phs = 1; emitter = phs_identifiers(i_phs)%emitter
-    write (u, "(A,I1)") "emitter: ", emitter
     p_real = 7
-    call generator%generate_fsr_threshold (emitter, i_phs, p_born_onshell, p_real)
-    write (u, "(A)") "* Check momentum conservation: "
-    associate (p => p_real%p)
-       call vector4_check_momentum_conservation &
-            (p, 2, unit = u, abs_smallness = momentum_tolerance)
-       write (u, "(A)") "* Check invariant masses: "
-       write (u, "(A)", advance = "no") "inv(W+, b, gl): "
-       mcheck = (p(THR_POS_WP) + p(THR_POS_B) + p(THR_POS_GLUON))**1
-       if (nearly_equal (mcheck, mtop)) then
-          write (u, "(A)") "CHECK"
-       else
-          write (u, "(A,F7.3)") "FAIL: ", mcheck
-       end if
-       write (u, "(A)", advance = "no") "inv(W-, bbar): "
-       mcheck = (p(THR_POS_WM) + p(THR_POS_BBAR))**1
-       if (nearly_equal (mcheck, mtop)) then
-          write (u, "(A)") "CHECK"
-       else
-          write (u, "(A,F7.3)") "FAIL: ", mcheck
-       end if
-       write (u, "(A)") "* Sum of energies equal to sqrts?"
-       write (u, "(A,L1)") "Initial state: ", nearly_equal (sum(p(1:2)%p(0)), sqrts)
-       write (u, "(A,L1)") "Final state  : ", nearly_equal (sum(p(3:6)%p(0)), sqrts)
-       write (u, "(A)") "* Generated real phase-space: "
-       call pacify (p, 1E-6_default)
-       call vector4_write_set (p, u, testflag = .true., ultra = .true., &
-            show_mass = .true., check_conservation = .true.)
-    end associate
-    i_phs = 2; emitter = phs_identifiers(i_phs)%emitter
-    write (u, "(A,I1)") "emitter: ", emitter
-    call generator%generate_fsr_threshold (emitter, i_phs, p_born_onshell, p_real)
-    write (u, "(A)") "* Check momentum conservation: "
-    associate (p => p_real%p)
-       call vector4_check_momentum_conservation &
-            (p, 2, unit = u, abs_smallness = momentum_tolerance)
-       write (u, "(A)") "* Check invariant masses: "
-       write (u, "(A)", advance = "no") "inv(W+, b, gl): "
-       mcheck = (p(THR_POS_WP) + p(THR_POS_B))**1
-       if (nearly_equal (mcheck, mtop)) then
-          write (u, "(A)") "CHECK"
-       else
-          write (u, "(A,F7.3)") "FAIL: ", mcheck
-       end if
-       write (u, "(A)", advance = "no") "inv(W-, bbar): "
-       mcheck = (p(THR_POS_WM) + p(THR_POS_BBAR) + p(THR_POS_GLUON))**1
-       if (nearly_equal (mcheck, mtop)) then
-          write (u, "(A)") "CHECK"
-       else
-          write (u, "(A,F7.3)") "FAIL: ", mcheck
-       end if
-       write (u, "(A)") "* Sum of energies equal to sqrts?"
-       write (u, "(A,L1)") "Initial state: ", nearly_equal (sum(p(1:2)%p(0)), sqrts)
-       write (u, "(A,L1)") "Final state  : ", nearly_equal (sum(p(3:6)%p(0)), sqrts)
-       write (u, "(A)") "* Generated real phase-space: "
-       call pacify (p, 1E-6_default)
-       call vector4_write_set (p, u, testflag = .true., ultra = .true., &
-            show_mass = .true., check_conservation = .true.)
-    end associate
+    do i_phs = 1, 2
+       emitter = phs_identifiers(i_phs)%emitter
+       write (u, "(A,I1)") "emitter: ", emitter
+       call generator%generate_fsr_threshold (emitter, i_phs, p_born_onshell, p_real)
+       call check_phsp (p_real%p, emitter)
+    end do
 
     call write_separator(u)
     write (u, "(A)")
     write (u, "(A)") "* Test output end: phs_fks_generator_5"
 
+  contains
+    subroutine check_phsp (p, emitter)
+       type(vector4_t), intent(inout), dimension(:) :: p
+       integer, intent(in) :: emitter
+       type(vector4_t) :: pp
+       write (u, "(A)") "* Check momentum conservation: "
+       call vector4_check_momentum_conservation &
+            (p, 2, unit = u, abs_smallness = momentum_tolerance)
+       write (u, "(A)") "* Check invariant masses: "
+       write (u, "(A)", advance = "no") "inv(W+, b, gl): "
+       pp = p(THR_POS_WP) + p(THR_POS_B)
+       if (emitter == THR_POS_B) pp = pp + p(THR_POS_GLUON)
+       if (nearly_equal (pp**1, mtop)) then
+          write (u, "(A)") "CHECK"
+       else
+          write (u, "(A,F7.3)") "FAIL: ", pp**1
+       end if
+       write (u, "(A)", advance = "no") "inv(W-, bbar): "
+       pp = p(THR_POS_WM) + p(THR_POS_BBAR)
+       if (emitter == THR_POS_BBAR) pp = pp + p(THR_POS_GLUON)
+       if (nearly_equal (pp**1, mtop)) then
+          write (u, "(A)") "CHECK"
+       else
+          write (u, "(A,F7.3)") "FAIL: ", pp**1
+       end if
+       write (u, "(A)") "* Sum of energies equal to sqrts?"
+       write (u, "(A,L1)") "Initial state: ", nearly_equal (sum(p(1:2)%p(0)), sqrts)
+       write (u, "(A,L1)") "Final state  : ", nearly_equal (sum(p(3:6)%p(0)), sqrts)
+       write (u, "(A)") "* Generated real phase-space: "
+       call pacify (p, 1E-6_default)
+       call vector4_write_set (p, u, testflag = .true., ultra = .true.)
+
+    end subroutine check_phsp
   end subroutine phs_fks_generator_5
 
 @ %def phs_fks_generator_5
