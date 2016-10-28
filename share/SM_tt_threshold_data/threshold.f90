@@ -757,7 +757,7 @@ contains
     type(vector4_t) :: p_tmp_1, p_tmp_2
     type(vector4_t), dimension(3) :: p_decay
     integer :: u
-    logical :: keep_momenta = .true.
+    logical :: momenta_already_onshell
     u = output_unit
     sqrts = - p12%t
     mtop = ttv_mtpole (p12*p12)
@@ -766,7 +766,8 @@ contains
     en_w = (mtop**2 + mw2 - mb2) / (2 * mtop)
     en_b = (mtop**2 - mw2 + mb2) / (2 * mtop)
     p_three_mag = sqrt (lambda (mtop**2, mw2, mb2)) / (2 * mtop)
-    if (.not. keep_momenta) then
+    momenta_already_onshell = check_if_onshell (p3, p5, mtop)
+    if (.not. momenta_already_onshell) then
        if (leg == 0 .or. leg == 2) then
           p_tmp_1%p = p5
           p_tmp_2%p = p3
@@ -842,9 +843,9 @@ contains
   end subroutine compute_projected_top_decay_products
 
   pure function apply_boost (boost_in, mom) result (mom_result)
+    type(momentum) :: mom_result
     type(momentum), intent(in) :: mom
     type(lorentz_transformation_t), intent(in) :: boost_in
-    type(momentum) :: mom_result
     type(vector4_t) :: tmp_v4
     real(default), dimension(4) :: tmp
     tmp = mom
@@ -852,6 +853,17 @@ contains
     tmp = boost_in * tmp_v4
     mom_result = tmp
   end function apply_boost
+
+  pure function check_if_onshell (p1, p2, m) result (onshell)
+    logical :: onshell
+    type(momentum), intent(in) :: p1, p2
+    real(default), intent(in) :: m
+    type(momentum) :: pp
+    real(default) :: mm
+    pp = p1 + p2
+    mm = sqrt (pp * pp)
+    onshell = nearly_equal (mm, m)
+  end function check_if_onshell
 
   function compute_production_me (ffi) result (production_me)
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
@@ -973,60 +985,65 @@ contains
       type(vector4_t), dimension(4) :: k_decay_onshell_real
       type(vector4_t), dimension(3) :: k_decay_onshell_born
       type(momentum) :: mom_tmp
-      real(default) :: msq_in
+      real(default) :: msq_in, mtop
       integer :: i
+      logical :: momenta_already_onshell
+      mom_tmp = -(k(:,1) + k(:,2))
+      mtop = ttv_mtpole (mom_tmp * mom_tmp)
       k_tmp(1)%p = k(:,7)
       k_tmp(2)%p = k(:,ass_quark(leg))
       k_tmp(3)%p = k(:,ass_boson(leg))
-      mom_tmp = -(k(:,1) + k(:,2))
-      msq_in = (ttv_mtpole (mom_tmp * mom_tmp))**2
-      k_tmp(4)%p = [sqrt (msq_in), zero, zero, zero] 
-      L_to_cms = boost_to_cms
-      call generate_on_shell_decay_threshold (k_tmp(1:3), &
-           k_tmp(4), k_decay_onshell_real (2:4))
-      k_decay_onshell_real (1) = k_tmp(4)
-      k_decay_onshell_real = k_decay_onshell_real ([1,4,3,2])
-      if (threshold%settings%onshell_projection%boost_decay) &
-         k_decay_onshell_real  = L_to_cms * k_decay_onshell_real
-      call compute_projected_top_momenta (mom_tmp, leg)
+      momenta_already_onshell = nearly_equal ((k_tmp(2) + k_tmp(3))**1, mtop)
+      msq_in = mtop**2
+      k_tmp(4)%p = [sqrt (msq_in), zero, zero, zero]
+      if (momenta_already_onshell) then
+         k_decay_real(:,1) = k(:,ass_boson(leg)) + k(:,ass_quark(leg)) + k(:,THR_POS_GLUON)
+         k_decay_real(:,2) = k(:,ass_boson(leg))
+         k_decay_real(:,3) = k(:,ass_quark(leg))
+         k_decay_real(:,4) = k(:,THR_POS_GLUON)
+         call vector4_invert_direction (k_tmp(4))
+         k_decay_born(:,1) = k(:,ass_boson(other_leg)) + k(:,ass_quark(other_leg))
+         k_decay_born(:,2) = k(:,ass_boson(other_leg))
+         k_decay_born(:,3) = k(:,ass_quark(other_leg))
+         if (leg == 1) then
+            mom_wm_onshell = k_decay_born(:,2)
+            mom_bbar_onshell = k_decay_born(:,3)
+         else
+            mom_wp_onshell = k_decay_born(:,2)
+            mom_b_onshell = k_decay_born(:,3)
+         end if
+         if (leg == 1) then
+            mom_top_onshell = k_decay_real(:,2) + k_decay_real(:,3) + k_decay_real(:,4)
+         else
+            mom_top_onshell = k_decay_born(:,2) + k_decay_born(:,3)
+         end if
+         if (leg == 2) then
+            mom_topbar_onshell = k_decay_real(:,2) + k_decay_real(:,3) + k_decay_real(:,4)
+         else
+            mom_topbar_onshell = k_decay_born(:,2) + k_decay_born(:,3)
+         end if
+      else
+         L_to_cms = boost_to_cms
+         call generate_on_shell_decay_threshold (k_tmp(1:3), &
+              k_tmp(4), k_decay_onshell_real (2:4))
+         k_decay_onshell_real (1) = k_tmp(4)
+         k_decay_onshell_real = k_decay_onshell_real ([1,4,3,2])
+         if (threshold%settings%onshell_projection%boost_decay) &
+            k_decay_onshell_real  = L_to_cms * k_decay_onshell_real
+         call compute_projected_top_momenta (mom_tmp, leg)
 
-      k_tmp(1)%p = k(:,ass_quark(other_leg))
-      k_tmp(2)%p = k(:,ass_boson(other_leg))
-      k_decay_onshell_born = create_two_particle_decay (msq_in, k_tmp(1), k_tmp(2))
-      
-      k_decay_onshell_born = L_to_cms * k_decay_onshell_born
-      do i = 1, 3
-         k_decay_onshell_born(i)%p(1:3) = -k_decay_onshell_born(i)%p(1:3)
-      end do
+         k_tmp(1)%p = k(:,ass_quark(other_leg))
+         k_tmp(2)%p = k(:,ass_boson(other_leg))
+         k_decay_onshell_born = create_two_particle_decay (msq_in, k_tmp(1), k_tmp(2))
 
-      k_decay_born = k_decay_onshell_born
-      !k_decay_real = k_decay_onshell_real
-      k_decay_real(:,1) = k(:,ass_boson(leg)) + k(:,ass_quark(leg)) + k(:,THR_POS_GLUON)
-      k_decay_real(:,2) = k(:,ass_boson(leg))
-      k_decay_real(:,3) = k(:,ass_quark(leg))
-      k_decay_real(:,4) = k(:,THR_POS_GLUON)
-      call vector4_invert_direction (k_tmp(4))
-      k_decay_born(:,1) = k(:,ass_boson(other_leg)) + k(:,ass_quark(other_leg))
-      k_decay_born(:,2) = k(:,ass_boson(other_leg))
-      k_decay_born(:,3) = k(:,ass_quark(other_leg))
-      if (leg == 1) then
-         mom_wm_onshell = k_decay_born(:,2)
-         mom_bbar_onshell = k_decay_born(:,3)
-      else
-         mom_wp_onshell = k_decay_born(:,2)
-         mom_b_onshell = k_decay_born(:,3)
+         k_decay_onshell_born = L_to_cms * k_decay_onshell_born
+         do i = 1, 3
+            k_decay_onshell_born(i)%p(1:3) = -k_decay_onshell_born(i)%p(1:3)
+         end do
+
+         k_decay_born = k_decay_onshell_born
+         k_decay_real = k_decay_onshell_real
       end if
-      if (leg == 1) then
-         mom_top_onshell = k_decay_real(:,2) + k_decay_real(:,3) + k_decay_real(:,4)
-      else
-         mom_top_onshell = k_decay_born(:,2) + k_decay_born(:,3)
-      end if
-      if (leg == 2) then
-         mom_topbar_onshell = k_decay_real(:,2) + k_decay_real(:,3) + k_decay_real(:,4)
-      else
-         mom_topbar_onshell = k_decay_born(:,2) + k_decay_born(:,3)
-      end if
-      !call check_phase_space_point (k_decay_onshell_real, k_decay_onshell_born, mom_tmp * mom_tmp)
     end subroutine set_decay_momenta
 
     subroutine check_phase_space_point (p_decay, p_prod, s)
