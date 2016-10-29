@@ -224,6 +224,7 @@ mostlyclean-latex:
 	gamelan_manual.[1-9] gamelan_manual.[1-9][0-9] \
 	manual.ps manual.pdf gamelan_manual.ps gamelan_manual.pdf \
 	$(WHIZARD_DEPENDENCY_GRAPHS_DOT) $(WHIZARD_DEPENDENCY_GRAPHS_PDF)
+	-test "$(srcdir)" != "." && rm -f $(PACKAGE).pdf
 clean-latex:
 maintainer-clean-latex:
 	-rm manual.ps manual.pdf gamelan_manual.ps gamelan_manual.pdf
