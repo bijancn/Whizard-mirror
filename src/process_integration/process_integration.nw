@@ -8767,6 +8767,8 @@ object and the squared matrix-element collector.
        associate (region_data => config%region_data)
           if (allocated (region_data%alr_contributors)) then
              n_contr = size (region_data%alr_contributors)
+          else if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) then
+             n_contr = 2
           else
              n_contr = 1
           end if
@@ -9311,13 +9313,13 @@ Jacobian factors.
     type is (phs_fks_t)
        if (use_contributors) then
           call phs%compute_xi_ref_momenta (reg_data%alr_contributors)
-       else if (k%threshold .and. k%emitter > 0) then
-          call phs%compute_xi_ref_momenta_threshold (k%emitter)
+       else if (k%threshold) then
+          if (k%emitter > 0) call phs%compute_xi_ref_momenta_threshold (k%emitter)
        else
           call phs%compute_xi_ref_momenta ()
        end if
        call phs%generate_radiation_variables &
-            (r_in(phs%n_r_born + 1 : phs%n_r_born + 3))
+            (r_in(phs%n_r_born + 1 : phs%n_r_born + 3), k%threshold)
        call phs%compute_cms_energy ()
     end select
   end subroutine kinematics_evaluate_radiation_kinematics
@@ -9541,7 +9543,6 @@ Relevant for using the proper momenta input for BLHA matrix elements.
     type(vector4_t), intent(out), dimension(:), allocatable :: p_out
     allocate (p_out (size (p_in)))
     if (k%threshold) then
-       call k%threshold_projection ()
        select type (phs => k%phs)
        type is (phs_fks_t)
           p_out = phs%get_onshell_projected_momenta ()
@@ -9574,17 +9575,24 @@ Relevant for using the proper momenta input for BLHA matrix elements.
     type(vector4_t), intent(in), dimension(:) :: p_in
     type(vector4_t), intent(out), dimension(:), allocatable :: p_out
     type(phs_point_t) :: p
+    type(vector4_t), dimension(:), allocatable :: p_born
     select type (phs => k%phs)
     type is (phs_fks_t)
-       call phs%compute_xi_max (p_in)
+       allocate (p_born (size (p_in)))
+       if (k%threshold) then
+          p_born = phs%get_onshell_projected_momenta ()
+          call vector4_write_set (p_born)
+       else
+          p_born = p_in
+       end if
+       call phs%compute_xi_max (p_born)
        if (k%emitter >= 0) then
-          p = size (p_in) + 1
-          allocate (p_out (size (p_in) + 1))
+          p = size (p_born) + 1
+          allocate (p_out (size (p_born) + 1))
           if (k%emitter <= k%n_in) then
-             call phs%generate_isr (k%i_phs, p_in, p)
+             call phs%generate_isr (k%i_phs, p_born, p)
           else
              if (k%threshold) then
-                call phs%threshold_projection (m1s_to_mpole (phs%get_sqrts()))
                 call phs%generate_fsr_threshold (k%emitter, k%i_phs, p)
              else if (k%i_con > 0) then
                 call phs%generate_fsr (k%emitter, k%i_phs, p, k%i_con)
@@ -10140,6 +10148,21 @@ postpone until we know the factorization scale), and we have a valid
   end subroutine term_instance_evaluate_radiation_kinematics
 
 @ %def term_instance_evaluate_radiation_kinematics
+@
+<<Instances: term instance: TBP>>=
+  procedure :: evaluate_projections => term_instance_evaluate_projections
+<<Instances: procedures>>=
+  subroutine term_instance_evaluate_projections (term)
+    class(term_instance_t), intent(inout) :: term
+    select type (phs => term%k_term%phs)
+    type is (phs_fks_t)
+       if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) then
+          if (term%k_term%threshold) call term%k_term%threshold_projection ()
+       end if
+    end select
+  end subroutine term_instance_evaluate_projections
+
+@ %def term_instance_evaluate_projections
 @
 <<Instances: term instance: TBP>>=
   procedure :: redo_sf_chain => term_instance_redo_sf_chain
@@ -11761,6 +11784,7 @@ recovered, and we are just computing the rest.
                    call instance%transfer_same_kinematics (i_term(j))
                    call instance%redo_sf_chains (i_term(j), channel)
                 end if
+                call instance%term(i_term(j))%evaluate_projections ()
                 call instance%term(i_term(j))%evaluate_radiation_kinematics &
                    (instance%mci_work(instance%i_mci))
                 if (.not. success)  exit
