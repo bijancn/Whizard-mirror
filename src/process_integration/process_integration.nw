@@ -8395,6 +8395,7 @@ module pcm
   use fks_regions, only: region_data_t
   use phs_fks, only: phs_fks_generator_t
   use phs_fks, only: thr_leg, get_boost_for_threshold_projection
+  use phs_fks, only: threshold_projection_born
   use real_subtraction, only: real_subtraction_t, soft_mismatch_t
   use real_subtraction, only: FIXED_ORDER_EVENTS, POWHEG
   use virtual, only: virtual_t
@@ -8833,13 +8834,25 @@ object and the squared matrix-element collector.
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
     type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: ren_scale, fac_scale
-    associate (virtual => pcm_instance%virtual)
-       !if (.not. allocated (virtual%p)) allocate (virtual%p (size (p)))
-       !virtual%p = p
-       call virtual%set_ren_scale (p, ren_scale)
-       call virtual%set_fac_scale (p, fac_scale)
-       call virtual%set_ellis_sexton_scale ()
-    end associate
+    real(default) :: sqrts, mtop
+    type(lorentz_transformation_t) :: L_to_cms
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) then
+          !!! Threshold implementation only for lepton collisions, so nothing to
+          !!! worry about here.
+          sqrts = two * p(1)%p(0); mtop = m1s_to_mpole (sqrts)
+          L_to_cms = get_boost_for_threshold_projection (p, sqrts, mtop)
+          associate (p_onshell => pcm_instance%real_kinematics%p_born_onshell%phs_point(1)%p)
+             call threshold_projection_born (mtop, L_to_cms, p, p_onshell)
+          end associate
+       end if
+       associate (virtual => pcm_instance%virtual)
+          call virtual%set_ren_scale (p, ren_scale)
+          call virtual%set_fac_scale (p, fac_scale)
+          call virtual%set_ellis_sexton_scale ()
+       end associate
+    end select
   end subroutine pcm_instance_nlo_set_momenta_and_scales_virtual
 
 @ %def pcm_instance_nlo_set_momenta_and_scales_virtual
@@ -8988,11 +9001,18 @@ object and the squared matrix-element collector.
     type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: alpha_s
     complex(default), intent(in), dimension(:) :: me
+    type(vector4_t), dimension(:), allocatable :: pp
     associate (virtual => pcm_instance%virtual)
+       allocate (pp (size (p)))
+       if (virtual%factorization_mode == FACTORIZATION_THRESHOLD) then
+          pp = pcm_instance%real_kinematics%p_born_onshell%get_momenta (1)
+       else
+          pp = p
+       end if
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
           sqme_virt = virtual%evaluate (config%region_data, &
-               alpha_s, p, real(me))
+               alpha_s, pp, real(me))
        end select
     end associate
   end function pcm_instance_nlo_compute_sqme_virt
