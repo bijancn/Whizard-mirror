@@ -334,6 +334,7 @@ module @ID@_threshold
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p12, p35, p46
+  real(default) :: mandelstam_s
   type(momentum) :: mom_top_onshell, mom_top_onshell_rest
   type(momentum) :: mom_topbar_onshell, mom_topbar_onshell_rest
   type(momentum) :: mom_wm_onshell, mom_wm_onshell_rest
@@ -364,8 +365,8 @@ contains
        s_OS = table_spin_states_OS(:,hi)
        owf_e_1 = u (mass(11), - p1, s_OS(1))
        owf_e_2 = vbar (mass(11), - p2, s_OS(2))
-       owf_t_3 = ubar (ttv_mtpole(p12*p12), p3, s_OS(3))
-       owf_t_4 = v (ttv_mtpole(p12*p12), p4, s_OS(4))
+       owf_t_3 = ubar (ttv_mtpole (mandelstam_s), p3, s_OS(3))
+       owf_t_4 = v (ttv_mtpole (mandelstam_s), p4, s_OS(4))
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
        owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
             .false., + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
@@ -433,7 +434,7 @@ contains
        ttv_ax = ttv_formfactor (p35, p46, 2, ffi) + extra_tree
        blob_Z_vec = gncup(1) * ttv_vec
        blob_Z_ax = gncup(2) * ttv_ax
-       mtop = ttv_mtpole (p12*p12)
+       mtop = ttv_mtpole (mandelstam_s)
        if (threshold%settings%onshell_projection%production) then
           if (debug_active (D_THRESHOLD)) then
              call assert_equal (u, sqrt (mom_top_onshell * mom_top_onshell), &
@@ -468,7 +469,7 @@ contains
     complex(default) :: one_over_p
     integer, intent(in) :: ffi
     real(default) :: top_mass, top_width
-    top_mass = ttv_mtpole (p12*p12)
+    top_mass = ttv_mtpole (mandelstam_s)
     if (threshold%settings%onshell_projection%width) then
       top_width = ttv_wtpole (p12*p12, ffi)
       one_over_p = one / cmplx (p35*p35 - top_mass**2, top_mass*top_width, kind=default)
@@ -508,7 +509,8 @@ contains
          ptop = mom_top_onshell
        end if
        if (debug_active (D_THRESHOLD)) then
-          call assert_equal (output_unit, sqrt (ptop * ptop), mass(6), &
+          call assert_equal (output_unit, sqrt (ptop * ptop), &
+            ttv_mtpole (mandelstam_s), &
             "ptop is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
           call assert_equal (output_unit, sqrt (pwp * pwp), mass(24), &
             "pwp is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
@@ -548,7 +550,8 @@ contains
        end if
        ptopbar = pwm + pbbar
        if (debug_active (D_THRESHOLD)) then
-          call assert_equal (output_unit, sqrt (ptopbar * ptopbar), mass(6), &
+          call assert_equal (output_unit, sqrt (ptopbar * ptopbar), &
+               ttv_mtpole (mandelstam_s), &
                "ptopbar is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
           call assert_equal (output_unit, sqrt (pwm * pwm), mass(24), &
             "pwm is projected", rel_smallness=tiny_07, exit_on_fail=.true.)
@@ -672,6 +675,7 @@ contains
     p3 =   k(:,3) ! outgoing
     p4 =   k(:,4) ! outgoing
     p12 = p1 + p2
+    mandelstam_s = p12 * p12
     if (.not. onshell_tops (p3, p4)) then
        p5 =   k(:,5) ! outgoing
        p6 =   k(:,6) ! outgoing
@@ -1055,7 +1059,8 @@ contains
       if (debug_active (D_THRESHOLD)) then
          u = output_unit
          sqrts = sqrt(s)
-         call assert_equal (u, mass(6), p_decay(1)**1, 'Decay-top is on-shell', &
+         call assert_equal (u, ttv_mtpole (mandelstam_s), &
+              p_decay(1)**1, 'Decay-top is on-shell', &
               abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
          call assert_equal (u, zero, p_decay(4)**1, 'Gluon is on-shell', &
               abs_smallness = 1E-5_default, rel_smallness = 1E-5_default, &
@@ -1064,7 +1069,8 @@ contains
               abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
          call assert_equal (u, mass(24), p_decay(2)**1, 'Decay-W is on-shell', &
               abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
-         call assert_equal (u, mass(6), p_prod(1)**1, 'Production-top is on-shell', &
+         call assert_equal (u, ttv_mtpole (mandelstam_s), &
+              p_prod(1)**1, 'Production-top is on-shell', &
               abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
          call assert_equal (u, mass(5), p_prod(2)**1, 'Production-bottom is on-shell', &
               abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
