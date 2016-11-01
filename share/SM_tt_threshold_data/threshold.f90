@@ -334,12 +334,12 @@ module @ID@_threshold
 
   type(momentum) :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p12, p35, p46
-  type(momentum) :: mom_top_onshell, mom_top_onshell_rest
-  type(momentum) :: mom_topbar_onshell, mom_topbar_onshell_rest
-  type(momentum) :: mom_wm_onshell, mom_wm_onshell_rest
-  type(momentum) :: mom_wp_onshell, mom_wp_onshell_rest
-  type(momentum) :: mom_b_onshell, mom_b_onshell_rest
-  type(momentum) :: mom_bbar_onshell, mom_bbar_onshell_rest
+  type(momentum), public :: mom_top_onshell, mom_top_onshell_rest
+  type(momentum), public :: mom_topbar_onshell, mom_topbar_onshell_rest
+  type(momentum), public :: mom_wm_onshell, mom_wm_onshell_rest
+  type(momentum), public :: mom_wp_onshell, mom_wp_onshell_rest
+  type(momentum), public :: mom_b_onshell, mom_b_onshell_rest
+  type(momentum), public :: mom_bbar_onshell, mom_bbar_onshell_rest
   type(spinor) :: owf_t_4, owf_b_6, owf_e_1
   type(conjspinor) :: owf_t_3, owf_b_5, owf_e_2
   type(vector) :: owf_Wp_3, owf_Wm_4

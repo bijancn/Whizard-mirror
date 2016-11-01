@@ -48,6 +48,9 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
        sqme_c, acc_c) bind(C)
   use @ID@_threshold
   use @ID@_virtual
+  use physics_defs, only: ass_boson, ass_quark
+  use physics_defs, only: THR_POS_WP, THR_POS_WM
+  use physics_defs, only: THR_POS_B, THR_POS_BBAR
   use ttv_formfactors
   use omega95
   implicit none
@@ -69,7 +72,8 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   call msg_debug (D_ME_METHODS, "@ID@_olp_eval2")
   if (i_flv /= 1)  call msg_fatal ("i_flv /= 1, threshold interface was not built for this")
   if (any (id <= 0))  call msg_fatal ("Could not register process in OpenLoops")
-  if (.not. threshold%settings%factorized_computation)  call msg_fatal ("@ID@_olp_eval2: OFFSHELL_STRATEGY is not factorized")
+  if (.not. threshold%settings%factorized_computation)  &
+       call msg_fatal ("@ID@_olp_eval2: OFFSHELL_STRATEGY is not factorized")
   alpha_s = alpha_s_c
   mu = mu_c
   call init_workspace ()
@@ -83,6 +87,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
      p_top(leg) = p_decay(:,1,leg)
   end do
   call set_production_momenta (parray)
+  call set_top_momenta ()
   call set_parameter("width(6)", zero)
   call set_parameter("width(24)", zero)
   bw = top_propagators (FF)
@@ -114,6 +119,10 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
         ! TODO: (bcn 2016-01-22) handle acc
         call evaluate_loop (id(this_id), p_decay(:,:,leg), virt_decay(3), &
              virt_decay(0:2), acc)
+        print *, 'prod2: ', prod2
+        print *, 'born_decay_me2: ', born_decay_me2
+        print *, 'virt_decay: ', virt_decay
+        print *, 'bw: ', abs2 (bw)
         total = total + prod2 * born_decay_me2 * virt_decay * abs2 (bw)
      end do
   end do
@@ -125,6 +134,15 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   if (debug2_active (D_ME_METHODS)) then
      print *, 'sqme_c =    ', sqme_c !!! Debugging
   end if
+contains
+  subroutine set_top_momenta ()
+    mom_top_onshell = parray(:,THR_POS_WP) + parray(:,THR_POS_B)
+    mom_topbar_onshell = parray(:,THR_POS_WM) + parray(:,THR_POS_BBAR)
+    mom_wp_onshell = parray(:,THR_POS_WP)
+    mom_wm_onshell = parray(:,THR_POS_WM)
+    mom_b_onshell = parray(:,THR_POS_B)
+    mom_bbar_onshell = parray(:,THR_POS_BBAR)
+  end subroutine set_top_momenta
 end subroutine @ID@_olp_eval2
 
 subroutine @ID@_stop_openloops () bind(C)
