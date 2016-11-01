@@ -107,7 +107,7 @@ Pythia8::Pythia* pythia=new Pythia8::Pythia;
        Pythia8::Pythia* pythia=new Pythia8::Pythia;
        ]])],
     [dnl
-    wo_pythia8_version=`./conftest | $GREP 'PYTHIA version' | $SED 's/.* PYTHIA version//g'  | $SED 's/ \|.*|//g'`
+    wo_pythia8_version=`./conftest | $GREP 'PYTHIA version' | $SED 's/.* PYTHIA version //g'  | $SED 's/|.*//g'`
     VERSION_KNOWN="true"
     AC_MSG_RESULT([$wo_pythia8_version])],
     [dnl

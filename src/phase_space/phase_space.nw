@@ -1092,6 +1092,7 @@ the flight direction, without rotation.
     if (phs%config%cm_frame) then
        phs%sqrts_hat = phs%config%sqrts
        phs%p = p
+       phs%lt_cm_to_lab = identity
     else
        p0 = sum (p)
        if (phs%config%sqrts_fixed) then
@@ -2248,8 +2249,8 @@ end module phs_single
   public :: phs_single_config_t
 <<PHS single: types>>=
   type, extends (phs_config_t) :: phs_single_config_t
-   contains
-   <<PHS single: phs single config: TBP>>
+  contains
+  <<PHS single: phs single config: TBP>>
   end type phs_single_config_t
 
 @ %def phs_single_config_t
@@ -10632,6 +10633,8 @@ module phs_wood
 
 <<PHS wood: public>>
 
+<<PHS wood: parameters>>
+
 <<PHS wood: types>>
 
 contains
@@ -10642,6 +10645,11 @@ end module phs_wood
 @ %def phs_wood
 @
 \subsection{Configuration}
+<<PHS wood: parameters>>=
+  integer, parameter, public :: EXTENSION_NONE = 0
+  integer, parameter, public :: EXTENSION_DEFAULT = 1
+  integer, parameter, public :: EXTENSION_DGLAP = 2
+
 <<PHS wood: public>>=
   public :: phs_wood_config_t
 <<PHS wood: types>>=
@@ -10657,7 +10665,7 @@ end module phs_wood
      type(cascade_set_t), allocatable :: cascade_set
      type(phs_forest_t) :: forest
      type(os_data_t) :: os_data
-     logical :: extended_phs = .false.
+     integer :: extension_mode = EXTENSION_NONE
    contains
    <<PHS wood: phs wood config: TBP>>
   end type phs_wood_config_t
@@ -10688,20 +10696,26 @@ not standard input/output.)
 <<PHS wood: procedures>>=
   subroutine phs_wood_config_increase_n_par (phs_config)
     class(phs_wood_config_t), intent(inout) :: phs_config
-    phs_config%n_par = phs_config%n_par + 3
+    select case (phs_config%extension_mode)
+    case (EXTENSION_DEFAULT)
+       phs_config%n_par = phs_config%n_par + 3
+    case (EXTENSION_DGLAP)
+       phs_config%n_par = phs_config%n_par + 4
+    end select
   end subroutine phs_wood_config_increase_n_par
 
 @ %def phs_wood_config_increase_n_par
 @
 <<PHS wood: phs wood config: TBP>>=
-  procedure :: set_extended_phs => phs_wood_config_set_extended_phs
+  procedure :: set_extension_mode => phs_wood_config_set_extension_mode
 <<PHS wood: procedures>>=
-  subroutine phs_wood_config_set_extended_phs (phs_config)
+  subroutine phs_wood_config_set_extension_mode (phs_config, mode)
     class(phs_wood_config_t), intent(inout) :: phs_config
-    phs_config%extended_phs = .true.
-  end subroutine phs_wood_config_set_extended_phs
+    integer, intent(in) :: mode
+    phs_config%extension_mode = mode
+  end subroutine phs_wood_config_set_extension_mode
 
-@
+@ %def phs_wood_config_set_extension_mode
 @ Output.  The contents of the PHS forest are not printed explicitly.
 <<PHS wood: phs wood config: TBP>>=
   procedure :: write => phs_wood_config_write
@@ -11070,16 +11084,6 @@ reuse an existing file even if it does not match the current setup.
 @ %def phs_wood_config_configure
 @
 <<PHS wood: phs wood config: TBP>>=
-  procedure :: set_extra_parameters => phs_wood_config_set_extra_parameters
-<<PHS wood: procedures>>=
-  subroutine phs_wood_config_set_extra_parameters (config)
-    class(phs_wood_config_t), intent(inout) :: config
-    config%n_par = config%n_par + 3
-  end subroutine phs_wood_config_set_extra_parameters
-
-@ %def phs_wood_config_set_extra_parameters
-@
-<<PHS wood: phs wood config: TBP>>=
   procedure :: reshuffle_flavors => phs_wood_config_reshuffle_flavors
 <<PHS wood: procedures>>=
   subroutine phs_wood_config_reshuffle_flavors (phs_config, reshuffle, flv_extra)
@@ -11349,8 +11353,12 @@ independent of the particle masses.
     select type (phs_config)
     type is (phs_wood_config_t)
        phs%forest = phs_config%forest
-       if (phs_config%extended_phs) &
+       select case (phs_config%extension_mode)
+       case (EXTENSION_DEFAULT)
           phs%n_r_born = phs_config%n_par - 3
+       case (EXTENSION_DGLAP)
+          phs%n_r_born = phs_config%n_par - 4
+       end select
     end select
   end subroutine phs_wood_init
 
@@ -11383,7 +11391,7 @@ extracting them.
             phs%sqrts_hat, phs%r, phs%f, phs%volume, ok)
        select type (config => phs%config)
        type is (phs_wood_config_t)
-          if (config%extended_phs) then
+          if (config%extension_mode > EXTENSION_NONE) then
              if (phs%n_r_born > 0) then
                 phs%r_real = r_in (phs%n_r_born + 1 : phs%n_r_born + 3)
              else
@@ -11408,10 +11416,10 @@ extracting them.
             phs%sqrts_hat, phs%r, phs%f, combine=.true.)
        select type (config => phs%config)
        type is (phs_wood_config_t)
-          if (config%extended_phs) then
+          if (config%extension_mode > EXTENSION_NONE) then
              if (phs%n_r_born > 0) then
                 do c = 1, size (phs%r, 2)
-                   phs%r(phs%n_r_born+1:phs%n_r_born+3,c) = phs%r_real
+                   phs%r(phs%n_r_born + 1 : phs%n_r_born + 3, c) = phs%r_real
                 end do
              else
                 phs%r_defined = .false.
@@ -13104,7 +13112,7 @@ initial-state phase spaces.
     logical, intent(in), optional :: rebuild
     logical, intent(in), optional :: ignore_mismatch
     integer, intent(in), optional :: nlo_type
-    if (.not. phs_config%extended_phs) then
+    if (phs_config%extension_mode == EXTENSION_NONE) then
        select case (phs_config%mode)
        case (PHS_MODE_ADDITIONAL_PARTICLE)
           phs_config%n_par = phs_config%n_par + 3
@@ -14900,6 +14908,18 @@ with $\Lambda$.
   end subroutine phs_fks_generator_setup_masses
 
 @ %def phs_fks_generator_setup_masses
+@
+<<phs fks: phs fks generator: TBP>>=
+  procedure :: set_xi_and_y_bounds => phs_fks_generator_set_xi_and_y_bounds
+<<phs fks: procedures>>=
+  subroutine phs_fks_generator_set_xi_and_y_bounds (generator, xi_min, y_max)
+    class(phs_fks_generator_t), intent(inout) :: generator
+    real(default), intent(in) :: xi_min, y_max
+    generator%xi_min = xi_min
+    generator%y_max = y_max
+  end subroutine phs_fks_generator_set_xi_and_y_bounds
+
+@ %def phs_fks_generator_set_xi_and_y_bounds
 @
 <<phs fks: phs fks generator: TBP>>=
   procedure :: set_isr_kinematics => phs_fks_generator_set_isr_kinematics

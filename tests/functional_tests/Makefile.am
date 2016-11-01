@@ -252,6 +252,10 @@ TESTS_REQ_HEPMC = \
     hepmc_10.run
 XFAIL_TESTS_REQ_HEPMC =
 
+TESTS_REQ_LCIO = \
+    lcio_1.run
+XFAIL_TESTS_REQ_LCIO =
+
 TESTS_REQ_LHAPDF5 = \
     lhapdf5.run
 TESTS_REQ_LHAPDF6 = \
@@ -288,6 +292,7 @@ TEST_DRIVERS_RUN = \
     $(TESTS_REQ_LHAPDF5) \
     $(TESTS_REQ_LHAPDF6) \
     $(TESTS_REQ_HEPMC) \
+    $(TESTS_REQ_LCIO) \
     $(TESTS_REQ_FASTJET) \
     $(TESTS_REQ_PYTHIA6) \
     $(TESTS_REQ_EV_ANA) \
@@ -309,6 +314,9 @@ XFAIL_TESTS += $(XFAIL_TESTS_REQ_OCAML)
 
 TESTS += $(TESTS_REQ_HEPMC)
 XFAIL_TESTS += $(XFAIL_TESTS_REQ_HEPMC)
+
+TESTS += $(TESTS_REQ_LCIO)
+XFAIL_TESTS += $(XFAIL_TESTS_REQ_LCIO)
 
 TESTS += $(TESTS_REQ_FASTJET)
 XFAIL_TESTS += $(XFAIL_TESTS_REQ_FASTJET)
@@ -411,13 +419,23 @@ $(top_builddir)/src/gamelan/gamelan.sty:
 	$(MAKE) -C $(top_builddir)/src/gamelan gamelan.sty
 endif
 
+noinst_PROGRAMS = 
 if HEPMC_AVAILABLE
 TESTS_SRC += $(hepmc_6_rd_SOURCES)
-noinst_PROGRAMS = hepmc_6_rd
+noinst_PROGRAMS += hepmc_6_rd
 hepmc_6_rd_SOURCES = hepmc_6_rd.cpp
 hepmc_6_rd_CXXFLAGS = $(HEPMC_INCLUDES) $(AM_CXXFLAGS)
 hepmc_6_rd_LDADD = $(LDFLAGS_HEPMC)
 hepmc_6.run: hepmc_6_rd
+endif
+
+if LCIO_AVAILABLE
+TESTS_SRC += $(lcio_rd_SOURCES)
+noinst_PROGRAMS += lcio_rd
+lcio_rd_SOURCES = lcio_rd.cpp
+lcio_rd_CXXFLAGS = $(LCIO_INCLUDES) $(AM_CXXFLAGS)
+lcio_rd_LDADD = $(LDFLAGS_LCIO)
+lcio_1.run: lcio_rd
 endif
 
 stdhep_4.run: stdhep_rd
