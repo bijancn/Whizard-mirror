@@ -39,7 +39,7 @@ AC_SUBST([OPENLOOPS_DIR])
 
 if test -n "$OPENLOOPS_DIR"; then
   wo_openloops_includes="-I$OPENLOOPS_DIR/lib_src/openloops/mod"
-  wo_openloops_ldflags="-L$OPENLOOPS_DIR/lib -lopenloops"
+  wo_openloops_ldflags="-Wl,-rpath,$OPENLOOPS_DIR/lib -L$OPENLOOPS_DIR/lib -lopenloops"
   wo_openloops_versionfile="$OPENLOOPS_DIR/pyol/config/default.cfg"
 fi
 

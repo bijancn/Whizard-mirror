@@ -5217,26 +5217,29 @@ rotated about the corresponding angles $y$ and $\phi$.
     type(vector4_t) :: p_em
     type(lorentz_transformation_t) :: rot
     type(lorentz_transformation_t) :: boost_to_rest_frame
-    type(vector4_t) :: p_soft
-    p_soft%p(0) = one
-    if (sub_soft%use_resonance_mappings) then
-       boost_to_rest_frame = inverse (boost (xi_ref_momentum, xi_ref_momentum**1))
-       p_em = boost_to_rest_frame * p_born(emitter)
-    else
-       p_em = p_born(emitter)
-    end if
-    p_soft%p(1:3) = p_em%p(1:3) / space_part_norm (p_em)
-    dir = create_orthogonal (space_part (p_em))
-    rot = rotation (y, sqrt(one - y**2), dir)
-    p_soft = rot * p_soft
-    if (.not. vanishes (phi)) then
-      dir = space_part (p_em) / space_part_norm (p_em)
-      rot = rotation (cos(phi), sin(phi), dir)
-      p_soft = rot * p_soft
-    end if
-    if (sub_soft%use_resonance_mappings) &
-       p_soft = inverse (boost_to_rest_frame) * p_soft
-    sub_soft%p_soft = p_soft
+    logical :: requires_boost
+    associate (p_soft => sub_soft%p_soft)
+       p_soft%p(0) = one
+       requires_boost = sub_soft%use_resonance_mappings .or. &
+            sub_soft%factorization_mode == FACTORIZATION_THRESHOLD
+       if (requires_boost) then
+          boost_to_rest_frame = inverse (boost (xi_ref_momentum, xi_ref_momentum**1))
+          p_em = boost_to_rest_frame * p_born(emitter)
+       else
+          p_em = p_born(emitter)
+       end if
+       p_soft%p(1:3) = p_em%p(1:3) / space_part_norm (p_em)
+       dir = create_orthogonal (space_part (p_em))
+       rot = rotation (y, sqrt(one - y**2), dir)
+       p_soft = rot * p_soft
+       if (.not. vanishes (phi)) then
+         dir = space_part (p_em) / space_part_norm (p_em)
+         rot = rotation (cos(phi), sin(phi), dir)
+         p_soft = rot * p_soft
+       end if
+       if (requires_boost) &
+          p_soft = inverse (boost_to_rest_frame) * p_soft
+    end associate
   end subroutine soft_subtraction_create_softvec_fsr
 
 @ %def soft_subtraction_create_softvec_fsr
@@ -6632,17 +6635,19 @@ to be more consistent with the evaluation of the Born phase space.
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: alr, emitter, i_phs, i_res
     real(default), intent(in) :: alpha_s
-    integer :: i_con, i_uborn
+    integer :: i_xi_ref, i_uborn
     real(default) :: q2
     type(vector4_t), dimension(:), allocatable :: p_born
     associate (real_kinematics => rsub%real_kinematics)
        if (rsub%reg_data%regions(alr)%has_soft_divergence ()) then
           if (rsub%sub_soft%use_resonance_mappings) then
-             i_con = rsub%reg_data%alr_to_i_contributor (alr)
+             i_xi_ref = rsub%reg_data%alr_to_i_contributor (alr)
+          else if (rsub%sub_soft%factorization_mode == FACTORIZATION_THRESHOLD) then
+             i_xi_ref = thr_leg(emitter)
           else
-             i_con = 1
+             i_xi_ref = 1
           end if
-          q2 = real_kinematics%xi_ref_momenta (i_con)**2
+          q2 = real_kinematics%xi_ref_momenta (i_xi_ref)**2
           allocate (p_born (rsub%reg_data%n_legs_born))
           if (rsub%reg_data%has_pseudo_isr ()) then
              p_born = real_kinematics%p_born_onshell%get_momenta(1)
@@ -6653,7 +6658,7 @@ to be more consistent with the evaluation of the Born phase space.
              call rsub%sub_soft%create_softvec_fsr &
                   (p_born, real_kinematics%y_soft(i_phs), &
                   real_kinematics%phi, emitter, &
-                  real_kinematics%xi_ref_momenta(i_con))
+                  real_kinematics%xi_ref_momenta(i_xi_ref))
           else
              call rsub%sub_soft%create_softvec_isr &
                 (real_kinematics%y_soft(i_phs), real_kinematics%phi)
@@ -6942,6 +6947,8 @@ end module nlo_data
     logical :: count_kinematics = .false.
     real(default) :: fks_dij_exp1
     real(default) :: fks_dij_exp2
+    real(default) :: xi_min
+    real(default) :: y_max
     type(string_t), dimension(:), allocatable :: excluded_resonances
   contains
   <<nlo data: fks template: TBP>>
@@ -6984,6 +6991,18 @@ end module nlo_data
   end subroutine fks_template_set_dij_exp
 
 @ %def fks_template_set_dij_exp
+@
+<<nlo data: fks template: TBP>>=
+  procedure :: set_xi_and_y_bounds => fks_template_set_xi_and_y_bounds
+<<nlo data: procedures>>=
+  subroutine fks_template_set_xi_and_y_bounds (template, xi_min, y_max)
+    class(fks_template_t), intent(inout) :: template
+    real(default), intent(in) :: xi_min, y_max
+    template%xi_min = xi_min
+    template%y_max = y_max
+  end subroutine fks_template_set_xi_and_y_bounds
+
+@ %def fks_template_set_xi_and_y_bounds
 @
 <<nlo data: fks template: TBP>>=
   procedure :: set_mapping_type => fks_template_set_mapping_type
@@ -9119,6 +9138,9 @@ end module dispatch_fks
        call split_string (exclude_from_resonance, var_str (":"), &
        fks_template%excluded_resonances)
     call fks_template%set_dij_exp (fks_dij_exp1, fks_dij_exp2)
+    call fks_template%set_xi_and_y_bounds &
+         (var_list%get_rval (var_str ("fks_xi_min")), &
+         var_list%get_rval (var_str ("fks_y_max")))
     select case (char (fks_mapping_type))
     case ("default")
        call fks_template%set_mapping_type (FKS_DEFAULT)
