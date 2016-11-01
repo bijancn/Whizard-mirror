@@ -438,9 +438,9 @@ contains
        if (threshold%settings%onshell_projection%production) then
           if (debug_active (D_THRESHOLD)) then
              call assert_equal (u, sqrt (mom_top_onshell * mom_top_onshell), &
-                  mtop, "ptop is projected", exit_on_fail=.true.)
+                  mtop, "Production: ptop is projected", exit_on_fail=.true.)
              call assert_equal (u, sqrt (mom_topbar_onshell * mom_topbar_onshell), &
-                  mtop, "ptop is projected", exit_on_fail=.true.)
+                  mtop, "Production: ptopbar is projected", exit_on_fail=.true.)
           end if
           ptop = mom_top_onshell
           ptopbar = mom_topbar_onshell
@@ -502,12 +502,13 @@ contains
        if (threshold%settings%onshell_projection%boost_decay) then
          pwp = mom_wp_onshell
          pb = mom_b_onshell
-         ptop = mom_top_onshell
+         !ptop = mom_top_onshell
        else
          pwp = mom_wp_onshell_rest
          pb = mom_b_onshell_rest
-         ptop = mom_top_onshell
+         !ptop = mom_top_onshell_rest
        end if
+       ptop = pwp + pb
        if (debug_active (D_THRESHOLD)) then
           call assert_equal (output_unit, sqrt (ptop * ptop), &
             ttv_mtpole (mandelstam_s), &
