@@ -119,10 +119,6 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
         ! TODO: (bcn 2016-01-22) handle acc
         call evaluate_loop (id(this_id), p_decay(:,:,leg), virt_decay(3), &
              virt_decay(0:2), acc)
-        print *, 'prod2: ', prod2
-        print *, 'born_decay_me2: ', born_decay_me2
-        print *, 'virt_decay: ', virt_decay
-        print *, 'bw: ', abs2 (bw)
         total = total + prod2 * born_decay_me2 * virt_decay * abs2 (bw)
      end do
   end do
