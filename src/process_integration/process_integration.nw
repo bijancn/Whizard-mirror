@@ -7270,7 +7270,8 @@ could become relevant for NLO algorithms.
     end if
     use_internal_color = .false.
     if (present (subtraction_method)) &
-       use_internal_color = char (subtraction_method) == 'omega'
+       use_internal_color = (char (subtraction_method) == 'omega') &
+            .or. (char (subtraction_method) == 'threshold')
     call term%setup_interaction (core, model, nlo_type = nlo_type, &
        pol_beams = use_beam_pol, use_internal_color = use_internal_color)
   end subroutine process_term_init
@@ -7402,23 +7403,26 @@ matrix element.
     end subroutine setup_states_openloops
 
     subroutine setup_states_threshold ()
-      integer :: f, c, h, i
+      integer :: s, f, c, h, i
       if (n_hel > 1) &
          call msg_fatal ("Polarized beams only supported by OpenLoops")
       i = 0
+      n_sub = 0; if (nlo_t == NLO_VIRTUAL) n_sub = 1
       associate (data => term%data)
-         do f = 1, term%data%n_flv
-            do h = 1, data%n_hel
-               do c = 1, data%n_col
-                  i = i + 1
-                  term%flv(i) = f
-                  !!! Dumy initialization of helicity
-                  term%hel(i) = 1
-                  !!! Dummy-initialization of color
-                  term%col(i) = 1
-                  call flv%init (term%data%flv_state (:,f), model)
-                  call qn%init (flv)
-                  call term%int%add_state (qn)
+         do s = 0, n_sub
+            do f = 1, term%data%n_flv
+               do h = 1, data%n_hel
+                  do c = 1, data%n_col
+                     i = i + 1
+                     term%flv(i) = f
+                     !!! Dumy initialization of helicity
+                     term%hel(i) = 1
+                     !!! Dummy-initialization of color
+                     term%col(i) = 1
+                     call flv%init (term%data%flv_state (:,f), model)
+                     call qn%init (flv, s)
+                     call term%int%add_state (qn)
+                  end do
                end do
             end do
          end do
@@ -7431,7 +7435,7 @@ matrix element.
       if (n_hel > 1) &
          call msg_fatal ("Polarized beams only supported by OpenLoops")
       i = 0
-      n_sub = 1; if (nlo_t == NLO_VIRTUAL) n_sub = 2
+      n_sub = 0; if (nlo_t == NLO_VIRTUAL) n_sub = 1
       do s = 0, n_sub
          do f = 1, term%data%n_flv
             i = i + 1
@@ -8398,6 +8402,7 @@ module pcm
   use fks_regions, only: region_data_t
   use phs_fks, only: phs_fks_generator_t
   use phs_fks, only: thr_leg, get_boost_for_threshold_projection
+  use phs_fks, only: threshold_projection_born
   use real_subtraction, only: real_subtraction_t, soft_mismatch_t
   use real_subtraction, only: FIXED_ORDER_EVENTS, POWHEG
   use virtual, only: virtual_t
@@ -8838,13 +8843,25 @@ object and the squared matrix-element collector.
     class(pcm_instance_nlo_t), intent(inout) :: pcm_instance
     type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: ren_scale, fac_scale
-    associate (virtual => pcm_instance%virtual)
-       !if (.not. allocated (virtual%p)) allocate (virtual%p (size (p)))
-       !virtual%p = p
-       call virtual%set_ren_scale (p, ren_scale)
-       call virtual%set_fac_scale (p, fac_scale)
-       call virtual%set_ellis_sexton_scale ()
-    end associate
+    real(default) :: sqrts, mtop
+    type(lorentz_transformation_t) :: L_to_cms
+    select type (config => pcm_instance%config)
+    type is (pcm_nlo_t)
+       if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) then
+          !!! Threshold implementation only for lepton collisions, so nothing to
+          !!! worry about here.
+          sqrts = two * p(1)%p(0); mtop = m1s_to_mpole (sqrts)
+          L_to_cms = get_boost_for_threshold_projection (p, sqrts, mtop)
+          associate (p_onshell => pcm_instance%real_kinematics%p_born_onshell%phs_point(1)%p)
+             call threshold_projection_born (mtop, L_to_cms, p, p_onshell)
+          end associate
+       end if
+       associate (virtual => pcm_instance%virtual)
+          call virtual%set_ren_scale (p, ren_scale)
+          call virtual%set_fac_scale (p, fac_scale)
+          call virtual%set_ellis_sexton_scale ()
+       end associate
+    end select
   end subroutine pcm_instance_nlo_set_momenta_and_scales_virtual
 
 @ %def pcm_instance_nlo_set_momenta_and_scales_virtual
@@ -9021,11 +9038,18 @@ object and the squared matrix-element collector.
     type(vector4_t), intent(in), dimension(:) :: p
     real(default), intent(in) :: alpha_s
     complex(default), intent(in), dimension(:) :: me
+    type(vector4_t), dimension(:), allocatable :: pp
     associate (virtual => pcm_instance%virtual)
+       allocate (pp (size (p)))
+       if (virtual%factorization_mode == FACTORIZATION_THRESHOLD) then
+          pp = pcm_instance%real_kinematics%p_born_onshell%get_momenta (1)
+       else
+          pp = p
+       end if
        select type (config => pcm_instance%config)
        type is (pcm_nlo_t)
           sqme_virt = virtual%evaluate (config%region_data, &
-               alpha_s, p, real(me))
+               alpha_s, pp, real(me))
        end select
     end associate
   end function pcm_instance_nlo_compute_sqme_virt
