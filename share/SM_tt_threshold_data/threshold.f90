@@ -418,7 +418,7 @@ contains
     type(momentum) :: ptop, ptopbar
     integer :: u
     u = output_unit
-    if (threshold%settings%interference) then
+    if (threshold%settings%interference .or.threshold%settings%force_minus_one) then
        extra_tree = zero
     else
        extra_tree = one
