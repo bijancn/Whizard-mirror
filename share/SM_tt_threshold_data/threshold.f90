@@ -127,8 +127,7 @@ module @ID@_threshold
   implicit none
   private
   public :: init, calculate_blob, compute_born, &
-       !set_production_momenta, init_workspace, compute_production_owfs, &
-       init_workspace, compute_production_owfs, &
+       compute_momentum_sums, init_workspace, compute_production_owfs, &
        compute_decay_owfs, table_spin_states, compute_production_me, &
        top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2
 
@@ -334,7 +333,7 @@ module @ID@_threshold
   integer, public :: nhel_max
 
   type(momentum), public :: p1, p2, p3, p4, p5, p6
-  type(momentum), public :: p12, p35, p46
+  type(momentum) :: p12, p35, p46
   real(default), public :: mandelstam_s
   type(momentum), public :: mom_top_onshell, mom_top_onshell_rest
   type(momentum), public :: mom_topbar_onshell, mom_topbar_onshell_rest
@@ -575,7 +574,7 @@ contains
     complex(default) :: prod, dec1, dec2
     integer, dimension(n_prt) :: s
     integer :: hi, h_t, h_tbar
-    !call set_production_momenta (k)
+    call compute_momentum_sums ()
     call compute_projected_momenta (0)
     call init_workspace ()
     if (threshold%settings%factorized_computation) then
@@ -665,26 +664,14 @@ contains
     if (allocated (amp_blob))  amp_blob = zero
   end subroutine init_workspace
 
-  !subroutine set_production_momenta (k)
-  !  real(default), dimension(0:3,*), intent(in) :: k
-  !  real(default), dimension(4) :: tmp, test
-  !  if (debug2_active (D_THRESHOLD)) then
-  !     call msg_debug (D_THRESHOLD, "set_production_momenta")
-  !     print *, 'k =    ', k(0:3,1:6)
-  !  end if
-  !  p1 = - k(:,1) ! incoming
-  !  p2 = - k(:,2) ! incoming
-  !  p3 =   k(:,3) ! outgoing
-  !  p4 =   k(:,4) ! outgoing
-  !  p12 = p1 + p2
-  !  mandelstam_s = p12 * p12
-  !  if (.not. onshell_tops (p3, p4)) then
-  !     p5 =   k(:,5) ! outgoing
-  !     p6 =   k(:,6) ! outgoing
-  !     p35 = p3 + p5
-  !     p46 = p4 + p6
-  !  end if
-  !end subroutine set_production_momenta
+  subroutine compute_momentum_sums ()
+    p12 = p1 + p2
+    mandelstam_s = p12 * p12
+    if (.not. onshell_tops (p3, p4)) then
+       p35 = p3 + p5
+       p46 = p4 + p6
+    end if
+  end subroutine compute_momentum_sums
 
   subroutine compute_projected_momenta (leg)
      integer, intent(in) :: leg
@@ -891,7 +878,6 @@ contains
     real(default) :: amp2
     real(default), dimension(0:3,*), intent(in) :: k
     integer, intent(in) :: ffi
-    real(default), dimension(0:3,6) :: k_production
     real(default), dimension(0:3,4) :: k_decay_real
     real(default), dimension(0:3,3) :: k_decay_born
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1,1:2) :: production_me
@@ -909,8 +895,8 @@ contains
     if (.not. threshold%settings%helicity_approximated) &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
-    !call set_production_momenta (k)
-    call init_decay_and_production_momenta ()
+    call compute_momentum_sums ()
+    !call init_decay_and_production_momenta ()
     call init_workspace ()
     call compute_amplitudes ()
     total = zero
@@ -945,6 +931,7 @@ contains
       do leg = 1, 2
          other_leg = 3 - leg
          call set_production_momenta_with_gluon ()
+         call compute_momentum_sums ()
          call compute_projected_momenta (leg)
          call set_decay_momenta ()
          production_me(:,:,:,:,leg) = compute_production_me (ffi)
@@ -977,16 +964,15 @@ contains
       end do
     end subroutine compute_amplitudes
 
-    subroutine init_decay_and_production_momenta ()
-      do i = 1, 6
-         k_production(:,i) = k(:,i)
-      end do
-    end subroutine init_decay_and_production_momenta
-
     subroutine set_production_momenta_with_gluon ()
-      k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
-      k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
-      !call set_production_momenta (k_production)
+      type(momentum) :: pp
+      pp = k(:,7)
+      select case (leg)
+      case (THR_POS_B)
+         p5 = p5 + pp
+      case (THR_POS_BBAR)
+         p6 = p6 + pp
+      end select
     end subroutine set_production_momenta_with_gluon
 
     subroutine set_decay_momenta ()
@@ -1127,13 +1113,9 @@ subroutine @ID@_set_offshell_momenta (k) bind(C)
   p2 = - k(:,2) !!! incoming
   p3 =   k(:,3) !!! outgoing
   p4 =   k(:,4) !!! outgoing
-  p12 = p1 + p2
-  mandelstam_s = p12 * p12
   if (.not. onshell_tops (p3, p4)) then
      p5 = k(:,5)
      p6 = k(:,6)
-     p35 = p3 + p5
-     p46 = p4 + p6
   end if
 end subroutine @ID@_set_offshell_momenta
 
@@ -1206,7 +1188,7 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
      if (test_ward)  amp2 = 0
   end if
   amp2 = amp2 * production_factors
-  print *, 'amp2: ', amp2
+  !print *, 'amp2: ', amp2
 
 contains
 
