@@ -13768,7 +13768,7 @@ calculated from the Born momenta.
           p_born = phs%p_born_tot
        end if
        call phs%generator%generate_radiation_variables &
-            (r_in, p_born, phs%phs_identifiers)
+            (r_in, p_born, phs%phs_identifiers, threshold)
        phs%r_real = r_in
     end select
   end subroutine phs_fks_generate_radiation_variables
@@ -13790,13 +13790,12 @@ calculated from the Born momenta.
 <<phs fks: phs fks: TBP>>=
   procedure :: compute_xi_ref_momenta_threshold => phs_fks_compute_xi_ref_momenta_threshold
 <<phs fks: procedures>>=
-  subroutine phs_fks_compute_xi_ref_momenta_threshold (phs, emitter)
+  subroutine phs_fks_compute_xi_ref_momenta_threshold (phs)
     class(phs_fks_t), intent(inout) :: phs
-    integer, intent(in) :: emitter
     select case (phs%mode)
     case (PHS_MODE_ADDITIONAL_PARTICLE)
        call phs%generator%compute_xi_ref_momenta_threshold &
-            (phs%get_onshell_projected_momenta (), emitter)
+            (phs%get_onshell_projected_momenta ())
     end select
   end subroutine phs_fks_compute_xi_ref_momenta_threshold
 
@@ -14957,11 +14956,12 @@ with $\Lambda$.
      phs_fks_generator_generate_radiation_variables
 <<phs fks: procedures>>=
   subroutine phs_fks_generator_generate_radiation_variables &
-     (generator, r_in, p_born, phs_identifiers)
+     (generator, r_in, p_born, phs_identifiers, threshold)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in), dimension(:) :: r_in
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(phs_identifier_t), intent(in), dimension(:) :: phs_identifiers
+    logical, intent(in), optional :: threshold
 
     if (any (generator%emitters <= 2) .and. generator%n_in > 1) &
         call generator%set_isr_kinematics &
@@ -14977,7 +14977,7 @@ with $\Lambda$.
        end select
        call generator%compute_xi_tilde (r_in(I_XI))
        call generator%set_masses (p_born, phs_identifiers)
-       call generator%compute_y (r_in(I_Y), p_born, phs_identifiers)
+       call generator%compute_y (r_in(I_Y), p_born, phs_identifiers, threshold)
     end associate
   end subroutine phs_fks_generator_generate_radiation_variables
 
@@ -15013,13 +15013,11 @@ with $\Lambda$.
   procedure :: compute_xi_ref_momenta_threshold &
        => phs_fks_generator_compute_xi_ref_momenta_threshold
 <<phs fks: procedures>>=
-  subroutine phs_fks_generator_compute_xi_ref_momenta_threshold (generator, p_born, emitter)
+  subroutine phs_fks_generator_compute_xi_ref_momenta_threshold (generator, p_born)
     class(phs_fks_generator_t), intent(inout) :: generator
     type(vector4_t), intent(in), dimension(:) :: p_born
-    integer, intent(in) :: emitter
-    integer :: leg
-    leg = thr_leg(emitter)
-    generator%real_kinematics%xi_ref_momenta(leg) = p_born(ass_boson(leg)) + p_born(ass_quark(leg))
+    generator%real_kinematics%xi_ref_momenta(1) = p_born(THR_POS_WP) + p_born(THR_POS_B)
+    generator%real_kinematics%xi_ref_momenta(2) = p_born(THR_POS_WM) + p_born(THR_POS_BBAR)
   end subroutine phs_fks_generator_compute_xi_ref_momenta_threshold
 
 @ %def phs_fks_generator_compute_xi_ref_momenta
@@ -15131,18 +15129,21 @@ with $\Lambda$.
 <<phs fks: phs fks generator: TBP>>=
   procedure :: compute_y => phs_fks_generator_compute_y
 <<phs fks: procedures>>=
-  subroutine phs_fks_generator_compute_y (generator, r_y, p, phs_identifiers)
+  subroutine phs_fks_generator_compute_y (generator, r_y, p, phs_identifiers, threshold)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: r_y
     type(vector4_t), intent(in), dimension(:) :: p
     type(phs_identifier_t), intent(in), dimension(:) :: phs_identifiers
+    logical, intent(in), optional :: threshold
     integer :: emitter, i_phs
     real(default) :: beta, one_p_beta, one_m_beta
     type(lorentz_transformation_t) :: boost_to_resonance
     real(default) :: q0
     type(vector4_t) :: p_res, p_em
     integer :: i
+    logical :: thr
     logical :: construct_massive_fsr = .false.
+    thr = .false.; if (present (threshold)) thr = threshold
     associate (rad_var => generator%real_kinematics)
        select case (generator%mode)
        case (GEN_REAL_PHASE_SPACE)
@@ -15163,6 +15164,12 @@ with $\Lambda$.
                          boost_to_resonance = inverse (boost (p_res, q0))
                          p_em = boost_to_resonance * p(emitter)
                       end associate
+                   else if (threshold) then
+                      p_res = rad_var%xi_ref_momenta (thr_leg (emitter))
+                      q0 = p_res**1
+                      boost_to_resonance = inverse (boost (p_res, q0))
+                      p_em = boost_to_resonance * p(emitter)
+                      print *, 'p_em: ', p_em%p(0)
                    else
                       q0 = generator%sqrts
                       p_em = p(emitter)
