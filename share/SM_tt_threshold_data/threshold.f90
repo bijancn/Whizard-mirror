@@ -1206,6 +1206,7 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
      if (test_ward)  amp2 = 0
   end if
   amp2 = amp2 * production_factors
+  print *, 'amp2: ', amp2
 
 contains
 
