@@ -903,7 +903,11 @@ contains
     integer, dimension(n_prt) :: s
     integer :: i, hi, leg, other_leg, h_t, h_tbar, h_gl, h_W, h_b
     if (.not. threshold%settings%factorized_computation)  &
-         call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not factorized')
+         call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
+         &'factorized (activate with 2')
+    if (.not. threshold%settings%helicity_approximated) &
+         call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
+         &'helicity-approximated (activate with 32)')
     call set_production_momenta (k)
     call init_decay_and_production_momenta ()
     call init_workspace ()
