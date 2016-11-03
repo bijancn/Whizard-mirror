@@ -9631,6 +9631,7 @@ Relevant for using the proper momenta input for BLHA matrix elements.
     type(vector4_t), intent(out), dimension(:), allocatable :: p_out
     type(phs_point_t) :: p
     type(vector4_t), dimension(:), allocatable :: p_born
+    real(default) :: xi_max_offshell, xi_offshell, y_offshell, jac_rand_dummy, phi
     select type (phs => k%phs)
     type is (phs_fks_t)
        allocate (p_born (size (p_in)))
@@ -9647,7 +9648,16 @@ Relevant for using the proper momenta input for BLHA matrix elements.
              call phs%generate_isr (k%i_phs, p_born, p)
           else
              if (k%threshold) then
-                call phs%generate_fsr (k%emitter, k%i_phs, p)
+                call phs%compute_xi_max (k%emitter, k%i_phs, p_born, xi_max_offshell)
+                xi_offshell = xi_max_offshell * phs%generator%real_kinematics%xi_tilde
+                phi = phs%generator%real_kinematics%phi
+                jac_rand_dummy = 1._default
+                call compute_y_from_emitter (phs%generator%real_kinematics%x_rad (I_Y), &
+                     phs%generator%real_kinematics%p_born_cms%get_momenta(1), &
+                     k%emitter, .true., phs%generator%y_max, jac_rand_dummy, &
+                     y_offshell)
+                call phs%generate_fsr (k%emitter, k%i_phs, p, &
+                     xi_y_phi = [xi_offshell, y_offshell, phi])
                 call phs%generator%real_kinematics%p_real_cms%set_momenta (k%i_phs, p)
                 call phs%generate_fsr_threshold (k%emitter, k%i_phs, p)
              else if (k%i_con > 0) then
@@ -10815,6 +10825,23 @@ method may modify the [[core_state]] workspace object.
           call core%compute_alpha_s (core_state, term%ren_scale)
        end select
     end select
+    select type (core)
+    type is (prc_threshold_t)
+       if (associated (term%pcm_instance)) then
+          associate (pcm => term%pcm_instance)
+             if (term%k_term%emitter >= 0) then
+                call pcm%real_kinematics%p_real_cms%write (term%config%i_term)
+                call core%set_offshell_momenta &
+                     (pcm%real_kinematics%p_real_cms%get_momenta(term%config%i_term))
+             else
+                call core%set_offshell_momenta &
+                     (pcm%real_kinematics%p_born_cms%get_momenta(1))
+             end if
+          end associate
+       else
+          call core%set_offshell_momenta (term%p_hard)
+       end if
+    end select
     select case (term%nlo_type)
     case (NLO_VIRTUAL)
        call term%evaluate_interaction_userdef_loop (core)
@@ -10837,21 +10864,6 @@ method may modify the [[core_state]] workspace object.
     integer :: n_amps, i, i_born
     logical :: bad_point
     n_amps = term%int_hard%get_n_matrix_elements ()
-    select type (core)
-    type is (prc_threshold_t)
-       select type (phs => term%k_term%phs)
-       type is (phs_fks_t)
-          associate (pcm => term%pcm_instance)
-             if (term%k_term%emitter >= 0) then
-                call core%set_offshell_momenta &
-                     (pcm%real_kinematics%p_real_cms%get_momenta(term%config%i_term))
-             else
-                call core%set_offshell_momenta &
-                     (pcm%real_kinematics%p_born_cms%get_momenta(1))
-             end if
-          end associate
-       end select
-    end select
     select type (core)
     class is (prc_user_defined_base_t)
        call core%update_alpha_s (term%core_state, term%fac_scale)

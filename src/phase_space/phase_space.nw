@@ -13896,7 +13896,11 @@ recoiling momenta.
     real(default) :: q0
 
     call generator%generate_fsr_in (p_born, p_real)
-    q0 = generator%real_kinematics%xi_ref_momenta(1)**1
+    if (generator%n_in == 1) then
+       q0 = energy (p_born(1))
+    else
+       q0 = energy (p_born(1) + p_born(2))
+    end if
 
     generator%i_fsr_first = generator%n_in + 1
     call generator%generate_fsr_out (emitter, i_phs, p_born, p_real, q0)
@@ -14248,20 +14252,21 @@ $\xi$.
 <<phs fks: phs fks: TBP>>=
   procedure :: generate_fsr => phs_fks_generate_fsr
 <<phs fks: procedures>>=
-  subroutine phs_fks_generate_fsr (phs, emitter, i_phs, p_real, i_con)
+  subroutine phs_fks_generate_fsr (phs, emitter, i_phs, p_real, i_con, xi_y_phi)
     class(phs_fks_t), intent(inout) :: phs
     integer, intent(in) :: emitter, i_phs
     type(phs_point_t), intent(inout) :: p_real
     integer, intent(in), optional :: i_con
+    real(default), intent(in), dimension(3), optional :: xi_y_phi
     type(vector4_t), dimension(:), allocatable :: p
     associate (generator => phs%generator)
        allocate (p (1 : generator%real_kinematics%p_born_cms%get_n_particles()), &
           source = generator%real_kinematics%p_born_cms%phs_point(1)%p)
        generator%real_kinematics%supply_xi_max = .true.
        if (present (i_con)) then
-          call generator%generate_fsr (emitter, i_phs, i_con, p, p_real)
+          call generator%generate_fsr (emitter, i_phs, i_con, p, p_real, xi_y_phi)
        else
-          call generator%generate_fsr (emitter, i_phs, p, p_real)
+          call generator%generate_fsr (emitter, i_phs, p, p_real, xi_y_phi)
        end if
        generator%real_kinematics%p_real_cms%phs_point(i_phs)%p = p_real%p
        if (.not. phs%config%cm_frame) p_real = phs%lt_cm_to_lab * p_real
@@ -14318,9 +14323,10 @@ $\xi$.
 @ %def phs_fks_generate_fsr_threshold
 @
 <<phs fks: phs fks: TBP>>=
-  procedure :: compute_xi_max => phs_fks_compute_xi_max
+  generic :: compute_xi_max => compute_xi_max_internal, compute_xi_max_with_output
+  procedure :: compute_xi_max_internal => phs_fks_compute_xi_max_internal
 <<phs fks: procedures>>=
-  subroutine phs_fks_compute_xi_max (phs, p, threshold)
+  subroutine phs_fks_compute_xi_max_internal (phs, p, threshold)
     class(phs_fks_t), intent(inout) :: phs
     type(vector4_t), intent(in), dimension(:) :: p
     logical, intent(in) :: threshold
@@ -14342,9 +14348,23 @@ $\xi$.
           end if
        end associate
     end do
-  end subroutine phs_fks_compute_xi_max
+  end subroutine phs_fks_compute_xi_max_internal
 
 @ %def phs_fks_compute_xi_max
+@
+<<phs fks: phs fks: TBP>>=
+  procedure :: compute_xi_max_with_output => phs_fks_compute_xi_max_with_output
+<<phs fks: procedures>>=
+  subroutine phs_fks_compute_xi_max_with_output (phs, emitter, i_phs, p, xi_max)
+    class(phs_fks_t), intent(inout) :: phs
+    integer, intent(in) :: i_phs, emitter
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default), intent(out) :: xi_max
+    call phs%generator%compute_xi_max (emitter, i_phs, p, xi_max)
+  end subroutine phs_fks_compute_xi_max_with_output
+
+@ %def phs_fks_compute_xi_max_with_output
+@
 <<phs fks: phs fks generator: TBP>>=
   generic :: compute_emitter_kinematics => &
      compute_emitter_kinematics_massless, &
@@ -15158,6 +15178,67 @@ with $\Lambda$.
 
 @ %def phs_fhs_generator_set_masses
 @
+<<phs fks: public>>=
+  public :: compute_y_from_emitter
+<<phs fks: procedures>>=
+  subroutine compute_y_from_emitter (r_y, p, emitter, massive, &
+         y_max, jac_rand, y, contributors, threshold)
+    real(default), intent(in) :: r_y
+    type(vector4_t), intent(in), dimension(:) :: p
+    integer, intent(in) :: emitter
+    logical, intent(in) :: massive
+    real(default), intent(in) :: y_max
+    real(default), intent(inout) :: jac_rand
+    real(default), intent(out) :: y
+    integer, intent(in), dimension(:), allocatable, optional :: contributors
+    logical, intent(in), optional :: threshold
+    logical :: thr, resonance
+    type(vector4_t) :: p_res, p_em
+    real(default) :: q0
+    type(lorentz_transformation_t) :: boost_to_resonance
+    integer :: i
+    real(default) :: beta, one_m_beta, one_p_beta
+    thr = .false.; if (present (threshold)) thr = threshold
+    p_res = vector4_null
+    if (present (contributors)) then
+       resonance = allocated (contributors)
+    else
+       resonance = .false.
+    end if
+    if (massive) then
+       if (resonance) then
+          do i = 1, size (contributors)
+             p_res = p_res + p(contributors(i))
+          end do
+          q0 = p_res**1
+          boost_to_resonance = inverse (boost (p_res, q0))
+          p_em = boost_to_resonance * p(emitter)
+       else if (thr) then
+          !p_res = generator%real_kinematics%xi_ref_momenta (thr_leg (emitter))
+          p_res = p(ass_boson(thr_leg(emitter))) + p(ass_quark(thr_leg(emitter)))
+          q0 = p_res**1
+          boost_to_resonance = inverse (boost (p_res, q0))
+          p_em = boost_to_resonance * p(emitter)
+       else
+          q0 = energy (p(1) + p(2))
+          p_em = p(emitter)
+       end if
+       beta = beta_emitter (q0, p_em)
+       one_m_beta = one - beta
+       one_p_beta = one + beta
+       y = one / beta * (one - one_p_beta * &
+              exp ( - r_y * log(one_p_beta / one_m_beta)))
+       jac_rand = jac_rand * &
+              (one - beta * y) * log(one_p_beta / one_m_beta) / beta
+    else
+       y = (one - two * r_y) * y_max
+       jac_rand = jac_rand * 3 * (one - y**2)
+       y = 1.5_default * (y - y**3 / 3)
+    end if
+  end subroutine compute_y_from_emitter
+
+@ %def compute_y_from_emitter
+@
 <<phs fks: phs fks generator: TBP>>=
   procedure :: compute_y_real_phs => phs_fks_generator_compute_y_real_phs
 <<phs fks: procedures>>=
@@ -15180,43 +15261,15 @@ with $\Lambda$.
     thr = .false.; if (present (threshold)) thr = threshold
     do i_phs = 1, size (phs_identifiers)
        emitter = phs_identifiers(i_phs)%emitter
-       p_res = vector4_null
-       if (any (generator%emitters == emitter)) then
-          construct_massive_fsr = emitter > generator%n_in
-          if (construct_massive_fsr) construct_massive_fsr = &
-             construct_massive_fsr .and. generator%is_massive (emitter)
-          if (construct_massive_fsr) then
-             if (allocated (phs_identifiers(i_phs)%contributors)) then
-                associate (contributors => phs_identifiers(i_phs)%contributors)
-                   do i = 1, size (contributors)
-                      p_res = p_res + p(contributors(i))
-                   end do
-                   q0 = p_res**1
-                   boost_to_resonance = inverse (boost (p_res, q0))
-                   p_em = boost_to_resonance * p(emitter)
-                end associate
-             else if (thr) then
-                p_res = generator%real_kinematics%xi_ref_momenta (thr_leg (emitter))
-                q0 = p_res**1
-                boost_to_resonance = inverse (boost (p_res, q0))
-                p_em = boost_to_resonance * p(emitter)
-             else
-                q0 = generator%sqrts
-                p_em = p(emitter)
-             end if
-             beta = beta_emitter (q0, p_em)
-             one_m_beta = one - beta
-             one_p_beta = one + beta
-             y(i_phs) = one / beta * (one - one_p_beta * &
-                    exp ( - r_y * log(one_p_beta / one_m_beta)))
-             jac_rand(i_phs) = jac_rand(i_phs) * &
-                    (one - beta * y(i_phs)) * log(one_p_beta / one_m_beta) / beta
-          else
-             y(i_phs) = (one - two * r_y) * generator%y_max
-             jac_rand(i_phs) = jac_rand(i_phs) * 3 * (one - y(i_phs)**2)
-             y(i_phs) = 1.5_default * (y(i_phs) - y(i_phs)**3 / 3)
-          end if
-       end if
+       !!! We need this additional check because of decay phase spaces
+       !!! t -> bW has a massive emitter at position 1, which should
+       !!! not be treated here.
+       construct_massive_fsr = emitter > generator%n_in
+       if (construct_massive_fsr) construct_massive_fsr = &
+          construct_massive_fsr .and. generator%is_massive (emitter)
+       call compute_y_from_emitter (r_y, p, emitter, construct_massive_fsr, &
+            generator%y_max, jac_rand(i_phs), y(i_phs), &
+            phs_identifiers(i_phs)%contributors, threshold)
     end do
   end subroutine phs_fks_generator_compute_y_real_phs
 
@@ -15228,7 +15281,8 @@ with $\Lambda$.
   subroutine phs_fks_generator_compute_y_mismatch (generator, r_y, jac_rand, y, y_soft)
     class(phs_fks_generator_t), intent(inout) :: generator
     real(default), intent(in) :: r_y
-    real(default), intent(out) :: jac_rand, y
+    real(default), intent(inout) :: jac_rand
+    real(default), intent(out) :: y
     real(default), intent(out), dimension(:) :: y_soft
     y = (one - two * r_y) * generator%y_max
     jac_rand = jac_rand * 3 * (one - y**2)
