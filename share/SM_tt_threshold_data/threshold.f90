@@ -129,7 +129,8 @@ module @ID@_threshold
   public :: init, calculate_blob, compute_born, &
        compute_momentum_sums, init_workspace, compute_production_owfs, &
        compute_decay_owfs, table_spin_states, compute_production_me, &
-       top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2
+       top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2, &
+       apply_boost
 
   ! DON'T EVEN THINK of removing the following!
   ! If the compiler complains about undeclared
@@ -152,7 +153,8 @@ module @ID@_threshold
   integer, parameter, public :: n_hel = 144
   integer, parameter :: n_hel_OS = 16
 
-  type(lorentz_transformation_t) :: boost_to_cms, boost_to_top_rest
+  type(lorentz_transformation_t), public :: boost_to_cms
+  type(lorentz_transformation_t) :: boost_to_top_rest
 
   ! NB: you MUST NOT change the value of N_ here!!!
   !     It is defined here for convenience only and must be
@@ -1117,7 +1119,39 @@ subroutine @ID@_set_offshell_momenta (k) bind(C)
      p5 = k(:,5)
      p6 = k(:,6)
   end if
+  print *, 'p1: ', p1
+  print *, 'p2: ', p2
+  print *, 'p3: ', p3
+  print *, 'p4: ', p4
+  print *, 'p5: ', p5
+  print *, 'p6: ', p6
 end subroutine @ID@_set_offshell_momenta
+
+subroutine @ID@_set_onshell_momenta (k) bind(C)
+  use iso_c_binding
+  use kinds
+  use diagnostics
+  use lorentz
+  use physics_defs, only: THR_POS_WP, THR_POS_WM
+  use physics_defs, only: THR_POS_B, THR_POS_BBAR
+  use omega95
+  use parameters_SM_tt_threshold
+  use @ID@_threshold
+  implicit none
+  real(default), dimension(0:3,*), intent(in) :: k
+  if (debug2_active (D_THRESHOLD)) then
+     call msg_debug (D_THRESHOLD, "set onshell momenta")
+     print *, 'k =    ', k(0:3,1:6)
+  end if
+  mom_wp_onshell = k(:,THR_POS_WP)
+  mom_wm_onshell = k(:,THR_POS_WM)
+  mom_b_onshell = k(:,THR_POS_B)
+  mom_bbar_onshell = k(:,THR_POS_BBAR)
+  mom_b_onshell_rest = apply_boost (inverse (boost_to_cms), mom_b_onshell)
+  mom_bbar_onshell_rest = apply_boost (inverse (boost_to_cms), mom_bbar_onshell)
+  mom_wp_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wp_onshell)
+  mom_wm_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wm_onshell)
+end subroutine @ID@_set_onshell_momenta
 
 subroutine @ID@_get_amp_squared (amp2, p) bind(C)
   use iso_c_binding
