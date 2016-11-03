@@ -631,6 +631,8 @@ contains
           call compute_production_owfs (hi)
           if (.not. onshell_tops (p3, p4))  call compute_decay_owfs (hi)
           amp_blob(hi) = - calculate_blob (ffi) ! 4 vertices, 3 propagators
+          if (threshold%settings%flip_relative_sign) &
+               amp_blob(hi) = - amp_blob(hi)
        end if
     end do
   end subroutine compute_born
