@@ -127,9 +127,10 @@ module @ID@_threshold
   implicit none
   private
   public :: init, calculate_blob, compute_born, &
-       set_production_momenta, init_workspace, compute_production_owfs, &
+       compute_momentum_sums, init_workspace, compute_production_owfs, &
        compute_decay_owfs, table_spin_states, compute_production_me, &
-       top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2
+       top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2, &
+       apply_boost
 
   ! DON'T EVEN THINK of removing the following!
   ! If the compiler complains about undeclared
@@ -152,7 +153,8 @@ module @ID@_threshold
   integer, parameter, public :: n_hel = 144
   integer, parameter :: n_hel_OS = 16
 
-  type(lorentz_transformation_t) :: boost_to_cms, boost_to_top_rest
+  type(lorentz_transformation_t), public :: boost_to_cms
+  type(lorentz_transformation_t) :: boost_to_top_rest
 
   ! NB: you MUST NOT change the value of N_ here!!!
   !     It is defined here for convenience only and must be
@@ -332,9 +334,9 @@ module @ID@_threshold
   complex(default), dimension(:), allocatable, save, public :: amp_tree
   integer, public :: nhel_max
 
-  type(momentum) :: p1, p2, p3, p4, p5, p6
+  type(momentum), public :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p12, p35, p46
-  real(default) :: mandelstam_s
+  real(default), public :: mandelstam_s
   type(momentum), public :: mom_top_onshell, mom_top_onshell_rest
   type(momentum), public :: mom_topbar_onshell, mom_topbar_onshell_rest
   type(momentum), public :: mom_wm_onshell, mom_wm_onshell_rest
@@ -574,7 +576,7 @@ contains
     complex(default) :: prod, dec1, dec2
     integer, dimension(n_prt) :: s
     integer :: hi, h_t, h_tbar
-    call set_production_momenta (k)
+    call compute_momentum_sums ()
     call compute_projected_momenta (0)
     call init_workspace ()
     if (threshold%settings%factorized_computation) then
@@ -666,32 +668,20 @@ contains
     if (allocated (amp_blob))  amp_blob = zero
   end subroutine init_workspace
 
-  subroutine set_production_momenta (k)
-    real(default), dimension(0:3,*), intent(in) :: k
-    real(default), dimension(4) :: tmp, test
-    if (debug2_active (D_THRESHOLD)) then
-       call msg_debug (D_THRESHOLD, "set_production_momenta")
-       print *, 'k =    ', k(0:3,1:6)
-    end if
-    p1 = - k(:,1) ! incoming
-    p2 = - k(:,2) ! incoming
-    p3 =   k(:,3) ! outgoing
-    p4 =   k(:,4) ! outgoing
+  subroutine compute_momentum_sums ()
     p12 = p1 + p2
     mandelstam_s = p12 * p12
     if (.not. onshell_tops (p3, p4)) then
-       p5 =   k(:,5) ! outgoing
-       p6 =   k(:,6) ! outgoing
        p35 = p3 + p5
        p46 = p4 + p6
     end if
-  end subroutine set_production_momenta
+  end subroutine compute_momentum_sums
 
   subroutine compute_projected_momenta (leg)
      integer, intent(in) :: leg
      real(default), dimension(4) :: tmp, test
      if (threshold%settings%onshell_projection%active ()) then
-        call compute_projected_top_momenta (p12, leg)
+        call compute_projected_top_momenta (p12)
         call compute_projected_top_decay_products (p12, leg)
         if (debug_active (D_THRESHOLD)) then
            if (leg == 0 .and. - p12%t > 2 * ttv_mtpole (p12*p12)) then
@@ -707,9 +697,15 @@ contains
      end if
   end subroutine compute_projected_momenta
 
-  subroutine compute_projected_top_momenta (p12, leg)
+  subroutine boost_onshell_to_rest_frame ()
+    mom_b_onshell_rest = apply_boost (inverse (boost_to_cms), mom_b_onshell)
+    mom_bbar_onshell_rest = apply_boost (inverse (boost_to_cms), mom_bbar_onshell)
+    mom_wp_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wp_onshell)
+    mom_wm_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wm_onshell)
+  end subroutine boost_onshell_to_rest_frame
+
+  subroutine compute_projected_top_momenta (p12)
     type(momentum), intent(in) :: p12
-    integer, intent(in) :: leg
     real(default) :: sqrts, scale_factor, mtop
     real(default), dimension(1:3) :: unit_vec
     real(default), dimension(4) :: tmp, test
@@ -892,7 +888,6 @@ contains
     real(default) :: amp2
     real(default), dimension(0:3,*), intent(in) :: k
     integer, intent(in) :: ffi
-    real(default), dimension(0:3,6) :: k_production
     real(default), dimension(0:3,4) :: k_decay_real
     real(default), dimension(0:3,3) :: k_decay_born
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1,1:2) :: production_me
@@ -910,8 +905,9 @@ contains
     if (.not. threshold%settings%helicity_approximated) &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
-    call set_production_momenta (k)
-    call init_decay_and_production_momenta ()
+    call compute_momentum_sums ()
+    call compute_projected_top_momenta (p12)
+    call boost_onshell_to_rest_frame ()
     call init_workspace ()
     call compute_amplitudes ()
     total = zero
@@ -946,6 +942,7 @@ contains
       do leg = 1, 2
          other_leg = 3 - leg
          call set_production_momenta_with_gluon ()
+         call compute_momentum_sums ()
          call compute_projected_momenta (leg)
          call set_decay_momenta ()
          production_me(:,:,:,:,leg) = compute_production_me (ffi)
@@ -978,16 +975,15 @@ contains
       end do
     end subroutine compute_amplitudes
 
-    subroutine init_decay_and_production_momenta ()
-      do i = 1, 6
-         k_production(:,i) = k(:,i)
-      end do
-    end subroutine init_decay_and_production_momenta
-
     subroutine set_production_momenta_with_gluon ()
-      k_production(:,ass_quark(other_leg)) = k(:,ass_quark(other_leg))
-      k_production(:,ass_quark(leg)) = k(:,ass_quark(leg)) + k(:,7)
-      call set_production_momenta (k_production)
+      type(momentum) :: pp
+      pp = k(:,7)
+      select case (leg)
+      case (THR_POS_B)
+         p5 = p5 + pp
+      case (THR_POS_BBAR)
+         p6 = p6 + pp
+      end select
     end subroutine set_production_momenta_with_gluon
 
     subroutine set_decay_momenta ()
@@ -1041,7 +1037,7 @@ contains
          k_decay_onshell_real = k_decay_onshell_real ([1,4,3,2])
          if (threshold%settings%onshell_projection%boost_decay) &
             k_decay_onshell_real  = L_to_cms * k_decay_onshell_real
-         call compute_projected_top_momenta (mom_tmp, leg)
+         call compute_projected_top_momenta (mom_tmp)
 
          k_tmp(1)%p = k(:,ass_quark(other_leg))
          k_tmp(2)%p = k(:,ass_boson(other_leg))
@@ -1110,6 +1106,51 @@ subroutine @ID@_threshold_init (par, scheme) bind(C)
   integer(c_int), intent(in) :: scheme
   call init (par, scheme)
 end subroutine @ID@_threshold_init
+
+subroutine @ID@_set_offshell_momenta (k) bind(C)
+  use iso_c_binding
+  use kinds
+  use diagnostics
+  use omega95
+  use parameters_SM_tt_threshold
+  use @ID@_threshold
+  implicit none
+  real(default), dimension(0:3,*), intent(in) :: k
+  if (debug2_active (D_THRESHOLD)) then
+     call msg_debug (D_THRESHOLD, "set offshell momenta")
+     print *, 'k =    ', k(0:3,1:6)
+  end if
+  p1 = - k(:,1) !!! incoming
+  p2 = - k(:,2) !!! incoming
+  p3 =   k(:,3) !!! outgoing
+  p4 =   k(:,4) !!! outgoing
+  if (.not. onshell_tops (p3, p4)) then
+     p5 = k(:,5)
+     p6 = k(:,6)
+  end if
+end subroutine @ID@_set_offshell_momenta
+
+subroutine @ID@_set_onshell_momenta (k) bind(C)
+  use iso_c_binding
+  use kinds
+  use diagnostics
+  use lorentz
+  use physics_defs, only: THR_POS_WP, THR_POS_WM
+  use physics_defs, only: THR_POS_B, THR_POS_BBAR
+  use omega95
+  use parameters_SM_tt_threshold
+  use @ID@_threshold
+  implicit none
+  real(default), dimension(0:3,*), intent(in) :: k
+  if (debug2_active (D_THRESHOLD)) then
+     call msg_debug (D_THRESHOLD, "set onshell momenta")
+     print *, 'k =    ', k(0:3,1:6)
+  end if
+  mom_wp_onshell = k(:,THR_POS_WP)
+  mom_wm_onshell = k(:,THR_POS_WM)
+  mom_b_onshell = k(:,THR_POS_B)
+  mom_bbar_onshell = k(:,THR_POS_BBAR)
+end subroutine @ID@_set_onshell_momenta
 
 subroutine @ID@_get_amp_squared (amp2, p) bind(C)
   use iso_c_binding
