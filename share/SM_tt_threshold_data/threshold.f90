@@ -1203,13 +1203,19 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
              EXPANDED_SOFT_HARD_P0CONSTANT)
         amp2 = expanded_amp2 (amp_tree, amp_blob)
      case (MATCHED)
-        amp_summed = amp_tree + amp_blob
-        amp2 = real (sum (abs2 (amp_summed)))
+        amp2 = real (sum (abs2 (amp_tree + amp_blob)))
         call compute_born (p, MATCHED_EXPANDED)
         amp2 = amp2 + expanded_amp2 (amp_tree, amp_blob)
      case default
         if (threshold%settings%interference) then
-           amp2 = real (sum (abs2 (amp_tree + amp_blob)))
+           if (threshold%settings%factorized_interference_term) then
+              amp_summed = amp_blob
+              call compute_born (p, TREE)
+              amp2 = real (sum (abs2 (amp_tree) + abs2 (amp_summed) + &
+                   2 * real (amp_blob * amp_summed)))
+           else
+              amp2 = real (sum (abs2 (amp_tree + amp_blob)))
+           end if
         else
            if (threshold%settings%helicity_approximated) then
               amp2 = real (sum (amp_blob))
