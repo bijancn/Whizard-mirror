@@ -679,7 +679,7 @@ contains
      integer, intent(in) :: leg
      real(default), dimension(4) :: tmp, test
      if (threshold%settings%onshell_projection%active ()) then
-        call compute_projected_top_momenta (p12, leg)
+        call compute_projected_top_momenta (p12)
         call compute_projected_top_decay_products (p12, leg)
         if (debug_active (D_THRESHOLD)) then
            if (leg == 0 .and. - p12%t > 2 * ttv_mtpole (p12*p12)) then
@@ -695,9 +695,15 @@ contains
      end if
   end subroutine compute_projected_momenta
 
-  subroutine compute_projected_top_momenta (p12, leg)
+  subroutine boost_onshell_to_rest_frame ()
+    mom_b_onshell_rest = apply_boost (inverse (boost_to_cms), mom_b_onshell)
+    mom_bbar_onshell_rest = apply_boost (inverse (boost_to_cms), mom_bbar_onshell)
+    mom_wp_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wp_onshell)
+    mom_wm_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wm_onshell)
+  end subroutine boost_onshell_to_rest_frame
+
+  subroutine compute_projected_top_momenta (p12)
     type(momentum), intent(in) :: p12
-    integer, intent(in) :: leg
     real(default) :: sqrts, scale_factor, mtop
     real(default), dimension(1:3) :: unit_vec
     real(default), dimension(4) :: tmp, test
@@ -898,7 +904,8 @@ contains
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
     call compute_momentum_sums ()
-    !call init_decay_and_production_momenta ()
+    call compute_projected_top_momenta (p12)
+    call boost_onshell_to_rest_frame ()
     call init_workspace ()
     call compute_amplitudes ()
     total = zero
@@ -1028,7 +1035,7 @@ contains
          k_decay_onshell_real = k_decay_onshell_real ([1,4,3,2])
          if (threshold%settings%onshell_projection%boost_decay) &
             k_decay_onshell_real  = L_to_cms * k_decay_onshell_real
-         call compute_projected_top_momenta (mom_tmp, leg)
+         call compute_projected_top_momenta (mom_tmp)
 
          k_tmp(1)%p = k(:,ass_quark(other_leg))
          k_tmp(2)%p = k(:,ass_boson(other_leg))
@@ -1119,12 +1126,12 @@ subroutine @ID@_set_offshell_momenta (k) bind(C)
      p5 = k(:,5)
      p6 = k(:,6)
   end if
-  print *, 'p1: ', p1
-  print *, 'p2: ', p2
-  print *, 'p3: ', p3
-  print *, 'p4: ', p4
-  print *, 'p5: ', p5
-  print *, 'p6: ', p6
+  !print *, 'p1: ', p1
+  !print *, 'p2: ', p2
+  !print *, 'p3: ', p3
+  !print *, 'p4: ', p4
+  !print *, 'p5: ', p5
+  !print *, 'p6: ', p6
 end subroutine @ID@_set_offshell_momenta
 
 subroutine @ID@_set_onshell_momenta (k) bind(C)
@@ -1147,10 +1154,10 @@ subroutine @ID@_set_onshell_momenta (k) bind(C)
   mom_wm_onshell = k(:,THR_POS_WM)
   mom_b_onshell = k(:,THR_POS_B)
   mom_bbar_onshell = k(:,THR_POS_BBAR)
-  mom_b_onshell_rest = apply_boost (inverse (boost_to_cms), mom_b_onshell)
-  mom_bbar_onshell_rest = apply_boost (inverse (boost_to_cms), mom_bbar_onshell)
-  mom_wp_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wp_onshell)
-  mom_wm_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wm_onshell)
+  !mom_b_onshell_rest = apply_boost (inverse (boost_to_cms), mom_b_onshell)
+  !mom_bbar_onshell_rest = apply_boost (inverse (boost_to_cms), mom_bbar_onshell)
+  !mom_wp_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wp_onshell)
+  !mom_wm_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wm_onshell)
 end subroutine @ID@_set_onshell_momenta
 
 subroutine @ID@_get_amp_squared (amp2, p) bind(C)
