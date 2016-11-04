@@ -5474,6 +5474,24 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
 @ %def soft_subtraction_evaluate_factorization_threshold
 @
 <<real subtraction: soft sub: TBP>>=
+  procedure :: i_xi_ref => soft_subtraction_i_xi_ref
+<<real subtraction: procedures>>=
+  function soft_subtraction_i_xi_ref (sub_soft, alr, emitter) result (i_xi_ref)
+    integer :: i_xi_ref
+    class(soft_subtraction_t), intent(in) :: sub_soft
+    integer, intent(in) :: alr, emitter
+    if (sub_soft%use_resonance_mappings) then
+       i_xi_ref = sub_soft%reg_data%alr_to_i_contributor (alr)
+    else if (sub_soft%factorization_mode == FACTORIZATION_THRESHOLD) then
+       i_xi_ref = thr_leg(emitter)
+    else
+       i_xi_ref = 1
+    end if
+  end function soft_subtraction_i_xi_ref
+
+@ %def soft_subtraction_i_xi_ref
+@
+<<real subtraction: soft sub: TBP>>=
   procedure :: final => soft_subtraction_final
 <<real subtraction: procedures>>=
   subroutine soft_subtraction_final (sub_soft)
@@ -6103,16 +6121,17 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
     if (debug2_active (D_SUBTRACTION)) call check_s_alpha_consistency ()
   contains
     subroutine check_s_alpha_consistency ()
-      real(default) :: sum_s_alpha
-      sum_s_alpha = zero
+      real(default) :: sum_s_alpha, sum_s_alpha_soft
+      sum_s_alpha = zero; sum_s_alpha_soft = zero
       do alr = 1, rsub%reg_data%n_regions
          i_res = rsub%get_i_res(alr)
          this_emitter = rsub%reg_data%regions(alr)%emitter
-         sum_s_alpha = sum_s_alpha + rsub%evaluate_emitter_region_debug &
-              (alr, this_emitter, i_phs, i_res)
+         call rsub%evaluate_emitter_region_debug (alr, this_emitter, i_phs, &
+              i_res, sum_s_alpha, sum_s_alpha_soft)
       end do
       call msg_debug2 (D_SUBTRACTION, "Check consistency of s_alpha: ")
       print *, 'sum_s_alpha: ', sum_s_alpha
+      print *, 'sum_s_alpha_soft: ', sum_s_alpha_soft
     end subroutine check_s_alpha_consistency
   end function real_subtraction_compute
 
@@ -6146,20 +6165,29 @@ region, and also if resonances are used.
   procedure :: evaluate_emitter_region_debug &
        => real_subtraction_evaluate_emitter_region_debug
 <<real subtraction: procedures>>=
-  function real_subtraction_evaluate_emitter_region_debug (rsub, alr, emitter, &
-       i_phs, i_res) result (s_alpha)
-    real(default) :: s_alpha
-    class(real_subtraction_t), intent(in) :: rsub
+  subroutine real_subtraction_evaluate_emitter_region_debug (rsub, alr, emitter, &
+       i_phs, i_res, sum_s_alpha, sum_s_alpha_soft)
+    class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: alr, emitter, i_phs, i_res
-    type(vector4_t), dimension(:), allocatable :: p
-    allocate (p (rsub%reg_data%n_legs_real))
+    real(default), intent(inout) :: sum_s_alpha, sum_s_alpha_soft
+    type(vector4_t), dimension(:), allocatable :: p_real, p_born
+    allocate (p_real (rsub%reg_data%n_legs_real))
+    allocate (p_born (rsub%reg_data%n_legs_born))
     if (rsub%reg_data%has_pseudo_isr ()) then
-       p = rsub%real_kinematics%p_real_onshell(thr_leg(emitter))%get_momenta (i_phs)
+       p_real = rsub%real_kinematics%p_real_onshell(thr_leg(emitter))%get_momenta (i_phs)
+       p_born = rsub%real_kinematics%p_born_onshell%get_momenta (1)
     else
-       p = rsub%real_kinematics%p_real_cms%get_momenta (i_phs)
+       p_real = rsub%real_kinematics%p_real_cms%get_momenta (i_phs)
+       p_born = rsub%real_kinematics%p_born_cms%get_momenta (1)
     end if
-    s_alpha = rsub%reg_data%get_svalue (p, alr, emitter, i_res)
-  end function real_subtraction_evaluate_emitter_region_debug
+    sum_s_alpha = sum_s_alpha + rsub%reg_data%get_svalue (p_real, alr, emitter, i_res)
+    associate (r => rsub%real_kinematics)
+       call rsub%sub_soft%create_softvec_fsr (p_born, r%y_soft(i_phs), r%phi, &
+            emitter, r%xi_ref_momenta(rsub%sub_soft%i_xi_ref (alr, emitter)))
+    end associate
+    sum_s_alpha_soft = sum_s_alpha_soft + rsub%reg_data%get_svalue_soft &
+         (p_born, rsub%sub_soft%p_soft, alr, emitter, i_res)
+  end subroutine real_subtraction_evaluate_emitter_region_debug
 
 @ %def real_subtraction_evaluate_emitter_region_debug
 @ This subroutine computes the finite part of the real matrix element in
@@ -6668,13 +6696,7 @@ to be more consistent with the evaluation of the Born phase space.
     type(vector4_t), dimension(:), allocatable :: p_born
     associate (real_kinematics => rsub%real_kinematics)
        if (rsub%reg_data%regions(alr)%has_soft_divergence ()) then
-          if (rsub%sub_soft%use_resonance_mappings) then
-             i_xi_ref = rsub%reg_data%alr_to_i_contributor (alr)
-          else if (rsub%sub_soft%factorization_mode == FACTORIZATION_THRESHOLD) then
-             i_xi_ref = thr_leg(emitter)
-          else
-             i_xi_ref = 1
-          end if
+          i_xi_ref = rsub%sub_soft%i_xi_ref (alr, emitter)
           q2 = real_kinematics%xi_ref_momenta (i_xi_ref)**2
           allocate (p_born (rsub%reg_data%n_legs_born))
           if (rsub%reg_data%has_pseudo_isr ()) then
