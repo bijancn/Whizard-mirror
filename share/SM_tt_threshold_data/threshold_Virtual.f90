@@ -86,7 +86,6 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
      p_decay(:,1,leg) = p_decay(:,2,leg) + p_decay(:,3,leg)
      p_top(leg) = p_decay(:,1,leg)
   end do
-  !call set_production_momenta (parray)
   call compute_momentum_sums ()
   call set_top_momenta ()
   call set_parameter("width(6)", zero)

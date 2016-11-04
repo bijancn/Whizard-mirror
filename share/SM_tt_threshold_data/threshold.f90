@@ -1126,12 +1126,6 @@ subroutine @ID@_set_offshell_momenta (k) bind(C)
      p5 = k(:,5)
      p6 = k(:,6)
   end if
-  !print *, 'p1: ', p1
-  !print *, 'p2: ', p2
-  !print *, 'p3: ', p3
-  !print *, 'p4: ', p4
-  !print *, 'p5: ', p5
-  !print *, 'p6: ', p6
 end subroutine @ID@_set_offshell_momenta
 
 subroutine @ID@_set_onshell_momenta (k) bind(C)
@@ -1154,10 +1148,6 @@ subroutine @ID@_set_onshell_momenta (k) bind(C)
   mom_wm_onshell = k(:,THR_POS_WM)
   mom_b_onshell = k(:,THR_POS_B)
   mom_bbar_onshell = k(:,THR_POS_BBAR)
-  !mom_b_onshell_rest = apply_boost (inverse (boost_to_cms), mom_b_onshell)
-  !mom_bbar_onshell_rest = apply_boost (inverse (boost_to_cms), mom_bbar_onshell)
-  !mom_wp_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wp_onshell)
-  !mom_wm_onshell_rest = apply_boost (inverse (boost_to_cms), mom_wm_onshell)
 end subroutine @ID@_set_onshell_momenta
 
 subroutine @ID@_get_amp_squared (amp2, p) bind(C)
@@ -1229,7 +1219,6 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
      if (test_ward)  amp2 = 0
   end if
   amp2 = amp2 * production_factors
-  !print *, 'amp2: ', amp2
 
 contains
 
