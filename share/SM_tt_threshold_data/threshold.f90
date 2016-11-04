@@ -1172,22 +1172,20 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
   integer :: i, hi, n_total_hel
   real_computation = full_proc_number_particles_out () == 5
   i = full_proc_number_particles_out () + 2
-  if (real_computation) then
-     if (.not. allocated (amp_tree)) then
+  if (.not. allocated (amp_tree)) then
+     if (real_computation) then
         n_total_hel = n_hel * 2 ! times 2 helicities due to the gluon
-        call allocate_amps ()
+     else
+        n_total_hel = n_hel
      end if
-     amp_tree = zero
-     amp_summed = zero
+     call allocate_amps ()
+  end if
+  amp_tree = zero
+  amp_summed = zero
+  if (real_computation) then
      call threshold%formfactor%activate ()
      amp2 = compute_real (p, FF)
   else
-     if (.not. allocated (amp_tree)) then
-        n_total_hel = n_hel
-        call allocate_amps ()
-     end if
-     amp_tree = zero
-     amp_summed = zero
      if (threshold%settings%interference) then
         call threshold%formfactor%disable ()
         call full_proc_new_event (p)
