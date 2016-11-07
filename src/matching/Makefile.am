@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2016 by 
+# Copyright (C) 1999-2016 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -15,13 +15,13 @@
 #     Hans-Werner Boschmann, Daniel Wiesler
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by 
+# under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2, or (at your option)
 # any later version.
 #
 # WHIZARD is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
@@ -114,7 +114,6 @@ Module_dependencies.sed: $(module_lists)
 
 DISTCLEANFILES = Module_dependencies.sed
 
-
 # The following line just says
 #    include Makefile.depend
 # but in a portable fashion (depending on automake's AM_MAKE_INCLUDE
@@ -131,7 +130,7 @@ Makefile.depend: $(libmatching_la_SOURCES) $(libmatching_ut_la_SOURCES)
 	          -f Module_dependencies.sed; \
 	done > $@
 
-DISTCLEANFILES += Makefile.depend 
+DISTCLEANFILES += Makefile.depend
 
 # Fortran90 module files are generated at the same time as object files
 .lo.$(FC_MODULE_EXT):
@@ -201,7 +200,7 @@ endif
 
 ## Remove F90 module files
 clean-local: clean-noweb
-	-rm -f matching.stamp matching.tmp 
+	-rm -f matching.stamp matching.tmp
 	-rm -f *.$(FC_MODULE_EXT)
 if FC_SUBMODULES
 	-rm -f *.smod

@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2016 by 
+# Copyright (C) 1999-2016 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -10,13 +10,13 @@
 #     Christian Speckner <cnspeckn@googlemail.com>
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by 
+# under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2, or (at your option)
 # any later version.
 #
 # WHIZARD is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
@@ -115,7 +115,6 @@ Module_dependencies.sed: $(module_lists)
 
 DISTCLEANFILES = Module_dependencies.sed
 
-
 # The following line just says
 #    include Makefile.depend
 # but in a portable fashion (depending on automake's AM_MAKE_INCLUDE
@@ -132,7 +131,7 @@ Makefile.depend: $(libevents_la_SOURCES) $(libevents_ut_la_SOURCES)
 	          -f Module_dependencies.sed; \
 	done > $@
 
-DISTCLEANFILES += Makefile.depend 
+DISTCLEANFILES += Makefile.depend
 
 libevents_la_LIBADD = \
    ../../mcfio/libwo_mcfio.la \

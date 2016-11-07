@@ -92,7 +92,6 @@ Module_dependencies.sed: $(module_lists)
 
 DISTCLEANFILES = Module_dependencies.sed
 
-
 # The following line just says
 #    include Makefile.depend
 # but in a portable fashion (depending on automake's AM_MAKE_INCLUDE
