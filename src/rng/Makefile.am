@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2016 by 
+# Copyright (C) 1999-2016 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -10,13 +10,13 @@
 #     Christian Speckner <cnspeckn@googlemail.com>
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by 
+# under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2, or (at your option)
 # any later version.
 #
 # WHIZARD is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
@@ -78,7 +78,7 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
 	for list in $^; do \
-		if test -z `echo $$list | grep f90`; then \
+		if ! echo $$list | grep f90 > /dev/null ; then \
 			dir="`dirname $$list`"; \
 			for mod in `cat $$list`; do \
 				echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
@@ -87,7 +87,6 @@ Module_dependencies.sed: $(module_lists)
 	done
 
 DISTCLEANFILES = Module_dependencies.sed
-
 
 # The following line just says
 #    include Makefile.depend
@@ -105,7 +104,7 @@ Makefile.depend: $(librng_la_SOURCES) $(librng_ut_la_SOURCES)
 	          -f Module_dependencies.sed; \
 	done > $@
 
-DISTCLEANFILES += Makefile.depend 
+DISTCLEANFILES += Makefile.depend
 
 ## Dependencies across directories and packages, if not automatically generated
 rng_tao.lo: ../../vamp/src/tao_random_numbers.$(FC_MODULE_EXT)
@@ -138,7 +137,7 @@ endif
 ## Install the modules used by generated matrix element code
 ## and by the user code library
 #execmoddir = $(pkglibdir)/mod/rng
-#nodist_execmod_HEADERS = 
+#nodist_execmod_HEADERS =
 
 ## (Re)create F90 sources from NOWEB source.
 if NOWEB_AVAILABLE

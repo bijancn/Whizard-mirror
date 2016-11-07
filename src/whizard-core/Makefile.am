@@ -60,7 +60,7 @@ libwhizard_core_ut_la_SOURCES = \
   integrations_uti.f90 integrations_ut.f90 \
   event_streams_uti.f90 event_streams_ut.f90 \
   simulations_uti.f90 simulations_ut.f90 \
-  commands_uti.f90 commands_ut.f90 
+  commands_uti.f90 commands_ut.f90
 
 # Adds the whizard-c-interface
 EXTRA_libwhizard_core_la_SOURCES = whizard-c-interface.f90
@@ -117,6 +117,11 @@ module_lists = \
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
 
+Module_dependencies.sed: $(libwhizard_core_la_SOURCES) \
+  $(libwhizard_core_ut_la_SOURCES) \
+  $(libwhizard_main_la_SOURCES) \
+  $(libwhizard_main_ut_la_SOURCES) \
+  $(EXTRA_libwhizard_core_la_SOURCES)
 Module_dependencies.sed: $(module_lists)
 	@rm -f $@
 	echo 's/, *only:.*//' >> $@
@@ -124,10 +129,12 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
 	for list in $^; do \
-		dir="`dirname $$list`"; \
-		for mod in `cat $$list`; do \
-			echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
-		done ; \
+		if ! echo $$list | grep f90 > /dev/null ; then \
+			dir="`dirname $$list`"; \
+			for mod in `cat $$list`; do \
+				echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+			done \
+		fi \
 	done
 
 DISTCLEANFILES = Module_dependencies.sed
@@ -138,8 +145,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: \
-  $(libwhizard_core_la_SOURCES) \
+Makefile.depend: $(libwhizard_core_la_SOURCES) \
   $(libwhizard_core_ut_la_SOURCES) \
   $(libwhizard_main_la_SOURCES) \
   $(libwhizard_main_ut_la_SOURCES) \
