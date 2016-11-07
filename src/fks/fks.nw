@@ -5507,7 +5507,6 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   public :: soft_mismatch_t
 <<real subtraction: types>>=
   type :: soft_mismatch_t
-    logical :: active = .true.
     type(region_data_t), pointer :: reg_data => null ()
     real(default), dimension(:), allocatable :: sqme_born
     real(default), dimension(:,:,:), allocatable :: sqme_born_cc
@@ -5527,18 +5526,13 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     class(soft_mismatch_t), intent(inout) :: soft_mismatch
     type(region_data_t), intent(in), target :: reg_data
     type(real_kinematics_t), intent(in), target :: real_kinematics
-    select type (mapping => reg_data%fks_mapping)
-    type is (fks_mapping_default_t)
-       soft_mismatch%active = .false.
-    type is (fks_mapping_resonances_t)
-       soft_mismatch%reg_data => reg_data
-       allocate (soft_mismatch%sqme_born (reg_data%n_flv_born))
-       allocate (soft_mismatch%sqme_born_cc (reg_data%n_legs_born, &
-          reg_data%n_legs_born, reg_data%n_flv_born))
-       call soft_mismatch%sub_soft%init (reg_data)
-       soft_mismatch%sub_soft%xi2_expanded = .false.
-       soft_mismatch%real_kinematics => real_kinematics
-    end select
+    soft_mismatch%reg_data => reg_data
+    allocate (soft_mismatch%sqme_born (reg_data%n_flv_born))
+    allocate (soft_mismatch%sqme_born_cc (reg_data%n_legs_born, &
+         reg_data%n_legs_born, reg_data%n_flv_born))
+    call soft_mismatch%sub_soft%init (reg_data)
+    soft_mismatch%sub_soft%xi2_expanded = .false.
+    soft_mismatch%real_kinematics => real_kinematics
   end subroutine soft_mismatch_init
 
 @ %def soft_mismatch_init
@@ -5557,8 +5551,8 @@ These inputs are then used to get the numerical value of the soft mismatch.
     real(default) :: E_gluon
     type(vector4_t) :: p_em
     real(default) :: sqme_alr, sqme_soft
+    type(vector4_t), dimension(:), allocatable :: p_born
     sqme_mismatch = zero
-    if (.not. soft_mismatch%active) return
     associate (real_kinematics => soft_mismatch%real_kinematics)
        xi = real_kinematics%xi_mismatch
        y = real_kinematics%y_mismatch
@@ -5572,42 +5566,49 @@ These inputs are then used to get the numerical value of the soft mismatch.
              show_mass = .true.)
           print *, 'xi: ', xi, 'y: ', y, 's: ', s, 'E_gluon: ', E_gluon
        end if
+          
+       allocate (p_born (soft_mismatch%reg_data%n_legs_born))
 
        do alr = 1, soft_mismatch%reg_data%n_regions
 
-          i_phs = real_kinematics%alr_to_i_phs (alr)
-          i_con = soft_mismatch%reg_data%alr_to_i_contributor (alr)
-          q2 = real_kinematics%xi_ref_momenta(i_con)**2
-          emitter = soft_mismatch%reg_data%regions(alr)%emitter
-          p_em = real_kinematics%p_born_cms%get_momentum (1, emitter)
-          i_res = soft_mismatch%reg_data%regions(alr)%i_res
-          i_uborn = soft_mismatch%reg_data%regions(alr)%uborn_index
+           i_phs = real_kinematics%alr_to_i_phs (alr)
+           if (soft_mismatch%reg_data%has_pseudo_isr ()) then
+              i_con = 1
+              p_born = soft_mismatch%real_kinematics%p_born_onshell%get_momenta(1)
+           else
+              i_con = soft_mismatch%reg_data%alr_to_i_contributor (alr)
+              p_born = soft_mismatch%real_kinematics%p_born_cms%get_momenta(1)
+           end if
+           q2 = real_kinematics%xi_ref_momenta(i_con)**2
+           emitter = soft_mismatch%reg_data%regions(alr)%emitter
+           p_em = p_born (emitter)
+           i_res = soft_mismatch%reg_data%regions(alr)%i_res
+           i_uborn = soft_mismatch%reg_data%regions(alr)%uborn_index
 
-          call print_debug_alr ()
+           call print_debug_alr ()
 
-          call soft_mismatch%sub_soft%create_softvec_mismatch &
-             (E_gluon, y, real_kinematics%phi, p_em)
-          if (debug_active (D_MISMATCH)) &
-             print *, 'Created soft vector: ', soft_mismatch%sub_soft%p_soft%p
+           call soft_mismatch%sub_soft%create_softvec_mismatch &
+                (E_gluon, y, real_kinematics%phi, p_em)
+           if (debug_active (D_MISMATCH)) &
+                print *, 'Created soft vector: ', soft_mismatch%sub_soft%p_soft%p
 
-          select type (fks_mapping => soft_mismatch%reg_data%fks_mapping)
-          type is (fks_mapping_resonances_t)
-             call fks_mapping%set_resonance_momentum &
-                (real_kinematics%xi_ref_momenta(i_con))
-          end select
+           select type (fks_mapping => soft_mismatch%reg_data%fks_mapping)
+           type is (fks_mapping_resonances_t)
+              call fks_mapping%set_resonance_momentum &
+                 (real_kinematics%xi_ref_momenta(i_con))
+           end select
 
-          sqme_soft = soft_mismatch%sub_soft%compute &
-             (real_kinematics%p_born_cms%get_momenta(1), &
-             soft_mismatch%sqme_born_cc(:,:,i_uborn), y, &
-             q2, alpha_s, alr, emitter, i_res)
+           sqme_soft = soft_mismatch%sub_soft%compute &
+                (p_born, soft_mismatch%sqme_born_cc(:,:,i_uborn), y, &
+                q2, alpha_s, alr, emitter, i_res)
 
-          sqme_alr = soft_mismatch%compute (alr, xi, y, p_em, &
-             real_kinematics%xi_ref_momenta(i_con), soft_mismatch%sub_soft%p_soft, &
-             soft_mismatch%sqme_born(i_uborn), sqme_soft, &
-             alpha_s, s)
+           sqme_alr = soft_mismatch%compute (alr, xi, y, p_em, &
+                real_kinematics%xi_ref_momenta(i_con), soft_mismatch%sub_soft%p_soft, &
+                soft_mismatch%sqme_born(i_uborn), sqme_soft, &
+                alpha_s, s)
 
-          call msg_debug (D_MISMATCH, 'sqme_alr: ', sqme_alr)
-          sqme_mismatch = sqme_mismatch + sqme_alr
+           call msg_debug (D_MISMATCH, 'sqme_alr: ', sqme_alr)
+           sqme_mismatch = sqme_mismatch + sqme_alr
 
        end do
     end associate
