@@ -69,6 +69,7 @@ module_lists = \
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
 
+Module_dependencies.sed: $(libgosam_la_SOURCES)
 Module_dependencies.sed: $(module_lists)
 	@rm -f $@
 	echo 's/, *only:.*//' >> $@
@@ -76,10 +77,12 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
 	for list in $^; do \
-	  dir="`dirname $$list`"; \
-	  for mod in `cat $$list`; do \
-	    echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
-	  done ; \
+		if ! echo $$list | grep f90 > /dev/null ; then \
+			dir="`dirname $$list`"; \
+			for mod in `cat $$list`; do \
+				echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+			done \
+		fi \
 	done
 
 DISTCLEANFILES = Module_dependencies.sed
