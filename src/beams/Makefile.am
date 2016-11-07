@@ -135,11 +135,11 @@ Makefile.depend: Module_dependencies.sed
 Makefile.depend: $(libbeams_la_SOURCES) $(libbeams_ut_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
-	  module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
-	  grep '^ *use ' $$src \
-	    | grep -v '!NODEP!' \
-	    | sed -e 's/^ *use */'$$module'.lo: /' \
-	          -f Module_dependencies.sed; \
+		module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
+		grep '^ *use ' $$src \
+			| grep -v '!NODEP!' \
+			| sed -e 's/^ *use */'$$module'.lo: /' \
+						-f Module_dependencies.sed; \
 	done > $@
 
 DISTCLEANFILES += Makefile.depend
