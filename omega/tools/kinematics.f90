@@ -1,4 +1,4 @@
-! $Id: kinematics.f90 1203 2009-10-08 11:39:11Z jr_reuter $
+! kinematics.f90 --
 
 module kinematics
 

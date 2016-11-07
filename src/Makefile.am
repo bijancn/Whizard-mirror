@@ -38,11 +38,12 @@ SUBDIRS = \
   utilities \
   testing \
   system \
-  combinatorics parsing rng expr_base \
-  sindarin \
+  combinatorics parsing expr_base \
   physics qft \
   fastjet \
   types \
+  variables \
+  rng \
   matrix_elements \
   hepmc lcio particles \
   lhapdf \
@@ -52,17 +53,17 @@ SUBDIRS = \
   beams \
   me_methods \
   xdr events \
+  user \
+  model_features \
+  threshold \
   phase_space \
-  mci variables \
+  mci \
   pythia8 \
   tauola \
   muli shower \
-  user \
-  threshold \
   blha \
   gosam openloops \
   looptools \
-  model_features \
   fks \
   process_integration \
   matching \
@@ -121,7 +122,6 @@ libwhizard_la_LIBADD = \
   types/libtypes.la \
   qft/libqft.la \
   physics/libphysics.la \
-  sindarin/libsindarin.la \
   expr_base/libexpr_base.la \
   rng/librng.la \
   parsing/libparsing.la \
@@ -205,7 +205,6 @@ libwhizard_test_la_LIBADD = \
   types/libtypes_ut.la \
   qft/libqft_ut.la \
   physics/libphysics_ut.la \
-  sindarin/libsindarin_ut.la \
   rng/librng_ut.la \
   parsing/libparsing_ut.la \
   combinatorics/libcombinatorics_ut.la \

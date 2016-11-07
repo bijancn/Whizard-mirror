@@ -40,7 +40,7 @@ check_LTLIBRARIES = libwhizard_core_ut.la
 libwhizard_core_la_SOURCES = \
   user_files.f90 \
   rt_data.f90  \
-  dispatch.f90 \
+  dispatch_me_methods.f90 \
   process_configurations.f90 \
   compilations.f90 \
   integrations.f90 \
@@ -92,7 +92,6 @@ module_lists = \
   ../physics/Modules \
   ../qft/Modules \
   ../expr_base/Modules \
-  ../sindarin/Modules \
   ../types/Modules \
   ../matrix_elements/Modules \
   ../particles/Modules \
@@ -162,7 +161,7 @@ SUFFIXES = .lo .$(FC_MODULE_EXT)
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../expr_base -I../sindarin -I../types -I../matrix_elements -I../particles -I../beams -I../me_methods -I../events -I../phase_space -I../mci -I../user -I../blha -I../gosam -I../openloops -I../fks -I../variables -I../model_features -I../muli -I../shower -I../matching -I../process_integration -I../transforms -I../xdr -I../../vamp/src -I../pdf_builtin -I../../circe1/src -I../../circe2/src -I../lhapdf -I../fastjet -I../threshold -I../tauola
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../rng -I../physics -I../qft -I../expr_base -I../types -I../matrix_elements -I../particles -I../beams -I../me_methods -I../events -I../phase_space -I../mci -I../user -I../blha -I../gosam -I../openloops -I../fks -I../variables -I../model_features -I../muli -I../shower -I../matching -I../process_integration -I../transforms -I../xdr -I../../vamp/src -I../pdf_builtin -I../../circe1/src -I../../circe2/src -I../lhapdf -I../fastjet -I../threshold -I../tauola
 
 ########################################################################
 ## Default Fortran compiler options

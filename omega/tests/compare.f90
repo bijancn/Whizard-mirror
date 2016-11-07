@@ -1,4 +1,4 @@
-! $Id: compare.f90 7444 2016-02-17 15:37:20Z jr_reuter $
+! compare.f90 --
 ! compare.f90 -- compare amplitudes created by two versions of O'Mega 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
