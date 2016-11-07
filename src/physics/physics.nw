@@ -310,6 +310,28 @@ Some commonly used variables for the threshold computation
   integer, parameter, public :: THR_POS_WM = 4
   integer, parameter, public :: THR_POS_B = 5
   integer, parameter, public :: THR_POS_BBAR = 6
+  integer, parameter, public :: THR_POS_GLUON = 7
+
+  integer, parameter, public :: THR_EMITTER_OFFSET = 4
+
+  integer, parameter, public :: NO_FACTORIZATION = 0
+  integer, parameter, public :: FACTORIZATION_THRESHOLD = 1
+
+  integer, dimension(2), parameter, public :: ass_quark = [5, 6]
+  integer, dimension(2), parameter, public :: ass_boson = [3, 4]
+
+@
+@
+<<Physics defs: public>>=
+  public :: thr_leg
+<<Physics defs: procedures>>=
+  function thr_leg (emitter) result (leg)
+    integer :: leg
+    integer, intent(in) :: emitter
+    leg = emitter - THR_EMITTER_OFFSET
+  end function thr_leg
+
+@ %def thr_leg
 @
 \clearpage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1130,6 +1152,16 @@ return a null vector.
   end function vector4_get_direction
 
 @ %def direction
+@ Change the sign of the spatial part of a four-vector
+<<Lorentz: public>>=
+  public :: vector4_invert_direction
+<<Lorentz: procedures>>=
+  elemental subroutine vector4_invert_direction (p)
+    type(vector4_t), intent(inout) :: p
+    p%p(1:3) = -p%p(1:3)
+  end subroutine vector4_invert_direction
+
+@ %def vector4_invert_direction
 @ This function returns the four-vector as an ordinary array.  A
 second version for an array of four-vectors.
 <<Lorentz: public>>=
@@ -1364,8 +1396,8 @@ optional mass-squared value instead.
     logical, intent(in), optional :: check_conservation
     integer, intent(in), optional :: n_in
     call vector4_write_set (phs_point%p, unit = unit, show_mass = show_mass, &
-       testflag = testflag, check_conservation = check_conservation, &
-       ultra = ultra, n_in = n_in)
+         testflag = testflag, check_conservation = check_conservation, &
+         ultra = ultra, n_in = n_in)
   end subroutine phs_point_write
 
 @ %def phs_point_write
@@ -1934,18 +1966,27 @@ also is negative.
 <<Lorentz: lorentz transformation: TBP>>=
   procedure :: write => lorentz_transformation_write
 <<Lorentz: procedures>>=
-  subroutine lorentz_transformation_write (L, unit)
+  subroutine lorentz_transformation_write (L, unit, testflag, ultra)
     class(lorentz_transformation_t), intent(in) :: L
     integer, intent(in), optional :: unit
-    integer :: u
-    integer :: i
+    logical, intent(in), optional :: testflag, ultra
+    integer :: u, i
+    logical :: tf, extreme
+    character(len=7) :: fmt
+    tf = .false.; if (present (testflag)) tf = testflag
+    extreme = .false.; if (present (ultra)) extreme = ultra
+    if (extreme) then
+       call pac_fmt (fmt, FMT_19, FMT_11, testflag)
+    else
+       call pac_fmt (fmt, FMT_19, FMT_13, testflag)
+    end if
     u = given_output_unit (unit);  if (u < 0)  return
-    write (u, "(1x,A,3(1x," // FMT_19 // "))")  "L00 = ", L%L(0,0)
-    write (u, "(1x,A,3(1x," // FMT_19 // "))")  "L0j = ", L%L(0,1:3)
+    write (u, "(1x,A,3(1x," // fmt // "))")  "L00 = ", L%L(0,0)
+    write (u, "(1x,A,3(1x," // fmt // "))")  "L0j = ", L%L(0,1:3)
     do i = 1, 3
-       write (u, "(1x,A,I0,A,3(1x," // FMT_19 // "))")  &
+       write (u, "(1x,A,I0,A,3(1x," // fmt // "))")  &
             "L", i, "0 = ", L%L(i,0)
-       write (u, "(1x,A,I0,A,3(1x," // FMT_19 // "))")  &
+       write (u, "(1x,A,I0,A,3(1x," // fmt // "))")  &
             "L", i, "j = ", L%L(i,1:3)
     end do
   end subroutine lorentz_transformation_write
@@ -2056,9 +2097,9 @@ epsilon.
     type(vector3_t) :: p_out
     real(default) :: abs
     abs = space_part_norm (p_in)
-    p_out%p(1) = p_in%p(1)/abs
-    p_out%p(2) = p_in%p(2)/abs
-    p_out%p(3) = p_in%p(3)/abs
+    p_out%p(1) = p_in%p(1) / abs
+    p_out%p(2) = p_in%p(2) / abs
+    p_out%p(3) = p_in%p(3) / abs
   end function create_unit_vector
 
 @ %def create_unit_vector
@@ -2066,12 +2107,13 @@ epsilon.
 <<Lorentz: public functions>>=
   public :: normalize
 <<Lorentz: procedures>>=
-  subroutine normalize(p)
-    type(vector3_t), intent(inout) :: p
+  function normalize(p) result (p_norm)
+    type(vector3_t) :: p_norm
+    type(vector3_t), intent(in) :: p
     real(default) :: abs
     abs = sqrt (p%p(1)**2 + p%p(2)**2 + p%p(3)**2)
-    p = p / abs
-  end subroutine normalize
+    p_norm = p / abs
+  end function normalize
 
 @ %def normalize
 @ Computes the invariant mass of the momenta sum given by the indices in
@@ -2492,9 +2534,9 @@ Reconstruct the rotation that rotates it into the second three-vector.
        a = direction (p)
        b = direction (q)
        ab = cross_product(a,b)
-       ct = a*b;  st = ab**1
+       ct = a * b;  st = ab**1
        if (abs(st) > eps0) then
-          R = rotation_generic_cs (ct, st, ab/st)
+          R = rotation_generic_cs (ct, st, ab / st)
        else if (ct < 0) then
           R = space_reflection
        else
@@ -2526,7 +2568,7 @@ rotates the $k$-axis into the direction of $p$.
        end do
        ct = b%p(k);  st = ab**1
        if (abs(st) > eps0) then
-          R = rotation_generic_cs (ct, st, ab/st)
+          R = rotation_generic_cs (ct, st, ab / st)
        else if (ct < 0) then
           R = space_reflection
        else
@@ -2897,14 +2939,18 @@ transformations.
 <<Lorentz: public>>=
   public :: vector4_check_momentum_conservation
 <<Lorentz: procedures>>=
-  subroutine vector4_check_momentum_conservation (p, n_in, unit, abs_smallness, rel_smallness)
+  subroutine vector4_check_momentum_conservation (p, n_in, unit, &
+     abs_smallness, rel_smallness, verbose)
     type(vector4_t), dimension(:), intent(in) :: p
     integer, intent(in) :: n_in
     integer, intent(in), optional :: unit
     real(default), intent(in), optional :: abs_smallness, rel_smallness
+    logical, intent(in), optional :: verbose
     integer :: u, i
     type(vector4_t) :: psum_in, psum_out
+    logical :: verb
     u = given_output_unit (unit);  if (u < 0)  return
+    verb = .false.; if (present (verbose)) verb = verbose
     psum_in = vector4_null
     do i = 1, n_in
        psum_in = psum_in + p(i)
@@ -2914,11 +2960,15 @@ transformations.
        psum_out = psum_out + p(i)
     end do
     if (.not. all (nearly_equal (psum_in%p, psum_out%p, abs_smallness, rel_smallness))) then
-       call msg_warning ("Momentum conservation violated!")
-       write (u, "(A)") "Incoming:"
-       call vector4_write (psum_in, u)
-       write (u, "(A)") "Outgoing:"
-       call vector4_write (psum_out, u)
+       call msg_warning ("Momentum conservation: FAIL", unit = u)
+       if (verb) then
+          write (u, "(A)") "Incoming:"
+          call vector4_write (psum_in, u)
+          write (u, "(A)") "Outgoing:"
+          call vector4_write (psum_out, u)
+       end if
+    else
+       write (u, "(A)") "Momentum conservation: CHECK"
     end if
   end subroutine vector4_check_momentum_conservation
 
