@@ -504,11 +504,9 @@ contains
        if (threshold%settings%onshell_projection%boost_decay) then
          pwp = mom_wp_onshell
          pb = mom_b_onshell
-         !ptop = mom_top_onshell
        else
          pwp = mom_wp_onshell_rest
          pb = mom_b_onshell_rest
-         !ptop = mom_top_onshell_rest
        end if
        ptop = pwp + pb
        if (debug_active (D_THRESHOLD)) then
@@ -545,11 +543,9 @@ contains
        if (threshold%settings%onshell_projection%boost_decay) then
           pwm = mom_wm_onshell
           pbbar = mom_bbar_onshell
-          !ptopbar = mom_topbar_onshell
        else
           pwm = mom_wm_onshell_rest
           pbbar = mom_bbar_onshell_rest
-          !ptopbar = mom_topbar_onshell_rest
        end if
        ptopbar = pwm + pbbar
        if (debug_active (D_THRESHOLD)) then
