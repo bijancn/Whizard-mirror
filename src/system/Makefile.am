@@ -98,13 +98,11 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *&//' >> $@
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
-	for list in $^; do \
-		if ! echo $$list | grep f90 > /dev/null ; then \
-			dir="`dirname $$list`"; \
-			for mod in `cat $$list`; do \
-				echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
-			done \
-		fi \
+	for list in $(module_lists); do \
+		dir="`dirname $$list`"; \
+		for mod in `cat $$list`; do \
+			echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+		done \
 	done
 
 DISTCLEANFILES = Module_dependencies.sed
