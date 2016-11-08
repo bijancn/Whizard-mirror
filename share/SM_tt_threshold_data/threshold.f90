@@ -1163,7 +1163,7 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
   implicit none
   real(c_default_float), intent(out) :: amp2
   real(c_default_float), dimension(0:3,*), intent(in) :: p
-  complex(default), dimension(:), allocatable, save :: amp_summed
+  complex(default), dimension(:), allocatable, save :: amp_with_FF, amp_no_FF
   logical :: real_computation
   integer :: i, hi, n_total_hel
   real_computation = full_proc_number_particles_out () == 5
@@ -1177,7 +1177,8 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
      call allocate_amps ()
   end if
   amp_tree = zero
-  amp_summed = zero
+  amp_with_FF = zero
+  amp_no_FF = zero
   if (real_computation) then
      call threshold%formfactor%activate ()
      amp2 = compute_real (p, FF)
@@ -1203,10 +1204,11 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
      case default
         if (threshold%settings%interference) then
            if (threshold%settings%factorized_interference_term) then
-              amp_summed = amp_blob
+              amp_with_FF = amp_blob
               call compute_born (p, TREE)
-              amp2 = real (sum (abs2 (amp_tree) + abs2 (amp_summed) + &
-                   2 * real (amp_blob * conjg (amp_summed))))
+              amp_no_FF = amp_blob
+              amp2 = real (sum (abs2 (amp_tree) + abs2 (amp_with_FF) + &
+                   2 * real (amp_no_FF * conjg (amp_with_FF))))
            else
               amp2 = real (sum (abs2 (amp_tree + amp_blob)))
            end if
@@ -1227,7 +1229,8 @@ contains
   subroutine allocate_amps ()
     allocate (amp_blob(n_total_hel))
     allocate (amp_tree(n_total_hel))
-    allocate (amp_summed(n_total_hel))
+    allocate (amp_with_FF(n_total_hel))
+    allocate (amp_no_FF(n_total_hel))
   end subroutine allocate_amps
 
 end subroutine @ID@_get_amp_squared
