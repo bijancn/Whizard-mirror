@@ -81,8 +81,7 @@ module_lists = \
   ../me_methods/Modules \
   ../phase_space/Modules \
   ../variables/Modules \
-  ../blha/Modules \
-  ../threshold/Modules
+  ../blha/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
