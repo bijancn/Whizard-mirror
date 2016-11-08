@@ -1206,7 +1206,7 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
               amp_summed = amp_blob
               call compute_born (p, TREE)
               amp2 = real (sum (abs2 (amp_tree) + abs2 (amp_summed) + &
-                   2 * real (amp_blob * amp_summed)))
+                   2 * real (amp_blob * conjg (amp_summed))))
            else
               amp2 = real (sum (abs2 (amp_tree + amp_blob)))
            end if
