@@ -409,6 +409,11 @@ qcdtest_1.run qcdtest_2.run qcdtest_3.run qcdtest_4.run qcdtest_5.run qcdtest_6.
 OMEGA_QCD = $(top_builddir)/omega/bin/omega_QCD.$(WT_OCAML_NATIVE_EXT)
 omega_QCD.$(WT_OMEGA_CACHE_SUFFIX): $(OMEGA_QCD)
 	$(OMEGA_QCD) -initialize .
+
+mssmtest_1.run mssmtest_2.run: omega_MSSM.$(WT_OMEGA_CACHE_SUFFIX)
+OMEGA_MSSM = $(top_builddir)/omega/bin/omega_MSSM.$(WT_OCAML_NATIVE_EXT)
+omega_MSSM.$(WT_OMEGA_CACHE_SUFFIX): $(OMEGA_MSSM)
+	$(OMEGA_MSSM) -initialize .
 endif OCAML_AVAILABLE
 
 if MPOST_AVAILABLE
