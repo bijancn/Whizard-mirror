@@ -394,7 +394,6 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/rt_data_9.ref \
     unit_tests/ref-output/dispatch_1.ref \
     unit_tests/ref-output/dispatch_2.ref \
-    unit_tests/ref-output/dispatch_3.ref \
     unit_tests/ref-output/dispatch_4.ref \
     unit_tests/ref-output/dispatch_5.ref \
     unit_tests/ref-output/dispatch_6.ref \
@@ -406,6 +405,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/dispatch_12.ref \
     unit_tests/ref-output/dispatch_13.ref \
     unit_tests/ref-output/dispatch_14.ref \
+    unit_tests/ref-output/dispatch_mci_1.ref \
     unit_tests/ref-output/process_configurations_1.ref \
     unit_tests/ref-output/process_configurations_2.ref \
     unit_tests/ref-output/event_streams_1.ref \

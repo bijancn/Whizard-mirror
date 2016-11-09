@@ -118,6 +118,7 @@ UNIT_TESTS = \
     iterations.run \
     rt_data.run \
     dispatch.run \
+    dispatch_mci.run \
     process_configurations.run \
     event_streams.run \
     integrations.run \
