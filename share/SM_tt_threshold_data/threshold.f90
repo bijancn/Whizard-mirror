@@ -130,7 +130,7 @@ module @ID@_threshold
        compute_momentum_sums, init_workspace, compute_production_owfs, &
        compute_decay_owfs, table_spin_states, compute_production_me, &
        top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2, &
-       apply_boost
+       apply_boost, compute_projected_momenta
 
   ! DON'T EVEN THINK of removing the following!
   ! If the compiler complains about undeclared
@@ -162,7 +162,7 @@ module @ID@_threshold
   real(default), parameter, public :: N_ = 3
   logical, parameter :: F = .false.
   logical, parameter :: T = .true.
-  !!! Colour factors: N_ quarks can be produced
+  !!! Colour factors: N_ colors can be produced
   !!! Helicity factors: Mean over incoming helicities
   real(default), parameter, public :: production_factors = N_ / four
 

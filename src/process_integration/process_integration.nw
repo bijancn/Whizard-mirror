@@ -8389,7 +8389,7 @@ module pcm
 <<Use kinds>>
   use constants, only: zero, two
   use diagnostics
-  use lorentz, only: vector4_t, lorentz_transformation_t, identity
+  use lorentz
   use process_constants, only: process_constants_t
   use physics_defs
   use nlo_data, only: nlo_settings_t
@@ -8845,15 +8845,16 @@ object and the squared matrix-element collector.
     type(lorentz_transformation_t) :: L_to_cms
     select type (config => pcm_instance%config)
     type is (pcm_nlo_t)
-       if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) then
-          !!! Threshold implementation only for lepton collisions, so nothing to
-          !!! worry about here.
-          sqrts = two * p(1)%p(0); mtop = m1s_to_mpole (sqrts)
-          L_to_cms = get_boost_for_threshold_projection (p, sqrts, mtop)
-          associate (p_onshell => pcm_instance%real_kinematics%p_born_onshell%phs_point(1)%p)
-             call threshold_projection_born (mtop, L_to_cms, p, p_onshell)
-          end associate
-       end if
+       !if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) then
+       !   !!! Threshold implementation only for lepton collisions, so nothing to
+       !   !!! worry about here.
+       !   sqrts = two * p(1)%p(0); mtop = m1s_to_mpole (sqrts)
+       !   L_to_cms = get_boost_for_threshold_projection (p, sqrts, mtop)
+       !   associate (p_onshell => pcm_instance%real_kinematics%p_born_onshell%phs_point(1)%p)
+       !      print *, 'Check 1'
+       !      call threshold_projection_born (mtop, L_to_cms, p, p_onshell)
+       !   end associate
+       !end if
        associate (virtual => pcm_instance%virtual)
           call virtual%set_ren_scale (p, ren_scale)
           call virtual%set_fac_scale (p, fac_scale)
@@ -9186,6 +9187,7 @@ module kinematics
 <<Use kinds>>
   use format_utils, only: write_separator
   use diagnostics
+  use constants, only: two
   use io_units
   use lorentz
   use physics_defs
@@ -9197,6 +9199,7 @@ module kinematics
   use fks_regions
   use process_config
   use process_mci
+  use pcm, only: pcm_instance_nlo_t
   use ttv_formfactors, only: m1s_to_mpole
 
 <<Standard module head>>
@@ -9610,12 +9613,22 @@ Relevant for using the proper momenta input for BLHA matrix elements.
 <<Kinematics: kinematics: TBP>>=
   procedure :: threshold_projection => kinematics_threshold_projection
 <<Kinematics: procedures>>=
-  subroutine kinematics_threshold_projection (k)
+  subroutine kinematics_threshold_projection (k, pcm_instance)
     class(kinematics_t), intent(inout) :: k
-    select type (phs => k%phs)
-    type is (phs_fks_t)
-       call phs%threshold_projection (m1s_to_mpole (phs%get_sqrts()))
-    end select
+    type(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    real(default) :: sqrts, mtop
+    type(lorentz_transformation_t) :: L_to_cms
+    type(vector4_t), dimension(:), allocatable :: p_tot
+    integer :: n_tot
+    sqrts = two * energy (k%phs%p(1)); mtop = m1s_to_mpole (sqrts)
+    n_tot = k%phs%get_n_tot (); allocate (p_tot (n_tot))
+    p_tot(1 : k%n_in) = k%phs%p
+    p_tot(k%n_in + 1 : n_tot) = k%phs%q
+    L_to_cms = get_boost_for_threshold_projection (p_tot, sqrts, mtop)
+    call pcm_instance%real_kinematics%p_born_cms%set_momenta (1, p_tot)
+    associate (p_onshell => pcm_instance%real_kinematics%p_born_onshell%phs_point(1)%p)
+       call threshold_projection_born (mtop, L_to_cms, p_tot, p_onshell)
+    end associate
   end subroutine kinematics_threshold_projection
 
 @ %def kinematics_threshold_projection
@@ -9731,16 +9744,14 @@ module instances
 
   !!! We should depend less on these modules (move it to pcm_nlo_t e.g.)
   use phs_wood, only: phs_wood_t, phs_wood_config_t
-  use phs_fks, only: phs_fks_t, phs_fks_config_t
-  use phs_fks, only: GEN_REAL_PHASE_SPACE, GEN_SOFT_MISMATCH
-  use phs_fks, only: GEN_SOFT_LIMIT_TEST, GEN_COLL_LIMIT_TEST, GEN_ANTI_COLL_LIMIT_TEST
-  use phs_fks, only: PHS_MODE_UNDEFINED, GEN_SOFT_COLL_LIMIT_TEST, GEN_SOFT_ANTI_COLL_LIMIT_TEST
-  use phs_fks, only: PHS_MODE_ADDITIONAL_PARTICLE, PHS_MODE_COLLINEAR_REMNANT
+  use phs_fks
   use blha_olp_interfaces, only: prc_blha_t
   use blha_config, only: BLHA_AMP_CC
   use prc_user_defined, only: prc_user_defined_base_t, user_defined_state_t
   use prc_threshold, only: prc_threshold_t
   use blha_olp_interfaces, only: blha_result_array_size
+
+  use ttv_formfactors, only: m1s_to_mpole
 
   !!! local modules
   use parton_states
@@ -10205,7 +10216,7 @@ postpone until we know the factorization scale), and we have a valid
     type(mci_work_t), intent(in) :: mci_work
     integer, intent(in) :: phs_channel
     logical, intent(out) :: success
-     call term%k_term%compute_selected_channel &
+    call term%k_term%compute_selected_channel &
         (mci_work, phs_channel, term%p_seed, success)
   end subroutine term_instance_compute_seed_kinematics
 
@@ -10236,12 +10247,14 @@ postpone until we know the factorization scale), and we have a valid
 <<Instances: procedures>>=
   subroutine term_instance_evaluate_projections (term)
     class(term_instance_t), intent(inout) :: term
-    select type (phs => term%k_term%phs)
-    type is (phs_fks_t)
-       if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) then
-          if (term%k_term%threshold) call term%k_term%threshold_projection ()
-       end if
-    end select
+    real(default) :: sqrts, mtop
+    type(lorentz_transformation_t) :: L_to_cms
+    if (term%k_term%threshold) then
+       select case (term%nlo_type)
+       case (NLO_REAL, NLO_VIRTUAL, NLO_MISMATCH)
+          call term%k_term%threshold_projection (term%pcm_instance)
+       end select
+    end if
   end subroutine term_instance_evaluate_projections
 
 @ %def term_instance_evaluate_projections
@@ -10445,7 +10458,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
     class(pcm_t), intent(in) :: pcm
     select type (pcm)
     type is (pcm_nlo_t)
-       term%k_term%threshold = pcm%region_data%has_pseudo_isr ()
+       term%k_term%threshold = pcm%settings%factorization_mode == FACTORIZATION_THRESHOLD
     class default
        term%k_term%threshold = .false.
     end select
@@ -10624,6 +10637,7 @@ The quantum numbers mask of the incoming particle
      class(term_instance_t), intent(inout) :: term
      real(default), intent(in) :: alpha_s
      real(default) :: sqme_virt
+     type(vector4_t), dimension(:), allocatable :: p_born
      if (term%nlo_type /= NLO_VIRTUAL) call msg_fatal &
         ("Trying to evaluate virtual matrix element with unsuited term_instance.")
      if (debug2_active (D_VIRTUAL)) then
@@ -10634,7 +10648,18 @@ The quantum numbers mask of the incoming particle
      end if
      call term%pcm_instance%set_momenta_and_scales_virtual &
           (term%int_hard%get_momenta (), term%ren_scale, term%fac_scale)
-     sqme_virt = term%pcm_instance%compute_sqme_virt (term%p_hard, alpha_s, &
+
+     select type (config => term%pcm_instance%config)
+     type is (pcm_nlo_t)
+        allocate (p_born (config%region_data%n_legs_born))
+        if (config%settings%factorization_mode == FACTORIZATION_THRESHOLD) then
+           p_born = term%pcm_instance%real_kinematics%p_born_onshell%get_momenta(1)
+        else
+           p_born = term%int_hard%get_momenta ()
+        end if
+     end select
+
+     sqme_virt = term%pcm_instance%compute_sqme_virt (p_born, alpha_s, &
           term%connected%trace%get_matrix_element ())
      call term%connected%trace%set_matrix_element &
           (cmplx (sqme_virt * term%weight, 0, default))
@@ -10843,7 +10868,7 @@ method may modify the [[core_state]] workspace object.
     end select
     select type (core)
     type is (prc_threshold_t)
-       if (term%nlo_type == NLO_REAL) then
+       if (term%nlo_type > BORN) then
           associate (pcm => term%pcm_instance)
              if (term%k_term%emitter >= 0) then
                 call core%set_offshell_momenta &
@@ -11350,9 +11375,9 @@ to subobject of [[instance]].
             select type (phs => term_instance%k_term%phs)
             type is (phs_fks_t)
                call term_instance%set_emitter (process%get_pcm_ptr ())
-               call term_instance%set_threshold (process%get_pcm_ptr ())
                call term_instance%setup_fks_kinematics (process%get_var_list_ptr ())
             end select
+            call term_instance%set_threshold (process%get_pcm_ptr ())
             call term_instance%setup_expressions (process%get_meta (), process%get_config ())
          end if
        end associate
