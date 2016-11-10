@@ -32,45 +32,26 @@
 ########################################################################
 
 ## Subdirectories to configure
+## directories in one line do not depend on each other
 SUBDIRS = \
   noweb-frame \
-  basics \
-  utilities \
-  testing \
-  system \
-  combinatorics parsing expr_base \
-  physics qft \
-  fastjet \
-  types \
-  variables \
-  rng \
-  matrix_elements \
-  hepmc lcio particles \
-  lhapdf \
-  lhapdf5 \
-  pdf_builtin \
-  hoppet \
+  basics prebuilt models \
+  fastjet hepmc hoppet lcio lhapdf lhapdf5 looptools pdf_builtin pythia8 tauola xdr \
+  expr_base utilities system \
+  combinatorics muli testing \
+  parsing physics \
+  threshold qft types \
+  particles matrix_elements variables \
+  events rng \
   beams \
-  me_methods \
-  xdr events \
-  user \
-  model_features \
-  threshold \
-  phase_space \
-  mci \
-  pythia8 \
-  tauola \
-  muli shower \
-  blha \
-  gosam openloops \
-  looptools \
-  fks \
+  shower user me_methods \
+  blha model_features \
+  gosam openloops phase_space \
+  fks mci \
   process_integration \
   matching \
   transforms \
-  whizard-core \
-  prebuilt \
-  models
+  whizard-core
 
 if MPOST_AVAILABLE
 SUBDIRS += gamelan feynmf
