@@ -175,6 +175,7 @@ libwhizard_test_la_LIBADD = \
   transforms/libtransforms_ut.la \
   matching/libmatching_ut.la \
   fks/libfks_ut.la \
+  shower/libshower_ut.la \
   process_integration/libprocess_integration_ut.la \
   blha/libblha_ut.la \
   model_features/libmodel_features_ut.la \

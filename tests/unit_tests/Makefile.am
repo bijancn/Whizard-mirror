@@ -104,6 +104,7 @@ UNIT_TESTS = \
     event_transforms.run \
     decays.run \
     shower.run \
+    shower_base.run \
     events.run \
     hep_events.run \
     eio_data.run \

@@ -34,20 +34,24 @@
 ## The files in this directory make up the shower routines
 
 noinst_LTLIBRARIES = libshower.la
+check_LTLIBRARIES = libshower_ut.la
 
 libshower_la_SOURCES = \
-   pythia6_up.f \
-   ktclus.f90 \
-   shower_base.f90 \
-   shower_partons.f90 \
-   shower_core.f90 \
-   shower_pythia6.f90
+  pythia6_up.f \
+  ktclus.f90 \
+  shower_base.f90 \
+  shower_partons.f90 \
+  shower_core.f90 \
+  shower_pythia6.f90
+
+libshower_ut_la_SOURCES = \
+  shower_base_uti.f90 shower_base_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = shower.nw
 
 # Dump module names into file Modules
-libshower_Modules = ${libshower_la_SOURCES:.f90=}
+libshower_Modules = ${libshower_la_SOURCES:.f90=} ${libshower_ut_la_SOURCES:.f90=}
 Modules: Makefile
 	@for module in $(libshower_Modules); do \
           echo $$module >> $@.new; \
@@ -87,7 +91,7 @@ include_modules = ${include_modules_bare:../%=-I../%}
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
 
-Module_dependencies.sed: $(libshower_la_SOURCES)
+Module_dependencies.sed: $(libshower_la_SOURCES) $(libshower_ut_la_SOURCES)
 Module_dependencies.sed: $(module_lists)
 	@rm -f $@
 	echo 's/, *only:.*//' >> $@
@@ -109,7 +113,7 @@ DISTCLEANFILES = Module_dependencies.sed
 @am__include@ @am__quote@Makefile.depend@am__quote@
 
 Makefile.depend: Module_dependencies.sed
-Makefile.depend: $(libshower_la_SOURCES)
+Makefile.depend: $(libshower_la_SOURCES) $(libshower_ut_la_SOURCES)
 	@rm -f $@
 	for src in $^; do \
 		module="`basename $$src | sed 's/\.f[90][0358]//'`"; \
@@ -151,20 +155,18 @@ endif
 
 if NOWEB_AVAILABLE
 
-SHOWER_SRC = $(libshower_la_SOURCES)
-
 PRELUDE = $(top_srcdir)/src/noweb-frame/whizard-prelude.nw
 POSTLUDE = $(top_srcdir)/src/noweb-frame/whizard-postlude.nw
 
 shower.stamp: $(PRELUDE) $(srcdir)/shower.nw $(POSTLUDE)
 	@rm -f shower.tmp
 	@touch shower.tmp
-	for src in $(SHOWER_SRC); do \
+	for src in $(libshower_la_SOURCES) $(libshower_ut_la_SOURCES); do \
 		$(NOTANGLE) -R[[$$src]] $^ | $(CPIF) $$src; \
 	done
 	@mv -f shower.tmp shower.stamp
 
-$(SHOWER_SRC): shower.stamp
+$(libshower_la_SOURCES) $(libshower_ut_la_SOURCES): shower.stamp
 ## Recover from the removal of $@
 	@if test -f $@; then :; else \
 		rm -f shower.stamp; \

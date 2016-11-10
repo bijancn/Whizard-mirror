@@ -340,6 +340,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/decays_6.ref \
     unit_tests/ref-output/shower_1.ref \
     unit_tests/ref-output/shower_2.ref \
+    unit_tests/ref-output/shower_base_1.ref \
     unit_tests/ref-output/events_1.ref \
     unit_tests/ref-output/events_2.ref \
     unit_tests/ref-output/events_3.ref \
@@ -399,7 +400,6 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/dispatch_8.ref \
     unit_tests/ref-output/dispatch_10.ref \
     unit_tests/ref-output/dispatch_11.ref \
-    unit_tests/ref-output/dispatch_12.ref \
     unit_tests/ref-output/dispatch_13.ref \
     unit_tests/ref-output/dispatch_14.ref \
     unit_tests/ref-output/dispatch_rng_1.ref \
