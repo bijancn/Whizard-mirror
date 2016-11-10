@@ -38,7 +38,8 @@ SUBDIRS = \
   basics \
   hepmc lcio lhapdf lhapdf5 looptools pythia8 xdr\
   hoppet \
-  expr_base system utilities\
+  expr_base utilities\
+  system \
   combinatorics muli pdf_builtin testing\
   parsing physics \
   fastjet qft threshold types\
