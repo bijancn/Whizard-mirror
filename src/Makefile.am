@@ -40,8 +40,8 @@ SUBDIRS = \
   hoppet \
   expr_base utilities\
   system \
-  combinatorics muli pdf_builtin testing\
-  parsing physics \
+  combinatorics pdf_builtin testing\
+  muli parsing physics \
   fastjet qft threshold types\
   models particles matrix_elements variables \
   events prebuilt rng\
