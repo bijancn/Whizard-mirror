@@ -121,6 +121,7 @@ UNIT_TESTS = \
     dispatch_rng.run \
     dispatch_mci.run \
     dispatch_phs.run \
+    dispatch_transforms.run \
     process_configurations.run \
     event_streams.run \
     integrations.run \
