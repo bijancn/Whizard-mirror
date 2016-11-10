@@ -77,7 +77,7 @@ EXTRA_DIST = $(LATEX_STYLES)
 manual.ps: $(PACKAGE).ps
 manual.pdf: $(PACKAGE).pdf
 $(PACKAGE).ps: gamelan_manual.ps
-$(PACKAGE).pdf: gamelan_manual.pdf $(WHIZARD_DEPENDENCY_GRAPHS_PDF)
+$(PACKAGE).pdf: gamelan_manual.pdf $(WHIZARD_DEPENDENCY_GRAPHS_PDF) overview.pdf
 
 
 gamelan_manual.pdf: gamelan.sty
@@ -133,13 +133,21 @@ WHIZARD_DEPENDENCY_GRAPHS_DOT = \
 	whizard-core.dot
 
 WHIZARD_DEPENDENCY_GRAPHS_PDF = $(WHIZARD_DEPENDENCY_GRAPHS_DOT:.dot=.pdf)
-all-dots: $(WHIZARD_DEPENDENCY_GRAPHS_DOT)
+all-dots: $(WHIZARD_DEPENDENCY_GRAPHS_DOT) overview.dot
 
 $(WHIZARD_DEPENDENCY_GRAPHS_DOT):
 	@rm -f $@
 	$(top_srcdir)/share/doc/dep2dot.py \
 		../../src/`echo $@ | sed 's/.dot//'`/Makefile.depend > $@
-dist_noinst_DATA += $(WHIZARD_DEPENDENCY_GRAPHS_DOT)
+
+overview.dot:
+	@rm -f $@
+	list=''; \
+	for dep in $(WHIZARD_DEPENDENCY_GRAPHS_DOT); do \
+		list="$$list ../../src/`echo $$dep | sed 's/.dot//'`/Makefile.depend"; \
+	done ; \
+	$(top_srcdir)/share/doc/dep2dot.py $$list > $@
+dist_noinst_DATA += $(WHIZARD_DEPENDENCY_GRAPHS_DOT) overview.dot
 endif
 
 ## Rules for creating PDF
@@ -223,7 +231,8 @@ mostlyclean-latex:
 	-rm -f *.aux *.log *.dvi *.toc *.idx *.out *.ltp *.mp *.mpx *.glo \
 	gamelan_manual.[1-9] gamelan_manual.[1-9][0-9] \
 	manual.ps manual.pdf gamelan_manual.ps gamelan_manual.pdf \
-	$(WHIZARD_DEPENDENCY_GRAPHS_DOT) $(WHIZARD_DEPENDENCY_GRAPHS_PDF)
+	$(WHIZARD_DEPENDENCY_GRAPHS_DOT) $(WHIZARD_DEPENDENCY_GRAPHS_PDF) \
+	overview.dot overview.pdf
 	-test "$(srcdir)" != "." && rm -f $(PACKAGE).pdf
 clean-latex:
 maintainer-clean-latex:
