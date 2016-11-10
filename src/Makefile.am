@@ -35,16 +35,17 @@
 ## directories in one line do not depend on each other
 SUBDIRS = \
   noweb-frame \
-  basics prebuilt models \
-  fastjet hepmc hoppet lcio lhapdf lhapdf5 looptools pdf_builtin pythia8 tauola xdr \
-  expr_base utilities system \
-  combinatorics muli testing \
+  basics \
+  hepmc lcio lhapdf lhapdf5 looptools pythia8 xdr\
+  hoppet \
+  expr_base system utilities\
+  combinatorics muli pdf_builtin testing\
   parsing physics \
-  threshold qft types \
-  particles matrix_elements variables \
-  events rng \
-  beams \
-  shower user me_methods \
+  fastjet qft threshold types\
+  models particles matrix_elements variables \
+  events prebuilt rng\
+  beams tauola \
+  me_methods shower user \
   blha model_features \
   gosam openloops phase_space \
   fks mci \
