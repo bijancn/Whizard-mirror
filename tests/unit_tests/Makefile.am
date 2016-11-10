@@ -118,6 +118,7 @@ UNIT_TESTS = \
     iterations.run \
     rt_data.run \
     dispatch.run \
+    dispatch_rng.run \
     dispatch_mci.run \
     dispatch_phs.run \
     process_configurations.run \
