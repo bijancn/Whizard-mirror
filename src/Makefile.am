@@ -37,10 +37,10 @@ SUBDIRS = \
   noweb-frame \
   basics \
   hepmc lcio lhapdf lhapdf5 looptools pythia8 xdr\
-  hoppet \
   expr_base utilities\
   system \
   combinatorics pdf_builtin testing\
+  hoppet \
   muli parsing physics \
   fastjet qft threshold types\
   models particles matrix_elements variables \
