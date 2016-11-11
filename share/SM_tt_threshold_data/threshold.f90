@@ -331,7 +331,6 @@ module @ID@_threshold
   data table_spin_states(:, 144) /  1,  1,  1,  1,  1,  1 /
 
   complex(default), dimension(:), allocatable, save, public :: amp_blob
-  complex(default), dimension(:), allocatable, save, public :: amp_tree
   integer, public :: nhel_max
 
   type(momentum), public :: p1, p2, p3, p4, p5, p6
@@ -629,8 +628,6 @@ contains
           call compute_production_owfs (hi)
           if (.not. onshell_tops (p3, p4))  call compute_decay_owfs (hi)
           amp_blob(hi) = - calculate_blob (ffi) ! 4 vertices, 3 propagators
-          if (threshold%settings%flip_relative_sign) &
-               amp_blob(hi) = - amp_blob(hi)
        end if
     end do
   end subroutine compute_born
@@ -1163,12 +1160,12 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
   implicit none
   real(c_default_float), intent(out) :: amp2
   real(c_default_float), dimension(0:3,*), intent(in) :: p
-  complex(default), dimension(:), allocatable, save :: amp_with_FF, amp_no_FF
+  complex(default), dimension(:), allocatable, save :: amp_with_FF, amp_no_FF, amp_omega_full
   logical :: real_computation
   integer :: i, hi, n_total_hel
   real_computation = full_proc_number_particles_out () == 5
   i = full_proc_number_particles_out () + 2
-  if (.not. allocated (amp_tree)) then
+  if (.not. allocated (amp_omega_full)) then
      if (real_computation) then
         n_total_hel = n_hel * 2 ! times 2 helicities due to the gluon
      else
@@ -1176,7 +1173,7 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
      end if
      call allocate_amps ()
   end if
-  amp_tree = zero
+  amp_omega_full = zero
   amp_with_FF = zero
   amp_no_FF = zero
   if (real_computation) then
@@ -1187,7 +1184,7 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
         call threshold%formfactor%disable ()
         call full_proc_new_event (p)
         do hi = 1, full_proc_number_spin_states()
-           amp_tree(hi) = full_proc_get_amplitude (1, hi, 1)
+           amp_omega_full(hi) = full_proc_get_amplitude (1, hi, 1)
         end do
      end if
      call threshold%formfactor%activate ()
@@ -1196,22 +1193,24 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
      case (EXPANDED_HARD_P0DEPENDENT, EXPANDED_HARD_P0CONSTANT, &
              EXPANDED_SOFT_P0CONSTANT, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT, &
              EXPANDED_SOFT_HARD_P0CONSTANT)
-        amp2 = expanded_amp2 (amp_tree, amp_blob)
+        amp2 = expanded_amp2 (amp_omega_full, amp_blob)
      case (MATCHED)
-        amp2 = real (sum (abs2 (amp_tree + amp_blob)))
+        amp2 = real (sum (abs2 (amp_omega_full + amp_blob)))
         call compute_born (p, MATCHED_EXPANDED)
-        amp2 = amp2 + expanded_amp2 (amp_tree, amp_blob)
+        amp2 = amp2 + expanded_amp2 (amp_omega_full, amp_blob)
      case default
         if (threshold%settings%interference) then
+           amp_with_FF = amp_blob
            if (threshold%settings%factorized_interference_term) then
-              amp_with_FF = amp_blob
               call compute_born (p, TREE)
               amp_no_FF = amp_blob
-              amp2 = real (sum (abs2 (amp_tree) + abs2 (amp_with_FF) + &
-                   2 * real (amp_no_FF * conjg (amp_with_FF))))
            else
-              amp2 = real (sum (abs2 (amp_tree + amp_blob)))
+              amp_no_FF = amp_omega_full
            end if
+           if (threshold%settings%flip_relative_sign) &
+               amp_no_FF = - amp_no_FF
+           amp2 = real (sum (abs2 (amp_omega_full) + abs2 (amp_with_FF) + &
+                2 * real (amp_no_FF * conjg (amp_with_FF))))
         else
            if (threshold%settings%helicity_approximated) then
               amp2 = real (sum (amp_blob))
@@ -1228,7 +1227,7 @@ contains
 
   subroutine allocate_amps ()
     allocate (amp_blob(n_total_hel))
-    allocate (amp_tree(n_total_hel))
+    allocate (amp_omega_full(n_total_hel))
     allocate (amp_with_FF(n_total_hel))
     allocate (amp_no_FF(n_total_hel))
   end subroutine allocate_amps
