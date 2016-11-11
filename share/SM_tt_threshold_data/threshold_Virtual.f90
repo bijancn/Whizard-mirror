@@ -74,6 +74,8 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   real(double) :: mu, alpha_s, dynamic_top_mass
   complex(default) :: born_decay_me, bw
   real(default) :: prod2, born_decay_me2
+  integer, dimension(2) :: reshuffle_momenta
+  integer, dimension(4) :: reshuffle_id
   call msg_debug (D_ME_METHODS, "@ID@_olp_eval2")
   if (i_flv /= 1)  call msg_fatal ("i_flv /= 1, threshold interface was not built for this")
   if (any (id <= 0))  call msg_fatal ("Could not register process in OpenLoops")
@@ -101,16 +103,16 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   bw = top_propagators (FF)
   production_me = compute_production_me (FF)
   prod2 = zero
+  !!! We need these because OpenLoops does not reproduce the Omega results
+  !!! at the correct positions (but numerically correct).
+  !!! This is only a workaround and should be understood!
+  reshuffle_momenta = [2, 1]
+  reshuffle_id = [1,2,4,3]
   do h_t = -1, 1, 2
   do h_tbar = -1, 1, 2
-     !h_t = 1; h_tbar = -1
-     !h_el = 1; h_pos = -1
      do h_el = -1, 1, 2
      do h_pos = -1, 1, 2
-        !prod2 = prod2 + abs2 (production_me(h_el, h_pos, h_t, h_tbar))
         prod2 = abs2 (production_me(h_el, h_pos, h_t, h_tbar))
-     !end do
-     !end do
      do leg = 1, 2
         dynamic_top_mass = sqrt (p_top(leg) * p_top(leg))
         call set_parameter("mass(6)", dynamic_top_mass)
@@ -125,11 +127,12 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
               this_id = (3 + h_tbar) / 2 + 2
            end if
            born_decay_me2 = born_decay_me2 + abs2 (born_decay_me)
+           this_id = reshuffle_id (this_id)
         end do
         end do
         ! TODO: (bcn 2016-01-22) handle acc
-        call evaluate_loop (id(this_id), p_decay(:,:,leg), virt_decay(3), &
-             virt_decay(0:2), acc)
+        call evaluate_loop (id(this_id), p_decay(:,:,reshuffle_momenta(leg)), &
+             virt_decay(3), virt_decay(0:2), acc)
         total = total + prod2 * born_decay_me2 * virt_decay * abs2 (bw)
      end do
   end do
@@ -138,7 +141,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   end do
   !!! OpenLoops applies the averaging factor of two regardless whether
   !!! the MEs are polarized or not
-  total = total * production_factors * two
+  total = total * production_factors
   sqme_c = [total(2), total(1), total(0), total(3)]
   if (debug2_active (D_ME_METHODS)) then
      print *, 'sqme_c =    ', sqme_c !!! Debugging

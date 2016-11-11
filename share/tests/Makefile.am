@@ -925,6 +925,7 @@ MISC_TESTS_SIN = \
     functional_tests/nlo_2.sin \
     functional_tests/nlo_3.sin \
     functional_tests/nlo_4.sin \
+    functional_tests/nlo_5.sin \
     functional_tests/nlo_decay_1.sin \
     functional_tests/fks_res_1.sin \
     functional_tests/fks_res_2.sin \
