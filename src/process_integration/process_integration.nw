@@ -5895,15 +5895,18 @@ Could also be moved to the [[core_manager_t]].
     do i_component = 1, process%meta%n_components
        associate (component => process%component(i_component))
           i_core = process%get_i_core_nlo_type (component%get_nlo_type ())
-          if (.not. loaded (i_core)) then
-             select type (core => process%cm%cores(i_core)%core)
-             class is (prc_user_defined_base_t)
-                libname = process%get_library_name ()
-                call core%create_and_load_extra_libraries &
-                     (os_data, libname, process%config%model, i_core)
-                call msg_print_color ("Success", COL_GREEN)
-             end select
-             loaded(i_core) = .true.
+          if (component%can_be_integrated () .or. &
+               process%get_nlo_type (i_core) == NLO_SUBTRACTION) then
+             if (.not. loaded (i_core)) then
+                select type (core => process%cm%cores(i_core)%core)
+                class is (prc_user_defined_base_t)
+                   libname = process%get_library_name ()
+                   call core%create_and_load_extra_libraries &
+                        (os_data, libname, process%config%model, i_core)
+                   call msg_print_color ("Success", COL_GREEN)
+                end select
+                loaded(i_core) = .true.
+             end if
           end if
        end associate
     end do
@@ -9617,10 +9620,27 @@ Relevant for using the proper momenta input for BLHA matrix elements.
     type(lorentz_transformation_t) :: L_to_cms
     type(vector4_t), dimension(:), allocatable :: p_tot
     integer :: n_tot
-    sqrts = two * energy (k%phs%p(1)); mtop = m1s_to_mpole (sqrts)
-    n_tot = k%phs%get_n_tot (); allocate (p_tot (n_tot))
-    p_tot(1 : k%n_in) = k%phs%p
-    p_tot(k%n_in + 1 : n_tot) = k%phs%q
+    n_tot = k%phs%get_n_tot ()
+    select type (phs => k%phs)
+    type is (phs_fks_t)
+       if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) then
+            n_tot = n_tot - 1
+            allocate (p_tot (n_tot))
+            p_tot(1 : k%n_in) = phs%p_born
+            p_tot(k%n_in + 1 : n_tot) = phs%q_born
+       else
+          allocate (p_tot (n_tot))
+          p_tot(1 : k%n_in) = k%phs%p
+          p_tot(k%n_in + 1 : n_tot) = phs%q
+       end if
+       sqrts = two * energy (phs%p_born(1))
+    class default
+       allocate (p_tot (n_tot))
+       p_tot(1 : k%n_in) = k%phs%p
+       p_tot(k%n_in + 1 : n_tot) = phs%q
+       sqrts = two * energy (phs%p(1))
+    end select
+    mtop = m1s_to_mpole (sqrts)
     L_to_cms = get_boost_for_threshold_projection (p_tot, sqrts, mtop)
     call pcm_instance%real_kinematics%p_born_cms%set_momenta (1, p_tot)
     associate (p_onshell => pcm_instance%real_kinematics%p_born_onshell%phs_point(1)%p)
