@@ -9359,10 +9359,11 @@ Jacobian factors.
 <<Kinematics: kinematics: TBP>>=
   procedure :: evaluate_radiation_kinematics => kinematics_evaluate_radiation_kinematics
 <<Kinematics: procedures>>=
-  subroutine kinematics_evaluate_radiation_kinematics (k, r_in, reg_data)
+  subroutine kinematics_evaluate_radiation_kinematics (k, r_in, reg_data, nlo_type)
     class(kinematics_t), intent(inout) :: k
     real(default), intent(in), dimension(:) :: r_in
     type(region_data_t), intent(in) :: reg_data
+    integer, intent(in) :: nlo_type
     logical :: use_contributors
     use_contributors = allocated (reg_data%alr_contributors)
     select type (phs => k%phs)
@@ -9370,7 +9371,8 @@ Jacobian factors.
        if (use_contributors) then
           call phs%compute_xi_ref_momenta (reg_data%alr_contributors)
        else if (k%threshold) then
-          if (k%emitter > 0) call phs%compute_xi_ref_momenta_threshold ()
+          if (.not. is_subtraction_component (k%emitter, nlo_type)) &
+               call phs%compute_xi_ref_momenta_threshold ()
        else
           call phs%compute_xi_ref_momenta ()
        end if
@@ -9613,9 +9615,10 @@ Relevant for using the proper momenta input for BLHA matrix elements.
 <<Kinematics: kinematics: TBP>>=
   procedure :: threshold_projection => kinematics_threshold_projection
 <<Kinematics: procedures>>=
-  subroutine kinematics_threshold_projection (k, pcm_instance)
+  subroutine kinematics_threshold_projection (k, pcm_instance, nlo_type)
     class(kinematics_t), intent(inout) :: k
     type(pcm_instance_nlo_t), intent(inout) :: pcm_instance
+    integer, intent(in) :: nlo_type
     real(default) :: sqrts, mtop
     type(lorentz_transformation_t) :: L_to_cms
     type(vector4_t), dimension(:), allocatable :: p_tot
@@ -9623,18 +9626,18 @@ Relevant for using the proper momenta input for BLHA matrix elements.
     n_tot = k%phs%get_n_tot ()
     select type (phs => k%phs)
     type is (phs_fks_t)
-       if (phs%mode == PHS_MODE_ADDITIONAL_PARTICLE) then
+       if (nlo_type == NLO_REAL) then !!! Pure Real
             n_tot = n_tot - 1
             allocate (p_tot (n_tot))
             p_tot(1 : k%n_in) = phs%p_born
             p_tot(k%n_in + 1 : n_tot) = phs%q_born
-       else
+       else !!! Mismatch
           allocate (p_tot (n_tot))
           p_tot(1 : k%n_in) = k%phs%p
           p_tot(k%n_in + 1 : n_tot) = phs%q
        end if
        sqrts = two * energy (phs%p_born(1))
-    class default
+    class default !!! Virtual, Born must be checked before
        allocate (p_tot (n_tot))
        p_tot(1 : k%n_in) = k%phs%p
        p_tot(k%n_in + 1 : n_tot) = phs%q
@@ -10251,7 +10254,7 @@ postpone until we know the factorization scale), and we have a valid
           select type (config => term%pcm_instance%config)
           type is (pcm_nlo_t)
              call term%k_term%evaluate_radiation_kinematics &
-                  (mci_work%get_x_process (), config%region_data)
+                  (mci_work%get_x_process (), config%region_data, term%nlo_type)
           end select
        end if
     end select
@@ -10266,12 +10269,8 @@ postpone until we know the factorization scale), and we have a valid
     class(term_instance_t), intent(inout) :: term
     real(default) :: sqrts, mtop
     type(lorentz_transformation_t) :: L_to_cms
-    if (term%k_term%threshold) then
-       select case (term%nlo_type)
-       case (NLO_REAL, NLO_VIRTUAL, NLO_MISMATCH)
-          call term%k_term%threshold_projection (term%pcm_instance)
-       end select
-    end if
+    if (term%k_term%threshold .and. term%nlo_type > BORN) &
+         call term%k_term%threshold_projection (term%pcm_instance, term%nlo_type)
   end subroutine term_instance_evaluate_projections
 
 @ %def term_instance_evaluate_projections
@@ -10328,7 +10327,7 @@ choose to calculate all terms at once together with the seed kinematics, use
 
     if (term%nlo_type == NLO_REAL .and. term%k_term%emitter >= 0) then
        call term%k_term%evaluate_radiation (term%p_seed, p)
-    else if (term%nlo_type == NLO_REAL .and. term%k_term%emitter < 0) then
+    else if (is_subtraction_component (term%k_term%emitter, term%nlo_type)) then
        call term%k_term%modify_momenta_for_subtraction (term%p_seed, p)
     else
        allocate (p (size (term%p_seed))); p = term%p_seed
@@ -10444,7 +10443,7 @@ stored in the kinematics subobject to their source.  This is a side effect.
     class(term_instance_t), intent(inout) :: term
     class(pcm_t), intent(in) :: pcm
     integer :: i_phs
-    logical :: no_subtraction_component
+    logical :: set_emitter
     select type (pcm)
     type is (pcm_nlo_t)
        !!! Without resonances, i_alr = i_phs
@@ -10452,8 +10451,9 @@ stored in the kinematics subobject to their source.  This is a side effect.
        term%k_term%i_phs = term%config%i_term
        select type (phs => term%k_term%phs)
        type is (phs_fks_t)
-          no_subtraction_component = i_phs <= pcm%region_data%n_phs
-          if (no_subtraction_component) then
+          set_emitter = .not. is_subtraction_component (term%k_term%emitter, term%nlo_type) &
+               .and. term%nlo_type == NLO_REAL
+          if (set_emitter) then
              term%k_term%emitter = phs%phs_identifiers(i_phs)%emitter
              select type (pcm => term%pcm_instance%config)
              type is (pcm_nlo_t)
