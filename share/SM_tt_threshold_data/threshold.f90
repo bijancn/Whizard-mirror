@@ -1190,9 +1190,9 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
      call threshold%formfactor%activate ()
      call compute_born (p, FF)
      select case (FF)
-     case (EXPANDED_HARD_P0DEPENDENT, EXPANDED_HARD_P0CONSTANT, &
-             EXPANDED_SOFT_P0CONSTANT, EXPANDED_SOFT_SWITCHOFF_P0CONSTANT, &
-             EXPANDED_SOFT_HARD_P0CONSTANT)
+     case (EXPANDED_HARD, &
+             EXPANDED_SOFT, EXPANDED_SOFT_SWITCHOFF, &
+             EXPANDED_SOFT_HARD)
         amp2 = expanded_amp2 (amp_omega_full, amp_blob)
      case (MATCHED)
         amp2 = real (sum (abs2 (amp_omega_full + amp_blob)))
