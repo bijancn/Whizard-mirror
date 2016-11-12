@@ -104,6 +104,7 @@ UNIT_TESTS = \
     event_transforms.run \
     decays.run \
     shower.run \
+    shower_base.run \
     events.run \
     hep_events.run \
     eio_data.run \
@@ -118,6 +119,10 @@ UNIT_TESTS = \
     iterations.run \
     rt_data.run \
     dispatch.run \
+    dispatch_rng.run \
+    dispatch_mci.run \
+    dispatch_phs.run \
+    dispatch_transforms.run \
     process_configurations.run \
     event_streams.run \
     integrations.run \
