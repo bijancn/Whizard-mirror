@@ -10135,6 +10135,42 @@ relevant for a NLO algorithm.
   end subroutine term_instance_init
 
 @ %def term_instance_init
+@
+<<Instances: term instance: TBP>>=
+  procedure :: init_from_process => term_instance_init_from_process
+<<Instances: procedures>>=
+  subroutine term_instance_init_from_process (term_instance, &
+         process, i, pcm_instance, sf_chain)
+    class(term_instance_t), intent(inout), target :: term_instance
+    type(process_t), intent(in), target :: process
+    integer, intent(in) :: i
+    class(pcm_instance_t), intent(in), target :: pcm_instance
+    type(sf_chain_t), intent(in), target :: sf_chain
+    type(process_term_t) :: term
+    integer :: i_component
+    term = process%get_term_ptr (i)
+    i_component = term%i_component
+    if (i_component /= 0) then
+       select type (pcm_instance)
+       type is (pcm_instance_nlo_t)
+          term_instance%pcm_instance => pcm_instance
+       end select
+       term_instance%nlo_type = process%get_nlo_type_component (i_component)
+       call term_instance%setup_kinematics (sf_chain, &
+          process%get_beam_config (), process%get_phs_config (i_component))
+       call term_instance%init (process, i, &
+            real_finite = process%component_is_real_finite (i_component))
+       select type (phs => term_instance%k_term%phs)
+       type is (phs_fks_t)
+          call term_instance%set_emitter (process%get_pcm_ptr ())
+          call term_instance%set_threshold (process%get_pcm_ptr ())
+          call term_instance%setup_fks_kinematics (process%get_var_list_ptr ())
+       end select
+       call term_instance%setup_expressions (process%get_meta (), process%get_config ())
+    end if
+  end subroutine term_instance_init_from_process
+
+@ %def term_instance_init_from_process
 @ Initialize the seed-kinematics configuration.  All subobjects are
 allocated explicitly.
 <<Instances: term instance: TBP>>=
@@ -11322,11 +11358,9 @@ to subobject of [[instance]].
   subroutine process_instance_init (instance, process)
     class(process_instance_t), intent(out), target :: instance
     type(process_t), intent(inout), target :: process
-    integer :: i, i_component
+    integer :: i
     class(pcm_t), pointer :: pcm
     type(process_term_t) :: term
-    logical :: combined_nlo_integration
-    class(phs_config_t), pointer :: phs_config => null ()
     integer :: i_born, i_real, i_real_fin
 
     instance%process => process
@@ -11364,38 +11398,12 @@ to subobject of [[instance]].
           call pcm_instance%init_config (process%component_is_active (), &
              process%get_nlo_type_component (), process%get_sqrts (), i_real_fin)
        end select
-       combined_nlo_integration = pcm%settings%combined_integration
-    class default
-       combined_nlo_integration = .false.
     end select
 
     allocate (instance%term (process%get_n_terms ()))
-
     do i = 1, process%get_n_terms ()
-       associate (term_instance => instance%term(i))
-         term = process%get_term_ptr (i)
-         i_component = term%i_component
-         if (i_component /= 0) then
-            select type (pcm_instance => instance%pcm)
-            type is (pcm_instance_nlo_t)
-               term_instance%pcm_instance => pcm_instance
-            end select
-            term_instance%nlo_type = process%get_nlo_type_component (i_component)
-            phs_config => process%get_phs_config (i_component)
-            !call extend_phs_config (phs_config, combined_nlo_integration)
-            call term_instance%setup_kinematics (instance%sf_chain, &
-               process%get_beam_config (), phs_config)
-            call term_instance%init (process, i, &
-                 real_finite = process%component_is_real_finite (i_component))
-            select type (phs => term_instance%k_term%phs)
-            type is (phs_fks_t)
-               call term_instance%set_emitter (process%get_pcm_ptr ())
-               call term_instance%setup_fks_kinematics (process%get_var_list_ptr ())
-            end select
-            call term_instance%set_threshold (process%get_pcm_ptr ())
-            call term_instance%setup_expressions (process%get_meta (), process%get_config ())
-         end if
-       end associate
+       call instance%term(i)%init_from_process (process, i, instance%pcm, &
+            instance%sf_chain)
     end do
     call instance%find_same_kinematics ()
 
