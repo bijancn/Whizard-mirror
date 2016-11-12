@@ -504,11 +504,9 @@ contains
        if (threshold%settings%onshell_projection%boost_decay) then
          pwp = mom_wp_onshell
          pb = mom_b_onshell
-         !ptop = mom_top_onshell
        else
          pwp = mom_wp_onshell_rest
          pb = mom_b_onshell_rest
-         !ptop = mom_top_onshell_rest
        end if
        ptop = pwp + pb
        if (debug_active (D_THRESHOLD)) then
@@ -545,11 +543,9 @@ contains
        if (threshold%settings%onshell_projection%boost_decay) then
           pwm = mom_wm_onshell
           pbbar = mom_bbar_onshell
-          !ptopbar = mom_topbar_onshell
        else
           pwm = mom_wm_onshell_rest
           pbbar = mom_bbar_onshell_rest
-          !ptopbar = mom_topbar_onshell_rest
        end if
        ptopbar = pwm + pbbar
        if (debug_active (D_THRESHOLD)) then
@@ -1172,22 +1168,20 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
   integer :: i, hi, n_total_hel
   real_computation = full_proc_number_particles_out () == 5
   i = full_proc_number_particles_out () + 2
-  if (real_computation) then
-     if (.not. allocated (amp_tree)) then
+  if (.not. allocated (amp_tree)) then
+     if (real_computation) then
         n_total_hel = n_hel * 2 ! times 2 helicities due to the gluon
-        call allocate_amps ()
+     else
+        n_total_hel = n_hel
      end if
-     amp_tree = zero
-     amp_summed = zero
+     call allocate_amps ()
+  end if
+  amp_tree = zero
+  amp_summed = zero
+  if (real_computation) then
      call threshold%formfactor%activate ()
      amp2 = compute_real (p, FF)
   else
-     if (.not. allocated (amp_tree)) then
-        n_total_hel = n_hel
-        call allocate_amps ()
-     end if
-     amp_tree = zero
-     amp_summed = zero
      if (threshold%settings%interference) then
         call threshold%formfactor%disable ()
         call full_proc_new_event (p)
@@ -1203,13 +1197,19 @@ subroutine @ID@_get_amp_squared (amp2, p) bind(C)
              EXPANDED_SOFT_HARD_P0CONSTANT)
         amp2 = expanded_amp2 (amp_tree, amp_blob)
      case (MATCHED)
-        amp_summed = amp_tree + amp_blob
-        amp2 = real (sum (abs2 (amp_summed)))
+        amp2 = real (sum (abs2 (amp_tree + amp_blob)))
         call compute_born (p, MATCHED_EXPANDED)
         amp2 = amp2 + expanded_amp2 (amp_tree, amp_blob)
      case default
         if (threshold%settings%interference) then
-           amp2 = real (sum (abs2 (amp_tree + amp_blob)))
+           if (threshold%settings%factorized_interference_term) then
+              amp_summed = amp_blob
+              call compute_born (p, TREE)
+              amp2 = real (sum (abs2 (amp_tree) + abs2 (amp_summed) + &
+                   2 * real (amp_blob * amp_summed)))
+           else
+              amp2 = real (sum (abs2 (amp_tree + amp_blob)))
+           end if
         else
            if (threshold%settings%helicity_approximated) then
               amp2 = real (sum (amp_blob))
