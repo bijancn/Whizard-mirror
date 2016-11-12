@@ -395,13 +395,10 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/rt_data_9.ref \
     unit_tests/ref-output/dispatch_1.ref \
     unit_tests/ref-output/dispatch_2.ref \
-    unit_tests/ref-output/dispatch_6.ref \
     unit_tests/ref-output/dispatch_7.ref \
     unit_tests/ref-output/dispatch_8.ref \
     unit_tests/ref-output/dispatch_10.ref \
     unit_tests/ref-output/dispatch_11.ref \
-    unit_tests/ref-output/dispatch_13.ref \
-    unit_tests/ref-output/dispatch_14.ref \
     unit_tests/ref-output/dispatch_rng_1.ref \
     unit_tests/ref-output/dispatch_phs_1.ref \
     unit_tests/ref-output/dispatch_mci_1.ref \
