@@ -4636,6 +4636,7 @@ particles involved in the radiation process are massive or massless.
       end do
       if (virtual%use_internal_cc) b_ij_times_I = b_ij_times_I * sqme (i_born)
       if (debug2_active (D_VIRTUAL)) then
+         print *, 'internal color: ', virtual%use_internal_cc
          print *, 'b_ij_times_I =    ', b_ij_times_I
          print *, 'QB           =    ', QB
       end if
@@ -5157,7 +5158,9 @@ end module real_subtraction
 @
 In the soft limit, the real matrix element behaves as
 \begin{equation*}
-  \mathcal{R}_{\rm{soft}} = 4\pi\alpha_s \left[\sum_{i \neq j} \mathcal{B}_{ij} \frac{k_i \cdot k_j}{(k_i \cdot k)(k_j \cdot k)} - \mathcal{B} \sum_{i} \frac{k_i^2}{(k_i \cdot k)^2}C_i\right],
+  \mathcal{R}_{\rm{soft}} = 4\pi\alpha_s \left[\sum_{i \neq j}
+  \mathcal{B}_{ij} \frac{k_i \cdot k_j}{(k_i \cdot k)(k_j \cdot k)}
+   - \mathcal{B} \sum_{i} \frac{k_i^2}{(k_i \cdot k)^2}C_i\right],
 \end{equation*}
 where $k$ denotes the momentum of the emitted parton. The quantity $\mathcal{B}_{ij}$ is called the color-correlated Born matrix element defined as
 \begin{equation*}
@@ -5337,7 +5340,7 @@ distinguished by the flag [[xi2_expanded]].
     s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
          (p_born, sub_soft%p_soft, alr, emitter, i_res)
     if (debug2_active (D_SUBTRACTION)) &
-       call msg_print_color ('s_alpha_soft', s_alpha_soft, COL_YELLOW)
+         call msg_print_color ('s_alpha_soft', s_alpha_soft, COL_YELLOW)
     select case (sub_soft%factorization_mode)
     case (NO_FACTORIZATION)
        kb = sub_soft%evaluate_factorization_default (p_born, born_ij)
@@ -5345,7 +5348,7 @@ distinguished by the flag [[xi2_expanded]].
        kb = sub_soft%evaluate_factorization_threshold (p_born, born_ij)
     end select
     call msg_debug2 (D_SUBTRACTION, 'KB', kb)
-    sqme = 4 * pi * alpha_s * s_alpha_soft * kb
+    sqme = four * pi * alpha_s * s_alpha_soft * kb
     if (sub_soft%xi2_expanded) then
        xi2_factor = 4 / q2
     else
@@ -5428,7 +5431,6 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     type(vector4_t), dimension(4) :: p
     p = get_threshold_momenta (p_born)
     kb = evaluate_leg_pair (1) + evaluate_leg_pair (3)
-    !kb = evaluate_leg_pair (1, 1)
     if (debug2_active (D_SUBTRACTION))  call show_debug ()
 
   contains
@@ -5442,8 +5444,6 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
       do i1 = i_start, i_start + 1
          do i2 = i_start, i_start + 1
             numerator = p(i1) * p(i2)
-            !deno1 = p(i1) * sub_soft%p_soft_threshold(leg)
-            !deno2 = p(i2) * sub_soft%p_soft_threshold(leg)
             deno1 = p(i1) * sub_soft%p_soft
             deno2 = p(i2) * sub_soft%p_soft
             kbb = kbb +  numerator * born_ij (i1, i2) / deno1 / deno2
@@ -5507,7 +5507,6 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   public :: soft_mismatch_t
 <<real subtraction: types>>=
   type :: soft_mismatch_t
-    logical :: active = .true.
     type(region_data_t), pointer :: reg_data => null ()
     real(default), dimension(:), allocatable :: sqme_born
     real(default), dimension(:,:,:), allocatable :: sqme_born_cc
@@ -5523,22 +5522,19 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
   procedure :: init => soft_mismatch_init
 <<real subtraction: procedures>>=
   subroutine soft_mismatch_init (soft_mismatch, reg_data, &
-     real_kinematics)
+       real_kinematics, factorization_mode)
     class(soft_mismatch_t), intent(inout) :: soft_mismatch
     type(region_data_t), intent(in), target :: reg_data
     type(real_kinematics_t), intent(in), target :: real_kinematics
-    select type (mapping => reg_data%fks_mapping)
-    type is (fks_mapping_default_t)
-       soft_mismatch%active = .false.
-    type is (fks_mapping_resonances_t)
-       soft_mismatch%reg_data => reg_data
-       allocate (soft_mismatch%sqme_born (reg_data%n_flv_born))
-       allocate (soft_mismatch%sqme_born_cc (reg_data%n_legs_born, &
-          reg_data%n_legs_born, reg_data%n_flv_born))
-       call soft_mismatch%sub_soft%init (reg_data)
-       soft_mismatch%sub_soft%xi2_expanded = .false.
-       soft_mismatch%real_kinematics => real_kinematics
-    end select
+    integer, intent(in) :: factorization_mode
+    soft_mismatch%reg_data => reg_data
+    allocate (soft_mismatch%sqme_born (reg_data%n_flv_born))
+    allocate (soft_mismatch%sqme_born_cc (reg_data%n_legs_born, &
+         reg_data%n_legs_born, reg_data%n_flv_born))
+    call soft_mismatch%sub_soft%init (reg_data)
+    soft_mismatch%sub_soft%xi2_expanded = .false.
+    soft_mismatch%real_kinematics => real_kinematics
+    soft_mismatch%sub_soft%factorization_mode = factorization_mode
   end subroutine soft_mismatch_init
 
 @ %def soft_mismatch_init
@@ -5557,8 +5553,8 @@ These inputs are then used to get the numerical value of the soft mismatch.
     real(default) :: E_gluon
     type(vector4_t) :: p_em
     real(default) :: sqme_alr, sqme_soft
+    type(vector4_t), dimension(:), allocatable :: p_born
     sqme_mismatch = zero
-    if (.not. soft_mismatch%active) return
     associate (real_kinematics => soft_mismatch%real_kinematics)
        xi = real_kinematics%xi_mismatch
        y = real_kinematics%y_mismatch
@@ -5572,42 +5568,49 @@ These inputs are then used to get the numerical value of the soft mismatch.
              show_mass = .true.)
           print *, 'xi: ', xi, 'y: ', y, 's: ', s, 'E_gluon: ', E_gluon
        end if
+          
+       allocate (p_born (soft_mismatch%reg_data%n_legs_born))
 
        do alr = 1, soft_mismatch%reg_data%n_regions
 
-          i_phs = real_kinematics%alr_to_i_phs (alr)
-          i_con = soft_mismatch%reg_data%alr_to_i_contributor (alr)
-          q2 = real_kinematics%xi_ref_momenta(i_con)**2
-          emitter = soft_mismatch%reg_data%regions(alr)%emitter
-          p_em = real_kinematics%p_born_cms%get_momentum (1, emitter)
-          i_res = soft_mismatch%reg_data%regions(alr)%i_res
-          i_uborn = soft_mismatch%reg_data%regions(alr)%uborn_index
+           i_phs = real_kinematics%alr_to_i_phs (alr)
+           if (soft_mismatch%reg_data%has_pseudo_isr ()) then
+              i_con = 1
+              p_born = soft_mismatch%real_kinematics%p_born_onshell%get_momenta(1)
+           else
+              i_con = soft_mismatch%reg_data%alr_to_i_contributor (alr)
+              p_born = soft_mismatch%real_kinematics%p_born_cms%get_momenta(1)
+           end if
+           q2 = real_kinematics%xi_ref_momenta(i_con)**2
+           emitter = soft_mismatch%reg_data%regions(alr)%emitter
+           p_em = p_born (emitter)
+           i_res = soft_mismatch%reg_data%regions(alr)%i_res
+           i_uborn = soft_mismatch%reg_data%regions(alr)%uborn_index
 
-          call print_debug_alr ()
+           call print_debug_alr ()
 
-          call soft_mismatch%sub_soft%create_softvec_mismatch &
-             (E_gluon, y, real_kinematics%phi, p_em)
-          if (debug_active (D_MISMATCH)) &
-             print *, 'Created soft vector: ', soft_mismatch%sub_soft%p_soft%p
+           call soft_mismatch%sub_soft%create_softvec_mismatch &
+                (E_gluon, y, real_kinematics%phi, p_em)
+           if (debug_active (D_MISMATCH)) &
+                print *, 'Created soft vector: ', soft_mismatch%sub_soft%p_soft%p
 
-          select type (fks_mapping => soft_mismatch%reg_data%fks_mapping)
-          type is (fks_mapping_resonances_t)
-             call fks_mapping%set_resonance_momentum &
-                (real_kinematics%xi_ref_momenta(i_con))
-          end select
+           select type (fks_mapping => soft_mismatch%reg_data%fks_mapping)
+           type is (fks_mapping_resonances_t)
+              call fks_mapping%set_resonance_momentum &
+                 (real_kinematics%xi_ref_momenta(i_con))
+           end select
 
-          sqme_soft = soft_mismatch%sub_soft%compute &
-             (real_kinematics%p_born_cms%get_momenta(1), &
-             soft_mismatch%sqme_born_cc(:,:,i_uborn), y, &
-             q2, alpha_s, alr, emitter, i_res)
+           sqme_soft = soft_mismatch%sub_soft%compute &
+                (p_born, soft_mismatch%sqme_born_cc(:,:,i_uborn), y, &
+                q2, alpha_s, alr, emitter, i_res)
 
-          sqme_alr = soft_mismatch%compute (alr, xi, y, p_em, &
-             real_kinematics%xi_ref_momenta(i_con), soft_mismatch%sub_soft%p_soft, &
-             soft_mismatch%sqme_born(i_uborn), sqme_soft, &
-             alpha_s, s)
+           sqme_alr = soft_mismatch%compute (alr, xi, y, p_em, &
+                real_kinematics%xi_ref_momenta(i_con), soft_mismatch%sub_soft%p_soft, &
+                soft_mismatch%sqme_born(i_uborn), sqme_soft, &
+                alpha_s, s)
 
-          call msg_debug (D_MISMATCH, 'sqme_alr: ', sqme_alr)
-          sqme_mismatch = sqme_mismatch + sqme_alr
+           call msg_debug (D_MISMATCH, 'sqme_alr: ', sqme_alr)
+           sqme_mismatch = sqme_mismatch + sqme_alr
 
        end do
     end associate
@@ -5804,12 +5807,12 @@ necessary to expand with $z$ once.
        !!! additional factor $z$, so that in the last step, the whole
        !!! expression is divided by $z/\xi$.
        pggz = two * CA * (z**2 * onemz + z**2 / onemz + onemz)
-       sqme = pggz * sqme_born - 4 * CA * z**2 * onemz * sqme_born_sc
+       sqme = pggz * sqme_born - four * CA * z**2 * onemz * sqme_born_sc
        sqme = sqme / z_o_xi
     else if (is_quark(abs(flv_em)) .and. is_quark (abs(flv_rad))) then
        !!! Equation \ref{coll2}
        pqgz = TR * z * (one - two * z * onemz)
-       sqme = pqgz * sqme_born + 4 * TR * z**2 * onemz * sqme_born_sc
+       sqme = pqgz * sqme_born + four * TR * z**2 * onemz * sqme_born_sc
        sqme = sqme / z_o_xi
     else if (is_quark (abs(flv_em)) .and. is_gluon (flv_rad)) then
        sqme = sqme_born * CF * (one + onemz**2) / z_o_xi
@@ -5817,7 +5820,7 @@ necessary to expand with $z$ once.
        sqme = zero
     end if
     sqme = sqme / (p0**2 * onemz * z_o_xi)
-    sqme = sqme * 4 * pi * alpha_s
+    sqme = sqme * four * pi * alpha_s
 
   end function coll_subtraction_compute_fsr
 
@@ -5886,7 +5889,7 @@ necessary to expand with $z$ once.
        sqme = zero
     end if
     sqme = sqme * z / p02
-    sqme = sqme * 4 * pi * alpha_s
+    sqme = sqme * four * pi * alpha_s
   end function coll_subtraction_compute_isr
 
 @ %def coll_subtraction_compute_isr

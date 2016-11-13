@@ -10,10 +10,14 @@ end module @ID@_virtual
 
 subroutine @ID@_start_openloops () bind(C)
   use @ID@_virtual
+  use openloops_blha, only: olp_printparameter
   integer, dimension(12), parameter :: pdgs = [1,2,3,4,5,6,11,13,15,23,24,25]
   character(32) :: buffer
   integer :: i
-  ! coupling order alpha_ew^1, implies QCD correction for loop process
+  !!! Need to set this parameter to switch off OpenLoops' internal CS I-operators,
+  !!! which are not implemented for decays.
+  call set_parameter ("ir_on", 0)
+  !!! coupling order alpha_ew^1, implies QCD correction for loop process
   call set_parameter("order_ew", 1)
   call set_parameter("model", "sm")
   do i = 1, size(pdgs)
@@ -42,6 +46,7 @@ subroutine @ID@_start_openloops () bind(C)
   !id(3) = register_process("-6 -> -24 -5", 11)
   !id(4) = register_process("-6 -> -24 -5", 11)
   call start()
+  call olp_printparameter ("parameters.ol")
 end subroutine @ID@_start_openloops
 
 subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
@@ -69,6 +74,8 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   real(double) :: mu, alpha_s, dynamic_top_mass
   complex(default) :: born_decay_me, bw
   real(default) :: prod2, born_decay_me2
+  integer, dimension(2) :: reshuffle_momenta
+  integer, dimension(4) :: reshuffle_id
   call msg_debug (D_ME_METHODS, "@ID@_olp_eval2")
   if (i_flv /= 1)  call msg_fatal ("i_flv /= 1, threshold interface was not built for this")
   if (any (id <= 0))  call msg_fatal ("Could not register process in OpenLoops")
@@ -80,26 +87,32 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   call set_parameter("alpha_s", alpha_s)
   call set_parameter("mu", mu)
   total = 0
-  do leg = 1, 2
-     p_decay(:,2,leg) = parray(:,ass_boson(leg))
-     p_decay(:,3,leg) = parray(:,ass_quark(leg))
-     p_decay(:,1,leg) = p_decay(:,2,leg) + p_decay(:,3,leg)
-     p_top(leg) = p_decay(:,1,leg)
-  end do
+
   call compute_momentum_sums ()
-  call set_top_momenta ()
+  call compute_projected_momenta (0)
   call set_parameter("width(6)", zero)
   call set_parameter("width(24)", zero)
+  p_decay(:,1,1) = mom_top_onshell
+  p_decay(:,2,1) = mom_wp_onshell
+  p_decay(:,3,1) = mom_b_onshell
+  p_decay(:,1,2) = mom_topbar_onshell
+  p_decay(:,2,2) = mom_wm_onshell
+  p_decay(:,3,2) = mom_bbar_onshell
+  p_top(1) = mom_top_onshell
+  p_top(2) = mom_topbar_onshell
   bw = top_propagators (FF)
   production_me = compute_production_me (FF)
+  prod2 = zero
+  !!! We need these because OpenLoops does not reproduce the Omega results
+  !!! at the correct positions (but numerically correct).
+  !!! This is only a workaround and should be understood!
+  reshuffle_momenta = [2, 1]
+  reshuffle_id = [1,2,4,3]
   do h_t = -1, 1, 2
   do h_tbar = -1, 1, 2
-     prod2 = 0
      do h_el = -1, 1, 2
      do h_pos = -1, 1, 2
-        prod2 = prod2 + abs2 (production_me(h_el, h_pos, h_t, h_tbar))
-     end do
-     end do
+        prod2 = abs2 (production_me(h_el, h_pos, h_t, h_tbar))
      do leg = 1, 2
         dynamic_top_mass = sqrt (p_top(leg) * p_top(leg))
         call set_parameter("mass(6)", dynamic_top_mass)
@@ -114,31 +127,25 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
               this_id = (3 + h_tbar) / 2 + 2
            end if
            born_decay_me2 = born_decay_me2 + abs2 (born_decay_me)
+           this_id = reshuffle_id (this_id)
         end do
         end do
         ! TODO: (bcn 2016-01-22) handle acc
-        call evaluate_loop (id(this_id), p_decay(:,:,leg), virt_decay(3), &
-             virt_decay(0:2), acc)
+        call evaluate_loop (id(this_id), p_decay(:,:,reshuffle_momenta(leg)), &
+             virt_decay(3), virt_decay(0:2), acc)
         total = total + prod2 * born_decay_me2 * virt_decay * abs2 (bw)
      end do
   end do
   end do
-  !!! OpenLoops applies the averaging factor of four regardless whether
+  end do
+  end do
+  !!! OpenLoops applies the averaging factor of two regardless whether
   !!! the MEs are polarized or not
-  total = total * production_factors * four
+  total = total * production_factors
   sqme_c = [total(2), total(1), total(0), total(3)]
   if (debug2_active (D_ME_METHODS)) then
      print *, 'sqme_c =    ', sqme_c !!! Debugging
   end if
-contains
-  subroutine set_top_momenta ()
-    mom_top_onshell = parray(:,THR_POS_WP) + parray(:,THR_POS_B)
-    mom_topbar_onshell = parray(:,THR_POS_WM) + parray(:,THR_POS_BBAR)
-    mom_wp_onshell = parray(:,THR_POS_WP)
-    mom_wm_onshell = parray(:,THR_POS_WM)
-    mom_b_onshell = parray(:,THR_POS_B)
-    mom_bbar_onshell = parray(:,THR_POS_BBAR)
-  end subroutine set_top_momenta
 end subroutine @ID@_olp_eval2
 
 subroutine @ID@_stop_openloops () bind(C)
