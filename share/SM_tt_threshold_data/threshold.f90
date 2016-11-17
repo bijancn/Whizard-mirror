@@ -338,11 +338,8 @@ module @ID@_threshold
   integer, public :: nhel_max
 
   type(momentum), public :: p1, p2, p3, p4, p5, p6
-  !type(momentum) :: p12, p35, p46
-  type(momentum) :: p12, p35
+  type(momentum) :: p35
   real(default), public :: mandelstam_s
-  !type(momentum), public :: mom_top_onshell, mom_top_onshell_rest
-  !type(momentum), public :: mom_topbar_onshell, mom_topbar_onshell_rest
   type(momentum), public :: mom_wm_onshell, mom_wm_onshell_rest
   type(momentum), public :: mom_wp_onshell, mom_wp_onshell_rest
   type(momentum), public :: mom_b_onshell, mom_b_onshell_rest
@@ -362,12 +359,13 @@ contains
     call import_from_whizard (par, scheme)
   end subroutine init
 
-  subroutine compute_production_owfs (hi, spins)
+  subroutine compute_production_owfs (p12, hi, spins)
+    type(momentum), intent(in) :: p12
     integer, intent(in), optional :: hi
     integer, dimension(2), intent(in), optional :: spins
     integer, dimension(n_prt_OS) :: s_OS
     integer, dimension(2) :: s
-    if (onshell_tops (p3, p4)) then
+    if (process_mode == PROC_MODE_TT) then
        s_OS = table_spin_states_OS(:,hi)
        owf_e_1 = u (mass(11), - p1, s_OS(1))
        owf_e_2 = vbar (mass(11), - p2, s_OS(2))
@@ -415,9 +413,10 @@ contains
     owf_b_6 = v (mass(5), p6, s(THR_POS_BBAR))
   end subroutine compute_decay_owfs
 
-  function calculate_blob (ffi, ptop_ons, ptop_ofs, h_t, h_tbar) result (amp)
+  function calculate_blob (ffi, p12, ptop_ofs, h_t, h_tbar, ptop_ons) result (amp)
     complex(default) :: amp
     integer, intent(in) :: ffi
+    type(momentum), intent(in) :: p12
     type(momentum), intent(in), dimension(2) :: ptop_ons, ptop_ofs
     integer, intent(in), optional :: h_t, h_tbar
     complex(default) :: blob_Z_vec, blob_Z_ax, ttv_vec, ttv_ax
@@ -430,13 +429,14 @@ contains
     else
        extra_tree = one
     end if
-    if (onshell_tops (ptop, ptopbar)) then
+    !if (onshell_tops (ptop, ptopbar)) then
+    if (process_mode == PROC_MODE_TT) then
        blob_Z_vec = gncup(1) * (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1) + extra_tree)
        blob_Z_ax = gncup(2) * (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 2) + extra_tree)
        amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_t_3, owf_t_4)
        amp = amp + owf_A_12 * v_ff (qup, owf_t_3, owf_t_4) * &
             (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1) + extra_tree)
-    else
+    else if (process_mode == PROC_MODE_WBWB) then
        ttv_vec = ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1, ffi) + extra_tree
        ttv_ax = ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 2, ffi) + extra_tree
        blob_Z_vec = gncup(1) * ttv_vec
@@ -469,12 +469,15 @@ contains
           amp = owf_Z_12 * va_ff (blob_Z_vec, blob_Z_ax, owf_wb_35, owf_wb_46)
           amp = amp + owf_A_12 * v_ff (qup, owf_wb_35, owf_wb_46) * ttv_vec
        end if
+    else
+       call msg_fatal ("Undefined process mode!")
     end if
   end function calculate_blob
 
-  function top_propagators (ffi, p_ofs) result(one_over_p)
+  function top_propagators (ffi, p12, p_ofs) result(one_over_p)
     complex(default) :: one_over_p
     integer, intent(in) :: ffi
+    type(momentum), intent(in) :: p12
     type(momentum), intent(in), dimension(2) :: p_ofs
     real(default) :: top_mass, top_width
     top_mass = ttv_mtpole (mandelstam_s)
@@ -585,14 +588,21 @@ contains
     integer :: hi, h_t, h_tbar
     type(momentum), dimension(2) :: ptop_ofs, ptop_ons, ptop_ons_rest
     type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest
+    type(momentum) :: p12
+    integer :: i
+    call init_workspace ()
     allocate (mom_ofs (n_legs), mom_ons (n_legs), mom_ons_rest (n_legs))
     !call compute_momentum_sums ()
     call convert_to_mom (p_ofs, n_legs, mom_ofs)
-    call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
-    call init_workspace ()
+    p12 = mom_ofs(1) + mom_ofs(2)
+    if (threshold%settings%onshell_projection%active ()) then
+       call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
+       ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
+       ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
+    end if
     ptop_ofs = get_top_momenta_offshell (p_ofs)
     if (threshold%settings%factorized_computation) then
-       production_me = compute_production_me (ffi, ptop_ons, ptop_ofs)
+       production_me = compute_production_me (ffi, p12, ptop_ons, ptop_ofs)
        born_decay_me = compute_decay_me ()
     end if
     do hi = 1, nhel_max
@@ -615,7 +625,7 @@ contains
                    dec2 = dec2 + abs2(born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2))
                 end do
                 amp_blob(hi) = amp_blob(hi) + &
-                     prod * abs2 (top_propagators (ffi, ptop_ofs)) * &
+                     prod * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
                      dec1 * dec2 / 4
              else
                 do h_t = -1, 1, 2
@@ -624,7 +634,7 @@ contains
                       dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
                       dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
                       amp_blob(hi) = amp_blob(hi) + &
-                           abs2 (prod) * abs2 (top_propagators (ffi, ptop_ofs)) * &
+                           abs2 (prod) * abs2 (top_propagators (ffi, p12, ptop_ofs)) * &
                            abs2 (dec1) * abs2 (dec2)
                    end do
                 end do
@@ -636,15 +646,15 @@ contains
                    dec1 = born_decay_me(s(ass_quark(1)), s(ass_boson(1)), h_t, 1)
                    dec2 = born_decay_me(s(ass_quark(2)), s(ass_boson(2)), h_tbar, 2)
                    amp_blob(hi) = amp_blob(hi) + &
-                        prod * top_propagators (ffi, ptop_ofs) * &
+                        prod * top_propagators (ffi, p12, ptop_ofs) * &
                         dec1 * dec2
                 end do
              end do
           end if
        else
-          call compute_production_owfs (hi)
+          call compute_production_owfs (p12, hi)
           if (.not. onshell_tops (p3, p4))  call compute_decay_owfs (hi)
-          amp_blob(hi) = - calculate_blob (ffi, ptop_ons, ptop_ofs) ! 4 vertices, 3 propagators
+          amp_blob(hi) = - calculate_blob (ffi, p12, ptop_ofs, ptop_ons = ptop_ons) ! 4 vertices, 3 propagators
        end if
     end do
   end subroutine compute_born
@@ -670,7 +680,7 @@ contains
   end function compute_decay_me
 
   subroutine init_workspace ()
-    if (onshell_tops (p3, p4)) then
+    if (process_mode == PROC_MODE_TT) then
        nhel_max = n_hel_OS
     else
        nhel_max = n_hel
@@ -684,7 +694,8 @@ contains
      integer, intent(in), optional :: leg
      type(vector4_t), dimension(2) :: p_tmp
      if (process_mode /= PROC_MODE_WBWB) then
-        !!! What to do here?
+        p_tmp(1)%p = k(:,3)
+        p_tmp(2)%p = k(:,4)
      else
         p_tmp(1)%p = k(:,THR_POS_WP) + k(:,THR_POS_B)
         p_tmp(2)%p = k(:,THR_POS_WM) + k(:,THR_POS_BBAR)
@@ -726,7 +737,9 @@ contains
      type(momentum), intent(out), dimension(:) :: p_ons, p_ons_rest
      type(momentum), dimension(2) :: ptop_ons, ptop_ons_rest
      real(default), dimension(4) :: tmp, test
+     type(momentum) :: p12
      if (threshold%settings%onshell_projection%active ()) then
+        p12 = p_ofs(1) + p_ofs(2)
         call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
         call compute_projected_top_decay_products (p12, p_ofs, p_ons, p_ons_rest)
         if (debug_active (D_THRESHOLD)) then
@@ -908,26 +921,29 @@ contains
     onshell = nearly_equal (mm, m)
   end function check_if_onshell
 
-  function compute_production_me (ffi, ptop_ons, ptop_ofs) result (production_me)
+  function compute_production_me (ffi, p12, ptop_ofs, ptop_ons) result (production_me)
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
     integer, intent(in) :: ffi
-    type(momentum), intent(in), dimension(2) :: ptop_ons, ptop_ofs
+    type(momentum), intent(in) :: p12
+    type(momentum), intent(in), dimension(2) :: ptop_ofs
+    type(momentum), intent(in), dimension(2), optional :: ptop_ons
     integer :: h_t, h_tbar, h_pos, h_el
     do h_tbar = -1, 1, 2
     do h_t = -1, 1, 2
     do h_pos = -1, 1, 2
     do h_el = -1, 1, 2
-       call compute_production_owfs (spins = [h_el, h_pos])
+       call compute_production_owfs (p12, spins = [h_el, h_pos])
        production_me(h_el, h_pos, h_t, h_tbar) = &
-            calculate_blob (ffi, ptop_ofs, ptop_ons, h_t, h_tbar)
+            calculate_blob (ffi, p12, ptop_ofs, h_t, h_tbar, ptop_ons)
     end do
     end do
     end do
     end do
   end function compute_production_me
 
-  function compute_real (p_ofs, ffi) result (amp2)
+  function compute_real (n_legs, p_ofs, ffi) result (amp2)
     real(default) :: amp2
+    integer, intent(in) :: n_legs
     !real(default), dimension(0:3,*), intent(in) :: k
     real(default), dimension(0:3,*), intent(in) :: p_ofs
     integer, intent(in) :: ffi
@@ -944,6 +960,8 @@ contains
     integer :: i, hi, leg, other_leg, h_t, h_tbar, h_gl, h_W, h_b
     type(momentum), dimension(2) :: ptop_ofs
     type(momentum), dimension(2) :: ptop_ons, ptop_ons_rest
+    type(momentum), dimension(:), allocatable :: mom_ofs
+    type(momentum) :: p12
     if (.not. threshold%settings%factorized_computation)  &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'factorized (activate with 2')
@@ -951,6 +969,8 @@ contains
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
     ptop_ofs = get_top_momenta_offshell (p_ofs, leg)
+    call convert_to_mom (p_ofs, n_legs, mom_ofs)
+    p12 = mom_ofs(1) + mom_ofs(2)
     !call compute_momentum_sums ()
     call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
     call boost_onshell_to_rest_frame ()
@@ -988,18 +1008,20 @@ contains
       procedure(top_decay_born), pointer :: top_decay_born_
       type(momentum), dimension(2) :: ptop_ofs, ptop_ons, ptop_ons_rest
       type(momentum), dimension(:), allocatable :: p_ons, p_ons_rest
+      type(momentum) :: p12
       allocate (p_ons (size (p_ofs)), p_ons_rest (size (p_ofs)))
+      p12 = p_ofs(1) + p_ofs(2)
       do leg = 1, 2
          other_leg = 3 - leg
          !call set_production_momenta_with_gluon ()
          !call compute_momentum_sums ()
          call compute_projected_momenta (leg, p_ofs, p_ons, p_ons_rest)
          ptop_ons(1) = p_ons(THR_POS_WP) + p_ons(THR_POS_B)
-         ptop_ons(2) = p_ons(THR_POS_WM) + p_ons(THR_POS_BBAR) 
+         ptop_ons(2) = p_ons(THR_POS_WM) + p_ons(THR_POS_BBAR)
          ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
-         ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR) 
+         ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
          call set_decay_momenta ()
-         production_me(:,:,:,:,leg) = compute_production_me (ffi, ptop_ons, ptop_ofs)
+         production_me(:,:,:,:,leg) = compute_production_me (ffi, p12, ptop_ons, ptop_ofs)
          if (leg == 1) then
             top_decay_real => top_real_decay_calculate_amplitude
             top_decay_born_ => anti_top_decay_born
@@ -1025,7 +1047,7 @@ contains
          end do
          end do
          end do
-         top_propagators_(leg) = top_propagators (ffi, ptop_ofs)
+         top_propagators_(leg) = top_propagators (ffi, p12, ptop_ofs)
       end do
     end subroutine compute_amplitudes
 
@@ -1249,7 +1271,7 @@ subroutine @ID@_get_amp_squared (amp2, p, n_legs) bind(C)
   amp_no_FF = zero
   if (real_computation) then
      call threshold%formfactor%activate ()
-     amp2 = compute_real (p, FF)
+     amp2 = compute_real (n_legs, p, FF)
   else
      if (threshold%settings%interference) then
         call threshold%formfactor%disable ()
