@@ -128,7 +128,6 @@ module @ID@_threshold
   implicit none
   private
   public :: init, calculate_blob, compute_born, &
-       !compute_momentum_sums, init_workspace, compute_production_owfs, &
        init_workspace, compute_production_owfs, &
        compute_decay_owfs, table_spin_states, compute_production_me, &
        top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2, &
@@ -339,7 +338,6 @@ module @ID@_threshold
 
   type(momentum), public :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p35
-  real(default), public :: mandelstam_s
   type(momentum), public :: mom_wm_onshell, mom_wm_onshell_rest
   type(momentum), public :: mom_wp_onshell, mom_wp_onshell_rest
   type(momentum), public :: mom_b_onshell, mom_b_onshell_rest
@@ -369,8 +367,8 @@ contains
        s_OS = table_spin_states_OS(:,hi)
        owf_e_1 = u (mass(11), - p1, s_OS(1))
        owf_e_2 = vbar (mass(11), - p2, s_OS(2))
-       owf_t_3 = ubar (ttv_mtpole (mandelstam_s), p3, s_OS(3))
-       owf_t_4 = v (ttv_mtpole (mandelstam_s), p4, s_OS(4))
+       owf_t_3 = ubar (ttv_mtpole (p12 * p12), p3, s_OS(3))
+       owf_t_4 = v (ttv_mtpole (p12 * p12), p4, s_OS(4))
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
        owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
             .false., + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
@@ -429,7 +427,6 @@ contains
     else
        extra_tree = one
     end if
-    !if (onshell_tops (ptop, ptopbar)) then
     if (process_mode == PROC_MODE_TT) then
        blob_Z_vec = gncup(1) * (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 1) + extra_tree)
        blob_Z_ax = gncup(2) * (ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 2) + extra_tree)
@@ -441,7 +438,7 @@ contains
        ttv_ax = ttv_formfactor (ptop_ofs(1), ptop_ofs(2), 2, ffi) + extra_tree
        blob_Z_vec = gncup(1) * ttv_vec
        blob_Z_ax = gncup(2) * ttv_ax
-       mtop = ttv_mtpole (mandelstam_s)
+       mtop = ttv_mtpole (p12 * p12)
        if (threshold%settings%onshell_projection%production) then
           if (debug_active (D_THRESHOLD)) then
              call assert_equal (u, sqrt (ptop_ons(1) * ptop_ons(1)), &
@@ -480,7 +477,7 @@ contains
     type(momentum), intent(in) :: p12
     type(momentum), intent(in), dimension(2) :: p_ofs
     real(default) :: top_mass, top_width
-    top_mass = ttv_mtpole (mandelstam_s)
+    top_mass = ttv_mtpole (p12 * p12)
     if (threshold%settings%onshell_projection%width) then
       top_width = ttv_wtpole (p12*p12, ffi)
       one_over_p = one / cmplx (p_ofs(1) * p_ofs(1) - top_mass**2, &
@@ -706,9 +703,9 @@ contains
               p_tmp(2)%p = p_tmp(2)%p + k(:,THR_POS_GLUON)
            end if
         end if
-        p_top(1) = p_tmp(1)%p
-        p_top(2) = p_tmp(2)%p
      end if
+     p_top(1) = p_tmp(1)%p
+     p_top(2) = p_tmp(2)%p
   end function get_top_momenta_offshell
 
   subroutine convert_to_mom (p, n, mom)
@@ -1129,15 +1126,15 @@ contains
       !end if
     end subroutine set_decay_momenta
 
-    subroutine check_phase_space_point (p_decay, p_prod, s)
+    subroutine check_phase_space_point (p_decay, p_prod, mandelstam_s)
       type(vector4_t), intent(in), dimension(4) :: p_decay
       type(vector4_t), intent(in), dimension(3) :: p_prod
-      real(default), intent(in) :: s
+      real(default), intent(in) :: mandelstam_s
       real(default) :: sqrts, E
       integer :: u, i
       if (debug_active (D_THRESHOLD)) then
          u = output_unit
-         sqrts = sqrt(s)
+         sqrts = sqrt(mandelstam_s)
          call assert_equal (u, ttv_mtpole (mandelstam_s), &
               p_decay(1)**1, 'Decay-top is on-shell', &
               abs_smallness = tiny_07, rel_smallness = tiny_07, exit_on_fail = .true.)
