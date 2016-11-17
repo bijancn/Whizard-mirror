@@ -237,6 +237,7 @@ TESTS_REQ_OCAML = \
 
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
+    hadronize_1.run \
     user_cuts.run \
     $(TESTS_USER_STRFUN)
 
