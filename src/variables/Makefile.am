@@ -42,13 +42,13 @@ dist_noinst_DATA = variables.nw
 libvariables_Modules = ${libvariables_la_SOURCES:.f90=}
 Modules: Makefile
 	@for module in $(libvariables_Modules); do \
-          echo $$module >> $@.new; \
-        done
+		echo $$module >> $@.new; \
+	done
 	@if diff $@ $@.new -q >/dev/null; then \
-          rm $@.new; \
+		rm $@.new; \
 	else \
-          mv $@.new $@; echo "Modules updated"; \
-        fi
+		mv $@.new $@; echo "Modules updated"; \
+	fi
 BUILT_SOURCES = Modules
 
 ## Fortran module dependencies
