@@ -156,6 +156,11 @@ module @ID@_threshold
 
   integer, public :: process_mode = PROC_MODE_UNDEFINED
 
+  integer, parameter :: OFS = 1
+  integer, parameter :: ONS = 2
+  integer, parameter :: ONS_BOOST = 3
+
+
   type(lorentz_transformation_t), public :: boost_to_cms
   type(lorentz_transformation_t) :: boost_to_top_rest
 
@@ -495,16 +500,33 @@ contains
     end if
   end function top_propagators
 
-  function top_decay_born (h_t, h_W, h_b) result (me)
+  function top_decay_born (p_ons, h_t, h_W, h_b) result (me)
     complex(default) :: me
+    type(momentum), intent(in), dimension(:) :: p_ons
     integer, intent(in) :: h_t
     integer, intent(in) :: h_W, h_b
-    type(momentum) :: pw, pb, ptop
-    !call set_top_decay_momenta (pw, pb, ptop)
-    owf_Wp_3 = conjg (eps (mass(24), pw, h_W))
+    type(momentum) :: pwp, pb, ptop
+    !call set_top_decay_momenta (p_ofs, pw, pb, ptop)
+    pwp = p_ons(THR_POS_WP)
+    pb = p_ons(THR_POS_B)
+    ptop = pwp + pb
+    owf_Wp_3 = conjg (eps (mass(24), pwp, h_W))
     owf_b_5 = ubar (mass(5), pb, h_b)
     me = f_fvl (gccq33, owf_b_5, owf_Wp_3) * u (sqrt(ptop*ptop), ptop, h_t)
   end function top_decay_born
+
+  function momentum_mode () result (mode)
+    integer :: mode
+    if (threshold%settings%onshell_projection%decay) then
+      if (threshold%settings%onshell_projection%boost_decay) then
+         mode = ONS_BOOST
+      else
+         mode = ONS
+      end if
+    else
+       mode = OFS
+    end if
+  end function momentum_mode
 
   !subroutine set_top_decay_momenta (pwp, pb, ptop)
   !  type(momentum), intent(out) :: pwp, pb, ptop
@@ -533,11 +555,15 @@ contains
   !  end if
   !end subroutine set_top_decay_momenta
 
-  function anti_top_decay_born (h_tbar, h_W, h_b) result (me)
+  function anti_top_decay_born (p_ons, h_tbar, h_W, h_b) result (me)
     complex(default) :: me
+    type(momentum), intent(in), dimension(:) :: p_ons
     integer, intent(in) :: h_tbar
     integer, intent(in) :: h_W, h_b
     type(momentum) :: pwm, pbbar, ptopbar
+    pwm = p_ons(THR_POS_WM)
+    pbbar = p_ons(THR_POS_BBAR)
+    ptopbar = pwm + pbbar
     !call set_anti_top_decay_momenta (pwm, pbbar, ptopbar)
     owf_Wm_4 = conjg (eps (mass(24), pwm, h_W))
     owf_b_6 = v (mass(5), pbbar, h_b)
@@ -584,11 +610,11 @@ contains
     integer, dimension(n_prt) :: s
     integer :: hi, h_t, h_tbar
     type(momentum), dimension(2) :: ptop_ofs, ptop_ons, ptop_ons_rest
-    type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest
+    type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest, p_decay
     type(momentum) :: p12
     integer :: i
     call init_workspace ()
-    allocate (mom_ofs (n_legs), mom_ons (n_legs), mom_ons_rest (n_legs))
+    allocate (mom_ofs (n_legs), mom_ons (n_legs), mom_ons_rest (n_legs), p_decay(n_legs))
     !call compute_momentum_sums ()
     call convert_to_mom (p_ofs, n_legs, mom_ofs)
     p12 = mom_ofs(1) + mom_ofs(2)
@@ -599,8 +625,16 @@ contains
     end if
     ptop_ofs = get_top_momenta_offshell (p_ofs)
     if (threshold%settings%factorized_computation) then
-       production_me = compute_production_me (ffi, p12, ptop_ons, ptop_ofs)
-       born_decay_me = compute_decay_me ()
+       production_me = compute_production_me (ffi, p12, ptop_ofs, ptop_ons)
+       select case (momentum_mode ())
+       case (OFS)
+          p_decay = mom_ofs
+       case (ONS)
+          p_decay = mom_ons
+       case (ONS_BOOST)
+          p_decay = apply_boost (inverse (boost_to_cms), mom_ons)
+       end select
+       born_decay_me = compute_decay_me (p_decay)
     end if
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
@@ -656,8 +690,9 @@ contains
     end do
   end subroutine compute_born
 
-  function compute_decay_me () result (born_decay_me)
+  function compute_decay_me (p_decay) result (born_decay_me)
     complex(default), dimension(-1:1,-1:1,-1:1,1:2) :: born_decay_me
+    type(momentum), intent(in), dimension(:) :: p_decay
     procedure(top_decay_born), pointer :: top_decay_born_
     integer :: h_t, h_W, h_b, leg
     do leg = 1, 2
@@ -669,7 +704,7 @@ contains
        do h_t = -1, 1, 2
           do h_W = -1, 1, 1
              do h_b = -1, 1, 2
-                born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (h_t, h_W, h_b)
+                born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (p_decay, h_t, h_W, h_b)
              end do
           end do
        end do
@@ -895,7 +930,7 @@ contains
     end if
   end subroutine compute_projected_top_decay_products
 
-  pure function apply_boost (boost_in, mom) result (mom_result)
+  elemental function apply_boost (boost_in, mom) result (mom_result)
     type(momentum) :: mom_result
     type(momentum), intent(in) :: mom
     type(lorentz_transformation_t), intent(in) :: boost_in
@@ -1029,7 +1064,7 @@ contains
          do h_t = -1, 1, 2
          do h_W = -1, 1, 1
          do h_b = -1, 1, 2
-            born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (h_t, h_W, h_b)
+            born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (p_ons, h_t, h_W, h_b)
             if (.not. test_ward) then
                do h_gl = -1, 1, 2
                   real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
