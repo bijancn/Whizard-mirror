@@ -341,7 +341,7 @@ module @ID@_threshold
   complex(default), dimension(:), allocatable, save, public :: amp_blob
   integer, public :: nhel_max
 
-  type(momentum), public :: p1, p2, p3, p4, p5, p6
+  !type(momentum), public :: p1, p2, p3, p4, p5, p6
   type(momentum) :: p35
   type(momentum), public :: mom_wm_onshell, mom_wm_onshell_rest
   type(momentum), public :: mom_wp_onshell, mom_wp_onshell_rest
@@ -362,18 +362,20 @@ contains
     call import_from_whizard (par, scheme)
   end subroutine init
 
-  subroutine compute_production_owfs (p12, hi, spins)
-    type(momentum), intent(in) :: p12
+  subroutine compute_production_owfs (p_ofs, hi, spins)
+    type(momentum), intent(in), dimension(:) :: p_ofs
     integer, intent(in), optional :: hi
     integer, dimension(2), intent(in), optional :: spins
     integer, dimension(n_prt_OS) :: s_OS
     integer, dimension(2) :: s
+    type(momentum) :: p12
+    p12 = p_ofs(1) + p_ofs(2)
     if (process_mode == PROC_MODE_TT) then
        s_OS = table_spin_states_OS(:,hi)
-       owf_e_1 = u (mass(11), - p1, s_OS(1))
-       owf_e_2 = vbar (mass(11), - p2, s_OS(2))
-       owf_t_3 = ubar (ttv_mtpole (p12 * p12), p3, s_OS(3))
-       owf_t_4 = v (ttv_mtpole (p12 * p12), p4, s_OS(4))
+       owf_e_1 = u (mass(11), - p_ofs(1), s_OS(1))
+       owf_e_2 = vbar (mass(11), - p_ofs(2), s_OS(2))
+       owf_t_3 = ubar (ttv_mtpole (p12 * p12), p_ofs(3), s_OS(3))
+       owf_t_4 = v (ttv_mtpole (p12 * p12), p_ofs(4), s_OS(4))
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
        owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
             .false., + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
@@ -388,15 +390,26 @@ contains
                   "Please give either helicity index or spins")
           end if
        end if
-       owf_e_1 = u (mass(11), - p1, s(1))
-       owf_e_2 = vbar (mass(11), - p2, s(2))
+       print *, p_ofs(1)
+       print *, p_ofs(2)
+       print *, p12
+       owf_e_1 = u (mass(11), - p_ofs(1), s(1))
+       owf_e_2 = vbar (mass(11), - p_ofs(2), s(2))
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
        owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
             .false., + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
+       print *, owf_e_1
+       print *, owf_e_2
+       print *, owf_A_12
+       print *, owf_Z_12
+       !!! Those all zero
+       !!! Need to invert sign of incoming p_ofs!
+       stop
     end if
   end subroutine compute_production_owfs
 
-  subroutine compute_decay_owfs (hi, spins)
+  subroutine compute_decay_owfs (p_ofs, hi, spins)
+    type(momentum), dimension(:), intent(in) :: p_ofs
     integer, intent(in), optional :: hi
     integer, dimension(3:6), intent(in), optional :: spins
     integer, dimension(3:6) :: s
@@ -410,10 +423,10 @@ contains
                "Please give either helicity index or spins")
        end if
     end if
-    owf_Wp_3 = conjg (eps (mass(24), p3, s(THR_POS_WP)))
-    owf_Wm_4 = conjg (eps (mass(24), p4, s(THR_POS_WM)))
-    owf_b_5 = ubar (mass(5), p5, s(THR_POS_B))
-    owf_b_6 = v (mass(5), p6, s(THR_POS_BBAR))
+    owf_Wp_3 = conjg (eps (mass(24), p_ofs(3), s(THR_POS_WP)))
+    owf_Wm_4 = conjg (eps (mass(24), p_ofs(4), s(THR_POS_WM)))
+    owf_b_5 = ubar (mass(5), p_ofs(5), s(THR_POS_B))
+    owf_b_6 = v (mass(5), p_ofs(6), s(THR_POS_BBAR))
   end subroutine compute_decay_owfs
 
   function calculate_blob (ffi, p12, ptop_ofs, h_t, h_tbar, ptop_ons) result (amp)
@@ -625,7 +638,7 @@ contains
     end if
     ptop_ofs = get_top_momenta_offshell (p_ofs)
     if (threshold%settings%factorized_computation) then
-       production_me = compute_production_me (ffi, p12, ptop_ofs, ptop_ons)
+       production_me = compute_production_me (ffi, mom_ofs, ptop_ofs, ptop_ons)
        select case (momentum_mode ())
        case (OFS)
           p_decay = mom_ofs
@@ -683,8 +696,9 @@ contains
              end do
           end if
        else
-          call compute_production_owfs (p12, hi)
-          if (.not. onshell_tops (p3, p4))  call compute_decay_owfs (hi)
+          call compute_production_owfs (mom_ofs, hi)
+          !if (.not. onshell_tops (p3, p4))  call compute_decay_owfs (hi)
+          if (process_mode == PROC_MODE_WBWB) call compute_decay_owfs (mom_ofs, hi)
           amp_blob(hi) = - calculate_blob (ffi, p12, ptop_ofs, ptop_ons = ptop_ons) ! 4 vertices, 3 propagators
        end if
     end do
@@ -953,18 +967,20 @@ contains
     onshell = nearly_equal (mm, m)
   end function check_if_onshell
 
-  function compute_production_me (ffi, p12, ptop_ofs, ptop_ons) result (production_me)
+  function compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons) result (production_me)
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
     integer, intent(in) :: ffi
-    type(momentum), intent(in) :: p12
+    type(momentum), intent(in), dimension(:) :: p_ofs
     type(momentum), intent(in), dimension(2) :: ptop_ofs
     type(momentum), intent(in), dimension(2), optional :: ptop_ons
+    type(momentum) :: p12
     integer :: h_t, h_tbar, h_pos, h_el
+    p12 = p_ofs(1) + p_ofs(2)
     do h_tbar = -1, 1, 2
     do h_t = -1, 1, 2
     do h_pos = -1, 1, 2
     do h_el = -1, 1, 2
-       call compute_production_owfs (p12, spins = [h_el, h_pos])
+       call compute_production_owfs (p_ofs, spins = [h_el, h_pos])
        production_me(h_el, h_pos, h_t, h_tbar) = &
             calculate_blob (ffi, p12, ptop_ofs, h_t, h_tbar, ptop_ons)
     end do
@@ -1053,7 +1069,7 @@ contains
          ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
          ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
          call set_decay_momenta ()
-         production_me(:,:,:,:,leg) = compute_production_me (ffi, p12, ptop_ons, ptop_ofs)
+         production_me(:,:,:,:,leg) = compute_production_me (ffi, p_ofs, ptop_ons, ptop_ofs)
          if (leg == 1) then
             top_decay_real => top_real_decay_calculate_amplitude
             top_decay_born_ => anti_top_decay_born
@@ -1228,14 +1244,14 @@ subroutine @ID@_set_offshell_momenta (k) bind(C)
      call msg_debug (D_THRESHOLD, "set offshell momenta")
      print *, 'k =    ', k(0:3,1:6)
   end if
-  p1 = - k(:,1) !!! incoming
-  p2 = - k(:,2) !!! incoming
-  p3 =   k(:,3) !!! outgoing
-  p4 =   k(:,4) !!! outgoing
-  if (.not. onshell_tops (p3, p4)) then
-     p5 = k(:,5)
-     p6 = k(:,6)
-  end if
+  !p1 = - k(:,1) !!! incoming
+  !p2 = - k(:,2) !!! incoming
+  !p3 =   k(:,3) !!! outgoing
+  !p4 =   k(:,4) !!! outgoing
+  !if (.not. onshell_tops (p3, p4)) then
+  !   p5 = k(:,5)
+  !   p6 = k(:,6)
+  !end if
 end subroutine @ID@_set_offshell_momenta
 
 subroutine @ID@_set_onshell_momenta (k) bind(C)
@@ -1269,7 +1285,7 @@ subroutine @ID@_set_process_mode (mode) bind(C)
   process_mode = mode
 end subroutine @ID@_set_process_mode
 
-subroutine @ID@_get_amp_squared (amp2, p, n_legs) bind(C)
+subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, n_legs) bind(C)
   use iso_c_binding
   use kinds
   use constants
@@ -1283,7 +1299,7 @@ subroutine @ID@_get_amp_squared (amp2, p, n_legs) bind(C)
   use ttv_formfactors
   implicit none
   real(c_default_float), intent(out) :: amp2
-  real(c_default_float), dimension(0:3,*), intent(in) :: p
+  real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs, p_ons
   integer, intent(in) :: n_legs
   complex(default), dimension(:), allocatable, save :: amp_with_FF, amp_no_FF, amp_omega_full
   logical :: real_computation
@@ -1303,17 +1319,17 @@ subroutine @ID@_get_amp_squared (amp2, p, n_legs) bind(C)
   amp_no_FF = zero
   if (real_computation) then
      call threshold%formfactor%activate ()
-     amp2 = compute_real (n_legs, p, FF)
+     amp2 = compute_real (n_legs, p_ofs, FF)
   else
      if (threshold%settings%interference) then
         call threshold%formfactor%disable ()
-        call full_proc_new_event (p)
+        call full_proc_new_event (p_ofs)
         do hi = 1, full_proc_number_spin_states()
            amp_omega_full(hi) = full_proc_get_amplitude (1, hi, 1)
         end do
      end if
      call threshold%formfactor%activate ()
-     call compute_born (n_legs, p, FF)
+     call compute_born (n_legs, p_ofs, FF)
      select case (FF)
      case (EXPANDED_HARD, &
              EXPANDED_SOFT, EXPANDED_SOFT_SWITCHOFF, &
@@ -1321,13 +1337,13 @@ subroutine @ID@_get_amp_squared (amp2, p, n_legs) bind(C)
         amp2 = expanded_amp2 (amp_omega_full, amp_blob)
      case (MATCHED)
         amp2 = real (sum (abs2 (amp_omega_full + amp_blob)))
-        call compute_born (n_legs, p, MATCHED_EXPANDED)
+        call compute_born (n_legs, p_ofs, MATCHED_EXPANDED)
         amp2 = amp2 + expanded_amp2 (amp_omega_full, amp_blob)
      case default
         if (threshold%settings%interference) then
            amp_with_FF = amp_blob
            if (threshold%settings%factorized_interference_term) then
-              call compute_born (n_legs, p, TREE)
+              call compute_born (n_legs, p_ofs, TREE)
               amp_no_FF = amp_blob
            else
               amp_no_FF = amp_omega_full

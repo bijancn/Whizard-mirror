@@ -5946,10 +5946,10 @@ end module prc_threshold
   public :: get_amp_squared
 <<Prc Threshold: interfaces>>=
   interface
-    subroutine get_amp_squared (amp2, p, n_legs) bind(C)
+    subroutine get_amp_squared (amp2, p_ofs, p_ons, n_legs) bind(C)
       import
       real(c_default_float), intent(out) :: amp2
-      real(c_default_float), dimension(0:3,*), intent(in) :: p
+      real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs, p_ons
       integer(kind = c_int) :: n_legs
     end subroutine get_amp_squared
   end interface
@@ -6004,10 +6004,10 @@ end module prc_threshold
   type, extends (user_defined_driver_t) :: threshold_driver_t
     procedure(threshold_olp_eval2), nopass, pointer :: &
          olp_eval2 => null ()
-    procedure(set_offshell_momenta), nopass, pointer :: &
-         set_offshell_momenta => null ()
-    procedure(set_onshell_momenta), nopass, pointer :: &
-         set_onshell_momenta => null ()
+    !procedure(set_offshell_momenta), nopass, pointer :: &
+    !     set_offshell_momenta => null ()
+    !procedure(set_onshell_momenta), nopass, pointer :: &
+    !     set_onshell_momenta => null ()
     procedure(set_process_mode), nopass, pointer :: &
          set_process_mode => null ()
     procedure(get_amp_squared), nopass, pointer :: &
@@ -6044,12 +6044,12 @@ end module prc_threshold
     type(string_t) :: lower_case_id
     call msg_debug (D_ME_METHODS, "threshold_driver_load")
     lower_case_id = lower_case (threshold_driver%id)
-    c_fptr = dlaccess_get_c_funptr (dlaccess, lower_case_id // "_set_offshell_momenta")
-    call c_f_procpointer (c_fptr, threshold_driver%set_offshell_momenta)
-    call check_for_error (lower_case_id // "_set_offshell_momenta")
-    c_fptr = dlaccess_get_c_funptr (dlaccess, lower_case_id // "_set_onshell_momenta")
-    call c_f_procpointer (c_fptr, threshold_driver%set_onshell_momenta)
-    call check_for_error (lower_case_id // "_set_onshell_momenta")
+    !c_fptr = dlaccess_get_c_funptr (dlaccess, lower_case_id // "_set_offshell_momenta")
+    !call c_f_procpointer (c_fptr, threshold_driver%set_offshell_momenta)
+    !call check_for_error (lower_case_id // "_set_offshell_momenta")
+    !c_fptr = dlaccess_get_c_funptr (dlaccess, lower_case_id // "_set_onshell_momenta")
+    !call c_f_procpointer (c_fptr, threshold_driver%set_onshell_momenta)
+    !call check_for_error (lower_case_id // "_set_onshell_momenta")
     c_fptr = dlaccess_get_c_funptr (dlaccess, lower_case_id // "_set_process_mode")
     call c_f_procpointer (c_fptr, threshold_driver%set_process_mode)
     call check_for_error (lower_case_id // "_set_process_mode")
@@ -6197,6 +6197,7 @@ end module prc_threshold
   public :: prc_threshold_t
 <<Prc Threshold: types>>=
   type, extends (prc_user_defined_base_t) :: prc_threshold_t
+     real(default), dimension(:,:), allocatable :: parray_ofs, parray_ons
   contains
   <<Prc Threshold: prc threshold: TBP>>
   end type prc_threshold_t
@@ -6265,20 +6266,10 @@ end module prc_threshold
   procedure :: set_offshell_momenta => prc_threshold_set_offshell_momenta
 <<Prc Threshold: procedures>>=
   subroutine prc_threshold_set_offshell_momenta (object, p)
-    class(prc_threshold_t), intent(in) :: object
+    class(prc_threshold_t), intent(inout) :: object
     type(vector4_t), intent(in), dimension(:) :: p
-    real(c_default_float), dimension(:,:), allocatable, save :: parray
     integer :: n_tot, i
-    n_tot = size (p)
-    if (allocated (parray)) then
-       if (size(parray) /= n_tot)  deallocate (parray)
-    end if
-    if (.not. allocated (parray))  allocate (parray (0:3, n_tot))
-    forall (i = 1:n_tot)  parray(:,i) = p(i)%p
-    select type (driver => object%driver)
-    class is (threshold_driver_t)
-       call driver%set_offshell_momenta (parray)
-    end select
+    forall (i = 1 : size(p))  object%parray_ofs(:, i) = p(i)%p
   end subroutine prc_threshold_set_offshell_momenta
 
 @ %def prc_threshold_set_offshell_momenta
@@ -6287,20 +6278,10 @@ end module prc_threshold
   procedure :: set_onshell_momenta => prc_threshold_set_onshell_momenta
 <<Prc Threshold: procedures>>=
   subroutine prc_threshold_set_onshell_momenta (object, p)
-    class(prc_threshold_t), intent(in) :: object
+    class(prc_threshold_t), intent(inout) :: object
     type(vector4_t), intent(in), dimension(:) :: p
-    real(c_default_float), dimension(:,:), allocatable, save :: parray
     integer :: n_tot, i
-    n_tot = size (p)
-    if (allocated (parray)) then
-       if (size(parray) /= n_tot)  deallocate (parray)
-    end if
-    if (.not. allocated (parray))  allocate (parray (0:3, n_tot))
-    forall (i = 1:n_tot)  parray(:,i) = p(i)%p
-    select type (driver => object%driver)
-    class is (threshold_driver_t)
-       call driver%set_onshell_momenta (parray)
-    end select
+    forall (i = 1 : size(p))  object%parray_ons(:, i) = p(i)%p
   end subroutine prc_threshold_set_onshell_momenta
 
 @ %def prc_threshold_set_onshell_momenta
@@ -6330,18 +6311,18 @@ end module prc_threshold
     real(default), intent(in) :: ren_scale
     real(default), intent(out) :: sqme
     logical, intent(out) :: bad_point
-    real(c_default_float), dimension(:,:), allocatable, save :: parray
+    !real(c_default_float), dimension(:,:), allocatable, save :: parray_ofs, parray_ons
     integer :: n_tot, i
     call msg_debug2 (D_ME_METHODS, "prc_threshold_compute_sqme")
     n_tot = size (p)
-    if (allocated (parray)) then
-       if (size(parray) /= n_tot)  deallocate (parray)
-    end if
-    if (.not. allocated (parray))  allocate (parray (0:3, n_tot))
-    forall (i = 1:n_tot)  parray(:,i) = p(i)%p
+    !if (allocated (parray)) then
+    !   if (size(parray) /= n_tot)  deallocate (parray)
+    !end if
+    !if (.not. allocated (parray))  allocate (parray (0:3, n_tot))
+    !forall (i = 1:n_tot)  parray(:,i) = p(i)%p
     select type (driver => object%driver)
     class is (threshold_driver_t)
-       call driver%get_amp_squared (sqme, parray, n_tot)
+       call driver%get_amp_squared (sqme, object%parray_ofs, object%parray_ons, n_tot)
     end select
     bad_point = .false.
   end subroutine prc_threshold_compute_sqme
@@ -6406,8 +6387,11 @@ end module prc_threshold
     type(process_library_t), intent(in), target :: lib
     type(string_t), intent(in) :: id
     integer, intent(in) :: i_component
+    integer :: n_tot
     call object%base_init (def, lib, id, i_component)
-    if (object%data%n_out == 2) then
+    n_tot = object%data%n_in + object%data%n_out
+    allocate (object%parray_ofs (0:3,n_tot), object%parray_ons (0:3,n_tot))
+    if (n_tot == 4) then
        call object%set_process_mode (PROC_MODE_TT)
     else
        call object%set_process_mode (PROC_MODE_WBWB)
