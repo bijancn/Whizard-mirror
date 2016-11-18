@@ -134,6 +134,7 @@ REF_OUTPUT_FILES_BASE = \
     unit_tests/ref-output/particles_6.ref \
     unit_tests/ref-output/particles_7.ref \
     unit_tests/ref-output/particles_8.ref \
+    unit_tests/ref-output/particles_9.ref \
     unit_tests/ref-output/beam_structures_1.ref \
     unit_tests/ref-output/beam_structures_2.ref \
     unit_tests/ref-output/beam_structures_3.ref \
@@ -561,6 +562,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/parton_shower_1.ref \
     functional_tests/ref-output/pythia6_1.ref \
     functional_tests/ref-output/pythia6_2.ref \
+    functional_tests/ref-output/hadronize_1.ref \
     functional_tests/ref-output/mlm_matching_fsr.ref \
     functional_tests/ref-output/mlm_pythia6_isr.ref \
     functional_tests/ref-output/hepmc_1.ref \
@@ -882,6 +884,7 @@ MISC_TESTS_SIN = \
     functional_tests/pythia6_2.sin \
     functional_tests/pythia6_3.sin \
     functional_tests/pythia6_4.sin \
+    functional_tests/hadronize_1.sin \
     functional_tests/tauola_1.sin \
     functional_tests/tauola_2.sin \
     functional_tests/mlm_matching_fsr.sin \

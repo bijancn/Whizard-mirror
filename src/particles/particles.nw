@@ -5866,7 +5866,7 @@ relations assuming the ordering [[b]], [[i]], [[r]], [[x]], [[o]].
     do i = size (particle_set%prt), 1, -1
        if (particle_set%prt(i)%flv%get_pdg () == pdg) then
           if (all (nearly_equal (particle_set%prt(i)%p%p, momentum%p, &
-                                 abs_smallness, rel_smallness))) then
+               abs_smallness, rel_smallness))) then
              idx = i
              return
           end if
@@ -6781,6 +6781,66 @@ This replaces the [[particle\_set\%prt array]] with a given array of particles
   end subroutine particle_set_replace
 
 @ %def particle_set_replace
+@ This routines orders the outgoing particles into clusters of
+colorless particles and such of particles ordered corresponding to the
+indices of the color lines. All outgoing particles in the ordered set
+appear as child of the corresponding outgoing particle in the
+unordered set, including colored beam remnants. We always start
+continue via the anti-color line, such that color flows within each
+Lund string system is always continued from the anticolor of one
+particle to the identical color index of another particle.
+<<Particles: particle set: TBP>>=
+  procedure :: order_color_lines => particle_set_order_color_lines
+<<Particles: procedures>>=
+  subroutine particle_set_order_color_lines (pset_out, pset_in)
+    class(particle_set_t), intent(inout) :: pset_out
+    type(particle_set_t), intent(in) :: pset_in
+    integer :: i, n, n_col_rem, remnant1, remnant2
+    n_col_rem = 0
+    do i = 1, pset_in%n_tot
+       if (pset_in%prt(i)%get_status () == PRT_BEAM_REMNANT .and. &
+            any (pset_in%prt(i)%get_color () /= 0)) then
+          if (n == 0) then
+             remnant1 = i
+          else
+             remnant2 = i
+          end if
+          n_col_rem = n_col_rem + 1
+       end if
+    end do
+    pset_out%n_beam = pset_in%n_beam
+    pset_out%n_in   = pset_in%n_in
+    pset_out%n_vir  = pset_in%n_vir + pset_in%n_out + n_col_rem
+    pset_out%n_out  = pset_in%n_out
+    pset_out%n_tot  = pset_in%n_tot + pset_in%n_out + n_col_rem
+    pset_out%correlated_state = pset_in%correlated_state
+    pset_out%factorization_mode = pset_in%factorization_mode    
+    allocate (pset_out%prt (pset_out%n_tot))
+    do i = 1, pset_in%n_tot
+       call pset_out%prt(i)%init (pset_in%prt(i))
+       call pset_out%prt(i)%set_children (pset_in%prt(i)%child)
+       call pset_out%prt(i)%set_parents (pset_in%prt(i)%parent)
+    end do
+    n = pset_in%n_tot
+    do i = 1, pset_in%n_tot
+       if (pset_out%prt(i)%get_status () == PRT_OUTGOING .and. &
+           all (pset_out%prt(i)%get_color () == 0) .and. &
+           .not. pset_out%prt(i)%has_children ()) then
+          n = n + 1
+          call pset_out%prt(n)%init (pset_out%prt(i))
+          call pset_out%prt(i)%reset_status (PRT_VIRTUAL)
+          call pset_out%prt(i)%add_child (n)
+          call pset_out%prt(i)%set_parents ([i])
+       end if
+    end do
+    if (n_col_rem > 0) then
+       do i = 1, n_col_rem
+       end do
+    end if
+  contains 
+  end subroutine particle_set_order_color_lines
+
+@ %def particle_set_order_color_lines
 @
 Eliminate numerical noise
 <<Particles: public>>=
@@ -7894,10 +7954,10 @@ Reconstruct a hard decay interaction from a shuffled particle set.
     call assert_equal (u, size (particle_set%prt(2)%get_children ()), &
          1, "get children of 2")
 
-    call assert_equal(u, particle_set%find_particle &
+    call assert_equal (u, particle_set%find_particle &
          (particle_set%prt(1)%get_pdg (), particle_set%prt(1)%p), &
          1, "find 1st particle")
-    call assert_equal(u, particle_set%find_particle &
+    call assert_equal (u, particle_set%find_particle &
          (particle_set%prt(2)%get_pdg (), particle_set%prt(2)%p * &
           (one + tiny_07), rel_smallness=1.0E-6_default), &
          2, "find 2nd particle fuzzy")
@@ -7907,3 +7967,25 @@ Reconstruct a hard decay interaction from a shuffled particle set.
   end subroutine particles_8
 
 @ %def particles_8
+@ 
+Order color lines into Lund string systems, without colored beam
+remnants first.
+<<Particles: execute tests>>=
+  call test (particles_9, "particles_9", &
+       "order into Lund strings, uncolored beam remnants", &
+       u, results)
+<<Particles: test declarations>>= 
+  public :: particles_9
+<<Particles: tests>>=  
+  subroutine particles_9 (u)
+    integer, intent(in) :: u
+    write (u, "(A)")  "* Test output: particles_9"
+    write (u, "(A)")  "*   Purpose: Order into Lund strings, "
+    write (u, "(A)")  "*              uncolored beam remnants"    
+    write (u, "(A)")    
+  end subroutine particles_9
+
+@  %def particles_9
+  
+  
+  
