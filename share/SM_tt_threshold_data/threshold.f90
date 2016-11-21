@@ -995,24 +995,8 @@ contains
       type(momentum), dimension(4) :: p_real_ons
       allocate (p_ons_rest (size (p_ofs)))
       p12 = p_ofs(1) + p_ofs(2)
-      print *, 'p_ofs: '
-      print *, p_ofs(1)
-      print *, p_ofs(2)
-      print *, p_ofs(3)
-      print *, p_ofs(4)
-      print *, p_ofs(5)
-      print *, p_ofs(6)
-      print *, p_ofs(7)
       do leg = 1, 2
          other_leg = 3 - leg
-         print *, 'p_ons: '
-         print *, p_ons(leg, 1)
-         print *, p_ons(leg, 2)
-         print *, p_ons(leg, 3)
-         print *, p_ons(leg, 4)
-         print *, p_ons(leg, 5)
-         print *, p_ons(leg, 6)
-         print *, p_ons(leg, 7)
          ptop_ons(1) = p_ons(leg, THR_POS_WP) + p_ons(leg, THR_POS_B)
          ptop_ons(2) = p_ons(leg, THR_POS_WM) + p_ons(leg, THR_POS_BBAR)
          ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
