@@ -999,6 +999,7 @@ contains
          other_leg = 3 - leg
          ptop_ons(1) = p_ons(leg, THR_POS_WP) + p_ons(leg, THR_POS_B)
          ptop_ons(2) = p_ons(leg, THR_POS_WM) + p_ons(leg, THR_POS_BBAR)
+         ptop_ons(leg) = ptop_ons(leg) + p_ons(leg, THR_POS_GLUON)
          ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
          ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
          production_me(:,:,:,:,leg) = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
