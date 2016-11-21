@@ -550,6 +550,7 @@ contains
     type(momentum), dimension(2) :: ptop_ofs, ptop_ons, ptop_ons_rest
     type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest, p_decay
     type(momentum) :: p12
+    integer :: i
     call init_workspace ()
     allocate (mom_ofs (n_legs), mom_ons (n_legs), mom_ons_rest (n_legs), p_decay(n_legs))
     call convert_to_mom_and_invert_sign (p_ofs, n_legs, mom_ofs)
@@ -568,7 +569,10 @@ contains
        case (ONS)
           p_decay = mom_ons
        case (ONS_BOOST)
-          p_decay = apply_boost (inverse (boost_to_cms), mom_ons)
+          p_decay(1:2) = mom_ons(1:2)
+          do i = 3, n_legs
+             p_decay(i) = apply_boost (inverse (boost_to_cms), mom_ons(i))
+          end do
        end select
        born_decay_me = compute_decay_me (p_decay)
     end if
@@ -796,6 +800,12 @@ contains
     en_w = (mtop**2 + mw2 - mb2) / (2 * mtop)
     en_b = (mtop**2 - mw2 + mb2) / (2 * mtop)
     momenta_already_onshell = process_mode == PROC_MODE_WBWB
+    if (process_mode == PROC_MODE_TT) then
+       momenta_already_onshell = .true.
+    else
+       momenta_already_onshell = &
+            onshell_tops (p_ofs, [THR_POS_WP, THR_POS_B], [THR_POS_WM, THR_POS_BBAR])
+    end if
     if (.not. momenta_already_onshell) then
        p_tmp_1%p = p_ofs(THR_POS_B)
        p_tmp_2%p = p_ofs(THR_POS_WP)
@@ -813,6 +823,8 @@ contains
        p_ons(THR_POS_BBAR) = apply_boost (boost_to_cms, p_ons_rest(THR_POS_BBAR))
        p_ons(THR_POS_WM)%x(1:3) = - p_ons(THR_POS_WM)%x(1:3)
        p_ons(THR_POS_BBAR)%x(1:3) = - p_ons(THR_POS_BBAR)%x(1:3)
+    else
+       p_ons(3:6) = p_ofs(3:6)
     end if
     if (debug_active (D_THRESHOLD)) then
        call assert_equal (u, en_w + en_b, mtop, "top energy", &
