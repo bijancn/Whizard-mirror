@@ -967,7 +967,7 @@ contains
          ptop_ons(2) = p_ons(THR_POS_WM) + p_ons(THR_POS_BBAR)
          ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
          ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
-         production_me(:,:,:,:,leg) = compute_production_me (ffi, p_ofs, ptop_ons, ptop_ofs)
+         production_me(:,:,:,:,leg) = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
          if (leg == 1) then
             top_decay_real => top_real_decay_calculate_amplitude
             top_decay_born_ => anti_top_decay_born
