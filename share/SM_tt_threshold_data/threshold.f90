@@ -741,7 +741,7 @@ contains
     type(momentum), dimension(:), allocatable, intent(out) :: p_out
     allocate (p_out (n_legs))
     p_out(1:2) = p_in(1:2)
-    p_out(3:6) = apply_boost (inverse (boost_to_cms), p_in(3:6))
+    p_out(3:n_legs) = apply_boost (inverse (boost_to_cms), p_in(3:n_legs))
   end subroutine boost_onshell_to_rest_frame
 
   subroutine compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
@@ -810,6 +810,7 @@ contains
        momenta_already_onshell = &
             onshell_tops (p_ofs, [THR_POS_WP, THR_POS_B], [THR_POS_WM, THR_POS_BBAR])
     end if
+    p_ons(1:2) = p_ofs(1:2)
     if (.not. momenta_already_onshell) then
        p_tmp_1%p = p_ofs(THR_POS_B)
        p_tmp_2%p = p_ofs(THR_POS_WP)
@@ -921,14 +922,14 @@ contains
     if (.not. threshold%settings%helicity_approximated) &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
+    call init_workspace ()
     ptop_ofs = get_top_momenta_offshell (p_ofs, leg)
     call convert_to_mom_and_invert_sign (p_ofs, n_legs, mom_ofs)
     call convert_to_mom_and_invert_sign (p_ons, n_legs, mom_ons)
-    call boost_onshell_to_rest_frame (n_legs, mom_ons, mom_ons_rest)
     p12 = mom_ofs(1) + mom_ofs(2); p35 = mom_ofs(3) + mom_ofs(5)
     call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
-    call init_workspace ()
-    call compute_amplitudes (ptop_ofs)
+    call boost_onshell_to_rest_frame (n_legs, mom_ons, mom_ons_rest)
+    call compute_amplitudes (mom_ofs)
     total = zero
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
