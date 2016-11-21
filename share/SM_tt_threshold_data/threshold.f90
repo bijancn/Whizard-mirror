@@ -724,6 +724,17 @@ contains
      end if
   end subroutine compute_projected_momenta
 
+  subroutine create_boost_to_cms (ptop_ons, mtop)
+    type(momentum), intent(in) :: ptop_ons
+    real(default), intent(in) :: mtop
+    real(default), dimension(4) :: tmp
+    type(vector4_t) :: v4_tmp
+    !!! There is no direct conversion between type(momentum) and type(vector4_t)
+    !!! So, we need a temporary real array to store the momentum values
+    tmp = ptop_ons; v4_tmp = tmp
+    boost_to_cms = boost (v4_tmp, mtop)
+  end subroutine create_boost_to_cms
+
   subroutine boost_onshell_to_rest_frame (n_legs, p_in, p_out)
     integer, intent(in) :: n_legs
     type(momentum), dimension(:), intent(in) :: p_in
@@ -739,27 +750,20 @@ contains
     real(default) :: sqrts, scale_factor, mtop
     real(default), dimension(1:3) :: unit_vec
     real(default), dimension(4) :: tmp, test
-    type(vector4_t) :: v4_top_onshell, tmp_v4
-    type(vector4_t) :: v4_topbar_onshell, v4_topbar_onshell_rest
-    type(lorentz_transformation_t) :: boost_to_top_rest
     integer :: u
-    mtop = ttv_mtpole (p12*p12)
+    mtop = ttv_mtpole (p12 * p12)
     sqrts = - p12%t
     scale_factor = sqrt (sqrts**2 - 4 * mtop**2) / 2
     unit_vec = p35%x / sqrt (dot_product(p35%x, p35%x))
     ptop_ons(1) = [sqrts / 2, scale_factor * unit_vec]
-    tmp = ptop_ons(1)
-    v4_top_onshell = tmp
+    ptop_ons(2) = [sqrts / 2, - scale_factor * unit_vec]
     ptop_ons_rest(1) = [mtop, zero, zero, zero]
     ptop_ons_rest(2) = [mtop, zero, zero, zero]
-    boost_to_cms = boost (v4_top_onshell, mtop)
-    boost_to_top_rest = inverse (boost_to_cms)
-    ptop_ons(2) = [sqrts / 2, - scale_factor * unit_vec]
+    call create_boost_to_cms (ptop_ons(1), mtop)
     if (debug_active (D_THRESHOLD)) then
        u = output_unit
        if (sqrts > 2 * mtop) then
-          tmp_v4 = boost_to_top_rest * v4_top_onshell
-          tmp = tmp_v4
+          tmp = apply_boost (inverse (boost_to_cms), ptop_ons(1))
           test = ptop_ons_rest(1)
           call assert_equal (u, tmp, test, &
                "verify that we have the right boost", abs_smallness=tiny_07 * 10, &
