@@ -49,7 +49,7 @@ subroutine @ID@_start_openloops () bind(C)
   call olp_printparameter ("parameters.ol")
 end subroutine @ID@_start_openloops
 
-subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
+subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
        sqme_c, acc_c) bind(C)
   use @ID@_threshold
   use @ID@_virtual
@@ -61,12 +61,13 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
   implicit none
   integer(c_int), intent(in) :: i_flv
   real(c_default_float), intent(in) :: alpha_s_c
-  real(c_default_float), dimension(0:3,*), intent(in) :: parray
+  real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs
   real(c_default_float), intent(in) :: mu_c
   real(c_default_float), dimension(4), intent(out) :: sqme_c
   real(c_default_float), intent(out) :: acc_c
+  type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest
+  type(momentum), dimension(2) :: ptop_ofs, ptop_ons
   complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
-  type(momentum), dimension(2) :: p_top
   integer :: h_el, h_pos, h_t, h_tbar
   integer :: leg, this_id, h_b, h_W
   real(double) :: virt_decay(0:3), total(0:3), acc
@@ -83,25 +84,28 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
        call msg_fatal ("@ID@_olp_eval2: OFFSHELL_STRATEGY is not factorized")
   alpha_s = alpha_s_c
   mu = mu_c
+  allocate (mom_ofs(6), mom_ons(6), mom_ons_rest(6))
+  call convert_to_mom_and_invert_sign (p_ofs, 6, mom_ofs)
   call init_workspace ()
   call set_parameter("alpha_s", alpha_s)
   call set_parameter("mu", mu)
   total = 0
 
-  call compute_momentum_sums ()
-  call compute_projected_momenta (0)
+  call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
   call set_parameter("width(6)", zero)
   call set_parameter("width(24)", zero)
-  p_decay(:,1,1) = mom_top_onshell
-  p_decay(:,2,1) = mom_wp_onshell
-  p_decay(:,3,1) = mom_b_onshell
-  p_decay(:,1,2) = mom_topbar_onshell
-  p_decay(:,2,2) = mom_wm_onshell
-  p_decay(:,3,2) = mom_bbar_onshell
-  p_top(1) = mom_top_onshell
-  p_top(2) = mom_topbar_onshell
-  bw = top_propagators (FF)
-  production_me = compute_production_me (FF)
+  ptop_ons(1) = mom_ons(THR_POS_WP) + mom_ons(THR_POS_B)
+  ptop_ons(2) = mom_ons(THR_POS_WM) + mom_ons(THR_POS_BBAR)
+  ptop_ofs(1) = mom_ofs(THR_POS_WP) + mom_ofs(THR_POS_B)
+  ptop_ofs(2) = mom_ofs(THR_POS_WM) + mom_ofs(THR_POS_BBAR)
+  p_decay(:,1,1) = ptop_ons(1)
+  p_decay(:,2,1) = mom_ons(THR_POS_WP)
+  p_decay(:,3,1) = mom_ons(THR_POS_B)
+  p_decay(:,1,2) = ptop_ons(2)
+  p_decay(:,2,2) = mom_ons(THR_POS_WM)
+  p_decay(:,3,2) = mom_ons(THR_POS_BBAR)
+  bw = top_propagators (FF, mom_ofs(1) + mom_ofs(2), mom_ofs)
+  production_me = compute_production_me (FF, mom_ofs, ptop_ofs, ptop_ons)
   prod2 = zero
   !!! We need these because OpenLoops does not reproduce the Omega results
   !!! at the correct positions (but numerically correct).
@@ -114,16 +118,16 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, parray, mu_c, &
      do h_pos = -1, 1, 2
         prod2 = abs2 (production_me(h_el, h_pos, h_t, h_tbar))
      do leg = 1, 2
-        dynamic_top_mass = sqrt (p_top(leg) * p_top(leg))
+        dynamic_top_mass = sqrt (ptop_ons(leg) * ptop_ons(leg))
         call set_parameter("mass(6)", dynamic_top_mass)
         born_decay_me2 = zero
         do h_W = -1, 1
         do h_b = -1, 1, 2
            if (leg == 1) then
-              born_decay_me = anti_top_decay_born (h_tbar, h_W, h_b)
+              born_decay_me = anti_top_decay_born (mom_ons, h_tbar, h_W, h_b)
               this_id = (3 + h_t) / 2
            else
-              born_decay_me = top_decay_born (h_t, h_W, h_b)
+              born_decay_me = top_decay_born (mom_ons, h_t, h_W, h_b)
               this_id = (3 + h_tbar) / 2 + 2
            end if
            born_decay_me2 = born_decay_me2 + abs2 (born_decay_me)

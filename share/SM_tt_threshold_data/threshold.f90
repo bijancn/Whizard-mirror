@@ -131,7 +131,7 @@ module @ID@_threshold
        init_workspace, compute_production_owfs, &
        compute_decay_owfs, table_spin_states, compute_production_me, &
        top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2, &
-       apply_boost, compute_projected_momenta
+       apply_boost, compute_projected_momenta, convert_to_mom_and_invert_sign
 
   ! DON'T EVEN THINK of removing the following!
   ! If the compiler complains about undeclared
