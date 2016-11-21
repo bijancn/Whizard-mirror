@@ -390,21 +390,21 @@ contains
                   "Please give either helicity index or spins")
           end if
        end if
-       print *, p_ofs(1)
-       print *, p_ofs(2)
-       print *, p12
+       !print *, p_ofs(1)
+       !print *, p_ofs(2)
+       !print *, p12
        owf_e_1 = u (mass(11), - p_ofs(1), s(1))
        owf_e_2 = vbar (mass(11), - p_ofs(2), s(2))
        owf_A_12 = pr_feynman (p12, v_ff (qlep, owf_e_2, owf_e_1))
        owf_Z_12 = pr_unitarity (p12, mass(23), wd_tl (p12, width(23)), &
             .false., + va_ff (gnclep(1), gnclep(2), owf_e_2, owf_e_1))
-       print *, owf_e_1
-       print *, owf_e_2
-       print *, owf_A_12
-       print *, owf_Z_12
+       !print *, owf_e_1
+       !print *, owf_e_2
+       !print *, owf_A_12
+       !print *, owf_Z_12
        !!! Those all zero
        !!! Need to invert sign of incoming p_ofs!
-       stop
+       !stop
     end if
   end subroutine compute_production_owfs
 
@@ -629,7 +629,7 @@ contains
     call init_workspace ()
     allocate (mom_ofs (n_legs), mom_ons (n_legs), mom_ons_rest (n_legs), p_decay(n_legs))
     !call compute_momentum_sums ()
-    call convert_to_mom (p_ofs, n_legs, mom_ofs)
+    call convert_to_mom_and_invert_sign (p_ofs, n_legs, mom_ofs)
     p12 = mom_ofs(1) + mom_ofs(2)
     if (threshold%settings%onshell_projection%active ()) then
        call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
@@ -757,16 +757,20 @@ contains
      p_top(2) = p_tmp(2)%p
   end function get_top_momenta_offshell
 
-  subroutine convert_to_mom (p, n, mom)
+  subroutine convert_to_mom_and_invert_sign (p, n, mom)
     real(default), intent(in), dimension(0:3,*) :: p
     integer, intent(in) :: n
     type(momentum), intent(out), dimension(:), allocatable :: mom
     integer :: i
     allocate (mom(n))
     do i = 1, n
-       mom(i) = p(:,i)
+       if (i <= 2) then
+          mom(i) = - p(:,i)
+       else
+          mom(i) = p(:,i)
+       end if
     end do
-  end subroutine convert_to_mom
+  end subroutine convert_to_mom_and_invert_sign
 
   !subroutine compute_momentum_sums ()
   !  p12 = p1 + p2
@@ -1017,7 +1021,7 @@ contains
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
     ptop_ofs = get_top_momenta_offshell (p_ofs, leg)
-    call convert_to_mom (p_ofs, n_legs, mom_ofs)
+    call convert_to_mom_and_invert_sign (p_ofs, n_legs, mom_ofs)
     p12 = mom_ofs(1) + mom_ofs(2)
     !call compute_momentum_sums ()
     call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
