@@ -12429,7 +12429,6 @@ module phs_fks
 <<Use strings>>
   use constants
   use diagnostics
-  use numeric_utils, only: nearly_equal
   use io_units, only: given_output_unit
   use format_utils, only: write_separator
   use lorentz
@@ -16520,7 +16519,6 @@ end module phs_fks_uti
 @ %def phs_fks_generator_6
 @
 \section{Dispatch}
-@
 <<[[dispatch_phase_space.f90]]>>=
 <<File header>>
 
@@ -17008,4 +17006,224 @@ structure-function chain.
   end subroutine dispatch_sf_channels
 
 @ %def dispatch_sf_channels
+@
+@
+\subsection{Unit tests}
+Test module, followed by the corresponding implementation module.
+<<[[dispatch_phs_ut.f90]]>>=
+<<File header>>
+
+module dispatch_phs_ut
+  use unit_tests
+  use dispatch_phs_uti
+
+<<Standard module head>>
+
+<<Dispatch phs: public test>>
+
+contains
+
+<<Dispatch phs: test driver>>
+
+end module dispatch_phs_ut
+@ %def dispatch_phs_ut
+@
+<<[[dispatch_phs_uti.f90]]>>=
+<<File header>>
+
+module dispatch_phs_uti
+
+<<Use kinds>>
+<<Use strings>>
+  use variables
+  use io_units, only: free_unit
+  use os_interface, only: os_data_t, os_data_init
+  use process_constants
+  use model_data
+  use models
+  use phs_base
+  use phs_forests
+  use phs_wood
+  use mappings
+  use dispatch_phase_space
+
+<<Standard module head>>
+
+<<Dispatch phs: test declarations>>
+
+contains
+
+<<Dispatch phs: tests>>
+
+end module dispatch_phs_uti
+@ %def dispatch_phs_ut
+@ API: driver for the unit tests below.
+<<Dispatch phs: public test>>=
+  public ::dispatch_phs_test
+<<Dispatch phs: test driver>>=
+  subroutine dispatch_phs_test (u, results)
+    integer, intent(in) :: u
+    type(test_results_t), intent(inout) :: results
+  <<Dispatch phs: execute tests>>
+  end subroutine dispatch_phs_test
+
+@  %def dispatch_phs_test
+@
+\subsubsection{Select type: phase-space configuration object}
+<<Dispatch phs: execute tests>>=
+  call test (dispatch_phs_1, "dispatch_phs_1", &
+       "phase-space configuration", &
+       u, results)
+<<Dispatch phs: test declarations>>=
+  public :: dispatch_phs_1
+<<Dispatch phs: tests>>=
+  subroutine dispatch_phs_1 (u)
+    integer, intent(in) :: u
+    type(var_list_t) :: var_list
+    class(phs_config_t), allocatable :: phs
+    type(phs_parameters_t) :: phs_par
+    type(os_data_t) :: os_data
+    type(mapping_defaults_t) :: mapping_defs
+
+    write (u, "(A)")  "* Test output: dispatch_phs_1"
+    write (u, "(A)")  "*   Purpose: select phase-space configuration method"
+    write (u, "(A)")
+
+    call var_list%init_defaults (0)
+
+    write (u, "(A)")  "* Allocate PHS as phs_single_t"
+    write (u, "(A)")
+
+    call var_list%set_string (&
+         var_str ("$phs_method"), &
+         var_str ("single"), is_known = .true.)
+    call dispatch_phs (phs, var_list, os_data, var_str ("dispatch_phs_1"))
+    call phs%write (u)
+
+    call phs%final ()
+    deallocate (phs)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Allocate PHS as phs_wood_t"
+    write (u, "(A)")
+
+    call var_list%set_string (&
+         var_str ("$phs_method"), &
+         var_str ("wood"), is_known = .true.)
+    call dispatch_phs (phs, var_list, os_data, var_str ("dispatch_phs_1"))
+    call phs%write (u)
+
+    call phs%final ()
+    deallocate (phs)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Setting parameters for phs_wood_t"
+    write (u, "(A)")
+
+    phs_par%m_threshold_s = 123
+    phs_par%m_threshold_t = 456
+    phs_par%t_channel = 42
+    phs_par%off_shell = 17
+    phs_par%keep_nonresonant = .false.
+    mapping_defs%energy_scale = 987
+    mapping_defs%invariant_mass_scale = 654
+    mapping_defs%momentum_transfer_scale = 321
+    mapping_defs%step_mapping = .false.
+    mapping_defs%step_mapping_exp = .false.
+    mapping_defs%enable_s_mapping = .true.
+    call dispatch_phs (phs, var_list, os_data, var_str ("dispatch_phs_1"), &
+         mapping_defs, phs_par)
+    call phs%write (u)
+
+    call phs%final ()
+
+    call var_list%final ()
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: dispatch_phs_1"
+
+  end subroutine dispatch_phs_1
+
+@ %def dispatch_phs_1
+@
+\subsubsection{Phase-space configuration with file}
+<<Dispatch phs: execute tests>>=
+  call test (dispatch_phs_2, "dispatch_phs_2", &
+       "configure phase space using file", &
+       u, results)
+<<Dispatch phs: test declarations>>=
+  public :: dispatch_phs_2
+<<Dispatch phs: tests>>=
+  subroutine dispatch_phs_2 (u)
+    use phs_base_ut, only: init_test_process_data
+    use phs_wood_ut, only: write_test_phs_file
+    use phs_forests
+    integer, intent(in) :: u
+    type(var_list_t) :: var_list
+    type(os_data_t) :: os_data
+    type(process_constants_t) :: process_data
+    type(model_list_t) :: model_list
+    type(model_t), pointer :: model
+    class(phs_config_t), allocatable :: phs
+    integer :: u_phs
+
+    write (u, "(A)")  "* Test output: dispatch_phs_2"
+    write (u, "(A)")  "*   Purpose: select 'wood' phase-space &
+         &for a test process"
+    write (u, "(A)")  "*            and read phs configuration from file"
+    write (u, "(A)")
+
+    write (u, "(A)")  "* Initialize a process"
+    write (u, "(A)")
+
+    call var_list%init_defaults (0)
+    call os_data_init (os_data)
+    call syntax_model_file_init ()
+    call model_list%read_model &
+         (var_str ("Test"), var_str ("Test.mdl"), os_data, model)
+
+    call syntax_phs_forest_init ()
+
+    call init_test_process_data (var_str ("dispatch_phs_2"), process_data)
+
+    write (u, "(A)")  "* Write phase-space file"
+
+    u_phs = free_unit ()
+    open (u_phs, file = "dispatch_phs_2.phs", action = "write", status = "replace")
+    call write_test_phs_file (u_phs, var_str ("dispatch_phs_2"))
+    close (u_phs)
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Allocate PHS as phs_wood_t"
+    write (u, "(A)")
+
+    call var_list%set_string (&
+         var_str ("$phs_method"), &
+         var_str ("wood"), is_known = .true.)
+    call var_list%set_string (&
+         var_str ("$phs_file"), &
+         var_str ("dispatch_phs_2.phs"), is_known = .true.)
+    call dispatch_phs (phs, var_list, os_data, var_str ("dispatch_phs_2"))
+
+    call phs%init (process_data, model)
+    call phs%configure (sqrts = 1000._default)
+
+    call phs%write (u)
+    write (u, "(A)")
+    select type (phs)
+    type is (phs_wood_config_t)
+       call phs%write_forest (u)
+    end select
+
+    call phs%final ()
+
+    call var_list%final ()
+    call syntax_model_file_final ()
+
+    write (u, "(A)")
+    write (u, "(A)")  "* Test output end: dispatch_phs_2"
+
+  end subroutine dispatch_phs_2
+
+@ %def dispatch_phs_2
 @

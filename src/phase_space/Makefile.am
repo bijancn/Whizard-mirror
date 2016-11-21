@@ -47,7 +47,8 @@ libphase_space_ut_la_SOURCES = \
   phs_forests_uti.f90 phs_forests_ut.f90 \
   cascades_uti.f90 cascades_ut.f90 \
   phs_wood_uti.f90 phs_wood_ut.f90 \
-  phs_fks_uti.f90 phs_fks_ut.f90
+  phs_fks_uti.f90 phs_fks_ut.f90 \
+  dispatch_phs_uti.f90 dispatch_phs_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = phase_space.nw

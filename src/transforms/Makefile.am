@@ -54,7 +54,8 @@ libtransforms_ut_la_SOURCES = \
    decays_uti.f90 decays_ut.f90 \
    shower_uti.f90 shower_ut.f90 \
    events_uti.f90 events_ut.f90 \
-   eio_raw_uti.f90 eio_raw_ut.f90
+   eio_raw_uti.f90 eio_raw_ut.f90 \
+   dispatch_transforms_uti.f90 dispatch_transforms_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = transforms.nw
