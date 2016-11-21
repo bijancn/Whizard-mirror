@@ -434,7 +434,7 @@ contains
     integer :: u
     type(momentum) :: ptop, ptopbar
     u = output_unit
-    if (threshold%settings%interference .or.threshold%settings%force_minus_one) then
+    if (threshold%settings%interference .or. threshold%settings%force_minus_one) then
        extra_tree = zero
     else
        extra_tree = one
@@ -1339,14 +1339,16 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, n_legs) bind(C)
      call threshold%formfactor%activate ()
      call compute_born (n_legs, p_ofs, FF)
      select case (FF)
-     case (EXPANDED_HARD, &
-             EXPANDED_SOFT, EXPANDED_SOFT_SWITCHOFF, &
+     case (EXPANDED_HARD, EXPANDED_SOFT, EXPANDED_SOFT_SWITCHOFF, &
              EXPANDED_SOFT_HARD)
         amp2 = expanded_amp2 (amp_omega_full, amp_blob)
      case (MATCHED)
-        amp2 = real (sum (abs2 (amp_omega_full + amp_blob)))
+        amp2 = real (sum (abs2 (amp_blob)))       !!! Resummed amp_squared
+        call compute_born (n_legs, p_ofs, TREE)
+        amp_no_FF = amp_blob
         call compute_born (n_legs, p_ofs, MATCHED_EXPANDED)
-        amp2 = amp2 + expanded_amp2 (amp_omega_full, amp_blob)
+        amp_with_FF = amp_blob
+        amp2 = amp2 + 2 * sum (real (amp_no_FF * conjg (amp_with_FF)))
      case default
         if (threshold%settings%interference) then
            amp_with_FF = amp_blob
