@@ -24,16 +24,16 @@ module @ID@_top_real_decay
 
 contains
 
-  function calculate_amplitude (k, s, top_width) result (amp)
+  function calculate_amplitude (k_decay, s, top_width) result (amp)
     complex(default) :: amp
-    real(default), dimension(0:3,*), intent(in) :: k
+    type(momentum), dimension(:), intent(in) :: k_decay
     integer, dimension(n_prt), intent(in) :: s
     real(default), intent(in) :: top_width
     real(default) :: dynamic_top_mass
-    p1 = - k(:,1) ! incoming
-    p2 =   k(:,2) ! outgoing
-    p3 =   k(:,3) ! outgoing
-    p4 =   k(:,4) ! outgoing
+    p1 = - k_decay(1) ! incoming
+    p2 =   k_decay(2) ! outgoing
+    p3 =   k_decay(3) ! outgoing
+    p4 =   k_decay(4) ! outgoing
     p12 = p1 + p2
     p14 = p1 + p4
     dynamic_top_mass = sqrt (p1 * p1)
@@ -80,16 +80,16 @@ module @ID@_anti_top_real_decay
 
 contains
 
-  function calculate_amplitude (k, s, top_width) result (amp)
+  function calculate_amplitude (k_decay, s, top_width) result (amp)
     complex(default) :: amp
-    real(default), dimension(0:3,*), intent(in) :: k
+    type(momentum), dimension(:), intent(in) :: k_decay
     integer, dimension(n_prt), intent(in) :: s
     real(default), intent(in) :: top_width
     real(default) :: dynamic_top_mass
-    p1 = - k(:,1) ! incoming
-    p2 =   k(:,2) ! outgoing
-    p3 =   k(:,3) ! outgoing
-    p4 =   k(:,4) ! outgoing
+    p1 = - k_decay(1) ! incoming
+    p2 =   k_decay(2) ! outgoing
+    p3 =   k_decay(3) ! outgoing
+    p4 =   k_decay(4) ! outgoing
     p12 = p1 + p2
     p14 = p1 + p4
     dynamic_top_mass = sqrt (p1 * p1)
@@ -346,6 +346,11 @@ module @ID@_threshold
   type(spinor) :: owf_wb_46
   type(conjspinor) :: owf_wb_35
   type(vector) :: owf_A_12, owf_Z_12
+
+  interface convert_to_mom_and_invert_sign
+    module procedure convert_to_mom_and_invert_sign_single
+    module procedure convert_to_mom_and_invert_sign_multi
+  end interface
 
 contains
 
@@ -683,7 +688,7 @@ contains
      p_top(2) = p_tmp(2)%p
   end function get_top_momenta_offshell
 
-  subroutine convert_to_mom_and_invert_sign (p, n, mom)
+  subroutine convert_to_mom_and_invert_sign_single (p, n, mom)
     real(default), intent(in), dimension(0:3,*) :: p
     integer, intent(in) :: n
     type(momentum), intent(out), dimension(:), allocatable :: mom
@@ -696,7 +701,27 @@ contains
           mom(i) = p(:,i)
        end if
     end do
-  end subroutine convert_to_mom_and_invert_sign
+  end subroutine convert_to_mom_and_invert_sign_single
+
+  subroutine convert_to_mom_and_invert_sign_multi (p, n, mom)
+     real(default), intent(in), dimension(2,0:3,*) :: p
+     integer, intent(in) :: n
+     type(momentum), intent(out), dimension(:,:), allocatable :: mom
+     real(default), dimension(:,:), allocatable :: tmp
+     type(momentum), dimension(:), allocatable :: mom_tmp
+     integer :: i
+     allocate (mom (2, n), tmp(0:3, n))
+     do i = 1, n
+        tmp(:,i) = p(1,:,i)
+     end do
+     call convert_to_mom_and_invert_sign (tmp, n, mom_tmp)
+     mom(1,:) = mom_tmp
+     do i = 1, n
+        tmp(:,i) = p(2,:,i)
+     end do
+     call convert_to_mom_and_invert_sign (tmp, n, mom_tmp)
+     mom(2,:) = mom_tmp
+  end subroutine convert_to_mom_and_invert_sign_multi
 
   subroutine compute_projected_momenta (leg, p_ofs, p_ons, p_ons_rest)
      integer, intent(in) :: leg
@@ -899,9 +924,9 @@ contains
   function compute_real (n_legs, p_ofs, p_ons, ffi) result (amp2)
     real(default) :: amp2
     integer, intent(in) :: n_legs
-    real(default), dimension(0:3,*), intent(in) :: p_ofs, p_ons
+    real(default), dimension(0:3,*), intent(in) :: p_ofs
+    real(default), dimension(2,0:3,*), intent(in) :: p_ons
     integer, intent(in) :: ffi
-    real(default), dimension(0:3,4) :: k_decay_real
     real(default), dimension(0:3,3) :: k_decay_born
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1,1:2) :: production_me
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1,1:2) :: real_decay_me
@@ -914,7 +939,8 @@ contains
     integer :: i, hi, leg, other_leg, h_t, h_tbar, h_gl, h_W, h_b
     type(momentum), dimension(2) :: ptop_ofs
     type(momentum), dimension(2) :: ptop_ons, ptop_ons_rest
-    type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest
+    type(momentum), dimension(:), allocatable :: mom_ofs
+    type(momentum), dimension(:,:), allocatable :: mom_ons, mom_ons_rest
     type(momentum) :: p12, p35
     if (.not. threshold%settings%factorized_computation)  &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
@@ -928,8 +954,9 @@ contains
     call convert_to_mom_and_invert_sign (p_ons, n_legs, mom_ons)
     p12 = mom_ofs(1) + mom_ofs(2); p35 = mom_ofs(3) + mom_ofs(5)
     call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
-    call boost_onshell_to_rest_frame (n_legs, mom_ons, mom_ons_rest)
-    call compute_amplitudes (mom_ofs)
+    !call boost_onshell_to_rest_frame (n_legs, mom_ons(:,1), mom_ons_rest(:,1))
+    !call boost_onshell_to_rest_frame (n_legs, mom_ons(:,2), mom_ons_rest(:,2))
+    call compute_amplitudes (mom_ofs, mom_ons)
     total = zero
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
@@ -956,43 +983,68 @@ contains
 
   contains
 
-    subroutine compute_amplitudes (p_ofs)
+    subroutine compute_amplitudes (p_ofs, p_ons)
       type(momentum), intent(in), dimension(:) :: p_ofs
+      type(momentum), intent(in), dimension(:,:) :: p_ons
       procedure(top_real_decay_calculate_amplitude), pointer :: top_decay_real
       procedure(top_decay_born), pointer :: top_decay_born_
       type(momentum), dimension(2) :: ptop_ofs, ptop_ons, ptop_ons_rest
-      type(momentum), dimension(:), allocatable :: p_ons, p_ons_rest
+      type(momentum), dimension(:), allocatable :: p_ons_rest
       type(momentum) :: p12
-      allocate (p_ons (size (p_ofs)), p_ons_rest (size (p_ofs)))
+      !type(momentum), dimension(3) :: p_born_ons
+      type(momentum), dimension(4) :: p_real_ons
+      allocate (p_ons_rest (size (p_ofs)))
       p12 = p_ofs(1) + p_ofs(2)
+      print *, 'p_ofs: '
+      print *, p_ofs(1)
+      print *, p_ofs(2)
+      print *, p_ofs(3)
+      print *, p_ofs(4)
+      print *, p_ofs(5)
+      print *, p_ofs(6)
+      print *, p_ofs(7)
       do leg = 1, 2
          other_leg = 3 - leg
-         call compute_projected_momenta (leg, p_ofs, p_ons, p_ons_rest)
-         ptop_ons(1) = p_ons(THR_POS_WP) + p_ons(THR_POS_B)
-         ptop_ons(2) = p_ons(THR_POS_WM) + p_ons(THR_POS_BBAR)
+         print *, 'p_ons: '
+         print *, p_ons(leg, 1)
+         print *, p_ons(leg, 2)
+         print *, p_ons(leg, 3)
+         print *, p_ons(leg, 4)
+         print *, p_ons(leg, 5)
+         print *, p_ons(leg, 6)
+         print *, p_ons(leg, 7)
+         ptop_ons(1) = p_ons(leg, THR_POS_WP) + p_ons(leg, THR_POS_B)
+         ptop_ons(2) = p_ons(leg, THR_POS_WM) + p_ons(leg, THR_POS_BBAR)
          ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
          ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
          production_me(:,:,:,:,leg) = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
          if (leg == 1) then
             top_decay_real => top_real_decay_calculate_amplitude
             top_decay_born_ => anti_top_decay_born
+            !p_born_ons = [ptop_ons(2), p_ons(1, THR_POS_WM), p_ons(1,THR_POS_BBAR)]
+            p_real_ons = [ptop_ons(1), p_ons(1, THR_POS_WP), &
+                 p_ons(1,THR_POS_B), p_ons(1,THR_POS_GLUON)]
          else
             top_decay_real => anti_top_real_decay_calculate_amplitude
             top_decay_born_ => top_decay_born
+            !p_born_ons = [ptop_ons(1), p_ons(2, THR_POS_WP), p_ons(2,THR_POS_B)]
+            p_real_ons = [ptop_ons(2), p_ons(2, THR_POS_WM), &
+                 p_ons(2,THR_POS_BBAR), p_ons(2,THR_POS_GLUON)]
+
          end if
          do h_t = -1, 1, 2
          do h_W = -1, 1, 1
          do h_b = -1, 1, 2
-            born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (p_ons, h_t, h_W, h_b)
+            born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (p_ons(leg,:), h_t, h_W, h_b)
             if (.not. test_ward) then
                do h_gl = -1, 1, 2
                   real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
-                       (k_decay_real, [h_t, h_W, h_b, h_gl], zero)
+                       (p_real_ons, [h_t, h_W, h_b, h_gl], zero)
                end do
             else
                do h_gl = -1, 1, 2
                   real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
-                       (k_decay_real, [h_t, h_W, h_b, 4], zero)
+                       (p_real_ons, [h_t, h_W, h_b, 4], zero)
                end do
             end if
          end do
@@ -1079,7 +1131,8 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, n_legs) bind(C)
   use ttv_formfactors
   implicit none
   real(c_default_float), intent(out) :: amp2
-  real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs, p_ons
+  real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs
+  real(c_default_float), dimension(2,0:3,*), intent(in) :: p_ons
   integer, intent(in) :: n_legs
   complex(default), dimension(:), allocatable, save :: amp_with_FF, amp_no_FF, amp_omega_full
   logical :: real_computation
