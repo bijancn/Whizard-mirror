@@ -44,7 +44,8 @@ libmci_ut_la_SOURCES = \
   mci_base_uti.f90 mci_base_ut.f90 \
   iterations_uti.f90 iterations_ut.f90 \
   mci_midpoint_uti.f90 mci_midpoint_ut.f90 \
-  mci_vamp_uti.f90 mci_vamp_ut.f90
+  mci_vamp_uti.f90 mci_vamp_ut.f90 \
+  dispatch_mci_uti.f90 dispatch_mci_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = mci.nw

@@ -228,6 +228,7 @@ TESTS_REQ_OCAML = \
     shower_err_1.run \
     parton_shower_1.run \
     parton_shower_2.run \
+    hadronize_1.run \
     mlm_matching_fsr.run \
     user_cuts.run \
     user_prc_threshold_1.run \
@@ -236,6 +237,7 @@ TESTS_REQ_OCAML = \
 
 XFAIL_TESTS_REQ_OCAML = \
     colors_hgg.run \
+    hadronize_1.run \
     user_cuts.run \
     $(TESTS_USER_STRFUN)
 
