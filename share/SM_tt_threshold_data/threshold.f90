@@ -572,12 +572,12 @@ contains
        case (OFS)
           p_decay = mom_ofs
        case (ONS)
-          p_decay = mom_ons
-       case (ONS_BOOST)
           p_decay(1:2) = mom_ons(1:2)
           do i = 3, n_legs
              p_decay(i) = apply_boost (inverse (boost_to_cms), mom_ons(i))
           end do
+       case (ONS_BOOST)
+          p_decay = mom_ons
        end select
        born_decay_me = compute_decay_me (p_decay)
     end if
