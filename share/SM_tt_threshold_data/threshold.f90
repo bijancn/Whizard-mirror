@@ -1007,16 +1007,15 @@ contains
             top_decay_real => top_real_decay_calculate_amplitude
             top_decay_born_ => anti_top_decay_born
             !p_born_ons = [ptop_ons(2), p_ons(1, THR_POS_WM), p_ons(1,THR_POS_BBAR)]
-            p_real_ons = [ptop_ons(1), p_ons(1, THR_POS_WP), &
-                 p_ons(1,THR_POS_B), p_ons(1,THR_POS_GLUON)]
          else
             top_decay_real => anti_top_real_decay_calculate_amplitude
             top_decay_born_ => top_decay_born
             !p_born_ons = [ptop_ons(1), p_ons(2, THR_POS_WP), p_ons(2,THR_POS_B)]
-            p_real_ons = [ptop_ons(2), p_ons(2, THR_POS_WM), &
-                 p_ons(2,THR_POS_BBAR), p_ons(2,THR_POS_GLUON)]
-
+            !p_real_ons = [ptop_ons(leg), p_ons(leg, ass_boson(leg)), &
+            !     p_ons(leg, ass_quark(leg)), p_ons(leg, THR_POS_GLUON)]
          end if
+         p_real_ons = [ptop_ons(leg), p_ons(leg, ass_boson(leg)), &
+              p_ons(leg, ass_quark(leg)), p_ons(leg, THR_POS_GLUON)]
          do h_t = -1, 1, 2
          do h_W = -1, 1, 1
          do h_b = -1, 1, 2
