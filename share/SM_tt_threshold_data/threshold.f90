@@ -937,8 +937,6 @@ contains
     integer, dimension(2) :: h_ass_t
     integer, dimension(n_prt) :: s
     integer :: i, hi, leg, other_leg, h_t, h_tbar, h_gl, h_W, h_b
-    type(momentum), dimension(2) :: ptop_ofs
-    type(momentum), dimension(2) :: ptop_ons, ptop_ons_rest
     type(momentum), dimension(:), allocatable :: mom_ofs
     type(momentum), dimension(:,:), allocatable :: mom_ons, mom_ons_rest
     type(momentum) :: p12, p35
@@ -949,13 +947,9 @@ contains
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
     call init_workspace ()
-    ptop_ofs = get_top_momenta_offshell (p_ofs, leg)
     call convert_to_mom_and_invert_sign (p_ofs, n_legs, mom_ofs)
     call convert_to_mom_and_invert_sign (p_ons, n_legs, mom_ons)
     p12 = mom_ofs(1) + mom_ofs(2); p35 = mom_ofs(3) + mom_ofs(5)
-    call compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
-    !call boost_onshell_to_rest_frame (n_legs, mom_ons(:,1), mom_ons_rest(:,1))
-    !call boost_onshell_to_rest_frame (n_legs, mom_ons(:,2), mom_ons_rest(:,2))
     call compute_amplitudes (mom_ofs, mom_ons)
     total = zero
     do hi = 1, nhel_max
