@@ -985,7 +985,6 @@ contains
       type(momentum), dimension(2) :: ptop_ofs, ptop_ons, ptop_ons_rest
       type(momentum), dimension(:), allocatable :: p_ons_rest
       type(momentum) :: p12
-      !type(momentum), dimension(3) :: p_born_ons
       type(momentum), dimension(4) :: p_real_ons
       allocate (p_ons_rest (size (p_ofs)))
       p12 = p_ofs(1) + p_ofs(2)
@@ -1000,13 +999,9 @@ contains
          if (leg == 1) then
             top_decay_real => top_real_decay_calculate_amplitude
             top_decay_born_ => anti_top_decay_born
-            !p_born_ons = [ptop_ons(2), p_ons(1, THR_POS_WM), p_ons(1,THR_POS_BBAR)]
          else
             top_decay_real => anti_top_real_decay_calculate_amplitude
             top_decay_born_ => top_decay_born
-            !p_born_ons = [ptop_ons(1), p_ons(2, THR_POS_WP), p_ons(2,THR_POS_B)]
-            !p_real_ons = [ptop_ons(leg), p_ons(leg, ass_boson(leg)), &
-            !     p_ons(leg, ass_quark(leg)), p_ons(leg, THR_POS_GLUON)]
          end if
          p_real_ons = [ptop_ons(leg), p_ons(leg, ass_boson(leg)), &
               p_ons(leg, ass_quark(leg)), p_ons(leg, THR_POS_GLUON)]
