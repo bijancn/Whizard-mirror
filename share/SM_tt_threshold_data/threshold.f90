@@ -995,6 +995,7 @@ contains
          ptop_ons(leg) = ptop_ons(leg) + p_ons(leg, THR_POS_GLUON)
          ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
          ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
+         ptop_ofs(leg) = ptop_ofs(leg) + p_ofs(THR_POS_GLUON)
          production_me(:,:,:,:,leg) = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
          if (leg == 1) then
             top_decay_real => top_real_decay_calculate_amplitude
