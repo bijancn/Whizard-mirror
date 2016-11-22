@@ -608,6 +608,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/nlo_1.ref \
     functional_tests/ref-output/openloops_1.ref \
     functional_tests/ref-output/openloops_2.ref \
+    functional_tests/ref-output/openloops_4.ref \
     functional_tests/ref-output/nlo_decay_1.ref \
     functional_tests/ref-output/mssmtest_1.ref \
     functional_tests/ref-output/mssmtest_2.ref \
@@ -932,6 +933,7 @@ MISC_TESTS_SIN = \
     functional_tests/openloops_1.sin \
     functional_tests/openloops_2.sin \
     functional_tests/openloops_3.sin \
+    functional_tests/openloops_4.sin \
     functional_tests/powheg_1.sin \
     functional_tests/mssmtest_1.sin \
     functional_tests/mssmtest_2.sin \
@@ -1048,7 +1050,6 @@ NLO_EXT_SIN = \
     extra_nlo_tt_powheg_sudakov.sin \
     extra_nlo_uu.sin \
     extra_nlo_uu_powheg.sin \
-    extra_nlo_methods.sin \
     extra_nlo_threshold.sin \
     extra_threshold_factorized.sin \
     extra_nlo_methods_gosam.sin
