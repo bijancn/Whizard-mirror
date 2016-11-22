@@ -276,7 +276,7 @@ contains
     save /pypars/
     !!! TODO: (bcn 2016-03-11) this should only be
     !!!       called once per event (not per tau)
-    integer :: itau1, ktau, idau1, idau2
+    integer :: idau1, idau2
 
     higgs_dec = .false.
     if (kforig == 25 .or. kforig==35 .or. kforig== 36) then
@@ -389,7 +389,7 @@ contains
     integer :: i, IFPHOT
     logical :: ifpseudo, is_swapped
     double precision, dimension(4) :: pol1, pol2
-    integer :: im, idx1, idx2, idsign
+    integer :: im
     double precision :: rrr(1), wt
     double precision :: hh1(4), hh2(4)
     integer :: ion(3), np
@@ -923,7 +923,7 @@ end module tauola_interface
 !...give the flavour codes K(I,2) and the five-momenta P(I,1), P(I,2),
 !...P(I,3), P(I,4) and P(I,5). The rest will be stored automatically.
 subroutine pytaud (itau, iorig, kforig, ndecay)
-  use tauola_interface
+  use tauola_interface !NODEP!
   implicit none
   integer itau,iorig,kforig
   integer ndecay

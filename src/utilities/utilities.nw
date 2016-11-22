@@ -1,8 +1,7 @@
 % -*- ess-noweb-default-code-mode: f90-mode; noweb-default-code-mode: f90-mode; -*-
 % WHIZARD code as NOWEB source: Utilities
-
-@
 \chapter{Utilities}
+\includemodulegraph{utilities}
 
 These modules are intended as part of WHIZARD, but in fact they are
 generic and could be useful for any purpose.
@@ -445,7 +444,8 @@ and variable format for integers.
   public :: str
 <<String utils: interfaces>>=
   interface str
-     module procedure str_log, str_int, str_real, str_complex
+     module procedure str_log, str_logs, str_int, str_ints, &
+            str_real, str_reals, str_complex, str_complexs
   end interface
 <<String utils: procedures>>=
   function str_log (l) result (s)
@@ -458,6 +458,11 @@ and variable format for integers.
     end if
   end function str_log
 
+  function str_logs (x) result (s)
+    logical, dimension(:), intent(in) :: x
+    <<concatenate strings>>
+  end function str_logs
+
   function str_int (i) result (s)
     integer, intent(in) :: i
     type(string_t) :: s
@@ -465,6 +470,11 @@ and variable format for integers.
     write (buffer, "(I0)")  i
     s = var_str (trim (adjustl (buffer)))
   end function str_int
+
+  function str_ints (x) result (s)
+    integer, dimension(:), intent(in) :: x
+    <<concatenate strings>>
+  end function str_ints
 
   function str_real (x) result (s)
     real(default), intent(in) :: x
@@ -474,13 +484,32 @@ and variable format for integers.
     s = var_str (trim (adjustl (buffer)))
   end function str_real
 
+  function str_reals (x) result (s)
+    real(default), dimension(:), intent(in) :: x
+    <<concatenate strings>>
+  end function str_reals
+
   function str_complex (x) result (s)
     complex(default), intent(in) :: x
     type(string_t) :: s
     s = str_real (real (x)) // " + i " // str_real (aimag (x))
   end function str_complex
 
+  function str_complexs (x) result (s)
+    complex(default), dimension(:), intent(in) :: x
+    <<concatenate strings>>
+  end function str_complexs
+
 @ %def str
+<<concatenate strings>>=
+type(string_t) :: s
+integer :: i
+s = '['
+do i = 1, size(x) - 1
+   s = s // str(x(i)) // ', '
+end do
+s = s // str(x(size(x))) // ']'
+@
 @ Auxiliary: Read real, integer, string value.
 <<String utils: public>>=
   public :: read_rval
@@ -509,8 +538,8 @@ Create an array of strings using a separator.
 <<String utils: public>>=
   public :: split_string
 <<String utils: procedures>>=
-  function split_string (str, separator) result (str_array)
-    type(string_t), dimension(:), allocatable :: str_array
+  subroutine split_string (str, separator, str_array)
+    type(string_t), dimension(:), allocatable, intent(out) :: str_array
     type(string_t), intent(in) :: str, separator
     type(string_t) :: str_tmp, str_out
     integer :: n_str
@@ -534,7 +563,7 @@ Create an array of strings using a separator.
       call split (str_tmp, str_out, word)
       val = str_out /= "" 
     end function contains_word
-  end function split_string      
+  end subroutine split_string
 
 @ %def split_string
 @
@@ -563,6 +592,7 @@ module format_utils
 <<Use kinds>>
 <<Use strings>>
   use string_utils, only: lower_case
+  use io_units, only: given_output_unit
 
 <<Standard module head>>
 
@@ -610,6 +640,33 @@ Indent the line with given number of blanks.
   end subroutine write_indent
 
 @ %def write_indent
+@
+\subsection{Array Output}
+Write an array of integers.
+<<Format utils: public>>=
+  public :: write_integer_array
+<<Format utils: procedures>>=
+  subroutine write_integer_array (array, unit, n_max)
+    integer, intent(in), dimension(:) :: array
+    integer, intent(in), optional :: unit
+    integer, intent(in), optional :: n_max
+    integer :: u, i, n
+    u = given_output_unit (unit)
+    if (present (n_max)) then
+       n = n_max
+    else
+       n = size (array)
+    end if
+    do i = 1, n
+       if (i < n) then
+          write (u, "(I0, A)", advance = "no") array(i), ", "
+       else
+          write (u, "(I0)") array(i)
+       end if
+    end do
+  end subroutine write_integer_array
+
+@ %def write_integer_array
 @
 \subsection{\TeX-compatible Output}
 Quote underscore characters for use in \TeX\ output.
@@ -818,6 +875,8 @@ end module format_defs
 module numeric_utils
 
 <<Use kinds>>
+<<Use strings>>
+  use string_utils
   use constants
   use format_defs
 
@@ -841,16 +900,20 @@ end module numeric_utils
 <<Numeric utils: public>>=
   public :: assert
 <<Numeric utils: procedures>>=
-  subroutine assert (unit, ok, description)
+  subroutine assert (unit, ok, description, exit_on_fail)
     integer, intent(in) :: unit
     logical, intent(in) :: ok
     character(*), intent(in), optional :: description
+    logical, intent(in), optional :: exit_on_fail
+    logical :: ef
+    ef = .false.;  if (present (exit_on_fail)) ef = exit_on_fail
     if (.not. ok) then
        if (present(description)) then
           write (unit, "(A)") "* FAIL: " // description
        else
           write (unit, "(A)") "* FAIL: Assertion error"
        end if
+       if (ef)  stop 1
     end if
   end subroutine assert
 
@@ -859,83 +922,111 @@ end module numeric_utils
 <<Numeric utils: public>>=
   public:: assert_equal
   interface assert_equal
-     module procedure assert_equal_real, assert_equal_complex, assert_equal_integer
+     module procedure assert_equal_integer, assert_equal_integers, &
+            assert_equal_real, assert_equal_reals, &
+            assert_equal_complex, assert_equal_complexs
   end interface
 
 @
 <<Numeric utils: procedures>>=
+  subroutine assert_equal_integer (unit, lhs, rhs, description, exit_on_fail)
+    integer, intent(in) :: unit
+    integer, intent(in) :: lhs, rhs
+    character(*), intent(in), optional :: description
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
+    logical :: ok
+    ok = lhs == rhs
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
+  end subroutine assert_equal_integer
+
+@ %def assert_equal_integer
+@
+<<Numeric utils: procedures>>=
+  subroutine assert_equal_integers (unit, lhs, rhs, description, exit_on_fail)
+    integer, intent(in) :: unit
+    integer, dimension(:), intent(in) :: lhs, rhs
+    character(*), intent(in), optional :: description
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
+    logical :: ok
+    ok = all(lhs == rhs)
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
+  end subroutine assert_equal_integers
+
+@ %def assert_equal_integers
+@
+<<Numeric utils: procedures>>=
   subroutine assert_equal_real (unit, lhs, rhs, description, &
-                                abs_smallness, rel_smallness)
+                                abs_smallness, rel_smallness, exit_on_fail)
     integer, intent(in) :: unit
     real(default), intent(in) :: lhs, rhs
     character(*), intent(in), optional :: description
     real(default), intent(in), optional :: abs_smallness, rel_smallness
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
     logical :: ok
     ok = nearly_equal (lhs, rhs, abs_smallness, rel_smallness)
-    if (.not. ok) then
-       if (present(description)) then
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: " // description // ": ", lhs, " /= ", rhs
-       else
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: Assertion error: ", lhs, " /= ", rhs
-       end if
-    end if
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
   end subroutine assert_equal_real
 
 @ %def assert_equal_real
 @
 <<Numeric utils: procedures>>=
+  subroutine assert_equal_reals (unit, lhs, rhs, description, &
+                                abs_smallness, rel_smallness, exit_on_fail)
+    integer, intent(in) :: unit
+    real(default), dimension(:), intent(in) :: lhs, rhs
+    character(*), intent(in), optional :: description
+    real(default), intent(in), optional :: abs_smallness, rel_smallness
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
+    logical :: ok
+    ok = all(nearly_equal (lhs, rhs, abs_smallness, rel_smallness))
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
+  end subroutine assert_equal_reals
+
+@ %def assert_equal_reals
+@
+<<Numeric utils: procedures>>=
   subroutine assert_equal_complex (unit, lhs, rhs, description, &
-                                abs_smallness, rel_smallness)
+                                abs_smallness, rel_smallness, exit_on_fail)
     integer, intent(in) :: unit
     complex(default), intent(in) :: lhs, rhs
     character(*), intent(in), optional :: description
     real(default), intent(in), optional :: abs_smallness, rel_smallness
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
     logical :: ok
-    ok = nearly_equal (real(lhs), real(rhs), abs_smallness, rel_smallness)
-    if (.not. ok) then
-       if (present(description)) then
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: " // description // ": ", real(lhs), " /= ", real(rhs)
-       else
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: Assertion error: ", real(lhs), " /= ", real(rhs)
-       end if
-    end if
-    ok = nearly_equal (aimag(lhs), aimag(rhs), abs_smallness, rel_smallness)
-    if (.not. ok) then
-       if (present(description)) then
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: " // description // ": ", aimag(lhs), " /= ", aimag(rhs)
-       else
-          write (unit, "(A," // FMT_19 // ",A," // FMT_19 // ")") &
-               "* FAIL: Assertion error: ", aimag(lhs), " /= ", aimag(rhs)
-       end if
-    end if
+    ok = nearly_equal (real(lhs), real(rhs), abs_smallness, rel_smallness) &
+         .and. nearly_equal (aimag(lhs), aimag(rhs), abs_smallness, rel_smallness)
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
   end subroutine assert_equal_complex
 
 @ %def assert_equal_complex
 @
 <<Numeric utils: procedures>>=
-  subroutine assert_equal_integer (unit, lhs, rhs, description)
+  subroutine assert_equal_complexs (unit, lhs, rhs, description, &
+                                abs_smallness, rel_smallness, exit_on_fail)
     integer, intent(in) :: unit
-    integer, intent(in) :: lhs, rhs
+    complex(default), dimension(:), intent(in) :: lhs, rhs
     character(*), intent(in), optional :: description
+    real(default), intent(in), optional :: abs_smallness, rel_smallness
+    logical, intent(in), optional :: exit_on_fail
+    type(string_t) :: desc
     logical :: ok
-    ok = lhs == rhs
-    if (.not. ok) then
-       if (present(description)) then
-          write (unit, "(A,I0,A,I0)") &
-               "* FAIL: " // description // ": ", lhs, " /= ", rhs
-       else
-          write (unit, "(A,I0,A,I0)") &
-               "* FAIL: Assertion error: ", lhs, " /= ", rhs
-       end if
-    end if
-  end subroutine assert_equal_integer
+    ok = all (nearly_equal (real(lhs), real(rhs), abs_smallness, rel_smallness)) &
+         .and. all (nearly_equal (aimag(lhs), aimag(rhs), abs_smallness, rel_smallness))
+    desc = '';  if (present (description)) desc = var_str(description) // ": "
+    call assert (unit, ok, char(desc // str (lhs) // " /= " // str (rhs)), exit_on_fail)
+  end subroutine assert_equal_complexs
 
-@ %def assert_equal_integer
+@ %def assert_equal_complexs
 @ Note that this poor man's check will be disabled if someone compiles
 with [[-ffast-math]] or similar optimizations.
 <<Numeric utils: procedures>>=
@@ -952,8 +1043,14 @@ numbers close to zero defined by [[abs_smallness]].  Both might need
 adaption to specific use cases but have reasonable defaults.
 <<Numeric utils: public>>=
   public :: nearly_equal
+<<Numeric utils: interfaces>>=
+  interface nearly_equal
+     module procedure nearly_equal_real
+     module procedure nearly_equal_complex
+  end interface
+
 <<Numeric utils: procedures>>=
-  elemental function nearly_equal (a, b, abs_smallness, rel_smallness) result (r)
+  elemental function nearly_equal_real (a, b, abs_smallness, rel_smallness) result (r)
     logical :: r
     real(default), intent(in) :: a, b
     real(default), intent(in), optional :: abs_smallness, rel_smallness
@@ -976,9 +1073,19 @@ adaption to specific use cases but have reasonable defaults.
     else
        r = diff / max (abs_a, abs_b) < rel_small
     end if
-  end function nearly_equal
+  end function nearly_equal_real
 
-@ %def nearly_equal
+@ %def nearly_equal_real
+<<Numeric utils: procedures>>=
+  elemental function nearly_equal_complex (a, b, abs_smallness, rel_smallness) result (r)
+    logical :: r
+    complex(default), intent(in) :: a, b
+    real(default), intent(in), optional :: abs_smallness, rel_smallness
+    r = nearly_equal_real (real (a), real (b), abs_smallness, rel_smallness) .and. &
+        nearly_equal_real (aimag (a), aimag(b), abs_smallness, rel_smallness)
+  end function nearly_equal_complex
+
+@ %def neary_equal_complex
 @ Often we will need to check whether floats vanish:
 <<Numeric utils: public>>=
   public:: vanishes
@@ -1002,9 +1109,33 @@ adaption to specific use cases but have reasonable defaults.
   end function vanishes_complex
 
 @ %def vanishes
+@
+<<Numeric utils: public>>=
+  public :: expanded_amp2
+<<Numeric utils: procedures>>=
+  pure function expanded_amp2 (amp_tree, amp_blob) result (amp2)
+    real(default) :: amp2
+    complex(default), dimension(:), intent(in) :: amp_tree, amp_blob
+    amp2 = sum (amp_tree * conjg (amp_tree) + &
+                amp_tree * conjg (amp_blob) + &
+                amp_blob * conjg (amp_tree))
+  end function expanded_amp2
+
+@ %def expanded_amp2
+@
+<<Numeric utils: public>>=
+  public :: abs2
+<<Numeric utils: procedures>>=
+  elemental function abs2 (c) result (c2)
+    real(default) :: c2
+    complex(default), intent(in) :: c
+    c2 = real (c * conjg(c))
+  end function abs2
+
+@ %def abs2
 @ Remove all duplicates from a list of integers.
-This method does not really fit into this module. It could be part of a larger module which deals
-with list manipulations.
+This method does not really fit into this module. It could be part of a
+larger module which deals with list manipulations.
 <<Numeric utils: public>>=
   public :: remove_duplicates_from_list
 <<Numeric utils: procedures>>=
@@ -1028,4 +1159,3 @@ with list manipulations.
   end function remove_duplicates_from_list
     
 @ %def remove_duplicates_from_list
-  

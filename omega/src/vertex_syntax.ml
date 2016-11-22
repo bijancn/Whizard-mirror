@@ -1,4 +1,4 @@
-(* $Id: vertex_syntax.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* vertex_syntax.ml --
 
    Copyright (C) 1999-2016 by
 
@@ -24,39 +24,7 @@
 
 (* \thocwmodulesection{Abstract Syntax} *)
 
-type coeff = int
-type name = string
-type momentum = int
-type index = name
-
-type field =
-  { flavor : name;
-    conjugate : bool;
-    f_indices : index list }
-
-type tensor =
-  { t_name : name;
-    t_indices : index list }
-
-type t =
-| Empty
-| Field of field
-| Momentum of momentum list * index
-| Lorentz of tensor
-| Color of tensor
-| Product of t list
-| Sum of (coeff * t) list
-
-let null = Empty
-
-exception Syntax_Error of string * int * int
-
-type identifier =
-| Id_Flavor
-| Id_Momentum
-| Id_Lorentz
-| Id_Color
-| Id_Index
+exception Syntax_Error of string * Lexing.position * Lexing.position
 
 module Token =
   struct
@@ -69,9 +37,31 @@ module Token =
 
     and scripted = 
       { stem : t;
-	prefix : string list;
+	prefix : prefix list;
 	super : t list;
 	sub : t list }
+
+    and prefix =
+    | Bar | Hat | Tilde
+    | Dagger | Star
+    | Prime
+
+    let prefix_of_string = function
+      | "\\bar" | "\\overline" -> Bar
+      | "\\hat" | "\\widehat" -> Hat
+      | "\\tilde" | "\\widetilde" -> Tilde
+      | "\\dagger" -> Dagger
+      | "*" | "\\ast" -> Star
+      | "\\prime" -> Prime
+      | _ -> invalid_arg "Vertex_Syntax.Token.string_to_prefix"
+
+    let prefix_to_string = function
+      | Bar -> "\\bar"
+      | Hat -> "\\hat"
+      | Tilde -> "\\tilde"
+      | Dagger -> "\\dagger"
+      | Star -> "*"
+      | Prime -> "\\prime"
 
     let wrap_scripted = function
       | Scripted st -> st
@@ -85,7 +75,7 @@ module Token =
       if i >= 0 && i <= 9 then
 	Digit i
       else
-	invalid_arg ("digit: " ^ string_of_int i)
+	invalid_arg ("Vertex_Syntax.Token.digit: " ^ string_of_int i)
 
     let token s =
       Token s
@@ -105,12 +95,12 @@ module Token =
       | _, [], None, None -> token
       | (Digit _ | Token _ | List _) as t, _, _, _ ->
 	Scripted { stem = t;
-		   prefix = prefix;
+		   prefix =  List.map prefix_of_string prefix;
 		   super = optional super;
 		   sub = optional sub }
       | Scripted st, _, _, _ ->
 	Scripted { stem = st.stem;
-		   prefix = prefix @ st.prefix;
+		   prefix =  List.map prefix_of_string prefix @ st.prefix;
 		   super = st.super @ optional super;
 		   sub = st.sub @ optional sub }
 
@@ -213,7 +203,8 @@ module Token =
 	match t.sub with
 	| [] -> ""
 	| tl -> "_" ^ list_to_string tl in
-      String.concat "" t.prefix ^ to_string t.stem ^ super ^ sub
+      String.concat "" (List.map prefix_to_string t.prefix) ^
+	to_string t.stem ^ super ^ sub
 
     and required_space t1 t2 =
       let required_space' s1 s2 =
@@ -247,10 +238,8 @@ module Expr =
 
     type t =
     | Integer of int
-    | Sum of t list
-    | Diff of t * t
-    | Product of t list
-    | Ratio of t * t
+    | Sum of t list | Diff of t * t
+    | Product of t list | Ratio of t * t
     | Function of Token.t * t list
 
     let integer i = Integer i
@@ -312,21 +301,16 @@ module Particle =
   struct
 
     type name =
-    | Neutral of Token.t list
-    | Charged of Token.t list * Token.t list
+    | Neutral of Token.t
+    | Charged of Token.t * Token.t
 
     type attr =
-    | TeX of Token.t list
-    | TeX_Anti of Token.t list
-    | Alias of Token.t list
-    | Alias_Anti of Token.t list
-    | Fortran of Token.t list
-    | Fortran_Anti of Token.t list
-    | Spin of Expr.t
-    | Color of Token.t list
-    | Charge of Expr.t
-    | Mass of Token.t list
-    | Width of Token.t list
+    | TeX of Token.t list | TeX_Anti of Token.t list
+    | Alias of Token.t list | Alias_Anti of Token.t list
+    | Fortran of Token.t list | Fortran_Anti of Token.t list
+    | Spin of Expr.t | Charge of Expr.t
+    | Color of Token.t list * Token.t list
+    | Mass of Token.t list | Width of Token.t list
 
 (*i
     (* Combine the sets of aliases and use the
@@ -357,10 +341,9 @@ i*)
 
     let name_to_string = function
       | Neutral p ->
-	"\\neutral{" ^ Token.list_to_string p ^ "}"
+	 "\\neutral{" ^ Token.to_string p ^ "}"
       | Charged (p, ap) ->
-	"\\charged{" ^ Token.list_to_string p ^
-	  "}{" ^ Token.list_to_string ap ^ "}"
+	"\\charged{" ^ Token.to_string p ^ "}{" ^ Token.to_string ap ^ "}"
 
     let attr_to_string = function
       | TeX tl -> "\\tex{" ^ Token.list_to_string tl ^ "}"
@@ -370,7 +353,10 @@ i*)
       | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
       | Fortran_Anti tl -> "\\anti\\fortran{" ^ Token.list_to_string tl ^ "}"
       | Spin e -> "\\spin{" ^ Expr.to_string e ^ "}"
-      | Color tl -> "\\color{" ^ Token.list_to_string tl ^ "}"
+      | Color ([], rep) -> "\\color{" ^ Token.list_to_string rep ^ "}"
+      | Color (group, rep) ->
+	 "\\color[" ^ Token.list_to_string group ^ "]{"	 ^
+	   Token.list_to_string rep ^ "}"
       | Charge e -> "\\charge{" ^ Expr.to_string e ^ "}"
       | Mass tl -> "\\mass{" ^ Token.list_to_string tl ^ "}"
       | Width tl -> "\\width{" ^ Token.list_to_string tl ^ "}"
@@ -390,7 +376,7 @@ module Parameter =
     | Fortran of Token.t list
 
     type t' =
-      { name : Token.t list;
+      { name : Token.t;
 	value : Expr.t;
 	attr : attr list}
 
@@ -407,7 +393,7 @@ module Parameter =
 i*)
 
     type t =
-    | Input of t'
+    | Parameter of t'
     | Derived of t'
 
     let attr_to_string = function
@@ -416,41 +402,103 @@ i*)
       | Fortran tl -> "\\fortran{" ^ Token.list_to_string tl ^ "}"
 
     let to_string' p =
-      "{" ^ Token.list_to_string p.name ^ "}{" ^
-	Expr.to_string p.value ^ "}" ^
+      "{" ^ Token.to_string p.name ^ "}{" ^ Expr.to_string p.value ^ "}" ^
 	String.concat "" (List.map attr_to_string p.attr)
 
     let to_string = function
-      | Input p -> "\\parameter" ^ to_string' p
+      | Parameter p -> "\\parameter" ^ to_string' p
       | Derived p -> "\\derived" ^ to_string' p
 
   end
 
-module Color =
+module Lie =
   struct
 
-    type t =
-    | U of int
-    | SU of int
-    | O of int
-    | SO of int
+    type group =
+    | SU of int | U of int
+    | SO of int | O of int
     | Sp of int
-    | E6 | E7 | E8
-    | F4 | G2
-      
-    type r = int
+    | E6 | E7 | E8 | F4 | G2
+
+    module T = Token
+
+    let default_group = SU 3
+
+    let invalid_group s =
+      invalid_arg ("Vertex.Lie.group_of_string: " ^ s)
+
+    let series s name n =
+      match name, n with
+      | "SU", n when n > 1 -> SU n
+      | "U", n when n >= 1  -> U n
+      | "SO", n when n > 1  -> SO n
+      | "O", n when n >= 1  -> O n
+      | "Sp", n when n >= 2  -> Sp n
+      | _ -> invalid_group s
+
+    let exceptional s name n =
+      match name, n with
+      | "E", 6 -> E6
+      | "E", 7 -> E7
+      | "E", 8 -> E8
+      | "F", 4 -> F4
+      | "G", 2 -> G2
+      | _ -> invalid_group s
+
+    let group_of_string s =
+      try
+	Scanf.sscanf s "%_[{]%[SUOp](%d)%_[}]%!" (series s)
+      with
+      | _ ->
+	 try
+	   Scanf.sscanf s "%_[{]%[EFG]_%d%_[}]%!" (exceptional s)
+	 with
+	 | _ -> invalid_group s
+
+    let group_to_string = function
+      | SU n -> "SU(" ^ string_of_int n ^ ")"
+      | U n -> "U(" ^ string_of_int n ^ ")"
+      | SO n -> "SO(" ^ string_of_int n ^ ")"
+      | O n -> "O(" ^ string_of_int n ^ ")"
+      | Sp n -> "Sp(" ^ string_of_int n ^ ")"
+      | E6 -> "E6"
+      | E7 -> "E7"
+      | E8 -> "E8"
+      | F4 -> "F4"
+      | G2 -> "G2"
+
+    type rep = int
+
+    let rep_of_string group rep =
+      match group with
+      | SU 3 ->
+	 begin
+	   match rep with
+	   | "3" -> 3
+	   | "\\bar 3" -> -3
+	   | "8" -> 8
+	   | _ ->
+	      invalid_arg ("Vertex.Lie.rep_of_string:" ^
+			     " unsupported representation " ^ rep ^
+			     " of " ^ group_to_string group)
+	 end
+      | _ -> invalid_arg ("Vertex.Lie.rep_of_string:" ^
+			    " unsupported group " ^ group_to_string group)
+
+    let rep_to_string r =
+      string_of_int r
+
+    type t = group * rep
 
   end
 
 module Lorentz =
   struct
 
-    type t =
-    | Vector
-    | Dirac
-    | ConjDirac
-    | Weyl
-    | ConjWeyl
+    type rep =
+    | Scalar | Vector
+    | Dirac | ConjDirac | Majorana
+    | Weyl | ConjWeyl
 
   end
 
@@ -458,21 +506,27 @@ module Index =
   struct
 
     type attr =
-    | Color of Token.t list
-    | Flavor of Token.t list
+    | Color of Token.t list * Token.t list
+    | Flavor of Token.t list * Token.t list
     | Lorentz of Token.t list
 
     type t =
-      { name : Token.t list;
+      { name : Token.t;
 	attr : attr list }
 
     let attr_to_string = function
-      | Color tl -> "\\color{" ^ Token.list_to_string tl ^ "}"
-      | Flavor tl -> "\\flavor{" ^ Token.list_to_string tl ^ "}"
+      | Color ([], rep) -> "\\color{" ^ Token.list_to_string rep ^ "}"
+      | Color (group, rep) ->
+	 "\\color[" ^ Token.list_to_string group ^ "]{"	 ^
+	   Token.list_to_string rep ^ "}"
+      | Flavor ([], rep) -> "\\flavor{" ^ Token.list_to_string rep ^ "}"
+      | Flavor (group, rep) ->
+	 "\\flavor[" ^ Token.list_to_string group ^ "]{"	 ^
+	   Token.list_to_string rep ^ "}"
       | Lorentz tl -> "\\lorentz{" ^ Token.list_to_string tl ^ "}"
 
     let to_string i =
-      "\\index{" ^ Token.list_to_string i.name ^ "}" ^
+      "\\index{" ^ Token.to_string i.name ^ "}" ^
 	String.concat "" (List.map attr_to_string i.attr)
   end
 
@@ -480,22 +534,28 @@ module Tensor =
   struct
 
     type attr =
-    | Color of Token.t list
-    | Flavor of Token.t list
+    | Color of Token.t list * Token.t list
+    | Flavor of Token.t list * Token.t list
     | Lorentz of Token.t list
 
     type t =
-      { name : Token.t list;
+      { name : Token.t;
 	attr : attr list }
 
     let attr_to_string = function
-      | Color tl -> "\\color{" ^ Token.list_to_string tl ^ "}"
-      | Flavor tl -> "\\flavor{" ^ Token.list_to_string tl ^ "}"
+      | Color ([], rep) -> "\\color{" ^ Token.list_to_string rep ^ "}"
+      | Color (group, rep) ->
+	 "\\color[" ^ Token.list_to_string group ^ "]{"	 ^
+	   Token.list_to_string rep ^ "}"
+      | Flavor ([], rep) -> "\\flavor{" ^ Token.list_to_string rep ^ "}"
+      | Flavor (group, rep) ->
+	 "\\flavor[" ^ Token.list_to_string group ^ "]{"	 ^
+	   Token.list_to_string rep ^ "}"
       | Lorentz tl -> "\\lorentz{" ^ Token.list_to_string tl ^ "}"
 
-    let to_string i =
-      "\\tensor{" ^ Token.list_to_string i.name ^ "}" ^
-	String.concat "" (List.map attr_to_string i.attr)
+    let to_string t =
+      "\\tensor{" ^ Token.to_string t.name ^ "}" ^
+	String.concat "" (List.map attr_to_string t.attr)
   end
 
 module File_Tree =
@@ -529,8 +589,14 @@ module File =
 
     let empty = []
 
+    (* We allow to include a file more than once, but we don't
+       optimize by memoization, because we assume that this will
+       be rare.  However to avoid infinite loops when including
+       a child, we make sure that it has not yet been included as
+       a parent.  *)
+
     let expand_includes parser unexpanded =
-      let rec expand_includes' unexpanded expanded =
+      let rec expand_includes' parents unexpanded expanded =
 	List.fold_right (fun decl decls ->
 	  match decl with
 	  | File_Tree.Particle p -> Particle p :: decls
@@ -539,9 +605,12 @@ module File =
 	  | File_Tree.Tensor t -> Tensor t :: decls
 	  | File_Tree.Vertex (e, v) -> Vertex (e, v) :: decls
 	  | File_Tree.Include f ->
-	    expand_includes' (parser f) decls)
+	     if List.mem f parents then
+	       invalid_arg ("cyclic \\include{" ^ f ^ "}")
+	     else
+	       expand_includes' (f:: parents) (parser f) decls)
 	  unexpanded expanded in
-      expand_includes' unexpanded []
+      expand_includes' [] unexpanded []
 
     let to_strings decls =
       List.map

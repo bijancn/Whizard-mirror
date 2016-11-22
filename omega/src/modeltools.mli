@@ -1,4 +1,4 @@
-(* $Id: modeltools.mli 7469 2016-03-13 16:44:17Z ohl $
+(* modeltools.mli --
 
    Copyright (C) 1999-2016 by
 
@@ -68,6 +68,8 @@ module Constant : functor (M : Model.T) -> Constant with type t = M.constant
 module Mutable : functor (FGC : sig type f and g and c end) ->
   Model.Mutable with type flavor = FGC.f and type gauge = FGC.g 
   and type constant = FGC.c
+
+module Static (M : Model.T) : Model.Mutable
 
 (*i
  *  Local Variables:

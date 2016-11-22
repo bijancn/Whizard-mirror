@@ -1,4 +1,4 @@
-(* $Id: combinatorics.mli 7444 2016-02-17 15:37:20Z jr_reuter $
+(* combinatorics.mli --
 
    Copyright (C) 1999-2016 by
 
@@ -152,13 +152,18 @@ val permute_tensor_signed : 'a seq list -> (int * 'a seq list) list
 val permute_tensor_even : 'a seq list -> 'a seq list list
 val permute_tensor_odd : 'a seq list -> 'a seq list list
 
+val sign : ?cmp:('a -> 'a -> int) -> 'a seq -> int
+
 (* \thocwmodulesubsection{Sorting} *)
 
-val sort_signed : ('a -> 'a -> int) -> 'a list -> int * 'a list
+val sort_signed : ?cmp:('a -> 'a -> int) -> 'a seq -> int * 'a seq
+
+(* \thocwmodulesubsection{Unit Tests} *)
+
+module Test : sig val suite : OUnit.test end
 
 (*i
  *  Local Variables:
- *  mode:caml
  *  indent-tabs-mode:nil
  *  page-delimiter:"^(\\* .*\n"
  *  End:

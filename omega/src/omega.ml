@@ -1,4 +1,4 @@
-(* $Id: omega.ml 7469 2016-03-13 16:44:17Z ohl $
+(* omega.ml --
 
    Copyright (C) 1999-2016 by
 
@@ -46,6 +46,12 @@ module Make (Fusion_Maker : Fusion.Maker) (Target_Maker : Target.Maker) (M : Mod
     type flavor = M.flavor
 
     module Proc = Process.Make(M)
+
+(* \begin{dubious}
+     We must have initialized the vertices \emph{before}
+     applying [Fusion_Maker], at least if we want to continue
+     using the vertex cache!
+   \end{dubious} *)
 
 (* \begin{dubious}
      NB: this causes the constant initializers in [Fusion_Maker] more than once.
@@ -291,10 +297,6 @@ i*)
 	  wf_to_TeX momentum_to_TeX variable' format_p
 	  (List.map colored_only (amplitudes_by_flavor amplitudes))
 
-    let version () =
-      List.iter (fun s -> prerr_endline ("RCS: " ^ s))
-        (ThoList.flatmap RCS.summary (CM.rcs :: T.rcs_list @ F.rcs_list))
-
     let debug (str, descr, opt, var) =
       [ "-warning:" ^ str, Arg.Unit (fun () -> var := (opt, false):: !var),
         "         check " ^ descr ^ " and print warning on error";
@@ -334,7 +336,8 @@ i*)
 (* \thocwmodulesection{Main Program} *)
 
     let main () =
-      let usage =
+      (* Delay evaluation of [M.external_flavors ()]! *)
+      let usage () =
         "usage: " ^ Sys.argv.(0) ^
         " [options] [" ^
 	  String.concat "|" (List.map M.flavor_to_string 
@@ -357,7 +360,7 @@ i*)
       and poles = ref false
       and dag_out = ref None
       and dag0_out = ref None in
-      Arg.parse
+      Options.parse
         (Options.cmdline "-target:" T.options @
          Options.cmdline "-model:" M.options @
          Options.cmdline "-fusion:" CF.options @
@@ -398,8 +401,6 @@ i*)
            "file    produce FeynMP output for Feynman and color flow diagrams");
           ("-diagrams_LaTeX", Arg.Set diagrams_LaTeX,
            "    enclose FeynMP output in LaTeX wrapper");
-          ("-revision", Arg.Unit version,
-           "          print revision control information");
           ("-quiet", Arg.Set quiet,
            "             don't print a summary");
           ("-summary", Arg.Clear write,
@@ -415,7 +416,7 @@ i*)
 (*i       ("-T", Arg.Int Topology.Binary.debug_triplet, "");
           ("-P", Arg.Int Topology.Binary.debug_partition, "")])
 i*)
-        (fun _ -> prerr_endline usage; exit 1)
+        (fun _ -> prerr_endline (usage ()); exit 1)
         usage;
 
       let cmdline =
@@ -457,11 +458,13 @@ i*)
           F.initialize_cache dir;
           exit 0
       | _, _, true ->
-          T.parameters_to_channel output_channel;
+          if !write then
+            T.parameters_to_channel output_channel;
           exit 0
       | [], _, false ->
-          T.amplitudes_to_channel cmdline output_channel !checks CF.empty;
-          exit 0
+         if !write then
+           T.amplitudes_to_channel cmdline output_channel !checks CF.empty;
+         exit 0
       | _, _, false ->
 
         let selectors =

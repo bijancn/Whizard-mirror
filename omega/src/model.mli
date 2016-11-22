@@ -1,4 +1,4 @@
-(* $Id: model.mli 7444 2016-02-17 15:37:20Z jr_reuter $
+(* model.mli --
 
    Copyright (C) 1999-2016 by
 
@@ -68,7 +68,8 @@ module type T =
      Nevertheless: [vertices] is a candidate for removal, b/c we can
      build a smarter [Colorize] functor acting on [(fuse2, fuse3, fusen)].
      It can support an arbitrary numer of color lines.  But we have to test
-     whether it is efficient enough.
+     whether it is efficient enough.  And we have to make sure that this
+     wouldn't break the UFO interface.
    \end{dubious} *)
     type constant 
 
@@ -119,9 +120,6 @@ module type T =
 (* Model specific options. *)
     val options : Options.t
 
-(* Revision control information. *)
-    val rcs : RCS.t
-
   end
 
 (* In addition to hardcoded models, we can have models that are
@@ -132,6 +130,8 @@ module type T =
 module type Mutable =
   sig
     include T
+
+    val init : unit -> unit
 
 (* Export only one big initialization function to discourage
    partial initializations.  Labels make this usable. *)
@@ -146,14 +146,10 @@ module type Mutable =
         conjugate:(flavor -> flavor) ->
         fermion:(flavor -> int) ->
         max_degree:int ->
-        vertices:(unit ->
-          ((((flavor * flavor * flavor) * constant Coupling.vertex3 * constant) list)
-             * (((flavor * flavor * flavor * flavor) * constant Coupling.vertex4 * constant) list)
-             * (((flavor list) * constant Coupling.vertexn * constant) list))) ->
-        fuse:((flavor -> flavor -> (flavor * constant Coupling.t) list)
-                * (flavor -> flavor -> flavor ->
-                  (flavor * constant Coupling.t) list)
-                * (flavor list -> (flavor * constant Coupling.t) list)) ->
+        vertices:
+            ((((flavor * flavor * flavor) * constant Coupling.vertex3 * constant) list)
+               * (((flavor * flavor * flavor * flavor) * constant Coupling.vertex4 * constant) list)
+               * (((flavor list) * constant Coupling.vertexn * constant) list)) ->
         flavors:((string * flavor list) list) ->
         parameters:(unit -> constant Coupling.parameters) ->
         flavor_of_string:(string -> flavor) ->

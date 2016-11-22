@@ -1,5 +1,4 @@
 # Makefile.am -- Makefile for O'Mega within and without WHIZARD
-# $Id: Makefile.am 7444 2016-02-17 15:37:20Z jr_reuter $
 ##
 ## Process this file with automake to produce Makefile.in
 ##
@@ -31,7 +30,7 @@
 # Build the O'Mega Fortran library using libtool
 # (?use pkglib_ instead of lib_ to make the -rpath and *.lai business work ...)
 lib_LTLIBRARIES = libomega_core.la
-moduleexecincludedir = $(pkgincludedir)
+moduleexecincludedir = $(pkgincludedir)/../omega
 nodist_moduleexecinclude_DATA = $(OMEGALIB_MOD)
 
 libomega_core_la_SOURCES = $(OMEGALIB_F90)
@@ -53,18 +52,18 @@ endif
 
 # Compiled interfaces and libraries for out-of-tree compilation of models
 if OCAML_AVAILABLE
-camllibdir = $(pkglibdir)/caml
+camllibdir = $(pkglibdir)/../omega/caml
 nodist_camllib_DATA = \
 	omega.cmi fusion.cmi targets.cmi coupling.cmi modeltools.cmi color.cmi \
-	options.cmi rCS.cmi model.cmi \
+	options.cmi model.cmi \
 	omega_core.cmxa omega_core.a omega_targets.cmxa omega_targets.a \
 	charges.cmi
 endif
 
 ########################################################################
 
-include $(top_srcdir)/src/Makefile.ocaml
-include $(top_srcdir)/src/Makefile.sources
+include $(top_srcdir)/omega/src/Makefile.ocaml
+include $(top_srcdir)/omega/src/Makefile.sources
 
 if OCAML_AVAILABLE 
 omega_core.a: omega_core.cmxa
@@ -90,11 +89,14 @@ omega_models.cma: $(OMEGA_MODELS_CMO)
 cascade_lexer.mli: cascade_lexer.ml cascade_parser.cmi
 	$(OCAMLC) -i $< | $(GREP) 'val token' >$@
 
-comphep_lexer.mli: comphep_lexer.ml comphep_parser.cmi
-	$(OCAMLC) -i $< | $(GREP) 'val token' >$@
-
 vertex_lexer.mli: vertex_lexer.ml vertex_parser.cmi
-	$(OCAMLC) -i $< | $(GREP) 'val token' >$@
+	$(OCAMLC) -i $< | $(EGREP) 'val (token|init_position)' >$@
+
+uFO_lexer.mli: uFO_lexer.ml uFO_parser.cmi
+	$(OCAMLC) -i $< | $(EGREP) 'val (token|init_position)' >$@
+
+uFOx_lexer.mli: uFOx_lexer.ml uFOx_parser.cmi
+	$(OCAMLC) -i $< | $(EGREP) 'val (token|init_position)' >$@
 
 endif
 
@@ -161,7 +163,7 @@ if OCAML_AVAILABLE
 
 @am__include@ @am__quote@Makefile.depend_ocaml@am__quote@
 
-PARSERS = cascade comphep vertex
+PARSERS = cascade vertex uFO uFOx
 
 Makefile.depend_ocaml: $(OMEGA_CAML_PRIMARY)
 	@rm -f $@

@@ -1,4 +1,4 @@
-(* $Id: modellib_MSSM.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* modellib_MSSM.ml --
 
    Copyright (C) 1999-2016 by
 
@@ -22,14 +22,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
-(* $Id: modellib_MSSM.ml 7444 2016-02-17 15:37:20Z jr_reuter $ *)
-
-let rcs_file = RCS.parse "Modellib_MSSM" ["MSSM"]
-    { RCS.revision = "$Revision: 7444 $";
-      RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
-      RCS.author = "$Author: jr_reuter $";
-      RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/modellib_MSSM.ml $" }
+(* modellib_MSSM.ml -- *)
 
 (* \thocwmodulesection{Minimal Supersymmetric Standard Model} *)
 
@@ -99,8 +92,6 @@ module MSSM_Hgg : MSSM_flags =
 
 module MSSM (Flags : MSSM_flags) = 
   struct
-    let rcs = RCS.rename rcs_file "Modellib_MSSM.MSSM"
-        [ "MSSM" ]
 
     open Coupling
 
@@ -115,7 +106,9 @@ module MSSM (Flags : MSSM_flags) =
         "custom_width", Arg.String (fun f -> default_width := Custom f),
         "use custom width";
         "cancel_widths", Arg.Unit (fun () -> default_width := Vanishing),
-        "use vanishing width"]
+        "use vanishing width";
+        "cms_width", Arg.Unit (fun () -> default_width := Complex_Mass),
+        "use complex mass scheme"]
 
     type gen = 
       | G of int | GG of gen*gen

@@ -1,11 +1,10 @@
-(* $Id: omega_unit.ml 4015 2013-01-03 16:04:18Z jr_reuter $
+(* omega_unit.ml --
 
-   Copyright (C) 1999-2013 by
+   Copyright (C) 1999-2014 by
 
        Wolfgang Kilian <kilian@physik.uni-siegen.de>
        Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
        Juergen Reuter <juergen.reuter@desy.de>
-       Christian Speckner <cnspeckn@googlemail.com>
 
    WHIZARD is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by
@@ -22,11 +21,11 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
 
 module M = Modellib_SM.SM(Modellib_SM.SM_no_anomalous)
-module List_Test = Permutation.Test (Permutation.Using_Lists)
-module Array_Test = Permutation.Test (Permutation.Using_Arrays)
-module Vertex_Test = Vertex.Test (M)
+module List_Test = Permutation.Test(Permutation.Using_Lists)
+module Array_Test = Permutation.Test(Permutation.Using_Arrays)
+module Vertex_Test = Vertex.Test(M)
 module Parser_Test = Vertex.Parser_Test
-module Model_Test = Vertex.Model_Test
+module Model_Test = Vertex.Modelfile_Test
 
 let _ =
   let my_name = Sys.argv.(0) in
@@ -36,11 +35,12 @@ let _ =
   and verbose = ref false
   and usage = "usage: " ^ my_name ^ " ..." in
   Arg.parse
-    [ ("-skip-tests", Arg.Set skip_tests, "");
-      ("-skip-example", Arg.Set skip_example, "");
-      ("-timing", Arg.Set timing, "");
-      ("-v", Arg.Set verbose, "");
-      ("-verbose", Arg.Set verbose, "") ]
+    (Arg.align 
+       [ ("-skip-tests", Arg.Set skip_tests, " skip the tests");
+	 ("-skip-example", Arg.Set skip_example, " skip the example");
+	 ("-timing", Arg.Set timing, " provide timing information");
+	 ("-v", Arg.Set verbose, " be more verbose");
+	 ("-verbose", Arg.Set verbose, " be more verbose") ])
     (fun s -> raise (Arg.Bad s))
     usage;
   if not !skip_tests then begin

@@ -1,4 +1,4 @@
-/* $Id: vertex_parser.mly 7444 2016-02-17 15:37:20Z jr_reuter $
+/* vertex_parser.mly --
 
    Copyright (C) 1999-2016 by
 
@@ -37,7 +37,8 @@ module X = Vertex_syntax.Tensor
 module F = Vertex_syntax.File_Tree
 
 let parse_error msg =
-  raise (Vertex_syntax.Syntax_Error (msg, symbol_start (), symbol_end ()))
+  raise (Vertex_syntax.Syntax_Error
+	   (msg, symbol_start_pos (), symbol_end_pos ()))
 
 let invalid_parameter_attr () =
   parse_error "invalid parameter attribute"
@@ -57,7 +58,7 @@ let invalid_parameter_attr () =
 
 %token NEUTRAL CHARGED
 %token ANTI ALIAS TEX FORTRAN SPIN COLOR CHARGE MASS WIDTH
-%token INPUT DERIVED
+%token PARAMETER DERIVED
 %token TENSOR INDEX FLAVOR LORENTZ
 %token VERTEX
 
@@ -90,25 +91,38 @@ declaration:
 ;
 
 particle:
- | NEUTRAL token_list_arg particle_attributes
+ | NEUTRAL token_arg particle_attributes
      { { P.name = P.Neutral $2; P.attr = $3 } }
- | CHARGED token_list_arg_pair particle_attributes
+ | CHARGED token_arg_pair particle_attributes
      { let p, ap = $2 in
        { P.name = P.Charged (p, ap); P.attr = $3 } }
 ;
 
 expr_arg:
  | LBRACKET expr RBRACKET { $2 }
+ | LBRACKET expr RBRACE   { parse_error "expected `]', found `}'" }
  | LBRACKET expr END      { parse_error "missing `]'" }
 ;
 
-token_list_arg:
- | LBRACE token_list RBRACE { $2 }
- | LBRACE token_list END    { parse_error "missing `}'" }
+token_arg:
+ | LBRACE scripted_token RBRACE   { $2 }
+ | LBRACE scripted_token END      { parse_error "missing `}'" }
 ;
 
-token_list_arg_pair:
- | token_list_arg token_list_arg { ($1, $2) }
+token_arg_pair:
+ | token_arg token_arg { ($1, $2) }
+;
+
+token_list_arg:
+ | LBRACE token_list RBRACE   { $2 }
+ | LBRACE token_list END      { parse_error "missing `}'" }
+/* This results in a reduce/reduce conflict:\hfil\goodbreak
+\verb+ | LBRACE token_list RBRACKET { parse_error "expected `}', found `]'" }+ */
+;
+
+token_list_opt_arg:
+ | LBRACKET token_list RBRACKET   { $2 }
+ | LBRACKET token_list END        { parse_error "missing `}'" }
 ;
 
 particle_attributes:
@@ -117,23 +131,24 @@ particle_attributes:
 ;
 
 particle_attribute:
- |      ALIAS   token_list_arg   { P.Alias $2 }
- | ANTI ALIAS   token_list_arg   { P.Alias $3 }
- |      TEX     token_list_arg   { P.TeX $2 }
- | ANTI TEX     token_list_arg   { P.TeX_Anti $3 }
- |      FORTRAN token_list_arg   { P.Fortran $2 }
- | ANTI FORTRAN token_list_arg   { P.Fortran_Anti $3 }
- |      SPIN    arg              { P.Spin $2 }
- |      COLOR   token_list_arg   { P.Color $2 }
- |      CHARGE  arg              { P.Charge $2 }
- |      MASS    token_list_arg   { P.Mass $2 }
- |      WIDTH   token_list_arg   { P.Width $2 }
+ |      ALIAS      token_list_arg   		       { P.Alias $2 }
+ | ANTI ALIAS      token_list_arg   		       { P.Alias $3 }
+ |      TEX        token_list_arg   		       { P.TeX $2 }
+ | ANTI TEX        token_list_arg   		       { P.TeX_Anti $3 }
+ |      FORTRAN    token_list_arg   		       { P.Fortran $2 }
+ | ANTI FORTRAN    token_list_arg   		       { P.Fortran_Anti $3 }
+ |      SPIN       arg              		       { P.Spin $2 }
+ |      COLOR                         token_list_arg   { P.Color ([], $2) }
+ |      COLOR      token_list_opt_arg token_list_arg   { P.Color ($2, $3) }
+ |      CHARGE     arg              		       { P.Charge $2 }
+ |      MASS       token_list_arg   		       { P.Mass $2 }
+ |      WIDTH      token_list_arg   		       { P.Width $2 }
 ;
 
 parameter:
- | INPUT   token_list_arg arg parameter_attributes
-     { V.Input { V.name = $2; V.value = $3; V.attr = $4 } }
- | DERIVED token_list_arg arg parameter_attributes
+ | PARAMETER token_arg arg parameter_attributes
+     { V.Parameter { V.name = $2; V.value = $3; V.attr = $4 } }
+ | DERIVED   token_arg arg parameter_attributes
      { V.Derived { V.name = $2; V.value = $3; V.attr = $4 } }
 ;
 
@@ -155,7 +170,7 @@ parameter_attribute:
 ;
 
 index:
- | INDEX token_list_arg index_attributes { { I.name = $2; I.attr = $3 } }
+ | INDEX token_arg index_attributes { { I.name = $2; I.attr = $3 } }
 ;
 
 index_attributes:
@@ -164,13 +179,15 @@ index_attributes:
 ;
 
 index_attribute:
- | COLOR   token_list_arg           { I.Color $2 }
- | FLAVOR  token_list_arg           { I.Flavor $2 }
- | LORENTZ token_list_arg           { I.Lorentz $2 }
+ | COLOR                      token_list_arg { I.Color ([], $2) }
+ | COLOR  token_list_opt_arg  token_list_arg { I.Color ($2, $3) }
+ | FLAVOR                     token_list_arg { I.Flavor ([], $2) }
+ | FLAVOR token_list_opt_arg  token_list_arg { I.Flavor ($2, $3) }
+ | LORENTZ                    token_list_arg { I.Lorentz $2 }
 ;
 
 tensor:
- | TENSOR token_list_arg tensor_attributes { { X.name = $2; X.attr = $3 } }
+ | TENSOR token_arg tensor_attributes { { X.name = $2; X.attr = $3 } }
 ;
 
 tensor_attributes:
@@ -179,27 +196,37 @@ tensor_attributes:
 ;
 
 tensor_attribute:
- | COLOR   token_list_arg           { X.Color $2 }
- | FLAVOR  token_list_arg           { X.Flavor $2 }
- | LORENTZ token_list_arg           { X.Lorentz $2 }
+ | COLOR                      token_list_arg { X.Color ([], $2) }
+ | COLOR  token_list_opt_arg  token_list_arg { X.Color ($2, $3) }
+ | FLAVOR                     token_list_arg { X.Flavor ([], $2) }
+ | FLAVOR token_list_opt_arg  token_list_arg { X.Flavor ($2, $3) }
+ | LORENTZ                    token_list_arg { X.Lorentz $2 }
 ;
 
 vertex:
- | VERTEX token_list_arg          { (E.integer 1, T.list $2) }
- | VERTEX expr_arg token_list_arg { ($2, T.list $3) }
- | VERTEX expr_arg LBRACE RBRACE  { ($2, T.list []) }
- | VERTEX expr_arg LBRACE END     { parse_error "missing `}'" }
+ | VERTEX token_list_arg           { (E.integer 1, T.list $2) }
+ | VERTEX expr_arg token_list_arg  { ($2, T.list $3) }
+ | VERTEX expr_arg LBRACE RBRACE   { ($2, T.list []) }
+ | VERTEX expr_arg LBRACE END      { parse_error "missing `}'" }
+ | VERTEX not_arg_or_token_list    { parse_error "expected `[' or `{'" }
+/* This results in a shift/reduce conflict:\hfil\goodbreak
+\verb+ | VERTEX expr_arg LBRACE RBRACKET { parse_error "expected `}', found `]'" }+ */
 ;
 
 expr:
  | integer                 	{ E.integer $1 }
  | LPAREN expr RPAREN      	{ $2 }
+ | LPAREN expr RBRACKET      	{ parse_error "expected `)', found `]'" }
+ | LPAREN expr RBRACE      	{ parse_error "expected `)', found `}'" }
  | LPAREN expr END      	{ parse_error "missing `)'" }
  | expr PLUS expr          	{ E.add $1 $3 }
  | expr MINUS expr         	{ E.sub $1 $3 }
  | expr TIMES expr         	{ E.mult $1 $3 }
  | expr DIV expr           	{ E.div $1 $3 }
  | bare_scripted_token arg_list { E.apply $1 $2 }
+/* Making `\verb+*+' optional introduces \emph{many}
+   shift/reduce and reduce/reduce conflicts:\hfil\goodbreak
+\verb+ | expr expr { E.mult $1 $2 }+ */
 ;
 
 arg_list:
@@ -208,8 +235,9 @@ arg_list:
 ;
 
 arg:
- | LBRACE expr RBRACE { $2 }
- | LBRACE expr END    { parse_error "missing `}'" }
+ | LBRACE expr RBRACE   { $2 }
+ | LBRACE expr RBRACKET { parse_error "expected `}', found `]'" }
+ | LBRACE expr END      { parse_error "missing `}'" }
 ;
 
 integer:
@@ -223,6 +251,9 @@ token:
  | LBRACE scripted_token END               { parse_error "missing `}'" }
  | LBRACE scripted_token token_list RBRACE { T.list ($2 :: $3) }
  | LBRACE scripted_token token_list END    { parse_error "missing `}'" }
+/* This results in a shift/reduce conflict because
+   RBRACKET is a bare token:\hfil\goodbreak
+\verb+ | LBRACE scripted_token RBRACKET     { parse_error "expected `}', found `]'" }+ */
 ;
 
 token_list:
@@ -252,11 +283,15 @@ optional_scripts:
 super:
  | SUPER token  { Some $2 }
  | SUPER RBRACE { parse_error "superscript can't start with `}'" }
+/* This results in many reduce/reduce conflicts:\hfil\goodbreak
+\verb+ | SUPER RBRACKET { parse_error "superscript can't start with `]'" }+ */
 ;
 
 sub:
  | SUB token    { Some $2 }
- | SUB RBRACE   { parse_error "superscript can't start with `}'" }
+ | SUB RBRACE   { parse_error "subscript can't start with `}'" }
+/* This results in many reduce/reduce conflicts:\hfil\goodbreak
+\verb+ | SUB RBRACKET { parse_error "subscript can't start with `]'" }+ */
 ;
 
 prefixes:
@@ -289,6 +324,17 @@ bare_token:
  | COMMA    { T.token "," }
  | LPAREN   { T.token "(" }
  | RPAREN   { T.token ")" }
- | LBRACKET { T.token "[" }
- | RBRACKET { T.token "]" }
+
+not_arg_or_token_list:
+ | DIGIT    { () }
+ | CHAR     { () }
+ | TOKEN    { () }
+ | PLUS     { () }
+ | MINUS    { () }
+ | TIMES    { () }
+ | DIV      { () }
+ | COMMA    { () }
+ | RPAREN   { () }
+ | RBRACKET { () }
+ | RBRACE   { () }
 ;

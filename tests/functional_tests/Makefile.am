@@ -159,12 +159,20 @@ TESTS_REQ_OCAML = \
     smtest_13.run \
     smtest_14.run \
     smtest_15.run \
-    mssmtest.run \
+    mssmtest_1.run \
+    mssmtest_2.run \
+    sm_cms_1.run \
     nlo_1.run \
     nlo_2.run \
     nlo_3.run \
     nlo_4.run \
+    nlo_decay_1.run \
+    fks_res_1.run \
+    fks_res_2.run \
+    fks_res_3.run \
     openloops_1.run \
+    openloops_2.run \
+    openloops_3.run \
     powheg_1.run \
     spincor_1.run \
     show_1.run \
@@ -222,7 +230,8 @@ TESTS_REQ_OCAML = \
     parton_shower_2.run \
     mlm_matching_fsr.run \
     user_cuts.run \
-    user_prc_threshold.run \
+    user_prc_threshold_1.run \
+    user_prc_threshold_2.run \
     $(TESTS_USER_STRFUN) 
 
 XFAIL_TESTS_REQ_OCAML = \
@@ -242,6 +251,10 @@ TESTS_REQ_HEPMC = \
     hepmc_9.run \
     hepmc_10.run
 XFAIL_TESTS_REQ_HEPMC =
+
+TESTS_REQ_LCIO = \
+    lcio_1.run
+XFAIL_TESTS_REQ_LCIO =
 
 TESTS_REQ_LHAPDF5 = \
     lhapdf5.run
@@ -279,6 +292,7 @@ TEST_DRIVERS_RUN = \
     $(TESTS_REQ_LHAPDF5) \
     $(TESTS_REQ_LHAPDF6) \
     $(TESTS_REQ_HEPMC) \
+    $(TESTS_REQ_LCIO) \
     $(TESTS_REQ_FASTJET) \
     $(TESTS_REQ_PYTHIA6) \
     $(TESTS_REQ_EV_ANA) \
@@ -300,6 +314,9 @@ XFAIL_TESTS += $(XFAIL_TESTS_REQ_OCAML)
 
 TESTS += $(TESTS_REQ_HEPMC)
 XFAIL_TESTS += $(XFAIL_TESTS_REQ_HEPMC)
+
+TESTS += $(TESTS_REQ_LCIO)
+XFAIL_TESTS += $(XFAIL_TESTS_REQ_LCIO)
 
 TESTS += $(TESTS_REQ_FASTJET)
 XFAIL_TESTS += $(XFAIL_TESTS_REQ_FASTJET)
@@ -327,17 +344,17 @@ EXTRA_DIST = $(TEST_DRIVERS_SH) \
 
 VPATH = $(srcdir)
 
-SUFFIXES = .sh .run 
+SUFFIXES = .sh .run
 
 .sh.run:
 	@rm -f $@
 	@if test -f $(top_builddir)/share/tests/functional_tests/$*.sin; then \
-	  $(SED) 's|@script@|$(top_builddir)/share/tests/functional_tests/$*|g' $< > $@; \
+		$(SED) 's|@script@|$(top_builddir)/share/tests/functional_tests/$*|g' $< > $@; \
 	elif test -f $(top_srcdir)/share/tests/functional_tests/$*.sin; then \
-	  $(SED) 's|@script@|$(top_srcdir)/share/tests/functional_tests/$*|g' $< > $@; \
+		$(SED) 's|@script@|$(top_srcdir)/share/tests/functional_tests/$*|g' $< > $@; \
 	else \
-	  echo "$*.sin not found!" 1>&2; \
-	  exit 2; \
+		echo "$*.sin not found!" 1>&2; \
+		exit 2; \
 	fi
 	@chmod +x $@
 
@@ -391,6 +408,11 @@ qcdtest_1.run qcdtest_2.run qcdtest_3.run qcdtest_4.run qcdtest_5.run qcdtest_6.
 OMEGA_QCD = $(top_builddir)/omega/bin/omega_QCD.$(WT_OCAML_NATIVE_EXT)
 omega_QCD.$(WT_OMEGA_CACHE_SUFFIX): $(OMEGA_QCD)
 	$(OMEGA_QCD) -initialize .
+
+mssmtest_1.run mssmtest_2.run: omega_MSSM.$(WT_OMEGA_CACHE_SUFFIX)
+OMEGA_MSSM = $(top_builddir)/omega/bin/omega_MSSM.$(WT_OCAML_NATIVE_EXT)
+omega_MSSM.$(WT_OMEGA_CACHE_SUFFIX): $(OMEGA_MSSM)
+	$(OMEGA_MSSM) -initialize .
 endif OCAML_AVAILABLE
 
 if MPOST_AVAILABLE
@@ -402,13 +424,23 @@ $(top_builddir)/src/gamelan/gamelan.sty:
 	$(MAKE) -C $(top_builddir)/src/gamelan gamelan.sty
 endif
 
+noinst_PROGRAMS = 
 if HEPMC_AVAILABLE
 TESTS_SRC += $(hepmc_6_rd_SOURCES)
-noinst_PROGRAMS = hepmc_6_rd
+noinst_PROGRAMS += hepmc_6_rd
 hepmc_6_rd_SOURCES = hepmc_6_rd.cpp
 hepmc_6_rd_CXXFLAGS = $(HEPMC_INCLUDES) $(AM_CXXFLAGS)
 hepmc_6_rd_LDADD = $(LDFLAGS_HEPMC)
 hepmc_6.run: hepmc_6_rd
+endif
+
+if LCIO_AVAILABLE
+TESTS_SRC += $(lcio_rd_SOURCES)
+noinst_PROGRAMS += lcio_rd
+lcio_rd_SOURCES = lcio_rd.cpp
+lcio_rd_CXXFLAGS = $(LCIO_INCLUDES) $(AM_CXXFLAGS)
+lcio_rd_LDADD = $(LDFLAGS_LCIO)
+lcio_1.run: lcio_rd
 endif
 
 stdhep_4.run: stdhep_rd
@@ -561,6 +593,3 @@ endif
 maintainer-clean-local: maintainer-clean-fc
 	-rm -f *~
 .PHONY: maintainer-clean-local
-
-
-

@@ -1,4 +1,4 @@
-(* $Id: omega_Littlest_Zprime.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* omega_Littlest_Zprime.ml --
 
    Copyright (C) 1999-2016 by
 
@@ -21,13 +21,6 @@
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
-
-let rcs_file = RCS.parse "omega_Zprime" ["Standard Model with Additional Vectors"]
-    { RCS.revision = "$Revision: 7444 $";
-      RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
-      RCS.author = "$Author: jr_reuter $";
-      RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/omega_Littlest_Zprime.ml $" }
 
 (* \thocwmodulesection{SM with Littlest Higgs Z'} *)
 
@@ -81,7 +74,6 @@ module SM_supp : SM_flags =
 
 module Zprime (Flags : SM_flags) =
   struct
-    let rcs = rcs_file 
 
     open Coupling
 

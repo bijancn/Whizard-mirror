@@ -1,4 +1,4 @@
-(* $Id: dAG.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* dAG.ml --
 
    Copyright (C) 1999-2016 by
 
@@ -21,13 +21,6 @@
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
-
-let rcs_file = RCS.parse "DAG" ["Directed Acyclical Graph"]
-    { RCS.revision = "$Revision: 7444 $";
-      RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
-      RCS.author = "$Author: jr_reuter $";
-      RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/dAG.ml $" }
 
 module type Ord =
   sig
@@ -80,7 +73,6 @@ module type T =
     val forest : node -> t -> (node * edge option, node) Tree.t list
     val forest_memoized : node -> t -> (node * edge option, node) Tree.t list
     val count_trees : node -> t -> int
-    val rcs : RCS.t
    end
 
 module type Graded_Ord =
@@ -248,9 +240,6 @@ module Graded_Map (O : Graded_Ord) :
 
 module Maybe_Graded (GMM : Graded_Map_Maker) (F : Graded_Forest) =
   struct
-    let rcs = RCS.rename rcs_file "DAG.Graded()"
-        ["Graded directed Acyclical Graph ";
-         "representing binary or n-ary trees"]
 
     module G = F.Nodes.G
 
@@ -370,7 +359,7 @@ i*)
       dependencies' node
         
     let lists dag =
-      Sort.list (fun (n1, _) (n2, _) -> F.Nodes.compare n1 n2 <= 0)
+      List.sort (fun (n1, _) (n2, _) -> F.Nodes.compare n1 n2)
         (Parents.fold (fun node offspring l ->
           (node, Offspring.elements offspring) :: l) dag [])
 
@@ -436,7 +425,7 @@ i*)
         List.fold_left
           (fun (v, values) -> eval_offspring f mule muln add null unit dag values)
           (null, Parents.empty)
-          (Sort.list (fun (n1, _) (n2, _) -> F.Nodes.compare n1 n2 <= 0)
+          (List.sort (fun (n1, _) (n2, _) -> F.Nodes.compare n1 n2)
              (Parents.fold
                 (fun node offspring l -> (node, offspring) :: l) dag [])) in
       result

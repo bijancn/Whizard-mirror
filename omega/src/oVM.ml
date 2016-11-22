@@ -1,4 +1,4 @@
-(* $Id: oVM.ml 7444 2016-02-17 15:37:20Z jr_reuter $
+(* oVM.ml --
 
    Copyright (C) 1999-2016 by
 
@@ -21,13 +21,6 @@
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  *)
-
-let rcs_file = RCS.parse "OVM" ["O'Mega Virtual Machine"]
-    { RCS.revision = "$Revision: 7444 $";
-      RCS.date = "$Date: 2016-02-17 16:37:20 +0100 (Wed, 17 Feb 2016) $";
-      RCS.author = "$Author: jr_reuter $";
-      RCS.source
-        = "$URL: svn+ssh://bchokoufe@svn.hepforge.org/hepforge/svn/whizard/trunk/omega/src/oVM.ml $" }
 
 module Complex = Complex.Default
 
