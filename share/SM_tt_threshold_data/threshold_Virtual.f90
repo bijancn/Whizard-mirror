@@ -104,7 +104,7 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
   p_decay(:,1,2) = ptop_ons(2)
   p_decay(:,2,2) = mom_ons(THR_POS_WM)
   p_decay(:,3,2) = mom_ons(THR_POS_BBAR)
-  bw = top_propagators (FF, mom_ofs(1) + mom_ofs(2), mom_ofs)
+  bw = top_propagators (FF, mom_ofs(1) + mom_ofs(2), ptop_ofs)
   production_me = compute_production_me (FF, mom_ofs, ptop_ofs, ptop_ons)
   prod2 = zero
   !!! We need these because OpenLoops does not reproduce the Omega results
