@@ -2326,6 +2326,7 @@ and allocates the corresponding manager instance.
 module core_manager
 
   use format_utils, only: write_integer_array, write_separator
+  use physics_defs, only: BORN, NLO_REAL
   use io_units
   use prc_core
 
@@ -2475,6 +2476,33 @@ end module core_manager
   end function cm_get_subtraction_core
 
 @ %def cm_get_subtraction_core
+@
+<<Core manager: cm: TBP>>=
+  procedure :: get_flv_states => cm_get_flv_states
+<<Core manager: procedures>>=
+  pure subroutine cm_get_flv_states (cm, flv_born, flv_real, n_in)
+    class(core_manager_t), intent(in) :: cm
+    integer, dimension(:,:), allocatable, intent(out) :: flv_born, flv_real
+    integer, intent(out) :: n_in
+    integer :: i
+    do i = 1, cm%n_cores
+       if (cm%nlo_type(i) == BORN) then
+          if (.not. allocated (flv_born)) &
+             allocate (flv_born (size (cm%cores(i)%core%data%flv_state, 1), &
+                size (cm%cores(i)%core%data%flv_state, 2)))
+          flv_born = cm%cores(i)%core%data%flv_state
+          n_in = cm%cores(i)%core%data%n_in
+       else if (cm%nlo_type(i) == NLO_REAL) then
+          if (.not. allocated (flv_real)) &
+             allocate (flv_real (size (cm%cores(i)%core%data%flv_state, 1), &
+                size (cm%cores(i)%core%data%flv_state, 2)))
+          flv_real = cm%cores(i)%core%data%flv_state
+          n_in = cm%cores(i)%core%data%n_in
+       end if
+    end do
+  end subroutine cm_get_flv_states
+
+@ %def cm_get_flv_states
 @ Asterisks denote the subtraction components
 <<Core manager: cm: TBP>>=
   procedure :: write => cm_write
@@ -3346,7 +3374,6 @@ in a given position in the particle string coincide.
                do k = 1, data%n_flv
                   mass(k) = flv(k)%get_mass ()
                end do
-               !!! mass = flv%get_mass ()
                if (any (.not. nearly_equal(mass, mass(1)))) then
                   call msg_fatal ("Process '" // char (process%meta%id) // "': " &
                        // "mass values in flavor combination do not coincide. ")
@@ -5776,88 +5803,27 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
   subroutine process_create_blha_interface (process, beam_structure)
     class(process_t), intent(inout) :: process
     type(beam_structure_t), intent(in) :: beam_structure
-    logical :: use_external_borns
-    logical :: use_external_real_trees
-    logical :: use_external_loops
-    logical :: use_external_correlations
     integer :: alpha_power, alphas_power
     integer, dimension(:,:), allocatable :: flv_born, flv_real
-    integer :: i
     integer :: n_in
     type(blha_master_t) :: blha_master
-    type(string_t) :: born_me_method
-    type(string_t) :: real_tree_me_method
-    type(string_t) :: loop_me_method
-    type(string_t) :: correlation_me_method
     integer :: openloops_phs_tolerance, openloops_stability_log
     logical :: use_cms, use_collier
     type(string_t) :: openloops_extra_cmd
-
+    type(string_t) :: ew_scheme
+    call process%get_coupling_powers (alpha_power, alphas_power)
     associate (cm => process%cm)
        associate (var_list => process%meta%var_list)
-          born_me_method = var_list%get_sval (var_str ("$born_me_method"))
-          real_tree_me_method = var_list%get_sval (var_str ("$real_tree_me_method"))
-          loop_me_method = var_list%get_sval (var_str ("$loop_me_method"))
-          correlation_me_method = var_list%get_sval (var_str ("$correlation_me_method"))
           openloops_phs_tolerance = var_list%get_ival (var_str ("openloops_phs_tolerance"))
           openloops_stability_log = var_list%get_ival (var_str ("openloops_stability_log"))
           openloops_extra_cmd = var_list%get_sval (var_str ("$openloops_extra_cmd"))
           use_cms = var_list%get_lval (var_str ("?openloops_use_cms"))
           use_collier = var_list%get_lval (var_str ("?openloops_use_collier"))
+          ew_scheme = var_list%get_sval (var_str ("$blha_ew_scheme"))
+          call blha_master%set_ew_scheme (ew_scheme)
        end associate
-       call process%get_coupling_powers (alpha_power, alphas_power)
-       do i = 1, cm%n_cores
-          if (cm%nlo_type(i) == BORN) then
-             !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-             if (.not. allocated (flv_born)) &
-                allocate (flv_born (size (cm%cores(i)%core%data%flv_state, 1), &
-                   size (cm%cores(i)%core%data%flv_state, 2)))
-             flv_born = cm%cores(i)%core%data%flv_state
-             n_in = cm%cores(i)%core%data%n_in
-          else if (cm%nlo_type(i) == NLO_REAL) then
-             !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-             if (.not. allocated (flv_real)) &
-                allocate (flv_real (size (cm%cores(i)%core%data%flv_state, 1), &
-                   size (cm%cores(i)%core%data%flv_state, 2)))
-             flv_real = cm%cores(i)%core%data%flv_state
-             n_in = cm%cores(i)%core%data%n_in
-          end if
-       end do
-       use_external_borns = born_me_method /= 'omega'
-       use_external_real_trees = &
-          process%is_nlo_calculation () .and. (real_tree_me_method /= 'omega')
-       use_external_loops = &
-          process%is_nlo_calculation () .and. (loop_me_method /= 'omega')
-       use_external_correlations = &
-          process%is_nlo_calculation () .and. (correlation_me_method /= 'omega')
-
-       select case (char (loop_me_method))
-       case ('gosam')
-          call blha_master%set_gosam (1)
-       case ('openloops')
-          call blha_master%set_openloops (1)
-       end select
-       select case (char (correlation_me_method))
-       case ('gosam')
-          call blha_master%set_gosam (2)
-       case ('openloops')
-          call blha_master%set_openloops (2)
-       end select
-       select case (char (real_tree_me_method))
-       case ('gosam')
-          call blha_master%set_gosam (3)
-       case ('openloops')
-          call blha_master%set_openloops (3)
-       end select
-       select case (char (born_me_method))
-       case ('gosam')
-          call blha_master%set_gosam (4)
-       case ('openloops')
-          call blha_master%set_openloops (4)
-       end select
-
-       call blha_master%set_methods (use_external_borns, use_external_real_trees, &
-          use_external_loops, use_external_correlations)
+       call cm%get_flv_states (flv_born, flv_real, n_in)
+       call blha_master%set_methods (process%is_nlo_calculation (), process%meta%var_list)
        call blha_master%allocate_config_files ()
        call blha_master%setup_additional_features (openloops_phs_tolerance, &
           use_cms, &
@@ -5865,9 +5831,9 @@ potentially be moved to [[pcm_nlo_t]] and used more generically in
           use_collier, &
           extra_cmd = openloops_extra_cmd, &
           beam_structure = beam_structure)
-       call blha_master%init (process%meta%id, process%config%model, &
+       call blha_master%generate (process%meta%id, process%config%model, &
           n_in, alpha_power, alphas_power, flv_born, flv_real)
-       call blha_master%generate (process%meta%id)
+       call blha_master%write_olp (process%meta%id)
     end associate
   end subroutine process_create_blha_interface
 
@@ -10978,17 +10944,16 @@ method may modify the [[core_state]] workspace object.
   subroutine term_instance_evaluate_interaction_userdef_loop (term, core)
     class(term_instance_t), intent(inout) :: term
     class(prc_core_t), intent(in) :: core
-    integer :: n_amps, n_hel, n_sub
+    integer :: n_virtuals, n_hel, n_sub, n_flv
     integer :: i, i_born, i_virt, i_cc, i_sub
     logical :: bad_point
     real(default), dimension(4) :: sqme_virt
     real(default), dimension(:), allocatable :: sqme_cc
-
     allocate (sqme_cc (blha_result_array_size &
          (term%int_hard%get_n_tot (), BLHA_AMP_CC)))
 
-    call get_numbers (n_amps, n_sub, n_hel)
-    do i = 1, n_amps
+    call term%compute_virt_me_array_sizes (core, n_hel, n_sub, n_flv, n_virtuals)
+    do i = 1, n_virtuals
        select type (core)
        class is (prc_blha_t)
           i_virt = core%get_helicity_list (i)
@@ -11024,30 +10989,41 @@ method may modify the [[core_state]] workspace object.
           end if
        end select
     end do
-  contains
-    subroutine get_numbers (n_amps, n_sub, n_hel)
-      integer, intent(out) :: n_amps, n_sub, n_hel
-      integer :: n_flv
-      n_amps = term%int_hard%get_n_matrix_elements ()
-      n_flv = term%config%data%n_flv
-      n_sub = term%int_hard%get_n_sub ()
-      if (n_sub > 0) then
-         select type (core)
-         class is (prc_user_defined_base_t)
-            if (core%includes_polarization ()) then
-               n_hel = 4
-            else
-               n_hel = 1
-            end if
-         end select
-         n_amps = n_amps - n_hel * n_sub * n_flv
-      else
-         n_hel = 1
-      end if
-    end subroutine get_numbers
   end subroutine term_instance_evaluate_interaction_userdef_loop
 
 @ %def term_instance_evaluate_interaction_loop
+@
+@
+<<Instances: term instance: TBP>>=
+  procedure :: compute_virt_me_array_sizes => &
+       term_instance_compute_virt_me_array_sizes
+<<Instances: procedures>>=
+  subroutine term_instance_compute_virt_me_array_sizes &
+         (term_instance, core, n_hel, n_sub, n_flv, n_virtuals)
+    class(term_instance_t), intent(in) :: term_instance
+    class(prc_core_t), intent(in) :: core
+    integer, intent(out) :: n_hel, n_sub, n_flv, n_virtuals
+    logical :: includes_polarization
+    n_sub = term_instance%int_hard%get_n_sub ()
+    n_virtuals = term_instance%int_hard%get_n_matrix_elements ()
+    n_flv = term_instance%config%data%n_flv
+    select type (core)
+    class is (prc_user_defined_base_t)
+      includes_polarization = core%includes_polarization ()
+    class default
+      includes_polarization = .false.
+    end select
+    if (includes_polarization) then
+       n_hel = 4    !!! This assumes two polarized beams
+    else
+       n_hel = 1
+    end if
+    if (n_sub > 0) then
+       n_virtuals = n_virtuals - n_hel * n_sub * n_flv
+    end if
+  end subroutine term_instance_compute_virt_me_array_sizes
+
+@ %def term_instance_compute_virt_me_array_sizes
 @ Evaluate the trace.  First evaluate the
 structure-function chain (i.e., the density matrix of the incoming
 partons).  Do this twice, in case the sf-chain instances within
@@ -12177,28 +12153,30 @@ terms, iterating over all active process components.
        do i = 1, size (instance%term)
           associate (term => instance%term(i))
             if (term%active .and. term%passed) then
-               core => instance%process%get_core_term (i)
-               if (instance%pcm%config%is_nlo ()) &
-                  core_sub => instance%process%get_subtraction_core ()
-               call term%evaluate_interaction (core)
-               call term%evaluate_trace ()
-               if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) &
-                  call set_sqme_born (term, 1)
-               if (term%nlo_type > BORN) &
-                  call term%evaluate_color_correlations (term%p_seed, core_sub)
-               alpha_s = core%get_alpha_s (term%core_state)
-               select case (term%nlo_type)
-               case (NLO_REAL)
-                  i_real_fin = instance%process%get_associated_real_fin (1)
-                  if (term%config%i_component /= i_real_fin) &
-                     call term%apply_fks (core, alpha_s)
-               case (NLO_VIRTUAL)
-                  call term%evaluate_sqme_virt (alpha_s)
-               case (NLO_MISMATCH)
-                  call term%evaluate_sqme_mismatch (alpha_s)
-               case (NLO_DGLAP)
-                  call term%evaluate_sqme_dglap (alpha_s)
-               end select
+              core => instance%process%get_core_term (i)
+              if (instance%pcm%config%is_nlo ()) &
+                 core_sub => instance%process%get_subtraction_core ()
+              call term%evaluate_interaction (core)
+              call term%evaluate_trace ()
+              if (term%nlo_type == NLO_REAL .or. term%nlo_type == NLO_MISMATCH) &
+                 call set_sqme_born (term, 1)
+              if (term%nlo_type > BORN) then
+                 if (.not. (term%nlo_type == NLO_REAL .and. term%k_term%emitter > 0)) &
+                    call term%evaluate_color_correlations (term%p_seed, core_sub)
+              end if
+              alpha_s = core%get_alpha_s (term%core_state)
+              select case (term%nlo_type)
+              case (NLO_REAL)
+                 i_real_fin = instance%process%get_associated_real_fin (1)
+                 if (term%config%i_component /= i_real_fin) &
+                    call term%apply_fks (core, alpha_s)
+              case (NLO_VIRTUAL)
+                 call term%evaluate_sqme_virt (alpha_s)
+              case (NLO_MISMATCH)
+                 call term%evaluate_sqme_mismatch (alpha_s)
+              case (NLO_DGLAP)
+                 call term%evaluate_sqme_dglap (alpha_s)
+              end select
             end if
             core_sub => null ()
           end associate
