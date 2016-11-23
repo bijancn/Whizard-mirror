@@ -134,9 +134,9 @@ subroutine @ID@_olp_eval2 (i_flv, alpha_s_c, p_ofs, mu_c, &
            this_id = reshuffle_id (this_id)
         end do
         end do
-        ! TODO: (bcn 2016-01-22) handle acc
         call evaluate_loop (id(this_id), p_decay(:,:,reshuffle_momenta(leg)), &
              virt_decay(3), virt_decay(0:2), acc)
+        acc_c = max (acc_c, acc)
         total = total + prod2 * born_decay_me2 * virt_decay * abs2 (bw)
      end do
   end do
