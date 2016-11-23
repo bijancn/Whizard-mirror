@@ -537,7 +537,6 @@ contains
     pwm = p_ons(THR_POS_WM)
     pbbar = p_ons(THR_POS_BBAR)
     ptopbar = pwm + pbbar
-    print *, 'antitop decay born(: ', sqrt (ptopbar * ptopbar)
     owf_Wm_4 = conjg (eps (mass(24), pwm, h_W))
     owf_b_6 = v (mass(5), pbbar, h_b)
     me = vbar (sqrt(ptopbar*ptopbar), ptopbar, h_tbar) * &
@@ -993,7 +992,6 @@ contains
       ptop_ons(1) = p_ons(THR_POS_WP) + p_ons(THR_POS_B)
       ptop_ons(2) = p_ons(THR_POS_WM) + p_ons(THR_POS_BBAR)
       ptop_ons(leg) = ptop_ons(leg) + p_ons(THR_POS_GLUON)
-      print *, 'Check ptop: ', ptop_ons(1) * ptop_ons(1)
       ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
       ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
       ptop_ofs(leg) = ptop_ofs(leg) + p_ofs(THR_POS_GLUON)
