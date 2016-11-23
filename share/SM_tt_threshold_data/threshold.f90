@@ -537,14 +537,15 @@ contains
     pwm = p_ons(THR_POS_WM)
     pbbar = p_ons(THR_POS_BBAR)
     ptopbar = pwm + pbbar
+    print *, 'antitop decay born(: ', sqrt (ptopbar * ptopbar)
     owf_Wm_4 = conjg (eps (mass(24), pwm, h_W))
     owf_b_6 = v (mass(5), pbbar, h_b)
     me = vbar (sqrt(ptopbar*ptopbar), ptopbar, h_tbar) * &
          f_vlf (gccq33, owf_Wm_4, owf_b_6)
   end function anti_top_decay_born
 
-  subroutine compute_born (n_legs, p_ofs, ffi)
-    integer, intent(in) :: n_legs
+  subroutine compute_born (n_tot, p_ofs, ffi)
+    integer, intent(in) :: n_tot
     real(default), dimension(0:3,*), intent(in) :: p_ofs
     integer, intent(in) :: ffi
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
@@ -557,8 +558,8 @@ contains
     type(momentum) :: p12
     integer :: i
     call init_workspace ()
-    allocate (mom_ofs (n_legs), mom_ons (n_legs), mom_ons_rest (n_legs), p_decay(n_legs))
-    call convert_to_mom_and_invert_sign (p_ofs, n_legs, mom_ofs)
+    allocate (mom_ofs (n_tot), mom_ons (n_tot), mom_ons_rest (n_tot), p_decay(n_tot))
+    call convert_to_mom_and_invert_sign (p_ofs, n_tot, mom_ofs)
     p12 = mom_ofs(1) + mom_ofs(2)
     if (threshold%settings%onshell_projection%active ()) then
        call compute_projected_momenta (0, mom_ofs, mom_ons, mom_ons_rest)
@@ -573,7 +574,7 @@ contains
           p_decay = mom_ofs
        case (ONS)
           p_decay(1:2) = mom_ons(1:2)
-          do i = 3, n_legs
+          do i = 3, n_tot
              p_decay(i) = apply_boost (inverse (boost_to_cms), mom_ons(i))
           end do
        case (ONS_BOOST)
@@ -760,13 +761,13 @@ contains
     boost_to_cms = boost (v4_tmp, mtop)
   end subroutine create_boost_to_cms
 
-  subroutine boost_onshell_to_rest_frame (n_legs, p_in, p_out)
-    integer, intent(in) :: n_legs
+  subroutine boost_onshell_to_rest_frame (n_tot, p_in, p_out)
+    integer, intent(in) :: n_tot
     type(momentum), dimension(:), intent(in) :: p_in
     type(momentum), dimension(:), allocatable, intent(out) :: p_out
-    allocate (p_out (n_legs))
+    allocate (p_out (n_tot))
     p_out(1:2) = p_in(1:2)
-    p_out(3:n_legs) = apply_boost (inverse (boost_to_cms), p_in(3:n_legs))
+    p_out(3:n_tot) = apply_boost (inverse (boost_to_cms), p_in(3:n_tot))
   end subroutine boost_onshell_to_rest_frame
 
   subroutine compute_projected_top_momenta (p12, p35, ptop_ons, ptop_ons_rest)
@@ -921,25 +922,25 @@ contains
     end do
   end function compute_production_me
 
-  function compute_real (n_legs, p_ofs, p_ons, ffi) result (amp2)
+  function compute_real (n_tot, p_ofs, p_ons, leg, ffi) result (amp2)
     real(default) :: amp2
-    integer, intent(in) :: n_legs
+    integer, intent(in) :: n_tot
     real(default), dimension(0:3,*), intent(in) :: p_ofs
-    real(default), dimension(2,0:3,*), intent(in) :: p_ons
-    integer, intent(in) :: ffi
+    real(default), dimension(0:3,*), intent(in) :: p_ons
+    integer, intent(in) :: leg, ffi
     real(default), dimension(0:3,3) :: k_decay_born
-    complex(default), dimension(-1:1,-1:1,-1:1,-1:1,1:2) :: production_me
-    complex(default), dimension(-1:1,-1:1,-1:1,-1:1,1:2) :: real_decay_me
-    complex(default), dimension(-1:1,-1:1,-1:1,1:2) :: born_decay_me
-    complex(default), dimension(1:2) :: top_propagators_
+    complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
+    complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: real_decay_me
+    complex(default), dimension(-1:1,-1:1,-1:1) :: born_decay_me
+    complex(default) :: top_propagators_
     complex(default) :: real_, born_, prod_
     real(default) :: total
     integer, dimension(2) :: h_ass_t
     integer, dimension(n_prt) :: s
-    integer :: i, hi, leg, other_leg, h_t, h_tbar, h_gl, h_W, h_b
-    type(momentum), dimension(:), allocatable :: mom_ofs
-    type(momentum), dimension(:,:), allocatable :: mom_ons, mom_ons_rest
+    integer :: i, hi, h_t, h_tbar, h_gl, h_W, h_b
+    type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons
     type(momentum) :: p12, p35
+    integer :: other_leg
     if (.not. threshold%settings%factorized_computation)  &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'factorized (activate with 2')
@@ -947,27 +948,25 @@ contains
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
          &'helicity-approximated (activate with 32)')
     call init_workspace ()
-    call convert_to_mom_and_invert_sign (p_ofs, n_legs, mom_ofs)
-    call convert_to_mom_and_invert_sign (p_ons, n_legs, mom_ons)
+    call convert_to_mom_and_invert_sign (p_ofs, n_tot, mom_ofs)
+    call convert_to_mom_and_invert_sign (p_ons, n_tot, mom_ons)
     p12 = mom_ofs(1) + mom_ofs(2); p35 = mom_ofs(3) + mom_ofs(5)
-    call compute_amplitudes (mom_ofs, mom_ons)
+    call compute_amplitudes (mom_ofs, mom_ons, leg)
     total = zero
     do hi = 1, nhel_max
        s = table_spin_states(:,hi)
        do h_t = -1, 1, 2
        do h_tbar = -1, 1, 2
           h_ass_t = [h_t, h_tbar]
-          do leg = 1, 2
-             other_leg = 3 - leg
-             prod_ = production_me(s(1), s(2), h_t, h_tbar, leg)
-             born_ = born_decay_me(s(ass_quark(other_leg)), &
-                  s(ass_boson(other_leg)), h_ass_t(other_leg), other_leg)
-             do h_gl = -1, 1, 2
-                real_ = real_decay_me(h_gl, s(ass_quark(leg)), &
-                     s(ass_boson(leg)), h_ass_t(leg), leg)
-                total = total + abs2 (prod_) * abs2 (real_) * abs2 (born_) * &
-                     abs2(top_propagators_ (leg))
-             end do
+          other_leg = 3 - leg
+          prod_ = production_me(s(1), s(2), h_t, h_tbar)
+          born_ = born_decay_me(s(ass_quark(other_leg)), &
+               s(ass_boson(other_leg)), h_ass_t(other_leg))
+          do h_gl = -1, 1, 2
+             real_ = real_decay_me(h_gl, s(ass_quark(leg)), &
+                  s(ass_boson(leg)), h_ass_t(leg))
+             total = total + abs2 (prod_) * abs2 (real_) * abs2 (born_) * &
+                  abs2(top_propagators_)
           end do
        end do
        end do
@@ -977,9 +976,10 @@ contains
 
   contains
 
-    subroutine compute_amplitudes (p_ofs, p_ons)
-      type(momentum), intent(in), dimension(:) :: p_ofs
-      type(momentum), intent(in), dimension(:,:) :: p_ons
+    subroutine compute_amplitudes (p_ofs, p_ons, leg)
+      type(momentum), intent(in), dimension(:) :: p_ofs, p_ons
+      integer, intent(in) :: leg
+      integer :: other_leg
       procedure(top_real_decay_calculate_amplitude), pointer :: top_decay_real
       procedure(top_decay_born), pointer :: top_decay_born_
       type(momentum), dimension(2) :: ptop_ofs, ptop_ons, ptop_ons_rest
@@ -988,44 +988,47 @@ contains
       type(momentum), dimension(4) :: p_real_ons
       allocate (p_ons_rest (size (p_ofs)))
       p12 = p_ofs(1) + p_ofs(2)
-      do leg = 1, 2
-         other_leg = 3 - leg
-         ptop_ons(1) = p_ons(leg, THR_POS_WP) + p_ons(leg, THR_POS_B)
-         ptop_ons(2) = p_ons(leg, THR_POS_WM) + p_ons(leg, THR_POS_BBAR)
-         ptop_ons(leg) = ptop_ons(leg) + p_ons(leg, THR_POS_GLUON)
-         ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
-         ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
-         ptop_ofs(leg) = ptop_ofs(leg) + p_ofs(THR_POS_GLUON)
-         production_me(:,:,:,:,leg) = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
-         if (leg == 1) then
-            top_decay_real => top_real_decay_calculate_amplitude
-            top_decay_born_ => anti_top_decay_born
+      !do leg = 1, 2
+      other_leg = 3 - leg
+      ptop_ons(1) = p_ons(THR_POS_WP) + p_ons(THR_POS_B)
+      ptop_ons(2) = p_ons(THR_POS_WM) + p_ons(THR_POS_BBAR)
+      ptop_ons(leg) = ptop_ons(leg) + p_ons(THR_POS_GLUON)
+      print *, 'Check ptop: ', ptop_ons(1) * ptop_ons(1)
+      ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
+      ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
+      ptop_ofs(leg) = ptop_ofs(leg) + p_ofs(THR_POS_GLUON)
+      !production_me(:,:,:,:,leg) = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
+      production_me = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
+      if (leg == 1) then
+         top_decay_real => top_real_decay_calculate_amplitude
+         top_decay_born_ => anti_top_decay_born
+      else
+         top_decay_real => anti_top_real_decay_calculate_amplitude
+         top_decay_born_ => top_decay_born
+      end if
+      p_real_ons = [ptop_ons(leg), p_ons(ass_boson(leg)), &
+           p_ons(ass_quark(leg)), p_ons(THR_POS_GLUON)]
+      do h_t = -1, 1, 2
+      do h_W = -1, 1, 1
+      do h_b = -1, 1, 2
+         born_decay_me(h_b, h_W, h_t) = top_decay_born_ (p_ons, h_t, h_W, h_b)
+         if (.not. test_ward) then
+            do h_gl = -1, 1, 2
+               real_decay_me(h_gl, h_b, h_W, h_t) = top_decay_real &
+                    (p_real_ons, [h_t, h_W, h_b, h_gl], zero)
+            end do
          else
-            top_decay_real => anti_top_real_decay_calculate_amplitude
-            top_decay_born_ => top_decay_born
+            do h_gl = -1, 1, 2
+               real_decay_me(h_gl, h_b, h_W, h_t) = top_decay_real &
+                    (p_real_ons, [h_t, h_W, h_b, 4], zero)
+            end do
          end if
-         p_real_ons = [ptop_ons(leg), p_ons(leg, ass_boson(leg)), &
-              p_ons(leg, ass_quark(leg)), p_ons(leg, THR_POS_GLUON)]
-         do h_t = -1, 1, 2
-         do h_W = -1, 1, 1
-         do h_b = -1, 1, 2
-            born_decay_me(h_b, h_W, h_t, leg) = top_decay_born_ (p_ons(leg,:), h_t, h_W, h_b)
-            if (.not. test_ward) then
-               do h_gl = -1, 1, 2
-                  real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
-                       (p_real_ons, [h_t, h_W, h_b, h_gl], zero)
-               end do
-            else
-               do h_gl = -1, 1, 2
-                  real_decay_me(h_gl, h_b, h_W, h_t, leg) = top_decay_real &
-                       (p_real_ons, [h_t, h_W, h_b, 4], zero)
-               end do
-            end if
-         end do
-         end do
-         end do
-         top_propagators_(leg) = top_propagators (ffi, p12, ptop_ofs)
       end do
+      end do
+      end do
+      !top_propagators_(leg) = top_propagators (ffi, p12, ptop_ofs)
+      top_propagators_ = top_propagators (ffi, p12, ptop_ofs)
+      !end do
     end subroutine compute_amplitudes
 
     subroutine check_phase_space_point (p_decay, p_prod, mandelstam_s)
@@ -1091,7 +1094,7 @@ subroutine @ID@_set_process_mode (mode) bind(C)
   process_mode = mode
 end subroutine @ID@_set_process_mode
 
-subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, n_legs) bind(C)
+subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, leg, n_tot) bind(C)
   use iso_c_binding
   use kinds
   use constants
@@ -1106,8 +1109,8 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, n_legs) bind(C)
   implicit none
   real(c_default_float), intent(out) :: amp2
   real(c_default_float), dimension(0:3,*), intent(in) :: p_ofs
-  real(c_default_float), dimension(2,0:3,*), intent(in) :: p_ons
-  integer, intent(in) :: n_legs
+  real(c_default_float), dimension(0:3,*), intent(in) :: p_ons
+  integer, intent(in) :: leg, n_tot
   complex(default), dimension(:), allocatable, save :: amp_with_FF, amp_no_FF, amp_omega_full
   logical :: real_computation
   integer :: i, hi, n_total_hel
@@ -1126,7 +1129,7 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, n_legs) bind(C)
   amp_no_FF = zero
   if (real_computation) then
      call threshold%formfactor%activate ()
-     amp2 = compute_real (n_legs, p_ofs, p_ons, FF)
+     amp2 = compute_real (n_tot, p_ofs, p_ons, leg, FF)
   else
      if (threshold%settings%interference) then
         call threshold%formfactor%disable ()
@@ -1136,23 +1139,23 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, n_legs) bind(C)
         end do
      end if
      call threshold%formfactor%activate ()
-     call compute_born (n_legs, p_ofs, FF)
+     call compute_born (n_tot, p_ofs, FF)
      select case (FF)
      case (EXPANDED_HARD, EXPANDED_SOFT, EXPANDED_SOFT_SWITCHOFF, &
              EXPANDED_SOFT_HARD)
         amp2 = expanded_amp2 (amp_omega_full, amp_blob)
      case (MATCHED)
         amp2 = real (sum (abs2 (amp_blob)))       !!! Resummed amp_squared
-        call compute_born (n_legs, p_ofs, TREE)
+        call compute_born (n_tot, p_ofs, TREE)
         amp_no_FF = amp_blob
-        call compute_born (n_legs, p_ofs, MATCHED_EXPANDED)
+        call compute_born (n_tot, p_ofs, MATCHED_EXPANDED)
         amp_with_FF = amp_blob
         amp2 = amp2 + 2 * sum (real (amp_no_FF * conjg (amp_with_FF)))
      case default
         if (threshold%settings%interference) then
            amp_with_FF = amp_blob
            if (threshold%settings%factorized_interference_term) then
-              call compute_born (n_legs, p_ofs, TREE)
+              call compute_born (n_tot, p_ofs, TREE)
               amp_no_FF = amp_blob
            else
               amp_no_FF = amp_omega_full
