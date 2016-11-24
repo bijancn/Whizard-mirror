@@ -6,8 +6,10 @@ OLD_YEAR="Copyright (C) 1999-2015";
 NEW_YEAR="Copyright (C) 1999-2016";
 OLD_YEAR2="Copyright (C) 2001-2015";
 NEW_YEAR2="Copyright (C) 2001-2016";
-OLD_ADDRESS="Marco Sekulla <marco.sekulla@desy.de>"
-NEW_ADDRESS="Marco Sekulla <marco.sekulla@kit.edu>"
+# OLD_ADDRESS="Soyoung Shim <soyoung.shim@desy.de>"
+# NEW_ADDRESS="So Young Shim <soyoung.shim@desy.de>"
+OLD_ADDRESS="Soyoung Shim"
+NEW_ADDRESS="So Young Shim"
 
 OLD_DATE="Aug 25 2016"
 NEW_DATE="Sep 30 2016"
