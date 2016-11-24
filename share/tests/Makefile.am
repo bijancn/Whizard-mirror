@@ -606,6 +606,7 @@ REF_OUTPUT_FILES_BASE = \
     functional_tests/ref-output/smtest_15.ref \
     functional_tests/ref-output/sm_cms_1.ref \
     functional_tests/ref-output/nlo_1.ref \
+    functional_tests/ref-output/nlo_2.ref \
     functional_tests/ref-output/openloops_1.ref \
     functional_tests/ref-output/openloops_2.ref \
     functional_tests/ref-output/openloops_4.ref \
@@ -650,7 +651,6 @@ REF_OUTPUT_FILES_DOUBLE = \
     functional_tests/ref-output-double/smtest_2.ref \
     functional_tests/ref-output-double/smtest_8.ref \
     functional_tests/ref-output-double/beam_setup_5.ref \
-    functional_tests/ref-output-double/nlo_2.ref \
     functional_tests/ref-output-double/nlo_3.ref \
     functional_tests/ref-output-double/nlo_4.ref \
     functional_tests/ref-output-double/fks_res_1.ref \
@@ -704,7 +704,6 @@ REF_OUTPUT_FILES_PREC = \
     functional_tests/ref-output-prec/smtest_2.ref \
     functional_tests/ref-output-prec/smtest_8.ref \
     functional_tests/ref-output-prec/beam_setup_5.ref \
-    functional_tests/ref-output-prec/nlo_2.ref \
     functional_tests/ref-output-prec/nlo_3.ref \
     functional_tests/ref-output-prec/nlo_4.ref \
     functional_tests/ref-output-prec/fks_res_1.ref \
