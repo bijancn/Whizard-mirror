@@ -2,25 +2,20 @@ module @ID@_top_real_decay
   use kinds
   use diagnostics
   use omega95
-  use omega_color, OCF => omega_color_factor
   use parameters_SM_tt_threshold
   implicit none
   private
   public :: calculate_amplitude
 
   integer, parameter :: n_prt = 4
-  integer, parameter :: n_flv = 1
-
-  integer, dimension(n_prt,n_flv), save, protected :: table_flavor_states
-  data table_flavor_states(:,   1) /   6,  24,   5,  21 / ! t W+ b gl
 
   type(momentum) :: p1, p2, p3, p4
   type(momentum) :: p12, p14
-  type(spinor) :: owf_u3_2__1_0, owf_u3_1__1_0
+  type(spinor) :: owf_u3_1__1_0
   type(conjspinor) :: owf_d3b__1_3_0
   type(vector) :: owf_gl___4_0, owf_wm_2_0
   type(spinor) :: owf_d3_1__12_0, owf_u3_1__14_0_X1
-  complex(default) :: oks_u3_2_wpd3_1_gl_2_1, oks_u3_1_wpd3_1_gl__
+  complex(default) :: oks_u3_1_wpd3_1_gl__
 
 contains
 
@@ -58,17 +53,12 @@ module @ID@_anti_top_real_decay
   use kinds
   use diagnostics
   use omega95
-  use omega_color, OCF => omega_color_factor
   use parameters_SM_tt_threshold
   implicit none
   private
   public :: calculate_amplitude
 
   integer, parameter :: n_prt = 4
-  integer, parameter :: n_flv = 1
-
-  integer, dimension(n_prt,n_flv), save, protected :: table_flavor_states
-  data table_flavor_states(:,   1) /  -6, -24,  -5,  21 / ! tbar W- bbar gl
 
   type(momentum) :: p1, p2, p3, p4
   type(momentum) :: p12, p14
@@ -133,16 +123,6 @@ module @ID@_threshold
        top_decay_born, anti_top_decay_born, top_propagators, compute_real, abs2, &
        apply_boost, compute_projected_momenta, convert_to_mom_and_invert_sign
 
-  ! DON'T EVEN THINK of removing the following!
-  ! If the compiler complains about undeclared
-  ! or undefined variables, you are compiling
-  ! against an incompatible omega95 module!
-  integer, dimension(7), parameter, private :: require = &
-    (/ omega_spinors_2010_01_A, omega_spinor_cpls_2010_01_A, &
-       omega_vectors_2010_01_A, omega_polarizations_2010_01_A, &
-       omega_couplings_2010_01_A, omega_color_2010_01_A, &
-       omega_utils_2010_01_A /)
-
   logical, parameter, public :: test_ward = .false.
 
   integer, parameter, public :: n_prt = 6
@@ -167,8 +147,6 @@ module @ID@_threshold
   !     It is defined here for convenience only and must be
   !     compatible with hardcoded values in the amplitude!
   real(default), parameter, public :: N_ = 3
-  logical, parameter :: F = .false.
-  logical, parameter :: T = .true.
   !!! Colour factors: N_ colors can be produced
   !!! Helicity factors: Mean over incoming helicities
   real(default), parameter, public :: production_factors = N_ / four
@@ -547,7 +525,7 @@ contains
     complex(default) :: prod, dec1, dec2
     integer, dimension(n_prt) :: s
     integer :: hi, h_t, h_tbar
-    type(momentum), dimension(2) :: ptop_ofs, ptop_ons, ptop_ons_rest
+    type(momentum), dimension(2) :: ptop_ofs, ptop_ons
     type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons, mom_ons_rest, p_decay
     type(momentum) :: p12
     integer :: i
@@ -790,14 +768,12 @@ contains
     type(momentum), intent(in) :: p12
     type(momentum), intent(in), dimension(:) :: p_ofs
     type(momentum), intent(out), dimension(*) :: p_ons, p_ons_rest
-    real(default) :: sqrts, mtop, mw2, mb2, en_w, en_b
-    real(default), dimension(4) :: tmp, test
+    real(default) :: mtop, mw2, mb2, en_w, en_b
     type(vector4_t) :: p_tmp_1, p_tmp_2
     type(vector4_t), dimension(3) :: p_decay
     integer :: u
     logical :: momenta_already_onshell
     u = output_unit
-    sqrts = - p12%t
     mtop = ttv_mtpole (p12*p12)
     mw2 = mass(24)**2
     mb2 = mass(5)**2
@@ -902,7 +878,6 @@ contains
     real(default), dimension(0:3,*), intent(in) :: p_ofs
     real(default), dimension(0:3,*), intent(in) :: p_ons
     integer, intent(in) :: leg, ffi
-    real(default), dimension(0:3,3) :: k_decay_born
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: production_me
     complex(default), dimension(-1:1,-1:1,-1:1,-1:1) :: real_decay_me
     complex(default), dimension(-1:1,-1:1,-1:1) :: born_decay_me
@@ -911,9 +886,8 @@ contains
     real(default) :: total
     integer, dimension(2) :: h_ass_t
     integer, dimension(n_prt) :: s
-    integer :: i, hi, h_t, h_tbar, h_gl, h_W, h_b
+    integer :: hi, h_t, h_tbar, h_gl, h_W, h_b
     type(momentum), dimension(:), allocatable :: mom_ofs, mom_ons
-    type(momentum) :: p12, p35
     integer :: other_leg
     if (.not. threshold%settings%factorized_computation)  &
          call msg_fatal ('compute_real: OFFSHELL_STRATEGY is not '&
@@ -924,7 +898,6 @@ contains
     call init_workspace ()
     call convert_to_mom_and_invert_sign (p_ofs, n_tot, mom_ofs)
     call convert_to_mom_and_invert_sign (p_ons, n_tot, mom_ons)
-    p12 = mom_ofs(1) + mom_ofs(2); p35 = mom_ofs(3) + mom_ofs(5)
     call compute_amplitudes (mom_ofs, mom_ons, leg)
     total = zero
     do hi = 1, nhel_max
@@ -953,16 +926,14 @@ contains
     subroutine compute_amplitudes (p_ofs, p_ons, leg)
       type(momentum), intent(in), dimension(:) :: p_ofs, p_ons
       integer, intent(in) :: leg
-      integer :: other_leg
       procedure(top_real_decay_calculate_amplitude), pointer :: top_decay_real
       procedure(top_decay_born), pointer :: top_decay_born_
-      type(momentum), dimension(2) :: ptop_ofs, ptop_ons, ptop_ons_rest
+      type(momentum), dimension(2) :: ptop_ofs, ptop_ons!, ptop_ons_rest
       type(momentum), dimension(:), allocatable :: p_ons_rest
       type(momentum) :: p12
       type(momentum), dimension(4) :: p_real_ons
       allocate (p_ons_rest (size (p_ofs)))
       p12 = p_ofs(1) + p_ofs(2)
-      other_leg = 3 - leg
       ptop_ons(1) = p_ons(THR_POS_WP) + p_ons(THR_POS_B)
       ptop_ons(2) = p_ons(THR_POS_WM) + p_ons(THR_POS_BBAR)
       ptop_ons(leg) = ptop_ons(leg) + p_ons(THR_POS_GLUON)
@@ -1082,9 +1053,8 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, leg, n_tot) bind(C)
   integer, intent(in) :: leg, n_tot
   complex(default), dimension(:), allocatable, save :: amp_with_FF, amp_no_FF, amp_omega_full
   logical :: real_computation
-  integer :: i, hi, n_total_hel
+  integer :: hi, n_total_hel
   real_computation = full_proc_number_particles_out () == 5
-  i = full_proc_number_particles_out () + 2
   if (.not. allocated (amp_omega_full)) then
      if (real_computation) then
         n_total_hel = n_hel * 2 ! times 2 helicities due to the gluon
