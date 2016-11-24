@@ -58,6 +58,12 @@ module parameters_sm_tt_threshold
        ttv_formfactor, va_ilc_tta, va_ilc_ttz, ttv_mtpole, ttv_wtpole, &
        onshell_tops
 
+  interface onshell_tops
+    module procedure onshell_tops_single
+    module procedure onshell_tops_array
+  end interface
+
+
 contains
 
   subroutine import_from_whizard (par_array, scheme)
@@ -268,13 +274,24 @@ contains
     c = c - 1.0_default
   end function ttv_formfactor
 
-  pure function onshell_tops (p, k) result (onshell)
+
+  pure function onshell_tops_single (p, k) result (onshell)
     logical :: onshell
     type(momentum), intent(in) :: p, k
     type(phase_space_point_t) :: ps
     call ps%init (p*p, k*k, (k+p)*(k+p), mass(6))
     onshell = ps%onshell
-  end function onshell_tops
+  end function onshell_tops_single
+
+  pure function onshell_tops_array (p, pair1, pair2) result (onshell)
+    logical :: onshell
+    type(momentum), dimension(:), intent(in) :: p
+    integer, dimension(2), intent(in) :: pair1, pair2
+    type(momentum) :: p1, p2
+    p1 = p(pair1(1)) + p(pair1(2))
+    p2 = p(pair2(1)) + p(pair2(2))
+    onshell = onshell_tops (p1, p2)
+  end function onshell_tops_array
 
   function va_ilc_tta (p, k, i) result (c)
     complex(default) :: c
