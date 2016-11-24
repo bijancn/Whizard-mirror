@@ -347,11 +347,6 @@ module @ID@_threshold
   type(conjspinor) :: owf_wb_35
   type(vector) :: owf_A_12, owf_Z_12
 
-  interface convert_to_mom_and_invert_sign
-    module procedure convert_to_mom_and_invert_sign_single
-    module procedure convert_to_mom_and_invert_sign_multi
-  end interface
-
 contains
 
   subroutine init (par, scheme)
@@ -688,7 +683,7 @@ contains
      p_top(2) = p_tmp(2)%p
   end function get_top_momenta_offshell
 
-  subroutine convert_to_mom_and_invert_sign_single (p, n, mom)
+  subroutine convert_to_mom_and_invert_sign (p, n, mom)
     real(default), intent(in), dimension(0:3,*) :: p
     integer, intent(in) :: n
     type(momentum), intent(out), dimension(:), allocatable :: mom
@@ -701,27 +696,7 @@ contains
           mom(i) = p(:,i)
        end if
     end do
-  end subroutine convert_to_mom_and_invert_sign_single
-
-  subroutine convert_to_mom_and_invert_sign_multi (p, n, mom)
-     real(default), intent(in), dimension(2,0:3,*) :: p
-     integer, intent(in) :: n
-     type(momentum), intent(out), dimension(:,:), allocatable :: mom
-     real(default), dimension(:,:), allocatable :: tmp
-     type(momentum), dimension(:), allocatable :: mom_tmp
-     integer :: i
-     allocate (mom (2, n), tmp(0:3, n))
-     do i = 1, n
-        tmp(:,i) = p(1,:,i)
-     end do
-     call convert_to_mom_and_invert_sign (tmp, n, mom_tmp)
-     mom(1,:) = mom_tmp
-     do i = 1, n
-        tmp(:,i) = p(2,:,i)
-     end do
-     call convert_to_mom_and_invert_sign (tmp, n, mom_tmp)
-     mom(2,:) = mom_tmp
-  end subroutine convert_to_mom_and_invert_sign_multi
+  end subroutine convert_to_mom_and_invert_sign
 
   subroutine compute_projected_momenta (leg, p_ofs, p_ons, p_ons_rest)
      integer, intent(in) :: leg
@@ -987,7 +962,6 @@ contains
       type(momentum), dimension(4) :: p_real_ons
       allocate (p_ons_rest (size (p_ofs)))
       p12 = p_ofs(1) + p_ofs(2)
-      !do leg = 1, 2
       other_leg = 3 - leg
       ptop_ons(1) = p_ons(THR_POS_WP) + p_ons(THR_POS_B)
       ptop_ons(2) = p_ons(THR_POS_WM) + p_ons(THR_POS_BBAR)
@@ -995,7 +969,6 @@ contains
       ptop_ofs(1) = p_ofs(THR_POS_WP) + p_ofs(THR_POS_B)
       ptop_ofs(2) = p_ofs(THR_POS_WM) + p_ofs(THR_POS_BBAR)
       ptop_ofs(leg) = ptop_ofs(leg) + p_ofs(THR_POS_GLUON)
-      !production_me(:,:,:,:,leg) = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
       production_me = compute_production_me (ffi, p_ofs, ptop_ofs, ptop_ons)
       if (leg == 1) then
          top_decay_real => top_real_decay_calculate_amplitude
@@ -1024,9 +997,7 @@ contains
       end do
       end do
       end do
-      !top_propagators_(leg) = top_propagators (ffi, p12, ptop_ofs)
       top_propagators_ = top_propagators (ffi, p12, ptop_ofs)
-      !end do
     end subroutine compute_amplitudes
 
     subroutine check_phase_space_point (p_decay, p_prod, mandelstam_s)
