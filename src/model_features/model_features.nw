@@ -1093,7 +1093,6 @@ available energy.  This restriction is removed by setting
     logical, intent(out) :: passed
     type(ps_entry_t), pointer :: current
     passed = .false.
-    call pl%write ()
     if (.not. pl%is_regular ()) then
        call msg_warning ("Record ps_table entry: Irregular pdg-list encountered!")
        return
@@ -2118,27 +2117,27 @@ caller when this is a function.
   procedure :: append => reshuffle_list_append
 <<radiation generator: procedures>>=
   subroutine reshuffle_list_append (rlist, ii)
-     class(reshuffle_list_t), intent(inout) :: rlist
-     integer, dimension(:), allocatable, intent(in) :: ii
-     type(reshuffle_list_t), pointer :: current
-     if (associated (rlist%next)) then
-        current => rlist%next
-        do
-           if (associated (current%next)) then
-              current => current%next
-           else
-              allocate (current%next)
-              allocate (current%next%ii (size (ii)))
-              current%next%ii = ii
-              exit
-           end if
-        end do
-     else
-        allocate (rlist%next)
-        allocate (rlist%next%ii (size (ii)))
-        rlist%next%ii = ii
-     end if
-   end subroutine reshuffle_list_append
+    class(reshuffle_list_t), intent(inout) :: rlist
+    integer, dimension(:), allocatable, intent(in) :: ii
+    type(reshuffle_list_t), pointer :: current
+    if (associated (rlist%next)) then
+       current => rlist%next
+       do
+          if (associated (current%next)) then
+             current => current%next
+          else
+             allocate (current%next)
+             allocate (current%next%ii (size (ii)))
+             current%next%ii = ii
+             exit
+          end if
+       end do
+    else
+       allocate (rlist%next)
+       allocate (rlist%next%ii (size (ii)))
+       rlist%next%ii = ii
+    end if
+  end subroutine reshuffle_list_append
 
 @ %def reshuffle_list_append
 @
@@ -2175,6 +2174,23 @@ caller when this is a function.
   end function reshuffle_list_get
 
 @ %def reshuffle_list_get
+@ We need to reset the [[reshuffle_list]] in order to deal with
+subsequent usages of the [[radiation_generator]]. Below is obviously
+the lazy and dirty solution. Otherwise, we would have to equip this
+auxiliary type with additional information about [[last]] and [[previous]]
+pointers. Considering that at most $n_{\rm{legs}}$ integers are saved
+in the lists, and that the subroutine is only called during the
+initialization phase (more precisely: at the moment only in the
+[[radiation_generator]] unit tests), I think this quick fix is justified.
+<<radiation generator: reshuffle list: TBP>>=
+  procedure :: reset => reshuffle_list_reset
+<<radiation generator: procedures>>=
+  subroutine reshuffle_list_reset (rlist)
+    class(reshuffle_list_t), intent(inout) :: rlist
+    rlist%next => null ()
+  end subroutine reshuffle_list_reset
+
+@ %def reshuffle_list_reset
 @
 <<radiation generator: public>>=
   public :: radiation_generator_t
@@ -2305,8 +2321,18 @@ caller when this is a function.
 @ %def radiation_generator_reset_particle_content
 @
 <<radiation generator: radiation generator: TBP>>=
+  procedure :: reset_reshuffle_list=> radiation_generator_reset_reshuffle_list
+<<radiation generator: procedures>>=
+  subroutine radiation_generator_reset_reshuffle_list (generator)
+    class(radiation_generator_t), intent(inout) :: generator
+    call generator%reshuffle_list%reset ()
+  end subroutine radiation_generator_reset_reshuffle_list
+
+@ %def radiation_generator_reset_reshuffle_list
+@
+<<radiation generator: radiation generator: TBP>>=
   procedure :: set_radiation_model => &
-                    radiation_generator_set_radiation_model
+       radiation_generator_set_radiation_model
 <<radiation generator: procedures>>=
   subroutine radiation_generator_set_radiation_model (generator, model)
     class(radiation_generator_t), intent(inout) :: generator
@@ -2523,6 +2549,7 @@ caller when this is a function.
     type(string_t), dimension(:), allocatable :: buf
     integer :: i_buf
 
+    flv = 0
     associate (if_table => generator%if_table)
        do i = 1, if_table%get_length ()
           call if_table%get_pdg_out (i, pdg_tmp)
@@ -2637,11 +2664,11 @@ caller when this is a function.
     class(radiation_generator_t), intent(inout) :: generator
     integer, intent(in) :: max_multiplicity
     if (max_multiplicity <= generator%n_out) &
-       call msg_fatal ("GKS states: Multiplicity is not large enough!")
+         call msg_fatal ("GKS states: Multiplicity is not large enough!")
     call generator%first_emission ()
-    if (max_multiplicity - generator%n_out > 1) then
-       call generator%append_emissions (max_multiplicity)
-    end if
+    call generator%reset_reshuffle_list ()
+    if (max_multiplicity - generator%n_out > 1) &
+         call generator%append_emissions (max_multiplicity)
   end subroutine radiation_generator_generate_multiple
 
 @ %def radiation_generator_generate_multiple
@@ -2685,12 +2712,13 @@ caller when this is a function.
        call separate_particles (prt_out1, prt_out2)
        call sort_prt (prt_out2, generator%radiation_model)
        if (.not. generator%prt_queue%contains (prt_out2)) &
-          call generator%prt_queue%append (prt_out2)
+            call generator%prt_queue%append (prt_out2)
        if (.not. any (prt_out1 == " ")) then
           call sort_prt (prt_out1, generator%radiation_model)
           if (.not. generator%prt_queue%contains (prt_out1)) &
              call generator%prt_queue%append (prt_out1)
        end if
+       call generator%reset_reshuffle_list ()
     end do
 
   contains
@@ -3020,6 +3048,7 @@ end module radiation_generator_uti
       write (u, "(A)") "* Outgoing: "
       call write_particle_string (prt_strings_out, u)
       call write_separator(u)
+      call generator%reset_reshuffle_list ()
     end subroutine test_process
 
   end subroutine radiation_generator_1
