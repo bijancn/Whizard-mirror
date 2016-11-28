@@ -1122,6 +1122,12 @@ subroutine @ID@_get_amp_squared (amp2, p_ofs, p_ons, leg, n_tot) bind(C)
         end if
      end select
      if (test_ward)  amp2 = 0
+     if (threshold%settings%only_interference_term) then
+        call compute_born (n_tot, p_ofs, FF)
+        amp_with_FF = amp_blob
+        amp_no_FF = amp_omega_full
+        amp2 = sum (2 * real (amp_no_FF * conjg (amp_with_FF)))
+     end if
   end if
   amp2 = amp2 * production_factors
 
