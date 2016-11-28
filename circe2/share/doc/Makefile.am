@@ -103,12 +103,39 @@ SUFFIXES = \
   .data .histo .tex .pdf \
   .nw .dvi .eps .ps
 
-if !OCAMLWEB_AVAILABLE
+if !NOWEB_AVAILABLE
+
 circe2.pdf:
-else
+
+else NOWEB_AVAILABLE
+
 circe2.pdf: $(CIRCE2_INTERFACE) $(CIRCE2_IMPLEMENTATION) \
-		$(CIRCE2TOOL_IMPLEMENTATION) index.tex $(CIRCE2_HISTOS)
-endif
+		$(CIRCE2TOOL_IMPLEMENTATION) circe2.tex \
+		index.tex $(CIRCE2_HISTOS)
+
+if DISTRIBUTION
+if OCAMLWEB_AVAILABLE
+
+.mll.implementation:
+	$(OCAMLWEB) --no-preamble --noweb --no-index $< >$@
+
+.mly.implementation:
+	$(OCAMLWEB) --no-preamble --noweb --no-index $< >$@
+
+.ml.implementation:
+	$(OCAMLWEB) --no-preamble --noweb --no-index $< >$@
+
+.mli.interface:
+	$(OCAMLWEB) --no-preamble --noweb --no-index $< >$@
+
+index.tex: $(CIRCE2_CAML) $(CIRCE2_DERIVED)
+	$(OCAMLWEB) --no-preamble --noweb $^ | \
+	   sed -n '/\\ocwbeginindex{}/,/\\ocwendindex{}/p' >$@
+
+endif OCAMLWEB_AVAILABLE
+endif DISTRIBUTION
+
+endif NOWEB_AVAILABLE
 
 if DISTRIBUTION
 if PDFLATEX_AVAILABLE
@@ -138,24 +165,6 @@ endif SUPP_PDF_AVAILABLE
 endif MPOST_AVAILABLE
 endif PDFLATEX_AVAILABLE
 endif DISTRIBUTION
-
-if OCAMLWEB_AVAILABLE
-.mll.implementation:
-	$(OCAMLWEB) --no-preamble --noweb --no-index $< >$@
-
-.mly.implementation:
-	$(OCAMLWEB) --no-preamble --noweb --no-index $< >$@
-
-.ml.implementation:
-	$(OCAMLWEB) --no-preamble --noweb --no-index $< >$@
-
-.mli.interface:
-	$(OCAMLWEB) --no-preamble --noweb --no-index $< >$@
-
-index.tex: $(CIRCE2_CAML) $(CIRCE2_DERIVED)
-	$(OCAMLWEB) --no-preamble --noweb $^ | \
-	   sed -n '/\\ocwbeginindex{}/,/\\ocwendindex{}/p' >$@
-endif OCAMLWEB_AVAILABLE
 
 ## Cleanup tasks
 mostlyclean-latex:

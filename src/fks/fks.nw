@@ -1,9 +1,8 @@
 % -*- ess-noweb-default-code-mode: f90-mode; noweb-default-code-mode: f90-mode; -*-
 % WHIZARD code as NOWEB source: matrix elements and process libraries
-
-@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{FKS Subtraction Scheme}
+\includemodulegraph{fks}
 
 The code in this chapter implements the FKS subtraction scheme for use
 with \whizard.
@@ -257,6 +256,23 @@ the [[ftuple]]-object.
   end type ftuple_t
 
 @ %def ftuple_t
+@
+<<fks regions: interfaces>>=
+  interface assignment(=)
+     module procedure ftuple_assign
+  end interface
+
+<<fks regions: procedures>>=
+  subroutine ftuple_assign (ftuple_out, ftuple_in)
+    type(ftuple_t), intent(out) :: ftuple_out
+    type(ftuple_t), intent(in) :: ftuple_in
+    ftuple_out%ireg = ftuple_in%ireg
+    ftuple_out%i_res = ftuple_in%i_res
+    ftuple_out%splitting_type = ftuple_in%splitting_type
+    ftuple_out%pseudo_isr = ftuple_in%pseudo_isr
+  end subroutine ftuple_assign
+
+@ %def ftuple_assign
 @
 <<fks regions: ftuple: TBP>>=
   procedure :: write => ftuple_write
@@ -1219,6 +1235,7 @@ there is only a soft singularity if the radiated parton becomes soft.
     type(singular_region_t), intent(out) :: reg_out
     type(singular_region_t), intent(in) :: reg_in
     reg_out%alr = reg_in%alr
+    reg_out%i_res = reg_in%i_res
     reg_out%flst_real = reg_in%flst_real
     reg_out%flst_uborn = reg_in%flst_uborn
     reg_out%mult = reg_in%mult
@@ -1393,6 +1410,25 @@ there is only a soft singularity if the radiated parton becomes soft.
 @ %def resonance_mapping_get_resonance_all
 @
 <<fks regions: resonance mapping: TBP>>=
+  procedure :: get_weight => resonance_mapping_get_weight
+<<fks regions: procedures>>=
+  function resonance_mapping_get_weight (res_map, alr, p) result (pfr)
+    real(default) :: pfr
+    class(resonance_mapping_t), intent(in) :: res_map
+    integer, intent(in) :: alr
+    type(vector4_t), intent(in), dimension(:) :: p
+    real(default) :: sumpfr
+    integer :: i_res, i_alr
+    sumpfr = zero
+    do i_res = 1, size (res_map%res_histories)
+       sumpfr = sumpfr + res_map%get_resonance_value (i_res, p)
+    end do
+    pfr = res_map%get_resonance_value (res_map%alr_to_i_res (alr), p) / sumpfr
+  end function resonance_mapping_get_weight
+
+@ %def resonance_mapping_get_weight
+@
+<<fks regions: resonance mapping: TBP>>=
   procedure :: get_resonance_alr => resonance_mapping_get_resonance_alr
 <<fks regions: procedures>>=
   function resonance_mapping_get_resonance_alr (res_map, alr, p, i_gluon) result (p_map)
@@ -1442,6 +1478,7 @@ there is only a soft singularity if the radiated parton becomes soft.
   type, abstract :: fks_mapping_t
      real(default) :: sumdij
      real(default) :: sumdij_soft
+     logical :: pseudo_isr = .false.
   contains
   <<fks regions: fks mapping: TBP>>
   end type fks_mapping_t
@@ -1467,7 +1504,6 @@ there is only a soft singularity if the radiated parton becomes soft.
     real(default) :: exp_1, exp_2
     type(resonance_mapping_t) :: res_map
     integer :: i_con = 0
-    logical :: pseudo_isr = .false.
   contains
   <<fks regions: fks mapping resonances: TBP>>
   end type fks_mapping_resonances_t
@@ -1576,13 +1612,10 @@ there is only a soft singularity if the radiated parton becomes soft.
 <<fks regions: reg data: TBP>>=
   procedure :: init_resonance_information => region_data_init_resonance_information
 <<fks regions: procedures>>=
-  subroutine region_data_init_resonance_information (reg_data, factorization_mode)
+  subroutine region_data_init_resonance_information (reg_data)
     class(region_data_t), intent(inout) :: reg_data
-    integer, intent(in) :: factorization_mode
     call reg_data%enlarge_singular_regions_with_resonances ()
     call reg_data%find_resonances ()
-    if (factorization_mode == FACTORIZATION_THRESHOLD) &
-       call reg_data%set_isr_pseudo_regions ()
   end subroutine region_data_init_resonance_information
 
 @ %def region_data_init_resonance_information
@@ -1677,33 +1710,19 @@ must be compatible with the resonance.
     !!! Size of singular regions at this point is fixed
     type(singular_region_t), dimension(2) :: save_regions
     integer, dimension(4) :: alr_new_to_old
-    integer, dimension(2) :: alr_to_i_con_old
     do alr = 1, reg_data%n_regions
        save_regions(alr) = reg_data%regions(alr)
     end do
     n_alr_new = reg_data%n_regions * 2
     alr_new_to_old = [1, 1, 2, 2]
-    alr_to_i_con_old = reg_data%alr_to_i_contributor
     deallocate (reg_data%regions)
-    deallocate (reg_data%alr_to_i_contributor)
     allocate (reg_data%regions (n_alr_new))
-    allocate (reg_data%alr_to_i_contributor (n_alr_new))
     reg_data%n_regions = n_alr_new
     do alr = 1, n_alr_new
        reg_data%regions(alr) = save_regions(alr_new_to_old (alr))
        call add_pseudo_emitters (reg_data%regions(alr))
        if (mod (alr, 2) == 0) reg_data%regions(alr)%pseudo_isr = .true.
-       reg_data%regions(alr)%i_res = 1
-       reg_data%alr_to_i_contributor(alr) = alr_to_i_con_old (alr_new_to_old (alr))
-       allocate (reg_data%regions(alr)%i_reg_to_i_con(4))
-       reg_data%regions(alr)%i_reg_to_i_con = [1, 1, 2, 2]
     end do
-    select type (fks_mapping => reg_data%fks_mapping)
-    type is (fks_mapping_resonances_t)
-       deallocate (fks_mapping%res_map%alr_to_i_res)
-       allocate (fks_mapping%res_map%alr_to_i_res (4))
-       fks_mapping%res_map%alr_to_i_res = [1, 1, 1, 1]
-    end select
   contains
     subroutine add_pseudo_emitters (sregion)
       type(singular_region_t), intent(inout) :: sregion
@@ -1723,6 +1742,41 @@ must be compatible with the resonance.
   end subroutine region_data_set_isr_pseudo_regions
 
 @ %def region_data_set_isr_pseudo_regions
+@ This subroutine splits up the ftuple-list of the singular regions into interference-free
+lists, i.e. lists which only contain the same emitter. This is relevant for factorized
+NLO calculations. In the current implementation, it is hand-tailored for the threshold
+computation, but should be generalized further in the future.
+<<fks regions: reg data: TBP>>=
+  procedure :: split_up_interference_regions_for_threshold => &
+       region_data_split_up_interference_regions_for_threshold
+<<fks regions: procedures>>=
+  subroutine region_data_split_up_interference_regions_for_threshold (reg_data)
+    class(region_data_t), intent(inout) :: reg_data
+    integer :: alr, i_ftuple
+    integer :: current_emitter
+    integer :: i1, i2
+    integer :: n_new_reg
+    type(ftuple_t), dimension(2) :: ftuples
+    do alr = 1, reg_data%n_regions
+       associate (region => reg_data%regions(alr))
+          current_emitter = region%emitter
+          n_new_reg = 0
+          do i_ftuple = 1, region%nregions
+             call region%ftuples(i_ftuple)%get (i1, i2)
+             if (i1 == current_emitter) then
+                n_new_reg = n_new_reg + 1
+                ftuples(n_new_reg) = region%ftuples(i_ftuple)
+             end if
+          end do
+          deallocate (region%ftuples)
+          allocate (region%ftuples(n_new_reg))
+          region%ftuples = ftuples (1 : n_new_reg)
+          region%nregions = n_new_reg
+       end associate
+    end do
+  end subroutine region_data_split_up_interference_regions_for_threshold
+
+@ %def region_data_split_up_interference_regions_for_threshold
 @
 <<fks regions: reg data: TBP>>=
   procedure :: evaluate_flavors => region_data_evaluate_flavors
@@ -2192,14 +2246,14 @@ are therefore equivalent.
                      i_reg = i_reg + 1
                      if(valid1) then
                         flst_alr_tmp(i_reg) = &
-                           create_alr (flv_real, reg_data%n_in, leg1, leg2)
+                             create_alr (flv_real, reg_data%n_in, leg1, leg2)
                      else
                         flst_alr_tmp(i_reg) = &
-                           create_alr (flv_real, reg_data%n_in, leg2, leg1)
+                             create_alr (flv_real, reg_data%n_in, leg2, leg1)
                      end if
                      call current_ftuple%set (leg1, leg2)
                      call current_ftuple%determine_splitting_type_fsr &
-                        (flv_real, leg1, leg2)
+                          (flv_real, leg1, leg2)
                      call ftuples(i_real)%append (current_ftuple)
                      emitter_tmp(i_reg) = nlegreal - 1
                      exit
@@ -3199,6 +3253,18 @@ position.
 @ %def fks_apply_perm
 @
 <<fks regions: reg data: TBP>>=
+  procedure :: has_pseudo_isr => region_data_has_pseudo_isr
+<<fks regions: procedures>>=
+  function region_data_has_pseudo_isr (reg_data) result (val)
+    logical :: val
+    class(region_data_t), intent(in) :: reg_data
+    val = any (reg_data%regions%pseudo_isr)
+    !val = .true.
+  end function region_data_has_pseudo_isr
+
+@ %def region_data_has_pseudo_isr
+@
+<<fks regions: reg data: TBP>>=
   procedure :: final => region_data_final
 <<fks regions: procedures>>=
   subroutine region_data_final (reg_data)
@@ -3343,36 +3409,67 @@ tuning the efficiency of the mapping and are set to $1$ per default.
     type(vector4_t), intent(in), dimension(:) :: p
     integer, intent(in) :: i, j
     integer, intent(in), optional :: i_con
-    real(default) :: y, E1, E2
     d = zero
     if (i /= j) then
-        if (i > map%n_in .and. j > map%n_in) then
-           E1 = p(i)%p(0); E2 = p(j)%p(0)
-           d = (two * p(i) * p(j) * E1 * E2 / (E1 + E2)**2)**map%exp_1
+        if (map%pseudo_isr) then
+           d = dij_threshold_gluon_from_top (i, j, p, map%exp_1)
+        else if (i > map%n_in .and. j > map%n_in) then
+           d = dij_fsr (p(i), p(j), map%exp_1)
         else
-           select case (map%n_in)
-           case (1)
-              call get_emitter_variables (1, i, j, p, E1, y)
-              d = ( E1**2 * (one - y**2) )**map%exp_2
-           case (2)
-              if ((i == 0 .and. j > 2) .or. (j == 0 .and. i > 2)) then
-                 call get_emitter_variables (0, i, j, p, E1, y)
-                 d = ( E1**2 * (one - y**2) )**map%exp_2
-              else if ((i == 1 .and. j > 2) .or. (j == 1 .and. i > 2)) then
-                 call get_emitter_variables (1, i, j, p, E1, y)
-                 d = ( 2 * E1**2 * (one - y) )**map%exp_2
-              else if ((i == 2 .and. j > 2) .or. (j == 2 .and. i > 2)) then
-                 call get_emitter_variables (2, i, j, p, E1, y)
-                 d = (2 * E1**2 * (one + y) )**map%exp_2
-              else
-                 call msg_fatal ("FKS: Region with i, j <= 2 encountered")
-              end if
-           end select
+           d = dij_isr (map%n_in, i, j, p, map%exp_2)
         end if
     else
       call msg_fatal ("Invalid FKS region: Emitter equals FKS parton!")
     end if
   contains
+
+    function dij_fsr (p1, p2, expo) result (d_ij)
+      real(default) :: d_ij
+      type(vector4_t), intent(in) :: p1, p2
+      real(default), intent(in) :: expo
+      real(default) :: E1, E2
+      E1 = p1%p(0); E2 = p2%p(0)
+      d_ij = (two * p1 * p2 * E1 * E2 / (E1 + E2)**2)**expo
+    end function dij_fsr
+
+    function dij_threshold_gluon_from_top (i, j, p, expo) result (d_ij)
+      real(default) :: d_ij
+      integer, intent(in) :: i, j
+      type(vector4_t), intent(in), dimension(:) :: p
+      real(default), intent(in) :: expo
+      type(vector4_t) :: p_top
+      if (i == THR_POS_B) then
+         p_top = p(THR_POS_WP) + p(THR_POS_B)
+      else
+         p_top = p(THR_POS_WM) + p(THR_POS_BBAR)
+      end if
+      d_ij = dij_fsr (p_top, p(j), expo)
+    end function dij_threshold_gluon_from_top
+
+    function dij_isr (n_in, i, j, p, expo) result (d_ij)
+      real(default) :: d_ij
+      integer, intent(in) :: n_in, i, j
+      type(vector4_t), intent(in), dimension(:) :: p
+      real(default), intent(in) :: expo
+      real(default) :: E, y
+      select case (n_in)
+      case (1)
+         call get_emitter_variables (1, i, j, p, E, y)
+         d_ij = (E**2 * (one - y**2))**expo
+      case (2)
+         if ((i == 0 .and. j > 2) .or. (j == 0 .and. i > 2)) then
+            call get_emitter_variables (0, i, j, p, E, y)
+            d_ij = (E**2 * (one - y**2))**expo
+         else if ((i == 1 .and. j > 2) .or. (j == 1 .and. i > 2)) then
+            call get_emitter_variables (1, i, j, p, E, y)
+            d_ij = (two * E**2 * (one - y))**expo
+         else if ((i == 2 .and. j > 2) .or. (j == 2 .and. i > 2)) then
+            call get_emitter_variables (2, i, j, p, E, y)
+            d_ij = (two * E**2 * (one + y))**expo
+         end if
+      end select
+    end function dij_isr
+
     subroutine get_emitter_variables (i_check, i, j, p, E, y)
        integer, intent(in) :: i_check, i, j
        type(vector4_t), intent(in), dimension(:) :: p
@@ -3400,15 +3497,15 @@ tuning the efficiency of the mapping and are set to $1$ per default.
     class(fks_mapping_default_t), intent(inout) :: map
     type(singular_region_t), intent(in) :: sregion
     type(vector4_t), intent(in), dimension(:) :: p
-    real(default) :: d, dij
+    real(default) :: d
     integer :: alr, i, j
 
     associate (ftuples => sregion%ftuples)
       d = zero
       do alr = 1, sregion%nregions
-        call ftuples(alr)%get (i, j)
-        dij = map%dij (p, i, j)
-        d = d + one / dij
+         call ftuples(alr)%get (i, j)
+         map%pseudo_isr = ftuples(alr)%pseudo_isr
+         d = d + one / map%dij (p, i, j)
       end do
     end associate
     map%sumdij = d
@@ -3467,32 +3564,65 @@ From these equations we can deduce the soft limit of $d$:
     type(vector4_t), intent(in) :: p_soft
     integer, intent(in) :: em
     integer, intent(in), optional :: i_con
-    real(default) :: y
-    if (em <= map%n_in) then
+    if (map%pseudo_isr) then
+       d = dij_soft_threshold_gluon_from_top (em, p_born, p_soft, map%exp_1)
+    else if (em <= map%n_in) then
+       d = dij_soft_isr (map%n_in, p_soft, map%exp_2)
+    else
+       d = dij_soft_fsr (p_born(em), p_soft, map%exp_1)
+    end if
+  contains
+
+    function dij_soft_threshold_gluon_from_top (em, p, p_soft, expo) result (dij_soft)
+      real(default) :: dij_soft
+      integer, intent(in) :: em
+      type(vector4_t), intent(in), dimension(:) :: p
+      type(vector4_t), intent(in) :: p_soft
+      real(default), intent(in) :: expo
+      type(vector4_t) :: p_top
+      if (em == THR_POS_B) then
+         p_top = p(THR_POS_WP) + p(THR_POS_B)
+      else
+         p_top = p(THR_POS_WM) + p(THR_POS_BBAR)
+      end if
+      dij_soft = dij_soft_fsr (p_top, p_soft, expo)
+    end function dij_soft_threshold_gluon_from_top
+
+    function dij_soft_fsr (p_em, p_soft, expo) result (dij_soft)
+      real(default) :: dij_soft
+      type(vector4_t), intent(in) :: p_em, p_soft
+      real(default), intent(in) :: expo
+      dij_soft = (two * p_em * p_soft / p_em%p(0))**expo
+    end function dij_soft_fsr
+
+    function dij_soft_isr (n_in, p_soft, expo) result (dij_soft)
+       real(default) :: dij_soft
+       integer, intent(in) :: n_in
+       type(vector4_t), intent(in) :: p_soft
+       real(default), intent(in) :: expo
+       real(default) :: y
        y = polar_angle_ct (p_soft)
-       select case (map%n_in)
+       select case (n_in)
        case (1)
-          d = one - y**2
+          dij_soft = one - y**2
        case (2)
           select case (em)
           case (0)
-             d = one - y**2
+             dij_soft = one - y**2
           case (1)
-             d = two * (one - y)
+             dij_soft = two * (one - y)
           case (2)
-             d = two * (one + y)
+             dij_soft = two * (one + y)
           case default
-             d = zero
+             dij_soft = zero
              call msg_fatal ("fks_mappings_default_dij_soft: n_in > 2")
           end select
        case default
-          d = zero
+          dij_soft = zero
           call msg_fatal ("fks_mappings_default_dij_soft: n_in > 2")
        end select
-       d = d**map%exp_2
-    else
-       d = (two * p_born(em) * p_soft / p_born(em)%p(0))**map%exp_1
-    end if
+       dij_soft = dij_soft**expo
+    end function dij_soft_isr
   end function fks_mapping_default_dij_soft
 
 @ %def fks_mapping_default_dij_soft
@@ -3505,18 +3635,18 @@ From these equations we can deduce the soft limit of $d$:
     type(singular_region_t), intent(in) :: sregion
     type(vector4_t), intent(in), dimension(:) :: p_born
     type(vector4_t), intent(in) :: p_soft
-    real(default) :: d, dij
+    real(default) :: d
     integer :: alr, i, j
     integer :: nlegs
     d = zero
     nlegs = size (sregion%flst_real%flst)
     associate (ftuples => sregion%ftuples)
       do alr = 1, sregion%nregions
-        call ftuples(alr)%get (i ,j)
-        if (j == nlegs) then
-          dij = map%dij_soft (p_born, p_soft, i)
-          d = d + one / dij
-        end if
+         call ftuples(alr)%get (i ,j)
+         if (j == nlegs) then
+            map%pseudo_isr = ftuples(alr)%pseudo_isr
+            d = d + one / map%dij_soft (p_born, p_soft, i)
+         end if
       end do
     end associate
     map%sumdij_soft = d
@@ -3580,22 +3710,15 @@ leave out the denominator because it will cancel out anyway.
        call msg_fatal ("Resonance mappings require resonance index as input!")
     end if
     d = 0
-    if (map%pseudo_isr) then
-       associate (p_res => map%res_map%p_res (ii_con))
-          E1 = p_res**2; E2 = p(j) * p_res
-          d = two * p_res * p(j) * E1 * E2 / (E1 + E2)**2
-       end associate
-    else
-       if (i /= j) then
-          if (i > 2 .and. j > 2) then
-             associate (p_res => map%res_map%p_res (ii_con))
-                E1 = p(i) * p_res
-                E2 = p(j) * p_res
-                d = two * p(i) * p(j) * E1 * E2 / (E1 + E2)**2
-             end associate
-          else
-             call msg_fatal ("Resonance mappings are not implemented for ISR")
-          end if
+    if (i /= j) then
+       if (i > 2 .and. j > 2) then
+          associate (p_res => map%res_map%p_res (ii_con))
+             E1 = p(i) * p_res
+             E2 = p(j) * p_res
+             d = two * p(i) * p(j) * E1 * E2 / (E1 + E2)**2
+          end associate
+       else
+          call msg_fatal ("Resonance mappings are not implemented for ISR")
        end if
     end if
   end function fks_mapping_resonances_dij
@@ -3626,7 +3749,6 @@ leave out the denominator because it will cancel out anyway.
        end associate
        pfr = map%res_map%get_resonance_value (i_res, p, nlegreal)
        i_con = sregion%i_reg_to_i_con (i_reg)
-       map%pseudo_isr = sregion%pseudo_isr
        d = d + pfr / map%dij (p, i, j, i_con)
     end do
     map%sumdij = d
@@ -3651,6 +3773,19 @@ leave out the denominator because it will cancel out anyway.
   end function fks_mapping_resonances_svalue
 
 @ %def fks_mapping_resonances_svalue
+@
+<<fks regions: fks mapping resonances: TBP>>=
+  procedure :: get_resonance_weight => fks_mapping_resonances_get_resonance_weight
+<<fks regions: procedures>>=
+  function fks_mapping_resonances_get_resonance_weight (map, alr, p) result (pfr)
+    real(default) :: pfr
+    class(fks_mapping_resonances_t), intent(in) :: map
+    integer, intent(in) :: alr
+    type(vector4_t), intent(in), dimension(:) :: p
+    pfr = map%res_map%get_weight (alr, p)
+  end function fks_mapping_resonances_get_resonance_weight
+
+@ %def fks_mapping_resonances_get_resonance_weight
 @ As above, the soft limit of $d_{ij,k}$ must be computed in the resonance frame of
 reference.
 <<fks regions: fks mapping resonances: TBP>>=
@@ -3672,11 +3807,7 @@ reference.
         call msg_fatal ("fks_mapping_resonances requires resonance index")
      end if
      associate (p_res => map%res_map%p_res(ii_con))
-        if (map%pseudo_isr) then
-           pb = p_res
-        else
-           pb = p_born(em)
-        end if
+        pb = p_born(em)
         E1 = pb * p_res
         E2 = p_soft * p_res
         d = two * pb * p_soft * E1 * E2 / E1**2
@@ -3707,7 +3838,6 @@ reference.
        end associate
        pfr = map%res_map%get_resonance_value (i_res, p_born)
        i_con = sregion%i_reg_to_i_con (i_reg)
-       map%pseudo_isr = sregion%pseudo_isr
        if (j == nlegs) d = d + pfr / map%dij_soft (p_born, p_soft, i, i_con)
     end do
     map%sumdij_soft = d
@@ -4157,7 +4287,6 @@ module virtual
   use sm_physics
   use lorentz
   use flavors
-  use nlo_data, only: NO_FACTORIZATION, FACTORIZATION_THRESHOLD
   use nlo_data, only: get_threshold_momenta
   use fks_regions
 
@@ -4223,7 +4352,7 @@ end module virtual
     allocate (virt%me_index (virt%n_flv))
     n_sub = virt%compute_n_sub ()
     do i_flv = 1, virt%n_flv
-       virt%me_index (i_flv) = (n_sub + 1) * i_flv - 1
+       virt%me_index (i_flv) = n_sub * (i_flv - 1) + 1
     end do
   contains
     function is_neutrino (flv) result (neutrino)
@@ -4499,7 +4628,7 @@ particles involved in the radiation process are massive or massless.
                I_ij = compute_eikonal_factor &
                     (p_thr, [.true., .true., .true., .true.], i, j, s_o_Q2)
                b_ij_times_I = b_ij_times_I + &
-                    virtual%sqme_cc (i, j, i_flv) * I_ij 
+                    virtual%sqme_cc (i, j, i_flv) * I_ij
                if (debug2_active (D_VIRTUAL)) &
                   print *, 'b_ij: ', virtual%sqme_cc (i, j, i_flv), 'I_ij: ', I_ij
             end if
@@ -4600,7 +4729,8 @@ Here, $\xi_{max}$ is implicitly present in the ratios in the logarithms. Using t
   \label{eqn:virt_Q_fsr}
   \begin{split}
     \mathcal{Q} = \sum_{k=n_{in}}^{n_L^{(B)}} \left[\gamma'(\mathcal{I}_k)
-         + \left(\log\frac{\sqrt{s}}{2E_{em}} + \log\xi_{max}\right)\left(1 + \log\frac{Q^2}{s}\right) C(\mathcal{I}_k) \right.\\
+         + \left(\log\frac{\sqrt{s}}{2E_{em}} + \log\xi_{max}\right)
+           \left(\log\frac{\sqrt{s}}{2E_{em}} + \log\xi_{max} + \log\frac{Q^2}{s}\right) C(\mathcal{I}_k) \right.\\
          + \left. 2 \log\xi_{max} \left(\log\xi_{max} - \log\frac{Q^2}{k_{res}^2}\right) C(\mathcal{I}_k)
          + \left(\frac{Q^2}{k_{res}^2} - 2 \log\xi_{max}\right) \gamma(\mathcal{I}_k)\right].
   \end{split}
@@ -4620,10 +4750,12 @@ Equation \ref{eqn:virt_Q_fsr} leads to \ref{eqn:virt_Q_fsr_old} with the substit
     real(default), intent(inout) :: QB
     real(default) :: s1, s2, s3, s4
     integer :: alr, em, i_flv, i_sqme
-    real(default) :: E_em, xi_max, k_res2
+    real(default) :: E_em, log_xi_max, E_tot2
     logical :: massive
     logical, dimension(virt%n_flv, virt%n_legs) :: evaluated
-
+    integer :: i_contr
+    type(vector4_t) :: k_res
+    type(lorentz_transformation_t) :: L_to_resonance
     evaluated = .false.
     do alr = 1, reg_data%n_regions
        em = reg_data%regions(alr)%emitter
@@ -4635,17 +4767,21 @@ Equation \ref{eqn:virt_Q_fsr} leads to \ref{eqn:virt_Q_fsr_old} with the substit
        E_em = p_born(em)%p(0)
        i_sqme = virt%me_index(i_flv) + 1
        if (allocated (reg_data%alr_contributors)) then
-          k_res2 = compute_resonance_mass (p_born, reg_data%alr_contributors(alr)%c)**2
+          i_contr = reg_data%alr_to_i_contributor (alr)
+          k_res = get_resonance_momentum (p_born, reg_data%alr_contributors(i_contr)%c)
+          E_tot2 = k_res%p(0)**2
+          L_to_resonance = inverse (boost (k_res, k_res**1))
+          log_xi_max = log (two * space_part_norm (L_to_resonance * p_born(em)) / k_res%p(0))
        else
-          k_res2 = sqrts**2
+          E_tot2 = sqrts**2
+          log_xi_max = log (two * E_em / sqrts)
        end if
-       xi_max = two * E_em / sqrt (k_res2)
        s1 = virt%gamma_p(em, i_flv)
-       s2 = two * (log (sqrts / (two * E_em)) + log (xi_max)) * &
-            (one + log (virt%es_scale2 / sqrts**2)) * virt%c_flv(em, i_flv)
-       s3 = two * log (xi_max) * &
-            (log (xi_max) - log (virt%es_scale2 / k_res2)) * virt%c_flv(em, i_flv)
-       s4 = (log (virt%es_scale2 / k_res2) - two * log (xi_max)) * virt%gamma_0(em, i_flv)
+       s2 = two * (log (sqrts / (two * E_em)) + log_xi_max) * &
+            (log (sqrts / (two * E_em)) + log_xi_max + log (virt%es_scale2 / sqrts**2)) * virt%c_flv(em, i_flv)
+       s3 = two * log_xi_max * &
+            (log_xi_max - log (virt%es_scale2 / E_tot2)) * virt%c_flv(em, i_flv)
+       s4 = (log (virt%es_scale2 / E_tot2) - two * log_xi_max) * virt%gamma_0(em, i_flv)
        QB = QB + (s1 + s2 + s3 + s4) * sqme (i_sqme)
        evaluated(i_flv, em) = .true.
     end do
@@ -4989,6 +5125,7 @@ module real_subtraction
   use flavors
   use phs_fks, only: real_kinematics_t, isr_kinematics_t
   use phs_fks, only: I_PLUS, I_MINUS
+  use phs_fks, only: phs_point_set_t
 
   use fks_regions
   use nlo_data
@@ -5078,24 +5215,29 @@ rotated about the corresponding angles $y$ and $\phi$.
     type(vector4_t) :: p_em
     type(lorentz_transformation_t) :: rot
     type(lorentz_transformation_t) :: boost_to_rest_frame
-    sub_soft%p_soft%p(0) = one
-    if (sub_soft%use_resonance_mappings) then
-       boost_to_rest_frame = inverse (boost (xi_ref_momentum, xi_ref_momentum**1))
-       p_em = boost_to_rest_frame * p_born(emitter)
-    else
-       p_em = p_born(emitter)
-    end if
-    sub_soft%p_soft%p(1:3) = p_em%p(1:3) / space_part_norm (p_em)
-    dir = create_orthogonal (space_part (p_em))
-    rot = rotation (y, sqrt(one - y**2), dir)
-    sub_soft%p_soft = rot * sub_soft%p_soft
-    if (.not. vanishes (phi)) then
-      dir = space_part (p_em) / space_part_norm (p_em)
-      rot = rotation (cos(phi), sin(phi), dir)
-      sub_soft%p_soft = rot * sub_soft%p_soft
-    end if
-    if (sub_soft%use_resonance_mappings) &
-       sub_soft%p_soft = inverse (boost_to_rest_frame) * sub_soft%p_soft
+    logical :: requires_boost
+    associate (p_soft => sub_soft%p_soft)
+       p_soft%p(0) = one
+       requires_boost = sub_soft%use_resonance_mappings .or. &
+            sub_soft%factorization_mode == FACTORIZATION_THRESHOLD
+       if (requires_boost) then
+          boost_to_rest_frame = inverse (boost (xi_ref_momentum, xi_ref_momentum**1))
+          p_em = boost_to_rest_frame * p_born(emitter)
+       else
+          p_em = p_born(emitter)
+       end if
+       p_soft%p(1:3) = p_em%p(1:3) / space_part_norm (p_em)
+       dir = create_orthogonal (space_part (p_em))
+       rot = rotation (y, sqrt(one - y**2), dir)
+       p_soft = rot * p_soft
+       if (.not. vanishes (phi)) then
+         dir = space_part (p_em) / space_part_norm (p_em)
+         rot = rotation (cos(phi), sin(phi), dir)
+         p_soft = rot * p_soft
+       end if
+       if (requires_boost) &
+          p_soft = inverse (boost_to_rest_frame) * p_soft
+    end associate
   end subroutine soft_subtraction_create_softvec_fsr
 
 @ %def soft_subtraction_create_softvec_fsr
@@ -5192,7 +5334,7 @@ distinguished by the flag [[xi2_expanded]].
     end if
 
     s_alpha_soft = sub_soft%reg_data%get_svalue_soft &
-       (p_born, sub_soft%p_soft, alr, emitter, i_res)
+         (p_born, sub_soft%p_soft, alr, emitter, i_res)
     if (debug2_active (D_SUBTRACTION)) &
        call msg_print_color ('s_alpha_soft', s_alpha_soft, COL_YELLOW)
     select case (sub_soft%factorization_mode)
@@ -5261,7 +5403,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
              num = p_born(i) * p_born(j)
              deno1 = p_born(i) * sub_soft%p_soft
              deno2 = p_born(j) * sub_soft%p_soft
-             sub_soft%momentum_matrix(i,j) = num / (deno1 * deno2)
+             sub_soft%momentum_matrix(i, j) = num / (deno1 * deno2)
           else
              !!! momentum matrix is symmetric.
             sub_soft%momentum_matrix(i, j) = sub_soft%momentum_matrix(j, i)
@@ -5285,6 +5427,7 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
     type(vector4_t), dimension(4) :: p
     p = get_threshold_momenta (p_born)
     kb = evaluate_leg_pair (1) + evaluate_leg_pair (3)
+    !kb = evaluate_leg_pair (1, 1)
     if (debug2_active (D_SUBTRACTION))  call show_debug ()
 
   contains
@@ -5298,23 +5441,22 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
       do i1 = i_start, i_start + 1
          do i2 = i_start, i_start + 1
             numerator = p(i1) * p(i2)
+            !deno1 = p(i1) * sub_soft%p_soft_threshold(leg)
+            !deno2 = p(i2) * sub_soft%p_soft_threshold(leg)
             deno1 = p(i1) * sub_soft%p_soft
             deno2 = p(i2) * sub_soft%p_soft
             kbb = kbb +  numerator * born_ij (i1, i2) / deno1 / deno2
          end do
       end do
       if (debug2_active (D_SUBTRACTION)) then
-      do i1 = i_start, i_start + 1
-         do i2 = i_start, i_start + 1
-            call msg_print_color('i1', i1, COL_PEACH)
-            call msg_print_color('i2', i2, COL_PEACH)
-            call msg_print_color('born_ij(i1,i2)', born_ij(i1,i2), COL_PINK)
-            numerator = p(i1) * p(i2)
-            deno1 = p(i1) * sub_soft%p_soft
-            deno2 = p(i2) * sub_soft%p_soft
-            kbb = kbb +  numerator * born_ij (i1, i2) / deno1 / deno2
+         do i1 = i_start, i_start + 1
+            do i2 = i_start, i_start + 1
+               call msg_print_color('i1', i1, COL_PEACH)
+               call msg_print_color('i2', i2, COL_PEACH)
+               call msg_print_color('born_ij (i1,i2)', born_ij (i1,i2), COL_PINK)
+               print *, 'Top momentum: ', p(1)%p
+            end do
          end do
-      end do
       end if
     end function evaluate_leg_pair
 
@@ -5324,7 +5466,6 @@ k_j}{(k_i\cdot k)(k_j\cdot k)}$.
       do i = 1, 4
          print *, 'sqrt(p(i)**2) =    ', sqrt(p(i)**2)
       end do
-      print *, 'p_soft =    ', sub_soft%p_soft
     end subroutine show_debug
 
   end function soft_subtraction_evaluate_factorization_threshold
@@ -5769,8 +5910,6 @@ necessary to expand with $z$ once.
     type(real_kinematics_t), pointer :: real_kinematics => null ()
     type(isr_kinematics_t), pointer :: isr_kinematics => null ()
     type(real_scales_t) :: scales
-    integer :: current_alr = 0
-    integer :: current_i_res = 0
     real(default), dimension(:,:), allocatable :: sqme_real_non_sub
     real(default), dimension(:), allocatable :: sqme_born
     real(default), dimension(:,:,:), allocatable :: sqme_born_cc
@@ -5889,31 +6028,21 @@ necessary to expand with $z$ once.
 @ %def real_subtraction_set_isr_kinematics
 @
 <<real subtraction: real subtraction: TBP>>=
-  procedure :: set_alr => real_subtraction_set_alr
+  procedure :: get_i_res => real_subtraction_get_i_res
 <<real subtraction: procedures>>=
-  subroutine real_subtraction_set_alr (rsub, alr)
-    class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: alr
-    rsub%current_alr = alr
-  end subroutine real_subtraction_set_alr
-
-@ %def real_subtraction_set_alr
-@
-<<real subtraction: real subtraction: TBP>>=
-  procedure :: set_i_res => real_subtraction_set_i_res
-<<real subtraction: procedures>>=
-  subroutine real_subtraction_set_i_res (rsub, alr)
+  function real_subtraction_get_i_res (rsub, alr) result (i_res)
+    integer :: i_res
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: alr
     select type (fks_mapping => rsub%reg_data%fks_mapping)
     type is (fks_mapping_resonances_t)
-       rsub%current_i_res = fks_mapping%res_map%alr_to_i_res (alr)
+       i_res = fks_mapping%res_map%alr_to_i_res (alr)
     class default
-       rsub%current_i_res = 0
+       i_res = 0
     end select
-  end subroutine real_subtraction_set_i_res
+  end function real_subtraction_get_i_res
 
-@ %def real_subtraction_set_i_res
+@ %def real_subtraction_get_i_res
 @\subsection{The real contribution to the cross section}
 In each singular region $\alpha$, the real contribution to $\sigma$ is
 given by the second summand of eqn. \ref{fks: sub: complete},
@@ -5949,7 +6078,7 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
     class(real_subtraction_t), intent(inout) :: rsub
     integer, intent(in) :: emitter, i_phs
     real(default) :: sqme_alr, alpha_s
-    integer :: alr, i_con
+    integer :: alr, i_con, i_res, this_emitter
     logical :: same_emitter
     sqme = zero
     do alr = 1, rsub%reg_data%n_regions
@@ -5961,16 +6090,29 @@ This formula is implemented in \texttt{compute\_sqme\_real\_fin}
           same_emitter = rsub%reg_data%regions(alr)%emitter <= rsub%isr_kinematics%n_in
        end if
        if (same_emitter .and. i_phs == rsub%real_kinematics%alr_to_i_phs (alr)) then
-          call rsub%set_alr (alr)
-          call rsub%set_i_res (alr)
-          sqme_alr = rsub%evaluate_emitter_region (rsub%reg_data%regions(alr)%emitter, &
-             i_phs, alpha_s)
+          i_res = rsub%get_i_res (alr)
+          this_emitter = rsub%reg_data%regions(alr)%emitter
+          sqme_alr = rsub%evaluate_emitter_region (alr, this_emitter, i_phs, i_res, alpha_s)
           i_con = rsub%get_i_contributor (alr)
           if (rsub%purpose == INTEGRATION .or. rsub%purpose == FIXED_ORDER_EVENTS) &
-             sqme_alr = sqme_alr * rsub%get_phs_factor (i_con)
+               sqme_alr = sqme_alr * rsub%get_phs_factor (i_con)
        end if
        sqme = sqme + sqme_alr
     end do
+    if (debug2_active (D_SUBTRACTION)) call check_s_alpha_consistency ()
+  contains
+    subroutine check_s_alpha_consistency ()
+      real(default) :: sum_s_alpha
+      sum_s_alpha = zero
+      do alr = 1, rsub%reg_data%n_regions
+         i_res = rsub%get_i_res(alr)
+         this_emitter = rsub%reg_data%regions(alr)%emitter
+         sum_s_alpha = sum_s_alpha + rsub%evaluate_emitter_region_debug &
+              (alr, this_emitter, i_phs, i_res)
+      end do
+      call msg_debug2 (D_SUBTRACTION, "Check consistency of s_alpha: ")
+      print *, 'sum_s_alpha: ', sum_s_alpha
+    end subroutine check_s_alpha_consistency
   end function real_subtraction_compute
 
 @ %def real_subtraction_compute
@@ -5979,27 +6121,40 @@ region, and also if resonances are used.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: evaluate_emitter_region => real_subtraction_evaluate_emitter_region
 <<real subtraction: procedures>>=
-  function real_subtraction_evaluate_emitter_region (rsub, emitter, i_phs, alpha_s) &
-     result (sqme)
+  function real_subtraction_evaluate_emitter_region (rsub, alr, emitter, &
+      i_phs, i_res, alpha_s) result (sqme)
     real(default) :: sqme
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter, i_phs
+    integer, intent(in) :: alr, emitter, i_phs, i_res
     real(default), intent(in) :: alpha_s
     if (emitter <= rsub%isr_kinematics%n_in) then
-       sqme = rsub%evaluate_region_isr (emitter, i_phs, alpha_s)
+       sqme = rsub%evaluate_region_isr (alr, emitter, i_phs, i_res, alpha_s)
     else
        select type (fks_mapping => rsub%reg_data%fks_mapping)
        type is (fks_mapping_resonances_t)
           call fks_mapping%set_resonance_momenta &
-             (rsub%real_kinematics%xi_ref_momenta )
-          sqme = rsub%evaluate_region_fsr (emitter, i_phs, alpha_s)
-       class default
-          sqme = rsub%evaluate_region_fsr (emitter, i_phs, alpha_s)
+             (rsub%real_kinematics%xi_ref_momenta)
        end select
+       sqme = rsub%evaluate_region_fsr (alr, emitter, i_phs, i_res, alpha_s)
     end if
   end function real_subtraction_evaluate_emitter_region
 
 @ %def real_subtraction_evaluate_emitter_region
+@
+<<real subtraction: real subtraction: TBP>>=
+  procedure :: evaluate_emitter_region_debug &
+       => real_subtraction_evaluate_emitter_region_debug
+<<real subtraction: procedures>>=
+  function real_subtraction_evaluate_emitter_region_debug (rsub, alr, emitter, &
+       i_phs, i_res) result (s_alpha)
+    real(default) :: s_alpha
+    class(real_subtraction_t), intent(in) :: rsub
+    integer, intent(in) :: alr, emitter, i_phs, i_res
+    s_alpha = rsub%reg_data%get_svalue (rsub%real_kinematics%p_real_cms%get_momenta (i_phs), &
+         alr, emitter, i_res)
+  end function real_subtraction_evaluate_emitter_region_debug
+
+@ %def real_subtraction_evaluate_emitter_region_debug
 @ This subroutine computes the finite part of the real matrix element in
 an individual singular region.
 First, the radiation variables are fetched and $\mathcal{R}$ is
@@ -6011,27 +6166,34 @@ the corresponding jacobians.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: evaluate_region_fsr => real_subtraction_evaluate_region_fsr
 <<real subtraction: procedures>>=
-  function real_subtraction_evaluate_region_fsr (rsub, emitter, i_phs, &
-     alpha_s) result (sqme_tot)
+  function real_subtraction_evaluate_region_fsr (rsub, alr, emitter, i_phs, &
+     i_res, alpha_s) result (sqme_tot)
     real(default) :: sqme_tot
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter, i_phs
+    integer, intent(in) :: alr, emitter, i_phs, i_res
     real(default), intent(in) :: alpha_s
     real(default) :: sqme_rad, sqme_soft, sqme_coll, sqme_cs, sqme_remn
     sqme_rad = zero; sqme_soft = zero; sqme_coll = zero
     sqme_cs = zero; sqme_remn = zero
-    associate (region => rsub%reg_data%regions(rsub%current_alr))
+    associate (region => rsub%reg_data%regions(alr))
       if (rsub%radiation_active) then
          sqme_rad = rsub%sqme_real_non_sub (1, i_phs)
-         call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, rsub%current_alr, &
-            i_phs, emitter, rsub%current_i_res)
-         call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, rsub%real_kinematics, i_phs, .false.)
+         call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, &
+              alr, i_phs, emitter, i_res)
+         call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, &
+              rsub%real_kinematics, i_phs, .false., rsub%reg_data%has_pseudo_isr (), &
+              emitter)
       end if
       if (rsub%subtraction_active) then
-         call rsub%evaluate_subtraction_terms_fsr (emitter, i_phs, alpha_s, &
-            sqme_soft, sqme_coll, sqme_cs)
-         call apply_kinematic_factors_subtraction_fsr (sqme_soft, sqme_coll, sqme_cs, &
-            rsub%real_kinematics, i_phs)
+         call rsub%evaluate_subtraction_terms_fsr (alr, emitter, i_phs, i_res, alpha_s, &
+              sqme_soft, sqme_coll, sqme_cs)
+         if (rsub%reg_data%has_pseudo_isr ()) then
+            call apply_kinematic_factors_subtraction_fsr (sqme_soft, sqme_coll, sqme_cs, &
+                 rsub%real_kinematics, i_phs, emitter)
+         else
+            call apply_kinematic_factors_subtraction_fsr (sqme_soft, sqme_coll, sqme_cs, &
+                 rsub%real_kinematics, i_phs)
+         end if
          sqme_remn = compute_sqme_remnant_fsr (sqme_soft, sqme_cs, rsub%real_kinematics, i_phs)
          select case (rsub%purpose)
          case (INTEGRATION)
@@ -6102,10 +6264,10 @@ the corresponding jacobians.
        integer :: u
        real(default) :: xi
        u = given_output_unit (); if (u < 0) return
-       i_uborn = rsub%reg_data%regions(rsub%current_alr)%uborn_index
+       i_uborn = rsub%reg_data%regions(alr)%uborn_index
        xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
        write (u,'(A,I2)') 'rsub%purpose: ', rsub%purpose
-       write (u,'(A,I3)') 'alr: ', rsub%current_alr
+       write (u,'(A,I3)') 'alr: ', alr
        write (u,'(A,I3)') 'emitter: ', emitter
        write (u,'(A,I3)') 'i_phs: ', i_phs
        write (u,'(A,F6.4)') 'xi_max: ', rsub%real_kinematics%xi_max (i_phs)
@@ -6143,11 +6305,11 @@ the corresponding jacobians.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: evaluate_region_isr => real_subtraction_evaluate_region_isr
 <<real subtraction: procedures>>=
-  function real_subtraction_evaluate_region_isr (rsub, emitter, i_phs, alpha_s) &
-     result (sqme_tot)
+  function real_subtraction_evaluate_region_isr (rsub, alr, emitter, i_phs, i_res, alpha_s) &
+       result (sqme_tot)
     real(default) :: sqme_tot
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter, i_phs
+    integer, intent(in) :: alr, emitter, i_phs, i_res
     real(default), intent(in) :: alpha_s
     integer :: i_real
     real(default) :: sqme_rad, sqme_soft, sqme_coll_plus, sqme_coll_minus
@@ -6164,28 +6326,28 @@ the corresponding jacobians.
     sqme_remn = zero
 
     if (proc_scatter) call rsub%compute_pdfs ()
-    associate (region => rsub%reg_data%regions(rsub%current_alr))
+    associate (region => rsub%reg_data%regions(alr))
       i_real = region%real_index
       if (rsub%radiation_active) then
          sqme_rad = rsub%sqme_real_non_sub (1, i_phs)
          call evaluate_fks_factors (sqme_rad, rsub%reg_data, rsub%real_kinematics, &
-            rsub%current_alr, i_phs, emitter, rsub%current_i_res)
+              alr, i_phs, emitter, i_res)
          if (proc_scatter) then
             call rsub%scale_pdfs_real (sqme_rad, i_real, I_PLUS)
             call rsub%scale_pdfs_real (sqme_rad, i_real, I_MINUS)
          end if
 
          call apply_kinematic_factors_radiation (sqme_rad, rsub%purpose, rsub%real_kinematics, &
-            i_phs, .true.)
+            i_phs, .true., .false.)
       end if
       if (rsub%subtraction_active) then
-         call rsub%evaluate_subtraction_terms_isr (emitter, i_phs, alpha_s, &
-            sqme_soft, sqme_coll_plus, sqme_coll_minus, sqme_cs_plus, sqme_cs_minus)
+         call rsub%evaluate_subtraction_terms_isr (alr, emitter, i_phs, i_res, alpha_s, &
+              sqme_soft, sqme_coll_plus, sqme_coll_minus, sqme_cs_plus, sqme_cs_minus)
          if (proc_scatter) then
             call rsub%scale_pdfs_collinear (sqme_coll_plus, i_real, &
-               region%uborn_index, I_PLUS)
+                 region%uborn_index, I_PLUS)
             call rsub%scale_pdfs_collinear (sqme_coll_minus, i_real, &
-               region%uborn_index, I_MINUS)
+                 region%uborn_index, I_MINUS)
          end if
          call apply_kinematic_factors_subtraction_isr (sqme_soft, sqme_coll_plus, &
             sqme_coll_minus, sqme_cs_plus, sqme_cs_minus, rsub%real_kinematics, i_phs)
@@ -6241,9 +6403,9 @@ the corresponding jacobians.
        integer :: u
        real(default) :: xi
        u = given_output_unit (unit); if (u < 0) return
-       i_uborn = rsub%reg_data%regions(rsub%current_alr)%uborn_index
+       i_uborn = rsub%reg_data%regions(alr)%uborn_index
        xi = rsub%real_kinematics%xi_max (i_phs) * rsub%real_kinematics%xi_tilde
-       write (u,'(A,I2)') 'alr: ', rsub%current_alr
+       write (u,'(A,I2)') 'alr: ', alr
        write (u,'(A,I2)') 'emitter: ', emitter
        write (u,'(A,F4.2)') 'xi_max: ', rsub%real_kinematics%xi_max (i_phs)
        print *, 'xi: ', xi, 'y: ', rsub%real_kinematics%y (i_phs)
@@ -6269,14 +6431,14 @@ the corresponding jacobians.
        real_subtraction_evaluate_subtraction_terms_fsr
 <<real subtraction: procedures>>=
   subroutine real_subtraction_evaluate_subtraction_terms_fsr (rsub, &
-     emitter, i_phs, alpha_s, sqme_soft, sqme_coll, sqme_cs)
+     alr, emitter, i_phs, i_res, alpha_s, sqme_soft, sqme_coll, sqme_cs)
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter, i_phs
+    integer, intent(in) :: alr, emitter, i_phs, i_res
     real(default), intent(in) :: alpha_s
     real(default), intent(out) :: sqme_soft, sqme_coll, sqme_cs
-    sqme_soft = rsub%compute_sub_soft (emitter, i_phs, alpha_s)
-    sqme_coll = rsub%compute_sub_coll (emitter, i_phs, alpha_s)
-    sqme_cs = rsub%compute_sub_coll_soft (emitter, alpha_s)
+    sqme_soft = rsub%compute_sub_soft (alr, emitter, i_phs, i_res, alpha_s)
+    sqme_coll = rsub%compute_sub_coll (alr, emitter, i_phs, alpha_s)
+    sqme_cs = rsub%compute_sub_coll_soft (alr, emitter, alpha_s)
   end subroutine real_subtraction_evaluate_subtraction_terms_fsr
 
 @ %def real_subtraction_evaluate_subtraction_terms_fsr
@@ -6286,30 +6448,38 @@ the corresponding jacobians.
      (sqme, reg_data, real_kinematics, alr, i_phs, emitter, i_res)
     real(default), intent(inout) :: sqme
     type(region_data_t), intent(inout) :: reg_data
-    type(real_kinematics_t), intent(in) :: real_kinematics
+    type(real_kinematics_t), intent(in), target :: real_kinematics
     integer, intent(in) :: alr, i_phs, emitter, i_res
     real(default) :: s_alpha
-    s_alpha = reg_data%get_svalue (real_kinematics%p_real_cms%get_momenta(i_phs), &
-        alr, emitter, i_res)
+    type(phs_point_set_t), pointer :: p_real => null ()
+    if (reg_data%has_pseudo_isr ()) then
+       p_real => real_kinematics%p_real_onshell (thr_leg(emitter))
+    else
+       p_real => real_kinematics%p_real_cms
+    end if
+    s_alpha = reg_data%get_svalue (p_real%get_momenta(i_phs),  alr, emitter, i_res)
     if (debug2_active (D_SUBTRACTION)) call msg_print_color('s_alpha', s_alpha, COL_YELLOW)
     sqme = sqme * s_alpha
     associate (region => reg_data%regions(alr))
        sqme = sqme * region%mult
        if (emitter > reg_data%n_in) &
-          sqme = sqme * region%double_fsr_factor (real_kinematics%p_real_cms%get_momenta(i_phs))
+          sqme = sqme * region%double_fsr_factor (p_real%get_momenta(i_phs))
     end associate
   end subroutine evaluate_fks_factors
 
 @ %def evaluate_fks_factors
 @
 <<real subtraction: procedures>>=
-  subroutine apply_kinematic_factors_radiation (sqme, purpose, real_kinematics, i_phs, isr)
+  subroutine apply_kinematic_factors_radiation (sqme, purpose, real_kinematics, &
+         i_phs, isr, threshold, emitter)
     real(default), intent(inout) :: sqme
     integer, intent(in) :: purpose
     type(real_kinematics_t), intent(in) :: real_kinematics
     integer, intent(in) :: i_phs
-    logical, intent(in) :: isr
-    real(default) :: xi, xi_tilde, s
+    logical, intent(in) :: isr, threshold
+    integer, intent(in), optional :: emitter
+    real(default) :: xi, xi_max, xi_tilde, s
+    integer :: leg
     xi_tilde = real_kinematics%xi_tilde
     xi = xi_tilde * real_kinematics%xi_max (i_phs)
     select case (purpose)
@@ -6329,10 +6499,11 @@ the corresponding jacobians.
 @
 <<real subtraction: procedures>>=
   subroutine apply_kinematic_factors_subtraction_fsr &
-     (sqme_soft, sqme_coll, sqme_cs, real_kinematics, i_phs)
+     (sqme_soft, sqme_coll, sqme_cs, real_kinematics, i_phs, emitter)
     real(default), intent(inout) :: sqme_soft, sqme_coll, sqme_cs
     type(real_kinematics_t), intent(in) :: real_kinematics
     integer, intent(in) :: i_phs
+    integer, intent(in), optional :: emitter
     real(default) :: xi_tilde, onemy
     xi_tilde = real_kinematics%xi_tilde
     onemy = one - real_kinematics%y(i_phs)
@@ -6360,7 +6531,7 @@ the corresponding jacobians.
     type(real_kinematics_t), intent(in) :: real_kinematics
     integer, intent(in) :: i_phs
     sqme_remn = (sqme_soft - sqme_cs) * &
-       log (real_kinematics%xi_max (i_phs)) * real_kinematics%xi_tilde
+         log (real_kinematics%xi_max (i_phs)) * real_kinematics%xi_tilde
   end function compute_sqme_remnant_fsr
 
 @ %def compute_sqme_remnant_fsr
@@ -6419,26 +6590,26 @@ the corresponding jacobians.
       real_subtraction_evaluate_subtraction_terms_isr
 <<real subtraction: procedures>>=
   subroutine real_subtraction_evaluate_subtraction_terms_isr (rsub, &
-    emitter, i_phs, alpha_s, sqme_soft, sqme_coll_plus, sqme_coll_minus, &
-    sqme_cs_plus, sqme_cs_minus)
+      alr, emitter, i_phs, i_res, alpha_s, sqme_soft, sqme_coll_plus, &
+      sqme_coll_minus, sqme_cs_plus, sqme_cs_minus)
 
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter, i_phs
+    integer, intent(in) :: alr, emitter, i_phs, i_res
     real(default), intent(in) :: alpha_s
     real(default), intent(out) :: sqme_soft
     real(default), intent(out) :: sqme_coll_plus, sqme_coll_minus
     real(default), intent(out) :: sqme_cs_plus, sqme_cs_minus
-    sqme_soft = rsub%compute_sub_soft (emitter, i_phs, alpha_s)
+    sqme_soft = rsub%compute_sub_soft (alr, emitter, i_phs, i_res, alpha_s)
     if (emitter /= 2) then
-       sqme_coll_plus = rsub%compute_sub_coll (1, i_phs, alpha_s)
-       sqme_cs_plus = rsub%compute_sub_coll_soft (1, alpha_s)
+       sqme_coll_plus = rsub%compute_sub_coll (alr, 1, i_phs, alpha_s)
+       sqme_cs_plus = rsub%compute_sub_coll_soft (alr, 1, alpha_s)
     else
        sqme_coll_plus = zero
        sqme_cs_plus = zero
     end if
     if (emitter /= 1) then
-       sqme_coll_minus = rsub%compute_sub_coll (2, i_phs, alpha_s)
-       sqme_cs_minus = rsub%compute_sub_coll_soft (2, alpha_s)
+       sqme_coll_minus = rsub%compute_sub_coll (alr, 2, i_phs, alpha_s)
+       sqme_cs_minus = rsub%compute_sub_coll_soft (alr, 2, alpha_s)
     else
        sqme_coll_minus = zero
        sqme_cs_minus = zero
@@ -6485,43 +6656,65 @@ to be more consistent with the evaluation of the Born phase space.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: compute_sub_soft => real_subtraction_compute_sub_soft
 <<real subtraction: procedures>>=
-  function real_subtraction_compute_sub_soft (rsub, emitter, &
-     i_phs, alpha_s) result (sqme_soft)
+  function real_subtraction_compute_sub_soft (rsub, alr, emitter, &
+       i_phs, i_res, alpha_s) result (sqme_soft)
     real(default) :: sqme_soft
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: emitter, i_phs
+    integer, intent(in) :: alr, emitter, i_phs, i_res
     real(default), intent(in) :: alpha_s
-    integer :: alr, i_con, i_uborn
+    integer :: i_xi_ref, i_uborn
     real(default) :: q2
-
-    alr = rsub%current_alr
-       associate (real_kinematics => rsub%real_kinematics)
+    type(vector4_t), dimension(:), allocatable :: p_born
+    associate (real_kinematics => rsub%real_kinematics)
        if (rsub%reg_data%regions(alr)%has_soft_divergence ()) then
           if (rsub%sub_soft%use_resonance_mappings) then
-             i_con = rsub%reg_data%alr_to_i_contributor (alr)
+             i_xi_ref = rsub%reg_data%alr_to_i_contributor (alr)
+          else if (rsub%sub_soft%factorization_mode == FACTORIZATION_THRESHOLD) then
+             i_xi_ref = thr_leg(emitter)
           else
-             i_con = 1
+             i_xi_ref = 1
           end if
-          q2 = real_kinematics%xi_ref_momenta (i_con)**2
+          q2 = real_kinematics%xi_ref_momenta (i_xi_ref)**2
+          allocate (p_born (rsub%reg_data%n_legs_born))
+          if (rsub%reg_data%has_pseudo_isr ()) then
+             p_born = real_kinematics%p_born_onshell%get_momenta(1)
+          else
+             p_born = real_kinematics%p_born_cms%get_momenta(1)
+          end if
           if (emitter > rsub%sub_soft%reg_data%n_in) then
              call rsub%sub_soft%create_softvec_fsr &
-                (real_kinematics%p_born_cms%get_momenta(1), &
-                real_kinematics%y_soft (i_phs), &
-                real_kinematics%phi, emitter, &
-                real_kinematics%xi_ref_momenta(i_con))
+                  (p_born, real_kinematics%y_soft(i_phs), &
+                  real_kinematics%phi, emitter, &
+                  real_kinematics%xi_ref_momenta(i_xi_ref))
           else
              call rsub%sub_soft%create_softvec_isr &
                 (real_kinematics%y_soft(i_phs), real_kinematics%phi)
           end if
           i_uborn = rsub%reg_data%regions(alr)%uborn_index
           sqme_soft = rsub%sub_soft%compute &
-             (real_kinematics%p_born_cms%get_momenta(1), &
-             rsub%sqme_born_cc(:,:,i_uborn), real_kinematics%y(i_phs), &
-             q2, alpha_s, alr, emitter, rsub%current_i_res)
+               (p_born, rsub%sqme_born_cc(:,:,i_uborn), &
+               real_kinematics%y(i_phs), &
+               q2, alpha_s, alr, emitter, i_res)
        else
           sqme_soft = zero
        end if
     end associate
+    if (debug2_active (D_SUBTRACTION)) call check_soft_vector ()
+  contains
+    subroutine check_soft_vector ()
+      type(vector4_t) :: p_gluon
+      call msg_debug2 (D_SUBTRACTION, "Compare soft vector: ")
+      print *, 'p_soft: ', rsub%sub_soft%p_soft%p
+      print *, 'Normalized gluon momentum: '
+      if (rsub%reg_data%has_pseudo_isr ()) then
+         p_gluon = rsub%real_kinematics%p_real_onshell(thr_leg(emitter))%get_momentum &
+              (i_phs, rsub%reg_data%n_legs_real)
+      else
+         p_gluon = rsub%real_kinematics%p_real_cms%get_momentum &
+              (i_phs, rsub%reg_data%n_legs_real)
+      end if
+      call vector4_write (p_gluon / p_gluon%p(0), show_mass = .true.)
+    end subroutine check_soft_vector
   end function real_subtraction_compute_sub_soft
 
 @ %def real_subtraction_compute_sub_soft
@@ -6550,15 +6743,15 @@ to be more consistent with the evaluation of the Born phase space.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: compute_sub_coll => real_subtraction_compute_sub_coll
 <<real subtraction: procedures>>=
-  function real_subtraction_compute_sub_coll (rsub, em, i_phs, alpha_s) result (sqme_coll)
+  function real_subtraction_compute_sub_coll (rsub, alr, em, i_phs, alpha_s) result (sqme_coll)
     real(default) :: sqme_coll
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: em, i_phs
+    integer, intent(in) :: alr, em, i_phs
     real(default), intent(in) :: alpha_s
     real(default) :: xi, xi_max, xi_max_pm
     real(default) :: sqme_sc
-    integer :: alr, i_con
-    alr = rsub%current_alr
+    integer :: i_con
+    real(default) :: pfr
     associate (sregion => rsub%reg_data%regions(alr))
        if (sregion%has_collinear_divergence ()) then
           xi = rsub%real_kinematics%xi_tilde * rsub%real_kinematics%xi_max (i_phs)
@@ -6572,13 +6765,21 @@ to be more consistent with the evaluation of the Born phase space.
              xi_max_pm = one - rsub%isr_kinematics%x(em)
              xi = rsub%real_kinematics%xi_tilde * xi_max_pm
              sqme_coll = rsub%sub_coll%compute_isr (sregion, &
-                rsub%real_kinematics%p_born_lab%phs_point(1)%p, &
-                rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
+                  rsub%real_kinematics%p_born_lab%phs_point(1)%p, &
+                  rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr, em)
           else
              sqme_coll = rsub%sub_coll%compute_fsr (sregion, &
-                  rsub%real_kinematics%xi_ref_momenta (i_con), &
-                  rsub%real_kinematics%p_born_cms%get_momenta(1), &
-                  rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr)
+                    rsub%real_kinematics%xi_ref_momenta (i_con), &
+                    rsub%real_kinematics%p_born_cms%get_momenta(1), &
+                    rsub%sqme_born(sregion%uborn_index), sqme_sc, xi, alpha_s, alr)
+             if (rsub%sub_coll%use_resonance_mappings) then
+                select type (fks_mapping => rsub%reg_data%fks_mapping)
+                type is (fks_mapping_resonances_t)
+                   pfr = fks_mapping%get_resonance_weight (alr, &
+                         rsub%real_kinematics%p_born_cms%get_momenta(1))
+                end select
+                sqme_coll = sqme_coll * pfr
+             end if
           end if
        else
           sqme_coll = zero
@@ -6591,15 +6792,14 @@ to be more consistent with the evaluation of the Born phase space.
 <<real subtraction: real subtraction: TBP>>=
   procedure :: compute_sub_coll_soft => real_subtraction_compute_sub_coll_soft
 <<real subtraction: procedures>>=
-  function real_subtraction_compute_sub_coll_soft (rsub, em, alpha_s) result (sqme_cs)
+  function real_subtraction_compute_sub_coll_soft (rsub, alr, em, alpha_s) result (sqme_cs)
     real(default) :: sqme_cs
     class(real_subtraction_t), intent(inout) :: rsub
-    integer, intent(in) :: em
+    integer, intent(in) :: alr, em
     real(default), intent(in) :: alpha_s
     real(default) :: sqme_sc
     real(default) :: xi
-    integer :: alr, i_con
-    alr = rsub%current_alr
+    integer :: i_con
     xi = zero
     associate (sregion => rsub%reg_data%regions(alr))
        if (sregion%has_collinear_divergence ()) then
@@ -6739,6 +6939,7 @@ module nlo_data
   use format_defs, only: FMT_15
   use physics_defs, only: THR_POS_WP, THR_POS_WM
   use physics_defs, only: THR_POS_B, THR_POS_BBAR
+  use physics_defs, only: NO_FACTORIZATION, FACTORIZATION_THRESHOLD
 
 <<Standard module head>>
 
@@ -6762,9 +6963,6 @@ end module nlo_data
   integer, parameter, public :: FKS_DEFAULT = 1
   integer, parameter, public :: FKS_RESONANCES = 2
 
-  integer, parameter, public :: NO_FACTORIZATION = 0
-  integer, parameter, public :: FACTORIZATION_THRESHOLD = 1
-
 @ %def parameters
 @
 <<nlo data: public>>=
@@ -6776,6 +6974,8 @@ end module nlo_data
     logical :: count_kinematics = .false.
     real(default) :: fks_dij_exp1
     real(default) :: fks_dij_exp2
+    real(default) :: xi_min
+    real(default) :: y_max
     type(string_t), dimension(:), allocatable :: excluded_resonances
   contains
   <<nlo data: fks template: TBP>>
@@ -6818,6 +7018,18 @@ end module nlo_data
   end subroutine fks_template_set_dij_exp
 
 @ %def fks_template_set_dij_exp
+@
+<<nlo data: fks template: TBP>>=
+  procedure :: set_xi_and_y_bounds => fks_template_set_xi_and_y_bounds
+<<nlo data: procedures>>=
+  subroutine fks_template_set_xi_and_y_bounds (template, xi_min, y_max)
+    class(fks_template_t), intent(inout) :: template
+    real(default), intent(in) :: xi_min, y_max
+    template%xi_min = xi_min
+    template%y_max = y_max
+  end subroutine fks_template_set_xi_and_y_bounds
+
+@ %def fks_template_set_xi_and_y_bounds
 @
 <<nlo data: fks template: TBP>>=
   procedure :: set_mapping_type => fks_template_set_mapping_type
@@ -8001,8 +8213,8 @@ end module nlo_color_data_ut
 <<File header>>
 
 module nlo_color_data_uti
+  use physics_defs, only: NO_FACTORIZATION
   use nlo_color_data, only: nlo_color_data_t
-  use nlo_data, only: NO_FACTORIZATION
   use fks_regions, only: region_data_t, setup_region_data_for_test
 
 <<Standard module head>>
@@ -8953,6 +9165,9 @@ end module dispatch_fks
        call split_string (exclude_from_resonance, var_str (":"), &
        fks_template%excluded_resonances)
     call fks_template%set_dij_exp (fks_dij_exp1, fks_dij_exp2)
+    call fks_template%set_xi_and_y_bounds &
+         (var_list%get_rval (var_str ("fks_xi_min")), &
+         var_list%get_rval (var_str ("fks_y_max")))
     select case (char (fks_mapping_type))
     case ("default")
        call fks_template%set_mapping_type (FKS_DEFAULT)

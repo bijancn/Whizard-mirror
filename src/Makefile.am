@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2016 by 
+# Copyright (C) 1999-2016 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -16,13 +16,13 @@
 #     Hans-Werner Boschmann, Daniel Wiesler
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by 
+# under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2, or (at your option)
 # any later version.
 #
 # WHIZARD is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
@@ -32,53 +32,36 @@
 ########################################################################
 
 ## Subdirectories to configure
+## directories in one line do not depend on each other
 SUBDIRS = \
   noweb-frame \
   basics \
-  utilities \
-  testing \
+  hepmc lcio lhapdf lhapdf5 looptools pythia8 xdr\
+  expr_base utilities\
   system \
-  combinatorics parsing expr_base \
-  sindarin \
-  physics qft \
-  fastjet \
-  types \
-  variables \
-  rng \
-  matrix_elements \
-  hepmc lcio particles \
-  lhapdf \
-  lhapdf5 \
-  pdf_builtin \
+  combinatorics pdf_builtin testing\
   hoppet \
-  beams \
-  me_methods \
-  xdr events \
-  user \
-  model_features \
-  phase_space \
-  mci \
-  pythia8 \
-  tauola \
-  muli shower \
-  threshold \
-  blha \
-  gosam openloops recola\
-  looptools \
-  fks \
+  muli parsing physics \
+  fastjet qft threshold types\
+  models particles matrix_elements variables \
+  events prebuilt rng\
+  beams tauola \
+  me_methods shower user \
+  blha model_features \
+  gosam openloops \
+  recola phase_space \
+  fks mci \
   process_integration \
   matching \
   transforms \
-  whizard-core \
-  prebuilt \
-  models
+  whizard-core
 
 if MPOST_AVAILABLE
 SUBDIRS += gamelan feynmf
 endif
 
 ########################################################################
-## Build 
+## Build
 ## (1) the toplevel WHIZARD library, which wraps various libraries
 ## built in the subdirectories
 ## (2) the WHIZARD test library that is linked to the main executable
@@ -124,7 +107,6 @@ libwhizard_la_LIBADD = \
   types/libtypes.la \
   qft/libqft.la \
   physics/libphysics.la \
-  sindarin/libsindarin.la \
   expr_base/libexpr_base.la \
   rng/librng.la \
   parsing/libparsing.la \
@@ -144,7 +126,7 @@ if LCIO_AVAILABLE
 libwhizard_la_LIBADD += lcio/libLCIOWrap.la
 else
 libwhizard_la_LIBADD += lcio/libLCIOWrap_dummy.la
-endif 
+endif
 
 ## If (parts of) LHAPDF is not available, link in a dummy as replacements
 if LHAPDF5_AVAILABLE
@@ -168,19 +150,19 @@ if HOPPET_AVAILABLE
 libwhizard_la_LIBADD += $(LDFLAGS_HOPPET) hoppet/libhoppet.la
 else
 libwhizard_la_LIBADD += hoppet/libhoppet_dummy.la
-endif 
+endif
 
 if FASTJET_AVAILABLE
 libwhizard_la_LIBADD += $(FASTJET_LIBS) fastjet/libFastjetWrap.la
 else
 libwhizard_la_LIBADD += fastjet/libFastjetWrap_dummy.la
-endif 
+endif
 
-if LOOPTOOLS_AVAILABLE 
-libwhizard_la_LIBADD += $(LDFLAGS_LOOPTOOLS) looptools/liblooptools.la 
-else 
-libwhizard_la_LIBADD += looptools/liblooptools_dummy.la 
-endif 
+if LOOPTOOLS_AVAILABLE
+libwhizard_la_LIBADD += $(LDFLAGS_LOOPTOOLS) looptools/liblooptools.la
+else
+libwhizard_la_LIBADD += looptools/liblooptools_dummy.la
+endif
 
 ## -------------------------------------------------------------------
 ## WHIZARD unit-test library
@@ -195,6 +177,7 @@ libwhizard_test_la_LIBADD = \
   transforms/libtransforms_ut.la \
   matching/libmatching_ut.la \
   fks/libfks_ut.la \
+  shower/libshower_ut.la \
   process_integration/libprocess_integration_ut.la \
   recola/librecola_ut.la \
   blha/libblha_ut.la \
@@ -209,7 +192,6 @@ libwhizard_test_la_LIBADD = \
   types/libtypes_ut.la \
   qft/libqft_ut.la \
   physics/libphysics_ut.la \
-  sindarin/libsindarin_ut.la \
   rng/librng_ut.la \
   parsing/libparsing_ut.la \
   combinatorics/libcombinatorics_ut.la \
@@ -232,7 +214,7 @@ endif
 ########################################################################
 ## Build a standalone program
 
-bin_PROGRAMS = whizard 
+bin_PROGRAMS = whizard
 
 whizard_SOURCES =
 

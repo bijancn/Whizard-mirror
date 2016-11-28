@@ -2,7 +2,7 @@
 ##
 ## Process this file with automake to produce Makefile.in
 #
-# Copyright (C) 1999-2016 by 
+# Copyright (C) 1999-2016 by
 #     Wolfgang Kilian <kilian@physik.uni-siegen.de>
 #     Thorsten Ohl <ohl@physik.uni-wuerzburg.de>
 #     Juergen Reuter <juergen.reuter@desy.de>
@@ -10,13 +10,13 @@
 #     Christian Speckner <cnspeckn@googlemail.com>
 #
 # WHIZARD is free software; you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by 
+# under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2, or (at your option)
 # any later version.
 #
 # WHIZARD is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
@@ -47,7 +47,8 @@ libphase_space_ut_la_SOURCES = \
   phs_forests_uti.f90 phs_forests_ut.f90 \
   cascades_uti.f90 cascades_ut.f90 \
   phs_wood_uti.f90 phs_wood_ut.f90 \
-  phs_fks_uti.f90 phs_fks_ut.f90
+  phs_fks_uti.f90 phs_fks_ut.f90 \
+  dispatch_phs_uti.f90 dispatch_phs_ut.f90
 
 ## Omitting this would exclude it from the distribution
 dist_noinst_DATA = phase_space.nw
@@ -84,7 +85,8 @@ module_lists = \
   ../model_features/Modules \
   ../variables/Modules \
   ../expr_base/Modules \
-  ../user/Modules
+  ../user/Modules \
+  ../threshold/Modules
 
 $(module_lists):
 	$(MAKE) -C `dirname $@` Modules
@@ -96,17 +98,14 @@ Module_dependencies.sed: $(module_lists)
 	echo 's/, *&//' >> $@
 	echo 's/, *.*=>.*//' >> $@
 	echo 's/$$/.lo/' >> $@
-	for list in $^; do \
-		if ! echo $$list | grep f90 > /dev/null ; then \
-			dir="`dirname $$list`"; \
-			for mod in `cat $$list`; do \
-				echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
-			done \
-		fi \
+	for list in $(module_lists); do \
+		dir="`dirname $$list`"; \
+		for mod in `cat $$list`; do \
+			echo 's!: '$$mod'.lo$$!': $$dir/$$mod'.lo!' >> $@; \
+		done \
 	done
 
 DISTCLEANFILES = Module_dependencies.sed
-
 
 # The following line just says
 #    include Makefile.depend
@@ -124,14 +123,14 @@ Makefile.depend: $(libphase_space_la_SOURCES) $(libphase_space_ut_la_SOURCES)
 	          -f Module_dependencies.sed; \
 	done > $@
 
-DISTCLEANFILES += Makefile.depend 
+DISTCLEANFILES += Makefile.depend
 
 # Fortran90 module files are generated at the same time as object files
 .lo.$(FC_MODULE_EXT):
 	@:
 #	touch $@
 
-AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../fastjet -I../qft -I../matrix_elements -I../types -I../particles -I../beams -I../rng -I../../circe1/src -I../../circe2/src  -I../pdf_builtin -I../lhapdf -I../model_features -I../variables -I../expr_base -I../user
+AM_FCFLAGS = -I../basics -I../utilities -I../testing -I../system -I../combinatorics -I../parsing -I../physics -I../fastjet -I../qft -I../matrix_elements -I../types -I../particles -I../beams -I../rng -I../../circe1/src -I../../circe2/src  -I../pdf_builtin -I../lhapdf -I../model_features -I../variables -I../expr_base -I../user -I../threshold
 
 
 ########################################################################

@@ -51,15 +51,6 @@ UNIT_TESTS = \
     evaluators.run \
     formats.run \
     sorting.run \
-    codes.run \
-    object_base.run \
-    object_builder.run \
-    object_logical.run \
-    object_integer.run \
-    object_container.run \
-    object_comparison.run \
-    object_conditional.run \
-    sindarin_parser.run \
     grids.run \
     solver.run \
     state_matrices.run \
@@ -113,6 +104,7 @@ UNIT_TESTS = \
     event_transforms.run \
     decays.run \
     shower.run \
+    shower_base.run \
     events.run \
     hep_events.run \
     eio_data.run \
@@ -127,6 +119,10 @@ UNIT_TESTS = \
     iterations.run \
     rt_data.run \
     dispatch.run \
+    dispatch_rng.run \
+    dispatch_mci.run \
+    dispatch_phs.run \
+    dispatch_transforms.run \
     process_configurations.run \
     event_streams.run \
     integrations.run \
