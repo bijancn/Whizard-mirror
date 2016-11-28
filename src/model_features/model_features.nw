@@ -1093,7 +1093,6 @@ available energy.  This restriction is removed by setting
     logical, intent(out) :: passed
     type(ps_entry_t), pointer :: current
     passed = .false.
-    call pl%write ()
     if (.not. pl%is_regular ()) then
        call msg_warning ("Record ps_table entry: Irregular pdg-list encountered!")
        return
@@ -2055,7 +2054,6 @@ caller when this is a function.
     integer :: i
     allocate (i_pdg (size (pdg)))
     !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
-    !!! i_pdg = pdg%get ()
     do i = 1, size (pdg)
        i_pdg(i) = pdg(i)%get ()
     end do
@@ -2115,48 +2113,82 @@ caller when this is a function.
 @ %def reshuffle_list_t
 @
 <<radiation generator: reshuffle list: TBP>>=
+  procedure :: write => reshuffle_list_write
+<<radiation generator: procedures>>=
+  subroutine reshuffle_list_write (rlist)
+    class(reshuffle_list_t), intent(in) :: rlist
+    type(reshuffle_list_t), pointer :: current => null ()
+    integer :: i
+    print *, 'Content of reshuffling list: '
+    if (associated (rlist%next)) then
+       current => rlist%next
+       i = 1
+       do
+         print *, 'i: ', i, 'list: ', current%ii
+         i = i + 1
+         if (associated (current%next)) then
+            current => current%next
+         else
+            exit
+         end if
+       end do
+    else
+       print *, '[EMPTY]'
+    end if
+  end subroutine reshuffle_list_write
+
+@ %def reshuffle_list_write
+@
+<<radiation generator: reshuffle list: TBP>>=
   procedure :: append => reshuffle_list_append
 <<radiation generator: procedures>>=
   subroutine reshuffle_list_append (rlist, ii)
-     class(reshuffle_list_t), intent(inout) :: rlist
-     integer, dimension(:), allocatable, intent(in) :: ii
-     type(reshuffle_list_t), pointer :: current
-     if (associated (rlist%next)) then
-        current => rlist%next
-        do
-           if (associated (current%next)) then
-              current => current%next
-           else
-              allocate (current%next)
-              allocate (current%next%ii (size (ii)))
-              current%next%ii = ii
-              exit
-           end if
-        end do
-     else
-        allocate (rlist%next)
-        allocate (rlist%next%ii (size (ii)))
-        rlist%next%ii = ii
-     end if
-   end subroutine reshuffle_list_append
+    class(reshuffle_list_t), intent(inout) :: rlist
+    integer, dimension(:), allocatable, intent(in) :: ii
+    type(reshuffle_list_t), pointer :: current
+    if (associated (rlist%next)) then
+       current => rlist%next
+       do
+          if (associated (current%next)) then
+             current => current%next
+          else
+             allocate (current%next)
+             allocate (current%next%ii (size (ii)))
+             current%next%ii = ii
+             exit
+          end if
+       end do
+    else
+       allocate (rlist%next)
+       allocate (rlist%next%ii (size (ii)))
+       rlist%next%ii = ii
+    end if
+  end subroutine reshuffle_list_append
 
 @ %def reshuffle_list_append
+@
+<<radiation generator: reshuffle list: TBP>>=
+  procedure :: is_empty => reshuffle_list_is_empty
+<<radiation generator: procedures>>=
+  elemental function reshuffle_list_is_empty (rlist) result (is_empty)
+    logical :: is_empty
+    class(reshuffle_list_t), intent(in) :: rlist
+    is_empty = .not. associated (rlist%next)
+  end function reshuffle_list_is_empty
+
+@ %def reshuffle_list_is_empty
 @
 <<radiation generator: reshuffle list: TBP>>=
   procedure :: get => reshuffle_list_get
 <<radiation generator: procedures>>=
   function reshuffle_list_get (rlist, index) result (ii)
+    integer, dimension(:), allocatable :: ii
     class(reshuffle_list_t), intent(inout) :: rlist
     integer, intent(in) :: index
-    integer, dimension(:), allocatable :: ii
     type(reshuffle_list_t), pointer :: current => null ()
     integer :: i
-    if (associated (rlist%next)) then
-       current => rlist%next
-    else
-       call msg_fatal ("Reshuffle list is emtpy")
-    end if
-    do i = 1, index-1
+    current => rlist%next
+    do i = 1, index - 1
        if (associated (current%next)) then
           current => current%next
        else
@@ -2168,6 +2200,23 @@ caller when this is a function.
   end function reshuffle_list_get
 
 @ %def reshuffle_list_get
+@ We need to reset the [[reshuffle_list]] in order to deal with
+subsequent usages of the [[radiation_generator]]. Below is obviously
+the lazy and dirty solution. Otherwise, we would have to equip this
+auxiliary type with additional information about [[last]] and [[previous]]
+pointers. Considering that at most $n_{\rm{legs}}$ integers are saved
+in the lists, and that the subroutine is only called during the
+initialization phase (more precisely: at the moment only in the
+[[radiation_generator]] unit tests), I think this quick fix is justified.
+<<radiation generator: reshuffle list: TBP>>=
+  procedure :: reset => reshuffle_list_reset
+<<radiation generator: procedures>>=
+  subroutine reshuffle_list_reset (rlist)
+    class(reshuffle_list_t), intent(inout) :: rlist
+    rlist%next => null ()
+  end subroutine reshuffle_list_reset
+
+@ %def reshuffle_list_reset
 @
 <<radiation generator: public>>=
   public :: radiation_generator_t
@@ -2190,6 +2239,7 @@ caller when this is a function.
     type(pdg_states_t) :: pdg_raw
     type(pdg_array_t), dimension(:), allocatable :: pdg_in_born, pdg_out_born
     type(if_table_t) :: if_table
+    type(reshuffle_list_t) :: reshuffle_list
   contains
   <<radiation generator: radiation generator: TBP>>
   end type radiation_generator_t
@@ -2297,8 +2347,18 @@ caller when this is a function.
 @ %def radiation_generator_reset_particle_content
 @
 <<radiation generator: radiation generator: TBP>>=
+  procedure :: reset_reshuffle_list=> radiation_generator_reset_reshuffle_list
+<<radiation generator: procedures>>=
+  subroutine radiation_generator_reset_reshuffle_list (generator)
+    class(radiation_generator_t), intent(inout) :: generator
+    call generator%reshuffle_list%reset ()
+  end subroutine radiation_generator_reset_reshuffle_list
+
+@ %def radiation_generator_reset_reshuffle_list
+@
+<<radiation generator: radiation generator: TBP>>=
   procedure :: set_radiation_model => &
-                    radiation_generator_set_radiation_model
+       radiation_generator_set_radiation_model
 <<radiation generator: procedures>>=
   subroutine radiation_generator_set_radiation_model (generator, model)
     class(radiation_generator_t), intent(inout) :: generator
@@ -2419,9 +2479,85 @@ caller when this is a function.
 @ %def radiation_generator_set_constraints
 @
 <<radiation generator: radiation generator: TBP>>=
-  procedure :: generate => radiation_generator_generate
+  procedure :: find_splittings => radiation_generator_find_splittings
 <<radiation generator: procedures>>=
-  subroutine radiation_generator_generate (generator, prt_tot_in, prt_tot_out)
+  subroutine radiation_generator_find_splittings (generator)
+    class(radiation_generator_t), intent(inout) :: generator
+    integer :: i
+    type(pdg_array_t), dimension(:), allocatable :: pdg_in, pdg_out, pdg_tmp
+    integer, dimension(:), allocatable :: reshuffle_list
+
+    call generator%pl_in%create_pdg_array (pdg_in)
+    call generator%pl_out%create_pdg_array (pdg_out)
+
+    associate (if_table => generator%if_table)
+       call if_table%radiate (generator%constraints)
+
+       do i = 1, generator%if_table%get_length ()
+          call generator%if_table%get_pdg_out (i, pdg_tmp)
+          if (size (pdg_tmp) == generator%n_tot) then
+             call pdg_reshuffle (pdg_out, pdg_tmp, reshuffle_list)
+             call generator%reshuffle_list%append (reshuffle_list)
+          end if
+       end do
+    end associate
+
+  contains
+
+    subroutine pdg_reshuffle (pdg_born, pdg_real, list)
+      type(pdg_array_t), intent(in), dimension(:) :: pdg_born, pdg_real
+      integer, intent(out), dimension(:), allocatable :: list
+      type(pdg_sorter_t), dimension(:), allocatable :: sort_born
+      type(pdg_sorter_t), dimension(:), allocatable :: sort_real
+      integer :: i_min, n_in, n_born, n_real
+      integer :: ib, ir
+
+      n_in = generator%n_in
+      n_born = size (pdg_born)
+      n_real = size (pdg_real)
+      allocate (list (n_real - n_in))
+      allocate (sort_born (n_born))
+      allocate (sort_real (n_real - n_in))
+      sort_born%pdg = pdg_born%get ()
+      sort_real%pdg = pdg_real(n_in + 1 : n_real)%get()
+      do ib = 1, n_born
+         if (any (sort_born(ib)%pdg == sort_real%pdg)) &
+            call associate_born_indices (sort_born(ib), sort_real, ib, n_real)
+      end do
+      i_min = maxval (sort_real%associated_born) + 1
+      do ir = 1, n_real - n_in
+         if (sort_real(ir)%associated_born == 0) then
+            sort_real(ir)%associated_born = i_min
+            i_min = i_min + 1
+         end if
+      end do
+      list = sort_real%associated_born
+    end subroutine pdg_reshuffle
+
+    subroutine associate_born_indices (sort_born, sort_real, ib, n_real)
+      type(pdg_sorter_t), intent(in) :: sort_born
+      type(pdg_sorter_t), intent(inout), dimension(:) :: sort_real
+      integer, intent(in) :: ib, n_real
+      integer :: ir
+      do ir = 1, n_real - generator%n_in
+         if (sort_born%pdg == sort_real(ir)%pdg &
+            .and..not. sort_real(ir)%checked) then
+            sort_real(ir)%associated_born = ib
+            sort_real(ir)%checked = .true.
+            exit
+        end if
+      end do
+    end subroutine associate_born_indices
+  end subroutine radiation_generator_find_splittings
+
+@ %def radiation_generator_find_splittings
+@
+<<radiation generator: radiation generator: TBP>>=
+  procedure :: generate_real_particle_strings &
+       => radiation_generator_generate_real_particle_strings
+<<radiation generator: procedures>>=
+  subroutine radiation_generator_generate_real_particle_strings &
+       (generator, prt_tot_in, prt_tot_out)
     type :: prt_array_t
        type(string_t), dimension(:), allocatable :: prt
     end type
@@ -2435,120 +2571,56 @@ caller when this is a function.
     integer :: i, j
     integer, dimension(:), allocatable :: reshuffle_list_local
     type(reshuffle_list_t) :: reshuffle_list
-    logical :: found
     integer :: flv
     type(string_t), dimension(:), allocatable :: buf
     integer :: i_buf
 
-    allocate (pl_in (1), pl_out (1))
-    found = .false.
     flv = 0
-
-    pl_in(1) = generator%pl_in
-    pl_out(1) = generator%pl_out
-
-    call pl_in(1)%create_pdg_array (pdg_in)
-    call pl_out(1)%create_pdg_array (pdg_out)
-
     associate (if_table => generator%if_table)
-       call if_table%radiate (generator%constraints)
-
-       do i = 1, generator%if_table%get_length ()
-          call generator%if_table%get_pdg_out (i, pdg_tmp)
+       do i = 1, if_table%get_length ()
+          call if_table%get_pdg_out (i, pdg_tmp)
           if (size (pdg_tmp) == generator%n_tot) then
              call if_table%get_particle_string (i, &
                 prt_in0(flv + 1)%prt, prt_out0(flv + 1)%prt)
-             call pdg_reshuffle (pdg_out, pdg_tmp, reshuffle_list_local)
-             call reshuffle_list%append (reshuffle_list_local)
-             found = .true.
              flv = flv + 1
           end if
        end do
     end associate
 
-    if (found) then
-      do i = 1, flv
-         allocate (prt_in(i)%prt (generator%n_in))
-         allocate (prt_out(i)%prt (generator%n_tot-generator%n_in))
-      end do
-      allocate (prt_tot_in (generator%n_in))
-      allocate (prt_tot_out (generator%n_tot-generator%n_in))
-      allocate (buf (generator%n_tot))
-      buf = ""
+    do i = 1, flv
+       allocate (prt_in(i)%prt (generator%n_in))
+       allocate (prt_out(i)%prt (generator%n_tot - generator%n_in))
+    end do
+    allocate (prt_tot_in (generator%n_in))
+    allocate (prt_tot_out (generator%n_tot - generator%n_in))
+    allocate (buf (generator%n_tot))
+    buf = ""
 
-      do j = 1, flv
-         do i = 1, generator%n_in
-            prt_in(j)%prt(i) = prt_in0(j)%prt(i)
-            call fill_buffer (buf(i), prt_in0(j)%prt(i))
-         end do
-      end do
-      prt_tot_in = buf(1 : generator%n_in)
+    do j = 1, flv
+       do i = 1, generator%n_in
+          prt_in(j)%prt(i) = prt_in0(j)%prt(i)
+          call fill_buffer (buf(i), prt_in0(j)%prt(i))
+       end do
+    end do
+    prt_tot_in = buf(1 : generator%n_in)
 
-      do j = 1, flv
-         reshuffle_list_local = reshuffle_list%get(j)
-         do i = 1, size (reshuffle_list_local)
-            prt_out(j)%prt(reshuffle_list_local(i)) = prt_out0(j)%prt(i)
-            i_buf = reshuffle_list_local(i) + generator%n_in
-            call fill_buffer (buf(i_buf), &
-                              prt_out(j)%prt(reshuffle_list_local(i)))
-         end do
-      end do
-      prt_tot_out = buf(generator%n_in + 1 : generator%n_tot)
-    else
-      call msg_fatal ("No NLO QCD corrections found for this process!")
-    end if
+    do j = 1, flv
+       !!! !!! !!! Workaround for ifort 16.0 standard-semantics bug
+       allocate (reshuffle_list_local (size (generator%reshuffle_list%get(j))))
+       reshuffle_list_local = generator%reshuffle_list%get(j)
+       do i = 1, size (reshuffle_list_local)
+          prt_out(j)%prt(reshuffle_list_local(i)) = prt_out0(j)%prt(i)
+          i_buf = reshuffle_list_local(i) + generator%n_in
+          call fill_buffer (buf(i_buf), &
+               prt_out(j)%prt(reshuffle_list_local(i)))
+       end do
+       !!! Need to deallocate here because in the next iteration the reshuffling
+       !!! list can have a different size
+       deallocate (reshuffle_list_local)
+    end do
+    prt_tot_out = buf(generator%n_in + 1 : generator%n_tot)
+
   contains
-    subroutine pdg_reshuffle (pdg_born, pdg_real, list)
-      type(pdg_array_t), intent(in), dimension(:) :: pdg_born, pdg_real
-      integer, intent(out), dimension(:), allocatable :: list
-      type(pdg_sorter_t), dimension(:), allocatable :: sort_born
-      type(pdg_sorter_t), dimension(:), allocatable :: sort_real
-      integer :: i_min, n_in, n_born, n_real
-      integer :: ib, ir
-
-      n_in = generator%n_in
-      n_born = size (pdg_born)
-      n_real = size (pdg_real)
-      allocate (list (n_real-n_in))
-      allocate (sort_born (n_born))
-      allocate (sort_real (n_real-n_in))
-
-      sort_born%pdg = pdg_born%get ()
-      sort_real%pdg = pdg_real(n_in+1:n_real)%get()
-
-      do ib = 1, n_born
-         if (any (sort_born(ib)%pdg == sort_real%pdg)) &
-            call associate_born_indices (sort_born(ib), sort_real, ib, n_real)
-      end do
-
-      i_min = maxval (sort_real%associated_born) + 1
-
-      do ir = 1, n_real-n_in
-         if (sort_real(ir)%associated_born == 0) then
-            sort_real(ir)%associated_born = i_min
-            i_min = i_min+1
-         end if
-      end do
-
-      list = sort_real%associated_born
-
-    end subroutine pdg_reshuffle
-
-    subroutine associate_born_indices (sort_born, sort_real, ib, n_real)
-      type(pdg_sorter_t), intent(in) :: sort_born
-      type(pdg_sorter_t), intent(inout), dimension(:) :: sort_real
-      integer, intent(in) :: ib, n_real
-      integer :: ir
-
-      do ir = 1, n_real-generator%n_in
-         if (sort_born%pdg == sort_real(ir)%pdg &
-            .and..not. sort_real(ir)%checked) then
-            sort_real(ir)%associated_born = ib
-            sort_real(ir)%checked = .true.
-            exit
-        end if
-      end do
-    end subroutine associate_born_indices
 
     subroutine fill_buffer (buffer, particle)
       type(string_t), intent(inout) :: buffer
@@ -2572,23 +2644,46 @@ caller when this is a function.
       i_first = 1; i_last = 1
       do
          if (buffer(i_last:i_last) == ":") then
-            buffer_internal = buffer (i_first:i_last-1)
+            buffer_internal = buffer (i_first : i_last - 1)
             if (buffer_internal == substring) then
                exist = .true.
                exit
             end if
-            i_first = i_last+1; i_last = i_first+1
+            i_first = i_last + 1; i_last = i_first + 1
             if (i_last > len(buffer)) exit
          else if (i_last == len(buffer)) then
-            buffer_internal = buffer (i_first:i_last)
+            buffer_internal = buffer (i_first : i_last)
             exist = (buffer_internal == substring)
             exit
          else
-            i_last = i_last+1
+            i_last = i_last + 1
             if (i_last > len(buffer)) exit
          end if
       end do
     end function check_for_substring
+  end subroutine radiation_generator_generate_real_particle_strings
+
+@ %def radiation_generator_generate_real_particle_strings
+@
+<<radiation generator: radiation generator: TBP>>=
+  procedure :: contains_emissions => radiation_generator_contains_emissions
+<<radiation generator: procedures>>=
+  function radiation_generator_contains_emissions (generator) result (has_em)
+    logical :: has_em
+    class(radiation_generator_t), intent(in) :: generator
+    has_em = .not. generator%reshuffle_list%is_empty ()
+  end function radiation_generator_contains_emissions
+
+@ %def radiation_generator_contains_emissions
+@
+<<radiation generator: radiation generator: TBP>>=
+  procedure :: generate => radiation_generator_generate
+<<radiation generator: procedures>>=
+  subroutine radiation_generator_generate (generator, prt_in, prt_out)
+    class(radiation_generator_t), intent(inout) :: generator
+    type(string_t), intent(out), dimension(:), allocatable :: prt_in, prt_out
+    call generator%find_splittings ()
+    call generator%generate_real_particle_strings (prt_in, prt_out)
   end subroutine radiation_generator_generate
 
 @ %def radiation_generator_generate
@@ -2600,11 +2695,11 @@ caller when this is a function.
     class(radiation_generator_t), intent(inout) :: generator
     integer, intent(in) :: max_multiplicity
     if (max_multiplicity <= generator%n_out) &
-       call msg_fatal ("GKS states: Multiplicity is not large enough!")
+         call msg_fatal ("GKS states: Multiplicity is not large enough!")
     call generator%first_emission ()
-    if (max_multiplicity - generator%n_out > 1) then
-       call generator%append_emissions (max_multiplicity)
-    end if
+    call generator%reset_reshuffle_list ()
+    if (max_multiplicity - generator%n_out > 1) &
+         call generator%append_emissions (max_multiplicity)
   end subroutine radiation_generator_generate_multiple
 
 @ %def radiation_generator_generate_multiple
@@ -2648,12 +2743,13 @@ caller when this is a function.
        call separate_particles (prt_out1, prt_out2)
        call sort_prt (prt_out2, generator%radiation_model)
        if (.not. generator%prt_queue%contains (prt_out2)) &
-          call generator%prt_queue%append (prt_out2)
+            call generator%prt_queue%append (prt_out2)
        if (.not. any (prt_out1 == " ")) then
           call sort_prt (prt_out1, generator%radiation_model)
           if (.not. generator%prt_queue%contains (prt_out1)) &
              call generator%prt_queue%append (prt_out1)
        end if
+       call generator%reset_reshuffle_list ()
     end do
 
   contains
@@ -2983,6 +3079,7 @@ end module radiation_generator_uti
       write (u, "(A)") "* Outgoing: "
       call write_particle_string (prt_strings_out, u)
       call write_separator(u)
+      call generator%reset_reshuffle_list ()
     end subroutine test_process
 
   end subroutine radiation_generator_1
